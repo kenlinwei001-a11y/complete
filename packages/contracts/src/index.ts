@@ -7,3 +7,4 @@ export * from "./features.js";
 export * from "./timeseries.js";
 export * from "./actions.js";
 export * from "./solvers.js";
+export * from "./workspace.js";
