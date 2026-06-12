@@ -99,3 +99,32 @@ Action 写回成功时登记 `writeback_echoes(action_id, conn_id, dataset, matc
 ## 12. 实施手册 WBS 追加
 
 W33 实体解析+隔离区（依赖 W08/W10；判据 OC1/OC4）｜W34 评测体系+提示词配置化（依赖 W15；OC2/OC6）｜W35 配置迁移 bundle（依赖 W19/W20；OC3）｜W36 通知中心+成本配额+日历+回声（OC5/OC7–OC9）。插入位置：W24 之后、前端工单之前（前端工单相应扩展隔离区/合并队列/通知/用量页）。
+
+## 13. 并发一致性补遗（写冲突评审反照出的平台三缺口）
+
+### 13.1 任务级快照读（Task-Scoped Snapshot Read）
+
+**问题**：长 workflow/agent 任务的多个步骤分别读"当前数据"，步骤间数据可能被并发写入改变（同型于"模拟结果基于旧规则"问题）；本体核心 §1 已承认完整 MVCC 为 v2，本节给出**本期可实现的折中**：
+
+- 任务启动时记 `taskEpoch = 当前租户 epoch`；任务内全部读 API（objects/query、resolveSlice、aggregate、规则定义读取）增加可选参数 `asOfEpoch`，工具层自动注入 taskEpoch；
+- **本期实现语义**（无完整 MVCC 的近似）：`objects.epoch ≤ asOfEpoch` 行过滤 + temporal 属性按 prop_history 回溯 + 派生值按 derivation_runs(epoch≤) 回溯；**非 temporal 普通属性在任务执行窗口内被改写的，按当前值返回并在结果标记 `epochApprox:true`**（窗口短：workflow ≤5min，发生概率低且可观测）；
+- 求解器输入因此获得稳定快照（QOS-PRD M6"快照引用而非活数据"由此真正落地）；溯源 snapshotVersion 含 taskEpoch；
+- 配置类读取（规则/计划/提示词的 latest 解析）**不**按 taskEpoch 回溯——同一任务内首读后缓存于任务上下文（任务内一致即可，跨任务跟随 latest，与引用模式语义一致）。
+
+### 13.2 代次取消（取消优于仲裁）
+
+- 同一 `conversationId` 提交新任务时，仍在执行中的旧任务**默认自动取消**（`CANCELLED, reason:"SUPERSEDED"`，SSE 发 task.cancelled）；前端提交时可传 `keepPrevious:true` 显式保留并行（多问题并行是合法场景，但默认收敛）；
+- 任务携带 `generation`（会话内单调），工具执行器在每次调用前检查任务 cancelled 标志（既有循环边界检查强化为工具粒度）；被取消任务已产生的 Action 草稿保留（提案并存原则）。
+
+### 13.3 并发可观测性指标
+
+新增：`qos_tasks_cancelled_total{reason}`、`dc_version_conflicts_total{resource}`（D-07 的 409 计数）、`dc_epoch_approx_reads_total`（13.1 近似读命中）、`sched_lock_wait_ms`（SKIP LOCKED 等待直方图）。冲突治理从断言变为数据。
+
+### 验收用例
+
+| # | 用例 | 预期 |
+|---|---|---|
+| CC1 | 任务执行中并发改一个 temporal 属性 | 任务内两次读取值一致（=taskEpoch 时值）；任务后新任务读到新值 |
+| CC2 | 改非 temporal 属性 | 结果带 epochApprox 标记且指标 +1（诚实暴露近似） |
+| CC3 | 同会话连发两问 | 旧任务 SUPERSEDED 取消、SSE 事件正确；keepPrevious=true 时并行完成 |
+| CC4 | 配置 latest 任务内一致 | 任务执行中发布新规则版本 → 该任务仍用启动时版本，下一任务用新版（留痕 resolvedRefs 验证） |
