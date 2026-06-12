@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { AgentBudgetSchema } from "./qos.js";
+import { AgentBudgetSchema, PlanStepSchema } from "./qos.js";
+import { JsonSchemaObject } from "./common.js";
 
 // ---------------------------------------------------------------------------
 // 平台 PRD §8.1 B1 Agent 注册表
@@ -49,6 +50,26 @@ export const AgentDefinitionSchema = z.object({
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
 });
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
+
+// ---------------------------------------------------------------------------
+// 平台 PRD §8.2 B2 Workflow（独立于 QOS ExecutionPlan 的租户级工作流定义；additive）
+// ---------------------------------------------------------------------------
+
+export const WorkflowDefinitionSchema = z.object({
+  id: z.string(), // wf_
+  tenantId: z.string(),
+  key: z.string(),
+  version: z.number().int(),
+  name: z.string(),
+  description: z.string().optional(),
+  /** JSON Schema describing the workflow inputs（暴露为 agent 工具时的 input_schema） */
+  inputs: JsonSchemaObject,
+  steps: z.array(PlanStepSchema).min(1).max(12),
+  status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 
 // ---------------------------------------------------------------------------
 // 平台 PRD §8.3 B3 MCP
