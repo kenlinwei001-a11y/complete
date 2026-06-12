@@ -330,6 +330,20 @@ export const AgentIterationSchema = z.object({
 });
 export type AgentIteration = z.infer<typeof AgentIterationSchema>;
 
+/**
+ * Agent 运行时增量 §1.3：上下文清理操作留痕（折叠/服务端压缩/强制收尾）。
+ * fold = 第 1 刀（最旧迭代 tool_result 折叠为占位摘要）；
+ * compact = 第 2 刀（Anthropic 服务端 compaction）；
+ * force_finalize = 第 3 刀（硬阈值/超窗 → 注入收尾提醒）。
+ */
+export const ContextOpSchema = z.object({
+  op: z.enum(["fold", "compact", "force_finalize"]),
+  /** 发生该操作时的迭代序号（0 起） */
+  iteration: z.number().int(),
+  detail: z.string().optional(),
+});
+export type ContextOp = z.infer<typeof ContextOpSchema>;
+
 export const AgentRunRecordSchema = z.object({
   id: z.string(), // run_
   taskId: z.string(),
@@ -339,6 +353,8 @@ export const AgentRunRecordSchema = z.object({
   budgetExhausted: z.boolean(),
   totalInputTokens: z.number(),
   totalOutputTokens: z.number(),
+  /** Agent 运行时增量 §1.3（additive）：上下文清理操作记录 */
+  contextOps: z.array(ContextOpSchema).optional(),
 });
 export type AgentRunRecord = z.infer<typeof AgentRunRecordSchema>;
 

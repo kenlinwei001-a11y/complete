@@ -120,6 +120,11 @@ export class OpenAiLlmClient implements LlmClient {
       }) as unknown as OpenAiChatPort);
   }
 
+  /** 增量 §1.1：openai/openai_compatible 无 count_tokens/compaction，一律 chars/3.5 估算。 */
+  async capabilities(): Promise<import("./types.js").LlmCapabilities> {
+    return { countTokens: false, compaction: false };
+  }
+
   private trackUsage(model: string, usage: OpenAiChatCompletion["usage"]): void {
     if (!usage) return;
     this.metrics?.llmTokens.inc({ model, direction: "input" }, usage.prompt_tokens ?? 0);

@@ -111,6 +111,11 @@ export function createMemoryRepos(): Repos {
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
           .map(clone);
       },
+      async listStuckExecuting(cutoffIso) {
+        return [...tasks.values()]
+          .filter((t) => t.status.startsWith("EXECUTING_") && t.createdAt < cutoffIso)
+          .map(clone);
+      },
     },
     events: {
       async append(taskId, event, payload) {

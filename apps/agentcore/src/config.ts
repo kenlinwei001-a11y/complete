@@ -14,6 +14,12 @@ const ConfigSchema = z.object({
   QOS_TAU_LOW: z.coerce.number().default(0.55),
   /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
   SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
+  /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
+  MCP_STDIO_ENABLED: z.string().optional(),
+  /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */
+  MCP_STDIO_COMMAND_ALLOWLIST: z.string().optional(),
+  /** 增量 §3：技能附件本地存储目录（与 DataCore BLOB_DIR 共享卷形态）；缺省仅元信息 */
+  BLOB_DIR: z.string().optional(),
   /** 32-byte hex key for AES-256-GCM credential encryption */
   CREDENTIAL_KEY: z
     .string()
@@ -26,4 +32,15 @@ export type AppConfig = z.infer<typeof ConfigSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return ConfigSchema.parse(env);
+}
+
+/** 增量 §4.3：stdio 安全策略（默认禁用；白名单 = 绝对路径精确匹配集合）。 */
+export function stdioPolicyFromConfig(config: AppConfig): { enabled: boolean; commandAllowlist: string[] } {
+  return {
+    enabled: config.MCP_STDIO_ENABLED === "1",
+    commandAllowlist: (config.MCP_STDIO_COMMAND_ALLOWLIST ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  };
 }

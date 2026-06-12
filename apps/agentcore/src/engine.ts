@@ -1,4 +1,4 @@
-import type { AgentDefinition, Answer, WorkflowDefinition } from "@platform/contracts";
+import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type WorkflowDefinition } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import type { AppConfig } from "./config.js";
@@ -11,6 +11,7 @@ import { enterNesting, type NestingCtx } from "./runtime.js";
 import { BudgetTracker } from "./tools/budget.js";
 import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import { GuardedToolExecutor } from "./tools/executor.js";
+import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
 
@@ -23,6 +24,8 @@ export interface EngineDeps {
   config: AppConfig;
   /** Multi-provider model resolution (amends QOS-PRD §6). */
   llmSettings: LlmSettings;
+  /** 增量 §3：read_skill_resource 内容读取端口（缺省仅元信息）。 */
+  skillResources?: SkillResourceReader;
 }
 
 export interface RunRegisteredAgentOpts {
@@ -43,7 +46,13 @@ export class ExecutionEngine {
 
   makeExecutor(taskId: string, ctx: ToolAuthCtx, budget?: BudgetTracker, scopeToolNames?: string[]): GuardedToolExecutor {
     return new GuardedToolExecutor(
-      { dataCore: this.deps.dataCore, mcp: this.deps.mcp, repos: this.deps.repos, metrics: this.deps.metrics },
+      {
+        dataCore: this.deps.dataCore,
+        mcp: this.deps.mcp,
+        repos: this.deps.repos,
+        metrics: this.deps.metrics,
+        skillResources: this.deps.skillResources,
+      },
       { taskId, ctx, budget, scopeToolNames },
     );
   }
@@ -77,11 +86,23 @@ export class ExecutionEngine {
         });
       } else if (ref.kind === "MCP") {
         if (!this.deps.mcp) continue;
-        const tools = await this.deps.mcp.listTools(ref.mcpConfigId);
+        const config = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
+        if (!config) continue;
+        // 增量 §4.2 命名空间：模型可见名 = mcp__{serverName}__{toolName}（防重名冲突）；
+        // serverName = config.serverName（创建时校验）/ 旧数据按 name 推导。
+        const serverName = config.serverName ?? mcpServerNameSlug(config.name);
+        let tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+        try {
+          tools = await this.deps.mcp.listTools(ref.mcpConfigId);
+        } catch {
+          // server ERROR/不可达 → 该 server 工具本次不可见（agent 调用会即时得 is_error）
+          continue;
+        }
         for (const t of tools) {
-          if (ref.toolFilter && !ref.toolFilter.includes(t.name)) continue;
+          const fullName = mcpToolFullName(serverName, t.name);
+          if (ref.toolFilter && !ref.toolFilter.includes(t.name) && !ref.toolFilter.includes(fullName)) continue;
           specs.push({
-            name: t.name,
+            name: fullName,
             description: `[MCP·外部] ${t.description}`,
             inputSchema: t.inputSchema,
             binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
@@ -136,10 +157,14 @@ export class ExecutionEngine {
         const skill = await this.deps.repos.skills.get(skillId);
         if (!skill || skill.tenantId !== agent.tenantId) return undefined;
         return {
+          // 增量 §3：body 中的 {{resource:name}} 标注引用原样保留——资源清单（含 mime/description）
+          // 告诉模型有哪些附件、何时用 read_skill_resource 读（渐进披露第三级）。
           body: skill.body,
           resources: skill.resources.map((r) => ({
             name: r.name,
             url: `/b/v1/skills/${skill.id}/resources/${encodeURIComponent(r.name)}`,
+            ...(r.mime ? { mime: r.mime } : {}),
+            ...(r.description ? { description: r.description } : {}),
           })),
         };
       },

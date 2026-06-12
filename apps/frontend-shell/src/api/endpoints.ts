@@ -239,6 +239,8 @@ import {
   type PlanVersionCurrent,
   QuarterlyResponseSchema,
   CalibrationReportSchema,
+  CalibrationRunResultSchema,
+  type CalibrationRunResult,
   DataHealthResponseSchema,
   type AopResponse,
   type QuarterlyResponse,
@@ -271,6 +273,10 @@ export const fetchCalibrationHistory = () => api.a<CalibrationHistoryEntry[]>("/
 /** 批准/回滚一律走 Action 审批流（§S2，不直改参数）：响应即审批草稿引用 */
 export const decideCalibrationProposal = (id: string, decision: "approve" | "rollback") =>
   api.a<{ draftId: string; status: string }>(`/a/v1/calibration/proposals/${id}/${decision}`, { body: {} });
+
+/** M11 §3 手动「立即校准」（catalog_admin）：配对 → 元闭环 → 全切片提案生成 */
+export const runCalibration = async (): Promise<CalibrationRunResult> =>
+  CalibrationRunResultSchema.parse(await api.a<unknown>("/a/v1/calibration/run", { body: {} }));
 
 export const fetchDataHealth = async (): Promise<DataHealthResponse> =>
   DataHealthResponseSchema.parse(await api.a<unknown>("/a/v1/data-health"));

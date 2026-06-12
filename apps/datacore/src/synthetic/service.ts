@@ -194,6 +194,8 @@ export class SyntheticService {
         await this.scheduler.register(ctx.tenantId, "DERIVATION_FULL", "tenant", "0 2 * * *");
         await this.scheduler.register(ctx.tenantId, "RULE_SCAN", "tenant", "0 * * * *");
         await this.scheduler.register(ctx.tenantId, "TS_AGGREGATE", "tenant", "30 * * * *");
+        // M11 §3 兜底定时：每周一全量校准（温和漂移周期性收口）
+        await this.scheduler.register(ctx.tenantId, "CALIBRATION_RUN", "tenant", "0 3 * * 1");
       }
 
       // ⑥ validation report.
@@ -269,6 +271,19 @@ export class SyntheticService {
       for (const t of BATTERY_ACTION_TYPES) await this.actions.registerType(ctx, t);
     }
     // §7.21 校准种子：2 条 PENDING 提案 + 1 条历史（确定性 id/时间；提案变更只能走 Action）。
+    // M11：同 (industry, scale, seed) 重跑回到初始态 —— 先清空配对/预测记录/提案/历史。
+    for (const rec of await this.repos.calibrationPairs.list(ctx.tenantId)) {
+      await this.repos.calibrationPairs.remove(ctx.tenantId, rec.id);
+    }
+    for (const rec of await this.repos.calibrationForecasts.list(ctx.tenantId)) {
+      await this.repos.calibrationForecasts.remove(ctx.tenantId, rec.id);
+    }
+    for (const rec of await this.repos.calibrationProposals.list(ctx.tenantId)) {
+      await this.repos.calibrationProposals.remove(ctx.tenantId, rec.id);
+    }
+    for (const rec of await this.repos.calibrationHistory.list(ctx.tenantId)) {
+      await this.repos.calibrationHistory.remove(ctx.tenantId, rec.id);
+    }
     const t0 = BATTERY_SOLVER_PARAMS.forecastStart as string;
     const proposalSeeds = [
       {
@@ -280,6 +295,10 @@ export class SyntheticService {
         proposedValue: 0.9,
         basis: { windowFrom: "2026-06-17", windowTo: "2026-06-30", samples: 168 },
         trigger: "C12",
+        sliceKey: "capacity_forecast|all|4680-NCM",
+        paramRef: { scope: "SOLVER_PARAMS" as const, path: "ramp.base" },
+        method: "REPLAY_ATTRIBUTION" as const,
+        evidence: { windowFrom: "2026-06-17", windowTo: "2026-06-30", nPairs: 168, mapeBefore: 11.2, simulatedMapeAfter: 8.9, bias: 0.061, flags: ["ATTRIBUTION_SHARE:0.82"] },
       },
       {
         id: `calp_${ctx.tenantId}_seed_maint`,
@@ -290,6 +309,10 @@ export class SyntheticService {
         proposedValue: 0.75,
         basis: { windowFrom: "2026-06-10", windowTo: "2026-06-30", samples: 96 },
         trigger: "手动",
+        sliceKey: "capacity_forecast|all|S192-LFP",
+        paramRef: { scope: "SOLVER_PARAMS" as const, path: "maintMult" },
+        method: "EMA" as const,
+        evidence: { windowFrom: "2026-06-10", windowTo: "2026-06-30", nPairs: 96, mapeBefore: 9.8, simulatedMapeAfter: 8.1, bias: -0.034, flags: [] },
       },
     ];
     for (const p of proposalSeeds) {
@@ -308,6 +331,9 @@ export class SyntheticService {
       changedParams: ["良率基线（化成）"],
       mapeBefore: 11.2,
       mapeAfter: 8.4,
+      method: "EMA",
+      simulatedMapeAfter: 8.4, // 预言（回测）
+      realizedMape: 8.7, // 实现（元闭环 14 日回写）—— 报告页"预言 vs 实现"
     });
     // A8.6 simulation clock at t0.
     await this.repos.simulationClocks.put({

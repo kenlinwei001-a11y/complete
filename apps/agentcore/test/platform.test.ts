@@ -368,11 +368,12 @@ describe("platform acceptance", () => {
     expect(calls.some((c) => c.toolName === "load_skill" && c.outcome === "OK")).toBe(true);
   });
 
-  it("MC1: MCP tool call (mock client) audited + wrapped as untrusted", async () => {
+  it("MC1: MCP tool call (mock client) audited + wrapped as untrusted (增量 §4.2 命名空间全名)", async () => {
     await t.repos.mcpConfigs.insert({
       id: "mcp_demo",
       tenantId: TENANT,
       name: "demo",
+      serverName: "demo",
       transport: { type: "stdio", command: "node", args: ["dist/mcp/demo-server.js"] },
       status: "ACTIVE",
     });
@@ -382,11 +383,17 @@ describe("platform acceptance", () => {
         key: "mcp_agent",
         tools: [{ kind: "MCP", mcpConfigId: "mcp_demo" }],
         mcpServers: [{ mcpConfigId: "mcp_demo" }],
-        scopeDeclaration: { objectTypes: [], toolNames: ["demo_echo", "demo_add"] },
+        // §4.2: scopeDeclaration.toolNames 用全名 mcp__{serverName}__{toolName}
+        scopeDeclaration: { objectTypes: [], toolNames: ["mcp__demo__demo_echo", "mcp__demo__demo_add"] },
       }),
     );
     t.llm.queueAgentTurn(
-      { content: [toolUse("demo_add", { a: 2, b: 3 })] },
+      (req) => {
+        // 模型可见的工具名是命名空间全名
+        expect(req.tools.some((x) => x.name === "mcp__demo__demo_add")).toBe(true);
+        expect(req.tools.some((x) => x.name === "demo_add")).toBe(false);
+        return { content: [toolUse("mcp__demo__demo_add", { a: 2, b: 3 })] };
+      },
       (req) => {
         const serialized = JSON.stringify(req.messages);
         expect(serialized).toContain("<tool_data");
@@ -408,12 +415,14 @@ describe("platform acceptance", () => {
       emit: async () => undefined,
     });
     expect(result.outcome).toBe("ANSWERED");
+    // 调下游 server 时还原为原始工具名
     expect(t.mcp.calls).toEqual([{ mcpConfigId: "mcp_demo", toolName: "demo_add", args: { a: 2, b: 3 } }]);
+    // 审计用全名
     const calls = await t.repos.toolCalls.listByTask("task_mc1");
-    expect(calls.some((c) => c.toolName === "demo_add" && c.outcome === "OK")).toBe(true);
+    expect(calls.some((c) => c.toolName === "mcp__demo__demo_add" && c.outcome === "OK")).toBe(true);
     // MCP tools (sideEffect=EXTERNAL) are never in the QOS path B whitelist
     const { BUILTIN_TOOLS } = await import("../src/tools/registry.js");
-    expect(BUILTIN_TOOLS.some((x) => x.name === "demo_add")).toBe(false);
+    expect(BUILTIN_TOOLS.some((x) => x.name === "demo_add" || x.name === "mcp__demo__demo_add")).toBe(false);
   });
 
   it("MCP credential is encrypted at rest and never echoed", async () => {

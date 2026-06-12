@@ -142,6 +142,36 @@ export interface SolverParamsShape {
     capex: number;
   };
   dupSimilarityThreshold: number;
+  /**
+   * M11 校准算法层配置（场景包声明：可校准参数注册表 + 阈值开关）。
+   * 每个参数声明 method（A=EMA / B=重放归因 / C=分位数匹配）、scope/path 与边界。
+   */
+  calibration?: CalibrationConfigShape;
+}
+
+export interface CalibratableParamDef {
+  key: string;
+  name: string;
+  method: "EMA" | "REPLAY_ATTRIBUTION" | "QUANTILE";
+  scope: "SOLVER_PARAMS" | "ONTOLOGY_PROPERTY";
+  /** SOLVER_PARAMS: solver_params 点路径；ONTOLOGY_PROPERTY: "<ObjectType>.<prop>" */
+  path: string;
+  /** 方法 A：实测均值来源（ts_agg_specs key，A8 同窗口聚合） */
+  observedSpecKey?: string;
+  bounds: [number, number];
+}
+
+export interface CalibrationConfigShape {
+  alpha: number; // 方法 A EMA 系数（默认 0.3）
+  structuralDriftPct: number; // 结构性漂移闸门（默认 0.20）
+  minImprovementPct: number; // §5 回测门槛（MAPE 百分点，默认 1）
+  nMin: number; // §2 最小样本量/切片（默认 10）
+  autoApply: boolean; // §6 自动生效开关（默认 false）
+  autoApplyMaxDeltaPct: number; // 仅方法 A 且变幅 < 此值免审批（默认 0.05）
+  freqLimitDays: number; // 同一 paramRef ≤1 次变更 / freqLimitDays（默认 7）
+  metaLoopDays: number; // 元闭环回看天数（默认 14，模拟时钟激活时按模拟日）
+  quantile: { lowCov: number; highCov: number; step: number; min: number; max: number };
+  params: CalibratableParamDef[];
 }
 
 /** Ontology slice snapshot every solver computes from (deterministic input). */

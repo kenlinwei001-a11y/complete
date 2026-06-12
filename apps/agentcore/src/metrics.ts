@@ -97,6 +97,12 @@ export class Metrics {
   readonly llmTokens = new Counter("qos_llm_tokens_total", "LLM tokens by model and direction");
   readonly nestedInvocations = new Counter("ac_nested_invocations_total", "Nested agent/workflow invocations by kind");
   readonly oboDenied = new Counter("ac_obo_denied_total", "Tool calls refused due to expiring OBO token");
+  /** 增量 §1.3：上下文清理操作（fold/compact/force_finalize） */
+  readonly contextOps = new Counter("ac_context_ops_total", "Agent context cleanup operations by op");
+  /** 增量 §4.1：MCP server 状态告警（error/recovered） */
+  readonly mcpAlerts = new Counter("ac_mcp_alerts_total", "MCP server lifecycle alerts by kind");
+  /** 增量 §2：启动扫描置 FAILED 的中断任务数 */
+  readonly interruptedTasks = new Counter("ac_interrupted_tasks_total", "Tasks failed by restart sweep");
 
   // rolling window for hit ratio
   private readonly routed: { at: number; pathA: boolean }[] = [];
@@ -123,6 +129,9 @@ export class Metrics {
         this.llmTokens,
         this.nestedInvocations,
         this.oboDenied,
+        this.contextOps,
+        this.mcpAlerts,
+        this.interruptedTasks,
       ]
         .map((m) => m.render())
         .join("\n") + "\n"

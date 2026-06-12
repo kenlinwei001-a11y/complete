@@ -442,6 +442,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     webhooks: new PgStore(pool, "webhooks"),
     sopVersions: new PgStore(pool, "sop_versions"),
     solverParams: new PgStore(pool, "solver_params"),
+    solverParamsHistory: new PgStore(pool, "solver_params_history"),
     scheduledJobs: new PgScheduledJobStore(pool),
     schedulerRuns: new PgStore(pool, "scheduler_runs"),
     kbDocs: new PgStore(pool, "kb_docs"),
@@ -459,6 +460,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     featureAudit: new PgStore(pool, "feature_audit"),
     calibrationProposals: new PgStore(pool, "calibration_proposals"),
     calibrationHistory: new PgStore(pool, "calibration_history"),
+    calibrationForecasts: new PgStore(pool, "calibration_forecasts"),
+    calibrationPairs: new PgStore(pool, "calibration_pairs"),
     async ping() {
       await pool.query("SELECT 1");
     },

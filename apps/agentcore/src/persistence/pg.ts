@@ -173,6 +173,13 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         );
         return r.rows.map(rowToTask);
       },
+      async listStuckExecuting(cutoffIso) {
+        const r = await q(
+          `SELECT * FROM query_tasks WHERE status LIKE 'EXECUTING_%' AND created_at < $1`,
+          [cutoffIso],
+        );
+        return r.rows.map(rowToTask);
+      },
     },
     events: {
       async append(taskId, event, payload) {

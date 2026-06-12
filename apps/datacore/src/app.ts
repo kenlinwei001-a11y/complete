@@ -34,7 +34,7 @@ import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
-import { CalibrationService } from "./calibration.js";
+import { CalibrationService } from "./calibration/index.js";
 import { buildDataHealth } from "./datahealth.js";
 import { buildMappingRows } from "./mapping.js";
 import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH } from "./graphmeta.js";
@@ -217,13 +217,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const kb = new KbService(repos, authz, blob, embeddings);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
-  const calibration = new CalibrationService(repos, outbox);
+  const calibration = new CalibrationService(repos, outbox, solvers);
   // cross-wiring (kept out of constructors to avoid dependency cycles)
   synthetic.wire({ scheduler, features, actions, ts: timeseries });
   connectors.wire({ ts: timeseries, scheduler });
   simclock.setResetRunner(async (c, spec) => synthetic.runJob(c, spec));
   // §7.21: C12 → calibration.required → 提案生成（与降级/告警共用同一扫描路径）
   ruleScan.setCalibrationHook(async (tenantId, entityId) => calibration.onCalibrationRequired(tenantId, entityId));
+  // M11 §1: tick 聚合后配对 + 元闭环（在 RULE_SCAN 之前 —— C12 命中即有新配对可消费）
+  simclock.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
   // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
   const mockExecutor = new MockActionExecutor();
   const domainExecutor: ActionExecutor = {
@@ -264,6 +266,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     })
     .on("TS_AGGREGATE", async (tenantId) => {
       await timeseries.runAggregation(tenantId);
+    })
+    // M11 §3 兜底定时：每周全量校准（即使未触发 C12，温和漂移也被周期性收口）
+    .on("CALIBRATION_RUN", async (tenantId) => {
+      await calibration.runAll(tenantId, "CALIBRATION_RUN");
     });
 
   /** Entitlement middleware helper: bound feature off → 404 FEATURE_NOT_FOUND (before authz). */
@@ -1214,6 +1220,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     reply.status(202).send(await calibrationAction(req, "approve")));
   app.post("/a/v1/calibration/proposals/:id/rollback", async (req, reply) =>
     reply.status(202).send(await calibrationAction(req, "rollback")));
+  // M11 §3 手动触发（报告页「立即校准」按钮；catalog_admin）：配对 → 元闭环 → 全切片提案生成。
+  app.post("/a/v1/calibration/run", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => ["admin", "catalog_admin"].includes(r.split(":")[0] as string))) {
+      throw forbidden("catalog_admin only");
+    }
+    return calibration.runAll(c.tenantId, "手动");
+  });
 
   // ---- 数据健康度（增量 §7.22；与 C09/P90 降级同一事实源）------------------------------------------
   app.get("/a/v1/data-health", async (req) => buildDataHealth(repos, solvers, features, ctx(req).tenantId));

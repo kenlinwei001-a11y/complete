@@ -19,11 +19,63 @@ export function buildSkillSection(skills: SkillDefinition[]): string {
   return `\n\n可用技能（调用 load_skill(skillId) 获取全文）：\n${lines.join("\n")}`;
 }
 
+// ---------------------------------------------------------------------------
+// 会话摘要构建器（增量 §1.4 —— 分类器 6 轮摘要与 agent 前情摘要共用同一构建器）
+// ---------------------------------------------------------------------------
+
+/** 单轮摘要：用户问句 + 回答首个 text block（截断到 answerChars）。 */
+export function taskTurnSummary(t: QueryTask, answerChars: number): string {
+  const firstText = t.answer?.blocks.find((b) => b.type === "text");
+  const a = firstText && firstText.type === "text" ? firstText.markdown.slice(0, answerChars) : "";
+  return `Q: ${t.query}${a ? `\nA: ${a}` : ""}`;
+}
+
+/** 分类器最近 6 轮会话摘要（QOS-PRD §5.1 规则不变）。 */
+export function classifierConversationSummary(previousTasks: QueryTask[]): string {
+  return previousTasks
+    .slice(-6)
+    .map((t) => taskTurnSummary(t, 200))
+    .join("\n");
+}
+
+/** 从已完成任务提取 resolvedRefs 关键实体（已消解的 objectRef 槽位 + 选中对象）。 */
+function resolvedRefEntities(t: QueryTask): string[] {
+  const refs = new Map<string, string>();
+  for (const o of t.context.selectedObjects) {
+    refs.set(`${o.objectType}:${o.objectId}`, `${o.objectType}:${o.label ?? o.objectId}`);
+  }
+  for (const v of Object.values(t.slots ?? {})) {
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      const r = v as { objectType?: unknown; objectId?: unknown; label?: unknown };
+      if (typeof r.objectType === "string" && typeof r.objectId === "string") {
+        refs.set(`${r.objectType}:${r.objectId}`, `${r.objectType}:${typeof r.label === "string" ? r.label : r.objectId}`);
+      }
+    }
+  }
+  return [...refs.values()];
+}
+
+/**
+ * 增量 §1.4 前情摘要块：同 conversationId 的后续任务不复用上一任务的原始循环 messages
+ * （脏上下文+成本）——只注入最近 ≤3 个已完成任务的 (问句, 回答首个 text block ≤300 字,
+ * resolvedRefs 关键实体)。指代消解（"那常州呢"）靠摘要+当前上下文对象。
+ */
+export function agentPriorSummary(previousTasks: QueryTask[]): string {
+  const completed = previousTasks.filter((t) => t.status === "COMPLETED").slice(-3);
+  if (completed.length === 0) return "";
+  const lines = completed.map((t) => {
+    const refs = resolvedRefEntities(t);
+    return `${taskTurnSummary(t, 300)}${refs.length > 0 ? `\n关键实体: ${refs.join(", ")}` : ""}`;
+  });
+  return lines.join("\n---\n");
+}
+
 /** User content for the agent loop; user query wrapped per QOS-PRD §10.2. */
-export function buildAgentUser(task: QueryTask): string {
+export function buildAgentUser(task: QueryTask, priorSummary?: string): string {
   const ctx = task.context;
   const selected = ctx.selectedObjects.map((o) => `${o.objectType}:${o.label ?? o.objectId}`).join(", ");
   return [
+    priorSummary ? `前情摘要（同会话最近已完成任务）：\n${priorSummary}` : "",
     `<user_query>${task.query}</user_query>`,
     `当前场景视图: ${ctx.view}`,
     selected ? `选中对象: ${selected}` : "",

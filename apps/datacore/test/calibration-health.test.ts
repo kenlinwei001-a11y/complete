@@ -116,16 +116,16 @@ describe("剩余视图增量 · 校准（§7.21）与数据健康度（§7.22）
     expect(rolled.status).toBe("ROLLED_BACK");
   });
 
-  it("F28/C12 钩子：calibration.required 路径幂等生成 PENDING 提案", async () => {
+  it("F28/C12 钩子：无配对样本（n < nMin）时只报告不提案（M11 §2 INSUFFICIENT_SAMPLES）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const before = (await t.repos.calibrationProposals.list("demo")).length;
+    // 尚无任何 calibration_pairs（未跑预测、未 tick）→ C12 钩子不得凭空出提案
     const p1 = await t.services.calibration.onCalibrationRequired("demo", "4680-NCM");
-    expect(p1!.status).toBe("PENDING");
-    expect(p1!.trigger).toBe("C12");
-    const p2 = await t.services.calibration.onCalibrationRequired("demo", "4680-NCM");
-    expect(p2!.id).toBe(p1!.id); // 幂等
-    expect((await t.repos.calibrationProposals.list("demo")).length).toBe(before + 1);
+    expect(p1).toBeUndefined();
+    const gen = await t.services.calibration.generateForSlice("demo", "4680-NCM", "C12");
+    expect(gen.insufficient).toBe(true);
+    expect((await t.repos.calibrationProposals.list("demo")).length).toBe(before); // 零新提案
   });
 
   it("F29/data-health: 正常 OK → markSourceStale → DELAYED + 降级影响 0.93→0.90，与 capacity_forecast 同源", async () => {

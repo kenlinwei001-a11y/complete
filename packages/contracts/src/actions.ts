@@ -77,6 +77,8 @@ export const ScheduledJobKindSchema = z.enum([
   "RULE_SCAN",
   "WORKFLOW_RUN",
   "TS_AGGREGATE",
+  // M11 §3 兜底定时：每周全量校准
+  "CALIBRATION_RUN",
 ]);
 export type ScheduledJobKind = z.infer<typeof ScheduledJobKindSchema>;
 

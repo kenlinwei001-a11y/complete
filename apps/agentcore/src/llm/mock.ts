@@ -1,10 +1,12 @@
 import type {
   LlmAgentRequest,
   LlmAgentResponse,
+  LlmCapabilities,
   LlmClient,
   LlmContentBlock,
   RawClassification,
 } from "./types.js";
+import { estimateTokensChars } from "../agent/context.js";
 
 let toolUseSeq = 0;
 export function toolUse(name: string, input: unknown): LlmContentBlock {
@@ -29,6 +31,20 @@ export class ScriptedLlmClient implements LlmClient {
 
   readonly classifyRequests: { model: string; system: string; user: string }[] = [];
   readonly agentRequests: LlmAgentRequest[] = [];
+  readonly countTokensRequests: LlmAgentRequest[] = [];
+
+  /** 增量 §1.1：测试可覆盖的能力声明（缺省模拟 Anthropic：count_tokens 可用）。 */
+  caps: LlmCapabilities = { countTokens: true, compaction: false, maxContextTokens: 200_000 };
+
+  async capabilities(): Promise<LlmCapabilities> {
+    return this.caps;
+  }
+
+  /** 确定性 token 计数：与循环侧估算同一 chars/3.5 公式（无网络、无随机）。 */
+  async countTokens(req: LlmAgentRequest): Promise<number> {
+    this.countTokensRequests.push(req);
+    return estimateTokensChars(req);
+  }
 
   queueClassification(...c: (RawClassification | Error)[]): this {
     this.classifications.push(...c);

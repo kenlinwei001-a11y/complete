@@ -8,14 +8,25 @@ import {
   type ProvenanceRef,
 } from "@platform/contracts";
 import { newId } from "../ids.js";
-import type { LlmAgentMessage, LlmClient, LlmContentBlock } from "../llm/types.js";
+import { isContextWindowExceededError, type LlmAgentMessage, type LlmClient, type LlmContentBlock } from "../llm/types.js";
+import { COMPACTION_BETA } from "../llm/anthropic.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import type { BudgetTracker } from "../tools/budget.js";
 import type { GuardedToolExecutor, ToolBinding } from "../tools/executor.js";
+import { builtinTool } from "../tools/registry.js";
 import { enrichProvenance } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
+import {
+  CONTEXT_FULL_REMINDER,
+  ContextBudgeter,
+  estimateTokensChars,
+  firstLineSummary,
+  foldOldestFrame,
+  truncateToolResultJson,
+  type IterationFrame,
+} from "./context.js";
 
 /** final_answer input schema (QOS-PRD §5.4-5, strict zod validation). */
 const FinalAnswerSchema = z
@@ -53,7 +64,13 @@ export interface AgentLoopOpts {
   /** When set, final_answer's input_schema is replaced by this schema and the raw input is returned. */
   expectsSchema?: Record<string, unknown>;
   /** load_skill support (B1 agents). */
-  loadSkill?: (skillId: string) => Promise<{ body: string; resources: { name: string; url: string }[] } | undefined>;
+  loadSkill?: (skillId: string) => Promise<
+    | {
+        body: string;
+        resources: { name: string; url: string; mime?: string; description?: string }[];
+      }
+    | undefined
+  >;
   /** WORKFLOW tool support — runs a workflow and returns its serializable result. */
   runWorkflowTool?: (workflowId: string, version: number | "latest", input: Record<string, unknown>) => Promise<unknown>;
   finalAnswerDescription?: string;
@@ -90,16 +107,55 @@ const DEFAULT_FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
   required: ["blocks", "provenance"],
 };
 
+/** 增量 §1.2：query_timeseries_agg（桶数 ≤120）等自带输出上限的工具不受二次截断影响；
+ * read_skill_resource 自带 64KB 文本上限（§3），同样豁免。 */
+const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_resource"]);
+
+/** 增量 §5：并行 READ 轮的最大并发。 */
+const PARALLEL_READ_CONCURRENCY = 4;
+
+type ToolResultBlock = { type: "tool_result"; toolUseId: string; content: string; isError: boolean };
+type ToolUseBlock = Extract<LlmContentBlock, { type: "tool_use" }>;
+
+interface BlockOutcome {
+  call?: AgentIteration["toolCalls"][number];
+  result: ToolResultBlock;
+  /** for consecutiveDenies bookkeeping (processed in original order) */
+  denyKind?: "PERMISSION" | "OTHER";
+  ok?: boolean;
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length) as R[];
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i] as T, i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 /** Hand-written agent tool loop (QOS-PRD §6.3 — toolRunner is intentionally NOT used). */
 export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult> {
   const messages: LlmAgentMessage[] = [{ role: "user", content: opts.userContent }];
   const iterations: AgentIteration[] = [];
   const sketch: { toolName: string; inputSummary: string }[] = [];
+  const frames: IterationFrame[] = [];
   let totalInput = 0;
   let totalOutput = 0;
   let lastText = "";
   let consecutiveDenies = 0;
   let forceFinishNotified = false;
+  // 增量 §1.3 第 3 刀：收尾提醒已注入（finalizePending = 本轮就是「最后机会」轮）
+  let finalizeUsed = false;
+  let finalizePending = false;
+
+  const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
+  await budgeter.init();
 
   const llmTools = [
     ...opts.tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
@@ -132,6 +188,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     budgetExhausted,
     totalInputTokens: totalInput,
     totalOutputTokens: totalOutput,
+    ...(budgeter.ops.length > 0 ? { contextOps: [...budgeter.ops] } : {}),
   });
 
   const degrade = (outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED"): AgentLoopResult => {
@@ -148,29 +205,265 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     };
   };
 
+  /** 增量 §5：同轮 sideEffect 判定（READ 全并行；含 COMPUTE/ACTION_DRAFT/EXTERNAL 全串行）。 */
+  const sideEffectOf = (name: string): "READ" | "COMPUTE" | "ACTION_DRAFT" | "EXTERNAL" => {
+    if (name === "load_skill") return "READ";
+    const spec = opts.tools.find((t) => t.name === name);
+    if (spec?.binding.kind === "MCP") return "EXTERNAL";
+    if (spec?.binding.kind === "WORKFLOW") return "COMPUTE";
+    return builtinTool(name)?.sideEffect ?? "READ";
+  };
+
+  /** 单个 tool_use 块的执行（load_skill / WORKFLOW / executor 三条路径）。 */
+  const runToolBlock = async (
+    block: ToolUseBlock,
+    budgetDecision?: { ok: true } | { ok: false; reason: string },
+  ): Promise<BlockOutcome> => {
+    if (block.name === "load_skill" && opts.loadSkillEnabled) {
+      const skillId = String((block.input as Record<string, unknown>)?.skillId ?? "");
+      const t0 = Date.now();
+      const loaded = await opts.loadSkill?.(skillId);
+      const tcId = newId("tc");
+      await opts.repos.toolCalls.insert({
+        id: tcId,
+        taskId: opts.taskId,
+        toolName: "load_skill",
+        input: { skillId },
+        outputDigest: "",
+        output: loaded ? { loaded: true } : { loaded: false },
+        outcome: loaded ? "OK" : "ERROR",
+        durationMs: Date.now() - t0,
+        createdAt: new Date().toISOString(),
+      });
+      opts.metrics.toolCalls.inc({ tool: "load_skill", outcome: loaded ? "OK" : "ERROR" });
+      return {
+        call: {
+          toolCallId: tcId,
+          toolName: "load_skill",
+          input: block.input,
+          outcome: loaded ? "OK" : "ERROR",
+          durationMs: Date.now() - t0,
+        },
+        result: {
+          type: "tool_result",
+          toolUseId: block.id,
+          content: loaded ? `<tool_data>${JSON.stringify(loaded)}</tool_data>` : `skill not found: ${skillId}`,
+          isError: !loaded,
+        },
+        ok: Boolean(loaded),
+      };
+    }
+
+    const spec = opts.tools.find((t) => t.name === block.name);
+
+    if (spec && spec.binding.kind === "WORKFLOW") {
+      // workflow exposed as a tool — nested invocation, shares the top budget
+      if (opts.scopeToolNames && !opts.scopeToolNames.includes(block.name)) {
+        const tcId = newId("tc");
+        await opts.repos.toolCalls.insert({
+          id: tcId,
+          taskId: opts.taskId,
+          toolName: block.name,
+          input: block.input,
+          outputDigest: "",
+          output: { error: "AGENT_SCOPE_VIOLATION" },
+          outcome: "DENIED",
+          durationMs: 0,
+          createdAt: new Date().toISOString(),
+        });
+        opts.metrics.toolCalls.inc({ tool: block.name, outcome: "DENIED" });
+        return {
+          call: { toolCallId: tcId, toolName: block.name, input: block.input, outcome: "DENIED", durationMs: 0 },
+          result: {
+            type: "tool_result",
+            toolUseId: block.id,
+            content: "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明",
+            isError: true,
+          },
+          denyKind: "PERMISSION",
+        };
+      }
+      const t0 = Date.now();
+      let outcome: "OK" | "ERROR" = "OK";
+      let payload: unknown;
+      try {
+        payload = await opts.runWorkflowTool?.(
+          spec.binding.workflowId,
+          spec.binding.version,
+          (block.input ?? {}) as Record<string, unknown>,
+        );
+      } catch (err) {
+        outcome = "ERROR";
+        payload = { error: err instanceof Error ? err.message : String(err) };
+      }
+      const tcId = newId("tc");
+      await opts.repos.toolCalls.insert({
+        id: tcId,
+        taskId: opts.taskId,
+        toolName: block.name,
+        input: block.input,
+        outputDigest: "",
+        output: payload ?? null,
+        outcome,
+        durationMs: Date.now() - t0,
+        createdAt: new Date().toISOString(),
+      });
+      opts.metrics.toolCalls.inc({ tool: block.name, outcome });
+      const wfContent = (() => {
+        if (outcome !== "OK") return JSON.stringify(payload);
+        const t = truncateToolResultJson(payload);
+        return `<tool_data>${t.json}</tool_data>${t.note ? `\n${t.note}` : ""}`;
+      })();
+      return {
+        call: {
+          toolCallId: tcId,
+          toolName: block.name,
+          input: block.input,
+          outcome,
+          durationMs: Date.now() - t0,
+        },
+        result: { type: "tool_result", toolUseId: block.id, content: wfContent, isError: outcome !== "OK" },
+        ok: outcome === "OK",
+      };
+    }
+
+    const binding: ToolBinding = spec && spec.binding.kind === "MCP" ? spec.binding : { kind: "BUILTIN" };
+    const r = await opts.executor.run(block.name, block.input, { binding, budgetDecision });
+    await opts.emit("step.started", { stepId: r.toolCallId, type: block.name });
+    await opts.emit("step.completed", {
+      stepId: r.toolCallId,
+      type: block.name,
+      outcome: r.outcome,
+      durationMs: r.durationMs,
+    });
+    const call: AgentIteration["toolCalls"][number] = {
+      toolCallId: r.toolCallId,
+      toolName: block.name,
+      input: block.input,
+      outcome: r.outcome,
+      durationMs: r.durationMs,
+    };
+
+    if (r.outcome === "BUDGET_EXCEEDED") {
+      return {
+        call,
+        result: {
+          type: "tool_result",
+          toolUseId: block.id,
+          content: "预算已尽，请基于已有结果调用 final_answer 收尾",
+          isError: true,
+        },
+      };
+    }
+    if (r.outcome === "DENIED") {
+      const code = (r.payload as { error?: string } | undefined)?.error;
+      return {
+        call,
+        result: {
+          type: "tool_result",
+          toolUseId: block.id,
+          content: code === "AGENT_SCOPE_VIOLATION" ? "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明" : "无权访问",
+          isError: true,
+        },
+        denyKind: "PERMISSION",
+      };
+    }
+    if (!r.ok) {
+      return {
+        call,
+        result: { type: "tool_result", toolUseId: block.id, content: JSON.stringify(r.payload), isError: true },
+      };
+    }
+    // §1.2：进入上下文前截断至 8KB（审计已全量入库）；query_timeseries_agg 等豁免二次截断
+    const exempt = TRUNCATION_EXEMPT_TOOLS.has(block.name);
+    const t = exempt ? { json: JSON.stringify(r.payload), truncated: false as const, note: undefined } : truncateToolResultJson(r.payload);
+    return {
+      call,
+      result: {
+        type: "tool_result",
+        toolUseId: block.id,
+        // tool_call_id is surfaced so the model can cite it in final_answer.provenance
+        content: `<tool_data tool_call_id="${r.toolCallId}">${t.json}</tool_data>${t.note ? `\n${t.note}` : ""}`,
+        isError: false,
+      },
+      ok: true,
+    };
+  };
+
   for (let i = 0; opts.budget.iterations < opts.budget.budget.maxIterations; i++) {
     if (opts.isCancelled?.()) return degrade("FAILED");
     if (opts.budget.durationExceeded()) return degrade("BUDGET_EXHAUSTED");
     opts.budget.iterations += 1;
 
-    const response = await opts.llm.agent({
-      model: opts.model,
-      system: opts.system,
-      tools: llmTools,
-      messages,
-      maxTokens: 16000,
-      tenantId: opts.tenantId,
-    });
+    // -----------------------------------------------------------------------
+    // 增量 §1：token 预算 + 三刀清理（按序执行直至回到阈值下）
+    // -----------------------------------------------------------------------
+    let contextEdits: { type: string }[] | undefined;
+    let tokens = await budgeter.measure({ system: opts.system, tools: llmTools, messages });
+    if (tokens > budgeter.softLimit) {
+      // 第 1 刀：折叠最旧迭代的 tool_result（最近 2 轮永不折叠）
+      while (tokens > budgeter.softLimit) {
+        const folded = foldOldestFrame(messages, frames);
+        if (!folded) break;
+        budgeter.record("fold", i, `folded iteration ${folded.iteration}`);
+        tokens = estimateTokensChars({ system: opts.system, tools: llmTools, messages });
+      }
+      // 第 2 刀：Anthropic 服务端 compaction；openai_compatible 无此能力 → 跳到第 3 刀
+      if (tokens > budgeter.softLimit && budgeter.caps.compaction) {
+        contextEdits = [{ type: COMPACTION_BETA }];
+      }
+      // 第 3 刀：硬阈值 → 注入收尾提醒，再给 1 次迭代机会
+      if (tokens >= budgeter.hardLimit && !finalizePending) {
+        if (finalizeUsed) return degrade("BUDGET_EXHAUSTED");
+        finalizeUsed = true;
+        finalizePending = true;
+        budgeter.record("force_finalize", i, "hard threshold");
+        messages.push({ role: "user", content: CONTEXT_FULL_REMINDER });
+      }
+    }
+
+    let response;
+    try {
+      response = await opts.llm.agent({
+        model: opts.model,
+        system: opts.system,
+        tools: llmTools,
+        messages,
+        maxTokens: 16000,
+        tenantId: opts.tenantId,
+        ...(contextEdits ? { contextEdits } : {}),
+      });
+    } catch (err) {
+      // 第 3 刀（model_context_window_exceeded 形态）：折叠所有可折叠轮 + 注入收尾提醒后重试一次
+      if (isContextWindowExceededError(err)) {
+        if (finalizeUsed) return degrade("BUDGET_EXHAUSTED");
+        while (foldOldestFrame(messages, frames)) {
+          budgeter.record("fold", i, "context window exceeded");
+        }
+        finalizeUsed = true;
+        finalizePending = true;
+        budgeter.record("force_finalize", i, "model_context_window_exceeded");
+        messages.push({ role: "user", content: CONTEXT_FULL_REMINDER });
+        continue;
+      }
+      throw err;
+    }
     totalInput += response.usage.inputTokens;
     totalOutput += response.usage.outputTokens;
+
+    // 第 2 刀响应：compaction 块按官方语义原样回传 —— 压缩前历史由该块承载，
+    // 本地仅保留首条 user 消息 + 携带 compaction 块的 assistant 消息（raw verbatim 回传）。
+    if (response.content.some((b) => b.type === "compaction")) {
+      messages.splice(1, messages.length - 1);
+      frames.length = 0;
+      budgeter.record("compact", i);
+    }
     messages.push({ role: "assistant", content: response.content, raw: response.raw });
 
     const texts = response.content.filter((b): b is Extract<LlmContentBlock, { type: "text" }> => b.type === "text");
     if (texts.length > 0) lastText = texts.map((t) => t.text).join("\n");
 
-    const toolUses = response.content.filter(
-      (b): b is Extract<LlmContentBlock, { type: "tool_use" }> => b.type === "tool_use",
-    );
+    const toolUses = response.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
 
     if (response.stopReason !== "tool_use" || toolUses.length === 0) {
       // finished without final_answer (§5.4-6 degraded text answer)
@@ -191,6 +484,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
           sketch,
         };
       }
+      // 第 3 刀「最后机会」轮给出的 final_answer 无效 → 按预算耗尽语义降级（不再续轮）
+      if (finalizePending) return degrade("BUDGET_EXHAUSTED");
       // invalid final_answer input → tell the model and continue
       messages.push({
         role: "user",
@@ -207,172 +502,56 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       continue;
     }
 
-    const iteration: AgentIteration = { index: i, toolCalls: [] };
-    const toolResults: { type: "tool_result"; toolUseId: string; content: string; isError: boolean }[] = [];
+    // 第 3 刀「最后机会」轮未调用 final_answer → 按预算耗尽语义（QOS-PRD §5.4-6）降级收尾
+    if (finalizePending) return degrade("BUDGET_EXHAUSTED");
 
     for (const block of toolUses) {
-      if (block.name === "load_skill" && opts.loadSkillEnabled) {
-        const skillId = String((block.input as Record<string, unknown>)?.skillId ?? "");
-        const t0 = Date.now();
-        const loaded = await opts.loadSkill?.(skillId);
-        const tcId = newId("tc");
-        await opts.repos.toolCalls.insert({
-          id: tcId,
-          taskId: opts.taskId,
-          toolName: "load_skill",
-          input: { skillId },
-          outputDigest: "",
-          output: loaded ? { loaded: true } : { loaded: false },
-          outcome: loaded ? "OK" : "ERROR",
-          durationMs: Date.now() - t0,
-          createdAt: new Date().toISOString(),
-        });
-        opts.metrics.toolCalls.inc({ tool: "load_skill", outcome: loaded ? "OK" : "ERROR" });
-        iteration.toolCalls.push({
-          toolCallId: tcId,
-          toolName: "load_skill",
-          input: block.input,
-          outcome: loaded ? "OK" : "ERROR",
-          durationMs: Date.now() - t0,
-        });
-        toolResults.push({
-          type: "tool_result",
-          toolUseId: block.id,
-          content: loaded
-            ? `<tool_data>${JSON.stringify(loaded)}</tool_data>`
-            : `skill not found: ${skillId}`,
-          isError: !loaded,
-        });
-        continue;
+      if (!(block.name === "load_skill" && opts.loadSkillEnabled)) {
+        sketch.push({ toolName: block.name, inputSummary: JSON.stringify(block.input ?? {}).slice(0, 200) });
       }
+    }
 
-      const spec = opts.tools.find((t) => t.name === block.name);
-      sketch.push({ toolName: block.name, inputSummary: JSON.stringify(block.input ?? {}).slice(0, 200) });
-
-      if (spec && spec.binding.kind === "WORKFLOW") {
-        // workflow exposed as a tool — nested invocation, shares the top budget
-        if (opts.scopeToolNames && !opts.scopeToolNames.includes(block.name)) {
-          const tcId = newId("tc");
-          await opts.repos.toolCalls.insert({
-            id: tcId,
-            taskId: opts.taskId,
-            toolName: block.name,
-            input: block.input,
-            outputDigest: "",
-            output: { error: "AGENT_SCOPE_VIOLATION" },
-            outcome: "DENIED",
-            durationMs: 0,
-            createdAt: new Date().toISOString(),
-          });
-          opts.metrics.toolCalls.inc({ tool: block.name, outcome: "DENIED" });
-          iteration.toolCalls.push({ toolCallId: tcId, toolName: block.name, input: block.input, outcome: "DENIED", durationMs: 0 });
-          toolResults.push({
-            type: "tool_result",
-            toolUseId: block.id,
-            content: "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明",
-            isError: true,
-          });
-          continue;
-        }
-        const t0 = Date.now();
-        let outcome: "OK" | "ERROR" = "OK";
-        let payload: unknown;
-        try {
-          payload = await opts.runWorkflowTool?.(
-            spec.binding.workflowId,
-            spec.binding.version,
-            (block.input ?? {}) as Record<string, unknown>,
-          );
-        } catch (err) {
-          outcome = "ERROR";
-          payload = { error: err instanceof Error ? err.message : String(err) };
-        }
-        const tcId = newId("tc");
-        await opts.repos.toolCalls.insert({
-          id: tcId,
-          taskId: opts.taskId,
-          toolName: block.name,
-          input: block.input,
-          outputDigest: "",
-          output: payload ?? null,
-          outcome,
-          durationMs: Date.now() - t0,
-          createdAt: new Date().toISOString(),
-        });
-        opts.metrics.toolCalls.inc({ tool: block.name, outcome });
-        iteration.toolCalls.push({
-          toolCallId: tcId,
-          toolName: block.name,
-          input: block.input,
-          outcome,
-          durationMs: Date.now() - t0,
-        });
-        toolResults.push({
-          type: "tool_result",
-          toolUseId: block.id,
-          content:
-            outcome === "OK"
-              ? `<tool_data>${JSON.stringify(payload)}</tool_data>`
-              : JSON.stringify(payload),
-          isError: outcome !== "OK",
-        });
-        continue;
-      }
-
-      const binding: ToolBinding = spec && spec.binding.kind === "MCP" ? spec.binding : { kind: "BUILTIN" };
-      const r = await opts.executor.run(block.name, block.input, { binding });
-      await opts.emit("step.started", { stepId: r.toolCallId, type: block.name });
-      await opts.emit("step.completed", {
-        stepId: r.toolCallId,
-        type: block.name,
-        outcome: r.outcome,
-        durationMs: r.durationMs,
+    // -----------------------------------------------------------------------
+    // 增量 §5：全 READ 轮并行（并发 ≤4，预算先计后发，结果按 tool_use 原顺序回填）；
+    // 含 COMPUTE/ACTION_DRAFT/EXTERNAL 的混合轮全部串行（审计顺序与预算计数确定性）。
+    // -----------------------------------------------------------------------
+    const allRead = toolUses.every((b) => sideEffectOf(b.name) === "READ");
+    let outcomes: BlockOutcome[];
+    if (allRead && toolUses.length > 1) {
+      // 预算确定性：dispatch 前按 tool_use 顺序统一计数
+      const decisions = toolUses.map((b) => {
+        if (b.name === "load_skill") return undefined; // load_skill 不占工具预算（既有规则）
+        const cost = builtinTool(b.name)?.costClass ?? "CHEAP";
+        return opts.budget.tryConsume(cost);
       });
-      iteration.toolCalls.push({
-        toolCallId: r.toolCallId,
-        toolName: block.name,
-        input: block.input,
-        outcome: r.outcome,
-        durationMs: r.durationMs,
-      });
-
-      if (r.outcome === "BUDGET_EXCEEDED") {
-        toolResults.push({
-          type: "tool_result",
-          toolUseId: block.id,
-          content: "预算已尽，请基于已有结果调用 final_answer 收尾",
-          isError: true,
-        });
-      } else if (r.outcome === "DENIED") {
-        consecutiveDenies += 1;
-        const code = (r.payload as { error?: string } | undefined)?.error;
-        toolResults.push({
-          type: "tool_result",
-          toolUseId: block.id,
-          content: code === "AGENT_SCOPE_VIOLATION" ? "AGENT_SCOPE_VIOLATION: 该工具超出本 Agent 的能力声明" : "无权访问",
-          isError: true,
-        });
-      } else if (!r.ok) {
-        toolResults.push({
-          type: "tool_result",
-          toolUseId: block.id,
-          content: JSON.stringify(r.payload),
-          isError: true,
-        });
-      } else {
-        consecutiveDenies = 0;
-        // tool_call_id is surfaced so the model can cite it in final_answer.provenance
-        toolResults.push({
-          type: "tool_result",
-          toolUseId: block.id,
-          content: `<tool_data tool_call_id="${r.toolCallId}">${JSON.stringify(r.payload)}</tool_data>`,
-          isError: false,
-        });
+      outcomes = await mapLimit(toolUses, PARALLEL_READ_CONCURRENCY, (b, idx) => runToolBlock(b, decisions[idx]));
+    } else {
+      outcomes = [];
+      for (const block of toolUses) {
+        outcomes.push(await runToolBlock(block));
       }
+    }
+
+    const iteration: AgentIteration = { index: i, toolCalls: [] };
+    const toolResults: ToolResultBlock[] = [];
+    for (const o of outcomes) {
+      if (o.call) iteration.toolCalls.push(o.call);
+      toolResults.push(o.result);
+      if (o.denyKind === "PERMISSION") consecutiveDenies += 1;
+      else if (o.ok) consecutiveDenies = 0;
     }
 
     iterations.push(iteration);
     messages.push({ role: "user", content: toolResults });
+    frames.push({
+      iteration: i,
+      toolResultMsgIndex: messages.length - 1,
+      tools: outcomes.map((o, idx) => ({
+        name: toolUses[idx]?.name ?? "tool",
+        firstLine: firstLineSummary(o.result.content),
+      })),
+      folded: false,
+    });
 
     // 3 consecutive permission denials → force finish (§5.4-4)
     if (consecutiveDenies >= 3) {

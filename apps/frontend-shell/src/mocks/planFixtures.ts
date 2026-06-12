@@ -152,17 +152,57 @@ export const CALIBRATION_REPORT_BASE: CalibrationReport = CalibrationReportSchem
   ],
   thresholdPct: 8,
   triggerMarks: [{ date: "2026-04-17", ruleKey: "C12" }],
+  // M11 增量：30d 双口径 + solverKey×基地×型号 切片（nMin=10，不足只报告不提案）
+  points30d: [
+    { date: "2026-04-17", mape: 8.1 },
+    { date: "2026-05-15", mape: 7.0 },
+    { date: "2026-06-05", mape: 5.6 },
+  ],
+  nMin: 10,
+  slices: [
+    { sliceKey: "capacity_forecast|all|4680-NCM", solverKey: "capacity_forecast", baseId: "all", modelId: "4680-NCM", nPairs: 42, mape7d: 4.9, mape30d: 5.6, bias: 0.031, coverage: 0.9, flags: [] },
+    { sliceKey: "capacity_forecast|changzhou|4680-NCM", solverKey: "capacity_forecast", baseId: "changzhou", modelId: "4680-NCM", nPairs: 6, mape7d: 5.4, mape30d: 6.1, bias: 0.05, coverage: 0.83, flags: ["INSUFFICIENT_SAMPLES"] },
+  ],
 });
 
+/** M11：方法（EMA/重放归因/分位数）+ 回测证据 + HOLD/REJECTED 状态 + 元闭环 realizedMape */
 export const CALIBRATION_PROPOSALS: CalibrationProposal[] = CalibrationProposalSchema.array().parse([
-  { id: "prop-1", parameter: "化成节拍", objectRef: "工序-化成", currentValue: 5.2, proposedValue: 5.6, basis: { windowFrom: "2026-04-01", windowTo: "2026-05-31", samples: 1840 }, status: "PENDING" },
-  { id: "prop-2", parameter: "良率基线", objectRef: "工序-化成", currentValue: 0.975, proposedValue: 0.968, basis: { windowFrom: "2026-03-01", windowTo: "2026-04-30", samples: 1240 }, status: "APPLIED" },
-  { id: "prop-3", parameter: "OEE 基线", objectRef: "设备-CZ-07", currentValue: 0.86, proposedValue: 0.84, basis: { windowFrom: "2026-01-01", windowTo: "2026-02-28", samples: 980 }, status: "ROLLED_BACK" },
+  {
+    id: "prop-1", parameter: "化成节拍", objectRef: "工序-化成", currentValue: 5.2, proposedValue: 5.6,
+    basis: { windowFrom: "2026-04-01", windowTo: "2026-05-31", samples: 1840 }, status: "PENDING",
+    sliceKey: "capacity_forecast|all|4680-NCM", paramRef: { scope: "SOLVER_PARAMS", path: "ct.formation" }, method: "REPLAY_ATTRIBUTION",
+    evidence: { windowFrom: "2026-04-01", windowTo: "2026-05-31", nPairs: 1840, mapeBefore: 9.4, simulatedMapeAfter: 6.8, bias: 0.062, flags: ["ATTRIBUTION_SHARE:0.82"] },
+  },
+  {
+    id: "prop-2", parameter: "良率基线", objectRef: "工序-化成", currentValue: 0.975, proposedValue: 0.968,
+    basis: { windowFrom: "2026-03-01", windowTo: "2026-04-30", samples: 1240 }, status: "APPLIED",
+    sliceKey: "capacity_forecast|all|L148-LFP", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
+    evidence: { windowFrom: "2026-03-01", windowTo: "2026-04-30", nPairs: 1240, mapeBefore: 8.8, simulatedMapeAfter: 6.4, bias: -0.034, flags: [] },
+    realizedMape: 6.9,
+  },
+  {
+    id: "prop-3", parameter: "OEE 基线", objectRef: "设备-CZ-07", currentValue: 0.86, proposedValue: 0.84,
+    basis: { windowFrom: "2026-01-01", windowTo: "2026-02-28", samples: 980 }, status: "ROLLED_BACK",
+    sliceKey: "capacity_forecast|changzhou|4680-NCM", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Equipment.oee" }, method: "EMA",
+    evidence: { windowFrom: "2026-01-01", windowTo: "2026-02-28", nPairs: 980, mapeBefore: 8.1, simulatedMapeAfter: 7.0, bias: 0.018, flags: [] },
+  },
+  {
+    id: "prop-4", parameter: "P90 健康度系数", objectRef: "Solver:capacity_forecast", currentValue: 0.93, proposedValue: 0.92,
+    basis: { windowFrom: "2026-05-01", windowTo: "2026-05-31", samples: 360 }, status: "REJECTED",
+    sliceKey: "capacity_forecast|all|S192-LFP", paramRef: { scope: "SOLVER_PARAMS", path: "health.normal" }, method: "QUANTILE",
+    evidence: { windowFrom: "2026-05-01", windowTo: "2026-05-31", nPairs: 360, mapeBefore: 7.2, simulatedMapeAfter: 7.2, bias: 0.01, flags: ["COVERAGE_BEFORE:0.83", "COVERAGE_AFTER:0.83", "NO_IMPROVEMENT"] },
+  },
+  {
+    id: "prop-5", parameter: "工序良率基线", objectRef: "Model:L300-NCM", currentValue: 0.96, proposedValue: 0.71,
+    basis: { windowFrom: "2026-05-01", windowTo: "2026-05-31", samples: 280 }, status: "HOLD",
+    sliceKey: "capacity_forecast|all|L300-NCM", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
+    evidence: { windowFrom: "2026-05-01", windowTo: "2026-05-31", nPairs: 280, mapeBefore: 11.3, simulatedMapeAfter: 11.3, bias: 0.21, flags: ["STRUCTURAL_SHIFT", "DRIFT:0.26"] },
+  },
 ]);
 
 export const CALIBRATION_HISTORY: CalibrationHistoryEntry[] = CalibrationHistoryEntrySchema.array().parse([
-  { at: "2026-04-18T08:00:00Z", trigger: "C12", changedParams: ["化成节拍", "良率基线"], mapeBefore: 9.4, mapeAfter: 6.4 },
-  { at: "2026-02-09T08:00:00Z", trigger: "手动", changedParams: ["OEE 基线"], mapeBefore: 8.8, mapeAfter: 7.1 },
+  { at: "2026-04-18T08:00:00Z", trigger: "C12", changedParams: ["化成节拍", "良率基线"], mapeBefore: 9.4, mapeAfter: 6.4, proposalId: "prop-2", method: "EMA", simulatedMapeAfter: 6.4, realizedMape: 6.9 },
+  { at: "2026-02-09T08:00:00Z", trigger: "手动", changedParams: ["OEE 基线"], mapeBefore: 8.8, mapeAfter: 7.1, proposalId: "prop-3", method: "EMA", simulatedMapeAfter: 7.1 },
 ]);
 
 /** §7.22 数据健康度（IoT 延迟 4.2h → DELAYED，命中 C09 降级：与 capacity_forecast mock 同口径） */

@@ -779,7 +779,7 @@ await check("S&OP", "定稿走 Action（增量 §7.12）：草稿 → 版本待�
 });
 let calibProposalId = "";
 let calibDraftId = "";
-await check("校准", "report（带筛选，CalibrationReportSchema parse）/ proposals / history", async () => {
+await check("校准", "report（带筛选，CalibrationReportSchema parse）/ proposals / history（M11 形态）", async () => {
   const r = await a(`/a/v1/calibration/report?objectType=${encodeURIComponent("产能预测")}`);
   eq(r.status, 200, "report status");
   if (contracts?.CalibrationReportSchema) ok(contracts.CalibrationReportSchema.safeParse(r.body).success, "schema parse");
@@ -788,10 +788,32 @@ await check("校准", "report（带筛选，CalibrationReportSchema parse）/ pr
   ok(props.body.length >= 1, "proposals seeded");
   const p = props.body[0];
   ok(p.id && p.parameter && p.basis?.windowFrom && Number.isInteger(p.basis.samples) && p.status, "proposal 形态");
+  if (contracts?.CalibrationProposalSchema) {
+    ok(props.body.every((x) => contracts.CalibrationProposalSchema.safeParse(x).success), "proposal schema parse（M11 增量字段）");
+  }
+  // M11 增量：method + 回测证据 evidence（种子提案即携带）
+  const withEvidence = props.body.find((x) => x.method && x.evidence);
+  ok(withEvidence, "method/evidence 字段存在");
+  ok(
+    withEvidence.evidence.windowFrom &&
+      Number.isInteger(withEvidence.evidence.nPairs) &&
+      typeof withEvidence.evidence.mapeBefore === "number" &&
+      typeof withEvidence.evidence.simulatedMapeAfter === "number" &&
+      Array.isArray(withEvidence.evidence.flags),
+    "evidence 形态（窗口/nPairs/mapeBefore/simulatedMapeAfter/flags）",
+  );
   calibProposalId = props.body.find((x) => x.status === "PENDING")?.id ?? p.id;
   const hist = await a("/a/v1/calibration/history");
   eq(hist.status, 200, "history status");
   ok(hist.body.every((h) => h.at && h.trigger && Array.isArray(h.changedParams)), "history 形态");
+  // M11 元闭环：预言 vs 实现（种子历史带 simulatedMapeAfter/realizedMape）
+  ok(hist.body.some((h) => typeof h.simulatedMapeAfter === "number" && typeof h.realizedMape === "number"), "预言 vs 实现 字段");
+});
+await check("校准", "POST /calibration/run（M11 §3 手动「立即校准」，catalog_admin）→ 运行摘要", async () => {
+  const r = await a("/a/v1/calibration/run", { body: {} });
+  eq(r.status, 200, "status");
+  if (contracts?.CalibrationRunResultSchema) ok(contracts.CalibrationRunResultSchema.safeParse(r.body).success, "run result schema parse");
+  ok(Number.isInteger(r.body.paired) && Number.isInteger(r.body.slicesEvaluated), "run 摘要形态");
 });
 await check("校准", "批准提案（admin 点击）→ 202 {draftId,status}（走 S2 审批，不直改）", async () => {
   const r = await a(`/a/v1/calibration/proposals/${calibProposalId}/approve`, { body: {} });

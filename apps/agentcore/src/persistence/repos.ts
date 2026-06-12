@@ -91,6 +91,8 @@ export interface Repos {
     get(id: string): Promise<QueryTask | undefined>;
     countActiveByUser(tenantId: string, userId: string): Promise<number>;
     listByConversation(tenantId: string, conversationId: string): Promise<QueryTask[]>;
+    /** 增量 §2-2 崩溃语义：EXECUTING_* 且 createdAt 早于 cutoff 的滞留任务（启动扫描）。 */
+    listStuckExecuting(cutoffIso: string): Promise<QueryTask[]>;
   };
   events: {
     append(taskId: string, event: string, payload: unknown): Promise<QueryEventRow>;

@@ -6,6 +6,8 @@ export class MockMcpClient implements McpClientPort {
 
   constructor(
     private readonly toolsByConfig: Record<string, McpToolInfo[]> = {},
+    /** Custom per-config call handler (R8 重名工具等场景)。 */
+    private readonly callHandler?: (mcpConfigId: string, toolName: string, args: Record<string, unknown>) => unknown,
   ) {}
 
   static demoTools(): McpToolInfo[] {
@@ -31,8 +33,13 @@ export class MockMcpClient implements McpClientPort {
     return this.toolsByConfig[mcpConfigId] ?? MockMcpClient.demoTools();
   }
 
+  async refreshTools(mcpConfigId: string): Promise<McpToolInfo[]> {
+    return this.listTools(mcpConfigId);
+  }
+
   async callTool(mcpConfigId: string, toolName: string, args: Record<string, unknown>): Promise<unknown> {
     this.calls.push({ mcpConfigId, toolName, args });
+    if (this.callHandler) return this.callHandler(mcpConfigId, toolName, args);
     if (toolName === "demo_echo") return { content: [{ type: "text", text: String(args.text) }] };
     if (toolName === "demo_add") {
       return { content: [{ type: "text", text: String(Number(args.a) + Number(args.b)) }] };

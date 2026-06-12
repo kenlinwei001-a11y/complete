@@ -11,7 +11,14 @@ import type {
 } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import type { RequestAuth } from "../auth.js";
-import { buildAgentUser, buildClassifierSystem, buildClassifierUser, AGENT_SYSTEM_CORE } from "../agent/prompts.js";
+import {
+  agentPriorSummary,
+  buildAgentUser,
+  buildClassifierSystem,
+  buildClassifierUser,
+  classifierConversationSummary,
+  AGENT_SYSTEM_CORE,
+} from "../agent/prompts.js";
 import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
 import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
@@ -304,17 +311,15 @@ export class Orchestrator {
     return undefined;
   }
 
-  /** 最近 6 轮会话摘要：user 问句 + answer 首个 text block 前 200 字 */
+  /** 最近 6 轮会话摘要（增量 §1.4：与 agent 前情摘要共用 prompts.ts 的同一构建器） */
   private async conversationSummary(task: QueryTask): Promise<string> {
+    const previous = await this.previousConversationTasks(task);
+    return classifierConversationSummary(previous);
+  }
+
+  private async previousConversationTasks(task: QueryTask): Promise<QueryTask[]> {
     const history = await this.deps.repos.tasks.listByConversation(task.tenantId, task.conversationId);
-    const previous = history.filter((t) => t.id !== task.id).slice(-6);
-    return previous
-      .map((t) => {
-        const firstText = t.answer?.blocks.find((b) => b.type === "text");
-        const a = firstText && firstText.type === "text" ? firstText.markdown.slice(0, 200) : "";
-        return `Q: ${t.query}${a ? `\nA: ${a}` : ""}`;
-      })
-      .join("\n");
+    return history.filter((t) => t.id !== task.id);
   }
 
   // -------------------------------------------------------------------------
@@ -565,12 +570,14 @@ export class Orchestrator {
     // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
     const model = await this.deps.llmSettings.roleModel(task.tenantId, "agent", pkg.agentModel);
 
+    // 增量 §1.4：同 conversationId 后续任务不复用上一任务原始 messages —— 注入前情摘要块
+    const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
     const result = await runAgentLoop({
       taskId,
       model,
       tenantId: task.tenantId,
       system: AGENT_SYSTEM_CORE,
-      userContent: buildAgentUser(task),
+      userContent: buildAgentUser(task, priorSummary || undefined),
       tools,
       llm: this.deps.engine.deps.llm,
       executor,
@@ -630,11 +637,13 @@ export class Orchestrator {
 
     const budget = new BudgetTracker();
     try {
+      // 增量 §1.4：场景入口 agent 同样注入前情摘要（共用同一构建器）
+      const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
       const result = await this.deps.engine.runRegisteredAgent({
         taskId: task.id,
         agentId: scene.defaultAgentId as string,
         version: "latest",
-        prompt: buildAgentUser(task),
+        prompt: buildAgentUser(task, priorSummary || undefined),
         ctx: auth,
         nesting: { callChain: [], budget },
         emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),

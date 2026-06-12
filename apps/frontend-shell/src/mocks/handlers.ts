@@ -203,6 +203,23 @@ export const handlers = [
     db.actionDrafts.unshift(draft);
     return HttpResponse.json({ draftId: draft.id, status: draft.status }, { status: 201 });
   }),
+  // M11 §3 手动「立即校准」：配对 → 元闭环 → 全切片提案生成（catalog_admin）
+  http.post("*/a/v1/calibration/run", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    if (!account.roles.some((r) => r === "admin" || r === "catalog_admin")) return err(403, "FORBIDDEN", "catalog_admin only");
+    return HttpResponse.json({
+      paired: 36,
+      deferred: 6,
+      staleDeferred: false,
+      slicesEvaluated: 3,
+      created: 1,
+      autoApplied: 0,
+      held: 1,
+      dropped: 1,
+      insufficient: 1,
+    });
+  }),
   http.get("*/a/v1/data-health", () => HttpResponse.json(DATA_HEALTH)),
 
   // ---- solver ----

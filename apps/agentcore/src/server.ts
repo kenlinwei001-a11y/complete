@@ -6,7 +6,10 @@ import {
   ClarificationReplyBodySchema,
   ErrorCodes,
   LlmProviderConfigSchema,
+  MCP_CONFIG_NOTES,
+  MCP_SERVER_NAME_RE,
   McpServerConfigSchema,
+  mcpServerNameSlug,
   ModelBindingSchema,
   SceneEntryConfigSchema,
   SkillDefinitionSchema,
@@ -19,6 +22,8 @@ import {
   type SkillDefinition,
   type WorkflowDefinition,
 } from "@platform/contracts";
+import { stdioPolicyFromConfig } from "./config.js";
+import { validateStdioTransport } from "./mcp/runtime.js";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
 import { DataCoreHttpError, DataCoreUnavailableError } from "./tools/clients.js";
 import { solverAllowed, viewAllowed } from "./features/registry.js";
@@ -520,19 +525,66 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   // ---------------------------------------------------------------------
   // B3 MCP configs (credentialRef → AES-GCM encrypted credentials, never echoed)
+  // 增量 §4.2/§4.3：serverName 命名空间校验 + stdio 安全红线（默认禁用/白名单/角色门）
   // ---------------------------------------------------------------------
-  const CreateMcpBody = McpServerConfigSchema.omit({ id: true, tenantId: true, credentialRef: true }).extend({
+  const CreateMcpBody = McpServerConfigSchema.omit({
+    id: true,
+    tenantId: true,
+    credentialRef: true,
+    serverName: true,
+  }).extend({
     credential: z.string().optional(),
   });
+
+  /** §4.2：serverName 由 name 推导，须命中 ^[a-z0-9_]{2,24}$ 且租户内唯一。 */
+  const resolveServerName = async (tenantId: string, name: string, selfId?: string): Promise<string> => {
+    const serverName = mcpServerNameSlug(name);
+    if (!MCP_SERVER_NAME_RE.test(serverName)) {
+      throw new HttpError(
+        400,
+        ErrorCodes.VALIDATION_ERROR,
+        `无法从 name 推导合法 serverName（需满足 ^[a-z0-9_]{2,24}$）：${name}`,
+      );
+    }
+    const all = await deps.repos.mcpConfigs.listByTenant(tenantId);
+    for (const c of all) {
+      if (c.id === selfId) continue;
+      const other = c.serverName ?? mcpServerNameSlug(c.name);
+      if (other === serverName) {
+        throw new HttpError(409, ErrorCodes.VALIDATION_ERROR, `serverName 租户内必须唯一：${serverName} 已被 ${c.name} 占用`);
+      }
+    }
+    return serverName;
+  };
+
+  /** §4.3 红线：stdio 仅 platform_admin 可配（无 admin 兜底）；env 开关 + 白名单 + args 字符集。 */
+  const enforceStdioPolicy = (a: RequestAuth, transport: McpServerConfig["transport"]): void => {
+    if (transport.type !== "stdio") return;
+    if (!a.roles.includes("platform_admin")) {
+      throw new HttpError(403, "FORBIDDEN", "stdio 类型的 MCP 配置仅 platform_admin 可创建/修改（RCE 红线）");
+    }
+    const violation = validateStdioTransport(transport, stdioPolicyFromConfig(deps.config));
+    if (violation) {
+      throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, `stdio 配置被拒：${violation}`);
+    }
+  };
 
   app.get("/b/v1/mcp-configs", async (req) => {
     const a = await auth(req);
     return deps.repos.mcpConfigs.listByTenant(a.tenantId);
   });
 
+  // §4.4 边界声明：配置页注明文案（本期 tools-only / 静态 bearer）
+  app.get("/b/v1/mcp-configs/notes", async (req) => {
+    await auth(req);
+    return MCP_CONFIG_NOTES;
+  });
+
   app.post("/b/v1/mcp-configs", async (req, reply) => {
     const a = await auth(req);
     const { credential, ...body } = CreateMcpBody.parse(req.body);
+    const serverName = await resolveServerName(a.tenantId, body.name);
+    enforceStdioPolicy(a, body.transport);
     let credentialRef: string | undefined;
     if (credential) {
       credentialRef = newId("cred");
@@ -544,7 +596,14 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         createdAt: new Date().toISOString(),
       });
     }
-    const config: McpServerConfig = { ...body, id: newId("mcp"), tenantId: a.tenantId, credentialRef };
+    const config: McpServerConfig = {
+      ...body,
+      id: newId("mcp"),
+      tenantId: a.tenantId,
+      serverName,
+      credentialRef,
+      credentialKind: credential ? "static_bearer" : body.credentialKind,
+    };
     await deps.repos.mcpConfigs.insert(config);
     return reply.status(201).send(config);
   });
@@ -574,6 +633,14 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
     }
     const { credential, ...body } = CreateMcpBody.partial().parse(req.body);
+    // §4.3：既有 stdio 配置的任何修改、或改成 stdio，都走红线校验
+    if (existing.transport.type === "stdio" || body.transport?.type === "stdio") {
+      enforceStdioPolicy(a, body.transport ?? existing.transport);
+    }
+    let serverName = existing.serverName ?? mcpServerNameSlug(existing.name);
+    if (body.name !== undefined && body.name !== existing.name) {
+      serverName = await resolveServerName(a.tenantId, body.name, id);
+    }
     let credentialRef = existing.credentialRef;
     if (credential) {
       credentialRef = newId("cred");
@@ -585,9 +652,26 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         createdAt: new Date().toISOString(),
       });
     }
-    const updated: McpServerConfig = { ...existing, ...body, id, tenantId: a.tenantId, credentialRef };
+    const updated: McpServerConfig = { ...existing, ...body, id, tenantId: a.tenantId, serverName, credentialRef };
     await deps.repos.mcpConfigs.update(updated);
     return updated;
+  });
+
+  // 增量 §4.1：「刷新工具清单」—— 清掉 schema 缓存（TTL 10min）并重新 tools/list。
+  app.post("/b/v1/mcp-configs/:id/refresh-tools", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const existing = await deps.repos.mcpConfigs.get(id);
+    if (!existing || existing.tenantId !== a.tenantId) {
+      throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    }
+    if (!deps.mcp) return { ok: false, tools: [], message: "MCP client 未启用" };
+    try {
+      const tools = await (deps.mcp.refreshTools ? deps.mcp.refreshTools(id) : deps.mcp.listTools(id));
+      return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description })) };
+    } catch (err) {
+      return { ok: false, tools: [], message: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   // ---------------------------------------------------------------------

@@ -1,5 +1,6 @@
-import { ErrorCodes, QueryTimeseriesAggInputSchema } from "@platform/contracts";
+import { ErrorCodes, parseMcpToolFullName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
 import { newId } from "../ids.js";
+import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos, ToolCallRow } from "../persistence/repos.js";
 import { byteLength, digest, redact } from "../util/redact.js";
@@ -7,6 +8,7 @@ import { BudgetTracker } from "./budget.js";
 import { builtinTool } from "./registry.js";
 import { DataCoreUnavailableError, type DataCoreClient, type ToolAuthCtx } from "./clients.js";
 import type { McpClientPort } from "../mcp/types.js";
+import type { SkillResourceReader } from "./skill-resources.js";
 
 export type ToolBinding = { kind: "BUILTIN" } | { kind: "MCP"; mcpConfigId: string };
 
@@ -32,6 +34,8 @@ export interface ExecutorDeps {
   mcp?: McpClientPort;
   repos: Repos;
   metrics: Metrics;
+  /** 增量 §3：read_skill_resource 的附件内容读取端口（缺省 → 仅返回元信息）。 */
+  skillResources?: SkillResourceReader;
 }
 
 const OUTPUT_LIMIT = 64 * 1024;
@@ -70,7 +74,15 @@ export class GuardedToolExecutor {
   async run(
     toolName: string,
     input: unknown,
-    options?: { binding?: ToolBinding; timeoutMs?: number },
+    options?: {
+      binding?: ToolBinding;
+      timeoutMs?: number;
+      /**
+       * 增量 §5：并行 READ 轮的预算确定性 —— 循环侧按 tool_use 顺序预先计数，
+       * 此处不再重复消耗（{ok:false} 直接回 BUDGET_EXCEEDED）。
+       */
+      budgetDecision?: { ok: true } | { ok: false; reason: string };
+    },
   ): Promise<ToolRunResult> {
     const started = Date.now();
     const binding = options?.binding ?? { kind: "BUILTIN" as const };
@@ -104,8 +116,19 @@ export class GuardedToolExecutor {
       return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
     }
 
-    // 2) budget (path B only)
-    if (this.opts.budget) {
+    // 2) budget (path B only)；并行轮由循环侧预计数（budgetDecision 传入）
+    if (options?.budgetDecision) {
+      if (!options.budgetDecision.ok) {
+        return this.finish(
+          toolName,
+          input,
+          { error: "BUDGET_EXCEEDED", reason: options.budgetDecision.reason },
+          "BUDGET_EXCEEDED",
+          started,
+          false,
+        );
+      }
+    } else if (this.opts.budget) {
       const cost = builtinTool(toolName)?.costClass ?? "CHEAP";
       const ok = this.opts.budget.tryConsume(cost);
       if (!ok.ok) {
@@ -126,7 +149,11 @@ export class GuardedToolExecutor {
     const ctx = this.opts.ctx;
     if (binding.kind === "MCP") {
       if (!this.deps.mcp) throw new Error("MCP client not configured");
-      return this.deps.mcp.callTool(binding.mcpConfigId, toolName, input as Record<string, unknown>);
+      // 增量 §4.2：模型可见名/审计名是 mcp__{serverName}__{toolName} 全名；
+      // 调下游 MCP server 时还原为原始工具名（invoke_mcp_tool 旧形态原名直传兼容）。
+      const parsed = parseMcpToolFullName(toolName);
+      const rawName = parsed?.toolName ?? toolName;
+      return this.deps.mcp.callTool(binding.mcpConfigId, rawName, input as Record<string, unknown>);
     }
     const args = (input ?? {}) as Record<string, unknown>;
     switch (toolName) {
@@ -164,9 +191,56 @@ export class GuardedToolExecutor {
       case "query_timeseries_agg":
         // contracts IO enforced at the boundary; invalid input → TOOL_ERROR (never raw rows)
         return this.deps.dataCore.timeseries.aggQuery(ctx, QueryTimeseriesAggInputSchema.parse(input));
+      case "read_skill_resource":
+        return this.readSkillResource(String(args.skillId ?? ""), String(args.resourceName ?? ""));
       default:
         throw new Error(`unknown tool: ${toolName}`);
     }
+  }
+
+  /**
+   * 增量 §3：read_skill_resource —— 文本类（按 mime/扩展名判定）返回内容（≤64KB 截断+提示）；
+   * 二进制类返回元信息并明示「无法直接读取」。渐进披露第三级：summary → body → resource。
+   */
+  private async readSkillResource(skillId: string, resourceName: string): Promise<unknown> {
+    const skill = await this.deps.repos.skills.get(skillId);
+    if (!skill || skill.tenantId !== this.opts.ctx.tenantId) {
+      throw new Error(`skill not found: ${skillId}`);
+    }
+    const resource = skill.resources.find((r) => r.name === resourceName);
+    if (!resource) throw new Error(`skill resource not found: ${resourceName}`);
+    const mime = resource.mime ?? inferMime(resource.name);
+    const meta = {
+      skillId,
+      name: resource.name,
+      mime,
+      description: resource.description ?? "",
+    };
+    if (!isTextMime(mime)) {
+      const sizeBytes = await this.deps.skillResources?.size?.(skill as SkillDefinition, resource);
+      return {
+        ...meta,
+        ...(sizeBytes !== undefined ? { sizeBytes } : {}),
+        readable: false,
+        note: "二进制附件，无法直接读取；仅提供元信息（mime/大小/用途描述）。",
+      };
+    }
+    const content = await this.deps.skillResources?.read(skill as SkillDefinition, resource);
+    if (content === undefined) {
+      return { ...meta, readable: false, note: "资源内容暂不可读（未配置资源存储）。" };
+    }
+    if (Buffer.byteLength(content, "utf8") > SKILL_RESOURCE_TEXT_LIMIT) {
+      let sliced = content.slice(0, SKILL_RESOURCE_TEXT_LIMIT);
+      while (Buffer.byteLength(sliced, "utf8") > SKILL_RESOURCE_TEXT_LIMIT) sliced = sliced.slice(0, -1024);
+      return {
+        ...meta,
+        readable: true,
+        truncated: true,
+        content: sliced,
+        note: `[内容超过 64KB，已截断；完整内容共 ${Buffer.byteLength(content, "utf8")} 字节]`,
+      };
+    }
+    return { ...meta, readable: true, truncated: false, content };
   }
 
   /** Audit + metrics + result shaping (4) 写审计. */
@@ -203,4 +277,22 @@ function wrapError(err: unknown): { error: string; message?: string } {
   if (err instanceof DataCoreUnavailableError) return { error: ErrorCodes.DATACORE_UNAVAILABLE };
   const message = err instanceof Error ? err.message : String(err);
   return { error: "TOOL_ERROR", message };
+}
+
+const TEXT_MIMES = new Set(["text/markdown", "text/plain", "text/csv", "application/json"]);
+const TEXT_EXT_MIME: Record<string, string> = {
+  md: "text/markdown",
+  markdown: "text/markdown",
+  txt: "text/plain",
+  csv: "text/csv",
+  json: "application/json",
+};
+
+function inferMime(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return TEXT_EXT_MIME[ext] ?? "application/octet-stream";
+}
+
+function isTextMime(mime: string): boolean {
+  return TEXT_MIMES.has(mime) || mime.startsWith("text/");
 }

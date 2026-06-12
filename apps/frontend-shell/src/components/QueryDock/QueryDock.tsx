@@ -106,7 +106,7 @@ export function QueryDock() {
             {conversation.map((entry) => (
               <div key={entry.localId} className={styles.turn}>
                 <div className={styles.userMsg}>{entry.query}</div>
-                {entry.taskId && <TaskRun taskId={entry.taskId} />}
+                {entry.taskId && <TaskRun taskId={entry.taskId} onRetry={() => void submit(entry.query)} />}
                 {entry.submitError && <div className="badge red">{entry.submitError}</div>}
               </div>
             ))}

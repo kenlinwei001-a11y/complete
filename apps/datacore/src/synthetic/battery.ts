@@ -217,6 +217,26 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     },
   },
   sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 248 },
+  // M11 校准算法层（PRD-addendum-m11-calibration §4）：可校准参数注册表 + 阈值/开关（场景包配置）。
+  calibration: {
+    alpha: 0.3, // 方法 A · EMA
+    structuralDriftPct: 0.2, // |observed−current|/current > 20% → STRUCTURAL_SHIFT，不出 EMA 提案
+    minImprovementPct: 1, // §5 回测门槛：mapeBefore − simulatedMapeAfter ≥ 1pct
+    nMin: 10, // §2 最小样本量/切片
+    autoApply: false, // §6 默认关闭；开启时仅方法 A 且变幅 <5% 免审批
+    autoApplyMaxDeltaPct: 0.05,
+    freqLimitDays: 7, // 同一 paramRef ≤1 次/周
+    metaLoopDays: 14, // APPLIED 后 14（模拟）日回写 realizedMape
+    quantile: { lowCov: 0.85, highCov: 0.95, step: 0.01, min: 0.85, max: 0.98 }, // 方法 C
+    params: [
+      // 直接可观测（A8 实测均值）→ 方法 A
+      { key: "yield_baseline", name: "工序良率基线", method: "EMA", scope: "ONTOLOGY_PROPERTY", path: "Process.yield", observedSpecKey: "yield_daily", bounds: [0.7, 0.995] },
+      // 间接系数（确定性重放单因子归因）→ 方法 B（认证系数等场景包可按需追加同方法条目）
+      { key: "ramp_base", name: "产能预测·爬坡系数基线", method: "REPLAY_ATTRIBUTION", scope: "SOLVER_PARAMS", path: "ramp.base", bounds: [0.6, 1] },
+      // P90 健康度系数（覆盖率目标）→ 方法 C（与 C09 临时降级独立叠乘）
+      { key: "p90_health", name: "P90 健康度系数", method: "QUANTILE", scope: "SOLVER_PARAMS", path: "health.normal", bounds: [0.85, 0.98] },
+    ],
+  },
   // 增量 §7.10：plan-versions/current 基线缺省（S&OP 步骤推不出的字段，确定性常数）
   planBaseline: { ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
   dupSimilarityThreshold: 0.92,

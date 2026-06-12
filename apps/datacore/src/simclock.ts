@@ -27,6 +27,8 @@ export type ResetRunner = (ctx: AuthCtx, spec: { industry: string; scale: "S" | 
  */
 export class SimClockService {
   private resetRunner: ResetRunner | null = null;
+  /** M11：聚合后、RULE_SCAN 前的校准钩子（配对引擎 + 元闭环）。 */
+  private calibrationTicker: ((tenantId: string) => Promise<void>) | null = null;
 
   constructor(
     private repos: Repos,
@@ -39,6 +41,10 @@ export class SimClockService {
 
   setResetRunner(runner: ResetRunner): void {
     this.resetRunner = runner;
+  }
+
+  setCalibrationTicker(ticker: (tenantId: string) => Promise<void>): void {
+    this.calibrationTicker = ticker;
   }
 
   async getClock(ctx: AuthCtx): Promise<Record<string, unknown>> {
@@ -81,9 +87,10 @@ export class SimClockService {
         await this.repos.simulationClocks.put(clock);
       }
 
-      // ④ incremental aggregation → derivation → rule scan
+      // ④ incremental aggregation → derivation → (M11 pairing/meta-loop) → rule scan
       const agg = await this.ts.runAggregation(ctx.tenantId);
       await this.ontology.runDerivations(ctx);
+      if (this.calibrationTicker) await this.calibrationTicker(ctx.tenantId);
       const alerts = await this.ruleScan.scan(ctx.tenantId);
       const alertKeys = [...new Set(alerts.map((a) => `${a.ruleKey}:${a.entityId}`))].sort();
       const prev = new Set(clock.activeAlerts);

@@ -21,6 +21,18 @@ export interface PlanValidationOptions {
   requireRenderAnswer?: boolean;
 }
 
+/** 增量 §2-1：有界同步执行声明 —— workflow 总时限（Σ步骤超时上限）≤ 5 分钟。 */
+export const WORKFLOW_TOTAL_TIMEOUT_LIMIT_MS = 5 * 60_000;
+const STEP_DEFAULT_TIMEOUT_MS = 10_000;
+const SOLVER_DEFAULT_TIMEOUT_MS = 30_000;
+
+/** 单步骤超时上限（声明值优先；缺省与执行器一致：solver 30s，其它 10s）。 */
+export function stepTimeoutBound(step: ExtendedPlanStep): number {
+  const declared = (step as { timeoutMs?: number }).timeoutMs;
+  if (declared !== undefined) return declared;
+  return step.type === "invoke_solver" ? SOLVER_DEFAULT_TIMEOUT_MS : STEP_DEFAULT_TIMEOUT_MS;
+}
+
 /** Publish-time plan validation (QOS-PRD §4.2/§5.3, errors → PLAN_VALIDATION_ERROR). */
 export function validatePlanSteps(steps: ExtendedPlanStep[], opts: PlanValidationOptions = {}): string[] {
   const errors: string[] = [];
@@ -52,6 +64,14 @@ export function validatePlanSteps(steps: ExtendedPlanStep[], opts: PlanValidatio
     if (!last || last.type !== "render_answer") {
       errors.push("计划必须包含 render_answer 且为最后一步");
     }
+  }
+
+  // 增量 §2-1：发布校验 —— 步骤超时合计超过 5 分钟 → 拒绝发布（有界同步执行声明）
+  const totalTimeoutMs = steps.reduce((sum, s) => sum + stepTimeoutBound(s), 0);
+  if (totalTimeoutMs > WORKFLOW_TOTAL_TIMEOUT_LIMIT_MS) {
+    errors.push(
+      `步骤超时合计 ${totalTimeoutMs}ms 超过 workflow 总时限上限 ${WORKFLOW_TOTAL_TIMEOUT_LIMIT_MS}ms（5 分钟）`,
+    );
   }
   return errors;
 }

@@ -1,13 +1,16 @@
-import { loadConfig } from "./config.js";
+import { loadConfig, stdioPolicyFromConfig } from "./config.js";
 import { wireDeps } from "./deps.js";
 import { LlmProviderRegistry, RoutingLlmClient } from "./llm/providers.js";
-import { McpClient } from "./mcp/client.js";
+import { sdkMcpConnectorFactory } from "./mcp/client.js";
+import { McpRuntime } from "./mcp/runtime.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
 import { seedIntentsAndPlans, seedRegistry, seedSceneEntries, seedScenarioPackage } from "./mocks/seed.js";
+import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
 import { buildServer } from "./server.js";
 import { createHttpDataCore } from "./tools/datacore-http.js";
+import { LocalFsSkillResourceReader } from "./tools/skill-resources.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -32,19 +35,34 @@ async function main(): Promise<void> {
   }
 
   const dataCore = config.DATACORE_BASE_URL ? createHttpDataCore(config.DATACORE_BASE_URL) : createMockDataCore();
-  const mcp = new McpClient(repos, config.CREDENTIAL_KEY);
+  // 增量 §4.1：连接生命周期运行时（http 池/退避/ERROR 状态/恢复探测；stdio 持久子进程+心跳）
+  const mcp = new McpRuntime({
+    repos,
+    credentialKeyHex: config.CREDENTIAL_KEY,
+    factory: sdkMcpConnectorFactory,
+    metrics,
+    stdioPolicy: stdioPolicyFromConfig(config),
+  });
   // Multi-provider routing (amends QOS-PRD §6): anthropic (default) / openai /
   // openai_compatible, resolved per model spec + tenant LlmProviderConfig.
   const llm = new RoutingLlmClient(new LlmProviderRegistry({ repos, config, metrics }));
 
-  const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics });
+  const skillResources = config.BLOB_DIR ? new LocalFsSkillResourceReader(config.BLOB_DIR) : undefined;
+  const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics, skillResources });
   const app = await buildServer(deps);
+
+  // 增量 §2-2 崩溃语义：启动扫描 EXECUTING_* 滞留 >10min 的任务 → INTERRUPTED_BY_RESTART，
+  // 之后周期检查兜底（事件落库 → SSE 回放可见）。
+  const swept = await sweepInterruptedTasks({ repos, events: deps.events, metrics });
+  if (swept > 0) app.log.warn({ swept }, "startup sweep: stuck EXECUTING_* tasks marked INTERRUPTED_BY_RESTART");
+  const stopSweep = startInterruptedSweep({ repos, events: deps.events, metrics });
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "graceful shutdown");
     const timer = setTimeout(() => process.exit(1), 30_000);
     timer.unref();
     try {
+      stopSweep();
       await app.close();
       await mcp.close();
       await repos.close();

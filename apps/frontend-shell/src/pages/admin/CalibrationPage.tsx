@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import type { CalibrationProposal } from "@platform/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { CalibrationMethod, CalibrationProposal } from "@platform/contracts";
 import {
   decideCalibrationProposal,
   fetchCalibrationHistory,
   fetchCalibrationProposals,
   fetchCalibrationReport,
+  runCalibration,
 } from "@/api/endpoints";
 import { EChart } from "@/components/ui/EChart";
 import { toast, toastError } from "@/store/toastStore";
@@ -18,15 +19,32 @@ const OBJECT_TYPES = ["产能预测", "良率", "OEE"];
 const BASE_IDS = ["常州", "合肥", "宜宾", "成都"];
 const SOLVER_KEYS = ["capacity_forecast", "聚合求解器", "精度校准器"];
 
+/** M11 方法徽章文案（A=EMA / B=重放归因 / C=分位数匹配） */
+const METHOD_LABEL: Record<CalibrationMethod, string> = {
+  EMA: "EMA",
+  REPLAY_ATTRIBUTION: "重放归因",
+  QUANTILE: "分位数",
+};
+
+const STATUS_BADGE: Record<CalibrationProposal["status"], string> = {
+  PENDING: "amber",
+  APPLIED: "green",
+  ROLLED_BACK: "red",
+  REJECTED: "red",
+  HOLD: "amber",
+};
+
 /**
- * §7.21 校准报告页（/admin/calibration，catalog_admin|planner）：
- * MAPE 趋势 + C12 阈值线/触发标记 · 参数提案（批准/回滚走 Action 审批，不直改）· 校准历史。
- * "越用越准"的证据链页面 —— 演示线 T9 的前端落点（真数据，无假动画）。
+ * §7.21 + M11 校准报告页（/admin/calibration，catalog_admin|planner）：
+ * MAPE 7/30d 趋势 + C12 阈值线/触发标记 · 提案（方法徽章 + 回测证据 evidence）·
+ * 「立即校准」手动触发（§3）· 校准历史（预言 vs 实现，§6 元闭环）。
+ * 批准/回滚走 Action 审批（§S2），不直改参数。
  */
 export default function CalibrationPage() {
   const [objectType, setObjectType] = useState("");
   const [baseId, setBaseId] = useState("");
   const [solverKey, setSolverKey] = useState("");
+  const qc = useQueryClient();
 
   const { data: report } = useQuery({
     queryKey: ["a", "calibration-report", { objectType, baseId, solverKey }],
@@ -44,10 +62,26 @@ export default function CalibrationPage() {
     },
     onError: toastError,
   });
+  // M11 §3 手动触发：配对 → 元闭环 → 全切片提案生成（catalog_admin）
+  const run = useMutation({
+    mutationFn: runCalibration,
+    onSuccess: (r) => {
+      toast(`校准完成：配对 ${r.paired} · 切片 ${r.slicesEvaluated} · 新提案 ${r.created} · HOLD ${r.held} · 无改善 ${r.dropped}`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "calibration-report"] });
+      void qc.invalidateQueries({ queryKey: ["a", "calibration-proposals"] });
+      void qc.invalidateQueries({ queryKey: ["a", "calibration-history"] });
+    },
+    onError: toastError,
+  });
 
   return (
     <div data-testid="calibration-page">
-      <h2 style={{ fontSize: 16, marginBottom: 14 }}>{t.title}</h2>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <h2 style={{ fontSize: 16, margin: 0 }}>{t.title}</h2>
+        <button className="btn sm primary" data-testid="calib-run-btn" disabled={run.isPending} onClick={() => run.mutate()}>
+          立即校准
+        </button>
+      </div>
 
       {/* 三级下钻筛选 */}
       <div style={{ display: "flex", gap: 12, marginBottom: 12, fontSize: 11.5, color: "var(--muted)" }}>
@@ -80,7 +114,7 @@ export default function CalibrationPage() {
         </label>
       </div>
 
-      {/* MAPE 折线 + C12 阈值线 + 触发标记 */}
+      {/* MAPE 折线（7d + 30d 双口径）+ C12 阈值线 + 触发标记 */}
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">{t.trendSection}</div>
         {report && (
@@ -96,6 +130,7 @@ export default function CalibrationPage() {
                 series: [
                   {
                     type: "line",
+                    name: "MAPE 7d",
                     data: report.points.map((p) => p.mape),
                     smooth: true,
                     lineStyle: { color: "#43B7D7" },
@@ -107,6 +142,17 @@ export default function CalibrationPage() {
                       })),
                     },
                   },
+                  ...(report.points30d && report.points30d.length > 0
+                    ? [
+                        {
+                          type: "line" as const,
+                          name: "MAPE 30d",
+                          data: report.points.map((p) => report.points30d!.find((q) => q.date === p.date)?.mape ?? null),
+                          smooth: true,
+                          lineStyle: { color: "#8E7CC3", type: "dotted" as const },
+                        },
+                      ]
+                    : []),
                 ],
               }}
             />
@@ -119,18 +165,30 @@ export default function CalibrationPage() {
                   {t.triggerMark(m.date, m.ruleKey)}
                 </span>
               ))}
+              {(report.slices ?? []).map((s) => (
+                <span
+                  key={s.sliceKey}
+                  className={`badge ${s.flags.includes("INSUFFICIENT_SAMPLES") ? "" : "green"}`}
+                  data-testid={`calib-slice-${s.sliceKey}`}
+                  title={`Bias ${s.bias} · 覆盖率 ${(s.coverage * 100).toFixed(0)}%`}
+                >
+                  {s.modelId}@{s.baseId} · {s.nPairs} 对 · 7d {s.mape7d}%
+                  {s.flags.includes("INSUFFICIENT_SAMPLES") ? ` · 样本不足(<${report.nMin ?? 10})` : ""}
+                </span>
+              ))}
             </div>
           </>
         )}
       </div>
 
-      {/* 参数更新提案（批准/回滚 → actionType=校准参数变更，走 §S2 审批，不直改） */}
+      {/* 参数更新提案（方法徽章 + 回测证据；批准/回滚 → actionType=校准参数变更，走 §S2 审批，不直改） */}
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">{t.proposalSection}</div>
         <table className="cmp" data-testid="calib-proposals">
           <thead>
             <tr>
               <th>{t.colParam}</th>
+              <th>方法</th>
               <th>{t.colChange}</th>
               <th>{t.colBasis}</th>
               <th>{t.colStatus}</th>
@@ -153,7 +211,7 @@ export default function CalibrationPage() {
         )}
       </div>
 
-      {/* 校准历史时间线 */}
+      {/* 校准历史时间线（预言 vs 实现 —— §6 元闭环回写） */}
       <div className="panel">
         <div className="section-title">{t.historySection}</div>
         <div data-testid="calib-history">
@@ -164,9 +222,15 @@ export default function CalibrationPage() {
               </span>
               <div style={{ fontSize: 12 }}>
                 <span className={`badge ${h.trigger === "C12" ? "amber" : ""}`}>{h.trigger}</span>{" "}
-                {t.historyLine(h.trigger, h.changedParams.join("、"))}
+                {h.method && <span className="badge">{METHOD_LABEL[h.method]}</span>} {t.historyLine(h.trigger, h.changedParams.join("、"))}
               </div>
               <div className="mono" style={{ fontSize: 11.5, color: "var(--ok)" }}>{t.mapeChange(h.mapeBefore, h.mapeAfter)}</div>
+              {h.simulatedMapeAfter !== undefined && (
+                <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }} data-testid={`calib-history-meta-${i}`}>
+                  预言 {h.simulatedMapeAfter.toFixed(1)}%（回测） vs 实现{" "}
+                  {h.realizedMape !== undefined ? `${h.realizedMape.toFixed(1)}%（生效后 14 日实测）` : "待元闭环回写"}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -177,7 +241,7 @@ export default function CalibrationPage() {
 
 function ProposalRow({ proposal: p, onDecide, pending }: { proposal: CalibrationProposal; onDecide: (d: "approve" | "rollback") => void; pending: boolean }) {
   const [basisOpen, setBasisOpen] = useState(false);
-  const badge = p.status === "PENDING" ? "amber" : p.status === "APPLIED" ? "green" : "red";
+  const ev = p.evidence;
   return (
     <tr data-testid={`calib-proposal-${p.id}`}>
       <td className="zh">
@@ -185,6 +249,18 @@ function ProposalRow({ proposal: p, onDecide, pending }: { proposal: Calibration
         {p.objectRef && (
           <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6, fontSize: 10.5 }}>
             {p.objectRef}
+          </span>
+        )}
+        {p.paramRef && (
+          <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6, fontSize: 10 }}>
+            {p.paramRef.scope === "SOLVER_PARAMS" ? "参数" : "本体"}:{p.paramRef.path}
+          </span>
+        )}
+      </td>
+      <td>
+        {p.method && (
+          <span className="badge" data-testid={`calib-method-${p.id}`}>
+            {METHOD_LABEL[p.method]}
           </span>
         )}
       </td>
@@ -197,12 +273,27 @@ function ProposalRow({ proposal: p, onDecide, pending }: { proposal: Calibration
         </button>
         {basisOpen && (
           <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }} data-testid={`calib-basis-detail-${p.id}`}>
-            窗口 {p.basis.windowFrom} ~ {p.basis.windowTo} · {p.basis.samples} 条 ts_agg_runs 实际样本（A8）
+            窗口 {p.basis.windowFrom} ~ {p.basis.windowTo} · {p.basis.samples} 对配对样本（预测 vs ts_agg_runs 实际，A8）
+            {ev && (
+              <div data-testid={`calib-evidence-${p.id}`}>
+                回测：MAPE {ev.mapeBefore.toFixed(2)}% → {ev.simulatedMapeAfter.toFixed(2)}%（模拟） · Bias {ev.bias} · {ev.nPairs} 对
+                {p.realizedMape !== undefined && <> · 实现 {p.realizedMape.toFixed(2)}%</>}
+                {ev.flags.length > 0 && (
+                  <div style={{ marginTop: 2, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {ev.flags.map((f) => (
+                      <span key={f} className={`badge ${f === "STRUCTURAL_SHIFT" || f === "NO_IMPROVEMENT" ? "red" : ""}`} data-testid={`calib-flag-${p.id}-${f.split(":")[0]}`}>
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </td>
       <td>
-        <span className={`badge ${badge}`} data-testid={`calib-status-${p.id}`}>
+        <span className={`badge ${STATUS_BADGE[p.status]}`} data-testid={`calib-status-${p.id}`}>
           {p.status}
         </span>
       </td>

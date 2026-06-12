@@ -75,16 +75,54 @@ export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;
 // 平台 PRD §8.3 B3 MCP
 // ---------------------------------------------------------------------------
 
+/** Agent 运行时增量 §4.2：命名空间 serverName 形态（mcp__{serverName}__{toolName} 的 serverName 部分）。 */
+export const MCP_SERVER_NAME_RE = /^[a-z0-9_]{2,24}$/;
+
+/** 从展示名推导命名空间 serverName（小写、非 [a-z0-9_] 折叠为 _、裁剪到 24）。 */
+export function mcpServerNameSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 24)
+    .replace(/_+$/g, "");
+}
+
+/** 暴露给模型的 MCP 工具全名（增量 §4.2）：scopeDeclaration 与审计一律用全名。 */
+export function mcpToolFullName(serverName: string, toolName: string): string {
+  return `mcp__${serverName}__${toolName}`;
+}
+
+/** 解析 MCP 工具全名；非命名空间形态返回 undefined。 */
+export function parseMcpToolFullName(fullName: string): { serverName: string; toolName: string } | undefined {
+  const m = /^mcp__([a-z0-9_]{2,24})__(.+)$/.exec(fullName);
+  if (!m) return undefined;
+  return { serverName: m[1] as string, toolName: m[2] as string };
+}
+
+/** 增量 §4.4 边界声明 —— 配置页注明文案（本期 tools-only / 静态 bearer）。 */
+export const MCP_CONFIG_NOTES = {
+  capabilities: "本期仅消费 MCP tools（prompts/resources 暂不支持）。",
+  credentials: "凭据仅支持静态 bearer token；OAuth 授权码/刷新流程为 v2 预留（credentialKind 字段）。",
+} as const;
+
 export const McpServerConfigSchema = z.object({
   id: z.string(), // mcp_
   tenantId: z.string(),
   name: z.string(),
+  /** 增量 §4.2（additive）：命名空间标识，创建时由 name 推导并校验 ^[a-z0-9_]{2,24}$ 且租户内唯一 */
+  serverName: z.string().regex(MCP_SERVER_NAME_RE).optional(),
   transport: z.discriminatedUnion("type", [
     z.object({ type: z.literal("streamable_http"), url: z.string() }),
     z.object({ type: z.literal("stdio"), command: z.string(), args: z.array(z.string()) }),
   ]),
   credentialRef: z.string().optional(),
-  status: z.enum(["ACTIVE", "DISABLED"]),
+  /** 增量 §4.4（additive）：本期仅 static_bearer；OAuth 流程 v2 预留 */
+  credentialKind: z.enum(["static_bearer"]).optional(),
+  /** 增量 §4.1（additive）：每次 tools/call 超时覆盖（≤60s；缺省 20s） */
+  toolTimeoutMs: z.number().int().positive().max(60_000).optional(),
+  /** 增量 §4.1：连续 5 次失败 → ERROR（恢复探测自动回 ACTIVE） */
+  status: z.enum(["ACTIVE", "DISABLED", "ERROR"]),
 });
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
@@ -100,7 +138,15 @@ export const SkillDefinitionSchema = z.object({
   name: z.string(),
   summary: z.string().max(400),
   body: z.string().max(50_000),
-  resources: z.array(z.object({ name: z.string(), blobKey: z.string() })),
+  /** 增量 §3（additive）：mime/description 让模型知道附件是什么、何时读（read_skill_resource） */
+  resources: z.array(
+    z.object({
+      name: z.string(),
+      blobKey: z.string(),
+      mime: z.string().optional(),
+      description: z.string().optional(),
+    }),
+  ),
   status: z.enum(["DRAFT", "PUBLISHED"]),
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;

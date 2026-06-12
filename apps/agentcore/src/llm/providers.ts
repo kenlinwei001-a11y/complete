@@ -5,7 +5,7 @@ import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import { AnthropicLlmClient } from "./anthropic.js";
 import { OpenAiLlmClient } from "./openai.js";
-import type { LlmAgentRequest, LlmAgentResponse, LlmClient, RawClassification } from "./types.js";
+import type { LlmAgentRequest, LlmAgentResponse, LlmCapabilities, LlmClient, RawClassification } from "./types.js";
 
 /**
  * Multi-LLM provider layer — AMENDS QOS-PRD §6 (was Anthropic-only normative).
@@ -143,6 +143,19 @@ export class RoutingLlmClient implements LlmClient {
   async compose(req: { model: string; instruction: string; inputs: unknown[]; tenantId?: string }): Promise<string> {
     const r = await this.registry.resolve(req.model, req.tenantId);
     return r.client.compose({ ...req, model: r.model });
+  }
+
+  /** 增量 §1.1：能力按解析到的 adapter 透传（无声明 → 保守缺省）。 */
+  async capabilities(model: string, tenantId?: string): Promise<LlmCapabilities> {
+    const r = await this.registry.resolve(model, tenantId);
+    return (await r.client.capabilities?.(r.model, tenantId)) ?? { countTokens: false, compaction: false };
+  }
+
+  /** 增量 §1.1：count_tokens 透传（adapter 不支持时由循环侧 chars/3.5 估算兜底）。 */
+  async countTokens(req: LlmAgentRequest): Promise<number> {
+    const r = await this.registry.resolve(req.model, req.tenantId);
+    if (!r.client.countTokens) throw new Error(`provider ${r.providerKey} does not support count_tokens`);
+    return r.client.countTokens({ ...req, model: r.model });
   }
 }
 

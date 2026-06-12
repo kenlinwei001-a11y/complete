@@ -1,7 +1,9 @@
 import type {
   ActionDraft,
   ActionTypeRecord,
+  CalibrationForecastRecord,
   CalibrationHistoryRecord,
+  CalibrationPairRecord,
   CalibrationProposalRecord,
   ClockTickReport,
   Connection,
@@ -28,6 +30,7 @@ import type {
   ScheduledJobRecord,
   SchedulerRunRecord,
   SimulationClockRecord,
+  SolverParamsHistoryRecord,
   SolverParamsRecord,
   SopVersion,
   SyncJob,
@@ -155,8 +158,9 @@ export interface Repos {
   webhooks: Store<WebhookRegistration>;
   // S1.8
   sopVersions: Store<SopVersion>;
-  // S1 per-tenant solver params
+  // S1 per-tenant solver params（+ M11/S1 修订：版本历史）
   solverParams: Store<SolverParamsRecord>;
+  solverParamsHistory: Store<SolverParamsHistoryRecord>;
   // S3
   scheduledJobs: ScheduledJobStore;
   schedulerRuns: Store<SchedulerRunRecord>;
@@ -176,9 +180,11 @@ export interface Repos {
   // Feature entitlement
   featureConfigs: Store<FeatureConfigRecord>;
   featureAudit: Store<FeatureAuditRecord>;
-  // M11 校准（§7.21）
+  // M11 校准（§7.21 + 算法层增量）
   calibrationProposals: Store<CalibrationProposalRecord>;
   calibrationHistory: Store<CalibrationHistoryRecord>;
+  calibrationForecasts: Store<CalibrationForecastRecord>;
+  calibrationPairs: Store<CalibrationPairRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

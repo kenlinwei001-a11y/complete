@@ -117,6 +117,23 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    // 增量 §3：技能附件可消费（渐进披露第三级：summary → body → resource）。
+    // 文本类（md/txt/csv/json）返回内容（≤64KB 截断+提示）；二进制类仅返回元信息。
+    name: "read_skill_resource",
+    descriptionForLLM:
+      "读取技能附件资源：按 skillId + resourceName 读取。文本类（md/txt/csv/json）返回内容（超 64KB 截断）；二进制类只返回元信息（无法直接读取）。load_skill 返回的资源清单告诉你有哪些附件可读。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        skillId: { type: "string" },
+        resourceName: { type: "string", description: "load_skill 资源清单中的附件名" },
+      },
+      required: ["skillId", "resourceName"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "create_action_draft",
     descriptionForLLM:
       "唯一的写出口：为用户的修改/下达/调整请求生成 Action 草稿交下游审批。绝不直接执行写操作；生成后必须告知用户需审批。",

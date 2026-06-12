@@ -5,11 +5,15 @@ import type {
   LlmAgentMessage,
   LlmAgentRequest,
   LlmAgentResponse,
+  LlmCapabilities,
   LlmClient,
   LlmContentBlock,
   RawClassification,
 } from "./types.js";
 import type { Metrics } from "../metrics.js";
+
+/** beta flag for server-side compaction (增量 §1.3 第 2 刀). */
+export const COMPACTION_BETA = "compact-2026-01-12";
 
 /** Classification structured-output schema (QOS-PRD §6.2 — exact shape). */
 const ClassificationSchema = z.object({
@@ -41,10 +45,40 @@ export class ClassifierParseError extends Error {
  */
 export class AnthropicLlmClient implements LlmClient {
   private readonly client: Anthropic;
+  private readonly enableCompaction: boolean;
 
-  constructor(private readonly metrics?: Metrics) {
+  constructor(
+    private readonly metrics?: Metrics,
+    opts?: {
+      /** Test seam — injected SDK-shaped client (no network in CI). */
+      client?: Anthropic;
+      /** Capability flag for server-side compaction（增量 §1.3 第 2 刀，默认开）。 */
+      enableCompaction?: boolean;
+    },
+  ) {
     // API key resolved from ANTHROPIC_API_KEY by the SDK itself (per QOS-PRD §6.1).
-    this.client = new Anthropic();
+    this.client = opts?.client ?? new Anthropic();
+    this.enableCompaction = opts?.enableCompaction ?? true;
+  }
+
+  /** 增量 §1.1：Anthropic 路径具备 count_tokens 实测 + 服务端 compaction 能力。 */
+  async capabilities(_model: string): Promise<LlmCapabilities> {
+    return { countTokens: true, compaction: this.enableCompaction, maxContextTokens: 200_000 };
+  }
+
+  /** 增量 §1.1：count_tokens API 实测（每 2 轮一次，由循环侧控制节奏）。 */
+  async countTokens(req: LlmAgentRequest): Promise<number> {
+    const resp = await this.client.messages.countTokens({
+      model: req.model,
+      system: [{ type: "text", text: req.system }],
+      tools: req.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.inputSchema as Anthropic.Tool["input_schema"],
+      })),
+      messages: req.messages.map((m) => toAnthropicMessage(m)),
+    });
+    return resp.input_tokens;
   }
 
   /** Expose typed-error checks without string matching. */
@@ -71,7 +105,7 @@ export class AnthropicLlmClient implements LlmClient {
   }
 
   async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {
-    const response = await this.client.messages.create({
+    const params = {
       model: req.model,
       max_tokens: req.maxTokens ?? 16000,
       thinking: { type: "adaptive" },
@@ -82,7 +116,17 @@ export class AnthropicLlmClient implements LlmClient {
         input_schema: t.inputSchema as Anthropic.Tool["input_schema"],
       })),
       messages: req.messages.map((m) => toAnthropicMessage(m)),
-    });
+    } as Record<string, unknown>;
+
+    // 增量 §1.3 第 2 刀：服务端 compaction（beta compact-2026-01-12，capability flag 后面）。
+    // 响应中的 compaction 块按官方语义原样回传（raw 透传，见 toAnthropicMessage 的 raw echo）。
+    const compacting = this.enableCompaction && (req.contextEdits?.length ?? 0) > 0;
+    if (compacting) params.context_management = { edits: req.contextEdits };
+
+    const response = await this.client.messages.create(
+      params as unknown as Anthropic.MessageCreateParamsNonStreaming,
+      compacting ? { headers: { "anthropic-beta": COMPACTION_BETA } } : undefined,
+    );
     this.metrics?.llmTokens.inc({ model: req.model, direction: "input" }, response.usage.input_tokens);
     this.metrics?.llmTokens.inc({ model: req.model, direction: "output" }, response.usage.output_tokens);
     const content: LlmContentBlock[] = [];
@@ -92,6 +136,9 @@ export class AnthropicLlmClient implements LlmClient {
         content.push({ type: "tool_use", id: block.id, name: block.name, input: block.input });
       } else if (block.type === "thinking" || block.type === "redacted_thinking") {
         content.push({ type: "thinking" });
+      } else if ((block as { type: string }).type === "compaction") {
+        // 官方语义：compaction 块原样保留（content + raw），后续请求 verbatim 回传
+        content.push({ ...(block as unknown as Record<string, unknown>), type: "compaction" } as LlmContentBlock);
       }
     }
     return {

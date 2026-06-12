@@ -89,11 +89,52 @@ export const MappingRowSchema = z.object({
 });
 export type MappingRow = z.infer<typeof MappingRowSchema>;
 
+/** M11 校准增量（PRD-addendum-m11-calibration）：方法/证据/paramRef —— 全部 ADDITIVE。 */
+export const CalibrationMethodSchema = z.enum(["EMA", "REPLAY_ATTRIBUTION", "QUANTILE"]);
+export type CalibrationMethod = z.infer<typeof CalibrationMethodSchema>;
+
+export const CalibrationParamRefSchema = z.object({
+  scope: z.enum(["SOLVER_PARAMS", "ONTOLOGY_PROPERTY"]),
+  path: z.string(), // "ramp.base" | "Process.yield" …
+});
+export type CalibrationParamRef = z.infer<typeof CalibrationParamRefSchema>;
+
+/** §5 回测证据（提案出闸硬条件的留痕；flags 含 STRUCTURAL_SHIFT / NO_IMPROVEMENT / …） */
+export const CalibrationEvidenceSchema = z.object({
+  windowFrom: z.string(),
+  windowTo: z.string(),
+  nPairs: z.number().int(),
+  mapeBefore: z.number(), // %（百分点口径）
+  simulatedMapeAfter: z.number(), // % — 建议参数重放全部配对样本
+  bias: z.number(), // Σerror / Σactual
+  flags: z.array(z.string()),
+});
+export type CalibrationEvidence = z.infer<typeof CalibrationEvidenceSchema>;
+
+/** §2 误差切片（solverKey × 基地 × 型号；n < nMin → INSUFFICIENT_SAMPLES 只报告不提案） */
+export const CalibrationSliceSchema = z.object({
+  sliceKey: z.string(),
+  solverKey: z.string(),
+  baseId: z.string(), // "all" = 全基地合计
+  modelId: z.string(),
+  nPairs: z.number().int(),
+  mape7d: z.number(),
+  mape30d: z.number(),
+  bias: z.number(),
+  coverage: z.number(), // cov = P(actual ≥ P90预测)
+  flags: z.array(z.string()),
+});
+export type CalibrationSlice = z.infer<typeof CalibrationSliceSchema>;
+
 /** §7.21 校准报告（M11；"实际"来自 ts_agg_runs） */
 export const CalibrationReportSchema = z.object({
-  points: z.array(z.object({ date: z.string(), mape: z.number() })),
+  points: z.array(z.object({ date: z.string(), mape: z.number() })), // 滚动 7d MAPE
   thresholdPct: z.number(), // C12 阈值（默认 8）
   triggerMarks: z.array(z.object({ date: z.string(), ruleKey: z.string() })),
+  /** M11 增量：滚动 30d 双口径 + 切片明细（可选 —— 旧消费方不受影响） */
+  points30d: z.array(z.object({ date: z.string(), mape: z.number() })).optional(),
+  slices: z.array(CalibrationSliceSchema).optional(),
+  nMin: z.number().int().optional(),
 });
 export type CalibrationReport = z.infer<typeof CalibrationReportSchema>;
 
@@ -104,7 +145,14 @@ export const CalibrationProposalSchema = z.object({
   currentValue: z.number(),
   proposedValue: z.number(),
   basis: z.object({ windowFrom: z.string(), windowTo: z.string(), samples: z.number().int() }),
-  status: z.enum(["PENDING", "APPLIED", "ROLLED_BACK"]),
+  status: z.enum(["PENDING", "APPLIED", "ROLLED_BACK", "REJECTED", "HOLD"]),
+  // ---- M11 增量（additive）----
+  sliceKey: z.string().optional(), // solverKey×基地×型号
+  paramRef: CalibrationParamRefSchema.optional(),
+  method: CalibrationMethodSchema.optional(),
+  evidence: CalibrationEvidenceSchema.optional(),
+  /** §6 元闭环：APPLIED 14 天后回写的实际 MAPE（预言 vs 实现） */
+  realizedMape: z.number().optional(),
 });
 export type CalibrationProposal = z.infer<typeof CalibrationProposalSchema>;
 
@@ -114,8 +162,27 @@ export const CalibrationHistoryEntrySchema = z.object({
   changedParams: z.array(z.string()),
   mapeBefore: z.number(),
   mapeAfter: z.number(),
+  // ---- M11 增量：预言 vs 实现 ----
+  proposalId: z.string().optional(),
+  method: CalibrationMethodSchema.optional(),
+  simulatedMapeAfter: z.number().optional(), // 预言（回测）
+  realizedMape: z.number().optional(), // 实现（元闭环回写）
 });
 export type CalibrationHistoryEntry = z.infer<typeof CalibrationHistoryEntrySchema>;
+
+/** POST /a/v1/calibration/run（M11 §3 手动触发）响应 */
+export const CalibrationRunResultSchema = z.object({
+  paired: z.number().int(),
+  deferred: z.number().int(), // 窗口未过期 / 实际值不全
+  staleDeferred: z.boolean(), // 数据新鲜度异常 → 全部推迟配对
+  slicesEvaluated: z.number().int(),
+  created: z.number().int(), // 新 PENDING 提案
+  autoApplied: z.number().int(),
+  held: z.number().int(), // HOLD（级联抑制/频率限制/结构性漂移）
+  dropped: z.number().int(), // NO_IMPROVEMENT
+  insufficient: z.number().int(), // INSUFFICIENT_SAMPLES 切片数
+});
+export type CalibrationRunResult = z.infer<typeof CalibrationRunResultSchema>;
 
 /** §7.22 数据健康度 */
 export const DataHealthSourceSchema = z.object({

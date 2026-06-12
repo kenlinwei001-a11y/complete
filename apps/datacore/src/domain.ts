@@ -539,22 +539,47 @@ export interface ForecastSnapshotRecord {
 // M11 校准（§7.21）：参数更新提案 + 校准历史（提案变更必须走 校准参数变更 Action）
 // ---------------------------------------------------------------------------
 
+export type CalibrationMethodKind = "EMA" | "REPLAY_ATTRIBUTION" | "QUANTILE";
+
+export interface CalibrationEvidenceRecord {
+  windowFrom: string;
+  windowTo: string;
+  nPairs: number;
+  mapeBefore: number; // %（百分点口径）
+  simulatedMapeAfter: number; // % — 建议参数对窗口内全部配对样本重放
+  bias: number; // Σerror / Σactual
+  flags: string[]; // STRUCTURAL_SHIFT | NO_IMPROVEMENT | FREQUENCY_LIMIT | CASCADE_HOLD | AUTO_APPLIED | …
+}
+
 export interface CalibrationProposalRecord {
-  id: string; // calp_
+  id: string; // cal_（M11；旧种子 calp_ 兼容）
   tenantId: string;
   parameter: string; // 节拍/良率/OEE 基线 等展示名
-  /** solver_params 内的点路径（如 "ramp.base"），Action EXECUTED 后写入 */
+  /** solver_params 内的点路径（如 "ramp.base"），Action EXECUTED 后写入（= paramRef.path） */
   paramPath: string;
   objectRef?: string;
   currentValue: number;
   proposedValue: number;
   basis: { windowFrom: string; windowTo: string; samples: number };
-  trigger: string; // "C12" | "手动"
-  status: "PENDING" | "APPLIED" | "ROLLED_BACK";
+  trigger: string; // "C12" | "手动" | "CALIBRATION_RUN"
+  status: "PENDING" | "APPLIED" | "ROLLED_BACK" | "REJECTED" | "HOLD";
   /** 应用前的旧值（回滚还原用） */
   appliedFrom?: number;
   appliedAt?: string;
   createdAt: string;
+  // ---- M11 增量 ----
+  sliceKey?: string; // solverKey|baseId|modelId
+  paramRef?: { scope: "SOLVER_PARAMS" | "ONTOLOGY_PROPERTY"; path: string };
+  method?: CalibrationMethodKind;
+  evidence?: CalibrationEvidenceRecord;
+  /** §6 元闭环：APPLIED 14 天后回写（预言 vs 实现） */
+  realizedMape?: number;
+  /** 应用后的 solver_params 版本（回滚 = 恢复上一版本） */
+  appliedParamsVersion?: number;
+  /** 应用时刻的模拟时钟 tick（元闭环 14 个模拟日计时锚点） */
+  appliedTick?: number;
+  /** ONTOLOGY_PROPERTY scope：应用前各对象旧值快照（精确回滚） */
+  appliedSnapshot?: Record<string, number>;
 }
 
 export interface CalibrationHistoryRecord {
@@ -565,6 +590,66 @@ export interface CalibrationHistoryRecord {
   changedParams: string[];
   mapeBefore: number;
   mapeAfter: number;
+  // ---- M11 增量：预言 vs 实现 ----
+  proposalId?: string;
+  method?: CalibrationMethodKind;
+  simulatedMapeAfter?: number;
+  realizedMape?: number;
+}
+
+// ---------------------------------------------------------------------------
+// M11 §1 配对引擎：轻量预测记录（capacity_forecast 运行/快照刷新时写入）+
+// 配对样本（窗口完全过期 + 数据新鲜度正常后一次性配对）。
+// ---------------------------------------------------------------------------
+
+export interface CalibrationForecastRecord {
+  id: string; // calf_<tenant>_<solver>_<model>_<base|all>_<date>
+  tenantId: string;
+  solverKey: string; // capacity_forecast
+  modelId: string;
+  /** undefined = 全基地合计；否则单基地切片 */
+  baseId?: string;
+  windowFrom: string; // ISO date（本期按日窗口：from == to）
+  windowTo: string;
+  predicted: number; // 万套/日（窗口内日均预测）
+  predictedP90: number; // predicted × healthFactor
+  paramsVersion: number; // 预测时的 solver_params 版本
+  weekOfWindow: number; // 距 forecastStart 的预测周序（1 起，爬坡归因用）
+  createdAt: string;
+  /** 一个预测只配对一次 */
+  pairedAt?: string;
+}
+
+export interface CalibrationPairRecord {
+  id: string; // calpair_
+  tenantId: string;
+  solverKey: string;
+  entityRef: string; // "Model:<id>" 或 "Model:<id>@Base:<id>"
+  modelId: string;
+  baseId?: string;
+  windowFrom: string;
+  windowTo: string;
+  predicted: number;
+  predictedP90: number;
+  actual: number; // ts_agg_runs 同窗口聚合（A8）
+  error: number; // predicted − actual
+  ape: number; // |error| / max(actual, ε)
+  paramsVersion: number;
+  /** 预测后参数已变更：仍用于评估旧参数，不进入新提案回测基线 */
+  staleParams: boolean;
+  sliceKey: string; // solverKey|baseId|modelId
+  weekOfWindow: number;
+  pairedAt: string;
+}
+
+/** S1 修订：solver_params 版本历史（runWithParams(version) / 回滚锚点）。 */
+export interface SolverParamsHistoryRecord {
+  id: string; // sparh_<tenant>_v<version>
+  tenantId: string;
+  version: number;
+  params: Record<string, unknown>;
+  note?: string;
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------

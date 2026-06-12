@@ -28,8 +28,13 @@ export interface TestApp {
   config: AppConfig;
 }
 
-export async function createTestApp(): Promise<TestApp> {
-  const config = loadConfig({ PORT: "0", LOG_LEVEL: "silent" } as NodeJS.ProcessEnv);
+export async function createTestApp(opts?: {
+  /** 额外环境变量（如增量 §4.3 的 MCP_STDIO_ENABLED / MCP_STDIO_COMMAND_ALLOWLIST） */
+  env?: Record<string, string>;
+  /** 自定义 MCP mock（如 R8 重名工具的双 server 形态） */
+  mcp?: MockMcpClient;
+}): Promise<TestApp> {
+  const config = loadConfig({ PORT: "0", LOG_LEVEL: "silent", ...(opts?.env ?? {}) } as NodeJS.ProcessEnv);
   const repos = createMemoryRepos();
   await repos.packages.insert(seedScenarioPackage());
   const { intents, plans } = seedIntentsAndPlans();
@@ -38,7 +43,7 @@ export async function createTestApp(): Promise<TestApp> {
 
   const llm = new ScriptedLlmClient();
   const dataCore = createMockDataCore();
-  const mcp = new MockMcpClient();
+  const mcp = opts?.mcp ?? new MockMcpClient();
   const metrics = new Metrics();
   const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics });
   const app = await buildServer(deps);

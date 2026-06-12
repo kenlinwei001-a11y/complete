@@ -275,6 +275,7 @@ export function createMemoryRepos(): Repos {
     webhooks: new MemStore(),
     sopVersions: new MemStore(),
     solverParams: new MemStore(),
+    solverParamsHistory: new MemStore(),
     scheduledJobs: new MemScheduledJobStore(),
     schedulerRuns: new MemStore(),
     kbDocs: new MemStore(),
@@ -292,6 +293,8 @@ export function createMemoryRepos(): Repos {
     featureAudit: new MemStore(),
     calibrationProposals: new MemStore(),
     calibrationHistory: new MemStore(),
+    calibrationForecasts: new MemStore(),
+    calibrationPairs: new MemStore(),
     async ping() {
       /* always ready */
     },

@@ -10,6 +10,7 @@ import type { Repos } from "./persistence/repos.js";
 import { Orchestrator } from "./router/orchestrator.js";
 import { CatalogService } from "./catalog/service.js";
 import type { DataCoreClient } from "./tools/clients.js";
+import type { SkillResourceReader } from "./tools/skill-resources.js";
 
 export interface AppDeps {
   config: AppConfig;
@@ -34,6 +35,8 @@ export function wireDeps(base: {
   mcp?: McpClientPort;
   metrics?: Metrics;
   features?: FeatureGate;
+  /** 增量 §3：read_skill_resource 内容读取端口 */
+  skillResources?: SkillResourceReader;
 }): AppDeps {
   const metrics = base.metrics ?? new Metrics();
   const events = new TaskEvents(base.repos);
@@ -48,6 +51,7 @@ export function wireDeps(base: {
     mcp: base.mcp,
     config: base.config,
     llmSettings,
+    skillResources: base.skillResources,
   });
   const orchestrator = new Orchestrator({
     repos: base.repos,
