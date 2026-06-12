@@ -53,6 +53,73 @@ export class AnthropicLlmClient implements LlmClient {
 }
 
 /**
+ * Multi-provider support (contracts LlmProviderConfig/ModelBinding): `openai`
+ * and `openai_compatible` use the official `openai` package with
+ * chat.completions + response_format json_schema for structured outputs; a
+ * baseURL override targets any compatible endpoint (DeepSeek/Qwen/vLLM/...).
+ */
+export class OpenAiLlmClient implements LlmClient {
+  private client: import("openai").default | null = null;
+
+  constructor(
+    private opts: { baseUrl?: string; apiKeyEnv?: string } = {},
+  ) {}
+
+  async parseStructured<T>(req: LlmParseRequest<T>): Promise<T> {
+    if (this.client == null) {
+      const { default: OpenAI } = await import("openai");
+      const apiKey = this.opts.apiKeyEnv ? process.env[this.opts.apiKeyEnv] : process.env.OPENAI_API_KEY;
+      this.client = new OpenAI({ apiKey: apiKey ?? "missing-key", baseURL: this.opts.baseUrl });
+    }
+    const { z } = await import("zod");
+    const jsonSchema = z.toJSONSchema(req.schema as never, { target: "draft-7" });
+    const resp = await this.client.chat.completions.create({
+      model: req.model,
+      max_tokens: req.maxTokens,
+      messages: [
+        { role: "system" as const, content: req.system },
+        ...req.messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "structured_output", schema: jsonSchema as Record<string, unknown>, strict: false },
+      },
+    });
+    const content = resp.choices[0]?.message?.content;
+    if (!content) throw new LlmParseError("empty completion");
+    let raw: unknown;
+    try {
+      raw = JSON.parse(content);
+    } catch {
+      throw new LlmParseError("completion is not valid JSON");
+    }
+    const parsed = req.schema.safeParse(raw);
+    if (!parsed.success) throw new LlmParseError(`output failed schema: ${parsed.error.message}`);
+    return parsed.data;
+  }
+}
+
+/**
+ * Provider selection from env/config (DC_LLM_PROVIDER / DC_LLM_BASE_URL /
+ * DC_LLM_API_KEY_ENV). Anthropic stays the default when nothing is configured.
+ */
+export function createLlmClient(cfg: {
+  DC_LLM_PROVIDER?: string;
+  DC_LLM_BASE_URL?: string;
+  DC_LLM_API_KEY_ENV?: string;
+}): LlmClient {
+  switch (cfg.DC_LLM_PROVIDER) {
+    case "openai":
+      return new OpenAiLlmClient({ apiKeyEnv: cfg.DC_LLM_API_KEY_ENV });
+    case "openai_compatible":
+      return new OpenAiLlmClient({ baseUrl: cfg.DC_LLM_BASE_URL, apiKeyEnv: cfg.DC_LLM_API_KEY_ENV });
+    case "anthropic":
+    default:
+      return new AnthropicLlmClient();
+  }
+}
+
+/**
  * Scripted mock for tests: enqueue raw outputs (validated against the request
  * schema like the real path would be) or register a handler.
  */

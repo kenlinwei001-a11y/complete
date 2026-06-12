@@ -19,6 +19,16 @@ export const ConfigSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Model used for extraction / modeling / template generation (never hardcode at call sites). */
   DC_LLM_MODEL: z.string().default("claude-opus-4-8"),
+  /** Multi-provider LLM selection (anthropic default; openai / openai_compatible via `openai` pkg). */
+  DC_LLM_PROVIDER: z.enum(["anthropic", "openai", "openai_compatible"]).default("anthropic"),
+  DC_LLM_BASE_URL: z.string().optional(),
+  DC_LLM_API_KEY_ENV: z.string().optional(),
+  /** S4 embedding provider (pseudo = deterministic hash vectors, used in all tests). */
+  EMBEDDING_PROVIDER: z.enum(["pseudo", "openai_compatible", "voyage"]).default("pseudo"),
+  EMBEDDING_BASE_URL: z.string().optional(),
+  EMBEDDING_MODEL: z.string().optional(),
+  EMBEDDING_DIM: z.coerce.number().int().default(1024),
+  EMBEDDING_API_KEY_ENV: z.string().optional(),
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().default(15 * 60),
   REFRESH_TOKEN_TTL_SEC: z.coerce.number().int().default(7 * 24 * 3600),
   SEED_DEMO: z.string().optional(),

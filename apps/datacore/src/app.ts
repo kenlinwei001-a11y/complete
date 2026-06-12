@@ -7,13 +7,13 @@ import Fastify, {
 import multipart from "@fastify/multipart";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { SyntheticJobBodySchema } from "@platform/contracts";
+import { ClockTickBodySchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
 import type { LlmClient } from "./llm.js";
 import { Metrics } from "./metrics.js";
-import { AppError, notFound, unauthorized, validationError } from "./errors.js";
+import { AppError, forbidden, notFound, unauthorized, validationError } from "./errors.js";
 import { newId } from "./ids.js";
 import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
@@ -26,6 +26,15 @@ import { CONNECTOR_TYPES } from "./connectors/registry.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
+import { SolverService } from "./solvers/service.js";
+import { TimeseriesService } from "./timeseries.js";
+import { SchedulerService, RuleScanService } from "./scheduler.js";
+import { ActionService } from "./actions.js";
+import { SopService } from "./sop.js";
+import { KbService } from "./kb.js";
+import { SimClockService } from "./simclock.js";
+import { FeatureService, VIEW_FEATURE_MAP } from "./features.js";
+import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import type { AuthCtx } from "./domain.js";
 
 declare module "fastify" {
@@ -57,6 +66,16 @@ export interface BuiltApp {
     modeling: ModelingService;
     synthetic: SyntheticService;
     metrics: Metrics;
+    solvers: SolverService;
+    timeseries: TimeseriesService;
+    scheduler: SchedulerService;
+    ruleScan: RuleScanService;
+    actions: ActionService;
+    sop: SopService;
+    kb: KbService;
+    simclock: SimClockService;
+    features: FeatureService;
+    embeddings: EmbeddingProvider;
   };
 }
 
@@ -129,8 +148,13 @@ const ExplainSchema = z.object({
 const WebhookSchema = z.object({ url: z.string().url(), events: z.array(z.string()).default([]) });
 
 const ActionDraftSchema = z.object({
-  actionType: z.string().min(1),
+  actionTypeKey: z.string().min(1).optional(),
+  /** legacy alias kept for QOS create_action_draft callers */
+  actionType: z.string().min(1).optional(),
   payload: z.record(z.string(), z.unknown()).default({}),
+  origin: z.object({ taskId: z.string().optional(), agentId: z.string().optional() }).optional(),
+  /** false → stay in DRAFT (暂存草稿); default true submits immediately */
+  submit: z.boolean().optional(),
 });
 
 const RuleDocJsonSchema = z.object({
@@ -156,12 +180,57 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const authz = new AuthzService(repos);
   const outbox = new OutboxService(repos, logger, deps.fetchImpl);
   const rules = new RulesService(repos, outbox);
-  const ontology = new OntologyService(repos, authz, outbox);
+  const solvers = new SolverService(repos);
+  const ontology = new OntologyService(repos, authz, outbox, solvers);
+  const timeseries = new TimeseriesService(repos, authz, outbox);
+  const features = new FeatureService(repos);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
   const connectors = new ConnectorService(repos, blob, cipher, metrics, deps.fetchImpl ?? fetch);
-  const ruleDocs = new RuleDocService(repos, blob, llm, rules, metrics, config.DC_LLM_MODEL);
+  const embeddings = createEmbeddingProvider(
+    {
+      kind: config.EMBEDDING_PROVIDER,
+      baseUrl: config.EMBEDDING_BASE_URL,
+      model: config.EMBEDDING_MODEL,
+      dim: config.EMBEDDING_DIM,
+      apiKeyEnv: config.EMBEDDING_API_KEY_ENV,
+    },
+    process.env,
+    deps.fetchImpl ?? fetch,
+  );
+  const ruleDocs = new RuleDocService(repos, blob, llm, rules, metrics, config.DC_LLM_MODEL, embeddings);
   const modeling = new ModelingService(repos, llm, ontology, metrics, config.DC_LLM_MODEL);
-  const synthetic = new SyntheticService(repos, llm, ontology, rules, metrics, config.DC_LLM_MODEL);
+  const synthetic = new SyntheticService(repos, llm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
+  const actions = new ActionService(repos, rules, outbox);
+  const ruleScan = new RuleScanService(repos, timeseries, outbox);
+  const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
+  const sop = new SopService(repos, solvers, outbox);
+  const kb = new KbService(repos, authz, blob, embeddings);
+  const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
+  // cross-wiring (kept out of constructors to avoid dependency cycles)
+  synthetic.wire({ scheduler, features, actions, ts: timeseries });
+  connectors.wire({ ts: timeseries, scheduler });
+  simclock.setResetRunner(async (c, spec) => synthetic.runJob(c, spec));
+  const systemCtx = (tenantId: string): AuthCtx => ({ tenantId, userId: "system", roles: ["admin"], attributes: {} });
+  scheduler
+    .on("CONNECTOR_SYNC", async (tenantId, refId) => {
+      await connectors.sync(systemCtx(tenantId), refId);
+    })
+    .on("DERIVATION_FULL", async (tenantId) => {
+      await ontology.runDerivations(systemCtx(tenantId));
+    })
+    .on("RULE_SCAN", async (tenantId) => {
+      await ruleScan.scan(tenantId);
+    })
+    .on("TS_AGGREGATE", async (tenantId) => {
+      await timeseries.runAggregation(tenantId);
+    });
+
+  /** Entitlement middleware helper: bound feature off → 404 FEATURE_NOT_FOUND (before authz). */
+  const requireFeatureTag = async (req: FastifyRequest, kind: "solverKeys" | "apiTags", value: string) => {
+    const tenantId = req.authCtx?.tenantId;
+    if (!tenantId) throw unauthorized();
+    await features.requireByBinding(tenantId, kind, value);
+  };
 
   // pino Logger satisfies FastifyBaseLogger at runtime; generics differ across pino majors.
   const httpLogger = logger.child({ component: "http" }) as unknown as FastifyBaseLogger;
@@ -261,9 +330,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const configs = await repos.viewConfigs.list(c.tenantId, (v) =>
       baseRoles.includes(v.role) || c.roles.includes(v.role),
     );
-    const views = configs.flatMap((v) => v.views);
+    // Entitlement: navigation/views are filtered server-side by the resolved feature set.
+    const resolved = await features.resolveForUser(c);
+    const enabled = new Set(resolved.features);
+    const viewAllowed = (key: string) => {
+      const fk = VIEW_FEATURE_MAP[key];
+      return !fk || enabled.has(fk);
+    };
+    const views = configs.flatMap((v) => v.views).filter((v) => viewAllowed(v.key));
     const scenarioPackages = [...new Set(configs.flatMap((v) => v.scenarioPackages))];
-    const navigation = configs.flatMap((v) => v.navigation);
+    const navigation = configs.flatMap((v) => v.navigation).filter((n) => viewAllowed(n.key));
     const theme = configs[0]?.theme ?? {};
     return {
       tenant: tenant ? { id: tenant.id, name: tenant.name, industry: tenant.industry } : { id: c.tenantId },
@@ -271,6 +347,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       views,
       theme,
       navigation,
+      features: resolved.features,
+      configVersion: resolved.configVersion,
     };
   });
 
@@ -372,6 +450,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/solvers/:solverKey/invoke", async (req) => {
     const { solverKey } = req.params as { solverKey: string };
+    // entitlement first (404 FEATURE_NOT_FOUND), then authz/execution
+    await requireFeatureTag(req, "solverKeys", solverKey);
     const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
     return ontology.invokeSolver(ctx(req), solverKey, body.args);
   });
@@ -379,10 +459,67 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const run = await ontology.runDerivations(ctx(req));
     return reply.status(202).send(run);
   });
+
+  // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {
+    const c = ctx(req);
     const body = parseBody(ActionDraftSchema, req.body);
-    const result = await ontology.createActionDraft(ctx(req), body.actionType, body.payload);
-    return reply.status(201).send(result);
+    const key = body.actionTypeKey ?? body.actionType;
+    if (!key) throw validationError("actionTypeKey required");
+    await authz.require(c, "ACTION_TYPE", key, "EXECUTE");
+    const draft = await actions.create(c, {
+      actionTypeKey: key,
+      payload: body.payload,
+      origin: body.origin,
+      submit: body.submit,
+    });
+    return reply.status(201).send({ draftId: draft.id, status: draft.status, draft });
+  });
+  app.post("/a/v1/action-drafts/:id/submit", async (req) => {
+    const { id } = req.params as { id: string };
+    return actions.submit(ctx(req), id);
+  });
+  app.get("/a/v1/action-drafts", async (req) => {
+    const { status, role } = req.query as { status?: string; role?: string };
+    return actions.list(ctx(req), { status, role });
+  });
+  app.get("/a/v1/action-drafts/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    return actions.get(ctx(req), id);
+  });
+  app.post("/a/v1/action-drafts/:id/approve", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(z.object({ comment: z.string().optional() }), req.body);
+    return actions.approve(ctx(req), id, body.comment);
+  });
+  app.post("/a/v1/action-drafts/:id/reject", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(z.object({ comment: z.string().min(1, "reject comment is required") }), req.body);
+    return actions.reject(ctx(req), id, body.comment);
+  });
+  app.post("/a/v1/action-drafts/:id/cancel", async (req) => {
+    const { id } = req.params as { id: string };
+    return actions.cancel(ctx(req), id);
+  });
+  app.get("/a/v1/action-drafts/:id/audit", async (req) => {
+    const { id } = req.params as { id: string };
+    return actions.audit(ctx(req), id);
+  });
+  app.get("/a/v1/action-types", async (req) => actions.listTypes(ctx(req)));
+  app.post("/a/v1/action-types", async (req, reply) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const body = parseBody(
+      z.object({
+        key: z.string().min(1),
+        name: z.string().min(1),
+        paramsSchema: z.record(z.string(), z.unknown()).default({}),
+        checkRules: z.array(z.string()).default([]),
+        approvalChain: z.array(z.object({ role: z.string() })).min(1).max(3),
+      }),
+      req.body,
+    );
+    return reply.status(201).send(await actions.registerType(c, body));
   });
 
   // ---- A5 rules -----------------------------------------------------------------------
@@ -532,6 +669,170 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.get("/a/v1/industry-templates", async (req) => repos.industryTemplates.list(ctx(req).tenantId));
 
+  // ---- Feature entitlement -----------------------------------------------------------------
+  const requireAdmin = (c: AuthCtx) => {
+    if (!c.roles.some((r) => ["admin", "catalog_admin"].includes(r.split(":")[0] as string))) {
+      throw forbidden("admin / catalog_admin only");
+    }
+  };
+  app.get("/a/v1/features/registry", async (req) => {
+    ctx(req);
+    return features.registry();
+  });
+  app.get("/a/v1/tenants/:id/features", async (req, reply) => {
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    if (id !== c.tenantId) throw forbidden("cross-tenant feature read");
+    const resolved = await features.resolve(id);
+    const etag = `W/"fv-${resolved.configVersion}"`;
+    reply.header("etag", etag);
+    if (req.headers["if-none-match"] === etag) return reply.status(304).send();
+    return resolved;
+  });
+  app.put("/a/v1/tenants/:id/features", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { id } = req.params as { id: string };
+    if (id !== c.tenantId) throw forbidden("cross-tenant feature write");
+    const body = parseBody(z.object({ overrides: z.record(z.string(), z.boolean()) }), req.body);
+    await features.putTenantConfig(c, id, body.overrides);
+    return features.resolve(id);
+  });
+  app.put("/a/v1/tenants/:id/features/roles/:role", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { id, role } = req.params as { id: string; role: string };
+    if (id !== c.tenantId) throw forbidden("cross-tenant feature write");
+    const body = parseBody(z.object({ overrides: z.record(z.string(), z.boolean()) }), req.body);
+    await features.putRoleConfig(c, id, role, body.overrides);
+    return features.resolve(id, role);
+  });
+  app.get("/a/v1/tenants/:id/features/preview", async (req) => {
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    if (id !== c.tenantId) throw forbidden("cross-tenant feature read");
+    const { role } = req.query as { role?: string };
+    return features.resolve(id, role);
+  });
+  app.get("/a/v1/tenants/:id/features/audit", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { id } = req.params as { id: string };
+    if (id !== c.tenantId) throw forbidden("cross-tenant feature read");
+    return features.audit(id);
+  });
+
+  // ---- S3 scheduler --------------------------------------------------------------------------
+  app.get("/a/v1/scheduler/jobs", async (req) => {
+    const { kind } = req.query as { kind?: string };
+    return scheduler.listJobs(ctx(req).tenantId, kind);
+  });
+  app.post("/a/v1/scheduler/jobs/:id/pause", async (req) => {
+    const { id } = req.params as { id: string };
+    return scheduler.setStatus(ctx(req).tenantId, id, "PAUSED");
+  });
+  app.post("/a/v1/scheduler/jobs/:id/resume", async (req) => {
+    const { id } = req.params as { id: string };
+    return scheduler.setStatus(ctx(req).tenantId, id, "ACTIVE");
+  });
+  app.get("/a/v1/scheduler/jobs/:id/runs", async (req) => {
+    const { id } = req.params as { id: string };
+    return scheduler.listRuns(ctx(req).tenantId, id);
+  });
+
+  // ---- S1.8 S&OP (apiTag "sop" → view.sop-balance entitlement) --------------------------------
+  app.post("/a/v1/sop/versions", async (req, reply) => {
+    await requireFeatureTag(req, "apiTags", "sop");
+    const body = parseBody(
+      z.object({ month: z.string(), inputs: z.record(z.string(), z.unknown()).default({}) }),
+      req.body,
+    );
+    return reply.status(201).send(await sop.create(ctx(req), body));
+  });
+  app.get("/a/v1/sop/versions", async (req) => {
+    await requireFeatureTag(req, "apiTags", "sop");
+    return sop.list(ctx(req));
+  });
+  app.get("/a/v1/sop/versions/:id", async (req) => {
+    await requireFeatureTag(req, "apiTags", "sop");
+    const { id } = req.params as { id: string };
+    return sop.get(ctx(req), id);
+  });
+  app.patch("/a/v1/sop/versions/:id", async (req) => {
+    await requireFeatureTag(req, "apiTags", "sop");
+    const { id } = req.params as { id: string };
+    const body = parseBody(z.object({ fields: z.record(z.string(), z.unknown()) }), req.body);
+    return sop.patch(ctx(req), id, body.fields);
+  });
+  app.post("/a/v1/sop/versions/:id/advance", async (req) => {
+    await requireFeatureTag(req, "apiTags", "sop");
+    const { id } = req.params as { id: string };
+    const body = parseBody(
+      z.object({ step: z.number().int().min(1).max(5), payload: z.record(z.string(), z.unknown()).default({}) }),
+      req.body,
+    );
+    return sop.advance(ctx(req), id, body.step, body.payload);
+  });
+  app.post("/a/v1/sop/versions/:id/finalize", async (req) => {
+    await requireFeatureTag(req, "apiTags", "sop");
+    const { id } = req.params as { id: string };
+    return sop.finalize(ctx(req), id);
+  });
+
+  // ---- S4 knowledge base ------------------------------------------------------------------------
+  app.post("/a/v1/kb/search", async (req) => {
+    const body = parseBody(
+      z.object({ query: z.string().min(1), topK: z.number().int().min(1).max(10).optional(), connId: z.string().optional() }),
+      req.body,
+    );
+    return kb.search(ctx(req), body);
+  });
+  app.post("/a/v1/kb/:connId/docs", async (req, reply) => {
+    const c = ctx(req);
+    const { connId } = req.params as { connId: string };
+    let filename: string;
+    let content: Buffer;
+    if (req.isMultipart()) {
+      const file = await req.file();
+      if (!file) throw validationError("multipart file required");
+      filename = file.filename;
+      content = await file.toBuffer();
+    } else {
+      const body = parseBody(RuleDocJsonSchema, req.body);
+      filename = body.filename;
+      content = Buffer.from(body.contentBase64, "base64");
+    }
+    const result = await kb.addDoc(c, connId, filename, content);
+    return reply.status(201).send({ docId: result.doc.id, chunkCount: result.chunkCount });
+  });
+  app.post("/a/v1/kb/:connId/sync", async (req, reply) => {
+    const { connId } = req.params as { connId: string };
+    return reply.status(202).send(await kb.sync(ctx(req), connId));
+  });
+
+  // ---- A8 timeseries ------------------------------------------------------------------------------
+  app.post("/a/v1/timeseries/agg-query", async (req) => {
+    const body = parseBody(QueryTimeseriesAggInputSchema, req.body);
+    return timeseries.aggQuery(ctx(req), body);
+  });
+  app.get("/a/v1/timeseries/agg-specs", async (req) => repos.tsAggSpecs.list(ctx(req).tenantId));
+  app.post("/a/v1/timeseries/aggregate", async (req, reply) => {
+    const c = ctx(req);
+    const body = parseBody(z.object({ specKeys: z.array(z.string()).optional(), full: z.boolean().optional() }), req.body);
+    return reply.status(202).send(await timeseries.runAggregation(c.tenantId, body));
+  });
+
+  // ---- A8.6 simulation clock -------------------------------------------------------------------------
+  app.get("/a/v1/synthetic/clock", async (req) => simclock.getClock(ctx(req)));
+  app.post("/a/v1/synthetic/clock/tick", async (req, reply) => {
+    const body = parseBody(ClockTickBodySchema, req.body);
+    const result = await simclock.tick(ctx(req), body.advance);
+    return reply.status(202).send({ tickJobId: result.tickJobId, status: "SUCCEEDED", report: result.report });
+  });
+  app.post("/a/v1/synthetic/clock/reset", async (req, reply) => {
+    return reply.status(202).send(await simclock.reset(ctx(req)));
+  });
+
   // ---- webhooks / outbox (C-2) ---------------------------------------------------------------
   app.post("/a/v1/webhooks", async (req, reply) => {
     const c = ctx(req);
@@ -543,8 +844,43 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/webhooks", async (req) => repos.webhooks.list(ctx(req).tenantId));
   app.get("/a/v1/outbox", async (req) => repos.outboxEvents.list(ctx(req).tenantId));
 
+  // PATCH connection (schedule changes re-register/unregister CONNECTOR_SYNC jobs)
+  app.patch("/a/v1/connections/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(
+      z.object({
+        name: z.string().optional(),
+        schedule: z.object({ cron: z.string() }).nullable().optional(),
+        config: z.record(z.string(), z.unknown()).optional(),
+      }),
+      req.body,
+    );
+    return connectors.updateConnection(ctx(req), id, body);
+  });
+
   return {
     app,
-    services: { auth, authz, outbox, rules, ontology, connectors, ruleDocs, modeling, synthetic, metrics },
+    services: {
+      auth,
+      authz,
+      outbox,
+      rules,
+      ontology,
+      connectors,
+      ruleDocs,
+      modeling,
+      synthetic,
+      metrics,
+      solvers,
+      timeseries,
+      scheduler,
+      ruleScan,
+      actions,
+      sop,
+      kb,
+      simclock,
+      features,
+      embeddings,
+    },
   };
 }

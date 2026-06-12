@@ -98,7 +98,48 @@ export class RuleDocService {
     private rules: RulesService,
     private metrics: Metrics,
     private model: string,
+    private embeddings?: import("./embeddings.js").EmbeddingProvider,
   ) {}
+
+  private async dupThreshold(tenantId: string): Promise<number> {
+    const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
+    const t = (rec?.params as { dupSimilarityThreshold?: number } | undefined)?.dupSimilarityThreshold;
+    return typeof t === "number" ? t : 0.92;
+  }
+
+  /** S4.2: embed name+expression; similarity > threshold vs a PUBLISHED rule → 疑似重复. */
+  private async markNearDuplicates(ctx: AuthCtx, candidates: RuleCandidate[]): Promise<void> {
+    if (!this.embeddings || candidates.length === 0) return;
+    const published = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    if (published.length === 0) return;
+    const threshold = await this.dupThreshold(ctx.tenantId);
+    const ruleTexts = published.map((r) => `${r.name} ${r.expression}`);
+    const candTexts = candidates.map((c) => `${c.candidate.name} ${c.candidate.expression}`);
+    const [ruleVecs, candVecs] = [
+      await this.embeddings.embed(ruleTexts),
+      await this.embeddings.embed(candTexts),
+    ];
+    const { cosineSimilarity } = await import("./repo/memory.js");
+    for (let i = 0; i < candidates.length; i++) {
+      let best = -1;
+      let bestIdx = -1;
+      for (let j = 0; j < published.length; j++) {
+        const s = cosineSimilarity(candVecs[i] as number[], ruleVecs[j] as number[]);
+        if (s > best) {
+          best = s;
+          bestIdx = j;
+        }
+      }
+      if (best > threshold && bestIdx >= 0) {
+        const rule = published[bestIdx] as (typeof published)[number];
+        (candidates[i] as RuleCandidate).suspectedDuplicateOf = {
+          ruleId: rule.id,
+          ruleKey: rule.key,
+          similarity: Math.round(best * 10000) / 10000,
+        };
+      }
+    }
+  }
 
   async uploadAndProcess(
     ctx: AuthCtx,
@@ -162,6 +203,7 @@ export class RuleDocService {
       }
     }
     await this.markDiffs(ctx, doc, candidates);
+    await this.markNearDuplicates(ctx, candidates);
     for (const rc of candidates) await this.repos.ruleCandidates.put(rc);
     doc.status = candidates.length > 0 ? "IN_REVIEW" : "EXTRACTED";
     await this.repos.ruleDocs.put(doc);

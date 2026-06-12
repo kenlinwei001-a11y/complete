@@ -51,6 +51,20 @@ export function b64(s: string): string {
   return Buffer.from(s, "utf8").toString("base64");
 }
 
+/** Seed the battery synthetic dataset (objects + links + 90d ts history + params + specs). */
+export async function seedBattery(t: TestApp, seed = 42): Promise<void> {
+  const res = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/synthetic/jobs",
+    headers: ADMIN,
+    payload: { industry: "battery-manufacturing", scale: "S", seed },
+  });
+  if (res.statusCode !== 202) throw new Error(`synthetic job failed: ${res.body}`);
+}
+
+export const invokeSolver = (t: TestApp, solverKey: string, args: Record<string, unknown>, headers = ADMIN) =>
+  t.app.inject({ method: "POST", url: `/a/v1/solvers/${solverKey}/invoke`, headers, payload: { args } });
+
 export const ORDERS_CSV = `so,cust,model,qty,due,status
 SO-00001,星辰汽车,4680-NCM,1200,2026-07-15,OPEN
 SO-00002,蓝海储能,S192-LFP,800,2026-07-20,OPEN

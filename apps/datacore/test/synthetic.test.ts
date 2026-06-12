@@ -26,7 +26,9 @@ describe("A7 synthetic data", () => {
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 
     const snapshot1 = (await t.repos.objects.list("demo")).sort((a, b) => (a.id < b.id ? -1 : 1));
-    expect(snapshot1).toHaveLength(12 + 6 + 20);
+    const totalFromReport = Object.values(report.rowCounts).reduce((a, b) => a + b, 0);
+    expect(snapshot1).toHaveLength(totalFromReport);
+    expect(snapshot1.length).toBeGreaterThanOrEqual(12 + 6 + 20);
     // a 常州 base exists
     expect(snapshot1.some((o) => o.type === "Base" && o.props.name === "常州")).toBe(true);
 

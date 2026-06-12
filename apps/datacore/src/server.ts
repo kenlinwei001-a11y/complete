@@ -5,7 +5,7 @@ import { loadConfig } from "./config.js";
 import { createMemoryRepos } from "./repo/memory.js";
 import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
-import { AnthropicLlmClient } from "./llm.js";
+import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { seedDemo, seedDemoSynthetic, DEMO_TENANT } from "./seed.js";
 
@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     ? await createPgRepos(config.DATABASE_URL, join(__dirname, "..", "migrations"))
     : createMemoryRepos();
   const blob = new LocalFsBlobStore(config.BLOB_DIR);
-  const llm = new AnthropicLlmClient();
+  const llm = createLlmClient(config);
 
   const { app, services } = await buildApp({ config, repos, blob, llm, logger });
 
@@ -29,6 +29,8 @@ async function main(): Promise<void> {
     logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
     await seedDemoSynthetic(services.synthetic, adminCtx);
   }
+
+  services.scheduler.start();
 
   services.outbox.start(async () => {
     const tenants = await repos.tenants.list(DEMO_TENANT).catch(() => []);
@@ -48,6 +50,7 @@ async function main(): Promise<void> {
     const timeout = setTimeout(() => process.exit(1), 30_000);
     timeout.unref();
     services.outbox.stop();
+    services.scheduler.stop();
     void app
       .close()
       .then(() => repos.close())

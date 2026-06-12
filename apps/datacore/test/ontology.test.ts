@@ -5,6 +5,12 @@ import { evalArithmetic, parseAggregate } from "../src/ontology.js";
 describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
   it("solvers are deterministic: same input → same output; different input → different", async () => {
     const t = await makeApp();
+    await t.app.inject({
+      method: "POST",
+      url: "/a/v1/synthetic/jobs",
+      headers: ADMIN,
+      payload: { industry: "battery-manufacturing", scale: "S", seed: 42 },
+    });
     const invoke = (args: Record<string, unknown>) =>
       t.app.inject({
         method: "POST",
@@ -12,16 +18,18 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
         headers: ADMIN,
         payload: { args },
       });
-    const a1 = (await invoke({ modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 })).json();
-    const a2 = (await invoke({ modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 })).json();
-    // key order must not matter (canonical hashing)
-    const a3 = (await invoke({ weeks: 6, demandDelta: 0.2, modelId: "4680-NCM" })).json();
+    const a1 = (await invoke({ modelId: "4680-NCM", qty: 40, weeks: 6 })).json();
+    const a2 = (await invoke({ modelId: "4680-NCM", qty: 40, weeks: 6 })).json();
+    // argument order must not matter
+    const a3 = (await invoke({ weeks: 6, qty: 40, modelId: "4680-NCM" })).json();
     expect(a2).toEqual(a1);
     expect(a3).toEqual(a1);
-    const b = (await invoke({ modelId: "4680-NCM", demandDelta: 0.4, weeks: 6 })).json();
+    const b = (await invoke({ modelId: "4680-NCM", qty: 80, weeks: 6 })).json();
     expect(b).not.toEqual(a1);
     const data = (a1 as { data: { p50: number; p90: number; gapPct: number; mainBottleneck: string } }).data;
     expect(data.p50).toBeGreaterThan(0);
+    // legacy aliases kept for AgentCore QOS seed plans
+    expect(typeof data.gapPct).toBe("number");
     expect(typeof data.mainBottleneck).toBe("string");
   });
 
@@ -95,7 +103,7 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
     });
     expect(res.statusCode).toBe(201);
     const body = res.json() as { draftId: string; status: string };
-    expect(body.draftId).toMatch(/^draft_/);
+    expect(body.draftId).toMatch(/^act_/);
     expect(body.status).toBe("PENDING_APPROVAL");
     const stored = await t.repos.actionDrafts.get("demo", body.draftId);
     expect(stored!.payload.base).toBe("changzhou");

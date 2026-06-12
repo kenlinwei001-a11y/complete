@@ -28,6 +28,24 @@ function inferType(values: unknown[]): FieldProfile["inferredType"] {
   return "string";
 }
 
+/**
+ * A8.1 schema-discovery suggestion: a time column + an entity key column +
+ * ≥1 numeric measure column → suggest kind=TIMESERIES (人工可改).
+ */
+export function suggestDatasetKind(fields: FieldProfile[]): {
+  kind: "ENTITY" | "TIMESERIES";
+  timeField?: string;
+  entityRefField?: string;
+} {
+  const timeField = fields.find((f) => f.inferredType === "date")?.name;
+  const entityRefField = fields.find(
+    (f) => f.inferredType === "string" && f.uniqueRate < 0.5 && f.uniqueRate > 0,
+  )?.name;
+  const hasMeasure = fields.some((f) => f.inferredType === "number");
+  if (timeField && entityRefField && hasMeasure) return { kind: "TIMESERIES", timeField, entityRefField };
+  return { kind: "ENTITY" };
+}
+
 /** Field profiles: inferredType, samples, nullRate, uniqueRate, enumCandidates (PRD §2.1). */
 export function profileRows(rows: Record<string, unknown>[]): FieldProfile[] {
   const fieldNames: string[] = [];

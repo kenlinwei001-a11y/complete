@@ -3,14 +3,29 @@ import type { AuthCtx, Connection, RawDataset, SyncJob } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { BlobStore } from "../blob.js";
 import type { Metrics } from "../metrics.js";
+import type { TimeseriesService } from "../timeseries.js";
+import type { SchedulerService } from "../scheduler.js";
 import { CredentialCipher } from "../crypto.js";
 import { newId } from "../ids.js";
 import { notFound, validationError } from "../errors.js";
 import { createAdapter, CREDENTIAL_FIELDS, getConnectorType } from "./registry.js";
-import { profileRows } from "./profiler.js";
+import { profileRows, suggestDatasetKind } from "./profiler.js";
 
-/** A1 connector framework: connections, schema discovery, sync → RawDataset. */
+/** Per-dataset config on the connection (A8.1: TIMESERIES marking, also for CSV uploads). */
+interface DatasetConfig {
+  kind?: "ENTITY" | "TIMESERIES";
+  seriesKey?: string;
+  entityType?: string;
+  entityRefField?: string;
+  timeField?: string;
+  measureFields?: string[];
+}
+
+/** A1 connector framework: connections, schema discovery, sync → RawDataset | ts writer. */
 export class ConnectorService {
+  private ts: TimeseriesService | null = null;
+  private scheduler: SchedulerService | null = null;
+
   constructor(
     private repos: Repos,
     private blob: BlobStore,
@@ -18,6 +33,16 @@ export class ConnectorService {
     private metrics: Metrics,
     private fetchImpl: typeof fetch = fetch,
   ) {}
+
+  wire(deps: { ts?: TimeseriesService; scheduler?: SchedulerService }): void {
+    this.ts = deps.ts ?? this.ts;
+    this.scheduler = deps.scheduler ?? this.scheduler;
+  }
+
+  private datasetConfig(conn: Connection, dataset: string): DatasetConfig | undefined {
+    const all = conn.config.datasets as Record<string, DatasetConfig> | undefined;
+    return all?.[dataset];
+  }
 
   /** Validate config against the connector configSchema (required keys) and encrypt credentials. */
   async createConnection(
@@ -51,6 +76,37 @@ export class ConnectorService {
       schedule: input.schedule,
       status: "ACTIVE",
     };
+    await this.repos.connections.put(conn);
+    // S3: connections with schedule.cron auto-register a CONNECTOR_SYNC job.
+    if (this.scheduler && input.schedule?.cron) {
+      await this.scheduler.register(ctx.tenantId, "CONNECTOR_SYNC", conn.id, input.schedule.cron);
+    }
+    return this.redact(conn);
+  }
+
+  /** Update schedule → re-register/unregister the CONNECTOR_SYNC job. */
+  async updateConnection(
+    ctx: AuthCtx,
+    id: string,
+    patch: { name?: string; schedule?: { cron: string } | null; config?: Record<string, unknown> },
+  ): Promise<Connection> {
+    const conn = await this.getConnection(ctx, id);
+    if (patch.name) conn.name = patch.name;
+    if (patch.config) {
+      for (const [k, v] of Object.entries(patch.config)) {
+        conn.config[k] = CREDENTIAL_FIELDS.has(k) && typeof v === "string" ? this.cipher.encrypt(v) : v;
+      }
+    }
+    if (patch.schedule !== undefined) {
+      conn.schedule = patch.schedule ?? undefined;
+      if (this.scheduler) {
+        if (patch.schedule?.cron) {
+          await this.scheduler.register(ctx.tenantId, "CONNECTOR_SYNC", conn.id, patch.schedule.cron);
+        } else {
+          await this.scheduler.unregister(ctx.tenantId, "CONNECTOR_SYNC", conn.id);
+        }
+      }
+    }
     await this.repos.connections.put(conn);
     return this.redact(conn);
   }
@@ -86,7 +142,25 @@ export class ConnectorService {
   async discoverSchema(ctx: AuthCtx, connId: string): Promise<SourceSchema> {
     const conn = await this.getConnection(ctx, connId);
     const adapter = createAdapter(conn.connectorTypeKey, this.decryptedConfig(conn), this.blob, this.fetchImpl);
-    return adapter.discoverSchema();
+    const schema = await adapter.discoverSchema();
+    // A8.1: schema discovery suggests kind=TIMESERIES (time col + entity key + numeric measures);
+    // explicit per-dataset connection config overrides the suggestion (人工可改).
+    for (const ds of schema.datasets) {
+      const cfg = this.datasetConfig(conn, ds.name);
+      if (cfg?.kind) {
+        ds.kind = cfg.kind;
+        ds.timeField = cfg.timeField ?? ds.timeField;
+        ds.entityRefField = cfg.entityRefField ?? ds.entityRefField;
+      } else {
+        const suggestion = suggestDatasetKind(ds.fields);
+        ds.kind = suggestion.kind;
+        if (suggestion.kind === "TIMESERIES") {
+          ds.timeField = suggestion.timeField;
+          ds.entityRefField = suggestion.entityRefField;
+        }
+      }
+    }
+    return schema;
   }
 
   /** POST /a/v1/connections/:id/sync — lands rows in RawDataset; repeat sync is idempotent. */
@@ -112,6 +186,26 @@ export class ConnectorService {
           rows.push(...batch.rows);
           cursor = batch.nextCursor;
         } while (cursor);
+        // A8.1: TIMESERIES datasets bypass raw_datasets/materialize and land via the ts writer.
+        const dsCfg = this.datasetConfig(conn, name);
+        if (dsCfg?.kind === "TIMESERIES" && this.ts) {
+          const numericFields =
+            dsCfg.measureFields ??
+            profileRows(rows.slice(0, 200))
+              .filter((f) => f.inferredType === "number" && f.name !== dsCfg.entityRefField)
+              .map((f) => f.name);
+          const r = await this.ts.writeDatasetRows(ctx.tenantId, {
+            seriesKey: dsCfg.seriesKey ?? `${name}`,
+            entityType: dsCfg.entityType ?? name,
+            entityRefField: dsCfg.entityRefField ?? "entityId",
+            timeField: dsCfg.timeField ?? "ts",
+            measureFields: numericFields,
+            connId: conn.id,
+            origin: "CONNECTOR",
+          }, rows);
+          job.rowCounts[name] = r.written + r.late;
+          continue;
+        }
         // Idempotent: replace dataset rows (one RawDataset per conn+dataset name).
         const existing = (
           await this.repos.rawDatasets.list(

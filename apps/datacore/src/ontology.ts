@@ -7,13 +7,13 @@ import type {
   ObjectInstance,
   ObjectTypeDef,
   OntologyVersion,
-  ActionDraft,
 } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
+import type { SolverService } from "./solvers/service.js";
 import { newId } from "./ids.js";
 import { notFound, validationError } from "./errors.js";
-import { rngFromInput, round } from "./prng.js";
+import { round } from "./prng.js";
 import type { OutboxService } from "./outbox.js";
 
 interface AggregateFormula {
@@ -94,7 +94,12 @@ export class OntologyService {
     private repos: Repos,
     private authz: AuthzService,
     private outbox: OutboxService,
+    private solvers?: SolverService,
   ) {}
+
+  setSolvers(solvers: SolverService): void {
+    this.solvers = solvers;
+  }
 
   // -- type management ------------------------------------------------------
 
@@ -290,47 +295,36 @@ export class OntologyService {
     throw notFound(`slice ${sliceKey}`);
   }
 
-  // -- deterministic solvers ---------------------------------------------------
+  // -- deterministic solvers (S1 real algorithms in solvers/) ---------------------
 
-  /** POST /a/v1/solvers/:solverKey/invoke — stable pseudo-random from input hash. */
+  /** POST /a/v1/solvers/:solverKey/invoke — delegates to the S1 solver engine. */
   async invokeSolver(
     ctx: AuthCtx,
     solverKey: string,
     args: Record<string, unknown>,
   ): Promise<ToolPayload> {
     const snapshotVersion = await this.snapshotVersion(ctx.tenantId);
-    if (solverKey === "capacity_forecast") {
-      const rng = rngFromInput({ solverKey, args });
-      const demandDelta = typeof args.demandDelta === "number" ? args.demandDelta : 0;
-      const p50 = round(0.7 + rng() * 0.25 - demandDelta * 0.2, 3);
-      const p90 = round(Math.max(0, p50 - 0.08 - rng() * 0.1), 3);
-      const gapPct = round(Math.max(0, demandDelta * 0.6 + rng() * 0.1 - 0.05), 3);
-      const bottlenecks = ["电芯", "模组", "PACK", "化成"];
-      const mainBottleneck = bottlenecks[Math.floor(rng() * bottlenecks.length)];
-      return { data: { p50, p90, gapPct, mainBottleneck }, snapshotVersion };
-    }
-    if (solverKey === "affected_orders") {
-      const baseId = String(args.baseId ?? "");
-      if (!baseId) throw validationError("baseId required");
-      const rng = rngFromInput({ solverKey, args });
-      // Pull orders related to the base through the A6-filtered query path.
-      const orders = (await this.queryObjects(ctx, "Order", { bases: baseId }, 200)).data as {
+    if (!this.solvers) throw notFound(`solver ${solverKey}`);
+    // Orders flow through the A6-filtered query path so row policies apply inside solvers.
+    let visibleOrders: ObjectInstance[] | undefined;
+    try {
+      const rows = (await this.queryObjects(ctx, "Order", {}, 1000)).data as {
         id: string;
+        type: string;
         props: Record<string, unknown>;
       }[];
-      const affected = orders
-        .filter(() => rng() < 0.7)
-        .map((o) => ({
-          so: o.props.so,
-          cust: o.props.cust,
-          model: o.props.model,
-          qty: o.props.qty,
-          due: o.props.due,
-          impact: round(0.1 + rng() * 0.9, 2),
-        }));
-      return { data: { baseId, affected, total: affected.length }, snapshotVersion };
+      visibleOrders = rows.map((r) => ({
+        id: r.id,
+        tenantId: ctx.tenantId,
+        type: "Order",
+        props: r.props,
+        origin: { type: "MANUAL" as const },
+      }));
+    } catch {
+      visibleOrders = []; // no READ grant on Order → solvers see no orders
     }
-    throw notFound(`solver ${solverKey}`);
+    const data = await this.solvers.invoke(ctx, solverKey, args, visibleOrders);
+    return { data, snapshotVersion };
   }
 
   // -- derivation pipeline ------------------------------------------------------
@@ -462,27 +456,6 @@ export class OntologyService {
     }
   }
 
-  // -- action drafts -------------------------------------------------------------
-
-  /** POST /a/v1/action-drafts → { draftId, status: "PENDING_APPROVAL" } */
-  async createActionDraft(
-    ctx: AuthCtx,
-    actionType: string,
-    payload: Record<string, unknown>,
-  ): Promise<{ draftId: string; status: "PENDING_APPROVAL" }> {
-    await this.authz.require(ctx, "ACTION_TYPE", actionType, "EXECUTE");
-    const draft: ActionDraft = {
-      id: newId("draft"),
-      tenantId: ctx.tenantId,
-      actionType,
-      payload,
-      status: "PENDING_APPROVAL",
-      createdBy: ctx.userId,
-      createdAt: new Date().toISOString(),
-    };
-    await this.repos.actionDrafts.put(draft);
-    return { draftId: draft.id, status: "PENDING_APPROVAL" };
-  }
 }
 
 export { primaryKeyProp };
