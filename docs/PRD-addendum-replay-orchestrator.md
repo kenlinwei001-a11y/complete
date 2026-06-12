@@ -77,3 +77,39 @@ type OpsAction =
 | R7 | 权限一致性 | 基地负责人 persona 的历史回答只含其基地数据（抽查跨基地泄露=0） |
 | R8 | 性能 | S 规模 365 tick 含剧本全量回放 ≤8 分钟 |
 | R9 | 隔离 | 真实租户挂 playbook / 创建虚拟账号均被拒 |
+
+---
+
+## 6. 真实租户的运营自动化（OpsSchedule——与虚拟回放的分界）
+
+> 同样的"定期自动"诉求在**真实生产租户**中按动作性质分三类处理。配置载体为 `OpsSchedule`（租户级，tenant_admin 在管理台配置，底层复用 S3 调度器）——**人定义"定期"，系统执行**。
+
+### 6.1 三类动作的自动化边界
+
+| 类 | 动作 | 自动化方式 | 依据 |
+|---|---|---|---|
+| **A 全自动**（计算类，无权责） | 定期发起产能预测（默认每周一 06:00，按型号清单）→ 这是 M11 校准配对样本在真实租户的**正式来源**；派生全量重算；规则扫描；风险推演刷新 | S3 调度器新 kind `SCHEDULED_FORECAST`（即包装为定时 workflow），ServiceAccount 身份执行（平台 PRD §6.3 Q1 例外条款），产物标 `executedAs: SERVICE_ACCOUNT` | 计算不涉权责，自动无害且必要 |
+| **B 半自动**（流程推进类，人保留决策点） | S&OP 月度周期：系统按 cron **自动开启**新版本、自动完成①–④的计算与议程生成、按节点**催办**（事件通知→责任人）；第⑤步决策与定稿**必须人做**。审批：超时催办、超时升级（N 天未审→上级角色），可选"低风险自动批准策略"（按 actionType+金额阈值配置，**默认关闭**，开启需 tenant_admin 显式配置并全审计——先例为 M11 autoApply） | OpsSchedule 配置项 + S&OP 工作流模板 + Action 催办策略 | "系统算路径与后果，拍板由人"的原则不破 |
+| **C 禁止自动**（演示专属） | 虚拟提问刷任务史、虚拟审批 | **仅限 SYNTHETIC 租户**（§3-6 隔离条款）——真实租户的任务史必须来自真实用户行为，机器人刷史污染审计与孵化统计 | 审计真实性红线 |
+
+### 6.2 OpsSchedule 配置模型
+
+```ts
+interface OpsSchedule {                 // (tenantId) 唯一，管理台 /admin/ops-schedule
+  forecasts: { cron: string; modelIds: string[] | "ALL_ACTIVE"; weeks: number }[];
+  sopCycle: { openCron: string;        // 如每月25日开启下月版本
+              stepDeadlines: number[]; // ①–④各步催办期限（天）
+              escalateAfterDays: number };
+  approvalReminder: { remindAfterDays: number; escalateAfterDays: number; escalateToRole: string };
+  autoApprove?: { actionTypes: string[]; maxAmount?: number; enabled: boolean };  // 默认 enabled=false
+}
+```
+
+### 6.3 验收用例增量
+
+| # | 用例 | 预期 |
+|---|---|---|
+| R10 | 定时预测 | cron 触发后预测对象产生、executedAs=SERVICE_ACCOUNT、calibration_pairs 随真实实绩到达自动配对 |
+| R11 | S&OP 半自动 | 自动开启版本+①–④计算完成+议程生成；⑤未到人保持 IN_REVIEW；催办事件按期发出；任何"自动定稿"路径不存在（静态断言） |
+| R12 | 审批催办与升级 | 超期催办→再超期升级到上级角色；autoApprove 默认关；开启后仅命中白名单类型且全审计 |
+| R13 | C 类隔离 | 真实租户配置"自动提问"类动作无入口、API 直调被拒 |
