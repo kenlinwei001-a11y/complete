@@ -44,9 +44,11 @@ describe("F29 · 数据健康度（§7.22 三处同源）", () => {
     loginAs("planner");
     renderApp("/v/project-sim");
 
-    // 4680-LFP 命中 C09 健康度降级（mock 求解器与 data-health 同口径）
-    await user.selectOptions(await screen.findByLabelText("型号"), "4680-LFP");
-    await user.click(screen.getByTestId("proj-run"));
+    // 4680-LFP 命中 C09 健康度降级（mock 求解器与 data-health 同口径）；
+    // 改型号即重算（debounce 300ms），降级说明在 ④ 逐级聚合 步骤展示
+    await screen.findByTestId("pm-stepper");
+    await user.selectOptions(screen.getByLabelText("型号"), "4680-LFP");
+    await user.click(screen.getByTestId("pm-step-chip-4"));
     const note = await screen.findByTestId("degrade-note");
     expect(note).toHaveTextContent(DEGRADE_COPY);
 

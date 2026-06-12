@@ -709,6 +709,74 @@ await check("S&OP", "五步法 advance ①→⑤ + finalize；FINAL 后 PATCH �
   const locked = await a(`/a/v1/sop/versions/${sopId}`, { method: "PATCH", body: { demTotal: 140 } });
   envelope(locked, 409, "PLAN_LOCKED");
 });
+await check("S&OP", "GET /a/v1/plan-versions/current（规划体检基线 —— SPA PlanVersionCurrentSchema parse）", async () => {
+  const r = await a("/a/v1/plan-versions/current");
+  eq(r.status, 200, "status");
+  if (contracts?.PlanVersionCurrentSchema) ok(contracts.PlanVersionCurrentSchema.safeParse(r.body).success, "PlanVersionCurrentSchema parse");
+  ok(typeof r.body.versionLabel === "string" && r.body.versionLabel.length > 0, "versionLabel");
+  for (const k of ["dem", "seg_pas", "seg_ess", "seg_com", "sup", "ltaCov", "kitGap", "gmTarget", "cashCushion", "capex"]) {
+    ok(typeof r.body.input?.[k] === "number", `input.${k} number`);
+  }
+  // 上一检定稿了 2026-08 → current 应解析到该 FINAL 版本（供给=supFinal）
+  eq(r.body.versionId, sopId, "versionId = 最新 FINAL 版本");
+  eq(r.body.status, "FINAL", "status FINAL");
+});
+await check("S&OP", "定稿走 Action（增量 §7.12）：草稿 → 版本待审批 → admin 批准 → EXECUTED → FINAL；变更走 计划版本变更", async () => {
+  // SPA SopBalanceView 形态：planner 创建版本并推进 ①→⑤ 到 EXEC_MEETING
+  const created = await a("/a/v1/sop/versions", { token: plannerToken, body: { month: "2026-09", inputs: { demTotal: 132 } } });
+  eq(created.status, 201, "create status");
+  const vid = created.body.id;
+  for (const [step, payload] of [
+    [1, {}],
+    [2, {}],
+    [3, {}],
+    [4, { revSum: 248, gmSum: 39.7, gmBudget: 15.5, cashCushion: 58 }],
+    [5, { resolutions: [{ name: "常州化成夜班×1", delta: 1.2 }] }],
+  ]) {
+    const r = await a(`/a/v1/sop/versions/${vid}/advance`, { token: plannerToken, body: { step, payload } });
+    eq(r.status, 200, `step${step} status`);
+  }
+  // 定稿按钮 = POST /a/v1/action-drafts actionType=定稿月度计划版本（不再直接 POST finalize）
+  const draft = await a("/a/v1/action-drafts", {
+    token: plannerToken,
+    body: {
+      actionTypeKey: "定稿月度计划版本",
+      payload: { versionId: vid, month: "2026-09", snapshot: {}, resolutions: [{ name: "常州化成夜班×1", delta: 1.2 }] },
+      origin: { userId: "usr_demo_planner" },
+      submit: true,
+    },
+  });
+  eq(draft.status, 201, "draft status");
+  eq(draft.body.status, "PENDING_APPROVAL", "PENDING_APPROVAL");
+  const pending = await a(`/a/v1/sop/versions/${vid}`, { token: plannerToken });
+  eq(pending.body.status, "EXEC_MEETING", "版本未 FINAL（待审批）");
+  eq(pending.body.pendingApproval?.draftId, draft.body.draftId, "version.pendingApproval.draftId");
+  // admin 批准（SPA decideActionDraft 形态）→ 域执行器：草稿 EXECUTED、版本 FINAL、pendingApproval 清空
+  const dec = await a(`/a/v1/action-drafts/${draft.body.draftId}/decision`, { body: { decision: "APPROVE", comment: "月度定稿" } });
+  eq(dec.status, 200, "decision status");
+  eq(dec.body.status, "EXECUTED", "EXECUTED");
+  const fin = await a(`/a/v1/sop/versions/${vid}`, { token: plannerToken });
+  eq(fin.body.status, "FINAL", "FINAL");
+  ok(fin.body.pendingApproval == null, "pendingApproval cleared");
+  // C22 锁定：直改 409；变更走 计划版本变更 Action，EXECUTED 后 inputs 落库
+  const locked = await a(`/a/v1/sop/versions/${vid}`, { method: "PATCH", token: plannerToken, body: { demTotal: 140 } });
+  envelope(locked, 409, "PLAN_LOCKED");
+  const change = await a("/a/v1/action-drafts", {
+    token: plannerToken,
+    body: {
+      actionTypeKey: "计划版本变更",
+      payload: { versionId: vid, reason: "需求口径修订", patch: { demTotal: 140 } },
+      origin: { userId: "usr_demo_planner" },
+      submit: true,
+    },
+  });
+  eq(change.status, 201, "change draft status");
+  const changeDec = await a(`/a/v1/action-drafts/${change.body.draftId}/decision`, { body: { decision: "APPROVE", comment: "同意变更" } });
+  eq(changeDec.body.status, "EXECUTED", "change EXECUTED");
+  const patched = await a(`/a/v1/sop/versions/${vid}`, { token: plannerToken });
+  eq(patched.body.inputs?.demTotal, 140, "inputs.demTotal 落库");
+  eq(patched.body.status, "FINAL", "仍 FINAL");
+});
 let calibProposalId = "";
 let calibDraftId = "";
 await check("校准", "report（带筛选，CalibrationReportSchema parse）/ proposals / history", async () => {

@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { loginAs, renderApp } from "./utils";
+import { useSessionStore } from "@/store/sessionStore";
+
+/**
+ * F18（增量 §7.13 / 验收表）：project-sim 切到分批并加一紧批 →
+ * 批次表 wkEff 列正确（净窗口 = 交付日 − 地址物流时长）；④步合计行 P90 系数显示；
+ * DAG 随 stepper 点亮且「本步」角标移动。
+ */
+describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", () => {
+  it("分批模式加一紧批：wkEff/物流时长正确，✓/✗ 混合；④合计行 P90=×healthFactor；DAG 点亮随步移动", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+
+    // 默认整单（4680-NCM · 40 万套 · 6 周）首次重算完成 → 六步 stepper + 常显 DAG 面板
+    await screen.findByTestId("pm-stepper");
+    expect(screen.getByTestId("pm-dag-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("pm-step-counter")).toHaveTextContent("1/6");
+
+    // 切到分批：批次表格编辑器（数量/交付日/地址下拉 + 物流时长列）
+    await user.click(screen.getByTestId("mode-batch"));
+    const editor = screen.getByTestId("batch-editor");
+    expect(within(editor).getByTestId("batch-logi-0")).toHaveTextContent("物流 3 天"); // 上海
+    expect(within(editor).getByTestId("batch-logi-1")).toHaveTextContent("物流 14 天"); // 海外
+
+    // 加一紧批（默认 10 万套 @2026-08-24 上海）→ 改交付日 2026-07-20 制造紧批
+    await user.click(screen.getByTestId("batch-add"));
+    fireEvent.change(screen.getByLabelText("第3批交付日期"), { target: { value: "2026-07-20" } });
+
+    // ① 场景解析（分批）：净窗口 wkEff = (交付日 − 物流) / 7（输出按交付日排序）
+    await waitFor(() => expect(screen.getByTestId("batch-wkeff-1")).toHaveTextContent("4 周"));
+    expect(screen.getByTestId("batch-wkeff-0")).toHaveTextContent("3 周"); // 07-13 上海：(28−3)/7
+    expect(screen.getByTestId("batch-wkeff-2")).toHaveTextContent("6 周"); // 08-10 海外：(56−14)/7
+    // 累计需求 vs 累计 P90 校验：✓/✗ 混合（紧批 28 > 25.5 → ✗）
+    expect(screen.getByTestId("batch-ok-0")).toHaveTextContent("✓ 按期");
+    expect(screen.getByTestId("batch-ok-1")).toHaveTextContent("✗ 缺");
+
+    // ④ 逐级聚合：合计行展示 P50 与 P90 = P50 × healthFactor（0.93）
+    await user.click(screen.getByTestId("pm-step-chip-4"));
+    const total = await screen.findByTestId("pm-step4-total");
+    expect(total).toHaveTextContent("P90 = P50 ×");
+    expect(total).toHaveTextContent("0.93");
+
+    // DAG 随步骤点亮：step4 →「本步」在聚合求解器；瓶颈求解器（st=5）未点亮（透明度 0.28）
+    expect(screen.getByTestId("pm-dag-current-agg")).toBeInTheDocument();
+    expect(screen.getByTestId("pm-dag-node-bn")).toHaveAttribute("data-lit", "0");
+    expect(screen.getByTestId("pm-dag-node-fc")).toHaveAttribute("data-lit", "0");
+
+    // 下一步 → step5：「本步」角标移动到瓶颈求解器，agg 不再是当前步
+    await user.click(screen.getByTestId("pm-next"));
+    expect(screen.getByTestId("pm-step-counter")).toHaveTextContent("5/6");
+    expect(screen.getByTestId("pm-dag-current-bn")).toBeInTheDocument();
+    expect(screen.queryByTestId("pm-dag-current-agg")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pm-dag-node-bn")).toHaveAttribute("data-lit", "1");
+
+    // ⑤ 瓶颈定位：多维瓶颈矩阵弹窗（基地×7因素热力，主瓶颈 ◉）
+    await user.click(screen.getByTestId("bn-matrix-open"));
+    const modal = await screen.findByTestId("bn-matrix-modal");
+    await waitFor(() => expect(within(modal).getByTestId("bn-matrix-table")).toBeInTheDocument());
+    expect(within(modal).getByTestId("bn-cell-常州-瓶颈工序")).toHaveTextContent("◉");
+  });
+
+  it("型号选择器/订单点击写入 selectedObjects（查询 Dock 上下文）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+
+    // 订单列表点击 → selectedObjects = Order
+    await user.click(await screen.findByTestId("proj-order-SO-10001"));
+    expect(useSessionStore.getState().selectedObjects).toEqual([
+      expect.objectContaining({ objectType: "Order", label: "SO-10001" }),
+    ]);
+
+    // 型号选择器 → selectedObjects = Model（§7.13 参数区）
+    await user.selectOptions(screen.getByLabelText("型号"), "储能-280Ah");
+    expect(useSessionStore.getState().selectedObjects).toEqual([
+      expect.objectContaining({ objectType: "Model", objectId: "model-储能-280Ah", label: "储能-280Ah" }),
+    ]);
+  });
+});
