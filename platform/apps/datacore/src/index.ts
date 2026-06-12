@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { BASES, MODELS, ORDERS, RULES, USERS, TENANT } from "./seed.js";
+import { historyBundle } from "./history.js";
 import type { AuthCtx, RuleVerdict } from "@platform/contracts";
 
 const PORT = Number(process.env.DATACORE_PORT || 8081);
@@ -69,6 +70,7 @@ const SCENES = [
   { viewKey: "audit", name: "规划体检", mode: "WORKFLOW_ONLY", uiHints: { placeholder: "仅支持预设体检问答", suggestedQuestions: ["现金垫 45 亿过得了体检吗？"] } },
   { viewKey: "generate", name: "规划建议", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "目标与方案", suggestedQuestions: ["推荐哪个经营方案？"] } },
   { viewKey: "explore", name: "自由探索 · AI", mode: "AGENT_FIRST", defaultAgentKey: "analyst", uiHints: { placeholder: "任意业务问题，AI 自由编排工具回答", suggestedQuestions: ["对比储能基地和动力基地的平均利用率", "哪个基地利用率最高？瓶颈是什么？"] } },
+  { viewKey: "review", name: "运营回顾 · 12个月", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对运营史提问", suggestedQuestions: ["推荐哪个经营方案？"] } },
 ] as const;
 
 function workspaceFor(ctx: AuthCtx) {
@@ -120,6 +122,11 @@ app.post("/a/v1/rules/evaluate", async (req, reply) => {
   const ctx = auth(req, reply); if (!ctx) return;
   const { ruleIds, payload } = (req.body as any) || {};
   return { verdicts: evaluateRules(ruleIds || [], payload || {}), snapshotVersion: SNAP };
+});
+
+app.get("/a/v1/history/bundle", async (req, reply) => {
+  const ctx = auth(req, reply); if (!ctx) return;
+  return historyBundle(new Set(visibleBases(ctx).map(b => b.name)));
 });
 
 app.post("/a/v1/action-drafts", async (req, reply) => {

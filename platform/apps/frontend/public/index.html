@@ -96,7 +96,10 @@ tr:hover td{background:rgba(226,235,245,.03);cursor:pointer}
 
 <script>
 const A = location.protocol+"//"+location.hostname+":8081", B = "";
-let token="", ws=null, view="dash", selected=[], conv=null, provMap={};
+let token="", ws=null, view="dash", selected=[], conv=null, provMap={}, hist=null;
+function lineSVG(pts,w,h,color,fmt){const max=Math.max(...pts.map(p=>p.v))*1.08,min=Math.min(...pts.map(p=>p.v))*0.92;
+  const xy=pts.map((p,i)=>`${(i/(pts.length-1)*w).toFixed(1)},${(h-(p.v-min)/(max-min)*h).toFixed(1)}`).join(" ");
+  return `<svg width="100%" viewBox="0 0 ${w} ${h+16}" style="overflow:visible"><polyline points="${xy}" fill="none" stroke="${color}" stroke-width="2"/>${pts.map((p,i)=>i%Math.ceil(pts.length/8)===0?`<text x="${(i/(pts.length-1)*w).toFixed(0)}" y="${h+12}" font-size="8" fill="var(--muted2)">${p.l}</text>`:"").join("")}</svg>`}
 
 async function api(base, path, opts={}){
   const r = await fetch(base+path,{...opts,headers:{"content-type":"application/json",authorization:"Bearer "+token,...(opts.headers||{})}});
@@ -111,6 +114,7 @@ async function login(){
     const h=await fetch(B+"/healthz").then(r=>r.json());
     document.getElementById("llmInfo").textContent=`LLM: ${h.llm==="anthropic"?"Anthropic("+h.models.agent+")":"Mock 演示模式（设 ANTHROPIC_API_KEY 启用真实 Agent）"}`;
     document.getElementById("userInfo").textContent=`${r.user.username} · ${r.user.roles.join("/")}`;
+    hist=await api(A,"/a/v1/history/bundle");
     document.getElementById("login").style.display="none";
     document.getElementById("app").style.display="grid";
     renderNav(); go(ws.navigation[0].viewKey);
@@ -121,7 +125,15 @@ function renderNav(){
   document.getElementById("navTabs").innerHTML=ws.navigation.map(n=>`<span class="tab ${n.viewKey===view?'on':''}" onclick="go('${n.viewKey}')">${n.name}</span>`).join("");
 }
 function scene(){return ws.scenes.find(s=>s.viewKey===view)}
-function go(v){view=v;selected=[];renderNav();renderView();renderDockHints();}
+function go(v){view=v;selected=[];renderNav();renderView();renderDockHints();preloadChatHistory();}
+function preloadChatHistory(){
+  const c=document.getElementById("chat");c.innerHTML="";
+  (hist?.taskHistory||[]).filter(t=>t.view===view).forEach(t=>{
+    c.insertAdjacentHTML("beforeend",`<div class="msg q" style="opacity:.55">${esc(t.q)} <span style="font-size:9px;color:var(--muted2)">${t.at}</span></div>
+    <div class="msg" style="opacity:.55"><div class="ans"><span class="badge ${t.path==="AGENT"?"ag":"wf"}">${t.path==="AGENT"?"探索 · AI":"已验证 · 工作流"}</span><div>${esc(t.a)}</div></div></div>`);
+  });
+  if(c.innerHTML)c.insertAdjacentHTML("beforeend",`<div style="text-align:center;font-size:9px;color:var(--muted2);margin:8px 0">— 以上为历史问答 —</div>`);
+}
 function renderDockHints(){
   const s=scene();
   document.getElementById("q").placeholder=s.uiHints.placeholder;
@@ -139,6 +151,7 @@ async function renderView(){
   if(view==="audit") return renderAudit(m);
   if(view==="generate") return renderGenerate(m);
   if(view==="explore") return m.innerHTML=`<h2>自由探索 · AI</h2><div class="sub2">本入口为 AGENT_FIRST 模式：问题直接交给 Agent 自由编排工具回答（不走意图目录）。右侧对话框提问 →</div>`;
+  if(view==="review") return renderReview(m);
   m.innerHTML="<h2>"+view+"</h2>";
 }
 async function renderDash(m){
@@ -146,10 +159,12 @@ async function renderDash(m){
   const orders=(await api(A,"/a/v1/objects/query",{method:"POST",body:JSON.stringify({objectType:"Order"})})).data;
   const gwh=bases.reduce((s,b)=>s+b.gwh,0), util=(bases.reduce((s,b)=>s+b.util,0)/bases.length).toFixed(1);
   const qty=orders.reduce((s,o)=>s+o.qty,0).toFixed(1);
-  m.innerHTML=`<h2>经营驾驶舱</h2><div class="sub2">数据按你的权限过滤（行级）——可见 ${bases.length} 个基地 · ${orders.length} 张订单。点击表格行选中对象，随提问进入上下文。</div>
-  <div class="kpis"><div class="kpi"><b>${gwh}</b><span>设计产能 GWh</span></div><div class="kpi"><b>${util}%</b><span>平均利用率</span></div><div class="kpi"><b>${qty}</b><span>在手订单 万套</span></div></div>
+  m.innerHTML=`<h2>经营驾驶舱</h2><div class="sub2">数据按你的权限过滤（行级）——可见 ${bases.length} 个基地 · 在手 ${orders.length} 单 · 近 12 个月已交付 ${hist.deliveredCount} 单（准交率 ${hist.onTimeRate}%）</div>
+  <div class="kpis"><div class="kpi"><b>${gwh}</b><span>设计产能 GWh</span></div><div class="kpi"><b>${util}%</b><span>平均利用率</span></div><div class="kpi"><b>${qty}</b><span>在手订单 万套</span></div><div class="kpi"><b>${hist.onTimeRate}%</b><span>12个月准交率</span></div><div class="kpi"><b>${hist.actionHistory.filter(a=>a.status==="EXECUTED").length}</b><span>已执行工单(年)</span></div></div>
+  <div class="box"><b style="font-size:13px">月度产出趋势（近 12 个月，万套）</b>${lineSVG(hist.trend.map(t=>({v:t.output,l:t.month.slice(2)})),560,90,"#4C90F0")}<div style="font-size:10px;color:var(--muted2)">检修月下凹可见 · 全年爬坡 · 数字与基地月度明细同源</div></div>
   <div class="box"><b style="font-size:13px">基地</b>${tbl(bases,["name","pos","lines","gwh","util","bn"],["基地","定位","产线","GWh","利用率","瓶颈"],r=>pick("Base",r.id,r.name))}</div>
-  <div class="box"><b style="font-size:13px">订单台账</b>${tbl(orders,["so","cust","model","qty","due","seg"],["订单","客户","型号","万套","交期","细分"],r=>pick("Order",r.id,r.so))}</div>`;
+  <div class="box"><b style="font-size:13px">在手订单台账</b>${tbl(orders,["so","cust","model","qty","due","seg"],["订单","客户","型号","万套","交期","细分"],r=>pick("Order",r.id,r.so))}</div>
+  <div class="box"><b style="font-size:13px">近期已交付（共 ${hist.deliveredCount} 单 · 展示 8）</b>${tbl(hist.delivered.slice(0,8),["so","cust","model","qty","delivered","note"],["订单","客户","型号","万套","交付日","备注"])}</div>`;
 }
 async function renderRisk(m){
   const bases=(await api(A,"/a/v1/objects/query",{method:"POST",body:JSON.stringify({objectType:"Base"})})).data;
@@ -167,7 +182,9 @@ async function runRisk(){
   document.getElementById("riskOut").innerHTML=`<div class="box">
   <div class="kpis"><div class="kpi"><b>${d.current}</b><span>当前紧张度</span></div><div class="kpi"><b style="color:${d.peak>=85?'var(--red)':'var(--amber)'}">${d.peak}</b><span>窗口峰值</span></div><div class="kpi"><b>${d.crossDay?'T+'+d.crossDay:'—'}</b><span>越线日(≥85)</span></div></div>
   <svg width="100%" viewBox="0 0 ${w} ${h+20}"><line x1="0" x2="${w}" y1="${h-85/max*h}" y2="${h-85/max*h}" stroke="var(--red)" stroke-dasharray="4 4" opacity=".5"/><polyline points="${pts}" fill="none" stroke="#DD7E9E" stroke-width="2"/>${d.events.map(e=>`<circle cx="${e.d/30*w}" cy="${h+10}" r="4" fill="var(--amber)"><title>T+${e.d} ${e.tag} +${e.amp} (${e.src})</title></circle>`).join("")}</svg>
-  <div style="font-size:10px;color:var(--muted2)">事件脉冲：${d.events.map(e=>`T+${e.d} ${e.tag}(+${e.amp})`).join(" · ")||"无"}　·　选中 ${d.baseName} 已进入对话上下文（可直接问"影响哪些订单？"）</div></div>`;
+  <div style="font-size:10px;color:var(--muted2)">事件脉冲：${d.events.map(e=>`T+${e.d} ${e.tag}(+${e.amp})`).join(" · ")||"无"}　·　选中 ${d.baseName} 已进入对话上下文（可直接问"影响哪些订单？"）</div></div>
+  <div class="box"><b style="font-size:13px">历史处置案例（近 12 个月 ${hist.riskCases.length} 例：越线 → 采纳 → 消解）</b>
+  ${tbl(hist.riskCases,["crossedAt","base","factor","peak","adopted","effect"],["越线日","基地","因素","峰值","采纳方案","消解效果"])}</div>`;
 }
 async function renderProject(m){
   m.innerHTML=`<h2>项目推演 · 型号产能可承接</h2><div class="sub2">真实算法：P50=Σ基地Σ周(周产能×爬坡×检修×认证) · P90=×0.93 · what-if 调参</div>
@@ -211,6 +228,21 @@ async function renderGenerate(m){
    <div style="font-size:11.5px;color:var(--muted);margin-top:6px">收入增长 ${p.outcome.revGrow.toFixed(0)}% · 毛利 ${p.outcome.gm}% · 现金垫 ${p.outcome.cash} 亿 · CAPEX ${p.outcome.capex} 亿 · 份额 +${p.outcome.share}pct</div>
    ${p.hardViol.map(v=>`<div class="viol" style="margin-top:6px">${v}</div>`).join("")}
    <div style="font-size:10px;color:var(--muted2);margin-top:6px">五维：${Object.entries(p.scores).map(([k,v])=>k+" "+Math.round(v)).join(" · ")}</div></div>`).join("")}`;
+}
+function renderReview(m){
+  const h=hist;
+  m.innerHTML=`<h2>运营回顾 · 近 12 个月</h2><div class="sub2">系统运行史：精度收敛、校准记录、S&OP 版本、规则演进、意图孵化——全部可追溯（${h.generatedFrom}）</div>
+  <div class="kpis"><div class="kpi"><b style="color:var(--green)">${h.mapeSeries[h.mapeSeries.length-1].mape}%</b><span>当前 MAPE（年初 ${h.mapeSeries[0].mape}%）</span></div>
+  <div class="kpi"><b>${h.calibrations.filter(c=>c.status==="APPLIED").length}/${h.calibrations.length}</b><span>校准提案 已生效/总数</span></div>
+  <div class="kpi"><b>${h.sopVersions.length}</b><span>S&OP 定稿版本</span></div>
+  <div class="kpi"><b>${h.riskCases.length}</b><span>风险处置闭环案例</span></div></div>
+  <div class="box"><b style="font-size:13px">预测精度 MAPE 收敛（52 周）——"越用越准"的证据链</b>${lineSVG(h.mapeSeries.map((p,i)=>({v:p.mape,l:i%8===0?p.week.slice(5):""})),560,90,"#62BE77")}<div style="font-size:10px;color:var(--muted2)">第 21–22 周的回弹 = Q4 到货危机冲击；随校准生效持续收敛</div></div>
+  <div class="box"><b style="font-size:13px">参数校准史（含被拒提案——回测门槛与漂移闸门生效记录）</b>${tbl(h.calibrations,["at","param","from","to","method","mapeGain","status"],["日期","参数","原值","建议值","方法","MAPE改善pct","状态"])}</div>
+  <div class="box"><b style="font-size:13px">S&OP 月度版本史</b>${tbl(h.sopVersions,["version","month","demand","supply","attainment","decision"],["版本","月份","需求","供给","达成率%","第⑤步决议"])}</div>
+  <div class="box"><b style="font-size:13px">Action 审计史（${h.actionHistory.length} 条 · 展示 10）</b>${tbl(h.actionHistory.slice(0,10),["createdAt","actionType","initiator","status","targetRef","comment"],["日期","类型","发起","状态","写回","备注"])}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <div class="box"><b style="font-size:13px">规则演进</b>${tbl(h.ruleVersions,["at","rule","version","change"],["日期","规则","版本","变更"])}</div>
+  <div class="box"><b style="font-size:13px">意图孵化记录（兜底 → 预设）</b>${tbl(h.incubated,["at","intentKey","from"],["日期","意图","来源"])}</div></div>`;
 }
 function tbl(rows,keys,heads,onclick){
   window.__rows=rows; window.__click=onclick;
