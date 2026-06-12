@@ -19,6 +19,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
   { key: "view.sop-balance", name: "S&OP 月度平衡", level: "VIEW", defaultOn: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
   { key: "view.project-sim", name: "项目沙盘推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
+  // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）
+  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"] } },
+  { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
+  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
+  { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   // BLOCK level
   { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
@@ -26,10 +31,22 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.risk-board.mitigation", name: "处置方案区", level: "BLOCK", defaultOn: true, requires: ["view.risk-board"] },
   { key: "view.dash.widget.capacity", name: "驾驶舱·产能卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   { key: "view.dash.widget.risk", name: "驾驶舱·风险卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  // §7.19 任务详情编排 DAG（默认开）
+  { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
+  // §7.18 图谱八视角（每个视角可单独开关，BLOCK 级，依赖本体图谱）
+  { key: "view.graph.persp.all", name: "图谱·全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.backbone", name: "图谱·主干分级", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.flow", name: "图谱·产能推演网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.source", name: "图谱·数据来源", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.solver", name: "图谱·求解器", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.mvp", name: "图谱·MVP", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   // ACTION level
   { key: "act.plan-audit.apply-fix", name: "体检一键修正", level: "ACTION", defaultOn: true, requires: ["view.plan-audit"] },
   { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
+  { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
@@ -45,6 +62,19 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "plan-generate": "view.plan-generate",
   "sop-balance": "view.sop-balance",
   "project-sim": "view.project-sim",
+  "annual-scenario": "view.annual-scenario",
+  "quarterly-rolling": "view.quarterly-rolling",
+  "order-chain": "view.order-chain",
+  "geo-map": "view.geo-map",
+  // §7.18 图谱视角视图（renderer=ontology-graph 的 8 份 ViewConfig）
+  "graph-all": "view.graph.persp.all",
+  "graph-backbone": "view.graph.persp.backbone",
+  "graph-flow": "view.graph.persp.flow",
+  "graph-source": "view.graph.persp.source",
+  "graph-solver": "view.graph.persp.solver",
+  "graph-mvp": "view.graph.persp.mvp",
+  "graph-agent": "view.graph.persp.agent",
+  "graph-loop": "view.graph.persp.loop",
 };
 
 const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

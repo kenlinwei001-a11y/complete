@@ -179,11 +179,18 @@ export interface RuleAlert {
 }
 
 export class RuleScanService {
+  /** §7.21: C12 命中 → 校准提案生成（calibration.required 同路径挂钩）。 */
+  private calibrationHook: ((tenantId: string, entityId: string) => Promise<unknown>) | null = null;
+
   constructor(
     private repos: Repos,
     private ts: TimeseriesService,
     private outbox: OutboxService,
   ) {}
+
+  setCalibrationHook(hook: (tenantId: string, entityId: string) => Promise<unknown>): void {
+    this.calibrationHook = hook;
+  }
 
   private async scanSustainRule(tenantId: string, rule: Rule, ast: Extract<AstNode, { kind: "sustain" }>): Promise<RuleAlert[]> {
     const path = sustainField(ast.inner);
@@ -245,6 +252,9 @@ export class RuleScanService {
     for (const a of alerts) {
       const event = a.ruleKey === "C12" ? "calibration.required" : "rule.alert";
       await this.outbox.emit(tenantId, event, { ruleKey: a.ruleKey, entityId: a.entityId, message: a.message });
+      if (a.ruleKey === "C12" && this.calibrationHook) {
+        await this.calibrationHook(tenantId, a.entityId);
+      }
     }
     return alerts;
   }

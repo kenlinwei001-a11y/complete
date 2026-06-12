@@ -457,6 +457,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     forecastSnapshots: new PgStore(pool, "forecast_snapshots"),
     featureConfigs: new PgStore(pool, "feature_configs"),
     featureAudit: new PgStore(pool, "feature_audit"),
+    calibrationProposals: new PgStore(pool, "calibration_proposals"),
+    calibrationHistory: new PgStore(pool, "calibration_history"),
     async ping() {
       await pool.query("SELECT 1");
     },

@@ -31,8 +31,14 @@ import { SyntheticService } from "./synthetic/service.js";
 import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
-import { ActionService } from "./actions.js";
+import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
 import { SopService } from "./sop.js";
+import { PlanService } from "./planviews.js";
+import { CalibrationService } from "./calibration.js";
+import { buildDataHealth } from "./datahealth.js";
+import { buildMappingRows } from "./mapping.js";
+import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH } from "./graphmeta.js";
+import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
 import { SimClockService } from "./simclock.js";
 import { FeatureService, VIEW_FEATURE_MAP } from "./features.js";
@@ -78,6 +84,8 @@ export interface BuiltApp {
     simclock: SimClockService;
     features: FeatureService;
     embeddings: EmbeddingProvider;
+    plan: PlanService;
+    calibration: CalibrationService;
   };
 }
 
@@ -208,10 +216,30 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
+  const plan = new PlanService(repos, solvers, rules, outbox);
+  const calibration = new CalibrationService(repos, outbox);
   // cross-wiring (kept out of constructors to avoid dependency cycles)
   synthetic.wire({ scheduler, features, actions, ts: timeseries });
   connectors.wire({ ts: timeseries, scheduler });
   simclock.setResetRunner(async (c, spec) => synthetic.runJob(c, spec));
+  // §7.21: C12 → calibration.required → 提案生成（与降级/告警共用同一扫描路径）
+  ruleScan.setCalibrationHook(async (tenantId, entityId) => calibration.onCalibrationRequired(tenantId, entityId));
+  // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
+  const mockExecutor = new MockActionExecutor();
+  const domainExecutor: ActionExecutor = {
+    async execute(draft) {
+      if (draft.actionTypeKey === "AOP情景拍板") {
+        const r = await plan.applyFinalize(draft.tenantId, draft);
+        return { ok: true, targetRef: r.targetRef };
+      }
+      if (draft.actionTypeKey === "校准参数变更") {
+        const r = await calibration.applyAction(draft.tenantId, draft);
+        return { ok: true, targetRef: r.targetRef };
+      }
+      return mockExecutor.execute(draft);
+    },
+  };
+  actions.setExecutor(domainExecutor);
   const systemCtx = (tenantId: string): AuthCtx => ({ tenantId, userId: "system", roles: ["admin"], attributes: {} });
   scheduler
     .on("CONNECTOR_SYNC", async (tenantId, refId) => {
@@ -222,6 +250,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     })
     .on("RULE_SCAN", async (tenantId) => {
       await ruleScan.scan(tenantId);
+      // §7.14: 情景触发条件后端判定（前端只读挂牌表）
+      await plan.scanTriggers(tenantId);
     })
     .on("TS_AGGREGATE", async (tenantId) => {
       await timeseries.runAggregation(tenantId);
@@ -570,22 +600,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { type, id } = req.params as { type: string; id: string };
     return ontology.getObject(ctx(req), type, id);
   });
-  // 前端 PRD §7.2：类型级本体图谱（节点=ObjectType + 求解器，边=LinkType + 求解器引用）
-  const GRAPH_DOMAIN: Record<string, string> = {
-    Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
-    Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
-    DataSourceHealth: "quality", CapacityPyramid: "capacity", DemandForecast: "forecast",
-    Crew: "people", QualityLot: "quality",
-  };
-  const SOLVER_GRAPH: Record<string, { label: string; target: string }> = {
-    capacity_forecast: { label: "产能推演", target: "Model" },
-    risk_timeline: { label: "风险时间线", target: "Base" },
-    affected_orders: { label: "受影响订单", target: "Order" },
-    plan_audit: { label: "规划体检", target: "Order" },
-    plan_generate: { label: "方案生成", target: "Base" },
-    capacity_rollup: { label: "产能金字塔", target: "Base" },
-    bottleneck_matrix: { label: "瓶颈矩阵", target: "Line" },
-  };
+  // 前端 PRD §7.2 + 增量 §7.18：类型级本体图谱。节点 = ObjectType + 求解器 + 概念节点
+  // （学习闭环/智能体网络），边带 kind 字段（flow/agg/fb/orch/calc）供视角 linkKinds 过滤。
   app.get("/a/v1/ontology/graph", async (req) => {
     const c = ctx(req);
     const types = await ontology.listTypes(c);
@@ -615,8 +631,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       from: `n-${l.fromTypeKey}`,
       to: `n-${l.toTypeKey}`,
       label: l.key,
+      kind: "flow",
       cardinality: l.cardinality ?? "1:N",
     }));
+    // 派生聚合边（SUM/COUNT/AVG… BY）：源类型 → 目标类型，kind="agg"
+    for (const t of types) {
+      for (const d of t.derivedProperties ?? []) {
+        const agg = parseAggregate(d.formula);
+        if (!agg || !typeKeys.has(agg.sourceType) || agg.sourceType === t.key) continue;
+        edges.push({
+          id: `e-agg-${t.key}-${d.propKey}`,
+          from: `n-${agg.sourceType}`,
+          to: `n-${t.key}`,
+          label: d.formula,
+          kind: "agg",
+        });
+      }
+    }
     for (const solverKey of SOLVER_KEYS) {
       const meta = SOLVER_GRAPH[solverKey];
       if (!meta || !typeKeys.has(meta.target)) continue;
@@ -624,9 +655,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         id: `n-solver-${solverKey}`, key: solverKey, label: meta.label, kind: "solver",
         domain: "solver", properties: [], sourceBindings: [], rules: [], derivations: [],
       });
-      edges.push({ id: `e-solver-${solverKey}`, from: `n-solver-${solverKey}`, to: `n-${meta.target}`, label: "计算" });
+      edges.push({ id: `e-solver-${solverKey}`, from: `n-solver-${solverKey}`, to: `n-${meta.target}`, label: "计算", kind: "calc" });
     }
+    // §7.18 概念节点（学习闭环 nodeFilter.ids 一字不差）+ fb/orch/agg/flow 边
+    const nodeIds = new Set(nodes.map((n) => n.id as string));
+    for (const xn of GRAPH_EXTRA_NODES) {
+      nodes.push({
+        id: xn.id, key: xn.key, label: xn.label, kind: xn.kind, domain: xn.domain,
+        ...(xn.source ? { source: xn.source } : {}),
+        properties: [], sourceBindings: [], rules: [], derivations: [],
+      });
+      nodeIds.add(xn.id);
+    }
+    GRAPH_EXTRA_EDGES.forEach((xe, i) => {
+      if (!nodeIds.has(xe.from) || !nodeIds.has(xe.to)) return;
+      edges.push({ id: `e-x${i}`, from: xe.from, to: xe.to, label: xe.label, kind: xe.kind });
+    });
     return { nodes, edges };
+  });
+
+  // §7.20 业务建模映射表（图谱内功能）：服务端拼装分组排序后下发
+  app.get("/a/v1/ontology/mapping", async (req) => {
+    const c = ctx(req);
+    return buildMappingRows(repos, c.tenantId);
   });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };
@@ -1095,6 +1146,54 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return sop.finalize(ctx(req), id);
   });
 
+  // ---- 计划域查询面（增量 §7.14/§7.15；entitlement: plan-aop / plan-quarterly tag）-----------------
+  app.get("/a/v1/plan/aop", async (req) => {
+    await requireFeatureTag(req, "apiTags", "plan-aop");
+    const { year } = req.query as { year?: string };
+    return plan.aop(ctx(req), year ? Number(year) : undefined);
+  });
+  app.get("/a/v1/plan/quarterly", async (req) => {
+    await requireFeatureTag(req, "apiTags", "plan-quarterly");
+    const { from, n } = req.query as { from?: string; n?: string };
+    return plan.quarterly(ctx(req), from, n ? Math.max(1, Number(n) || 6) : 6);
+  });
+  // 触发判定为后端扫描（RULE_SCAN 周期挂接）；此端点供运维/演示手动触发一轮。
+  app.post("/a/v1/plan/triggers/scan", async (req) => plan.scanTriggers(ctx(req).tenantId));
+
+  // ---- M11 校准（增量 §7.21；catalog_admin / planner）---------------------------------------------
+  const requirePlannerOrAdmin = (c: AuthCtx) => {
+    if (!c.roles.some((r) => ["admin", "catalog_admin", "planner"].includes(r.split(":")[0] as string))) {
+      throw forbidden("planner / catalog_admin only");
+    }
+  };
+  app.get("/a/v1/calibration/report", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { objectType?: string; solverKey?: string; baseId?: string; from?: string };
+    return calibration.report(c.tenantId, q);
+  });
+  app.get("/a/v1/calibration/proposals", async (req) => calibration.listProposals(ctx(req).tenantId));
+  app.get("/a/v1/calibration/history", async (req) => calibration.history(ctx(req).tenantId));
+  // 批准/回滚不直改参数：创建 `校准参数变更` Action（§S2 审批链），EXECUTED 后才落 solver_params。
+  const calibrationAction = async (req: FastifyRequest, mode: "approve" | "rollback") => {
+    const c = ctx(req);
+    requirePlannerOrAdmin(c);
+    const { id } = req.params as { id: string };
+    const proposal = await calibration.getProposal(c.tenantId, id);
+    await authz.require(c, "ACTION_TYPE", "校准参数变更", "EXECUTE");
+    const draft = await actions.create(c, {
+      actionTypeKey: "校准参数变更",
+      payload: { proposalId: proposal.id, mode, parameter: proposal.parameter, proposedValue: proposal.proposedValue },
+    });
+    return { draftId: draft.id, status: draft.status, proposalId: proposal.id };
+  };
+  app.post("/a/v1/calibration/proposals/:id/approve", async (req, reply) =>
+    reply.status(202).send(await calibrationAction(req, "approve")));
+  app.post("/a/v1/calibration/proposals/:id/rollback", async (req, reply) =>
+    reply.status(202).send(await calibrationAction(req, "rollback")));
+
+  // ---- 数据健康度（增量 §7.22；与 C09/P90 降级同一事实源）------------------------------------------
+  app.get("/a/v1/data-health", async (req) => buildDataHealth(repos, solvers, features, ctx(req).tenantId));
+
   // ---- S4 knowledge base ------------------------------------------------------------------------
   app.post("/a/v1/kb/search", async (req) => {
     const body = parseBody(
@@ -1230,6 +1329,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       simclock,
       features,
       embeddings,
+      plan,
+      calibration,
     },
   };
 }

@@ -141,6 +141,28 @@ export class MockSolverClient implements SolverClient {
     if (solverKey === "affected_orders") {
       const base = SEED_BASES.find((b) => b.objectId === args.baseId || b.name === args.baseId);
       const orders = visibleOrders(ctx).filter((o) => (base ? o.bases.includes(base.name) : false));
+      // §S1.5 修订（剩余视图增量）：problems[] 分组 + 逐单 4 层根因链（mock 形态与 DataCore 输出对齐）
+      const problems =
+        orders.length > 0
+          ? [
+              {
+                category: "DELIVERY",
+                title: "交期风险订单",
+                orderCount: orders.length,
+                financeImpact: Math.round(orders.reduce((s, o) => s + o.qty, 0) * 0.6) / 100,
+                rootCauseSummary: `${orders.length} 单交期落入 ${base?.name ?? ""} 风险窗口`,
+                rootChains: orders.map((o) => ({
+                  orderId: o.so,
+                  layers: [
+                    { kind: "order", label: `订单 ${o.so} · ${o.cust}` },
+                    { kind: "judgement", label: `交期判定：${o.due} 落入越线窗口（规则 C03）` },
+                    { kind: "rootCause", label: `根因：${base?.name ?? ""} 瓶颈工序紧张` },
+                    { kind: "remedy", label: "对策：瓶颈工序扩容（T+6 生效）" },
+                  ],
+                })),
+              },
+            ]
+          : [];
       return {
         data: {
           baseId: args.baseId,
@@ -148,6 +170,7 @@ export class MockSolverClient implements SolverClient {
           columns: ["so", "cust", "model", "qty", "due"],
           rows: orders.map((o) => [o.so, o.cust, o.model, o.qty, o.due]),
           orders,
+          problems,
         },
         snapshotVersion: SNAPSHOT,
       };

@@ -263,11 +263,20 @@ export interface AffectedOrdersArgs {
   condition?: { prop: string; op: "<" | ">" | "<=" | ">=" | "=="; value: number };
 }
 
+export interface OrderProblemGroupOut {
+  category: "DELIVERY" | "MARGIN" | "KIT" | "CREDIT";
+  title: string;
+  orderCount: number;
+  financeImpact: number;
+  rootCauseSummary: string;
+  rootChains: { orderId: string; layers: { kind: "order" | "judgement" | "rootCause" | "remedy"; label: string }[] }[];
+}
+
 export function affectedOrders(
   c: SolverContext,
   args: AffectedOrdersArgs,
   orders?: { id: string; props: Record<string, unknown> }[],
-): { baseId: string; affected: Record<string, unknown>[]; total: number; fallback: boolean } {
+): { baseId: string; affected: Record<string, unknown>[]; total: number; fallback: boolean; problems: OrderProblemGroupOut[] } {
   const p = c.params;
   const baseId = resolveBaseId(c, str(args.baseId));
   const pool = (orders ?? c.orders).filter((o) => {
@@ -324,5 +333,130 @@ export function affectedOrders(
       impact: round(Math.min(1, 0.2 + delay / 10), 2),
     };
   });
-  return { baseId, affected, total: affected.length, fallback };
+  const problems = buildOrderProblems(c, baseId, affected, day ?? num(args.toDay, 180));
+  return { baseId, affected, total: affected.length, fallback, problems };
+}
+
+// ---------------------------------------------------------------------------
+// §S1.5 修订 — problems[] 4 类归并（DELIVERY/MARGIN/KIT/CREDIT）+ 逐单 4 层根因链
+// （订单→判定→根因→对策）。完全确定性：从订单属性 + 规则口径推导，不依赖随机。
+// ---------------------------------------------------------------------------
+
+const PROBLEM_TITLES: Record<string, string> = {
+  DELIVERY: "交期风险订单",
+  MARGIN: "毛利承压订单",
+  KIT: "齐套缺口订单",
+  CREDIT: "信用额度超限订单",
+};
+
+function segmentOf(c: SolverContext, modelId: string): { key: string; name: string; gm: number } {
+  const cfg = c.params.affected.problems;
+  const key = cfg.essModels.includes(modelId) ? "ess" : cfg.comModels.includes(modelId) ? "com" : "pas";
+  const seg = c.segments.find((s) => s.props.segKey === key);
+  return { key, name: str(seg?.props.name, key), gm: num(seg?.props.gmRate, c.params.audit.segMargins[key as "pas" | "ess" | "com"]) };
+}
+
+function buildOrderProblems(
+  c: SolverContext,
+  baseId: string,
+  affected: Record<string, unknown>[],
+  riskDay: number,
+): OrderProblemGroupOut[] {
+  const cfg = c.params.affected.problems;
+  const bName = baseName(c, baseId);
+  const base = c.bases.find((b) => b.props.baseId === baseId);
+  const bottleneck = str(base?.props.bottleneck, c.params.bottleneck.defaultPrimary);
+  const shipment = c.shipments
+    .filter((s) => s.props.baseId === baseId)
+    .sort((a, b) => (str(a.props.shipId) < str(b.props.shipId) ? -1 : 1))[0];
+  const buckets = new Map<string, { rows: Record<string, unknown>[]; chains: OrderProblemGroupOut["rootChains"] }>();
+  const add = (cat: string, row: Record<string, unknown>, judgement: string, rootCause: string, remedy: string) => {
+    let b = buckets.get(cat);
+    if (!b) {
+      b = { rows: [], chains: [] };
+      buckets.set(cat, b);
+    }
+    b.rows.push(row);
+    b.chains.push({
+      orderId: str(row.so),
+      layers: [
+        { kind: "order", label: `订单 ${str(row.so)} · ${str(row.cust)} · ${num(row.qty)} 套（交期 ${str(row.due)}）` },
+        { kind: "judgement", label: judgement },
+        { kind: "rootCause", label: rootCause },
+        { kind: "remedy", label: remedy },
+      ],
+    });
+  };
+  const mitPlan = (factor: string) => (c.params.risk.mitigations[factor] ?? [])[0];
+
+  for (const row of affected) {
+    const so = str(row.so);
+    const cust = str(row.cust);
+    const modelId = str(row.model);
+    const dueDay = num(row.dueDay);
+    const delay = num(row.delay);
+    const creditRatio = round(cfg.creditBase + (hashString(`${cust}|${so}`) % cfg.creditMod) / 100, 2);
+    const seg = segmentOf(c, modelId);
+    const etaDay = num(shipment?.props.etaDay);
+    const kitGapDays = shipment && (shipment.props.status === "DELAYED" || etaDay > dueDay) ? Math.max(1, etaDay - dueDay) : 0;
+    const plan = mitPlan(bottleneck);
+    const remedyBn = plan ? `对策：${plan.name}（T+${plan.tn} 生效，预计消解 ${plan.eff} 点）` : `对策：${bottleneck}专项消解`;
+
+    // 归并优先级：更具体的判定（信用/毛利/齐套）优先，交期为窗口内订单的兜底判定。
+    if (creditRatio > 1) {
+      add("CREDIT", row,
+        `信用判定：客户 ${cust} 信用占用比 ${creditRatio} 超过额度上限 1.0（规则 ${cfg.ruleKeys.CREDIT}）`,
+        `根因：${cust} 在手订单集中放量，信用敞口未同步扩容`,
+        "对策：信用复核 + 预收款比例上调，超限部分分批释放");
+      continue;
+    }
+    if (seg.gm < cfg.gmFloor) {
+      add("MARGIN", row,
+        `毛利判定：${seg.name}细分毛利 ${seg.gm}% 低于底线 ${cfg.gmFloor}%（规则 ${cfg.ruleKeys.MARGIN}）`,
+        `根因：${seg.name}细分结构毛利偏低，延误追加成本进一步侵蚀`,
+        "对策：细分结构调优 + 高毛利订单优先排产");
+      continue;
+    }
+    if (kitGapDays > 0) {
+      add("KIT", row,
+        `齐套判定：关键物料到货晚于交期 ${kitGapDays} 天（在途批次 ${str(shipment?.props.shipId)}，规则 ${cfg.ruleKeys.KIT}）`,
+        `根因：${bName}基地到货间隙，物料齐套率不足`,
+        "对策：加急采购 / 前置仓备货，压缩到货间隙");
+      continue;
+    }
+    if (dueDay <= riskDay) {
+      add("DELIVERY", row,
+        `交期判定：交期 D+${dueDay} 落入越线窗口（风险越线日 D+${riskDay}），预计延误 ${delay} 天（规则 ${cfg.ruleKeys.DELIVERY}）`,
+        `根因：${bName}基地 ${bottleneck} 紧张，越线窗口内产出不足`,
+        remedyBn);
+      continue;
+    }
+    add("DELIVERY", row,
+      `交期判定：交期 D+${dueDay} 处于风险窗口尾段，预计延误 ${delay} 天（规则 ${cfg.ruleKeys.DELIVERY}）`,
+      `根因：${bName}基地 ${bottleneck} 紧张，排产顺延`,
+      remedyBn);
+  }
+
+  const out: OrderProblemGroupOut[] = [];
+  for (const cat of ["DELIVERY", "MARGIN", "KIT", "CREDIT"] as const) {
+    const b = buckets.get(cat);
+    if (!b || b.rows.length === 0) continue;
+    const finance = round(b.rows.reduce((a, r) => a + num(r.qty) * 10000 * num(c.orders.find((o) => o.props.so === r.so)?.props.unitPrice, 600), 0) / 1e8, 4);
+    out.push({
+      category: cat,
+      title: PROBLEM_TITLES[cat] as string,
+      orderCount: b.rows.length,
+      financeImpact: finance,
+      rootCauseSummary:
+        cat === "CREDIT"
+          ? `${b.rows.length} 单客户信用占用超限（C13 口径），需信用复核`
+          : cat === "MARGIN"
+            ? `${b.rows.length} 单落在低毛利细分，结构毛利低于 ${cfg.gmFloor}% 底线`
+            : cat === "KIT"
+              ? `${b.rows.length} 单受 ${bName}基地到货间隙影响，物料齐套不足`
+              : `${b.rows.length} 单交期落入 ${bName}基地 ${bottleneck} 越线窗口`,
+      rootChains: b.chains,
+    });
+  }
+  return out;
 }

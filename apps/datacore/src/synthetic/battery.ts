@@ -126,7 +126,50 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       ],
     },
   },
-  affected: { windowBefore: 7, windowAfter: 14, delayDiv: 8, jitterMod: 3, fallbackMax: 5 },
+  affected: {
+    windowBefore: 7,
+    windowAfter: 14,
+    delayDiv: 8,
+    jitterMod: 3,
+    fallbackMax: 5,
+    // §S1.5 修订: problems[] 4 类归并阈值（交期/毛利/齐套/信用）
+    problems: {
+      creditBase: 0.7,
+      creditMod: 60,
+      gmFloor: 13.5,
+      essModels: ["S192-LFP"],
+      comModels: ["L148-LFP"],
+      ruleKeys: { DELIVERY: "C03", MARGIN: "C15", KIT: "C06/C16", CREDIT: "C13" },
+    },
+  },
+  // §7.14/§7.15 计划域（年度情景 / 季度滚动）参数 —— 全部数据驱动，不写死在端点代码里
+  planview: {
+    /** 12 个月季节权重（和为 12）：月目标 = 年需求 × w/12 */
+    seasonal: [0.92, 0.94, 0.99, 1.01, 1.03, 1.04, 1.06, 1.08, 1.1, 1.04, 0.95, 0.84],
+    /** 季度滚动修正（按距 forecastStart 的季度序号），dem = 季度目标 × (1 + corr) */
+    rollingCorrPct: [0.02, 0.08, -0.06, 0, 0, 0],
+    /** 2027 年目标 = 2026 同季 × (1 + growthYoY) */
+    growthYoY: 0.08,
+    weeksPerQuarter: 13,
+    /** 已决策产能项目投产增量（万套/季） */
+    increments: [
+      { quarter: "2027-Q2", name: "合肥四期投产", delta: 2.0 },
+      { quarter: "2027-Q3", name: "盐城二期爬坡", delta: 3.0 },
+    ],
+    ltaMaterials: ["碳酸锂", "正极材料", "负极材料", "电解液", "隔膜", "铜箔"],
+    /** 强制一行 |偏差|>5%（升级供应风险，与风险看板到货间隙同源） */
+    ltaForcedPct: -8,
+    deliveryPeakMin: 5,
+    scenarios: {
+      conservativeFactor: 0.88,
+      aggressiveFactor: 1.18,
+      finance: {
+        conservative: { cashCushion: 72, capex: 3, irr: 9.5 },
+        baseline: { cashCushion: 58, capex: 8, irr: 14.2 },
+        aggressive: { cashCushion: 42, capex: 27, irr: 18.6 },
+      },
+    },
+  },
   audit: {
     segTolerance: 0.5,
     gapHard: 2,
@@ -284,18 +327,68 @@ const dataHealthProps: PropertyDef[] = [
   { propKey: "lagHours", dataType: "number", isPrimaryKey: false },
 ];
 
+// §7.14 计划域对象（年度情景 / 触发条件 / 目标分解 —— S&OP 目标线同源对象）
+const annualScenarioProps: PropertyDef[] = [
+  { propKey: "scnId", dataType: "string", isPrimaryKey: true },
+  { propKey: "key", dataType: "enum", isPrimaryKey: false }, // conservative | baseline | aggressive
+  { propKey: "name", dataType: "string", isPrimaryKey: false },
+  { propKey: "year", dataType: "number", isPrimaryKey: false },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false },
+  { propKey: "capacityDecision", dataType: "string", isPrimaryKey: false },
+  { propKey: "ltaLock", dataType: "string", isPrimaryKey: false },
+  { propKey: "revenue", dataType: "number", isPrimaryKey: false },
+  { propKey: "capex", dataType: "number", isPrimaryKey: false },
+  { propKey: "irr", dataType: "number", isPrimaryKey: false },
+  { propKey: "cashCushion", dataType: "number", isPrimaryKey: false },
+  { propKey: "finalized", dataType: "boolean", isPrimaryKey: false },
+  { propKey: "finalizedAt", dataType: "date", isPrimaryKey: false },
+];
+
+const scenarioTriggerProps: PropertyDef[] = [
+  { propKey: "trigId", dataType: "string", isPrimaryKey: true },
+  { propKey: "condition", dataType: "string", isPrimaryKey: false },
+  { propKey: "expr", dataType: "string", isPrimaryKey: false }, // 后端规则扫描表达式（metrics payload）
+  { propKey: "action", dataType: "string", isPrimaryKey: false },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // MONITORING | TRIGGERED
+  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "notifiedTo", dataType: "json", isPrimaryKey: false },
+];
+
+const planTargetProps: PropertyDef[] = [
+  { propKey: "tgtId", dataType: "string", isPrimaryKey: true },
+  { propKey: "period", dataType: "string", isPrimaryKey: false }, // "2026" | "2026-Q1" | "2026-01"
+  { propKey: "level", dataType: "enum", isPrimaryKey: false }, // year | quarter | month
+  { propKey: "value", dataType: "number", isPrimaryKey: false },
+  { propKey: "year", dataType: "number", isPrimaryKey: false },
+  { propKey: "scenarioKey", dataType: "string", isPrimaryKey: false },
+];
+
+/** §7.20 血缘：源系统绑定（连接器·数据集·字段映射），mapping 表与图谱 source 视角共用 */
+const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }[]> = {
+  Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION" } }],
+  Model: [{ connId: "conn-plm", dataset: "plm_models", fieldMappings: { modelId: "MODEL_ID", name: "MODEL_NAME", unitPrice: "UNIT_PRICE" } }],
+  Order: [{ connId: "conn-erp", dataset: "erp_sales_orders", fieldMappings: { so: "SO_NO", cust: "CUSTOMER", model: "MODEL_ID", qty: "QTY", due: "DUE_DATE", status: "STATUS" } }],
+  Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME" } }],
+  Process: [{ connId: "conn-mes", dataset: "mes_processes", fieldMappings: { processId: "PROC_ID", lineId: "LINE_ID", name: "PROC_NAME", kind: "PROC_KIND", yield: "YIELD" } }],
+  Equipment: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q" } }],
+  MaintPlan: [{ connId: "conn-mes", dataset: "mes_maint_plans", fieldMappings: { planId: "PLAN_ID", baseId: "BASE_ID", week: "PLAN_WEEK" } }],
+  Segment: [{ connId: "conn-erp", dataset: "erp_segments", fieldMappings: { segKey: "SEG_KEY", name: "SEG_NAME", gmRate: "GM_RATE" } }],
+  Shipment: [{ connId: "conn-srm", dataset: "srm_shipments", fieldMappings: { shipId: "SHIP_ID", baseId: "BASE_ID", etaDay: "ETA_DAY", qtyTons: "QTY_TONS" } }],
+  DataSourceHealth: [{ connId: "conn-iot", dataset: "iot_source_health", fieldMappings: { sourceId: "SOURCE_ID", lagHours: "LAG_HOURS" } }],
+};
+
 export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">[] {
   const plain = (key: string, displayName: string, properties: PropertyDef[]): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> => ({
     key,
     displayName,
     properties,
     derivedProperties: [],
-    sourceBindings: [],
+    sourceBindings: BINDINGS[key] ?? [],
   });
   return [
-    { key: "Base", displayName: "生产基地", properties: baseProps, derivedProperties: baseDerived, sourceBindings: [] },
-    { key: "Model", displayName: "电池型号", properties: modelProps, derivedProperties: modelDerived, sourceBindings: [] },
-    { key: "Order", displayName: "销售订单", properties: orderProps, derivedProperties: orderDerived, sourceBindings: [] },
+    { key: "Base", displayName: "生产基地", properties: baseProps, derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
+    { key: "Model", displayName: "电池型号", properties: modelProps, derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
+    { key: "Order", displayName: "销售订单", properties: orderProps, derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
     plain("Line", "产线", lineProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),
@@ -303,6 +396,9 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("Segment", "应用细分", segmentProps),
     plain("Shipment", "在途批次", shipmentProps),
     plain("DataSourceHealth", "数据源健康度", dataHealthProps),
+    plain("AnnualScenario", "年度情景", annualScenarioProps),
+    plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
+    plain("PlanTarget", "计划目标", planTargetProps),
   ];
 }
 
@@ -355,6 +451,9 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
     { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN" },
     { key: "C12", name: "预测偏差触发重校", expression: "SUSTAIN(Model.forecast_deviation > 0.08, 1)", severity: "WARN" },
+    // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
+    { key: "C18", name: "现金垫底线", expression: "AnnualScenario.cashCushion < 50", severity: "BLOCK" },
+    { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN" },
   ],
   scenarioSeed: { views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"], intents: [] },
   features: [...ALL_FEATURE_KEYS],
@@ -407,7 +506,34 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
+  // §7.14 「拍板情景」：finalize 经 Action 审批执行（不直改）。
+  {
+    key: "AOP情景拍板",
+    name: "AOP 情景拍板",
+    paramsSchema: { type: "object", required: ["scenarioKey", "year"], properties: { scenarioKey: { type: "string" }, year: { type: "number" } } },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
+  // §7.21 校准参数变更：提案批准/回滚走 §S2 审批流。
+  {
+    key: "校准参数变更",
+    name: "校准参数变更",
+    paramsSchema: { type: "object", required: ["proposalId", "mode"], properties: { proposalId: { type: "string" }, mode: { type: "string" } } },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
 ];
+
+/** 模板规则的 scopeObjectTypes（合成种子使用；默认 Order）。 */
+export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
+  C03: ["Order"],
+  C08: ["Order"],
+  C13: ["Order"],
+  C05: ["Line"],
+  C12: ["Model"],
+  C18: ["AnnualScenario"],
+  C23: ["AnnualScenario"],
+};
 
 export interface GeneratedBattery {
   bases: Record<string, unknown>[];
@@ -617,4 +743,116 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L"): Generated
   ];
 
   return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, certLinks };
+}
+
+// ---------------------------------------------------------------------------
+// §7.14 计划域种子：年度情景 ×3 / 触发条件 ×4 / 年→季→月目标分解（PlanTarget）。
+// 分解值锚定在与 S&OP 平衡台同源的供给口径（weeklyTotalWan 来自 S1.1 rollup），
+// 同 (industry, scale, seed) 重跑字节级一致 —— 不使用时钟与随机性。
+// ---------------------------------------------------------------------------
+
+export interface GeneratedPlanDomain {
+  scenarios: Record<string, unknown>[];
+  triggers: Record<string, unknown>[];
+  planTargets: Record<string, unknown>[];
+}
+
+export function generatePlanDomain(weeklyTotalWan: number, avgUnitPrice: number): GeneratedPlanDomain {
+  const pv = BATTERY_SOLVER_PARAMS.planview as {
+    seasonal: number[];
+    scenarios: {
+      conservativeFactor: number;
+      aggressiveFactor: number;
+      finance: Record<string, { cashCushion: number; capex: number; irr: number }>;
+    };
+  };
+  const year = 2026;
+  const annualBase = round(weeklyTotalWan * 52, 1);
+  const fin = pv.scenarios.finance;
+  const revenueOf = (demand: number) => round((demand * avgUnitPrice) / 10000, 1); // 万套×元/套 → 亿
+  const scenario = (key: string, name: string, demand: number, decision: string, lta: string, finalized: boolean) => ({
+    scnId: `AOP-${year}-${key}`,
+    key,
+    name,
+    year,
+    demand,
+    capacityDecision: decision,
+    ltaLock: lta,
+    revenue: revenueOf(demand),
+    capex: (fin[key] as { capex: number }).capex,
+    irr: (fin[key] as { irr: number }).irr,
+    cashCushion: (fin[key] as { cashCushion: number }).cashCushion,
+    finalized,
+    ...(finalized ? { finalizedAt: `${year}-06-20T09:00:00.000Z` } : {}),
+  });
+  const scenarios = [
+    scenario("conservative", "保守", round(annualBase * pv.scenarios.conservativeFactor, 1), "维持现有产线，不新增产能投资", "锂盐长协锁量 60%，季度滚动议价", false),
+    scenario("baseline", "基准", annualBase, "合肥四期 8GWh 扩产，2027-Q2 投产", "锂盐长协锁量 70%，年度锁价", true),
+    scenario("aggressive", "激进", round(annualBase * pv.scenarios.aggressiveFactor, 1), "合肥四期 + 盐城二期合计 20GWh 扩产", "锂盐长协锁量 85%，并签三年框架", false),
+  ];
+
+  // 目标分解：月值 = 年需求 × 季节权重/12；末月吸收舍入差 → 年 = Σ季 = Σ月（同源勾稽）。
+  const demand = annualBase;
+  const months: { period: string; value: number }[] = [];
+  let acc = 0;
+  for (let m = 1; m <= 12; m++) {
+    const w = pv.seasonal[m - 1] as number;
+    const v = m === 12 ? round(demand - acc, 2) : round((demand * w) / 12, 2);
+    acc = round(acc + v, 2);
+    months.push({ period: `${year}-${String(m).padStart(2, "0")}`, value: v });
+  }
+  const quarters: { period: string; value: number }[] = [];
+  for (let q = 0; q < 4; q++) {
+    const v = round((months[q * 3] as { value: number }).value + (months[q * 3 + 1] as { value: number }).value + (months[q * 3 + 2] as { value: number }).value, 2);
+    quarters.push({ period: `${year}-Q${q + 1}`, value: v });
+  }
+  const yearValue = round(quarters.reduce((a, q) => a + q.value, 0), 2);
+  const target = (period: string, level: string, value: number) => ({
+    tgtId: `PT-${period}`,
+    period,
+    level,
+    value,
+    year,
+    scenarioKey: "baseline",
+  });
+  const planTargets = [
+    target(String(year), "year", yearValue),
+    ...quarters.map((q) => target(q.period, "quarter", q.value)),
+    ...months.map((m) => target(m.period, "month", m.value)),
+  ];
+
+  // 触发条件挂牌（expr 在后端 RULE_SCAN 周期里对 metrics 求值；一条已触发）。
+  const triggers = [
+    {
+      trigId: "TRG-1",
+      condition: "季度产销缺口 > 4 万套",
+      expr: "quarterGapMax > 4",
+      action: "启动激进情景预案评审，升级高管决策会",
+      status: "TRIGGERED",
+      triggeredAt: "2026-06-28T08:00:00.000Z",
+      notifiedTo: ["admin", "planner"],
+    },
+    {
+      trigId: "TRG-2",
+      condition: "储能细分需求增速连续 2 季 > 25%",
+      expr: "essGrowthPct > 25",
+      action: "上调储能产线认证优先级，追加 S192 认证",
+      status: "MONITORING",
+    },
+    {
+      trigId: "TRG-3",
+      condition: "长协到货偏差率 |绝对值| > 12%",
+      expr: "ltaDevMaxAbs > 12",
+      action: "升级供应风险，启动备选供应商切换",
+      status: "MONITORING",
+    },
+    {
+      trigId: "TRG-4",
+      condition: "锂价指数单月涨幅 > 20%",
+      expr: "lithiumIndexMoM > 20",
+      action: "触发保守情景成本重测，重审长协锁量",
+      status: "MONITORING",
+    },
+  ];
+  return { scenarios, triggers, planTargets };
 }

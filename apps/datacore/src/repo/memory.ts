@@ -290,6 +290,8 @@ export function createMemoryRepos(): Repos {
     forecastSnapshots: new MemStore(),
     featureConfigs: new MemStore(),
     featureAudit: new MemStore(),
+    calibrationProposals: new MemStore(),
+    calibrationHistory: new MemStore(),
     async ping() {
       /* always ready */
     },

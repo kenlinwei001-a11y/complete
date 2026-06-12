@@ -103,10 +103,43 @@ export class SopService {
     return v;
   }
 
+  /**
+   * §7.14 同源勾稽：S&OP 平衡台目标线 = 计划域 PlanTarget 对象（AOP 年→季→月分解
+   * 的同一来源 —— decomposition.targetRef 指向这里返回的对象）。
+   */
+  async targetLine(
+    tenantId: string,
+    periods?: string[],
+  ): Promise<{ period: string; level: string; value: number; targetRef: string }[]> {
+    const targets = await this.repos.objects.listByType(tenantId, "PlanTarget");
+    return targets
+      .filter((t) => !periods || periods.includes(String(t.props.period)))
+      .sort((a, b) => (String(a.props.period) < String(b.props.period) ? -1 : 1))
+      .map((t) => ({
+        period: String(t.props.period),
+        level: String(t.props.level),
+        value: num(t.props.value),
+        targetRef: t.id,
+      }));
+  }
+
   /** ② 需求评审: three-line compare; |dv|>10% → C21 agenda item auto-added to step ⑤. */
   private async step2(v: SopVersion, payload: Record<string, unknown>): Promise<SopVersion> {
     if (v.status === "DRAFT") throw invalidState("run step 1 first");
-    const segments = Array.isArray(payload.segments) ? (payload.segments as Record<string, unknown>[]) : [];
+    let segments = Array.isArray(payload.segments) ? (payload.segments as Record<string, unknown>[]) : [];
+    if (segments.length === 0) {
+      // 缺省目标线：月度 PlanTarget × 细分基线占比（与 AOP 分解流同源对象）。
+      const monthTarget = (await this.targetLine(v.tenantId, [v.month]))[0];
+      if (monthTarget) {
+        const segs = (await this.repos.objects.listByType(v.tenantId, "Segment")).sort((a, b) =>
+          str(a.props.segKey) < str(b.props.segKey) ? -1 : 1,
+        );
+        segments = segs.map((s) => {
+          const target = round(monthTarget.value * num(s.props.baselineShare), 2);
+          return { key: s.props.segKey, name: s.props.name, target, rolling: target, lastActual: 0 };
+        });
+      }
+    }
     if (segments.length === 0) throw validationError("step 2 payload.segments required");
     const threshold = await this.dvThreshold(v.tenantId);
     const rows = segments.map((s) => {

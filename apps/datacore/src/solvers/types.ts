@@ -42,7 +42,38 @@ export interface SolverParamsShape {
     arrivalCycleDays: number;
     mitigations: Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk: string }[]>;
   };
-  affected: { windowBefore: number; windowAfter: number; delayDiv: number; jitterMod: number; fallbackMax: number };
+  affected: {
+    windowBefore: number;
+    windowAfter: number;
+    delayDiv: number;
+    jitterMod: number;
+    fallbackMax: number;
+    /** §S1.5 修订: problems[] 4 类归并阈值 */
+    problems: {
+      creditBase: number;
+      creditMod: number;
+      gmFloor: number;
+      essModels: string[];
+      comModels: string[];
+      ruleKeys: Record<string, string>;
+    };
+  };
+  /** §7.14/§7.15 计划域参数 */
+  planview: {
+    seasonal: number[];
+    rollingCorrPct: number[];
+    growthYoY: number;
+    weeksPerQuarter: number;
+    increments: { quarter: string; name: string; delta: number }[];
+    ltaMaterials: string[];
+    ltaForcedPct: number;
+    deliveryPeakMin: number;
+    scenarios: {
+      conservativeFactor: number;
+      aggressiveFactor: number;
+      finance: Record<string, { cashCushion: number; capex: number; irr: number }>;
+    };
+  };
   audit: {
     segTolerance: number;
     gapHard: number;

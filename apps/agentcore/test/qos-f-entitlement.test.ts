@@ -129,4 +129,49 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
     const items2 = res2.json() as { viewKey: string; inactive: boolean }[];
     expect(items2.find((e) => e.viewKey === "risk")?.inactive).toBe(false);
   });
+
+  // ---- 剩余视图增量（前端 PRD §7.14–7.19 / 修订点 4）-------------------------------------
+
+  it("剩余视图增量: /b/v1/solvers/affected_orders/run 透传 §S1.5 扩展输出（problems[] + 4 层根因链）", async () => {
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/b/v1/solvers/affected_orders/run",
+      headers: debugHeaders(PLANNER),
+      payload: { args: { baseId: "base_changzhou" } },
+    });
+    expect(res.statusCode).toBe(200);
+    const data = (res.json() as { data: { orders: unknown[]; problems: { category: string; orderCount: number; rootChains: { layers: { kind: string }[] }[] }[] } }).data;
+    expect(Array.isArray(data.orders)).toBe(true); // 既有字段不变
+    expect(data.problems.length).toBeGreaterThan(0);
+    for (const p of data.problems) {
+      expect(["DELIVERY", "MARGIN", "KIT", "CREDIT"]).toContain(p.category);
+      for (const chain of p.rootChains) {
+        expect(chain.layers.map((l) => l.kind)).toEqual(["order", "judgement", "rootCause", "remedy"]);
+      }
+    }
+  });
+
+  it("剩余视图增量: 新 feature key 在 B 侧注册表可解析（含图谱视角 requires 级联）", async () => {
+    const { defaultOnKeys, viewAllowed } = await import("../src/features/registry.js");
+    const keys = defaultOnKeys();
+    for (const k of [
+      "view.annual-scenario", "view.quarterly-rolling", "view.order-chain", "view.geo-map", "view.task-dag",
+      "view.graph.persp.loop", "act.aop-finalize",
+    ]) {
+      expect(keys, k).toContain(k);
+    }
+    // 单视角关闭
+    const noLoop = new Set(keys.filter((k) => k !== "view.graph.persp.loop"));
+    expect(featureEnabled(noLoop, "view.graph.persp.loop")).toBe(false);
+    expect(featureEnabled(noLoop, "view.graph.persp.flow")).toBe(true);
+    expect(viewAllowed(noLoop, "graph-loop")).toBe(false);
+    expect(viewAllowed(noLoop, "graph-flow")).toBe(true);
+    // 父视图（本体图谱）关闭 → 全部视角级联关闭
+    const noGraph = new Set(keys.filter((k) => k !== "view.ontology-graph"));
+    expect(featureEnabled(noGraph, "view.graph.persp.all")).toBe(false);
+    expect(viewAllowed(noGraph, "graph-source")).toBe(false);
+    // view.annual-scenario 关闭 → act.aop-finalize 级联关闭
+    const noAop = new Set(keys.filter((k) => k !== "view.annual-scenario"));
+    expect(featureEnabled(noAop, "act.aop-finalize")).toBe(false);
+  });
 });

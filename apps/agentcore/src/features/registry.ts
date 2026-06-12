@@ -49,6 +49,21 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
     defaultOn: true,
     bindings: { intents: ["capacity_feasibility"], solverKeys: ["capacity_forecast"], apiTags: ["project-sim"] },
   },
+  // 剩余视图增量（前端 PRD §7.14–7.19 / 修订点 4）—— 与 DataCore FeatureRegistry 同步
+  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true },
+  { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
+  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
+  { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
+  { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
+  { key: "view.graph.persp.all", name: "图谱·全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.backbone", name: "图谱·主干分级", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.flow", name: "图谱·产能推演网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.source", name: "图谱·数据来源", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.solver", name: "图谱·求解器", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.mvp", name: "图谱·MVP", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "路径 B 兜底", level: "BLOCK", defaultOn: true },
   {
@@ -86,6 +101,15 @@ const VIEW_ALIAS: Record<string, string> = {
   "plan-generate": "view.plan-generate",
   "sop-balance": "view.sop-balance",
   "project-sim": "view.project-sim",
+  // 剩余视图增量：图谱视角视图键 graph-{persp} → BLOCK 级 feature
+  "graph-all": "view.graph.persp.all",
+  "graph-backbone": "view.graph.persp.backbone",
+  "graph-flow": "view.graph.persp.flow",
+  "graph-source": "view.graph.persp.source",
+  "graph-solver": "view.graph.persp.solver",
+  "graph-mvp": "view.graph.persp.mvp",
+  "graph-agent": "view.graph.persp.agent",
+  "graph-loop": "view.graph.persp.loop",
 };
 
 export type FeatureSet = "ALL" | Set<string>;

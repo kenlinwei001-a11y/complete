@@ -534,6 +534,38 @@ export interface ForecastSnapshotRecord {
 }
 
 // ---------------------------------------------------------------------------
+// M11 校准（§7.21）：参数更新提案 + 校准历史（提案变更必须走 校准参数变更 Action）
+// ---------------------------------------------------------------------------
+
+export interface CalibrationProposalRecord {
+  id: string; // calp_
+  tenantId: string;
+  parameter: string; // 节拍/良率/OEE 基线 等展示名
+  /** solver_params 内的点路径（如 "ramp.base"），Action EXECUTED 后写入 */
+  paramPath: string;
+  objectRef?: string;
+  currentValue: number;
+  proposedValue: number;
+  basis: { windowFrom: string; windowTo: string; samples: number };
+  trigger: string; // "C12" | "手动"
+  status: "PENDING" | "APPLIED" | "ROLLED_BACK";
+  /** 应用前的旧值（回滚还原用） */
+  appliedFrom?: number;
+  appliedAt?: string;
+  createdAt: string;
+}
+
+export interface CalibrationHistoryRecord {
+  id: string; // calh_
+  tenantId: string;
+  at: string;
+  trigger: string; // "C12" | "手动" | "回滚"
+  changedParams: string[];
+  mapeBefore: number;
+  mapeAfter: number;
+}
+
+// ---------------------------------------------------------------------------
 // S4 knowledge base / vectors
 // ---------------------------------------------------------------------------
 

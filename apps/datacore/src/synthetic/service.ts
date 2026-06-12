@@ -16,13 +16,17 @@ import { mulberry32, hashString, round } from "../prng.js";
 import { evaluateExpression } from "../ruledsl.js";
 import {
   BATTERY_ACTION_TYPES,
+  BATTERY_RULE_SCOPES,
   BATTERY_SOLVER_PARAMS,
   BATTERY_TEMPLATE,
   BATTERY_TS_AGG_SPECS,
   batteryLinkTypes,
   batteryObjectTypes,
   generateBattery,
+  generatePlanDomain,
 } from "./battery.js";
+import { computeRollup } from "../solvers/capacity.js";
+import type { SolverParamsShape } from "../solvers/types.js";
 import { genPoint, maintWindowsFor, windowFor, type TsGenSpec } from "./tsgen.js";
 
 const TEMPLATE_SYSTEM = `你是行业数据模板生成器。给定行业名称，输出 IndustryTemplate：
@@ -32,6 +36,36 @@ generation（每对象类型的 count{S,M,L} 与 propGenerators）、rules（规
 
 const DAY_MS = 86400000;
 const HISTORY_DAYS = 90;
+
+/** 增量视图键（§7.14–7.17 四视图 + §7.18 图谱八视角；不进 report.views 快照）。 */
+const PLANVIEW_EXTRA_KEYS = [
+  "annual-scenario",
+  "quarterly-rolling",
+  "order-chain",
+  "geo-map",
+  "graph-all",
+  "graph-backbone",
+  "graph-flow",
+  "graph-source",
+  "graph-solver",
+  "graph-mvp",
+  "graph-agent",
+  "graph-loop",
+];
+
+/** §7.18 学习闭环视角 nodeFilter.ids —— 与图谱端点概念节点 id 一字不差。 */
+const LOOP_NODE_IDS = [
+  "产能预测",
+  "实际产出",
+  "精度校准器",
+  "学习Agent",
+  "经验记忆库",
+  "良率",
+  "OEE历史",
+  "OEE指标",
+  "聚合求解器",
+  "工序产能",
+];
 
 interface TemplateTypeDef {
   key: string;
@@ -139,7 +173,8 @@ export class SyntheticService {
           key: r.key,
           name: r.name,
           expression: r.expression,
-          scopeObjectTypes: ["Order"],
+          scopeObjectTypes:
+            input.industry === "battery-manufacturing" ? (BATTERY_RULE_SCOPES[r.key] ?? ["Order"]) : ["Order"],
           severity: (["BLOCK", "WARN", "INFO"].includes(r.severity) ? r.severity : "WARN") as
             | "BLOCK"
             | "WARN"
@@ -149,7 +184,10 @@ export class SyntheticService {
         });
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
-      await this.seedViewConfigs(ctx, views);
+      // 增量视图（§7.14–7.17 + 图谱八视角）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      const extraViews =
+        input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
+      await this.seedViewConfigs(ctx, views, extraViews);
       const accounts = await this.seedDemoAccounts(ctx);
       await this.seedPolicies(ctx);
       if (this.scheduler) {
@@ -230,6 +268,47 @@ export class SyntheticService {
     if (this.actions) {
       for (const t of BATTERY_ACTION_TYPES) await this.actions.registerType(ctx, t);
     }
+    // §7.21 校准种子：2 条 PENDING 提案 + 1 条历史（确定性 id/时间；提案变更只能走 Action）。
+    const t0 = BATTERY_SOLVER_PARAMS.forecastStart as string;
+    const proposalSeeds = [
+      {
+        id: `calp_${ctx.tenantId}_seed_ramp`,
+        parameter: "产能预测·爬坡系数基线",
+        paramPath: "ramp.base",
+        objectRef: "Solver:capacity_forecast",
+        currentValue: (BATTERY_SOLVER_PARAMS.ramp as { base: number }).base,
+        proposedValue: 0.9,
+        basis: { windowFrom: "2026-06-17", windowTo: "2026-06-30", samples: 168 },
+        trigger: "C12",
+      },
+      {
+        id: `calp_${ctx.tenantId}_seed_maint`,
+        parameter: "检修产能系数（OEE 基线）",
+        paramPath: "maintMult",
+        objectRef: "Solver:capacity_forecast",
+        currentValue: BATTERY_SOLVER_PARAMS.maintMult as number,
+        proposedValue: 0.75,
+        basis: { windowFrom: "2026-06-10", windowTo: "2026-06-30", samples: 96 },
+        trigger: "手动",
+      },
+    ];
+    for (const p of proposalSeeds) {
+      await this.repos.calibrationProposals.put({
+        ...p,
+        tenantId: ctx.tenantId,
+        status: "PENDING",
+        createdAt: `${t0}T00:00:00.000Z`,
+      });
+    }
+    await this.repos.calibrationHistory.put({
+      id: `calh_${ctx.tenantId}_seed_1`,
+      tenantId: ctx.tenantId,
+      at: "2026-06-15T08:00:00.000Z",
+      trigger: "C12",
+      changedParams: ["良率基线（化成）"],
+      mapeBefore: 11.2,
+      mapeAfter: 8.4,
+    });
     // A8.6 simulation clock at t0.
     await this.repos.simulationClocks.put({
       id: ctx.tenantId,
@@ -360,6 +439,53 @@ export class SyntheticService {
         origin,
       });
     }
+
+    // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
+    // （weeklyWan × 认证系数）—— 与 S&OP 平衡台/季度滚动同源，确定性（无时钟/随机）。
+    const params = BATTERY_SOLVER_PARAMS as unknown as SolverParamsShape;
+    const toObj = (type: string, rows: Record<string, unknown>[]): ObjectInstance[] =>
+      rows.map((r, i) => ({ id: `tmp_${type}_${i}`, tenantId: ctx.tenantId, type, props: r, origin }));
+    const certByModel = new Map<string, Map<string, string>>();
+    for (const cl of g.certLinks) {
+      let m = certByModel.get(cl.modelId);
+      if (!m) {
+        m = new Map();
+        certByModel.set(cl.modelId, m);
+      }
+      m.set(cl.baseId, cl.status);
+    }
+    const rollup = computeRollup({
+      tenantId: ctx.tenantId,
+      params,
+      bases: toObj("Base", g.bases),
+      lines: toObj("Line", g.lines),
+      processes: toObj("Process", g.processes),
+      equipment: toObj("Equipment", g.equipment),
+      maintPlans: toObj("MaintPlan", g.maintPlans),
+      models: [],
+      orders: [],
+      shipments: [],
+      segments: [],
+      dataHealth: [],
+      certByModel,
+    });
+    const baseCert = new Map<string, number>();
+    for (const m of certByModel.values()) {
+      for (const [baseId, status] of m) {
+        baseCert.set(baseId, Math.max(baseCert.get(baseId) ?? 0, params.certFactors[status] ?? 1));
+      }
+    }
+    const weeklyTotal = round(
+      rollup.bases.reduce((a, b) => a + b.weeklyWan * (baseCert.get(b.baseId) ?? 0), 0),
+      4,
+    );
+    const avgUnitPrice = Math.round(
+      g.models.reduce((a, m) => a + (typeof m.unitPrice === "number" ? m.unitPrice : 0), 0) / Math.max(1, g.models.length),
+    );
+    const pd = generatePlanDomain(weeklyTotal, avgUnitPrice);
+    await putAll("AnnualScenario", pd.scenarios, "scnId");
+    await putAll("ScenarioTrigger", pd.triggers, "trigId");
+    await putAll("PlanTarget", pd.planTargets, "tgtId");
     return n;
   }
 
@@ -481,7 +607,7 @@ export class SyntheticService {
     return names;
   }
 
-  private async seedViewConfigs(ctx: AuthCtx, views: string[]): Promise<void> {
+  private async seedViewConfigs(ctx: AuthCtx, views: string[], extraViews: string[] = []): Promise<void> {
     // 前端 PRD §7：每个视图声明 renderer（前端按注册表分发）+ 声明式 layout（dashboard widget / ledger 列）。
     const DASH_LAYOUT: Record<string, unknown> = {
       widgets: [
@@ -529,7 +655,13 @@ export class SyntheticService {
         { key: "status", label: "状态", filterable: true },
       ],
     };
-    const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown> }> = {
+    const graphView = (title: string, graphOptions: Record<string, unknown>, layout: Record<string, unknown> = {}) => ({
+      title,
+      renderer: "ontology-graph",
+      layout,
+      options: { graphOptions },
+    });
+    const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
       dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
       graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
       risk: { title: "预判推演看板", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14 } },
@@ -538,6 +670,41 @@ export class SyntheticService {
       "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate" } },
       "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast" } },
       "sop-balance": { title: "S&OP 月度平衡", renderer: "sop-balance", layout: { apiTag: "sop" } },
+      // 增量 §7.14–7.17
+      "annual-scenario": {
+        title: "年度情景规划台",
+        renderer: "annual-scenario",
+        layout: { endpoint: "/a/v1/plan/aop", year: 2026, actionTypeKey: "AOP情景拍板", finalizeFeature: "act.aop-finalize" },
+      },
+      "quarterly-rolling": {
+        title: "季度滚动看板",
+        renderer: "quarterly-rolling",
+        layout: { endpoint: "/a/v1/plan/quarterly", n: 6, gapTiers: { red: 4, yellow: 0 }, ltaEscalatePct: 5 },
+      },
+      "order-chain": {
+        title: "订单全链聚合",
+        renderer: "order-chain",
+        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"] },
+      },
+      "geo-map": {
+        title: "基地地理视图",
+        renderer: "geo-map",
+        layout: { objectType: "Base", sizeProp: "gwh", colorProp: "kind", utilThresholds: [92, 85, 78] },
+      },
+      // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）
+      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }),
+      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }),
+      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }),
+      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }),
+      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }),
+      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }),
+      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }),
+      "graph-loop": graphView(
+        "图谱·学习闭环",
+        { colorBy: "domain", nodeFilter: { ids: LOOP_NODE_IDS }, linkKinds: ["fb", "orch"], dimOthers: true, layoutSeed: 42 },
+        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）
+        { descriptionLink: "/admin/calibration", description: "查看精度趋势与校准历史" },
+      ),
     };
     const ADMIN_NAV: { key: string; label: string }[] = [
       { key: "connections", label: "数据接入" },
@@ -557,10 +724,14 @@ export class SyntheticService {
       { key: "ops/fallback", label: "兜底运营" },
     ];
     // 不同账号不同前端：admin 全量（含 admin 导航组），planner 业务视图，base_manager 子集 + 不同主题强调色。
+    const baseManagerExtras = extraViews.filter((v) => v === "order-chain");
     const roleViews: Record<string, string[]> = {
-      admin: views,
-      planner: views,
-      base_manager: views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate"].includes(v)),
+      admin: [...views, ...extraViews],
+      planner: [...views, ...extraViews],
+      base_manager: [
+        ...views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate"].includes(v)),
+        ...baseManagerExtras,
+      ],
     };
     const themes: Record<string, Record<string, string>> = {
       admin: { "--accent": "#4C90F0" },
@@ -589,6 +760,7 @@ export class SyntheticService {
           title: VIEW_DEFS[k]?.title ?? k,
           renderer: VIEW_DEFS[k]?.renderer ?? k,
           layout: VIEW_DEFS[k]?.layout ?? {},
+          ...(VIEW_DEFS[k]?.options ? { options: VIEW_DEFS[k]?.options } : {}),
         })),
         theme: themes[role] ?? { "--accent": "#4C90F0" },
         navigation,

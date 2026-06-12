@@ -1,6 +1,8 @@
 import type {
   ActionDraft,
   ActionTypeRecord,
+  CalibrationHistoryRecord,
+  CalibrationProposalRecord,
   ClockTickReport,
   Connection,
   DerivationRun,
@@ -174,6 +176,9 @@ export interface Repos {
   // Feature entitlement
   featureConfigs: Store<FeatureConfigRecord>;
   featureAudit: Store<FeatureAuditRecord>;
+  // M11 校准（§7.21）
+  calibrationProposals: Store<CalibrationProposalRecord>;
+  calibrationHistory: Store<CalibrationHistoryRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;
