@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z, ZodError } from "zod";
 import {
   AgentDefinitionSchema,
@@ -28,6 +28,16 @@ import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: deps.config.LOG_LEVEL } });
+
+  // tolerate empty JSON bodies (e.g. POST .../publish without payload)
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+    if (typeof body !== "string" || body.length === 0) return done(null, undefined);
+    try {
+      done(null, JSON.parse(body));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
 
   const auth = (req: FastifyRequest): Promise<RequestAuth> =>
     resolveAuth(req.headers as Record<string, string | string[] | undefined>, {
@@ -373,7 +383,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       slots: body.inputs,
       context: {},
       ctx: a,
-      nesting: { callChain: [`workflow:${wf.id}`], budget },
+      nesting: { callChain: [], budget }, // top-level run not counted toward nesting depth
       emit: (e, p) => deps.events.emit(runId, e, p).then(() => undefined),
     });
     if (result.status === "FAILED") {

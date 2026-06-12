@@ -21,6 +21,7 @@ export async function streamTaskEvents(
   );
   const afterSeq = Number.isFinite(lastSeq) ? lastSeq : 0;
 
+  reply.hijack();
   reply.raw.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",

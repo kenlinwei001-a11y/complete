@@ -9,7 +9,8 @@ const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(
 const REF_MARK_RE = /⟦ref:[^⟧]*⟧/;
 
 function splitSentences(markdown: string): string[] {
-  return markdown.split(/(?<=[。．.!?！？;；\n])/u);
+  // "." splits only at end-of-sentence (followed by whitespace/EOL) so decimals stay intact
+  return markdown.split(/(?<=[。．！？!?；;\n])|(?<=\.)(?=\s|$)/u);
 }
 
 export function hasUnverifiedNumerics(markdown: string): boolean {

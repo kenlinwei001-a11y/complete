@@ -357,10 +357,11 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         });
       } else {
         consecutiveDenies = 0;
+        // tool_call_id is surfaced so the model can cite it in final_answer.provenance
         toolResults.push({
           type: "tool_result",
           toolUseId: block.id,
-          content: `<tool_data>${JSON.stringify(r.payload)}</tool_data>`,
+          content: `<tool_data tool_call_id="${r.toolCallId}">${JSON.stringify(r.payload)}</tool_data>`,
           isError: false,
         });
       }

@@ -60,12 +60,24 @@ export async function resolveAuth(
 ): Promise<RequestAuth> {
   const debugHeader = headers["x-debug-user"];
   if (typeof debugHeader === "string" && debugHeader.length > 0) {
-    const [tenantId, userId, rolesRaw] = debugHeader.split(":");
-    if (!tenantId || !userId) throw new AuthError("malformed X-Debug-User header");
+    // value may be URI-encoded to keep the header latin1-safe (roles can contain CJK)
+    let raw = debugHeader;
+    try {
+      raw = decodeURIComponent(debugHeader);
+    } catch {
+      /* keep as-is */
+    }
+    // tenantId:userId:role1|role2 — roles themselves may contain ":" (e.g. base_manager:常州)
+    const first = raw.indexOf(":");
+    const second = first >= 0 ? raw.indexOf(":", first + 1) : -1;
+    if (first <= 0 || second <= first + 1) throw new AuthError("malformed X-Debug-User header");
     return {
-      tenantId,
-      userId,
-      roles: (rolesRaw ?? "").split("|").filter(Boolean),
+      tenantId: raw.slice(0, first),
+      userId: raw.slice(first + 1, second),
+      roles: raw
+        .slice(second + 1)
+        .split("|")
+        .filter(Boolean),
     };
   }
 

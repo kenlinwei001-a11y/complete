@@ -19,7 +19,13 @@ const REF_RE = /\{\{\s*([^}]+?)\s*\}\}/g;
 function resolveRef(expr: string, scope: TemplateScope): unknown {
   let value: unknown;
   if (expr.startsWith("slots.")) {
-    value = resolvePath(scope.slots, "$." + expr.slice("slots.".length));
+    const path = expr.slice("slots.".length);
+    // Optional slots filled with null are valid values (not resolution failures).
+    if (!path.includes(".") && !path.includes("[")) {
+      if (!(path in scope.slots)) throw new TemplateResolutionError(expr);
+      return scope.slots[path] ?? null;
+    }
+    value = resolvePath(scope.slots, "$." + path);
   } else if (expr === "slots") {
     value = scope.slots;
   } else if (expr.startsWith("context.")) {

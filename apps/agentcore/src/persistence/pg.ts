@@ -15,7 +15,7 @@ import type {
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
-import { newId } from "../ids.js";
+
 import type { CredentialRow, QueryEventRow, Repos, TaskPatch, ToolCallRow } from "./repos.js";
 
 const ACTIVE = ["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"];
