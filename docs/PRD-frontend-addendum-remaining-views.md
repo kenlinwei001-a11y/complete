@@ -62,7 +62,8 @@ interface GraphOptions {
 }
 ```
 
-原型七视角（全景/主干分级/产能推演网络/数据来源/求解器/MVP/智能体网络）全部表达为七份 `ViewConfig(renderer="ontology-graph", graphOptions=…)` 进种子数据——**零新代码视角**，且每个视角可被 feature entitlement 单独开关。图例组件按 colorBy 自动切换（domain 图例 ↔ 源系统图例）。
+原型八视角（全景/主干分级/产能推演网络/数据来源/求解器/MVP/智能体网络/**学习闭环**）全部表达为八份 `ViewConfig(renderer="ontology-graph", graphOptions=…)` 进种子数据——**零新代码视角**，且每个视角可被 feature entitlement 单独开关。图例组件按 colorBy 自动切换（domain 图例 ↔ 源系统图例）。
+学习闭环视角的配置：`nodeFilter.ids=[产能预测,实际产出,精度校准器,学习Agent,经验记忆库,良率,OEE历史,OEE指标,聚合求解器,工序产能]`，`linkKinds=["fb","orch"]`，`dimOthers=true`；视角描述卡链接 /admin/calibration（"查看精度趋势与校准历史"）。**原型 loop 视图中的学习引擎面板（点击模拟精度提升的动画）明确不复刻**——其真实系统对应物是 §7.21 校准报告页（真数据 MAPE 趋势），演示能力由 A8 模拟时钟提供（连续 tick 产生真实偏差收敛数据，见 A8 增量 T9 演示线），不做假动画。
 
 ## 7.19 任务详情页 · 编排推演 DAG（修订 §6.6 /tasks/:taskId）
 
