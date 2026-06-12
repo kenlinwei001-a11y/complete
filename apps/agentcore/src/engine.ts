@@ -1,0 +1,274 @@
+import type { AgentDefinition, Answer, PlanStep, WorkflowDefinition } from "@platform/contracts";
+import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
+import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
+import type { AppConfig } from "./config.js";
+import type { LlmClient } from "./llm/types.js";
+import type { McpClientPort } from "./mcp/types.js";
+import type { Metrics } from "./metrics.js";
+import type { Repos } from "./persistence/repos.js";
+import { enterNesting, type NestingCtx } from "./runtime.js";
+import { BudgetTracker } from "./tools/budget.js";
+import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
+import { GuardedToolExecutor } from "./tools/executor.js";
+import { BUILTIN_TOOLS } from "./tools/registry.js";
+import { runWorkflow, type WorkflowResult } from "./workflow/executor.js";
+
+export interface EngineDeps {
+  repos: Repos;
+  metrics: Metrics;
+  llm: LlmClient;
+  dataCore: DataCoreClient;
+  mcp?: McpClientPort;
+  config: AppConfig;
+}
+
+export interface RunRegisteredAgentOpts {
+  taskId: string;
+  agentId: string;
+  version: number | "latest";
+  prompt: string;
+  ctx: ToolAuthCtx;
+  nesting: NestingCtx;
+  emit: (event: string, payload: unknown) => Promise<void>;
+  expectsSchema?: Record<string, unknown>;
+  isCancelled?: () => boolean;
+}
+
+/** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
+export class ExecutionEngine {
+  constructor(readonly deps: EngineDeps) {}
+
+  makeExecutor(taskId: string, ctx: ToolAuthCtx, budget?: BudgetTracker, scopeToolNames?: string[]): GuardedToolExecutor {
+    return new GuardedToolExecutor(
+      { dataCore: this.deps.dataCore, mcp: this.deps.mcp, repos: this.deps.repos, metrics: this.deps.metrics },
+      { taskId, ctx, budget, scopeToolNames },
+    );
+  }
+
+  async resolveAgent(agentId: string, version: number | "latest"): Promise<AgentDefinition> {
+    const direct = await this.deps.repos.agents.get(agentId);
+    if (!direct) throw new Error(`agent not found: ${agentId}`);
+    if (version === "latest") {
+      const latest = await this.deps.repos.agents.latestByKey(direct.tenantId, direct.key);
+      return latest ?? direct;
+    }
+    if (direct.version === version) return direct;
+    const all = await this.deps.repos.agents.listByTenant(direct.tenantId);
+    const match = all.find((a) => a.key === direct.key && a.version === version);
+    if (!match) throw new Error(`agent version not found: ${direct.key} v${version}`);
+    return match;
+  }
+
+  /** Expand AgentToolRef[] → AgentToolSpec[] (BUILTIN / MCP discovered tools / WORKFLOW-as-tool). */
+  async expandAgentTools(agent: AgentDefinition): Promise<AgentToolSpec[]> {
+    const specs: AgentToolSpec[] = [];
+    for (const ref of agent.tools) {
+      if (ref.kind === "BUILTIN") {
+        const def = BUILTIN_TOOLS.find((t) => t.name === ref.name);
+        if (!def) continue;
+        specs.push({
+          name: def.name,
+          description: def.descriptionForLLM,
+          inputSchema: def.inputSchema,
+          binding: { kind: "BUILTIN" },
+        });
+      } else if (ref.kind === "MCP") {
+        if (!this.deps.mcp) continue;
+        const tools = await this.deps.mcp.listTools(ref.mcpConfigId);
+        for (const t of tools) {
+          if (ref.toolFilter && !ref.toolFilter.includes(t.name)) continue;
+          specs.push({
+            name: t.name,
+            description: `[MCP·外部] ${t.description}`,
+            inputSchema: t.inputSchema,
+            binding: { kind: "MCP", mcpConfigId: ref.mcpConfigId },
+          });
+        }
+      } else {
+        const wf = await this.deps.repos.workflows.get(ref.workflowId);
+        if (!wf) continue;
+        specs.push({
+          name: `workflow_${wf.key}`,
+          description: `${wf.name}（这是一个多步流程，将按声明式步骤执行并返回结果）${wf.description ?? ""}`,
+          inputSchema: wf.inputs,
+          binding: { kind: "WORKFLOW", workflowId: ref.workflowId, version: ref.version },
+        });
+      }
+    }
+    return specs;
+  }
+
+  /** Run a registered agent (B1 executor = §6.3 loop + scope gate + skills + rule POST_CHECK). */
+  async runRegisteredAgent(opts: RunRegisteredAgentOpts): Promise<AgentLoopResult> {
+    const agent = await this.resolveAgent(opts.agentId, opts.version);
+    const tools = await this.expandAgentTools(agent);
+
+    const skills = [];
+    for (const s of agent.skills) {
+      const skill = await this.deps.repos.skills.get(s.skillId);
+      if (skill) skills.push(skill);
+    }
+    const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills)}`;
+
+    const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.nesting.budget, agent.scopeDeclaration.toolNames);
+
+    const result = await runAgentLoop({
+      taskId: opts.taskId,
+      model: agent.model || this.deps.config.QOS_AGENT_MODEL,
+      system,
+      userContent: opts.prompt,
+      tools,
+      llm: this.deps.llm,
+      executor,
+      budget: opts.nesting.budget,
+      repos: this.deps.repos,
+      metrics: this.deps.metrics,
+      emit: opts.emit,
+      isCancelled: opts.isCancelled,
+      expectsSchema: opts.expectsSchema,
+      loadSkillEnabled: true,
+      scopeToolNames: agent.scopeDeclaration.toolNames,
+      loadSkill: async (skillId: string) => {
+        const skill = await this.deps.repos.skills.get(skillId);
+        if (!skill || skill.tenantId !== agent.tenantId) return undefined;
+        return {
+          body: skill.body,
+          resources: skill.resources.map((r) => ({
+            name: r.name,
+            url: `/b/v1/skills/${skill.id}/resources/${encodeURIComponent(r.name)}`,
+          })),
+        };
+      },
+      runWorkflowTool: async (workflowId, version, input) =>
+        this.runWorkflowAsTool({
+          taskId: opts.taskId,
+          workflowId,
+          version,
+          input,
+          ctx: opts.ctx,
+          nesting: opts.nesting,
+          emit: opts.emit,
+        }),
+    });
+
+    // ruleBindings POST_CHECK: BLOCK violation → replace answer with violation explanation
+    const mode = agent.ruleBindings.mode;
+    if ((mode === "POST_CHECK" || mode === "BOTH") && result.outcome === "ANSWERED") {
+      const answerText = result.answer.blocks
+        .map((b) => (b.type === "text" ? b.markdown : ""))
+        .filter(Boolean)
+        .join("\n");
+      try {
+        const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, agent.ruleBindings.ruleKeys, {
+          answerText,
+        });
+        const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+        if (blocking.length > 0) {
+          const answer: Answer = {
+            trustLevel: "AGENT_EXPLORATORY",
+            blocks: blocking.map((v) => ({
+              type: "rule_violation",
+              ruleId: v.ruleId,
+              severity: v.severity,
+              explanation: v.explanation,
+              provId: "prov_post_check",
+            })),
+            provenance: [],
+            unverifiedNumerics: false,
+          };
+          return { ...result, answer };
+        }
+      } catch {
+        /* post-check best effort: rules engine unavailable does not break the answer */
+      }
+    }
+    return result;
+  }
+
+  /** Workflow-as-tool execution for agents (nested; shares the top-level budget). */
+  async runWorkflowAsTool(opts: {
+    taskId: string;
+    workflowId: string;
+    version: number | "latest";
+    input: Record<string, unknown>;
+    ctx: ToolAuthCtx;
+    nesting: NestingCtx;
+    emit: (event: string, payload: unknown) => Promise<void>;
+  }): Promise<unknown> {
+    const wf = await this.resolveWorkflow(opts.workflowId, opts.version);
+    this.deps.metrics.nestedInvocations.inc({ kind: "workflow" });
+    const child = enterNesting(opts.nesting, "workflow", wf.id);
+    const result = await this.runWorkflowSteps({
+      taskId: opts.taskId,
+      steps: wf.steps,
+      slots: opts.input,
+      context: {},
+      ctx: opts.ctx,
+      nesting: child,
+      emit: opts.emit,
+      trustLevel: "AGENT_EXPLORATORY",
+    });
+    if (result.status === "FAILED") {
+      throw new Error(`${result.error.code}: ${result.error.message}`);
+    }
+    return { status: "COMPLETED", answer: result.answer, stepOutputs: result.stepOutputs };
+  }
+
+  async resolveWorkflow(workflowId: string, version: number | "latest"): Promise<WorkflowDefinition> {
+    const direct = await this.deps.repos.workflows.get(workflowId);
+    if (!direct) throw new Error(`workflow not found: ${workflowId}`);
+    if (version === "latest") {
+      const latest = await this.deps.repos.workflows.latestByKey(direct.tenantId, direct.key);
+      return latest ?? direct;
+    }
+    if (direct.version === version) return direct;
+    const all = await this.deps.repos.workflows.listByTenant(direct.tenantId);
+    const match = all.find((w) => w.key === direct.key && w.version === version);
+    if (!match) throw new Error(`workflow version not found: ${direct.key} v${version}`);
+    return match;
+  }
+
+  /** Run plan steps with full nesting support (used by QOS path A and standalone workflows). */
+  async runWorkflowSteps(opts: {
+    taskId: string;
+    steps: PlanStep[];
+    slots: Record<string, unknown>;
+    context: unknown;
+    ctx: ToolAuthCtx;
+    nesting: NestingCtx;
+    emit: (event: string, payload: unknown) => Promise<void>;
+    trustLevel?: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY";
+    budgetForTools?: BudgetTracker;
+  }): Promise<WorkflowResult> {
+    const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
+    return runWorkflow(
+      {
+        executor,
+        llm: this.deps.llm,
+        metrics: this.deps.metrics,
+        composeModel: this.deps.config.QOS_AGENT_MODEL,
+        emit: opts.emit,
+        runAgentStep: async (params) => {
+          const r = await this.runRegisteredAgent({
+            taskId: opts.taskId,
+            agentId: params.agentId,
+            version: params.version,
+            prompt: params.prompt,
+            ctx: opts.ctx,
+            nesting: params.nesting,
+            emit: opts.emit,
+            expectsSchema: params.expectsSchema,
+          });
+          return { structured: r.structured, answer: r.answer };
+        },
+      },
+      {
+        steps: opts.steps,
+        slots: opts.slots,
+        context: opts.context,
+        nesting: opts.nesting,
+        trustLevel: opts.trustLevel,
+      },
+    );
+  }
+}

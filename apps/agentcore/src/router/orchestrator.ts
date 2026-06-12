@@ -1,0 +1,690 @@
+import type {
+  Answer,
+  ClarificationReplyBody,
+  ClassificationResult,
+  IntentDefinition,
+  QueryTask,
+  ScenarioPackage,
+  SceneEntryConfig,
+  SlotDef,
+  SubmitQueryBody,
+} from "@platform/contracts";
+import { ErrorCodes } from "@platform/contracts";
+import type { RequestAuth } from "../auth.js";
+import { buildAgentUser, buildClassifierSystem, buildClassifierUser, AGENT_SYSTEM_CORE } from "../agent/prompts.js";
+import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
+import type { AppConfig } from "../config.js";
+import type { ExecutionEngine } from "../engine.js";
+import { TaskEvents } from "../events.js";
+import { newId } from "../ids.js";
+import type { Metrics } from "../metrics.js";
+import type { Repos } from "../persistence/repos.js";
+import { BudgetTracker } from "../tools/budget.js";
+import { BUILTIN_TOOLS } from "../tools/registry.js";
+import { clarifyPromptFor, fillSlots } from "./slots.js";
+
+const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
+
+export class HttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+interface PendingClarification {
+  kind: "INTENT_CHOICE" | "SLOT_FILLING";
+  auth: RequestAuth;
+  candidates?: IntentDefinition[];
+  intent?: IntentDefinition;
+  slots: Record<string, unknown>;
+  missing: SlotDef[];
+  timer: NodeJS.Timeout;
+}
+
+export interface OrchestratorDeps {
+  repos: Repos;
+  metrics: Metrics;
+  config: AppConfig;
+  engine: ExecutionEngine;
+  events: TaskEvents;
+}
+
+export function normalizeQuery(q: string): string {
+  return q
+    .toLowerCase()
+    .replace(/\d+(\.\d+)?/g, "#")
+    .replace(/[\p{P}\p{S}\s]+/gu, "")
+    .trim();
+}
+
+export class Orchestrator {
+  private readonly pending = new Map<string, PendingClarification>();
+  private readonly cancelled = new Set<string>();
+
+  constructor(private readonly deps: OrchestratorDeps) {}
+
+  // -------------------------------------------------------------------------
+  // 8.1 提交查询
+  // -------------------------------------------------------------------------
+  async submitQuery(
+    auth: RequestAuth,
+    body: SubmitQueryBody,
+    idempotencyKey?: string,
+  ): Promise<{ taskId: string; status: string; streamUrl: string; reused: boolean }> {
+    const pkg = await this.deps.repos.packages.get(body.packageId);
+    if (!pkg || pkg.tenantId !== auth.tenantId) {
+      throw new HttpError(404, ErrorCodes.PACKAGE_NOT_FOUND, `package not found: ${body.packageId}`);
+    }
+    const active = await this.deps.repos.tasks.countActiveByUser(auth.tenantId, auth.userId);
+    if (active >= 3) {
+      throw new HttpError(429, ErrorCodes.RATE_LIMITED, "每用户并发执行中任务 ≤3");
+    }
+
+    const taskId = newId("task");
+    if (idempotencyKey) {
+      const key = `${auth.tenantId}|${auth.userId}|${idempotencyKey}`;
+      const existing = await this.deps.repos.idempotency.putIfAbsent(key, taskId);
+      if (existing !== taskId) {
+        const t = await this.deps.repos.tasks.get(existing);
+        if (t) {
+          return { taskId: t.id, status: t.status, streamUrl: `/api/v1/queries/${t.id}/events`, reused: true };
+        }
+      }
+    }
+
+    const task: QueryTask = {
+      id: taskId,
+      tenantId: auth.tenantId,
+      userId: auth.userId,
+      packageId: body.packageId,
+      conversationId: body.context.conversationId ?? newId("conv"),
+      query: body.query,
+      context: { ...body.context, conversationId: body.context.conversationId ?? undefined },
+      status: "ROUTING",
+      clarificationRounds: 0,
+      createdAt: new Date().toISOString(),
+    };
+    await this.deps.repos.tasks.insert(task);
+    await this.deps.events.emit(taskId, "task.accepted", { taskId });
+
+    // run the pipeline asynchronously
+    setImmediate(() => {
+      void this.runPipeline(taskId, auth).catch(async (err) => {
+        await this.failTask(taskId, "INTERNAL_ERROR", err instanceof Error ? err.message : String(err));
+      });
+    });
+
+    return { taskId, status: "ROUTING", streamUrl: `/api/v1/queries/${taskId}/events`, reused: false };
+  }
+
+  // -------------------------------------------------------------------------
+  // Pipeline: scene-entry mode → candidate narrowing → classification → decision
+  // -------------------------------------------------------------------------
+  private async runPipeline(taskId: string, auth: RequestAuth): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task || task.status !== "ROUTING") return;
+    const pkg = (await this.deps.repos.packages.get(task.packageId)) as ScenarioPackage;
+    const scene = await this.deps.repos.sceneEntries.byView(task.tenantId, task.context.view);
+    const mode = scene?.mode ?? "WORKFLOW_FIRST";
+
+    // Scene-entry mode takes precedence over threshold routing (platform PRD §8.5)
+    if (mode === "AGENT_FIRST" || mode === "AGENT_ONLY") {
+      if (!scene?.defaultAgentId) {
+        await this.failTask(taskId, "VALIDATION_ERROR", `scene entry ${mode} missing defaultAgentId`);
+        return;
+      }
+      await this.runSceneAgent(task, auth, scene);
+      return;
+    }
+
+    // ① candidate narrowing
+    let candidates = await this.publishedIntentsForView(task.packageId, task.context.view);
+    if (scene?.intentCatalogFilter) {
+      candidates = candidates.filter((i) => scene.intentCatalogFilter?.includes(i.key));
+    }
+
+    if (candidates.length === 0) {
+      const classification: ClassificationResult = {
+        candidates: [],
+        outOfCatalog: true,
+        extractedSlots: {},
+        latencyMs: 0,
+        model: "none",
+      };
+      await this.deps.repos.tasks.patch(taskId, { classification });
+      if (mode === "WORKFLOW_ONLY") {
+        await this.completeWorkflowOnlyMiss(task, []);
+        return;
+      }
+      await this.runPathB(taskId, auth, classification);
+      return;
+    }
+
+    // ② LLM classification (with up to 2 retries)
+    const classification = await this.classify(task, pkg, candidates);
+    if (!classification) {
+      this.deps.metrics.classifierErrors.inc();
+      if (mode === "WORKFLOW_ONLY") {
+        await this.completeWorkflowOnlyMiss(task, candidates);
+        return;
+      }
+      await this.runPathB(taskId, auth, {
+        candidates: [],
+        outOfCatalog: true,
+        extractedSlots: {},
+        latencyMs: 0,
+        model: pkg.classifierModel ?? this.deps.config.QOS_CLASSIFIER_MODEL,
+      });
+      return;
+    }
+    await this.deps.repos.tasks.patch(taskId, { classification });
+
+    // ③ τ decision
+    const tauHigh = pkg.thresholds?.high ?? this.deps.config.QOS_TAU_HIGH;
+    const tauLow = pkg.thresholds?.low ?? this.deps.config.QOS_TAU_LOW;
+    const top = classification.candidates[0];
+
+    if (classification.outOfCatalog || !top || top.confidence < tauLow) {
+      if (mode === "WORKFLOW_ONLY") {
+        await this.completeWorkflowOnlyMiss(task, candidates);
+        return;
+      }
+      await this.runPathB(taskId, auth, classification);
+      return;
+    }
+
+    const intent = candidates.find((c) => c.key === top.intentKey);
+    if (!intent) {
+      if (mode === "WORKFLOW_ONLY") {
+        await this.completeWorkflowOnlyMiss(task, candidates);
+        return;
+      }
+      await this.runPathB(taskId, auth, classification);
+      return;
+    }
+
+    if (top.confidence < tauHigh) {
+      // mid confidence → INTENT_CHOICE clarification
+      const options = classification.candidates
+        .map((c) => candidates.find((x) => x.key === c.intentKey))
+        .filter((x): x is IntentDefinition => Boolean(x))
+        .slice(0, 3);
+      await this.requestClarification(taskId, auth, {
+        kind: "INTENT_CHOICE",
+        candidates: options,
+        slots: {},
+        missing: [],
+        payload: {
+          kind: "INTENT_CHOICE",
+          options: [
+            ...options.map((o) => ({ intentKey: o.key, name: o.name, description: o.description })),
+            { intentKey: null, name: "都不是", description: "以上都不是我想问的" },
+          ],
+        },
+      });
+      return;
+    }
+
+    // high confidence → slot filling → path A
+    await this.proceedWithIntent(taskId, auth, intent, classification.extractedSlots);
+  }
+
+  private async publishedIntentsForView(packageId: string, view: string): Promise<IntentDefinition[]> {
+    const all = await this.deps.repos.intents.listByPackage(packageId);
+    const eligible = all.filter(
+      (i) => i.status === "PUBLISHED" && (i.enabledViews === "*" || i.enabledViews.includes(view)),
+    );
+    // max version per key
+    const byKey = new Map<string, IntentDefinition>();
+    for (const i of eligible) {
+      const cur = byKey.get(i.key);
+      if (!cur || i.version > cur.version) byKey.set(i.key, i);
+    }
+    return [...byKey.values()];
+  }
+
+  private async classify(
+    task: QueryTask,
+    pkg: ScenarioPackage,
+    candidates: IntentDefinition[],
+  ): Promise<ClassificationResult | undefined> {
+    const model = pkg.classifierModel ?? this.deps.config.QOS_CLASSIFIER_MODEL;
+    const catalog = candidates
+      .map((i) => {
+        const slotDesc = i.slots.map((s) => `${s.name}(${s.type}${s.required ? ",必填" : ""}): ${s.description}`).join("; ");
+        return `- ${i.key}: ${i.description}\n  示例: ${i.examples.slice(0, 3).join(" / ")}\n  槽位: ${slotDesc || "无"}`;
+      })
+      .join("\n");
+    const historySummary = await this.conversationSummary(task);
+    const contextSummary = `view=${task.context.view}; selected=${task.context.selectedObjects
+      .map((o) => `${o.objectType}:${o.label ?? o.objectId}`)
+      .join(",")}`;
+
+    const system = buildClassifierSystem(catalog);
+    const user = buildClassifierUser({ query: task.query, historySummary, contextSummary });
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const t0 = Date.now();
+      try {
+        const raw = await this.deps.engine.deps.llm.classify({ model, system, user });
+        const latencyMs = Date.now() - t0;
+        this.deps.metrics.classifierLatency.observe(latencyMs);
+        return { ...raw, latencyMs, model };
+      } catch {
+        // typed SDK errors retried (SDK 自带重试之外整体重试 2 次)
+      }
+    }
+    return undefined;
+  }
+
+  /** 最近 6 轮会话摘要：user 问句 + answer 首个 text block 前 200 字 */
+  private async conversationSummary(task: QueryTask): Promise<string> {
+    const history = await this.deps.repos.tasks.listByConversation(task.tenantId, task.conversationId);
+    const previous = history.filter((t) => t.id !== task.id).slice(-6);
+    return previous
+      .map((t) => {
+        const firstText = t.answer?.blocks.find((b) => b.type === "text");
+        const a = firstText && firstText.type === "text" ? firstText.markdown.slice(0, 200) : "";
+        return `Q: ${t.query}${a ? `\nA: ${a}` : ""}`;
+      })
+      .join("\n");
+  }
+
+  // -------------------------------------------------------------------------
+  // Clarification handling (§5.1.3 / §5.2 / §8.3)
+  // -------------------------------------------------------------------------
+  private async requestClarification(
+    taskId: string,
+    auth: RequestAuth,
+    opts: {
+      kind: "INTENT_CHOICE" | "SLOT_FILLING";
+      candidates?: IntentDefinition[];
+      intent?: IntentDefinition;
+      slots: Record<string, unknown>;
+      missing: SlotDef[];
+      payload: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task) return;
+    const round = task.clarificationRounds + 1;
+    await this.deps.repos.tasks.patch(taskId, { status: "AWAITING_CLARIFICATION", clarificationRounds: round });
+    this.deps.metrics.clarificationRounds.inc({ kind: opts.kind });
+
+    const timer = setTimeout(() => {
+      void this.cancelForTimeout(taskId);
+    }, CLARIFICATION_TIMEOUT_MS);
+    timer.unref?.();
+
+    this.pending.set(taskId, {
+      kind: opts.kind,
+      auth,
+      candidates: opts.candidates,
+      intent: opts.intent,
+      slots: opts.slots,
+      missing: opts.missing,
+      timer,
+    });
+
+    await this.deps.events.emit(taskId, "clarification.required", { ...opts.payload, round });
+  }
+
+  private async cancelForTimeout(taskId: string): Promise<void> {
+    const pending = this.pending.get(taskId);
+    if (!pending) return;
+    this.pending.delete(taskId);
+    await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+    await this.deps.events.emit(taskId, "task.cancelled", { reason: "clarification timeout (10min)" });
+  }
+
+  async handleClarification(taskId: string, auth: RequestAuth, body: ClarificationReplyBody): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== auth.tenantId) {
+      throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    }
+    const pending = this.pending.get(taskId);
+    if (task.status !== "AWAITING_CLARIFICATION" || !pending) {
+      throw new HttpError(409, ErrorCodes.INVALID_STATE, `task 非 AWAITING_CLARIFICATION（当前 ${task.status}）`);
+    }
+    clearTimeout(pending.timer);
+    this.pending.delete(taskId);
+    await this.deps.repos.tasks.patch(taskId, { status: "ROUTING" });
+
+    if (pending.kind === "INTENT_CHOICE") {
+      if (body.none === true || !body.chosenIntentKey) {
+        await this.runPathB(taskId, auth, task.classification);
+        return;
+      }
+      const intent = pending.candidates?.find((c) => c.key === body.chosenIntentKey);
+      if (!intent) {
+        await this.runPathB(taskId, auth, task.classification);
+        return;
+      }
+      setImmediate(() => {
+        void this.proceedWithIntent(taskId, auth, intent, task.classification?.extractedSlots ?? {}).catch((err) =>
+          this.failTask(taskId, "INTERNAL_ERROR", err instanceof Error ? err.message : String(err)),
+        );
+      });
+      return;
+    }
+
+    // SLOT_FILLING: merge provided slot values, re-extract/validate, continue or re-ask
+    const intent = pending.intent;
+    if (!intent) {
+      await this.runPathB(taskId, auth, task.classification);
+      return;
+    }
+    setImmediate(() => {
+      void this.continueSlotFilling(taskId, auth, intent, pending, body.slotValues ?? {}).catch((err) =>
+        this.failTask(taskId, "INTERNAL_ERROR", err instanceof Error ? err.message : String(err)),
+      );
+    });
+  }
+
+  private async continueSlotFilling(
+    taskId: string,
+    auth: RequestAuth,
+    intent: IntentDefinition,
+    pending: PendingClarification,
+    slotValues: Record<string, unknown>,
+  ): Promise<void> {
+    const merged = { ...pending.slots };
+    const extractedPlus: Record<string, unknown> = { ...slotValues };
+    // already-filled slots stay; provided values validated through the normal pipeline
+    await this.proceedWithIntent(taskId, auth, intent, extractedPlus, merged);
+  }
+
+  private async proceedWithIntent(
+    taskId: string,
+    auth: RequestAuth,
+    intent: IntentDefinition,
+    extracted: Record<string, unknown>,
+    presetSlots: Record<string, unknown> = {},
+  ): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task) return;
+
+    const { slots, missing } = await fillSlots(
+      intent,
+      extracted,
+      task.context,
+      this.deps.engine.deps.dataCore.ontology,
+      auth,
+    );
+    const finalSlots = { ...slots };
+    for (const [k, v] of Object.entries(presetSlots)) {
+      if (finalSlots[k] === undefined || finalSlots[k] === null) finalSlots[k] = v;
+    }
+    const stillMissing = missing.filter((m) => finalSlots[m.name] === undefined || finalSlots[m.name] === null);
+
+    if (stillMissing.length > 0) {
+      if (task.clarificationRounds >= 2) {
+        await this.runPathB(taskId, auth, task.classification);
+        return;
+      }
+      await this.requestClarification(taskId, auth, {
+        kind: "SLOT_FILLING",
+        intent,
+        slots: finalSlots,
+        missing: stillMissing,
+        payload: {
+          kind: "SLOT_FILLING",
+          slots: stillMissing.map((s) => ({ name: s.name, type: s.type, prompt: clarifyPromptFor(s) })),
+        },
+      });
+      return;
+    }
+
+    await this.deps.repos.tasks.patch(taskId, {
+      matchedIntent: { intentId: intent.id, intentKey: intent.key, version: intent.version },
+      slots: finalSlots,
+    });
+    await this.runPathA(taskId, auth, intent, finalSlots);
+  }
+
+  // -------------------------------------------------------------------------
+  // Path A: deterministic workflow (§5.3)
+  // -------------------------------------------------------------------------
+  private async runPathA(
+    taskId: string,
+    auth: RequestAuth,
+    intent: IntentDefinition,
+    slots: Record<string, unknown>,
+  ): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task) return;
+    const plan = await this.deps.repos.plans.get(intent.planId);
+    if (!plan) {
+      await this.failTask(taskId, "PLAN_NOT_FOUND", `plan not found: ${intent.planId}`);
+      return;
+    }
+
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    this.deps.metrics.recordRouting(true);
+    await this.deps.events.emit(taskId, "routing.completed", {
+      path: "WORKFLOW",
+      intentKey: intent.key,
+      confidence: task.classification?.candidates[0]?.confidence,
+    });
+
+    const budget = new BudgetTracker();
+    const result = await this.deps.engine.runWorkflowSteps({
+      taskId,
+      steps: plan.steps,
+      slots,
+      context: task.context,
+      ctx: auth,
+      nesting: { callChain: [], budget },
+      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+      trustLevel: "VERIFIED_WORKFLOW",
+    });
+
+    if (result.status === "FAILED") {
+      await this.deps.repos.tasks.patch(taskId, {
+        status: "FAILED",
+        error: result.error,
+        completedAt: new Date().toISOString(),
+      });
+      await this.deps.events.emit(taskId, "task.failed", result.error);
+      this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "FAILED" });
+      return;
+    }
+
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "COMPLETED",
+      answer: result.answer,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(taskId, "answer.final", result.answer);
+    this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+  }
+
+  // -------------------------------------------------------------------------
+  // Path B: restricted agent fallback (§5.4)
+  // -------------------------------------------------------------------------
+  private async runPathB(taskId: string, auth: RequestAuth, classification?: ClassificationResult): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task) return;
+    const pkg = await this.deps.repos.packages.get(task.packageId);
+    if (!pkg) return;
+
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
+    this.deps.metrics.recordRouting(false);
+    await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
+
+    // 工具集：whitelist ∩ {READ, COMPUTE} + create_action_draft（写降级出口）；final_answer 由循环追加
+    const tools: AgentToolSpec[] = BUILTIN_TOOLS.filter(
+      (t) =>
+        (pkg.toolWhitelist.includes(t.name) && (t.sideEffect === "READ" || t.sideEffect === "COMPUTE")) ||
+        t.name === "create_action_draft",
+    ).map((t) => ({
+      name: t.name,
+      description: t.descriptionForLLM,
+      inputSchema: t.inputSchema,
+      binding: { kind: "BUILTIN" as const },
+    }));
+
+    const budget = new BudgetTracker();
+    const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
+    const model = pkg.agentModel ?? this.deps.config.QOS_AGENT_MODEL;
+
+    const result = await runAgentLoop({
+      taskId,
+      model,
+      system: AGENT_SYSTEM_CORE,
+      userContent: buildAgentUser(task),
+      tools,
+      llm: this.deps.engine.deps.llm,
+      executor,
+      budget,
+      repos: this.deps.repos,
+      metrics: this.deps.metrics,
+      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
+      isCancelled: () => this.cancelled.has(taskId),
+    });
+
+    await this.deps.repos.agentRuns.insert(result.run);
+    await this.deps.repos.fallbackTraces.insert({
+      id: newId("fbt"),
+      taskId,
+      tenantId: task.tenantId,
+      packageId: task.packageId,
+      query: task.query,
+      view: task.context.view,
+      executedPlanSketch: result.sketch,
+      outcome: result.outcome === "FAILED" ? "FAILED" : result.outcome,
+      createdAt: new Date().toISOString(),
+      normalizedQuery: normalizeQuery(task.query),
+    });
+
+    if (this.cancelled.has(taskId)) {
+      await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
+      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "CANCELLED" });
+      return;
+    }
+
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "COMPLETED",
+      answer: result.answer,
+      classification,
+      completedAt: new Date().toISOString(),
+    });
+    for (const block of result.answer.blocks) {
+      if (block.type === "action_draft") {
+        await this.deps.events.emit(taskId, "action_draft.created", {
+          draftId: block.draftId,
+          actionType: block.actionType,
+        });
+      }
+    }
+    await this.deps.events.emit(taskId, "answer.final", result.answer);
+    this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
+  }
+
+  /** AGENT_FIRST / AGENT_ONLY scene-entry modes — skip classification, run the configured agent. */
+  private async runSceneAgent(task: QueryTask, auth: RequestAuth, scene: SceneEntryConfig): Promise<void> {
+    await this.deps.repos.tasks.patch(task.id, { status: "EXECUTING_AGENT", path: "AGENT" });
+    this.deps.metrics.recordRouting(false);
+    await this.deps.events.emit(task.id, "routing.completed", { path: "AGENT", note: `场景入口模式 ${scene.mode}` });
+
+    const budget = new BudgetTracker();
+    try {
+      const result = await this.deps.engine.runRegisteredAgent({
+        taskId: task.id,
+        agentId: scene.defaultAgentId as string,
+        version: "latest",
+        prompt: buildAgentUser(task),
+        ctx: auth,
+        nesting: { callChain: [], budget },
+        emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
+        isCancelled: () => this.cancelled.has(task.id),
+      });
+      await this.deps.repos.agentRuns.insert(result.run);
+      await this.deps.repos.tasks.patch(task.id, {
+        status: "COMPLETED",
+        answer: result.answer,
+        completedAt: new Date().toISOString(),
+      });
+      await this.deps.events.emit(task.id, "answer.final", result.answer);
+      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
+    } catch (err) {
+      await this.failTask(task.id, "AGENT_ERROR", err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** WORKFLOW_ONLY with no intent hit → "请换个问法" + intent list, no agent. */
+  private async completeWorkflowOnlyMiss(task: QueryTask, candidates: IntentDefinition[]): Promise<void> {
+    const list = candidates.map((c) => `- ${c.name}（${c.key}）`).join("\n");
+    const answer: Answer = {
+      trustLevel: "VERIFIED_WORKFLOW",
+      blocks: [
+        {
+          type: "text",
+          markdown: `请换个问法。本入口仅支持以下预设问题：\n${list || "（暂无可用意图）"}`,
+        },
+      ],
+      provenance: [],
+      unverifiedNumerics: false,
+    };
+    await this.deps.repos.tasks.patch(task.id, {
+      status: "COMPLETED",
+      path: "WORKFLOW",
+      answer,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(task.id, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+  }
+
+  // -------------------------------------------------------------------------
+  // cancel / feedback
+  // -------------------------------------------------------------------------
+  async cancel(taskId: string, auth: RequestAuth): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== auth.tenantId) {
+      throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    }
+    this.cancelled.add(taskId);
+    const pending = this.pending.get(taskId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pending.delete(taskId);
+      await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
+    } else if (task.status === "ROUTING") {
+      await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
+      await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
+    }
+    // executing tasks: cancelled flag is checked at loop boundaries (尽力中断)
+  }
+
+  async feedback(taskId: string, auth: RequestAuth, vote: "UP" | "DOWN"): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== auth.tenantId) {
+      throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    }
+    const applied = await this.deps.repos.fallbackTraces.setFeedback(taskId, vote);
+    if (!applied) {
+      // 路径 A 仅落审计
+      await this.deps.events.emit(taskId, "feedback.recorded", { vote });
+    }
+  }
+
+  private async failTask(taskId: string, code: string, message: string): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task || ["COMPLETED", "FAILED", "CANCELLED"].includes(task.status)) return;
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "FAILED",
+      error: { code, message },
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(taskId, "task.failed", { code, message });
+    this.deps.metrics.tasksTotal.inc({ path: task.path ?? "NONE", status: "FAILED" });
+  }
+}
