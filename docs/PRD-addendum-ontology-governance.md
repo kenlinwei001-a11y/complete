@@ -92,3 +92,70 @@ RETIRED：   仅当 references=0 才允许；否则 409 列出全部引用方
 | G8 | 聚合查询 | 按 pos 分组 avg(util) 结果与手算一致；agent 用 aggregate_objects 回答对比类问题（审计断言未拉全量行） |
 | G9 | 邻接导航 | 对象 360 关系区按 linkKey 分组正确；limit 生效 |
 | G10 | 单位 lint | 不同单位属性相加的公式发布告警；KPI/溯源弹窗展示单位 |
+
+## 7. 实施细化（开发对照级补充，消除本文档全部"需要猜"处）
+
+### 7.1 域 owner 会签（发布请求状态机与 API）
+
+```
+publish_requests(id PK, tenant_id, ontology_version INT, requested_by, status
+  /*PENDING_SIGNOFF|APPROVED|REJECTED|EXPIRED*/, created_at);
+publish_signoffs(request_id FK, domain_key, owner_user_id, decision/*APPROVE|REJECT*/,
+  comment TEXT/*REJECT 必填*/, decided_at, UNIQUE(request_id, domain_key));
+
+POST /a/v1/ontology/publish-requests        Body:{ ontologyVersion } → 创建并按"本次变更触及的域"
+                                            实例化 signoff 行（变更触及=该域内有类型/关系/公式被增删改）
+GET  /a/v1/ontology/publish-requests?status=
+POST /a/v1/ontology/publish-requests/{id}/signoff   Body:{ decision, comment? }
+     调用者必须是该 signoff 行的域 owner（403 FORBIDDEN）；全部域 APPROVE → 自动执行发布
+     （§2.3 影响门禁在创建 request 时即跑，门禁不过则 request 创建失败——owner 只对"已过门禁"的变更表态）
+任一 REJECT → request=REJECTED（终态，修改后重新发起）；72h 未决 → catalog_admin 可代签
+     （POST …/signoff?onBehalf=true，审计记 onBehalfOf）；7 天未决 → EXPIRED
+```
+
+### 7.2 切片契约 fixture 精确 schema
+
+```ts
+interface SliceContractFixture {           // slices.spec JSONB 内 contractFixtures: Fixture[]（≥1 必填）
+  name: string;
+  args: Record<string, string | number>;   // 模板参数实参
+  expect: {
+    rootType: string;                       // 根节点 typeKey 断言
+    minNodes: number;                       // 总节点数下限
+    mustIncludeTypes: string[];             // 结果中必须出现的 typeKey 集
+    mustIncludeLinkKeys?: string[];
+    maxNodes?: number;                      // 可选上限（防爆炸回归）
+  };
+}
+// 执行：以 系统校验账号（全量可见）跑 slice，逐字段断言；任一不过 → 门禁/CI 失败，输出 diff
+```
+
+### 7.3 搜索与聚合的完整响应/错误
+
+```
+GET /a/v1/objects/search →
+  200 { items: [{ typeKey, objectKey, display, domainKey, score }], tookMs }   // score 0–1，降序
+  q 长度 <2 → 400 VALIDATION_ERROR；types/domains 含未知 key → 400（消息列出未知项）
+POST /a/v1/objects/aggregate →
+  200 { rows: [{ group: Record<string, string|null>, metrics: Record<string, number|null> }],
+        rowCount, truncated: false }       // metrics 键名 = "{fn}_{prop}"，如 avg_util
+  groupBy 基数 >500 → 400 VALIDATION_ERROR，message 含 "请增加 filter 或减少 groupBy 维度"
+  fn 作用于非 number 属性 → 400（编译期校验，消息指明属性与类型）
+GET /a/v1/objects/{id}/neighbors →
+  200 { groups: [{ linkKey, direction, total, items: [{ id, typeKey, objectKey, display }] }] }
+```
+
+### 7.4 引用反查服务（§2.3 门禁与 G4/G5 的实现接口）
+
+```
+GET /a/v1/ontology/references?elementKind=type|link|prop|slice|rule&key=&prop=
+  → { refs: [{ refKind: "slice"|"derivation"|"rule"|"plan"|"intent"|"agent",
+               key, version, where: string /*人读定位，如 "paths[0][2].linkKey"*/ }], total }
+实现：发布物（slices.spec/derivation_specs.deps/rules.expression AST/plans.steps/intents.slots）
+入库时同步抽取引用三元组到 element_refs(tenant_id, element_kind, element_key, prop?,
+ref_kind, ref_key, ref_version, where)——查询即索引查表，不做运行期全文扫描
+```
+
+### 7.5 弃用警告落点
+
+调用涉及 DEPRECATED 元素的读写响应附头 `X-Deprecated-Refs: {kind}:{key}[,…]`；任务/工具审计记录增加 `deprecatedRefs: string[]` 字段；指标 `dc_deprecated_ref_calls_total{kind,key}`。前端收到该头时在结果区显示一次性黄条「本查询使用了已弃用的本体元素，宽限期至 {date}」。
