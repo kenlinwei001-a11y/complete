@@ -1,4 +1,14 @@
-/** Injectable LLM abstraction. Real implementation wraps @anthropic-ai/sdk; tests use scripted mocks. */
+/**
+ * Injectable LLM abstraction. Tests use scripted mocks.
+ *
+ * Multi-provider note (amends QOS-PRD §6, which was Anthropic-only normative):
+ * real implementations now include the Anthropic adapter (unchanged), the OpenAI
+ * adapter and OpenAI-compatible endpoints (DeepSeek/Qwen/vLLM/Ollama). Call sites
+ * pass a model spec which may be `providerKey:model` or a plain model id (default
+ * provider); `RoutingLlmClient` resolves the spec to a concrete provider adapter.
+ * The optional `tenantId` on requests lets the router pick tenant-scoped
+ * LlmProviderConfig entries.
+ */
 
 export interface RawClassification {
   candidates: { intentKey: string; confidence: number }[];
@@ -35,6 +45,8 @@ export interface LlmAgentRequest {
   tools: LlmAgentToolSpec[];
   messages: LlmAgentMessage[];
   maxTokens?: number;
+  /** Tenant scope for provider resolution (RoutingLlmClient); adapters may ignore it. */
+  tenantId?: string;
 }
 
 export interface LlmAgentResponse {
@@ -45,7 +57,7 @@ export interface LlmAgentResponse {
 }
 
 export interface LlmClient {
-  classify(req: { model: string; system: string; user: string }): Promise<RawClassification>;
+  classify(req: { model: string; system: string; user: string; tenantId?: string }): Promise<RawClassification>;
   agent(req: LlmAgentRequest): Promise<LlmAgentResponse>;
-  compose(req: { model: string; instruction: string; inputs: unknown[] }): Promise<string>;
+  compose(req: { model: string; instruction: string; inputs: unknown[]; tenantId?: string }): Promise<string>;
 }

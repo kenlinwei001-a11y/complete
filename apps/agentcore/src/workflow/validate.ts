@@ -1,5 +1,6 @@
-import type { AgentDefinition, PlanStep, WorkflowDefinition } from "@platform/contracts";
+import type { AgentDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { Repos } from "../persistence/repos.js";
+import type { ExtendedPlanStep } from "./executor.js";
 
 const STEP_REF_RE = /\{\{\s*steps\.([\w-]+)\.output[^}]*\}\}/g;
 
@@ -21,7 +22,7 @@ export interface PlanValidationOptions {
 }
 
 /** Publish-time plan validation (QOS-PRD §4.2/§5.3, errors → PLAN_VALIDATION_ERROR). */
-export function validatePlanSteps(steps: PlanStep[], opts: PlanValidationOptions = {}): string[] {
+export function validatePlanSteps(steps: ExtendedPlanStep[], opts: PlanValidationOptions = {}): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
   const ids = new Set(steps.map((s) => s.id));

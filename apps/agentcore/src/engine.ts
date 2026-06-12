@@ -1,7 +1,8 @@
-import type { AgentDefinition, Answer, PlanStep, WorkflowDefinition } from "@platform/contracts";
+import type { AgentDefinition, Answer, WorkflowDefinition } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import type { AppConfig } from "./config.js";
+import type { LlmSettings } from "./llm/providers.js";
 import type { LlmClient } from "./llm/types.js";
 import type { McpClientPort } from "./mcp/types.js";
 import type { Metrics } from "./metrics.js";
@@ -11,7 +12,7 @@ import { BudgetTracker } from "./tools/budget.js";
 import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import { GuardedToolExecutor } from "./tools/executor.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
-import { runWorkflow, type WorkflowResult } from "./workflow/executor.js";
+import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
 
 export interface EngineDeps {
   repos: Repos;
@@ -20,6 +21,8 @@ export interface EngineDeps {
   dataCore: DataCoreClient;
   mcp?: McpClientPort;
   config: AppConfig;
+  /** Multi-provider model resolution (amends QOS-PRD §6). */
+  llmSettings: LlmSettings;
 }
 
 export interface RunRegisteredAgentOpts {
@@ -114,7 +117,8 @@ export class ExecutionEngine {
 
     const result = await runAgentLoop({
       taskId: opts.taskId,
-      model: agent.model || this.deps.config.QOS_AGENT_MODEL,
+      model: await this.deps.llmSettings.roleModel(agent.tenantId, "agent", agent.model || undefined),
+      tenantId: agent.tenantId,
       system,
       userContent: opts.prompt,
       tools,
@@ -231,7 +235,7 @@ export class ExecutionEngine {
   /** Run plan steps with full nesting support (used by QOS path A and standalone workflows). */
   async runWorkflowSteps(opts: {
     taskId: string;
-    steps: PlanStep[];
+    steps: ExtendedPlanStep[];
     slots: Record<string, unknown>;
     context: unknown;
     ctx: ToolAuthCtx;
@@ -246,7 +250,7 @@ export class ExecutionEngine {
         executor,
         llm: this.deps.llm,
         metrics: this.deps.metrics,
-        composeModel: this.deps.config.QOS_AGENT_MODEL,
+        composeModel: await this.deps.llmSettings.roleModel(opts.ctx.tenantId, "compose"),
         emit: opts.emit,
         runAgentStep: async (params) => {
           const r = await this.runRegisteredAgent({
@@ -268,6 +272,7 @@ export class ExecutionEngine {
         context: opts.context,
         nesting: opts.nesting,
         trustLevel: opts.trustLevel,
+        tenantId: opts.ctx.tenantId,
       },
     );
   }

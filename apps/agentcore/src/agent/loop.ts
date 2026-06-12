@@ -13,6 +13,7 @@ import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import type { BudgetTracker } from "../tools/budget.js";
 import type { GuardedToolExecutor, ToolBinding } from "../tools/executor.js";
+import { enrichProvenance } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 
@@ -37,6 +38,8 @@ export interface AgentToolSpec {
 export interface AgentLoopOpts {
   taskId: string;
   model: string;
+  /** Tenant scope for multi-provider model resolution (RoutingLlmClient). */
+  tenantId?: string;
   system: string;
   userContent: string;
   tools: AgentToolSpec[]; // must NOT include final_answer/load_skill (added by the loop)
@@ -156,6 +159,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       tools: llmTools,
       messages,
       maxTokens: 16000,
+      tenantId: opts.tenantId,
     });
     totalInput += response.usage.inputTokens;
     totalOutput += response.usage.outputTokens;
@@ -407,6 +411,7 @@ async function acceptFinalAnswer(
     return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) };
   }
   // Dereference provenance: each {toolCallId, outputPath} → full ProvenanceRef from the audit log.
+  // tsAgg/kb metadata is populated from the AUDITED tool output (A8.3/S4.1 passthrough).
   const provenance: ProvenanceRef[] = [];
   for (const p of parsed.data.provenance) {
     const audit = await opts.repos.toolCalls.get(p.toolCallId);
@@ -414,13 +419,14 @@ async function acceptFinalAnswer(
       audit && audit.output !== null && typeof audit.output === "object"
         ? ((audit.output as Record<string, unknown>).snapshotVersion as string | undefined)
         : undefined;
+    const enriched = enrichProvenance(audit?.toolName, audit?.output ?? null, p.outputPath);
     provenance.push({
       id: newId("prov"),
-      source: "TOOL_RESULT",
       toolCallId: p.toolCallId,
       toolName: audit?.toolName ?? "unknown",
       outputPath: p.outputPath,
       ...(snapshotVersion ? { snapshotVersion } : {}),
+      ...enriched,
     });
   }
   const blocks: AnswerBlock[] = parsed.data.blocks;

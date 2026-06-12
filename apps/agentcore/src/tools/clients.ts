@@ -1,4 +1,4 @@
-import type { AuthCtx, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AuthCtx, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -39,6 +39,24 @@ export interface IamClient {
   check(ctx: ToolAuthCtx, toolName: string, args: unknown): Promise<{ allowed: boolean; reason?: string }>;
 }
 
+/** S4.1 knowledge-base hit shape (also the KB_CHUNK provenance payload). */
+export interface KbHit {
+  text: string;
+  score: number;
+  docId: string;
+  span: { start: number; end: number };
+  source: string;
+}
+
+export interface KbClient {
+  search(ctx: ToolAuthCtx, input: { query: string; topK?: number; connId?: string }): Promise<ToolPayload>;
+}
+
+/** A8.4 aggregated timeseries query — NEVER returns raw ts_points rows. */
+export interface TimeseriesClient {
+  aggQuery(ctx: ToolAuthCtx, input: QueryTimeseriesAggInput): Promise<ToolPayload>;
+}
+
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */
 export interface DataCoreClient {
   ontology: OntologyClient;
@@ -46,6 +64,8 @@ export interface DataCoreClient {
   rules: RuleEngineClient;
   action: ActionClient;
   iam: IamClient;
+  kb: KbClient;
+  timeseries: TimeseriesClient;
 }
 
 export class DataCoreUnavailableError extends Error {

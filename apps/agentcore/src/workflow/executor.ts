@@ -1,12 +1,30 @@
-import type { Answer, AnswerBlock, PlanStep, ProvenanceRef, RuleVerdict } from "@platform/contracts";
+import type { Answer, AnswerBlock, OnError, PlanStep, ProvenanceRef, RuleVerdict } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
 import type { Metrics } from "../metrics.js";
 import { enterNesting, NestingError, type NestingCtx } from "../runtime.js";
 import type { GuardedToolExecutor } from "../tools/executor.js";
+import { enrichProvenance, type ProvenanceEnrichment } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
 import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "../util/template.js";
+
+/**
+ * Additive step types (A8.4 query_timeseries_agg / S4.1 search_knowledge).
+ * CONTRACT GAP workaround: contracts PlanStepSchema is a closed discriminated
+ * union without these two read tools; since packages/contracts must not change,
+ * we widen the executor input locally. The steps are fully isomorphic to the
+ * other tool steps and run through the generic GuardedToolExecutor dispatch.
+ */
+export interface ExtraToolStep {
+  id: string;
+  type: "query_timeseries_agg" | "search_knowledge";
+  params: Record<string, unknown>;
+  onError?: OnError;
+  timeoutMs?: number;
+}
+
+export type ExtendedPlanStep = PlanStep | ExtraToolStep;
 
 const SOLVER_TIMEOUT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -31,11 +49,13 @@ export interface WorkflowRunDeps {
 }
 
 export interface WorkflowRunInput {
-  steps: PlanStep[];
+  steps: ExtendedPlanStep[];
   slots: Record<string, unknown>;
   context: unknown;
   nesting: NestingCtx;
   trustLevel?: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY";
+  /** Tenant scope for llm_compose provider resolution. */
+  tenantId?: string;
 }
 
 export type WorkflowResult =
@@ -46,6 +66,8 @@ interface StepAudit {
   toolCallId: string;
   toolName: string;
   snapshotVersion?: string;
+  /** A8.3/S4.1: source + tsAgg/kb meta derived from the step output. */
+  enrichment?: ProvenanceEnrichment;
 }
 
 /** Path A workflow executor (QOS-PRD §5.3) + platform §8.2 invoke_agent / invoke_mcp_tool steps. */
@@ -82,11 +104,14 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
       deps.emit("step.completed", { stepId: step.id, type: step.type, outcome, durationMs: Date.now() - started });
 
     switch (step.type) {
+      // generic tool dispatch — incl. additive A8.4/S4.1 steps (query_timeseries_agg / search_knowledge)
       case "resolve_slice":
       case "query_objects":
       case "invoke_solver":
       case "evaluate_rules":
-      case "create_action_draft": {
+      case "create_action_draft":
+      case "query_timeseries_agg":
+      case "search_knowledge": {
         const timeoutMs =
           step.type === "invoke_solver" ? ((step as { timeoutMs?: number }).timeoutMs ?? SOLVER_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
         const r = await deps.executor.run(step.type, resolvedParams, { timeoutMs });
@@ -127,6 +152,7 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
             r.payload !== null && typeof r.payload === "object"
               ? ((r.payload as Record<string, unknown>).snapshotVersion as string | undefined)
               : undefined,
+          enrichment: enrichProvenance(step.type, r.payload),
         };
         await emitDone("OK");
 
@@ -177,6 +203,7 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
             model: deps.composeModel,
             instruction: String(resolvedParams.instruction),
             inputs: (resolvedParams.inputs as unknown[]) ?? [],
+            tenantId: input.tenantId,
           });
           stepOutputs[step.id] = { text };
           await emitDone("OK");
@@ -269,13 +296,14 @@ function renderAnswer(
     if (fromStep) {
       const audit = stepAudits[fromStep];
       provId = newId("prov");
+      // fromStep on a ts-agg / kb step picks the right source + meta (A8.3/S4.1)
       provenance.push({
         id: provId,
-        source: "TOOL_RESULT",
         toolCallId: audit?.toolCallId ?? "unknown",
         toolName: audit?.toolName ?? "unknown",
         outputPath: "$.data",
         ...(audit?.snapshotVersion ? { snapshotVersion: audit.snapshotVersion } : {}),
+        ...(audit?.enrichment ?? { source: "TOOL_RESULT" }),
       });
     }
     const type = rest.type as string;

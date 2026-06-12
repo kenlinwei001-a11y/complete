@@ -2,16 +2,25 @@ import type {
   AgentDefinition,
   AgentRunRecord,
   ExecutionPlan,
-  FallbackTrace,
   IntentDefinition,
+  LlmProviderConfig,
   McpServerConfig,
+  ModelBinding,
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
-import type { CredentialRow, IdempotencyRow, QueryEventRow, Repos, TaskPatch, ToolCallRow } from "./repos.js";
+import type {
+  CredentialRow,
+  FallbackTraceRow,
+  IdempotencyRow,
+  QueryEventRow,
+  Repos,
+  TaskPatch,
+  ToolCallRow,
+} from "./repos.js";
 
 const ACTIVE_STATUSES = new Set(["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"]);
 
@@ -28,7 +37,7 @@ export function createMemoryRepos(): Repos {
   const events = new Map<string, QueryEventRow[]>();
   const toolCalls = new Map<string, ToolCallRow>();
   const agentRuns = new Map<string, AgentRunRecord>();
-  const fallbacks = new Map<string, FallbackTrace & { normalizedQuery: string }>();
+  const fallbacks = new Map<string, FallbackTraceRow>();
   const agents = new Map<string, AgentDefinition>();
   const workflows = new Map<string, WorkflowDefinition>();
   const skills = new Map<string, SkillDefinition>();
@@ -36,6 +45,8 @@ export function createMemoryRepos(): Repos {
   const sceneEntries = new Map<string, SceneEntryConfig>();
   const credentials = new Map<string, CredentialRow>();
   const idempotency = new Map<string, IdempotencyRow>();
+  const llmProviders = new Map<string, LlmProviderConfig>();
+  const llmBindings = new Map<string, ModelBinding[]>();
 
   return {
     packages: {
@@ -261,6 +272,35 @@ export function createMemoryRepos(): Repos {
       },
       async get(id) {
         return clone(credentials.get(id));
+      },
+    },
+    llmProviders: {
+      async upsert(c) {
+        // (tenantId, key) unique
+        for (const [id, e] of llmProviders) {
+          if (e.tenantId === c.tenantId && e.key === c.key && id !== c.id) llmProviders.delete(id);
+        }
+        llmProviders.set(c.id, clone(c));
+      },
+      async get(id) {
+        return clone(llmProviders.get(id));
+      },
+      async byKey(tenantId, key) {
+        return clone([...llmProviders.values()].find((c) => c.tenantId === tenantId && c.key === key));
+      },
+      async listByTenant(tenantId) {
+        return [...llmProviders.values()].filter((c) => c.tenantId === tenantId).map(clone);
+      },
+    },
+    llmBindings: {
+      async put(tenantId, bindings) {
+        llmBindings.set(tenantId, clone(bindings));
+      },
+      async list(tenantId) {
+        return clone(llmBindings.get(tenantId) ?? []);
+      },
+      async get(tenantId, role) {
+        return clone((llmBindings.get(tenantId) ?? []).find((b) => b.role === role));
       },
     },
     idempotency: {

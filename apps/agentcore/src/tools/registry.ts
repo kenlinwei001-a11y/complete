@@ -73,6 +73,50 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    // S4.1 知识库语义检索（QOS-PRD §7.1 注册表新增；路径 B 白名单）
+    name: "search_knowledge",
+    descriptionForLLM:
+      "知识库语义检索：按自然语言问题检索已同步的文档分块（SOP/工艺文件/物流说明等）。命中可作为回答的 KB_CHUNK 溯源。topK ≤ 10。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "检索问题" },
+        topK: { type: "number", maximum: 10, description: "返回条数，默认 5，上限 10" },
+        connId: { type: "string", description: "可选：限定知识库连接器实例" },
+      },
+      required: ["query"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    // A8.4 时序聚合查询（QOS-PRD §7.1 注册表新增）。LLM 隔离红线（A8 §0）：
+    // 该工具只返回聚合桶（bucket 数 ≤120），任何参数组合都无法取得 ts_points 原始行。
+    name: "query_timeseries_agg",
+    descriptionForLLM:
+      "时序聚合查询：按 seriesKey/实体/时间窗/粒度返回聚合桶（如设备日 OEE、产线实绩）。仅返回聚合值，绝不返回原始时序行；窗口超过 120 桶会要求加大 grain。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        seriesKey: { type: "string", description: "时序系列 key，如 oee:base" },
+        entityIds: { type: "array", items: { type: "string" }, maxItems: 20 },
+        window: {
+          type: "object",
+          properties: {
+            from: { type: "string" },
+            to: { type: "string" },
+            grain: { type: "string", enum: ["shift", "day", "week"] },
+          },
+          required: ["from", "to", "grain"],
+        },
+        agg: { type: "string", enum: ["avg", "sum", "min", "max", "p95", "weighted_avg"] },
+      },
+      required: ["seriesKey", "entityIds", "window", "agg"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "create_action_draft",
     descriptionForLLM:
       "唯一的写出口：为用户的修改/下达/调整请求生成 Action 草稿交下游审批。绝不直接执行写操作；生成后必须告知用户需审批。",

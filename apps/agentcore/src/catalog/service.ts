@@ -3,8 +3,10 @@ import {
   ErrorCodes,
   ExecutionPlanSchema,
   IntentDefinitionSchema,
+  OnErrorSchema,
   PlanStepSchema,
   SlotDefSchema,
+  TemplateValueSchema,
   type ExecutionPlan,
   type IntentDefinition,
 } from "@platform/contracts";
@@ -12,6 +14,23 @@ import { newId } from "../ids.js";
 import type { Repos } from "../persistence/repos.js";
 import { HttpError } from "../router/orchestrator.js";
 import { validatePlanSteps } from "../workflow/validate.js";
+
+/**
+ * Additive plan step types (A8.4 query_timeseries_agg / S4.1 search_knowledge).
+ * CONTRACT GAP workaround: contracts PlanStepSchema is a closed discriminated
+ * union without these two read tools; we accept them locally (same shape as the
+ * other tool steps) so QOS plans can use them — see workflow/executor.ts
+ * ExtendedPlanStep for the executor side.
+ */
+const ExtraToolStepSchema = z.object({
+  id: z.string(),
+  type: z.enum(["query_timeseries_agg", "search_knowledge"]),
+  params: z.record(z.string(), TemplateValueSchema),
+  onError: OnErrorSchema.optional(),
+  timeoutMs: z.number().int().optional(),
+});
+
+export const AnyPlanStepSchema = z.union([PlanStepSchema, ExtraToolStepSchema]);
 
 export const CreateIntentBodySchema = IntentDefinitionSchema.omit({
   id: true,
@@ -32,7 +51,7 @@ export const CreatePlanBodySchema = ExecutionPlanSchema.omit({
   packageId: true,
   version: true,
   status: true,
-}).extend({ steps: z.array(PlanStepSchema).min(1).max(12) });
+}).extend({ steps: z.array(AnyPlanStepSchema).min(1).max(12) });
 
 export class CatalogService {
   constructor(private readonly repos: Repos) {}
@@ -129,7 +148,8 @@ export class CatalogService {
     if (!pkg) throw new HttpError(404, ErrorCodes.PACKAGE_NOT_FOUND, `package not found: ${packageId}`);
     const existing = await this.repos.plans.listByPackage(packageId);
     const version = Math.max(0, ...existing.filter((p) => p.key === body.key).map((p) => p.version)) + 1;
-    const plan: ExecutionPlan = { ...body, id: newId("plan"), packageId, version, status: "DRAFT" };
+    // ExtraToolStep widening is local (contract gap workaround) — stored as ExecutionPlan
+    const plan = { ...body, id: newId("plan"), packageId, version, status: "DRAFT" } as ExecutionPlan;
     await this.repos.plans.insert(plan);
     return plan;
   }

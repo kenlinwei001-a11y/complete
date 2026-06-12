@@ -4,18 +4,22 @@ import {
   AgentDefinitionSchema,
   ClarificationReplyBodySchema,
   ErrorCodes,
+  LlmProviderConfigSchema,
   McpServerConfigSchema,
+  ModelBindingSchema,
   SceneEntryConfigSchema,
   SkillDefinitionSchema,
   SubmitQueryBodySchema,
   WorkflowDefinitionSchema,
   type AgentDefinition,
+  type LlmProviderConfig,
   type McpServerConfig,
   type SceneEntryConfig,
   type SkillDefinition,
   type WorkflowDefinition,
 } from "@platform/contracts";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
+import { solverAllowed, viewAllowed } from "./features/registry.js";
 import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema } from "./catalog/service.js";
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
@@ -517,13 +521,105 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // ---------------------------------------------------------------------
+  // Multi-LLM providers & model bindings (amends QOS-PRD §6 — provider configurable)
+  // credentialRef secrets are AES-GCM encrypted like MCP creds and never echoed.
+  // ---------------------------------------------------------------------
+  const CreateLlmProviderBody = LlmProviderConfigSchema.omit({
+    id: true,
+    tenantId: true,
+    credentialRef: true,
+  }).extend({ credential: z.string().optional() });
+
+  app.get("/b/v1/llm/providers", async (req) => {
+    const a = await auth(req);
+    return deps.repos.llmProviders.listByTenant(a.tenantId);
+  });
+
+  app.post("/b/v1/llm/providers", async (req, reply) => {
+    const a = await auth(req);
+    requireRole(a, "catalog_admin");
+    const { credential, ...body } = CreateLlmProviderBody.parse(req.body);
+    let credentialRef: string | undefined;
+    if (credential) {
+      credentialRef = newId("cred");
+      await deps.repos.credentials.insert({
+        id: credentialRef,
+        tenantId: a.tenantId,
+        name: `llm:${body.key}`,
+        ciphertext: encryptSecret(credential, deps.config.CREDENTIAL_KEY),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    const config: LlmProviderConfig = { ...body, id: newId("llmp"), tenantId: a.tenantId, credentialRef };
+    await deps.repos.llmProviders.upsert(config);
+    return reply.status(201).send(config);
+  });
+
+  app.put("/b/v1/llm/providers/:id", async (req) => {
+    const a = await auth(req);
+    requireRole(a, "catalog_admin");
+    const { id } = req.params as { id: string };
+    const existing = await deps.repos.llmProviders.get(id);
+    if (!existing || existing.tenantId !== a.tenantId) {
+      throw new HttpError(404, "LLM_PROVIDER_NOT_FOUND", `llm provider not found: ${id}`);
+    }
+    const { credential, ...body } = CreateLlmProviderBody.partial().parse(req.body);
+    let credentialRef = existing.credentialRef;
+    if (credential) {
+      credentialRef = newId("cred");
+      await deps.repos.credentials.insert({
+        id: credentialRef,
+        tenantId: a.tenantId,
+        name: `llm:${body.key ?? existing.key}`,
+        ciphertext: encryptSecret(credential, deps.config.CREDENTIAL_KEY),
+        createdAt: new Date().toISOString(),
+      });
+    }
+    const updated: LlmProviderConfig = { ...existing, ...body, id, tenantId: a.tenantId, credentialRef };
+    await deps.repos.llmProviders.upsert(updated);
+    return updated;
+  });
+
+  app.get("/b/v1/llm/bindings", async (req) => {
+    const a = await auth(req);
+    return deps.repos.llmBindings.list(a.tenantId);
+  });
+
+  app.put("/b/v1/llm/bindings", async (req) => {
+    const a = await auth(req);
+    requireRole(a, "catalog_admin");
+    const body = z.object({ bindings: z.array(ModelBindingSchema) }).parse(req.body);
+    await deps.repos.llmBindings.put(a.tenantId, body.bindings);
+    return deps.repos.llmBindings.list(a.tenantId);
+  });
+
+  // ---------------------------------------------------------------------
+  // Sync solver proxy (entitlement PRD §4): entitlement check FIRST —
+  // solverKey bound to any disabled feature → 404 FEATURE_NOT_FOUND (not 403).
+  // Then OBO passthrough to DataCore /a/v1/solvers/{key}/invoke.
+  // ---------------------------------------------------------------------
+  app.post("/b/v1/solvers/:key/run", async (req) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    if (!solverAllowed(enabled, key)) {
+      throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    }
+    const body = z.object({ args: z.record(z.string(), z.unknown()).default({}) }).parse(req.body ?? {});
+    return deps.dataCore.solver.invoke(a, key, body.args);
+  });
+
+  // ---------------------------------------------------------------------
   // B5 Scene entries
   // ---------------------------------------------------------------------
   const UpsertSceneBody = SceneEntryConfigSchema.omit({ id: true, tenantId: true });
 
   app.get("/b/v1/scene-entries", async (req) => {
     const a = await auth(req);
-    return deps.repos.sceneEntries.listByTenant(a.tenantId);
+    const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);
+    // entitlement PRD §5 (B5 联动): entry referencing a disabled view → marked inactive
+    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    return entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
   });
 
   app.put("/b/v1/scene-entries/:viewKey", async (req) => {

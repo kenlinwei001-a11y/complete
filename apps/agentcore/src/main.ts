@@ -1,6 +1,6 @@
 import { loadConfig } from "./config.js";
 import { wireDeps } from "./deps.js";
-import { AnthropicLlmClient } from "./llm/anthropic.js";
+import { LlmProviderRegistry, RoutingLlmClient } from "./llm/providers.js";
 import { McpClient } from "./mcp/client.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
@@ -25,7 +25,9 @@ async function main(): Promise<void> {
 
   const dataCore = config.DATACORE_BASE_URL ? createHttpDataCore(config.DATACORE_BASE_URL) : createMockDataCore();
   const mcp = new McpClient(repos, config.CREDENTIAL_KEY);
-  const llm = new AnthropicLlmClient(metrics);
+  // Multi-provider routing (amends QOS-PRD §6): anthropic (default) / openai /
+  // openai_compatible, resolved per model spec + tenant LlmProviderConfig.
+  const llm = new RoutingLlmClient(new LlmProviderRegistry({ repos, config, metrics }));
 
   const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics });
   const app = await buildServer(deps);

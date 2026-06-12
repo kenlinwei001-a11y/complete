@@ -1,15 +1,19 @@
-import type { RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
   DataCoreClient,
   IamClient,
+  KbClient,
+  KbHit,
   OntologyClient,
   RuleEngineClient,
   SolverClient,
+  TimeseriesClient,
   ToolAuthCtx,
 } from "../tools/clients.js";
-import { prngFor } from "./prng.js";
+import { cosine, pseudoEmbed } from "../util/embedding.js";
+import { hashSeed, prngFor } from "./prng.js";
 import { SEED_BASES, SEED_MODELS, SEED_ORDERS, type SeedBase, type SeedOrder } from "./seed.js";
 
 const SNAPSHOT = "ont-snap-001";
@@ -203,6 +207,104 @@ export class MockActionClient implements ActionClient {
   }
 }
 
+/** S4.1 mock KB: 3 seeded doc chunks, scored via the deterministic pseudo-embedding. */
+export const SEED_KB_CHUNKS: { docId: string; connId: string; source: string; span: { start: number; end: number }; text: string }[] = [
+  {
+    docId: "doc_sop_huacheng",
+    connId: "conn_kb_default",
+    source: "工艺SOP-化成工序.md",
+    span: { start: 0, end: 132 },
+    text: "化成工序产能由化成柜通道数与单通道产出决定；扩通道需设备部审批。通道利用率超过 95% 持续三日应升级瓶颈告警（C05），并评估老化库位余量。",
+  },
+  {
+    docId: "doc_logistics_south",
+    connId: "conn_kb_default",
+    source: "物流手册-华南区.md",
+    span: { start: 210, end: 338 },
+    text: "华南地区整车物流时长平均 5 天，紧急订单可申请航空件（48 小时达），需在交付评审中扣减净生产窗口（wkEff）后再做逐批校验。",
+  },
+  {
+    docId: "doc_quality_8d",
+    connId: "conn_kb_default",
+    source: "质量管理-8D流程.md",
+    span: { start: 64, end: 190 },
+    text: "良率波动超过 2 个百分点须启动 8D 分析；涂布/卷绕工序的良率基线每周由时序聚合作业回写至本体快照属性 yield_baseline。",
+  },
+];
+
+export class MockKbClient implements KbClient {
+  async search(
+    _ctx: ToolAuthCtx,
+    input: { query: string; topK?: number; connId?: string },
+  ): Promise<ToolPayload> {
+    const topK = Math.min(Math.max(1, input.topK ?? 5), 10);
+    const qv = pseudoEmbed(input.query);
+    const hits: KbHit[] = SEED_KB_CHUNKS.filter((c) => !input.connId || c.connId === input.connId)
+      .map((c) => ({
+        text: c.text,
+        score: Math.round(cosine(qv, pseudoEmbed(c.text)) * 1000) / 1000,
+        docId: c.docId,
+        span: c.span,
+        source: c.source,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
+    return { data: { hits }, snapshotVersion: SNAPSHOT };
+  }
+}
+
+const MAX_BUCKETS = 120;
+const DAY_MS = 24 * 3600_000;
+
+/**
+ * A8.4 mock: deterministic aggregate buckets for seed entities.
+ * LLM 隔离红线：只产出聚合桶（≤120），永不返回 ts_points 原始行；
+ * base_manager 行级过滤与本体对象同口径（常州管理员仅得常州实体）。
+ */
+export class MockTimeseriesClient implements TimeseriesClient {
+  async aggQuery(ctx: ToolAuthCtx, input: QueryTimeseriesAggInput): Promise<ToolPayload> {
+    const visible = new Set(visibleBases(ctx).flatMap((b) => [b.objectId, b.name]));
+    const entityIds = input.entityIds.filter((e) => visible.has(e));
+
+    const from = Date.parse(input.window.from);
+    const to = Date.parse(input.window.to);
+    if (Number.isNaN(from) || Number.isNaN(to) || to < from) {
+      throw new Error(`invalid window: ${input.window.from} ~ ${input.window.to}`);
+    }
+    const days = Math.floor((to - from) / DAY_MS) + 1;
+    const perDay = input.window.grain === "shift" ? 3 : input.window.grain === "day" ? 1 : 1 / 7;
+    const bucketCount = Math.max(1, Math.ceil(days * perDay));
+    if (bucketCount > MAX_BUCKETS) {
+      throw new Error(`BUCKET_LIMIT_EXCEEDED: 该窗口在 grain=${input.window.grain} 下共 ${bucketCount} 桶（上限 ${MAX_BUCKETS}），请加大 grain`);
+    }
+
+    const stepMs = input.window.grain === "week" ? 7 * DAY_MS : DAY_MS;
+    const points: { entityId: string; bucket: string; value: number }[] = [];
+    for (const entityId of entityIds) {
+      for (let i = 0; i < bucketCount; i++) {
+        const dayIdx = input.window.grain === "shift" ? Math.floor(i / 3) : i;
+        const t = new Date(from + dayIdx * stepMs).toISOString().slice(0, 10);
+        const bucket = input.window.grain === "shift" ? `${t}#S${(i % 3) + 1}` : t;
+        const rnd = prngFor({ seriesKey: input.seriesKey, entityId, bucket, agg: input.agg });
+        points.push({ entityId, bucket, value: Math.round((0.55 + rnd() * 0.4) * 1000) / 10 });
+      }
+    }
+    // tsAgg = A8.3 窗口级溯源载体（aggRunId/window/rowsIn），下游 enrich 为 TS_AGGREGATE ProvenanceRef
+    return {
+      data: {
+        points,
+        tsAgg: {
+          aggRunId: `aggrun_${hashSeed(input).toString(16)}`,
+          specKey: `${input.seriesKey}@v1`,
+          window: { start: input.window.from, end: input.window.to },
+          rowsIn: points.length * 96,
+        },
+      },
+      snapshotVersion: SNAPSHOT,
+    };
+  }
+}
+
 export class MockIamClient implements IamClient {
   /** Optional per-test overrides: toolName -> allowed */
   readonly denyTools = new Set<string>();
@@ -223,6 +325,8 @@ export interface MockDataCore extends DataCoreClient {
   rules: MockRuleEngineClient;
   action: MockActionClient;
   iam: MockIamClient;
+  kb: MockKbClient;
+  timeseries: MockTimeseriesClient;
 }
 
 export function createMockDataCore(): MockDataCore {
@@ -232,5 +336,7 @@ export function createMockDataCore(): MockDataCore {
     rules: new MockRuleEngineClient(),
     action: new MockActionClient(),
     iam: new MockIamClient(),
+    kb: new MockKbClient(),
+    timeseries: new MockTimeseriesClient(),
   };
 }

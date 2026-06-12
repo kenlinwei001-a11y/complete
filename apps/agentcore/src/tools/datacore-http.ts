@@ -1,12 +1,14 @@
-import type { RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import {
   DataCoreUnavailableError,
   type ActionClient,
   type DataCoreClient,
   type IamClient,
+  type KbClient,
   type OntologyClient,
   type RuleEngineClient,
   type SolverClient,
+  type TimeseriesClient,
   type ToolAuthCtx,
 } from "./clients.js";
 
@@ -88,6 +90,22 @@ class HttpActionClient implements ActionClient {
   }
 }
 
+/** S4.1 knowledge-base semantic search (OBO passthrough). */
+class HttpKbClient implements KbClient {
+  constructor(private readonly baseUrl: string) {}
+  search(ctx: ToolAuthCtx, input: { query: string; topK?: number; connId?: string }): Promise<ToolPayload> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/kb/search`, input);
+  }
+}
+
+/** A8.4 aggregated timeseries query (OBO passthrough; DataCore enforces the 120-bucket cap). */
+class HttpTimeseriesClient implements TimeseriesClient {
+  constructor(private readonly baseUrl: string) {}
+  aggQuery(ctx: ToolAuthCtx, input: QueryTimeseriesAggInput): Promise<ToolPayload> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/timeseries/agg-query`, input);
+  }
+}
+
 /**
  * Coarse tool-level IAM. Per platform PRD §6.2 the single enforcement point is DataCore's
  * data layer (row filtering on every read); this client therefore allows by default and
@@ -127,5 +145,7 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     rules: new HttpRuleEngineClient(baseUrl),
     action: new HttpActionClient(baseUrl),
     iam: new HttpIamClient(baseUrl),
+    kb: new HttpKbClient(baseUrl),
+    timeseries: new HttpTimeseriesClient(baseUrl),
   };
 }

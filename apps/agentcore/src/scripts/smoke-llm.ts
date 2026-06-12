@@ -1,19 +1,33 @@
 /**
- * Real-LLM smoke test (requires ANTHROPIC_API_KEY): runs acceptance cases A1 / A2 / B1
- * against in-memory repos + mock DataCore clients with the real Anthropic SDK client.
- * Usage: pnpm --filter agentcore run smoke:llm
+ * Real-LLM smoke test: runs acceptance cases A1 / A2 / B1 against in-memory repos
+ * + mock DataCore clients with a REAL provider client (amends QOS-PRD §6).
+ *
+ * Providers (SMOKE_PROVIDER, default anthropic):
+ *   anthropic          — requires ANTHROPIC_API_KEY
+ *   openai             — requires OPENAI_API_KEY (or SMOKE_API_KEY_ENV)
+ *   openai_compatible  — requires SMOKE_BASE_URL (+ key via SMOKE_API_KEY_ENV)
+ * SMOKE_MODEL overrides both classifier/agent models (plain model id).
+ *
+ * Usage examples:
+ *   pnpm --filter agentcore run smoke:llm
+ *   SMOKE_PROVIDER=openai_compatible SMOKE_BASE_URL=https://api.deepseek.com \
+ *     SMOKE_API_KEY_ENV=DEEPSEEK_API_KEY SMOKE_MODEL=deepseek-chat \
+ *     pnpm --filter agentcore run smoke:llm
  */
 import { loadConfig } from "../config.js";
 import { wireDeps } from "../deps.js";
 import { AnthropicLlmClient } from "../llm/anthropic.js";
+import { OpenAiLlmClient } from "../llm/openai.js";
+import type { LlmClient } from "../llm/types.js";
 import { Metrics } from "../metrics.js";
 import { createMockDataCore } from "../mocks/clients.js";
 import { SEED_PACKAGE_ID, SEED_TENANT, seedIntentsAndPlans, seedScenarioPackage } from "../mocks/seed.js";
 import { createMemoryRepos } from "../persistence/memory.js";
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error("ANTHROPIC_API_KEY is required for smoke:llm");
-  process.exit(1);
+const provider = process.env.SMOKE_PROVIDER ?? "anthropic";
+if (process.env.SMOKE_MODEL) {
+  process.env.QOS_CLASSIFIER_MODEL = process.env.SMOKE_MODEL;
+  process.env.QOS_AGENT_MODEL = process.env.SMOKE_MODEL;
 }
 
 const config = loadConfig();
@@ -24,7 +38,32 @@ const { intents, plans } = seedIntentsAndPlans();
 for (const p of plans) await repos.plans.insert(p);
 for (const i of intents) await repos.intents.insert(i);
 
-const deps = wireDeps({ config, repos, llm: new AnthropicLlmClient(metrics), dataCore: createMockDataCore(), metrics });
+let llm: LlmClient;
+if (provider === "anthropic") {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error("ANTHROPIC_API_KEY is required for smoke:llm (SMOKE_PROVIDER=anthropic)");
+    process.exit(1);
+  }
+  llm = new AnthropicLlmClient(metrics);
+} else if (provider === "openai" || provider === "openai_compatible") {
+  const baseUrl = process.env.SMOKE_BASE_URL;
+  if (provider === "openai_compatible" && !baseUrl) {
+    console.error("SMOKE_BASE_URL is required for SMOKE_PROVIDER=openai_compatible");
+    process.exit(1);
+  }
+  const apiKeyEnv = process.env.SMOKE_API_KEY_ENV ?? "OPENAI_API_KEY";
+  const apiKey = process.env[apiKeyEnv];
+  if (!apiKey) {
+    console.error(`${apiKeyEnv} is required for SMOKE_PROVIDER=${provider}`);
+    process.exit(1);
+  }
+  llm = new OpenAiLlmClient({ apiKey, baseUrl, metrics });
+} else {
+  console.error(`unknown SMOKE_PROVIDER: ${provider}`);
+  process.exit(1);
+}
+
+const deps = wireDeps({ config, repos, llm, dataCore: createMockDataCore(), metrics });
 
 const auth = { tenantId: SEED_TENANT, userId: "smoke-user", roles: ["planner"] };
 

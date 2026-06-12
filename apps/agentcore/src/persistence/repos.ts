@@ -5,13 +5,21 @@ import type {
   ExecutionPlan,
   FallbackTrace,
   IntentDefinition,
+  LlmProviderConfig,
   McpServerConfig,
+  ModelBinding,
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
+
+/**
+ * Stored fallback trace (S4.2): normalized query for string clustering plus a
+ * deterministic pseudo-embedding for vector-neighbor cluster merging.
+ */
+export type FallbackTraceRow = FallbackTrace & { normalizedQuery: string; embedding?: number[] };
 
 export interface QueryEventRow {
   taskId: string;
@@ -98,13 +106,11 @@ export interface Repos {
     getByTask(taskId: string): Promise<AgentRunRecord | undefined>;
   };
   fallbackTraces: {
-    insert(t: FallbackTrace & { normalizedQuery: string }): Promise<void>;
-    get(id: string): Promise<(FallbackTrace & { normalizedQuery: string }) | undefined>;
-    getByTask(taskId: string): Promise<(FallbackTrace & { normalizedQuery: string }) | undefined>;
+    insert(t: FallbackTraceRow): Promise<void>;
+    get(id: string): Promise<FallbackTraceRow | undefined>;
+    getByTask(taskId: string): Promise<FallbackTraceRow | undefined>;
     setFeedback(taskId: string, vote: "UP" | "DOWN"): Promise<boolean>;
-    list(filter: { packageId?: string; from?: string; to?: string; tenantId: string }): Promise<
-      (FallbackTrace & { normalizedQuery: string })[]
-    >;
+    list(filter: { packageId?: string; from?: string; to?: string; tenantId: string }): Promise<FallbackTraceRow[]>;
   };
   agents: {
     insert(a: AgentDefinition): Promise<void>;
@@ -141,6 +147,19 @@ export interface Repos {
   credentials: {
     insert(c: CredentialRow): Promise<void>;
     get(id: string): Promise<CredentialRow | undefined>;
+  };
+  /** Multi-LLM provider configs (amends QOS-PRD §6). tenantId=undefined → platform level. */
+  llmProviders: {
+    upsert(c: LlmProviderConfig): Promise<void>;
+    get(id: string): Promise<LlmProviderConfig | undefined>;
+    byKey(tenantId: string | undefined, key: string): Promise<LlmProviderConfig | undefined>;
+    listByTenant(tenantId: string): Promise<LlmProviderConfig[]>;
+  };
+  /** Tenant model-role bindings (classifier/agent/compose…). */
+  llmBindings: {
+    put(tenantId: string, bindings: ModelBinding[]): Promise<void>;
+    list(tenantId: string): Promise<ModelBinding[]>;
+    get(tenantId: string, role: string): Promise<ModelBinding | undefined>;
   };
   idempotency: {
     /** Returns the existing taskId if key seen within 24h, else records it. */

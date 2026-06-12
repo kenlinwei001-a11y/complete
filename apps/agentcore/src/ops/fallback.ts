@@ -1,7 +1,8 @@
-import type { ExecutionPlan, FallbackTrace, IntentDefinition, PlanStep } from "@platform/contracts";
+import type { ExecutionPlan, IntentDefinition, PlanStep } from "@platform/contracts";
 import { newId } from "../ids.js";
-import type { Repos } from "../persistence/repos.js";
+import type { FallbackTraceRow, Repos } from "../persistence/repos.js";
 import { HttpError } from "../router/orchestrator.js";
+import { centroid, cosine, pseudoEmbed } from "../util/embedding.js";
 
 export interface FallbackStatsItem {
   querySample: string;
@@ -11,27 +12,51 @@ export interface FallbackStatsItem {
   topToolSketch: { toolName: string; inputSummary: string }[];
 }
 
-/** Cluster fallback traces by normalized query (lowercase / 去标点 / 数字→#). */
+/** S4.2: vector-neighbor merge threshold (相似度 > 0.9 归簇). */
+const MERGE_COSINE = 0.9;
+
+/**
+ * Cluster fallback traces (S4.2 upgrade): string normalization (lowercase /
+ * 去标点 / 数字→#) groups exact paraphrase repeats; clusters whose centroid
+ * pseudo-embeddings have cosine > 0.9 are then merged (semantic neighbors).
+ */
 export async function fallbackStats(
   repos: Repos,
   filter: { tenantId: string; packageId?: string; from?: string; to?: string },
 ): Promise<{ items: FallbackStatsItem[] }> {
   const traces = await repos.fallbackTraces.list(filter);
-  const clusters = new Map<string, (FallbackTrace & { normalizedQuery: string })[]>();
+
+  // ① exact clustering on normalizedQuery
+  const byNorm = new Map<string, FallbackTraceRow[]>();
   for (const t of traces) {
-    const list = clusters.get(t.normalizedQuery) ?? [];
+    const list = byNorm.get(t.normalizedQuery) ?? [];
     list.push(t);
-    clusters.set(t.normalizedQuery, list);
+    byNorm.set(t.normalizedQuery, list);
   }
+
+  // ② vector-neighbor merge of the string clusters
+  const merged: { emb: number[]; traces: FallbackTraceRow[] }[] = [];
+  for (const list of byNorm.values()) {
+    const embeddings = list.map((t) => t.embedding ?? pseudoEmbed(t.normalizedQuery));
+    const emb = centroid(embeddings);
+    const target = merged.find((m) => cosine(m.emb, emb) > MERGE_COSINE);
+    if (target) {
+      target.traces.push(...list);
+      target.emb = centroid(target.traces.map((t) => t.embedding ?? pseudoEmbed(t.normalizedQuery)));
+    } else {
+      merged.push({ emb, traces: [...list] });
+    }
+  }
+
   const items: FallbackStatsItem[] = [];
-  for (const list of clusters.values()) {
-    const sorted = [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const newest = sorted[0] as FallbackTrace & { normalizedQuery: string };
+  for (const cluster of merged) {
+    const sorted = [...cluster.traces].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const newest = sorted[0] as FallbackTraceRow;
     const outcomeBreakdown: Record<string, number> = {};
-    for (const t of list) outcomeBreakdown[t.outcome] = (outcomeBreakdown[t.outcome] ?? 0) + 1;
+    for (const t of cluster.traces) outcomeBreakdown[t.outcome] = (outcomeBreakdown[t.outcome] ?? 0) + 1;
     items.push({
       querySample: newest.query,
-      count: list.length,
+      count: cluster.traces.length,
       lastSeen: newest.createdAt,
       outcomeBreakdown,
       topToolSketch: newest.executedPlanSketch,

@@ -16,11 +16,15 @@ import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
 import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
 import { TaskEvents } from "../events.js";
+import type { FeatureGate } from "../features/gate.js";
+import { intentAllowed, type FeatureSet } from "../features/registry.js";
 import { newId } from "../ids.js";
+import type { LlmSettings } from "../llm/providers.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
+import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
@@ -52,6 +56,10 @@ export interface OrchestratorDeps {
   config: AppConfig;
   engine: ExecutionEngine;
   events: TaskEvents;
+  /** Entitlement gate (PRD §4/§5): query-dock 404, candidate narrowing, agent-fallback off. */
+  features: FeatureGate;
+  /** Multi-provider model resolution (amends QOS-PRD §6). */
+  llmSettings: LlmSettings;
 }
 
 export function normalizeQuery(q: string): string {
@@ -76,6 +84,10 @@ export class Orchestrator {
     body: SubmitQueryBody,
     idempotencyKey?: string,
   ): Promise<{ taskId: string; status: string; streamUrl: string; reused: boolean }> {
+    // entitlement PRD §5: shell.query-dock off → the endpoint "does not exist" (404, not 403)
+    if (!(await this.deps.features.isEnabled(auth.tenantId, "shell.query-dock", auth.token))) {
+      throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    }
     const pkg = await this.deps.repos.packages.get(body.packageId);
     if (!pkg || pkg.tenantId !== auth.tenantId) {
       throw new HttpError(404, ErrorCodes.PACKAGE_NOT_FOUND, `package not found: ${body.packageId}`);
@@ -142,8 +154,10 @@ export class Orchestrator {
       return;
     }
 
-    // ① candidate narrowing
-    let candidates = await this.publishedIntentsForView(task.packageId, task.context.view);
+    // ① candidate narrowing (incl. entitlement filter — QOS-PRD §5.1-1 追加条件:
+    // intents bound to disabled features are excluded from candidates AND the classifier catalog)
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
+    let candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
     if (scene?.intentCatalogFilter) {
       candidates = candidates.filter((i) => scene.intentCatalogFilter?.includes(i.key));
     }
@@ -234,10 +248,17 @@ export class Orchestrator {
     await this.proceedWithIntent(taskId, auth, intent, classification.extractedSlots);
   }
 
-  private async publishedIntentsForView(packageId: string, view: string): Promise<IntentDefinition[]> {
+  private async publishedIntentsForView(
+    packageId: string,
+    view: string,
+    enabledFeatures?: FeatureSet,
+  ): Promise<IntentDefinition[]> {
     const all = await this.deps.repos.intents.listByPackage(packageId);
     const eligible = all.filter(
-      (i) => i.status === "PUBLISHED" && (i.enabledViews === "*" || i.enabledViews.includes(view)),
+      (i) =>
+        i.status === "PUBLISHED" &&
+        (i.enabledViews === "*" || i.enabledViews.includes(view)) &&
+        (enabledFeatures === undefined || intentAllowed(enabledFeatures, i.key)),
     );
     // max version per key
     const byKey = new Map<string, IntentDefinition>();
@@ -253,7 +274,8 @@ export class Orchestrator {
     pkg: ScenarioPackage,
     candidates: IntentDefinition[],
   ): Promise<ClassificationResult | undefined> {
-    const model = pkg.classifierModel ?? this.deps.config.QOS_CLASSIFIER_MODEL;
+    // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
+    const model = await this.deps.llmSettings.roleModel(task.tenantId, "classifier", pkg.classifierModel);
     const catalog = candidates
       .map((i) => {
         const slotDesc = i.slots.map((s) => `${s.name}(${s.type}${s.required ? ",必填" : ""}): ${s.description}`).join("; ");
@@ -271,7 +293,7 @@ export class Orchestrator {
     for (let attempt = 0; attempt < 3; attempt++) {
       const t0 = Date.now();
       try {
-        const raw = await this.deps.engine.deps.llm.classify({ model, system, user });
+        const raw = await this.deps.engine.deps.llm.classify({ model, system, user, tenantId: task.tenantId });
         const latencyMs = Date.now() - t0;
         this.deps.metrics.classifierLatency.observe(latencyMs);
         return { ...raw, latencyMs, model };
@@ -513,6 +535,15 @@ export class Orchestrator {
     const pkg = await this.deps.repos.packages.get(task.packageId);
     if (!pkg) return;
 
+    // entitlement PRD §5: qos.agent-fallback off → every would-be path-B branch
+    // returns the WORKFLOW_ONLY behavior (请换个问法 + available intents), no agent run.
+    const enabledFeatures = await this.deps.features.enabledSet(task.tenantId, auth.token);
+    if (!(await this.deps.features.isEnabled(task.tenantId, "qos.agent-fallback", auth.token))) {
+      const candidates = await this.publishedIntentsForView(task.packageId, task.context.view, enabledFeatures);
+      await this.completeWorkflowOnlyMiss(task, candidates);
+      return;
+    }
+
     await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
@@ -531,11 +562,13 @@ export class Orchestrator {
 
     const budget = new BudgetTracker();
     const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
-    const model = pkg.agentModel ?? this.deps.config.QOS_AGENT_MODEL;
+    // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
+    const model = await this.deps.llmSettings.roleModel(task.tenantId, "agent", pkg.agentModel);
 
     const result = await runAgentLoop({
       taskId,
       model,
+      tenantId: task.tenantId,
       system: AGENT_SYSTEM_CORE,
       userContent: buildAgentUser(task),
       tools,
@@ -560,6 +593,8 @@ export class Orchestrator {
       outcome: result.outcome === "FAILED" ? "FAILED" : result.outcome,
       createdAt: new Date().toISOString(),
       normalizedQuery: normalizeQuery(task.query),
+      // S4.2: deterministic pseudo-embedding for /ops/fallback-stats vector-neighbor clustering
+      embedding: pseudoEmbed(normalizeQuery(task.query)),
     });
 
     if (this.cancelled.has(taskId)) {

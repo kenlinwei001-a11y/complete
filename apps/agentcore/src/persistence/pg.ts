@@ -6,9 +6,10 @@ import type {
   AgentDefinition,
   AgentRunRecord,
   ExecutionPlan,
-  FallbackTrace,
   IntentDefinition,
+  LlmProviderConfig,
   McpServerConfig,
+  ModelBinding,
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
@@ -16,7 +17,7 @@ import type {
   WorkflowDefinition,
 } from "@platform/contracts";
 
-import type { CredentialRow, QueryEventRow, Repos, TaskPatch, ToolCallRow } from "./repos.js";
+import type { CredentialRow, FallbackTraceRow, QueryEventRow, Repos, TaskPatch, ToolCallRow } from "./repos.js";
 
 const ACTIVE = ["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"];
 
@@ -249,11 +250,11 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       },
       async get(id) {
         const r = await q(`SELECT trace FROM fallback_traces WHERE id = $1`, [id]);
-        return r.rows[0]?.trace as (FallbackTrace & { normalizedQuery: string }) | undefined;
+        return r.rows[0]?.trace as FallbackTraceRow | undefined;
       },
       async getByTask(taskId) {
         const r = await q(`SELECT trace FROM fallback_traces WHERE task_id = $1`, [taskId]);
-        return r.rows[0]?.trace as (FallbackTrace & { normalizedQuery: string }) | undefined;
+        return r.rows[0]?.trace as FallbackTraceRow | undefined;
       },
       async setFeedback(taskId, vote) {
         const r = await q(
@@ -278,7 +279,7 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
           conds.push(`created_at <= $${vals.length}`);
         }
         const r = await q(`SELECT trace FROM fallback_traces WHERE ${conds.join(" AND ")}`, vals);
-        return r.rows.map((x) => x.trace as FallbackTrace & { normalizedQuery: string });
+        return r.rows.map((x) => x.trace as FallbackTraceRow);
       },
     },
     agents: versionedRepo<AgentDefinition>(q, "agents"),
@@ -350,6 +351,49 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
           ciphertext: x.ciphertext as string,
           createdAt: new Date(x.created_at as string).toISOString(),
         };
+      },
+    },
+    llmProviders: {
+      async upsert(c: LlmProviderConfig) {
+        await q(
+          `INSERT INTO llm_providers(id, tenant_id, key, config) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (id) DO UPDATE SET tenant_id = $2, key = $3, config = $4`,
+          [c.id, c.tenantId ?? null, c.key, JSON.stringify(c)],
+        );
+      },
+      async get(id) {
+        const r = await q(`SELECT config FROM llm_providers WHERE id = $1`, [id]);
+        return r.rows[0]?.config as LlmProviderConfig | undefined;
+      },
+      async byKey(tenantId, key) {
+        const r = tenantId
+          ? await q(`SELECT config FROM llm_providers WHERE tenant_id = $1 AND key = $2`, [tenantId, key])
+          : await q(`SELECT config FROM llm_providers WHERE tenant_id IS NULL AND key = $1`, [key]);
+        return r.rows[0]?.config as LlmProviderConfig | undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT config FROM llm_providers WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map((x) => x.config as LlmProviderConfig);
+      },
+    },
+    llmBindings: {
+      async put(tenantId, bindings: ModelBinding[]) {
+        await q(`DELETE FROM llm_bindings WHERE tenant_id = $1`, [tenantId]);
+        for (const b of bindings) {
+          await q(`INSERT INTO llm_bindings(tenant_id, role, binding) VALUES ($1,$2,$3)`, [
+            tenantId,
+            b.role,
+            JSON.stringify(b),
+          ]);
+        }
+      },
+      async list(tenantId) {
+        const r = await q(`SELECT binding FROM llm_bindings WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map((x) => x.binding as ModelBinding);
+      },
+      async get(tenantId, role) {
+        const r = await q(`SELECT binding FROM llm_bindings WHERE tenant_id = $1 AND role = $2`, [tenantId, role]);
+        return r.rows[0]?.binding as ModelBinding | undefined;
       },
     },
     idempotency: {

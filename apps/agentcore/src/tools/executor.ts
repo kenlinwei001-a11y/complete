@@ -1,4 +1,4 @@
-import { ErrorCodes } from "@platform/contracts";
+import { ErrorCodes, QueryTimeseriesAggInputSchema } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos, ToolCallRow } from "../persistence/repos.js";
@@ -155,6 +155,15 @@ export class GuardedToolExecutor {
         );
       case "create_action_draft":
         return this.deps.dataCore.action.createDraft(ctx, String(args.actionType), args.payload ?? args);
+      case "search_knowledge":
+        return this.deps.dataCore.kb.search(ctx, {
+          query: String(args.query),
+          topK: args.topK === undefined ? undefined : Math.min(Math.max(1, Number(args.topK)), 10),
+          connId: args.connId === undefined ? undefined : String(args.connId),
+        });
+      case "query_timeseries_agg":
+        // contracts IO enforced at the boundary; invalid input → TOOL_ERROR (never raw rows)
+        return this.deps.dataCore.timeseries.aggQuery(ctx, QueryTimeseriesAggInputSchema.parse(input));
       default:
         throw new Error(`unknown tool: ${toolName}`);
     }
