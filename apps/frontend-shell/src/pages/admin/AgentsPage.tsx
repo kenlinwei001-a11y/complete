@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentDefinition, AgentToolRef } from "@platform/contracts";
 import { fetchAgents, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -18,6 +19,25 @@ const BUILTIN_TOOLS = [
   "load_skill",
 ];
 
+/** 管理平台增量 §6：「创建 Agent」模板预填（系统提示词骨架 + 默认预算）。 */
+const AGENT_TEMPLATE = {
+  key: "",
+  name: "新 Agent（模板预填）",
+  description: "基于模板创建的探索型 Agent，请按业务场景调整",
+  model: "claude-opus-4-8",
+  systemPrompt:
+    "你是企业经营决策助手。\n\n# 职责\n- 基于本体对象与时序数据回答产能/订单/风险问题\n- 所有数字必须来自工具结果并附带溯源\n\n# 约束\n- 只读优先：写操作一律生成 Action 草稿走审批\n- 超出 scopeDeclaration 的对象类型与工具不得访问",
+  tools: [
+    { kind: "BUILTIN" as const, name: "query_objects" },
+    { kind: "BUILTIN" as const, name: "invoke_solver" },
+  ],
+  ruleBindings: { ruleKeys: "ALL_APPLICABLE" as const, mode: "PRE_CHECK" as const },
+  skills: [],
+  mcpServers: [],
+  scopeDeclaration: { objectTypes: ["Order", "Base"], toolNames: ["query_objects", "invoke_solver"] },
+  budget: { maxIterations: 6, maxToolCalls: 12, maxDurationMs: 120_000 },
+};
+
 /** Agent 注册表（B1，PRD §7.8）：列表 + 版本下拉 + 分区编辑器 */
 export default function AgentsPage() {
   const queryClient = useQueryClient();
@@ -29,11 +49,35 @@ export default function AgentsPage() {
   const versions = (agents ?? []).filter((a) => a.key === selectedKey).sort((a, b) => b.version - a.version);
   const selected = versions.find((a) => a.version === version) ?? versions[0] ?? null;
 
+  const createMut = useMutation({
+    mutationFn: () => saveAgent(null, { ...AGENT_TEMPLATE, key: `agent_${Date.now()}` }),
+    onSuccess: (a) => {
+      toast("Agent 已创建（DRAFT，模板预填）", "success");
+      void queryClient.invalidateQueries({ queryKey: ["b", "agents"] });
+      setSelectedKey(a.key);
+      setVersion(null);
+    },
+    onError: toastError,
+  });
+
   return (
     <div>
-      <h2 style={{ fontSize: 16, marginBottom: 14 }}>{t.title}</h2>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+        <h2 style={{ fontSize: 16 }}>{t.title}</h2>
+        <button className="btn primary sm" style={{ marginLeft: "auto" }} disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="agent-create">
+          {zh.admin.empty.agentsCta}
+        </button>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
+          {keys.length === 0 && (
+            // 管理平台增量 §6：无 agent → 「创建 Agent」+ 模板预填
+            <EmptyState message={zh.admin.empty.agents}>
+              <button className="btn primary sm" disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="cta-agent">
+                {zh.admin.empty.agentsCta}
+              </button>
+            </EmptyState>
+          )}
           {keys.map((k) => {
             const latest = (agents ?? []).filter((a) => a.key === k).sort((a, b) => b.version - a.version)[0]!;
             return (

@@ -29,6 +29,16 @@ export class AuthzService {
   constructor(private repos: Repos) {}
 
   async decide(ctx: AuthCtx, kind: ResourceKind, key: string, op: Op): Promise<AccessDecision> {
+    // 管理平台增量 §1：platform_admin 是平台运维角色（管别人房子不看别人抽屉）——
+    // 不出现在任何租户的业务数据策略中，业务数据访问一律拒绝（含 default-allow 路径）。
+    if (ctx.roles.some((r) => r.split(":")[0] === "platform_admin")) {
+      return {
+        allowed: false,
+        matchedPolicies: [],
+        rowFilters: [],
+        reason: "platform_admin 不在任何租户的业务数据策略中（平台运维角色，禁止读业务对象）",
+      };
+    }
     const policies = await this.repos.policies.list(
       ctx.tenantId,
       (p) => p.resource.kind === kind && (p.resource.key === key || p.resource.key === "*"),

@@ -39,6 +39,10 @@ const ScenesPage = lazy(() => import("@/pages/admin/ScenesPage"));
 const OpsFallbackPage = lazy(() => import("@/pages/admin/OpsFallbackPage"));
 const FeaturesPage = lazy(() => import("@/pages/admin/FeaturesPage"));
 const CalibrationPage = lazy(() => import("@/pages/admin/CalibrationPage"));
+// 管理平台增量：租户 / 用户 / 视图配置
+const TenantsPage = lazy(() => import("@/pages/admin/TenantsPage"));
+const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
+const ViewsPage = lazy(() => import("@/pages/admin/ViewsPage"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -92,6 +96,9 @@ export const routes: RouteObject[] = [
       admin("ops/fallback", <OpsFallbackPage />),
       admin("features", <FeaturesPage />),
       admin("calibration", <CalibrationPage />),
+      admin("tenants", <TenantsPage />),
+      admin("users", <UsersPage />),
+      admin("views", <ViewsPage />),
       { path: "*", element: <NotFoundPage /> },
     ],
   },

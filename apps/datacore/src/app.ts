@@ -21,7 +21,8 @@ import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
 import { AuthzService } from "./authz.js";
 import { OutboxService } from "./outbox.js";
-import { RulesService } from "./rules.js";
+import { RulesService, assertValidExpression } from "./rules.js";
+import { registerAdminPlatformRoutes } from "./adminplatform.js";
 import { OntologyService } from "./ontology.js";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES } from "./connectors/registry.js";
@@ -59,6 +60,8 @@ export interface AppDeps {
   metrics?: Metrics;
   logger?: Logger;
   fetchImpl?: typeof fetch;
+  /** 管理平台增量 §1：返回非 null 原因 → /readyz 503（users 空表 + 无 BOOTSTRAP 变量）。 */
+  bootstrapRequired?: () => Promise<string | null>;
 }
 
 export interface BuiltApp {
@@ -356,25 +359,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- meta -------------------------------------------------------------------
   app.get("/healthz", async () => ({ status: "ok" }));
-  app.get("/readyz", async (_req, reply) => {
+  const readyz = async (_req: FastifyRequest, reply: FastifyReply) => {
     try {
       await repos.ping();
-      return { status: "ready" };
     } catch {
       return reply.status(503).send({ status: "not ready" });
     }
-  });
+    // 管理平台增量 §1：空库且未配置 BOOTSTRAP 变量 → 503 + 明示原因（日志同步报错）。
+    const reason = deps.bootstrapRequired ? await deps.bootstrapRequired() : null;
+    if (reason) {
+      logger.error({ reason }, "readyz blocked: bootstrap required");
+      return reply.status(503).send({ status: "not ready", reason });
+    }
+    return { status: "ready" };
+  };
+  app.get("/readyz", readyz);
   app.get("/metrics", async (_req, reply) => reply.type("text/plain").send(metrics.render()));
   // 网关前缀别名（gateway 只反代 /a/v1/* → 经代理探活用）
   app.get("/a/v1/healthz", async () => ({ status: "ok" }));
-  app.get("/a/v1/readyz", async (_req, reply) => {
-    try {
-      await repos.ping();
-      return { status: "ready" };
-    } catch {
-      return reply.status(503).send({ status: "not ready" });
-    }
-  });
+  app.get("/a/v1/readyz", readyz);
 
   // ---- A0 IAM -------------------------------------------------------------------
   // 前端 PRD §4.1：refresh token 走 httpOnly cookie（Path 限定 /a/v1/auth）；body 透传保持向后兼容。
@@ -429,8 +432,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // Entitlement: navigation/views are filtered server-side by the resolved feature set.
     const resolved = await features.resolveForUser(c);
     const enabled = new Set(resolved.features);
+    // 管理平台增量 §3：手建视图的动态功能键 view.{viewKey}（删除视图 → 功能注销 → 导航消失）。
+    const dynamicViewFeatures = await features.dynamicKeys(c.tenantId);
     const viewAllowed = (key: string) => {
-      const fk = VIEW_FEATURE_MAP[key];
+      const fk = VIEW_FEATURE_MAP[key] ?? (dynamicViewFeatures.has(`view.${key}`) ? `view.${key}` : undefined);
       return !fk || enabled.has(fk);
     };
     // merge per-role configs (admin 多角色取并集，按 key 去重，admin 配置优先)
@@ -796,11 +801,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/rules", async (req, reply) => {
     const body = parseBody(RuleCreateSchema, req.body);
+    // 管理平台增量 §5：手工创建（origin=MANUAL）的 expression 经 DSL 解析校验，错误定位字符位。
+    assertValidExpression(body.expression);
     return reply.status(201).send(await rules.create(ctx(req), body));
+  });
+  // 管理平台增量 §5：PUT 仅 DRAFT 可改（PUBLISHED → 409 IMMUTABLE_VERSION）。
+  app.put("/a/v1/rules/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(RuleCreateSchema.partial().omit({ key: true, status: true }), req.body);
+    return rules.update(ctx(req), id, body);
   });
   app.post("/a/v1/rules/:id/publish", async (req) => {
     const { id } = req.params as { id: string };
     return rules.publish(ctx(req), id);
+  });
+  app.post("/a/v1/rules/:id/retire", async (req) => {
+    const { id } = req.params as { id: string };
+    return rules.retire(ctx(req), id);
+  });
+  // 管理平台增量 §5：编辑器「测试」—— 即时求值 / 语法错误定位字符位。
+  app.post("/a/v1/rules/dry-run", async (req) => {
+    ctx(req);
+    const body = parseBody(
+      z.object({ expression: z.string(), samplePayload: z.record(z.string(), z.unknown()).default({}) }),
+      req.body,
+    );
+    return rules.dryRun(body.expression, body.samplePayload);
   });
   app.post("/a/v1/rules/evaluate", async (req) => {
     const body = parseBody(EvaluateSchema, req.body);
@@ -1046,8 +1072,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
   };
   app.get("/a/v1/features/registry", async (req) => {
-    ctx(req);
-    return features.registry();
+    const c = ctx(req);
+    // 管理平台增量 §3：静态注册表 + 本租户动态注册项（view.{viewKey}）。
+    return features.registryFor(c.tenantId);
   });
   app.get("/a/v1/tenants/:id/features", async (req, reply) => {
     const c = ctx(req);
@@ -1329,6 +1356,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.get("/a/v1/webhooks", async (req) => repos.webhooks.list(ctx(req).tenantId));
   app.get("/a/v1/outbox", async (req) => repos.outboxEvents.list(ctx(req).tenantId));
+
+  // ---- 管理平台增量：§2 租户/用户 + §3 场景包/视图配置 ------------------------------------------
+  registerAdminPlatformRoutes(app, { repos, outbox, features, ctx });
 
   // PATCH connection (schedule changes re-register/unregister CONNECTOR_SYNC jobs)
   app.patch("/a/v1/connections/:id", async (req) => {

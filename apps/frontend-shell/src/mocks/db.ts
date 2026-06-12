@@ -1,4 +1,4 @@
-import type { ActionDraft, AgentDefinition, ConnectionInstance, IntentDefinition, McpServerConfig, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, McpServerConfig, RuleEntry, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -7,6 +7,9 @@ import type { TaskScriptPlan } from "./sseScripts";
 import {
   ACCOUNTS,
   ACTION_DRAFTS,
+  ADMIN_TENANTS,
+  ADMIN_USERS,
+  ADMIN_VIEWS,
   AGENTS,
   initialClock,
   INTENTS,
@@ -14,6 +17,7 @@ import {
   MODELING_DRAFT,
   RULE_CANDIDATES,
   RULE_DOC,
+  RULES,
   SCENES,
   SKILLS,
   TENANT_ID,
@@ -53,6 +57,11 @@ interface MockDb {
   scenes: SceneEntryConfig[];
   actionDrafts: ActionDraft[];
   sopVersions: SopVersionVM[];
+  // 管理平台增量
+  rules: RuleEntry[];
+  tenants: AdminTenant[];
+  adminUsers: AdminUser[];
+  adminViews: AdminViewConfig[];
 }
 
 function freshDb(): MockDb {
@@ -82,6 +91,10 @@ function freshDb(): MockDb {
     scenes: structuredClone(SCENES),
     actionDrafts: structuredClone(ACTION_DRAFTS),
     sopVersions: seedSopVersions(),
+    rules: structuredClone(RULES),
+    tenants: structuredClone(ADMIN_TENANTS),
+    adminUsers: structuredClone(ADMIN_USERS),
+    adminViews: structuredClone(ADMIN_VIEWS),
   };
 }
 

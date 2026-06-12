@@ -67,12 +67,16 @@ export class AuthService {
   }
 
   async login(tenantId: string, username: string, password: string): Promise<TokenPair> {
-    const users = await this.repos.users.list(tenantId, (u) => u.username === username);
+    // 管理平台增量 §2：username 或 email 皆可登录；DISABLED 账号一律拒绝。
+    const users = await this.repos.users.list(tenantId, (u) => u.username === username || u.email === username);
     const user = users[0];
     if (!user) throw unauthorized("invalid credentials");
+    if (user.status === "DISABLED") throw unauthorized("account disabled");
     const ok = await argon2.verify(user.passwordHash, password).catch(() => false);
     if (!ok) throw unauthorized("invalid credentials");
-    return this.issuePair(user);
+    const stamped = { ...user, lastLoginAt: new Date().toISOString() };
+    await this.repos.users.put(stamped);
+    return this.issuePair(stamped);
   }
 
   async refresh(refreshToken: string): Promise<TokenPair> {

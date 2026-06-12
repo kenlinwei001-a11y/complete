@@ -32,6 +32,9 @@ export const ConfigSchema = z.object({
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().default(15 * 60),
   REFRESH_TOKEN_TTL_SEC: z.coerce.number().int().default(7 * 24 * 3600),
   SEED_DEMO: z.string().optional(),
+  /** 管理平台增量 §1：空库首启时创建平台超管（platform_admin，归属自动创建的 default 租户）。 */
+  BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 

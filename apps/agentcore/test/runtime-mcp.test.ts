@@ -246,7 +246,7 @@ describe("R8 · 工具重名（增量 §4.2 命名空间）", () => {
 
   it("创建时 serverName 校验：^[a-z0-9_]{2,24}$ 且租户内唯一（slug 推导兼容展示名）", async () => {
     const t = await createTestApp();
-    const create = (name: string, user = PLANNER) =>
+    const create = (name: string, user = ADMIN) =>
       t.app.inject({
         method: "POST",
         url: "/b/v1/mcp-configs",
@@ -274,7 +274,7 @@ describe("R8 · 工具重名（增量 §4.2 命名空间）", () => {
     const created = await t.app.inject({
       method: "POST",
       url: "/b/v1/mcp-configs",
-      headers: debugHeaders(PLANNER),
+      headers: debugHeaders(ADMIN),
       payload: { name: "demo_http", transport: { type: "streamable_http", url: "http://x/mcp" }, status: "ACTIVE" },
     });
     const id = (created.json() as { id: string }).id;

@@ -117,6 +117,7 @@ export interface Repos {
   agents: {
     insert(a: AgentDefinition): Promise<void>;
     update(a: AgentDefinition): Promise<void>;
+    remove(id: string): Promise<void>;
     get(id: string): Promise<AgentDefinition | undefined>;
     latestByKey(tenantId: string, key: string): Promise<AgentDefinition | undefined>;
     listByTenant(tenantId: string): Promise<AgentDefinition[]>;
@@ -124,6 +125,7 @@ export interface Repos {
   workflows: {
     insert(w: WorkflowDefinition): Promise<void>;
     update(w: WorkflowDefinition): Promise<void>;
+    remove(id: string): Promise<void>;
     get(id: string): Promise<WorkflowDefinition | undefined>;
     latestByKey(tenantId: string, key: string): Promise<WorkflowDefinition | undefined>;
     listByTenant(tenantId: string): Promise<WorkflowDefinition[]>;
@@ -131,17 +133,20 @@ export interface Repos {
   skills: {
     insert(s: SkillDefinition): Promise<void>;
     update(s: SkillDefinition): Promise<void>;
+    remove(id: string): Promise<void>;
     get(id: string): Promise<SkillDefinition | undefined>;
     listByTenant(tenantId: string): Promise<SkillDefinition[]>;
   };
   mcpConfigs: {
     insert(c: McpServerConfig): Promise<void>;
     update(c: McpServerConfig): Promise<void>;
+    remove(id: string): Promise<void>;
     get(id: string): Promise<McpServerConfig | undefined>;
     listByTenant(tenantId: string): Promise<McpServerConfig[]>;
   };
   sceneEntries: {
     upsert(s: SceneEntryConfig): Promise<void>;
+    remove(id: string): Promise<void>;
     get(id: string): Promise<SceneEntryConfig | undefined>;
     byView(tenantId: string, viewKey: string): Promise<SceneEntryConfig | undefined>;
     listByTenant(tenantId: string): Promise<SceneEntryConfig[]>;

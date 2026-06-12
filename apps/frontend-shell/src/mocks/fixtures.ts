@@ -1,5 +1,8 @@
 import type {
   ActionDraft,
+  AdminTenant,
+  AdminUser,
+  AdminViewConfig,
   AgentDefinition,
   Answer,
   ConnectorType,
@@ -37,8 +40,11 @@ export interface MockAccount {
 }
 
 export const ACCOUNTS: MockAccount[] = [
-  { username: "planner", password: "demo", roles: ["planner", "admin", "catalog_admin"], baseScope: null },
+  // 管理平台增量 §2：planner 演示账号兼具 tenant_admin（用户管理入口）
+  { username: "planner", password: "demo", roles: ["planner", "admin", "catalog_admin", "tenant_admin"], baseScope: null },
   { username: "base_manager", password: "demo", roles: ["base_manager:常州"], baseScope: ["常州"] },
+  // 管理平台增量 §1/§2：平台超管（仅 /admin/tenants；不读业务数据）
+  { username: "padmin", password: "demo", roles: ["platform_admin"], baseScope: null },
 ];
 
 // ---------------------------------------------------------------------------
@@ -845,3 +851,50 @@ export const TS_AGG_POINTS = Array.from({ length: 14 }, (_, i) => ({
   bucket: `2026-05-${String(25 + i).padStart(2, "0")}`,
   value: 0.82 + Math.sin(i * 0.8) * 0.05 + i * 0.002,
 })).map((p, i) => ({ ...p, bucket: i < 7 ? `2026-06-0${i + 1}` : `2026-06-${String(i + 1).padStart(2, "0")}` }));
+
+// ---------------------------------------------------------------------------
+// 管理平台增量：租户 / 用户 / 视图配置 / 角色清单（MSW 种子）
+// ---------------------------------------------------------------------------
+
+export const ADMIN_TENANTS: AdminTenant[] = [
+  { id: TENANT_ID, key: TENANT_ID, name: "星辰电池制造", industry: "battery-manufacturing", status: "ACTIVE", createdAt: "2026-01-05T08:00:00Z" },
+];
+
+export const ADMIN_USERS: AdminUser[] = [
+  {
+    id: "usr-planner", tenantId: TENANT_ID, username: "planner", email: "planner@battery.io", displayName: "规划员",
+    roles: ["planner", "admin", "catalog_admin", "tenant_admin"], attributes: {}, status: "ACTIVE", lastLoginAt: "2026-06-11T09:00:00Z",
+  },
+  {
+    id: "usr-cz", tenantId: TENANT_ID, username: "base_manager", email: "cz@battery.io", displayName: "常州基地长",
+    roles: ["base_manager:常州"], attributes: { baseScope: ["常州"] }, status: "ACTIVE",
+  },
+  {
+    id: "usr-viewer", tenantId: TENANT_ID, username: "viewer1", email: "viewer1@battery.io", displayName: "观察员",
+    roles: ["viewer"], attributes: {}, status: "DISABLED",
+  },
+];
+
+export const ROLES_RESPONSE = {
+  builtIn: ["platform_admin", "tenant_admin", "catalog_admin", "approver", "planner", "viewer"],
+  parameterized: { convention: "role:param（如 base_manager:常州）", examples: ["base_manager:常州"] },
+  inUse: ["planner", "admin", "catalog_admin", "tenant_admin", "base_manager:常州", "viewer"],
+};
+
+export const ADMIN_VIEWS: AdminViewConfig[] = [
+  {
+    viewKey: "dash", title: "经营驾驶舱", renderer: "dashboard",
+    layout: { widgets: [{ key: "gwh", type: "kpi", title: "总产能 (GWh)" }, { key: "orders", type: "kpi", title: "在手订单" }] },
+    options: {}, nav: { group: "business", order: 0 }, roles: ["planner", "admin"], featureKey: "view.dash", featureOn: true,
+  },
+  {
+    viewKey: "graph", title: "本体图谱", renderer: "ontology-graph",
+    layout: {}, options: { graphOptions: { colorBy: "domain" } },
+    nav: { group: "business", order: 1 }, roles: ["planner"], featureKey: "view.ontology-graph", featureOn: true,
+  },
+  {
+    viewKey: "order", title: "订单台账", renderer: "ledger",
+    layout: { objectType: "Order" }, options: {},
+    nav: { group: "business", order: 2 }, roles: ["planner", "base_manager"], featureKey: "view.ledger", featureOn: false,
+  },
+];

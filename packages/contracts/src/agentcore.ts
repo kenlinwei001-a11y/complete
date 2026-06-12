@@ -123,6 +123,10 @@ export const McpServerConfigSchema = z.object({
   toolTimeoutMs: z.number().int().positive().max(60_000).optional(),
   /** 增量 §4.1：连续 5 次失败 → ERROR（恢复探测自动回 ACTIVE） */
   status: z.enum(["ACTIVE", "DISABLED", "ERROR"]),
+  /** 管理平台增量 §4（additive）：统一资源模式的版本号（旧记录缺省 = 可变） */
+  version: z.number().int().optional(),
+  /** 管理平台增量 §4（additive）：DRAFT 可改 / PUBLISHED 不可变（409 IMMUTABLE_VERSION）/ RETIRED */
+  lifecycle: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
 });
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
@@ -147,7 +151,8 @@ export const SkillDefinitionSchema = z.object({
       description: z.string().optional(),
     }),
   ),
-  status: z.enum(["DRAFT", "PUBLISHED"]),
+  /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
+  status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
 
@@ -174,5 +179,7 @@ export const SceneEntryConfigSchema = z.object({
     placeholder: z.string(),
     suggestedQuestions: z.array(z.string()),
   }),
+  /** 管理平台增量 §4（additive）：场景入口无版本化，修改即时生效 + updatedAt 乐观锁 */
+  updatedAt: z.string().optional(),
 });
 export type SceneEntryConfig = z.infer<typeof SceneEntryConfigSchema>;

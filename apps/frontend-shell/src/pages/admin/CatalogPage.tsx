@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { IntentDefinition, SlotDef } from "@platform/contracts";
-import { fetchIntents, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
+import { createIntent, fetchIntents, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -22,6 +23,30 @@ export default function CatalogPage() {
   });
   const [selectedId, setSelectedId] = useState<string | null>(params.get("intentId"));
   const selected = intents?.find((i) => i.id === selectedId) ?? null;
+  const queryClient = useQueryClient();
+  const { data: plans } = useQuery({ queryKey: ["b", "plans", { packageId }], queryFn: () => fetchPlans(packageId), enabled: packageId !== "" });
+
+  // 管理平台增量 §6：无意图 → 「创建意图」骨架（DRAFT，发布前需补全 slots/examples）
+  const createMut = useMutation({
+    mutationFn: () =>
+      createIntent(packageId, {
+        key: `intent_${Date.now()}`,
+        name: "新意图（待补全）",
+        description: "",
+        examples: [],
+        slots: [],
+        planId: plans?.[0]?.id ?? "",
+        riskLevel: "READ",
+        owner: "admin",
+        enabledViews: "*",
+      }),
+    onSuccess: (i) => {
+      toast("意图骨架已创建（DRAFT）", "success");
+      void queryClient.invalidateQueries({ queryKey: ["b", "intents"] });
+      setSelectedId(i.id);
+    },
+    onError: toastError,
+  });
 
   return (
     <div>
@@ -36,6 +61,16 @@ export default function CatalogPage() {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
+          {(intents ?? []).length === 0 && (
+            <EmptyState message={zh.admin.empty.intents}>
+              <button className="btn primary sm" disabled={createMut.isPending || (plans ?? []).length === 0} onClick={() => createMut.mutate()} data-testid="cta-intent">
+                {zh.admin.empty.intentsCta}
+              </button>
+              <Link className="btn sm" to="/admin/ops/fallback" data-testid="cta-incubate">
+                {zh.admin.empty.incubateCta}
+              </Link>
+            </EmptyState>
+          )}
           {(intents ?? []).map((i) => (
             <button
               key={i.id}

@@ -88,6 +88,62 @@ export class FeatureService {
     return FEATURE_REGISTRY;
   }
 
+  // ---- 管理平台增量 §3：ViewConfig 联动的动态功能（view.{viewKey}，默认开） ----
+
+  private async dynamicDefs(tenantId: string): Promise<FeatureDef[]> {
+    const recs = await this.repos.dynamicFeatures.list(tenantId);
+    return recs.map((r) => ({ key: r.key, name: r.name, level: "VIEW" as const, defaultOn: r.defaultOn }));
+  }
+
+  /** 静态注册表 + 本租户动态注册项（GET /a/v1/features/registry 下发）。 */
+  async registryFor(tenantId: string): Promise<FeatureDef[]> {
+    return [...FEATURE_REGISTRY, ...(await this.dynamicDefs(tenantId))];
+  }
+
+  async dynamicKeys(tenantId: string): Promise<Set<string>> {
+    return new Set((await this.repos.dynamicFeatures.list(tenantId)).map((r) => r.key));
+  }
+
+  /** 创建 ViewConfig → 自动注册 view.{viewKey}（默认开）并 bump configVersion。 */
+  async registerViewFeature(ctx: AuthCtx, viewKey: string, name: string): Promise<string> {
+    const key = `view.${viewKey}`;
+    if (byKey.has(key)) return key; // 静态注册表已有（内置视图）
+    await this.repos.dynamicFeatures.put({
+      id: `dynf_${ctx.tenantId}_${key}`,
+      tenantId: ctx.tenantId,
+      key,
+      name,
+      level: "VIEW",
+      defaultOn: true,
+      createdAt: new Date().toISOString(),
+    });
+    await this.mergeTenantOverride(ctx, ctx.tenantId, { [key]: true });
+    return key;
+  }
+
+  /** 删除 ViewConfig → 注销动态功能 + 清掉残留 override 并 bump configVersion。 */
+  async unregisterViewFeature(ctx: AuthCtx, viewKey: string): Promise<void> {
+    const key = `view.${viewKey}`;
+    if (byKey.has(key)) return; // 静态功能不可注销
+    await this.repos.dynamicFeatures.remove(ctx.tenantId, `dynf_${ctx.tenantId}_${key}`);
+    await this.mergeTenantOverride(ctx, ctx.tenantId, { [key]: null });
+  }
+
+  /** 合并式租户 override 写入（null = 删除该键）；saveConfig 会 bump configVersion + 审计。 */
+  async mergeTenantOverride(
+    ctx: AuthCtx,
+    tenantId: string,
+    patch: Record<string, boolean | null>,
+  ): Promise<FeatureConfigRecord> {
+    const existing = await this.repos.featureConfigs.get(tenantId, `fcfg_${tenantId}`);
+    const merged: Record<string, boolean> = { ...(existing?.overrides ?? {}) };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null) delete merged[k];
+      else merged[k] = v;
+    }
+    return this.saveConfig(ctx, tenantId, undefined, merged);
+  }
+
   private async templateFeatures(tenantId: string): Promise<Set<string> | undefined> {
     const tenant = await this.repos.tenants.get(tenantId, tenantId);
     const industry = tenant?.industry;
@@ -116,8 +172,9 @@ export class FeatureService {
   }
 
   private async layeredSet(tenantId: string, role?: string): Promise<{ on: Set<string>; configVersion: number }> {
-    // L1 platform defaults
+    // L1 platform defaults（+ 本租户动态注册项，管理平台增量 §3）
     const on = new Set<string>(FEATURE_REGISTRY.filter((f) => f.defaultOn).map((f) => f.key));
+    for (const d of await this.dynamicDefs(tenantId)) if (d.defaultOn) on.add(d.key);
     // L2 industry template defaults
     const tmpl = await this.templateFeatures(tenantId);
     if (tmpl) {
@@ -180,19 +237,20 @@ export class FeatureService {
     }
   }
 
-  private validateKeys(overrides: Record<string, boolean>): void {
+  private async validateKeys(tenantId: string, overrides: Record<string, boolean>): Promise<void> {
+    const dyn = await this.dynamicKeys(tenantId);
     for (const k of Object.keys(overrides)) {
-      if (!byKey.has(k)) throw validationError(`unknown feature key: ${k}`);
+      if (!byKey.has(k) && !dyn.has(k)) throw validationError(`unknown feature key: ${k}`);
     }
   }
 
   async putTenantConfig(ctx: AuthCtx, tenantId: string, overrides: Record<string, boolean>): Promise<FeatureConfigRecord> {
-    this.validateKeys(overrides);
+    await this.validateKeys(tenantId, overrides);
     return this.saveConfig(ctx, tenantId, undefined, overrides);
   }
 
   async putRoleConfig(ctx: AuthCtx, tenantId: string, role: string, overrides: Record<string, boolean>): Promise<FeatureConfigRecord> {
-    this.validateKeys(overrides);
+    await this.validateKeys(tenantId, overrides);
     // Role layer may only narrow within the tenant-enabled set (E6).
     const tenantSet = new Set((await this.resolve(tenantId)).features);
     for (const [k, v] of Object.entries(overrides)) {

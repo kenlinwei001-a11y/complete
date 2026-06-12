@@ -6,7 +6,9 @@ import type {
   LinkInstance,
   ObjectInstance,
   ScheduledJobRecord,
+  Tenant,
   TsPointRecord,
+  User,
 } from "../domain.js";
 import type {
   ClaimedJob,
@@ -16,8 +18,10 @@ import type {
   Repos,
   ScheduledJobStore,
   Store,
+  TenantStore,
   TsPointQuery,
   TsPointStore,
+  UserStore,
   VectorHit,
   VectorIndex,
 } from "./repo.js";
@@ -69,6 +73,28 @@ class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
     ]);
     const items = r.rows.map((row) => row.doc as T);
     return pred ? items.filter(pred) : items;
+  }
+}
+
+class PgUserStore extends PgStore<User> implements UserStore {
+  constructor(pool: pg.Pool) {
+    super(pool, "users");
+  }
+
+  async countAll(): Promise<number> {
+    const r = await this.pool.query(`SELECT count(*)::int AS n FROM users`);
+    return (r.rows[0]?.n as number) ?? 0;
+  }
+}
+
+class PgTenantStore extends PgStore<Tenant> implements TenantStore {
+  constructor(pool: pg.Pool) {
+    super(pool, "tenants");
+  }
+
+  async listAll(): Promise<Tenant[]> {
+    const r = await this.pool.query(`SELECT doc FROM tenants`);
+    return r.rows.map((row) => row.doc as Tenant);
   }
 }
 
@@ -416,8 +442,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     );
   }
   return {
-    tenants: new PgStore(pool, "tenants"),
-    users: new PgStore(pool, "users"),
+    tenants: new PgTenantStore(pool),
+    users: new PgUserStore(pool),
     viewConfigs: new PgStore(pool, "view_configs"),
     policies: new PgStore(pool, "permission_policies"),
     connections: new PgStore(pool, "connections"),
@@ -458,6 +484,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     forecastSnapshots: new PgStore(pool, "forecast_snapshots"),
     featureConfigs: new PgStore(pool, "feature_configs"),
     featureAudit: new PgStore(pool, "feature_audit"),
+    scenarioPackages: new PgStore(pool, "scenario_packages"),
+    dynamicFeatures: new PgStore(pool, "dynamic_features"),
     calibrationProposals: new PgStore(pool, "calibration_proposals"),
     calibrationHistory: new PgStore(pool, "calibration_history"),
     calibrationForecasts: new PgStore(pool, "calibration_forecasts"),

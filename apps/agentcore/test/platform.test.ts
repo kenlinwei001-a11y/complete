@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AgentDefinition, WorkflowDefinition } from "@platform/contracts";
-import { createTestApp, debugHeaders, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
+import { ADMIN, createTestApp, debugHeaders, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 
@@ -245,7 +245,7 @@ describe("platform acceptance", () => {
     const pub = await t.app.inject({
       method: "POST",
       url: "/b/v1/agents/agt_cycle/publish",
-      headers: debugHeaders(PLANNER),
+      headers: debugHeaders(ADMIN),
     });
     expect(pub.statusCode).toBe(400);
     expect((pub.json() as { error: { code: string } }).error.code).toBe("CYCLIC_INVOCATION");
@@ -429,7 +429,7 @@ describe("platform acceptance", () => {
     const res = await t.app.inject({
       method: "POST",
       url: "/b/v1/mcp-configs",
-      headers: debugHeaders(PLANNER),
+      headers: debugHeaders(ADMIN),
       payload: {
         name: "ext",
         transport: { type: "streamable_http", url: "https://mcp.example.com/mcp" },

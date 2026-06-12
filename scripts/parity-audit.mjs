@@ -142,6 +142,9 @@ const dc = spawnService("datacore", join(ROOT, "apps/datacore/dist/server.js"), 
   CREDENTIAL_KEY: "a".repeat(64),
   BLOB_DIR,
   SEED_DEMO: "1",
+  // 管理平台增量 §1：bootstrap 检查先于 SEED_DEMO 播种 —— 空表 + 环境变量 → default 租户 platform_admin
+  BOOTSTRAP_ADMIN_EMAIL: "ops@parity.io",
+  BOOTSTRAP_ADMIN_PASSWORD: "parity-boot-1",
   LOG_LEVEL: "warn",
   DC_LLM_PROVIDER: "openai_compatible",
   DC_LLM_BASE_URL: `http://127.0.0.1:${llmPort}`,
@@ -1277,6 +1280,230 @@ await check("Entitlement", "关闭 view.project-sim → B 侧 capacity_forecast 
   envelope(r, 404, "FEATURE_NOT_FOUND");
   overrides[bound.key] = true; // 恢复
   await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+});
+
+// ===========================================================================
+// 管理平台增量（M1–M8）：bootstrap / 租户用户 / 场景包视图 / 统一资源模式 / 规则 dry-run
+// ===========================================================================
+let padminToken = "";
+await check("M1 Bootstrap", "SEED_DEMO=1 → readyz 不被 bootstrap 闸拦（bootstrap-bypass）；超管已创建可登录", async () => {
+  const ready = await a("/a/v1/readyz", { token: "" });
+  eq(ready.status, 200, "readyz");
+  const login = await a("/a/v1/auth/login", { token: "", body: { tenantId: "default", username: "ops@parity.io", password: "parity-boot-1" } });
+  eq(login.status, 200, "platform_admin login");
+  ok(login.body.user.roles.includes("platform_admin"), "roles 含 platform_admin");
+  padminToken = login.body.accessToken;
+});
+await check("M1 Bootstrap", "platform_admin 不通过业务数据 authz（对象查询 403）", async () => {
+  const r = await a("/a/v1/objects/query", { token: padminToken, body: { objectType: "Order", filter: {} } });
+  envelope(r, 403, "FORBIDDEN");
+});
+
+let m2AdminToken = "";
+await check("M2 最小路径", "platform_admin 建租户 → 建首个 tenant_admin → 登录", async () => {
+  const created = await a("/a/v1/tenants", { token: padminToken, body: { key: "m2t", name: "M2 租户" } });
+  eq(created.status, 201, "tenant created");
+  // 非 platform_admin → 403
+  const denied = await a("/a/v1/tenants", { method: "GET" });
+  envelope(denied, 403, "FORBIDDEN");
+  const admin = await a("/a/v1/tenants/m2t/users", { token: padminToken, body: { email: "boss@m2t.io", roles: ["tenant_admin", "admin", "catalog_admin", "planner"] } });
+  eq(admin.status, 201, "first tenant_admin");
+  ok(admin.body.initialPassword, "initialPassword 一次性返回");
+  ok(!JSON.stringify(admin.body).includes("passwordHash"), "不回显 passwordHash");
+  const login = await a("/a/v1/auth/login", { token: "", body: { tenantId: "m2t", username: "boss@m2t.io", password: admin.body.initialPassword } });
+  eq(login.status, 200, "tenant_admin login");
+  m2AdminToken = login.body.accessToken;
+});
+await check("M2 最小路径", "一键合成 → 8 个管理面全部有内容、可编辑保存、全程无 5xx", async () => {
+  const job = await a("/a/v1/synthetic/jobs", { token: m2AdminToken, body: { industry: "battery-manufacturing", scale: "S", seed: 7 } });
+  eq(job.status, 202, "synthetic accepted");
+  let st;
+  for (let i = 0; i < 60; i++) {
+    st = (await a(`/a/v1/synthetic/jobs/${job.body.jobId}`, { token: m2AdminToken })).body;
+    if (st.status === "SUCCEEDED" || st.status === "FAILED") break;
+    await sleep(500);
+  }
+  eq(st.status, "SUCCEEDED", "synthetic job");
+  const pages = [
+    ["/a/v1/rules", (b) => b.length > 0],
+    ["/a/v1/policies", (b) => b.length > 0],
+    ["/a/v1/view-configs", (b) => b.items.length > 0],
+    ["/a/v1/scenario-packages", (b) => b.length > 0],
+    ["/a/v1/tenants/m2t/users", (b) => b.length > 0],
+    ["/a/v1/features/registry", (b) => b.length > 0],
+    ["/a/v1/synthetic/clock", (b) => typeof b.simDate === "string"],
+    ["/a/v1/me/workspace", (b) => b.views.length > 0 && b.navigation.length > 0],
+  ];
+  for (const [path, pred] of pages) {
+    const r = await a(path, { token: m2AdminToken });
+    ok(r.status < 500, `${path} 无 5xx（got ${r.status}）`);
+    eq(r.status, 200, `${path} status`);
+    ok(pred(r.body), `${path} 有内容`);
+  }
+  // 可编辑保存：场景包 PATCH + 视图配置 PUT（configVersion 递增）
+  const pkgs = (await a("/a/v1/scenario-packages", { token: m2AdminToken })).body;
+  const patched = await a(`/a/v1/scenario-packages/${pkgs[0].id}`, { method: "PATCH", token: m2AdminToken, body: { name: "M2 场景包·改" } });
+  eq(patched.status, 200, "scenario-package PATCH");
+  eq(patched.body.name, "M2 场景包·改", "name saved");
+  const views = (await a("/a/v1/view-configs", { token: m2AdminToken })).body;
+  const v0 = views.items[0];
+  const put = await a(`/a/v1/view-configs/${v0.viewKey}`, { method: "PUT", token: m2AdminToken, body: { title: `${v0.title}·改` } });
+  eq(put.status, 200, "view-config PUT");
+  ok(put.body.configVersion > views.configVersion, "configVersion 递增");
+});
+
+await check("M3 用户管理", "参数化角色保存生效；自改角色被拒；最后管理员不可禁用 → 409 LAST_ADMIN；重置密码可登录", async () => {
+  const users = (await a("/a/v1/tenants/m2t/users", { token: m2AdminToken })).body;
+  const boss = users.find((u) => u.email === "boss@m2t.io");
+  // 参数化角色 + attributes
+  const cz = await a("/a/v1/tenants/m2t/users", {
+    token: m2AdminToken,
+    body: { email: "cz@m2t.io", roles: ["base_manager:常州"], attributes: { baseScope: ["changzhou"] } },
+  });
+  eq(cz.status, 201, "create base_manager");
+  ok(cz.body.roles.includes("base_manager:常州"), "参数化角色保存");
+  // 自改角色 → 403
+  const selfEdit = await a(`/a/v1/tenants/m2t/users/${boss.id}`, { method: "PATCH", token: m2AdminToken, body: { roles: ["planner"] } });
+  envelope(selfEdit, 403, "FORBIDDEN");
+  // 最后管理员禁用 → 409 LAST_ADMIN（独立租户 m3t：唯一 tenant_admin；platform_admin 操作绕过自我保护）
+  await a("/a/v1/tenants", { token: padminToken, body: { key: "m3t", name: "M3 租户" } });
+  const only = await a("/a/v1/tenants/m3t/users", { token: padminToken, body: { email: "solo@m3t.io", roles: ["tenant_admin"] } });
+  eq(only.status, 201, "m3t solo admin");
+  const last = await a(`/a/v1/tenants/m3t/users/${only.body.id}`, { method: "PATCH", token: padminToken, body: { status: "DISABLED" } });
+  envelope(last, 409, "LAST_ADMIN");
+  // 重置密码（TODO 邮件，本期直接返回）→ 新密码可登录
+  const reset = await a(`/a/v1/users/${cz.body.id}/reset-password`, { token: m2AdminToken, body: {} });
+  eq(reset.status, 200, "reset status");
+  ok(typeof reset.body.password === "string", "password 返回");
+  const login = await a("/a/v1/auth/login", { token: "", body: { tenantId: "m2t", username: "cz@m2t.io", password: reset.body.password } });
+  eq(login.status, 200, "new password login");
+  // 角色下拉数据源
+  const roles = await a("/a/v1/roles", { token: m2AdminToken });
+  eq(roles.status, 200, "roles status");
+  ok(roles.body.builtIn.includes("tenant_admin") && roles.body.builtIn.includes("viewer"), "builtIn 六角色");
+  ok(roles.body.inUse.includes("base_manager:常州"), "inUse 含参数化角色");
+});
+
+await check("M6 场景包/视图", "场景包空建+克隆；视图创建 → feature 自动注册；删除 → 级联提示需确认", async () => {
+  const created = await a("/a/v1/scenario-packages", { body: { name: "parity 空白包" } });
+  eq(created.status, 201, "空建");
+  const cloned = await a("/a/v1/scenario-packages", { body: { name: "parity 克隆包", fromTemplate: created.body.id } });
+  eq(cloned.status, 201, "克隆");
+  eq(cloned.body.fromTemplate, created.body.id, "fromTemplate 记录");
+  // 视图创建（demo 租户）
+  const view = await a("/a/v1/view-configs", {
+    body: { viewKey: "parity-board", title: "parity 看板", renderer: "dashboard", layout: { widgets: [] }, roles: ["planner"], nav: { group: "business", order: 0 } },
+  });
+  eq(view.status, 201, "view created");
+  eq(view.body.featureKey, "view.parity-board", "feature 自动注册键");
+  const reg = await a("/a/v1/features/registry");
+  ok(reg.body.some((f) => f.key === "view.parity-board"), "registry 含动态项");
+  const resolved = await a("/a/v1/tenants/demo/features");
+  ok(resolved.body.features.includes("view.parity-board"), "默认开");
+  // 删除：无 confirm → 级联提示；confirm=1 → 删除 + 注销
+  const prompt = await a("/a/v1/view-configs/parity-board", { method: "DELETE" });
+  eq(prompt.status, 200, "prompt status");
+  eq(prompt.body.requiresConfirm, true, "requiresConfirm");
+  eq(prompt.body.references.feature, "view.parity-board", "references.feature");
+  const del = await a("/a/v1/view-configs/parity-board?confirm=1", { method: "DELETE" });
+  eq(del.body.deleted, true, "deleted");
+  const reg2 = await a("/a/v1/features/registry");
+  ok(!reg2.body.some((f) => f.key === "view.parity-board"), "registry 注销");
+});
+
+await check("M4 统一资源模式", "agent publish → PUT 409 IMMUTABLE_VERSION → new-version 可改 → references → retire 需确认 → delete 被拒", async () => {
+  const created = await b("/b/v1/agents", {
+    body: {
+      key: "parity_uni", name: "parity 统一模式", description: "d", model: "claude-opus-4-8",
+      systemPrompt: "你是产能分析助手", tools: [{ kind: "BUILTIN", name: "query_objects" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" }, skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Order"], toolNames: ["query_objects"] }, budget: { maxIterations: 4 },
+    },
+  });
+  eq(created.status, 201, "create");
+  const id = created.body.id;
+  const pub = await b(`/b/v1/agents/${id}/publish`, { body: {} });
+  eq(pub.body.ok, true, "publish ok");
+  const put = await b(`/b/v1/agents/${id}`, { method: "PUT", body: { name: "改名" } });
+  envelope(put, 409, "IMMUTABLE_VERSION");
+  const nv = await b(`/b/v1/agents/${id}/new-version`, { body: {} });
+  eq(nv.status, 201, "new-version");
+  eq(nv.body.status, "DRAFT", "DRAFT");
+  const put2 = await b(`/b/v1/agents/${nv.body.id}`, { method: "PUT", body: { name: "v2 可改" } });
+  eq(put2.status, 200, "PUT v2");
+  // 详情含版本列表
+  const detail = await b(`/b/v1/agents/${id}`);
+  isArr(detail.body.versions, "versions");
+  ok(detail.body.versions.length >= 2, "至少两个版本");
+  // 场景入口引用 → references 非空 → retire 需确认 → delete 被拒
+  const scn = await b("/b/v1/scene-entries/parity-uni-view", {
+    method: "PUT",
+    body: { mode: "AGENT_FIRST", defaultAgentId: id, uiHints: { placeholder: "p", suggestedQuestions: [] } },
+  });
+  eq(scn.status, 200, "scene PUT");
+  const refs = await b(`/b/v1/agents/${id}/references`);
+  ok(refs.body.count >= 1, "references 非空");
+  const retire1 = await b(`/b/v1/agents/${id}/retire`, { body: {} });
+  envelope(retire1, 409, "RETIRE_REQUIRES_CONFIRM");
+  const retire2 = await b(`/b/v1/agents/${id}/retire`, { body: { confirm: true } });
+  eq(retire2.body.status, "RETIRED", "retire confirmed");
+  const del = await b(`/b/v1/agents/${id}`, { method: "DELETE" });
+  envelope(del, 409, "REFERENCED");
+});
+await check("M5 场景入口", "AGENT_FIRST 且 defaultAgent 未发布 → 发布失败信息明确；mcp publish 连接测试失败信息明确", async () => {
+  const draft = await b("/b/v1/agents", {
+    body: {
+      key: "parity_uni_draft", name: "未发布", description: "d", model: "claude-opus-4-8",
+      systemPrompt: "x", tools: [], ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" }, skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Order"], toolNames: [] },
+    },
+  });
+  eq(draft.status, 201, "draft agent");
+  const scn = await b("/b/v1/scene-entries/parity-m5-view", {
+    method: "PUT",
+    body: { mode: "AGENT_FIRST", defaultAgentId: draft.body.id, uiHints: { placeholder: "p", suggestedQuestions: [] } },
+  });
+  eq(scn.status, 400, "未发布 → 400");
+  ok(scn.body.error.message.includes("已发布") || scn.body.error.message.includes("DRAFT"), "失败信息明确");
+  // mcp publish：连接测试不可达 → ok:false + 明确信息（不抛 5xx）
+  const mcp = await b("/b/v1/mcp-configs", {
+    body: { name: "parity-uni-mcp", transport: { type: "streamable_http", url: "http://127.0.0.1:9/mcp" }, status: "ACTIVE" },
+  });
+  eq(mcp.status, 201, "mcp create");
+  eq(mcp.body.lifecycle, "DRAFT", "DRAFT v1");
+  const pub = await b(`/b/v1/mcp-configs/${mcp.body.id}/publish`, { body: {} });
+  eq(pub.status, 200, "publish status");
+  eq(pub.body.ok, false, "连接测试失败 → ok:false");
+  ok(pub.body.errors?.[0]?.message.includes("连接测试失败"), "信息明确");
+});
+
+await check("M7 规则手工管理", "非法 expression 定位字符位（400 + dry-run position）；dry-run 即时求值；publish 后 PUT → 409", async () => {
+  const bad = await a("/a/v1/rules", {
+    body: { key: "parity_m7_bad", name: "坏规则", expression: "Order.qty >> 5", scopeObjectTypes: ["Order"], severity: "WARN" },
+  });
+  envelope(bad, 400, "VALIDATION_ERROR");
+  ok(bad.body.error.message.includes("位置"), "message 含字符位");
+  const dryBad = await a("/a/v1/rules/dry-run", { body: { expression: "Order.qty > ", samplePayload: {} } });
+  eq(dryBad.status, 200, "dry-run status");
+  eq(dryBad.body.ok, false, "ok:false");
+  ok(Number.isInteger(dryBad.body.error.position), "error.position 为字符位");
+  const hit = await a("/a/v1/rules/dry-run", { body: { expression: "Order.demandDelta > 0.5", samplePayload: { Order: { demandDelta: 0.9 } } } });
+  eq(hit.body.ok, true, "ok");
+  eq(hit.body.violated, true, "violated");
+  const miss = await a("/a/v1/rules/dry-run", { body: { expression: "Order.demandDelta > 0.5", samplePayload: { Order: { demandDelta: 0.1 } } } });
+  eq(miss.body.violated, false, "not violated");
+  // 版本化：DRAFT 可改 → publish → PUT 409 IMMUTABLE_VERSION → retire
+  const created = await a("/a/v1/rules", {
+    body: { key: "parity_m7", name: "手工规则", expression: "Order.qty > 100", scopeObjectTypes: ["Order"], severity: "WARN" },
+  });
+  eq(created.status, 201, "create");
+  const put = await a(`/a/v1/rules/${created.body.id}`, { method: "PUT", body: { expression: "Order.qty > 200" } });
+  eq(put.status, 200, "DRAFT PUT");
+  await a(`/a/v1/rules/${created.body.id}/publish`, { body: {} });
+  const immutable = await a(`/a/v1/rules/${created.body.id}`, { method: "PUT", body: { expression: "Order.qty > 300" } });
+  envelope(immutable, 409, "IMMUTABLE_VERSION");
+  const retired = await a(`/a/v1/rules/${created.body.id}/retire`, { body: {} });
+  eq(retired.body.status, "RETIRED", "retired");
 });
 
 // ---------------------------------------------------------------------------

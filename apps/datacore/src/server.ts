@@ -7,6 +7,7 @@ import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
+import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
 import { seedDemo, seedDemoSynthetic, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,10 +23,24 @@ async function main(): Promise<void> {
   const blob = new LocalFsBlobStore(config.BLOB_DIR);
   const llm = createLlmClient(config);
 
-  const { app, services } = await buildApp({ config, repos, blob, llm, logger });
+  const bootstrapEnv = { email: config.BOOTSTRAP_ADMIN_EMAIL, password: config.BOOTSTRAP_ADMIN_PASSWORD };
+  const { app, services } = await buildApp({
+    config,
+    repos,
+    blob,
+    llm,
+    logger,
+    // 管理平台增量 §1：users 表为空且无 BOOTSTRAP 变量 → /readyz 503（原因见日志/响应）。
+    bootstrapRequired: bootstrapReadiness(repos, bootstrapEnv),
+  });
 
-  const adminCtx = await seedDemo(repos);
+  // 管理平台增量 §1 优先级（见 bootstrap.ts 注释 + DEPLOY.md）：
+  // ① bootstrap 检查先于 SEED_DEMO 播种决策（空表 + 环境变量 → 创建 default 租户 platform_admin，幂等）；
+  // ② SEED_DEMO=1 才播种 demo 租户与演示账号（两者可叠加）；
+  // ③ 空表 + 无变量 + 未播种 → /readyz 持续 503（BOOTSTRAP_REQUIRED）。
+  await bootstrapPlatformAdmin(repos, bootstrapEnv, logger);
   if (config.SEED_DEMO === "1") {
+    const adminCtx = await seedDemo(repos);
     logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
     await seedDemoSynthetic(services.synthetic, adminCtx);
   }
@@ -33,7 +48,7 @@ async function main(): Promise<void> {
   services.scheduler.start();
 
   services.outbox.start(async () => {
-    const tenants = await repos.tenants.list(DEMO_TENANT).catch(() => []);
+    const tenants = await repos.tenants.listAll().catch(() => []);
     const ids = new Set<string>([DEMO_TENANT, ...tenants.map((t) => t.id)]);
     return [...ids];
   });

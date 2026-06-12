@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AgentDefinition, QueryTask } from "@platform/contracts";
-import { createTestApp, debugHeaders, PLANNER, TENANT, type TestApp } from "./helpers.js";
+import { ADMIN, createTestApp, debugHeaders, TENANT, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { sweepInterruptedTasks, INTERRUPTED_BY_RESTART } from "../src/ops/sweep.js";
 import { NoopWorkflowCheckpointStore } from "../src/workflow/checkpoint.js";
@@ -60,12 +60,12 @@ describe("增量 §2 · Workflow 执行语义", () => {
     const created = await t.app.inject({
       method: "POST",
       url: "/b/v1/workflows",
-      headers: debugHeaders(PLANNER),
+      headers: debugHeaders(ADMIN),
       payload: { key: "too_long", name: "超时流程", inputs: { type: "object", properties: {} }, steps },
     });
     expect(created.statusCode).toBe(201);
     const id = (created.json() as { id: string }).id;
-    const pub = await t.app.inject({ method: "POST", url: `/b/v1/workflows/${id}/publish`, headers: debugHeaders(PLANNER) });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/workflows/${id}/publish`, headers: debugHeaders(ADMIN) });
     expect(pub.statusCode).toBe(200);
     const body = pub.json() as { ok: boolean; errors: { message: string }[] };
     expect(body.ok).toBe(false);

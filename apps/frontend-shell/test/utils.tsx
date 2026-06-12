@@ -5,7 +5,7 @@ import { ACCOUNTS } from "@/mocks/fixtures";
 import { tokenFor } from "@/mocks/db";
 import { tokenStore } from "@/api/tokenStore";
 
-export function loginAs(username: "planner" | "base_manager"): void {
+export function loginAs(username: "planner" | "base_manager" | "padmin"): void {
   const account = ACCOUNTS.find((a) => a.username === username)!;
   tokenStore.set(tokenFor(account));
 }

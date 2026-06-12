@@ -27,7 +27,11 @@ export type Operand =
   | { kind: "user"; path: string[] };
 
 export class DslError extends Error {
-  constructor(message: string) {
+  /** 管理平台增量 §5：语法错误定位到字符位（0 起，相对原始 expression 字符串）。 */
+  constructor(
+    message: string,
+    public readonly position: number | null = null,
+  ) {
     super(message);
     this.name = "DslError";
   }
@@ -37,13 +41,14 @@ export class DslError extends Error {
 // Lexer
 // --------------------------------------------------------------------------
 
-type Token =
+type Token = (
   | { t: "ident"; v: string }
   | { t: "num"; v: number }
   | { t: "str"; v: string }
   | { t: "op"; v: string }
   | { t: "punct"; v: string }
-  | { t: "userref"; v: string }; // ${user.x.y}
+  | { t: "userref"; v: string } // ${user.x.y}
+) & { pos: number }; // 字符位（0 起，token 起始）
 
 const KEYWORDS = new Set(["AND", "OR", "NOT", "IN", "TRUE", "FALSE", "NULL"]);
 const FUNCS = new Set(["SUM", "MIN", "MAX", "COUNT", "AVG"]);
@@ -59,8 +64,8 @@ function lex(src: string): Token[] {
     }
     if (c === "$" && src[i + 1] === "{") {
       const end = src.indexOf("}", i);
-      if (end < 0) throw new DslError("unterminated ${...}");
-      tokens.push({ t: "userref", v: src.slice(i + 2, end).trim() });
+      if (end < 0) throw new DslError("unterminated ${...}", i);
+      tokens.push({ t: "userref", v: src.slice(i + 2, end).trim(), pos: i });
       i = end + 1;
       continue;
     }
@@ -72,42 +77,42 @@ function lex(src: string): Token[] {
         s += src[j];
         j++;
       }
-      if (j >= src.length) throw new DslError("unterminated string literal");
-      tokens.push({ t: "str", v: s });
+      if (j >= src.length) throw new DslError("unterminated string literal", i);
+      tokens.push({ t: "str", v: s, pos: i });
       i = j + 1;
       continue;
     }
     if (/[0-9]/.test(c) || (c === "-" && /[0-9]/.test(src[i + 1] ?? ""))) {
       let j = i + 1;
       while (j < src.length && /[0-9.eE_]/.test(src[j] as string)) j++;
-      tokens.push({ t: "num", v: Number(src.slice(i, j).replace(/_/g, "")) });
+      tokens.push({ t: "num", v: Number(src.slice(i, j).replace(/_/g, "")), pos: i });
       i = j;
       continue;
     }
     if (/[A-Za-z_À-￿]/.test(c)) {
       let j = i + 1;
       while (j < src.length && /[A-Za-z0-9_.À-￿]/.test(src[j] as string)) j++;
-      tokens.push({ t: "ident", v: src.slice(i, j) });
+      tokens.push({ t: "ident", v: src.slice(i, j), pos: i });
       i = j;
       continue;
     }
     const two = src.slice(i, i + 2);
     if (two === ">=" || two === "<=" || two === "==" || two === "!=") {
-      tokens.push({ t: "op", v: two });
+      tokens.push({ t: "op", v: two, pos: i });
       i += 2;
       continue;
     }
     if (c === ">" || c === "<") {
-      tokens.push({ t: "op", v: c });
+      tokens.push({ t: "op", v: c, pos: i });
       i++;
       continue;
     }
     if (c === "(" || c === ")" || c === "," || c === "[" || c === "]") {
-      tokens.push({ t: "punct", v: c });
+      tokens.push({ t: "punct", v: c, pos: i });
       i++;
       continue;
     }
-    throw new DslError(`unexpected character '${c}' at ${i}`);
+    throw new DslError(`unexpected character '${c}' at ${i}`, i);
   }
   return tokens;
 }
@@ -118,11 +123,19 @@ function lex(src: string): Token[] {
 
 class Parser {
   private pos = 0;
-  constructor(private tokens: Token[]) {}
+  constructor(
+    private tokens: Token[],
+    private endPos = 0,
+  ) {}
+
+  /** 抛出带字符位的语法错误（当前 token 起始位；流耗尽 → 表达式末尾）。 */
+  private fail(message: string): never {
+    throw new DslError(message, this.tokens[this.pos]?.pos ?? this.endPos);
+  }
 
   parse(): AstNode {
     const node = this.parseOr();
-    if (this.pos < this.tokens.length) throw new DslError("unexpected trailing tokens");
+    if (this.pos < this.tokens.length) this.fail("unexpected trailing tokens");
     return node;
   }
 
@@ -164,13 +177,13 @@ class Parser {
         this.pos += 2;
         const inner = this.parseOr();
         const comma = this.peek();
-        if (!(comma?.t === "punct" && comma.v === ",")) throw new DslError("SUSTAIN expects (comparison, days)");
+        if (!(comma?.t === "punct" && comma.v === ",")) this.fail("SUSTAIN expects (comparison, days)");
         this.pos++;
         const daysTok = this.peek();
-        if (daysTok?.t !== "num") throw new DslError("SUSTAIN days must be a number");
+        if (daysTok?.t !== "num") this.fail("SUSTAIN days must be a number");
         this.pos++;
         const close = this.peek();
-        if (!(close?.t === "punct" && close.v === ")")) throw new DslError("expected ) after SUSTAIN");
+        if (!(close?.t === "punct" && close.v === ")")) this.fail("expected ) after SUSTAIN");
         this.pos++;
         return { kind: "sustain", inner, days: Math.max(1, Math.floor(daysTok.v)) };
       }
@@ -187,7 +200,7 @@ class Parser {
           this.pos++;
           return inner;
         }
-        throw new DslError("expected )");
+        this.fail("expected )");
       } catch (e) {
         this.pos = save;
         throw e;
@@ -207,12 +220,12 @@ class Parser {
       this.pos++;
       return { kind: "cmp", op: "IN", left, right: this.parseOperand() };
     }
-    throw new DslError("expected comparison operator");
+    this.fail("expected comparison operator");
   }
 
   private parseOperand(): Operand {
     const t = this.peek();
-    if (!t) throw new DslError("unexpected end of expression");
+    if (!t) this.fail("unexpected end of expression");
     if (t.t === "num") {
       this.pos++;
       return { kind: "literal", value: t.v };
@@ -232,7 +245,7 @@ class Parser {
       const values: unknown[] = [];
       for (;;) {
         const el = this.peek();
-        if (!el) throw new DslError("unterminated array literal");
+        if (!el) this.fail("unterminated array literal");
         if (el.t === "punct" && el.v === "]") {
           this.pos++;
           break;
@@ -246,7 +259,7 @@ class Parser {
           this.pos++;
           continue;
         }
-        throw new DslError("array literals may only contain numbers/strings");
+        this.fail("array literals may only contain numbers/strings");
       }
       return { kind: "literal", value: values };
     }
@@ -265,10 +278,10 @@ class Parser {
         if (next?.t === "punct" && next.v === "(") {
           this.pos += 2;
           const arg = this.peek();
-          if (arg?.t !== "ident") throw new DslError(`${upper}() expects a field argument`);
+          if (arg?.t !== "ident") this.fail(`${upper}() expects a field argument`);
           this.pos++;
           const close = this.peek();
-          if (!(close?.t === "punct" && close.v === ")")) throw new DslError("expected )");
+          if (!(close?.t === "punct" && close.v === ")")) this.fail("expected )");
           this.pos++;
           return {
             kind: "func",
@@ -277,20 +290,28 @@ class Parser {
           };
         }
       }
-      if (KEYWORDS.has(upper)) throw new DslError(`unexpected keyword ${t.v}`);
+      if (KEYWORDS.has(upper)) this.fail(`unexpected keyword ${t.v}`);
       this.pos++;
       const path = t.v.split(".");
       if (path[0] === "user") return { kind: "user", path: path.slice(1) };
       return { kind: "field", path };
     }
-    throw new DslError(`unexpected token ${JSON.stringify(t)}`);
+    this.fail(`unexpected token ${JSON.stringify(t)}`);
   }
 }
 
 export function parseExpression(src: string): AstNode {
   const trimmed = src.trim();
-  if (!trimmed) throw new DslError("empty expression");
-  return new Parser(lex(trimmed)).parse();
+  if (!trimmed) throw new DslError("empty expression", 0);
+  const offset = src.indexOf(trimmed); // 前导空白长度（字符位换算回原始字符串）
+  try {
+    return new Parser(lex(trimmed), trimmed.length).parse();
+  } catch (e) {
+    if (e instanceof DslError && e.position != null && offset > 0) {
+      throw new DslError(e.message, e.position + offset);
+    }
+    throw e;
+  }
 }
 
 // --------------------------------------------------------------------------

@@ -9,6 +9,9 @@ export interface AdminPageDef {
 }
 
 export const ADMIN_PAGES: AdminPageDef[] = [
+  // 管理平台增量 §2：/admin/tenants 仅 platform_admin；/admin/users 由 tenant_admin 管理
+  { path: "tenants", label: zh.nav.tenants, roles: ["platform_admin"] },
+  { path: "users", label: zh.nav.users, roles: ["admin", "tenant_admin"] },
   { path: "connections", label: zh.nav.connections, roles: ["admin", "data_admin"] },
   { path: "rule-docs", label: zh.nav.ruleDocs, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "modeling", label: zh.nav.modeling, roles: ["admin", "data_admin"] },
@@ -24,6 +27,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "scenes", label: zh.nav.scenes, roles: ["admin", "catalog_admin"] },
   { path: "ops/fallback", label: zh.nav.opsFallback, roles: ["admin", "catalog_admin"] },
   { path: "features", label: zh.nav.features, roles: ["admin", "catalog_admin"] },
+  // 管理平台增量 §3：视图配置（renderer 12 选 1 + feature 联动）
+  { path: "views", label: zh.nav.views, roles: ["admin", "catalog_admin"] },
   // §7.21 校准报告（catalog_admin 或 planner）
   { path: "calibration", label: zh.nav.calibration, roles: ["admin", "catalog_admin", "planner"] },
 ];

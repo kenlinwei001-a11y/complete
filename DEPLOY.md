@@ -25,7 +25,18 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 等待 `gateway` 服务就绪（`docker compose ps` 全部 healthy）。首次启动 DataCore 会自动：
 
 1. 对空库执行幂等迁移（`migrations/*.sql`，服务启动时自动执行，也可手动 `pnpm --filter datacore migrate`）；
-2. `SEED_DEMO=1`（默认开）播种电池制造演示数据（seed 42，确定性：12 基地 / 6 型号 / 20 订单 / 90 天历史时序 / 规则 / 权限策略 / 四个演示账号）。
+2. **平台引导（Bootstrap，管理平台增量 §1）**：bootstrap 检查先于 SEED_DEMO 播种决策执行 ——
+   检查时刻 `users` 表为空且配置了 `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`，
+   则在自动创建的 `default` 租户下创建平台超管（角色 `platform_admin`，邮箱即登录名）；
+   幂等（表非空则跳过，pg 重启不会重复创建）；
+3. `SEED_DEMO=1`（默认开）播种电池制造演示数据（seed 42，确定性：12 基地 / 6 型号 / 20 订单 / 90 天历史时序 / 规则 / 权限策略 / 四个演示账号）。两者可叠加：BOOTSTRAP 创建超管、SEED_DEMO 创建演示账号，互不影响。
+
+> **优先级（与代码注释一致，见 `apps/datacore/src/bootstrap.ts`）**：
+> `users` 表为空 + 未配 BOOTSTRAP 变量 + `SEED_DEMO=0`（即播种后表仍为空）→ `/readyz` 持续返回 **503**，
+> 响应与日志明示原因 `BOOTSTRAP_REQUIRED`；`SEED_DEMO=1` 播种出的演示账号使表非空 → 不 503。
+> 空系统冷启动（`SEED_DEMO=0`）必须配置 BOOTSTRAP 变量，再由 platform_admin 在 `/admin/tenants`
+> 建租户 → 建首个 tenant_admin → 登录 → 一键合成或克隆行业模板，各管理页即有内容可配。
+> platform_admin 是唯一跨租户角色（建租户/建首管/管行业模板），**不能读任何租户的业务对象**。
 
 ## 3. 配域名（二选一）
 
@@ -45,7 +56,7 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 
 | 账号 | 密码 | 角色 | 看到什么（"不同账号不同前端"） |
 |---|---|---|---|
-| `admin` | `demo1234` | admin + planner + catalog_admin | 全部业务视图 + 全部管理台（admin 导航组） |
+| `admin` | `demo1234` | admin + planner + catalog_admin + tenant_admin | 全部业务视图 + 全部管理台（admin 导航组，含 /admin/users 用户管理） |
 | `planner` | `demo1234` | planner | 全部业务视图，无管理台，主题强调色不同 |
 | `base_manager` | `demo1234` | base_manager:常州 | 业务视图子集（仅推演/台账等），数据行级过滤到常州基地，主题强调色不同 |
 | `approver` | `demo1234` | approver + admin | 第二审批人：S2 审批链「发起人不得自批」，admin 自己发起的审批（校准批准 / AOP 拍板等）由此账号通过 |
@@ -80,7 +91,10 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | 合成数据 /admin/synthetic | A7 行业模板六阶段生成 + A8.6 模拟时钟（tick 推进/重置） |
 | Action 审批 /admin/actions | S2 Action 草稿状态机（多级审批，决不直接执行） |
 | 意图目录 /admin/catalog | B6/QOS 意图与执行计划（发布/退役/兜底孵化闭环 /admin/ops/fallback） |
-| Agent/Workflow/Skill/MCP/场景 /admin/agents 等 | B1–B5 注册表（发布校验、环检测、凭据不回显、连接测试） |
+| Agent/Workflow/Skill/MCP/场景 /admin/agents 等 | B1–B5 注册表（统一资源模式：DRAFT 可改 / PUBLISHED 不可变 409 IMMUTABLE_VERSION / new-version 派生 / references 引用清单 / retire 确认；发布校验、环检测、凭据不回显、连接测试） |
+| 租户管理 /admin/tenants | 管理平台增量 §2：仅 platform_admin —— 租户列表/创建/首个 tenant_admin |
+| 用户管理 /admin/users | 管理平台增量 §2：tenant_admin —— 邮箱/角色 chips（参数化角色带参数输入）/属性编辑/状态开关/重置密码（最后管理员不可禁用 409 LAST_ADMIN） |
+| 视图配置 /admin/views | 管理平台增量 §3：ViewConfig CRUD（renderer 12 选 1，创建自动注册 feature `view.{viewKey}`，删除级联提示引用并需确认，导航上下移排序，保存即 configVersion+1） |
 
 ## 6. 可选配置（环境变量，`docker compose up` 前 export 或写 `.env`）
 
@@ -89,7 +103,8 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | `ANTHROPIC_API_KEY` | 打通真实 LLM：QOS 意图分类（默认 `claude-haiku-4-5`）、探索 Agent / 文档抽取 / 建模建议（默认 `claude-opus-4-8`）。**不配置时**：求解器/对象查询/规则等全部可用，但查询对话的分类与探索回答、A2/A3 的 LLM 抽取会失败报错（界面有明确错误提示） |
 | OpenAI 兼容 LLM | 登录后在 `/admin/`（意图目录-模型供应商）经 `POST /b/v1/llm/providers` 配置 `openai_compatible`（baseUrl + credential，凭据 AES-GCM 加密存储不回显），再用 `PUT /b/v1/llm/bindings` 把 classifier/agent 角色绑到该供应商；DataCore 侧用 `DC_LLM_PROVIDER=openai_compatible` + `DC_LLM_BASE_URL` + `DC_LLM_API_KEY_ENV` |
 | `EMBEDDING_PROVIDER` | 默认 `pseudo`（确定性哈希向量，零依赖可演示）。配 `openai_compatible` + `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL`（及对应 key 环境变量 `EMBEDDING_API_KEY_ENV`）启用真实向量；postgres-a 用 pgvector 镜像，扩展可用时知识库走原生向量索引，不可用时自动回退 JSONB + 应用侧余弦 |
-| `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动） |
+| `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动 —— 此时必须配置 BOOTSTRAP 变量，否则 `/readyz` 503） |
+| `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | 管理平台增量 §1：空库首启创建平台超管（`default` 租户，角色 `platform_admin`，登录名 = 邮箱）；幂等，表非空跳过 |
 | HTTPS | 自备 `decision.local` 证书放 `deploy/certs/`，取消 `deploy/nginx.conf` 末尾 443 server 块与 `docker-compose.yml` 中 gateway 的 443 端口/证书挂载注释，浏览器改走 `https://decision.local` |
 
 ## 7. 故障排查

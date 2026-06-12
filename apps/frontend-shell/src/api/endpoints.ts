@@ -1,5 +1,8 @@
 import type {
   ActionDraft,
+  AdminTenant,
+  AdminUser,
+  AdminViewConfig,
   AgentDefinition,
   ConnectionInstance,
   ConnectorType,
@@ -9,7 +12,10 @@ import type {
   PermissionPolicy,
   QueryTask,
   ResolvedFeatures,
+  RolesResponse,
+  RuleDryRunResult,
   RuleEntry,
+  ScenarioPackageAdmin,
   SceneEntryConfig,
   SessionContext,
   SkillDefinition,
@@ -186,6 +192,60 @@ export const reviewCandidate = (id: string, action: "APPROVE" | "EDIT_APPROVE" |
 
 export const fetchRules = () => api.a<RuleEntry[]>("/a/v1/rules");
 
+// ---- 管理平台增量 §5：规则手工管理（编辑器 + dry-run） ----
+export const createRule = (body: {
+  key: string;
+  name: string;
+  description?: string;
+  expression: string;
+  scopeObjectTypes: string[];
+  severity: "BLOCK" | "WARN" | "INFO";
+}) => api.a<RuleEntry>("/a/v1/rules", { body });
+export const updateRule = (id: string, body: Partial<Omit<Parameters<typeof createRule>[0], "key">>) =>
+  api.a<RuleEntry>(`/a/v1/rules/${id}`, { method: "PUT", body });
+export const publishRule = (id: string) => api.a<RuleEntry>(`/a/v1/rules/${id}/publish`, { body: {} });
+export const retireRule = (id: string) => api.a<RuleEntry>(`/a/v1/rules/${id}/retire`, { body: {} });
+export const dryRunRule = (expression: string, samplePayload: Record<string, unknown>) =>
+  api.a<RuleDryRunResult>("/a/v1/rules/dry-run", { body: { expression, samplePayload } });
+
+// ---- 管理平台增量 §2：租户与用户管理 ----
+export const fetchTenants = () => api.a<AdminTenant[]>("/a/v1/tenants");
+export const createTenant = (body: { key: string; name: string; industry?: string }) =>
+  api.a<AdminTenant>("/a/v1/tenants", { body });
+export const fetchTenantUsers = (tenantId: string) => api.a<AdminUser[]>(`/a/v1/tenants/${tenantId}/users`);
+export const createTenantUser = (
+  tenantId: string,
+  body: { email: string; displayName?: string; roles: string[]; attributes?: Record<string, unknown>; password?: string },
+) => api.a<AdminUser & { initialPassword?: string }>(`/a/v1/tenants/${tenantId}/users`, { body });
+export const patchTenantUser = (
+  tenantId: string,
+  userId: string,
+  body: { displayName?: string; roles?: string[]; attributes?: Record<string, unknown>; status?: "ACTIVE" | "DISABLED" },
+) => api.a<AdminUser>(`/a/v1/tenants/${tenantId}/users/${userId}`, { method: "PATCH", body });
+export const resetUserPassword = (userId: string) =>
+  api.a<{ password: string; note: string }>(`/a/v1/users/${userId}/reset-password`, { body: {} });
+export const fetchRoles = () => api.a<RolesResponse>("/a/v1/roles");
+
+// ---- 管理平台增量 §3：场景包与视图配置 ----
+export const fetchScenarioPackages = () => api.a<ScenarioPackageAdmin[]>("/a/v1/scenario-packages");
+export const createScenarioPackage = (body: { name: string; fromTemplate?: string }) =>
+  api.a<ScenarioPackageAdmin>("/a/v1/scenario-packages", { body });
+export const patchScenarioPackage = (id: string, body: Partial<Omit<ScenarioPackageAdmin, "id" | "tenantId">>) =>
+  api.a<ScenarioPackageAdmin>(`/a/v1/scenario-packages/${id}`, { method: "PATCH", body });
+
+export const fetchViewConfigs = () =>
+  api.a<{ items: AdminViewConfig[]; configVersion: number }>("/a/v1/view-configs");
+export const createViewConfig = (body: Omit<AdminViewConfig, "featureKey" | "featureOn">) =>
+  api.a<AdminViewConfig & { configVersion: number }>("/a/v1/view-configs", { body });
+export const updateViewConfig = (viewKey: string, body: Partial<Omit<AdminViewConfig, "viewKey" | "featureKey" | "featureOn">>) =>
+  api.a<AdminViewConfig & { configVersion: number }>(`/a/v1/view-configs/${viewKey}`, { method: "PUT", body });
+export const deleteViewConfig = (viewKey: string, confirm: boolean) =>
+  api.a<{
+    deleted: boolean;
+    requiresConfirm?: boolean;
+    references: { feature: string | null; roles: string[]; sceneEntryViewKey: string; intentsHint: string };
+  }>(`/a/v1/view-configs/${viewKey}${confirm ? "?confirm=1" : ""}`, { method: "DELETE" });
+
 export const fetchPolicies = () => api.a<PermissionPolicy[]>("/a/v1/policies");
 export const authzExplain = (body: Record<string, unknown>) =>
   api.a<{ matched: { policyId: string; resource: string; grants: string }[]; rowFilter: string | null; allowed: boolean }>(
@@ -314,6 +374,10 @@ export const fetchIntents = (packageId: string, params?: { view?: string; status
   const qs = sp.toString();
   return api.b<IntentDefinition[]>(`/b/v1/catalog/packages/${packageId}/intents${qs ? `?${qs}` : ""}`);
 };
+export const createIntent = (
+  packageId: string,
+  body: { key: string; name: string; description: string; examples: string[]; planId: string; riskLevel: string; owner: string; enabledViews: "*" | string[]; slots: unknown[] },
+) => api.b<IntentDefinition>(`/b/v1/catalog/packages/${packageId}/intents`, { body });
 export const updateIntent = (intentId: string, body: Partial<IntentDefinition>) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}`, { method: "PUT", body });
 export const publishIntent = (intentId: string) =>

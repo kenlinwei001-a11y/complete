@@ -21,6 +21,10 @@ export interface Tenant {
   tenantId: string; // == id (uniform Store shape)
   name: string;
   industry?: string;
+  // ---- 管理平台增量 §2（additive）----
+  key?: string; // == id（展示用短键）
+  status?: "ACTIVE" | "SUSPENDED";
+  createdAt?: string;
 }
 
 export interface User {
@@ -30,6 +34,36 @@ export interface User {
   passwordHash: string;
   roles: string[];
   attributes: Record<string, unknown>; // e.g. { baseScope: ["changzhou"] }
+  // ---- 管理平台增量 §2（additive）----
+  email?: string;
+  displayName?: string;
+  status?: "ACTIVE" | "DISABLED"; // 缺省 = ACTIVE（旧种子兼容）
+  lastLoginAt?: string;
+}
+
+/** 管理平台增量 §3：场景包（空建 / 行业模板实例化 / 克隆）。 */
+export interface ScenarioPackageRecord {
+  id: string; // pkg_
+  tenantId: string;
+  name: string;
+  fromTemplate?: string; // industryKey | fromPackageId
+  views: string[];
+  toolWhitelist: string[];
+  modelOverrides: Record<string, string>;
+  thresholds: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 管理平台增量 §3：ViewConfig 联动注册的动态功能（view.{viewKey}，默认开）。 */
+export interface DynamicFeatureRecord {
+  id: string; // dynf_<tenant>_<key>
+  tenantId: string;
+  key: string; // view.{viewKey}
+  name: string;
+  level: "VIEW";
+  defaultOn: boolean;
+  createdAt: string;
 }
 
 export interface ViewConfig {

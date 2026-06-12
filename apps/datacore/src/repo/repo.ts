@@ -8,6 +8,7 @@ import type {
   ClockTickReport,
   Connection,
   DerivationRun,
+  DynamicFeatureRecord,
   FeatureAuditRecord,
   FeatureConfigRecord,
   ForecastSnapshotRecord,
@@ -27,6 +28,7 @@ import type {
   Rule,
   RuleCandidate,
   RuleDoc,
+  ScenarioPackageRecord,
   ScheduledJobRecord,
   SchedulerRunRecord,
   SimulationClockRecord,
@@ -52,6 +54,16 @@ export interface Store<T extends { id: string; tenantId: string }> {
   put(item: T): Promise<void>;
   remove(tenantId: string, id: string): Promise<void>;
   list(tenantId: string, pred?: (t: T) => boolean): Promise<T[]>;
+}
+
+/** 管理平台增量 §1：bootstrap 检测「users 表为空」需要跨租户计数。 */
+export interface UserStore extends Store<User> {
+  countAll(): Promise<number>;
+}
+
+/** 管理平台增量 §2：platform_admin 跨租户列出全部租户。 */
+export interface TenantStore extends Store<Tenant> {
+  listAll(): Promise<Tenant[]>;
 }
 
 export interface ObjectStore extends Store<ObjectInstance> {
@@ -132,8 +144,8 @@ export interface VectorIndex {
 }
 
 export interface Repos {
-  tenants: Store<Tenant>;
-  users: Store<User>;
+  tenants: TenantStore;
+  users: UserStore;
   viewConfigs: Store<ViewConfig>;
   policies: Store<PermissionPolicy>;
   connections: Store<Connection>;
@@ -180,6 +192,9 @@ export interface Repos {
   // Feature entitlement
   featureConfigs: Store<FeatureConfigRecord>;
   featureAudit: Store<FeatureAuditRecord>;
+  // 管理平台增量 §3
+  scenarioPackages: Store<ScenarioPackageRecord>;
+  dynamicFeatures: Store<DynamicFeatureRecord>;
   // M11 校准（§7.21 + 算法层增量）
   calibrationProposals: Store<CalibrationProposalRecord>;
   calibrationHistory: Store<CalibrationHistoryRecord>;

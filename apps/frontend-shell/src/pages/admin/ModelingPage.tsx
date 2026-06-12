@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchModelingDrafts,
@@ -10,6 +11,7 @@ import {
   suggestModeling,
   type ModelingDraftVM,
 } from "@/api/endpoints";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -40,7 +42,19 @@ export default function ModelingPage() {
           {t.newDraft}
         </button>
       </div>
-      {draft ? <DraftWorkbench draft={draft} /> : <div className="empty-state">{zh.common.none}</div>}
+      {draft ? (
+        <DraftWorkbench draft={draft} />
+      ) : (
+        // 管理平台增量 §6：无本体 → 「从数据建模」或「一键合成」
+        <EmptyState message={zh.admin.empty.ontology}>
+          <button className="btn primary sm" onClick={() => setSuggestOpen(true)} data-testid="cta-modeling">
+            {zh.admin.empty.modelingCta}
+          </button>
+          <Link className="btn sm" to="/admin/synthetic" data-testid="cta-synthetic">
+            {zh.admin.empty.syntheticCta}
+          </Link>
+        </EmptyState>
+      )}
       {suggestOpen && (
         <SuggestModal
           onClose={() => setSuggestOpen(false)}

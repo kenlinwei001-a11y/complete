@@ -1,10 +1,23 @@
-import type { RuleVerdict, RuleOrigin } from "@platform/contracts";
+import type { RuleDryRunResult, RuleVerdict, RuleOrigin } from "@platform/contracts";
 import type { AuthCtx, Rule } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { newId } from "./ids.js";
-import { evaluateExpression, parseExpression } from "./ruledsl.js";
-import { notFound } from "./errors.js";
+import { DslError, evaluateExpression, parseExpression } from "./ruledsl.js";
+import { AppError, notFound, validationError } from "./errors.js";
 import type { OutboxService } from "./outbox.js";
+
+/** 管理平台增量 §5：DSL 解析校验，错误定位到字符位（消息含「位置 N」，前端内联标注）。 */
+export function assertValidExpression(expression: string): void {
+  try {
+    parseExpression(expression);
+  } catch (e) {
+    if (e instanceof DslError) {
+      const pos = e.position ?? 0;
+      throw validationError(`表达式语法错误（位置 ${pos}）：${e.message}`);
+    }
+    throw e;
+  }
+}
 
 /**
  * A5 structured rule library + engine. An expression encodes the VIOLATION
@@ -77,6 +90,54 @@ export class RulesService {
     await this.repos.rules.put(updated);
     await this.outbox.emit(ctx.tenantId, "rules.updated", { ruleKey: rule.key, version: rule.version });
     return updated;
+  }
+
+  // ---- 管理平台增量 §5：手工管理（PUT 仅 DRAFT 可改 / retire / dry-run） ----
+
+  async update(
+    ctx: AuthCtx,
+    id: string,
+    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity">>,
+  ): Promise<Rule> {
+    const rule = await this.get(ctx, id);
+    if (rule.status !== "DRAFT") {
+      throw new AppError("IMMUTABLE_VERSION", "仅 DRAFT 状态的规则可修改；已发布版本请新建版本（同 key 再 POST）", 409);
+    }
+    if (patch.expression !== undefined) assertValidExpression(patch.expression);
+    const updated: Rule = { ...rule, ...patch, id: rule.id, key: rule.key, version: rule.version };
+    await this.repos.rules.put(updated);
+    return updated;
+  }
+
+  async retire(ctx: AuthCtx, id: string): Promise<Rule> {
+    const rule = await this.get(ctx, id);
+    const retired: Rule = { ...rule, status: "RETIRED" };
+    await this.repos.rules.put(retired);
+    await this.outbox.emit(ctx.tenantId, "rules.updated", { ruleKey: rule.key, version: rule.version, retired: true });
+    return retired;
+  }
+
+  /** POST /a/v1/rules/dry-run：编辑器「测试」按钮 —— 即时求值或定位语法错误字符位。 */
+  dryRun(expression: string, samplePayload: Record<string, unknown>): RuleDryRunResult {
+    try {
+      parseExpression(expression);
+    } catch (e) {
+      if (e instanceof DslError) {
+        return { ok: false, error: { message: e.message, position: e.position } };
+      }
+      throw e;
+    }
+    try {
+      const violated = evaluateExpression(expression, { payload: samplePayload });
+      return {
+        ok: true,
+        violated,
+        passed: !violated,
+        explanation: violated ? `命中违规条件（${expression}）` : "样例载荷未命中违规条件",
+      };
+    } catch (e) {
+      return { ok: false, error: { message: e instanceof Error ? e.message : String(e), position: null } };
+    }
   }
 
   /** POST /a/v1/rules/evaluate — the real implementation of QOS RuleEngineClient. */

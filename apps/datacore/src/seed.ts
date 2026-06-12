@@ -17,8 +17,9 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
     });
   }
   const wanted: { username: string; roles: string[]; attributes: Record<string, unknown> }[] = [
-    // admin 演示账号持有全部管理角色（admin + planner + catalog_admin），保证所有管理台可见
-    { username: "admin", roles: ["admin", "planner", "catalog_admin"], attributes: {} },
+    // admin 演示账号持有全部管理角色（admin + planner + catalog_admin + tenant_admin），保证所有管理台可见
+    // tenant_admin 为管理平台增量 §2 的用户管理入口角色（additive）
+    { username: "admin", roles: ["admin", "planner", "catalog_admin", "tenant_admin"], attributes: {} },
     { username: "planner", roles: ["planner"], attributes: {} },
     {
       username: "base_manager",

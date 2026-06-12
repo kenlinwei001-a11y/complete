@@ -188,6 +188,21 @@ export class SyntheticService {
       const extraViews =
         input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
       await this.seedViewConfigs(ctx, views, extraViews);
+      // 管理平台增量 §3：场景包记录（admin/views 与场景包管理页的事实源；幂等 upsert）。
+      const pkgId = "pkg_battery_manufacturing";
+      const existingPkg = await this.repos.scenarioPackages.get(ctx.tenantId, pkgId);
+      await this.repos.scenarioPackages.put({
+        id: pkgId,
+        tenantId: ctx.tenantId,
+        name: input.industry === "battery-manufacturing" ? "电池制造场景包" : `${input.industry} 场景包`,
+        fromTemplate: input.industry,
+        views: [...views, ...extraViews],
+        toolWhitelist: existingPkg?.toolWhitelist ?? [],
+        modelOverrides: existingPkg?.modelOverrides ?? {},
+        thresholds: existingPkg?.thresholds ?? {},
+        createdAt: existingPkg?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
       const accounts = await this.seedDemoAccounts(ctx);
       await this.seedPolicies(ctx);
       if (this.scheduler) {
@@ -604,8 +619,8 @@ export class SyntheticService {
 
   private async seedDemoAccounts(ctx: AuthCtx): Promise<string[]> {
     const wanted: { username: string; roles: string[]; attributes: Record<string, unknown> }[] = [
-      // admin 演示账号持有全部管理角色，保证所有管理台可见（部署批次约定）
-      { username: "admin", roles: ["admin", "planner", "catalog_admin"], attributes: {} },
+      // admin 演示账号持有全部管理角色，保证所有管理台可见（部署批次约定；tenant_admin 为管理平台增量 §2）
+      { username: "admin", roles: ["admin", "planner", "catalog_admin", "tenant_admin"], attributes: {} },
       { username: "planner", roles: ["planner"], attributes: {} },
       {
         username: "base_manager",

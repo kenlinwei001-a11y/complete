@@ -13,7 +13,7 @@ import {
   POLICIES,
   PLANS,
   RISK_TIMELINE,
-  RULES,
+  ROLES_RESPONSE,
   SYNTHETIC_PHASES,
   SYNTHETIC_REPORT,
   TENANT_ID,
@@ -393,7 +393,166 @@ export const handlers = [
     return HttpResponse.json(cand);
   }),
 
-  http.get("*/a/v1/rules", () => HttpResponse.json(RULES)),
+  http.get("*/a/v1/rules", () => HttpResponse.json(db.rules)),
+
+  // ---- 管理平台增量 §5：规则手工管理（编辑器 + dry-run） ----
+  http.post("*/a/v1/rules/dry-run", async ({ request }) => {
+    const { expression, samplePayload } = (await request.json()) as { expression: string; samplePayload: Record<string, unknown> };
+    // 简易 mock：非法符号 → 定位字符位；合法简单比较式 → 即时求值
+    for (const badToken of ["@@", ">>", "=="]) {
+      if (badToken === "==" ? false : expression.includes(badToken)) {
+        return HttpResponse.json({ ok: false, error: { message: "expected comparison operator", position: expression.indexOf(badToken) } });
+      }
+    }
+    if (/[>＜<]\s*$/.test(expression) || expression.trim() === "") {
+      return HttpResponse.json({ ok: false, error: { message: "unexpected end of expression", position: expression.length } });
+    }
+    const m = /^\s*(\w+)\.(\w+)\s*(>=|<=|>|<)\s*([\d.]+)\s*$/.exec(expression);
+    if (m) {
+      const obj = samplePayload[m[1]!] as Record<string, unknown> | undefined;
+      const left = Number(obj?.[m[2]!] ?? NaN);
+      const right = Number(m[4]);
+      const violated =
+        m[3] === ">" ? left > right : m[3] === ">=" ? left >= right : m[3] === "<" ? left < right : left <= right;
+      return HttpResponse.json({ ok: true, violated, passed: !violated, explanation: violated ? "命中违规条件" : "未命中" });
+    }
+    return HttpResponse.json({ ok: true, violated: false, passed: true, explanation: "未命中" });
+  }),
+
+  http.post("*/a/v1/rules", async ({ request }) => {
+    const body = (await request.json()) as { key: string; name: string; expression: string; scopeObjectTypes: string[]; severity: "BLOCK" | "WARN" | "INFO" };
+    if (body.expression.includes("@@")) {
+      return err(400, "VALIDATION_ERROR", `表达式语法错误（位置 ${body.expression.indexOf("@@")}）：expected comparison operator`);
+    }
+    const rule = { id: newId("rule"), ...body, origin: { type: "MANUAL" as const }, version: 1, status: "DRAFT" as const };
+    db.rules.unshift(rule);
+    return HttpResponse.json(rule, { status: 201 });
+  }),
+
+  http.put("*/a/v1/rules/:id", async ({ params, request }) => {
+    const rule = db.rules.find((r) => r.id === params.id);
+    if (!rule) return err(404, "NOT_FOUND", "rule not found");
+    if (rule.status !== "DRAFT") return err(409, "IMMUTABLE_VERSION", "仅 DRAFT 状态的规则可修改");
+    Object.assign(rule, (await request.json()) as Record<string, unknown>);
+    return HttpResponse.json(rule);
+  }),
+
+  http.post("*/a/v1/rules/:id/publish", ({ params }) => {
+    const rule = db.rules.find((r) => r.id === params.id);
+    if (!rule) return err(404, "NOT_FOUND", "rule not found");
+    rule.status = "PUBLISHED";
+    return HttpResponse.json(rule);
+  }),
+
+  http.post("*/a/v1/rules/:id/retire", ({ params }) => {
+    const rule = db.rules.find((r) => r.id === params.id);
+    if (!rule) return err(404, "NOT_FOUND", "rule not found");
+    rule.status = "RETIRED";
+    return HttpResponse.json(rule);
+  }),
+
+  // ---- 管理平台增量 §2：租户与用户 ----
+  http.get("*/a/v1/tenants", ({ request }) => {
+    const account = auth(request);
+    if (!account?.roles.includes("platform_admin")) return err(403, "FORBIDDEN", "platform_admin only");
+    return HttpResponse.json(db.tenants);
+  }),
+
+  http.post("*/a/v1/tenants", async ({ request }) => {
+    const account = auth(request);
+    if (!account?.roles.includes("platform_admin")) return err(403, "FORBIDDEN", "platform_admin only");
+    const body = (await request.json()) as { key: string; name: string; industry?: string };
+    if (db.tenants.some((t) => t.id === body.key)) return err(409, "TENANT_EXISTS", `租户已存在：${body.key}`);
+    const tenant = { id: body.key, key: body.key, name: body.name, industry: body.industry, status: "ACTIVE" as const, createdAt: new Date().toISOString() };
+    db.tenants.push(tenant);
+    return HttpResponse.json(tenant, { status: 201 });
+  }),
+
+  http.get("*/a/v1/tenants/:id/users", () => HttpResponse.json(db.adminUsers)),
+
+  http.post("*/a/v1/tenants/:id/users", async ({ request, params }) => {
+    const body = (await request.json()) as { email: string; displayName?: string; roles: string[]; attributes?: Record<string, unknown> };
+    if (db.adminUsers.some((u) => u.email === body.email)) return err(409, "USER_EXISTS", `邮箱已存在：${body.email}`);
+    const user = {
+      id: newId("usr"), tenantId: String(params.id), username: body.email, email: body.email,
+      displayName: body.displayName ?? body.email.split("@")[0]!, roles: body.roles,
+      attributes: body.attributes ?? {}, status: "ACTIVE" as const,
+    };
+    db.adminUsers.push(user);
+    return HttpResponse.json({ ...user, initialPassword: "init-pass-9x" }, { status: 201 });
+  }),
+
+  http.patch("*/a/v1/tenants/:id/users/:userId", async ({ request, params }) => {
+    const account = auth(request);
+    const user = db.adminUsers.find((u) => u.id === params.userId);
+    if (!user) return err(404, "NOT_FOUND", "user not found");
+    const body = (await request.json()) as { displayName?: string; roles?: string[]; attributes?: Record<string, unknown>; status?: "ACTIVE" | "DISABLED" };
+    // 自我保护：不能改自己的角色/状态
+    if (account && user.username === account.username && (body.roles !== undefined || body.status !== undefined)) {
+      return err(403, "FORBIDDEN", "不能修改自己账号的角色/状态");
+    }
+    // LAST_ADMIN：最后一个 ACTIVE tenant_admin 不可禁用/降权
+    const isActiveAdmin = user.roles.some((r) => r.split(":")[0] === "tenant_admin") && user.status === "ACTIVE";
+    const loses = isActiveAdmin && (body.status === "DISABLED" || (body.roles !== undefined && !body.roles.some((r) => r.split(":")[0] === "tenant_admin")));
+    if (loses) {
+      const others = db.adminUsers.filter((u) => u.id !== user.id && u.status === "ACTIVE" && u.roles.some((r) => r.split(":")[0] === "tenant_admin"));
+      if (others.length === 0) return err(409, "LAST_ADMIN", "最后一个 ACTIVE 的 tenant_admin 不可禁用/降权");
+    }
+    Object.assign(user, body);
+    return HttpResponse.json(user);
+  }),
+
+  http.post("*/a/v1/users/:id/reset-password", () =>
+    HttpResponse.json({ password: "new-pass-123", note: "TODO: 邮件下发一次性重置链接（本期直接返回新密码）" }),
+  ),
+
+  http.get("*/a/v1/roles", () => HttpResponse.json(ROLES_RESPONSE)),
+
+  // ---- 管理平台增量 §3：视图配置 ----
+  http.get("*/a/v1/view-configs", () => HttpResponse.json({ items: db.adminViews, configVersion: db.configVersion })),
+
+  http.post("*/a/v1/view-configs", async ({ request }) => {
+    const body = (await request.json()) as (typeof db.adminViews)[number];
+    if (db.adminViews.some((v) => v.viewKey === body.viewKey)) return err(409, "VIEWKEY_EXISTS", `viewKey 已存在：${body.viewKey}`);
+    db.configVersion += 1;
+    const created = { ...body, featureKey: `view.${body.viewKey}`, featureOn: true };
+    db.adminViews.push(created);
+    return HttpResponse.json({ ...created, configVersion: db.configVersion }, { status: 201 });
+  }),
+
+  http.put("*/a/v1/view-configs/:viewKey", async ({ params, request }) => {
+    const view = db.adminViews.find((v) => v.viewKey === params.viewKey);
+    if (!view) return err(404, "NOT_FOUND", "view config not found");
+    const body = (await request.json()) as Partial<(typeof db.adminViews)[number]>;
+    Object.assign(view, body, { viewKey: view.viewKey });
+    db.configVersion += 1;
+    return HttpResponse.json({ ...view, configVersion: db.configVersion });
+  }),
+
+  http.delete("*/a/v1/view-configs/:viewKey", ({ params, request }) => {
+    const url = new URL(request.url);
+    const view = db.adminViews.find((v) => v.viewKey === params.viewKey);
+    if (!view) return err(404, "NOT_FOUND", "view config not found");
+    const references = {
+      feature: view.featureKey ?? null,
+      roles: view.roles,
+      sceneEntryViewKey: view.viewKey,
+      intentsHint: `B 侧意图 enabledViews 含 "${String(params.viewKey)}" 的条目将失去入口`,
+    };
+    if (url.searchParams.get("confirm") !== "1") {
+      return HttpResponse.json({ deleted: false, requiresConfirm: true, references });
+    }
+    db.adminViews = db.adminViews.filter((v) => v.viewKey !== params.viewKey);
+    db.configVersion += 1;
+    return HttpResponse.json({ deleted: true, references });
+  }),
+
+  // ---- 管理平台增量 §3：场景包 ----
+  http.get("*/a/v1/scenario-packages", () =>
+    HttpResponse.json([
+      { id: PACKAGE_ID, tenantId: TENANT_ID, name: "电池制造场景包", fromTemplate: "battery-manufacturing", views: ["dash", "graph", "risk", "order"], toolWhitelist: [], modelOverrides: {}, thresholds: {}, createdAt: "2026-01-05T08:00:00Z", updatedAt: "2026-06-01T08:00:00Z" },
+    ]),
+  ),
   http.get("*/a/v1/policies", () => HttpResponse.json(POLICIES)),
   http.post("*/a/v1/authz/explain", async ({ request }) => {
     const body = (await request.json()) as { user?: { roles: string[] }; resource: { kind: string; key: string }; op: string };

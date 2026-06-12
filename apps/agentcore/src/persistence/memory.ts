@@ -192,6 +192,9 @@ export function createMemoryRepos(): Repos {
       async update(a) {
         agents.set(a.id, clone(a));
       },
+      async remove(id) {
+        agents.delete(id);
+      },
       async get(id) {
         return clone(agents.get(id));
       },
@@ -211,6 +214,9 @@ export function createMemoryRepos(): Repos {
       },
       async update(w) {
         workflows.set(w.id, clone(w));
+      },
+      async remove(id) {
+        workflows.delete(id);
       },
       async get(id) {
         return clone(workflows.get(id));
@@ -232,6 +238,9 @@ export function createMemoryRepos(): Repos {
       async update(s) {
         skills.set(s.id, clone(s));
       },
+      async remove(id) {
+        skills.delete(id);
+      },
       async get(id) {
         return clone(skills.get(id));
       },
@@ -245,6 +254,9 @@ export function createMemoryRepos(): Repos {
       },
       async update(c) {
         mcpConfigs.set(c.id, clone(c));
+      },
+      async remove(id) {
+        mcpConfigs.delete(id);
       },
       async get(id) {
         return clone(mcpConfigs.get(id));
@@ -260,6 +272,9 @@ export function createMemoryRepos(): Repos {
           if (e.tenantId === s.tenantId && e.viewKey === s.viewKey && id !== s.id) sceneEntries.delete(id);
         }
         sceneEntries.set(s.id, clone(s));
+      },
+      async remove(id) {
+        sceneEntries.delete(id);
       },
       async get(id) {
         return clone(sceneEntries.get(id));

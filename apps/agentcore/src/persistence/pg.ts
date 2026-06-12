@@ -310,6 +310,9 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       async update(c: McpServerConfig) {
         await q(`UPDATE mcp_configs SET status = $2, config = $3 WHERE id = $1`, [c.id, c.status, JSON.stringify(c)]);
       },
+      async remove(id) {
+        await q(`DELETE FROM mcp_configs WHERE id = $1`, [id]);
+      },
       async get(id) {
         const r = await q(`SELECT config FROM mcp_configs WHERE id = $1`, [id]);
         return r.rows[0]?.config as McpServerConfig | undefined;
@@ -326,6 +329,9 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
            ON CONFLICT (tenant_id, view_key) DO UPDATE SET id = $1, config = $4`,
           [s.id, s.tenantId, s.viewKey, JSON.stringify(s)],
         );
+      },
+      async remove(id) {
+        await q(`DELETE FROM scene_entries WHERE id = $1`, [id]);
       },
       async get(id) {
         const r = await q(`SELECT config FROM scene_entries WHERE id = $1`, [id]);
@@ -447,6 +453,9 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       },
       async update(v: T) {
         await query(`UPDATE ${table} SET status = $2, definition = $3 WHERE id = $1`, [v.id, v.status, JSON.stringify(v)]);
+      },
+      async remove(id: string) {
+        await query(`DELETE FROM ${table} WHERE id = $1`, [id]);
       },
       async get(id: string) {
         const r = await query(`SELECT definition FROM ${table} WHERE id = $1`, [id]);

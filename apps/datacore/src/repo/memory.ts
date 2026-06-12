@@ -3,7 +3,9 @@ import type {
   LinkInstance,
   ObjectInstance,
   ScheduledJobRecord,
+  Tenant,
   TsPointRecord,
+  User,
 } from "../domain.js";
 import type {
   ClaimedJob,
@@ -13,8 +15,10 @@ import type {
   Repos,
   ScheduledJobStore,
   Store,
+  TenantStore,
   TsPointQuery,
   TsPointStore,
+  UserStore,
   VectorHit,
   VectorIndex,
 } from "./repo.js";
@@ -49,6 +53,18 @@ class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
       out.push(clone(item));
     }
     return out;
+  }
+}
+
+class MemUserStore extends MemStore<User> implements UserStore {
+  async countAll(): Promise<number> {
+    return this.items.size;
+  }
+}
+
+class MemTenantStore extends MemStore<Tenant> implements TenantStore {
+  async listAll(): Promise<Tenant[]> {
+    return [...this.items.values()].map(clone);
   }
 }
 
@@ -249,8 +265,8 @@ class MemVectorIndex implements VectorIndex {
 
 export function createMemoryRepos(): Repos {
   return {
-    tenants: new MemStore(),
-    users: new MemStore(),
+    tenants: new MemTenantStore(),
+    users: new MemUserStore(),
     viewConfigs: new MemStore(),
     policies: new MemStore(),
     connections: new MemStore(),
@@ -291,6 +307,8 @@ export function createMemoryRepos(): Repos {
     forecastSnapshots: new MemStore(),
     featureConfigs: new MemStore(),
     featureAudit: new MemStore(),
+    scenarioPackages: new MemStore(),
+    dynamicFeatures: new MemStore(),
     calibrationProposals: new MemStore(),
     calibrationHistory: new MemStore(),
     calibrationForecasts: new MemStore(),

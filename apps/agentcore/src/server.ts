@@ -36,6 +36,8 @@ import { HttpError } from "./router/orchestrator.js";
 import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
+import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalogAdmin, type ListQuery } from "./resources.js";
+import { builtinTool } from "./tools/registry.js";
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -277,9 +279,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // ---------------------------------------------------------------------
   const CreateAgentBody = AgentDefinitionSchema.omit({ id: true, tenantId: true, version: true, status: true });
 
-  app.get("/b/v1/agents", async (req) => {
+  app.get("/b/v1/agents", async (req, reply) => {
     const a = await auth(req);
-    return deps.repos.agents.listByTenant(a.tenantId);
+    // 管理平台增量 §4：?status=&q= 过滤 + 分页 50（响应保持数组形态，total 经 x-total-count）。
+    const { items, total } = applyListQuery(await deps.repos.agents.listByTenant(a.tenantId), req.query as ListQuery);
+    reply.header("x-total-count", String(total));
+    return items;
   });
 
   app.get("/b/v1/agents/:id", async (req) => {
@@ -287,11 +292,17 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { id } = req.params as { id: string };
     const agent = await deps.repos.agents.get(id);
     if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
-    return agent;
+    // 管理平台增量 §4：详情含同 key 版本列表
+    const versions = (await deps.repos.agents.listByTenant(a.tenantId))
+      .filter((x) => x.key === agent.key)
+      .sort((x, y) => y.version - x.version)
+      .map((x) => ({ id: x.id, version: x.version, status: x.status }));
+    return { ...agent, versions };
   });
 
   app.post("/b/v1/agents", async (req, reply) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const body = CreateAgentBody.parse(req.body);
     const existing = await deps.repos.agents.latestByKey(a.tenantId, body.key);
     const agent: AgentDefinition = {
@@ -307,10 +318,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.put("/b/v1/agents/:id", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
     const agent = await deps.repos.agents.get(id);
     if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
-    if (agent.status !== "DRAFT") throw new HttpError(409, ErrorCodes.INVALID_STATE, "仅 DRAFT 状态的 agent 可修改");
+    // 管理平台增量 §4：PUBLISHED 版本不可变 → 409 IMMUTABLE_VERSION（new-version 派生新 DRAFT 再改）
+    if (agent.status !== "DRAFT") throw new HttpError(409, ErrorCodes.IMMUTABLE_VERSION, "仅 DRAFT 状态的 agent 可修改（请用 new-version 派生）");
     const body = CreateAgentBody.partial().parse(req.body);
     const updated = { ...agent, ...body, id: agent.id, tenantId: agent.tenantId, version: agent.version } as AgentDefinition;
     await deps.repos.agents.update(updated);
@@ -319,6 +332,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post("/b/v1/agents/:id/publish", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
     const agent = await deps.repos.agents.get(id);
     if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
@@ -331,6 +345,29 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     if (!agent.systemPrompt.trim()) {
       fieldErrors.push({ field: "systemPrompt", message: "系统提示词不能为空" });
+    }
+    // 管理平台增量 §4 发布校验：模型 ID 合法 + 工具/技能/MCP 引用存在
+    if (!agent.model.trim() || !/^[\w][\w.:/-]*$/.test(agent.model)) {
+      fieldErrors.push({ field: "model", message: `模型 ID 非法：「${agent.model}」` });
+    }
+    for (const tool of agent.tools) {
+      if (tool.kind === "BUILTIN" && !builtinTool(tool.name)) {
+        fieldErrors.push({ field: "tools", message: `内置工具不存在：${tool.name}` });
+      } else if (tool.kind === "MCP") {
+        const cfg = await deps.repos.mcpConfigs.get(tool.mcpConfigId);
+        if (!cfg || cfg.tenantId !== a.tenantId) fieldErrors.push({ field: "tools", message: `MCP 配置不存在：${tool.mcpConfigId}` });
+      } else if (tool.kind === "WORKFLOW") {
+        const wf = await deps.repos.workflows.get(tool.workflowId);
+        if (!wf || wf.tenantId !== a.tenantId) fieldErrors.push({ field: "tools", message: `工作流不存在：${tool.workflowId}` });
+      }
+    }
+    for (const sref of agent.skills) {
+      const sk = await deps.repos.skills.get(sref.skillId);
+      if (!sk || sk.tenantId !== a.tenantId) fieldErrors.push({ field: "skills", message: `技能不存在：${sref.skillId}` });
+    }
+    for (const m of agent.mcpServers) {
+      const cfg = await deps.repos.mcpConfigs.get(m.mcpConfigId);
+      if (!cfg || cfg.tenantId !== a.tenantId) fieldErrors.push({ field: "mcpServers", message: `MCP 配置不存在：${m.mcpConfigId}` });
     }
     if (fieldErrors.length > 0) return { ok: false, errors: fieldErrors };
     const cycle = await detectStaticCycle(deps.repos, { kind: "agent", id }, { agent });
@@ -349,6 +386,55 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { ok: true, ...published };
   });
 
+  // ---- 管理平台增量 §4：agents 统一资源模式（new-version / retire / references / delete） ----
+  const ConfirmBody = z.object({ confirm: z.boolean().default(false) });
+
+  app.post("/b/v1/agents/:id/new-version", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const src = await deps.repos.agents.get(id);
+    if (!src || src.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const latest = await deps.repos.agents.latestByKey(a.tenantId, src.key);
+    const copy: AgentDefinition = { ...src, id: newId("agt"), version: (latest?.version ?? src.version) + 1, status: "DRAFT" };
+    await deps.repos.agents.insert(copy);
+    return reply.status(201).send(copy);
+  });
+
+  app.get("/b/v1/agents/:id/references", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const agent = await deps.repos.agents.get(id);
+    if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const references = await computeReferences(deps.repos, a.tenantId, "agent", id);
+    return { references, count: references.length };
+  });
+
+  app.post("/b/v1/agents/:id/retire", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const agent = await deps.repos.agents.get(id);
+    if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "agent", id);
+    assertRetireOrDelete("retire", refs, ConfirmBody.parse(req.body ?? {}).confirm);
+    const retired = { ...agent, status: "RETIRED" as const };
+    await deps.repos.agents.update(retired);
+    return retired;
+  });
+
+  app.delete("/b/v1/agents/:id", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const agent = await deps.repos.agents.get(id);
+    if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "agent", id);
+    assertRetireOrDelete("delete", refs, true);
+    await deps.repos.agents.remove(id);
+    return reply.status(204).send();
+  });
+
   // ---------------------------------------------------------------------
   // B2 Workflows
   // ---------------------------------------------------------------------
@@ -361,9 +447,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     updatedAt: true,
   });
 
-  app.get("/b/v1/workflows", async (req) => {
+  app.get("/b/v1/workflows", async (req, reply) => {
     const a = await auth(req);
-    return deps.repos.workflows.listByTenant(a.tenantId);
+    const { items, total } = applyListQuery(await deps.repos.workflows.listByTenant(a.tenantId), req.query as ListQuery);
+    reply.header("x-total-count", String(total));
+    return items;
   });
 
   app.get("/b/v1/workflows/:id", async (req) => {
@@ -371,11 +459,16 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { id } = req.params as { id: string };
     const wf = await deps.repos.workflows.get(id);
     if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
-    return wf;
+    const versions = (await deps.repos.workflows.listByTenant(a.tenantId))
+      .filter((x) => x.key === wf.key)
+      .sort((x, y) => y.version - x.version)
+      .map((x) => ({ id: x.id, version: x.version, status: x.status }));
+    return { ...wf, versions };
   });
 
   app.post("/b/v1/workflows", async (req, reply) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const body = CreateWorkflowBody.parse(req.body);
     const existing = await deps.repos.workflows.latestByKey(a.tenantId, body.key);
     const now = new Date().toISOString();
@@ -394,10 +487,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.put("/b/v1/workflows/:id", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
     const wf = await deps.repos.workflows.get(id);
     if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
-    if (wf.status !== "DRAFT") throw new HttpError(409, ErrorCodes.INVALID_STATE, "仅 DRAFT 状态的 workflow 可修改");
+    if (wf.status !== "DRAFT") throw new HttpError(409, ErrorCodes.IMMUTABLE_VERSION, "仅 DRAFT 状态的 workflow 可修改（请用 new-version 派生）");
     const body = CreateWorkflowBody.partial().parse(req.body);
     const updated = { ...wf, ...body, id: wf.id, tenantId: wf.tenantId, version: wf.version, updatedAt: new Date().toISOString() } as WorkflowDefinition;
     await deps.repos.workflows.update(updated);
@@ -406,6 +500,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post("/b/v1/workflows/:id/publish", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
     const wf = await deps.repos.workflows.get(id);
     if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
@@ -427,6 +522,61 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     await deps.repos.workflows.update(published);
     // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）
     return { ok: true, ...published };
+  });
+
+  // ---- 管理平台增量 §4：workflows 统一资源模式 ----
+  app.post("/b/v1/workflows/:id/new-version", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const src = await deps.repos.workflows.get(id);
+    if (!src || src.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
+    const latest = await deps.repos.workflows.latestByKey(a.tenantId, src.key);
+    const now = new Date().toISOString();
+    const copy: WorkflowDefinition = {
+      ...src,
+      id: newId("wf"),
+      version: (latest?.version ?? src.version) + 1,
+      status: "DRAFT",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await deps.repos.workflows.insert(copy);
+    return reply.status(201).send(copy);
+  });
+
+  app.get("/b/v1/workflows/:id/references", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const wf = await deps.repos.workflows.get(id);
+    if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
+    const references = await computeReferences(deps.repos, a.tenantId, "workflow", id);
+    return { references, count: references.length };
+  });
+
+  app.post("/b/v1/workflows/:id/retire", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const wf = await deps.repos.workflows.get(id);
+    if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "workflow", id);
+    assertRetireOrDelete("retire", refs, z.object({ confirm: z.boolean().default(false) }).parse(req.body ?? {}).confirm);
+    const retired = { ...wf, status: "RETIRED" as const, updatedAt: new Date().toISOString() };
+    await deps.repos.workflows.update(retired);
+    return retired;
+  });
+
+  app.delete("/b/v1/workflows/:id", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const wf = await deps.repos.workflows.get(id);
+    if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "workflow", id);
+    assertRetireOrDelete("delete", refs, true);
+    await deps.repos.workflows.remove(id);
+    return reply.status(204).send();
   });
 
   /** Standalone workflow run with step.* event stream (platform §8.2). */
@@ -470,13 +620,29 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // ---------------------------------------------------------------------
   const CreateSkillBody = SkillDefinitionSchema.omit({ id: true, tenantId: true, version: true, status: true });
 
-  app.get("/b/v1/skills", async (req) => {
+  app.get("/b/v1/skills", async (req, reply) => {
     const a = await auth(req);
-    return deps.repos.skills.listByTenant(a.tenantId);
+    const { items, total } = applyListQuery(await deps.repos.skills.listByTenant(a.tenantId), req.query as ListQuery);
+    reply.header("x-total-count", String(total));
+    return items;
+  });
+
+  // 管理平台增量 §4：详情（含同 key 版本列表）
+  app.get("/b/v1/skills/:id", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const skill = await deps.repos.skills.get(id);
+    if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    const versions = (await deps.repos.skills.listByTenant(a.tenantId))
+      .filter((x) => x.key === skill.key)
+      .sort((x, y) => y.version - x.version)
+      .map((x) => ({ id: x.id, version: x.version, status: x.status }));
+    return { ...skill, versions };
   });
 
   app.post("/b/v1/skills", async (req, reply) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const body = CreateSkillBody.parse(req.body);
     const existing = (await deps.repos.skills.listByTenant(a.tenantId)).filter((s) => s.key === body.key);
     const skill: SkillDefinition = {
@@ -492,10 +658,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.put("/b/v1/skills/:id", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
     const skill = await deps.repos.skills.get(id);
     if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
-    if (skill.status !== "DRAFT") throw new HttpError(409, ErrorCodes.INVALID_STATE, "仅 DRAFT 状态的 skill 可修改");
+    if (skill.status !== "DRAFT") throw new HttpError(409, ErrorCodes.IMMUTABLE_VERSION, "仅 DRAFT 状态的 skill 可修改（请用 new-version 派生）");
     const body = CreateSkillBody.partial().parse(req.body);
     const updated = { ...skill, ...body, id: skill.id, tenantId: skill.tenantId, version: skill.version } as SkillDefinition;
     await deps.repos.skills.update(updated);
@@ -504,12 +671,60 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post("/b/v1/skills/:id/publish", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
     const skill = await deps.repos.skills.get(id);
     if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
     const published = { ...skill, status: "PUBLISHED" as const };
     await deps.repos.skills.update(published);
     return published;
+  });
+
+  // ---- 管理平台增量 §4：skills 统一资源模式 ----
+  app.post("/b/v1/skills/:id/new-version", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const src = await deps.repos.skills.get(id);
+    if (!src || src.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    const siblings = (await deps.repos.skills.listByTenant(a.tenantId)).filter((x) => x.key === src.key);
+    const copy: SkillDefinition = { ...src, id: newId("skl"), version: Math.max(...siblings.map((x) => x.version)) + 1, status: "DRAFT" };
+    await deps.repos.skills.insert(copy);
+    return reply.status(201).send(copy);
+  });
+
+  app.get("/b/v1/skills/:id/references", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const skill = await deps.repos.skills.get(id);
+    if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    const references = await computeReferences(deps.repos, a.tenantId, "skill", id);
+    return { references, count: references.length };
+  });
+
+  app.post("/b/v1/skills/:id/retire", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const skill = await deps.repos.skills.get(id);
+    if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "skill", id);
+    assertRetireOrDelete("retire", refs, z.object({ confirm: z.boolean().default(false) }).parse(req.body ?? {}).confirm);
+    const retired = { ...skill, status: "RETIRED" as const };
+    await deps.repos.skills.update(retired);
+    return retired;
+  });
+
+  app.delete("/b/v1/skills/:id", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const skill = await deps.repos.skills.get(id);
+    if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "skill", id);
+    assertRetireOrDelete("delete", refs, true);
+    await deps.repos.skills.remove(id);
+    return reply.status(204).send();
   });
 
   /** Presigned-ish local resource URL target. */
@@ -569,9 +784,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
   };
 
-  app.get("/b/v1/mcp-configs", async (req) => {
+  app.get("/b/v1/mcp-configs", async (req, reply) => {
     const a = await auth(req);
-    return deps.repos.mcpConfigs.listByTenant(a.tenantId);
+    const { items, total } = applyListQuery(await deps.repos.mcpConfigs.listByTenant(a.tenantId), req.query as ListQuery);
+    reply.header("x-total-count", String(total));
+    return items;
   });
 
   // §4.4 边界声明：配置页注明文案（本期 tools-only / 静态 bearer）
@@ -582,6 +799,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post("/b/v1/mcp-configs", async (req, reply) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { credential, ...body } = CreateMcpBody.parse(req.body);
     const serverName = await resolveServerName(a.tenantId, body.name);
     enforceStdioPolicy(a, body.transport);
@@ -603,9 +821,26 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       serverName,
       credentialRef,
       credentialKind: credential ? "static_bearer" : body.credentialKind,
+      // 管理平台增量 §4：统一资源模式 —— 创建即 DRAFT v1（旧记录 lifecycle 缺省 = 可变，向后兼容）
+      version: body.version ?? 1,
+      lifecycle: body.lifecycle ?? "DRAFT",
     };
     await deps.repos.mcpConfigs.insert(config);
     return reply.status(201).send(config);
+  });
+
+  // 管理平台增量 §4：详情（含同 serverName 版本列表）
+  app.get("/b/v1/mcp-configs/:id", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const cfg = await deps.repos.mcpConfigs.get(id);
+    if (!cfg || cfg.tenantId !== a.tenantId) throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    const sn = cfg.serverName ?? mcpServerNameSlug(cfg.name);
+    const versions = (await deps.repos.mcpConfigs.listByTenant(a.tenantId))
+      .filter((x) => (x.serverName ?? mcpServerNameSlug(x.name)) === sn)
+      .sort((x, y) => (y.version ?? 0) - (x.version ?? 0))
+      .map((x) => ({ id: x.id, version: x.version ?? 1, status: x.lifecycle ?? "DRAFT" }));
+    return { ...cfg, versions };
   });
 
   // 前端 PRD §7.8「连接测试」：tools/list 发现结果（失败 → ok:false + message，不抛 5xx）。
@@ -627,10 +862,15 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.put("/b/v1/mcp-configs/:id", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
     const existing = await deps.repos.mcpConfigs.get(id);
     if (!existing || existing.tenantId !== a.tenantId) {
       throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    }
+    // 管理平台增量 §4：PUBLISHED 版本不可变（旧记录 lifecycle 缺省 → 仍可改，向后兼容）
+    if (existing.lifecycle === "PUBLISHED") {
+      throw new HttpError(409, ErrorCodes.IMMUTABLE_VERSION, "PUBLISHED 的 MCP 配置不可修改（请用 new-version 派生）");
     }
     const { credential, ...body } = CreateMcpBody.partial().parse(req.body);
     // §4.3：既有 stdio 配置的任何修改、或改成 stdio，都走红线校验
@@ -672,6 +912,90 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     } catch (err) {
       return { ok: false, tools: [], message: err instanceof Error ? err.message : String(err) };
     }
+  });
+
+  // ---- 管理平台增量 §4：mcp-configs 统一资源模式（publish = 连接测试必须通过） ----
+  app.post("/b/v1/mcp-configs/:id/publish", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const existing = await deps.repos.mcpConfigs.get(id);
+    if (!existing || existing.tenantId !== a.tenantId) {
+      throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    }
+    if (existing.lifecycle === "PUBLISHED") {
+      throw new HttpError(409, ErrorCodes.INVALID_STATE, "已是 PUBLISHED 状态");
+    }
+    if (!deps.mcp) return { ok: false, errors: [{ field: "transport", message: "MCP client 未启用，连接测试无法执行" }] };
+    try {
+      await deps.mcp.listTools(id);
+    } catch (err) {
+      // 发布校验：连接测试必须通过（前端内联渲染，不抛 5xx）
+      return { ok: false, errors: [{ field: "transport", message: `连接测试失败：${err instanceof Error ? err.message : String(err)}` }] };
+    }
+    const sn = existing.serverName ?? mcpServerNameSlug(existing.name);
+    for (const sib of await deps.repos.mcpConfigs.listByTenant(a.tenantId)) {
+      if (sib.id !== id && (sib.serverName ?? mcpServerNameSlug(sib.name)) === sn && sib.lifecycle === "PUBLISHED") {
+        await deps.repos.mcpConfigs.update({ ...sib, lifecycle: "RETIRED" });
+      }
+    }
+    const published: McpServerConfig = { ...existing, lifecycle: "PUBLISHED", version: existing.version ?? 1 };
+    await deps.repos.mcpConfigs.update(published);
+    return { ok: true, ...published };
+  });
+
+  app.post("/b/v1/mcp-configs/:id/new-version", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const src = await deps.repos.mcpConfigs.get(id);
+    if (!src || src.tenantId !== a.tenantId) throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    const sn = src.serverName ?? mcpServerNameSlug(src.name);
+    const siblings = (await deps.repos.mcpConfigs.listByTenant(a.tenantId)).filter(
+      (x) => (x.serverName ?? mcpServerNameSlug(x.name)) === sn,
+    );
+    const copy: McpServerConfig = {
+      ...src,
+      id: newId("mcp"),
+      version: Math.max(...siblings.map((x) => x.version ?? 1)) + 1,
+      lifecycle: "DRAFT",
+    };
+    await deps.repos.mcpConfigs.insert(copy);
+    return reply.status(201).send(copy);
+  });
+
+  app.get("/b/v1/mcp-configs/:id/references", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const cfg = await deps.repos.mcpConfigs.get(id);
+    if (!cfg || cfg.tenantId !== a.tenantId) throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    const references = await computeReferences(deps.repos, a.tenantId, "mcp-config", id);
+    return { references, count: references.length };
+  });
+
+  app.post("/b/v1/mcp-configs/:id/retire", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const cfg = await deps.repos.mcpConfigs.get(id);
+    if (!cfg || cfg.tenantId !== a.tenantId) throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "mcp-config", id);
+    assertRetireOrDelete("retire", refs, z.object({ confirm: z.boolean().default(false) }).parse(req.body ?? {}).confirm);
+    const retired: McpServerConfig = { ...cfg, lifecycle: "RETIRED" };
+    await deps.repos.mcpConfigs.update(retired);
+    return retired;
+  });
+
+  app.delete("/b/v1/mcp-configs/:id", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const cfg = await deps.repos.mcpConfigs.get(id);
+    if (!cfg || cfg.tenantId !== a.tenantId) throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    const refs = await computeReferences(deps.repos, a.tenantId, "mcp-config", id);
+    assertRetireOrDelete("delete", refs, true);
+    await deps.repos.mcpConfigs.remove(id);
+    return reply.status(204).send();
   });
 
   // ---------------------------------------------------------------------
@@ -805,15 +1129,59 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.put("/b/v1/scene-entries/:viewKey", async (req) => {
     const a = await auth(req);
+    requireCatalogAdmin(a);
     const { viewKey } = req.params as { viewKey: string };
     const body = UpsertSceneBody.parse({ ...(req.body as Record<string, unknown>), viewKey });
     if ((body.mode === "AGENT_FIRST" || body.mode === "AGENT_ONLY") && !body.defaultAgentId) {
       throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, "AGENT_* 模式必须提供 defaultAgentId");
     }
+    // 管理平台增量 §4（M5）：AGENT_* 模式的 defaultAgent 必须存在且已发布（失败信息明确）。
+    if ((body.mode === "AGENT_FIRST" || body.mode === "AGENT_ONLY") && body.defaultAgentId) {
+      const agent = await deps.repos.agents.get(body.defaultAgentId);
+      if (!agent || agent.tenantId !== a.tenantId) {
+        throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, `defaultAgent 不存在：${body.defaultAgentId}`);
+      }
+      if (agent.status !== "PUBLISHED") {
+        throw new HttpError(
+          400,
+          ErrorCodes.VALIDATION_ERROR,
+          `AGENT_* 模式要求 defaultAgent 已发布：${agent.name}（${body.defaultAgentId}）当前为 ${agent.status}，请先发布该 Agent`,
+        );
+      }
+    }
     const existing = await deps.repos.sceneEntries.byView(a.tenantId, viewKey);
-    const entry: SceneEntryConfig = { ...body, id: existing?.id ?? newId("scn"), tenantId: a.tenantId };
+    // 管理平台增量 §4：场景入口无版本化 —— updatedAt 乐观锁（客户端带旧值 → 409）。
+    if (existing?.updatedAt && body.updatedAt && body.updatedAt !== existing.updatedAt) {
+      throw new HttpError(409, "STALE_WRITE", `场景入口已被他人修改（服务端 updatedAt=${existing.updatedAt}），请刷新后重试`);
+    }
+    const entry: SceneEntryConfig = {
+      ...body,
+      id: existing?.id ?? newId("scn"),
+      tenantId: a.tenantId,
+      updatedAt: new Date().toISOString(),
+    };
     await deps.repos.sceneEntries.upsert(entry);
     return entry;
+  });
+
+  // ---- 管理平台增量 §4：scene-entries 引用清单（统一形态；入口为叶子 → 恒空）+ 删除 ----
+  app.get("/b/v1/scene-entries/:id/references", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const entry = (await deps.repos.sceneEntries.get(id)) ?? (await deps.repos.sceneEntries.byView(a.tenantId, id));
+    if (!entry || entry.tenantId !== a.tenantId) throw new HttpError(404, "SCENE_ENTRY_NOT_FOUND", `scene entry not found: ${id}`);
+    const references = await computeReferences(deps.repos, a.tenantId, "scene-entry", entry.id);
+    return { references, count: references.length };
+  });
+
+  app.delete("/b/v1/scene-entries/:id", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const entry = (await deps.repos.sceneEntries.get(id)) ?? (await deps.repos.sceneEntries.byView(a.tenantId, id));
+    if (!entry || entry.tenantId !== a.tenantId) throw new HttpError(404, "SCENE_ENTRY_NOT_FOUND", `scene entry not found: ${id}`);
+    await deps.repos.sceneEntries.remove(entry.id);
+    return reply.status(204).send();
   });
 
   return app;

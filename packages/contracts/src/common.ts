@@ -50,5 +50,7 @@ export const ErrorCodes = {
   AGENT_SCOPE_VIOLATION: "AGENT_SCOPE_VIOLATION",
   NESTING_DEPTH_EXCEEDED: "NESTING_DEPTH_EXCEEDED",
   CYCLIC_INVOCATION: "CYCLIC_INVOCATION",
+  /** 管理平台增量 §4：PUBLISHED 版本不可变（PUT → 409） */
+  IMMUTABLE_VERSION: "IMMUTABLE_VERSION",
 } as const;
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

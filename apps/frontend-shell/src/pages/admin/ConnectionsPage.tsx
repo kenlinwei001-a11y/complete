@@ -14,6 +14,7 @@ import {
 } from "@/api/endpoints";
 import { healthStatusLabel, HEALTH_POLL_MS } from "@/components/Health/HealthBadge";
 import { JsonSchemaForm } from "@/components/JsonSchemaForm/JsonSchemaForm";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -79,6 +80,14 @@ export default function ConnectionsPage() {
       )}
 
       <div className="panel" style={{ marginTop: 14 }}>
+        {(connections ?? []).length === 0 && (
+          // 管理平台增量 §6：无连接器 → 「上传文件或创建连接」
+          <EmptyState message={zh.admin.empty.connections}>
+            <button className="btn primary sm" onClick={() => setWizardOpen(true)} data-testid="cta-connection">
+              {zh.admin.empty.connectionsCta}
+            </button>
+          </EmptyState>
+        )}
         <table className="cmp">
           <thead>
             <tr>
