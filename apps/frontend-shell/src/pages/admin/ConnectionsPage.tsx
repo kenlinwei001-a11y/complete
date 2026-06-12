@@ -11,7 +11,7 @@ import {
   triggerSync,
   uploadFile,
 } from "@/api/endpoints";
-import { JsonSchemaForm, isSecretField } from "@/components/JsonSchemaForm/JsonSchemaForm";
+import { JsonSchemaForm } from "@/components/JsonSchemaForm/JsonSchemaForm";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";

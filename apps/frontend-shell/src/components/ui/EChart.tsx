@@ -7,6 +7,9 @@ export function EChart({ option, height = 220, testId }: { option: Record<string
   useEffect(() => {
     let chart: { setOption: (o: unknown) => void; resize: () => void; dispose: () => void } | null = null;
     let disposed = false;
+    // 测试/无 canvas 环境降级（jsdom 无 2d context）
+    const probe = document.createElement("canvas");
+    if (typeof probe.getContext !== "function" || !probe.getContext("2d")) return;
     void (async () => {
       try {
         const echarts = await import("echarts");

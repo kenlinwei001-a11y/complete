@@ -71,7 +71,7 @@ export function useTaskStream(
 
       const handle = (ev: MessageEvent, eventName: string) => {
         if (disposed) return;
-        let data: Record<string, unknown> = {};
+        let data: Record<string, unknown>;
         try {
           data = typeof ev.data === "string" ? (JSON.parse(ev.data) as Record<string, unknown>) : {};
         } catch {

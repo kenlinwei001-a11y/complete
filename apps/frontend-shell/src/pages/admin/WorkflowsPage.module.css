@@ -1,0 +1,67 @@
+.stepRow {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--panel2);
+}
+
+.stepError {
+  border-color: rgba(224, 98, 108, 0.6);
+}
+
+.stepHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.paramLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 220px;
+  flex: 1;
+}
+.paramLabel input {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.suggest {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 80;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  min-width: 240px;
+  max-height: 180px;
+  overflow-y: auto;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+}
+.suggest li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 6px 10px;
+}
+.suggest li button:hover {
+  background: rgba(76, 144, 240, 0.14);
+}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRules } from "@/api/endpoints";
 import zh from "@/locales/zh";
@@ -26,8 +26,8 @@ export default function RulesPage() {
           </thead>
           <tbody>
             {(rules ?? []).map((r) => (
-              <>
-                <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => setOpen(open === r.id ? null : r.id)}>
+              <Fragment key={r.id}>
+                <tr style={{ cursor: "pointer" }} onClick={() => setOpen(open === r.id ? null : r.id)}>
                   <td>
                     <span className="badge blue">{r.key}</span>
                   </td>
@@ -43,7 +43,7 @@ export default function RulesPage() {
                   <td>{r.version}</td>
                 </tr>
                 {open === r.id && (
-                  <tr key={`${r.id}-expr`}>
+                  <tr>
                     <td colSpan={7}>
                       <div className="mono" style={{ fontSize: 11.5, padding: "6px 8px", background: "var(--bg2)", borderRadius: 6 }}>
                         {r.expression}
@@ -51,7 +51,7 @@ export default function RulesPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

@@ -7,7 +7,6 @@ import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { applyTheme } from "@/workspace/theme";
 import { featureOn } from "@/workspace/featureGate";
 import { logoutSession } from "@/store/authSession";
-import { useSessionStore } from "@/store/sessionStore";
 import { toast } from "@/store/toastStore";
 import { visibleAdminPages } from "./adminRegistry";
 import { QueryDock } from "@/components/QueryDock/QueryDock";

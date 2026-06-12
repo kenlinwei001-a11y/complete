@@ -1,0 +1,711 @@
+import type {
+  ActionDraft,
+  AgentDefinition,
+  Answer,
+  ConnectorType,
+  FeatureDef,
+  IntentDefinition,
+  McpServerConfig,
+  PermissionPolicy,
+  RuleEntry,
+  SceneEntryConfig,
+  SkillDefinition,
+  WorkflowDefinition,
+  RiskTimelineOutput,
+} from "@platform/contracts";
+import type {
+  FallbackClusterVM,
+  OntologyGraphVM,
+  SimClockVM,
+  TickReportVM,
+  Workspace,
+} from "@/api/types";
+import type { ModelingDraftVM, RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
+
+export const TENANT_ID = "tenant-battery";
+export const PACKAGE_ID = "pkg_battery";
+
+// ---------------------------------------------------------------------------
+// 账号（QOS §7.6 权限种子：planner 全量 / base_manager:常州 行级过滤）
+// ---------------------------------------------------------------------------
+
+export interface MockAccount {
+  username: string;
+  password: string;
+  roles: string[];
+  baseScope: string[] | null; // null = 全部
+}
+
+export const ACCOUNTS: MockAccount[] = [
+  { username: "planner", password: "demo", roles: ["planner", "admin", "catalog_admin"], baseScope: null },
+  { username: "base_manager", password: "demo", roles: ["base_manager:常州"], baseScope: ["常州"] },
+];
+
+// ---------------------------------------------------------------------------
+// 基地 ×12 / 型号 ×6 / 订单 ×20（电池种子）
+// ---------------------------------------------------------------------------
+
+export const BASES = [
+  { id: "base-常州", name: "常州", util: 92, bottleneck: "化成柜", gwh: 24 },
+  { id: "base-合肥", name: "合肥", util: 87, bottleneck: "卷绕机", gwh: 18 },
+  { id: "base-西安", name: "西安", util: 78, bottleneck: "注液机", gwh: 12 },
+  { id: "base-宜宾", name: "宜宾", util: 95, bottleneck: "化成柜", gwh: 30 },
+  { id: "base-溧阳", name: "溧阳", util: 83, bottleneck: "分容柜", gwh: 21 },
+  { id: "base-南京", name: "南京", util: 74, bottleneck: "涂布机", gwh: 9 },
+  { id: "base-成都", name: "成都", util: 88, bottleneck: "卷绕机", gwh: 15 },
+  { id: "base-青海", name: "青海", util: 66, bottleneck: "人员", gwh: 6 },
+  { id: "base-匈牙利", name: "匈牙利", util: 71, bottleneck: "认证", gwh: 8 },
+  { id: "base-德国", name: "德国", util: 69, bottleneck: "认证", gwh: 10 },
+  { id: "base-印尼", name: "印尼", util: 58, bottleneck: "产线爬坡", gwh: 5 },
+  { id: "base-美国", name: "美国", util: 62, bottleneck: "政策", gwh: 7 },
+];
+
+export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
+
+const CUSTS = ["蔚途汽车", "星河储能", "极光新能源", "蓝海电网", "山岳重工"];
+
+export const ORDERS = Array.from({ length: 20 }, (_, i) => {
+  const base = BASES[i % 12]!;
+  return {
+    id: `ord-${String(i + 1).padStart(3, "0")}`,
+    so: `SO-${String(10001 + i)}`,
+    cust: CUSTS[i % CUSTS.length]!,
+    model: MODELS[i % MODELS.length]!,
+    qty: 500 + i * 137,
+    due: `2026-0${(i % 6) + 4}-${String((i % 27) + 1).padStart(2, "0")}`,
+    bases: base.name,
+    status: i % 5 === 0 ? "AT_RISK" : "ON_TRACK",
+  };
+});
+
+// ---------------------------------------------------------------------------
+// FeatureRegistry（Entitlement §2 首批注册清单）
+// ---------------------------------------------------------------------------
+
+export const FEATURE_REGISTRY: FeatureDef[] = [
+  { key: "view.dash", name: "驾驶舱", level: "VIEW", defaultOn: true, bindings: { intents: ["capacity_feasibility"] } },
+  { key: "view.ontology-graph", name: "本体图谱", level: "VIEW", defaultOn: true },
+  { key: "view.risk-board", name: "推演看板", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders", "risk_root_cause"], solverKeys: ["risk_timeline"] } },
+  { key: "view.ledger", name: "订单台账", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders"] } },
+  { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_run"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
+  { key: "view.plan-generate", name: "方案生成", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
+  { key: "view.sop-balance", name: "S&OP 平衡", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
+  { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true },
+  { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
+  { key: "qos.agent-fallback", name: "探索模式兜底", level: "BLOCK", defaultOn: true },
+  { key: "view.project-sim.whatif", name: "What-if 推演", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },
+  { key: "view.risk-board.mitigation", name: "处置方案区", level: "BLOCK", defaultOn: true, requires: ["view.risk-board"], bindings: { intents: ["adopt_mitigation"] } },
+  { key: "view.dash.widget.gwh", name: "驾驶舱·总产能卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  { key: "act.plan-audit.apply-fix", name: "体检一键修正", level: "ACTION", defaultOn: true, requires: ["view.plan-audit"] },
+  { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true, requires: ["view.risk-board"], bindings: { intents: ["adopt_mitigation"] } },
+  { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
+];
+
+/** 账号 → 生效功能集（base_manager 关闭 view.plan-audit 与 act.adopt-to-draft，演示 404 与 E2） */
+export function featuresForAccount(account: MockAccount, tenantOverrides: Record<string, boolean>): string[] {
+  let keys = FEATURE_REGISTRY.filter((f) => tenantOverrides[f.key] ?? f.defaultOn).map((f) => f.key);
+  // 级联：父关子关
+  for (const f of FEATURE_REGISTRY) {
+    if (f.requires?.some((r) => !keys.includes(r))) keys = keys.filter((k) => k !== f.key);
+  }
+  if (account.username === "base_manager") {
+    keys = keys.filter((k) => k !== "view.plan-audit" && k !== "act.adopt-to-draft" && k !== "act.plan-audit.apply-fix");
+  }
+  return keys;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace（两账号导航/视图/主题不同）
+// ---------------------------------------------------------------------------
+
+const DASH_LAYOUT = {
+  widgets: [
+    {
+      key: "gwh",
+      type: "kpi",
+      title: "总产能 (GWh)",
+      featureKey: "view.dash.widget.gwh",
+      unit: "GWh",
+      query: { kind: "objects-aggregate", objectType: "Base", agg: "sum", prop: "gwh" },
+      provenance: { toolName: "query_objects", outputPath: "$.sum(gwh)", snapshotVersion: "ov-12" },
+    },
+    {
+      key: "orders",
+      type: "kpi",
+      title: "在手订单",
+      query: { kind: "objects-aggregate", objectType: "Order", agg: "count" },
+      provenance: { toolName: "query_objects", outputPath: "$.count", snapshotVersion: "ov-12" },
+    },
+    {
+      key: "util",
+      type: "kpi",
+      title: "平均利用率",
+      unit: "%",
+      query: { kind: "objects-aggregate", objectType: "Base", agg: "avg", prop: "util" },
+      provenance: { toolName: "query_objects", outputPath: "$.avg(util)", snapshotVersion: "ov-12" },
+    },
+    {
+      key: "attain",
+      type: "kpi",
+      title: "计划达成率",
+      unit: "%",
+      query: { kind: "solver", solverKey: "schedule_attainment", args: {}, valuePath: "value" },
+      provenance: { toolName: "query_timeseries_agg", outputPath: "$.value", snapshotVersion: "agg-77" },
+    },
+    {
+      key: "oee-trend",
+      type: "chart",
+      title: "OEE 7日趋势",
+      span: 2,
+      chartKind: "line",
+      query: { kind: "timeseries", seriesKey: "oee_daily", entityIds: [], grain: "day", agg: "avg", days: 14 },
+    },
+    {
+      key: "risk-orders",
+      type: "table",
+      title: "风险订单",
+      span: 2,
+      query: { kind: "objects", objectType: "Order", filter: { status: "AT_RISK" }, columns: ["so", "cust", "model", "due"], limit: 8 },
+    },
+  ],
+};
+
+const LEDGER_LAYOUT = {
+  objectType: "Order",
+  columns: [
+    { key: "so", label: "SO" },
+    { key: "cust", label: "客户", filterable: true },
+    { key: "model", label: "型号", filterable: true },
+    { key: "qty", label: "数量" },
+    { key: "due", label: "交期" },
+    { key: "bases", label: "基地", filterable: true },
+    { key: "status", label: "状态", filterable: true },
+  ],
+};
+
+export function workspaceForAccount(account: MockAccount, tenantOverrides: Record<string, boolean>, configVersion: number): Workspace {
+  const features = featuresForAccount(account, tenantOverrides);
+  const allViews = [
+    { key: "dash", title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
+    { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {} },
+    { key: "risk", title: "预判推演看板", renderer: "risk-board", layout: {} },
+    { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
+    // 推演类视图：增量 PRD 未交付 → renderer 未注册，前端显示「该视图类型暂不支持」
+    { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: {} },
+  ];
+  const featureKeyOf = (viewKey: string) =>
+    viewKey === "graph" ? "view.ontology-graph" : viewKey === "risk" ? "view.risk-board" : viewKey === "order" ? "view.ledger" : `view.${viewKey}`;
+  // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
+  const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
+  const navViews = account.username === "planner" ? views : views.filter((v) => v.key !== "graph");
+
+  // features 集合按视图 key 对齐路由（/v/:viewKey 守卫直接查 view.{viewKey}）
+  const routeFeatures = features.flatMap((f) => {
+    if (f === "view.ontology-graph") return [f, "view.graph"];
+    if (f === "view.risk-board") return [f, "view.risk"];
+    if (f === "view.ledger") return [f, "view.order"];
+    if (f === "view.dash") return [f, "view.dash"];
+    return [f];
+  });
+
+  return {
+    tenant: { id: TENANT_ID, name: "星辰电池制造", industry: "battery-manufacturing" },
+    user: { id: `usr-${account.username}`, username: account.username, roles: account.roles, attributes: { baseScope: account.baseScope ?? undefined } },
+    theme: account.username === "planner" ? { "--accent": "#4C90F0" } : { "--accent": "#36BFA5" },
+    navigation: navViews.map((v) => ({ key: v.key, label: v.title })),
+    views: navViews,
+    scenarioPackages: [PACKAGE_ID],
+    features: routeFeatures,
+    configVersion,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 本体图谱
+// ---------------------------------------------------------------------------
+
+export const GRAPH: OntologyGraphVM = {
+  nodes: [
+    { id: "n-base", key: "Base", label: "基地", kind: "object", domain: "factory", properties: [{ propKey: "name", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }, { propKey: "gwh", dataType: "number" }], sourceBindings: [{ connId: "conn-erp", dataset: "plants" }], rules: [{ key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)" }], derivations: [] },
+    { id: "n-line", key: "Line", label: "产线", kind: "object", domain: "factory", properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "actual_output_daily", dataType: "number" }, { propKey: "schedule_attainment", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "lines" }], rules: [], derivations: [{ propKey: "schedule_attainment", formula: "rollup(week, 排产 vs 实绩)" }] },
+    { id: "n-model", key: "Model", label: "型号", kind: "object", domain: "product", properties: [{ propKey: "modelNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-erp", dataset: "models" }], rules: [], derivations: [] },
+    { id: "n-order", key: "Order", label: "订单", kind: "object", domain: "product", properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }], sourceBindings: [{ connId: "conn-crm", dataset: "orders" }], rules: [{ key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit" }], derivations: [] },
+    { id: "n-proc", key: "Process", label: "工序", kind: "object", domain: "process", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }, { propKey: "yield_baseline", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "process" }], rules: [], derivations: [{ propKey: "yield_baseline", formula: "ts_agg(yield_daily, avg, 7d)" }] },
+    { id: "n-equip", key: "Equipment", label: "设备", kind: "object", domain: "equip", properties: [{ propKey: "equipNo", dataType: "string", isPrimaryKey: true }, { propKey: "oee_current", dataType: "number" }], sourceBindings: [{ connId: "conn-iot", dataset: "oee:equip" }], rules: [], derivations: [{ propKey: "oee_current", formula: "ts_agg(oee_daily, weighted_avg, 7d)" }] },
+    { id: "n-people", key: "Crew", label: "班组", kind: "object", domain: "people", properties: [{ propKey: "crewId", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [] },
+    { id: "n-quality", key: "QualityLot", label: "质检批", kind: "object", domain: "quality", properties: [{ propKey: "lotNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C08", name: "外协红线", expression: "Outsource.ratio <= 0.2" }], derivations: [] },
+    { id: "n-cap", key: "CapacityPyramid", label: "产能金字塔", kind: "object", domain: "capacity", properties: [{ propKey: "week", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C03", name: "产能上限", expression: "demandDelta <= 0.5" }], derivations: [{ propKey: "p90", formula: "capacity_forecast(p90)" }] },
+    { id: "n-forecast", key: "DemandForecast", label: "需求预测", kind: "object", domain: "forecast", properties: [{ propKey: "period", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [] },
+    { id: "n-solver-cap", key: "capacity_forecast", label: "产能推演", kind: "solver", domain: "solver", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    { id: "n-solver-risk", key: "risk_timeline", label: "风险时间线", kind: "solver", domain: "solver", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    { id: "n-agent", key: "explore_agent", label: "探索 Agent", kind: "agent", domain: "agent", properties: [], sourceBindings: [], rules: [], derivations: [] },
+  ],
+  edges: [
+    { id: "e1", from: "n-base", to: "n-line", label: "拥有" },
+    { id: "e2", from: "n-line", to: "n-equip", label: "部署" },
+    { id: "e3", from: "n-line", to: "n-proc", label: "执行" },
+    { id: "e4", from: "n-order", to: "n-model", label: "订购" },
+    { id: "e5", from: "n-model", to: "n-base", label: "可产" },
+    { id: "e6", from: "n-people", to: "n-line", label: "排班" },
+    { id: "e7", from: "n-quality", to: "n-proc", label: "检验" },
+    { id: "e8", from: "n-cap", to: "n-base", label: "汇总" },
+    { id: "e9", from: "n-forecast", to: "n-model", label: "预测" },
+    { id: "e10", from: "n-solver-cap", to: "n-cap", label: "计算" },
+    { id: "e11", from: "n-solver-risk", to: "n-base", label: "推演" },
+    { id: "e12", from: "n-agent", to: "n-solver-cap", label: "调用" },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// 风险时间线（solver 输出，契约 RiskTimelineOutput）
+// ---------------------------------------------------------------------------
+
+function riskSeries(seed: number, peakDay: number, peak: number): number[] {
+  return Array.from({ length: 14 }, (_, d) => {
+    const base = 45 + Math.sin((d + seed) * 0.7) * 12;
+    const spike = peak * Math.exp(-((d - peakDay) ** 2) / 6);
+    return Math.min(100, Math.round(base + spike * 0.55));
+  });
+}
+
+export const RISK_TIMELINE: RiskTimelineOutput = {
+  horizon: 14,
+  threshold: 85,
+  cards: [
+    { base: "常州", factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96), events: [{ type: "maint_window", day: 4, amp: 18, factors: ["化成柜"] }, { type: "delivery_peak", day: 6, amp: 12, factors: ["交付"] }] },
+    { base: "宜宾", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91), events: [{ type: "delivery_peak", day: 8, amp: 16, factors: ["交付"] }] },
+    { base: "合肥", factor: "到货间隙", peak: 82, crossDay: null, series: riskSeries(3, 9, 82), events: [{ type: "arrival_gap", day: 9, amp: 10, factors: ["供料"] }] },
+    { base: "溧阳", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
+    { base: "成都", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
+    { base: "西安", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// 意图 ×4 + 规则 + 策略
+// ---------------------------------------------------------------------------
+
+const now = "2026-06-01T00:00:00Z";
+
+export const INTENTS: IntentDefinition[] = [
+  {
+    id: "int-affected", packageId: PACKAGE_ID, key: "affected_orders", version: 3, status: "PUBLISHED",
+    name: "受影响订单查询", description: "查询某基地在风险时间窗内受影响的订单", examples: ["影响哪些订单？", "常州风险波及哪些交付", "受影响订单清单"],
+    enabledViews: ["risk", "order"], slots: [
+      { name: "base", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", clarifyPrompt: "请选择基地", description: "目标基地" },
+      { name: "timeWindow", type: "timeWindow", required: false, description: "时间窗" },
+    ],
+    planId: "plan-affected", riskLevel: "READ", owner: "ops", createdAt: now, updatedAt: now,
+  },
+  {
+    id: "int-cap", packageId: PACKAGE_ID, key: "capacity_feasibility", version: 2, status: "PUBLISHED",
+    name: "需求增量可行性", description: "判断某型号增量需求能否承接", examples: ["4680-NCM 加 20% 六周能不能接？", "增产可行吗"],
+    enabledViews: "*", slots: [
+      { name: "model", type: "objectRef", required: true, description: "型号" },
+      { name: "demandDelta", type: "number", required: true, description: "需求增量比例" },
+      { name: "weeks", type: "number", required: false, description: "周数" },
+    ],
+    planId: "plan-cap", riskLevel: "COMPUTE", owner: "ops", createdAt: now, updatedAt: now,
+  },
+  {
+    id: "int-root", packageId: PACKAGE_ID, key: "risk_root_cause", version: 1, status: "PUBLISHED",
+    name: "越线归因", description: "解释某基地某天为什么越线", examples: ["为什么这天越线", "D+5 张力为何超阈值"],
+    enabledViews: ["risk"], slots: [
+      { name: "base", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "基地" },
+      { name: "day", type: "date", required: true, clarifyPrompt: "请提供日期", description: "日期" },
+    ],
+    planId: "plan-root", riskLevel: "READ", owner: "ops", createdAt: now, updatedAt: now,
+  },
+  {
+    id: "int-adopt", packageId: PACKAGE_ID, key: "adopt_mitigation", version: 1, status: "PUBLISHED",
+    name: "采纳处置方案", description: "把处置方案落为 Action 草稿走审批", examples: ["采纳常州的三班制方案"],
+    enabledViews: ["risk"], slots: [
+      { name: "base", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "基地" },
+      { name: "solutionName", type: "enum", required: true, enumValues: ["三班制", "外协转移", "提前备料"], description: "方案" },
+    ],
+    planId: "plan-adopt", riskLevel: "ACTION_DRAFT", owner: "ops", createdAt: now, updatedAt: now,
+  },
+];
+
+export const PLANS = [
+  { id: "plan-affected", key: "affected_orders_plan", version: 3, status: "PUBLISHED" },
+  { id: "plan-cap", key: "capacity_feasibility_plan", version: 2, status: "PUBLISHED" },
+  { id: "plan-root", key: "risk_root_cause_plan", version: 1, status: "PUBLISHED" },
+  { id: "plan-adopt", key: "adopt_mitigation_plan", version: 1, status: "PUBLISHED" },
+];
+
+export const RULES: RuleEntry[] = [
+  { id: "rule-c03", key: "C03", name: "产能上限", expression: "Order.demandDelta <= 0.5", scopeObjectTypes: ["Order", "CapacityPyramid"], severity: "BLOCK", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 120, end: 180 }, extractJobId: "job-ex1" }, version: 2, status: "PUBLISHED" },
+  { id: "rule-c08", key: "C08", name: "外协红线", expression: "Outsource.ratio <= 0.2", scopeObjectTypes: ["QualityLot"], severity: "WARN", origin: { type: "MANUAL" }, version: 1, status: "PUBLISHED" },
+  { id: "rule-c13", key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit", scopeObjectTypes: ["Order"], severity: "BLOCK", origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
+  { id: "rule-c05", key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)", scopeObjectTypes: ["Line"], severity: "WARN", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 320, end: 390 }, extractJobId: "job-ex1" }, version: 1, status: "PUBLISHED" },
+];
+
+export const POLICIES: PermissionPolicy[] = [
+  { id: "pol-base", tenantId: TENANT_ID, resource: { kind: "OBJECT_TYPE", key: "Base" }, grants: [{ role: "planner", ops: ["READ", "WRITE"] }, { role: "base_manager", ops: ["READ"] }], rowFilter: "Base.name IN ${user.attributes.baseScope}" },
+  { id: "pol-order", tenantId: TENANT_ID, resource: { kind: "OBJECT_TYPE", key: "Order" }, grants: [{ role: "planner", ops: ["READ", "WRITE"] }, { role: "base_manager", ops: ["READ"] }], rowFilter: "Order.bases IN ${user.attributes.baseScope}" },
+  { id: "pol-action", tenantId: TENANT_ID, resource: { kind: "ACTION_TYPE", key: "shift_plan_change" }, grants: [{ role: "planner", ops: ["EXECUTE"] }, { role: "admin", ops: ["EXECUTE"] }] },
+];
+
+// ---------------------------------------------------------------------------
+// 连接器 / 规则文档 / 建模草案
+// ---------------------------------------------------------------------------
+
+export const CONNECTOR_TYPES: ConnectorType[] = [
+  {
+    key: "sap_erp", category: "ERP",
+    configSchema: {
+      type: "object",
+      required: ["host", "client"],
+      properties: {
+        host: { type: "string", title: "主机", description: "SAP 应用服务器地址" },
+        client: { type: "string", title: "Client" },
+        username: { type: "string", title: "用户名" },
+        password: { type: "string", title: "密码", format: "secret" },
+        useTls: { type: "boolean", title: "启用 TLS", default: true },
+        landscape: { type: "string", title: "环境", enum: ["DEV", "QAS", "PRD"] },
+      },
+    },
+    capabilities: { batch: true, incremental: true, schemaDiscovery: true },
+  },
+  {
+    key: "rest_api", category: "EXTERNAL",
+    configSchema: {
+      type: "object",
+      required: ["url"],
+      properties: {
+        url: { type: "string", title: "URL" },
+        apiKey: { type: "string", title: "API Key", format: "secret" },
+        pageSize: { type: "number", title: "分页大小" },
+      },
+    },
+    capabilities: { batch: true, incremental: false, schemaDiscovery: true },
+  },
+  {
+    key: "mock_erp", category: "ERP",
+    configSchema: { type: "object", properties: { dataset: { type: "string", title: "样本集", enum: ["orders", "plants"] } } },
+    capabilities: { batch: true, incremental: false, schemaDiscovery: true },
+  },
+];
+
+export const RULE_DOC: RuleDocVM = {
+  id: "doc-policy",
+  filename: "产销协同管理制度v3.docx",
+  status: "IN_REVIEW",
+  createdAt: now,
+  segments: [
+    { idx: 0, heading: "三、产能承接", text: "各基地接单需校核产能上限：单型号需求增量超过基准产能的 50% 时，禁止直接承接，须升级至产销协同会审批。", spanStart: 0, spanEnd: 60 },
+    { idx: 1, heading: "四、外协管理", text: "外协比例原则上不得超过 20%，超出部分需提交外协风险评估报告并由质量部会签。", spanStart: 61, spanEnd: 120 },
+    { idx: 2, heading: "五、信用管理", text: "客户在手订单金额不得超过其授信额度，超出时新订单冻结发运。", spanStart: 121, spanEnd: 170 },
+  ],
+};
+
+export const RULE_CANDIDATES: RuleCandidateVM[] = [
+  {
+    id: "cand-1", docId: "doc-policy", segmentIdx: 0, span: { start: 12, end: 48 },
+    candidate: { name: "产能上限", description: "需求增量超过基准产能 50% 禁止直接承接", expression: "Order.demandDelta <= 0.5", expressionConfidence: 0.92, scopeObjectTypes: ["Order"], severity: "BLOCK", sourceQuote: "单型号需求增量超过基准产能的 50% 时，禁止直接承接" },
+    status: "PENDING", diff: "变更", duplicateOf: "C03",
+  },
+  {
+    id: "cand-2", docId: "doc-policy", segmentIdx: 1, span: { start: 0, end: 20 },
+    candidate: { name: "外协红线", description: "外协比例不得超过 20%", expression: "Outsource.ratio <= 0.2", expressionConfidence: 0.88, scopeObjectTypes: ["QualityLot"], severity: "WARN", sourceQuote: "外协比例原则上不得超过 20%" },
+    status: "PENDING", diff: "新增",
+  },
+  {
+    id: "cand-3", docId: "doc-policy", segmentIdx: 2, span: { start: 0, end: 26 },
+    candidate: { name: "信用额度冻结", description: "在手订单金额超授信额度冻结发运", expression: "Order.credit <= Customer.creditLimit", expressionConfidence: 0.61, scopeObjectTypes: ["Order"], severity: "BLOCK", sourceQuote: "客户在手订单金额不得超过其授信额度" },
+    status: "PENDING", diff: "疑似删除",
+  },
+];
+
+export const MODELING_DRAFT: ModelingDraftVM = {
+  id: "draft-1",
+  status: "DRAFT",
+  rawDatasetIds: ["rds-orders", "rds-plants"],
+  datasets: [
+    {
+      name: "orders.csv",
+      fields: [
+        { name: "so_no", inferredType: "string", nullRate: 0, uniqueRate: 1 },
+        { name: "customer", inferredType: "string", nullRate: 0.02, uniqueRate: 0.2, enumCandidates: ["蔚途汽车", "星河储能"] },
+        { name: "model_no", inferredType: "string", nullRate: 0, uniqueRate: 0.3 },
+        { name: "qty", inferredType: "number", nullRate: 0, uniqueRate: 0.9 },
+        { name: "due_date", inferredType: "date", nullRate: 0.05, uniqueRate: 0.7 },
+        { name: "plant", inferredType: "string", nullRate: 0, uniqueRate: 0.1 },
+      ],
+    },
+    {
+      name: "plants.csv",
+      fields: [
+        { name: "plant_code", inferredType: "string", nullRate: 0, uniqueRate: 1 },
+        { name: "plant_name", inferredType: "string", nullRate: 0, uniqueRate: 1 },
+        { name: "capacity_gwh", inferredType: "number", nullRate: 0, uniqueRate: 0.8 },
+      ],
+    },
+  ],
+  suggestion: {
+    objectTypes: [
+      {
+        action: "MAP_TO_EXISTING", existingTypeKey: "Order", typeKey: "Order", displayName: "订单", sourceDataset: "orders.csv",
+        properties: [
+          { propKey: "so", sourceField: "so_no", dataType: "string", isPrimaryKey: true, refToTypeKey: null },
+          { propKey: "cust", sourceField: "customer", dataType: "string", isPrimaryKey: false, refToTypeKey: null },
+          { propKey: "model", sourceField: "model_no", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
+          { propKey: "qty", sourceField: "qty", dataType: "number", isPrimaryKey: false, refToTypeKey: null },
+          { propKey: "due", sourceField: "due_date", dataType: "date", isPrimaryKey: false, refToTypeKey: null },
+          { propKey: "base", sourceField: "plant", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
+        ],
+        confidence: 0.93,
+      },
+      {
+        action: "CREATE", existingTypeKey: null, typeKey: "Plant", displayName: "工厂", sourceDataset: "plants.csv",
+        properties: [
+          { propKey: "code", sourceField: "plant_code", dataType: "string", isPrimaryKey: false, refToTypeKey: null },
+          { propKey: "name", sourceField: "plant_name", dataType: "string", isPrimaryKey: false, refToTypeKey: null },
+          { propKey: "gwh", sourceField: "capacity_gwh", dataType: "number", isPrimaryKey: false, refToTypeKey: null },
+        ],
+        confidence: 0.71,
+      },
+    ],
+    linkTypes: [
+      { fromTypeKey: "Order", toTypeKey: "Plant", viaFields: { fromField: "plant", toField: "plant_code" }, cardinality: "1:N", nameSuggestion: "produced_at", confidence: 0.9 },
+    ],
+  },
+};
+
+// ---------------------------------------------------------------------------
+// AgentCore 配置
+// ---------------------------------------------------------------------------
+
+export const AGENTS: AgentDefinition[] = [
+  {
+    id: "agt-explore", tenantId: TENANT_ID, key: "explore_agent", version: 2, name: "探索分析 Agent", description: "目录外问题兜底分析",
+    model: "claude-opus-4-8", systemPrompt: "你是企业决策系统的分析助手。所有业务数字必须来自工具结果并以 ⟦ref:N⟧ 标注。",
+    tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }, { kind: "WORKFLOW", workflowId: "wf-cap", version: "latest" }],
+    ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+    skills: [{ skillId: "skl-capacity", version: "latest" }],
+    mcpServers: [{ mcpConfigId: "mcp-demo" }],
+    scopeDeclaration: { objectTypes: ["Base", "Order", "Model"], toolNames: ["query_objects", "invoke_solver"] },
+    budget: { maxIterations: 8, maxToolCalls: 10 },
+    status: "PUBLISHED",
+  },
+  {
+    id: "agt-draft", tenantId: TENANT_ID, key: "report_agent", version: 1, name: "周报生成 Agent（草稿）", description: "",
+    model: "claude-opus-4-8", systemPrompt: "",
+    tools: [{ kind: "BUILTIN", name: "query_objects" }],
+    ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    skills: [], mcpServers: [],
+    scopeDeclaration: { objectTypes: [], toolNames: [] },
+    status: "DRAFT",
+  },
+];
+
+export const WORKFLOWS: WorkflowDefinition[] = [
+  {
+    id: "wf-cap", tenantId: TENANT_ID, key: "capacity_check", version: 2, name: "产能校核流程", description: "型号增量校核",
+    inputs: { type: "object", properties: { model: { type: "string" }, demandDelta: { type: "number" }, weeks: { type: "number" } } },
+    steps: [
+      { id: "s1", type: "resolve_slice", params: { sliceKey: "model_capacity_network", args: { modelId: "{{slots.model}}" } } },
+      { id: "s2", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { modelId: "{{slots.model}}", demandDelta: "{{slots.demandDelta}}" } } },
+      { id: "s3", type: "evaluate_rules", params: { ruleIds: ["C03"], payload: "{{steps.s2.output}}" } },
+      { id: "s4", type: "render_answer", params: { blocks: [] } },
+    ],
+    status: "PUBLISHED",
+  },
+  {
+    id: "wf-draft", tenantId: TENANT_ID, key: "risk_digest", version: 1, name: "风险日报（草稿）", description: "",
+    inputs: { type: "object", properties: { base: { type: "string" }, horizon: { type: "number" } } },
+    steps: [
+      { id: "s1", type: "query_objects", params: { objectType: "Base", filter: { name: "{{slots.base}}" } } },
+      { id: "s2", type: "invoke_solver", params: { solverKey: "risk_timeline", args: { base: "{{steps.s1.output}}" } } },
+      { id: "s3", type: "invoke_agent", params: { agentId: "agt-explore", version: "latest", prompt: "总结 {{steps.s2.output}}" } },
+      { id: "s4", type: "render_answer", params: { blocks: [] } },
+    ],
+    status: "DRAFT",
+  },
+];
+
+export const SKILLS: SkillDefinition[] = [
+  { id: "skl-capacity", tenantId: TENANT_ID, key: "capacity_analysis", version: 3, name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。", body: "# 产能分析\n\n1. 先看认证状态…", resources: [{ name: "口径表.xlsx", blobKey: "blob-1" }], status: "PUBLISHED" },
+  { id: "skl-draft", tenantId: TENANT_ID, key: "sop_meeting", version: 1, name: "S&OP 会议纪要技能（草稿）", summary: "纪要结构化要点。", body: "# 纪要", resources: [], status: "DRAFT" },
+];
+
+export const MCP_CONFIGS: McpServerConfig[] = [
+  { id: "mcp-demo", tenantId: TENANT_ID, name: "示例 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.example.com" }, credentialRef: "cred-1", status: "ACTIVE" },
+];
+
+export const SCENES: SceneEntryConfig[] = [
+  { id: "scn-dash", tenantId: TENANT_ID, viewKey: "dash", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问问经营数据，如：本月计划达成率怎么样？", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？", "对比一下储能基地和动力基地的平均利用率"] } },
+  { id: "scn-risk", tenantId: TENANT_ID, viewKey: "risk", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中基地提问，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？", "为什么这天越线", "采纳常州的三班制方案"] } },
+  { id: "scn-order", tenantId: TENANT_ID, viewKey: "order", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "查订单，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？"] } },
+  { id: "scn-graph", tenantId: TENANT_ID, viewKey: "graph", mode: "AGENT_FIRST", defaultAgentId: "agt-explore", uiHints: { placeholder: "围绕本体随便问", suggestedQuestions: [] } },
+  { id: "scn-plan-audit", tenantId: TENANT_ID, viewKey: "plan-audit", mode: "WORKFLOW_ONLY", uiHints: { placeholder: "规划体检", suggestedQuestions: [] } },
+];
+
+export const FALLBACK_CLUSTERS: FallbackClusterVM[] = [
+  { traceId: "fbt-1", querySample: "对比一下储能基地和动力基地的平均利用率", count: 17, lastSeen: now, outcomeBreakdown: { ANSWERED: 14, FAILED: 3 }, topToolSketch: ["query_objects", "query_objects"], trend: [1, 2, 2, 4, 3, 5] },
+  { traceId: "fbt-2", querySample: "哪个客户的订单延期风险最高", count: 9, lastSeen: now, outcomeBreakdown: { ANSWERED: 8, BUDGET_EXHAUSTED: 1 }, topToolSketch: ["query_objects", "invoke_solver"], trend: [0, 1, 1, 2, 2, 3] },
+];
+
+export const ACTION_DRAFTS: ActionDraft[] = [
+  {
+    id: "act-001", tenantId: TENANT_ID, actionTypeKey: "shift_plan_change",
+    payload: { base: "常州", solution: "三班制", effectiveFrom: "2026-06-15", expectedRelief: 0.12 },
+    origin: { taskId: "task-adopt-demo", userId: "usr-planner" },
+    status: "PENDING_APPROVAL",
+    approvalSteps: [{ seq: 1, role: "planner" }, { seq: 2, role: "admin" }],
+    createdAt: "2026-06-10T08:00:00Z", updatedAt: "2026-06-10T08:00:00Z",
+  },
+  {
+    id: "act-002", tenantId: TENANT_ID, actionTypeKey: "outsource_transfer",
+    payload: { base: "宜宾", ratio: 0.15 },
+    origin: { userId: "usr-planner" },
+    status: "APPROVED",
+    approvalSteps: [{ seq: 1, role: "planner", approverId: "usr-planner", decision: "APPROVE", comment: "同意", decidedAt: now }],
+    createdAt: "2026-06-08T08:00:00Z", updatedAt: "2026-06-09T08:00:00Z",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// 合成数据 / 模拟时钟
+// ---------------------------------------------------------------------------
+
+export const SYNTHETIC_PHASES = ["行业模板", "本体实例化", "源对象生成", "历史时序生成（90 天）", "派生计算", "配套生成与校验"];
+
+export const SYNTHETIC_REPORT = {
+  rowCounts: { Base: 12, Model: 6, Order: 20, Line: 36, Equipment: 144 },
+  ruleScan: [
+    { ruleKey: "C03", evaluated: 20, violations: 1 },
+    { ruleKey: "C08", evaluated: 36, violations: 0 },
+    { ruleKey: "C13", evaluated: 20, violations: 0 },
+  ],
+  derivationSpotChecks: [
+    { typeKey: "CapacityPyramid", propKey: "p90", objectId: "cap-1", ok: true },
+    { typeKey: "Line", propKey: "schedule_attainment", objectId: "line-9", ok: true },
+  ],
+  timeseries: [
+    { seriesKey: "oee:equip", points: 84213, gaps: 0, aggSpotCheckOk: true },
+    { seriesKey: "yield:proc", points: 12960, gaps: 2, aggSpotCheckOk: true },
+  ],
+};
+
+export const SIM_SCRIPT = [
+  { tick: 3, event: "iot_delay" },
+  { tick: 5, event: "shipment_delay" },
+  { tick: 8, event: "yield_drop" },
+];
+
+export function initialClock(): SimClockVM {
+  return {
+    simDate: "2026-06-12",
+    currentTick: 0,
+    status: "ACTIVE",
+    script: SIM_SCRIPT.map((s) => ({ ...s, fired: false })),
+  };
+}
+
+export function tickReport(tick: number, simDate: string): TickReportVM {
+  return {
+    tick,
+    simDate,
+    newPoints: 1280 + tick * 37,
+    changedProps: [
+      { object: "设备-CZ-07", prop: "oee_current", from: 0.86, to: 0.84 },
+      { object: "产线-CZ-2", prop: "schedule_attainment", from: 0.914, to: 0.908 },
+      { object: "工序-化成", prop: "yield_baseline", from: 0.975, to: 0.973 },
+    ],
+    newAlerts: tick === 8 ? [{ ruleKey: "C05", message: "常州产线利用率连续 3 日 >95%" }] : [],
+    clearedAlerts: [],
+    forecastDeviation: tick >= 3 ? 0.02 + tick * 0.008 : undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 演示回答（A1/A2/B1 + unverifiedNumerics 样例）
+// ---------------------------------------------------------------------------
+
+export const ANSWER_A1: Answer = {
+  trustLevel: "VERIFIED_WORKFLOW",
+  unverifiedNumerics: false,
+  blocks: [
+    { type: "text", markdown: "常州基地风险窗口内共 **3 张订单**受影响⟦ref:prov-a1-1⟧，合计 4,820 套⟦ref:prov-a1-1⟧。" },
+    {
+      type: "table",
+      columns: ["SO", "客户", "型号", "数量", "交期"],
+      rows: [
+        ["SO-10001", "蔚途汽车", "4680-NCM", 1500, "2026-06-20"],
+        ["SO-10006", "星河储能", "储能-280Ah", 1820, "2026-06-24"],
+        ["SO-10013", "蔚途汽车", "4680-NCM", 1500, "2026-07-02"],
+      ],
+      provId: "prov-a1-1",
+    },
+  ],
+  provenance: [
+    {
+      id: "prov-a1-1", source: "TOOL_RESULT", toolCallId: "tc-a1-1", toolName: "invoke_solver:affected_orders",
+      outputPath: "$.orders", snapshotVersion: "ov-12",
+      ...({ stepId: "s2", formula: "affected_orders(base=常州, window=D+0..D+14)", rules: [{ key: "C03", expression: "Order.demandDelta <= 0.5" }], value: "3 单 / 4,820 套", valueLabel: "受影响订单" } as Record<string, unknown>),
+    } as Answer["provenance"][number],
+  ],
+};
+
+export const ANSWER_A2: Answer = {
+  trustLevel: "VERIFIED_WORKFLOW",
+  unverifiedNumerics: false,
+  blocks: [
+    { type: "kpi", label: "P50 产能", value: "21.4", unit: "GWh", provId: "prov-a2-1" },
+    { type: "kpi", label: "P90 产能", value: "18.9", unit: "GWh", provId: "prov-a2-2" },
+    { type: "kpi", label: "缺口", value: "-1.2", unit: "GWh", provId: "prov-a2-3" },
+    { type: "text", markdown: "加 20% 后六周内 P90 口径存在 **1.2 GWh** 缺口⟦ref:prov-a2-3⟧，主要瓶颈为化成柜⟦ref:prov-a2-1⟧。建议评估外协或排程平移。" },
+  ],
+  provenance: [
+    { id: "prov-a2-1", source: "TOOL_RESULT", toolCallId: "tc-a2-1", toolName: "invoke_solver:capacity_forecast", outputPath: "$.p50", snapshotVersion: "ov-12", ...({ stepId: "s2", formula: "capacity_forecast(model=4680-NCM, delta=0.2, weeks=6)", value: "21.4 GWh", valueLabel: "P50 产能" } as Record<string, unknown>) } as Answer["provenance"][number],
+    { id: "prov-a2-2", source: "TS_AGGREGATE", toolCallId: "tc-a2-1", toolName: "query_timeseries_agg", outputPath: "$.p90", snapshotVersion: "ov-12", tsAgg: { aggRunId: "aggrun-889", specKey: "oee_daily@v2", window: { start: "2026-06-01", end: "2026-06-07" }, rowsIn: 84213 }, ...({ value: "18.9 GWh", valueLabel: "P90 产能（OEE 加权）" } as Record<string, unknown>) } as Answer["provenance"][number],
+    { id: "prov-a2-3", source: "TOOL_RESULT", toolCallId: "tc-a2-2", toolName: "invoke_solver:capacity_forecast", outputPath: "$.gap", snapshotVersion: "ov-12", ...({ stepId: "s3", formula: "gap = demand - p90", rules: [{ key: "C03", expression: "Order.demandDelta <= 0.5" }], value: "-1.2 GWh", valueLabel: "产能缺口" } as Record<string, unknown>) } as Answer["provenance"][number],
+  ],
+};
+
+export const ANSWER_B1: Answer = {
+  trustLevel: "AGENT_EXPLORATORY",
+  unverifiedNumerics: false,
+  blocks: [
+    { type: "text", markdown: "储能基地平均利用率 **71.5%**⟦ref:prov-b1-1⟧，动力基地平均 **84.2%**⟦ref:prov-b1-2⟧，相差 12.7 个百分点⟦ref:prov-b1-2⟧。" },
+    { type: "kpi", label: "储能基地均值", value: "71.5", unit: "%", provId: "prov-b1-1" },
+    { type: "kpi", label: "动力基地均值", value: "84.2", unit: "%", provId: "prov-b1-2" },
+  ],
+  provenance: [
+    { id: "prov-b1-1", source: "TOOL_RESULT", toolCallId: "tc-b1-1", toolName: "query_objects", outputPath: "$.avg(util)", snapshotVersion: "ov-12", ...({ value: "71.5%", valueLabel: "储能基地平均利用率" } as Record<string, unknown>) } as Answer["provenance"][number],
+    { id: "prov-b1-2", source: "TOOL_RESULT", toolCallId: "tc-b1-2", toolName: "query_objects", outputPath: "$.avg(util)", snapshotVersion: "ov-12", ...({ value: "84.2%", valueLabel: "动力基地平均利用率" } as Record<string, unknown>) } as Answer["provenance"][number],
+  ],
+};
+
+/** unverifiedNumerics 警示样例 */
+export const ANSWER_UNVERIFIED: Answer = {
+  trustLevel: "AGENT_EXPLORATORY",
+  unverifiedNumerics: true,
+  blocks: [
+    { type: "text", markdown: "按当前爬坡速度估算，印尼基地约需 5 个月达到 80% 稼动率（行业经验值，未能从工具数据中溯源）。已核实当前稼动率为 **58%**⟦ref:prov-uv-1⟧。" },
+  ],
+  provenance: [
+    { id: "prov-uv-1", source: "TOOL_RESULT", toolCallId: "tc-uv-1", toolName: "query_objects", outputPath: "$.util", snapshotVersion: "ov-12", ...({ value: "58%", valueLabel: "印尼基地稼动率" } as Record<string, unknown>) } as Answer["provenance"][number],
+  ],
+};
+
+export const ANSWER_ADOPT: Answer = {
+  trustLevel: "VERIFIED_WORKFLOW",
+  unverifiedNumerics: false,
+  blocks: [
+    { type: "rule_violation", ruleId: "C08", severity: "WARN", explanation: "三班制将提高外协依赖至 18%，接近 20% 红线，需关注。", provId: "prov-ad-1" },
+    { type: "action_draft", draftId: "act-001", actionType: "shift_plan_change", summary: "常州基地 6/15 起切换三班制，预计释放 12% 张力" },
+    { type: "text", markdown: "已生成 Action 草稿并进入审批流，**未直接执行**任何变更。" },
+  ],
+  provenance: [
+    { id: "prov-ad-1", source: "TOOL_RESULT", toolCallId: "tc-ad-1", toolName: "evaluate_rules", outputPath: "$.verdicts[0]", snapshotVersion: "ov-12", ...({ stepId: "s1", rules: [{ key: "C08", expression: "Outsource.ratio <= 0.2" }], value: "WARN", valueLabel: "规则评估" } as Record<string, unknown>) } as Answer["provenance"][number],
+  ],
+};
+
+export const TS_AGG_POINTS = Array.from({ length: 14 }, (_, i) => ({
+  entityId: "equip-cz-07",
+  bucket: `2026-05-${String(25 + i).padStart(2, "0")}`,
+  value: 0.82 + Math.sin(i * 0.8) * 0.05 + i * 0.002,
+})).map((p, i) => ({ ...p, bucket: i < 7 ? `2026-06-0${i + 1}` : `2026-06-${String(i + 1).padStart(2, "0")}` }));

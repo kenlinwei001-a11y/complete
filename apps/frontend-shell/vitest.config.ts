@@ -15,5 +15,10 @@ export default defineConfig({
     setupFiles: ["./test/setup.ts"],
     css: false,
     testTimeout: 20000,
+    env: {
+      VITE_DATACORE_URL: "http://a.test",
+      VITE_AGENTCORE_URL: "http://b.test",
+      VITE_MOCK: "1",
+    },
   },
 });
