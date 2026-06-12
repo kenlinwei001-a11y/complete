@@ -64,10 +64,10 @@ export default function ShellLayout() {
       <aside className={styles.nav} data-testid="left-nav">
         <div className="section-title">{zh.nav.businessGroup}</div>
         <nav className={styles.group} data-testid="nav-business">
-          {workspace.navigation.map((item) => (
+          {workspace.navigation.filter((item) => item.group !== "admin").map((item) => (
             <NavLink
               key={item.key}
-              to={`/v/${item.key}`}
+              to={`/v/${item.viewKey ?? item.key}`}
               className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
             >
               <span className={styles.dot} />

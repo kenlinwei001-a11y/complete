@@ -92,7 +92,7 @@ export const handlers = [
     const role = url.searchParams.get("role") ?? "planner";
     const account = ACCOUNTS.find((a) => a.roles.some((r) => r.startsWith(role))) ?? ACCOUNTS[0]!;
     const ws = workspaceForAccount(account, db.tenantOverrides, db.configVersion);
-    return HttpResponse.json({ navigation: ws.navigation, views: ws.views.map((v) => ({ key: v.key, title: v.title })) });
+    return HttpResponse.json({ navigation: ws.navigation, views: (ws.views ?? []).map((v) => ({ key: v.key, title: v.title })) });
   }),
 
   http.get("*/a/v1/tenants/:id/features", ({ request }) => {

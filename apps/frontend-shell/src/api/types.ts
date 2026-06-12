@@ -6,14 +6,27 @@ import { z } from "zod";
 
 // ---- workspace（平台 PRD §6.1 + Entitlement 增量；contracts 未定义 → 本地 VM） ----
 
-export const ViewConfigVMSchema = z.object({
-  key: z.string(),
-  title: z.string(),
-  renderer: z.string().optional(),
-  layout: z.record(z.string(), z.unknown()).optional(),
-  /** renderer 专属配置（如图谱视角 graphOptions —— 契约 ViewConfig.options） */
-  options: z.record(z.string(), z.unknown()).optional(),
-});
+// 真实后端按 contracts WorkspaceSchema 下发（viewKey/name、scenarioPackages 对象数组、
+// navigation 带 group）；本 VM 兼容两种形态并归一化为前端消费形态（key/title/字符串包 id）。
+export const ViewConfigVMSchema = z
+  .object({
+    viewKey: z.string().optional(),
+    key: z.string().optional(),
+    name: z.string().optional(),
+    title: z.string().optional(),
+    renderer: z.string().optional(),
+    layout: z.record(z.string(), z.unknown()).optional(),
+    /** renderer 专属配置（如图谱视角 graphOptions —— 契约 ViewConfig.options） */
+    options: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((v) => Boolean(v.viewKey ?? v.key), { message: "view requires viewKey or key" })
+  .transform((v) => ({
+    key: (v.viewKey ?? v.key) as string,
+    title: v.name ?? v.title ?? ((v.viewKey ?? v.key) as string),
+    renderer: v.renderer,
+    layout: v.layout,
+    options: v.options,
+  }));
 export type ViewConfigVM = z.infer<typeof ViewConfigVMSchema>;
 
 export const WorkspaceSchema = z.object({
@@ -27,14 +40,29 @@ export const WorkspaceSchema = z.object({
     })
     .optional(),
   theme: z.record(z.string(), z.unknown()).default({}),
-  navigation: z.array(z.object({ key: z.string(), label: z.string() })).default([]),
+  navigation: z
+    .array(
+      z.object({
+        key: z.string(),
+        label: z.string(),
+        viewKey: z.string().optional(),
+        group: z.enum(["business", "admin"]).optional(),
+      }),
+    )
+    .default([]),
   views: z.array(ViewConfigVMSchema).default([]),
-  scenarioPackages: z.array(z.string()).default([]),
+  /** 契约形态为 [{id,name}]，旧 mock 形态为 string[]；归一化为 id 字符串数组 */
+  scenarioPackages: z
+    .array(z.union([z.string(), z.object({ id: z.string() }).loose()]))
+    .default([])
+    .transform((arr) => arr.map((p) => (typeof p === "string" ? p : p.id))),
   /** Entitlement 增量：解析后的生效功能集 + 配置版本 */
   features: z.array(z.string()).optional(),
   configVersion: z.number().int().optional(),
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
+/** schema 输入形态（契约形态/旧 mock 形态皆可），fixtures 用 */
+export type WorkspaceInput = z.input<typeof WorkspaceSchema>;
 
 // ---- dashboard 声明式 widget（ViewConfig.layout 内容，元数据驱动） ----
 

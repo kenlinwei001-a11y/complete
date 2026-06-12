@@ -18,7 +18,7 @@ import type {
   OntologyGraphVM,
   SimClockVM,
   TickReportVM,
-  Workspace,
+  WorkspaceInput,
 } from "@/api/types";
 import type { ModelingDraftVM, RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
 
@@ -253,7 +253,7 @@ const GRAPH_VIEWPOINTS = [
   },
 ];
 
-export function workspaceForAccount(account: MockAccount, tenantOverrides: Record<string, boolean>, configVersion: number): Workspace {
+export function workspaceForAccount(account: MockAccount, tenantOverrides: Record<string, boolean>, configVersion: number): WorkspaceInput {
   const features = featuresForAccount(account, tenantOverrides);
   const allViews = [
     { key: "dash", title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
@@ -300,7 +300,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     navigation: navViews.map((v) => ({ key: v.key, label: v.title })),
     // views 含 aop（直链可达，renderer 未注册 → 兜底卡）；navigation 不含
     views: account.username === "planner" ? views : views.filter((v) => v.key !== "graph" && !v.key.startsWith("graph-")),
-    scenarioPackages: [PACKAGE_ID],
+    // 契约形态（与真实后端同形）；前端 VM 归一化为 id 字符串数组
+    scenarioPackages: [{ id: PACKAGE_ID, name: "电池制造场景包" }],
     features: routeFeatures,
     configVersion,
   };
