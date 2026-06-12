@@ -16,9 +16,9 @@ describe("F12 · 权限 UI 与 feature 守卫", () => {
     expect(await screen.findByTestId("page-404")).toBeInTheDocument();
   });
 
-  it("planner：plan-audit 功能开通但 renderer 未交付 → 「该视图类型暂不支持」兜底卡", async () => {
+  it("planner：aop（原型存在但无后端支持，renderer 未注册）→ 「该视图类型暂不支持」兜底卡", async () => {
     loginAs("planner");
-    renderApp("/v/plan-audit");
+    renderApp("/v/aop");
     expect(await screen.findByTestId("unsupported-view")).toBeInTheDocument();
     expect(screen.getByText("该视图类型暂不支持")).toBeInTheDocument();
   });

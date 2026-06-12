@@ -127,6 +127,29 @@ export interface TickReportVM {
   forecastDeviation?: number;
 }
 
+// ---- S&OP 月度版本（DataCore /a/v1/sop/versions，契约只定义状态枚举 → 本地 VM） ----
+
+import type { SopVersionStatus } from "@platform/contracts";
+
+export interface SopVersionVM {
+  id: string;
+  month: string;
+  status: SopVersionStatus;
+  inputs: Record<string, unknown>;
+  steps: {
+    s1?: Record<string, unknown>;
+    s2?: Record<string, unknown>;
+    s3?: Record<string, unknown>;
+    s4?: Record<string, unknown>;
+    s5?: Record<string, unknown>;
+  };
+  agenda: { source: string; title: string; detail?: Record<string, unknown> }[];
+  resolutions: { name: string; delta: number }[];
+  supFinal?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---- 兜底统计 ----
 
 export interface FallbackClusterVM {

@@ -90,7 +90,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_run"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
   { key: "view.plan-generate", name: "方案生成", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
   { key: "view.sop-balance", name: "S&OP 平衡", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
-  { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true },
+  { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
+  // 原型中的 aop/quarter/story 视图无后端支持 → 仅保留 aop 入口演示「该视图类型暂不支持」兜底
+  { key: "view.aop", name: "年度情景规划台", level: "VIEW", defaultOn: true },
   { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "探索模式兜底", level: "BLOCK", defaultOn: true },
   { key: "view.project-sim.whatif", name: "What-if 推演", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },
@@ -190,14 +192,22 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {} },
     { key: "risk", title: "预判推演看板", renderer: "risk-board", layout: {} },
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
-    // 推演类视图：增量 PRD 未交付 → renderer 未注册，前端显示「该视图类型暂不支持」
+    // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: {} },
+    { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: {} },
+    { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: {} },
+    { key: "sop-balance", title: "S&OP 平衡台", renderer: "sop-balance", layout: {} },
+    // aop（年度情景规划台）：原型存在但无后端支持 → renderer 未注册，演示「该视图类型暂不支持」兜底
+    { key: "aop", title: "年度情景规划台", renderer: "aop", layout: {} },
   ];
   const featureKeyOf = (viewKey: string) =>
     viewKey === "graph" ? "view.ontology-graph" : viewKey === "risk" ? "view.risk-board" : viewKey === "order" ? "view.ledger" : `view.${viewKey}`;
   // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
   const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
-  const navViews = account.username === "planner" ? views : views.filter((v) => v.key !== "graph");
+  // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱
+  const navViews = (account.username === "planner" ? views : views.filter((v) => v.key !== "graph")).filter(
+    (v) => v.key !== "aop",
+  );
 
   // features 集合按视图 key 对齐路由（/v/:viewKey 守卫直接查 view.{viewKey}）
   const routeFeatures = features.flatMap((f) => {
@@ -213,7 +223,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     user: { id: `usr-${account.username}`, username: account.username, roles: account.roles, attributes: { baseScope: account.baseScope ?? undefined } },
     theme: account.username === "planner" ? { "--accent": "#4C90F0" } : { "--accent": "#36BFA5" },
     navigation: navViews.map((v) => ({ key: v.key, label: v.title })),
-    views: navViews,
+    // views 含 aop（直链可达，renderer 未注册 → 兜底卡）；navigation 不含
+    views: account.username === "planner" ? views : views.filter((v) => v.key !== "graph"),
     scenarioPackages: [PACKAGE_ID],
     features: routeFeatures,
     configVersion,
@@ -539,7 +550,10 @@ export const SCENES: SceneEntryConfig[] = [
   { id: "scn-risk", tenantId: TENANT_ID, viewKey: "risk", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中基地提问，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？", "为什么这天越线", "采纳常州的三班制方案"] } },
   { id: "scn-order", tenantId: TENANT_ID, viewKey: "order", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "查订单，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？"] } },
   { id: "scn-graph", tenantId: TENANT_ID, viewKey: "graph", mode: "AGENT_FIRST", defaultAgentId: "agt-explore", uiHints: { placeholder: "围绕本体随便问", suggestedQuestions: [] } },
-  { id: "scn-plan-audit", tenantId: TENANT_ID, viewKey: "plan-audit", mode: "WORKFLOW_ONLY", uiHints: { placeholder: "规划体检", suggestedQuestions: [] } },
+  { id: "scn-plan-audit", tenantId: TENANT_ID, viewKey: "plan-audit", mode: "WORKFLOW_ONLY", uiHints: { placeholder: "问体检结论，如：我的计划站得住吗？", suggestedQuestions: ["我的计划站得住吗？", "最大的硬矛盾是什么？"] } },
+  { id: "scn-plan-generate", tenantId: TENANT_ID, viewKey: "plan-generate", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问方案取舍，如：推荐哪个方案？为什么？", suggestedQuestions: ["推荐哪个方案？为什么？", "三个方案最大的差异是什么？"] } },
+  { id: "scn-project-sim", tenantId: TENANT_ID, viewKey: "project-sim", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中订单/型号提问，如：能按期交付吗？", suggestedQuestions: ["能按期交付吗？", "主瓶颈在哪？"] } },
+  { id: "scn-sop-balance", tenantId: TENANT_ID, viewKey: "sop-balance", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问月度平衡，如：本月产销缺口多大？", suggestedQuestions: ["本月产销缺口多大？"] } },
 ];
 
 export const FALLBACK_CLUSTERS: FallbackClusterVM[] = [

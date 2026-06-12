@@ -26,6 +26,16 @@ import {
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { registerTaskScript, releaseNextSegment } from "./mockEventSource";
 import { scriptForQuery } from "./sseScripts";
+import {
+  mockCapacityForecast,
+  mockPlanAudit,
+  mockPlanGenerate,
+  mockSopAdvance,
+  SopMockError,
+  sopPlanLocked,
+  type MockAuditInput,
+  type MockForecastArgs,
+} from "./simSolvers";
 
 const err = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message, requestId: `req_${Math.random().toString(36).slice(2, 10)}` } }, { status });
@@ -144,6 +154,70 @@ export const handlers = [
     if (key === "capacity_forecast")
       return HttpResponse.json({ data: { p50: 21.4, p90: 18.9, gap: -1.2, ok: false, healthFactor: 0.93, mainBn: "化成柜", perBaseRows: [], pendingCertList: [] }, snapshotVersion: "ov-12" });
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
+  }),
+
+  // ---- S&OP 月度版本（五步法状态机；FINAL → 409 PLAN_LOCKED） ----
+  http.get("*/a/v1/sop/versions", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json([...db.sopVersions].sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1)));
+  }),
+  http.post("*/a/v1/sop/versions", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json()) as { month: string; inputs?: Record<string, unknown> };
+    if (!/^\d{4}-\d{2}$/.test(body.month ?? "")) return err(422, "VALIDATION_ERROR", "month must be YYYY-MM");
+    const now = new Date().toISOString();
+    const version = {
+      id: newId("sop"),
+      month: body.month,
+      status: "DRAFT" as const,
+      inputs: body.inputs ?? {},
+      steps: {},
+      agenda: [],
+      resolutions: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.sopVersions.unshift(version);
+    return HttpResponse.json(version, { status: 201 });
+  }),
+  http.get("*/a/v1/sop/versions/:id", ({ params }) => {
+    const v = db.sopVersions.find((x) => x.id === params.id);
+    return v ? HttpResponse.json(v) : err(404, "NOT_FOUND", "sop version 不存在");
+  }),
+  http.patch("*/a/v1/sop/versions/:id", async ({ params, request }) => {
+    const v = db.sopVersions.find((x) => x.id === params.id);
+    if (!v) return err(404, "NOT_FOUND", "sop version 不存在");
+    if (v.status === "FINAL") {
+      const e = sopPlanLocked();
+      return err(e.status, e.code, e.message);
+    }
+    const fields = (await request.json()) as Record<string, unknown>;
+    v.inputs = { ...v.inputs, ...fields };
+    v.updatedAt = new Date().toISOString();
+    return HttpResponse.json(v);
+  }),
+  http.post("*/a/v1/sop/versions/:id/advance", async ({ params, request }) => {
+    const v = db.sopVersions.find((x) => x.id === params.id);
+    if (!v) return err(404, "NOT_FOUND", "sop version 不存在");
+    const body = (await request.json()) as { step: number; payload?: Record<string, unknown> };
+    try {
+      return HttpResponse.json(mockSopAdvance(v, body.step, body.payload ?? {}));
+    } catch (e) {
+      if (e instanceof SopMockError) return err(e.status, e.code, e.message);
+      throw e;
+    }
+  }),
+  http.post("*/a/v1/sop/versions/:id/finalize", ({ params }) => {
+    const v = db.sopVersions.find((x) => x.id === params.id);
+    if (!v) return err(404, "NOT_FOUND", "sop version 不存在");
+    if (v.status === "FINAL") {
+      const e = sopPlanLocked();
+      return err(e.status, e.code, e.message);
+    }
+    if (v.status !== "EXEC_MEETING") return err(409, "INVALID_STATE", `cannot finalize from ${v.status}（先执行第⑤步）`);
+    v.status = "FINAL";
+    v.updatedAt = new Date().toISOString();
+    return HttpResponse.json(v);
   }),
 
   // ---- 时序聚合查询（A8.4，无任何参数组合可返回原始行） ----
@@ -328,6 +402,36 @@ export const handlers = [
   }),
 
   // ---- Action 草稿 ----
+  http.post("*/a/v1/action-drafts", async ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json()) as {
+      actionTypeKey?: string;
+      payload?: Record<string, unknown>;
+      origin?: { userId?: string; taskId?: string };
+      submit?: boolean;
+    };
+    if (!body.actionTypeKey) return err(422, "VALIDATION_ERROR", "actionTypeKey required");
+    const draft = {
+      id: newId("act"),
+      tenantId: TENANT_ID,
+      actionTypeKey: body.actionTypeKey,
+      payload: body.payload ?? {},
+      origin: { userId: body.origin?.userId ?? `usr-${account.username}`, taskId: body.origin?.taskId },
+      status: (body.submit ? "PENDING_APPROVAL" : "DRAFT") as "PENDING_APPROVAL" | "DRAFT",
+      approvalSteps: [{ seq: 1, role: "admin" }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.actionDrafts.unshift(draft);
+    return HttpResponse.json({ draftId: draft.id, status: draft.status, draft }, { status: 201 });
+  }),
+  http.post("*/a/v1/action-drafts/:id/submit", ({ params }) => {
+    const d = db.actionDrafts.find((x) => x.id === params.id);
+    if (!d) return err(404, "NOT_FOUND", "草稿不存在");
+    d.status = "PENDING_APPROVAL";
+    return HttpResponse.json(d);
+  }),
   http.get("*/a/v1/action-drafts/:id", ({ params }) => {
     const d = db.actionDrafts.find((x) => x.id === params.id);
     return d ? HttpResponse.json(d) : err(404, "NOT_FOUND", "草稿不存在");
@@ -352,6 +456,29 @@ export const handlers = [
   }),
 
   // ======================== B · AgentCore ========================
+
+  // ---- 同步求解器代理（Entitlement §4：先查 feature —— solverKey 绑定的功能被关 → 404，不泄露存在性） ----
+  http.post("*/b/v1/solvers/:key/run", async ({ params, request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const key = String(params.key);
+    const features = featuresForAccount(account, db.tenantOverrides);
+    const boundOff = FEATURE_REGISTRY.some(
+      (f) => f.bindings?.solverKeys?.includes(key) && !features.includes(f.key),
+    );
+    if (boundOff) return err(404, "FEATURE_NOT_FOUND", "not found");
+    const body = (await request.json().catch(() => ({}))) as { args?: Record<string, unknown> };
+    const args = body.args ?? {};
+    if (key === "plan_audit") return HttpResponse.json({ data: mockPlanAudit(args as unknown as MockAuditInput), snapshotVersion: "ov-12" });
+    if (key === "plan_generate") return HttpResponse.json({ data: mockPlanGenerate(args), snapshotVersion: "ov-12" });
+    if (key === "capacity_forecast") {
+      const data = mockCapacityForecast(args as unknown as MockForecastArgs);
+      if ("error" in data) return err(422, "VALIDATION_ERROR", String(data.error));
+      return HttpResponse.json({ data, snapshotVersion: "ov-12" });
+    }
+    if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
+  }),
 
   http.get("*/b/v1/scenes", ({ request }) => {
     const url = new URL(request.url);

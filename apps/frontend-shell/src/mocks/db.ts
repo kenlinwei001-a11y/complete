@@ -1,5 +1,6 @@
 import type { ActionDraft, AgentDefinition, ConnectionInstance, IntentDefinition, McpServerConfig, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
-import type { SimClockVM, TickReportVM } from "@/api/types";
+import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
+import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM } from "@/api/endpoints";
 import type { ModelingDraftVM } from "@/api/endpoints";
 import type { TaskScriptPlan } from "./sseScripts";
@@ -49,6 +50,7 @@ interface MockDb {
   mcpConfigs: McpServerConfig[];
   scenes: SceneEntryConfig[];
   actionDrafts: ActionDraft[];
+  sopVersions: SopVersionVM[];
 }
 
 function freshDb(): MockDb {
@@ -76,6 +78,7 @@ function freshDb(): MockDb {
     mcpConfigs: structuredClone(MCP_CONFIGS),
     scenes: structuredClone(SCENES),
     actionDrafts: structuredClone(ACTION_DRAFTS),
+    sopVersions: seedSopVersions(),
   };
 }
 

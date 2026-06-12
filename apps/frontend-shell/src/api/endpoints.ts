@@ -24,6 +24,7 @@ import type {
   ObjectsPage,
   OntologyGraphVM,
   SimClockVM,
+  SopVersionVM,
   SyncJobVM,
   SyntheticJobVM,
   TickReportVM,
@@ -87,6 +88,31 @@ export const fetchOntologyGraph = (packageId: string) =>
 
 export const invokeSolver = (solverKey: string, args: Record<string, unknown>) =>
   api.a<{ data: unknown; snapshotVersion: string }>(`/a/v1/solvers/${solverKey}/invoke`, { body: { args } });
+
+/** 推演类视图统一走 B 侧（entitlement 先行：feature 关 → 404 FEATURE_NOT_FOUND，再 OBO 透传 DataCore） */
+export const runSolver = (solverKey: string, args: Record<string, unknown>) =>
+  api.b<{ data: unknown; snapshotVersion: string }>(`/b/v1/solvers/${encodeURIComponent(solverKey)}/run`, { body: { args } });
+
+// ---- S&OP 月度版本（S1.8 五步法状态机；FINAL 后任何字段变更 → 409 PLAN_LOCKED） ----
+
+export const fetchSopVersions = () => api.a<SopVersionVM[]>("/a/v1/sop/versions");
+export const fetchSopVersion = (id: string) => api.a<SopVersionVM>(`/a/v1/sop/versions/${id}`);
+export const createSopVersion = (body: { month: string; inputs?: Record<string, unknown> }) =>
+  api.a<SopVersionVM>("/a/v1/sop/versions", { body });
+export const patchSopVersion = (id: string, fields: Record<string, unknown>) =>
+  api.a<SopVersionVM>(`/a/v1/sop/versions/${id}`, { method: "PATCH", body: fields });
+export const advanceSopVersion = (id: string, step: number, payload: Record<string, unknown>) =>
+  api.a<SopVersionVM>(`/a/v1/sop/versions/${id}/advance`, { body: { step, payload } });
+export const finalizeSopVersion = (id: string) =>
+  api.a<SopVersionVM>(`/a/v1/sop/versions/${id}/finalize`, { body: {} });
+
+/** 采纳/一键修正 → Action 草稿（C10 审批留痕；submit=true 直接进入审批流） */
+export const createActionDraft = (body: {
+  actionTypeKey: string;
+  payload: Record<string, unknown>;
+  origin: { userId: string; taskId?: string };
+  submit?: boolean;
+}) => api.a<{ draftId: string; status: string }>("/a/v1/action-drafts", { body });
 
 export const queryTimeseriesAgg = (input: {
   seriesKey: string;

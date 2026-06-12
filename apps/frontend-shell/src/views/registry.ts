@@ -7,8 +7,9 @@ export interface ViewRendererProps {
 
 /**
  * 业务视图渲染器注册表（PRD §7.1）。
- * 推演类视图（plan-audit/plan-generate/project-sim/sop/aop/quarter）的增量 PRD 未交付——
- * 不在此注册，统一落到「该视图类型暂不支持」卡（干净的扩展点：交付后在此 register 即可）。
+ * 推演类视图（plan-audit/plan-generate/project-sim/sop-balance）按原型
+ * docs/demo-推演系统.html 反推交互规格并绑定真实后端（B 侧 solvers/run + A 侧 sop/action-drafts）。
+ * aop/quarter/story 等原型视图无后端支持 → 不注册，落「该视图类型暂不支持」兜底卡。
  */
 const registry = new Map<string, LazyExoticComponent<ComponentType<ViewRendererProps>>>();
 
@@ -24,3 +25,7 @@ registerRenderer("dashboard", () => import("./DashboardView"));
 registerRenderer("ontology-graph", () => import("./OntologyGraphView"));
 registerRenderer("risk-board", () => import("./RiskBoardView"));
 registerRenderer("ledger", () => import("./LedgerView"));
+registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
+registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
+registerRenderer("project-sim", () => import("./sim/ProjectSimView"));
+registerRenderer("sop-balance", () => import("./sim/SopBalanceView"));
