@@ -6,6 +6,8 @@ export interface ToolAuthCtx extends AuthCtx {
   token?: string;
   /** Token `exp` (epoch seconds); expiring in <60s → refuse new tool calls. */
   tokenExpiresAt?: number;
+  /** 开发期 X-Debug-User 原值：无 bearer token 时透传给 DataCore（仅非生产）。 */
+  debugUser?: string;
 }
 
 export interface OntologyClient {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateExpression, parseExpression } from "../src/ruledsl.js";
+import { evaluateAst, evaluateExpression, parseExpression } from "../src/ruledsl.js";
 
 describe("rule DSL", () => {
   it("C03: BLOCK condition fires at demandDelta > 0.5", () => {
@@ -61,5 +61,23 @@ describe("rule DSL", () => {
     expect(() => parseExpression("a >")).toThrow();
     expect(() => parseExpression("")).toThrow();
     expect(() => parseExpression("a > 1 AND")).toThrow();
+  });
+
+  it("A8.5 SUSTAIN(comparison, days): parses, evaluates via the provider, false without one", () => {
+    const ast = parseExpression("SUSTAIN(Line.utilization > 95, 3)");
+    expect(ast).toMatchObject({ kind: "sustain", days: 3 });
+    // without a sustain provider the clause is false (snapshot single values are never used)
+    expect(evaluateExpression("SUSTAIN(Line.utilization > 95, 3)", { payload: { Line: { utilization: 99 } } })).toBe(false);
+    // with a provider, the inner comparison is delegated bucket-by-bucket
+    const buckets = [96, 97, 96];
+    expect(
+      evaluateExpression("SUSTAIN(Line.utilization > 95, 3)", {
+        payload: {},
+        sustain: (inner, days) =>
+          buckets.length >= days &&
+          buckets.slice(-days).every((v) => evaluateAst(inner, { payload: { Line: { utilization: v } } })),
+      }),
+    ).toBe(true);
+    expect(() => parseExpression("SUSTAIN(Line.utilization > 95)")).toThrow();
   });
 });

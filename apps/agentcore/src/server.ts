@@ -31,7 +31,18 @@ import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: deps.config.LOG_LEVEL } });
+  const app = Fastify({
+    logger: { level: deps.config.LOG_LEVEL },
+    // 前端 PRD §3/§6.2 真连别名：QOS 端点在 QOS-PRD 中挂 /api/v1，前端契约写 {B}/b/v1。
+    // /b/v1 下原生路由（agents/workflows/…）不受影响，只把 QOS 子集重写到 /api/v1。
+    rewriteUrl(req) {
+      const url = req.url ?? "/";
+      for (const seg of ["/b/v1/queries", "/b/v1/catalog", "/b/v1/ops"]) {
+        if (url.startsWith(seg)) return "/api/v1" + url.slice("/b/v1".length);
+      }
+      return url;
+    },
+  });
 
   // tolerate empty JSON bodies (e.g. POST .../publish without payload)
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
@@ -43,10 +54,17 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
   });
 
-  const auth = (req: FastifyRequest): Promise<RequestAuth> =>
-    resolveAuth(req.headers as Record<string, string | string[] | undefined>, {
+  const auth = (req: FastifyRequest): Promise<RequestAuth> => {
+    const headers = { ...(req.headers as Record<string, string | string[] | undefined>) };
+    // 前端 PRD §4.3 契约补充项：EventSource 无法携带自定义头，SSE 的 token 经 ?access_token= 传递
+    const q = req.query as Record<string, unknown> | undefined;
+    if (!headers["authorization"] && typeof q?.["access_token"] === "string") {
+      headers["authorization"] = `Bearer ${q["access_token"] as string}`;
+    }
+    return resolveAuth(headers, {
       dataCoreBaseUrl: deps.config.DATACORE_BASE_URL,
     });
+  };
 
   app.setErrorHandler((err, req, reply) => {
     const requestId = req.id as string;
@@ -620,6 +638,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // entitlement PRD §5 (B5 联动): entry referencing a disabled view → marked inactive
     const enabled = await deps.features.enabledSet(a.tenantId, a.token);
     return entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
+  });
+
+  // 前端 PRD §6.2 别名：按视图取场景入口（查询 Dock 的 placeholder/建议问题来源）
+  app.get("/b/v1/scenes", async (req) => {
+    const a = await auth(req);
+    const view = (req.query as Record<string, unknown>)["view"];
+    const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);
+    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const marked = entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
+    return typeof view === "string" && view.length > 0
+      ? marked.filter((e) => e.viewKey === view)
+      : marked;
   });
 
   app.put("/b/v1/scene-entries/:viewKey", async (req) => {

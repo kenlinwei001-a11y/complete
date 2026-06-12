@@ -439,9 +439,50 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ObjectsQuerySchema, req.body);
     return ontology.queryObjects(ctx(req), body.objectType, body.filter, body.limit);
   });
+  // 前端 PRD §6.4 别名：objectRef 槽位搜索选择器（GET /a/v1/objects?type=&q=）
+  app.get("/a/v1/objects", async (req) => {
+    const q = req.query as Record<string, unknown>;
+    const type = typeof q["type"] === "string" ? (q["type"] as string) : "";
+    const needle = typeof q["q"] === "string" ? (q["q"] as string).toLowerCase() : "";
+    if (!type) throw validationError("type query parameter is required");
+    const result = await ontology.queryObjects(ctx(req), type, {}, 200);
+    const rows = (result.data as Record<string, unknown>[]).filter((o) => {
+      if (!needle) return true;
+      const p = (o["props"] as Record<string, unknown>) ?? {};
+      const hay = JSON.stringify([
+        o["name"], o["label"], o["id"], p["name"], p["label"], p["so"], p["cust"], p["modelId"], p["baseId"],
+      ]).toLowerCase();
+      return hay.includes(needle);
+    });
+    return { data: rows.slice(0, 20), snapshotVersion: result.snapshotVersion };
+  });
   app.get("/a/v1/objects/:type/:id", async (req) => {
     const { type, id } = req.params as { type: string; id: string };
     return ontology.getObject(ctx(req), type, id);
+  });
+  // 前端 PRD §7.2：类型级本体图谱（节点=ObjectType，边=LinkType）
+  app.get("/a/v1/ontology/graph", async (req) => {
+    const c = ctx(req);
+    const types = (await ontology.listTypes(c)) as unknown as Record<string, unknown>[];
+    const links = (await repos.ontologyLinks.list(c.tenantId)) as unknown as Record<string, unknown>[];
+    return {
+      nodes: types.map((t) => ({
+        key: t["typeKey"] ?? t["key"],
+        displayName: t["displayName"] ?? t["typeKey"] ?? t["key"],
+        domain: t["domain"] ?? "factory",
+        tier: t["tier"] ?? 0,
+        kind: t["kind"] ?? "object",
+        properties: Object.keys((t["properties"] as Record<string, unknown>) ?? {}),
+        sourceBindings: t["sourceBindings"] ?? [],
+      })),
+      edges: links.map((l) => ({
+        key: l["key"] ?? l["id"],
+        from: l["fromTypeKey"] ?? l["from"],
+        to: l["toTypeKey"] ?? l["to"],
+        name: l["name"] ?? l["key"],
+        cardinality: l["cardinality"] ?? "1:N",
+      })),
+    };
   });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };

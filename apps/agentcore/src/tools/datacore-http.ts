@@ -23,7 +23,11 @@ async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: 
       method,
       headers: {
         "content-type": "application/json",
-        ...(ctx.token ? { authorization: `Bearer ${ctx.token}` } : {}),
+        ...(ctx.token
+          ? { authorization: `Bearer ${ctx.token}` }
+          : ctx.debugUser
+            ? { "x-debug-user": encodeURIComponent(ctx.debugUser) }
+            : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -121,7 +125,11 @@ class HttpIamClient implements IamClient {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...(ctx.token ? { authorization: `Bearer ${ctx.token}` } : {}),
+          ...(ctx.token
+          ? { authorization: `Bearer ${ctx.token}` }
+          : ctx.debugUser
+            ? { "x-debug-user": encodeURIComponent(ctx.debugUser) }
+            : {}),
         },
         body: JSON.stringify({ toolName, args }),
       });

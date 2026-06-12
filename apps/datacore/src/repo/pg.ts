@@ -411,7 +411,6 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
   const ext = await pool.query(`SELECT 1 FROM pg_extension WHERE extname = 'vector'`);
   const hasPgVector = (ext.rowCount ?? 0) > 0;
   if (!hasPgVector) {
-    // eslint-disable-next-line no-console
     console.warn(
       "[datacore] pgvector extension unavailable — kb_chunks falls back to JSONB embeddings with app-side cosine similarity",
     );

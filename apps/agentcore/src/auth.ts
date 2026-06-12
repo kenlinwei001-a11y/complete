@@ -78,6 +78,7 @@ export async function resolveAuth(
         .slice(second + 1)
         .split("|")
         .filter(Boolean),
+      debugUser: raw,
     };
   }
 

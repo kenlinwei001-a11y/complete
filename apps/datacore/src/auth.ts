@@ -102,6 +102,12 @@ export class AuthService {
 
   /** Dev fallback (QOS-PRD §8): X-Debug-User: tenantId:userId:role1|role2 */
   async debugCtx(header: string): Promise<AuthCtx> {
+    // AgentCore OBO 透传时会 URI 编码（角色名可含 CJK，header 须 latin1 安全）
+    try {
+      header = decodeURIComponent(header);
+    } catch {
+      /* keep as-is */
+    }
     const parts = header.split(":");
     if (parts.length < 3) throw validationError("X-Debug-User must be tenantId:userId:role1|role2");
     const tenantId = parts[0] as string;
