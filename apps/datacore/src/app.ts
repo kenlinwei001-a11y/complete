@@ -274,6 +274,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     "/a/v1/auth/login",
     "/a/v1/auth/refresh",
     "/a/v1/auth/logout",
+    "/a/v1/healthz",
+    "/a/v1/readyz",
     "/a/v1/.well-known/jwks.json",
   ]);
 
@@ -318,6 +320,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
   });
   app.get("/metrics", async (_req, reply) => reply.type("text/plain").send(metrics.render()));
+  // 网关前缀别名（gateway 只反代 /a/v1/* → 经代理探活用）
+  app.get("/a/v1/healthz", async () => ({ status: "ok" }));
+  app.get("/a/v1/readyz", async (_req, reply) => {
+    try {
+      await repos.ping();
+      return { status: "ready" };
+    } catch {
+      return reply.status(503).send({ status: "not ready" });
+    }
+  });
 
   // ---- A0 IAM -------------------------------------------------------------------
   // 前端 PRD §4.1：refresh token 走 httpOnly cookie（Path 限定 /a/v1/auth）；body 透传保持向后兼容。

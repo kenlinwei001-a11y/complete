@@ -104,7 +104,7 @@ export class Orchestrator {
       if (existing !== taskId) {
         const t = await this.deps.repos.tasks.get(existing);
         if (t) {
-          return { taskId: t.id, status: t.status, streamUrl: `/api/v1/queries/${t.id}/events`, reused: true };
+          return { taskId: t.id, status: t.status, streamUrl: `/b/v1/queries/${t.id}/events`, reused: true };
         }
       }
     }
@@ -131,7 +131,7 @@ export class Orchestrator {
       });
     });
 
-    return { taskId, status: "ROUTING", streamUrl: `/api/v1/queries/${taskId}/events`, reused: false };
+    return { taskId, status: "ROUTING", streamUrl: `/b/v1/queries/${taskId}/events`, reused: false };
   }
 
   // -------------------------------------------------------------------------

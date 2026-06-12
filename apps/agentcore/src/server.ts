@@ -115,6 +115,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return deps.metrics.render();
   });
 
+  // 网关前缀别名（gateway 只反代 /b/v1/* → 经代理探活用）
+  app.get("/b/v1/healthz", async () => ({ status: "ok" }));
+  app.get("/b/v1/readyz", async () => ({ status: "ok" }));
+
   // ---------------------------------------------------------------------
   // QOS §8.1–8.3
   // ---------------------------------------------------------------------
