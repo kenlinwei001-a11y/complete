@@ -1,28 +1,22 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { PlanAuditOutputSchema, RiskTimelineOutputSchema, type PlanAuditInput, type PlanAuditOutput } from "@platform/contracts";
-import { runSolver } from "@/api/endpoints";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  PlanAuditOutputSchema,
+  RiskTimelineOutputSchema,
+  type PlanAuditInput,
+  type PlanAuditOutput,
+} from "@platform/contracts";
+import { fetchPlanVersionCurrent, runSolver } from "@/api/endpoints";
 import { useFeature } from "@/workspace/featureGate";
 import { useSessionStore } from "@/store/sessionStore";
-import { toastError } from "@/store/toastStore";
 import type { ViewRendererProps } from "../registry";
-import { HeatStrip, SnapshotBadge, useAdoptToDraft } from "./shared";
+import { SnapshotBadge, useAdoptToDraft } from "./shared";
+import { useLiveSolver } from "./useLiveSolver";
+import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
 type AuditItem = PlanAuditOutput["H"][number];
-
-/** 原型 AUDIT_PRESETS（demo-推演系统.html buildAuditView：电池行业默认值） */
-const PRESETS: Record<string, { note: string; input: PlanAuditInput }> = {
-  V7: {
-    note: "2026-07 月度 V7（S&OP 定稿基线）",
-    input: { dem: 132, seg_pas: 71, seg_ess: 49, seg_com: 12, sup: 131.2, ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
-  },
-  CEO: {
-    note: "CEO 直球：再加量 + 抬毛利 + 现金更紧",
-    input: { dem: 140, seg_pas: 72, seg_ess: 56, seg_com: 12, sup: 131.2, ltaCov: 80, kitGap: 1200, gmTarget: 17.5, cashCushion: 48, capex: 8 },
-  },
-};
 
 const FIELD_GROUPS: { title: string; fields: { key: keyof PlanAuditInput; label: string; unit: string; step: number }[] }[] = [
   {
@@ -45,7 +39,7 @@ const FIELD_GROUPS: { title: string; fields: { key: keyof PlanAuditInput; label:
   {
     title: "财务侧",
     fields: [
-      { key: "gmTarget", label: "毛利率目标", unit: "%", step: 0.1 },
+      { key: "gmTarget", label: "毛利率目标", unit: "%", step: 0.5 },
       { key: "cashCushion", label: "现金安全垫(13周最低点)", unit: "亿", step: 0.5 },
       { key: "capex", label: "CAPEX 本月", unit: "亿", step: 0.5 },
     ],
@@ -58,39 +52,43 @@ const VERDICT_COLOR: Record<PlanAuditOutput["verdict"], string> = {
   不通过: "var(--danger)",
 };
 
-/** 规划体检（renderer=plan-audit）：输入计划 → plan_audit 求解器 → H/M/S 三段诊断 */
+/**
+ * 规划体检（renderer=plan-audit，增量 §7.10）：
+ * 基线来自当前定稿 S&OP 版本（GET /a/v1/plan-versions/current），改任意字段
+ * debounce 300ms 即时重检（plan_audit），竞态最后发出者胜。
+ */
 export default function PlanAuditView(_props: ViewRendererProps) {
-  const [preset, setPreset] = useState("V7");
-  const [form, setForm] = useState<PlanAuditInput>(PRESETS.V7!.input);
-  const [result, setResult] = useState<{ out: PlanAuditOutput; gmStruct?: number; snapshotVersion: string } | null>(null);
+  const baseline = useQuery({ queryKey: ["a", "plan-version-current"], queryFn: fetchPlanVersionCurrent });
+  const [form, setForm] = useState<PlanAuditInput | null>(null);
   const canApplyFix = useFeature("act.plan-audit.apply-fix");
   const canAdopt = useFeature("act.adopt-to-draft");
   const adopt = useAdoptToDraft();
 
-  const audit = useMutation({
-    mutationFn: async (input: PlanAuditInput) => {
-      const res = await runSolver("plan_audit", input as unknown as Record<string, unknown>);
-      return {
-        out: PlanAuditOutputSchema.parse(res.data),
-        gmStruct: (res.data as { gmStruct?: number }).gmStruct,
-        snapshotVersion: res.snapshotVersion,
-      };
-    },
-    onSuccess: (data) => {
-      setResult(data);
-      // 选中对象写入共享 store（查询 Dock 随问句携带）
-      useSessionStore.getState().setSelectedObjects([
-        { objectType: "PlanVersion", objectId: `plan-${preset}`, label: `月度计划草案（${preset} 基线）` },
-      ]);
-    },
-    onError: toastError,
-  });
+  // 基线到达 → 预填输入面板 + 选中对象写入共享 store（查询 Dock 随问句携带）
+  useEffect(() => {
+    if (!baseline.data || form !== null) return;
+    setForm(baseline.data.input);
+    useSessionStore.getState().setSelectedObjects([
+      {
+        objectType: "PlanVersion",
+        objectId: baseline.data.versionId ?? "plan-baseline",
+        label: `月度计划基线（${baseline.data.versionLabel}）`,
+      },
+    ]);
+  }, [baseline.data, form]);
+
+  const audit = useLiveSolver(
+    "plan_audit",
+    form as Record<string, unknown> | null,
+    (raw) => ({
+      out: PlanAuditOutputSchema.parse(raw),
+      gmStruct: (raw as { gmStruct?: number }).gmStruct,
+    }),
+  );
 
   const applyFix = (item: AuditItem) => {
-    if (!item.fix) return;
-    const next = { ...form, ...(item.fix.patch as Partial<PlanAuditInput>) };
-    setForm(next);
-    audit.mutate(next); // 应用即时重检（原型 applyAuditFix 语义）
+    if (!item.fix || !form) return;
+    setForm({ ...form, ...(item.fix.patch as Partial<PlanAuditInput>) }); // 应用即触发重检（debounce）
   };
 
   return (
@@ -102,67 +100,65 @@ export default function PlanAuditView(_props: ViewRendererProps) {
             输入你的计划，系统按本体 + 规则 + 四平衡求解器全量扫描 → 三段输出：硬矛盾 H · 软风险 M · 建议修正 S，每项可追溯到规则与求解器。
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.sim.audit.presets}</span>
-          {Object.entries(PRESETS).map(([k, p]) => (
-            <button
-              key={k}
-              className={`${styles.chip} ${preset === k ? styles.on : ""}`}
-              title={p.note}
-              data-testid={`audit-preset-${k}`}
-              onClick={() => {
-                setPreset(k);
-                setForm(p.input);
-                setResult(null);
-              }}
-            >
-              {k}
-            </button>
-          ))}
-        </div>
+        <button
+          className="btn sm"
+          data-testid="audit-reset"
+          disabled={!baseline.data}
+          onClick={() => baseline.data && setForm(baseline.data.input)}
+        >
+          {zh.sim.audit.resetInput}
+        </button>
+      </div>
+
+      <div className={styles.baselineBar} data-testid="audit-baseline">
+        <span className="badge blue">{baseline.data ? zh.sim.audit.baseline(baseline.data.versionLabel) : zh.common.loading}</span>
+        {audit.isFetching && <span style={{ color: "var(--muted2)" }}>重检中…</span>}
       </div>
 
       <div className={styles.twoCol}>
         <div className="panel">
           <div className="section-title">{zh.sim.audit.inputTitle}</div>
-          {FIELD_GROUPS.map((g) => (
-            <div key={g.title}>
-              <div className={styles.grpHead}>{g.title}</div>
-              {g.fields.map((f) => (
-                <div className={styles.formRow} key={f.key}>
-                  <span>
-                    <label htmlFor={`audit-${f.key}`}>{f.label}</label>
-                  </span>
-                  <input
-                    id={`audit-${f.key}`}
-                    type="number"
-                    step={f.step}
-                    value={form[f.key]}
-                    data-testid={`audit-input-${f.key}`}
-                    onChange={(e) => setForm({ ...form, [f.key]: parseFloat(e.target.value) || 0 })}
-                  />
-                  <i>{f.unit}</i>
-                </div>
-              ))}
-            </div>
-          ))}
-          <button className="btn primary" style={{ marginTop: 12 }} disabled={audit.isPending} onClick={() => audit.mutate(form)} data-testid="audit-run">
-            {zh.sim.runAudit} ▶
-          </button>
+          {!form && <div className="empty-state">{zh.common.loading}</div>}
+          {form &&
+            FIELD_GROUPS.map((g) => (
+              <div key={g.title}>
+                <div className={styles.grpHead}>{g.title}</div>
+                {g.fields.map((f) => (
+                  <div className={styles.formRow} key={f.key}>
+                    <span>
+                      <label htmlFor={`audit-${f.key}`}>{f.label}</label>
+                    </span>
+                    <input
+                      id={`audit-${f.key}`}
+                      type="number"
+                      step={f.step}
+                      value={form[f.key]}
+                      data-testid={`audit-input-${f.key}`}
+                      onChange={(e) => setForm({ ...form, [f.key]: parseFloat(e.target.value) || 0 })}
+                    />
+                    <i>{f.unit}</i>
+                  </div>
+                ))}
+              </div>
+            ))}
         </div>
 
         <div>
-          {!result && <div className="empty-state">{audit.isPending ? zh.common.loading : "填写计划字段后点「体检」"}</div>}
-          {result && (
+          {!audit.data && <div className="empty-state">{zh.common.loading}</div>}
+          {audit.data && (
             <AuditResult
-              out={result.out}
-              gmStruct={result.gmStruct}
-              snapshotVersion={result.snapshotVersion}
+              out={audit.data.out}
+              gmStruct={audit.data.gmStruct}
+              snapshotVersion={audit.snapshotVersion ?? undefined}
               canApplyFix={canApplyFix}
               canAdopt={canAdopt}
               onApplyFix={applyFix}
               onAdopt={(item) =>
-                adopt.mutate({ versionId: `plan-${preset}`, reason: `规划体检 ${item.id}·${item.title}`, patch: item.fix?.patch ?? {} })
+                adopt.mutate({
+                  versionId: baseline.data?.versionId ?? "plan-baseline",
+                  reason: `规划体检 ${item.id}·${item.title}`,
+                  patch: item.fix?.patch ?? {},
+                })
               }
             />
           )}
@@ -183,7 +179,7 @@ function AuditResult({
 }: {
   out: PlanAuditOutput;
   gmStruct?: number;
-  snapshotVersion: string;
+  snapshotVersion?: string;
   canApplyFix: boolean;
   canAdopt: boolean;
   onApplyFix: (item: AuditItem) => void;
@@ -252,15 +248,25 @@ function AuditCard({
   onAdopt: (item: AuditItem) => void;
 }) {
   const [tlOpen, setTlOpen] = useState(false);
+  const [ruleOpen, setRuleOpen] = useState(false);
   return (
     <div className={`${styles.audCard} ${cls === "hard" ? styles.hard : cls === "med" ? styles.med : styles.sug}`} data-testid={`audit-item-${cls}-${item.id}`}>
       <div className={styles.audHead}>
         <b>
-          {cls === "hard" ? "⛔" : cls === "med" ? "⚠" : "💡"} {item.title}
+          {cls === "hard" ? "⛔" : cls === "med" ? "⚠" : "✓"} {item.title}
         </b>
-        {item.ruleRef && <span className="badge amber">{item.ruleRef}</span>}
+        {item.ruleRef && (
+          <button className="badge amber" style={{ cursor: "pointer" }} data-testid={`rule-badge-${cls}-${item.id}`} onClick={() => setRuleOpen(!ruleOpen)}>
+            {item.ruleRef}
+          </button>
+        )}
         <span className="badge">{item.id}</span>
       </div>
+      {ruleOpen && (
+        <div className={styles.noteInfo} style={{ fontSize: 10.5 }}>
+          规则 <b className="mono">{item.ruleRef}</b> · 表达式见规则库（/admin/rules），点击徽章收起。
+        </div>
+      )}
       <div className={styles.audWhy}>{item.why}</div>
       <div className={styles.audActions}>
         {item.fix && canApplyFix && Object.keys(item.fix.patch).length > 0 && (
@@ -273,17 +279,20 @@ function AuditCard({
             {zh.sim.adoptToDraft}
           </button>
         )}
-        <button className={styles.tlToggle} onClick={() => setTlOpen(!tlOpen)} data-testid={`tl-toggle-${cls}-${item.id}`}>
-          {tlOpen ? "▼ 收起时序推演" : zh.sim.audit.timeline}
-        </button>
+        {item.fix && <span style={{ fontSize: 10, color: "var(--muted2)" }}>{zh.sim.audit.fixFootnote}</span>}
+        {(cls === "hard" || cls === "med") && (
+          <button className={styles.tlToggle} onClick={() => setTlOpen(!tlOpen)} data-testid={`tl-toggle-${cls}-${item.id}`}>
+            {tlOpen ? "▼ 收起时序推演" : zh.sim.audit.timeline}
+          </button>
+        )}
       </div>
-      {tlOpen && <RiskTimelineStrip />}
+      {tlOpen && <RiskPropagation itemId={item.id} />}
     </div>
   );
 }
 
-/** 时序推演展开：risk_timeline 求解器逐日张力条（与推演看板同源数学） */
-function RiskTimelineStrip() {
+/** 时序推演展开（§7.10-4）：risk_timeline 同构传导数据 → PropagationTimeline（与 §7.11 问题卡共用全局唯一实现） */
+function RiskPropagation({ itemId }: { itemId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["b", "solver", "risk_timeline"],
     queryFn: async () => {
@@ -291,19 +300,12 @@ function RiskTimelineStrip() {
       return RiskTimelineOutputSchema.parse(res.data);
     },
   });
+  const vm = data ? buildPropagation(data) : null;
   return (
-    <div className={styles.tlBox} data-testid="audit-risk-timeline">
+    <div className={styles.tlBox} data-testid={`audit-risk-timeline-${itemId}`}>
       <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.audit.timelineHint}</div>
       {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
-      {data?.cards.slice(0, 2).map((card) => (
-        <div key={`${card.base}:${card.factor}`} style={{ marginBottom: 6 }}>
-          <span style={{ fontSize: 11 }}>
-            {card.base} · {card.factor} · 峰值 <b className="mono">{card.peak.toFixed(0)}</b> · 越线日{" "}
-            <b className="mono">{card.crossDay != null ? `D+${card.crossDay}` : zh.risk.noCross}</b>
-          </span>
-          <HeatStrip series={card.series} threshold={data.threshold} />
-        </div>
-      ))}
+      {vm && <PropagationTimeline vm={vm} testId={`ptl-${itemId}`} />}
     </div>
   );
 }

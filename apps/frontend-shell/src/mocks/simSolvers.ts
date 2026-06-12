@@ -142,6 +142,7 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
   }
 
   if (input.cashCushion < t.cashHard) {
+    // 与 DataCore plan.ts 同步：fix 同时回补现金垫至底线（应用后降级为软风险，F14）
     H.push({
       id: "X05",
       title: "现金垫",
@@ -149,7 +150,7 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
       why: `现金垫 ${input.cashCushion} 亿低于底线 ${t.cashHard} 亿`,
       fix: {
         label: "CAPEX 缩减/推后",
-        patch: { capex: Math.max(0, round(input.capex - (t.cashHard - input.cashCushion), 2)) },
+        patch: { capex: Math.max(0, round(input.capex - (t.cashHard - input.cashCushion), 2)), cashCushion: t.cashHard },
       },
     });
   } else if (input.cashCushion < t.cashSoft) {
@@ -160,7 +161,7 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
       why: `现金垫 ${input.cashCushion} 亿处于警戒区间 [${t.cashHard}, ${t.cashSoft}) 亿`,
       fix: {
         label: "CAPEX 缩减/推后",
-        patch: { capex: Math.max(0, round(input.capex - (t.cashSoft - input.cashCushion), 2)) },
+        patch: { capex: Math.max(0, round(input.capex - (t.cashSoft - input.cashCushion), 2)), cashCushion: t.cashSoft },
       },
     });
   }
@@ -202,7 +203,7 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
 
 const GEN = {
   base: { rev: 100, gm: 0.142, share: 17, turns: 6.0, cash: 70 },
-  targets: { gmFloor: 0.135, cashFloor: 45, capexCap: 20 },
+  targets: { gmFloor: 0.135, cashFloor: 45, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
   paths: {
     A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
     B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },
@@ -229,11 +230,13 @@ const GEN = {
 };
 
 export function mockPlanGenerate(args: {
-  targets?: { gmFloor?: number; cashFloor?: number; capexCap?: number };
+  targets?: { gmFloor?: number; cashFloor?: number; capexCap?: number; revGrowthPct?: number; sharePts?: number; turnsFloor?: number };
   base?: Partial<typeof GEN.base>;
+  hard?: { gm?: boolean; cash?: boolean; capex?: boolean };
 }): Record<string, unknown> {
   const base = { ...GEN.base, ...(args.base ?? {}) };
   const targets = { ...GEN.targets, ...(args.targets ?? {}) };
+  const hard = { gm: true, cash: true, capex: true, ...(args.hard ?? {}) };
   const sc = GEN.scores;
 
   const evals = Object.entries(GEN.paths).map(([pathKey, eff]) => {
@@ -246,9 +249,17 @@ export function mockPlanGenerate(args: {
       capex: eff.capex,
     };
     const hardViol: string[] = [];
-    if (outcome.gm < targets.gmFloor) hardViol.push("C15");
-    if (outcome.cash < targets.cashFloor) hardViol.push("C18");
-    if (outcome.capex > targets.capexCap) hardViol.push("CAPEX");
+    if (hard.gm && outcome.gm < targets.gmFloor) hardViol.push("C15");
+    if (hard.cash && outcome.cash < targets.cashFloor) hardViol.push("C18");
+    if (hard.capex && outcome.capex > targets.capexCap) hardViol.push("CAPEX");
+    const meets = {
+      meetRevenue: round((outcome.rev / Math.max(0.0001, base.rev) - 1) * 100, 4) >= targets.revGrowthPct,
+      meetGm: outcome.gm >= targets.gmFloor,
+      meetShare: round(outcome.share - base.share, 4) >= targets.sharePts,
+      meetCapex: outcome.capex <= targets.capexCap,
+      meetCash: outcome.cash >= targets.cashFloor,
+      meetTurns: outcome.turns >= targets.turnsFloor,
+    };
     const profit = clamp(round(sc.profitBase + (outcome.gm - targets.gmFloor) * sc.profitK, 4), 0, 100);
     const scale = clamp(round(sc.scaleBase + eff.share * sc.scaleK, 4), 0, 100);
     const cash = clamp(round(sc.cashBase + (outcome.cash - targets.cashFloor) * sc.cashK, 4), 0, 100);
@@ -258,7 +269,7 @@ export function mockPlanGenerate(args: {
       0,
       Math.round((profit + scale + cash + growth + stability) / 5) - sc.hardPenalty * hardViol.length,
     );
-    return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol };
+    return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol, meets };
   });
 
   const byKey = new Map(evals.map((e) => [e.pathKey, e]));
@@ -271,6 +282,7 @@ export function mockPlanGenerate(args: {
     outcome: ev.outcome,
     scores: ev.scores,
     hardViol: ev.hardViol,
+    meets: ev.meets,
     gain: GEN.gains[ev.pathKey] ?? [],
     give: GEN.gives[ev.pathKey] ?? [],
     problems: ev.hardViol.map((v) => ({
@@ -281,6 +293,12 @@ export function mockPlanGenerate(args: {
           : v === "C18"
             ? `现金垫 ${ev.outcome.cash} 低于底线 ${targets.cashFloor}`
             : `CAPEX ${ev.outcome.capex} 超过上限 ${targets.capexCap}`,
+      why:
+        v === "C15"
+          ? `路径 ${ev.pathKey} 结构毛利 ${round(ev.outcome.gm * 100, 2)}% 低于目标面板毛利底线 ${round(targets.gmFloor * 100, 2)}%（C15 硬约束）`
+          : v === "C18"
+            ? `路径 ${ev.pathKey} 推演现金垫 ${ev.outcome.cash} 亿低于目标面板现金底线 ${targets.cashFloor} 亿（C18 硬约束）`
+            : `路径 ${ev.pathKey} CAPEX ${ev.outcome.capex} 亿超过目标面板上限 ${targets.capexCap} 亿`,
       unlock: v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
     })),
   });
@@ -513,6 +531,62 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     qty,
   };
 }
+
+// ---------------------------------------------------------------------------
+// S1.3 bottleneck_matrix MOCK 口径（逐行移植 datacore/solvers/risk.ts mockTightness：
+// seed = (基地首字符码 + 因素首字符码×7) mod 9；常数取 battery bottleneck.mock）
+// ---------------------------------------------------------------------------
+
+export const BN_FACTORS = ["瓶颈工序", "设备OEE", "人力工时", "物料齐套", "物流时长", "换型损失", "良率波动"];
+
+const BN_PRIMARY: Record<string, string> = {
+  常州: "瓶颈工序",
+  合肥: "设备OEE",
+  西安: "人力工时",
+  宜宾: "物料齐套",
+  溧阳: "换型损失",
+  青岛: "物流时长",
+  南京: "良率波动",
+  成都: "设备OEE",
+  福州: "物料齐套",
+  长沙: "瓶颈工序",
+  惠州: "物流时长",
+  盐城: "人力工时",
+};
+
+const BN_MOCK = { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilLowAdd: 2 };
+
+function bnTightness(base: string, factor: string): number {
+  const seed = ((base.charCodeAt(0) || 0) + (factor.charCodeAt(0) || 0) * BN_MOCK.factorMult) % BN_MOCK.mod;
+  const primary = BN_PRIMARY[base] ?? "瓶颈工序";
+  if (factor === primary) return Math.min(BN_MOCK.primaryCap, BN_MOCK.primaryBase + (seed % BN_MOCK.mod));
+  return Math.min(BN_MOCK.secondaryCap, BN_MOCK.secondaryBase + seed + BN_MOCK.utilLowAdd);
+}
+
+export function mockBottleneckMatrix(args: { baseIds?: string[] }): Record<string, unknown> {
+  const baseIds = (args.baseIds ?? Object.keys(BN_PRIMARY)).slice().sort();
+  return {
+    dataMode: "MOCK",
+    factors: BN_FACTORS,
+    rows: baseIds.map((base) => ({
+      base,
+      tightness: Object.fromEntries(BN_FACTORS.map((f) => [f, bnTightness(base, f)])),
+      primary: BN_PRIMARY[base] ?? "瓶颈工序",
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 增量 §7.10：GET /a/v1/plan-versions/current（与 V7 定稿基线同值 —— 原型 AUDIT_PRESETS.V7）
+// ---------------------------------------------------------------------------
+
+export const PLAN_VERSION_CURRENT = {
+  versionId: "sop-202606-final",
+  versionLabel: "2026-06 V1",
+  month: "2026-06",
+  status: "FINAL",
+  input: { dem: 132, seg_pas: 71, seg_ess: 49, seg_com: 12, sup: 131.2, ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
+};
 
 // ---------------------------------------------------------------------------
 // S1.8 sop_balance 五步法（移植 datacore/sop.ts；常数 sop: gapRed 2 / dv 10% / cashFloor 50 / gmTolerance 0.5）

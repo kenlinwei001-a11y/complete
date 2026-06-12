@@ -474,3 +474,293 @@
   text-align: left;
   font-family: var(--font-sans);
 }
+
+/* —— 传导链时间轴（增量 §7.10-4/§7.11，PropagationTimeline 全局唯一实现） —— */
+.ptlHead {
+  font-size: 10.5px;
+  color: var(--muted2);
+  margin-bottom: 2px;
+}
+.ptl {
+  display: flex;
+  gap: 0;
+  margin-top: 9px;
+  position: relative;
+  padding-top: 4px;
+}
+.ptl::before {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 17px;
+  height: 2px;
+  background: linear-gradient(90deg, #62be77, #d2b04c, #dd7e9e);
+  border-radius: 2px;
+  opacity: 0.55;
+}
+.ptlSt {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  padding: 0 7px;
+  text-align: center;
+}
+.ptlDot {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin: 4px auto 5px;
+  border: 2.5px solid var(--ok);
+  background: var(--panel);
+  position: relative;
+  z-index: 1;
+}
+.ptlSt[data-sev="1"] .ptlDot {
+  border-color: #d2b04c;
+}
+.ptlSt[data-sev="2"] .ptlDot {
+  border-color: #dd7e9e;
+  background: rgba(221, 126, 158, 0.13);
+}
+.ptlW {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted2);
+}
+.ptlT {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  margin: 2px 0;
+  color: var(--ok);
+}
+.ptlSt[data-sev="1"] .ptlT {
+  color: #e8b54a;
+}
+.ptlSt[data-sev="2"] .ptlT {
+  color: #dd7e9e;
+}
+.ptlM {
+  font-size: 9.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.ptlOs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: center;
+  margin-top: 4px;
+}
+.ptlO {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+}
+.ptlO b {
+  color: #dd7e9e;
+}
+
+/* —— 规划体检：基线头 —— */
+.baselineBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+/* —— 规划建议（§7.11 折叠卡） —— */
+.genCard.violDim {
+  opacity: 0.85;
+}
+.genScore {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+.genRecommend {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  border-radius: 0 10px 0 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  background: rgba(98, 190, 119, 0.16);
+  color: var(--ok);
+  border: 1px solid rgba(98, 190, 119, 0.4);
+}
+.genCardWrap {
+  position: relative;
+}
+.meetRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2.5px 0;
+  border-bottom: 1px dashed var(--line2);
+}
+.meetRow i {
+  font-style: normal;
+  color: var(--muted2);
+  font-size: 10px;
+}
+.hardChip {
+  border: 1px solid var(--line2);
+  background: none;
+  color: var(--muted);
+  border-radius: 99px;
+  padding: 2px 8px;
+  font-size: 10px;
+}
+.hardChip.on {
+  border-color: rgba(224, 98, 108, 0.75);
+  color: var(--danger);
+  background: rgba(224, 98, 108, 0.08);
+}
+.violBar {
+  border: 1px solid rgba(224, 98, 108, 0.55);
+  border-left: 4px solid var(--danger);
+  background: rgba(224, 98, 108, 0.07);
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.violBar .unlock {
+  color: var(--muted);
+  margin-top: 2px;
+  font-size: 10.5px;
+}
+
+/* —— S&OP：KPI 条 / 版本徽章 / 议程高亮 —— */
+.sopKpiBar {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin: 10px 0;
+}
+.sopKpi {
+  position: relative;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 10px;
+}
+.sopKpi b {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  display: block;
+  line-height: 1.2;
+}
+.sopKpi span {
+  font-size: 9.5px;
+  color: var(--muted);
+}
+.sopKpiPop {
+  display: none;
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 230px;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.6;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+}
+.sopKpi:hover .sopKpiPop,
+.sopKpi:focus-within .sopKpiPop {
+  display: block;
+}
+.verBadge {
+  border: 1px solid rgba(176, 127, 216, 0.55);
+  color: #b07fd8;
+  background: rgba(176, 127, 216, 0.08);
+  border-radius: 99px;
+  font-size: 10.5px;
+  padding: 3px 10px;
+  font-weight: 700;
+}
+.c21Chip {
+  border: 1px solid rgba(232, 181, 74, 0.6);
+  color: var(--amber);
+  background: rgba(232, 181, 74, 0.08);
+  border-radius: 99px;
+  font-size: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.agendaItem.hl {
+  border-color: var(--amber);
+  background: rgba(232, 181, 74, 0.1);
+  box-shadow: 0 0 0 1px rgba(232, 181, 74, 0.4);
+}
+
+/* —— 项目推演：六步 stepper + DAG 面板 + what-if 滑杆 —— */
+.pmGrid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.pmStepBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.pmStepNum {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 6px 0;
+}
+.sliderRow input[type="range"] {
+  flex: 1;
+  max-width: 220px;
+}
+.sliderRow b {
+  font-family: var(--font-mono);
+  min-width: 42px;
+  text-align: right;
+}
+.bnCell {
+  width: 34px;
+  height: 22px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #0c1118;
+  font-weight: 700;
+}

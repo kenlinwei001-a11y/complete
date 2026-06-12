@@ -89,9 +89,17 @@ export const fetchOntologyGraph = (packageId: string) =>
 export const invokeSolver = (solverKey: string, args: Record<string, unknown>) =>
   api.a<{ data: unknown; snapshotVersion: string }>(`/a/v1/solvers/${solverKey}/invoke`, { body: { args } });
 
-/** 推演类视图统一走 B 侧（entitlement 先行：feature 关 → 404 FEATURE_NOT_FOUND，再 OBO 透传 DataCore） */
-export const runSolver = (solverKey: string, args: Record<string, unknown>) =>
-  api.b<{ data: unknown; snapshotVersion: string }>(`/b/v1/solvers/${encodeURIComponent(solverKey)}/run`, { body: { args } });
+/** 推演类视图统一走 B 侧（entitlement 先行：feature 关 → 404 FEATURE_NOT_FOUND，再 OBO 透传 DataCore）。
+ *  signal：改参即重算的竞态控制（AbortController 最后发出者胜，增量 §0-3）。 */
+export const runSolver = (solverKey: string, args: Record<string, unknown>, signal?: AbortSignal) =>
+  api.b<{ data: unknown; snapshotVersion: string }>(`/b/v1/solvers/${encodeURIComponent(solverKey)}/run`, {
+    body: { args },
+    signal,
+  });
+
+/** 增量 §7.10：当前定稿 S&OP 版本 → plan_audit 输入字段集（规划体检基线） */
+export const fetchPlanVersionCurrent = async (): Promise<PlanVersionCurrent> =>
+  PlanVersionCurrentSchema.parse(await api.a<unknown>("/a/v1/plan-versions/current"));
 
 // ---- S&OP 月度版本（S1.8 五步法状态机；FINAL 后任何字段变更 → 409 PLAN_LOCKED） ----
 
@@ -227,6 +235,8 @@ export const fetchTickReports = () => api.a<TickReportVM[]>("/a/v1/synthetic/clo
 
 import {
   AopResponseSchema,
+  PlanVersionCurrentSchema,
+  type PlanVersionCurrent,
   QuarterlyResponseSchema,
   CalibrationReportSchema,
   DataHealthResponseSchema,

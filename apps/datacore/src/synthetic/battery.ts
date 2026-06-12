@@ -191,7 +191,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   },
   planGenerate: {
     base: { rev: 100, gm: 0.142, share: 17, turns: 6.0, cash: 70 },
-    targets: { gmFloor: 0.135, cashFloor: 45, capexCap: 20 },
+    targets: { gmFloor: 0.135, cashFloor: 45, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
     paths: {
       A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
       B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },
@@ -216,7 +216,9 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       E: ["中等 CAPEX 投入"],
     },
   },
-  sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5 },
+  sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 248 },
+  // 增量 §7.10：plan-versions/current 基线缺省（S&OP 步骤推不出的字段，确定性常数）
+  planBaseline: { ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
   dupSimilarityThreshold: 0.92,
 };
 
@@ -519,6 +521,54 @@ export const BATTERY_ACTION_TYPES = [
     key: "校准参数变更",
     name: "校准参数变更",
     paramsSchema: { type: "object", required: ["proposalId", "mode"], properties: { proposalId: { type: "string" }, mode: { type: "string" } } },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
+  // 增量 §0-4 / §7.11：规划建议「采纳方案」（payload = 方案快照 + 当前目标面板值）。
+  {
+    key: "采纳经营方案",
+    name: "采纳经营方案",
+    paramsSchema: {
+      type: "object",
+      required: ["schemeNo", "scheme", "targets"],
+      properties: { schemeNo: { type: "string" }, pathKey: { type: "string" }, scheme: { type: "object" }, targets: { type: "object" } },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
+  // 增量 §7.12：S&OP 定稿走 Action（payload = 版本快照 + 决议清单），EXECUTED → 版本 FINAL（C22 锁定）。
+  {
+    key: "定稿月度计划版本",
+    name: "定稿月度计划版本",
+    paramsSchema: {
+      type: "object",
+      required: ["versionId", "snapshot"],
+      properties: { versionId: { type: "string" }, month: { type: "string" }, snapshot: { type: "object" }, resolutions: { type: "array" } },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
+  // 增量 §7.12 锁定态「发起变更」：FINAL 版本字段变更的唯一合法路径。
+  {
+    key: "计划版本变更",
+    name: "计划版本变更",
+    paramsSchema: {
+      type: "object",
+      required: ["versionId", "reason"],
+      properties: { versionId: { type: "string" }, reason: { type: "string" }, patch: { type: "object" } },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
+  // 增量 §7.13：项目推演 what-if「采纳产能保障方案」（payload = 参数组合 + 推演快照）。
+  {
+    key: "采纳产能保障方案",
+    name: "采纳产能保障方案",
+    paramsSchema: {
+      type: "object",
+      required: ["modelId", "whatIf"],
+      properties: { modelId: { type: "string" }, whatIf: { type: "object" }, snapshot: { type: "object" } },
+    },
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },

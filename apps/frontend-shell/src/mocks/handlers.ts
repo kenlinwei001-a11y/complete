@@ -26,10 +26,12 @@ import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { registerTaskScript, releaseNextSegment } from "./mockEventSource";
 import { scriptForQuery } from "./sseScripts";
 import {
+  mockBottleneckMatrix,
   mockCapacityForecast,
   mockPlanAudit,
   mockPlanGenerate,
   mockSopAdvance,
+  PLAN_VERSION_CURRENT,
   SopMockError,
   sopPlanLocked,
   type MockAuditInput,
@@ -211,6 +213,12 @@ export const handlers = [
     if (key === "capacity_forecast")
       return HttpResponse.json({ data: { p50: 21.4, p90: 18.9, gap: -1.2, ok: false, healthFactor: 0.93, mainBn: "化成柜", perBaseRows: [], pendingCertList: [] }, snapshotVersion: "ov-12" });
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
+  }),
+
+  // ---- 增量 §7.10：规划体检基线（当前定稿 S&OP 版本 → plan_audit 输入字段集） ----
+  http.get("*/a/v1/plan-versions/current", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json(PLAN_VERSION_CURRENT);
   }),
 
   // ---- S&OP 月度版本（五步法状态机；FINAL → 409 PLAN_LOCKED） ----
@@ -507,6 +515,18 @@ export const handlers = [
       submit?: boolean;
     };
     if (!body.actionTypeKey) return err(422, "VALIDATION_ERROR", "actionTypeKey required");
+    // 增量 §7.12：定稿走 Action —— 先校验版本可定稿（FINAL → 409 PLAN_LOCKED）
+    let finalizeVersion: (typeof db.sopVersions)[number] | undefined;
+    if (body.actionTypeKey === "定稿月度计划版本") {
+      const versionId = String((body.payload ?? {}).versionId ?? "");
+      finalizeVersion = db.sopVersions.find((v) => v.id === versionId);
+      if (!finalizeVersion) return err(404, "NOT_FOUND", "sop version 不存在");
+      if (finalizeVersion.status === "FINAL") {
+        const e = sopPlanLocked();
+        return err(e.status, e.code, e.message);
+      }
+      if (finalizeVersion.status !== "EXEC_MEETING") return err(409, "INVALID_STATE", `cannot request finalize from ${finalizeVersion.status}（先执行第⑤步）`);
+    }
     const draft = {
       id: newId("act"),
       tenantId: TENANT_ID,
@@ -519,6 +539,10 @@ export const handlers = [
       updatedAt: new Date().toISOString(),
     };
     db.actionDrafts.unshift(draft);
+    if (finalizeVersion) {
+      finalizeVersion.pendingApproval = { draftId: draft.id };
+      finalizeVersion.updatedAt = new Date().toISOString();
+    }
     return HttpResponse.json({ draftId: draft.id, status: draft.status, draft }, { status: 201 });
   }),
   http.post("*/a/v1/action-drafts/:id/submit", ({ params }) => {
@@ -547,6 +571,21 @@ export const handlers = [
     step.decidedAt = new Date().toISOString();
     if (body.decision === "REJECT") d.status = "REJECTED";
     else if (d.approvalSteps.every((s) => s.decision === "APPROVE")) d.status = "APPROVED";
+    // 增量 §7.12：域执行器语义镜像 —— 定稿 Action EXECUTED → 版本 FINAL；变更 Action → inputs patch
+    if (d.status === "APPROVED") {
+      const versionId = String((d.payload as Record<string, unknown>).versionId ?? "");
+      const v = db.sopVersions.find((x) => x.id === versionId);
+      if (d.actionTypeKey === "定稿月度计划版本" && v) {
+        v.status = "FINAL";
+        v.pendingApproval = null;
+        v.updatedAt = new Date().toISOString();
+        d.status = "EXECUTED" as typeof d.status;
+      } else if (d.actionTypeKey === "计划版本变更" && v) {
+        v.inputs = { ...v.inputs, ...((d.payload as { patch?: Record<string, unknown> }).patch ?? {}) };
+        v.updatedAt = new Date().toISOString();
+        d.status = "EXECUTED" as typeof d.status;
+      }
+    }
     return HttpResponse.json(d);
   }),
 
@@ -564,8 +603,13 @@ export const handlers = [
     if (boundOff) return err(404, "FEATURE_NOT_FOUND", "not found");
     const body = (await request.json().catch(() => ({}))) as { args?: Record<string, unknown> };
     const args = body.args ?? {};
-    if (key === "plan_audit") return HttpResponse.json({ data: mockPlanAudit(args as unknown as MockAuditInput), snapshotVersion: "ov-12" });
+    if (key === "plan_audit") {
+      // F20 竞态演示哨兵：dem=999 的请求慢 400ms（AbortController 最后发出者胜）
+      if ((args as { dem?: number }).dem === 999) await new Promise((r) => setTimeout(r, 400));
+      return HttpResponse.json({ data: mockPlanAudit(args as unknown as MockAuditInput), snapshotVersion: "ov-12" });
+    }
     if (key === "plan_generate") return HttpResponse.json({ data: mockPlanGenerate(args), snapshotVersion: "ov-12" });
+    if (key === "bottleneck_matrix") return HttpResponse.json({ data: mockBottleneckMatrix(args as { baseIds?: string[] }), snapshotVersion: "ov-12" });
     if (key === "capacity_forecast") {
       const data = mockCapacityForecast(args as unknown as MockForecastArgs);
       if ("error" in data) return err(422, "VALIDATION_ERROR", String(data.error));

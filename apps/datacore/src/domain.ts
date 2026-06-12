@@ -393,6 +393,8 @@ export interface SopVersion {
   agenda: { source: string; title: string; detail?: Record<string, unknown> }[];
   resolutions: { name: string; delta: number }[];
   supFinal?: number;
+  /** 增量 §7.12：定稿 Action 草稿已创建、待审批（EXECUTED → FINAL 时清除） */
+  pendingApproval?: { draftId: string } | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

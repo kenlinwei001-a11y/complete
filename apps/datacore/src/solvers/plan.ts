@@ -122,6 +122,7 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
   }
 
   if (input.cashCushion < t.cashHard) {
+    // fix 同时回补现金垫至底线（CAPEX 缩减释放现金）：应用后降级为软风险（F14）
     H.push({
       id: "X05",
       title: "现金垫",
@@ -129,7 +130,10 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
       why: `现金垫 ${input.cashCushion} 亿低于底线 ${t.cashHard} 亿`,
       fix: {
         label: "CAPEX 缩减/推后",
-        patch: { capex: Math.max(0, round(input.capex - (t.cashHard - input.cashCushion), 2)) },
+        patch: {
+          capex: Math.max(0, round(input.capex - (t.cashHard - input.cashCushion), 2)),
+          cashCushion: t.cashHard,
+        },
       },
     });
   } else if (input.cashCushion < t.cashSoft) {
@@ -140,7 +144,10 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
       why: `现金垫 ${input.cashCushion} 亿处于警戒区间 [${t.cashHard}, ${t.cashSoft}) 亿`,
       fix: {
         label: "CAPEX 缩减/推后",
-        patch: { capex: Math.max(0, round(input.capex - (t.cashSoft - input.cashCushion), 2)) },
+        patch: {
+          capex: Math.max(0, round(input.capex - (t.cashSoft - input.cashCushion), 2)),
+          cashCushion: t.cashSoft,
+        },
       },
     });
   }
@@ -182,8 +189,18 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
 // ---------------------------------------------------------------------------
 
 export interface PlanGenerateArgs {
-  targets?: { gmFloor?: number; cashFloor?: number; capexCap?: number };
+  targets?: {
+    gmFloor?: number;
+    cashFloor?: number;
+    capexCap?: number;
+    // 增量 §7.11 目标面板五项（收入增长% / 份额增 pct 为软目标，仅参与 meet* 判定）
+    revGrowthPct?: number;
+    sharePts?: number;
+    turnsFloor?: number;
+  };
   base?: { rev?: number; gm?: number; share?: number; turns?: number; cash?: number };
+  /** 硬约束开关（目标面板 chip）：false → 该底线降为软偏好，不产生 hardViol（默认全 hard） */
+  hard?: { gm?: boolean; cash?: boolean; capex?: boolean };
 }
 
 interface PathEval {
@@ -192,13 +209,25 @@ interface PathEval {
   outcome: { rev: number; gm: number; share: number; turns: number; cash: number; capex: number };
   scores: { profit: number; scale: number; cash: number; growth: number; stability: number; total: number };
   hardViol: string[];
+  meets: {
+    meetRevenue: boolean;
+    meetGm: boolean;
+    meetShare: boolean;
+    meetCapex: boolean;
+    meetCash: boolean;
+    meetTurns: boolean;
+  };
 }
 
 export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<string, unknown> {
   const cfg = c.params.planGenerate;
   const base = { ...cfg.base, ...(args.base ?? {}) };
   const targets = { ...cfg.targets, ...(args.targets ?? {}) };
+  const hard = { gm: true, cash: true, capex: true, ...(args.hard ?? {}) };
   const sc = cfg.scores;
+  const revGrowthPct = num(targets.revGrowthPct, 18);
+  const sharePts = num(targets.sharePts, 12);
+  const turnsFloor = num(targets.turnsFloor, base.turns);
 
   const evals: PathEval[] = Object.entries(cfg.paths).map(([pathKey, eff]) => {
     const outcome = {
@@ -210,9 +239,17 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
       capex: eff.capex,
     };
     const hardViol: string[] = [];
-    if (outcome.gm < targets.gmFloor) hardViol.push("C15");
-    if (outcome.cash < targets.cashFloor) hardViol.push("C18");
-    if (outcome.capex > targets.capexCap) hardViol.push("CAPEX");
+    if (hard.gm && outcome.gm < targets.gmFloor) hardViol.push("C15");
+    if (hard.cash && outcome.cash < targets.cashFloor) hardViol.push("C18");
+    if (hard.capex && outcome.capex > targets.capexCap) hardViol.push("CAPEX");
+    const meets = {
+      meetRevenue: round((outcome.rev / Math.max(0.0001, base.rev) - 1) * 100, 4) >= revGrowthPct,
+      meetGm: outcome.gm >= targets.gmFloor,
+      meetShare: round(outcome.share - base.share, 4) >= sharePts,
+      meetCapex: outcome.capex <= targets.capexCap,
+      meetCash: outcome.cash >= targets.cashFloor,
+      meetTurns: outcome.turns >= turnsFloor,
+    };
     const profit = clamp(round(sc.profitBase + (outcome.gm - targets.gmFloor) * sc.profitK, 4), 0, 100);
     const scale = clamp(round(sc.scaleBase + eff.share * sc.scaleK, 4), 0, 100);
     const cash = clamp(round(sc.cashBase + (outcome.cash - targets.cashFloor) * sc.cashK, 4), 0, 100);
@@ -222,7 +259,7 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
       0,
       Math.round((profit + scale + cash + growth + stability) / 5) - sc.hardPenalty * hardViol.length,
     );
-    return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol };
+    return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol, meets };
   });
 
   const byKey = new Map(evals.map((e) => [e.pathKey, e]));
@@ -237,6 +274,7 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
     outcome: ev.outcome,
     scores: ev.scores,
     hardViol: ev.hardViol,
+    meets: ev.meets,
     gain: cfg.gains[ev.pathKey] ?? [],
     give: cfg.gives[ev.pathKey] ?? [],
     problems: ev.hardViol.map((v) => ({
@@ -247,6 +285,12 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
           : v === "C18"
             ? `现金垫 ${ev.outcome.cash} 低于底线 ${targets.cashFloor}`
             : `CAPEX ${ev.outcome.capex} 超过上限 ${targets.capexCap}`,
+      why:
+        v === "C15"
+          ? `路径 ${ev.pathKey} 结构毛利 ${round(ev.outcome.gm * 100, 2)}% 低于目标面板毛利底线 ${round(targets.gmFloor * 100, 2)}%（C15 硬约束）`
+          : v === "C18"
+            ? `路径 ${ev.pathKey} 推演现金垫 ${ev.outcome.cash} 亿低于目标面板现金底线 ${targets.cashFloor} 亿（C18 硬约束）`
+            : `路径 ${ev.pathKey} CAPEX ${ev.outcome.capex} 亿超过目标面板上限 ${targets.capexCap} 亿`,
       unlock:
         v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
     })),

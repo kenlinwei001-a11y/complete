@@ -236,6 +236,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const r = await calibration.applyAction(draft.tenantId, draft);
         return { ok: true, targetRef: r.targetRef };
       }
+      // 增量 §7.12：S&OP 定稿/变更经 Action 真实落库（EXECUTED → FINAL / inputs patch）。
+      if (draft.actionTypeKey === "定稿月度计划版本") {
+        const r = await sop.applyFinalizeAction(draft.tenantId, draft);
+        return { ok: true, targetRef: r.targetRef };
+      }
+      if (draft.actionTypeKey === "计划版本变更" && typeof draft.payload.versionId === "string") {
+        const r = await sop.applyChangeAction(draft.tenantId, draft);
+        if (r) return { ok: true, targetRef: r.targetRef };
+      }
       return mockExecutor.execute(draft);
     },
   };
@@ -703,12 +712,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const key = body.actionTypeKey ?? body.actionType;
     if (!key) throw validationError("actionTypeKey required");
     await authz.require(c, "ACTION_TYPE", key, "EXECUTE");
+    // 增量 §7.12：定稿走 Action —— 先校验版本可定稿（FINAL → 409 PLAN_LOCKED），创建后标记待审批。
+    const finalizeVersionId =
+      key === "定稿月度计划版本" && typeof body.payload.versionId === "string" ? body.payload.versionId : null;
+    if (finalizeVersionId) await sop.assertFinalizeRequestable(c.tenantId, finalizeVersionId);
     const draft = await actions.create(c, {
       actionTypeKey: key,
       payload: body.payload,
       origin: body.origin,
       submit: body.submit,
     });
+    if (finalizeVersionId) await sop.markFinalizePending(c.tenantId, finalizeVersionId, draft.id);
     return reply.status(201).send({ draftId: draft.id, status: draft.status, draft });
   });
   app.post("/a/v1/action-drafts/:id/submit", async (req) => {
@@ -1149,6 +1163,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await requireFeatureTag(req, "apiTags", "sop");
     const { id } = req.params as { id: string };
     return sop.finalize(ctx(req), id);
+  });
+  // 增量 §7.10：当前定稿 S&OP 版本 → plan_audit 输入字段集（规划体检基线）。
+  app.get("/a/v1/plan-versions/current", async (req) => {
+    await requireFeatureTag(req, "apiTags", "plan-audit");
+    return sop.currentPlanVersion(ctx(req));
   });
 
   // ---- 计划域查询面（增量 §7.14/§7.15；entitlement: plan-aop / plan-quarterly tag）-----------------

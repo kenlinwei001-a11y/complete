@@ -30,6 +30,7 @@ export const CapacityForecastOutputSchema = z
         z.object({
           qty: z.number(),
           dueDate: z.string(),
+          address: z.string().optional(), // 交付地址（净窗口已扣该地址物流时长）
           wkEff: z.number().int(),
           cumDemand: z.number(),
           cumP90: z.number(),
@@ -142,6 +143,17 @@ export const GenSchemeSchema = z.object({
   gain: z.array(z.string()),
   give: z.array(z.string()),
   problems: z.array(z.record(z.string(), z.unknown())),
+  /** 增量 §7.11：目标达成清单（六项 meet* 布尔 → ✓/✗ 行）—— 服务端代入目标面板值后输出 */
+  meets: z
+    .object({
+      meetRevenue: z.boolean(),
+      meetGm: z.boolean(),
+      meetShare: z.boolean(),
+      meetCapex: z.boolean(),
+      meetCash: z.boolean(),
+      meetTurns: z.boolean(),
+    })
+    .optional(),
 });
 export const PlanGenerateOutputSchema = z.object({
   schemes: z.array(GenSchemeSchema).length(3), // 稳健/均衡/进取
@@ -152,6 +164,19 @@ export type PlanGenerateOutput = z.infer<typeof PlanGenerateOutputSchema>;
 /** S1.8 sop_balance 版本状态机 */
 export const SopVersionStatusSchema = z.enum(["DRAFT", "IN_REVIEW", "EXEC_MEETING", "FINAL"]);
 export type SopVersionStatus = z.infer<typeof SopVersionStatusSchema>;
+
+/**
+ * 增量 §7.10：GET /a/v1/plan-versions/current —— 当前定稿（FINAL）S&OP 版本解析为
+ * plan_audit 输入字段集 + 版本标签（无 FINAL 版本时由 PlanTarget/场景包基线确定性派生）。
+ */
+export const PlanVersionCurrentSchema = z.object({
+  versionId: z.string().nullable(), // 无定稿版本 → null（基线仍可用）
+  versionLabel: z.string(), // 头部「基线：{版本号}」展示文案，如 "2026-06 V1"
+  month: z.string(),
+  status: z.string(), // FINAL | BASELINE（基线派生）
+  input: PlanAuditInputSchema,
+});
+export type PlanVersionCurrent = z.infer<typeof PlanVersionCurrentSchema>;
 
 /** 场景包 solverParams（全部常数配置化；battery 默认值见 PRD 增量 §S1） */
 export const SolverParamsSchema = z.record(z.string(), z.unknown());

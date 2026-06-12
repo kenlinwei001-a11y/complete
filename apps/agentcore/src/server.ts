@@ -676,7 +676,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     }
     const body = z.object({ args: z.record(z.string(), z.unknown()).default({}) }).parse(req.body ?? {});
-    return deps.dataCore.solver.invoke(a, key, body.args);
+    // 增量 §0-2：同步求解 15s 超时 → 504 SOLVER_TIMEOUT（错误信封统一）。
+    const timeoutMs = deps.config.SOLVER_RUN_TIMEOUT_MS;
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new HttpError(504, "SOLVER_TIMEOUT", `solver ${key} run exceeded ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+    try {
+      return await Promise.race([deps.dataCore.solver.invoke(a, key, body.args), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   });
 
   // ---------------------------------------------------------------------

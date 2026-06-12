@@ -12,6 +12,8 @@ const ConfigSchema = z.object({
   QOS_DEFAULT_LLM_PROVIDER: z.string().default("anthropic"),
   QOS_TAU_HIGH: z.coerce.number().default(0.85),
   QOS_TAU_LOW: z.coerce.number().default(0.55),
+  /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
+  SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
   /** 32-byte hex key for AES-256-GCM credential encryption */
   CREDENTIAL_KEY: z
     .string()

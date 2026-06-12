@@ -1,4 +1,4 @@
-import type { AuthCtx, SopVersion } from "./domain.js";
+import type { ActionDraft, AuthCtx, SopVersion } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { OutboxService } from "./outbox.js";
 import type { SolverService } from "./solvers/service.js";
@@ -263,10 +263,146 @@ export class SopService {
     if (v.status === "FINAL") throw planLocked();
     if (v.status !== "EXEC_MEETING") throw invalidState(`cannot finalize from ${v.status} (run step ⑤ first)`);
     v.status = "FINAL";
+    v.pendingApproval = null;
     v.updatedAt = new Date().toISOString();
     await this.repos.sopVersions.put(v);
     await this.outbox.emit(ctx.tenantId, "sop.finalized", { versionId: v.id, month: v.month, supFinal: v.supFinal });
     return v;
+  }
+
+  // -------------------------------------------------------------------------
+  // 增量 §7.12：定稿走 Action（SPA 链路）。直连 finalize 端点保留（测试/兼容）。
+  // -------------------------------------------------------------------------
+
+  /** 草稿创建前校验：仅 EXEC_MEETING 版本可发起定稿（FINAL → 409 PLAN_LOCKED）。 */
+  async assertFinalizeRequestable(tenantId: string, versionId: string): Promise<void> {
+    const v = await this.repos.sopVersions.get(tenantId, versionId);
+    if (!v) throw notFound("sop version");
+    if (v.status === "FINAL") throw planLocked();
+    if (v.status !== "EXEC_MEETING") throw invalidState(`cannot request finalize from ${v.status} (run step ⑤ first)`);
+  }
+
+  /** 「定稿月度计划版本」草稿创建后 → 版本进入待审批态（徽章「待审批」）。 */
+  async markFinalizePending(tenantId: string, versionId: string, draftId: string): Promise<void> {
+    const v = await this.repos.sopVersions.get(tenantId, versionId);
+    if (!v) throw notFound("sop version");
+    if (v.status === "FINAL") throw planLocked();
+    v.pendingApproval = { draftId };
+    v.updatedAt = new Date().toISOString();
+    await this.repos.sopVersions.put(v);
+  }
+
+  /** 「定稿月度计划版本」Action EXECUTED → 版本 FINAL（C22 锁定）。 */
+  async applyFinalizeAction(tenantId: string, draft: ActionDraft): Promise<{ targetRef: string }> {
+    const versionId = String(draft.payload.versionId ?? "");
+    const v = await this.repos.sopVersions.get(tenantId, versionId);
+    if (!v) throw notFound("sop version");
+    if (v.status !== "FINAL") {
+      v.status = "FINAL";
+      v.pendingApproval = null;
+      v.updatedAt = new Date().toISOString();
+      await this.repos.sopVersions.put(v);
+      await this.outbox.emit(tenantId, "sop.finalized", {
+        versionId: v.id,
+        month: v.month,
+        supFinal: v.supFinal,
+        draftId: draft.id,
+      });
+    }
+    return { targetRef: v.id };
+  }
+
+  /** 「计划版本变更」Action EXECUTED → FINAL 版本的唯一合法字段变更路径（非 S&OP 版本 → null，回落 mock）。 */
+  async applyChangeAction(tenantId: string, draft: ActionDraft): Promise<{ targetRef: string } | null> {
+    const versionId = String(draft.payload.versionId ?? "");
+    const v = await this.repos.sopVersions.get(tenantId, versionId);
+    if (!v) return null;
+    const patch = (draft.payload.patch ?? {}) as Record<string, unknown>;
+    v.inputs = { ...v.inputs, ...patch };
+    v.updatedAt = new Date().toISOString();
+    await this.repos.sopVersions.put(v);
+    await this.outbox.emit(tenantId, "sop.changed", { versionId: v.id, draftId: draft.id, patch });
+    return { targetRef: v.id };
+  }
+
+  // -------------------------------------------------------------------------
+  // 增量 §7.10：GET /a/v1/plan-versions/current —— 当前 FINAL 版本解析为体检基线。
+  // -------------------------------------------------------------------------
+
+  async currentPlanVersion(ctx: AuthCtx): Promise<{
+    versionId: string | null;
+    versionLabel: string;
+    month: string;
+    status: string;
+    input: Record<string, number>;
+  }> {
+    const params = await this.solvers.getParams(ctx.tenantId);
+    const baseline = params.planBaseline ?? { ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 };
+    const all = await this.repos.sopVersions.list(ctx.tenantId);
+    const finals = all.filter((v) => v.status === "FINAL").sort((a, b) => (a.month > b.month ? -1 : a.month < b.month ? 1 : a.createdAt > b.createdAt ? -1 : 1));
+    const v = finals[0];
+    if (v) {
+      const s2 = v.steps.s2 as { rows?: { key: string; rolling: number }[]; total?: { rolling?: number } } | undefined;
+      const s4 = v.steps.s4 as { cashCushion?: number; gmBudget?: number } | undefined;
+      const segOf = (key: string) => round(num(s2?.rows?.find((r) => r.key === key)?.rolling), 4);
+      const dem = round(num(s2?.total?.rolling, num(v.inputs.demTotal)), 4);
+      const monthVersions = all.filter((x) => x.month === v.month).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+      const seq = monthVersions.findIndex((x) => x.id === v.id) + 1;
+      return {
+        versionId: v.id,
+        versionLabel: `${v.month} V${seq}`,
+        month: v.month,
+        status: "FINAL",
+        input: {
+          dem,
+          seg_pas: segOf("pas"),
+          seg_ess: segOf("ess"),
+          seg_com: segOf("com"),
+          sup: round(num(v.supFinal, num((v.steps.s3 as { sup?: number } | undefined)?.sup)), 4),
+          ltaCov: baseline.ltaCov,
+          kitGap: baseline.kitGap,
+          gmTarget: num(s4?.gmBudget, baseline.gmTarget),
+          cashCushion: num(s4?.cashCushion, baseline.cashCushion),
+          capex: baseline.capex,
+        },
+      };
+    }
+    // 无 FINAL 版本：从 PlanTarget（月度目标）× Segment 基线占比 + 供给月聚合确定性派生。
+    const month = params.forecastStart.slice(0, 7);
+    const monthTarget = (await this.targetLine(ctx.tenantId, [month]))[0];
+    const segs = (await this.repos.objects.listByType(ctx.tenantId, "Segment")).sort((a, b) =>
+      str(a.props.segKey) < str(b.props.segKey) ? -1 : 1,
+    );
+    const dem = round(num(monthTarget?.value), 4);
+    const segOf = (key: string) => {
+      const s = segs.find((x) => x.props.segKey === key);
+      return round(dem * num(s?.props.baselineShare), 2);
+    };
+    const c = await this.solvers.loadContext(ctx.tenantId);
+    const rollup = computeRollup(c);
+    let sup = 0;
+    for (const b of rollup.bases) {
+      const mw = maintWeekOf(c, b.baseId);
+      for (let w = 1; w <= c.params.sop.monthlyWeeks; w++) sup += b.weeklyWan * curveMult(c.params, w, mw);
+    }
+    return {
+      versionId: null,
+      versionLabel: `${month} 基线`,
+      month,
+      status: "BASELINE",
+      input: {
+        dem,
+        seg_pas: segOf("pas"),
+        seg_ess: segOf("ess"),
+        seg_com: segOf("com"),
+        sup: round(sup, 4),
+        ltaCov: baseline.ltaCov,
+        kitGap: baseline.kitGap,
+        gmTarget: baseline.gmTarget,
+        cashCushion: baseline.cashCushion,
+        capex: baseline.capex,
+      },
+    };
   }
 
   private async dvThreshold(tenantId: string): Promise<number> {

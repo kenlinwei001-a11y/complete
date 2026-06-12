@@ -393,8 +393,20 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
   horizon: 14,
   threshold: 85,
   cards: [
-    { base: "常州", factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96), events: [{ type: "maint_window", day: 4, amp: 18, factors: ["化成柜"] }, { type: "delivery_peak", day: 6, amp: 12, factors: ["交付"] }] },
-    { base: "宜宾", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91), events: [{ type: "delivery_peak", day: 8, amp: 16, factors: ["交付"] }] },
+    {
+      base: "常州", factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96),
+      events: [{ type: "maint_window", day: 4, amp: 18, factors: ["化成柜"] }, { type: "delivery_peak", day: 6, amp: 12, factors: ["交付"] }],
+      // 增量 §7.10-4/§7.11 PropagationTimeline：越线窗口内受波及订单（affected_orders 同源）
+      affectedOrders: [
+        { so: "SO-10001", cust: "蔚途汽车", model: "4680-NCM", qty: 1500, due: "2026-06-20", dueDay: 8, delay: 3, impact: 0.5 },
+        { so: "SO-10004", cust: "极光新能源", model: "储能-280Ah", qty: 2200, due: "2026-06-24", dueDay: 12, delay: 5, impact: 0.7 },
+      ],
+    },
+    {
+      base: "宜宾", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91),
+      events: [{ type: "delivery_peak", day: 8, amp: 16, factors: ["交付"] }],
+      affectedOrders: [{ so: "SO-10002", cust: "星河储能", model: "储能-314Ah", qty: 820, due: "2026-06-25", dueDay: 13, delay: 2, impact: 0.4 }],
+    },
     { base: "合肥", factor: "到货间隙", peak: 82, crossDay: null, series: riskSeries(3, 9, 82), events: [{ type: "arrival_gap", day: 9, amp: 10, factors: ["供料"] }] },
     { base: "溧阳", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
     { base: "成都", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },

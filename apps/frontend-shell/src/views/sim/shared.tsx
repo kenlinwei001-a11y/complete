@@ -40,7 +40,7 @@ export function HeatStrip({ series, threshold }: { series: number[]; threshold: 
   );
 }
 
-/** 采纳 → Action 草稿（C10 审批留痕，统一 actionTypeKey=plan_change） */
+/** 采纳 → Action 草稿（C10 审批留痕，统一 actionTypeKey=plan_change —— 体检页旧链路保留） */
 export function useAdoptToDraft() {
   const { data: workspace } = useWorkspace();
   return useMutation({
@@ -52,6 +52,25 @@ export function useAdoptToDraft() {
         submit: true,
       }),
     onSuccess: () => toast(`${zh.sim.adoptDone}（${zh.sim.gotoActions}：/admin/actions）`, "success"),
+    onError: toastError,
+  });
+}
+
+/**
+ * 采纳类按钮统一行为（增量 §0-4）：POST /a/v1/action-drafts（actionType 按各节）
+ * → toast「草稿已创建，待审批」+ 链接 /admin/actions。任何视图不得直改计划/排产数据。
+ */
+export function useActionDraft() {
+  const { data: workspace } = useWorkspace();
+  return useMutation({
+    mutationFn: (input: { actionTypeKey: string; payload: Record<string, unknown> }) =>
+      createActionDraft({
+        actionTypeKey: input.actionTypeKey,
+        payload: input.payload,
+        origin: { userId: workspace?.user?.id ?? "usr-unknown" },
+        submit: true,
+      }),
+    onSuccess: () => toast(`草稿已创建，待审批（${zh.sim.gotoActions}：/admin/actions）`, "success"),
     onError: toastError,
   });
 }

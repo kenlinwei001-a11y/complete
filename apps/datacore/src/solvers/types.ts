@@ -95,7 +95,14 @@ export interface SolverParamsShape {
   };
   planGenerate: {
     base: { rev: number; gm: number; share: number; turns: number; cash: number };
-    targets: { gmFloor: number; cashFloor: number; capexCap: number };
+    targets: {
+      gmFloor: number;
+      cashFloor: number;
+      capexCap: number;
+      revGrowthPct?: number;
+      sharePts?: number;
+      turnsFloor?: number;
+    };
     paths: Record<string, { name: string; rev: number; gm: number; share: number; capex: number; turns: number; cash: number }>;
     scores: {
       profitBase: number;
@@ -114,7 +121,26 @@ export interface SolverParamsShape {
     gains: Record<string, string[]>;
     gives: Record<string, string[]>;
   };
-  sop: { gapRed: number; dvThreshold: number; cashFloor: number; monthlyWeeks: number; gmTolerance: number };
+  sop: {
+    gapRed: number;
+    dvThreshold: number;
+    cashFloor: number;
+    monthlyWeeks: number;
+    gmTolerance: number;
+    /** 增量 §7.12 KPI 条：收入预算达成% 的预算基数（亿） */
+    revBudget?: number;
+  };
+  /**
+   * 增量 §7.10 体检基线：plan-versions/current 中无法从 S&OP 步骤推导的字段
+   * （长协覆盖率 / 物料缺口 / CAPEX / 毛利目标 / 现金垫）的确定性缺省值。
+   */
+  planBaseline?: {
+    ltaCov: number;
+    kitGap: number;
+    gmTarget: number;
+    cashCushion: number;
+    capex: number;
+  };
   dupSimilarityThreshold: number;
 }
 
