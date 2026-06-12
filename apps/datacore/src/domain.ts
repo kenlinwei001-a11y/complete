@@ -1,9 +1,15 @@
 import type {
+  ActionStatus,
+  ApprovalStep,
+  ActionType,
   CandidateRule,
   PermissionPolicy,
   RuleOrigin,
   IndustryTemplate,
   FieldProfile,
+  ScheduledJobKind,
+  SopVersionStatus,
+  TsAggSpec,
 } from "@platform/contracts";
 
 // ---------------------------------------------------------------------------
@@ -124,6 +130,8 @@ export interface RuleCandidate {
   status: "PENDING" | "APPROVED" | "REJECTED";
   diff?: "新增" | "变更" | "疑似删除";
   publishedRuleId?: string;
+  /** S4.2 near-duplicate detection: embedding similarity > threshold vs a published rule. */
+  suspectedDuplicateOf?: { ruleId: string; ruleKey: string; similarity: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +225,8 @@ export interface LinkInstance {
   type: string; // linkType key
   fromId: string;
   toId: string;
+  /** Edge properties (e.g. certification status on model↔line links, §S1.2). */
+  props?: Record<string, unknown>;
   origin: ObjectOrigin;
 }
 
@@ -231,14 +241,23 @@ export interface DerivationRun {
   error?: string;
 }
 
+/** S2 action draft with the full approval state machine (contracts ActionDraftSchema shape). */
 export interface ActionDraft {
-  id: string; // draft_
+  id: string; // act_
   tenantId: string;
-  actionType: string;
-  payload: Record<string, unknown>;
-  status: "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
-  createdBy: string;
+  actionTypeKey: string;
+  payload: Record<string, unknown>; // immutable after submit
+  origin: { taskId?: string; agentId?: string; userId: string };
+  status: ActionStatus;
+  approvalSteps: ApprovalStep[];
+  executionResult?: { ok: boolean; targetRef?: string; error?: string; attempts: number };
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActionTypeRecord extends ActionType {
+  id: string; // atype_
+  tenantId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +335,12 @@ export interface SyntheticReport {
   derivationSpotChecks: { typeKey: string; propKey: string; objectId: string; ok: boolean }[];
   views: string[];
   accounts: string[];
+  /** A8.6: history point counts / gap scan / aggregation spot recomputation. */
+  timeseries?: {
+    pointCounts: Record<string, number>;
+    gaps: { seriesKey: string; entityId: string; missingDays: number }[];
+    aggSpotChecks: { specKey: string; entityId: string; ok: boolean }[];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +364,227 @@ export interface OutboxEvent {
   attempts: number;
   nextAttemptAt: string;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// S1.8 S&OP monthly plan versions
+// ---------------------------------------------------------------------------
+
+export interface SopVersion {
+  id: string; // sop_
+  tenantId: string;
+  month: string; // "2026-07"
+  status: SopVersionStatus;
+  inputs: Record<string, unknown>;
+  steps: {
+    s1?: Record<string, unknown>;
+    s2?: Record<string, unknown>;
+    s3?: Record<string, unknown>;
+    s4?: Record<string, unknown>;
+    s5?: Record<string, unknown>;
+  };
+  agenda: { source: string; title: string; detail?: Record<string, unknown> }[];
+  resolutions: { name: string; delta: number }[];
+  supFinal?: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// S3 scheduler
+// ---------------------------------------------------------------------------
+
+export interface ScheduledJobRecord {
+  id: string; // sjob_
+  tenantId: string;
+  kind: ScheduledJobKind;
+  refId: string;
+  cron: string;
+  timezone: string;
+  nextRunAt: string;
+  lastRunAt?: string;
+  status: "ACTIVE" | "PAUSED";
+  lastError?: string;
+}
+
+export interface SchedulerRunRecord {
+  id: string; // `${jobId}@${scheduledAt}` — the idempotency key
+  tenantId: string;
+  jobId: string;
+  scheduledAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  status: "RUNNING" | "SUCCEEDED" | "FAILED" | "MISSED";
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// A8 timeseries
+// ---------------------------------------------------------------------------
+
+export interface TsSeriesRecord {
+  id: string; // tser_
+  tenantId: string;
+  connId?: string;
+  seriesKey: string; // e.g. "oee:equip"
+  entityType: string;
+  entityRefField: string;
+  timeField: string;
+  measureFields: string[]; // [0] is the primary measure; weighted_avg weight may be [1]
+  unit?: string;
+  origin?: "SYNTHETIC" | "CONNECTOR";
+  createdAt: string;
+}
+
+export interface TsPointRecord {
+  seriesId: string;
+  entityId: string;
+  ts: string; // ISO timestamp (bucket start for day-grain synthetic data)
+  values: Record<string, number>;
+  ingestedAt: string;
+  tick?: number; // simulation tick that produced the point (0 = initial history)
+}
+
+export interface TsLateArrivalRecord {
+  id: string;
+  tenantId: string;
+  seriesId: string;
+  entityId: string;
+  ts: string;
+  values: Record<string, number>;
+  receivedAt: string;
+}
+
+export interface TsAggSpecRecord extends TsAggSpec {
+  lastRunAt?: string;
+}
+
+export interface TsAggRunRecord {
+  id: string; // run id (specKey + entity + window)
+  tenantId: string;
+  specId: string;
+  specKey: string;
+  specVersion: number;
+  entityId: string;
+  windowStart: string;
+  windowEnd: string;
+  rowsIn: number;
+  value: number;
+  runAt: string;
+}
+
+export interface RetentionPolicyRecord {
+  id: string;
+  tenantId: string;
+  seriesKey: string;
+  rawDays: number;
+  downsampleAfterDays?: number;
+  downsampleGrain?: "day" | "week";
+}
+
+// ---------------------------------------------------------------------------
+// A8.6 simulation clock
+// ---------------------------------------------------------------------------
+
+export interface SimulationClockRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  t0: string; // ISO date of "now" at initial synthesis
+  currentTick: number;
+  seed: number;
+  industry: string;
+  scale: "S" | "M" | "L";
+  status: "ACTIVE" | "TICKING" | "RESETTING";
+  firedEvents: { tick: number; event: string; params: Record<string, unknown> }[];
+  /** alert keys (ruleKey:entityId) active after the last RULE_SCAN — for raised/cleared diffs */
+  activeAlerts: string[];
+}
+
+export interface ClockTickReport {
+  id: string; // tickjob_
+  tenantId: string;
+  fromTick: number;
+  toTick: number;
+  newPoints: number;
+  topChangedSnapshots: { objectId: string; objectType: string; property: string; from: number | null; to: number }[];
+  alertsRaised: string[];
+  alertsCleared: string[];
+  scenarioEvents: { tick: number; event: string }[];
+  forecastDeviation?: { modelId: string; predictedDaily: number; actualDaily: number; deviation: number };
+  createdAt: string;
+}
+
+/** Stored when capacity_forecast runs — feeds the T9 deviation/calibration loop. */
+export interface ForecastSnapshotRecord {
+  id: string; // fcst_<tenant>_<model>
+  tenantId: string;
+  modelId: string;
+  p50: number;
+  weeks: number;
+  predictedDaily: number; // 万套/日
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// S4 knowledge base / vectors
+// ---------------------------------------------------------------------------
+
+export interface KbDocRecord {
+  id: string; // kbdoc_
+  tenantId: string;
+  connId: string;
+  filename: string;
+  blobKey: string;
+  chunkCount: number;
+  createdAt: string;
+}
+
+export interface KbChunkRecord {
+  id: string; // kbch_
+  tenantId: string;
+  connId: string;
+  docId: string;
+  seq: number;
+  text: string;
+  span: { start: number; end: number };
+  embedding: number[];
+}
+
+// ---------------------------------------------------------------------------
+// Feature entitlement
+// ---------------------------------------------------------------------------
+
+export interface FeatureConfigRecord {
+  id: string; // fcfg_<tenant> | fcfg_<tenant>_<role>
+  tenantId: string;
+  role?: string; // absent = tenant layer
+  overrides: Record<string, boolean>;
+  configVersion: number;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface FeatureAuditRecord {
+  id: string;
+  tenantId: string;
+  role?: string;
+  diff: Record<string, { from: boolean | null; to: boolean }>;
+  configVersion: number;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Per-tenant solver params (scenario-pack constants, §S1 通用约定)
+// ---------------------------------------------------------------------------
+
+export interface SolverParamsRecord {
+  id: string; // spar_<tenant>
+  tenantId: string;
+  params: Record<string, unknown>;
+  version: number;
+  updatedAt: string;
 }
 
 export type { PermissionPolicy };

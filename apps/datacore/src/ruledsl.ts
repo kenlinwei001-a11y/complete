@@ -14,7 +14,9 @@ export type AstNode =
   | { kind: "and"; left: AstNode; right: AstNode }
   | { kind: "or"; left: AstNode; right: AstNode }
   | { kind: "not"; operand: AstNode }
-  | { kind: "cmp"; op: CmpOp; left: Operand; right: Operand };
+  | { kind: "cmp"; op: CmpOp; left: Operand; right: Operand }
+  /** A8.5: SUSTAIN(comparison, days) — comparison held over the last `days` aggregation buckets. */
+  | { kind: "sustain"; inner: AstNode; days: number };
 
 export type CmpOp = ">" | ">=" | "<" | "<=" | "==" | "!=" | "IN";
 
@@ -156,6 +158,23 @@ class Parser {
       this.pos++;
       return { kind: "not", operand: this.parseUnary() };
     }
+    if (this.isKeyword("SUSTAIN")) {
+      const open = this.tokens[this.pos + 1];
+      if (open?.t === "punct" && open.v === "(") {
+        this.pos += 2;
+        const inner = this.parseOr();
+        const comma = this.peek();
+        if (!(comma?.t === "punct" && comma.v === ",")) throw new DslError("SUSTAIN expects (comparison, days)");
+        this.pos++;
+        const daysTok = this.peek();
+        if (daysTok?.t !== "num") throw new DslError("SUSTAIN days must be a number");
+        this.pos++;
+        const close = this.peek();
+        if (!(close?.t === "punct" && close.v === ")")) throw new DslError("expected ) after SUSTAIN");
+        this.pos++;
+        return { kind: "sustain", inner, days: Math.max(1, Math.floor(daysTok.v)) };
+      }
+    }
     const t = this.peek();
     if (t?.t === "punct" && t.v === "(") {
       // Could be a parenthesized expression
@@ -284,6 +303,29 @@ export interface EvalContext {
   payload: Record<string, unknown>;
   /** User for ${user.attr} references (rowFilter subset). */
   user?: { userId?: string; roles?: string[]; attributes?: Record<string, unknown> };
+  /**
+   * A8.5 SUSTAIN evaluator — supplied by the rule-scan engine, which checks the
+   * inner comparison against the last `days` ts_agg_runs buckets (NOT snapshot
+   * single values). Without a provider SUSTAIN evaluates to false.
+   */
+  sustain?: (inner: AstNode, days: number) => boolean;
+}
+
+/** First field operand inside a SUSTAIN comparison (e.g. Line.utilization). */
+export function sustainField(inner: AstNode): string[] | null {
+  switch (inner.kind) {
+    case "cmp":
+      if (inner.left.kind === "field") return inner.left.path;
+      if (inner.right.kind === "field") return inner.right.path;
+      return null;
+    case "and":
+    case "or":
+      return sustainField(inner.left) ?? sustainField(inner.right);
+    case "not":
+      return sustainField(inner.operand);
+    default:
+      return null;
+  }
 }
 
 function drill(root: unknown, path: string[]): unknown {
@@ -388,6 +430,8 @@ export function evaluateAst(node: AstNode, ctx: EvalContext): boolean {
       return !evaluateAst(node.operand, ctx);
     case "cmp":
       return compare(node.op, evalOperand(node.left, ctx), evalOperand(node.right, ctx));
+    case "sustain":
+      return ctx.sustain ? ctx.sustain(node.inner, node.days) : false;
   }
 }
 

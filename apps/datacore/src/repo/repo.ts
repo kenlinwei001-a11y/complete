@@ -1,8 +1,15 @@
 import type {
   ActionDraft,
+  ActionTypeRecord,
+  ClockTickReport,
   Connection,
   DerivationRun,
+  FeatureAuditRecord,
+  FeatureConfigRecord,
+  ForecastSnapshotRecord,
   IndustryTemplateRecord,
+  KbChunkRecord,
+  KbDocRecord,
   LinkInstance,
   LinkTypeDef,
   ObjectInstance,
@@ -12,12 +19,23 @@ import type {
   OutboxEvent,
   PermissionPolicy,
   RawDataset,
+  RetentionPolicyRecord,
   Rule,
   RuleCandidate,
   RuleDoc,
+  ScheduledJobRecord,
+  SchedulerRunRecord,
+  SimulationClockRecord,
+  SolverParamsRecord,
+  SopVersion,
   SyncJob,
   SyntheticJob,
   Tenant,
+  TsAggRunRecord,
+  TsAggSpecRecord,
+  TsLateArrivalRecord,
+  TsPointRecord,
+  TsSeriesRecord,
   User,
   ViewConfig,
   WebhookRegistration,
@@ -45,6 +63,69 @@ export interface RawRowStore {
   list(tenantId: string, datasetId: string): Promise<Record<string, unknown>[]>;
 }
 
+// ---------------------------------------------------------------------------
+// S3 scheduler — claimDue must be atomic w.r.t. concurrent ticks
+// (pg: SELECT … FOR UPDATE SKIP LOCKED; memory: synchronous claim-and-advance).
+// ---------------------------------------------------------------------------
+
+export interface ClaimedJob {
+  job: ScheduledJobRecord;
+  scheduledAt: string;
+}
+
+export interface ScheduledJobStore extends Store<ScheduledJobRecord> {
+  /**
+   * Atomically claim jobs whose nextRunAt <= now and status ACTIVE, advancing
+   * nextRunAt via `nextFn(cron, timezone, after)`. Concurrent callers never
+   * receive the same (job, scheduledAt) pair.
+   */
+  claimDue(
+    nowIso: string,
+    nextFn: (cron: string, timezone: string, afterIso: string) => string,
+  ): Promise<ClaimedJob[]>;
+}
+
+// ---------------------------------------------------------------------------
+// A8 timeseries points (raw layer — never reachable from LLM-facing tools)
+// ---------------------------------------------------------------------------
+
+export interface TsPointQuery {
+  entityIds?: string[];
+  from?: string; // inclusive
+  to?: string; // exclusive
+}
+
+export interface TsPointStore {
+  /** Idempotent upsert keyed (seriesId, entityId, ts). Returns number written. */
+  upsert(tenantId: string, points: TsPointRecord[]): Promise<number>;
+  list(tenantId: string, seriesId: string, q?: TsPointQuery): Promise<TsPointRecord[]>;
+  /** Points ingested after `since` — drives incremental aggregation (incl. late points). */
+  listIngestedSince(tenantId: string, seriesId: string, since: string): Promise<TsPointRecord[]>;
+  maxTs(tenantId: string, seriesId: string): Promise<string | undefined>;
+  count(tenantId: string, seriesId?: string): Promise<number>;
+  removeWhere(tenantId: string, pred: (p: TsPointRecord) => boolean): Promise<number>;
+}
+
+// ---------------------------------------------------------------------------
+// S4 vector index over kb_chunks (memory cosine / pgvector with JSONB fallback)
+// ---------------------------------------------------------------------------
+
+export interface VectorHit {
+  chunk: KbChunkRecord;
+  score: number;
+}
+
+export interface VectorIndex {
+  upsert(chunks: KbChunkRecord[]): Promise<void>;
+  search(
+    tenantId: string,
+    queryVec: number[],
+    topK: number,
+    filter?: (c: KbChunkRecord) => boolean,
+  ): Promise<VectorHit[]>;
+  removeByDoc(tenantId: string, docId: string): Promise<void>;
+}
+
 export interface Repos {
   tenants: Store<Tenant>;
   users: Store<User>;
@@ -65,10 +146,34 @@ export interface Repos {
   links: LinkStore;
   derivationRuns: Store<DerivationRun>;
   actionDrafts: Store<ActionDraft>;
+  actionTypes: Store<ActionTypeRecord>;
   industryTemplates: Store<IndustryTemplateRecord>;
   syntheticJobs: Store<SyntheticJob>;
   outboxEvents: Store<OutboxEvent>;
   webhooks: Store<WebhookRegistration>;
+  // S1.8
+  sopVersions: Store<SopVersion>;
+  // S1 per-tenant solver params
+  solverParams: Store<SolverParamsRecord>;
+  // S3
+  scheduledJobs: ScheduledJobStore;
+  schedulerRuns: Store<SchedulerRunRecord>;
+  // S4
+  kbDocs: Store<KbDocRecord>;
+  kbChunks: VectorIndex;
+  // A8
+  tsSeries: Store<TsSeriesRecord>;
+  tsPoints: TsPointStore;
+  tsLateArrivals: Store<TsLateArrivalRecord>;
+  tsAggSpecs: Store<TsAggSpecRecord>;
+  tsAggRuns: Store<TsAggRunRecord>;
+  retentionPolicies: Store<RetentionPolicyRecord>;
+  simulationClocks: Store<SimulationClockRecord>;
+  clockTickReports: Store<ClockTickReport>;
+  forecastSnapshots: Store<ForecastSnapshotRecord>;
+  // Feature entitlement
+  featureConfigs: Store<FeatureConfigRecord>;
+  featureAudit: Store<FeatureAuditRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

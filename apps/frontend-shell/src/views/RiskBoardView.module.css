@@ -1,0 +1,67 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.card:hover {
+  border-color: var(--line2);
+}
+.cardSelected {
+  border-color: rgba(76, 144, 240, 0.55);
+  box-shadow: 0 0 0 1px rgba(76, 144, 240, 0.3);
+}
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.metrics {
+  display: flex;
+  gap: 18px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.metrics b {
+  display: block;
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.miniStrip {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+.miniStrip span {
+  flex: 1;
+  border-radius: 2px;
+}
+
+.dayRow {
+  display: flex;
+  gap: 2px;
+  margin-top: 10px;
+}
+.dayCell {
+  flex: 1;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  padding: 0;
+}
+.dayCell:hover {
+  outline: 1px solid #fff;
+}

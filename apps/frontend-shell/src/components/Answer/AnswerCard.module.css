@@ -1,0 +1,74 @@
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 8px 0;
+}
+
+/* 探索回答：虚线边框（不得变体） */
+.card.exploratory {
+  border-style: dashed;
+  border-color: rgba(232, 181, 74, 0.55);
+}
+
+.warnStrip {
+  background: rgba(232, 181, 74, 0.14);
+  border: 1px solid rgba(232, 181, 74, 0.4);
+  color: var(--amber);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.head {
+  margin-bottom: 8px;
+}
+
+.blocks {
+  display: flex;
+  flex-direction: column;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+  padding-top: 8px;
+}
+
+.votes {
+  display: flex;
+  gap: 6px;
+}
+
+.voteBtn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 14px;
+  opacity: 0.65;
+}
+.voteBtn:hover {
+  opacity: 1;
+  border-color: var(--line2);
+}
+.voteBtn:disabled {
+  cursor: default;
+}
+.votedOn {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.detailLink {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.detailLink:hover {
+  color: var(--accent);
+}

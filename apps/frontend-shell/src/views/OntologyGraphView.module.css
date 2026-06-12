@@ -1,0 +1,117 @@
+.layout {
+  display: flex;
+  gap: 14px;
+  height: calc(100vh - 130px);
+}
+
+.canvasWrap {
+  position: relative;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.edge {
+  stroke: rgba(226, 235, 245, 0.16);
+  stroke-width: 1.2px;
+}
+
+.node {
+  cursor: pointer;
+}
+
+.nodeSelected circle,
+.nodeSelected path,
+.nodeSelected polygon {
+  stroke-width: 3px;
+  stroke: #fff;
+}
+
+.nodeLabel {
+  font-size: 11px;
+  fill: var(--txt);
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
+.dim {
+  opacity: 0.12;
+  transition: opacity 0.4s;
+}
+
+.legend {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  background: linear-gradient(165deg, rgba(30, 38, 49, 0.88), rgba(14, 19, 26, 0.85));
+  border: 1px solid var(--line2);
+  border-radius: 11px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  backdrop-filter: blur(14px);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.legendItem:hover {
+  color: var(--txt);
+}
+.legendOff {
+  opacity: 0.32;
+}
+
+.sw {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+
+.inspector {
+  width: 320px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.inspectorHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.x {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+}
+.x:hover {
+  color: var(--txt);
+}
