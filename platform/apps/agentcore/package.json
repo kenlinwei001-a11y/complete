@@ -1,0 +1,2 @@
+{ "name": "@platform/agentcore", "version": "0.1.0", "type": "module",
+  "dependencies": { "@platform/contracts": "workspace:*", "fastify": "^4.28.0", "@fastify/cors": "^9.0.1", "@fastify/static": "^7.0.4", "@anthropic-ai/sdk": "latest" } }

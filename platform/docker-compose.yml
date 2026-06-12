@@ -1,0 +1,6 @@
+services:
+  platform:
+    build: .
+    ports: ["8081:8081", "8082:8082"]
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}

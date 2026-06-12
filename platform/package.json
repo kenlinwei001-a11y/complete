@@ -1,0 +1,11 @@
+{
+  "name": "ontology-decision-platform",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:datacore": "tsx apps/datacore/src/index.ts",
+    "dev:agentcore": "tsx apps/agentcore/src/index.ts",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": { "tsx": "^4.19.0", "typescript": "^5.5.0", "@types/node": "^22.0.0" }
+}
