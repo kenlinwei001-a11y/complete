@@ -1128,8 +1128,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.patch("/a/v1/sop/versions/:id", async (req) => {
     await requireFeatureTag(req, "apiTags", "sop");
     const { id } = req.params as { id: string };
-    const body = parseBody(z.object({ fields: z.record(z.string(), z.unknown()) }), req.body);
-    return sop.patch(ctx(req), id, body.fields);
+    // 两种请求形态：{ fields: {...} }（API 调用方）或字段直接平铺在 body（SPA PATCH 形态）
+    const body = parseBody(z.record(z.string(), z.unknown()), req.body);
+    const fields =
+      body["fields"] != null && typeof body["fields"] === "object" && !Array.isArray(body["fields"])
+        ? (body["fields"] as Record<string, unknown>)
+        : body;
+    return sop.patch(ctx(req), id, fields);
   });
   app.post("/a/v1/sop/versions/:id/advance", async (req) => {
     await requireFeatureTag(req, "apiTags", "sop");

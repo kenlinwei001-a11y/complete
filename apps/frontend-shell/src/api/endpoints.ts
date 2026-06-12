@@ -163,6 +163,14 @@ export interface RuleCandidateVM {
   duplicateOf?: string;
 }
 export const fetchRuleDocs = () => api.a<RuleDocVM[]>("/a/v1/rule-docs");
+/** 上传规则文档（multipart）→ 202 抽取作业；候选列表经 fetchRuleCandidates 轮询/刷新 */
+export const uploadRuleDoc = (file: File) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api.a<{ docId: string; jobId: string; status: string; candidateCount: number }>("/a/v1/rule-docs", {
+    formData: fd,
+  });
+};
 export const fetchRuleDoc = (id: string) => api.a<RuleDocVM>(`/a/v1/rule-docs/${id}`);
 export const fetchRuleCandidates = (docId: string) => api.a<RuleCandidateVM[]>(`/a/v1/rule-docs/${docId}/candidates`);
 export const reviewCandidate = (id: string, action: "APPROVE" | "EDIT_APPROVE" | "REJECT", patch?: Record<string, unknown>) =>
@@ -185,6 +193,16 @@ export interface ModelingDraftVM {
   suggestion: ModelingSuggestion;
   publishErrors?: { typeKey: string; message: string }[];
 }
+export interface RawDatasetVM {
+  id: string;
+  name: string;
+  sourceConnId?: string;
+  fields?: { name: string; inferredType: string }[];
+}
+export const fetchRawDatasets = () => api.a<RawDatasetVM[]>("/a/v1/raw-datasets");
+/** A3 半自动建模：选原始数据集 → AI 建议草案（202 {draftId}） */
+export const suggestModeling = (rawDatasetIds: string[]) =>
+  api.a<{ draftId: string; status: string }>("/a/v1/modeling/suggest", { body: { rawDatasetIds } });
 export const fetchModelingDrafts = () => api.a<ModelingDraftVM[]>("/a/v1/modeling/drafts");
 export const fetchModelingDraft = (id: string) => api.a<ModelingDraftVM>(`/a/v1/modeling/drafts/${id}`);
 export const patchModelingDraft = (id: string, operation: Record<string, unknown>) =>

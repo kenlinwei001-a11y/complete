@@ -1,0 +1,1213 @@
+#!/usr/bin/env node
+/**
+ * parity-audit — 管理台「真连」防漂移闸门。
+ *
+ * 以 SPA（apps/frontend-shell）的【确切请求形态】重放每一个管理台交互，对照
+ * 页面实际消费的响应字段断言。mock-first 漂移（mock 通过 / 真后端不通）在此现形。
+ *
+ * 运行方式（不构建，假设 dist 已存在）：
+ *   pnpm run parity
+ *
+ * - 内存模式拉起 DataCore + AgentCore（与 pg 模式仓储层以上同一代码路径）
+ * - 内置一个 OpenAI-compatible LLM stub，使 A2 规则抽取 / A3 建模建议 / QOS 全链
+ *   可离线确定性重放（生产中由真实 LLM 提供）
+ * - 鉴权与 SPA 一致：POST /a/v1/auth/login 取 JWT，两系统均走 Bearer（不使用 X-Debug-User）
+ */
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const BLOB_DIR = mkdtempSync(join(tmpdir(), "parity-blobs-"));
+
+// 契约 zod schema —— 前端就是用这些 parse 的（fetchAop/fetchCalibrationReport/…）
+const contracts = await import(join(ROOT, "packages/contracts/dist/index.js")).catch(() => null);
+
+// ---------------------------------------------------------------------------
+// 0 · OpenAI-compatible LLM stub（确定性：A2 抽取 / A3 建模 / QOS 分类+Agent）
+// ---------------------------------------------------------------------------
+function startLlmStub() {
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let body = {};
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        /* ignore */
+      }
+      const system = body.messages?.find((m) => m.role === "system")?.content ?? "";
+      const user = [...(body.messages ?? [])].reverse().find((m) => m.role === "user")?.content ?? "";
+      const schemaName = body.response_format?.json_schema?.name;
+      let out;
+      if (schemaName === "intent_classification") {
+        // QOS 分类：恒定 out-of-catalog → 路径 B（agent 兜底）
+        out = { candidates: [], outOfCatalog: true, extractedSlotsJson: "{}" };
+      } else if (Array.isArray(body.tools) && body.tools.length > 0) {
+        // Agent 工具循环：直接给最终文本（end_turn → 降级文本回答 → ANSWERED + 兜底留痕）
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "已完成分析：当前产能态势平稳。" }, finish_reason: "stop" }] }));
+        return;
+      } else if (String(system).includes("规则抽取器")) {
+        // A2：sourceQuote 必须逐字摘录 segment 文本（服务端子串校验）
+        const m = />\n([\s\S]*?)\n<\/segment>/.exec(String(user));
+        const text = (m?.[1] ?? String(user)).trim();
+        const quote = text.slice(0, Math.min(16, text.length));
+        out = {
+          candidates: quote
+            ? [{ name: `规则·${quote.slice(0, 6)}`, description: "stub 抽取的候选规则", expression: "Order.qty > 0", expressionConfidence: 0.9, scopeObjectTypes: ["Order"], severity: "WARN", sourceQuote: quote }]
+            : [],
+        };
+      } else if (String(system).includes("本体建模助手")) {
+        // A3：把每个数据集映射为一个对象类型，第一个字段为主键
+        let datasets = [];
+        try {
+          datasets = JSON.parse(String(user)).datasets ?? [];
+        } catch {
+          /* ignore */
+        }
+        const typeKeyOf = (n) => `T_${String(n).replace(/[^A-Za-z0-9]/g, "_")}`;
+        out = {
+          objectTypes: datasets.map((d) => ({
+            action: "CREATE",
+            existingTypeKey: null,
+            typeKey: typeKeyOf(d.name),
+            displayName: String(d.name),
+            sourceDataset: String(d.name),
+            properties: (d.fields ?? []).map((f, i) => ({
+              propKey: String(f.name),
+              sourceField: String(f.name),
+              dataType: ["string", "number", "boolean", "date", "enum", "ref"].includes(f.inferredType) ? f.inferredType : "string",
+              isPrimaryKey: i === 0,
+              refToTypeKey: null,
+            })),
+            confidence: 0.9,
+          })),
+          linkTypes: [],
+        };
+      } else {
+        out = { text: "stub" };
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify(out) } }] }));
+    });
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ server, port: server.address().port })));
+}
+
+// ---------------------------------------------------------------------------
+// 1 · 服务启动
+// ---------------------------------------------------------------------------
+const children = [];
+function spawnService(name, script, env) {
+  const child = spawn(process.execPath, [script], {
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let log = "";
+  child.stdout.on("data", (c) => (log += c));
+  child.stderr.on("data", (c) => (log += c));
+  child.tail = () => log.split("\n").slice(-12).join("\n");
+  children.push(child);
+  return child;
+}
+
+async function waitFor(url, timeoutMs = 30000) {
+  const t0 = Date.now();
+  for (;;) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      /* retry */
+    }
+    if (Date.now() - t0 > timeoutMs) throw new Error(`timeout waiting for ${url}`);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
+const { server: llmStub, port: llmPort } = await startLlmStub();
+const A_PORT = 14600 + Math.floor(Math.random() * 200);
+const B_PORT = A_PORT + 1;
+const A = `http://127.0.0.1:${A_PORT}`;
+const B = `http://127.0.0.1:${B_PORT}`;
+
+const dc = spawnService("datacore", join(ROOT, "apps/datacore/dist/server.js"), {
+  PORT: String(A_PORT),
+  JWT_SECRET: "parity",
+  CREDENTIAL_KEY: "a".repeat(64),
+  BLOB_DIR,
+  SEED_DEMO: "1",
+  LOG_LEVEL: "warn",
+  DC_LLM_PROVIDER: "openai_compatible",
+  DC_LLM_BASE_URL: `http://127.0.0.1:${llmPort}`,
+  DC_LLM_API_KEY_ENV: "PARITY_LLM_KEY",
+  PARITY_LLM_KEY: "parity-key",
+});
+const ac = spawnService("agentcore", join(ROOT, "apps/agentcore/dist/main.js"), {
+  PORT: String(B_PORT),
+  DATACORE_BASE_URL: A,
+  LOG_LEVEL: "warn",
+  PARITY_LLM_KEY: "parity-key",
+});
+
+try {
+  await waitFor(`${A}/a/v1/healthz`, 60000);
+  await waitFor(`${B}/b/v1/healthz`, 60000);
+} catch (e) {
+  console.error(String(e));
+  console.error("--- datacore tail ---\n" + dc.tail());
+  console.error("--- agentcore tail ---\n" + ac.tail());
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// 2 · SPA 形态的 http 助手（与 apps/frontend-shell/src/api/apiClient.ts 对齐）
+// ---------------------------------------------------------------------------
+let TOKEN = "";
+async function http(base, path, opts = {}) {
+  const headers = { ...(opts.headers ?? {}) };
+  const token = opts.token ?? TOKEN;
+  if (token) headers["authorization"] = `Bearer ${token}`;
+  let body;
+  if (opts.formData) body = opts.formData;
+  else if (opts.body !== undefined) {
+    headers["content-type"] = "application/json";
+    body = JSON.stringify(opts.body);
+  }
+  const res = await fetch(`${base}${path}`, {
+    method: opts.method ?? (opts.body !== undefined || opts.formData ? "POST" : "GET"),
+    headers,
+    body,
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = text.length ? JSON.parse(text) : undefined;
+  } catch {
+    json = text;
+  }
+  return { status: res.status, body: json, headers: res.headers };
+}
+const a = (path, opts) => http(A, path, opts);
+const b = (path, opts) => http(B, path, opts);
+
+// ---------------------------------------------------------------------------
+// 3 · 断言与结果表
+// ---------------------------------------------------------------------------
+const results = [];
+let failures = 0;
+async function check(group, name, fn) {
+  try {
+    await fn();
+    results.push({ group, name, ok: true });
+  } catch (e) {
+    failures++;
+    results.push({ group, name, ok: false, detail: String(e?.message ?? e).slice(0, 220) });
+  }
+}
+function eq(actual, expected, label) {
+  if (actual !== expected) throw new Error(`${label ?? "value"}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+}
+function ok(cond, label) {
+  if (!cond) throw new Error(label ?? "assertion failed");
+}
+function isArr(v, label) {
+  ok(Array.isArray(v), `${label ?? "value"} should be array, got ${typeof v}`);
+}
+function envelope(resp, status, code) {
+  eq(resp.status, status, "status");
+  eq(resp.body?.error?.code, code, "error.code");
+  ok(typeof resp.body?.error?.message === "string", "error.message");
+  ok(typeof resp.body?.error?.requestId === "string", "error.requestId");
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ===========================================================================
+// AUTH / WORKSPACE
+// ===========================================================================
+let refreshCookie = "";
+let plannerToken = "";
+let approverToken = "";
+await check("auth", "登录（admin/demo1234）→ accessToken + refresh cookie(Path=/a/v1/auth)", async () => {
+  const r = await a("/a/v1/auth/login", { body: { tenantId: "demo", username: "admin", password: "demo1234" } });
+  eq(r.status, 200, "status");
+  ok(typeof r.body.accessToken === "string", "accessToken");
+  TOKEN = r.body.accessToken;
+  const sc = r.headers.get("set-cookie") ?? "";
+  ok(sc.includes("refresh_token="), "set-cookie refresh_token");
+  ok(sc.includes("Path=/a/v1/auth"), "cookie Path=/a/v1/auth（网关同源前缀必须匹配）");
+  refreshCookie = sc.split(";")[0];
+});
+await check("auth", "静默刷新（cookie + 空 body，SPA silentRefresh 形态）", async () => {
+  const r = await a("/a/v1/auth/refresh", { method: "POST", body: {}, headers: { cookie: refreshCookie }, token: "" });
+  eq(r.status, 200, "status");
+  ok(typeof r.body.accessToken === "string", "accessToken");
+});
+await check("auth", "planner / approver 演示账号可登录（审批链需要第二审批人）", async () => {
+  const p = await a("/a/v1/auth/login", { body: { tenantId: "demo", username: "planner", password: "demo1234" } });
+  eq(p.status, 200, "planner login");
+  plannerToken = p.body.accessToken;
+  const ap = await a("/a/v1/auth/login", { body: { tenantId: "demo", username: "approver", password: "demo1234" } });
+  eq(ap.status, 200, "approver login");
+  approverToken = ap.body.accessToken;
+});
+
+let workspace;
+await check("workspace", "GET /a/v1/me/workspace → 前端 WorkspaceSchema 消费形态", async () => {
+  const r = await a("/a/v1/me/workspace");
+  eq(r.status, 200, "status");
+  workspace = r.body;
+  ok(workspace.tenant?.id === "demo", "tenant.id");
+  isArr(workspace.navigation, "navigation");
+  ok(workspace.navigation.every((n) => n.key && n.label && (n.group === "business" || n.group === "admin")), "navigation[{key,label,group}]");
+  isArr(workspace.views, "views");
+  ok(workspace.views.every((v) => v.viewKey || v.key), "views viewKey/key");
+  isArr(workspace.scenarioPackages, "scenarioPackages");
+  ok(workspace.scenarioPackages.every((p) => typeof p === "string" || typeof p?.id === "string"), "scenarioPackages [{id}]|string[]");
+  isArr(workspace.features, "features");
+  ok(Number.isInteger(workspace.configVersion), "configVersion");
+});
+const pkgId = typeof workspace?.scenarioPackages?.[0] === "string" ? workspace.scenarioPackages[0] : workspace?.scenarioPackages?.[0]?.id;
+
+// ===========================================================================
+// FEATURES（Entitlement 管理台）
+// ===========================================================================
+let registry = [];
+await check("features", "registry / tenant get（页面构建三层树）", async () => {
+  const r = await a("/a/v1/features/registry");
+  eq(r.status, 200, "status");
+  isArr(r.body, "registry");
+  ok(r.body.every((f) => f.key && f.name && f.level), "registry[{key,name,level}]");
+  registry = r.body;
+  const t = await a("/a/v1/tenants/demo/features");
+  eq(t.status, 200, "tenant features status");
+  isArr(t.body.features, "features");
+  ok(Number.isInteger(t.body.configVersion), "configVersion");
+});
+await check("features", "PUT 租户开关（页面 state 全量 overrides）→ configVersion", async () => {
+  const resolved = await a("/a/v1/tenants/demo/features");
+  const overrides = Object.fromEntries(registry.map((f) => [f.key, resolved.body.features.includes(f.key)]));
+  const r = await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+  eq(r.status, 200, "status");
+  ok(Number.isInteger(r.body.configVersion), "configVersion");
+});
+await check("features", "PUT 角色覆盖（收窄合法）→ configVersion", async () => {
+  const r = await a("/a/v1/tenants/demo/features/roles/planner", { method: "PUT", body: { overrides: { "view.sop-balance": true } } });
+  eq(r.status, 200, "status");
+  ok(Number.isInteger(r.body.configVersion), "configVersion");
+});
+await check("features", "角色覆盖越过租户 → 422 ROLE_CANNOT_EXCEED_TENANT", async () => {
+  const key = "view.task-dag";
+  const resolved = await a("/a/v1/tenants/demo/features");
+  const overrides = Object.fromEntries(registry.map((f) => [f.key, resolved.body.features.includes(f.key)]));
+  overrides[key] = false;
+  await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+  const r = await a("/a/v1/tenants/demo/features/roles/planner", { method: "PUT", body: { overrides: { [key]: true } } });
+  envelope(r, 422, "ROLE_CANNOT_EXCEED_TENANT");
+  overrides[key] = true; // 恢复
+  await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+  await a("/a/v1/tenants/demo/features/roles/planner", { method: "PUT", body: { overrides: {} } });
+});
+await check("features", "preview?role= → {navigation[{key,label}], views[{key,title}]}", async () => {
+  const r = await a("/a/v1/tenants/demo/features/preview?role=planner");
+  eq(r.status, 200, "status");
+  isArr(r.body.navigation, "navigation");
+  isArr(r.body.views, "views");
+  ok(r.body.views.every((v) => v.key && v.title), "views[{key,title}]");
+});
+await check("features", "audit → 数组", async () => {
+  const r = await a("/a/v1/tenants/demo/features/audit");
+  eq(r.status, 200, "status");
+  isArr(r.body, "audit");
+});
+
+// ===========================================================================
+// A1 · 连接器（ConnectionsPage 向导 / 同步 / 上传 / 健康度）
+// ===========================================================================
+let connectorTypes = [];
+await check("A1 连接", "connector-types → [{key,category,configSchema}]", async () => {
+  const r = await a("/a/v1/connector-types");
+  eq(r.status, 200, "status");
+  isArr(r.body, "types");
+  ok(r.body.every((t) => t.key && t.category), "key/category");
+  connectorTypes = r.body;
+});
+for (const ct of [
+  "sap_erp",
+  "salesforce_crm",
+  "generic_jdbc",
+  "rest_api",
+  "knowledge_base",
+  "external_feed",
+  "mock_erp",
+  "mock_crm",
+]) {
+  await check("A1 连接", `测试连接 ${ct}（向导 configSchema 必填全填）→ ok:true`, async () => {
+    const type = connectorTypes.find((t) => t.key === ct);
+    ok(type, `connector type ${ct} 存在`);
+    const required = type.configSchema?.required ?? [];
+    const config = Object.fromEntries(required.map((k) => [k, k.toLowerCase().includes("url") ? "http://example.local" : "x"]));
+    const r = await a("/a/v1/connections/test", { body: { connectorTypeKey: ct, config } });
+    eq(r.status, 200, "status");
+    eq(r.body.ok, true, "ok");
+  });
+}
+await check("A1 连接", "测试连接缺必填 → ok:false + message（页面红徽内联展示）", async () => {
+  const r = await a("/a/v1/connections/test", { body: { connectorTypeKey: "sap_erp", config: {} } });
+  eq(r.status, 200, "status");
+  eq(r.body.ok, false, "ok");
+  ok(typeof r.body.message === "string", "message");
+});
+let connId = "";
+await check("A1 连接", "创建连接（mock_erp）→ 201 {id,status}", async () => {
+  const r = await a("/a/v1/connections", { body: { connectorTypeKey: "mock_erp", name: "ERP 演示", config: {} } });
+  eq(r.status, 201, "status");
+  ok(r.body.id, "id");
+  connId = r.body.id;
+});
+await check("A1 连接", "凭据不回显：创建 sap_erp（password）→ 响应/列表均无明文", async () => {
+  const SECRET = "TOP-SECRET-9x7";
+  const r = await a("/a/v1/connections", { body: { connectorTypeKey: "sap_erp", name: "SAP", config: { host: "h", client: "100", username: "u", password: SECRET } } });
+  eq(r.status, 201, "status");
+  ok(!JSON.stringify(r.body).includes(SECRET), "create 不回显");
+  const list = await a("/a/v1/connections");
+  ok(!JSON.stringify(list.body).includes(SECRET), "list 不回显");
+});
+await check("A1 连接", "手动同步 → 202 {syncJobId}；轮询 sync-jobs → SUCCEEDED + rowCounts", async () => {
+  const r = await a(`/a/v1/connections/${connId}/sync`, { body: {} });
+  eq(r.status, 202, "status");
+  ok(r.body.syncJobId, "syncJobId");
+  let job;
+  for (let i = 0; i < 20; i++) {
+    job = (await a(`/a/v1/sync-jobs/${r.body.syncJobId}`)).body;
+    if (job.status === "SUCCEEDED" || job.status === "FAILED") break;
+    await sleep(300);
+  }
+  eq(job.status, "SUCCEEDED", "job.status");
+  ok(job.rowCounts && typeof job.rowCounts === "object", "rowCounts（页面 Object.entries）");
+});
+await check("A1 连接", "schema 页 → datasets[].fields[{name,inferredType,nullRate,uniqueRate,samples}]", async () => {
+  const r = await a(`/a/v1/connections/${connId}/schema`);
+  eq(r.status, 200, "status");
+  isArr(r.body.datasets, "datasets");
+  const f = r.body.datasets[0]?.fields?.[0];
+  ok(f && f.name && f.inferredType && typeof f.nullRate === "number" && typeof f.uniqueRate === "number" && Array.isArray(f.samples), "field profile 形态");
+});
+let uploadConnId = "";
+let rawDatasetId = "";
+await check("A1 连接", "文件上传（multipart CSV，SPA FormData 形态）→ 201 {connId,datasetName}", async () => {
+  const csv = "so_no,customer,qty,due_date\nSO-1,蔚途汽车,1500,2026-06-20\nSO-2,星河储能,820,2026-07-01\n";
+  const fd = new FormData();
+  fd.append("file", new Blob([csv], { type: "text/csv" }), "orders.csv");
+  const r = await a("/a/v1/uploads", { formData: fd });
+  eq(r.status, 201, "status");
+  ok(r.body.connId, "connId");
+  ok(r.body.datasetName, "datasetName");
+  uploadConnId = r.body.connId;
+});
+await check("A1 连接", "上传后字段画像页 + raw-datasets 出现（建模入口可选）", async () => {
+  const r = await a(`/a/v1/connections/${uploadConnId}/schema`);
+  eq(r.status, 200, "status");
+  ok(r.body.datasets?.[0]?.fields?.length >= 4, "fields");
+  const rds = await a("/a/v1/raw-datasets");
+  eq(rds.status, 200, "raw-datasets status");
+  const mine = rds.body.find((d) => d.sourceConnId === uploadConnId || d.name === "orders");
+  ok(mine, "raw dataset created");
+  rawDatasetId = mine.id;
+});
+await check("A1 连接", "数据健康度 §7.22（contracts DataHealthResponseSchema parse）", async () => {
+  const r = await a("/a/v1/data-health");
+  eq(r.status, 200, "status");
+  if (contracts?.DataHealthResponseSchema) {
+    const p = contracts.DataHealthResponseSchema.safeParse(r.body);
+    ok(p.success, `zod: ${p.error?.issues?.[0]?.path?.join(".")}`);
+  } else isArr(r.body.sources, "sources");
+});
+
+// ===========================================================================
+// A2 · 规则文档（RuleDocsPage：上传→候选→审核）
+// ===========================================================================
+let ruleDocId = "";
+let ruleCandidates = [];
+await check("A2 规则文档", "上传 .md（multipart，新上传按钮形态）→ 202 {docId,candidateCount}", async () => {
+  const md = "# 产销规则\n\n## 产能承接\n单型号需求增量超过基准产能的 50% 时禁止直接承接。\n\n## 外协管理\n外协比例原则上不得超过 20%。\n";
+  const fd = new FormData();
+  fd.append("file", new Blob([md], { type: "text/markdown" }), "产销规则.md");
+  const r = await a("/a/v1/rule-docs", { formData: fd });
+  eq(r.status, 202, "status");
+  ok(r.body.docId, "docId");
+  ok(r.body.candidateCount >= 1, "candidateCount>=1");
+  ruleDocId = r.body.docId;
+});
+await check("A2 规则文档", "列表/详情 → 含 segments（左栏渲染）", async () => {
+  const r = await a("/a/v1/rule-docs");
+  eq(r.status, 200, "status");
+  const doc = r.body.find((d) => d.id === ruleDocId);
+  ok(doc, "doc in list");
+  isArr(doc.segments, "segments");
+  ok(doc.segments.every((s) => typeof s.idx === "number" && typeof s.text === "string"), "segments[{idx,text}]");
+});
+await check("A2 规则文档", "候选卡形态 {candidate{…sourceQuote},status}", async () => {
+  const r = await a(`/a/v1/rule-docs/${ruleDocId}/candidates`);
+  eq(r.status, 200, "status");
+  isArr(r.body, "candidates");
+  ok(r.body.length >= 1, "non-empty");
+  const c = r.body[0];
+  ok(c.id && c.docId === ruleDocId && typeof c.segmentIdx === "number", "id/docId/segmentIdx");
+  ok(c.candidate?.name && typeof c.candidate.expressionConfidence === "number" && c.candidate.sourceQuote, "candidate{name,expressionConfidence,sourceQuote}");
+  eq(c.status, "PENDING", "status");
+  ruleCandidates = r.body;
+});
+await check("A2 规则文档", "review APPROVE → APPROVED（入规则库）", async () => {
+  const r = await a(`/a/v1/rule-candidates/${ruleCandidates[0].id}/review`, { body: { action: "APPROVE" } });
+  eq(r.status, 200, "status");
+  eq(r.body.status, "APPROVED", "status");
+});
+await check("A2 规则文档", "review EDIT_APPROVE + patch（页面编辑后通过形态）", async () => {
+  const target = ruleCandidates[1] ?? ruleCandidates[0];
+  const r = await a(`/a/v1/rule-candidates/${target.id}/review`, {
+    body: { action: ruleCandidates[1] ? "EDIT_APPROVE" : "REJECT", patch: { name: "外协红线·改", expression: "Outsource.ratio <= 0.2", severity: "BLOCK", scopeObjectTypes: ["Order"] } },
+  });
+  eq(r.status, 200, "status");
+});
+await check("A2 规则文档", "review REJECT → REJECTED", async () => {
+  // 再上传一份取得新 PENDING 候选
+  const fd = new FormData();
+  fd.append("file", new Blob(["## 信用\n客户在手订单金额不得超过其授信额度。\n"], { type: "text/markdown" }), "信用规则.md");
+  const up = await a("/a/v1/rule-docs", { formData: fd });
+  eq(up.status, 202, "upload status");
+  const cands = (await a(`/a/v1/rule-docs/${up.body.docId}/candidates`)).body;
+  ok(cands.length >= 1, "candidates");
+  const r = await a(`/a/v1/rule-candidates/${cands[0].id}/review`, { body: { action: "REJECT" } });
+  eq(r.status, 200, "status");
+  eq(r.body.status, "REJECTED", "status");
+});
+
+// ===========================================================================
+// A3 · 半自动建模（ModelingPage：suggest → PATCH 操作 → publish → materialize）
+// ===========================================================================
+let draftId = "";
+let typeKey = "";
+await check("A3 建模", "suggest {rawDatasetIds}（新建草案按钮形态）→ 202 {draftId}", async () => {
+  const r = await a("/a/v1/modeling/suggest", { body: { rawDatasetIds: [rawDatasetId] } });
+  eq(r.status, 202, "status");
+  ok(r.body.draftId, "draftId");
+  draftId = r.body.draftId;
+});
+await check("A3 建模", "drafts 列表 → datasets 字段画像 + suggestion.objectTypes（三栏渲染）", async () => {
+  const r = await a("/a/v1/modeling/drafts");
+  eq(r.status, 200, "status");
+  const d = r.body.find((x) => x.id === draftId);
+  ok(d, "draft in list");
+  isArr(d.datasets, "datasets");
+  ok(d.datasets[0]?.fields?.length >= 1, "datasets[].fields");
+  ok(d.suggestion?.objectTypes?.length >= 1, "suggestion.objectTypes");
+  typeKey = d.suggestion.objectTypes[0].typeKey;
+});
+await check("A3 建模", "PATCH renameType（{operations:[op]} 形态）", async () => {
+  const r = await a(`/a/v1/modeling/drafts/${draftId}`, { method: "PATCH", body: { operations: [{ op: "renameType", typeKey, newTypeKey: "OrderEntity" }] } });
+  eq(r.status, 200, "status");
+  ok(r.body.suggestion.objectTypes.some((t) => t.typeKey === "OrderEntity"), "renamed");
+  typeKey = "OrderEntity";
+});
+await check("A3 建模", "PATCH addProperty（页面 property 形态 incl. refToTypeKey:null）", async () => {
+  const r = await a(`/a/v1/modeling/drafts/${draftId}`, {
+    method: "PATCH",
+    body: { operations: [{ op: "addProperty", typeKey, property: { propKey: "memo", sourceField: "customer", dataType: "string", isPrimaryKey: false, refToTypeKey: null } }] },
+  });
+  eq(r.status, 200, "status");
+  ok(r.body.suggestion.objectTypes.find((t) => t.typeKey === typeKey).properties.some((p) => p.propKey === "memo"), "property added");
+});
+await check("A3 建模", "PATCH setRef / removeProperty", async () => {
+  let r = await a(`/a/v1/modeling/drafts/${draftId}`, { method: "PATCH", body: { operations: [{ op: "setRef", typeKey, propKey: "memo", refToTypeKey: "Base" }] } });
+  eq(r.status, 200, "setRef status");
+  const p = r.body.suggestion.objectTypes.find((t) => t.typeKey === typeKey).properties.find((x) => x.propKey === "memo");
+  eq(p.dataType, "ref", "dataType ref");
+  r = await a(`/a/v1/modeling/drafts/${draftId}`, { method: "PATCH", body: { operations: [{ op: "removeProperty", typeKey, propKey: "memo" }] } });
+  eq(r.status, 200, "removeProperty status");
+});
+await check("A3 建模", "publish 校验失败 → 200 {ok:false, errors[{typeKey,message}]}（卡片内联）", async () => {
+  // 删除主键属性制造校验错误
+  const d = (await a(`/a/v1/modeling/drafts/${draftId}`)).body;
+  const pk = d.suggestion.objectTypes.find((t) => t.typeKey === typeKey).properties.find((p) => p.isPrimaryKey);
+  await a(`/a/v1/modeling/drafts/${draftId}`, { method: "PATCH", body: { operations: [{ op: "removeProperty", typeKey, propKey: pk.propKey }] } });
+  const r = await a(`/a/v1/modeling/drafts/${draftId}/publish`, { body: {} });
+  eq(r.status, 200, "status");
+  eq(r.body.ok, false, "ok:false");
+  isArr(r.body.errors, "errors");
+  ok(r.body.errors.every((e) => "typeKey" in e && e.message), "errors[{typeKey,message}]");
+  // 加回主键
+  await a(`/a/v1/modeling/drafts/${draftId}`, {
+    method: "PATCH",
+    body: { operations: [{ op: "addProperty", typeKey, property: { propKey: pk.propKey, sourceField: pk.sourceField, dataType: pk.dataType, isPrimaryKey: true, refToTypeKey: null } }] },
+  });
+});
+await check("A3 建模", "publish 成功 → {ok:true}；materialize → 202 {jobId} + 轮询", async () => {
+  const r = await a(`/a/v1/modeling/drafts/${draftId}/publish`, { body: {} });
+  eq(r.status, 200, "publish status");
+  eq(r.body.ok, true, "ok:true");
+  const m = await a(`/a/v1/modeling/drafts/${draftId}/materialize`, { body: {} });
+  eq(m.status, 202, "materialize status");
+  ok(m.body.jobId, "jobId");
+  let job;
+  for (let i = 0; i < 20; i++) {
+    job = (await a(`/a/v1/sync-jobs/${m.body.jobId}`)).body;
+    if (job.status === "SUCCEEDED" || job.status === "FAILED") break;
+    await sleep(300);
+  }
+  eq(job.status, "SUCCEEDED", "materialize job status");
+});
+
+// ===========================================================================
+// A5 · 规则库 / A6 · 权限
+// ===========================================================================
+await check("A5 规则", "列表（RulesPage 渲染字段）+ create + publish", async () => {
+  const list = await a("/a/v1/rules");
+  eq(list.status, 200, "list status");
+  ok(list.body.every((r) => r.key && r.name && r.severity && Array.isArray(r.scopeObjectTypes) && r.origin?.type && r.status && Number.isInteger(r.version)), "RuleEntry 形态");
+  const c = await a("/a/v1/rules", { body: { key: `parity_rule_${Date.now()}`, name: "parity 规则", expression: "Order.qty > 0", scopeObjectTypes: ["Order"], severity: "WARN" } });
+  eq(c.status, 201, "create status");
+  const p = await a(`/a/v1/rules/${c.body.id}/publish`, { body: {} });
+  eq(p.status, 200, "publish status");
+  eq(p.body.status, "PUBLISHED", "published");
+});
+await check("A6 权限", "policies 列表（页面授权矩阵字段）+ create", async () => {
+  const r = await a("/a/v1/policies");
+  eq(r.status, 200, "status");
+  ok(r.body.every((p) => p.id && p.resource?.kind && p.resource?.key && Array.isArray(p.grants)), "policy 形态");
+  const c = await a("/a/v1/policies", { body: { resource: { kind: "OBJECT_TYPE", key: "OrderEntity" }, grants: [{ role: "planner", ops: ["READ"] }] } });
+  eq(c.status, 201, "create status");
+});
+await check("A6 权限", "authz explain（调试器请求形态）→ {allowed,matched[],rowFilter}", async () => {
+  const r = await a("/a/v1/authz/explain", {
+    body: { user: { roles: ["base_manager:常州"], attributes: {} }, resource: { kind: "OBJECT_TYPE", key: "Base" }, op: "READ" },
+  });
+  eq(r.status, 200, "status");
+  ok(typeof r.body.allowed === "boolean", "allowed");
+  isArr(r.body.matched, "matched");
+  ok(r.body.matched.every((m) => m.policyId && m.resource && m.grants), "matched[{policyId,resource,grants}]");
+  ok("rowFilter" in r.body, "rowFilter");
+});
+
+// ===========================================================================
+// A7 · 合成数据 + A8 · 模拟时钟（SyntheticPage）
+// ===========================================================================
+await check("A7 合成", "industry-templates → [{industryKey}]", async () => {
+  const r = await a("/a/v1/industry-templates");
+  eq(r.status, 200, "status");
+  isArr(r.body, "templates");
+});
+let synJobId = "";
+await check("A7 合成", "创建作业（battery/S/seed42）→ 202 {jobId}；六阶段轮询形态 + 报告", async () => {
+  const r = await a("/a/v1/synthetic/jobs", { body: { industry: "battery-manufacturing", scale: "S", seed: 42 } });
+  eq(r.status, 202, "status");
+  ok(r.body.jobId, "jobId");
+  synJobId = r.body.jobId;
+  let job;
+  for (let i = 0; i < 60; i++) {
+    job = (await a(`/a/v1/synthetic/jobs/${synJobId}`)).body;
+    if (job.status === "SUCCEEDED" || job.status === "FAILED") break;
+    await sleep(500);
+  }
+  eq(job.status, "SUCCEEDED", "job.status");
+  isArr(job.phases, "phases");
+  eq(job.phases.length, 6, "六阶段");
+  ok(job.phases.every((p) => p.name && ["PENDING", "RUNNING", "DONE", "FAILED"].includes(p.status)), "phases[{name,status}]");
+  ok(job.report?.rowCounts && typeof job.report.rowCounts === "object", "report.rowCounts");
+  isArr(job.report.ruleScan, "report.ruleScan");
+  isArr(job.report.derivationSpotChecks, "report.derivationSpotChecks");
+  if (job.report.timeseries) {
+    ok(job.report.timeseries.every((s) => s.seriesKey && typeof s.points === "number" && typeof s.gaps === "number" && typeof s.aggSpotCheckOk === "boolean"), "report.timeseries VM");
+  }
+});
+await check("A8 时钟", "GET clock → {simDate,currentTick,status,script[]}", async () => {
+  const r = await a("/a/v1/synthetic/clock");
+  eq(r.status, 200, "status");
+  ok(typeof r.body.simDate === "string", "simDate");
+  ok(Number.isInteger(r.body.currentTick), "currentTick");
+  ok(["ACTIVE", "TICKING", "RESETTING"].includes(r.body.status), "status enum");
+  isArr(r.body.script, "script");
+  ok(r.body.script.every((s) => Number.isInteger(s.tick) && s.event && typeof s.fired === "boolean"), "script[{tick,event,fired}]");
+});
+await check("A8 时钟", "tick 1d → 202 {tickJobId}；ticks 报告流 VM（newPoints/changedProps/newAlerts）", async () => {
+  const r = await a("/a/v1/synthetic/clock/tick", { body: { advance: "1d" } });
+  eq(r.status, 202, "status");
+  ok(r.body.tickJobId, "tickJobId");
+  for (let i = 0; i < 20; i++) {
+    const c = (await a("/a/v1/synthetic/clock")).body;
+    if (c.status !== "TICKING") break;
+    await sleep(300);
+  }
+  const ticks = await a("/a/v1/synthetic/clock/ticks");
+  eq(ticks.status, 200, "ticks status");
+  ok(ticks.body.length >= 1, "ticks non-empty");
+  const t = ticks.body[0];
+  ok(Number.isInteger(t.tick), "tick");
+  ok(typeof t.simDate === "string", "simDate");
+  ok(typeof t.newPoints === "number", "newPoints（页面 toLocaleString）");
+  isArr(t.changedProps, "changedProps");
+  ok(t.changedProps.every((c) => c.object && c.prop !== undefined), "changedProps[{object,prop,from,to}]");
+  isArr(t.newAlerts, "newAlerts");
+  isArr(t.clearedAlerts, "clearedAlerts");
+});
+await check("A8 时钟", "reset → 202 时钟 VM（页面立即重渲染）", async () => {
+  const r = await a("/a/v1/synthetic/clock/reset", { body: {} });
+  eq(r.status, 202, "status");
+  ok(typeof r.body.simDate === "string", "simDate");
+  eq(r.body.currentTick, 0, "currentTick=0");
+  isArr(r.body.script, "script");
+});
+
+// ===========================================================================
+// 计划域 / S&OP / 校准（业务视图写路径）
+// ===========================================================================
+await check("计划域", "AOP / 季度滚动（contracts schema parse —— 前端就是这样消费）", async () => {
+  const aop = await a("/a/v1/plan/aop?year=2026");
+  eq(aop.status, 200, "aop status");
+  if (contracts?.AopResponseSchema) ok(contracts.AopResponseSchema.safeParse(aop.body).success, "AopResponseSchema parse");
+  const q = await a("/a/v1/plan/quarterly?from=2026-Q3&n=6");
+  eq(q.status, 200, "quarterly status");
+  if (contracts?.QuarterlyResponseSchema) ok(contracts.QuarterlyResponseSchema.safeParse(q.body).success, "QuarterlyResponseSchema parse");
+});
+let sopId = "";
+await check("S&OP", "创建月度版本 → 201；列表/详情", async () => {
+  const r = await a("/a/v1/sop/versions", { body: { month: "2026-08" } });
+  eq(r.status, 201, "status");
+  sopId = r.body.id;
+  const list = await a("/a/v1/sop/versions");
+  ok(list.body.some((v) => v.id === sopId), "in list");
+});
+await check("S&OP", "PATCH 字段平铺形态（SPA patchSopVersion 形态）→ inputs 合并", async () => {
+  const r = await a(`/a/v1/sop/versions/${sopId}`, { method: "PATCH", body: { demTotal: 133 } });
+  eq(r.status, 200, "status");
+  eq(r.body.inputs?.demTotal, 133, "inputs.demTotal");
+});
+await check("S&OP", "PATCH {fields:{…}} 兼容形态（API 调用方）", async () => {
+  const r = await a(`/a/v1/sop/versions/${sopId}`, { method: "PATCH", body: { fields: { demTotal: 135 } } });
+  eq(r.status, 200, "status");
+  eq(r.body.inputs?.demTotal, 135, "inputs.demTotal");
+});
+await check("S&OP", "五步法 advance ①→⑤ + finalize；FINAL 后 PATCH → 409 PLAN_LOCKED", async () => {
+  for (const [step, payload] of [
+    [1, {}],
+    [2, {}],
+    [3, {}],
+    [4, { revSum: 100, gmSum: 25, gmBudget: 15, cashCushion: 9999 }],
+    [5, { resolutions: [{ name: "外协补缺", delta: 0.5 }] }],
+  ]) {
+    const r = await a(`/a/v1/sop/versions/${sopId}/advance`, { body: { step, payload } });
+    eq(r.status, 200, `step${step} status`);
+  }
+  const fin = await a(`/a/v1/sop/versions/${sopId}/finalize`, { body: {} });
+  eq(fin.status, 200, "finalize status");
+  eq(fin.body.status, "FINAL", "FINAL");
+  const locked = await a(`/a/v1/sop/versions/${sopId}`, { method: "PATCH", body: { demTotal: 140 } });
+  envelope(locked, 409, "PLAN_LOCKED");
+});
+let calibProposalId = "";
+let calibDraftId = "";
+await check("校准", "report（带筛选，CalibrationReportSchema parse）/ proposals / history", async () => {
+  const r = await a(`/a/v1/calibration/report?objectType=${encodeURIComponent("产能预测")}`);
+  eq(r.status, 200, "report status");
+  if (contracts?.CalibrationReportSchema) ok(contracts.CalibrationReportSchema.safeParse(r.body).success, "schema parse");
+  const props = await a("/a/v1/calibration/proposals");
+  eq(props.status, 200, "proposals status");
+  ok(props.body.length >= 1, "proposals seeded");
+  const p = props.body[0];
+  ok(p.id && p.parameter && p.basis?.windowFrom && Number.isInteger(p.basis.samples) && p.status, "proposal 形态");
+  calibProposalId = props.body.find((x) => x.status === "PENDING")?.id ?? p.id;
+  const hist = await a("/a/v1/calibration/history");
+  eq(hist.status, 200, "history status");
+  ok(hist.body.every((h) => h.at && h.trigger && Array.isArray(h.changedParams)), "history 形态");
+});
+await check("校准", "批准提案（admin 点击）→ 202 {draftId,status}（走 S2 审批，不直改）", async () => {
+  const r = await a(`/a/v1/calibration/proposals/${calibProposalId}/approve`, { body: {} });
+  eq(r.status, 202, "status");
+  ok(r.body.draftId, "draftId");
+  eq(r.body.status, "PENDING_APPROVAL", "PENDING_APPROVAL");
+  calibDraftId = r.body.draftId;
+});
+
+// ===========================================================================
+// S2 · Action 审批（ActionsPage）
+// ===========================================================================
+let actionDraftId = "";
+await check("S2 审批", "planner 采纳（plan_change，sim 视图形态）→ 201 PENDING_APPROVAL", async () => {
+  const r = await a("/a/v1/action-drafts", {
+    token: plannerToken,
+    body: { actionTypeKey: "plan_change", payload: { versionId: "plan-balanced", reason: "采纳规划方案" }, origin: { userId: "usr_demo_planner" }, submit: true },
+  });
+  eq(r.status, 201, "status");
+  ok(r.body.draftId, "draftId");
+  eq(r.body.status, "PENDING_APPROVAL", "status");
+  actionDraftId = r.body.draftId;
+});
+await check("S2 审批", "列表 ?status= 与 ?role=mine（待我审批）", async () => {
+  const byStatus = await a("/a/v1/action-drafts?status=PENDING_APPROVAL");
+  eq(byStatus.status, 200, "status filter");
+  ok(byStatus.body.some((d) => d.id === actionDraftId), "in status list");
+  const mine = await a("/a/v1/action-drafts?role=mine");
+  eq(mine.status, 200, "role=mine");
+  ok(mine.body.some((d) => d.id === actionDraftId), "admin 待审包含 planner 草稿");
+});
+await check("S2 审批", "详情 → payload/origin/approvalSteps（页面渲染字段）", async () => {
+  const r = await a(`/a/v1/action-drafts/${actionDraftId}`);
+  eq(r.status, 200, "status");
+  ok(r.body.payload && r.body.origin?.userId, "payload/origin");
+  isArr(r.body.approvalSteps, "approvalSteps");
+  ok(r.body.approvalSteps.every((s) => Number.isInteger(s.seq) && s.role), "steps[{seq,role}]");
+  ok(typeof r.body.createdAt === "string", "createdAt");
+});
+await check("S2 审批", "decision APPROVE + comment（单端点别名）→ EXECUTED", async () => {
+  const r = await a(`/a/v1/action-drafts/${actionDraftId}/decision`, { body: { decision: "APPROVE", comment: "同意" } });
+  eq(r.status, 200, "status");
+  ok(["APPROVED", "EXECUTED"].includes(r.body.status), `status ${r.body.status}`);
+});
+await check("S2 审批", "decision REJECT + comment → REJECTED", async () => {
+  const c = await a("/a/v1/action-drafts", {
+    token: plannerToken,
+    body: { actionTypeKey: "plan_change", payload: { versionId: "plan-x", reason: "驳回演示" }, origin: { userId: "usr_demo_planner" }, submit: true },
+  });
+  eq(c.status, 201, "create");
+  const r = await a(`/a/v1/action-drafts/${c.body.draftId}/decision`, { body: { decision: "REJECT", comment: "不同意" } });
+  eq(r.status, 200, "status");
+  eq(r.body.status, "REJECTED", "REJECTED");
+  const step = r.body.approvalSteps.find((s) => s.decision === "REJECT");
+  eq(step?.comment, "不同意", "comment 留痕");
+});
+await check("S2 审批", "cancel（暂存草稿可取消）→ CANCELLED", async () => {
+  const c = await a("/a/v1/action-drafts", {
+    body: { actionTypeKey: "plan_change", payload: { versionId: "plan-y", reason: "取消演示" }, origin: { userId: "usr_demo_admin" }, submit: false },
+  });
+  eq(c.status, 201, "create");
+  const r = await a(`/a/v1/action-drafts/${c.body.draftId}/cancel`, { body: {} });
+  eq(r.status, 200, "status");
+  eq(r.body.status, "CANCELLED", "CANCELLED");
+});
+await check("S2 审批", "校准草稿由第二审批人（approver）APPROVE → 提案 APPLIED + 历史增长", async () => {
+  const r = await a(`/a/v1/action-drafts/${calibDraftId}/decision`, { token: approverToken, body: { decision: "APPROVE", comment: "校准生效" } });
+  eq(r.status, 200, "status");
+  ok(["APPROVED", "EXECUTED"].includes(r.body.status), `status ${r.body.status}`);
+  const props = await a("/a/v1/calibration/proposals");
+  const p = props.body.find((x) => x.id === calibProposalId);
+  eq(p?.status, "APPLIED", "proposal APPLIED");
+});
+
+// ===========================================================================
+// B · LLM 供应商（凭据不回显）+ 绑定（QOS 走 stub 全链）
+// ===========================================================================
+await check("B LLM", "创建 provider（credential 不回显，仅 credentialRef）", async () => {
+  const SECRET = "LLM-SECRET-42";
+  const r = await b("/b/v1/llm/providers", {
+    body: { key: "parity-stub", kind: "openai_compatible", baseUrl: `http://127.0.0.1:${llmPort}`, credential: SECRET, status: "ACTIVE" },
+  });
+  eq(r.status, 201, "status");
+  ok(!JSON.stringify(r.body).includes(SECRET), "不回显");
+  ok(r.body.credentialRef, "credentialRef");
+  const list = await b("/b/v1/llm/providers");
+  ok(!JSON.stringify(list.body).includes(SECRET), "list 不回显");
+  const put = await b(`/b/v1/llm/providers/${r.body.id}`, { method: "PUT", body: { baseUrl: `http://127.0.0.1:${llmPort}` } });
+  eq(put.status, 200, "PUT status");
+});
+await check("B LLM", "PUT bindings（classifier/agent/compose → stub）", async () => {
+  const r = await b("/b/v1/llm/bindings", {
+    method: "PUT",
+    body: {
+      bindings: [
+        { role: "classifier", providerKey: "parity-stub", model: "stub-1" },
+        { role: "agent", providerKey: "parity-stub", model: "stub-1" },
+        { role: "compose", providerKey: "parity-stub", model: "stub-1" },
+      ],
+    },
+  });
+  eq(r.status, 200, "status");
+  isArr(r.body, "bindings list");
+});
+
+// ===========================================================================
+// B1 · Agents（AgentsPage 编辑器/发布）
+// ===========================================================================
+let agentId = "";
+await check("B1 Agent", "列表 + 创建（create body 不带 id/tenantId/version/status）", async () => {
+  const list = await b("/b/v1/agents");
+  eq(list.status, 200, "list status");
+  isArr(list.body, "agents");
+  const r = await b("/b/v1/agents", {
+    body: {
+      key: "parity_agent",
+      name: "parity 探针",
+      description: "d",
+      model: "claude-opus-4-8",
+      systemPrompt: "你是产能分析助手",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
+      skills: [],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Order"], toolNames: ["query_objects"] },
+      budget: { maxIterations: 4 },
+    },
+  });
+  eq(r.status, 201, "create status");
+  eq(r.body.status, "DRAFT", "DRAFT");
+  agentId = r.body.id;
+});
+await check("B1 Agent", "PUT（编辑器 form 形态：仅页面字段，无 key/mcpServers）", async () => {
+  const r = await b(`/b/v1/agents/${agentId}`, {
+    method: "PUT",
+    body: {
+      name: "parity 探针·改",
+      description: "d2",
+      model: "claude-opus-4-8",
+      systemPrompt: "你是产能分析助手 v2",
+      tools: [{ kind: "BUILTIN", name: "query_objects" }, { kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "BOTH" },
+      skills: [],
+      scopeDeclaration: { objectTypes: ["Order", "Base"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 6 },
+    },
+  });
+  eq(r.status, 200, "status");
+  eq(r.body.name, "parity 探针·改", "name updated");
+});
+await check("B1 Agent", "publish → {ok:true}（页面读 r.ok）", async () => {
+  const r = await b(`/b/v1/agents/${agentId}/publish`, { body: {} });
+  eq(r.status, 200, "status");
+  eq(r.body.ok, true, "ok:true");
+});
+await check("B1 Agent", "publish 校验失败（空 scope/空提示词）→ {ok:false, errors[{field,message}]}", async () => {
+  const c = await b("/b/v1/agents", {
+    body: {
+      key: "parity_agent_bad",
+      name: "无范围",
+      description: "",
+      model: "m",
+      systemPrompt: "",
+      tools: [],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
+      skills: [],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: [], toolNames: [] },
+    },
+  });
+  eq(c.status, 201, "create");
+  const r = await b(`/b/v1/agents/${c.body.id}/publish`, { body: {} });
+  eq(r.status, 200, "status");
+  eq(r.body.ok, false, "ok:false");
+  ok(r.body.errors?.every((e) => e.field && e.message), "errors[{field,message}]");
+});
+
+// ===========================================================================
+// B2 · Workflows（WorkflowsPage 步骤编辑器/发布错误定位/运行）
+// ===========================================================================
+let wfId = "";
+await check("B2 Workflow", "创建 + PUT {steps}（页面只发 steps）", async () => {
+  const r = await b("/b/v1/workflows", {
+    body: {
+      key: "parity_wf",
+      name: "parity 流程",
+      inputs: { type: "object", properties: {} },
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Order", filter: {} } },
+        { id: "s2", type: "render_answer", params: { blocks: [] } },
+      ],
+    },
+  });
+  eq(r.status, 201, "create status");
+  wfId = r.body.id;
+  const put = await b(`/b/v1/workflows/${wfId}`, {
+    method: "PUT",
+    body: {
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Order", filter: { x: "{{steps.s9.output}}" } } },
+        { id: "s2", type: "render_answer", params: { blocks: [] } },
+      ],
+    },
+  });
+  eq(put.status, 200, "PUT status");
+});
+await check("B2 Workflow", "publish 前向引用 → 200 {ok:false, errors[{stepId,code,message}]}（行内定位）", async () => {
+  const r = await b(`/b/v1/workflows/${wfId}/publish`, { body: {} });
+  eq(r.status, 200, "status");
+  eq(r.body.ok, false, "ok:false");
+  isArr(r.body.errors, "errors");
+  ok(r.body.errors.some((e) => e.stepId === "s1"), "stepId 定位");
+  ok(r.body.errors.every((e) => e.code && e.message), "code/message");
+});
+await check("B2 Workflow", "修正后 publish → {ok:true}；run → 200 {runId,status}", async () => {
+  await b(`/b/v1/workflows/${wfId}`, {
+    method: "PUT",
+    body: {
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Order", filter: {} } },
+        { id: "s2", type: "render_answer", params: { blocks: [] } },
+      ],
+    },
+  });
+  const r = await b(`/b/v1/workflows/${wfId}/publish`, { body: {} });
+  eq(r.status, 200, "publish status");
+  eq(r.body.ok, true, "ok:true");
+  const run = await b(`/b/v1/workflows/${wfId}/run`, { body: { inputs: {} } });
+  eq(run.status, 200, "run status");
+  ok(run.body.runId, "runId");
+  eq(run.body.status, "COMPLETED", "COMPLETED");
+});
+
+// ===========================================================================
+// B4 · Skills / B3 · MCP / B5 · Scenes
+// ===========================================================================
+await check("B4 Skill", "create / PUT（页面 {name,summary,body}）/ publish", async () => {
+  const c = await b("/b/v1/skills", { body: { key: "parity_skill", name: "parity 技能", summary: "s", body: "# md", resources: [] } });
+  eq(c.status, 201, "create status");
+  const put = await b(`/b/v1/skills/${c.body.id}`, { method: "PUT", body: { name: "parity 技能·改", summary: "s2", body: "# md2" } });
+  eq(put.status, 200, "PUT status");
+  const pub = await b(`/b/v1/skills/${c.body.id}/publish`, { body: {} });
+  eq(pub.status, 200, "publish status");
+  eq(pub.body.status, "PUBLISHED", "PUBLISHED");
+});
+let mcpId = "";
+await check("B3 MCP", "create（secret 不回显）/ PUT（凭据留空=不修改）", async () => {
+  const SECRET = "MCP-SECRET-7";
+  const r = await b("/b/v1/mcp-configs", {
+    body: { name: "parity-mcp", transport: { type: "streamable_http", url: "http://127.0.0.1:9/mcp" }, credential: SECRET, status: "ACTIVE" },
+  });
+  eq(r.status, 201, "create status");
+  ok(!JSON.stringify(r.body).includes(SECRET), "不回显");
+  ok(r.body.credentialRef, "credentialRef");
+  mcpId = r.body.id;
+  const put = await b(`/b/v1/mcp-configs/${mcpId}`, {
+    method: "PUT",
+    body: { name: "parity-mcp·改", transport: { type: "streamable_http", url: "http://127.0.0.1:9/mcp" }, status: "ACTIVE" },
+  });
+  eq(put.status, 200, "PUT status");
+  eq(put.body.credentialRef, r.body.credentialRef, "凭据留空 → credentialRef 不变");
+});
+await check("B3 MCP", "连接测试（不可达 → ok:false + message，不抛 5xx）", async () => {
+  const r = await b(`/b/v1/mcp-configs/${mcpId}/test`, { body: {} });
+  eq(r.status, 200, "status");
+  eq(r.body.ok, false, "ok:false");
+  isArr(r.body.tools, "tools");
+  ok(typeof r.body.message === "string", "message");
+});
+await check("B5 场景", "scene-entries 列表 / scenes?view= 单对象", async () => {
+  const list = await b("/b/v1/scene-entries");
+  eq(list.status, 200, "list status");
+  ok(list.body.length >= 1, "non-empty");
+  ok(list.body.every((s) => s.viewKey && s.mode && s.uiHints?.placeholder !== undefined && Array.isArray(s.uiHints.suggestedQuestions)), "SceneEntry 形态");
+  const one = await b("/b/v1/scenes?view=dash");
+  eq(one.status, 200, "scenes?view status");
+  eq(one.body?.viewKey, "dash", "single entry");
+});
+await check("B5 场景", "PUT（页面部分字段形态）→ 200；AGENT_* 无 defaultAgentId → 400", async () => {
+  const r = await b("/b/v1/scene-entries/dash", {
+    method: "PUT",
+    body: { mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问点什么…", suggestedQuestions: ["产能缺口多大？"] } },
+  });
+  eq(r.status, 200, "status");
+  eq(r.body.mode, "WORKFLOW_FIRST", "mode saved");
+  const bad = await b("/b/v1/scene-entries/dash", {
+    method: "PUT",
+    body: { mode: "AGENT_FIRST", uiHints: { placeholder: "p", suggestedQuestions: [] } },
+  });
+  envelope(bad, 400, "VALIDATION_ERROR");
+  // 恢复
+  await b("/b/v1/scene-entries/dash", {
+    method: "PUT",
+    body: { mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问点什么…", suggestedQuestions: ["产能缺口多大？"] } },
+  });
+});
+
+// ===========================================================================
+// B · 同步求解器代理（推演视图）
+// ===========================================================================
+await check("B 求解代理", "solvers/:key/run（OBO 透传）→ {data,snapshotVersion}", async () => {
+  const r = await b("/b/v1/solvers/capacity_forecast/run", { body: { args: { modelId: "4680-NCM", weeks: 6 } } });
+  eq(r.status, 200, "status");
+  ok("data" in r.body, "data");
+  ok(typeof r.body.snapshotVersion === "string", "snapshotVersion");
+});
+await check("B 求解代理", "上游校验错误透传（modelId 缺失 → 400 VALIDATION_ERROR，非 500）", async () => {
+  const r = await b("/b/v1/solvers/capacity_forecast/run", { body: { args: {} } });
+  envelope(r, 400, "VALIDATION_ERROR");
+});
+
+// ===========================================================================
+// QOS · QueryDock（提交 → SSE → 任务详情）+ 兜底留痕 → promote
+// ===========================================================================
+let taskId = "";
+await check("QOS", "提交查询（SPA buildContext 形态 + Idempotency-Key）→ 202 {taskId,streamUrl}", async () => {
+  const idem = `parity-${Date.now()}`;
+  const r = await b("/b/v1/queries", {
+    headers: { "idempotency-key": idem },
+    body: { packageId: pkgId, query: "常州基地下月产能缺口多大？", context: { view: "dash", selectedObjects: [], filters: {} } },
+  });
+  eq(r.status, 202, "status");
+  ok(r.body.taskId, "taskId");
+  ok(typeof r.body.streamUrl === "string", "streamUrl");
+  taskId = r.body.taskId;
+  // 幂等：同 key 重发 → 同 taskId
+  const again = await b("/b/v1/queries", {
+    headers: { "idempotency-key": idem },
+    body: { packageId: pkgId, query: "常州基地下月产能缺口多大？", context: { view: "dash", selectedObjects: [], filters: {} } },
+  });
+  eq(again.status, 202, "idem status");
+  eq(again.body.taskId, taskId, "idempotent taskId");
+});
+await check("QOS", "SSE 连接（EventSource ?access_token= 形态）→ text/event-stream", async () => {
+  const ctrl = new AbortController();
+  const res = await fetch(`${B}/b/v1/queries/${taskId}/events?access_token=${TOKEN}`, {
+    headers: { accept: "text/event-stream" },
+    signal: ctrl.signal,
+  });
+  eq(res.status, 200, "status");
+  ok(String(res.headers.get("content-type")).includes("text/event-stream"), "content-type");
+  ctrl.abort();
+});
+await check("QOS", "任务终态合理（stub 分类 out-of-catalog → 路径 B → ANSWERED/合理失败）", async () => {
+  let task;
+  for (let i = 0; i < 30; i++) {
+    task = (await b(`/b/v1/queries/${taskId}`)).body;
+    if (["COMPLETED", "FAILED", "CANCELLED"].includes(task.status)) break;
+    await sleep(400);
+  }
+  ok(["COMPLETED", "FAILED"].includes(task.status), `终态 ${task.status}`);
+  eq(task.path, "AGENT", "路径 B");
+  if (task.status === "FAILED") ok(task.error?.code, "失败必须带错误信封（不崩溃）");
+});
+await check("QOS", "反馈 UP → 204", async () => {
+  const r = await b(`/b/v1/queries/${taskId}/feedback`, { body: { vote: "UP" } });
+  eq(r.status, 204, "status");
+});
+
+// ===========================================================================
+// Catalog（CatalogPage）+ Ops（OpsFallbackPage）
+// ===========================================================================
+let intentId = "";
+let planIdForIntent = "";
+await check("Catalog", "intents 列表（含 ?status= 过滤）/ plans 列表（页面下拉形态）", async () => {
+  const r = await b(`/b/v1/catalog/packages/${pkgId}/intents`);
+  eq(r.status, 200, "status");
+  ok(r.body.length >= 1, "intents seeded");
+  ok(r.body.every((i) => i.id && i.key && i.name && Number.isInteger(i.version) && i.status && Array.isArray(i.slots) && Array.isArray(i.examples) && i.planId), "IntentDefinition 形态");
+  const drafts = await b(`/b/v1/catalog/packages/${pkgId}/intents?status=PUBLISHED`);
+  ok(drafts.body.every((i) => i.status === "PUBLISHED"), "status filter");
+  const plans = await b(`/b/v1/catalog/packages/${pkgId}/plans`);
+  eq(plans.status, 200, "plans status");
+  ok(plans.body.every((p) => p.id && p.key && Number.isInteger(p.version) && p.status), "plans[{id,key,version,status}]");
+  planIdForIntent = plans.body[0].id;
+});
+await check("Catalog", "创建意图 → PUT（编辑器字段）→ publish → retire", async () => {
+  const c = await b(`/b/v1/catalog/packages/${pkgId}/intents`, {
+    body: {
+      key: "parity_intent",
+      name: "parity 意图",
+      description: "d",
+      examples: ["常州产能如何"],
+      enabledViews: "*",
+      slots: [{ name: "base", type: "string", required: false, description: "" }],
+      planId: planIdForIntent,
+      riskLevel: "READ",
+      owner: "parity",
+    },
+  });
+  eq(c.status, 201, "create status");
+  intentId = c.body.id;
+  const put = await b(`/b/v1/catalog/intents/${intentId}`, {
+    method: "PUT",
+    body: { name: "parity 意图·改", description: "d2", examples: ["常州产能如何", "缺口多大"], slots: c.body.slots, planId: planIdForIntent },
+  });
+  eq(put.status, 200, "PUT status");
+  const pub = await b(`/b/v1/catalog/intents/${intentId}/publish`, { body: {} });
+  eq(pub.status, 200, "publish status");
+  eq(pub.body.status, "PUBLISHED", "PUBLISHED");
+  const ret = await b(`/b/v1/catalog/intents/${intentId}/retire`, { body: {} });
+  eq(ret.status, 200, "retire status");
+  eq(ret.body.status, "RETIRED", "RETIRED");
+});
+await check("Catalog", "plan create + publish 校验（无 render_answer → 400 PLAN_VALIDATION_ERROR 信封）", async () => {
+  const c = await b(`/b/v1/catalog/packages/${pkgId}/plans`, {
+    body: { key: "parity_plan_bad", steps: [{ id: "s1", type: "query_objects", params: { objectType: "Order", filter: {} } }] },
+  });
+  eq(c.status, 201, "create status");
+  const bad = await b(`/b/v1/catalog/plans/${c.body.id}/publish`, { body: {} });
+  envelope(bad, 400, "PLAN_VALIDATION_ERROR");
+  const fix = await b(`/b/v1/catalog/plans/${c.body.id}`, {
+    method: "PUT",
+    body: {
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Order", filter: {} } },
+        { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "ok" }] } },
+      ],
+    },
+  });
+  eq(fix.status, 200, "PUT status");
+  const pub = await b(`/b/v1/catalog/plans/${c.body.id}/publish`, { body: {} });
+  eq(pub.status, 200, "publish status");
+});
+await check("Ops 兜底", "fallback-stats → {items[{traceId,querySample,count,trend,topToolSketch}]}", async () => {
+  const r = await b(`/b/v1/ops/fallback-stats?packageId=${pkgId}`);
+  eq(r.status, 200, "status");
+  isArr(r.body.items, "items");
+  ok(r.body.items.length >= 1, "QOS 兜底已留痕（路径 B 执行后）");
+  const c = r.body.items[0];
+  ok(typeof c.traceId === "string" && c.traceId.length > 0, "traceId（promote 按钮入参）");
+  ok(typeof c.querySample === "string", "querySample");
+  ok(Number.isInteger(c.count), "count");
+  isArr(c.trend, "trend（sparkline）");
+  isArr(c.topToolSketch, "topToolSketch");
+  ok(c.topToolSketch.every((t) => typeof t === "string"), "topToolSketch string[]");
+  ok(c.outcomeBreakdown && typeof c.outcomeBreakdown === "object", "outcomeBreakdown");
+});
+await check("Ops 兜底", "promote → 201 {intentId}（孵化 DRAFT 意图，页面跳转编辑）", async () => {
+  const stats = await b(`/b/v1/ops/fallback-stats?packageId=${pkgId}`);
+  const traceId = stats.body.items[0]?.traceId;
+  ok(traceId, "traceId 存在");
+  const r = await b(`/b/v1/ops/fallback/${traceId}/promote`, { body: {} });
+  eq(r.status, 201, "status");
+  ok(r.body.intentId, "intentId");
+  const intent = (await b(`/b/v1/catalog/packages/${pkgId}/intents?status=DRAFT`)).body.find((i) => i.id === r.body.intentId);
+  ok(intent, "DRAFT 意图已入目录");
+});
+
+// ===========================================================================
+// Entitlement 联动（功能关→404 FEATURE_NOT_FOUND，先于 authz）
+// ===========================================================================
+await check("Entitlement", "关闭 view.project-sim → B 侧 capacity_forecast 代理 404 FEATURE_NOT_FOUND", async () => {
+  const resolved = await a("/a/v1/tenants/demo/features");
+  const overrides = Object.fromEntries(registry.map((f) => [f.key, resolved.body.features.includes(f.key)]));
+  const bound = registry.find((f) => f.bindings?.solverKeys?.includes("capacity_forecast"));
+  ok(bound, "存在绑定 capacity_forecast 的功能");
+  overrides[bound.key] = false;
+  await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+  const r = await b("/b/v1/solvers/capacity_forecast/run", { body: { args: { modelId: "4680-NCM" } } });
+  envelope(r, 404, "FEATURE_NOT_FOUND");
+  overrides[bound.key] = true; // 恢复
+  await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+});
+
+// ---------------------------------------------------------------------------
+// 收尾：结果表
+// ---------------------------------------------------------------------------
+const groups = [...new Set(results.map((r) => r.group))];
+console.log("\n========== 管理台真连 parity 审计 ==========\n");
+for (const g of groups) {
+  console.log(`【${g}】`);
+  for (const r of results.filter((x) => x.group === g)) {
+    console.log(`  ${r.ok ? "✅" : "❌"} ${r.name}${r.ok ? "" : `\n     ↳ ${r.detail}`}`);
+  }
+}
+const passed = results.length - failures;
+console.log(`\n${failures === 0 ? "✅" : "❌"} ${passed}/${results.length} checks passed`);
+
+if (failures > 0) {
+  console.error("\n--- datacore tail ---\n" + dc.tail());
+  console.error("\n--- agentcore tail ---\n" + ac.tail());
+}
+
+for (const c of children) c.kill("SIGTERM");
+llmStub.close();
+process.exit(failures === 0 ? 0 : 1);

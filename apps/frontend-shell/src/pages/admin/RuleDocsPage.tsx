@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchRuleCandidates,
   fetchRuleDocs,
   reviewCandidate,
+  uploadRuleDoc,
   type RuleCandidateVM,
   type RuleDocVM,
 } from "@/api/endpoints";
@@ -13,11 +14,24 @@ import styles from "./RuleDocsPage.module.css";
 
 const t = zh.admin.ruleDocs;
 
-/** 规则文档审核台（PRD §7.5）：左=文档段落（sourceQuote 高亮）右=候选卡；diff 模式三组 */
+/** 规则文档审核台（PRD §7.5）：上传（A2 抽取）+ 左=文档段落（sourceQuote 高亮）右=候选卡；diff 模式三组 */
 export default function RuleDocsPage() {
+  const queryClient = useQueryClient();
   const { data: docs } = useQuery({ queryKey: ["a", "rule-docs", {}], queryFn: fetchRuleDocs });
   const [docId, setDocId] = useState<string | null>(null);
   const doc = docs?.find((d) => d.id === docId) ?? docs?.[0];
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const uploadMut = useMutation({
+    mutationFn: (file: File) => uploadRuleDoc(file),
+    onSuccess: async (r) => {
+      toast(t.uploadDone(r.candidateCount), "success");
+      await queryClient.invalidateQueries({ queryKey: ["a", "rule-docs"] });
+      await queryClient.invalidateQueries({ queryKey: ["a", "rule-candidates"] });
+      setDocId(r.docId);
+    },
+    onError: toastError,
+  });
 
   return (
     <div>
@@ -30,6 +44,27 @@ export default function RuleDocsPage() {
             </option>
           ))}
         </select>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.docx,.md,.txt"
+          hidden
+          aria-label={t.upload}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) uploadMut.mutate(f);
+            e.target.value = "";
+          }}
+        />
+        <button
+          className="btn primary sm"
+          style={{ marginLeft: "auto" }}
+          disabled={uploadMut.isPending}
+          data-testid="rule-doc-upload"
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploadMut.isPending ? t.uploading : t.upload}
+        </button>
       </div>
       {doc ? <DocReview doc={doc} /> : <div className="empty-state">{zh.common.none}</div>}
     </div>

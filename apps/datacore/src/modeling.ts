@@ -298,6 +298,8 @@ export class ModelingService {
     const draft = await this.getDraft(ctx, draftId);
     if (draft.status !== "PUBLISHED") throw invalidState("draft must be published before materialize");
     const jobId = newId("job");
+    const startedAt = new Date().toISOString();
+    const rowCounts: Record<string, number> = {};
     let created = 0;
     for (const t of draft.suggestion.objectTypes) {
       const targetKey = t.action === "MAP_TO_EXISTING" && t.existingTypeKey ? t.existingTypeKey : t.typeKey;
@@ -325,9 +327,21 @@ export class ModelingService {
           origin: { type: "MATERIALIZED", datasetId: ds.id, jobId },
         });
         created++;
+        rowCounts[targetKey] = (rowCounts[targetKey] ?? 0) + 1;
       }
     }
     await this.ontology.runDerivations(ctx);
+    // 前端 PRD §7.6：对象化进度沿用同步作业轮询端点（GET /a/v1/sync-jobs/:id）——
+    // 落一条终态 SyncJob 记录，否则页面轮询 404 永不终止。
+    await this.repos.syncJobs.put({
+      id: jobId,
+      tenantId: ctx.tenantId,
+      connId: draft.id,
+      status: "SUCCEEDED",
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      rowCounts,
+    });
     return { jobId, created };
   }
 }

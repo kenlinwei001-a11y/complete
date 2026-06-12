@@ -61,7 +61,10 @@ describe("F26 · 任务详情编排 DAG（§7.19，纯事件推导）", () => {
     renderApp(`/tasks/${res.taskId}`);
 
     await waitFor(() => expect(screen.getByTestId("task-dag-node-s2")).toHaveAttribute("data-state", "fail"));
-    expect(screen.getByTestId("task-dag-node-answer")).toHaveAttribute("data-state", "fail");
+    // task.failed 是 step.completed(FAIL) 之后的独立事件 —— 终态节点断言也要等
+    await waitFor(() =>
+      expect(screen.getByTestId("task-dag-node-answer")).toHaveAttribute("data-state", "fail"),
+    );
     expect(screen.getByTestId("task-dag-node-answer")).toHaveTextContent("失败");
   });
 

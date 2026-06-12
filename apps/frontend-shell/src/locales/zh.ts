@@ -377,6 +377,9 @@ export const zh = {
     },
     ruleDocs: {
       title: "规则文档审核台",
+      upload: "上传规则文档",
+      uploading: "上传抽取中…",
+      uploadDone: (n: number) => `抽取完成：${n} 条候选待审`,
       progress: (n: number, m: number) => `${n}/${m} 已审`,
       approve: "通过",
       editApprove: "修改后通过",
@@ -390,6 +393,11 @@ export const zh = {
     },
     modeling: {
       title: "本体建模工作台",
+      newDraft: "AI 建议草案",
+      newDraftHint: "选择原始数据集（来自连接器同步/文件上传），由 AI 给出对象建模建议",
+      newDraftEmpty: "暂无原始数据集 —— 先在「数据接入」同步连接器或上传文件",
+      suggestRun: "生成建议",
+      suggestDone: "建议草案已生成",
       sourceFields: "源字段",
       canvas: "映射画布",
       operations: "操作面板",

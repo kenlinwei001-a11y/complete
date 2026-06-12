@@ -25,7 +25,7 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 等待 `gateway` 服务就绪（`docker compose ps` 全部 healthy）。首次启动 DataCore 会自动：
 
 1. 对空库执行幂等迁移（`migrations/*.sql`，服务启动时自动执行，也可手动 `pnpm --filter datacore migrate`）；
-2. `SEED_DEMO=1`（默认开）播种电池制造演示数据（seed 42，确定性：12 基地 / 6 型号 / 20 订单 / 90 天历史时序 / 规则 / 权限策略 / 三个演示账号）。
+2. `SEED_DEMO=1`（默认开）播种电池制造演示数据（seed 42，确定性：12 基地 / 6 型号 / 20 订单 / 90 天历史时序 / 规则 / 权限策略 / 四个演示账号）。
 
 ## 3. 配域名（二选一）
 
@@ -48,6 +48,7 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | `admin` | `demo1234` | admin + planner + catalog_admin | 全部业务视图 + 全部管理台（admin 导航组） |
 | `planner` | `demo1234` | planner | 全部业务视图，无管理台，主题强调色不同 |
 | `base_manager` | `demo1234` | base_manager:常州 | 业务视图子集（仅推演/台账等），数据行级过滤到常州基地，主题强调色不同 |
+| `approver` | `demo1234` | approver + admin | 第二审批人：S2 审批链「发起人不得自批」，admin 自己发起的审批（校准批准 / AOP 拍板等）由此账号通过 |
 
 租户固定为 `demo`。
 

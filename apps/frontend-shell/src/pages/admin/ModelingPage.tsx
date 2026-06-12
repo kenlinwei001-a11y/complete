@@ -2,22 +2,27 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchModelingDrafts,
+  fetchRawDatasets,
   fetchSyncJob,
   materializeDraft,
   patchModelingDraft,
   publishModelingDraft,
+  suggestModeling,
   type ModelingDraftVM,
 } from "@/api/endpoints";
+import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
 
 const t = zh.admin.modeling;
 
-/** 本体建模工作台（PRD §7.6）：三栏 = 源字段 | 映射画布 | 操作面板；PATCH 乐观更新+回滚 */
+/** 本体建模工作台（PRD §7.6）：AI 建议草案（A3 suggest）+ 三栏 = 源字段 | 映射画布 | 操作面板；PATCH 乐观更新+回滚 */
 export default function ModelingPage() {
+  const queryClient = useQueryClient();
   const { data: drafts } = useQuery({ queryKey: ["a", "modeling-drafts", {}], queryFn: fetchModelingDrafts });
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
   const draft = drafts?.find((d) => d.id === draftId) ?? drafts?.[0];
 
   return (
@@ -31,9 +36,68 @@ export default function ModelingPage() {
             </option>
           ))}
         </select>
+        <button className="btn primary sm" style={{ marginLeft: "auto" }} data-testid="modeling-new-draft" onClick={() => setSuggestOpen(true)}>
+          {t.newDraft}
+        </button>
       </div>
       {draft ? <DraftWorkbench draft={draft} /> : <div className="empty-state">{zh.common.none}</div>}
+      {suggestOpen && (
+        <SuggestModal
+          onClose={() => setSuggestOpen(false)}
+          onCreated={async (newDraftId) => {
+            setSuggestOpen(false);
+            await queryClient.invalidateQueries({ queryKey: ["a", "modeling-drafts"] });
+            setDraftId(newDraftId);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** 新建草案：选原始数据集 → POST /a/v1/modeling/suggest（A3 半自动建模入口） */
+function SuggestModal({ onClose, onCreated }: { onClose: () => void; onCreated: (draftId: string) => void }) {
+  const { data: rawDatasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: fetchRawDatasets });
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const suggestMut = useMutation({
+    mutationFn: () => suggestModeling(selected),
+    onSuccess: (r) => {
+      toast(t.suggestDone, "success");
+      onCreated(r.draftId);
+    },
+    onError: toastError,
+  });
+
+  return (
+    <Modal title={t.newDraft} onClose={onClose} width={460}>
+      <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{t.newDraftHint}</p>
+      {(rawDatasets ?? []).length === 0 && <div className="empty-state">{t.newDraftEmpty}</div>}
+      {(rawDatasets ?? []).map((ds) => (
+        <label key={ds.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", fontSize: 12.5 }}>
+          <input
+            type="checkbox"
+            checked={selected.includes(ds.id)}
+            onChange={(e) => setSelected((s) => (e.target.checked ? [...s, ds.id] : s.filter((x) => x !== ds.id)))}
+          />
+          <span className="mono">{ds.name}</span>
+          <span style={{ color: "var(--muted2)", fontSize: 10.5 }}>{ds.id}</span>
+        </label>
+      ))}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+        <button className="btn" onClick={onClose}>
+          {zh.common.back}
+        </button>
+        <button
+          className="btn primary"
+          disabled={selected.length === 0 || suggestMut.isPending}
+          data-testid="modeling-suggest-run"
+          onClick={() => suggestMut.mutate()}
+        >
+          {t.suggestRun}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

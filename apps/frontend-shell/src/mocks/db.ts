@@ -1,7 +1,7 @@
 import type { ActionDraft, AgentDefinition, ConnectionInstance, IntentDefinition, McpServerConfig, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
-import type { RuleCandidateVM } from "@/api/endpoints";
+import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
 import type { ModelingDraftVM } from "@/api/endpoints";
 import type { TaskScriptPlan } from "./sseScripts";
 import {
@@ -13,6 +13,7 @@ import {
   MCP_CONFIGS,
   MODELING_DRAFT,
   RULE_CANDIDATES,
+  RULE_DOC,
   SCENES,
   SKILLS,
   TENANT_ID,
@@ -41,6 +42,7 @@ interface MockDb {
   syntheticJobPolls: Map<string, number>;
   syncJobPolls: Map<string, number>;
   connections: ConnectionInstance[];
+  ruleDocs: RuleDocVM[];
   candidates: RuleCandidateVM[];
   modelingDrafts: ModelingDraftVM[];
   intents: IntentDefinition[];
@@ -69,6 +71,7 @@ function freshDb(): MockDb {
       { id: "conn-crm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "CRM 订单", config: {}, status: "ERROR", lastSyncAt: "2026-06-10T22:00:00Z", lastError: "401 unauthorized" },
       { id: "conn-iot", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "IoT 时序通道", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:00:00Z" },
     ],
+    ruleDocs: [structuredClone(RULE_DOC)],
     candidates: structuredClone(RULE_CANDIDATES),
     modelingDrafts: [structuredClone(MODELING_DRAFT)],
     intents: structuredClone(INTENTS),

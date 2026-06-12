@@ -20,6 +20,7 @@ import {
   type WorkflowDefinition,
 } from "@platform/contracts";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
+import { DataCoreHttpError, DataCoreUnavailableError } from "./tools/clients.js";
 import { solverAllowed, viewAllowed } from "./features/registry.js";
 import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema } from "./catalog/service.js";
 import { encryptSecret } from "./crypto.js";
@@ -74,6 +75,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const requestId = req.id as string;
     if (err instanceof HttpError) {
       return reply.status(err.statusCode).send({ error: { code: err.code, message: err.message, requestId } });
+    }
+    // OBO 透传：DataCore 上游错误保留原始 status/code（如 404 FEATURE_NOT_FOUND / 409 PLAN_LOCKED）
+    if (err instanceof DataCoreHttpError) {
+      return reply.status(err.statusCode).send({ error: { code: err.code, message: err.message, requestId } });
+    }
+    if (err instanceof DataCoreUnavailableError) {
+      return reply.status(502).send({ error: { code: err.code, message: err.message, requestId } });
     }
     if (err instanceof AuthError) {
       return reply.status(401).send({ error: { code: "UNAUTHORIZED", message: err.message, requestId } });
@@ -310,6 +318,16 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const agent = await deps.repos.agents.get(id);
     if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
     if (agent.status !== "DRAFT") throw new HttpError(409, ErrorCodes.INVALID_STATE, "仅 DRAFT 状态的 agent 可发布");
+    // 发布前置校验（最小授权声明 / 提示词非空）→ 200 {ok:false, errors[{field,message}]}
+    // （前端 PRD §7.8：发布错误内联渲染在编辑器分区，而非 4xx toast）
+    const fieldErrors: { field: string; message: string }[] = [];
+    if (agent.scopeDeclaration.objectTypes.length === 0) {
+      fieldErrors.push({ field: "scopeDeclaration.objectTypes", message: "必须声明对象类型范围（最小授权）" });
+    }
+    if (!agent.systemPrompt.trim()) {
+      fieldErrors.push({ field: "systemPrompt", message: "系统提示词不能为空" });
+    }
+    if (fieldErrors.length > 0) return { ok: false, errors: fieldErrors };
     const cycle = await detectStaticCycle(deps.repos, { kind: "agent", id }, { agent });
     if (cycle) {
       throw new HttpError(400, ErrorCodes.CYCLIC_INVOCATION, `发布被拒：静态可达环 ${cycle.join(" -> ")}`);
@@ -322,7 +340,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     const published = { ...agent, status: "PUBLISHED" as const };
     await deps.repos.agents.update(published);
-    return published;
+    // 前端消费形态 { ok, ...agent }（SPA AgentsPage 读 r.ok / r.errors）
+    return { ok: true, ...published };
   });
 
   // ---------------------------------------------------------------------
@@ -386,15 +405,23 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const wf = await deps.repos.workflows.get(id);
     if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
     if (wf.status !== "DRAFT") throw new HttpError(409, ErrorCodes.INVALID_STATE, "仅 DRAFT 状态的 workflow 可发布");
-    const errors = validatePlanSteps(wf.steps, {});
-    if (errors.length > 0) throw new HttpError(400, ErrorCodes.PLAN_VALIDATION_ERROR, errors.join("；"));
-    const cycle = await detectStaticCycle(deps.repos, { kind: "workflow", id }, { workflow: wf });
+    // 前端 PRD §7.8：发布校验错误定位到步骤行 → 200 {ok:false, errors[{stepId?,code,message}]}
+    const msgs = validatePlanSteps(wf.steps, {});
+    const stepErrors: { stepId?: string; code: string; message: string }[] = msgs.map((m) => {
+      const stepId = /步骤(?: id 重复:)? ?([\w-]+)/.exec(m)?.[1];
+      return { ...(stepId && wf.steps.some((s) => s.id === stepId) ? { stepId } : {}), code: ErrorCodes.PLAN_VALIDATION_ERROR, message: m };
+    });
+    const cycle = stepErrors.length === 0
+      ? await detectStaticCycle(deps.repos, { kind: "workflow", id }, { workflow: wf })
+      : undefined;
     if (cycle) {
-      throw new HttpError(400, ErrorCodes.CYCLIC_INVOCATION, `发布被拒：静态可达环 ${cycle.join(" -> ")}`);
+      stepErrors.push({ code: ErrorCodes.CYCLIC_INVOCATION, message: `发布被拒：静态可达环 ${cycle.join(" -> ")}` });
     }
+    if (stepErrors.length > 0) return { ok: false, errors: stepErrors };
     const published = { ...wf, status: "PUBLISHED" as const, updatedAt: new Date().toISOString() };
     await deps.repos.workflows.update(published);
-    return published;
+    // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）
+    return { ok: true, ...published };
   });
 
   /** Standalone workflow run with step.* event stream (platform §8.2). */

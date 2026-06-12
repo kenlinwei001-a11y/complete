@@ -25,6 +25,9 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
       roles: ["base_manager:常州"],
       attributes: { baseScope: ["changzhou"], baseName: "常州" },
     },
+    // 第二位 admin 审批人：S2 审批链「发起人不得自批」——若租户只有一个 admin，
+    // admin 发起的审批（校准批准/AOP 拍板等）会 422 NO_ELIGIBLE_APPROVER。
+    { username: "approver", roles: ["approver", "admin"], attributes: {} },
   ];
   for (const w of wanted) {
     const existing = (await repos.users.list(DEMO_TENANT, (u) => u.username === w.username))[0];

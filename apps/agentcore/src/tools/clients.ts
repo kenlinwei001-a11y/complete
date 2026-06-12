@@ -77,3 +77,18 @@ export class DataCoreUnavailableError extends Error {
     this.name = "DataCoreUnavailableError";
   }
 }
+
+/**
+ * Upstream DataCore non-2xx with the original 状态码/错误码 preserved，使路由级
+ * 代理（如 /b/v1/solvers/:key/run）能透传真实错误信封而不是塌缩成 500。
+ */
+export class DataCoreHttpError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DataCoreHttpError";
+  }
+}

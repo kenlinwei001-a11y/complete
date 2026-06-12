@@ -13,7 +13,6 @@ import {
   POLICIES,
   PLANS,
   RISK_TIMELINE,
-  RULE_DOC,
   RULES,
   SYNTHETIC_PHASES,
   SYNTHETIC_REPORT,
@@ -337,9 +336,29 @@ export const handlers = [
   http.post("*/a/v1/uploads", () => HttpResponse.json({ connId: "conn-upload-1", datasetName: "orders.csv" }, { status: 201 })),
 
   // ---- 规则文档 ----
-  http.get("*/a/v1/rule-docs", () => HttpResponse.json([RULE_DOC])),
-  http.get("*/a/v1/rule-docs/:id", () => HttpResponse.json(RULE_DOC)),
-  http.get("*/a/v1/rule-docs/:id/candidates", () => HttpResponse.json(db.candidates)),
+  http.get("*/a/v1/rule-docs", () => HttpResponse.json(db.ruleDocs)),
+  http.get("*/a/v1/rule-docs/:id", ({ params }) => {
+    const d = db.ruleDocs.find((x) => x.id === params.id);
+    return d ? HttpResponse.json(d) : err(404, "NOT_FOUND", "文档不存在");
+  }),
+  // 上传（multipart）→ 202 抽取作业（与 DataCore /a/v1/rule-docs 响应形态一致）
+  http.post("*/a/v1/rule-docs", async ({ request }) => {
+    const form = await request.formData().catch(() => null);
+    const file = form?.get("file");
+    const filename = file instanceof File ? file.name : "上传文档.md";
+    const docId = newId("doc");
+    const seg = { idx: 0, heading: "一、生产约束", text: "单基地外协比例不得超过 25%，超出需提交风险评估。", spanStart: 0, spanEnd: 40 };
+    db.ruleDocs.unshift({ id: docId, filename, status: "IN_REVIEW", createdAt: new Date().toISOString(), segments: [seg] });
+    db.candidates.push({
+      id: newId("cand"), docId, segmentIdx: 0, span: { start: 0, end: 20 },
+      candidate: { name: "外协比例红线", description: "外协比例不得超过 25%", expression: "Outsource.ratio <= 0.25", expressionConfidence: 0.86, scopeObjectTypes: ["QualityLot"], severity: "WARN", sourceQuote: "单基地外协比例不得超过 25%" },
+      status: "PENDING", diff: "新增",
+    });
+    return HttpResponse.json({ docId, jobId: newId("xjob"), status: "IN_REVIEW", candidateCount: 1 }, { status: 202 });
+  }),
+  http.get("*/a/v1/rule-docs/:id/candidates", ({ params }) =>
+    HttpResponse.json(db.candidates.filter((c) => c.docId === params.id)),
+  ),
   http.post("*/a/v1/rule-candidates/:id/review", async ({ params, request }) => {
     const body = (await request.json()) as { action: string; patch?: Record<string, unknown> };
     const cand = db.candidates.find((c) => c.id === params.id);
@@ -365,6 +384,24 @@ export const handlers = [
   }),
 
   // ---- 建模 ----
+  // 原始数据集（A3 suggest 入口的可选项；与连接器同步/上传产物对应）
+  http.get("*/a/v1/raw-datasets", () =>
+    HttpResponse.json([
+      { id: "rds-orders", name: "orders", sourceConnId: "conn-upload-1" },
+      { id: "rds-oee", name: "oee_points", sourceConnId: "conn-iot" },
+    ]),
+  ),
+  http.post("*/a/v1/modeling/suggest", async ({ request }) => {
+    const body = (await request.json()) as { rawDatasetIds?: string[] };
+    if (!body.rawDatasetIds?.length) return err(422, "VALIDATION_ERROR", "rawDatasetIds 不能为空");
+    const draft = structuredClone(db.modelingDrafts[0]!);
+    draft.id = newId("draft");
+    draft.status = "DRAFT";
+    draft.rawDatasetIds = body.rawDatasetIds;
+    delete draft.publishErrors;
+    db.modelingDrafts.unshift(draft);
+    return HttpResponse.json({ draftId: draft.id, status: draft.status }, { status: 202 });
+  }),
   http.get("*/a/v1/modeling/drafts", () => HttpResponse.json(db.modelingDrafts)),
   http.get("*/a/v1/modeling/drafts/:id", ({ params }) => {
     const d = db.modelingDrafts.find((x) => x.id === params.id);

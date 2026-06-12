@@ -5,11 +5,16 @@ import { HttpError } from "../router/orchestrator.js";
 import { centroid, cosine, pseudoEmbed } from "../util/embedding.js";
 
 export interface FallbackStatsItem {
+  /** 代表性 trace（最新一条）的 id —— 前端 promote 以 traceId 提交 */
+  traceId: string;
   querySample: string;
   count: number;
   lastSeen: string;
   outcomeBreakdown: Record<string, number>;
-  topToolSketch: { toolName: string; inputSummary: string }[];
+  /** 工具草图（前端以 join(" → ") 渲染 → 工具名字符串数组） */
+  topToolSketch: string[];
+  /** 近 7 日命中趋势（旧→新），前端渲染 sparkline */
+  trend: number[];
 }
 
 /** S4.2: vector-neighbor merge threshold (相似度 > 0.9 归簇). */
@@ -54,12 +59,23 @@ export async function fallbackStats(
     const newest = sorted[0] as FallbackTraceRow;
     const outcomeBreakdown: Record<string, number> = {};
     for (const t of cluster.traces) outcomeBreakdown[t.outcome] = (outcomeBreakdown[t.outcome] ?? 0) + 1;
+    // 近 7 日命中趋势（旧→新）
+    const dayMs = 86_400_000;
+    const today = Math.floor(Date.parse(newest.createdAt.slice(0, 10)) / dayMs);
+    const trend = new Array<number>(7).fill(0);
+    for (const t of cluster.traces) {
+      const d = Math.floor(Date.parse(t.createdAt.slice(0, 10)) / dayMs);
+      const idx = 6 - (today - d);
+      if (idx >= 0 && idx < 7) trend[idx] = (trend[idx] ?? 0) + 1;
+    }
     items.push({
+      traceId: newest.id,
       querySample: newest.query,
       count: cluster.traces.length,
       lastSeen: newest.createdAt,
       outcomeBreakdown,
-      topToolSketch: newest.executedPlanSketch,
+      topToolSketch: newest.executedPlanSketch.map((s) => s.toolName),
+      trend,
     });
   }
   items.sort((a, b) => b.count - a.count);

@@ -1,5 +1,6 @@
 import type { QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import {
+  DataCoreHttpError,
   DataCoreUnavailableError,
   type ActionClient,
   type DataCoreClient,
@@ -41,7 +42,15 @@ async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: 
     } catch {
       /* ignore */
     }
-    throw new Error(`DataCore ${method} ${path} -> ${res.status} ${detail.slice(0, 500)}`);
+    // 解析 DataCore 错误信封，保留原始 status/code（路由级代理透传；工具层 catch 不受影响）
+    let code = `HTTP_${res.status}`;
+    try {
+      const parsed = JSON.parse(detail) as { error?: { code?: string } };
+      if (parsed.error?.code) code = parsed.error.code;
+    } catch {
+      /* non-JSON upstream body */
+    }
+    throw new DataCoreHttpError(res.status, code, `DataCore ${method} ${path} -> ${res.status} ${detail.slice(0, 500)}`);
   }
   return (await res.json()) as T;
 }
