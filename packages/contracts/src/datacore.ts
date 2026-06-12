@@ -41,7 +41,16 @@ export const FieldProfileSchema = z.object({
 export type FieldProfile = z.infer<typeof FieldProfileSchema>;
 
 export const SourceSchemaSchema = z.object({
-  datasets: z.array(z.object({ name: z.string(), fields: z.array(FieldProfileSchema) })),
+  datasets: z.array(
+    z.object({
+      name: z.string(),
+      fields: z.array(FieldProfileSchema),
+      /** A8.1：ENTITY（缺省）| TIMESERIES——时序数据集不落 raw_datasets、不参与 materialize */
+      kind: z.enum(["ENTITY", "TIMESERIES"]).optional(),
+      timeField: z.string().optional(),
+      entityRefField: z.string().optional(),
+    }),
+  ),
 });
 export type SourceSchema = z.infer<typeof SourceSchemaSchema>;
 
@@ -200,5 +209,14 @@ export const IndustryTemplateSchema = z.object({
     views: z.array(z.string()),
     intents: z.array(z.record(z.string(), z.unknown())),
   }),
+  /** Entitlement 增量：行业模板默认功能集 */
+  features: z.array(z.string()).optional(),
+  /** A8.6 增量：时序生成规约与剧本（结构见 timeseries.ts） */
+  tsGenerators: z.array(z.record(z.string(), z.unknown())).optional(),
+  scenarioScript: z
+    .array(z.object({ tick: z.number().int(), event: z.string(), params: z.record(z.string(), z.unknown()) }))
+    .optional(),
+  /** 求解器常数默认值（场景包 solverParams） */
+  solverParams: z.record(z.string(), z.unknown()).optional(),
 });
 export type IndustryTemplate = z.infer<typeof IndustryTemplateSchema>;

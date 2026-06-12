@@ -235,11 +235,30 @@ export type AnswerBlock = z.infer<typeof AnswerBlockSchema>;
 
 export const ProvenanceRefSchema = z.object({
   id: z.string(), // prov_
-  source: z.literal("TOOL_RESULT"),
+  // A8 增量：新增 TS_AGGREGATE；S4 增量：新增 KB_CHUNK
+  source: z.enum(["TOOL_RESULT", "TS_AGGREGATE", "KB_CHUNK"]),
   toolCallId: z.string(),
   toolName: z.string(),
   outputPath: z.string(),
   snapshotVersion: z.string().optional(),
+  /** source=TS_AGGREGATE 时附带（A8.3 窗口级溯源） */
+  tsAgg: z
+    .object({
+      aggRunId: z.string(),
+      specKey: z.string(), // "oee_daily@v2" 形式
+      window: z.object({ start: z.string(), end: z.string() }),
+      rowsIn: z.number().int(),
+    })
+    .optional(),
+  /** source=KB_CHUNK 时附带（S4.1 知识库命中） */
+  kb: z
+    .object({
+      docId: z.string(),
+      span: z.object({ start: z.number(), end: z.number() }),
+      sourceName: z.string().optional(),
+      score: z.number().optional(),
+    })
+    .optional(),
 });
 export type ProvenanceRef = z.infer<typeof ProvenanceRefSchema>;
 
