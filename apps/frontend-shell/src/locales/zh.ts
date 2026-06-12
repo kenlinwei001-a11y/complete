@@ -55,6 +55,7 @@ export const zh = {
     tenants: "租户管理",
     users: "用户管理",
     views: "视图配置",
+    llmProviders: "LLM Provider",
   },
   errors: {
     notFoundTitle: "页面不存在",

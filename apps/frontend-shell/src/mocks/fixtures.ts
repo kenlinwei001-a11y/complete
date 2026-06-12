@@ -898,3 +898,43 @@ export const ADMIN_VIEWS: AdminViewConfig[] = [
     nav: { group: "business", order: 2 }, roles: ["planner", "base_manager"], featureKey: "view.ledger", featureOn: false,
   },
 ];
+
+
+// ---------------------------------------------------------------------------
+// LLM Provider 配置体系增量 §1（契约形态：LlmProvider / PurposeBinding）
+// ---------------------------------------------------------------------------
+
+export const LLM_PROVIDERS = [
+  {
+    id: "llmp-anthropic",
+    tenantId: TENANT_ID,
+    name: "Anthropic 官方",
+    kind: "anthropic" as const,
+    models: [
+      { modelId: "claude-opus-4-8", displayName: "Opus 4.8", capabilities: { tools: true, structuredOutput: true, maxContext: 200000 } },
+      { modelId: "claude-haiku-4-5", displayName: "Haiku 4.5", capabilities: { tools: true, structuredOutput: true, maxContext: 200000 } },
+    ],
+    status: "ACTIVE" as const,
+    hasApiKey: true,
+    usage7dTokens: 1284530,
+  },
+  {
+    id: "llmp-vllm-qwen",
+    tenantId: TENANT_ID,
+    name: "本地 vLLM-Qwen",
+    kind: "openai_compatible" as const,
+    baseUrl: "http://vllm.internal:8000/v1",
+    models: [
+      { modelId: "qwen3-72b", displayName: "Qwen3 72B", capabilities: { tools: false, structuredOutput: false, maxContext: 131072 } },
+    ],
+    status: "ACTIVE" as const,
+    fallbackProviderId: "llmp-anthropic",
+    hasApiKey: false,
+    usage7dTokens: 90210,
+  },
+];
+
+export const LLM_BINDINGS = [
+  { purpose: "classifier" as const, providerId: "llmp-anthropic", modelId: "claude-haiku-4-5" },
+  { purpose: "agent" as const, providerId: "llmp-anthropic", modelId: "claude-opus-4-8" },
+];

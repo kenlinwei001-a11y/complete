@@ -1,11 +1,17 @@
-import type { LlmProviderConfig } from "@platform/contracts";
+import type { LlmProvider, LlmProviderConfig } from "@platform/contracts";
+import {
+  AnthropicLlmClient,
+  classifyWithJsonModeDegradation,
+  CustomHttpAdapter,
+  OpenAiLlmClient,
+  type FullLlmClient,
+} from "@platform/llm-adapters";
 import type { AppConfig } from "../config.js";
 import { decryptSecret } from "../crypto.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
-import { AnthropicLlmClient } from "./anthropic.js";
-import { OpenAiLlmClient } from "./openai.js";
 import type { LlmAgentRequest, LlmAgentResponse, LlmCapabilities, LlmClient, RawClassification } from "./types.js";
+import type { DataCoreProviderDirectory } from "./datacore-directory.js";
 
 /**
  * Multi-LLM provider layer — AMENDS QOS-PRD §6 (was Anthropic-only normative).
@@ -13,10 +19,12 @@ import type { LlmAgentRequest, LlmAgentResponse, LlmCapabilities, LlmClient, Raw
  * Model spec resolution order (config precedence):
  *  1. scenario package fields (classifierModel/agentModel) — may be
  *     "providerKey:model" or a plain model id (= default provider);
- *  2. tenant LlmProviderConfig + ModelBinding (CRUD via /b/v1/llm/providers and
- *     /b/v1/llm/bindings; credentialRef secrets AES-GCM encrypted like MCP creds,
- *     never echoed);
- *  3. env defaults (QOS_CLASSIFIER_MODEL / QOS_AGENT_MODEL, default provider
+ *  2. **DataCore 用途绑定（LLM Provider 增量 §1.3，source of truth 落位 A）**：
+ *     binding {providerId, modelId} → spec `dcp:{providerId}:{modelId}`，provider
+ *     配置与解密密钥经服务间凭证从 A 拉取（60s TTL + 事件失效 / 密钥 5min）；
+ *  3. tenant LlmProviderConfig + ModelBinding（B 本地旧通道，/b/v1/llm/* 保留为
+ *     SPA 兼容只读别名）；
+ *  4. env defaults (QOS_CLASSIFIER_MODEL / QOS_AGENT_MODEL, default provider
  *     QOS_DEFAULT_LLM_PROVIDER = anthropic).
  *
  * Model ids are never hardcoded at call sites.
@@ -28,13 +36,24 @@ const BUILTIN_PROVIDERS: Record<string, LlmProviderConfig> = {
   openai: { id: "llmp_builtin_openai", key: "openai", kind: "openai", apiKeyEnv: "OPENAI_API_KEY", status: "ACTIVE" },
 };
 
+/** DataCore 管理的 provider 引用形态（LlmSettings 产出 / registry 解析）。 */
+export const DATACORE_PROVIDER_PREFIX = "dcp:";
+
+export function parseDataCoreSpec(spec: string): { providerId: string; modelId: string } | undefined {
+  if (!spec.startsWith(DATACORE_PROVIDER_PREFIX)) return undefined;
+  const rest = spec.slice(DATACORE_PROVIDER_PREFIX.length);
+  const idx = rest.indexOf(":");
+  if (idx <= 0) return undefined;
+  return { providerId: rest.slice(0, idx), modelId: rest.slice(idx + 1) };
+}
+
 export type LlmAdapterFactory = (
   cfg: LlmProviderConfig,
   apiKey: string | undefined,
   metrics?: Metrics,
 ) => LlmClient;
 
-/** Build the concrete adapter for a provider config. */
+/** Build the concrete adapter for a (B-local legacy) provider config. */
 export function defaultAdapterFactory(
   cfg: LlmProviderConfig,
   apiKey: string | undefined,
@@ -58,10 +77,36 @@ export function defaultAdapterFactory(
   }
 }
 
+/** DataCore 管理的 provider（增量 §1.1 形态）→ 共享适配器。 */
+export type DataCoreAdapterFactory = (
+  provider: LlmProvider,
+  apiKey: string | undefined,
+  metrics?: Metrics,
+) => FullLlmClient;
+
+export function defaultDataCoreAdapterFactory(
+  provider: LlmProvider,
+  apiKey: string | undefined,
+  metrics?: Metrics,
+): FullLlmClient {
+  switch (provider.kind) {
+    case "anthropic":
+      return new AnthropicLlmClient(metrics, { apiKey, baseUrl: provider.baseUrl, providerLabel: provider.id });
+    case "openai_compatible":
+      return new OpenAiLlmClient({ apiKey, baseUrl: provider.baseUrl, metrics, providerLabel: provider.id });
+    case "custom_http":
+      // 增量 §1.2：custom_http 留接口
+      return new CustomHttpAdapter({ baseUrl: provider.baseUrl, apiKey });
+  }
+}
+
 export interface ResolvedLlm {
   client: LlmClient;
   model: string;
   providerKey: string;
+  /** DataCore 管理的 provider 引用时附带（审计 {providerId, modelId} 用） */
+  providerId?: string;
+  modelId?: string;
 }
 
 export class LlmProviderRegistry {
@@ -74,20 +119,74 @@ export class LlmProviderRegistry {
       metrics?: Metrics;
       /** Test seam — replaces adapter construction (no network in CI). */
       factory?: LlmAdapterFactory;
+      /** LLM Provider 增量：A 侧 provider 目录（服务间凭证消费）。 */
+      directory?: DataCoreProviderDirectory;
+      dcFactory?: DataCoreAdapterFactory;
     },
   ) {}
 
   /**
    * Resolve a model spec to a provider adapter + plain model id.
-   * Spec forms: "providerKey:model" or plain "model" (default provider).
+   * Spec forms: "dcp:providerId:modelId"（DataCore 用途绑定）、"providerKey:model"
+   * or plain "model" (default provider).
    */
   async resolve(spec: string, tenantId?: string): Promise<ResolvedLlm> {
+    const dc = parseDataCoreSpec(spec);
+    if (dc && this.deps.directory && tenantId) {
+      return this.resolveDataCore(tenantId, dc.providerId, dc.modelId);
+    }
     const idx = spec.indexOf(":");
     const providerKey = idx > 0 ? spec.slice(0, idx) : this.deps.config.QOS_DEFAULT_LLM_PROVIDER;
     const model = idx > 0 ? spec.slice(idx + 1) : spec;
     const client = await this.clientFor(providerKey, tenantId);
     return { client, model, providerKey };
   }
+
+  // -------------------------------------------------------------------------
+  // DataCore-managed providers（增量 §1.1/§1.2/§1.3）
+  // -------------------------------------------------------------------------
+
+  private async resolveDataCore(tenantId: string, providerId: string, modelId: string): Promise<ResolvedLlm> {
+    const directory = this.deps.directory;
+    if (!directory) throw new Error("DataCore provider directory not configured");
+    const provider = await directory.provider(tenantId, providerId);
+    if (!provider) throw new Error(`unknown LLM provider: ${providerId}`);
+    if (provider.status === "DISABLED") throw new Error(`LLM provider disabled: ${provider.name}`);
+    const primary = await this.dataCoreAdapter(tenantId, provider);
+
+    // fallback 目标（≤1 级，禁止链式 —— fallback 的 fallback 不生效）
+    const loadFallback = async (): Promise<{ client: FullLlmClient; provider: LlmProvider; modelId: string } | undefined> => {
+      if (!provider.fallbackProviderId) return undefined;
+      const fb = await directory.provider(tenantId, provider.fallbackProviderId);
+      if (!fb || fb.status === "DISABLED") return undefined;
+      const fbModel = fb.models.find((m) => m.modelId === modelId) ?? fb.models[0];
+      if (!fbModel) return undefined;
+      return { client: await this.dataCoreAdapter(tenantId, fb), provider: fb, modelId: fbModel.modelId };
+    };
+
+    const client = new ProviderRoutedClient(
+      { client: primary, provider, modelId },
+      loadFallback,
+      this.deps.metrics,
+    );
+    return { client, model: modelId, providerKey: provider.name, providerId: provider.id, modelId };
+  }
+
+  private async dataCoreAdapter(tenantId: string, provider: LlmProvider): Promise<FullLlmClient> {
+    const cacheKey = `dcp|${tenantId}|${provider.id}|${provider.updatedAt ?? ""}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached as FullLlmClient;
+    // 密钥经服务间凭证获取，仅内存缓存（5min，directory 内），永不落 B 库
+    const apiKey = provider.hasApiKey ? await this.deps.directory?.credential(tenantId, provider.id) : undefined;
+    const factory = this.deps.dcFactory ?? defaultDataCoreAdapterFactory;
+    const client = factory(provider, apiKey, this.deps.metrics);
+    this.cache.set(cacheKey, client);
+    return client;
+  }
+
+  // -------------------------------------------------------------------------
+  // B-local legacy providers（/b/v1/llm/* 配置通道，保留兼容）
+  // -------------------------------------------------------------------------
 
   private async clientFor(providerKey: string, tenantId?: string): Promise<LlmClient> {
     // tenant config → platform config → builtin defaults
@@ -124,8 +223,80 @@ export class LlmProviderRegistry {
 }
 
 /**
+ * DataCore-provider 路由客户端：
+ * - 能力降级（§1.2）：模型无原生 structuredOutput → 分类走 JSON-mode 提示 + zod
+ *   校验重试 ≤2，仍失败抛 ClassifierParseError（既有失败语义 → 路径 B）；
+ * - 故障降级（§1.1 fallback）：调用抛错且配置了 fallbackProviderId → 降级目标
+ *   接管（≤1 级，禁止链式），指标 qos_llm_fallback_total 可见。
+ */
+class ProviderRoutedClient implements LlmClient {
+  constructor(
+    private readonly primary: { client: FullLlmClient; provider: LlmProvider; modelId: string },
+    private readonly loadFallback: () => Promise<
+      { client: FullLlmClient; provider: LlmProvider; modelId: string } | undefined
+    >,
+    private readonly metrics?: Metrics,
+  ) {}
+
+  private structuredOutputSupported(target: { provider: LlmProvider; modelId: string }): boolean {
+    const m = target.provider.models.find((x) => x.modelId === target.modelId);
+    return m?.capabilities.structuredOutput ?? true;
+  }
+
+  private async withFallback<T>(
+    op: (target: { client: FullLlmClient; provider: LlmProvider; modelId: string }) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await op(this.primary);
+    } catch (err) {
+      const fb = await this.loadFallback().catch(() => undefined);
+      if (!fb) throw err;
+      this.metrics?.llmFallback.inc({ from: this.primary.provider.id, to: fb.provider.id });
+      // 禁止链式：fallback 自身的 fallbackProviderId 不再生效
+      return op(fb);
+    }
+  }
+
+  async classify(req: { model: string; system: string; user: string; tenantId?: string }): Promise<RawClassification> {
+    return this.withFallback(async (t) => {
+      const r = { ...req, model: t.modelId };
+      if (!this.structuredOutputSupported(t)) {
+        // L3：JSON-mode 降级（重试 ≤2，仍失败 → ClassifierParseError → 路径 B）
+        return classifyWithJsonModeDegradation(t.client, r);
+      }
+      return t.client.classify(r);
+    });
+  }
+
+  async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {
+    return this.withFallback((t) => t.client.agent({ ...req, model: t.modelId }));
+  }
+
+  async compose(req: { model: string; instruction: string; inputs: unknown[]; tenantId?: string }): Promise<string> {
+    return this.withFallback((t) => t.client.compose({ ...req, model: t.modelId }));
+  }
+
+  async capabilities(_model: string, tenantId?: string): Promise<LlmCapabilities> {
+    const m = this.primary.provider.models.find((x) => x.modelId === this.primary.modelId);
+    const declared = (await this.primary.client.capabilities?.(this.primary.modelId, tenantId)) ?? {
+      countTokens: false,
+      compaction: false,
+    };
+    return { ...declared, ...(m?.capabilities.maxContext ? { maxContextTokens: m.capabilities.maxContext } : {}) };
+  }
+
+  async countTokens(req: LlmAgentRequest): Promise<number> {
+    if (!this.primary.client.countTokens) {
+      throw new Error(`provider ${this.primary.provider.name} does not support count_tokens`);
+    }
+    return this.primary.client.countTokens({ ...req, model: this.primary.modelId });
+  }
+}
+
+/**
  * LlmClient facade that routes each request to the right provider adapter based
- * on the model spec ("providerKey:model" | plain model) and tenant scope.
+ * on the model spec ("dcp:providerId:modelId" | "providerKey:model" | plain model)
+ * and tenant scope.
  */
 export class RoutingLlmClient implements LlmClient {
   constructor(private readonly registry: LlmProviderRegistry) {}
@@ -169,10 +340,21 @@ export class LlmSettings {
   constructor(
     private readonly repos: Pick<Repos, "llmBindings">,
     private readonly config: AppConfig,
+    /** LLM Provider 增量 §1.3：DataCore 用途绑定目录（source of truth）。 */
+    private readonly directory?: DataCoreProviderDirectory,
   ) {}
 
   async roleModel(tenantId: string | undefined, role: LlmRole, explicit?: string): Promise<string> {
-    if (explicit) return explicit; // scenario package field wins
+    if (explicit) return explicit; // scenario package field wins（场景包覆盖）
+    if (tenantId && this.directory) {
+      // 用途矩阵租户级默认（A 为 source of truth；role 名与 purpose key 同名）
+      const bound = await this.directory.bindingFor(tenantId, role);
+      if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${bound.modelId}`;
+      if (role === "compose") {
+        const agentBound = await this.directory.bindingFor(tenantId, "agent");
+        if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${agentBound.modelId}`;
+      }
+    }
     if (tenantId) {
       const bound = await this.repos.llmBindings.get(tenantId, role);
       if (bound) return `${bound.providerKey}:${bound.model}`;

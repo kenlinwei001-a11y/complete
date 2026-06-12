@@ -56,6 +56,8 @@ services:
       PORT: "4001"
       JWT_SECRET: dev-secret-change-me
       CREDENTIAL_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      # LLM Provider 增量 §1.1：服务间凭证（AgentCore 拉取 provider 配置与解密密钥；两侧同值）
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
       BLOB_DIR: /data/blobs
       SEED_DEMO: ${SEED_DEMO:-1}             # 默认播种电池制造演示数据（seed 42，幂等）
       # 管理平台增量 §1：空库首启创建平台超管（default 租户 platform_admin；SEED_DEMO=0 冷启动时必配）
@@ -89,6 +91,7 @@ services:
       PORT: "4002"
       DATACORE_BASE_URL: http://datacore:4001
       CREDENTIAL_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       QOS_CLASSIFIER_MODEL: ${QOS_CLASSIFIER_MODEL:-claude-haiku-4-5}
       QOS_AGENT_MODEL: ${QOS_AGENT_MODEL:-claude-opus-4-8}

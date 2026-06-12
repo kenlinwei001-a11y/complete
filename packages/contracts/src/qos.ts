@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IsoTime } from "./common.js";
+import { PlanRefSchema, ResolvedRefSchema } from "./refs.js";
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.1 场景包与意图目录
@@ -43,7 +44,10 @@ export const IntentDefinitionSchema = z.object({
   examples: z.array(z.string()),
   enabledViews: z.union([z.array(z.string()), z.literal("*")]),
   slots: z.array(SlotDefSchema),
-  planId: z.string(),
+  /** 旧形态：钉死具体 planId。引用模式增量 §2.1 后仅作输入别名/过渡期响应兼容字段保留。 */
+  planId: z.string().optional(),
+  /** 修订 QOS-PRD §4.1：意图 → 计划按 planRef 引用（缺省 latest，执行时解析）。 */
+  planRef: PlanRefSchema.optional(),
   riskLevel: z.enum(["READ", "COMPUTE", "ACTION_DRAFT"]),
   owner: z.string(),
   createdAt: IsoTime,
@@ -184,6 +188,9 @@ export const ClassificationResultSchema = z.object({
   extractedSlots: z.record(z.string(), z.unknown()),
   latencyMs: z.number(),
   model: z.string(),
+  /** LLM Provider 增量 §1.3（additive）：每次调用审计补 {providerId, modelId} */
+  providerId: z.string().optional(),
+  modelId: z.string().optional(),
 });
 export type ClassificationResult = z.infer<typeof ClassificationResultSchema>;
 
@@ -290,6 +297,8 @@ export const QueryTaskSchema = z.object({
   error: z
     .object({ code: z.string(), message: z.string(), stepId: z.string().optional() })
     .optional(),
+  /** 引用模式增量 §2.2（additive）：执行时解析到的实际版本留痕（「当时生效」） */
+  resolvedRefs: z.array(ResolvedRefSchema).optional(),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });

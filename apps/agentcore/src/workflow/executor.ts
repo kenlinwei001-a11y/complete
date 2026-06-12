@@ -1,4 +1,4 @@
-import type { Answer, AnswerBlock, OnError, PlanStep, ProvenanceRef, RuleVerdict } from "@platform/contracts";
+import type { Answer, AnswerBlock, OnError, PlanStep, ProvenanceRef, ResolvedRef, RuleVerdict } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
@@ -46,6 +46,8 @@ export interface WorkflowRunDeps {
   composeModel: string;
   emit: (event: string, payload: unknown) => Promise<void>;
   runAgentStep?: AgentStepInvoker;
+  /** 引用模式增量 §2.2：评估到的规则等实际版本留痕回调。 */
+  onResolvedRef?: (ref: ResolvedRef) => void;
 }
 
 export interface WorkflowRunInput {
@@ -158,6 +160,12 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
 
         if (step.type === "evaluate_rules") {
           const verdicts = r.payload as RuleVerdict[];
+          // §2.2 留痕：规则求值结果带 ruleVersion（RuleVerdict additive）
+          for (const v of verdicts) {
+            if (v.ruleVersion !== undefined) {
+              deps.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+            }
+          }
           const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
           if (blocking.length > 0) {
             // BLOCK violation → terminate; task COMPLETED with rule_violation 模板 answer (不算失败).

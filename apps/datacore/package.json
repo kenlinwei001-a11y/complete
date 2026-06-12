@@ -28,7 +28,8 @@
     "pdf-parse": "^1.1.1",
     "pg": "^8.13.0",
     "pino": "^9.5.0",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "@platform/llm-adapters": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

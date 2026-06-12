@@ -26,6 +26,8 @@ export const RuleVerdictSchema = z.object({
   passed: z.boolean(),
   severity: z.enum(["BLOCK", "WARN"]),
   explanation: z.string(),
+  /** 引用模式增量 §2.2（additive）：求值时实际生效的规则版本（留痕用） */
+  ruleVersion: z.number().int().optional(),
 });
 export type RuleVerdict = z.infer<typeof RuleVerdictSchema>;
 
@@ -52,5 +54,7 @@ export const ErrorCodes = {
   CYCLIC_INVOCATION: "CYCLIC_INVOCATION",
   /** 管理平台增量 §4：PUBLISHED 版本不可变（PUT → 409） */
   IMMUTABLE_VERSION: "IMMUTABLE_VERSION",
+  /** 引用模式增量 §2.3：破坏性 schema 变更 + 存在 latest 引用方 → 发布被拒 */
+  BREAKING_CHANGE_WITH_LATEST_REFS: "BREAKING_CHANGE_WITH_LATEST_REFS",
 } as const;
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

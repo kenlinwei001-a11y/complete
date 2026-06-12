@@ -1,10 +1,17 @@
 import type { z } from "zod";
+import {
+  AnthropicAdapter,
+  OpenAICompatAdapter,
+  parseWithJsonModeDegradation,
+  type FullLlmClient,
+} from "@platform/llm-adapters";
+import type { LlmPurpose } from "@platform/contracts";
 
 /**
  * Injectable LLM client (QOS-PRD §6). All tests use a scripted mock; the real
- * implementation wraps @anthropic-ai/sdk `messages.parse` + `output_config.format`
- * + `zodOutputFormat` (in the installed SDK 0.71.x these live under the beta
- * namespace: `client.beta.messages.parse` / `betaZodOutputFormat`).
+ * implementations live in packages/llm-adapters（LLM Provider 增量 §1.2 —— 两系统
+ * 共享适配器层：AnthropicAdapter / OpenAICompatAdapter / custom_http 留接口），
+ * DataCore 侧通过 AdapterBackedLlmClient 适配既有 parseStructured 接口。
  */
 export interface LlmParseRequest<T> {
   model: string;
@@ -12,6 +19,9 @@ export interface LlmParseRequest<T> {
   system: string;
   messages: { role: "user" | "assistant"; content: string }[];
   schema: z.ZodType<T>;
+  /** LLM Provider 增量 §1.3：租户 + 用途 —— TenantRoutedLlmClient 据此选 provider 绑定。 */
+  tenantId?: string;
+  purpose?: LlmPurpose;
 }
 
 export interface LlmClient {
@@ -26,82 +36,31 @@ export class LlmParseError extends Error {
   }
 }
 
-let singleton: import("@anthropic-ai/sdk").default | null = null;
-
-export class AnthropicLlmClient implements LlmClient {
-  async parseStructured<T>(req: LlmParseRequest<T>): Promise<T> {
-    // Lazy singleton: `new Anthropic()` resolves ANTHROPIC_API_KEY from env (QOS-PRD §6.1).
-    if (singleton == null) {
-      const { default: Anthropic } = await import("@anthropic-ai/sdk");
-      singleton = new Anthropic();
-    }
-    const { betaZodOutputFormat } = await import("@anthropic-ai/sdk/helpers/beta/zod");
-    // NOTE: never pass temperature/top_p/top_k/budget_tokens (Opus 4.8 rejects them).
-    // QOS-PRD §6 specifies `output_config: { format: zodOutputFormat(Schema) }`; in the
-    // installed SDK (0.71.x) the structured-output parameter is the top-level
-    // `output_format` (same zodOutputFormat helper, minimal adaptation — not invented).
-    const resp = await singleton.beta.messages.parse({
-      model: req.model,
-      max_tokens: req.maxTokens,
-      system: req.system,
-      messages: req.messages,
-      output_format: betaZodOutputFormat(req.schema),
-    });
-    if (resp.parsed_output == null) throw new LlmParseError();
-    return resp.parsed_output as T;
-  }
-}
-
 /**
- * Multi-provider support (contracts LlmProviderConfig/ModelBinding): `openai`
- * and `openai_compatible` use the official `openai` package with
- * chat.completions + response_format json_schema for structured outputs; a
- * baseURL override targets any compatible endpoint (DeepSeek/Qwen/vLLM/...).
+ * 共享适配器 → DataCore parseStructured 接口的桥（增量 §1.2）。
+ * `jsonMode = true`（provider 模型无原生 structuredOutput）→ JSON-mode 提示 +
+ * zod 校验重试 ≤2（degrade.ts），仍失败按既有失败语义抛 LlmParseError。
  */
-export class OpenAiLlmClient implements LlmClient {
-  private client: import("openai").default | null = null;
-
+export class AdapterBackedLlmClient implements LlmClient {
   constructor(
-    private opts: { baseUrl?: string; apiKeyEnv?: string } = {},
+    private readonly adapter: FullLlmClient,
+    private readonly opts: { jsonMode?: boolean } = {},
   ) {}
 
   async parseStructured<T>(req: LlmParseRequest<T>): Promise<T> {
-    if (this.client == null) {
-      const { default: OpenAI } = await import("openai");
-      const apiKey = this.opts.apiKeyEnv ? process.env[this.opts.apiKeyEnv] : process.env.OPENAI_API_KEY;
-      this.client = new OpenAI({ apiKey: apiKey ?? "missing-key", baseURL: this.opts.baseUrl });
-    }
-    const { z } = await import("zod");
-    const jsonSchema = z.toJSONSchema(req.schema as never, { target: "draft-7" });
-    const resp = await this.client.chat.completions.create({
-      model: req.model,
-      max_tokens: req.maxTokens,
-      messages: [
-        { role: "system" as const, content: req.system },
-        ...req.messages.map((m) => ({ role: m.role, content: m.content })),
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "structured_output", schema: jsonSchema as Record<string, unknown>, strict: false },
-      },
-    });
-    const content = resp.choices[0]?.message?.content;
-    if (!content) throw new LlmParseError("empty completion");
-    let raw: unknown;
-    try {
-      raw = JSON.parse(content);
-    } catch {
-      throw new LlmParseError("completion is not valid JSON");
-    }
-    const parsed = req.schema.safeParse(raw);
-    if (!parsed.success) throw new LlmParseError(`output failed schema: ${parsed.error.message}`);
-    return parsed.data;
+    const parsed = this.opts.jsonMode
+      ? await parseWithJsonModeDegradation(this.adapter, req)
+      : await this.adapter.parse(req);
+    if (parsed == null) throw new LlmParseError();
+    return parsed;
   }
 }
 
 /**
  * Provider selection from env/config (DC_LLM_PROVIDER / DC_LLM_BASE_URL /
  * DC_LLM_API_KEY_ENV). Anthropic stays the default when nothing is configured.
+ * 租户级 provider 绑定（/a/v1/llm-providers + /a/v1/llm-bindings）由
+ * TenantRoutedLlmClient（llmproviders.ts）在其上叠加。
  */
 export function createLlmClient(cfg: {
   DC_LLM_PROVIDER?: string;
@@ -110,12 +69,21 @@ export function createLlmClient(cfg: {
 }): LlmClient {
   switch (cfg.DC_LLM_PROVIDER) {
     case "openai":
-      return new OpenAiLlmClient({ apiKeyEnv: cfg.DC_LLM_API_KEY_ENV });
+      return new AdapterBackedLlmClient(
+        new OpenAICompatAdapter({
+          apiKey: (cfg.DC_LLM_API_KEY_ENV ? process.env[cfg.DC_LLM_API_KEY_ENV] : undefined) ?? process.env.OPENAI_API_KEY,
+        }),
+      );
     case "openai_compatible":
-      return new OpenAiLlmClient({ baseUrl: cfg.DC_LLM_BASE_URL, apiKeyEnv: cfg.DC_LLM_API_KEY_ENV });
+      return new AdapterBackedLlmClient(
+        new OpenAICompatAdapter({
+          baseUrl: cfg.DC_LLM_BASE_URL,
+          apiKey: (cfg.DC_LLM_API_KEY_ENV ? process.env[cfg.DC_LLM_API_KEY_ENV] : undefined) ?? process.env.OPENAI_API_KEY,
+        }),
+      );
     case "anthropic":
     default:
-      return new AnthropicLlmClient();
+      return new AdapterBackedLlmClient(new AnthropicAdapter());
   }
 }
 

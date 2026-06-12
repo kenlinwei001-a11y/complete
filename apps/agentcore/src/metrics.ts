@@ -94,7 +94,9 @@ export class Metrics {
     "Answers flagged with unverified numerics by path",
   );
   readonly toolCalls = new Counter("qos_tool_calls_total", "Tool calls by tool and outcome");
-  readonly llmTokens = new Counter("qos_llm_tokens_total", "LLM tokens by model and direction");
+  readonly llmTokens = new Counter("qos_llm_tokens_total", "LLM tokens by model, direction and provider");
+  /** LLM Provider 增量 §1.1：provider 故障降级（fallback 接管）次数 */
+  readonly llmFallback = new Counter("qos_llm_fallback_total", "LLM provider fallback takeovers by from/to provider");
   readonly nestedInvocations = new Counter("ac_nested_invocations_total", "Nested agent/workflow invocations by kind");
   readonly oboDenied = new Counter("ac_obo_denied_total", "Tool calls refused due to expiring OBO token");
   /** 增量 §1.3：上下文清理操作（fold/compact/force_finalize） */
@@ -127,6 +129,7 @@ export class Metrics {
         this.unverifiedNumerics,
         this.toolCalls,
         this.llmTokens,
+        this.llmFallback,
         this.nestedInvocations,
         this.oboDenied,
         this.contextOps,

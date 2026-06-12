@@ -77,6 +77,9 @@ export class ModelingService {
     const suggestion = await this.llm.parseStructured({
       model: this.model,
       maxTokens: 8192,
+      // LLM Provider 增量 §1.3：A3 建模建议走用途绑定（modeling）
+      tenantId: ctx.tenantId,
+      purpose: "modeling",
       system: SUGGEST_SYSTEM,
       messages: [
         {

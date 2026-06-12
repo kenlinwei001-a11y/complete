@@ -96,6 +96,18 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | 用户管理 /admin/users | 管理平台增量 §2：tenant_admin —— 邮箱/角色 chips（参数化角色带参数输入）/属性编辑/状态开关/重置密码（最后管理员不可禁用 409 LAST_ADMIN） |
 | 视图配置 /admin/views | 管理平台增量 §3：ViewConfig CRUD（renderer 12 选 1，创建自动注册 feature `view.{viewKey}`，删除级联提示引用并需确认，导航上下移排序，保存即 configVersion+1） |
 
+## 5.x LLM Provider 配置与变更传播（增量）
+
+- **多 LLM 厂商**：`/admin/llm-providers`（tenant_admin）配置 provider（anthropic / openai_compatible / custom_http 预留）
+  与「用途绑定矩阵」（classifier/agent/extraction/modeling/template_gen/compose）。apiKey write-only（AES-GCM 落 A 库），
+  AgentCore 经服务间凭证 `SERVICE_TOKEN`（两服务同值）拉取配置与解密密钥（密钥内存缓存 5min，永不落 B 库、永不到前端）。
+- **变更传播 SLO ≤60s**：B 对 A 资源（provider 配置/用途绑定/功能集）缓存统一 TTL 60s；发布即发 outbox 事件
+  `{kind}.updated`（llm_provider.updated / llm_binding.updated / rules.updated），经 C-2 webhook 注册表回调 B 的
+  失效钩子 `POST {B}/b/v1/internal/invalidate` 立即失效（事件通路故障由 TTL 兜底）。注册方式：
+  `POST /a/v1/webhooks { "url": "http://agentcore:4002/b/v1/internal/invalidate", "events": [] }`。
+- **引用模式**：意图 → 计划为 `planRef {planKey, version|"latest"}`（执行时解析）；规则引用永远取 PUBLISHED 最新版；
+  发布响应附影响面 impact；workflow 破坏性 inputs 变更 + latest 引用 → `BREAKING_CHANGE_WITH_LATEST_REFS`（force=true 越过，全审计）。
+
 ## 6. 可选配置（环境变量，`docker compose up` 前 export 或写 `.env`）
 
 | 变量 | 作用 |

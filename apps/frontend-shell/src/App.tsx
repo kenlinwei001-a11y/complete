@@ -39,6 +39,7 @@ const ScenesPage = lazy(() => import("@/pages/admin/ScenesPage"));
 const OpsFallbackPage = lazy(() => import("@/pages/admin/OpsFallbackPage"));
 const FeaturesPage = lazy(() => import("@/pages/admin/FeaturesPage"));
 const CalibrationPage = lazy(() => import("@/pages/admin/CalibrationPage"));
+const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
 // 管理平台增量：租户 / 用户 / 视图配置
 const TenantsPage = lazy(() => import("@/pages/admin/TenantsPage"));
 const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
@@ -95,6 +96,7 @@ export const routes: RouteObject[] = [
       admin("scenes", <ScenesPage />),
       admin("ops/fallback", <OpsFallbackPage />),
       admin("features", <FeaturesPage />),
+      admin("llm-providers", <LlmProvidersPage />),
       admin("calibration", <CalibrationPage />),
       admin("tenants", <TenantsPage />),
       admin("users", <UsersPage />),

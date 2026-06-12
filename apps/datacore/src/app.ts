@@ -22,6 +22,7 @@ import { AuthService } from "./auth.js";
 import { AuthzService } from "./authz.js";
 import { OutboxService } from "./outbox.js";
 import { RulesService, assertValidExpression } from "./rules.js";
+import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
 import { OntologyService } from "./ontology.js";
 import { ConnectorService } from "./connectors/service.js";
@@ -89,6 +90,7 @@ export interface BuiltApp {
     embeddings: EmbeddingProvider;
     plan: PlanService;
     calibration: CalibrationService;
+    llmProviders: LlmProviderService;
   };
 }
 
@@ -199,6 +201,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const features = new FeatureService(repos);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
   const connectors = new ConnectorService(repos, blob, cipher, metrics, deps.fetchImpl ?? fetch);
+  // LLM Provider 增量 §1：provider 配置落位 A；A2/A3/A7 调用方经租户用途路由消费
+  const llmProviders = new LlmProviderService(repos, cipher, outbox);
+  const routedLlm = new TenantRoutedLlmClient(repos, cipher, llm, metrics);
   const embeddings = createEmbeddingProvider(
     {
       kind: config.EMBEDDING_PROVIDER,
@@ -210,9 +215,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     process.env,
     deps.fetchImpl ?? fetch,
   );
-  const ruleDocs = new RuleDocService(repos, blob, llm, rules, metrics, config.DC_LLM_MODEL, embeddings);
-  const modeling = new ModelingService(repos, llm, ontology, metrics, config.DC_LLM_MODEL);
-  const synthetic = new SyntheticService(repos, llm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
+  const ruleDocs = new RuleDocService(repos, blob, routedLlm, rules, metrics, config.DC_LLM_MODEL, embeddings);
+  const modeling = new ModelingService(repos, routedLlm, ontology, metrics, config.DC_LLM_MODEL);
+  const synthetic = new SyntheticService(repos, routedLlm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
   const actions = new ActionService(repos, rules, outbox);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
@@ -332,6 +337,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const path = req.url.split("?")[0] as string;
     if (PUBLIC_PATHS.has(path)) return;
     if (!path.startsWith("/a/")) return;
+    // LLM Provider 增量 §1.1 服务间凭证：X-Service-Token === env SERVICE_TOKEN →
+    // roles=["service"]（仅服务间路由消费该角色；未配置 SERVICE_TOKEN 则恒不命中）。
+    const svcToken = req.headers["x-service-token"];
+    if (config.SERVICE_TOKEN && typeof svcToken === "string" && svcToken === config.SERVICE_TOKEN) {
+      const tid = req.headers["x-tenant-id"];
+      if (typeof tid !== "string" || tid.length === 0) throw validationError("X-Tenant-Id header required for service calls");
+      req.authCtx = { tenantId: tid, userId: "svc:" + String(req.headers["x-service-caller"] ?? "unknown"), roles: ["service"], attributes: {} };
+      return;
+    }
     const debugHeader = req.headers["x-debug-user"];
     if (config.NODE_ENV !== "production" && typeof debugHeader === "string") {
       req.authCtx = await auth.debugCtx(debugHeader);
@@ -813,7 +827,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/rules/:id/publish", async (req) => {
     const { id } = req.params as { id: string };
+    // 引用模式增量 §2.3：publish 响应附影响面 impact + warnings（scope 缩窄非阻断警告）
     return rules.publish(ctx(req), id);
+  });
+  // §2.3：A 规则库 references 端点（镜像 B 资源的统一形态 {references, count}）
+  app.get("/a/v1/rules/:id/references", async (req) => {
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    const rule = await rules.get(c, id);
+    const references = await rules.references(c, rule.key);
+    return { references, count: references.length };
   });
   app.post("/a/v1/rules/:id/retire", async (req) => {
     const { id } = req.params as { id: string };
@@ -1357,6 +1380,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/webhooks", async (req) => repos.webhooks.list(ctx(req).tenantId));
   app.get("/a/v1/outbox", async (req) => repos.outboxEvents.list(ctx(req).tenantId));
 
+  // ---- LLM Provider 配置体系增量 §1 + 引用上报（§2.3） -------------------------------------------
+  registerLlmProviderRoutes(app, { repos, service: llmProviders, outbox, ctx, fetchImpl: deps.fetchImpl ?? fetch });
+
   // ---- 管理平台增量：§2 租户/用户 + §3 场景包/视图配置 ------------------------------------------
   registerAdminPlatformRoutes(app, { repos, outbox, features, ctx });
 
@@ -1399,6 +1425,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       embeddings,
       plan,
       calibration,
+      llmProviders,
     },
   };
 }

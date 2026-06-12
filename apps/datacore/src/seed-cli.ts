@@ -6,7 +6,7 @@ import { loadConfig } from "./config.js";
 import { createMemoryRepos } from "./repo/memory.js";
 import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
-import { AnthropicLlmClient } from "./llm.js";
+import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { seedDemo, seedDemoSynthetic } from "./seed.js";
 
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     config,
     repos,
     blob: new LocalFsBlobStore(config.BLOB_DIR),
-    llm: new AnthropicLlmClient(),
+    llm: createLlmClient({}),
     logger,
   });
   const adminCtx = await seedDemo(repos);

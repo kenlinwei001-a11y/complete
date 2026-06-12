@@ -173,6 +173,9 @@ export class RuleDocService {
       const out = await this.llm.parseStructured({
         model: this.model,
         maxTokens: 4096,
+        // LLM Provider 增量 §1.3：A2 抽取走用途绑定（extraction），无绑定回落 env 默认
+        tenantId: ctx.tenantId,
+        purpose: "extraction",
         system: EXTRACTION_SYSTEM,
         messages: [{ role: "user", content: `<segment heading="${segment.heading ?? ""}">\n${segment.text}\n</segment>` }],
         schema: ExtractionSchema,

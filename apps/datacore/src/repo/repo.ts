@@ -17,6 +17,8 @@ import type {
   KbDocRecord,
   LinkInstance,
   LinkTypeDef,
+  LlmProviderRecord,
+  LlmPurposeBindingRecord,
   ObjectInstance,
   ObjectTypeDef,
   OntologyDraft,
@@ -24,6 +26,7 @@ import type {
   OutboxEvent,
   PermissionPolicy,
   RawDataset,
+  ReportedRefRecord,
   RetentionPolicyRecord,
   Rule,
   RuleCandidate,
@@ -195,6 +198,11 @@ export interface Repos {
   // 管理平台增量 §3
   scenarioPackages: Store<ScenarioPackageRecord>;
   dynamicFeatures: Store<DynamicFeatureRecord>;
+  // LLM Provider 配置体系增量 §1.1/§1.3
+  llmProviders: Store<LlmProviderRecord>;
+  llmPurposeBindings: Store<LlmPurposeBindingRecord>;
+  // 引用模式增量 §2.3：B→A 引用上报登记
+  reportedRefs: Store<ReportedRefRecord>;
   // M11 校准（§7.21 + 算法层增量）
   calibrationProposals: Store<CalibrationProposalRecord>;
   calibrationHistory: Store<CalibrationHistoryRecord>;

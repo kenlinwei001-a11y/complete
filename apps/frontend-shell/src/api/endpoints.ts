@@ -23,6 +23,9 @@ import type {
   WorkflowDefinition,
   QueryTimeseriesAggOutput,
   ModelingSuggestion,
+  LlmProvider,
+  PublishImpact,
+  PurposeBinding,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import type {
@@ -191,6 +194,11 @@ export const reviewCandidate = (id: string, action: "APPROVE" | "EDIT_APPROVE" |
   api.a<RuleCandidateVM>(`/a/v1/rule-candidates/${id}/review`, { body: { action, patch } });
 
 export const fetchRules = () => api.a<RuleEntry[]>("/a/v1/rules");
+/** 引用模式增量 §2.3：发布前影响面（references 反查，A 规则库统一形态） */
+export const fetchRuleReferences = (id: string) =>
+  api.a<{ references: { kind: string; key: string; name?: string; via: string }[]; count: number }>(
+    `/a/v1/rules/${id}/references`,
+  );
 
 // ---- 管理平台增量 §5：规则手工管理（编辑器 + dry-run） ----
 export const createRule = (body: {
@@ -203,7 +211,11 @@ export const createRule = (body: {
 }) => api.a<RuleEntry>("/a/v1/rules", { body });
 export const updateRule = (id: string, body: Partial<Omit<Parameters<typeof createRule>[0], "key">>) =>
   api.a<RuleEntry>(`/a/v1/rules/${id}`, { method: "PUT", body });
-export const publishRule = (id: string) => api.a<RuleEntry>(`/a/v1/rules/${id}/publish`, { body: {} });
+export const publishRule = (id: string) =>
+  api.a<RuleEntry & { impact: PublishImpact; warnings: { code: string; message: string }[] }>(
+    `/a/v1/rules/${id}/publish`,
+    { body: {} },
+  );
 export const retireRule = (id: string) => api.a<RuleEntry>(`/a/v1/rules/${id}/retire`, { body: {} });
 export const dryRunRule = (expression: string, samplePayload: Record<string, unknown>) =>
   api.a<RuleDryRunResult>("/a/v1/rules/dry-run", { body: { expression, samplePayload } });
@@ -405,11 +417,14 @@ export const saveWorkflow = (id: string | null, body: Partial<WorkflowDefinition
   id
     ? api.b<WorkflowDefinition>(`/b/v1/workflows/${id}`, { method: "PUT", body })
     : api.b<WorkflowDefinition>("/b/v1/workflows", { body });
-export const publishWorkflow = (id: string) =>
-  api.b<{ ok: boolean; errors?: { stepId?: string; code: string; message: string }[] }>(
-    `/b/v1/workflows/${id}/publish`,
-    { body: {} },
-  );
+export const publishWorkflow = (id: string, opts?: { force?: boolean }) =>
+  api.b<{
+    ok: boolean;
+    errors?: { stepId?: string; code: string; message: string }[];
+    /** 引用模式增量 §2.3：发布响应附影响面 */
+    impact?: PublishImpact;
+    forced?: boolean;
+  }>(`/b/v1/workflows/${id}/publish`, { body: { force: opts?.force ?? false } });
 
 export const fetchSkills = () => api.b<SkillDefinition[]>("/b/v1/skills");
 export const saveSkill = (id: string | null, body: Partial<SkillDefinition>) =>
@@ -421,3 +436,42 @@ export const saveMcpConfig = (id: string | null, body: Record<string, unknown>) 
   id ? api.b<McpServerConfig>(`/b/v1/mcp-configs/${id}`, { method: "PUT", body }) : api.b<McpServerConfig>("/b/v1/mcp-configs", { body });
 export const testMcpConnection = (id: string) =>
   api.b<{ ok: boolean; tools: { name: string; description: string }[] }>(`/b/v1/mcp-configs/${id}/test`, { body: {} });
+
+
+// ---------------- LLM Provider 配置体系（增量 §1，落位 DataCore） ----------------
+
+export interface LlmProviderVM extends LlmProvider {
+  /** mock/审计可用时的近 7 日 token 用量（真后端暂不提供 → 列显示 —） */
+  usage7dTokens?: number;
+}
+
+export const fetchLlmProviders = () => api.a<LlmProviderVM[]>("/a/v1/llm-providers");
+
+export interface LlmProviderSaveBody {
+  name: string;
+  kind: LlmProvider["kind"];
+  baseUrl?: string;
+  /** write-only：保存后显示「••• 已配置」，仅「更换」时重新提交 */
+  apiKey?: string;
+  models: LlmProvider["models"];
+  status?: LlmProvider["status"];
+  fallbackProviderId?: string;
+}
+
+export const createLlmProvider = (body: LlmProviderSaveBody) =>
+  api.a<LlmProviderVM>("/a/v1/llm-providers", { body });
+export const updateLlmProvider = (id: string, body: Partial<LlmProviderSaveBody>) =>
+  api.a<LlmProviderVM>(`/a/v1/llm-providers/${id}`, { method: "PUT", body });
+export const testLlmProvider = (id: string) =>
+  api.a<{ ok: boolean; latencyMs?: number; probedModels?: string[]; message?: string }>(
+    `/a/v1/llm-providers/${id}/test`,
+    { body: {} },
+  );
+export const cloneLlmProvider = (id: string) => api.a<LlmProviderVM>(`/a/v1/llm-providers/${id}/clone`, { body: {} });
+
+export const fetchLlmBindings = () => api.a<{ bindings: PurposeBinding[] }>("/a/v1/llm-bindings");
+export const putLlmBindings = (bindings: PurposeBinding[]) =>
+  api.a<{ bindings: PurposeBinding[]; warnings: { purpose: string; message: string }[] }>("/a/v1/llm-bindings", {
+    method: "PUT",
+    body: { bindings },
+  });

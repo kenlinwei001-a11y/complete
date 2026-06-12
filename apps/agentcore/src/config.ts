@@ -5,6 +5,8 @@ const ConfigSchema = z.object({
   DATABASE_URL: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   DATACORE_BASE_URL: z.string().optional(),
+  /** LLM Provider 增量 §1.1：服务间凭证（与 DataCore 同值；用于 /a/v1/llm-providers 配置与密钥拉取） */
+  SERVICE_TOKEN: z.string().optional(),
   /** Model specs: plain model id (default provider) or "providerKey:model" (amends QOS-PRD §6). */
   QOS_CLASSIFIER_MODEL: z.string().default("claude-haiku-4-5"),
   QOS_AGENT_MODEL: z.string().default("claude-opus-4-8"),

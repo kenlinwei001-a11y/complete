@@ -107,6 +107,9 @@ export class SyntheticService {
     const template = await this.llm.parseStructured({
       model: this.model,
       maxTokens: 16000,
+      // LLM Provider 增量 §1.3：A7 行业模板生成走用途绑定（template_gen）
+      tenantId: ctx.tenantId,
+      purpose: "template_gen",
       system: TEMPLATE_SYSTEM,
       messages: [{ role: "user", content: `industry: ${industry}` }],
       schema: IndustryTemplateSchema,

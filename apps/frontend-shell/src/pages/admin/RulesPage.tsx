@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RuleDryRunResult, RuleEntry } from "@platform/contracts";
-import { createRule, dryRunRule, fetchRules, publishRule, retireRule, updateRule } from "@/api/endpoints";
+import { createRule, dryRunRule, fetchRuleReferences, fetchRules, publishRule, retireRule, updateRule } from "@/api/endpoints";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -17,16 +17,33 @@ export default function RulesPage() {
   const { data: rules } = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules });
   const [open, setOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<RuleEntry | "new" | null>(null);
+  // 引用模式增量 §2.3：发布确认页（影响面清单 + 二次确认）
+  const [confirming, setConfirming] = useState<{
+    rule: RuleEntry;
+    references: { kind: string; key: string; name?: string; via: string }[];
+  } | null>(null);
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["a", "rules"] });
 
   const publishMut = useMutation({
     mutationFn: (id: string) => publishRule(id),
-    onSuccess: () => {
-      toast(zh.common.publish + " ✓", "success");
+    onSuccess: (r) => {
+      toast(`发布并立即生效于 ${r.impact.refs.length} 个引用方 · 约 1 分钟内对所有引用方生效`, "success");
+      for (const w of r.warnings ?? []) toast(`${w.code}: ${w.message}`, "info");
+      setConfirming(null);
       invalidate();
     },
     onError: toastError,
   });
+
+  // 发布前先反查影响面（references），弹确认页
+  const beginPublish = async (rule: RuleEntry) => {
+    try {
+      const { references } = await fetchRuleReferences(rule.id);
+      setConfirming({ rule, references });
+    } catch (e) {
+      toastError(e as Error);
+    }
+  };
   const retireMut = useMutation({
     mutationFn: (id: string) => retireRule(id),
     onSuccess: () => {
@@ -85,7 +102,7 @@ export default function RulesPage() {
                         <button className="btn sm" onClick={() => setEditing(r)} data-testid={`rule-edit-${r.key}`}>
                           {zh.common.edit}
                         </button>{" "}
-                        <button className="btn primary sm" onClick={() => publishMut.mutate(r.id)}>
+                        <button className="btn primary sm" onClick={() => void beginPublish(r)} data-testid={`rule-publish-${r.key}`}>
                           {zh.common.publish}
                         </button>
                       </>
@@ -118,10 +135,68 @@ export default function RulesPage() {
           onSaved={() => {
             setEditing(null);
             invalidate();
+            toast("已保存 · 约 1 分钟内对所有引用方生效", "success");
           }}
         />
       )}
+      {confirming && (
+        <PublishConfirm
+          rule={confirming.rule}
+          references={confirming.references}
+          pending={publishMut.isPending}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => publishMut.mutate(confirming.rule.id)}
+        />
+      )}
     </div>
+  );
+}
+
+/** §2.3 发布确认页：影响面清单 + 「发布并立即生效于 n 个引用方」；>10 引用须输入 key 二次确认。 */
+function PublishConfirm({
+  rule,
+  references,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  rule: RuleEntry;
+  references: { kind: string; key: string; name?: string; via: string }[];
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const needTyping = references.length > 10;
+  return (
+    <Modal title={`发布确认 · ${rule.key}`} onClose={onCancel} width={520}>
+      <p style={{ marginBottom: 8 }} data-testid="publish-impact-summary">
+        发布并立即生效于 <strong>{references.length}</strong> 个引用方（latest 引用执行时解析，零运营动作）。
+      </p>
+      {references.length > 0 && (
+        <ul style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, maxHeight: 180, overflow: "auto" }} data-testid="publish-impact-list">
+          {references.map((r, i) => (
+            <li key={i}>
+              <span className="badge">{r.kind}</span> {r.name ?? r.key}（{r.via}）
+            </li>
+          ))}
+        </ul>
+      )}
+      {needTyping && (
+        <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginBottom: 10 }}>
+          影响面超过 10 个引用方：请输入资源 key「{rule.key}」二次确认
+          <input style={{ width: "100%" }} className="mono" value={typed} aria-label="确认 key" onChange={(e) => setTyped(e.target.value)} data-testid="publish-confirm-key" />
+        </label>
+      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn" onClick={onCancel}>
+          {zh.common.cancel}
+        </button>
+        <button className="btn primary" disabled={pending || (needTyping && typed !== rule.key)} onClick={onConfirm} data-testid="publish-confirm-button">
+          {zh.common.publish}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

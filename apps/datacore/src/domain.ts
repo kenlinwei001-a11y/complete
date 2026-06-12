@@ -748,3 +748,49 @@ export interface SolverParamsRecord {
 }
 
 export type { PermissionPolicy };
+
+// ---------------------------------------------------------------------------
+// LLM Provider 配置体系增量 §1.1（表 llm_providers / llm_purpose_bindings）
+// ---------------------------------------------------------------------------
+
+export interface LlmProviderRecord {
+  id: string; // llmp_
+  tenantId: string; // "platform" = 平台级模板（platform_admin 维护，可克隆）
+  name: string;
+  kind: "anthropic" | "openai_compatible" | "custom_http";
+  baseUrl?: string;
+  /** apiKey 写入即 AES-GCM 密文（与连接器凭据同套 CredentialCipher），永不回显 */
+  apiKeyCiphertext?: string;
+  models: {
+    modelId: string;
+    displayName: string;
+    capabilities: { tools: boolean; structuredOutput: boolean; maxContext: number };
+  }[];
+  status: "ACTIVE" | "DISABLED";
+  /** 不可用时的降级目标（≤1 级，禁止链式） */
+  fallbackProviderId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 增量 §1.3：用途绑定（租户级默认；id = llmb_{purpose}，每租户每用途一条）。 */
+export interface LlmPurposeBindingRecord {
+  id: string; // llmb_{purpose}
+  tenantId: string;
+  purpose: string; // classifier|agent|extraction|modeling|template_gen|compose
+  providerId: string;
+  modelId: string;
+  updatedAt: string;
+}
+
+/**
+ * 引用模式增量 §2.3：B→A 引用上报登记（B 资源发布时上报其对 A 资源的出向引用，
+ * 规则发布据此反查影响面）。id = refr_{sourceKind}_{sourceKey}（每来源一条，覆盖式）。
+ */
+export interface ReportedRefRecord {
+  id: string;
+  tenantId: string;
+  source: { kind: string; key: string; name?: string };
+  refs: { kind: string; key: string; version: number | "latest" }[];
+  updatedAt: string;
+}

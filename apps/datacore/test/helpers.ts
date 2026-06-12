@@ -16,13 +16,14 @@ export interface TestApp extends BuiltApp {
   adminCtx: AuthCtx;
 }
 
-export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean }): Promise<TestApp> {
+export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string> }): Promise<TestApp> {
   const blobDir = await mkdtemp(join(tmpdir(), "dc-test-"));
   const config = loadConfig({
     NODE_ENV: "test",
     LOG_LEVEL: "silent",
     BLOB_DIR: blobDir,
     JWT_SECRET: "test-secret",
+    ...(opts?.env ?? {}),
   } as NodeJS.ProcessEnv);
   const repos = createMemoryRepos();
   const llm = new ScriptedLlmClient();

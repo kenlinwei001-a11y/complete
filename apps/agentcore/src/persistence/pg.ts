@@ -149,6 +149,7 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         if (p.clarificationRounds !== undefined) add("clarification_rounds", p.clarificationRounds);
         if (p.answer !== undefined) add("answer", JSON.stringify(p.answer));
         if (p.error !== undefined) add("error", JSON.stringify(p.error));
+        if (p.resolvedRefs !== undefined) add("resolved_refs", JSON.stringify(p.resolvedRefs));
         if (p.completedAt !== undefined) add("completed_at", p.completedAt);
         if (sets.length === 0) return;
         await q(`UPDATE query_tasks SET ${sets.join(", ")} WHERE id = $1`, vals);
@@ -493,6 +494,7 @@ function rowToTask(row: Record<string, unknown>): QueryTask {
     clarificationRounds: row.clarification_rounds as number,
     answer: (row.answer as QueryTask["answer"]) ?? undefined,
     error: (row.error as QueryTask["error"]) ?? undefined,
+    resolvedRefs: (row.resolved_refs as QueryTask["resolvedRefs"]) ?? undefined,
     createdAt: new Date(row.created_at as string).toISOString(),
     completedAt: row.completed_at ? new Date(row.completed_at as string).toISOString() : undefined,
   };

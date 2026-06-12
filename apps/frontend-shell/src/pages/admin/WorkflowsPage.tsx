@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PlanStep, WorkflowDefinition } from "@platform/contracts";
 import { fetchWorkflows, publishWorkflow, saveWorkflow } from "@/api/endpoints";
+import { ApiClientError } from "@/api/apiClient";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { filterSuggestions, templateSuggestions } from "./templateSuggest";
@@ -73,6 +74,8 @@ export default function WorkflowsPage() {
 function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition; onChanged: () => void }) {
   const [steps, setSteps] = useState<PlanStep[]>(workflow.steps);
   const [errors, setErrors] = useState<{ stepId?: string; code: string; message: string }[]>([]);
+  // 引用模式增量 §2.3：破坏性变更门禁（BREAKING_CHANGE_WITH_LATEST_REFS → 提示 force）
+  const [breaking, setBreaking] = useState<string | null>(null);
   const editable = workflow.status === "DRAFT";
 
   const saveMut = useMutation({
@@ -85,20 +88,28 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
   });
 
   const publishMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ force }: { force: boolean }) => {
       await saveWorkflow(workflow.id, { steps });
-      return publishWorkflow(workflow.id);
+      return publishWorkflow(workflow.id, { force });
     },
     onSuccess: (r) => {
       if (r.ok) {
         setErrors([]);
-        toast("发布成功", "success");
+        setBreaking(null);
+        const n = r.impact?.refs.length ?? 0;
+        toast(`发布并立即生效于 ${n} 个引用方 · 约 1 分钟内对所有引用方生效${r.forced ? "（force 已审计）" : ""}`, "success");
         onChanged();
       } else {
         setErrors(r.errors ?? []);
       }
     },
-    onError: toastError,
+    onError: (e) => {
+      if (e instanceof ApiClientError && e.code === "BREAKING_CHANGE_WITH_LATEST_REFS") {
+        setBreaking(e.message);
+        return;
+      }
+      toastError(e);
+    },
   });
 
   const move = (i: number, dir: -1 | 1) => {
@@ -125,13 +136,22 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
             <button className="btn sm" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
               {zh.common.save}
             </button>
-            <button className="btn primary sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate()} data-testid="wf-publish">
+            <button className="btn primary sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate({ force: false })} data-testid="wf-publish">
               {zh.common.publish}
             </button>
           </div>
         )}
       </div>
 
+      {breaking && (
+        <div className="panel" style={{ borderColor: "var(--danger)", marginBottom: 8 }} data-testid="wf-breaking-gate">
+          <div className="badge red" style={{ marginBottom: 6 }}>BREAKING_CHANGE_WITH_LATEST_REFS</div>
+          <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{breaking}</p>
+          <button className="btn danger sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate({ force: true })} data-testid="wf-force-publish">
+            强制发布（force=true · catalog_admin · 全审计）
+          </button>
+        </div>
+      )}
       {globalErrors.map((e, i) => (
         <div key={i} className="badge red" style={{ marginBottom: 6 }} data-testid="wf-global-error">
           {e.code}: {e.message}

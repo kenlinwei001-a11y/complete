@@ -180,6 +180,16 @@ export class MockSolverClient implements SolverClient {
 }
 
 export class MockRuleEngineClient implements RuleEngineClient {
+  /** 引用模式增量 L5：规则「源头一改、引用方全部生效」—— 测试可改阈值/版本模拟规则发布新版。 */
+  c08Threshold = 0.3;
+  versions: Record<string, number> = { C03: 1, C08: 1, C13: 1 };
+
+  /** 模拟规则 C08 发布新版（阈值变更）：下一次求值即用新阈值 + 新版本号。 */
+  publishC08(threshold: number): void {
+    this.c08Threshold = threshold;
+    this.versions.C08 = (this.versions.C08 ?? 1) + 1;
+  }
+
   async evaluate(_ctx: ToolAuthCtx, ruleIds: string[] | "ALL_APPLICABLE", payload: unknown): Promise<RuleVerdict[]> {
     const p = (payload ?? {}) as Record<string, unknown>;
     const all: Record<string, () => RuleVerdict> = {
@@ -197,9 +207,9 @@ export class MockRuleEngineClient implements RuleEngineClient {
       },
       C08: () => ({
         ruleId: "C08",
-        passed: !(Number(p.outsourceRatio ?? 0) > 0.3),
+        passed: !(Number(p.outsourceRatio ?? 0) > this.c08Threshold),
         severity: "WARN",
-        explanation: "外协比例红线检查",
+        explanation: `外协比例红线检查（阈值 ${this.c08Threshold}）`,
       }),
       C13: () => {
         const passed = p.creditExceeded !== true;
@@ -212,7 +222,9 @@ export class MockRuleEngineClient implements RuleEngineClient {
       },
     };
     const ids = ruleIds === "ALL_APPLICABLE" ? Object.keys(all) : ruleIds;
-    return ids.filter((id) => all[id]).map((id) => (all[id] as () => RuleVerdict)());
+    return ids
+      .filter((id) => all[id])
+      .map((id) => ({ ...(all[id] as () => RuleVerdict)(), ruleVersion: this.versions[id] ?? 1 }));
   }
 }
 

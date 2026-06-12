@@ -1,4 +1,4 @@
-import type { RuleDryRunResult, RuleVerdict, RuleOrigin } from "@platform/contracts";
+import type { PublishImpact, RuleDryRunResult, RuleVerdict, RuleOrigin } from "@platform/contracts";
 import type { AuthCtx, Rule } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { newId } from "./ids.js";
@@ -79,17 +79,78 @@ export class RulesService {
     return rule;
   }
 
-  async publish(ctx: AuthCtx, id: string): Promise<Rule> {
+  /**
+   * 引用模式增量 §2.3：规则被引用清单（references 反查）。
+   * 事实源：① B 资源发布时上报的出向引用（reported_refs，agent/plan/workflow → rule）；
+   * ② A 本地 ActionType.checkRules。规则引用永远 latest（§2.1）。
+   */
+  async references(
+    ctx: AuthCtx,
+    ruleKey: string,
+  ): Promise<{ kind: string; key: string; name?: string; via: string }[]> {
+    const out: { kind: string; key: string; name?: string; via: string }[] = [];
+    const reported = await this.repos.reportedRefs.list(ctx.tenantId);
+    for (const rep of reported) {
+      if (rep.refs.some((r) => r.kind === "rule" && r.key === ruleKey)) {
+        out.push({ kind: rep.source.kind, key: rep.source.key, name: rep.source.name, via: "reported(latest)" });
+      }
+    }
+    const actionTypes = await this.repos.actionTypes.list(ctx.tenantId);
+    for (const at of actionTypes) {
+      if ((at.checkRules ?? []).includes(ruleKey)) {
+        out.push({ kind: "action-type", key: at.key, name: at.name, via: "checkRules" });
+      }
+    }
+    return out;
+  }
+
+  /** §2.3：publish 响应必须附影响面 {agents, plans, intents, refs}。 */
+  async impact(ctx: AuthCtx, ruleKey: string): Promise<PublishImpact> {
+    const refs = await this.references(ctx, ruleKey);
+    const count = (kinds: string[]) => refs.filter((r) => kinds.includes(r.kind)).length;
+    return {
+      agents: count(["agent"]),
+      plans: count(["plan", "workflow"]),
+      intents: count(["intent"]),
+      refs: refs.map((r) => ({
+        kind: (["rule", "skill", "workflow", "plan", "agent", "mcp", "intent"].includes(r.kind)
+          ? r.kind
+          : "plan") as PublishImpact["refs"][number]["kind"],
+        key: r.key,
+        version: "latest" as const,
+        name: r.name,
+      })),
+    };
+  }
+
+  async publish(
+    ctx: AuthCtx,
+    id: string,
+  ): Promise<Rule & { impact: PublishImpact; warnings: { code: string; message: string }[] }> {
     const rule = await this.get(ctx, id);
     const siblings = await this.repos.rules.list(
       ctx.tenantId,
       (r) => r.key === rule.key && r.status === "PUBLISHED" && r.id !== rule.id,
     );
+    // §2.3：scope 缩窄 → 警告（非阻断）
+    const warnings: { code: string; message: string }[] = [];
+    const prev = siblings.sort((a, b) => b.version - a.version)[0];
+    if (prev) {
+      const newScope = new Set(rule.scopeObjectTypes);
+      const removed = prev.scopeObjectTypes.filter((t) => !newScope.has(t));
+      if (removed.length > 0) {
+        warnings.push({
+          code: "RULE_SCOPE_NARROWED",
+          message: `scope 缩窄：不再覆盖对象类型 ${removed.join("、")}（引用方求值范围将随之收窄，请确认）`,
+        });
+      }
+    }
     for (const old of siblings) await this.repos.rules.put({ ...old, status: "RETIRED" });
     const updated: Rule = { ...rule, status: "PUBLISHED" };
     await this.repos.rules.put(updated);
     await this.outbox.emit(ctx.tenantId, "rules.updated", { ruleKey: rule.key, version: rule.version });
-    return updated;
+    const impact = await this.impact(ctx, rule.key);
+    return { ...updated, impact, warnings };
   }
 
   // ---- 管理平台增量 §5：手工管理（PUT 仅 DRAFT 可改 / retire / dry-run） ----
@@ -174,6 +235,8 @@ export class RulesService {
         passed: !violated,
         severity: rule.severity === "BLOCK" ? "BLOCK" : "WARN",
         explanation,
+        // 引用模式增量 §2.2：求值结果带实际生效版本（留痕「当时生效」）
+        ruleVersion: rule.version,
       });
     }
     return verdicts;

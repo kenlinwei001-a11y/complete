@@ -1,4 +1,4 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, McpServerConfig, RuleEntry, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -13,6 +13,8 @@ import {
   AGENTS,
   initialClock,
   INTENTS,
+  LLM_BINDINGS,
+  LLM_PROVIDERS,
   MCP_CONFIGS,
   MODELING_DRAFT,
   RULE_CANDIDATES,
@@ -59,6 +61,9 @@ interface MockDb {
   sopVersions: SopVersionVM[];
   // 管理平台增量
   rules: RuleEntry[];
+  // LLM Provider 增量 §1
+  llmProviders: (LlmProvider & { usage7dTokens?: number })[];
+  llmBindings: PurposeBinding[];
   tenants: AdminTenant[];
   adminUsers: AdminUser[];
   adminViews: AdminViewConfig[];
@@ -92,6 +97,8 @@ function freshDb(): MockDb {
     actionDrafts: structuredClone(ACTION_DRAFTS),
     sopVersions: seedSopVersions(),
     rules: structuredClone(RULES),
+    llmProviders: structuredClone(LLM_PROVIDERS),
+    llmBindings: structuredClone(LLM_BINDINGS),
     tenants: structuredClone(ADMIN_TENANTS),
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),

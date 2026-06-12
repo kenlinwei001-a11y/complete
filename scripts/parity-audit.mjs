@@ -139,6 +139,7 @@ const B = `http://127.0.0.1:${B_PORT}`;
 const dc = spawnService("datacore", join(ROOT, "apps/datacore/dist/server.js"), {
   PORT: String(A_PORT),
   JWT_SECRET: "parity",
+  SERVICE_TOKEN: "parity-svc-token",
   CREDENTIAL_KEY: "a".repeat(64),
   BLOB_DIR,
   SEED_DEMO: "1",
@@ -154,6 +155,7 @@ const dc = spawnService("datacore", join(ROOT, "apps/datacore/dist/server.js"), 
 const ac = spawnService("agentcore", join(ROOT, "apps/agentcore/dist/main.js"), {
   PORT: String(B_PORT),
   DATACORE_BASE_URL: A,
+  SERVICE_TOKEN: "parity-svc-token",
   LOG_LEVEL: "warn",
   PARITY_LLM_KEY: "parity-key",
 });
@@ -1504,6 +1506,177 @@ await check("M7 规则手工管理", "非法 expression 定位字符位（400 + 
   envelope(immutable, 409, "IMMUTABLE_VERSION");
   const retired = await a(`/a/v1/rules/${created.body.id}/retire`, { body: {} });
   eq(retired.body.status, "RETIRED", "retired");
+});
+
+
+// ===========================================================================
+// LLM Provider 配置体系（增量 §1，落位 A）+ 统一引用模式（增量 §2）
+// ===========================================================================
+let llmpId = "";
+await check("LLM Provider", "CRUD：apiKey write-only（hasApiKey，不回显）+ 连接测试返回延迟", async () => {
+  const SECRET = "sk-parity-llm-9";
+  const r = await a("/a/v1/llm-providers", {
+    body: {
+      name: "parity vLLM",
+      kind: "openai_compatible",
+      baseUrl: `http://127.0.0.1:${llmPort}`,
+      apiKey: SECRET,
+      models: [
+        { modelId: "stub-1", displayName: "Stub", capabilities: { tools: true, structuredOutput: true, maxContext: 128000 } },
+        { modelId: "stub-noso", displayName: "Stub-NoSO", capabilities: { tools: false, structuredOutput: false, maxContext: 32000 } },
+      ],
+    },
+  });
+  eq(r.status, 201, "create status");
+  llmpId = r.body.id;
+  eq(r.body.hasApiKey, true, "hasApiKey");
+  ok(!JSON.stringify(r.body).includes(SECRET), "明文不回显");
+  const list = await a("/a/v1/llm-providers");
+  eq(list.status, 200, "list status");
+  ok(!JSON.stringify(list.body).includes(SECRET), "list 不回显");
+  const test = await a(`/a/v1/llm-providers/${llmpId}/test`, { body: {} });
+  eq(test.status, 200, "test status");
+  ok(typeof test.body.latencyMs === "number", "latencyMs 数值");
+  const put = await a(`/a/v1/llm-providers/${llmpId}`, { method: "PUT", body: { name: "parity vLLM v2" } });
+  eq(put.status, 200, "PUT status");
+  eq(put.body.hasApiKey, true, "PUT 后密钥保留（write-only 不被清除）");
+});
+await check("LLM Provider", "服务间凭证：用户 JWT → 403；X-Service-Token → 解密密钥", async () => {
+  const denied = await a(`/a/v1/llm-providers/${llmpId}/credential`);
+  envelope(denied, 403, "FORBIDDEN");
+  const res = await fetch(`${A}/a/v1/llm-providers/${llmpId}/credential`, {
+    headers: { "x-service-token": "parity-svc-token", "x-tenant-id": "demo", "x-service-caller": "parity" },
+  });
+  eq(res.status, 200, "service status");
+  const body = await res.json();
+  eq(body.apiKey, "sk-parity-llm-9", "解密密钥（仅服务间）");
+});
+await check("LLM Provider", "绑定矩阵：无 tools 绑 agent → 400 注明缺失能力；合法绑定 → bindings + warnings", async () => {
+  const bad = await a("/a/v1/llm-bindings", {
+    method: "PUT",
+    body: { bindings: [{ purpose: "agent", providerId: llmpId, modelId: "stub-noso" }] },
+  });
+  envelope(bad, 400, "VALIDATION_ERROR");
+  ok(bad.body.error.message.includes("缺失能力"), "注明缺失能力");
+  const okRes = await a("/a/v1/llm-bindings", {
+    method: "PUT",
+    body: {
+      bindings: [
+        { purpose: "extraction", providerId: llmpId, modelId: "stub-1" },
+        { purpose: "template_gen", providerId: llmpId, modelId: "stub-noso" },
+      ],
+    },
+  });
+  eq(okRes.status, 200, "PUT status");
+  isArr(okRes.body.bindings, "bindings");
+  ok(okRes.body.warnings.some((w) => w.message.includes("JSON-mode")), "structuredOutput 缺失 → 降级警告");
+  const get = await a("/a/v1/llm-bindings");
+  eq(get.body.bindings.length, 2, "GET bindings");
+});
+await check("LLM Provider", "B 只读别名 /b/v1/llm/providers 经 A（source of truth）+ 内部失效钩子", async () => {
+  // §2.4：A 发布 llm_provider.updated → webhook 调 B 失效钩子 → B 下一次读取即新值（SLO ≤60s，TTL 兜底）
+  const inv = await b("/b/v1/internal/invalidate", { body: { event: "llm_provider.updated", tenantId: "demo" } });
+  eq(inv.status, 200, "invalidate status");
+  eq(inv.body.ok, true, "ok");
+  const r = await b("/b/v1/llm/providers");
+  eq(r.status, 200, "alias status");
+  ok(r.body.some((p) => p.id === llmpId), "失效后 B 读到 A 的新 provider");
+});
+
+let refPlanId = "";
+await check("引用模式", "planRef 意图：planId 仍为输入别名（归一化）+ plan publish 响应附影响面", async () => {
+  const plan = await b(`/api/v1/catalog/packages/${pkgId}/plans`, {
+    body: {
+      key: "parity_ref_plan",
+      steps: [
+        { id: "s1", type: "evaluate_rules", params: { ruleIds: ["C08"], payload: { outsourceRatio: 0.1 } } },
+        { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "ok" }] } },
+      ],
+    },
+  });
+  eq(plan.status, 201, "plan create");
+  refPlanId = plan.body.id;
+  const intent = await b(`/api/v1/catalog/packages/${pkgId}/intents`, {
+    body: {
+      key: "parity_ref_intent",
+      name: "引用意图",
+      description: "planRef latest",
+      examples: ["引用一下"],
+      enabledViews: "*",
+      slots: [{ name: "note", type: "string", required: false, description: "备注" }],
+      planRef: { planKey: "parity_ref_plan", version: "latest" },
+      riskLevel: "READ",
+      owner: "parity",
+    },
+  });
+  eq(intent.status, 201, "intent create");
+  eq(intent.body.planRef?.planKey, "parity_ref_plan", "planRef 落库");
+  ok(typeof intent.body.planId === "string", "过渡期响应仍含 planId 别名");
+  const pub = await b(`/api/v1/catalog/plans/${refPlanId}/publish`, { body: {} });
+  eq(pub.status, 200, "plan publish");
+  ok(pub.body.impact && Number.isInteger(pub.body.impact.intents), "publish 响应附 impact");
+  const ipub = await b(`/api/v1/catalog/intents/${intent.body.id}/publish`, { body: {} });
+  eq(ipub.status, 200, "intent publish");
+});
+await check("引用模式", "规则发布响应附影响面（B 上报引用 → A references 反查）+ references 端点", async () => {
+  // B 发布 plan 时已上报 C08 引用（服务间）；再补一条 agent 引用
+  const rep = await fetch(`${A}/a/v1/references/report`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-service-token": "parity-svc-token", "x-tenant-id": "demo" },
+    body: JSON.stringify({ source: { kind: "agent", key: "parity_agent", name: "parity agent" }, refs: [{ kind: "rule", key: "C08", version: "latest" }] }),
+  });
+  eq(rep.status, 204, "report status");
+  const rule = await a("/a/v1/rules", {
+    body: { key: "C08", name: "外协红线", expression: "Plan.outsourceRatio > 0.2", scopeObjectTypes: ["Plan"], severity: "WARN" },
+  });
+  eq(rule.status, 201, "rule create");
+  const pub = await a(`/a/v1/rules/${rule.body.id}/publish`, { body: {} });
+  eq(pub.status, 200, "publish status");
+  ok(pub.body.impact && Number.isInteger(pub.body.impact.agents), "impact 形态");
+  ok(pub.body.impact.refs.some((r) => r.key === "parity_agent"), "impact 含上报引用方");
+  isArr(pub.body.warnings, "warnings");
+  const refs = await a(`/a/v1/rules/${rule.body.id}/references`);
+  eq(refs.status, 200, "references status");
+  ok(Number.isInteger(refs.body.count) && Array.isArray(refs.body.references), "统一形态 {references, count}");
+  // §2.2：求值带 ruleVersion（留痕「当时生效」）
+  const ev = await a("/a/v1/rules/evaluate", { body: { ruleIds: ["C08"], payload: { Plan: { outsourceRatio: 0.3 } } } });
+  ok(Number.isInteger(ev.body[0]?.ruleVersion), "RuleVerdict.ruleVersion");
+});
+await check("引用模式", "workflow 破坏性变更门禁：latest 引用 → 409 BREAKING_CHANGE_WITH_LATEST_REFS；force 越过", async () => {
+  const wf = await b("/b/v1/workflows", {
+    body: {
+      key: "parity_gate_wf",
+      name: "门禁流程",
+      inputs: { type: "object", properties: { x: { type: "string" } } },
+      steps: [{ id: "s1", type: "query_objects", params: { objectType: "Base", filter: {} } }],
+    },
+  });
+  eq(wf.status, 201, "wf create");
+  const pub1 = await b(`/b/v1/workflows/${wf.body.id}/publish`, { body: {} });
+  eq(pub1.body.ok, true, "v1 publish");
+  ok(pub1.body.impact, "publish 响应附 impact");
+  // latest 引用方：agent 引用该 workflow
+  const agent = await b("/b/v1/agents", {
+    body: {
+      key: "parity_gate_agent", name: "门禁引用", description: "d", model: "claude-opus-4-8",
+      systemPrompt: "x", tools: [{ kind: "WORKFLOW", workflowId: wf.body.id, version: "latest" }],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" }, skills: [], mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Base"], toolNames: [] },
+    },
+  });
+  eq(agent.status, 201, "agent create");
+  const apub = await b(`/b/v1/agents/${agent.body.id}/publish`, { body: {} });
+  eq(apub.body.ok, true, "agent publish");
+  // 破坏性新版（删除字段 x）
+  const nv = await b(`/b/v1/workflows/${wf.body.id}/new-version`, { body: {} });
+  eq(nv.status, 201, "new-version");
+  await b(`/b/v1/workflows/${nv.body.id}`, { method: "PUT", body: { inputs: { type: "object", properties: {} } } });
+  const rejected = await b(`/b/v1/workflows/${nv.body.id}/publish`, { body: {} });
+  envelope(rejected, 409, "BREAKING_CHANGE_WITH_LATEST_REFS");
+  ok(rejected.body.error.message.includes("门禁引用"), "列出引用方");
+  const forced = await b(`/b/v1/workflows/${nv.body.id}/publish`, { body: { force: true } });
+  eq(forced.body.ok, true, "force publish");
+  eq(forced.body.forced, true, "forced 标记（审计）");
 });
 
 // ---------------------------------------------------------------------------

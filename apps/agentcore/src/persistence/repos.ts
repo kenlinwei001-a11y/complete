@@ -65,6 +65,8 @@ export interface TaskPatch {
   answer?: Answer;
   error?: QueryTask["error"];
   completedAt?: string;
+  /** 引用模式增量 §2.2：执行时解析到的实际版本留痕 */
+  resolvedRefs?: QueryTask["resolvedRefs"];
 }
 
 export interface Repos {

@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { QueryTask } from "@platform/contracts";
 import { loadConfig, type AppConfig } from "../src/config.js";
 import { wireDeps, type AppDeps } from "../src/deps.js";
+import type { DataCoreProviderDirectory } from "../src/llm/datacore-directory.js";
+import type { LlmClient } from "../src/llm/types.js";
 import { ScriptedLlmClient } from "../src/llm/mock.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
 import { Metrics } from "../src/metrics.js";
@@ -33,6 +35,9 @@ export async function createTestApp(opts?: {
   env?: Record<string, string>;
   /** 自定义 MCP mock（如 R8 重名工具的双 server 形态） */
   mcp?: MockMcpClient;
+  /** LLM Provider 增量测试：替换 scripted mock（如 RoutingLlmClient + 本地 stub 端点） */
+  llm?: LlmClient;
+  providerDirectory?: DataCoreProviderDirectory;
 }): Promise<TestApp> {
   const config = loadConfig({ PORT: "0", LOG_LEVEL: "silent", ...(opts?.env ?? {}) } as NodeJS.ProcessEnv);
   const repos = createMemoryRepos();
@@ -45,7 +50,15 @@ export async function createTestApp(opts?: {
   const dataCore = createMockDataCore();
   const mcp = opts?.mcp ?? new MockMcpClient();
   const metrics = new Metrics();
-  const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics });
+  const deps = wireDeps({
+    config,
+    repos,
+    llm: opts?.llm ?? llm,
+    dataCore,
+    mcp,
+    metrics,
+    providerDirectory: opts?.providerDirectory,
+  });
   const app = await buildServer(deps);
   await app.ready();
   return { app, deps, llm, dataCore, mcp, repos, metrics, config };

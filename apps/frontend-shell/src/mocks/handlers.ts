@@ -23,6 +23,21 @@ import {
   type MockAccount,
 } from "./fixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
+
+/** 引用模式增量 §2.3：规则被引用反查（mock：agent ruleKeys + 计划步骤 evaluate_rules） */
+function ruleReferences(ruleKey: string): { kind: string; key: string; name?: string; via: string }[] {
+  const out: { kind: string; key: string; name?: string; via: string }[] = [];
+  for (const a of db.agents) {
+    const keys = a.ruleBindings?.ruleKeys;
+    if (Array.isArray(keys) && keys.includes(ruleKey)) out.push({ kind: "agent", key: a.key, name: a.name, via: "ruleBindings" });
+  }
+  for (const w of db.workflows) {
+    if (w.steps.some((s) => s.type === "evaluate_rules" && Array.isArray(s.params.ruleIds) && s.params.ruleIds.includes(ruleKey))) {
+      out.push({ kind: "workflow", key: w.key, name: w.name, via: "steps.evaluate_rules" });
+    }
+  }
+  return out;
+}
 import { registerTaskScript, releaseNextSegment } from "./mockEventSource";
 import { scriptForQuery } from "./sseScripts";
 import {
@@ -437,11 +452,79 @@ export const handlers = [
     return HttpResponse.json(rule);
   }),
 
+  // 引用模式增量 §2.3：publish 响应附影响面 impact + warnings（契约 PublishImpact 形态）
   http.post("*/a/v1/rules/:id/publish", ({ params }) => {
     const rule = db.rules.find((r) => r.id === params.id);
     if (!rule) return err(404, "NOT_FOUND", "rule not found");
     rule.status = "PUBLISHED";
-    return HttpResponse.json(rule);
+    const refs = ruleReferences(rule.key);
+    return HttpResponse.json({
+      ...rule,
+      impact: {
+        agents: refs.filter((r) => r.kind === "agent").length,
+        plans: refs.filter((r) => r.kind === "plan" || r.kind === "workflow").length,
+        intents: refs.filter((r) => r.kind === "intent").length,
+        refs: refs.map((r) => ({ kind: r.kind, key: r.key, version: "latest", name: r.name })),
+      },
+      warnings: [],
+    });
+  }),
+
+  http.get("*/a/v1/rules/:id/references", ({ params }) => {
+    const rule = db.rules.find((r) => r.id === params.id);
+    if (!rule) return err(404, "NOT_FOUND", "rule not found");
+    const references = ruleReferences(rule.key);
+    return HttpResponse.json({ references, count: references.length });
+  }),
+
+  // ---- LLM Provider 配置体系增量 §1（/admin/llm-providers 页消费形态） ----
+  http.get("*/a/v1/llm-providers", () => HttpResponse.json(db.llmProviders)),
+  http.post("*/a/v1/llm-providers", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const { apiKey, ...rest } = body;
+    const provider = {
+      id: newId("llmp"),
+      tenantId: TENANT_ID,
+      status: "ACTIVE",
+      models: [],
+      ...rest,
+      hasApiKey: Boolean(apiKey), // write-only：明文永不回显
+    } as unknown as (typeof db.llmProviders)[number];
+    db.llmProviders.unshift(provider);
+    return HttpResponse.json(provider, { status: 201 });
+  }),
+  http.put("*/a/v1/llm-providers/:id", async ({ params, request }) => {
+    const p = db.llmProviders.find((x) => x.id === params.id);
+    if (!p) return err(404, "NOT_FOUND", "provider not found");
+    const body = (await request.json()) as Record<string, unknown>;
+    const { apiKey, ...rest } = body;
+    Object.assign(p, rest);
+    if (apiKey !== undefined) (p as { hasApiKey?: boolean }).hasApiKey = Boolean(apiKey);
+    return HttpResponse.json(p);
+  }),
+  http.post("*/a/v1/llm-providers/:id/test", ({ params }) => {
+    const p = db.llmProviders.find((x) => x.id === params.id);
+    if (!p) return err(404, "NOT_FOUND", "provider not found");
+    if (p.kind === "custom_http") return HttpResponse.json({ ok: false, message: "custom_http 适配器为预留接口" });
+    return HttpResponse.json({ ok: true, latencyMs: 42, probedModels: p.models.map((m) => m.modelId) });
+  }),
+  http.get("*/a/v1/llm-bindings", () => HttpResponse.json({ bindings: db.llmBindings })),
+  http.put("*/a/v1/llm-bindings", async ({ request }) => {
+    const { bindings } = (await request.json()) as { bindings: { purpose: string; providerId: string; modelId: string }[] };
+    const warnings: { purpose: string; message: string }[] = [];
+    for (const b of bindings) {
+      const p = db.llmProviders.find((x) => x.id === b.providerId);
+      const m = p?.models.find((x) => x.modelId === b.modelId);
+      if (!p || !m) return err(400, "VALIDATION_ERROR", `provider/model 不存在：${b.providerId}/${b.modelId}`);
+      if (b.purpose === "agent" && !m.capabilities.tools) {
+        return err(400, "VALIDATION_ERROR", `绑定被拒：用途「agent」要求 tools 能力，${p.name}/${b.modelId} 缺失能力：tools`);
+      }
+      if (["classifier", "extraction", "modeling", "template_gen"].includes(b.purpose) && !m.capabilities.structuredOutput) {
+        warnings.push({ purpose: b.purpose, message: `${p.name}/${b.modelId} 无原生 structuredOutput —— 运行期 JSON-mode 降级` });
+      }
+    }
+    db.llmBindings = bindings as typeof db.llmBindings;
+    return HttpResponse.json({ bindings, warnings });
   }),
 
   http.post("*/a/v1/rules/:id/retire", ({ params }) => {
@@ -969,13 +1052,23 @@ export const handlers = [
     Object.assign(wf, body);
     return HttpResponse.json(wf);
   }),
-  http.post("*/b/v1/workflows/:id/publish", ({ params }) => {
+  http.post("*/b/v1/workflows/:id/publish", async ({ params, request }) => {
     const wf = db.workflows.find((w) => w.id === params.id);
     if (!wf) return err(404, "NOT_FOUND", "Workflow 不存在");
+    const { force } = ((await request.json().catch(() => ({}))) ?? {}) as { force?: boolean };
     const errors = validateWorkflow(wf.steps);
     if (errors.length > 0) return HttpResponse.json({ ok: false, errors });
+    // 引用模式增量 §2.3 破坏性门禁（mock：名称含 [breaking] 模拟 inputs 不兼容 + latest 引用方）
+    const referrers = db.agents.filter((a) => a.tools.some((t) => t.kind === "WORKFLOW" && t.workflowId === wf.id && t.version === "latest"));
+    if (wf.name.includes("[breaking]") && referrers.length > 0 && !force) {
+      return err(409, "BREAKING_CHANGE_WITH_LATEST_REFS", `破坏性变更且存在 latest 引用方：${referrers.map((a) => `agent:${a.name}`).join("、")}`);
+    }
     wf.status = "PUBLISHED";
-    return HttpResponse.json({ ok: true });
+    return HttpResponse.json({
+      ok: true,
+      impact: { agents: referrers.length, plans: 0, intents: 0, refs: referrers.map((a) => ({ kind: "agent", key: a.key, version: a.version, name: a.name })) },
+      ...(force ? { forced: true } : {}),
+    });
   }),
 
   http.get("*/b/v1/skills", () => HttpResponse.json(db.skills)),

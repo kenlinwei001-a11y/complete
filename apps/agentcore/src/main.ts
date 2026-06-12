@@ -1,6 +1,7 @@
 import { loadConfig, stdioPolicyFromConfig } from "./config.js";
 import { wireDeps } from "./deps.js";
 import { LlmProviderRegistry, RoutingLlmClient } from "./llm/providers.js";
+import { DataCoreProviderDirectory } from "./llm/datacore-directory.js";
 import { sdkMcpConnectorFactory } from "./mcp/client.js";
 import { McpRuntime } from "./mcp/runtime.js";
 import { Metrics } from "./metrics.js";
@@ -45,10 +46,16 @@ async function main(): Promise<void> {
   });
   // Multi-provider routing (amends QOS-PRD §6): anthropic (default) / openai /
   // openai_compatible, resolved per model spec + tenant LlmProviderConfig.
-  const llm = new RoutingLlmClient(new LlmProviderRegistry({ repos, config, metrics }));
+  // LLM Provider 增量 §1.1：SERVICE_TOKEN + DATACORE_BASE_URL 配齐时，provider
+  // 配置/用途绑定以 DataCore 为 source of truth（60s TTL + 事件失效，密钥 5min）。
+  const providerDirectory =
+    config.DATACORE_BASE_URL && config.SERVICE_TOKEN
+      ? new DataCoreProviderDirectory({ baseUrl: config.DATACORE_BASE_URL, serviceToken: config.SERVICE_TOKEN })
+      : undefined;
+  const llm = new RoutingLlmClient(new LlmProviderRegistry({ repos, config, metrics, directory: providerDirectory }));
 
   const skillResources = config.BLOB_DIR ? new LocalFsSkillResourceReader(config.BLOB_DIR) : undefined;
-  const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics, skillResources });
+  const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics, skillResources, providerDirectory });
   const app = await buildServer(deps);
 
   // 增量 §2-2 崩溃语义：启动扫描 EXECUTING_* 滞留 >10min 的任务 → INTERRUPTED_BY_RESTART，

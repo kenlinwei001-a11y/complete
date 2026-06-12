@@ -36,6 +36,8 @@ import { HttpError } from "./router/orchestrator.js";
 import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
+import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
+import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { builtinTool } from "./tools/registry.js";
 
@@ -382,6 +384,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     const published = { ...agent, status: "PUBLISHED" as const };
     await deps.repos.agents.update(published);
+    // 引用模式增量 §2.3：agent 出向规则引用上报 A（影响面反查事实源，fire-and-forget）
+    const ruleRefs = agentRuleRefs(published);
+    if (deps.reportRefs && ruleRefs.length > 0) {
+      void deps.reportRefs(a.tenantId, { source: { kind: "agent", key: published.key, name: published.name }, refs: ruleRefs });
+    }
     // 前端消费形态 { ok, ...agent }（SPA AgentsPage 读 r.ok / r.errors）
     return { ok: true, ...published };
   });
@@ -502,6 +509,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     requireCatalogAdmin(a);
     const { id } = req.params as { id: string };
+    const body = z.object({ force: z.boolean().default(false) }).parse(req.body ?? {});
     const wf = await deps.repos.workflows.get(id);
     if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
     if (wf.status !== "DRAFT") throw new HttpError(409, ErrorCodes.INVALID_STATE, "仅 DRAFT 状态的 workflow 可发布");
@@ -518,10 +526,56 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       stepErrors.push({ code: ErrorCodes.CYCLIC_INVOCATION, message: `发布被拒：静态可达环 ${cycle.join(" -> ")}` });
     }
     if (stepErrors.length > 0) return { ok: false, errors: stepErrors };
+
+    // 引用模式增量 §2.3：影响面（latest 引用本 key 的 agent —— references 反查）
+    const allWorkflows = await deps.repos.workflows.listByTenant(a.tenantId);
+    const siblingIds = new Set(allWorkflows.filter((x) => x.key === wf.key).map((x) => x.id));
+    const allAgents = await deps.repos.agents.listByTenant(a.tenantId);
+    const latestReferrers = allAgents.filter(
+      (ag) =>
+        ag.status !== "RETIRED" &&
+        ag.tools.some((t) => t.kind === "WORKFLOW" && t.version === "latest" && siblingIds.has(t.workflowId)),
+    );
+    const impact = {
+      agents: latestReferrers.length,
+      plans: 0,
+      intents: 0,
+      refs: latestReferrers.map((ag) => ({ kind: "agent" as const, key: ag.key, version: ag.version, name: ag.name })),
+    };
+
+    // §2.3 兼容性门禁：inputs schema 破坏性变更 + 存在 latest 引用方 → 发布被拒
+    const prevPublished = allWorkflows
+      .filter((x) => x.key === wf.key && x.id !== wf.id && x.status === "PUBLISHED")
+      .sort((x, y) => y.version - x.version)[0];
+    const breaking = prevPublished ? detectBreakingSchemaChange(prevPublished.inputs, wf.inputs) : [];
+    let forced = false;
+    if (breaking.length > 0 && latestReferrers.length > 0) {
+      if (!body.force) {
+        throw new HttpError(
+          409,
+          ErrorCodes.BREAKING_CHANGE_WITH_LATEST_REFS,
+          `破坏性变更（${breaking.join("；")}）且存在 latest 引用方：${latestReferrers
+            .map((x) => `agent:${x.name}(${x.key})`)
+            .join("、")}。可改为兼容、让引用方先 pin，或同步升级引用方后用 force=true（catalog_admin，全审计）`,
+        );
+      }
+      forced = true;
+      // force 发布全审计（结构化日志 + 事件留痕，便于追责）
+      req.log.warn(
+        { workflowKey: wf.key, version: wf.version, breaking, referrers: latestReferrers.map((x) => x.key), user: a.userId },
+        "BREAKING_CHANGE force publish",
+      );
+    }
+
     const published = { ...wf, status: "PUBLISHED" as const, updatedAt: new Date().toISOString() };
     await deps.repos.workflows.update(published);
-    // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）
-    return { ok: true, ...published };
+    // §2.3：workflow 出向规则引用上报 A
+    const wfRuleRefs = planStepRuleRefs(published.steps);
+    if (deps.reportRefs && wfRuleRefs.length > 0) {
+      void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfRuleRefs });
+    }
+    // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）；§2.3 附 impact
+    return { ok: true, ...published, impact, ...(forced ? { forced: true, breakingChanges: breaking } : {}) };
   });
 
   // ---- 管理平台增量 §4：workflows 统一资源模式 ----
@@ -677,7 +731,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
     const published = { ...skill, status: "PUBLISHED" as const };
     await deps.repos.skills.update(published);
-    return published;
+    // 引用模式增量 §2.3：影响面（引用同 key 任一版本的 agent；latest 下次加载即新内容 — L8）
+    const siblingIds = new Set(
+      (await deps.repos.skills.listByTenant(a.tenantId)).filter((x) => x.key === skill.key).map((x) => x.id),
+    );
+    const referrers = (await deps.repos.agents.listByTenant(a.tenantId)).filter(
+      (ag) => ag.status !== "RETIRED" && ag.skills.some((sr) => siblingIds.has(sr.skillId)),
+    );
+    const impact = {
+      agents: referrers.length,
+      plans: 0,
+      intents: 0,
+      refs: referrers.map((ag) => ({ kind: "agent" as const, key: ag.key, version: ag.version, name: ag.name })),
+    };
+    return { ...published, impact };
   });
 
   // ---- 管理平台增量 §4：skills 统一资源模式 ----
@@ -1008,8 +1075,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     credentialRef: true,
   }).extend({ credential: z.string().optional() });
 
+  // LLM Provider 增量：source of truth 落位 DataCore —— directory 配置时本路由
+  // 退化为对 A 的只读薄别名（SPA 兼容）；否则保留 B 本地旧通道。
   app.get("/b/v1/llm/providers", async (req) => {
     const a = await auth(req);
+    if (deps.providerDirectory) {
+      return deps.providerDirectory.providers(a.tenantId);
+    }
     return deps.repos.llmProviders.listByTenant(a.tenantId);
   });
 
@@ -1060,7 +1132,33 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   app.get("/b/v1/llm/bindings", async (req) => {
     const a = await auth(req);
+    if (deps.providerDirectory) {
+      // A 用途矩阵形态 [{purpose, providerId, modelId}]（只读别名）
+      return deps.providerDirectory.bindings(a.tenantId);
+    }
     return deps.repos.llmBindings.list(a.tenantId);
+  });
+
+  // -----------------------------------------------------------------------
+  // 引用模式增量 §2.4：内部缓存失效钩子 —— A 的 C-2 webhook 注册表回调此端点
+  // （{kind}.updated 事件 → 立即失效 B 侧对 A 资源的缓存；TTL 60s 兜底）。
+  // 该操作幂等无害（仅清缓存），不要求鉴权 —— 与 webhook 投递形态（裸 POST JSON）对齐。
+  // -----------------------------------------------------------------------
+  app.post("/b/v1/internal/invalidate", async (req) => {
+    const body = (req.body ?? {}) as { event?: string; tenantId?: string; payload?: unknown };
+    const event = body.event ?? "";
+    const invalidated: string[] = [];
+    if (!event || event.startsWith("llm_provider") || event.startsWith("llm_binding")) {
+      deps.providerDirectory?.invalidate(body.tenantId);
+      invalidated.push("llm-providers");
+    }
+    if (!event || event.startsWith("feature")) {
+      if (body.tenantId) deps.features.invalidate(body.tenantId);
+      invalidated.push("features");
+    }
+    // rules.updated：B 不缓存规则定义（每次求值经 A REST），propagation 即时 —— 仅确认收到
+    if (event.startsWith("rules")) invalidated.push("rules(no-cache)");
+    return { ok: true, event: event || "(all)", invalidated };
   });
 
   app.put("/b/v1/llm/bindings", async (req) => {

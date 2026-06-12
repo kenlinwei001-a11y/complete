@@ -57,6 +57,12 @@ export default function TaskDetailPage() {
             {task.classification?.outOfCatalog && <span className="badge amber">OUT_OF_CATALOG</span>}
           </div>
           <p style={{ marginTop: 10, color: "var(--muted)" }}>「{task.query}」</p>
+          {/* 引用模式增量 §2.2：执行时解析到的实际版本留痕（重放/争议追溯口径） */}
+          {task.resolvedRefs && task.resolvedRefs.length > 0 && (
+            <div className="mono" style={{ marginTop: 6, fontSize: 11, color: "var(--muted2)" }} data-testid="resolved-refs">
+              当时生效：{task.resolvedRefs.map((r) => `${r.kind} ${r.key} v${r.version}`).join(" / ")}
+            </div>
+          )}
         </div>
       )}
 

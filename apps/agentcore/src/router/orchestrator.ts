@@ -4,12 +4,15 @@ import type {
   ClassificationResult,
   IntentDefinition,
   QueryTask,
+  ResolvedRef,
   ScenarioPackage,
   SceneEntryConfig,
   SlotDef,
   SubmitQueryBody,
 } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
+import { resolvePlanForIntent } from "../catalog/service.js";
+import { parseDataCoreSpec } from "../llm/providers.js";
 import type { RequestAuth } from "../auth.js";
 import {
   agentPriorSummary,
@@ -67,6 +70,18 @@ export interface OrchestratorDeps {
   features: FeatureGate;
   /** Multi-provider model resolution (amends QOS-PRD §6). */
   llmSettings: LlmSettings;
+}
+
+/** §2.2：留痕去重（同 kind+key+version 只记一次，保持首次出现顺序）。 */
+export function dedupeRefs(refs: ResolvedRef[]): ResolvedRef[] | undefined {
+  if (refs.length === 0) return undefined;
+  const seen = new Set<string>();
+  return refs.filter((r) => {
+    const k = `${r.kind}|${r.key}|${r.version}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 export function normalizeQuery(q: string): string {
@@ -303,7 +318,9 @@ export class Orchestrator {
         const raw = await this.deps.engine.deps.llm.classify({ model, system, user, tenantId: task.tenantId });
         const latencyMs = Date.now() - t0;
         this.deps.metrics.classifierLatency.observe(latencyMs);
-        return { ...raw, latencyMs, model };
+        // LLM Provider 增量 §1.3：每次调用的审计记录补 {providerId, modelId}
+        const dc = parseDataCoreSpec(model);
+        return { ...raw, latencyMs, model, ...(dc ? { providerId: dc.providerId, modelId: dc.modelId } : {}) };
       } catch {
         // typed SDK errors retried (SDK 自带重试之外整体重试 2 次)
       }
@@ -485,11 +502,16 @@ export class Orchestrator {
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
-    const plan = await this.deps.repos.plans.get(intent.planId);
-    if (!plan) {
-      await this.failTask(taskId, "PLAN_NOT_FOUND", `plan not found: ${intent.planId}`);
+    // 引用模式增量 §2.1：意图 → 计划执行时解析（planRef latest = 当前 PUBLISHED 最新版；pin = 精确版本）
+    const resolution = await resolvePlanForIntent(this.deps.repos, intent);
+    if (!resolution) {
+      const refDesc = intent.planRef ? `${intent.planRef.planKey}@${intent.planRef.version}` : intent.planId;
+      await this.failTask(taskId, "PLAN_NOT_FOUND", `plan not found: ${refDesc}`);
       return;
     }
+    const plan = resolution.plan;
+    // §2.2 留痕：执行时解析到的实际版本
+    const resolvedRefs: ResolvedRef[] = [{ kind: "plan", key: resolution.ref.key, version: resolution.ref.version }];
 
     await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
     this.deps.metrics.recordRouting(true);
@@ -509,12 +531,14 @@ export class Orchestrator {
       nesting: { callChain: [], budget },
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
       trustLevel: "VERIFIED_WORKFLOW",
+      onResolvedRef: (r) => resolvedRefs.push(r),
     });
 
     if (result.status === "FAILED") {
       await this.deps.repos.tasks.patch(taskId, {
         status: "FAILED",
         error: result.error,
+        resolvedRefs: dedupeRefs(resolvedRefs),
         completedAt: new Date().toISOString(),
       });
       await this.deps.events.emit(taskId, "task.failed", result.error);
@@ -525,6 +549,7 @@ export class Orchestrator {
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
       answer: result.answer,
+      resolvedRefs: dedupeRefs(resolvedRefs),
       completedAt: new Date().toISOString(),
     });
     await this.deps.events.emit(taskId, "answer.final", result.answer);
@@ -639,6 +664,7 @@ export class Orchestrator {
     try {
       // 增量 §1.4：场景入口 agent 同样注入前情摘要（共用同一构建器）
       const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
+      const resolvedRefs: ResolvedRef[] = [];
       const result = await this.deps.engine.runRegisteredAgent({
         taskId: task.id,
         agentId: scene.defaultAgentId as string,
@@ -648,11 +674,13 @@ export class Orchestrator {
         nesting: { callChain: [], budget },
         emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
         isCancelled: () => this.cancelled.has(task.id),
+        onResolvedRef: (r) => resolvedRefs.push(r),
       });
       await this.deps.repos.agentRuns.insert(result.run);
       await this.deps.repos.tasks.patch(task.id, {
         status: "COMPLETED",
         answer: result.answer,
+        resolvedRefs: dedupeRefs(resolvedRefs),
         completedAt: new Date().toISOString(),
       });
       await this.deps.events.emit(task.id, "answer.final", result.answer);
