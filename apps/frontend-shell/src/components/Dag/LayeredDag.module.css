@@ -1,0 +1,39 @@
+.wrap {
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.layerTitle {
+  font-size: 10px;
+  letter-spacing: 1px;
+  fill: var(--muted2);
+  text-anchor: middle;
+  font-family: var(--font-mono);
+}
+
+.edge {
+  stroke: rgba(226, 235, 245, 0.22);
+  stroke-width: 1.3px;
+}
+
+.node {
+  cursor: pointer;
+}
+.node:hover rect {
+  stroke-width: 2.2px;
+}
+
+.dim {
+  opacity: 0.35;
+}
+
+.label {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.sub {
+  font-size: 9.5px;
+  fill: var(--muted);
+  font-family: var(--font-mono);
+}

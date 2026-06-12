@@ -1,0 +1,219 @@
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { searchObjects } from "@/api/endpoints";
+import { useSessionStore } from "@/store/sessionStore";
+import type { ViewRendererProps } from "../registry";
+import outline from "@/assets/china-outline.json";
+import zh from "@/locales/zh";
+import simStyles from "../sim/SimViews.module.css";
+import styles from "./PlanViews.module.css";
+
+/** 定位 → 颜色（图例固定：动力蓝 / 储能绿 / 混合黄，§7.17） */
+export const POSITION_COLORS: Record<string, string> = {
+  动力: "#5E8FE8",
+  储能: "#36BFA5",
+  混合: "#E8B54A",
+};
+
+/** 国内基地经纬度（静态资产，无外部瓦片/网络依赖） */
+const BASE_COORDS: Record<string, [number, number]> = {
+  常州: [119.95, 31.78],
+  合肥: [117.28, 31.86],
+  西安: [108.95, 34.27],
+  宜宾: [104.64, 28.75],
+  溧阳: [119.48, 31.42],
+  南京: [118.78, 32.06],
+  成都: [104.07, 30.67],
+  青海: [101.78, 36.62],
+};
+
+/** 利用率色档（原型 utilColor：92/85/78 阈值） */
+export function utilColor(u: number): string {
+  return u >= 92 ? "#DD7E9E" : u >= 85 ? "#DD9551" : u >= 78 ? "#D2B04C" : "#62BE77";
+}
+
+const VIEW_W = 920;
+const VIEW_H = 700;
+/** 等距圆柱投影（lon 73–135.5 / lat 17.5–54.5 → viewBox） */
+function project(lon: number, lat: number): { x: number; y: number } {
+  const x = ((lon - 72) / (136 - 72)) * VIEW_W;
+  const y = ((55 - lat) / (55 - 17)) * VIEW_H;
+  return { x, y };
+}
+
+interface BaseProps {
+  id: string;
+  name: string;
+  util: number;
+  bottleneck: string;
+  gwh: number;
+  position: string;
+  lines: number;
+  prodYear: number;
+  mainProduct: string;
+}
+
+/** 地理视图（renderer=geo-map，§7.17）：打包中国轮廓 + 基地气泡 + 侧滑档案卡 */
+export default function GeoMapView(_props: ViewRendererProps) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["a", "objects", { type: "Base", view: "geo-map" }],
+    queryFn: () => searchObjects("Base", ""),
+  });
+  const [selected, setSelected] = useState<BaseProps | null>(null);
+  const navigate = useNavigate();
+
+  const bases = useMemo(
+    () =>
+      (data?.items ?? []).map((o) => ({
+        id: o.id,
+        name: String(o.props.name ?? ""),
+        util: Number(o.props.util ?? 0),
+        bottleneck: String(o.props.bottleneck ?? "—"),
+        gwh: Number(o.props.gwh ?? 0),
+        position: String(o.props.position ?? "混合"),
+        lines: Number(o.props.lines ?? 0),
+        prodYear: Number(o.props.prodYear ?? 0),
+        mainProduct: String(o.props.mainProduct ?? "—"),
+      })),
+    [data],
+  );
+
+  if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
+
+  const domestic = bases.filter((b) => BASE_COORDS[b.name]);
+  const overseas = bases.filter((b) => !BASE_COORDS[b.name]);
+  const gwhs = domestic.map((b) => b.gwh);
+  const minG = Math.min(...gwhs, Infinity);
+  const maxG = Math.max(...gwhs, -Infinity);
+  // 大小 = GWh 线性映射 8–28px
+  const radius = (gwh: number): number => (maxG === minG ? 18 : 8 + ((gwh - minG) / (maxG - minG)) * 20);
+
+  const pick = (b: BaseProps) => {
+    setSelected(b);
+    useSessionStore.getState().toggleSelectedObject({ objectType: "Base", objectId: b.id, label: b.name });
+  };
+
+  return (
+    <div data-testid="geo-map-view">
+      <div className={simStyles.head}>
+        <div>
+          <h3>{zh.geo.title}</h3>
+          <div className={simStyles.sub}>静态打包轮廓（离线/私有化可用，不依赖外部瓦片服务）· 气泡大小 = GWh（8–28px 线性）· 颜色 = 定位。</div>
+        </div>
+      </div>
+      <div className={styles.geoLayout}>
+        <div className={styles.geoCanvas}>
+          <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className={styles.geoSvg} data-testid="geo-svg">
+            {(outline.polygons as [number, number][][]).map((poly, i) => (
+              <path
+                key={i}
+                className={styles.geoOutline}
+                data-testid={`geo-outline-${i}`}
+                d={`M${poly.map(([lon, lat]) => {
+                  const p = project(lon, lat);
+                  return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+                }).join(" L")} Z`}
+              />
+            ))}
+            {domestic.map((b) => {
+              const [lon, lat] = BASE_COORDS[b.name]!;
+              const p = project(lon, lat);
+              const r = radius(b.gwh);
+              const color = POSITION_COLORS[b.position] ?? "#E8B54A";
+              return (
+                <g key={b.id} transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}>
+                  <circle
+                    r={r}
+                    fill={color}
+                    stroke={color}
+                    className={styles.geoBubble}
+                    data-testid={`geo-bubble-${b.name}`}
+                    data-r={r.toFixed(1)}
+                    data-position={b.position}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => pick(b)}
+                    onKeyDown={(e) => e.key === "Enter" && pick(b)}
+                  />
+                  <text y={r + 13} className={styles.geoLabel}>
+                    {b.name}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+          <div className={styles.geoLegend} data-testid="geo-legend">
+            <div className="section-title" style={{ marginBottom: 2 }}>
+              {zh.geo.legendTitle}
+            </div>
+            {Object.entries(POSITION_COLORS).map(([k, c]) => (
+              <span key={k}>
+                <i style={{ background: c }} />
+                {k}
+              </span>
+            ))}
+          </div>
+          {overseas.length > 0 && (
+            <div className={styles.overseasStrip} data-testid="geo-overseas">
+              <b>{zh.geo.overseas}：</b>
+              {overseas.map((b) => (
+                <button key={b.id} className={styles.chip} style={{ cursor: "pointer", color: POSITION_COLORS[b.position], borderColor: "currentcolor" }} onClick={() => pick(b)}>
+                  {b.name} · {b.gwh}GWh
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {selected && (
+          <aside className={styles.baseDrawer} data-testid="geo-base-card">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <strong style={{ fontSize: 15 }}>{selected.name}</strong>
+              <span className="badge" style={{ color: POSITION_COLORS[selected.position], borderColor: "currentcolor" }}>
+                {selected.position}
+              </span>
+              <button className="btn sm" style={{ marginLeft: "auto" }} aria-label={zh.common.close} onClick={() => setSelected(null)}>
+                ✕
+              </button>
+            </div>
+            <div className={styles.drawerRow}>
+              <span>{zh.geo.cardLines}</span>
+              <b>{selected.lines}</b>
+            </div>
+            <div className={styles.drawerRow}>
+              <span>{zh.geo.cardGwh}</span>
+              <b>{selected.gwh}</b>
+            </div>
+            <div className={styles.drawerRow}>
+              <span>{zh.geo.cardYear}</span>
+              <b>{selected.prodYear}</b>
+            </div>
+            <div className={styles.drawerRow}>
+              <span>{zh.geo.cardProduct}</span>
+              <b>{selected.mainProduct}</b>
+            </div>
+            <div className={styles.drawerRow}>
+              <span>{zh.geo.cardUtil}</span>
+              <b style={{ color: utilColor(selected.util) }} data-testid="geo-card-util">
+                {selected.util}%
+              </b>
+            </div>
+            <div className={styles.drawerRow}>
+              <span>{zh.geo.cardBottleneck}</span>
+              <b className="zh">{selected.bottleneck}</b>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button className="btn sm" data-testid="geo-goto-risk" onClick={() => navigate(`/v/risk?focus=${encodeURIComponent(selected.name)}`)}>
+                {zh.geo.gotoRisk}
+              </button>
+              <button className="btn sm" data-testid="geo-goto-graph" onClick={() => navigate(`/v/graph?focus=n-base`)}>
+                {zh.geo.gotoGraph}
+              </button>
+            </div>
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}

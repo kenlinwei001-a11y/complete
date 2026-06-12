@@ -24,6 +24,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "scenes", label: zh.nav.scenes, roles: ["admin", "catalog_admin"] },
   { path: "ops/fallback", label: zh.nav.opsFallback, roles: ["admin", "catalog_admin"] },
   { path: "features", label: zh.nav.features, roles: ["admin", "catalog_admin"] },
+  // §7.21 校准报告（catalog_admin 或 planner）
+  { path: "calibration", label: zh.nav.calibration, roles: ["admin", "catalog_admin", "planner"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */

@@ -6,11 +6,13 @@ import {
   createConnection,
   fetchConnections,
   fetchConnectorTypes,
+  fetchDataHealth,
   fetchSyncJob,
   testConnection,
   triggerSync,
   uploadFile,
 } from "@/api/endpoints";
+import { healthStatusLabel, HEALTH_POLL_MS } from "@/components/Health/HealthBadge";
 import { JsonSchemaForm } from "@/components/JsonSchemaForm/JsonSchemaForm";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
@@ -23,8 +25,17 @@ export default function ConnectionsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: connections } = useQuery({ queryKey: ["a", "connections", {}], queryFn: fetchConnections });
+  // §7.22 数据健康度（轻量轮询，与顶栏徽章同源）
+  const { data: health } = useQuery({
+    queryKey: ["a", "data-health", {}],
+    queryFn: fetchDataHealth,
+    refetchInterval: HEALTH_POLL_MS,
+    staleTime: HEALTH_POLL_MS,
+  });
   const [wizardOpen, setWizardOpen] = useState(false);
   const [syncJobId, setSyncJobId] = useState<string | null>(null);
+  const healthOf = (connId: string) => health?.sources.find((s) => s.connId === connId);
+  const degradedSources = (health?.sources ?? []).filter((s) => s.status !== "OK");
 
   const { data: syncJob } = useQuery({
     queryKey: ["a", "sync-job", { id: syncJobId }],
@@ -45,6 +56,28 @@ export default function ConnectionsPage() {
 
       <UploadCard onDone={(connId) => navigate(`/admin/connections/${connId}/schema`)} />
 
+      {/* §7.22 健康度汇总条：命中 C09 → 降级影响（P90 系数）+ 受影响求解器（文案与推演输出同源） */}
+      {degradedSources.length > 0 && (
+        <div className="panel" style={{ marginTop: 14, borderColor: "rgba(232,181,74,.5)" }} data-testid="health-summary">
+          <div className="section-title">{zh.health.summaryTitle}</div>
+          {degradedSources.map((s) => (
+            <div key={s.connId} style={{ fontSize: 12, lineHeight: 1.8 }} data-testid={`health-summary-${s.connId}`}>
+              <span className={`badge ${s.status === "DELAYED" ? "amber" : "red"}`}>{healthStatusLabel(s.status)}</span>{" "}
+              <b className="zh">{s.name}</b>
+              <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6 }}>
+                {zh.health.freshness} {(s.latencyMin / 60).toFixed(1)}h / {zh.health.threshold} {(s.thresholdMin / 60).toFixed(1)}h
+              </span>
+              {s.degradeImpact && (
+                <div style={{ color: "var(--amber)", fontSize: 11.5 }} data-testid={`health-degrade-${s.connId}`}>
+                  ⚠ {zh.health.degradeNote((s.latencyMin / 60).toFixed(1), String(s.degradeImpact.p90From), String(s.degradeImpact.p90To))}
+                  <span style={{ color: "var(--muted)", marginLeft: 8 }}>{zh.health.affectedSolvers(s.degradeImpact.affectedSolvers.join("、"))}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="panel" style={{ marginTop: 14 }}>
         <table className="cmp">
           <thead>
@@ -52,13 +85,16 @@ export default function ConnectionsPage() {
               <th>名称</th>
               <th>类型</th>
               <th>状态</th>
+              <th>{zh.health.column}</th>
               <th>{t.lastSync}</th>
               <th>错误</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {(connections ?? []).map((c) => (
+            {(connections ?? []).map((c) => {
+              const h = healthOf(c.id);
+              return (
               <tr key={c.id} data-testid={`conn-${c.id}`}>
                 <td className="zh">
                   <Link to={`/admin/connections/${c.id}/schema`}>{c.name}</Link>
@@ -68,6 +104,18 @@ export default function ConnectionsPage() {
                   <span className={`badge ${c.status === "ACTIVE" ? "green" : c.status === "ERROR" ? "red" : ""}`}>
                     {c.status}
                   </span>
+                </td>
+                <td data-testid={`conn-health-${c.id}`}>
+                  {h ? (
+                    <>
+                      <span className={`badge ${h.status === "OK" ? "green" : h.status === "DELAYED" ? "amber" : "red"}`}>{healthStatusLabel(h.status)}</span>
+                      <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)", marginLeft: 5 }}>
+                        {(h.latencyMin / 60).toFixed(1)}h
+                      </span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td>{c.lastSyncAt ?? "—"}</td>
                 <td className="zh" style={{ color: "var(--danger)" }}>
@@ -86,7 +134,8 @@ export default function ConnectionsPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         {syncJobId && syncJob && (

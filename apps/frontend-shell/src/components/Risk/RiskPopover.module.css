@@ -1,0 +1,39 @@
+.pop {
+  position: fixed;
+  z-index: 60;
+  width: 260px;
+  background: linear-gradient(165deg, rgba(30, 38, 49, 0.97), rgba(14, 19, 26, 0.96));
+  border: 1px solid var(--line2);
+  border-radius: 11px;
+  padding: 10px 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+
+.metrics {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.metrics b {
+  margin-left: 5px;
+}
+
+.strip {
+  display: flex;
+  gap: 2px;
+}
+.strip span {
+  flex: 1;
+  height: 14px;
+  border-radius: 2px;
+}

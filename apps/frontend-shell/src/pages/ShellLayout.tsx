@@ -10,6 +10,7 @@ import { logoutSession } from "@/store/authSession";
 import { toast } from "@/store/toastStore";
 import { visibleAdminPages } from "./adminRegistry";
 import { QueryDock } from "@/components/QueryDock/QueryDock";
+import { HealthBadge } from "@/components/Health/HealthBadge";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import zh from "@/locales/zh";
 import styles from "./ShellLayout.module.css";
@@ -55,6 +56,8 @@ export default function ShellLayout() {
           </div>
         </div>
         <input className={styles.search} placeholder={zh.common.search} aria-label={zh.common.search} />
+        {/* §7.22 数据健康度小徽章（任一源延迟 → 黄点） */}
+        <HealthBadge />
         <UserMenu username={workspace.user?.username ?? "—"} />
       </header>
 

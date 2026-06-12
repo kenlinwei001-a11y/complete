@@ -6,6 +6,7 @@ import { invokeSolver, searchObjects } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
+import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
@@ -52,7 +53,13 @@ export default function RiskBoardView(_props: ViewRendererProps) {
             >
               <div className={styles.cardHead}>
                 <strong>{card.base}</strong>
-                <span className="badge">{card.factor}</span>
+                {/* §7.3 风险弹窗（与 order-chain 风险点 chip 共用 RiskPopover 组件） */}
+                <RiskHoverTrigger
+                  data={{ base: card.base, factor: card.factor, peak: card.peak, crossDay: card.crossDay, series: card.series, threshold: data.threshold }}
+                  testId={`risk-factor-${card.base}`}
+                >
+                  <span className="badge">{card.factor}</span>
+                </RiskHoverTrigger>
               </div>
               <div className={styles.metrics}>
                 <span>
@@ -120,12 +127,6 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       {ordersDay && <AffectedOrdersModal base={ordersDay.base} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
     </div>
   );
-}
-
-function heatColor(v: number, threshold: number): string {
-  if (v >= threshold) return "rgba(224,98,108,.85)";
-  if (v >= threshold - 15) return "rgba(232,181,74,.7)";
-  return `rgba(67,183,215,${0.15 + (v / 100) * 0.55})`;
 }
 
 function MiniStrip({ series, threshold }: { series: number[]; threshold: number }) {

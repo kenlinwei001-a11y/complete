@@ -1,4 +1,5 @@
 import type { SopVersionVM } from "@/api/types";
+import zh from "@/locales/zh";
 
 /**
  * 推演类求解器的 Mock 实现 —— 逐行移植 DataCore 真实算法
@@ -380,8 +381,9 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
 
   const degraded = args.modelId === "4680-LFP";
   const healthFactor = degraded ? CAP_P.health.degraded : CAP_P.health.normal;
+  // F29 文案同源：与连接器页/顶栏健康度共用 zh.health.degradeNote
   const degradeNote = degraded
-    ? `C09 数据健康度降级：关键数据源 IoT/SCADA 新鲜度延迟 4.2h（>2h），P90 系数 ${CAP_P.health.normal} → ${CAP_P.health.degraded}`
+    ? zh.health.degradeNote("4.2", String(CAP_P.health.normal), String(CAP_P.health.degraded))
     : undefined;
 
   const batches = Array.isArray(args.batches) && args.batches.length > 0 ? [...args.batches] : undefined;

@@ -46,18 +46,18 @@ export const ACCOUNTS: MockAccount[] = [
 // ---------------------------------------------------------------------------
 
 export const BASES = [
-  { id: "base-常州", name: "常州", util: 92, bottleneck: "化成柜", gwh: 24 },
-  { id: "base-合肥", name: "合肥", util: 87, bottleneck: "卷绕机", gwh: 18 },
-  { id: "base-西安", name: "西安", util: 78, bottleneck: "注液机", gwh: 12 },
-  { id: "base-宜宾", name: "宜宾", util: 95, bottleneck: "化成柜", gwh: 30 },
-  { id: "base-溧阳", name: "溧阳", util: 83, bottleneck: "分容柜", gwh: 21 },
-  { id: "base-南京", name: "南京", util: 74, bottleneck: "涂布机", gwh: 9 },
-  { id: "base-成都", name: "成都", util: 88, bottleneck: "卷绕机", gwh: 15 },
-  { id: "base-青海", name: "青海", util: 66, bottleneck: "人员", gwh: 6 },
-  { id: "base-匈牙利", name: "匈牙利", util: 71, bottleneck: "认证", gwh: 8 },
-  { id: "base-德国", name: "德国", util: 69, bottleneck: "认证", gwh: 10 },
-  { id: "base-印尼", name: "印尼", util: 58, bottleneck: "产线爬坡", gwh: 5 },
-  { id: "base-美国", name: "美国", util: 62, bottleneck: "政策", gwh: 7 },
+  { id: "base-常州", name: "常州", util: 92, bottleneck: "化成柜", gwh: 24, position: "动力", lines: 8, prodYear: 2019, mainProduct: "4680-NCM" },
+  { id: "base-合肥", name: "合肥", util: 87, bottleneck: "卷绕机", gwh: 18, position: "动力", lines: 6, prodYear: 2021, mainProduct: "4680-NCM" },
+  { id: "base-西安", name: "西安", util: 78, bottleneck: "注液机", gwh: 12, position: "混合", lines: 4, prodYear: 2020, mainProduct: "刀片-LFP" },
+  { id: "base-宜宾", name: "宜宾", util: 95, bottleneck: "化成柜", gwh: 30, position: "混合", lines: 10, prodYear: 2018, mainProduct: "储能-280Ah" },
+  { id: "base-溧阳", name: "溧阳", util: 83, bottleneck: "分容柜", gwh: 21, position: "动力", lines: 7, prodYear: 2017, mainProduct: "VDA-NCM" },
+  { id: "base-南京", name: "南京", util: 74, bottleneck: "涂布机", gwh: 9, position: "动力", lines: 3, prodYear: 2022, mainProduct: "VDA-NCM" },
+  { id: "base-成都", name: "成都", util: 88, bottleneck: "卷绕机", gwh: 15, position: "储能", lines: 5, prodYear: 2021, mainProduct: "4680-LFP" },
+  { id: "base-青海", name: "青海", util: 66, bottleneck: "人员", gwh: 6, position: "储能", lines: 2, prodYear: 2023, mainProduct: "储能-280Ah" },
+  { id: "base-匈牙利", name: "匈牙利", util: 71, bottleneck: "认证", gwh: 8, position: "动力", lines: 3, prodYear: 2024, mainProduct: "VDA-NCM" },
+  { id: "base-德国", name: "德国", util: 69, bottleneck: "认证", gwh: 10, position: "动力", lines: 4, prodYear: 2024, mainProduct: "4680-NCM" },
+  { id: "base-印尼", name: "印尼", util: 58, bottleneck: "产线爬坡", gwh: 5, position: "储能", lines: 2, prodYear: 2025, mainProduct: "储能-314Ah" },
+  { id: "base-美国", name: "美国", util: 62, bottleneck: "政策", gwh: 7, position: "混合", lines: 3, prodYear: 2025, mainProduct: "储能-314Ah" },
 ];
 
 export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
@@ -91,8 +91,24 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.plan-generate", name: "方案生成", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
   { key: "view.sop-balance", name: "S&OP 平衡", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
   { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
-  // 原型中的 aop/quarter/story 视图无后端支持 → 仅保留 aop 入口演示「该视图类型暂不支持」兜底
-  { key: "view.aop", name: "年度情景规划台", level: "VIEW", defaultOn: true },
+  // 原型中的 story 视图无后端支持 → 保留 aop 直链入口演示「该视图类型暂不支持」兜底（renderer="aop" 未注册）
+  { key: "view.aop", name: "年度情景规划台（旧入口）", level: "VIEW", defaultOn: true },
+  // 剩余视图增量（§7.14–7.17 / §7.19）
+  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true },
+  { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
+  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["affected_orders"] } },
+  { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
+  { key: "view.task-dag", name: "任务编排 DAG", level: "BLOCK", defaultOn: true },
+  { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
+  // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
+  { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph-backbone", name: "图谱·推演主干分级", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph-flow", name: "图谱·产能推演网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph-source", name: "图谱·数据来源", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph-solver", name: "图谱·求解器布局", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph-mvp", name: "图谱·MVP 核心与缺口", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph-agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  { key: "view.graph-loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "探索模式兜底", level: "BLOCK", defaultOn: true },
   { key: "view.project-sim.whatif", name: "What-if 推演", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },
@@ -185,6 +201,58 @@ const LEDGER_LAYOUT = {
   ],
 };
 
+/** §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions) */
+const GRAPH_VIEWPOINTS = [
+  {
+    key: "graph-all", title: "图谱·全景",
+    options: { graphOptions: { colorBy: "domain", layoutSeed: 7 }, desc: "计划+执行一体化运营本体全景：圆形为业务对象，◆ 品红为求解器，⬡ 青为 Agent，颜色按数据域区分。" },
+  },
+  {
+    key: "graph-backbone", title: "图谱·主干分级",
+    options: { graphOptions: { nodeFilter: { tiers: [1] }, dimOthers: true, colorBy: "domain", layoutSeed: 11 }, desc: "一级 = 推演主干：工序产能 → 产能金字塔 → 产能预测 ← 基地/产线；二三级明细已淡出。" },
+  },
+  {
+    key: "graph-flow", title: "图谱·产能推演网络",
+    options: {
+      graphOptions: { nodeFilter: { ids: ["OEE历史", "OEE指标", "良率", "工序产能", "n-cap", "产能预测", "n-forecast", "实际产出", "生产工单MO"] }, linkKinds: ["flow", "agg"], dimOthers: true, colorBy: "domain", layoutSeed: 13 },
+      desc: "产能金字塔自下而上派生：节拍×OEE → 工序产能 → min瓶颈 → 产线/工厂产能 → Σ → 产能预测（仅渲染 flow+agg 边）。",
+    },
+  },
+  {
+    key: "graph-source", title: "图谱·数据来源",
+    options: { graphOptions: { colorBy: "source", layoutSeed: 17 }, desc: "按源系统重新着色，回答『每个数据从哪来』：派生对象、求解器、智能体不是源数据，已淡出。" },
+  },
+  {
+    key: "graph-solver", title: "图谱·求解器布局",
+    options: {
+      graphOptions: { nodeFilter: { ids: ["聚合求解器", "精度校准器", "n-solver-cap", "n-solver-risk", "工序产能", "n-cap", "产能预测"] }, linkKinds: ["solve", "fb"], dimOthers: true, colorBy: "domain", layoutSeed: 19 },
+      desc: "求解器以智能辅助决策中台形式注册：读取业务对象、写回派生对象（仅渲染 solve+fb 边）。",
+    },
+  },
+  {
+    key: "graph-mvp", title: "图谱·MVP",
+    options: {
+      graphOptions: { nodeFilter: { ids: ["n-proc", "n-equip", "良率", "工序产能", "n-cap", "n-order", "产能预测", "聚合求解器"] }, mvpOverlay: true, dimOthers: true, colorBy: "domain", layoutSeed: 23 },
+      desc: "最小可验证系统：实色高亮 MVP 必备核心闭环；⊕ 虚线节点是当前缺口（实际产出 / OEE历史 / 生产工单MO），缺它们系统就『算不准、学不会』。",
+    },
+  },
+  {
+    key: "graph-agent", title: "图谱·智能体网络",
+    options: {
+      graphOptions: { nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch", "solve"], dimOthers: true, colorBy: "domain", layoutSeed: 29 },
+      desc: "编排 Agent 指挥专职智能体团队，把求解器与业务建模当工具调用（仅渲染 orch+solve 边）。",
+    },
+  },
+  {
+    key: "graph-loop", title: "图谱·学习闭环",
+    options: {
+      graphOptions: { nodeFilter: { ids: ["产能预测", "实际产出", "精度校准器", "学习Agent", "经验记忆库", "良率", "OEE历史", "OEE指标", "聚合求解器", "工序产能"] }, linkKinds: ["fb", "orch"], dimOthers: true, colorBy: "domain", layoutSeed: 31 },
+      desc: "预测 ↔ 实际偏差 → 精度校准器 → 参数写回 → 越用越准（真实数据 MAPE 趋势见校准报告页，不做假动画）。",
+      descLink: { to: "/admin/calibration", label: "查看精度趋势与校准历史 →" },
+    },
+  },
+];
+
 export function workspaceForAccount(account: MockAccount, tenantOverrides: Record<string, boolean>, configVersion: number): Workspace {
   const features = featuresForAccount(account, tenantOverrides);
   const allViews = [
@@ -197,15 +265,22 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: {} },
     { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: {} },
     { key: "sop-balance", title: "S&OP 平衡台", renderer: "sop-balance", layout: {} },
-    // aop（年度情景规划台）：原型存在但无后端支持 → renderer 未注册，演示「该视图类型暂不支持」兜底
-    { key: "aop", title: "年度情景规划台", renderer: "aop", layout: {} },
+    // 剩余视图增量（§7.14–7.17）
+    { key: "annual-scenario", title: "年度情景规划台", renderer: "annual-scenario", layout: {} },
+    { key: "quarterly-rolling", title: "季度滚动看板", renderer: "quarterly-rolling", layout: {} },
+    { key: "order-chain", title: "订单全链聚合", renderer: "order-chain", layout: {} },
+    { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
+    // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
+    ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
+    // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
+    { key: "aop", title: "年度情景规划台（旧）", renderer: "aop", layout: {} },
   ];
   const featureKeyOf = (viewKey: string) =>
     viewKey === "graph" ? "view.ontology-graph" : viewKey === "risk" ? "view.risk-board" : viewKey === "order" ? "view.ledger" : `view.${viewKey}`;
   // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
   const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
-  // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱
-  const navViews = (account.username === "planner" ? views : views.filter((v) => v.key !== "graph")).filter(
+  // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱（含八视角）
+  const navViews = (account.username === "planner" ? views : views.filter((v) => v.key !== "graph" && !v.key.startsWith("graph-"))).filter(
     (v) => v.key !== "aop",
   );
 
@@ -224,7 +299,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     theme: account.username === "planner" ? { "--accent": "#4C90F0" } : { "--accent": "#36BFA5" },
     navigation: navViews.map((v) => ({ key: v.key, label: v.title })),
     // views 含 aop（直链可达，renderer 未注册 → 兜底卡）；navigation 不含
-    views: account.username === "planner" ? views : views.filter((v) => v.key !== "graph"),
+    views: account.username === "planner" ? views : views.filter((v) => v.key !== "graph" && !v.key.startsWith("graph-")),
     scenarioPackages: [PACKAGE_ID],
     features: routeFeatures,
     configVersion,
@@ -237,33 +312,67 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
 
 export const GRAPH: OntologyGraphVM = {
   nodes: [
-    { id: "n-base", key: "Base", label: "基地", kind: "object", domain: "factory", properties: [{ propKey: "name", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }, { propKey: "gwh", dataType: "number" }], sourceBindings: [{ connId: "conn-erp", dataset: "plants" }], rules: [{ key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)" }], derivations: [] },
-    { id: "n-line", key: "Line", label: "产线", kind: "object", domain: "factory", properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "actual_output_daily", dataType: "number" }, { propKey: "schedule_attainment", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "lines" }], rules: [], derivations: [{ propKey: "schedule_attainment", formula: "rollup(week, 排产 vs 实绩)" }] },
-    { id: "n-model", key: "Model", label: "型号", kind: "object", domain: "product", properties: [{ propKey: "modelNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-erp", dataset: "models" }], rules: [], derivations: [] },
-    { id: "n-order", key: "Order", label: "订单", kind: "object", domain: "product", properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }], sourceBindings: [{ connId: "conn-crm", dataset: "orders" }], rules: [{ key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit" }], derivations: [] },
-    { id: "n-proc", key: "Process", label: "工序", kind: "object", domain: "process", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }, { propKey: "yield_baseline", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "process" }], rules: [], derivations: [{ propKey: "yield_baseline", formula: "ts_agg(yield_daily, avg, 7d)" }] },
-    { id: "n-equip", key: "Equipment", label: "设备", kind: "object", domain: "equip", properties: [{ propKey: "equipNo", dataType: "string", isPrimaryKey: true }, { propKey: "oee_current", dataType: "number" }], sourceBindings: [{ connId: "conn-iot", dataset: "oee:equip" }], rules: [], derivations: [{ propKey: "oee_current", formula: "ts_agg(oee_daily, weighted_avg, 7d)" }] },
-    { id: "n-people", key: "Crew", label: "班组", kind: "object", domain: "people", properties: [{ propKey: "crewId", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [] },
-    { id: "n-quality", key: "QualityLot", label: "质检批", kind: "object", domain: "quality", properties: [{ propKey: "lotNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C08", name: "外协红线", expression: "Outsource.ratio <= 0.2" }], derivations: [] },
-    { id: "n-cap", key: "CapacityPyramid", label: "产能金字塔", kind: "object", domain: "capacity", properties: [{ propKey: "week", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C03", name: "产能上限", expression: "demandDelta <= 0.5" }], derivations: [{ propKey: "p90", formula: "capacity_forecast(p90)" }] },
-    { id: "n-forecast", key: "DemandForecast", label: "需求预测", kind: "object", domain: "forecast", properties: [{ propKey: "period", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [] },
-    { id: "n-solver-cap", key: "capacity_forecast", label: "产能推演", kind: "solver", domain: "solver", properties: [], sourceBindings: [], rules: [], derivations: [] },
-    { id: "n-solver-risk", key: "risk_timeline", label: "风险时间线", kind: "solver", domain: "solver", properties: [], sourceBindings: [], rules: [], derivations: [] },
-    { id: "n-agent", key: "explore_agent", label: "探索 Agent", kind: "agent", domain: "agent", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    { id: "n-base", key: "Base", label: "基地", kind: "object", domain: "factory", tier: 1, sourceSystem: "ERP", properties: [{ propKey: "name", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }, { propKey: "gwh", dataType: "number" }], sourceBindings: [{ connId: "conn-erp", dataset: "plants" }], rules: [{ key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)" }], derivations: [] },
+    { id: "n-line", key: "Line", label: "产线", kind: "object", domain: "factory", tier: 1, sourceSystem: "MES", properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "actual_output_daily", dataType: "number" }, { propKey: "schedule_attainment", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "lines" }], rules: [], derivations: [{ propKey: "schedule_attainment", formula: "rollup(week, 排产 vs 实绩)" }] },
+    { id: "n-model", key: "Model", label: "型号", kind: "object", domain: "product", tier: 2, sourceSystem: "PLM", properties: [{ propKey: "modelNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-erp", dataset: "models" }], rules: [], derivations: [] },
+    { id: "n-order", key: "Order", label: "订单", kind: "object", domain: "product", tier: 2, sourceSystem: "CRM", properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }], sourceBindings: [{ connId: "conn-crm", dataset: "orders" }], rules: [{ key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit" }], derivations: [] },
+    { id: "n-proc", key: "Process", label: "工序", kind: "object", domain: "process", tier: 2, sourceSystem: "MES", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }, { propKey: "yield_baseline", dataType: "number" }], sourceBindings: [{ connId: "conn-mes", dataset: "process" }], rules: [], derivations: [{ propKey: "yield_baseline", formula: "ts_agg(yield_daily, avg, 7d)" }] },
+    { id: "n-equip", key: "Equipment", label: "设备", kind: "object", domain: "equip", tier: 2, sourceSystem: "IoT", properties: [{ propKey: "equipNo", dataType: "string", isPrimaryKey: true }, { propKey: "oee_current", dataType: "number" }], sourceBindings: [{ connId: "conn-iot", dataset: "oee:equip" }], rules: [], derivations: [{ propKey: "oee_current", formula: "ts_agg(oee_daily, weighted_avg, 7d)" }] },
+    { id: "n-people", key: "Crew", label: "班组", kind: "object", domain: "people", tier: 3, sourceSystem: "HR", properties: [{ propKey: "crewId", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [] },
+    { id: "n-quality", key: "QualityLot", label: "质检批", kind: "object", domain: "quality", tier: 3, sourceSystem: "QMS", properties: [{ propKey: "lotNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C08", name: "外协红线", expression: "Outsource.ratio <= 0.2" }], derivations: [] },
+    { id: "n-cap", key: "CapacityPyramid", label: "产能金字塔", kind: "object", domain: "capacity", tier: 1, sourceSystem: "派生", properties: [{ propKey: "week", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C03", name: "产能上限", expression: "demandDelta <= 0.5" }], derivations: [{ propKey: "p90", formula: "capacity_forecast(p90)" }] },
+    { id: "n-forecast", key: "DemandForecast", label: "需求预测", kind: "object", domain: "forecast", tier: 2, sourceSystem: "派生", properties: [{ propKey: "period", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [] },
+    { id: "n-solver-cap", key: "capacity_forecast", label: "产能推演", kind: "solver", domain: "solver", sourceSystem: "求解", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    { id: "n-solver-risk", key: "risk_timeline", label: "风险时间线", kind: "solver", domain: "solver", sourceSystem: "求解", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    { id: "n-agent", key: "explore_agent", label: "探索 Agent", kind: "agent", domain: "agent", sourceSystem: "智能体", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    // —— §7.18 八视角增量节点（学习闭环 / 产能推演网络 / MVP 缺口）——
+    { id: "产能预测", key: "CapacityForecast", label: "产能预测", kind: "object", domain: "capacity", tier: 1, sourceSystem: "派生", properties: [{ propKey: "week", dataType: "string", isPrimaryKey: true }, { propKey: "p50", dataType: "number" }, { propKey: "p90", dataType: "number" }], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [{ propKey: "p90", formula: "p50 × healthFactor" }] },
+    { id: "工序产能", key: "ProcessCapacity", label: "工序产能", kind: "object", domain: "capacity", tier: 1, sourceSystem: "派生", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [{ propKey: "weeklyCap", formula: "节拍 × OEE × 良率 × 可用工时" }] },
+    { id: "实际产出", key: "ActualOutput", label: "实际产出", kind: "object", domain: "capacity", tier: 3, sourceSystem: "MES", mvpGap: true, properties: [{ propKey: "date", dataType: "date", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-mes", dataset: "output_daily" }], rules: [], derivations: [] },
+    { id: "良率", key: "YieldRate", label: "良率", kind: "object", domain: "quality", tier: 2, sourceSystem: "QMS", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-qms", dataset: "yield_daily" }], rules: [], derivations: [] },
+    { id: "OEE指标", key: "OeeMetric", label: "OEE指标", kind: "object", domain: "equip", tier: 2, sourceSystem: "IoT", properties: [{ propKey: "equipNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-iot", dataset: "oee:equip" }], rules: [], derivations: [] },
+    { id: "OEE历史", key: "OeeHistory", label: "OEE历史", kind: "object", domain: "equip", tier: 3, sourceSystem: "IoT", mvpGap: true, properties: [{ propKey: "ts", dataType: "date", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-iot", dataset: "oee_history" }], rules: [], derivations: [] },
+    { id: "生产工单MO", key: "MfgOrder", label: "生产工单MO", kind: "object", domain: "process", tier: 3, sourceSystem: "MES", mvpGap: true, properties: [{ propKey: "moNo", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-mes", dataset: "mo" }], rules: [], derivations: [] },
+    { id: "聚合求解器", key: "agg_solver", label: "聚合求解器", kind: "solver", domain: "solver", sourceSystem: "求解", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    { id: "精度校准器", key: "calibrator", label: "精度校准器", kind: "solver", domain: "solver", sourceSystem: "求解", properties: [], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [] },
+    { id: "学习Agent", key: "learning_agent", label: "学习Agent", kind: "agent", domain: "agent", sourceSystem: "智能体", properties: [], sourceBindings: [], rules: [], derivations: [] },
+    { id: "经验记忆库", key: "ExperienceMemory", label: "经验记忆库", kind: "object", domain: "agent", tier: 3, sourceSystem: "智能体", properties: [{ propKey: "entryId", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [] },
   ],
   edges: [
-    { id: "e1", from: "n-base", to: "n-line", label: "拥有" },
-    { id: "e2", from: "n-line", to: "n-equip", label: "部署" },
-    { id: "e3", from: "n-line", to: "n-proc", label: "执行" },
-    { id: "e4", from: "n-order", to: "n-model", label: "订购" },
-    { id: "e5", from: "n-model", to: "n-base", label: "可产" },
-    { id: "e6", from: "n-people", to: "n-line", label: "排班" },
-    { id: "e7", from: "n-quality", to: "n-proc", label: "检验" },
-    { id: "e8", from: "n-cap", to: "n-base", label: "汇总" },
-    { id: "e9", from: "n-forecast", to: "n-model", label: "预测" },
-    { id: "e10", from: "n-solver-cap", to: "n-cap", label: "计算" },
-    { id: "e11", from: "n-solver-risk", to: "n-base", label: "推演" },
-    { id: "e12", from: "n-agent", to: "n-solver-cap", label: "调用" },
+    { id: "e1", from: "n-base", to: "n-line", label: "拥有", kind: "rel" },
+    { id: "e2", from: "n-line", to: "n-equip", label: "部署", kind: "rel" },
+    { id: "e3", from: "n-line", to: "n-proc", label: "执行", kind: "rel" },
+    { id: "e4", from: "n-order", to: "n-model", label: "订购", kind: "rel" },
+    { id: "e5", from: "n-model", to: "n-base", label: "可产", kind: "rel" },
+    { id: "e6", from: "n-people", to: "n-line", label: "排班", kind: "rel" },
+    { id: "e7", from: "n-quality", to: "n-proc", label: "检验", kind: "rel" },
+    { id: "e8", from: "n-cap", to: "n-base", label: "汇总", kind: "agg" },
+    { id: "e9", from: "n-forecast", to: "n-model", label: "预测", kind: "rel" },
+    { id: "e10", from: "n-solver-cap", to: "n-cap", label: "计算", kind: "solve" },
+    { id: "e11", from: "n-solver-risk", to: "n-base", label: "推演", kind: "solve" },
+    { id: "e12", from: "n-agent", to: "n-solver-cap", label: "调用", kind: "orch" },
+    // —— 产能推演链（flow/agg）——
+    { id: "e13", from: "OEE历史", to: "OEE指标", label: "聚合", kind: "flow" },
+    { id: "e14", from: "OEE指标", to: "工序产能", label: "派生", kind: "flow" },
+    { id: "e15", from: "良率", to: "工序产能", label: "派生", kind: "flow" },
+    { id: "e16", from: "工序产能", to: "n-cap", label: "上卷", kind: "agg" },
+    { id: "e17", from: "n-cap", to: "产能预测", label: "汇总", kind: "agg" },
+    { id: "e18", from: "n-forecast", to: "产能预测", label: "需求输入", kind: "flow" },
+    { id: "e19", from: "生产工单MO", to: "实际产出", label: "报工", kind: "flow" },
+    { id: "e20", from: "n-line", to: "实际产出", label: "产出", kind: "flow" },
+    // —— 求解（solve）——
+    { id: "e21", from: "聚合求解器", to: "产能预测", label: "计算", kind: "solve" },
+    { id: "e22", from: "聚合求解器", to: "n-cap", label: "计算", kind: "solve" },
+    // —— 学习闭环（fb 反馈 / orch 编排）——
+    { id: "e23", from: "实际产出", to: "精度校准器", label: "实际", kind: "fb" },
+    { id: "e24", from: "产能预测", to: "精度校准器", label: "预测", kind: "fb" },
+    { id: "e25", from: "精度校准器", to: "工序产能", label: "参数写回", kind: "fb" },
+    { id: "e26", from: "OEE历史", to: "精度校准器", label: "偏差样本", kind: "fb" },
+    { id: "e27", from: "良率", to: "精度校准器", label: "偏差样本", kind: "fb" },
+    { id: "e28", from: "学习Agent", to: "精度校准器", label: "编排", kind: "orch" },
+    { id: "e29", from: "学习Agent", to: "经验记忆库", label: "沉淀", kind: "orch" },
+    { id: "e30", from: "学习Agent", to: "聚合求解器", label: "触发重算", kind: "orch" },
+    { id: "e31", from: "经验记忆库", to: "OEE指标", label: "经验引用", kind: "orch" },
   ],
 };
 

@@ -11,6 +11,8 @@ export const ViewConfigVMSchema = z.object({
   title: z.string(),
   renderer: z.string().optional(),
   layout: z.record(z.string(), z.unknown()).optional(),
+  /** renderer 专属配置（如图谱视角 graphOptions —— 契约 ViewConfig.options） */
+  options: z.record(z.string(), z.unknown()).optional(),
 });
 export type ViewConfigVM = z.infer<typeof ViewConfigVMSchema>;
 
@@ -72,6 +74,10 @@ export interface GraphNodeVM {
   kind: "object" | "solver" | "agent";
   domain: string;
   tier?: number;
+  /** 数据来源视角（§7.18 colorBy=source）：ERP/MES/IoT/… 派生/求解/智能体 视为非源数据淡出 */
+  sourceSystem?: string;
+  /** MVP 视角缺口节点（⊕ 虚线强调） */
+  mvpGap?: boolean;
   properties?: { propKey: string; dataType: string; isPrimaryKey?: boolean }[];
   sourceBindings?: { connId: string; dataset: string }[];
   rules?: { key: string; name: string; expression: string }[];
@@ -83,6 +89,8 @@ export interface GraphEdgeVM {
   from: string;
   to: string;
   label?: string;
+  /** 边类型（§7.18 linkKinds 过滤）：rel/flow/agg/solve/fb/orch */
+  kind?: string;
 }
 
 export interface OntologyGraphVM {
@@ -170,6 +178,37 @@ export interface SyncJobVM {
   status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
   rowCounts: Record<string, number>;
   error?: string;
+}
+
+// ---- 订单全链聚合（§7.16：affected_orders 求解输出扩展形态；problems[] 用契约 schema） ----
+
+import type { OrderProblemGroup } from "@platform/contracts";
+
+/** 受影响订单行上的风险点引用（与 risk-board RiskPopover 共用数据形态） */
+export interface OrderRiskRefVM {
+  base: string;
+  factor: string;
+  crossDay: number | null;
+  peak: number;
+  series?: number[];
+  threshold?: number;
+}
+
+export interface AffectedOrderRowVM {
+  so: string;
+  cust: string;
+  seg: string;
+  model: string;
+  qty: number; // 万套
+  due: string;
+  delay: number; // 天（取最大）
+  risks: OrderRiskRefVM[];
+}
+
+export interface AffectedOrdersOutputVM {
+  summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
+  rows: AffectedOrderRowVM[];
+  problems: OrderProblemGroup[];
 }
 
 // ---- 任务事件（SSE 帧形态，QOS-PRD §8.2） ----

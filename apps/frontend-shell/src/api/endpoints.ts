@@ -205,6 +205,48 @@ export const tickSimClock = (advance: "1d" | "7d") =>
 export const resetSimClock = () => api.a<SimClockVM>("/a/v1/synthetic/clock/reset", { body: {} });
 export const fetchTickReports = () => api.a<TickReportVM[]>("/a/v1/synthetic/clock/ticks");
 
+// ---- 剩余视图增量（§7.14/7.15/7.20/7.21/7.22）：计划域 / 映射表 / 校准 / 数据健康度 ----
+
+import {
+  AopResponseSchema,
+  QuarterlyResponseSchema,
+  CalibrationReportSchema,
+  DataHealthResponseSchema,
+  type AopResponse,
+  type QuarterlyResponse,
+  type CalibrationProposal,
+  type CalibrationHistoryEntry,
+  type CalibrationReport,
+  type DataHealthResponse,
+  type MappingRow,
+} from "@platform/contracts";
+
+export const fetchAop = async (year: number): Promise<AopResponse> =>
+  AopResponseSchema.parse(await api.a<unknown>(`/a/v1/plan/aop?year=${year}`));
+
+export const fetchQuarterly = async (from: string, n = 6): Promise<QuarterlyResponse> =>
+  QuarterlyResponseSchema.parse(await api.a<unknown>(`/a/v1/plan/quarterly?from=${encodeURIComponent(from)}&n=${n}`));
+
+export const fetchOntologyMapping = (packageId: string) =>
+  api.a<MappingRow[]>(`/a/v1/ontology/mapping?packageId=${encodeURIComponent(packageId)}`);
+
+export const fetchCalibrationReport = async (filters: { objectType?: string; baseId?: string; solverKey?: string }): Promise<CalibrationReport> => {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
+  const qs = params.toString();
+  return CalibrationReportSchema.parse(await api.a<unknown>(`/a/v1/calibration/report${qs ? `?${qs}` : ""}`));
+};
+
+export const fetchCalibrationProposals = () => api.a<CalibrationProposal[]>("/a/v1/calibration/proposals");
+export const fetchCalibrationHistory = () => api.a<CalibrationHistoryEntry[]>("/a/v1/calibration/history");
+
+/** 批准/回滚一律走 Action 审批流（§S2，不直改参数）：响应即审批草稿引用 */
+export const decideCalibrationProposal = (id: string, decision: "approve" | "rollback") =>
+  api.a<{ draftId: string; status: string }>(`/a/v1/calibration/proposals/${id}/${decision}`, { body: {} });
+
+export const fetchDataHealth = async (): Promise<DataHealthResponse> =>
+  DataHealthResponseSchema.parse(await api.a<unknown>("/a/v1/data-health"));
+
 export const fetchActionDrafts = (status?: string) =>
   api.a<ActionDraft[]>(`/a/v1/action-drafts${status ? `?status=${status}` : ""}`);
 export const fetchActionDraft = (id: string) => api.a<ActionDraft>(`/a/v1/action-drafts/${id}`);

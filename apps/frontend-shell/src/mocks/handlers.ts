@@ -36,6 +36,16 @@ import {
   type MockAuditInput,
   type MockForecastArgs,
 } from "./simSolvers";
+import {
+  affectedOrdersOutput,
+  AOP_RESPONSE,
+  CALIBRATION_HISTORY,
+  CALIBRATION_PROPOSALS,
+  calibrationReportFor,
+  DATA_HEALTH,
+  MAPPING_ROWS,
+  QUARTERLY_RESPONSE,
+} from "./planFixtures";
 
 const err = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message, requestId: `req_${Math.random().toString(36).slice(2, 10)}` } }, { status });
@@ -145,6 +155,54 @@ export const handlers = [
   }),
 
   http.get("*/a/v1/ontology/graph", () => HttpResponse.json(GRAPH)),
+
+  // ---- 剩余视图增量：计划域 / 映射表 / 校准 / 数据健康度 ----
+  http.get("*/a/v1/plan/aop", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json(AOP_RESPONSE);
+  }),
+  http.get("*/a/v1/plan/quarterly", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const n = Math.min(Number(url.searchParams.get("n") ?? "6") || 6, QUARTERLY_RESPONSE.rows.length);
+    return HttpResponse.json({ ...QUARTERLY_RESPONSE, rows: QUARTERLY_RESPONSE.rows.slice(0, n) });
+  }),
+  http.get("*/a/v1/ontology/mapping", () => HttpResponse.json(MAPPING_ROWS)),
+  http.get("*/a/v1/calibration/report", ({ request }) => {
+    const url = new URL(request.url);
+    return HttpResponse.json(
+      calibrationReportFor({
+        objectType: url.searchParams.get("objectType") ?? undefined,
+        baseId: url.searchParams.get("baseId") ?? undefined,
+        solverKey: url.searchParams.get("solverKey") ?? undefined,
+      }),
+    );
+  }),
+  http.get("*/a/v1/calibration/proposals", () => HttpResponse.json(CALIBRATION_PROPOSALS)),
+  http.get("*/a/v1/calibration/history", () => HttpResponse.json(CALIBRATION_HISTORY)),
+  // 批准/回滚不直改参数：生成「校准参数变更」Action 草稿走 §S2 审批流
+  http.post("*/a/v1/calibration/proposals/:id/:decision", ({ params, request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const proposal = CALIBRATION_PROPOSALS.find((p) => p.id === params.id);
+    if (!proposal) return err(404, "NOT_FOUND", "提案不存在");
+    const decision = String(params.decision);
+    if (decision !== "approve" && decision !== "rollback") return err(404, "NOT_FOUND", "not found");
+    const draft = {
+      id: newId("act"),
+      tenantId: TENANT_ID,
+      actionTypeKey: "校准参数变更",
+      payload: { proposalId: proposal.id, parameter: proposal.parameter, from: proposal.currentValue, to: proposal.proposedValue, decision },
+      origin: { userId: `usr-${account.username}` },
+      status: "PENDING_APPROVAL" as const,
+      approvalSteps: [{ seq: 1, role: "admin" }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.actionDrafts.unshift(draft);
+    return HttpResponse.json({ draftId: draft.id, status: draft.status }, { status: 201 });
+  }),
+  http.get("*/a/v1/data-health", () => HttpResponse.json(DATA_HEALTH)),
 
   // ---- solver ----
   http.post("*/a/v1/solvers/:key/invoke", ({ params }) => {
@@ -477,6 +535,11 @@ export const handlers = [
       return HttpResponse.json({ data, snapshotVersion: "ov-12" });
     }
     if (key === "risk_timeline") return HttpResponse.json({ data: RISK_TIMELINE, snapshotVersion: "ov-12" });
+    if (key === "affected_orders") {
+      // §S1.5 扩展输出：summary + rows + problems[]（4 类归并 + rootChains）
+      const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;
+      return HttpResponse.json({ data: affectedOrdersOutput(base), snapshotVersion: "ov-12" });
+    }
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 

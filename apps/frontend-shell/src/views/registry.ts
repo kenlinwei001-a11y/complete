@@ -6,10 +6,10 @@ export interface ViewRendererProps {
 }
 
 /**
- * 业务视图渲染器注册表（PRD §7.1）。
+ * 业务视图渲染器注册表（PRD §7.1，增量 §7.14–7.17 扩至 12）。
  * 推演类视图（plan-audit/plan-generate/project-sim/sop-balance）按原型
  * docs/demo-推演系统.html 反推交互规格并绑定真实后端（B 侧 solvers/run + A 侧 sop/action-drafts）。
- * aop/quarter/story 等原型视图无后端支持 → 不注册，落「该视图类型暂不支持」兜底卡。
+ * story 等原型视图无后端支持 → 不注册，落「该视图类型暂不支持」兜底卡（aop 旧入口保留演示）。
  */
 const registry = new Map<string, LazyExoticComponent<ComponentType<ViewRendererProps>>>();
 
@@ -29,3 +29,7 @@ registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
 registerRenderer("project-sim", () => import("./sim/ProjectSimView"));
 registerRenderer("sop-balance", () => import("./sim/SopBalanceView"));
+registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
+registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
+registerRenderer("order-chain", () => import("./plan/OrderChainView"));
+registerRenderer("geo-map", () => import("./plan/GeoMapView"));

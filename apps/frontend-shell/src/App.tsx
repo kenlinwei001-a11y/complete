@@ -38,6 +38,7 @@ const McpPage = lazy(() => import("@/pages/admin/McpPage"));
 const ScenesPage = lazy(() => import("@/pages/admin/ScenesPage"));
 const OpsFallbackPage = lazy(() => import("@/pages/admin/OpsFallbackPage"));
 const FeaturesPage = lazy(() => import("@/pages/admin/FeaturesPage"));
+const CalibrationPage = lazy(() => import("@/pages/admin/CalibrationPage"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -90,6 +91,7 @@ export const routes: RouteObject[] = [
       admin("scenes", <ScenesPage />),
       admin("ops/fallback", <OpsFallbackPage />),
       admin("features", <FeaturesPage />),
+      admin("calibration", <CalibrationPage />),
       { path: "*", element: <NotFoundPage /> },
     ],
   },
