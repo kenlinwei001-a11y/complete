@@ -39,6 +39,7 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   dash: "view.dash",
   risk: "view.risk-board",
   order: "view.ledger",
+  graph: "view.ontology-graph",
   "ontology-graph": "view.ontology-graph",
   "plan-audit": "view.plan-audit",
   "plan-generate": "view.plan-generate",

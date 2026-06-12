@@ -1,9 +1,18 @@
-import type { ExecutionPlan, IntentDefinition, ScenarioPackage } from "@platform/contracts";
+import type {
+  AgentDefinition,
+  ExecutionPlan,
+  IntentDefinition,
+  ScenarioPackage,
+  SceneEntryConfig,
+  SkillDefinition,
+  WorkflowDefinition,
+} from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 
 /** QOS-PRD §7.6 seed data: battery-manufacturing scenario package. */
 
-export const SEED_TENANT = "tenant-demo";
+// 真连部署批次：与 DataCore 演示租户对齐（admin/planner/base_manager@demo, 密码 demo1234）
+export const SEED_TENANT = "demo";
 export const SEED_PACKAGE_ID = "pkg_battery_manufacturing";
 
 export interface SeedBase {
@@ -76,7 +85,7 @@ export function seedScenarioPackage(now = new Date().toISOString()): ScenarioPac
     id: SEED_PACKAGE_ID,
     tenantId: SEED_TENANT,
     name: "battery-manufacturing",
-    views: ["dash", "risk", "order"],
+    views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"],
     toolWhitelist: BUILTIN_TOOLS.map((t) => t.name),
     createdAt: now,
     updatedAt: now,
@@ -362,4 +371,108 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
   ];
 
   return { intents, plans };
+}
+
+// ---------------------------------------------------------------------------
+// 真连部署批次：B5 场景入口 + B1/B2/B4 演示注册表（boot 时缺失才播种）
+// ---------------------------------------------------------------------------
+
+export function seedSceneEntries(): SceneEntryConfig[] {
+  return [
+    {
+      id: "scn_dash", tenantId: SEED_TENANT, viewKey: "dash", mode: "WORKFLOW_FIRST",
+      uiHints: {
+        placeholder: "问问经营数据，如：本月计划达成率怎么样？",
+        suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？", "对比一下储能基地和动力基地的平均利用率"],
+      },
+    },
+    {
+      id: "scn_risk", tenantId: SEED_TENANT, viewKey: "risk", mode: "WORKFLOW_FIRST",
+      uiHints: {
+        placeholder: "针对选中基地提问，如：影响哪些订单？",
+        suggestedQuestions: ["影响哪些订单？", "为什么这天越线", "采纳常州的三班制方案"],
+      },
+    },
+    {
+      id: "scn_order", tenantId: SEED_TENANT, viewKey: "order", mode: "WORKFLOW_FIRST",
+      uiHints: { placeholder: "查订单，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？"] },
+    },
+    {
+      id: "scn_graph", tenantId: SEED_TENANT, viewKey: "graph", mode: "AGENT_FIRST", defaultAgentId: "agt_seed_explore",
+      uiHints: { placeholder: "围绕本体随便问", suggestedQuestions: ["哪个客户的订单延期风险最高"] },
+    },
+    {
+      id: "scn_plan_audit", tenantId: SEED_TENANT, viewKey: "plan-audit", mode: "WORKFLOW_ONLY",
+      uiHints: { placeholder: "规划体检相关问题", suggestedQuestions: [] },
+    },
+    {
+      id: "scn_plan_generate", tenantId: SEED_TENANT, viewKey: "plan-generate", mode: "WORKFLOW_FIRST",
+      uiHints: { placeholder: "方案生成相关问题", suggestedQuestions: [] },
+    },
+    {
+      id: "scn_project_sim", tenantId: SEED_TENANT, viewKey: "project-sim", mode: "WORKFLOW_FIRST",
+      uiHints: { placeholder: "项目沙盘推演相关问题", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？"] },
+    },
+    {
+      id: "scn_sop_balance", tenantId: SEED_TENANT, viewKey: "sop-balance", mode: "WORKFLOW_FIRST",
+      uiHints: { placeholder: "S&OP 月度平衡相关问题", suggestedQuestions: [] },
+    },
+  ];
+}
+
+export function seedRegistry(now = new Date().toISOString()): {
+  agents: AgentDefinition[];
+  workflows: WorkflowDefinition[];
+  skills: SkillDefinition[];
+} {
+  const workflows: WorkflowDefinition[] = [
+    {
+      id: "wf_seed_capacity", tenantId: SEED_TENANT, key: "capacity_check", version: 1,
+      name: "产能校核流程", description: "型号需求增量可行性校核（resolve → solve → rules → render）",
+      inputs: {
+        type: "object",
+        properties: { model: { type: "string" }, demandDelta: { type: "number" }, weeks: { type: "number" } },
+      },
+      steps: [
+        { id: "s1", type: "query_objects", params: { objectType: "Model", filter: {} } },
+        {
+          id: "s2", type: "invoke_solver",
+          params: { solverKey: "capacity_forecast", args: { modelId: "{{slots.model}}", demandDelta: "{{slots.demandDelta}}", weeks: "{{slots.weeks}}" } },
+        },
+        { id: "s3", type: "evaluate_rules", params: { ruleIds: ["C03"], payload: { demandDelta: "{{slots.demandDelta}}" } } },
+        { id: "s4", type: "render_answer", params: { blocks: [{ type: "text", markdown: "产能校核结论（见步骤溯源）" }] } },
+      ] as WorkflowDefinition["steps"],
+      status: "PUBLISHED",
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+  const skills: SkillDefinition[] = [
+    {
+      id: "skl_seed_capacity", tenantId: SEED_TENANT, key: "capacity_analysis", version: 1,
+      name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。",
+      body: "# 产能分析\n\n1. 先看型号认证状态（量产/认证中）。\n2. P50 看均衡产线，P90 看保守口径。\n3. 缺口为负时优先评估外协与排程平移。",
+      resources: [], status: "PUBLISHED",
+    },
+  ];
+  const agents: AgentDefinition[] = [
+    {
+      id: "agt_seed_explore", tenantId: SEED_TENANT, key: "explore_agent", version: 1,
+      name: "探索分析 Agent", description: "目录外问题兜底分析（路径 B）",
+      model: "claude-opus-4-8",
+      systemPrompt: "你是企业决策系统的分析助手。所有业务数字必须来自工具结果并以 ⟦ref:N⟧ 标注；无法溯源的数字需声明 unverified。",
+      tools: [
+        { kind: "BUILTIN", name: "query_objects" },
+        { kind: "BUILTIN", name: "invoke_solver" },
+        { kind: "WORKFLOW", workflowId: "wf_seed_capacity", version: "latest" },
+      ] as AgentDefinition["tools"],
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "POST_CHECK" },
+      skills: [{ skillId: "skl_seed_capacity", version: "latest" }],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Base", "Order", "Model", "Line"], toolNames: ["query_objects", "invoke_solver"] },
+      budget: { maxIterations: 8, maxToolCalls: 10 },
+      status: "PUBLISHED",
+    },
+  ];
+  return { agents, workflows, skills };
 }

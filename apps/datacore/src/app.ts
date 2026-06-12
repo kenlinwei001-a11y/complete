@@ -5,6 +5,8 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import multipart from "@fastify/multipart";
+import cookie from "@fastify/cookie";
+import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
 import { ClockTickBodySchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
@@ -26,7 +28,7 @@ import { CONNECTOR_TYPES } from "./connectors/registry.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
-import { SolverService } from "./solvers/service.js";
+import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService } from "./actions.js";
@@ -240,6 +242,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     bodyLimit: 100 * 1024 * 1024,
   });
   await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
+  await app.register(cookie);
+  // 经网关同源访问时无需 CORS；开放宽松 CORS 仅为直连端口的开发调试（credentials 模式）。
+  await app.register(cors, { origin: true, credentials: true });
 
   // Unified error envelope { error: { code, message, requestId } }.
   app.setErrorHandler((err: unknown, req, reply) => {
@@ -268,10 +273,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     "/metrics",
     "/a/v1/auth/login",
     "/a/v1/auth/refresh",
+    "/a/v1/auth/logout",
     "/a/v1/.well-known/jwks.json",
   ]);
 
   app.addHook("onRequest", async (req: FastifyRequest, _reply: FastifyReply) => {
+    if (req.method === "OPTIONS") return; // CORS preflight
     const path = req.url.split("?")[0] as string;
     if (PUBLIC_PATHS.has(path)) return;
     if (!path.startsWith("/a/")) return;
@@ -313,19 +320,51 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/metrics", async (_req, reply) => reply.type("text/plain").send(metrics.render()));
 
   // ---- A0 IAM -------------------------------------------------------------------
-  app.post("/a/v1/auth/login", async (req) => {
+  // 前端 PRD §4.1：refresh token 走 httpOnly cookie（Path 限定 /a/v1/auth）；body 透传保持向后兼容。
+  const setRefreshCookie = (reply: FastifyReply, refreshToken: string) =>
+    reply.setCookie("refresh_token", refreshToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/a/v1/auth",
+      maxAge: config.REFRESH_TOKEN_TTL_SEC,
+    });
+  app.post("/a/v1/auth/login", async (req, reply) => {
     const body = parseBody(LoginSchema, req.body);
-    return auth.login(body.tenantId, body.username, body.password);
+    const pair = await auth.login(body.tenantId, body.username, body.password);
+    setRefreshCookie(reply, pair.refreshToken);
+    return pair;
   });
-  app.post("/a/v1/auth/refresh", async (req) => {
-    const body = parseBody(z.object({ refreshToken: z.string().min(1) }), req.body);
-    return auth.refresh(body.refreshToken);
+  app.post("/a/v1/auth/refresh", async (req, reply) => {
+    const body = parseBody(z.object({ refreshToken: z.string().min(1).optional() }), req.body);
+    const token = body.refreshToken ?? req.cookies["refresh_token"];
+    if (!token) throw unauthorized("missing refresh token (cookie or body)");
+    const pair = await auth.refresh(token);
+    setRefreshCookie(reply, pair.refreshToken);
+    return pair;
+  });
+  app.post("/a/v1/auth/logout", async (_req, reply) => {
+    reply.clearCookie("refresh_token", { path: "/a/v1/auth" });
+    return { ok: true };
   });
   app.get("/a/v1/.well-known/jwks.json", async () => auth.jwks());
 
+  // 平台 PRD §6.1 + contracts WorkspaceSchema（前端真连对齐批次）。
+  const SCENARIO_PACKAGE_NAMES: Record<string, string> = {
+    pkg_battery_manufacturing: "电池制造场景包",
+    "battery-manufacturing": "电池制造场景包",
+  };
+  /** 路由守卫别名：view.{viewKey} 形式补充进 features（/v/:viewKey 直接查 view.graph 等）。 */
+  const withRouteFeatureAliases = (feats: string[]): string[] => {
+    const out = new Set(feats);
+    if (out.has("view.ontology-graph")) out.add("view.graph");
+    if (out.has("view.risk-board")) out.add("view.risk");
+    if (out.has("view.ledger")) out.add("view.order");
+    return [...out].sort();
+  };
   app.get("/a/v1/me/workspace", async (req) => {
     const c = ctx(req);
     const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
+    const user = await repos.users.get(c.tenantId, c.userId);
     const baseRoles = c.roles.map((r) => r.split(":")[0] as string);
     const configs = await repos.viewConfigs.list(c.tenantId, (v) =>
       baseRoles.includes(v.role) || c.roles.includes(v.role),
@@ -337,17 +376,50 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const fk = VIEW_FEATURE_MAP[key];
       return !fk || enabled.has(fk);
     };
-    const views = configs.flatMap((v) => v.views).filter((v) => viewAllowed(v.key));
-    const scenarioPackages = [...new Set(configs.flatMap((v) => v.scenarioPackages))];
-    const navigation = configs.flatMap((v) => v.navigation).filter((n) => viewAllowed(n.key));
-    const theme = configs[0]?.theme ?? {};
+    // merge per-role configs (admin 多角色取并集，按 key 去重，admin 配置优先)
+    const viewMap = new Map<string, (typeof configs)[number]["views"][number]>();
+    for (const v of configs.flatMap((vc) => vc.views)) {
+      if (viewAllowed(v.key) && !viewMap.has(v.key)) viewMap.set(v.key, v);
+    }
+    const views = [...viewMap.values()].map((v) => ({
+      viewKey: v.key,
+      name: v.title,
+      renderer: v.renderer ?? v.key,
+      layout: v.layout ?? {},
+      options: v.options ?? {},
+      // legacy aliases（旧前端 VM 消费 key/title）
+      key: v.key,
+      title: v.title,
+    }));
+    const navMap = new Map<string, { key: string; label: string; viewKey?: string; group: "business" | "admin" }>();
+    for (const n of configs.flatMap((vc) => vc.navigation)) {
+      const group = n.group ?? "business";
+      if (group === "business" && !viewAllowed(n.viewKey ?? n.key)) continue;
+      if (!navMap.has(`${group}:${n.key}`)) {
+        navMap.set(`${group}:${n.key}`, { key: n.key, label: n.label, viewKey: n.viewKey ?? (group === "business" ? n.key : undefined), group });
+      }
+    }
+    const navigation = [...navMap.values()];
+    const scenarioPackages = [...new Set(configs.flatMap((v) => v.scenarioPackages))].map((p) => ({
+      id: p,
+      name: SCENARIO_PACKAGE_NAMES[p] ?? p,
+    }));
+    const theme = Object.fromEntries(
+      Object.entries(configs[0]?.theme ?? {}).map(([k, v]) => [k, String(v)]),
+    );
     return {
-      tenant: tenant ? { id: tenant.id, name: tenant.name, industry: tenant.industry } : { id: c.tenantId },
+      tenant: { id: c.tenantId, name: tenant?.name ?? c.tenantId, industry: tenant?.industry },
+      user: {
+        id: c.userId,
+        username: user?.username ?? c.userId,
+        roles: c.roles,
+        attributes: { ...c.attributes, ...(user?.attributes ?? {}) },
+      },
       scenarioPackages,
       views,
       theme,
       navigation,
-      features: resolved.features,
+      features: withRouteFeatureAliases(resolved.features),
       configVersion: resolved.configVersion,
     };
   });
@@ -364,7 +436,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           attributes: body.user.attributes,
         }
       : c;
-    return authz.explain(target, body.resource.kind, body.resource.key, body.op);
+    const result = await authz.explain(target, body.resource.kind, body.resource.key, body.op);
+    // 前端 PRD §7.9 调试器消费形态：matched[{policyId,resource,grants}] + rowFilter（保留原字段）
+    return {
+      ...result,
+      matched: result.matchedPolicies.map((p) => ({
+        policyId: p.id,
+        resource: `${p.resource.kind}:${p.resource.key}`,
+        grants: p.grants.map((g) => `${g.role}:${g.ops.join("/")}`).join(", "),
+      })),
+      rowFilter: result.effectiveRowFilter,
+    };
   });
 
   app.get("/a/v1/policies", async (req) => repos.policies.list(ctx(req).tenantId));
@@ -439,50 +521,100 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ObjectsQuerySchema, req.body);
     return ontology.queryObjects(ctx(req), body.objectType, body.filter, body.limit);
   });
-  // 前端 PRD §6.4 别名：objectRef 槽位搜索选择器（GET /a/v1/objects?type=&q=）
+  // 前端 PRD §6.4 / §7.3：对象查询（objectRef 槽位选择器 + 台账分页 + 列筛选 f_*）。
+  // 响应 { items, total }（台账/选择器消费）；同时保留 { data, snapshotVersion } 兼容旧调用。
   app.get("/a/v1/objects", async (req) => {
-    const q = req.query as Record<string, unknown>;
-    const type = typeof q["type"] === "string" ? (q["type"] as string) : "";
-    const needle = typeof q["q"] === "string" ? (q["q"] as string).toLowerCase() : "";
+    const q = req.query as Record<string, string | undefined>;
+    const type = q["type"] ?? "";
     if (!type) throw validationError("type query parameter is required");
-    const result = await ontology.queryObjects(ctx(req), type, {}, 200);
-    const rows = (result.data as Record<string, unknown>[]).filter((o) => {
-      if (!needle) return true;
-      const p = (o["props"] as Record<string, unknown>) ?? {};
-      const hay = JSON.stringify([
-        o["name"], o["label"], o["id"], p["name"], p["label"], p["so"], p["cust"], p["modelId"], p["baseId"],
-      ]).toLowerCase();
-      return hay.includes(needle);
-    });
-    return { data: rows.slice(0, 20), snapshotVersion: result.snapshotVersion };
+    const needle = (q["q"] ?? "").toLowerCase();
+    const page = Math.max(1, Number(q["page"] ?? "1") || 1);
+    const pageSize = Math.min(500, Math.max(1, Number(q["pageSize"] ?? "50") || 50));
+    const result = await ontology.queryObjects(ctx(req), type, {}, 1000);
+    let rows = result.data as { id: string; type: string; props: Record<string, unknown> }[];
+    if (needle) {
+      rows = rows.filter((o) => JSON.stringify({ id: o.id, ...o.props }).toLowerCase().includes(needle));
+    }
+    for (const [k, v] of Object.entries(q)) {
+      if (!k.startsWith("f_") || !v) continue;
+      const prop = k.slice(2);
+      rows = rows.filter((r) => {
+        const pv = r.props[prop];
+        const hay = Array.isArray(pv) ? pv.join(",") : String(pv ?? "");
+        return hay.includes(v);
+      });
+    }
+    if (q["base"]) {
+      rows = rows.filter((r) => {
+        const pv = r.props["bases"] ?? r.props["base"] ?? r.props["baseId"];
+        return (Array.isArray(pv) ? pv.join(",") : String(pv ?? "")).includes(q["base"] as string);
+      });
+    }
+    const total = rows.length;
+    const items = rows.slice((page - 1) * pageSize, page * pageSize).map((r) => ({ id: r.id, type, props: r.props }));
+    return { items, total, data: items, snapshotVersion: result.snapshotVersion };
   });
   app.get("/a/v1/objects/:type/:id", async (req) => {
     const { type, id } = req.params as { type: string; id: string };
     return ontology.getObject(ctx(req), type, id);
   });
-  // 前端 PRD §7.2：类型级本体图谱（节点=ObjectType，边=LinkType）
+  // 前端 PRD §7.2：类型级本体图谱（节点=ObjectType + 求解器，边=LinkType + 求解器引用）
+  const GRAPH_DOMAIN: Record<string, string> = {
+    Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
+    Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
+    DataSourceHealth: "quality", CapacityPyramid: "capacity", DemandForecast: "forecast",
+    Crew: "people", QualityLot: "quality",
+  };
+  const SOLVER_GRAPH: Record<string, { label: string; target: string }> = {
+    capacity_forecast: { label: "产能推演", target: "Model" },
+    risk_timeline: { label: "风险时间线", target: "Base" },
+    affected_orders: { label: "受影响订单", target: "Order" },
+    plan_audit: { label: "规划体检", target: "Order" },
+    plan_generate: { label: "方案生成", target: "Base" },
+    capacity_rollup: { label: "产能金字塔", target: "Base" },
+    bottleneck_matrix: { label: "瓶颈矩阵", target: "Line" },
+  };
   app.get("/a/v1/ontology/graph", async (req) => {
     const c = ctx(req);
-    const types = (await ontology.listTypes(c)) as unknown as Record<string, unknown>[];
-    const links = (await repos.ontologyLinks.list(c.tenantId)) as unknown as Record<string, unknown>[];
-    return {
-      nodes: types.map((t) => ({
-        key: t["typeKey"] ?? t["key"],
-        displayName: t["displayName"] ?? t["typeKey"] ?? t["key"],
-        domain: t["domain"] ?? "factory",
-        tier: t["tier"] ?? 0,
-        kind: t["kind"] ?? "object",
-        properties: Object.keys((t["properties"] as Record<string, unknown>) ?? {}),
-        sourceBindings: t["sourceBindings"] ?? [],
+    const types = await ontology.listTypes(c);
+    const links = await repos.ontologyLinks.list(c.tenantId);
+    const publishedRules = await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED");
+    const typeKeys = new Set(types.map((t) => t.key));
+    const nodes: Record<string, unknown>[] = types.map((t, i) => ({
+      id: `n-${t.key}`,
+      key: t.key,
+      label: t.displayName ?? t.key,
+      kind: "object",
+      domain: GRAPH_DOMAIN[t.key] ?? "factory",
+      tier: Math.floor(i / 4),
+      properties: (t.properties ?? []).map((p) => ({
+        propKey: p.propKey,
+        dataType: p.dataType,
+        isPrimaryKey: p.isPrimaryKey ?? false,
       })),
-      edges: links.map((l) => ({
-        key: l["key"] ?? l["id"],
-        from: l["fromTypeKey"] ?? l["from"],
-        to: l["toTypeKey"] ?? l["to"],
-        name: l["name"] ?? l["key"],
-        cardinality: l["cardinality"] ?? "1:N",
-      })),
-    };
+      sourceBindings: t.sourceBindings ?? [],
+      rules: publishedRules
+        .filter((r) => (r.scopeObjectTypes ?? []).includes(t.key))
+        .map((r) => ({ key: r.key, name: r.name, expression: r.expression })),
+      derivations: (t.derivedProperties ?? []).map((d) => ({ propKey: d.propKey, formula: d.formula })),
+    }));
+    const edges: Record<string, unknown>[] = links.map((l, i) => ({
+      id: `e-${l.key ?? l.id ?? i}`,
+      from: `n-${l.fromTypeKey}`,
+      to: `n-${l.toTypeKey}`,
+      label: l.key,
+      cardinality: l.cardinality ?? "1:N",
+    }));
+    for (const solverKey of SOLVER_KEYS) {
+      const meta = SOLVER_GRAPH[solverKey];
+      if (!meta || !typeKeys.has(meta.target)) continue;
+      nodes.push({
+        id: `n-solver-${solverKey}`, key: solverKey, label: meta.label, kind: "solver",
+        domain: "solver", properties: [], sourceBindings: [], rules: [], derivations: [],
+      });
+      edges.push({ id: `e-solver-${solverKey}`, from: `n-solver-${solverKey}`, to: `n-${meta.target}`, label: "计算" });
+    }
+    return { nodes, edges };
   });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };
@@ -538,6 +670,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(z.object({ comment: z.string().min(1, "reject comment is required") }), req.body);
     return actions.reject(ctx(req), id, body.comment);
   });
+  // 前端 PRD §7.9 别名：单端点 decision（APPROVE/REJECT + comment）
+  app.post("/a/v1/action-drafts/:id/decision", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(
+      z.object({ decision: z.enum(["APPROVE", "REJECT"]), comment: z.string().default("") }),
+      req.body,
+    );
+    return body.decision === "APPROVE"
+      ? actions.approve(ctx(req), id, body.comment || undefined)
+      : actions.reject(ctx(req), id, body.comment || "驳回");
+  });
   app.post("/a/v1/action-drafts/:id/cancel", async (req) => {
     const { id } = req.params as { id: string };
     return actions.cancel(ctx(req), id);
@@ -583,6 +726,27 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- A1 connectors --------------------------------------------------------------------
   app.get("/a/v1/connector-types", async () => CONNECTOR_TYPES);
+  // 前端 PRD §7.4 新建向导「测试连接」：按 configSchema 必填项校验（mock/file 类直接通过）。
+  app.post("/a/v1/connections/test", async (req) => {
+    ctx(req);
+    const body = parseBody(
+      z.object({
+        connectorTypeKey: z.string().min(1),
+        config: z.record(z.string(), z.unknown()).default({}),
+      }),
+      req.body,
+    );
+    const ct = CONNECTOR_TYPES.find((t) => t.key === body.connectorTypeKey);
+    if (!ct) return { ok: false, message: `未知连接器类型：${body.connectorTypeKey}` };
+    const schema = (ct.configSchema ?? {}) as { required?: string[] };
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    const missing = required.filter((k) => {
+      const v = body.config[k];
+      return v == null || v === "";
+    });
+    if (missing.length > 0) return { ok: false, message: `缺少必填配置：${missing.join("、")}` };
+    return { ok: true };
+  });
   app.post("/a/v1/connections", async (req, reply) => {
     const body = parseBody(ConnectionCreateSchema, req.body);
     return reply.status(201).send(await connectors.createConnection(ctx(req), body));
@@ -605,16 +769,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/uploads", async (req, reply) => {
     const c = ctx(req);
+    const uploadVM = (r: Awaited<ReturnType<typeof connectors.upload>>) => ({
+      ...r,
+      // 前端 PRD §7.4 消费形态：{ connId, datasetName }
+      connId: r.connection.id,
+      datasetName: r.schema.datasets[0]?.name ?? r.connection.name,
+    });
     if (req.isMultipart()) {
       const file = await req.file();
       if (!file) throw validationError("multipart file required");
       const content = await file.toBuffer();
       const result = await connectors.upload(c, file.filename, content);
-      return reply.status(201).send(result);
+      return reply.status(201).send(uploadVM(result));
     }
     const body = parseBody(RuleDocJsonSchema, req.body);
     const result = await connectors.upload(c, body.filename, Buffer.from(body.contentBase64, "base64"));
-    return reply.status(201).send(result);
+    return reply.status(201).send(uploadVM(result));
   });
   app.get("/a/v1/raw-datasets", async (req) => {
     const { connId } = req.query as { connId?: string };
@@ -652,19 +822,31 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       droppedCandidates: result.doc.droppedCandidates,
     });
   });
+  // VM 映射：segments 兜底空数组；duplicateOf 取疑似重复规则的 key（前端审核台消费）。
+  const ruleDocVM = (d: Awaited<ReturnType<typeof ruleDocs.getDoc>>) => ({ ...d, segments: d.segments ?? [] });
+  const candidateVM = (c: Awaited<ReturnType<typeof ruleDocs.review>>) => ({
+    ...c,
+    duplicateOf: c.suspectedDuplicateOf?.ruleKey,
+  });
+  app.get("/a/v1/rule-docs", async (req) => {
+    const docs = await repos.ruleDocs.list(ctx(req).tenantId);
+    return docs
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .map((d) => ruleDocVM(d));
+  });
   app.get("/a/v1/rule-docs/:id", async (req) => {
     const { id } = req.params as { id: string };
-    return ruleDocs.getDoc(ctx(req), id);
+    return ruleDocVM(await ruleDocs.getDoc(ctx(req), id));
   });
   app.get("/a/v1/rule-docs/:id/candidates", async (req) => {
     const { id } = req.params as { id: string };
     const { status } = req.query as { status?: string };
-    return ruleDocs.listCandidates(ctx(req), id, status);
+    return (await ruleDocs.listCandidates(ctx(req), id, status)).map(candidateVM);
   });
   app.post("/a/v1/rule-candidates/:id/review", async (req) => {
     const { id } = req.params as { id: string };
     const body = parseBody(ReviewSchema, req.body);
-    return ruleDocs.review(ctx(req), id, body.action, body.patch);
+    return candidateVM(await ruleDocs.review(ctx(req), id, body.action, body.patch));
   });
 
   // ---- A3 modeling -----------------------------------------------------------------------
@@ -673,22 +855,58 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const draft = await modeling.suggest(ctx(req), body.rawDatasetIds);
     return reply.status(202).send({ draftId: draft.id, status: draft.status });
   });
+  // VM 映射：附带 datasets 字段画像（前端建模工作台左栏，PRD §7.6）。
+  const modelingDraftVM = async (c: AuthCtx, d: Awaited<ReturnType<typeof modeling.getDraft>>) => ({
+    ...d,
+    datasets: await Promise.all(
+      d.rawDatasetIds.map(async (dsId) => {
+        const ds = await repos.rawDatasets.get(c.tenantId, dsId);
+        return ds ? { name: ds.name, fields: ds.fields } : { name: dsId, fields: [] };
+      }),
+    ),
+  });
+  app.get("/a/v1/modeling/drafts", async (req) => {
+    const c = ctx(req);
+    const drafts = await repos.ontologyDrafts.list(c.tenantId);
+    return Promise.all(
+      drafts.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((d) => modelingDraftVM(c, d)),
+    );
+  });
   app.get("/a/v1/modeling/drafts/:id", async (req) => {
+    const c = ctx(req);
     const { id } = req.params as { id: string };
-    return modeling.getDraft(ctx(req), id);
+    return modelingDraftVM(c, await modeling.getDraft(c, id));
   });
   app.patch("/a/v1/modeling/drafts/:id", async (req) => {
+    const c = ctx(req);
     const { id } = req.params as { id: string };
     const body = parseBody(DraftPatchSchema, req.body);
-    return modeling.patchDraft(
-      ctx(req),
-      id,
-      body.operations as unknown as import("./domain.js").DraftOperation[],
+    return modelingDraftVM(
+      c,
+      await modeling.patchDraft(c, id, body.operations as unknown as import("./domain.js").DraftOperation[]),
     );
   });
   app.post("/a/v1/modeling/drafts/:id/publish", async (req) => {
     const { id } = req.params as { id: string };
-    return modeling.publishDraft(ctx(req), id);
+    try {
+      const result = await modeling.publishDraft(ctx(req), id);
+      return { ok: true, ...result };
+    } catch (err) {
+      // 前端 PRD §7.6：发布校验错误内联展示在对应卡片 → {ok:false, errors:[{typeKey,message}]}
+      if (err instanceof AppError && err.code === "VALIDATION_ERROR") {
+        const msgs = err.message.replace(/^publish validation failed: /, "").split("; ");
+        return {
+          ok: false,
+          errors: msgs.map((m) => {
+            const i = m.indexOf(":");
+            return i > 0
+              ? { typeKey: m.slice(0, i).trim(), message: m.slice(i + 1).trim() }
+              : { typeKey: "", message: m };
+          }),
+        };
+      }
+      throw err;
+    }
   });
   app.post("/a/v1/modeling/drafts/:id/materialize", async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -697,16 +915,44 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   // ---- A7 synthetic -----------------------------------------------------------------------
+  // 前端 PRD §7.7 六阶段轮询形态（作业同步完成 → 阶段即终态快照）。
+  const SYNTHETIC_PHASES = ["行业模板", "本体实例化", "源对象生成", "历史时序生成（90 天）", "派生计算", "配套生成与校验"];
+  const syntheticJobVM = (job: NonNullable<Awaited<ReturnType<typeof repos.syntheticJobs.get>>>) => {
+    const failed = job.status === "FAILED";
+    const report = job.report;
+    const ts = report?.timeseries;
+    return {
+      ...job,
+      phase: SYNTHETIC_PHASES.length - 1,
+      phases: SYNTHETIC_PHASES.map((name, i) => ({
+        name,
+        status: failed && i === SYNTHETIC_PHASES.length - 1 ? "FAILED" : "DONE",
+      })),
+      report: report
+        ? {
+            ...report,
+            timeseries: ts
+              ? Object.entries(ts.pointCounts).map(([seriesKey, points]) => ({
+                  seriesKey,
+                  points,
+                  gaps: ts.gaps.filter((g) => g.seriesKey === seriesKey).length,
+                  aggSpotCheckOk: ts.aggSpotChecks.every((s) => s.ok),
+                }))
+              : undefined,
+          }
+        : undefined,
+    };
+  };
   app.post("/a/v1/synthetic/jobs", async (req, reply) => {
     const body = parseBody(SyntheticJobBodySchema, req.body);
     const job = await synthetic.runJob(ctx(req), body);
-    return reply.status(202).send(job);
+    return reply.status(202).send({ ...job, jobId: job.id });
   });
   app.get("/a/v1/synthetic/jobs/:id", async (req) => {
     const { id } = req.params as { id: string };
     const job = await repos.syntheticJobs.get(ctx(req).tenantId, id);
     if (!job) throw notFound("synthetic job");
-    return job;
+    return syntheticJobVM(job);
   });
   app.get("/a/v1/industry-templates", async (req) => repos.industryTemplates.list(ctx(req).tenantId));
 
@@ -753,7 +999,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     if (id !== c.tenantId) throw forbidden("cross-tenant feature read");
     const { role } = req.query as { role?: string };
-    return features.resolve(id, role);
+    const resolved = await features.resolve(id, role);
+    // 前端 PRD（Entitlement 增量）：预览某角色将看到的导航/视图
+    const enabled = new Set(resolved.features);
+    const allowed = (key: string) => {
+      const fk = VIEW_FEATURE_MAP[key];
+      return !fk || enabled.has(fk);
+    };
+    const configs = await repos.viewConfigs.list(c.tenantId, (v) => !role || v.role === role);
+    const viewMap = new Map<string, { key: string; title: string }>();
+    for (const v of configs.flatMap((vc) => vc.views)) {
+      if (allowed(v.key) && !viewMap.has(v.key)) viewMap.set(v.key, { key: v.key, title: v.title });
+    }
+    const navMap = new Map<string, { key: string; label: string }>();
+    for (const n of configs.flatMap((vc) => vc.navigation)) {
+      if ((n.group ?? "business") === "business" && !allowed(n.viewKey ?? n.key)) continue;
+      if (!navMap.has(n.key)) navMap.set(n.key, { key: n.key, label: n.label });
+    }
+    return { ...resolved, navigation: [...navMap.values()], views: [...viewMap.values()] };
   });
   app.get("/a/v1/tenants/:id/features/audit", async (req) => {
     const c = ctx(req);
@@ -864,14 +1127,47 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   // ---- A8.6 simulation clock -------------------------------------------------------------------------
-  app.get("/a/v1/synthetic/clock", async (req) => simclock.getClock(ctx(req)));
+  // 前端 PRD §7.7 模拟时钟 VM：{ simDate, currentTick, status, script[] }（保留原字段）。
+  const DAY_MS = 86400000;
+  const clockVM = (clock: Record<string, unknown>) => ({
+    ...clock,
+    simDate: clock["simulatedDate"],
+    script: ((clock["scriptProgress"] as { tick: number; event: string; fired: boolean }[]) ?? []).map((s) => ({
+      tick: s.tick,
+      event: s.event,
+      fired: s.fired,
+    })),
+  });
+  app.get("/a/v1/synthetic/clock", async (req) => clockVM(await simclock.getClock(ctx(req))));
+  app.get("/a/v1/synthetic/clock/ticks", async (req) => {
+    const c = ctx(req);
+    const clock = await repos.simulationClocks.get(c.tenantId, c.tenantId);
+    const t0 = clock ? Date.parse(`${clock.t0.slice(0, 10)}T00:00:00Z`) : Date.now();
+    const reports = await repos.clockTickReports.list(c.tenantId);
+    return reports
+      .sort((a, b) => b.toTick - a.toTick)
+      .map((r) => ({
+        ...r,
+        tick: r.toTick,
+        simDate: new Date(t0 + r.toTick * DAY_MS).toISOString().slice(0, 10),
+        changedProps: r.topChangedSnapshots.map((s) => ({
+          object: `${s.objectType}-${s.objectId}`,
+          prop: s.property,
+          from: s.from ?? 0,
+          to: s.to,
+        })),
+        newAlerts: r.alertsRaised.map((a) => ({ ruleKey: a.split(":")[0] as string, message: a })),
+        clearedAlerts: r.alertsCleared,
+        forecastDeviation: r.forecastDeviation?.deviation,
+      }));
+  });
   app.post("/a/v1/synthetic/clock/tick", async (req, reply) => {
     const body = parseBody(ClockTickBodySchema, req.body);
     const result = await simclock.tick(ctx(req), body.advance);
     return reply.status(202).send({ tickJobId: result.tickJobId, status: "SUCCEEDED", report: result.report });
   });
   app.post("/a/v1/synthetic/clock/reset", async (req, reply) => {
-    return reply.status(202).send(await simclock.reset(ctx(req)));
+    return reply.status(202).send(clockVM(await simclock.reset(ctx(req))));
   });
 
   // ---- webhooks / outbox (C-2) ---------------------------------------------------------------

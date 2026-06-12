@@ -9,6 +9,8 @@ export interface TokenPair {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  /** 前端 PRD §4.1: login/refresh 直接携带用户概要，免一次往返。 */
+  user: { id: string; username: string; roles: string[]; attributes: Record<string, unknown> };
 }
 
 /** A0 IAM: local accounts + RS256 JWT, JWKS published for AgentCore to verify (B 只验签). */
@@ -60,6 +62,7 @@ export class AuthService {
       accessToken: await this.signToken(user, "access", this.accessTtlSec),
       refreshToken: await this.signToken(user, "refresh", this.refreshTtlSec),
       expiresIn: this.accessTtlSec,
+      user: { id: user.id, username: user.username, roles: user.roles, attributes: user.attributes },
     };
   }
 

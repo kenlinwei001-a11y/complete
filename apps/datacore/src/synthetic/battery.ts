@@ -356,7 +356,7 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN" },
     { key: "C12", name: "预测偏差触发重校", expression: "SUSTAIN(Model.forecast_deviation > 0.08, 1)", severity: "WARN" },
   ],
-  scenarioSeed: { views: ["dash", "risk", "order"], intents: [] },
+  scenarioSeed: { views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"], intents: [] },
   features: [...ALL_FEATURE_KEYS],
   solverParams: BATTERY_SOLVER_PARAMS,
   // A8.6 §6.1 — measureField/weightField are battery-pack extensions consumed by the generator.

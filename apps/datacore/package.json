@@ -10,10 +10,13 @@
     "lint": "eslint src test",
     "test": "vitest run",
     "start": "node dist/server.js",
+    "migrate": "node dist/migrate-cli.js",
     "seed": "node dist/seed-cli.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.0.0",
     "@platform/contracts": "workspace:*",
     "argon2": "^0.41.1",

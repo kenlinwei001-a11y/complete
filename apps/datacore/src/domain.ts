@@ -37,9 +37,16 @@ export interface ViewConfig {
   tenantId: string;
   role: string; // resolved by tenant + role
   scenarioPackages: string[];
-  views: { key: string; title: string; layout?: Record<string, unknown> }[];
+  views: {
+    key: string;
+    title: string;
+    /** 前端 PRD §7.1 渲染器键（dashboard | ontology-graph | risk-board | ledger | plan-audit | …） */
+    renderer?: string;
+    layout?: Record<string, unknown>;
+    options?: Record<string, unknown>;
+  }[];
   theme: Record<string, unknown>;
-  navigation: { key: string; label: string }[];
+  navigation: { key: string; label: string; viewKey?: string; group?: "business" | "admin" }[];
   origin?: "SYNTHETIC" | "MANUAL";
 }
 

@@ -452,7 +452,8 @@ export class SyntheticService {
 
   private async seedDemoAccounts(ctx: AuthCtx): Promise<string[]> {
     const wanted: { username: string; roles: string[]; attributes: Record<string, unknown> }[] = [
-      { username: "admin", roles: ["admin"], attributes: {} },
+      // admin 演示账号持有全部管理角色，保证所有管理台可见（部署批次约定）
+      { username: "admin", roles: ["admin", "planner", "catalog_admin"], attributes: {} },
       { username: "planner", roles: ["planner"], attributes: {} },
       {
         username: "base_manager",
@@ -481,23 +482,116 @@ export class SyntheticService {
   }
 
   private async seedViewConfigs(ctx: AuthCtx, views: string[]): Promise<void> {
-    const titles: Record<string, string> = { dash: "驾驶舱", risk: "风险推演", order: "订单台账" };
+    // 前端 PRD §7：每个视图声明 renderer（前端按注册表分发）+ 声明式 layout（dashboard widget / ledger 列）。
+    const DASH_LAYOUT: Record<string, unknown> = {
+      widgets: [
+        {
+          key: "gwh", type: "kpi", title: "总产能 (GWh)", unit: "GWh", featureKey: "view.dash.widget.capacity",
+          query: { kind: "objects-aggregate", objectType: "Base", agg: "sum", prop: "gwh" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(gwh)", label: "全部基地铭牌产能合计" },
+        },
+        {
+          key: "util", type: "kpi", title: "平均利用率", unit: "%",
+          query: { kind: "objects-aggregate", objectType: "Base", agg: "avg", prop: "util" },
+          provenance: { toolName: "query_objects", outputPath: "$.avg(util)", label: "12 基地利用率算术平均" },
+        },
+        {
+          key: "attain", type: "kpi", title: "计划达成率", unit: "%",
+          query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
+          provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "attainment:line 周聚合回写值" },
+        },
+        {
+          key: "orders", type: "kpi", title: "在手订单",
+          query: { kind: "objects-aggregate", objectType: "Order", agg: "count" },
+          provenance: { toolName: "query_objects", outputPath: "$.count", label: "Order 行计数" },
+        },
+        {
+          key: "oee-trend", type: "chart", title: "OEE 14 日趋势", span: 2, chartKind: "line",
+          query: { kind: "timeseries", seriesKey: "oee:equip", entityIds: [], grain: "day", agg: "avg", days: 14 },
+          provenance: { toolName: "query_timeseries_agg", outputPath: "$.points", label: "oee:equip 日粒度均值" },
+        },
+        {
+          key: "orders-table", type: "table", title: "在手订单（前 8）", span: 2,
+          query: { kind: "objects", objectType: "Order", columns: ["so", "cust", "model", "qty", "due", "status"], limit: 8 },
+          provenance: { toolName: "query_objects", outputPath: "$.items", label: "订单对象查询" },
+        },
+      ],
+    };
+    const LEDGER_LAYOUT: Record<string, unknown> = {
+      objectType: "Order",
+      columns: [
+        { key: "so", label: "SO" },
+        { key: "cust", label: "客户", filterable: true },
+        { key: "model", label: "型号", filterable: true },
+        { key: "qty", label: "数量" },
+        { key: "due", label: "交期" },
+        { key: "bases", label: "基地", filterable: true },
+        { key: "status", label: "状态", filterable: true },
+      ],
+    };
+    const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown> }> = {
+      dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
+      graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
+      risk: { title: "预判推演看板", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14 } },
+      order: { title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
+      "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit" } },
+      "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate" } },
+      "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast" } },
+      "sop-balance": { title: "S&OP 月度平衡", renderer: "sop-balance", layout: { apiTag: "sop" } },
+    };
+    const ADMIN_NAV: { key: string; label: string }[] = [
+      { key: "connections", label: "数据接入" },
+      { key: "rule-docs", label: "规则文档审核" },
+      { key: "modeling", label: "本体建模" },
+      { key: "rules", label: "规则库" },
+      { key: "permissions", label: "权限策略" },
+      { key: "synthetic", label: "合成数据" },
+      { key: "actions", label: "Action 审批" },
+      { key: "features", label: "功能开通" },
+      { key: "catalog", label: "意图目录" },
+      { key: "agents", label: "Agent 注册表" },
+      { key: "workflows", label: "Workflow" },
+      { key: "skills", label: "Skill" },
+      { key: "mcp", label: "MCP 服务器" },
+      { key: "scenes", label: "场景入口" },
+      { key: "ops/fallback", label: "兜底运营" },
+    ];
+    // 不同账号不同前端：admin 全量（含 admin 导航组），planner 业务视图，base_manager 子集 + 不同主题强调色。
     const roleViews: Record<string, string[]> = {
       admin: views,
       planner: views,
-      base_manager: views.filter((v) => v !== "dash"),
+      base_manager: views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate"].includes(v)),
+    };
+    const themes: Record<string, Record<string, string>> = {
+      admin: { "--accent": "#4C90F0" },
+      planner: { "--accent": "#43B7D7" },
+      base_manager: { "--accent": "#36BFA5" },
     };
     const old = await this.repos.viewConfigs.list(ctx.tenantId, (v) => v.origin === "SYNTHETIC");
     for (const v of old) await this.repos.viewConfigs.remove(ctx.tenantId, v.id);
     for (const [role, keys] of Object.entries(roleViews)) {
+      const navigation: ViewConfig["navigation"] = keys.map((k) => ({
+        key: k,
+        label: VIEW_DEFS[k]?.title ?? k,
+        viewKey: k,
+        group: "business" as const,
+      }));
+      if (role === "admin") {
+        navigation.push(...ADMIN_NAV.map((n) => ({ key: n.key, label: n.label, group: "admin" as const })));
+      }
       const vc: ViewConfig = {
         id: `vc_${ctx.tenantId}_${role}`,
         tenantId: ctx.tenantId,
         role,
-        scenarioPackages: ["battery-manufacturing"],
-        views: keys.map((k) => ({ key: k, title: titles[k] ?? k })),
-        theme: { primary: role === "admin" ? "#1f6feb" : role === "planner" ? "#0b7261" : "#7c3aed" },
-        navigation: keys.map((k) => ({ key: k, label: titles[k] ?? k })),
+        scenarioPackages: ["pkg_battery_manufacturing"],
+        views: keys.map((k) => ({
+          key: k,
+          title: VIEW_DEFS[k]?.title ?? k,
+          renderer: VIEW_DEFS[k]?.renderer ?? k,
+          layout: VIEW_DEFS[k]?.layout ?? {},
+        })),
+        theme: themes[role] ?? { "--accent": "#4C90F0" },
+        navigation,
         origin: "SYNTHETIC",
       };
       await this.repos.viewConfigs.put(vc);

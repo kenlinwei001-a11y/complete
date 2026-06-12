@@ -298,10 +298,12 @@ describe("A3 modeling", () => {
       url: `/a/v1/modeling/drafts/${draftId}/publish`,
       headers: ADMIN,
     });
-    expect(publish.statusCode).toBe(400);
-    const err = publish.json() as { error: { code: string; message: string } };
-    expect(err.error.code).toBe("VALIDATION_ERROR");
-    expect(err.error.message).toContain("primary key");
-    expect(err.error.message).toContain("Nope");
+    // 前端真连对齐：发布校验失败 → 200 { ok:false, errors:[{typeKey,message}] }（内联展示在卡片上）
+    expect(publish.statusCode).toBe(200);
+    const res = publish.json() as { ok: boolean; errors: { typeKey: string; message: string }[] };
+    expect(res.ok).toBe(false);
+    const all = res.errors.map((e) => `${e.typeKey}: ${e.message}`).join("; ");
+    expect(all).toContain("primary key");
+    expect(all).toContain("Nope");
   });
 });

@@ -22,7 +22,9 @@ describe("A7 synthetic data", () => {
     expect(report.rowCounts).toMatchObject({ Base: 12, Model: 6, Order: 20 });
     for (const check of report.fkChecks) expect(check, check.check).toMatchObject({ passed: true });
     for (const spot of report.derivationSpotChecks) expect(spot.ok, `${spot.typeKey}.${spot.propKey}`).toBe(true);
-    expect(report.views).toEqual(["dash", "risk", "order"]);
+    expect(report.views).toEqual([
+      "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance",
+    ]);
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 
     const snapshot1 = (await t.repos.objects.list("demo")).sort((a, b) => (a.id < b.id ? -1 : 1));

@@ -25,10 +25,16 @@ export async function runMigrations(pool: pg.Pool): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   // dist/persistence -> ../../migrations ; src/persistence -> ../../migrations
   const dir = join(here, "..", "..", "migrations");
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  );
   const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
   for (const f of files) {
+    const done = await pool.query(`SELECT 1 FROM schema_migrations WHERE name = $1`, [f]);
+    if (done.rowCount && done.rowCount > 0) continue;
     const sql = await readFile(join(dir, f), "utf8");
     await pool.query(sql);
+    await pool.query(`INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING`, [f]);
   }
 }
 

@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import cors from "@fastify/cors";
 import { z, ZodError } from "zod";
 import {
   AgentDefinitionSchema,
@@ -43,6 +44,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       return url;
     },
   });
+
+  // 经网关同源访问时无需 CORS；开放宽松 CORS 仅为直连端口的开发调试（credentials 模式）。
+  await app.register(cors, { origin: true, credentials: true });
 
   // tolerate empty JSON bodies (e.g. POST .../publish without payload)
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
@@ -514,6 +518,23 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return reply.status(201).send(config);
   });
 
+  // 前端 PRD §7.8「连接测试」：tools/list 发现结果（失败 → ok:false + message，不抛 5xx）。
+  app.post("/b/v1/mcp-configs/:id/test", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const existing = await deps.repos.mcpConfigs.get(id);
+    if (!existing || existing.tenantId !== a.tenantId) {
+      throw new HttpError(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    }
+    if (!deps.mcp) return { ok: false, tools: [], message: "MCP client 未启用" };
+    try {
+      const tools = await deps.mcp.listTools(id);
+      return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description })) };
+    } catch (err) {
+      return { ok: false, tools: [], message: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   app.put("/b/v1/mcp-configs/:id", async (req) => {
     const a = await auth(req);
     const { id } = req.params as { id: string };
@@ -640,16 +661,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
   });
 
-  // 前端 PRD §6.2 别名：按视图取场景入口（查询 Dock 的 placeholder/建议问题来源）
-  app.get("/b/v1/scenes", async (req) => {
+  // 前端 PRD §6.2 别名：按视图取场景入口（查询 Dock 的 placeholder/建议问题来源）。
+  // ?view= 给定时返回单对象或 null（前端 fetchScene 消费形态）。
+  app.get("/b/v1/scenes", async (req, reply) => {
     const a = await auth(req);
     const view = (req.query as Record<string, unknown>)["view"];
     const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);
     const enabled = await deps.features.enabledSet(a.tenantId, a.token);
     const marked = entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
-    return typeof view === "string" && view.length > 0
-      ? marked.filter((e) => e.viewKey === view)
-      : marked;
+    if (typeof view === "string" && view.length > 0) {
+      return reply.send(marked.find((e) => e.viewKey === view) ?? null);
+    }
+    return marked;
   });
 
   app.put("/b/v1/scene-entries/:viewKey", async (req) => {

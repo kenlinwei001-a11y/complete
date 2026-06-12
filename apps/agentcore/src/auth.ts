@@ -98,7 +98,9 @@ export async function resolveAuth(
     }
     const exp = typeof payload.exp === "number" ? payload.exp : undefined;
     if (exp !== undefined && exp * 1000 < Date.now()) throw new AuthError("token expired");
-    const tenantId = (payload.tenantId ?? payload.tenant_id) as string | undefined;
+    if (payload.typ === "refresh") throw new AuthError("refresh token cannot be used for access");
+    // DataCore A0 签发的 JWT 租户声明为 `tid`（兼容 tenantId/tenant_id 形态）
+    const tenantId = (payload.tid ?? payload.tenantId ?? payload.tenant_id) as string | undefined;
     const userId = (payload.sub ?? payload.userId) as string | undefined;
     if (!tenantId || !userId) throw new AuthError("token missing tenantId/sub");
     const roles = Array.isArray(payload.roles) ? (payload.roles as string[]) : [];

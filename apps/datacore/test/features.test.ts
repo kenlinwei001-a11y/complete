@@ -189,7 +189,9 @@ describe("Feature entitlement backend (E)", () => {
     // re-run the synthetic job → risk view seed is skipped
     await seedBattery(t);
     const job = (await t.repos.syntheticJobs.list("demo")).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]!;
-    expect(job.report!.views).toEqual(["dash", "order"]);
+    expect(job.report!.views).toContain("dash");
+    expect(job.report!.views).toContain("order");
+    expect(job.report!.views).not.toContain("risk");
     const vcs = await t.repos.viewConfigs.list("demo", (v) => v.origin === "SYNTHETIC");
     for (const vc of vcs) expect(vc.views.map((v) => v.key)).not.toContain("risk");
   });

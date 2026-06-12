@@ -4,7 +4,7 @@ import { LlmProviderRegistry, RoutingLlmClient } from "./llm/providers.js";
 import { McpClient } from "./mcp/client.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
-import { seedIntentsAndPlans, seedScenarioPackage } from "./mocks/seed.js";
+import { seedIntentsAndPlans, seedRegistry, seedSceneEntries, seedScenarioPackage } from "./mocks/seed.js";
 import { createRepos } from "./persistence/index.js";
 import { buildServer } from "./server.js";
 import { createHttpDataCore } from "./tools/datacore-http.js";
@@ -21,6 +21,14 @@ async function main(): Promise<void> {
     const { intents, plans } = seedIntentsAndPlans();
     for (const p of plans) await repos.plans.insert(p);
     for (const i of intents) await repos.intents.insert(i);
+  }
+  // 真连部署批次：B5 场景入口 + B1/B2/B4 演示注册表（缺失才播种，幂等）。
+  const { agents, workflows, skills } = seedRegistry();
+  for (const wf of workflows) if (!(await repos.workflows.get(wf.id))) await repos.workflows.insert(wf);
+  for (const sk of skills) if (!(await repos.skills.get(sk.id))) await repos.skills.insert(sk);
+  for (const ag of agents) if (!(await repos.agents.get(ag.id))) await repos.agents.insert(ag);
+  for (const scn of seedSceneEntries()) {
+    if (!(await repos.sceneEntries.byView(scn.tenantId, scn.viewKey))) await repos.sceneEntries.upsert(scn);
   }
 
   const dataCore = config.DATACORE_BASE_URL ? createHttpDataCore(config.DATACORE_BASE_URL) : createMockDataCore();

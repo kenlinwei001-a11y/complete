@@ -12,12 +12,13 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
     await repos.tenants.put({
       id: DEMO_TENANT,
       tenantId: DEMO_TENANT,
-      name: "演示租户",
+      name: "全域数字化智能决策支撑系统",
       industry: "battery-manufacturing",
     });
   }
   const wanted: { username: string; roles: string[]; attributes: Record<string, unknown> }[] = [
-    { username: "admin", roles: ["admin"], attributes: {} },
+    // admin 演示账号持有全部管理角色（admin + planner + catalog_admin），保证所有管理台可见
+    { username: "admin", roles: ["admin", "planner", "catalog_admin"], attributes: {} },
     { username: "planner", roles: ["planner"], attributes: {} },
     {
       username: "base_manager",

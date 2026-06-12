@@ -97,6 +97,9 @@ describe("S2 action approval (V9)", () => {
     await seedBattery(t); // registers adopt_mitigation (planner→admin) + plan_change (admin)
 
     // submit by planner with chain [planner, admin] but no second planner → NO_ELIGIBLE_APPROVER
+    // （部署批次：seeded admin 兼具 planner 角色，先临时收窄到 ["admin"] 复现该场景）
+    const adminUser = await t.repos.users.get("demo", "usr_demo_admin");
+    if (adminUser) await t.repos.users.put({ ...adminUser, roles: ["admin"] });
     const fail = await t.app.inject({
       method: "POST",
       url: "/a/v1/action-drafts",
@@ -105,6 +108,7 @@ describe("S2 action approval (V9)", () => {
     });
     expect(fail.statusCode).toBe(422);
     expect((fail.json() as { error: { code: string } }).error.code).toBe("NO_ELIGIBLE_APPROVER");
+    if (adminUser) await t.repos.users.put(adminUser);
 
     await addPlanner2(t);
 
