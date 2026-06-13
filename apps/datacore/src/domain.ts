@@ -571,12 +571,66 @@ export interface WebhookRegistration {
 export interface OutboxEvent {
   id: string; // evt_
   tenantId: string;
+  /** §2: globally-unique id consumers dedupe on (defaults to id for legacy rows). */
+  eventId: string;
   event: string;
+  /** §2: per-aggregate ordering — same aggregateKey delivered serially by seq. */
+  aggregateKey: string;
+  seq: number;
   payload: Record<string, unknown>;
-  status: "PENDING" | "DELIVERED" | "FAILED";
+  status: "PENDING" | "DELIVERED" | "FAILED" | "DEAD";
   attempts: number;
   nextAttemptAt: string;
+  lastError?: string;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Execution semantics（PRD-addendum-execution-semantics §1/§4/§6）
+// ---------------------------------------------------------------------------
+
+/** §1 管线执行互斥与重入：每 (kind,key) 一行，fence 单调每次获取 +1。 */
+export interface ExecutionLockRecord {
+  id: string; // = `${resourceKind}|${resourceKey}`
+  tenantId: string;
+  resourceKind: string;
+  resourceKey: string;
+  holderId: string;
+  acquiredAt: string;
+  leaseUntil: string;
+  fence: number;
+  /** §1.3 变更触发类：持锁期间累积的"待重跑"标志。 */
+  rerunRequested: boolean;
+}
+
+/** §2/§4 幂等记录：同键重复请求返回首次结果摘要（7d 过期）。 */
+export interface IdempotencyRecord {
+  id: string; // = idempotency key
+  tenantId: string;
+  scope: string; // e.g. "approval" | "sop" | "replay"
+  responseDigest: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** §4 回放进度检查点：每 tick 提交，中断重入从 last+1 续。 */
+export interface ReplayProgressRecord {
+  id: string; // = `replay|${tenantId}`
+  tenantId: string;
+  lastCompletedTick: number;
+  updatedAt: string;
+}
+
+/** §6 A2 分段抽取的段落级状态表（PARTIAL 任务可单段重试）。 */
+export interface ExtractSegmentRecord {
+  id: string; // = `${docId}|${segNo}`
+  tenantId: string;
+  docId: string;
+  segNo: number;
+  status: "OK" | "FAILED" | "PENDING";
+  result?: Record<string, unknown>;
+  error?: string;
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------

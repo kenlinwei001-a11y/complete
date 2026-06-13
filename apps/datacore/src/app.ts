@@ -21,6 +21,7 @@ import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
 import { AuthzService } from "./authz.js";
 import { OutboxService } from "./outbox.js";
+import { ExecutionLockService } from "./execlock.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
@@ -80,6 +81,7 @@ export interface BuiltApp {
     auth: AuthService;
     authz: AuthzService;
     outbox: OutboxService;
+    execLocks: ExecutionLockService;
     rules: RulesService;
     ontology: OntologyService;
     ontologyCore: OntologyCoreService;
@@ -209,7 +211,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const auth = new AuthService(repos, config.ACCESS_TOKEN_TTL_SEC, config.REFRESH_TOKEN_TTL_SEC);
   await auth.init();
   const authz = new AuthzService(repos);
-  const outbox = new OutboxService(repos, logger, deps.fetchImpl);
+  const outbox = new OutboxService(repos, logger, deps.fetchImpl, metrics);
+  const execLocks = new ExecutionLockService(repos, metrics);
   const rules = new RulesService(repos, outbox);
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers);
@@ -655,6 +658,51 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         grants: p.grants.map((g) => `${g.role}:${g.ops.join("/")}`).join(", "),
       })),
       rowFilter: result.effectiveRowFilter,
+    };
+  });
+
+  // 执行语义增量 §2：Outbox 死信列表 + 手动重投（中台可见）
+  app.get("/a/v1/outbox/dead", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const dead = await outbox.listDead(c.tenantId);
+    return {
+      items: dead.map((e) => ({
+        id: e.id,
+        eventId: e.eventId,
+        event: e.event,
+        aggregateKey: e.aggregateKey,
+        seq: e.seq,
+        attempts: e.attempts,
+        lastError: e.lastError,
+        createdAt: e.createdAt,
+      })),
+    };
+  });
+  app.post("/a/v1/outbox/:id/redeliver", async (req, reply) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const { id } = req.params as { id: string };
+    const ok = await outbox.redeliver(c.tenantId, id);
+    if (!ok) throw notFound("dead-letter event not found");
+    return reply.send({ ok: true });
+  });
+  // 执行语义增量 §1：执行锁可观测（当前持锁/租约/fence）
+  app.get("/a/v1/exec-locks", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const locks = await repos.executionLocks.list(c.tenantId);
+    return {
+      items: locks.map((l) => ({
+        resourceKind: l.resourceKind,
+        resourceKey: l.resourceKey,
+        holderId: l.holderId,
+        acquiredAt: l.acquiredAt,
+        leaseUntil: l.leaseUntil,
+        fence: l.fence,
+        rerunRequested: l.rerunRequested,
+        active: new Date(l.leaseUntil).getTime() > Date.now(),
+      })),
     };
   });
 
@@ -1846,6 +1894,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       auth,
       authz,
       outbox,
+      execLocks,
       rules,
       ontology,
       ontologyCore,

@@ -14,3 +14,4 @@ export * from "./admin.js";
 export * from "./livedin.js";
 export * from "./replay-ops.js";
 export * from "./ontology-governance.js";
+export * from "./execution.js";

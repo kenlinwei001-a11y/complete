@@ -1,4 +1,5 @@
 import type {
+  ExecutionLockRecord,
   KbChunkRecord,
   LinkInstance,
   ObjectInstance,
@@ -9,6 +10,7 @@ import type {
 } from "../domain.js";
 import type {
   ClaimedJob,
+  ExecutionLockStore,
   LinkStore,
   ObjectStore,
   RawRowStore,
@@ -54,6 +56,39 @@ class MemStore<T extends { id: string; tenantId: string }> implements Store<T> {
       out.push(clone(item));
     }
     return out;
+  }
+}
+
+class MemExecutionLockStore extends MemStore<ExecutionLockRecord> implements ExecutionLockStore {
+  async tryAcquire(input: {
+    tenantId: string;
+    resourceKind: string;
+    resourceKey: string;
+    holderId: string;
+    leaseMs: number;
+    now?: number;
+  }): Promise<ExecutionLockRecord | undefined> {
+    const nowMs = input.now ?? Date.now();
+    const id = `${input.resourceKind}|${input.resourceKey}`;
+    const existing = this.items.get(id);
+    // Single-process memory store: map ops are atomic w.r.t. the event loop.
+    if (existing && existing.tenantId === input.tenantId) {
+      if (new Date(existing.leaseUntil).getTime() > nowMs) return undefined; // held, not expired
+    }
+    const fence = (existing?.fence ?? 0) + 1;
+    const rec: ExecutionLockRecord = {
+      id,
+      tenantId: input.tenantId,
+      resourceKind: input.resourceKind,
+      resourceKey: input.resourceKey,
+      holderId: input.holderId,
+      acquiredAt: new Date(nowMs).toISOString(),
+      leaseUntil: new Date(nowMs + input.leaseMs).toISOString(),
+      fence,
+      rerunRequested: false,
+    };
+    this.items.set(id, clone(rec));
+    return clone(rec);
   }
 }
 
@@ -310,6 +345,10 @@ export function createMemoryRepos(): Repos {
     industryTemplates: new MemStore(),
     syntheticJobs: new MemStore(),
     outboxEvents: new MemStore(),
+    executionLocks: new MemExecutionLockStore(),
+    idempotencyRecords: new MemStore(),
+    replayProgress: new MemStore(),
+    extractSegments: new MemStore(),
     webhooks: new MemStore(),
     sopVersions: new MemStore(),
     solverParams: new MemStore(),

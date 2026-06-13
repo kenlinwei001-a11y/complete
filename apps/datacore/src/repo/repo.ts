@@ -13,6 +13,10 @@ import type {
   DomainRecord,
   DynamicFeatureRecord,
   ElementRefRecord,
+  ExecutionLockRecord,
+  ExtractSegmentRecord,
+  IdempotencyRecord,
+  ReplayProgressRecord,
   ObjectPropHistoryRecord,
   PublishRequestRecord,
   SliceSpecRecord,
@@ -78,6 +82,21 @@ export interface UserStore extends Store<User> {
 /** 管理平台增量 §2：platform_admin 跨租户列出全部租户。 */
 export interface TenantStore extends Store<Tenant> {
   listAll(): Promise<Tenant[]>;
+}
+
+/**
+ * §1 执行锁：原子抢占过期租约（INSERT … ON CONFLICT DO UPDATE WHERE lease_until < now()）。
+ * 返回获取到的锁（含 fence）或 undefined（已被未过期持有者占用）。
+ */
+export interface ExecutionLockStore extends Store<ExecutionLockRecord> {
+  tryAcquire(input: {
+    tenantId: string;
+    resourceKind: string;
+    resourceKey: string;
+    holderId: string;
+    leaseMs: number;
+    now?: number;
+  }): Promise<ExecutionLockRecord | undefined>;
 }
 
 export interface ObjectStore extends Store<ObjectInstance> {
@@ -202,6 +221,11 @@ export interface Repos {
   syntheticJobs: Store<SyntheticJob>;
   outboxEvents: Store<OutboxEvent>;
   webhooks: Store<WebhookRegistration>;
+  // 执行语义增量（011_execution_semantics.sql）
+  executionLocks: ExecutionLockStore;
+  idempotencyRecords: Store<IdempotencyRecord>;
+  replayProgress: Store<ReplayProgressRecord>;
+  extractSegments: Store<ExtractSegmentRecord>;
   // S1.8
   sopVersions: Store<SopVersion>;
   // S1 per-tenant solver params（+ M11/S1 修订：版本历史）

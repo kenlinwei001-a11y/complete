@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import pg from "pg";
 import type {
+  ExecutionLockRecord,
   KbChunkRecord,
   LinkInstance,
   ObjectInstance,
@@ -13,6 +14,7 @@ import type {
 import type {
   ClaimedJob,
   EpochStore,
+  ExecutionLockStore,
   LinkStore,
   ObjectStore,
   RawRowStore,
@@ -74,6 +76,59 @@ class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
     ]);
     const items = r.rows.map((row) => row.doc as T);
     return pred ? items.filter(pred) : items;
+  }
+}
+
+class PgExecutionLockStore extends PgStore<ExecutionLockRecord> implements ExecutionLockStore {
+  constructor(pool: pg.Pool) {
+    super(pool, "execution_locks");
+  }
+
+  /**
+   * §1: atomic preemption of an expired lease. Dedicated columns (not the generic
+   * doc JSONB) are required so the WHERE-on-conflict and monotonic fence are
+   * evaluated server-side. The doc column is kept in sync for generic reads.
+   */
+  async tryAcquire(input: {
+    tenantId: string;
+    resourceKind: string;
+    resourceKey: string;
+    holderId: string;
+    leaseMs: number;
+    now?: number;
+  }): Promise<ExecutionLockRecord | undefined> {
+    const id = `${input.resourceKind}|${input.resourceKey}`;
+    const leaseSec = Math.max(1, Math.round(input.leaseMs / 1000));
+    const r = await this.pool.query(
+      `INSERT INTO execution_locks
+         (id, tenant_id, resource_kind, resource_key, holder_id, acquired_at, lease_until, fence, rerun_requested, doc)
+       VALUES ($1,$2,$3,$4,$5, now(), now() + ($6 || ' seconds')::interval, 1, false, '{}'::jsonb)
+       ON CONFLICT (id) DO UPDATE
+         SET holder_id = EXCLUDED.holder_id,
+             acquired_at = now(),
+             lease_until = now() + ($6 || ' seconds')::interval,
+             fence = execution_locks.fence + 1,
+             rerun_requested = false
+         WHERE execution_locks.lease_until < now()
+       RETURNING id, tenant_id, resource_kind, resource_key, holder_id, acquired_at, lease_until, fence, rerun_requested`,
+      [id, input.tenantId, input.resourceKind, input.resourceKey, input.holderId, String(leaseSec)],
+    );
+    const row = r.rows[0];
+    if (!row) return undefined; // held by an unexpired lease
+    const rec: ExecutionLockRecord = {
+      id: row.id,
+      tenantId: row.tenant_id,
+      resourceKind: row.resource_kind,
+      resourceKey: row.resource_key,
+      holderId: row.holder_id,
+      acquiredAt: new Date(row.acquired_at).toISOString(),
+      leaseUntil: new Date(row.lease_until).toISOString(),
+      fence: Number(row.fence),
+      rerunRequested: row.rerun_requested,
+    };
+    // keep generic doc column coherent for Store.get/list
+    await this.put(rec);
+    return rec;
   }
 }
 
@@ -493,6 +548,10 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     industryTemplates: new PgStore(pool, "industry_templates"),
     syntheticJobs: new PgStore(pool, "synthetic_jobs"),
     outboxEvents: new PgStore(pool, "outbox_events"),
+    executionLocks: new PgExecutionLockStore(pool),
+    idempotencyRecords: new PgStore(pool, "idempotency_records"),
+    replayProgress: new PgStore(pool, "replay_progress"),
+    extractSegments: new PgStore(pool, "extract_segments"),
     webhooks: new PgStore(pool, "webhooks"),
     sopVersions: new PgStore(pool, "sop_versions"),
     solverParams: new PgStore(pool, "solver_params"),
