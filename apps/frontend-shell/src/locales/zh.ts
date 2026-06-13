@@ -148,6 +148,7 @@ export const zh = {
     capacityDecision: "产能决策",
     ltaLock: "长协锁量",
     finance: "财务测算",
+    projectFinance: "项目测算（C1）",
     ruleChecks: "规则校验",
     financeText: (rev: number, capex: number, irr: number) =>
       `收入 ${rev.toLocaleString("zh-CN")} 亿 · CAPEX ${capex} 亿${irr > 0 ? ` · IRR ${(irr * 100).toFixed(0)}%` : ""}`,

@@ -19,6 +19,31 @@ export const AnnualScenarioSchema = z.object({
   ),
   finalized: z.boolean(),
   finalizedAt: z.string().optional(),
+  /** C1 · capex_scenario 真实测算产出（供给/缺口曲线 + 项目级 IRR·util24·C23）。additive。 */
+  capexScenario: z
+    .object({
+      quarters: z.array(z.string()), // 季度标签，如 ["2026-Q3", ...]
+      demand: z.array(z.number()), // D[q]
+      supply: z.array(z.number()), // S[q] = S0 + Σ项目爬坡
+      gap: z.array(z.number()), // G[q] = D − S
+      windows: z.array(
+        z.object({
+          kind: z.enum(["gap", "surplus"]),
+          fromQ: z.string(),
+          toQ: z.string(),
+        }),
+      ),
+      projects: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          irr: z.number(), // 百分数
+          util24: z.number(), // 0..1
+          c23pass: z.boolean(),
+        }),
+      ),
+    })
+    .optional(),
 });
 export type AnnualScenario = z.infer<typeof AnnualScenarioSchema>;
 

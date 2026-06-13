@@ -20,7 +20,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.sop-balance", name: "S&OP 月度平衡", level: "VIEW", defaultOn: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
   { key: "view.project-sim", name: "项目沙盘推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
   // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）
-  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"] } },
+  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"], solverKeys: ["capex_scenario"] } },
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },

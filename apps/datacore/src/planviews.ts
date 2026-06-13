@@ -5,6 +5,7 @@ import type { RulesService } from "./rules.js";
 import type { SolverService } from "./solvers/service.js";
 import type { OutboxService } from "./outbox.js";
 import { computeRollup, curveMult } from "./solvers/capacity.js";
+import { capexScenario, deriveS0 } from "./solvers/capex.js";
 import { dayFrom, maintWeekOf, num, str, type SolverContext } from "./solvers/types.js";
 import { evaluateExpression } from "./ruledsl.js";
 import { hashString, round } from "./prng.js";
@@ -47,25 +48,47 @@ export class PlanService {
     const scenarioObjs = (await this.repos.objects.listByType(ctx.tenantId, "AnnualScenario"))
       .filter((s) => num(s.props.year) === y)
       .sort((a, b) => scenarioOrder(str(a.props.key)) - scenarioOrder(str(b.props.key)));
+    // C1：求解器上下文（S0[q] 由 S1.2 月聚合×3 上卷派生），三情景共用一份切片快照。
+    const c = await this.solvers.loadContext(ctx.tenantId);
+    const HORIZON_Q = 8; // 8 季 = 24 月（util24 评估窗口）
+    const startQ = quarterOf(c.params.forecastStart);
+    const s0 = deriveS0(c, HORIZON_Q, computeRollup, curveMult, maintWeekOf);
     const scenarios = [] as AopResponse["scenarios"];
     for (const s of scenarioObjs) {
+      const key = str(s.props.key);
+      const capex = this.capexScenarioFor(c, key, num(s.props.demand), s0, startQ, HORIZON_Q);
       // C18/C23 走真实规则引擎（A5），不在前端硬编码结论。
       const verdicts = await this.rules.evaluate(ctx, ["C18", "C23"], {
         AnnualScenario: s.props,
         ...s.props,
       });
+      const ruleChecks = verdicts.map((v) => ({ ruleId: v.ruleId, passed: v.passed, explanation: v.explanation }));
+      // C23 判定改由 capex_scenario 真实产出驱动（IRR≥15% ∧ util24≥75%）；无项目情景沿用规则引擎。
+      const c23 = ruleChecks.find((r) => r.ruleId === "C23");
+      if (c23 && capex && capex.projects.length > 0) {
+        const allPass = capex.projects.every((p) => p.c23pass);
+        c23.passed = allPass;
+        c23.explanation = capex.projects
+          .map((p) => `${p.name}：IRR ${p.irr}%（门槛 ${round(capex.irrMin * 100, 1)}%）· 24月利用率 ${round(p.util24 * 100, 1)}%（门槛 ${round(capex.util24Min * 100, 1)}%）→ ${p.c23pass ? "通过" : "不通过"}`)
+          .join("；");
+      }
+      // finance.irr 以分数表达（前端 ×100 显示）：组合 IRR（项目 IRR 产能加权均值）/100；
+      // 无项目情景沿用种子值（种子以百分数存储 → /100）。
+      const irr =
+        capex && capex.projects.length > 0 ? round(capex.portfolioIrr / 100, 4) : round(num(s.props.irr) / 100, 4);
       scenarios.push({
         id: s.id,
-        key: str(s.props.key),
+        key,
         name: str(s.props.name),
         year: num(s.props.year),
         demand: num(s.props.demand),
         capacityDecision: str(s.props.capacityDecision),
         ltaLock: str(s.props.ltaLock),
-        finance: { revenue: num(s.props.revenue), capex: num(s.props.capex), irr: num(s.props.irr) },
-        ruleChecks: verdicts.map((v) => ({ ruleKey: v.ruleId, passed: v.passed, explanation: v.explanation })),
+        finance: { revenue: num(s.props.revenue), capex: num(s.props.capex), irr },
+        ruleChecks: ruleChecks.map((v) => ({ ruleKey: v.ruleId, passed: v.passed, explanation: v.explanation })),
         finalized: s.props.finalized === true,
         ...(s.props.finalizedAt ? { finalizedAt: str(s.props.finalizedAt) } : {}),
+        ...(capex ? { capexScenario: capex.view } : {}),
       });
     }
     const triggers = (await this.repos.objects.listByType(ctx.tenantId, "ScenarioTrigger"))
@@ -88,6 +111,75 @@ export class PlanService {
     return { scenarios, triggers, decomposition };
   }
 
+  /**
+   * C1：对一个情景跑 capex_scenario 求解器，组装前端可消费视图 + 组合 IRR。
+   * 需求曲线 D[q] = 年需求 × 季节权重（季度卷积，HORIZON_Q 季）。
+   */
+  private capexScenarioFor(
+    c: SolverContext,
+    scenarioKey: string,
+    annualDemand: number,
+    s0: number[],
+    startQ: string,
+    horizonQ: number,
+  ):
+    | {
+        view: NonNullable<AopResponse["scenarios"][number]["capexScenario"]>;
+        projects: { id: string; name: string; irr: number; util24: number; c23pass: boolean }[];
+        portfolioIrr: number;
+        irrMin: number;
+        util24Min: number;
+      }
+    | null {
+    const cfg = c.params.capexScenario;
+    if (!cfg) return null;
+    const scen = cfg.scenarios[scenarioKey];
+    if (!scen) return null;
+    // 季节权重卷积到季度（月权重和=12 → 季权重和=4），按窗口起点季对齐。
+    const seasonal = c.params.planview.seasonal;
+    const startQNo = Number(startQ.split("-Q")[1]) - 1; // 0..3
+    const demand: number[] = [];
+    for (let q = 0; q < horizonQ; q++) {
+      const qNo = (startQNo + q) % 4;
+      const wq = seasonal[qNo * 3]! + seasonal[qNo * 3 + 1]! + seasonal[qNo * 3 + 2]!;
+      demand.push(round((annualDemand * wq) / 12, 4));
+    }
+    const out = capexScenario(
+      { ...c },
+      {
+        scenarioKey,
+        demand,
+        s0,
+        projects: scen.projects,
+      },
+    ) as {
+      S: number[];
+      G: number[];
+      windows: { kind: "gap" | "surplus"; fromQ: number; toQ: number }[];
+      projects: { id: string; name: string; irr: number; util24: number; c23pass: boolean; cap: number }[];
+      c23: { irrMin: number; util24Min: number };
+    };
+    const qLabel = (i: number) => addQuarters(startQ, i);
+    const view: NonNullable<AopResponse["scenarios"][number]["capexScenario"]> = {
+      quarters: demand.map((_, i) => qLabel(i)),
+      demand,
+      supply: out.S,
+      gap: out.G,
+      windows: out.windows.map((w) => ({ kind: w.kind, fromQ: qLabel(w.fromQ), toQ: qLabel(w.toQ) })),
+      projects: out.projects.map((p) => ({ id: p.id, name: p.name, irr: p.irr, util24: p.util24, c23pass: p.c23pass })),
+    };
+    const capSum = out.projects.reduce((a, p) => a + p.cap, 0);
+    const portfolioIrr =
+      capSum > 0 ? round(out.projects.reduce((a, p) => a + p.irr * p.cap, 0) / capSum, 2) : 0;
+    return {
+      view,
+      projects: view.projects,
+      portfolioIrr,
+      irrMin: out.c23.irrMin,
+      util24Min: out.c23.util24Min,
+    };
+  }
+
   private async planTargets(tenantId: string, year?: number): Promise<ObjectInstance[]> {
     const levelRank: Record<string, number> = { year: 0, quarter: 1, month: 2 };
     return (await this.repos.objects.listByType(tenantId, "PlanTarget"))
@@ -104,10 +196,54 @@ export class PlanService {
   async quarterly(ctx: AuthCtx, from?: string, n = 6): Promise<QuarterlyResponse> {
     if (from && !QUARTER_RE.test(from)) throw validationError("from must be like 2026-Q3");
     const c = await this.solvers.loadContext(ctx.tenantId);
-    return this.quarterlyFromContext(c, from, n);
+    const [approvedProjects, sopIncrements] = await Promise.all([
+      this.approvedCapacityProjects(c),
+      this.sopResolutionIncrements(c.tenantId),
+    ]);
+    return this.quarterlyFromContext(c, from, n, approvedProjects, sopIncrements);
   }
 
-  private async quarterlyFromContext(c: SolverContext, from?: string, n = 6): Promise<QuarterlyResponse> {
+  /**
+   * C2：已批准产能项目集（与 C1 同源）= 已拍板（finalized）情景的 capexScenario 项目集；
+   * 无拍板情景则回落基准情景。投产季 q0 相对 forecastStart 所在季对齐。
+   */
+  private async approvedCapacityProjects(
+    c: SolverContext,
+  ): Promise<{ name: string; q0: number; cap: number; ramp: number[] }[]> {
+    const cfg = c.params.capexScenario;
+    if (!cfg) return [];
+    const scenObjs = await this.repos.objects.listByType(c.tenantId, "AnnualScenario");
+    const finalized = scenObjs.find((s) => s.props.finalized === true);
+    const key = finalized ? str(finalized.props.key) : "baseline";
+    const scen = cfg.scenarios[key] ?? cfg.scenarios.baseline;
+    return (scen?.projects ?? []).map((p) => ({
+      name: p.name,
+      q0: p.q0,
+      cap: p.cap,
+      ramp: p.ramp && p.ramp.length > 0 ? p.ramp : [0.5, 0.75, 0.9, 1.0],
+    }));
+  }
+
+  /** C2：S&OP 决议增量（FINAL 版本 resolutions），按版本 month 归到所属季度。 */
+  private async sopResolutionIncrements(tenantId: string): Promise<Map<string, number>> {
+    const byQuarter = new Map<string, number>();
+    const versions = await this.repos.sopVersions.list(tenantId);
+    for (const v of versions) {
+      if (v.status !== "FINAL" || !Array.isArray(v.resolutions)) continue;
+      const q = quarterOf(`${v.month}-01`);
+      const delta = v.resolutions.reduce((a, r) => a + num(r.delta), 0);
+      byQuarter.set(q, round((byQuarter.get(q) ?? 0) + delta, 4));
+    }
+    return byQuarter;
+  }
+
+  private async quarterlyFromContext(
+    c: SolverContext,
+    from?: string,
+    n = 6,
+    approvedProjects: { name: string; q0: number; cap: number; ramp: number[] }[] = [],
+    sopIncrements: Map<string, number> = new Map(),
+  ): Promise<QuarterlyResponse> {
     const p = c.params;
     const pv = p.planview;
     const startQ = from ?? quarterOf(p.forecastStart);
@@ -119,6 +255,22 @@ export class PlanService {
       for (const [baseId, status] of m) {
         const f = p.certFactors[status] ?? 1;
         baseCert.set(baseId, Math.max(baseCert.get(baseId) ?? 0, f));
+      }
+    }
+    // 已批准产能项目的投产季（相对 forecastStart 所在季）对应的绝对季标签 → 本季爬坡增量。
+    const baseStartQ = quarterOf(p.forecastStart);
+    const projInc = new Map<string, { name: string; delta: number }[]>();
+    for (const proj of approvedProjects) {
+      for (let k = 0; k < proj.ramp.length; k++) {
+        const qLabel = addQuarters(baseStartQ, proj.q0 + k);
+        // 本季净增量 = cap×ramp[k] − cap×ramp[k−1]（首季 = cap×ramp[0]）
+        const cur = proj.cap * (proj.ramp[k] as number);
+        const prev = k > 0 ? proj.cap * (proj.ramp[k - 1] as number) : 0;
+        const delta = round(cur - prev, 4);
+        if (delta === 0) continue;
+        const list = projInc.get(qLabel) ?? [];
+        list.push({ name: proj.name, delta });
+        projInc.set(qLabel, list);
       }
     }
     const targets = await this.planTargets(c.tenantId);
@@ -141,10 +293,16 @@ export class PlanService {
         }
       }
       const events: { label: string; ruleKey?: string }[] = [];
-      for (const inc of pv.increments) {
-        if (inc.quarter !== q) continue;
+      // C2：已批准产能项目增量（cap×ramp，与 C1 同源）
+      for (const inc of projInc.get(q) ?? []) {
         sup += inc.delta;
-        events.push({ label: `产能增量：${inc.name} +${inc.delta} 万套（已决策项目投产）` });
+        events.push({ label: `产能增量：${inc.name} +${round(inc.delta, 2)} 万套（已批准项目爬坡投产）` });
+      }
+      // C2：本季 S&OP 决议增量（FINAL 版本 resolutions）
+      const sopInc = sopIncrements.get(q);
+      if (sopInc && sopInc !== 0) {
+        sup += sopInc;
+        events.push({ label: `S&OP 决议增量：+${round(sopInc, 2)} 万套（月度平衡台定稿决议）` });
       }
       sup = round(sup, 2);
       // 需求：年度分解（PlanTarget 同源）+ 滚动修正；2027+ 按同季 ×(1+growthYoY)^n 外推
@@ -240,6 +398,29 @@ export class PlanService {
       });
     }
     return { evaluated: triggers.length, fired };
+  }
+
+  /**
+   * C2：长协执行偏差扫描 —— |dev_m|>5% 的物料发 supply_risk 事件（关联到货间隙）。
+   * 同一物料每次扫描只发一次（幂等键去重）。返回越线物料数。
+   */
+  async scanSupplyRisk(tenantId: string): Promise<{ evaluated: number; fired: string[] }> {
+    const c = await this.solvers.loadContext(tenantId);
+    const dev = this.ltaDeviation(c);
+    const fired: string[] = [];
+    for (const row of dev) {
+      if (Math.abs(row.deviationPct) <= 5) continue;
+      fired.push(row.material);
+      await this.outbox.emit(tenantId, "supply_risk", {
+        material: row.material,
+        planned: row.planned,
+        actual: row.actual,
+        deviationPct: row.deviationPct,
+        baseId: row.baseId,
+        note: "长协实际到货偏差越线（|dev|>5%），升级供应风险",
+      });
+    }
+    return { evaluated: dev.length, fired };
   }
 
   private async triggerMetrics(c: SolverContext): Promise<Record<string, number>> {

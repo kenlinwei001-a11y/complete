@@ -111,6 +111,19 @@ function ScenarioCard({ scenario: s }: { scenario: AnnualScenario }) {
         <span>{zh.aop.finance}</span>
         <div className="mono">{zh.aop.financeText(s.finance.revenue, s.finance.capex, s.finance.irr)}</div>
       </div>
+      {s.capexScenario && s.capexScenario.projects.length > 0 && (
+        <div className={styles.scenRow}>
+          <span>{zh.aop.projectFinance}</span>
+          <div data-testid={`scen-projects-${s.key}`}>
+            {s.capexScenario.projects.map((p) => (
+              <div key={p.id} className="mono" data-testid={`scen-project-${s.key}-${p.id}`} style={{ fontSize: 11 }}>
+                {p.name}：IRR {p.irr.toFixed(1)}% · 24月利用率 {(p.util24 * 100).toFixed(1)}%{" "}
+                <span className={`badge ${p.c23pass ? "green" : "amber"}`}>{p.c23pass ? "C23 ✓" : "C23 ⚠"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className={styles.scenRow}>
         <span>{zh.aop.ruleChecks}</span>
         <div>

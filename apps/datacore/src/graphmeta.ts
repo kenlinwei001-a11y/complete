@@ -26,6 +26,7 @@ export const SOLVER_GRAPH: Record<string, { label: string; target: string; ruleR
   plan_generate: { label: "方案生成", target: "Base", ruleRefs: ["C15", "C18"] },
   capacity_rollup: { label: "产能金字塔", target: "Base", ruleRefs: ["C01", "C02"] },
   bottleneck_matrix: { label: "瓶颈矩阵", target: "Line", ruleRefs: [] },
+  capex_scenario: { label: "年度情景测算", target: "AnnualScenario", ruleRefs: ["C18", "C23"] },
 };
 
 /** 连接器 → 源系统显示名（映射表「源系统」列 + 图谱 source 视角图例） */

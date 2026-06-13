@@ -30,6 +30,22 @@ describe("F21 · 年度情景规划台（annual-scenario）", () => {
     expect(screen.getByTestId("scen-rule-detail-baseline")).toHaveTextContent("cashCushion >= 50");
   });
 
+  it("C1 项目测算：项目级 IRR/24月利用率/C23 判定渲染（基准通过、激进江门不通过）", async () => {
+    loginAs("planner");
+    renderApp("/v/annual-scenario");
+
+    const baseProj = await screen.findByTestId("scen-project-baseline-ZZ");
+    expect(baseProj).toHaveTextContent("枣庄储能线");
+    expect(baseProj).toHaveTextContent("IRR 19.0%");
+    expect(baseProj).toHaveTextContent("24月利用率 81.0%");
+    expect(baseProj).toHaveTextContent("C23 ✓");
+
+    const jm = screen.getByTestId("scen-project-aggressive-JM");
+    expect(jm).toHaveTextContent("江门动力线");
+    expect(jm).toHaveTextContent("IRR 12.5%");
+    expect(jm).toHaveTextContent("C23 ⚠");
+  });
+
   it("触发条件挂牌：已触发行高亮 + 触发时间与通知记录；监测中行 ⏳", async () => {
     loginAs("planner");
     renderApp("/v/annual-scenario");

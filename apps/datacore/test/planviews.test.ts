@@ -226,7 +226,7 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(order.derivations.some((d) => d.includes("qty * unitPrice"))).toBe(true);
     // 求解器与 Agent 行
     const solverRows = rows.filter((r) => r.kind === "solver");
-    expect(solverRows.length).toBe(7);
+    expect(solverRows.length).toBe(8); // C1：新增 capex_scenario 年度情景测算求解器
     expect(solverRows.every((r) => r.domain === "solver")).toBe(true);
     expect(rows.filter((r) => r.kind === "agent").map((r) => r.displayName)).toContain("学习Agent");
     // 计划域对象也在映射表（源系统 = 平台·计划域）

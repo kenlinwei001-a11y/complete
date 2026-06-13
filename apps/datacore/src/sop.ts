@@ -208,15 +208,90 @@ export class SopService {
     return v;
   }
 
-  /** ④ 财务整合: 毛利率_roll = gmΣ/revΣ vs budget; C18 cash check — fail blocks ⑤. */
+  /**
+   * ④ 财务整合（C3 公式级）:
+   *   毛利率_roll = Σ_seg(量×价×毛利率) ÷ Σ_seg(量×价)   （payload.segments 提供细分明细时按此口径）
+   *   现金垫     = min_{w∈1..13}(期初现金 + Σ_{k≤w}回款 − Σ付款 − ΣCAPEX支出)   （payload.cashflow 提供时按此口径）
+   *     回款[w] = 应收按账期(T+60)到期额；付款[w] = 采购按账期到期额
+   *   门禁：毛利率_roll < 预算−0.5pct → 警示进⑤议程；现金垫 < C18 底线 → 阻断进入⑤。
+   * 兼容：未提供细分/现金流明细时回落直接 revSum/gmSum/cashCushion 标量（既有链路/测试）。
+   */
   private async step4(v: SopVersion, payload: Record<string, unknown>): Promise<SopVersion> {
     if (!v.steps.s3) throw invalidState("run step 3 first");
     const params = await this.solvers.getParams(v.tenantId);
-    const revSum = num(payload.revSum);
-    const gmSum = num(payload.gmSum);
     const gmBudget = num(payload.gmBudget);
-    const cashCushion = num(payload.cashCushion);
-    const gmRoll = revSum === 0 ? 0 : round((gmSum / revSum) * 100, 4);
+
+    // -- 毛利率_roll：细分明细加权口径，否则回落 gmSum/revSum --
+    const segIn = Array.isArray(payload.segments) ? (payload.segments as Record<string, unknown>[]) : null;
+    let revSum: number;
+    let gmSum: number;
+    let gmRollFraction: number; // 0..1
+    const segBreakdown: { key: string; rev: number; gm: number }[] = [];
+    if (segIn && segIn.length > 0) {
+      // 细分价/毛利率优先取应用细分对象（Segment.unitPrice / gmRate），payload 可覆盖。
+      const segObjs = await this.repos.objects.listByType(v.tenantId, "Segment");
+      let weighted = 0;
+      revSum = 0;
+      for (const s of segIn) {
+        const key = str(s.key);
+        const obj = segObjs.find((o) => o.props.segKey === key);
+        const qty = num(s.qty, num(s.量));
+        const price = num(s.price, num(obj?.props.unitPrice, num(s.价)));
+        const gmRate = num(s.gmRate, num(obj?.props.gmRate, num(s.毛利率))); // 0..1
+        const rev = qty * price;
+        revSum += rev;
+        weighted += rev * gmRate;
+        segBreakdown.push({ key, rev: round(rev, 4), gm: round(rev * gmRate, 4) });
+      }
+      gmSum = round(weighted, 4);
+      gmRollFraction = revSum === 0 ? 0 : weighted / revSum;
+    } else {
+      revSum = num(payload.revSum);
+      gmSum = num(payload.gmSum);
+      gmRollFraction = revSum === 0 ? 0 : gmSum / revSum;
+    }
+    const gmRoll = round(gmRollFraction * 100, 4);
+
+    // -- 现金垫：13 周滚动 min，否则回落 cashCushion 标量 --
+    const cf = (payload.cashflow ?? null) as {
+      openingCash?: number;
+      receipts?: number[]; // 回款[w]，若给原始应收/账期则在外层先展开
+      payments?: number[]; // 付款[w]
+      capex?: number[]; // CAPEX 支出[w]
+      receivables?: { amount: number; dueWeek: number }[]; // 应收（T+60 → dueWeek）
+      purchases?: { amount: number; dueWeek: number }[]; // 采购付款
+      capexSpend?: { amount: number; dueWeek: number }[];
+    } | null;
+    let cashCushion: number;
+    let cashRolling: number[] | undefined;
+    if (cf) {
+      const W = 13;
+      const opening = num(cf.openingCash);
+      const series = (raw?: number[], items?: { amount: number; dueWeek: number }[]): number[] => {
+        const arr = new Array<number>(W).fill(0);
+        if (Array.isArray(raw)) for (let w = 0; w < W; w++) arr[w] = num(raw[w]);
+        if (Array.isArray(items)) for (const it of items) {
+          const w = Math.floor(num(it.dueWeek)) - 1;
+          if (w >= 0 && w < W) arr[w]! += num(it.amount);
+        }
+        return arr;
+      };
+      const recv = series(cf.receipts, cf.receivables);
+      const pay = series(cf.payments, cf.purchases);
+      const capexS = series(cf.capex, cf.capexSpend);
+      cashRolling = [];
+      let cum = opening;
+      let minCash = Infinity;
+      for (let w = 0; w < W; w++) {
+        cum += recv[w]! - pay[w]! - capexS[w]!;
+        cashRolling.push(round(cum, 4));
+        if (cum < minCash) minCash = cum;
+      }
+      cashCushion = round(minCash, 4);
+    } else {
+      cashCushion = num(payload.cashCushion);
+    }
+
     const gmOk = gmRoll >= gmBudget - params.sop.gmTolerance;
     const cashOk = cashCushion >= params.sop.cashFloor;
     const pass = gmOk && cashOk;
@@ -228,7 +303,19 @@ export class SopService {
         v.agenda.push({ source: "C18/财务", title: viol });
       }
     }
-    v.steps.s4 = { revSum, gmSum, gmBudget, cashCushion, gmRoll, gmOk, cashOk, pass, violations };
+    v.steps.s4 = {
+      revSum: round(revSum, 4),
+      gmSum,
+      gmBudget,
+      cashCushion,
+      gmRoll,
+      gmOk,
+      cashOk,
+      pass,
+      violations,
+      ...(segBreakdown.length > 0 ? { segBreakdown } : {}),
+      ...(cashRolling ? { cashRolling } : {}),
+    };
     v.updatedAt = new Date().toISOString();
     await this.repos.sopVersions.put(v);
     return v;

@@ -58,6 +58,31 @@ export interface SolverParamsShape {
       ruleKeys: Record<string, string>;
     };
   };
+  /** C1 · capex_scenario 年度情景测算参数（C23 门槛 + 三情景产能项目集） */
+  capexScenario?: {
+    /** C23 IRR 门槛（0..1，默认 0.15） */
+    irrThreshold: number;
+    /** C23 24月利用率门槛（0..1，默认 0.75） */
+    util24Threshold: number;
+    /** 单位边际毛利（元/套，缺省项目无 m 时回落） */
+    unitMargin: number;
+    /** 三情景的产能项目集（投产季 q0 相对窗口起点；capex 亿/季；ramp 默认 [0.5,0.75,0.9,1.0]） */
+    scenarios: Record<
+      string,
+      {
+        projects: {
+          id: string;
+          name: string;
+          q0: number;
+          cap: number;
+          ramp?: number[];
+          capex: number[];
+          m: number;
+          salvageRate?: number;
+        }[];
+      }
+    >;
+  };
   /** §7.14/§7.15 计划域参数 */
   planview: {
     seasonal: number[];

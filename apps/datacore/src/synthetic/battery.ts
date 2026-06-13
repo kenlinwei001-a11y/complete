@@ -142,6 +142,30 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       ruleKeys: { DELIVERY: "C03", MARGIN: "C15", KIT: "C06/C16", CREDIT: "C13" },
     },
   },
+  // C1 · capex_scenario 年度情景测算（C23 门槛 + 三情景产能项目集）。
+  // q0 = 投产季相对窗口起点（0 = 2026-Q3 起的第一季）；capex 亿/季；m 元/套。
+  capexScenario: {
+    irrThreshold: 0.15,
+    util24Threshold: 0.75,
+    unitMargin: 1800,
+    scenarios: {
+      // 保守：不新增产能 → 无项目（IRR/util24 不参与，c23pass 视为不适用）
+      conservative: { projects: [] },
+      // 基准：合肥四期 8GWh，2027-Q2（窗口起点 2026-Q3 → 第 3 季投产）。IRR≈19% > 15% 门槛。
+      baseline: {
+        projects: [
+          { id: "HF4", name: "合肥四期", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
+        ],
+      },
+      // 激进：合肥四期 + 盐城二期（盐城 2027-Q3 → 第 4 季投产）。盐城 IRR≈9% < 15% → C23 不通过。
+      aggressive: {
+        projects: [
+          { id: "HF4", name: "合肥四期", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
+          { id: "YC2", name: "盐城二期", q0: 4, cap: 6.0, capex: [4, 8, 7], m: 1700, salvageRate: 0.05, lifeQuarters: 40 },
+        ],
+      },
+    },
+  },
   // §7.14/§7.15 计划域（年度情景 / 季度滚动）参数 —— 全部数据驱动，不写死在端点代码里
   planview: {
     /** 12 个月季节权重（和为 12）：月目标 = 年需求 × w/12 */

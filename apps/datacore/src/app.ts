@@ -295,6 +295,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       await ruleScan.scan(tenantId);
       // §7.14: 情景触发条件后端判定（前端只读挂牌表）
       await plan.scanTriggers(tenantId);
+      // C2: 长协执行偏差 |dev|>5% → supply_risk 事件
+      await plan.scanSupplyRisk(tenantId);
     })
     .on("TS_AGGREGATE", async (tenantId) => {
       await timeseries.runAggregation(tenantId);

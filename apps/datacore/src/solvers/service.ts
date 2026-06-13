@@ -8,6 +8,7 @@ import { num, str, type SolverContext, type SolverParamsShape } from "./types.js
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
 import { affectedOrders, bottleneckMatrix, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
+import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -17,6 +18,7 @@ export const SOLVER_KEYS = [
   "affected_orders",
   "plan_audit",
   "plan_generate",
+  "capex_scenario",
 ] as const;
 
 const DAY_MS = 86400000;
@@ -185,6 +187,8 @@ export class SolverService {
       }
       case "plan_generate":
         return planGenerate(c, args as unknown as PlanGenerateArgs);
+      case "capex_scenario":
+        return capexScenario(c, args as unknown as CapexScenarioArgs);
       default:
         throw notFound(`solver ${solverKey}`);
     }

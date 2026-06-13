@@ -692,6 +692,43 @@ await check("计划域", "AOP / 季度滚动（contracts schema parse —— 前
   eq(q.status, 200, "quarterly status");
   if (contracts?.QuarterlyResponseSchema) ok(contracts.QuarterlyResponseSchema.safeParse(q.body).success, "QuarterlyResponseSchema parse");
 });
+await check("计划域", "C1 接线：AOP scenarios[].capexScenario 真实产出（S/G 曲线 + 项目级 IRR/util24/c23pass）", async () => {
+  const aop = await a("/a/v1/plan/aop?year=2026");
+  eq(aop.status, 200, "aop status");
+  const baseline = aop.body.scenarios.find((s) => s.key === "baseline");
+  ok(baseline?.capexScenario, "baseline.capexScenario 存在");
+  const cx = baseline.capexScenario;
+  ok(Array.isArray(cx.supply) && cx.supply.length === cx.demand.length, "supply/demand 等长（S[q]/D[q]）");
+  ok(Array.isArray(cx.gap) && cx.gap.length === cx.demand.length, "gap[q] = D − S");
+  ok(cx.projects.length >= 1 && typeof cx.projects[0].irr === "number" && typeof cx.projects[0].util24 === "number" && typeof cx.projects[0].c23pass === "boolean", "项目级 {irr,util24,c23pass}");
+  ok(baseline.finance.irr > 0.15, "finance.irr 由真实测算驱动（分数，>15%）");
+  // 激进情景两个项目，C23 由 IRR/util24 真实判定 → 不通过
+  const aggr = aop.body.scenarios.find((s) => s.key === "aggressive");
+  ok(aggr?.capexScenario?.projects.length >= 2, "激进含 ≥2 产能项目");
+  eq(aggr.ruleChecks.find((r) => r.ruleKey === "C23")?.passed, false, "激进 C23 不通过");
+});
+await check("计划域", "C1 求解器：/a/v1/solvers/capex_scenario/invoke（确定性 + 中间量）", async () => {
+  const args = { args: { demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], projects: [{ id: "P", name: "P", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] } };
+  const r1 = await a("/a/v1/solvers/capex_scenario/invoke", { body: args });
+  eq(r1.status, 200, "invoke status");
+  ok(Array.isArray(r1.body.data?.S) && Array.isArray(r1.body.data?.G), "出参含 S[q]/G[q] 中间量");
+  ok(Array.isArray(r1.body.data?.projects) && typeof r1.body.data.projects[0].irr === "number", "项目级 IRR");
+  const r2 = await a("/a/v1/solvers/capex_scenario/invoke", { body: args });
+  ok(JSON.stringify(r2.body.data) === JSON.stringify(r1.body.data), "确定性：同输入同输出");
+});
+await check("计划域", "C1 病态输入：现金流全负 → 422 IRR_DIVERGED（不死循环）", async () => {
+  const r = await a("/a/v1/solvers/capex_scenario/invoke", { body: { args: { demand: [10, 10], s0: [0, 0], projects: [{ id: "Z", name: "Z", q0: 0, cap: 0, capex: [9, 9], m: 1800, lifeQuarters: 8 }] } } });
+  envelope(r, 422, "IRR_DIVERGED");
+});
+await check("计划域", "C2 接线：季度滚动供给含已批准产能项目爬坡增量（与 C1 同源）事件", async () => {
+  const q = await a("/a/v1/plan/quarterly?from=2026-Q3&n=8");
+  eq(q.status, 200, "quarterly status");
+  const labels = q.body.rows.flatMap((r) => r.events.map((e) => e.label));
+  ok(labels.some((l) => l.includes("产能增量") && l.includes("已批准项目爬坡投产")), "已批准产能项目爬坡增量事件");
+  for (const r of q.body.rows) eq(Math.round((r.dem - r.sup) * 100) / 100, r.gap, "gap = dem − sup");
+  const over = q.body.ltaDeviation.filter((r) => Math.abs(r.deviationPct) > 5);
+  ok(over.length >= 1 && over[0].baseId, "长协 |dev|>5% 行带 baseId（supply_risk 关联）");
+});
 let sopId = "";
 await check("S&OP", "创建月度版本 → 201；列表/详情", async () => {
   const r = await a("/a/v1/sop/versions", { body: { month: "2026-08" } });

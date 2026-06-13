@@ -55,6 +55,14 @@ export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
       ],
       finalized: true,
       finalizedAt: "2026-05-30T10:00:00Z",
+      capexScenario: {
+        quarters: ["2026-Q3", "2026-Q4", "2027-Q1", "2027-Q2", "2027-Q3", "2027-Q4", "2028-Q1", "2028-Q2"],
+        demand: [382, 398, 372, 404, 428, 452, 470, 488],
+        supply: [376, 390, 392, 412, 446, 470, 488, 488],
+        gap: [6, 8, -20, -8, -18, -18, -18, 0],
+        windows: [{ kind: "surplus", fromQ: "2027-Q1", toQ: "2027-Q1" }],
+        projects: [{ id: "ZZ", name: "枣庄储能线", irr: 19.0, util24: 0.81, c23pass: true }],
+      },
     },
     {
       id: "aop-2027-aggressive",
@@ -67,9 +75,20 @@ export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
       finance: { revenue: 3780, capex: 27, irr: 0.17 },
       ruleChecks: [
         { ruleKey: "C18", passed: false, explanation: "现金安全垫黄色提示：13 周最低点 52 亿，接近底线 50 亿（expression: cashCushion >= 50）" },
-        { ruleKey: "C23", passed: true, explanation: "产能建设门槛通过：IRR 17% ≥ 15%（expression: irr >= 0.15 AND utilForecast >= 0.75）" },
+        { ruleKey: "C23", passed: false, explanation: "枣庄储能线：IRR 19.0%（门槛 15.0%）· 24月利用率 81.0%（门槛 75.0%）→ 通过；江门动力线：IRR 12.5%（门槛 15.0%）· 24月利用率 79.7%（门槛 75.0%）→ 不通过" },
       ],
       finalized: false,
+      capexScenario: {
+        quarters: ["2026-Q3", "2026-Q4", "2027-Q1", "2027-Q2", "2027-Q3", "2027-Q4", "2028-Q1", "2028-Q2"],
+        demand: [382, 398, 372, 404, 428, 452, 470, 488],
+        supply: [376, 390, 392, 430, 488, 530, 560, 560],
+        gap: [6, 8, -20, -26, -60, -78, -90, -72],
+        windows: [{ kind: "gap", fromQ: "2026-Q3", toQ: "2026-Q4" }, { kind: "surplus", fromQ: "2027-Q3", toQ: "2028-Q2" }],
+        projects: [
+          { id: "ZZ", name: "枣庄储能线", irr: 19.0, util24: 0.81, c23pass: true },
+          { id: "JM", name: "江门动力线", irr: 12.5, util24: 0.797, c23pass: false },
+        ],
+      },
     },
   ],
   triggers: [
