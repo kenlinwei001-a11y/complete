@@ -25,6 +25,7 @@ import { ExecutionLockService } from "./execlock.js";
 import { QuarantineService } from "./quarantine.js";
 import { NotificationService } from "./notifications.js";
 import { CatalogService } from "./catalog.js";
+import { VleService } from "./vle.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
@@ -88,6 +89,7 @@ export interface BuiltApp {
     quarantine: QuarantineService;
     notifications: NotificationService;
     catalog: CatalogService;
+    vle: VleService;
     rules: RulesService;
     ontology: OntologyService;
     ontologyCore: OntologyCoreService;
@@ -250,6 +252,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ruleDocs = new RuleDocService(repos, blob, routedLlm, rules, metrics, config.DC_LLM_MODEL, embeddings);
   const modeling = new ModelingService(repos, routedLlm, ontology, metrics, config.DC_LLM_MODEL, quarantine);
   const synthetic = new SyntheticService(repos, routedLlm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
+  const vle = new VleService(repos, synthetic, ontology);
   const actions = new ActionService(repos, rules, outbox, notifications);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
@@ -784,6 +787,33 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { ok: true };
   });
   app.post("/a/v1/notifications/read-all", async (req) => notifications.markAllRead(ctx(req)));
+
+  // 闭环验证引擎 VLE §4：触发验证 run + 历史 + 单次报告（admin / catalog_admin）
+  app.post("/a/v1/validation/runs", async (req, reply) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin" || r.split(":")[0] === "catalog_admin"))
+      throw forbidden("admin / catalog_admin only");
+    const body = parseBody(
+      z.object({ profile: z.enum(["SMOKE", "FULL", "SOAK"]).default("SMOKE"), seed: z.number().int().optional() }),
+      req.body,
+    );
+    const run = await vle.run(c, body.profile, body.seed ?? 42);
+    return reply.status(201).send(run);
+  });
+  app.get("/a/v1/validation/runs", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin" || r.split(":")[0] === "catalog_admin"))
+      throw forbidden("admin / catalog_admin only");
+    const runs = await repos.validationRuns.list(c.tenantId);
+    return { items: runs.sort((a, b) => (a.startedAt > b.startedAt ? -1 : 1)) };
+  });
+  app.get("/a/v1/validation/runs/:id", async (req) => {
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    const run = await repos.validationRuns.get(c.tenantId, id);
+    if (!run) throw notFound("validation run");
+    return run;
+  });
 
   app.get("/a/v1/policies", async (req) => repos.policies.list(ctx(req).tenantId));
   app.post("/a/v1/policies", async (req, reply) => {
@@ -1997,6 +2027,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       quarantine,
       notifications,
       catalog,
+      vle,
       rules,
       ontology,
       ontologyCore,

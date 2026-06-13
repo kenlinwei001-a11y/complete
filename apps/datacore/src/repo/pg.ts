@@ -554,6 +554,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     extractSegments: new PgStore(pool, "extract_segments"),
     quarantineRows: new PgStore(pool, "quarantine_rows"),
     notifications: new PgStore(pool, "notifications"),
+    validationRuns: new PgStore(pool, "validation_runs"),
     webhooks: new PgStore(pool, "webhooks"),
     sopVersions: new PgStore(pool, "sop_versions"),
     solverParams: new PgStore(pool, "solver_params"),

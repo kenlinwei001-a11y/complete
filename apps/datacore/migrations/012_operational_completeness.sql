@@ -19,3 +19,13 @@ CREATE TABLE IF NOT EXISTS notifications (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_tenant ON notifications(tenant_id);
+
+-- 闭环验证引擎 VLE（PRD-addendum-validation-loop）：validation_runs 报告落库。
+CREATE TABLE IF NOT EXISTS validation_runs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  doc JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_validation_runs_tenant ON validation_runs(tenant_id);

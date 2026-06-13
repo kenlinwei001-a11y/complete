@@ -19,6 +19,7 @@ import type {
   NotificationRecord,
   QuarantineRowRecord,
   ReplayProgressRecord,
+  ValidationRunRecord,
   ObjectPropHistoryRecord,
   PublishRequestRecord,
   SliceSpecRecord,
@@ -230,6 +231,7 @@ export interface Repos {
   extractSegments: Store<ExtractSegmentRecord>;
   quarantineRows: Store<QuarantineRowRecord>;
   notifications: Store<NotificationRecord>;
+  validationRuns: Store<ValidationRunRecord>;
   // S1.8
   sopVersions: Store<SopVersion>;
   // S1 per-tenant solver params（+ M11/S1 修订：版本历史）

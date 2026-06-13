@@ -623,6 +623,17 @@ export interface ReplayProgressRecord {
   updatedAt: string;
 }
 
+/** 闭环验证引擎 VLE：一次验证运行的报告（七段×断言点 + 覆盖率 + 工程验证度）。 */
+export interface ValidationRunRecord {
+  id: string; // vrun_
+  tenantId: string;
+  profile: "SMOKE" | "FULL" | "SOAK";
+  seed: number;
+  startedAt: string;
+  finishedAt?: string;
+  report?: Record<string, unknown>;
+}
+
 /** 运营完备性 §9 通知中心：定向站内通知（铃铛未读 + 跳转 refType 对应页）。 */
 export interface NotificationRecord {
   id: string; // ntf_

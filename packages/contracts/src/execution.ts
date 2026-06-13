@@ -84,6 +84,43 @@ export type QuarantineReason = z.infer<typeof QuarantineReasonSchema>;
 export const QuarantineStatusSchema = z.enum(["PENDING", "REPROCESSED", "DISCARDED"]);
 export type QuarantineStatus = z.infer<typeof QuarantineStatusSchema>;
 
+// 闭环验证引擎 VLE（PRD-addendum-validation-loop） ----------------------------
+
+export const ValidationProfileSchema = z.enum(["SMOKE", "FULL", "SOAK"]);
+export type ValidationProfile = z.infer<typeof ValidationProfileSchema>;
+
+export const ValidationAssertionSchema = z.object({
+  segment: z.string(), // ①接入 … ⑦校准 / 横切
+  point: z.string(),
+  oracle: z.enum(["constructed", "reference", "invariant"]),
+  pass: z.boolean(),
+  expected: z.unknown().optional(),
+  actual: z.unknown().optional(),
+  diff: z.string().optional(),
+});
+export type ValidationAssertion = z.infer<typeof ValidationAssertionSchema>;
+
+export const ValidationReportSchema = z.object({
+  profile: ValidationProfileSchema,
+  seed: z.number().int(),
+  pass: z.boolean(),
+  assertions: z.array(ValidationAssertionSchema),
+  coverage: z.object({ module: z.number(), assertion: z.number(), loop: z.number() }),
+  /** 工程验证度 = 0.5×module + 0.3×assertion + 0.2×loop。 */
+  engineeringVerificationScore: z.number(),
+});
+export type ValidationReport = z.infer<typeof ValidationReportSchema>;
+
+export const ValidationRunViewSchema = z.object({
+  id: z.string(),
+  profile: ValidationProfileSchema,
+  seed: z.number().int(),
+  startedAt: z.string(),
+  finishedAt: z.string().optional(),
+  report: ValidationReportSchema.optional(),
+});
+export type ValidationRunView = z.infer<typeof ValidationRunViewSchema>;
+
 export const QuarantineRowViewSchema = z.object({
   id: z.string(),
   connId: z.string(),
