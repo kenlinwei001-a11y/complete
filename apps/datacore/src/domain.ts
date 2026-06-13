@@ -138,7 +138,9 @@ export type RuleDocStatus =
   | "EXTRACTED"
   | "IN_REVIEW"
   | "PUBLISHED"
-  | "REJECTED";
+  | "REJECTED"
+  // 执行语义 §6：分段抽取部分失败（已成功段落可审，失败段落可单独重试）
+  | "PARTIAL";
 
 export interface DocSegment {
   idx: number;

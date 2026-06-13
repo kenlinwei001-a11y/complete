@@ -97,6 +97,8 @@ export class Metrics {
   readonly llmTokens = new Counter("qos_llm_tokens_total", "LLM tokens by model, direction and provider");
   /** LLM Provider 增量 §1.1：provider 故障降级（fallback 接管）次数 */
   readonly llmFallback = new Counter("qos_llm_fallback_total", "LLM provider fallback takeovers by from/to provider");
+  /** 执行语义 §5：LLM provider 熔断器状态变更（open/half_open/closed）by provider */
+  readonly llmBreaker = new Counter("qos_llm_breaker_total", "LLM provider circuit breaker transitions by provider and state");
   readonly nestedInvocations = new Counter("ac_nested_invocations_total", "Nested agent/workflow invocations by kind");
   readonly oboDenied = new Counter("ac_obo_denied_total", "Tool calls refused due to expiring OBO token");
   /** 增量 §1.3：上下文清理操作（fold/compact/force_finalize） */
@@ -130,6 +132,7 @@ export class Metrics {
         this.toolCalls,
         this.llmTokens,
         this.llmFallback,
+        this.llmBreaker,
         this.nestedInvocations,
         this.oboDenied,
         this.contextOps,

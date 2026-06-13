@@ -246,3 +246,34 @@ describe("L4 · provider 故障 → fallback 接管；禁止链式", () => {
     state.fail.delete("p2");
   });
 });
+
+describe("执行语义 §5 · 熔断：主 provider 连续 5xx → OPEN → 直接走 fallback 不再探测主", () => {
+  it("达阈值后主端点零新增调用，全部走 fallback；指标记录状态变更", async () => {
+    bindings = [{ purpose: "classifier", providerId: "llmp_bad", modelId: "m1" }];
+    state.fail.add("bad");
+    state.fail.delete("p2");
+    const directory = new DataCoreProviderDirectory({ baseUrl: base, serviceToken: "svc-secret" });
+    const metrics = new Metrics();
+    const config = loadConfig({ PORT: "0", LOG_LEVEL: "silent" } as NodeJS.ProcessEnv);
+    const registry = new LlmProviderRegistry({
+      repos: createMemoryRepos(),
+      config,
+      metrics,
+      directory,
+      breakerOptions: { minSamples: 3, failureRateThreshold: 0.5, halfOpenAfterMs: 60_000 },
+    });
+    const llm = new RoutingLlmClient(registry);
+    state.calls.bad = 0;
+    state.calls.p2 = 0;
+    for (let i = 0; i < 6; i++) {
+      const out = await llm.classify({ model: "dcp:llmp_bad:m1", system: "s", user: "u", tenantId: "demo" });
+      expect(out.candidates[0]?.intentKey).toBe("risk_root_cause"); // fallback served every call
+    }
+    // 前 3 次 classify 探测主端点（每次 SDK 内建重试 ×3 = 9 次端点命中），达样本阈值
+    // 后 OPEN，其后直接走 fallback → 主端点不再增长（停在 9）。
+    expect(state.calls.bad).toBe(9);
+    expect(state.calls.p2).toBe(6);
+    expect(metrics.llmBreaker.get({ provider: "llmp_bad", state: "open" })).toBeGreaterThanOrEqual(1);
+    state.fail.delete("bad");
+  });
+});

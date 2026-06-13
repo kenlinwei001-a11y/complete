@@ -165,52 +165,126 @@ export class RuleDocService {
     doc.status = "PARSED";
     await this.repos.ruleDocs.put(doc);
 
-    // EXTRACTED
+    // EXTRACTED —— 执行语义 §6：分段抽取三态，段落级失败不丢弃已成功段落
     const extractJobId = newId("xjob");
     doc.extractJobId = extractJobId;
     const candidates: RuleCandidate[] = [];
+    let failedSegments = 0;
     for (const segment of doc.segments) {
-      const out = await this.llm.parseStructured({
-        model: this.model,
-        maxTokens: 4096,
-        // LLM Provider 增量 §1.3：A2 抽取走用途绑定（extraction），无绑定回落 env 默认
-        tenantId: ctx.tenantId,
-        purpose: "extraction",
-        system: EXTRACTION_SYSTEM,
-        messages: [{ role: "user", content: `<segment heading="${segment.heading ?? ""}">\n${segment.text}\n</segment>` }],
-        schema: ExtractionSchema,
-      });
-      for (const cand of out.candidates) {
-        // Server-side substring validation against the segment text (anti-hallucination).
-        if (!segment.text.includes(cand.sourceQuote) || cand.sourceQuote.trim() === "") {
-          doc.droppedCandidates++;
-          this.metrics.inc("dc_rule_extract_candidates_total", { disposition: "dropped" });
-          continue;
-        }
-        this.metrics.inc("dc_rule_extract_candidates_total", { disposition: "accepted" });
-        const quoteOffset = segment.text.indexOf(cand.sourceQuote);
-        const rc: RuleCandidate = {
-          id: newId("cand"),
-          tenantId: ctx.tenantId,
-          docId: doc.id,
-          extractJobId,
-          segmentIdx: segment.idx,
-          span: {
-            start: segment.spanStart + quoteOffset,
-            end: segment.spanStart + quoteOffset + cand.sourceQuote.length,
-          },
-          candidate: cand,
-          status: "PENDING",
-        };
-        candidates.push(rc);
+      try {
+        const segCands = await this.extractSegment(ctx, doc, segment, extractJobId);
+        candidates.push(...segCands);
+        await this.recordSegment(ctx.tenantId, doc.id, segment.idx, "OK");
+      } catch (err) {
+        failedSegments++;
+        await this.recordSegment(
+          ctx.tenantId,
+          doc.id,
+          segment.idx,
+          "FAILED",
+          err instanceof Error ? err.message : String(err),
+        );
+        this.metrics.inc("dc_rule_extract_segments_total", { status: "failed" });
       }
     }
     await this.markDiffs(ctx, doc, candidates);
     await this.markNearDuplicates(ctx, candidates);
     for (const rc of candidates) await this.repos.ruleCandidates.put(rc);
-    doc.status = candidates.length > 0 ? "IN_REVIEW" : "EXTRACTED";
+    // §6: 任一段落失败 → PARTIAL（已成功段落候选可审，失败段落可单独重试）
+    doc.status = failedSegments > 0 ? "PARTIAL" : candidates.length > 0 ? "IN_REVIEW" : "EXTRACTED";
     await this.repos.ruleDocs.put(doc);
     return { doc, jobId: extractJobId, candidates };
+  }
+
+  /** Extract candidates from a single segment (throws on LLM failure → caller marks FAILED). */
+  private async extractSegment(
+    ctx: AuthCtx,
+    doc: RuleDoc,
+    segment: DocSegment,
+    extractJobId: string,
+  ): Promise<RuleCandidate[]> {
+    const out = await this.llm.parseStructured({
+      model: this.model,
+      maxTokens: 4096,
+      // LLM Provider 增量 §1.3：A2 抽取走用途绑定（extraction），无绑定回落 env 默认
+      tenantId: ctx.tenantId,
+      purpose: "extraction",
+      system: EXTRACTION_SYSTEM,
+      messages: [{ role: "user", content: `<segment heading="${segment.heading ?? ""}">\n${segment.text}\n</segment>` }],
+      schema: ExtractionSchema,
+    });
+    const out_candidates: RuleCandidate[] = [];
+    for (const cand of out.candidates) {
+      // Server-side substring validation against the segment text (anti-hallucination).
+      if (!segment.text.includes(cand.sourceQuote) || cand.sourceQuote.trim() === "") {
+        doc.droppedCandidates++;
+        this.metrics.inc("dc_rule_extract_candidates_total", { disposition: "dropped" });
+        continue;
+      }
+      this.metrics.inc("dc_rule_extract_candidates_total", { disposition: "accepted" });
+      const quoteOffset = segment.text.indexOf(cand.sourceQuote);
+      out_candidates.push({
+        id: newId("cand"),
+        tenantId: ctx.tenantId,
+        docId: doc.id,
+        extractJobId,
+        segmentIdx: segment.idx,
+        span: {
+          start: segment.spanStart + quoteOffset,
+          end: segment.spanStart + quoteOffset + cand.sourceQuote.length,
+        },
+        candidate: cand,
+        status: "PENDING",
+      });
+    }
+    return out_candidates;
+  }
+
+  private async recordSegment(
+    tenantId: string,
+    docId: string,
+    segNo: number,
+    status: "OK" | "FAILED" | "PENDING",
+    error?: string,
+  ): Promise<void> {
+    await this.repos.extractSegments.put({
+      id: `${docId}|${segNo}`,
+      tenantId,
+      docId,
+      segNo,
+      status,
+      error,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  /** §6: list per-segment extraction status (PARTIAL task triage). */
+  async listSegments(ctx: AuthCtx, docId: string) {
+    return this.repos.extractSegments.list(ctx.tenantId, (s) => s.docId === docId);
+  }
+
+  /**
+   * §6: retry a single failed segment. On success the segment's candidates are
+   * added; if no FAILED segments remain the doc transitions out of PARTIAL.
+   */
+  async retrySegment(ctx: AuthCtx, docId: string, segNo: number): Promise<RuleDoc> {
+    const doc = await this.repos.ruleDocs.get(ctx.tenantId, docId);
+    if (!doc) throw notFound("rule doc");
+    if (doc.status !== "PARTIAL") throw invalidState("doc is not in PARTIAL state");
+    const segment = (doc.segments ?? []).find((s) => s.idx === segNo);
+    if (!segment) throw notFound("segment");
+    if (!doc.extractJobId) throw validationError("doc has no extract job");
+    const fresh = await this.extractSegment(ctx, doc, segment, doc.extractJobId);
+    await this.markDiffs(ctx, doc, fresh);
+    await this.markNearDuplicates(ctx, fresh);
+    for (const rc of fresh) await this.repos.ruleCandidates.put(rc);
+    await this.recordSegment(ctx.tenantId, doc.id, segNo, "OK");
+    const segs = await this.listSegments(ctx, docId);
+    const stillFailed = segs.some((s) => s.status === "FAILED");
+    const anyCand = (await this.repos.ruleCandidates.list(ctx.tenantId, (c) => c.docId === docId)).length > 0;
+    doc.status = stillFailed ? "PARTIAL" : anyCand ? "IN_REVIEW" : "EXTRACTED";
+    await this.repos.ruleDocs.put(doc);
+    return doc;
   }
 
   /** Re-upload diff by name similarity: 新增 / 变更 / 疑似删除. */

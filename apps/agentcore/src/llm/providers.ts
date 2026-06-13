@@ -12,6 +12,7 @@ import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import type { LlmAgentRequest, LlmAgentResponse, LlmCapabilities, LlmClient, RawClassification } from "./types.js";
 import type { DataCoreProviderDirectory } from "./datacore-directory.js";
+import { CircuitBreaker, isFallbackTriggering, type BreakerOptions } from "./breaker.js";
 
 /**
  * Multi-LLM provider layer — AMENDS QOS-PRD §6 (was Anthropic-only normative).
@@ -111,6 +112,8 @@ export interface ResolvedLlm {
 
 export class LlmProviderRegistry {
   private readonly cache = new Map<string, LlmClient>();
+  /** §5: per-provider circuit breaker, persisted across resolves. */
+  private readonly breakers = new Map<string, CircuitBreaker>();
 
   constructor(
     private readonly deps: {
@@ -122,8 +125,19 @@ export class LlmProviderRegistry {
       /** LLM Provider 增量：A 侧 provider 目录（服务间凭证消费）。 */
       directory?: DataCoreProviderDirectory;
       dcFactory?: DataCoreAdapterFactory;
+      /** §5 test seam — breaker timing/thresholds. */
+      breakerOptions?: BreakerOptions;
     },
   ) {}
+
+  breakerFor(providerId: string): CircuitBreaker {
+    let b = this.breakers.get(providerId);
+    if (!b) {
+      b = new CircuitBreaker(this.deps.breakerOptions);
+      this.breakers.set(providerId, b);
+    }
+    return b;
+  }
 
   /**
    * Resolve a model spec to a provider adapter + plain model id.
@@ -168,6 +182,7 @@ export class LlmProviderRegistry {
       { client: primary, provider, modelId },
       loadFallback,
       this.deps.metrics,
+      this.breakerFor(provider.id),
     );
     return { client, model: modelId, providerKey: provider.name, providerId: provider.id, modelId };
   }
@@ -236,6 +251,7 @@ class ProviderRoutedClient implements LlmClient {
       { client: FullLlmClient; provider: LlmProvider; modelId: string } | undefined
     >,
     private readonly metrics?: Metrics,
+    private readonly breaker?: CircuitBreaker,
   ) {}
 
   private structuredOutputSupported(target: { provider: LlmProvider; modelId: string }): boolean {
@@ -243,17 +259,39 @@ class ProviderRoutedClient implements LlmClient {
     return m?.capabilities.structuredOutput ?? true;
   }
 
+  private async toFallback<T>(
+    op: (target: { client: FullLlmClient; provider: LlmProvider; modelId: string }) => Promise<T>,
+    err: unknown,
+  ): Promise<T> {
+    const fb = await this.loadFallback().catch(() => undefined);
+    if (!fb) throw err instanceof Error ? err : new Error(String(err));
+    this.metrics?.llmFallback.inc({ from: this.primary.provider.id, to: fb.provider.id });
+    // 禁止链式：fallback 自身的 fallbackProviderId 不再生效
+    return op(fb);
+  }
+
+  private recordBreaker(ok: boolean): void {
+    if (!this.breaker) return;
+    const state = this.breaker.record(ok);
+    this.metrics?.llmBreaker.inc({ provider: this.primary.provider.id, state: state.toLowerCase() });
+  }
+
   private async withFallback<T>(
     op: (target: { client: FullLlmClient; provider: LlmProvider; modelId: string }) => Promise<T>,
   ): Promise<T> {
+    // §5 熔断打开 → 不再探测主 provider，直接走 fallback
+    if (this.breaker && !this.breaker.canAttempt()) {
+      return this.toFallback(op, new Error(`circuit breaker open for ${this.primary.provider.name}`));
+    }
     try {
-      return await op(this.primary);
+      const r = await op(this.primary);
+      this.recordBreaker(true);
+      return r;
     } catch (err) {
-      const fb = await this.loadFallback().catch(() => undefined);
-      if (!fb) throw err;
-      this.metrics?.llmFallback.inc({ from: this.primary.provider.id, to: fb.provider.id });
-      // 禁止链式：fallback 自身的 fallbackProviderId 不再生效
-      return op(fb);
+      // §5 4xx 参数错误 / 内容审查拒绝：不切换、不计入熔断，保留原语义
+      if (!isFallbackTriggering(err)) throw err;
+      this.recordBreaker(false);
+      return this.toFallback(op, err);
     }
   }
 

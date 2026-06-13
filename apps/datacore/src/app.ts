@@ -365,6 +365,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const decided = await actions.approve(approver, draft.id);
       return { draftId: draft.id, status: decided.status };
     },
+    // 执行语义 §4：opKey 幂等记录（7d）接 repos（R1：replay.ts 不直接 import 仓储）。
+    idempotency: {
+      get: async (tenantId, opKey) => {
+        const rec = await repos.idempotencyRecords.get(tenantId, `replay|${opKey}`);
+        if (!rec || rec.expiresAt < new Date().toISOString()) return undefined;
+        return rec.responseDigest as unknown as import("@platform/contracts").OpsTickReport["executed"][number];
+      },
+      put: async (tenantId, opKey, exec) => {
+        const now = Date.now();
+        await repos.idempotencyRecords.put({
+          id: `replay|${opKey}`,
+          tenantId,
+          scope: "replay",
+          responseDigest: exec as unknown as Record<string, unknown>,
+          createdAt: new Date(now).toISOString(),
+          expiresAt: new Date(now + 7 * 24 * 60 * 60_000).toISOString(),
+        });
+      },
+    },
     log: (level, msg, meta) => logger[level](meta ?? {}, msg),
   });
   // §3-① 挂载到模拟时钟第⑦步（仅 SYNTHETIC 租户挂剧本）。
@@ -372,6 +391,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!(await opsTeam.isSyntheticTenant(tenantId))) return; // 隔离：真实租户不挂剧本
     const playbook = await opsTeam.getPlaybook(tenantId);
     if (!playbook) return;
+    // 执行语义 §4：回放进度检查点——已完成的 tick 重入时跳过（动作经 opKey 幂等去重兜底）。
+    const progressId = `replay|${tenantId}`;
+    const progress = await repos.replayProgress.get(tenantId, progressId);
+    if (progress && tick <= progress.lastCompletedTick) return;
     const report = await opsReplay.runTick(tenantId, playbook, { tick, date, seed, scenarioEvents });
     await repos.opsTickReports.put({
       id: `ops_tick_${tenantId}_${tick}`,
@@ -381,6 +404,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       executed: report.executed,
       skipped: report.skipped,
       createdAt: new Date().toISOString(),
+    });
+    await repos.replayProgress.put({
+      id: progressId,
+      tenantId,
+      lastCompletedTick: tick,
+      updatedAt: new Date().toISOString(),
     });
   });
   // §6 S3 调度器三类作业 handler（真实租户运营自动化）。
@@ -1403,6 +1432,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     const body = parseBody(ReviewSchema, req.body);
     return candidateVM(await ruleDocs.review(ctx(req), id, body.action, body.patch));
+  });
+  // 执行语义 §6：分段抽取段落级状态 + 失败段落单独重试（PARTIAL 任务）
+  app.get("/a/v1/rule-docs/:id/segments", async (req) => {
+    const { id } = req.params as { id: string };
+    return { items: await ruleDocs.listSegments(ctx(req), id) };
+  });
+  app.post("/a/v1/rule-docs/:id/segments/:segNo/retry", async (req) => {
+    const { id, segNo } = req.params as { id: string; segNo: string };
+    return ruleDocVM(await ruleDocs.retrySegment(ctx(req), id, Number(segNo)));
   });
 
   // ---- A3 modeling -----------------------------------------------------------------------

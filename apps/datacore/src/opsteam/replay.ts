@@ -46,6 +46,15 @@ export interface OpsReplayDeps {
     approver: AuthCtx,
     payload: Record<string, unknown>,
   ) => Promise<{ draftId: string; status: string }>;
+  /**
+   * 执行语义 §4：每动作幂等键 opKey=hash(seed,tick,persona,actionIndex)。中断重入时
+   * tick 内部分完成的动作经此去重——命中返回首次结果、不产新记录。由 app.ts 接 repos
+   * （保持 R1：本文件不直接 import 仓储）。
+   */
+  idempotency?: {
+    get: (tenantId: string, opKey: string) => Promise<Exec | undefined>;
+    put: (tenantId: string, opKey: string, exec: Exec) => Promise<void>;
+  };
   log: (level: "warn" | "info", msg: string, meta?: Record<string, unknown>) => void;
 }
 
@@ -88,11 +97,21 @@ export class OpsReplayService {
       }
     }
 
-    for (const { action, salt } of actions) {
+    for (const [actionIndex, { action, salt }] of actions.entries()) {
       try {
+        // §4 幂等：opKey 命中 → 返回首次结果，不重复执行副作用
+        const opKey = `${args.seed}|${args.tick}|${action.persona}|${actionIndex}`;
+        const cached = await this.deps.idempotency?.get(tenantId, opKey);
+        if (cached) {
+          executed.push(cached);
+          continue;
+        }
         const r = await this.runAction(tenantId, action, { ...args, salt });
         if (r?.skipReason) skipped.push({ kind: action.kind, persona: action.persona, reason: r.skipReason });
-        else if (r?.exec) executed.push(r.exec);
+        else if (r?.exec) {
+          executed.push(r.exec);
+          await this.deps.idempotency?.put(tenantId, opKey, r.exec);
+        }
       } catch (err) {
         const status = statusOf(err);
         const reason = err instanceof Error ? err.message : String(err);
