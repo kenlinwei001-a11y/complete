@@ -42,6 +42,7 @@ import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalog
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
+import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -456,11 +457,35 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     updatedAt: true,
   });
 
+  // 管理面闭合性 §1：ExecutionPlan ≡ Workflow。kind 由步骤类型自动判定——含
+  // invoke_agent/invoke_mcp_tool → ORCHESTRATION，否则 PLAN（kind=PLAN 即"执行计划"，
+  // 是意图 workflowRef 绑定下拉的唯一来源）。
+  const workflowKind = (wf: WorkflowDefinition): "PLAN" | "ORCHESTRATION" =>
+    wf.steps.some((s) => s.type === "invoke_agent" || s.type === "invoke_mcp_tool") ? "ORCHESTRATION" : "PLAN";
+  const withKind = <T extends WorkflowDefinition>(wf: T) => ({ ...wf, kind: workflowKind(wf) });
+
+  // 管理面闭合性 §4：求解器目录（只读）——workflow 步骤 solverKey 下拉的数据源。
+  // 复用能力路由增量 §1 的 DataCore 目录（含 description/argHints）。求解器由平台提供、
+  // 不可自助创建，但必须可见（合法的"可见不可创建"边界，非死路）。
+  app.get("/b/v1/solvers", async (req) => {
+    const a = await auth(req);
+    const { query } = req.query as { query?: string };
+    try {
+      const out = await deps.dataCore.catalog.discover(a, "solvers", query);
+      return { ...out, createHint: "求解器由平台提供，如需新增请联系实施" };
+    } catch {
+      return { items: [], createHint: "求解器由平台提供，如需新增请联系实施" };
+    }
+  });
+
   app.get("/b/v1/workflows", async (req, reply) => {
     const a = await auth(req);
-    const { items, total } = applyListQuery(await deps.repos.workflows.listByTenant(a.tenantId), req.query as ListQuery);
+    const { kind } = req.query as { kind?: string };
+    let list = await deps.repos.workflows.listByTenant(a.tenantId);
+    if (kind === "PLAN" || kind === "ORCHESTRATION") list = list.filter((wf) => workflowKind(wf) === kind);
+    const { items, total } = applyListQuery(list, req.query as ListQuery);
     reply.header("x-total-count", String(total));
-    return items;
+    return items.map(withKind);
   });
 
   app.get("/b/v1/workflows/:id", async (req) => {
@@ -472,7 +497,23 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       .filter((x) => x.key === wf.key)
       .sort((x, y) => y.version - x.version)
       .map((x) => ({ id: x.id, version: x.version, status: x.status }));
-    return { ...wf, versions };
+    return { ...withKind(wf), versions };
+  });
+
+  // 管理面闭合性 §3：发布前干校验（编辑器实时调用）——同发布校验但不改状态。
+  app.post("/b/v1/workflows/:id/validate", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const wf = await deps.repos.workflows.get(id);
+    if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
+    const msgs = validatePlanSteps(wf.steps, {});
+    const errors: { stepId?: string; code: string; message: string }[] = msgs.map((m) => {
+      const stepId = /步骤(?: id 重复:)? ?([\w-]+)/.exec(m)?.[1];
+      return { ...(stepId && wf.steps.some((s) => s.id === stepId) ? { stepId } : {}), code: ErrorCodes.PLAN_VALIDATION_ERROR, message: m };
+    });
+    const cycle = errors.length === 0 ? await detectStaticCycle(deps.repos, { kind: "workflow", id }, { workflow: wf }) : undefined;
+    if (cycle) errors.push({ code: ErrorCodes.CYCLIC_INVOCATION, message: `静态可达环 ${cycle.join(" -> ")}` });
+    return { ok: errors.length === 0, kind: workflowKind(wf), errors };
   });
 
   app.post("/b/v1/workflows", async (req, reply) => {
@@ -1226,6 +1267,17 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // B5 Scene entries
   // ---------------------------------------------------------------------
   const UpsertSceneBody = SceneEntryConfigSchema.omit({ id: true, tenantId: true });
+
+  // 数据流闭环 §3/§6：联动刷新接线注册表（前端缓存失效路由的单一来源）。
+  // ?event= 过滤某事件的下游；?view= 反查某消费页依赖的事件。
+  app.get("/b/v1/event-subscriptions", async (req) => {
+    await auth(req);
+    const { event, view } = req.query as { event?: string; view?: string };
+    let items = EVENT_SUBSCRIPTIONS;
+    if (event) items = items.filter((s) => s.event === event);
+    if (view) items = items.filter((s) => s.invalidates.includes(view));
+    return { total: items.length, items };
+  });
 
   // 20 场景目录 §9：场景启动器卡片（单一来源=SCENARIO_CATALOG；非前端硬编码）。
   // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active）。
