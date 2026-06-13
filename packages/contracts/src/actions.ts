@@ -79,6 +79,12 @@ export const ScheduledJobKindSchema = z.enum([
   "TS_AGGREGATE",
   // M11 §3 兜底定时：每周全量校准
   "CALIBRATION_RUN",
+  // 回放编排器 §6.1 A 类：真实租户定期产能预测（ServiceAccount 身份，M11 校准配对正式来源）
+  "SCHEDULED_FORECAST",
+  // 回放编排器 §6.1 B 类：S&OP 月度自动开启 + ①–④ 计算 + 议程（⑤ 仍人做）
+  "SOP_AUTO_OPEN",
+  // 回放编排器 §6.1 B 类：审批催办 → 超时升级
+  "APPROVAL_REMINDER",
 ]);
 export type ScheduledJobKind = z.infer<typeof ScheduledJobKindSchema>;
 
