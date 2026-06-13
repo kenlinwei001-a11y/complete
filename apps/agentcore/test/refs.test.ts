@@ -340,7 +340,7 @@ describe("L8 · skill 更新：latest 引用下次加载即新内容；任务留
       headers: debugHeaders(ADMIN),
       payload: { key: "ref_skill", name: "引用技能", summary: "V3", body: "v3 body", resources: [] },
     });
-    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${(skl3.json() as { id: string }).id}/publish`, headers: debugHeaders(ADMIN), payload: {} });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${(skl3.json() as { id: string }).id}/publish?force=true`, headers: debugHeaders(ADMIN), payload: {} });
     expect(pub.statusCode).toBe(200);
     expect((pub.json() as { impact: { agents: number } }).impact.agents).toBe(1);
   });

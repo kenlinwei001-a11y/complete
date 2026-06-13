@@ -1110,7 +1110,7 @@ await check("B4 Skill", "create / PUT（页面 {name,summary,body}）/ publish",
   eq(c.status, 201, "create status");
   const put = await b(`/b/v1/skills/${c.body.id}`, { method: "PUT", body: { name: "parity 技能·改", summary: "s2", body: "# md2" } });
   eq(put.status, 200, "PUT status");
-  const pub = await b(`/b/v1/skills/${c.body.id}/publish`, { body: {} });
+  const pub = await b(`/b/v1/skills/${c.body.id}/publish?force=true`, { body: {} });
   eq(pub.status, 200, "publish status");
   eq(pub.body.status, "PUBLISHED", "PUBLISHED");
 });

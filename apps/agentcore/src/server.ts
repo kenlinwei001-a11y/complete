@@ -40,6 +40,7 @@ import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { builtinTool } from "./tools/registry.js";
+import { lintSkill } from "./skill-lint.js";
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -729,6 +730,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { id } = req.params as { id: string };
     const skill = await deps.repos.skills.get(id);
     if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    // Skill 编写规范 §4 门禁一：结构 lint 必过（force=true 走审计豁免）。
+    const { force } = req.query as { force?: string };
+    const lint = lintSkill(skill);
+    if (!lint.ok && force !== "true") {
+      throw new HttpError(422, "SKILL_LINT_FAILED", `技能结构 lint 未通过（${lint.violations.length} 项）：${lint.violations.map((x) => x.rule).join(", ")}`);
+    }
     const published = { ...skill, status: "PUBLISHED" as const };
     await deps.repos.skills.update(published);
     // 引用模式增量 §2.3：影响面（引用同 key 任一版本的 agent；latest 下次加载即新内容 — L8）
@@ -744,7 +751,23 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       intents: 0,
       refs: referrers.map((ag) => ({ kind: "agent" as const, key: ag.key, version: ag.version, name: ag.name })),
     };
-    return { ...published, impact };
+    return { ...published, impact, lint };
+  });
+
+  // Skill 编写规范 §4：编辑器「结构 lint」干跑（不改状态；含已存 skill 或临时 body）。
+  app.post("/b/v1/skills/lint", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const body = req.body as { id?: string; summary?: string; body?: string; resources?: { name: string }[] };
+    let target: { summary: string; body: string; resources: { name: string }[] };
+    if (body.id) {
+      const skill = await deps.repos.skills.get(body.id);
+      if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${body.id}`);
+      target = { summary: skill.summary, body: skill.body, resources: skill.resources };
+    } else {
+      target = { summary: body.summary ?? "", body: body.body ?? "", resources: body.resources ?? [] };
+    }
+    return lintSkill(target);
   });
 
   // ---- 管理平台增量 §4：skills 统一资源模式 ----

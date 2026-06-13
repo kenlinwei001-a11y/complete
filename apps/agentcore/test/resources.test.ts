@@ -162,7 +162,7 @@ describe("M4 · workflows / skills / mcp-configs", () => {
       payload: { key: "uni_skill", name: "技能", summary: "s", body: "# md", resources: [] },
     });
     const skillId = (created.json() as { id: string }).id;
-    await t.app.inject({ method: "POST", url: `/b/v1/skills/${skillId}/publish`, headers: debugHeaders(ADMIN) });
+    await t.app.inject({ method: "POST", url: `/b/v1/skills/${skillId}/publish?force=true`, headers: debugHeaders(ADMIN) });
     const put = await t.app.inject({ method: "PUT", url: `/b/v1/skills/${skillId}`, headers: debugHeaders(ADMIN), payload: { name: "x" } });
     expect(put.statusCode).toBe(409);
     expect((put.json() as { error: { code: string } }).error.code).toBe("IMMUTABLE_VERSION");
