@@ -25,6 +25,7 @@ const SUGGESTION_V1: ModelingSuggestion = {
       existingTypeKey: null,
       typeKey: "SalesOrder",
       displayName: "销售订单",
+      domain: "product",
       sourceDataset: "orders",
       properties: [
         { propKey: "so", sourceField: "so", dataType: "string", isPrimaryKey: true, refToTypeKey: null },
@@ -39,6 +40,7 @@ const SUGGESTION_V1: ModelingSuggestion = {
       existingTypeKey: null,
       typeKey: "BatteryModel",
       displayName: "电池型号",
+      domain: "product",
       sourceDataset: "models",
       properties: [
         { propKey: "modelId", sourceField: "modelId", dataType: "string", isPrimaryKey: true, refToTypeKey: null },
@@ -207,6 +209,7 @@ describe("A3 modeling", () => {
             existingTypeKey: "SalesOrder",
             typeKey: "SalesOrder",
             displayName: "销售订单",
+            domain: "product",
             sourceDataset: "sales_orders",
             properties: [
               { propKey: "so", sourceField: "so", dataType: "string", isPrimaryKey: true, refToTypeKey: null },

@@ -434,12 +434,44 @@ export class SyntheticService {
 
   // -- battery instantiation (master data → transactions, FK by construction) --
 
+  /** 治理增量 §1：注册电池场景包的域注册表（含 owner，会签默认人）。 */
+  private async seedDomains(ctx: AuthCtx): Promise<void> {
+    const seeds: { domainKey: string; displayName: string; color: string; ownerUserId: string | null }[] = [
+      { domainKey: "factory", displayName: "工厂", color: "#2563eb", ownerUserId: "usr_demo_admin" },
+      { domainKey: "product", displayName: "产品", color: "#16a34a", ownerUserId: "usr_demo_admin" },
+      { domainKey: "process", displayName: "工艺", color: "#9333ea", ownerUserId: "usr_demo_planner" },
+      { domainKey: "equip", displayName: "设备", color: "#ea580c", ownerUserId: "usr_demo_planner" },
+      { domainKey: "quality", displayName: "质量", color: "#dc2626", ownerUserId: "usr_demo_admin" },
+      { domainKey: "capacity", displayName: "产能", color: "#0891b2", ownerUserId: "usr_demo_planner" },
+      { domainKey: "forecast", displayName: "预测", color: "#7c3aed", ownerUserId: "usr_demo_planner" },
+      { domainKey: "people", displayName: "人员", color: "#db2777", ownerUserId: "usr_demo_admin" },
+      { domainKey: "plan", displayName: "计划", color: "#ca8a04", ownerUserId: "usr_demo_planner" },
+      { domainKey: "finance", displayName: "财务", color: "#059669", ownerUserId: "usr_demo_admin" },
+      { domainKey: "unassigned", displayName: "未归域", color: "#9ca3af", ownerUserId: null },
+    ];
+    for (const s of seeds) {
+      const existing = (await this.repos.domains.list(ctx.tenantId, (d) => d.domainKey === s.domainKey))[0];
+      if (existing) continue;
+      await this.repos.domains.put({
+        id: `dom_${ctx.tenantId}_${s.domainKey}`,
+        tenantId: ctx.tenantId,
+        domainKey: s.domainKey,
+        displayName: s.displayName,
+        color: s.color,
+        ownerUserId: s.ownerUserId,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
   private async instantiateBattery(
     ctx: AuthCtx,
     seed: number,
     scale: "S" | "M" | "L",
     origin: { type: "SYNTHETIC"; jobId: string },
   ): Promise<number> {
+    // 治理增量 §1：先注册域（object_types.domain FK 校验目标 + 检索/图谱按域分组）。
+    await this.seedDomains(ctx);
     for (const t of batteryObjectTypes()) {
       const existing = await this.ontology.getType(ctx, t.key);
       if (!existing) await this.ontology.upsertType(ctx, t);

@@ -10,6 +10,7 @@ import { logoutSession } from "@/store/authSession";
 import { toast } from "@/store/toastStore";
 import { visibleAdminPages } from "./adminRegistry";
 import { QueryDock } from "@/components/QueryDock/QueryDock";
+import { GlobalSearch } from "@/components/GlobalSearch/GlobalSearch";
 import { HealthBadge } from "@/components/Health/HealthBadge";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import zh from "@/locales/zh";
@@ -55,7 +56,7 @@ export default function ShellLayout() {
             </span>
           </div>
         </div>
-        <input className={styles.search} placeholder={zh.common.search} aria-label={zh.common.search} />
+        <GlobalSearch />
         {/* 运营态增量 §4.5：全局合成水印徽章（hover 显示 generatedFrom 与 seed；随 LIVE 占比消退） */}
         <SyntheticWatermark />
         {/* §7.22 数据健康度小徽章（任一源延迟 → 黄点） */}

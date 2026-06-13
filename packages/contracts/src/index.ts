@@ -12,3 +12,4 @@ export * from "./workspace.js";
 export * from "./planviews.js";
 export * from "./admin.js";
 export * from "./livedin.js";
+export * from "./ontology-governance.js";

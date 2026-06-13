@@ -1,4 +1,4 @@
-import { ErrorCodes, parseMcpToolFullName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -173,6 +173,9 @@ export class GuardedToolExecutor {
         );
       case "get_object":
         return this.deps.dataCore.ontology.getObject(ctx, String(args.objectType), String(args.objectId));
+      case "aggregate_objects":
+        // 治理增量 §3.6 / G8：contracts IO 强校验，聚合下推（避免拉全量行）。
+        return this.deps.dataCore.ontology.aggregateObjects(ctx, AggregateRequestSchema.parse(input));
       case "invoke_solver":
         return this.deps.dataCore.solver.invoke(ctx, String(args.solverKey), (args.args ?? {}) as Record<string, unknown>);
       case "evaluate_rules":

@@ -34,6 +34,31 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    name: "aggregate_objects",
+    descriptionForLLM:
+      "对本体对象做聚合下推（按维度分组 + count/sum/avg/min/max 度量），用于回答对比/汇总类问题（如『对比储能与动力基地平均利用率』）。优先于拉全量后本地聚合 —— 避免拉全量行。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        typeKey: { type: "string" },
+        filter: { type: "object" },
+        groupBy: { type: "array", items: { type: "string" }, maxItems: 2 },
+        metrics: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            properties: { prop: { type: "string" }, fn: { type: "string", enum: ["count", "sum", "avg", "min", "max"] } },
+            required: ["prop", "fn"],
+          },
+        },
+      },
+      required: ["typeKey", "metrics"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "get_object",
     descriptionForLLM: "按类型与 ID 获取单个本体对象。当已知对象 ID 需要详情时调用。",
     inputSchema: {

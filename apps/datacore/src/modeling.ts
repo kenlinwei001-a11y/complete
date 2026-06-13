@@ -185,6 +185,12 @@ export class ModelingService {
         for (const p of t.properties) p.isPrimaryKey = p.propKey === op.propKey;
         break;
       }
+      case "setDomain": {
+        // 治理增量 §1：人工归域（解除 unassigned 阻断）。
+        const t = findType(op.typeKey);
+        t.domain = op.domain;
+        break;
+      }
       case "removeObjectType": {
         findType(op.typeKey);
         suggestion.objectTypes = suggestion.objectTypes.filter((t) => t.typeKey !== op.typeKey);
@@ -215,6 +221,10 @@ export class ModelingService {
       }
       if (!t.properties.some((p) => p.isPrimaryKey)) errors.push(`${t.typeKey}: primary key required`);
       if (existingKeys.has(t.typeKey)) errors.push(`${t.typeKey}: conflicts with published typeKey`);
+      // 治理增量 §1：归域强制 —— unassigned 阻断发布（必须人工归域）。
+      if (!t.domain || t.domain === "unassigned") {
+        errors.push(`${t.typeKey}: 未归域（domain=unassigned），发布前必须人工归域`);
+      }
       for (const p of t.properties) {
         if (p.refToTypeKey && !draftKeys.has(p.refToTypeKey) && !existingKeys.has(p.refToTypeKey)) {
           errors.push(`${t.typeKey}.${p.propKey}: ref to unknown type '${p.refToTypeKey}'`);
@@ -269,11 +279,14 @@ export class ModelingService {
         await this.ontology.upsertType(ctx, {
           key: t.typeKey,
           displayName: t.displayName,
+          domain: t.domain,
           properties: t.properties.map((p) => ({
             propKey: p.propKey,
             dataType: p.dataType,
             isPrimaryKey: p.isPrimaryKey,
             refToTypeKey: p.refToTypeKey,
+            // 治理增量 §3：A3 对名称类/主键字段建议 searchable。
+            searchable: p.isPrimaryKey || p.propKey === "name" || p.propKey === "displayName" || undefined,
           })),
           derivedProperties: [],
           sourceBindings: binding,

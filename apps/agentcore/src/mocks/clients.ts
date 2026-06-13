@@ -120,6 +120,46 @@ export class MockOntologyClient implements OntologyClient {
     if (!found) throw new Error(`object not found: ${objectType}/${objectId}`);
     return { data: found, snapshotVersion: SNAPSHOT };
   }
+
+  /** 治理增量 §3.6：聚合下推 mock —— 返回分组行集（绝不返回全量原始行），供 G8 审计断言。 */
+  async aggregateObjects(
+    ctx: ToolAuthCtx,
+    req: { typeKey: string; filter?: Record<string, unknown>; groupBy?: string[]; metrics: { prop: string; fn: "count" | "sum" | "avg" | "min" | "max" }[] },
+  ): Promise<ToolPayload> {
+    const result = await this.queryObjects(ctx, req.typeKey, req.filter ?? {});
+    const items = (result.data as { items: Record<string, unknown>[] }).items;
+    const groupBy = req.groupBy ?? [];
+    const groups = new Map<string, { group: Record<string, string | null>; rows: Record<string, unknown>[] }>();
+    for (const r of items) {
+      const k = groupBy.map((g) => String(r[g] ?? "∅")).join("");
+      let g = groups.get(k);
+      if (!g) {
+        const group: Record<string, string | null> = {};
+        for (const gb of groupBy) group[gb] = r[gb] == null ? null : String(r[gb]);
+        g = { group, rows: [] };
+        groups.set(k, g);
+      }
+      g.rows.push(r);
+    }
+    const rows = [...groups.values()].map((g) => {
+      const metrics: Record<string, number | null> = {};
+      for (const m of req.metrics) {
+        const key = `${m.fn}_${m.prop}`;
+        if (m.fn === "count") {
+          metrics[key] = g.rows.length;
+          continue;
+        }
+        const vals = g.rows.map((p) => p[m.prop]).filter((v): v is number => typeof v === "number");
+        if (!vals.length) metrics[key] = null;
+        else if (m.fn === "sum") metrics[key] = vals.reduce((a, b) => a + b, 0);
+        else if (m.fn === "avg") metrics[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
+        else if (m.fn === "min") metrics[key] = Math.min(...vals);
+        else metrics[key] = Math.max(...vals);
+      }
+      return { group: g.group, metrics };
+    });
+    return { data: { rows, rowCount: rows.length, truncated: false }, snapshotVersion: SNAPSHOT };
+  }
 }
 
 export class MockSolverClient implements SolverClient {

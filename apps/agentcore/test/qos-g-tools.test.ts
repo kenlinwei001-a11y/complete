@@ -79,6 +79,49 @@ describe("New builtin tools (QOS-PRD §7.1 additions: search_knowledge / query_t
     expect(prov?.kb?.sourceName).toBe(hits[0]?.source);
   });
 
+  it("G8: aggregate_objects (path B) returns grouped rows; audit asserts agent did NOT pull full object rows", async () => {
+    t.llm.queueClassification(OUT_OF_CATALOG);
+    t.llm.queueAgentTurn(
+      {
+        content: [
+          text("用聚合下推对比基地平均利用率。"),
+          toolUse("aggregate_objects", {
+            typeKey: "Base",
+            groupBy: ["kind"],
+            metrics: [{ prop: "util", fn: "avg" }, { prop: "baseId", fn: "count" }],
+          }),
+        ],
+      },
+      (req) => {
+        const tc = lastToolCallId(req);
+        return {
+          content: [
+            toolUse("final_answer", {
+              blocks: [{ type: "text", markdown: "储能与动力基地平均利用率对比已完成 ⟦ref:0⟧。" }],
+              provenance: [{ toolCallId: tc, outputPath: "$.data.rows" }],
+            }),
+          ],
+        };
+      },
+    );
+
+    const { taskId } = await submitQuery(t, PLANNER, "对比储能与动力基地的平均利用率", { view: "dash" });
+    await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+
+    const calls = await t.repos.toolCalls.listByTask(taskId);
+    const aggCall = calls.find((c) => c.toolName === "aggregate_objects" && c.outcome === "OK");
+    expect(aggCall).toBeDefined();
+    const data = (aggCall?.output as { data: { rows: { group: Record<string, string>; metrics: Record<string, number> }[]; rowCount: number } }).data;
+    expect(data.rows.length).toBeGreaterThan(0);
+    expect(data.rows.every((r) => typeof r.metrics.avg_util === "number" || r.metrics.avg_util === null)).toBe(true);
+    expect(data.rows.every((r) => typeof r.metrics.count_baseId === "number")).toBe(true);
+    // G8 审计断言：agent 走聚合下推，未用 query_objects 拉全量行。
+    const fullPull = calls.find((c) => c.toolName === "query_objects");
+    expect(fullPull).toBeUndefined();
+    // 聚合输出是行集（分组数 ≤ 全量基地数），不含逐对象原始行
+    for (const r of data.rows) expect("metrics" in r && "group" in r).toBe(true);
+  });
+
   it("query_timeseries_agg (mock): deterministic buckets; path B provenance → TS_AGGREGATE; T10 LLM isolation", async () => {
     t.llm.queueClassification(OUT_OF_CATALOG);
     t.llm.queueAgentTurn(

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
+import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
 import type { DashboardWidgetDef, WidgetQueryDef } from "@/api/types";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
@@ -37,11 +37,18 @@ function useWidgetData(q: WidgetQueryDef) {
         case "objects":
           return queryObjectsPaged(q.objectType, 1, q.limit ?? 50, (q.filter ?? {}) as Record<string, string>);
         case "objects-aggregate": {
-          const page = await queryObjectsPaged(q.objectType, 1, 500, (q.filter ?? {}) as Record<string, string>);
-          if (q.agg === "count") return page.total;
-          const vals = page.items.map((i) => Number(i.props[q.prop ?? ""] ?? 0));
-          const sum = vals.reduce((a, b) => a + b, 0);
-          return q.agg === "sum" ? sum : vals.length > 0 ? sum / vals.length : 0;
+          // 治理增量 §3.6：声明式聚合落 POST /a/v1/objects/aggregate（聚合下推，不再拉全量本地算）。
+          const prop = q.prop ?? (q.objectType ? "id" : "id");
+          const res = await aggregateObjects({
+            typeKey: q.objectType,
+            filter: q.filter,
+            groupBy: [],
+            metrics: [{ prop: q.agg === "count" ? prop : (q.prop ?? prop), fn: q.agg }],
+          });
+          const row = res.rows[0];
+          if (!row) return q.agg === "count" ? 0 : null;
+          const key = `${q.agg}_${q.agg === "count" ? prop : (q.prop ?? prop)}`;
+          return row.metrics[key] ?? (q.agg === "count" ? 0 : null);
         }
         case "solver": {
           const res = await invokeSolver(q.solverKey, q.args);

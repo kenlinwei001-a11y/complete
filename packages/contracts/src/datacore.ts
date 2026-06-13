@@ -115,6 +115,8 @@ export const ModelingSuggestionSchema = z.object({
       existingTypeKey: z.string().nullable(),
       typeKey: z.string(),
       displayName: z.string(),
+      /** 治理增量 §1：归域强制（LLM 建议域归属；无法判断 → "unassigned"，发布阻断）。 */
+      domain: z.string().default("unassigned"),
       sourceDataset: z.string(),
       properties: z.array(
         z.object({

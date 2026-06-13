@@ -92,6 +92,67 @@ export const queryObjectsPaged = (
   return api.a<ObjectsPage>(`/a/v1/objects?${params.toString()}`);
 };
 
+// ---- 治理增量 §3 检索体系（关键词搜索 / 邻接 / 聚合）+ §5 对象 360 ----------
+
+export interface GlobalSearchHit {
+  typeKey: string;
+  objectKey: string;
+  display: string;
+  domainKey: string;
+  score: number;
+}
+/** §3.3 全局关键词搜索（Shell 顶栏搜索框；命中 searchable 属性，相似度降序）。 */
+export const globalSearch = (q: string, opts?: { types?: string[]; domains?: string[]; limit?: number }) => {
+  const params = new URLSearchParams({ q });
+  if (opts?.types?.length) params.set("types", opts.types.join(","));
+  if (opts?.domains?.length) params.set("domains", opts.domains.join(","));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  return api.a<{ items: GlobalSearchHit[]; tookMs: number }>(`/a/v1/objects/search?${params.toString()}`);
+};
+
+export interface NeighborGroup {
+  linkKey: string;
+  direction: "out" | "in";
+  total: number;
+  items: { id: string; typeKey: string; objectKey: string; display: string }[];
+}
+/** §3.4 邻接导航（对象 360 关系区 / 图谱实例下钻）。 */
+export const fetchNeighbors = (objectId: string, opts?: { linkKey?: string; direction?: "out" | "in"; limit?: number }) => {
+  const params = new URLSearchParams();
+  if (opts?.linkKey) params.set("linkKey", opts.linkKey);
+  if (opts?.direction) params.set("direction", opts.direction);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return api.a<{ groups: NeighborGroup[] }>(`/a/v1/objects/${encodeURIComponent(objectId)}/neighbors${qs ? `?${qs}` : ""}`);
+};
+
+export interface AggregateResult {
+  rows: { group: Record<string, string | null>; metrics: Record<string, number | null> }[];
+  rowCount: number;
+  truncated: boolean;
+}
+/** §3.6 聚合查询（驾驶舱 widget 声明式 query 正式落此 API）。 */
+export const aggregateObjects = (req: {
+  typeKey: string;
+  filter?: Record<string, unknown>;
+  groupBy?: string[];
+  metrics: { prop: string; fn: "count" | "sum" | "avg" | "min" | "max" }[];
+}) => api.a<AggregateResult>("/a/v1/objects/aggregate", { body: req });
+
+/** §5 对象 360：按键取对象（检索 #1）。 */
+export const fetchObjectByKey = (typeKey: string, objectKey: string) =>
+  api.a<{ data: { id: string; type: string; props: Record<string, unknown> }; snapshotVersion: string }>(
+    `/a/v1/objects/${encodeURIComponent(typeKey)}/${encodeURIComponent(objectKey)}`,
+  );
+
+export const fetchObjectTypes = () =>
+  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean }[] }[]>(
+    "/a/v1/ontology/object-types",
+  );
+
+export const fetchDomains = () =>
+  api.a<{ domainKey: string; displayName: string; color?: string }[]>("/a/v1/ontology/domains");
+
 export const fetchOntologyGraph = (packageId: string) =>
   api.a<OntologyGraphVM>(`/a/v1/ontology/graph?packageId=${encodeURIComponent(packageId)}`);
 

@@ -23,6 +23,12 @@ export const zh = {
     yes: "是",
     no: "否",
   },
+  object360: {
+    properties: "属性",
+    relations: "关系",
+    footprint: "足迹",
+    searchPlaceholder: "全局搜索对象…",
+  },
   login: {
     title: "登录",
     tenant: "租户",

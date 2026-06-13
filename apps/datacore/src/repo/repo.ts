@@ -10,8 +10,11 @@ import type {
   DerivationRun,
   DerivationSpecRecord,
   DerivationValueRunRecord,
+  DomainRecord,
   DynamicFeatureRecord,
+  ElementRefRecord,
   ObjectPropHistoryRecord,
+  PublishRequestRecord,
   SliceSpecRecord,
   FeatureAuditRecord,
   FeatureConfigRecord,
@@ -187,6 +190,10 @@ export interface Repos {
   derivationSpecs: Store<DerivationSpecRecord>;
   derivationValueRuns: Store<DerivationValueRunRecord>;
   sliceSpecs: Store<SliceSpecRecord>;
+  // 治理增量（009_ontology_governance.sql）
+  domains: Store<DomainRecord>;
+  elementRefs: Store<ElementRefRecord>;
+  publishRequests: Store<PublishRequestRecord>;
   actionDrafts: Store<ActionDraft>;
   actionTypes: Store<ActionTypeRecord>;
   industryTemplates: Store<IndustryTemplateRecord>;

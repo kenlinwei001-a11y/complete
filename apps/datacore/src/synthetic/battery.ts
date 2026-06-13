@@ -399,18 +399,45 @@ const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings:
   DataSourceHealth: [{ connId: "conn-iot", dataset: "iot_source_health", fieldMappings: { sourceId: "SOURCE_ID", lagHours: "LAG_HOURS" } }],
 };
 
+/** 治理增量 §1：电池模板各对象类型的归域（与 graphmeta.GRAPH_DOMAIN 同源）。 */
+export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
+  Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
+  Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
+  DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
+};
+
+/** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
+function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
+  const units: Record<string, Record<string, string>> = {
+    Base: { gwh: "GWh", util: "%" },
+    Model: { unitPrice: "元" },
+    Order: { qty: "件" },
+    Shipment: { qtyTons: "吨" },
+  };
+  return props.map((p) => {
+    const out = { ...p };
+    if (p.propKey === "name" || p.propKey === "displayName" || (p.isPrimaryKey && p.dataType === "string")) {
+      out.searchable = true;
+    }
+    const u = units[key]?.[p.propKey];
+    if (u) out.unit = u;
+    return out;
+  });
+}
+
 export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">[] {
   const plain = (key: string, displayName: string, properties: PropertyDef[]): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> => ({
     key,
     displayName,
-    properties,
+    domain: BATTERY_TYPE_DOMAIN[key] ?? "unassigned",
+    properties: withGovernance(key, properties),
     derivedProperties: [],
     sourceBindings: BINDINGS[key] ?? [],
   });
   return [
-    { key: "Base", displayName: "生产基地", properties: baseProps, derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
-    { key: "Model", displayName: "电池型号", properties: modelProps, derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
-    { key: "Order", displayName: "销售订单", properties: orderProps, derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
+    { key: "Base", displayName: "生产基地", domain: "factory", properties: withGovernance("Base", baseProps), derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
+    { key: "Model", displayName: "电池型号", domain: "product", properties: withGovernance("Model", modelProps), derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
+    { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
     plain("Line", "产线", lineProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),

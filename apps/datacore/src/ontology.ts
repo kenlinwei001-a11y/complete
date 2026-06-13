@@ -125,11 +125,14 @@ export class OntologyService {
       tenantId: ctx.tenantId,
       key: input.key,
       displayName: input.displayName,
+      domain: input.domain ?? existing?.domain,
       properties: input.properties,
       derivedProperties: input.derivedProperties ?? [],
       sourceBindings: input.sourceBindings ?? [],
       version: (existing?.version ?? 0) + 1,
       status: "ACTIVE",
+      published: existing?.published,
+      deprecation: existing?.deprecation,
     };
     await this.repos.ontologyTypes.put(def);
     return def;
@@ -156,6 +159,21 @@ export class OntologyService {
   async publishVersion(ctx: AuthCtx): Promise<OntologyVersion> {
     const versions = await this.repos.ontologyVersions.list(ctx.tenantId);
     const version = versions.length > 0 ? Math.max(...versions.map((v) => v.version)) + 1 : 1;
+    // 治理增量 §2.1：发布即固化 API 名（published=true → 此后 key 不可重命名/复用）。
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId);
+    for (const t of types) {
+      if (!t.published) {
+        t.published = true;
+        await this.repos.ontologyTypes.put(t);
+      }
+    }
+    const links = await this.repos.ontologyLinks.list(ctx.tenantId);
+    for (const l of links) {
+      if (!l.published) {
+        l.published = true;
+        await this.repos.ontologyLinks.put(l);
+      }
+    }
     const snapshot = {
       objectTypes: await this.repos.ontologyTypes.list(ctx.tenantId),
       linkTypes: await this.repos.ontologyLinks.list(ctx.tenantId),

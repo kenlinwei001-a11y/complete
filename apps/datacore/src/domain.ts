@@ -208,6 +208,11 @@ export interface PropertyDef {
   required?: boolean;
   /** 本体原子规格 §1：temporal=true 的属性变更落 object_prop_history。 */
   temporal?: boolean;
+  /** 治理增量 §3：关键词搜索命中范围（A3 建议对名称类字段置 true）。 */
+  searchable?: boolean;
+  /** 治理增量 §4：单位（场景包单位字典约束）+ 展示格式（如 "0.0"）。 */
+  unit?: string;
+  displayFormat?: string;
 }
 
 export interface SourceBinding {
@@ -223,16 +228,31 @@ export interface DerivedPropertyDef {
   formula: string;
 }
 
+/** 治理增量 §2.2 弃用元数据（type/link/prop 复用同结构）。 */
+export interface DeprecationMeta {
+  status: "ACTIVE" | "DEPRECATED" | "RETIRED";
+  supersededBy?: string;
+  deprecatedAt?: string;
+  graceUntil?: string; // 缺省 deprecatedAt + 90d
+  retiredAt?: string;
+}
+
 export interface ObjectTypeDef {
   id: string; // otype_
   tenantId: string;
   key: string;
   displayName: string;
+  /** 治理增量 §1：归域强制（FK 校验到 domains；无法判断归 unassigned）。 */
+  domain?: string;
   properties: PropertyDef[];
   derivedProperties: DerivedPropertyDef[];
   sourceBindings: SourceBinding[];
   version: number;
   status: "ACTIVE" | "RETIRED";
+  /** 治理增量 §2：是否曾 PUBLISHED（API 名不可变纪律的锚点）。 */
+  published?: boolean;
+  /** 治理增量 §2.2：弃用状态机。 */
+  deprecation?: DeprecationMeta;
 }
 
 export interface LinkTypeDef {
@@ -243,6 +263,54 @@ export interface LinkTypeDef {
   toTypeKey: string;
   cardinality: "1:1" | "1:N" | "N:N";
   version: number;
+  published?: boolean;
+  deprecation?: DeprecationMeta;
+}
+
+/** 治理增量 §1：域（升格为一等治理单元）。UNIQUE(tenant, domainKey)。 */
+export interface DomainRecord {
+  id: string; // dom_<tenant>_<key>
+  tenantId: string;
+  domainKey: string;
+  displayName: string;
+  color?: string;
+  ownerUserId?: string | null;
+  description?: string;
+  createdAt: string;
+}
+
+/** 治理增量 §7.4：发布物入库时抽取的引用三元组（查询即索引查表）。 */
+export interface ElementRefRecord {
+  id: string; // eref_
+  tenantId: string;
+  elementKind: "type" | "link" | "prop" | "slice" | "rule";
+  elementKey: string;
+  prop?: string;
+  refKind: "slice" | "derivation" | "rule" | "plan" | "intent" | "agent";
+  refKey: string;
+  refVersion: number | "latest";
+  where: string;
+}
+
+/** 治理增量 §7.1：发布请求（域 owner 会签状态机）。 */
+export interface PublishRequestRecord {
+  id: string; // preq_
+  tenantId: string;
+  ontologyVersion: number;
+  requestedBy: string;
+  status: "PENDING_SIGNOFF" | "APPROVED" | "REJECTED" | "EXPIRED";
+  signoffs: PublishSignoffRecord[];
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface PublishSignoffRecord {
+  domainKey: string;
+  ownerUserId: string | null;
+  decision: "APPROVE" | "REJECT" | null;
+  comment?: string;
+  decidedAt?: string;
+  onBehalfOf?: string;
 }
 
 export interface OntologyVersion {
@@ -346,6 +414,18 @@ export interface SliceSpecRecord {
       project?: string[];
     }[][];
     maxNodes?: number;
+    /** 治理增量 §7.2：切片契约 fixtures（每 PUBLISHED slice ≥1）。 */
+    contractFixtures?: {
+      name: string;
+      args: Record<string, string | number>;
+      expect: {
+        rootType: string;
+        minNodes: number;
+        mustIncludeTypes: string[];
+        mustIncludeLinkKeys?: string[];
+        maxNodes?: number;
+      };
+    }[];
   };
 }
 
@@ -411,6 +491,7 @@ export type DraftOperation =
   | { op: "renameProperty"; typeKey: string; propKey: string; newPropKey: string }
   | { op: "setRef"; typeKey: string; propKey: string; refToTypeKey: string | null }
   | { op: "setPrimaryKey"; typeKey: string; propKey: string }
+  | { op: "setDomain"; typeKey: string; domain: string }
   | { op: "removeObjectType"; typeKey: string };
 
 export interface FkCandidate {

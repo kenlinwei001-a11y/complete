@@ -623,7 +623,7 @@ export const MODELING_DRAFT: ModelingDraftVM = {
   suggestion: {
     objectTypes: [
       {
-        action: "MAP_TO_EXISTING", existingTypeKey: "Order", typeKey: "Order", displayName: "订单", sourceDataset: "orders.csv",
+        action: "MAP_TO_EXISTING", existingTypeKey: "Order", typeKey: "Order", displayName: "订单", domain: "product", sourceDataset: "orders.csv",
         properties: [
           { propKey: "so", sourceField: "so_no", dataType: "string", isPrimaryKey: true, refToTypeKey: null },
           { propKey: "cust", sourceField: "customer", dataType: "string", isPrimaryKey: false, refToTypeKey: null },
@@ -635,7 +635,7 @@ export const MODELING_DRAFT: ModelingDraftVM = {
         confidence: 0.93,
       },
       {
-        action: "CREATE", existingTypeKey: null, typeKey: "Plant", displayName: "工厂", sourceDataset: "plants.csv",
+        action: "CREATE", existingTypeKey: null, typeKey: "Plant", displayName: "工厂", domain: "unassigned", sourceDataset: "plants.csv",
         properties: [
           { propKey: "code", sourceField: "plant_code", dataType: "string", isPrimaryKey: false, refToTypeKey: null },
           { propKey: "name", sourceField: "plant_name", dataType: "string", isPrimaryKey: false, refToTypeKey: null },

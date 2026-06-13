@@ -44,6 +44,23 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.graph.persp.mvp", name: "图谱·MVP", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  // 治理增量 §1.4：域级开关（domain.{key}）——关一个域 = 该域类型在图谱/检索/建模/聚合整体不可见。
+  // 默认全开；卖"财务域"为可选包的商业形态由此支持。
+  { key: "domain.factory", name: "域·工厂", level: "BLOCK", defaultOn: true },
+  { key: "domain.product", name: "域·产品", level: "BLOCK", defaultOn: true },
+  { key: "domain.process", name: "域·工艺", level: "BLOCK", defaultOn: true },
+  { key: "domain.equip", name: "域·设备", level: "BLOCK", defaultOn: true },
+  { key: "domain.quality", name: "域·质量", level: "BLOCK", defaultOn: true },
+  { key: "domain.capacity", name: "域·产能", level: "BLOCK", defaultOn: true },
+  { key: "domain.forecast", name: "域·预测", level: "BLOCK", defaultOn: true },
+  { key: "domain.people", name: "域·人员", level: "BLOCK", defaultOn: true },
+  { key: "domain.plan", name: "域·计划", level: "BLOCK", defaultOn: true },
+  { key: "domain.finance", name: "域·财务", level: "BLOCK", defaultOn: true },
+  { key: "domain.material", name: "域·物料", level: "BLOCK", defaultOn: true },
+  { key: "domain.sales", name: "域·销售", level: "BLOCK", defaultOn: true },
+  { key: "domain.external", name: "域·外部", level: "BLOCK", defaultOn: true },
+  { key: "domain.decision", name: "域·决策", level: "BLOCK", defaultOn: true },
+  { key: "domain.unassigned", name: "域·未归域", level: "BLOCK", defaultOn: true },
   // ACTION level
   { key: "act.plan-audit.apply-fix", name: "体检一键修正", level: "ACTION", defaultOn: true, requires: ["view.plan-audit"] },
   { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true },

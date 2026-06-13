@@ -1,4 +1,4 @@
-import type { AuthCtx, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -19,6 +19,8 @@ export interface OntologyClient {
     limit?: number,
   ): Promise<ToolPayload>;
   getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload>;
+  /** 治理增量 §3.6：聚合下推（避免 agent 拉全量行）。 */
+  aggregateObjects(ctx: ToolAuthCtx, req: AggregateRequest): Promise<ToolPayload>;
 }
 
 export interface SolverClient {

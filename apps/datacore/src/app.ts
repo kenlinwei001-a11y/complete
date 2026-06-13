@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { ClockTickBodySchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
+import { AggregateRequestSchema, ClockTickBodySchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
@@ -26,6 +26,7 @@ import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } 
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
 import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
+import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES } from "./connectors/registry.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -77,6 +78,7 @@ export interface BuiltApp {
     rules: RulesService;
     ontology: OntologyService;
     ontologyCore: OntologyCoreService;
+    governance: OntologyGovernanceService;
     connectors: ConnectorService;
     ruleDocs: RuleDocService;
     modeling: ModelingService;
@@ -206,6 +208,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ontologyCore = new OntologyCoreService(repos, authz);
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
+  const governance = new OntologyGovernanceService(repos, authz, ontology, ontologyCore, features, metrics, outbox);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
   const connectors = new ConnectorService(repos, blob, cipher, metrics, deps.fetchImpl ?? fetch);
   // LLM Provider 增量 §1：provider 配置落位 A；A2/A3/A7 调用方经租户用途路由消费
@@ -575,6 +578,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       z.object({
         key: z.string().min(1),
         displayName: z.string().min(1),
+        domain: z.string().optional(),
         properties: z.array(
           z.object({
             propKey: z.string(),
@@ -584,6 +588,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             enumValues: z.array(z.string()).optional(),
             required: z.boolean().optional(),
             temporal: z.boolean().optional(),
+            searchable: z.boolean().optional(),
+            unit: z.string().optional(),
+            displayFormat: z.string().optional(),
           }),
         ),
         derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).default([]),
@@ -599,7 +606,141 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       }),
       req.body,
     );
+    // 治理增量 §2.1：对 PUBLISHED key 重命名请求 → 拒绝（此处 key 即标识，按既有/新建判定）。
+    const existing = await ontology.getType(c, body.key);
+    governance.assertRenameAllowed(existing, body.key);
+    // 治理增量 §1：归域 FK 校验（提供了 domain 必须在注册表内）。
+    if (body.domain) {
+      const domains = await governance.listDomains(c);
+      if (!domains.some((d) => d.domainKey === body.domain)) {
+        throw validationError(`未知域 '${body.domain}'（需先在 /a/v1/ontology/domains 注册）`);
+      }
+    }
+    // §4 单位字典约束
+    const dict = new Set(UNIT_DICTIONARY);
+    for (const p of body.properties) {
+      if (p.unit && !dict.has(p.unit)) throw validationError(`未知单位 '${p.unit}'（单位字典：${UNIT_DICTIONARY.join("/")}）`);
+    }
     return reply.status(201).send(await ontology.upsertType(c, body));
+  });
+
+  // ---- 治理增量 §1 域治理 ----------------------------------------------------
+  app.get("/a/v1/ontology/domains", async (req) => governance.listDomains(ctx(req)));
+  app.post("/a/v1/ontology/domains", async (req, reply) => {
+    const body = parseBody(
+      z.object({
+        domainKey: z.string().min(1),
+        displayName: z.string().min(1),
+        color: z.string().optional(),
+        ownerUserId: z.string().nullable().optional(),
+        description: z.string().optional(),
+      }),
+      req.body,
+    );
+    return reply.status(201).send(await governance.upsertDomain(ctx(req), body));
+  });
+
+  // ---- 治理增量 §2.2 弃用流程 ------------------------------------------------
+  app.post("/a/v1/ontology/types/:key/deprecate", async (req) => {
+    const { key } = req.params as { key: string };
+    const body = parseBody(z.object({ supersededBy: z.string().optional() }), req.body);
+    return governance.deprecate(ctx(req), "type", key, body);
+  });
+  app.post("/a/v1/ontology/types/:key/retire", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.retire(ctx(req), "type", key);
+  });
+  app.post("/a/v1/ontology/links/:key/deprecate", async (req) => {
+    const { key } = req.params as { key: string };
+    const body = parseBody(z.object({ supersededBy: z.string().optional() }), req.body);
+    return governance.deprecate(ctx(req), "link", key, body);
+  });
+  app.post("/a/v1/ontology/links/:key/retire", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.retire(ctx(req), "link", key);
+  });
+
+  // ---- 治理增量 §7.4 引用反查 ------------------------------------------------
+  app.get("/a/v1/ontology/references", async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    const elementKind = q["elementKind"] ?? "";
+    const key = q["key"] ?? "";
+    if (!elementKind || !key) throw validationError("elementKind 与 key 必填");
+    return governance.references(ctx(req), { elementKind, key, prop: q["prop"] });
+  });
+  app.get("/a/v1/slices/:key/references", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.sliceReferences(ctx(req), key);
+  });
+  app.get("/a/v1/ontology/slices/:key/references", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.sliceReferences(ctx(req), key);
+  });
+
+  // ---- 治理增量 §7.2 切片契约（发布门禁 + CI 手动触发）-----------------------
+  app.post("/a/v1/ontology/slice-contracts/run", async (req) => {
+    const results = await governance.runSliceContracts(ctx(req).tenantId);
+    return { results, allPassed: results.every((r) => r.ok), failed: results.filter((r) => !r.ok) };
+  });
+
+  // ---- 治理增量 §7.1 域 owner 会签发布请求 -----------------------------------
+  app.post("/a/v1/ontology/publish-requests", async (req, reply) => {
+    const c = ctx(req);
+    const body = parseBody(
+      z.object({ ontologyVersion: z.number().int().optional(), force: z.boolean().optional() }),
+      req.body,
+    );
+    const ov = body.ontologyVersion ?? (await ontology.currentVersion(c.tenantId)) + 1;
+    // 触及域 = 全部当前类型所属域（无更细变更集时按全域；测试可控）
+    const types = await ontology.listTypes(c);
+    const touchedDomains = [...new Set(types.map((t) => t.domain).filter((d): d is string => !!d))];
+    const links = await repos.ontologyLinks.list(c.tenantId);
+    const impact = await governance.publishImpact(c, { types, links });
+    const rec = await governance.createPublishRequest(c, { ontologyVersion: ov, touchedDomains, impact, force: body.force });
+    return reply.status(201).send(rec);
+  });
+  app.get("/a/v1/ontology/publish-requests", async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    return governance.listPublishRequests(ctx(req), q["status"]);
+  });
+  app.post("/a/v1/ontology/publish-requests/:id/signoff", async (req) => {
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    const q = req.query as Record<string, string | undefined>;
+    const body = parseBody(
+      z.object({ decision: z.enum(["APPROVE", "REJECT"]), comment: z.string().optional() }),
+      req.body,
+    );
+    const onBehalf = q["onBehalf"] === "true";
+    const rec = await governance.signoff(c, id, body, onBehalf);
+    // 全域 APPROVE → 自动执行发布
+    if (rec.status === "APPROVED") await ontology.publishVersion(c);
+    return rec;
+  });
+
+  // ---- 治理增量 §3 检索模式（搜索/邻接/聚合，全部经 A6）----------------------
+  app.get("/a/v1/objects/search", async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    return governance.search(ctx(req), {
+      q: q["q"] ?? "",
+      types: q["types"] ? q["types"].split(",").filter(Boolean) : undefined,
+      domains: q["domains"] ? q["domains"].split(",").filter(Boolean) : undefined,
+      limit: q["limit"] ? Number(q["limit"]) : undefined,
+    });
+  });
+  app.get("/a/v1/objects/:id/neighbors", async (req) => {
+    const { id } = req.params as { id: string };
+    const q = req.query as Record<string, string | undefined>;
+    const dir = q["direction"];
+    return governance.neighbors(ctx(req), id, {
+      linkKey: q["linkKey"],
+      direction: dir === "out" || dir === "in" ? dir : undefined,
+      limit: q["limit"] ? Number(q["limit"]) : undefined,
+    });
+  });
+  app.post("/a/v1/objects/aggregate", async (req) => {
+    const body = parseBody(AggregateRequestSchema, req.body);
+    return governance.aggregate(ctx(req), body);
   });
   app.post("/a/v1/ontology/link-types", async (req, reply) => {
     const c = ctx(req);
@@ -774,6 +915,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     );
     const ov = body.ontologyVersion ?? (await ontology.currentVersion(c.tenantId));
     const out = await ontologyCore.compileSpecs(c, ov, body.specs);
+    // §7.4：派生规格 deps 引用同步入库 element_refs。
+    for (const s of out.specs) await governance.indexDerivationRefs(c, s.specKey, s.targetType, s.deps);
     return reply.status(201).send({ order: out.order, specs: out.specs.map((s) => ({ specKey: s.specKey, deps: s.deps })) });
   });
   // §2.4 增量重算：变更集 → 受影响最小集重算（拓扑序）。
@@ -816,11 +959,33 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             ),
           ),
           maxNodes: z.number().int().optional(),
+          contractFixtures: z
+            .array(
+              z.object({
+                name: z.string(),
+                args: z.record(z.string(), z.union([z.string(), z.number()])),
+                expect: z.object({
+                  rootType: z.string(),
+                  minNodes: z.number().int(),
+                  mustIncludeTypes: z.array(z.string()),
+                  mustIncludeLinkKeys: z.array(z.string()).optional(),
+                  maxNodes: z.number().int().optional(),
+                }),
+              }),
+            )
+            .optional(),
         }),
       }),
       req.body,
     );
+    // 治理增量 §2.2：slice 不能新引用 DEPRECATED 的 type/link。
+    const refTypeKeys = [body.spec.root.typeKey];
+    const refLinkKeys = body.spec.paths.flatMap((p) => p.map((h) => h.linkKey));
+    await governance.assertNewRefAllowed(c, "type", refTypeKeys);
+    await governance.assertNewRefAllowed(c, "link", refLinkKeys);
     const rec = await ontologyCore.putSliceSpec(c, sliceKey, body.version, body.spec as never);
+    // §7.4：入库即抽取引用三元组到 element_refs（查询即查表）。
+    await governance.indexSliceRefs(c, rec);
     return reply.status(201).send({ sliceKey: rec.sliceKey, version: rec.version });
   });
   app.post("/a/v1/ontology/slices/:sliceKey/resolve", async (req) => {
@@ -1530,6 +1695,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       rules,
       ontology,
       ontologyCore,
+      governance,
       connectors,
       ruleDocs,
       modeling,

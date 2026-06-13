@@ -187,6 +187,129 @@ export const handlers = [
     return HttpResponse.json({ items, total });
   }),
 
+  // ---- 治理增量 §3.3 关键词搜索（命中 name + 相似度降序） ----
+  http.get("*/a/v1/objects/search", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const q = (url.searchParams.get("q") ?? "").trim();
+    if (q.length < 2) return err(400, "VALIDATION_ERROR", "搜索关键词长度需 ≥2");
+    const typesParam = (url.searchParams.get("types") ?? "").split(",").filter(Boolean);
+    const known = new Set(["Base", "Model", "Order"]);
+    const unknown = typesParam.filter((t) => !known.has(t));
+    if (unknown.length) return err(400, "VALIDATION_ERROR", `未知对象类型：${unknown.join(", ")}`);
+    const limit = Math.min(Number(url.searchParams.get("limit") ?? "20") || 20, 20);
+    const bases = filterByScope(BASES, account);
+    const items = (typesParam.length && !typesParam.includes("Base") ? [] : bases)
+      .filter((b) => b.name.includes(q) || b.id.includes(q) || (b.mainProduct ?? "").includes(q))
+      .map((b) => ({ typeKey: "Base", objectKey: b.name, display: b.name, domainKey: "factory", score: b.name === q ? 1 : 0.7 }));
+    items.sort((a, b) => b.score - a.score);
+    return HttpResponse.json({ items: items.slice(0, limit), tookMs: 1 });
+  }),
+
+  // ---- 治理增量 §3.4 邻接导航 ----
+  http.get("*/a/v1/objects/:id/neighbors", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const id = String(params.id);
+    const base = filterByScope(BASES, account).find((b) => b.id === id || b.name === id || b.name === decodeURIComponent(id));
+    if (!base) return err(404, "NOT_FOUND", "object not found");
+    const orders = filterByScope(ORDERS, account).filter((o) => o.bases === base.name);
+    const groups = [
+      {
+        linkKey: "order_at_base",
+        direction: "in" as const,
+        total: orders.length,
+        items: orders.slice(0, 50).map((o) => ({ id: o.id, typeKey: "Order", objectKey: o.so, display: o.so })),
+      },
+    ].filter((g) => g.total > 0);
+    return HttpResponse.json({ groups });
+  }),
+
+  // ---- 治理增量 §3.6 聚合查询 ----
+  http.post("*/a/v1/objects/aggregate", async ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json()) as {
+      typeKey: string;
+      groupBy?: string[];
+      metrics: { prop: string; fn: "count" | "sum" | "avg" | "min" | "max" }[];
+    };
+    const rows = body.typeKey === "Base" ? filterByScope(BASES, account) : body.typeKey === "Order" ? filterByScope(ORDERS, account) : [];
+    const groupBy = body.groupBy ?? [];
+    const groups = new Map<string, { group: Record<string, string | null>; rows: Record<string, unknown>[] }>();
+    for (const r of rows as unknown as Record<string, unknown>[]) {
+      const k = groupBy.map((g) => String(r[g] ?? "∅")).join("");
+      let g = groups.get(k);
+      if (!g) {
+        const group: Record<string, string | null> = {};
+        for (const gb of groupBy) group[gb] = r[gb] == null ? null : String(r[gb]);
+        g = { group, rows: [] };
+        groups.set(k, g);
+      }
+      g.rows.push(r);
+    }
+    const out = [...groups.values()].map((g) => {
+      const metrics: Record<string, number | null> = {};
+      for (const m of body.metrics) {
+        const key = `${m.fn}_${m.prop}`;
+        if (m.fn === "count") metrics[key] = g.rows.length;
+        else {
+          const vals = g.rows.map((p) => p[m.prop]).filter((v): v is number => typeof v === "number");
+          if (!vals.length) metrics[key] = null;
+          else if (m.fn === "sum") metrics[key] = vals.reduce((a, b) => a + b, 0);
+          else if (m.fn === "avg") metrics[key] = vals.reduce((a, b) => a + b, 0) / vals.length;
+          else if (m.fn === "min") metrics[key] = Math.min(...vals);
+          else metrics[key] = Math.max(...vals);
+        }
+      }
+      return { group: g.group, metrics };
+    });
+    return HttpResponse.json({ rows: out, rowCount: out.length, truncated: false });
+  }),
+
+  http.get("*/a/v1/ontology/domains", () =>
+    HttpResponse.json([
+      { domainKey: "factory", displayName: "工厂", color: "#2563eb" },
+      { domainKey: "product", displayName: "产品", color: "#16a34a" },
+    ]),
+  ),
+
+  http.get("*/a/v1/ontology/object-types", () =>
+    HttpResponse.json([
+      {
+        key: "Base",
+        displayName: "生产基地",
+        domain: "factory",
+        properties: [
+          { propKey: "baseId", dataType: "string", isPrimaryKey: true },
+          { propKey: "name", dataType: "string", isPrimaryKey: false },
+          { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%" },
+          { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh" },
+        ],
+      },
+    ]),
+  ),
+
+  // ---- 治理增量 §5 对象 360：按键取对象 ----
+  http.get("*/a/v1/objects/:type/:id", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const type = String(params.type);
+    const idRaw = decodeURIComponent(String(params.id));
+    if (type === "Base") {
+      const base = filterByScope(BASES, account).find((b) => b.id === idRaw || b.name === idRaw);
+      if (!base) return err(404, "NOT_FOUND", "object not found");
+      return HttpResponse.json({ data: { id: base.id, type, props: { ...base } }, snapshotVersion: "1.1" });
+    }
+    if (type === "Order") {
+      const o = filterByScope(ORDERS, account).find((x) => x.id === idRaw || x.so === idRaw);
+      if (!o) return err(404, "NOT_FOUND", "object not found");
+      return HttpResponse.json({ data: { id: o.id, type, props: { ...o } }, snapshotVersion: "1.1" });
+    }
+    return err(404, "NOT_FOUND", "object not found");
+  }),
+
   http.get("*/a/v1/ontology/graph", () => HttpResponse.json(GRAPH)),
 
   // ---- 剩余视图增量：计划域 / 映射表 / 校准 / 数据健康度 ----

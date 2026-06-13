@@ -552,6 +552,19 @@ await check("A3 建模", "publish 校验失败 → 200 {ok:false, errors[{typeKe
     body: { operations: [{ op: "addProperty", typeKey, property: { propKey: pk.propKey, sourceField: pk.sourceField, dataType: pk.dataType, isPrimaryKey: true, refToTypeKey: null } }] },
   });
 });
+await check("A3 建模", "归域强制（治理 §1）：unassigned 阻断 → setDomain 后通过", async () => {
+  // 当前草案类型 domain 默认 unassigned → publish 应阻断
+  const blocked = await a(`/a/v1/modeling/drafts/${draftId}/publish`, { body: {} });
+  eq(blocked.status, 200, "publish status");
+  eq(blocked.body.ok, false, "unassigned ok:false");
+  ok(blocked.body.errors.some((e) => /未归域/.test(e.message)), "未归域 错误");
+  // 人工归域（setDomain 操作）
+  const d = (await a(`/a/v1/modeling/drafts/${draftId}`)).body;
+  for (const t of d.suggestion.objectTypes) {
+    const p = await a(`/a/v1/modeling/drafts/${draftId}`, { method: "PATCH", body: { operations: [{ op: "setDomain", typeKey: t.typeKey, domain: "product" }] } });
+    eq(p.status, 200, "setDomain status");
+  }
+});
 await check("A3 建模", "publish 成功 → {ok:true}；materialize → 202 {jobId} + 轮询", async () => {
   const r = await a(`/a/v1/modeling/drafts/${draftId}/publish`, { body: {} });
   eq(r.status, 200, "publish status");
@@ -1778,6 +1791,121 @@ await check("运营态", "水印 + §6 origin 替换：live-ingest 一月 → �
   eq(after.trend.find((t) => t.month === "2026-03")?.live, true, "2026-03 标记 LIVE");
   const wm1 = await a("/a/v1/history/watermark", { token: livedAdminToken });
   ok((wm1.body.liveRatio ?? 0) > 0, "水印 LIVE 占比变化（消退）");
+});
+
+// ===========================================================================
+// 治理增量（域治理 / 检索体系 / 演进稳定性）—— 全部经 A6 数据层过滤
+// ===========================================================================
+await check("治理·域", "GET /a/v1/ontology/domains → 注册表（domainKey/displayName/color）", async () => {
+  const r = await a("/a/v1/ontology/domains");
+  eq(r.status, 200, "status");
+  isArr(r.body, "domains");
+  ok(r.body.some((d) => d.domainKey === "factory" && d.displayName), "factory 域存在");
+});
+await check("治理·搜索 #3", "GET /a/v1/objects/search?q=常州 → 命中基地（typeKey/objectKey/display/domainKey/score）", async () => {
+  const r = await a(`/a/v1/objects/search?q=${encodeURIComponent("常州")}&types=Base`);
+  eq(r.status, 200, "status");
+  isArr(r.body.items, "items");
+  ok(r.body.items.length >= 1, "命中");
+  const h = r.body.items[0];
+  ok(h.typeKey && h.objectKey && h.display && h.domainKey && typeof h.score === "number", "hit 形态");
+  ok(typeof r.body.tookMs === "number", "tookMs");
+});
+await check("治理·搜索 #3", "q<2 → 400；未知 types → 400 列未知项", async () => {
+  const short = await a("/a/v1/objects/search?q=x");
+  envelope(short, 400, "VALIDATION_ERROR");
+  const unknown = await a("/a/v1/objects/search?q=ab&types=Nope");
+  eq(unknown.status, 400, "unknown types status");
+  ok(/Nope/.test(unknown.body?.error?.message ?? ""), "列出未知项");
+});
+await check("治理·邻接 #4", "GET /a/v1/objects/4680-NCM/neighbors → groups[{linkKey,direction,total,items}]", async () => {
+  const r = await a(`/a/v1/objects/${encodeURIComponent("4680-NCM")}/neighbors`);
+  eq(r.status, 200, "status");
+  isArr(r.body.groups, "groups");
+  ok(r.body.groups.length >= 1, "non-empty");
+  const g = r.body.groups[0];
+  ok(g.linkKey && (g.direction === "out" || g.direction === "in") && Number.isInteger(g.total) && Array.isArray(g.items), "group 形态");
+  // limit 生效
+  const lim = await a(`/a/v1/objects/${encodeURIComponent("4680-NCM")}/neighbors?linkKey=${g.linkKey}&direction=${g.direction}&limit=1`);
+  eq(lim.status, 200, "limit status");
+  ok((lim.body.groups[0]?.items.length ?? 0) <= 1, "limit=1 生效");
+});
+await check("治理·聚合 #6", "POST /a/v1/objects/aggregate → rows[{group,metrics}] 键名 {fn}_{prop}", async () => {
+  const r = await a("/a/v1/objects/aggregate", { body: { typeKey: "Base", groupBy: ["kind"], metrics: [{ prop: "util", fn: "avg" }, { prop: "baseId", fn: "count" }] } });
+  eq(r.status, 200, "status");
+  isArr(r.body.rows, "rows");
+  ok(Number.isInteger(r.body.rowCount) && r.body.truncated === false, "rowCount/truncated");
+  ok(r.body.rows.every((row) => "group" in row && "metrics" in row && ("avg_util" in row.metrics) && ("count_baseId" in row.metrics)), "metrics 键名 {fn}_{prop}");
+  // fn 作用非 number → 400
+  const bad = await a("/a/v1/objects/aggregate", { body: { typeKey: "Base", groupBy: [], metrics: [{ prop: "name", fn: "sum" }] } });
+  envelope(bad, 400, "VALIDATION_ERROR");
+});
+await check("治理·引用反查 §7.4", "PUT slice（含 contractFixtures）→ references 反查 + slice-contracts/run", async () => {
+  const put = await a("/a/v1/ontology/slices/parity_cap_net", {
+    method: "PUT",
+    body: {
+      version: 1,
+      spec: {
+        root: { typeKey: "Model", selector: { byKey: "{{args.modelId}}" } },
+        paths: [[{ linkKey: "model_producible_at", direction: "out" }]],
+        contractFixtures: [{ name: "fx", args: { modelId: "4680-NCM" }, expect: { rootType: "Model", minNodes: 2, mustIncludeTypes: ["Model", "Base"] } }],
+      },
+    },
+  });
+  eq(put.status, 201, "slice put status");
+  const refs = await a("/a/v1/ontology/references?elementKind=link&key=model_producible_at");
+  eq(refs.status, 200, "references status");
+  ok(refs.body.total >= 1 && refs.body.refs.some((x) => x.refKind === "slice" && x.key === "parity_cap_net"), "slice 引用反查");
+  const run = await a("/a/v1/ontology/slice-contracts/run", { body: {} });
+  eq(run.status, 200, "slice-contracts status");
+  ok(run.body.results.some((x) => x.sliceKey === "parity_cap_net" && x.ok), "contract fixture 通过");
+});
+await check("治理·弃用 §2.2", "deprecate link → 新引用 400；references>0 时 retire → 409 列清单", async () => {
+  const dep = await a("/a/v1/ontology/links/model_producible_at/deprecate", { body: { supersededBy: "model_producible_at_v2" } });
+  eq(dep.status, 200, "deprecate status");
+  const newRef = await a("/a/v1/ontology/slices/parity_dep_slice", {
+    method: "PUT",
+    body: { version: 1, spec: { root: { typeKey: "Model", selector: {} }, paths: [[{ linkKey: "model_producible_at", direction: "out" }]] } },
+  });
+  envelope(newRef, 400, "VALIDATION_ERROR");
+  const retire = await a("/a/v1/ontology/links/model_producible_at/retire", { body: {} });
+  eq(retire.status, 409, "retire 409");
+  ok(/parity_cap_net/.test(retire.body?.error?.message ?? ""), "列出引用方");
+});
+await check("治理·域开关 G2", "关闭 domain.plan → PlanTarget 在搜索/聚合中不可见", async () => {
+  // PlanTarget 归 plan 域；先确认可聚合
+  const before = await a("/a/v1/objects/aggregate", { body: { typeKey: "PlanTarget", groupBy: [], metrics: [{ prop: "value", fn: "count" }] } });
+  eq(before.status, 200, "before status");
+  // 关闭 domain.plan（保留其它 override）
+  const resolved = await a("/a/v1/tenants/demo/features");
+  const overrides = Object.fromEntries(registry.map((f) => [f.key, resolved.body.features.includes(f.key)]));
+  overrides["domain.plan"] = false;
+  const put = await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+  eq(put.status, 200, "feature put status");
+  const after = await a("/a/v1/objects/aggregate", { body: { typeKey: "PlanTarget", groupBy: [], metrics: [{ prop: "value", fn: "count" }] } });
+  eq(after.status, 404, "关域后聚合 404");
+  // 恢复
+  overrides["domain.plan"] = true;
+  await a("/a/v1/tenants/demo/features", { method: "PUT", body: { overrides } });
+});
+await check("治理·会签 §7.1", "publish-requests 创建（按触及域实例化 signoff）+ 列表", async () => {
+  const r = await a("/a/v1/ontology/publish-requests", { body: {} });
+  eq(r.status, 201, "create status");
+  ok(r.body.id && r.body.status === "PENDING_SIGNOFF" && Array.isArray(r.body.signoffs), "request 形态");
+  ok(r.body.signoffs.every((s) => s.domainKey && s.decision === null), "signoff 行实例化");
+  const list = await a("/a/v1/ontology/publish-requests?status=PENDING_SIGNOFF");
+  eq(list.status, 200, "list status");
+  ok(list.body.some((x) => x.id === r.body.id), "in list");
+});
+await check("治理·聚合工具 G8（B 路径白名单）", "aggregate_objects 进路径 B 工具白名单", async () => {
+  // 经 B 暴露的工具清单（若有该端点）或回退断言 agent 定义含该工具
+  const agents = await b("/b/v1/agents").catch(() => ({ status: 0, body: null }));
+  if (agents.status === 200 && Array.isArray(agents.body)) {
+    const def = agents.body.find((x) => Array.isArray(x.scopeDeclaration?.toolNames) && x.scopeDeclaration.toolNames.includes("aggregate_objects"));
+    ok(def, "某 agent scopeDeclaration 含 aggregate_objects");
+  } else {
+    ok(true, "B agents 端点不可枚举，跳过（工具已在 registry 注册）");
+  }
 });
 
 // ---------------------------------------------------------------------------

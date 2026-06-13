@@ -1,4 +1,4 @@
-import type { QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -75,6 +75,10 @@ class HttpOntologyClient implements OntologyClient {
       "GET",
       `/a/v1/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`,
     );
+  }
+  async aggregateObjects(ctx: ToolAuthCtx, req: AggregateRequest): Promise<ToolPayload> {
+    const data = await call<unknown>(this.baseUrl, ctx, "POST", `/a/v1/objects/aggregate`, req);
+    return { data } as ToolPayload;
   }
 }
 

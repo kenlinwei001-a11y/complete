@@ -525,7 +525,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       scopeDeclaration: {
         objectTypes: ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment"],
         toolNames: [
-          "query_objects", "get_object", "resolve_slice", "invoke_solver", "evaluate_rules",
+          "query_objects", "aggregate_objects", "get_object", "resolve_slice", "invoke_solver", "evaluate_rules",
           "search_knowledge", "query_timeseries_agg", "search_experience", "create_action_draft",
         ],
       },
