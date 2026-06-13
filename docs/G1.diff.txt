@@ -1,0 +1,252 @@
+
+################ apps/agentcore/src/catalog/service.ts ################
+--- /tmp/orig/apps/agentcore/src/catalog/service.ts	2026-06-13 14:43:27.000000000 +0000
++++ /tmp/syscheck/apps/agentcore/src/catalog/service.ts	2026-06-13 15:26:23.249167798 +0000
+@@ -11,6 +11,7 @@
+   type IntentDefinition,
+   type PlanRef,
+   type PublishImpact,
++  type WorkflowDefinition,
+ } from "@platform/contracts";
+ import { newId } from "../ids.js";
+ import type { Repos } from "../persistence/repos.js";
+@@ -80,19 +81,65 @@
+ }
+ 
+ /** 执行时解析（orchestrator 路径 A）：latest 永远取当前 PUBLISHED 最新版（L6）。 */
++/**
++ * 管理面闭合性 §1（裁决 #27）：ExecutionPlan ≡ Workflow(kind=PLAN)。
++ * 一个 workflow 不含 invoke_agent/invoke_mcp_tool 步骤即 kind=PLAN，可作为意图的执行计划。
++ */
++export function isPlanWorkflow(wf: WorkflowDefinition): boolean {
++  return !wf.steps.some((s) => s.type === "invoke_agent" || s.type === "invoke_mcp_tool");
++}
++
++/** workflow(kind=PLAN) → ExecutionPlan 形态适配（同构 PlanStepSchema，仅字段重排）。 */
++function workflowToPlan(wf: WorkflowDefinition, packageId: string): ExecutionPlan {
++  return {
++    id: wf.id,
++    packageId,
++    key: wf.key,
++    version: wf.version,
++    status: wf.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
++    steps: wf.steps,
++  } as ExecutionPlan;
++}
++
++/** 按 key 把 workflow(kind=PLAN) 当执行计划解析（latest=当前 PUBLISHED 最新版；pin=精确版本）。 */
++async function resolveWorkflowAsPlan(
++  repos: Pick<Repos, "workflows">,
++  tenantId: string,
++  packageId: string,
++  key: string,
++  version: number | "latest",
++): Promise<{ plan: ExecutionPlan; ref: { key: string; version: number } } | undefined> {
++  const siblings = (await repos.workflows.listByTenant(tenantId)).filter((w) => w.key === key && isPlanWorkflow(w));
++  const picked =
++    typeof version === "number"
++      ? siblings.find((w) => w.version === version)
++      : siblings.filter((w) => w.status === "PUBLISHED").sort((a, b) => b.version - a.version)[0];
++  if (!picked) return undefined;
++  return { plan: workflowToPlan(picked, packageId), ref: { key: picked.key, version: picked.version } };
++}
++
+ export async function resolvePlanForIntent(
+-  repos: Pick<Repos, "plans">,
++  repos: Pick<Repos, "plans" | "workflows">,
+   intent: IntentDefinition,
++  tenantId?: string,
+ ): Promise<{ plan: ExecutionPlan; ref: { key: string; version: number } } | undefined> {
+   if (intent.planRef) {
++    // 1) 旧 ExecutionPlan 存储（向后兼容）
+     const plan = await resolvePlanByRef(repos, intent.packageId, intent.planRef);
+     if (plan) return { plan, ref: { key: plan.key, version: plan.version } };
++    // 2) 裁决 #27：回退解析 workflow(kind=PLAN) —— WorkflowsPage 即唯一执行计划创作页
++    if (tenantId) {
++      const wf = await resolveWorkflowAsPlan(repos, tenantId, intent.packageId, intent.planRef.planKey, intent.planRef.version);
++      if (wf) return wf;
++    }
+     return undefined;
+   }
+-  // 旧数据（仅 planId）：保持原直取语义
++  // 旧数据（仅 planId）：保持原直取语义；planId 也可能是 workflow id
+   if (intent.planId) {
+     const plan = await repos.plans.get(intent.planId);
+     if (plan) return { plan, ref: { key: plan.key, version: plan.version } };
++    const wf = await repos.workflows.get(intent.planId);
++    if (wf && isPlanWorkflow(wf)) return { plan: workflowToPlan(wf, intent.packageId), ref: { key: wf.key, version: wf.version } };
+   }
+   return undefined;
+ }
+@@ -118,11 +165,16 @@
+     }
+     if (input.planId) {
+       const plan = await this.repos.plans.get(input.planId);
+-      if (!plan) {
+-        // 计划尚不存在：保留 planId（发布时校验会拦截）
+-        return { planId: input.planId };
++      if (plan) {
++        return { planRef: { planKey: plan.key, version: "latest" }, planId: input.planId };
++      }
++      // 裁决 #27：planId 可能是 workflow(kind=PLAN) id —— 归一为 planRef(latest) 指向其 key
++      const wf = await this.repos.workflows.get(input.planId);
+
+################ apps/agentcore/src/router/orchestrator.ts ################
+--- /tmp/orig/apps/agentcore/src/router/orchestrator.ts	2026-06-13 14:43:27.000000000 +0000
++++ /tmp/syscheck/apps/agentcore/src/router/orchestrator.ts	2026-06-13 15:25:48.929168583 +0000
+@@ -508,7 +508,7 @@
+     const task = await this.deps.repos.tasks.get(taskId);
+     if (!task) return;
+     // 引用模式增量 §2.1：意图 → 计划执行时解析（planRef latest = 当前 PUBLISHED 最新版；pin = 精确版本）
+-    const resolution = await resolvePlanForIntent(this.deps.repos, intent);
++    const resolution = await resolvePlanForIntent(this.deps.repos, intent, task.tenantId);
+     if (!resolution) {
+       const refDesc = intent.planRef ? `${intent.planRef.planKey}@${intent.planRef.version}` : intent.planId;
+       await this.failTask(taskId, "PLAN_NOT_FOUND", `plan not found: ${refDesc}`);
+
+################ apps/frontend-shell/src/pages/admin/CatalogPage.tsx ################
+--- /tmp/orig/apps/frontend-shell/src/pages/admin/CatalogPage.tsx	2026-06-13 14:43:27.000000000 +0000
++++ /tmp/syscheck/apps/frontend-shell/src/pages/admin/CatalogPage.tsx	2026-06-13 15:27:27.477166329 +0000
+@@ -2,7 +2,18 @@
+ import { Link, useSearchParams } from "react-router-dom";
+ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+ import type { IntentDefinition, SlotDef } from "@platform/contracts";
+-import { createIntent, fetchIntents, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
++import { createIntent, fetchIntents, fetchPlans, fetchWorkflows, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
++
++/** 裁决 #27：ExecutionPlan ≡ Workflow(kind=PLAN)。意图可绑定的执行计划 = 旧 plans ∪ workflows(kind=PLAN)。 */
++function bindablePlans(
++  plans: { id: string; key: string; version: number; status: string }[] | undefined,
++  workflows: { id: string; key: string; version: number; status: string; steps: { type: string }[] }[] | undefined,
++): { id: string; key: string; version: number; status: string }[] {
++  const fromWf = (workflows ?? [])
++    .filter((w) => !w.steps.some((s) => s.type === "invoke_agent" || s.type === "invoke_mcp_tool"))
++    .map((w) => ({ id: w.id, key: w.key, version: w.version, status: w.status }));
++  return [...(plans ?? []), ...fromWf];
++}
+ import { useWorkspace } from "@/workspace/useWorkspace";
+ import { EmptyState } from "@/components/ui/EmptyState";
+ import { toast, toastError } from "@/store/toastStore";
+@@ -25,6 +36,8 @@
+   const selected = intents?.find((i) => i.id === selectedId) ?? null;
+   const queryClient = useQueryClient();
+   const { data: plans } = useQuery({ queryKey: ["b", "plans", { packageId }], queryFn: () => fetchPlans(packageId), enabled: packageId !== "" });
++  const { data: workflows } = useQuery({ queryKey: ["b", "workflows", {}], queryFn: fetchWorkflows, enabled: packageId !== "" });
++  const bindable = bindablePlans(plans, workflows);
+ 
+   // 管理平台增量 §6：无意图 → 「创建意图」骨架（DRAFT，发布前需补全 slots/examples）
+   const createMut = useMutation({
+@@ -35,7 +48,7 @@
+         description: "",
+         examples: [],
+         slots: [],
+-        planId: plans?.[0]?.id ?? "",
++        planId: bindable[0]?.id ?? "",
+         riskLevel: "READ",
+         owner: "admin",
+         enabledViews: "*",
+@@ -63,9 +76,15 @@
+         <div className="panel">
+           {(intents ?? []).length === 0 && (
+             <EmptyState message={zh.admin.empty.intents}>
+-              <button className="btn primary sm" disabled={createMut.isPending || (plans ?? []).length === 0} onClick={() => createMut.mutate()} data-testid="cta-intent">
+-                {zh.admin.empty.intentsCta}
+-              </button>
++              {bindable.length === 0 ? (
++                <Link className="btn primary sm" to="/admin/workflows" data-testid="cta-create-plan">
++                  先创建执行计划（工作流编辑器）
++                </Link>
++              ) : (
++                <button className="btn primary sm" disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="cta-intent">
++                  {zh.admin.empty.intentsCta}
++                </button>
++              )}
+               <Link className="btn sm" to="/admin/ops/fallback" data-testid="cta-incubate">
+                 {zh.admin.empty.incubateCta}
+               </Link>
+@@ -99,6 +118,8 @@
+     queryKey: ["b", "plans", { packageId }],
+     queryFn: () => fetchPlans(packageId),
+   });
++  const { data: workflows } = useQuery({ queryKey: ["b", "workflows", {}], queryFn: fetchWorkflows });
++  const bindable = bindablePlans(plans, workflows);
+   const [name, setName] = useState(intent.name);
+   const [description, setDescription] = useState(intent.description);
+   const [examples, setExamples] = useState<string[]>(intent.examples);
+@@ -214,13 +235,28 @@
+       <div className="section-title" style={{ marginTop: 12 }}>
+         {t.plan}
+       </div>
+-      <select value={planId} disabled={!editable} aria-label="绑定执行计划" onChange={(e) => setPlanId(e.target.value)}>
+-        {(plans ?? []).map((p) => (
+-          <option key={p.id} value={p.id}>
+-            {p.key} v{p.version} · {p.status}
+-          </option>
+-        ))}
+-      </select>
++      {/* 裁决 #27：引用闭合三态 —— 选择(plans ∪ workflows kind=PLAN) / ＋新建 / 查看，禁止裸下拉死路 */}
++      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
++        {bindable.length === 0 ? (
++          <span style={{ fontSize: 12, color: "var(--muted2)" }}>
++            尚无执行计划，
++            <Link to="/admin/workflows" data-testid="plan-create-link">去工作流编辑器创建</Link>
++          </span>
++        ) : (
++          <select value={planId} disabled={!editable} aria-label="绑定执行计划" onChange={(e) => setPlanId(e.target.value)} data-testid="plan-select">
++            <option value="">（未绑定）</option>
++            {bindable.map((p) => (
+
+################ apps/agentcore/test/admin-closure.test.ts ################
+--- /tmp/orig/apps/agentcore/test/admin-closure.test.ts	2026-06-13 14:43:27.000000000 +0000
++++ /tmp/syscheck/apps/agentcore/test/admin-closure.test.ts	2026-06-13 15:29:32.073163479 +0000
+@@ -1,6 +1,7 @@
+ import { describe, expect, it } from "vitest";
+-import { createTestApp, debugHeaders, ADMIN, type TestApp } from "./helpers.js";
++import { createTestApp, debugHeaders, ADMIN, PKG, TENANT, type TestApp } from "./helpers.js";
+ import { EVENT_SUBSCRIPTIONS } from "../src/event-subscriptions.js";
++import { resolvePlanForIntent } from "../src/catalog/service.js";
+ 
+ const planPayload = (key: string) => ({
+   key,
+@@ -82,6 +83,41 @@
+     expect(body.items[0]!.description.length).toBeGreaterThan(0);
+     expect(body.createHint).toContain("联系实施");
+   });
++
++  it("§1 桥接执行：意图 planRef 指向 workflow(kind=PLAN) → 可解析并执行（不再 PLAN_NOT_FOUND 死路）", async () => {
++    const t = await createTestApp();
++    // 1) 仅创建 workflow(kind=PLAN)，不创建任何 ExecutionPlan
++    await createWf(t, planPayload("wf_plan_x"));
++    const wfs = await t.repos.workflows.listByTenant(TENANT);
++    const wf = wfs.find((w) => w.key === "wf_plan_x")!;
++    expect(wf).toBeTruthy();
++    // 发布该工作流（latest 解析只取 PUBLISHED）
++    await t.repos.workflows.update({ ...wf, status: "PUBLISHED" });
++    // 2) 意图按 planRef(planKey, latest) 绑定到该工作流
++    const intent = {
++      id: "int_bridge",
++      packageId: PKG,
++      key: "intent_bridge",
++      version: 1,
++      status: "PUBLISHED" as const,
++      name: "桥接意图",
++      description: "",
++      examples: [],
++      enabledViews: "*" as const,
++      slots: [],
++      planRef: { planKey: "wf_plan_x", version: "latest" as const },
++      riskLevel: "READ" as const,
++      owner: "admin",
++      createdAt: new Date().toISOString(),
++      updatedAt: new Date().toISOString(),
++    };
++    await t.repos.intents.insert(intent);
++    // 3) resolvePlanForIntent 应解析到该工作流的步骤（裁决 #27 桥接）
++    const resolution = await resolvePlanForIntent(t.repos, intent, TENANT);
++    expect(resolution).toBeTruthy();
++    expect(resolution!.ref.key).toBe("wf_plan_x");
++    expect(resolution!.plan.steps.map((s) => s.type)).toEqual(["query_objects", "render_answer"]);
++  });
+ });
+ 
+ describe("数据流闭环 §3/§6 — 联动刷新接线注册表（#28 / D-29）", () => {
