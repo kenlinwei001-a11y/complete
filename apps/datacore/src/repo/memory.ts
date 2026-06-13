@@ -349,6 +349,8 @@ export function createMemoryRepos(): Repos {
     idempotencyRecords: new MemStore(),
     replayProgress: new MemStore(),
     extractSegments: new MemStore(),
+    quarantineRows: new MemStore(),
+    notifications: new MemStore(),
     webhooks: new MemStore(),
     sopVersions: new MemStore(),
     solverParams: new MemStore(),

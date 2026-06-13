@@ -22,6 +22,8 @@ import { AuthService } from "./auth.js";
 import { AuthzService } from "./authz.js";
 import { OutboxService } from "./outbox.js";
 import { ExecutionLockService } from "./execlock.js";
+import { QuarantineService } from "./quarantine.js";
+import { NotificationService } from "./notifications.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
@@ -82,6 +84,8 @@ export interface BuiltApp {
     authz: AuthzService;
     outbox: OutboxService;
     execLocks: ExecutionLockService;
+    quarantine: QuarantineService;
+    notifications: NotificationService;
     rules: RulesService;
     ontology: OntologyService;
     ontologyCore: OntologyCoreService;
@@ -215,6 +219,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const authz = new AuthzService(repos);
   const outbox = new OutboxService(repos, logger, deps.fetchImpl, metrics);
   const execLocks = new ExecutionLockService(repos, metrics);
+  const quarantine = new QuarantineService(repos);
+  const notifications = new NotificationService(repos);
   const rules = new RulesService(repos, outbox);
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
@@ -239,9 +245,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     deps.fetchImpl ?? fetch,
   );
   const ruleDocs = new RuleDocService(repos, blob, routedLlm, rules, metrics, config.DC_LLM_MODEL, embeddings);
-  const modeling = new ModelingService(repos, routedLlm, ontology, metrics, config.DC_LLM_MODEL);
+  const modeling = new ModelingService(repos, routedLlm, ontology, metrics, config.DC_LLM_MODEL, quarantine);
   const synthetic = new SyntheticService(repos, routedLlm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
-  const actions = new ActionService(repos, rules, outbox);
+  const actions = new ActionService(repos, rules, outbox, notifications);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
   const sop = new SopService(repos, solvers, outbox);
@@ -736,6 +742,45 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       })),
     };
   });
+
+  // 运营完备性 §4：数据隔离区（按原因分组 + 修复重处理 + 批量丢弃）
+  app.get("/a/v1/quarantine", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin" || r.split(":")[0] === "catalog_admin"))
+      throw forbidden("admin / catalog_admin only");
+    const { status } = req.query as { status?: "PENDING" | "REPROCESSED" | "DISCARDED" };
+    return quarantine.list(c, status ?? "PENDING");
+  });
+  app.post("/a/v1/quarantine/:id/reprocess", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin" || r.split(":")[0] === "catalog_admin"))
+      throw forbidden("admin / catalog_admin only");
+    const { id } = req.params as { id: string };
+    const body = parseBody(z.object({ edits: z.record(z.string(), z.unknown()).optional() }), req.body);
+    return quarantine.reprocess(c, id, body.edits);
+  });
+  app.post("/a/v1/quarantine/discard", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin" || r.split(":")[0] === "catalog_admin"))
+      throw forbidden("admin / catalog_admin only");
+    const body = parseBody(z.object({ ids: z.array(z.string()).min(1), comment: z.string().min(1) }), req.body);
+    return quarantine.discard(c, body.ids, body.comment);
+  });
+
+  // 运营完备性 §9：通知中心（铃铛未读 + 列表 + 标记已读）
+  app.get("/a/v1/notifications", async (req) => {
+    const c = ctx(req);
+    const { unreadOnly, limit } = req.query as { unreadOnly?: string; limit?: string };
+    return notifications.list(c, { unreadOnly: unreadOnly === "true", limit: limit ? Number(limit) : 50 });
+  });
+  app.post("/a/v1/notifications/:id/read", async (req) => {
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    const ok = await notifications.markRead(c, id);
+    if (!ok) throw notFound("notification");
+    return { ok: true };
+  });
+  app.post("/a/v1/notifications/read-all", async (req) => notifications.markAllRead(ctx(req)));
 
   app.get("/a/v1/policies", async (req) => repos.policies.list(ctx(req).tenantId));
   app.post("/a/v1/policies", async (req, reply) => {
@@ -1940,6 +1985,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       authz,
       outbox,
       execLocks,
+      quarantine,
+      notifications,
       rules,
       ontology,
       ontologyCore,

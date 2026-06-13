@@ -623,6 +623,35 @@ export interface ReplayProgressRecord {
   updatedAt: string;
 }
 
+/** 运营完备性 §9 通知中心：定向站内通知（铃铛未读 + 跳转 refType 对应页）。 */
+export interface NotificationRecord {
+  id: string; // ntf_
+  tenantId: string;
+  userId: string;
+  kind: string; // approval_pending | action_approved | action_rejected | ...
+  title: string;
+  body: string;
+  refType?: string; // action | sop | ...
+  refId?: string;
+  readAt?: string;
+  createdAt: string;
+}
+
+/** 运营完备性 §4 数据隔离区：行级失败不再使批次失败，异常行落隔离区可修复重处理。 */
+export interface QuarantineRowRecord {
+  id: string; // qr_
+  tenantId: string;
+  connId: string; // datasetId（来源管线锚点）
+  dataset: string; // dataset 名
+  raw: Record<string, unknown>; // 原始行（可行内编辑后重投）
+  reason: "SCHEMA_MISMATCH" | "TYPE_ERROR" | "REF_NOT_FOUND" | "UNIT_ERROR" | "RULE_REJECT" | "DUP_KEY";
+  detail?: string;
+  status: "PENDING" | "REPROCESSED" | "DISCARDED";
+  /** 重处理上下文：目标类型 + 字段映射 + 主键（重投时重建对象）。 */
+  reprocess: { targetKey: string; mapping: { propKey: string; sourceField: string }[]; pk?: string };
+  createdAt: string;
+}
+
 /** §6 A2 分段抽取的段落级状态表（PARTIAL 任务可单段重试）。 */
 export interface ExtractSegmentRecord {
   id: string; // = `${docId}|${segNo}`

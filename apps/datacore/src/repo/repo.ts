@@ -16,6 +16,8 @@ import type {
   ExecutionLockRecord,
   ExtractSegmentRecord,
   IdempotencyRecord,
+  NotificationRecord,
+  QuarantineRowRecord,
   ReplayProgressRecord,
   ObjectPropHistoryRecord,
   PublishRequestRecord,
@@ -226,6 +228,8 @@ export interface Repos {
   idempotencyRecords: Store<IdempotencyRecord>;
   replayProgress: Store<ReplayProgressRecord>;
   extractSegments: Store<ExtractSegmentRecord>;
+  quarantineRows: Store<QuarantineRowRecord>;
+  notifications: Store<NotificationRecord>;
   // S1.8
   sopVersions: Store<SopVersion>;
   // S1 per-tenant solver params（+ M11/S1 修订：版本历史）

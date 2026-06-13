@@ -58,6 +58,7 @@ export class ModelingService {
     private ontology: OntologyService,
     private metrics: Metrics,
     private model: string,
+    private quarantine?: import("./quarantine.js").QuarantineService,
   ) {}
 
   async suggest(ctx: AuthCtx, rawDatasetIds: string[]): Promise<OntologyDraft> {
@@ -310,13 +311,14 @@ export class ModelingService {
   }
 
   /** Materialize: RawDataset rows → object instances, then run derivations. */
-  async materialize(ctx: AuthCtx, draftId: string): Promise<{ jobId: string; created: number }> {
+  async materialize(ctx: AuthCtx, draftId: string): Promise<{ jobId: string; created: number; quarantined: number }> {
     const draft = await this.getDraft(ctx, draftId);
     if (draft.status !== "PUBLISHED") throw invalidState("draft must be published before materialize");
     const jobId = newId("job");
     const startedAt = new Date().toISOString();
     const rowCounts: Record<string, number> = {};
     let created = 0;
+    let quarantined = 0;
     for (const t of draft.suggestion.objectTypes) {
       const targetKey = t.action === "MAP_TO_EXISTING" && t.existingTypeKey ? t.existingTypeKey : t.typeKey;
       const ds = (
@@ -330,10 +332,27 @@ export class ModelingService {
         (o) => o.type === targetKey && o.origin.type === "MATERIALIZED" && o.origin.datasetId === ds.id,
       );
       const pk = t.properties.find((p) => p.isPrimaryKey)?.propKey;
+      const mapping = t.properties.map((p) => ({ propKey: p.propKey, sourceField: p.sourceField }));
+      const seenPk = new Set<string>();
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i] as Record<string, unknown>;
         const props: Record<string, unknown> = {};
         for (const p of t.properties) props[p.propKey] = row[p.sourceField];
+        // 运营完备性 §4：行级校验失败 → 隔离区（不使批次失败）。
+        if (this.quarantine) {
+          const pkVal = pk ? props[pk] : undefined;
+          if (pk && (pkVal == null || pkVal === "")) {
+            await this.quarantine.record(ctx.tenantId, { connId: ds.id, dataset: ds.name, raw: row, reason: "SCHEMA_MISMATCH", detail: `主键 '${pk}' 缺失`, reprocess: { targetKey, mapping, pk } });
+            quarantined++;
+            continue;
+          }
+          if (pk && pkVal != null && seenPk.has(String(pkVal))) {
+            await this.quarantine.record(ctx.tenantId, { connId: ds.id, dataset: ds.name, raw: row, reason: "DUP_KEY", detail: `主键 '${pk}'='${String(pkVal)}' 重复`, reprocess: { targetKey, mapping, pk } });
+            quarantined++;
+            continue;
+          }
+          if (pk && pkVal != null) seenPk.add(String(pkVal));
+        }
         const idSuffix = pk && props[pk] != null ? String(props[pk]) : String(i);
         await this.repos.objects.put({
           id: `obj_${targetKey.toLowerCase()}_${ds.id}_${idSuffix}`.replace(/[^\w-]/g, "_"),
@@ -358,6 +377,6 @@ export class ModelingService {
       finishedAt: new Date().toISOString(),
       rowCounts,
     });
-    return { jobId, created };
+    return { jobId, created, quarantined };
   }
 }

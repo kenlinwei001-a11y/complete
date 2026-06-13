@@ -68,3 +68,30 @@ export type LlmTaskStatus = z.infer<typeof LlmTaskStatusSchema>;
 
 export const ExtractSegmentStatusSchema = z.enum(["OK", "FAILED", "PENDING"]);
 export type ExtractSegmentStatus = z.infer<typeof ExtractSegmentStatusSchema>;
+
+// 运营完备性 §4 数据隔离区 ---------------------------------------------------
+
+export const QuarantineReasonSchema = z.enum([
+  "SCHEMA_MISMATCH",
+  "TYPE_ERROR",
+  "REF_NOT_FOUND",
+  "UNIT_ERROR",
+  "RULE_REJECT",
+  "DUP_KEY",
+]);
+export type QuarantineReason = z.infer<typeof QuarantineReasonSchema>;
+
+export const QuarantineStatusSchema = z.enum(["PENDING", "REPROCESSED", "DISCARDED"]);
+export type QuarantineStatus = z.infer<typeof QuarantineStatusSchema>;
+
+export const QuarantineRowViewSchema = z.object({
+  id: z.string(),
+  connId: z.string(),
+  dataset: z.string(),
+  raw: z.record(z.string(), z.unknown()),
+  reason: QuarantineReasonSchema,
+  detail: z.string().optional(),
+  status: QuarantineStatusSchema,
+  createdAt: z.string(),
+});
+export type QuarantineRowView = z.infer<typeof QuarantineRowViewSchema>;

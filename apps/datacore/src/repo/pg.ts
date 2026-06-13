@@ -552,6 +552,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     idempotencyRecords: new PgStore(pool, "idempotency_records"),
     replayProgress: new PgStore(pool, "replay_progress"),
     extractSegments: new PgStore(pool, "extract_segments"),
+    quarantineRows: new PgStore(pool, "quarantine_rows"),
+    notifications: new PgStore(pool, "notifications"),
     webhooks: new PgStore(pool, "webhooks"),
     sopVersions: new PgStore(pool, "sop_versions"),
     solverParams: new PgStore(pool, "solver_params"),

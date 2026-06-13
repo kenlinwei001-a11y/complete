@@ -61,6 +61,7 @@ export class ActionService {
     private repos: Repos,
     private rules: RulesService,
     private outbox: OutboxService,
+    private notifications?: import("./notifications.js").NotificationService,
   ) {}
 
   /** Test hook / deployment hook: swap the write-back adapter. */
@@ -155,6 +156,16 @@ export class ActionService {
       step: 1,
       role: chain[0]?.role,
     });
+    // §9 通知中心：定向通知第一步审批角色（排除发起人）。
+    if (chain[0]?.role) {
+      await this.notifications?.notifyRole(ctx.tenantId, chain[0].role, draft.origin.userId, {
+        kind: "approval_pending",
+        title: "待审批",
+        body: `有一条 ${draft.actionTypeKey} 待你审批`,
+        refType: "action",
+        refId: draft.id,
+      });
+    }
     return draft;
   }
 
@@ -206,12 +217,28 @@ export class ActionService {
         step: next.seq,
         role: next.role,
       });
+      await this.notifications?.notifyRole(ctx.tenantId, next.role, draft.origin.userId, {
+        kind: "approval_pending",
+        title: "待审批",
+        body: `有一条 ${draft.actionTypeKey} 进入下一审批环节，待你审批`,
+        refType: "action",
+        refId: draft.id,
+      });
       return draft;
     }
     draft.status = "APPROVED";
     draft.updatedAt = step.decidedAt;
     await this.repos.actionDrafts.put(draft);
     await this.outbox.emit(ctx.tenantId, "action.approved", { draftId: draft.id, actionTypeKey: draft.actionTypeKey });
+    // §9 通知发起人：审批通过。
+    await this.notifications?.notify(ctx.tenantId, {
+      userId: draft.origin.userId,
+      kind: "action_approved",
+      title: "审批通过",
+      body: `你发起的 ${draft.actionTypeKey} 已审批通过`,
+      refType: "action",
+      refId: draft.id,
+    });
     // APPROVED → outbox → executor (mock adapter) with 3 retries / exponential backoff.
     return this.execute(ctx.tenantId, draft.id);
   }
@@ -233,6 +260,15 @@ export class ActionService {
     draft.updatedAt = step.decidedAt;
     await this.repos.actionDrafts.put(draft);
     await this.outbox.emit(ctx.tenantId, "action.rejected", { draftId: draft.id, step: step.seq, comment });
+    // §9 通知发起人：被拒（必带意见）。
+    await this.notifications?.notify(ctx.tenantId, {
+      userId: draft.origin.userId,
+      kind: "action_rejected",
+      title: "审批被拒",
+      body: `你发起的 ${draft.actionTypeKey} 被拒：${comment}`,
+      refType: "action",
+      refId: draft.id,
+    });
     return draft;
   }
 
