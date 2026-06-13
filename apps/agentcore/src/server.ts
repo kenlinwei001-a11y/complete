@@ -1250,13 +1250,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const existing = await deps.repos.sceneEntries.byView(a.tenantId, viewKey);
     // 管理平台增量 §4：场景入口无版本化 —— updatedAt 乐观锁（客户端带旧值 → 409）。
     if (existing?.updatedAt && body.updatedAt && body.updatedAt !== existing.updatedAt) {
+      deps.metrics.versionConflicts.inc({ resource: "scene_entry" });
       throw new HttpError(409, "STALE_WRITE", `场景入口已被他人修改（服务端 updatedAt=${existing.updatedAt}），请刷新后重试`);
+    }
+    // updatedAt 必须严格单调：同毫秒内的连续写入仍产生不同的乐观锁版本
+    // （否则两次相邻保存的 updatedAt 相等，过期客户端无法被检出 → STALE_WRITE 漏检）。
+    let nextUpdatedAt = new Date().toISOString();
+    if (existing?.updatedAt && nextUpdatedAt <= existing.updatedAt) {
+      nextUpdatedAt = new Date(new Date(existing.updatedAt).getTime() + 1).toISOString();
     }
     const entry: SceneEntryConfig = {
       ...body,
       id: existing?.id ?? newId("scn"),
       tenantId: a.tenantId,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nextUpdatedAt,
     };
     await deps.repos.sceneEntries.upsert(entry);
     return entry;

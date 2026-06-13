@@ -389,6 +389,11 @@ export const SubmitQueryBodySchema = z.object({
   packageId: z.string(),
   query: z.string().min(1).max(2000),
   context: SessionContextSchema,
+  /**
+   * 并发一致性 §13.2：同 conversationId 提交新任务时，默认自动取消仍在执行的旧任务
+   * （CANCELLED, reason "SUPERSEDED"）。传 true 显式保留并行（多问题并行的合法场景）。
+   */
+  keepPrevious: z.boolean().optional(),
 });
 export type SubmitQueryBody = z.infer<typeof SubmitQueryBodySchema>;
 

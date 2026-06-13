@@ -146,6 +146,11 @@ export class Orchestrator {
     await this.deps.repos.tasks.insert(task);
     await this.deps.events.emit(taskId, "task.accepted", { taskId });
 
+    // 并发一致性 §13.2：同会话新任务默认取消仍在执行的旧任务（取消优于仲裁）。
+    if (body.context.conversationId && !body.keepPrevious) {
+      await this.supersedeConversation(task.tenantId, task.conversationId, taskId);
+    }
+
     // run the pipeline asynchronously
     setImmediate(() => {
       void this.runPipeline(taskId, auth).catch(async (err) => {
@@ -734,6 +739,28 @@ export class Orchestrator {
       await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
     }
     // executing tasks: cancelled flag is checked at loop boundaries (尽力中断)
+  }
+
+  /**
+   * §13.2: cancel still-running tasks of a conversation when a newer task arrives
+   * (reason SUPERSEDED). Drafts already produced by cancelled tasks are kept
+   * (提案并存原则); executing tasks observe the flag at their next loop boundary.
+   */
+  private async supersedeConversation(tenantId: string, conversationId: string, keepTaskId: string): Promise<void> {
+    const ACTIVE = new Set(["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"]);
+    const siblings = await this.deps.repos.tasks.listByConversation(tenantId, conversationId);
+    for (const t of siblings) {
+      if (t.id === keepTaskId || !ACTIVE.has(t.status)) continue;
+      this.cancelled.add(t.id);
+      const pending = this.pending.get(t.id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pending.delete(t.id);
+      }
+      await this.deps.repos.tasks.patch(t.id, { status: "CANCELLED", completedAt: new Date().toISOString() });
+      await this.deps.events.emit(t.id, "task.cancelled", { reason: "SUPERSEDED", supersededBy: keepTaskId });
+      this.deps.metrics.tasksCancelled.inc({ reason: "SUPERSEDED" });
+    }
   }
 
   async feedback(taskId: string, auth: RequestAuth, vote: "UP" | "DOWN"): Promise<void> {

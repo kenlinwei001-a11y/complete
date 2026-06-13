@@ -107,6 +107,10 @@ export class Metrics {
   readonly mcpAlerts = new Counter("ac_mcp_alerts_total", "MCP server lifecycle alerts by kind");
   /** 增量 §2：启动扫描置 FAILED 的中断任务数 */
   readonly interruptedTasks = new Counter("ac_interrupted_tasks_total", "Tasks failed by restart sweep");
+  /** 并发一致性 §13.3：任务取消计数（reason: SUPERSEDED / user / timeout） */
+  readonly tasksCancelled = new Counter("qos_tasks_cancelled_total", "Tasks cancelled by reason");
+  /** 并发一致性 §13.3：乐观锁版本冲突计数（D-07 的 409）by resource */
+  readonly versionConflicts = new Counter("dc_version_conflicts_total", "Optimistic-lock version conflicts by resource");
 
   // rolling window for hit ratio
   private readonly routed: { at: number; pathA: boolean }[] = [];
@@ -138,6 +142,8 @@ export class Metrics {
         this.contextOps,
         this.mcpAlerts,
         this.interruptedTasks,
+        this.tasksCancelled,
+        this.versionConflicts,
       ]
         .map((m) => m.render())
         .join("\n") + "\n"

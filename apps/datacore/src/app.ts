@@ -122,6 +122,8 @@ const ObjectsQuerySchema = z.object({
   objectType: z.string().min(1),
   filter: z.record(z.string(), z.unknown()).default({}),
   limit: z.number().int().positive().max(1000).default(100),
+  // 并发一致性 §13.1：任务级快照读（工具层注入 taskEpoch）。
+  asOfEpoch: z.number().int().nonnegative().optional(),
 });
 
 const EvaluateSchema = z.object({
@@ -215,7 +217,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const execLocks = new ExecutionLockService(repos, metrics);
   const rules = new RulesService(repos, outbox);
   const solvers = new SolverService(repos);
-  const ontology = new OntologyService(repos, authz, outbox, solvers);
+  const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
@@ -944,9 +946,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/ontology/publish", async (req) => ontology.publishVersion(ctx(req)));
   app.get("/a/v1/ontology/versions", async (req) => repos.ontologyVersions.list(ctx(req).tenantId));
 
+  // 并发一致性 §13.1：任务启动时捕获 taskEpoch（工具层注入到后续读取的 asOfEpoch）。
+  app.get("/a/v1/epoch/current", async (req) => {
+    const c = ctx(req);
+    return { epoch: await repos.epochs.current(c.tenantId), snapshotVersion: await ontology.snapshotVersion(c.tenantId) };
+  });
   app.post("/a/v1/objects/query", async (req) => {
     const body = parseBody(ObjectsQuerySchema, req.body);
-    return ontology.queryObjects(ctx(req), body.objectType, body.filter, body.limit);
+    return ontology.queryObjects(ctx(req), body.objectType, body.filter, body.limit, body.asOfEpoch);
   });
   // 前端 PRD §6.4 / §7.3：对象查询（objectRef 槽位选择器 + 台账分页 + 列筛选 f_*）。
   // 响应 { items, total }（台账/选择器消费）；同时保留 { data, snapshotVersion } 兼容旧调用。

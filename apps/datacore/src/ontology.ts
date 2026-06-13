@@ -95,6 +95,7 @@ export class OntologyService {
     private authz: AuthzService,
     private outbox: OutboxService,
     private solvers?: SolverService,
+    private metrics?: import("./metrics.js").Metrics,
   ) {}
 
   setSolvers(solvers: SolverService): void {
@@ -199,7 +200,7 @@ export class OntologyService {
    * 本体原子规格 §1：snapshotVersion = "{ontology_version}.{epoch}"。epoch 为租户级
    * 单调序列（每写入批次 +1）。读路径取当前 epoch。
    */
-  private async snapshotVersion(tenantId: string): Promise<string> {
+  async snapshotVersion(tenantId: string): Promise<string> {
     const ov = await this.currentVersion(tenantId);
     const epoch = await this.repos.epochs.current(tenantId);
     return `${ov}.${epoch}`;
@@ -221,12 +222,19 @@ export class OntologyService {
     return true;
   }
 
-  /** POST /a/v1/objects/query — tenant filter + resource grants + rowFilter BEFORE returning. */
+  /**
+   * POST /a/v1/objects/query — tenant filter + resource grants + rowFilter BEFORE returning.
+   *
+   * 并发一致性 §13.1（CC1/CC2）：`asOfEpoch` 给出任务级快照读（近似 MVCC）——
+   * temporal 属性按 prop_history 回溯到 ≤asOfEpoch 的值（任务内一致）；非 temporal 属性
+   * 在快照后被改写的，按当前值返回并标记 `epochApprox:true`（指标 dc_epoch_approx_reads_total）。
+   */
   async queryObjects(
     ctx: AuthCtx,
     objectType: string,
     filter: Record<string, unknown> = {},
     limit = 100,
+    asOfEpoch?: number,
   ): Promise<ToolPayload> {
     const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
@@ -235,10 +243,51 @@ export class OntologyService {
       .filter((o) => this.matchFilter(o.props, filter))
       .sort((a, b) => (a.id < b.id ? -1 : 1))
       .slice(0, Math.min(limit, 1000));
-    return {
-      data: visible.map((o) => ({ id: o.id, type: o.type, props: o.props })),
-      snapshotVersion: await this.snapshotVersion(ctx.tenantId),
-    };
+    if (asOfEpoch === undefined) {
+      return {
+        data: visible.map((o) => ({ id: o.id, type: o.type, props: o.props })),
+        snapshotVersion: await this.snapshotVersion(ctx.tenantId),
+      };
+    }
+    const type = await this.getType(ctx, objectType);
+    const temporal = new Set((type?.properties ?? []).filter((p) => p.temporal).map((p) => p.propKey));
+    const data = await Promise.all(visible.map((o) => this.objectAsOf(ctx.tenantId, o, temporal, asOfEpoch)));
+    return { data, snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}` };
+  }
+
+  /** §13.1: reconstruct an object's value as of `asOfEpoch` (temporal rollback + approx flag). */
+  private async objectAsOf(
+    tenantId: string,
+    o: ObjectInstance,
+    temporal: Set<string>,
+    asOfEpoch: number,
+  ): Promise<{ id: string; type: string; props: Record<string, unknown>; epochApprox?: boolean }> {
+    const objEpoch = o.epoch ?? 0;
+    if (objEpoch <= asOfEpoch) {
+      // not written since the snapshot → current value is exact
+      return { id: o.id, type: o.type, props: o.props };
+    }
+    const props = { ...o.props };
+    let maxTemporalEpoch = 0;
+    if (temporal.size > 0) {
+      const hist = await this.repos.objectPropHistory.list(tenantId, (h) => h.objectId === o.id);
+      for (const p of temporal) {
+        const entries = hist.filter((h) => h.prop === p);
+        for (const e of entries) maxTemporalEpoch = Math.max(maxTemporalEpoch, e.epoch);
+        const asOf = entries
+          .filter((h) => h.epoch <= asOfEpoch)
+          .sort((a, b) => b.epoch - a.epoch)[0];
+        if (asOf) props[p] = asOf.value;
+        else delete props[p]; // prop had no value at snapshot time
+      }
+    }
+    // a non-temporal write happened after the snapshot iff the latest object write epoch
+    // exceeds the latest temporal-history epoch (which we could roll back exactly).
+    const epochApprox = objEpoch > maxTemporalEpoch;
+    if (epochApprox) this.metrics?.inc("dc_epoch_approx_reads_total", { type: o.type });
+    return epochApprox
+      ? { id: o.id, type: o.type, props, epochApprox: true }
+      : { id: o.id, type: o.type, props };
   }
 
   /** GET /a/v1/objects/:type/:id */
