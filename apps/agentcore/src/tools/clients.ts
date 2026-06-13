@@ -61,6 +61,15 @@ export interface TimeseriesClient {
   aggQuery(ctx: ToolAuthCtx, input: QueryTimeseriesAggInput): Promise<ToolPayload>;
 }
 
+/** 能力发现与路由 §1：资源目录发现（discover 工具的 DataCore 出口）。 */
+export interface CatalogClient {
+  discover(
+    ctx: ToolAuthCtx,
+    kind: "slices" | "solvers",
+    query?: string,
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }>;
+}
+
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */
 export interface DataCoreClient {
   ontology: OntologyClient;
@@ -70,6 +79,7 @@ export interface DataCoreClient {
   iam: IamClient;
   kb: KbClient;
   timeseries: TimeseriesClient;
+  catalog: CatalogClient;
 }
 
 export class DataCoreUnavailableError extends Error {

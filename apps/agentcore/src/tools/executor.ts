@@ -158,6 +158,17 @@ export class GuardedToolExecutor {
     }
     const args = (input ?? {}) as Record<string, unknown>;
     switch (toolName) {
+      case "discover": {
+        const kind = String(args.kind);
+        if (kind !== "slices" && kind !== "solvers" && kind !== "mcp_tools") {
+          return { error: "kind must be slices|solvers|mcp_tools" };
+        }
+        if (kind === "mcp_tools") {
+          // §2 MCP 按需加载目录：当前部署未启用 >24 工具按需加载模式 → 空目录
+          return { items: [] };
+        }
+        return this.deps.dataCore.catalog.discover(ctx, kind, args.query ? String(args.query) : undefined);
+      }
       case "resolve_slice":
         return this.deps.dataCore.ontology.resolveSlice(
           ctx,

@@ -2,6 +2,7 @@ import type { QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platfor
 import { newId } from "../ids.js";
 import type {
   ActionClient,
+  CatalogClient,
   DataCoreClient,
   IamClient,
   KbClient,
@@ -394,6 +395,24 @@ export class MockIamClient implements IamClient {
   }
 }
 
+/** 能力发现与路由 §1：mock 目录（CR1/CR5 测试用，描述齐备）。 */
+class MockCatalogClient implements CatalogClient {
+  async discover(_ctx: ToolAuthCtx, kind: "slices" | "solvers", query?: string) {
+    const slices: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] = [
+      { key: "model_capacity_network", name: "型号可产基地网络", description: "型号→可产基地子图", argHints: { modelId: "型号 ID" }, domain: "product" },
+      { key: "base_risk_profile", name: "基地风险画像", description: "基地风险画像子图", argHints: { baseId: "基地 ID" }, domain: "plan" },
+    ];
+    const solvers: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] = [
+      { key: "capacity_forecast", name: "产能推演", description: "推演产能满足度 P50/P90/缺口", argHints: { modelId: "型号 ID", qty: "需求量" }, domain: "plan" },
+      { key: "affected_orders", name: "受影响订单", description: "扰动→受影响订单清单", argHints: { baseId: "基地 ID" }, domain: "plan" },
+    ];
+    const items = (kind === "slices" ? slices : solvers).filter(
+      (it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query),
+    );
+    return { items: items.slice(0, 20) };
+  }
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
   solver: MockSolverClient;
@@ -402,6 +421,7 @@ export interface MockDataCore extends DataCoreClient {
   iam: MockIamClient;
   kb: MockKbClient;
   timeseries: MockTimeseriesClient;
+  catalog: MockCatalogClient;
 }
 
 export function createMockDataCore(): MockDataCore {
@@ -413,5 +433,6 @@ export function createMockDataCore(): MockDataCore {
     iam: new MockIamClient(),
     kb: new MockKbClient(),
     timeseries: new MockTimeseriesClient(),
+    catalog: new MockCatalogClient(),
   };
 }

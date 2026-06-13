@@ -3,6 +3,23 @@ import type { ToolDefinition } from "@platform/contracts";
 /** Built-in tool registry (QOS-PRD §7.1). Shared by path A steps and path B agent loop. */
 export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
+    // 能力发现与路由 §1：统一目录发现。slices/solvers 来自 DataCore 目录（权限/功能开通过滤），
+    // mcp_tools 列出未加载的 MCP 工具（>24 按需加载模式）。不确定用什么时先调本工具。
+    name: "discover",
+    descriptionForLLM:
+      "发现当前可用的能力目录。kind=slices 返回可用本体切片（含用途说明与参数）；kind=solvers 返回求解器；kind=mcp_tools 返回未加载的 MCP 工具。当不确定该用哪个切片/求解器/工具时先调用本工具拿到准确的 key。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["slices", "solvers", "mcp_tools"] },
+        query: { type: "string", description: "可选关键词过滤" },
+      },
+      required: ["kind"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "resolve_slice",
     descriptionForLLM:
       "解析一个预定义的本体切片（子图）。当需要某型号的可产基地网络或某基地的风险画像等预定义视图时调用。",

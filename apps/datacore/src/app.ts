@@ -24,6 +24,7 @@ import { OutboxService } from "./outbox.js";
 import { ExecutionLockService } from "./execlock.js";
 import { QuarantineService } from "./quarantine.js";
 import { NotificationService } from "./notifications.js";
+import { CatalogService } from "./catalog.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
@@ -86,6 +87,7 @@ export interface BuiltApp {
     execLocks: ExecutionLockService;
     quarantine: QuarantineService;
     notifications: NotificationService;
+    catalog: CatalogService;
     rules: RulesService;
     ontology: OntologyService;
     ontologyCore: OntologyCoreService;
@@ -227,6 +229,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ontologyCore = new OntologyCoreService(repos, authz);
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
+  const catalog = new CatalogService(repos, features);
   const governance = new OntologyGovernanceService(repos, authz, ontology, ontologyCore, features, metrics, outbox);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
   const connectors = new ConnectorService(repos, blob, cipher, metrics, deps.fetchImpl ?? fetch);
@@ -1116,6 +1119,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     return buildMappingRows(repos, c.tenantId);
   });
+  // 能力发现与路由 §1：资源目录（discover 供给侧；权限/功能开通过滤）
+  app.get("/a/v1/catalog", async (req) => {
+    const { kind, query } = req.query as { kind?: string; query?: string };
+    if (kind !== "slices" && kind !== "solvers") throw validationError("kind must be slices|solvers");
+    return catalog.discover(ctx(req), kind, query);
+  });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };
     const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
@@ -1987,6 +1996,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       execLocks,
       quarantine,
       notifications,
+      catalog,
       rules,
       ontology,
       ontologyCore,

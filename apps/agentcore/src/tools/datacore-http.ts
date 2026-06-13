@@ -3,6 +3,7 @@ import {
   DataCoreHttpError,
   DataCoreUnavailableError,
   type ActionClient,
+  type CatalogClient,
   type DataCoreClient,
   type IamClient,
   type KbClient,
@@ -123,6 +124,18 @@ class HttpTimeseriesClient implements TimeseriesClient {
   }
 }
 
+class HttpCatalogClient implements CatalogClient {
+  constructor(private readonly baseUrl: string) {}
+  discover(
+    ctx: ToolAuthCtx,
+    kind: "slices" | "solvers",
+    query?: string,
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }> {
+    const qs = `kind=${kind}${query ? `&query=${encodeURIComponent(query)}` : ""}`;
+    return call(this.baseUrl, ctx, "GET", `/a/v1/catalog?${qs}`);
+  }
+}
+
 /**
  * Coarse tool-level IAM. Per platform PRD §6.2 the single enforcement point is DataCore's
  * data layer (row filtering on every read); this client therefore allows by default and
@@ -168,5 +181,6 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     iam: new HttpIamClient(baseUrl),
     kb: new HttpKbClient(baseUrl),
     timeseries: new HttpTimeseriesClient(baseUrl),
+    catalog: new HttpCatalogClient(baseUrl),
   };
 }

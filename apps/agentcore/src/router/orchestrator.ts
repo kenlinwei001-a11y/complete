@@ -587,7 +587,9 @@ export class Orchestrator {
     const tools: AgentToolSpec[] = BUILTIN_TOOLS.filter(
       (t) =>
         (pkg.toolWhitelist.includes(t.name) && (t.sideEffect === "READ" || t.sideEffect === "COMPUTE")) ||
-        t.name === "create_action_draft",
+        t.name === "create_action_draft" ||
+        // 能力发现 §1：discover 是元工具，始终可用（不受 package 白名单约束）
+        t.name === "discover",
     ).map((t) => ({
       name: t.name,
       description: t.descriptionForLLM,
