@@ -31,6 +31,8 @@ import type {
   ObjectTypeDef,
   OntologyDraft,
   OntologyVersion,
+  OpsScheduleStoreRecord,
+  OpsTickReportRecord,
   OutboxEvent,
   PermissionPolicy,
   RawDataset,
@@ -240,6 +242,9 @@ export interface Repos {
   // 运营态出厂配置增量（lived-in）
   riskCases: Store<RiskCaseRecord>;
   livedInStates: Store<LivedInStateRecord>;
+  // 回放编排器与虚拟操作团队（replay-orchestrator）
+  opsSchedules: Store<OpsScheduleStoreRecord>;
+  opsTickReports: Store<OpsTickReportRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

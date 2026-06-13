@@ -523,6 +523,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     calibrationPairs: new PgStore(pool, "calibration_pairs"),
     riskCases: new PgStore(pool, "risk_cases"),
     livedInStates: new PgStore(pool, "lived_in_states"),
+    opsSchedules: new PgStore(pool, "ops_schedules"),
+    opsTickReports: new PgStore(pool, "ops_tick_reports"),
     async ping() {
       await pool.query("SELECT 1");
     },

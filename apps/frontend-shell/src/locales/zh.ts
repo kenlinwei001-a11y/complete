@@ -56,6 +56,7 @@ export const zh = {
     mcp: "MCP",
     scenes: "场景入口",
     opsFallback: "兜底统计",
+    opsSchedule: "运营自动化",
     features: "功能开通",
     calibration: "校准报告",
     tenants: "租户管理",

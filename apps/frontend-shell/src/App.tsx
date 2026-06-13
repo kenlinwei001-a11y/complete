@@ -38,6 +38,7 @@ const SkillsPage = lazy(() => import("@/pages/admin/SkillsPage"));
 const McpPage = lazy(() => import("@/pages/admin/McpPage"));
 const ScenesPage = lazy(() => import("@/pages/admin/ScenesPage"));
 const OpsFallbackPage = lazy(() => import("@/pages/admin/OpsFallbackPage"));
+const OpsSchedulePage = lazy(() => import("@/pages/admin/OpsSchedulePage"));
 const FeaturesPage = lazy(() => import("@/pages/admin/FeaturesPage"));
 const CalibrationPage = lazy(() => import("@/pages/admin/CalibrationPage"));
 const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
@@ -98,6 +99,7 @@ export const routes: RouteObject[] = [
       admin("mcp", <McpPage />),
       admin("scenes", <ScenesPage />),
       admin("ops/fallback", <OpsFallbackPage />),
+      admin("ops-schedule", <OpsSchedulePage />),
       admin("features", <FeaturesPage />),
       admin("llm-providers", <LlmProvidersPage />),
       admin("calibration", <CalibrationPage />),

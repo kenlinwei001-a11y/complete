@@ -67,6 +67,8 @@ interface MockDb {
   tenants: AdminTenant[];
   adminUsers: AdminUser[];
   adminViews: AdminViewConfig[];
+  // 回放编排器 §6：运营自动化配置（租户级，缺省空）
+  opsSchedule: { forecasts: unknown[]; tenantId: string; updatedAt: string; updatedBy: string } | null;
 }
 
 function freshDb(): MockDb {
@@ -102,6 +104,7 @@ function freshDb(): MockDb {
     tenants: structuredClone(ADMIN_TENANTS),
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),
+    opsSchedule: null,
   };
 }
 

@@ -26,6 +26,8 @@ import type {
   LlmProvider,
   PublishImpact,
   PurposeBinding,
+  OpsSchedule,
+  OpsScheduleRecord,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import type {
@@ -477,6 +479,12 @@ export const retireIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/retire`, { body: {} });
 export const fetchPlans = (packageId: string) =>
   api.b<{ id: string; key: string; version: number; status: string }[]>(`/b/v1/catalog/packages/${packageId}/plans`);
+
+// 回放编排器 §6：真实租户运营自动化 OpsSchedule（管理台 /admin/ops-schedule）
+export const fetchOpsSchedule = () =>
+  api.a<{ schedule: OpsScheduleRecord | null }>("/a/v1/ops/schedule");
+export const saveOpsSchedule = (schedule: OpsSchedule) =>
+  api.a<{ schedule: OpsScheduleRecord }>("/a/v1/ops/schedule", { method: "PUT", body: schedule });
 
 export const fetchFallbackStats = (packageId: string) =>
   api.b<{ items: FallbackClusterVM[] }>(`/b/v1/ops/fallback-stats?packageId=${packageId}`);

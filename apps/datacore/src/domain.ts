@@ -1024,3 +1024,36 @@ export interface ReportedRefRecord {
   refs: { kind: string; key: string; version: number | "latest" }[];
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// 回放编排器与虚拟操作团队（PRD-addendum-replay-orchestrator）
+// ---------------------------------------------------------------------------
+
+/**
+ * §6 OpsSchedule 存储记录（tenantId 唯一 → id == tenantId）。
+ * 契约 OpsScheduleRecord 的存储映射（额外携带 Store 必需的 id）。
+ */
+export interface OpsScheduleStoreRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  forecasts: { cron: string; modelIds: string[] | "ALL_ACTIVE"; weeks: number }[];
+  sopCycle?: { openCron: string; stepDeadlines: number[]; escalateAfterDays: number };
+  approvalReminder?: { remindAfterDays: number; escalateAfterDays: number; escalateToRole: string };
+  autoApprove?: { actionTypes: string[]; maxAmount?: number; enabled: boolean };
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/**
+ * §3 OpsTickReport 持久化（每 SYNTHETIC 租户的剧本第⑦步执行报告，可下钻）。
+ * id == ops_tick_<tenant>_<tick>。
+ */
+export interface OpsTickReportRecord {
+  id: string;
+  tenantId: string;
+  tick: number;
+  date: string;
+  executed: { kind: string; persona: string; ref?: string; decision?: string }[];
+  skipped: { kind: string; persona: string; reason: string }[];
+  createdAt: string;
+}

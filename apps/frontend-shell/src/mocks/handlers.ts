@@ -1164,6 +1164,19 @@ export const handlers = [
     return HttpResponse.json({ intentId });
   }),
 
+  // ---- 运营自动化 OpsSchedule（§6） ----
+  http.get("*/a/v1/ops/schedule", () => HttpResponse.json({ schedule: db.opsSchedule })),
+  http.put("*/a/v1/ops/schedule", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    db.opsSchedule = {
+      ...(body as object),
+      tenantId: TENANT_ID,
+      updatedAt: new Date().toISOString(),
+      updatedBy: "usr_demo_admin",
+    } as typeof db.opsSchedule;
+    return HttpResponse.json({ schedule: db.opsSchedule });
+  }),
+
   // ---- agents / workflows / skills / mcp ----
   http.get("*/b/v1/agents", () => HttpResponse.json(db.agents)),
   http.put("*/b/v1/agents/:id", async ({ params, request }) => {

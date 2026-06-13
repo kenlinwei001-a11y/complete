@@ -26,6 +26,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "mcp", label: zh.nav.mcp, roles: ["admin", "catalog_admin"] },
   { path: "scenes", label: zh.nav.scenes, roles: ["admin", "catalog_admin"] },
   { path: "ops/fallback", label: zh.nav.opsFallback, roles: ["admin", "catalog_admin"] },
+  // 回放编排器 §6：真实租户运营自动化（tenant_admin）
+  { path: "ops-schedule", label: zh.nav.opsSchedule, roles: ["admin", "tenant_admin"] },
   { path: "features", label: zh.nav.features, roles: ["admin", "catalog_admin"] },
   // LLM Provider 增量 §1.4：/admin/llm-providers（tenant_admin）
   { path: "llm-providers", label: zh.nav.llmProviders, roles: ["admin", "tenant_admin"] },

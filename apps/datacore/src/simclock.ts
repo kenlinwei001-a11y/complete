@@ -29,6 +29,10 @@ export class SimClockService {
   private resetRunner: ResetRunner | null = null;
   /** M11：聚合后、RULE_SCAN 前的校准钩子（配对引擎 + 元闭环）。 */
   private calibrationTicker: ((tenantId: string) => Promise<void>) | null = null;
+  /** 回放编排器 §3-① 第⑦步「执行当日 OpsPlaybook」（聚合/派生/扫描之后）。 */
+  private opsPlaybookRunner:
+    | ((args: { tenantId: string; tick: number; date: string; seed: number; scenarioEvents: string[] }) => Promise<void>)
+    | null = null;
 
   constructor(
     private repos: Repos,
@@ -45,6 +49,12 @@ export class SimClockService {
 
   setCalibrationTicker(ticker: (tenantId: string) => Promise<void>): void {
     this.calibrationTicker = ticker;
+  }
+
+  setOpsPlaybookRunner(
+    runner: (args: { tenantId: string; tick: number; date: string; seed: number; scenarioEvents: string[] }) => Promise<void>,
+  ): void {
+    this.opsPlaybookRunner = runner;
   }
 
   async getClock(ctx: AuthCtx): Promise<Record<string, unknown>> {
@@ -118,6 +128,22 @@ export class SimClockService {
         createdAt: new Date().toISOString(),
       };
       await this.repos.clockTickReports.put(report);
+
+      // ⑦ 执行当日 OpsPlaybook（聚合/派生/扫描完成之后；按推进的每一天回放剧本）。
+      if (this.opsPlaybookRunner) {
+        const t0ms = Date.parse(`${clock.t0.slice(0, 10)}T00:00:00Z`);
+        for (let tk = fromTick + 1; tk <= clock.currentTick; tk++) {
+          const dateIso = new Date(t0ms + (tk - 1) * DAY_MS).toISOString().slice(0, 10);
+          const dayEvents = scenarioEvents.filter((e) => e.tick === tk).map((e) => e.event);
+          try {
+            await this.opsPlaybookRunner({ tenantId: ctx.tenantId, tick: tk, date: dateIso, seed: clock.seed, scenarioEvents: dayEvents });
+          } catch (err) {
+            // §3-⑤ 失败容忍：剧本执行失败不阻断 tick。
+            void err;
+          }
+        }
+      }
+
       clock.status = "ACTIVE";
       await this.repos.simulationClocks.put(clock);
       await this.outbox.emit(ctx.tenantId, "synthetic.tick_completed", {

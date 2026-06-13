@@ -38,6 +38,10 @@ export const ConfigSchema = z.object({
   /** 管理平台增量 §1：空库首启时创建平台超管（platform_admin，归属自动创建的 default 租户）。 */
   BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
+  /** 回放编排器 §3-① ask 动作经 AgentCore QOS（POST /b/v1/queries）；未设置则 ask 跳过。 */
+  AGENTCORE_BASE_URL: z.string().optional(),
+  /** 回放编排器 §3-⑥ 隔离逃生阀：=1 时允许在非 SYNTHETIC 租户挂虚拟操作（默认关）。 */
+  FORGE_ALLOW_PROD: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 

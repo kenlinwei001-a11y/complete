@@ -49,6 +49,11 @@ import { SimClockService } from "./simclock.js";
 import { HistoryService } from "./livedin/bundle.js";
 import { FeatureService, VIEW_FEATURE_MAP } from "./features.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
+import { OpsTeamService } from "./opsteam/team.js";
+import { OpsScheduleService } from "./opsteam/schedule.js";
+import { OpsReplayService } from "./opsteam/replay.js";
+import { poolSnapshot } from "./opsteam/pools.js";
+import { OpsScheduleSchema } from "@platform/contracts";
 import type { AuthCtx } from "./domain.js";
 
 declare module "fastify" {
@@ -99,6 +104,9 @@ export interface BuiltApp {
     llmProviders: LlmProviderService;
     livedin: LivedInEngine;
     history: HistoryService;
+    opsTeam: OpsTeamService;
+    opsSchedule: OpsScheduleService;
+    opsReplay: OpsReplayService;
   };
 }
 
@@ -283,6 +291,105 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     },
   };
   actions.setExecutor(domainExecutor);
+
+  // ---- 回放编排器与虚拟操作团队（replay-orchestrator） ----------------------
+  const opsTeam = new OpsTeamService(repos, config.FORGE_ALLOW_PROD === "1");
+  const opsSchedule = new OpsScheduleService(repos, scheduler, solvers, outbox, actions);
+  opsSchedule.setSop(sop);
+  // §1 随运营态合成创建虚拟团队 + §2 默认剧本（仅 SYNTHETIC 租户；隔离在 opsTeam 内守卫）。
+  livedInEngine.setOpsTeamSeeder(async (tenantId) => {
+    await opsTeam.seedDefaultPersonas(tenantId);
+    await opsTeam.seedDefaultPlaybook(tenantId);
+  });
+  // §3-① ask 经 AgentCore QOS（HTTP）；未配置 AGENTCORE_BASE_URL 则 ask 跳过。
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const debugHeaderFor = (a: AuthCtx): string =>
+    encodeURIComponent(a.tenantId) + ":" + encodeURIComponent(a.userId) + ":" + a.roles.map(encodeURIComponent).join("|");
+  const opsReplay = new OpsReplayService({
+    actions,
+    sop,
+    solvers,
+    resolvePersona: (tenantId, username) => opsTeam.resolvePersonaCtx(tenantId, username),
+    ask: config.AGENTCORE_BASE_URL
+      ? async (persona, input) => {
+          try {
+            const res = await fetchImpl(`${config.AGENTCORE_BASE_URL}/b/v1/queries`, {
+              method: "POST",
+              headers: { "content-type": "application/json", "x-debug-user": debugHeaderFor(persona) },
+              body: JSON.stringify({
+                packageId: "pkg_battery_manufacturing",
+                query: input.query,
+                context: { view: input.view, selectedObjects: [], filters: {}, conversationId: input.conversationId },
+              }),
+            });
+            if (!res.ok) {
+              if (res.status >= 500) throw Object.assign(new Error(`agentcore ${res.status}`), { statusCode: res.status });
+              return null;
+            }
+            const body = (await res.json()) as { taskId?: string };
+            return body.taskId ? { taskId: body.taskId } : null;
+          } catch (err) {
+            const e = err as { statusCode?: number };
+            if (e.statusCode && e.statusCode >= 500) throw err;
+            return null; // 网络抖动/连接失败 → 跳过（非错误）
+          }
+        }
+      : null,
+    listPendingDrafts: async (tenantId) => {
+      const drafts = await repos.actionDrafts.list(tenantId, (d) => d.status === "PENDING_APPROVAL");
+      return drafts.map((d) => ({ id: d.id, originUserId: d.origin.userId }));
+    },
+    listFallbackClusters: async () => [],
+    promoteIntent: config.AGENTCORE_BASE_URL
+      ? async (persona, traceId) => {
+          try {
+            const res = await fetchImpl(`${config.AGENTCORE_BASE_URL}/b/v1/ops/fallback/${traceId}/promote`, {
+              method: "POST",
+              headers: { "content-type": "application/json", "x-debug-user": debugHeaderFor(persona) },
+              body: "{}",
+            });
+            if (!res.ok) return null;
+            const body = (await res.json()) as { intentId?: string };
+            return body.intentId ? { intentId: body.intentId } : null;
+          } catch {
+            return null;
+          }
+        }
+      : null,
+    adoptMitigation: async (base, approver, payload) => {
+      // 经真实 S2：base persona 发起 adopt_mitigation → approver persona 审批 → EXECUTED。
+      const draft = await actions.create(base, { actionTypeKey: "adopt_mitigation", payload, submit: true });
+      const decided = await actions.approve(approver, draft.id);
+      return { draftId: draft.id, status: decided.status };
+    },
+    log: (level, msg, meta) => logger[level](meta ?? {}, msg),
+  });
+  // §3-① 挂载到模拟时钟第⑦步（仅 SYNTHETIC 租户挂剧本）。
+  simclock.setOpsPlaybookRunner(async ({ tenantId, tick, date, seed, scenarioEvents }) => {
+    if (!(await opsTeam.isSyntheticTenant(tenantId))) return; // 隔离：真实租户不挂剧本
+    const playbook = await opsTeam.getPlaybook(tenantId);
+    if (!playbook) return;
+    const report = await opsReplay.runTick(tenantId, playbook, { tick, date, seed, scenarioEvents });
+    await repos.opsTickReports.put({
+      id: `ops_tick_${tenantId}_${tick}`,
+      tenantId,
+      tick: report.tick,
+      date: report.date,
+      executed: report.executed,
+      skipped: report.skipped,
+      createdAt: new Date().toISOString(),
+    });
+  });
+  // §6 S3 调度器三类作业 handler（真实租户运营自动化）。
+  scheduler
+    .on("SCHEDULED_FORECAST", async (tenantId, refId) => opsSchedule.runScheduledForecast(tenantId, refId))
+    .on("SOP_AUTO_OPEN", async (tenantId) => {
+      await opsSchedule.runSopAutoOpen(tenantId);
+    })
+    .on("APPROVAL_REMINDER", async (tenantId) => {
+      await opsSchedule.runApprovalReminder(tenantId);
+    });
+
   const systemCtx = (tenantId: string): AuthCtx => ({ tenantId, userId: "system", roles: ["admin"], attributes: {} });
   scheduler
     .on("CONNECTOR_SYNC", async (tenantId, refId) => {
@@ -1688,6 +1795,51 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return connectors.updateConnection(ctx(req), id, body);
   });
 
+  // ---- 回放编排器与虚拟操作团队 路由 ----------------------------------------
+  const requireTenantAdmin = (req: FastifyRequest): AuthCtx => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r === "tenant_admin" || r.split(":")[0] === "admin")) {
+      throw forbidden("需要 tenant_admin 角色");
+    }
+    return c;
+  };
+
+  // §1 虚拟操作团队（SYNTHETIC 租户；真实租户建虚拟账号被拒 R9）
+  app.get("/a/v1/ops/personas", async (req) => ({ items: await opsTeam.listPersonas(ctx(req).tenantId) }));
+  app.post("/a/v1/ops/personas/seed", async (req, reply) => {
+    const c = requireTenantAdmin(req);
+    const personas = await opsTeam.seedDefaultPersonas(c.tenantId); // 内部隔离守卫 → 403 R9
+    return reply.status(201).send({ items: personas });
+  });
+  app.get("/a/v1/ops/playbook", async (req) => ({ playbook: await opsTeam.getPlaybook(ctx(req).tenantId) }));
+  app.put("/a/v1/ops/playbook", async (req) => {
+    const c = requireTenantAdmin(req);
+    return { playbook: await opsTeam.putPlaybook(c.tenantId, req.body as never) }; // 隔离守卫 R9
+  });
+  app.get("/a/v1/ops/pools", async (req) => {
+    ctx(req);
+    return { pools: poolSnapshot() };
+  });
+  app.get("/a/v1/ops/tick-reports", async (req) => {
+    const reports = await repos.opsTickReports.list(ctx(req).tenantId);
+    return { items: reports.sort((a, b) => a.tick - b.tick) };
+  });
+
+  // §6 OpsSchedule（真实租户运营自动化；管理台 /admin/ops-schedule，tenant_admin）
+  app.get("/a/v1/ops/schedule", async (req) => ({ schedule: await opsSchedule.get(ctx(req).tenantId) }));
+  app.put("/a/v1/ops/schedule", async (req) => {
+    const c = requireTenantAdmin(req);
+    const body = parseBody(OpsScheduleSchema, req.body);
+    return { schedule: await opsSchedule.put(c, body) };
+  });
+
+  // §6-C 类隔离：真实租户「自动提问/虚拟审批」无入口 —— API 直调被拒（R13）。
+  app.post("/a/v1/ops/auto-ask", async (req) => {
+    const c = ctx(req);
+    if (!(await opsTeam.isSyntheticTenant(c.tenantId))) OpsScheduleService.assertNotVirtualOps();
+    throw forbidden("虚拟提问仅经模拟时钟回放在 SYNTHETIC 租户产生，无直调入口");
+  });
+
   return {
     app,
     services: {
@@ -1718,6 +1870,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       llmProviders,
       livedin: livedInEngine,
       history,
+      opsTeam,
+      opsSchedule,
+      opsReplay,
     },
   };
 }

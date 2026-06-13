@@ -153,6 +153,8 @@ export function mapeSeriesFor(replayFrom: string): { week: number; weekStart: st
 export class LivedInEngine {
   /** M11 配对/元闭环钩子（回放批次内、RULE_SCAN 之前调用）。 */
   private calibrationTicker: ((tenantId: string) => Promise<void>) | null = null;
+  /** 回放编排器 §1：随运营态合成创建虚拟团队 + 默认剧本（SYNTHETIC 租户）。 */
+  private opsTeamSeeder: ((tenantId: string) => Promise<void>) | null = null;
 
   constructor(
     private repos: Repos,
@@ -164,6 +166,10 @@ export class LivedInEngine {
 
   setCalibrationTicker(ticker: (tenantId: string) => Promise<void>): void {
     this.calibrationTicker = ticker;
+  }
+
+  setOpsTeamSeeder(seeder: (tenantId: string) => Promise<void>): void {
+    this.opsTeamSeeder = seeder;
   }
 
   /** 入口：标准合成（对象/规则/账号/视图）完成后调用。 */
@@ -228,6 +234,10 @@ export class LivedInEngine {
       replay: { batches: replay.batches, days: REPLAY_DAYS, points: replay.points },
     };
     await this.repos.livedInStates.put(state);
+
+    // §1 虚拟操作团队 + §2 默认剧本（运营态即 SYNTHETIC 租户，隔离守卫自然通过）。
+    if (this.opsTeamSeeder) await this.opsTeamSeeder(ctx.tenantId);
+
     return state;
   }
 
