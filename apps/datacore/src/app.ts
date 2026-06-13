@@ -25,6 +25,7 @@ import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
 import { OntologyService } from "./ontology.js";
+import { OntologyCoreService } from "./ontology-core.js";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES } from "./connectors/registry.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -75,6 +76,7 @@ export interface BuiltApp {
     outbox: OutboxService;
     rules: RulesService;
     ontology: OntologyService;
+    ontologyCore: OntologyCoreService;
     connectors: ConnectorService;
     ruleDocs: RuleDocService;
     modeling: ModelingService;
@@ -201,6 +203,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const rules = new RulesService(repos, outbox);
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers);
+  const ontologyCore = new OntologyCoreService(repos, authz);
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
@@ -578,6 +581,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             dataType: z.enum(["string", "number", "boolean", "date", "enum", "ref", "json"]),
             isPrimaryKey: z.boolean().default(false),
             refToTypeKey: z.string().nullable().optional(),
+            enumValues: z.array(z.string()).optional(),
+            required: z.boolean().optional(),
+            temporal: z.boolean().optional(),
           }),
         ),
         derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).default([]),
@@ -746,6 +752,84 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/derivations/run", async (req, reply) => {
     const run = await ontology.runDerivations(ctx(req));
     return reply.status(202).send(run);
+  });
+
+  // ---- 本体原子规格 §2/§3 atomic-spec engine（additive 端点）-------------------
+  // §2.3 编译派生规格：解析→deps→Kahn 拓扑→环拒绝 CYCLIC_DERIVATION。
+  app.post("/a/v1/ontology/derivation-specs/compile", async (req, reply) => {
+    const c = ctx(req);
+    const body = parseBody(
+      z.object({
+        ontologyVersion: z.number().int().optional(),
+        specs: z.array(
+          z.object({
+            specKey: z.string().min(1),
+            targetType: z.string().min(1),
+            targetProp: z.string().min(1),
+            formula: z.string().min(1),
+          }),
+        ),
+      }),
+      req.body,
+    );
+    const ov = body.ontologyVersion ?? (await ontology.currentVersion(c.tenantId));
+    const out = await ontologyCore.compileSpecs(c, ov, body.specs);
+    return reply.status(201).send({ order: out.order, specs: out.specs.map((s) => ({ specKey: s.specKey, deps: s.deps })) });
+  });
+  // §2.4 增量重算：变更集 → 受影响最小集重算（拓扑序）。
+  app.post("/a/v1/ontology/recompute", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(
+      z.object({
+        changes: z.array(
+          z.object({ typeKey: z.string(), prop: z.string(), objectIds: z.array(z.string()) }),
+        ),
+      }),
+      req.body,
+    );
+    return ontologyCore.recompute(c, body.changes);
+  });
+  // §3 声明式切片：注册 + 执行（A6 逐跳剪枝、参数化、截断）。
+  app.put("/a/v1/ontology/slices/:sliceKey", async (req, reply) => {
+    const c = ctx(req);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const body = parseBody(
+      z.object({
+        version: z.number().int().default(1),
+        spec: z.object({
+          root: z.object({
+            typeKey: z.string(),
+            selector: z.object({
+              byKey: z.unknown().optional(),
+              filter: z.record(z.string(), z.unknown()).optional(),
+            }),
+          }),
+          paths: z.array(
+            z.array(
+              z.object({
+                linkKey: z.string(),
+                direction: z.enum(["out", "in"]),
+                filter: z.record(z.string(), z.unknown()).optional(),
+                limitPerNode: z.number().int().optional(),
+                project: z.array(z.string()).optional(),
+              }),
+            ),
+          ),
+          maxNodes: z.number().int().optional(),
+        }),
+      }),
+      req.body,
+    );
+    const rec = await ontologyCore.putSliceSpec(c, sliceKey, body.version, body.spec as never);
+    return reply.status(201).send({ sliceKey: rec.sliceKey, version: rec.version });
+  });
+  app.post("/a/v1/ontology/slices/:sliceKey/resolve", async (req) => {
+    const c = ctx(req);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
+    const spec = await ontologyCore.getSliceSpec(c, sliceKey);
+    if (!spec) throw notFound(`slice ${sliceKey}`);
+    return ontologyCore.executeSlice(c, spec.spec, body.args);
   });
 
   // ---- S2 action approval ----------------------------------------------------
@@ -1445,6 +1529,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       outbox,
       rules,
       ontology,
+      ontologyCore,
       connectors,
       ruleDocs,
       modeling,

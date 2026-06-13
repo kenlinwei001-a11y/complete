@@ -128,7 +128,7 @@ describe("A0 IAM + A6 permissions", () => {
         payload: { args: { baseId: "changzhou" } },
       })
     ).json() as { data: { orders: unknown[] }; snapshotVersion: string };
-    expect(bmSlice.snapshotVersion).toMatch(/^v\d+$/);
+    expect(bmSlice.snapshotVersion).toMatch(/^\d+\.\d+$/);
     const denied = await t.app.inject({
       method: "POST",
       url: "/a/v1/slices/base_risk_profile/resolve",

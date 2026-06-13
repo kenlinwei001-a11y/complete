@@ -202,6 +202,12 @@ export interface PropertyDef {
   dataType: "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json";
   isPrimaryKey: boolean;
   refToTypeKey?: string | null;
+  /** 本体原子规格 §1：枚举取值（dataType=enum）。 */
+  enumValues?: string[];
+  /** 本体原子规格 §1：required 标记。 */
+  required?: boolean;
+  /** 本体原子规格 §1：temporal=true 的属性变更落 object_prop_history。 */
+  temporal?: boolean;
 }
 
 export interface SourceBinding {
@@ -258,6 +264,89 @@ export interface ObjectInstance {
   type: string; // objectType key
   props: Record<string, unknown>;
   origin: ObjectOrigin;
+  /** 本体原子规格 §1：业务主键（缺省 = props[primaryKey]）。 */
+  objectKey?: string;
+  /** 本体原子规格 §1：写入批次序号（snapshotVersion = {ontologyVersion}.{epoch}）。 */
+  epoch?: number;
+  updatedAt?: string;
+}
+
+/**
+ * 本体原子规格 §1：epoch 是租户级单调序列；每个写入批次（连接器同步/对象化/
+ * 派生运行/Action 写回）+1，批内所有行打同一 epoch。一条/租户（id == tenantId）。
+ */
+export interface EpochCounterRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  epoch: number;
+  updatedAt: string;
+}
+
+/**
+ * 本体原子规格 §1：temporal=true 属性变更落历史（append-only）。当前值始终在
+ * objects.props，读路径不查此表。
+ */
+export interface ObjectPropHistoryRecord {
+  id: string; // ophist_
+  tenantId: string;
+  objectId: string;
+  prop: string;
+  value: unknown;
+  epoch: number;
+  validFrom: string;
+  recordedAt: string;
+  provenance?: Record<string, unknown>;
+}
+
+/**
+ * 本体原子规格 §2：派生规格（编译期解析公式→缓存 deps）。spec_key 唯一/版本。
+ */
+export interface DerivationSpecRecord {
+  id: string; // dspec_
+  tenantId: string;
+  ontologyVersion: number;
+  specKey: string;
+  targetType: string;
+  targetProp: string;
+  formula: string; // §2 DSL
+  deps: { typeKey: string; prop: string; via?: string; direction?: "out" | "in" }[];
+  status: "ACTIVE" | "RETIRED";
+}
+
+/**
+ * 本体原子规格 §2.4：每次派生写值同步记录（inputs 快照 + epoch），溯源弹窗数据源。
+ */
+export interface DerivationValueRunRecord {
+  id: string; // dvrun_
+  tenantId: string;
+  specId: string;
+  specKey: string;
+  objectId: string;
+  targetProp: string;
+  value: unknown;
+  inputs: { objectId: string; prop: string; value: unknown }[];
+  epoch: number;
+  ranAt: string;
+  warnings?: string[];
+}
+
+/** 本体原子规格 §3：切片规格（版本化场景包内容，slices 表）。 */
+export interface SliceSpecRecord {
+  id: string; // slice_
+  tenantId: string;
+  sliceKey: string;
+  version: number;
+  spec: {
+    root: { typeKey: string; selector: { byKey?: string; filter?: Record<string, unknown> } };
+    paths: {
+      linkKey: string;
+      direction: "out" | "in";
+      filter?: Record<string, unknown>;
+      limitPerNode?: number;
+      project?: string[];
+    }[][];
+    maxNodes?: number;
+  };
 }
 
 export interface LinkInstance {

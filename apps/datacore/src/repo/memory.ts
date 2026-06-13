@@ -13,6 +13,7 @@ import type {
   ObjectStore,
   RawRowStore,
   Repos,
+  EpochStore,
   ScheduledJobStore,
   Store,
   TenantStore,
@@ -111,6 +112,19 @@ class MemRawRowStore implements RawRowStore {
 
   async list(tenantId: string, datasetId: string): Promise<Record<string, unknown>[]> {
     return clone(this.rows.get(this.key(tenantId, datasetId)) ?? []);
+  }
+}
+
+/** 本体原子规格 §1：租户级 epoch 单调序列（同步自增，批次锚点）。 */
+class MemEpochStore implements EpochStore {
+  private counters = new Map<string, number>();
+  async current(tenantId: string): Promise<number> {
+    return this.counters.get(tenantId) ?? 0;
+  }
+  async next(tenantId: string): Promise<number> {
+    const v = (this.counters.get(tenantId) ?? 0) + 1;
+    this.counters.set(tenantId, v);
+    return v;
   }
 }
 
@@ -283,6 +297,11 @@ export function createMemoryRepos(): Repos {
     objects: new MemObjectStore(),
     links: new MemLinkStore(),
     derivationRuns: new MemStore(),
+    epochs: new MemEpochStore(),
+    objectPropHistory: new MemStore(),
+    derivationSpecs: new MemStore(),
+    derivationValueRuns: new MemStore(),
+    sliceSpecs: new MemStore(),
     actionDrafts: new MemStore(),
     actionTypes: new MemStore(),
     industryTemplates: new MemStore(),

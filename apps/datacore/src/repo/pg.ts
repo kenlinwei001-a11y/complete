@@ -12,6 +12,7 @@ import type {
 } from "../domain.js";
 import type {
   ClaimedJob,
+  EpochStore,
   LinkStore,
   ObjectStore,
   RawRowStore,
@@ -432,6 +433,24 @@ export async function runMigrations(pool: pg.Pool, migrationsDir: string): Promi
   }
 }
 
+/** 本体原子规格 §1：租户级 epoch 单调序列（INSERT…ON CONFLICT DO UPDATE 原子自增）。 */
+class PgEpochStore implements EpochStore {
+  constructor(private pool: pg.Pool) {}
+  async current(tenantId: string): Promise<number> {
+    const r = await this.pool.query(`SELECT epoch FROM ontology_epochs WHERE tenant_id = $1`, [tenantId]);
+    return Number(r.rows[0]?.epoch ?? 0);
+  }
+  async next(tenantId: string): Promise<number> {
+    const r = await this.pool.query(
+      `INSERT INTO ontology_epochs (tenant_id, epoch, updated_at) VALUES ($1, 1, now())
+       ON CONFLICT (tenant_id) DO UPDATE SET epoch = ontology_epochs.epoch + 1, updated_at = now()
+       RETURNING epoch`,
+      [tenantId],
+    );
+    return Number(r.rows[0]?.epoch ?? 1);
+  }
+}
+
 export async function createPgRepos(databaseUrl: string, migrationsDir: string): Promise<Repos> {
   const pool = new Pool({ connectionString: databaseUrl });
   await runMigrations(pool, migrationsDir);
@@ -461,6 +480,11 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     objects: new PgObjectStore(pool),
     links: new PgLinkStore(pool),
     derivationRuns: new PgStore(pool, "derivation_runs"),
+    epochs: new PgEpochStore(pool),
+    objectPropHistory: new PgStore(pool, "object_prop_history"),
+    derivationSpecs: new PgStore(pool, "derivation_specs"),
+    derivationValueRuns: new PgStore(pool, "derivation_value_runs"),
+    sliceSpecs: new PgStore(pool, "slice_specs"),
     actionDrafts: new PgStore(pool, "action_drafts"),
     actionTypes: new PgStore(pool, "action_types"),
     industryTemplates: new PgStore(pool, "industry_templates"),

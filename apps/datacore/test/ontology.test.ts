@@ -55,7 +55,7 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
     expect(body.data.model.props.bases.length).toBeGreaterThan(0);
     expect(body.data.bases).toHaveLength(body.data.model.props.bases.length);
     expect(body.data.edges[0]!.from).toBe("4680-NCM");
-    expect(body.snapshotVersion).toMatch(/^v\d+$/);
+    expect(body.snapshotVersion).toMatch(/^\d+\.\d+$/);
   });
 
   it("derivation formula helpers parse aggregates and arithmetic", () => {

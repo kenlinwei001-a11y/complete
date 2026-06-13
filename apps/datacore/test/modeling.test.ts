@@ -261,7 +261,7 @@ describe("A3 modeling", () => {
       })
     ).json() as { data: unknown[]; snapshotVersion: string };
     expect(objs.data).toHaveLength(6);
-    expect(objs.snapshotVersion).toMatch(/^v\d+$/);
+    expect(objs.snapshotVersion).toMatch(/^\d+\.\d+$/);
     const runs = await t.repos.derivationRuns.list("demo");
     expect(runs.length).toBeGreaterThanOrEqual(1);
     expect(runs[0]!.status).toBe("SUCCEEDED");

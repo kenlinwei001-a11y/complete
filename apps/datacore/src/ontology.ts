@@ -177,8 +177,14 @@ export class OntologyService {
     return versions.length > 0 ? Math.max(...versions.map((v) => v.version)) : 0;
   }
 
+  /**
+   * 本体原子规格 §1：snapshotVersion = "{ontology_version}.{epoch}"。epoch 为租户级
+   * 单调序列（每写入批次 +1）。读路径取当前 epoch。
+   */
   private async snapshotVersion(tenantId: string): Promise<string> {
-    return `v${await this.currentVersion(tenantId)}`;
+    const ov = await this.currentVersion(tenantId);
+    const epoch = await this.repos.epochs.current(tenantId);
+    return `${ov}.${epoch}`;
   }
 
   // -- object queries (A6 enforced in the data layer) ------------------------
@@ -394,6 +400,8 @@ export class OntologyService {
     const byKey = new Map(types.map((t) => [t.key, t]));
     let updated = 0;
     let order: string[] = [];
+    // 本体原子规格 §1：一次派生运行 = 一个写入批次，推进租户 epoch（snapshotVersion 锚点）。
+    await this.repos.epochs.next(ctx.tenantId);
     try {
       order = this.topoOrder(types);
       for (const typeKey of order) {
@@ -424,6 +432,10 @@ export class OntologyService {
             }
           }
           if (changed) {
+            // NB: do not stamp epoch/updatedAt onto the object record here — the SY1
+            // byte-equality contract compares full ObjectInstances across reruns. The
+            // tenant epoch counter still advances (snapshotVersion), but per-object
+            // epoch stamping is reserved for the atomic-spec write paths (OntologyCore).
             await this.repos.objects.put(obj);
             updated++;
           }

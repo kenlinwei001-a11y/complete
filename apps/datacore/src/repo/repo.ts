@@ -8,7 +8,11 @@ import type {
   ClockTickReport,
   Connection,
   DerivationRun,
+  DerivationSpecRecord,
+  DerivationValueRunRecord,
   DynamicFeatureRecord,
+  ObjectPropHistoryRecord,
+  SliceSpecRecord,
   FeatureAuditRecord,
   FeatureConfigRecord,
   ForecastSnapshotRecord,
@@ -78,6 +82,16 @@ export interface ObjectStore extends Store<ObjectInstance> {
 
 export interface LinkStore extends Store<LinkInstance> {
   removeWhere(tenantId: string, pred: (l: LinkInstance) => boolean): Promise<number>;
+}
+
+/**
+ * 本体原子规格 §1：epoch 是租户级单调序列。next() 原子自增并返回新值（写入批次锚点）。
+ */
+export interface EpochStore {
+  /** Current epoch (0 if never advanced). */
+  current(tenantId: string): Promise<number>;
+  /** Atomically increment and return the new epoch for a write batch. */
+  next(tenantId: string): Promise<number>;
 }
 
 export interface RawRowStore {
@@ -167,6 +181,12 @@ export interface Repos {
   objects: ObjectStore;
   links: LinkStore;
   derivationRuns: Store<DerivationRun>;
+  // 本体原子规格 §1/§2/§3（additive；008_ontology_core.sql）
+  epochs: EpochStore;
+  objectPropHistory: Store<ObjectPropHistoryRecord>;
+  derivationSpecs: Store<DerivationSpecRecord>;
+  derivationValueRuns: Store<DerivationValueRunRecord>;
+  sliceSpecs: Store<SliceSpecRecord>;
   actionDrafts: Store<ActionDraft>;
   actionTypes: Store<ActionTypeRecord>;
   industryTemplates: Store<IndustryTemplateRecord>;
