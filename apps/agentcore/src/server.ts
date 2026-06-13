@@ -41,6 +41,7 @@ import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
+import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -1225,6 +1226,22 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // B5 Scene entries
   // ---------------------------------------------------------------------
   const UpsertSceneBody = SceneEntryConfigSchema.omit({ id: true, tenantId: true });
+
+  // 20 场景目录 §9：场景启动器卡片（单一来源=SCENARIO_CATALOG；非前端硬编码）。
+  // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active）。
+  app.get("/b/v1/scenarios", async (req) => {
+    const a = await auth(req);
+    const { includeInactive } = req.query as { includeInactive?: string };
+    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const launcherOn = viewAllowed(enabled, "scenarios");
+    const cards = SCENARIO_CATALOG.map((c) => ({
+      ...c,
+      willProduceDraft: c.riskLevel === "ACTION_DRAFT",
+      inactive: !viewAllowed(enabled, c.view),
+    }));
+    const items = includeInactive === "true" ? cards : cards.filter((c) => !c.inactive);
+    return { launcherEnabled: launcherOn, total: items.length, items };
+  });
 
   app.get("/b/v1/scene-entries", async (req) => {
     const a = await auth(req);
