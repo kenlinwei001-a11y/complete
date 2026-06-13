@@ -1,0 +1,724 @@
+--- a/apps/datacore/src/solvers/types.ts
++++ b/apps/datacore/src/solvers/types.ts
+@@ -166,6 +166,37 @@
+     cashCushion: number;
+     capex: number;
+   };
++  /** S06 mitigation_select：成本档→秩映射 + urgency 口径。 */
++  mitigationSelect?: {
++    costRank: Record<string, number>;
++    urgencyBase: number;
++    urgencyDen: number;
++  };
++  /** S14 outsourcing_split：三渠道单位成本 + 加班上限比（外协上限取 whatIf.outsourceMax）。 */
++  outsourcing?: {
++    overtimeCostPer: number;
++    outsourceCostPer: number;
++    delayPenaltyPer: number;
++    overtimeCapRatio: number;
++  };
++  /** S13 maintenance_stagger：错峰窗口 + 间隔/同集团同周约束 + 高峰周数。 */
++  maintenanceStagger?: {
++    windowWeeks: number;
++    minIntervalWeeks: number;
++    sameGroupSameWeekMax: number;
++    topPeakWeeks: number;
++  };
++  /** S19 quarterly_gap：候选对策（成本升序贪心覆盖，每项映射落地场景）。 */
++  quarterlyGap?: {
++    measures: {
++      key: string;
++      name: string;
++      costRank: number;
++      releaseRatio: number;
++      basis: "supply" | "demand" | "gap";
++      action: string;
++    }[];
++  };
+   dupSimilarityThreshold: number;
+   /**
+    * M11 校准算法层配置（场景包声明：可校准参数注册表 + 阈值开关）。
+@@ -213,6 +244,8 @@
+   shipments: ObjectInstance[];
+   segments: ObjectInstance[];
+   dataHealth: ObjectInstance[];
++  /** 计划目标（年/季/月分解，PlanTarget）—— 季度滚动需求口径同源（S19 quarterly_gap）。 */
++  planTargets: ObjectInstance[];
+   /** modelId → baseId → 量产 | 认证中 (from model_certified_on edge props). */
+   certByModel: Map<string, Map<string, string>>;
+ }
+--- a/apps/datacore/src/solvers/service.ts
++++ b/apps/datacore/src/solvers/service.ts
+@@ -9,6 +9,15 @@
+ import { affectedOrders, bottleneckMatrix, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
+ import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
+ import { capexScenario, type CapexScenarioArgs } from "./capex.js";
++import {
++  mitigationSelect,
++  outsourcingSplit,
++  maintenanceStagger,
++  quarterlyGap,
++  type MitigationSelectArgs,
++  type OutsourcingSplitArgs,
++  type QuarterlyGapArgs,
++} from "./scenarios-p1.js";
+ 
+ export const SOLVER_KEYS = [
+   "capacity_rollup",
+@@ -19,6 +28,11 @@
+   "plan_audit",
+   "plan_generate",
+   "capex_scenario",
++  // 20 场景目录 §2 · 第一阶段（无需新增对象类型）
++  "mitigation_select",
++  "outsourcing_split",
++  "maintenance_stagger",
++  "quarterly_gap",
+ ] as const;
+ 
+ const DAY_MS = 86400000;
+@@ -103,7 +117,7 @@
+   }
+ 
+   async loadContext(tenantId: string, visibleOrders?: ObjectInstance[]): Promise<SolverContext> {
+-    const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth] =
++    const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth, planTargets] =
+       await Promise.all([
+         this.repos.objects.listByType(tenantId, "Base"),
+         this.repos.objects.listByType(tenantId, "Line"),
+@@ -115,6 +129,7 @@
+         this.repos.objects.listByType(tenantId, "Shipment"),
+         this.repos.objects.listByType(tenantId, "Segment"),
+         this.repos.objects.listByType(tenantId, "DataSourceHealth"),
++        this.repos.objects.listByType(tenantId, "PlanTarget"),
+       ]);
+     const certByModel = new Map<string, Map<string, string>>();
+     const certLinks = await this.repos.links.list(tenantId, (l) => l.type === "model_certified_on");
+@@ -145,6 +160,7 @@
+       shipments: sortById(shipments),
+       segments: sortById(segments),
+       dataHealth: sortById(dataHealth),
++      planTargets: sortById(planTargets),
+       certByModel,
+     };
+   }
+@@ -189,6 +205,14 @@
+         return planGenerate(c, args as unknown as PlanGenerateArgs);
+       case "capex_scenario":
+         return capexScenario(c, args as unknown as CapexScenarioArgs);
++      case "mitigation_select":
++        return mitigationSelect(c, args as unknown as MitigationSelectArgs);
++      case "outsourcing_split":
++        return outsourcingSplit(c, args as unknown as OutsourcingSplitArgs);
++      case "maintenance_stagger":
++        return maintenanceStagger(c);
++      case "quarterly_gap":
++        return quarterlyGap(c, args as unknown as QuarterlyGapArgs);
+       default:
+         throw notFound(`solver ${solverKey}`);
+     }
+--- a/apps/datacore/src/synthetic/battery.ts
++++ b/apps/datacore/src/synthetic/battery.ts
+@@ -241,6 +241,19 @@
+     },
+   },
+   sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 248 },
++  // 20 场景目录 §2 · 第一阶段求解器参数（无需新增对象类型）
++  mitigationSelect: { costRank: { 低: 1, 中: 2, 高: 3, 极高: 4 }, urgencyBase: 70, urgencyDen: 30 },
++  outsourcing: { overtimeCostPer: 1.0, outsourceCostPer: 1.4, delayPenaltyPer: 2.5, overtimeCapRatio: 0.4 },
++  maintenanceStagger: { windowWeeks: 4, minIntervalWeeks: 8, sameGroupSameWeekMax: 3, topPeakWeeks: 3 },
++  quarterlyGap: {
++    measures: [
++      { key: "ramp_forward", name: "提前爬坡", costRank: 1, releaseRatio: 0.06, basis: "supply", action: "S07 产线认证排期 / 爬坡前置" },
++      { key: "changeover_opt", name: "换型优化", costRank: 1, releaseRatio: 0.03, basis: "supply", action: "S11 换型排序优化" },
++      { key: "maint_stagger", name: "错峰检修", costRank: 1, releaseRatio: 0.04, basis: "supply", action: "S13 检修窗口错峰" },
++      { key: "outsource", name: "外协", costRank: 2, releaseRatio: 0.2, basis: "demand", action: "S14 外协决策（受 C08 封顶）" },
++      { key: "defer", name: "顺延非战略单", costRank: 3, releaseRatio: 1e9, basis: "gap", action: "顺延评审（罚，受 C29 冻结期约束）" },
++    ],
++  },
+   // M11 校准算法层（PRD-addendum-m11-calibration §4）：可校准参数注册表 + 阈值/开关（场景包配置）。
+   calibration: {
+     alpha: 0.3, // 方法 A · EMA
+--- a/apps/datacore/src/synthetic/service.ts
++++ b/apps/datacore/src/synthetic/service.ts
+@@ -566,6 +566,7 @@
+       shipments: [],
+       segments: [],
+       dataHealth: [],
++      planTargets: [],
+       certByModel,
+     });
+     const baseCert = new Map<string, number>();
+--- a/apps/datacore/test/capex.test.ts
++++ b/apps/datacore/test/capex.test.ts
+@@ -11,6 +11,7 @@
+     params: BATTERY_SOLVER_PARAMS as unknown as SolverContext["params"],
+     bases: [], lines: [], processes: [], equipment: [], maintPlans: [],
+     models: [], orders: [], shipments: [], segments: [], dataHealth: [],
++    planTargets: [],
+     certByModel: new Map(),
+   };
+ }
+--- /dev/null
++++ b/apps/datacore/src/solvers/scenarios-p1.ts (NEW)
+@@ -0,0 +1,398 @@
++import { round } from "../prng.js";
++import { validationError } from "../errors.js";
++import { dayFrom, num, str, type SolverContext } from "./types.js";
++import { mockTightness } from "./risk.js";
++import { computeRollup, curveMult } from "./capacity.js";
++
++// ---------------------------------------------------------------------------
++// 20 场景目录 §2 · 第一阶段求解器（无需新增对象类型，全部确定性）。
++// 数值常量一律取自 solver_params（场景包种子的 BATTERY_SOLVER_PARAMS 默认值），
++// 求解器代码内只保留与种子一致的兜底常量 —— 同输入 + 同参数版本 → 同输出。
++// ---------------------------------------------------------------------------
++
++/** 中文成本档 → 成本秩（低/中/高/极高 = 1/2/3/4），PRD §2 mitigation_select。 */
++const DEFAULT_COST_RANK: Record<string, number> = { 低: 1, 中: 2, 高: 3, 极高: 4 };
++
++function resolveBaseId(c: SolverContext, ref: string): string {
++  const b = c.bases.find((x) => x.props.baseId === ref || x.props.name === ref);
++  if (!b) throw validationError(`unknown base: ${ref}`);
++  return str(b.props.baseId);
++}
++
++function baseLabel(c: SolverContext, baseId: string): string {
++  const b = c.bases.find((x) => x.props.baseId === baseId);
++  return str(b?.props.name, baseId);
++}
++
++// ---------------------------------------------------------------------------
++// S06 mitigation_select — 入参 {baseName, factor}
++// score_i = eff_i × urgency / (cost_rank_i × t_days_i)，urgency = max(0,(紧张度−70)/30)
++// ---------------------------------------------------------------------------
++
++export interface MitigationSelectArgs {
++  baseName?: string;
++  baseId?: string;
++  factor: string;
++}
++
++export function mitigationSelect(c: SolverContext, args: MitigationSelectArgs): Record<string, unknown> {
++  const ref = str(args.baseId) || str(args.baseName);
++  if (!ref) throw validationError("baseName (or baseId) required");
++  const factor = str(args.factor);
++  if (!factor) throw validationError("factor required");
++  const baseId = resolveBaseId(c, ref);
++
++  const cfg = c.params.mitigationSelect;
++  const costRank = cfg?.costRank ?? DEFAULT_COST_RANK;
++  const urgencyBase = cfg?.urgencyBase ?? 70;
++  const urgencyDen = cfg?.urgencyDen ?? 30;
++
++  const tightness = mockTightness(c, baseId, factor);
++  const urgency = round(Math.max(0, (tightness - urgencyBase) / urgencyDen), 4);
++
++  const plans = c.params.risk.mitigations[factor] ?? [];
++  if (plans.length === 0) throw validationError(`no mitigation plans registered for factor '${factor}'`);
++
++  const options = plans
++    .map((pl) => {
++      const rank = costRank[pl.cost] ?? 2;
++      const tDays = Math.max(1, pl.tn);
++      // urgency=0（紧张度未越 70 阈）时 score 归零，退化为效费比 eff/(rank×tn) 作稳定排序键。
++      const score = round((pl.eff * urgency) / (rank * tDays), 6);
++      const costEff = round(pl.eff / (rank * tDays), 6);
++      return { planKey: pl.key, name: pl.name, eff: pl.eff, tn: pl.tn, cost: pl.cost, costRank: rank, risk: pl.risk, score, costEff };
++    })
++    .sort((a, b) => b.score - a.score || b.costEff - a.costEff || (a.planKey < b.planKey ? -1 : 1));
++
++  const recommended = options[0];
++  const draftPayload = recommended
++    ? {
++        baseId,
++        baseName: baseLabel(c, baseId),
++        factor,
++        planKey: recommended.planKey,
++        planName: recommended.name,
++        eff: recommended.eff,
++        effectiveFrom: recommended.tn,
++        tightness,
++        expectedRelief: recommended.eff,
++      }
++    : undefined;
++
++  return {
++    baseId,
++    baseName: baseLabel(c, baseId),
++    factor,
++    tightness,
++    urgency,
++    options,
++    recommended: recommended?.planKey ?? "",
++    draftPayload,
++  };
++}
++
++// ---------------------------------------------------------------------------
++// S14 outsourcing_split — 入参 {gap, weeks, totalDemand?}
++// 三渠道：加班 c1=1.0 上限 gap×0.4；外协 c2=1.4 上限 总需求×20%(C08)；延期罚 c3=2.5。
++// 按单位成本升序贪心分配，余量落延期罚。
++// ---------------------------------------------------------------------------
++
++export interface OutsourcingSplitArgs {
++  gap: number;
++  weeks?: number;
++  /** 外协上限基数（总需求）。缺省回落为 gap —— 调用方不知总需求时按缺口的 20% 限外协。 */
++  totalDemand?: number;
++}
++
++export function outsourcingSplit(c: SolverContext, args: OutsourcingSplitArgs): Record<string, unknown> {
++  const gap = num(args.gap);
++  if (gap <= 0) throw validationError("gap must be > 0");
++  const weeks = Math.max(1, Math.floor(num(args.weeks, 6)));
++  const totalDemand = num(args.totalDemand, gap);
++
++  const cfg = c.params.outsourcing;
++  const c1 = cfg?.overtimeCostPer ?? 1.0;
++  const c2 = cfg?.outsourceCostPer ?? 1.4;
++  const c3 = cfg?.delayPenaltyPer ?? 2.5;
++  const overtimeCapRatio = cfg?.overtimeCapRatio ?? 0.4;
++  const outsourceMax = c.params.whatIf.outsourceMax; // C08 红线
++
++  const overtimeCap = round(gap * overtimeCapRatio, 4);
++  const outsourceCap = round(totalDemand * outsourceMax, 4); // C08
++
++  // 单位成本升序：加班(c1) → 外协(c2) → 延期罚(c3)。延期罚无上限（吸收残余）。
++  const channels = [
++    { key: "overtime", name: "自产加班", unitCost: c1, cap: overtimeCap, rule: undefined as string | undefined, note: undefined as string | undefined },
++    { key: "outsource", name: "外协", unitCost: c2, cap: outsourceCap, rule: "C08", note: `外协量受 C08 红线封顶（总需求 ${round(totalDemand, 2)} × ${round(outsourceMax * 100, 0)}%）；外协部分须满足 C31 质量门（外协厂良率 ≥ 自产良率 − 2pct）` },
++    { key: "delay", name: "延期交付（罚）", unitCost: c3, cap: Infinity, rule: undefined as string | undefined, note: "余量顺延，按延期罚成本计入" },
++  ].sort((a, b) => a.unitCost - b.unitCost);
++
++  let remaining = gap;
++  const allocations = channels.map((ch) => {
++    const qty = round(Math.min(remaining, ch.cap), 4);
++    remaining = round(remaining - qty, 4);
++    return { channel: ch.key, name: ch.name, qty, unitCost: ch.unitCost, cost: round(qty * ch.unitCost, 4), ...(ch.rule ? { rule: ch.rule } : {}), ...(ch.note ? { note: ch.note } : {}) };
++  });
++
++  const totalCost = round(allocations.reduce((a, x) => a + x.cost, 0), 4);
++  const allDelayCost = round(gap * c3, 4);
++  const savings = round(allDelayCost - totalCost, 4);
++
++  return {
++    gap,
++    weeks,
++    totalDemand,
++    allocations,
++    totalCost,
++    allDelayCost,
++    savings,
++    c08OutsourceCap: outsourceCap,
++    outsourceMax,
++  };
++}
++
++// ---------------------------------------------------------------------------
++// S13 maintenance_stagger — 入参 {}
++// 冲突 = 检修周 ∈ 交付高峰周(top3)。对每冲突基地在 ±4 周窗内选新周 = argmin(当周交付负荷)，
++// 约束：与上次检修间隔 ≥ minIntervalWeeks、同集团同周检修基地 ≤ sameGroupSameWeekMax。
++// ---------------------------------------------------------------------------
++
++export function maintenanceStagger(c: SolverContext): Record<string, unknown> {
++  const p = c.params;
++  const cfg = p.maintenanceStagger;
++  const windowWeeks = cfg?.windowWeeks ?? 4;
++  const minIntervalWeeks = cfg?.minIntervalWeeks ?? 8;
++  const sameGroupSameWeekMax = cfg?.sameGroupSameWeekMax ?? 3;
++  const topPeakWeeks = cfg?.topPeakWeeks ?? 3;
++  const t0 = Date.parse(`${p.forecastStart.slice(0, 10)}T00:00:00Z`);
++
++  // 交付负荷：按订单交期所在周聚合 qty（全基地）。
++  const weekLoad = new Map<number, number>();
++  for (const o of c.orders) {
++    const dueDay = dayFrom(p.forecastStart, str(o.props.due));
++    if (dueDay < 0) continue;
++    const w = Math.floor(dueDay / 7) + 1;
++    weekLoad.set(w, (weekLoad.get(w) ?? 0) + num(o.props.qty));
++  }
++  const loadOf = (w: number) => weekLoad.get(w) ?? 0;
++  // 交付高峰周 = 负荷最高的 top3 周。
++  const peakWeeks = new Set(
++    [...weekLoad.entries()]
++      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
++      .slice(0, topPeakWeeks)
++      .map(([w]) => w),
++  );
++
++  const groupOf = (baseId: string): string => {
++    const b = c.bases.find((x) => x.props.baseId === baseId);
++    return str(b?.props.group) || str(b?.props.kind) || "默认集团";
++  };
++
++  // 现检修周占用（同集团同周计数，含未冲突基地——错峰后不得越上限）。
++  const occupancy = new Map<string, number>(); // `${group}|${week}` → count
++  const occKey = (group: string, week: number) => `${group}|${week}`;
++  const plans = [...c.maintPlans].sort((a, b) => (str(a.props.planId) < str(b.props.planId) ? -1 : 1));
++  for (const mp of plans) {
++    const g = groupOf(str(mp.props.baseId));
++    const w = num(mp.props.week);
++    occupancy.set(occKey(g, w), (occupancy.get(occKey(g, w)) ?? 0) + 1);
++  }
++
++  const adjustments: Record<string, unknown>[] = [];
++  const unresolved: Record<string, unknown>[] = [];
++
++  for (const mp of plans) {
++    const baseId = str(mp.props.baseId);
++    const origWeek = num(mp.props.week);
++    if (!peakWeeks.has(origWeek)) continue; // 非冲突
++
++    const group = groupOf(baseId);
++    // 上次检修相对周（lastMaintStart 相对 forecastStart 的周序，通常为负）。
++    const lastMaintRelWeek = mp.props.lastMaintStart
++      ? Math.round((Date.parse(`${str(mp.props.lastMaintStart).slice(0, 10)}T00:00:00Z`) - t0) / (7 * 86400000))
++      : origWeek - 12;
++
++    // 释放原占用后再择新周（基地自身的那一格腾出）。
++    occupancy.set(occKey(group, origWeek), Math.max(0, (occupancy.get(occKey(group, origWeek)) ?? 1) - 1));
++
++    const candidates: { week: number; load: number }[] = [];
++    for (let w = Math.max(1, origWeek - windowWeeks); w <= origWeek + windowWeeks; w++) {
++      if (w === origWeek) continue;
++      if (peakWeeks.has(w)) continue; // 不可挪进另一交付高峰周
++      if (w - lastMaintRelWeek < minIntervalWeeks) continue; // 与上次检修间隔约束
++      if ((occupancy.get(occKey(group, w)) ?? 0) >= sameGroupSameWeekMax) continue; // 同集团同周上限
++      candidates.push({ week: w, load: loadOf(w) });
++    }
++    candidates.sort((a, b) => a.load - b.load || a.week - b.week);
++
++    const picked = candidates[0];
++    if (!picked) {
++      // 无可行周 → 不可解冲突，原占用恢复。
++      occupancy.set(occKey(group, origWeek), (occupancy.get(occKey(group, origWeek)) ?? 0) + 1);
++      unresolved.push({
++        base: baseLabel(c, baseId),
++        baseId,
++        origWeek,
++        reason: `±${windowWeeks} 周窗内无满足约束（间隔 ≥${minIntervalWeeks} 周 / 同集团同周 ≤${sameGroupSameWeekMax}）的非高峰周`,
++      });
++      continue;
++    }
++    occupancy.set(occKey(group, picked.week), (occupancy.get(occKey(group, picked.week)) ?? 0) + 1);
++    adjustments.push({
++      base: baseLabel(c, baseId),
++      baseId,
++      group,
++      origWeek,
++      suggestedWeek: picked.week,
++      origLoad: round(loadOf(origWeek), 2),
++      newLoad: round(picked.load, 2),
++      loadDrop: round(loadOf(origWeek) - picked.load, 2),
++    });
++  }
++
++  adjustments.sort((a, b) => num(b.loadDrop) - num(a.loadDrop) || (str(a.baseId) < str(b.baseId) ? -1 : 1));
++  return {
++    peakWeeks: [...peakWeeks].sort((a, b) => a - b),
++    topPeakWeeks,
++    windowWeeks,
++    minIntervalWeeks,
++    sameGroupSameWeekMax,
++    adjustments,
++    unresolved,
++  };
++}
++
++// ---------------------------------------------------------------------------
++// S19 quarterly_gap — 入参 {quarter}
++// 缺口 = 季度滚动 gap（供给 = 周产能×认证×周曲线 13 周聚合；需求 = PlanTarget 季度目标×(1+滚动修正)，
++// 与计划域季度滚动同口径）。候选对策按成本升序贪心覆盖，输出组合 + 残余 + 落地动作跳转。
++// ---------------------------------------------------------------------------
++
++function quarterOfLabel(dateIso: string): string {
++  const y = Number(dateIso.slice(0, 4));
++  const q = Math.floor((Number(dateIso.slice(5, 7)) - 1) / 3) + 1;
++  return `${y}-Q${q}`;
++}
++
++function addQuartersLabel(label: string, n: number): string {
++  const [yStr, qStr] = label.split("-Q") as [string, string];
++  const idx = Number(yStr) * 4 + (Number(qStr) - 1) + n;
++  return `${Math.floor(idx / 4)}-Q${(idx % 4) + 1}`;
++}
++
++/** 归一季度入参：接受 "2026Q2" / "2026-Q2" / "2026-q2"。 */
++function normalizeQuarter(input: string): string {
++  const m = /^(\d{4})-?[Qq]([1-4])$/.exec(input.trim());
++  if (!m) throw validationError(`invalid quarter '${input}' (expected e.g. 2026-Q2)`);
++  return `${m[1]}-Q${m[2]}`;
++}
++
++interface QuarterMeasure {
++  key: string;
++  name: string;
++  costRank: number;
++  releaseRatio: number;
++  basis: "supply" | "demand" | "gap";
++  action: string;
++}
++
++const DEFAULT_QUARTER_MEASURES: QuarterMeasure[] = [
++  { key: "ramp_forward", name: "提前爬坡", costRank: 1, releaseRatio: 0.06, basis: "supply", action: "S07 产线认证排期 / 爬坡前置" },
++  { key: "changeover_opt", name: "换型优化", costRank: 1, releaseRatio: 0.03, basis: "supply", action: "S11 换型排序优化" },
++  { key: "maint_stagger", name: "错峰检修", costRank: 1, releaseRatio: 0.04, basis: "supply", action: "S13 检修窗口错峰" },
++  { key: "outsource", name: "外协", costRank: 2, releaseRatio: 0.2, basis: "demand", action: "S14 外协决策（受 C08 封顶）" },
++  { key: "defer", name: "顺延非战略单", costRank: 3, releaseRatio: Number.POSITIVE_INFINITY, basis: "gap", action: "顺延评审（罚，受 C29 冻结期约束）" },
++];
++
++export interface QuarterlyGapArgs {
++  quarter: string;
++}
++
++/** 季度供给：周产能(万套) × 该基地最优认证系数 × 周曲线(检修周折减)，13 周聚合（与计划域季度滚动同源）。 */
++function quarterlySupply(c: SolverContext, qi: number): number {
++  const p = c.params;
++  const wpq = p.planview.weeksPerQuarter;
++  const rollup = computeRollup(c);
++  const weekly = new Map(rollup.bases.map((b) => [b.baseId, b.weeklyWan]));
++  const baseCert = new Map<string, number>();
++  for (const m of c.certByModel.values()) {
++    for (const [baseId, status] of m) {
++      const f = p.certFactors[status] ?? 1;
++      baseCert.set(baseId, Math.max(baseCert.get(baseId) ?? 0, f));
++    }
++  }
++  let sup = 0;
++  for (const [baseId, wk] of [...weekly.entries()].sort()) {
++    const certFactor = baseCert.get(baseId) ?? 0;
++    if (certFactor === 0) continue;
++    const mp = c.maintPlans.find((m) => m.props.baseId === baseId);
++    const mw = mp ? num(mp.props.week) : null;
++    for (let w = qi * wpq + 1; w <= (qi + 1) * wpq; w++) sup += wk * certFactor * curveMult(p, w, mw);
++  }
++  return round(sup, 2);
++}
++
++export function quarterlyGap(c: SolverContext, args: QuarterlyGapArgs): Record<string, unknown> {
++  const p = c.params;
++  const quarter = normalizeQuarter(str(args.quarter));
++  const startQ = quarterOfLabel(p.forecastStart);
++  const qi = addQuartersOffset(startQ, quarter);
++  if (qi < 0) throw validationError(`quarter ${quarter} precedes forecast start quarter ${startQ}`);
++
++  // 需求：PlanTarget 季度目标 ×(1+滚动修正)；2027+ 按同季 ×(1+growthYoY)^n 外推；缺目标回落供给。
++  const quarterTarget = new Map<string, number>();
++  for (const t of c.planTargets) {
++    if (str(t.props.level) === "quarter") quarterTarget.set(str(t.props.period), num(t.props.value));
++  }
++  const sup = quarterlySupply(c, qi);
++  let target = quarterTarget.get(quarter);
++  if (target === undefined) {
++    const [yStr, qNo] = quarter.split("-Q") as [string, string];
++    const base2026 = quarterTarget.get(`2026-Q${qNo}`);
++    const yearsAhead = Number(yStr) - 2026;
++    target = base2026 !== undefined && yearsAhead > 0 ? base2026 * Math.pow(1 + p.planview.growthYoY, yearsAhead) : sup;
++  }
++  const corr = p.planview.rollingCorrPct[qi] ?? 0;
++  const dem = round(target * (1 + corr), 2);
++  const gap = round(dem - sup, 2);
++
++  const measures = c.params.quarterlyGap?.measures ?? DEFAULT_QUARTER_MEASURES;
++  const basisValue = (basis: QuarterMeasure["basis"]) => (basis === "supply" ? sup : basis === "demand" ? dem : gap);
++
++  const combination: Record<string, unknown>[] = [];
++  let residual = Math.max(0, gap);
++  if (gap > 0) {
++    for (const mz of [...measures].sort((a, b) => a.costRank - b.costRank)) {
++      if (residual <= 0) break;
++      const cap = mz.releaseRatio === Number.POSITIVE_INFINITY ? residual : round(basisValue(mz.basis) * mz.releaseRatio, 4);
++      const release = round(Math.min(residual, Math.max(0, cap)), 4);
++      if (release <= 0) continue;
++      residual = round(residual - release, 4);
++      combination.push({ key: mz.key, name: mz.name, costRank: mz.costRank, release, action: mz.action });
++    }
++  }
++
++  return {
++    quarter,
++    qi,
++    demand: dem,
++    supply: sup,
++    gap,
++    covered: round(Math.max(0, gap) - residual, 4),
++    residual: round(residual, 4),
++    combination,
++    surplus: gap <= 0,
++  };
++}
++
++/** 两季度标签之间的季度偏移（b − a）。 */
++function addQuartersOffset(a: string, b: string): number {
++  const idx = (label: string) => {
++    const [yStr, qStr] = label.split("-Q") as [string, string];
++    return Number(yStr) * 4 + (Number(qStr) - 1);
++  };
++  return idx(b) - idx(a);
++}
++
++// addQuartersLabel kept for symmetry with planviews quarter helpers (used by callers/tests).
++export { addQuartersLabel, quarterOfLabel };
+--- /dev/null
++++ b/apps/datacore/test/scenarios-p1.test.ts (NEW)
+@@ -0,0 +1,159 @@
++import { describe, expect, it } from "vitest";
++import { makeApp, seedBattery, invokeSolver, type TestApp } from "./helpers.js";
++import { BATTERY_SOLVER_PARAMS } from "../src/synthetic/battery.js";
++import { round } from "../src/prng.js";
++
++const P = BATTERY_SOLVER_PARAMS as {
++  whatIf: { outsourceMax: number };
++  risk: { mitigations: Record<string, { key: string; name: string; eff: number; tn: number; cost: string }[]> };
++  bottleneck: { mock: Record<string, number>; primary: Record<string, string>; defaultPrimary: string };
++  mitigationSelect: { costRank: Record<string, number>; urgencyBase: number; urgencyDen: number };
++  outsourcing: { overtimeCostPer: number; outsourceCostPer: number; delayPenaltyPer: number; overtimeCapRatio: number };
++  maintenanceStagger: { windowWeeks: number; topPeakWeeks: number };
++};
++
++async function solve(t: TestApp, key: string, args: Record<string, unknown>) {
++  const res = await invokeSolver(t, key, args);
++  expect(res.statusCode).toBe(200);
++  return (res.json() as { data: Record<string, unknown> }).data;
++}
++
++describe("20 场景 §2 · 第一阶段求解器（参照实现双算）", () => {
++  // --- S14 outsourcing_split ------------------------------------------------
++  it("V-S14: outsourcing_split — 三渠道单位成本升序贪心，余量落延期罚（精确双算）", async () => {
++    const t = await makeApp();
++    await seedBattery(t);
++    const gap = 80000;
++    const out = await solve(t, "outsourcing_split", { gap, weeks: 6 });
++
++    // independent recompute (PRD §2 公式)
++    const c1 = P.outsourcing.overtimeCostPer;
++    const c2 = P.outsourcing.outsourceCostPer;
++    const c3 = P.outsourcing.delayPenaltyPer;
++    const overtimeCap = gap * P.outsourcing.overtimeCapRatio; // 32000
++    const outsourceCap = gap * P.whatIf.outsourceMax; // totalDemand defaults to gap → 16000
++    const overtime = Math.min(gap, overtimeCap);
++    const outsource = Math.min(gap - overtime, outsourceCap);
++    const delay = gap - overtime - outsource;
++    const totalCost = overtime * c1 + outsource * c2 + delay * c3;
++
++    const alloc = out.allocations as { channel: string; qty: number; cost: number }[];
++    expect(alloc.map((a) => a.channel)).toEqual(["overtime", "outsource", "delay"]);
++    expect(alloc.find((a) => a.channel === "overtime")!.qty).toBe(overtime);
++    expect(alloc.find((a) => a.channel === "outsource")!.qty).toBe(outsource);
++    expect(alloc.find((a) => a.channel === "delay")!.qty).toBe(delay);
++    expect(out.c08OutsourceCap).toBe(round(outsourceCap, 4));
++    expect(out.totalCost).toBe(round(totalCost, 4));
++    expect(out.allDelayCost).toBe(round(gap * c3, 4));
++    expect(out.savings).toBe(round(gap * c3 - totalCost, 4));
++    // C08 红线落在外协渠道注解上
++    expect(String(alloc.find((a) => a.channel === "outsource") && (alloc.find((a) => a.channel === "outsource") as { note?: string }).note)).toContain("C08");
++
++    // totalDemand 显式给定 → 外协上限放宽
++    const out2 = await solve(t, "outsourcing_split", { gap, weeks: 6, totalDemand: 400000 });
++    expect((out2.allocations as { channel: string; qty: number }[]).find((a) => a.channel === "outsource")!.qty).toBe(
++      Math.min(gap - overtime, 400000 * P.whatIf.outsourceMax),
++    );
++  });
++
++  // --- S06 mitigation_select ------------------------------------------------
++  it("V-S06: mitigation_select — score=eff×urgency/(rank×tn) 降序 + 推荐首位 + 草稿 payload（双算）", async () => {
++    const t = await makeApp();
++    await seedBattery(t);
++    const factor = "物料齐套";
++    const out = await solve(t, "mitigation_select", { baseName: "常州", factor });
++
++    // independent tightness (MOCK 口径，与 risk.ts 一致): 物料齐套 非常州主因 → secondary
++    const bases = await t.repos.objects.listByType("demo", "Base");
++    const util = bases.find((b) => b.props.baseId === "changzhou")!.props.util as number;
++    const m = P.bottleneck.mock;
++    const seed = ("常".charCodeAt(0) + factor.charCodeAt(0) * m.factorMult!) % m.mod!;
++    const primary = P.bottleneck.primary["常州"] ?? P.bottleneck.defaultPrimary;
++    const tightness =
++      factor === primary
++        ? Math.min(m.primaryCap!, m.primaryBase! + (seed % m.mod!))
++        : Math.min(m.secondaryCap!, m.secondaryBase! + seed + (util > m.utilHigh! ? m.utilHighAdd! : m.utilLowAdd!));
++    expect(out.tightness).toBe(tightness);
++
++    const urgency = round(Math.max(0, (tightness - P.mitigationSelect.urgencyBase) / P.mitigationSelect.urgencyDen), 4);
++    expect(out.urgency).toBe(urgency);
++
++    const plans = P.risk.mitigations[factor]!;
++    const expected = plans
++      .map((pl) => {
++        const rank = P.mitigationSelect.costRank[pl.cost] ?? 2;
++        const tDays = Math.max(1, pl.tn);
++        return { planKey: pl.key, score: round((pl.eff * urgency) / (rank * tDays), 6), costEff: round(pl.eff / (rank * tDays), 6) };
++      })
++      .sort((a, b) => b.score - a.score || b.costEff - a.costEff || (a.planKey < b.planKey ? -1 : 1));
++    const options = out.options as { planKey: string; score: number }[];
++    expect(options.map((o) => o.planKey)).toEqual(expected.map((e) => e.planKey));
++    expect(out.recommended).toBe(expected[0]!.planKey);
++    const draft = out.draftPayload as { planKey: string; factor: string; baseId: string };
++    expect(draft.planKey).toBe(expected[0]!.planKey);
++    expect(draft.factor).toBe(factor);
++    expect(draft.baseId).toBe("changzhou");
++  });
++
++  // --- S13 maintenance_stagger ---------------------------------------------
++  it("V-S13: maintenance_stagger — 冲突=检修周∈top3交付周，新周∈±4窗且负荷更低，确定性", async () => {
++    const t = await makeApp();
++    await seedBattery(t);
++    const out = await solve(t, "maintenance_stagger", {});
++
++    const peakWeeks = out.peakWeeks as number[];
++    expect(peakWeeks.length).toBeLessThanOrEqual(P.maintenanceStagger.topPeakWeeks);
++    const adjustments = out.adjustments as { origWeek: number; suggestedWeek: number; loadDrop: number; origLoad: number; newLoad: number }[];
++    for (const a of adjustments) {
++      // 原周是冲突高峰周
++      expect(peakWeeks).toContain(a.origWeek);
++      // 新周在 ±4 窗内、非高峰、负荷不高于原周
++      expect(Math.abs(a.suggestedWeek - a.origWeek)).toBeLessThanOrEqual(P.maintenanceStagger.windowWeeks);
++      expect(peakWeeks).not.toContain(a.suggestedWeek);
++      expect(a.loadDrop).toBe(round(a.origLoad - a.newLoad, 2));
++      expect(a.loadDrop).toBeGreaterThanOrEqual(0);
++    }
++    const unresolved = out.unresolved as { origWeek: number }[];
++    for (const u of unresolved) expect(peakWeeks).toContain(u.origWeek);
++
++    // 确定性：同种子同输出
++    const out2 = await solve(t, "maintenance_stagger", {});
++    expect(out2).toEqual(out);
++  });
++
++  // --- S19 quarterly_gap ----------------------------------------------------
++  it("V-S19: quarterly_gap — gap=需求−供给（供给>0），对策成本升序贪心，covered+residual 自洽", async () => {
++    const t = await makeApp();
++    await seedBattery(t);
++    const out = await solve(t, "quarterly_gap", { quarter: "2026Q4" });
++
++    expect(out.quarter).toBe("2026-Q4");
++    expect(out.supply).toBeGreaterThan(0);
++    expect(out.gap).toBe(round((out.demand as number) - (out.supply as number), 2));
++
++    const combo = out.combination as { costRank: number; release: number; action: string }[];
++    // 成本秩非降序（升序贪心）
++    for (let i = 1; i < combo.length; i++) expect(combo[i]!.costRank).toBeGreaterThanOrEqual(combo[i - 1]!.costRank);
++    const releaseSum = round(combo.reduce((a, x) => a + x.release, 0), 4);
++    expect(round(releaseSum + (out.residual as number), 4)).toBe(round(Math.max(0, out.gap as number), 4));
++    expect(out.covered).toBe(releaseSum);
++    // 每个对策都带落地场景跳转
++    for (const m of combo) expect(m.action.length).toBeGreaterThan(0);
++
++    // 季度归一 + 越界拒绝
++    const cur = await solve(t, "quarterly_gap", { quarter: "2026-Q3" });
++    expect(cur.qi).toBe(0);
++    const bad = await invokeSolver(t, "quarterly_gap", { quarter: "2026-Q1" });
++    expect(bad.statusCode).toBe(400); // validationError → 400
++  });
++
++  // --- 求解器目录可见性 ------------------------------------------------------
++  it("四个新求解器进入目录端点（不再 SOLVER_NOT_FOUND）", async () => {
++    const t = await makeApp();
++    await seedBattery(t);
++    for (const key of ["mitigation_select", "outsourcing_split", "maintenance_stagger", "quarterly_gap"]) {
++      const res = await invokeSolver(t, key, key === "outsourcing_split" ? { gap: 1000 } : key === "quarterly_gap" ? { quarter: "2026-Q4" } : key === "mitigation_select" ? { baseName: "常州", factor: "物料齐套" } : {});
++      expect(res.statusCode, `${key} should resolve`).toBe(200);
++    }
++  });
++});
