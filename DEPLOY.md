@@ -138,3 +138,11 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 ```bash
 docker compose down -v && docker compose up --build
 ```
+
+## 本地 dev 模式的目录可移植性（v0.7）
+
+本地 `pnpm --filter frontend-shell dev` 已对"从其他目录复制/迁移而来"免疫：
+- `vite.config.ts` 的 `server.fs.allow` 显式放行整个 monorepo 工作区根（`@platform/contracts` 必可解析）；
+- `optimizeDeps.exclude: ["@platform/contracts"]` 使工作区源包不进 `.vite` 预打包缓存，根除"缓存存绝对路径、复制目录后陈旧导致 React 实例为 null / useContext 崩"这一类故障；
+- `dev` 脚本为 `vite --force`，每次冷启动重建依赖缓存。
+docker 部署路径（`docker compose up --build`）本就是干净 `pnpm install` + `vite build`，不受此影响。
