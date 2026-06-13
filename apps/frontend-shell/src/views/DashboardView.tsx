@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
+import { fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
 import type { DashboardWidgetDef, WidgetQueryDef } from "@/api/types";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
@@ -47,6 +47,22 @@ function useWidgetData(q: WidgetQueryDef) {
           const res = await invokeSolver(q.solverKey, q.args);
           if (!q.valuePath) return res.data;
           return q.valuePath.split(".").reduce<unknown>((acc, k) => (acc as Record<string, unknown> | undefined)?.[k], res.data);
+        }
+        // 运营态出厂配置增量 §4.1：12 个月趋势 / 准交率 / 年度已执行工单 / 已交付台账
+        case "history": {
+          const bundle = await fetchHistoryBundle({ pageSize: 1 });
+          switch (q.field) {
+            case "trend":
+              // 检修月下凹可见：bucket 带 ⛭ 标记（maintBaseIds 非空）
+              return bundle.trend.map((p) => ({ bucket: p.maintBaseIds.length > 0 ? `${p.month}⛭` : p.month, value: p.output }));
+            case "onTimeRate":
+              return bundle.onTimeRate;
+            case "executedCount":
+              return bundle.actionStats.executed;
+            case "delivered":
+              return { items: bundle.delivered.map((d) => ({ id: d.so, props: d as unknown as Record<string, unknown> })) };
+          }
+          return null;
         }
         case "timeseries": {
           const to = new Date();

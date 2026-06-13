@@ -27,13 +27,13 @@ export interface ScenarioModifiers {
 const DAY_MS = 86400000;
 
 /** Deterministic gaussian: Box–Muller over a per-(seed,series,entity,day) PRNG. */
-function gauss(rng: () => number): number {
+export function gauss(rng: () => number): number {
   const u1 = Math.max(1e-9, rng());
   const u2 = rng();
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
-function clampFor(spec: TsGenSpec, v: number): number {
+export function clampFor(spec: TsGenSpec, v: number): number {
   if (spec.seriesKey.startsWith("oee") || spec.seriesKey.startsWith("yield") || spec.seriesKey.startsWith("attainment")) {
     return Math.min(0.995, Math.max(0.4, v));
   }

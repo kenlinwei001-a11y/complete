@@ -23,6 +23,7 @@ import {
   type MockAccount,
 } from "./fixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
+import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /** 引用模式增量 §2.3：规则被引用反查（mock：agent ruleKeys + 计划步骤 evaluate_rules） */
 function ruleReferences(ruleKey: string): { kind: string; key: string; name?: string; via: string }[] {
@@ -98,6 +99,22 @@ export const handlers = [
     const account = auth(request);
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
     return HttpResponse.json(workspaceForAccount(account, db.tenantOverrides, db.configVersion));
+  }),
+
+  // ---- 运营态出厂配置增量 §5：一年运营态历史（行级过滤 + actionHistory 分页） ----
+  http.get("*/a/v1/history/bundle", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+    const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
+    return HttpResponse.json(historyBundleFor(account.baseScope, page, pageSize));
+  }),
+
+  http.get("*/a/v1/history/watermark", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json(LIVED_WATERMARK);
   }),
 
   // ---- Entitlement ----

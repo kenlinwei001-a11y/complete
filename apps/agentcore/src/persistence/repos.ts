@@ -49,6 +49,22 @@ export interface CredentialRow {
   createdAt: string;
 }
 
+/**
+ * 运营态出厂配置增量 §3：经验记忆库案例（出厂 50 例，自回放期任务史沉淀）。
+ * 检索为只读内置工具 search_experience（确定性伪向量 pseudoEmbed + 余弦排序，
+ * 复用 util/embedding —— 与 fallback_traces 聚类同一套确定性向量，非生产 embedding）。
+ */
+export interface ExperienceCaseRow {
+  id: string; // exp_
+  tenantId: string;
+  scene: string; // 来源场景入口（dash/risk/...）
+  question: string; // 问句
+  approach: string; // 解法（工具/工作流路径概述）
+  outcome: string; // 结果
+  date: string; // 回放年内日期（确定性）
+  embedding: number[]; // pseudoEmbed(question + approach)
+}
+
 export interface IdempotencyRow {
   key: string; // tenantId|userId|Idempotency-Key
   taskId: string;
@@ -173,6 +189,11 @@ export interface Repos {
   idempotency: {
     /** Returns the existing taskId if key seen within 24h, else records it. */
     putIfAbsent(key: string, taskId: string): Promise<string>;
+  };
+  /** 运营态增量 §3：经验记忆库（出厂种子 50 例；路径 B search_experience 检索）。 */
+  experience: {
+    upsert(c: ExperienceCaseRow): Promise<void>;
+    listByTenant(tenantId: string): Promise<ExperienceCaseRow[]>;
   };
   close(): Promise<void>;
 }

@@ -227,11 +227,11 @@ class PgTsPointStore implements TsPointStore {
       await client.query("BEGIN");
       for (const p of points) {
         await client.query(
-          `INSERT INTO ts_points (tenant_id, series_id, entity_id, ts, vals, ingested_at, tick)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)
+          `INSERT INTO ts_points (tenant_id, series_id, entity_id, ts, vals, ingested_at, tick, origin)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
            ON CONFLICT (tenant_id, series_id, entity_id, ts)
-           DO UPDATE SET vals = EXCLUDED.vals, ingested_at = EXCLUDED.ingested_at, tick = EXCLUDED.tick`,
-          [tenantId, p.seriesId, p.entityId, p.ts, JSON.stringify(p.values), p.ingestedAt, p.tick ?? 0],
+           DO UPDATE SET vals = EXCLUDED.vals, ingested_at = EXCLUDED.ingested_at, tick = EXCLUDED.tick, origin = EXCLUDED.origin`,
+          [tenantId, p.seriesId, p.entityId, p.ts, JSON.stringify(p.values), p.ingestedAt, p.tick ?? 0, p.origin ?? null],
         );
       }
       await client.query("COMMIT");
@@ -252,6 +252,7 @@ class PgTsPointStore implements TsPointStore {
       values: row.vals as Record<string, number>,
       ingestedAt: new Date(row.ingested_at as string).toISOString(),
       tick: (row.tick as number) ?? 0,
+      ...(row.origin ? { origin: row.origin as "SYNTHETIC" | "LIVE" } : {}),
     };
   }
 
@@ -493,6 +494,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     calibrationHistory: new PgStore(pool, "calibration_history"),
     calibrationForecasts: new PgStore(pool, "calibration_forecasts"),
     calibrationPairs: new PgStore(pool, "calibration_pairs"),
+    riskCases: new PgStore(pool, "risk_cases"),
+    livedInStates: new PgStore(pool, "lived_in_states"),
     async ping() {
       await pool.query("SELECT 1");
     },

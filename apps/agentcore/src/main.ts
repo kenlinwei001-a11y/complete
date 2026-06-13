@@ -6,7 +6,7 @@ import { sdkMcpConnectorFactory } from "./mcp/client.js";
 import { McpRuntime } from "./mcp/runtime.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
-import { seedIntentsAndPlans, seedRegistry, seedSceneEntries, seedScenarioPackage } from "./mocks/seed.js";
+import { distillExperienceCases, seedIntentsAndPlans, seedRegistry, seedSceneEntries, seedScenarioPackage } from "./mocks/seed.js";
 import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
 import { buildServer } from "./server.js";
@@ -33,6 +33,10 @@ async function main(): Promise<void> {
   for (const ag of agents) if (!(await repos.agents.get(ag.id))) await repos.agents.insert(ag);
   for (const scn of seedSceneEntries()) {
     if (!(await repos.sceneEntries.byView(scn.tenantId, scn.viewKey))) await repos.sceneEntries.upsert(scn);
+  }
+  // 运营态出厂配置增量 §3：经验记忆库 50 案例（缺失才播种，幂等；search_experience 检索）
+  if ((await repos.experience.listByTenant("demo")).length === 0) {
+    for (const c of distillExperienceCases()) await repos.experience.upsert(c);
   }
 
   const dataCore = config.DATACORE_BASE_URL ? createHttpDataCore(config.DATACORE_BASE_URL) : createMockDataCore();

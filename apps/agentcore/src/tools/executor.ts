@@ -4,6 +4,7 @@ import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos, ToolCallRow } from "../persistence/repos.js";
 import { byteLength, digest, redact } from "../util/redact.js";
+import { cosine, pseudoEmbed } from "../util/embedding.js";
 import { BudgetTracker } from "./budget.js";
 import { builtinTool } from "./registry.js";
 import { DataCoreUnavailableError, type DataCoreClient, type ToolAuthCtx } from "./clients.js";
@@ -193,6 +194,8 @@ export class GuardedToolExecutor {
         return this.deps.dataCore.timeseries.aggQuery(ctx, QueryTimeseriesAggInputSchema.parse(input));
       case "read_skill_resource":
         return this.readSkillResource(String(args.skillId ?? ""), String(args.resourceName ?? ""));
+      case "search_experience":
+        return this.searchExperience(String(args.query ?? ""), args.topK === undefined ? 3 : Math.min(Math.max(1, Number(args.topK)), 10));
       default:
         throw new Error(`unknown tool: ${toolName}`);
     }
@@ -241,6 +244,29 @@ export class GuardedToolExecutor {
       };
     }
     return { ...meta, readable: true, truncated: false, content };
+  }
+
+  /**
+   * 运营态增量 §3：经验记忆库检索 —— 确定性伪向量（pseudoEmbed）余弦排序，
+   * READ 级、经统一审计（tool_calls）。命中是「参考解法」而非事实源：数字红线
+   * 仍由 provenance 机制约束（回答中的业务数字必须来自可溯源工具结果）。
+   */
+  private async searchExperience(query: string, topK: number): Promise<unknown> {
+    if (!query.trim()) return { hits: [] };
+    const cases = await this.deps.repos.experience.listByTenant(this.opts.ctx.tenantId);
+    const qv = pseudoEmbed(query);
+    const hits = cases
+      .map((c) => ({
+        question: c.question,
+        approach: c.approach,
+        outcome: c.outcome,
+        scene: c.scene,
+        date: c.date,
+        score: Math.round(cosine(qv, c.embedding) * 1000) / 1000,
+      }))
+      .sort((a, b) => b.score - a.score || (a.question < b.question ? -1 : 1))
+      .slice(0, topK);
+    return { hits, total: cases.length };
   }
 
   /** Audit + metrics + result shaping (4) 写审计. */

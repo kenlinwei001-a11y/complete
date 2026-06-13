@@ -94,6 +94,34 @@ export function QueryDock() {
             </button>
           </div>
           <div className={styles.panelBody}>
+            {/* 运营态出厂配置增量 §4.4：按场景预载历史问答（半透明 + 日期 + 信任级徽章 + 分隔线） */}
+            {(scene?.preloadedHistory?.length ?? 0) > 0 && (
+              <div className={styles.history} data-testid="dock-history">
+                {scene!.preloadedHistory!.map((h, i) => (
+                  <div key={i} className={styles.historyTurn} data-testid={`dock-history-${i}`}>
+                    <div className={styles.userMsg}>
+                      {h.question}
+                      <span className={styles.historyDate}>{h.date}</span>
+                    </div>
+                    <div className={styles.historyAnswer}>
+                      {h.trustLevel === "VERIFIED_WORKFLOW" ? (
+                        <span className="badge green" data-testid={`dock-history-trust-${i}`} data-trust="VERIFIED_WORKFLOW">
+                          {zh.dock.verifiedBadge}
+                        </span>
+                      ) : (
+                        <span className="badge amber" data-testid={`dock-history-trust-${i}`} data-trust="AGENT_EXPLORATORY">
+                          {zh.dock.exploratoryBadge}
+                        </span>
+                      )}
+                      <div className="zh">{h.answer}</div>
+                    </div>
+                  </div>
+                ))}
+                <div className={styles.historyDivider} data-testid="dock-history-divider">
+                  以上为历史问答
+                </div>
+              </div>
+            )}
             {conversation.length === 0 && suggestions.length > 0 && (
               <div className={styles.suggestions}>
                 {suggestions.map((s) => (

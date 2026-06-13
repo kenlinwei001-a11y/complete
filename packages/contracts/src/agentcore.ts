@@ -179,6 +179,17 @@ export const SceneEntryConfigSchema = z.object({
     placeholder: z.string(),
     suggestedQuestions: z.array(z.string()),
   }),
+  /** 运营态出厂配置增量 §2/§4（additive）：出厂预置历史问答（对话坞按场景预载为半透明历史区）。 */
+  preloadedHistory: z
+    .array(
+      z.object({
+        question: z.string(),
+        answer: z.string(),
+        trustLevel: z.enum(["VERIFIED_WORKFLOW", "AGENT_EXPLORATORY"]),
+        date: z.string(),
+      }),
+    )
+    .optional(),
   /** 管理平台增量 §4（additive）：场景入口无版本化，修改即时生效 + updatedAt 乐观锁 */
   updatedAt: z.string().optional(),
 });

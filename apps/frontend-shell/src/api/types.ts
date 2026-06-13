@@ -84,7 +84,9 @@ export type WidgetQueryDef =
   | { kind: "objects"; objectType: string; filter?: Record<string, unknown>; columns?: string[]; limit?: number }
   | { kind: "objects-aggregate"; objectType: string; agg: "count" | "sum" | "avg"; prop?: string; filter?: Record<string, unknown> }
   | { kind: "solver"; solverKey: string; args: Record<string, unknown>; valuePath?: string }
-  | { kind: "timeseries"; seriesKey: string; entityIds: string[]; grain: "shift" | "day" | "week"; agg: string; days: number };
+  | { kind: "timeseries"; seriesKey: string; entityIds: string[]; grain: "shift" | "day" | "week"; agg: string; days: number }
+  // 运营态出厂配置增量 §4.1：驾驶舱历史 widget（数据源 = GET /a/v1/history/bundle 字段）
+  | { kind: "history"; field: "trend" | "onTimeRate" | "executedCount" | "delivered"; columns?: string[] };
 
 // ---- 对象查询（GET /a/v1/objects?type=&q=，前端 PRD §6.4） ----
 

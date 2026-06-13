@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema } from "@platform/contracts";
-import { invokeSolver, searchObjects } from "@/api/endpoints";
+import type { HistoryRiskCase } from "@platform/contracts";
+import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg, searchObjects } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
@@ -125,7 +126,131 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       )}
 
       {ordersDay && <AffectedOrdersModal base={ordersDay.base} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
+
+      {/* 运营态出厂配置增量 §4.3：历史处置案例区（越线→采纳→消解；点击回放当时的时序曲线） */}
+      <HistoricalCasesSection />
     </div>
+  );
+}
+
+function HistoricalCasesSection() {
+  const { data } = useQuery({
+    queryKey: ["a", "history-bundle", "risk-cases"],
+    queryFn: () => fetchHistoryBundle({ pageSize: 1 }),
+    retry: false,
+  });
+  const [replay, setReplay] = useState<HistoryRiskCase | null>(null);
+  const cases = data?.riskCases ?? [];
+  if (cases.length === 0) return null;
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div className="section-title">历史处置案例（{cases.length} 例 · 越线 → 采纳 → 消解）</div>
+      <table className="cmp" data-testid="risk-cases-table">
+        <thead>
+          <tr>
+            <th>编号</th>
+            <th>案例</th>
+            <th>因子</th>
+            <th>越线日</th>
+            <th>采纳处置</th>
+            <th>消解日</th>
+            <th>受影响订单</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cases.map((c) => (
+            <tr
+              key={c.id}
+              data-testid={`risk-case-${c.caseNo}`}
+              tabIndex={0}
+              style={{ cursor: "pointer" }}
+              onClick={() => setReplay(c)}
+              onKeyDown={(e) => e.key === "Enter" && setReplay(c)}
+            >
+              <td className="mono">{c.caseNo}</td>
+              <td className="zh">
+                {c.title}
+                {c.tags.map((t) => (
+                  <span key={t} className="badge red" style={{ marginLeft: 6 }}>
+                    {t}
+                  </span>
+                ))}
+              </td>
+              <td className="zh">{c.factor}</td>
+              <td className="mono">{c.crossedAt}</td>
+              <td className="zh">{c.mitigation.name}</td>
+              <td className="mono">{c.resolvedAt}</td>
+              <td className="mono">{c.affectedOrders.length}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {replay && <CaseReplayModal kase={replay} onClose={() => setReplay(null)} />}
+    </div>
+  );
+}
+
+/** 案例点击 → 回放当时的时序曲线（curve = query_timeseries_agg 参数，数字与回放写入同源） */
+function CaseReplayModal({ kase, onClose }: { kase: HistoryRiskCase; onClose: () => void }) {
+  const { data } = useQuery({
+    queryKey: ["a", "case-replay", kase.id],
+    queryFn: () =>
+      queryTimeseriesAgg({
+        seriesKey: kase.curve.seriesKey,
+        entityIds: [kase.curve.entityId],
+        window: { from: kase.curve.from, to: kase.curve.to, grain: "day" },
+        agg: "sum",
+      }),
+  });
+  const points = data?.points ?? [];
+  return (
+    <Modal title={`${kase.caseNo} · ${kase.title}`} onClose={onClose} width={760}>
+      <div data-testid="case-replay-modal">
+        <div className="section-title">当时的时序曲线（{kase.curve.from} ~ {kase.curve.to}）</div>
+        <EChart
+          height={180}
+          testId="case-replay-curve"
+          option={{
+            grid: { top: 14, bottom: 28, left: 48, right: 12 },
+            tooltip: { trigger: "axis" },
+            xAxis: { type: "category", data: points.map((p) => p.bucket.slice(0, 10)) },
+            yAxis: { type: "value", splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+            series: [
+              {
+                type: "line",
+                smooth: true,
+                data: points.map((p) => p.value),
+                itemStyle: { color: "#43B7D7" },
+                markLine: {
+                  data: [
+                    { xAxis: kase.crossedAt, label: { formatter: "越线" } },
+                    { xAxis: kase.adoptedAt, label: { formatter: "采纳" } },
+                    { xAxis: kase.resolvedAt, label: { formatter: "消解" } },
+                  ],
+                },
+              },
+            ],
+          }}
+        />
+        <div className="section-title" style={{ marginTop: 10 }}>处置时间线</div>
+        <div data-testid="case-timeline" style={{ display: "grid", gap: 4, fontSize: 12.5 }}>
+          {kase.timeline.map((t, i) => (
+            <div key={i}>
+              <span className="mono">{t.date}</span> · <span className="zh">{t.event}</span>
+            </div>
+          ))}
+        </div>
+        {kase.affectedOrders.length > 0 && (
+          <div style={{ marginTop: 8, fontSize: 12.5 }} data-testid="case-affected-orders">
+            受影响订单：{kase.affectedOrders.map((so) => (
+              <span key={so} className="badge" style={{ marginRight: 4 }}>
+                {so}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

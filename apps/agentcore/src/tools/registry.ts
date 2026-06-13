@@ -134,6 +134,24 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    // 运营态出厂配置增量 §3：经验记忆库检索（只读、全审计）。出厂 50 例自回放期
+    // 任务史沉淀（问句+解法+结果）；检索 = 确定性伪向量余弦排序（util/embedding），
+    // 「越用越聪明」出厂即有底料。
+    name: "search_experience",
+    descriptionForLLM:
+      "经验记忆库检索：按自然语言问题检索历史任务沉淀的案例（问句+解法+结果）。在选择分析路径前调用，可借鉴过往有效解法；结果仅供参考，业务数字仍须经工具溯源。topK ≤ 10。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "检索问题" },
+        topK: { type: "number", maximum: 10, description: "返回条数，默认 3，上限 10" },
+      },
+      required: ["query"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "create_action_draft",
     descriptionForLLM:
       "唯一的写出口：为用户的修改/下达/调整请求生成 Action 草稿交下游审批。绝不直接执行写操作；生成后必须告知用户需审批。",

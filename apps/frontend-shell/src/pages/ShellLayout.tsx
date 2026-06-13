@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tokenStore } from "@/api/tokenStore";
-import { fetchResolvedFeatures } from "@/api/endpoints";
+import { fetchHistoryWatermark, fetchResolvedFeatures } from "@/api/endpoints";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { applyTheme } from "@/workspace/theme";
 import { featureOn } from "@/workspace/featureGate";
@@ -56,6 +56,8 @@ export default function ShellLayout() {
           </div>
         </div>
         <input className={styles.search} placeholder={zh.common.search} aria-label={zh.common.search} />
+        {/* 运营态增量 §4.5：全局合成水印徽章（hover 显示 generatedFrom 与 seed；随 LIVE 占比消退） */}
+        <SyntheticWatermark />
         {/* §7.22 数据健康度小徽章（任一源延迟 → 黄点） */}
         <HealthBadge />
         <UserMenu username={workspace.user?.username ?? "—"} />
@@ -102,6 +104,39 @@ export default function ShellLayout() {
       {/* Dock 在所有 /v/:viewKey 页面常驻；admin 页面不显示；受 shell.query-dock BLOCK 控制 */}
       {onViewPage && dockOn && <QueryDock />}
     </div>
+  );
+}
+
+/**
+ * 全局合成运营态水印（运营态增量 §4.5）：租户数据为 livedIn 合成时常驻顶栏；
+ * hover（title）显示 generatedFrom（industry/scale/回放窗口）与 seed；
+ * §6 替换路径接入 LIVE 后按占比淡出（opacity 随 liveRatio 下降）。
+ */
+function SyntheticWatermark() {
+  const { data } = useQuery({
+    queryKey: ["a", "history-watermark"],
+    queryFn: fetchHistoryWatermark,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  if (!data?.synthetic) return null;
+  const liveRatio = data.liveRatio ?? 0;
+  const hover = [
+    `合成运营态 · generatedFrom: ${data.industry ?? "—"} / ${data.scale ?? "—"} · seed ${data.seed ?? "—"}`,
+    `回放窗口 ${data.replayFrom ?? "—"} ~ ${data.replayTo ?? "—"}`,
+    liveRatio > 0 ? `LIVE 已回填 ${(data.liveMonths ?? []).join("、")}（占比 ${(liveRatio * 100).toFixed(0)}%）` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return (
+    <span
+      className="badge amber"
+      data-testid="synthetic-watermark"
+      title={hover}
+      style={{ opacity: Math.max(0.3, 1 - liveRatio), cursor: "help" }}
+    >
+      合成数据
+    </span>
   );
 }
 

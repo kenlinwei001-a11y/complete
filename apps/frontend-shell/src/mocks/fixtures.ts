@@ -1,3 +1,4 @@
+import { LIVED_IN_SCENE_HISTORY } from "@platform/contracts";
 import type {
   ActionDraft,
   AdminTenant,
@@ -104,6 +105,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["affected_orders"] } },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
+  // 运营态出厂配置增量 §2/§4：运营回顾（只读历史证据链页面，消费 GET /a/v1/history/bundle）
+  { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   { key: "view.task-dag", name: "任务编排 DAG", level: "BLOCK", defaultOn: true },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
@@ -191,6 +194,39 @@ const DASH_LAYOUT = {
       span: 2,
       query: { kind: "objects", objectType: "Order", filter: { status: "AT_RISK" }, columns: ["so", "cust", "model", "due"], limit: 8 },
     },
+    // 运营态出厂配置增量 §4.1：12 个月产出趋势 / 准交率 KPI / 年度已执行工单 / 已交付台账
+    {
+      key: "trend-12m",
+      type: "chart",
+      title: "12 个月产出趋势（万套）",
+      span: 2,
+      chartKind: "bar",
+      query: { kind: "history", field: "trend" },
+      provenance: { toolName: "query_timeseries_agg", outputPath: "$.trend", label: "output:line 月度聚合（检修月下凹可见）" },
+    },
+    {
+      key: "ontime-rate",
+      type: "kpi",
+      title: "已交付准交率",
+      unit: "%",
+      query: { kind: "history", field: "onTimeRate" },
+      provenance: { toolName: "query_objects", outputPath: "$.onTimeRate", label: "近 12 个月已交付订单按期率" },
+    },
+    {
+      key: "executed-workorders",
+      type: "kpi",
+      title: "年度已执行工单",
+      query: { kind: "history", field: "executedCount" },
+      provenance: { toolName: "query_objects", outputPath: "$.actionStats.executed", label: "Action 审计史 EXECUTED 计数" },
+    },
+    {
+      key: "delivered-ledger",
+      type: "table",
+      title: "已交付订单台账",
+      span: 2,
+      query: { kind: "history", field: "delivered", columns: ["so", "cust", "model", "qty", "due", "deliveredAt", "delayDays"] },
+      provenance: { toolName: "query_objects", outputPath: "$.delivered", label: "已交付订单（生命周期完整）" },
+    },
   ],
 };
 
@@ -276,6 +312,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "quarterly-rolling", title: "季度滚动看板", renderer: "quarterly-rolling", layout: {} },
     { key: "order-chain", title: "订单全链聚合", renderer: "order-chain", layout: {} },
     { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
+    // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面）
+    { key: "review", title: "运营回顾", renderer: "review", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
@@ -673,15 +711,20 @@ export const MCP_CONFIGS: McpServerConfig[] = [
   { id: "mcp-demo", tenantId: TENANT_ID, name: "示例 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.example.com" }, credentialRef: "cred-1", status: "ACTIVE" },
 ];
 
+/** 运营态出厂配置增量 §2/§4.4：每场景预载历史问答（事实源 = contracts LIVED_IN_SCENE_HISTORY，与 A 侧 taskHistory 同一常量） */
+const sceneHistory = (scene: string) => ({ preloadedHistory: LIVED_IN_SCENE_HISTORY[scene] ?? [] });
+
 export const SCENES: SceneEntryConfig[] = [
-  { id: "scn-dash", tenantId: TENANT_ID, viewKey: "dash", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问问经营数据，如：本月计划达成率怎么样？", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？", "对比一下储能基地和动力基地的平均利用率"] } },
-  { id: "scn-risk", tenantId: TENANT_ID, viewKey: "risk", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中基地提问，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？", "为什么这天越线", "采纳常州的三班制方案"] } },
+  { id: "scn-dash", tenantId: TENANT_ID, viewKey: "dash", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问问经营数据，如：本月计划达成率怎么样？", suggestedQuestions: ["4680-NCM 加 20% 六周能不能接？", "对比一下储能基地和动力基地的平均利用率"] }, ...sceneHistory("dash") },
+  { id: "scn-risk", tenantId: TENANT_ID, viewKey: "risk", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中基地提问，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？", "为什么这天越线", "采纳常州的三班制方案"] }, ...sceneHistory("risk") },
   { id: "scn-order", tenantId: TENANT_ID, viewKey: "order", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "查订单，如：影响哪些订单？", suggestedQuestions: ["影响哪些订单？"] } },
-  { id: "scn-graph", tenantId: TENANT_ID, viewKey: "graph", mode: "AGENT_FIRST", defaultAgentId: "agt-explore", uiHints: { placeholder: "围绕本体随便问", suggestedQuestions: [] } },
-  { id: "scn-plan-audit", tenantId: TENANT_ID, viewKey: "plan-audit", mode: "WORKFLOW_ONLY", uiHints: { placeholder: "问体检结论，如：我的计划站得住吗？", suggestedQuestions: ["我的计划站得住吗？", "最大的硬矛盾是什么？"] } },
-  { id: "scn-plan-generate", tenantId: TENANT_ID, viewKey: "plan-generate", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问方案取舍，如：推荐哪个方案？为什么？", suggestedQuestions: ["推荐哪个方案？为什么？", "三个方案最大的差异是什么？"] } },
-  { id: "scn-project-sim", tenantId: TENANT_ID, viewKey: "project-sim", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中订单/型号提问，如：能按期交付吗？", suggestedQuestions: ["能按期交付吗？", "主瓶颈在哪？"] } },
+  { id: "scn-graph", tenantId: TENANT_ID, viewKey: "graph", mode: "AGENT_FIRST", defaultAgentId: "agt-explore", uiHints: { placeholder: "围绕本体随便问", suggestedQuestions: [] }, ...sceneHistory("graph") },
+  { id: "scn-plan-audit", tenantId: TENANT_ID, viewKey: "plan-audit", mode: "WORKFLOW_ONLY", uiHints: { placeholder: "问体检结论，如：我的计划站得住吗？", suggestedQuestions: ["我的计划站得住吗？", "最大的硬矛盾是什么？"] }, ...sceneHistory("plan-audit") },
+  { id: "scn-plan-generate", tenantId: TENANT_ID, viewKey: "plan-generate", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问方案取舍，如：推荐哪个方案？为什么？", suggestedQuestions: ["推荐哪个方案？为什么？", "三个方案最大的差异是什么？"] }, ...sceneHistory("plan-generate") },
+  { id: "scn-project-sim", tenantId: TENANT_ID, viewKey: "project-sim", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中订单/型号提问，如：能按期交付吗？", suggestedQuestions: ["能按期交付吗？", "主瓶颈在哪？"] }, ...sceneHistory("project-sim") },
   { id: "scn-sop-balance", tenantId: TENANT_ID, viewKey: "sop-balance", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问月度平衡，如：本月产销缺口多大？", suggestedQuestions: ["本月产销缺口多大？"] } },
+  // 运营态增量 §2：运营回顾入口（只读历史）
+  { id: "scn-review", tenantId: TENANT_ID, viewKey: "review", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "回顾一年运营，如：到货危机当时是怎么闭环的？", suggestedQuestions: ["到货危机当时是怎么闭环的？", "S&OP 达成率趋势如何？"] }, ...sceneHistory("review") },
 ];
 
 export const FALLBACK_CLUSTERS: FallbackClusterVM[] = [

@@ -39,6 +39,7 @@ const HISTORY_DAYS = 90;
 
 /** 增量视图键（§7.14–7.17 四视图 + §7.18 图谱八视角；不进 report.views 快照）。 */
 const PLANVIEW_EXTRA_KEYS = [
+  "review",
   "annual-scenario",
   "quarterly-rolling",
   "order-chain",
@@ -79,6 +80,8 @@ export class SyntheticService {
   private scheduler: SchedulerService | null = null;
   private features: FeatureService | null = null;
   private actions: ActionService | null = null;
+  /** 运营态出厂配置增量 §1：livedIn=true 时在标准合成后运行回放引擎（注入避免依赖环）。 */
+  private livedInRunner: ((ctx: AuthCtx, input: { industry: string; scale: "S" | "M" | "L"; seed: number; jobId: string }) => Promise<{ replay: { batches: number; days: number; points: number } }>) | null = null;
 
   constructor(
     private repos: Repos,
@@ -90,11 +93,18 @@ export class SyntheticService {
     private ts?: TimeseriesService,
   ) {}
 
-  wire(deps: { scheduler?: SchedulerService; features?: FeatureService; actions?: ActionService; ts?: TimeseriesService }): void {
+  wire(deps: {
+    scheduler?: SchedulerService;
+    features?: FeatureService;
+    actions?: ActionService;
+    ts?: TimeseriesService;
+    livedInRunner?: SyntheticService["livedInRunner"];
+  }): void {
     this.scheduler = deps.scheduler ?? this.scheduler;
     this.features = deps.features ?? this.features;
     this.actions = deps.actions ?? this.actions;
     this.ts = deps.ts ?? this.ts;
+    this.livedInRunner = deps.livedInRunner ?? this.livedInRunner;
   }
 
   private async resolveTemplate(ctx: AuthCtx, industry: string): Promise<IndustryTemplate> {
@@ -127,7 +137,7 @@ export class SyntheticService {
 
   async runJob(
     ctx: AuthCtx,
-    input: { industry: string; scale: "S" | "M" | "L"; seed?: number },
+    input: { industry: string; scale: "S" | "M" | "L"; seed?: number; livedIn?: boolean },
   ): Promise<SyntheticJob> {
     const t0 = Date.now();
     const seed = input.seed ?? 42;
@@ -161,10 +171,14 @@ export class SyntheticService {
       }
 
       // ③b A8.6: 90-day deterministic ts history → full TS_AGGREGATE → derivation.
+      // 运营态增量 §1.1：livedIn 时跳过 90 天标准历史（避免迟到容差拒收回填），
+      // 365 天历史与聚合由回放引擎（月批次 × 真实管线）负责。
       if (input.industry === "battery-manufacturing" && this.ts) {
         await this.seedBatteryParamsAndSpecs(ctx, seed, input.scale);
-        await this.generateHistory(ctx, seed);
-        await this.ts.runAggregation(ctx.tenantId, { full: true });
+        if (!input.livedIn) {
+          await this.generateHistory(ctx, seed);
+          await this.ts.runAggregation(ctx.tenantId, { full: true });
+        }
       }
 
       // ④ derive everything through the A4 pipeline (single source of truth).
@@ -187,10 +201,10 @@ export class SyntheticService {
         });
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
-      // 增量视图（§7.14–7.17 + 图谱八视角）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      // 增量视图（§7.14–7.17 + 图谱八视角 + 运营回顾）：不进 report.views（保持验收快照稳定），但进 view_configs。
       const extraViews =
         input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
-      await this.seedViewConfigs(ctx, views, extraViews);
+      await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn });
       // 管理平台增量 §3：场景包记录（admin/views 与场景包管理页的事实源；幂等 upsert）。
       const pkgId = "pkg_battery_manufacturing";
       const existingPkg = await this.repos.scenarioPackages.get(ctx.tenantId, pkgId);
@@ -218,6 +232,15 @@ export class SyntheticService {
 
       // ⑥ validation report.
       job.report = await this.buildReport(ctx, template, views, accounts, seed);
+
+      // ⑦ 运营态出厂配置增量 §1：livedIn → 标准合成后回放一年（T−365d → T0）。
+      if (input.livedIn && this.livedInRunner && input.industry === "battery-manufacturing") {
+        const replayT0 = Date.now();
+        const r = await this.livedInRunner(ctx, { industry: input.industry, scale: input.scale, seed, jobId: originJobId });
+        job.livedIn = { ...r.replay, durationMs: Date.now() - replayT0 };
+        this.metrics.set("dc_livedin_replay_ms", { scale: input.scale }, Date.now() - replayT0);
+      }
+
       await this.repos.syntheticJobs.put(job);
       this.metrics.set("dc_synthetic_job_duration_ms", { industry: input.industry }, Date.now() - t0);
       return job;
@@ -651,7 +674,12 @@ export class SyntheticService {
     return names;
   }
 
-  private async seedViewConfigs(ctx: AuthCtx, views: string[], extraViews: string[] = []): Promise<void> {
+  private async seedViewConfigs(
+    ctx: AuthCtx,
+    views: string[],
+    extraViews: string[] = [],
+    opts?: { livedIn?: boolean },
+  ): Promise<void> {
     // 前端 PRD §7：每个视图声明 renderer（前端按注册表分发）+ 声明式 layout（dashboard widget / ledger 列）。
     const DASH_LAYOUT: Record<string, unknown> = {
       widgets: [
@@ -672,7 +700,8 @@ export class SyntheticService {
         },
         {
           key: "orders", type: "kpi", title: "在手订单",
-          query: { kind: "objects-aggregate", objectType: "Order", agg: "count" },
+          // livedIn：已交付订单也在 Order 表（生命周期完整），在手口径过滤 status=OPEN
+          query: { kind: "objects-aggregate", objectType: "Order", agg: "count", ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
           provenance: { toolName: "query_objects", outputPath: "$.count", label: "Order 行计数" },
         },
         {
@@ -682,9 +711,35 @@ export class SyntheticService {
         },
         {
           key: "orders-table", type: "table", title: "在手订单（前 8）", span: 2,
-          query: { kind: "objects", objectType: "Order", columns: ["so", "cust", "model", "qty", "due", "status"], limit: 8 },
+          query: { kind: "objects", objectType: "Order", columns: ["so", "cust", "model", "qty", "due", "status"], limit: 8, ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
           provenance: { toolName: "query_objects", outputPath: "$.items", label: "订单对象查询" },
         },
+        // 运营态增量 §4.1：12 个月产出趋势（检修月下凹）/ 准交率 / 年度已执行工单 / 已交付台账。
+        // 数据源 = GET /a/v1/history/bundle（kind=history 声明式 widget，仅 livedIn 时注入）。
+        ...(opts?.livedIn
+          ? [
+              {
+                key: "trend-12m", type: "chart", title: "12 个月产出趋势（万套）", span: 2, chartKind: "bar",
+                query: { kind: "history", field: "trend" },
+                provenance: { toolName: "query_timeseries_agg", outputPath: "$.trend", label: "output:line 月度聚合（检修月下凹可见）" },
+              },
+              {
+                key: "ontime-rate", type: "kpi", title: "已交付准交率", unit: "%",
+                query: { kind: "history", field: "onTimeRate" },
+                provenance: { toolName: "query_objects", outputPath: "$.onTimeRate", label: "近 12 个月已交付订单按期率（51/60）" },
+              },
+              {
+                key: "executed-workorders", type: "kpi", title: "年度已执行工单",
+                query: { kind: "history", field: "executedCount" },
+                provenance: { toolName: "query_objects", outputPath: "$.actionStats.executed", label: "Action 审计史 EXECUTED 计数" },
+              },
+              {
+                key: "delivered-ledger", type: "table", title: "已交付订单台账", span: 2,
+                query: { kind: "history", field: "delivered", columns: ["so", "cust", "model", "qty", "due", "deliveredAt", "delayDays"] },
+                provenance: { toolName: "query_objects", outputPath: "$.delivered", label: "已交付订单（生命周期完整）" },
+              },
+            ]
+          : []),
       ],
     };
     const LEDGER_LAYOUT: Record<string, unknown> = {
@@ -735,6 +790,8 @@ export class SyntheticService {
         renderer: "geo-map",
         layout: { objectType: "Base", sizeProp: "gwh", colorProp: "kind", utilThresholds: [92, 85, 78] },
       },
+      // 运营态增量 §4.2：运营回顾（只读历史证据链页面，消费 history/bundle）
+      review: { title: "运营回顾", renderer: "review", layout: { apiTag: "history" } },
       // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）
       "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }),
       "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }),
@@ -768,7 +825,7 @@ export class SyntheticService {
       { key: "ops/fallback", label: "兜底运营" },
     ];
     // 不同账号不同前端：admin 全量（含 admin 导航组），planner 业务视图，base_manager 子集 + 不同主题强调色。
-    const baseManagerExtras = extraViews.filter((v) => v === "order-chain");
+    const baseManagerExtras = extraViews.filter((v) => v === "order-chain" || v === "review");
     const roleViews: Record<string, string[]> = {
       admin: [...views, ...extraViews],
       planner: [...views, ...extraViews],
@@ -997,7 +1054,7 @@ export class SyntheticService {
   }
 }
 
-function entityRefFieldOf(entityType: string): string {
+export function entityRefFieldOf(entityType: string): string {
   switch (entityType) {
     case "Equipment":
       return "equipId";

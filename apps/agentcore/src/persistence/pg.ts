@@ -350,6 +350,19 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows.map((x) => x.config as SceneEntryConfig);
       },
     },
+    experience: {
+      async upsert(c) {
+        await q(
+          `INSERT INTO experience_cases(id, tenant_id, doc) VALUES ($1,$2,$3)
+           ON CONFLICT (id) DO UPDATE SET doc = $3`,
+          [c.id, c.tenantId, JSON.stringify(c)],
+        );
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT doc FROM experience_cases WHERE tenant_id = $1 ORDER BY id`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("./repos.js").ExperienceCaseRow);
+      },
+    },
     credentials: {
       async insert(c: CredentialRow) {
         await q(`INSERT INTO credentials(id, tenant_id, name, ciphertext, created_at) VALUES ($1,$2,$3,$4,$5)`, [

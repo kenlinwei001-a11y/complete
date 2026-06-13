@@ -24,6 +24,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
+  // 运营态出厂配置增量 §2/§4：运营回顾（只读历史证据链页面，消费 GET /a/v1/history/bundle）
+  { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   // BLOCK level
   { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
@@ -66,6 +68,7 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "quarterly-rolling": "view.quarterly-rolling",
   "order-chain": "view.order-chain",
   "geo-map": "view.geo-map",
+  review: "view.review",
   // §7.18 图谱视角视图（renderer=ontology-graph 的 8 份 ViewConfig）
   "graph-all": "view.graph.persp.all",
   "graph-backbone": "view.graph.persp.backbone",

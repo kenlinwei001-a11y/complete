@@ -14,6 +14,7 @@ import type {
 } from "@platform/contracts";
 import type {
   CredentialRow,
+  ExperienceCaseRow,
   FallbackTraceRow,
   IdempotencyRow,
   QueryEventRow,
@@ -47,6 +48,7 @@ export function createMemoryRepos(): Repos {
   const idempotency = new Map<string, IdempotencyRow>();
   const llmProviders = new Map<string, LlmProviderConfig>();
   const llmBindings = new Map<string, ModelBinding[]>();
+  const experience = new Map<string, ExperienceCaseRow>();
 
   return {
     packages: {
@@ -284,6 +286,17 @@ export function createMemoryRepos(): Repos {
       },
       async listByTenant(tenantId) {
         return [...sceneEntries.values()].filter((s) => s.tenantId === tenantId).map(clone);
+      },
+    },
+    experience: {
+      async upsert(c) {
+        experience.set(c.id, clone(c));
+      },
+      async listByTenant(tenantId) {
+        return [...experience.values()]
+          .filter((c) => c.tenantId === tenantId)
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .map(clone);
       },
     },
     credentials: {

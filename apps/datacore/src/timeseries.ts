@@ -126,7 +126,7 @@ export class TimeseriesService {
   async writePoints(
     tenantId: string,
     series: TsSeriesRecord,
-    points: { entityId: string; ts: string; values: Record<string, number>; tick?: number }[],
+    points: { entityId: string; ts: string; values: Record<string, number>; tick?: number; origin?: "SYNTHETIC" | "LIVE" }[],
   ): Promise<{ written: number; late: number }> {
     const maxTs = await this.repos.tsPoints.maxTs(tenantId, series.id);
     const cutoff = maxTs ? new Date(Date.parse(maxTs) - LATE_TOLERANCE_DAYS * DAY_MS).toISOString() : undefined;
@@ -147,7 +147,7 @@ export class TimeseriesService {
         });
         continue;
       }
-      ok.push({ seriesId: series.id, entityId: p.entityId, ts: p.ts, values: p.values, ingestedAt, tick: p.tick ?? 0 });
+      ok.push({ seriesId: series.id, entityId: p.entityId, ts: p.ts, values: p.values, ingestedAt, tick: p.tick ?? 0, ...(p.origin ? { origin: p.origin } : {}) });
     }
     const written = await this.repos.tsPoints.upsert(tenantId, ok);
     if (late > 0) {

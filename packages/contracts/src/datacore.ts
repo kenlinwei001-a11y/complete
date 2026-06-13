@@ -170,6 +170,8 @@ export const SyntheticJobBodySchema = z.object({
   industry: z.string(),
   scale: z.enum(["S", "M", "L"]),
   seed: z.number().int().optional(),
+  /** 运营态出厂配置增量 §1.1：true → 合成后从 T−365 天回放至 T0（一年运营态）。 */
+  livedIn: z.boolean().optional(),
 });
 export type SyntheticJobBody = z.infer<typeof SyntheticJobBodySchema>;
 

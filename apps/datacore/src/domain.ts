@@ -367,6 +367,8 @@ export interface SyntheticJob {
   report?: SyntheticReport;
   error?: string;
   createdAt: string;
+  /** 运营态出厂配置增量 §1：livedIn 回放统计（批次/天数/点数/墙钟耗时）。 */
+  livedIn?: { batches: number; days: number; points: number; durationMs: number };
 }
 
 export interface SyntheticReport {
@@ -487,6 +489,8 @@ export interface TsPointRecord {
   values: Record<string, number>;
   ingestedAt: string;
   tick?: number; // simulation tick that produced the point (0 = initial history)
+  /** 运营态增量 §6：origin 标记（缺省 = 系列 origin；LIVE = 真历史按月回填覆盖）。 */
+  origin?: "SYNTHETIC" | "LIVE";
 }
 
 export interface TsLateArrivalRecord {
@@ -674,6 +678,62 @@ export interface CalibrationPairRecord {
   sliceKey: string; // solverKey|baseId|modelId
   weekOfWindow: number;
   pairedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// 运营态出厂配置增量（lived-in）：告警-处置闭环案例 + 运营态元数据
+// ---------------------------------------------------------------------------
+
+/** §1.2 告警-处置闭环案例：越线日→采纳方案（关联 Action）→曲线消解→受影响订单清单。 */
+export interface RiskCaseRecord {
+  id: string; // case_lh_<tenant>_<n>
+  tenantId: string;
+  caseNo: string; // CASE-001..
+  title: string;
+  baseId: string;
+  baseName: string;
+  factor: string;
+  severity: string;
+  windowFrom: string; // 风险窗口（叙事互引的时间窗）
+  windowTo: string;
+  crossedAt: string;
+  adoptedAt: string;
+  resolvedAt: string;
+  mitigation: { name: string; planKey: string };
+  /** 关联的已执行 Action（act_lh_*） */
+  actionId: string;
+  affectedOrders: string[]; // SO 号
+  timeline: { date: string; event: string }[];
+  tags: string[]; // 如 ["到货危机"]
+  /** 前端案例点击回放当时的时序曲线（query_timeseries_agg 参数） */
+  curve: { seriesKey: string; entityId: string; from: string; to: string };
+}
+
+/**
+ * 运营态元数据（livedIn 合成时写入，每租户一条，id == tenantId）：
+ * generatedFrom（水印来源）、52 周 MAPE 叙事、场景任务史副本（事实源 =
+ * contracts LIVED_IN_SCENE_HISTORY 常量，A/B 各自消费同一常量）、孵化记录、
+ * 规则演进备注、LIVE 回填月份（origin 替换路径 §6）。
+ */
+export interface LivedInStateRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  generatedFrom: {
+    industry: string;
+    scale: string;
+    seed: number;
+    jobId: string;
+    replayFrom: string;
+    replayTo: string;
+    replayDays: number;
+  };
+  crisisWindow: { from: string; to: string };
+  mapeSeries: { week: number; weekStart: string; mape: number; event?: string }[];
+  taskHistory: { scene: string; question: string; answer: string; trustLevel: string; date: string }[];
+  incubated: { intentKey: string; name: string; question: string; count: number; incubatedAt: string }[];
+  ruleChanges: { key: string; name: string; version: number; label: string; expression: string; reason: string; changedAt: string; status: string; tags: string[] }[];
+  liveMonths: string[];
+  replay: { batches: number; days: number; points: number };
 }
 
 /** S1 修订：solver_params 版本历史（runWithParams(version) / 回滚锚点）。 */

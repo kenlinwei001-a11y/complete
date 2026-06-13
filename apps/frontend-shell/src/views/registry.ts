@@ -33,3 +33,5 @@ registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));
 registerRenderer("geo-map", () => import("./plan/GeoMapView"));
+// 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面，renderer 复用 dashboard 类网格风格）
+registerRenderer("review", () => import("./ReviewView"));

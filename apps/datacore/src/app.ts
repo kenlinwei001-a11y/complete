@@ -30,6 +30,7 @@ import { CONNECTOR_TYPES } from "./connectors/registry.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
+import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
@@ -43,6 +44,7 @@ import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH } from
 import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
 import { SimClockService } from "./simclock.js";
+import { HistoryService } from "./livedin/bundle.js";
 import { FeatureService, VIEW_FEATURE_MAP } from "./features.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import type { AuthCtx } from "./domain.js";
@@ -91,6 +93,8 @@ export interface BuiltApp {
     plan: PlanService;
     calibration: CalibrationService;
     llmProviders: LlmProviderService;
+    livedin: LivedInEngine;
+    history: HistoryService;
   };
 }
 
@@ -226,8 +230,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);
+  // 运营态出厂配置增量 §1：回放引擎（生成+回放，复用真实 A8 管线 + M11 配对）
+  const livedInEngine = new LivedInEngine(repos, timeseries, ontology, ruleScan, rules);
+  livedInEngine.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
+  // §5 历史查询面（bundle / watermark / live-ingest），行级权限同 A6
+  const history = new HistoryService(repos, authz);
   // cross-wiring (kept out of constructors to avoid dependency cycles)
-  synthetic.wire({ scheduler, features, actions, ts: timeseries });
+  synthetic.wire({
+    scheduler,
+    features,
+    actions,
+    ts: timeseries,
+    livedInRunner: async (c, input) => {
+      const state = await livedInEngine.run(c, input);
+      return { replay: state.replay };
+    },
+  });
   connectors.wire({ ts: timeseries, scheduler });
   simclock.setResetRunner(async (c, spec) => synthetic.runJob(c, spec));
   // §7.21: C12 → calibration.required → 提案生成（与降级/告警共用同一扫描路径）
@@ -1369,6 +1387,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(202).send(clockVM(await simclock.reset(ctx(req))));
   });
 
+  // ---- 运营态出厂配置增量 §5/§6（history/bundle 行级权限过滤；watermark 全局徽章；live-ingest 替换路径） ----
+  app.get("/a/v1/history/bundle", async (req) => {
+    // Entitlement 先于 authz：view.review 关闭 = 不存在 → 404 FEATURE_NOT_FOUND
+    await requireFeatureTag(req, "apiTags", "history");
+    const q = req.query as { page?: string; pageSize?: string };
+    return history.bundle(ctx(req), {
+      page: q.page ? Number(q.page) : undefined,
+      pageSize: q.pageSize ? Number(q.pageSize) : undefined,
+    });
+  });
+  app.get("/a/v1/history/watermark", async (req) => history.watermark(ctx(req)));
+  app.post("/a/v1/history/live-ingest", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    await requireFeatureTag(req, "apiTags", "history");
+    const body = parseBody(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }), req.body);
+    return reply.status(202).send(await history.liveIngest(c, body.month));
+  });
+
   // ---- webhooks / outbox (C-2) ---------------------------------------------------------------
   app.post("/a/v1/webhooks", async (req, reply) => {
     const c = ctx(req);
@@ -1426,6 +1463,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       plan,
       calibration,
       llmProviders,
+      livedin: livedInEngine,
+      history,
     },
   };
 }

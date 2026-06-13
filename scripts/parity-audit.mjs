@@ -1679,6 +1679,107 @@ await check("引用模式", "workflow 破坏性变更门禁：latest 引用 → 
   eq(forced.body.forced, true, "forced 标记（审计）");
 });
 
+// ===========================================================================
+// 运营态出厂配置（PRD-addendum-lived-in-state）：livedIn 合成 → history/bundle →
+// review 视图 → 水印。放在最后：回放会重写 demo 租户时序/订单，避免扰动前序检查。
+// ===========================================================================
+let livedAdminToken = "";
+let livedBundleRaw = "";
+await check("运营态", "livedIn 合成作业（battery/S/seed42）→ job.livedIn 回放统计（12 批 / 365 天 / ≤5 分钟）", async () => {
+  const login = await a("/a/v1/auth/login", { body: { tenantId: "demo", username: "admin", password: "demo1234" } });
+  eq(login.status, 200, "admin login");
+  livedAdminToken = login.body.accessToken;
+  const r = await a("/a/v1/synthetic/jobs", {
+    body: { industry: "battery-manufacturing", scale: "S", seed: 42, livedIn: true },
+    token: livedAdminToken,
+  });
+  eq(r.status, 202, "status");
+  let job = r.body;
+  for (let i = 0; i < 120 && job.status === "RUNNING"; i++) {
+    await sleep(1000);
+    job = (await a(`/a/v1/synthetic/jobs/${job.id ?? job.jobId}`, { token: livedAdminToken })).body;
+  }
+  eq(job.status, "SUCCEEDED", "job.status");
+  ok(job.livedIn, "job.livedIn 回放统计存在");
+  eq(job.livedIn.batches, 12, "月批次 12");
+  eq(job.livedIn.days, 365, "回放 365 天");
+  ok(job.livedIn.points > 50_000, "回放点数 > 5 万");
+  ok(job.livedIn.durationMs < 300_000, "S 规模回放 ≤ 5 分钟");
+});
+await check("运营态", "GET /a/v1/history/bundle → 契约 parse + 形态（trend 12 / delivered 60 / 案例 10 / Action 200 / MAPE 52 / V1–V12）", async () => {
+  const r = await a("/a/v1/history/bundle?pageSize=200", { token: livedAdminToken });
+  eq(r.status, 200, "status");
+  livedBundleRaw = JSON.stringify(r.body);
+  const bundle = contracts ? contracts.HistoryBundleSchema.parse(r.body) : r.body;
+  eq(bundle.trend.length, 12, "trend 12 个月");
+  eq(bundle.deliveredCount, 60, "已交付 60");
+  eq(bundle.delivered.filter((d) => d.delayDays > 0).length, 9, "9 单曾延期");
+  eq(bundle.delivered.filter((d) => d.rescue).length, 7, "7 单挽回（关联案例+Action）");
+  eq(bundle.riskCases.length, 10, "告警-处置闭环案例 10 例");
+  eq(bundle.actionStats.total, 200, "Action 审计史 200 条");
+  eq(bundle.mapeSeries.length, 52, "MAPE 52 周");
+  eq(bundle.calibrations.proposals.length, 8, "8 次校准提案");
+  eq(bundle.calibrations.proposals.filter((p) => p.status === "REJECTED").length, 2, "2 次方法学拒绝");
+  eq(bundle.sopVersions.length, 12, "S&OP V1–V12");
+  eq(bundle.sopVersions[0].attainment, 88, "V1 达成率 88%");
+  eq(bundle.sopVersions[11].attainment, 94, "V12 达成率 94%");
+  ok(bundle.ruleVersions.length >= 5, "规则版本史 ≥5");
+  eq(bundle.incubated.length, 3, "意图孵化 ×3");
+  ok(bundle.taskHistory.length >= 7, "任务/对话史（7 场景 ≥1 条）");
+  // actionHistory 分页参数（§5 大体量子集）
+  const p2 = await a("/a/v1/history/bundle?page=2&pageSize=50", { token: livedAdminToken });
+  eq(p2.body.actionHistory.items.length, 50, "page=2&pageSize=50 → 50 条");
+  eq(p2.body.actionHistory.page, 2, "page 回显");
+});
+await check("运营态", "读路径确定性：同参数重复 GET bundle → 字节一致", async () => {
+  const again = await a("/a/v1/history/bundle?pageSize=200", { token: livedAdminToken });
+  eq(JSON.stringify(again.body), livedBundleRaw, "重复读取字节一致");
+});
+await check("运营态", "行级权限作用于历史：base_manager 仅常州月度/案例，准交率按可见范围重算", async () => {
+  const login = await a("/a/v1/auth/login", { body: { tenantId: "demo", username: "base_manager", password: "demo1234" } });
+  eq(login.status, 200, "base_manager login");
+  const r = await a("/a/v1/history/bundle", { token: login.body.accessToken });
+  eq(r.status, 200, "status");
+  ok(r.body.monthly.every((m) => m.baseId === "changzhou"), "monthly 仅常州");
+  ok(r.body.riskCases.every((c) => c.baseId === "changzhou"), "案例仅常州");
+  ok(r.body.deliveredCount < 60, "delivered 子集");
+  const onTime = r.body.delivered.filter((d) => d.onTime).length;
+  eq(r.body.onTimeRate, Math.round((onTime / r.body.delivered.length) * 1000) / 10, "准交率按可见范围重算");
+});
+await check("运营态", "workspace 含 review 运营回顾视图（renderer=review，零配置导航）", async () => {
+  const r = await a("/a/v1/me/workspace", { token: livedAdminToken });
+  eq(r.status, 200, "status");
+  const view = (r.body.views ?? []).find((v) => v.viewKey === "review" || v.key === "review");
+  ok(view, "views 含 review");
+  eq(view.renderer, "review", "renderer=review");
+  ok((r.body.navigation ?? []).some((n) => n.key === "review"), "导航含 review");
+});
+await check("运营态", "B5 场景入口预载历史问答（preloadedHistory，Y8 数据面）", async () => {
+  const r = await b("/b/v1/scene-entries", { token: livedAdminToken });
+  eq(r.status, 200, "status");
+  // dash 在前序「B5 场景 PUT」检查中被管理员整体覆盖（出厂配置是起点不是锁定）→ 用未动过的 risk 校验出厂形态
+  const risk = r.body.find((s) => s.viewKey === "risk");
+  ok(Array.isArray(risk?.preloadedHistory) && risk.preloadedHistory.length >= 2, "risk 历史问答 ≥2 条");
+  ok(risk.preloadedHistory.every((h) => h.question && h.answer && h.date && ["VERIFIED_WORKFLOW", "AGENT_EXPLORATORY"].includes(h.trustLevel)), "条目形态 {question,answer,trustLevel,date}");
+  const graph = r.body.find((s) => s.viewKey === "graph");
+  eq(graph?.mode, "AGENT_FIRST", "explore=AGENT_FIRST");
+  ok((graph?.preloadedHistory ?? []).some((h) => h.trustLevel === "AGENT_EXPLORATORY"), "AGENT 信任级样例");
+});
+await check("运营态", "水印 + §6 origin 替换：live-ingest 一月 → 趋势无缝、liveRatio 变化、origin=LIVE", async () => {
+  const before = (await a("/a/v1/history/bundle", { token: livedAdminToken })).body.trend.map((t) => t.output);
+  const wm0 = await a("/a/v1/history/watermark", { token: livedAdminToken });
+  eq(wm0.body.synthetic, true, "watermark.synthetic");
+  eq(wm0.body.seed, 42, "watermark.seed（hover 显示）");
+  const ing = await a("/a/v1/history/live-ingest", { body: { month: "2026-03" }, token: livedAdminToken });
+  eq(ing.status, 202, "live-ingest 202");
+  ok(ing.body.written > 4000, "回填点数");
+  const after = (await a("/a/v1/history/bundle", { token: livedAdminToken })).body;
+  eq(JSON.stringify(after.trend.map((t) => t.output)), JSON.stringify(before), "趋势无缝（同管线回填不跳变）");
+  eq(after.trend.find((t) => t.month === "2026-03")?.live, true, "2026-03 标记 LIVE");
+  const wm1 = await a("/a/v1/history/watermark", { token: livedAdminToken });
+  ok((wm1.body.liveRatio ?? 0) > 0, "水印 LIVE 占比变化（消退）");
+});
+
 // ---------------------------------------------------------------------------
 // 收尾：结果表
 // ---------------------------------------------------------------------------

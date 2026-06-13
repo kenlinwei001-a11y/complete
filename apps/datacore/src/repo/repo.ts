@@ -17,6 +17,7 @@ import type {
   KbDocRecord,
   LinkInstance,
   LinkTypeDef,
+  LivedInStateRecord,
   LlmProviderRecord,
   LlmPurposeBindingRecord,
   ObjectInstance,
@@ -28,6 +29,7 @@ import type {
   RawDataset,
   ReportedRefRecord,
   RetentionPolicyRecord,
+  RiskCaseRecord,
   Rule,
   RuleCandidate,
   RuleDoc,
@@ -208,6 +210,9 @@ export interface Repos {
   calibrationHistory: Store<CalibrationHistoryRecord>;
   calibrationForecasts: Store<CalibrationForecastRecord>;
   calibrationPairs: Store<CalibrationPairRecord>;
+  // 运营态出厂配置增量（lived-in）
+  riskCases: Store<RiskCaseRecord>;
+  livedInStates: Store<LivedInStateRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

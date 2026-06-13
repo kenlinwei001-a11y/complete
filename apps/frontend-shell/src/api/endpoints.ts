@@ -314,6 +314,10 @@ import {
   CalibrationRunResultSchema,
   type CalibrationRunResult,
   DataHealthResponseSchema,
+  HistoryBundleSchema,
+  HistoryWatermarkSchema,
+  type HistoryBundle,
+  type HistoryWatermark,
   type AopResponse,
   type QuarterlyResponse,
   type CalibrationProposal,
@@ -352,6 +356,20 @@ export const runCalibration = async (): Promise<CalibrationRunResult> =>
 
 export const fetchDataHealth = async (): Promise<DataHealthResponse> =>
   DataHealthResponseSchema.parse(await api.a<unknown>("/a/v1/data-health"));
+
+// ---- 运营态出厂配置增量 §5：一年运营态历史（运营回顾/驾驶舱/风险案例/水印消费） ----
+
+export const fetchHistoryBundle = async (params?: { page?: number; pageSize?: number }): Promise<HistoryBundle> => {
+  const sp = new URLSearchParams();
+  if (params?.page) sp.set("page", String(params.page));
+  if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
+  const qs = sp.toString();
+  return HistoryBundleSchema.parse(await api.a<unknown>(`/a/v1/history/bundle${qs ? `?${qs}` : ""}`));
+};
+
+/** 全局合成水印（§4.5）：hover 显示 generatedFrom 与 seed；随 LIVE 占比消退 */
+export const fetchHistoryWatermark = async (): Promise<HistoryWatermark> =>
+  HistoryWatermarkSchema.parse(await api.a<unknown>("/a/v1/history/watermark"));
 
 export const fetchActionDrafts = (status?: string) =>
   api.a<ActionDraft[]>(`/a/v1/action-drafts${status ? `?status=${status}` : ""}`);
