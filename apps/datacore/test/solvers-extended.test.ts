@@ -85,10 +85,10 @@ describe("E6a · 13 求解器算法（确定性、手算可验）", () => {
 });
 
 describe("E6a · 端点真实出结果 + 注册完整", () => {
-  it("/a/v1/solvers/:key/invoke 对 13 个新 key 全部返回结果（确定性同输入同输出）", async () => {
+  it("/a/v1/solvers/:key/invoke 对新增 key 全部返回结果（确定性同输入同输出）", async () => {
     const t = await makeApp();
     const keys = Object.keys(EXTENDED_SOLVERS);
-    expect(keys).toHaveLength(13);
+    expect(keys).toHaveLength(14); // 13 + Phase6B countermeasure_combo
     for (const key of keys) {
       const r1 = await invokeSolver(t, key, key === "mitigation_select" ? { factor: "物料齐套", tightness: 90 } : {});
       expect(r1.statusCode).toBe(200);
@@ -98,11 +98,25 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     }
   });
 
-  it("catalog discover 列出全部 21 求解器（8 复用 + 13 新增）", async () => {
+  it("Phase6B countermeasure_combo 跨求解器编排：贪心最小成本闭合缺口 + 来源求解器留痕", () => {
+    const r = EXTENDED_SOLVERS.countermeasure_combo!({ gap: 100 }) as {
+      combo: { solver: string; release: number; cost: number }[];
+      residualGap: number;
+      totalCost: number;
+      feasible: boolean;
+    };
+    expect(r.combo.length).toBeGreaterThan(0);
+    expect(r.combo.every((c) => typeof c.solver === "string")).toBe(true); // 每段标注来源求解器
+    const released = r.combo.reduce((s, c) => s + c.release, 0);
+    expect(released).toBeCloseTo(100 - r.residualGap, 4);
+    expect(r.feasible).toBe(true); // 默认杠杆可覆盖
+  });
+
+  it("catalog discover 列出全部 22 求解器（8 复用 + 13 + 1 编排器）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
-    expect(items.length).toBe(21);
-    expect(items.map((i) => i.key)).toContain("carbon_footprint");
+    expect(items.length).toBe(22);
+    expect(items.map((i) => i.key)).toContain("countermeasure_combo");
   });
 });

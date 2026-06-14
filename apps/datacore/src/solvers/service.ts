@@ -34,6 +34,8 @@ export const SOLVER_KEYS = [
   "credit_exposure",
   "quarterly_gap",
   "carbon_footprint",
+  // Phase6B 跨求解器编排器（meta-solver）
+  "countermeasure_combo",
 ] as const;
 
 const DAY_MS = 86400000;

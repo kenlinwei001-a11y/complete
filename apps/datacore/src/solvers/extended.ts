@@ -325,6 +325,37 @@ export function quarterlyGap(args: Record<string, unknown>) {
   return { quarter, combo, residualGap: round(Math.max(0, gap), 4), ruleRefs: ["C08", "C29"] };
 }
 
+/**
+ * Phase6B 跨求解器编排器（meta-solver）：把多个求解器提供的「杠杆」按 成本档→单位成本 排序，
+ * 贪心最小成本闭合产销缺口；每段产出标注来源求解器(solver/scene)，返回组合/残差/总成本/可行性。
+ * 各杠杆可释放量(release)缺省按 gap 比例派生（编排时由对应求解器回填实算值）。确定性。
+ */
+type ComboLever = { key: string; solver: string; scene?: string; release: number; unitCost: number; costRank: number };
+export function countermeasureCombo(args: Record<string, unknown>) {
+  const gap = round(num(args.gap, 10), 4);
+  const levers: ComboLever[] = (args.levers as ComboLever[]) ?? [
+    { key: "cert_unlock", solver: "cert_schedule", scene: "S07", release: round(gap * 0.3, 4), unitCost: 0.5, costRank: 1 },
+    { key: "changeover", solver: "changeover_sequence", scene: "S11", release: round(gap * 0.15, 4), unitCost: 0.6, costRank: 1 },
+    { key: "stagger", solver: "maintenance_stagger", scene: "S13", release: round(gap * 0.1, 4), unitCost: 0.7, costRank: 2 },
+    { key: "outsource", solver: "outsourcing_split", scene: "S14", release: round(gap * 0.2, 4), unitCost: 1.4, costRank: 2 }, // C08 外协 ≤20%
+    { key: "capex", solver: "capex_scenario", scene: "S17", release: round(gap * 0.5, 4), unitCost: 2.2, costRank: 3 },
+  ];
+  const sorted = [...levers].sort((a, b) => a.costRank - b.costRank || a.unitCost - b.unitCost);
+  let remaining = gap;
+  let totalCost = 0;
+  const combo: Record<string, unknown>[] = [];
+  for (const l of sorted) {
+    if (remaining <= 0) break;
+    const use = round(Math.min(remaining, l.release), 4);
+    if (use > 0) {
+      combo.push({ key: l.key, solver: l.solver, scene: l.scene, release: use, cost: round(use * l.unitCost, 4) });
+      totalCost = round(totalCost + use * l.unitCost, 4);
+      remaining = round(remaining - use, 4);
+    }
+  }
+  return { gap, combo, residualGap: round(Math.max(0, remaining), 4), totalCost, feasible: remaining <= 0, ruleRefs: ["C08", "C23", "C29"] };
+}
+
 // S20 carbon_footprint：碳足迹 = Σ(物料单耗×碳因子) + Σ工序(单位能耗×电网因子(省))；对比欧盟阈值。
 export function carbonFootprint(args: Record<string, unknown>) {
   const modelId = str(args.modelId);
@@ -366,6 +397,7 @@ export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) =>
   credit_exposure: creditExposure,
   quarterly_gap: quarterlyGap,
   carbon_footprint: carbonFootprint,
+  countermeasure_combo: countermeasureCombo,
 };
 
 /**
@@ -441,6 +473,10 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
     }
     case "quarterly_gap":
       return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args };
+    case "countermeasure_combo": {
+      const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
+      return { gap: num(args.gap, Math.round(totalDemand * 0.15)), ...args };
+    }
     case "mitigation_select":
       return { tightness: 85, ...args };
     default:

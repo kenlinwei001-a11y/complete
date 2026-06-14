@@ -667,6 +667,33 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
         ],
       },
     },
+    {
+      // Phase6E：AnnualScenario 根的 plan/finance 专用切片（年度 AOP 决策）。
+      // 修复「plan 子图仅 scenario 根可达、Order 根够不到」——以情景为根展开 目标/投资/财务。
+      sliceKey: "aop_scenario_chain",
+      version: 1,
+      spec: {
+        root: { typeKey: "AnnualScenario", selector: { filter: { key: "{{args.key}}" } } },
+        paths: [
+          [{ linkKey: "scenario_to_target", direction: "out", limitPerNode: 40, project: ["tgtId", "period", "level", "value"] }],
+          [{ linkKey: "scenario_to_capex", direction: "out", project: ["projectId", "name", "irr", "util24", "c23pass"] }],
+          [{ linkKey: "scenario_to_finance", direction: "out", project: ["metricId", "cashCushion", "irr", "capexSpent", "netMargin"] }],
+        ],
+        maxNodes: 200,
+        contractFixtures: [
+          {
+            name: "基准情景根可达 plan + finance 两域",
+            args: { key: "baseline" },
+            expect: {
+              rootType: "AnnualScenario",
+              minNodes: 5,
+              mustIncludeTypes: ["AnnualScenario", "PlanTarget", "CapexProject", "FinanceMetric"],
+              mustIncludeLinkKeys: ["scenario_to_target", "scenario_to_capex", "scenario_to_finance"],
+            },
+          },
+        ],
+      },
+    },
   ];
 }
 

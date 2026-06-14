@@ -11,7 +11,7 @@ describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", (
     expect(forecast).toBeDefined();
     expect(forecast!.description.length).toBeGreaterThan(0); // 「没有描述就不允许发布」纪律
     expect(Object.keys(forecast!.argHints).length).toBeGreaterThan(0);
-    expect(items.length).toBe(21); // 8 复用 + 13 新增（无关键词=全量列表）
+    expect(items.length).toBe(22); // 8 复用 + 13 新增 + 1 编排器（无关键词=全量列表）
     // 带关键词时按上下文预算截断 ≤20
     const q = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers&query=产能", headers: ADMIN })).json() as { items: unknown[] };
     expect(q.items.length).toBeLessThanOrEqual(20);

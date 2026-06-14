@@ -179,4 +179,17 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
     const missing = await t.app.inject({ method: "POST", url: "/a/v1/slices/__nope__/resolve", headers: ADMIN, payload: { args: {} } });
     expect(missing.statusCode).toBe(404);
   });
+
+  it("SL10: aop_scenario_chain 以 AnnualScenario 为根可达 plan+finance(修复 plan 子图 Order 根够不到)", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = (await resolveKey(t, "aop_scenario_chain", { key: "baseline" })).json() as SliceResult;
+    const doms = domainsOf(out);
+    expect(doms.has("plan"), "plan 域可达").toBe(true);
+    expect(doms.has("finance"), "finance 域可达").toBe(true);
+    const types = new Set(out.nodes.map((n) => n.typeKey));
+    for (const want of ["AnnualScenario", "PlanTarget", "CapexProject", "FinanceMetric"]) {
+      expect(types.has(want), `缺类型 ${want}`).toBe(true);
+    }
+  });
 });
