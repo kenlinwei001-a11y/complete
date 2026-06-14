@@ -17,6 +17,8 @@ export interface OntologyClient {
     objectType: string,
     filter: Record<string, unknown>,
     limit?: number,
+    /** 并发一致性 §13.1：任务级快照读（执行器注入 taskEpoch）。 */
+    asOfEpoch?: number,
   ): Promise<ToolPayload>;
   getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload>;
   /** 治理增量 §3.6：聚合下推（避免 agent 拉全量行）。 */
@@ -61,6 +63,11 @@ export interface TimeseriesClient {
   aggQuery(ctx: ToolAuthCtx, input: QueryTimeseriesAggInput): Promise<ToolPayload>;
 }
 
+/** 并发一致性 §13.1：任务级快照锚点——任务首读时捕获租户 epoch。 */
+export interface EpochClient {
+  current(ctx: ToolAuthCtx): Promise<{ epoch: number }>;
+}
+
 /** 能力发现与路由 §1：资源目录发现（discover 工具的 DataCore 出口）。 */
 export interface CatalogClient {
   discover(
@@ -80,6 +87,7 @@ export interface DataCoreClient {
   kb: KbClient;
   timeseries: TimeseriesClient;
   catalog: CatalogClient;
+  epoch: EpochClient;
 }
 
 export class DataCoreUnavailableError extends Error {

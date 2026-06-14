@@ -434,5 +434,6 @@ export function createMockDataCore(): MockDataCore {
     kb: new MockKbClient(),
     timeseries: new MockTimeseriesClient(),
     catalog: new MockCatalogClient(),
+    epoch: { async current() { return { epoch: 1 }; } },
   };
 }

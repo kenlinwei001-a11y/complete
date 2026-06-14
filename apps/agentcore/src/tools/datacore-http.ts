@@ -4,6 +4,7 @@ import {
   DataCoreUnavailableError,
   type ActionClient,
   type CatalogClient,
+  type EpochClient,
   type DataCoreClient,
   type IamClient,
   type KbClient,
@@ -66,8 +67,9 @@ class HttpOntologyClient implements OntologyClient {
     objectType: string,
     filter: Record<string, unknown>,
     limit?: number,
+    asOfEpoch?: number,
   ): Promise<ToolPayload> {
-    return call(this.baseUrl, ctx, "POST", `/a/v1/objects/query`, { objectType, filter, limit });
+    return call(this.baseUrl, ctx, "POST", `/a/v1/objects/query`, { objectType, filter, limit, ...(asOfEpoch !== undefined ? { asOfEpoch } : {}) });
   }
   getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
     return call(
@@ -121,6 +123,13 @@ class HttpTimeseriesClient implements TimeseriesClient {
   constructor(private readonly baseUrl: string) {}
   aggQuery(ctx: ToolAuthCtx, input: QueryTimeseriesAggInput): Promise<ToolPayload> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/timeseries/agg-query`, input);
+  }
+}
+
+class HttpEpochClient implements EpochClient {
+  constructor(private readonly baseUrl: string) {}
+  current(ctx: ToolAuthCtx): Promise<{ epoch: number }> {
+    return call(this.baseUrl, ctx, "GET", `/a/v1/epoch/current`);
   }
 }
 
@@ -182,5 +191,6 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     kb: new HttpKbClient(baseUrl),
     timeseries: new HttpTimeseriesClient(baseUrl),
     catalog: new HttpCatalogClient(baseUrl),
+    epoch: new HttpEpochClient(baseUrl),
   };
 }

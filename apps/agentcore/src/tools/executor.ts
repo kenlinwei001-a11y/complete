@@ -63,10 +63,24 @@ function withTimeout<T>(p: Promise<T>, ms: number | undefined, label: string): P
  * tool_calls audit. Client exceptions wrapped as { ok:false, payload:{ error } } — never thrown.
  */
 export class GuardedToolExecutor {
+  /** §13.1 任务级快照锚点：本执行器（=一次任务运行）首读时捕获，之后复用。 */
+  private taskEpoch?: number;
+
   constructor(
     private readonly deps: ExecutorDeps,
     private readonly opts: ExecutorOptions,
   ) {}
+
+  /** 首读捕获租户 epoch；失败（如 DataCore 不支持）则返回 undefined → 读路径退化为活数据。 */
+  private async taskSnapshotEpoch(ctx: ToolAuthCtx): Promise<number | undefined> {
+    if (this.taskEpoch !== undefined) return this.taskEpoch;
+    try {
+      this.taskEpoch = (await this.deps.dataCore.epoch.current(ctx)).epoch;
+    } catch {
+      this.taskEpoch = undefined;
+    }
+    return this.taskEpoch;
+  }
 
   get authCtx(): ToolAuthCtx {
     return this.opts.ctx;
@@ -181,6 +195,8 @@ export class GuardedToolExecutor {
           String(args.objectType),
           (args.filter ?? {}) as Record<string, unknown>,
           args.limit === undefined ? undefined : Math.min(Number(args.limit), 200),
+          // 并发一致性 §13.1：任务内首读捕获 taskEpoch，后续读复用 → 任务级快照一致（近似 MVCC）
+          await this.taskSnapshotEpoch(ctx),
         );
       case "get_object":
         return this.deps.dataCore.ontology.getObject(ctx, String(args.objectType), String(args.objectId));
