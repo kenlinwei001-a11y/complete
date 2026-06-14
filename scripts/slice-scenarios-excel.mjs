@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCALE = process.argv[2] ?? "L";
-const SLICE = "order_fulfillment_360";
+const SLICE = process.argv[3] ?? "order_fulfillment_360"; // 可传 order_to_cash_720 / enterprise_360 出 8 域证据
 const HDR = { "content-type": "application/json", "x-debug-user": "demo:admin:admin" };
 
 let A, children = [];
@@ -242,7 +242,7 @@ try {
 
   const outDir = join(ROOT, "deliverables");
   mkdirSync(outDir, { recursive: true });
-  const outPath = join(outDir, "跨域切片-两场景推演节点.xls");
+  const outPath = join(outDir, `${SLICE === "order_fulfillment_360" ? "跨域切片-两场景推演节点" : SLICE + "-8域推演节点"}.xls`);
   writeFileSync(outPath, "﻿" + xml, "utf8");
   console.log(`\n✅ 已导出 Excel：${outPath}`);
   console.log(`   场景① ${s1nodes.size} 节点/${s1edges.size} 边 · 场景② ${s2nodes.size} 节点/${s2edges.size} 边`);
