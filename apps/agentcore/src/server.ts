@@ -152,6 +152,33 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl });
   });
 
+  // Phase9C 推演历史列表：按租户列最近任务（id/问句/路径/状态/结论摘要/时间），供"推演历史"页浏览+重放。
+  app.get("/api/v1/queries", async (req) => {
+    const a = await auth(req);
+    const q = req.query as { limit?: string };
+    const limit = Math.min(Math.max(1, Number(q.limit ?? "50") || 50), 200);
+    const tasks = await deps.repos.tasks.listByTenant(a.tenantId, limit);
+    return {
+      items: tasks.map((t) => {
+        const firstText = t.answer?.blocks.find((b) => b.type === "text");
+        const answerText = firstText && firstText.type === "text" ? firstText.markdown : "";
+        return {
+          taskId: t.id,
+          query: t.query,
+          path: t.path ?? null,
+          status: t.status,
+          view: (t.context as { view?: string } | undefined)?.view ?? null,
+          conversationId: t.conversationId,
+          classification: t.classification ?? null,
+          answerSummary: answerText.slice(0, 200),
+          createdAt: t.createdAt,
+          completedAt: t.completedAt ?? null,
+        };
+      }),
+      total: tasks.length,
+    };
+  });
+
   app.get("/api/v1/queries/:taskId/events", async (req, reply) => {
     const a = await auth(req);
     const { taskId } = req.params as { taskId: string };

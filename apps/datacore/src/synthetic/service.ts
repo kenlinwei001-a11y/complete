@@ -986,6 +986,7 @@ export class SyntheticService {
       { key: "mcp", label: "MCP 服务器" },
       { key: "scenes", label: "场景入口" },
       { key: "ops/fallback", label: "兜底运营" },
+      { key: "query-history", label: "推演历史" },
     ];
     // 不同账号不同前端：admin 全量（含 admin 导航组），planner 业务视图，base_manager 子集 + 不同主题强调色。
     const baseManagerExtras = extraViews.filter((v) => v === "order-chain" || v === "review");

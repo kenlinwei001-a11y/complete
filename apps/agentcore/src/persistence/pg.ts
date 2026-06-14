@@ -174,6 +174,13 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         );
         return r.rows.map(rowToTask);
       },
+      async listByTenant(tenantId, limit) {
+        const r = await q(
+          `SELECT * FROM query_tasks WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2`,
+          [tenantId, limit],
+        );
+        return r.rows.map(rowToTask);
+      },
       async listStuckExecuting(cutoffIso) {
         const r = await q(
           `SELECT * FROM query_tasks WHERE status LIKE 'EXECUTING_%' AND created_at < $1`,

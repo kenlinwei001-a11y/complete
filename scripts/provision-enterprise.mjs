@@ -53,7 +53,8 @@ function spawnService(script, env) {
   let log = ""; child.stdout.on("data", (c) => (log += c)); child.stderr.on("data", (c) => (log += c));
   child.tail = () => log.split("\n").slice(-15).join("\n"); children.push(child); return child;
 }
-async function waitFor(url, timeoutMs = 60000) {
+async function waitFor(url, timeoutMs = 180000) {
+  // 注：pg 模式 + SEED_DEMO 启动种子在 listen 前同步执行(~50s)，故等待放宽到 180s。
   const t0 = Date.now();
   for (;;) { try { if ((await fetch(url)).ok) return; } catch { /* retry */ }
     if (Date.now() - t0 > timeoutMs) throw new Error(`timeout: ${url}`); await new Promise((r) => setTimeout(r, 300)); }
@@ -101,7 +102,10 @@ try {
   console.log(`【2】一键合成工业级数据（scale=${SCALE}）`);
   // livedIn=true：标准合成后回放一年（T−365d→T0），把全过程写入 lived_in_states →
   // 运营回顾(history/bundle) 可见 12 月产出/已交付订单/风险案例/Action 审计/MAPE/S&OP 历史。
-  const job = await a("/a/v1/synthetic/jobs", { body: { industry: "battery-manufacturing", scale: SCALE, seed: 42, livedIn: true } });
+  // livedIn 默认开启；PROVISION_LIVEDIN=0 关闭(pg 模式下 365 天回放很慢、易超 fetch headers 超时，
+  // 仅需 10 场景历史时可关)。
+  const livedIn = process.env.PROVISION_LIVEDIN !== "0";
+  const job = await a("/a/v1/synthetic/jobs", { body: { industry: "battery-manufacturing", scale: SCALE, seed: 42, livedIn } });
   if (job.status !== 202) throw new Error("合成失败：" + JSON.stringify(job.body));
   log("合成作业完成", `job=${job.body.id}${job.body.livedIn ? ` · 回放 ${job.body.livedIn.days} 天/${job.body.livedIn.batches} 批` : ""}`);
 
@@ -288,6 +292,44 @@ try {
   if (await writeHistory("s04_audit", { question: "现金垫 55 亿、毛利目标 18% 过得了体检吗？", answer: ans2, trustLevel: "VERIFIED_WORKFLOW", date: today })) histWritten++;
   log("5c · 历史推演回写", `${histWritten} 个场景入口已写入本次仿真的全过程/数据/结果（对话坞可见）`);
   report.historyWritten = histWritten;
+
+  // 5d · 把其余 8 个场景也真跑一遍并落历史 → 10 个场景对话坞全部可见历史推演。
+  console.log("【5d】其余 8 个场景真跑 + 历史回写（经切片检索代表订单 → 求解器出结果）");
+  const probe10 = await a(`/a/v1/ontology/slices/order_to_cash_720/resolve`, { body: { args: { so: "SO-10001" } } });
+  const repNodes = (probe10.body?.nodes ?? []).length; // 10 域代表订单节点数（每场景共用的“经切片检索”证据）
+  const scalar = (v) => v == null || typeof v === "object" ? null : v;
+  const summarizeResult = (data) => {
+    const parts = [];
+    for (const [k, v] of Object.entries(data)) {
+      const s = scalar(v);
+      if (s !== null && parts.length < 6) parts.push(`${k}=${s}`);
+    }
+    return parts.length ? parts.join("；") : "（结构化结果，详见对应视图）";
+  };
+  // agentKey, 问句, solver, args（原生求解器给确定性 args；扩展求解器 {} 由 deriveExtendedArgs 兜底）
+  const RUNS = [
+    ["s01_feasibility", "4680-NCM 加 20% 六周能不能接？", "capacity_forecast", { modelId: "4680-NCM", upliftPct: 20, weeks: 6 }],
+    ["s07_cert", "待认证的型号怎么排认证顺序？", "cert_schedule", {}],
+    ["s08_kit", "下周哪些订单缺料开不了工？", "kit_readiness", {}],
+    ["s10_inventory", "哪些物料超储欠储？能释放多少资金？", "inventory_optimize", {}],
+    ["s15_quote", "电网公司 F 这单毛利过线吗？", "quote_margin", {}],
+    ["s16_credit", "商用车集团 G 还能接新单吗？", "credit_exposure", { custName: "商用车集团G" }],
+    ["s17_capex", "枣庄储能线值得投吗？", "capex_scenario", {}],
+    ["s20_carbon", "4680-NCM 出口欧盟的碳足迹达标吗？", "carbon_footprint", { modelId: "4680-NCM", baseName: "成都" }],
+  ];
+  let runWritten = 0;
+  for (const [agentKey, question, solver, args] of RUNS) {
+    const r = await a(`/a/v1/solvers/${solver}/invoke`, { body: { args } });
+    const data = r.body?.data ?? {};
+    const snap = r.body?.snapshotVersion ?? "?";
+    const ok = r.status === 200;
+    const answer = ok
+      ? `经切片 order_to_cash_720 检索代表订单（${repNodes} 节点，跨 10 域）+ ${solver} 求解（snapshot ${snap}）。【结果】${summarizeResult(data)}；数字可下钻溯源。`
+      : `求解器 ${solver} 返回 ${r.status}：${JSON.stringify(r.body).slice(0, 160)}`;
+    if (await writeHistory(agentKey, { question, answer, trustLevel: "VERIFIED_WORKFLOW", date: today })) runWritten++;
+  }
+  log("5d · 其余场景历史回写", `${runWritten}/8 个场景已写入真实求解结果（合计 ${histWritten + runWritten}/10 场景对话坞可见历史）`);
+  report.historyWritten = histWritten + runWritten;
 
   // -------------------------------------------------------------------------
   // 6 · 配置清单

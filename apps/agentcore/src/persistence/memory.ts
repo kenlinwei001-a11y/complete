@@ -115,6 +115,13 @@ export function createMemoryRepos(): Repos {
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
           .map(clone);
       },
+      async listByTenant(tenantId, limit) {
+        return [...tasks.values()]
+          .filter((t) => t.tenantId === tenantId)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, limit)
+          .map(clone);
+      },
       async listStuckExecuting(cutoffIso) {
         return [...tasks.values()]
           .filter((t) => t.status.startsWith("EXECUTING_") && t.createdAt < cutoffIso)

@@ -455,6 +455,22 @@ export const submitQuery = (body: { packageId: string; query: string; context: S
   });
 
 export const fetchTask = (taskId: string) => api.b<QueryTask>(`/b/v1/queries/${taskId}`);
+
+/** Phase9C 推演历史列表（按租户最近任务）。 */
+export interface QueryHistoryItem {
+  taskId: string;
+  query: string;
+  path: string | null;
+  status: string;
+  view: string | null;
+  conversationId: string;
+  classification: { intentKey?: string; confidence?: number } | null;
+  answerSummary: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+export const fetchQueryHistory = (limit = 100) =>
+  api.b<{ items: QueryHistoryItem[]; total: number }>(`/b/v1/queries?limit=${limit}`);
 export const replyClarification = (
   taskId: string,
   body: { kind: "INTENT_CHOICE" | "SLOT_FILLING"; chosenIntentKey?: string; slotValues?: Record<string, unknown>; none?: true },
