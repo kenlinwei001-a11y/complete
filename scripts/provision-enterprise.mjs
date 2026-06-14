@@ -105,16 +105,26 @@ try {
   if (job.status !== 202) throw new Error("合成失败：" + JSON.stringify(job.body));
   log("合成作业完成", `job=${job.body.id}${job.body.livedIn ? ` · 回放 ${job.body.livedIn.days} 天/${job.body.livedIn.batches} 批` : ""}`);
 
-  // 2b · 追加 C26–C33 约束（场景目录 §3；经 /a/v1/rules 创建 + 发布，DSL 校验通过）
+  // 2b · 追加约束（场景目录 §3；经 /a/v1/rules 创建 + 发布，DSL 校验通过）。
+  // ⚠ 规则 DSL 语义：表达式为真 = 越线(violation)。故全部写「越线条件」（非合规条件），
+  //    并保证引用属性已落在对象上（Phase3 已补 demandDelta/devPct/carbonFootprint/coverageDays 等）。
   const CONSTRAINTS = [
-    ["C26", "认证资源上限", "Certification.certHours <= 200", ["Certification"], "BLOCK"],
-    ["C27", "长协执行偏差", "Material.devPct <= 0.05", ["Material"], "WARN"],
-    ["C28", "呆滞预警", "MaterialBatch.idleDays <= 90", ["MaterialBatch"], "WARN"],
-    ["C29", "排产冻结期", "Order.leadDays >= 3", ["Order"], "BLOCK"],
-    ["C30", "良率连降停线评审", "Process.yield >= 0.9", ["Process"], "BLOCK"],
-    ["C31", "外协质量门", "Material.outsourceYield >= 0.93", ["Material"], "BLOCK"],
-    ["C32", "逾期冻结", "Customer.maxOverdueDays <= 30", ["Customer"], "BLOCK"],
-    ["C33", "碳护照前置", "Model.carbonFootprint <= 70", ["Model"], "BLOCK"],
+    // 之前缺失、被求解器/处置库引用但未发布的 6 条
+    ["C01", "产能设计上限", "Base.util > 0.95", ["Base"], "WARN"],
+    ["C06", "物料齐套安全库存", "Material.onHand < 800", ["Material"], "WARN"],
+    ["C09", "数据时延临时降级", "DataSourceHealth.lagHours > 2", ["DataSourceHealth"], "WARN"],
+    ["C15", "接单毛利红线", "Segment.gmRate < 14", ["Segment"], "BLOCK"],
+    ["C21", "大额订单升级评审", "Order.qty > 2400", ["Order"], "WARN"],
+    ["C22", "冻结期产线超载", "Process.utilization > 0.95", ["Process"], "WARN"],
+    // C26–C33：表达式改为「越线条件」（修复此前误写为合规条件的反转语义）
+    ["C26", "认证资源上限", "Certification.certHours > 200", ["Certification"], "BLOCK"],
+    ["C27", "长协执行偏差", "Material.devPct > 0.05", ["Material"], "WARN"],
+    ["C28", "呆滞预警", "MaterialBatch.idleDays > 90", ["MaterialBatch"], "WARN"],
+    ["C29", "排产冻结期违规", "Order.leadDays < 3", ["Order"], "BLOCK"],
+    ["C30", "良率连降停线评审", "Process.yield < 0.9", ["Process"], "BLOCK"],
+    ["C31", "外协质量门", "Material.outsourceYield < 0.93", ["Material"], "BLOCK"],
+    ["C32", "逾期冻结", "Customer.maxOverdueDays > 30", ["Customer"], "BLOCK"],
+    ["C33", "碳护照前置", "Model.carbonFootprint > 70", ["Model"], "BLOCK"],
   ];
   let constraintsCreated = 0;
   const existingRules = (await a("/a/v1/rules")).body ?? [];

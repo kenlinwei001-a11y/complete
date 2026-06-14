@@ -292,6 +292,8 @@ const modelProps: PropertyDef[] = [
   { propKey: "name", dataType: "string", isPrimaryKey: false },
   { propKey: "bases", dataType: "json", isPrimaryKey: false },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false },
+  // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
+  { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false },
 ];
 const modelDerived: DerivedPropertyDef[] = [
   { propKey: "totalDemand", formula: "SUM(Order.qty BY model)" },
@@ -306,6 +308,11 @@ const orderProps: PropertyDef[] = [
   { propKey: "due", dataType: "date", isPrimaryKey: false },
   { propKey: "bases", dataType: "json", isPrimaryKey: false },
   { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  // 约束扫描所需字段（C03/C08/C13/C29）—— 确定性派生，植入少量越线行让规则真触发。
+  { propKey: "demandDelta", dataType: "number", isPrimaryKey: false },
+  { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false },
+  { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false },
+  { propKey: "leadDays", dataType: "number", isPrimaryKey: false },
 ];
 const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
 
@@ -364,6 +371,7 @@ const shipmentProps: PropertyDef[] = [
   { propKey: "etaDay", dataType: "number", isPrimaryKey: false }, // relative to forecastStart
   { propKey: "status", dataType: "enum", isPrimaryKey: false }, // IN_TRANSIT | ARRIVED | DELAYED
   { propKey: "qtyTons", dataType: "number", isPrimaryKey: false },
+  { propKey: "coverageDays", dataType: "number", isPrimaryKey: false }, // C16 齐套覆盖天数（常州在途偏紧 → 越线）
 ];
 
 const dataHealthProps: PropertyDef[] = [
@@ -885,6 +893,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       name: m.name,
       bases: shuffled.slice(0, n).sort(),
       unitPrice: randInt(rng, 380, 980),
+      // C33：NCM 体系碳足迹 >70 阈值（越线），LFP 达标。
+      carbonFootprint: m.modelId.includes("NCM") ? 76 : 58,
     };
   });
 
@@ -897,8 +907,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const orderBases = Array.from({ length: nBases }, (_, k) => producible[(start + k) % producible.length] as string).sort();
     const dueDay = randInt(rng, 0, 180);
     const due = new Date(Date.UTC(2026, 6, 1) + dueDay * 86400000).toISOString().slice(0, 10);
+    const so = `SO-${String(10001 + i).padStart(5, "0")}`;
+    // 约束扫描字段：从确定性量(i / hashString(so) / dueDay)派生，不动 rng 流（保持既有字节级一致）；
+    // 按固定步长植入越线行：C03 demandDelta>0.5、C08 outsourceRatio>0.2、C13 creditUsedRatio>1、C29 leadDays<3。
     orders.push({
-      so: `SO-${String(10001 + i).padStart(5, "0")}`,
+      so,
       cust: pick(rng, CUSTOMERS),
       model: model.modelId,
       qty: randInt(rng, 100, 2500),
@@ -906,6 +919,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       bases: orderBases,
       status: "OPEN",
       unitPrice: model.unitPrice, // copied for the derived value formula
+      demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
+      outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),
+      creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
+      leadDays: dueDay,
     });
   }
 
@@ -1026,6 +1043,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     etaDay: randInt(rngShip, 2, 16),
     status: "IN_TRANSIT",
     qtyTons: randInt(rngShip, 60, 240),
+    coverageDays: b.baseId === "changzhou" ? 2 : 5, // C16：常州在途覆盖 <3 天（越线戏剧点）
   }));
 
   const dataHealth = [

@@ -79,6 +79,29 @@ describe("A7 synthetic data", () => {
     expect(pass.find((v) => v.ruleId === "C08")).toMatchObject({ passed: false, severity: "WARN" });
   });
 
+  it("SY-rules-live: 约束在真实合成数据上真触发（C03/C08/C13 ruleScan violations>0）—— Phase3 修复哑弹规则", async () => {
+    const t = await makeApp();
+    const job = await runJob(t);
+    const scan = job.report!.ruleScan;
+    for (const key of ["C03", "C08", "C13"]) {
+      const r = scan.find((s) => s.ruleKey === key);
+      expect(r, `${key} 进入扫描`).toBeTruthy();
+      expect(r!.evaluated, `${key} 扫描了订单`).toBeGreaterThan(0);
+      expect(r!.violations, `${key} 命中越线行(规则真触发，非哑弹)`).toBeGreaterThan(0);
+    }
+    // 新增约束字段已落到对象上（C29/C33/C16/C27/C31 的承载属性）
+    const order = (await t.repos.objects.listByType("demo", "Order"))[0]!;
+    for (const p of ["demandDelta", "outsourceRatio", "creditUsedRatio", "leadDays"]) {
+      expect(order.props[p], `Order.${p} 存在`).not.toBeUndefined();
+    }
+    const model = (await t.repos.objects.listByType("demo", "Model"))[0]!;
+    expect(model.props.carbonFootprint, "Model.carbonFootprint 存在").not.toBeUndefined();
+    const material = (await t.repos.objects.listByType("demo", "Material"))[0]!;
+    for (const p of ["devPct", "outsourceYield"]) expect(material.props[p], `Material.${p} 存在`).not.toBeUndefined();
+    const ship = (await t.repos.objects.listByType("demo", "Shipment"))[0]!;
+    expect(ship.props.coverageDays, "Shipment.coverageDays 存在").not.toBeUndefined();
+  });
+
   it("SY2: cross-module consistency — same numbers come from the same object instance", async () => {
     const t = await makeApp();
     await runJob(t);

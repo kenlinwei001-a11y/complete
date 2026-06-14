@@ -27,7 +27,7 @@ const def = (key: string, displayName: string, domain: string, props: PropertyDe
 
 export function extendedObjectTypes(): TypeDef[] {
   return [
-    def("Material", "物料", "supply", [p("matId", "string", true), p("name", "string"), p("unitPrice"), p("leadTime"), p("carbonFactor"), p("bomUnit"), p("dailyUse"), p("onHand"), p("inTransit")]),
+    def("Material", "物料", "supply", [p("matId", "string", true), p("name", "string"), p("unitPrice"), p("leadTime"), p("carbonFactor"), p("bomUnit"), p("dailyUse"), p("onHand"), p("inTransit"), p("devPct"), p("outsourceYield")]),
     def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
     def("Customer", "客户", "commercial", [p("custId", "string", true), p("custName", "string"), p("creditLimit"), p("termDays"), p("receivables"), p("wipUnbilled"), p("maxOverdueDays")]),
     def("ARInvoice", "应收发票", "commercial", [p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays")]),
@@ -89,6 +89,9 @@ export function generateExtended(
     dailyUse: round(50 + rng() * 200, 1),
     onHand: round(500 + rng() * 4000, 0),
     inTransit: round(rng() * 1500, 0),
+    // C27 长协执行偏差 / C31 外协质量门：从 matId 确定性派生，各植入一处越线。
+    devPct: m.matId === "pos_ncm" ? 0.08 : 0.02,
+    outsourceYield: m.matId === "sep_film" ? 0.91 : 0.95,
   }));
 
   // MaterialBatch：每物料 batchesPerMat 批，植入 6 批 >90 日呆滞（XL=工业级 2000 批）
