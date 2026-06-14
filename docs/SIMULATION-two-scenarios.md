@@ -82,3 +82,89 @@
 - **二次推演**：改输入（订单/计划口径/规则参数）后重算；同 (seed/args/snapshot) 确定性一致。
 - **权限**：行级策略贯穿求解器取数（base_manager 只见本基地）。
 - **持久化**：对 PG 部署运行 `--remote` 后，以上配置与数据落库，部署重启后依旧可见、可继续推演。
+
+---
+
+# 补充（表格版）· 推演链条 / 模块数据量 / 引用与上下游
+
+## A. 推演链条（两场景逐环表）
+
+### A1 · 推演·受影响订单（链条）
+
+| # | 环节 | 模块 | 输入 | 处理 | 输出 | 引用数据量 |
+|---|---|---|---|---|---|---|
+| 1 | 鉴权 | AgentCore A0 | JWT | 验签取 tid/sub/roles | RequestAuth | — |
+| 2 | 功能门禁 | DataCore 功能开通 | solverKey | requireFeatureTag | 放行/404 | — |
+| 3 | 行级取数 | DataCore A6+A4 | baseId | queryObjects(Order)+rowAllowed | visibleOrders | **Order 10000** |
+| 4 | 上下文 | DataCore A4 | tenant | loadContext(核心类型) | SolverContext | Base12+Model6+Line12+Process60+Equip72+MaintPlan12+Shipment12+Segment3 |
+| 5 | 求解 | DataCore S1 求解器 | ctx+窗口 | affectedOrders [day−7,+14] | affected/problems/rootChain | 命中 **45 单** |
+| 6 | 快照 | DataCore A4 §1 | — | snapshotVersion | "1.2" | — |
+| 7 | 溯源返回 | AgentCore→前端 | data | provenance ⟦ref⟧ | 表+结论 | — |
+
+### A2 · 规划体检（链条）
+
+| # | 环节 | 模块 | 输入 | 处理 | 输出 | 引用数据量 |
+|---|---|---|---|---|---|---|
+| 1 | 鉴权+门禁 | AgentCore/DataCore | JWT, plan_audit | 验签+entitlement | 放行 | — |
+| 2 | 细分毛利 | DataCore A4 细分对象 | tenant | segMargins(取应用细分) | wPas/wEss/wCom×margin | **Segment 3** |
+| 3 | 规则联动 | DataCore A5 规则库 | 计划口径 | C15/C16/C18 代入 | H/M/S 条目 | 约束 15 |
+| 4 | 评分 | DataCore S1 | H/M 罚分 | params.audit 权重 | 评分/结论 | — |
+| 5 | 试修/二次体检 | DataCore A4 | fix.patch | 一键试修→重算（生效走 S2 审批） | 新评分 | — |
+
+## B. 引用的模块 × 每模块数据量（XL 档真实计数）
+
+| 数据域 | 对象类型 | 数据量 | 被哪些场景/求解器引用 |
+|---|---|---|---|
+| product | **Order 订单** | **10000** | 推演·受影响订单 / 产能推演 / 体检(dem) / 聚合 |
+| product | Model 型号 | 6 | 几乎全部场景 |
+| product | Segment 细分 | 3 | **规划体检(毛利结构)** / S&OP |
+| factory | Base 基地 | 12 | 推演 / 产能上卷 / 瓶颈 |
+| factory | Line 产线 | 12 | 产能上卷 / 换型 |
+| factory | Equipment 设备 | 72 | 产能上卷 / 良率 |
+| factory | Certification 认证 | 18 | 认证排期 |
+| factory | EnergyMeter 能耗 | 12 | 碳足迹 |
+| factory | ChangeoverMatrix 换型矩阵 | 30 | 换型排序 |
+| process | Process 工序 | 60 | 产能上卷 / 良率诊断 |
+| equip | MaintPlan 检修计划 | 12 | 检修错峰 |
+| capacity | Shipment 发运 | 12 | 物流 / 交付 |
+| supply | **MaterialBatch 物料批次** | **2000** | 库存优化 / 齐套 |
+| supply | **PurchaseOrder 采购单** | **3000** | 齐套 / 长协补缺 |
+| supply | Material 物料 | 8 | 齐套 / 库存 / 碳足迹 |
+| supply | CarbonFactor 碳因子 | 14 | 碳足迹 |
+| commercial | **ARInvoice 应收发票** | **2400** | 客户信用 |
+| commercial | Customer 客户 | 60 | 信用风险 / 毛利 |
+| plan | PlanTarget 目标分解 | 17 | 计划域 / AOP |
+| plan | AnnualScenario 年度情景 | 3 | 产能投资 |
+| plan | ScenarioTrigger 触发条件 | 4 | 情景监测 |
+| plan | CapexProject 投资项目 | 3 | 产能投资评审 |
+| quality | DataSourceHealth 数据健康 | 1 | 降级/数据健康 |
+| 时序层 (A8) | 时序聚合规约 | **6 系列** × 12基地/72设备 × **90 天** | 良率/OEE/能耗 → 求解器输入 |
+
+**对象总量 ≈ 17,759 条**（23 类型 · 10 数据域）+ 90 天时序。
+
+## C. 这两个场景共引用了多少数据
+
+| 场景 | 直接读取的数据（量） | 输出 |
+|---|---|---|
+| 推演·受影响订单 | Order **10000**（行过滤后）+ Base12+Model6+Line12+Process60+Equip72+MaintPlan12+Shipment12+Segment3 ≈ **10,201 条** | 命中 45 单 + problems/rootChain |
+| 规划体检 | Segment 3 + 约束 15 + 计划口径入参（operator 录入，非对象） | 评分 34/100 + 2硬2软3建议 |
+| **合计去重** | **≈ 10,204 条对象**被这两个场景读取（其中订单 10000 为主体） | — |
+
+> 说明：推演侧"重"（读全量订单 + 拓扑），体检侧"轻"（读细分 + 规则 + operator 口径入参）。两者都只读、确定性、可二次推演。
+
+## D. 数据上下游（血缘）
+
+| 对象 | 上游（来源/引用源） | 下游（被谁消费） |
+|---|---|---|
+| Order | A9 合成 / 连接器同步(ERP) / Excel 上传 → RawDataset → 建模发布 → materialize | 受影响订单 / 产能推演 / 体检(dem) / 聚合 / 驾驶舱 |
+| Base/Line/Process/Equipment | 本体 materialize（origin=MATERIALIZED/SYNTHETIC） | 产能上卷 → capacity_forecast / bottleneck / affected_orders |
+| Segment | A9 合成 | 规划体检(毛利结构) / sop_balance |
+| Material/MaterialBatch/PurchaseOrder | 采购连接器 / Excel（预留 API） | kit_readiness / inventory_optimize / lta_gap |
+| Customer/ARInvoice | CRM 连接器 | credit_exposure / quote_margin |
+| EnergyMeter/CarbonFactor | A8 时序 / 主数据 | carbon_footprint |
+| Certification | PLM 连接器 | cert_schedule |
+| 时序点(ts_points) | A8 连接器/合成（90 天） | 聚合规约 → 快照属性 → 派生 → 求解器输入（OEE/良率） |
+| 派生属性 | 上游对象 × derivation 公式（A4 管线） | 驾驶舱/场景/求解器；变上游 → 自动重算（联动刷新 §28） |
+| Action 草稿 | 推演/体检 fix（写降级） | S2 审批 → 写回 objects → 回声对账 → 驾驶舱（闭环） |
+
+> 链条贯通性：上游任一节点变更 → 领域事件 → 下游派生重算/缓存失效（≤SLO）；每个推演数字可经 toolCall→snapshotVersion 反向下钻到来源行。跨 ≥5 域的本体链（product→factory→process→equip→supply→commercial→plan）支撑切片检索与求解器取数。
