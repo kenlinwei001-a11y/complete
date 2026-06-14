@@ -65,6 +65,8 @@ function withTimeout<T>(p: Promise<T>, ms: number | undefined, label: string): P
 export class GuardedToolExecutor {
   /** §13.1 任务级快照锚点：本执行器（=一次任务运行）首读时捕获，之后复用。 */
   private taskEpoch?: number;
+  /** #6 任务内 READ 结果缓存（key=tool|canonicalArgs）；与任务级快照同生命周期。 */
+  private readonly readCache = new Map<string, unknown>();
 
   constructor(
     private readonly deps: ExecutorDeps,
@@ -151,9 +153,17 @@ export class GuardedToolExecutor {
       }
     }
 
-    // 3) client call
+    // 3) client call — #6 任务内 READ 结果记忆化（仅 BUILTIN READ；COMPUTE/写/MCP 不缓存，
+    // 因 invoke_solver 等有副作用如 M11 forecastSnapshots/calibrationForecasts，缓存会破坏其契约）。
+    // 与 #2 任务级快照一致：任务内 READ 一致，故缓存正确；仍走 finish() 记 tool_call 以保溯源。
+    const cacheable = binding.kind === "BUILTIN" && builtinTool(toolName)?.sideEffect === "READ";
+    const ckey = cacheable ? `${toolName}|${canonicalArgs(input)}` : "";
+    if (cacheable && this.readCache.has(ckey)) {
+      return this.finish(toolName, input, this.readCache.get(ckey), "OK", started, true);
+    }
     try {
       const payload = await withTimeout(this.dispatch(toolName, input, binding), options?.timeoutMs, toolName);
+      if (cacheable) this.readCache.set(ckey, payload);
       return this.finish(toolName, input, payload, "OK", started, true);
     } catch (err) {
       return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
@@ -326,6 +336,26 @@ export class GuardedToolExecutor {
     await this.deps.repos.toolCalls.insert(row);
     this.deps.metrics.toolCalls.inc({ tool: toolName, outcome });
     return { ok, payload, toolCallId, outcome, durationMs };
+  }
+}
+
+/** #6 稳定参数键：键名排序后序列化，使 {a,b} 与 {b,a} 命中同一缓存。 */
+function canonicalArgs(input: unknown): string {
+  const norm = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(norm);
+    if (v && typeof v === "object") {
+      return Object.fromEntries(
+        Object.keys(v as Record<string, unknown>)
+          .sort()
+          .map((k) => [k, norm((v as Record<string, unknown>)[k])]),
+      );
+    }
+    return v;
+  };
+  try {
+    return JSON.stringify(norm(input));
+  } catch {
+    return String(input);
   }
 }
 
