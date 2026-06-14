@@ -449,6 +449,9 @@ export class SyntheticService {
       { domainKey: "people", displayName: "人员", color: "#db2777", ownerUserId: "usr_demo_admin" },
       { domainKey: "plan", displayName: "计划", color: "#ca8a04", ownerUserId: "usr_demo_planner" },
       { domainKey: "finance", displayName: "财务", color: "#059669", ownerUserId: "usr_demo_admin" },
+      // 跨域切片增量：扩展对象类型已使用 supply/commercial 两域，补注册（治理域开关/分组/检索切面才生效）。
+      { domainKey: "supply", displayName: "供给", color: "#0d9488", ownerUserId: "usr_demo_planner" },
+      { domainKey: "commercial", displayName: "商务", color: "#be185d", ownerUserId: "usr_demo_admin" },
       { domainKey: "unassigned", displayName: "未归域", color: "#9ca3af", ownerUserId: null },
     ];
     for (const s of seeds) {
@@ -601,6 +604,36 @@ export class SyntheticService {
       }
     }
 
+    // ---- 8 域切片增量：13 条跨域边中的 11 条（由 ext/g 的对象 FK 确定性派生）----
+    const P = (o: unknown) => o as Record<string, unknown>;
+    // factory（认证）: Model → Certification（cert.modelId）
+    for (const c of ext.certifications) await putLink(`lnk_mhc_${P(c).certId}`, "model_has_cert", oid("Model", P(c).modelId), oid("Certification", P(c).certId));
+    // commercial（应收）: Customer → ARInvoice（按 custName 匹配 custId）
+    const custByName = new Map(ext.customers.map((c) => [String(P(c).custName), String(P(c).custId)]));
+    for (const inv of ext.arInvoices) {
+      const cid = custByName.get(String(P(inv).custName));
+      if (cid) await putLink(`lnk_chi_${P(inv).invoiceId}`, "customer_has_invoice", oid("Customer", cid), oid("ARInvoice", P(inv).invoiceId));
+    }
+    // supply（批次）: Material → MaterialBatch（batch.matId）
+    for (const bt of ext.materialBatches) await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
+    // supply（采购）: Material → PurchaseOrder（po.matId）
+    for (const po of ext.purchaseOrders) await putLink(`lnk_mpo_${P(po).poId}`, "material_supplied_by_po", oid("Material", P(po).matId), oid("PurchaseOrder", P(po).poId));
+    // supply（碳因子）: Material → CarbonFactor（kind=material 时 key=matId）
+    for (const cf of ext.carbonFactors) if (P(cf).kind === "material") await putLink(`lnk_mcf_${P(cf).factorId}`, "material_carbon", oid("Material", P(cf).key), oid("CarbonFactor", P(cf).factorId));
+    // factory（能耗）: Base → EnergyMeter（em.baseId）
+    for (const em of ext.energyMeters) await putLink(`lnk_bem_${P(em).meterId}`, "base_energy_meter", oid("Base", P(em).baseId), oid("EnergyMeter", P(em).meterId));
+    // factory（换型）: Model → ChangeoverMatrix（cm.fromModel）
+    for (const cm of ext.changeoverMatrix) await putLink(`lnk_mco_${P(cm).pairId}`, "model_changeover", oid("Model", P(cm).fromModel), oid("ChangeoverMatrix", P(cm).pairId));
+    // capacity（在途）: Base → Shipment（sh.baseId）
+    for (const sh of g.shipments) await putLink(`lnk_bsh_${P(sh).shipId}`, "base_has_shipment", oid("Base", P(sh).baseId), oid("Shipment", P(sh).shipId));
+    // equip（检修）: Base → MaintPlan（mp.baseId）
+    for (const mp of g.maintPlans) await putLink(`lnk_bmp_${P(mp).planId}`, "base_maint_plan", oid("Base", P(mp).baseId), oid("MaintPlan", P(mp).planId));
+    // product（细分）: Model → Segment（确定性化学体系映射：S192→ess｜L148→com｜其余→pas）
+    const segOf = (modelId: string) => (modelId.includes("S192") ? "ess" : modelId.includes("L148") ? "com" : "pas");
+    for (const m of g.models) await putLink(`lnk_mis_${m.modelId}`, "model_in_segment", oid("Model", m.modelId), oid("Segment", segOf(String(m.modelId))));
+    // quality（数据源）: Base → DataSourceHealth（N:N，每基地挂全部数据源）
+    for (const b of g.bases) for (const dh of g.dataHealth) await putLink(`lnk_bdh_${b.baseId}_${P(dh).sourceId}`, "base_data_health", oid("Base", b.baseId), oid("DataSourceHealth", P(dh).sourceId));
+
     // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
     // （weeklyWan × 认证系数）—— 与 S&OP 平衡台/季度滚动同源，确定性（无时钟/随机）。
     const params = BATTERY_SOLVER_PARAMS as unknown as SolverParamsShape;
@@ -647,6 +680,16 @@ export class SyntheticService {
     await putAll("AnnualScenario", pd.scenarios, "scnId");
     await putAll("ScenarioTrigger", pd.triggers, "trigId");
     await putAll("PlanTarget", pd.planTargets, "tgtId");
+
+    // 8 域切片增量：plan 域 2 条边（情景→目标 / 情景→投资），由 pd 的 key/scenarioKey 确定性派生。
+    for (const t of pd.planTargets) {
+      const scnId = `AOP-2026-${String(P(t).scenarioKey)}`;
+      await putLink(`lnk_s2t_${P(t).tgtId}`, "scenario_to_target", oid("AnnualScenario", scnId), oid("PlanTarget", P(t).tgtId));
+    }
+    for (const s of pd.scenarios) {
+      if (String(P(s).key) === "conservative") continue; // 保守情景不新增产能投资
+      for (const cp of ext.capexProjects) await putLink(`lnk_s2c_${P(s).key}_${P(cp).projectId}`, "scenario_to_capex", oid("AnnualScenario", P(s).scnId), oid("CapexProject", P(cp).projectId));
+    }
 
     // 跨 6 域内置切片 order_fulfillment_360：合成即落库（resolve 不依赖外部配置脚本）。
     for (const s of batteryBuiltinSlices()) {

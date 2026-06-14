@@ -9,12 +9,22 @@ interface SliceResult {
 }
 
 const resolve = (t: Awaited<ReturnType<typeof makeApp>>, args: Record<string, unknown>, headers = ADMIN) =>
-  t.app.inject({
-    method: "POST",
-    url: "/a/v1/ontology/slices/order_fulfillment_360/resolve",
-    headers,
-    payload: { args },
-  });
+  resolveKey(t, "order_fulfillment_360", args, headers);
+
+const resolveKey = (t: Awaited<ReturnType<typeof makeApp>>, key: string, args: Record<string, unknown>, headers = ADMIN) =>
+  t.app.inject({ method: "POST", url: `/a/v1/ontology/slices/${key}/resolve`, headers, payload: { args } });
+
+/** 对象类型 → 数据域（与 BATTERY_TYPE_DOMAIN + 扩展类型同源）。 */
+const TYPE_DOMAIN: Record<string, string> = {
+  Order: "product", Model: "product", Segment: "product",
+  Base: "factory", Line: "factory", Certification: "factory", EnergyMeter: "factory", ChangeoverMatrix: "factory",
+  Process: "process", Equipment: "equip", MaintPlan: "equip",
+  Material: "supply", MaterialBatch: "supply", PurchaseOrder: "supply", CarbonFactor: "supply",
+  Customer: "commercial", ARInvoice: "commercial",
+  Shipment: "capacity", DataSourceHealth: "quality",
+  AnnualScenario: "plan", PlanTarget: "plan", CapexProject: "plan", ScenarioTrigger: "plan",
+};
+const domainsOf = (out: SliceResult) => new Set(out.nodes.map((n) => TYPE_DOMAIN[n.typeKey]).filter(Boolean));
 
 describe("跨 6 域切片 order_fulfillment_360", () => {
   it("SL1: 合成即落库，首单全链可达 product/factory/process/equip/supply/commercial 六域", async () => {
@@ -93,5 +103,61 @@ describe("跨 6 域切片 order_fulfillment_360", () => {
     const ours = body.results.find((r) => r.sliceKey === "order_fulfillment_360");
     expect(ours, "order_fulfillment_360 契约结果存在").toBeTruthy();
     expect(ours!.ok, ours!.diff).toBe(true);
+  });
+});
+
+describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
+  it("SL5: order_to_cash_720 首单可达 8 域（产品/工厂/工艺/设备/供给/商务/产能/质量）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = (await resolveKey(t, "order_to_cash_720", { so: "SO-10001" })).json() as SliceResult;
+    const doms = domainsOf(out);
+    for (const want of ["product", "factory", "process", "equip", "supply", "commercial", "capacity", "quality"]) {
+      expect(doms.has(want), `缺域 ${want}`).toBe(true);
+    }
+    expect(doms.size).toBeGreaterThanOrEqual(8);
+    const types = new Set(out.nodes.map((n) => n.typeKey));
+    for (const want of ["MaterialBatch", "PurchaseOrder", "ARInvoice", "Shipment", "DataSourceHealth"]) {
+      expect(types.has(want), `缺类型 ${want}`).toBe(true);
+    }
+  });
+
+  it("SL6: enterprise_360 首单最大广度可达 8 域 + 认证/能耗/换型/细分/检修节点", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = (await resolveKey(t, "enterprise_360", { so: "SO-10001" })).json() as SliceResult;
+    expect(domainsOf(out).size).toBeGreaterThanOrEqual(8);
+    const types = new Set(out.nodes.map((n) => n.typeKey));
+    for (const want of ["Certification", "EnergyMeter", "ChangeoverMatrix", "Segment", "MaintPlan", "CarbonFactor"]) {
+      expect(types.has(want), `缺类型 ${want}`).toBe(true);
+    }
+  });
+
+  it("SL7: 两条 8 域切片契约 fixture 通过", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const body = (await t.app.inject({ method: "POST", url: "/a/v1/ontology/slice-contracts/run", headers: ADMIN })).json() as {
+      results: { sliceKey: string; ok: boolean; diff?: string }[];
+    };
+    for (const key of ["order_to_cash_720", "enterprise_360"]) {
+      const r = body.results.find((x) => x.sliceKey === key);
+      expect(r, `${key} 契约结果存在`).toBeTruthy();
+      expect(r!.ok, r!.diff).toBe(true);
+    }
+  });
+
+  it("SL8: supply/commercial 域已注册 + 新跨域边经切片可遍历（scenario→plan 边落库）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 域注册
+    const domains = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/domains", headers: ADMIN })).json() as { domainKey: string }[];
+    const dkeys = new Set((Array.isArray(domains) ? domains : []).map((d) => d.domainKey));
+    expect(dkeys.has("supply") && dkeys.has("commercial"), "supply/commercial 域已注册").toBe(true);
+    // enterprise_360 边覆盖新增链路键
+    const ent = (await resolveKey(t, "enterprise_360", { so: "SO-10001" })).json() as SliceResult;
+    const lk = new Set(ent.edges.map((e) => e.linkKey));
+    for (const k of ["model_has_cert", "customer_has_invoice", "material_has_batch", "material_carbon", "base_energy_meter", "base_maint_plan", "model_changeover", "model_in_segment", "base_data_health"]) {
+      expect(lk.has(k), `enterprise_360 缺边 ${k}`).toBe(true);
+    }
   });
 });
