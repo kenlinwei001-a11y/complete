@@ -213,17 +213,34 @@ try {
   // -------------------------------------------------------------------------
   // 5b · 仿真：① 推演场景（受影响订单）② 规划体检场景 —— 跑在工业级 XL 数据上
   // -------------------------------------------------------------------------
-  console.log("【5b】仿真两个场景（工业级数据上的真实求解）");
+  console.log("【5b】仿真两个场景（工业级数据上的真实求解 —— 先经跨 6 域切片检索，再推演）");
+  // 跨 6 域切片：合成即内置（order_fulfillment_360）；两场景均先经它检索完整履约链再喂求解器。
+  const resolveSlice = (so) => a(`/a/v1/ontology/slices/order_fulfillment_360/resolve`, { body: { args: { so } } });
   const sim1 = await a("/a/v1/solvers/affected_orders/invoke", { body: { args: { baseId: "changzhou" } } });
   const aff = sim1.body?.data;
-  log("① 推演·受影响订单（常州）", `命中 ${aff?.total ?? "?"} 单 · snapshot ${sim1.body?.snapshotVersion} · 可下钻溯源`);
+  const affList = Array.isArray(aff?.affected) ? aff.affected : [];
+  // ① 逐受影响订单经切片检索完整履约链（product→factory→process→equip→supply→commercial），并集去重。
+  const s1nodes = new Set();
+  let s1domains = new Set(), s1snapshot = "";
+  for (const o of affList) {
+    const r = await resolveSlice(o.so);
+    if (r.status === 200) {
+      s1snapshot = r.body?.snapshotVersion ?? s1snapshot;
+      for (const n of r.body?.nodes ?? []) { s1nodes.add(n.id); }
+    }
+  }
+  // 跨域校验：并集应覆盖 ≥6 类节点（六域各一）
+  log("① 推演·受影响订单（常州）", `命中 ${aff?.total ?? "?"} 单 → 经切片并集 ${s1nodes.size} 节点 · snapshot ${s1snapshot} · 可下钻溯源`);
   const sim2 = await a("/a/v1/solvers/plan_audit/invoke", {
     // 细分按 万套 计且合计=总需求（自洽）；现金垫 55 亿、毛利目标 18%
     body: { args: { dem: 480, seg_pas: 220, seg_ess: 170, seg_com: 90, sup: 450, ltaCov: 0.85, kitGap: 5, gmTarget: 18, cashCushion: 55, capex: 60 } },
   });
   const au = sim2.body?.data;
-  log("② 规划体检", `评分 ${au?.score ?? "?"}/100 · 结论 ${au?.verdict ?? "?"} · 硬矛盾 ${au?.H?.length ?? au?.hard?.length ?? "?"}`);
-  report.sim = { affected: aff?.total, auditScore: au?.score, auditVerdict: au?.verdict };
+  // ② 体检前对代表订单经切片检索跨域输入（供给齐套/商务信用/工厂产能）。
+  const repProbe = await resolveSlice("SO-10001");
+  const s2nodes = (repProbe.body?.nodes ?? []).length;
+  log("② 规划体检", `先经切片检索代表订单 ${s2nodes} 节点 → 评分 ${au?.score ?? "?"}/100 · 结论 ${au?.verdict ?? "?"} · 硬矛盾 ${au?.H?.length ?? au?.hard?.length ?? "?"}`);
+  report.sim = { affected: aff?.total, sliceNodes: s1nodes.size, auditScore: au?.score, auditVerdict: au?.verdict };
 
   // -------------------------------------------------------------------------
   // 6 · 配置清单

@@ -20,6 +20,7 @@ import {
   BATTERY_SOLVER_PARAMS,
   BATTERY_TEMPLATE,
   BATTERY_TS_AGG_SPECS,
+  batteryBuiltinSlices,
   batteryLinkTypes,
   batteryObjectTypes,
   generateBattery,
@@ -555,6 +556,51 @@ export class SyntheticService {
       });
     }
 
+    // 跨域切片 order_fulfillment_360 的链路边（product→factory→process→equip→supply→commercial）。
+    // 全部由对象 FK 确定性派生（无随机/时钟），同 seed 字节级一致。
+    const oid = (type: string, pk: unknown) => `obj_${type.toLowerCase()}_${String(pk)}`.replace(/[^\w-]/g, "_");
+    const putLink = async (idRaw: string, type: string, fromId: string, toId: string, props?: Record<string, unknown>) => {
+      await this.repos.links.put({
+        id: idRaw.replace(/[^\w-]/g, "_"),
+        tenantId: ctx.tenantId,
+        type,
+        fromId,
+        toId,
+        ...(props ? { props } : {}),
+        origin,
+      });
+    };
+    // factory: Line → Base（Line.baseId）
+    for (const l of g.lines) {
+      await putLink(`lnk_lbb_${l.lineId}`, "line_belongs_to_base", oid("Line", l.lineId), oid("Base", l.baseId));
+    }
+    // process: Line → Process（Process.lineId）
+    for (const pr of g.processes) {
+      await putLink(`lnk_lhp_${pr.processId}`, "line_has_process", oid("Line", pr.lineId), oid("Process", pr.processId));
+    }
+    // equip: Equipment → Process（Equipment.processId）
+    for (const eq of g.equipment) {
+      await putLink(`lnk_eui_${eq.equipId}`, "equip_used_in", oid("Equipment", eq.equipId), oid("Process", eq.processId));
+    }
+    // supply: Model → Material（确定性 BOM：每型号取 4 种物料，按型号序错位选取，覆盖全部 8 料）
+    const matIds = ext.materials.map((m) => String((m as { matId: string }).matId));
+    for (let mi = 0; mi < g.models.length; mi++) {
+      const m = g.models[mi] as { modelId: string };
+      const bom = Array.from({ length: 4 }, (_, k) => matIds[(mi * 2 + k) % matIds.length] as string);
+      for (const matId of new Set(bom)) {
+        await putLink(`lnk_mum_${m.modelId}_${matId}`, "model_uses_material", oid("Model", m.modelId), oid("Material", matId));
+      }
+    }
+    // commercial: Order → Customer（按订单序轮转绑定，覆盖全部客户）
+    const custIds = ext.customers.map((c) => String((c as { custId: string }).custId));
+    if (custIds.length > 0) {
+      for (let oi = 0; oi < g.orders.length; oi++) {
+        const o = g.orders[oi] as { so: string };
+        const custId = custIds[oi % custIds.length] as string;
+        await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId });
+      }
+    }
+
     // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
     // （weeklyWan × 认证系数）—— 与 S&OP 平衡台/季度滚动同源，确定性（无时钟/随机）。
     const params = BATTERY_SOLVER_PARAMS as unknown as SolverParamsShape;
@@ -601,6 +647,17 @@ export class SyntheticService {
     await putAll("AnnualScenario", pd.scenarios, "scnId");
     await putAll("ScenarioTrigger", pd.triggers, "trigId");
     await putAll("PlanTarget", pd.planTargets, "tgtId");
+
+    // 跨 6 域内置切片 order_fulfillment_360：合成即落库（resolve 不依赖外部配置脚本）。
+    for (const s of batteryBuiltinSlices()) {
+      await this.repos.sliceSpecs.put({
+        id: `slice_${s.sliceKey}`.replace(/[^\w-]/g, "_"),
+        tenantId: ctx.tenantId,
+        sliceKey: s.sliceKey,
+        version: s.version,
+        spec: s.spec,
+      });
+    }
     return n;
   }
 

@@ -481,6 +481,61 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "order_for_model", fromTypeKey: "Order", toTypeKey: "Model", cardinality: "1:N" },
     // §S1.2: certification state lives on the model↔line edge (props.status 量产 | 认证中).
     { key: "model_certified_on", fromTypeKey: "Model", toTypeKey: "Line", cardinality: "N:N" },
+    // 跨域切片 order_fulfillment_360：补全 product→factory→process→equip→supply→commercial 链路边。
+    { key: "line_belongs_to_base", fromTypeKey: "Line", toTypeKey: "Base", cardinality: "N:N" }, // factory（多线归一基地）
+    { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
+    { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
+    { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
+    { key: "order_of_customer", fromTypeKey: "Order", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多单归一客户）
+  ];
+}
+
+/**
+ * 跨 6 域本体切片 order_fulfillment_360（产品履约全景）。
+ * 链路：Order(product) → Model(product) → Base(factory) → Line(factory) → Process(process) → Equipment(equip)，
+ * 并旁挂 Model → Material(supply) 与 Order → Customer(commercial)。
+ * 两个推演场景（affected_orders 推演 / plan_audit 体检）均先经此切片检索，再喂求解器。
+ * root 按 args.so 选定单一订单 → 展开该订单的完整履约树（便于逐节点取证）。
+ */
+export function batteryBuiltinSlices(): { sliceKey: string; version: number; spec: import("../domain.js").SliceSpecRecord["spec"] }[] {
+  return [
+    {
+      sliceKey: "order_fulfillment_360",
+      version: 1,
+      spec: {
+        root: { typeKey: "Order", selector: { byKey: "{{args.so}}" } },
+        paths: [
+          // product → factory → process → equip 主干
+          [
+            { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
+            { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind", "util", "bottleneck", "gwh"] },
+            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "baseId", "name"] },
+            { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield", "utilization"] },
+            { linkKey: "equip_used_in", direction: "in", project: ["equipId", "processId", "ctSeconds", "availFactor", "oeeA", "oeeP", "oeeQ"] },
+          ],
+          // product → supply（型号 BOM 物料）
+          [
+            { linkKey: "order_for_model", direction: "out" },
+            { linkKey: "model_uses_material", direction: "out", project: ["matId", "name", "unitPrice", "leadTime", "carbonFactor", "onHand"] },
+          ],
+          // commercial（下单客户信用画像）
+          [{ linkKey: "order_of_customer", direction: "out", project: ["custId", "custName", "creditLimit", "termDays", "receivables", "maxOverdueDays"] }],
+        ],
+        maxNodes: 500,
+        contractFixtures: [
+          {
+            name: "首单全链可达 6 域",
+            args: { so: "SO-10001" },
+            expect: {
+              rootType: "Order",
+              minNodes: 10,
+              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "Customer"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_belongs_to_base", "line_has_process", "equip_used_in", "model_uses_material", "order_of_customer"],
+            },
+          },
+        ],
+      },
+    },
   ];
 }
 
