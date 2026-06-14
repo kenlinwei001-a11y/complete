@@ -1157,8 +1157,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };
+    const c = ctx(req);
     const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
-    return ontology.resolveSlice(ctx(req), sliceKey, body.args);
+    // 先走旧内置解析器（model_capacity_network / base_risk_profile）；未命中则 fall-through 到
+    // 通用 SliceSpec 引擎（executeSlice），使 Agent/Workflow 的 resolve_slice 工具能检索
+    // order_fulfillment_360 / order_to_cash_720 / enterprise_360 等声明式切片（修复 P0-a）。
+    try {
+      return await ontology.resolveSlice(c, sliceKey, body.args);
+    } catch (err) {
+      if (!(err instanceof AppError && err.code === "NOT_FOUND")) throw err;
+      const spec = await ontologyCore.getSliceSpec(c, sliceKey);
+      if (!spec) throw err;
+      const out = await ontologyCore.executeSlice(c, spec.spec, body.args);
+      return { data: { nodes: out.nodes, edges: out.edges, truncated: out.truncated }, snapshotVersion: out.snapshotVersion };
+    }
   });
   app.post("/a/v1/solvers/:solverKey/invoke", async (req) => {
     const { solverKey } = req.params as { solverKey: string };

@@ -160,4 +160,22 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
       expect(lk.has(k), `enterprise_360 缺边 ${k}`).toBe(true);
     }
   });
+
+  it("SL9: Agent/Workflow 旧端点 /a/v1/slices/:key/resolve fall-through 到 SliceSpec 引擎（P0-a 修复）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 旧内置键仍可用
+    const legacy = await t.app.inject({ method: "POST", url: "/a/v1/slices/base_risk_profile/resolve", headers: ADMIN, payload: { args: { baseId: "changzhou" } } });
+    expect(legacy.statusCode).toBe(200);
+    // 新声明式切片经同一旧端点可达（agent resolve_slice 工具走这里）
+    const viaLegacy = await t.app.inject({ method: "POST", url: "/a/v1/slices/order_to_cash_720/resolve", headers: ADMIN, payload: { args: { so: "SO-10001" } } });
+    expect(viaLegacy.statusCode).toBe(200);
+    const body = viaLegacy.json() as { data?: { nodes?: { typeKey: string }[] }; snapshotVersion?: string };
+    expect(body.data?.nodes?.length, "fall-through 返回 nodes").toBeGreaterThanOrEqual(15);
+    const doms = new Set((body.data?.nodes ?? []).map((n) => TYPE_DOMAIN[n.typeKey]).filter(Boolean));
+    expect(doms.size, "8 域可达").toBeGreaterThanOrEqual(8);
+    // 完全未知键仍 404
+    const missing = await t.app.inject({ method: "POST", url: "/a/v1/slices/__nope__/resolve", headers: ADMIN, payload: { args: {} } });
+    expect(missing.statusCode).toBe(404);
+  });
 });
