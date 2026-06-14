@@ -1,0 +1,368 @@
+import { round } from "../prng.js";
+import { num, str } from "./types.js";
+
+/**
+ * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
+ *
+ * 全部**确定性、args 驱动**（同输入同输出），公式逐条遵循目录 §2。设计为参照实现可双算
+ * （进 VLE ⑤段）。本批让 /a/v1/solvers/:key/invoke 对 13 个 key 返回真实计算结果；
+ * 把这些 args 从对象数据自动填充（GenSpec 扩展）是 E6b 后续。
+ */
+
+const COST_RANK: Record<string, number> = { 低: 1, 中: 2, 高: 3, 极高: 4 };
+
+// S06 mitigation_select：方案库（7 因素 × 3 案，与合成 RISK_SOL 同源）。
+const MITIGATION_LIB: Record<string, { key: string; name: string; eff: number; tn: number; cost: string }[]> = {
+  物料齐套: [
+    { key: "early_stock", name: "提前备料", eff: 12, tn: 2, cost: "中" },
+    { key: "alt_supplier", name: "备选供应商切换", eff: 9, tn: 5, cost: "高" },
+    { key: "air_freight", name: "空运补料", eff: 15, tn: 1, cost: "极高" },
+  ],
+  设备OEE: [
+    { key: "preventive", name: "预防性维护前置", eff: 10, tn: 3, cost: "中" },
+    { key: "spare_line", name: "备用产线切换", eff: 14, tn: 4, cost: "高" },
+    { key: "vendor_support", name: "厂商驻场支持", eff: 8, tn: 2, cost: "中" },
+  ],
+  人力工时: [
+    { key: "night_shift", name: "增开夜班", eff: 11, tn: 2, cost: "中" },
+    { key: "temp_labor", name: "临时用工", eff: 8, tn: 3, cost: "中" },
+    { key: "cross_train", name: "跨基地借调", eff: 9, tn: 5, cost: "低" },
+  ],
+  瓶颈工序: [
+    { key: "debottleneck", name: "瓶颈工序扩容", eff: 13, tn: 6, cost: "高" },
+    { key: "reroute", name: "工艺路线调整", eff: 9, tn: 3, cost: "中" },
+    { key: "outsource_step", name: "工序外协", eff: 10, tn: 4, cost: "高" },
+  ],
+  物流: [
+    { key: "pre_position", name: "前置仓备货", eff: 10, tn: 3, cost: "中" },
+    { key: "dual_route", name: "双线路运输", eff: 8, tn: 2, cost: "中" },
+    { key: "expedite", name: "加急运输", eff: 12, tn: 1, cost: "高" },
+  ],
+  换型: [
+    { key: "smed", name: "快速换型改善", eff: 9, tn: 7, cost: "低" },
+    { key: "batch_merge", name: "批次合并排产", eff: 7, tn: 2, cost: "低" },
+    { key: "freeze_window", name: "冻结排产窗口", eff: 8, tn: 3, cost: "低" },
+  ],
+  良率: [
+    { key: "spc_tighten", name: "SPC 管控收紧", eff: 8, tn: 4, cost: "低" },
+    { key: "golden_batch", name: "黄金批次参数回滚", eff: 11, tn: 2, cost: "中" },
+  ],
+};
+
+export function mitigationSelect(args: Record<string, unknown>) {
+  const factor = str(args.factor);
+  const baseName = str(args.baseName);
+  const tightness = num(args.tightness, 85);
+  const lib = MITIGATION_LIB[factor];
+  if (!lib) return { error: `unknown factor: ${factor}`, factors: Object.keys(MITIGATION_LIB) };
+  const urgency = Math.max(0, (tightness - 70) / 30);
+  const scored = lib
+    .map((p) => ({ ...p, costRank: COST_RANK[p.cost] ?? 2, score: round((p.eff * urgency) / ((COST_RANK[p.cost] ?? 2) * p.tn), 4) }))
+    .sort((a, b) => b.score - a.score);
+  const top = scored[0]!;
+  return {
+    factor,
+    baseName,
+    urgency: round(urgency, 4),
+    plans: scored,
+    recommended: top.key,
+    draftPayload: { base: baseName, factor, planKey: top.key },
+  };
+}
+
+// S07 cert_schedule：priority = 缺口贡献/认证工时；C26 并行 ≤ 工程师组数 贪心装箱到周。
+export function certSchedule(args: Record<string, unknown>) {
+  const items = (args.items as { model: string; line: string; status: string; certHours: number; gapContribution: number }[]) ?? [];
+  const groups = num(args.engineerGroups, 3);
+  const pending = items.filter((i) => i.status === "认证中" || i.status === "待认证");
+  const ranked = pending
+    .map((i) => ({ ...i, priority: round(i.gapContribution / Math.max(0.1, i.certHours), 4), weeks: Math.max(1, Math.ceil(i.certHours / 40)) }))
+    .sort((a, b) => b.priority - a.priority);
+  // 贪心装箱：每周并行 ≤ groups（C26）
+  const weekLoad: number[] = [];
+  const schedule = ranked.map((r) => {
+    let w = 0;
+    while ((weekLoad[w] ?? 0) >= groups) w++;
+    const start = w + 1;
+    for (let k = 0; k < r.weeks; k++) weekLoad[w + k] = (weekLoad[w + k] ?? 0) + 1;
+    return { model: r.model, line: r.line, startWeek: start, finishWeek: start + r.weeks - 1, unlockCapacity: r.gapContribution, priority: r.priority };
+  });
+  return { schedule, engineerGroups: groups, ruleRefs: ["C26"] };
+}
+
+// S08 kit_readiness：齐套率 = min_物料((现库+ETA≤开工的在途)/(BOM单耗×qty))。
+export function kitReadiness(args: Record<string, unknown>) {
+  const orders = (args.orders as { orderId: string; qty: number; startDay: number; materials: { material: string; onHand: number; inTransit: { qty: number; etaDay: number }[]; bomUnit: number }[] }[]) ?? [];
+  const rows = orders.map((o) => {
+    const items = o.materials.map((m) => {
+      const avail = m.onHand + m.inTransit.filter((t) => t.etaDay <= o.startDay).reduce((s, t) => s + t.qty, 0);
+      const need = m.bomUnit * o.qty;
+      const ratio = need <= 0 ? 1 : round(avail / need, 4);
+      // 缺料时最早补齐日 = 开工日之后最早到货的在途批次 ETA
+      const earliest = avail < need ? m.inTransit.filter((it) => it.etaDay > o.startDay).sort((a, b) => a.etaDay - b.etaDay)[0]?.etaDay : undefined;
+      return { material: m.material, ratio, shortage: round(Math.max(0, need - avail), 4), earliestDay: earliest };
+    });
+    const kitRatio = items.length ? Math.min(...items.map((i) => i.ratio)) : 1;
+    const shortItems = items.filter((i) => i.ratio < 1).sort((a, b) => (a.earliestDay ?? 1e9) - (b.earliestDay ?? 1e9));
+    const advice = kitRatio >= 1 ? "齐套" : shortItems.some((i) => i.earliestDay === undefined) ? "加急采购" : "顺延";
+    return { orderId: o.orderId, kitRatio: round(kitRatio, 4), shortItems, advice };
+  });
+  return { rows, shortageCount: rows.filter((r) => r.kitRatio < 1).length, ruleRefs: ["C06", "C16"] };
+}
+
+// S09 lta_gap：净需求 = 月需求×BOM − 库存 − 在途；现货缺口 = max(0, 净需求 − 长协可用)。
+export function ltaGap(args: Record<string, unknown>) {
+  const material = str(args.material);
+  const month = str(args.month);
+  const netDemand = round(num(args.monthDemand) * num(args.bomUnit, 1) - num(args.inventory) - num(args.inTransit), 4);
+  const ltaAvailable = round(num(args.ltaAnnualLock) * num(args.monthQuota, 1 / 12) - num(args.executedThisMonth), 4);
+  const gap = round(Math.max(0, netDemand - ltaAvailable), 4);
+  const coverage = netDemand <= 0 ? 1 : round(Math.min(1, ltaAvailable / netDemand), 4);
+  const leadDays = num(args.leadDays, 30);
+  const po = gap > 0
+    ? [
+        { batch: round(gap / 2, 4), latestOrderLeadDays: leadDays },
+        { batch: round(gap / 2, 4), latestOrderLeadDays: leadDays },
+      ]
+    : [];
+  return { material, month, netDemand, coverage, gap, po, ruleRefs: ["C16", "C27"] };
+}
+
+// S10 inventory_optimize：目标水位 = 日均耗用×(交期+安全天5)；超储/欠储/呆滞/释放资金。
+export function inventoryOptimize(args: Record<string, unknown>) {
+  const materials = (args.materials as { matId: string; dailyUse: number; leadTime: number; onHand: number; unitPrice: number; idleDays: number }[]) ?? [];
+  const safety = num(args.safetyDays, 5);
+  const over: unknown[] = [];
+  const under: unknown[] = [];
+  const idle: unknown[] = [];
+  let releasable = 0;
+  for (const m of materials) {
+    const target = m.dailyUse * (m.leadTime + safety);
+    const overQty = Math.max(0, m.onHand - 1.5 * target);
+    const underQty = Math.max(0, 0.8 * target - m.onHand);
+    if (overQty > 0) {
+      over.push({ matId: m.matId, overQty: round(overQty, 4), value: round(overQty * m.unitPrice, 2) });
+      releasable += overQty * m.unitPrice;
+    }
+    if (underQty > 0) under.push({ matId: m.matId, underQty: round(underQty, 4) });
+    if (m.idleDays > 90) idle.push({ matId: m.matId, idleDays: m.idleDays }); // C28
+  }
+  return { over, under, idle, releasableCash: round(releasable, 2), ruleRefs: ["C16", "C28"] };
+}
+
+// S11 changeover_sequence：最近邻贪心，从当前在产型号起每步选换型时长最小的未排单。
+export function changeoverSequence(args: Record<string, unknown>) {
+  const lineId = str(args.lineId);
+  const orders = (args.orders as { orderId: string; modelId: string; dueDay?: number }[]) ?? [];
+  const matrix = (args.matrix as Record<string, Record<string, number>>) ?? {};
+  let current = str(args.current, orders[0]?.modelId ?? "");
+  const remaining = [...orders];
+  const seq: { orderId: string; modelId: string; changeoverMin: number }[] = [];
+  let total = 0;
+  const ctOf = (from: string, to: string) => (from === to ? 0 : matrix[from]?.[to] ?? 999);
+  while (remaining.length) {
+    remaining.sort((a, b) => ctOf(current, a.modelId) - ctOf(current, b.modelId));
+    const next = remaining.shift()!;
+    const ct = current === next.modelId ? 0 : matrix[current]?.[next.modelId] ?? 0;
+    total += ct;
+    seq.push({ orderId: next.orderId, modelId: next.modelId, changeoverMin: ct });
+    current = next.modelId;
+  }
+  // vs 交期序（按 dueDay 排）换型总时长
+  const dueSeq = [...orders].sort((a, b) => (a.dueDay ?? 0) - (b.dueDay ?? 0));
+  let dueTotal = 0;
+  let cur2 = str(args.current, orders[0]?.modelId ?? "");
+  for (const o of dueSeq) {
+    dueTotal += cur2 === o.modelId ? 0 : matrix[cur2]?.[o.modelId] ?? 0;
+    cur2 = o.modelId;
+  }
+  const infeasible = seq.filter((s) => {
+    const o = orders.find((x) => x.orderId === s.orderId);
+    return o?.dueDay !== undefined && o.dueDay < 0;
+  });
+  return { lineId, sequence: seq, totalChangeoverMin: total, savedVsDueMin: round(dueTotal - total, 4), infeasible, ruleRefs: ["C22", "C29"] };
+}
+
+// S12 yield_diagnosis：滑窗突变 = 首个 |后7日均 − 前7日均| > 2σ(前30日) 的日。
+export function yieldDiagnosis(args: Record<string, unknown>) {
+  const series = (args.series as { day: number; yield: number }[]) ?? [];
+  const events = (args.events as { day: number; kind: string; source: string }[]) ?? [];
+  const sorted = [...series].sort((a, b) => a.day - b.day);
+  let breakpoint: { day: number; drop: number } | undefined;
+  for (let i = 30; i + 7 <= sorted.length; i++) {
+    const prev30 = sorted.slice(i - 30, i).map((p) => p.yield);
+    const prev7 = sorted.slice(i - 7, i).map((p) => p.yield);
+    const post7 = sorted.slice(i, i + 7).map((p) => p.yield);
+    const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+    const m30 = mean(prev30);
+    const sd = Math.sqrt(prev30.reduce((s, x) => s + (x - m30) ** 2, 0) / prev30.length);
+    const delta = Math.abs(mean(post7) - mean(prev7));
+    if (delta > 2 * sd && sd > 0) {
+      breakpoint = { day: sorted[i]!.day, drop: round(mean(prev7) - mean(post7), 4) };
+      break;
+    }
+  }
+  const candidates = breakpoint
+    ? events
+        .filter((e) => Math.abs(e.day - breakpoint!.day) <= 2)
+        .map((e) => ({ ...e, distance: Math.abs(e.day - breakpoint!.day) }))
+        .sort((a, b) => a.distance - b.distance)
+    : [];
+  return { breakpoint, candidates, ruleRefs: ["C30"] };
+}
+
+// S13 maintenance_stagger：冲突=检修周∈交付高峰top3；±4 周内选负荷最低周；间隔≥26、同组同周≤3。
+export function maintenanceStagger(args: Record<string, unknown>) {
+  const bases = (args.bases as { base: string; group?: string; maintWeek: number; lastMaintWeek?: number; loadByWeek: Record<string, number> }[]) ?? [];
+  const peakWeeks = (args.peakWeeks as number[]) ?? [];
+  const peakSet = new Set(peakWeeks);
+  const groupWeekCount: Record<string, number> = {};
+  const adjustments: unknown[] = [];
+  const unresolved: unknown[] = [];
+  for (const b of bases) {
+    if (!peakSet.has(b.maintWeek)) continue; // 无冲突
+    let best: number | undefined;
+    let bestLoad = Infinity;
+    for (let w = b.maintWeek - 4; w <= b.maintWeek + 4; w++) {
+      if (w < 1 || peakSet.has(w)) continue;
+      if (b.lastMaintWeek !== undefined && w - b.lastMaintWeek < 26) continue; // 间隔约束
+      if ((groupWeekCount[`${b.group}|${w}`] ?? 0) >= 3) continue; // 同组同周≤3
+      const load = b.loadByWeek[String(w)] ?? 0;
+      if (load < bestLoad) {
+        bestLoad = load;
+        best = w;
+      }
+    }
+    if (best === undefined) unresolved.push({ base: b.base, maintWeek: b.maintWeek, reason: "±4 周内无满足约束的可行周" });
+    else {
+      groupWeekCount[`${b.group}|${best}`] = (groupWeekCount[`${b.group}|${best}`] ?? 0) + 1;
+      adjustments.push({ base: b.base, fromWeek: b.maintWeek, toWeek: best, loadDrop: round((b.loadByWeek[String(b.maintWeek)] ?? 0) - bestLoad, 4) });
+    }
+  }
+  return { adjustments, unresolved, ruleRefs: ["C11"] };
+}
+
+// S14 outsourcing_split：三渠道 加班c1=1.0(上限gap×0.4)/外协c2=1.4(上限总需求×20% C08)/延期c3=2.5。
+export function outsourcingSplit(args: Record<string, unknown>) {
+  const gap = num(args.gap);
+  const totalDemand = num(args.totalDemand, gap);
+  const channels = [
+    { key: "overtime", name: "自产加班", unitCost: 1.0, cap: gap * 0.4 },
+    { key: "outsource", name: "外协", unitCost: 1.4, cap: totalDemand * 0.2 }, // C08
+    { key: "delay", name: "延期", unitCost: 2.5, cap: Infinity },
+  ];
+  let remaining = gap;
+  let totalCost = 0;
+  const allocation = channels.map((c) => {
+    const qty = Math.max(0, Math.min(remaining, c.cap));
+    remaining = round(remaining - qty, 4);
+    totalCost += qty * c.unitCost;
+    return { channel: c.key, name: c.name, qty: round(qty, 4), cost: round(qty * c.unitCost, 4) };
+  });
+  return {
+    allocation,
+    totalCost: round(totalCost, 4),
+    savedVsAllDelay: round(gap * 2.5 - totalCost, 4),
+    outsourceQualityGate: "C31：外协厂良率 ≥ 自产 −0.02",
+    ruleRefs: ["C08", "C31"],
+  };
+}
+
+// S15 quote_margin：BOM成本=Σ(单耗×现价×(1+加工费率))；毛利率=(价−BOM−制造费率×价−物流)/价。
+export function quoteMargin(args: Record<string, unknown>) {
+  const price = num(args.price);
+  const bom = (args.bom as { unit: number; spotPrice: number; processRate?: number }[]) ?? [];
+  const bomCost = round(bom.reduce((s, b) => s + b.unit * b.spotPrice * (1 + (b.processRate ?? 0)), 0), 4);
+  const mfg = num(args.mfgRate) * price;
+  const logistics = num(args.logistics);
+  const margin = price <= 0 ? 0 : round((price - bomCost - mfg - logistics) / price, 4);
+  const floor = num(args.segmentFloor, 0.1);
+  return {
+    margin,
+    floor,
+    diff: round(margin - floor, 4),
+    verdict: margin >= floor + 0.01 ? "过线" : margin >= floor ? "触线" : "低于底线",
+    breakdown: { bomCost, mfg: round(mfg, 4), logistics, price },
+    ruleRefs: ["C15", "C24"],
+  };
+}
+
+// S16 credit_exposure：敞口=应收+在产未开票；可用=额度−敞口；逾期 dueDate+30 未回（C32）。
+export function creditExposure(args: Record<string, unknown>) {
+  const limit = num(args.creditLimit);
+  const receivables = num(args.receivables);
+  const wip = num(args.wipUnbilled);
+  const exposure = round(receivables + wip, 2);
+  const available = round(limit - exposure, 2);
+  const overdue = (args.overdue as { invoiceId: string; overdueDays: number; amount: number }[]) ?? [];
+  const hasOverdue = overdue.some((o) => o.overdueDays > 30); // C32
+  const newOrder = num(args.newOrderAmount, 0);
+  const verdict = hasOverdue ? "冻结（存在逾期>30天）" : newOrder <= available ? "可接" : "超出可用额度";
+  return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, ruleRefs: ["C13", "C32"] };
+}
+
+// S19 quarterly_gap：对策按成本升序贪心覆盖季度缺口；残余缺口明示。
+export function quarterlyGap(args: Record<string, unknown>) {
+  const quarter = str(args.quarter);
+  let gap = num(args.gap);
+  const options = ((args.options as { key: string; name: string; release: number; costRank: number; scene?: string }[]) ?? [
+    { key: "ramp", name: "提前爬坡", release: 0, costRank: 1, scene: "S07" },
+    { key: "changeover", name: "换型优化", release: 0, costRank: 1, scene: "S11" },
+    { key: "stagger", name: "错峰检修", release: 0, costRank: 1, scene: "S13" },
+    { key: "outsource", name: "外协", release: 0, costRank: 2, scene: "S14" },
+    { key: "defer", name: "顺延非战略单", release: 0, costRank: 3 },
+  ]).sort((a, b) => a.costRank - b.costRank);
+  const combo: unknown[] = [];
+  for (const o of options) {
+    if (gap <= 0) break;
+    const use = Math.min(gap, o.release);
+    if (use > 0) {
+      combo.push({ key: o.key, name: o.name, release: round(use, 4), scene: o.scene });
+      gap = round(gap - use, 4);
+    }
+  }
+  return { quarter, combo, residualGap: round(Math.max(0, gap), 4), ruleRefs: ["C08", "C29"] };
+}
+
+// S20 carbon_footprint：碳足迹 = Σ(物料单耗×碳因子) + Σ工序(单位能耗×电网因子(省))；对比欧盟阈值。
+export function carbonFootprint(args: Record<string, unknown>) {
+  const modelId = str(args.modelId);
+  const baseName = str(args.baseName);
+  const materials = (args.materials as { material: string; unit: number; factor: number }[]) ?? [];
+  const processes = (args.processes as { process: string; energy: number; gridFactor: number }[]) ?? [];
+  const matCarbon = round(materials.reduce((s, m) => s + m.unit * m.factor, 0), 4);
+  const energyCarbon = round(processes.reduce((s, p) => s + p.energy * p.gridFactor, 0), 4);
+  const total = round(matCarbon + energyCarbon, 4);
+  const threshold = num(args.euThreshold, 70);
+  const contributions = [
+    ...materials.map((m) => ({ source: `物料:${m.material}`, value: round(m.unit * m.factor, 4) })),
+    ...processes.map((p) => ({ source: `能耗:${p.process}`, value: round(p.energy * p.gridFactor, 4) })),
+  ].sort((a, b) => b.value - a.value);
+  return {
+    modelId,
+    baseName,
+    total,
+    breakdown: { materialCarbon: matCarbon, energyCarbon },
+    threshold,
+    verdict: total <= threshold ? "达标" : "超标",
+    maxLever: contributions[0]?.source,
+    ruleRefs: ["C33"],
+  };
+}
+
+/** 13 新增求解器分发（service.compute 的扩展分支）。 */
+export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) => Record<string, unknown>> = {
+  mitigation_select: mitigationSelect,
+  cert_schedule: certSchedule,
+  kit_readiness: kitReadiness,
+  lta_gap: ltaGap,
+  inventory_optimize: inventoryOptimize,
+  changeover_sequence: changeoverSequence,
+  yield_diagnosis: yieldDiagnosis,
+  maintenance_stagger: maintenanceStagger,
+  outsourcing_split: outsourcingSplit,
+  quote_margin: quoteMargin,
+  credit_exposure: creditExposure,
+  quarterly_gap: quarterlyGap,
+  carbon_footprint: carbonFootprint,
+};

@@ -9,6 +9,7 @@ import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from ".
 import { affectedOrders, bottleneckMatrix, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
+import { EXTENDED_SOLVERS } from "./extended.js";
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -19,6 +20,20 @@ export const SOLVER_KEYS = [
   "plan_audit",
   "plan_generate",
   "capex_scenario",
+  // 20 场景目录 §2 新增 13（成熟度 E6a）
+  "mitigation_select",
+  "cert_schedule",
+  "kit_readiness",
+  "lta_gap",
+  "inventory_optimize",
+  "changeover_sequence",
+  "yield_diagnosis",
+  "maintenance_stagger",
+  "outsourcing_split",
+  "quote_margin",
+  "credit_exposure",
+  "quarterly_gap",
+  "carbon_footprint",
 ] as const;
 
 const DAY_MS = 86400000;
@@ -189,8 +204,12 @@ export class SolverService {
         return planGenerate(c, args as unknown as PlanGenerateArgs);
       case "capex_scenario":
         return capexScenario(c, args as unknown as CapexScenarioArgs);
-      default:
+      default: {
+        // 20 场景目录 §2 新增 13 求解器（args 驱动、确定性）
+        const ext = EXTENDED_SOLVERS[solverKey];
+        if (ext) return ext(args);
         throw notFound(`solver ${solverKey}`);
+      }
     }
   }
 
