@@ -1,4 +1,7 @@
-import { lexTokens } from "./skill-router.js";
+import { lexTokens, type Embedder } from "./skill-router.js";
+import { cosine, pseudoEmbed } from "../util/embedding.js";
+
+const defaultEmbedder: Embedder = (t) => pseudoEmbed(t);
 
 /**
  * MCP router（Phase6C）—— 当 agent 绑定多个 MCP 工具时，按 query 相关性排序并收窄到 top-k，
@@ -12,7 +15,9 @@ export interface McpToolLike {
   description?: string;
 }
 
-/** 相关性得分：query token 命中工具(name 权重×2 / description ×1) token 数。 */
+const toolText = (tool: McpToolLike) => `${tool.name.replace(/^mcp__/, "").replace(/__/g, " ")} ${tool.description ?? ""}`;
+
+/** 词法重叠计数（平手裁决用）：name 命中×2 / description×1。 */
 export function scoreMcpTool(queryTokens: Set<string>, tool: McpToolLike): number {
   const nameTok = lexTokens(tool.name.replace(/^mcp__/, "").replace(/__/g, " "));
   const descTok = lexTokens(tool.description ?? "");
@@ -24,11 +29,19 @@ export function scoreMcpTool(queryTokens: Set<string>, tool: McpToolLike): numbe
   return score;
 }
 
-/** 按相关性降序，同分按 name 稳定排序 → 确定性。 */
-export function rankMcpTools<T extends McpToolLike>(query: string, tools: T[]): { tool: T; score: number }[] {
+/** 相关性排序：embedding 余弦(主) + 词法重叠×1e-3(次)；同分按 name 稳定排序 → 确定性。 */
+export function rankMcpTools<T extends McpToolLike>(
+  query: string,
+  tools: T[],
+  embedder: Embedder = defaultEmbedder,
+): { tool: T; score: number }[] {
+  const qv = embedder(query ?? "");
   const qt = lexTokens(query ?? "");
   return tools
-    .map((tool) => ({ tool, score: scoreMcpTool(qt, tool) }))
+    .map((tool) => {
+      const score = Math.round((cosine(qv, embedder(toolText(tool))) + scoreMcpTool(qt, tool) * 1e-3) * 1e6) / 1e6;
+      return { tool, score };
+    })
     .sort((a, b) => b.score - a.score || (a.tool.name < b.tool.name ? -1 : a.tool.name > b.tool.name ? 1 : 0));
 }
 
@@ -40,8 +53,9 @@ export function selectMcpTools<T extends McpToolLike>(
   query: string | undefined,
   tools: T[],
   topK = 8,
+  embedder: Embedder = defaultEmbedder,
 ): { full: T[]; deferred: T[] } {
   if (!query || tools.length <= topK) return { full: tools, deferred: [] };
-  const ranked = rankMcpTools(query, tools);
+  const ranked = rankMcpTools(query, tools, embedder);
   return { full: ranked.slice(0, topK).map((r) => r.tool), deferred: ranked.slice(topK).map((r) => r.tool) };
 }

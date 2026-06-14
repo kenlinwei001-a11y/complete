@@ -50,6 +50,15 @@ describe("Phase5C skill 语义路由", () => {
     expect(all.deferred).toHaveLength(0);
   });
 
+  it("SR6: embedder 可插拔（生产可注入真 embedding provider）——自定义向量覆盖词法排序", () => {
+    const query = "毛利过线吗"; // 词法上与 s15(毛利) 相关
+    // 自定义 embedder：把 query 与含“碳”的 s20 文本映射到同向量，其余正交 → 模拟“语义”关联。
+    const embedder = (text: string) => (text === query || text.includes("碳") ? [1, 0] : [0, 1]);
+    const ranked = rankSkills(query, SKILLS, embedder);
+    // 尽管词法指向 s15，embedding 主导 → s20 居首（证明 embedding 覆盖词法、且可插拔）
+    expect(ranked[0]!.skill.id).toBe("s20");
+  });
+
   it("SR5: buildSkillSection 带 query → 全文仅 top-k，其余列为 load_skill 可取", () => {
     const sec = buildSkillSection(SKILLS, { query: "碳足迹达标吗", topK: 2 });
     expect(sec).toContain("s20"); // 碳足迹全文
