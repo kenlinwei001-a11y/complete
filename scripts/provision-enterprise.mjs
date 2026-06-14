@@ -66,12 +66,15 @@ if (REMOTE) {
   const BLOB = mkdtempSync(join(tmpdir(), "prov-"));
   const AP = 15200 + Math.floor(Math.random() * 200), BP = AP + 1;
   A = `http://127.0.0.1:${AP}`; B = `http://127.0.0.1:${BP}`;
+  // 设 DC_DATABASE_URL / AC_DATABASE_URL → pg 模式（启动幂等迁移），配置持久化、可 pg_dump 进安装包。
   const dc = spawnService(join(ROOT, "apps/datacore/dist/server.js"), {
     PORT: String(AP), JWT_SECRET: "prov", SERVICE_TOKEN: "prov-svc", CREDENTIAL_KEY: "a".repeat(64),
     BLOB_DIR: BLOB, SEED_DEMO: "1", LOG_LEVEL: "warn",
+    ...(process.env.DC_DATABASE_URL ? { DATABASE_URL: process.env.DC_DATABASE_URL } : {}),
   });
   const ac = spawnService(join(ROOT, "apps/agentcore/dist/main.js"), {
     PORT: String(BP), DATACORE_BASE_URL: A, SERVICE_TOKEN: "prov-svc", LOG_LEVEL: "warn",
+    ...(process.env.AC_DATABASE_URL ? { DATABASE_URL: process.env.AC_DATABASE_URL } : {}),
   });
   try { await waitFor(`${A}/a/v1/healthz`); await waitFor(`${B}/b/v1/healthz`); }
   catch (e) { console.error(String(e), "\nDC:", dc.tail(), "\nAC:", ac.tail()); process.exit(1); }
@@ -96,9 +99,11 @@ try {
   // 2 · 工业级数据 + 10 域 + 跨域本体 + 21 求解器 + C01–C33 约束（一键合成正门）
   // -------------------------------------------------------------------------
   console.log(`【2】一键合成工业级数据（scale=${SCALE}）`);
-  const job = await a("/a/v1/synthetic/jobs", { body: { industry: "battery-manufacturing", scale: SCALE, seed: 42 } });
+  // livedIn=true：标准合成后回放一年（T−365d→T0），把全过程写入 lived_in_states →
+  // 运营回顾(history/bundle) 可见 12 月产出/已交付订单/风险案例/Action 审计/MAPE/S&OP 历史。
+  const job = await a("/a/v1/synthetic/jobs", { body: { industry: "battery-manufacturing", scale: SCALE, seed: 42, livedIn: true } });
   if (job.status !== 202) throw new Error("合成失败：" + JSON.stringify(job.body));
-  log("合成作业完成", `job=${job.body.id}`);
+  log("合成作业完成", `job=${job.body.id}${job.body.livedIn ? ` · 回放 ${job.body.livedIn.days} 天/${job.body.livedIn.batches} 批` : ""}`);
 
   // 2b · 追加 C26–C33 约束（场景目录 §3；经 /a/v1/rules 创建 + 发布，DSL 校验通过）
   const CONSTRAINTS = [
@@ -173,6 +178,7 @@ try {
   console.log("【4】配置 10 个场景 agent + 场景入口");
   const SCENARIOS = buildScenarioAgents(skillIdByKey);
   let agentsCreated = 0, scenesCreated = 0;
+  const sceneMeta = {}; // agentKey → { view, agentId, placeholder, trigger }（5b 回写 preloadedHistory 用）
   for (const sc of SCENARIOS) {
     let agent = (await b("/b/v1/agents")).body?.find?.((x) => x.key === sc.agentKey);
     let agentId = agent?.id;
@@ -189,6 +195,7 @@ try {
       body: { mode: "AGENT_FIRST", defaultAgentId: agentId, uiHints: { placeholder: sc.placeholder, suggestedQuestions: [sc.trigger] } },
     });
     if (se.status === 200) scenesCreated++;
+    sceneMeta[sc.agentKey] = { view: sc.view, agentId, placeholder: sc.placeholder, trigger: sc.trigger };
   }
   report.agents = SCENARIOS.length;
   report.sceneEntries = scenesCreated;
@@ -239,8 +246,38 @@ try {
   // ② 体检前对代表订单经切片检索跨域输入（供给齐套/商务信用/工厂产能）。
   const repProbe = await resolveSlice("SO-10001");
   const s2nodes = (repProbe.body?.nodes ?? []).length;
-  log("② 规划体检", `先经切片检索代表订单 ${s2nodes} 节点 → 评分 ${au?.score ?? "?"}/100 · 结论 ${au?.verdict ?? "?"} · 硬矛盾 ${au?.H?.length ?? au?.hard?.length ?? "?"}`);
+  const auH = au?.H?.length ?? au?.hard?.length ?? 0;
+  log("② 规划体检", `先经切片检索代表订单 ${s2nodes} 节点 → 评分 ${au?.score ?? "?"}/100 · 结论 ${au?.verdict ?? "?"} · 硬矛盾 ${auH}`);
   report.sim = { affected: aff?.total, sliceNodes: s1nodes.size, auditScore: au?.score, auditVerdict: au?.verdict };
+
+  // 5c · 把两场景的「推演全过程 / 数据 / 结果」回写为对应场景入口的 preloadedHistory
+  //      → 前端对话坞「历史推演」即可看到这两次仿真的问句、过程与结论（确定性、可溯源）。
+  const today = "2026-06-14";
+  const sample1 = affList[0];
+  const ans1 = `经跨 6 域切片 order_fulfillment_360 检索 + affected_orders 求解（snapshot ${s1snapshot}）。`
+    + `【过程】① 切片自每张订单出发跨 产品→工厂→工艺→设备→供给→商务 检索完整履约链（受影响单并集 ${s1nodes.size} 节点）；`
+    + `② affected_orders 在交期窗口 [−7,+14] 内按 problems 四类（交期/毛利/齐套/信用）归并。`
+    + `【数据】常州在手订单经 A6 行级过滤后入池；命中受影响 ${aff?.total ?? 0} 单。`
+    + `【结果】受影响 ${aff?.total ?? 0} 单${sample1 ? `，典型如 ${sample1.so}（${sample1.cust ?? "—"}，${sample1.model ?? "—"}，预计延误 ${sample1.delay ?? "?"} 天，影响度 ${sample1.impact ?? "?"}）` : ""}；每个数字可下钻溯源。`;
+  const ans2 = `经跨 6 域切片检索代表订单跨域输入 + plan_audit 体检。`
+    + `【过程】① 对每型号交期最早订单经切片检索供给齐套/商务信用/工厂产能等跨域输入（代表订单 ${s2nodes} 节点）；`
+    + `② plan_audit 按硬矛盾(H)/软风险(S)规则口径打分。`
+    + `【数据】需求 480 万套（细分 220/170/90 自洽）、供给 450、长协覆盖 0.85、现金垫 55 亿、毛利目标 18%。`
+    + `【结果】总评 ${au?.score ?? "?"}/100，结论「${au?.verdict ?? "?"}」，硬矛盾 ${auH} 项；明细见规划体检页。`;
+  const writeHistory = async (agentKey, entry) => {
+    const m = sceneMeta[agentKey];
+    if (!m) return false;
+    const r = await b(`/b/v1/scene-entries/${encodeURIComponent(m.view)}`, {
+      method: "PUT",
+      body: { mode: "AGENT_FIRST", defaultAgentId: m.agentId, uiHints: { placeholder: m.placeholder, suggestedQuestions: [m.trigger] }, preloadedHistory: [entry] },
+    });
+    return r.status === 200;
+  };
+  let histWritten = 0;
+  if (await writeHistory("s02_affected", { question: "常州基地影响哪些订单？", answer: ans1, trustLevel: "VERIFIED_WORKFLOW", date: today })) histWritten++;
+  if (await writeHistory("s04_audit", { question: "现金垫 55 亿、毛利目标 18% 过得了体检吗？", answer: ans2, trustLevel: "VERIFIED_WORKFLOW", date: today })) histWritten++;
+  log("5c · 历史推演回写", `${histWritten} 个场景入口已写入本次仿真的全过程/数据/结果（对话坞可见）`);
+  report.historyWritten = histWritten;
 
   // -------------------------------------------------------------------------
   // 6 · 配置清单
