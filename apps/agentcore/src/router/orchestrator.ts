@@ -674,6 +674,46 @@ export class Orchestrator {
     }
     await this.deps.events.emit(taskId, "answer.final", result.answer);
     this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
+    await this.recordExperience(taskId);
+  }
+
+  /**
+   * Phase6A 语义压缩回写管线：path B 任务完成后，把本轮推演蒸馏为经验案例落入经验记忆库，
+   * 供后续 search_experience 检索。approach = 工具/求解器调用轨迹的结构化蒸馏（即被折叠/丢弃
+   * 上下文的留存），outcome = 结论首段。确定性 pseudoEmbed；回写失败不影响主流程。
+   */
+  private async recordExperience(taskId: string): Promise<void> {
+    try {
+      const task = await this.deps.repos.tasks.get(taskId);
+      if (!task?.answer) return;
+      const calls = await this.deps.repos.toolCalls.listByTask(taskId);
+      const tools = [...new Set(calls.map((c) => c.toolName))];
+      const solvers = [
+        ...new Set(
+          calls
+            .filter((c) => c.toolName === "invoke_solver")
+            .map((c) => (c.input as { solverKey?: string } | undefined)?.solverKey)
+            .filter((s): s is string => !!s),
+        ),
+      ];
+      const approach = `工具:${tools.join("/") || "—"}${solvers.length ? ` · 求解器:${solvers.join("/")}` : ""} · ${calls.length} 次调用`;
+      const firstText = task.answer.blocks.find((b) => b.type === "text");
+      const outcome = firstText && firstText.type === "text" ? firstText.markdown.slice(0, 240) : "(无文本结论)";
+      const scene = String((task.context as { view?: string } | undefined)?.view ?? "agent");
+      const date = (task.completedAt ?? task.createdAt ?? new Date().toISOString()).slice(0, 10);
+      await this.deps.repos.experience.upsert({
+        id: `exp_auto_${taskId}`.replace(/[^\w-]/g, "_"),
+        tenantId: task.tenantId,
+        scene,
+        question: task.query,
+        approach,
+        outcome,
+        date,
+        embedding: pseudoEmbed(`${task.query} ${approach}`),
+      });
+    } catch {
+      /* 回写失败不影响主流程 */
+    }
   }
 
   /** AGENT_FIRST / AGENT_ONLY scene-entry modes — skip classification, run the configured agent. */
@@ -707,6 +747,7 @@ export class Orchestrator {
       });
       await this.deps.events.emit(task.id, "answer.final", result.answer);
       this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
+      await this.recordExperience(task.id);
     } catch (err) {
       await this.failTask(task.id, "AGENT_ERROR", err instanceof Error ? err.message : String(err));
     }

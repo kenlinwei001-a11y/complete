@@ -1,6 +1,7 @@
 import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ResolvedRef, type SkillDefinition, type WorkflowDefinition } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
+import { selectMcpTools } from "./agent/mcp-router.js";
 import type { AppConfig } from "./config.js";
 import type { LlmSettings } from "./llm/providers.js";
 import type { LlmClient } from "./llm/types.js";
@@ -150,7 +151,16 @@ export class ExecutionEngine {
   /** Run a registered agent (B1 executor = §6.3 loop + scope gate + skills + rule POST_CHECK). */
   async runRegisteredAgent(opts: RunRegisteredAgentOpts): Promise<AgentLoopResult> {
     const agent = await this.resolveAgent(opts.agentId, opts.version);
-    const tools = await this.expandAgentTools(agent);
+    const expanded = await this.expandAgentTools(agent);
+    // Phase6C MCP router：MCP 工具按 query 相关性收窄到 top-k（非 MCP 工具全保留；
+    // deferred 的 MCP 工具仍可经 discover 元工具发现）。
+    const mcpSpecs = expanded.filter((t) => t.binding.kind === "MCP");
+    let tools = expanded;
+    if (mcpSpecs.length > 0) {
+      const { full } = selectMcpTools(opts.prompt, mcpSpecs, 8);
+      const keep = new Set(full.map((t) => t.name));
+      tools = expanded.filter((t) => t.binding.kind !== "MCP" || keep.has(t.name));
+    }
     // §2.2 留痕：实际执行的 agent 版本
     opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });
 
