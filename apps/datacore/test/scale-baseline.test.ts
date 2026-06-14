@@ -24,8 +24,7 @@ describe("E12 · 10⁴ 订单规模基线", () => {
     // 订单对象量真实达 10⁴（存储层计数；确认生成规模而非 demo 量级）
     const orderCount = (await t.repos.objects.listByType("demo", "Order")).length;
     expect(orderCount).toBe(10000);
-    // 注：/objects/aggregate 当前 load-then-count 上限 1000（M2 计算下推未做 —— E3/E2 范围），
-    // 故聚合计数 ≤1000；此处只验证端点在规模下仍 200 且快，不以其值断言总量。
+    // #3 修复后：聚合计数对全量准确（不再被 queryObjects 的 ≤1000 截断静默算错），truncated 诚实
     const tAgg0 = Date.now();
     const agg = await t.app.inject({
       method: "POST",
@@ -35,7 +34,10 @@ describe("E12 · 10⁴ 订单规模基线", () => {
     });
     const aggMs = Date.now() - tAgg0;
     expect(agg.statusCode).toBe(200);
-    expect(aggMs).toBeLessThan(5_000); // 端点在 10⁴ 数据下 ≤ 5s
+    const aggBody = agg.json() as { rows: { metrics: Record<string, number> }[]; truncated: boolean };
+    expect(aggBody.rows[0]!.metrics.count_so).toBe(10000); // 全量计数正确
+    expect(aggBody.truncated).toBe(false); // 未超 20 万安全上限 → 诚实标 false
+    expect(aggMs).toBeLessThan(5_000);
 
     // 过滤查询在规模下仍快（limit 截断）
     const tQ0 = Date.now();

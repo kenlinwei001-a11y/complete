@@ -619,10 +619,9 @@ export class OntologyGovernanceService {
       }
     }
 
-    // A6 数据层过滤
-    const rows = (await this.ontology.queryObjects(ctx, req.typeKey, req.filter ?? {}, 100000)).data as {
-      props: Record<string, unknown>;
-    }[];
+    // A6 数据层过滤 + 全量读（不受 queryObjects 的 ≤1000 LLM 截断影响 —— 否则规模下聚合静默算错）
+    const scan = await this.ontology.listVisibleForAggregate(ctx, req.typeKey, req.filter ?? {});
+    const rows = scan.rows;
 
     // groupBy 基数保护：>500 → 400
     const groupKey = (props: Record<string, unknown>): string =>
@@ -675,7 +674,7 @@ export class OntologyGovernanceService {
       out.push({ group, metrics });
     }
     out.sort((a, b) => (JSON.stringify(a.group) < JSON.stringify(b.group) ? -1 : 1));
-    return { rows: out, rowCount: out.length, truncated: false };
+    return { rows: out, rowCount: out.length, truncated: scan.truncated };
   }
 
   // ===========================================================================

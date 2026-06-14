@@ -290,6 +290,28 @@ export class OntologyService {
       : { id: o.id, type: o.type, props };
   }
 
+  /**
+   * 聚合专用的 A6 行级过滤全量读（不走 queryObjects 的 LLM 上下文 ≤1000 截断 —— 那个截断是给
+   * agent 返原始行用的，会让聚合在规模下静默算错）。仍套行级过滤；超安全上限才标 truncated。
+   */
+  async listVisibleForAggregate(
+    ctx: AuthCtx,
+    objectType: string,
+    filter: Record<string, unknown> = {},
+  ): Promise<{ rows: { props: Record<string, unknown> }[]; total: number; truncated: boolean }> {
+    const CAP = 200_000; // 安全上限：超此返回 truncated=true（防 OOM；真正下推属 E2 转换引擎）
+    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
+    const visible = all
+      .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
+      .filter((o) => this.matchFilter(o.props, filter));
+    return {
+      rows: visible.slice(0, CAP).map((o) => ({ props: o.props })),
+      total: visible.length,
+      truncated: visible.length > CAP,
+    };
+  }
+
   /** GET /a/v1/objects/:type/:id */
   async getObject(ctx: AuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
     const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
