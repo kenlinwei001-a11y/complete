@@ -1,4 +1,5 @@
 import type { QueryTask, SkillDefinition } from "@platform/contracts";
+import { selectSkills } from "./skill-router.js";
 
 /** Agent system prompt — the four red lines (QOS-PRD §5.4.3, semantics must not be weakened). */
 export const AGENT_SYSTEM_CORE = `你是企业决策系统的分析助手。你只能通过工具获取事实，不能凭记忆或推测回答业务问题。
@@ -13,10 +14,20 @@ export const AGENT_SYSTEM_CORE = `你是企业决策系统的分析助手。你�
 
 完成分析后必须调用 final_answer 工具输出结构化回答。`;
 
-export function buildSkillSection(skills: SkillDefinition[]): string {
+/**
+ * 注入可用技能段。传入 query 时启用 skill 语义路由（Phase5C）：仅注入相关性 top-k 的全文
+ * summary，其余降级为 id/名（仍可 load_skill 取全文）→ 收紧上下文预算、提升相关性。
+ * 不传 query（或技能数 ≤ topK）时全量注入，与旧行为一致（向后兼容）。
+ */
+export function buildSkillSection(skills: SkillDefinition[], opts?: { query?: string; topK?: number }): string {
   if (skills.length === 0) return "";
-  const lines = skills.map((s) => `- [${s.id}] ${s.name}: ${s.summary}`);
-  return `\n\n可用技能（调用 load_skill(skillId) 获取全文）：\n${lines.join("\n")}`;
+  const { full, deferred } = selectSkills(opts?.query, skills, opts?.topK ?? 6);
+  const lines = full.map((s) => `- [${s.id}] ${s.name}: ${s.summary}`);
+  let section = `\n\n可用技能（调用 load_skill(skillId) 获取全文）：\n${lines.join("\n")}`;
+  if (deferred.length > 0) {
+    section += `\n其余 ${deferred.length} 个技能（相关性较低，需要时 load_skill 取全文）：${deferred.map((s) => `[${s.id}]${s.name}`).join("、")}`;
+  }
+  return section;
 }
 
 // ---------------------------------------------------------------------------

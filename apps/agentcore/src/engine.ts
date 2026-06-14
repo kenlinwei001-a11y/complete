@@ -163,7 +163,8 @@ export class ExecutionEngine {
         opts.onResolvedRef?.({ kind: "skill", key: skill.key, version: skill.version });
       }
     }
-    const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills)}`;
+    // Phase5C skill 语义路由：按 query 相关性仅注入 top-k 全文 summary（其余 load_skill 按需取）。
+    const system = `${agent.systemPrompt}\n\n${AGENT_SYSTEM_CORE}${buildSkillSection(skills, { query: opts.prompt })}`;
 
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.nesting.budget, agent.scopeDeclaration.toolNames);
 
