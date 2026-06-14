@@ -7,3 +7,6 @@ dist/
 coverage/
 .blobstore/
 *.log
+
+# 完整代码包快照（由 git archive 生成的自快照，可复现，不入库以免膨胀）
+deliverables/*完整代码包*.zip
