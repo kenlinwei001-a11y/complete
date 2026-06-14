@@ -509,7 +509,7 @@ export class SyntheticService {
     for (const t of extendedObjectTypes()) {
       if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
     }
-    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] });
+    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] }, scale);
     await putAll("Material", ext.materials, "matId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("Customer", ext.customers, "custId");

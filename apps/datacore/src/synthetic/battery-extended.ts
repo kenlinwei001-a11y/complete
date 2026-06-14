@@ -66,12 +66,18 @@ export interface ExtendedData {
   carbonFactors: Record<string, unknown>[];
 }
 
-/** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。 */
+/** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。scale 控工业级数据量（XL）。 */
 export function generateExtended(
   seed: number,
   ctx: { models: { modelId: string }[]; bases: { baseId: string; name: string }[]; lines: { lineId: string }[] },
+  scale: "S" | "M" | "L" | "XL" = "L",
 ): ExtendedData {
   const rng = mulberry32(seed + 7919); // 独立子流，与主生成不串扰
+  // 工业级数据量：S/M/L 保持原 demo 量级（既有测试），XL 放大到产线真实量级。
+  const batchesPerMat = scale === "XL" ? 250 : 3; // 8 料 × 250 = 2000 批
+  const poCount = scale === "XL" ? 3000 : 30;
+  const extraCustomers = scale === "XL" ? 54 : 0; // 6 + 54 = 60 客户
+  const invoicesPerCust = scale === "XL" ? 40 : 3;
 
   const materials = MATERIALS.map((m) => ({
     matId: m.matId,
@@ -85,11 +91,11 @@ export function generateExtended(
     inTransit: round(rng() * 1500, 0),
   }));
 
-  // MaterialBatch：每物料 3 批，植入 6 批 >90 日呆滞
+  // MaterialBatch：每物料 batchesPerMat 批，植入 6 批 >90 日呆滞（XL=工业级 2000 批）
   const materialBatches: Record<string, unknown>[] = [];
   let dormantInjected = 0;
   for (const m of MATERIALS) {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < batchesPerMat; i++) {
       const makeDormant = dormantInjected < 6 && i === 2; // 每料第3批设呆滞，直到注满6批
       if (makeDormant) dormantInjected++;
       materialBatches.push({
@@ -102,25 +108,33 @@ export function generateExtended(
     }
   }
 
-  // Customer：6 个，商用车集团G 植入逾期 38 天
+  // Customer：6 命名客户（含戏剧点）+ extraCustomers 工业级补充
   const custNames = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源", "电网公司F", "商用车集团G"];
-  const customers = custNames.map((name, ci) => {
-    const overdue = name === "商用车集团G" ? 38 : Math.floor(rng() * 25);
-    return {
+  const customers = [
+    ...custNames.map((name, ci) => ({
       custId: `cust_${ci}`, // ascii pk（避免中文名 sanitize 后 id 碰撞）
       custName: name,
       creditLimit: round(2000 + rng() * 8000, 0),
       termDays: 60,
       receivables: round(rng() * 3000, 0),
       wipUnbilled: round(rng() * 2000, 0),
-      maxOverdueDays: overdue,
-    };
-  });
+      maxOverdueDays: name === "商用车集团G" ? 38 : Math.floor(rng() * 25),
+    })),
+    ...Array.from({ length: extraCustomers }, (_, k) => ({
+      custId: `cust_x${k}`,
+      custName: `客户${String(k + 1).padStart(3, "0")}`,
+      creditLimit: round(1000 + rng() * 9000, 0),
+      termDays: 60,
+      receivables: round(rng() * 3000, 0),
+      wipUnbilled: round(rng() * 2000, 0),
+      maxOverdueDays: Math.floor(rng() * 25),
+    })),
+  ];
 
-  // ARInvoice：每客户 ~3 张（G 含逾期张）
+  // ARInvoice：每客户 invoicesPerCust 张（G 含逾期张）
   const arInvoices: Record<string, unknown>[] = [];
   for (const [ci, c] of customers.entries()) {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < invoicesPerCust; i++) {
       arInvoices.push({
         invoiceId: `arinvoice_${ci}_${i}`, // ascii pk（避免与搜索 token 碰撞）
         custName: c.custName,
@@ -180,9 +194,9 @@ export function generateExtended(
     { projectId: "capex_virtual", name: "某低效项目", irr: 0.09, util24: 0.61, c23pass: false },
   ];
 
-  // PurchaseOrder：30 单，2 单延迟
+  // PurchaseOrder：poCount 单，2 单延迟（XL=工业级 3000 单）
   const purchaseOrders: Record<string, unknown>[] = [];
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < poCount; i++) {
     const m = MATERIALS[i % MATERIALS.length]!;
     purchaseOrders.push({
       poId: `po_${i}`,

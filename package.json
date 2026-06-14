@@ -10,6 +10,7 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "parity": "node scripts/parity-audit.mjs",
+    "provision:enterprise": "node scripts/provision-enterprise.mjs",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },

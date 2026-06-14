@@ -146,3 +146,24 @@ docker compose down -v && docker compose up --build
 - `optimizeDeps.exclude: ["@platform/contracts"]` 使工作区源包不进 `.vite` 预打包缓存，根除"缓存存绝对路径、复制目录后陈旧导致 React 实例为 null / useContext 崩"这一类故障；
 - `dev` 脚本为 `vite --force`，每次冷启动重建依赖缓存。
 docker 部署路径（`docker compose up --build`）本就是干净 `pnpm install` + `vite build`，不受此影响。
+
+## 锂电企业工业级环境一键配置（provision-enterprise）
+
+`scripts/provision-enterprise.mjs` 以**操作员账号登录后经 REST API 配置**（非硬编码 IPO）站起完整工业级环境：
+
+- **10 数据域**（factory/product/process/equip/quality/capacity/forecast/people/plan/finance + unassigned）+ 跨 ≥5 域本体类型与链接（切片检索可跨域）；
+- **工业级数据**（XL 档）：10⁴ 订单 + 2000 物料批次 + 3000 采购单 + 60 客户 + 90 天时序，全部经 A9「一键合成」正门生成，每条带 `origin`/引用，可增删改查；
+- **21 求解器 + 15 约束（C01–C33）+ 20 skills（结构 lint 门禁）+ 10 场景 agent + 10 场景入口 + 评测用例 + MCP 集成位（预留对接）**；
+- **两个仿真**：受影响订单推演（常州，命中真实订单数，可下钻溯源）+ 规划体检（评分/结论/硬矛盾），跑在工业级数据上、支持二次推演。
+
+```bash
+# A) 本地验证（自起内存双服务，跑完打印配置清单，不持久化）
+pnpm provision:enterprise
+
+# B) 对已部署实例配置（持久化到 PG —— 部署重启后依旧可见；这是"装进安装包"的方式）
+#    前提：docker compose up 起好（datacore 连 DATABASE_URL），下面指向网关/服务地址
+PROVISION_TARGET=1 DATACORE_URL=http://localhost:4001 AGENTCORE_URL=http://localhost:4002 \
+  node scripts/provision-enterprise.mjs --remote
+```
+
+**持久化说明**：B 模式下所有写入经 DataCore/AgentCore 落 **PostgreSQL**（对象/本体/规则/skill/agent/场景/评测），属"系统状态"，随卷持久、部署重启后可见；脚本幂等，可反复运行（同 seed 合成字节级一致）。数据导入当前走 Excel 模板上传（`/a/v1/uploads`）+ 合成正门，并预留连接器 API 对接（mock_erp/mock_crm/rest_api → 替换为生产连接器即可）。
