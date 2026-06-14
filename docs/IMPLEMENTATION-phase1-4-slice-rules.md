@@ -110,7 +110,21 @@ node scripts/slice-scenarios-excel.mjs L order_to_cash_720
 验证(Phase8 后):datacore **246** / agentcore **191** / frontend 106 / parity **129/129** + contracts 厂商目录测试。
 回归锁:contracts `llm-vendor-catalog`、agentcore `production-cognition`(PC1-PC3)。
 
-如何接真实大模型(运维):
+## 九、Phase 9(历史可见 + 数据可替换可重推演)
+
+| 子项 | 状态 | 实施 |
+|---|---|---|
+| 9A 10 场景真跑落历史 | ✅ | provision 5d 把其余 8 场景也真跑(经切片检索代表订单 → 求解器出结果)并回写各场景入口 `preloadedHistory` → **10/10 场景对话坞可见历史**(PG 验证:10 个 `ent-*` scene_entries 各含历史 + 标准视图)。livedIn 改 `PROVISION_LIVEDIN` 开关、`waitFor` 放宽 180s。 |
+| 9C 推演历史列表页 | ✅ | `repos.tasks.listByTenant` + `GET /b/v1/queries`(按租户列最近任务:问句/路径/状态/意图/结论摘要/时间) + 前端「推演历史」页(浏览 / 查看证据链 / **一键重放=二次推演**) + 路由 + 管理导航。回归锁 QH1/QH2。 |
+| 9B 对象级 Action CRUD + 二次推演 | ✅ | 新增 ActionType「对象数据变更」+ domainExecutor 分支:审批通过后把 patch 合并进对象 props(`origin→MANUAL`)、重跑派生 → 之后 `resolve_slice/invoke_solver` 即二次推演反映新值;**不绕过审批直改真值**,Action 审计=完整溯源。回归锁 OC1(闭环)/OC2(失败不静默)。 |
+
+验证(Phase9 后):datacore **248** / agentcore **192** / frontend 106 / parity **129/129**。
+
+> 说明:9A 已在本地 PG 验证 10/10 场景历史落库(scale=L、livedIn 关,为避开 pg 行级逐条写 + 365 天回放
+> 超 fetch headers 超时)。既有 XL `db-seed` 安装包未被覆盖;要把 10 场景历史并入 XL 安装种子,
+> 用新版 provision 重跑(XL 建议后续加批量 INSERT 提速;接口与逻辑已就位)。
+
+## 接真实大模型(运维)：
 1. 配置页选厂商(如 Moonshot)→ 自动预填 `https://api.moonshot.cn/v1` + 型号 → 填 API Key → 连接测试 → 用途绑定(classifier/agent/...)。
 2. 滚动摘要接 LLM:设 `QOS_ROLLING_SUMMARY_LLM=1`。
 3. 路由接真 embedding:设 `QOS_EMBEDDING_BASE_URL/MODEL/API_KEY`(OpenAI 兼容 /embeddings)。
