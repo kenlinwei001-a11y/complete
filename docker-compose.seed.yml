@@ -1,0 +1,21 @@
+# 预置场景记录叠加层 —— 让全新安装即自带「已完成的推演 / 历史推演」数据。
+#
+#   docker compose -f docker-compose.yml -f docker-compose.seed.yml up --build
+#
+# 原理：postgres 官方镜像首次初始化（数据卷为空）时会自动执行
+# /docker-entrypoint-initdb.d/*.sql。本叠加层把 db-seed/ 下的两份种子挂进去：
+#   - datacore-seed.sql  → 17820 对象 / 20208 链路 / 跨域切片 / 90 天时序 / livedIn 365 天回放（运营回顾）
+#   - agentcore-seed.sql → 20 skills / 10 agents / 10 场景入口（含两场景历史推演 preloadedHistory）
+# 应用启动时再跑幂等迁移（CREATE TABLE IF NOT EXISTS），与种子并存不冲突。
+#
+# 注意：种子仅在「数据卷为空」的首次启动加载。要重新加载需先清卷：
+#   docker compose down -v && docker compose -f docker-compose.yml -f docker-compose.seed.yml up --build
+services:
+  postgres-a:
+    volumes:
+      - pgdata-a:/var/lib/postgresql/data
+      - ./db-seed/datacore-seed.sql:/docker-entrypoint-initdb.d/10-datacore-seed.sql:ro
+  postgres-b:
+    volumes:
+      - pgdata-b:/var/lib/postgresql/data
+      - ./db-seed/agentcore-seed.sql:/docker-entrypoint-initdb.d/10-agentcore-seed.sql:ro
