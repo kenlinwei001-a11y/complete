@@ -25,6 +25,7 @@ import {
   generateBattery,
   generatePlanDomain,
 } from "./battery.js";
+import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
 import { genPoint, maintWindowsFor, windowFor, type TsGenSpec } from "./tsgen.js";
@@ -504,6 +505,21 @@ export class SyntheticService {
     await putAll("Segment", g.segments, "segKey");
     await putAll("Shipment", g.shipments, "shipId");
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
+    // 20 场景目录 §7 扩展数据（E6b）：13 求解器所需对象类型 + 实例（确定性 + 戏剧点植入）。
+    for (const t of extendedObjectTypes()) {
+      if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
+    }
+    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] });
+    await putAll("Material", ext.materials, "matId");
+    await putAll("MaterialBatch", ext.materialBatches, "batchId");
+    await putAll("Customer", ext.customers, "custId");
+    await putAll("ARInvoice", ext.arInvoices, "invoiceId");
+    await putAll("Certification", ext.certifications, "certId");
+    await putAll("EnergyMeter", ext.energyMeters, "meterId");
+    await putAll("ChangeoverMatrix", ext.changeoverMatrix, "pairId");
+    await putAll("CapexProject", ext.capexProjects, "projectId");
+    await putAll("PurchaseOrder", ext.purchaseOrders, "poId");
+    await putAll("CarbonFactor", ext.carbonFactors, "factorId");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
     for (const m of g.models) {
       for (const baseId of m.bases as string[]) {

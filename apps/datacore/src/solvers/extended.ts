@@ -1,5 +1,6 @@
+import type { ObjectInstance } from "../domain.js";
 import { round } from "../prng.js";
-import { num, str } from "./types.js";
+import { num, str, type SolverContext } from "./types.js";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -366,3 +367,83 @@ export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) =>
   quarterly_gap: quarterlyGap,
   carbon_footprint: carbonFootprint,
 };
+
+/**
+ * E6b：当场景仅给 presetContext 槽位、未显式传齐 args 时，从对象数据（SolverContext §7 扩展）
+ * 推导各求解器的输入 args（已传的 args 优先保留）。让 20 场景从 presetContext 端到端出结果。
+ */
+export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Record<string, unknown>): Record<string, unknown> {
+  const props = (o: ObjectInstance) => o.props as Record<string, unknown>;
+  const mats = (c.materials ?? []).map(props);
+  const has = (k: string) => args[k] !== undefined;
+  switch (solverKey) {
+    case "cert_schedule":
+      if (has("items")) return args;
+      return { engineerGroups: 3, ...args, items: (c.certifications ?? []).map(props).map((x) => ({ model: str(x.modelId), line: str(x.lineId), status: str(x.status), certHours: num(x.certHours, 80), gapContribution: num(x.gapContribution) })) };
+    case "kit_readiness": {
+      if (has("orders")) return args;
+      const orders = (c.orders ?? []).slice(0, 8).map((o, i) => ({
+        orderId: str(props(o).so, `O${i}`),
+        qty: num(props(o).qty, 100),
+        startDay: 7,
+        materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), onHand: num(m.onHand), inTransit: [{ qty: num(m.inTransit), etaDay: num(m.leadTime, 10) }], bomUnit: num(m.bomUnit, 1) })),
+      }));
+      return { fromDay: 1, toDay: 14, ...args, orders };
+    }
+    case "lta_gap": {
+      if (has("monthDemand")) return args;
+      const m = mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0] ?? {};
+      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, 30), ...args };
+    }
+    case "inventory_optimize": {
+      if (has("materials")) return args;
+      const idleByMat = new Map<string, number>();
+      for (const b of (c.materialBatches ?? []).map(props)) idleByMat.set(str(b.matId), Math.max(idleByMat.get(str(b.matId)) ?? 0, num(b.idleDays)));
+      return { ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
+    }
+    case "changeover_sequence": {
+      if (has("orders")) return args;
+      const matrix: Record<string, Record<string, number>> = {};
+      for (const e of (c.changeoverMatrix ?? []).map(props)) {
+        (matrix[str(e.fromModel)] ??= {})[str(e.toModel)] = num(e.minutes);
+      }
+      const orders = (c.orders ?? []).slice(0, 6).map((o, i) => ({ orderId: str(props(o).so, `o${i}`), modelId: str(props(o).model), dueDay: num(props(o).dueDay, i) }));
+      return { lineId: str(args.lineId, "L1"), ...args, orders, matrix, current: orders[0]?.modelId };
+    }
+    case "outsourcing_split": {
+      const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
+      return { gap: num(args.gap, Math.round(totalDemand * 0.15)), totalDemand, ...args };
+    }
+    case "quote_margin": {
+      if (has("bom")) return args;
+      return { price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
+    }
+    case "credit_exposure": {
+      if (has("creditLimit")) return args;
+      const cust = (c.customers ?? []).map(props).find((x) => str(x.custName) === str(args.custName)) ?? (c.customers ?? []).map(props)[0] ?? {};
+      const overdue = (c.arInvoices ?? []).map(props).filter((iv) => str(iv.custName) === str(cust.custName) && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
+      return { custName: str(cust.custName, str(args.custName)), creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue, ...args };
+    }
+    case "carbon_footprint": {
+      if (has("materials")) return args;
+      const em = (c.energyMeters ?? []).map(props)[0];
+      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
+    }
+    case "maintenance_stagger": {
+      if (has("bases")) return args;
+      const bases = (c.bases ?? []).map((b, i) => ({ base: str(props(b).name, `B${i}`), group: "g1", maintWeek: 10 + (i % 3), loadByWeek: { "6": 20, "7": 5, "10": 80, "11": 8, "12": 12 } }));
+      return { peakWeeks: [10, 11, 12], ...args, bases };
+    }
+    case "yield_diagnosis": {
+      if (has("series")) return args;
+      const series = Array.from({ length: 40 }, (_, d) => ({ day: d + 1, yield: d < 33 ? 0.95 : 0.85 }));
+      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), ...args, series, events: [{ day: 33, kind: "换批", source: "MES" }] };
+    }
+    case "quarterly_gap":
+      return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args };
+    case "mitigation_select":
+      return { tightness: 85, ...args };
+    default:
+      return args;
+  }
+}

@@ -9,7 +9,7 @@ import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from ".
 import { affectedOrders, bottleneckMatrix, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
-import { EXTENDED_SOLVERS } from "./extended.js";
+import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -147,6 +147,20 @@ export class SolverService {
       m.set(baseId, str(link.props?.status, "量产"));
     }
     const params = await this.getParams(tenantId);
+    // 20 场景目录 §7 扩展数据（E6b）：13 新求解器的对象源（缺省空数组，不影响既有求解器）。
+    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors] =
+      await Promise.all([
+        this.repos.objects.listByType(tenantId, "Material"),
+        this.repos.objects.listByType(tenantId, "MaterialBatch"),
+        this.repos.objects.listByType(tenantId, "Customer"),
+        this.repos.objects.listByType(tenantId, "ARInvoice"),
+        this.repos.objects.listByType(tenantId, "Certification"),
+        this.repos.objects.listByType(tenantId, "EnergyMeter"),
+        this.repos.objects.listByType(tenantId, "ChangeoverMatrix"),
+        this.repos.objects.listByType(tenantId, "CapexProject"),
+        this.repos.objects.listByType(tenantId, "PurchaseOrder"),
+        this.repos.objects.listByType(tenantId, "CarbonFactor"),
+      ]);
     return {
       tenantId,
       params,
@@ -161,6 +175,16 @@ export class SolverService {
       segments: sortById(segments),
       dataHealth: sortById(dataHealth),
       certByModel,
+      materials: sortById(materials),
+      materialBatches: sortById(materialBatches),
+      customers: sortById(customers),
+      arInvoices: sortById(arInvoices),
+      certifications: sortById(certifications),
+      energyMeters: sortById(energyMeters),
+      changeoverMatrix: sortById(changeoverMatrix),
+      capexProjects: sortById(capexProjects),
+      purchaseOrders: sortById(purchaseOrders),
+      carbonFactors: sortById(carbonFactors),
     };
   }
 
@@ -205,9 +229,9 @@ export class SolverService {
       case "capex_scenario":
         return capexScenario(c, args as unknown as CapexScenarioArgs);
       default: {
-        // 20 场景目录 §2 新增 13 求解器（args 驱动、确定性）
+        // 20 场景目录 §2 新增 13 求解器：缺 args 时从对象数据推导（E6b），再确定性求解
         const ext = EXTENDED_SOLVERS[solverKey];
-        if (ext) return ext(args);
+        if (ext) return ext(deriveExtendedArgs(c, solverKey, args));
         throw notFound(`solver ${solverKey}`);
       }
     }

@@ -215,6 +215,17 @@ export interface SolverContext {
   dataHealth: ObjectInstance[];
   /** modelId → baseId → 量产 | 认证中 (from model_certified_on edge props). */
   certByModel: Map<string, Map<string, string>>;
+  // 20 场景目录 §7 扩展数据（E6b）：13 新求解器的对象数据源（optional，缺省视为空）。
+  materials?: ObjectInstance[];
+  materialBatches?: ObjectInstance[];
+  customers?: ObjectInstance[];
+  arInvoices?: ObjectInstance[];
+  certifications?: ObjectInstance[];
+  energyMeters?: ObjectInstance[];
+  changeoverMatrix?: ObjectInstance[];
+  capexProjects?: ObjectInstance[];
+  purchaseOrders?: ObjectInstance[];
+  carbonFactors?: ObjectInstance[];
 }
 
 export function num(v: unknown, fallback = 0): number {
