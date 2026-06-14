@@ -206,6 +206,21 @@ export class Orchestrator {
       return;
     }
 
+    // #5 单候选短路：候选收窄后只剩 1 个意图，且其必填槽位可仅从上下文（presetContext/选中对象
+    // defaultFrom）满足时，跳过 LLM 分类直接进路径 A —— 省一次分类往返。仍保留槽位填充语义：
+    // 若必填槽位无法从上下文满足（需 NL 抽取），不短路、照常走分类。
+    if (candidates.length === 1) {
+      const only = candidates[0]!;
+      const probe = await fillSlots(only, {}, task.context, this.deps.engine.deps.dataCore.ontology, auth);
+      if (probe.missing.length === 0) {
+        await this.deps.repos.tasks.patch(taskId, {
+          classification: { candidates: [{ intentKey: only.key, confidence: 1 }], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "short-circuit:single-candidate" },
+        });
+        await this.proceedWithIntent(taskId, auth, only, {});
+        return;
+      }
+    }
+
     // ② LLM classification (with up to 2 retries)
     const classification = await this.classify(task, pkg, candidates);
     if (!classification) {
