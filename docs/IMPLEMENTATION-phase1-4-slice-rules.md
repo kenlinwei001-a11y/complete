@@ -54,9 +54,20 @@ node scripts/slice-scenarios-excel.mjs L enterprise_360   # 8 域证据
 node scripts/slice-scenarios-excel.mjs L order_to_cash_720
 ```
 
-## 五、下一步(Phase 5,未做)
+## 五、Phase 5(已完成 5A/5B/5C)
 
-1. Finance 对象类型 → AOP/订单到回款把财务纳入切片(凑满含 plan/finance 的更宽切片)。
-2. skill 语义路由(embedding top-k 注入)+ 语义压缩层(丢弃上下文 LLM 蒸馏回写经验库)。
-3. 跨求解器编排器(对策组合/再平衡)、MCP router、Path A 支持 MCP 绑定。
-4. 稀疏域数据扩到工业级(DataSourceHealth 1→≥20 等)。
+| 子项 | 状态 | 实施 |
+|---|---|---|
+| 5A Finance 域 | ✅ | 新增 `FinanceAccount`(基地现金账户)/`FinanceMetric`(情景财务指标) + `base_finance`/`scenario_to_finance` 边 → `order_to_cash_720` 升至 **9 域**(产品/工厂/工艺/设备/供给/商务/产能/质量/**财务**)。闭合 P0-c。 |
+| 5B 稀疏域数据 | ✅ | `DataSourceHealth` 1→**9 源系统**(MES/ERP/SRM/PLM/WMS/QMS/EMS/LIMS/IoT-SCADA)+ XL 档每基地 IoT 采集器。关键源 ≤2h 不扰动 P90 降级,>2h 仅落非关键源 → C09 仍可触发。 |
+| 5C skill 语义路由 | ✅ | 新增 `skill-router.ts`:按 query 词法相关性(CJK 二元组+ASCII,确定性)排序,仅注入 top-k 全文 summary,其余降级 `load_skill` 按需取。闭合自检「agent 工程化最弱项」。 |
+
+验证(Phase5 后):datacore **244** / agentcore **178** / frontend 106 / parity **129/129** 全绿。
+回归锁:SL5 升级为 9 域断言;`skill-router.test.ts` SR1–SR5。
+
+证据 Excel:`order_to_cash_720-跨域推演节点.xls`(9 域)、`enterprise_360-跨域推演节点.xls`(8 域最大广度)。
+
+### Phase 5 仍未做(更大改造)
+1. 语义压缩层(丢弃上下文 LLM 蒸馏回写经验库 search_experience)。
+2. 跨求解器编排器(对策组合/再平衡 meta-solver)、MCP router、Path A 支持 MCP 绑定。
+3. AnnualScenario 根的 plan/finance 专用切片(plan 域目前仍是经 Order 根不可达的子图,仅 scenario 根可达)。

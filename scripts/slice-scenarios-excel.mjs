@@ -242,7 +242,7 @@ try {
 
   const outDir = join(ROOT, "deliverables");
   mkdirSync(outDir, { recursive: true });
-  const outPath = join(outDir, `${SLICE === "order_fulfillment_360" ? "跨域切片-两场景推演节点" : SLICE + "-8域推演节点"}.xls`);
+  const outPath = join(outDir, `${SLICE === "order_fulfillment_360" ? "跨域切片-两场景推演节点" : SLICE + "-跨域推演节点"}.xls`);
   writeFileSync(outPath, "﻿" + xml, "utf8");
   console.log(`\n✅ 已导出 Excel：${outPath}`);
   console.log(`   场景① ${s1nodes.size} 节点/${s1edges.size} 边 · 场景② ${s2nodes.size} 节点/${s2edges.size} 边`);
