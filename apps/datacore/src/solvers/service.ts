@@ -117,7 +117,11 @@ export class SolverService {
     return this.mutateParams(tenantId, () => undefined, note);
   }
 
-  async loadContext(tenantId: string, visibleOrders?: ObjectInstance[]): Promise<SolverContext> {
+  async loadContext(
+    tenantId: string,
+    visibleOrders?: ObjectInstance[],
+    opts?: { withExtended?: boolean },
+  ): Promise<SolverContext> {
     const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth] =
       await Promise.all([
         this.repos.objects.listByType(tenantId, "Base"),
@@ -147,20 +151,24 @@ export class SolverService {
       m.set(baseId, str(link.props?.status, "量产"));
     }
     const params = await this.getParams(tenantId);
-    // 20 场景目录 §7 扩展数据（E6b）：13 新求解器的对象源（缺省空数组，不影响既有求解器）。
+    // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
+    // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
+    const empty: ObjectInstance[] = [];
     const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors] =
-      await Promise.all([
-        this.repos.objects.listByType(tenantId, "Material"),
-        this.repos.objects.listByType(tenantId, "MaterialBatch"),
-        this.repos.objects.listByType(tenantId, "Customer"),
-        this.repos.objects.listByType(tenantId, "ARInvoice"),
-        this.repos.objects.listByType(tenantId, "Certification"),
-        this.repos.objects.listByType(tenantId, "EnergyMeter"),
-        this.repos.objects.listByType(tenantId, "ChangeoverMatrix"),
-        this.repos.objects.listByType(tenantId, "CapexProject"),
-        this.repos.objects.listByType(tenantId, "PurchaseOrder"),
-        this.repos.objects.listByType(tenantId, "CarbonFactor"),
-      ]);
+      opts?.withExtended
+        ? await Promise.all([
+            this.repos.objects.listByType(tenantId, "Material"),
+            this.repos.objects.listByType(tenantId, "MaterialBatch"),
+            this.repos.objects.listByType(tenantId, "Customer"),
+            this.repos.objects.listByType(tenantId, "ARInvoice"),
+            this.repos.objects.listByType(tenantId, "Certification"),
+            this.repos.objects.listByType(tenantId, "EnergyMeter"),
+            this.repos.objects.listByType(tenantId, "ChangeoverMatrix"),
+            this.repos.objects.listByType(tenantId, "CapexProject"),
+            this.repos.objects.listByType(tenantId, "PurchaseOrder"),
+            this.repos.objects.listByType(tenantId, "CarbonFactor"),
+          ])
+        : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
     return {
       tenantId,
       params,
@@ -244,7 +252,7 @@ export class SolverService {
     args: Record<string, unknown>,
     opts?: { paramsVersion?: number; params?: SolverParamsShape },
   ): Promise<Record<string, unknown>> {
-    const c = await this.loadContext(tenantId);
+    const c = await this.loadContext(tenantId, undefined, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const params =
       opts?.params ?? (opts?.paramsVersion !== undefined ? await this.paramsAt(tenantId, opts.paramsVersion) : c.params);
     return this.compute({ ...c, params }, solverKey, args);
@@ -256,7 +264,7 @@ export class SolverService {
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
   ): Promise<Record<string, unknown>> {
-    const c = await this.loadContext(ctx.tenantId, visibleOrders);
+    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.
