@@ -363,6 +363,42 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows.map((x) => x.doc as import("./repos.js").ExperienceCaseRow);
       },
     },
+    evalCases: {
+      async upsert(c) {
+        await q(
+          `INSERT INTO eval_cases(id, tenant_id, suite, doc) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (id) DO UPDATE SET doc = $4, suite = $3`,
+          [c.id, c.tenantId, c.suite, JSON.stringify(c)],
+        );
+      },
+      async get(id) {
+        const r = await q(`SELECT doc FROM eval_cases WHERE id = $1`, [id]);
+        return r.rows[0]?.doc as import("@platform/contracts").EvalCase | undefined;
+      },
+      async listByTenant(tenantId, suite) {
+        const r = suite
+          ? await q(`SELECT doc FROM eval_cases WHERE tenant_id = $1 AND suite = $2 ORDER BY id`, [tenantId, suite])
+          : await q(`SELECT doc FROM eval_cases WHERE tenant_id = $1 ORDER BY id`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("@platform/contracts").EvalCase);
+      },
+    },
+    evalRuns: {
+      async insert(rep) {
+        await q(`INSERT INTO eval_runs(id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc = $3`, [
+          rep.id,
+          rep.tenantId,
+          JSON.stringify(rep),
+        ]);
+      },
+      async get(id) {
+        const r = await q(`SELECT doc FROM eval_runs WHERE id = $1`, [id]);
+        return r.rows[0]?.doc as import("@platform/contracts").EvalRunReport | undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT doc FROM eval_runs WHERE tenant_id = $1 ORDER BY created_at DESC`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("@platform/contracts").EvalRunReport);
+      },
+    },
     credentials: {
       async insert(c: CredentialRow) {
         await q(`INSERT INTO credentials(id, tenant_id, name, ciphertext, created_at) VALUES ($1,$2,$3,$4,$5)`, [

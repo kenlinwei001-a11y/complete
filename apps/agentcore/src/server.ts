@@ -12,6 +12,8 @@ import {
   mcpServerNameSlug,
   ModelBindingSchema,
   SceneEntryConfigSchema,
+  EvalCaseSchema,
+  EvalSuiteSchema,
   SkillDefinitionSchema,
   SubmitQueryBodySchema,
   WorkflowDefinitionSchema,
@@ -378,6 +380,19 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const cycle = await detectStaticCycle(deps.repos, { kind: "agent", id }, { agent });
     if (cycle) {
       throw new HttpError(400, ErrorCodes.CYCLIC_INVOCATION, `发布被拒：静态可达环 ${cycle.join(" -> ")}`);
+    }
+    // AIP Evals §2 发布门禁：存在 agent_quality 用例时必跑，通过率 < 上一次运行 → 阻断
+    // （force=true 审计豁免）；无用例则跳过（没有关联套件即无回归项）。
+    const evalCases = await deps.repos.evalCases.listByTenant(a.tenantId, "agent_quality");
+    if (evalCases.length > 0) {
+      const { force } = req.query as { force?: string };
+      const run = await deps.evals.run(a, "agent_quality", { agentKey: agent.key });
+      const prior = (await deps.repos.evalRuns.listByTenant(a.tenantId))
+        .filter((r) => r.suite === "agent_quality" && r.agentKey === agent.key && r.id !== run.id)
+        .sort((x, y) => (x.startedAt > y.startedAt ? -1 : 1))[0];
+      if (prior && run.passRate < prior.passRate && force !== "true") {
+        return { ok: false, errors: [{ field: "eval", message: `评测回归：本次通过率 ${run.passRate} < 上次 ${prior.passRate}（agent_quality）；修复用例或 force=true 审计豁免` }], evalRunId: run.id };
+      }
     }
     const all = await deps.repos.agents.listByTenant(a.tenantId);
     for (const s of all) {
@@ -1267,6 +1282,47 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // B5 Scene entries
   // ---------------------------------------------------------------------
   const UpsertSceneBody = SceneEntryConfigSchema.omit({ id: true, tenantId: true });
+
+  // AIP Evals §2 / E4：评测用例 CRUD + 跑套件 + 历史 + 种子 + 兜底转化。
+  app.get("/b/v1/evals", async (req) => {
+    const a = await auth(req);
+    const { suite } = req.query as { suite?: "classifier" | "agent_quality" | "regression" };
+    return { items: await deps.repos.evalCases.listByTenant(a.tenantId, suite) };
+  });
+  app.post("/b/v1/evals", async (req, reply) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const body = EvalCaseSchema.omit({ id: true, tenantId: true, createdAt: true }).parse(req.body);
+    const c = await deps.evals.createCase({ ...body, tenantId: a.tenantId });
+    return reply.status(201).send(c);
+  });
+  app.post("/b/v1/evals/seed-scenarios", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { packageId } = req.body as { packageId: string };
+    if (!packageId) throw new HttpError(400, "VALIDATION_ERROR", "packageId required");
+    return deps.evals.seedScenarioCases(a.tenantId, packageId);
+  });
+  app.post("/b/v1/evals/from-fallback/:taskId", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { taskId } = req.params as { taskId: string };
+    const { intentKey } = req.body as { intentKey: string };
+    if (!intentKey) throw new HttpError(400, "VALIDATION_ERROR", "intentKey required");
+    const c = await deps.evals.fromFallback(a.tenantId, taskId, intentKey);
+    if (!c) throw new HttpError(404, "FALLBACK_NOT_FOUND", `fallback trace not found: ${taskId}`);
+    return c;
+  });
+  app.post("/b/v1/evals/run", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const body = z.object({ suite: EvalSuiteSchema.default("classifier"), agentKey: z.string().optional() }).parse(req.body ?? {});
+    return deps.evals.run(a, body.suite, { ...(body.agentKey ? { agentKey: body.agentKey } : {}) });
+  });
+  app.get("/b/v1/evals/runs", async (req) => {
+    const a = await auth(req);
+    return { items: await deps.repos.evalRuns.listByTenant(a.tenantId) };
+  });
 
   // 数据流闭环 §3/§6：联动刷新接线注册表（前端缓存失效路由的单一来源）。
   // ?event= 过滤某事件的下游；?view= 反查某消费页依赖的事件。

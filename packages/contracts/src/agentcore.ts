@@ -194,3 +194,79 @@ export const SceneEntryConfigSchema = z.object({
   updatedAt: z.string().optional(),
 });
 export type SceneEntryConfig = z.infer<typeof SceneEntryConfigSchema>;
+
+// ---------------------------------------------------------------------------
+// AIP Evals（运营完备性增量 §2 / 成熟度 E4）：agent 质量可量化评测
+// ---------------------------------------------------------------------------
+
+export const EvalSuiteSchema = z.enum(["classifier", "agent_quality", "regression"]);
+export type EvalSuite = z.infer<typeof EvalSuiteSchema>;
+
+export const EvalCaseSchema = z.object({
+  id: z.string(), // ec_
+  tenantId: z.string(),
+  suite: EvalSuiteSchema,
+  packageId: z.string(),
+  /** 输入：问句 + 会话上下文（视图/选中对象等）。 */
+  input: z.object({
+    query: z.string().min(1),
+    context: z.object({
+      view: z.string(),
+      selectedObjects: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string().optional() })).default([]),
+      filters: z.record(z.string(), z.union([z.string(), z.array(z.string())])).default({}),
+    }),
+  }),
+  /** 断言期望（§2）。 */
+  expect: z.object({
+    intentKey: z.string().nullable().optional(), // null = 应判 outOfCatalog
+    toolSequence: z.array(z.object({ name: z.string(), argsSubset: z.record(z.string(), z.unknown()).optional() })).optional(),
+    answerMust: z.array(z.string()).optional(),
+    answerMustNot: z.array(z.string()).optional(),
+    maxToolCalls: z.number().int().optional(),
+    trust: z.enum(["VERIFIED_WORKFLOW", "AGENT_EXPLORATORY"]).optional(),
+  }),
+  /** 出处：手写 / 场景目录派生 / 兜底转化。 */
+  origin: z.enum(["MANUAL", "SCENARIO", "FALLBACK"]).default("MANUAL"),
+  createdAt: z.string(),
+});
+export type EvalCase = z.infer<typeof EvalCaseSchema>;
+
+export const EvalCaseResultSchema = z.object({
+  caseId: z.string(),
+  pass: z.boolean(),
+  failures: z.array(z.string()),
+  observed: z.object({
+    intentKey: z.string().nullable().optional(),
+    path: z.string().optional(),
+    toolNames: z.array(z.string()),
+    toolCount: z.number().int(),
+    latencyMs: z.number(),
+    tokenCost: z.number().optional(),
+    answerExcerpt: z.string().optional(),
+  }),
+});
+export type EvalCaseResult = z.infer<typeof EvalCaseResultSchema>;
+
+export const EvalRunReportSchema = z.object({
+  id: z.string(), // erun_
+  tenantId: z.string(),
+  suite: EvalSuiteSchema,
+  agentKey: z.string().optional(),
+  startedAt: z.string(),
+  finishedAt: z.string().optional(),
+  total: z.number().int(),
+  passed: z.number().int(),
+  passRate: z.number(),
+  /** §2 指标：意图准确率/工具选择正确率/平均工具数/平均时延/token 成本。 */
+  metrics: z.object({
+    intentAccuracy: z.number(),
+    toolCorrectness: z.number(),
+    avgToolCalls: z.number(),
+    avgLatencyMs: z.number(),
+    avgTokenCost: z.number(),
+  }),
+  results: z.array(EvalCaseResultSchema),
+  /** mock LLM 跑出的分数仅证框架，非真实质量（接真模型后即真）。 */
+  llmMode: z.enum(["MOCK", "REAL"]),
+});
+export type EvalRunReport = z.infer<typeof EvalRunReportSchema>;

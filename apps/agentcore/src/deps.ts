@@ -11,6 +11,7 @@ import type { Repos } from "./persistence/repos.js";
 import { makeRefReporter, type RefReporter } from "./refs/report.js";
 import { Orchestrator } from "./router/orchestrator.js";
 import { CatalogService } from "./catalog/service.js";
+import { EvalService } from "./evals.js";
 import type { DataCoreClient } from "./tools/clients.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 
@@ -25,6 +26,7 @@ export interface AppDeps {
   events: TaskEvents;
   orchestrator: Orchestrator;
   catalog: CatalogService;
+  evals: EvalService;
   features: FeatureGate;
   llmSettings: LlmSettings;
   /** LLM Provider 增量：A 侧 provider/绑定目录（60s TTL + 事件失效）。 */
@@ -72,6 +74,7 @@ export function wireDeps(base: {
   });
   const reportRefs = makeRefReporter(base.config);
   const catalog = new CatalogService(base.repos, reportRefs);
+  const evals = new EvalService({ repos: base.repos, orchestrator });
   return {
     config: base.config,
     repos: base.repos,
@@ -83,6 +86,7 @@ export function wireDeps(base: {
     events,
     orchestrator,
     catalog,
+    evals,
     features,
     llmSettings,
     providerDirectory: base.providerDirectory,

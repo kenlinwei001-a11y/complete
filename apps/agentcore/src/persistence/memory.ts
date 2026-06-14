@@ -49,6 +49,8 @@ export function createMemoryRepos(): Repos {
   const llmProviders = new Map<string, LlmProviderConfig>();
   const llmBindings = new Map<string, ModelBinding[]>();
   const experience = new Map<string, ExperienceCaseRow>();
+  const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
+  const evalRuns = new Map<string, import("@platform/contracts").EvalRunReport>();
 
   return {
     packages: {
@@ -334,6 +336,34 @@ export function createMemoryRepos(): Repos {
       },
       async get(tenantId, role) {
         return clone((llmBindings.get(tenantId) ?? []).find((b) => b.role === role));
+      },
+    },
+    evalCases: {
+      async upsert(c) {
+        evalCases.set(c.id, clone(c));
+      },
+      async get(id) {
+        return clone(evalCases.get(id));
+      },
+      async listByTenant(tenantId, suite) {
+        return [...evalCases.values()]
+          .filter((c) => c.tenantId === tenantId && (suite ? c.suite === suite : true))
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .map(clone);
+      },
+    },
+    evalRuns: {
+      async insert(r) {
+        evalRuns.set(r.id, clone(r));
+      },
+      async get(id) {
+        return clone(evalRuns.get(id));
+      },
+      async listByTenant(tenantId) {
+        return [...evalRuns.values()]
+          .filter((r) => r.tenantId === tenantId)
+          .sort((a, b) => (a.startedAt > b.startedAt ? -1 : 1))
+          .map(clone);
       },
     },
     idempotency: {

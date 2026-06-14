@@ -2,6 +2,9 @@ import type {
   AgentDefinition,
   AgentRunRecord,
   Answer,
+  EvalCase,
+  EvalRunReport,
+  EvalSuite,
   ExecutionPlan,
   FallbackTrace,
   IntentDefinition,
@@ -124,6 +127,16 @@ export interface Repos {
   agentRuns: {
     insert(r: AgentRunRecord): Promise<void>;
     getByTask(taskId: string): Promise<AgentRunRecord | undefined>;
+  };
+  evalCases: {
+    upsert(c: EvalCase): Promise<void>;
+    get(id: string): Promise<EvalCase | undefined>;
+    listByTenant(tenantId: string, suite?: EvalSuite): Promise<EvalCase[]>;
+  };
+  evalRuns: {
+    insert(r: EvalRunReport): Promise<void>;
+    get(id: string): Promise<EvalRunReport | undefined>;
+    listByTenant(tenantId: string): Promise<EvalRunReport[]>;
   };
   fallbackTraces: {
     insert(t: FallbackTraceRow): Promise<void>;
