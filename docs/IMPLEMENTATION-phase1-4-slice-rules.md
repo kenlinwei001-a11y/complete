@@ -81,4 +81,17 @@ node scripts/slice-scenarios-excel.mjs L order_to_cash_720
 回归锁:SL10(AOP 切片)、countermeasure_combo 编排断言、catalog 22、EW1/EW2(经验回写)、MR1-MR3(MCP router)、WM1/WM2(Path A MCP)。
 
 ### 全部 Phase 5/6 缺口闭合
-自检的 P0/P1/P2 缺口至此基本闭合。剩余为增量优化(非缺口):语义压缩可进一步做消息级 LLM 滚动摘要;MCP/skill 路由可升级为真 embedding;plan↔product 连边可让 Order 根直达 plan。
+自检的 P0/P1/P2 缺口至此基本闭合。
+
+## 七、Phase 7(增量优化，已完成 7A–7C)
+
+| 子项 | 状态 | 实施 |
+|---|---|---|
+| 7A plan↔product 连边 | ✅ | 新增 `order_to_plantarget`(订单→交期月对应月度计划目标) → Order 根直达 plan 域。`order_to_cash_720` 升至 **10 域**(+plan)。 |
+| 7B 路由升级为 embedding | ✅ | skill/MCP 路由改为 **embedding 向量余弦**排序(主) + 词法重叠(次，平手裁决);`Embedder` 可插拔——生产可注入真 embedding provider，CI 用确定性 `pseudoEmbed`(256 维 hash bag-of-ngrams)。SR6 证明可插拔覆盖词法。 |
+| 7C 消息级滚动摘要 | ✅ | agent loop 折叠最旧轮时把其工具蒸馏(`第N轮[tool:firstLine]`)累积为「前情摘要」，每轮注入 `system`(`effectiveSystem()`);`summarizer` 可插拔(生产注入 LLM 摘要器，CI 确定性兜底);compaction 时复位避免重复。 |
+
+验证(Phase7 后):datacore **246** / agentcore **187** / frontend 106 / parity **129/129** 全绿。
+回归锁:SL5(10 域)、SR6(embedder 可插拔)、runtime-context Phase7C(折叠→前情摘要注入)。
+
+至此自检列出的"增量优化"三项亦全部落地。后续可继续的方向:把可插拔 `Embedder`/`summarizer` 在生产侧接真 LLM provider(接口已就位);更多 plan↔product / finance↔product 连边丰富跨域切片。
