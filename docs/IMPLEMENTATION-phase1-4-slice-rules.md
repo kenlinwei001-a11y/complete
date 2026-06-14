@@ -67,7 +67,18 @@ node scripts/slice-scenarios-excel.mjs L order_to_cash_720
 
 证据 Excel:`order_to_cash_720-跨域推演节点.xls`(9 域)、`enterprise_360-跨域推演节点.xls`(8 域最大广度)。
 
-### Phase 5 仍未做(更大改造)
-1. 语义压缩层(丢弃上下文 LLM 蒸馏回写经验库 search_experience)。
-2. 跨求解器编排器(对策组合/再平衡 meta-solver)、MCP router、Path A 支持 MCP 绑定。
-3. AnnualScenario 根的 plan/finance 专用切片(plan 域目前仍是经 Order 根不可达的子图,仅 scenario 根可达)。
+## 六、Phase 6(已完成 6A–6E)
+
+| 子项 | 状态 | 实施 |
+|---|---|---|
+| 6A 语义压缩回写管线 | ✅ | `orchestrator.recordExperience`:path B 任务完成后蒸馏为 `exp_auto_` 经验案例落经验记忆库(approach = 工具/求解器调用轨迹蒸馏 = 折叠/丢弃上下文的结构化留存;`pseudoEmbed`;upsert 幂等),供 `search_experience` 检索。 |
+| 6B 跨求解器编排器 | ✅ | `countermeasure_combo` meta-solver:多杠杆按 成本档→单位成本 贪心最小成本闭合缺口,每段标注来源求解器(solver/scene),返回组合/残差/总成本/可行性。求解器 21→22。 |
+| 6C MCP router | ✅ | `mcp-router.ts` 词法相关性(复用 skill-router)对 MCP 工具 top-k 收窄(其余经 discover 发现),wire 进 `runRegisteredAgent`。 |
+| 6D Path A 工作流 MCP 绑定 | ✅(实查已存在) | `invoke_mcp_tool` 已是 contract + workflow executor 一等步骤;补回归锁 WM1/WM2。 |
+| 6E AnnualScenario 根切片 | ✅ | `aop_scenario_chain` 以 AnnualScenario 为根经 scenario_to_target/capex/finance 可达 plan+finance(修复「plan 子图仅 scenario 根可达、Order 根够不到」)。 |
+
+验证(Phase6 后):datacore **246** / agentcore **185** / frontend 106 / parity **129/129** 全绿。
+回归锁:SL10(AOP 切片)、countermeasure_combo 编排断言、catalog 22、EW1/EW2(经验回写)、MR1-MR3(MCP router)、WM1/WM2(Path A MCP)。
+
+### 全部 Phase 5/6 缺口闭合
+自检的 P0/P1/P2 缺口至此基本闭合。剩余为增量优化(非缺口):语义压缩可进一步做消息级 LLM 滚动摘要;MCP/skill 路由可升级为真 embedding;plan↔product 连边可让 Order 根直达 plan。
