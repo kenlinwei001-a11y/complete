@@ -860,6 +860,19 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
+  // Phase9B 对象级数据变更（逐字段替换数据）：经 Action 审批后落账，EXECUTED 时把 patch 合并进对象 props
+  // 并重跑派生 → 之后 resolve_slice/invoke_solver 即「二次推演」反映新数据。绝不绕过审批直改真值。
+  {
+    key: "对象数据变更",
+    name: "对象数据变更",
+    paramsSchema: {
+      type: "object",
+      required: ["objectId", "patch", "reason"],
+      properties: { objectType: { type: "string" }, objectId: { type: "string" }, patch: { type: "object" }, reason: { type: "string" } },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
 ];
 
 /** 模板规则的 scopeObjectTypes（合成种子使用；默认 Order）。 */

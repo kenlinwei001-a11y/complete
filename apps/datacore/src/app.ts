@@ -304,6 +304,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const r = await sop.applyChangeAction(draft.tenantId, draft);
         if (r) return { ok: true, targetRef: r.targetRef };
       }
+      // Phase9B 对象级数据变更：审批通过后把 patch 合并进对象 props（origin→MANUAL 标记人工改），
+      // 再重跑派生 → 之后 resolve_slice/invoke_solver 即「二次推演」。Action 审计=完整溯源。
+      if (draft.actionTypeKey === "对象数据变更") {
+        const objectId = String(draft.payload.objectId ?? "");
+        const patch = (draft.payload.patch ?? {}) as Record<string, unknown>;
+        const obj = await repos.objects.get(draft.tenantId, objectId);
+        if (!obj) return { ok: false, error: `object not found: ${objectId}` };
+        await repos.objects.put({ ...obj, props: { ...obj.props, ...patch }, origin: { type: "MANUAL" } });
+        const sysCtx: AuthCtx = { tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} };
+        await ontology.runDerivations(sysCtx);
+        return { ok: true, targetRef: `OBJ-${objectId}` };
+      }
       return mockExecutor.execute(draft);
     },
   };
