@@ -218,7 +218,8 @@ try {
   const aff = sim1.body?.data;
   log("① 推演·受影响订单（常州）", `命中 ${aff?.total ?? "?"} 单 · snapshot ${sim1.body?.snapshotVersion} · 可下钻溯源`);
   const sim2 = await a("/a/v1/solvers/plan_audit/invoke", {
-    body: { args: { dem: 480, seg_pas: 0.45, seg_ess: 0.35, seg_com: 0.2, sup: 450, ltaCov: 0.82, kitGap: 8, gmTarget: 0.18, cashCushion: 45, capex: 60 } },
+    // 细分按 万套 计且合计=总需求（自洽）；现金垫 55 亿、毛利目标 18%
+    body: { args: { dem: 480, seg_pas: 220, seg_ess: 170, seg_com: 90, sup: 450, ltaCov: 0.85, kitGap: 5, gmTarget: 18, cashCushion: 55, capex: 60 } },
   });
   const au = sim2.body?.data;
   log("② 规划体检", `评分 ${au?.score ?? "?"}/100 · 结论 ${au?.verdict ?? "?"} · 硬矛盾 ${au?.H?.length ?? au?.hard?.length ?? "?"}`);
