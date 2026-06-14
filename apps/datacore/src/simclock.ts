@@ -15,7 +15,7 @@ import { num, str } from "./solvers/types.js";
 const DAY_MS = 86400000;
 const HISTORY_DAYS = 90;
 
-export type ResetRunner = (ctx: AuthCtx, spec: { industry: string; scale: "S" | "M" | "L"; seed: number }) => Promise<unknown>;
+export type ResetRunner = (ctx: AuthCtx, spec: { industry: string; scale: "S" | "M" | "L" | "XL"; seed: number }) => Promise<unknown>;
 
 /**
  * A8.6 §6.2 simulation clock: one tick = one simulated day. Pipeline per day:

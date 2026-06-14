@@ -96,7 +96,7 @@ export interface LivedCase extends RiskCaseRecord {
 
 export interface LivedInRunInput {
   industry: string;
-  scale: "S" | "M" | "L";
+  scale: "S" | "M" | "L" | "XL";
   seed: number;
   /** 确定性 origin 标识（synthetic-<industry>-<scale>-<seed>）。 */
   jobId: string;

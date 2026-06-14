@@ -82,7 +82,7 @@ export class SyntheticService {
   private features: FeatureService | null = null;
   private actions: ActionService | null = null;
   /** 运营态出厂配置增量 §1：livedIn=true 时在标准合成后运行回放引擎（注入避免依赖环）。 */
-  private livedInRunner: ((ctx: AuthCtx, input: { industry: string; scale: "S" | "M" | "L"; seed: number; jobId: string }) => Promise<{ replay: { batches: number; days: number; points: number } }>) | null = null;
+  private livedInRunner: ((ctx: AuthCtx, input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed: number; jobId: string }) => Promise<{ replay: { batches: number; days: number; points: number } }>) | null = null;
 
   constructor(
     private repos: Repos,
@@ -138,7 +138,7 @@ export class SyntheticService {
 
   async runJob(
     ctx: AuthCtx,
-    input: { industry: string; scale: "S" | "M" | "L"; seed?: number; livedIn?: boolean },
+    input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed?: number; livedIn?: boolean },
   ): Promise<SyntheticJob> {
     const t0 = Date.now();
     const seed = input.seed ?? 42;
@@ -286,7 +286,7 @@ export class SyntheticService {
     }
   }
 
-  private async seedBatteryParamsAndSpecs(ctx: AuthCtx, seed: number, scale: "S" | "M" | "L"): Promise<void> {
+  private async seedBatteryParamsAndSpecs(ctx: AuthCtx, seed: number, scale: "S" | "M" | "L" | "XL"): Promise<void> {
     // §S1 通用约定: all solver constants live in per-tenant solver_params storage.
     const existing = await this.repos.solverParams.get(ctx.tenantId, `spar_${ctx.tenantId}`);
     await this.repos.solverParams.put({
@@ -468,7 +468,7 @@ export class SyntheticService {
   private async instantiateBattery(
     ctx: AuthCtx,
     seed: number,
-    scale: "S" | "M" | "L",
+    scale: "S" | "M" | "L" | "XL",
     origin: { type: "SYNTHETIC"; jobId: string },
   ): Promise<number> {
     // 治理增量 §1：先注册域（object_types.domain FK 校验目标 + 检索/图谱按域分组）。
@@ -610,7 +610,7 @@ export class SyntheticService {
     ctx: AuthCtx,
     template: IndustryTemplate,
     seed: number,
-    scale: "S" | "M" | "L",
+    scale: "S" | "M" | "L" | "XL",
     origin: { type: "SYNTHETIC"; jobId: string },
   ): Promise<number> {
     const typeDefs = (template.ontology.objectTypes ?? []) as TemplateTypeDef[];
@@ -641,7 +641,7 @@ export class SyntheticService {
     for (const gen of template.generation) {
       const td = (Array.isArray(typeDefs) ? typeDefs : []).find((t) => t.key === gen.typeKey);
       const pkProp = td?.properties?.find((p) => p.isPrimaryKey)?.propKey ?? "id";
-      const count = gen.count[scale];
+      const count = gen.count[scale] ?? gen.count.L; // XL 缺省回落 L（通用模板未声明 XL 时）
       const pks: string[] = [];
       for (let i = 0; i < count; i++) {
         const props: Record<string, unknown> = {};

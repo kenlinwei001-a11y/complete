@@ -170,7 +170,7 @@ export type PermissionPolicy = z.infer<typeof PermissionPolicySchema>;
 
 export const SyntheticJobBodySchema = z.object({
   industry: z.string(),
-  scale: z.enum(["S", "M", "L"]),
+  scale: z.enum(["S", "M", "L", "XL"]),
   seed: z.number().int().optional(),
   /** 运营态出厂配置增量 §1.1：true → 合成后从 T−365 天回放至 T0（一年运营态）。 */
   livedIn: z.boolean().optional(),
@@ -197,7 +197,7 @@ export const IndustryTemplateSchema = z.object({
   generation: z.array(
     z.object({
       typeKey: z.string(),
-      count: z.object({ S: z.number().int(), M: z.number().int(), L: z.number().int() }),
+      count: z.object({ S: z.number().int(), M: z.number().int(), L: z.number().int(), XL: z.number().int().optional() }),
       propGenerators: z.record(z.string(), GenSpecSchema),
     }),
   ),

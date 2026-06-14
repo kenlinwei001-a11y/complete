@@ -533,7 +533,7 @@ export interface SyntheticJob {
   id: string; // job_
   tenantId: string;
   industry: string;
-  scale: "S" | "M" | "L";
+  scale: "S" | "M" | "L" | "XL";
   seed: number;
   status: "SUCCEEDED" | "FAILED";
   report?: SyntheticReport;
@@ -807,7 +807,7 @@ export interface SimulationClockRecord {
   currentTick: number;
   seed: number;
   industry: string;
-  scale: "S" | "M" | "L";
+  scale: "S" | "M" | "L" | "XL";
   status: "ACTIVE" | "TICKING" | "RESETTING";
   firedEvents: { tick: number; event: string; params: Record<string, unknown> }[];
   /** alert keys (ruleKey:entityId) active after the last RULE_SCAN — for raised/cleared diffs */

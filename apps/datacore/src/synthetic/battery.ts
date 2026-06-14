@@ -493,7 +493,7 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
   generation: [
     {
       typeKey: "Base",
-      count: { S: 12, M: 12, L: 12 },
+      count: { S: 12, M: 12, L: 12, XL: 12 },
       propGenerators: {
         util: { kind: "number", min: 0.62, max: 0.97, precision: 2 },
         gwh: { kind: "number", min: 6, max: 42, precision: 1 },
@@ -502,12 +502,12 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     },
     {
       typeKey: "Model",
-      count: { S: 6, M: 6, L: 6 },
+      count: { S: 6, M: 6, L: 6, XL: 6 },
       propGenerators: { unitPrice: { kind: "number", min: 380, max: 980, precision: 0 } },
     },
     {
       typeKey: "Order",
-      count: { S: 20, M: 60, L: 200 },
+      count: { S: 20, M: 60, L: 200, XL: 10000 },
       propGenerators: {
         so: { kind: "pattern", pattern: "SO-{seq:5}" },
         cust: { kind: "enum", values: CUSTOMERS },
@@ -686,9 +686,9 @@ function isoDate(ms: number): string {
  * topology (Line/Process/Equipment) → calendars (MaintPlan/Shipment) → misc.
  * Referential integrity by construction; same seed → byte-identical output.
  */
-export function generateBattery(seed: number, scale: "S" | "M" | "L"): GeneratedBattery {
+export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): GeneratedBattery {
   const rng = mulberry32(seed);
-  const orderCount = scale === "S" ? 20 : scale === "M" ? 60 : 200;
+  const orderCount = scale === "S" ? 20 : scale === "M" ? 60 : scale === "XL" ? 10000 : 200;
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
   const bases = BASES.map((b) => ({
