@@ -77,6 +77,11 @@ export interface AgentLoopOpts {
   loadSkillEnabled?: boolean;
   /** Agent scopeDeclaration.toolNames — also enforced for WORKFLOW-bound tools handled in-loop. */
   scopeToolNames?: string[];
+  /**
+   * Phase7C 消息级滚动摘要器（可插拔）：把已折叠轮次的蒸馏素材压成一段「前情摘要」注入 system。
+   * 生产可注入 LLM 摘要器；缺省为确定性兜底（拼接末 N 条，CI 可复现）。
+   */
+  summarizer?: (notes: string[]) => string;
 }
 
 export interface AgentLoopResult {
@@ -144,6 +149,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const messages: LlmAgentMessage[] = [{ role: "user", content: opts.userContent }];
   const iterations: AgentIteration[] = [];
   const sketch: { toolName: string; inputSummary: string }[] = [];
+  // Phase7C 消息级滚动摘要：折叠轮次的蒸馏素材在此累积，每轮压成「前情摘要」注入 system。
+  const rollingNotes: string[] = [];
+  const summarize = opts.summarizer ?? ((notes: string[]) => notes.slice(-12).join(" ｜ "));
+  const noteOfFrame = (f: IterationFrame) => `第${f.iteration + 1}轮[${f.tools.map((t) => `${t.name}:${t.firstLine}`).join("；")}]`;
+  const effectiveSystem = () =>
+    rollingNotes.length === 0
+      ? opts.system
+      : `${opts.system}\n\n【前情摘要（已折叠轮次蒸馏，仅供回忆；业务事实仍以工具结果为准）】\n${summarize(rollingNotes)}`;
   const frames: IterationFrame[] = [];
   let totalInput = 0;
   let totalOutput = 0;
@@ -405,6 +418,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       while (tokens > budgeter.softLimit) {
         const folded = foldOldestFrame(messages, frames);
         if (!folded) break;
+        rollingNotes.push(noteOfFrame(folded)); // §7C 折叠即蒸馏入滚动摘要
         budgeter.record("fold", i, `folded iteration ${folded.iteration}`);
         tokens = estimateTokensChars({ system: opts.system, tools: llmTools, messages });
       }
@@ -426,7 +440,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     try {
       response = await opts.llm.agent({
         model: opts.model,
-        system: opts.system,
+        system: effectiveSystem(), // §7C 注入滚动前情摘要
         tools: llmTools,
         messages,
         maxTokens: 16000,
@@ -437,7 +451,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       // 第 3 刀（model_context_window_exceeded 形态）：折叠所有可折叠轮 + 注入收尾提醒后重试一次
       if (isContextWindowExceededError(err)) {
         if (finalizeUsed) return degrade("BUDGET_EXHAUSTED");
-        while (foldOldestFrame(messages, frames)) {
+        for (let f = foldOldestFrame(messages, frames); f; f = foldOldestFrame(messages, frames)) {
+          rollingNotes.push(noteOfFrame(f));
           budgeter.record("fold", i, "context window exceeded");
         }
         finalizeUsed = true;
@@ -456,6 +471,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     if (response.content.some((b) => b.type === "compaction")) {
       messages.splice(1, messages.length - 1);
       frames.length = 0;
+      rollingNotes.length = 0; // compaction 已承载压缩前历史 → 滚动摘要复位，避免重复
       budgeter.record("compact", i);
     }
     messages.push({ role: "assistant", content: response.content, raw: response.raw });

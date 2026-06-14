@@ -209,6 +209,35 @@ describe("R2 · 软阈值触发第 1 刀折叠", () => {
     // count_tokens 每 2 轮实测一次（共 6 轮 → 3 次实测）
     expect(t.llm.countTokensRequests.length).toBe(3);
   });
+
+  it("Phase7C: 折叠轮次蒸馏为「前情摘要」注入后续 system（消息级滚动摘要）", async () => {
+    await t.repos.agents.insert(agentDef({ id: "agt_r7c", key: "r7c_agent" }));
+    t.llm.caps = { countTokens: true, compaction: false, maxContextTokens: 10_000 };
+    t.dataCore.ontology.queryObjects = async () => ({ data: { items: bigItems(50, 100) }, snapshotVersion: "snap-r7c" });
+
+    for (let k = 0; k < 5; k++) {
+      t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: "Base", filter: { k } })] });
+    }
+    let sawRollingSummary = false;
+    t.llm.queueAgentTurn((req) => {
+      // 折叠已发生 → 本轮 system 应含「前情摘要」段 + 折叠轮的工具蒸馏（query_objects）
+      if (req.system.includes("前情摘要（已折叠") && req.system.includes("query_objects")) sawRollingSummary = true;
+      return { content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "完成。" }], provenance: [] })] };
+    });
+
+    const result = await t.deps.engine.runRegisteredAgent({
+      taskId: "task_r7c",
+      agentId: "agt_r7c",
+      version: "latest",
+      prompt: "连续分析",
+      ctx: planner,
+      nesting: { callChain: [], budget: new BudgetTracker() },
+      emit: async () => undefined,
+    });
+    expect(result.outcome).toBe("ANSWERED");
+    expect((result.run.contextOps ?? []).some((o) => o.op === "fold")).toBe(true);
+    expect(sawRollingSummary, "后续 system 注入了折叠轮的前情摘要").toBe(true);
+  });
 });
 
 describe("R3 · 硬阈值强制收尾", () => {
