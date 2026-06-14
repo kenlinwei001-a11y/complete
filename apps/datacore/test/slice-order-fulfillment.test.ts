@@ -108,17 +108,17 @@ describe("跨 6 域切片 order_fulfillment_360", () => {
 });
 
 describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
-  it("SL5: order_to_cash_720 首单可达 9 域（产品/工厂/工艺/设备/供给/商务/产能/质量/财务）", async () => {
+  it("SL5: order_to_cash_720 首单可达 10 域（+财务+计划，Phase7A plan↔product 连边）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const out = (await resolveKey(t, "order_to_cash_720", { so: "SO-10001" })).json() as SliceResult;
     const doms = domainsOf(out);
-    for (const want of ["product", "factory", "process", "equip", "supply", "commercial", "capacity", "quality", "finance"]) {
+    for (const want of ["product", "factory", "process", "equip", "supply", "commercial", "capacity", "quality", "finance", "plan"]) {
       expect(doms.has(want), `缺域 ${want}`).toBe(true);
     }
-    expect(doms.size).toBeGreaterThanOrEqual(9);
+    expect(doms.size).toBeGreaterThanOrEqual(10);
     const types = new Set(out.nodes.map((n) => n.typeKey));
-    for (const want of ["MaterialBatch", "PurchaseOrder", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount"]) {
+    for (const want of ["MaterialBatch", "PurchaseOrder", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount", "PlanTarget"]) {
       expect(types.has(want), `缺类型 ${want}`).toBe(true);
     }
   });

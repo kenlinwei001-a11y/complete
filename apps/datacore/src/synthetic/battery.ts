@@ -512,6 +512,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // Phase5A 财务域边：基地→财务账户（Order 根可达 finance，凑 9 域）、情景→财务指标。
     { key: "base_finance", fromTypeKey: "Base", toTypeKey: "FinanceAccount", cardinality: "N:N" }, // finance
     { key: "scenario_to_finance", fromTypeKey: "AnnualScenario", toTypeKey: "FinanceMetric", cardinality: "N:N" }, // finance
+    // Phase7A plan↔product 连边：订单→月度计划目标（按交期月匹配）→ Order 根直达 plan 域。
+    { key: "order_to_plantarget", fromTypeKey: "Order", toTypeKey: "PlanTarget", cardinality: "N:N" }, // plan
   ];
 }
 
@@ -611,17 +613,19 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             { linkKey: "model_producible_at", direction: "out" },
             { linkKey: "base_finance", direction: "out", project: ["accId", "cashOnHand", "receivable", "payable", "workingCapital"] },
           ],
+          // 计划（Phase7A）：订单→月度计划目标 → 第 10 域 plan（Order 根直达 plan）
+          [{ linkKey: "order_to_plantarget", direction: "out", project: ["tgtId", "period", "level", "value"] }],
         ],
         maxNodes: 800,
         contractFixtures: [
           {
-            name: "首单全链可达 9 域（含财务）",
+            name: "首单全链可达 10 域（含财务+计划）",
             args: { so: "SO-10001" },
             expect: {
               rootType: "Order",
               minNodes: 15,
-              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "PurchaseOrder", "Customer", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount"],
-              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_has_process", "equip_used_in", "material_has_batch", "material_supplied_by_po", "customer_has_invoice", "base_has_shipment", "base_data_health", "base_finance"],
+              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "PurchaseOrder", "Customer", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount", "PlanTarget"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_has_process", "equip_used_in", "material_has_batch", "material_supplied_by_po", "customer_has_invoice", "base_has_shipment", "base_data_health", "base_finance", "order_to_plantarget"],
             },
           },
         ],

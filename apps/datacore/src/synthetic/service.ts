@@ -699,6 +699,12 @@ export class SyntheticService {
       const fm = ext.financeMetrics.find((m) => String(P(m).scenarioKey) === String(P(s).key));
       if (fm) await putLink(`lnk_s2f_${P(s).key}`, "scenario_to_finance", oid("AnnualScenario", P(s).scnId), oid("FinanceMetric", P(fm).metricId));
     }
+    // plan（Phase7A）: Order → PlanTarget（按交期月匹配月度目标）→ Order 根直达 plan 域。
+    const monthTargets = new Set(pd.planTargets.filter((t) => P(t).level === "month").map((t) => String(P(t).period)));
+    for (const o of g.orders) {
+      const month = String((o as { due?: string }).due ?? "").slice(0, 7);
+      if (monthTargets.has(month)) await putLink(`lnk_otp_${o.so}`, "order_to_plantarget", oid("Order", o.so), oid("PlanTarget", `PT-${month}`));
+    }
 
     // 跨 6 域内置切片 order_fulfillment_360：合成即落库（resolve 不依赖外部配置脚本）。
     for (const s of batteryBuiltinSlices()) {
