@@ -524,6 +524,8 @@ export class SyntheticService {
     await putAll("CapexProject", ext.capexProjects, "projectId");
     await putAll("PurchaseOrder", ext.purchaseOrders, "poId");
     await putAll("CarbonFactor", ext.carbonFactors, "factorId");
+    await putAll("FinanceAccount", ext.financeAccounts, "accId");
+    await putAll("FinanceMetric", ext.financeMetrics, "metricId");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
     for (const m of g.models) {
       for (const baseId of m.bases as string[]) {
@@ -633,6 +635,8 @@ export class SyntheticService {
     for (const m of g.models) await putLink(`lnk_mis_${m.modelId}`, "model_in_segment", oid("Model", m.modelId), oid("Segment", segOf(String(m.modelId))));
     // quality（数据源）: Base → DataSourceHealth（N:N，每基地挂全部数据源）
     for (const b of g.bases) for (const dh of g.dataHealth) await putLink(`lnk_bdh_${b.baseId}_${P(dh).sourceId}`, "base_data_health", oid("Base", b.baseId), oid("DataSourceHealth", P(dh).sourceId));
+    // finance（Phase5A）: Base → FinanceAccount（fa.baseId）
+    for (const fa of ext.financeAccounts) await putLink(`lnk_bfn_${P(fa).accId}`, "base_finance", oid("Base", P(fa).baseId), oid("FinanceAccount", P(fa).accId));
 
     // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
     // （weeklyWan × 认证系数）—— 与 S&OP 平衡台/季度滚动同源，确定性（无时钟/随机）。
@@ -689,6 +693,11 @@ export class SyntheticService {
     for (const s of pd.scenarios) {
       if (String(P(s).key) === "conservative") continue; // 保守情景不新增产能投资
       for (const cp of ext.capexProjects) await putLink(`lnk_s2c_${P(s).key}_${P(cp).projectId}`, "scenario_to_capex", oid("AnnualScenario", P(s).scnId), oid("CapexProject", P(cp).projectId));
+    }
+    // finance（Phase5A）: AnnualScenario → FinanceMetric（按 scenarioKey 匹配）
+    for (const s of pd.scenarios) {
+      const fm = ext.financeMetrics.find((m) => String(P(m).scenarioKey) === String(P(s).key));
+      if (fm) await putLink(`lnk_s2f_${P(s).key}`, "scenario_to_finance", oid("AnnualScenario", P(s).scnId), oid("FinanceMetric", P(fm).metricId));
     }
 
     // 跨 6 域内置切片 order_fulfillment_360：合成即落库（resolve 不依赖外部配置脚本）。

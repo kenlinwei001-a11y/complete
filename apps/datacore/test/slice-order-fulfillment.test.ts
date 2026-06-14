@@ -23,6 +23,7 @@ const TYPE_DOMAIN: Record<string, string> = {
   Customer: "commercial", ARInvoice: "commercial",
   Shipment: "capacity", DataSourceHealth: "quality",
   AnnualScenario: "plan", PlanTarget: "plan", CapexProject: "plan", ScenarioTrigger: "plan",
+  FinanceAccount: "finance", FinanceMetric: "finance",
 };
 const domainsOf = (out: SliceResult) => new Set(out.nodes.map((n) => TYPE_DOMAIN[n.typeKey]).filter(Boolean));
 
@@ -107,17 +108,17 @@ describe("跨 6 域切片 order_fulfillment_360", () => {
 });
 
 describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
-  it("SL5: order_to_cash_720 首单可达 8 域（产品/工厂/工艺/设备/供给/商务/产能/质量）", async () => {
+  it("SL5: order_to_cash_720 首单可达 9 域（产品/工厂/工艺/设备/供给/商务/产能/质量/财务）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const out = (await resolveKey(t, "order_to_cash_720", { so: "SO-10001" })).json() as SliceResult;
     const doms = domainsOf(out);
-    for (const want of ["product", "factory", "process", "equip", "supply", "commercial", "capacity", "quality"]) {
+    for (const want of ["product", "factory", "process", "equip", "supply", "commercial", "capacity", "quality", "finance"]) {
       expect(doms.has(want), `缺域 ${want}`).toBe(true);
     }
-    expect(doms.size).toBeGreaterThanOrEqual(8);
+    expect(doms.size).toBeGreaterThanOrEqual(9);
     const types = new Set(out.nodes.map((n) => n.typeKey));
-    for (const want of ["MaterialBatch", "PurchaseOrder", "ARInvoice", "Shipment", "DataSourceHealth"]) {
+    for (const want of ["MaterialBatch", "PurchaseOrder", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount"]) {
       expect(types.has(want), `缺类型 ${want}`).toBe(true);
     }
   });

@@ -509,6 +509,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "base_data_health", fromTypeKey: "Base", toTypeKey: "DataSourceHealth", cardinality: "N:N" }, // quality（数据源）
     { key: "scenario_to_target", fromTypeKey: "AnnualScenario", toTypeKey: "PlanTarget", cardinality: "N:N" }, // plan（目标）
     { key: "scenario_to_capex", fromTypeKey: "AnnualScenario", toTypeKey: "CapexProject", cardinality: "N:N" }, // plan（投资）
+    // Phase5A 财务域边：基地→财务账户（Order 根可达 finance，凑 9 域）、情景→财务指标。
+    { key: "base_finance", fromTypeKey: "Base", toTypeKey: "FinanceAccount", cardinality: "N:N" }, // finance
+    { key: "scenario_to_finance", fromTypeKey: "AnnualScenario", toTypeKey: "FinanceMetric", cardinality: "N:N" }, // finance
   ];
 }
 
@@ -602,17 +605,23 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             { linkKey: "model_producible_at", direction: "out" },
             { linkKey: "base_data_health", direction: "out", project: ["sourceId", "name", "critical", "lagHours"] },
           ],
+          // 财务（Phase5A）：基地→财务账户 → 第 9 域 finance
+          [
+            { linkKey: "order_for_model", direction: "out" },
+            { linkKey: "model_producible_at", direction: "out" },
+            { linkKey: "base_finance", direction: "out", project: ["accId", "cashOnHand", "receivable", "payable", "workingCapital"] },
+          ],
         ],
         maxNodes: 800,
         contractFixtures: [
           {
-            name: "首单全链可达 8 域",
+            name: "首单全链可达 9 域（含财务）",
             args: { so: "SO-10001" },
             expect: {
               rootType: "Order",
               minNodes: 15,
-              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "PurchaseOrder", "Customer", "ARInvoice", "Shipment", "DataSourceHealth"],
-              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_has_process", "equip_used_in", "material_has_batch", "material_supplied_by_po", "customer_has_invoice", "base_has_shipment", "base_data_health"],
+              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "MaterialBatch", "PurchaseOrder", "Customer", "ARInvoice", "Shipment", "DataSourceHealth", "FinanceAccount"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_has_process", "equip_used_in", "material_has_batch", "material_supplied_by_po", "customer_has_invoice", "base_has_shipment", "base_data_health", "base_finance"],
             },
           },
         ],
