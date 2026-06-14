@@ -101,6 +101,104 @@ export const LlmProviderSchema = z.object({
 export type LlmProvider = z.infer<typeof LlmProviderSchema>;
 
 // ---------------------------------------------------------------------------
+// 增量 §1.5（Phase8）厂商目录：配置页按厂商预填 baseUrl + 提供型号下拉。
+// Moonshot/GLM(智谱)/MiniMax/DeepSeek/Qwen/Gemini 均为 OpenAI 兼容端点 → kind=openai_compatible，
+// 仅 baseUrl/model 不同（Gemini 走其 OpenAI 兼容端点）；Anthropic 为原生。无需新增适配器。
+// 该目录仅驱动 UI 预填；后端仍按 kind+baseUrl+model 自由配置（不锁枚举）。
+// ---------------------------------------------------------------------------
+
+export const LlmVendorSchema = z.object({
+  key: z.string(), // 厂商键（anthropic/openai/moonshot/zhipu/minimax/gemini/deepseek/qwen）
+  displayName: z.string(),
+  kind: LlmProviderKindV2Schema, // 该厂商对应的 provider kind
+  defaultBaseUrl: z.string().optional(),
+  docUrl: z.string().optional(),
+  models: z.array(LlmProviderModelSchema),
+});
+export type LlmVendor = z.infer<typeof LlmVendorSchema>;
+
+const cap = (tools: boolean, structuredOutput: boolean, maxContext: number): LlmModelCapabilities => ({ tools, structuredOutput, maxContext });
+const m = (modelId: string, displayName: string, c: LlmModelCapabilities): LlmProviderModel => ({ modelId, displayName, capabilities: c });
+
+/** 厂商 + 型号目录（配置页下拉数据源；可随厂商发版增删，不影响后端）。 */
+export const LLM_VENDOR_CATALOG: LlmVendor[] = [
+  {
+    key: "anthropic", displayName: "Anthropic（Claude）", kind: "anthropic",
+    defaultBaseUrl: "https://api.anthropic.com", docUrl: "https://docs.anthropic.com",
+    models: [
+      m("claude-opus-4-8", "Claude Opus 4.8", cap(true, true, 200000)),
+      m("claude-sonnet-4-6", "Claude Sonnet 4.6", cap(true, true, 200000)),
+      m("claude-haiku-4-5-20251001", "Claude Haiku 4.5", cap(true, true, 200000)),
+    ],
+  },
+  {
+    key: "openai", displayName: "OpenAI", kind: "openai_compatible",
+    defaultBaseUrl: "https://api.openai.com/v1", docUrl: "https://platform.openai.com/docs",
+    models: [
+      m("gpt-4o", "GPT-4o", cap(true, true, 128000)),
+      m("gpt-4o-mini", "GPT-4o mini", cap(true, true, 128000)),
+      m("o3", "o3", cap(true, true, 200000)),
+      m("o4-mini", "o4-mini", cap(true, true, 200000)),
+    ],
+  },
+  {
+    key: "moonshot", displayName: "Moonshot（月之暗面 Kimi）", kind: "openai_compatible",
+    defaultBaseUrl: "https://api.moonshot.cn/v1", docUrl: "https://platform.moonshot.cn",
+    models: [
+      m("kimi-k2-0905-preview", "Kimi K2", cap(true, true, 256000)),
+      m("moonshot-v1-128k", "Moonshot v1 128K", cap(true, true, 128000)),
+      m("moonshot-v1-32k", "Moonshot v1 32K", cap(true, true, 32000)),
+      m("moonshot-v1-8k", "Moonshot v1 8K", cap(true, true, 8000)),
+    ],
+  },
+  {
+    key: "zhipu", displayName: "智谱 GLM（Zhipu）", kind: "openai_compatible",
+    defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4", docUrl: "https://open.bigmodel.cn/dev/api",
+    models: [
+      m("glm-4.6", "GLM-4.6", cap(true, true, 200000)),
+      m("glm-4.5", "GLM-4.5", cap(true, true, 128000)),
+      m("glm-4-plus", "GLM-4-Plus", cap(true, true, 128000)),
+      m("glm-4-air", "GLM-4-Air", cap(true, true, 128000)),
+      m("glm-4-flash", "GLM-4-Flash", cap(true, true, 128000)),
+    ],
+  },
+  {
+    key: "minimax", displayName: "MiniMax", kind: "openai_compatible",
+    defaultBaseUrl: "https://api.minimaxi.com/v1", docUrl: "https://platform.minimaxi.com",
+    models: [
+      m("MiniMax-Text-01", "MiniMax-Text-01", cap(true, true, 1000000)),
+      m("abab6.5s-chat", "abab6.5s", cap(true, true, 245000)),
+    ],
+  },
+  {
+    key: "gemini", displayName: "Google Gemini（OpenAI 兼容端点）", kind: "openai_compatible",
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", docUrl: "https://ai.google.dev/gemini-api/docs/openai",
+    models: [
+      m("gemini-2.5-pro", "Gemini 2.5 Pro", cap(true, true, 1000000)),
+      m("gemini-2.5-flash", "Gemini 2.5 Flash", cap(true, true, 1000000)),
+      m("gemini-2.0-flash", "Gemini 2.0 Flash", cap(true, true, 1000000)),
+    ],
+  },
+  {
+    key: "deepseek", displayName: "DeepSeek（深度求索）", kind: "openai_compatible",
+    defaultBaseUrl: "https://api.deepseek.com/v1", docUrl: "https://api-docs.deepseek.com",
+    models: [
+      m("deepseek-chat", "DeepSeek-V3 Chat", cap(true, true, 64000)),
+      m("deepseek-reasoner", "DeepSeek-R1 Reasoner", cap(true, false, 64000)),
+    ],
+  },
+  {
+    key: "qwen", displayName: "通义千问 Qwen（DashScope）", kind: "openai_compatible",
+    defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", docUrl: "https://help.aliyun.com/zh/dashscope",
+    models: [
+      m("qwen-max", "Qwen-Max", cap(true, true, 32000)),
+      m("qwen-plus", "Qwen-Plus", cap(true, true, 131000)),
+      m("qwen-turbo", "Qwen-Turbo", cap(true, true, 1000000)),
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
 // 增量 §1.3 用途绑定（租户级默认 + 场景包覆盖）
 // ---------------------------------------------------------------------------
 

@@ -81,7 +81,7 @@ export interface AgentLoopOpts {
    * Phase7C 消息级滚动摘要器（可插拔）：把已折叠轮次的蒸馏素材压成一段「前情摘要」注入 system。
    * 生产可注入 LLM 摘要器；缺省为确定性兜底（拼接末 N 条，CI 可复现）。
    */
-  summarizer?: (notes: string[]) => string;
+  summarizer?: (notes: string[]) => string | Promise<string>;
 }
 
 export interface AgentLoopResult {
@@ -150,13 +150,20 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const iterations: AgentIteration[] = [];
   const sketch: { toolName: string; inputSummary: string }[] = [];
   // Phase7C 消息级滚动摘要：折叠轮次的蒸馏素材在此累积，每轮压成「前情摘要」注入 system。
+  // summarizer 可插拔（Phase8 生产可注入 LLM 摘要器，返回 Promise）；缺省确定性拼接（CI 可复现）。
   const rollingNotes: string[] = [];
   const summarize = opts.summarizer ?? ((notes: string[]) => notes.slice(-12).join(" ｜ "));
   const noteOfFrame = (f: IterationFrame) => `第${f.iteration + 1}轮[${f.tools.map((t) => `${t.name}:${t.firstLine}`).join("；")}]`;
-  const effectiveSystem = () =>
-    rollingNotes.length === 0
-      ? opts.system
-      : `${opts.system}\n\n【前情摘要（已折叠轮次蒸馏，仅供回忆；业务事实仍以工具结果为准）】\n${summarize(rollingNotes)}`;
+  let summaryCache = "";
+  let summaryLen = -1; // 仅当折叠轮数增加时重算摘要（LLM 摘要器调用次数 ≈ 折叠次数）
+  const effectiveSystem = async (): Promise<string> => {
+    if (rollingNotes.length === 0) return opts.system;
+    if (rollingNotes.length !== summaryLen) {
+      summaryCache = await summarize(rollingNotes);
+      summaryLen = rollingNotes.length;
+    }
+    return `${opts.system}\n\n【前情摘要（已折叠轮次蒸馏，仅供回忆；业务事实仍以工具结果为准）】\n${summaryCache}`;
+  };
   const frames: IterationFrame[] = [];
   let totalInput = 0;
   let totalOutput = 0;
@@ -440,7 +447,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     try {
       response = await opts.llm.agent({
         model: opts.model,
-        system: effectiveSystem(), // §7C 注入滚动前情摘要
+        system: await effectiveSystem(), // §7C 注入滚动前情摘要（Phase8 可为 LLM 摘要）
         tools: llmTools,
         messages,
         maxTokens: 16000,

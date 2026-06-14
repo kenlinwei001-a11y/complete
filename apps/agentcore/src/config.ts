@@ -22,6 +22,12 @@ const ConfigSchema = z.object({
   MCP_STDIO_COMMAND_ALLOWLIST: z.string().optional(),
   /** 增量 §3：技能附件本地存储目录（与 DataCore BLOB_DIR 共享卷形态）；缺省仅元信息 */
   BLOB_DIR: z.string().optional(),
+  /** Phase8：=1 时用 LLM(compose) 做消息级滚动摘要；缺省确定性拼接（CI 不变） */
+  QOS_ROLLING_SUMMARY_LLM: z.string().optional(),
+  /** Phase8：skill/MCP 路由用真 embedding provider（OpenAI 兼容 /embeddings）；缺省 pseudoEmbed */
+  QOS_EMBEDDING_BASE_URL: z.string().optional(),
+  QOS_EMBEDDING_MODEL: z.string().optional(),
+  QOS_EMBEDDING_API_KEY: z.string().optional(),
   /** 32-byte hex key for AES-256-GCM credential encryption */
   CREDENTIAL_KEY: z
     .string()

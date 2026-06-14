@@ -94,4 +94,23 @@ node scripts/slice-scenarios-excel.mjs L order_to_cash_720
 验证(Phase7 后):datacore **246** / agentcore **187** / frontend 106 / parity **129/129** 全绿。
 回归锁:SL5(10 域)、SR6(embedder 可插拔)、runtime-context Phase7C(折叠→前情摘要注入)。
 
-至此自检列出的"增量优化"三项亦全部落地。后续可继续的方向:把可插拔 `Embedder`/`summarizer` 在生产侧接真 LLM provider(接口已就位);更多 plan↔product / finance↔product 连边丰富跨域切片。
+至此自检列出的"增量优化"三项亦全部落地。
+
+## 八、Phase 8(LLM provider 扩厂商 + 生产侧接真实 LLM)
+
+| 子项 | 状态 | 实施 |
+|---|---|---|
+| 8A 厂商目录 | ✅ | contracts 新增 `LLM_VENDOR_CATALOG`(Anthropic/OpenAI/**Moonshot/智谱GLM/MiniMax/Gemini**/DeepSeek/Qwen)——每厂商带 kind/defaultBaseUrl/型号清单+能力。Moonshot/GLM/MiniMax/DeepSeek/Qwen/**Gemini 均为 OpenAI 兼容端点**(Gemini 走其 OpenAI 兼容端点)→ 复用现有 `openai_compatible` 适配器,**无需新增适配器**。 |
+| 8B 配置页改造 | ✅ | `LlmProvidersPage` 新增「厂商」下拉:选后自动预填 kind/baseUrl/名称 + 提供「从厂商目录添加型号/导入全部型号」;保留自定义自由录入。 |
+| 8C summarizer 接真实 LLM | ✅ | agent loop 滚动摘要改为 async 可插拔;`production-cognition.llmRollingSummarizer` 用解析后的 LLM `compose()` 蒸馏,失败回退确定性拼接;engine 经 `QOS_ROLLING_SUMMARY_LLM=1` 开关启用(缺省确定性,CI 不变)。 |
+| 8D Embedder 接真实 provider | ✅ | `production-cognition.buildProviderEmbedder` 走 OpenAI 兼容 `/embeddings` 批量;engine 配 `QOS_EMBEDDING_BASE_URL/MODEL/API_KEY` 时一次性预算 query+候选文本向量,包成同步 Embedder 喂 skill/MCP router;失败/未配 → 回退 pseudoEmbed。 |
+
+设计原则:两项「接真实 provider」均为**可选增强 + 开关控制 + 确定性兜底**——生产配置即生效,CI/默认行为不变。新增适配器:**0**(全部 OpenAI 兼容)。
+
+验证(Phase8 后):datacore **246** / agentcore **191** / frontend 106 / parity **129/129** + contracts 厂商目录测试。
+回归锁:contracts `llm-vendor-catalog`、agentcore `production-cognition`(PC1-PC3)。
+
+如何接真实大模型(运维):
+1. 配置页选厂商(如 Moonshot)→ 自动预填 `https://api.moonshot.cn/v1` + 型号 → 填 API Key → 连接测试 → 用途绑定(classifier/agent/...)。
+2. 滚动摘要接 LLM:设 `QOS_ROLLING_SUMMARY_LLM=1`。
+3. 路由接真 embedding:设 `QOS_EMBEDDING_BASE_URL/MODEL/API_KEY`(OpenAI 兼容 /embeddings)。

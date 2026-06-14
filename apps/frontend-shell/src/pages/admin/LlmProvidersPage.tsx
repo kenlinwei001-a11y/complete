@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LLM_PURPOSES,
+  LLM_VENDOR_CATALOG,
   PURPOSE_CAPABILITY_REQUIREMENTS,
   type LlmProvider,
   type LlmPurpose,
@@ -153,6 +154,29 @@ function ProviderEditor({
   const [name, setName] = useState(provider?.name ?? "");
   const [kind, setKind] = useState<LlmProvider["kind"]>(provider?.kind ?? "openai_compatible");
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
+  // Phase8 厂商目录：选厂商 → 预填 kind/baseUrl + 提供型号下拉导入。
+  const [vendorKey, setVendorKey] = useState("");
+  const vendor = LLM_VENDOR_CATALOG.find((v) => v.key === vendorKey);
+  const [pickModel, setPickModel] = useState("");
+  const onPickVendor = (key: string) => {
+    setVendorKey(key);
+    const v = LLM_VENDOR_CATALOG.find((x) => x.key === key);
+    if (v) {
+      setKind(v.kind);
+      setBaseUrl(v.defaultBaseUrl ?? "");
+      setName((n) => n || v.displayName);
+      setPickModel(v.models[0]?.modelId ?? "");
+    }
+  };
+  const addCatalogModel = (modelId: string) => {
+    const cm = vendor?.models.find((x) => x.modelId === modelId);
+    if (!cm) return;
+    setModels((rows) =>
+      rows.some((r) => r.modelId === cm.modelId)
+        ? rows
+        : [...rows, { modelId: cm.modelId, displayName: cm.displayName, tools: cm.capabilities.tools, structuredOutput: cm.capabilities.structuredOutput, maxContext: cm.capabilities.maxContext }],
+    );
+  };
   const [status, setStatus] = useState<LlmProvider["status"]>(provider?.status ?? "ACTIVE");
   const [fallbackProviderId, setFallbackProviderId] = useState(provider?.fallbackProviderId ?? "");
   // 密钥 write-only：已配置 → 显示「••• 已配置」+「更换」；点更换才出现输入框
@@ -205,8 +229,15 @@ function ProviderEditor({
     <Modal title={provider ? `Provider · ${provider.name}` : "新建 Provider"} onClose={onClose} width={680}>
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <label style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>
-          名称
-          <input style={{ width: "100%" }} value={name} aria-label="provider 名称" onChange={(e) => setName(e.target.value)} data-testid="provider-name-input" />
+          厂商（选后自动预填 kind/baseUrl/型号）
+          <select value={vendorKey} aria-label="厂商" onChange={(e) => onPickVendor(e.target.value)} data-testid="provider-vendor-select">
+            <option value="">— 自定义 —</option>
+            {LLM_VENDOR_CATALOG.map((v) => (
+              <option key={v.key} value={v.key}>
+                {v.displayName}
+              </option>
+            ))}
+          </select>
         </label>
         <label style={{ fontSize: 12, color: "var(--muted)" }}>
           kind
@@ -215,6 +246,12 @@ function ProviderEditor({
             <option value="openai_compatible">openai_compatible</option>
             <option value="custom_http">custom_http（预留）</option>
           </select>
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <label style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>
+          名称
+          <input style={{ width: "100%" }} value={name} aria-label="provider 名称" onChange={(e) => setName(e.target.value)} data-testid="provider-name-input" />
         </label>
         <label style={{ fontSize: 12, color: "var(--muted)" }}>
           状态
@@ -290,13 +327,31 @@ function ProviderEditor({
           ))}
         </tbody>
       </table>
+      {vendor && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>从「{vendor.displayName}」目录添加：</span>
+          <select value={pickModel} aria-label="厂商型号" onChange={(e) => setPickModel(e.target.value)} data-testid="catalog-model-select">
+            {vendor.models.map((cm) => (
+              <option key={cm.modelId} value={cm.modelId}>
+                {cm.displayName}（{cm.modelId}）
+              </option>
+            ))}
+          </select>
+          <button className="btn sm" onClick={() => addCatalogModel(pickModel)} data-testid="catalog-model-add">
+            添加该型号
+          </button>
+          <button className="btn sm" onClick={() => vendor.models.forEach((cm) => addCatalogModel(cm.modelId))} data-testid="catalog-model-add-all">
+            导入全部型号
+          </button>
+        </div>
+      )}
       <button
         className="btn sm"
         style={{ marginBottom: 10 }}
         onClick={() => setModels((rows) => [...rows, { modelId: "", displayName: "", tools: false, structuredOutput: false, maxContext: 128000 }])}
         data-testid="model-add-row"
       >
-        + 添加模型
+        + 添加模型（自定义）
       </button>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
