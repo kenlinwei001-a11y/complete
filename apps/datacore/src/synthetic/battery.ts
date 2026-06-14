@@ -1055,9 +1055,26 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     coverageDays: b.baseId === "changzhou" ? 2 : 5, // C16：常州在途覆盖 <3 天（越线戏剧点）
   }));
 
-  const dataHealth = [
+  // 数据源健康度（Phase5B 工业级）：9 个企业源系统 + XL 档每基地 IoT 采集器。
+  // lagHours 确定性，植入 3 处 >2h 降级（触发 C09 数据时延临时降级）。
+  const dataHealth: Record<string, unknown>[] = [
+    // 关键源(critical)统一 ≤2h → 不在种子态触发 P90 降级（与既有 capacity_forecast/数据健康行为一致）；
+    // >2h 仅落在非关键源(srm/lims) → C09 仍能在数据上触发，但不扰动产能降级判定。
     { sourceId: "iot-scada", name: "IoT/SCADA 实时采集", critical: true, lagHours: 0.5 },
+    { sourceId: "mes", name: "MES 生产执行", critical: true, lagHours: 1.2 },
+    { sourceId: "erp", name: "ERP 销售/财务", critical: true, lagHours: 1.8 },
+    { sourceId: "srm", name: "SRM 供应商协同", critical: false, lagHours: 2.6 },
+    { sourceId: "plm", name: "PLM 型号/认证", critical: false, lagHours: 1.0 },
+    { sourceId: "wms", name: "WMS 仓储", critical: false, lagHours: 0.8 },
+    { sourceId: "qms", name: "QMS 质量", critical: true, lagHours: 1.5 },
+    { sourceId: "ems", name: "EMS 能耗管理", critical: false, lagHours: 0.9 },
+    { sourceId: "lims", name: "LIMS 实验室", critical: false, lagHours: 4.1 },
   ];
+  if (scale === "XL") {
+    for (const b of bases) {
+      dataHealth.push({ sourceId: `iot-${b.baseId}`, name: `${b.name} IoT 采集器`, critical: false, lagHours: round(0.3 + (hashString(b.baseId) % 30) / 10, 1) });
+    }
+  }
 
   return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, certLinks };
 }
