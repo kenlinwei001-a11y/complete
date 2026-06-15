@@ -9,6 +9,13 @@
 - 审核 `docs/AUDIT-0614-fullchain.md`
 - **P0 修复**：G-1（20 场景全接通意图+计划）· G-2（跨服务形状）· 跨服务冒烟 · G-7（model 显示）
 
+## 🚨 Tier 0.5 · 端到端活数据 + 全链可溯（用户裁决：先于场景启动器 P2/P3）
+- 🔄 **0. 活数据可溯** —— **PRD 已出** `docs/PRD-live-traceable-data.md`。根因：合成生成器**直接写对象、绕过 RawDataset/连接器**（`synthetic/service.ts:502-504`）→ 演示租户无原始表、对象无源头、结果不可溯。
+  - **P1**：合成核心数据对象改走"合成→RawDataset/RawRow→物化"，object.origin 记 rawDatasetId/rowIdx（数据源页立刻有原始数据）。
+  - **P2**：lineage 端点（object/task 反查 结果→入参对象→原始行→连接器）。
+  - **P3**：前端数据源原始表展示 + 结果"溯源"抽屉（并入场景启动器 P3 前端阶段）。
+  - 注：场景启动器 P1 已完成；其 P2（Scenario 升一等）/P3（前端三入口）压到本项之后。
+
 ## 🥇 Tier 1 · 机制定型（最高：决定能否持续敏捷+稳定+协同进化）
 - 🔄 **1. 运行模型文档** `docs/OPERATING-MODEL.md`（协同进化闭环 + 两层本体 + 防腐三防线 + 域/切片/跨域节点 + Claude 嵌入）
 - 🔄 **2. 全链闭包门 R11 落地** —— 第一块砖已落：`pnpm chain:check`（跨系统校验场景↔求解器注册，故障注入验证有效）+ scenarios-wiring 回归 + 跨服务冒烟。完整版（BuildPlan 扩 AgentCore 栈 + ClosureReport CHAIN/SHAPE + 焊进构建发动机）待 PRD P1 —— 大
