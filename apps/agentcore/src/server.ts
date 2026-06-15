@@ -223,6 +223,35 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return task;
   });
 
+  // 活数据可溯（PRD-live-traceable-data §3.2，结果→入参对象）：一次推演结果引用了哪些对象。
+  // 收集本任务的 selectedObjects + objectRef 槽位 → 每个对象前端再经 DataCore 对象 lineage
+  // 溯回原始行/连接器，形成"结果 → 入参对象 → 原始数据"的完整可溯链。
+  app.get("/api/v1/queries/:taskId/lineage", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) {
+      throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    }
+    const seen = new Set<string>();
+    const inputObjects: { objectType: string; objectId: string; label?: string; via: string }[] = [];
+    const push = (o: unknown, via: string) => {
+      if (o && typeof o === "object") {
+        const r = o as { objectType?: unknown; objectId?: unknown; label?: unknown };
+        if (typeof r.objectType === "string" && typeof r.objectId === "string") {
+          const k = `${r.objectType}|${r.objectId}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            inputObjects.push({ objectType: r.objectType, objectId: r.objectId, label: typeof r.label === "string" ? r.label : undefined, via });
+          }
+        }
+      }
+    };
+    for (const o of task.context?.selectedObjects ?? []) push(o, "selectedObjects");
+    for (const [name, v] of Object.entries(task.slots ?? {})) push(v, `slot:${name}`);
+    return { taskId, query: task.query, matchedIntent: task.matchedIntent ?? null, inputObjects };
+  });
+
   // ---------------------------------------------------------------------
   // Catalog management §8.4 (role catalog_admin)
   // ---------------------------------------------------------------------
