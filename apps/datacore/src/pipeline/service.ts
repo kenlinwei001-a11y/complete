@@ -2,16 +2,22 @@ import type { OntologyWorkflow, OntologyWorkflowUpsert, WfValidationIssue } from
 import type { AuthCtx, OntologyWorkflowRecord } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import { newId } from "../ids.js";
-import { notFound, validationError } from "../errors.js";
+import { notFound, validationError, AppError } from "../errors.js";
 import { runProcessing, type EntityRecord } from "./processing.js";
+import { buildTypeDefs, buildLinkDefs, buildSliceSpec } from "./subgraph.js";
+import type { OntologyService } from "../ontology.js";
+import type { OntologyCoreService } from "../ontology-core.js";
 
 /**
- * OntoFlow（PRD v2）P1：本体建模工作流 CRUD + 校验。
- * 数据先行 ⊕ 图谱先行统一到一份 OntologyWorkflow；本期只做存储与校验，
- * 处理引擎/发布/物化在 P2–P4。多租户隔离，确定性。
+ * OntoFlow（PRD v2）：本体建模工作流 CRUD/校验(P1) + 数据处理预览(P2) + 发布/提升(P3)。
+ * 数据先行 ⊕ 图谱先行统一到一份 OntologyWorkflow。多租户隔离，确定性。
  */
 export class WorkflowService {
-  constructor(private repos: Repos) {}
+  constructor(
+    private repos: Repos,
+    private ontology: OntologyService,
+    private ontologyCore: OntologyCoreService,
+  ) {}
 
   async list(ctx: AuthCtx): Promise<OntologyWorkflow[]> {
     const recs = await this.repos.ontologyWorkflows.list(ctx.tenantId);
@@ -108,6 +114,38 @@ export class WorkflowService {
     if (!spec) throw validationError(`实体 ${node.modeling.typeKey} 无数据处理规格（节点 processing 或上游 PROCESS）`);
     const entities = runProcessing(opts.rows, spec);
     return { typeKey: node.modeling.typeKey, total: entities.length, entities };
+  }
+
+  /** P3 提升：实体节点 STATIC→ONTOLOGY（纳入派生/推演）。 */
+  async promote(ctx: AuthCtx, id: string, nodeId: string): Promise<OntologyWorkflow> {
+    const wf = await this.get(ctx, id);
+    const node = wf.nodes.find((n) => n.id === nodeId);
+    if (!node || node.kind !== "SUBGRAPH_ENTITY") throw validationError(`节点 ${nodeId} 不是实体节点`);
+    node.storageMode = "ONTOLOGY";
+    node.status = "READY";
+    const doc: OntologyWorkflow = { ...wf, updatedAt: new Date().toISOString() };
+    await this.save(doc);
+    return doc;
+  }
+
+  /**
+   * P3 发布：校验通过后，把实体/链路落本体(types/links/version) + 子图切片(SliceSpec)，
+   * 工作流置 PUBLISHED。本体 schema 为设计产物，直接写（与 modeling publish 同级）；
+   * 对象物化(真值)走 Action（见「流水线发布物化」ActionType + domainExecutor）。
+   */
+  async publish(ctx: AuthCtx, id: string): Promise<{ types: string[]; links: string[]; sliceKey?: string; version: number }> {
+    const { ok, issues } = await this.validate(ctx, id);
+    if (!ok) throw new AppError("WORKFLOW_INVALID", `校验未通过：${issues.map((i) => i.code).join(",")}`, 422);
+    const wf = await this.get(ctx, id);
+    const typeDefs = buildTypeDefs(wf);
+    for (const t of typeDefs) await this.ontology.upsertType(ctx, t);
+    const linkDefs = buildLinkDefs(wf);
+    for (const l of linkDefs) await this.ontology.upsertLinkType(ctx, l);
+    const version = (await this.ontology.publishVersion(ctx)).version;
+    const slice = buildSliceSpec(wf);
+    if (slice) await this.ontologyCore.putSliceSpec(ctx, slice.sliceKey, 1, slice.spec as never);
+    await this.save({ ...wf, status: "PUBLISHED", updatedAt: new Date().toISOString() });
+    return { types: typeDefs.map((t) => t.key), links: linkDefs.map((l) => l.key), sliceKey: slice?.sliceKey, version };
   }
 
   private hasCycle(wf: OntologyWorkflow): boolean {

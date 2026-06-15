@@ -60,6 +60,7 @@ import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema, OntologyWorkflowUpsertSchema } from "@platform/contracts";
 import { WorkflowService } from "./pipeline/service.js";
+import { runProcessing } from "./pipeline/processing.js";
 import type { AuthCtx } from "./domain.js";
 
 declare module "fastify" {
@@ -230,7 +231,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
-  const workflows = new WorkflowService(repos);
+  const workflows = new WorkflowService(repos, ontology, ontologyCore);
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
   const catalog = new CatalogService(repos, features);
@@ -317,6 +318,38 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const sysCtx: AuthCtx = { tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} };
         await ontology.runDerivations(sysCtx);
         return { ok: true, targetRef: `OBJ-${objectId}` };
+      }
+      // OntoFlow（P3）流水线发布物化：rows 经数据处理折叠成对象落库(origin PIPELINE)，坏行入隔离区。
+      if (draft.actionTypeKey === "流水线发布物化") {
+        const workflowId = String(draft.payload.workflowId ?? "");
+        const nodeId = String(draft.payload.nodeId ?? "");
+        const rows = Array.isArray(draft.payload.rows) ? (draft.payload.rows as Record<string, unknown>[]) : [];
+        const wfRec = await repos.ontologyWorkflows.get(draft.tenantId, workflowId);
+        const node = wfRec?.doc.nodes.find((n) => n.id === nodeId);
+        if (!node || node.kind !== "SUBGRAPH_ENTITY") return { ok: false, error: `entity node not found: ${nodeId}` };
+        let spec = node.processing;
+        if (!spec) {
+          const up = wfRec!.doc.edges.filter((e) => e.to === node.id).map((e) => e.from);
+          const proc = wfRec!.doc.nodes.find((n) => n.kind === "PROCESS" && up.includes(n.id));
+          if (proc && proc.kind === "PROCESS") spec = proc.spec;
+        }
+        if (!spec) return { ok: false, error: "no processing spec" };
+        const typeKey = node.modeling.typeKey;
+        const pk = node.modeling.primaryKey;
+        const records = runProcessing(rows, spec);
+        let n = 0;
+        for (const rec of records) {
+          const pkVal = rec.props[pk];
+          if (pkVal === undefined || pkVal === null || pkVal === "") {
+            await quarantine.record(draft.tenantId, { connId: workflowId, dataset: typeKey, raw: rec.props, reason: "SCHEMA_MISMATCH", detail: `主键 '${pk}' 缺失`, reprocess: { targetKey: typeKey, mapping: spec.mappings.map((m) => ({ propKey: m.targetProp, sourceField: m.sourceField })), pk } });
+            continue;
+          }
+          if (rec.expired) continue;
+          await repos.objects.put({ id: `obj_${typeKey.toLowerCase()}_${String(pkVal)}`.replace(/[^\w-]/g, "_"), tenantId: draft.tenantId, type: typeKey, props: rec.props, origin: { type: "PIPELINE", workflowId } });
+          n++;
+        }
+        await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+        return { ok: true, targetRef: `WF-${workflowId}:${n}` };
       }
       return mockExecutor.execute(draft);
     },
@@ -1317,6 +1350,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).default([]) }), req.body);
     return workflows.preview(ctx(req), (req.params as { id: string }).id, body);
   });
+  app.post("/a/v1/ontology-workflows/:id/nodes/:nodeId/promote", async (req) => {
+    const { id, nodeId } = req.params as { id: string; nodeId: string };
+    return workflows.promote(ctx(req), id, nodeId);
+  });
+  app.post("/a/v1/ontology-workflows/:id/publish", async (req) => workflows.publish(ctx(req), (req.params as { id: string }).id));
 
   // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {

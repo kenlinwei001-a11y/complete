@@ -134,6 +134,14 @@ export class OntologyService {
       status: "ACTIVE",
       published: existing?.published,
       deprecation: existing?.deprecation,
+      // OntoFlow（PRD v2）扩展字段透传（缺省回退既有值）。
+      storageMode: input.storageMode ?? existing?.storageMode,
+      stateVariables: input.stateVariables ?? existing?.stateVariables,
+      functions: input.functions ?? existing?.functions,
+      actions: input.actions ?? existing?.actions,
+      security: input.security ?? existing?.security,
+      entityCategory: input.entityCategory ?? existing?.entityCategory,
+      description: input.description ?? existing?.description,
     };
     await this.repos.ontologyTypes.put(def);
     return def;

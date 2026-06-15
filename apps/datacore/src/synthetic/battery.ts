@@ -873,6 +873,19 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
+  // OntoFlow（PRD v2 P3）流水线发布物化：审批通过后把样例/上传 rows 经数据处理折叠成对象落库
+  // （origin=PIPELINE），坏行入隔离区。真值写入门控。
+  {
+    key: "流水线发布物化",
+    name: "流水线发布物化",
+    paramsSchema: {
+      type: "object",
+      required: ["workflowId", "nodeId", "rows"],
+      properties: { workflowId: { type: "string" }, nodeId: { type: "string" }, rows: { type: "array" } },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
 ];
 
 /** 模板规则的 scopeObjectTypes（合成种子使用；默认 Order）。 */

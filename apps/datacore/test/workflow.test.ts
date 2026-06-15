@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, ADMIN, PLANNER } from "./helpers.js";
+import { makeApp, seedBattery, ADMIN, PLANNER } from "./helpers.js";
 
 /** P1：OntoFlow 本体建模工作流 CRUD + 校验。 */
 const entity = (id: string, typeKey: string, pk: string, storageMode = "STATIC", extra: Record<string, unknown> = {}) => ({
@@ -122,6 +122,78 @@ describe("OntoFlow P1 · 本体建模工作流", () => {
     expect(body.total).toBe(2);
     const o1 = body.entities.find((e) => e.key === "O1")!;
     expect(o1.props).toMatchObject({ order_id: "O1", amount: 15, order_risk: 0.9 });
+  });
+
+  it("WF6: 发布 —— 实体/链路落本体 + 子图切片 + 状态 PUBLISHED", async () => {
+    const t = await makeApp();
+    const wf = (await t.app.inject({ method: "POST", url: "/a/v1/ontology-workflows", headers: ADMIN, payload: graphFirstWf() })).json() as { id: string };
+    const pub = await t.app.inject({ method: "POST", url: `/a/v1/ontology-workflows/${wf.id}/publish`, headers: ADMIN });
+    expect(pub.statusCode).toBe(200);
+    const body = pub.json() as { types: string[]; links: string[]; sliceKey: string; version: number };
+    expect(body.types).toEqual(expect.arrayContaining(["Supplier", "Factory", "Order"]));
+    expect(body.links).toEqual(expect.arrayContaining(["SUPPLIES", "FULFILLS"]));
+    expect(body.version).toBeGreaterThan(0);
+
+    const types = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types", headers: ADMIN })).json() as { key: string }[];
+    expect(types.map((x) => x.key)).toEqual(expect.arrayContaining(["Supplier", "Factory", "Order"]));
+    const got = (await t.app.inject({ method: "GET", url: `/a/v1/ontology-workflows/${wf.id}`, headers: ADMIN })).json() as { status: string };
+    expect(got.status).toBe("PUBLISHED");
+    // 子图切片可解析（无对象 → 空但 200）
+    const sl = await t.app.inject({ method: "POST", url: `/a/v1/ontology/slices/${body.sliceKey}/resolve`, headers: ADMIN, payload: { args: {} } });
+    expect(sl.statusCode).toBe(200);
+  });
+
+  it("WF7: 提升 STATIC→ONTOLOGY", async () => {
+    const t = await makeApp();
+    const wf = (await t.app.inject({ method: "POST", url: "/a/v1/ontology-workflows", headers: ADMIN, payload: graphFirstWf() })).json() as { id: string };
+    const res = await t.app.inject({ method: "POST", url: `/a/v1/ontology-workflows/${wf.id}/nodes/n_ord/promote`, headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const doc = res.json() as { nodes: { id: string; storageMode?: string; status?: string }[] };
+    const ord = doc.nodes.find((n) => n.id === "n_ord")!;
+    expect(ord.storageMode).toBe("ONTOLOGY");
+    expect(ord.status).toBe("READY");
+  });
+
+  it("WF8: Action 门控物化 —— 发布后经审批把 rows 折叠成对象(origin PIPELINE)，坏行入隔离区", async () => {
+    const t = await makeApp();
+    await seedBattery(t); // 注册「流水线发布物化」ActionType + demo 账号
+    const widget = {
+      id: "n_w",
+      kind: "SUBGRAPH_ENTITY",
+      label: "Widget",
+      position: { x: 0, y: 0 },
+      storageMode: "ONTOLOGY",
+      modeling: { typeKey: "Widget", displayName: "Widget", primaryKey: "widget_id", properties: [], stateVariables: [], derived: [] },
+      processing: {
+        mappings: [
+          { sourceField: "widget_id", targetProp: "widget_id", dataType: "String", fn: "Last", isPrimaryKey: true },
+          { sourceField: "qty", targetProp: "qty", dataType: "Double", fn: "Sum" },
+        ],
+        mode: "BATCH",
+      },
+    };
+    const wf = (await t.app.inject({ method: "POST", url: "/a/v1/ontology-workflows", headers: ADMIN, payload: { name: "wmat", entryMode: "GRAPH_FIRST", nodes: [widget], edges: [] } })).json() as { id: string };
+    await t.app.inject({ method: "POST", url: `/a/v1/ontology-workflows/${wf.id}/publish`, headers: ADMIN });
+
+    const rows = [
+      { widget_id: "W1", qty: 3 },
+      { widget_id: "W1", qty: 4 },
+      { qty: 9 }, // 缺主键 → 隔离区
+    ];
+    const draft = (await t.app.inject({ method: "POST", url: "/a/v1/action-drafts", headers: PLANNER, payload: { actionTypeKey: "流水线发布物化", payload: { workflowId: wf.id, nodeId: "n_w", rows } } })).json() as { draftId: string };
+    const approved = await t.app.inject({ method: "POST", url: `/a/v1/action-drafts/${draft.draftId}/approve`, headers: ADMIN, payload: {} });
+    const done = approved.json() as { status: string; executionResult?: { targetRef?: string } };
+    expect(done.status).toBe("EXECUTED");
+    expect(done.executionResult?.targetRef).toBe(`WF-${wf.id}:1`);
+
+    const widgets = await t.repos.objects.listByType("demo", "Widget");
+    expect(widgets).toHaveLength(1);
+    expect(widgets[0]!.props).toMatchObject({ widget_id: "W1", qty: 7 });
+    expect(widgets[0]!.origin.type).toBe("PIPELINE");
+
+    const quar = (await t.app.inject({ method: "GET", url: "/a/v1/quarantine?status=PENDING", headers: ADMIN })).json() as { items?: unknown[] } | unknown[];
+    const items = Array.isArray(quar) ? quar : (quar.items ?? []);
+    expect(items.length).toBeGreaterThanOrEqual(1);
   });
 
   it("WF4: 租户隔离 —— 别租户取不到", async () => {
