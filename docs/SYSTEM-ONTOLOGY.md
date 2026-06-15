@@ -72,7 +72,8 @@
 - **Policy（A6）**：行级过滤策略（贯穿 query/slice/solver 读出）· `policies`,`authz`。
 
 ### E. 求解/推演域（DataCore）
-- **Solver（SOLVER_KEYS，23 个）**：确定性求解器（电池域；纯函数 compute）· `solvers/service.ts:14`,`extended.ts`。
+- **Solver（SOLVER_KEYS，22 个）**：确定性求解器（电池域；纯函数 compute）· `solvers/service.ts:14`,`extended.ts`。注册表（`ontology:check` 门禁核对）：
+  `capacity_rollup` `capacity_forecast` `bottleneck_matrix` `risk_timeline` `affected_orders` `plan_audit` `plan_generate` `capex_scenario` `mitigation_select` `outsourcing_split` `maintenance_stagger` `quarterly_gap` `cert_schedule` `kit_readiness` `lta_gap` `inventory_optimize` `changeover_sequence` `quote_margin` `credit_exposure` `carbon_footprint` `yield_diagnosis` `countermeasure_combo`（`sop_balance` 是工作流非求解器，走 `/a/v1/sop/*`）。
 - **SolverParam / SolverParamsHistory**：求解器参数（版本化，校准可改）· `solverParams`。
 - **ForecastSnapshot / RiskCase / SopVersion**：预测快照 / 风险案 / S&OP 月度平衡台 · `sop.ts`。
 - **Calibration{Pairs,Proposals,History,Forecasts}**：M11 校准引擎（EMA/重放归因/分位）· `calibration/`。
