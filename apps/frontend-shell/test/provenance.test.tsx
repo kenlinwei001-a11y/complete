@@ -58,5 +58,8 @@ describe("Provenance · 数据悬浮溯源", () => {
     expect(tip.textContent).toContain("IoT/SCADA"); // 来源（作者标注，无需 lineage 端点）
     expect(tip.textContent).toContain("健康度系数"); // 推导公式
     expect(screen.getByTestId("prov-rule").textContent).toContain("C09"); // 关联规则
+    // 收尾#2：新鲜度从全局 DATA_HEALTH 取——IoT/SCADA DELAYED → 自动降级 + C09 影响(P90 0.93→0.90)
+    await waitFor(() => expect(screen.getByTestId("prov-fresh").textContent).toContain("降级"));
+    expect(screen.getByTestId("prov-fresh").textContent).toContain("0.9"); // p90To
   });
 });

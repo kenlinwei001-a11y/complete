@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchObjectLineage } from "@/api/endpoints";
+import { fetchObjectLineage, fetchDataHealth } from "@/api/endpoints";
 
 /** 数据新鲜度（R13）：源连接器 lastSyncAt → 人类可读 + 是否降级（>2h 视为延迟，对应 C09）。 */
 function freshnessOf(lastSyncAt?: string | null): { label: string; stale: boolean } | null {
@@ -55,11 +55,22 @@ export function Provenance({
     enabled: open && hasLineage,
     staleTime: 60_000,
   });
+  // R13 收尾#2：新鲜度统一从全局 DATA_HEALTH 注册表取（单一来源），源系统降级时全链一致降级。
+  const { data: health } = useQuery({ queryKey: ["a", "data-health", {}], queryFn: fetchDataHealth, enabled: open, staleTime: 60_000 });
 
   // 合并：lineage（活数据）优先，作者标注兜底
   const srcName = data?.source?.connection?.name ?? src ?? null;
   const formulas = data && data.derivations.length > 0 ? data.derivations.map((d) => d.formula) : formula ? [formula] : [];
-  const fresh = freshnessOf(data?.source?.connection?.lastSyncAt) ?? (freshness ? { label: freshness, stale: false } : null);
+  // 新鲜度优先级：DATA_HEALTH（按 connId 或源系统名匹配）> 连接器 lastSyncAt > 作者标注
+  const connId = data?.source?.connection?.id;
+  const hk = health?.sources.find((s) => (connId && s.connId === connId) || (!!src && (src === s.system || src.includes(s.system))));
+  const fresh: { label: string; stale: boolean; impact?: string } | null = hk
+    ? {
+        label: `${hk.system} · ${hk.status === "OK" ? "正常" : hk.status} · 延迟 ${hk.latencyMin}min`,
+        stale: hk.status !== "OK",
+        impact: hk.degradeImpact ? `P90 ${hk.degradeImpact.p90From}→${hk.degradeImpact.p90To}（C09 降级）` : undefined,
+      }
+    : freshnessOf(data?.source?.connection?.lastSyncAt) ?? (freshness ? { label: freshness, stale: false } : null);
   const loading = open && hasLineage && (isLoading || !data);
   const tid = `prov-${objectType ?? "v"}-${objectId ?? testId ?? "x"}`;
 
@@ -100,6 +111,7 @@ export function Provenance({
                 {fresh && (
                   <span data-testid="prov-fresh" style={{ marginLeft: 6, color: fresh.stale ? "var(--amber, #E8B54A)" : "var(--muted2)" }}>
                     {fresh.stale ? `⚠ ${fresh.label} · 降级` : fresh.label}
+                    {fresh.impact && <span style={{ marginLeft: 4 }}>· {fresh.impact}</span>}
                   </span>
                 )}
               </div>
