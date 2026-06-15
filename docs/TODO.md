@@ -18,12 +18,13 @@
 - **R13「结论可溯源」+ R-一致** 固化进本体；`<Provenance>` 升**六要素**（来源/新鲜度/推导/输入因子/关联规则/备注）+ 新鲜度降级（C09）
 - **项目推演 DAG 放大**：全宽独占 + maxHeight 480→760 + 节点/字号加大（借鉴 HTML 项目推演布局）
 
-## 🚨 Tier 0.5 · 端到端活数据 + 全链可溯（地基，进行中）
-- 🔄 **0. 活数据可溯 收尾**（`docs/PRD-live-traceable-data.md`）
-  - ⬜ 结果→求解器入参对象 lineage（task 级反查，需 solver 入参留痕）
-  - ⬜ `DATA_HEALTH` 源系统新鲜度注册表（驱动六要素 fresh 自动降级，全链一致）
-  - ⬜ `<RuleRef code>` 规则锚点（两跳溯源：数字→规则→规则详情，对接 Rule 库）
-  - ⬜ 合并静态 F5 溯源弹窗 与 lineage 版 `<Provenance>`（统一为活数据驱动）
+## ✅ Tier 0.5 · 端到端活数据 + 全链可溯（地基，已完成）
+- ✅ **0. 活数据可溯 收尾**（`docs/PRD-live-traceable-data.md`）
+  - ✅ 结果→入参对象 lineage（`GET /api/v1/queries/:taskId/lineage`：selectedObjects + objectRef 槽位 → 每对象再溯回原始数据）
+  - ✅ `DATA_HEALTH` 新鲜度统一来源：`<Provenance>` 的 fresh 接全局 `data-health`（按 connId/源系统名匹配，源延迟→全链一致降级 + C09 影响 P90 0.93→0.90）
+  - ✅ `<RuleRef code>` 规则锚点两跳（数字→规则→规则详情，接 fetchRules）
+  - ✅ 合并静态 F5 溯源：ProvenancePopover 规则段改用共享 `<RuleRef>`（两套溯源统一规则机制）
+  - 注：P1（合成落原始表）/P2（对象 lineage 端点）/P3增量1（Provenance+数据源原始表）已先期完成
 
 ## 🥇 Tier 1 · 机制定型
 - 🔄 **1. 全链闭包门 R11 完整版**（chain:check 已是第一块砖）：BuildPlan 扩 AgentCore 栈 + ClosureReport CHAIN/SHAPE + 焊进构建发动机 —— 大

@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ProvenanceRef } from "@platform/contracts";
 import { fetchTask, queryTimeseriesAgg } from "@/api/endpoints";
+import { RuleRef } from "../RuleRef";
 import zh from "@/locales/zh";
 import styles from "./ProvenancePopover.module.css";
 
@@ -168,27 +169,16 @@ function PopoverSections({ prov, value, label }: { prov: ProvVM; value?: string;
       <section className={styles.sec}>
         <h5>{zh.prov.ruleSection}</h5>
         {prov.rules?.length ? (
-          prov.rules.map((r) => <RuleRow key={r.key} ruleKey={r.key} expression={r.expression} />)
+          // 收尾#4：统一用共享 <RuleRef>（与 hover 版 <Provenance> 同一规则机制；两跳取活规则定义）
+          prov.rules.map((r) => (
+            <div key={r.key} style={{ marginBottom: 4 }}>
+              <RuleRef code={r.key} />
+            </div>
+          ))
         ) : (
           <span style={{ color: "var(--muted2)", fontSize: 11.5 }}>{zh.prov.noRule}</span>
         )}
       </section>
-    </div>
-  );
-}
-
-function RuleRow({ ruleKey, expression }: { ruleKey: string; expression: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ marginBottom: 4 }}>
-      <button className="badge" style={{ cursor: "pointer" }} onClick={() => setOpen(!open)}>
-        {ruleKey}
-      </button>
-      {open && (
-        <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, padding: "4px 8px", background: "var(--bg2)", borderRadius: 6 }}>
-          {expression}
-        </div>
-      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { AppProviders } from "@/App";
@@ -42,9 +42,9 @@ describe("F5 · 溯源弹窗（全局唯一组件）", () => {
     for (const title of SECTION_TITLES) {
       expect(within(pop).getByText(title)).toBeInTheDocument();
     }
-    // 规则段可展开 expression
-    await user.click(within(pop).getByText("C03"));
-    expect(within(pop).getByText("Order.demandDelta <= 0.5")).toBeInTheDocument();
+    // 规则段统一用共享 <RuleRef>（收尾#4）：悬浮规则编号 → 弹活规则定义（含 expression）
+    await user.hover(within(pop).getByTestId("ruleref-C03"));
+    await waitFor(() => expect(screen.getByTestId("ruleref-pop").textContent).toContain("Order.demandDelta <= 0.5"));
   });
 
   it("kpi 卡点击打开（含 TS_AGGREGATE 形态文案）", async () => {
