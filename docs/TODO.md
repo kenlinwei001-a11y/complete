@@ -19,15 +19,15 @@
 
 ## 🥉 Tier 3 · 剩余断点修复（产品可用性）
 - ✅ **5. G-4** 前端自助闭合：CatalogPage ＋新建执行计划(createPlan) · WorkflowsPage/SkillsPage ＋新建 + mock POST handlers + db.plans 隔离；g4 回归 + 112 前端测试绿、0 渲染错误
-- ⬜ **6. G-3** 场景启动器 + `SceneEntryConfig.presetContext` + 注入
+- 🔄 **6. G-3** 场景启动器（workflow-first 骨架 ⊕ agent 解读节点）—— **PRD 已出** `docs/PRD-scenario-launcher.md`（Scenario 升一等主键 + presetSlots 注入通道 + riskLevel 分流 + ⌘K/目录/首页三入口 + chain:check 上架门）；待实现
 - ⬜ **7. G-5** `generic-inference` 通用 what-if + scaffold 去电池锁死 —— 大
 - ⬜ **8. G-6** `parseXlsx` + 在线数据模版 + 合成并入连接器（含引库决策）
 - ⬜ **9. G-7 余项** LLM 用途枚举可扩展 + 按页面标注
-- ⬜ **10. 半自动数据→本体建模引擎 + 字段全建模门**（D1→D2，切片 `sys.ingest.data_to_object`，强化不变量 R12）—— 大
-  - 参考 [`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（v2 数据集成链：Data→Raw→Transform→Curated→Ontology Mapping），融合进现有 A3 `apps/datacore/src/modeling.ts`。
-  - **确定性优先、LLM 兜底**：现 `suggest()` 是 LLM-only → 补确定性映射 `dataset→ObjectType · column→PropertyDef · FK/值重叠→LinkType · 基数推断 + 质量评分`，LLM 仅补语义命名/歧义。
-  - **硬要求（用户）**：导入数据源的**每个对象字段都必须被建模**——把 R12「反向-data」从 SOFT 升为**字段覆盖门**：每个导入 column 必须映射到某 PropertyDef 或显式 waive，未覆盖即拦发布。
-  - 与 G-6 协同（rawin 三路 = nano-ontoprompt 的 structured/semi-structured/unstructured 三 transform 路）。落地前出 PRD + 回写本体 §3/§5(R12)/§7。
+- 🔄 **10. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（D1→D2，切片 `sys.ingest.data_to_object`，强化不变量 R12）—— 大 —— **PRD 已出** `docs/PRD-ontology-browser-field-coverage.md`（合并参考 [`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt) 的确定性映射管线 + 参考原型 `docs/reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI 策展）
+  - **确定性优先、LLM 兜底**：A3 `suggest()` LLM-only → 补 `dataset→ObjectType · column→PropertyDef · FK/值重叠→LinkType · 基数推断 + 质量评分`。
+  - **字段全建模门（用户硬要求）**：每个导入 column 必映射到某 PropertyDef 或显式 waive，未覆盖即拦发布（R12 升 HARD + `coverage:check` 门）。
+  - **本体浏览器**：域分组图谱 → 节点检视器（数据源+字段schema+样例+公式+规则+被谁操作+覆盖徽章）+ 每节点下载 CSV 导入模板。
+  - 待实现；与 G-6 rawin 三路对齐。
 
 ## 🔭 Tier 4 · dogfooding 终态
 - ⬜ **11.** 本体落库 PoC（系统本体注册为平台 ObjectType/SliceSpec/Rule → 平台切系统自己）
