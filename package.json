@@ -9,6 +9,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "chain:check": "node scripts/check-chain-closure.mjs",
+    "gates": "node scripts/check-system-ontology.mjs && node scripts/check-chain-closure.mjs",
     "lint": "pnpm -r lint",
     "ontology:check": "node scripts/check-system-ontology.mjs",
     "parity": "node scripts/parity-audit.mjs",
