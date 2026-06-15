@@ -324,7 +324,9 @@ export interface OntologyVersion {
 }
 
 export type ObjectOrigin =
-  | { type: "SYNTHETIC"; jobId: string }
+  // 活数据可溯（PRD-live-traceable-data §3.1，additive）：合成对象现经"合成数据源→RawDataset→物化"
+  // 落地，origin 记源头 backref（sourceConnId/rawDatasetId/rawRowIdx）→ 结果可溯回原始行与连接器。
+  | { type: "SYNTHETIC"; jobId: string; sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number }
   | { type: "MATERIALIZED"; datasetId: string; jobId: string }
   | { type: "MANUAL" };
 

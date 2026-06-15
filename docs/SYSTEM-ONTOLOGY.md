@@ -132,10 +132,10 @@ SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilt
 ```
 Connector --produces--> RawDataset --suggest/modeling--> OntologyDraft --publish--> OntologyType/Link/Version
 RawDataset --materialize(幂等)--> ObjectInstance --runDerivations--> DerivedProperty
-SyntheticJob --gen(seed)--> ObjectInstance/Link        IndustryTemplate --驱动--> SyntheticJob
+SyntheticJob --gen(seed)--> Connection(合成源)+RawDataset/RawRow --materialize--> ObjectInstance(origin 溯回 rawDatasetId/rowIdx)/Link   ✅ 活数据可溯 P1（synthetic/service.ts；不再凭空落对象）        IndustryTemplate --驱动--> SyntheticJob
 ObjectType <--reads-- Solver(入参字段)     ObjectType <--scopes-- Rule     ObjectType --domain--> SliceSpec
 SolverParam <--adjusts-- Calibration       Action(EXECUTED) --writeback--> ObjectInstance(props,二次派生)
-Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成在独立页未并入连接器
+Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）；lineage 反查端点待 P2
 ```
 **数据构建发动机链（需求拉动）**
 ```

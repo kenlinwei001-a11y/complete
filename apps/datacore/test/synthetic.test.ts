@@ -145,6 +145,39 @@ describe("A7 synthetic data", () => {
     }
   });
 
+  it("LIVE-DATA: 合成对象经'合成源→RawDataset→物化'落地，数据源可见原始行 + 对象 origin 可溯回（PRD-live-traceable-data §3.1）", async () => {
+    const t = await makeApp();
+    await runJob(t);
+
+    // ① 数据源页可见：存在"合成数据源"连接
+    const conns = (await t.app.inject({ method: "GET", url: "/a/v1/connections", headers: ADMIN })).json() as { id: string; name: string }[];
+    const synth = conns.find((c) => c.name.includes("合成数据源"));
+    expect(synth, "存在合成数据源连接（不再凭空对象）").toBeTruthy();
+
+    // ② 每核心对象类型一张 RawDataset，可见原始行
+    const datasets = (await t.app.inject({ method: "GET", url: "/a/v1/raw-datasets", headers: ADMIN })).json() as { id: string; name: string; sourceConnId: string; rowCount: number }[];
+    const byName = new Map(datasets.map((d) => [d.name, d]));
+    for (const type of ["Base", "Model", "Order"]) expect(byName.get(type), `RawDataset ${type} 存在`).toBeTruthy();
+    const orderDs = byName.get("Order")!;
+    expect(orderDs.rowCount).toBe(20);
+    expect(orderDs.sourceConnId).toBe(synth!.id);
+
+    const rowsRes = (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets/${orderDs.id}/rows`, headers: ADMIN })).json() as { rows: Record<string, unknown>[] };
+    expect(rowsRes.rows.length).toBe(20); // 原始行可在数据源页查看
+
+    // ③ 对象 origin 可溯回原始表：rawDatasetId 指真实数据集 + 行序 + 合成连接
+    const orders = await t.repos.objects.listByType("demo", "Order");
+    const dsIds = new Set(datasets.map((d) => d.id));
+    for (const o of orders) {
+      expect(o.origin.type).toBe("SYNTHETIC");
+      const org = o.origin as { rawDatasetId?: string; rawRowIdx?: number; sourceConnId?: string };
+      expect(org.rawDatasetId && dsIds.has(org.rawDatasetId), `Order ${o.id} origin 溯回真实 RawDataset`).toBe(true);
+      expect(org.rawDatasetId).toBe(orderDs.id);
+      expect(typeof org.rawRowIdx).toBe("number");
+      expect(org.sourceConnId).toBe(synth!.id);
+    }
+  });
+
   it("SY3: unknown industry → LLM-generated template, stored for reuse, full flow runs", async () => {
     const t = await makeApp();
     t.llm.enqueue({

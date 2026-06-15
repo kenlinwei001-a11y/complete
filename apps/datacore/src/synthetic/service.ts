@@ -1,5 +1,6 @@
 import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type PermissionPolicy } from "@platform/contracts";
-import type { AuthCtx, ObjectInstance, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
+import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
+import { profileRows } from "../connectors/profiler.js";
 import type { Repos } from "../repo/repo.js";
 import type { LlmClient } from "../llm.js";
 import type { Metrics } from "../metrics.js";
@@ -469,6 +470,27 @@ export class SyntheticService {
     }
   }
 
+  /**
+   * 活数据可溯（PRD-live-traceable-data §3.1）：一个"合成数据源"连接（确定性、按名幂等复用），
+   * 承载所有合成 RawDataset。使演示租户在数据源页能看到真实的连接与原始表，而非凭空对象。
+   */
+  private async ensureSyntheticConnection(ctx: AuthCtx): Promise<string> {
+    const SYNTH_NAME = "合成数据源（确定性生成）";
+    const existing = (await this.repos.connections.list(ctx.tenantId, (c) => c.name === SYNTH_NAME))[0];
+    if (existing) return existing.id;
+    const conn: Connection = {
+      id: newId("conn"),
+      tenantId: ctx.tenantId,
+      connectorTypeKey: "mock_erp",
+      name: SYNTH_NAME,
+      config: { synthetic: true },
+      status: "ACTIVE",
+      lastSyncAt: new Date().toISOString(),
+    };
+    await this.repos.connections.put(conn);
+    return conn.id;
+  }
+
   private async instantiateBattery(
     ctx: AuthCtx,
     seed: number,
@@ -487,15 +509,35 @@ export class SyntheticService {
     }
     const g = generateBattery(seed, scale);
     let n = 0;
+    // 活数据可溯（PRD-live-traceable-data §3.1）：合成对象不再凭空落库，而是经"合成数据源→
+    // RawDataset(原始行)→物化为对象"的真链路；每对象 origin 记 rawDatasetId/rawRowIdx，使数据源页
+    // 可见原始数据、推演结果可溯回源头。确定性：连接/原始表/对象/backref 均由 (industry,scale,seed) 决定。
+    const synthConnId = await this.ensureSyntheticConnection(ctx);
     const putAll = async (type: string, rows: Record<string, unknown>[], pk: string) => {
+      // ① 原始表：一对象类型一张 RawDataset（按 连接+名 幂等复用 id），原始行可经 /a/v1/raw-datasets 查看
+      const existingDs = (await this.repos.rawDatasets.list(ctx.tenantId, (d) => d.sourceConnId === synthConnId && d.name === type))[0];
+      const ds: RawDataset = {
+        id: existingDs?.id ?? newId("rds"),
+        tenantId: ctx.tenantId,
+        sourceConnId: synthConnId,
+        name: type,
+        fields: profileRows(rows),
+        rowCount: rows.length,
+        syncedAt: new Date().toISOString(),
+      };
+      await this.repos.rawDatasets.put(ds);
+      await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
+      // ② 物化为对象，origin 记源头 backref（rawDatasetId + 行序）
+      let idx = 0;
       for (const row of rows) {
         await this.repos.objects.put({
           id: `obj_${type.toLowerCase()}_${String(row[pk])}`.replace(/[^\w-]/g, "_"),
           tenantId: ctx.tenantId,
           type,
           props: row,
-          origin,
+          origin: { ...origin, sourceConnId: synthConnId, rawDatasetId: ds.id, rawRowIdx: idx },
         });
+        idx++;
         n++;
       }
     };
