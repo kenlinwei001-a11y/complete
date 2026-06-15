@@ -471,6 +471,10 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                     onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: v.providerId, modelId: e.target.value } }))}
                   >
                     <option value="">（选择模型）</option>
+                    {/* G-7：已绑 model 不在当前 provider 目录时仍可见可选，避免静默显示空白（像"绑定丢了"） */}
+                    {v.modelId && !(provider?.models ?? []).some((m) => m.modelId === v.modelId) && (
+                      <option value={v.modelId}>{v.modelId}（已绑 · 不在当前 provider 目录）</option>
+                    )}
                     {(provider?.models ?? []).map((m) => {
                       const missing: string[] = [];
                       if (req.tools && !m.capabilities.tools) missing.push("tools");

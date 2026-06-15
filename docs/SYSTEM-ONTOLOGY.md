@@ -233,12 +233,12 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | 编号 | 断点 | 链路位置 | 性质 |
 |---|---|---|---|
 | G-1 | 20 场景仅 4 个端到端可跑（16 无 Intent/Plan） | ScenarioCard→Intent→Plan | R11 违反 |
-| G-2 | `affected_orders` plan 读 `data.rows/count`，真实 DataCore 返回 `affected/total` → 跨服务 FAIL | Plan render↔Solver 输出 | mock 藏住 |
+| G-2 | ~~`affected_orders` plan 读 `data.rows/count`，真实返回 `affected/total` → 跨服务 FAIL~~ **已修**：DataCore 补 `rows/count/columns` 别名 `risk.ts:337` | Plan render↔Solver 输出 | ✅ 已修 |
 | G-3 | 无场景启动器；SceneEntry 无 presetContext；以视图+智能体为主键 | ScenarioCard↔SceneEntry↔前端 | 模型倒置 |
 | G-4 | 意图绑定的执行计划无前端创建入口（后端 createPlan 有） | Intent→Plan 配置面 | 裁决#27 死路 |
 | G-5 | 应用层电池锁死（视图布局/求解器/场景包/Agent 写死）；`generic-inference` 不存在 | 本体→生成应用→推演 | 通用化缺 |
 | G-6 | Excel 上传 UI 接受 .xlsx 但后端 parser TODO；无数据模版；合成在独立页 | Connector→RawDataset | rawin 三路未统一 |
-| G-7 | LLM 用途枚举写死不可扩展；矩阵 model 下拉依赖先选 provider，stale 绑定显示空白 | LlmPurposeBinding | 配置面缺陷 |
+| G-7 | LLM 用途枚举写死不可扩展（待 PRD P5）；~~矩阵 model 下拉 stale 绑定显示空白~~ **已修**：已绑 model 不在目录仍可见可选 `LlmProvidersPage.tsx:474` | LlmPurposeBinding | ◐ 部分修（枚举扩展待 PRD） |
 | G-8 | 数据构建闭包仅 DataCore 栈、不验全链（不含 intent/plan/workflow/agent 接通） | BuildPlan→ClosureReport | R11 门禁缺 |
 
 ---

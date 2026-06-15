@@ -276,7 +276,7 @@ export function affectedOrders(
   c: SolverContext,
   args: AffectedOrdersArgs,
   orders?: { id: string; props: Record<string, unknown> }[],
-): { baseId: string; affected: Record<string, unknown>[]; total: number; fallback: boolean; problems: OrderProblemGroupOut[] } {
+): { baseId: string; affected: Record<string, unknown>[]; total: number; count: number; columns: string[]; rows: unknown[][]; fallback: boolean; problems: OrderProblemGroupOut[] } {
   const p = c.params;
   const baseId = resolveBaseId(c, str(args.baseId));
   const pool = (orders ?? c.orders).filter((o) => {
@@ -334,7 +334,18 @@ export function affectedOrders(
     };
   });
   const problems = buildOrderProblems(c, baseId, affected, day ?? num(args.toDay, 180));
-  return { baseId, affected, total: affected.length, fallback, problems };
+  // G-2：AgentCore 种子 plan 的 render 读 data.rows/data.count；补别名使跨服务一致
+  // （与 capacity_forecast 的 gapPct/mainBottleneck 别名同范式，治"mock 藏住的形状不匹配"）。
+  return {
+    baseId,
+    affected,
+    total: affected.length,
+    count: affected.length,
+    columns: ["so", "cust", "model", "qty", "due"],
+    rows: affected.map((o) => [o.so, o.cust, o.model, o.qty, o.due]),
+    fallback,
+    problems,
+  };
 }
 
 // ---------------------------------------------------------------------------
