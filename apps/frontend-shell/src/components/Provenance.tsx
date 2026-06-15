@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchObjectLineage, fetchDataHealth } from "@/api/endpoints";
+import { RuleRef } from "./RuleRef";
 
 /** 数据新鲜度（R13）：源连接器 lastSyncAt → 人类可读 + 是否降级（>2h 视为延迟，对应 C09）。 */
 function freshnessOf(lastSyncAt?: string | null): { label: string; stale: boolean } | null {
@@ -141,7 +142,8 @@ export function Provenance({
               {rule && (
                 <div style={{ marginTop: 3 }} data-testid="prov-rule">
                   <span style={{ color: "var(--muted2)" }}>关联规则：</span>
-                  <b style={{ color: "var(--red, #DD7E9E)" }}>{rule}</b>
+                  {/* 两跳：再悬浮规则编号 → 规则完整定义 */}
+                  <RuleRef code={rule} />
                 </div>
               )}
               {/* ⑥ 备注 */}
