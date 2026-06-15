@@ -1,45 +1,66 @@
 # TODO · 系统协同进化路线（按重要程度排序）
 
-> 状态：✅ 已完成 · 🔄 进行中 · ⬜ 待办。断点编号见 `docs/SYSTEM-ONTOLOGY.md` §8；域/切片见 §10。
-> 纪律：每批 `pnpm -r build && test` + `ontology:check` 全绿；改链路/事件回写系统本体。
+> 状态：✅ 已完成 · 🔄 进行中 · ⬜ 待办。断点编号见 `docs/SYSTEM-ONTOLOGY.md` §8；域/切片见 §10；不变量 R1–R13 见 §5。
+> 纪律：每批 `pnpm -r build && test` + `pnpm gates`(ontology:check+chain:check) 全绿；改链路/事件/不变量回写系统本体。
+> 哲学北极星：**可信赖的推演 = 出处 + 推导可当场亮出**（R13）；输入侧"字段全建模"(R12) ⊕ 输出侧"结论可溯源"(R13)。
 
-## ✅ Tier 0 · 已完成（基线）
-- 系统本体 `docs/SYSTEM-ONTOLOGY.md` §1–§10（含域/切片/跨域节点）+ 治理闭环（CLAUDE.md 铁律0 / SessionStart 钩子 / `/ontology` skill / `ontology:check` / PRD 模板）
-- PRD `docs/PRD-unified-build-engine.md`（统一构建发动机）
-- 审核 `docs/AUDIT-0614-fullchain.md`
-- **P0 修复**：G-1（20 场景全接通意图+计划）· G-2（跨服务形状）· 跨服务冒烟 · G-7（model 显示）
+## ✅ 已完成（基线 + 本轮）
+- 系统本体 `SYSTEM-ONTOLOGY.md` §1–§10 + 治理闭环（铁律0 / SessionStart 钩子 / `/ontology` / `ontology:check` / `chain:check` / PRD 模板）
+- 运行模型 `OPERATING-MODEL.md`；审核 `AUDIT-0614-fullchain.md`
+- **PRD 全集**：统一构建发动机 · 场景启动器 · 本体浏览器/字段全建模 · 活数据可溯
+- **参考原型完整盘点** `REFERENCE-HTML-INVENTORY.md`（逐节/逐注册表 + 采纳决策 + 信任哲学章 + 附录A溯源backlog）
+- **断点修复**：G-1（20场景接通）· G-2（跨服务形状）· G-4（前端自助创建）· G-7（model 显示）
+- **CLI 对话入口** `platform-cli.mjs`（login/ask/SSE/clarification/approve）
+- **场景启动器 P1**：`presetSlots` 注入通道 + fillSlots 消费 + `POST /b/v1/scenarios/:key/launch` + 零反问门（20/20）
+- **活数据可溯 P1**：合成→合成源连接器→RawDataset/RawRow→物化，对象 origin 记 rawDatasetId/rowIdx（数据源页可见原始数据）
+- **活数据可溯 P2**：对象 lineage 端点 `GET /a/v1/lineage/object/:type/:id`（对象→原始行→RawDataset→连接器+派生口径）
+- **活数据可溯 P3 增量1**：`<Provenance>` 悬浮溯源（接 LedgerView）+ 数据源原始表（FieldProfilePage 已现成）
+- **R13「结论可溯源」+ R-一致** 固化进本体；`<Provenance>` 升**六要素**（来源/新鲜度/推导/输入因子/关联规则/备注）+ 新鲜度降级（C09）
+- **项目推演 DAG 放大**：全宽独占 + maxHeight 480→760 + 节点/字号加大（借鉴 HTML 项目推演布局）
 
-## 🚨 Tier 0.5 · 端到端活数据 + 全链可溯（用户裁决：先于场景启动器 P2/P3）
-- 🔄 **0. 活数据可溯** —— **PRD 已出** `docs/PRD-live-traceable-data.md`。根因：合成生成器**直接写对象、绕过 RawDataset/连接器**（`synthetic/service.ts:502-504`）→ 演示租户无原始表、对象无源头、结果不可溯。
-  - **P1**：合成核心数据对象改走"合成→RawDataset/RawRow→物化"，object.origin 记 rawDatasetId/rowIdx（数据源页立刻有原始数据）。
-  - **P2**：lineage 端点（object/task 反查 结果→入参对象→原始行→连接器）。
-  - **P3**：前端数据源原始表展示 + 结果"溯源"抽屉（并入场景启动器 P3 前端阶段）。
-  - 注：场景启动器 P1 已完成；其 P2（Scenario 升一等）/P3（前端三入口）压到本项之后。
+## 🚨 Tier 0.5 · 端到端活数据 + 全链可溯（地基，进行中）
+- 🔄 **0. 活数据可溯 收尾**（`docs/PRD-live-traceable-data.md`）
+  - ⬜ 结果→求解器入参对象 lineage（task 级反查，需 solver 入参留痕）
+  - ⬜ `DATA_HEALTH` 源系统新鲜度注册表（驱动六要素 fresh 自动降级，全链一致）
+  - ⬜ `<RuleRef code>` 规则锚点（两跳溯源：数字→规则→规则详情，对接 Rule 库）
+  - ⬜ 合并静态 F5 溯源弹窗 与 lineage 版 `<Provenance>`（统一为活数据驱动）
 
-## 🥇 Tier 1 · 机制定型（最高：决定能否持续敏捷+稳定+协同进化）
-- 🔄 **1. 运行模型文档** `docs/OPERATING-MODEL.md`（协同进化闭环 + 两层本体 + 防腐三防线 + 域/切片/跨域节点 + Claude 嵌入）
-- 🔄 **2. 全链闭包门 R11 落地** —— 第一块砖已落：`pnpm chain:check`（跨系统校验场景↔求解器注册，故障注入验证有效）+ scenarios-wiring 回归 + 跨服务冒烟。完整版（BuildPlan 扩 AgentCore 栈 + ClosureReport CHAIN/SHAPE + 焊进构建发动机）待 PRD P1 —— 大
+## 🥇 Tier 1 · 机制定型
+- 🔄 **1. 全链闭包门 R11 完整版**（chain:check 已是第一块砖）：BuildPlan 扩 AgentCore 栈 + ClosureReport CHAIN/SHAPE + 焊进构建发动机 —— 大
+- ⬜ **2. PRD库结构化**（PRD 入图、《本体引用》机器可解析、需求↔制品↔缺口可查）
 
-## 🥈 Tier 2 · 人机/AI 统一入口 + 可追溯
-- ✅ **3. CLI 对话入口** `scripts/platform-cli.mjs`（login/ask/SSE 渲染/clarification 多轮/approve）—— 实测：login✓(真实 DataCore 认证)、scenarios✓(跨服务 JWT+读路径)、ask✓(全 QOS 管线跑通；唯一待配=LLM provider API key)。Claude 嵌入落地形态。
-- ⬜ **4. PRD库结构化**（PRD 入图、《本体引用》机器可解析、需求↔制品↔缺口可查）
+## 🥈 Tier 2 · 可信赖的推演（Palantir UX 哲学贯彻）— 本轮主线延伸
+- 🔄 **3. 项目推演 = 可点穿/可验证的对象链**（哲学 #1/#3/#6）
+  - ⬜ DAG 节点点击 → 抽屉：判定逻辑/推导公式/输入数据(含来源+新鲜度)/关联规则（接 `<Provenance>`/lineage）
+  - ⬜ 结论数字（P50/P90/缺口/毛利）全部六要素悬浮溯源
+  - ⬜ DAG 可拖拽/缩放（直接操纵 #7）
+  - ⬜ 结论 → 采纳 Action 写回（insight→action #2，f19 已有雏形）
+- ⬜ **4. 结论溯源覆盖 backlog**（附录A 优先级）：**S&OP 三线 > 产能推演峰值/对策量 > 订单全链 DAG 关键数字 > 体检输入项**
+- ⬜ **5. 驾驶舱 widget 升级**：富出处悬浮 / 三线偏差复合图 / 问题聚合摘要（借鉴 HTML dash）
 
-## 🥉 Tier 3 · 剩余断点修复（产品可用性）
-- ✅ **5. G-4** 前端自助闭合：CatalogPage ＋新建执行计划(createPlan) · WorkflowsPage/SkillsPage ＋新建 + mock POST handlers + db.plans 隔离；g4 回归 + 112 前端测试绿、0 渲染错误
-- 🔄 **6. G-3** 场景启动器（workflow-first 骨架 ⊕ agent 解读节点）—— **PRD 已出** `docs/PRD-scenario-launcher.md`（Scenario 升一等主键 + presetSlots 注入通道 + riskLevel 分流 + ⌘K/目录/首页三入口 + chain:check 上架门）；待实现
-- ⬜ **7. G-5** `generic-inference` 通用 what-if + scaffold 去电池锁死 —— 大
-- ⬜ **8. G-6** `parseXlsx` + 在线数据模版 + 合成并入连接器（含引库决策）
-- ⬜ **9. G-7 余项** LLM 用途枚举可扩展 + 按页面标注
-- 🔄 **10. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（D1→D2，切片 `sys.ingest.data_to_object`，强化不变量 R12）—— 大 —— **PRD 已出** `docs/PRD-ontology-browser-field-coverage.md`（合并参考 [`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt) 的确定性映射管线 + 参考原型 `docs/reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI 策展）
-  - **确定性优先、LLM 兜底**：A3 `suggest()` LLM-only → 补 `dataset→ObjectType · column→PropertyDef · FK/值重叠→LinkType · 基数推断 + 质量评分`。
-  - **字段全建模门（用户硬要求）**：每个导入 column 必映射到某 PropertyDef 或显式 waive，未覆盖即拦发布（R12 升 HARD + `coverage:check` 门）。
-  - **本体浏览器**：域分组图谱 → 节点检视器（数据源+字段schema+样例+公式+规则+被谁操作+覆盖徽章）+ 每节点下载 CSV 导入模板。
-  - 待实现；与 G-6 rawin 三路对齐。
+## 🥉 Tier 3 · 场景启动器 + 本体浏览器（产品可用性）
+- 🔄 **6. 场景启动器 P2/P3**（`docs/PRD-scenario-launcher.md`，P1 已完成）
+  - ⬜ P2：`Scenario` 升一等对象 + 仓储四处 + 出厂 upsert + 发布/退役事件
+  - ⬜ P3：前端 ⌘K 命令面板 + 按域目录 + 首页高频
+- 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`，参考 nano-ontoprompt + 原型）—— 大
+  - ⬜ 确定性映射管线（dataset→ObjectType · column→PropertyDef · FK/值重叠→LinkType · 基数/质量）
+  - ⬜ 字段全建模门（R12 升 HARD + `coverage:check`）
+  - ⬜ 本体浏览器（域分组图谱 + 节点检视器 + CSV 模板 + 覆盖徽章）
+
+## 🔧 Tier 3.5 · 剩余断点
+- ⬜ **8. G-5** `generic-inference` 通用 what-if + scaffold 去电池锁死 —— 大
+- ⬜ **9. G-6** `parseXlsx` + 在线数据模版 + 合成并入连接器（与 #7 协同）
+- ⬜ **10. G-7 余项** LLM 用途枚举可扩展 + 按页面标注
+- ⬜ **11. 外部域（EXT_SIG）** 环境信号一等对象化 + 新 EXTERNAL 连接器（规划体检/建议敏感性输入）
 
 ## 🔭 Tier 4 · dogfooding 终态
-- ⬜ **11.** 本体落库 PoC（系统本体注册为平台 ObjectType/SliceSpec/Rule → 平台切系统自己）
-- ⬜ **12.** 本体活查询面（MCP/端点，Claude 问运行中的系统）
-- ⬜ **13.** 本体自动派生扩展（§2/§3/§4 从代码生成，人只策展语义）
+- ⬜ **12.** 本体落库 PoC（系统本体注册为平台 ObjectType/SliceSpec/Rule → 平台切系统自己）
+- ⬜ **13.** 本体活查询面（MCP/端点，Claude 问运行中的系统）
+- ⬜ **14.** 本体自动派生扩展（§2/§3/§4 从代码生成，人只策展语义）
+
+## 📌 非开发遗留
+- ⚠ **吊销并更换暴露的 Gemini API key**（早前明文发过）
+- ⬜ 上云部署脚本（本机 `docker compose up --build` 已可；公网域名需自控主机）
 
 ---
-执行顺序：1（框架）→ 3（CLI 快赢+嵌入实体）→ 2（结构性稳定）→ Tier 3 修断点（含 #10 建模引擎）→ Tier 4 dogfooding。
+**建议下一步**：Tier 2 #3（把放大的 DAG 接上六要素溯源 → "大画布 + 每节点可验证"，一次兑现 Palantir 哲学 #1/#3/#6）。
