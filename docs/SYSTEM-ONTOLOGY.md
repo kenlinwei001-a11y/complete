@@ -222,7 +222,10 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **A6 行级过滤**（query/slice/solver 读出）。
 - **VLE 闭环验证引擎**（七段断言 + 覆盖率，参照实现双算）· `validation`。
 - **断链审计 DL1–DL12**（§4，每个产出环必须有事件+订阅）。
-- **⚠ 缺：全链闭包门**（R11）——目前没有"场景→答案可运行性"的构建时门禁，断点靠人工审核才发现。
+- **`ontology:check` 本体漂移门禁**（治理新增）：事件/求解器/文件锚点与代码不一致即 build 红 · `scripts/check-system-ontology.mjs`，`pnpm ontology:check`。
+- **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。
+- **本体必读强制**（治理）：CLAUDE.md 铁律 0 + SessionStart 钩子（从 §8 动态注入未修断点，结构上不漂）+ `/ontology` skill。
+- **⚠ 缺：全链闭包门**（R11）——尚无"场景→答案可运行性"的构建时门禁（断点靠人工审核才发现）；统一构建发动机 PRD 的全链闭包将补此门（`docs/PRD-unified-build-engine.md`）。
 
 ---
 
@@ -246,5 +249,6 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 ## 9. 演进与维护
 
 - 本文是**接线单一来源**：改动若新增/改变对象类型、链路、事件、不变量、门禁 → **必须同步本文对应章节**，否则大脑过期即失效。
-- 建议在根 `CLAUDE.md` 顶部加一行指针："任何改动先读 `docs/SYSTEM-ONTOLOGY.md`"。
+- 治理已落地（不靠自觉）：`CLAUDE.md` 铁律 0（必读）· SessionStart 钩子（每会话动态注入 §8 未修断点）· `pnpm ontology:check`（漂移即红）· `docs/_PRD-TEMPLATE.md`（强制《本体引用与影响》）· `/ontology` skill。
+- 相关 PRD：`docs/PRD-unified-build-engine.md`（统一构建发动机，全链闭包将补 R11 门禁）· `docs/AUDIT-0614-fullchain.md`（全链审核）· `docs/TODO.md`（修复进度）。
 - 远期可**落库**：把本文的对象类型/链路/规则注册为平台自己的 ObjectType/Link/Rule（dogfooding），让"系统本体"也能被切片/校验/推演——即用平台分析平台自身。
