@@ -223,10 +223,12 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **A6 行级过滤**（query/slice/solver 读出）。
 - **VLE 闭环验证引擎**（七段断言 + 覆盖率，参照实现双算）· `validation`。
 - **断链审计 DL1–DL12**（§4，每个产出环必须有事件+订阅）。
-- **`ontology:check` 本体漂移门禁**（治理新增）：事件/求解器/文件锚点与代码不一致即 build 红 · `scripts/check-system-ontology.mjs`，`pnpm ontology:check`。
+- **`ontology:check` 本体漂移门禁**（治理新增）：事件/求解器/文件锚点/钩子不漂 即 build 红 · `scripts/check-system-ontology.mjs`，`pnpm ontology:check`。
+- **`chain:check` 全链闭包门（第一块砖，R11）**：跨系统静态校验"场景声明的求解器 DataCore 必须注册"，否则路径A 全链断（SOLVER_NOT_FOUND）即红 · `scripts/check-chain-closure.mjs`，`pnpm chain:check`。
 - **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。
+- **场景接线回归**（守护 G-1）：20 场景全有意图+计划+求解器 · `apps/agentcore/test/scenarios-wiring.test.ts`。
 - **本体必读强制**（治理）：CLAUDE.md 铁律 0 + SessionStart 钩子（从 §8 动态注入未修断点，结构上不漂）+ `/ontology` skill。
-- **⚠ 缺：全链闭包门**（R11）——尚无"场景→答案可运行性"的构建时门禁（断点靠人工审核才发现）；统一构建发动机 PRD 的全链闭包将补此门（`docs/PRD-unified-build-engine.md`）。
+- **⚠ 全链闭包门（完整版）建设中**（R11）：`chain:check` 已覆盖"场景↔求解器注册"；完整门（场景→意图→计划→求解器输出形状→渲染 全链可运行 + 焊进构建发动机）见 `docs/PRD-unified-build-engine.md`。
 
 ---
 
@@ -243,7 +245,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | G-5 | 应用层电池锁死（视图布局/求解器/场景包/Agent 写死）；`generic-inference` 不存在 | 本体→生成应用→推演 | 通用化缺 |
 | G-6 | Excel 上传 UI 接受 .xlsx 但后端 parser TODO；无数据模版；合成在独立页 | Connector→RawDataset | rawin 三路未统一 |
 | G-7 | LLM 用途枚举写死不可扩展（待 PRD P5）；~~矩阵 model 下拉 stale 绑定显示空白~~ **已修**：已绑 model 不在目录仍可见可选 `LlmProvidersPage.tsx:474` | LlmPurposeBinding | ◐ 部分修（枚举扩展待 PRD） |
-| G-8 | 数据构建闭包仅 DataCore 栈、不验全链（不含 intent/plan/workflow/agent 接通） | BuildPlan→ClosureReport | R11 门禁缺 |
+| G-8 | 数据构建闭包仅 DataCore 栈、不验全链；**第一块砖已落**：`chain:check` 跨系统校验场景↔求解器注册；完整门（焊进构建发动机、验全链形状）待 PRD | BuildPlan→ClosureReport | ◐ 部分（chain:check 已挡跨系统断） |
 
 ---
 

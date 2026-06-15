@@ -11,7 +11,7 @@
 
 ## 🥇 Tier 1 · 机制定型（最高：决定能否持续敏捷+稳定+协同进化）
 - 🔄 **1. 运行模型文档** `docs/OPERATING-MODEL.md`（协同进化闭环 + 两层本体 + 防腐三防线 + 域/切片/跨域节点 + Claude 嵌入）
-- ⬜ **2. 全链闭包门 R11 落地**（统一构建发动机 P1：BuildPlan 扩 AgentCore 栈 + ClosureReport 加 CHAIN/SHAPE）—— 大
+- 🔄 **2. 全链闭包门 R11 落地** —— 第一块砖已落：`pnpm chain:check`（跨系统校验场景↔求解器注册，故障注入验证有效）+ scenarios-wiring 回归 + 跨服务冒烟。完整版（BuildPlan 扩 AgentCore 栈 + ClosureReport CHAIN/SHAPE + 焊进构建发动机）待 PRD P1 —— 大
 
 ## 🥈 Tier 2 · 人机/AI 统一入口 + 可追溯
 - ✅ **3. CLI 对话入口** `scripts/platform-cli.mjs`（login/ask/SSE 渲染/clarification 多轮/approve）—— 实测：login✓(真实 DataCore 认证)、scenarios✓(跨服务 JWT+读路径)、ask✓(全 QOS 管线跑通；唯一待配=LLM provider API key)。Claude 嵌入落地形态。
