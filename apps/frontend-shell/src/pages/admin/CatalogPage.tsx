@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { IntentDefinition, SlotDef } from "@platform/contracts";
-import { createIntent, fetchIntents, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
+import { createIntent, createPlan, fetchIntents, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
@@ -107,6 +107,24 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
   const editable = intent.status === "DRAFT";
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "intents"] });
+
+  // G-4：自助创建可绑定执行计划（消裁决#27 死路 —— 此前下拉只读、无创建入口）。
+  const createPlanMut = useMutation({
+    mutationFn: () =>
+      createPlan(packageId, {
+        key: `plan_${Date.now()}`,
+        steps: [
+          { id: "s1", type: "query_objects", params: { objectType: "Order", filter: {} } },
+          { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "（模板）请编辑步骤" }] } },
+        ],
+      }),
+    onSuccess: (p) => {
+      void queryClient.invalidateQueries({ queryKey: ["b", "plans", { packageId }] });
+      setPlanId(p.id);
+      toast("已创建执行计划骨架（DRAFT），可在工作流编辑器完善", "success");
+    },
+    onError: toastError,
+  });
 
   const saveMut = useMutation({
     mutationFn: () => updateIntent(intent.id, { name, description, examples, slots, planId }),
@@ -214,13 +232,21 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
       <div className="section-title" style={{ marginTop: 12 }}>
         {t.plan}
       </div>
-      <select value={planId} disabled={!editable} aria-label="绑定执行计划" onChange={(e) => setPlanId(e.target.value)}>
-        {(plans ?? []).map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.key} v{p.version} · {p.status}
-          </option>
-        ))}
-      </select>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <select value={planId} disabled={!editable} aria-label="绑定执行计划" onChange={(e) => setPlanId(e.target.value)}>
+          <option value="">（未绑定）</option>
+          {(plans ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.key} v{p.version} · {p.status}
+            </option>
+          ))}
+        </select>
+        {editable && (
+          <button className="btn sm" disabled={createPlanMut.isPending} onClick={() => createPlanMut.mutate()} data-testid="plan-create">
+            ＋新建执行计划
+          </button>
+        )}
+      </div>
     </div>
   );
 }

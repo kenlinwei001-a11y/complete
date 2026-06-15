@@ -52,6 +52,25 @@ export default function WorkflowsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = workflows?.find((w) => w.id === selectedId) ?? workflows?.[0];
 
+  // G-4：自助创建工作流（消"无创建入口"死路）。骨架=query_objects→render_answer，DRAFT。
+  const createMut = useMutation({
+    mutationFn: () =>
+      saveWorkflow(null, {
+        key: `wf_${Date.now()}`,
+        name: "新工作流（模板预填）",
+        inputs: { type: "object", properties: {} },
+        steps: [
+          { id: "s1", type: "query_objects", params: { objectType: "Order", filter: {} } },
+          { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "（模板）请编辑步骤" }] } },
+        ],
+      }),
+    onSuccess: (wf) => {
+      void queryClient.invalidateQueries({ queryKey: ["b", "workflows"] });
+      setSelectedId(wf.id);
+    },
+    onError: toastError,
+  });
+
   return (
     <div>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
@@ -63,6 +82,9 @@ export default function WorkflowsPage() {
             </option>
           ))}
         </select>
+        <button className="btn primary sm" style={{ marginLeft: "auto" }} disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="workflow-create">
+          ＋新建工作流
+        </button>
       </div>
       {selected && (
         <WorkflowEditor key={selected.id} workflow={selected} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["b", "workflows"] })} />

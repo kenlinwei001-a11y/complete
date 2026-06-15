@@ -20,6 +20,7 @@ import {
   RULE_CANDIDATES,
   RULE_DOC,
   RULES,
+  PLANS,
   SCENES,
   SKILLS,
   TENANT_ID,
@@ -55,6 +56,8 @@ interface MockDb {
   agents: AgentDefinition[];
   workflows: WorkflowDefinition[];
   skills: SkillDefinition[];
+  /** G-4：可绑定执行计划（自助创建写入；GET plans 读此，保证测试隔离）。 */
+  plans: { id: string; key: string; version: number; status: string }[];
   mcpConfigs: McpServerConfig[];
   scenes: SceneEntryConfig[];
   actionDrafts: ActionDraft[];
@@ -94,6 +97,7 @@ function freshDb(): MockDb {
     agents: structuredClone(AGENTS),
     workflows: structuredClone(WORKFLOWS),
     skills: structuredClone(SKILLS),
+    plans: structuredClone(PLANS),
     mcpConfigs: structuredClone(MCP_CONFIGS),
     scenes: structuredClone(SCENES),
     actionDrafts: structuredClone(ACTION_DRAFTS),

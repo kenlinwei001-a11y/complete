@@ -18,7 +18,7 @@
 - ⬜ **4. PRD库结构化**（PRD 入图、《本体引用》机器可解析、需求↔制品↔缺口可查）
 
 ## 🥉 Tier 3 · 剩余断点修复（产品可用性）
-- ⬜ **5. G-4** 前端自助闭合（createPlan/saveWorkflow/saveSkill，消裁决#27 死路）
+- ✅ **5. G-4** 前端自助闭合：CatalogPage ＋新建执行计划(createPlan) · WorkflowsPage/SkillsPage ＋新建 + mock POST handlers + db.plans 隔离；g4 回归 + 112 前端测试绿、0 渲染错误
 - ⬜ **6. G-3** 场景启动器 + `SceneEntryConfig.presetContext` + 注入
 - ⬜ **7. G-5** `generic-inference` 通用 what-if + scaffold 去电池锁死 —— 大
 - ⬜ **8. G-6** `parseXlsx` + 在线数据模版 + 合成并入连接器（含引库决策）

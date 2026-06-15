@@ -1228,7 +1228,14 @@ export const handlers = [
     intent.status = "RETIRED";
     return HttpResponse.json(intent);
   }),
-  http.get("*/b/v1/catalog/packages/:packageId/plans", () => HttpResponse.json(PLANS)),
+  http.get("*/b/v1/catalog/packages/:packageId/plans", () => HttpResponse.json(db.plans)),
+  // G-4：自助创建执行计划（消裁决#27 死路 —— 意图可绑定新建计划）
+  http.post("*/b/v1/catalog/packages/:packageId/plans", async ({ request }) => {
+    const body = (await request.json()) as { key?: string };
+    const plan = { id: `plan_${Date.now()}`, key: body.key ?? `plan_${Date.now()}`, version: 1, status: "DRAFT" };
+    db.plans.push(plan);
+    return HttpResponse.json(plan, { status: 201 });
+  }),
 
   // ---- 兜底运营 ----
   http.get("*/b/v1/ops/fallback-stats", () => HttpResponse.json({ items: FALLBACK_CLUSTERS })),
@@ -1289,6 +1296,14 @@ export const handlers = [
   }),
 
   http.get("*/b/v1/workflows", () => HttpResponse.json(db.workflows)),
+  // G-4：自助创建工作流（此前无创建入口）
+  http.post("*/b/v1/workflows", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const base = structuredClone(db.workflows[0] ?? {}) as Record<string, unknown>;
+    const wf = { ...base, ...body, id: `wf_${Date.now()}`, tenantId: "demo", version: 1, status: "DRAFT" } as unknown as (typeof db.workflows)[number];
+    db.workflows.push(wf);
+    return HttpResponse.json(wf, { status: 201 });
+  }),
   http.put("*/b/v1/workflows/:id", async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const wf = db.workflows.find((w) => w.id === params.id);
@@ -1316,6 +1331,14 @@ export const handlers = [
   }),
 
   http.get("*/b/v1/skills", () => HttpResponse.json(db.skills)),
+  // G-4：自助创建技能（此前无创建入口）
+  http.post("*/b/v1/skills", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const base = structuredClone(db.skills[0] ?? {}) as Record<string, unknown>;
+    const sk = { ...base, ...body, id: `skl_${Date.now()}`, version: 1, status: "DRAFT", resources: [] } as unknown as (typeof db.skills)[number];
+    db.skills.push(sk);
+    return HttpResponse.json(sk, { status: 201 });
+  }),
   http.put("*/b/v1/skills/:id", async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const s = db.skills.find((x) => x.id === params.id);

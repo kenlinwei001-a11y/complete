@@ -509,6 +509,9 @@ export const retireIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/retire`, { body: {} });
 export const fetchPlans = (packageId: string) =>
   api.b<{ id: string; key: string; version: number; status: string }[]>(`/b/v1/catalog/packages/${packageId}/plans`);
+/** G-4：消裁决#27 死路 —— 前端自助创建可绑定的执行计划（后端 createPlan 端点本就存在）。 */
+export const createPlan = (packageId: string, body: { key: string; name?: string; steps: Record<string, unknown>[] }) =>
+  api.b<{ id: string; key: string; version: number; status: string }>(`/b/v1/catalog/packages/${packageId}/plans`, { body });
 
 // 回放编排器 §6：真实租户运营自动化 OpsSchedule（管理台 /admin/ops-schedule）
 export const fetchOpsSchedule = () =>

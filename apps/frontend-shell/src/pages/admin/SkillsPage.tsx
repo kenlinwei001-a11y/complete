@@ -12,10 +12,21 @@ export default function SkillsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = skills?.find((s) => s.id === selectedId) ?? null;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "skills"] });
+  // G-4：自助创建技能（消"无创建入口"死路）
+  const createMut = useMutation({
+    mutationFn: () => saveSkill(null, { key: `skill_${Date.now()}`, name: "新技能（模板预填）", summary: "解读某类结论的口径。当…时使用。不适用：…", body: "# 步骤要点\n# 反例\n# 输出要求" }),
+    onSuccess: (s) => { invalidate(); setSelectedId(s.id); },
+    onError: toastError,
+  });
 
   return (
     <div>
-      <h2 style={{ fontSize: 16, marginBottom: 14 }}>{zh.nav.skills}</h2>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
+        <h2 style={{ fontSize: 16 }}>{zh.nav.skills}</h2>
+        <button className="btn primary sm" style={{ marginLeft: "auto" }} disabled={createMut.isPending} onClick={() => createMut.mutate()} data-testid="skill-create">
+          ＋新建技能
+        </button>
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           {(skills ?? []).map((s) => (
