@@ -364,7 +364,7 @@ export const editRawDatasetRow = (id: string, idx: number, patch: Record<string,
 export interface ObjectLineageVM {
   object: { id: string; type: string; origin: Record<string, unknown> };
   source: {
-    connection: { id: string; name: string; connectorTypeKey: string } | null;
+    connection: { id: string; name: string; connectorTypeKey: string; lastSyncAt?: string | null } | null;
     rawDataset: { id: string; name: string; rowCount: number; fields: string[] } | null;
     rawRowIdx: number | null;
     rawRow: Record<string, unknown> | null;

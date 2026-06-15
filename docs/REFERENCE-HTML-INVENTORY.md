@@ -140,6 +140,25 @@ all/backbone/flow/source/solver/mvp/agent/dash/audit/generate/aop/quarter/order/
 
 ---
 
+## 3.5 信任哲学与溯源纪律（来自 HTML 的 PRD · 核心资产）
+
+> 哲学一句话：**信任 = 出处 + 推导可当场亮出**（PRD §1.2）。决策者面对结论"不需要相信系统，而是可当场验证系统"。已固化为本体不变量 **R13「结论可溯源」**（与 R12 输入侧"字段全建模"对称的输出侧纪律）+ **R-一致「一个事实一个出处」**。
+
+**溯源六要素**（`provSpan` 的 def，PRD §4.1）：`src 来源系统(必填) · fresh 新鲜度 · formula 推导公式 · inputs 输入因子 · rule 关联规则 · note 备注`。
+- 我们 `<Provenance>`：src/formula 来自 lineage 端点（活数据）；fresh 来自源连接器 `lastSyncAt`；rule/inputs/note 对高价值数字按需作者标注（props）。
+
+**新鲜度→可信度自动传导**（PRD §4.7/A.3.1，★信任标杆）：`DATA_HEALTH` 记每源系统新鲜度；源延迟时所有依赖派生数字自动标"降级"，置信度 P90 随之下调（C09，如 0.93→0.90）。我们以 `connection.sync_completed` + `lastSyncAt` 驱动。
+
+**五套溯源 UI（按粒度）**：① provSpan 数字悬浮（必采，已落 P3 增量1）② 规则锚点 linkRules/showRulePop（`<RuleRef>` 待做，两跳：数字→规则→规则详情）③ 风险点 showRiskPop ④ 逐日 showDayTip ⑤ 瓶颈矩阵单元格+因素展开 + ⑥ 节点档案 mode-card（=本体浏览器检视器）。
+
+### 附录 A → 结论溯源覆盖 backlog（按 PRD 优先级，逐行可验收）
+覆盖优先级（PRD §A.6）：**S&OP 三线 > 产能推演峰值/对策量 > 订单全链 DAG 关键数字 > 体检输入项**。
+- A.5 S&OP 三线（目标/滚动P50/P90/实际/差值）— ⬜ 最薄弱、最高优先（差值触发 C21 当场可溯）。
+- A.4 产能推演 风险峰值 + 对策"峰值削减量"（场景求解器前向重算差值 + ramp-up 假设）— 🔶 升 provSpan。
+- A.3.2 订单全链 DAG 关键数字（净缺口/毛利率…）— 🔶 DAG 节点内数字包 provSpan。
+- A.1 体检输入项（可供给/长协覆盖/正极缺口/现金垫…）— ⬜ 补来源+公式+规则。
+- A.2 规划建议四维 + A.3.1 型号推演 P50/P90 — ✅ 原型已六要素齐备（范本）。
+
 ## 4. 与现有 PRD/路线的接点
 - 出处机制 + 来源钻取 → **PRD-live-traceable-data P3**（前端溯源）。
 - 节点检视器 + CSV + 字段 schema → **PRD-ontology-browser-field-coverage**。

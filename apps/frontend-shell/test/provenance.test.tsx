@@ -16,7 +16,7 @@ describe("Provenance · 数据悬浮溯源", () => {
     loginAs("planner"); // lineage 端点需登录态（OBO）
     render(
       <AppProviders>
-        <Provenance objectType="Order" objectId="obj_order_SO-1">
+        <Provenance objectType="Order" objectId="obj_order_SO-1" rule="C15" inputs={["qty", "unitPrice"]} note="接单毛利口径">
           <b>SO-1</b>
         </Provenance>
       </AppProviders>,
@@ -27,7 +27,13 @@ describe("Provenance · 数据悬浮溯源", () => {
     await user.hover(screen.getByTestId("prov-Order-obj_order_SO-1"));
     // 悬浮先显"溯源中…"，待 lineage 异步加载后弹出来源
     await waitFor(() => expect(screen.getByTestId("prov-tip").textContent).toContain("合成数据源"));
-    expect(screen.getByTestId("prov-tip").textContent).toContain("Order"); // 原始表名
-    expect(screen.getByTestId("prov-tip").textContent).toContain("value"); // 派生口径
+    const tip = screen.getByTestId("prov-tip");
+    expect(tip.textContent).toContain("Order"); // ① 原始表名
+    expect(tip.textContent).toContain("value"); // ③ 推导公式
+    expect(tip.textContent).toContain("qty"); // ④ 输入因子（作者标注）
+    expect(screen.getByTestId("prov-rule").textContent).toContain("C15"); // ⑤ 关联规则
+    expect(tip.textContent).toContain("接单毛利口径"); // ⑥ 备注
+    // ② 新鲜度：mock lastSyncAt 为 5h 前 → 降级标注
+    expect(screen.getByTestId("prov-fresh").textContent).toContain("降级");
   });
 });

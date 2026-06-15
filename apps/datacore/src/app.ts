@@ -1106,7 +1106,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const rows = ds ? await repos.rawRows.list(c.tenantId, ds.id) : [];
       const rawRow = typeof org.rawRowIdx === "number" ? (rows[org.rawRowIdx] ?? null) : null;
       source = {
-        connection: conn ? { id: conn.id, name: conn.name, connectorTypeKey: conn.connectorTypeKey } : null,
+        // 含 lastSyncAt → 前端据此算"数据新鲜度"（R13：源延迟→派生数字标降级）
+        connection: conn ? { id: conn.id, name: conn.name, connectorTypeKey: conn.connectorTypeKey, lastSyncAt: conn.lastSyncAt ?? null } : null,
         rawDataset: ds ? { id: ds.id, name: ds.name, rowCount: ds.rowCount, fields: ds.fields.map((f) => f.name) } : null,
         rawRowIdx: org.rawRowIdx ?? null,
         rawRow,
