@@ -23,11 +23,16 @@
 - ⬜ **7. G-5** `generic-inference` 通用 what-if + scaffold 去电池锁死 —— 大
 - ⬜ **8. G-6** `parseXlsx` + 在线数据模版 + 合成并入连接器（含引库决策）
 - ⬜ **9. G-7 余项** LLM 用途枚举可扩展 + 按页面标注
+- ⬜ **10. 半自动数据→本体建模引擎 + 字段全建模门**（D1→D2，切片 `sys.ingest.data_to_object`，强化不变量 R12）—— 大
+  - 参考 [`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（v2 数据集成链：Data→Raw→Transform→Curated→Ontology Mapping），融合进现有 A3 `apps/datacore/src/modeling.ts`。
+  - **确定性优先、LLM 兜底**：现 `suggest()` 是 LLM-only → 补确定性映射 `dataset→ObjectType · column→PropertyDef · FK/值重叠→LinkType · 基数推断 + 质量评分`，LLM 仅补语义命名/歧义。
+  - **硬要求（用户）**：导入数据源的**每个对象字段都必须被建模**——把 R12「反向-data」从 SOFT 升为**字段覆盖门**：每个导入 column 必须映射到某 PropertyDef 或显式 waive，未覆盖即拦发布。
+  - 与 G-6 协同（rawin 三路 = nano-ontoprompt 的 structured/semi-structured/unstructured 三 transform 路）。落地前出 PRD + 回写本体 §3/§5(R12)/§7。
 
 ## 🔭 Tier 4 · dogfooding 终态
-- ⬜ **10.** 本体落库 PoC（系统本体注册为平台 ObjectType/SliceSpec/Rule → 平台切系统自己）
-- ⬜ **11.** 本体活查询面（MCP/端点，Claude 问运行中的系统）
-- ⬜ **12.** 本体自动派生扩展（§2/§3/§4 从代码生成，人只策展语义）
+- ⬜ **11.** 本体落库 PoC（系统本体注册为平台 ObjectType/SliceSpec/Rule → 平台切系统自己）
+- ⬜ **12.** 本体活查询面（MCP/端点，Claude 问运行中的系统）
+- ⬜ **13.** 本体自动派生扩展（§2/§3/§4 从代码生成，人只策展语义）
 
 ---
-执行顺序：1（框架）→ 3（CLI 快赢+嵌入实体）→ 2（结构性稳定）→ Tier 3 修断点 → Tier 4 dogfooding。
+执行顺序：1（框架）→ 3（CLI 快赢+嵌入实体）→ 2（结构性稳定）→ Tier 3 修断点（含 #10 建模引擎）→ Tier 4 dogfooding。
