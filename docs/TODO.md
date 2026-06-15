@@ -16,7 +16,7 @@
 ## 3 · P0 让 20 场景真端到端可跑
 - ✅ **G-2** affected_orders 跨服务形状不匹配 → DataCore 补 rows/count/columns 别名（`risk.ts`，typecheck+测试绿）
 - ✅ **G-1** 种子从 SCENARIO_CATALOG 派生全部 20 意图+计划 + mock 求解器兜底（`mocks/seed.ts`/`clients.ts`），agentcore 195 测试绿 + 新增 scenarios-wiring 回归。*注：16 个静态 text 渲染，richer 解读后续走路径B/skill*
-- ⬜ 真实跨服务集成冒烟（S01/S02 打真实 DataCore，挡 mock 漂移）— *仿旧 `xservice-integration-smoke` 适配 0614*
+- ✅ 真实跨服务集成冒烟（`apps/datacore/test/xservice-smoke.test.ts`：真实 AgentCore HTTP 客户端↔真实 DataCore，守护 G-2 的 rows/count + 错误信封，挡 mock 漂移）
 
 ## 4 · P1 自助闭合 + 场景启动器
 - ⬜ **G-4** 前端接 createPlan/saveWorkflow(null)/saveSkill(null)，消裁决#27 死路 — *PRD P2*
