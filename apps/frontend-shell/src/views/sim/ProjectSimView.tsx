@@ -9,6 +9,7 @@ import { runSolver, searchObjects } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
+import { Provenance } from "@/components/Provenance";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
@@ -645,11 +646,29 @@ function StepBody({
       </div>
       <div className={styles.threeKpiRow}>
         <div className={styles.kpi} data-testid="kpi-p50">
-          <b style={{ color: "var(--c-capacity)" }}>{fmt(out.p50)}</b>
+          {/* 可信赖的推演（R13）：结论数字六要素溯源 */}
+          <Provenance
+            testId="p50"
+            src="聚合求解器"
+            formula="P50 = Σ可产基地 Σ周(周产能 × 爬坡曲线 × 检修窗 × 认证系数)"
+            inputs={["可产基地", "爬坡曲线", "检修窗", "认证系数"]}
+            rule="C01/C02"
+          >
+            <b style={{ color: "var(--c-capacity)" }}>{fmt(out.p50)}</b>
+          </Provenance>
           <span>P50 累计产能(万套)</span>
         </div>
         <div className={styles.kpi} data-testid="kpi-p90">
-          <b style={{ color: "var(--c-forecast)" }}>{fmt(out.p90)}</b>
+          <Provenance
+            testId="p90"
+            src="IoT/SCADA 数据健康度"
+            formula={`P90 = P50 × 健康度系数 ${out.healthFactor}`}
+            inputs={["P50", "数据新鲜度→健康度系数"]}
+            rule="C09"
+            note="IoT 延迟时健康度系数自动下调，置信度随之削弱"
+          >
+            <b style={{ color: "var(--c-forecast)" }}>{fmt(out.p90)}</b>
+          </Provenance>
           <span>P90（× 健康度 {out.healthFactor}）</span>
         </div>
         <div className={styles.kpi} data-testid="kpi-demand">

@@ -36,4 +36,27 @@ describe("Provenance · 数据悬浮溯源", () => {
     // ② 新鲜度：mock lastSyncAt 为 5h 前 → 降级标注
     expect(screen.getByTestId("prov-fresh").textContent).toContain("降级");
   });
+
+  it("作者标注模式（计算型结论数字 P90，无对象 lineage）→ 悬浮显来源/公式/规则", async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProviders>
+        <Provenance
+          testId="p90"
+          src="IoT/SCADA 数据健康度"
+          formula="P90 = P50 × 健康度系数 0.9"
+          inputs={["P50", "数据新鲜度→健康度系数"]}
+          rule="C09"
+          note="IoT 延迟时系数自动下调"
+        >
+          <b>118</b>
+        </Provenance>
+      </AppProviders>,
+    );
+    await user.hover(screen.getByTestId("prov-v-p90"));
+    const tip = screen.getByTestId("prov-tip");
+    expect(tip.textContent).toContain("IoT/SCADA"); // 来源（作者标注，无需 lineage 端点）
+    expect(tip.textContent).toContain("健康度系数"); // 推导公式
+    expect(screen.getByTestId("prov-rule").textContent).toContain("C09"); // 关联规则
+  });
 });
