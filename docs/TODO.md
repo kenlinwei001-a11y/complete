@@ -14,7 +14,7 @@
 - ⬜ **2. 全链闭包门 R11 落地**（统一构建发动机 P1：BuildPlan 扩 AgentCore 栈 + ClosureReport 加 CHAIN/SHAPE）—— 大
 
 ## 🥈 Tier 2 · 人机/AI 统一入口 + 可追溯
-- ⬜ **3. CLI 对话入口**（瘦客户端：login/ask/SSE 渲染/clarification 多轮/approve）—— Claude 嵌入落地形态
+- ✅ **3. CLI 对话入口** `scripts/platform-cli.mjs`（login/ask/SSE 渲染/clarification 多轮/approve）—— 实测：login✓(真实 DataCore 认证)、scenarios✓(跨服务 JWT+读路径)、ask✓(全 QOS 管线跑通；唯一待配=LLM provider API key)。Claude 嵌入落地形态。
 - ⬜ **4. PRD库结构化**（PRD 入图、《本体引用》机器可解析、需求↔制品↔缺口可查）
 
 ## 🥉 Tier 3 · 剩余断点修复（产品可用性）

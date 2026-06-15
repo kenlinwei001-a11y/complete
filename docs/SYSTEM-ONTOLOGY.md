@@ -101,6 +101,7 @@
 - **ScenarioCard（SCENARIO_CATALOG，20 张）**：业务场景卡（view/intentKey/solver/presetContext）· `scenarios-catalog.ts:60`。
 - **Task / Query**：QOS 任务（SSE 流）· `router/orchestrator.ts`,`api/sse.ts`。
 - **MCP tool / RefReport**：外部工具 / 引用上报。
+- **客户端（QOS 入口）**：Web 对话坞（`frontend-shell` QueryDock）· **CLI 对话入口**（`scripts/platform-cli.mjs`：login/ask/scenarios/approve，一句话驱动平台；人与 AI 共用）—— 均为切片 `sys.orch.query_to_answer` 的客户端，复用同一 QOS 管线。
 
 ---
 
@@ -295,7 +296,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | `sys.action.writeback` | D5 | ActionType→ActionDraft→approval→ObjectInstance(props)→Derivation(二次) |
 | `sys.access.row_filter` | D6 | User→Role→Policy(A6)→ObjectInstance(过滤) |
 | `sys.access.entitlement` | D6 | Feature→{endpoint,view,solver}(门控,先于authz) |
-| **`sys.orch.query_to_answer`** | **D7** | **Query→Intent→Plan→Step*→{Solver\|Slice\|Rule}→AnswerBlock→SSE（中枢链=审核全链）** |
+| **`sys.orch.query_to_answer`** | **D7** | **Client(Web对话坞/CLI)→Query→Intent→Plan→Step*→{Solver\|Slice\|Rule}→AnswerBlock→SSE（中枢链=审核全链）** |
 | `sys.scenario.launch` | D8 | ScenarioCard→View + →Intent + →presetContext→Query |
 | `sys.flow.event_to_refresh` | D9 | OutboxEvent→EventSubscription→ConsumerView（=§4 全表） |
 | `sys.ops.tick` | D10 | SimulationClock→tick→{ObjectInstance,TS}→Derivation→dashboard |
