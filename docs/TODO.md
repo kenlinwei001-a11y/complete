@@ -42,7 +42,8 @@
 - 🔄 **6. 场景启动器 P2/P3**（`docs/PRD-scenario-launcher.md`，P1 已完成）
   - ⬜ P2：`Scenario` 升一等对象 + 仓储四处 + 出厂 upsert + 发布/退役事件
   - ⬜ P3：前端 ⌘K 命令面板 + 按域目录 + 首页高频
-- 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`，参考 nano-ontoprompt + 原型）—— 大
+- 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`）—— 大
+  - **参考软件**：[`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；v2 数据集成链 Data→Raw→Transform→Curated→Ontology Mapping，确定性映射 dataset→entity / column→property / FK→link + 基数推断）— 融进 A3 `modeling.ts`；+ 参考原型 `reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI
   - ⬜ 确定性映射管线（dataset→ObjectType · column→PropertyDef · FK/值重叠→LinkType · 基数/质量）
   - ⬜ 字段全建模门（R12 升 HARD + `coverage:check`）
   - ⬜ 本体浏览器（域分组图谱 + 节点检视器 + CSV 模板 + 覆盖徽章）
