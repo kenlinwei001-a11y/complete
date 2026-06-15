@@ -6,9 +6,11 @@ import {
   type ScenarioPackage,
   type SceneEntryConfig,
   type SkillDefinition,
+  type TemplateValue,
   type WorkflowDefinition,
 } from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
+import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import type { ExperienceCaseRow } from "../persistence/repos.js";
 
@@ -372,6 +374,49 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
       updatedAt: now,
     },
   ];
+
+  // G-1（本体 §8）：其余 16 场景此前只在 SCENARIO_CATALOG 声明、无意图/执行计划 → 路径A 够不着。
+  // 从目录单一来源派生意图+计划（缝合 G-3 的目录↔意图断开），使 20 场景全部端到端可经路径A 推演。
+  // 渲染用静态 text block（不解引用求解器特定字段）→ 跨 mock/真实 DataCore 均不触发模板解析错误；
+  // 求解器入参用目录 slotPresets + 少数需补全者的覆盖（保证对真实 DataCore 也是合法入参）。
+  const seededKeys = new Set(intents.map((i) => i.key));
+  // 部分场景的 slotPresets 是 UI 预置、非完整求解器入参 → 覆盖为对真实 DataCore 合法的入参。
+  const ARG_OVERRIDE: Record<string, Record<string, unknown>> = {
+    plan_audit: { dem: 100, seg_pas: 50, seg_ess: 32, seg_com: 18, sup: 98, ltaCov: 60, kitGap: 100, gmTarget: 14, cashCushion: 45, capex: 8 },
+    capex_scenario: { demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], projects: [{ id: "P", name: "P", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] },
+    quote_margin: { custName: "电网公司F", modelId: "4680-NCM", qty: 500 },
+  };
+  for (const card of SCENARIO_CATALOG) {
+    if (seededKeys.has(card.intentKey)) continue; // 已有的 4 个跳过
+    const planId = `plan_${card.intentKey}_v1`;
+    const solverArgs = (ARG_OVERRIDE[card.solver] ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
+    // sop_balance 是工作流非注册求解器（走 /a/v1/sop/*）→ 该场景计划只渲染、不 invoke_solver。
+    const steps: ExecutionPlan["steps"] =
+      card.solver === "sop_balance"
+        ? [{ id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: `${card.name}：S&OP 月度平衡台请见对应视图（${card.view}）。` }] } }]
+        : [
+            { id: "s1", type: "invoke_solver", params: { solverKey: card.solver, args: solverArgs } },
+            { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: `${card.name}已完成推演（求解器 ${card.solver}）。结果详见步骤溯源；如需解读请切换到 Agent 路径提问。` }] } },
+          ];
+    plans.push({ id: planId, packageId: SEED_PACKAGE_ID, key: card.intentKey, version: 1, status: "PUBLISHED", steps });
+    intents.push({
+      id: `int_${card.intentKey}_v1`,
+      packageId: SEED_PACKAGE_ID,
+      key: card.intentKey,
+      version: 1,
+      status: "PUBLISHED",
+      name: card.name,
+      description: card.summary,
+      examples: [card.triggerQuestion],
+      enabledViews: "*",
+      slots: [],
+      planId,
+      riskLevel: card.riskLevel === "ACTION_DRAFT" ? "ACTION_DRAFT" : "COMPUTE",
+      owner: "seed",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 
   return { intents, plans };
 }

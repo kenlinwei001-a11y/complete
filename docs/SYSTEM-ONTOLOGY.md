@@ -121,7 +121,7 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
 **场景/入口链**
 ```
 ScenarioCard --view--> View(规划与平衡/推演与风险/…)
-ScenarioCard --intentKey--> Intent          ⚠ 仅 4/20 接通（16 个无 Intent/Plan）
+ScenarioCard --intentKey--> Intent          ✅ 20/20 接通（种子从目录派生意图+计划，G-1 已修）
 ScenarioCard --presetContext--> {selectedObjects, slotPresets, triggerQuestion}  ⚠ 未注入 QOS；前端无启动器
 SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent
                                   ⚠ 模型以"视图+智能体"为主键，非"场景为主实体"
@@ -232,7 +232,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 
 | 编号 | 断点 | 链路位置 | 性质 |
 |---|---|---|---|
-| G-1 | 20 场景仅 4 个端到端可跑（16 无 Intent/Plan） | ScenarioCard→Intent→Plan | R11 违反 |
+| G-1 | ~~20 场景仅 4 个端到端可跑（16 无 Intent/Plan）~~ **已修**：种子从 SCENARIO_CATALOG 单一来源派生全部 20 意图+计划（`mocks/seed.ts`），mock 求解器兜底（`mocks/clients.ts`）；195 测试绿。*注：16 个用静态 text 渲染，richer 解读走路径B/skill（后续）* | ScenarioCard→Intent→Plan | ✅ 已修 |
 | G-2 | ~~`affected_orders` plan 读 `data.rows/count`，真实返回 `affected/total` → 跨服务 FAIL~~ **已修**：DataCore 补 `rows/count/columns` 别名 `risk.ts:337` | Plan render↔Solver 输出 | ✅ 已修 |
 | G-3 | 无场景启动器；SceneEntry 无 presetContext；以视图+智能体为主键 | ScenarioCard↔SceneEntry↔前端 | 模型倒置 |
 | G-4 | 意图绑定的执行计划无前端创建入口（后端 createPlan 有） | Intent→Plan 配置面 | 裁决#27 死路 |

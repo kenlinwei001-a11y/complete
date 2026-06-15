@@ -216,7 +216,10 @@ export class MockSolverClient implements SolverClient {
         snapshotVersion: SNAPSHOT,
       };
     }
-    throw new Error(`unknown solver: ${solverKey}`);
+    // G-1：20 场景目录的其余求解器（cert_schedule/kit_readiness/… 见 SOLVER_KEYS）在 mock 侧
+    // 返回代表性确定性载荷，使路径A 工作流的 invoke_solver 步骤完成而不抛 unknown solver；
+    // 真实数值由 DataCore 求解器产出（见跨服务联调）。种子计划用静态 text 渲染，不解引用此处特定键。
+    return { data: { solverKey, ok: true, args }, snapshotVersion: SNAPSHOT };
   }
 }
 
