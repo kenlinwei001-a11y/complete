@@ -13,10 +13,11 @@ export interface PmDagNode {
   st: number;
 }
 
-const W = 1100;
-const NH = 44;
-const LH = 78;
-const TOP = 26;
+// 借鉴 HTML 项目推演：给 DAG 足够画布（全宽、更高、节点更大可读）。
+const W = 1280;
+const NH = 56;
+const LH = 104;
+const TOP = 34;
 
 export function PmDag({
   layers,
@@ -34,13 +35,13 @@ export function PmDag({
   layers.forEach((arr, li) => {
     const g = W / (arr.length + 1);
     arr.forEach((n, i) => {
-      pos.set(n.id, { x: g * (i + 1), y: TOP + li * LH, w: Math.min(arr.length > 2 ? 168 : 250, g - 12) });
+      pos.set(n.id, { x: g * (i + 1), y: TOP + li * LH, w: Math.min(arr.length > 2 ? 210 : 320, g - 14) });
       meta.set(n.id, n);
     });
   });
   const H = TOP + layers.length * LH + 6;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", maxHeight: 480 }} role="img" data-testid={testId}>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", maxHeight: 760 }} role="img" data-testid={testId}>
       <defs>
         <marker id="pm-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill="#7C8896" />
@@ -81,17 +82,17 @@ export function PmDag({
               stroke={n.color}
               strokeWidth={lit ? 1.6 : 1}
             />
-            <text x={p.x} y={p.y - 5} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--txt)">
+            <text x={p.x} y={p.y - 6} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--txt)">
               {n.label}
             </text>
-            <text x={p.x} y={p.y + 9} textAnchor="middle" fontSize={8} fill="var(--muted)">
+            <text x={p.x} y={p.y + 12} textAnchor="middle" fontSize={10.5} fill="var(--muted)">
               {n.sub}
             </text>
             {lit && n.st === step && (
               <text
-                x={p.x - p.w / 2 + 5}
-                y={p.y - NH / 2 + 10}
-                fontSize={7}
+                x={p.x - p.w / 2 + 7}
+                y={p.y - NH / 2 + 13}
+                fontSize={9.5}
                 fontWeight={800}
                 fill={n.color}
                 data-testid={`${testId}-current-${n.id}`}

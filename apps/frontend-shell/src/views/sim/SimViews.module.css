@@ -716,9 +716,10 @@
 }
 
 /* —— 项目推演：六步 stepper + DAG 面板 + what-if 滑杆 —— */
+/* 项目推演：分步详情在上、推演 DAG 全宽在下（借鉴 HTML 项目推演布局，DAG 给足画布） */
 .pmGrid {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr);
+  grid-template-columns: 1fr;
   gap: 14px;
   align-items: start;
 }
