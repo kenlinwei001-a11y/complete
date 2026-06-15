@@ -96,6 +96,34 @@ describe("OntoFlow P1 · 本体建模工作流", () => {
     expect(codes).toContain("STATIC_HAS_ONTOLOGY_FEATURES");
   });
 
+  it("WF5: 预览(dry-run) —— 实体节点内嵌 processing 在样例 rows 上折叠出实体", async () => {
+    const t = await makeApp();
+    const ord = {
+      ...entity("n_ord", "Order", "order_id"),
+      processing: {
+        mappings: [
+          { sourceField: "order_id", targetProp: "order_id", dataType: "String", fn: "Last", isPrimaryKey: true },
+          { sourceField: "amount", targetProp: "amount", dataType: "Double", fn: "Sum" },
+          { sourceField: "risk", targetProp: "order_risk", dataType: "Double", fn: "Max" },
+        ],
+        mode: "BATCH",
+      },
+    };
+    const wf = (await t.app.inject({ method: "POST", url: "/a/v1/ontology-workflows", headers: ADMIN, payload: { name: "p", entryMode: "GRAPH_FIRST", nodes: [ord], edges: [] } })).json() as { id: string };
+    const rows = [
+      { order_id: "O1", amount: 10, risk: 0.2 },
+      { order_id: "O1", amount: 5, risk: 0.9 },
+      { order_id: "O2", amount: 7, risk: 0.3 },
+    ];
+    const res = await t.app.inject({ method: "POST", url: `/a/v1/ontology-workflows/${wf.id}/preview`, headers: ADMIN, payload: { nodeId: "n_ord", rows } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { typeKey: string; total: number; entities: { key: string; props: Record<string, unknown> }[] };
+    expect(body.typeKey).toBe("Order");
+    expect(body.total).toBe(2);
+    const o1 = body.entities.find((e) => e.key === "O1")!;
+    expect(o1.props).toMatchObject({ order_id: "O1", amount: 15, order_risk: 0.9 });
+  });
+
   it("WF4: 租户隔离 —— 别租户取不到", async () => {
     const t = await makeApp();
     const wf = (await t.app.inject({ method: "POST", url: "/a/v1/ontology-workflows", headers: ADMIN, payload: graphFirstWf() })).json() as { id: string };

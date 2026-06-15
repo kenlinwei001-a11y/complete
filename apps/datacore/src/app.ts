@@ -1313,6 +1313,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return workflows.update(ctx(req), (req.params as { id: string }).id, body);
   });
   app.post("/a/v1/ontology-workflows/:id/validate", async (req) => workflows.validate(ctx(req), (req.params as { id: string }).id));
+  app.post("/a/v1/ontology-workflows/:id/preview", async (req) => {
+    const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).default([]) }), req.body);
+    return workflows.preview(ctx(req), (req.params as { id: string }).id, body);
+  });
 
   // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {

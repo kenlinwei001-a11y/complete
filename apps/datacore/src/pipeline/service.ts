@@ -2,7 +2,8 @@ import type { OntologyWorkflow, OntologyWorkflowUpsert, WfValidationIssue } from
 import type { AuthCtx, OntologyWorkflowRecord } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import { newId } from "../ids.js";
-import { notFound } from "../errors.js";
+import { notFound, validationError } from "../errors.js";
+import { runProcessing, type EntityRecord } from "./processing.js";
 
 /**
  * OntoFlow（PRD v2）P1：本体建模工作流 CRUD + 校验。
@@ -87,6 +88,26 @@ export class WorkflowService {
       }
     }
     return { ok: issues.length === 0, issues };
+  }
+
+  /**
+   * P2 预览（dry-run）：对指定实体节点，用其 ProcessingSpec（节点内嵌或上游 PROCESS 节点）
+   * 在传入的样例 rows 上跑数据处理，返回实体记录（不落库）。rows 由前端从上传/连接器样例提供。
+   */
+  async preview(ctx: AuthCtx, id: string, opts: { nodeId: string; rows: Record<string, unknown>[] }): Promise<{ typeKey: string; total: number; entities: EntityRecord[] }> {
+    const wf = await this.get(ctx, id);
+    const node = wf.nodes.find((n) => n.id === opts.nodeId);
+    if (!node || node.kind !== "SUBGRAPH_ENTITY") throw validationError(`节点 ${opts.nodeId} 不是实体节点`);
+    // ProcessingSpec：优先节点内嵌（图谱先行），否则取上游 PROCESS 节点（数据先行）
+    let spec = node.processing;
+    if (!spec) {
+      const upstreamIds = wf.edges.filter((e) => e.to === node.id).map((e) => e.from);
+      const proc = wf.nodes.find((n) => n.kind === "PROCESS" && upstreamIds.includes(n.id));
+      if (proc && proc.kind === "PROCESS") spec = proc.spec;
+    }
+    if (!spec) throw validationError(`实体 ${node.modeling.typeKey} 无数据处理规格（节点 processing 或上游 PROCESS）`);
+    const entities = runProcessing(opts.rows, spec);
+    return { typeKey: node.modeling.typeKey, total: entities.length, entities };
   }
 
   private hasCycle(wf: OntologyWorkflow): boolean {

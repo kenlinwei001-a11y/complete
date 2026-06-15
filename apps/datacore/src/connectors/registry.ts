@@ -1,6 +1,6 @@
 import type { ConnectorType, SourceSchema } from "@platform/contracts";
 import type { BlobStore } from "../blob.js";
-import { parseCsv, parseJsonRows } from "./parsers.js";
+import { parseCsv, parseJsonRows, parseXlsx } from "./parsers.js";
 import { profileRows } from "./profiler.js";
 import { validationError } from "../errors.js";
 
@@ -169,8 +169,8 @@ export class FileUploadAdapter extends RowsAdapter {
     const fmt = this.config.format;
     if (fmt === "csv") return { [this.config.datasetName]: parseCsv(buf.toString("utf8")) };
     if (fmt === "json") return { [this.config.datasetName]: parseJsonRows(buf.toString("utf8")) };
-    // TODO(xlsx): parse via the `xlsx` npm package; CSV+JSON cover current scope (PRD §2.1).
-    throw validationError(`unsupported file format: ${fmt} (csv/json supported, xlsx TODO)`);
+    if (fmt === "xlsx") return { [this.config.datasetName]: parseXlsx(buf) }; // OntoFlow P2
+    throw validationError(`unsupported file format: ${fmt}`);
   }
 }
 
