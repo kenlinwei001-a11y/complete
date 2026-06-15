@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 import { seedIntentsAndPlans } from "../src/mocks/seed.js";
+import { fillSlots } from "../src/router/slots.js";
 
 /**
  * G-1（系统本体 §8）回归：20 场景目录此前仅 4 个有意图/执行计划，其余 16 个路径A 够不着。
@@ -49,6 +50,32 @@ describe("G-1 · 20 场景全部接通意图与执行计划（场景→意图→
       }
       const intent = intentByKey.get(card.intentKey)!;
       if (card.riskLevel === "ACTION_DRAFT") expect(intent.riskLevel).toBe("ACTION_DRAFT");
+    }
+  });
+
+  /**
+   * R11 全链闭包 · 场景启动器零反问门（PRD-scenario-launcher §3.6/§7）：
+   * 每张场景卡经启动器注入 presetContext（selectedObjects + slotPresets → SessionContext）后，
+   * 其意图的**必填槽位必须全部被满足**（fillSlots.missing 为空），否则点场景启动会触发反问澄清、
+   * "打开即可推演"破功。此门以运行时真跑 fillSlots 校验（比静态解析更可靠），故障注入（删某卡
+   * slotPreset / 去掉 objectRef 的 defaultFrom）即变红。
+   */
+  it("R11 零反问：每张场景卡 presetContext 注入后必填槽位全满足（fillSlots 无 missing）", async () => {
+    // objectRef 校验只需能解析；用确定性桩，避免依赖真实本体/网络（R6 测试不依赖网络）。
+    const ontology = {
+      getObject: async (_ctx: unknown, objectType: string, objectId: string) => ({ data: { objectType, objectId, name: objectId } }),
+    } as unknown as Parameters<typeof fillSlots>[3];
+    const ctx = { tenantId: "demo", userId: "u", roles: [], token: "t" } as unknown as Parameters<typeof fillSlots>[4];
+    for (const card of SCENARIO_CATALOG) {
+      const intent = intentByKey.get(card.intentKey)!;
+      const context = {
+        view: card.presetContext.targetView,
+        selectedObjects: card.presetContext.selectedObjects,
+        filters: {},
+        presetSlots: card.presetContext.slotPresets,
+      } as unknown as Parameters<typeof fillSlots>[2];
+      const { missing } = await fillSlots(intent, {}, context, ontology, ctx);
+      expect(missing.map((m) => m.name), `场景 ${card.sNo}(${card.intentKey}) 启动后仍反问槽位: [${missing.map((m) => m.name).join(", ")}]`).toEqual([]);
     }
   });
 });

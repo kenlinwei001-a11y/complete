@@ -178,6 +178,12 @@ export const SessionContextSchema = z.object({
   selectedObjects: z.array(ObjectRefSchema).max(10),
   filters: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
   timeWindow: z.object({ from: z.string(), to: z.string() }).optional(),
+  /**
+   * 场景启动器注入通道（PRD-scenario-launcher §3.1，additive）：按**意图槽位名**预置的槽位值。
+   * 场景卡 presetContext.slotPresets 经此搭车进 Query → fillSlots 据此填槽 → 必填槽位被满足即
+   * 不触发反问澄清（"打开即可推演"）。优先级：用户自由文本抽取 > presetSlots > defaultFrom。
+   */
+  presetSlots: z.record(z.string(), z.unknown()).optional(),
   conversationId: z.string().optional(),
 });
 export type SessionContext = z.infer<typeof SessionContextSchema>;

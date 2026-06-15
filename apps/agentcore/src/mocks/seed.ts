@@ -305,7 +305,7 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
       examples: ["4680-NCM 加 20% 六周能不能接？", "M3P 增加 10% 产能够吗", "需求上调后能不能交付"],
       enabledViews: "*",
       slots: [
-        { name: "model", type: "objectRef", required: true, description: "型号（Model 对象引用）" },
+        { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "型号（Model 对象引用）" },
         { name: "demandDelta", type: "number", required: true, description: "需求增量比例（0.2 表示 +20%）" },
         { name: "weeks", type: "number", required: false, description: "周数，缺省 6" },
       ],

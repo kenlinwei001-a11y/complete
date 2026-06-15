@@ -1378,6 +1378,33 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { launcherEnabled: launcherOn, total: items.length, items };
   });
 
+  // 场景启动器（PRD-scenario-launcher §3.5）：点一张场景卡 → 服务端组装 presetContext（单一来源
+  // =SCENARIO_CATALOG）→ 提交 QOS Query。selectedObjects + presetSlots 经 SessionContext 注入，
+  // 命中意图后必填槽位由 fillSlots 从 presetSlots/选中对象满足 → 零反问、直达路径A 推演。
+  app.post("/b/v1/scenarios/:key/launch", async (req, reply) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    const card = SCENARIO_CATALOG.find((c) => c.sNo === key || c.intentKey === key);
+    if (!card) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
+    // entitlement 先于 authz（R3）：场景所属视图关闭 → 功能不存在
+    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    if (!viewAllowed(enabled, card.view)) throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no scenario package for tenant");
+    const body = SubmitQueryBodySchema.parse({
+      packageId: pkg.id,
+      query: card.triggerQuestion,
+      context: {
+        view: card.presetContext.targetView,
+        selectedObjects: card.presetContext.selectedObjects,
+        filters: {},
+        presetSlots: card.presetContext.slotPresets,
+      },
+    });
+    const result = await deps.orchestrator.submitQuery(a, body);
+    return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl, scenario: card.sNo });
+  });
+
   app.get("/b/v1/scene-entries", async (req) => {
     const a = await auth(req);
     const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);

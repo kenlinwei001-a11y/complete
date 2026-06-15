@@ -104,6 +104,16 @@ export async function fillSlots(
       slots[slot.name] = fromExtraction.value;
       continue;
     }
+    // ①.5 场景启动器 presetSlots（PRD-scenario-launcher §3.1）：按槽位名预置，
+    // 优先级低于用户自由文本抽取、高于 defaultFrom —— 让"点场景启动"零反问直达推演。
+    const preset = context.presetSlots?.[slot.name];
+    if (preset !== undefined) {
+      const fromPreset = await validateSlotValue(slot, preset, ontology, ctx);
+      if (fromPreset.ok) {
+        slots[slot.name] = fromPreset.value;
+        continue;
+      }
+    }
     // ② defaultFrom evaluated against the session context
     if (slot.defaultFrom) {
       const candidate = resolvePath(context, slot.defaultFrom);

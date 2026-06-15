@@ -123,9 +123,10 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
 ```
 ScenarioCard --view--> View(规划与平衡/推演与风险/…)
 ScenarioCard --intentKey--> Intent          ✅ 20/20 接通（种子从目录派生意图+计划，G-1 已修）
-ScenarioCard --presetContext--> {selectedObjects, slotPresets, triggerQuestion}  ⚠ 未注入 QOS；前端无启动器
+ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --POST /b/v1/scenarios/:key/launch--> Query
+                                  ✅ P1 已接通（presetSlots 注入通道 + fillSlots 消费 + launch 端点；20/20 零反问门 scenarios-wiring）；前端启动器待 P3
 SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent
-                                  ⚠ 模型以"视图+智能体"为主键，非"场景为主实体"
+                                  ⚠ 仍以"视图+智能体"为主键；Scenario 升一等主键待 P2（PRD-scenario-launcher）
 ```
 **数据→本体→推演链**
 ```
@@ -240,7 +241,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 |---|---|---|---|
 | G-1 | ~~20 场景仅 4 个端到端可跑（16 无 Intent/Plan）~~ **已修**：种子从 SCENARIO_CATALOG 单一来源派生全部 20 意图+计划（`mocks/seed.ts`），mock 求解器兜底（`mocks/clients.ts`）；195 测试绿。*注：16 个用静态 text 渲染，richer 解读走路径B/skill（后续）* | ScenarioCard→Intent→Plan | ✅ 已修 |
 | G-2 | ~~`affected_orders` plan 读 `data.rows/count`，真实返回 `affected/total` → 跨服务 FAIL~~ **已修**：DataCore 补 `rows/count/columns` 别名 `risk.ts:337` | Plan render↔Solver 输出 | ✅ 已修 |
-| G-3 | 无场景启动器；SceneEntry 无 presetContext；以视图+智能体为主键 | ScenarioCard↔SceneEntry↔前端 | 模型倒置 |
+| G-3 | ~~无场景启动器；presetContext 未注入 QOS~~ **◐ 部分修（P1）**：`SessionContext.presetSlots` 注入通道 + `fillSlots` 消费（`slots.ts`）+ `POST /b/v1/scenarios/:key/launch`（`server.ts`）+ **零反问门**（scenarios-wiring 真跑 fillSlots，20/20 必填槽满足）。**待**：Scenario 升一等主键(P2) + 前端 ⌘K/目录/首页启动器(P3)。详 `docs/PRD-scenario-launcher.md` | ScenarioCard↔SceneEntry↔前端 | ◐ P1 后端闭环已落 |
 | G-4 | ~~意图绑定的执行计划无前端创建入口~~ **已修**：CatalogPage ＋新建执行计划（createPlan）、WorkflowsPage/SkillsPage ＋新建按钮 + mock POST handlers；g4 回归测试 + 112 前端测试绿 | Intent→Plan 配置面 | ✅ 已修 |
 | G-5 | 应用层电池锁死（视图布局/求解器/场景包/Agent 写死）；`generic-inference` 不存在 | 本体→生成应用→推演 | 通用化缺 |
 | G-6 | Excel 上传 UI 接受 .xlsx 但后端 parser TODO；无数据模版；合成在独立页 | Connector→RawDataset | rawin 三路未统一 |
