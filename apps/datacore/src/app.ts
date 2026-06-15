@@ -58,7 +58,8 @@ import { OpsTeamService } from "./opsteam/team.js";
 import { OpsScheduleService } from "./opsteam/schedule.js";
 import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
-import { OpsScheduleSchema } from "@platform/contracts";
+import { OpsScheduleSchema, OntologyWorkflowUpsertSchema } from "@platform/contracts";
+import { WorkflowService } from "./pipeline/service.js";
 import type { AuthCtx } from "./domain.js";
 
 declare module "fastify" {
@@ -229,6 +230,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
+  const workflows = new WorkflowService(repos);
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
   const catalog = new CatalogService(repos, features);
@@ -1297,6 +1299,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!spec) throw notFound(`slice ${sliceKey}`);
     return ontologyCore.executeSlice(c, spec.spec, body.args);
   });
+
+  // ---- OntoFlow（PRD v2 · P1）本体建模工作流 CRUD + 校验 ----------------------
+  app.get("/a/v1/ontology-workflows", async (req) => ({ items: await workflows.list(ctx(req)) }));
+  app.post("/a/v1/ontology-workflows", async (req, reply) => {
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    const wf = await workflows.create(ctx(req), body);
+    return reply.status(201).send(wf);
+  });
+  app.get("/a/v1/ontology-workflows/:id", async (req) => workflows.get(ctx(req), (req.params as { id: string }).id));
+  app.put("/a/v1/ontology-workflows/:id", async (req) => {
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    return workflows.update(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/ontology-workflows/:id/validate", async (req) => workflows.validate(ctx(req), (req.params as { id: string }).id));
 
   // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {

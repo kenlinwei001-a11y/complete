@@ -23,6 +23,7 @@ import type {
   ObjectPropHistoryRecord,
   PublishRequestRecord,
   SliceSpecRecord,
+  OntologyWorkflowRecord,
   FeatureAuditRecord,
   FeatureConfigRecord,
   ForecastSnapshotRecord,
@@ -214,6 +215,8 @@ export interface Repos {
   derivationSpecs: Store<DerivationSpecRecord>;
   derivationValueRuns: Store<DerivationValueRunRecord>;
   sliceSpecs: Store<SliceSpecRecord>;
+  /** OntoFlow（PRD v2 / 013_pipeline.sql）：本体建模工作流。 */
+  ontologyWorkflows: Store<OntologyWorkflowRecord>;
   // 治理增量（009_ontology_governance.sql）
   domains: Store<DomainRecord>;
   elementRefs: Store<ElementRefRecord>;

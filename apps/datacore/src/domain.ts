@@ -251,6 +251,21 @@ export interface ObjectTypeDef {
   sourceBindings: SourceBinding[];
   version: number;
   status: "ACTIVE" | "RETIRED";
+  // OntoFlow（PRD v2）扩展 —— 全部可选，缺省即沿用既有"本体图谱"语义（不破既有快照）。
+  /** 存储模式：STATIC=静态图谱(纯结构,不参与派生/推演)；ONTOLOGY=完整本体。缺省视为 ONTOLOGY。 */
+  storageMode?: "STATIC" | "ONTOLOGY";
+  /** 状态变量（事件折叠产物，如 order_risk = Max(event.risk)）。 */
+  stateVariables?: { propKey: string; fromField: string; fn: string; dataType: string }[];
+  /** 类型级函数（推演可调用，如 adjustCapacity）。 */
+  functions?: { name: string; returns: string; builtin?: string; expr?: string }[];
+  /** 绑定的行动（S2 ActionType key）。 */
+  actions?: { actionTypeKey: string }[];
+  /** 逐属性脱敏规则（读出层应用）。 */
+  security?: { prop: string; strategy: "HASH" | "REDACT" | "PARTIAL"; scopeRoles?: string[] }[];
+  /** 语义分类标签（如 人/传感器/银行卡）。 */
+  entityCategory?: string;
+  /** 对象描述（文档 + agent 提示）。 */
+  description?: string;
   /** 治理增量 §2：是否曾 PUBLISHED（API 名不可变纪律的锚点）。 */
   published?: boolean;
   /** 治理增量 §2.2：弃用状态机。 */
@@ -326,7 +341,17 @@ export interface OntologyVersion {
 export type ObjectOrigin =
   | { type: "SYNTHETIC"; jobId: string }
   | { type: "MATERIALIZED"; datasetId: string; jobId: string }
-  | { type: "MANUAL" };
+  | { type: "MANUAL" }
+  // OntoFlow（PRD v2）：流水线发布物化的对象。
+  | { type: "PIPELINE"; workflowId: string };
+
+/** OntoFlow（PRD v2）：本体建模工作流持久化记录（doc = OntologyWorkflow 契约）。 */
+export interface OntologyWorkflowRecord {
+  id: string; // wf_
+  tenantId: string;
+  doc: import("@platform/contracts").OntologyWorkflow;
+  updatedAt: string;
+}
 
 export interface ObjectInstance {
   id: string; // obj_
