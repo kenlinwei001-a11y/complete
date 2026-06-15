@@ -250,7 +250,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 
 - 本文是**接线单一来源**：改动若新增/改变对象类型、链路、事件、不变量、门禁 → **必须同步本文对应章节**，否则大脑过期即失效。
 - 治理已落地（不靠自觉）：`CLAUDE.md` 铁律 0（必读）· SessionStart 钩子（每会话动态注入 §8 未修断点）· `pnpm ontology:check`（漂移即红）· `docs/_PRD-TEMPLATE.md`（强制《本体引用与影响》）· `/ontology` skill。
-- 相关 PRD：`docs/PRD-unified-build-engine.md`（统一构建发动机，全链闭包将补 R11 门禁）· `docs/AUDIT-0614-fullchain.md`（全链审核）· `docs/TODO.md`（修复进度）。
+- 相关文档：**`docs/OPERATING-MODEL.md`（协同进化运行模型 = 机制宪法，统摄本体与 PRD）** · `docs/PRD-unified-build-engine.md`（统一构建发动机，全链闭包将补 R11 门禁）· `docs/AUDIT-0614-fullchain.md`（全链审核）· `docs/TODO.md`（排序路线）。
 - 远期可**落库**：把本文的对象类型/链路/规则注册为平台自己的 ObjectType/Link/Rule（dogfooding），让"系统本体"也能被切片/校验/推演——即用平台分析平台自身。
 
 ---
