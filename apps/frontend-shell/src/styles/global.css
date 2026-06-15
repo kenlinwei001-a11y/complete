@@ -1,0 +1,196 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1100px 700px at 78% -10%, rgba(76, 144, 240, 0.075), transparent 62%),
+    radial-gradient(900px 600px at 4% 108%, rgba(196, 112, 184, 0.045), transparent 55%),
+    var(--bg);
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num,
+.mono {
+  font-family: var(--font-mono);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  color: var(--txt);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(226, 235, 245, 0.12);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- shared primitives ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line2);
+  background: rgba(226, 235, 245, 0.05);
+  color: var(--txt);
+  font-size: 12.5px;
+  transition: 0.15s;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn.primary {
+  background: linear-gradient(135deg, rgba(76, 144, 240, 0.85), rgba(76, 144, 240, 0.6));
+  border-color: rgba(76, 144, 240, 0.6);
+  color: #fff;
+}
+.btn.danger {
+  border-color: rgba(224, 98, 108, 0.5);
+  color: var(--danger);
+}
+.btn.sm {
+  padding: 4px 9px;
+  font-size: 11.5px;
+  border-radius: 6px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  border: 1px solid var(--line2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge.green {
+  color: var(--ok);
+  border-color: rgba(98, 190, 119, 0.45);
+  background: rgba(98, 190, 119, 0.1);
+}
+.badge.amber {
+  color: var(--amber);
+  border-color: rgba(232, 181, 74, 0.45);
+  background: rgba(232, 181, 74, 0.1);
+}
+.badge.red {
+  color: var(--danger);
+  border-color: rgba(224, 98, 108, 0.45);
+  background: rgba(224, 98, 108, 0.1);
+}
+.badge.blue {
+  color: var(--accent);
+  border-color: rgba(76, 144, 240, 0.45);
+  background: rgba(76, 144, 240, 0.1);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.section-title {
+  font-size: 10.5px;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  margin-bottom: 8px;
+}
+
+table.cmp {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+table.cmp th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line2);
+  white-space: nowrap;
+}
+table.cmp td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+table.cmp td.zh {
+  font-family: var(--font-sans);
+}
+table.cmp tr:hover td {
+  background: rgba(226, 235, 245, 0.025);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+.empty-state .code {
+  font-family: var(--font-mono);
+  font-size: 42px;
+  color: var(--muted2);
+}

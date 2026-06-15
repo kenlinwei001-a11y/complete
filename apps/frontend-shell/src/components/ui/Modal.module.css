@@ -1,0 +1,50 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 12, 0.65);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.dialog {
+  background: linear-gradient(165deg, rgba(30, 38, 49, 0.97), rgba(16, 21, 28, 0.98));
+  border: 1px solid var(--line2);
+  border-radius: 13px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  outline: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.head h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 4px;
+}
+.close:hover {
+  color: var(--txt);
+}
+
+.body {
+  padding: 16px 18px;
+  overflow-y: auto;
+}

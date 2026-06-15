@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>推演 DAG · S02 常州基地影响哪些订单？</title>
+<style>
+  :root{
+    --fe:#2563eb; --gw:#64748b; --ac:#7c3aed; --wf:#0891b2; --dc:#16a34a; --bg:#0f172a; --panel:#1e293b; --ink:#e2e8f0; --muted:#94a3b8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.55 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft Yahei",sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:14px 20px;border-bottom:1px solid #334155;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0}
+  header .sub{color:var(--muted);font-size:12px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto}
+  .legend span{font-size:11px;padding:2px 8px;border-radius:10px;color:#fff}
+  .wrap{display:grid;grid-template-columns:minmax(420px,1fr) minmax(340px,440px);gap:0;height:calc(100vh - 56px)}
+  .canvas{position:relative;overflow:auto;padding:24px 20px 60px}
+  svg.edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+  .col-label{font-size:11px;color:var(--muted);letter-spacing:.08em;margin:18px 0 6px;text-transform:uppercase}
+  .node{position:relative;z-index:1;width:340px;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid #334155;cursor:pointer;transition:.12s}
+  .node:hover{transform:translateX(2px);border-color:#64748b}
+  .node.sel{outline:2px solid #f59e0b;border-color:#f59e0b}
+  .node .tag{display:inline-block;font-size:10px;padding:1px 7px;border-radius:8px;color:#fff;margin-bottom:5px}
+  .node .h{font-weight:600}
+  .node .one{color:var(--muted);font-size:12px;margin-top:3px}
+  .indent{margin-left:46px}
+  .panel{background:#0b1220;border-left:1px solid #334155;padding:20px;overflow:auto}
+  .panel h2{font-size:15px;margin:0 0 2px}
+  .panel .pid{color:var(--muted);font-size:12px;margin-bottom:14px}
+  .row{margin:0 0 12px}
+  .row .k{font-size:11px;letter-spacing:.05em;color:#f59e0b;text-transform:uppercase;margin-bottom:3px}
+  .row .v{white-space:pre-wrap;background:#111827;border:1px solid #1f2937;border-radius:8px;padding:8px 10px;font-size:13px}
+  code{background:#111827;padding:1px 5px;border-radius:4px;color:#93c5fd;font-size:12px}
+  .hint{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>推演全流程 DAG · <span style="color:#f59e0b">S02 「常州基地影响哪些订单？」</span></h1>
+  <span class="sub">路径 A · 意图 affected_orders · L 档 200 订单 — 点节点看 IPO 细节</span>
+  <div class="legend">
+    <span style="background:var(--fe)">前端</span>
+    <span style="background:var(--gw)">网关</span>
+    <span style="background:var(--ac)">AgentCore/QOS</span>
+    <span style="background:var(--wf)">Workflow执行器</span>
+    <span style="background:var(--dc)">DataCore</span>
+  </div>
+</header>
+<div class="wrap">
+  <div class="canvas" id="canvas">
+    <svg class="edges" id="edges"></svg>
+    <div id="nodes"></div>
+  </div>
+  <div class="panel" id="panel">
+    <h2 id="p-title">点击左侧任意节点</h2>
+    <div class="pid hint" id="p-id">每个节点展示：输入 / 处理（做什么·怎么做）/ 输出 / 数据量 / 配置 / 代码位置。全部取自当前代码。</div>
+    <div id="p-body"></div>
+  </div>
+</div>
+<script>
+const C={fe:'#2563eb',gw:'#64748b',ac:'#7c3aed',wf:'#0891b2',dc:'#16a34a'};
+// 每个原子步骤的 IPO（源自 docs/ANALYSIS-scenario-microscope-S02.md，code-grounded）
+const N=[
+ {id:'H0',m:'fe',t:'前端',h:'场景启动器卡 S02',one:'presetContext 注入 + 自动提交',
+  edge:['H1'],
+  I:'用户点 S02 卡；卡数据来自 GET /b/v1/scenarios（非前端硬编码）',
+  P:'读卡 presetContext → 跳 targetView=risk、高亮选中对象 → 自动提交触发问句',
+  O:'POST /b/v1/queries {packageId, query:"常州基地影响哪些订单？", context:{view:"risk", selectedObjects:[{Base,changzhou,"常州"}], filters:{}, conversationId}}',
+  D:'1 GET(20 卡 ~6KB) + 1 POST(<1KB)',
+  K:'view.scenarios feature 开；willProduceDraft=false（COMPUTE 无草稿角标）',
+  S:'scenarios-catalog.ts / server.ts GET /b/v1/scenarios'},
+ {id:'H1',m:'gw',t:'网关',h:'nginx 路由',one:'/b/v1/* → agentcore，SSE 不缓冲',
+  edge:['H2'],
+  I:'HTTP 请求',P:'路径路由到 agentcore:4002；SSE 路径 proxy_buffering off',O:'透传',D:'透明',K:'deploy/nginx.conf',S:'deploy/nginx.conf'},
+ {id:'H2',m:'ac',t:'AgentCore',h:'鉴权 resolveAuth（OBO 入口）',one:'JWT RS256/JWKS 或 X-Debug-User',
+  edge:['H3'],
+  I:'Authorization: Bearer <JWT>（生产）或 X-Debug-User: demo:planner:planner（开发）',
+  P:'生产经 DataCore JWKS 验 RS256 取 tid/sub/roles；开发解析 debug 头。保留 token 原值+tokenExpiresAt 供 OBO',
+  O:'RequestAuth{tenantId:"demo",userId,roles:["planner"],token,tokenExpiresAt}',
+  D:'1 次验签（JWKS 缓存）',K:'/a/v1/.well-known/jwks.json',S:'auth.ts'},
+ {id:'H3',m:'ac',t:'AgentCore',h:'submitQuery 任务编排起点',one:'建任务+限流+幂等+代次取消+SSE',
+  edge:['H4'],
+  I:'RequestAuth + SubmitQueryBody',
+  P:'①校验 shell.query-dock(关→404) ②package 属租户 ③并发执行中≤3(否则429) ④Idempotency-Key 去重 ⑤建 QueryTask{ROUTING} ⑥§13.2 同会话旧任务取消(SUPERSEDED) ⑦SSE task.accepted ⑧setImmediate 异步 pipeline',
+  O:'{taskId,status:"ROUTING",streamUrl:"/b/v1/queries/{id}/events"}',
+  D:'1 task 行 + 1 SSE',K:'并发上限 3；Idempotency-Key 24h',S:'orchestrator.ts:104-157'},
+ {id:'H4',m:'ac',t:'AgentCore',h:'候选收窄',one:'场景模式优先 + feature 过滤',
+  edge:['H5'],
+  I:'task + enabledFeatures',
+  P:'场景入口模式优先(AGENT_FIRST/ONLY 直走 agent)；否则 publishedIntentsForView(risk) 取 PUBLISHED 意图，剔除绑定到已关 feature 的意图',
+  O:'候选 ~6：affected_orders/risk_root_cause/adopt_mitigation/kit_analysis/yield_diag/maint_stagger',
+  D:'内存过滤，候选≤视图意图数',K:'—',S:'orchestrator.ts:182,278'},
+ {id:'H5',m:'ac',t:'AgentCore',h:'LLM 分类（唯一 LLM 调用）',one:'haiku：catalog+context → 意图',
+  edge:['H6'],
+  I:'{query, 候选catalog(key+描述+示例+槽位), contextSummary(view+selected), historySummary(最近6轮)}',
+  P:'组 system+user → llm.classify({model:haiku})；重试≤2；observe 时延；审计补{providerId,modelId}；无原生结构化输出→JSON-mode 降级+zod 重试',
+  O:'{candidates:[{intentKey:"affected_orders",confidence:0.95}], outOfCatalog:false, extractedSlots:{baseName:"常州"}, latencyMs, model}',
+  D:'1 次 LLM 调用；prompt ~数百 token / 输出 ~50 token',
+  K:'模型解析序：场景包 classifierModel → 租户用途绑定 → env haiku。⚠ mock 模式为脚本桩，真分需接真 key(E4)',
+  S:'orchestrator.ts:299-334'},
+ {id:'H6',m:'ac',t:'AgentCore',h:'路由判定（确定性阈值）',one:'0.95 ≥ τ_high 0.85 → 路径 A',
+  edge:['H7'],
+  I:'分类结果 + τ_high=0.85 / τ_low=0.55',
+  P:'outOfCatalog||conf<0.55→路径B兜底；<0.85→INTENT_CHOICE 澄清；≥0.85→路径A。本例 0.95→路径A',
+  O:'决策=路径A，intent=affected_orders',D:'纯比较',K:'config.ts:15-16(场景包可覆盖)',S:'orchestrator.ts:229-275'},
+ {id:'H7',m:'ac',t:'AgentCore',h:'槽位填充',one:'slotPresets + defaultFrom $.selectedObjects[0]',
+  edge:['H8'],
+  I:'意图 slotDefs + extractedSlots + presetContext.slotPresets + selectedObjects',
+  P:'合并优先序：显式槽 > slotPresets > defaultFrom(objectRef 自动取选中对象)。缺必填→SLOT_FILLING(≤2 轮)',
+  O:'slots={baseId:"changzhou"}（齐全，无澄清）',D:'内存合并',K:'objectRef 槽 defaultFrom:$.selectedObjects[0]',S:'router/slots.ts'},
+ {id:'H8',m:'ac',t:'AgentCore',h:'计划解析（引用 latest）',one:'planRef latest → ExecutionPlan(kind=PLAN)',
+  edge:['H9'],
+  I:'intent.planRef {planKey, version:"latest"}',
+  P:'resolvePlanForIntent 解析当前 PUBLISHED 最新版；留痕 resolvedRefs(当时生效版本)',
+  O:'Plan{steps:[s1=invoke_solver{affected_orders,args:{baseId:"{{slots.baseId}}"}}, render=render_answer{table←{{steps.s1.output.data.rows}}, text}]}',
+  D:'1 次解析',K:'latest=最新PUBLISHED；pin=精确版本',S:'orchestrator.ts:510-519'},
+ {id:'H9',m:'wf',t:'Workflow执行器',h:'step s1 = invoke_solver（跨系统 OBO）',one:'OBO 守卫 → POST /a/v1/solvers/affected_orders/invoke',
+  edge:['H9a'],
+  I:'插值后 {solverKey:"affected_orders", args:{baseId:"changzhou"}}；task→EXECUTING_WORKFLOW；SSE routing.completed+step.started',
+  P:'executor.run("invoke_solver",params,{timeoutMs:15000})：OBO 守卫(token 剩余<60s 拒)；HTTP 带 Bearer 用户 OBO token(B 永不用服务 token 代用户读数)',
+  O:'DataCore 返回(见 H9a)；记 ToolCallRow(toolName/input/outputDigest/durationMs/outcome)',
+  D:'1 跨服务 HTTP + 1 tool_call 审计',K:'求解超时 15s；OBO<60s 拒',S:'workflow/executor.ts:108-160 / executor.ts:96'},
+ {id:'H9a',m:'dc',t:'DataCore',h:'affected_orders 求解（原子算法）',one:'鉴权→entitlement→loadContext→窗口算法',indent:true,
+  edge:['H10'],
+  I:'Bearer OBO + {args:{baseId:"changzhou"}}',
+  P:'①验签 tid/sub/roles ②entitlement requireFeatureTag("solverKeys","affected_orders")(关→404) ③loadContext：并行拉租户隔离的 Orders(200)/Bases(12)/Models(6)/Lines/Processes/Segments... ④affectedOrders(c,{baseId,fromDay,toDay})：base=常州订单按窗口[day−7,day+14]过滤+逐单延误估计(delayDiv=8)+归并 problems[](4类)+rootChain[]。确定性(无时钟/随机)',
+  O:'{data:{baseId,affected:[...],total,fallback,problems:[...],rows:[...]}, snapshotVersion:"{ov}.{epoch}"}',
+  D:'扫 200 订单 → 常州相关 ~十几单；输出 rows≤N',
+  K:'窗口 [day−7,day+14] delayDiv=8 (battery.ts:130)。⚠ 当前 solver 未套 A6 行级过滤(已记优化项)',
+  S:'app.ts /a/v1/solvers/:key/invoke → solvers/risk.ts:275'},
+ {id:'H10',m:'wf',t:'Workflow执行器',h:'render_answer（答案组装+溯源）',one:'模板插值 + provenance 富化',
+  edge:['H11'],
+  I:'s1 输出 + render blocks 模板',
+  P:'插值 {{steps.s1.output.data.rows}} 填 table；text 填结论；enrichProvenance 每数字挂 ⟦ref:N⟧→{toolCallId,outputPath}(VERIFIED_WORKFLOW)；render_answer 必为末步(发布校验保证)',
+  O:'Answer{blocks:[table,text], provenance:[{toolCallId,outputPath}], trustLevel:"VERIFIED_WORKFLOW"}',
+  D:'内存组装',K:'信任级 VERIFIED_WORKFLOW',S:'workflow/executor.ts render / tools/provenance.ts'},
+ {id:'H11',m:'ac',t:'AgentCore',h:'任务完成 + SSE',one:'COMPLETED → answer.final',
+  edge:['H12'],
+  I:'workflow 结果',
+  P:'task→COMPLETED，写 answer+resolvedRefs；SSE answer.final；指标 qos_tasks_total{WORKFLOW,COMPLETED}++',
+  O:'终态 task；SSE 流：task.accepted→routing.completed→step.started→step.completed→answer.final',
+  D:'5 SSE 事件',K:'—',S:'orchestrator.ts:554-561'},
+ {id:'H12',m:'fe',t:'前端',h:'渲染 + 溯源',one:'table/text + ⟦ref⟧ 溯源弹窗',
+  edge:[],
+  I:'SSE answer.final',
+  P:'TanStack Query 消费；renderer 按 block 类型渲染；点 ⟦ref⟧ 弹溯源(toolCallId→tool_call→snapshotVersion)',
+  O:'用户看到「常州受影响订单表 + 窗口口径脚注 + 每数字可溯源」；首次点击到答案 ≤5s',
+  D:'—',K:'renderer 12 选 1 分发',S:'frontend-shell renderer'},
+];
+const byId=Object.fromEntries(N.map(n=>[n.id,n]));
+const nodesEl=document.getElementById('nodes'), edgesEl=document.getElementById('edges');
+let lastModule=null;
+for(const n of N){
+  if(n.t!==lastModule){const l=document.createElement('div');l.className='col-label';l.textContent=n.t;nodesEl.appendChild(l);lastModule=n.t;}
+  const d=document.createElement('div');
+  d.className='node'+(n.indent?' indent':'');d.id='node-'+n.id;d.style.borderLeft='4px solid '+C[n.m];
+  d.innerHTML=`<span class="tag" style="background:${C[n.m]}">${n.id}</span><div class="h">${n.h}</div><div class="one">${n.one}</div>`;
+  d.onclick=()=>select(n.id);
+  nodesEl.appendChild(d);
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+function select(id){
+  document.querySelectorAll('.node').forEach(e=>e.classList.remove('sel'));
+  document.getElementById('node-'+id).classList.add('sel');
+  const n=byId[id];
+  document.getElementById('p-title').textContent=`${n.id} · ${n.h}`;
+  document.getElementById('p-id').innerHTML=`<span class="tag" style="background:${C[n.m]};color:#fff;padding:1px 7px;border-radius:8px">${n.t}</span>`;
+  const rows=[['输入 I',n.I],['处理 P（做什么·怎么做）',n.P],['输出 O',n.O],['数据量',n.D],['配置',n.K],['代码位置',n.S]];
+  document.getElementById('p-body').innerHTML=rows.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join('');
+}
+function drawEdges(){
+  const cv=document.getElementById('canvas');const cr=cv.getBoundingClientRect();
+  let svg='';
+  for(const n of N){for(const to of n.edge){
+    const a=document.getElementById('node-'+n.id).getBoundingClientRect();
+    const b=document.getElementById('node-'+to).getBoundingClientRect();
+    const x1=a.left-cr.left+cv.scrollLeft+a.width/2, y1=a.top-cr.top+cv.scrollTop+a.height;
+    const x2=b.left-cr.left+cv.scrollLeft+b.width/2, y2=b.top-cr.top+cv.scrollTop;
+    const my=(y1+y2)/2;
+    svg+=`<path d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}" stroke="#475569" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>`;
+  }}
+  edgesEl.innerHTML=`<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#475569"/></marker></defs>${svg}`;
+}
+window.addEventListener('resize',drawEdges);
+document.getElementById('canvas').addEventListener('scroll',drawEdges);
+drawEdges();select('H0');
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+.mark {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  cursor: pointer;
+  margin-left: 1px;
+  user-select: none;
+}
+.mark:hover {
+  text-decoration: underline;
+}

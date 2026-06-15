@@ -1,0 +1,29 @@
+# deps & build
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+coverage/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# runtime data
+.blobstore/
+.blobs/
+blobs/
+*.log
+
+# OS / editor
+.DS_Store
+*.swp
+
+# local-only Claude config
+.claude/settings.local.json
+
+# 大体积生成物（按需用 Git LFS；默认不入库）
+deliverables/
+db-seed/*.sql
+!db-seed/agentcore-seed.sql

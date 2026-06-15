@@ -1,0 +1,349 @@
+import type { AuthCtx, ActionDraft, ActionTypeRecord } from "./domain.js";
+import type { Repos } from "./repo/repo.js";
+import type { OutboxService } from "./outbox.js";
+import type { RulesService } from "./rules.js";
+import { newId } from "./ids.js";
+import { AppError, notFound, validationError } from "./errors.js";
+import { hashString } from "./prng.js";
+
+/** Write-back adapter interface (S2): this period ships the Mock implementation. */
+export interface ActionExecutor {
+  execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef?: string; error?: string }>;
+}
+
+export class MockActionExecutor implements ActionExecutor {
+  async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef: string }> {
+    return { ok: true, targetRef: `MO-2026-${String(1000 + (hashString(draft.id) % 9000))}` };
+  }
+}
+
+const invalidStep = (msg: string) => new AppError("INVALID_STEP", msg, 409);
+const noEligibleApprover = (role: string) =>
+  new AppError("NO_ELIGIBLE_APPROVER", `审批链角色 ${role} 没有可用审批人（发起人不得自批）`, 422);
+
+function baseRole(r: string): string {
+  return r.split(":")[0] as string;
+}
+
+/** Minimal JSON-schema check: required keys + primitive type tags. */
+function validateParams(schema: Record<string, unknown>, payload: Record<string, unknown>): void {
+  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  for (const k of required) {
+    if (payload[k] === undefined || payload[k] === null || payload[k] === "") {
+      throw validationError(`payload.${k} is required`);
+    }
+  }
+  const props = (schema.properties ?? {}) as Record<string, { type?: string }>;
+  for (const [k, def] of Object.entries(props)) {
+    const v = payload[k];
+    if (v === undefined || !def.type) continue;
+    const t = def.type;
+    const ok =
+      (t === "string" && typeof v === "string") ||
+      (t === "number" && typeof v === "number") ||
+      (t === "boolean" && typeof v === "boolean") ||
+      (t === "object" && typeof v === "object") ||
+      (t === "array" && Array.isArray(v));
+    if (!ok) throw validationError(`payload.${k} must be of type ${t}`);
+  }
+}
+
+/**
+ * S2 Action approval: DRAFT → PENDING_APPROVAL → APPROVED → EXECUTING →
+ * EXECUTED / EXECUTION_FAILED, with REJECTED / CANCELLED branches. All
+ * transitions emit action.* events through the C-2 outbox.
+ */
+export class ActionService {
+  private executor: ActionExecutor = new MockActionExecutor();
+  private retryDelaysMs = [50, 100, 200];
+
+  constructor(
+    private repos: Repos,
+    private rules: RulesService,
+    private outbox: OutboxService,
+    private notifications?: import("./notifications.js").NotificationService,
+  ) {}
+
+  /** Test hook / deployment hook: swap the write-back adapter. */
+  setExecutor(executor: ActionExecutor, retryDelaysMs?: number[]): void {
+    this.executor = executor;
+    if (retryDelaysMs) this.retryDelaysMs = retryDelaysMs;
+  }
+
+  async registerType(ctx: AuthCtx, type: Omit<ActionTypeRecord, "id" | "tenantId">): Promise<ActionTypeRecord> {
+    if (!Array.isArray(type.approvalChain) || type.approvalChain.length < 1 || type.approvalChain.length > 3) {
+      throw validationError("approvalChain must have 1–3 steps");
+    }
+    const existing = (await this.repos.actionTypes.list(ctx.tenantId, (t) => t.key === type.key))[0];
+    const rec: ActionTypeRecord = { id: existing?.id ?? `atype_${ctx.tenantId}_${type.key}`, tenantId: ctx.tenantId, ...type };
+    await this.repos.actionTypes.put(rec);
+    return rec;
+  }
+
+  async listTypes(ctx: AuthCtx): Promise<ActionTypeRecord[]> {
+    return this.repos.actionTypes.list(ctx.tenantId);
+  }
+
+  async getType(tenantId: string, key: string): Promise<ActionTypeRecord | undefined> {
+    return (await this.repos.actionTypes.list(tenantId, (t) => t.key === key))[0];
+  }
+
+  async create(
+    ctx: AuthCtx,
+    input: {
+      actionTypeKey: string;
+      payload: Record<string, unknown>;
+      origin?: { taskId?: string; agentId?: string };
+      submit?: boolean;
+    },
+  ): Promise<ActionDraft> {
+    const now = new Date().toISOString();
+    const draft: ActionDraft = {
+      id: newId("act"),
+      tenantId: ctx.tenantId,
+      actionTypeKey: input.actionTypeKey,
+      payload: input.payload,
+      origin: { ...input.origin, userId: ctx.userId },
+      status: "DRAFT",
+      approvalSteps: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.repos.actionDrafts.put(draft);
+    if (input.submit !== false) return this.submit(ctx, draft.id);
+    return draft;
+  }
+
+  /** C10 submit validation: zod/schema params + rule pre-check + non-empty chain + self-approval skip. */
+  async submit(ctx: AuthCtx, draftId: string): Promise<ActionDraft> {
+    const draft = await this.get(ctx, draftId);
+    if (draft.status !== "DRAFT") throw invalidStep(`draft is ${draft.status}, expected DRAFT`);
+    const type = await this.getType(ctx.tenantId, draft.actionTypeKey);
+    if (type) {
+      validateParams(type.paramsSchema, draft.payload);
+      if (type.checkRules.length > 0) {
+        const verdicts = await this.rules.evaluate(ctx, type.checkRules, draft.payload);
+        const blocked = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+        if (blocked.length > 0) {
+          throw validationError(`规则预检不通过: ${blocked.map((b) => b.explanation).join("; ")}`);
+        }
+      }
+    }
+    const chain = type?.approvalChain ?? [{ role: "admin" }];
+    if (chain.length === 0) throw validationError("approval chain is empty");
+    if (type) {
+      // Self-approval guard: every step role must have an approver ≠ the originator
+      // (the step auto-skips to another user with the role; none → submit fails).
+      const users = await this.repos.users.list(ctx.tenantId);
+      const originId = draft.origin.userId;
+      for (const step of chain) {
+        const eligible = users.filter(
+          (u) =>
+            u.id !== originId &&
+            u.username !== originId && // debug-auth contexts carry the username as userId
+            u.roles.some((r) => baseRole(r) === step.role || r === step.role),
+        );
+        if (eligible.length === 0) throw noEligibleApprover(step.role);
+      }
+    }
+    draft.approvalSteps = chain.map((s, i) => ({ seq: i + 1, role: s.role }));
+    draft.status = "PENDING_APPROVAL";
+    draft.updatedAt = new Date().toISOString();
+    await this.repos.actionDrafts.put(draft);
+    await this.outbox.emit(ctx.tenantId, "action.pending_approval", {
+      draftId: draft.id,
+      actionTypeKey: draft.actionTypeKey,
+      step: 1,
+      role: chain[0]?.role,
+    });
+    // §9 通知中心：定向通知第一步审批角色（排除发起人）。
+    if (chain[0]?.role) {
+      await this.notifications?.notifyRole(ctx.tenantId, chain[0].role, draft.origin.userId, {
+        kind: "approval_pending",
+        title: "待审批",
+        body: `有一条 ${draft.actionTypeKey} 待你审批`,
+        refType: "action",
+        refId: draft.id,
+      });
+    }
+    return draft;
+  }
+
+  async get(ctx: AuthCtx, id: string): Promise<ActionDraft> {
+    const draft = await this.repos.actionDrafts.get(ctx.tenantId, id);
+    if (!draft) throw notFound("action draft");
+    return draft;
+  }
+
+  currentStep(draft: ActionDraft): { seq: number; role: string } | undefined {
+    const step = draft.approvalSteps.find((s) => !s.decision);
+    return step ? { seq: step.seq, role: step.role } : undefined;
+  }
+
+  async list(ctx: AuthCtx, q: { status?: string; role?: string }): Promise<ActionDraft[]> {
+    let drafts = await this.repos.actionDrafts.list(ctx.tenantId, (d) => (q.status ? d.status === q.status : true));
+    if (q.role === "mine") {
+      // "待我审批" = current step role ∈ my roles (and I am not the originator).
+      const myRoles = new Set(ctx.roles.map(baseRole));
+      drafts = drafts.filter((d) => {
+        if (d.status !== "PENDING_APPROVAL") return false;
+        const step = this.currentStep(d);
+        return !!step && myRoles.has(step.role) && d.origin.userId !== ctx.userId;
+      });
+    }
+    return drafts.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
+  }
+
+  async approve(ctx: AuthCtx, id: string, comment?: string): Promise<ActionDraft> {
+    const draft = await this.get(ctx, id);
+    if (draft.status !== "PENDING_APPROVAL") throw invalidStep(`draft is ${draft.status}`);
+    const step = draft.approvalSteps.find((s) => !s.decision);
+    if (!step) throw invalidStep("no pending step");
+    if (!ctx.roles.some((r) => baseRole(r) === step.role || r === step.role)) {
+      throw invalidStep(`当前步骤需要角色 ${step.role}`);
+    }
+    if (ctx.userId === draft.origin.userId) throw invalidStep("发起人不得自批");
+    step.decision = "APPROVE";
+    step.approverId = ctx.userId;
+    step.comment = comment;
+    step.decidedAt = new Date().toISOString();
+    const next = draft.approvalSteps.find((s) => !s.decision);
+    if (next) {
+      draft.updatedAt = step.decidedAt;
+      await this.repos.actionDrafts.put(draft);
+      await this.outbox.emit(ctx.tenantId, "action.pending_approval", {
+        draftId: draft.id,
+        actionTypeKey: draft.actionTypeKey,
+        step: next.seq,
+        role: next.role,
+      });
+      await this.notifications?.notifyRole(ctx.tenantId, next.role, draft.origin.userId, {
+        kind: "approval_pending",
+        title: "待审批",
+        body: `有一条 ${draft.actionTypeKey} 进入下一审批环节，待你审批`,
+        refType: "action",
+        refId: draft.id,
+      });
+      return draft;
+    }
+    draft.status = "APPROVED";
+    draft.updatedAt = step.decidedAt;
+    await this.repos.actionDrafts.put(draft);
+    await this.outbox.emit(ctx.tenantId, "action.approved", { draftId: draft.id, actionTypeKey: draft.actionTypeKey });
+    // §9 通知发起人：审批通过。
+    await this.notifications?.notify(ctx.tenantId, {
+      userId: draft.origin.userId,
+      kind: "action_approved",
+      title: "审批通过",
+      body: `你发起的 ${draft.actionTypeKey} 已审批通过`,
+      refType: "action",
+      refId: draft.id,
+    });
+    // APPROVED → outbox → executor (mock adapter) with 3 retries / exponential backoff.
+    return this.execute(ctx.tenantId, draft.id);
+  }
+
+  async reject(ctx: AuthCtx, id: string, comment: string): Promise<ActionDraft> {
+    if (!comment || !comment.trim()) throw validationError("reject comment is required");
+    const draft = await this.get(ctx, id);
+    if (draft.status !== "PENDING_APPROVAL") throw invalidStep(`draft is ${draft.status}`);
+    const step = draft.approvalSteps.find((s) => !s.decision);
+    if (!step) throw invalidStep("no pending step");
+    if (!ctx.roles.some((r) => baseRole(r) === step.role || r === step.role)) {
+      throw invalidStep(`当前步骤需要角色 ${step.role}`);
+    }
+    step.decision = "REJECT";
+    step.approverId = ctx.userId;
+    step.comment = comment;
+    step.decidedAt = new Date().toISOString();
+    draft.status = "REJECTED";
+    draft.updatedAt = step.decidedAt;
+    await this.repos.actionDrafts.put(draft);
+    await this.outbox.emit(ctx.tenantId, "action.rejected", { draftId: draft.id, step: step.seq, comment });
+    // §9 通知发起人：被拒（必带意见）。
+    await this.notifications?.notify(ctx.tenantId, {
+      userId: draft.origin.userId,
+      kind: "action_rejected",
+      title: "审批被拒",
+      body: `你发起的 ${draft.actionTypeKey} 被拒：${comment}`,
+      refType: "action",
+      refId: draft.id,
+    });
+    return draft;
+  }
+
+  async cancel(ctx: AuthCtx, id: string): Promise<ActionDraft> {
+    const draft = await this.get(ctx, id);
+    if (!["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(draft.status)) {
+      throw invalidStep(`cannot cancel in status ${draft.status} (only before EXECUTING)`);
+    }
+    const isAdmin = ctx.roles.some((r) => baseRole(r) === "admin");
+    if (draft.origin.userId !== ctx.userId && !isAdmin) {
+      throw invalidStep("仅发起人或管理员可取消");
+    }
+    draft.status = "CANCELLED";
+    draft.updatedAt = new Date().toISOString();
+    await this.repos.actionDrafts.put(draft);
+    await this.outbox.emit(ctx.tenantId, "action.cancelled", { draftId: draft.id });
+    return draft;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  async execute(tenantId: string, draftId: string): Promise<ActionDraft> {
+    const draft = await this.repos.actionDrafts.get(tenantId, draftId);
+    if (!draft || draft.status !== "APPROVED") throw invalidStep("draft not in APPROVED state");
+    draft.status = "EXECUTING";
+    draft.updatedAt = new Date().toISOString();
+    await this.repos.actionDrafts.put(draft);
+    let attempts = 0;
+    let lastError: string | undefined;
+    while (attempts < this.retryDelaysMs.length) {
+      attempts++;
+      try {
+        const result = await this.executor.execute(draft);
+        if (result.ok) {
+          draft.status = "EXECUTED";
+          draft.executionResult = { ok: true, targetRef: result.targetRef, attempts };
+          draft.updatedAt = new Date().toISOString();
+          await this.repos.actionDrafts.put(draft);
+          await this.outbox.emit(tenantId, "action.executed", {
+            draftId: draft.id,
+            targetRef: result.targetRef,
+            attempts,
+          });
+          return draft;
+        }
+        lastError = result.error ?? "executor returned ok=false";
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+      if (attempts < this.retryDelaysMs.length) await this.sleep(this.retryDelaysMs[attempts - 1] as number);
+    }
+    draft.status = "EXECUTION_FAILED";
+    draft.executionResult = { ok: false, error: lastError, attempts };
+    draft.updatedAt = new Date().toISOString();
+    await this.repos.actionDrafts.put(draft);
+    await this.outbox.emit(tenantId, "action.execution_failed", { draftId: draft.id, error: lastError, attempts });
+    return draft;
+  }
+
+  /** GET /a/v1/action-drafts/{id}/audit — full trail: snapshot + decisions + execution + events. */
+  async audit(ctx: AuthCtx, id: string): Promise<Record<string, unknown>> {
+    const draft = await this.get(ctx, id);
+    const events = await this.repos.outboxEvents.list(
+      ctx.tenantId,
+      (e) => e.event.startsWith("action.") && e.payload.draftId === id,
+    );
+    return {
+      draft,
+      steps: draft.approvalSteps,
+      executionResult: draft.executionResult ?? null,
+      events: events
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+        .map((e) => ({ event: e.event, payload: e.payload, at: e.createdAt, status: e.status })),
+    };
+  }
+}

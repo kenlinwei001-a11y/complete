@@ -1,0 +1,714 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion } from "@/api/endpoints";
+import { ApiClientError } from "@/api/apiClient";
+import type { SopVersionVM } from "@/api/types";
+import { useSessionStore } from "@/store/sessionStore";
+import { toast, toastError } from "@/store/toastStore";
+import type { ViewRendererProps } from "../registry";
+import { fmt, useActionDraft } from "./shared";
+import zh from "@/locales/zh";
+import styles from "./SimViews.module.css";
+
+const STATUS_BADGE: Record<SopVersionVM["status"], { label: string; cls: string }> = {
+  DRAFT: { label: "DRAFT", cls: "badge" },
+  IN_REVIEW: { label: "IN_REVIEW", cls: "badge blue" },
+  EXEC_MEETING: { label: "EXEC_MEETING", cls: "badge amber" },
+  FINAL: { label: "FINAL", cls: "badge green" },
+};
+
+/** KPI 条常数（battery solverParams.sop）：缺口红线 2 / 现金底线 50 / 收入预算 248 亿 */
+const SOP_KPI_P = { gapRed: 2, cashFloor: 50, revBudget: 248 };
+
+/** ② 需求评审默认三线（原型 SOP_SEG：商用车 −11.8% 触发 C21） */
+const DEFAULT_SEGMENTS = [
+  { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, lastActual: 66.8 },
+  { key: "ess", name: "储能", target: 45.0, rolling: 49.0, lastActual: 41.9 },
+  { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 },
+];
+
+/** S&OP 月度平衡台（renderer=sop-balance，增量 §7.12）：六卡 KPI 条 + 五步法 + 定稿走 Action + C22 锁定 */
+export default function SopBalanceView(_props: ViewRendererProps) {
+  const qc = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [step, setStep] = useState(1);
+  const [newMonth, setNewMonth] = useState("2026-07");
+
+  const versions = useQuery({ queryKey: ["a", "sop-versions"], queryFn: fetchSopVersions });
+  const version = useQuery({
+    queryKey: ["a", "sop-version", selectedId],
+    queryFn: () => fetchSopVersion(selectedId!),
+    enabled: selectedId != null,
+  });
+
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ["a", "sop-versions"] });
+    void qc.invalidateQueries({ queryKey: ["a", "sop-version", selectedId] });
+  };
+
+  const create = useMutation({
+    mutationFn: () => createSopVersion({ month: newMonth, inputs: { demTotal: 132 } }),
+    onSuccess: (v) => {
+      invalidate();
+      select(v.id, v.month);
+      setStep(1);
+    },
+    onError: toastError,
+  });
+
+  const select = (id: string, month?: string) => {
+    setSelectedId(id);
+    setStep(1);
+    useSessionStore.getState().setSelectedObjects([
+      { objectType: "SopVersion", objectId: id, label: `S&OP ${month ?? ""}`.trim() },
+    ]);
+  };
+
+  const v = version.data;
+  // V{n} = 同月版本按创建时间升序的序号（全局唯一徽章）
+  const seq = v ? (versions.data ?? []).filter((x) => x.month === v.month).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).findIndex((x) => x.id === v.id) + 1 : 1;
+
+  return (
+    <div data-testid="sop-view">
+      <div className={styles.head}>
+        <div>
+          <h3>{zh.sim.sop.title}</h3>
+          <div className={styles.sub}>
+            五步法：产品 → 需求 → 供应 → 财务 → 高管决策会 · 版本状态机 DRAFT → IN_REVIEW → EXEC_MEETING →（定稿 Action 审批）→ FINAL · 定稿后 C22 锁定，任何字段变更走计划版本变更 Action（409 PLAN_LOCKED）。
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.sopGrid}>
+        <div className="panel">
+          <div className="section-title">{zh.sim.sop.versions}</div>
+          <div className={styles.miniForm}>
+            <input
+              className="wide"
+              style={{ width: 110 }}
+              value={newMonth}
+              aria-label="计划月份"
+              onChange={(e) => setNewMonth(e.target.value)}
+              placeholder="YYYY-MM"
+            />
+            <button className="btn sm primary" onClick={() => create.mutate()} data-testid="sop-create">
+              {zh.sim.sop.newVersion}
+            </button>
+          </div>
+          {(versions.data ?? []).map((it) => (
+            <button key={it.id} className={`${styles.verItem} ${selectedId === it.id ? styles.on : ""}`} onClick={() => select(it.id, it.month)} data-testid={`sop-version-${it.month}`}>
+              <span className="mono">{it.month}</span>
+              <span style={{ display: "inline-flex", gap: 4 }}>
+                {it.pendingApproval && (
+                  <span className="badge amber" data-testid={`sop-pending-${it.month}`}>
+                    {zh.sim.sop.pendingBadge}
+                  </span>
+                )}
+                <span className={STATUS_BADGE[it.status].cls} data-testid={`sop-status-${it.month}`}>
+                  {STATUS_BADGE[it.status].label}
+                </span>
+              </span>
+            </button>
+          ))}
+          {versions.data?.length === 0 && <div className="empty-state">{zh.common.none}</div>}
+        </div>
+
+        <div>
+          {!v && <div className="empty-state">选择或新建一个月度版本</div>}
+          {v && <VersionDetail key={v.id} v={v} seq={seq} step={step} setStep={setStep} onChanged={invalidate} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; seq: number; step: number; setStep: (n: number) => void; onChanged: () => void }) {
+  const locked = v.status === "FINAL";
+  const [lockedFallback, setLockedFallback] = useState(false); // 409 PLAN_LOCKED 前端兜底（§7.12）
+  const [highlightSeg, setHighlightSeg] = useState<string | null>(null);
+  const [resolutions, setResolutions] = useState<{ name: string; delta: number }[]>([
+    { name: "常州化成夜班×1", delta: 1.2 },
+    { name: "江门正极加急 200 吨", delta: 0.5 },
+  ]);
+  const action = useActionDraft();
+
+  const advance = useMutation({
+    mutationFn: (p: { step: number; payload: Record<string, unknown> }) => advanceSopVersion(v.id, p.step, p.payload),
+    onSuccess: () => onChanged(),
+    onError: toastError,
+  });
+  // 定稿走 Action（§7.12-⑤）：POST /a/v1/action-drafts actionType=定稿月度计划版本 → 待审批
+  const finalize = () =>
+    action.mutate(
+      {
+        actionTypeKey: "定稿月度计划版本",
+        payload: {
+          versionId: v.id,
+          month: v.month,
+          snapshot: { inputs: v.inputs, steps: v.steps, supFinal: v.supFinal },
+          resolutions: v.resolutions,
+        },
+      },
+      { onSuccess: () => onChanged() },
+    );
+  // 锁定态「发起变更」：actionType=计划版本变更
+  const requestChange = () =>
+    action.mutate({
+      actionTypeKey: "计划版本变更",
+      payload: { versionId: v.id, reason: "定稿后字段变更（C22 锁定 → 走变更 Action）", patch: {} },
+    });
+
+  // C22 锁定演示：FINAL 后改字段 → 409 PLAN_LOCKED → 同横幅兜底
+  const [lockDemoVal, setLockDemoVal] = useState("133");
+  const patchDemo = useMutation({
+    mutationFn: () => patchSopVersion(v.id, { demTotal: parseFloat(lockDemoVal) || 0 }),
+    onSuccess: () => {
+      toast("已保存", "success");
+      onChanged();
+    },
+    onError: (err: unknown) => {
+      if (err instanceof ApiClientError && err.code === "PLAN_LOCKED") setLockedFallback(true);
+      toastError(err);
+    },
+  });
+
+  const s4 = v.steps.s4 as { pass?: boolean; violations?: string[] } | undefined;
+  const step5Blocked = s4 !== undefined && s4.pass !== true;
+
+  const jumpToAgenda = (segKey: string) => {
+    setStep(5);
+    setHighlightSeg(segKey);
+  };
+
+  return (
+    <div className="panel" data-testid="sop-detail">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <b style={{ fontSize: 14 }}>
+          S&OP <span className="mono">{v.month}</span>
+        </b>
+        <span className={STATUS_BADGE[v.status].cls} data-testid="sop-detail-status">
+          {STATUS_BADGE[v.status].label}
+        </span>
+        {/* 版本徽章（§7.12 顶部右侧）：V{n} 评审中（紫）/ V{n} 已定稿·C22 锁定 */}
+        <span className={styles.verBadge} data-testid="sop-version-badge" style={{ marginLeft: "auto" }}>
+          {locked ? `🔒 ${zh.sim.sop.finalBadge(seq)}` : zh.sim.sop.reviewing(seq)}
+        </span>
+        {v.pendingApproval && (
+          <span className="badge amber" data-testid="sop-detail-pending">
+            {zh.sim.sop.pendingBadge}
+          </span>
+        )}
+      </div>
+
+      <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} />
+
+      {(locked || lockedFallback) && (
+        <div className={styles.lockBanner} data-testid="sop-locked-banner">
+          🔒 {zh.sim.sop.locked}
+          <button className="btn sm" style={{ marginLeft: 10 }} data-testid="sop-request-change" onClick={requestChange}>
+            {zh.sim.sop.requestChange}
+          </button>
+        </div>
+      )}
+
+      <div className={styles.stepper}>
+        {zh.sim.sop.steps.map((label, i) => {
+          const blocked = i === 4 && step5Blocked;
+          return (
+            <button
+              key={label}
+              className={`${styles.chip} ${step === i + 1 ? styles.on : ""}`}
+              disabled={blocked}
+              title={blocked ? zh.sim.sop.step5Blocked : undefined}
+              onClick={() => setStep(i + 1)}
+              data-testid={`sop-step-chip-${i + 1}`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {step === 1 && <Step1 v={v} locked={locked} run={(payload) => advance.mutate({ step: 1, payload })} />}
+      {step === 2 && <Step2 v={v} locked={locked} run={(payload) => advance.mutate({ step: 2, payload })} onJumpAgenda={jumpToAgenda} />}
+      {step === 3 && <Step3 v={v} locked={locked} run={(payload) => advance.mutate({ step: 3, payload })} />}
+      {step === 4 && <Step4 v={v} locked={locked} run={(payload) => advance.mutate({ step: 4, payload })} />}
+      {step === 5 && (
+        <Step5
+          v={v}
+          locked={locked}
+          blocked={!s4 || s4.pass !== true}
+          highlightSeg={highlightSeg}
+          resolutions={resolutions}
+          setResolutions={setResolutions}
+          run={(payload) => advance.mutate({ step: 5, payload })}
+          onFinalize={finalize}
+        />
+      )}
+
+      {/* 改字段尝试（FINAL → 409 PLAN_LOCKED 演示；非 FINAL 可正常保存） */}
+      <div className={styles.miniForm} style={{ marginTop: 16, borderTop: "1px dashed var(--line2)", paddingTop: 10 }}>
+        <span>{zh.sim.sop.lockDemo}：月度需求总量</span>
+        <input value={lockDemoVal} aria-label="月度需求总量" onChange={(e) => setLockDemoVal(e.target.value)} />
+        <button className="btn sm" onClick={() => patchDemo.mutate()} data-testid="sop-lock-demo-save">
+          {zh.common.save}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 顶部 KPI 条六卡（§7.12）：每卡悬停溯源（公式与来源）；决议编辑中供给/缺口即时重算 */
+function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: { name: string; delta: number }[] | null }) {
+  const s2 = v.steps.s2 as { total?: { rolling?: number } } | undefined;
+  const s3 = v.steps.s3 as { sup?: number; dem?: number } | undefined;
+  const s4 = v.steps.s4 as { revSum?: number; gmRoll?: number; gmBudget?: number; cashCushion?: number; cashOk?: boolean } | undefined;
+  const s5 = v.steps.s5 as { supFinal?: number } | undefined;
+
+  const demand = s2?.total?.rolling ?? (typeof v.inputs.demTotal === "number" ? v.inputs.demTotal : null);
+  const baseSup = s5?.supFinal ?? s3?.sup ?? null;
+  // ⑤ 决议增量编辑器联动：添加决议后顶部供给与缺口即时重算（display 侧，落库仍走第⑤步执行）
+  const liveDelta = liveResolutions && s3?.sup != null && s5?.supFinal == null ? liveResolutions.reduce((a, r) => a + r.delta, 0) : 0;
+  const supply = baseSup != null ? Math.round((baseSup + liveDelta) * 10000) / 10000 : null;
+  const gap = demand != null && supply != null ? Math.round((demand - supply) * 10000) / 10000 : null;
+  const revAttain = s4?.revSum != null ? (s4.revSum / SOP_KPI_P.revBudget) * 100 : null;
+
+  const cards: { key: string; label: string; value: string; color?: string; formula: string; source: string }[] = [
+    {
+      key: "demand",
+      label: zh.sim.sop.kpi.demand,
+      value: demand != null ? fmt(demand) : "—",
+      formula: "需求P50 = ② 三线对照合计.滚动P50（缺省 inputs.demTotal）",
+      source: "S&OP ② 需求评审（PlanTarget 同源勾稽）",
+    },
+    {
+      key: "supply",
+      label: zh.sim.sop.kpi.supply,
+      value: supply != null ? fmt(supply) : "—",
+      formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量",
+      source: "S&OP ③ 供应评审（S1.2 月聚合） + ⑤ 决议",
+    },
+    {
+      key: "gap",
+      label: zh.sim.sop.kpi.gap,
+      value: gap != null ? fmt(gap) : "—",
+      color: gap != null && gap > SOP_KPI_P.gapRed ? "var(--danger)" : "var(--ok)",
+      formula: `缺口 = 需求P50 − 可供给（> ${SOP_KPI_P.gapRed} 红）`,
+      source: "②/③/⑤ 联动即时重算",
+    },
+    {
+      key: "revAttain",
+      label: zh.sim.sop.kpi.revAttain,
+      value: revAttain != null ? `${revAttain.toFixed(1)}%` : "—",
+      formula: `收入预算达成 = ④ 滚动收入合计 ÷ 预算 ${SOP_KPI_P.revBudget} 亿`,
+      source: "S&OP ④ 财务整合",
+    },
+    {
+      key: "gm",
+      label: zh.sim.sop.kpi.gmVsBudget,
+      value: s4?.gmRoll != null ? `${Number(s4.gmRoll).toFixed(2)}% / ${s4.gmBudget}%` : "—",
+      color: s4?.gmRoll != null && s4.gmBudget != null && s4.gmRoll < s4.gmBudget - 0.5 ? "var(--danger)" : undefined,
+      formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差 0.5pp）",
+      source: "S&OP ④ 财务整合（C15 口径）",
+    },
+    {
+      key: "cash",
+      label: zh.sim.sop.kpi.cash,
+      value: s4?.cashCushion != null ? `${s4.cashCushion} 亿 ${s4.cashOk ? "✓" : "✗"}` : "—",
+      color: s4?.cashOk === false ? "var(--danger)" : "var(--ok)",
+      formula: `C18：现金垫(13周最低点) ≥ ${SOP_KPI_P.cashFloor} 亿`,
+      source: "S&OP ④ 财务整合（C18 校验）",
+    },
+  ];
+  return (
+    <div className={styles.sopKpiBar} data-testid="sop-kpi-bar">
+      {cards.map((c) => (
+        <div className={styles.sopKpi} key={c.key} tabIndex={0} data-testid={`sop-kpi-${c.key}`}>
+          <b style={{ color: c.color }}>{c.value}</b>
+          <span>{c.label}</span>
+          <div className={styles.sopKpiPop} data-testid={`sop-kpi-prov-${c.key}`}>
+            <b style={{ fontSize: 11 }}>公式</b>：{c.formula}
+            <br />
+            <b style={{ fontSize: 11 }}>来源</b>：{c.source}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------- 五步面板 ----------------
+
+function Step1({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: Record<string, unknown>) => void }) {
+  const s1 = v.steps.s1 as { changes?: Record<string, unknown>[]; boundaryDeltaWanPerMonth?: number } | undefined;
+  return (
+    <div data-testid="sop-step1">
+      <div className={styles.noteInfo}>产品评审先行：可产矩阵（型号×产线认证关系）变化直接改变 ②③ 的可行域。</div>
+      {!locked && (
+        <button className="btn primary" onClick={() => run({})} data-testid="sop-run-1">
+          {zh.sim.sop.runStep("①")}（PLM 认证边 diff）
+        </button>
+      )}
+      {s1 && (
+        <table className="cmp" style={{ marginTop: 10 }} data-testid="sop-s1-table">
+          <thead>
+            <tr>
+              <th>变化类型</th>
+              <th>型号×产线</th>
+              <th>状态</th>
+              <th>供给影响(万套/月)</th>
+              <th>来源</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(s1.changes ?? []).map((c, i) => (
+              <tr key={i}>
+                <td className="zh">
+                  <b>{String(c.kind)}</b>
+                </td>
+                <td>
+                  {String(c.modelId)} × <span className="zh">{String(c.baseId)}</span>
+                </td>
+                <td className="zh">{String(c.kind) === "认证转量产" ? "认证中→量产" : "—"}</td>
+                <td style={{ color: Number(c.impactWanPerMonth) > 0 ? "var(--ok)" : Number(c.impactWanPerMonth) < 0 ? "var(--danger)" : undefined }}>
+                  {Number(c.impactWanPerMonth) > 0 ? "+" : ""}
+                  {Number(c.impactWanPerMonth)}
+                </td>
+                <td>PLM</td>
+              </tr>
+            ))}
+            <tr>
+              <td colSpan={3}>
+                <b>供给可行域边界变化合计</b>
+              </td>
+              <td>
+                <b>+{s1.boundaryDeltaWanPerMonth ?? 0}</b>
+              </td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function Step2({
+  v,
+  locked,
+  run,
+  onJumpAgenda,
+}: {
+  v: SopVersionVM;
+  locked: boolean;
+  run: (p: Record<string, unknown>) => void;
+  onJumpAgenda: (segKey: string) => void;
+}) {
+  const [rows, setRows] = useState(DEFAULT_SEGMENTS);
+  const s2 = v.steps.s2 as
+    | { rows?: { key: string; name: string; target: number; rolling: number; lastActual: number; dv: number; flagged: boolean }[]; total?: { target: number; rolling: number; dv: number } }
+    | undefined;
+  return (
+    <div data-testid="sop-step2">
+      {!locked && (
+        <>
+          <table className="cmp">
+            <thead>
+              <tr>
+                <th>应用细分</th>
+                <th>目标(年度分解)</th>
+                <th>滚动 P50</th>
+                <th>上月实际</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.key}>
+                  <td className="zh">
+                    <b>{r.name}</b>
+                  </td>
+                  {(["target", "rolling", "lastActual"] as const).map((f) => (
+                    <td key={f}>
+                      <input
+                        type="number"
+                        step={0.1}
+                        value={r[f]}
+                        style={{ width: 80 }}
+                        aria-label={`${r.name}-${f}`}
+                        onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [f]: parseFloat(e.target.value) || 0 } : x)))}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button className="btn primary" style={{ marginTop: 8 }} onClick={() => run({ segments: rows })} data-testid="sop-run-2">
+            {zh.sim.sop.runStep("②")}（三线对照 · |dv|&gt;10% 触发 C21）
+          </button>
+        </>
+      )}
+      {s2?.rows && (
+        <table className="cmp" style={{ marginTop: 10 }} data-testid="sop-s2-table">
+          <thead>
+            <tr>
+              <th>应用细分</th>
+              <th>目标</th>
+              <th>滚动 P50</th>
+              <th>上月实际</th>
+              <th>滚动 vs 目标</th>
+              <th>规则</th>
+            </tr>
+          </thead>
+          <tbody>
+            {s2.rows.map((r) => (
+              <tr key={r.key}>
+                <td className="zh">
+                  <b>{r.name}</b>
+                </td>
+                <td>{fmt(r.target)}</td>
+                <td>{fmt(r.rolling)}</td>
+                <td>{fmt(r.lastActual)}</td>
+                <td style={{ color: r.flagged ? "var(--danger)" : r.dv >= 0 ? "var(--ok)" : "var(--amber)", fontWeight: 700 }} data-testid={`sop-dv-${r.key}`}>
+                  {r.dv > 0 ? "+" : ""}
+                  {(r.dv * 100).toFixed(1)}%{r.flagged ? " ⚑" : ""}
+                </td>
+                <td>
+                  {r.flagged ? (
+                    <button className={styles.c21Chip} data-testid={`sop-c21-chip-${r.key}`} onClick={() => onJumpAgenda(r.key)}>
+                      {zh.sim.sop.c21Chip}
+                    </button>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
+            ))}
+            {s2.total && (
+              <tr>
+                <td className="zh">
+                  <b>合计</b>
+                </td>
+                <td>
+                  <b>{fmt(s2.total.target)}</b>
+                </td>
+                <td>
+                  <b>{fmt(s2.total.rolling)}</b>
+                </td>
+                <td>—</td>
+                <td>
+                  <b>
+                    {s2.total.dv > 0 ? "+" : ""}
+                    {(s2.total.dv * 100).toFixed(1)}%
+                  </b>
+                </td>
+                <td>—</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: Record<string, unknown>) => void }) {
+  const [incs, setIncs] = useState<{ name: string; delta: number }[]>([]);
+  const s3 = v.steps.s3 as
+    | { perBase?: { baseId: string; monthly: number; certFactor: number }[]; sup?: number; dem?: number; gap?: number; flagged?: boolean; increments?: { name: string; delta: number }[] }
+    | undefined;
+  return (
+    <div data-testid="sop-step3">
+      {!locked && (
+        <div className={styles.miniForm}>
+          <span>供给增量（决议外的常规对策）</span>
+          <button className="btn sm" onClick={() => setIncs([...incs, { name: "常州化成夜班×1", delta: 1.2 }])}>
+            ＋ 增量行
+          </button>
+          {incs.map((inc, i) => (
+            <span key={i} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              <input className="wide" value={inc.name} aria-label={`增量名称${i + 1}`} onChange={(e) => setIncs(incs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+              <input type="number" step={0.1} value={inc.delta} aria-label={`增量数值${i + 1}`} onChange={(e) => setIncs(incs.map((x, j) => (j === i ? { ...x, delta: parseFloat(e.target.value) || 0 } : x)))} />
+            </span>
+          ))}
+          <button className="btn primary" onClick={() => run({ increments: incs })} data-testid="sop-run-3">
+            {zh.sim.sop.runStep("③")}（供给 = Σ基地 周产能×爬坡×认证）
+          </button>
+        </div>
+      )}
+      {s3?.perBase && (
+        <>
+          <table className="cmp" style={{ marginTop: 10 }} data-testid="sop-s3-table">
+            <thead>
+              <tr>
+                <th>基地</th>
+                <th>本月供给(万套)</th>
+                <th>认证系数</th>
+              </tr>
+            </thead>
+            <tbody>
+              {s3.perBase.map((b) => (
+                <tr key={b.baseId}>
+                  <td className="zh">
+                    <b>{b.baseId}</b>
+                  </td>
+                  <td>{fmt(b.monthly)}</td>
+                  <td>{b.certFactor < 1 ? <span className="badge amber">认证中 ×{b.certFactor}</span> : "1.0"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className={s3.flagged ? styles.noteRed : styles.noteInfo} data-testid="sop-gap">
+            需求 <b className="mono">{fmt(s3.dem ?? 0)}</b> − 供给 <b className="mono">{fmt(s3.sup ?? 0)}</b> = 缺口{" "}
+            <b className="mono">{fmt(s3.gap ?? 0)}</b> 万套{s3.flagged ? `（${zh.sim.sop.gapRed} → 红标，自动进⑤议程）` : ""}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Step4({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: Record<string, unknown>) => void }) {
+  const [form, setForm] = useState({ revSum: 248, gmSum: 39.7, gmBudget: 16.4, cashCushion: 58 });
+  const s4 = v.steps.s4 as
+    | { gmRoll?: number; gmBudget?: number; gmOk?: boolean; cashOk?: boolean; cashCushion?: number; pass?: boolean; violations?: string[] }
+    | undefined;
+  const fields: { key: keyof typeof form; label: string; unit: string }[] = [
+    { key: "revSum", label: "滚动收入合计", unit: "亿" },
+    { key: "gmSum", label: "滚动毛利合计", unit: "亿" },
+    { key: "gmBudget", label: "预算毛利率", unit: "%" },
+    { key: "cashCushion", label: "现金垫(13周最低点)", unit: "亿" },
+  ];
+  return (
+    <div data-testid="sop-step4">
+      {!locked && (
+        <>
+          {fields.map((f) => (
+            <div className={styles.formRow} key={f.key} style={{ maxWidth: 360 }}>
+              <span>
+                <label htmlFor={`sop4-${f.key}`}>{f.label}</label>
+              </span>
+              <input id={`sop4-${f.key}`} type="number" step={0.1} value={form[f.key]} onChange={(e) => setForm({ ...form, [f.key]: parseFloat(e.target.value) || 0 })} />
+              <i>{f.unit}</i>
+            </div>
+          ))}
+          <button className="btn primary" style={{ marginTop: 8 }} onClick={() => run(form)} data-testid="sop-run-4">
+            {zh.sim.sop.runStep("④")}（毛利/现金 C15·C18 校验）
+          </button>
+        </>
+      )}
+      {s4 && (
+        <div style={{ marginTop: 10 }} data-testid="sop-s4-result">
+          <table className="cmp">
+            <tbody>
+              <tr>
+                <td>毛利率_roll</td>
+                <td>
+                  <b>{Number(s4.gmRoll ?? 0).toFixed(2)}%</b>（预算 {s4.gmBudget}%·容差 0.5pp）
+                </td>
+                <td style={{ color: s4.gmOk ? "var(--ok)" : "var(--danger)" }}>{s4.gmOk ? "✓" : "✗"}</td>
+              </tr>
+              <tr>
+                <td>现金垫 C18</td>
+                <td>
+                  <b>{s4.cashCushion} 亿</b>（底线 50 亿）
+                </td>
+                <td style={{ color: s4.cashOk ? "var(--ok)" : "var(--danger)" }}>{s4.cashOk ? "✓" : "✗"}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className={s4.pass ? styles.noteInfo : styles.noteRed} data-testid="sop-s4-pass">
+            {s4.pass ? "④ 财务整合通过，可进入⑤高管决策会" : `④ 财务整合未通过：${(s4.violations ?? []).join("；")}（⑤入口已禁用）`}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Step5({
+  v,
+  locked,
+  blocked,
+  highlightSeg,
+  resolutions,
+  setResolutions,
+  run,
+  onFinalize,
+}: {
+  v: SopVersionVM;
+  locked: boolean;
+  blocked: boolean;
+  highlightSeg: string | null;
+  resolutions: { name: string; delta: number }[];
+  setResolutions: (r: { name: string; delta: number }[]) => void;
+  run: (p: Record<string, unknown>) => void;
+  onFinalize: () => void;
+}) {
+  const s5 = v.steps.s5 as { supFinal?: number; gapFinal?: number } | undefined;
+  return (
+    <div data-testid="sop-step5">
+      <div className="section-title">差异议程（②C21 + ③缺口 + ④越线项自动汇集）</div>
+      {v.agenda.length === 0 && <div className={styles.noteInfo}>暂无议程项</div>}
+      {v.agenda.map((a, i) => {
+        const hl = highlightSeg != null && a.source === "C21" && a.detail?.segment === highlightSeg;
+        return (
+          <div className={`${styles.agendaItem} ${hl ? styles.hl : ""}`} key={i} data-testid={`sop-agenda-${i}`} data-highlight={hl ? "1" : "0"}>
+            <span className="badge amber">{a.source}</span> {a.title}
+          </div>
+        );
+      })}
+
+      {!locked && v.status !== "EXEC_MEETING" && (
+        <>
+          <div className="section-title" style={{ marginTop: 10 }}>
+            决议增量项（添加后顶部供给与缺口即时重算）
+          </div>
+          {resolutions.map((r, i) => (
+            <div className={styles.miniForm} key={i}>
+              <input className="wide" value={r.name} aria-label={`决议${i + 1}名称`} onChange={(e) => setResolutions(resolutions.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+              <input
+                type="number"
+                step={0.1}
+                value={r.delta}
+                aria-label={`决议${i + 1}增量`}
+                onChange={(e) => setResolutions(resolutions.map((x, j) => (j === i ? { ...x, delta: parseFloat(e.target.value) || 0 } : x)))}
+              />
+              <span>万套/月</span>
+            </div>
+          ))}
+          <button className="btn sm" onClick={() => setResolutions([...resolutions, { name: "新增对策", delta: 0.5 }])} data-testid="sop-add-resolution">
+            ＋ 决议行
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+            <button className="btn primary" disabled={blocked} onClick={() => run({ resolutions })} data-testid="sop-run-5">
+              {zh.sim.sop.runStep("⑤")}（决议 → 版本演进）
+            </button>
+            {blocked && (
+              <span style={{ fontSize: 11, color: "var(--danger)" }} data-testid="sop-step5-blocked">
+                {zh.sim.sop.step5Blocked}
+              </span>
+            )}
+          </div>
+        </>
+      )}
+
+      {s5 && (
+        <div className={styles.noteInfo} style={{ marginTop: 10 }} data-testid="sop-s5-result">
+          决议后供给 <b className="mono">{fmt(s5.supFinal ?? 0)}</b> 万套 · 最终缺口 <b className="mono">{fmt(s5.gapFinal ?? 0)}</b> 万套
+        </div>
+      )}
+
+      {v.status === "EXEC_MEETING" && !v.pendingApproval && (
+        <button className="btn primary" style={{ marginTop: 10 }} onClick={onFinalize} data-testid="sop-finalize">
+          {zh.sim.sop.finalize}
+        </button>
+      )}
+      {v.pendingApproval && (
+        <div className={styles.noteAmber} data-testid="sop-finalize-pending">
+          {zh.sim.sop.finalizeDone} —— 草稿 <span className="mono">{v.pendingApproval.draftId}</span>（{zh.sim.gotoActions}：/admin/actions）
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,299 @@
+/* §7.14–7.17 剩余视图共用样式（对齐原型 buildAOP/buildQuarter/buildOrderAgg/mapsvgwrap 暗色密度） */
+
+/* —— 年度情景规划台 —— */
+.scenGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.scenCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top-width: 3px;
+  border-radius: 11px;
+  padding: 12px 14px;
+}
+.scenCard.pick {
+  border-color: rgba(84, 181, 196, 0.55);
+  border-top-width: 3px;
+  box-shadow: 0 0 0 1px rgba(84, 181, 196, 0.35);
+}
+.scenHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.scenBig {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  margin: 4px 0;
+}
+.scenBig small {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.scenNote {
+  font-size: 11px;
+  color: var(--muted2);
+  margin-bottom: 8px;
+}
+.scenRow {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 4px 0;
+  border-top: 1px dashed var(--line);
+}
+.scenRow > span {
+  color: var(--muted2);
+  font-size: 10.5px;
+}
+
+.trgRow td {
+  transition: background 0.2s;
+}
+.trgTriggered td {
+  background: rgba(98, 190, 119, 0.08) !important;
+}
+
+.decFlow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+.decNode {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 11.5px;
+  text-align: left;
+  color: var(--txt);
+  cursor: default;
+  position: relative;
+}
+.decNode b {
+  font-family: var(--font-mono);
+  display: block;
+}
+.decArrow {
+  color: var(--muted2);
+  align-self: center;
+}
+.decMonths {
+  display: flex;
+  gap: 4px;
+  margin-top: 5px;
+}
+.decMonths i {
+  font-style: normal;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  border: 1px solid var(--line2);
+  border-radius: 99px;
+  padding: 1px 7px;
+  color: var(--muted);
+}
+.decProv {
+  position: fixed;
+  z-index: 60;
+  background: linear-gradient(165deg, rgba(30, 38, 49, 0.97), rgba(14, 19, 26, 0.96));
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 300px;
+}
+
+/* —— 季度滚动 —— */
+.qbars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.qbar {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 11px;
+}
+.qbarLbl {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  margin-bottom: 6px;
+}
+.qbarTr {
+  height: 9px;
+  background: rgba(226, 235, 245, 0.06);
+  border-radius: 4px;
+  margin: 4px 0;
+  overflow: hidden;
+}
+.qbarTr i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+.qbarEv {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
+/* —— 订单全链 —— */
+.sumBar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.riskChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 480px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line2);
+  border-radius: 99px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  cursor: default;
+  white-space: nowrap;
+}
+.probGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.probCard {
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--danger);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--txt);
+  cursor: pointer;
+}
+.probCard:hover {
+  border-color: var(--accent);
+}
+.probTitle {
+  font-size: 12.5px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.probMeta {
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* —— 地理视图 —— */
+.geoLayout {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.geoCanvas {
+  position: relative;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+.geoSvg {
+  width: 100%;
+  display: block;
+}
+.geoOutline {
+  fill: rgba(94, 143, 232, 0.06);
+  stroke: rgba(226, 235, 245, 0.25);
+  stroke-width: 1.2;
+}
+.geoBubble {
+  cursor: pointer;
+  stroke-width: 1.4;
+  fill-opacity: 0.55;
+}
+.geoBubble:hover {
+  fill-opacity: 0.85;
+}
+.geoLabel {
+  font-size: 10.5px;
+  fill: var(--txt);
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+.geoLegend {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: rgba(14, 19, 26, 0.85);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.geoLegend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+  font-style: normal;
+}
+.baseDrawer {
+  width: 300px;
+  flex: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+}
+.drawerRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.drawerRow span {
+  color: var(--muted);
+}
+.drawerRow b {
+  font-family: var(--font-mono);
+}
+.overseasStrip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--muted);
+}

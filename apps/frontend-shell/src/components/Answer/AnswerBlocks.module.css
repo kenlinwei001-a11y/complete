@@ -1,0 +1,70 @@
+.text {
+  font-size: 13px;
+}
+
+.tableWrap {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+.tableHead {
+  display: flex;
+  justify-content: space-between;
+}
+
+.kpi {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 10px 16px;
+  margin: 4px 8px 4px 0;
+  min-width: 120px;
+  cursor: pointer;
+}
+.kpi:hover {
+  border-color: var(--accent);
+}
+
+.kpiLabel {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.kpiValue {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+}
+.kpiValue small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 4px;
+  font-weight: 400;
+}
+
+.violation {
+  border: 1px solid rgba(224, 98, 108, 0.55);
+  border-left: 3px solid var(--danger);
+  background: rgba(224, 98, 108, 0.06);
+  border-radius: 9px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+.draft {
+  border: 1px solid var(--line2);
+  background: rgba(232, 181, 74, 0.05);
+  border-radius: 9px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+.draftLink {
+  font-size: 12px;
+}

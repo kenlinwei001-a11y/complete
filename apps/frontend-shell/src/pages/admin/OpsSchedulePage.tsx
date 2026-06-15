@@ -1,0 +1,249 @@
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { OpsSchedule } from "@platform/contracts";
+import { fetchOpsSchedule, saveOpsSchedule } from "@/api/endpoints";
+import { toast, toastError } from "@/store/toastStore";
+
+const EMPTY: OpsSchedule = { forecasts: [] };
+
+/**
+ * §6 真实租户运营自动化 OpsSchedule（tenant_admin）。
+ * A 全自动：定期产能预测（M11 配对样本正式来源，ServiceAccount 身份）。
+ * B 半自动：S&OP 月度自动开启①–④（⑤决策与定稿必须人做）；审批催办→升级；
+ *          可选 autoApprove（默认关，开启需显式勾选 + 全审计）。
+ * C 禁止自动：虚拟提问/审批仅限 SYNTHETIC 租户（本页不提供入口）。
+ */
+export default function OpsSchedulePage() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["a", "ops-schedule"], queryFn: fetchOpsSchedule });
+  const [draft, setDraft] = useState<OpsSchedule>(EMPTY);
+
+  useEffect(() => {
+    if (data?.schedule) {
+      const s = data.schedule;
+      setDraft({
+        forecasts: s.forecasts ?? [],
+        ...(s.sopCycle ? { sopCycle: s.sopCycle } : {}),
+        ...(s.approvalReminder ? { approvalReminder: s.approvalReminder } : {}),
+        ...(s.autoApprove ? { autoApprove: s.autoApprove } : {}),
+      });
+    }
+  }, [data]);
+
+  const saveMut = useMutation({
+    mutationFn: (s: OpsSchedule) => saveOpsSchedule(s),
+    onSuccess: () => {
+      toast("运营自动化配置已保存", "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ops-schedule"] });
+    },
+    onError: toastError,
+  });
+
+  const addForecast = () =>
+    setDraft((d) => ({ ...d, forecasts: [...d.forecasts, { cron: "0 6 * * 1", modelIds: "ALL_ACTIVE", weeks: 12 }] }));
+  const updForecast = (i: number, patch: Partial<OpsSchedule["forecasts"][number]>) =>
+    setDraft((d) => ({ ...d, forecasts: d.forecasts.map((f, j) => (j === i ? { ...f, ...patch } : f)) }));
+  const delForecast = (i: number) => setDraft((d) => ({ ...d, forecasts: d.forecasts.filter((_, j) => j !== i) }));
+
+  return (
+    <div data-testid="ops-schedule-page">
+      <h2 style={{ fontSize: 16, marginBottom: 14 }}>运营自动化（OpsSchedule）</h2>
+
+      {/* A 全自动：定期产能预测 */}
+      <section className="panel" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 13 }}>A · 定期产能预测（计算类，ServiceAccount 自动执行）</h3>
+        <p style={{ fontSize: 11, color: "var(--muted2)" }}>M11 校准配对样本的正式来源；产物标记 executedAs=SERVICE_ACCOUNT。</p>
+        <table className="cmp">
+          <thead>
+            <tr>
+              <th>cron</th>
+              <th>型号</th>
+              <th>周数</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {draft.forecasts.map((f, i) => (
+              <tr key={i} data-testid={`forecast-${i}`}>
+                <td>
+                  <input className="inp" value={f.cron} onChange={(e) => updForecast(i, { cron: e.target.value })} />
+                </td>
+                <td>
+                  <input
+                    className="inp"
+                    value={Array.isArray(f.modelIds) ? f.modelIds.join(",") : f.modelIds}
+                    onChange={(e) =>
+                      updForecast(i, {
+                        modelIds: e.target.value === "ALL_ACTIVE" ? "ALL_ACTIVE" : e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                      })
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    className="inp"
+                    type="number"
+                    value={f.weeks}
+                    onChange={(e) => updForecast(i, { weeks: Number(e.target.value) })}
+                  />
+                </td>
+                <td>
+                  <button className="btn sm" onClick={() => delForecast(i)}>
+                    删除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button className="btn sm" onClick={addForecast} data-testid="add-forecast">
+          + 添加预测计划
+        </button>
+      </section>
+
+      {/* B 半自动：S&OP 月度自动开启 */}
+      <section className="panel" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 13 }}>B · S&OP 月度自动开启（①–④自动，⑤决策与定稿必须人做）</h3>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+          <input
+            type="checkbox"
+            data-testid="sop-enabled"
+            checked={!!draft.sopCycle}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                sopCycle: e.target.checked ? { openCron: "0 6 25 * *", stepDeadlines: [2, 2, 2, 2], escalateAfterDays: 3 } : undefined,
+              }))
+            }
+          />
+          启用 S&OP 月度自动开启
+        </label>
+        {draft.sopCycle && (
+          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+            <label style={{ fontSize: 12 }}>
+              开启 cron：
+              <input
+                className="inp"
+                value={draft.sopCycle.openCron}
+                onChange={(e) => setDraft((d) => ({ ...d, sopCycle: { ...d.sopCycle!, openCron: e.target.value } }))}
+              />
+            </label>
+            <label style={{ fontSize: 12 }}>
+              超期升级（天）：
+              <input
+                className="inp"
+                type="number"
+                value={draft.sopCycle.escalateAfterDays}
+                onChange={(e) => setDraft((d) => ({ ...d, sopCycle: { ...d.sopCycle!, escalateAfterDays: Number(e.target.value) } }))}
+              />
+            </label>
+          </div>
+        )}
+      </section>
+
+      {/* B 半自动：审批催办与升级 */}
+      <section className="panel" style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 13 }}>B · 审批催办与升级</h3>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+          <input
+            type="checkbox"
+            data-testid="reminder-enabled"
+            checked={!!draft.approvalReminder}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                approvalReminder: e.target.checked ? { remindAfterDays: 3, escalateAfterDays: 7, escalateToRole: "admin" } : undefined,
+              }))
+            }
+          />
+          启用审批超时催办
+        </label>
+        {draft.approvalReminder && (
+          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+            <label style={{ fontSize: 12 }}>
+              催办（天）：
+              <input
+                className="inp"
+                type="number"
+                value={draft.approvalReminder.remindAfterDays}
+                onChange={(e) => setDraft((d) => ({ ...d, approvalReminder: { ...d.approvalReminder!, remindAfterDays: Number(e.target.value) } }))}
+              />
+            </label>
+            <label style={{ fontSize: 12 }}>
+              升级（天）：
+              <input
+                className="inp"
+                type="number"
+                value={draft.approvalReminder.escalateAfterDays}
+                onChange={(e) => setDraft((d) => ({ ...d, approvalReminder: { ...d.approvalReminder!, escalateAfterDays: Number(e.target.value) } }))}
+              />
+            </label>
+            <label style={{ fontSize: 12 }}>
+              升级到角色：
+              <input
+                className="inp"
+                value={draft.approvalReminder.escalateToRole}
+                onChange={(e) => setDraft((d) => ({ ...d, approvalReminder: { ...d.approvalReminder!, escalateToRole: e.target.value } }))}
+              />
+            </label>
+          </div>
+        )}
+      </section>
+
+      {/* B 半自动：低风险自动批准（默认关，需显式勾选 + 全审计） */}
+      <section className="panel" style={{ marginBottom: 16, borderColor: "var(--c-risk, #c33)" }}>
+        <h3 style={{ fontSize: 13 }}>B · 低风险自动批准（默认关闭，开启全程审计）</h3>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+          <input
+            type="checkbox"
+            data-testid="autoapprove-enabled"
+            checked={draft.autoApprove?.enabled ?? false}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                autoApprove: { actionTypes: d.autoApprove?.actionTypes ?? [], maxAmount: d.autoApprove?.maxAmount, enabled: e.target.checked },
+              }))
+            }
+          />
+          启用低风险自动批准
+        </label>
+        {draft.autoApprove && (
+          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+            <label style={{ fontSize: 12 }}>
+              白名单类型（逗号分隔）：
+              <input
+                className="inp"
+                data-testid="autoapprove-types"
+                value={draft.autoApprove.actionTypes.join(",")}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    autoApprove: { ...d.autoApprove!, actionTypes: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) },
+                  }))
+                }
+              />
+            </label>
+            <label style={{ fontSize: 12 }}>
+              金额上限（可选）：
+              <input
+                className="inp"
+                type="number"
+                value={draft.autoApprove.maxAmount ?? ""}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    autoApprove: { ...d.autoApprove!, maxAmount: e.target.value === "" ? undefined : Number(e.target.value) },
+                  }))
+                }
+              />
+            </label>
+          </div>
+        )}
+      </section>
+
+      <button className="btn primary" data-testid="save-schedule" disabled={saveMut.isPending} onClick={() => saveMut.mutate(draft)}>
+        保存配置
+      </button>
+    </div>
+  );
+}

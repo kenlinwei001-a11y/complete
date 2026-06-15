@@ -1,0 +1,31 @@
+:root {
+  --bg: #0d1117;
+  --bg2: #11161d;
+  --panel: #161c24;
+  --panel2: #10151c;
+  --line: rgba(226, 235, 245, 0.07);
+  --line2: rgba(226, 235, 245, 0.13);
+  --txt: #e9eef5;
+  --muted: #9aa8b6;
+  --muted2: #67737f;
+  --accent: #4c90f0;
+  /* 领域色（图谱/图例/标签复用） */
+  --c-factory: #5e8fe8;
+  --c-product: #36bfa5;
+  --c-process: #dd9551;
+  --c-equip: #9d8bf0;
+  --c-people: #dd7e9e;
+  --c-quality: #62be77;
+  --c-capacity: #43b7d7;
+  --c-forecast: #d2b04c;
+  --c-solver: #c470b8;
+  --c-agent: #5fc2ae;
+  --font-sans: "Inter", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* 信任级与状态色 */
+  --ok: #62be77;
+  --warn: #e8b54a;
+  --amber: #e8b54a;
+  --danger: #e0626c;
+}

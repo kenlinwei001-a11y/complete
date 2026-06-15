@@ -1,0 +1,62 @@
+.wrap {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.toast {
+  background: linear-gradient(165deg, rgba(30, 38, 49, 0.96), rgba(16, 21, 28, 0.96));
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 10px 32px 10px 12px;
+  position: relative;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  font-size: 12.5px;
+}
+
+.toast.error {
+  border-color: rgba(224, 98, 108, 0.5);
+}
+.toast.success {
+  border-color: rgba(98, 190, 119, 0.5);
+}
+.toast.warn {
+  border-color: rgba(232, 181, 74, 0.5);
+}
+
+.msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reqId {
+  margin-top: 6px;
+  background: none;
+  border: none;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 0;
+}
+.reqId:hover {
+  color: var(--accent);
+}
+
+.x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--muted2);
+  font-size: 11px;
+}
+.x:hover {
+  color: var(--txt);
+}

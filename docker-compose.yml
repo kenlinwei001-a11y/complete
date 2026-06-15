@@ -1,0 +1,148 @@
+# 全域数字化智能决策支撑系统 — 一键本机部署
+#   docker compose up --build
+# 访问：http://decision.local（hosts 指到本机，见 DEPLOY.md）或 http://localhost
+# 登录：租户 demo · 账号 admin / 密码 demo1234（另有 planner / base_manager）
+services:
+  postgres-a:
+    image: pgvector/pgvector:pg15            # DataCore：S4 知识库向量检索用 pgvector
+    environment:
+      POSTGRES_USER: datacore
+      POSTGRES_PASSWORD: datacore
+      POSTGRES_DB: datacore
+    volumes:
+      - pgdata-a:/var/lib/postgresql/data
+    ports:
+      - "5441:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datacore"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres-b:
+    image: postgres:15-alpine                # AgentCore：纯关系存储，无扩展依赖
+    environment:
+      POSTGRES_USER: agentcore
+      POSTGRES_PASSWORD: agentcore
+      POSTGRES_DB: agentcore
+    volumes:
+      - pgdata-b:/var/lib/postgresql/data
+    ports:
+      - "5442:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentcore"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  datacore:
+    build:
+      context: .
+      dockerfile: apps/datacore/Dockerfile
+    environment:
+      DATABASE_URL: postgres://datacore:datacore@postgres-a:5432/datacore
+      PORT: "4001"
+      JWT_SECRET: dev-secret-change-me
+      CREDENTIAL_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      # LLM Provider 增量 §1.1：服务间凭证（AgentCore 拉取 provider 配置与解密密钥；两侧同值）
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+      BLOB_DIR: /data/blobs
+      SEED_DEMO: ${SEED_DEMO:-1}             # 默认播种电池制造演示数据（seed 42，幂等）
+      # 管理平台增量 §1：空库首启创建平台超管（default 租户 platform_admin；SEED_DEMO=0 冷启动时必配）
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # 可选：真实向量检索（默认 pseudo 哈希向量，无外部依赖）
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-pseudo}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+    volumes:
+      - blob-data:/data/blobs
+    ports:
+      - "4001:4001"                          # 直连调试入口（前端走 gateway 同源）
+    depends_on:
+      postgres-a:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4001/readyz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s                     # 首次启动含演示数据播种（90 天时序）
+
+  agentcore:
+    build:
+      context: .
+      dockerfile: apps/agentcore/Dockerfile
+    environment:
+      DATABASE_URL: postgres://agentcore:agentcore@postgres-b:5432/agentcore
+      PORT: "4002"
+      DATACORE_BASE_URL: http://datacore:4001
+      CREDENTIAL_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      QOS_CLASSIFIER_MODEL: ${QOS_CLASSIFIER_MODEL:-claude-haiku-4-5}
+      QOS_AGENT_MODEL: ${QOS_AGENT_MODEL:-claude-opus-4-8}
+      QOS_TAU_HIGH: "0.85"
+      QOS_TAU_LOW: "0.55"
+    ports:
+      - "4002:4002"                          # 直连调试入口（前端走 gateway 同源）
+    depends_on:
+      postgres-b:
+        condition: service_healthy
+      datacore:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4002/readyz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend-shell/Dockerfile
+      args:
+        VITE_DATACORE_URL: ""                # 同源相对路径 → gateway 反代 /a/v1
+        VITE_AGENTCORE_URL: ""               # 同源相对路径 → gateway 反代 /b/v1 + /api/v1
+        VITE_MOCK: "0"                       # 真连模式（关闭 MSW mock）
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  gateway:
+    image: nginx:alpine
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # 启用 HTTPS 时挂载证书并放开 443（见 deploy/nginx.conf 注释块）
+      # - ./deploy/certs:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      # - "443:443"
+    depends_on:
+      frontend:
+        condition: service_healthy
+      datacore:
+        condition: service_healthy
+      agentcore:
+        condition: service_healthy
+
+volumes:
+  pgdata-a:
+  pgdata-b:
+  minio-data:
+  blob-data:

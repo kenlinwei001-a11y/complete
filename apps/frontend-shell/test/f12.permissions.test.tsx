@@ -1,0 +1,32 @@
+import { describe, expect, it } from "vitest";
+import { screen } from "@testing-library/react";
+import { loginAs, renderApp } from "./utils";
+
+describe("F12 · 权限 UI 与 feature 守卫", () => {
+  it("base_manager：admin 导航隐藏；直输 /admin/permissions → 403", async () => {
+    loginAs("base_manager");
+    renderApp("/admin/permissions");
+    expect(await screen.findByTestId("page-403")).toBeInTheDocument();
+    expect(screen.queryByTestId("nav-admin")).not.toBeInTheDocument();
+  });
+
+  it("base_manager：feature 关闭的视图直访 → 404（404 优先于 403）", async () => {
+    loginAs("base_manager");
+    renderApp("/v/plan-audit");
+    expect(await screen.findByTestId("page-404")).toBeInTheDocument();
+  });
+
+  it("planner：aop（原型存在但无后端支持，renderer 未注册）→ 「该视图类型暂不支持」兜底卡", async () => {
+    loginAs("planner");
+    renderApp("/v/aop");
+    expect(await screen.findByTestId("unsupported-view")).toBeInTheDocument();
+    expect(screen.getByText("该视图类型暂不支持")).toBeInTheDocument();
+  });
+
+  it("planner：admin 导航可见且 /admin/permissions 可访问", async () => {
+    loginAs("planner");
+    renderApp("/admin/permissions");
+    expect(await screen.findByTestId("authz-explain")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-admin")).toBeInTheDocument();
+  });
+});
