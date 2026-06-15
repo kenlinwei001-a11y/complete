@@ -1088,6 +1088,39 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { type, id } = req.params as { type: string; id: string };
     return ontology.getObject(ctx(req), type, id);
   });
+
+  // 活数据可溯（PRD-live-traceable-data §3.2）：对象 → 原始行 → RawDataset → 连接器 + 派生链。
+  // 回答"这个数从哪来"——把推演结果里的一个对象/数字溯回它的源头原始数据与计算口径。
+  // 复用 ontology.getObject 做 READ 鉴权 + 行级过滤 + 主键解析；再取完整对象拿 origin backref。
+  app.get("/a/v1/lineage/object/:type/:id", async (req) => {
+    const c = ctx(req);
+    const { type, id } = req.params as { type: string; id: string };
+    const payload = await ontology.getObject(c, type, id); // 404/403 if not allowed (R3/A6)
+    const obj = await repos.objects.get(c.tenantId, (payload.data as { id: string }).id);
+    if (!obj) throw notFound("object");
+    const org = obj.origin as { type: string; jobId?: string; sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number };
+    let source: unknown = null;
+    if (org.rawDatasetId) {
+      const ds = await repos.rawDatasets.get(c.tenantId, org.rawDatasetId);
+      const conn = ds ? await repos.connections.get(c.tenantId, ds.sourceConnId) : undefined;
+      const rows = ds ? await repos.rawRows.list(c.tenantId, ds.id) : [];
+      const rawRow = typeof org.rawRowIdx === "number" ? (rows[org.rawRowIdx] ?? null) : null;
+      source = {
+        connection: conn ? { id: conn.id, name: conn.name, connectorTypeKey: conn.connectorTypeKey } : null,
+        rawDataset: ds ? { id: ds.id, name: ds.name, rowCount: ds.rowCount, fields: ds.fields.map((f) => f.name) } : null,
+        rawRowIdx: org.rawRowIdx ?? null,
+        rawRow,
+      };
+    }
+    const typeDef = await ontology.getType(c, type);
+    const derivations = (typeDef?.derivedProperties ?? []).map((d) => ({ prop: d.propKey, formula: d.formula }));
+    return {
+      object: { id: obj.id, type: obj.type, origin: obj.origin },
+      source, // null = 非数据对象（如纯派生/手工）或无源头 backref
+      derivations, // 该类型的派生属性（= 计算字段，非原始；展示口径）
+      snapshotVersion: payload.snapshotVersion,
+    };
+  });
   // 前端 PRD §7.2 + 增量 §7.18：类型级本体图谱。节点 = ObjectType + 求解器 + 概念节点
   // （学习闭环/智能体网络），边带 kind 字段（flow/agg/fb/orch/calc）供视角 linkKinds 过滤。
   app.get("/a/v1/ontology/graph", async (req) => {

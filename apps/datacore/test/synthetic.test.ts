@@ -178,6 +178,31 @@ describe("A7 synthetic data", () => {
     }
   });
 
+  it("LINEAGE: 对象 → 原始行 → RawDataset → 连接器 反查（PRD-live-traceable-data §3.2）", async () => {
+    const t = await makeApp();
+    await runJob(t);
+    const orders = await t.repos.objects.listByType("demo", "Order");
+    const so = orders[0]!.props.so as string;
+
+    const lin = (
+      await t.app.inject({ method: "GET", url: `/a/v1/lineage/object/Order/${encodeURIComponent(so)}`, headers: ADMIN })
+    ).json() as {
+      object: { id: string; type: string; origin: { rawDatasetId?: string } };
+      source: { connection: { name: string } | null; rawDataset: { name: string } | null; rawRowIdx: number | null; rawRow: Record<string, unknown> | null };
+      derivations: { prop: string; formula: string }[];
+    };
+    expect(lin.object.type).toBe("Order");
+    expect(lin.source.connection!.name).toContain("合成数据源"); // 溯到合成连接器
+    expect(lin.source.rawDataset!.name).toBe("Order"); // 溯到 Order 原始表
+    expect(typeof lin.source.rawRowIdx).toBe("number");
+    expect(lin.source.rawRow!.so).toBe(so); // 溯回的原始行正是这条订单（不再"无源头"）
+    expect(Array.isArray(lin.derivations)).toBe(true); // 计算口径（派生属性）一并给出
+
+    // 未知对象 → 404（鉴权/存在性，复用 getObject 语义）
+    const miss = await t.app.inject({ method: "GET", url: "/a/v1/lineage/object/Order/NOPE", headers: ADMIN });
+    expect(miss.statusCode).toBe(404);
+  });
+
   it("SY3: unknown industry → LLM-generated template, stored for reuse, full flow runs", async () => {
     const t = await makeApp();
     t.llm.enqueue({

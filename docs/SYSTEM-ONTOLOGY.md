@@ -135,7 +135,8 @@ RawDataset --materialize(幂等)--> ObjectInstance --runDerivations--> DerivedPr
 SyntheticJob --gen(seed)--> Connection(合成源)+RawDataset/RawRow --materialize--> ObjectInstance(origin 溯回 rawDatasetId/rowIdx)/Link   ✅ 活数据可溯 P1（synthetic/service.ts；不再凭空落对象）        IndustryTemplate --驱动--> SyntheticJob
 ObjectType <--reads-- Solver(入参字段)     ObjectType <--scopes-- Rule     ObjectType --domain--> SliceSpec
 SolverParam <--adjusts-- Calibration       Action(EXECUTED) --writeback--> ObjectInstance(props,二次派生)
-Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）；lineage 反查端点待 P2
+Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）
+ObjectInstance --lineage 反查--> RawRow→RawDataset→Connection + 派生口径   ✅ P2（GET /a/v1/lineage/object/:type/:id）；结果→入参对象 lineage 待 P3 前端整合
 ```
 **数据构建发动机链（需求拉动）**
 ```
