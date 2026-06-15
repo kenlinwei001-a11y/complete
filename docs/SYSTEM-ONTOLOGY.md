@@ -252,3 +252,77 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - 治理已落地（不靠自觉）：`CLAUDE.md` 铁律 0（必读）· SessionStart 钩子（每会话动态注入 §8 未修断点）· `pnpm ontology:check`（漂移即红）· `docs/_PRD-TEMPLATE.md`（强制《本体引用与影响》）· `/ontology` skill。
 - 相关 PRD：`docs/PRD-unified-build-engine.md`（统一构建发动机，全链闭包将补 R11 门禁）· `docs/AUDIT-0614-fullchain.md`（全链审核）· `docs/TODO.md`（修复进度）。
 - 远期可**落库**：把本文的对象类型/链路/规则注册为平台自己的 ObjectType/Link/Rule（dogfooding），让"系统本体"也能被切片/校验/推演——即用平台分析平台自身。
+
+---
+
+## 10. 系统自我域 · 域内切片 · 跨域节点
+
+### 10.1 两级域辨析（别混）
+
+- **业务本体域**（`graphmeta.ts:8` GRAPH_DOMAIN）：factory/product/capacity/process/equip/people/quality/forecast/plan ——给**电池业务对象**分组；图谱视角另挂 solver/agent 元节点。**这不是本节对象。**
+- **系统自我域**（本节）：平台**机器本身**的功能域——比业务域高一个抽象层，描述"系统由哪些功能簇构成、簇间怎么接线"。本节正式化 §2 的 A–H 分组为"域 + 域内切片 + 跨域节点"。
+
+### 10.2 系统自我域清单（11 域）
+
+| 域 | 范畴 | 主要对象类型（§2） |
+|---|---|---|
+| **D1 接入域 Ingest** | 数据/故事进系统 | Connector·RawDataset·IndustryTemplate·SyntheticJob·BuildPlan/Job·DataBuilderAgent·ClosureReport·QuarantineRow |
+| **D2 本体域 Ontology** | 类型/对象/派生/切片 | OntologyType/Link/Version/Draft·ObjectInstance·Link·PropertyDef·DerivationSpec/Run·SliceSpec·ObjectPropHistory |
+| **D3 规则域 Rules** | 约束/规则 | Rule·RuleDoc·RuleCandidate·ExtractSegment·ruledsl |
+| **D4 推演域 Solving** | 求解/校准/仿真 | Solver(SOLVER_KEYS)·SolverParam·Calibration*·ForecastSnapshot·RiskCase·SopVersion·generic-inference(TO-BE) |
+| **D5 行动域 Action** | 真值写回 | ActionType·ActionDraft·approval·domainExecutor(Phase9B) |
+| **D6 权限域 Access** | 隔离/鉴权/门控 | Tenant·User·IAM·Policy(A6)·Feature/Entitlement |
+| **D7 编排域 Orchestration** | 问句→答案 | QOS·Intent·ExecutionPlan/Workflow·Skill·Agent·MCP·Task·classify/route/SSE |
+| **D8 场景域 Scenario** | 场景/入口/视图 | ScenarioPackage·ScenarioCard·SceneEntry·View·presetContext·launcher(TO-BE) |
+| **D9 信息流域 Flow** | 事件/失效/通知 | OutboxEvent·EventSubscription(§4)·Notification·B→A缓存失效·D-29 |
+| **D10 运营时序域 Ops** | 时序/时钟/回放 | TsAggSpec/Run·SimulationClock·LivedInState·OpsSchedule·Replay |
+| **D11 治理元域 Meta** | 管理其余 10 域 | 系统本体·PRD库·ontology:check·闭包/全链闭包门·CLAUDE.md/钩子/skill |
+
+> D11 是"管理其它域"的元域——协同进化机制（§9 + 运行模型）就活在这里。
+
+### 10.3 域内本体切片（= 可追溯子图，复用 SliceSpec 形态 root→hops）
+
+命名 `sys.<域>.<形状>`；这些切片**就是各域的关键链路**，也是全链闭包门要逐条验证"端到端通"的对象。
+
+| 切片键 | 域 | root → hops（子图） |
+|---|---|---|
+| `sys.ingest.data_to_object` | D1→D2 | Connector→RawDataset→ObjectType→ObjectInstance→Derivation |
+| `sys.ingest.build_closure` | D1 | StoryScript→BuildPlan→ClosureReport→{ObjectType,Rule,Solver需求} |
+| `sys.ontology.type_lineage` | D2 | ObjectType→PropertyDef→DerivationSpec→SliceSpec |
+| `sys.rules.scope_binding` | D3 | Rule→ObjectType(scope) + Rule→agent/workflow.ruleBindings |
+| `sys.solving.invoke` | D4 | Solver→ObjectType(读)→SolverParam（同输入同输出） |
+| `sys.solving.calibration` | D4 | Calibration→SolverParam(版本化)→重放 |
+| `sys.action.writeback` | D5 | ActionType→ActionDraft→approval→ObjectInstance(props)→Derivation(二次) |
+| `sys.access.row_filter` | D6 | User→Role→Policy(A6)→ObjectInstance(过滤) |
+| `sys.access.entitlement` | D6 | Feature→{endpoint,view,solver}(门控,先于authz) |
+| **`sys.orch.query_to_answer`** | **D7** | **Query→Intent→Plan→Step*→{Solver\|Slice\|Rule}→AnswerBlock→SSE（中枢链=审核全链）** |
+| `sys.scenario.launch` | D8 | ScenarioCard→View + →Intent + →presetContext→Query |
+| `sys.flow.event_to_refresh` | D9 | OutboxEvent→EventSubscription→ConsumerView（=§4 全表） |
+| `sys.ops.tick` | D10 | SimulationClock→tick→{ObjectInstance,TS}→Derivation→dashboard |
+| **`sys.meta.change_loop`** | **D11** | **Requirement(PRD)→Ontology(影响分析)→Code→回写→门禁→Release（=协同进化闭环）** |
+
+### 10.4 跨域节点（接缝 = 断点高发区）
+
+横跨多域的对象 = 系统的**接缝**。核心规律：**断点几乎全在跨域节点上**（"断点常在接缝"的形式化）。
+
+| 跨域节点 | 桥接的域 | 关联断点 |
+|---|---|---|
+| **ObjectType / ObjectInstance** | D2↔D1↔D4↔D3↔D5↔D6（最横切） | 改动涟漪最广 |
+| **Solver** | D4↔D7(invoke_solver)↔D2(读对象) | **G-2**（Solver↔Plan 输出形状） |
+| **ExecutionPlan/Workflow** | D7↔D1(构建生成)↔D4(调solver) | **G-1**（Intent↔Plan 接线） |
+| **Intent** | D7↔D8(场景) | **G-3/G-4** |
+| **Rule** | D3↔D7(evaluate)↔D5(BLOCK)↔D4(约束) | — |
+| **SliceSpec** | D2↔D7(resolve_slice)↔D6(逐跳过滤) | — |
+| **OutboxEvent** | D9↔**所有域**→前端（信息流主干） | D-29 / DL1–DL12 |
+| **ActionType/ActionDraft** | D5↔D2(物化)↔D7(create_draft) | R4 不变量 |
+| **Policy(A6)** | D6↔D2/D4/D7（读出过滤横切） | — |
+| **Feature(Entitlement)** | D6↔**所有域**（门控） | R3 |
+| **Tenant** | D6↔**所有域**（隔离） | R2 |
+| **BuildPlan/ClosureReport** | D1↔D2+D3+D4+(扩后)D7/D8 | **G-8**（闭包不跨到 D7/D8） |
+
+### 10.5 与机制的联系（为什么这么切）
+
+1. **跨域节点 = 全链闭包门(R11) 的守护焦点**：G-1/G-2/G-8 都坐在跨域节点上 → 闭包门重点验证这些接缝的"形状/接线/可运行"。
+2. **跨域切片 = 闭包门的验证对象**：尤其 `sys.orch.query_to_answer`（中枢链）与 `sys.ingest.build_closure`（构建链）——全链闭包门就是"这两条切片必须端到端通"。
+3. **域 = 影响分析的单位 + 权限/责任的边界**：一个需求先落到域 → 再沿域内切片定位 → 跨域节点提示涟漪范围。
+4. **可落库 dogfooding**：这些切片用平台自己的 `SliceSpec`(root→hops) 形态写 → 未来把系统本体注册为平台对象后，可用平台的 `executeSlice` 真去"切系统自己"、用规则引擎校验系统不变量、用推演做"改这个节点影响哪些切片"的 what-if。**用平台分析平台自身的闭环在此落地。**
