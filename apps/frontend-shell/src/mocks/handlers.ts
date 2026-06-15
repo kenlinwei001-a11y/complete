@@ -387,6 +387,25 @@ export const handlers = [
     return err(404, "NOT_FOUND", "object not found");
   }),
 
+  // 活数据可溯（PRD-live-traceable-data §3.2）：对象 lineage 反查（mock 返回合成源链路）。
+  http.get("*/a/v1/lineage/object/:type/:id", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const type = String(params.type);
+    const id = decodeURIComponent(String(params.id));
+    return HttpResponse.json({
+      object: { id, type, origin: { type: "SYNTHETIC", rawDatasetId: `rds_${type}`, rawRowIdx: 0, sourceConnId: "conn_synth" } },
+      source: {
+        connection: { id: "conn_synth", name: "合成数据源（确定性生成）", connectorTypeKey: "mock_erp" },
+        rawDataset: { id: `rds_${type}`, name: type, rowCount: 20, fields: ["so", "cust", "model", "qty", "due"] },
+        rawRowIdx: 0,
+        rawRow: { so: id, cust: "客户A", model: "4680-NCM" },
+      },
+      derivations: type === "Order" ? [{ prop: "value", formula: "value = qty × unitPrice" }] : [],
+      snapshotVersion: "1.1",
+    });
+  }),
+
   http.get("*/a/v1/ontology/graph", () => HttpResponse.json(GRAPH)),
 
   // ---- 剩余视图增量：计划域 / 映射表 / 校准 / 数据健康度 ----

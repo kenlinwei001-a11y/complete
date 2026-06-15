@@ -357,6 +357,24 @@ export const editRawDatasetRow = (id: string, idx: number, patch: Record<string,
     method: "PATCH",
     body: patch,
   });
+/**
+ * 活数据可溯（PRD-live-traceable-data §3.2）：对象 → 原始行 → RawDataset → 连接器 + 派生口径。
+ * 推演结论里的数据"悬浮溯源"用它："这个数从哪来"。
+ */
+export interface ObjectLineageVM {
+  object: { id: string; type: string; origin: Record<string, unknown> };
+  source: {
+    connection: { id: string; name: string; connectorTypeKey: string } | null;
+    rawDataset: { id: string; name: string; rowCount: number; fields: string[] } | null;
+    rawRowIdx: number | null;
+    rawRow: Record<string, unknown> | null;
+  } | null;
+  derivations: { prop: string; formula: string }[];
+  snapshotVersion: string;
+}
+export const fetchObjectLineage = (objectType: string, objectId: string) =>
+  api.a<ObjectLineageVM>(`/a/v1/lineage/object/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`);
+
 /** A3 半自动建模：选原始数据集 → AI 建议草案（202 {draftId}） */
 export const suggestModeling = (rawDatasetIds: string[]) =>
   api.a<{ draftId: string; status: string }>("/a/v1/modeling/suggest", { body: { rawDatasetIds } });
