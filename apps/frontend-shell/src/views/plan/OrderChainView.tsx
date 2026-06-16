@@ -14,7 +14,7 @@ import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
 
-const SEG_COLOR: Record<string, string> = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" };
+const SEG_COLOR: Record<string, string> = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" }; // debattery-allow：view.layout.segColors 缺失兜底（纯配色映射）
 const CHIP_LIMIT = 4;
 
 /** 问题类别 → 中文（4 类归并：交期/毛利/齐套/信用） */

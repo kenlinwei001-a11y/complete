@@ -22,11 +22,16 @@ const STATUS_BADGE: Record<SopVersionVM["status"], { label: string; cls: string 
 /** KPI 条常数（battery solverParams.sop）：缺口红线 2 / 现金底线 50 / 收入预算 248 亿 */
 const SOP_KPI_P = { gapRed: 2, cashFloor: 50, revBudget: 248 };
 
-/** ② 需求评审默认三线（原型 SOP_SEG：商用车 −11.8% 触发 C21） */
+/** ② 需求评审默认三线（sopConfig.segments 缺失时的电池行业兜底；换租户经 WorkspaceConfig 下发）。 */
 const DEFAULT_SEGMENTS = [
-  { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, lastActual: 66.8 },
+  { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, lastActual: 66.8 }, // debattery-allow
   { key: "ess", name: "储能", target: 45.0, rolling: 49.0, lastActual: 41.9 },
-  { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 },
+  { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 }, // debattery-allow
+];
+/** 决议增量默认项（sopConfig.defaultResolutions 缺失时兜底；换租户经 WorkspaceConfig 下发）。 */
+const DEFAULT_RESOLUTIONS = [
+  { name: "常州化成夜班×1", delta: 1.2 }, // debattery-allow
+  { name: "江门正极加急 200 吨", delta: 0.5 }, // debattery-allow
 ];
 
 /** S&OP 月度平衡台（renderer=sop-balance，增量 §7.12）：六卡 KPI 条 + 五步法 + 定稿走 Action + C22 锁定 */
@@ -126,12 +131,11 @@ export default function SopBalanceView(_props: ViewRendererProps) {
 
 function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; seq: number; step: number; setStep: (n: number) => void; onChanged: () => void }) {
   const locked = v.status === "FINAL";
+  // R14：决议默认项来自 WorkspaceConfig（按租户/行业），DEFAULT_RESOLUTIONS 仅兜底。
+  const { data: ws } = useWorkspace();
   const [lockedFallback, setLockedFallback] = useState(false); // 409 PLAN_LOCKED 前端兜底（§7.12）
   const [highlightSeg, setHighlightSeg] = useState<string | null>(null);
-  const [resolutions, setResolutions] = useState<{ name: string; delta: number }[]>([
-    { name: "常州化成夜班×1", delta: 1.2 },
-    { name: "江门正极加急 200 吨", delta: 0.5 },
-  ]);
+  const [resolutions, setResolutions] = useState<{ name: string; delta: number }[]>(ws?.sopConfig?.defaultResolutions ?? DEFAULT_RESOLUTIONS);
   const action = useActionDraft();
 
   const advance = useMutation({
@@ -541,7 +545,7 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
       {!locked && (
         <div className={styles.miniForm}>
           <span>供给增量（决议外的常规对策）</span>
-          <button className="btn sm" onClick={() => setIncs([...incs, { name: "常州化成夜班×1", delta: 1.2 }])}>
+          <button className="btn sm" onClick={() => setIncs([...incs, { name: "新增供给增量", delta: 1.2 }])}>
             ＋ 增量行
           </button>
           {incs.map((inc, i) => (

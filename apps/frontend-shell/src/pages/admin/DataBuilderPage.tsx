@@ -26,7 +26,7 @@ const PHASE_COLOR: Record<string, string> = {
  * 故事脚本 → 七阶段（intake→comprehend→gap→rawin→transform→closure→publish）→ 双向闭包报告。
  */
 export default function DataBuilderPage() {
-  const [script, setScript] = useState("常州基地产能紧张，影响订单交期与客户信用，请做风险推演");
+  const [script, setScript] = useState("常州基地产能紧张，影响订单交期与客户信用，请做风险推演"); // debattery-allow：构建脚本输入框 demo 占位（用户自行覆写）
   const [seed, setSeed] = useState(42);
   const [dryRun, setDryRun] = useState(false);
   const [job, setJob] = useState<(BuildJob & { jobId?: string }) | null>(null);

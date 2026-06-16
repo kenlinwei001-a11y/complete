@@ -16,16 +16,17 @@ export const POSITION_COLORS: Record<string, string> = {
   混合: "#E8B54A",
 };
 
-/** 国内基地经纬度（静态资产，无外部瓦片/网络依赖） */
+/** 国内基地经纬度兜底（静态资产）。R14：优先取 Base.props.lon/lat（按租户对象库下发）；
+ *  此表仅当对象缺坐标时兜底。debattery-allow：地名→坐标纯地理映射，非业务逻辑常数。 */
 const BASE_COORDS: Record<string, [number, number]> = {
-  常州: [119.95, 31.78],
-  合肥: [117.28, 31.86],
-  西安: [108.95, 34.27],
-  宜宾: [104.64, 28.75],
-  溧阳: [119.48, 31.42],
-  南京: [118.78, 32.06],
-  成都: [104.07, 30.67],
-  青海: [101.78, 36.62],
+  常州: [119.95, 31.78], // debattery-allow
+  合肥: [117.28, 31.86], // debattery-allow
+  西安: [108.95, 34.27], // debattery-allow
+  宜宾: [104.64, 28.75], // debattery-allow
+  溧阳: [119.48, 31.42], // debattery-allow
+  南京: [118.78, 32.06], // debattery-allow
+  成都: [104.07, 30.67], // debattery-allow
+  青海: [101.78, 36.62], // debattery-allow
 };
 
 /** 利用率色档（阈值可由 ViewConfig.layout.utilThresholds 配置；去电池锁死 8a / R14） */

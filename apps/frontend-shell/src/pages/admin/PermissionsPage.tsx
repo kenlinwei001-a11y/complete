@@ -47,7 +47,7 @@ export default function PermissionsPage() {
 }
 
 function ExplainDebugger() {
-  const [roles, setRoles] = useState("base_manager:常州");
+  const [roles, setRoles] = useState("base_manager:常州"); // debattery-allow：角色输入框 demo 占位（参数化角色示例，用户自行覆写）
   const [kind, setKind] = useState("OBJECT_TYPE");
   const [key, setKey] = useState("Base");
   const [op, setOp] = useState("READ");

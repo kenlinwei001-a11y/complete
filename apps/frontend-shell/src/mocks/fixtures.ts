@@ -444,6 +444,10 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
         { key: "ess", name: "储能", target: 45.0, rolling: 49.0, lastActual: 41.9 },
         { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 },
       ],
+      defaultResolutions: [
+        { name: "常州化成夜班×1", delta: 1.2 },
+        { name: "江门正极加急 200 吨", delta: 0.5 },
+      ],
     },
     planGoals: { revGrowthPct: 18, gmFloorPct: 13.5, sharePts: 12, capexCap: 20, cashFloor: 45 },
     features: routeFeatures,

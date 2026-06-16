@@ -1,10 +1,1 @@
-{
-  "apps/frontend-shell/src/pages/admin/CalibrationPage.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/PermissionsPage.tsx": 1,
-  "apps/frontend-shell/src/views/plan/GeoMapView.tsx": 8,
-  "apps/frontend-shell/src/views/plan/OrderChainView.tsx": 1,
-  "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": 2,
-  "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": 3,
-  "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": 5
-}
+{}

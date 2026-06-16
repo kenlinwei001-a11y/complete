@@ -24,9 +24,9 @@ const FIELD_GROUPS: { title: string; fields: { key: keyof PlanAuditInput; label:
     title: "需求侧（万套）",
     fields: [
       { key: "dem", label: "月度需求总量", unit: "万套", step: 0.1 },
-      { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 },
+      { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 }, // debattery-allow：view.layout.fieldGroups 缺失兜底
       { key: "seg_ess", label: "储能", unit: "万套", step: 0.1 },
-      { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 },
+      { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 }, // debattery-allow：同上
     ],
   },
   {
