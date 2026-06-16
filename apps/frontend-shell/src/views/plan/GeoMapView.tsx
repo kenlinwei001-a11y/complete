@@ -68,6 +68,8 @@ function coordOf(b: BaseProps): [number, number] | undefined {
 export default function GeoMapView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：利用率色档阈值由 ViewConfig.layout.utilThresholds 声明（后端 VIEW_DEFS 已下发）
   const utilThresholds = (view.layout?.utilThresholds as number[] | undefined) ?? [92, 85, 78];
+  // R14：基地定位→配色映射（图例分类标签）由 ViewConfig.layout.positionColors 声明，POSITION_COLORS 仅兜底。
+  const positionColors = (view.layout?.positionColors as Record<string, string> | undefined) ?? POSITION_COLORS;
   const { data, isLoading } = useQuery({
     queryKey: ["a", "objects", { type: "Base", view: "geo-map" }],
     queryFn: () => searchObjects("Base", ""),
@@ -134,7 +136,7 @@ export default function GeoMapView({ view }: ViewRendererProps) {
               const [lon, lat] = coordOf(b)!;
               const p = project(lon, lat);
               const r = radius(b.gwh);
-              const color = POSITION_COLORS[b.position] ?? "#E8B54A";
+              const color = positionColors[b.position] ?? "#E8B54A";
               return (
                 <g key={b.id} transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}>
                   <circle
@@ -161,7 +163,7 @@ export default function GeoMapView({ view }: ViewRendererProps) {
             <div className="section-title" style={{ marginBottom: 2 }}>
               {zh.geo.legendTitle}
             </div>
-            {Object.entries(POSITION_COLORS).map(([k, c]) => (
+            {Object.entries(positionColors).map(([k, c]) => (
               <span key={k}>
                 <i style={{ background: c }} />
                 {k}
@@ -172,7 +174,7 @@ export default function GeoMapView({ view }: ViewRendererProps) {
             <div className={styles.overseasStrip} data-testid="geo-overseas">
               <b>{zh.geo.overseas}：</b>
               {overseas.map((b) => (
-                <button key={b.id} className={styles.chip} style={{ cursor: "pointer", color: POSITION_COLORS[b.position], borderColor: "currentcolor" }} onClick={() => pick(b)}>
+                <button key={b.id} className={styles.chip} style={{ cursor: "pointer", color: positionColors[b.position], borderColor: "currentcolor" }} onClick={() => pick(b)}>
                   {b.name} · {b.gwh}GWh
                 </button>
               ))}
@@ -184,7 +186,7 @@ export default function GeoMapView({ view }: ViewRendererProps) {
           <aside className={styles.baseDrawer} data-testid="geo-base-card">
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <strong style={{ fontSize: 15 }}>{selected.name}</strong>
-              <span className="badge" style={{ color: POSITION_COLORS[selected.position], borderColor: "currentcolor" }}>
+              <span className="badge" style={{ color: positionColors[selected.position], borderColor: "currentcolor" }}>
                 {selected.position}
               </span>
               <button className="btn sm" style={{ marginLeft: "auto" }} aria-label={zh.common.close} onClick={() => setSelected(null)}>

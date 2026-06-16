@@ -218,9 +218,6 @@ export const zh = {
   geo: {
     title: "基地地理视图",
     legendTitle: "定位（颜色）· GWh（大小）",
-    power: "动力",
-    storage: "储能",
-    mixed: "混合",
     overseas: "海外基地",
     cardLines: "产线数",
     cardGwh: "产能 (GWh)",
