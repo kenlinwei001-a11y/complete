@@ -39,7 +39,12 @@ describe("F37 · 场景配置（场景为一等主键）", () => {
     const editor = await screen.findByTestId("scenario-editor");
     fireEvent.change(within(editor).getByTestId("scenario-key-input"), { target: { value: "SX9" } });
     fireEvent.change(within(editor).getByTestId("scenario-name-input"), { target: { value: "新场景9" } });
+    // 未命中意图 → 警示（命中校验 #2）
+    fireEvent.change(within(editor).getByTestId("scenario-intent-input"), { target: { value: "no_such_intent" } });
+    await waitFor(() => expect(within(editor).getByTestId("scenario-intent-warn")).toBeInTheDocument());
+    // 命中真实意图 → 警示消失
     fireEvent.change(within(editor).getByTestId("scenario-intent-input"), { target: { value: "capacity_feasibility" } });
+    await waitFor(() => expect(within(editor).queryByTestId("scenario-intent-warn")).not.toBeInTheDocument());
     fireEvent.change(within(editor).getByTestId("scenario-trigger-input"), { target: { value: "X9 能接吗？" } });
     fireEvent.change(within(editor).getByTestId("scenario-slots-input"), { target: { value: '{"modelId":"M9","weeks":6}' } });
     await user.click(within(editor).getByTestId("scenario-save"));

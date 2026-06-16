@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
-import { createScenario, fetchAgents, fetchScenariosManage, fetchViewConfigs, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
+import { createScenario, fetchAgents, fetchIntents, fetchScenariosManage, fetchViewConfigs, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
 import { invalidateForEvent } from "@/store/eventInvalidation";
+import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -18,11 +19,16 @@ export default function ScenesPage() {
   const { data: scenarios } = useQuery({ queryKey: ["b", "scenarios", "manage"], queryFn: fetchScenariosManage });
   const { data: agents } = useQuery({ queryKey: ["b", "agents", {}], queryFn: fetchAgents });
   const { data: views } = useQuery({ queryKey: ["a", "view-configs"], queryFn: fetchViewConfigs });
+  const { data: workspace } = useWorkspace();
+  const packageId = workspace?.scenarioPackages?.[0] ?? "";
+  // 意图命中校验（admin-console-closure §5-②）：intentKey 闭合到真实已发布意图目录。
+  const { data: intents } = useQuery({ queryKey: ["b", "intents", packageId], queryFn: () => fetchIntents(packageId, { status: "PUBLISHED" }), enabled: !!packageId });
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
 
   const agentOpts = (agents ?? []).map((a) => ({ id: a.id, name: a.name }));
   const viewKeys = (views?.items ?? []).map((v) => v.viewKey);
+  const intentKeys = [...new Set((intents ?? []).map((i) => i.key))];
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["b", "scenarios"] });
 
   return (
@@ -41,6 +47,7 @@ export default function ScenesPage() {
         <ScenarioEditor
           agents={agentOpts}
           viewKeys={viewKeys}
+          intentKeys={intentKeys}
           onClose={() => setCreating(false)}
           onSaved={() => {
             setCreating(false);
@@ -64,7 +71,7 @@ export default function ScenesPage() {
         </thead>
         <tbody>
           {(scenarios ?? []).map((s) => (
-            <ScenarioRow key={s.scenarioKey} scenario={s} agents={agentOpts} viewKeys={viewKeys} onChanged={invalidate} />
+            <ScenarioRow key={s.scenarioKey} scenario={s} agents={agentOpts} viewKeys={viewKeys} intentKeys={intentKeys} onChanged={invalidate} />
           ))}
         </tbody>
       </table>
@@ -81,11 +88,13 @@ function ScenarioRow({
   scenario,
   agents,
   viewKeys,
+  intentKeys,
   onChanged,
 }: {
   scenario: Scenario & { inactive?: boolean; closure?: ScenarioClosure };
   agents: { id: string; name: string }[];
   viewKeys: string[];
+  intentKeys: string[];
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -146,7 +155,7 @@ function ScenarioRow({
       {editing && scenario.status !== "PUBLISHED" && (
         <tr>
           <td colSpan={8} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>
-            <ScenarioEditor scenario={scenario} agents={agents} viewKeys={viewKeys} inline onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
+            <ScenarioEditor scenario={scenario} agents={agents} viewKeys={viewKeys} intentKeys={intentKeys} inline onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
           </td>
         </tr>
       )}
@@ -159,6 +168,7 @@ function ScenarioEditor({
   scenario,
   agents,
   viewKeys,
+  intentKeys,
   inline,
   onClose,
   onSaved,
@@ -166,6 +176,7 @@ function ScenarioEditor({
   scenario?: Scenario;
   agents: { id: string; name: string }[];
   viewKeys: string[];
+  intentKeys: string[];
   inline?: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -257,7 +268,18 @@ function ScenarioEditor({
         </label>
         <label style={lblS}>
           意图 intentKey
-          <input value={intentKey} aria-label="意图" data-testid="scenario-intent-input" onChange={(e) => setIntentKey(e.target.value)} style={{ width: 180 }} />
+          {/* 命中校验（admin-console-closure §5-②）：闭合到真实已发布意图；未命中即警示（前台点了无反应=死路） */}
+          <input value={intentKey} aria-label="意图" list="scenario-intent-list" data-testid="scenario-intent-input" onChange={(e) => setIntentKey(e.target.value)} style={{ width: 180 }} />
+          <datalist id="scenario-intent-list">
+            {intentKeys.map((k) => (
+              <option key={k} value={k} />
+            ))}
+          </datalist>
+          {intentKey && intentKeys.length > 0 && !intentKeys.includes(intentKey) && (
+            <span style={{ fontSize: 10, color: "var(--amber)" }} data-testid="scenario-intent-warn">
+              ⚠ 未命中已发布意图（前台将无反应）
+            </span>
+          )}
         </label>
         <label style={lblS}>
           风险级别
