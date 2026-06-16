@@ -484,6 +484,24 @@ export const putScene = (viewKey: string, body: Partial<SceneEntryConfig>) =>
 // 场景启动器 P2/P3：Scenario 升一等对象 —— 场景为主键的管理面（每个用 workflow/agent 的场景完整可配）。
 export type ScenarioClosure = { ready: boolean; issues: string[] };
 export const fetchScenariosManage = () => api.b<(Scenario & { inactive?: boolean; closure?: ScenarioClosure })[]>("/b/v1/scenarios/manage");
+
+/** 场景启动器卡片（GET /b/v1/scenarios 公共目录；按域分组、一键启动）。 */
+export interface ScenarioCardVM {
+  sNo: string;
+  name: string;
+  view: string;
+  domain?: string;
+  intentKey: string;
+  triggerQuestion: string;
+  solver?: string;
+  riskLevel: "COMPUTE" | "ACTION_DRAFT";
+  summary: string;
+  willProduceDraft: boolean;
+  inactive?: boolean;
+  presetContext: { targetView: string; selectedObjects: { objectType: string; objectId: string; label?: string }[]; slotPresets: Record<string, unknown> };
+}
+export const fetchScenarioCards = (includeInactive = false) =>
+  api.b<{ launcherEnabled: boolean; total: number; items: ScenarioCardVM[] }>(`/b/v1/scenarios${includeInactive ? "?includeInactive=true" : ""}`);
 export const createScenario = (body: Partial<Scenario>) =>
   api.b<Scenario>("/b/v1/scenarios", { method: "POST", body });
 export const updateScenario = (key: string, body: Partial<Scenario>) =>

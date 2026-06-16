@@ -43,7 +43,7 @@
 ## 🥉 Tier 3 · 场景启动器 + 本体浏览器（产品可用性）
 - 🔄 **6. 场景启动器 P2/P3**（`docs/PRD-scenario-launcher.md`，P1 已完成）
   - ✅ **P2：`Scenario` 升一等对象**（修 G-3 模型倒置）：契约 `ScenarioSchema` + 仓储四处（repos/memory/pg/migration006）+ 出厂幂等 upsert + DRAFT→PUBLISHED→RETIRED + `scenario.*` 事件 + 管理 CRUD（`/scenarios/manage`·POST/PUT·publish·retire）；GET/launch 改 repo 驱动；本体 §2/§4/§8 回写
-  - 🔄 **P3：场景配置编辑器**（场景为主键 UI）✅ —— **场景放第一列** + 选 mode（WORKFLOW_FIRST/ONLY/AGENT_FIRST/ONLY）+ 默认 agent + 落点视图(闭合 view-configs) + 意图 + 触发问句 + **presetContext 编辑器**（slotPresets/selectedObjects）+ 状态机（创建草稿/发布/退役）；**所有用 workflow/agent 的场景全展示且完整可配（治理铁律）**；f37 回归。⬜ 余：⌘K 命令面板 + 按域目录墙 + 首页高频区
+  - 🔄 **P3：场景配置编辑器 + 启动器三入口**：✅ **场景配置编辑器**（场景为主键 UI——场景第一列 + mode 选择 + 默认 agent + 落点视图闭合 + presetContext 编辑器 + 状态机；治理铁律全展示可配；f37）· ✅ **按域目录墙**（`ScenarioLauncherPage` /scenarios，域分组卡片 + ▶启动）· ✅ **⌘K 命令面板**（`CommandPalette` 全局快捷键搜场景启动）· ✅ 启动复用 `useScenarioLaunch`（注入 presetContext + submitQuery + 对话坞 SSE）+ 左导航入口；f39 回归。⬜ 余：首页高频区（4–6 张按角色高频卡）
   - ✅ **引用闭合「无死路」+ 上架门**：`scenarioClosure`（intent→plan→agent 全配置好，断链拒发布 409）+ manage 就绪态 + `computeReferences` 纳入 Scenario（Agent/Workflow 页可见"被场景引用"）+ ScenesPage 引用闭合列
   - ✅ **响应式失效环（Loop 前端消费端）**：`invalidateForEvent`（本体 §4 event→queryKey）——规则/数据/工作流发布 → 失效引用方 agent/workflow/场景缓存自动重取；接入 RulesPage/ScenesPage 发布；f38 回归
   - ⬜ 文案：场景入口 i18n 收口（intentKey 命中校验 #2 / suggestedQuestions 校验）；扩 computeReferences 到 rule/solver 反查 + workflow 步骤 solverKey/ruleId 闭合校验

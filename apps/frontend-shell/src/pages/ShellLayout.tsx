@@ -10,6 +10,7 @@ import { logoutSession } from "@/store/authSession";
 import { toast } from "@/store/toastStore";
 import { visibleAdminPages } from "./adminRegistry";
 import { QueryDock } from "@/components/QueryDock/QueryDock";
+import { CommandPalette } from "@/components/ScenarioLauncher/CommandPalette";
 import { GlobalSearch } from "@/components/GlobalSearch/GlobalSearch";
 import { HealthBadge } from "@/components/Health/HealthBadge";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
@@ -157,6 +158,10 @@ export default function ShellLayout() {
       </header>
 
       <aside className={styles.nav} data-testid="left-nav">
+        {/* 场景启动器入口（PRD-scenario-launcher §3.5）：目录墙 + ⌘K 快搜 */}
+        <NavLink to="/scenarios" data-testid="nav-scenario-launcher" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}>
+          ⚡ 场景启动器
+        </NavLink>
         <div className="section-title">{zh.nav.businessGroup}</div>
         <nav className={styles.group} data-testid="nav-business">
           <BusinessNav items={workspace.navigation.filter((item) => item.group !== "admin")} />
@@ -187,6 +192,8 @@ export default function ShellLayout() {
 
       {/* Dock 在所有 /v/:viewKey 页面常驻；admin 页面不显示；受 shell.query-dock BLOCK 控制 */}
       {onViewPage && dockOn && <QueryDock />}
+      {/* ⌘K 场景命令面板：全局快捷键唤起（场景启动器 §3.5-A） */}
+      <CommandPalette />
     </div>
   );
 }

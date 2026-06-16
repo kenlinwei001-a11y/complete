@@ -20,6 +20,7 @@ import zh from "@/locales/zh";
 
 const LoginPage = lazy(() => import("@/pages/LoginPage"));
 const TaskDetailPage = lazy(() => import("@/pages/TaskDetailPage"));
+const ScenarioLauncherPage = lazy(() => import("@/components/ScenarioLauncher/ScenarioLauncherPage"));
 const Object360Page = lazy(() => import("@/pages/Object360Page"));
 
 // 管理台路由按页 code-split（PRD §10）
@@ -79,6 +80,7 @@ export const routes: RouteObject[] = [
     element: <ShellLayout />,
     children: [
       { index: true, element: <HomeRedirect /> },
+      { path: "scenarios", element: lazyWrap(<ScenarioLauncherPage />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

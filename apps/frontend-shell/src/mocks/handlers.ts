@@ -1149,6 +1149,21 @@ export const handlers = [
     return HttpResponse.json(scene);
   }),
 
+  // ---- 场景启动器：公共目录卡片（按域分组、一键启动）----
+  http.get("*/b/v1/scenarios", ({ request }) => {
+    const includeInactive = new URL(request.url).searchParams.get("includeInactive") === "true";
+    const items = [...db.scenarios]
+      .filter((s) => s.status === "PUBLISHED")
+      .sort((a, b) => (a.scenarioKey < b.scenarioKey ? -1 : 1))
+      .map((s) => ({
+        sNo: s.scenarioKey, name: s.name, view: s.targetView, domain: s.domain, intentKey: s.intentKey,
+        triggerQuestion: s.triggerQuestion, solver: s.solver, riskLevel: s.riskLevel, summary: s.summary,
+        willProduceDraft: s.riskLevel === "ACTION_DRAFT", inactive: false, presetContext: s.presetContext,
+      }));
+    const shown = includeInactive ? items : items.filter((c) => !c.inactive);
+    return HttpResponse.json({ launcherEnabled: true, total: shown.length, items: shown });
+  }),
+
   // ---- 场景启动器 P2/P3：Scenario 一等对象管理（场景为主键，完整可配）----
   http.get("*/b/v1/scenarios/manage", () => {
     const closureOf = (s: Scenario) => {
