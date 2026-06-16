@@ -46,6 +46,25 @@ describe("A7 synthetic data", () => {
     expect(snapshot3).not.toEqual(snapshot1);
   });
 
+  it("EXT_SIG（#11）：外部信号一等对象化 + EXTERNAL 连接器（mock_external）", async () => {
+    const t = await makeApp();
+    await runJob(t); // 合成出厂期落 ExternalSignal 对象（domain=external）
+    // 一等对象：GET /a/v1/external-signals 返回环境信号（带来源/单位/新鲜度，R13 可溯）
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/external-signals", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const { signals } = res.json() as { signals: Record<string, unknown>[] };
+    expect(signals.length).toBeGreaterThanOrEqual(6);
+    expect(signals.find((s) => s.signalKey === "li_carbonate_price")).toMatchObject({ unit: "元/吨", source: "上海有色网", category: "原料价格", impact: "毛利" });
+    // EXTERNAL 连接器：mock_external sync → external_signals 原始表
+    const conn = await t.app.inject({ method: "POST", url: "/a/v1/connections", headers: ADMIN, payload: { connectorTypeKey: "mock_external", name: "ext-feed", config: {} } });
+    const connId = (conn.json() as { id: string }).id;
+    const sync = await t.app.inject({ method: "POST", url: `/a/v1/connections/${connId}/sync`, headers: ADMIN });
+    expect(sync.statusCode).toBeLessThan(300);
+    const raws = (await (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${connId}`, headers: ADMIN })).json()) as { name: string; rowCount: number }[];
+    const ds = raws.find((d) => d.name === "external_signals");
+    expect(ds?.rowCount).toBeGreaterThanOrEqual(6);
+  });
+
   it("seeds rules C03/C08/C13 with origin SYNTHETIC; C03 blocks at demandDelta > 0.5", async () => {
     const t = await makeApp();
     await runJob(t);

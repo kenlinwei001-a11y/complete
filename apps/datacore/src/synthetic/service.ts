@@ -1,6 +1,7 @@
 import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type PermissionPolicy } from "@platform/contracts";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
+import { MOCK_EXTERNAL_DATA } from "../connectors/registry.js";
 import type { Repos } from "../repo/repo.js";
 import type { LlmClient } from "../llm.js";
 import type { Metrics } from "../metrics.js";
@@ -453,6 +454,7 @@ export class SyntheticService {
       // 跨域切片增量：扩展对象类型已使用 supply/commercial 两域，补注册（治理域开关/分组/检索切面才生效）。
       { domainKey: "supply", displayName: "供给", color: "#0d9488", ownerUserId: "usr_demo_planner" },
       { domainKey: "commercial", displayName: "商务", color: "#be185d", ownerUserId: "usr_demo_admin" },
+      { domainKey: "external", displayName: "外部信号", color: "#475569", ownerUserId: "usr_demo_admin" },
       { domainKey: "unassigned", displayName: "未归域", color: "#9ca3af", ownerUserId: null },
     ];
     for (const s of seeds) {
@@ -568,6 +570,8 @@ export class SyntheticService {
     await putAll("CarbonFactor", ext.carbonFactors, "factorId");
     await putAll("FinanceAccount", ext.financeAccounts, "accId");
     await putAll("FinanceMetric", ext.financeMetrics, "metricId");
+    // 外部域（EXT_SIG）：环境信号一等对象化（domain=external；来源/单位/新鲜度可溯 R13）。
+    await putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
     for (const m of g.models) {
       for (const baseId of m.bases as string[]) {

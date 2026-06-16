@@ -47,7 +47,8 @@
 > 每条：制品 · 一句话 · 锚点。生命周期统一资源模式多为 `DRAFT→PUBLISHED→RETIRED`。
 
 ### A. 数据接入域（DataCore）
-- **Connection / Connector**：数据源连接（7 类型，4 有适配器）· `connectors/registry.ts`。
+- **Connection / Connector**：数据源连接（含 EXTERNAL 类：rest_api/external_feed/generic_jdbc/**mock_external**；file_upload/mock_erp/mock_crm/mock_external 有适配器）· `connectors/registry.ts`。
+- **ExternalSignal（外部域 EXT_SIG）**：环境/市场信号一等对象（锂价/镍价/汇率/需求指数/政策/电价；signalKey 键 + value/unit/asOf/source/trend/impact）· domain=`external` · 经 mock_external 连接器同步或合成出厂 · `GET /a/v1/external-signals`（规划体检/建议敏感性输入，P2）· `synthetic/service.ts`,`connectors/registry.ts MOCK_EXTERNAL_DATA`。
 - **RawDataset / RawRow**：上传/同步产出的原始表 · `connections`,`rawDatasets`,`rawRows`。
 - **IndustryTemplate**：行业模板（合成数据 GenSpec 来源；battery-manufacturing 等）· `industryTemplates`。
 - **SyntheticJob**：合成数据作业（industry×scale×seed 确定性）· `syntheticJobs`。
@@ -138,6 +139,7 @@ SyntheticJob --gen(seed)--> Connection(合成源)+RawDataset/RawRow --materializ
 ObjectType <--reads-- Solver(入参字段)     ObjectType <--scopes-- Rule     ObjectType --domain--> SliceSpec
 SolverParam <--adjusts-- Calibration       Action(EXECUTED) --writeback--> ObjectInstance(props,二次派生)
 Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）
+Connector(EXTERNAL/mock_external) --sync--> RawDataset(external_signals) --materialize--> ExternalSignal(domain=external)   ✅ EXT_SIG P1（一等对象+连接器+GET /a/v1/external-signals）；--敏感性输入--> {plan_audit|plan_generate} ⬜ P2
 ObjectInstance --lineage 反查--> RawRow→RawDataset→Connection + 派生口径   ✅ P2 端点（GET /a/v1/lineage/object/:type/:id）+ P3 前端悬浮溯源（LedgerView `<Provenance>` 组件，数据源原始表经 FieldProfilePage 可见）；结果→求解器入参对象 lineage 待后续
 ```
 **数据构建发动机链（需求拉动）**
@@ -280,7 +282,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 
 | 域 | 范畴 | 主要对象类型（§2） |
 |---|---|---|
-| **D1 接入域 Ingest** | 数据/故事进系统 | Connector·RawDataset·IndustryTemplate·SyntheticJob·BuildPlan/Job·DataBuilderAgent·ClosureReport·QuarantineRow |
+| **D1 接入域 Ingest** | 数据/故事进系统 | Connector(含 EXTERNAL/mock_external)·RawDataset·**ExternalSignal(外部域 EXT_SIG)**·IndustryTemplate·SyntheticJob·BuildPlan/Job·DataBuilderAgent·ClosureReport·QuarantineRow |
 | **D2 本体域 Ontology** | 类型/对象/派生/切片 | OntologyType/Link/Version/Draft·ObjectInstance·Link·PropertyDef·DerivationSpec/Run·SliceSpec·ObjectPropHistory |
 | **D3 规则域 Rules** | 约束/规则 | Rule·RuleDoc·RuleCandidate·ExtractSegment·ruledsl |
 | **D4 推演域 Solving** | 求解/校准/仿真 | Solver(SOLVER_KEYS)·SolverParam·Calibration*·ForecastSnapshot·RiskCase·SopVersion·generic-inference(TO-BE) |

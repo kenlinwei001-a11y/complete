@@ -1084,6 +1084,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const items = rows.slice((page - 1) * pageSize, page * pageSize).map((r) => ({ id: r.id, type, props: r.props }));
     return { items, total, data: items, snapshotVersion: result.snapshotVersion };
   });
+  // 外部域（EXT_SIG）：环境信号清单（一等对象 ExternalSignal；行级过滤 + tenantId 由 queryObjects 保证）。
+  app.get("/a/v1/external-signals", async (req) => {
+    const result = await ontology.queryObjects(ctx(req), "ExternalSignal", {}, 500);
+    const rows = result.data as { id: string; props: Record<string, unknown> }[];
+    const signals = rows
+      .map((r) => r.props)
+      .sort((a, b) => String(a.category ?? "").localeCompare(String(b.category ?? "")) || String(a.signalKey).localeCompare(String(b.signalKey)));
+    return { signals, total: signals.length, snapshotVersion: result.snapshotVersion };
+  });
   app.get("/a/v1/objects/:type/:id", async (req) => {
     const { type, id } = req.params as { type: string; id: string };
     return ontology.getObject(ctx(req), type, id);

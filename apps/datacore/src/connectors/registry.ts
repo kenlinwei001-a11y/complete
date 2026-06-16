@@ -123,6 +123,13 @@ export const CONNECTOR_TYPES: ConnectorType[] = [
     configSchema: { type: "object", properties: {} },
     capabilities: { batch: true, incremental: false, schemaDiscovery: true },
   },
+  {
+    // 外部域（EXT_SIG）：出厂样例环境信号连接器（生产走 external_feed/rest_api）。
+    key: "mock_external",
+    category: "EXTERNAL",
+    configSchema: { type: "object", properties: {} },
+    capabilities: { batch: true, incremental: false, schemaDiscovery: true },
+  },
 ];
 
 /** Config fields treated as credentials (AES-256-GCM at rest, never echoed). */
@@ -236,6 +243,21 @@ export const MOCK_CRM_DATA: Record<string, Record<string, unknown>[]> = {
   ],
 };
 
+/**
+ * 外部域环境信号样例（EXT_SIG）：市场/政策/汇率等可影响规划敏感性的外部信号。
+ * 确定性（R6）；带 source/unit/asOf 供 R13 溯源；impact 标注其影响的规划指标（P2 敏感性接入）。
+ */
+export const MOCK_EXTERNAL_DATA: Record<string, Record<string, unknown>[]> = {
+  external_signals: [
+    { signalKey: "li_carbonate_price", name: "电池级碳酸锂价", category: "原料价格", value: 96000, unit: "元/吨", asOf: "2026-06-15", source: "上海有色网", trend: "down", impact: "毛利" },
+    { signalKey: "nickel_price", name: "镍价(LME)", category: "原料价格", value: 18600, unit: "USD/吨", asOf: "2026-06-15", source: "LME", trend: "flat", impact: "毛利" },
+    { signalKey: "usd_cny", name: "美元兑人民币", category: "汇率", value: 7.18, unit: "CNY/USD", asOf: "2026-06-15", source: "中国外汇交易中心", trend: "up", impact: "出口营收" },
+    { signalKey: "ev_demand_index", name: "新能源车需求指数", category: "需求", value: 112.4, unit: "index(2025=100)", asOf: "2026-06-01", source: "乘联会", trend: "up", impact: "需求" },
+    { signalKey: "ess_subsidy_signal", name: "储能补贴政策强度", category: "政策", value: 0.72, unit: "0–1", asOf: "2026-06-10", source: "发改委公告解析", trend: "up", impact: "需求" },
+    { signalKey: "industrial_power_price", name: "工业电价", category: "能源", value: 0.78, unit: "元/kWh", asOf: "2026-06-01", source: "国网", trend: "flat", impact: "成本" },
+  ],
+};
+
 class StaticAdapter extends RowsAdapter {
   constructor(private data: Record<string, Record<string, unknown>[]>) {
     super();
@@ -261,6 +283,8 @@ export function createAdapter(
       return new StaticAdapter(MOCK_ERP_DATA);
     case "mock_crm":
       return new StaticAdapter(MOCK_CRM_DATA);
+    case "mock_external":
+      return new StaticAdapter(MOCK_EXTERNAL_DATA);
     default:
       throw validationError(
         `connector type '${connectorTypeKey}' is registered but has no adapter implementation yet`,
