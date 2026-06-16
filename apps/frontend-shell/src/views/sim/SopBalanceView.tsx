@@ -8,6 +8,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
+import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -277,13 +278,19 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
   const gap = demand != null && supply != null ? Math.round((demand - supply) * 10000) / 10000 : null;
   const revAttain = s4?.revSum != null ? (s4.revSum / kpi.revBudget) * 100 : null;
 
-  const cards: { key: string; label: string; value: string; color?: string; formula: string; source: string }[] = [
+  // R13/R-一致：六卡统一走共享 <Provenance>（六要素：来源/新鲜度/推导/输入因子/关联规则/备注），
+  // 取代原 2 要素自绘浮层 —— 一个事实一个出处机制。S&OP 三线（需求/供给/缺口）为最高优先（#4 backlog）。
+  type Card = { key: string; label: string; value: string; color?: string; formula: string; source: string; inputs: string[]; rule?: string; note?: string };
+  const cards: Card[] = [
     {
       key: "demand",
       label: zh.sim.sop.kpi.demand,
       value: demand != null ? fmt(demand) : "—",
       formula: "需求P50 = ② 三线对照合计.滚动P50（缺省 inputs.demTotal）",
       source: "S&OP ② 需求评审（PlanTarget 同源勾稽）",
+      inputs: ["三线应用细分滚动P50", "目标(年度分解)", "上月实际"],
+      rule: "C21",
+      note: "任一细分 |滚动 vs 目标| > 10% → C21 差异提报，自动进⑤议程",
     },
     {
       key: "supply",
@@ -291,6 +298,8 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       value: supply != null ? fmt(supply) : "—",
       formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量",
       source: "S&OP ③ 供应评审（S1.2 月聚合） + ⑤ 决议",
+      inputs: ["逐基地月供给", "认证系数", "⑤ 决议增量"],
+      note: "⑤ 决议编辑中即时重算（display 侧）；落库走第⑤步执行",
     },
     {
       key: "gap",
@@ -299,6 +308,8 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       color: gap != null && gap > kpi.gapRed ? "var(--danger)" : "var(--ok)",
       formula: `缺口 = 需求P50 − 可供给（> ${kpi.gapRed} 红）`,
       source: "②/③/⑤ 联动即时重算",
+      inputs: ["需求P50", "可供给"],
+      note: `缺口 > ${kpi.gapRed} 万套 → 红标，自动进⑤高管决策会议程`,
     },
     {
       key: "revAttain",
@@ -306,6 +317,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       value: revAttain != null ? `${revAttain.toFixed(1)}%` : "—",
       formula: `收入预算达成 = ④ 滚动收入合计 ÷ 预算 ${kpi.revBudget} 亿`,
       source: "S&OP ④ 财务整合",
+      inputs: ["④ 滚动收入合计", `收入预算 ${kpi.revBudget} 亿`],
     },
     {
       key: "gm",
@@ -314,6 +326,8 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       color: s4?.gmRoll != null && s4.gmBudget != null && s4.gmRoll < s4.gmBudget - 0.5 ? "var(--danger)" : undefined,
       formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差 0.5pp）",
       source: "S&OP ④ 财务整合（C15 口径）",
+      inputs: ["滚动毛利合计", "滚动收入合计", "预算毛利率"],
+      rule: "C15",
     },
     {
       key: "cash",
@@ -322,19 +336,18 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       color: s4?.cashOk === false ? "var(--danger)" : "var(--ok)",
       formula: `C18：现金垫(13周最低点) ≥ ${kpi.cashFloor} 亿`,
       source: "S&OP ④ 财务整合（C18 校验）",
+      inputs: ["13周现金垫最低点", `现金底线 ${kpi.cashFloor} 亿`],
+      rule: "C18",
     },
   ];
   return (
     <div className={styles.sopKpiBar} data-testid="sop-kpi-bar">
       {cards.map((c) => (
         <div className={styles.sopKpi} key={c.key} tabIndex={0} data-testid={`sop-kpi-${c.key}`}>
-          <b style={{ color: c.color }}>{c.value}</b>
+          <Provenance testId={`sopkpi-${c.key}`} src={c.source} formula={c.formula} inputs={c.inputs} rule={c.rule} note={c.note}>
+            <b style={{ color: c.color }}>{c.value}</b>
+          </Provenance>
           <span>{c.label}</span>
-          <div className={styles.sopKpiPop} data-testid={`sop-kpi-prov-${c.key}`}>
-            <b style={{ fontSize: 11 }}>公式</b>：{c.formula}
-            <br />
-            <b style={{ fontSize: 11 }}>来源</b>：{c.source}
-          </div>
         </div>
       ))}
     </div>

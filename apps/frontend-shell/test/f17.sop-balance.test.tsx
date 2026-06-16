@@ -22,7 +22,11 @@ describe("F17 · S&OP 月度平衡台（sop-balance）", () => {
     await user.click(await screen.findByTestId("sop-create"));
     await waitFor(() => expect(screen.getByTestId("sop-detail-status")).toHaveTextContent("DRAFT"));
     expect(screen.getByTestId("sop-kpi-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("sop-kpi-prov-gap")).toHaveTextContent("公式");
+    // 缺口卡走共享六要素溯源（悬浮即弹：推导公式 + 关联规则两跳）
+    await user.hover(screen.getByTestId("prov-v-sopkpi-gap"));
+    const gapTip = await screen.findByTestId("prov-tip");
+    expect(gapTip).toHaveTextContent("缺口 = 需求P50 − 可供给");
+    await user.unhover(screen.getByTestId("prov-v-sopkpi-gap"));
     expect(screen.getByTestId("sop-version-badge")).toHaveTextContent("V1 评审中");
 
     // ① 产品评审 → IN_REVIEW
