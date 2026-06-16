@@ -1640,6 +1640,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const draft = await modeling.suggest(ctx(req), body.rawDatasetIds);
     return reply.status(202).send({ draftId: draft.id, status: draft.status });
   });
+  // 确定性建模管线（无 LLM；构造上字段全建模 100% 覆盖）——参考 nano-ontoprompt，融进 A3。
+  app.post("/a/v1/modeling/derive", async (req, reply) => {
+    const body = parseBody(SuggestSchema, req.body);
+    const draft = await modeling.derive(ctx(req), body.rawDatasetIds);
+    return reply.status(201).send({ draftId: draft.id, status: draft.status });
+  });
+  // 字段全建模覆盖报告（R12）：覆盖率 + 未建模字段清单。
+  app.get("/a/v1/modeling/drafts/:id/coverage", async (req) => {
+    const { id } = req.params as { id: string };
+    return modeling.coverage(ctx(req), id);
+  });
   // VM 映射：附带 datasets 字段画像（前端建模工作台左栏，PRD §7.6）。
   const modelingDraftVM = async (c: AuthCtx, d: Awaited<ReturnType<typeof modeling.getDraft>>) => ({
     ...d,
@@ -1673,8 +1684,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/modeling/drafts/:id/publish", async (req) => {
     const { id } = req.params as { id: string };
+    // requireFullCoverage（R12 字段全建模门）：未建模字段阻断发布（默认关，保持向后兼容）。
+    const requireFullCoverage = (req.body as { requireFullCoverage?: boolean } | undefined)?.requireFullCoverage === true;
     try {
-      const result = await modeling.publishDraft(ctx(req), id);
+      const result = await modeling.publishDraft(ctx(req), id, { requireFullCoverage });
       return { ok: true, ...result };
     } catch (err) {
       // 前端 PRD §7.6：发布校验错误内联展示在对应卡片 → {ok:false, errors:[{typeKey,message}]}

@@ -1,4 +1,4 @@
-import { ModelingSuggestionSchema, type ModelingSuggestion } from "@platform/contracts";
+import { ModelingSuggestionSchema, type FieldCoverageReport, type FieldProfile, type ModelingSuggestion } from "@platform/contracts";
 import type { AuthCtx, DraftOperation, FkCandidate, OntologyDraft, RawDataset } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { LlmClient } from "./llm.js";
@@ -50,6 +50,97 @@ export function detectFkCandidates(
   return out;
 }
 
+/** dataset/field 名 → PascalCase typeKey（确定性，无外部产品名）。 */
+function toPascal(name: string): string {
+  const s = name.replace(/(^|[_\-\s]+)(\w)/g, (_m, _sep, c: string) => c.toUpperCase()).replace(/[^\w一-龥]/g, "");
+  return s || name;
+}
+
+function inferDataType(p: FieldProfile, isRef: boolean): ModelingSuggestion["objectTypes"][number]["properties"][number]["dataType"] {
+  if (isRef) return "ref";
+  if (p.enumCandidates && p.enumCandidates.length > 0) return "enum";
+  switch (p.inferredType) {
+    case "number":
+      return "number";
+    case "boolean":
+      return "boolean";
+    case "date":
+      return "date";
+    default:
+      return "string";
+  }
+}
+
+/**
+ * 确定性本体映射管线（参考 nano-ontoprompt 的"基于数据的确定性映射"；融进 A3）：
+ *  dataset → ObjectType（CREATE）· column → PropertyDef（类型按字段画像推断）·
+ *  FK 候选 → ref 属性 + LinkType · 主键 = 唯一率最高(≥0.95)字段。
+ * 关键不变量 R12：每个字段都映射成一个属性 → 构造上 100% 字段全建模覆盖（与 LLM 路径互补）。
+ */
+export function deriveModelingSuggestion(
+  datasets: { dataset: RawDataset }[],
+  fkCandidates: FkCandidate[],
+): ModelingSuggestion {
+  const typeKeyByDataset = new Map<string, string>();
+  for (const { dataset } of datasets) typeKeyByDataset.set(dataset.name, toPascal(dataset.name));
+
+  const objectTypes: ModelingSuggestion["objectTypes"] = datasets.map(({ dataset }) => {
+    const typeKey = typeKeyByDataset.get(dataset.name)!;
+    const pkField = [...dataset.fields].sort((a, b) => b.uniqueRate - a.uniqueRate).find((f) => f.uniqueRate >= 0.95)?.name ?? dataset.fields[0]?.name;
+    const fksFrom = fkCandidates.filter((fk) => fk.fromDataset === dataset.name);
+    const properties = dataset.fields.map((f) => {
+      const fk = fksFrom.find((x) => x.fromField === f.name);
+      const refType = fk ? typeKeyByDataset.get(fk.toDataset) ?? null : null;
+      return {
+        propKey: f.name,
+        sourceField: f.name,
+        dataType: inferDataType(f, !!refType),
+        isPrimaryKey: f.name === pkField,
+        refToTypeKey: refType,
+      };
+    });
+    return { action: "CREATE" as const, existingTypeKey: null, typeKey, displayName: dataset.name, domain: "unassigned", sourceDataset: dataset.name, properties, confidence: 1 };
+  });
+
+  const linkTypes: ModelingSuggestion["linkTypes"] = [];
+  for (const fk of fkCandidates) {
+    const fromType = typeKeyByDataset.get(fk.fromDataset);
+    const toType = typeKeyByDataset.get(fk.toDataset);
+    if (!fromType || !toType) continue;
+    linkTypes.push({
+      fromTypeKey: fromType,
+      toTypeKey: toType,
+      viaFields: { fromField: fk.fromField, toField: fk.toField },
+      cardinality: "1:N",
+      nameSuggestion: `${fk.fromDataset}_to_${fk.toDataset}`,
+      confidence: fk.containment,
+    });
+  }
+  return { objectTypes, linkTypes };
+}
+
+/**
+ * 字段全建模覆盖（R12 字段全建模门）：每个数据集字段是否被某个对象属性 sourceField 消费。
+ * fullyCovered=false → 该数据源仍有字段未建模（违反"导入的每个字段都需被建模"）。
+ */
+export function computeFieldCoverage(
+  suggestion: ModelingSuggestion,
+  datasets: { name: string; fields: { name: string }[] }[],
+): FieldCoverageReport {
+  const rows = datasets.map((ds) => {
+    const mapped = new Set<string>();
+    for (const t of suggestion.objectTypes) {
+      if (t.sourceDataset !== ds.name) continue;
+      for (const p of t.properties) mapped.add(p.sourceField);
+    }
+    const unmodeled = ds.fields.map((f) => f.name).filter((n) => !mapped.has(n));
+    return { name: ds.name, total: ds.fields.length, modeled: ds.fields.length - unmodeled.length, unmodeled };
+  });
+  const totalFields = rows.reduce((a, d) => a + d.total, 0);
+  const modeledFields = rows.reduce((a, d) => a + d.modeled, 0);
+  return { datasets: rows, totalFields, modeledFields, coverage: totalFields ? modeledFields / totalFields : 1, fullyCovered: modeledFields === totalFields };
+}
+
 /** A3 semi-automatic modeling: suggest → draft → human PATCH → validate → publish → materialize. */
 export class ModelingService {
   constructor(
@@ -61,13 +152,52 @@ export class ModelingService {
     private quarantine?: import("./quarantine.js").QuarantineService,
   ) {}
 
-  async suggest(ctx: AuthCtx, rawDatasetIds: string[]): Promise<OntologyDraft> {
+  private async loadDatasets(ctx: AuthCtx, rawDatasetIds: string[]): Promise<{ dataset: RawDataset; rows: Record<string, unknown>[] }[]> {
     const datasets: { dataset: RawDataset; rows: Record<string, unknown>[] }[] = [];
     for (const id of rawDatasetIds) {
       const ds = await this.repos.rawDatasets.get(ctx.tenantId, id);
       if (!ds) throw notFound(`raw dataset ${id}`);
       datasets.push({ dataset: ds, rows: await this.repos.rawRows.list(ctx.tenantId, ds.id) });
     }
+    return datasets;
+  }
+
+  /**
+   * 确定性建模（无 LLM）：确定性映射管线直接产出草稿，构造上字段全建模 100% 覆盖。
+   * 与 suggest（LLM 语义增强）互补；可作为字段全建模门的"保底基线"。
+   */
+  async derive(ctx: AuthCtx, rawDatasetIds: string[]): Promise<OntologyDraft> {
+    const datasets = await this.loadDatasets(ctx, rawDatasetIds);
+    const fkCandidates = detectFkCandidates(datasets);
+    const suggestion = deriveModelingSuggestion(datasets, fkCandidates);
+    const draft: OntologyDraft = {
+      id: newId("draft"),
+      tenantId: ctx.tenantId,
+      status: "DRAFT",
+      rawDatasetIds,
+      fkCandidates,
+      suggestion,
+      operationLog: [],
+      createdAt: new Date().toISOString(),
+    };
+    await this.repos.ontologyDrafts.put(draft);
+    return draft;
+  }
+
+  /** 字段全建模覆盖报告（R12）：草稿当前映射对导入数据源字段的覆盖率 + 未建模清单。 */
+  async coverage(ctx: AuthCtx, draftId: string): Promise<FieldCoverageReport> {
+    const draft = await this.getDraft(ctx, draftId);
+    const datasets = await Promise.all(
+      draft.rawDatasetIds.map(async (id) => {
+        const ds = await this.repos.rawDatasets.get(ctx.tenantId, id);
+        return ds ? { name: ds.name, fields: ds.fields } : { name: id, fields: [] };
+      }),
+    );
+    return computeFieldCoverage(draft.suggestion, datasets);
+  }
+
+  async suggest(ctx: AuthCtx, rawDatasetIds: string[]): Promise<OntologyDraft> {
+    const datasets = await this.loadDatasets(ctx, rawDatasetIds);
     const fkCandidates = detectFkCandidates(datasets);
     const existingTypes = await this.ontology.listTypes(ctx);
     const existingSummary = existingTypes.map((t) => ({
@@ -203,8 +333,11 @@ export class ModelingService {
     }
   }
 
-  /** Publish validation: PK required, refs exist, typeKey conflicts (PRD §5.1-4). */
-  async publishDraft(ctx: AuthCtx, id: string): Promise<{ draft: OntologyDraft; ontologyVersion: number }> {
+  /**
+   * Publish validation: PK required, refs exist, typeKey conflicts (PRD §5.1-4).
+   * opts.requireFullCoverage（R12 字段全建模门）：导入数据源每个字段都必须建模，否则阻断发布。
+   */
+  async publishDraft(ctx: AuthCtx, id: string, opts?: { requireFullCoverage?: boolean }): Promise<{ draft: OntologyDraft; ontologyVersion: number }> {
     const draft = await this.getDraft(ctx, id);
     if (draft.status === "PUBLISHED") throw invalidState("draft already published");
     const suggestion = draft.suggestion;
@@ -237,6 +370,24 @@ export class ModelingService {
         if (!draftKeys.has(k) && !existingKeys.has(k)) errors.push(`link ${lt.nameSuggestion}: unknown type '${k}'`);
       }
     }
+
+    // R12 字段全建模门（opt-in）：导入数据源每个字段都必须建模，未建模字段阻断发布。
+    if (opts?.requireFullCoverage) {
+      const datasets = await Promise.all(
+        draft.rawDatasetIds.map(async (dsId) => {
+          const ds = await this.repos.rawDatasets.get(ctx.tenantId, dsId);
+          return ds ? { name: ds.name, fields: ds.fields } : { name: dsId, fields: [] };
+        }),
+      );
+      const cov = computeFieldCoverage(suggestion, datasets);
+      const typeKeyByDataset = new Map(suggestion.objectTypes.map((t) => [t.sourceDataset, t.typeKey]));
+      for (const d of cov.datasets) {
+        for (const f of d.unmodeled) {
+          errors.push(`${typeKeyByDataset.get(d.name) ?? d.name}: 字段 '${d.name}.${f}' 未建模（字段全建模门 R12 — 每个导入字段都需被建模）`);
+        }
+      }
+    }
+
     if (errors.length > 0) throw validationError(`publish validation failed: ${errors.join("; ")}`);
 
     // Resolve dataset -> connId for sourceBindings.

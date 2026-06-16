@@ -143,6 +143,26 @@ export const ModelingSuggestionSchema = z.object({
 });
 export type ModelingSuggestion = z.infer<typeof ModelingSuggestionSchema>;
 
+/**
+ * 字段全建模覆盖报告（R12「字段全建模」）：导入数据源的每个字段都要落到某个对象属性。
+ * 确定性映射管线（dataset→ObjectType · column→PropertyDef · FK→LinkType）默认 100% 覆盖。
+ */
+export const FieldCoverageReportSchema = z.object({
+  datasets: z.array(
+    z.object({
+      name: z.string(),
+      total: z.number().int(),
+      modeled: z.number().int(),
+      unmodeled: z.array(z.string()),
+    }),
+  ),
+  totalFields: z.number().int(),
+  modeledFields: z.number().int(),
+  coverage: z.number(), // 0..1
+  fullyCovered: z.boolean(),
+});
+export type FieldCoverageReport = z.infer<typeof FieldCoverageReportSchema>;
+
 // ---------------------------------------------------------------------------
 // 平台 PRD §6 A0/A6 权限
 // ---------------------------------------------------------------------------

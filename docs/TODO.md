@@ -46,8 +46,8 @@
   - ⬜ P3：前端 ⌘K 命令面板 + 按域目录 + 首页高频
 - 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`）—— 大
   - **参考软件**：[`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；v2 数据集成链 Data→Raw→Transform→Curated→Ontology Mapping，确定性映射 dataset→entity / column→property / FK→link + 基数推断）— 融进 A3 `modeling.ts`；+ 参考原型 `reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI
-  - ⬜ 确定性映射管线（dataset→ObjectType · column→PropertyDef · FK/值重叠→LinkType · 基数/质量）
-  - ⬜ 字段全建模门（R12 升 HARD + `coverage:check`）
+  - ✅ **确定性映射管线**（`deriveModelingSuggestion`：dataset→ObjectType · column→PropertyDef(类型按画像推断) · FK→ref+LinkType · PK=唯一率最高字段；`POST /a/v1/modeling/derive` 无 LLM 出草稿，构造上 100% 覆盖）
+  - ✅ **字段全建模门**（`computeFieldCoverage` + `GET /a/v1/modeling/drafts/:id/coverage`；publish `requireFullCoverage` 开门则未建模字段阻断；R12 落地。OM4/OM5/OM6 回归）· ⬜ 升 HARD 默认 + 前端开关
   - ⬜ 本体浏览器（域分组图谱 + 节点检视器 + CSV 模板 + 覆盖徽章）
 
 ## 🔧 Tier 3.5 · 剩余断点
