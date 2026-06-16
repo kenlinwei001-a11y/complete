@@ -1273,6 +1273,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     );
     return ontologyCore.recompute(c, body.changes);
   });
+
+  // generic-inference 通用 what-if（PRD-generic-inference / G-5 8e）：行业无关——给定"假设某对象属性=新值"，
+  // 用本体派生规格(A4)前向重算受影响派生属性，返回 before/after，**不落真值**(R4，dryRun 无副作用)。
+  app.post("/a/v1/inference/whatif", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(
+      z.object({
+        apply: z
+          .array(z.object({ objectType: z.string(), objectId: z.string(), prop: z.string(), value: z.unknown() }))
+          .min(1)
+          .max(50),
+      }),
+      req.body,
+    );
+    const changes = body.apply.map((a) => ({ typeKey: a.objectType, prop: a.prop, objectIds: [a.objectId] }));
+    const apply = body.apply.map((a) => ({ objectId: a.objectId, prop: a.prop, value: a.value }));
+    const result = await ontologyCore.recompute(c, changes, { dryRun: true, apply });
+    return { deltas: result.dryRunDeltas ?? [], affectedObjects: result.updatedObjects };
+  });
   // §3 声明式切片：注册 + 执行（A6 逐跳剪枝、参数化、截断）。
   app.put("/a/v1/ontology/slices/:sliceKey", async (req, reply) => {
     const c = ctx(req);

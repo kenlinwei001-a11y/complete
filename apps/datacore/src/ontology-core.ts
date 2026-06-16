@@ -53,6 +53,8 @@ export interface RecomputeResult {
   affectedObjectIds: string[];
   order: string[]; // (typeKey.prop) in topo order
   epoch: number;
+  /** generic-inference dryRun：受影响派生属性的 before/after（不持久化时返回）。 */
+  dryRunDeltas?: { objId: string; type: string; prop: string; before: unknown; after: unknown }[];
 }
 
 /** PropertyDef extended with the atomic-spec fields carried in props metadata. */
@@ -339,9 +341,13 @@ export class OntologyCoreService {
   async recompute(
     ctx: AuthCtx,
     changes: ChangeSet[],
-    opts?: { epoch?: number },
+    opts?: { epoch?: number; dryRun?: boolean; apply?: { objectId: string; prop: string; value: unknown }[] },
   ): Promise<RecomputeResult> {
-    const epoch = opts?.epoch ?? (await this.beginEpoch(ctx.tenantId));
+    // generic-inference 通用 what-if（PRD-generic-inference §3.1 / R4 不写真值）：
+    // dryRun 时在克隆图上前向重算，绝不持久化、绝不 mutate 原对象，返回派生 before/after。
+    const dryRun = opts?.dryRun ?? false;
+    const dryRunDeltas: { objId: string; type: string; prop: string; before: unknown; after: unknown }[] = [];
+    const epoch = dryRun ? 0 : (opts?.epoch ?? (await this.beginEpoch(ctx.tenantId)));
     const allSpecs = await this.repos.derivationSpecs.list(
       ctx.tenantId,
       (s) => s.status === "ACTIVE",
@@ -356,7 +362,14 @@ export class OntologyCoreService {
     // Index objects by id and links by (linkKey, fromId)/(linkKey, toId) for navigation.
     const objectIndex = new Map<string, ObjectInstance>();
     for (const t of types) {
-      for (const o of await this.repos.objects.listByType(ctx.tenantId, t.key)) objectIndex.set(o.id, o);
+      for (const o of await this.repos.objects.listByType(ctx.tenantId, t.key)) objectIndex.set(o.id, dryRun ? structuredClone(o) : o);
+    }
+    // generic-inference what-if：把假设的源属性值套到克隆对象上（仅 dryRun），再前向重算下游派生。
+    if (dryRun && opts?.apply) {
+      for (const a of opts.apply) {
+        const o = objectIndex.get(a.objectId);
+        if (o) o.props[a.prop] = a.value;
+      }
     }
     const navOut = new Map<string, LinkInstance[]>(); // `${linkKey}|${fromId}`
     const navIn = new Map<string, LinkInstance[]>(); // `${linkKey}|${toId}`
@@ -480,7 +493,11 @@ export class OntologyCoreService {
         const changed = prev !== value;
         obj.props[spec.targetProp] = value;
         obj.epoch = epoch;
-        await this.repos.objects.put(obj);
+        if (dryRun) {
+          if (changed) dryRunDeltas.push({ objId: obj.id, type: obj.type, prop: spec.targetProp, before: prev, after: value });
+        } else {
+          await this.repos.objects.put(obj);
+        }
         objectIndex.set(obj.id, obj);
         valueRuns.push({ spec, objId: obj.id, value, inputs, warnings });
         affected.add(obj.id);
@@ -499,7 +516,7 @@ export class OntologyCoreService {
     }
 
     const ranAt = new Date().toISOString();
-    for (const vr of valueRuns) {
+    for (const vr of dryRun ? [] : valueRuns) {
       await this.repos.derivationValueRuns.put({
         id: newId("dvrun"),
         tenantId: ctx.tenantId,
@@ -520,6 +537,7 @@ export class OntologyCoreService {
       affectedObjectIds: [...affected].sort(),
       order: topo.map((t) => `${t.typeKey}.${t.prop}`),
       epoch,
+      ...(dryRun ? { dryRunDeltas } : {}),
     };
   }
 

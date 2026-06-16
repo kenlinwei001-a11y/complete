@@ -56,7 +56,7 @@
   - **8b 业务数据写死** ✅ **全部完成 + 后端闭环**：ProjectSim 型号（**接真实 Model 对象**，消对不齐）/地址/物流（`simConfig`）· GeoMap 坐标（`Base.props.lon/lat`）· Calibration 基地（Base 对象）· SopBalance 阈值+三段（`sopConfig`）· PlanGenerate 目标（`planGoals`）
   - **8c 文案写死**（待办）：~35 处中文内联绕过 `zh.ts`；i18n 混入租户专属串（`zh.ts:569 "如 常州"`、`:377 "扩化成通道"`）—— 归集 i18n + 行业别名映射
   - **8d Agent/配置** ✅ **经核实已满足**（既有架构已解决）：运行时模型走 `roleModel(tenant,"agent",fallback)` LLM Provider 用途绑定（`orchestrator.ts:618`，seed 的 `model` 字段运行时不读）· 既有 Agent 可经 `PUT /b/v1/agents/:id` + AgentsPage 编辑 systemPrompt/tools · seed=出厂默认可覆盖 · `BATTERY_SOLVER_PARAMS` 为电池行业模板，其他行业走各自 IndustryTemplate（SY3 已证）
-  - **8e `generic-inference`**（待办，**高价值/推演内核**）通用 what-if（脱离 22 个电池求解器）
+  - **8e `generic-inference`** ✅ **已落**（PRD `docs/PRD-generic-inference.md`）：`recompute(dryRun+apply)` 克隆图前向重算派生、不落真值 + `POST /a/v1/inference/whatif`，行业无关；O4b 回归（前向重算+无副作用）。注：作用于 compileSpecs 派生本体；合成 demo 用 runDerivations 另一路（后续可统一）
   - **门禁 `debattery:check`**（待办）：静态扫描视图/页内联业务常数 + i18n 租户串 → 自动盘出剩余 + 防回潮（落地 R14）
   - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**
 - ⬜ **8.5 `debattery:check` 门禁**（独立工具，与 `ontology:check`/`chain:check` 同级，并入 `pnpm gates`）：静态扫描 `views/`+`pages/` 内联业务常数（基地名/型号/工序/坐标）+ `zh.ts` 租户专属串 → 自动盘出剩余写死项 + 防回潮（落地不变量 R14）。`DEFAULT_*` 兜底常量白名单豁免。

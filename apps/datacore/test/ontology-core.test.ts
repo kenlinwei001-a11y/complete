@@ -241,6 +241,39 @@ describe("O1–O10 本体原子规格", () => {
     expect(last.epoch).toBe(res.epoch);
   });
 
+  it("O4b generic-inference 通用 what-if：dryRun 前向重算派生链 before/after，无副作用（G-5 8e）", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    await buildPyramidObjects(t);
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [
+      { typeKey: "Equipment", prop: "oee_current", objectIds: ["obj_Equipment_E1", "obj_Equipment_E2", "obj_Equipment_E3"] },
+    ]); // 全量初算，派生值落库
+
+    const oeeBefore = (await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.oee_current;
+    const capHBefore = (await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.capacity_h;
+    const factoryBefore = (await t.repos.objects.get("demo", "obj_Factory_F1"))!.props.capacity;
+
+    // what-if：假设 E1 的 OEE = 0.5 → 用本体派生规格前向重算 capacity_h→Process→Line→Factory（不落真值）
+    const res = await t.services.ontologyCore.recompute(
+      ADMIN_CTX,
+      [{ typeKey: "Equipment", prop: "oee_current", objectIds: ["obj_Equipment_E1"] }],
+      { dryRun: true, apply: [{ objectId: "obj_Equipment_E1", prop: "oee_current", value: 0.5 }] },
+    );
+    expect(res.dryRunDeltas, "返回 dryRunDeltas").toBeTruthy();
+    const capH = res.dryRunDeltas!.find((d) => d.objId === "obj_Equipment_E1" && d.prop === "capacity_h");
+    expect(capH, "E1 capacity_h 前向重算").toBeTruthy();
+    expect(capH!.before).toBe(capHBefore);
+    expect(capH!.after).not.toBe(capHBefore);
+    // 级联到工厂（行业无关：纯靠派生规格 + 链路导航）
+    expect(res.dryRunDeltas!.some((d) => d.objId === "obj_Factory_F1" && d.prop === "capacity")).toBe(true);
+
+    // 无副作用（R4，dryRun 不落真值）：对象库真值不变
+    expect((await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.oee_current).toBe(oeeBefore);
+    expect((await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.capacity_h).toBe(capHBefore);
+    expect((await t.repos.objects.get("demo", "obj_Factory_F1"))!.props.capacity).toBe(factoryBefore);
+  });
+
   it("O5 求值语义：null 传播 / COALESCE / 除零→null+warning / decimal 0.1+0.2==0.3", async () => {
     // decimal fixed-point
     const sum = evaluate(parseFormula("0.1 + 0.2"), { self: {}, navigate: () => [], warn: () => {} });
