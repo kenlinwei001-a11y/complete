@@ -780,9 +780,19 @@ function StepBody({
                 <span>
                   {zh.sim.proj.after}（P90 {fmt(wi.adjustedP90 ?? 0)}）
                 </span>
-                <b style={{ color: "var(--ok)" }} data-testid="whatif-after">
-                  {fmt(wi.adjustedP50 ?? 0)}
-                </b>
+                {/* 产能推演峰值/对策量（#4 backlog）：对策后P50 六要素溯源（受物理上限截顶 C03/C08） */}
+                <Provenance
+                  testId="whatif-after"
+                  src="capacity_forecast · what-if 叠加"
+                  formula="对策后P50 = min(基线P50 ×(1 + 夜班 + 扩产能通道 + 外协增益), 物理产能上限)"
+                  inputs={[`基线P50 ${fmt(out.p50)}`, `加夜班 ×${whatIf.nightShifts}`, `扩产能通道 ×${whatIf.extraChannels}`, `外协 ${whatIf.outsourcePct}%`]}
+                  rule="C03/C08"
+                  note={wi.capped ? `已触物理产能上限封顶（${wi.capNote ?? "C03"}）` : "外协≥20% 触发 C08 红线提示"}
+                >
+                  <b style={{ color: "var(--ok)" }} data-testid="whatif-after">
+                    {fmt(wi.adjustedP50 ?? 0)}
+                  </b>
+                </Provenance>
               </div>
             </div>
           )}

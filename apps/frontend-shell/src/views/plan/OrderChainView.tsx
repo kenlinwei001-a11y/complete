@@ -6,6 +6,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
 import { Modal } from "@/components/ui/Modal";
+import { Provenance } from "@/components/Provenance";
 import type { AffectedOrdersOutputVM } from "@/api/types";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge } from "../sim/shared";
@@ -105,7 +106,16 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           <span>{zh.orderChain.sumOrders}</span>
         </div>
         <div className={simStyles.kpi}>
-          <b data-testid="oc-sum-qty">{fmt(out.summary.totalQty, 2)}</b>
+          {/* 订单全链关键数字（#4 backlog）：受影响量/营收六要素溯源 */}
+          <Provenance
+            testId="oc-qty"
+            src="affected_orders 求解器（订单/物料域）"
+            formula="受影响数量 = Σ 分配至风险基地的订单.数量"
+            inputs={["受影响订单明细", "订单数量"]}
+            note="口径 [T−7, T+14] 时窗内、风险基地命中的订单"
+          >
+            <b data-testid="oc-sum-qty">{fmt(out.summary.totalQty, 2)}</b>
+          </Provenance>
           <span>{zh.orderChain.sumQty}</span>
         </div>
         <div className={simStyles.kpi}>
@@ -113,7 +123,15 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           <span>{zh.orderChain.sumCusts}</span>
         </div>
         <div className={simStyles.kpi}>
-          <b data-testid="oc-sum-revenue">{fmt(out.summary.revenue, 2)}</b>
+          <Provenance
+            testId="oc-revenue"
+            src="affected_orders 求解器（财务域）"
+            formula="受影响营收 = Σ 受影响订单(数量 × 单价)"
+            inputs={["受影响订单数量", "型号单价（PLM/财务）"]}
+            note="头部财务影响：受影响订单的营收暴露合计"
+          >
+            <b data-testid="oc-sum-revenue">{fmt(out.summary.revenue, 2)}</b>
+          </Provenance>
           <span>{zh.orderChain.sumRevenue}</span>
         </div>
       </div>
