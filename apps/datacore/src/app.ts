@@ -1093,6 +1093,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       .sort((a, b) => String(a.category ?? "").localeCompare(String(b.category ?? "")) || String(a.signalKey).localeCompare(String(b.signalKey)));
     return { signals, total: signals.length, snapshotVersion: result.snapshotVersion };
   });
+  // 外部域（EXT_SIG P2）：信号冲击 → 规划指标敏感性（确定性弹性：Δ指标pp = Δ信号% × elasticity，按 impact 聚合）。
+  // body: { shocks: [{ signalKey, deltaPct }] }。无副作用（纯计算）；R6 确定性。
+  app.post("/a/v1/external-signals/sensitivity", async (req) => {
+    const body = (req.body ?? {}) as { shocks?: { signalKey?: string; deltaPct?: number }[] };
+    const shocks = Array.isArray(body.shocks) ? body.shocks : [];
+    const rows = (await ontology.queryObjects(ctx(req), "ExternalSignal", {}, 500)).data as { props: Record<string, unknown> }[];
+    const byKey = new Map(rows.map((r) => [String(r.props.signalKey), r.props]));
+    const byMetric = new Map<string, { metric: string; deltaPct: number; drivers: { signalKey: string; deltaPct: number; contributionPp: number }[] }>();
+    const unknown: string[] = [];
+    for (const s of shocks) {
+      const sig = s.signalKey ? byKey.get(s.signalKey) : undefined;
+      if (!sig) { if (s.signalKey) unknown.push(s.signalKey); continue; }
+      const metric = String(sig.impact ?? "未分类");
+      const elasticity = Number(sig.elasticity ?? 0);
+      const dPct = Number(s.deltaPct ?? 0);
+      const contributionPp = Math.round(dPct * elasticity * 100) / 100;
+      const m = byMetric.get(metric) ?? { metric, deltaPct: 0, drivers: [] };
+      m.deltaPct = Math.round((m.deltaPct + contributionPp) * 100) / 100;
+      m.drivers.push({ signalKey: String(sig.signalKey), deltaPct: dPct, contributionPp });
+      byMetric.set(metric, m);
+    }
+    return { impacts: [...byMetric.values()].sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct)), unknownSignals: unknown };
+  });
   app.get("/a/v1/objects/:type/:id", async (req) => {
     const { type, id } = req.params as { type: string; id: string };
     return ontology.getObject(ctx(req), type, id);

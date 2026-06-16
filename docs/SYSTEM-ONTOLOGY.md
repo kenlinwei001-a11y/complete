@@ -139,7 +139,8 @@ SyntheticJob --gen(seed)--> Connection(合成源)+RawDataset/RawRow --materializ
 ObjectType <--reads-- Solver(入参字段)     ObjectType <--scopes-- Rule     ObjectType --domain--> SliceSpec
 SolverParam <--adjusts-- Calibration       Action(EXECUTED) --writeback--> ObjectInstance(props,二次派生)
 Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）
-Connector(EXTERNAL/mock_external) --sync--> RawDataset(external_signals) --materialize--> ExternalSignal(domain=external)   ✅ EXT_SIG P1（一等对象+连接器+GET /a/v1/external-signals）；--敏感性输入--> {plan_audit|plan_generate} ⬜ P2
+Connector(EXTERNAL/mock_external) --sync--> RawDataset(external_signals) --materialize--> ExternalSignal(domain=external)   ✅ EXT_SIG P1（一等对象+连接器+GET /a/v1/external-signals）
+ExternalSignal --敏感性(elasticity)--> 规划指标(毛利/需求/出口营收/成本)   ✅ P2（POST /a/v1/external-signals/sensitivity：Δ指标pp=Δ信号%×elasticity 按 impact 聚合，确定性无副作用）
 ObjectInstance --lineage 反查--> RawRow→RawDataset→Connection + 派生口径   ✅ P2 端点（GET /a/v1/lineage/object/:type/:id）+ P3 前端悬浮溯源（LedgerView `<Provenance>` 组件，数据源原始表经 FieldProfilePage 可见）；结果→求解器入参对象 lineage 待后续
 ```
 **数据构建发动机链（需求拉动）**

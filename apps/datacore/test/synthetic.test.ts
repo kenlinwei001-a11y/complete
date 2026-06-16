@@ -63,6 +63,17 @@ describe("A7 synthetic data", () => {
     const raws = (await (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${connId}`, headers: ADMIN })).json()) as { name: string; rowCount: number }[];
     const ds = raws.find((d) => d.name === "external_signals");
     expect(ds?.rowCount).toBeGreaterThanOrEqual(6);
+
+    // P2 敏感性：信号冲击 → 规划指标（确定性弹性）。锂价 +10%（elasticity -0.08）→ 毛利 -0.8pp。
+    const sens = await t.app.inject({
+      method: "POST", url: "/a/v1/external-signals/sensitivity", headers: ADMIN,
+      payload: { shocks: [{ signalKey: "li_carbonate_price", deltaPct: 10 }, { signalKey: "ev_demand_index", deltaPct: 5 }, { signalKey: "ghost", deltaPct: 1 }] },
+    });
+    expect(sens.statusCode).toBe(200);
+    const { impacts, unknownSignals } = sens.json() as { impacts: { metric: string; deltaPct: number }[]; unknownSignals: string[] };
+    expect(impacts.find((i) => i.metric === "毛利")?.deltaPct).toBe(-0.8);
+    expect(impacts.find((i) => i.metric === "需求")?.deltaPct).toBe(3); // 5 × 0.6
+    expect(unknownSignals).toContain("ghost");
   });
 
   it("seeds rules C03/C08/C13 with origin SYNTHETIC; C03 blocks at demandDelta > 0.5", async () => {
