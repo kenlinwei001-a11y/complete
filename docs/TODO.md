@@ -110,6 +110,17 @@
 - 🟡 **按需查询计划合成**：当前 `ExecutionPlan` 是一等制品但来自目录绑定（`resolvePlanForIntent`）、非按 query 动态生成；「生成」实为「解析/绑定」。是否引入动态合成需权衡 R6 确定性与可溯源。
 - ↪ 输出非 SPARQL（自有 resolve_slice + 派生/规则 DSL）—— 归并入上「形式化本体」条，不重复立项。
 - 🟡 **超域答案置信度标记（贯通上两条的产物）**：动态语义解析 + 关系路径规划在本体上尝试映射后，对**无法映射的部分**（超出本体定义域）由 LLM 做"本体外推理"，并在最终答案上打一个**显式置信度/超域标记**（覆盖度：本体内可验证占比 vs 超域推理占比 + 风险等级）。这是把现有「本体内/外双轨」(路径A `VERIFIED_WORKFLOW` / 路径B `unverifiedNumerics`，整任务级) **细化到答案片段级的覆盖度信号** —— 让用户一眼看出"哪部分有本体支撑、哪部分是 LLM 自由推理"。依赖「关系路径规划器」+「统一 Entity Linking 层」先落地（映射尝试 = 覆盖度的来源）。
+- 🟡 **本体切片缺失时的推演策略（不止超域）**：超域=整问题落在本体定义域外；**切片缺失**=问题在域内、但所需的具体本体切片/派生/对象类型尚未建模（如问到某指标但该 slice 未定义）。需明确缺失时的推演降级策略：① 报"缺失切片"并提示可建模项（而非静默用 LLM 瞎答）；② 允许 LLM 在标记风险下做近似推演；③ 与「数据构建发动机 gap 阶段」打通——把缺失切片回流为建模待办。
+- 🟡 **后台「域/缺失切片」记录（治理可观测）**：把每次超域问题涉及的**域**、以及**缺失的本体切片/对象类型/派生**落后台记录（按 tenant 聚合），用于：① 发现本体盲区（高频缺失=优先建模）；② 量化本体覆盖度演进；③ 反哺「数据构建发动机」与建模待办。事件/表新增需遵 R2 tenant 隔离 + R9 仓储双实现四处同改 + R10 事件闭环。
+
+### 可验证推理规划层 · 公理约束 + 每步可验证（差距评审 2026-06-16，约 50–60%，范式不同）
+
+> 现状走「预策展确定性计划 + 运行时规则裁决 + 数据来源溯源 + Action 审批」（换 R6 确定性/可审计）；非「LLM 生成推理链→逐步公理自校验自愈→逐步置信度」。**地基坚实**：规则 DSL=公理表示（`ruledsl.ts`：字段比较+AND/OR/NOT+聚合 COUNT/AVG/SUM+SUSTAIN 时序，Axiom1/3 可写）；`evaluate_rules` 步骤+`rules.evaluate`（`rules.ts:204`）产 RuleVerdict(passed/severity/explanation/ruleVersion)；答案带 trustLevel+provenance(R13 六要素)+unverifiedNumerics；建议→处置经 Action 审批(R4)。差距如下。
+
+- 🟡 **推理链逐步公理校验 + 违规自愈闭环（最大缺口）**：当前公理检查是计划里**显式编排的 `evaluate_rules` 步骤**（路径A 计划人工预策展、非 LLM 生成；路径B agent 可调但非强制每步校验），**无** `check_axiom_violations(step)→replan_step(step, violations)` 的逐步自校验/重规划循环。
+- 🟡 **forward-chaining 公理推理（条件→后果）**：现有规则是**约束(condition→BLOCK/WARN/INFO 裁决)**，非**产生式(→ level=\"C\" / → status=\"suspended\")**；后果落地靠派生属性+Action 效果，无前向链推理机（与「形式化本体/DL 推理机」条相关）。
+- 🟡 **计划发布期公理校验**：`validatePlanSteps`（`workflow/validate.ts:37`）仅做结构校验（步骤引用/顺序/超时/render_answer），**不校验计划是否违反领域公理**；公理校验只在运行时经 `evaluate_rules` 发生。可加发布期静态公理一致性门。
+- 🟡 **逐步 axiom_check_log + confidence_per_step 作为一等可视化制品**：现 provenance 是**数据来源级**（outputPath/snapshot/时序聚合/KB chunk），非"这步通过了哪些公理检查"的逐步日志；信任度是任务级（trustLevel+unverifiedNumerics+分类 confidence），无推理链**逐步置信度**。3.2 那种"每步 ✓公理检查 + 可解释性评分"需作为结构化制品透出。
 
 ## 📌 非开发遗留
 - ⚠ **吊销并更换暴露的 Gemini API key**（早前明文发过）
