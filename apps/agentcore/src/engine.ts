@@ -352,6 +352,7 @@ export class ExecutionEngine {
         composeModel: await this.deps.llmSettings.roleModel(opts.ctx.tenantId, "compose"),
         emit: opts.emit,
         onResolvedRef: opts.onResolvedRef,
+        crossValidate: (req) => this.deps.dataCore.ontology.crossValidate(opts.ctx, req),
         runAgentStep: async (params) => {
           const r = await this.runRegisteredAgent({
             taskId: opts.taskId,

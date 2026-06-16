@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -25,6 +25,8 @@ export interface OntologyClient {
   aggregateObjects(ctx: ToolAuthCtx, req: AggregateRequest): Promise<ToolPayload>;
   /** B→A 存在性探针（引用闭合）：本租户已发布对象类型 key 全集（agent scope / intent slot 校验）。 */
   listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]>;
+  /** 推演验证痕迹 Layer 2：把结论断言交给 DataCore 对照知识图谱已有事实交叉验证。 */
+  crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse>;
 }
 
 export interface SolverClient {

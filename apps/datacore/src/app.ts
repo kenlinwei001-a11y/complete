@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
@@ -959,6 +959,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/ontology/slices/:key/references", async (req) => {
     const { key } = req.params as { key: string };
     return governance.sliceReferences(ctx(req), key);
+  });
+
+  // ---- 推演验证痕迹 Layer 2：结论断言 vs 知识图谱已有事实交叉验证 -----------------
+  app.post("/a/v1/ontology/cross-validate", async (req) => {
+    const body = CrossValidateRequestSchema.parse(req.body);
+    return ontology.crossValidate(ctx(req), body.claims);
   });
 
   // ---- 治理增量 §7.2 切片契约（发布门禁 + CI 手动触发）-----------------------

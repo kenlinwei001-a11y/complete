@@ -5,6 +5,7 @@ import { sendFeedback } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { AnswerBlockView } from "./AnswerBlocks";
+import { ValidationTracePanel } from "./ValidationTracePanel";
 import styles from "./AnswerCard.module.css";
 
 /**
@@ -65,6 +66,7 @@ export function AnswerCard({
           <AnswerBlockView key={i} block={b} taskId={taskId} provIndex={provIndex} />
         ))}
       </div>
+      {answer.validationTrace && <ValidationTracePanel trace={answer.validationTrace} />}
       {(showFeedback || showDetailLink) && (
         <div className={styles.foot}>
           {showFeedback && (

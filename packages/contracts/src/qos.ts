@@ -275,11 +275,91 @@ export const ProvenanceRefSchema = z.object({
 });
 export type ProvenanceRef = z.infer<typeof ProvenanceRefSchema>;
 
+// ---------------------------------------------------------------------------
+// 推演验证痕迹（ValidationTrace）—— 凡推演结果用到本体切片即附带，前端展示让用户信任。
+// 两层：① 一致性验证（本体内自动）② 交叉验证（用知识图谱已有事实反向核对结论）。
+// 确定性（R6）：同输入同切片同对象事实 → 同验证结论；tenant 隔离（R2）。
+// ---------------------------------------------------------------------------
+
+/** 一致性验证单项（Layer 1）：实体在本体定义 / 公理(规则)检查 / 取值范围 / 数字溯源 / 版本钉。 */
+export const ConsistencyCheckSchema = z.object({
+  kind: z.enum(["ENTITY_DEFINED", "AXIOM", "RANGE", "NUMERIC_PROVENANCE", "VERSION_PIN"]),
+  ref: z.string(),
+  status: z.enum(["PASS", "WARN", "FAIL"]),
+  detail: z.string().optional(),
+});
+export type ConsistencyCheck = z.infer<typeof ConsistencyCheckSchema>;
+
+/** 交叉验证单条断言核对（Layer 2）：结论里的对象属性/关系 vs 知识图谱已有事实。 */
+export const ClaimVerdictSchema = z.object({
+  claim: z.string(), // 人读："Supplier:S-A.certification == ISO9001"
+  kind: z.enum(["PROPERTY", "LINK"]),
+  subjectType: z.string(),
+  subjectId: z.string(),
+  /** kind=PROPERTY */
+  property: z.string().optional(),
+  assertedValue: z.unknown().optional(),
+  /** kind=LINK */
+  linkType: z.string().optional(),
+  objectType: z.string().optional(),
+  objectId: z.string().optional(),
+  status: z.enum(["CONSISTENT", "CONFLICT", "NO_EVIDENCE"]),
+  /** 知识图谱实际值（CONFLICT 时附） */
+  kgValue: z.unknown().optional(),
+  detail: z.string().optional(),
+  /** 溯源：核对所依据的对象快照版本 */
+  snapshotVersion: z.string().optional(),
+});
+export type ClaimVerdict = z.infer<typeof ClaimVerdictSchema>;
+
+/** 交叉验证请求（B→A）：把结论里的断言交给 DataCore 对照知识图谱核对。 */
+export const CrossValidateRequestSchema = z.object({
+  claims: z
+    .array(
+      z.object({
+        kind: z.enum(["PROPERTY", "LINK"]),
+        subjectType: z.string(),
+        subjectId: z.string(),
+        property: z.string().optional(),
+        assertedValue: z.unknown().optional(),
+        linkType: z.string().optional(),
+        objectType: z.string().optional(),
+        objectId: z.string().optional(),
+      }),
+    )
+    .max(200),
+});
+export type CrossValidateRequest = z.infer<typeof CrossValidateRequestSchema>;
+
+export const CrossValidateResponseSchema = z.object({
+  claims: z.array(ClaimVerdictSchema),
+  verdict: z.enum(["ALL_CONSISTENT", "PARTIAL", "CONFLICT", "NO_CLAIMS"]),
+  snapshotVersion: z.string(),
+});
+export type CrossValidateResponse = z.infer<typeof CrossValidateResponseSchema>;
+
+export const ValidationTraceSchema = z.object({
+  /** 触发钩子：用到的本体切片键（非空即代表"涉及本体切片"，前端据此强制展示）。 */
+  slicesUsed: z.array(z.string()),
+  consistency: z.object({
+    checks: z.array(ConsistencyCheckSchema),
+    verdict: z.enum(["ALL_PASS", "WARN", "FAIL"]),
+  }),
+  crossValidation: z.object({
+    claims: z.array(ClaimVerdictSchema),
+    verdict: z.enum(["ALL_CONSISTENT", "PARTIAL", "CONFLICT", "NO_CLAIMS"]),
+  }),
+  generatedAt: IsoTime,
+});
+export type ValidationTrace = z.infer<typeof ValidationTraceSchema>;
+
 export const AnswerSchema = z.object({
   trustLevel: z.enum(["VERIFIED_WORKFLOW", "AGENT_EXPLORATORY"]),
   blocks: z.array(AnswerBlockSchema),
   provenance: z.array(ProvenanceRefSchema),
   unverifiedNumerics: z.boolean(),
+  /** 推演用到本体切片时附带的验证痕迹（一致性 + 交叉验证）；否则缺省。 */
+  validationTrace: ValidationTraceSchema.optional(),
 });
 export type Answer = z.infer<typeof AnswerSchema>;
 

@@ -101,6 +101,7 @@
 - **Scenario（一等对象，升级自 ScenarioCard）**：场景为一等主键（scenarioKey/name/domain/targetView/intentKey/mode/defaultAgentId/presetContext/rules/riskLevel/status DRAFT→PUBLISHED→RETIRED/version）· 持久化于 AgentCore `scenarios` 仓储 · 出厂 SCENARIO_CATALOG 启动期幂等 upsert（单一来源）· `contracts/agentcore.ts ScenarioSchema` · `scenarios-catalog.ts:60`。**所有使用 workflow/agent 的场景都在此完整可配（治理铁律）**。
 - **SceneEntry（降为投影）**：视图侧投影（**viewKey 为键** · mode 兜底 · defaultAgentId · intentCatalogFilter · suggestedQuestions）· 主键关系反转为 `View ← Scenario.targetView` · `contracts/agentcore.ts:171`。
 - **Task / Query**：QOS 任务（SSE 流）· `router/orchestrator.ts`,`api/sse.ts`。
+- **ValidationTrace（推演验证痕迹）**：凡推演用到本体切片即附于 `Answer.validationTrace`——① 一致性验证（实体定义/公理裁决/数字溯源/版本钉，本体内自动）② 交叉验证（结论对象断言 vs 知识图谱已有事实 CONSISTENT/CONFLICT/NO_EVIDENCE）。让用户信任结果（R13 输出侧纪律的"可视化成品"）· `contracts/qos.ts ValidationTraceSchema` · 组装 `workflow/executor.ts buildValidationTrace` · 前端 `components/Answer/ValidationTracePanel.tsx`。
 - **MCP tool / RefReport**：外部工具 / 引用上报。
 - **客户端（QOS 入口）**：Web 对话坞（`frontend-shell` QueryDock）· **CLI 对话入口**（`scripts/platform-cli.mjs`：login/ask/scenarios/approve，一句话驱动平台；人与 AI 共用）—— 均为切片 `sys.orch.query_to_answer` 的客户端，复用同一 QOS 管线。
 
@@ -119,8 +120,11 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
                                               ├ ruleBindings--> Rule    └ evaluate_rules --> Rule(BLOCK 短路)
                                               └ tools--> Solver/MCP
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
-                       └─**B→A 存在性探针（引用闭合·发布门）**：workflow 步骤 solverKey/ruleIds + agent scopeDeclaration.objectTypes
-                          发布前经 DataCore 校验真实存在（probeMissingRefs，fail-open；不存在=死路拒发布）
+                       ├─**B→A 存在性探针（引用闭合·发布门）**：workflow 步骤 solverKey/ruleIds + agent scopeDeclaration.objectTypes
+                       │  发布前经 DataCore 校验真实存在（probeMissingRefs，fail-open；不存在=死路拒发布）
+                       └─**B→A 交叉验证（推演验证痕迹·运行时）**：用到 resolve_slice 的推演完成时，把结论对象断言
+                          --OBO HTTP /a/v1/ontology/cross-validate--> DataCore 对照知识图谱已有事实核对（fail-open），
+                          连同一致性检查组装为 Answer.validationTrace（前端 ValidationTracePanel 展示，让用户信任）
 ```
 **场景/入口链**
 ```

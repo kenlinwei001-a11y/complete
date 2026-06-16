@@ -1,4 +1,4 @@
-import type { QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
@@ -164,6 +164,41 @@ export class MockOntologyClient implements OntologyClient {
   // B→A 探针：出厂本体已发布对象类型全集（覆盖 seed 的 agent scope / intent slot 引用）。
   async listObjectTypeKeys(): Promise<string[]> {
     return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
+  }
+
+  // 推演验证痕迹 Layer 2：对照 mock 知识图谱事实核对断言（确定性，与 mock 对象一致）。
+  async crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {
+    const eq = (a: unknown, b: unknown): boolean => {
+      if (a === b) return true;
+      const na = Number(a);
+      const nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return Math.abs(na - nb) < 1e-9;
+      return String(a).trim() === String(b).trim();
+    };
+    const verdicts: ClaimVerdict[] = [];
+    for (const c of req.claims) {
+      let subject: Record<string, unknown> | undefined;
+      try {
+        subject = (await this.getObject(ctx, c.subjectType, c.subjectId)).data as Record<string, unknown>;
+      } catch {
+        subject = undefined;
+      }
+      const property = c.property ?? "";
+      const claim = `${c.subjectType}:${c.subjectId}.${property}`;
+      if (!subject || !(property in subject)) {
+        verdicts.push({ claim, kind: c.kind, subjectType: c.subjectType, subjectId: c.subjectId, property, assertedValue: c.assertedValue, status: "NO_EVIDENCE", snapshotVersion: SNAPSHOT });
+        continue;
+      }
+      const kgValue = subject[property];
+      const consistent = eq(kgValue, c.assertedValue);
+      verdicts.push({ claim, kind: c.kind, subjectType: c.subjectType, subjectId: c.subjectId, property, assertedValue: c.assertedValue, status: consistent ? "CONSISTENT" : "CONFLICT", ...(consistent ? {} : { kgValue }), snapshotVersion: SNAPSHOT });
+    }
+    let verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    if (verdicts.length === 0) verdict = "NO_CLAIMS";
+    else if (verdicts.some((v) => v.status === "CONFLICT")) verdict = "CONFLICT";
+    else if (verdicts.every((v) => v.status === "CONSISTENT")) verdict = "ALL_CONSISTENT";
+    else verdict = "PARTIAL";
+    return { claims: verdicts, verdict, snapshotVersion: SNAPSHOT };
   }
 }
 

@@ -1,4 +1,4 @@
-import type { AggregateRequest, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -86,6 +86,9 @@ class HttpOntologyClient implements OntologyClient {
   async listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]> {
     const types = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types`);
     return (types ?? []).map((t) => t.key);
+  }
+  crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/ontology/cross-validate`, req);
   }
 }
 

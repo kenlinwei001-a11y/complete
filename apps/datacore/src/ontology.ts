@@ -1,4 +1,4 @@
-import type { ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, ToolPayload } from "@platform/contracts";
 import type {
   AuthCtx,
   DerivationRun,
@@ -21,6 +21,26 @@ interface AggregateFormula {
   sourceType: string;
   sourceProp: string;
   byField: string;
+}
+
+/** 交叉验证用：宽松等值比较（数字容差 1e-9；其余转字符串比较，避免类型/格式假阳）。 */
+export function looseEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === "number" || typeof b === "number") {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return Math.abs(na - nb) < 1e-9;
+  }
+  if (typeof a === "boolean" || typeof b === "boolean") {
+    return String(a).toLowerCase() === String(b).toLowerCase();
+  }
+  return String(a).trim() === String(b).trim();
+}
+
+function stringifyVal(v: unknown): string {
+  if (v === null || v === undefined) return "∅";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
 }
 
 /** Parse "SUM(Order.qty BY model)" style aggregate formulas. */
@@ -329,6 +349,126 @@ export class OntologyService {
       data: { id: found.id, type: found.type, props: found.props },
       snapshotVersion: await this.snapshotVersion(ctx.tenantId),
     };
+  }
+
+  // -- cross-validation（推演验证痕迹 Layer 2：结论断言 vs 知识图谱已有事实）------------
+  /**
+   * POST /a/v1/ontology/cross-validate — 对推演结论里的断言（对象属性 / 关系）逐条
+   * 反向核对知识图谱（对象库 props + 链路）已有事实，标 CONSISTENT/CONFLICT/NO_EVIDENCE。
+   * 确定性（R6）、tenant 隔离（R2）、行级过滤（R6 authz）。无网络/无 LLM。
+   */
+  async crossValidate(
+    ctx: AuthCtx,
+    claims: {
+      kind: "PROPERTY" | "LINK";
+      subjectType: string;
+      subjectId: string;
+      property?: string;
+      assertedValue?: unknown;
+      linkType?: string;
+      objectType?: string;
+      objectId?: string;
+    }[],
+  ): Promise<{
+    claims: ClaimVerdict[];
+    verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    snapshotVersion: string;
+  }> {
+    const snapshotVersion = await this.snapshotVersion(ctx.tenantId);
+    const verdicts: ClaimVerdict[] = [];
+    for (const c of claims.slice(0, 200)) {
+      verdicts.push(await this.checkClaim(ctx, c, snapshotVersion));
+    }
+    let verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    if (verdicts.length === 0) verdict = "NO_CLAIMS";
+    else if (verdicts.some((v) => v.status === "CONFLICT")) verdict = "CONFLICT";
+    else if (verdicts.every((v) => v.status === "CONSISTENT")) verdict = "ALL_CONSISTENT";
+    else verdict = "PARTIAL";
+    return { claims: verdicts, verdict, snapshotVersion };
+  }
+
+  private async checkClaim(
+    ctx: AuthCtx,
+    c: {
+      kind: "PROPERTY" | "LINK";
+      subjectType: string;
+      subjectId: string;
+      property?: string;
+      assertedValue?: unknown;
+      linkType?: string;
+      objectType?: string;
+      objectId?: string;
+    },
+    snapshotVersion: string,
+  ): Promise<ClaimVerdict> {
+    const base = {
+      subjectType: c.subjectType,
+      subjectId: c.subjectId,
+      kind: c.kind,
+      snapshotVersion,
+    } as const;
+    // resolve subject object from KG (handles pk-value lookup + row filter)
+    let subject: { props: Record<string, unknown> } | undefined;
+    try {
+      const payload = await this.getObject(ctx, c.subjectType, c.subjectId);
+      subject = payload.data as { props: Record<string, unknown> };
+    } catch {
+      subject = undefined;
+    }
+
+    if (c.kind === "PROPERTY") {
+      const property = c.property ?? "";
+      const claim = `${c.subjectType}:${c.subjectId}.${property} == ${stringifyVal(c.assertedValue)}`;
+      if (!subject || !(property in subject.props)) {
+        return { ...base, claim, property, assertedValue: c.assertedValue, status: "NO_EVIDENCE", detail: subject ? "知识图谱无此属性记录" : "知识图谱无此对象" };
+      }
+      const kgValue = subject.props[property];
+      const consistent = looseEqual(kgValue, c.assertedValue);
+      return {
+        ...base,
+        claim,
+        property,
+        assertedValue: c.assertedValue,
+        status: consistent ? "CONSISTENT" : "CONFLICT",
+        ...(consistent ? {} : { kgValue, detail: `知识图谱记录为 ${stringifyVal(kgValue)}` }),
+      };
+    }
+
+    // LINK：核对 subject --linkType--> object 是否存在
+    const linkType = c.linkType ?? "";
+    const claim = `${c.subjectType}:${c.subjectId} -[${linkType}]-> ${c.objectType ?? "?"}:${c.objectId ?? "?"}`;
+    if (!subject) {
+      return { ...base, claim, linkType, objectType: c.objectType, objectId: c.objectId, status: "NO_EVIDENCE", detail: "知识图谱无此对象" };
+    }
+    const links = await this.repos.links.list(
+      ctx.tenantId,
+      (l) => l.type === linkType,
+    );
+    // subject/object 既可按 obj_ id 也可按业务主键匹配（getObject 已能两者解析）
+    const subjId = await this.resolveObjId(ctx, c.subjectType, c.subjectId);
+    const objId = c.objectId ? await this.resolveObjId(ctx, c.objectType ?? "", c.objectId) : undefined;
+    const exists = links.some(
+      (l) => (l.fromId === subjId || l.fromId === c.subjectId) && (objId === undefined || l.toId === objId || l.toId === c.objectId),
+    );
+    return {
+      ...base,
+      claim,
+      linkType,
+      objectType: c.objectType,
+      objectId: c.objectId,
+      status: exists ? "CONSISTENT" : "NO_EVIDENCE",
+      ...(exists ? {} : { detail: "知识图谱无对应关系记录" }),
+    };
+  }
+
+  /** 把业务主键值解析为 obj_ id（解析不到则原样返回，交由调用方双匹配）。 */
+  private async resolveObjId(ctx: AuthCtx, objectType: string, idOrKey: string): Promise<string> {
+    try {
+      const payload = await this.getObject(ctx, objectType, idOrKey);
+      return (payload.data as { id: string }).id;
+    } catch {
+      return idOrKey;
+    }
   }
 
   // -- slices (QOS-PRD §7.6) --------------------------------------------------
