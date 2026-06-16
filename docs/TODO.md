@@ -53,7 +53,7 @@
 ## 🔧 Tier 3.5 · 剩余断点
 - 🔄 **8. G-5 去电池锁死 / 多租户配置层**（本轮审计量化：范围远超"一行断点"，**撑不起其他租户/行业**）—— 大 —— **PRD 已出** `docs/PRD-de-battery-multitenant-config.md`（含 R14「应用层无业务常数」+ `debattery:check` 门）；本体 §5(R14)/§8(G-5) 已回写
   - **8a 视图结构写死**（≈9 视图）：ProjectSimView 的 6 层 DAG(`buildDag`)、PlanAuditView 9 字段组、PlanGenerateView 5 目标+3 方案、SopBalanceView 五步状态机、RiskBoardView 色阶、GeoMapView 坐标、OrderChainView 分类、AnnualScenario/QuarterlyRolling 档位 —— 应由 ExecutionPlan 派生 + ViewConfig.layout 声明（学 DashboardView 标杆）
-  - **8b 业务数据写死（进生产、不可覆盖）**：~~ProjectSim 型号/地址/物流~~ ✅ P1 样板已改为 WorkspaceConfig 驱动（`workspace.simConfig`，debattery 回归证明）· 待办：GeoMap 基地坐标×8 · PlanGenerate 目标默认值 · SopBalance 阈值+三段 · Calibration 基地筛选(4/12) —— 应从 API(Base/Model 对象)/WorkspaceConfig/SolverParams 取
+  - **8b 业务数据写死（进生产、不可覆盖）**：✅ ProjectSim 型号/地址/物流（WorkspaceConfig）· ✅ GeoMap 基地坐标（Base.props.lon/lat）· ✅ Calibration 基地筛选（Base 对象全量）· 待办：PlanGenerate 目标默认值 · SopBalance 阈值+三段 —— 应从 WorkspaceConfig/SolverParams 取
   - **8c 文案写死**：~35 处中文内联绕过 `zh.ts`；i18n 本身混入租户专属串（`zh.ts:569 "如 常州"`、`:377 "扩化成通道"`）—— 归集 i18n + 行业别名映射
   - **8d Agent/配置写死**：Agent `systemPrompt`/tools/scope(`seed.ts:539-576`)、模型写死 `claude-opus-4-8`(`seed.ts:538`)、`BATTERY_SOLVER_PARAMS`(`battery.ts`) —— 出厂种子可接受**前提是可经 admin 覆盖**（编辑既有 Agent 的可改性待核实）；模型应走 LLM Provider 用途绑定
   - **8e `generic-inference`** 通用 what-if（脱离电池求解器）

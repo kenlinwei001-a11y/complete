@@ -8,6 +8,7 @@ import {
   fetchCalibrationProposals,
   fetchCalibrationReport,
   runCalibration,
+  searchObjects,
 } from "@/api/endpoints";
 import { EChart } from "@/components/ui/EChart";
 import { toast, toastError } from "@/store/toastStore";
@@ -52,6 +53,9 @@ export default function CalibrationPage() {
   });
   const { data: proposals } = useQuery({ queryKey: ["a", "calibration-proposals", {}], queryFn: fetchCalibrationProposals });
   const { data: history } = useQuery({ queryKey: ["a", "calibration-history", {}], queryFn: fetchCalibrationHistory });
+  // 去电池锁死（R14）：基地筛选项来自 Base 对象（全量、按租户），不再写死 4/12 个
+  const { data: basesData } = useQuery({ queryKey: ["a", "objects", { type: "Base", view: "calib" }], queryFn: () => searchObjects("Base", "") });
+  const baseIds = basesData && basesData.items.length > 0 ? basesData.items.map((o) => String(o.props.name ?? o.id)) : BASE_IDS;
 
   const [lastDraftId, setLastDraftId] = useState<string | null>(null);
   const decide = useMutation({
@@ -98,7 +102,7 @@ export default function CalibrationPage() {
           {t.filterBase}{" "}
           <select value={baseId} aria-label={t.filterBase} data-testid="calib-filter-base" onChange={(e) => setBaseId(e.target.value)}>
             <option value="">{t.all}</option>
-            {BASE_IDS.map((o) => (
+            {baseIds.map((o) => (
               <option key={o}>{o}</option>
             ))}
           </select>
