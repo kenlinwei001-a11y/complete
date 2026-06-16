@@ -61,7 +61,7 @@
   - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**
 - ⬜ **8.5 `debattery:check` 门禁**（独立工具，与 `ontology:check`/`chain:check` 同级，并入 `pnpm gates`）：静态扫描 `views/`+`pages/` 内联业务常数（基地名/型号/工序/坐标）+ `zh.ts` 租户专属串 → 自动盘出剩余写死项 + 防回潮（落地不变量 R14）。`DEFAULT_*` 兜底常量白名单豁免。
 - 🔄 **9. G-6** ✅ `parseXlsx`（node-xlsx，xlsx 上传→解析→RawDataset，三路 csv/json/xlsx 统一；CN1b 回归）· ✅ 合成并入连接器（活数据 P1）· ⬜ 在线数据模版（并入 #7 本体浏览器）
-- ⬜ **10. G-7 余项** LLM 用途枚举可扩展 + 按页面标注
+- ⏸ **10. G-7 余项**（评估为低价值，暂缓）：6 用途各对应固定调用点（classifier/agent/compose…），"枚举可扩展"无消费点即无意义；真实 LLM 扩展性（多供应商/按用途绑定模型/降级）已由 `roleModel`/`bindingFor` 满足。如需自定义用途，须先定义其调用点（另起 PRD）。
 - ⬜ **11. 外部域（EXT_SIG）** 环境信号一等对象化 + 新 EXTERNAL 连接器（规划体检/建议敏感性输入）
 
 ## 🔭 Tier 4 · dogfooding 终态
