@@ -51,7 +51,7 @@
   - **参考软件**：[`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；v2 数据集成链 Data→Raw→Transform→Curated→Ontology Mapping，确定性映射 dataset→entity / column→property / FK→link + 基数推断）— 融进 A3 `modeling.ts`；+ 参考原型 `reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI
   - ✅ **确定性映射管线**（`deriveModelingSuggestion`：dataset→ObjectType · column→PropertyDef(类型按画像推断) · FK→ref+LinkType · PK=唯一率最高字段；`POST /a/v1/modeling/derive` 无 LLM 出草稿，构造上 100% 覆盖）
   - ✅ **字段全建模门**（`computeFieldCoverage` + `GET /a/v1/modeling/drafts/:id/coverage`；publish `requireFullCoverage` 开门则未建模字段阻断；R12 落地。OM4/OM5/OM6 回归）· ⬜ 升 HARD 默认 + 前端开关
-  - ⬜ 本体浏览器（域分组图谱 + 节点检视器 + CSV 模板 + 覆盖徽章）
+  - 🔄 **本体浏览器**（域分组图谱已有）：✅ **节点检视器增强**（OntologyGraphView Inspector）——字段全建模覆盖徽章（源/派生/手工占比，R12）+ 每字段来源溯源（← 源字段 / 派生 / 手工）+ **CSV 数据模版下载**（借鉴参考原型"每字段100%本体建模覆盖 + 数据模版下载"）；f7 回归。⬜ 余：确定性映射前端工作台（接 `/modeling/derive` + coverage 报告 UI）
 
 ## 🔧 Tier 3.5 · 剩余断点
 - 🔄 **8. G-5 去电池锁死 / 多租户配置层**（本轮审计量化：范围远超"一行断点"，**撑不起其他租户/行业**）—— 大 —— **PRD 已出** `docs/PRD-de-battery-multitenant-config.md`（含 R14「应用层无业务常数」+ `debattery:check` 门）；本体 §5(R14)/§8(G-5) 已回写

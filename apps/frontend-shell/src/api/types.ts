@@ -138,7 +138,8 @@ export interface GraphNodeVM {
   /** MVP 视角缺口节点（⊕ 虚线强调） */
   mvpGap?: boolean;
   properties?: { propKey: string; dataType: string; isPrimaryKey?: boolean }[];
-  sourceBindings?: { connId: string; dataset: string }[];
+  /** fieldMappings: propKey → 源字段名（字段全建模覆盖 + CSV 模版来源）。 */
+  sourceBindings?: { connId: string; dataset: string; fieldMappings?: Record<string, string> }[];
   rules?: { key: string; name: string; expression: string }[];
   derivations?: { propKey: string; formula: string }[];
 }

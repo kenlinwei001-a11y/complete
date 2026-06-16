@@ -450,8 +450,43 @@ function NodeShape({ kind, color, dashed }: { kind: GraphNodeVM["kind"]; color: 
 }
 
 /** 右侧检查器面板：属性 / 源系统 / 适用规则（点击看 expression）/ 派生公式 */
+/** 字段全建模覆盖（R12）：节点属性中映射自数据源字段 / 派生 / 手工 的占比；CSV 模版列。 */
+function fieldCoverage(node: GraphNodeVM): { total: number; mapped: number; derived: number; manual: number; fully: boolean; sourceFor: Map<string, string>; templateCols: string[] } {
+  const props = node.properties ?? [];
+  const derivedKeys = new Set((node.derivations ?? []).map((d) => d.propKey));
+  const sourceFor = new Map<string, string>(); // propKey → 源字段
+  for (const sb of node.sourceBindings ?? []) {
+    for (const [propKey, srcField] of Object.entries(sb.fieldMappings ?? {})) sourceFor.set(propKey, srcField);
+  }
+  let mapped = 0, derived = 0, manual = 0;
+  for (const p of props) {
+    if (sourceFor.has(p.propKey)) mapped++;
+    else if (derivedKeys.has(p.propKey)) derived++;
+    else manual++;
+  }
+  // CSV 数据模版列 = 源字段名（有则用源名，否则用 propKey）——导入该对象时应具备的列。
+  const templateCols = props.map((p) => sourceFor.get(p.propKey) ?? p.propKey);
+  return { total: props.length, mapped, derived, manual, fully: props.length > 0 && manual === 0, sourceFor, templateCols };
+}
+
+function downloadCsvTemplate(node: GraphNodeVM, cols: string[]): void {
+  const header = cols.join(",");
+  const sample = cols.map(() => "").join(",");
+  const blob = new Blob([`${header}\n${sample}\n`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${node.key}-template.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }) {
   const [openRule, setOpenRule] = useState<string | null>(null);
+  const cov = fieldCoverage(node);
+  const isObject = node.kind === "object";
   return (
     <aside className={styles.inspector} data-testid="graph-inspector">
       <div className={styles.inspectorHead}>
@@ -464,20 +499,45 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
         </button>
       </div>
 
+      {/* 字段全建模覆盖徽章（R12 · 借鉴参考原型"每个字段100%本体建模覆盖"） */}
+      {isObject && cov.total > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0" }}>
+          <span className={`badge ${cov.fully ? "green" : "amber"}`} data-testid="graph-coverage-badge">
+            {cov.fully ? `字段全建模 ✓ ${cov.total} 字段` : `${cov.manual} 字段未映射 / 共 ${cov.total}`}
+          </span>
+          <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+            源 {cov.mapped} · 派生 {cov.derived} · 手工 {cov.manual}
+          </span>
+          {cov.templateCols.length > 0 && (
+            <button className="btn sm" style={{ marginLeft: "auto" }} data-testid="graph-csv-template" onClick={() => downloadCsvTemplate(node, cov.templateCols)}>
+              ⬇ CSV 模版
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="section-title">{zh.graph.inspectorProps}</div>
       <table className="cmp">
         <tbody>
-          {(node.properties ?? []).map((p) => (
-            <tr key={p.propKey}>
-              <td>
-                {p.isPrimaryKey && <span title="主键">★ </span>}
-                {p.propKey}
-              </td>
-              <td className="zh" style={{ color: "var(--muted)" }}>
-                {p.dataType}
-              </td>
-            </tr>
-          ))}
+          {(node.properties ?? []).map((p) => {
+            const src = cov.sourceFor.get(p.propKey);
+            const derived = (node.derivations ?? []).some((d) => d.propKey === p.propKey);
+            return (
+              <tr key={p.propKey}>
+                <td>
+                  {p.isPrimaryKey && <span title="主键">★ </span>}
+                  {p.propKey}
+                </td>
+                <td className="zh" style={{ color: "var(--muted)" }}>
+                  {p.dataType}
+                </td>
+                {/* 该字段建模来源：源字段 / 派生 / 手工（去死路：每字段可溯到来源） */}
+                <td className="mono" style={{ fontSize: 10.5, color: src ? "var(--ok)" : derived ? "var(--c-forecast)" : "var(--amber)" }}>
+                  {src ? `← ${src}` : derived ? "派生" : "手工"}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -487,8 +547,12 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
       {(node.sourceBindings ?? []).map((s, i) => (
         <div key={i} className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
           {s.connId} · {s.dataset}
+          {s.fieldMappings && ` · ${Object.keys(s.fieldMappings).length} 字段映射`}
         </div>
       ))}
+      {isObject && (node.sourceBindings ?? []).length === 0 && (
+        <div style={{ fontSize: 11, color: "var(--muted2)" }}>纯派生/无外部数据源</div>
+      )}
 
       <div className="section-title" style={{ marginTop: 12 }}>
         {zh.graph.inspectorRules}
