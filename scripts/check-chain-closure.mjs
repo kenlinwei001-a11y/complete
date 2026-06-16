@@ -43,10 +43,12 @@ console.log(`· 求解器注册表：${SOLVER_KEYS.size} 个`);
 console.log(`· 场景卡：${cards.length} 张；其中工作流求解器 ${cards.filter((c) => WORKFLOW_SOLVERS.has(c.solver)).length} 张（sop_balance）`);
 console.log(`· 场景↔求解器接通：${cards.filter((c) => WORKFLOW_SOLVERS.has(c.solver) || SOLVER_KEYS.has(c.solver)).length}/${cards.length}`);
 
-// R11-SHAPE 覆盖（信息）：声明了输出形状的求解器数（BuildPlan.renderBindings 可据此挡 G-2 跨服务形状断）。
+// R11-SHAPE 覆盖门：每个注册求解器必须声明输出形状（BuildPlan.renderBindings 据此挡 G-2 跨服务形状断）。
 const shapeBlock = slv.match(/SOLVER_OUTPUT_SHAPES[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
 const shapeKeys = new Set(shapeBlock ? [...shapeBlock[1].matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]) : []);
-console.log(`· R11-SHAPE 输出形状已声明：${shapeKeys.size} 个求解器（renderBindings 据此校验渲染契约；其余渐进补齐、SHAPE 跳过不阻塞）`);
+const missingShape = [...SOLVER_KEYS].filter((k) => !shapeKeys.has(k));
+for (const k of missingShape) fail.push(`求解器 "${k}" 已注册但未声明输出形状（SOLVER_OUTPUT_SHAPES）→ 渲染契约无从校验(SHAPE 盲区)`);
+console.log(`· R11-SHAPE 输出形状已声明：${shapeKeys.size}/${SOLVER_KEYS.size} 注册求解器`);
 
 if (fail.length) {
   console.error("\n✗ 全链闭包门未通过（场景声明了 DataCore 未注册的求解器）：");

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ClosurePolicySchema, type BuildPlan } from "@platform/contracts";
 import { validateClosure } from "../src/databuilder/closure.js";
+import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 import { makeApp, ADMIN } from "./helpers.js";
 
 const SCRIPT = "常州基地产能紧张，影响订单交期与客户信用，请做风险推演";
@@ -58,8 +59,9 @@ describe("R11-SHAPE · 渲染契约（求解器输出形状 ↔ 渲染绑定，B
     expect(r.shapeBroken).toBe(0);
   });
 
-  it("未声明输出形状的求解器 → SHAPE 跳过（ORPHAN_PASSED，不阻塞，渐进补齐）", () => {
-    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "affected_orders", inputFields: [], renderBindings: ["rows", "summary"] }] }, policy);
+  it("未声明输出形状的求解器（工作流求解器 sop_balance）→ SHAPE 跳过（ORPHAN_PASSED，不阻塞）", () => {
+    // 所有注册求解器已全覆盖输出形状；SHAPE 跳过路径由无形状声明的工作流求解器触发。
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "sop_balance", inputFields: [], renderBindings: ["anyField"] }] }, policy);
     expect(r.shapeBroken).toBe(0);
     expect(r.gatePassed).toBe(true);
     expect(r.findings.some((f) => f.kind === "SHAPE" && f.status === "ORPHAN_PASSED")).toBe(true);
@@ -69,6 +71,13 @@ describe("R11-SHAPE · 渲染契约（求解器输出形状 ↔ 渲染绑定，B
     const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [] }] }, policy);
     expect(r.findings.some((f) => f.kind === "SHAPE")).toBe(false);
     expect(r.shapeBroken).toBe(0);
+  });
+
+  it("SHAPE 全覆盖：每个注册求解器都声明了输出形状（与 chain:check 门一致）", () => {
+    for (const k of SOLVER_KEYS) {
+      expect(SOLVER_OUTPUT_SHAPES[k], `求解器 ${k} 缺输出形状声明`).toBeTruthy();
+      expect(SOLVER_OUTPUT_SHAPES[k]!.length).toBeGreaterThan(0);
+    }
   });
 });
 

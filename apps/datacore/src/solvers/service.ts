@@ -46,11 +46,30 @@ export const SOLVER_KEYS = [
  */
 const shapeKeys = (schema: { shape: Record<string, unknown> }): string[] => Object.keys(schema.shape);
 export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
+  // 契约 schema 权威（声明输出契约）
   capacity_forecast: shapeKeys(CapacityForecastOutputSchema),
   bottleneck_matrix: shapeKeys(BottleneckMatrixOutputSchema),
   risk_timeline: shapeKeys(RiskTimelineOutputSchema),
   plan_audit: shapeKeys(PlanAuditOutputSchema),
   plan_generate: shapeKeys(PlanGenerateOutputSchema),
+  // 其余 17 求解器输出形状（取自实现的成功路径返回对象顶层 key；权威=求解器实现）
+  capacity_rollup: ["bases", "ruleRefs"],
+  affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
+  capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
+  mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
+  cert_schedule: ["schedule", "engineerGroups", "ruleRefs"],
+  kit_readiness: ["rows", "shortageCount", "ruleRefs"],
+  lta_gap: ["material", "month", "netDemand", "coverage", "gap", "po", "ruleRefs"],
+  inventory_optimize: ["over", "under", "idle", "releasableCash", "ruleRefs"],
+  changeover_sequence: ["lineId", "sequence", "totalChangeoverMin", "savedVsDueMin", "infeasible", "ruleRefs"],
+  yield_diagnosis: ["breakpoint", "candidates", "ruleRefs"],
+  maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
+  outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
+  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
+  credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "ruleRefs"],
+  quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
+  carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
+  countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
 };
 
 const DAY_MS = 86400000;

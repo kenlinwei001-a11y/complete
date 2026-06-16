@@ -27,7 +27,7 @@
   - 注：P1（合成落原始表）/P2（对象 lineage 端点）/P3增量1（Provenance+数据源原始表）已先期完成
 
 ## 🥇 Tier 1 · 机制定型
-- 🔄 **1. 全链闭包门 R11 完整版**：✅ chain:check（第一块砖）· ✅ **CHAIN 维**（求解器注册，R11-CHAIN 回归）· ✅ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**——`SOLVER_OUTPUT_SHAPES`（契约 schema `.shape` 权威）+ `BuildPlan.solverNeeds[].renderBindings` 渲染契约；`validateClosure` 校验渲染绑定 ⊆ 求解器输出形状，不命中即 SHAPE FAIL（建图期挡 G-2 跨服务形状）；chain:check 报 SHAPE 覆盖；R11-SHAPE ×5 回归；本体 §5/§7/§8 回写。⬜ 余：补齐其余 17 求解器输出形状声明 + 渲染契约自动生成
+- ✅ **1. 全链闭包门 R11 完整版**：✅ chain:check · ✅ **CHAIN 维**（求解器注册）· ✅ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**——`SOLVER_OUTPUT_SHAPES` 全 **22/22 注册求解器覆盖**（5 个契约 schema `.shape` 权威 + 17 个取自实现）+ `BuildPlan.solverNeeds[].renderBindings` 渲染契约；`validateClosure` 校验渲染绑定 ⊆ 输出形状（不命中即 SHAPE FAIL，建图期挡 G-2）；**chain:check SHAPE 覆盖升为门**（新求解器缺形状即红）；R11-SHAPE ×6 回归；本体 §5/§7/§8 回写。⬜ 余（增强）：渲染契约从 ExecutionPlan render_answer 自动生成 renderBindings
 - ⬜ **2. PRD库结构化**（PRD 入图、《本体引用》机器可解析、需求↔制品↔缺口可查）
 
 ## 🥈 Tier 2 · 可信赖的推演（Palantir UX 哲学贯彻）— 本轮主线延伸
