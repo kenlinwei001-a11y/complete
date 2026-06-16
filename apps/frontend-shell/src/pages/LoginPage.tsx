@@ -7,7 +7,8 @@ import styles from "./LoginPage.module.css";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [tenantId, setTenantId] = useState("tenant-battery");
+  // 默认租户对齐真实部署种子租户 demo（此前默认 tenant-battery 仅匹配 mock，导致真连登录失败）
+  const [tenantId, setTenantId] = useState("demo");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

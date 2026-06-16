@@ -166,7 +166,8 @@ export const handlers = [
   http.post("*/a/v1/auth/login", async ({ request }) => {
     const body = (await request.json()) as { tenantId: string; username: string; password: string };
     const account = ACCOUNTS.find((a) => a.username === body.username && a.password === body.password);
-    if (!account || body.tenantId !== TENANT_ID) return err(401, "INVALID_CREDENTIALS", "账号或密码错误");
+    // mock 容忍 demo（真实种子租户）与 tenant-battery（mock 租户）两者，避免登录默认租户切换后 mock 登录失败
+    if (!account || (body.tenantId !== TENANT_ID && body.tenantId !== "demo")) return err(401, "INVALID_CREDENTIALS", "账号或密码错误");
     return HttpResponse.json({ accessToken: tokenFor(account) });
   }),
 
