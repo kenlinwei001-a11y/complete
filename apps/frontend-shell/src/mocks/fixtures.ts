@@ -145,6 +145,39 @@ export function featuresForAccount(account: MockAccount, tenantOverrides: Record
 // Workspace（两账号导航/视图/主题不同）
 // ---------------------------------------------------------------------------
 
+// 去电池锁死 8a（R14）：规划体检字段组结构由 ViewConfig.layout 声明（非前端写死）。
+// 含一个独有"配置驱动分组-X"——它渲染出来即证明字段组走的是配置、不是组件 FIELD_GROUPS 兜底。
+const PLAN_AUDIT_LAYOUT = {
+  fieldGroups: [
+    {
+      title: "需求侧（万套）",
+      fields: [
+        { key: "dem", label: "月度需求总量", unit: "万套", step: 0.1 },
+        { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 },
+        { key: "seg_ess", label: "储能", unit: "万套", step: 0.1 },
+        { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 },
+      ],
+    },
+    {
+      title: "供给侧",
+      fields: [
+        { key: "sup", label: "月度可供给", unit: "万套", step: 0.1 },
+        { key: "ltaCov", label: "长协覆盖率", unit: "%", step: 1 },
+        { key: "kitGap", label: "正极物料缺口", unit: "吨", step: 10 },
+      ],
+    },
+    {
+      title: "财务侧",
+      fields: [
+        { key: "gmTarget", label: "毛利率目标", unit: "%", step: 0.5 },
+        { key: "cashCushion", label: "现金安全垫(13周最低点)", unit: "亿", step: 0.5 },
+        { key: "capex", label: "CAPEX 本月", unit: "亿", step: 0.5 },
+      ],
+    },
+    { title: "配置驱动分组-X", fields: [] },
+  ],
+};
+
 const DASH_LAYOUT = {
   widgets: [
     {
@@ -303,7 +336,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "risk", title: "预判推演看板", renderer: "risk-board", layout: {} },
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
-    { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: {} },
+    { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },
     { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: {} },
     { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: {} },
     { key: "sop-balance", title: "S&OP 平衡台", renderer: "sop-balance", layout: {} },

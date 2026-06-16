@@ -57,7 +57,9 @@ const VERDICT_COLOR: Record<PlanAuditOutput["verdict"], string> = {
  * 基线来自当前定稿 S&OP 版本（GET /a/v1/plan-versions/current），改任意字段
  * debounce 300ms 即时重检（plan_audit），竞态最后发出者胜。
  */
-export default function PlanAuditView(_props: ViewRendererProps) {
+export default function PlanAuditView({ view }: ViewRendererProps) {
+  // 去电池锁死 8a（R14）：体检字段组结构由 ViewConfig.layout 声明（学 DashboardView），FIELD_GROUPS 仅兜底
+  const fieldGroups = (view.layout?.fieldGroups as typeof FIELD_GROUPS | undefined) ?? FIELD_GROUPS;
   const baseline = useQuery({ queryKey: ["a", "plan-version-current"], queryFn: fetchPlanVersionCurrent });
   const [form, setForm] = useState<PlanAuditInput | null>(null);
   const canApplyFix = useFeature("act.plan-audit.apply-fix");
@@ -120,7 +122,7 @@ export default function PlanAuditView(_props: ViewRendererProps) {
           <div className="section-title">{zh.sim.audit.inputTitle}</div>
           {!form && <div className="empty-state">{zh.common.loading}</div>}
           {form &&
-            FIELD_GROUPS.map((g) => (
+            fieldGroups.map((g) => (
               <div key={g.title}>
                 <div className={styles.grpHead}>{g.title}</div>
                 {g.fields.map((f) => (
