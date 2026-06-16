@@ -13,6 +13,7 @@ import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useAdoptToDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
+import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -219,7 +220,19 @@ function AuditResult({
           </span>
           {gmStruct != null && (
             <>
-               · {zh.sim.audit.gmStruct} <b className="mono">{gmStruct.toFixed(2)}%</b>（C15 口径）
+               · {zh.sim.audit.gmStruct}{" "}
+              {/* 体检关键结论（#4 backlog）：结构毛利率六要素溯源（C15 口径） */}
+              <Provenance
+                testId="audit-gmstruct"
+                src="plan_audit 求解器（财务域）"
+                formula="结构毛利率 = Σ(细分销量 × 细分毛利率) ÷ Σ销量"
+                inputs={["各应用细分需求结构", "各细分毛利率"]}
+                rule="C15"
+                note="按需求结构动态加权，区别于单一毛利率目标"
+              >
+                <b className="mono">{gmStruct.toFixed(2)}%</b>
+              </Provenance>
+              （C15 口径）
             </>
           )}
         </div>
