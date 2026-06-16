@@ -5,6 +5,14 @@
 | 版本 | v1.0（增量：扩展 平台 PRD §A0/§6.1/§8，QOS-PRD §8.4 模式推广；新增前端 /admin/tenants、/admin/users、/admin/views 三页） |
 | 解决问题 | 管理平台"创建/配置"链路缺口：无引导流程、无账号/租户管理、AgentCore 资源 CRUD 端点未显式化、场景包与视图配置不可创建 |
 
+## 0. 本体引用与影响（补录）
+
+> 遗留 PRD 追溯补录（治理 #2，prd:check 入图）；仅引用平台真实不变量(§5 R1–R14)/断点(§8 G-1..G-8)。
+
+- **触及不变量**（§5）：R1 · R3 · R9
+- **触及断点**（§8）：（无特定断点）
+- **范畴**：管理平台补全：Bootstrap/租户用户/资源 CRUD（仓储四处）/视图配置
+
 ## 1. 平台引导（Bootstrap，最高优先）
 
 1. 首次启动：DataCore 检测 `users` 表为空 → 按环境变量 `BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD` 创建**平台超管**（角色 `platform_admin`，归属自动创建的 `default` 租户）；幂等（表非空则跳过）；未配置环境变量且表空 → `/readyz` 返回 503 并日志明示原因。

@@ -30,135 +30,285 @@
   },
   "prds": {
     "PRD-addendum-a8-timeseries.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-admin-console-closure.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-4",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-admin-platform.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-agent-runtime.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-capability-routing.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-7",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-dataflow-loop-closure.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-6",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-execution-semantics.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-feature-entitlement.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-lived-in-state.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-llm-providers-and-references.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R5"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-7",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-m11-calibration.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-ontology-core.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R12",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-ontology-governance.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R12",
+        "R14",
+        "R4"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-operational-completeness.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-replay-orchestrator.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-skill-authoring.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-solvers-and-gaps.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-2",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-validation-loop.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-catalog-battery-20-scenarios.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -192,23 +342,46 @@
       "brokenArtifacts": []
     },
     "PRD-frontend-addendum-remaining-views.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-frontend-addendum-sim-views.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-frontend.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -226,9 +399,17 @@
       "brokenArtifacts": []
     },
     "PRD-implementation-handbook.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -247,9 +428,17 @@
       "brokenArtifacts": []
     },
     "PRD-maturity-master-plan.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R12",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -273,16 +462,37 @@
       "brokenArtifacts": []
     },
     "PRD-platform-foundry-aip.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-query-orchestration-service.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-2",
+        "G-3",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -311,16 +521,30 @@
       "brokenArtifacts": []
     },
     "PRD-traceability-and-baseline-v2.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-traceability-and-baseline.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -348,37 +572,100 @@
     }
   },
   "breakpointCoverage": {
-    "G-5": [
-      "PRD-de-battery-multitenant-config.md",
-      "PRD-generic-inference.md",
+    "G-1": [
+      "PRD-addendum-a8-timeseries.md",
+      "PRD-addendum-admin-console-closure.md",
+      "PRD-addendum-admin-platform.md",
+      "PRD-addendum-agent-runtime.md",
+      "PRD-addendum-capability-routing.md",
+      "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-addendum-execution-semantics.md",
+      "PRD-addendum-feature-entitlement.md",
+      "PRD-addendum-lived-in-state.md",
+      "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-m11-calibration.md",
+      "PRD-addendum-ontology-core.md",
+      "PRD-addendum-ontology-governance.md",
+      "PRD-addendum-operational-completeness.md",
+      "PRD-addendum-replay-orchestrator.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-addendum-validation-loop.md",
+      "PRD-catalog-battery-20-scenarios.md",
+      "PRD-frontend-addendum-remaining-views.md",
+      "PRD-frontend-addendum-sim-views.md",
+      "PRD-frontend.md",
+      "PRD-implementation-handbook.md",
+      "PRD-maturity-master-plan.md",
+      "PRD-platform-foundry-aip.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher.md",
+      "PRD-traceability-and-baseline-v2.md",
+      "PRD-traceability-and-baseline.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-8": [
+      "PRD-addendum-a8-timeseries.md",
+      "PRD-addendum-admin-console-closure.md",
+      "PRD-addendum-admin-platform.md",
+      "PRD-addendum-agent-runtime.md",
+      "PRD-addendum-capability-routing.md",
+      "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-addendum-execution-semantics.md",
+      "PRD-addendum-feature-entitlement.md",
+      "PRD-addendum-lived-in-state.md",
+      "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-m11-calibration.md",
+      "PRD-addendum-ontology-core.md",
+      "PRD-addendum-ontology-governance.md",
+      "PRD-addendum-operational-completeness.md",
+      "PRD-addendum-replay-orchestrator.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-addendum-validation-loop.md",
+      "PRD-catalog-battery-20-scenarios.md",
+      "PRD-frontend-addendum-remaining-views.md",
+      "PRD-frontend-addendum-sim-views.md",
+      "PRD-frontend.md",
+      "PRD-implementation-handbook.md",
+      "PRD-maturity-master-plan.md",
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-platform-foundry-aip.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher.md",
+      "PRD-traceability-and-baseline-v2.md",
+      "PRD-traceability-and-baseline.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-4": [
+      "PRD-addendum-admin-console-closure.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-7": [
+      "PRD-addendum-capability-routing.md",
+      "PRD-addendum-llm-providers-and-references.md",
       "PRD-unified-build-engine.md"
     ],
     "G-6": [
+      "PRD-addendum-dataflow-loop-closure.md",
       "PRD-de-battery-multitenant-config.md",
       "PRD-live-traceable-data.md",
       "PRD-ontology-browser-field-coverage.md",
       "PRD-unified-build-engine.md"
     ],
-    "G-8": [
-      "PRD-ontology-browser-field-coverage.md",
-      "PRD-scenario-launcher.md",
+    "G-2": [
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-query-orchestration-service.md",
       "PRD-unified-build-engine.md"
     ],
-    "G-1": [
-      "PRD-scenario-launcher.md",
+    "G-5": [
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-generic-inference.md",
       "PRD-unified-build-engine.md"
     ],
     "G-3": [
+      "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
-      "PRD-unified-build-engine.md"
-    ],
-    "G-2": [
-      "PRD-unified-build-engine.md"
-    ],
-    "G-4": [
-      "PRD-unified-build-engine.md"
-    ],
-    "G-7": [
       "PRD-unified-build-engine.md"
     ]
   },
