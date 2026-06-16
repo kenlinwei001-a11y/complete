@@ -67,7 +67,11 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   // 8a：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明（去硬编码电池因子）
   const driverFactors = view.layout?.driverFactors as { id: string; label: string; sub: string }[] | undefined;
   const simCfg: SimConfig | undefined = workspace?.simConfig;
-  const models = simCfg?.models ?? DEFAULT_MODELS;
+  // 型号列表优先级（R14）：WorkspaceConfig > 真实 Model 对象（按租户合成/接入）> DEFAULT_MODELS 兜底。
+  // 真连模式下走 Model 对象 → 下拉与实际数据一致（消除前端写死列表与合成型号对不齐）。
+  const modelObjs = useQuery({ queryKey: ["a", "objects", { type: "Model", view: "project-sim" }], queryFn: () => searchObjects("Model", "") });
+  const modelsFromObjects = (modelObjs.data?.items ?? []).map((o) => String(o.props.modelId ?? o.props.name ?? o.id));
+  const models = simCfg?.models ?? (modelsFromObjects.length > 0 ? modelsFromObjects : DEFAULT_MODELS);
   const logistics = simCfg?.logistics ?? DEFAULT_LOGISTICS;
   const addresses = simCfg?.addresses ?? Object.keys(logistics);
 
