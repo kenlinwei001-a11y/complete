@@ -32,97 +32,135 @@
     "PRD-addendum-a8-timeseries.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-admin-console-closure.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-admin-platform.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-agent-runtime.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-capability-routing.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-dataflow-loop-closure.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-execution-semantics.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-feature-entitlement.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-lived-in-state.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-llm-providers-and-references.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-m11-calibration.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-ontology-core.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-ontology-governance.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-operational-completeness.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-replay-orchestrator.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-skill-authoring.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-solvers-and-gaps.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-addendum-validation-loop.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-catalog-battery-20-scenarios.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-de-battery-multitenant-config.md": {
       "hasOntologyRef": true,
@@ -135,22 +173,32 @@
       "breakpoints": [
         "G-5",
         "G-6"
-      ]
+      ],
+      "artifacts": [
+        "packages/contracts/src/workspace.ts"
+      ],
+      "brokenArtifacts": []
     },
     "PRD-frontend-addendum-remaining-views.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-frontend-addendum-sim-views.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-frontend.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-generic-inference.md": {
       "hasOntologyRef": true,
@@ -161,12 +209,16 @@
       ],
       "breakpoints": [
         "G-5"
-      ]
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-implementation-handbook.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-live-traceable-data.md": {
       "hasOntologyRef": true,
@@ -178,12 +230,16 @@
       ],
       "breakpoints": [
         "G-6"
-      ]
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-maturity-master-plan.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-ontology-browser-field-coverage.md": {
       "hasOntologyRef": true,
@@ -197,17 +253,26 @@
       "breakpoints": [
         "G-6",
         "G-8"
-      ]
+      ],
+      "artifacts": [
+        "apps/datacore/src/databuilder/closure.ts",
+        "apps/datacore/src/modeling.ts"
+      ],
+      "brokenArtifacts": []
     },
     "PRD-platform-foundry-aip.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-query-orchestration-service.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-scenario-launcher.md": {
       "hasOntologyRef": true,
@@ -222,17 +287,30 @@
         "G-1",
         "G-3",
         "G-8"
-      ]
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/frontend-shell/src/pages/admin/ScenesPage.tsx",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/qos.ts",
+        "scripts/check-chain-closure.mjs"
+      ],
+      "brokenArtifacts": []
     },
     "PRD-traceability-and-baseline-v2.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-traceability-and-baseline.md": {
       "hasOntologyRef": false,
       "invariants": [],
-      "breakpoints": []
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     },
     "PRD-unified-build-engine.md": {
       "hasOntologyRef": true,
@@ -252,7 +330,9 @@
         "G-6",
         "G-7",
         "G-8"
-      ]
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
     }
   },
   "breakpointCoverage": {

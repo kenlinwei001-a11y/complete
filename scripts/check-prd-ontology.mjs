@@ -82,7 +82,13 @@ for (const file of prdFiles) {
   for (const g of breakpoints.filter((g) => !ontoBreakpoints.has(g))) fail.push(`${file} §0 引用断点 ${g}，但本体 §8 无此项（悬空引用）`);
   if (!hasOntologyRef) warn.push(`${file} 缺《本体引用与影响》§0 段（疑未读本体；遗留 PRD 可补）`);
 
-  index[file] = { hasOntologyRef, invariants, breakpoints };
+  // 制品锚点（需求↔制品）：PRD 全文引用的实现文件路径 `apps|packages|scripts/....ext`（去重）。
+  // 存在性仅告警（遗留 PRD 可能引旧路径），但入索引使"PRD→实现文件"可查。
+  const artifacts = [...new Set([...text.matchAll(/`((?:apps|packages|scripts|deploy)\/[A-Za-z0-9_./-]+\.[a-z]{2,4})(?::\d+)?`/g)].map((m) => m[1]))].sort();
+  const brokenArtifacts = artifacts.filter((a) => !existsSync(a));
+  if (brokenArtifacts.length) warn.push(`${file} 引用的实现文件已删/改名：${brokenArtifacts.slice(0, 4).join(", ")}${brokenArtifacts.length > 4 ? " …" : ""}`);
+
+  index[file] = { hasOntologyRef, invariants, breakpoints, artifacts, brokenArtifacts };
   for (const g of breakpoints) {
     if (!ontoBreakpoints.has(g)) continue;
     (breakpointCoverage[g] ??= []).push(file);
@@ -104,7 +110,10 @@ writeFileSync(INDEX_OUT, JSON.stringify(artifact, null, 2) + "\n");
 
 // --- 报告 ------------------------------------------------------------------
 const withSection = Object.values(index).filter((p) => p.hasOntologyRef).length;
+const totalArtifacts = new Set(Object.values(index).flatMap((p) => p.artifacts)).size;
+const totalBroken = Object.values(index).reduce((n, p) => n + p.brokenArtifacts.length, 0);
 console.log(`· PRD 语料：${prdFiles.length} 篇；含《本体引用》§0：${withSection} 篇`);
+console.log(`· 制品锚点（PRD→实现文件）：${totalArtifacts} 个唯一文件${totalBroken ? `；其中 ${totalBroken} 处已失效（告警）` : "（全部存在）"}`);
 console.log(`· 本体集合：不变量 ${ontoInvariants.size}（R）· 断点 ${ontoBreakpoints.size}（G）`);
 console.log(`· 断点 PRD 覆盖：${Object.keys(breakpointCoverage).length}/${ontoBreakpoints.size}${orphanBreakpoints.length ? `；无 PRD 缺口：${orphanBreakpoints.join(", ")}` : "（全覆盖）"}`);
 console.log(`· 索引已写：${INDEX_OUT}`);
