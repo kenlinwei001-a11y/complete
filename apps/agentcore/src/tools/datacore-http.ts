@@ -83,6 +83,10 @@ class HttpOntologyClient implements OntologyClient {
     const data = await call<unknown>(this.baseUrl, ctx, "POST", `/a/v1/objects/aggregate`, req);
     return { data } as ToolPayload;
   }
+  async listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]> {
+    const types = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types`);
+    return (types ?? []).map((t) => t.key);
+  }
 }
 
 class HttpSolverClient implements SolverClient {
@@ -96,6 +100,10 @@ class HttpRuleEngineClient implements RuleEngineClient {
   constructor(private readonly baseUrl: string) {}
   evaluate(ctx: ToolAuthCtx, ruleIds: string[] | "ALL_APPLICABLE", payload: unknown): Promise<RuleVerdict[]> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/rules/evaluate`, { ruleIds, payload });
+  }
+  async listRuleKeys(ctx: ToolAuthCtx): Promise<string[]> {
+    const rules = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/rules`);
+    return (rules ?? []).map((r) => r.key);
   }
 }
 

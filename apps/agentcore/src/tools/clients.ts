@@ -23,6 +23,8 @@ export interface OntologyClient {
   getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload>;
   /** 治理增量 §3.6：聚合下推（避免 agent 拉全量行）。 */
   aggregateObjects(ctx: ToolAuthCtx, req: AggregateRequest): Promise<ToolPayload>;
+  /** B→A 存在性探针（引用闭合）：本租户已发布对象类型 key 全集（agent scope / intent slot 校验）。 */
+  listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]>;
 }
 
 export interface SolverClient {
@@ -31,6 +33,8 @@ export interface SolverClient {
 
 export interface RuleEngineClient {
   evaluate(ctx: ToolAuthCtx, ruleIds: string[] | "ALL_APPLICABLE", payload: unknown): Promise<RuleVerdict[]>;
+  /** B→A 存在性探针（引用闭合）：本租户已发布规则 key 全集（workflow evaluate_rules 校验）。 */
+  listRuleKeys(ctx: ToolAuthCtx): Promise<string[]>;
 }
 
 export interface ActionClient {

@@ -70,6 +70,17 @@ describe("M4 · 统一资源模式（agents）", () => {
     expect(body.errors.some((e) => e.field === "tools" && e.message.includes("wf_missing"))).toBe(true);
   });
 
+  it("B→A 存在性探针：scopeDeclaration 含 DataCore 不存在的对象类型 → 死路，发布被拒", async () => {
+    const t = await createTestApp();
+    const id = await createAgent(t, "uni_scope_bad", { scopeDeclaration: { objectTypes: ["Order", "GhostType"], toolNames: ["query_objects"] } });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/agents/${id}/publish`, headers: debugHeaders(ADMIN) });
+    const body = pub.json() as { ok: boolean; errors: { field: string; message: string }[] };
+    expect(body.ok).toBe(false);
+    expect(body.errors.some((e) => e.field === "scopeDeclaration.objectTypes" && e.message.includes("GhostType") && e.message.includes("死路"))).toBe(true);
+    // 合法对象类型不报死路（Order 存在）
+    expect(body.errors.some((e) => e.message.includes("Order") && e.message.includes("死路"))).toBe(false);
+  });
+
   it("references 非空时 retire 需 confirm、delete 被拒；解除引用后 delete → 204", async () => {
     const t = await createTestApp();
     const id = await createAgent(t, "uni_ref");

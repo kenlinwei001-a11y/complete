@@ -80,6 +80,28 @@ describe("增量 §2 · Workflow 执行语义", () => {
     expect(msgs.some((m) => m.includes(String(WORKFLOW_TOTAL_TIMEOUT_LIMIT_MS)))).toBe(true);
   });
 
+  it("B→A 存在性探针：步骤引用 DataCore 不存在的求解器/规则 → 死路，发布被拒（定位步骤）", async () => {
+    const created = await t.app.inject({
+      method: "POST", url: "/b/v1/workflows", headers: debugHeaders(ADMIN),
+      payload: {
+        key: "ghost_refs", name: "死路流程", inputs: { type: "object", properties: {} },
+        steps: [
+          { id: "s1", type: "invoke_solver", params: { solverKey: "ghost_solver", args: {} } },
+          { id: "s2", type: "evaluate_rules", params: { ruleIds: ["C03", "CGHOST"], payload: {} } },
+        ],
+      },
+    });
+    const id = (created.json() as { id: string }).id;
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/workflows/${id}/publish`, headers: debugHeaders(ADMIN) });
+    expect(pub.statusCode).toBe(200);
+    const body = pub.json() as { ok: boolean; errors: { stepId?: string; message: string }[] };
+    expect(body.ok).toBe(false);
+    expect(body.errors.some((e) => e.stepId === "s1" && e.message.includes("ghost_solver") && e.message.includes("死路"))).toBe(true);
+    expect(body.errors.some((e) => e.stepId === "s2" && e.message.includes("CGHOST") && e.message.includes("死路"))).toBe(true);
+    // 合法引用（C03）不报死路
+    expect(body.errors.some((e) => e.message.includes("C03") && e.message.includes("死路"))).toBe(false);
+  });
+
   it("R5（服务端）· 启动扫描：EXECUTING_* 超 10 分钟 → FAILED INTERRUPTED_BY_RESTART + SSE 可回放事件", async () => {
     const stale = new Date(Date.now() - 20 * 60_000).toISOString();
     const fresh = new Date(Date.now() - 60_000).toISOString();

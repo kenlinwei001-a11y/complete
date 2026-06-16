@@ -118,6 +118,8 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
                                               ├ ruleBindings--> Rule    └ evaluate_rules --> Rule(BLOCK 短路)
                                               └ tools--> Solver/MCP
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
+                       └─**B→A 存在性探针（引用闭合·发布门）**：workflow 步骤 solverKey/ruleIds + agent scopeDeclaration.objectTypes
+                          发布前经 DataCore 校验真实存在（probeMissingRefs，fail-open；不存在=死路拒发布）
 ```
 **场景/入口链**
 ```

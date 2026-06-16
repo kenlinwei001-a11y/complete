@@ -1,6 +1,51 @@
 import { HttpError } from "./router/orchestrator.js";
 import type { RequestAuth } from "./auth.js";
 import type { Repos } from "./persistence/repos.js";
+import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
+
+/**
+ * B→A 存在性探针（引用闭合「无死路」跨系统校验）：发布前确认 AgentCore 资源引用的
+ * DataCore 制品（求解器/规则/对象类型）真实存在。**fail-open**：A 不可达或返回空集时
+ * 视为"无法判定 → 放行"（不因 A 临时不可用而挡配置发布），仅在确凿"不存在"时报缺失。
+ */
+export async function probeMissingRefs(
+  dataCore: DataCoreClient,
+  ctx: ToolAuthCtx,
+  refs: { solverKeys?: string[]; ruleKeys?: string[]; objectTypes?: string[] },
+): Promise<{ solvers: string[]; rules: string[]; objectTypes: string[] }> {
+  const missing = { solvers: [] as string[], rules: [] as string[], objectTypes: [] as string[] };
+  const want = {
+    solverKeys: [...new Set(refs.solverKeys ?? [])],
+    ruleKeys: [...new Set(refs.ruleKeys ?? [])],
+    objectTypes: [...new Set(refs.objectTypes ?? [])],
+  };
+  if (want.solverKeys.length > 0) {
+    try {
+      const { items } = await dataCore.catalog.discover(ctx, "solvers");
+      const known = new Set(items.map((i) => i.key));
+      if (known.size > 0) missing.solvers = want.solverKeys.filter((k) => !known.has(k));
+    } catch {
+      /* fail-open */
+    }
+  }
+  if (want.ruleKeys.length > 0) {
+    try {
+      const known = new Set(await dataCore.rules.listRuleKeys(ctx));
+      if (known.size > 0) missing.rules = want.ruleKeys.filter((k) => !known.has(k));
+    } catch {
+      /* fail-open */
+    }
+  }
+  if (want.objectTypes.length > 0) {
+    try {
+      const known = new Set(await dataCore.ontology.listObjectTypeKeys(ctx));
+      if (known.size > 0) missing.objectTypes = want.objectTypes.filter((k) => !known.has(k));
+    } catch {
+      /* fail-open */
+    }
+  }
+  return missing;
+}
 
 /**
  * 管理平台增量 §4：AgentCore 资源 CRUD 统一资源模式辅助

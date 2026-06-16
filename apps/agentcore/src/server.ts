@@ -42,7 +42,7 @@ import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
-import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalogAdmin, type ListQuery } from "./resources.js";
+import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { SCENARIO_CATALOG, seedScenarios } from "./scenarios-catalog.js";
@@ -434,6 +434,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       const cfg = await deps.repos.mcpConfigs.get(m.mcpConfigId);
       if (!cfg || cfg.tenantId !== a.tenantId) fieldErrors.push({ field: "mcpServers", message: `MCP 配置不存在：${m.mcpConfigId}` });
     }
+    // B→A 存在性探针（引用闭合）：scopeDeclaration 声明的对象类型必须在 DataCore 本体存在。
+    if (agent.scopeDeclaration.objectTypes.length > 0) {
+      const missing = await probeMissingRefs(deps.dataCore, a, { objectTypes: agent.scopeDeclaration.objectTypes });
+      for (const t of missing.objectTypes) fieldErrors.push({ field: "scopeDeclaration.objectTypes", message: `对象类型「${t}」在 DataCore 本体不存在（死路）` });
+    }
     if (fieldErrors.length > 0) return { ok: false, errors: fieldErrors };
     const cycle = await detectStaticCycle(deps.repos, { kind: "agent", id }, { agent });
     if (cycle) {
@@ -640,6 +645,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       : undefined;
     if (cycle) {
       stepErrors.push({ code: ErrorCodes.CYCLIC_INVOCATION, message: `发布被拒：静态可达环 ${cycle.join(" -> ")}` });
+    }
+    // B→A 存在性探针（引用闭合）：步骤引用的求解器/规则必须在 DataCore 真实存在（无死路）。
+    if (stepErrors.length === 0) {
+      const solverKeys: string[] = [];
+      const ruleKeys: string[] = [];
+      for (const st of wf.steps) {
+        const p = st.params as Record<string, unknown>;
+        if (st.type === "invoke_solver" && typeof p.solverKey === "string") solverKeys.push(p.solverKey);
+        if (st.type === "evaluate_rules" && Array.isArray(p.ruleIds)) for (const r of p.ruleIds as unknown[]) if (typeof r === "string") ruleKeys.push(r);
+      }
+      const missing = await probeMissingRefs(deps.dataCore, a, { solverKeys, ruleKeys });
+      for (const s of missing.solvers) {
+        const stepId = wf.steps.find((st) => (st.params as Record<string, unknown>).solverKey === s)?.id;
+        stepErrors.push({ ...(stepId ? { stepId } : {}), code: ErrorCodes.VALIDATION_ERROR, message: `求解器「${s}」在 DataCore 未注册（死路）` });
+      }
+      for (const r of missing.rules) {
+        const stepId = wf.steps.find((st) => Array.isArray((st.params as Record<string, unknown>).ruleIds) && ((st.params as Record<string, unknown>).ruleIds as string[]).includes(r))?.id;
+        stepErrors.push({ ...(stepId ? { stepId } : {}), code: ErrorCodes.VALIDATION_ERROR, message: `规则「${r}」在 DataCore 规则库不存在（死路）` });
+      }
     }
     if (stepErrors.length > 0) return { ok: false, errors: stepErrors };
 

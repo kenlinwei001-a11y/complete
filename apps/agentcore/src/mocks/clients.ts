@@ -161,6 +161,10 @@ export class MockOntologyClient implements OntologyClient {
     });
     return { data: { rows, rowCount: rows.length, truncated: false }, snapshotVersion: SNAPSHOT };
   }
+  // B→A 探针：出厂本体已发布对象类型全集（覆盖 seed 的 agent scope / intent slot 引用）。
+  async listObjectTypeKeys(): Promise<string[]> {
+    return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
+  }
 }
 
 export class MockSolverClient implements SolverClient {
@@ -269,6 +273,10 @@ export class MockRuleEngineClient implements RuleEngineClient {
     return ids
       .filter((id) => all[id])
       .map((id) => ({ ...(all[id] as () => RuleVerdict)(), ruleVersion: this.versions[id] ?? 1 }));
+  }
+  // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）。
+  async listRuleKeys(): Promise<string[]> {
+    return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
   }
 }
 
