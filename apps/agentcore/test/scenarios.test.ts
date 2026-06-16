@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestApp, debugHeaders, PLANNER, TENANT } from "./helpers.js";
+import { createTestApp, debugHeaders, ADMIN, PLANNER, TENANT } from "./helpers.js";
 import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 
 const list = (t: Awaited<ReturnType<typeof createTestApp>>, qs = "") =>
@@ -46,6 +46,64 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
     expect(all.items).toHaveLength(20);
     const s02 = (all.items as unknown as { sNo: string; inactive: boolean }[]).find((c) => c.sNo === "S02");
     expect(s02!.inactive).toBe(true);
+  });
+
+  it("SLP2-1: Scenario 升一等持久化对象 —— 出厂 20 场景幂等 upsert 为 PUBLISHED，manage 列表完整可配", async () => {
+    const t = await createTestApp();
+    const r = await t.app.inject({ method: "GET", url: "/b/v1/scenarios/manage", headers: debugHeaders(ADMIN) });
+    expect(r.statusCode).toBe(200);
+    const all = r.json() as { scenarioKey: string; status: string; mode: string; presetContext: unknown; intentKey: string }[];
+    expect(all).toHaveLength(20);
+    expect(all.every((s) => s.status === "PUBLISHED")).toBe(true);
+    // 每个场景都带 mode（WORKFLOW_FIRST 默认）+ presetContext + intentKey（完整可配）
+    expect(all.every((s) => s.mode && s.presetContext && s.intentKey)).toBe(true);
+  });
+
+  it("SLP2-2: 管理 CRUD —— 创建 DRAFT → 编辑 presetContext → 发布 → 退役（状态机 + 启动门控）", async () => {
+    const t = await createTestApp();
+    // 创建 DRAFT（场景为主键 + mode + presetContext）
+    const create = await t.app.inject({
+      method: "POST", url: "/b/v1/scenarios", headers: debugHeaders(ADMIN),
+      payload: { scenarioKey: "SX1", name: "自助场景X", targetView: "project", intentKey: "capacity_feasibility", triggerQuestion: "X 能接吗？", mode: "WORKFLOW_FIRST", presetContext: { targetView: "project", selectedObjects: [], slotPresets: { modelId: "M-X" } } },
+    });
+    expect(create.statusCode).toBe(201);
+    expect((create.json() as { status: string }).status).toBe("DRAFT");
+
+    // DRAFT 不可启动（未发布）
+    const launchDraft = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/SX1/launch", headers: debugHeaders(PLANNER) });
+    expect(launchDraft.statusCode).toBe(409);
+
+    // 编辑 presetContext（仍 DRAFT）
+    const edit = await t.app.inject({
+      method: "PUT", url: "/b/v1/scenarios/SX1", headers: debugHeaders(ADMIN),
+      payload: { scenarioKey: "SX1", name: "自助场景X", targetView: "project", intentKey: "capacity_feasibility", triggerQuestion: "X 能接吗？", mode: "WORKFLOW_FIRST", presetContext: { targetView: "project", selectedObjects: [{ objectType: "Model", objectId: "M-X", label: "型号X" }], slotPresets: { modelId: "M-X", weeks: 6 } } },
+    });
+    expect(edit.statusCode).toBe(200);
+    expect((edit.json() as { presetContext: { slotPresets: Record<string, unknown> } }).presetContext.slotPresets.weeks).toBe(6);
+
+    // 发布 → PUBLISHED，进入启动器目录
+    const pub = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/SX1/publish", headers: debugHeaders(ADMIN) });
+    expect(pub.statusCode).toBe(200);
+    expect((pub.json() as { status: string }).status).toBe("PUBLISHED");
+    const afterPub = await list(t);
+    expect(afterPub.items.map((c) => c.sNo)).toContain("SX1");
+    expect(afterPub.total).toBe(21);
+
+    // PUBLISHED 改字段 → 409（须先退役）
+    const editPub = await t.app.inject({ method: "PUT", url: "/b/v1/scenarios/SX1", headers: debugHeaders(ADMIN), payload: { scenarioKey: "SX1", name: "改名", targetView: "project", intentKey: "capacity_feasibility", triggerQuestion: "X？" } });
+    expect(editPub.statusCode).toBe(409);
+
+    // 退役 → 从启动器目录消失
+    const ret = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/SX1/retire", headers: debugHeaders(ADMIN) });
+    expect(ret.statusCode).toBe(200);
+    const afterRetire = await list(t);
+    expect(afterRetire.items.map((c) => c.sNo)).not.toContain("SX1");
+  });
+
+  it("SLP2-3: 非 catalog_admin 不可创建场景（403）", async () => {
+    const t = await createTestApp();
+    const r = await t.app.inject({ method: "POST", url: "/b/v1/scenarios", headers: debugHeaders(PLANNER), payload: { scenarioKey: "SX2", name: "x", targetView: "project", intentKey: "capacity_feasibility", triggerQuestion: "q" } });
+    expect(r.statusCode).toBe(403);
   });
 
   it("目录内部一致性：solverStatus 标注复用/新增；新增求解器为分阶段建设项", () => {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentBudgetSchema, PlanStepSchema } from "./qos.js";
+import { AgentBudgetSchema, ObjectRefSchema, PlanStepSchema } from "./qos.js";
 import { JsonSchemaObject } from "./common.js";
 
 // ---------------------------------------------------------------------------
@@ -194,6 +194,46 @@ export const SceneEntryConfigSchema = z.object({
   updatedAt: z.string().optional(),
 });
 export type SceneEntryConfig = z.infer<typeof SceneEntryConfigSchema>;
+
+// ---------------------------------------------------------------------------
+// 场景启动器（PRD-scenario-launcher §3.2/§4）：Scenario 升一等对象（DRAFT→PUBLISHED→RETIRED）
+// SceneEntry 降为投影（视图侧"挂哪些场景 + 默认 agent + 兜底 mode"），主键反转为 Scenario。
+// ---------------------------------------------------------------------------
+
+export const ScenarioStatusSchema = z.enum(["DRAFT", "PUBLISHED", "RETIRED"]);
+export type ScenarioStatus = z.infer<typeof ScenarioStatusSchema>;
+
+/** presetContext：保证"打开即可推演、不被反问槽位"（选中对象 + 槽位预置 + 时窗）。 */
+export const ScenarioPresetContextSchema = z.object({
+  targetView: z.string(),
+  selectedObjects: z.array(ObjectRefSchema).default([]),
+  slotPresets: z.record(z.string(), z.unknown()).default({}),
+  timeWindow: z.object({ from: z.string(), to: z.string() }).optional(),
+});
+export type ScenarioPresetContext = z.infer<typeof ScenarioPresetContextSchema>;
+
+export const ScenarioSchema = z.object({
+  id: z.string(), // scn_
+  tenantId: z.string(),
+  scenarioKey: z.string(), // S01…（出厂）或自助新建键
+  name: z.string(),
+  domain: z.string().optional(),
+  targetView: z.string(),
+  intentKey: z.string(),
+  triggerQuestion: z.string(),
+  solver: z.string().optional(),
+  rules: z.array(z.string()).default([]),
+  riskLevel: z.enum(["COMPUTE", "ACTION_DRAFT"]).default("COMPUTE"),
+  summary: z.string().default(""),
+  /** 场景默认走 WORKFLOW_FIRST；AGENT_FIRST 仅探索面（§3.2 语义收敛）。 */
+  mode: SceneEntryModeSchema.default("WORKFLOW_FIRST"),
+  defaultAgentId: z.string().optional(),
+  presetContext: ScenarioPresetContextSchema,
+  status: ScenarioStatusSchema.default("DRAFT"),
+  version: z.number().int().default(1),
+  updatedAt: z.string().optional(),
+});
+export type Scenario = z.infer<typeof ScenarioSchema>;
 
 // ---------------------------------------------------------------------------
 // AIP Evals（运营完备性增量 §2 / 成熟度 E4）：agent 质量可量化评测

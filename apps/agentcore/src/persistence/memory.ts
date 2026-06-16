@@ -9,6 +9,7 @@ import type {
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
+  Scenario,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
@@ -44,6 +45,7 @@ export function createMemoryRepos(): Repos {
   const skills = new Map<string, SkillDefinition>();
   const mcpConfigs = new Map<string, McpServerConfig>();
   const sceneEntries = new Map<string, SceneEntryConfig>();
+  const scenarios = new Map<string, Scenario>();
   const credentials = new Map<string, CredentialRow>();
   const idempotency = new Map<string, IdempotencyRow>();
   const llmProviders = new Map<string, LlmProviderConfig>();
@@ -295,6 +297,27 @@ export function createMemoryRepos(): Repos {
       },
       async listByTenant(tenantId) {
         return [...sceneEntries.values()].filter((s) => s.tenantId === tenantId).map(clone);
+      },
+    },
+    scenarios: {
+      async upsert(s) {
+        // (tenantId, scenarioKey) unique
+        for (const [id, e] of scenarios) {
+          if (e.tenantId === s.tenantId && e.scenarioKey === s.scenarioKey && id !== s.id) scenarios.delete(id);
+        }
+        scenarios.set(s.id, clone(s));
+      },
+      async remove(id) {
+        scenarios.delete(id);
+      },
+      async get(id) {
+        return clone(scenarios.get(id));
+      },
+      async byKey(tenantId, scenarioKey) {
+        return clone([...scenarios.values()].find((s) => s.tenantId === tenantId && s.scenarioKey === scenarioKey));
+      },
+      async listByTenant(tenantId) {
+        return [...scenarios.values()].filter((s) => s.tenantId === tenantId).map(clone);
       },
     },
     experience: {

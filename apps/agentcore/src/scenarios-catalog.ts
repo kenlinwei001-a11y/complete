@@ -83,3 +83,44 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {
   return SCENARIO_CATALOG.find((s) => s.intentKey === intentKey);
 }
+
+const SEED_TENANT = "demo";
+/** 域分组（启动器目录按域分组，§3.5-B）：targetView → 域名。 */
+const VIEW_DOMAIN: Record<string, string> = {
+  project: "产能与项目", risk: "风险与齐套", audit: "规划与平衡", generate: "规划与平衡",
+  dash: "经营与财务", sop: "规划与平衡", quarter: "规划与平衡",
+};
+
+/**
+ * 出厂场景目录 → 一等 Scenario（PUBLISHED）。SCENARIO_CATALOG 仍是出厂单一来源；
+ * 启动期幂等 upsert（PRD §3.2）。mode 默认 WORKFLOW_FIRST（§3.2 语义收敛）。
+ */
+export function scenarioFromCard(card: ScenarioCard, tenantId = SEED_TENANT): import("@platform/contracts").Scenario {
+  return {
+    id: `scn_${tenantId}_${card.sNo}`,
+    tenantId,
+    scenarioKey: card.sNo,
+    name: card.name,
+    domain: VIEW_DOMAIN[card.view] ?? card.view,
+    targetView: card.view,
+    intentKey: card.intentKey,
+    triggerQuestion: card.triggerQuestion,
+    solver: card.solver,
+    rules: card.rules,
+    riskLevel: card.riskLevel,
+    summary: card.summary,
+    mode: "WORKFLOW_FIRST",
+    presetContext: {
+      targetView: card.presetContext.targetView,
+      selectedObjects: card.presetContext.selectedObjects,
+      slotPresets: card.presetContext.slotPresets,
+    },
+    status: "PUBLISHED",
+    version: 1,
+  };
+}
+
+/** 出厂 20 场景的一等对象（demo 租户）——启动期幂等 upsert 用。 */
+export function seedScenarios(tenantId = SEED_TENANT): import("@platform/contracts").Scenario[] {
+  return SCENARIO_CATALOG.map((c) => scenarioFromCard(c, tenantId));
+}

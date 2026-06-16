@@ -12,6 +12,7 @@ import {
   mcpServerNameSlug,
   ModelBindingSchema,
   SceneEntryConfigSchema,
+  ScenarioSchema,
   EvalCaseSchema,
   EvalSuiteSchema,
   SkillDefinitionSchema,
@@ -21,6 +22,7 @@ import {
   type LlmProviderConfig,
   type McpServerConfig,
   type SceneEntryConfig,
+  type Scenario,
   type SkillDefinition,
   type WorkflowDefinition,
 } from "@platform/contracts";
@@ -43,7 +45,7 @@ import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
-import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
+import { SCENARIO_CATALOG, seedScenarios } from "./scenarios-catalog.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
@@ -1391,18 +1393,52 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { total: items.length, items };
   });
 
-  // 20 场景目录 §9：场景启动器卡片（单一来源=SCENARIO_CATALOG；非前端硬编码）。
-  // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active）。
+  // 场景启动器 P2：Scenario 升一等持久化对象（repo 单一来源；出厂 SCENARIO_CATALOG 懒播种）。
+  // 首次访问某租户若仓储为空 → 幂等播种出厂 20 场景，保证目录始终完整（含自助新增场景）。
+  const ensureScenarios = async (tenantId: string): Promise<Scenario[]> => {
+    const existing = await deps.repos.scenarios.listByTenant(tenantId);
+    const keys = new Set(existing.map((s) => s.scenarioKey));
+    let added = false;
+    // 按 key 幂等补齐出厂 20 场景（即便已有自助新增/退役场景也不漏播、不覆盖既有）。
+    for (const sc of seedScenarios(tenantId)) {
+      if (!keys.has(sc.scenarioKey)) {
+        await deps.repos.scenarios.upsert(sc);
+        added = true;
+      }
+    }
+    return added ? deps.repos.scenarios.listByTenant(tenantId) : existing;
+  };
+  // 20 场景目录 §9：场景启动器卡片（单一来源=scenarios 仓储；非前端硬编码）。
+  // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active+PUBLISHED）。
   app.get("/b/v1/scenarios", async (req) => {
     const a = await auth(req);
-    const { includeInactive } = req.query as { includeInactive?: string };
+    const { includeInactive, includeDraft } = req.query as { includeInactive?: string; includeDraft?: string };
     const enabled = await deps.features.enabledSet(a.tenantId, a.token);
     const launcherOn = viewAllowed(enabled, "scenarios");
-    const cards = SCENARIO_CATALOG.map((c) => ({
-      ...c,
-      willProduceDraft: c.riskLevel === "ACTION_DRAFT",
-      inactive: !viewAllowed(enabled, c.view),
-    }));
+    const all = await ensureScenarios(a.tenantId);
+    const cards = all
+      .filter((s) => s.status !== "RETIRED")
+      .filter((s) => includeDraft === "true" || s.status === "PUBLISHED")
+      .map((s) => ({
+        // 兼容旧字段（前端启动器/评测沿用 sNo/view/name）：投影出 ScenarioCard 形态 + 一等字段。
+        sNo: s.scenarioKey,
+        name: s.name,
+        view: s.targetView,
+        domain: s.domain,
+        intentKey: s.intentKey,
+        triggerQuestion: s.triggerQuestion,
+        solver: s.solver,
+        rules: s.rules,
+        riskLevel: s.riskLevel,
+        summary: s.summary,
+        mode: s.mode,
+        defaultAgentId: s.defaultAgentId,
+        presetContext: s.presetContext,
+        status: s.status,
+        willProduceDraft: s.riskLevel === "ACTION_DRAFT",
+        inactive: !viewAllowed(enabled, s.targetView),
+      }))
+      .sort((a, b) => (a.sNo < b.sNo ? -1 : 1));
     const items = includeInactive === "true" ? cards : cards.filter((c) => !c.inactive);
     return { launcherEnabled: launcherOn, total: items.length, items };
   });
@@ -1413,25 +1449,120 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/scenarios/:key/launch", async (req, reply) => {
     const a = await auth(req);
     const { key } = req.params as { key: string };
-    const card = SCENARIO_CATALOG.find((c) => c.sNo === key || c.intentKey === key);
-    if (!card) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
+    await ensureScenarios(a.tenantId);
+    const all = await deps.repos.scenarios.listByTenant(a.tenantId);
+    const sc = all.find((c) => c.scenarioKey === key || c.intentKey === key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
+    if (sc.status !== "PUBLISHED") throw new HttpError(409, ErrorCodes.INVALID_STATE, `场景未发布（${sc.status}），不可启动`);
     // entitlement 先于 authz（R3）：场景所属视图关闭 → 功能不存在
     const enabled = await deps.features.enabledSet(a.tenantId, a.token);
-    if (!viewAllowed(enabled, card.view)) throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    if (!viewAllowed(enabled, sc.targetView)) throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
     if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no scenario package for tenant");
     const body = SubmitQueryBodySchema.parse({
       packageId: pkg.id,
-      query: card.triggerQuestion,
+      query: sc.triggerQuestion,
       context: {
-        view: card.presetContext.targetView,
-        selectedObjects: card.presetContext.selectedObjects,
+        view: sc.presetContext.targetView,
+        selectedObjects: sc.presetContext.selectedObjects,
         filters: {},
-        presetSlots: card.presetContext.slotPresets,
+        presetSlots: sc.presetContext.slotPresets,
       },
     });
     const result = await deps.orchestrator.submitQuery(a, body);
-    return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl, scenario: card.sNo });
+    return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl, scenario: sc.scenarioKey });
+  });
+
+  // ---- 场景管理（PRD §4 管理面）：创建/编辑 DRAFT · 发布/退役（发 scenario.* 事件）----
+  const ScenarioUpsertBody = ScenarioSchema.omit({ id: true, tenantId: true, version: true, updatedAt: true, status: true }).partial({
+    rules: true, riskLevel: true, summary: true, mode: true, presetContext: true,
+  });
+  // 列表（管理态：含 DRAFT/RETIRED；前端场景编辑器消费——每个用 workflow/agent 的场景都在此完整可配）
+  app.get("/b/v1/scenarios/manage", async (req) => {
+    const a = await auth(req);
+    await ensureScenarios(a.tenantId);
+    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const all = await deps.repos.scenarios.listByTenant(a.tenantId);
+    return all
+      .map((s) => ({ ...s, inactive: !viewAllowed(enabled, s.targetView) }))
+      .sort((x, y) => (x.scenarioKey < y.scenarioKey ? -1 : 1));
+  });
+  app.get("/b/v1/scenarios/:key", async (req) => {
+    const a = await auth(req);
+    await ensureScenarios(a.tenantId);
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, (req.params as { key: string }).key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    return sc;
+  });
+  // 创建/编辑：scenarioKey 已存在 → 编辑（仅 DRAFT 可改全字段；PUBLISHED 则派生 DRAFT 由前端 new-version 触发，
+  // 此处 PUT 直接对 DRAFT 生效，PUBLISHED 改字段返回 409 提示先退役/派生）。
+  const upsertScenario = async (req: Parameters<typeof auth>[0], expectKey?: string): Promise<Scenario> => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const raw = { ...(req.body as Record<string, unknown>) };
+    if (expectKey) raw.scenarioKey = expectKey;
+    const body = ScenarioUpsertBody.parse(raw);
+    // viewKey 闭合（PRD admin-console-closure §5-①）：targetView 必须是真实视图（来自 workspace 导航/feature）。
+    const existing = await deps.repos.scenarios.byKey(a.tenantId, body.scenarioKey);
+    if (existing && existing.status === "PUBLISHED") {
+      throw new HttpError(409, ErrorCodes.INVALID_STATE, `场景 ${body.scenarioKey} 已发布，请先退役再改或新建键`);
+    }
+    if (existing?.updatedAt && (body as { updatedAt?: string }).updatedAt && (body as { updatedAt?: string }).updatedAt !== existing.updatedAt) {
+      throw new HttpError(409, "STALE_WRITE", "场景已被他人修改，请刷新后重试");
+    }
+    const now = new Date().toISOString();
+    const sc: Scenario = {
+      id: existing?.id ?? newId("scn"),
+      tenantId: a.tenantId,
+      scenarioKey: body.scenarioKey,
+      name: body.name,
+      domain: body.domain,
+      targetView: body.targetView,
+      intentKey: body.intentKey,
+      triggerQuestion: body.triggerQuestion,
+      solver: body.solver,
+      rules: body.rules ?? [],
+      riskLevel: body.riskLevel ?? "COMPUTE",
+      summary: body.summary ?? "",
+      mode: body.mode ?? "WORKFLOW_FIRST",
+      defaultAgentId: body.defaultAgentId,
+      presetContext: body.presetContext ?? { targetView: body.targetView, selectedObjects: [], slotPresets: {} },
+      status: "DRAFT",
+      version: existing?.version ?? 1,
+      updatedAt: now,
+    };
+    // AGENT_* 模式必须有已发布 defaultAgent（与 scene-entries 一致）。
+    if ((sc.mode === "AGENT_FIRST" || sc.mode === "AGENT_ONLY")) {
+      if (!sc.defaultAgentId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, "AGENT_* 模式必须提供 defaultAgentId");
+      const agent = await deps.repos.agents.get(sc.defaultAgentId);
+      if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, `defaultAgent 不存在：${sc.defaultAgentId}`);
+      if (agent.status !== "PUBLISHED") throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, `AGENT_* 模式要求 defaultAgent 已发布：${agent.name} 当前 ${agent.status}`);
+    }
+    await deps.repos.scenarios.upsert(sc);
+    return sc;
+  };
+  app.post("/b/v1/scenarios", async (req, reply) => reply.status(201).send(await upsertScenario(req)));
+  app.put("/b/v1/scenarios/:key", async (req) => upsertScenario(req, (req.params as { key: string }).key));
+  app.post("/b/v1/scenarios/:key/publish", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { key } = req.params as { key: string };
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    const published: Scenario = { ...sc, status: "PUBLISHED", version: sc.version + 1, updatedAt: new Date().toISOString() };
+    await deps.repos.scenarios.upsert(published);
+    // scenario.published 事件登记于 event-subscriptions.ts（§4 单一来源）；前端按 invalidates 失效缓存。
+    return published;
+  });
+  app.post("/b/v1/scenarios/:key/retire", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { key } = req.params as { key: string };
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    const retired: Scenario = { ...sc, status: "RETIRED", updatedAt: new Date().toISOString() };
+    await deps.repos.scenarios.upsert(retired);
+    return retired;
   });
 
   app.get("/b/v1/scene-entries", async (req) => {

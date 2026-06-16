@@ -97,8 +97,8 @@
 - **Intent**：意图（触发问句/示例→分类；slots；**planRef→执行计划**；riskLevel）· `contracts/agentcore.ts`。
 - **ExecutionPlan / Workflow**：执行计划（kind=PLAN）/ 编排（kind=ORCHESTRATION，含 invoke_agent/mcp）；步骤 query_objects/invoke_solver/evaluate_rules/render · `workflow/executor.ts`。
 - **Skill / Agent**：技能（解读能力句）/ 智能体（systemPrompt+tools+skills+ruleBindings）· `agent/loop.ts`。
-- **SceneEntry**：场景入口（**viewKey 为键** · mode 四选一 · defaultAgentId · intentCatalogFilter · suggestedQuestions）· `contracts/agentcore.ts:171`。
-- **ScenarioCard（SCENARIO_CATALOG，20 张）**：业务场景卡（view/intentKey/solver/presetContext）· `scenarios-catalog.ts:60`。
+- **Scenario（一等对象，升级自 ScenarioCard）**：场景为一等主键（scenarioKey/name/domain/targetView/intentKey/mode/defaultAgentId/presetContext/rules/riskLevel/status DRAFT→PUBLISHED→RETIRED/version）· 持久化于 AgentCore `scenarios` 仓储 · 出厂 SCENARIO_CATALOG 启动期幂等 upsert（单一来源）· `contracts/agentcore.ts ScenarioSchema` · `scenarios-catalog.ts:60`。**所有使用 workflow/agent 的场景都在此完整可配（治理铁律）**。
+- **SceneEntry（降为投影）**：视图侧投影（**viewKey 为键** · mode 兜底 · defaultAgentId · intentCatalogFilter · suggestedQuestions）· 主键关系反转为 `View ← Scenario.targetView` · `contracts/agentcore.ts:171`。
 - **Task / Query**：QOS 任务（SSE 流）· `router/orchestrator.ts`,`api/sse.ts`。
 - **MCP tool / RefReport**：外部工具 / 引用上报。
 - **客户端（QOS 入口）**：Web 对话坞（`frontend-shell` QueryDock）· **CLI 对话入口**（`scripts/platform-cli.mjs`：login/ask/scenarios/approve，一句话驱动平台；人与 AI 共用）—— 均为切片 `sys.orch.query_to_answer` 的客户端，复用同一 QOS 管线。
@@ -169,6 +169,8 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L4 | `workflow.published` | 工作流发布 | IN_SESSION | intent-editor.workflow-bindings, agent-editor.tool-bindings, workflow-list | — |
 | L4 | `intent.published` | 意图发布 | IN_SESSION | scene-entry.intent-filter, scenarios, intent-catalog | — |
 | L4 | `scene_entry.updated` | 场景入口编辑 | IN_SESSION | scenarios, scene-entries | — |
+| L4 | `scenario.published` | 场景发布（升一等对象） | IN_SESSION | scenarios, scene-entries, intent-catalog | — |
+| L4 | `scenario.retired` | 场景退役 | IN_SESSION | scenarios, scene-entries, intent-catalog | — |
 | L5 | `action.pending_approval` | Action 提交 | NOTIFY | notifications, approval-inbox | — |
 | L5 | `action.executed` | Action 写回 | IN_SESSION | dashboard, object-queries | DL4 |
 | L5 | `writeback.divergence` | 回声对账 | NOTIFY | notifications, dashboard | DL4 |
@@ -246,7 +248,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 |---|---|---|---|
 | G-1 | ~~20 场景仅 4 个端到端可跑（16 无 Intent/Plan）~~ **已修**：种子从 SCENARIO_CATALOG 单一来源派生全部 20 意图+计划（`mocks/seed.ts`），mock 求解器兜底（`mocks/clients.ts`）；195 测试绿。*注：16 个用静态 text 渲染，richer 解读走路径B/skill（后续）* | ScenarioCard→Intent→Plan | ✅ 已修 |
 | G-2 | ~~`affected_orders` plan 读 `data.rows/count`，真实返回 `affected/total` → 跨服务 FAIL~~ **已修**：DataCore 补 `rows/count/columns` 别名 `risk.ts:337` | Plan render↔Solver 输出 | ✅ 已修 |
-| G-3 | ~~无场景启动器；presetContext 未注入 QOS~~ **◐ 部分修（P1）**：`SessionContext.presetSlots` 注入通道 + `fillSlots` 消费（`slots.ts`）+ `POST /b/v1/scenarios/:key/launch`（`server.ts`）+ **零反问门**（scenarios-wiring 真跑 fillSlots，20/20 必填槽满足）。**待**：Scenario 升一等主键(P2) + 前端 ⌘K/目录/首页启动器(P3)。详 `docs/PRD-scenario-launcher.md` | ScenarioCard↔SceneEntry↔前端 | ◐ P1 后端闭环已落 |
+| G-3 | ~~无场景启动器；presetContext 未注入 QOS~~ **◐ 大部修（P1+P2）**：P1 `SessionContext.presetSlots` 注入通道 + `fillSlots` 消费（`slots.ts`）+ `POST /b/v1/scenarios/:key/launch` + **零反问门**（20/20）；**P2 Scenario 升一等持久化对象**（`scenarios` 仓储四处 + 出厂幂等 upsert + DRAFT/PUBLISHED/RETIRED + `scenario.*` 事件 + 管理 CRUD `POST/PUT /b/v1/scenarios`·`/publish`·`/retire`，SceneEntry 降投影）。**待**：前端 ⌘K/目录/首页启动器 + 场景编辑器(P3)。详 `docs/PRD-scenario-launcher.md` | Scenario(一等)↔SceneEntry(投影)↔前端 | ◐ P1+P2 后端闭环已落 |
 | G-4 | ~~意图绑定的执行计划无前端创建入口~~ **已修**：CatalogPage ＋新建执行计划（createPlan）、WorkflowsPage/SkillsPage ＋新建按钮 + mock POST handlers；g4 回归测试 + 112 前端测试绿 | Intent→Plan 配置面 | ✅ 已修 |
 | G-5 | 应用层电池锁死（**本轮审计量化**：8a 视图结构写死≈9 视图含 DAG · 8b 业务数据进生产 · 8c 文案/i18n 租户专属 · 8d Agent 配置/模型写死 · 8e ✅ `generic-inference` 通用 what-if 已落：`recompute(dryRun+apply)` 在克隆图上前向重算派生、不落真值 + `POST /a/v1/inference/whatif`，行业无关；O4b 回归证明无副作用。注：作用于 compileSpecs 派生本体；合成 demo 走 runDerivations 另一路）→ **撑不起其他租户/行业**。修法见 `docs/PRD-de-battery-multitenant-config.md`（结构←plan/ViewConfig.layout · 数据←API/WorkspaceConfig · 文案←i18n+行业别名 · Agent←表/Provider绑定）+ 新不变量 R14 + `debattery:check` 门 | 本体→生成应用→推演 | 通用化缺（量化） |
 | G-6 | ~~Excel parser TODO；合成在独立页~~ **◐ 大部修**：`parseXlsx`（node-xlsx）已落，xlsx 上传→解析→RawDataset 三路统一(csv/json/xlsx)；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）。**待**：在线数据模版（并入本体浏览器 PRD） | Connector→RawDataset | ◐ rawin 三路已统一；数据模版待 |

@@ -13,6 +13,7 @@ import type {
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
+  Scenario,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
@@ -355,6 +356,30 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       async listByTenant(tenantId) {
         const r = await q(`SELECT config FROM scene_entries WHERE tenant_id = $1`, [tenantId]);
         return r.rows.map((x) => x.config as SceneEntryConfig);
+      },
+    },
+    scenarios: {
+      async upsert(s: Scenario) {
+        await q(
+          `INSERT INTO scenarios(id, tenant_id, scenario_key, config) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (tenant_id, scenario_key) DO UPDATE SET id = $1, config = $4`,
+          [s.id, s.tenantId, s.scenarioKey, JSON.stringify(s)],
+        );
+      },
+      async remove(id) {
+        await q(`DELETE FROM scenarios WHERE id = $1`, [id]);
+      },
+      async get(id) {
+        const r = await q(`SELECT config FROM scenarios WHERE id = $1`, [id]);
+        return r.rows[0]?.config as Scenario | undefined;
+      },
+      async byKey(tenantId, scenarioKey) {
+        const r = await q(`SELECT config FROM scenarios WHERE tenant_id = $1 AND scenario_key = $2`, [tenantId, scenarioKey]);
+        return r.rows[0]?.config as Scenario | undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT config FROM scenarios WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map((x) => x.config as Scenario);
       },
     },
     experience: {

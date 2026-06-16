@@ -14,6 +14,7 @@ import type {
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
+  Scenario,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
@@ -183,6 +184,14 @@ export interface Repos {
     get(id: string): Promise<SceneEntryConfig | undefined>;
     byView(tenantId: string, viewKey: string): Promise<SceneEntryConfig | undefined>;
     listByTenant(tenantId: string): Promise<SceneEntryConfig[]>;
+  };
+  /** 场景启动器（PRD-scenario-launcher §3.2）：Scenario 升一等对象，(tenantId, scenarioKey) 唯一。 */
+  scenarios: {
+    upsert(s: Scenario): Promise<void>;
+    remove(id: string): Promise<void>;
+    get(id: string): Promise<Scenario | undefined>;
+    byKey(tenantId: string, scenarioKey: string): Promise<Scenario | undefined>;
+    listByTenant(tenantId: string): Promise<Scenario[]>;
   };
   credentials: {
     insert(c: CredentialRow): Promise<void>;
