@@ -365,7 +365,16 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     // 剩余视图增量（§7.14–7.17）
     { key: "annual-scenario", title: "年度情景规划台", renderer: "annual-scenario", layout: {} },
     { key: "quarterly-rolling", title: "季度滚动看板", renderer: "quarterly-rolling", layout: {} },
-    { key: "order-chain", title: "订单全链聚合", renderer: "order-chain", layout: {} },
+    {
+      key: "order-chain",
+      title: "订单全链聚合",
+      renderer: "order-chain",
+      // 去电池锁死 8a（R14）：问题分类标签/产品段配色由 ViewConfig.layout 声明（DELIVERY 标签独有"·配置X"以证明）
+      layout: {
+        categoryLabels: { DELIVERY: "交期·配置X", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用" },
+        segColors: { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" },
+      },
+    },
     { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
     // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面）
     { key: "review", title: "运营回顾", renderer: "review", layout: {} },

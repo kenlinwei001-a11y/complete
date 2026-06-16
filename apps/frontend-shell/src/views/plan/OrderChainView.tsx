@@ -29,7 +29,10 @@ const CHAIN_COLORS = ["#7E8BEE", "#E8B54A", "#DD7E9E", "#62BE77"];
 const CHAIN_TITLES = ["订单", "判定", "根因", "对策"];
 
 /** 订单全链聚合（renderer=order-chain，§7.16）：affected_orders 扩展输出消费面 */
-export default function OrderChainView(_props: ViewRendererProps) {
+export default function OrderChainView({ view }: ViewRendererProps) {
+  // 去电池锁死 8a（R14）：问题分类标签 + 产品段配色由 ViewConfig.layout 声明，常量仅兜底
+  const categoryLabels = (view.layout?.categoryLabels as Record<string, string> | undefined) ?? CATEGORY_LABEL;
+  const segColors = (view.layout?.segColors as Record<string, string> | undefined) ?? SEG_COLOR;
   const [baseFilter, setBaseFilter] = useState<string>("");
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
 
@@ -152,7 +155,7 @@ export default function OrderChainView(_props: ViewRendererProps) {
                   </td>
                   <td className="zh">{r.cust}</td>
                   <td>
-                    <span className={styles.chip} style={{ color: SEG_COLOR[r.seg], borderColor: `${SEG_COLOR[r.seg]}66` }}>
+                    <span className={styles.chip} style={{ color: segColors[r.seg], borderColor: `${segColors[r.seg]}66` }}>
                       {r.seg}
                     </span>
                   </td>
@@ -201,7 +204,7 @@ export default function OrderChainView(_props: ViewRendererProps) {
             <button key={p.category} className={styles.probCard} data-testid={`oc-problem-${p.category}`} onClick={() => setOpenProblem(p)}>
               <div className={styles.probTitle}>
                 <span className="badge red" style={{ marginRight: 6 }}>
-                  {CATEGORY_LABEL[p.category]}
+                  {categoryLabels[p.category]}
                 </span>
                 {p.title}
               </div>
