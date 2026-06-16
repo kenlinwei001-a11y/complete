@@ -21,6 +21,7 @@ import zh from "@/locales/zh";
 const LoginPage = lazy(() => import("@/pages/LoginPage"));
 const TaskDetailPage = lazy(() => import("@/pages/TaskDetailPage"));
 const ScenarioLauncherPage = lazy(() => import("@/components/ScenarioLauncher/ScenarioLauncherPage"));
+const HomePage = lazy(() => import("@/components/ScenarioLauncher/HomePage"));
 const Object360Page = lazy(() => import("@/pages/Object360Page"));
 
 // 管理台路由按页 code-split（PRD §10）
@@ -56,12 +57,6 @@ setAuthFailureHandler(() => {
   }
 });
 
-function HomeRedirect() {
-  const { data: workspace } = useWorkspace();
-  if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
-  const first = workspace.navigation[0];
-  return first ? <Navigate to={`/v/${first.key}`} replace /> : <div className="empty-state">{zh.common.none}</div>;
-}
 
 const lazyWrap = (node: ReactNode) => (
   <Suspense fallback={<div className="empty-state">{zh.common.loading}</div>}>{node}</Suspense>
@@ -79,7 +74,7 @@ export const routes: RouteObject[] = [
     path: "/",
     element: <ShellLayout />,
     children: [
-      { index: true, element: <HomeRedirect /> },
+      { index: true, element: lazyWrap(<HomePage />) },
       { path: "scenarios", element: lazyWrap(<ScenarioLauncherPage />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchScene, submitQuery } from "@/api/endpoints";
+import { fetchScene, fetchScenarioCards, submitQuery } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
@@ -26,6 +26,9 @@ export function QueryDock() {
     queryFn: () => fetchScene(view),
     enabled: view !== "",
   });
+  // suggestedQuestions 命中校验（admin-console-closure §5-②）：本视图已发布场景的触发问句
+  // 经引用闭合验证（intent→plan 全配置好），优先作为建议问句 → 点了必命中、不落死路。
+  const { data: cards } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), enabled: expanded });
 
   const packageId = workspace?.scenarioPackages[0] ?? "";
 
@@ -52,7 +55,9 @@ export function QueryDock() {
   };
 
   const placeholder = scene?.uiHints.placeholder ?? zh.dock.placeholder;
-  const suggestions = scene?.uiHints.suggestedQuestions ?? [];
+  // 已验证场景触发问句（本视图）优先 + 场景入口自由建议问句兜底，去重。
+  const verified = (cards?.items ?? []).filter((c) => c.view === view).map((c) => c.triggerQuestion);
+  const suggestions = [...new Set([...verified, ...(scene?.uiHints.suggestedQuestions ?? [])])];
 
   return (
     <>

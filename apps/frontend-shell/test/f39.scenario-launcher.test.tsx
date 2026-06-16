@@ -29,6 +29,21 @@ describe("F39 · 场景启动器（目录墙 + ⌘K）", () => {
     });
   });
 
+  it("首页高频区：高频场景卡 + 一键启动 + 业务视图快捷入口", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/");
+
+    await screen.findByTestId("home-page");
+    const hot = await screen.findByTestId("home-hot-scenarios");
+    expect(within(hot).getByTestId("home-scenario-S01")).toBeInTheDocument();
+    // 业务视图快捷 + 全部场景入口
+    expect(screen.getByTestId("home-all-scenarios")).toBeInTheDocument();
+    // 点高频卡 → 启动注入
+    await user.click(within(hot).getByTestId("home-scenario-S01"));
+    await waitFor(() => expect(useSessionStore.getState().conversation.some((c) => c.query.includes("4680-NCM"))).toBe(true));
+  });
+
   it("⌘K 命令面板：快捷键唤起 → 搜索 → 选中启动", async () => {
     const user = userEvent.setup();
     loginAs("planner");

@@ -46,7 +46,8 @@
   - 🔄 **P3：场景配置编辑器 + 启动器三入口**：✅ **场景配置编辑器**（场景为主键 UI——场景第一列 + mode 选择 + 默认 agent + 落点视图闭合 + presetContext 编辑器 + 状态机；治理铁律全展示可配；f37）· ✅ **按域目录墙**（`ScenarioLauncherPage` /scenarios，域分组卡片 + ▶启动）· ✅ **⌘K 命令面板**（`CommandPalette` 全局快捷键搜场景启动）· ✅ 启动复用 `useScenarioLaunch`（注入 presetContext + submitQuery + 对话坞 SSE）+ 左导航入口；f39 回归。⬜ 余：首页高频区（4–6 张按角色高频卡）
   - ✅ **引用闭合「无死路」+ 上架门**：`scenarioClosure`（intent→plan→agent 全配置好，断链拒发布 409）+ manage 就绪态 + `computeReferences` 纳入 Scenario（Agent/Workflow 页可见"被场景引用"）+ ScenesPage 引用闭合列
   - ✅ **响应式失效环（Loop 前端消费端）**：`invalidateForEvent`（本体 §4 event→queryKey）——规则/数据/工作流发布 → 失效引用方 agent/workflow/场景缓存自动重取；接入 RulesPage/ScenesPage 发布；f38 回归
-  - 🔄 **intentKey 命中校验 #2**：✅ 场景编辑器 intentKey 闭合到真实已发布意图目录（datalist + 未命中警示"前台将无反应"）；✅ workflow 步骤 solverKey/ruleId 闭合（B→A 探针已落）；✅ computeReferences 纳入 Scenario。⬜ 余：suggestedQuestions 命中校验（SceneEntry，需 classify 探针）+ computeReferences 扩 rule/solver 反查
+  - ✅ **首页高频区**（`HomePage` 替换裸重定向）：高频场景卡一键启动 + 业务视图快捷入口 + 全部场景入口；至此 P3 启动器三入口（⌘K + 目录墙 + 首页高频）全齐；f39 回归
+  - ✅ **命中校验 #2 完成**：intentKey（场景编辑器 datalist + 未命中警示）+ **suggestedQuestions**（QueryDock 建议问句优先取本视图已发布场景的触发问句——经引用闭合验证、点了必命中不落死路）；workflow solverKey/ruleId 闭合（B→A 探针）+ computeReferences 纳入 Scenario。⬜ 余：computeReferences 扩 rule/solver 反查
 - 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`）—— 大
   - **参考软件**：[`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；v2 数据集成链 Data→Raw→Transform→Curated→Ontology Mapping，确定性映射 dataset→entity / column→property / FK→link + 基数推断）— 融进 A3 `modeling.ts`；+ 参考原型 `reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI
   - ✅ **确定性映射管线**（`deriveModelingSuggestion`：dataset→ObjectType · column→PropertyDef(类型按画像推断) · FK→ref+LinkType · PK=唯一率最高字段；`POST /a/v1/modeling/derive` 无 LLM 出草稿，构造上 100% 覆盖）
