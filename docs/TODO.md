@@ -51,7 +51,7 @@
   - ⬜ 本体浏览器（域分组图谱 + 节点检视器 + CSV 模板 + 覆盖徽章）
 
 ## 🔧 Tier 3.5 · 剩余断点
-- ⬜ **8. G-5 去电池锁死 / 多租户配置层**（本轮审计量化：范围远超"一行断点"，**撑不起其他租户/行业**）—— 大 —— 建议出合并 PRD《去电池锁死/多租户配置层》+ 回写本体 §8 G-5
+- 🔄 **8. G-5 去电池锁死 / 多租户配置层**（本轮审计量化：范围远超"一行断点"，**撑不起其他租户/行业**）—— 大 —— **PRD 已出** `docs/PRD-de-battery-multitenant-config.md`（含 R14「应用层无业务常数」+ `debattery:check` 门）；本体 §5(R14)/§8(G-5) 已回写
   - **8a 视图结构写死**（≈9 视图）：ProjectSimView 的 6 层 DAG(`buildDag`)、PlanAuditView 9 字段组、PlanGenerateView 5 目标+3 方案、SopBalanceView 五步状态机、RiskBoardView 色阶、GeoMapView 坐标、OrderChainView 分类、AnnualScenario/QuarterlyRolling 档位 —— 应由 ExecutionPlan 派生 + ViewConfig.layout 声明（学 DashboardView 标杆）
   - **8b 业务数据写死（进生产、不可覆盖）**：GeoMap 基地坐标×8 · ProjectSim 型号/地址/物流表 · PlanGenerate 目标默认值 · SopBalance 阈值+三段 · Calibration 基地筛选(4/12) —— 应从 API(Base/Model 对象)/WorkspaceConfig/SolverParams 取
   - **8c 文案写死**：~35 处中文内联绕过 `zh.ts`；i18n 本身混入租户专属串（`zh.ts:569 "如 常州"`、`:377 "扩化成通道"`）—— 归集 i18n + 行业别名映射

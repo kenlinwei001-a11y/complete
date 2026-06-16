@@ -208,6 +208,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | R12 | **双向闭包（数据构建）**：对象必落切片(反向-对象 HARD)、字段必被消费(反向-data SOFT)、求解器入参必存在(正向 HARD) | `closure.ts` |
 | **R13** | **结论可溯源（信任 = 出处 + 推导可当场亮出）**：凡推演结论里的数字必为可溯源对象——悬浮即出 `{来源系统·新鲜度·推导公式·输入因子·关联规则·备注}`（参考 PRD §1.2/§4，与 R12 输入侧"字段全建模"对称的输出侧纪律）。源系统降级时，依赖它的派生数字自动标降级、置信度(P90)随之下调(C09)。覆盖优先级见 `docs/REFERENCE-HTML-INVENTORY.md` 信任章。 | `<Provenance>` + lineage 端点；前端 `provenance.test` |
 | R-一致 | **一个事实一个出处**：同一指标在驾驶舱/S&OP/体检口径一致（同一对象库派生），跨视图同值 | 单一对象库 + 聚合下推 |
+| **R14** | **应用层无业务常数（多租户）**：前端组件不得内联业务数据/结构/租户专属文案；一律来自本体/WorkspaceConfig/ViewConfig.layout/i18n。换租户=换配置不改代码。守护 G-5 不回潮。 | `debattery:check`（待落）；标杆 `DashboardView`/`LedgerView` |
 
 ---
 
@@ -246,7 +247,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | G-2 | ~~`affected_orders` plan 读 `data.rows/count`，真实返回 `affected/total` → 跨服务 FAIL~~ **已修**：DataCore 补 `rows/count/columns` 别名 `risk.ts:337` | Plan render↔Solver 输出 | ✅ 已修 |
 | G-3 | ~~无场景启动器；presetContext 未注入 QOS~~ **◐ 部分修（P1）**：`SessionContext.presetSlots` 注入通道 + `fillSlots` 消费（`slots.ts`）+ `POST /b/v1/scenarios/:key/launch`（`server.ts`）+ **零反问门**（scenarios-wiring 真跑 fillSlots，20/20 必填槽满足）。**待**：Scenario 升一等主键(P2) + 前端 ⌘K/目录/首页启动器(P3)。详 `docs/PRD-scenario-launcher.md` | ScenarioCard↔SceneEntry↔前端 | ◐ P1 后端闭环已落 |
 | G-4 | ~~意图绑定的执行计划无前端创建入口~~ **已修**：CatalogPage ＋新建执行计划（createPlan）、WorkflowsPage/SkillsPage ＋新建按钮 + mock POST handlers；g4 回归测试 + 112 前端测试绿 | Intent→Plan 配置面 | ✅ 已修 |
-| G-5 | 应用层电池锁死（视图布局/求解器/场景包/Agent 写死）；`generic-inference` 不存在 | 本体→生成应用→推演 | 通用化缺 |
+| G-5 | 应用层电池锁死（**本轮审计量化**：8a 视图结构写死≈9 视图含 DAG · 8b 业务数据进生产 · 8c 文案/i18n 租户专属 · 8d Agent 配置/模型写死 · 8e `generic-inference` 不存在）→ **撑不起其他租户/行业**。修法见 `docs/PRD-de-battery-multitenant-config.md`（结构←plan/ViewConfig.layout · 数据←API/WorkspaceConfig · 文案←i18n+行业别名 · Agent←表/Provider绑定）+ 新不变量 R14 + `debattery:check` 门 | 本体→生成应用→推演 | 通用化缺（量化） |
 | G-6 | Excel 上传 UI 接受 .xlsx 但后端 parser TODO；无数据模版；合成在独立页 | Connector→RawDataset | rawin 三路未统一 |
 | G-7 | LLM 用途枚举写死不可扩展（待 PRD P5）；~~矩阵 model 下拉 stale 绑定显示空白~~ **已修**：已绑 model 不在目录仍可见可选 `LlmProvidersPage.tsx:474` | LlmPurposeBinding | ◐ 部分修（枚举扩展待 PRD） |
 | G-8 | 数据构建闭包仅 DataCore 栈、不验全链；**第一块砖已落**：`chain:check` 跨系统校验场景↔求解器注册；完整门（焊进构建发动机、验全链形状）待 PRD | BuildPlan→ClosureReport | ◐ 部分（chain:check 已挡跨系统断） |
