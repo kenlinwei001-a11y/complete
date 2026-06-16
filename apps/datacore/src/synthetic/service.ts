@@ -965,14 +965,48 @@ export class SyntheticService {
       layout,
       options: { graphOptions },
     });
+    // 去电池锁死 8a（R14）：把推演视图的结构（字段组/目标字段/DAG 驱动因子/问题分类）真下发到 ViewConfig.layout，
+    // 使前端不再走写死兜底而是后端配置驱动（换租户/行业改这里即可，界面跟着变）。
+    const PLAN_AUDIT_FIELD_GROUPS = [
+      { title: "需求侧（万套）", fields: [
+        { key: "dem", label: "月度需求总量", unit: "万套", step: 0.1 },
+        { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 },
+        { key: "seg_ess", label: "储能", unit: "万套", step: 0.1 },
+        { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 },
+      ] },
+      { title: "供给侧", fields: [
+        { key: "sup", label: "月度可供给", unit: "万套", step: 0.1 },
+        { key: "ltaCov", label: "长协覆盖率", unit: "%", step: 1 },
+        { key: "kitGap", label: "正极物料缺口", unit: "吨", step: 10 },
+      ] },
+      { title: "财务侧", fields: [
+        { key: "gmTarget", label: "毛利率目标", unit: "%", step: 0.5 },
+        { key: "cashCushion", label: "现金安全垫(13周最低点)", unit: "亿", step: 0.5 },
+        { key: "capex", label: "CAPEX 本月", unit: "亿", step: 0.5 },
+      ] },
+    ];
+    const PLAN_GENERATE_GOAL_FIELDS = [
+      { key: "revGrowthPct", label: "收入增长", unit: "%", step: 1 },
+      { key: "gmFloorPct", label: "毛利底线", unit: "%", step: 0.1, hardKey: "hardGm" },
+      { key: "sharePts", label: "份额增", unit: "pct", step: 1 },
+      { key: "capexCap", label: "CAPEX 上限", unit: "亿", step: 1, hardKey: "hardCapex" },
+      { key: "cashFloor", label: "现金底线", unit: "亿", step: 1, hardKey: "hardCash" },
+    ];
+    const PROJECT_SIM_DRIVER_FACTORS = [
+      { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
+      { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
+      { id: "f3", label: "认证系数 + 数据健康度", sub: "PLM 认证 · P90 系数" },
+    ];
+    const ORDER_CHAIN_LABELS = { DELIVERY: "交期", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用" };
+    const SEG_COLORS = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" };
     const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
       dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
       graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
       risk: { title: "预判推演看板", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14 } },
       order: { title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
-      "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit" } },
-      "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate" } },
-      "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast" } },
+      "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS } },
+      "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS } },
+      "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS } },
       "sop-balance": { title: "S&OP 月度平衡", renderer: "sop-balance", layout: { apiTag: "sop" } },
       // 增量 §7.14–7.17
       "annual-scenario": {
@@ -988,7 +1022,7 @@ export class SyntheticService {
       "order-chain": {
         title: "订单全链聚合",
         renderer: "order-chain",
-        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"] },
+        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS },
       },
       "geo-map": {
         title: "基地地理视图",
