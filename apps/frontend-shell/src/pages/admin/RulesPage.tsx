@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RuleDryRunResult, RuleEntry } from "@platform/contracts";
 import { createRule, dryRunRule, fetchRuleReferences, fetchRules, publishRule, retireRule, updateRule } from "@/api/endpoints";
+import { invalidateForEvent } from "@/store/eventInvalidation";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -31,6 +32,8 @@ export default function RulesPage() {
       for (const w of r.warnings ?? []) toast(`${w.code}: ${w.message}`, "info");
       setConfirming(null);
       invalidate();
+      // 响应式 Loop：规则发布 → 失效引用它的 agent/workflow/场景缓存（自动更新）。
+      invalidateForEvent("rules.updated");
     },
     onError: toastError,
   });

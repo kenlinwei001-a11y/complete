@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
 import { createScenario, fetchAgents, fetchScenariosManage, fetchViewConfigs, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
+import { invalidateForEvent } from "@/store/eventInvalidation";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -88,8 +89,8 @@ function ScenarioRow({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const publish = useMutation({ mutationFn: () => publishScenario(scenario.scenarioKey), onSuccess: () => { toast("已发布", "success"); onChanged(); }, onError: toastError });
-  const retire = useMutation({ mutationFn: () => retireScenario(scenario.scenarioKey), onSuccess: () => { toast("已退役", "success"); onChanged(); }, onError: toastError });
+  const publish = useMutation({ mutationFn: () => publishScenario(scenario.scenarioKey), onSuccess: () => { toast("已发布", "success"); invalidateForEvent("scenario.published"); onChanged(); }, onError: toastError });
+  const retire = useMutation({ mutationFn: () => retireScenario(scenario.scenarioKey), onSuccess: () => { toast("已退役", "success"); invalidateForEvent("scenario.retired"); onChanged(); }, onError: toastError });
   const closure = scenario.closure;
   const ready = closure?.ready !== false;
 

@@ -44,7 +44,9 @@
 - 🔄 **6. 场景启动器 P2/P3**（`docs/PRD-scenario-launcher.md`，P1 已完成）
   - ✅ **P2：`Scenario` 升一等对象**（修 G-3 模型倒置）：契约 `ScenarioSchema` + 仓储四处（repos/memory/pg/migration006）+ 出厂幂等 upsert + DRAFT→PUBLISHED→RETIRED + `scenario.*` 事件 + 管理 CRUD（`/scenarios/manage`·POST/PUT·publish·retire）；GET/launch 改 repo 驱动；本体 §2/§4/§8 回写
   - 🔄 **P3：场景配置编辑器**（场景为主键 UI）✅ —— **场景放第一列** + 选 mode（WORKFLOW_FIRST/ONLY/AGENT_FIRST/ONLY）+ 默认 agent + 落点视图(闭合 view-configs) + 意图 + 触发问句 + **presetContext 编辑器**（slotPresets/selectedObjects）+ 状态机（创建草稿/发布/退役）；**所有用 workflow/agent 的场景全展示且完整可配（治理铁律）**；f37 回归。⬜ 余：⌘K 命令面板 + 按域目录墙 + 首页高频区
-  - ⬜ 文案：场景入口 i18n 收口（intentKey 命中校验 #2 / suggestedQuestions 校验）
+  - ✅ **引用闭合「无死路」+ 上架门**：`scenarioClosure`（intent→plan→agent 全配置好，断链拒发布 409）+ manage 就绪态 + `computeReferences` 纳入 Scenario（Agent/Workflow 页可见"被场景引用"）+ ScenesPage 引用闭合列
+  - ✅ **响应式失效环（Loop 前端消费端）**：`invalidateForEvent`（本体 §4 event→queryKey）——规则/数据/工作流发布 → 失效引用方 agent/workflow/场景缓存自动重取；接入 RulesPage/ScenesPage 发布；f38 回归
+  - ⬜ 文案：场景入口 i18n 收口（intentKey 命中校验 #2 / suggestedQuestions 校验）；扩 computeReferences 到 rule/solver 反查 + workflow 步骤 solverKey/ruleId 闭合校验
 - 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`）—— 大
   - **参考软件**：[`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；v2 数据集成链 Data→Raw→Transform→Curated→Ontology Mapping，确定性映射 dataset→entity / column→property / FK→link + 基数推断）— 融进 A3 `modeling.ts`；+ 参考原型 `reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI
   - ✅ **确定性映射管线**（`deriveModelingSuggestion`：dataset→ObjectType · column→PropertyDef(类型按画像推断) · FK→ref+LinkType · PK=唯一率最高字段；`POST /a/v1/modeling/derive` 无 LLM 出草稿，构造上 100% 覆盖）
