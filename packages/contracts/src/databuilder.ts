@@ -148,8 +148,9 @@ export type BuildPlan = z.infer<typeof BuildPlanSchema>;
 // ---- 闭包报告 -------------------------------------------------------------
 
 export const ClosureFindingSchema = z.object({
-  kind: z.enum(["OBJECT", "DATA", "FORWARD"]),
-  /** typeKey（对象）/ dataset.field（data）/ solverKey.field（正向） */
+  // CHAIN（R11 全链闭包）：求解器需求是否在 DataCore 注册（跨系统接缝，焊进闭包报告）
+  kind: z.enum(["OBJECT", "DATA", "FORWARD", "CHAIN"]),
+  /** typeKey（对象）/ dataset.field（data）/ solverKey.field（正向）/ solver:key（CHAIN） */
   ref: z.string(),
   status: z.enum(["BOUND", "ORPHAN_PASSED", "DROPPED", "MISSING", "FAILED"]),
   detail: z.string().optional(),
@@ -162,6 +163,8 @@ export const ClosureReportSchema = z.object({
   objectsBound: z.number().int(),
   dataOrphans: z.number().int(),
   forwardMissing: z.number().int(),
+  /** R11 全链闭包：求解器需求未在 DataCore 注册的条数（>0 即路径A 全链断）。 */
+  chainBroken: z.number().int().default(0),
 });
 export type ClosureReport = z.infer<typeof ClosureReportSchema>;
 

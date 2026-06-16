@@ -1,7 +1,36 @@
 import { describe, expect, it } from "vitest";
+import { ClosurePolicySchema, type BuildPlan } from "@platform/contracts";
+import { validateClosure } from "../src/databuilder/closure.js";
 import { makeApp, ADMIN } from "./helpers.js";
 
 const SCRIPT = "常州基地产能紧张，影响订单交期与客户信用，请做风险推演";
+
+describe("R11 全链闭包门 · CHAIN 维（求解器注册焊进 ClosureReport）", () => {
+  const policy = ClosurePolicySchema.parse({ object: {}, data: {}, forward: {} });
+  const base: Omit<BuildPlan, "solverNeeds"> = {
+    id: "bpl_t", tenantId: "demo", builderKey: "test", scriptHash: "h", seed: 1, script: "",
+    dataSources: [], objectTypes: [], rules: [], kbDocs: [], createdAt: "2026-01-01",
+  };
+
+  it("已注册求解器 → CHAIN BOUND，gate 通过", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "affected_orders", inputFields: [] }] }, policy);
+    expect(r.chainBroken).toBe(0);
+    expect(r.gatePassed).toBe(true);
+    expect(r.findings.some((f) => f.kind === "CHAIN" && f.ref === "solver:affected_orders" && f.status === "BOUND")).toBe(true);
+  });
+
+  it("未注册求解器 → CHAIN FAILED，gate 不通过（路径A 全链断 SOLVER_NOT_FOUND）", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "ghost_solver", inputFields: [] }] }, policy);
+    expect(r.chainBroken).toBe(1);
+    expect(r.gatePassed).toBe(false);
+    expect(r.findings.some((f) => f.kind === "CHAIN" && f.status === "FAILED")).toBe(true);
+  });
+
+  it("工作流求解器 sop_balance 豁免（与 chain:check 口径一致）", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "sop_balance", inputFields: [] }] }, policy);
+    expect(r.chainBroken).toBe(0);
+  });
+});
 
 interface JobResp {
   jobId: string;

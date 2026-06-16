@@ -1,10 +1,16 @@
 import type { BuildPlan, ClosureFinding, ClosurePolicy, ClosureReport } from "@platform/contracts";
+import { SOLVER_KEYS } from "../solvers/service.js";
+
+/** 工作流求解器（非注册求解器，走 /a/v1/sop/*）—— 与 chain:check 口径一致。 */
+const WORKFLOW_SOLVERS = new Set(["sop_balance"]);
 
 /**
  * 双向闭包校验器（设计共识见 memory/project_a7_builder_design.md）：
  *  - 反向-对象：孤儿对象（无本体切片/domain）= HARD，必绑，否则 FAILED；
  *  - 反向-data：未被消费字段 = SOFT，默认 PASS_AND_MARK；
  *  - 正向：脚本所需分析（求解器入参 / 规则 scope）依赖字段缺失 = HARD，FAILED。
+ *  - CHAIN（R11 全链闭包）：求解器需求必须在 DataCore 注册，否则路径A 全链断(SOLVER_NOT_FOUND)
+ *    —— 把 chain:check 的跨系统校验焊进构建发动机的闭包报告，建图时即挡 G-1/G-2 类断点。
  */
 export function validateClosure(plan: BuildPlan, policy: ClosurePolicy): ClosureReport {
   const findings: ClosureFinding[] = [];
@@ -94,9 +100,25 @@ export function validateClosure(plan: BuildPlan, policy: ClosurePolicy): Closure
     }
   }
 
+  // ---- CHAIN（R11 全链闭包）：求解器需求必须在 DataCore 注册（焊进 chain:check）----
+  let chainBroken = 0;
+  const registered = new Set<string>(SOLVER_KEYS as readonly string[]);
+  const seenSolvers = new Set<string>();
+  for (const s of plan.solverNeeds) {
+    if (seenSolvers.has(s.solverKey)) continue;
+    seenSolvers.add(s.solverKey);
+    const ref = `solver:${s.solverKey}`;
+    if (WORKFLOW_SOLVERS.has(s.solverKey) || registered.has(s.solverKey)) {
+      findings.push({ kind: "CHAIN", ref, status: "BOUND" });
+    } else {
+      chainBroken++;
+      findings.push({ kind: "CHAIN", ref, status: "FAILED", detail: "求解器未在 DataCore 注册 → 路径A 全链断(SOLVER_NOT_FOUND)" });
+    }
+  }
+
   const hasObjectFail = findings.some((f) => f.kind === "OBJECT" && f.status === "FAILED");
   const hasDataFail = findings.some((f) => f.kind === "DATA" && f.status === "FAILED");
-  const gatePassed = !hasObjectFail && !hasDataFail && forwardMissing === 0;
+  const gatePassed = !hasObjectFail && !hasDataFail && forwardMissing === 0 && chainBroken === 0;
 
-  return { gatePassed, findings, objectsBound, dataOrphans, forwardMissing };
+  return { gatePassed, findings, objectsBound, dataOrphans, forwardMissing, chainBroken };
 }

@@ -251,7 +251,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | G-5 | 应用层电池锁死（**本轮审计量化**：8a 视图结构写死≈9 视图含 DAG · 8b 业务数据进生产 · 8c 文案/i18n 租户专属 · 8d Agent 配置/模型写死 · 8e ✅ `generic-inference` 通用 what-if 已落：`recompute(dryRun+apply)` 在克隆图上前向重算派生、不落真值 + `POST /a/v1/inference/whatif`，行业无关；O4b 回归证明无副作用。注：作用于 compileSpecs 派生本体；合成 demo 走 runDerivations 另一路）→ **撑不起其他租户/行业**。修法见 `docs/PRD-de-battery-multitenant-config.md`（结构←plan/ViewConfig.layout · 数据←API/WorkspaceConfig · 文案←i18n+行业别名 · Agent←表/Provider绑定）+ 新不变量 R14 + `debattery:check` 门 | 本体→生成应用→推演 | 通用化缺（量化） |
 | G-6 | ~~Excel parser TODO；合成在独立页~~ **◐ 大部修**：`parseXlsx`（node-xlsx）已落，xlsx 上传→解析→RawDataset 三路统一(csv/json/xlsx)；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）。**待**：在线数据模版（并入本体浏览器 PRD） | Connector→RawDataset | ◐ rawin 三路已统一；数据模版待 |
 | G-7 | LLM 用途枚举写死不可扩展（待 PRD P5）；~~矩阵 model 下拉 stale 绑定显示空白~~ **已修**：已绑 model 不在目录仍可见可选 `LlmProvidersPage.tsx:474` | LlmPurposeBinding | ◐ 部分修（枚举扩展待 PRD） |
-| G-8 | 数据构建闭包仅 DataCore 栈、不验全链；**第一块砖已落**：`chain:check` 跨系统校验场景↔求解器注册；完整门（焊进构建发动机、验全链形状）待 PRD | BuildPlan→ClosureReport | ◐ 部分（chain:check 已挡跨系统断） |
+| G-8 | 数据构建闭包仅 DataCore 栈、不验全链 → **◐ 大部修**：① `chain:check` 跨系统门 ② **ClosureReport 加 CHAIN 维**（`closure.ts`：求解器需求未注册即 gate FAIL，把 chain:check 焊进构建发动机，建图时即挡 SOLVER_NOT_FOUND）。**待**：SHAPE（求解器输出↔渲染形状）+ BuildPlan 扩 AgentCore 栈 | BuildPlan→ClosureReport | ◐ CHAIN 已焊进闭包；SHAPE 待 |
 
 ---
 
