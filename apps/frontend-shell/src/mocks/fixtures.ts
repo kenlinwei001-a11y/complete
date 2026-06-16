@@ -178,6 +178,18 @@ const PLAN_AUDIT_LAYOUT = {
   ],
 };
 
+// 去电池锁死 8a（R14）：规划建议目标字段结构由 ViewConfig.layout.goalFields 声明（非前端写死）。
+// sharePts 标签带独有"·配置驱动X"——渲染出来即证明结构走配置。键/单位/步长与组件一致，f16 用 key-testid 不受影响。
+const PLAN_GENERATE_LAYOUT = {
+  goalFields: [
+    { key: "revGrowthPct", label: "收入增长", unit: "%", step: 1 },
+    { key: "gmFloorPct", label: "毛利底线", unit: "%", step: 0.1, hardKey: "hardGm" },
+    { key: "sharePts", label: "份额增·配置驱动X", unit: "pct", step: 1 },
+    { key: "capexCap", label: "CAPEX 上限", unit: "亿", step: 1, hardKey: "hardCapex" },
+    { key: "cashFloor", label: "现金底线", unit: "亿", step: 1, hardKey: "hardCash" },
+  ],
+};
+
 const DASH_LAYOUT = {
   widgets: [
     {
@@ -337,7 +349,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },
-    { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: {} },
+    { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: PLAN_GENERATE_LAYOUT },
     { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: {} },
     { key: "sop-balance", title: "S&OP 平衡台", renderer: "sop-balance", layout: {} },
     // 剩余视图增量（§7.14–7.17）

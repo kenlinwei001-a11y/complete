@@ -56,7 +56,9 @@ const MEET_KEYS = ["meetRevenue", "meetGm", "meetShare", "meetCapex", "meetCash"
  * 规划建议（renderer=plan-generate，增量 §7.11）：五目标面板（毛利/现金/CAPEX 带硬约束 chip）
  * 改动即重算全部方案；三方案纵向折叠卡（折叠头 KPI + 综合分大数字 + ★推荐 / ⛔降透明）。
  */
-export default function PlanGenerateView(_props: ViewRendererProps) {
+export default function PlanGenerateView({ view }: ViewRendererProps) {
+  // 去电池锁死 8a（R14）：目标字段结构由 ViewConfig.layout.goalFields 声明，GOAL_FIELDS 仅兜底
+  const goalFields = (view.layout?.goalFields as typeof GOAL_FIELDS | undefined) ?? GOAL_FIELDS;
   const qc = useQueryClient();
   // 去电池锁死（R14）：经营目标初值取自 WorkspaceConfig（缓存同步读），DEFAULT_GOALS 仅兜底
   const [goals, setGoals] = useState<GoalsState>(() => ({ ...DEFAULT_GOALS, ...(qc.getQueryData<Workspace>(workspaceQueryKey)?.planGoals ?? {}) }));
@@ -134,7 +136,7 @@ export default function PlanGenerateView(_props: ViewRendererProps) {
       <div className="panel" style={{ marginBottom: 12 }} data-testid="gen-goals">
         <div className="section-title">{zh.sim.gen.goals}</div>
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
-          {GOAL_FIELDS.map((f) => (
+          {goalFields.map((f) => (
             <label key={f.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--muted)" }}>
               {f.label}
               <input
