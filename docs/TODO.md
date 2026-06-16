@@ -122,6 +122,14 @@
 - 🟡 **计划发布期公理校验**：`validatePlanSteps`（`workflow/validate.ts:37`）仅做结构校验（步骤引用/顺序/超时/render_answer），**不校验计划是否违反领域公理**；公理校验只在运行时经 `evaluate_rules` 发生。可加发布期静态公理一致性门。
 - 🟡 **逐步 axiom_check_log + confidence_per_step 作为一等可视化制品**：现 provenance 是**数据来源级**（outputPath/snapshot/时序聚合/KB chunk），非"这步通过了哪些公理检查"的逐步日志；信任度是任务级（trustLevel+unverifiedNumerics+分类 confidence），无推理链**逐步置信度**。3.2 那种"每步 ✓公理检查 + 可解释性评分"需作为结构化制品透出。
 
+### 本体约束执行层 · 工具调用受本体约束（差距评审 2026-06-16，约 55–65%，**已有可选配置开关**）
+
+> 现状**已具备约束配置项**（命中"目标场景下至少有开关"诉求）：agent `scopeDeclaration.{objectTypes,toolNames}`（工具白名单+对象类型范围，`contracts/agentcore.ts:45`）；路径B `package.toolWhitelist ∩ {READ,COMPUTE}`（`orchestrator.ts:602`）；`invoke_agent.expectsSchema` 结构化输出校验开关（`loop.ts:597`）；求解器输出经 DataCore 契约 schema 校验 + SHAPE 闭包门（构建期挡"算得出取不到"，`closure.ts:118`）；B→A `probeMissingRefs` 发布期引用闭合；写操作经 Action 审批(R4)。差距如下。
+
+- 🟡 **动态"语义→能力→工具"路由 + 等价能力故障转移**：当前计划步骤**显式指名**工具/求解器（solverKey/toolName），无 `map_to_ontology_capability`+`filter_tools_by_capability` 的能力推断与等价替换（G-7 用途枚举 PRD 有、代码未落）。
+- 🟡 **统一"全工具输出按本体类/值域强制校验"关卡（最大缺口）**：求解器有契约校验、`invoke_agent` 有可选 `expectsSchema`，但 `query_objects`/`search_knowledge`/`query_timeseries`/**MCP/外部 API 原始输出**无强制"符合本体对象类型 schema + 属性值域"的统一运行时关卡（对应案例"查征信API输出必须符合 CreditRecord 本体类"）。需一个 `validate_output_against_ontology` 运行时关卡，按对象类型/属性值域校验、不符即拒/隔离。
+- 🟡 **值域/取值范围自动校验**：当前靠 `evaluate_rules` 显式编排，非自动对每个输出按本体属性值域约束校验。
+
 ## 📌 非开发遗留
 - ⚠ **吊销并更换暴露的 Gemini API key**（早前明文发过）
 - ⬜ 上云部署脚本（本机 `docker compose up --build` 已可；公网域名需自控主机）
