@@ -1,5 +1,5 @@
 import type { BuildPlan, ClosureFinding, ClosurePolicy, ClosureReport } from "@platform/contracts";
-import { SOLVER_KEYS } from "../solvers/service.js";
+import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../solvers/service.js";
 
 /** 工作流求解器（非注册求解器，走 /a/v1/sop/*）—— 与 chain:check 口径一致。 */
 const WORKFLOW_SOLVERS = new Set(["sop_balance"]);
@@ -116,9 +116,34 @@ export function validateClosure(plan: BuildPlan, policy: ClosurePolicy): Closure
     }
   }
 
+  // ---- SHAPE（R11 渲染契约 · BuildPlan 扩 AgentCore 渲染栈）：渲染绑定字段必须在求解器输出形状 ----
+  // 把"求解器算得出、渲染取不到"(G-2 跨服务形状/"绿测试≠能用")挡在建图期。
+  let shapeBroken = 0;
+  for (const s of plan.solverNeeds) {
+    const bindings = s.renderBindings ?? [];
+    if (bindings.length === 0) continue;
+    const shape = SOLVER_OUTPUT_SHAPES[s.solverKey];
+    if (!shape) {
+      // 输出形状未声明 → 无法校验，放行并标记（渐进补齐，不阻塞）。
+      findings.push({ kind: "SHAPE", ref: `solver:${s.solverKey}`, status: "ORPHAN_PASSED", detail: "求解器输出形状未声明（跳过 SHAPE）" });
+      continue;
+    }
+    const known = new Set(shape);
+    for (const b of bindings) {
+      const top = b.split(".")[0]!.split("[")[0]!; // 顶层 output key
+      const ref = `${s.solverKey}.output.${b}`;
+      if (known.has(top)) {
+        findings.push({ kind: "SHAPE", ref, status: "BOUND" });
+      } else {
+        shapeBroken++;
+        findings.push({ kind: "SHAPE", ref, status: "FAILED", detail: `渲染绑定 '${top}' 不在求解器输出形状（G-2 跨服务形状断）` });
+      }
+    }
+  }
+
   const hasObjectFail = findings.some((f) => f.kind === "OBJECT" && f.status === "FAILED");
   const hasDataFail = findings.some((f) => f.kind === "DATA" && f.status === "FAILED");
-  const gatePassed = !hasObjectFail && !hasDataFail && forwardMissing === 0 && chainBroken === 0;
+  const gatePassed = !hasObjectFail && !hasDataFail && forwardMissing === 0 && chainBroken === 0 && shapeBroken === 0;
 
-  return { gatePassed, findings, objectsBound, dataOrphans, forwardMissing, chainBroken };
+  return { gatePassed, findings, objectsBound, dataOrphans, forwardMissing, chainBroken, shapeBroken };
 }

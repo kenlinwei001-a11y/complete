@@ -32,6 +32,46 @@ describe("R11 全链闭包门 · CHAIN 维（求解器注册焊进 ClosureReport
   });
 });
 
+describe("R11-SHAPE · 渲染契约（求解器输出形状 ↔ 渲染绑定，BuildPlan 扩 AgentCore 渲染栈）", () => {
+  const policy = ClosurePolicySchema.parse({ object: {}, data: {}, forward: {} });
+  const base: Omit<BuildPlan, "solverNeeds"> = {
+    id: "bpl_s", tenantId: "demo", builderKey: "test", scriptHash: "h", seed: 1, script: "",
+    dataSources: [], objectTypes: [], rules: [], kbDocs: [], createdAt: "2026-01-01",
+  };
+
+  it("渲染绑定字段全在求解器输出形状 → SHAPE BOUND，gate 通过", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [], renderBindings: ["p50", "p90", "perBaseRows", "gap"] }] }, policy);
+    expect(r.shapeBroken).toBe(0);
+    expect(r.gatePassed).toBe(true);
+    expect(r.findings.some((f) => f.kind === "SHAPE" && f.ref === "capacity_forecast.output.p50" && f.status === "BOUND")).toBe(true);
+  });
+
+  it("渲染绑定引用求解器不产出的字段 → SHAPE FAILED，gate 不通过（G-2 跨服务形状断）", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [], renderBindings: ["p50", "ghostField"] }] }, policy);
+    expect(r.shapeBroken).toBe(1);
+    expect(r.gatePassed).toBe(false);
+    expect(r.findings.some((f) => f.kind === "SHAPE" && f.status === "FAILED" && f.detail?.includes("ghostField"))).toBe(true);
+  });
+
+  it("嵌套路径取顶层 key 校验（perBaseRows.base 命中 perBaseRows）", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [], renderBindings: ["perBaseRows.base", "perBaseRows.weeklyCap"] }] }, policy);
+    expect(r.shapeBroken).toBe(0);
+  });
+
+  it("未声明输出形状的求解器 → SHAPE 跳过（ORPHAN_PASSED，不阻塞，渐进补齐）", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "affected_orders", inputFields: [], renderBindings: ["rows", "summary"] }] }, policy);
+    expect(r.shapeBroken).toBe(0);
+    expect(r.gatePassed).toBe(true);
+    expect(r.findings.some((f) => f.kind === "SHAPE" && f.status === "ORPHAN_PASSED")).toBe(true);
+  });
+
+  it("无 renderBindings → 不产生 SHAPE 校验（向后兼容）", () => {
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [] }] }, policy);
+    expect(r.findings.some((f) => f.kind === "SHAPE")).toBe(false);
+    expect(r.shapeBroken).toBe(0);
+  });
+});
+
 interface JobResp {
   jobId: string;
   status: "RUNNING" | "SUCCEEDED" | "FAILED";

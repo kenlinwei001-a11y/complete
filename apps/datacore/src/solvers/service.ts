@@ -4,6 +4,7 @@ import { notFound, validationError } from "../errors.js";
 import { round } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS } from "../synthetic/battery.js";
+import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
 import { num, str, type SolverContext, type SolverParamsShape } from "./types.js";
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
 import { affectedOrders, affectedOrdersAggregate, bottleneckMatrix, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
@@ -37,6 +38,20 @@ export const SOLVER_KEYS = [
   // Phase6B 跨求解器编排器（meta-solver）
   "countermeasure_combo",
 ] as const;
+
+/**
+ * R11-SHAPE 求解器输出形状注册（顶层输出 key 全集，权威来源=契约输出 schema 的 `.shape`）。
+ * validateClosure 据此校验 BuildPlan.solverNeeds[].renderBindings ⊆ 输出形状 —— 把跨服务
+ * 形状断点(G-2)挡在建图期。未声明形状的求解器 → SHAPE 跳过（不阻塞，渐进补齐）。
+ */
+const shapeKeys = (schema: { shape: Record<string, unknown> }): string[] => Object.keys(schema.shape);
+export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
+  capacity_forecast: shapeKeys(CapacityForecastOutputSchema),
+  bottleneck_matrix: shapeKeys(BottleneckMatrixOutputSchema),
+  risk_timeline: shapeKeys(RiskTimelineOutputSchema),
+  plan_audit: shapeKeys(PlanAuditOutputSchema),
+  plan_generate: shapeKeys(PlanGenerateOutputSchema),
+};
 
 const DAY_MS = 86400000;
 

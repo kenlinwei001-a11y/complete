@@ -123,6 +123,12 @@ export type PlanRule = z.infer<typeof PlanRuleSchema>;
 export const PlanSolverNeedSchema = z.object({
   solverKey: z.string(),
   inputFields: z.array(z.object({ typeKey: z.string(), propKey: z.string() })),
+  /**
+   * R11-SHAPE（渲染契约）：渲染步骤将从求解器输出消费的字段路径（顶层 key 或 `key.sub`）。
+   * validateClosure 校验这些绑定 ⊆ 求解器声明输出形状 —— 把"绿测试≠能用"的 G-2 跨服务形状
+   * 断点挡在建图期（BuildPlan 扩 AgentCore 渲染栈）。缺省=不声明渲染绑定（跳过 SHAPE）。
+   */
+  renderBindings: z.array(z.string()).optional(),
 });
 export type PlanSolverNeed = z.infer<typeof PlanSolverNeedSchema>;
 
@@ -149,8 +155,8 @@ export type BuildPlan = z.infer<typeof BuildPlanSchema>;
 
 export const ClosureFindingSchema = z.object({
   // CHAIN（R11 全链闭包）：求解器需求是否在 DataCore 注册（跨系统接缝，焊进闭包报告）
-  kind: z.enum(["OBJECT", "DATA", "FORWARD", "CHAIN"]),
-  /** typeKey（对象）/ dataset.field（data）/ solverKey.field（正向）/ solver:key（CHAIN） */
+  kind: z.enum(["OBJECT", "DATA", "FORWARD", "CHAIN", "SHAPE"]),
+  /** typeKey（对象）/ dataset.field（data）/ solverKey.field（正向）/ solver:key（CHAIN）/ solver.output.path（SHAPE） */
   ref: z.string(),
   status: z.enum(["BOUND", "ORPHAN_PASSED", "DROPPED", "MISSING", "FAILED"]),
   detail: z.string().optional(),
@@ -165,6 +171,8 @@ export const ClosureReportSchema = z.object({
   forwardMissing: z.number().int(),
   /** R11 全链闭包：求解器需求未在 DataCore 注册的条数（>0 即路径A 全链断）。 */
   chainBroken: z.number().int().default(0),
+  /** R11-SHAPE：渲染绑定字段不在求解器输出形状的条数（>0 即跨服务形状断 G-2）。 */
+  shapeBroken: z.number().int().default(0),
 });
 export type ClosureReport = z.infer<typeof ClosureReportSchema>;
 
