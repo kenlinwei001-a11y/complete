@@ -481,6 +481,7 @@ export const handlers = [
     if (key === "schedule_attainment") return HttpResponse.json({ data: { value: 91.4 }, snapshotVersion: "agg-77" });
     if (key === "capacity_forecast")
       return HttpResponse.json({ data: { p50: 21.4, p90: 18.9, gap: -1.2, ok: false, healthFactor: 0.93, mainBn: "化成柜", perBaseRows: [], pendingCertList: [] }, snapshotVersion: "ov-12" });
+    if (key === "affected_orders") return HttpResponse.json({ data: affectedOrdersOutput(), snapshotVersion: "ov-12" });
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 

@@ -208,6 +208,13 @@ export function historyBundleFor(baseScope: string[] | null, page: number, pageS
   const items = allActions.slice((page - 1) * pageSize, page * pageSize);
   const countBy = (s: string) => allActions.filter((a) => a.status === s).length;
 
+  // 三线偏差（#5）：供给=trend 产出；需求=供给×需求系数（危机窗口拉高 → 缺口可见）；缺口=需求−供给。
+  const deviation = trend.map((t) => {
+    const crisis = t.month.startsWith("2025-11") || t.month.startsWith("2025-12");
+    const demand = round2(t.output * (crisis ? 1.22 : 1.06));
+    return { month: t.month, demand, supply: t.output, gap: round2(demand - t.output) };
+  });
+
   return {
     generatedFrom: {
       industry: "battery-manufacturing", scale: "S", seed: 42, jobId: "synthetic-battery-manufacturing-S-42",
@@ -215,6 +222,7 @@ export function historyBundleFor(baseScope: string[] | null, page: number, pageS
     },
     crisisWindow: { from: "2025-11-18", to: "2025-12-01" },
     trend,
+    deviation,
     monthly,
     delivered,
     deliveredCount: delivered.length,

@@ -283,6 +283,25 @@ const DASH_LAYOUT = {
       query: { kind: "history", field: "delivered", columns: ["so", "cust", "model", "qty", "due", "deliveredAt", "delayDays"] },
       provenance: { toolName: "query_objects", outputPath: "$.delivered", label: "已交付订单（生命周期完整）" },
     },
+    // #5 三线偏差复合图：需求/供给/缺口逐月 + 偏差柱（危机窗口缺口凸显）
+    {
+      key: "demand-supply-gap",
+      type: "chart",
+      title: "需求 / 供给 / 缺口（三线偏差）",
+      span: 2,
+      chartKind: "trideviation",
+      query: { kind: "history", field: "deviation" },
+      provenance: { toolName: "query_objects", outputPath: "$.deviation", label: "逐月需求-供给-缺口（gap=需求−供给）" },
+    },
+    // #5 问题聚合摘要：affected_orders 求解器 problems[] 四类归并
+    {
+      key: "problem-summary",
+      type: "summary",
+      title: "待解决问题聚合",
+      span: 2,
+      query: { kind: "solver", solverKey: "affected_orders", args: {} },
+      provenance: { toolName: "affected_orders", outputPath: "$.problems", label: "受影响订单按类别归并（交期/毛利/齐套/信用）" },
+    },
   ],
 };
 

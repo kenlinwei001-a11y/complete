@@ -79,6 +79,11 @@ describe("F37 · 运营态出厂配置（lived-in）", () => {
     const ledger = screen.getByTestId("widget-delivered-ledger");
     await waitFor(() => expect(ledger).toHaveTextContent("SO-20001"));
     expect(ledger).toHaveTextContent("delayDays");
+    // #5 三线偏差复合图 + 问题聚合摘要 widget 渲染
+    expect(screen.getByTestId("widget-demand-supply-gap")).toBeInTheDocument();
+    const summary = await screen.findByTestId("widget-problem-summary");
+    await waitFor(() => expect(within(summary).getByTestId("widget-summary-problems")).toBeInTheDocument());
+    expect(within(summary).getByTestId("summary-problem-DELIVERY")).toHaveTextContent("交期");
   });
 
   it("风险视图：历史处置案例区（越线→采纳→消解），点击案例回放当时的时序曲线", async () => {

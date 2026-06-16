@@ -210,6 +210,8 @@ export const HistoryBundleSchema = z.object({
   }),
   crisisWindow: z.object({ from: z.string(), to: z.string() }),
   trend: z.array(HistoryTrendPointSchema),
+  /** 三线偏差（驾驶舱 #5 复合图）：逐月 需求/供给/缺口（gap=demand−supply）。 */
+  deviation: z.array(z.object({ month: z.string(), demand: z.number(), supply: z.number(), gap: z.number() })).optional(),
   monthly: z.array(HistoryMonthlyRowSchema),
   delivered: z.array(DeliveredOrderSchema),
   deliveredCount: z.number().int(),

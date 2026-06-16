@@ -97,7 +97,7 @@ export type WorkspaceInput = z.input<typeof WorkspaceSchema>;
 
 export interface DashboardWidgetDef {
   key: string;
-  type: "kpi" | "chart" | "table";
+  type: "kpi" | "chart" | "table" | "summary";
   title: string;
   /** BLOCK 级 feature key（view.dash.widget.{key}），缺省不受控 */
   featureKey?: string;
@@ -106,7 +106,9 @@ export interface DashboardWidgetDef {
   /** 悬停溯源描述 */
   provenance?: { toolName: string; outputPath: string; snapshotVersion?: string; label?: string };
   unit?: string;
-  chartKind?: "line" | "bar";
+  chartKind?: "line" | "bar" | "trideviation";
+  /** 三线偏差复合图（trideviation）的系列声明：data 各项的数值字段 → 线名/色。 */
+  chartSeries?: { key: string; name: string; color?: string }[];
 }
 
 export type WidgetQueryDef =
@@ -115,7 +117,7 @@ export type WidgetQueryDef =
   | { kind: "solver"; solverKey: string; args: Record<string, unknown>; valuePath?: string }
   | { kind: "timeseries"; seriesKey: string; entityIds: string[]; grain: "shift" | "day" | "week"; agg: string; days: number }
   // 运营态出厂配置增量 §4.1：驾驶舱历史 widget（数据源 = GET /a/v1/history/bundle 字段）
-  | { kind: "history"; field: "trend" | "onTimeRate" | "executedCount" | "delivered"; columns?: string[] };
+  | { kind: "history"; field: "trend" | "onTimeRate" | "executedCount" | "delivered" | "deviation"; columns?: string[] };
 
 // ---- 对象查询（GET /a/v1/objects?type=&q=，前端 PRD §6.4） ----
 

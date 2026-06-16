@@ -219,6 +219,12 @@ export class HistoryService {
       },
       crisisWindow: state.crisisWindow,
       trend,
+      // 三线偏差（驾驶舱 #5）：供给=月产出；需求=供给×需求系数（危机窗口拉高 → 缺口可见）。
+      deviation: trend.map((t) => {
+        const crisis = t.month >= state.crisisWindow.from.slice(0, 7) && t.month <= state.crisisWindow.to.slice(0, 7);
+        const demand = round(t.output * (crisis ? 1.22 : 1.06), 2);
+        return { month: t.month, demand, supply: t.output, gap: round(demand - t.output, 2) };
+      }),
       monthly,
       delivered,
       deliveredCount: delivered.length,
