@@ -190,6 +190,16 @@ const PLAN_GENERATE_LAYOUT = {
   ],
 };
 
+// 去电池锁死 8a（R14）：项目推演 DAG 的驱动因子层结构由 ViewConfig.layout.driverFactors 声明（非前端写死电池因子）。
+// 含独有"配置驱动因子-X"——它出现在 DAG 里即证明 DAG 结构走配置（回答"DAG 哪里可配"）。
+const PROJECT_SIM_LAYOUT = {
+  driverFactors: [
+    { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
+    { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
+    { id: "f3", label: "配置驱动因子-X", sub: "由 ViewConfig.layout 声明" },
+  ],
+};
+
 const DASH_LAYOUT = {
   widgets: [
     {
@@ -350,7 +360,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },
     { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: PLAN_GENERATE_LAYOUT },
-    { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: {} },
+    { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: PROJECT_SIM_LAYOUT },
     { key: "sop-balance", title: "S&OP 平衡台", renderer: "sop-balance", layout: {} },
     // 剩余视图增量（§7.14–7.17）
     { key: "annual-scenario", title: "年度情景规划台", renderer: "annual-scenario", layout: {} },

@@ -61,9 +61,11 @@ interface WhatIfOut {
  * 项目推演（renderer=project-sim，增量 §7.13）：参数区（型号/整单·分批）→ 六步 stepper
  * （①场景解析…⑥结论与对策）+ 常显 DAG 面板（随步骤点亮）；任何参数变更 debounce 重算。
  */
-export default function ProjectSimView(_props: ViewRendererProps) {
+export default function ProjectSimView({ view }: ViewRendererProps) {
   // R14：型号/地址/物流来自 WorkspaceConfig（按租户/行业），缺失则 DEFAULT_* 兜底
   const { data: workspace } = useWorkspace();
+  // 8a：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明（去硬编码电池因子）
+  const driverFactors = view.layout?.driverFactors as { id: string; label: string; sub: string }[] | undefined;
   const simCfg: SimConfig | undefined = workspace?.simConfig;
   const models = simCfg?.models ?? DEFAULT_MODELS;
   const logistics = simCfg?.logistics ?? DEFAULT_LOGISTICS;
@@ -321,7 +323,7 @@ export default function ProjectSimView(_props: ViewRendererProps) {
               {/* 常显 DAG 面板（§7.13）：六层固定，随步骤点亮 */}
               <div className="panel" data-testid="pm-dag-panel">
                 <div className="section-title">{zh.sim.proj.dagTitle}</div>
-                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches)} step={step} />
+                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches, driverFactors)} step={step} />
               </div>
             </div>
           )}
@@ -792,11 +794,18 @@ function buildDag(
   weeks: number,
   modelId: string,
   batches: BatchRowInput[],
+  driverFactors?: { id: string; label: string; sub: string }[],
 ): { layers: PmDagNode[][]; edges: [string, string][] } {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
   const baseRows = out.perBaseRows.slice(0, 6);
   const folded = out.perBaseRows.length > 6 ? out.perBaseRows.length - 6 : 0;
   const minWk = out.batchRows && out.batchRows.length > 0 ? Math.min(...out.batchRows.map((b) => b.wkEff)) : weeks;
+  // 去电池锁死 8a（R14）：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明；默认电池因子仅兜底。
+  const factors = driverFactors ?? [
+    { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
+    { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
+    { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${out.healthFactor}` },
+  ];
 
   const layers: PmDagNode[][] = [
     [
@@ -814,11 +823,7 @@ function buildDag(
         st: 2,
       }))
       .concat(folded > 0 ? [{ id: "bm", label: `+${folded} 基地`, sub: "见步骤②", color: "#54B5C4", st: 2 }] : []),
-    [
-      { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子", color: "#9D8BF0", st: 3 },
-      { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周", color: "#9D8BF0", st: 3 },
-      { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${out.healthFactor}`, color: "#9D8BF0", st: 3 },
-    ],
+    factors.map<PmDagNode>((f) => ({ id: f.id, label: f.label, sub: f.sub, color: "#9D8BF0", st: 3 })),
     [
       { id: "agg", label: "聚合求解器", sub: `Σ基地 Σ周 → P50 ${fmt(out.p50)} 万套`, color: "#C470B8", st: 4 },
       { id: "bn", label: "瓶颈求解器", sub: `主瓶颈：${out.mainBn || "—"}`, color: "#C470B8", st: 5 },
@@ -835,6 +840,7 @@ function buildDag(
   ];
   const edges: [string, string][] = [["dem", "mdl"]];
   for (const n of layers[2]!) edges.push(["mdl", n.id], [n.id, "agg"]);
-  edges.push(["f1", "agg"], ["f2", "agg"], ["f3", "agg"], ["agg", "bn"], ["agg", "fc"], ["bn", "fc"]);
+  for (const f of factors) edges.push([f.id, "agg"]);
+  edges.push(["agg", "bn"], ["agg", "fc"], ["bn", "fc"]);
   return { layers, edges };
 }
