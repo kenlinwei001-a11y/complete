@@ -51,7 +51,13 @@
   - ⬜ 本体浏览器（域分组图谱 + 节点检视器 + CSV 模板 + 覆盖徽章）
 
 ## 🔧 Tier 3.5 · 剩余断点
-- ⬜ **8. G-5** `generic-inference` 通用 what-if + scaffold 去电池锁死 —— 大
+- ⬜ **8. G-5 去电池锁死 / 多租户配置层**（本轮审计量化：范围远超"一行断点"，**撑不起其他租户/行业**）—— 大 —— 建议出合并 PRD《去电池锁死/多租户配置层》+ 回写本体 §8 G-5
+  - **8a 视图结构写死**（≈9 视图）：ProjectSimView 的 6 层 DAG(`buildDag`)、PlanAuditView 9 字段组、PlanGenerateView 5 目标+3 方案、SopBalanceView 五步状态机、RiskBoardView 色阶、GeoMapView 坐标、OrderChainView 分类、AnnualScenario/QuarterlyRolling 档位 —— 应由 ExecutionPlan 派生 + ViewConfig.layout 声明（学 DashboardView 标杆）
+  - **8b 业务数据写死（进生产、不可覆盖）**：GeoMap 基地坐标×8 · ProjectSim 型号/地址/物流表 · PlanGenerate 目标默认值 · SopBalance 阈值+三段 · Calibration 基地筛选(4/12) —— 应从 API(Base/Model 对象)/WorkspaceConfig/SolverParams 取
+  - **8c 文案写死**：~35 处中文内联绕过 `zh.ts`；i18n 本身混入租户专属串（`zh.ts:569 "如 常州"`、`:377 "扩化成通道"`）—— 归集 i18n + 行业别名映射
+  - **8d Agent/配置写死**：Agent `systemPrompt`/tools/scope(`seed.ts:539-576`)、模型写死 `claude-opus-4-8`(`seed.ts:538`)、`BATTERY_SOLVER_PARAMS`(`battery.ts`) —— 出厂种子可接受**前提是可经 admin 覆盖**（编辑既有 Agent 的可改性待核实）；模型应走 LLM Provider 用途绑定
+  - **8e `generic-inference`** 通用 what-if（脱离电池求解器）
+  - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**；mock 数据隔离良好不进生产
 - ⬜ **9. G-6** `parseXlsx` + 在线数据模版 + 合成并入连接器（与 #7 协同）
 - ⬜ **10. G-7 余项** LLM 用途枚举可扩展 + 按页面标注
 - ⬜ **11. 外部域（EXT_SIG）** 环境信号一等对象化 + 新 EXTERNAL 连接器（规划体检/建议敏感性输入）
