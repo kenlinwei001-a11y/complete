@@ -67,6 +67,27 @@ export const WorkspaceSchema = z.object({
       logistics: z.record(z.string(), z.number()).optional(),
     })
     .optional(),
+  /** 去电池锁死（R14）：S&OP KPI 阈值 + 需求三段（按租户/行业），替代前端写死 */
+  sopConfig: z
+    .object({
+      gapRed: z.number().optional(),
+      cashFloor: z.number().optional(),
+      revBudget: z.number().optional(),
+      segments: z
+        .array(z.object({ key: z.string(), name: z.string(), target: z.number(), rolling: z.number(), lastActual: z.number() }))
+        .optional(),
+    })
+    .optional(),
+  /** 去电池锁死（R14）：规划建议的经营目标默认值（按租户/行业），替代前端写死 */
+  planGoals: z
+    .object({
+      revGrowthPct: z.number().optional(),
+      gmFloorPct: z.number().optional(),
+      sharePts: z.number().optional(),
+      capexCap: z.number().optional(),
+      cashFloor: z.number().optional(),
+    })
+    .optional(),
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 /** schema 输入形态（契约形态/旧 mock 形态皆可），fixtures 用 */

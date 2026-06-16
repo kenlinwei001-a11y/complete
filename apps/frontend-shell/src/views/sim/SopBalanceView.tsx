@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
-import type { SopVersionVM } from "@/api/types";
+import type { SopVersionVM, Workspace } from "@/api/types";
+import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewRendererProps } from "../registry";
@@ -260,6 +261,9 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
 
 /** 顶部 KPI 条六卡（§7.12）：每卡悬停溯源（公式与来源）；决议编辑中供给/缺口即时重算 */
 function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: { name: string; delta: number }[] | null }) {
+  // 去电池锁死（R14）：KPI 阈值/预算来自 WorkspaceConfig，SOP_KPI_P 仅兜底
+  const { data: ws } = useWorkspace();
+  const kpi = { gapRed: ws?.sopConfig?.gapRed ?? SOP_KPI_P.gapRed, cashFloor: ws?.sopConfig?.cashFloor ?? SOP_KPI_P.cashFloor, revBudget: ws?.sopConfig?.revBudget ?? SOP_KPI_P.revBudget };
   const s2 = v.steps.s2 as { total?: { rolling?: number } } | undefined;
   const s3 = v.steps.s3 as { sup?: number; dem?: number } | undefined;
   const s4 = v.steps.s4 as { revSum?: number; gmRoll?: number; gmBudget?: number; cashCushion?: number; cashOk?: boolean } | undefined;
@@ -271,7 +275,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
   const liveDelta = liveResolutions && s3?.sup != null && s5?.supFinal == null ? liveResolutions.reduce((a, r) => a + r.delta, 0) : 0;
   const supply = baseSup != null ? Math.round((baseSup + liveDelta) * 10000) / 10000 : null;
   const gap = demand != null && supply != null ? Math.round((demand - supply) * 10000) / 10000 : null;
-  const revAttain = s4?.revSum != null ? (s4.revSum / SOP_KPI_P.revBudget) * 100 : null;
+  const revAttain = s4?.revSum != null ? (s4.revSum / kpi.revBudget) * 100 : null;
 
   const cards: { key: string; label: string; value: string; color?: string; formula: string; source: string }[] = [
     {
@@ -292,15 +296,15 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       key: "gap",
       label: zh.sim.sop.kpi.gap,
       value: gap != null ? fmt(gap) : "—",
-      color: gap != null && gap > SOP_KPI_P.gapRed ? "var(--danger)" : "var(--ok)",
-      formula: `缺口 = 需求P50 − 可供给（> ${SOP_KPI_P.gapRed} 红）`,
+      color: gap != null && gap > kpi.gapRed ? "var(--danger)" : "var(--ok)",
+      formula: `缺口 = 需求P50 − 可供给（> ${kpi.gapRed} 红）`,
       source: "②/③/⑤ 联动即时重算",
     },
     {
       key: "revAttain",
       label: zh.sim.sop.kpi.revAttain,
       value: revAttain != null ? `${revAttain.toFixed(1)}%` : "—",
-      formula: `收入预算达成 = ④ 滚动收入合计 ÷ 预算 ${SOP_KPI_P.revBudget} 亿`,
+      formula: `收入预算达成 = ④ 滚动收入合计 ÷ 预算 ${kpi.revBudget} 亿`,
       source: "S&OP ④ 财务整合",
     },
     {
@@ -316,7 +320,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       label: zh.sim.sop.kpi.cash,
       value: s4?.cashCushion != null ? `${s4.cashCushion} 亿 ${s4.cashOk ? "✓" : "✗"}` : "—",
       color: s4?.cashOk === false ? "var(--danger)" : "var(--ok)",
-      formula: `C18：现金垫(13周最低点) ≥ ${SOP_KPI_P.cashFloor} 亿`,
+      formula: `C18：现金垫(13周最低点) ≥ ${kpi.cashFloor} 亿`,
       source: "S&OP ④ 财务整合（C18 校验）",
     },
   ];
@@ -404,7 +408,9 @@ function Step2({
   run: (p: Record<string, unknown>) => void;
   onJumpAgenda: (segKey: string) => void;
 }) {
-  const [rows, setRows] = useState(DEFAULT_SEGMENTS);
+  const qc = useQueryClient();
+  // 去电池锁死（R14）：需求三段初值取自 WorkspaceConfig（缓存同步读），DEFAULT_SEGMENTS 仅兜底
+  const [rows, setRows] = useState(() => qc.getQueryData<Workspace>(workspaceQueryKey)?.sopConfig?.segments ?? DEFAULT_SEGMENTS);
   const s2 = v.steps.s2 as
     | { rows?: { key: string; name: string; target: number; rolling: number; lastActual: number; dv: number; flagged: boolean }[]; total?: { target: number; rolling: number; dv: number } }
     | undefined;

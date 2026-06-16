@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlanGenerateOutputSchema, RiskTimelineOutputSchema, type PlanGenerateOutput } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
+import type { Workspace } from "@/api/types";
+import { workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useFeature } from "@/workspace/featureGate";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
@@ -55,7 +57,9 @@ const MEET_KEYS = ["meetRevenue", "meetGm", "meetShare", "meetCapex", "meetCash"
  * 改动即重算全部方案；三方案纵向折叠卡（折叠头 KPI + 综合分大数字 + ★推荐 / ⛔降透明）。
  */
 export default function PlanGenerateView(_props: ViewRendererProps) {
-  const [goals, setGoals] = useState<GoalsState>(DEFAULT_GOALS);
+  const qc = useQueryClient();
+  // 去电池锁死（R14）：经营目标初值取自 WorkspaceConfig（缓存同步读），DEFAULT_GOALS 仅兜底
+  const [goals, setGoals] = useState<GoalsState>(() => ({ ...DEFAULT_GOALS, ...(qc.getQueryData<Workspace>(workspaceQueryKey)?.planGoals ?? {}) }));
   const [openKey, setOpenKey] = useState<string | null>(null);
   const canAdopt = useFeature("act.adopt-to-draft");
   const action = useActionDraft();

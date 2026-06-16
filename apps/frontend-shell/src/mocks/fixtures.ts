@@ -346,11 +346,22 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     views: account.username === "planner" ? views : views.filter((v) => v.key !== "graph" && !v.key.startsWith("graph-")),
     // 契约形态（与真实后端同形）；前端 VM 归一化为 id 字符串数组
     scenarioPackages: [{ id: PACKAGE_ID, name: "电池制造场景包" }],
-    // 去电池锁死 P1（R14）：项目推演的型号/地址/物流由 WorkspaceConfig 下发（按租户/行业），非前端写死
+    // 去电池锁死（R14）：推演视图的型号/物流/KPI阈值/三段/目标由 WorkspaceConfig 下发（按租户/行业），非前端写死
     simConfig: {
       models: ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah", "配置驱动型号-X"],
       logistics: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 },
     },
+    sopConfig: {
+      gapRed: 2,
+      cashFloor: 50,
+      revBudget: 248,
+      segments: [
+        { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, lastActual: 66.8 },
+        { key: "ess", name: "储能", target: 45.0, rolling: 49.0, lastActual: 41.9 },
+        { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 },
+      ],
+    },
+    planGoals: { revGrowthPct: 18, gmFloorPct: 13.5, sharePts: 12, capexCap: 20, cashFloor: 45 },
     features: routeFeatures,
     configVersion,
   };
