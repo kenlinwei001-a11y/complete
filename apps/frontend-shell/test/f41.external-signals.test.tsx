@@ -25,5 +25,9 @@ describe("F41 · 外部信号 + 敏感性面板", () => {
     await user.click(screen.getByTestId("run-sensitivity"));
     const result = await screen.findByTestId("sensitivity-result");
     expect(within(result).getByTestId("impact-毛利")).toHaveTextContent("-0.8 pp");
+
+    // 信号时序：点「时序」→ 近 12 月迷你折线
+    await user.click(screen.getByTestId("series-toggle-li_carbonate_price"));
+    expect(await screen.findByTestId("sparkline-li_carbonate_price")).toBeInTheDocument();
   });
 });

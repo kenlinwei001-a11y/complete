@@ -74,6 +74,13 @@ describe("A7 synthetic data", () => {
     expect(impacts.find((i) => i.metric === "毛利")?.deltaPct).toBe(-0.8);
     expect(impacts.find((i) => i.metric === "需求")?.deltaPct).toBe(3); // 5 × 0.6
     expect(unknownSignals).toContain("ghost");
+
+    // 信号时序：近 12 月历史（确定性，末点≈当前值）
+    const ser = await t.app.inject({ method: "GET", url: "/a/v1/external-signals/li_carbonate_price/series", headers: ADMIN });
+    expect(ser.statusCode).toBe(200);
+    const { points } = ser.json() as { points: { month: string; value: number }[] };
+    expect(points).toHaveLength(12);
+    expect(Math.abs(points[11]!.value - 96000)).toBeLessThan(700); // 末点≈当前值（含小波动）
   });
 
   it("seeds rules C03/C08/C13 with origin SYNTHETIC; C03 blocks at demandDelta > 0.5", async () => {

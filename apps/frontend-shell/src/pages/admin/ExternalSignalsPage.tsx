@@ -1,8 +1,31 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { fetchExternalSignals, signalSensitivity, type SignalSensitivityResult } from "@/api/endpoints";
+import { fetchExternalSignals, fetchSignalSeries, signalSensitivity, type SignalSensitivityResult } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+
+/** 信号近 12 月时序迷你折线（懒加载）。 */
+function Sparkline({ signalKey }: { signalKey: string }) {
+  const { data } = useQuery({ queryKey: ["a", "signal-series", signalKey], queryFn: () => fetchSignalSeries(signalKey) });
+  const pts = data?.points ?? [];
+  if (pts.length === 0) return <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.common.loading}</span>;
+  const vals = pts.map((p) => p.value);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const W = 160;
+  const H = 36;
+  const x = (i: number) => (i / (pts.length - 1)) * W;
+  const y = (v: number) => (max === min ? H / 2 : H - ((v - min) / (max - min)) * H);
+  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(" ");
+  return (
+    <span data-testid={`sparkline-${signalKey}`} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <svg width={W} height={H} role="img" aria-label="近12月时序">
+        <path d={d} fill="none" stroke="var(--c-forecast, #7C8896)" strokeWidth={1.5} />
+      </svg>
+      <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{pts[0]!.month}→{pts[pts.length - 1]!.month}</span>
+    </span>
+  );
+}
 
 /**
  * 外部信号面板（外部域 EXT_SIG）：环境/市场信号一等对象清单（来源/单位/新鲜度可溯）+
@@ -15,6 +38,7 @@ export default function ExternalSignalsPage() {
   const signals = data?.signals ?? [];
   const [shocks, setShocks] = useState<Record<string, number>>({});
   const [result, setResult] = useState<SignalSensitivityResult | null>(null);
+  const [seriesOpen, setSeriesOpen] = useState<string | null>(null);
 
   const run = useMutation({
     mutationFn: () => signalSensitivity(Object.entries(shocks).filter(([, v]) => v !== 0).map(([signalKey, deltaPct]) => ({ signalKey, deltaPct }))),
@@ -43,21 +67,36 @@ export default function ExternalSignalsPage() {
         </thead>
         <tbody>
           {signals.map((s) => (
-            <tr key={s.signalKey} data-testid={`signal-${s.signalKey}`}>
-              <td><b>{s.name}</b> <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{s.signalKey}</span></td>
-              <td>{s.category}</td>
-              <td className="mono">{s.value} {s.unit}</td>
-              <td>{TREND(s.trend)}</td>
-              <td><span className="badge">{s.impact}</span></td>
-              <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.source} · {s.asOf}</td>
-              <td>
-                <input
-                  type="number" step={5} value={shocks[s.signalKey] ?? 0} aria-label={`${s.name} 冲击`}
-                  data-testid={`shock-${s.signalKey}`} style={{ width: 70 }}
-                  onChange={(e) => setShocks((v) => ({ ...v, [s.signalKey]: parseFloat(e.target.value) || 0 }))}
-                />
-              </td>
-            </tr>
+            <Fragment key={s.signalKey}>
+              <tr data-testid={`signal-${s.signalKey}`}>
+                <td>
+                  <b>{s.name}</b> <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{s.signalKey}</span>
+                  <button className="btn sm" style={{ marginLeft: 6 }} data-testid={`series-toggle-${s.signalKey}`} onClick={() => setSeriesOpen((k) => (k === s.signalKey ? null : s.signalKey))}>
+                    {seriesOpen === s.signalKey ? "收起时序" : "时序"}
+                  </button>
+                </td>
+                <td>{s.category}</td>
+                <td className="mono">{s.value} {s.unit}</td>
+                <td>{TREND(s.trend)}</td>
+                <td><span className="badge">{s.impact}</span></td>
+                <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.source} · {s.asOf}</td>
+                <td>
+                  <input
+                    type="number" step={5} value={shocks[s.signalKey] ?? 0} aria-label={`${s.name} 冲击`}
+                    data-testid={`shock-${s.signalKey}`} style={{ width: 70 }}
+                    onChange={(e) => setShocks((v) => ({ ...v, [s.signalKey]: parseFloat(e.target.value) || 0 }))}
+                  />
+                </td>
+              </tr>
+              {seriesOpen === s.signalKey && (
+                <tr>
+                  <td colSpan={7} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>
+                    <span style={{ fontSize: 11, color: "var(--muted2)", marginRight: 8 }}>近 12 月：</span>
+                    <Sparkline signalKey={s.signalKey} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

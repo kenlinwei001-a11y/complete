@@ -1093,6 +1093,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       .sort((a, b) => String(a.category ?? "").localeCompare(String(b.category ?? "")) || String(a.signalKey).localeCompare(String(b.signalKey)));
     return { signals, total: signals.length, snapshotVersion: result.snapshotVersion };
   });
+  // 外部域（EXT_SIG · 信号时序）：信号近 12 月历史（确定性，从当前值按 trend 反推；R6）。
+  // 注：A8 ts_points 管道服务高频传感器序列（OEE/良率/产出）；稀疏市场信号走此轻量时序。
+  app.get("/a/v1/external-signals/:key/series", async (req) => {
+    const { key } = req.params as { key: string };
+    const rows = (await ontology.queryObjects(ctx(req), "ExternalSignal", {}, 500)).data as { props: Record<string, unknown> }[];
+    const sig = rows.find((r) => String(r.props.signalKey) === key)?.props;
+    if (!sig) throw notFound(`external signal ${key}`);
+    const value = Number(sig.value ?? 0);
+    const trend = String(sig.trend ?? "flat");
+    const slope = trend === "up" ? 0.018 : trend === "down" ? -0.018 : 0; // 月环比斜率
+    const asOf = String(sig.asOf ?? new Date().toISOString().slice(0, 10));
+    const base = new Date(`${asOf}T00:00:00Z`);
+    const points: { month: string; value: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(base.getTime());
+      d.setUTCMonth(d.getUTCMonth() - i);
+      // 反推：当前值 = value；i 个月前 ≈ value / (1+slope)^i，叠加确定性小波动（由 key 长度+月序定相位）。
+      const drift = value / Math.pow(1 + slope, i);
+      const wobble = 1 + 0.006 * Math.sin((i + key.length) * 1.3);
+      points.push({ month: d.toISOString().slice(0, 7), value: Math.round(drift * wobble * 1000) / 1000 });
+    }
+    return { signalKey: key, unit: sig.unit ?? "", trend, points };
+  });
   // 外部域（EXT_SIG P2）：信号冲击 → 规划指标敏感性（确定性弹性：Δ指标pp = Δ信号% × elasticity，按 impact 聚合）。
   // body: { shocks: [{ signalKey, deltaPct }] }。无副作用（纯计算）；R6 确定性。
   app.post("/a/v1/external-signals/sensitivity", async (req) => {

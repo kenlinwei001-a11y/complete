@@ -933,6 +933,25 @@ export const handlers = [
     ];
     return HttpResponse.json({ signals, total: signals.length });
   }),
+  http.get("*/a/v1/external-signals/:key/series", ({ params }) => {
+    const key = String(params.key);
+    const vals: Record<string, { v: number; t: string; u: string }> = {
+      li_carbonate_price: { v: 96000, t: "down", u: "元/吨" }, ev_demand_index: { v: 112.4, t: "up", u: "index" },
+      usd_cny: { v: 7.18, t: "up", u: "CNY/USD" }, nickel_price: { v: 18600, t: "flat", u: "USD/吨" },
+      ess_subsidy_signal: { v: 0.72, t: "up", u: "0–1" }, industrial_power_price: { v: 0.78, t: "flat", u: "元/kWh" },
+    };
+    const s = vals[key] ?? { v: 100, t: "flat", u: "" };
+    const slope = s.t === "up" ? 0.018 : s.t === "down" ? -0.018 : 0;
+    const points = Array.from({ length: 12 }, (_, idx) => {
+      const i = 11 - idx;
+      const drift = s.v / Math.pow(1 + slope, i);
+      const wobble = 1 + 0.006 * Math.sin((i + key.length) * 1.3);
+      const d = new Date("2026-06-01T00:00:00Z");
+      d.setUTCMonth(d.getUTCMonth() - i);
+      return { month: d.toISOString().slice(0, 7), value: Math.round(drift * wobble * 1000) / 1000 };
+    });
+    return HttpResponse.json({ signalKey: key, unit: s.u, trend: s.t, points });
+  }),
   http.post("*/a/v1/external-signals/sensitivity", async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as { shocks?: { signalKey?: string; deltaPct?: number }[] };
     const elas: Record<string, { impact: string; e: number }> = {

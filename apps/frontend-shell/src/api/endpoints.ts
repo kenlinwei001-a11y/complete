@@ -425,6 +425,8 @@ export interface SignalSensitivityResult {
 }
 export const signalSensitivity = (shocks: { signalKey: string; deltaPct: number }[]) =>
   api.a<SignalSensitivityResult>("/a/v1/external-signals/sensitivity", { body: { shocks } });
+export const fetchSignalSeries = (key: string) =>
+  api.a<{ signalKey: string; unit: string; trend: string; points: { month: string; value: number }[] }>(`/a/v1/external-signals/${encodeURIComponent(key)}/series`);
 export const createSyntheticJob = (body: { industry: string; scale: "S" | "M" | "L"; seed?: number }) =>
   api.a<{ jobId: string }>("/a/v1/synthetic/jobs", { body });
 export const fetchSyntheticJob = (id: string) => api.a<SyntheticJobVM>(`/a/v1/synthetic/jobs/${id}`);
