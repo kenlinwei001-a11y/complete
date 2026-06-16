@@ -11,6 +11,7 @@ import { toast } from "@/store/toastStore";
 import { visibleAdminPages } from "./adminRegistry";
 import { QueryDock } from "@/components/QueryDock/QueryDock";
 import { CommandPalette } from "@/components/ScenarioLauncher/CommandPalette";
+import { HistoryPanel } from "@/components/History/HistoryPanel";
 import { GlobalSearch } from "@/components/GlobalSearch/GlobalSearch";
 import { HealthBadge } from "@/components/Health/HealthBadge";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
@@ -116,6 +117,7 @@ export default function ShellLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { data: workspace, isLoading, isError } = useWorkspace();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!tokenStore.get()) navigate("/login", { replace: true });
@@ -150,6 +152,17 @@ export default function ShellLayout() {
           </div>
         </div>
         <GlobalSearch />
+        {/* 历史记录入口（时钟图标）：侧滑面板看本租户推演历史（所有登录用户可见自己的） */}
+        <button
+          className="btn sm"
+          aria-label="推演历史"
+          title="推演历史"
+          data-testid="history-clock"
+          style={{ fontSize: 15, lineHeight: 1 }}
+          onClick={() => setHistoryOpen(true)}
+        >
+          🕐
+        </button>
         {/* 运营态增量 §4.5：全局合成水印徽章（hover 显示 generatedFrom 与 seed；随 LIVE 占比消退） */}
         <SyntheticWatermark />
         {/* §7.22 数据健康度小徽章（任一源延迟 → 黄点） */}
@@ -194,6 +207,8 @@ export default function ShellLayout() {
       {onViewPage && dockOn && <QueryDock />}
       {/* ⌘K 场景命令面板：全局快捷键唤起（场景启动器 §3.5-A） */}
       <CommandPalette />
+      {/* 历史记录侧滑面板（顶栏时钟触发，所有登录用户可见） */}
+      {historyOpen && <HistoryPanel onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }

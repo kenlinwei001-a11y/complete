@@ -1309,6 +1309,18 @@ export const handlers = [
   http.post("*/b/v1/queries/:taskId/cancel", () => HttpResponse.json({ ok: true }, { status: 202 })),
   http.post("*/b/v1/queries/:taskId/feedback", () => HttpResponse.json({ ok: true })),
 
+  // 推演历史列表（Phase9C；时钟图标侧滑面板消费）：本租户最近 QOS 任务。
+  http.get("*/b/v1/queries", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const limit = Math.min(200, Math.max(1, Number(new URL(request.url).searchParams.get("limit") ?? "50") || 50));
+    const items = [
+      { taskId: "task-hist-1", query: "4680-NCM 加 20% 六周能不能接？", path: "PATH_A", status: "COMPLETED", view: "project-sim", conversationId: "conv-h1", classification: { intentKey: "capacity_feasibility", confidence: 0.94 }, answerSummary: "P50 42.0 万套 · 缺口 1.0；加夜班可补齐", createdAt: "2026-06-15T09:12:00Z", completedAt: "2026-06-15T09:12:08Z" },
+      { taskId: "task-hist-2", query: "常州基地影响哪些订单？", path: "PATH_A", status: "COMPLETED", view: "risk", conversationId: "conv-h2", classification: { intentKey: "affected_orders", confidence: 0.91 }, answerSummary: "8 单受影响 · 营收暴露 27.6 亿", createdAt: "2026-06-15T08:40:00Z", completedAt: "2026-06-15T08:40:05Z" },
+      { taskId: "task-hist-3", query: "现金垫 45 亿过得了体检吗？", path: "PATH_A", status: "COMPLETED", view: "plan-audit", conversationId: "conv-h3", classification: { intentKey: "plan_audit_q", confidence: 0.88 }, answerSummary: "有条件通过：现金垫 C18 越线，建议补 5 亿", createdAt: "2026-06-14T16:05:00Z", completedAt: "2026-06-14T16:05:06Z" },
+    ].slice(0, limit);
+    return HttpResponse.json({ items, total: items.length });
+  }),
+
   http.get("*/b/v1/queries/:taskId", ({ params }) => {
     const task = db.tasks.get(String(params.taskId));
     if (!task) return err(404, "NOT_FOUND", "任务不存在");
