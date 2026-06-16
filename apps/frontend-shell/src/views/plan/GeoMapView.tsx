@@ -52,6 +52,14 @@ interface BaseProps {
   lines: number;
   prodYear: number;
   mainProduct: string;
+  lon?: number;
+  lat?: number;
+}
+
+/** 去电池锁死（R14）：坐标优先取自 Base 对象属性（按租户/连接器数据）；BASE_COORDS 仅作旧数据兜底。 */
+function coordOf(b: BaseProps): [number, number] | undefined {
+  if (Number.isFinite(b.lon) && Number.isFinite(b.lat)) return [b.lon!, b.lat!];
+  return BASE_COORDS[b.name];
 }
 
 /** 地理视图（renderer=geo-map，§7.17）：打包中国轮廓 + 基地气泡 + 侧滑档案卡 */
@@ -75,14 +83,16 @@ export default function GeoMapView(_props: ViewRendererProps) {
         lines: Number(o.props.lines ?? 0),
         prodYear: Number(o.props.prodYear ?? 0),
         mainProduct: String(o.props.mainProduct ?? "—"),
+        lon: o.props.lon != null ? Number(o.props.lon) : undefined,
+        lat: o.props.lat != null ? Number(o.props.lat) : undefined,
       })),
     [data],
   );
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
-  const domestic = bases.filter((b) => BASE_COORDS[b.name]);
-  const overseas = bases.filter((b) => !BASE_COORDS[b.name]);
+  const domestic = bases.filter((b) => coordOf(b));
+  const overseas = bases.filter((b) => !coordOf(b));
   const gwhs = domestic.map((b) => b.gwh);
   const minG = Math.min(...gwhs, Infinity);
   const maxG = Math.max(...gwhs, -Infinity);
@@ -117,7 +127,7 @@ export default function GeoMapView(_props: ViewRendererProps) {
               />
             ))}
             {domestic.map((b) => {
-              const [lon, lat] = BASE_COORDS[b.name]!;
+              const [lon, lat] = coordOf(b)!;
               const p = project(lon, lat);
               const r = radius(b.gwh);
               const color = POSITION_COLORS[b.position] ?? "#E8B54A";

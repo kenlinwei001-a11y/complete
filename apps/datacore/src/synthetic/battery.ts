@@ -5,19 +5,20 @@ import { ALL_FEATURE_KEYS } from "../features.js";
 
 /** Built-in battery-manufacturing template (QOS-PRD §7.6 + addendum §S1/§A8 semantics). */
 
-export const BASES: { baseId: string; name: string; kind: "动力" | "储能" }[] = [
-  { baseId: "changzhou", name: "常州", kind: "动力" },
-  { baseId: "hefei", name: "合肥", kind: "动力" },
-  { baseId: "xian", name: "西安", kind: "动力" },
-  { baseId: "yibin", name: "宜宾", kind: "储能" },
-  { baseId: "liyang", name: "溧阳", kind: "动力" },
-  { baseId: "qingdao", name: "青岛", kind: "储能" },
-  { baseId: "nanjing", name: "南京", kind: "动力" },
-  { baseId: "chengdu", name: "成都", kind: "储能" },
-  { baseId: "fuzhou", name: "福州", kind: "储能" },
-  { baseId: "changsha", name: "长沙", kind: "动力" },
-  { baseId: "huizhou", name: "惠州", kind: "储能" },
-  { baseId: "yancheng", name: "盐城", kind: "动力" },
+// 去电池锁死（R14）：基地经纬度作为对象数据随合成下发（前端 GeoMap 读 Base.props.lon/lat，不再写死）。
+export const BASES: { baseId: string; name: string; kind: "动力" | "储能"; lon: number; lat: number }[] = [
+  { baseId: "changzhou", name: "常州", kind: "动力", lon: 119.95, lat: 31.78 },
+  { baseId: "hefei", name: "合肥", kind: "动力", lon: 117.28, lat: 31.86 },
+  { baseId: "xian", name: "西安", kind: "动力", lon: 108.95, lat: 34.27 },
+  { baseId: "yibin", name: "宜宾", kind: "储能", lon: 104.64, lat: 28.75 },
+  { baseId: "liyang", name: "溧阳", kind: "动力", lon: 119.48, lat: 31.42 },
+  { baseId: "qingdao", name: "青岛", kind: "储能", lon: 120.38, lat: 36.07 },
+  { baseId: "nanjing", name: "南京", kind: "动力", lon: 118.78, lat: 32.06 },
+  { baseId: "chengdu", name: "成都", kind: "储能", lon: 104.07, lat: 30.67 },
+  { baseId: "fuzhou", name: "福州", kind: "储能", lon: 119.30, lat: 26.08 },
+  { baseId: "changsha", name: "长沙", kind: "动力", lon: 112.94, lat: 28.23 },
+  { baseId: "huizhou", name: "惠州", kind: "储能", lon: 114.42, lat: 23.11 },
+  { baseId: "yancheng", name: "盐城", kind: "动力", lon: 120.16, lat: 33.35 },
 ];
 
 export const MODELS: { modelId: string; name: string }[] = [
@@ -925,6 +926,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     baseId: b.baseId,
     name: b.name,
     kind: b.kind,
+    position: b.kind, // GeoMap 按 position 着色（动力/储能）
+    lon: b.lon,
+    lat: b.lat,
     util: round(0.62 + rng() * 0.35, 2),
     bottleneck: pick(rng, BOTTLENECKS),
     gwh: round(6 + rng() * 36, 1),

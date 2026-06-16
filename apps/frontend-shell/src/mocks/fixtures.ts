@@ -53,14 +53,14 @@ export const ACCOUNTS: MockAccount[] = [
 // ---------------------------------------------------------------------------
 
 export const BASES = [
-  { id: "base-常州", name: "常州", util: 92, bottleneck: "化成柜", gwh: 24, position: "动力", lines: 8, prodYear: 2019, mainProduct: "4680-NCM" },
-  { id: "base-合肥", name: "合肥", util: 87, bottleneck: "卷绕机", gwh: 18, position: "动力", lines: 6, prodYear: 2021, mainProduct: "4680-NCM" },
-  { id: "base-西安", name: "西安", util: 78, bottleneck: "注液机", gwh: 12, position: "混合", lines: 4, prodYear: 2020, mainProduct: "刀片-LFP" },
-  { id: "base-宜宾", name: "宜宾", util: 95, bottleneck: "化成柜", gwh: 30, position: "混合", lines: 10, prodYear: 2018, mainProduct: "储能-280Ah" },
-  { id: "base-溧阳", name: "溧阳", util: 83, bottleneck: "分容柜", gwh: 21, position: "动力", lines: 7, prodYear: 2017, mainProduct: "VDA-NCM" },
-  { id: "base-南京", name: "南京", util: 74, bottleneck: "涂布机", gwh: 9, position: "动力", lines: 3, prodYear: 2022, mainProduct: "VDA-NCM" },
-  { id: "base-成都", name: "成都", util: 88, bottleneck: "卷绕机", gwh: 15, position: "储能", lines: 5, prodYear: 2021, mainProduct: "4680-LFP" },
-  { id: "base-青海", name: "青海", util: 66, bottleneck: "人员", gwh: 6, position: "储能", lines: 2, prodYear: 2023, mainProduct: "储能-280Ah" },
+  { id: "base-常州", name: "常州", util: 92, bottleneck: "化成柜", gwh: 24, position: "动力", lines: 8, prodYear: 2019, mainProduct: "4680-NCM", lon: 119.95, lat: 31.78 },
+  { id: "base-合肥", name: "合肥", util: 87, bottleneck: "卷绕机", gwh: 18, position: "动力", lines: 6, prodYear: 2021, mainProduct: "4680-NCM", lon: 117.28, lat: 31.86 },
+  { id: "base-西安", name: "西安", util: 78, bottleneck: "注液机", gwh: 12, position: "混合", lines: 4, prodYear: 2020, mainProduct: "刀片-LFP", lon: 108.95, lat: 34.27 },
+  { id: "base-宜宾", name: "宜宾", util: 95, bottleneck: "化成柜", gwh: 30, position: "混合", lines: 10, prodYear: 2018, mainProduct: "储能-280Ah", lon: 104.64, lat: 28.75 },
+  { id: "base-溧阳", name: "溧阳", util: 83, bottleneck: "分容柜", gwh: 21, position: "动力", lines: 7, prodYear: 2017, mainProduct: "VDA-NCM", lon: 119.48, lat: 31.42 },
+  { id: "base-南京", name: "南京", util: 74, bottleneck: "涂布机", gwh: 9, position: "动力", lines: 3, prodYear: 2022, mainProduct: "VDA-NCM", lon: 118.78, lat: 32.06 },
+  { id: "base-成都", name: "成都", util: 88, bottleneck: "卷绕机", gwh: 15, position: "储能", lines: 5, prodYear: 2021, mainProduct: "4680-LFP", lon: 104.07, lat: 30.67 },
+  { id: "base-青海", name: "青海", util: 66, bottleneck: "人员", gwh: 6, position: "储能", lines: 2, prodYear: 2023, mainProduct: "储能-280Ah", lon: 101.78, lat: 36.62 },
   { id: "base-匈牙利", name: "匈牙利", util: 71, bottleneck: "认证", gwh: 8, position: "动力", lines: 3, prodYear: 2024, mainProduct: "VDA-NCM" },
   { id: "base-德国", name: "德国", util: 69, bottleneck: "认证", gwh: 10, position: "动力", lines: 4, prodYear: 2024, mainProduct: "4680-NCM" },
   { id: "base-印尼", name: "印尼", util: 58, bottleneck: "产线爬坡", gwh: 5, position: "储能", lines: 2, prodYear: 2025, mainProduct: "储能-314Ah" },
