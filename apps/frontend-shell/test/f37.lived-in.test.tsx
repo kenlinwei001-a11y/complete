@@ -64,6 +64,12 @@ describe("F37 · 运营态出厂配置（lived-in）", () => {
     renderApp("/v/dash");
 
     await screen.findByTestId("widget-trend-12m");
+    // #5 富出处悬浮：widget ⓘ 升六要素溯源（悬浮即弹来源/推导/新鲜度）
+    const u = userEvent.setup();
+    await u.hover(screen.getByTestId("prov-v-widget-trend-12m"));
+    const tip = await screen.findByTestId("prov-tip");
+    expect(tip).toHaveTextContent("query_timeseries_agg");
+    await u.unhover(screen.getByTestId("prov-v-widget-trend-12m"));
     // 准交率 = 可见范围重算（mock：12 单中 9 单按期 → 75%）
     const ontime = await screen.findByTestId("widget-ontime-rate");
     await waitFor(() => expect(ontime).toHaveTextContent("75"));

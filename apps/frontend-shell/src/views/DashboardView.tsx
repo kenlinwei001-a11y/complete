@@ -3,6 +3,7 @@ import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, 
 import type { DashboardWidgetDef, WidgetQueryDef } from "@/api/types";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
+import { Provenance } from "@/components/Provenance";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 import styles from "./DashboardView.module.css";
@@ -95,12 +96,17 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
       <div className={styles.cardHead}>
         <span>{def.title}</span>
         {def.provenance && (
-          <span
-            className="badge"
-            title={`${def.provenance.toolName} · ${def.provenance.outputPath}${def.provenance.snapshotVersion ? ` · ${def.provenance.snapshotVersion}` : ""}`}
-            data-testid={`widget-prov-${def.key}`}
-          >
-            ⓘ
+          // 富出处悬浮（#5 · R13）：基础 ⓘ 升六要素溯源（来源/新鲜度/推导/输入/规则/备注）。
+          <span data-testid={`widget-prov-${def.key}`}>
+            <Provenance
+              testId={`widget-${def.key}`}
+              src={def.provenance.toolName}
+              formula={`输出路径 ${def.provenance.outputPath}`}
+              freshness={def.provenance.snapshotVersion ? `快照 ${def.provenance.snapshotVersion}` : undefined}
+              note="驾驶舱 widget 声明式查询（ViewConfig.layout.widgets）"
+            >
+              <span className="badge">ⓘ</span>
+            </Provenance>
           </span>
         )}
       </div>
