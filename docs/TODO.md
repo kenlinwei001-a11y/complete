@@ -66,14 +66,25 @@
   - **门禁 `debattery:check`**（待办）：静态扫描视图/页内联业务常数 + i18n 租户串 → 自动盘出剩余 + 防回潮（落地 R14）
   - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**
 - ⬜ **8.5 `debattery:check` 门禁**（独立工具，与 `ontology:check`/`chain:check` 同级，并入 `pnpm gates`）：静态扫描 `views/`+`pages/` 内联业务常数（基地名/型号/工序/坐标）+ `zh.ts` 租户专属串 → 自动盘出剩余写死项 + 防回潮（落地不变量 R14）。`DEFAULT_*` 兜底常量白名单豁免。
-- 🔄 **9. G-6** ✅ `parseXlsx`（node-xlsx，xlsx 上传→解析→RawDataset，三路 csv/json/xlsx 统一；CN1b 回归）· ✅ 合成并入连接器（活数据 P1）· ⬜ 在线数据模版（并入 #7 本体浏览器）
+- ✅ **9. G-6**（全完成）：✅ `parseXlsx`（node-xlsx，三路 csv/json/xlsx 统一；CN1b 回归）· ✅ 合成并入连接器（活数据 P1）· ✅ **在线数据模版**（本体浏览器节点检视器：CSV 数据模版下载 + 每字段来源溯源——在线可见可下，已覆盖）
 - ⏸ **10. G-7 余项**（评估为低价值，暂缓）：6 用途各对应固定调用点（classifier/agent/compose…），"枚举可扩展"无消费点即无意义；真实 LLM 扩展性（多供应商/按用途绑定模型/降级）已由 `roleModel`/`bindingFor` 满足。如需自定义用途，须先定义其调用点（另起 PRD）。
 - 🔄 **11. 外部域（EXT_SIG）** —— PRD `docs/PRD-external-signal-domain.md`：✅ **P1 一等对象化 + EXTERNAL 连接器**：`ExternalSignal` 对象（domain=external；锂价/镍价/汇率/需求指数/政策/电价，带 value/unit/asOf/source/trend/impact，R13 可溯）+ `mock_external` 连接器（EXTERNAL 类，StaticAdapter）+ 合成出厂期 putAll 落对象 + `GET /a/v1/external-signals`；本体 §2/§3/§10 回写；synthetic/connectors 回归。✅ **P2 敏感性**：`POST /a/v1/external-signals/sensitivity`（信号冲击 → 规划指标，确定性弹性 Δ指标pp=Δ信号%×elasticity，按 impact 聚合：毛利/需求/出口营收/成本；锂价+10%→毛利-0.8pp 回归）。✅ **前端面板**：`ExternalSignalsPage`(/admin/external-signals)——信号清单(来源/单位/新鲜度可溯)+敏感性 what-if(冲击→指标聚合)；左导航入口；f41 回归。✅ **信号时序**：`GET /a/v1/external-signals/:key/series`（近 12 月确定性历史，从当前值按 trend 反推）+ 前端面板「时序」迷你折线（懒加载）。注：A8 ts_points 管道服务高频传感器序列；稀疏市场信号走此轻量时序。**EXT_SIG 端到端全闭合**（一等对象+连接器+敏感性+时序+前端）
 
-## 🔭 Tier 4 · dogfooding 终态
-- ⬜ **12.** 本体落库 PoC（系统本体注册为平台 ObjectType/SliceSpec/Rule → 平台切系统自己）
-- ⬜ **13.** 本体活查询面（MCP/端点，Claude 问运行中的系统）
-- ⬜ **14.** 本体自动派生扩展（§2/§3/§4 从代码生成，人只策展语义）
+## 🔭 Tier 4 · dogfooding 终态（⏸ **暂缓** —— 思路已评审通过，待启动）
+
+> **决策（2026-06-16）**：方向正确、地基扎实（SYSTEM-ONTOLOGY.md 已是单一来源、prd-ontology-index.json 已机器可读、check-system-ontology 已解析 §4），但**优先级低于租户功能**（服务平台团队的治理/自治，非终端用户），故暂缓、入册。启动前先出 `docs/PRD-dogfooding-self-ontology.md`（含 §0，本身即一次 dogfooding）。
+>
+> **收敛版（评审结论）**：**#12+#13 先行**（投影+查询面，低风险高治理价值）；**#14 暂缓且保守**（code→本体自动派生易把策展本体稀释成噪声）。
+>
+> **三条铁纪律（成败所系）**：① **元/租户严格隔离**（自我模型挂独立元租户 `__platform__`/`meta` 命名空间，勿污染租户查询——本体 §10.1「两级域辨析」）；② **一事一源 + 生成方向明确**（机器可派生事实以 code 为源、人类语义以 markdown 为源、对象是可查投影，重生成即不漂）；③ **#14 保守**（人只策展语义，勿全自动）。
+>
+> **满足的需求/场景**：① 按需影响分析（"改 R14 影响什么/谁覆盖 G-5/哪些断点未修"= 图查询，自动化铁律0 read-first）；② 治理即查询（三门变活查询）；③ 自描述/上手（运行时可查接线）；④ **AI 可操作平台**（平台 Agent 经元本体+MCP 推演/改造平台——管理平台=另一个租户的本体+场景，走同一 QOS/Action 机器；§10.2 D11 治理元域升格为可查可推演数据）；⑤ 需求↔制品↔缺口运行时可溯。
+>
+> **与传统开发的本质区别**：传统=地图（文档/图）与疆域（代码）分离且漂移、"改这影响什么"靠 grep+经验；狗粮化=地图即系统从疆域派生并校验的活数据，且系统用同一引擎读取/重塑自己——"关于系统的文档" → "构造上自反的系统"。
+
+- ⏸ **12.** 本体落库 PoC（解析 SYSTEM-ONTOLOGY+prd-index → SystemObjectType/Link/Invariant/Breakpoint/Event/Domain 物化为元租户 ObjectInstance；markdown 仍为源、对象为投影）
+- ⏸ **13.** 本体活查询面（`GET /a/v1/meta/ontology`·`/meta/breakpoints/:id`(状态+PRD覆盖+关联不变量)·`/meta/invariants/:id` + 可选 MCP 工具让 Claude 问运行中的系统）
+- ⏸ **14.** 本体自动派生扩展（§2/§3/§4 机器段从 code 内省生成，人只策展语义）—— **保守、最后做**
 
 ## 📌 非开发遗留
 - ⚠ **吊销并更换暴露的 Gemini API key**（早前明文发过）
