@@ -52,12 +52,13 @@
 
 ## 🔧 Tier 3.5 · 剩余断点
 - 🔄 **8. G-5 去电池锁死 / 多租户配置层**（本轮审计量化：范围远超"一行断点"，**撑不起其他租户/行业**）—— 大 —— **PRD 已出** `docs/PRD-de-battery-multitenant-config.md`（含 R14「应用层无业务常数」+ `debattery:check` 门）；本体 §5(R14)/§8(G-5) 已回写
-  - **8a 视图结构写死**（≈9 视图）：✅ PlanAudit 字段组 · ✅ PlanGenerate 目标字段 · ✅ **项目推演 DAG 驱动因子层**（`ViewConfig.layout.driverFactors`，回答"DAG 哪里可配"）· 待办：SopBalance 五步/状态机 · RiskBoard 色阶 · GeoMap 定位色 · OrderChain 分类 · AnnualScenario/QuarterlyRolling 档位 —— 均由 ExecutionPlan 派生 + ViewConfig.layout 声明（学 DashboardView 标杆）
-  - **8b 业务数据写死** ✅ **全部完成**：ProjectSim 型号/地址/物流（`simConfig`）· GeoMap 坐标（`Base.props.lon/lat`）· Calibration 基地（Base 对象）· SopBalance 阈值+三段（`sopConfig`）· PlanGenerate 目标（`planGoals`）—— 均改为 WorkspaceConfig/对象驱动，前端常量降级为兜底
-  - **8c 文案写死**：~35 处中文内联绕过 `zh.ts`；i18n 本身混入租户专属串（`zh.ts:569 "如 常州"`、`:377 "扩化成通道"`）—— 归集 i18n + 行业别名映射
-  - **8d Agent/配置写死**：Agent `systemPrompt`/tools/scope(`seed.ts:539-576`)、模型写死 `claude-opus-4-8`(`seed.ts:538`)、`BATTERY_SOLVER_PARAMS`(`battery.ts`) —— 出厂种子可接受**前提是可经 admin 覆盖**（编辑既有 Agent 的可改性待核实）；模型应走 LLM Provider 用途绑定
-  - **8e `generic-inference`** 通用 what-if（脱离电池求解器）
-  - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**；mock 数据隔离良好不进生产
+  - **8a 视图结构写死**：✅ PlanAudit 字段组 · ✅ PlanGenerate 目标字段 · ✅ **项目推演 DAG 驱动因子层**（回答"DAG 哪里可配"）· ✅ OrderChain 分类/配色 · ✅ Quarterly 缺口档位 · ✅ GeoMap 利用率阈值 · ✅ **后端 VIEW_DEFS 真下发**（前后端闭环，改后端配置界面就变）· 余项（**纯颜色映射、低价值**，建议交 `debattery:check` 盘出后批量）：RiskBoard 色阶 · GeoMap 定位色(POSITION_COLORS) · AnnualScenario 配色/YEAR · SopBalance 五步标签
+  - **8b 业务数据写死** ✅ **全部完成 + 后端闭环**：ProjectSim 型号（**接真实 Model 对象**，消对不齐）/地址/物流（`simConfig`）· GeoMap 坐标（`Base.props.lon/lat`）· Calibration 基地（Base 对象）· SopBalance 阈值+三段（`sopConfig`）· PlanGenerate 目标（`planGoals`）
+  - **8c 文案写死**（待办）：~35 处中文内联绕过 `zh.ts`；i18n 混入租户专属串（`zh.ts:569 "如 常州"`、`:377 "扩化成通道"`）—— 归集 i18n + 行业别名映射
+  - **8d Agent/配置写死**（待办，**高价值/行为层多租户**）：Agent `systemPrompt`/tools/scope(`seed.ts:539-576`)、模型写死 `claude-opus-4-8`(`seed.ts:538`) → 模型走 LLM Provider 用途绑定 + admin 可编辑既有 Agent；`BATTERY_SOLVER_PARAMS` → 行业模板
+  - **8e `generic-inference`**（待办，**高价值/推演内核**）通用 what-if（脱离 22 个电池求解器）
+  - **门禁 `debattery:check`**（待办）：静态扫描视图/页内联业务常数 + i18n 租户串 → 自动盘出剩余 + 防回潮（落地 R14）
+  - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**
 - ⬜ **9. G-6** `parseXlsx` + 在线数据模版 + 合成并入连接器（与 #7 协同）
 - ⬜ **10. G-7 余项** LLM 用途枚举可扩展 + 按页面标注
 - ⬜ **11. 外部域（EXT_SIG）** 环境信号一等对象化 + 新 EXTERNAL 连接器（规划体检/建议敏感性输入）
