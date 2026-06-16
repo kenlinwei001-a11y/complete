@@ -59,6 +59,14 @@ export const WorkspaceSchema = z.object({
   /** Entitlement 增量：解析后的生效功能集 + 配置版本 */
   features: z.array(z.string()).optional(),
   configVersion: z.number().int().optional(),
+  /** 去电池锁死（R14）：按租户/行业下发的项目推演配置（型号/地址/物流），替代前端写死常量 */
+  simConfig: z
+    .object({
+      models: z.array(z.string()).optional(),
+      addresses: z.array(z.string()).optional(),
+      logistics: z.record(z.string(), z.number()).optional(),
+    })
+    .optional(),
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 /** schema 输入形态（契约形态/旧 mock 形态皆可），fixtures 用 */

@@ -7,6 +7,7 @@ import {
 } from "@platform/contracts";
 import { runSolver, searchObjects } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
+import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
@@ -17,10 +18,20 @@ import { PmDag, type PmDagNode } from "./PmDag";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
-const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
-const ADDRESSES = ["上海", "广州", "北京", "成都", "海外"];
-/** 物流时长（天，battery solverParams.logistics 镜像 —— 地址下拉旁展示） */
-const LOGISTICS: Record<string, number> = { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 };
+/**
+ * 去电池锁死 P1（PRD-de-battery-multitenant-config §3.2 / R14）：型号/地址/物流不再硬编码进组件，
+ * 改由 WorkspaceConfig（`workspace.scenarioPackages[0].simConfig`，按租户/行业下发）提供。
+ * 下方 DEFAULT_* 仅作 config 缺失时的优雅兜底（P2 接 debattery:check 后将进一步收口）。
+ */
+const DEFAULT_MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
+const DEFAULT_LOGISTICS: Record<string, number> = { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 };
+
+/** WorkspaceConfig.simConfig（catchall，按租户下发；缺失则用 DEFAULT_*）。 */
+interface SimConfig {
+  models?: string[];
+  addresses?: string[];
+  logistics?: Record<string, number>;
+}
 
 interface BatchRowInput {
   qty: number;
@@ -51,8 +62,15 @@ interface WhatIfOut {
  * （①场景解析…⑥结论与对策）+ 常显 DAG 面板（随步骤点亮）；任何参数变更 debounce 重算。
  */
 export default function ProjectSimView(_props: ViewRendererProps) {
+  // R14：型号/地址/物流来自 WorkspaceConfig（按租户/行业），缺失则 DEFAULT_* 兜底
+  const { data: workspace } = useWorkspace();
+  const simCfg: SimConfig | undefined = workspace?.simConfig;
+  const models = simCfg?.models ?? DEFAULT_MODELS;
+  const logistics = simCfg?.logistics ?? DEFAULT_LOGISTICS;
+  const addresses = simCfg?.addresses ?? Object.keys(logistics);
+
   const [mode, setMode] = useState<"single" | "batch">("single");
-  const [modelId, setModelId] = useState("4680-NCM");
+  const [modelId, setModelId] = useState(models[0] ?? "");
   const [qty, setQty] = useState(40);
   const [weeks, setWeeks] = useState(6);
   const [batches, setBatches] = useState<BatchRowInput[]>([
@@ -97,7 +115,7 @@ export default function ProjectSimView(_props: ViewRendererProps) {
   const pickOrder = (o: { id: string; props: Record<string, unknown> }) => {
     setSelectedOrder(o.id);
     const m = String(o.props.model ?? "");
-    if (MODELS.includes(m)) setModelId(m);
+    if (models.includes(m)) setModelId(m);
     const q = Number(o.props.qty ?? 0);
     if (q > 0) setQty(Math.max(1, Math.round(q / 100))); // 套 → 万套（演示折算）
     useSessionStore.getState().setSelectedObjects([{ objectType: "Order", objectId: o.id, label: String(o.props.so ?? o.id) }]);
@@ -174,7 +192,7 @@ export default function ProjectSimView(_props: ViewRendererProps) {
                     ]);
                   }}
                 >
-                  {MODELS.map((m) => (
+                  {models.map((m) => (
                     <option key={m}>{m}</option>
                   ))}
                 </select>
@@ -234,13 +252,13 @@ export default function ProjectSimView(_props: ViewRendererProps) {
                             aria-label={`第${i + 1}批交付地址`}
                             onChange={(e) => setBatches(batches.map((x, j) => (j === i ? { ...x, address: e.target.value } : x)))}
                           >
-                            {ADDRESSES.map((a) => (
+                            {addresses.map((a) => (
                               <option key={a}>{a}</option>
                             ))}
                           </select>
                         </td>
                         <td className="mono" data-testid={`batch-logi-${i}`}>
-                          {zh.sim.proj.logistics(LOGISTICS[b.address] ?? 7)}
+                          {zh.sim.proj.logistics(logistics[b.address] ?? 7)}
                         </td>
                         <td>
                           {batches.length > 1 && (
