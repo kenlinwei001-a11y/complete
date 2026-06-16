@@ -482,7 +482,8 @@ export const putScene = (viewKey: string, body: Partial<SceneEntryConfig>) =>
   api.b<SceneEntryConfig>(`/b/v1/scene-entries/${viewKey}`, { method: "PUT", body });
 
 // 场景启动器 P2/P3：Scenario 升一等对象 —— 场景为主键的管理面（每个用 workflow/agent 的场景完整可配）。
-export const fetchScenariosManage = () => api.b<(Scenario & { inactive?: boolean })[]>("/b/v1/scenarios/manage");
+export type ScenarioClosure = { ready: boolean; issues: string[] };
+export const fetchScenariosManage = () => api.b<(Scenario & { inactive?: boolean; closure?: ScenarioClosure })[]>("/b/v1/scenarios/manage");
 export const createScenario = (body: Partial<Scenario>) =>
   api.b<Scenario>("/b/v1/scenarios", { method: "POST", body });
 export const updateScenario = (key: string, body: Partial<Scenario>) =>

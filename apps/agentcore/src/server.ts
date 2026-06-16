@@ -31,7 +31,7 @@ import { validateStdioTransport } from "./mcp/runtime.js";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
 import { DataCoreHttpError, DataCoreUnavailableError } from "./tools/clients.js";
 import { solverAllowed, viewAllowed } from "./features/registry.js";
-import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema } from "./catalog/service.js";
+import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, resolvePlanForIntent } from "./catalog/service.js";
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
@@ -1408,6 +1408,36 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     return added ? deps.repos.scenarios.listByTenant(tenantId) : existing;
   };
+
+  // 场景闭包/就绪（PRD §3.6 上架门 + 引用闭合「无死路」）：场景调用的链路必须全配置好——
+  // intentKey→意图存在 · 意图→执行计划存在 · AGENT 模式→defaultAgent 已发布。断链则不可发布。
+  const scenarioClosure = async (tenantId: string, sc: Scenario): Promise<{ ready: boolean; issues: string[] }> => {
+    const issues: string[] = [];
+    const pkg = (await deps.repos.packages.listByTenant(tenantId))[0];
+    if (!pkg) return { ready: false, issues: ["租户无场景包"] };
+    const intents = await deps.repos.intents.listByPackage(pkg.id);
+    const byKey = new Map<string, (typeof intents)[number]>();
+    for (const i of intents) {
+      const cur = byKey.get(i.key);
+      if (!cur || i.version > cur.version) byKey.set(i.key, i);
+    }
+    const intent = byKey.get(sc.intentKey);
+    if (!intent) {
+      issues.push(`意图「${sc.intentKey}」未配置（死路）`);
+    } else if (!(await resolvePlanForIntent(deps.repos, intent))) {
+      issues.push(`意图「${sc.intentKey}」未绑定执行计划（workflow）`);
+    }
+    if (sc.mode === "AGENT_FIRST" || sc.mode === "AGENT_ONLY") {
+      if (!sc.defaultAgentId) issues.push("AGENT 模式缺 defaultAgent");
+      else {
+        const agent = await deps.repos.agents.get(sc.defaultAgentId);
+        if (!agent || agent.tenantId !== tenantId) issues.push(`defaultAgent 不存在：${sc.defaultAgentId}`);
+        else if (agent.status !== "PUBLISHED") issues.push(`defaultAgent 未发布：${agent.name}`);
+      }
+    }
+    return { ready: issues.length === 0, issues };
+  };
+
   // 20 场景目录 §9：场景启动器卡片（单一来源=scenarios 仓储；非前端硬编码）。
   // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active+PUBLISHED）。
   app.get("/b/v1/scenarios", async (req) => {
@@ -1483,9 +1513,19 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     await ensureScenarios(a.tenantId);
     const enabled = await deps.features.enabledSet(a.tenantId, a.token);
     const all = await deps.repos.scenarios.listByTenant(a.tenantId);
-    return all
-      .map((s) => ({ ...s, inactive: !viewAllowed(enabled, s.targetView) }))
-      .sort((x, y) => (x.scenarioKey < y.scenarioKey ? -1 : 1));
+    // 每个场景附引用闭包就绪（intent→plan→agent 全配置好 = 无死路），前端显示就绪/断链。
+    const withClosure = await Promise.all(
+      all.map(async (s) => ({ ...s, inactive: !viewAllowed(enabled, s.targetView), closure: await scenarioClosure(a.tenantId, s) })),
+    );
+    return withClosure.sort((x, y) => (x.scenarioKey < y.scenarioKey ? -1 : 1));
+  });
+  // 单场景闭包（编辑器实时校验）。
+  app.get("/b/v1/scenarios/:key/closure", async (req) => {
+    const a = await auth(req);
+    await ensureScenarios(a.tenantId);
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, (req.params as { key: string }).key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    return scenarioClosure(a.tenantId, sc);
   });
   app.get("/b/v1/scenarios/:key", async (req) => {
     const a = await auth(req);
@@ -1549,6 +1589,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { key } = req.params as { key: string };
     const sc = await deps.repos.scenarios.byKey(a.tenantId, key);
     if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    // 上架门（R11/§3.6 无死路）：引用链未全配置好 → 拒绝发布，列出断链项。
+    const closure = await scenarioClosure(a.tenantId, sc);
+    if (!closure.ready) throw new HttpError(409, ErrorCodes.VALIDATION_ERROR, `场景引用未闭合（死路），不可发布：${closure.issues.join("；")}`);
     const published: Scenario = { ...sc, status: "PUBLISHED", version: sc.version + 1, updatedAt: new Date().toISOString() };
     await deps.repos.scenarios.upsert(published);
     // scenario.published 事件登记于 event-subscriptions.ts（§4 单一来源）；前端按 invalidates 失效缓存。

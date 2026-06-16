@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
-import { createScenario, fetchAgents, fetchScenariosManage, fetchViewConfigs, publishScenario, retireScenario, updateScenario } from "@/api/endpoints";
+import { createScenario, fetchAgents, fetchScenariosManage, fetchViewConfigs, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -56,6 +56,7 @@ export default function ScenesPage() {
             <th>落点视图</th>
             <th>意图</th>
             <th>presetContext</th>
+            <th>引用闭合</th>
             <th>状态</th>
             <th></th>
           </tr>
@@ -81,7 +82,7 @@ function ScenarioRow({
   viewKeys,
   onChanged,
 }: {
-  scenario: Scenario & { inactive?: boolean };
+  scenario: Scenario & { inactive?: boolean; closure?: ScenarioClosure };
   agents: { id: string; name: string }[];
   viewKeys: string[];
   onChanged: () => void;
@@ -89,6 +90,8 @@ function ScenarioRow({
   const [editing, setEditing] = useState(false);
   const publish = useMutation({ mutationFn: () => publishScenario(scenario.scenarioKey), onSuccess: () => { toast("已发布", "success"); onChanged(); }, onError: toastError });
   const retire = useMutation({ mutationFn: () => retireScenario(scenario.scenarioKey), onSuccess: () => { toast("已退役", "success"); onChanged(); }, onError: toastError });
+  const closure = scenario.closure;
+  const ready = closure?.ready !== false;
 
   return (
     <>
@@ -101,6 +104,16 @@ function ScenarioRow({
         <td className="mono">{scenario.targetView}</td>
         <td className="mono">{scenario.intentKey}</td>
         <td data-testid={`scenario-preset-${scenario.scenarioKey}`}>{slotCount(scenario)} 项预置{scenario.riskLevel === "ACTION_DRAFT" ? " · 写回" : ""}</td>
+        <td data-testid={`scenario-closure-${scenario.scenarioKey}`}>
+          {/* 无死路：intent→plan→agent 全配置好（PRD §3.6 上架门） */}
+          {ready ? (
+            <span className="badge green">就绪</span>
+          ) : (
+            <span className="badge red" title={closure?.issues.join("；")}>
+              断链 {closure?.issues.length ?? 0}
+            </span>
+          )}
+        </td>
         <td>
           <span className={STATUS_BADGE[scenario.status]} data-testid={`scenario-status-${scenario.scenarioKey}`}>{scenario.status}</span>
         </td>
@@ -111,7 +124,14 @@ function ScenarioRow({
             </button>
           )}
           {scenario.status === "DRAFT" && (
-            <button className="btn sm primary" style={{ marginLeft: 4 }} data-testid={`scenario-publish-${scenario.scenarioKey}`} disabled={publish.isPending} onClick={() => publish.mutate()}>
+            <button
+              className="btn sm primary"
+              style={{ marginLeft: 4 }}
+              data-testid={`scenario-publish-${scenario.scenarioKey}`}
+              disabled={publish.isPending || !ready}
+              title={!ready ? `引用未闭合：${closure?.issues.join("；")}` : undefined}
+              onClick={() => publish.mutate()}
+            >
               发布
             </button>
           )}
@@ -124,7 +144,7 @@ function ScenarioRow({
       </tr>
       {editing && scenario.status !== "PUBLISHED" && (
         <tr>
-          <td colSpan={7} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>
+          <td colSpan={8} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>
             <ScenarioEditor scenario={scenario} agents={agents} viewKeys={viewKeys} inline onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
           </td>
         </tr>

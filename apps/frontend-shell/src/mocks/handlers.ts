@@ -1150,9 +1150,17 @@ export const handlers = [
   }),
 
   // ---- 场景启动器 P2/P3：Scenario 一等对象管理（场景为主键，完整可配）----
-  http.get("*/b/v1/scenarios/manage", () =>
-    HttpResponse.json([...db.scenarios].sort((a, b) => (a.scenarioKey < b.scenarioKey ? -1 : 1))),
-  ),
+  http.get("*/b/v1/scenarios/manage", () => {
+    const closureOf = (s: Scenario) => {
+      const issues: string[] = [];
+      if (!db.intents.some((i) => i.key === s.intentKey)) issues.push(`意图「${s.intentKey}」未配置（死路）`);
+      if ((s.mode === "AGENT_FIRST" || s.mode === "AGENT_ONLY") && !s.defaultAgentId) issues.push("AGENT 模式缺 defaultAgent");
+      return { ready: issues.length === 0, issues };
+    };
+    return HttpResponse.json(
+      [...db.scenarios].sort((a, b) => (a.scenarioKey < b.scenarioKey ? -1 : 1)).map((s) => ({ ...s, closure: closureOf(s) })),
+    );
+  }),
   http.post("*/b/v1/scenarios", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const key = String(body.scenarioKey ?? "");

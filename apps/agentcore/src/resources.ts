@@ -44,7 +44,7 @@ export function applyListQuery<T extends { status?: string; lifecycle?: string; 
 }
 
 export interface ResourceReference {
-  kind: "agent" | "workflow" | "scene-entry" | "intent";
+  kind: "agent" | "workflow" | "scene-entry" | "intent" | "scenario";
   id: string;
   name: string;
   via: string; // 引用途径说明（tools / skills / mcpServers / defaultAgentId / plan step …）
@@ -63,12 +63,17 @@ export async function computeReferences(
   const agents = await repos.agents.listByTenant(tenantId);
   const workflows = await repos.workflows.listByTenant(tenantId);
   const sceneEntries = await repos.sceneEntries.listByTenant(tenantId);
+  // 场景升一等对象后，也是引用源：scenario --defaultAgentId--> Agent（编排链可见性）。
+  const scenarios = await repos.scenarios.listByTenant(tenantId);
 
   const stepRefs = (params: Record<string, unknown>, key: string): boolean => params[key] === id;
 
   if (kind === "agent") {
     for (const s of sceneEntries) {
       if (s.defaultAgentId === id) refs.push({ kind: "scene-entry", id: s.id, name: s.viewKey, via: "defaultAgentId" });
+    }
+    for (const sc of scenarios) {
+      if (sc.defaultAgentId === id) refs.push({ kind: "scenario", id: sc.id, name: `${sc.scenarioKey}·${sc.name}`, via: "scenario.defaultAgentId" });
     }
     for (const w of workflows) {
       if (w.steps.some((st) => st.type === "invoke_agent" && stepRefs(st.params as Record<string, unknown>, "agentId"))) {

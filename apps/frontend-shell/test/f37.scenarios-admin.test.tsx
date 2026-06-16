@@ -23,6 +23,9 @@ describe("F37 · 场景配置（场景为一等主键）", () => {
 
     // 探索型场景以 AGENT_FIRST 呈现（mode 收敛语义）
     expect(screen.getByTestId("scenario-mode-SX-explore")).toHaveTextContent("AGENT_FIRST");
+
+    // 引用闭合（无死路）：S01 意图已配置 → 就绪
+    expect(screen.getByTestId("scenario-closure-S01")).toHaveTextContent("就绪");
   });
 
   it("创建草稿 → 编辑 presetContext → 发布 → 退役（状态机全配）", async () => {

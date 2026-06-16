@@ -100,6 +100,24 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
     expect(afterRetire.items.map((c) => c.sNo)).not.toContain("SX1");
   });
 
+  it("SLP2-4: 引用闭合（无死路）—— 断链场景不可发布；manage 列就绪态", async () => {
+    const t = await createTestApp();
+    // 坏意图：intentKey 不存在 → 闭包断链
+    await t.app.inject({ method: "POST", url: "/b/v1/scenarios", headers: debugHeaders(ADMIN), payload: { scenarioKey: "SBAD", name: "断链场景", targetView: "project", intentKey: "no_such_intent", triggerQuestion: "?", mode: "WORKFLOW_FIRST" } });
+    // 闭包端点报死路
+    const cl = await t.app.inject({ method: "GET", url: "/b/v1/scenarios/SBAD/closure", headers: debugHeaders(ADMIN) });
+    const closure = cl.json() as { ready: boolean; issues: string[] };
+    expect(closure.ready).toBe(false);
+    expect(closure.issues.join("")).toContain("意图");
+    // 上架门：断链不可发布（409）
+    const pub = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/SBAD/publish", headers: debugHeaders(ADMIN) });
+    expect(pub.statusCode).toBe(409);
+    // manage 列表带 closure 就绪态：出厂 S01 就绪，SBAD 断链
+    const mg = (await t.app.inject({ method: "GET", url: "/b/v1/scenarios/manage", headers: debugHeaders(ADMIN) })).json() as { scenarioKey: string; closure: { ready: boolean } }[];
+    expect(mg.find((s) => s.scenarioKey === "S01")!.closure.ready).toBe(true);
+    expect(mg.find((s) => s.scenarioKey === "SBAD")!.closure.ready).toBe(false);
+  });
+
   it("SLP2-3: 非 catalog_admin 不可创建场景（403）", async () => {
     const t = await createTestApp();
     const r = await t.app.inject({ method: "POST", url: "/b/v1/scenarios", headers: debugHeaders(PLANNER), payload: { scenarioKey: "SX2", name: "x", targetView: "project", intentKey: "capacity_feasibility", triggerQuestion: "q" } });

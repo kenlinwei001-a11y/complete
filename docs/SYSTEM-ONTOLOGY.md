@@ -125,8 +125,8 @@ ScenarioCard --view--> View(规划与平衡/推演与风险/…)
 ScenarioCard --intentKey--> Intent          ✅ 20/20 接通（种子从目录派生意图+计划，G-1 已修）
 ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --POST /b/v1/scenarios/:key/launch--> Query
                                   ✅ P1 已接通（presetSlots 注入通道 + fillSlots 消费 + launch 端点；20/20 零反问门 scenarios-wiring）；前端启动器待 P3
-SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent
-                                  ⚠ 仍以"视图+智能体"为主键；Scenario 升一等主键待 P2（PRD-scenario-launcher）
+Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）
+SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent   （降为投影）
 ```
 **数据→本体→推演链**
 ```
