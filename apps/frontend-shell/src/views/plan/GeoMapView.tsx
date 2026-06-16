@@ -28,9 +28,10 @@ const BASE_COORDS: Record<string, [number, number]> = {
   青海: [101.78, 36.62],
 };
 
-/** 利用率色档（原型 utilColor：92/85/78 阈值） */
-export function utilColor(u: number): string {
-  return u >= 92 ? "#DD7E9E" : u >= 85 ? "#DD9551" : u >= 78 ? "#D2B04C" : "#62BE77";
+/** 利用率色档（阈值可由 ViewConfig.layout.utilThresholds 配置；去电池锁死 8a / R14） */
+export function utilColor(u: number, thresholds: number[] = [92, 85, 78]): string {
+  const [hi, mid, lo] = thresholds;
+  return u >= (hi ?? 92) ? "#DD7E9E" : u >= (mid ?? 85) ? "#DD9551" : u >= (lo ?? 78) ? "#D2B04C" : "#62BE77";
 }
 
 const VIEW_W = 920;
@@ -63,7 +64,9 @@ function coordOf(b: BaseProps): [number, number] | undefined {
 }
 
 /** 地理视图（renderer=geo-map，§7.17）：打包中国轮廓 + 基地气泡 + 侧滑档案卡 */
-export default function GeoMapView(_props: ViewRendererProps) {
+export default function GeoMapView({ view }: ViewRendererProps) {
+  // 去电池锁死 8a（R14）：利用率色档阈值由 ViewConfig.layout.utilThresholds 声明（后端 VIEW_DEFS 已下发）
+  const utilThresholds = (view.layout?.utilThresholds as number[] | undefined) ?? [92, 85, 78];
   const { data, isLoading } = useQuery({
     queryKey: ["a", "objects", { type: "Base", view: "geo-map" }],
     queryFn: () => searchObjects("Base", ""),
@@ -205,7 +208,7 @@ export default function GeoMapView(_props: ViewRendererProps) {
             </div>
             <div className={styles.drawerRow}>
               <span>{zh.geo.cardUtil}</span>
-              <b style={{ color: utilColor(selected.util) }} data-testid="geo-card-util">
+              <b style={{ color: utilColor(selected.util, utilThresholds) }} data-testid="geo-card-util">
                 {selected.util}%
               </b>
             </div>
