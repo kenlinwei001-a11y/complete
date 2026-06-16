@@ -42,8 +42,9 @@
 
 ## 🥉 Tier 3 · 场景启动器 + 本体浏览器（产品可用性）
 - 🔄 **6. 场景启动器 P2/P3**（`docs/PRD-scenario-launcher.md`，P1 已完成）
-  - ⬜ P2：`Scenario` 升一等对象 + 仓储四处 + 出厂 upsert + 发布/退役事件
-  - ⬜ P3：前端 ⌘K 命令面板 + 按域目录 + 首页高频
+  - ✅ **P2：`Scenario` 升一等对象**（修 G-3 模型倒置）：契约 `ScenarioSchema` + 仓储四处（repos/memory/pg/migration006）+ 出厂幂等 upsert + DRAFT→PUBLISHED→RETIRED + `scenario.*` 事件 + 管理 CRUD（`/scenarios/manage`·POST/PUT·publish·retire）；GET/launch 改 repo 驱动；本体 §2/§4/§8 回写
+  - 🔄 **P3：场景配置编辑器**（场景为主键 UI）✅ —— **场景放第一列** + 选 mode（WORKFLOW_FIRST/ONLY/AGENT_FIRST/ONLY）+ 默认 agent + 落点视图(闭合 view-configs) + 意图 + 触发问句 + **presetContext 编辑器**（slotPresets/selectedObjects）+ 状态机（创建草稿/发布/退役）；**所有用 workflow/agent 的场景全展示且完整可配（治理铁律）**；f37 回归。⬜ 余：⌘K 命令面板 + 按域目录墙 + 首页高频区
+  - ⬜ 文案：场景入口 i18n 收口（intentKey 命中校验 #2 / suggestedQuestions 校验）
 - 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`）—— 大
   - **参考软件**：[`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；v2 数据集成链 Data→Raw→Transform→Curated→Ontology Mapping，确定性映射 dataset→entity / column→property / FK→link + 基数推断）— 融进 A3 `modeling.ts`；+ 参考原型 `reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI
   - ✅ **确定性映射管线**（`deriveModelingSuggestion`：dataset→ObjectType · column→PropertyDef(类型按画像推断) · FK→ref+LinkType · PK=唯一率最高字段；`POST /a/v1/modeling/derive` 无 LLM 出草稿，构造上 100% 覆盖）

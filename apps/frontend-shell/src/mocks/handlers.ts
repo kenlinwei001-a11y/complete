@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { PlanStep } from "@platform/contracts";
+import type { PlanStep, Scenario } from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -1147,6 +1147,51 @@ export const handlers = [
     if (!scene) return err(404, "NOT_FOUND", "场景不存在");
     Object.assign(scene, body);
     return HttpResponse.json(scene);
+  }),
+
+  // ---- 场景启动器 P2/P3：Scenario 一等对象管理（场景为主键，完整可配）----
+  http.get("*/b/v1/scenarios/manage", () =>
+    HttpResponse.json([...db.scenarios].sort((a, b) => (a.scenarioKey < b.scenarioKey ? -1 : 1))),
+  ),
+  http.post("*/b/v1/scenarios", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const key = String(body.scenarioKey ?? "");
+    if (db.scenarios.some((s) => s.scenarioKey === key)) return err(409, "CONFLICT", "场景键已存在");
+    const sc = {
+      id: `scn-${key}`, tenantId: TENANT_ID, scenarioKey: key, name: String(body.name ?? key),
+      domain: body.domain as string | undefined, targetView: String(body.targetView ?? ""), intentKey: String(body.intentKey ?? ""),
+      triggerQuestion: String(body.triggerQuestion ?? ""), solver: body.solver as string | undefined,
+      rules: (body.rules as string[]) ?? [], riskLevel: (body.riskLevel as "COMPUTE" | "ACTION_DRAFT") ?? "COMPUTE",
+      summary: String(body.summary ?? ""), mode: (body.mode as Scenario["mode"]) ?? "WORKFLOW_FIRST",
+      defaultAgentId: body.defaultAgentId as string | undefined,
+      presetContext: (body.presetContext as Scenario["presetContext"]) ?? { targetView: String(body.targetView ?? ""), selectedObjects: [], slotPresets: {} },
+      status: "DRAFT" as const, version: 1, updatedAt: new Date().toISOString(),
+    };
+    db.scenarios.push(sc);
+    return HttpResponse.json(sc, { status: 201 });
+  }),
+  http.put("*/b/v1/scenarios/:key", async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const sc = db.scenarios.find((s) => s.scenarioKey === params.key);
+    if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");
+    if (sc.status === "PUBLISHED") return err(409, "INVALID_STATE", "场景已发布，请先退役再改");
+    Object.assign(sc, body, { status: "DRAFT", updatedAt: new Date().toISOString() });
+    return HttpResponse.json(sc);
+  }),
+  http.post("*/b/v1/scenarios/:key/publish", ({ params }) => {
+    const sc = db.scenarios.find((s) => s.scenarioKey === params.key);
+    if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");
+    sc.status = "PUBLISHED";
+    sc.version += 1;
+    sc.updatedAt = new Date().toISOString();
+    return HttpResponse.json(sc);
+  }),
+  http.post("*/b/v1/scenarios/:key/retire", ({ params }) => {
+    const sc = db.scenarios.find((s) => s.scenarioKey === params.key);
+    if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");
+    sc.status = "RETIRED";
+    sc.updatedAt = new Date().toISOString();
+    return HttpResponse.json(sc);
   }),
 
   // ---- 查询任务 ----

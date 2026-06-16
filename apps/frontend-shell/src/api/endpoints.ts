@@ -21,6 +21,7 @@ import type {
   RuleEntry,
   ScenarioPackageAdmin,
   SceneEntryConfig,
+  Scenario,
   SessionContext,
   SkillDefinition,
   SourceSchema,
@@ -479,6 +480,17 @@ export const fetchScene = (view: string) =>
 export const fetchScenes = () => api.b<SceneEntryConfig[]>("/b/v1/scene-entries");
 export const putScene = (viewKey: string, body: Partial<SceneEntryConfig>) =>
   api.b<SceneEntryConfig>(`/b/v1/scene-entries/${viewKey}`, { method: "PUT", body });
+
+// 场景启动器 P2/P3：Scenario 升一等对象 —— 场景为主键的管理面（每个用 workflow/agent 的场景完整可配）。
+export const fetchScenariosManage = () => api.b<(Scenario & { inactive?: boolean })[]>("/b/v1/scenarios/manage");
+export const createScenario = (body: Partial<Scenario>) =>
+  api.b<Scenario>("/b/v1/scenarios", { method: "POST", body });
+export const updateScenario = (key: string, body: Partial<Scenario>) =>
+  api.b<Scenario>(`/b/v1/scenarios/${encodeURIComponent(key)}`, { method: "PUT", body });
+export const publishScenario = (key: string) =>
+  api.b<Scenario>(`/b/v1/scenarios/${encodeURIComponent(key)}/publish`, { method: "POST", body: {} });
+export const retireScenario = (key: string) =>
+  api.b<Scenario>(`/b/v1/scenarios/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} });
 
 export const submitQuery = (body: { packageId: string; query: string; context: SessionContext }, idempotencyKey: string) =>
   api.b<{ taskId: string; status: string; streamUrl: string }>("/b/v1/queries", {

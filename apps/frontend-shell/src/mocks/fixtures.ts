@@ -13,6 +13,7 @@ import type {
   PermissionPolicy,
   RuleEntry,
   SceneEntryConfig,
+  Scenario,
   SkillDefinition,
   WorkflowDefinition,
   RiskTimelineOutput,
@@ -805,6 +806,38 @@ export const SCENES: SceneEntryConfig[] = [
   { id: "scn-sop-balance", tenantId: TENANT_ID, viewKey: "sop-balance", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问月度平衡，如：本月产销缺口多大？", suggestedQuestions: ["本月产销缺口多大？"] } },
   // 运营态增量 §2：运营回顾入口（只读历史）
   { id: "scn-review", tenantId: TENANT_ID, viewKey: "review", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "回顾一年运营，如：到货危机当时是怎么闭环的？", suggestedQuestions: ["到货危机当时是怎么闭环的？", "S&OP 达成率趋势如何？"] }, ...sceneHistory("review") },
+];
+
+// 场景启动器 P2/P3：Scenario 一等对象（场景为主键；每个用 workflow/agent 的场景完整可配）。
+const scenario = (
+  scenarioKey: string, name: string, targetView: string, intentKey: string, triggerQuestion: string,
+  mode: Scenario["mode"], presetContext: Scenario["presetContext"], extra: Partial<Scenario> = {},
+): Scenario => ({
+  id: `scn-${scenarioKey}`, tenantId: TENANT_ID, scenarioKey, name, domain: extra.domain, targetView, intentKey,
+  triggerQuestion, solver: extra.solver, rules: extra.rules ?? [], riskLevel: extra.riskLevel ?? "COMPUTE",
+  summary: extra.summary ?? "", mode, defaultAgentId: extra.defaultAgentId,
+  presetContext, status: extra.status ?? "PUBLISHED", version: 1, updatedAt: "2026-06-15T00:00:00Z",
+});
+
+export const SCENARIOS: Scenario[] = [
+  scenario("S01", "订单可承接性评审", "project", "capacity_feasibility", "4680-NCM 加 20% 六周能不能接？", "WORKFLOW_FIRST",
+    { targetView: "project", selectedObjects: [{ objectType: "Model", objectId: "4680-NCM", label: "4680-NCM" }], slotPresets: { modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 } },
+    { domain: "产能与项目", solver: "capacity_forecast", rules: ["C01", "C02", "C03", "C09"], summary: "解读产能可承接结论的口径" }),
+  scenario("S02", "交期风险与受影响订单", "risk", "affected_orders", "常州基地影响哪些订单？", "WORKFLOW_FIRST",
+    { targetView: "risk", selectedObjects: [{ objectType: "Base", objectId: "changzhou", label: "常州" }], slotPresets: { baseId: "changzhou" } },
+    { domain: "风险与齐套", solver: "affected_orders", rules: ["C05"], summary: "解读交期风险扫描结果" }),
+  scenario("S04", "月度规划体检", "audit", "plan_audit_q", "现金垫 45 亿过得了体检吗？", "WORKFLOW_ONLY",
+    { targetView: "audit", selectedObjects: [], slotPresets: { cashCushion: 4_500_000_000 } },
+    { domain: "规划与平衡", solver: "plan_audit", rules: ["C15", "C18", "C21"], summary: "解读规划体检结论" }),
+  scenario("S06", "处置方案采纳", "risk", "adopt_mitigation", "采纳常州的三班制方案", "WORKFLOW_FIRST",
+    { targetView: "risk", selectedObjects: [{ objectType: "Base", objectId: "changzhou", label: "常州" }], slotPresets: { baseName: "常州", solutionName: "三班制" } },
+    { domain: "风险与齐套", solver: "mitigation_select", rules: ["C08", "C10"], riskLevel: "ACTION_DRAFT", summary: "协助采纳风险处置方案" }),
+  scenario("S08", "物料齐套分析", "risk", "kit_analysis", "下周哪些订单缺料开不了工？", "WORKFLOW_FIRST",
+    { targetView: "risk", selectedObjects: [], slotPresets: { fromDay: 1, toDay: 14 } },
+    { domain: "风险与齐套", solver: "kit_readiness", rules: ["C06", "C16"], summary: "解读齐套分析" }),
+  scenario("SX-explore", "本体自由探索", "graph", "graph_explore", "围绕本体随便问", "AGENT_FIRST",
+    { targetView: "graph", selectedObjects: [], slotPresets: {} },
+    { domain: "经营与财务", defaultAgentId: "agt-explore", summary: "探索型场景（路径B agent 主导）" }),
 ];
 
 export const FALLBACK_CLUSTERS: FallbackClusterVM[] = [

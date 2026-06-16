@@ -1,4 +1,4 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -22,6 +22,7 @@ import {
   RULES,
   PLANS,
   SCENES,
+  SCENARIOS,
   SKILLS,
   TENANT_ID,
   WORKFLOWS,
@@ -60,6 +61,7 @@ interface MockDb {
   plans: { id: string; key: string; version: number; status: string }[];
   mcpConfigs: McpServerConfig[];
   scenes: SceneEntryConfig[];
+  scenarios: Scenario[];
   actionDrafts: ActionDraft[];
   sopVersions: SopVersionVM[];
   // 管理平台增量
@@ -100,6 +102,7 @@ function freshDb(): MockDb {
     plans: structuredClone(PLANS),
     mcpConfigs: structuredClone(MCP_CONFIGS),
     scenes: structuredClone(SCENES),
+    scenarios: structuredClone(SCENARIOS),
     actionDrafts: structuredClone(ACTION_DRAFTS),
     sopVersions: seedSopVersions(),
     rules: structuredClone(RULES),
