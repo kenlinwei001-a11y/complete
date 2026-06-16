@@ -63,6 +63,31 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(within(modal).getByTestId("bn-cell-常州-瓶颈工序")).toHaveTextContent("◉");
   });
 
+  it("DAG 节点点穿（#3 · R13）：点聚合求解器 → 抽屉看判定/推导公式/输入/关联规则", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+
+    // 默认整单首次重算完成 → 常显 DAG
+    await screen.findByTestId("pm-dag-panel");
+
+    // 点聚合求解器节点 → 详情抽屉（六要素：来源/推导/输入/规则）
+    await user.click(screen.getByTestId("pm-dag-node-agg"));
+    const drawer = await screen.findByTestId("dag-node-drawer");
+    expect(within(drawer).getByTestId("dag-node-verdict")).toHaveTextContent("P50");
+    expect(within(drawer).getByTestId("dag-node-src")).toHaveTextContent("capacity_forecast");
+    expect(drawer).toHaveTextContent("P50 = Σ可产基地"); // 推导公式
+    expect(within(drawer).getByTestId("dag-node-rule")).toHaveTextContent("C01"); // 关联规则两跳锚点
+
+    // 关掉，再点结论节点 → 缺口/健康度推导可溯
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("dag-node-drawer")).not.toBeInTheDocument());
+    await user.click(screen.getByTestId("pm-dag-node-fc"));
+    const concl = await screen.findByTestId("dag-node-drawer");
+    expect(concl).toHaveTextContent("健康度");
+    expect(within(concl).getByTestId("dag-node-rule")).toHaveTextContent("C09");
+  });
+
   it("型号选择器/订单点击写入 selectedObjects（查询 Dock 上下文）", async () => {
     const user = userEvent.setup();
     loginAs("planner");

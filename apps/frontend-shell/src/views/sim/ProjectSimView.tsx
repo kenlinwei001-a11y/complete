@@ -11,6 +11,7 @@ import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
+import { RuleRef } from "@/components/RuleRef";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
@@ -86,6 +87,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const [whatIf, setWhatIf] = useState<WhatIfState>({ nightShifts: 0, extraChannels: 0, outsourcePct: 0 });
   const [step, setStep] = useState(1);
   const [bnOpen, setBnOpen] = useState(false);
+  const [dagNode, setDagNode] = useState<string | null>(null); // #3：点 DAG 节点 → 抽屉看判定/推导/输入/规则
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const action = useActionDraft();
 
@@ -327,7 +329,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
               {/* 常显 DAG 面板（§7.13）：六层固定，随步骤点亮 */}
               <div className="panel" data-testid="pm-dag-panel">
                 <div className="section-title">{zh.sim.proj.dagTitle}</div>
-                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches, driverFactors)} step={step} />
+                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches, driverFactors)} step={step} onNodeClick={setDagNode} />
+                <div className={styles.noteInfo}>点击任一节点 → 看该步的判定逻辑 / 推导公式 / 输入数据(含来源·新鲜度) / 关联规则。</div>
               </div>
             </div>
           )}
@@ -377,6 +380,13 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
             )}
           </div>
         </Modal>
+      )}
+
+      {dagNode && out && (
+        <DagNodeDrawer
+          detail={dagNodeDetail(dagNode, out, modelId, Number((out as Record<string, unknown>).qty ?? qty), driverFactors)}
+          onClose={() => setDagNode(null)}
+        />
       )}
     </div>
   );
@@ -847,4 +857,183 @@ function buildDag(
   for (const f of factors) edges.push([f.id, "agg"]);
   edges.push(["agg", "bn"], ["agg", "fc"], ["bn", "fc"]);
   return { layers, edges };
+}
+
+// ---------------- DAG 节点点穿（#3 · 哲学 #1/#3/#6：每节点可验证） ----------------
+
+/** 节点详情 = 六要素溯源（结论可溯源 R13）：判定/来源/新鲜度/推导/输入/规则/备注。 */
+interface DagDetail {
+  title: string;
+  verdict?: string;
+  src: string;
+  fresh?: string;
+  formula?: string;
+  inputs?: string[];
+  rule?: string;
+  note?: string;
+}
+
+/** DAG 驱动因子层默认（与 buildDag 一致；ViewConfig.layout.driverFactors 缺失时兜底）。 */
+function defaultDagFactors(healthFactor: number): { id: string; label: string; sub: string }[] {
+  return [
+    { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
+    { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
+    { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${healthFactor}` },
+  ];
+}
+
+/** 节点 id → 该步骤的判定逻辑/推导/输入/规则（接 DAG 装配同一份 out，数字一致可溯）。 */
+function dagNodeDetail(
+  id: string,
+  out: CapacityForecastOutput,
+  modelId: string,
+  totalQty: number,
+  driverFactors?: { id: string; label: string; sub: string }[],
+): DagDetail {
+  // 可产基地行（b0…b5）
+  if (/^b\d+$/.test(id)) {
+    const r = out.perBaseRows[Number(id.slice(1))];
+    if (r) {
+      return {
+        title: `可产基地 · ${r.base}`,
+        verdict: `周产能 ${fmt(r.weeklyCap, 2)} 万套${r.certFactor < 1 ? " · 认证中" : " · 量产"}`,
+        src: "产能域 · MES/IoT（基地对象）",
+        formula: "周产能 = 设备节拍 × OEE × 良率 × 认证系数 × 检修窗",
+        inputs: ["设备节拍", "OEE", "良率", `认证系数 ×${r.certFactor}`, r.maintWeek != null ? `检修窗 第${r.maintWeek}周(×0.72)` : "无检修窗"],
+        rule: r.certFactor < 1 ? "C07" : undefined,
+        note: r.bottleneck ? `当前瓶颈：${r.bottleneck}（紧张度 ${r.tightness}）` : undefined,
+      };
+    }
+  }
+  // 驱动因子层（id 由 ViewConfig.layout.driverFactors 声明）
+  const factors = driverFactors ?? defaultDagFactors(out.healthFactor);
+  const f = factors.find((x) => x.id === id);
+  if (f) {
+    const isHealth = id === factors[factors.length - 1]?.id;
+    return {
+      title: `驱动因子 · ${f.label}`,
+      src: f.sub,
+      formula: "装载进逐基地逐周产能展开（爬坡 × 检修 × 认证 × 健康度）",
+      inputs: [f.label],
+      rule: isHealth ? "C09" : undefined,
+      note: isHealth
+        ? `数据健康度系数 ${out.healthFactor}：IoT/MES/QMS 新鲜度联动，源延迟即下调 P90`
+        : "驱动因子层由 ViewConfig.layout.driverFactors 声明（去硬编码 · R14）",
+    };
+  }
+  switch (id) {
+    case "dem":
+      return {
+        title: "需求 · 结构化预测场景",
+        verdict: `${fmt(totalQty)} 万套`,
+        src: "用户输入 → 结构化预测场景对象",
+        formula: "净生产窗口 = 交付日 − 该地址物流时长",
+        inputs: ["需求量", "交付窗口 / 分批交期", "交付地址"],
+        rule: "C10",
+        note: "规则 C10 校验场景字段完整性 ✓",
+      };
+    case "mdl":
+      return {
+        title: `型号 · ${modelId}`,
+        src: "产品域 · PLM（Model 对象）",
+        formula: "型号 → 可产基地集合（认证矩阵）",
+        inputs: ["BOM", "认证矩阵", "工艺路线"],
+        note: "下拉直接读 Model 对象（真连模式与实际数据一致 · 去写死列表）",
+      };
+    case "bm":
+      return {
+        title: "折叠基地",
+        verdict: "其余基地见步骤②",
+        src: "产能域 · 基地对象",
+        note: "DAG 仅展开前 6 个可产基地，其余在步骤②全量列出",
+      };
+    case "agg":
+      return {
+        title: "聚合求解器（capacity_forecast）",
+        verdict: `P50 ${fmt(out.p50)} 万套`,
+        src: "求解器 · capacity_forecast",
+        formula: "P50 = Σ可产基地 Σ周(周产能 × 爬坡曲线 × 检修窗 × 认证系数)",
+        inputs: ["逐基地周产能", "爬坡曲线", "检修窗", "认证系数"],
+        rule: "C01/C02",
+      };
+    case "bn":
+      return {
+        title: "瓶颈求解器（bottleneck_matrix）",
+        verdict: `主瓶颈：${out.mainBn || "—"}`,
+        src: "求解器 · bottleneck_matrix",
+        formula: "紧张度 = 需求负荷 / 该因素可用能力 × 100",
+        inputs: ["基地 × 7 因素能力矩阵"],
+        rule: "C03",
+        note: "点步骤⑤「多维瓶颈矩阵」看基地×7因素全表",
+      };
+    case "fc":
+      return {
+        title: "产能预测结论",
+        verdict: out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`,
+        src: "聚合 + 数据健康度（C09）",
+        formula: `P90 = P50 ${fmt(out.p50)} × 健康度 ${out.healthFactor} = ${fmt(out.p90)}；缺口 = 需求 ${fmt(totalQty)} − P90`,
+        inputs: ["P50", `健康度系数 ${out.healthFactor}`, "需求"],
+        rule: "C09",
+        note: out.degradeNote ?? "结论可采纳为 Action（参数组合 + 推演快照写回）",
+      };
+  }
+  return { title: id, src: "—" };
+}
+
+/** 节点详情抽屉：六要素一行一列展开 + 规则两跳（RuleRef）。 */
+function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose: () => void }) {
+  return (
+    <Modal title={`🔍 ${detail.title}`} onClose={onClose} width={560}>
+      <div data-testid="dag-node-drawer">
+        {detail.verdict && (
+          <div className={styles.okBar} style={{ borderColor: "var(--line2)", marginBottom: 10 }} data-testid="dag-node-verdict">
+            {detail.verdict}
+          </div>
+        )}
+        <table className="cmp">
+          <tbody>
+            <tr>
+              <td style={{ width: 96, color: "var(--muted2)" }}>来源系统</td>
+              <td data-testid="dag-node-src">{detail.src}</td>
+            </tr>
+            {detail.fresh && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>新鲜度</td>
+                <td>{detail.fresh}</td>
+              </tr>
+            )}
+            {detail.formula && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>推导公式</td>
+                <td>
+                  <code style={{ fontSize: 11 }}>{detail.formula}</code>
+                </td>
+              </tr>
+            )}
+            {detail.inputs && detail.inputs.length > 0 && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>输入数据</td>
+                <td>{detail.inputs.join(" · ")}</td>
+              </tr>
+            )}
+            {detail.rule && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>关联规则</td>
+                <td data-testid="dag-node-rule">
+                  <RuleRef code={detail.rule} />
+                </td>
+              </tr>
+            )}
+            {detail.note && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>备注</td>
+                <td style={{ color: "var(--muted)" }}>{detail.note}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <div style={{ marginTop: 8, fontSize: 10, color: "var(--muted2)" }}>信任 = 出处 + 推导可当场亮出（R13）</div>
+      </div>
+    </Modal>
+  );
 }

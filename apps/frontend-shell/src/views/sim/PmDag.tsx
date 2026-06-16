@@ -24,11 +24,14 @@ export function PmDag({
   edges,
   step,
   testId = "pm-dag",
+  onNodeClick,
 }: {
   layers: PmDagNode[][];
   edges: [string, string][];
   step: number;
   testId?: string;
+  /** 点 DAG 节点 → 抽屉看判定/推导/输入/规则（#3 可点穿）。 */
+  onNodeClick?: (id: string) => void;
 }) {
   const pos = new Map<string, { x: number; y: number; w: number }>();
   const meta = new Map<string, PmDagNode>();
@@ -71,7 +74,15 @@ export function PmDag({
         const p = pos.get(n.id)!;
         const lit = step >= n.st;
         return (
-          <g key={n.id} opacity={lit ? 1 : 0.28} data-testid={`${testId}-node-${n.id}`} data-lit={lit ? "1" : "0"} data-st={n.st}>
+          <g
+            key={n.id}
+            opacity={lit ? 1 : 0.28}
+            data-testid={`${testId}-node-${n.id}`}
+            data-lit={lit ? "1" : "0"}
+            data-st={n.st}
+            style={{ cursor: onNodeClick ? "pointer" : "default" }}
+            onClick={() => onNodeClick?.(n.id)}
+          >
             <rect
               x={p.x - p.w / 2}
               y={p.y - NH / 2}
