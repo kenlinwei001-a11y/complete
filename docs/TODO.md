@@ -130,6 +130,15 @@
 - 🟡 **统一"全工具输出按本体类/值域强制校验"关卡（最大缺口）**：求解器有契约校验、`invoke_agent` 有可选 `expectsSchema`，但 `query_objects`/`search_knowledge`/`query_timeseries`/**MCP/外部 API 原始输出**无强制"符合本体对象类型 schema + 属性值域"的统一运行时关卡（对应案例"查征信API输出必须符合 CreditRecord 本体类"）。需一个 `validate_output_against_ontology` 运行时关卡，按对象类型/属性值域校验、不符即拒/隔离。
 - 🟡 **值域/取值范围自动校验**：当前靠 `evaluate_rules` 显式编排，非自动对每个输出按本体属性值域约束校验。
 
+### 实时验证审计层 · 一致性检查 + 决策痕迹（差距评审 2026-06-16，约 60–70%，**系统最强项**）
+
+> 现状证据要素**几乎全已采集**：数字必有出处（`scanBlocks`/`unverifiedNumerics` + provenance 六要素 R13，`util/numerics.ts`、`workflow/executor.ts:292`）；高风险写真值强制审批 + 审批痕迹（Action R4：DRAFT→PENDING_APPROVAL→APPROVED…，多步链/不得自批/approverId+decision，`datacore/actions.ts:52`）；版本钉留痕 `resolvedRefs`（plan/solver/rule 当时生效版本）；规则裁决 `rule_violation` block（ruleId/severity/explanation/ruleVersion）；本体外标记（trustLevel=AGENT_EXPLORATORY）。差距如下。
+
+- ❌ **Layer 2 知识图谱交叉验证（最大缺口，全缺）**：无"用 KG 已有事实反向核对输出结论"的机制（如"供应商A已通过ISO9001"→查 KG 有无认证记录）。现有 `search_knowledge` 是检索增强，非对输出做事实一致性核对/反驳的交叉验证层。
+- 🟡 **统一 Decision Trace 一等制品 + 导出**：证据要素现**散落**在 task（classification/resolvedRefs）/answer（provenance/blocks/trustLevel）/actionDraft（审批链）/toolCalls（审计）多处，无聚合成单一可导出 JSON（`{decision_id, decision_trace[], ontology_validation:ALL_PASS, human_review_required, review_history}`）。监管"直接出示决策痕迹"目前需跨端点拼。需一个**决策痕迹聚合/导出层** + `ontology_validation` 总判定字段 + `human_review_required` 显式字段。
+- ↪ 逐步 `axiom_check` + `confidence_per_step`（置信度<80%自动标"需人工确认"）—— 见「可验证推理规划层」条，不重复立项。
+- ↪ 数据取值范围自动校验（概率∈[0,1]）+ 输出实体/关系统一本体校验 —— 见「本体约束执行层」条，不重复立项。
+
 ## 📌 非开发遗留
 - ⚠ **吊销并更换暴露的 Gemini API key**（早前明文发过）
 - ⬜ 上云部署脚本（本机 `docker compose up --build` 已可；公网域名需自控主机）
