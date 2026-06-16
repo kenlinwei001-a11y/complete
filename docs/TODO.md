@@ -134,10 +134,18 @@
 
 > 现状证据要素**几乎全已采集**：数字必有出处（`scanBlocks`/`unverifiedNumerics` + provenance 六要素 R13，`util/numerics.ts`、`workflow/executor.ts:292`）；高风险写真值强制审批 + 审批痕迹（Action R4：DRAFT→PENDING_APPROVAL→APPROVED…，多步链/不得自批/approverId+decision，`datacore/actions.ts:52`）；版本钉留痕 `resolvedRefs`（plan/solver/rule 当时生效版本）；规则裁决 `rule_violation` block（ruleId/severity/explanation/ruleVersion）；本体外标记（trustLevel=AGENT_EXPLORATORY）。差距如下。
 
-- ❌ **Layer 2 知识图谱交叉验证（最大缺口，全缺）**：无"用 KG 已有事实反向核对输出结论"的机制（如"供应商A已通过ISO9001"→查 KG 有无认证记录）。现有 `search_knowledge` 是检索增强，非对输出做事实一致性核对/反驳的交叉验证层。
+- ✅ **Layer 2 知识图谱交叉验证（已落地 2026-06-16）**：`POST /a/v1/ontology/cross-validate` 对结论对象断言反查 KG 已有 props/链路（CONSISTENT/CONFLICT/NO_EVIDENCE），凡用到本体切片即组装入 `Answer.validationTrace`，前端 `ValidationTracePanel` 展示。**余项**：当前对**结构化对象断言**（切片解析出的对象属性）核对；自由文本里的断言（如"已通过ISO9001"）抽取为结构化 claim 仍需 NER（见「感知层·自由文本全实体 NER」条）。
 - 🟡 **统一 Decision Trace 一等制品 + 导出**：证据要素现**散落**在 task（classification/resolvedRefs）/answer（provenance/blocks/trustLevel）/actionDraft（审批链）/toolCalls（审计）多处，无聚合成单一可导出 JSON（`{decision_id, decision_trace[], ontology_validation:ALL_PASS, human_review_required, review_history}`）。监管"直接出示决策痕迹"目前需跨端点拼。需一个**决策痕迹聚合/导出层** + `ontology_validation` 总判定字段 + `human_review_required` 显式字段。
 - ↪ 逐步 `axiom_check` + `confidence_per_step`（置信度<80%自动标"需人工确认"）—— 见「可验证推理规划层」条，不重复立项。
 - ↪ 数据取值范围自动校验（概率∈[0,1]）+ 输出实体/关系统一本体校验 —— 见「本体约束执行层」条，不重复立项。
+
+### 本体索引记忆层 · 跨会话知识沉淀复用（差距评审 2026-06-16，约 35–45%，**现为向量范式**）
+
+> 现状机制多落在参考图要对比的**传统向量记忆**一侧：经验记忆库 `repos.experience`（跨会话持久、tenant 隔离、50 例出厂种子、路径B 完成自动回写 `recordExperience`）+ `search_experience` 工具——但**向量索引**（`pseudoEmbed`+余弦，`tools/executor.ts:303`），非本体路径索引；语义记忆=本体（类型/链路/规则，支持版本化增量更新 ✓，但非 OWL）；工作记忆≈会话摘要（`agentPriorSummary`，部分）。差距如下。
+
+- 🟡 **本体路径索引检索（核心差异，最大缺口）**：`search_experience` 用向量余弦相似度（黑盒），无 `find_by_path(ontology_path)` / `rank_by_ontology_similarity`（白盒、可展示推理路径、精确匹配）。要把经验改为本体实体+关系索引的事件 KG。
+- 🟡 **经验映射到本体实体/关系的事件记忆（episodic KG）**：现经验存为 `{scene, question, approach, outcome}` 文本 + embedding，未抽取为本体实体/关系图；故无法按本体路径精确检索/可解释复用。
+- 🟡 **本体自学习 / 公理挖掘（6.3，记忆进化）**：M11 校准引擎已具备"观测偏差→生成提案→回测门→`校准参数变更` Action 人工审批→生效/回滚+元闭环"机器（`datacore/calibration/service.ts`），但只校准**求解器参数**；缺"同类案例频率>80%→挖掘规律→提议**新公理/规则**→人工审核纳入本体"的案例模式挖掘。**M11 是 6.3 的现成模板**——把提案对象从参数扩到规则/公理、复用同一 Action 审批即"人工审核后纳入本体"。
 
 ## 📌 非开发遗留
 - ⚠ **吊销并更换暴露的 Gemini API key**（早前明文发过）
