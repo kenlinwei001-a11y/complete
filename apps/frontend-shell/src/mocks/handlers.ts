@@ -921,6 +921,39 @@ export const handlers = [
     db.modelingDrafts.unshift(draft);
     return HttpResponse.json({ draftId: draft.id, status: draft.status }, { status: 202 });
   }),
+  // 外部域（EXT_SIG）：环境信号清单 + 敏感性（确定性弹性）。
+  http.get("*/a/v1/external-signals", () => {
+    const signals = [
+      { signalKey: "ev_demand_index", name: "新能源车需求指数", category: "需求", value: 112.4, unit: "index(2025=100)", asOf: "2026-06-01", source: "乘联会", trend: "up", impact: "需求", elasticity: 0.6 },
+      { signalKey: "ess_subsidy_signal", name: "储能补贴政策强度", category: "政策", value: 0.72, unit: "0–1", asOf: "2026-06-10", source: "发改委公告解析", trend: "up", impact: "需求", elasticity: 0.25 },
+      { signalKey: "li_carbonate_price", name: "电池级碳酸锂价", category: "原料价格", value: 96000, unit: "元/吨", asOf: "2026-06-15", source: "上海有色网", trend: "down", impact: "毛利", elasticity: -0.08 },
+      { signalKey: "nickel_price", name: "镍价(LME)", category: "原料价格", value: 18600, unit: "USD/吨", asOf: "2026-06-15", source: "LME", trend: "flat", impact: "毛利", elasticity: -0.03 },
+      { signalKey: "usd_cny", name: "美元兑人民币", category: "汇率", value: 7.18, unit: "CNY/USD", asOf: "2026-06-15", source: "中国外汇交易中心", trend: "up", impact: "出口营收", elasticity: 0.9 },
+      { signalKey: "industrial_power_price", name: "工业电价", category: "能源", value: 0.78, unit: "元/kWh", asOf: "2026-06-01", source: "国网", trend: "flat", impact: "成本", elasticity: 0.12 },
+    ];
+    return HttpResponse.json({ signals, total: signals.length });
+  }),
+  http.post("*/a/v1/external-signals/sensitivity", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { shocks?: { signalKey?: string; deltaPct?: number }[] };
+    const elas: Record<string, { impact: string; e: number }> = {
+      ev_demand_index: { impact: "需求", e: 0.6 }, ess_subsidy_signal: { impact: "需求", e: 0.25 },
+      li_carbonate_price: { impact: "毛利", e: -0.08 }, nickel_price: { impact: "毛利", e: -0.03 },
+      usd_cny: { impact: "出口营收", e: 0.9 }, industrial_power_price: { impact: "成本", e: 0.12 },
+    };
+    const byMetric = new Map<string, { metric: string; deltaPct: number; drivers: { signalKey: string; deltaPct: number; contributionPp: number }[] }>();
+    const unknownSignals: string[] = [];
+    for (const s of body.shocks ?? []) {
+      const sig = s.signalKey ? elas[s.signalKey] : undefined;
+      if (!sig) { if (s.signalKey) unknownSignals.push(s.signalKey); continue; }
+      const contributionPp = Math.round(Number(s.deltaPct ?? 0) * sig.e * 100) / 100;
+      const m = byMetric.get(sig.impact) ?? { metric: sig.impact, deltaPct: 0, drivers: [] };
+      m.deltaPct = Math.round((m.deltaPct + contributionPp) * 100) / 100;
+      m.drivers.push({ signalKey: s.signalKey!, deltaPct: Number(s.deltaPct ?? 0), contributionPp });
+      byMetric.set(sig.impact, m);
+    }
+    return HttpResponse.json({ impacts: [...byMetric.values()].sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct)), unknownSignals });
+  }),
+
   // A3 确定性建模（无 LLM·字段全建模 100% 覆盖）：每个数据集字段→一个属性。
   http.post("*/a/v1/modeling/derive", async ({ request }) => {
     const body = (await request.json()) as { rawDatasetIds?: string[] };

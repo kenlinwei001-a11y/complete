@@ -68,7 +68,7 @@
 - ⬜ **8.5 `debattery:check` 门禁**（独立工具，与 `ontology:check`/`chain:check` 同级，并入 `pnpm gates`）：静态扫描 `views/`+`pages/` 内联业务常数（基地名/型号/工序/坐标）+ `zh.ts` 租户专属串 → 自动盘出剩余写死项 + 防回潮（落地不变量 R14）。`DEFAULT_*` 兜底常量白名单豁免。
 - 🔄 **9. G-6** ✅ `parseXlsx`（node-xlsx，xlsx 上传→解析→RawDataset，三路 csv/json/xlsx 统一；CN1b 回归）· ✅ 合成并入连接器（活数据 P1）· ⬜ 在线数据模版（并入 #7 本体浏览器）
 - ⏸ **10. G-7 余项**（评估为低价值，暂缓）：6 用途各对应固定调用点（classifier/agent/compose…），"枚举可扩展"无消费点即无意义；真实 LLM 扩展性（多供应商/按用途绑定模型/降级）已由 `roleModel`/`bindingFor` 满足。如需自定义用途，须先定义其调用点（另起 PRD）。
-- 🔄 **11. 外部域（EXT_SIG）** —— PRD `docs/PRD-external-signal-domain.md`：✅ **P1 一等对象化 + EXTERNAL 连接器**：`ExternalSignal` 对象（domain=external；锂价/镍价/汇率/需求指数/政策/电价，带 value/unit/asOf/source/trend/impact，R13 可溯）+ `mock_external` 连接器（EXTERNAL 类，StaticAdapter）+ 合成出厂期 putAll 落对象 + `GET /a/v1/external-signals`；本体 §2/§3/§10 回写；synthetic/connectors 回归。✅ **P2 敏感性**：`POST /a/v1/external-signals/sensitivity`（信号冲击 → 规划指标，确定性弹性 Δ指标pp=Δ信号%×elasticity，按 impact 聚合：毛利/需求/出口营收/成本；锂价+10%→毛利-0.8pp 回归）。⬜ 余：信号时序（A8）+ 前端敏感性面板
+- 🔄 **11. 外部域（EXT_SIG）** —— PRD `docs/PRD-external-signal-domain.md`：✅ **P1 一等对象化 + EXTERNAL 连接器**：`ExternalSignal` 对象（domain=external；锂价/镍价/汇率/需求指数/政策/电价，带 value/unit/asOf/source/trend/impact，R13 可溯）+ `mock_external` 连接器（EXTERNAL 类，StaticAdapter）+ 合成出厂期 putAll 落对象 + `GET /a/v1/external-signals`；本体 §2/§3/§10 回写；synthetic/connectors 回归。✅ **P2 敏感性**：`POST /a/v1/external-signals/sensitivity`（信号冲击 → 规划指标，确定性弹性 Δ指标pp=Δ信号%×elasticity，按 impact 聚合：毛利/需求/出口营收/成本；锂价+10%→毛利-0.8pp 回归）。✅ **前端面板**：`ExternalSignalsPage`(/admin/external-signals)——信号清单(来源/单位/新鲜度可溯)+敏感性 what-if(冲击→指标聚合)；左导航入口；f41 回归。⬜ 余：信号时序（A8）—— **EXT_SIG 端到端闭合**
 
 ## 🔭 Tier 4 · dogfooding 终态
 - ⬜ **12.** 本体落库 PoC（系统本体注册为平台 ObjectType/SliceSpec/Rule → 平台切系统自己）

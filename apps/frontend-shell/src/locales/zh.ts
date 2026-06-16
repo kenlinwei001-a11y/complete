@@ -64,6 +64,7 @@ export const zh = {
     users: "用户管理",
     views: "视图配置",
     llmProviders: "LLM Provider",
+    externalSignals: "外部信号",
   },
   errors: {
     notFoundTitle: "页面不存在",

@@ -403,6 +403,28 @@ export const materializeDraft = (id: string) =>
 
 export const fetchIndustryTemplates = () =>
   api.a<{ industryKey: string }[]>("/a/v1/industry-templates");
+
+/** 外部域（EXT_SIG）：环境信号 + 敏感性。 */
+export interface ExternalSignalVM {
+  signalKey: string;
+  name: string;
+  category: string;
+  value: number;
+  unit: string;
+  asOf: string;
+  source: string;
+  trend: string;
+  impact: string;
+  elasticity?: number;
+}
+export const fetchExternalSignals = () =>
+  api.a<{ signals: ExternalSignalVM[]; total: number }>("/a/v1/external-signals");
+export interface SignalSensitivityResult {
+  impacts: { metric: string; deltaPct: number; drivers: { signalKey: string; deltaPct: number; contributionPp: number }[] }[];
+  unknownSignals: string[];
+}
+export const signalSensitivity = (shocks: { signalKey: string; deltaPct: number }[]) =>
+  api.a<SignalSensitivityResult>("/a/v1/external-signals/sensitivity", { body: { shocks } });
 export const createSyntheticJob = (body: { industry: string; scale: "S" | "M" | "L"; seed?: number }) =>
   api.a<{ jobId: string }>("/a/v1/synthetic/jobs", { body });
 export const fetchSyntheticJob = (id: string) => api.a<SyntheticJobVM>(`/a/v1/synthetic/jobs/${id}`);

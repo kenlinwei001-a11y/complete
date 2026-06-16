@@ -36,6 +36,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "views", label: zh.nav.views, roles: ["admin", "catalog_admin"] },
   // §7.21 校准报告（catalog_admin 或 planner）
   { path: "calibration", label: zh.nav.calibration, roles: ["admin", "catalog_admin", "planner"] },
+  // 外部域 EXT_SIG：环境信号 + 敏感性
+  { path: "external-signals", label: zh.nav.externalSignals, roles: ["admin", "data_admin", "planner"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */
