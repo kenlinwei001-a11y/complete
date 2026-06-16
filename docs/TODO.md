@@ -28,7 +28,7 @@
 
 ## 🥇 Tier 1 · 机制定型
 - ✅ **1. 全链闭包门 R11 完整版**：✅ chain:check · ✅ **CHAIN 维**（求解器注册）· ✅ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**——`SOLVER_OUTPUT_SHAPES` 全 **22/22 注册求解器覆盖**（5 个契约 schema `.shape` 权威 + 17 个取自实现）+ `BuildPlan.solverNeeds[].renderBindings` 渲染契约；`validateClosure` 校验渲染绑定 ⊆ 输出形状（不命中即 SHAPE FAIL，建图期挡 G-2）；**chain:check SHAPE 覆盖升为门**（新求解器缺形状即红）；R11-SHAPE ×6 回归；本体 §5/§7/§8 回写。⬜ 余（增强）：渲染契约从 ExecutionPlan render_answer 自动生成 renderBindings
-- ⬜ **2. PRD库结构化**（PRD 入图、《本体引用》机器可解析、需求↔制品↔缺口可查）
+- 🔄 **2. PRD库结构化**：✅ **`prd:check` 门 + 机器可读索引**（`scripts/check-prd-ontology.mjs` 解析 34 篇 PRD 的《本体引用》§0 → `docs/prd-ontology-index.json`：PRD↔不变量(R)/断点(G) 映射 + 断点 PRD 覆盖(8/8) + 缺口 + 遗留缺 §0 清单；悬空引用即红；并入 `pnpm gates`）—— PRD 入图 ✅ ·《本体引用》机器可解析 ✅ · 需求↔制品↔缺口可查 ✅。⬜ 余（增强）：28 篇遗留 PRD 补 §0 + 制品(代码锚点)↔需求双向（PRD→实现文件）
 
 ## 🥈 Tier 2 · 可信赖的推演（Palantir UX 哲学贯彻）— 本轮主线延伸
 - 🔄 **3. 项目推演 = 可点穿/可验证的对象链**（哲学 #1/#3/#6）
