@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  deriveModeling,
+  fetchModelingCoverage,
   fetchModelingDrafts,
   fetchRawDatasets,
   fetchSyncJob,
@@ -82,6 +84,15 @@ function SuggestModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     },
     onError: toastError,
   });
+  // 确定性建模（无 LLM·字段全建模 100% 覆盖；nano-ontoprompt 融入）
+  const deriveMut = useMutation({
+    mutationFn: () => deriveModeling(selected),
+    onSuccess: (r) => {
+      toast("确定性建模完成：每个字段已建模（100% 覆盖）", "success");
+      onCreated(r.draftId);
+    },
+    onError: toastError,
+  });
 
   return (
     <Modal title={t.newDraft} onClose={onClose} width={460}>
@@ -98,9 +109,19 @@ function SuggestModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <span style={{ color: "var(--muted2)", fontSize: 10.5 }}>{ds.id}</span>
         </label>
       ))}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <button className="btn" onClick={onClose}>
           {zh.common.back}
+        </button>
+        {/* 确定性建模：无 LLM、每个字段必建模（R12 字段全建模门保底基线） */}
+        <button
+          className="btn"
+          disabled={selected.length === 0 || deriveMut.isPending}
+          data-testid="modeling-derive-run"
+          title="基于数据的确定性映射：dataset→对象·column→属性·FK→链接，构造上 100% 字段覆盖"
+          onClick={() => deriveMut.mutate()}
+        >
+          确定性建模（全字段）
         </button>
         <button
           className="btn primary"
@@ -120,6 +141,12 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
   const key = ["a", "modeling-drafts", {}];
   const [publishErrors, setPublishErrors] = useState<{ typeKey: string; message: string }[]>(draft.publishErrors ?? []);
   const [materializeJobId, setMaterializeJobId] = useState<string | null>(null);
+  // 字段全建模门（R12）：勾选则发布时校验每个导入字段都被建模，未建模即阻断。
+  const [requireFullCoverage, setRequireFullCoverage] = useState(false);
+  const { data: coverage } = useQuery({
+    queryKey: ["a", "modeling-coverage", draft.id, draft.suggestion.objectTypes.length],
+    queryFn: () => fetchModelingCoverage(draft.id),
+  });
 
   // PATCH 操作：即时调端点，乐观更新 + 失败回滚（PRD §7.6）
   const patchMut = useMutation({
@@ -141,7 +168,7 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
   });
 
   const publishMut = useMutation({
-    mutationFn: () => publishModelingDraft(draft.id),
+    mutationFn: () => publishModelingDraft(draft.id, requireFullCoverage),
     onSuccess: (res) => {
       if (res.ok) {
         setPublishErrors([]);
@@ -168,16 +195,32 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn primary sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate()} data-testid="publish-draft">
           {zh.common.publish}
         </button>
+        {/* 字段全建模门（R12）：勾选则未建模字段阻断发布 */}
+        <label style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="checkbox" data-testid="require-full-coverage" checked={requireFullCoverage} onChange={(e) => setRequireFullCoverage(e.target.checked)} />
+          字段全建模门
+        </label>
         <button className="btn sm" disabled={materializeMut.isPending} onClick={() => materializeMut.mutate()}>
           {t.materialize}
         </button>
         {matJob && (
           <span className={`badge ${matJob.status === "SUCCEEDED" ? "green" : "blue"}`} data-testid="materialize-status">
             {t.materializeProgress}: {matJob.status}
+          </span>
+        )}
+        {/* 字段全建模覆盖徽章（R12）：每个导入字段是否被建模 */}
+        {coverage && (
+          <span
+            className={`badge ${coverage.fullyCovered ? "green" : "amber"}`}
+            data-testid="modeling-coverage-badge"
+            style={{ marginLeft: "auto" }}
+            title={coverage.fullyCovered ? "全部导入字段已建模" : `未建模：${coverage.datasets.flatMap((d) => d.unmodeled.map((u) => `${d.name}.${u}`)).join("、")}`}
+          >
+            字段全建模 {coverage.modeledFields}/{coverage.totalFields}（{Math.round(coverage.coverage * 100)}%）{coverage.fullyCovered ? " ✓" : ""}
           </span>
         )}
       </div>

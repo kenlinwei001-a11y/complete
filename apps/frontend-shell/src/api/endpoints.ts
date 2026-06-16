@@ -379,12 +379,25 @@ export const fetchObjectLineage = (objectType: string, objectId: string) =>
 /** A3 半自动建模：选原始数据集 → AI 建议草案（202 {draftId}） */
 export const suggestModeling = (rawDatasetIds: string[]) =>
   api.a<{ draftId: string; status: string }>("/a/v1/modeling/suggest", { body: { rawDatasetIds } });
+/** A3 确定性建模（无 LLM·字段全建模 100% 覆盖；nano-ontoprompt 融入）：dataset→对象·column→属性·FK→链接。 */
+export const deriveModeling = (rawDatasetIds: string[]) =>
+  api.a<{ draftId: string; status: string }>("/a/v1/modeling/derive", { body: { rawDatasetIds } });
+/** 字段全建模覆盖报告（R12）：每个导入字段是否被建模。 */
+export interface FieldCoverageVM {
+  datasets: { name: string; total: number; modeled: number; unmodeled: string[] }[];
+  totalFields: number;
+  modeledFields: number;
+  coverage: number;
+  fullyCovered: boolean;
+}
+export const fetchModelingCoverage = (id: string) =>
+  api.a<FieldCoverageVM>(`/a/v1/modeling/drafts/${id}/coverage`);
 export const fetchModelingDrafts = () => api.a<ModelingDraftVM[]>("/a/v1/modeling/drafts");
 export const fetchModelingDraft = (id: string) => api.a<ModelingDraftVM>(`/a/v1/modeling/drafts/${id}`);
 export const patchModelingDraft = (id: string, operation: Record<string, unknown>) =>
   api.a<ModelingDraftVM>(`/a/v1/modeling/drafts/${id}`, { method: "PATCH", body: { operations: [operation] } });
-export const publishModelingDraft = (id: string) =>
-  api.a<{ ok: boolean; errors?: { typeKey: string; message: string }[] }>(`/a/v1/modeling/drafts/${id}/publish`, { body: {} });
+export const publishModelingDraft = (id: string, requireFullCoverage = false) =>
+  api.a<{ ok: boolean; errors?: { typeKey: string; message: string }[] }>(`/a/v1/modeling/drafts/${id}/publish`, { body: { requireFullCoverage } });
 export const materializeDraft = (id: string) =>
   api.a<{ jobId: string }>(`/a/v1/modeling/drafts/${id}/materialize`, { body: {} });
 

@@ -921,6 +921,42 @@ export const handlers = [
     db.modelingDrafts.unshift(draft);
     return HttpResponse.json({ draftId: draft.id, status: draft.status }, { status: 202 });
   }),
+  // A3 确定性建模（无 LLM·字段全建模 100% 覆盖）：每个数据集字段→一个属性。
+  http.post("*/a/v1/modeling/derive", async ({ request }) => {
+    const body = (await request.json()) as { rawDatasetIds?: string[] };
+    if (!body.rawDatasetIds?.length) return err(422, "VALIDATION_ERROR", "rawDatasetIds 不能为空");
+    const dsName: Record<string, string> = { "rds-orders": "orders", "rds-oee": "oee_points" };
+    const toPascal = (s: string) => s.replace(/(^|[_-])(\w)/g, (_m, _x, c: string) => c.toUpperCase()).replace(/[^\w]/g, "") || s;
+    const datasets: { name: string; fields: { name: string; inferredType: string; nullRate: number; uniqueRate: number }[] }[] = [];
+    const objectTypes = body.rawDatasetIds.map((id) => {
+      const name = dsName[id] ?? id;
+      const row = (MOCK_RAW_ROWS[id] ?? MOCK_RAW_ROWS.default!)[0] ?? {};
+      const names = Object.keys(row);
+      const fields = names.map((n, i) => ({ name: n, inferredType: typeof row[n] === "number" ? "number" : "string", nullRate: 0, uniqueRate: i === 0 ? 1 : 0.5 }));
+      datasets.push({ name, fields });
+      return {
+        action: "CREATE" as const, existingTypeKey: null, typeKey: toPascal(name), displayName: name, domain: "unassigned", sourceDataset: name,
+        properties: fields.map((f, i) => ({ propKey: f.name, sourceField: f.name, dataType: (f.inferredType === "number" ? "number" : "string") as "number" | "string", isPrimaryKey: i === 0, refToTypeKey: null })),
+        confidence: 1,
+      };
+    });
+    const draft = { id: newId("draft"), status: "DRAFT", rawDatasetIds: body.rawDatasetIds, datasets, suggestion: { objectTypes, linkTypes: [] } } as (typeof db.modelingDrafts)[number];
+    db.modelingDrafts.unshift(draft);
+    return HttpResponse.json({ draftId: draft.id, status: "DRAFT" }, { status: 201 });
+  }),
+  // 字段全建模覆盖报告（R12）
+  http.get("*/a/v1/modeling/drafts/:id/coverage", ({ params }) => {
+    const d = db.modelingDrafts.find((x) => x.id === params.id);
+    if (!d) return err(404, "NOT_FOUND", "草案不存在");
+    const rows = d.datasets.map((ds) => {
+      const mapped = new Set(d.suggestion.objectTypes.filter((t) => t.sourceDataset === ds.name).flatMap((t) => t.properties.map((p) => p.sourceField)));
+      const unmodeled = ds.fields.map((f) => f.name).filter((n) => !mapped.has(n));
+      return { name: ds.name, total: ds.fields.length, modeled: ds.fields.length - unmodeled.length, unmodeled };
+    });
+    const totalFields = rows.reduce((a, r) => a + r.total, 0);
+    const modeledFields = rows.reduce((a, r) => a + r.modeled, 0);
+    return HttpResponse.json({ datasets: rows, totalFields, modeledFields, coverage: totalFields ? modeledFields / totalFields : 1, fullyCovered: modeledFields === totalFields });
+  }),
   http.get("*/a/v1/modeling/drafts", () => HttpResponse.json(db.modelingDrafts)),
   http.get("*/a/v1/modeling/drafts/:id", ({ params }) => {
     const d = db.modelingDrafts.find((x) => x.id === params.id);
@@ -947,12 +983,23 @@ export const handlers = [
     }
     return HttpResponse.json(d);
   }),
-  http.post("*/a/v1/modeling/drafts/:id/publish", ({ params }) => {
+  http.post("*/a/v1/modeling/drafts/:id/publish", async ({ params, request }) => {
     const d = db.modelingDrafts.find((x) => x.id === params.id);
     if (!d) return err(404, "NOT_FOUND", "草案不存在");
+    const body = (await request.json().catch(() => ({}))) as { requireFullCoverage?: boolean };
     const errors = d.suggestion.objectTypes
       .filter((ot) => !ot.properties.some((p) => p.isPrimaryKey))
       .map((ot) => ({ typeKey: ot.typeKey, message: "缺少主键属性（主键必填）" }));
+    // 字段全建模门（R12）：开门则未建模字段阻断发布
+    if (body?.requireFullCoverage) {
+      for (const ds of d.datasets) {
+        const mapped = new Set(d.suggestion.objectTypes.filter((t) => t.sourceDataset === ds.name).flatMap((t) => t.properties.map((p) => p.sourceField)));
+        for (const f of ds.fields.filter((x) => !mapped.has(x.name))) {
+          const tk = d.suggestion.objectTypes.find((t) => t.sourceDataset === ds.name)?.typeKey ?? ds.name;
+          errors.push({ typeKey: tk, message: `字段 '${ds.name}.${f.name}' 未建模（字段全建模门 R12）` });
+        }
+      }
+    }
     if (errors.length > 0) return HttpResponse.json({ ok: false, errors });
     d.status = "PUBLISHED";
     return HttpResponse.json({ ok: true });

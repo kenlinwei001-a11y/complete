@@ -35,4 +35,27 @@ describe("F10 · 建模工作台", () => {
     const plantCard = screen.getByTestId("type-card-Plant");
     expect(within(plantCard).getByTestId("publish-error-Plant")).toBeInTheDocument();
   });
+
+  it("确定性建模（#7 字段全建模工作台）：选数据集→全字段建模 100% 覆盖→字段全建模门发布", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/modeling");
+    await screen.findByTestId("type-card-Order");
+
+    // 新建草案 → 确定性建模（无 LLM）
+    await user.click(screen.getByTestId("modeling-new-draft"));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getAllByRole("checkbox")[0]!); // 选一个原始数据集
+    await user.click(within(dialog).getByTestId("modeling-derive-run"));
+
+    // 确定性映射 → 每个导入字段都建模（100% 覆盖徽章）
+    const badge = await screen.findByTestId("modeling-coverage-badge");
+    await waitFor(() => expect(badge).toHaveTextContent("100%"));
+    expect(badge).toHaveTextContent("字段全建模");
+
+    // 字段全建模门发布：全覆盖 → 通过
+    await user.click(screen.getByTestId("require-full-coverage"));
+    await user.click(screen.getByTestId("publish-draft"));
+    await screen.findByText(/发布成功/);
+  });
 });
