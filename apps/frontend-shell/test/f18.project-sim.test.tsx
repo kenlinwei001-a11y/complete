@@ -88,6 +88,23 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(within(concl).getByTestId("dag-node-rule")).toHaveTextContent("C09");
   });
 
+  it("DAG 直接操纵（#3）：缩放按钮改 viewBox 缩放级别，复位还原", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+    const svg = await screen.findByTestId("pm-dag");
+    expect(svg).toHaveAttribute("data-zoom", "1.00");
+    // 放大 → zoom 上升、viewBox 收窄
+    const vb0 = svg.getAttribute("viewBox")!;
+    await user.click(screen.getByTestId("pm-dag-zoom-in"));
+    expect(Number(screen.getByTestId("pm-dag").getAttribute("data-zoom"))).toBeGreaterThan(1);
+    expect(screen.getByTestId("pm-dag").getAttribute("viewBox")).not.toBe(vb0);
+    // 复位 → 还原
+    await user.click(screen.getByTestId("pm-dag-zoom-reset"));
+    expect(screen.getByTestId("pm-dag")).toHaveAttribute("data-zoom", "1.00");
+    expect(screen.getByTestId("pm-dag").getAttribute("viewBox")).toBe(vb0);
+  });
+
   it("型号选择器/订单点击写入 selectedObjects（查询 Dock 上下文）", async () => {
     const user = userEvent.setup();
     loginAs("planner");
