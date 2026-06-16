@@ -55,7 +55,7 @@
   - **8a 视图结构写死**：✅ PlanAudit 字段组 · ✅ PlanGenerate 目标字段 · ✅ **项目推演 DAG 驱动因子层**（回答"DAG 哪里可配"）· ✅ OrderChain 分类/配色 · ✅ Quarterly 缺口档位 · ✅ GeoMap 利用率阈值 · ✅ **后端 VIEW_DEFS 真下发**（前后端闭环，改后端配置界面就变）· 余项（**纯颜色映射、低价值**，建议交 `debattery:check` 盘出后批量）：RiskBoard 色阶 · GeoMap 定位色(POSITION_COLORS) · AnnualScenario 配色/YEAR · SopBalance 五步标签
   - **8b 业务数据写死** ✅ **全部完成 + 后端闭环**：ProjectSim 型号（**接真实 Model 对象**，消对不齐）/地址/物流（`simConfig`）· GeoMap 坐标（`Base.props.lon/lat`）· Calibration 基地（Base 对象）· SopBalance 阈值+三段（`sopConfig`）· PlanGenerate 目标（`planGoals`）
   - **8c 文案写死**（待办）：~35 处中文内联绕过 `zh.ts`；i18n 混入租户专属串（`zh.ts:569 "如 常州"`、`:377 "扩化成通道"`）—— 归集 i18n + 行业别名映射
-  - **8d Agent/配置写死**（待办，**高价值/行为层多租户**）：Agent `systemPrompt`/tools/scope(`seed.ts:539-576`)、模型写死 `claude-opus-4-8`(`seed.ts:538`) → 模型走 LLM Provider 用途绑定 + admin 可编辑既有 Agent；`BATTERY_SOLVER_PARAMS` → 行业模板
+  - **8d Agent/配置** ✅ **经核实已满足**（既有架构已解决）：运行时模型走 `roleModel(tenant,"agent",fallback)` LLM Provider 用途绑定（`orchestrator.ts:618`，seed 的 `model` 字段运行时不读）· 既有 Agent 可经 `PUT /b/v1/agents/:id` + AgentsPage 编辑 systemPrompt/tools · seed=出厂默认可覆盖 · `BATTERY_SOLVER_PARAMS` 为电池行业模板，其他行业走各自 IndustryTemplate（SY3 已证）
   - **8e `generic-inference`**（待办，**高价值/推演内核**）通用 what-if（脱离 22 个电池求解器）
   - **门禁 `debattery:check`**（待办）：静态扫描视图/页内联业务常数 + i18n 租户串 → 自动盘出剩余 + 防回潮（落地 R14）
   - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**
