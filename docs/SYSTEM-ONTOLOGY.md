@@ -230,6 +230,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **断链审计 DL1–DL12**（§4，每个产出环必须有事件+订阅）。
 - **`ontology:check` 本体漂移门禁**（治理新增）：事件/求解器/文件锚点/钩子不漂 即 build 红 · `scripts/check-system-ontology.mjs`，`pnpm ontology:check`。
 - **`chain:check` 全链闭包门（第一块砖，R11）**：跨系统静态校验"场景声明的求解器 DataCore 必须注册"，否则路径A 全链断（SOLVER_NOT_FOUND）即红 · `scripts/check-chain-closure.mjs`，`pnpm chain:check`。
+- **`debattery:check` 去电池锁死门（R14）**：静态扫描前端视图/页内联的业务常数（基地名/型号/工序/产品段）；棘轮基线 `scripts/debattery-baseline.json` 防回潮——命中超基线即红 · `scripts/check-debattery.mjs`，`pnpm debattery:check`。`// debattery-allow` 豁免必要兜底。
 - **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。
 - **场景接线回归**（守护 G-1）：20 场景全有意图+计划+求解器 · `apps/agentcore/test/scenarios-wiring.test.ts`。
 - **本体必读强制**（治理）：CLAUDE.md 铁律 0 + SessionStart 钩子（从 §8 动态注入未修断点，结构上不漂）+ `/ontology` skill。
