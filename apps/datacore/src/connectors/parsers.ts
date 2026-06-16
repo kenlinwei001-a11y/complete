@@ -1,4 +1,26 @@
-/** CSV / JSON tabular parsing for the file_upload adapter (XLSX: deferred, see registry note). */
+/** CSV / JSON / XLSX tabular parsing for the file_upload adapter（G-6：xlsx 经 node-xlsx 解析）。 */
+import xlsx from "node-xlsx";
+
+/**
+ * XLSX 解析（G-6）：取首个工作表，首行为表头 → 每行映射为 {表头: 值}。
+ * 复用与 csv/json 相同的"行数组"出口，下游 profileRows/建模/物化链路一致。值保留 xlsx 原生类型。
+ */
+export function parseXlsx(buf: Buffer): Record<string, unknown>[] {
+  const sheets = xlsx.parse(buf);
+  const sheet = sheets[0];
+  if (!sheet || !Array.isArray(sheet.data) || sheet.data.length === 0) return [];
+  const [header, ...dataRows] = sheet.data as unknown[][];
+  const keys = (header ?? []).map((h) => String(h ?? "").trim());
+  return dataRows
+    .filter((r) => Array.isArray(r) && r.some((c) => c != null && c !== ""))
+    .map((r) => {
+      const obj: Record<string, unknown> = {};
+      keys.forEach((k, i) => {
+        if (k) obj[k] = (r as unknown[])[i] ?? null;
+      });
+      return obj;
+    });
+}
 
 export function parseCsv(text: string): Record<string, unknown>[] {
   const rows: string[][] = [];

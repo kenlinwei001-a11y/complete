@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import xlsx from "node-xlsx";
 import { makeApp, ADMIN, b64, ORDERS_CSV } from "./helpers.js";
 import { MOCK_ERP_DATA } from "../src/connectors/registry.js";
 import { CredentialCipher } from "../src/crypto.js";
@@ -36,6 +37,38 @@ describe("A1 connectors", () => {
     const datasets = list.json() as { id: string; rowCount: number }[];
     expect(datasets).toHaveLength(1);
     expect(datasets[0]!.rowCount).toBe(6);
+  });
+
+  it("CN1b: XLSX 上传 → 解析 → RawDataset 落库（G-6 parseXlsx，xlsx 三路统一）", async () => {
+    const t = await makeApp();
+    const xlsxBuf = xlsx.build([
+      {
+        name: "orders",
+        data: [
+          ["so", "qty", "due", "status"],
+          ["SO-X1", 100, "2026-07-01", "OPEN"],
+          ["SO-X2", 200, "2026-07-02", "CONFIRMED"],
+        ],
+      },
+    ]);
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/uploads",
+      headers: ADMIN,
+      payload: { filename: "orders.xlsx", contentBase64: Buffer.from(xlsxBuf).toString("base64") },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      connection: { id: string; connectorTypeKey: string };
+      schema: { datasets: { name: string; fields: { name: string; inferredType: string }[] }[] };
+    };
+    expect(body.connection.connectorTypeKey).toBe("file_upload");
+    const ds = body.schema.datasets[0]!;
+    expect(ds.fields.find((f) => f.name === "qty")!.inferredType).toBe("number"); // xlsx 数值保留原生类型
+    // 行落 RawDataset（与 csv/json 同一出口）
+    const list = await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${body.connection.id}`, headers: ADMIN });
+    const datasets = list.json() as { id: string; rowCount: number }[];
+    expect(datasets[0]!.rowCount).toBe(2);
   });
 
   it("CN2: mock_erp sync lands rows; repeat sync is idempotent", async () => {
