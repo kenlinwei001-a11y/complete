@@ -720,3 +720,7 @@ export const fetchEvalCases = (suite?: string) =>
 export const fetchEvalRuns = () => api.b<{ items: EvalRunReport[] }>("/b/v1/evals/runs");
 export const runEvalSuite = (suite: string, agentKey?: string) =>
   api.b<EvalRunReport>("/b/v1/evals/run", { method: "POST", body: { suite, ...(agentKey ? { agentKey } : {}) } });
+
+/** 本体切片清单（治理：切片=可追溯子图 root→hops）。 */
+export interface SliceSummary { sliceKey: string; version: number; rootType: string; hops: number; linkKeys: string[]; maxNodes?: number; fixtures: number }
+export const fetchSlices = () => api.a<SliceSummary[]>("/a/v1/ontology/slices");

@@ -59,4 +59,13 @@ describe("F43 · 管理页整簇", () => {
     await user.click(screen.getByTestId("eval-run"));
     await screen.findByText(/评测完成：20\/20 通过/);
   });
+
+  it("本体切片：列出切片 + 契约 fixtures 徽章", async () => {
+    loginAs("planner");
+    renderApp("/admin/slices");
+    await screen.findByTestId("slices-page");
+    const s = await screen.findByTestId("slice-model_capacity_network");
+    expect(s).toHaveTextContent("Model");
+    expect(within(s).getByTestId("slice-fixtures-model_capacity_network")).toHaveTextContent("1");
+  });
 });

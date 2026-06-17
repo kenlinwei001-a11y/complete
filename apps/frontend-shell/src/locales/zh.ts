@@ -70,6 +70,7 @@ export const zh = {
     notifications: "通知中心",
     domains: "域管理",
     evals: "Agent 评测",
+    slices: "本体切片",
   },
   errors: {
     notFoundTitle: "页面不存在",

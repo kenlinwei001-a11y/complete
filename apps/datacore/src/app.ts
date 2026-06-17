@@ -1353,6 +1353,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const result = await ontologyCore.recompute(c, changes, { dryRun: true, apply });
     return { deltas: result.dryRunDeltas ?? [], affectedObjects: result.updatedObjects };
   });
+  // 切片清单（管理面：本体切片编辑器列表源）。tenant 隔离由 sliceSpecs.list 保证。
+  app.get("/a/v1/ontology/slices", async (req) => {
+    const specs = await repos.sliceSpecs.list(ctx(req).tenantId);
+    return specs
+      .map((s) => ({
+        sliceKey: s.sliceKey,
+        version: s.version,
+        rootType: s.spec.root.typeKey,
+        hops: s.spec.paths.reduce((n, p) => n + p.length, 0),
+        linkKeys: [...new Set(s.spec.paths.flat().map((p) => p.linkKey))],
+        maxNodes: s.spec.maxNodes,
+        fixtures: s.spec.contractFixtures?.length ?? 0,
+      }))
+      .sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : 1));
+  });
   // §3 声明式切片：注册 + 执行（A6 逐跳剪枝、参数化、截断）。
   app.put("/a/v1/ontology/slices/:sliceKey", async (req, reply) => {
     const c = ctx(req);
