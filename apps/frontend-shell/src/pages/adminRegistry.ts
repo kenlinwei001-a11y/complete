@@ -43,6 +43,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "quarantine", label: zh.nav.quarantine, roles: ["admin", "data_admin"] },
   { path: "notifications", label: zh.nav.notifications, roles: ["admin", "tenant_admin", "approver", "planner"] },
   { path: "domains", label: zh.nav.domains, roles: ["admin", "data_admin"] },
+  { path: "evals", label: zh.nav.evals, roles: ["admin", "catalog_admin"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */

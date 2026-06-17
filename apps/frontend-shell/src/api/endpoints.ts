@@ -712,3 +712,11 @@ export interface NotificationItem { id: string; kind: string; title: string; bod
 export const fetchNotifications = () => api.a<{ items: NotificationItem[]; unread: number }>("/a/v1/notifications");
 export const readNotification = (id: string) => api.a<{ ok: boolean }>(`/a/v1/notifications/${id}/read`, { method: "POST" });
 export const readAllNotifications = () => api.a<{ ok: boolean }>("/a/v1/notifications/read-all", { method: "POST" });
+
+/** Agent 评测体系（运营完备性 OC2）：用例库 + 跑评测 + 历史报告。 */
+import type { EvalCase, EvalRunReport } from "@platform/contracts";
+export const fetchEvalCases = (suite?: string) =>
+  api.b<{ items: EvalCase[] }>(`/b/v1/evals${suite ? `?suite=${suite}` : ""}`);
+export const fetchEvalRuns = () => api.b<{ items: EvalRunReport[] }>("/b/v1/evals/runs");
+export const runEvalSuite = (suite: string, agentKey?: string) =>
+  api.b<EvalRunReport>("/b/v1/evals/run", { method: "POST", body: { suite, ...(agentKey ? { agentKey } : {}) } });

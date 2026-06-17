@@ -48,4 +48,15 @@ describe("F43 · 管理页整簇", () => {
     await user.click(screen.getByTestId("domain-create"));
     await screen.findByText("域已创建");
   });
+
+  it("Agent 评测：用例库 + 跑评测 + 历史报告", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/evals");
+    await screen.findByTestId("evals-page");
+    expect(await screen.findByTestId("eval-case-ec_1")).toHaveTextContent("capacity_feasibility");
+    expect(await screen.findByTestId("eval-run-erun_1")).toHaveTextContent("95%");
+    await user.click(screen.getByTestId("eval-run"));
+    await screen.findByText(/评测完成：20\/20 通过/);
+  });
 });

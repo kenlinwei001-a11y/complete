@@ -69,6 +69,7 @@ export const zh = {
     quarantine: "隔离区",
     notifications: "通知中心",
     domains: "域管理",
+    evals: "Agent 评测",
   },
   errors: {
     notFoundTitle: "页面不存在",

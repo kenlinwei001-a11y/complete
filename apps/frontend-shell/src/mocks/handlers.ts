@@ -389,6 +389,24 @@ export const handlers = [
   http.post("*/a/v1/notifications/:id/read", () => HttpResponse.json({ ok: true })),
   http.post("*/a/v1/notifications/read-all", () => HttpResponse.json({ ok: true })),
 
+  http.get("*/b/v1/evals", () =>
+    HttpResponse.json({
+      items: [
+        { id: "ec_1", tenantId: "demo", suite: "classifier", packageId: "pkg_battery_manufacturing", input: { query: "4680-NCM 加 20% 六周能不能接？", context: { view: "project", selectedObjects: [], filters: {} } }, expect: { intentKey: "capacity_feasibility" }, origin: "SCENARIO", createdAt: "2026-06-17T08:00:00Z" },
+      ],
+    }),
+  ),
+  http.get("*/b/v1/evals/runs", () =>
+    HttpResponse.json({
+      items: [
+        { id: "erun_1", tenantId: "demo", suite: "classifier", startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:01:00Z", total: 20, passed: 19, passRate: 0.95, metrics: { intentAccuracy: 0.95, toolCorrectness: 0.9, avgToolCalls: 2.1, avgLatencyMs: 320, avgTokenCost: 1200 }, results: [], llmMode: "MOCK" },
+      ],
+    }),
+  ),
+  http.post("*/b/v1/evals/run", () =>
+    HttpResponse.json({ id: "erun_2", tenantId: "demo", suite: "classifier", startedAt: "2026-06-17T09:00:00Z", finishedAt: "2026-06-17T09:01:00Z", total: 20, passed: 20, passRate: 1, metrics: { intentAccuracy: 1, toolCorrectness: 1, avgToolCalls: 2, avgLatencyMs: 300, avgTokenCost: 1100 }, results: [], llmMode: "MOCK" }),
+  ),
+
   http.get("*/a/v1/ontology/object-types", () =>
     HttpResponse.json([
       {
