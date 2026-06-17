@@ -329,6 +329,26 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-demand-pulled-growth-engine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R11",
+        "R13",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-external-signal-domain.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -592,6 +612,7 @@
       "PRD-addendum-solvers-and-gaps.md",
       "PRD-addendum-validation-loop.md",
       "PRD-catalog-battery-20-scenarios.md",
+      "PRD-demand-pulled-growth-engine.md",
       "PRD-frontend-addendum-remaining-views.md",
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
@@ -624,6 +645,7 @@
       "PRD-addendum-solvers-and-gaps.md",
       "PRD-addendum-validation-loop.md",
       "PRD-catalog-battery-20-scenarios.md",
+      "PRD-demand-pulled-growth-engine.md",
       "PRD-frontend-addendum-remaining-views.md",
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
@@ -674,14 +696,18 @@
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
     ],
+    "apps/agentcore/src/router/orchestrator.ts": [
+      "PRD-demand-pulled-growth-engine.md",
+      "PRD-scenario-launcher.md"
+    ],
+    "scripts/platform-cli.mjs": [
+      "PRD-demand-pulled-growth-engine.md"
+    ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
     ],
     "apps/datacore/src/modeling.ts": [
       "PRD-ontology-browser-field-coverage.md"
-    ],
-    "apps/agentcore/src/router/orchestrator.ts": [
-      "PRD-scenario-launcher.md"
     ],
     "apps/agentcore/src/server.ts": [
       "PRD-scenario-launcher.md"
