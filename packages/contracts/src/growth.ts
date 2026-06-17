@@ -1,0 +1,47 @@
+import { z } from "zod";
+import { IsoTime } from "./common.js";
+
+/**
+ * 需求拉动的自成长发动机（PRD-demand-pulled-growth-engine）· P1 契约。
+ * GapReport = QOS 缺口探针把"客户问句真跑一遍 orchestrator"后捕获的结构化缺口（§5 分类法）。
+ */
+
+/** §5 缺口分类法（法定枚举，与 PRD 一一对应）。 */
+export const GapCodeSchema = z.enum([
+  "ANSWERABLE", // 无缺口：全链实跑通、VERIFIED 答案
+  "NO_INTENT", // 分类无候选命中（无意图覆盖该问句）
+  "NO_PLAN", // 命中意图但无执行计划（PLAN_NOT_FOUND）
+  "NO_SLICE", // resolve_slice 未注册/解析失败
+  "EMPTY_DATA", // 切片/查询返回空集（对象类型在、数据无）
+  "NO_RULE", // evaluate_rules 引用规则不存在
+  "SOLVER_NOT_FOUND", // invoke_solver 求解器未注册
+  "SHAPE_MISMATCH", // 渲染绑定字段不在求解器输出形状（G-2）
+  "NO_CAPABILITY", // 需要本体/求解器根本没有的领域能力 → 需开发
+  "OTHER", // 未归类的内部错误
+]);
+export type GapCode = z.infer<typeof GapCodeSchema>;
+
+export const GapFindingSchema = z.object({
+  gapCode: GapCodeSchema,
+  /** 断在哪一步（stepId / classify / render …）。 */
+  atStep: z.string().optional(),
+  /** 实跑证据（错误码/消息/分类摘要）。 */
+  evidence: z.string(),
+  /** 建议补法（数据合成 / 建切片 / generic-inference 兜底 / 需开发工单 …）。 */
+  suggestedFill: z.string(),
+  /** 是否阻塞答案（true=问句答不出）。 */
+  blocking: z.boolean(),
+});
+export type GapFinding = z.infer<typeof GapFindingSchema>;
+
+export const GapReportSchema = z.object({
+  question: z.string(),
+  taskId: z.string(),
+  /** 终态：可答 / 边界收敛(仅剩缺功能) / 答不出。 */
+  verdict: z.enum(["ANSWERABLE", "BLOCKED", "BOUNDARY"]),
+  /** QOS 实跑路径（WORKFLOW=本体内验证 / AGENT=本体外探索 / NONE=未路由）。 */
+  path: z.enum(["WORKFLOW", "AGENT", "NONE"]),
+  findings: z.array(GapFindingSchema),
+  generatedAt: IsoTime,
+});
+export type GapReport = z.infer<typeof GapReportSchema>;

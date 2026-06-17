@@ -43,6 +43,7 @@ import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
+import { classifyGap } from "./growth/probe.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { SCENARIO_CATALOG, seedScenarios } from "./scenarios-catalog.js";
@@ -152,6 +153,21 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const idem = req.headers["idempotency-key"];
     const result = await deps.orchestrator.submitQuery(a, body, typeof idem === "string" ? idem : undefined);
     return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl });
+  });
+
+  // 需求拉动的自成长发动机 · P1：QOS 缺口探针——把问句真跑一遍 orchestrator → 终态 → 结构化 GapReport。
+  app.post("/api/v1/growth/probe", async (req, reply) => {
+    const a = await auth(req);
+    const body = SubmitQueryBodySchema.parse(req.body);
+    const { taskId } = await deps.orchestrator.submitQuery(a, body);
+    const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+    let task = await deps.repos.tasks.get(taskId);
+    for (let i = 0; i < 100 && (!task || !TERMINAL.has(task.status)); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      task = await deps.repos.tasks.get(taskId);
+    }
+    if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
+    return reply.status(200).send(classifyGap(task));
   });
 
   // Phase9C 推演历史列表：按租户列最近任务（id/问句/路径/状态/结论摘要/时间），供"推演历史"页浏览+重放。
