@@ -748,6 +748,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { references, count: references.length };
   });
 
+  // rule/solver 反查（响应式失效环可见性）：改了规则/求解器 → 哪些编排资源引用它（DataCore 资源按 key 反查）。
+  app.get("/b/v1/rules/:key/references", async (req) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    const references = await computeReferences(deps.repos, a.tenantId, "rule", key);
+    return { references, count: references.length };
+  });
+  app.get("/b/v1/solvers/:key/references", async (req) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    const references = await computeReferences(deps.repos, a.tenantId, "solver", key);
+    return { references, count: references.length };
+  });
+
   app.post("/b/v1/workflows/:id/retire", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);

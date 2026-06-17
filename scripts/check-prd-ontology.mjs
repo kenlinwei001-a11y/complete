@@ -98,6 +98,13 @@ for (const file of prdFiles) {
 // --- 缺口：本体断点中无任何 PRD 提及的 ------------------------------------------
 const orphanBreakpoints = [...ontoBreakpoints].filter((g) => !breakpointCoverage[g]).sort();
 
+// --- 制品↔需求双向（#2 余项）：实现文件 → 引用它的 PRD（反查"这段代码哪个 PRD 文档化"）。
+const byArtifact = {};
+for (const [file, p] of Object.entries(index)) {
+  for (const a of p.artifacts) (byArtifact[a] ??= []).push(file);
+}
+for (const a of Object.keys(byArtifact)) byArtifact[a].sort();
+
 // --- 写机器可读索引（PRD 入图）-------------------------------------------------
 const artifact = {
   generatedAt: new Date().toISOString().slice(0, 10),
@@ -105,6 +112,7 @@ const artifact = {
   prds: index,
   breakpointCoverage,
   orphanBreakpoints,
+  byArtifact, // 反向索引：实现文件 → 文档化它的 PRD（需求↔制品双向可查）
 };
 writeFileSync(INDEX_OUT, JSON.stringify(artifact, null, 2) + "\n");
 
@@ -114,6 +122,8 @@ const totalArtifacts = new Set(Object.values(index).flatMap((p) => p.artifacts))
 const totalBroken = Object.values(index).reduce((n, p) => n + p.brokenArtifacts.length, 0);
 console.log(`· PRD 语料：${prdFiles.length} 篇；含《本体引用》§0：${withSection} 篇`);
 console.log(`· 制品锚点（PRD→实现文件）：${totalArtifacts} 个唯一文件${totalBroken ? `；其中 ${totalBroken} 处已失效（告警）` : "（全部存在）"}`);
+const multiDoc = Object.values(byArtifact).filter((v) => v.length > 1).length;
+console.log(`· 制品↔需求双向：实现文件→PRD 反查已入图（${Object.keys(byArtifact).length} 个文件；其中 ${multiDoc} 个被多篇 PRD 文档化）`);
 console.log(`· 本体集合：不变量 ${ontoInvariants.size}（R）· 断点 ${ontoBreakpoints.size}（G）`);
 console.log(`· 断点 PRD 覆盖：${Object.keys(breakpointCoverage).length}/${ontoBreakpoints.size}${orphanBreakpoints.length ? `；无 PRD 缺口：${orphanBreakpoints.join(", ")}` : "（全覆盖）"}`);
 console.log(`· 索引已写：${INDEX_OUT}`);

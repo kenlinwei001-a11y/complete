@@ -33,6 +33,40 @@ export function stepTimeoutBound(step: ExtendedPlanStep): number {
   return step.type === "invoke_solver" ? SOLVER_DEFAULT_TIMEOUT_MS : STEP_DEFAULT_TIMEOUT_MS;
 }
 
+/**
+ * #1 余项：从 ExecutionPlan 的 `render_answer` **自动派生 renderBindings**——每个求解器步骤
+ * 被渲染模板引用的输出字段路径（`{{steps.<solverStep>.output.data.<field>…}}` → `<field>…`）。
+ * 这就是"渲染契约"：与 DataCore `closure.ts` 的 SHAPE 维同源，可据此校验渲染绑定 ⊆ 求解器输出形状
+ * （SHAPE 校验在 DataCore 侧用 SOLVER_OUTPUT_SHAPES 执行，R1 不跨包共享实现）。返回 solverKey→字段路径集。
+ */
+export function deriveRenderBindings(steps: ExtendedPlanStep[]): Record<string, string[]> {
+  const solverByStep = new Map<string, string>();
+  for (const s of steps) {
+    if (s.type === "invoke_solver") {
+      const k = (s.params as { solverKey?: string }).solverKey;
+      if (k) solverByStep.set(s.id, k);
+    }
+  }
+  const out: Record<string, Set<string>> = {};
+  const RE = /\{\{\s*steps\.([\w-]+)\.output\.([\w.[\]]+?)\s*\}\}/g;
+  const scan = (v: unknown): void => {
+    if (typeof v === "string") {
+      for (const m of v.matchAll(RE)) {
+        const solverKey = solverByStep.get(m[1] as string);
+        if (!solverKey) continue;
+        const field = (m[2] as string).replace(/^data\./, ""); // 去 ToolPayload data. 包裹
+        if (field) (out[solverKey] ??= new Set()).add(field);
+      }
+    } else if (Array.isArray(v)) {
+      for (const x of v) scan(x);
+    } else if (v && typeof v === "object") {
+      for (const x of Object.values(v)) scan(x);
+    }
+  };
+  for (const s of steps) if (s.type === "render_answer") scan(s.params);
+  return Object.fromEntries(Object.entries(out).map(([k, set]) => [k, [...set].sort()]));
+}
+
 /** Publish-time plan validation (QOS-PRD §4.2/§5.3, errors → PLAN_VALIDATION_ERROR). */
 export function validatePlanSteps(steps: ExtendedPlanStep[], opts: PlanValidationOptions = {}): string[] {
   const errors: string[] = [];

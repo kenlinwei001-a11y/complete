@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-16",
+  "generatedAt": "2026-06-17",
   "ontology": {
     "invariants": [
       "R1",
@@ -669,5 +669,34 @@
       "PRD-unified-build-engine.md"
     ]
   },
-  "orphanBreakpoints": []
+  "orphanBreakpoints": [],
+  "byArtifact": {
+    "packages/contracts/src/workspace.ts": [
+      "PRD-de-battery-multitenant-config.md"
+    ],
+    "apps/datacore/src/databuilder/closure.ts": [
+      "PRD-ontology-browser-field-coverage.md"
+    ],
+    "apps/datacore/src/modeling.ts": [
+      "PRD-ontology-browser-field-coverage.md"
+    ],
+    "apps/agentcore/src/router/orchestrator.ts": [
+      "PRD-scenario-launcher.md"
+    ],
+    "apps/agentcore/src/server.ts": [
+      "PRD-scenario-launcher.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
+      "PRD-scenario-launcher.md"
+    ],
+    "packages/contracts/src/agentcore.ts": [
+      "PRD-scenario-launcher.md"
+    ],
+    "packages/contracts/src/qos.ts": [
+      "PRD-scenario-launcher.md"
+    ],
+    "scripts/check-chain-closure.mjs": [
+      "PRD-scenario-launcher.md"
+    ]
+  }
 }

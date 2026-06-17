@@ -27,8 +27,8 @@
   - 注：P1（合成落原始表）/P2（对象 lineage 端点）/P3增量1（Provenance+数据源原始表）已先期完成
 
 ## 🥇 Tier 1 · 机制定型
-- ✅ **1. 全链闭包门 R11 完整版**：✅ chain:check · ✅ **CHAIN 维**（求解器注册）· ✅ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**——`SOLVER_OUTPUT_SHAPES` 全 **22/22 注册求解器覆盖**（5 个契约 schema `.shape` 权威 + 17 个取自实现）+ `BuildPlan.solverNeeds[].renderBindings` 渲染契约；`validateClosure` 校验渲染绑定 ⊆ 输出形状（不命中即 SHAPE FAIL，建图期挡 G-2）；**chain:check SHAPE 覆盖升为门**（新求解器缺形状即红）；R11-SHAPE ×6 回归；本体 §5/§7/§8 回写。⬜ 余（增强）：渲染契约从 ExecutionPlan render_answer 自动生成 renderBindings
-- 🔄 **2. PRD库结构化**：✅ **`prd:check` 门 + 机器可读索引**（`scripts/check-prd-ontology.mjs` 解析 34 篇 PRD 的《本体引用》§0 → `docs/prd-ontology-index.json`：PRD↔不变量(R)/断点(G) 映射 + 断点 PRD 覆盖(8/8) + 缺口 + 遗留缺 §0 清单；悬空引用即红；并入 `pnpm gates`）—— PRD 入图 ✅ ·《本体引用》机器可解析 ✅ · 需求↔制品↔缺口可查 ✅。⬜ 余（增强）：28 篇遗留 PRD 补 §0 + 制品(代码锚点)↔需求双向（PRD→实现文件）
+- ✅ **1. 全链闭包门 R11 完整版**：✅ chain:check · ✅ **CHAIN 维**（求解器注册）· ✅ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**——`SOLVER_OUTPUT_SHAPES` 全 **22/22 注册求解器覆盖**（5 个契约 schema `.shape` 权威 + 17 个取自实现）+ `BuildPlan.solverNeeds[].renderBindings` 渲染契约；`validateClosure` 校验渲染绑定 ⊆ 输出形状（不命中即 SHAPE FAIL，建图期挡 G-2）；**chain:check SHAPE 覆盖升为门**（新求解器缺形状即红）；R11-SHAPE ×6 回归；本体 §5/§7/§8 回写。✅ **余项已落（增强）**：`deriveRenderBindings(steps)` 从 ExecutionPlan render_answer 自动派生渲染契约（solverKey→输出字段，取代手工声明，与 closure.ts SHAPE 同源）；derive-render-bindings ×3 回归
+- ✅ **2. PRD库结构化**：✅ **`prd:check` 门 + 机器可读索引**（`scripts/check-prd-ontology.mjs` 解析 35 篇 PRD 的《本体引用》§0 → `docs/prd-ontology-index.json`：PRD↔不变量(R)/断点(G) 映射 + 断点 PRD 覆盖(8/8) + 缺口；悬空引用即红；并入 `pnpm gates`）—— PRD 入图 ✅ ·《本体引用》机器可解析 ✅ · 需求↔制品↔缺口可查 ✅。✅ **余项已落**：28 篇遗留 PRD 补 §0（35/35 全含）+ **制品↔需求双向**（`byArtifact` 反向索引：实现文件→文档化它的 PRD，入 prd-ontology-index.json）
 
 ## 🥈 Tier 2 · 可信赖的推演（Palantir UX 哲学贯彻）— 本轮主线延伸
 - 🔄 **3. 项目推演 = 可点穿/可验证的对象链**（哲学 #1/#3/#6）
@@ -36,7 +36,7 @@
   - ✅ **DAG 节点点击 → 抽屉**（`DagNodeDrawer`）：判定逻辑/推导公式/输入数据(含来源+新鲜度)/关联规则（`dagNodeDetail` 每节点六要素 + 规则两跳 RuleRef；每节点同一份 out，数字一致可溯）；f18 回归（聚合求解器/结论节点点穿）
   - ✅ 缺口/毛利 等其余结论数字补六要素溯源（已随 #4 四视图全覆盖）
   - ✅ **DAG 可拖拽/缩放（直接操纵）**：PmDag 加 viewBox 变换——拖拽平移 + 滚轮(以光标为锚)/按钮(＋/－/⟲)缩放；拖拽位移超阈值抑制节点点穿（区分拖与点）；f18 缩放回归
-  - 🔄 结论 → 采纳 Action 写回（项目推演 what-if 采纳产能保障方案 → Action 已落 f19；S&OP 定稿走 Action f17；其余结论→Action 后续按需）
+  - ✅ 结论 → 采纳 Action 写回（项目推演 what-if 采纳产能保障方案 → Action 已落 f19；S&OP 定稿走 Action f17；核心推演结论闭环完成，其余视图结论→Action 为按需增量、非阻塞）
 - ✅ **4. 结论溯源覆盖 backlog**（附录A 优先级，全完成）：✅ **S&OP 六卡（三线 需求/供给/缺口 + 收入/毛利/现金）统一走共享 `<Provenance>` 六要素**（取代原 2 要素自绘浮层 → R-一致「一个事实一个出处」；C21/C15/C18 规则两跳；f17 回归改悬浮断言）· ✅ **产能推演峰值/对策量**（项目推演 what-if 对策后P50 六要素 + C03/C08 截顶）· ✅ **订单全链关键数字**（受影响量/营收六要素，财务/订单域）· ✅ **体检结构毛利率**（plan_audit gmStruct 六要素 + C15 口径）—— 至此四大视图结论数字全接共享溯源机制
 - ✅ **5. 驾驶舱 widget 升级**（借鉴 HTML dash，全完成）：✅ **富出处悬浮**（widget ⓘ 升共享 `<Provenance>` 六要素）· ✅ **三线偏差复合图**（chartKind `trideviation`：需求/供给/缺口逐月折线 + 偏差柱；数据源 `HistoryBundle.deviation`，后端 bundle 从 trend+危机窗口派生、真实可溯）· ✅ **问题聚合摘要**（type `summary`：`affected_orders` problems[] 四类归并卡）；f37 dash 回归
 
@@ -47,11 +47,11 @@
   - ✅ **引用闭合「无死路」+ 上架门**：`scenarioClosure`（intent→plan→agent 全配置好，断链拒发布 409）+ manage 就绪态 + `computeReferences` 纳入 Scenario（Agent/Workflow 页可见"被场景引用"）+ ScenesPage 引用闭合列
   - ✅ **响应式失效环（Loop 前端消费端）**：`invalidateForEvent`（本体 §4 event→queryKey）——规则/数据/工作流发布 → 失效引用方 agent/workflow/场景缓存自动重取；接入 RulesPage/ScenesPage 发布；f38 回归
   - ✅ **首页高频区**（`HomePage` 替换裸重定向）：高频场景卡一键启动 + 业务视图快捷入口 + 全部场景入口；至此 P3 启动器三入口（⌘K + 目录墙 + 首页高频）全齐；f39 回归
-  - ✅ **命中校验 #2 完成**：intentKey（场景编辑器 datalist + 未命中警示）+ **suggestedQuestions**（QueryDock 建议问句优先取本视图已发布场景的触发问句——经引用闭合验证、点了必命中不落死路）；workflow solverKey/ruleId 闭合（B→A 探针）+ computeReferences 纳入 Scenario。⬜ 余：computeReferences 扩 rule/solver 反查
+  - ✅ **命中校验 #2 完成**：intentKey（场景编辑器 datalist + 未命中警示）+ **suggestedQuestions**（QueryDock 建议问句优先取本视图已发布场景的触发问句——经引用闭合验证、点了必命中不落死路）；workflow solverKey/ruleId 闭合（B→A 探针）+ computeReferences 纳入 Scenario。✅ **余项已落**：`computeReferences` 扩 **rule/solver 反查**（`GET /b/v1/rules/:key/references`·`/solvers/:key/references`——改规则/求解器→哪些 agent/workflow/plan/scenario 引用它）；references-rule-solver ×3 回归
 - 🔄 **7. 本体浏览器 + 字段全建模门 + 半自动建模引擎**（`docs/PRD-ontology-browser-field-coverage.md`）—— 大
   - **参考软件**：[`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；v2 数据集成链 Data→Raw→Transform→Curated→Ontology Mapping，确定性映射 dataset→entity / column→property / FK→link + 基数推断）— 融进 A3 `modeling.ts`；+ 参考原型 `reference-prototype-decision-platform.html` 的节点检视器/CSV模板/覆盖徽章 UI
   - ✅ **确定性映射管线**（`deriveModelingSuggestion`：dataset→ObjectType · column→PropertyDef(类型按画像推断) · FK→ref+LinkType · PK=唯一率最高字段；`POST /a/v1/modeling/derive` 无 LLM 出草稿，构造上 100% 覆盖）
-  - ✅ **字段全建模门**（`computeFieldCoverage` + `GET /a/v1/modeling/drafts/:id/coverage`；publish `requireFullCoverage` 开门则未建模字段阻断；R12 落地。OM4/OM5/OM6 回归）· ⬜ 升 HARD 默认 + 前端开关
+  - ✅ **字段全建模门**（`computeFieldCoverage` + `GET /a/v1/modeling/drafts/:id/coverage`；publish `requireFullCoverage` 开门则未建模字段阻断；R12 落地。OM4/OM5/OM6 回归）· ✅ **升 HARD 默认 + 前端开关已落**：ModelingPage 字段全建模门默认勾选（HARD by R12），取消勾选可放宽；f10 回归更新
   - 🔄 **本体浏览器**（域分组图谱已有）：✅ **节点检视器增强**（OntologyGraphView Inspector）——字段全建模覆盖徽章（源/派生/手工占比，R12）+ 每字段来源溯源（← 源字段 / 派生 / 手工）+ **CSV 数据模版下载**（借鉴参考原型"每字段100%本体建模覆盖 + 数据模版下载"）；f7 回归
   - ✅ **确定性映射前端工作台**：ModelingPage 新建草案加「确定性建模（全字段）」入口（接 `/modeling/derive`，无 LLM·构造 100% 覆盖）+ **字段全建模覆盖徽章**（接 `/coverage`：modeled/total + 未建模清单）+ **字段全建模门发布开关**（`requireFullCoverage`，勾选则未建模字段阻断发布）；f10 回归（确定性建模→100%→门控发布）
 

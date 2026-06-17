@@ -141,8 +141,8 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
   const key = ["a", "modeling-drafts", {}];
   const [publishErrors, setPublishErrors] = useState<{ typeKey: string; message: string }[]>(draft.publishErrors ?? []);
   const [materializeJobId, setMaterializeJobId] = useState<string | null>(null);
-  // 字段全建模门（R12）：勾选则发布时校验每个导入字段都被建模，未建模即阻断。
-  const [requireFullCoverage, setRequireFullCoverage] = useState(false);
+  // 字段全建模门（R12）：默认 HARD（升级默认 = 每个导入字段都必须建模），可取消勾选放宽。
+  const [requireFullCoverage, setRequireFullCoverage] = useState(true);
   const { data: coverage } = useQuery({
     queryKey: ["a", "modeling-coverage", draft.id, draft.suggestion.objectTypes.length],
     queryFn: () => fetchModelingCoverage(draft.id),
@@ -199,10 +199,10 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
         <button className="btn primary sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate()} data-testid="publish-draft">
           {zh.common.publish}
         </button>
-        {/* 字段全建模门（R12）：勾选则未建模字段阻断发布 */}
-        <label style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
+        {/* 字段全建模门（R12）：默认 HARD（勾选）；取消勾选放宽，未建模字段不阻断 */}
+        <label style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }} title="R12 字段全建模：默认要求每个导入字段都被建模，取消勾选可放宽">
           <input type="checkbox" data-testid="require-full-coverage" checked={requireFullCoverage} onChange={(e) => setRequireFullCoverage(e.target.checked)} />
-          字段全建模门
+          字段全建模门（R12 默认）
         </label>
         <button className="btn sm" disabled={materializeMut.isPending} onClick={() => materializeMut.mutate()}>
           {t.materialize}

@@ -29,6 +29,8 @@ describe("F10 · 建模工作台", () => {
     await waitFor(() => expect(screen.getByTestId("prop-Order-priority")).toBeInTheDocument());
 
     // 发布校验：Plant 缺主键 → 错误内联定位到 Plant 卡
+    // （本例只验类型校验错误：关掉默认 HARD 的字段全建模门，避免叠加未建模字段错误）
+    await user.click(screen.getByTestId("require-full-coverage"));
     await user.click(screen.getByTestId("publish-draft"));
     const err = await screen.findByTestId("publish-error-Plant");
     expect(err).toHaveTextContent("缺少主键");
@@ -53,8 +55,8 @@ describe("F10 · 建模工作台", () => {
     await waitFor(() => expect(badge).toHaveTextContent("100%"));
     expect(badge).toHaveTextContent("字段全建模");
 
-    // 字段全建模门发布：全覆盖 → 通过
-    await user.click(screen.getByTestId("require-full-coverage"));
+    // 字段全建模门默认 HARD（勾选态）：全覆盖 → 直接发布通过（无需手动开门）
+    expect(screen.getByTestId("require-full-coverage")).toBeChecked();
     await user.click(screen.getByTestId("publish-draft"));
     await screen.findByText(/发布成功/);
   });

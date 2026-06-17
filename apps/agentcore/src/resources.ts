@@ -89,13 +89,13 @@ export function applyListQuery<T extends { status?: string; lifecycle?: string; 
 }
 
 export interface ResourceReference {
-  kind: "agent" | "workflow" | "scene-entry" | "intent" | "scenario";
+  kind: "agent" | "workflow" | "scene-entry" | "intent" | "scenario" | "plan";
   id: string;
   name: string;
   via: string; // 引用途径说明（tools / skills / mcpServers / defaultAgentId / plan step …）
 }
 
-export type ResourceKind = "agent" | "workflow" | "skill" | "mcp-config" | "scene-entry";
+export type ResourceKind = "agent" | "workflow" | "skill" | "mcp-config" | "scene-entry" | "rule" | "solver";
 
 /** 被引用清单（删除 / 退役前置检查）：哪些 agent 用此 workflow/skill/mcp、哪些场景入口/计划步骤引用。 */
 export async function computeReferences(
@@ -147,6 +147,47 @@ export async function computeReferences(
     for (const w of workflows) {
       if (w.steps.some((st) => st.type === "invoke_mcp_tool" && stepRefs(st.params as Record<string, unknown>, "mcpConfigId"))) {
         refs.push({ kind: "workflow", id: w.id, name: w.name, via: "steps.invoke_mcp_tool" });
+      }
+    }
+  }
+  // rule/solver 反查（响应式失效环可见性）：改了规则/求解器 → 谁引用它（agent/workflow/plan/scenario）。
+  // 规则/求解器定义在 DataCore，但其 KEY 被 AgentCore 资源引用——本反查回答"改这影响哪些编排资源"。
+  if (kind === "rule" || kind === "solver") {
+    const packages = await repos.packages.listByTenant(tenantId);
+    const plans = (await Promise.all(packages.map((p) => repos.plans.listByPackage(p.id)))).flat();
+    const refsAll = (v: string[] | "ALL_APPLICABLE"): boolean => v === "ALL_APPLICABLE";
+    const hasKey = (v: string[] | "ALL_APPLICABLE"): boolean => v === "ALL_APPLICABLE" || v.includes(id);
+
+    if (kind === "rule") {
+      for (const a of agents) {
+        if (hasKey(a.ruleBindings.ruleKeys)) {
+          refs.push({ kind: "agent", id: a.id, name: a.name, via: refsAll(a.ruleBindings.ruleKeys) ? "ruleBindings=ALL_APPLICABLE" : "ruleBindings.ruleKeys" });
+        }
+      }
+      for (const sc of scenarios) {
+        if (sc.rules.includes(id)) refs.push({ kind: "scenario", id: sc.id, name: `${sc.scenarioKey}·${sc.name}`, via: "scenario.rules" });
+      }
+      for (const w of workflows) {
+        if (w.steps.some((st) => st.type === "evaluate_rules" && hasKey((st.params as { ruleIds: string[] | "ALL_APPLICABLE" }).ruleIds))) {
+          refs.push({ kind: "workflow", id: w.id, name: w.name, via: "steps.evaluate_rules" });
+        }
+      }
+      for (const pl of plans) {
+        if (pl.steps.some((st) => st.type === "evaluate_rules" && hasKey((st.params as { ruleIds: string[] | "ALL_APPLICABLE" }).ruleIds))) {
+          refs.push({ kind: "plan", id: pl.id, name: `${pl.key}@v${pl.version}`, via: "steps.evaluate_rules" });
+        }
+      }
+    } else {
+      // solver：编排步骤显式指名 solverKey（plan/workflow 的 invoke_solver）。
+      for (const w of workflows) {
+        if (w.steps.some((st) => st.type === "invoke_solver" && (st.params as { solverKey?: string }).solverKey === id)) {
+          refs.push({ kind: "workflow", id: w.id, name: w.name, via: "steps.invoke_solver" });
+        }
+      }
+      for (const pl of plans) {
+        if (pl.steps.some((st) => st.type === "invoke_solver" && (st.params as { solverKey?: string }).solverKey === id)) {
+          refs.push({ kind: "plan", id: pl.id, name: `${pl.key}@v${pl.version}`, via: "steps.invoke_solver" });
+        }
       }
     }
   }
