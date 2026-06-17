@@ -50,7 +50,7 @@
 
 | 模块·PRD | 未建项（代码核实） | 证据 |
 |---|---|---|
-| **管理页整簇**（admin-console-closure §6） | ✅ `/admin/validation`（VLE 后端已建·无前端页）· `/admin/evals` · `/admin/slices` · `/admin/domains` · `/admin/quarantine`（后端 quarantine.ts 有·无页）· `/admin/notifications`（后端 notifications.ts 有·无页）· `/admin/merge` —— **七页组件+路由全无** | 各页组件文件 MISSING、无 `/admin/*` 路由 |
+| **管理页整簇**（admin-console-closure §6） | **✅ 6/7 已补（2026-06-17，f43 回归）**：`/admin/validation`(VLE 历史+工程验证度) · `/admin/quarantine`(隔离区重入/丢弃) · `/admin/notifications`(通知中心) · `/admin/domains`(域管理) · `/admin/evals`(Agent 评测) · `/admin/slices`(切片清单 + 新增 GET 列表端点)。**余 `/admin/merge`** —— OC1 实体解析**无后端**，需先建实体解析引擎（非前端页任务，另立 backend 工单） | 6 页已接真实后端端点；merge 待 OC1 后端 |
 | **统一构建发动机**（unified-build-engine P2–P6） | ✅ `POST build/scaffold` · `build/preview` · `data-templates` 端点 = 0 匹配；BuildPlan 不含 AgentCore 栈；瀑布流逐产物 HITL 前端 | grep 0；已收编进自成长发动机 PRD §16 |
 | **本体浏览器+字段覆盖**（ontology-browser-field-coverage） | ✅ `GET /a/v1/ontology/browser` 端点 = 0；`coverage:check` CI 门 = 0（注：字段全建模门 requireFullCoverage 已建、CSV 模版前端可下） | grep 0 |
 | **运营完备性**（operational-completeness） | ✅ OC1 实体解析/merge_candidates 后端 = 0 · OC7 LLM 成本配额 = 0 · OC9 工厂日历 = 0（OC8 通知/OC4 隔离区后端有·前端缺，归管理页组） | grep 0 |
