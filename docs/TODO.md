@@ -18,6 +18,26 @@
 
 > **总判定**：作为"治理大脑 + 可信赖推演平台"——**基本达成**（唯缺 dogfooding 落库）；作为"形式化本体驱动 Agent"——**达成约一半**，余项是已入册的范式选择，非失误。
 
+## 🚀 主线 · 需求拉动的自成长发动机（PRD 已立，2026-06-17）
+
+> `docs/PRD-demand-pulled-growth-engine.md`（含《本体引用与影响》R3/R4/R6/R10/R11/R13·G-1/G-8）。把"客户明确问题"当燃料：QOS缺口探针实跑→GapReport→自动补(数据真人正门/结构/求解器B兜底)→缺功能C骨架工单→厂商中立 code-agent 施工→LOOP收敛→成长账本。融合 OPERATING-MODEL 融合层 P5。
+
+- ⬜ **P1** QOS 缺口探针 + GapReport（静态闭包→运行时实跑，验收 G-8/G-1）
+- ⬜ **P2** 缺数据真人正门自动补（生成Excel→连接器导入→物化可见）+ **就地 Action 审批面板**（页内批复）
+- ⬜ **P3** 缺切片/规则/意图/计划 scaffold + 求解器 generic-inference 兜底 + LOOP/收敛(K前端可配)
+- ⬜ **P4** C 骨架工单 + GrowthTicket 契约 + 成长账本（demand-indexed）
+- ⬜ **P5** code-agent 执行器接缝（MCP/CLI 活查询面 + 推默认拉兜底 + 厂商中立工单闭环）
+- ⬜ **P6** 构建驾驶舱前端（瀑布流逐产物HITL + 全链闭包可视化 + 指标仪表盘）+ 端到端联调
+- ⬜ **前端·构建驾驶舱**（PRD §16，收编历史未落地页面缺口）：`DataBuilderPage.tsx` 现仅"七阶段状态灯+闭包数字+JSON dump"，**远落后 `PRD-unified-build-engine.md` §1.1.8/§5.3 的瀑布流逐产物HITL**；GapReport/就地审批/真人正门可视化/成长账本/工单看板全未建
+
+## 🩺 治理缺陷 · PRD-DoD↔实现 coverage 盲区（2026-06-17 发现，根因级）
+
+> **触发**：用户问"数据构建发动机页面差距这么大、PRD 有记录、却不在 TODO？其他模块也类似"。**根因**：`prd:check` 只验"PRD↔本体(R/G) 引用完整 + 制品锚点入图"，**不验 PRD 的《验收/DoD》是否真被实现**。于是"PRD 写了需求→从未实现→无门禁察觉→未进 TODO"是**结构性盲区**——地图记了想要的疆域，但没有机制把"未建的部分"拉进 backlog。这正是本平台自身缺"需求↔缺口↔补"闭环的铁证（= 自成长发动机要解的问题，作用于平台自己的开发）。
+
+- ⬜ **一次性审计**：逐 PRD 过《验收/DoD》→ 对照实现+测试 → 产"已文档化但未实现"清单 → 全部入 TODO（先从 `PRD-unified-build-engine.md` 的 P2–P6 起，已知含 scaffold/rawin三路/瀑布流HITL/自助闭合 多项未落地；**其他模块同此排查**）
+- ⬜ **门禁化（结构化止血）**：扩 `prd:check` 朝"DoD↔测试覆盖"——PRD 验收项编号 ↔ 对应测试名映射，缺映射即告警（DoD 散文难全自动，先做可锚定的 acceptance-id↔test 映射）
+- 注：这本身是"需求拉动自成长发动机"在**平台自我开发**维度的最小实例——PRD-DoD 未实现 = 一张平台自己的缺口工单
+
 ## ✅ 已完成（基线 + 本轮）
 - 系统本体 `SYSTEM-ONTOLOGY.md` §1–§10 + 治理闭环（铁律0 / SessionStart 钩子 / `/ontology` / `ontology:check` / `chain:check` / PRD 模板）
 - 运行模型 `OPERATING-MODEL.md`；审核 `AUDIT-0614-fullchain.md`
