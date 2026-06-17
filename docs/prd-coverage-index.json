@@ -62,9 +62,7 @@
         "DL6",
         "DL7",
         "DL8",
-        "DL9"
-      ],
-      "uncovered": [
+        "DL9",
         "TR1",
         "TR2",
         "TR3",
@@ -74,7 +72,8 @@
         "TR7",
         "TR8"
       ],
-      "coverage": 0.6
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-addendum-feature-entitlement.md": {
       "acceptanceIds": [
