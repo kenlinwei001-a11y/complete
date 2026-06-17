@@ -51,6 +51,7 @@ const NotificationsPage = lazy(() => import("@/pages/admin/NotificationsPage"));
 const DomainsPage = lazy(() => import("@/pages/admin/DomainsPage"));
 const EvalsPage = lazy(() => import("@/pages/admin/EvalsPage"));
 const SlicesPage = lazy(() => import("@/pages/admin/SlicesPage"));
+const MergePage = lazy(() => import("@/pages/admin/MergePage"));
 const QueryHistoryPage = lazy(() => import("@/pages/admin/QueryHistoryPage"));
 const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
 // 管理平台增量：租户 / 用户 / 视图配置
@@ -117,6 +118,7 @@ export const routes: RouteObject[] = [
       admin("domains", <DomainsPage />),
       admin("evals", <EvalsPage />),
       admin("slices", <SlicesPage />),
+      admin("merge", <MergePage />),
       admin("query-history", <QueryHistoryPage />),
       admin("tenants", <TenantsPage />),
       admin("users", <UsersPage />),

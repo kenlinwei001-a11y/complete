@@ -17,3 +17,4 @@ export * from "./ontology-governance.js";
 export * from "./execution.js";
 export * from "./databuilder.js";
 export * from "./growth.js";
+export * from "./entity-resolution.js";

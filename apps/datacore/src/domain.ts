@@ -340,6 +340,8 @@ export interface ObjectInstance {
   objectKey?: string;
   /** 本体原子规格 §1：写入批次序号（snapshotVersion = {ontologyVersion}.{epoch}）。 */
   epoch?: number;
+  /** OC1 实体解析：被并入 golden 对象的 id（置则该对象不出现在查询/切片/聚合，只见 golden）。 */
+  mergedInto?: string;
   updatedAt?: string;
 }
 

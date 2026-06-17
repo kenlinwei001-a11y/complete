@@ -724,3 +724,13 @@ export const runEvalSuite = (suite: string, agentKey?: string) =>
 /** 本体切片清单（治理：切片=可追溯子图 root→hops）。 */
 export interface SliceSummary { sliceKey: string; version: number; rootType: string; hops: number; linkKeys: string[]; maxNodes?: number; fixtures: number }
 export const fetchSlices = () => api.a<SliceSummary[]>("/a/v1/ontology/slices");
+
+/** 实体解析与黄金记录（OC1）：扫描候选 / 合并 / 拒绝 / 合并历史 / unmerge。 */
+import type { MergeCandidateView, ObjectMerge } from "@platform/contracts";
+export const scanMerge = (typeKey: string) => api.a<{ candidates: unknown[] }>("/a/v1/objects/merge-scan", { method: "POST", body: { typeKey } });
+export const fetchMergeCandidates = () => api.a<MergeCandidateView[]>("/a/v1/objects/merge-candidates");
+export const mergeCandidate = (id: string, goldenId?: string, survivorship?: Record<string, string>) =>
+  api.a<ObjectMerge>(`/a/v1/objects/merge-candidates/${id}/merge`, { method: "POST", body: { ...(goldenId ? { goldenId } : {}), ...(survivorship ? { survivorship } : {}) } });
+export const rejectMergeCandidate = (id: string) => api.a<{ ok: boolean }>(`/a/v1/objects/merge-candidates/${id}/reject`, { method: "POST" });
+export const fetchObjectMerges = () => api.a<{ items: ObjectMerge[] }>("/a/v1/objects/merges");
+export const unmergeObjects = (id: string) => api.a<{ ok: boolean }>(`/a/v1/objects/merges/${id}/unmerge`, { method: "POST" });

@@ -403,6 +403,20 @@ export const handlers = [
       ],
     }),
   ),
+  http.post("*/a/v1/objects/merge-scan", () => HttpResponse.json({ candidates: [{ id: "mc_new" }] })),
+  http.get("*/a/v1/objects/merge-candidates", () =>
+    HttpResponse.json([
+      { id: "mc_1", tenantId: "demo", typeKey: "Base", objectIds: ["obj_a", "obj_b"], score: 1, rule: "归一名称完全一致", status: "PENDING", createdAt: "2026-06-17T08:00:00Z",
+        objects: [{ id: "obj_a", props: { baseId: "cz1", name: "常州", util: 0.88 } }, { id: "obj_b", props: { baseId: "cz2", name: "常州", util: 0.9 } }] },
+    ]),
+  ),
+  http.post("*/a/v1/objects/merge-candidates/:id/merge", () => HttpResponse.json({ id: "omg_1", tenantId: "demo", typeKey: "Base", goldenId: "obj_a", mergedIds: ["obj_b"], mergedBy: "planner", mergedAt: "2026-06-17T09:00:00Z", unmergeUntil: "2026-06-20T09:00:00Z" })),
+  http.post("*/a/v1/objects/merge-candidates/:id/reject", () => HttpResponse.json({ ok: true })),
+  http.get("*/a/v1/objects/merges", () =>
+    HttpResponse.json({ items: [{ id: "omg_0", tenantId: "demo", typeKey: "Base", goldenId: "obj_x", mergedIds: ["obj_y"], mergedBy: "planner", mergedAt: "2026-06-16T09:00:00Z", unmergeUntil: "2026-06-19T09:00:00Z" }] }),
+  ),
+  http.post("*/a/v1/objects/merges/:id/unmerge", () => HttpResponse.json({ ok: true })),
+
   http.get("*/a/v1/ontology/slices", () =>
     HttpResponse.json([
       { sliceKey: "model_capacity_network", version: 1, rootType: "Model", hops: 2, linkKeys: ["PRODUCIBLE_AT"], maxNodes: 100, fixtures: 1 },

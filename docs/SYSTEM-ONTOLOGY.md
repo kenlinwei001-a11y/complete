@@ -58,6 +58,7 @@
 ### B. 本体/对象域（DataCore）
 - **OntologyType / OntologyLink / OntologyVersion / OntologyDraft**：本体类型/链路/快照版本/草稿 · `ontology.ts`,`modeling.ts`。
 - **ObjectInstance(objects) / Link(links)**：对象库与对象间链路（带 `origin`: SYNTHETIC/MATERIALIZED/MANUAL）· `domain.ts`。
+- **MergeCandidate / ObjectMerge（实体解析 OC1）**：多源同实体 → 归一名称匹配产候选 → 人审合并（golden 存活、被并置 `mergedInto` 只见 golden、links 重指）→ 72h 可 unmerge 还原 · 真值留痕 mergedBy/mergedAt(R4) · `entity-resolution.ts` · 端点 `/a/v1/objects/merge*` · 事件 merge_candidate.created/objects.merged(§4)。
 - **PropertyDef / DerivedPropertyDef**：属性 / 派生属性 · `domain.ts`。
 - **DerivationSpec / DerivationRun**：派生 DSL（A4，topo 重算）· `ontology-core.ts`。
 - **SliceSpec**：本体切片（root + hops，A6 逐跳过滤）· `ontology-core.ts:534`。

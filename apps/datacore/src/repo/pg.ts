@@ -553,6 +553,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     replayProgress: new PgStore(pool, "replay_progress"),
     extractSegments: new PgStore(pool, "extract_segments"),
     quarantineRows: new PgStore(pool, "quarantine_rows"),
+    mergeCandidates: new PgStore(pool, "merge_candidates"),
+    objectMerges: new PgStore(pool, "object_merges"),
     notifications: new PgStore(pool, "notifications"),
     validationRuns: new PgStore(pool, "validation_runs"),
     webhooks: new PgStore(pool, "webhooks"),

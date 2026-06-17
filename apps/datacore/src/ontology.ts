@@ -259,6 +259,7 @@ export class OntologyService {
     const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
       .filter((o) => this.matchFilter(o.props, filter))
       .sort((a, b) => (a.id < b.id ? -1 : 1))
@@ -323,6 +324,7 @@ export class OntologyService {
     const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
       .filter((o) => this.matchFilter(o.props, filter));
     return {

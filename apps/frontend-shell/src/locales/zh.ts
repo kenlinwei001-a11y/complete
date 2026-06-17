@@ -71,6 +71,7 @@ export const zh = {
     domains: "域管理",
     evals: "Agent 评测",
     slices: "本体切片",
+    merge: "实体合并",
   },
   errors: {
     notFoundTitle: "页面不存在",

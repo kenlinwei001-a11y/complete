@@ -24,6 +24,7 @@ import { OutboxService } from "./outbox.js";
 import { ExecutionLockService } from "./execlock.js";
 import { QuarantineService } from "./quarantine.js";
 import { NotificationService } from "./notifications.js";
+import { EntityResolutionService } from "./entity-resolution.js";
 import { CatalogService } from "./catalog.js";
 import { VleService } from "./vle.js";
 import { RulesService, assertValidExpression } from "./rules.js";
@@ -226,6 +227,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const execLocks = new ExecutionLockService(repos, metrics);
   const quarantine = new QuarantineService(repos);
   const notifications = new NotificationService(repos);
+  const entityResolution = new EntityResolutionService(repos, outbox);
   const rules = new RulesService(repos, outbox);
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
@@ -789,6 +791,40 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       throw forbidden("admin / catalog_admin only");
     const body = parseBody(z.object({ ids: z.array(z.string()).min(1), comment: z.string().min(1) }), req.body);
     return quarantine.discard(c, body.ids, body.comment);
+  });
+
+  // 运营完备性 §1：实体解析与黄金记录（OC1）。合并=真值变更，留痕 mergedBy/mergedAt（R4 可审计）。
+  const requireDataAdmin = (c: AuthCtx) => {
+    if (!c.roles.some((r) => ["admin", "data_admin"].includes(r.split(":")[0] as string))) throw forbidden("admin / data_admin only");
+  };
+  app.post("/a/v1/objects/merge-scan", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const body = parseBody(z.object({ typeKey: z.string().min(1) }), req.body);
+    return { candidates: await entityResolution.scan(c, body.typeKey) };
+  });
+  app.get("/a/v1/objects/merge-candidates", async (req) => entityResolution.listCandidates(ctx(req)));
+  app.post("/a/v1/objects/merge-candidates/:id/merge", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const { id } = req.params as { id: string };
+    const body = parseBody(z.object({ goldenId: z.string().optional(), survivorship: z.record(z.string(), z.string()).optional() }), req.body ?? {});
+    return entityResolution.merge(c, id, body.goldenId, body.survivorship);
+  });
+  app.post("/a/v1/objects/merge-candidates/:id/reject", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const { id } = req.params as { id: string };
+    await entityResolution.reject(c, id);
+    return { ok: true };
+  });
+  app.get("/a/v1/objects/merges", async (req) => ({ items: await entityResolution.listMerges(ctx(req)) }));
+  app.post("/a/v1/objects/merges/:id/unmerge", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const { id } = req.params as { id: string };
+    await entityResolution.unmerge(c, id);
+    return { ok: true };
   });
 
   // 运营完备性 §9：通知中心（铃铛未读 + 列表 + 标记已读）

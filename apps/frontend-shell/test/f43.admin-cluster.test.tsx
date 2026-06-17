@@ -68,4 +68,19 @@ describe("F43 · 管理页整簇", () => {
     expect(s).toHaveTextContent("Model");
     expect(within(s).getByTestId("slice-fixtures-model_capacity_network")).toHaveTextContent("1");
   });
+
+  it("实体合并：候选并排对照 + 选 golden 合并 + 合并历史还原", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/merge");
+    await screen.findByTestId("merge-page");
+    // 候选并排对照
+    const cand = await screen.findByTestId("merge-cand-mc_1");
+    expect(cand).toHaveTextContent("常州");
+    // 选 obj_a 为 golden 合并
+    await user.click(within(cand).getByTestId("merge-golden-mc_1-obj_a"));
+    await screen.findByText(/已合并/);
+    // 合并历史可还原
+    expect(await screen.findByTestId("unmerge-omg_0")).toBeInTheDocument();
+  });
 });

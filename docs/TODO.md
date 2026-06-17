@@ -50,10 +50,10 @@
 
 | 模块·PRD | 未建项（代码核实） | 证据 |
 |---|---|---|
-| **管理页整簇**（admin-console-closure §6） | **✅ 6/7 已补（2026-06-17，f43 回归）**：`/admin/validation`(VLE 历史+工程验证度) · `/admin/quarantine`(隔离区重入/丢弃) · `/admin/notifications`(通知中心) · `/admin/domains`(域管理) · `/admin/evals`(Agent 评测) · `/admin/slices`(切片清单 + 新增 GET 列表端点)。**余 `/admin/merge`** —— OC1 实体解析**无后端**，需先建实体解析引擎（非前端页任务，另立 backend 工单） | 6 页已接真实后端端点；merge 待 OC1 后端 |
+| **管理页整簇**（admin-console-closure §6） | **✅ 7/7 全补（2026-06-17，f43 回归）**：`/admin/validation` · `/admin/quarantine` · `/admin/notifications` · `/admin/domains` · `/admin/evals` · `/admin/slices`(+GET 列表端点) · **`/admin/merge`（OC1 实体解析引擎从零自建：merge_candidates/object_merges 仓储四处 + 归一名称匹配扫描 + 合并(golden存活/mergedInto/links重指) + 72h unmerge；entity-resolution datacore 回归）** | 7 页全接真实后端 |
 | **统一构建发动机**（unified-build-engine P2–P6） | ✅ `POST build/scaffold` · `build/preview` · `data-templates` 端点 = 0 匹配；BuildPlan 不含 AgentCore 栈；瀑布流逐产物 HITL 前端 | grep 0；已收编进自成长发动机 PRD §16 |
 | **本体浏览器+字段覆盖**（ontology-browser-field-coverage） | ✅ `GET /a/v1/ontology/browser` 端点 = 0；`coverage:check` CI 门 = 0（注：字段全建模门 requireFullCoverage 已建、CSV 模版前端可下） | grep 0 |
-| **运营完备性**（operational-completeness） | ✅ OC1 实体解析/merge_candidates 后端 = 0 · OC7 LLM 成本配额 = 0 · OC9 工厂日历 = 0（OC8 通知/OC4 隔离区后端有·前端缺，归管理页组） | grep 0 |
+| **运营完备性**（operational-completeness） | ◐ OC1 实体解析✅已建(本轮) · OC7 LLM 成本配额 = 0 · OC9 工厂日历 = 0（OC8 通知/OC4 隔离区后端有·前端缺，归管理页组） | grep 0 |
 | **能力路由**（capability-routing，G-7） | ✅ 等价能力故障转移 capabilityGroup/groupPriority = 0；◐ `load_tools` 工具未见（呼应本体 G-7 ◐，TODO #10 已暂缓） | grep 0 |
 | **数据流闭环**（dataflow-loop-closure §5） | ✅ TR1–TR8 轨迹验收测试 = 0；◐ DL6–DL10 事件接线不全 | 无 TR 测试文件 |
 | **VLE**（validation-loop） | ✅ `/admin/validation` 前端页 = 0（后端 `/a/v1/validation/runs` 已建）—— 同管理页组 | grep 0 |

@@ -231,6 +231,8 @@ export interface Repos {
   replayProgress: Store<ReplayProgressRecord>;
   extractSegments: Store<ExtractSegmentRecord>;
   quarantineRows: Store<QuarantineRowRecord>;
+  mergeCandidates: Store<import("@platform/contracts").MergeCandidate>;
+  objectMerges: Store<import("@platform/contracts").ObjectMerge>;
   notifications: Store<NotificationRecord>;
   validationRuns: Store<ValidationRunRecord>;
   // S1.8
