@@ -1,0 +1,360 @@
+{
+  "generatedAt": "2026-06-17",
+  "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
+  "prds": {
+    "PRD-addendum-admin-console-closure.md": {
+      "acceptanceIds": [
+        "A9",
+        "B2",
+        "OC2"
+      ],
+      "covered": [
+        "B2",
+        "OC2"
+      ],
+      "uncovered": [
+        "A9"
+      ],
+      "coverage": 0.67
+    },
+    "PRD-addendum-capability-routing.md": {
+      "acceptanceIds": [
+        "OC2"
+      ],
+      "covered": [
+        "OC2"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-addendum-dataflow-loop-closure.md": {
+      "acceptanceIds": [
+        "A3",
+        "A8",
+        "DL1",
+        "DL10",
+        "DL2",
+        "DL3",
+        "DL4",
+        "DL5",
+        "DL6",
+        "DL7",
+        "DL8",
+        "DL9",
+        "TR1",
+        "TR2",
+        "TR3",
+        "TR4",
+        "TR5",
+        "TR6",
+        "TR7",
+        "TR8"
+      ],
+      "covered": [
+        "A3",
+        "A8",
+        "DL1",
+        "DL10",
+        "DL2",
+        "DL3",
+        "DL4",
+        "DL5",
+        "DL6",
+        "DL7",
+        "DL8",
+        "DL9"
+      ],
+      "uncovered": [
+        "TR1",
+        "TR2",
+        "TR3",
+        "TR4",
+        "TR5",
+        "TR6",
+        "TR7",
+        "TR8"
+      ],
+      "coverage": 0.6
+    },
+    "PRD-addendum-feature-entitlement.md": {
+      "acceptanceIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "covered": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-addendum-m11-calibration.md": {
+      "acceptanceIds": [
+        "A8"
+      ],
+      "covered": [
+        "A8"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-addendum-validation-loop.md": {
+      "acceptanceIds": [
+        "VL1",
+        "VL2",
+        "VL3",
+        "VL4",
+        "VL5",
+        "VL6",
+        "VL7",
+        "VL8"
+      ],
+      "covered": [
+        "VL1",
+        "VL3",
+        "VL6",
+        "VL8"
+      ],
+      "uncovered": [
+        "VL2",
+        "VL4",
+        "VL5",
+        "VL7"
+      ],
+      "coverage": 0.5
+    },
+    "PRD-catalog-battery-20-scenarios.md": {
+      "acceptanceIds": [
+        "A9",
+        "OC2"
+      ],
+      "covered": [
+        "OC2"
+      ],
+      "uncovered": [
+        "A9"
+      ],
+      "coverage": 0.5
+    },
+    "PRD-demand-pulled-growth-engine.md": {
+      "acceptanceIds": [
+        "GE-A",
+        "GE-B",
+        "GE-C",
+        "GE-D",
+        "GE-E",
+        "GE-F",
+        "GE-G",
+        "GE-H"
+      ],
+      "covered": [],
+      "uncovered": [
+        "GE-A",
+        "GE-B",
+        "GE-C",
+        "GE-D",
+        "GE-E",
+        "GE-F",
+        "GE-G",
+        "GE-H"
+      ],
+      "coverage": 0
+    },
+    "PRD-frontend-addendum-remaining-views.md": {
+      "acceptanceIds": [
+        "F21",
+        "F22",
+        "F23",
+        "F24",
+        "F25",
+        "F26",
+        "F27",
+        "F28",
+        "F29"
+      ],
+      "covered": [
+        "F21",
+        "F22",
+        "F23",
+        "F24",
+        "F25",
+        "F26",
+        "F27",
+        "F28",
+        "F29"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-frontend-addendum-sim-views.md": {
+      "acceptanceIds": [
+        "F14",
+        "F15",
+        "F16",
+        "F17",
+        "F18",
+        "F19",
+        "F20"
+      ],
+      "covered": [
+        "F14",
+        "F15",
+        "F16",
+        "F17",
+        "F18",
+        "F19",
+        "F20"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-frontend.md": {
+      "acceptanceIds": [
+        "F1",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "F6",
+        "F7",
+        "F8",
+        "F9"
+      ],
+      "covered": [
+        "F1",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "F6",
+        "F7",
+        "F8",
+        "F9"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-generic-inference.md": {
+      "acceptanceIds": [
+        "SY3"
+      ],
+      "covered": [
+        "SY3"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-platform-foundry-aip.md": {
+      "acceptanceIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A7",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "CN1",
+        "CN2",
+        "MC1",
+        "OM1",
+        "OM2",
+        "OM3",
+        "RD1",
+        "RD2",
+        "SC1",
+        "SK1",
+        "SY1",
+        "SY2",
+        "SY3",
+        "WF1",
+        "WF2"
+      ],
+      "covered": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A7",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "CN1",
+        "CN2",
+        "MC1",
+        "OM1",
+        "OM2",
+        "OM3",
+        "RD1",
+        "RD2",
+        "SC1",
+        "SK1",
+        "SY1",
+        "SY2",
+        "SY3",
+        "WF1",
+        "WF2"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-query-orchestration-service.md": {
+      "acceptanceIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "D1",
+        "D2",
+        "E1",
+        "E2"
+      ],
+      "covered": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "D1",
+        "D2",
+        "E1",
+        "E2"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    }
+  }
+}
