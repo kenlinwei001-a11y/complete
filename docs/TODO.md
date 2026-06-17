@@ -34,9 +34,28 @@
 
 > **触发**：用户问"数据构建发动机页面差距这么大、PRD 有记录、却不在 TODO？其他模块也类似"。**根因**：`prd:check` 只验"PRD↔本体(R/G) 引用完整 + 制品锚点入图"，**不验 PRD 的《验收/DoD》是否真被实现**。于是"PRD 写了需求→从未实现→无门禁察觉→未进 TODO"是**结构性盲区**——地图记了想要的疆域，但没有机制把"未建的部分"拉进 backlog。这正是本平台自身缺"需求↔缺口↔补"闭环的铁证（= 自成长发动机要解的问题，作用于平台自己的开发）。
 
-- ⬜ **一次性审计**：逐 PRD 过《验收/DoD》→ 对照实现+测试 → 产"已文档化但未实现"清单 → 全部入 TODO（先从 `PRD-unified-build-engine.md` 的 P2–P6 起，已知含 scaffold/rawin三路/瀑布流HITL/自助闭合 多项未落地；**其他模块同此排查**）
+- ✅ **一次性审计已跑（2026-06-17，逐 PRD 对照代码核实）**：结果见下表。**审计本身的元教训**：4 个并行子代理审计有 ~25% 误判率（既有误报"已建说成没建"，也有漏报"没建说成已建"），**唯一可信的是对代码的 ground-truth grep 核实**——这反过来再次证明"手工/agent 审计会漂移、必须门禁化"。
 - ⬜ **门禁化（结构化止血）**：扩 `prd:check` 朝"DoD↔测试覆盖"——PRD 验收项编号 ↔ 对应测试名映射，缺映射即告警（DoD 散文难全自动，先做可锚定的 acceptance-id↔test 映射）
 - 注：这本身是"需求拉动自成长发动机"在**平台自我开发**维度的最小实例——PRD-DoD 未实现 = 一张平台自己的缺口工单
+
+### 审计结果 · 已文档化但未实现（全部经 grep 核实，✅=已证实未建 / ◐=部分）
+
+| 模块·PRD | 未建项（代码核实） | 证据 |
+|---|---|---|
+| **管理页整簇**（admin-console-closure §6） | ✅ `/admin/validation`（VLE 后端已建·无前端页）· `/admin/evals` · `/admin/slices` · `/admin/domains` · `/admin/quarantine`（后端 quarantine.ts 有·无页）· `/admin/notifications`（后端 notifications.ts 有·无页）· `/admin/merge` —— **七页组件+路由全无** | 各页组件文件 MISSING、无 `/admin/*` 路由 |
+| **统一构建发动机**（unified-build-engine P2–P6） | ✅ `POST build/scaffold` · `build/preview` · `data-templates` 端点 = 0 匹配；BuildPlan 不含 AgentCore 栈；瀑布流逐产物 HITL 前端 | grep 0；已收编进自成长发动机 PRD §16 |
+| **本体浏览器+字段覆盖**（ontology-browser-field-coverage） | ✅ `GET /a/v1/ontology/browser` 端点 = 0；`coverage:check` CI 门 = 0（注：字段全建模门 requireFullCoverage 已建、CSV 模版前端可下） | grep 0 |
+| **运营完备性**（operational-completeness） | ✅ OC1 实体解析/merge_candidates 后端 = 0 · OC7 LLM 成本配额 = 0 · OC9 工厂日历 = 0（OC8 通知/OC4 隔离区后端有·前端缺，归管理页组） | grep 0 |
+| **能力路由**（capability-routing，G-7） | ✅ 等价能力故障转移 capabilityGroup/groupPriority = 0；◐ `load_tools` 工具未见（呼应本体 G-7 ◐，TODO #10 已暂缓） | grep 0 |
+| **数据流闭环**（dataflow-loop-closure §5） | ✅ TR1–TR8 轨迹验收测试 = 0；◐ DL6–DL10 事件接线不全 | 无 TR 测试文件 |
+| **VLE**（validation-loop） | ✅ `/admin/validation` 前端页 = 0（后端 `/a/v1/validation/runs` 已建）—— 同管理页组 | grep 0 |
+| **活数据可溯**（live-traceable-data） | ◐ `lineage/task` 端点存否不明（1 弱匹配）；溯源抽屉 UI 部分（Provenance 组件已存在） | 需复核，不武断 |
+
+> **子代理误报（已证伪，不入册）**：`query_timeseries_agg` 工具 · `SUSTAIN` 规则 · 确定性建模 derive · coverage 端点 · **`debattery:check`** · VLE 后端 · ScenarioCard 一等对象 —— 这些**都已建**。
+>
+> **去重说明**：build-engine P2–P6 已在自成长发动机 PRD §16 + 主线 P1–P6 跟踪；capability-routing = G-7（TODO #10 已暂缓）。**真正新暴露、此前完全未跟踪的**是：① **七个管理页整簇**（最大块）② OC1/OC7/OC9 运营完备性 ③ TR1–TR8 轨迹测试 ④ ontology/browser 端点 + coverage:check 门。
+
+
 
 ## ✅ 已完成（基线 + 本轮）
 - 系统本体 `SYSTEM-ONTOLOGY.md` §1–§10 + 治理闭环（铁律0 / SessionStart 钩子 / `/ontology` / `ontology:check` / `chain:check` / PRD 模板）
