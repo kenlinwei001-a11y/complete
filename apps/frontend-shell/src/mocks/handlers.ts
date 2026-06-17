@@ -352,6 +352,42 @@ export const handlers = [
       { domainKey: "product", displayName: "产品", color: "#16a34a" },
     ]),
   ),
+  http.post("*/a/v1/ontology/domains", async ({ request }) => {
+    const b = (await request.json()) as { domainKey: string; displayName?: string };
+    return HttpResponse.json({ domainKey: b.domainKey, displayName: b.displayName ?? b.domainKey }, { status: 201 });
+  }),
+
+  // ---- 七管理页整簇 mock ----
+  http.get("*/a/v1/validation/runs", () =>
+    HttpResponse.json([
+      {
+        id: "vrun_1", profile: "SMOKE", seed: 42, startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:09:00Z",
+        report: { profile: "SMOKE", seed: 42, pass: true, assertions: [], coverage: { module: 0.95, assertion: 0.9, loop: 1 }, engineeringVerificationScore: 0.94 },
+      },
+    ]),
+  ),
+  http.post("*/a/v1/validation/runs", () => HttpResponse.json({ id: "vrun_2" }, { status: 202 })),
+
+  http.get("*/a/v1/quarantine", () =>
+    HttpResponse.json([
+      { id: "qr_1", connId: "conn_1", dataset: "orders", raw: { so: "", qty: 10 }, reason: "SCHEMA_MISMATCH", detail: "缺主键 so", status: "PENDING", createdAt: "2026-06-17T08:00:00Z" },
+      { id: "qr_2", connId: "conn_1", dataset: "orders", raw: { so: "SO-1", qty: "x" }, reason: "TYPE_ERROR", detail: "qty 非数字", status: "DISCARDED", createdAt: "2026-06-17T08:01:00Z" },
+    ]),
+  ),
+  http.post("*/a/v1/quarantine/:id/reprocess", () => HttpResponse.json({ ok: true })),
+  http.post("*/a/v1/quarantine/discard", () => HttpResponse.json({ discarded: 1 })),
+
+  http.get("*/a/v1/notifications", () =>
+    HttpResponse.json({
+      unread: 1,
+      items: [
+        { id: "ntf_1", kind: "approval_pending", title: "待审批", body: "有一条 capex_action 待你审批", refType: "action", refId: "act_1", createdAt: "2026-06-17T08:00:00Z" },
+        { id: "ntf_2", kind: "action_approved", title: "审批通过", body: "你发起的方案已通过", readAt: "2026-06-17T08:05:00Z", createdAt: "2026-06-17T07:00:00Z" },
+      ],
+    }),
+  ),
+  http.post("*/a/v1/notifications/:id/read", () => HttpResponse.json({ ok: true })),
+  http.post("*/a/v1/notifications/read-all", () => HttpResponse.json({ ok: true })),
 
   http.get("*/a/v1/ontology/object-types", () =>
     HttpResponse.json([

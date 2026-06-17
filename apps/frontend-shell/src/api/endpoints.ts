@@ -692,3 +692,23 @@ export const newDataBuilderVersion = (id: string) =>
   api.a<DataBuilderAgent>(`/a/v1/data-builders/${id}/new-version`, { method: "POST" });
 export const publishDataBuilder = (id: string) =>
   api.a<DataBuilderAgent>(`/a/v1/data-builders/${id}/publish`, { method: "POST" });
+
+// ---- 七管理页整簇（PRD admin-console-closure §6；后端已就绪、补前端） ----
+import type { ValidationRunView, QuarantineRowView } from "@platform/contracts";
+
+/** VLE 闭环验证引擎运行历史（PRD-addendum-validation-loop）。 */
+export const fetchValidationRuns = () => api.a<ValidationRunView[]>("/a/v1/validation/runs");
+export const fetchValidationRun = (id: string) => api.a<ValidationRunView>(`/a/v1/validation/runs/${id}`);
+export const startValidationRun = (profile: string, seed?: number) =>
+  api.a<{ id: string }>("/a/v1/validation/runs", { method: "POST", body: { profile, ...(seed !== undefined ? { seed } : {}) } });
+
+/** 隔离区（异常行 SCHEMA_MISMATCH/DUP_KEY…）。 */
+export const fetchQuarantine = () => api.a<QuarantineRowView[]>("/a/v1/quarantine");
+export const reprocessQuarantine = (id: string) => api.a<{ ok: boolean }>(`/a/v1/quarantine/${id}/reprocess`, { method: "POST" });
+export const discardQuarantine = (ids: string[]) => api.a<{ discarded: number }>("/a/v1/quarantine/discard", { method: "POST", body: { ids } });
+
+/** 通知中心。 */
+export interface NotificationItem { id: string; kind: string; title: string; body: string; refType?: string; refId?: string; readAt?: string; createdAt: string }
+export const fetchNotifications = () => api.a<{ items: NotificationItem[]; unread: number }>("/a/v1/notifications");
+export const readNotification = (id: string) => api.a<{ ok: boolean }>(`/a/v1/notifications/${id}/read`, { method: "POST" });
+export const readAllNotifications = () => api.a<{ ok: boolean }>("/a/v1/notifications/read-all", { method: "POST" });

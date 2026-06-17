@@ -65,6 +65,10 @@ export const zh = {
     views: "视图配置",
     llmProviders: "LLM Provider",
     externalSignals: "外部信号",
+    validation: "闭环验证(VLE)",
+    quarantine: "隔离区",
+    notifications: "通知中心",
+    domains: "域管理",
   },
   errors: {
     notFoundTitle: "页面不存在",

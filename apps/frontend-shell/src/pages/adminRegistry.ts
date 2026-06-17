@@ -38,6 +38,11 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "calibration", label: zh.nav.calibration, roles: ["admin", "catalog_admin", "planner"] },
   // 外部域 EXT_SIG：环境信号 + 敏感性
   { path: "external-signals", label: zh.nav.externalSignals, roles: ["admin", "data_admin", "planner"] },
+  // 七管理页整簇（admin-console-closure §6；后端已就绪、补前端）
+  { path: "validation", label: zh.nav.validation, roles: ["admin", "platform_admin"] },
+  { path: "quarantine", label: zh.nav.quarantine, roles: ["admin", "data_admin"] },
+  { path: "notifications", label: zh.nav.notifications, roles: ["admin", "tenant_admin", "approver", "planner"] },
+  { path: "domains", label: zh.nav.domains, roles: ["admin", "data_admin"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */
