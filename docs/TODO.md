@@ -57,6 +57,7 @@
 | **数据流闭环**（dataflow-loop-closure §5） | ✅ **TR1–TR8 已补齐（2026-06-17）**：tr-dataflow.test(7)+tr-scenario.test(TR3)；prd:coverage 零引用 22→14。◐ DL6–DL10 事件接线增强待后续 | tr-dataflow/tr-scenario 回归 |
 | **VLE**（validation-loop） | ✅ 前端页已补(管理页组) + **VL2/4/5/7 验收测试已补**(vle-acceptance.test) | prd:coverage VL* 全清 |
 | **活数据可溯**（live-traceable-data） | ◐ `lineage/task` 端点存否不明（1 弱匹配）；溯源抽屉 UI 部分（Provenance 组件已存在） | 需复核，不武断 |
+| **合成数据页 UX**（2026-06-18 用户观察） | ⬜ `SyntheticPage` 是"生成向导"、无"当前数据集概览"：启动期 `seedDemoSynthetic` 种的数据（26 表/约 470 行）落在**连接器**（"合成数据源（确定性生成）" `mock_erp`）+ raw-datasets，但合成页 `jobId=null` 只显空表单 → 用户误判"合成数据前端无数据"。**非链路断点**（数据/物化/求解器全验证通过），属展示定位缺口（呼应 G-6"合成已并入连接器"）。补：合成页加只读"当前数据集概览"面板（`fetchConnections`+`fetchRawDatasets` 拉最新合成连接 + 行数 + 下钻原始行），纯前端、不碰后端/本体 | `SyntheticPage.tsx:22-30`（jobId=null→仅 StepOne）；数据实存于 `/a/v1/connections`+`/a/v1/raw-datasets`，亦可在 connections/modeling/FieldProfile 页查看 |
 
 > **子代理误报（已证伪，不入册）**：`query_timeseries_agg` 工具 · `SUSTAIN` 规则 · 确定性建模 derive · coverage 端点 · **`debattery:check`** · VLE 后端 · ScenarioCard 一等对象 —— 这些**都已建**。
 >
