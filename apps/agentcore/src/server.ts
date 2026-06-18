@@ -13,6 +13,7 @@ import {
   ModelBindingSchema,
   SceneEntryConfigSchema,
   ScenarioSchema,
+  ScaffoldManifestSchema,
   EvalCaseSchema,
   EvalSuiteSchema,
   SkillDefinitionSchema,
@@ -31,7 +32,7 @@ import { validateStdioTransport } from "./mcp/runtime.js";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
 import { DataCoreHttpError, DataCoreUnavailableError } from "./tools/clients.js";
 import { solverAllowed, viewAllowed } from "./features/registry.js";
-import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, resolvePlanForIntent } from "./catalog/service.js";
+import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, resolvePlanForIntent, resolvePlanByRef } from "./catalog/service.js";
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
@@ -1591,6 +1592,105 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     return { ready: issues.length === 0, issues };
   };
+
+  // ---------------------------------------------------------------------
+  // g8-P3 跨系统 scaffold（G-8 核心收口）：A 栈构建后经 SERVICE_TOKEN 下发 B 栈清单，
+  // 幂等 upsert 计划/意图/场景为 DRAFT（不自动上线，R4），跑无死路门 scenarioClosure，
+  // 回执 ScaffoldReceipt{items, fullChainOk}。用户 JWT 一律 403（R8）。
+  // ---------------------------------------------------------------------
+  app.post("/b/v1/internal/scaffold", async (req, reply) => {
+    const token = req.headers["x-service-token"];
+    if (!deps.config.SERVICE_TOKEN || token !== deps.config.SERVICE_TOKEN) {
+      throw new HttpError(403, "FORBIDDEN", "scaffold 仅限服务间调用（x-service-token）");
+    }
+    const m = ScaffoldManifestSchema.parse(req.body);
+    const items: { kind: string; key: string; status: "REUSED" | "SCAFFOLDED" | "MISSING"; missingRefs?: string[] }[] = [];
+    const pkg = (await deps.repos.packages.listByTenant(m.tenantId))[0];
+    if (!pkg) {
+      const all = [...m.planNeeds.map((p) => ["plan", p.planKey] as const), ...m.intentNeeds.map((i) => ["intent", i.intentKey] as const), ...m.sceneNeeds.map((s) => ["scene", s.scenarioKey] as const)];
+      return reply.send({ items: all.map(([kind, key]) => ({ kind, key, status: "MISSING" as const, missingRefs: ["租户无场景包"] })), fullChainOk: false });
+    }
+
+    // ① 计划（先建，供意图 planRef 解析）
+    const existingPlans = await deps.repos.plans.listByPackage(pkg.id);
+    for (const pn of m.planNeeds) {
+      if (existingPlans.some((p) => p.key === pn.planKey)) { items.push({ kind: "plan", key: pn.planKey, status: "REUSED" }); continue; }
+      const solverKey = pn.planKey.replace(/^plan_/, "");
+      await deps.catalog.createPlan(pkg.id, {
+        key: pn.planKey,
+        steps: [
+          { id: "s1", type: "invoke_solver", params: { solverKey, args: {} } },
+          { id: "s2", type: "render_answer", params: { blocks: [] } },
+        ],
+      });
+      items.push({ kind: "plan", key: pn.planKey, status: "SCAFFOLDED" });
+    }
+
+    // ② 意图（planRef → 计划，DRAFT 可解析）
+    const existingIntents = await deps.repos.intents.listByPackage(pkg.id);
+    for (const inb of m.intentNeeds) {
+      if (existingIntents.some((i) => i.key === inb.intentKey)) { items.push({ kind: "intent", key: inb.intentKey, status: "REUSED" }); continue; }
+      await deps.catalog.createIntent(pkg.id, {
+        key: inb.intentKey,
+        name: inb.intentKey,
+        description: "g8 故事倒推 scaffold（DRAFT，待审批发布）",
+        examples: inb.triggers ?? [],
+        enabledViews: "*",
+        slots: [],
+        planRef: { planKey: inb.planRef ?? inb.intentKey.replace(/^intent_/, "plan_"), version: "latest" },
+        riskLevel: "COMPUTE",
+        owner: "g8-scaffold",
+      });
+      items.push({ kind: "intent", key: inb.intentKey, status: "SCAFFOLDED" });
+    }
+
+    // ③ 场景（DRAFT；不自动发布 R4）
+    for (const sn of m.sceneNeeds) {
+      const existing = await deps.repos.scenarios.byKey(m.tenantId, sn.scenarioKey);
+      if (existing) { items.push({ kind: "scene", key: sn.scenarioKey, status: "REUSED" }); continue; }
+      const now = new Date().toISOString();
+      const sc: Scenario = {
+        id: newId("scn"),
+        tenantId: m.tenantId,
+        scenarioKey: sn.scenarioKey,
+        name: sn.scenarioKey,
+        domain: "",
+        targetView: sn.targetView,
+        intentKey: sn.intentKey ?? "",
+        triggerQuestion: "",
+        rules: [],
+        riskLevel: "COMPUTE",
+        summary: "g8 故事倒推 scaffold（DRAFT）",
+        mode: "WORKFLOW_FIRST",
+        presetContext: { targetView: sn.targetView, selectedObjects: [], slotPresets: {} },
+        status: "DRAFT",
+        version: 1,
+        updatedAt: now,
+      };
+      await deps.repos.scenarios.upsert(sc);
+      items.push({ kind: "scene", key: sn.scenarioKey, status: "SCAFFOLDED" });
+    }
+
+    // ④ 全链判定（DRAFT-aware 无死路门）：场景→意图→计划 结构接通即可（scaffold 产 DRAFT，
+    //    用 forValidation 允许 DRAFT 计划解析；区别于发布期 scenarioClosure 的 PUBLISHED 严格门）。
+    //    任一断 → fullChainOk=false + 对应场景标 MISSING（R11 跨系统断链）。
+    let fullChainOk = true;
+    const pkgIntents = await deps.repos.intents.listByPackage(pkg.id);
+    const intentByKey = new Map<string, (typeof pkgIntents)[number]>();
+    for (const i of pkgIntents) { const c = intentByKey.get(i.key); if (!c || i.version > c.version) intentByKey.set(i.key, i); }
+    for (const sn of m.sceneNeeds) {
+      const issues: string[] = [];
+      const intent = intentByKey.get(sn.intentKey ?? "");
+      if (!intent) issues.push(`意图「${sn.intentKey ?? ""}」未配置（死路）`);
+      else if (!intent.planRef || !(await resolvePlanByRef(deps.repos, pkg.id, intent.planRef, { forValidation: true }))) issues.push(`意图「${sn.intentKey ?? ""}」未绑定执行计划`);
+      if (issues.length > 0) {
+        fullChainOk = false;
+        const it = items.find((x) => x.kind === "scene" && x.key === sn.scenarioKey);
+        if (it) { it.status = "MISSING"; it.missingRefs = issues; }
+      }
+    }
+    return reply.send({ items, fullChainOk });
+  });
 
   // 20 场景目录 §9：场景启动器卡片（单一来源=scenarios 仓储；非前端硬编码）。
   // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active+PUBLISHED）。
