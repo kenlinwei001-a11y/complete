@@ -2,8 +2,8 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | v0.2 · 状态 DRAFT · 日期 2026-06-18 |
-| 取代/扩展 | **收口** `DataBuilderPage` 前端规格；统一三份后端 PRD 的页面表达：`PRD-demand-pulled-growth-engine.md`(§16 驾驶舱·已建 P1–P6) ⊕ `PRD-fullstack-story-build-g8.md`(故事入口/InputManifest/StoryBuildRun) ⊕ `PRD-unified-build-engine.md`(瀑布流逐产物 HITL/全链闭包)。**只规定"页面看到什么"，后端一律复用、不重建。** |
+| 版本 | v0.3 · 状态 DRAFT · 日期 2026-06-18 |
+| 取代/扩展 | **收口** `DataBuilderPage` 前端规格；统一三份后端 PRD 的页面表达：`PRD-demand-pulled-growth-engine.md`(§16 驾驶舱·已建 P1–P6) ⊕ `PRD-fullstack-story-build-g8.md`(故事入口/InputManifest/StoryBuildRun) ⊕ `PRD-unified-build-engine.md`(瀑布流逐产物 HITL/全链闭包)。**三页归一**：本页同时**收编 `SyntheticPage`(合成数据页)** —— 合成"生成"降为本页 rawin 的一种填数模式，仅"模拟时钟"留外（见 §3 区 4 + 页面归属决议）。**只规定"页面看到什么"，后端一律复用、不重建。** |
 | 先读 | 根 `CLAUDE.md` · `docs/SYSTEM-ONTOLOGY.md`(§3 链路 / §4 事件失效 / §10 切片) · 上述三份后端 PRD · `docs/PRD-frontend.md`(renderer 分发 §7) |
 | 核心一句话 | 把"数据构建发动机页"做成**一页统揽**：输入故事脚本 → **看到 LLM 完整理解** → 看到**倒推要补录什么** → 看到**计划与执行 workflow 逐步瀑布流** → 看到**每个下游模块同步了没有**（本体/连接器/规则/切片/求解器/意图/计划/workflow/agent/skill/mcp/场景，新增了几个、DRAFT 还是已发布、点击即可跳去该模块核对）→ 看到**全链闭包 + 功能缺失自检 + 故事覆盖度 + 验证痕迹（信任"内容完整"）** → 沉淀为**历史推演记录** → **一键「推演」直接落到该故事最可能被触发的真实业务页面（"绿测试≠能用"的现场证明）**。**一切在页面可见、可下钻、可溯源、可亲自跑通。** |
 
@@ -12,7 +12,7 @@
 ## 0. 本体引用与影响（强制 · 不填即未读本体）
 
 - **触及对象类型**（本体 §2）：
-  - **页面消费（只读展示，不改语义）**：`BuildPlan/BuildJob/ClosureReport/DataBuilderAgent` · `StoryBuildRun/InputManifest`(故事入口 PRD) · `GapReport/GrowthTicket/GrowthLedger`(自成长 PRD) · 下游全栈制品 `OntologyType/Link/SliceSpec/Rule/Solver/Connector/RawDataset` ⊕ `Intent/ExecutionPlan/Workflow/Skill/Agent/MCP tool/Scenario`。
+  - **页面消费（只读展示，不改语义）**：`BuildPlan/BuildJob/ClosureReport/DataBuilderAgent` · `StoryBuildRun/InputManifest`(故事入口 PRD) · `GapReport/GrowthTicket/GrowthLedger`(自成长 PRD) · `SyntheticJob/IndustryTemplate`(合成数据页收编：模板驱动合成填数) · 下游全栈制品 `OntologyType/Link/SliceSpec/Rule/Solver/Connector/RawDataset` ⊕ `Intent/ExecutionPlan/Workflow/Skill/Agent/MCP tool/Scenario`。**`SimulationClock/ClockTickReport`（A8 模拟时钟）不入本页**——属运营时序关切，留时序/运营页。
   - **信任与推演相关（复用平台既有机制）**：`ValidationTrace`（推演验证痕迹：一致性验证 + 交叉验证，`contracts/qos.ts` · 前端 `ValidationTracePanel.tsx`，让用户信任结果，R13）· `Scenario.targetView`（场景落点视图，决定"推演"跳哪页）· `useScenarioLaunch`（场景启动器 P3 已建：注入 presetContext + submitQuery + 对话坞 SSE）· `POST /b/v1/scenarios/:key/launch`。
   - **本 PRD 新增（页面所需的派生投影 / 弱持久）**：`ModuleSyncMatrix`（一次构建对**每个下游模块**的同步快照：模块→{新增/更新/复用计数, DRAFT/PUBLISHED, 制品键, 深链}）—— 由 `StoryBuildRun.producedArtifacts[]` + 领域事件聚合而成（**派生，不是新真值源**）。
 - **触及链路**（§3）：本页是**编排链 + 数据→本体→推演链 + 数据构建发动机链**三链产物的**汇合观测点**；消费 §4 全部产出事件来反映"已同步到各模块"。
@@ -31,7 +31,7 @@
 ## 1. 目标 / 非目标
 
 ### 1.1 目标（全部为"页面可见性"）
-1. **一页统揽**：`DataBuilderPage` 成为数据构建发动机的**唯一控制台**，消除与 `/admin/growth` 的分裂（后者降为本页内嵌区或合并）。
+1. **一页统揽（三页归一）**：`DataBuilderPage` 成为数据构建发动机的**唯一控制台**，消除与 `/admin/growth`(自成长驾驶舱) 及 `/admin/synthetic`(合成数据页) 的分裂——后两者分别降为本页内嵌区（区 6/区 8）与 rawin 填数模式（区 4）。保留"故事建域"与"快速合成"两个入口，不强迫先写故事才能合成。
 2. **故事理解全可见**：展示 comprehend 的**完整 BuildPlan 理解**——LLM 从故事读出的对象类型/规则/求解器/意图/计划/工作流/agent/skill/mcp/场景/数据源/KB，结构化呈现，不是黑盒。
 3. **倒推录入可见**：InputManifest 动态补录表单——页面告诉你"还需补哪些字段才能推导"。
 4. **计划与执行 workflow 逐步可见**：七阶段瀑布流 `intake→comprehend→gap→rawin→transform→closure→publish`，每阶段**实时状态 + 逐产物卡片**（可展开看明细/diff/逐产物 HITL 批复）。
@@ -78,10 +78,17 @@
 - **InputManifest 动态表单**：`source=ASK_USER` 项渲染为补录控件；`REUSE_EXISTING` 给"复用既有连接器/本体"下拉。提交回填续跑。
 - 数据来源：`StoryBuildRun.inputManifest`；`PATCH /a/v1/databuilder/runs/:id/inputs`。
 
-### 区 4 · 计划与执行瀑布流（复用 unified §5.3 + 扩）
+### 区 4 · 计划与执行瀑布流（复用 unified §5.3 + 扩；**收编合成数据生成**）
 - 七阶段 `intake→comprehend→gap→rawin→transform→closure→publish` **瀑布流**，每阶段：状态(PENDING/RUNNING/DONE/FAILED) + **该阶段产物卡片**。
+- **`rawin` 填数模式选择器（收编合成数据页 · unified 目标 5 三路统一）**：在 rawin 阶段提供 ④ 选一的填数方式，由需求字段统一驱动——
+  - **a. 模板驱动合成**（收编 `SyntheticPage` StepOne：选 `IndustryTemplate` + 规模 + seed → `SyntheticService.runJob`，无 LLM、确定性 R6）；
+  - **b. 故事 schema 驱动合成**（无模板时按 `BuildPlan.objectTypes` 现造，故事入口 PRD §3.4）；
+  - **c. 上传 Excel/CSV/JSON**（`parseXlsx` 三路统一）；
+  - **d. 在线数据模版**（按需求字段定义 schema 下载/回填）。
+  - 四种产物统一为 `Connection+RawDataset`，落点连接器、进区 5 同步矩阵。
 - **逐产物卡片**可展开：原始数据需求/字段/切片覆盖/规则/约束/skill/意图/计划/agent；**diff 预览 + 逐产物 HITL「批准/驳回」**（复用就地审批 §6.4 / `GET·POST /a/v1/actions*`）。
-- 数据来源：`BuildJob.phases` + 逐产物明细；实时经事件刷新（R10）。
+- **合成生成报告内嵌**（收编 `SyntheticPage` Report）：rowCounts/规则扫描/派生抽样复算 作为 rawin 产物卡片明细展示，不再另开页。
+- 数据来源：`BuildJob.phases` + 逐产物明细 + `POST /a/v1/synthetic/jobs`（模板模式）；实时经事件刷新（R10）。
 
 ### 区 5 · 模块同步矩阵（绿地 · 本 PRD 的核心交付）
 - 一张表，**每行一个下游模块**，列：`本次新增 | 更新 | 复用 | 状态(DRAFT/已发布) | 制品名(可展开) | 去该模块核对 →`。
@@ -129,8 +136,11 @@
 - 与成长账本并列/合并：账本按"问句↔缺口↔补法"索引,本时间线按"故事↔建域全过程"索引。
 - 数据来源：`GET /a/v1/databuilder/runs`。
 
-### 页面归属决议（消除两张皮）
-- **`DataBuilderPage` = 唯一控制台**（区 1–8）。`/admin/growth` 的 LOOP/GapReport/账本/工单**降为本页区 6/区 8 的内嵌面板**；`/admin/growth` 路由保留为"自成长聚焦视图"或 301 到本页对应锚点（实现期二选一，本 PRD 倾向**内嵌合并**）。
+### 页面归属决议（三页归一，消除三张皮）
+- **`DataBuilderPage` = 唯一控制台**（区 1–8）。
+- **收编 `/admin/growth`（自成长驾驶舱）**：LOOP/GapReport/账本/工单**降为本页区 6/区 8 内嵌面板**；路由保留为"自成长聚焦视图"或 301 到本页锚点（倾向内嵌合并）。
+- **收编 `/admin/synthetic`（合成数据页）**：① "生成"能力（模板/规模/seed）→ **区 4 rawin 填数模式 a**；② 六阶段报告 → 区 4 产物卡片明细；③ 那个"看不到已生成数据"的 UX 痛点 → 直接被**区 5 同步矩阵 + 连接器深链**消解；④ **唯独"模拟时钟控制台"（A8 tick）移出**——它是运营时序、非构建，迁到时序/运营页（本 PRD 不接管）。`/admin/synthetic` 路由降为"快速合成入口"（直达区 4 模式 a，跳过故事）或 301 到本页。
+- **保留双入口**：区 1 同时提供「故事建域」与「快速合成」按钮——心智不同（合成=已知模板出 demo/测试数据、无 LLM；故事=有需求倒推全栈），融页但不强迫先写故事。
 
 ## 4. 契约 / 端点 / 数据模型（前端为主；contracts-only-shared）
 - **复用端点**：`POST/PATCH /a/v1/databuilder/runs*`（故事入口 PRD）· `GET /a/v1/build-jobs`·`/data-builders` · `GET·POST /a/v1/actions*`（就地审批）· `GET /api/v1/growth/*`（自成长）· 各模块只读列表端点（深链核对）。
@@ -164,13 +174,13 @@
 5. **UI-4 模块同步矩阵（核心）**：构建后区 5 显示"本体 +N / 工作流 +N / agent +N …"，DRAFT/已发布正确，**点深链跳到对应模块管理页能核对到该制品**；对应事件到达后徽章由灰转亮（R10 回归：发事件→矩阵刷新）。
 6. **UI-5 闭包+自检**：区 6 显示全链 BOUND/MISSING + GapReport 7 码 + 缺的入工单。
 7. **UI-6 历史推演记录**：区 8 时间线逐 run 可回放全过程快照。
-8. **UI-7 单页统揽**：`/admin/growth` 能力在本页可达（内嵌或合并），无功能丢失。
+8. **UI-7 三页归一**：`/admin/growth` 与 `/admin/synthetic` 能力在本页可达（内嵌/降为 rawin 模式），无功能丢失；模板驱动合成在区 4 可跑出数据并进区 5 矩阵；模拟时钟不在本页（已迁出）。
 9. **UI-8 信任完整**：区 6 显示故事覆盖度（构造一段含未建模片段的故事 → 该句高亮"未理解"）+ ValidationTrace 面板 + R12 双向闭包徽章；闭包有 MISSING 时不显示"完整"。
 10. **UI-9 一键推演跳转**：构建一个端到端可跑的场景 → 点「推演」→ **跳转到该场景 `targetView` 页并出答案**（回归：跳对页 + 注入 presetContext + SSE）；构造一个仍缺求解器的故事 → 「推演」显示"不可达：断在 SOLVER_NOT_FOUND"并链到工单（不假装可跳）。
 11. **R14**：`debattery:check` 绿（页面结构无内联业务常数）。
 
 ## 8. 分期
-- **P1（骨架 + 理解 + 瀑布流）**：区 1/2/4 —— 故事输入 + BuildPlan 结构化理解 + 七阶段瀑布流逐产物卡片（接已有 BuildJob.phases）。
+- **P1（骨架 + 理解 + 瀑布流 + 收编合成）**：区 1/2/4 —— 故事输入 + 快速合成入口 + BuildPlan 结构化理解 + 七阶段瀑布流逐产物卡片 + **rawin 填数模式选择器（模板驱动合成收编 `SyntheticPage`，时钟迁出）**。
 - **P2（模块同步矩阵 · 核心）**：区 5 —— `producedArtifacts` + `ModuleSyncMatrix` + 事件订阅点亮 + 深链核对 + DRAFT/已发布三态。
 - **P3（补录 + 闭包 + 自检 + 信任）**：区 3 InputManifest 表单 + 区 6 全链闭包可视化 + 故事覆盖度 + ValidationTrace + R12 徽章 + GapReport/工单内嵌（合并 `/admin/growth`）。
 - **P3.5（一键推演）**：区 7 「推演」按钮 —— classify 主问句 → 解析场景 → 跳 `targetView` + `useScenarioLaunch` 注入出答案（复用场景启动器，不可达时诚实提示）。依赖故事建出的 Scenario 已可启动。
