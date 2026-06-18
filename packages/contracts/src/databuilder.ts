@@ -135,6 +135,57 @@ export type PlanSolverNeed = z.infer<typeof PlanSolverNeedSchema>;
 export const PlanKbDocSchema = z.object({ title: z.string(), content: z.string() });
 export type PlanKbDoc = z.infer<typeof PlanKbDocSchema>;
 
+// ---- B 栈需求（g8-P3：故事倒推全栈，BuildPlan 扩出 AgentCore 栈需求；scaffold 用）----
+// 全部 .default([])，向后兼容；comprehend 据 A 栈计划倒推，AgentCore /internal/scaffold 幂等建为 DRAFT。
+
+export const PlanSliceNeedSchema = z.object({ sliceKey: z.string(), rootType: z.string(), hops: z.array(z.string()).default([]) });
+export type PlanSliceNeed = z.infer<typeof PlanSliceNeedSchema>;
+
+export const PlanIntentNeedSchema = z.object({
+  intentKey: z.string(),
+  triggers: z.array(z.string()).default([]),
+  slots: z.array(z.string()).default([]),
+  planRef: z.string().optional(),
+  riskLevel: z.enum(["LOW", "MEDIUM", "HIGH"]).default("LOW"),
+});
+export type PlanIntentNeed = z.infer<typeof PlanIntentNeedSchema>;
+
+export const PlanPlanNeedSchema = z.object({
+  planKey: z.string(),
+  steps: z.array(z.string()).default([]), // invoke_solver | query_objects | evaluate_rules | render（粗粒度声明）
+  renderBindings: z.array(z.string()).default([]),
+});
+export type PlanPlanNeed = z.infer<typeof PlanPlanNeedSchema>;
+
+export const PlanWorkflowNeedSchema = z.object({ workflowKey: z.string(), kind: z.string().default("workflow"), steps: z.array(z.string()).default([]) });
+export type PlanWorkflowNeed = z.infer<typeof PlanWorkflowNeedSchema>;
+
+export const PlanSkillNeedSchema = z.object({ skillKey: z.string(), capability: z.string().default(""), resources: z.array(z.string()).default([]) });
+export type PlanSkillNeed = z.infer<typeof PlanSkillNeedSchema>;
+
+export const PlanAgentNeedSchema = z.object({
+  agentKey: z.string(),
+  systemPrompt: z.string().default(""),
+  tools: z.array(z.string()).default([]),
+  skills: z.array(z.string()).default([]),
+  ruleBindings: z.array(z.string()).default([]),
+  scopeObjectTypes: z.array(z.string()).default([]),
+});
+export type PlanAgentNeed = z.infer<typeof PlanAgentNeedSchema>;
+
+export const PlanMcpNeedSchema = z.object({ serverName: z.string(), tools: z.array(z.string()).default([]), credentialRef: z.string().optional() });
+export type PlanMcpNeed = z.infer<typeof PlanMcpNeedSchema>;
+
+export const PlanSceneNeedSchema = z.object({
+  scenarioKey: z.string(),
+  targetView: z.string().default(""),
+  intentKey: z.string().optional(),
+  mode: z.enum(["WORKFLOW", "AGENT"]).default("WORKFLOW"),
+  defaultAgentId: z.string().optional(),
+  presetContext: z.record(z.string(), z.unknown()).default({}),
+});
+export type PlanSceneNeed = z.infer<typeof PlanSceneNeedSchema>;
+
 export const BuildPlanSchema = z.object({
   id: z.string(), // bpl_
   tenantId: z.string(),
@@ -147,6 +198,15 @@ export const BuildPlanSchema = z.object({
   rules: z.array(PlanRuleSchema),
   solverNeeds: z.array(PlanSolverNeedSchema),
   kbDocs: z.array(PlanKbDocSchema),
+  // g8-P3 B 栈需求（向后兼容，缺省空）
+  sliceNeeds: z.array(PlanSliceNeedSchema).default([]),
+  intentNeeds: z.array(PlanIntentNeedSchema).default([]),
+  planNeeds: z.array(PlanPlanNeedSchema).default([]),
+  workflowNeeds: z.array(PlanWorkflowNeedSchema).default([]),
+  skillNeeds: z.array(PlanSkillNeedSchema).default([]),
+  agentNeeds: z.array(PlanAgentNeedSchema).default([]),
+  mcpNeeds: z.array(PlanMcpNeedSchema).default([]),
+  sceneNeeds: z.array(PlanSceneNeedSchema).default([]),
   createdAt: z.string(),
 });
 export type BuildPlan = z.infer<typeof BuildPlanSchema>;

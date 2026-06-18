@@ -180,7 +180,7 @@ interface StoryRunResp {
   id: string;
   script: string;
   status: "PENDING_INPUT" | "RUNNING" | "SUCCEEDED" | "FAILED";
-  buildPlan?: { id: string; objectTypes: unknown[] };
+  buildPlan?: { id: string; objectTypes: unknown[]; intentNeeds: unknown[]; planNeeds: unknown[]; sceneNeeds: unknown[]; solverNeeds: unknown[] };
   closureReport?: { gatePassed: boolean };
   producedConnections: string[];
   producedDatasets: string[];
@@ -195,6 +195,11 @@ describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期�
     expect(run.id).toMatch(/^sbr_/);
     expect(run.status).toBe("SUCCEEDED");
     expect(run.buildPlan?.objectTypes.length).toBeGreaterThan(0);
+    // g8-P3 倒推：每个求解器 → 计划+意图+场景（全栈倒推脊柱）
+    const bp = run.buildPlan!;
+    expect(bp.intentNeeds.length).toBe(bp.solverNeeds.length);
+    expect(bp.planNeeds.length).toBe(bp.solverNeeds.length);
+    expect(bp.sceneNeeds.length).toBe(bp.solverNeeds.length);
     expect(run.closureReport?.gatePassed).toBe(true);
     // 真人正门产物：build 经连接器上传产生连接器 + RawDataset，记入历史（连接器页可下钻）
     expect(run.producedConnections.length).toBeGreaterThan(0);

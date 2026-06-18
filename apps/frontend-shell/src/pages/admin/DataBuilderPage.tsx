@@ -320,7 +320,7 @@ export default function DataBuilderPage() {
                       </b>
                       {r.closureReport && <> · 对象绑定 {r.closureReport.objectsBound} · 正向缺失 {r.closureReport.forwardMissing}</>}
                     </div>
-                    <div>全栈计划：{r.buildPlan ? <>{r.buildPlan.objectTypes.length} 对象类型 · {r.buildPlan.rules.length} 规则 · {r.buildPlan.solverNeeds.length} 求解器</> : "—"}</div>
+                    <div>全栈计划：{r.buildPlan ? <>{r.buildPlan.objectTypes.length} 对象类型 · {r.buildPlan.rules.length} 规则 · {r.buildPlan.solverNeeds.length} 求解器 · {r.buildPlan.intentNeeds.length} 意图 · {r.buildPlan.planNeeds.length} 计划 · {r.buildPlan.sceneNeeds.length} 场景</> : "—"}</div>
                     <div>
                       产出源数据：<b>{r.producedConnections.length}</b> 连接器 · <b>{r.producedDatasets.length}</b> 数据集{" "}
                       <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页下钻</a>

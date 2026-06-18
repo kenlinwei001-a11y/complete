@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { IsoTime } from "./common.js";
-import { BuildPlanSchema, ClosureReportSchema } from "./databuilder.js";
+import {
+  BuildPlanSchema,
+  ClosureReportSchema,
+  PlanIntentNeedSchema,
+  PlanPlanNeedSchema,
+  PlanWorkflowNeedSchema,
+  PlanSkillNeedSchema,
+  PlanAgentNeedSchema,
+  PlanMcpNeedSchema,
+  PlanSceneNeedSchema,
+} from "./databuilder.js";
 import { GapReportSchema } from "./growth.js";
 
 /**
@@ -61,6 +71,20 @@ export const ScaffoldReceiptSchema = z.object({
   fullChainOk: z.boolean(),
 });
 export type ScaffoldReceipt = z.infer<typeof ScaffoldReceiptSchema>;
+
+/** A→B 推送的 B 栈制品清单（g8 §3.4）：DataCore closure 阶段经 SERVICE_TOKEN 下发 AgentCore。 */
+export const ScaffoldManifestSchema = z.object({
+  tenantId: z.string(),
+  runId: z.string(),
+  intentNeeds: z.array(PlanIntentNeedSchema).default([]),
+  planNeeds: z.array(PlanPlanNeedSchema).default([]),
+  workflowNeeds: z.array(PlanWorkflowNeedSchema).default([]),
+  skillNeeds: z.array(PlanSkillNeedSchema).default([]),
+  agentNeeds: z.array(PlanAgentNeedSchema).default([]),
+  mcpNeeds: z.array(PlanMcpNeedSchema).default([]),
+  sceneNeeds: z.array(PlanSceneNeedSchema).default([]),
+});
+export type ScaffoldManifest = z.infer<typeof ScaffoldManifestSchema>;
 
 // ---- StoryBuildRun（故事先行的一次端到端建域记录 = 历史推演记录主键）---------
 

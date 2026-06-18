@@ -1,4 +1,7 @@
-import type { BuildPlan, PlanDataSource, PlanObjectType, PlanRule, PlanSolverNeed } from "@platform/contracts";
+import type {
+  BuildPlan, PlanDataSource, PlanObjectType, PlanRule, PlanSolverNeed,
+  PlanSliceNeed, PlanIntentNeed, PlanPlanNeed, PlanSceneNeed,
+} from "@platform/contracts";
 
 /**
  * Comprehend 阶段：把故事脚本确定性地拆解为 build plan。
@@ -137,7 +140,11 @@ function matches(script: string, keywords: string[]): boolean {
 export function comprehendScript(
   script: string,
   seed: number,
-): Pick<BuildPlan, "dataSources" | "objectTypes" | "rules" | "solverNeeds" | "kbDocs"> {
+): Pick<
+  BuildPlan,
+  | "dataSources" | "objectTypes" | "rules" | "solverNeeds" | "kbDocs"
+  | "sliceNeeds" | "intentNeeds" | "planNeeds" | "workflowNeeds" | "skillNeeds" | "agentNeeds" | "mcpNeeds" | "sceneNeeds"
+> {
   // 命中实体；无命中则兜底 Order + Base 最小集（保证 pipeline 永远可跑）。
   let entities = ENTITIES.filter((e) => matches(script, e.keywords));
   if (entities.length === 0) entities = ENTITIES.filter((e) => e.typeKey === "Order" || e.typeKey === "Base");
@@ -182,5 +189,32 @@ export function comprehendScript(
   // 知识库：把脚本原文作为一篇知识文档灌入（可溯源）。
   const kbDocs = [{ title: "场景脚本", content: script.slice(0, 4000) }];
 
-  return { dataSources, objectTypes, rules, solverNeeds, kbDocs };
+  // ---- B 栈倒推（g8-P3 故事→全栈）：每个求解器 → 计划+意图+场景；每个对象类型 → 切片。----
+  // 构成可运行编排链 场景→意图→计划→求解器→渲染（scenarioClosure 校验的脊柱）。
+  const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] }));
+  const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({
+    planKey: `plan_${s.solverKey}`,
+    steps: ["invoke_solver", "render"],
+    renderBindings: s.renderBindings ?? [],
+  }));
+  const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({
+    intentKey: `intent_${s.solverKey}`,
+    triggers: [s.solverKey],
+    slots: [],
+    planRef: `plan_${s.solverKey}`,
+    riskLevel: "LOW" as const,
+  }));
+  const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({
+    scenarioKey: `scene_${s.solverKey}`,
+    targetView: "",
+    intentKey: `intent_${s.solverKey}`,
+    mode: "WORKFLOW" as const,
+    presetContext: {},
+  }));
+
+  return {
+    dataSources, objectTypes, rules, solverNeeds, kbDocs,
+    sliceNeeds, intentNeeds, planNeeds, sceneNeeds,
+    workflowNeeds: [], skillNeeds: [], agentNeeds: [], mcpNeeds: [],
+  };
 }
