@@ -395,6 +395,24 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows.map((x) => x.doc as import("./repos.js").ExperienceCaseRow);
       },
     },
+    growthLedger: {
+      async insert(e) {
+        await q(`INSERT INTO growth_ledger(id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING`, [e.id, e.tenantId, JSON.stringify(e)]);
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT doc FROM growth_ledger WHERE tenant_id = $1 ORDER BY id DESC`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("@platform/contracts").GrowthLedgerEntry);
+      },
+    },
+    growthTickets: {
+      async upsert(t) {
+        await q(`INSERT INTO growth_tickets(id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc = $3`, [t.id, t.tenantId, JSON.stringify(t)]);
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT doc FROM growth_tickets WHERE tenant_id = $1 ORDER BY id DESC`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("@platform/contracts").GrowthTicket);
+      },
+    },
     evalCases: {
       async upsert(c) {
         await q(

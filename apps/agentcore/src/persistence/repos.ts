@@ -219,5 +219,14 @@ export interface Repos {
     upsert(c: ExperienceCaseRow): Promise<void>;
     listByTenant(tenantId: string): Promise<ExperienceCaseRow[]>;
   };
+  /** 自成长 P4：成长账本(demand-indexed) + 成长工单(厂商中立施工契约)。 */
+  growthLedger: {
+    insert(e: import("@platform/contracts").GrowthLedgerEntry): Promise<void>;
+    listByTenant(tenantId: string): Promise<import("@platform/contracts").GrowthLedgerEntry[]>;
+  };
+  growthTickets: {
+    upsert(t: import("@platform/contracts").GrowthTicket): Promise<void>;
+    listByTenant(tenantId: string): Promise<import("@platform/contracts").GrowthTicket[]>;
+  };
   close(): Promise<void>;
 }

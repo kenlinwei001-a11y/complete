@@ -73,9 +73,21 @@ describe("POST /api/v1/growth/run · 真实 orchestrator", () => {
       payload: { packageId: "pkg_battery_manufacturing", query: "讲个笑话", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 2 },
     });
     expect(res.statusCode).toBe(200);
-    const report = res.json() as { terminalState: string; maxRounds: number; rounds: unknown[]; openTickets: unknown[] };
+    const report = res.json() as { terminalState: string; maxRounds: number; rounds: unknown[]; openTickets: { gapCode: string }[] };
     expect(report.maxRounds).toBe(2);
     expect(["BOUNDARY", "MAX_ROUNDS", "CONVERGED"]).toContain(report.terminalState);
     expect(report.rounds.length).toBeGreaterThan(0);
+
+    // P4：成长账本记录此次运行（demand-indexed），工单从 openTickets 落库
+    const ledger = (await t.app.inject({ method: "GET", url: "/api/v1/growth/ledger", headers: { "x-debug-user": PLANNER } }).then((r) => r.json())) as { items: { report: { question: string } }[] };
+    expect(ledger.items.length).toBe(1);
+    expect(ledger.items[0]!.report.question).toBe("讲个笑话");
+
+    const tickets = (await t.app.inject({ method: "GET", url: "/api/v1/growth/tickets", headers: { "x-debug-user": PLANNER } }).then((r) => r.json())) as { items: { fromQuestion: string; status: string; gapCode: string }[] };
+    expect(tickets.items.length).toBe(report.openTickets.length);
+    if (report.openTickets.length > 0) {
+      expect(tickets.items[0]!.fromQuestion).toBe("讲个笑话");
+      expect(tickets.items[0]!.status).toBe("OPEN");
+    }
   });
 });

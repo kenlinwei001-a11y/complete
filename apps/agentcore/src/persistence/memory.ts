@@ -51,6 +51,8 @@ export function createMemoryRepos(): Repos {
   const llmProviders = new Map<string, LlmProviderConfig>();
   const llmBindings = new Map<string, ModelBinding[]>();
   const experience = new Map<string, ExperienceCaseRow>();
+  const growthLedger = new Map<string, import("@platform/contracts").GrowthLedgerEntry>();
+  const growthTickets = new Map<string, import("@platform/contracts").GrowthTicket>();
   const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
   const evalRuns = new Map<string, import("@platform/contracts").EvalRunReport>();
 
@@ -330,6 +332,14 @@ export function createMemoryRepos(): Repos {
           .sort((a, b) => (a.id < b.id ? -1 : 1))
           .map(clone);
       },
+    },
+    growthLedger: {
+      async insert(e) { growthLedger.set(e.id, clone(e)); },
+      async listByTenant(tenantId) { return [...growthLedger.values()].filter((e) => e.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
+    },
+    growthTickets: {
+      async upsert(t) { growthTickets.set(t.id, clone(t)); },
+      async listByTenant(tenantId) { return [...growthTickets.values()].filter((t) => t.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
     },
     credentials: {
       async insert(c) {

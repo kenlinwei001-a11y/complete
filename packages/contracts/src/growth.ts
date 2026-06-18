@@ -77,3 +77,40 @@ export const GrowthRunReportSchema = z.object({
   generatedAt: IsoTime,
 });
 export type GrowthRunReport = z.infer<typeof GrowthRunReportSchema>;
+
+/**
+ * P4 · 成长账本条目（demand-indexed）：每个客户问题一条——问题→缺口→补法→终态→工单。
+ * 用于发现盲区(高频缺口=优先建)、量化覆盖度演进、待开发 backlog 100% 需求拉动。
+ */
+export const GrowthLedgerEntrySchema = z.object({
+  id: z.string(), // glr_
+  tenantId: z.string(),
+  report: GrowthRunReportSchema,
+  createdAt: IsoTime,
+});
+export type GrowthLedgerEntry = z.infer<typeof GrowthLedgerEntrySchema>;
+
+/**
+ * P4 · 成长工单（厂商中立施工契约，PRD §7.1）：缺功能→带 I/O 契约的需开发工单，
+ * 经 MCP/CLI 交任意 code agent 施工。状态机 OPEN→IN_PROGRESS→IN_REVIEW→MERGED→VERIFIED。
+ */
+export const GrowthTicketStatusSchema = z.enum(["OPEN", "IN_PROGRESS", "IN_REVIEW", "MERGED", "VERIFIED"]);
+export type GrowthTicketStatus = z.infer<typeof GrowthTicketStatusSchema>;
+
+export const GrowthTicketSchema = z.object({
+  id: z.string(), // gtk_
+  tenantId: z.string(),
+  fromQuestion: z.string(),
+  gapCode: GapCodeSchema,
+  /** I/O 契约线索：需要的输入字段 + 渲染要的输出键（求解器骨架的签名来源）。 */
+  ioContract: z.object({ inputs: z.array(z.string()), outputShape: z.array(z.string()) }),
+  /** 本体引用（施工 agent 读本体定位）。 */
+  ontologyRefs: z.object({ objectTypes: z.array(z.string()), slices: z.array(z.string()), rules: z.array(z.string()) }),
+  /** 验收线索（问句应能答 + 应过门禁）。 */
+  acceptance: z.string(),
+  status: GrowthTicketStatusSchema,
+  /** 认领者（任意 code agent，厂商中立）。 */
+  assignee: z.string().optional(),
+  createdAt: IsoTime,
+});
+export type GrowthTicket = z.infer<typeof GrowthTicketSchema>;

@@ -25,7 +25,7 @@
 - ✅ **P1 已落（2026-06-17）** QOS 缺口探针 + GapReport：`classifyGap`(终态→7码分类,确定性纯函数) + `POST /api/v1/growth/probe`(提交→等终态→分类)；growth-probe ×7 回归；本体 §2 回写 GapReport。静态闭包→运行时实跑(验收 G-8/G-1)
 - ✅ **P2 已落（2026-06-17）** 缺数据真人正门自动补 `POST /a/v1/growth/fill-data`（确定性生成 CSV→经公开上传门 connectors.upload 导入→RawDataset 可见，与手动上传无差别，R6 字节级一致；growth-fill ×2）+ **就地 Action 审批面板**（DataBuilderPage 内嵌 PENDING_APPROVAL 列表 + 页内批准/驳回，无跳转；f44 ×1）；本体 §2 回写
 - ✅ **P3 已落（2026-06-17）** LOOP `POST /api/v1/growth/run`(探针→补齐→重跑→收敛,K有界前端可配 maxRounds) + `runGrowthLoop`(纯编排) + 补法分派(缺数据真人正门真实补/否则出工单→BOUNDARY) + fillData DataCore客户端(http+mock)；终态 CONVERGED/BOUNDARY/MAX_ROUNDS；growth-loop ×5；本体§2回写。余: scaffold切片/规则/意图 + generic-inference 兜底的"真实自动补"待 P4(当前出工单)
-- ⬜ **P4** C 骨架工单 + GrowthTicket 契约 + 成长账本（demand-indexed）
+- ✅ **P4 部分落（2026-06-17）** GrowthTicket 契约(厂商中立施工:I/O契约+本体引用+验收+OPEN→VERIFIED) + 成长账本 GrowthLedgerEntry(demand-indexed) 持久化(仓储四处+migration007) + loop 运行落账+缺功能落工单 + `GET /api/v1/growth/{ledger,tickets}`；growth-loop 集成验证。余: C 骨架(按问句反推求解器 I/O 自动生成 stub) + scaffold/兜底真实自动补
 - ⬜ **P5** code-agent 执行器接缝（MCP/CLI 活查询面 + 推默认拉兜底 + 厂商中立工单闭环）
 - ⬜ **P6** 构建驾驶舱前端（瀑布流逐产物HITL + 全链闭包可视化 + 指标仪表盘）+ 端到端联调
 - ⬜ **前端·构建驾驶舱**（PRD §16，收编历史未落地页面缺口）：`DataBuilderPage.tsx` 现仅"七阶段状态灯+闭包数字+JSON dump"，**远落后 `PRD-unified-build-engine.md` §1.1.8/§5.3 的瀑布流逐产物HITL**；GapReport/就地审批/真人正门可视化/成长账本/工单看板全未建

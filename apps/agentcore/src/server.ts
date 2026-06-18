@@ -200,7 +200,29 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       return { gapCode: gap.gapCode, action: `${gap.suggestedFill}（当前不可自动补→工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
     };
     const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
+    // P4：成长账本(demand-indexed) + 缺功能→成长工单(厂商中立施工契约)
+    const now = new Date().toISOString();
+    await deps.repos.growthLedger.insert({ id: newId("glr"), tenantId: a.tenantId, report, createdAt: now });
+    for (const tk of report.openTickets) {
+      await deps.repos.growthTickets.upsert({
+        id: newId("gtk"), tenantId: a.tenantId, fromQuestion: body.query, gapCode: tk.gapCode,
+        ioContract: { inputs: Object.keys(body.context.filters ?? {}), outputShape: [] },
+        ontologyRefs: { objectTypes: [], slices: [], rules: [] },
+        acceptance: `问句「${body.query}」应能答出可验证答案并过门禁`, status: "OPEN", createdAt: now,
+      });
+    }
     return reply.status(200).send(report);
+  });
+
+  // P4：成长账本（demand-indexed）—— 每个客户问题→缺口→补法→终态→工单，发现盲区/量化覆盖度。
+  app.get("/api/v1/growth/ledger", async (req) => {
+    const a = await auth(req);
+    return { items: await deps.repos.growthLedger.listByTenant(a.tenantId) };
+  });
+  // P4：成长工单（缺功能的厂商中立施工契约；OPEN→…→VERIFIED）。
+  app.get("/api/v1/growth/tickets", async (req) => {
+    const a = await auth(req);
+    return { items: await deps.repos.growthTickets.listByTenant(a.tenantId) };
   });
 
   // Phase9C 推演历史列表：按租户列最近任务（id/问句/路径/状态/结论摘要/时间），供"推演历史"页浏览+重放。
