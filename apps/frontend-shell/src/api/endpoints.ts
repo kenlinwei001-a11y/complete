@@ -734,3 +734,11 @@ export const mergeCandidate = (id: string, goldenId?: string, survivorship?: Rec
 export const rejectMergeCandidate = (id: string) => api.a<{ ok: boolean }>(`/a/v1/objects/merge-candidates/${id}/reject`, { method: "POST" });
 export const fetchObjectMerges = () => api.a<{ items: ObjectMerge[] }>("/a/v1/objects/merges");
 export const unmergeObjects = (id: string) => api.a<{ ok: boolean }>(`/a/v1/objects/merges/${id}/unmerge`, { method: "POST" });
+
+// ---- 自成长发动机驾驶舱（P6）：运行 LOOP / 成长账本 / 工单看板 ----
+import type { GrowthRunReport, GrowthLedgerEntry, GrowthTicket } from "@platform/contracts";
+export const runGrowth = (query: string, maxRounds = 4, packageId = "pkg_battery_manufacturing", view = "dash") =>
+  api.b<GrowthRunReport>("/b/v1/growth/run", { method: "POST", body: { packageId, query, context: { view, selectedObjects: [], filters: {} }, maxRounds } });
+export const fetchGrowthLedger = () => api.b<{ items: GrowthLedgerEntry[] }>("/b/v1/growth/ledger");
+export const fetchGrowthTickets = () => api.b<{ items: GrowthTicket[] }>("/b/v1/growth/tickets");
+export const claimGrowthTicket = (id: string) => api.b<GrowthTicket>(`/b/v1/growth/tickets/${id}/claim`, { method: "POST", body: { assignee: "cli-agent" } });

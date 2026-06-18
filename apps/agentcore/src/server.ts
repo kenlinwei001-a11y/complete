@@ -57,7 +57,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // /b/v1 下原生路由（agents/workflows/…）不受影响，只把 QOS 子集重写到 /api/v1。
     rewriteUrl(req) {
       const url = req.url ?? "/";
-      for (const seg of ["/b/v1/queries", "/b/v1/catalog", "/b/v1/ops"]) {
+      for (const seg of ["/b/v1/queries", "/b/v1/catalog", "/b/v1/ops", "/b/v1/growth"]) {
         if (url.startsWith(seg)) return "/api/v1" + url.slice("/b/v1".length);
       }
       return url;

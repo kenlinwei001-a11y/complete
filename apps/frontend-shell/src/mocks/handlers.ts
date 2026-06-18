@@ -417,6 +417,27 @@ export const handlers = [
   ),
   http.post("*/a/v1/objects/merges/:id/unmerge", () => HttpResponse.json({ ok: true })),
 
+  http.post("*/b/v1/growth/run", async ({ request }) => {
+    const b = (await request.json()) as { query: string; maxRounds?: number };
+    return HttpResponse.json({
+      question: b.query, maxRounds: b.maxRounds ?? 4,
+      rounds: [{ round: 1, gapReport: { question: b.query, taskId: "t1", verdict: "BOUNDARY", path: "AGENT", findings: [{ gapCode: "NO_INTENT", evidence: "无意图覆盖", suggestedFill: "scaffold", blocking: true }], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "NO_INTENT", action: "scaffold待建（出工单）", advanced: false, ticket: { gapCode: "NO_INTENT", detail: "无意图覆盖" } } }],
+      terminalState: "BOUNDARY", openTickets: [{ gapCode: "NO_INTENT", detail: "无意图覆盖" }], generatedAt: "2026-06-17T00:00:00Z",
+    });
+  }),
+  http.get("*/b/v1/growth/ledger", () =>
+    HttpResponse.json({ items: [
+      { id: "glr_1", tenantId: "demo", createdAt: "2026-06-17T08:00:00Z", report: { question: "常州影响哪些订单？", maxRounds: 4, rounds: [{ round: 1, gapReport: { verdict: "ANSWERABLE", findings: [] } }], terminalState: "CONVERGED", openTickets: [] } },
+      { id: "glr_2", tenantId: "demo", createdAt: "2026-06-17T07:00:00Z", report: { question: "未知能力问句", maxRounds: 4, rounds: [{ round: 1, gapReport: { verdict: "BOUNDARY", findings: [] } }], terminalState: "BOUNDARY", openTickets: [{ gapCode: "NO_CAPABILITY", detail: "x" }] } },
+    ] }),
+  ),
+  http.get("*/b/v1/growth/tickets", () =>
+    HttpResponse.json({ items: [
+      { id: "gtk_1", tenantId: "demo", fromQuestion: "未知能力问句", gapCode: "NO_CAPABILITY", ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] }, acceptance: "应能答", status: "OPEN", createdAt: "2026-06-17T07:00:00Z" },
+    ] }),
+  ),
+  http.post("*/b/v1/growth/tickets/:id/claim", () => HttpResponse.json({ id: "gtk_1", status: "IN_PROGRESS", assignee: "cli-agent" })),
+
   http.get("*/a/v1/ontology/slices", () =>
     HttpResponse.json([
       { sliceKey: "model_capacity_network", version: 1, rootType: "Model", hops: 2, linkKeys: ["PRODUCIBLE_AT"], maxNodes: 100, fixtures: 1 },

@@ -46,6 +46,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "evals", label: zh.nav.evals, roles: ["admin", "catalog_admin"] },
   { path: "slices", label: zh.nav.slices, roles: ["admin", "data_admin"] },
   { path: "merge", label: zh.nav.merge, roles: ["admin", "data_admin"] },
+  { path: "growth", label: zh.nav.growth, roles: ["admin", "data_admin"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */

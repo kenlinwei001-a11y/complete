@@ -72,6 +72,7 @@ export const zh = {
     evals: "Agent 评测",
     slices: "本体切片",
     merge: "实体合并",
+    growth: "自成长发动机",
   },
   errors: {
     notFoundTitle: "页面不存在",
