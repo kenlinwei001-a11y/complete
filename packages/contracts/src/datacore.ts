@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IsoTime, JsonSchemaObject } from "./common.js";
+import { ValidationPolicySchema } from "./output-validation.js";
 
 // ---------------------------------------------------------------------------
 // 平台 PRD §2 A1 连接器
@@ -27,6 +28,8 @@ export const ConnectionInstanceSchema = z.object({
   status: z.enum(["ACTIVE", "DISABLED", "ERROR"]),
   lastSyncAt: IsoTime.optional(),
   lastError: z.string().optional(),
+  /** 约束执行层（可配置,按租户）：该源导入数据的本体校验策略 + 字段映射。 */
+  validationPolicy: ValidationPolicySchema.optional(),
 });
 export type ConnectionInstance = z.infer<typeof ConnectionInstanceSchema>;
 

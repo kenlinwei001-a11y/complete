@@ -11,6 +11,7 @@ import type {
   BackfillReport,
   DataBuilderAgent,
   ConnectionInstance,
+  ValidationPolicy,
   ConnectorType,
   FeatureDef,
   IntentDefinition,
@@ -218,6 +219,9 @@ export const triggerSync = (connId: string) =>
   api.a<{ syncJobId: string }>(`/a/v1/connections/${connId}/sync`, { body: {} });
 export const fetchSyncJob = (jobId: string) => api.a<SyncJobVM>(`/a/v1/sync-jobs/${jobId}`);
 export const fetchConnectionSchema = (connId: string) => api.a<SourceSchema>(`/a/v1/connections/${connId}/schema`);
+// 约束执行层 stage2：连接器级本体校验策略 + 字段映射（按租户持久化）
+export const setConnectionValidationPolicy = (connId: string, policy: ValidationPolicy) =>
+  api.a<ConnectionInstance>(`/a/v1/connections/${connId}/validation-policy`, { method: "PUT", body: { policy } });
 export const uploadFile = (file: File) => {
   const fd = new FormData();
   fd.append("file", file);

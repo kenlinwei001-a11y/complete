@@ -663,6 +663,13 @@ export const handlers = [
   // ---- 连接器 ----
   http.get("*/a/v1/connector-types", () => HttpResponse.json(CONNECTOR_TYPES)),
   http.get("*/a/v1/connections", () => HttpResponse.json(db.connections)),
+  http.put("*/a/v1/connections/:id/validation-policy", async ({ request, params }) => {
+    const body = (await request.json()) as { policy?: unknown };
+    const conn = db.connections.find((c) => c.id === (params as { id: string }).id);
+    if (!conn) return new HttpResponse(null, { status: 404 });
+    (conn as { validationPolicy?: unknown }).validationPolicy = body.policy ?? body;
+    return HttpResponse.json(conn);
+  }),
   http.post("*/a/v1/connections/test", async ({ request }) => {
     const body = (await request.json()) as { config: Record<string, unknown> };
     const ok = Boolean(Object.values(body.config ?? {}).some((v) => v !== "" && v != null));

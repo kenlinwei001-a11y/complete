@@ -52,6 +52,9 @@ export type ValidateOutputResult = z.infer<typeof ValidateOutputResultSchema>;
 export const ValidateOutputBodySchema = z.object({
   objectType: z.string(),
   rows: z.array(z.record(z.string(), z.unknown())).max(1000),
+  /** 显式 policy（覆盖最高优先级）。 */
   policy: ValidationPolicySchema.partial().optional(),
+  /** 数据源连接器：取其持久化的 validationPolicy 作为基线（适配该源字段映射/处置）。 */
+  connId: z.string().optional(),
 });
 export type ValidateOutputBody = z.infer<typeof ValidateOutputBodySchema>;

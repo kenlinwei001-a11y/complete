@@ -941,8 +941,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ValidateOutputBodySchema, req.body);
     const typeDef = (await ontology.listTypes(c)).find((t) => t.key === body.objectType);
     if (!typeDef) throw validationError(`未知对象类型 '${body.objectType}'（本租户）`);
-    const policy = ValidationPolicySchema.parse(body.policy ?? {});
+    // 有效策略 = 连接器持久化基线（适配该源）← 被显式 body.policy 覆盖 ← 全局默认兜底
+    const base = body.connId ? (await connectors.getConnection(c, body.connId)).validationPolicy : undefined;
+    const policy = ValidationPolicySchema.parse({ ...(base ?? {}), ...(body.policy ?? {}) });
     return validateOutputAgainstOntology(body.rows, typeDef, policy);
+  });
+  // stage2 持久化：连接器（数据源）级校验策略 + 字段映射（按租户;前端字段画像页编辑）
+  app.put("/a/v1/connections/:id/validation-policy", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const policy = ValidationPolicySchema.parse((req.body as { policy?: unknown })?.policy ?? req.body);
+    return connectors.setValidationPolicy(c, (req.params as { id: string }).id, policy);
   });
   app.post("/a/v1/ontology/object-types", async (req, reply) => {
     const c = ctx(req);

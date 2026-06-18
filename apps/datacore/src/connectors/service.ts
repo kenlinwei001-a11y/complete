@@ -111,6 +111,14 @@ export class ConnectorService {
     return this.redact(conn);
   }
 
+  /** 约束执行层 stage2：持久化该连接器（数据源）的本体校验策略 + 字段映射（按租户）。 */
+  async setValidationPolicy(ctx: AuthCtx, id: string, policy: import("@platform/contracts").ValidationPolicy): Promise<Connection> {
+    const conn = await this.getConnection(ctx, id);
+    conn.validationPolicy = policy;
+    await this.repos.connections.put(conn);
+    return this.redact(conn);
+  }
+
   /** Credentials are never echoed by any API. */
   redact(conn: Connection): Connection {
     const config: Record<string, unknown> = {};

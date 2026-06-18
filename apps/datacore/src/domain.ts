@@ -105,6 +105,8 @@ export interface Connection {
   status: "ACTIVE" | "DISABLED" | "ERROR";
   lastSyncAt?: string;
   lastError?: string;
+  /** 约束执行层（可配置,按租户）：该源导入数据的本体校验策略 + 字段映射（适配不同数据字段）。 */
+  validationPolicy?: import("@platform/contracts").ValidationPolicy;
 }
 
 export interface SyncJob {

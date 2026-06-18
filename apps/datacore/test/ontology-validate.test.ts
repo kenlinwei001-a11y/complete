@@ -60,4 +60,21 @@ describe("约束执行层 · validateOutputAgainstOntology（可配置）", () =
     const other = await t.app.inject({ method: "POST", url: "/a/v1/ontology/validate-output", headers: debugUser("acme", "admin", "admin"), payload: { objectType: "Order", rows: [{ so: "SO-1" }] } });
     expect(other.statusCode).toBe(400);
   });
+
+  it("stage2 持久化：连接器级 policy 存得住 + validate-output 经 connId 取用（按租户）", async () => {
+    const t = await makeApp();
+    await t.app.inject({ method: "POST", url: "/a/v1/data-builders/run", headers: ADMIN, payload: { script: "常州基地产能紧张，影响订单交期与客户信用，请做风险推演", seed: 7 } });
+    const conns = (await (await t.app.inject({ method: "GET", url: "/a/v1/connections", headers: ADMIN })).json()) as { id: string }[];
+    const connId = conns[0]!.id;
+    // 存策略：qty 负数走 QUARANTINE（不拒）
+    const put = await t.app.inject({ method: "PUT", url: `/a/v1/connections/${connId}/validation-policy`, headers: ADMIN, payload: { policy: { valueDomain: "QUARANTINE", domainOverrides: { qty: { min: 0 } } } } });
+    expect(put.statusCode).toBe(200);
+    // 存得住
+    const back = (await (await t.app.inject({ method: "GET", url: "/a/v1/connections", headers: ADMIN })).json()) as { id: string; validationPolicy?: { valueDomain: string } }[];
+    expect(back.find((c) => c.id === connId)?.validationPolicy?.valueDomain).toBe("QUARANTINE");
+    // validate-output 经 connId 取用该源策略 → qty=-5 进隔离但 ok 仍真
+    const res = (await (await t.app.inject({ method: "POST", url: "/a/v1/ontology/validate-output", headers: ADMIN, payload: { objectType: "Order", connId, rows: [{ so: "SO-9", qty: -5 }] } })).json()) as { ok: boolean; quarantinedRows: number };
+    expect(res.ok).toBe(true);
+    expect(res.quarantinedRows).toBe(1);
+  });
 });
