@@ -41,9 +41,8 @@
 ### prd:coverage 首跑 · 零测试引用验收项（机器核实，22 项）
 
 - ✅ **TR1–TR8**（dataflow-loop-closure）：数据流轨迹验收测试**已补齐（2026-06-17）** —— TR1/2/4/5/6/7/8 在 `datacore/test/tr-dataflow.test.ts`（上传→落地→推演命中 / 规则拦截 / 采纳→审批→写回 / tick 联动 / 学习环 / 权限过滤 / 合成同源相等），TR3 在 `agentcore/test/tr-scenario.test.ts`（建场景→发布→启动器→QOS 推演）。`prd:coverage` 零引用 22→14。
-- ✅ **VL2/VL4/VL5/VL7**（validation-loop）：VLE 八项验收**半数零引用**（VL1/3/6/8 有测、VL2/4/5/7 无）—— **新发现**，此前未跟踪。
-- ◐ **GE-A..GE-H**（demand-pulled-growth-engine）：自成长发动机**全部零引用** —— 正确（新 PRD、尚未实现，本就 ⬜）。
-- ◐ A9（admin-console-closure / catalog-battery）：疑为模块名"A9 数据工坊"误匹配，非真验收缺口，待核。
+- ✅ **VL2/VL4/VL5/VL7**（validation-loop）：**已补齐（2026-06-17）** —— `datacore/test/vle-acceptance.test.ts`：VL2 注入 broken_aggregate→参照比对红 · VL4 闭环收敛(提案 MAPE↓→批准应用→参数+1) · VL5 扰动后一次性租户隔离→重跑回基线 · VL7 参照预言机对被测求解器零 import。`prd:coverage` 零引用 14→10。
+- ◐ **剩余零引用 10 项**：GE-A..GE-H（自成长发动机未来验收，随 P2+ 落地，正确）+ A9 ×2（模块名"A9 数据工坊"误匹配噪声，非真缺口）。
 - 注：`prd:coverage` 的"已覆盖"只证"有测试引用"，**不证前端页存在**——七个管理页缺失（上表）后端有测试但无 UI，是该启发式的已知盲区，仍以上表 UI 审计为准。
 
 ### 审计结果 · 已文档化但未实现（全部经 grep 核实，✅=已证实未建 / ◐=部分）
@@ -56,7 +55,7 @@
 | **运营完备性**（operational-completeness） | ◐ OC1 实体解析✅已建(本轮) · OC7 LLM 成本配额 = 0 · OC9 工厂日历 = 0（OC8 通知/OC4 隔离区后端有·前端缺，归管理页组） | grep 0 |
 | **能力路由**（capability-routing，G-7） | ✅ 等价能力故障转移 capabilityGroup/groupPriority = 0；◐ `load_tools` 工具未见（呼应本体 G-7 ◐，TODO #10 已暂缓） | grep 0 |
 | **数据流闭环**（dataflow-loop-closure §5） | ✅ **TR1–TR8 已补齐（2026-06-17）**：tr-dataflow.test(7)+tr-scenario.test(TR3)；prd:coverage 零引用 22→14。◐ DL6–DL10 事件接线增强待后续 | tr-dataflow/tr-scenario 回归 |
-| **VLE**（validation-loop） | ✅ `/admin/validation` 前端页 = 0（后端 `/a/v1/validation/runs` 已建）—— 同管理页组 | grep 0 |
+| **VLE**（validation-loop） | ✅ 前端页已补(管理页组) + **VL2/4/5/7 验收测试已补**(vle-acceptance.test) | prd:coverage VL* 全清 |
 | **活数据可溯**（live-traceable-data） | ◐ `lineage/task` 端点存否不明（1 弱匹配）；溯源抽屉 UI 部分（Provenance 组件已存在） | 需复核，不武断 |
 
 > **子代理误报（已证伪，不入册）**：`query_timeseries_agg` 工具 · `SUSTAIN` 规则 · 确定性建模 derive · coverage 端点 · **`debattery:check`** · VLE 后端 · ScenarioCard 一等对象 —— 这些**都已建**。

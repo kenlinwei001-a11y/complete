@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-17",
+  "generatedAt": "2026-06-18",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
     "PRD-addendum-admin-console-closure.md": {
@@ -120,17 +120,16 @@
       ],
       "covered": [
         "VL1",
-        "VL3",
-        "VL6",
-        "VL8"
-      ],
-      "uncovered": [
         "VL2",
+        "VL3",
         "VL4",
         "VL5",
-        "VL7"
+        "VL6",
+        "VL7",
+        "VL8"
       ],
-      "coverage": 0.5
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-catalog-battery-20-scenarios.md": {
       "acceptanceIds": [
