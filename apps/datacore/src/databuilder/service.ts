@@ -17,7 +17,8 @@ import type { ConnectorService } from "../connectors/service.js";
 import type { KbService } from "../kb.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, hashString } from "./comprehend.js";
+import { comprehendScript } from "./comprehend.js";
+import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
 
@@ -299,7 +300,7 @@ export class DataBuilderService {
       setPhase("rawin", "RUNNING");
       const datasetIdByKey = new Map<string, string>();
       for (const ds of plan.dataSources) {
-        const csv = this.genCsv(ds, seed);
+        const csv = generateFromSchema(ds.datasetKey, ds.fields, ds.rowCount, seed);
         const { connection } = await this.connectors.upload(ctx, `${ds.datasetKey}.csv`, Buffer.from(csv, "utf8"));
         const raws = await this.connectors.listRawDatasets(ctx, connection.id);
         if (raws[0]) datasetIdByKey.set(ds.datasetKey, raws[0].id);
@@ -384,31 +385,4 @@ export class DataBuilderService {
   }
 
   /** 确定性 CSV 生成（同 seed 字节级一致）。 */
-  private genCsv(ds: BuildPlan["dataSources"][number], seed: number): string {
-    const header = ds.fields.map((f) => f.name).join(",");
-    const lines = [header];
-    for (let i = 0; i < ds.rowCount; i++) {
-      const cells = ds.fields.map((f) => this.genCell(ds.datasetKey, f.name, f.dataType, i, seed));
-      lines.push(cells.join(","));
-    }
-    return lines.join("\n");
-  }
-
-  private genCell(dataset: string, field: string, dataType: string, i: number, seed: number): string {
-    const h = hashString(`${dataset}|${field}|${i}|${seed}`);
-    switch (dataType) {
-      case "number":
-        return String(h % 1000);
-      case "boolean":
-        return h % 2 === 0 ? "true" : "false";
-      case "date": {
-        const d = new Date(Date.UTC(2026, 0, 1) + (h % 180) * 86400000);
-        return d.toISOString().slice(0, 10);
-      }
-      case "ref":
-        return `${field}-${h % 6}`;
-      default:
-        return `${field}-${i}`;
-    }
-  }
 }
