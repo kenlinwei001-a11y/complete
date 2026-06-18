@@ -2,8 +2,8 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | v0.1 · 状态 DRAFT · 日期 2026-06-18 |
-| 取代/扩展 | **扩展** `docs/PRD-unified-build-engine.md`（不另起模块）；聚焦其 §1.1 目标 2「全链闭包门」的跨系统(A→B) scaffold 落地机制 + 数据发动机作为持续触发入口 + 自检/压测副产物 + 过程数据持久化历史。**与 `docs/PRD-demand-pulled-growth-engine.md` 归一为同一发动机的「构建期」半边**（归一见 §9）。 |
+| 版本 | v0.2 · 状态 DRAFT · 日期 2026-06-18（v0.1 与另一并行稿《故事先行入口与全栈 scaffold》归一合并，吸收其分工边界表/单事件足迹/StoryBuildRun 命名/回写纪律）|
+| 取代/扩展 | **母体 = `docs/PRD-demand-pulled-growth-engine.md`（自成长发动机，已落 P1–P6）**：本 PRD 是其**「构建期 / 主动建域」半边**（问句驱动 ⊕ 故事驱动 = 同一台发动机的两个燃料口，归一见 §9）。同时**落地深化** `docs/PRD-unified-build-engine.md` §1.1 目标 2「全链闭包门」的跨系统(A→B) scaffold 机制。下游机器（GapReport / fill-data / scaffold 通道 / GrowthTicket / LOOP / 成长账本 / 驾驶舱）一律复用母体，本 PRD 只加：故事入口 + InputManifest 自描述补录 + scaffold 补全到完整 B 栈 + rawin 去模板化 + 存量回填，不重定义。 |
 | 先读 | 根 `CLAUDE.md` · `docs/SYSTEM-ONTOLOGY.md` · `docs/PRD-unified-build-engine.md` · `docs/PRD-demand-pulled-growth-engine.md` · `docs/AUDIT-0614-fullchain.md` |
 | 核心一句话 | 把「数据构建发动机」从「故事→DataCore 栈」升级为「故事→**全栈**（数据/本体/切片/规则/求解器 ⊕ 意图/计划/工作流/技能/Agent/MCP/场景）」的**跨系统倒推编译器**；数据部分由（去模板化的）合成模块供给；每跑一条故事脚本顺带产出一次**自动生成压测 + 功能缺失自检**；全部源数据/过程数据持久化为**历史推演记录**。 |
 
@@ -12,14 +12,15 @@
 **触及对象类型**（本体 §2）：
 - **A 栈（DataCore）**：BuildPlan / BuildJob / ClosureReport / DataBuilderAgent（A7）· SyntheticJob / IndustryTemplate（去模板化）· Connector / RawDataset / RawRow · OntologyType/Link/Version · SliceSpec · Rule · DerivationSpec · Solver(SOLVER_KEYS) · ActionType/ActionDraft。
 - **B 栈（AgentCore，本 PRD 纳入闭包）**：Intent · ExecutionPlan/Workflow · Skill · Agent · MCP tool · Scenario(一等) · SceneEntry(投影) · GapReport。
-- **新增对象类型（需回写 §2）**：**BuildRun**（一次故事脚本的端到端运行记录，串起 InputManifest→BuildPlan→ClosureReport→产物→答案，作为历史推演记录的主键）· **InputManifest**（comprehend 后倒推"本次还需在数据发动机页补录哪些信息"的动态表单契约）· **ScaffoldManifest**（A→B 推送的 B 栈制品清单 + 回执）。
+- **新增对象类型（需回写 §2，追加新行、不碰他人行）**：**StoryBuildRun**（一次故事脚本的端到端建域记录，串起 InputManifest→BuildPlan→ClosureReport→产物→答案，作为历史推演记录的主键）· **InputManifest**（comprehend 后倒推"本次还需在数据发动机页补录哪些信息"的动态表单契约）。
+- **传输契约（仅 contracts，不回写 §2）**：**ScaffoldManifest** / **ScaffoldReceipt**（A→B 推送的 B 栈制品清单 + 回执，是过程态 DTO 而非持久本体对象）。
 
 **触及链路**（§3）：数据构建发动机链（StoryScript→BuildPlan→ClosureReport→…，扩到 B 栈）⊕ 编排链（ScenarioCard→Intent→Plan→Solver→render）⊕ 场景/入口链 ⊕ 数据→本体→推演链 ⊕ 数据→本体→推演链中的合成支线（SyntheticJob→Connection+RawDataset→materialize）。**新增跨域接缝：BuildPlan(A) → ScaffoldManifest → AgentCore 制品(B)**。
 
-**触及事件/数据流**（§4，遵守 D-29）：复用 `ontology.published` / `materialize.completed` / `rules.updated` / `dataset.regenerated` / `intent.published` / `workflow.published` / `scenario.published`；**新增构建期事件**（须登记 §4 + 下游订阅）：`buildrun.started` · `buildplan.closure_evaluated`（含全链 CHAIN/SHAPE 维）· `scaffold.completed`（A→B 推送回执）· `buildrun.recorded`（历史推演记录刷新）。
+**触及事件/数据流**（§4，遵守 D-29）：复用 母体 `growth.gap_detected` / `growth.fill_proposed` / `growth.ticket_opened` / `growth.converged` 及 `ontology.published` / `materialize.completed` / `rules.updated` / `dataset.regenerated` / `intent.published` / `workflow.published` / `scenario.published`；**仅新增 1 个构建期事件**（其余构建期状态走 StoryBuildRun 字段而非独立事件，省本体 churn）：`storybuild.run_recorded`（历史推演记录刷新；登记 §4，事件号顺延 demand-pulled 母体之后，**不占用其 L13** `growth.ticket_opened`）。
 
 **触及不变量**（§5，R1–R14）：
-- **R2 tenant_id everywhere**：BuildRun/InputManifest/ScaffoldManifest 全带 tenantId；A→B scaffold 透传租户。
+- **R2 tenant_id everywhere**：StoryBuildRun/InputManifest/ScaffoldManifest 全带 tenantId；A→B scaffold 透传租户。
 - **R4 真值经 Action**：A 栈物化、B 栈制品一律落 DRAFT，经审批/publish 门才生效（不自动上线 Agent/Skill）。
 - **R5 no-secrets-echo**：自动生成的 MCP/Agent 凭据走 AES-GCM，回执仅 credentialRef。
 - **R6 确定性**：freezePlan + seed；同故事脚本 + 同 seed 重放 BuildPlan 字节级一致；测试中 LLM comprehend 一律 mock。
@@ -32,18 +33,18 @@
 
 **需走的检测门禁**（§7）：闭包门（升全链 CHAIN+SHAPE）· validate（DAG/类型/render 末步）· B 侧 scenarioClosure「无死路上架门」· `chain:check`（场景↔求解器注册）· `prd:check` / `prd:coverage` · VLE · 断链审计（新事件 DL 项）。
 
-**回写承诺**：落地后回写本体 §2（新增 BuildRun/InputManifest/ScaffoldManifest）· §3（跨系统 scaffold 链路）· §4（4 个新事件 + 订阅）· §5（R11 升为跨系统构建时强制）· §7（全链闭包门 + A→B scaffold 门）· §8（G-8 标记 ✅，G-1/G-5/G-6 进度推进）· §10.4（新增跨域节点 BuildPlan→ScaffoldManifest→B 制品）。
+**回写承诺（纪律：零冲突追加，不碰母体已占用行）**：本 PRD 立项为 DRAFT，**落地时才回写本体**；因母体（demand-pulled）已占用 SYSTEM-ONTOLOGY.md §2.H（GapReport）与 §4 L13（`growth.ticket_opened`），本 PRD 回写**仅以追加新行的方式**进行，绝不编辑母体已占用的 GapReport 行 / L13 行。具体：§2（**追加** StoryBuildRun / InputManifest 两个新对象行；ScaffoldManifest/ScaffoldReceipt 是 DTO，不入 §2）· §3（追加跨系统 scaffold 链路）· §4（**追加** `storybuild.run_recorded`，事件号顺延母体之后）· §5（R11 补注"跨系统构建时强制"，与母体"运行时实跑"互补）· §7（全链闭包门 + A→B scaffold 门）· §8（G-8 标记 ✅，G-1/G-5/G-6 进度补注）· §10.4（追加跨域节点 BuildPlan→ScaffoldManifest→B 制品）。`ontology:check` 须不漂。
 
 ## 1. 目标 / 非目标
 
 ### 1.1 目标
-1. **单一持续触发入口**：数据发动机页成为"持续输入 / 自动生成故事脚本"的唯一起点。每条脚本 = 一个 **BuildRun**，端到端跑通"倒推→填数→建栈→闭包→（可选）推演→记录"。
+1. **单一持续触发入口**：数据发动机页成为"持续输入 / 自动生成故事脚本"的唯一起点。每条脚本 = 一个 **StoryBuildRun**，端到端跑通"倒推→填数→建栈→闭包→（可选）推演→记录"。
 2. **故事脚本倒推全栈**：comprehend 把脚本拆解为**所有制品需求**——数据源、对象类型、切片、规则、派生、求解器需求（A 栈）⊕ 意图、计划、工作流、技能、Agent、MCP、场景（B 栈）。
 3. **倒推页面录入项（自描述表单）**：脚本未指明、但构建必需的信息（规模 / seed / 时间跨度 / 复用哪些既有连接器 / 基地名集合…）由发动机产出 **InputManifest** → 数据发动机页动态渲染为补录表单（HITL）。用户只补"脚本没说清的最小集"。
 4. **跨系统闭包（G-8 收口）**：A 栈构建后经 `POST /b/v1/internal/scaffold`（复用现有 A→B 服务间接缝）把 B 栈清单**幂等下发** AgentCore，触发 B 侧既有"无死路上架门"，回执缺失引用；全链 CHAIN/SHAPE 任一断 → ClosureReport HARD FAIL → 拒发布。
 5. **数据由（去模板化的）合成模块供给**：rawin 不再用独立 `genCsv`；统一调 SyntheticService——有 IndustryTemplate 走模板，无模板走 **schema 驱动合成**（从 BuildPlan.objectTypes 现造，seed 确定性）。消灭重复生成器。
-6. **自动生成压测 + 功能缺失自检（副产物）**：每个 BuildRun 记录各制品 REUSED/SCAFFOLDED/MISSING；MISSING 聚合为 GapReport（**复用自成长发动机 7 码分类法**）= 功能缺失自检；批量跑 N 条脚本 = 自动生成管线压测（覆盖率/失败率统计）。
-7. **过程数据持久化为历史推演记录**：源数据（连接器页已持久）+ 过程数据（脚本 / InputManifest / BuildPlan / ClosureReport / 产物 / 答案）全持久化；新增"构建历史 / 推演记录"前端时间线，逐 BuildRun 可下钻回放。
+6. **自动生成压测 + 功能缺失自检（副产物）**：每个 StoryBuildRun 记录各制品 REUSED/SCAFFOLDED/MISSING；MISSING 聚合为 GapReport（**复用自成长发动机 7 码分类法**）= 功能缺失自检；批量跑 N 条脚本 = 自动生成管线压测（覆盖率/失败率统计）。
+7. **过程数据持久化为历史推演记录**：源数据（连接器页已持久）+ 过程数据（脚本 / InputManifest / BuildPlan / ClosureReport / 产物 / 答案）全持久化；新增"构建历史 / 推演记录"前端时间线，逐 StoryBuildRun 可下钻回放。
 
 ### 1.2 非目标
 - **自动发明领域求解器**：缺领域求解器时绑 `generic-inference` 或标 `MISSING:SOLVER_NOT_FOUND`，不臆造（沿用 unified-build-engine 非目标）。
@@ -65,7 +66,7 @@
 - BuildPlan **不含 B 栈**（无 intent/plan/workflow/skill/agent/mcp/scene 需求字段）；闭包正向只到"求解器入参字段存在"，**不验全链接通**（G-8 → 致 G-1）。
 - rawin 用**独立 `genCsv`**（`service.ts:257`），不调 SyntheticService → 两个数据生成器并存、未统一（G-6 残留）。
 - **无 InputManifest**：脚本缺字段时无"倒推补录表单"，发动机静默用缺省 seed/规模。
-- **无 BuildRun 持久记录 + 历史推演时间线**：DataBuilderPage 现仅"七阶段状态灯 + 闭包数字 + JSON dump"（TODO §主线已记），过程数据跑完即散。
+- **无 StoryBuildRun 持久记录 + 历史推演时间线**：DataBuilderPage 现仅"七阶段状态灯 + 闭包数字 + JSON dump"（TODO §主线已记），过程数据跑完即散。
 - **合成模块模板绑定**：SyntheticService 依赖 IndustryTemplate，无法为故事现推的新对象类型造数（需去模板化）。
 
 ## 3. 设计（复用现有接缝优先；标清"复用 / 绿地新建 / 门禁新增"）
@@ -106,27 +107,28 @@ InputField = { key, label, dataType, required, default?, source: "STORY"|"ASK_US
 ScaffoldReceipt = { items: { kind, key, status: "REUSED"|"SCAFFOLDED"|"MISSING", missingRefs?[] }[], fullChainOk: boolean }
 ```
 - DataCore closure 阶段：先算 A 栈三向闭包 → 调 scaffold → 合并 fullChainOk。任一 HARD 维失败 → ClosureReport FAIL → publish 阻断（R11 跨系统）。
-- 发 `scaffold.completed` 事件（§4 登记）。
+- scaffold 回执并入 `StoryBuildRun.scaffoldReceipt`（**不发独立事件**——构建期状态走 StoryBuildRun 字段，仅终态发 `storybuild.run_recorded`）。
+- **复用 vs 新建说明**：A→B *通道*（SERVICE_TOKEN 服务间接缝、就地审批、GrowthTicket）复用母体；但把 scaffold *覆盖范围*从母体当前的"切片/规则/意图/计划"**扩到 workflow/skill/agent/mcp/scene** 是本 PRD 的新建工作（母体该范围尚未实现）。
 
 ### 3.5 自检 + 压测（复用 GapReport · 绿地聚合）
-- `BuildRun.artifacts[]` 汇总 A+B 各制品 REUSED/SCAFFOLDED/MISSING。
+- `StoryBuildRun.artifacts[]` 汇总 A+B 各制品 REUSED/SCAFFOLDED/MISSING。
 - MISSING 项映射 7 码（`NO_SOLVER`/`NO_CAPABILITY`/…）→ 复用 `classifyGap` 产 GapReport = **功能缺失自检**。
 - 批量入口 `POST /a/v1/databuilder/stress`（跑一组脚本，统计覆盖率/失败率）= **自动生成压测**；结果进历史。
 
 ### 3.6 历史推演记录（绿地持久 + 前端页）
-- BuildRun 仓储持久化（双实现）：`{runId, tenantId, script, inputManifest, buildPlan(frozen), closureReport, scaffoldReceipt, producedConnections[], producedDatasets[], gapReport?, answer?, status, createdAt}`。
-- 前端"**构建历史 / 推演记录**"时间线：逐 BuildRun 卡片 → 下钻 脚本 / 补录项 / 闭包 / 产物（源数据连连接器页）/ 答案回放。源数据已在连接器页持久；本页补"过程数据"。
+- StoryBuildRun 仓储持久化（双实现）：`{runId, tenantId, script, inputManifest, buildPlan(frozen), closureReport, scaffoldReceipt, producedConnections[], producedDatasets[], gapReport?, answer?, status, createdAt}`。
+- 前端"**构建历史 / 推演记录**"时间线：逐 StoryBuildRun 卡片 → 下钻 脚本 / 补录项 / 闭包 / 产物（源数据连连接器页）/ 答案回放。源数据已在连接器页持久；本页补"过程数据"。
 
 ## 4. 契约 / 端点 / 数据模型（双仓储四处同改；contracts-only-shared）
 
-- **契约**（`packages/contracts/src/databuilder.ts` 扩 + 新 `buildrun.ts`）：`BuildPlanSchema` 增 7 字段（§3.1）· `InputManifestSchema` · `ScaffoldManifestSchema` / `ScaffoldReceiptSchema` · `BuildRunSchema`。
+- **契约**（`packages/contracts/src/databuilder.ts` 扩 + 新 `storybuildrun.ts`）：`BuildPlanSchema` 增 7 字段（§3.1）· `InputManifestSchema` · `ScaffoldManifestSchema` / `ScaffoldReceiptSchema` · `StoryBuildRunSchema`。
 - **DataCore 端点**：
-  - `POST /a/v1/databuilder/runs`（提交故事脚本 → 建 BuildRun，返回 InputManifest）
+  - `POST /a/v1/databuilder/runs`（提交故事脚本 → 建 StoryBuildRun，返回 InputManifest）
   - `PATCH /a/v1/databuilder/runs/:id/inputs`（补录 ASK_USER 字段 → 续跑）
   - `GET /a/v1/databuilder/runs` / `:id`（历史推演记录列表 / 详情）
   - `POST /a/v1/databuilder/stress`（批量压测）
 - **AgentCore 端点**：`POST /b/v1/internal/scaffold`（服务间，SERVICE_TOKEN）。
-- **仓储双实现**（R9，四处同改）：新表 `build_runs`（+ `migrations/*.sql` + `repo/pg.ts` + `repo/memory.ts` + `repo.ts` 接口）。B 栈制品复用既有 intents/plans/workflows/skills/agents/scenes 仓储的 upsert。
+- **仓储双实现**（R9，四处同改）：新表 `story_build_runs`（+ `migrations/*.sql` + `repo/pg.ts` + `repo/memory.ts` + `repo.ts` 接口）。B 栈制品复用既有 intents/plans/workflows/skills/agents/scenes 仓储的 upsert。
 
 ## 5. 关键流程（端到端，沿链路 sys.ingest.build_closure ⊕ sys.orch.query_to_answer）
 
@@ -140,21 +142,21 @@ ScaffoldReceipt = { items: { kind, key, status: "REUSED"|"SCAFFOLDED"|"MISSING",
   └ ⑥ closure：A 三向闭包 ─OBO SERVICE_TOKEN─> POST /b/v1/internal/scaffold
                                                   └ B 幂等 upsert DRAFT + scenarioClosure → ScaffoldReceipt
                  合并 fullChainOk；HARD 失败 → FAIL 拒发布(R11)
-  └ ⑦ publish：A 物化 + B 制品转 PUBLISHED 均经审批(R4) → 发 ontology.published/scenario.published/scaffold.completed
-  └ 记录 BuildRun（含 GapReport 自检）→ 发 buildrun.recorded → 历史推演记录刷新
-  └ （可选）以生成的场景跑一次 QOS 推演 → answer 回填 BuildRun
+  └ ⑦ publish：A 物化 + B 制品转 PUBLISHED 均经审批(R4) → 发 ontology.published/scenario.published
+  └ 记录 StoryBuildRun（含 GapReport 自检）→ 发 storybuild.run_recorded → 历史推演记录刷新
+  └ （可选）以生成的场景跑一次 QOS 推演 → answer 回填 StoryBuildRun
 ```
 
 ## 6. 非功能与约定（§5 不变量逐条满足）
 
-- **R2**：BuildRun/InputManifest/ScaffoldManifest/build_runs 全列 tenantId；scaffold 透传租户，跨租户 403。
+- **R2**：StoryBuildRun/InputManifest/story_build_runs 全列 tenantId；ScaffoldManifest DTO 透传租户，跨租户 403。
 - **R4**：A 物化 + B 制品 publish 均经 Action/审批；scaffold 仅落 DRAFT。
 - **R5**：MCP/Agent 凭据 AES-GCM；回执仅 credentialRef。
 - **R6**：freezePlan+seed；故事+seed 重放字节级一致；`generateFromSchema` 确定性；测试 LLM mock；battery-manufacturing 模板字节级回归锁。
 - **R8**：A→B scaffold 用 SERVICE_TOKEN；用户 JWT 调 `/internal/scaffold` 一律 403。
 - **R11/R12**：全链 CHAIN+SHAPE + B 栈无死路，构建时 HARD 门。
 - **R3**：`feature.data-builder` 门控。
-- **R10/D-29**：4 新事件登记 §4 + 下游订阅（历史推演记录、场景目录、连接器、缺口面板）。
+- **R10/D-29**：仅追加 1 新事件 `storybuild.run_recorded`（号顺延母体）登记 §4 + 下游订阅（历史推演记录页）；其余复用母体 growth.* 事件。
 
 ## 7. 验收（DoD）
 
@@ -162,17 +164,18 @@ ScaffoldReceipt = { items: { kind, key, status: "REUSED"|"SCAFFOLDED"|"MISSING",
 - **DoD-2 跨系统闭包回归**：构造"故事缺求解器"脚本 → ClosureReport `fullChainOk=false` 且 publish 被拒（R11 跨系统断链可测）。
 - **DoD-3 去模板化合成回归**：故事现推全新对象类型（无模板）→ schema 驱动合成出 RawDataset 且 materialize 成对象；battery-manufacturing 模板字节级不变。
 - **DoD-4 InputManifest 回归**：脚本缺 seed/规模 → InputManifest 列 ASK_USER 项；补录后续跑成功。
-- **DoD-5 自检/压测回归**：批量脚本 → GapReport 7 码聚合 + 覆盖率统计落 BuildRun。
-- **DoD-6 历史持久回归**：BuildRun 双仓储 parity（memory/pg）；前端历史推演时间线展示源数据 + 过程数据 + 答案回放。
+- **DoD-5 自检/压测回归**：批量脚本 → GapReport 7 码聚合 + 覆盖率统计落 StoryBuildRun。
+- **DoD-6 历史持久回归**：StoryBuildRun 双仓储 parity（memory/pg）；前端历史推演时间线展示源数据 + 过程数据 + 答案回放。
 - **DoD-7 跨服务联调冒烟**：真实 AgentCore HTTP ↔ 真实 DataCore 跑通 scaffold（守 G-2/G-8）。
 - **DoD-8 存量回填回归**（见 §10）：任取一个存量推演场景，从历史推演记录可下钻到其源数据（连接器页）/ 图谱 / 意图 / 计划 / 求解器。
-- **DoD-9 回写本体**：§2/§3/§4/§5/§7/§8/§10.4 按 §0 回写承诺更新，`ontology:check` 不漂。
+- **DoD-9 复用证明（防重叠）**：缺数据走母体 `fill-data`、缺功能走母体 `GrowthTicket`、收敛走母体 `runGrowthLoop`——本 PRD 代码**无重复实现**（评审 + grep 证 0 重定义 GapReport/分类法/LOOP/账本）。
+- **DoD-10 回写本体**：§2/§3/§4/§5/§7/§8/§10.4 按 §0 回写承诺**追加方式**更新，不动母体 GapReport 行 / L13，`ontology:check` 不漂。
 
 ## 8. 分期
 
 | 期 | 范围 |
 |---|---|
-| P1（A 栈先行，低风险）| rawin 去模板化统一到 SyntheticService（消灭 genCsv 重复，G-6 残留收口）+ BuildRun 持久 + 历史推演记录前端时间线（过程数据可见）|
+| P1（A 栈先行，低风险）| rawin 去模板化统一到 SyntheticService（消灭 genCsv 重复，G-6 残留收口）+ StoryBuildRun 持久 + 历史推演记录前端时间线（过程数据可见）|
 | P2（倒推录入）| InputManifest 契约 + comprehend 产出 + 数据发动机页动态补录表单 |
 | P3（跨系统闭包 · G-8 核心）| BuildPlan 扩 B 栈字段 + `POST /b/v1/internal/scaffold` + closure 合并 fullChainOk + R11 跨系统 HARD 门 |
 | P4（自检/压测）| artifacts REUSED/SCAFFOLDED/MISSING 聚合 + GapReport 自检 + `POST /a/v1/databuilder/stress` 压测 + 缺口面板 |
@@ -185,19 +188,34 @@ ScaffoldReceipt = { items: { kind, key, status: "REUSED"|"SCAFFOLDED"|"MISSING",
 
 ## 9. 与自成长发动机（demand-pulled）的归一
 
-本 PRD 与 `PRD-demand-pulled-growth-engine.md` 是**同一发动机的两半，必须归一**，否则二者各自记一套历史、各建一套缺口，前端出现两个互不相认的"推演记录"。
+本 PRD 与 `PRD-demand-pulled-growth-engine.md` 是**同一发动机的两个燃料口，必须归一**，否则二者各自记一套历史、各建一套缺口，前端出现两个互不相认的"推演记录"。**母体是问句驱动（反应式：一句失败问句 → 探针断在哪补哪）；本 PRD 是故事驱动（主动式：一段故事描述目标域 → 一次倒推整个域、主动建域）。** 下游机器完全共用，本 PRD 只加前段入口 + 自描述补录 + B 栈 scaffold 全集 + rawin 去模板化 + 存量回填。
 
 ```
-本 PRD（g8）        = 构建期：故事脚本 → BuildPlan(全栈 A+B) → 跨系统 scaffold → 闭包 → BuildRun 历史
-demand-pulled      = 运行期：问句     → QOS 实跑探针 → GapReport → 自动补 → code-agent 施工 → 成长账本
+本 PRD（g8）        = 构建期/主动建域：故事脚本 → BuildPlan(全栈 A+B) → 跨系统 scaffold → 闭包 → StoryBuildRun 历史
+demand-pulled      = 运行期/反应补缺：问句     → QOS 实跑探针 → GapReport → 自动补 → code-agent 施工 → 成长账本
                      ↑ 两半共用 classifyGap 的 7 码分类法（g8 §3.5 明示"复用自成长发动机 7 码"）
 ```
 
+**分工边界表（防重叠的法定划线——同维度只有一个 owner，另一方一律复用）**：
+
+| 维度 | 自成长发动机（母体，问句驱动） | 本 PRD（故事驱动） |
+|---|---|---|
+| 燃料 | 一句失败的客户问句 | 一段描述目标域的故事脚本 |
+| 方式 | 反应式：探针断在哪补哪 | 主动式：一次倒推整个域 |
+| 缺口检测 GapReport | **owner** | 复用 |
+| 数据补 fill-data | **owner**（运行时单表补） | 复用同一内核（建域期按全 BuildPlan 批量造） |
+| 结构 scaffold | **owner**：切片/规则/意图/计划 | 扩 workflow/skill/agent/mcp/scene（范围扩展，通道复用） |
+| 兜底 / 工单 / LOOP / 账本 / 驾驶舱 | **owner**（P3–P6） | 复用 |
+| 自描述补录 InputManifest | — | **owner** |
+| 历史记录 | growth run / 成长账本 | **owner**：StoryBuildRun（建域全过程回放） |
+
+> 一句话：母体管"问句→补"，本 PRD 管"故事→建域"；下游机器同一套，本 PRD 只加入口、补录、B 栈 scaffold 全集、rawin 去模板化、存量回填。**§7 DoD 含"复用证明（grep 证 0 重定义）"，防止落地时偷偷重造母体机制。**
+
 **三处归一点（落地时遵守）**：
 
-1. **历史记录归一：BuildRun ⊕ GrowthLedgerEntry = 同一"推演/构建历史"的两面。**
-   - `BuildRun`（构建期主键，串 InputManifest→BuildPlan→ClosureReport→产物）与 `GrowthLedgerEntry`（运行期主键，串 question→rounds[gapReport,fills,rerun]→terminalState）经 **`runId`/`question` 关联**。
-   - 一次"建完即跑一遍验证"= 一个 BuildRun **内嵌**一段 growth-run；BuildRun.answer 即该 growth-run 的 rerunResult。
+1. **历史记录归一：StoryBuildRun ⊕ GrowthLedgerEntry = 同一"推演/构建历史"的两面。**
+   - `StoryBuildRun`（构建期主键，串 InputManifest→BuildPlan→ClosureReport→产物）与 `GrowthLedgerEntry`（运行期主键，串 question→rounds[gapReport,fills,rerun]→terminalState）经 **`runId`/`question` 关联**。
+   - 一次"建完即跑一遍验证"= 一个 StoryBuildRun **内嵌**一段 growth-run；StoryBuildRun.answer 即该 growth-run 的 rerunResult。
    - 前端**只保留一个**"历史推演记录"时间线（§3.6），构建期与运行期事件混排，逐条可下钻。不做两个互不相认的列表。
 
 2. **缺口归一：同一 `GapReport` 结构，两个证据来源。**
@@ -207,7 +225,7 @@ demand-pulled      = 运行期：问句     → QOS 实跑探针 → GapReport �
 
 3. **入口/端点归一：构建是外层，运行探针是内层。**
    - `POST /a/v1/databuilder/runs`（g8，构建）为**外层编排**；其 closure 之后、可选 QOS 推演这一步，内部调用 `POST /api/v1/growth/run`（demand-pulled，运行探针 + 自动补 LOOP）。
-   - 即：**故事脚本 → 建全栈（g8 scaffold）→ 实跑探针（demand-pulled probe）→ 缺则补（g8 静态 scaffold 或 demand-pulled 真人正门 fill）→ 重跑直到收敛（demand-pulled §8 LOOP）→ 记 BuildRun**。LOOP 的 K 有界、收敛终态、成长账本全部复用 demand-pulled 既有实现（P1–P6 已落）。
+   - 即：**故事脚本 → 建全栈（g8 scaffold）→ 实跑探针（demand-pulled probe）→ 缺则补（g8 静态 scaffold 或 demand-pulled 真人正门 fill）→ 重跑直到收敛（demand-pulled §8 LOOP）→ 记 StoryBuildRun**。LOOP 的 K 有界、收敛终态、成长账本全部复用 demand-pulled 既有实现（P1–P6 已落）。
    - `code-agent 施工接缝`（demand-pulled §7：claim/submit/verify + CLI/MCP 活查询面）对 g8 产出的 `MISSING:NO_CAPABILITY` 工单同样适用——构建期发现的真缺功能，走同一条厂商中立工单流。
 
 > **结论**：g8 不另起"第二套发动机"。它把 demand-pulled 的"问句→诊断→补→施工→账本"扩到"**故事脚本→生成全栈→诊断→补→施工→统一历史**"，并补齐 demand-pulled 缺的构建侧（全栈倒推、InputManifest 自省、去模板化合成、跨系统 scaffold、历史时间线）。落地时优先复用 demand-pulled 已建的 `classifyGap`/`runGrowthLoop`/GrowthTicket/GrowthLedger，不重造。
@@ -221,9 +239,9 @@ demand-pulled 是"需求拉动向前长"，不回填存量；本 PRD 显式纳�
 - 合成源是**单一全局** Connection（`synthetic/service.ts` 的"合成数据源（确定性生成）"），非按场景（= G-6 残留）。
 - 视图型推演 `ProjectSimView.tsx` **直调 `runSolver`**，不过 QOS/意图/计划（= G-8），故"在 skill/workflow/agent 看不到对应配置"字面属实。
 
-**10.2 回填动作（存量场景 → 故事脚本 → BuildRun）**：
+**10.2 回填动作（存量场景 → 故事脚本 → StoryBuildRun）**：
 1. **逆向导出器**（绿地，DataCore 脚本 + 端点 `POST /a/v1/databuilder/backfill`）：遍历既有 `scenarios` / 视图绑定 / 求解器注册，为每个推演场景**反推一条故事脚本**（描述该场景要答什么、涉及哪些对象类型/求解器/视图）。
-2. 把这批故事脚本**逐条灌进** `POST /a/v1/databuilder/runs`（即 g8 主链）→ 每个存量场景获得一个 BuildRun，补出它**本应有的**数据源/图谱/意图/计划/求解器绑定（缺的标 MISSING）。
+2. 把这批故事脚本**逐条灌进** `POST /a/v1/databuilder/runs`（即 g8 主链）→ 每个存量场景获得一个 StoryBuildRun，补出它**本应有的**数据源/图谱/意图/计划/求解器绑定（缺的标 MISSING）。
 3. 这批回填**本身就是首次全量压测**（§3.5）：N 个存量场景一次跑完，覆盖率/失败率统计直接暴露存量断点（例如 ProjectSimView 那条没有意图/计划的链 → `MISSING:NO_PLAN`/`NO_INTENT`）。
 
 **10.3 验收（= DoD-8）**：回填后，任取一个存量推演场景，能从"历史推演记录"时间线下钻到它的**源数据（连接器页可见）/ 图谱（已发布类型）/ 意图 / 计划 / 求解器绑定**；存量场景的隐藏断点（直调求解器、无血缘）以 GapReport 形式被显式列出、进缺口面板与 TODO backlog。
