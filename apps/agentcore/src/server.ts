@@ -1671,6 +1671,42 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       items.push({ kind: "scene", key: sn.scenarioKey, status: "SCAFFOLDED" });
     }
 
+    // ③.5 工作流 / 技能 / Agent（债2：B 栈配置全可见，DRAFT；不自动上线 R4）
+    for (const wn of m.workflowNeeds) {
+      if (await deps.repos.workflows.latestByKey(m.tenantId, wn.workflowKey)) { items.push({ kind: "workflow", key: wn.workflowKey, status: "REUSED" }); continue; }
+      const solverKey = wn.workflowKey.replace(/^wf_/, "");
+      await deps.repos.workflows.insert({
+        id: newId("wf"), tenantId: m.tenantId, key: wn.workflowKey, version: 1,
+        name: wn.workflowKey, description: "g8 故事倒推 scaffold（DRAFT）",
+        inputs: { type: "object", properties: {} },
+        steps: [{ id: "s1", type: "invoke_solver", params: { solverKey, args: {} } }, { id: "s2", type: "render_answer", params: { blocks: [] } }],
+        status: "DRAFT", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      });
+      items.push({ kind: "workflow", key: wn.workflowKey, status: "SCAFFOLDED" });
+    }
+    const existingSkills = await deps.repos.skills.listByTenant(m.tenantId);
+    for (const sk of m.skillNeeds) {
+      if (existingSkills.some((x) => x.key === sk.skillKey)) { items.push({ kind: "skill", key: sk.skillKey, status: "REUSED" }); continue; }
+      await deps.repos.skills.insert({
+        id: newId("skl"), tenantId: m.tenantId, key: sk.skillKey, version: 1,
+        name: sk.skillKey, summary: `能力 ${sk.capability}（g8 scaffold）`, body: "g8 故事倒推 scaffold（DRAFT，待补全）",
+        resources: [], status: "DRAFT",
+      });
+      items.push({ kind: "skill", key: sk.skillKey, status: "SCAFFOLDED" });
+    }
+    for (const an of m.agentNeeds) {
+      if (await deps.repos.agents.latestByKey(m.tenantId, an.agentKey)) { items.push({ kind: "agent", key: an.agentKey, status: "REUSED" }); continue; }
+      await deps.repos.agents.insert({
+        id: newId("agt"), tenantId: m.tenantId, key: an.agentKey, version: 1,
+        name: an.agentKey, description: "g8 故事倒推 scaffold（DRAFT）", model: "claude-opus-4-8",
+        systemPrompt: an.systemPrompt || `针对 ${an.agentKey} 的推演 agent`,
+        tools: [], ruleBindings: { ruleKeys: [], mode: "POST_CHECK" }, skills: [], mcpServers: [],
+        scopeDeclaration: { objectTypes: an.scopeObjectTypes ?? [], toolNames: an.tools ?? [] },
+        status: "DRAFT",
+      });
+      items.push({ kind: "agent", key: an.agentKey, status: "SCAFFOLDED" });
+    }
+
     // ④ 全链判定（DRAFT-aware 无死路门）：场景→意图→计划 结构接通即可（scaffold 产 DRAFT，
     //    用 forValidation 允许 DRAFT 计划解析；区别于发布期 scenarioClosure 的 PUBLISHED 严格门）。
     //    任一断 → fullChainOk=false + 对应场景标 MISSING（R11 跨系统断链）。

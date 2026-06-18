@@ -1,6 +1,7 @@
 import type {
   BuildPlan, PlanDataSource, PlanObjectType, PlanRule, PlanSolverNeed,
   PlanSliceNeed, PlanIntentNeed, PlanPlanNeed, PlanSceneNeed,
+  PlanWorkflowNeed, PlanSkillNeed, PlanAgentNeed,
 } from "@platform/contracts";
 
 /**
@@ -240,10 +241,29 @@ export function comprehendScript(
     mode: "WORKFLOW" as const,
     presetContext: {},
   }));
+  // 债2：倒推扩到 workflow/skill/agent（每个求解器 → 工作流+技能+Agent），让 B 栈配置全可见。
+  const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({
+    workflowKey: `wf_${s.solverKey}`,
+    kind: "workflow",
+    steps: ["invoke_solver", "render"],
+  }));
+  const skillNeeds: PlanSkillNeed[] = solverNeeds.map((s) => ({
+    skillKey: `skl_${s.solverKey}`,
+    capability: s.solverKey,
+    resources: [],
+  }));
+  const agentNeeds: PlanAgentNeed[] = solverNeeds.map((s) => ({
+    agentKey: `agt_${s.solverKey}`,
+    systemPrompt: `针对 ${s.solverKey} 的推演分析 agent（g8 故事倒推 scaffold）`,
+    tools: [s.solverKey],
+    skills: [`skl_${s.solverKey}`],
+    ruleBindings: [],
+    scopeObjectTypes: [...new Set(s.inputFields.map((f) => f.typeKey))],
+  }));
 
   return {
     dataSources, objectTypes, rules, solverNeeds, kbDocs,
     sliceNeeds, intentNeeds, planNeeds, sceneNeeds,
-    workflowNeeds: [], skillNeeds: [], agentNeeds: [], mcpNeeds: [],
+    workflowNeeds, skillNeeds, agentNeeds, mcpNeeds: [],
   };
 }

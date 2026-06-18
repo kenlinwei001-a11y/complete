@@ -451,11 +451,11 @@ export const handlers = [
   ),
 
   http.get("*/a/v1/ontology/object-types", () =>
+    // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
     HttpResponse.json([
       {
-        key: "Base",
-        displayName: "生产基地",
-        domain: "factory",
+        key: "Base", displayName: "生产基地", domain: "factory", status: "ACTIVE",
+        sourceBindings: [{ connId: "conn-synth", dataset: "base" }],
         properties: [
           { propKey: "baseId", dataType: "string", isPrimaryKey: true },
           { propKey: "name", dataType: "string", isPrimaryKey: false },
@@ -463,6 +463,11 @@ export const handlers = [
           { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh" },
         ],
       },
+      { key: "Model", displayName: "电池型号", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "model" }], properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "chemistry", dataType: "string" }] },
+      { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "cust", dataType: "string" }, { propKey: "qty", dataType: "number" }, { propKey: "due", dataType: "date" }] },
+      { key: "Line", displayName: "产线", domain: "capacity", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "line" }], properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "baseId", dataType: "ref", refToTypeKey: "Base" }, { propKey: "utilization", dataType: "number", unit: "%" }] },
+      { key: "Process", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "process" }], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
+      { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "customer" }], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "creditLimit", dataType: "number" }] },
     ]),
   ),
 

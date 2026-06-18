@@ -13,6 +13,10 @@ const manifest = () => ({
   planNeeds: [{ planKey: "plan_g8_demo", steps: ["invoke_solver", "render"], renderBindings: [] }],
   intentNeeds: [{ intentKey: "intent_g8_demo", triggers: ["g8 demo"], slots: [], planRef: "plan_g8_demo", riskLevel: "LOW" }],
   sceneNeeds: [{ scenarioKey: "scene_g8_demo", targetView: "orders", intentKey: "intent_g8_demo", mode: "WORKFLOW", presetContext: {} }],
+  // 债2：工作流/技能/Agent 也倒推 scaffold
+  workflowNeeds: [{ workflowKey: "wf_g8_demo", kind: "workflow", steps: ["invoke_solver", "render"] }],
+  skillNeeds: [{ skillKey: "skl_g8_demo", capability: "affected_orders", resources: [] }],
+  agentNeeds: [{ agentKey: "agt_g8_demo", systemPrompt: "推演 agent", tools: ["affected_orders"], skills: ["skl_g8_demo"], ruleBindings: [], scopeObjectTypes: ["Order"] }],
 });
 
 describe("g8-P3 · POST /b/v1/internal/scaffold", () => {
@@ -32,11 +36,16 @@ describe("g8-P3 · POST /b/v1/internal/scaffold", () => {
     expect(r.items.find((i) => i.kind === "plan" && i.key === "plan_g8_demo")?.status).toBe("SCAFFOLDED");
     expect(r.items.find((i) => i.kind === "intent" && i.key === "intent_g8_demo")?.status).toBe("SCAFFOLDED");
     expect(r.items.find((i) => i.kind === "scene" && i.key === "scene_g8_demo")?.status).toBe("SCAFFOLDED");
+    // 债2：工作流/技能/Agent 也 scaffold 成 DRAFT（B 栈配置全可见）
+    expect(r.items.find((i) => i.kind === "workflow" && i.key === "wf_g8_demo")?.status).toBe("SCAFFOLDED");
+    expect(r.items.find((i) => i.kind === "skill" && i.key === "skl_g8_demo")?.status).toBe("SCAFFOLDED");
+    expect(r.items.find((i) => i.kind === "agent" && i.key === "agt_g8_demo")?.status).toBe("SCAFFOLDED");
     // 场景→意图→计划 全链接通（WORKFLOW 模式无死路）
     expect(r.fullChainOk).toBe(true);
     // DRAFT，未自动上线（R4）
     const scene = await t.repos.scenarios.byKey(TENANT, "scene_g8_demo");
     expect(scene?.status).toBe("DRAFT");
+    expect((await t.repos.agents.latestByKey(TENANT, "agt_g8_demo"))?.status).toBe("DRAFT");
 
     // 幂等重跑 → 全部 REUSED
     const again = await t.app.inject({ method: "POST", url: "/b/v1/internal/scaffold", headers: { "x-service-token": SVC }, payload: manifest() });
