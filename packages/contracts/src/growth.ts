@@ -45,3 +45,35 @@ export const GapReportSchema = z.object({
   generatedAt: IsoTime,
 });
 export type GapReport = z.infer<typeof GapReportSchema>;
+
+/**
+ * 自成长发动机 P3 · LOOP：探针→补齐→重跑→收敛（K 有界）。
+ * 收敛终态（PRD §8）：CONVERGED（出可验证答案）/ BOUNDARY（仅剩缺功能工单）/ MAX_ROUNDS（未收敛）。
+ */
+export const GrowthFillResultSchema = z.object({
+  gapCode: GapCodeSchema,
+  /** 补法（fill-data 真人正门 / scaffold 切片·规则·意图 / generic-inference 兜底 / ticket 需开发）。 */
+  action: z.string(),
+  /** 本轮补齐是否推进了链路（用于归因；同类一次补、跨类逐轮）。 */
+  advanced: z.boolean(),
+  /** 缺功能 → 需开发工单（带 I/O 契约线索）。 */
+  ticket: z.object({ gapCode: GapCodeSchema, detail: z.string() }).optional(),
+});
+export type GrowthFillResult = z.infer<typeof GrowthFillResultSchema>;
+
+export const GrowthRoundSchema = z.object({
+  round: z.number().int(),
+  gapReport: GapReportSchema,
+  fillApplied: GrowthFillResultSchema.optional(),
+});
+export type GrowthRound = z.infer<typeof GrowthRoundSchema>;
+
+export const GrowthRunReportSchema = z.object({
+  question: z.string(),
+  maxRounds: z.number().int(),
+  rounds: z.array(GrowthRoundSchema),
+  terminalState: z.enum(["CONVERGED", "BOUNDARY", "MAX_ROUNDS"]),
+  openTickets: z.array(z.object({ gapCode: GapCodeSchema, detail: z.string() })),
+  generatedAt: IsoTime,
+});
+export type GrowthRunReport = z.infer<typeof GrowthRunReportSchema>;

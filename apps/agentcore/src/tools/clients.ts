@@ -27,6 +27,8 @@ export interface OntologyClient {
   listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]>;
   /** 推演验证痕迹 Layer 2：把结论断言交给 DataCore 对照知识图谱已有事实交叉验证。 */
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse>;
+  /** 自成长 P2：缺数据真人正门补——确定性生成 CSV 经公开上传门导入。 */
+  fillData(ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }): Promise<{ connId: string; rowCount: number }>;
 }
 
 export interface SolverClient {

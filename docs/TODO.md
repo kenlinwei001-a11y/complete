@@ -24,7 +24,7 @@
 
 - ✅ **P1 已落（2026-06-17）** QOS 缺口探针 + GapReport：`classifyGap`(终态→7码分类,确定性纯函数) + `POST /api/v1/growth/probe`(提交→等终态→分类)；growth-probe ×7 回归；本体 §2 回写 GapReport。静态闭包→运行时实跑(验收 G-8/G-1)
 - ✅ **P2 已落（2026-06-17）** 缺数据真人正门自动补 `POST /a/v1/growth/fill-data`（确定性生成 CSV→经公开上传门 connectors.upload 导入→RawDataset 可见，与手动上传无差别，R6 字节级一致；growth-fill ×2）+ **就地 Action 审批面板**（DataBuilderPage 内嵌 PENDING_APPROVAL 列表 + 页内批准/驳回，无跳转；f44 ×1）；本体 §2 回写
-- ⬜ **P3** 缺切片/规则/意图/计划 scaffold + 求解器 generic-inference 兜底 + LOOP/收敛(K前端可配)
+- ✅ **P3 已落（2026-06-17）** LOOP `POST /api/v1/growth/run`(探针→补齐→重跑→收敛,K有界前端可配 maxRounds) + `runGrowthLoop`(纯编排) + 补法分派(缺数据真人正门真实补/否则出工单→BOUNDARY) + fillData DataCore客户端(http+mock)；终态 CONVERGED/BOUNDARY/MAX_ROUNDS；growth-loop ×5；本体§2回写。余: scaffold切片/规则/意图 + generic-inference 兜底的"真实自动补"待 P4(当前出工单)
 - ⬜ **P4** C 骨架工单 + GrowthTicket 契约 + 成长账本（demand-indexed）
 - ⬜ **P5** code-agent 执行器接缝（MCP/CLI 活查询面 + 推默认拉兜底 + 厂商中立工单闭环）
 - ⬜ **P6** 构建驾驶舱前端（瀑布流逐产物HITL + 全链闭包可视化 + 指标仪表盘）+ 端到端联调

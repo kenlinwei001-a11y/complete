@@ -44,6 +44,7 @@ import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap } from "./growth/probe.js";
+import { runGrowthLoop } from "./growth/loop.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { SCENARIO_CATALOG, seedScenarios } from "./scenarios-catalog.js";
@@ -168,6 +169,38 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
     return reply.status(200).send(classifyGap(task));
+  });
+
+  // 自成长发动机 · P3：LOOP——探针→补齐→重跑→收敛（K 有界，前端可配 maxRounds）。
+  app.post("/api/v1/growth/run", async (req, reply) => {
+    const a = await auth(req);
+    const body = SubmitQueryBodySchema.parse(req.body);
+    const maxRounds = Number((req.body as { maxRounds?: number })?.maxRounds ?? 8); // K 前端可配
+    const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+    const probe = async () => {
+      const { taskId } = await deps.orchestrator.submitQuery(a, body);
+      let task = await deps.repos.tasks.get(taskId);
+      for (let i = 0; i < 100 && (!task || !TERMINAL.has(task.status)); i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        task = await deps.repos.tasks.get(taskId);
+      }
+      if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
+      return classifyGap(task);
+    };
+    // 补法分派：缺数据→真人正门补(P2 真实)；其余暂不可自动补→出需开发工单（收敛到边界）。
+    const fill = async (gap: import("@platform/contracts").GapFinding) => {
+      if (gap.gapCode === "EMPTY_DATA") {
+        try {
+          await deps.dataCore.ontology.fillData(a, { typeKey: body.context.view || "Object", fields: ["id", "name", "value"], rows: 6, seed: 42 });
+          return { gapCode: gap.gapCode, action: "缺数据真人正门补(fill-data)", advanced: true };
+        } catch {
+          return { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+        }
+      }
+      return { gapCode: gap.gapCode, action: `${gap.suggestedFill}（当前不可自动补→工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+    };
+    const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
+    return reply.status(200).send(report);
   });
 
   // Phase9C 推演历史列表：按租户列最近任务（id/问句/路径/状态/结论摘要/时间），供"推演历史"页浏览+重放。

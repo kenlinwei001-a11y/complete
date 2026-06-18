@@ -90,6 +90,9 @@ class HttpOntologyClient implements OntologyClient {
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/ontology/cross-validate`, req);
   }
+  fillData(ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }) {
+    return call<{ connId: string; rowCount: number }>(this.baseUrl, ctx, "POST", `/a/v1/growth/fill-data`, req);
+  }
 }
 
 class HttpSolverClient implements SolverClient {

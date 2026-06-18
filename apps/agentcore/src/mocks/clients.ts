@@ -161,6 +161,10 @@ export class MockOntologyClient implements OntologyClient {
     });
     return { data: { rows, rowCount: rows.length, truncated: false }, snapshotVersion: SNAPSHOT };
   }
+  async fillData(_ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }): Promise<{ connId: string; rowCount: number }> {
+    return { connId: `conn_growth_${req.typeKey}`, rowCount: req.rows ?? 6 };
+  }
+
   // B→A 探针：出厂本体已发布对象类型全集（覆盖 seed 的 agent scope / intent slot 引用）。
   async listObjectTypeKeys(): Promise<string[]> {
     return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
