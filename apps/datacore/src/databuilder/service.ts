@@ -5,6 +5,7 @@ import type {
   BuildPlan,
   BuildRunBody,
   BackfillReport,
+  ClosureReport,
   DataBuilderAgent,
   DataBuilderConfig,
   InputManifest,
@@ -198,11 +199,49 @@ export class DataBuilderService {
     });
   }
 
-  /** A 栈构建成功 ⊕ 跨系统全链闭合 → SUCCEEDED；任一断 → FAILED（R11 跨系统）。 */
-  private mergeStatus(jobStatus: string, receipt: ScaffoldReceipt | undefined): StoryBuildRun["status"] {
-    if (jobStatus !== "SUCCEEDED") return "FAILED";
-    if (receipt && !receipt.fullChainOk) return "FAILED";
-    return "SUCCEEDED";
+  /**
+   * g8 债1 · 跨系统 HARD 门（R11）：先 dry build 出 plan + A 三向闭包（不 publish），A 闭包通过才
+   * 下发 B 栈 scaffold；A 闭包 ⊕ B 全链闭合 → 才真建 publish A（数据落库）；任一断 → 拒发布
+   * （数据不落库）。把"全链 HARD 断→拒发布"做成构建期前置门，而非建完再记终态。
+   */
+  private async executeStoryBuild(
+    ctx: AuthCtx,
+    id: string,
+    body: BuildRunBody,
+    inference: boolean,
+  ): Promise<{
+    buildPlan?: BuildPlan;
+    closureReport?: ClosureReport;
+    scaffoldReceipt?: ScaffoldReceipt;
+    answer?: string;
+    producedConnections: string[];
+    producedDatasets: string[];
+    status: StoryBuildRun["status"];
+  }> {
+    // ① dry build：出 plan + A 闭包，不 publish
+    const dry = await this.run(ctx, { ...body, dryRun: true });
+    const plan = dry.planId ? await this.repos.buildPlans.get(ctx.tenantId, dry.planId) : undefined;
+    const aOk = dry.status === "SUCCEEDED" && (dry.closure?.gatePassed ?? false);
+    // ② A 闭包通过才下发跨系统 scaffold（避免 A 失败时产生孤儿 B DRAFT）
+    const scaffoldReceipt = aOk ? await this.crossSystemScaffold(ctx, id, plan) : undefined;
+    const bOk = !scaffoldReceipt || scaffoldReceipt.fullChainOk;
+    // ③ 全链 HARD 门：A⊕B 闭合 → 真建 publish；否则拒发布（数据不落库，R11 跨系统）
+    let closureReport = dry.closure;
+    let producedConnections: string[] = [];
+    let producedDatasets: string[] = [];
+    let built = false;
+    if (aOk && bOk) {
+      const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
+      const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
+      const job = await this.run(ctx, body); // 真建 + publish（replay 已封存 plan，字节级一致）
+      closureReport = job.closure;
+      producedConnections = (await this.repos.connections.list(ctx.tenantId)).filter((c) => !connBefore.has(c.id)).map((c) => c.id);
+      producedDatasets = (await this.repos.rawDatasets.list(ctx.tenantId)).filter((d) => !dsBefore.has(d.id)).map((d) => d.id);
+      built = job.status === "SUCCEEDED";
+    }
+    const status: StoryBuildRun["status"] = aOk && bOk && built ? "SUCCEEDED" : "FAILED";
+    const answer = inference && status === "SUCCEEDED" ? await this.runInference(ctx, plan) : undefined;
+    return { buildPlan: plan, closureReport, scaffoldReceipt, answer, producedConnections, producedDatasets, status };
   }
 
   /** g8-P5 推演回填：以生成场景的求解器在建好的对象上跑一次推演 → answer 摘要（best-effort，确定性）。 */
@@ -227,33 +266,19 @@ export class DataBuilderService {
 
   async runStory(ctx: AuthCtx, body: BuildRunBody, inference = false): Promise<StoryBuildRun> {
     const id = newId("sbr");
-    const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
-    const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
-
-    const job = await this.run(ctx, body);
-    const plan = job.planId ? await this.repos.buildPlans.get(ctx.tenantId, job.planId) : undefined;
-    const scaffoldReceipt = await this.crossSystemScaffold(ctx, id, plan);
-    const answer = inference && job.status === "SUCCEEDED" ? await this.runInference(ctx, plan) : undefined;
-
-    const producedConnections = (await this.repos.connections.list(ctx.tenantId))
-      .filter((c) => !connBefore.has(c.id))
-      .map((c) => c.id);
-    const producedDatasets = (await this.repos.rawDatasets.list(ctx.tenantId))
-      .filter((d) => !dsBefore.has(d.id))
-      .map((d) => d.id);
-
+    const r = await this.executeStoryBuild(ctx, id, body, inference);
     const run: StoryBuildRun = {
       id,
       tenantId: ctx.tenantId,
       script: body.script.trim(),
-      buildPlan: plan,
-      closureReport: job.closure,
-      scaffoldReceipt,
-      gapReport: selfCheckGaps(body.script.trim(), id, job.closure, scaffoldReceipt),
-      answer,
-      producedConnections,
-      producedDatasets,
-      status: this.mergeStatus(job.status, scaffoldReceipt),
+      buildPlan: r.buildPlan,
+      closureReport: r.closureReport,
+      scaffoldReceipt: r.scaffoldReceipt,
+      gapReport: selfCheckGaps(body.script.trim(), id, r.closureReport, r.scaffoldReceipt),
+      answer: r.answer,
+      producedConnections: r.producedConnections,
+      producedDatasets: r.producedDatasets,
+      status: r.status,
       createdAt: nowIso(),
     };
     await this.repos.storyBuildRuns.put(run);
@@ -357,28 +382,24 @@ export class DataBuilderService {
     return run;
   }
 
-  /** PATCH inputs：补录 ASK_USER 字段（seed）→ 续跑既有七阶段建域 → 更新同一条历史记录。 */
+  /** PATCH inputs：补录 ASK_USER 字段（seed）→ 经同一跨系统 HARD 门续跑建域 → 更新同一条历史记录。 */
   async submitStoryInputs(ctx: AuthCtx, id: string, inputs: Record<string, string | number | boolean>): Promise<StoryBuildRun> {
     const run = await this.getStoryRun(ctx, id);
     if (run.status !== "PENDING_INPUT") throw invalidState("story run not awaiting input");
     const seedRaw = inputs.seed;
     const seed = typeof seedRaw === "number" ? seedRaw : typeof seedRaw === "string" && seedRaw.trim() !== "" ? Number(seedRaw) : 42;
 
-    const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
-    const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
-    const job = await this.run(ctx, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY });
-    const plan = job.planId ? await this.repos.buildPlans.get(ctx.tenantId, job.planId) : undefined;
-    const scaffoldReceipt = await this.crossSystemScaffold(ctx, run.id, plan);
-
+    const r = await this.executeStoryBuild(ctx, run.id, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY }, false);
     const updated: StoryBuildRun = {
       ...run,
-      buildPlan: plan,
-      closureReport: job.closure,
-      scaffoldReceipt,
-      gapReport: selfCheckGaps(run.script, run.id, job.closure, scaffoldReceipt),
-      producedConnections: (await this.repos.connections.list(ctx.tenantId)).filter((c) => !connBefore.has(c.id)).map((c) => c.id),
-      producedDatasets: (await this.repos.rawDatasets.list(ctx.tenantId)).filter((d) => !dsBefore.has(d.id)).map((d) => d.id),
-      status: this.mergeStatus(job.status, scaffoldReceipt),
+      buildPlan: r.buildPlan,
+      closureReport: r.closureReport,
+      scaffoldReceipt: r.scaffoldReceipt,
+      gapReport: selfCheckGaps(run.script, run.id, r.closureReport, r.scaffoldReceipt),
+      answer: r.answer,
+      producedConnections: r.producedConnections,
+      producedDatasets: r.producedDatasets,
+      status: r.status,
     };
     await this.repos.storyBuildRuns.put(updated);
     return updated;
