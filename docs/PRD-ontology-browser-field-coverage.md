@@ -84,7 +84,7 @@
 
 - **入口**：ModelingPage 新建草案旁加「基于文档建模」按钮 → 多文件拖拽上传（`.xlsx/.csv/.json` ⊕ `.yaml/.yml`）。
 - **两类文档、两种语义**：
-  - **Excel/CSV = 数据文档（data-first）**：① 扩 `parseXlsx` **遍历全部 sheet**（每 sheet = 一张表）；② 多文件 × 多 sheet → 各落一个 `RawDataset`；③ 复用 `deterministicSuggest`/`derive`（dataset→ObjectType、column→Property、PK=唯一率最高、FK/值重叠→Link，100% 覆盖、无 LLM、R6）；④ **跨文件/跨表 FK 推断**（如 `orders.xlsx#Order.modelId` ↔ `master.xlsx#Model.id` → Link）。
+  - **Excel/CSV = 数据文档（data-first）**：**同时支持 ① 多个 Excel 文件；② 单个 Excel 含多个 sheet；③ 二者组合（M 文件 × N sheet，共 M×N 张表）**。实现：扩 `parseXlsx` **遍历全部 sheet**（现仅取 `sheets[0]`，`parsers.ts:10`），每 sheet = 一张表 → 各落一个 `RawDataset`（命名 `文件名#sheet名`）→ 复用 `deterministicSuggest`/`derive`（dataset→ObjectType、column→Property、PK=唯一率最高、FK/值重叠→Link，100% 覆盖、无 LLM、R6）+ **跨文件/跨表 FK 推断**（如 `orders.xlsx#Order.modelId` ↔ `master.xlsx#Model.id` → Link）。
   - **YAML = 结构/规格文档（schema-first）**：新增 `parseYamlOntologySpec`（依赖 `js-yaml`）——YAML 声明式给出 `types[]{key,domain,properties[]{propKey,dataType,isPrimaryKey,refToTypeKey}}`、`links[]{from,to,cardinality}`、可选 `rules[]`，**直接解析为对象类型/链路**（无需数据行），合并进同一草稿。用于"我已有一份本体/数据字典定义，直接导入建模"。
 - **多文档协调**：跨文件**同名类型归并**（Excel 推断的 + YAML 声明的同 key → 合并属性，YAML 显式声明优先、Excel 补字段画像）；冲突（同属性不同类型）标注待人裁。
 - **产物**：统一为 **`OntologyDraft`** → 人 PATCH 微调 → 经字段全建模门（§3.2）→ **publish 经 Action/domainExecutor（R4）**。**完全复用现有草稿→发布管线，不另起真值路径。**
