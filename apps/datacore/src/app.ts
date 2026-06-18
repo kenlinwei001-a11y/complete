@@ -9,7 +9,8 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
+import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
@@ -933,6 +934,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- A4 ontology + objects --------------------------------------------------------
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));
+  // 约束执行层：工具/外部/MCP 输出按本体对象类型 schema + 属性值域强制校验（可配置,按租户）。
+  // policy 缺省用全局默认（安全侧 REJECT）;调用方（连接器导入/MCP 工具执行器）按源覆盖。
+  app.post("/a/v1/ontology/validate-output", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(ValidateOutputBodySchema, req.body);
+    const typeDef = (await ontology.listTypes(c)).find((t) => t.key === body.objectType);
+    if (!typeDef) throw validationError(`未知对象类型 '${body.objectType}'（本租户）`);
+    const policy = ValidationPolicySchema.parse(body.policy ?? {});
+    return validateOutputAgainstOntology(body.rows, typeDef, policy);
+  });
   app.post("/a/v1/ontology/object-types", async (req, reply) => {
     const c = ctx(req);
     const body = parseBody(
