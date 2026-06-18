@@ -55,4 +55,21 @@ describe("F46 · 历史推演记录时间线（StoryBuildRun）", () => {
     expect(await within(timeline).findByText(/产出源数据/)).toBeTruthy();
     expect(within(timeline).getAllByText("SUCCEEDED").length).toBeGreaterThan(0);
   });
+
+  it("g8-P6：存量回填 → 压测报告（覆盖率）+ 既有推演能力获时间线血缘", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/data-builder");
+    await screen.findByTestId("data-builder-page");
+    const timeline = await screen.findByTestId("sbr-timeline");
+
+    await user.click(screen.getByTestId("sbr-backfill"));
+
+    // 压测报告呈现（覆盖率）
+    const report = await within(timeline).findByTestId("sbr-backfill-report");
+    expect(report).toHaveTextContent(/覆盖率 100%/);
+    expect(report).toHaveTextContent(/覆盖/);
+    // 既有推演能力回填进时间线（≥2 条 SUCCEEDED）
+    expect(within(timeline).getAllByText("SUCCEEDED").length).toBeGreaterThanOrEqual(2);
+  });
 });

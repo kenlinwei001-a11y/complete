@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs } from "@/api/endpoints";
+import type { BackfillReport } from "@platform/contracts";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -120,6 +121,7 @@ export default function DataBuilderPage() {
   const [dryRun, setDryRun] = useState(false);
   const [job, setJob] = useState<(BuildJob & { jobId?: string }) | null>(null);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
+  const [backfillReport, setBackfillReport] = useState<BackfillReport | null>(null);
 
   const buildersQ = useQuery<DataBuilderAgent[]>({ queryKey: ["a", "data-builders"], queryFn: fetchDataBuilders });
   const jobsQ = useQuery<BuildJob[]>({ queryKey: ["a", "build-jobs"], queryFn: fetchBuildJobs });
@@ -162,6 +164,17 @@ export default function DataBuilderPage() {
       toast(r.status === "SUCCEEDED" ? "补录完成，建域成功" : "建域失败（见闭包/缺口）", r.status === "SUCCEEDED" ? "success" : "error");
       void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
       void jobsQ.refetch();
+    },
+    onError: (e) => toastError(e as Error),
+  });
+
+  // g8-P6：存量回填 —— 逆向导出既有推演能力为故事脚本，逐条建域补血缘 = 首次全量压测
+  const backfillM = useMutation({
+    mutationFn: () => backfillStoryRuns(),
+    onSuccess: (r) => {
+      setBackfillReport(r);
+      toast(`存量回填完成：${r.succeeded}/${r.total} 建域成功`, r.failed === 0 ? "success" : "error");
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
     },
     onError: (e) => toastError(e as Error),
   });
@@ -279,13 +292,22 @@ export default function DataBuilderPage() {
 
       {/* g8 故事驱动建域 · P1：历史推演记录时间线（StoryBuildRun，与自成长发动机成长账本归一为同一历史两面） */}
       <div className="panel" style={{ marginBottom: 14 }} data-testid="sbr-timeline">
-        <div className="section-title">
+        <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           历史推演记录（故事驱动建域）{" "}
           <span className="badge" data-testid="sbr-count">{storyRunsQ.data?.length ?? 0}</span>
+          <button className="btn sm" data-testid="sbr-backfill" style={{ marginLeft: "auto" }} disabled={backfillM.isPending} onClick={() => backfillM.mutate()} title="逆向导出既有推演能力为故事脚本，逐条建域补血缘 = 首次全量压测">
+            {backfillM.isPending ? "回填中…" : "存量回填（首次全量压测）"}
+          </button>
         </div>
         <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
           每条 = 一次「故事脚本 → 全栈建域 → 闭包 → 产物」的可回放记录；源数据落在数据连接器页（可下钻）。
         </div>
+        {backfillReport && (
+          <div data-testid="sbr-backfill-report" style={{ fontSize: 12, marginBottom: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)" }}>
+            存量回填压测：覆盖 <b>{backfillReport.total}</b> 个推演能力 · 成功 <b style={{ color: "var(--c-capacity,#36BFA5)" }}>{backfillReport.succeeded}</b> · 失败 <b style={{ color: backfillReport.failed ? "var(--danger,#E5484D)" : "inherit" }}>{backfillReport.failed}</b>
+            （覆盖率 {Math.round((backfillReport.succeeded / Math.max(1, backfillReport.total)) * 100)}%）
+          </div>
+        )}
         {(storyRunsQ.data ?? []).length === 0 ? (
           <div className="empty-state" style={{ fontSize: 12 }}>暂无记录——在上方输入故事脚本，点「建域并记入历史」。</div>
         ) : (

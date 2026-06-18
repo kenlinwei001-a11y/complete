@@ -2005,6 +2005,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     return databuilder.getStoryRun(c, (req.params as { id: string }).id);
   });
+  // g8-P6 存量回填：逆向导出既有推演能力为故事脚本 → 逐条建域补血缘 = 首次全量压测
+  app.post("/a/v1/databuilder/backfill", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.backfill(c);
+  });
 
   app.get("/a/v1/features/registry", async (req) => {
     const c = ctx(req);

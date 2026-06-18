@@ -1731,6 +1731,27 @@ export const handlers = [
     MOCK_STORY_RUNS.unshift(run);
     return HttpResponse.json(run, { status: 201 });
   }),
+  http.post("*/a/v1/databuilder/backfill", () => {
+    // g8-P6：逆向导出既有推演能力（风险/产能）→ 逐条建域 → 写入历史 + 压测报告
+    const caps = [
+      { key: "affected_orders", script: "针对订单做风险推演分析" },
+      { key: "capacity_forecast", script: "针对基地做产能推演分析" },
+    ];
+    const runs = caps.map((c) => {
+      const job = mockBuildJob({ script: c.script, seed: 42 }) as { planId: string; closure: unknown };
+      const id = newId("sbr");
+      MOCK_STORY_RUNS.unshift({
+        id, tenantId: "demo", script: c.script,
+        buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
+        closureReport: job.closure,
+        scaffoldReceipt: { items: [{ kind: "scene", key: `scene_${c.key}`, status: "SCAFFOLDED" }], fullChainOk: true },
+        producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
+        status: "SUCCEEDED", createdAt: new Date().toISOString(),
+      });
+      return { key: c.key, runId: id, status: "SUCCEEDED", fullChainOk: true };
+    });
+    return HttpResponse.json({ total: runs.length, succeeded: runs.length, failed: 0, runs });
+  }),
   http.patch("*/a/v1/databuilder/runs/:id/inputs", async ({ request, params }) => {
     const body = (await request.json()) as { inputs?: { seed?: number } };
     const run = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);

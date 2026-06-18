@@ -254,6 +254,25 @@ describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期�
     expect(broken.status).toBe("FAILED");
   });
 
+  it("SBR5 (g8-P6): 存量回填 —— 逆向导出推演能力为故事脚本 → 逐条建域补血缘 + 压测报告", async () => {
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/backfill", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const report = res.json() as { total: number; succeeded: number; failed: number; runs: { key: string; runId: string; status: string }[] };
+    // 覆盖既有推演能力（风险推演 affected_orders + 产能推演 capacity_forecast = 推演与风险 + 规划与平衡）
+    expect(report.total).toBeGreaterThanOrEqual(2);
+    expect(report.runs.map((r) => r.key)).toContain("affected_orders");
+    expect(report.runs.map((r) => r.key)).toContain("capacity_forecast");
+    // 压测：全部建域成功（覆盖率 = succeeded/total）
+    expect(report.succeeded).toBe(report.total);
+    // 每个存量推演能力获得 StoryBuildRun 血缘（可从历史推演记录下钻）
+    const runs = (await (await t.app.inject({ method: "GET", url: "/a/v1/databuilder/runs", headers: ADMIN })).json()) as { id: string; buildPlan?: { objectTypes: unknown[] } }[];
+    for (const r of report.runs) {
+      const sbr = runs.find((x) => x.id === r.runId);
+      expect(sbr?.buildPlan?.objectTypes.length).toBeGreaterThan(0); // 有图谱血缘
+    }
+  });
+
   it("SBR3 (g8-P2): stage=manifest → 倒推补录表单（PENDING_INPUT，未建域）→ PATCH inputs 续跑建域", async () => {
     const t = await makeApp();
     // ① 倒推：返回 InputManifest（STORY 抽取 + ASK_USER seed + REUSE_EXISTING 连接器），状态 PENDING_INPUT

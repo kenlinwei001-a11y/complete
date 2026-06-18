@@ -121,6 +121,20 @@ const SOLVERS: SolverTemplate[] = [
   { keywords: ["产能", "capacity", "推演", "forecast"], solverKey: "capacity_forecast", inputFields: [{ typeKey: "Base", propKey: "gwh" }, { typeKey: "Base", propKey: "util" }] },
 ];
 
+/**
+ * g8-P6 存量回填：把既有"推演能力（求解器）"逆向导出为确定性故事脚本。
+ * 用求解器关键词 + 其输入对象类型的关键词组句，保证 comprehend 重解析回同一全栈链
+ * （场景→意图→计划→求解器），从而给每个存量推演场景补出可追溯血缘。programmatic，无写死脚本。
+ */
+export function deriveBackfillScripts(): { key: string; script: string }[] {
+  return SOLVERS.map((s) => {
+    const entityNames = [...new Set(s.inputFields.map((f) => ENTITIES.find((e) => e.typeKey === f.typeKey)?.keywords[0]).filter((x): x is string => !!x))];
+    const verb = s.keywords[0] ?? s.solverKey;
+    const script = `针对${entityNames.join("、")}做${verb}${verb.includes("推演") ? "" : "推演"}分析`;
+    return { key: s.solverKey, script };
+  });
+}
+
 /** 确定性 32-bit 哈希（用于 seed 派生行数，避免随机）。 */
 export function hashString(s: string): number {
   let h = 2166136261;

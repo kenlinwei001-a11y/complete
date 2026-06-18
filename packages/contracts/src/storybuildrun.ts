@@ -138,3 +138,18 @@ export const StoryInputsBodySchema = z.object({
   inputs: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 export type StoryInputsBody = z.infer<typeof StoryInputsBodySchema>;
+
+/** g8-P6 存量回填批量报告（= 首次全量压测：覆盖率/失败率 + 逐条 StoryBuildRun 引用）。 */
+export const BackfillReportSchema = z.object({
+  total: z.number().int(),
+  succeeded: z.number().int(),
+  failed: z.number().int(),
+  /** 逐个存量推演场景的回填结果（key=求解器/能力，runId 指向其 StoryBuildRun 血缘）。 */
+  runs: z.array(z.object({
+    key: z.string(),
+    runId: z.string(),
+    status: StoryBuildRunStatusSchema,
+    fullChainOk: z.boolean().optional(),
+  })),
+});
+export type BackfillReport = z.infer<typeof BackfillReportSchema>;

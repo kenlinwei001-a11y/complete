@@ -4,6 +4,7 @@ import type {
   BuildPhase,
   BuildPlan,
   BuildRunBody,
+  BackfillReport,
   DataBuilderAgent,
   DataBuilderConfig,
   InputManifest,
@@ -20,7 +21,7 @@ import type { ConnectorService } from "../connectors/service.js";
 import type { KbService } from "../kb.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript } from "./comprehend.js";
+import { comprehendScript, deriveBackfillScripts } from "./comprehend.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
@@ -231,6 +232,26 @@ export class DataBuilderService {
     };
     await this.repos.storyBuildRuns.put(run);
     return run;
+  }
+
+  /**
+   * g8-P6 存量回填：把既有推演能力逆向导出为故事脚本，逐条经 g8 主链 runStory 建域，
+   * 给每个存量推演场景补出可追溯血缘（源数据/图谱/意图/计划/场景）。这一批 = 首次全量压测
+   * （覆盖率/失败率统计）；缺的部分由 runStory 标 MISSING / FAILED 显式暴露。
+   */
+  async backfill(ctx: AuthCtx): Promise<BackfillReport> {
+    const scripts = deriveBackfillScripts();
+    const runs: BackfillReport["runs"] = [];
+    for (const { key, script } of scripts) {
+      const run = await this.runStory(ctx, { script, builderKey: DEFAULT_BUILDER_KEY });
+      runs.push({ key, runId: run.id, status: run.status, fullChainOk: run.scaffoldReceipt?.fullChainOk });
+    }
+    return {
+      total: runs.length,
+      succeeded: runs.filter((r) => r.status === "SUCCEEDED").length,
+      failed: runs.filter((r) => r.status === "FAILED").length,
+      runs,
+    };
   }
 
   async listStoryRuns(ctx: AuthCtx): Promise<StoryBuildRun[]> {

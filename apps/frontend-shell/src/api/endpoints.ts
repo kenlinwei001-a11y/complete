@@ -8,6 +8,7 @@ import type {
   BuildPlan,
   BuildRunBody,
   StoryBuildRun,
+  BackfillReport,
   DataBuilderAgent,
   ConnectionInstance,
   ConnectorType,
@@ -699,6 +700,8 @@ export const previewStoryBuild = (script: string, seed?: number) =>
   api.a<StoryBuildRun>("/a/v1/databuilder/runs", { method: "POST", body: { script, seed, stage: "manifest" } });
 export const submitStoryInputs = (id: string, inputs: Record<string, string | number | boolean>) =>
   api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/inputs`, { method: "PATCH", body: { inputs } });
+// g8-P6：存量回填（逆向导出既有推演能力 → 逐条建域 = 首次全量压测）
+export const backfillStoryRuns = () => api.a<BackfillReport>("/a/v1/databuilder/backfill", { method: "POST" });
 export const newDataBuilderVersion = (id: string) =>
   api.a<DataBuilderAgent>(`/a/v1/data-builders/${id}/new-version`, { method: "POST" });
 export const publishDataBuilder = (id: string) =>
