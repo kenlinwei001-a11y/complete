@@ -83,9 +83,10 @@
 - **`rawin` 填数模式选择器（收编合成数据页 · unified 目标 5 三路统一）**：在 rawin 阶段提供 ④ 选一的填数方式，由需求字段统一驱动——
   - **a. 模板驱动合成**（收编 `SyntheticPage` StepOne：选 `IndustryTemplate` + 规模 + seed → `SyntheticService.runJob`，无 LLM、确定性 R6）；
   - **b. 故事 schema 驱动合成**（无模板时按 `BuildPlan.objectTypes` 现造，故事入口 PRD §3.4）；
-  - **c. 上传 Excel/CSV/JSON**（`parseXlsx` 三路统一）；
-  - **d. 在线数据模版**（按需求字段定义 schema 下载/回填）。
+  - **c. 上传 Excel/CSV/JSON + 模版上传模式**（`parseXlsx` 三路统一）：上传入口直接给「**下载该对象类型 CSV 模版**」（搬自本体浏览器 `OntologyGraphView downloadCsvTemplate`，模版列=字段全建模源字段）；上传后**对照模版校验列**（缺列/多列/类型不符提示），不符进**隔离区**（`QuarantineRow` SCHEMA_MISMATCH）——回应"连接器入口要有数据模版 + 支持模版上传模式"。
+  - **d. 在线数据模版**（按需求字段定义 schema → 下载模版 → 即上述 c 的"按模版上传"闭环）。
   - 四种产物统一为 `Connection+RawDataset`，落点连接器、进区 5 同步矩阵。
+  - **生成多少条由"数据量判定阶梯"决定**（故事显式 > 关系基数推断 > scale 档位 > InputManifest 问用户，详 `PRD-fullstack-story-build-g8.md` §3.4）；模式 a/b 的数量来源在此可见、可在区 3 补录调。
 - **逐产物卡片**可展开：原始数据需求/字段/切片覆盖/规则/约束/skill/意图/计划/agent；**diff 预览 + 逐产物 HITL「批准/驳回」**（复用就地审批 §6.4 / `GET·POST /a/v1/actions*`）。
 - **合成生成报告内嵌**（收编 `SyntheticPage` Report）：rowCounts/规则扫描/派生抽样复算 作为 rawin 产物卡片明细展示，不再另开页。
 - 数据来源：`BuildJob.phases` + 逐产物明细 + `POST /a/v1/synthetic/jobs`（模板模式）；实时经事件刷新（R10）。
@@ -140,6 +141,7 @@
 - **`DataBuilderPage` = 唯一控制台**（区 1–8）。
 - **收编 `/admin/growth`（自成长驾驶舱）**：LOOP/GapReport/账本/工单**降为本页区 6/区 8 内嵌面板**；路由保留为"自成长聚焦视图"或 301 到本页锚点（倾向内嵌合并）。
 - **收编 `/admin/synthetic`（合成数据页）**：① "生成"能力（模板/规模/seed）→ **区 4 rawin 填数模式 a**；② 六阶段报告 → 区 4 产物卡片明细；③ 那个"看不到已生成数据"的 UX 痛点 → 直接被**区 5 同步矩阵 + 连接器深链**消解；④ **唯独"模拟时钟控制台"（A8 tick）移出**——它是运营时序、非构建，迁到时序/运营页（本 PRD 不接管）。`/admin/synthetic` 路由降为"快速合成入口"（直达区 4 模式 a，跳过故事）或 301 到本页。
+- **⚠ 待决（模拟时钟落点）**：模拟时钟（tick 1d/7d、reset、剧本时间线、tick 报告流：`fetchSimClock`/`tickSimClock`/`fetchTickReports`）移出构建页后**需明确新家**——候选 ① 并入运营调度页 `/admin/ops-schedule`；② 新开"模拟时钟 / 时序推进"页。本 PRD 倾向 ②（职责清晰：A8 模拟时钟 + tick 报告 + `synthetic.tick_completed` 事件驱动 dashboard/risk 刷新自成一页）。**落地前须定夺，勿在融合时遗漏。**
 - **保留双入口**：区 1 同时提供「故事建域」与「快速合成」按钮——心智不同（合成=已知模板出 demo/测试数据、无 LLM；故事=有需求倒推全栈），融页但不强迫先写故事。
 
 ## 4. 契约 / 端点 / 数据模型（前端为主；contracts-only-shared）

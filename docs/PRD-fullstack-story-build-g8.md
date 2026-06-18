@@ -75,6 +75,7 @@ InputField = { key, label, dataType, required, default?, source: "STORY"|"ASK_US
 ### 3.4 rawin 去模板化统一合成（复用 + 重构）
 - 删 `genCsv`；`rawin` 改调 `SyntheticService.generateFromSchema(objectTypes, links, seed)`——按属性 dataType + refToTypeKey 确定性造行 + 维 FK 一致；有 `IndustryTemplate` 优先模板（battery-manufacturing 字节级回归锁，R6）。
 - **与母体 `fill-data` 的分工**：`fill-data` 是"运行时缺某表 → 单表补"；本项是"建域期按全 BuildPlan schema 批量造"。二者共用同一确定性生成内核（统一到 `SyntheticService`），避免三套生成器。
+- **数据量判定阶梯（绿地，确定性）**：现状只有"`scale` 档位查表"（`battery.ts:922` S=20/M=60/L=200/XL=10000 订单，其它对象按比例派生）。建域期改为**四级优先**——① **故事显式**：comprehend 抽出明确数量（"12 个基地/约 200 张订单"）落 `BuildPlan.dataSources[].rowHint` / `objectTypes[].countHint`；② **关系基数推断**：按 `links[].cardinality` × 每类型基准数推算（Order→Model N:1，6 型号 × ~20/型号 ≈ 120）；③ **scale 档位兜底**：①② 都没给时用 S/M/L/XL；④ **InputManifest 问用户**：仍不明确 → `source=ASK_USER` 字段"规模档位 / 各对象大约几条"（§3.2）。解析出的数量 + seed → 字节级一致（R6）。
 
 ### 3.5 StoryBuildRun 历史推演记录（绿地持久 + 前端页）
 - `StoryBuildRun` 仓储双实现（R9 四处同改）：`{runId, tenantId, script, inputManifest, buildPlan(frozen), scaffoldReceipt, gapReport?(复用), producedConnections[], producedDatasets[], answer?, status, createdAt}`。
