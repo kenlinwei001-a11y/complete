@@ -62,6 +62,7 @@ import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
 import type { AuthCtx } from "./domain.js";
+import { mulberry32, hashString, randInt } from "./prng.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -825,6 +826,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     await entityResolution.unmerge(c, id);
     return { ok: true };
+  });
+
+  // 自成长发动机 P2：缺数据"真人正门"自动补——确定性生成 CSV → 经公开上传门(connectors.upload)
+  // 导入 → RawDataset 落地可见（与真人手动上传逐跳一致、无后门；R6 同 seed 字节级一致）。
+  app.post("/a/v1/growth/fill-data", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const body = parseBody(z.object({ typeKey: z.string().min(1), fields: z.array(z.string().min(1)).min(1), rows: z.number().int().min(1).max(500).default(6), seed: z.number().int().default(42) }), req.body);
+    const rng = mulberry32((body.seed >>> 0) ^ hashString(body.typeKey));
+    const cell = (f: string, i: number): string => {
+      const lf = f.toLowerCase();
+      if (/(id$|key$|code|编号)/.test(lf)) return `${body.typeKey.toLowerCase()}_${i + 1}`;
+      if (/(name|名称|title|名)/.test(lf)) return `${body.typeKey}-${i + 1}`;
+      if (/(qty|count|num|amount|util|rate|价|量|率|数)/.test(lf)) return String(randInt(rng, 1, 1000));
+      return `${f}_${i + 1}`;
+    };
+    const lines = [body.fields.join(",")];
+    for (let i = 0; i < body.rows; i++) lines.push(body.fields.map((f) => cell(f, i)).join(","));
+    const csv = lines.join("\n") + "\n";
+    const filename = `growth_${body.typeKey}_${body.seed}.csv`;
+    const result = await connectors.upload(c, filename, Buffer.from(csv, "utf8"));
+    return { connId: result.connection.id, datasetName: result.schema.datasets[0]?.name ?? result.connection.name, rowCount: body.rows, filename, viaFrontDoor: true };
   });
 
   // 运营完备性 §9：通知中心（铃铛未读 + 列表 + 标记已读）

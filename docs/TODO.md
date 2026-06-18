@@ -23,7 +23,7 @@
 > `docs/PRD-demand-pulled-growth-engine.md`（含《本体引用与影响》R3/R4/R6/R10/R11/R13·G-1/G-8）。把"客户明确问题"当燃料：QOS缺口探针实跑→GapReport→自动补(数据真人正门/结构/求解器B兜底)→缺功能C骨架工单→厂商中立 code-agent 施工→LOOP收敛→成长账本。融合 OPERATING-MODEL 融合层 P5。
 
 - ✅ **P1 已落（2026-06-17）** QOS 缺口探针 + GapReport：`classifyGap`(终态→7码分类,确定性纯函数) + `POST /api/v1/growth/probe`(提交→等终态→分类)；growth-probe ×7 回归；本体 §2 回写 GapReport。静态闭包→运行时实跑(验收 G-8/G-1)
-- ⬜ **P2** 缺数据真人正门自动补（生成Excel→连接器导入→物化可见）+ **就地 Action 审批面板**（页内批复）
+- ✅ **P2 已落（2026-06-17）** 缺数据真人正门自动补 `POST /a/v1/growth/fill-data`（确定性生成 CSV→经公开上传门 connectors.upload 导入→RawDataset 可见，与手动上传无差别，R6 字节级一致；growth-fill ×2）+ **就地 Action 审批面板**（DataBuilderPage 内嵌 PENDING_APPROVAL 列表 + 页内批准/驳回，无跳转；f44 ×1）；本体 §2 回写
 - ⬜ **P3** 缺切片/规则/意图/计划 scaffold + 求解器 generic-inference 兜底 + LOOP/收敛(K前端可配)
 - ⬜ **P4** C 骨架工单 + GrowthTicket 契约 + 成长账本（demand-indexed）
 - ⬜ **P5** code-agent 执行器接缝（MCP/CLI 活查询面 + 推默认拉兜底 + 厂商中立工单闭环）

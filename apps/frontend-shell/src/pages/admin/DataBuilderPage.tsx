@@ -1,8 +1,37 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import type { BuildJob, BuildPhase, DataBuilderAgent } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder } from "@/api/endpoints";
-import { toastError } from "@/store/toastStore";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ActionDraft, BuildJob, BuildPhase, DataBuilderAgent } from "@platform/contracts";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft } from "@/api/endpoints";
+import { toastError, toast } from "@/store/toastStore";
+
+/**
+ * 自成长发动机 §6.4：就地审批面板——自动补齐的真值写入(物化/发布)经 Action 审批；
+ * admin 在数据构建发动机页内直接批复，无需跳转 /admin/actions。
+ */
+function InPlaceApprovalPanel() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["a", "action-drafts", { status: "PENDING_APPROVAL" }], queryFn: () => fetchActionDrafts("PENDING_APPROVAL") });
+  const drafts = (data ?? []) as ActionDraft[];
+  const decide = useMutation({
+    mutationFn: ({ id, d }: { id: string; d: "APPROVE" | "REJECT" }) => decideActionDraft(id, d, d === "APPROVE" ? "页内批复" : "页内驳回"),
+    onSuccess: () => { toast("已批复", "success"); void qc.invalidateQueries({ queryKey: ["a", "action-drafts"] }); },
+    onError: toastError,
+  });
+  if (drafts.length === 0) return null;
+  return (
+    <div className="panel" data-testid="db-approvals" style={{ marginBottom: 14, borderColor: "var(--amber,#DD9551)" }}>
+      <div className="section-title">待审批补齐（就地批复，无需跳转） <span className="badge amber" data-testid="db-approval-count">{drafts.length}</span></div>
+      {drafts.map((d) => (
+        <div key={d.id} data-testid={`db-approval-${d.id}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+          <span className="badge">{d.actionTypeKey}</span>
+          <span style={{ flex: 1, fontSize: 11.5, color: "var(--muted)" }} className="mono">{d.id}</span>
+          <button className="btn primary sm" data-testid={`db-approve-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "APPROVE" })}>批准</button>
+          <button className="btn sm" data-testid={`db-reject-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "REJECT" })}>驳回</button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const PHASE_LABEL: Record<BuildPhase["name"], string> = {
   intake: "① 收稿",
@@ -47,6 +76,7 @@ export default function DataBuilderPage() {
 
   return (
     <div data-testid="data-builder-page">
+      <InPlaceApprovalPanel />
       <div className="panel" style={{ marginBottom: 14 }}>
         <h2 style={{ margin: "0 0 4px" }}>数据构建发动机 · Foundry-Grade Data Builder</h2>
         <div style={{ fontSize: 12, color: "var(--muted)" }}>
