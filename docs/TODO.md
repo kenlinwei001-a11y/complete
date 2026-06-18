@@ -14,7 +14,7 @@
 | **G2 Loop**（改数据/规则 → 引用方 workflow/agent/场景 自动更新） | ✅ 达成 | —（引用闭合上架门 + invalidateForEvent + D-29 + rule/solver 反查已闭环） |
 | **G3 推演结果展示一致性+交叉验证痕迹，让用户信任** | ✅ 达成（本轮交付） | ◐ 余项：统一 Decision Trace 可导出制品 → 见「实时验证审计层」组 |
 | **G4 四不变量纪律**（R11 全链闭包 / R12 双向闭包 / R13 溯源 / R14 无业务常数） | ✅ 达成 | —（四门禁全绿；字段全建模门升 HARD 已落） |
-| **G5 本体驱动 Agent 架构（6 模块）** | ◐ 部分（约 50–55%） | 见 `💭 to-do consider` 全部七组（感知层/语义解析/可验证规划/约束执行/实时审计/索引记忆 + 形式化本体）；两根本差距：形式化本体(OWL/DL) + 动态语义解析路线（均待议、属范式取舍） |
+| **G5 本体驱动 Agent 架构（6 模块）** | ◐ 部分（约 60%；范式已定） | **形式化本体决策已裁决**（夯实自有务实本体 + DL 仅作可选 MCP 工具留接口,见 to-do consider）;感知层动态对象类型 ✅ + 审计层 Decision Trace 导出 ✅;**下一项**：约束执行层 `validate_output_against_ontology` 关卡（已解冻）;余动态语义解析（关系路径规划器等）走 agent-with-tools 走图路线 |
 
 > **总判定**：作为"治理大脑 + 可信赖推演平台"——**基本达成**（唯缺 dogfooding 落库）；作为"形式化本体驱动 Agent"——**达成约一半**，余项是已入册的范式选择，非失误。
 
@@ -167,7 +167,10 @@
 > 来源：与「本体驱动企业 Agent 架构」参考的差距分析（6 模块图 + 感知层本体校验 + 本体语义解析层）。结论：信任级双轨/可解释性/确定性执行强匹配；动态语义解析/关系路径规划/形式化本体为主要差距，**逐条裁决、未排期**。
 
 - ❌ **多模态（语音/图像入口）—— 不考虑**（用户裁决 2026-06-16；当前定位为结构化决策平台，非多模态交互层）。
-- 🟡 **形式化本体（OWL/RDF + DL 推理机 / SPARQL）—— 待讨论**：当前为「自有务实本体」（zod 契约 + markdown 元模型 + 规则/派生 DSL + 构建/发布时一致性校验），非 W3C 形式化栈，**无 DL 推理机做连续语义推断**。取舍点：① 形式化栈带来标准化推理/可移植性，但落地成本高、与现有确定性求解器范式割裂；② 现状的「实时一致性」实为构建/发布时 + 规则驱动，非连续 DL 推理。**需讨论：是否值得引入，还是继续夯实自有务实本体（倾向后者）。** 不实现，仅记录待议。
+- ✅ **形式化本体（OWL/RDF + DL）决策（2026-06-18 已裁决）**：**核心范式 = 夯实自有务实本体**（zod 契约 + markdown 元模型 + 规则/派生 DSL + 构建/发布期一致性校验 + 确定性求解器），**不引 OWL/DL 进核心**（理由：90% 诉求已覆盖且满足 R6 确定性 + R13 可溯源——恰是 DL 弱项；引 DL 与确定性求解器范式割裂、落地/调试成本高、推断难逐步溯源）。
+  - **DL 不进核心,但留接口 = 作为可选 MCP 工具按子域接入**：真遇到"声明少量公理→推大量隐含事实"的子域（多层 BOM 展开 / 合规自动分类 / 深传递闭包）时,把 DL 推理机（HermiT/Pellet 等）包成 **MCP server**（`dl__infer`/`dl__check_consistency`）+ 「本体→RDF/OWL 投影」适配器,经既有 B3 MCP（`invoke_mcp_tool` 步 / agent `mcpServers`）按场景绑定。**不预建,留接口**。
+  - **深度多跳推断的务实路线 = agent-with-tools 走图**：agent 把每跳约束成确定性图查询工具调用（`queryObjects`/`neighbors`/`resolveSlice`）+ 全程 trustLevel 标记 + 路径封存（借 freezePlan 换确定性）+ 交叉验证（`ValidationTrace` 已建）——覆盖 DL 多跳的实用 ~80%,更合 R6/R13;放弃的是 DL 的可证明完备性/自动矛盾检查/推断确定性（你的电池域几乎用不上）。这就是下面「关系路径规划器」该建的样子。
+  - **接入前置**：DL-as-MCP-tool / 任何工具的逻辑推断输出,都要过下面的 `validate_output_against_ontology` 关卡（红线:DL 工具须返回 justification 满足 R13;输出经本体 schema/值域校验;R3 门控 + R5 凭据）。
 
 ### 感知层 · 输入解析时本体校验（差距评审 2026-06-16，源自「感知层+本体校验」需求）
 
@@ -203,7 +206,8 @@
 > 现状**已具备约束配置项**（命中"目标场景下至少有开关"诉求）：agent `scopeDeclaration.{objectTypes,toolNames}`（工具白名单+对象类型范围，`contracts/agentcore.ts:45`）；路径B `package.toolWhitelist ∩ {READ,COMPUTE}`（`orchestrator.ts:602`）；`invoke_agent.expectsSchema` 结构化输出校验开关（`loop.ts:597`）；求解器输出经 DataCore 契约 schema 校验 + SHAPE 闭包门（构建期挡"算得出取不到"，`closure.ts:118`）；B→A `probeMissingRefs` 发布期引用闭合；写操作经 Action 审批(R4)。差距如下。
 
 - 🟡 **动态"语义→能力→工具"路由 + 等价能力故障转移**：当前计划步骤**显式指名**工具/求解器（solverKey/toolName），无 `map_to_ontology_capability`+`filter_tools_by_capability` 的能力推断与等价替换（G-7 用途枚举 PRD 有、代码未落）。
-- 🟡 **统一"全工具输出按本体类/值域强制校验"关卡（最大缺口）**：求解器有契约校验、`invoke_agent` 有可选 `expectsSchema`，但 `query_objects`/`search_knowledge`/`query_timeseries`/**MCP/外部 API 原始输出**无强制"符合本体对象类型 schema + 属性值域"的统一运行时关卡（对应案例"查征信API输出必须符合 CreditRecord 本体类"）。需一个 `validate_output_against_ontology` 运行时关卡，按对象类型/属性值域校验、不符即拒/隔离。
+- ⏭️ **【下一个可独立落地项】统一"全工具输出按本体类/值域强制校验"关卡 `validate_output_against_ontology`**（约束执行层最大缺口；形式化决策已裁决「夯实自有」后**解冻、且用现有 zod 对象类型 schema 即可实现,不需 OWL**）：求解器有契约校验、`invoke_agent` 有可选 `expectsSchema`，但 `query_objects`/`search_knowledge`/`query_timeseries`/**MCP/外部 API 原始输出**（含未来 DL-as-MCP 工具）无强制"符合本体对象类型 schema + 属性值域"的统一运行时关卡（案例"查征信 API 输出必须符合 CreditRecord 本体类"）。
+  - **落地设计**：① 纯函数 `validateOutputAgainstOntology(output, objectType, typeDef)`——按 DataCore 对象类型的属性 dataType + 值域（min/max/enum/ref 存在性）校验;② 运行时关卡:工具执行器对返回对象的工具输出施加校验,不符 → 拒/隔离（复用隔离区 OC4）+ 标记;③ 值域自动校验（概率∈[0,1] 等）并入同一关卡;④ 供 DL-as-MCP 工具输出兜底(决策红线3)。确定性纯函数,可单测;不改求解器既有契约校验路径。【覆盖"约束执行层 + 值域自动校验"两项 to-do-consider】
 - 🟡 **值域/取值范围自动校验**：当前靠 `evaluate_rules` 显式编排，非自动对每个输出按本体属性值域约束校验。
 
 ### 实时验证审计层 · 一致性检查 + 决策痕迹（差距评审 2026-06-16，约 60–70%，**系统最强项**）
