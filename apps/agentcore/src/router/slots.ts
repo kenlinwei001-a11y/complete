@@ -2,8 +2,6 @@ import type { IntentDefinition, ObjectRef, SessionContext, SlotDef } from "@plat
 import type { OntologyClient, ToolAuthCtx } from "../tools/clients.js";
 import { resolvePath } from "../util/jsonpath.js";
 
-const OBJECT_TYPES = ["Base", "Model", "Order"];
-
 export interface SlotFillResult {
   slots: Record<string, unknown>;
   missing: SlotDef[];
@@ -60,9 +58,17 @@ export async function validateSlotValue(
           return { ok: false };
         }
       }
-      // Bare string (e.g. "常州" / "4680-NCM") — try to resolve across known object types.
+      // Bare string (e.g. "常州" / "4680-NCM" / "供应商A") — resolve across the tenant's
+      // published object types, fetched DYNAMICALLY from the ontology (R14: no hardcoded type list；
+      // 裸串实体不再仅限 Base/Model/Order，任意已建模类型均可解析)。
       const key = String(value);
-      for (const objectType of OBJECT_TYPES) {
+      let objectTypes: string[];
+      try {
+        objectTypes = await ontology.listObjectTypeKeys(ctx);
+      } catch {
+        objectTypes = [];
+      }
+      for (const objectType of objectTypes) {
         try {
           const payload = await ontology.getObject(ctx, objectType, key);
           const data = payload.data as Record<string, unknown>;
@@ -78,6 +84,7 @@ export async function validateSlotValue(
           /* try next type */
         }
       }
+      // 域外：裸串实体在本租户任何已发布对象类型中都解析不到 → 不命中（→ 澄清/降级，感知层显式信号）。
       return { ok: false };
     }
   }
