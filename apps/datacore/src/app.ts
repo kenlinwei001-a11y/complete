@@ -1957,6 +1957,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return databuilder.getPlan(c, (req.params as { id: string }).id);
   });
 
+  // g8 故事驱动全栈倒推 · P1：StoryBuildRun = 构建期历史推演记录（提交故事脚本 → 建域 → 记录可回放）
+  app.post("/a/v1/databuilder/runs", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(BuildRunBodySchema, req.body);
+    const run = await databuilder.runStory(c, body);
+    return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
+  });
+  app.get("/a/v1/databuilder/runs", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.listStoryRuns(c);
+  });
+  app.get("/a/v1/databuilder/runs/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.getStoryRun(c, (req.params as { id: string }).id);
+  });
+
   app.get("/a/v1/features/registry", async (req) => {
     const c = ctx(req);
     // 管理平台增量 §3：静态注册表 + 本租户动态注册项（view.{viewKey}）。

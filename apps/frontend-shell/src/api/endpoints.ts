@@ -7,6 +7,7 @@ import type {
   BuildJob,
   BuildPlan,
   BuildRunBody,
+  StoryBuildRun,
   DataBuilderAgent,
   ConnectionInstance,
   ConnectorType,
@@ -688,6 +689,11 @@ export const runDataBuilder = (body: BuildRunBody) =>
   api.a<BuildJob & { jobId: string }>("/a/v1/data-builders/run", { method: "POST", body });
 export const fetchBuildJobs = () => api.a<BuildJob[]>("/a/v1/data-builders/jobs/list");
 export const fetchBuildPlan = (id: string) => api.a<BuildPlan>(`/a/v1/data-builders/plans/${id}`);
+// g8 故事驱动全栈倒推 · P1：StoryBuildRun 历史推演记录
+export const runStoryBuild = (body: BuildRunBody) =>
+  api.a<StoryBuildRun>("/a/v1/databuilder/runs", { method: "POST", body });
+export const fetchStoryRuns = () => api.a<StoryBuildRun[]>("/a/v1/databuilder/runs");
+export const fetchStoryRun = (id: string) => api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}`);
 export const newDataBuilderVersion = (id: string) =>
   api.a<DataBuilderAgent>(`/a/v1/data-builders/${id}/new-version`, { method: "POST" });
 export const publishDataBuilder = (id: string) =>

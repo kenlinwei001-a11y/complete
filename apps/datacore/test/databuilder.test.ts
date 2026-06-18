@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ClosurePolicySchema, type BuildPlan } from "@platform/contracts";
 import { validateClosure } from "../src/databuilder/closure.js";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
-import { makeApp, ADMIN } from "./helpers.js";
+import { makeApp, ADMIN, debugUser } from "./helpers.js";
 
 const SCRIPT = "常州基地产能紧张，影响订单交期与客户信用，请做风险推演";
 
@@ -173,5 +173,48 @@ describe("A7 Foundry-Grade Data Builder", () => {
     expect(draft.status).toBe("DRAFT");
     const upd = await t.app.inject({ method: "PUT", url: `/a/v1/data-builders/${draft.id}`, headers: ADMIN, payload: { name: "定制版" } });
     expect(upd.statusCode).toBe(200);
+  });
+});
+
+interface StoryRunResp {
+  id: string;
+  script: string;
+  status: "PENDING_INPUT" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  buildPlan?: { id: string; objectTypes: unknown[] };
+  closureReport?: { gatePassed: boolean };
+  producedConnections: string[];
+  producedDatasets: string[];
+}
+
+describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期历史推演记录）", () => {
+  it("SBR1: 提交故事脚本 → 建 StoryBuildRun（含 buildPlan/闭包/产出连接器+数据集）+ 历史列表/详情", async () => {
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 11 } });
+    expect(res.statusCode).toBe(201);
+    const run = res.json() as StoryRunResp;
+    expect(run.id).toMatch(/^sbr_/);
+    expect(run.status).toBe("SUCCEEDED");
+    expect(run.buildPlan?.objectTypes.length).toBeGreaterThan(0);
+    expect(run.closureReport?.gatePassed).toBe(true);
+    // 真人正门产物：build 经连接器上传产生连接器 + RawDataset，记入历史（连接器页可下钻）
+    expect(run.producedConnections.length).toBeGreaterThan(0);
+    expect(run.producedDatasets.length).toBeGreaterThan(0);
+
+    // 历史推演记录列表
+    const list = (await (await t.app.inject({ method: "GET", url: "/a/v1/databuilder/runs", headers: ADMIN })).json()) as StoryRunResp[];
+    expect(list.some((r) => r.id === run.id)).toBe(true);
+    // 详情可回放
+    const detail = (await (await t.app.inject({ method: "GET", url: `/a/v1/databuilder/runs/${run.id}`, headers: ADMIN })).json()) as StoryRunResp;
+    expect(detail.script).toBe(SCRIPT);
+  });
+
+  it("SBR2: R2 租户隔离 —— 他租户读不到本租户的历史推演记录", async () => {
+    const t = await makeApp();
+    const created = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 13 } })).json()) as StoryRunResp;
+    const OTHER = debugUser("acme", "admin", "admin");
+    const otherList = (await (await t.app.inject({ method: "GET", url: "/a/v1/databuilder/runs", headers: OTHER })).json()) as StoryRunResp[];
+    expect(otherList.some((r) => r.id === created.id)).toBe(false);
+    const otherGet = await t.app.inject({ method: "GET", url: `/a/v1/databuilder/runs/${created.id}`, headers: OTHER });
+    expect(otherGet.statusCode).toBe(404);
   });
 });

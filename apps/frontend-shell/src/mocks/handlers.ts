@@ -111,6 +111,8 @@ const DATA_BUILDER_PRESET = {
   updatedAt: "2026-06-14T00:00:00.000Z",
 };
 const MOCK_BUILD_JOBS: unknown[] = [];
+// g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录（mock 模式内存存储，提交→列出可见）
+const MOCK_STORY_RUNS: { id: string; script: string; status: string; createdAt: string; [k: string]: unknown }[] = [];
 const MOCK_RAW_ROWS: Record<string, Record<string, unknown>[]> = {
   default: [
     { so: "SO-10001", cust: "蔚途汽车", qty: "1.5", due: "2026-06-20" },
@@ -1681,6 +1683,29 @@ export const handlers = [
     return HttpResponse.json(mockBuildJob(body));
   }),
   http.get("*/a/v1/data-builders/jobs/list", () => HttpResponse.json(MOCK_BUILD_JOBS)),
+  // g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录
+  http.get("*/a/v1/databuilder/runs", () => HttpResponse.json(MOCK_STORY_RUNS)),
+  http.get("*/a/v1/databuilder/runs/:id", ({ params }) => {
+    const r = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
+    return r ? HttpResponse.json(r) : new HttpResponse(null, { status: 404 });
+  }),
+  http.post("*/a/v1/databuilder/runs", async ({ request }) => {
+    const body = (await request.json()) as { script?: string; seed?: number };
+    const job = mockBuildJob({ script: body.script, seed: body.seed }) as { planId: string; closure: unknown };
+    const run = {
+      id: newId("sbr"),
+      tenantId: "demo",
+      script: (body.script ?? "").trim(),
+      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}] },
+      closureReport: job.closure,
+      producedConnections: ["conn_mock"],
+      producedDatasets: ["rds_mock"],
+      status: "SUCCEEDED",
+      createdAt: new Date().toISOString(),
+    };
+    MOCK_STORY_RUNS.unshift(run);
+    return HttpResponse.json(run, { status: 201 });
+  }),
 ];
 
 /**

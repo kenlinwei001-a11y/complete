@@ -6,6 +6,7 @@ import type {
   BuildRunBody,
   DataBuilderAgent,
   DataBuilderConfig,
+  StoryBuildRun,
 } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "../domain.js";
@@ -155,6 +156,50 @@ export class DataBuilderService {
     const p = await this.repos.buildPlans.get(ctx.tenantId, id);
     if (!p) throw notFound("build plan");
     return p;
+  }
+
+  // ---- g8 故事驱动全栈倒推 · P1：StoryBuildRun（构建期历史推演记录）---------
+  // 复用既有七阶段 run()，把"故事→BuildPlan→闭包→产物→状态"封成一条可回放的历史记录。
+  // 与自成长发动机 GrowthLedgerEntry 经 runId 归一为同一历史两面（PRD g8 §9）。
+  // 产物（连接器/数据集）以 run() 前后仓储差集精确捕获，不改既有管线（零风险）。
+
+  async runStory(ctx: AuthCtx, body: BuildRunBody): Promise<StoryBuildRun> {
+    const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
+    const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
+
+    const job = await this.run(ctx, body);
+    const plan = job.planId ? await this.repos.buildPlans.get(ctx.tenantId, job.planId) : undefined;
+
+    const producedConnections = (await this.repos.connections.list(ctx.tenantId))
+      .filter((c) => !connBefore.has(c.id))
+      .map((c) => c.id);
+    const producedDatasets = (await this.repos.rawDatasets.list(ctx.tenantId))
+      .filter((d) => !dsBefore.has(d.id))
+      .map((d) => d.id);
+
+    const run: StoryBuildRun = {
+      id: newId("sbr"),
+      tenantId: ctx.tenantId,
+      script: body.script.trim(),
+      buildPlan: plan,
+      closureReport: job.closure,
+      producedConnections,
+      producedDatasets,
+      status: job.status === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
+      createdAt: nowIso(),
+    };
+    await this.repos.storyBuildRuns.put(run);
+    return run;
+  }
+
+  async listStoryRuns(ctx: AuthCtx): Promise<StoryBuildRun[]> {
+    return (await this.repos.storyBuildRuns.list(ctx.tenantId)).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async getStoryRun(ctx: AuthCtx, id: string): Promise<StoryBuildRun> {
+    const r = await this.repos.storyBuildRuns.get(ctx.tenantId, id);
+    if (!r) throw notFound("story build run");
+    return r;
   }
 
   // ---- 七阶段引擎 --------------------------------------------------------

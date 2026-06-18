@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActionDraft, BuildJob, BuildPhase, DataBuilderAgent } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft } from "@/api/endpoints";
+import type { ActionDraft, BuildJob, BuildPhase, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -55,18 +55,33 @@ const PHASE_COLOR: Record<string, string> = {
  * 故事脚本 → 七阶段（intake→comprehend→gap→rawin→transform→closure→publish）→ 双向闭包报告。
  */
 export default function DataBuilderPage() {
+  const qc = useQueryClient();
   const [script, setScript] = useState("常州基地产能紧张，影响订单交期与客户信用，请做风险推演"); // debattery-allow：构建脚本输入框 demo 占位（用户自行覆写）
   const [seed, setSeed] = useState(42);
   const [dryRun, setDryRun] = useState(false);
   const [job, setJob] = useState<(BuildJob & { jobId?: string }) | null>(null);
+  const [expandedRun, setExpandedRun] = useState<string | null>(null);
 
   const buildersQ = useQuery<DataBuilderAgent[]>({ queryKey: ["a", "data-builders"], queryFn: fetchDataBuilders });
   const jobsQ = useQuery<BuildJob[]>({ queryKey: ["a", "build-jobs"], queryFn: fetchBuildJobs });
+  const storyRunsQ = useQuery<StoryBuildRun[]>({ queryKey: ["a", "story-runs"], queryFn: fetchStoryRuns });
 
   const runM = useMutation({
     mutationFn: () => runDataBuilder({ script, seed, dryRun, builderKey: "foundry-grade-data-builder" }),
     onSuccess: (j) => {
       setJob(j);
+      void jobsQ.refetch();
+    },
+    onError: (e) => toastError(e as Error),
+  });
+
+  // g8 故事驱动建域 · P1：提交故事脚本 → StoryBuildRun（写入历史推演记录时间线）
+  const storyM = useMutation({
+    mutationFn: () => runStoryBuild({ script, seed, builderKey: "foundry-grade-data-builder" }),
+    onSuccess: (r) => {
+      toast(r.status === "SUCCEEDED" ? "建域完成，已记入历史推演记录" : "建域失败（见闭包/缺口）", r.status === "SUCCEEDED" ? "success" : "error");
+      setExpandedRun(r.id);
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
       void jobsQ.refetch();
     },
     onError: (e) => toastError(e as Error),
@@ -117,6 +132,9 @@ export default function DataBuilderPage() {
           </label>
           <button className="btn" data-testid="db-run" disabled={runM.isPending || !script.trim()} onClick={() => runM.mutate()}>
             {runM.isPending ? "构建中…" : dryRun ? "预览构建" : "运行构建"}
+          </button>
+          <button className="btn primary" data-testid="sbr-run" disabled={storyM.isPending || !script.trim()} onClick={() => storyM.mutate()} title="按故事脚本建域并记入历史推演记录（构建期/故事驱动燃料口）">
+            {storyM.isPending ? "建域中…" : "建域并记入历史"}
           </button>
         </div>
       </div>
@@ -176,6 +194,58 @@ export default function DataBuilderPage() {
           )}
         </div>
       )}
+
+      {/* g8 故事驱动建域 · P1：历史推演记录时间线（StoryBuildRun，与自成长发动机成长账本归一为同一历史两面） */}
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="sbr-timeline">
+        <div className="section-title">
+          历史推演记录（故事驱动建域）{" "}
+          <span className="badge" data-testid="sbr-count">{storyRunsQ.data?.length ?? 0}</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
+          每条 = 一次「故事脚本 → 全栈建域 → 闭包 → 产物」的可回放记录；源数据落在数据连接器页（可下钻）。
+        </div>
+        {(storyRunsQ.data ?? []).length === 0 ? (
+          <div className="empty-state" style={{ fontSize: 12 }}>暂无记录——在上方输入故事脚本，点「建域并记入历史」。</div>
+        ) : (
+          (storyRunsQ.data ?? []).map((r) => {
+            const open = expandedRun === r.id;
+            const ok = r.status === "SUCCEEDED";
+            return (
+              <div key={r.id} data-testid={`sbr-item-${r.id}`} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setExpandedRun(open ? null : r.id)}>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{open ? "▾" : "▸"}</span>
+                  <span
+                    className="badge"
+                    data-testid={`sbr-status-${r.id}`}
+                    style={{ background: ok ? "var(--c-capacity,#36BFA5)22" : "var(--danger,#E5484D)22", color: ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}
+                  >
+                    {r.status}
+                  </span>
+                  <span style={{ flex: 1, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.script}</span>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{r.createdAt.slice(0, 19).replace("T", " ")}</span>
+                </div>
+                {open && (
+                  <div data-testid={`sbr-detail-${r.id}`} style={{ marginTop: 8, paddingLeft: 22, fontSize: 12, display: "grid", gap: 4 }}>
+                    <div>
+                      闭包门禁：{" "}
+                      <b style={{ color: r.closureReport?.gatePassed ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}>
+                        {r.closureReport ? (r.closureReport.gatePassed ? "通过 ✓" : "未通过 ✗") : "—"}
+                      </b>
+                      {r.closureReport && <> · 对象绑定 {r.closureReport.objectsBound} · 正向缺失 {r.closureReport.forwardMissing}</>}
+                    </div>
+                    <div>全栈计划：{r.buildPlan ? <>{r.buildPlan.objectTypes.length} 对象类型 · {r.buildPlan.rules.length} 规则 · {r.buildPlan.solverNeeds.length} 求解器</> : "—"}</div>
+                    <div>
+                      产出源数据：<b>{r.producedConnections.length}</b> 连接器 · <b>{r.producedDatasets.length}</b> 数据集{" "}
+                      <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页下钻</a>
+                    </div>
+                    {r.gapReport && <div style={{ color: "var(--amber,#DD9551)" }}>功能缺失自检：{r.gapReport.findings.length} 项缺口</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
 
       <div className="panel">
         <div className="section-title">最近构建</div>
