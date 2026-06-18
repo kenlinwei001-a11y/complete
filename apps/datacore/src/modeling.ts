@@ -2,6 +2,7 @@ import { ModelingSuggestionSchema, type FieldCoverageReport, type FieldProfile, 
 import type { AuthCtx, DraftOperation, FkCandidate, OntologyDraft, RawDataset } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { LlmClient } from "./llm.js";
+import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Metrics } from "./metrics.js";
 import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
@@ -484,6 +485,10 @@ export class ModelingService {
       );
       const pk = t.properties.find((p) => p.isPrimaryKey)?.propKey;
       const mapping = t.properties.map((p) => ({ propKey: p.propKey, sourceField: p.sourceField }));
+      // stage3①：来源连接器若配了本体校验策略,导入时按策略校验值域/类型/枚举（适配不同源；按租户）。
+      const conn = await this.repos.connections.get(ctx.tenantId, ds.sourceConnId);
+      const policy = conn?.validationPolicy;
+      const typeDef = policy ? (await this.ontology.listTypes(ctx)).find((x) => x.key === targetKey) : undefined;
       const seenPk = new Set<string>();
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i] as Record<string, unknown>;
@@ -503,6 +508,17 @@ export class ModelingService {
             continue;
           }
           if (pk && pkVal != null) seenPk.add(String(pkVal));
+        }
+        // stage3①：本体类/值域强制校验（连接器 policy）→ 值域/类型/枚举/野字段不符 → 隔离区。
+        if (this.quarantine && policy && typeDef) {
+          const vr = validateOutputAgainstOntology([props], typeDef, policy);
+          if (vr.rejectedRows > 0 || vr.quarantinedRows > 0) {
+            const v0 = vr.violations[0];
+            const reason = v0?.kind === "TYPE" ? "TYPE_ERROR" : "SCHEMA_MISMATCH";
+            await this.quarantine.record(ctx.tenantId, { connId: ds.id, dataset: ds.name, raw: row, reason, detail: vr.violations.map((x) => `${x.field}:${x.detail}`).join("; "), reprocess: { targetKey, mapping, pk } });
+            quarantined++;
+            continue;
+          }
         }
         const idSuffix = pk && props[pk] != null ? String(props[pk]) : String(i);
         await this.repos.objects.put({
