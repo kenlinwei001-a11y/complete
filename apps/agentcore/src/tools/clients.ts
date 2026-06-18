@@ -29,6 +29,8 @@ export interface OntologyClient {
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse>;
   /** 自成长 P2：缺数据真人正门补——确定性生成 CSV 经公开上传门导入。 */
   fillData(ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }): Promise<{ connId: string; rowCount: number }>;
+  /** 约束执行层 stage3②：工具输出按本体对象类型 schema/值域校验（不符即 ok=false，执行器据此拒）。 */
+  validateOutput(ctx: ToolAuthCtx, objectType: string, rows: Record<string, unknown>[]): Promise<{ ok: boolean; violations: { field: string; kind: string; detail: string }[] }>;
 }
 
 export interface SolverClient {

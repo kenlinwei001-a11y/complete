@@ -93,6 +93,9 @@ class HttpOntologyClient implements OntologyClient {
   fillData(ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }) {
     return call<{ connId: string; rowCount: number }>(this.baseUrl, ctx, "POST", `/a/v1/growth/fill-data`, req);
   }
+  validateOutput(ctx: ToolAuthCtx, objectType: string, rows: Record<string, unknown>[]) {
+    return call<{ ok: boolean; violations: { field: string; kind: string; detail: string }[] }>(this.baseUrl, ctx, "POST", `/a/v1/ontology/validate-output`, { objectType, rows });
+  }
 }
 
 class HttpSolverClient implements SolverClient {

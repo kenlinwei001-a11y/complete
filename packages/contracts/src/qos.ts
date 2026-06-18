@@ -147,6 +147,8 @@ export const PlanStepSchema = z.discriminatedUnion("type", [
       mcpConfigId: z.string(),
       toolName: z.string(),
       args: z.record(z.string(), TemplateValueSchema),
+      /** 约束执行层 stage3②：声明此 MCP 工具输出应符合的本体对象类型 → 执行器运行时强制校验,不符拒（R13 信任边界）。 */
+      expectsObjectType: z.string().optional(),
     }),
   }),
 ]);

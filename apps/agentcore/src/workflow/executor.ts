@@ -273,6 +273,7 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
         const r = await deps.executor.run(String(resolvedParams.toolName ?? step.params.toolName), resolvedParams.args ?? {}, {
           binding: { kind: "MCP", mcpConfigId: step.params.mcpConfigId },
           timeoutMs: DEFAULT_TIMEOUT_MS,
+          expectsObjectType: step.params.expectsObjectType, // stage3②：声明则运行时强制本体校验
         });
         if (!r.ok) {
           await emitDone("FAILED");

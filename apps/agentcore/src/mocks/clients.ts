@@ -165,6 +165,12 @@ export class MockOntologyClient implements OntologyClient {
     return { connId: `conn_growth_${req.typeKey}`, rowCount: req.rows ?? 6 };
   }
 
+  // stage3②：轻量本体校验 mock——行含 `__invalid` 标记字段即判不符（供执行器关卡测试）。
+  async validateOutput(_ctx: ToolAuthCtx, _objectType: string, rows: Record<string, unknown>[]): Promise<{ ok: boolean; violations: { field: string; kind: string; detail: string }[] }> {
+    const violations = rows.flatMap((r, i) => ("__invalid" in r ? [{ field: "__invalid", kind: "DOMAIN", detail: `row ${i} 违反本体值域` }] : []));
+    return { ok: violations.length === 0, violations };
+  }
+
   // B→A 探针：出厂本体已发布对象类型全集（覆盖 seed 的 agent scope / intent slot 引用）。
   async listObjectTypeKeys(): Promise<string[]> {
     return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];

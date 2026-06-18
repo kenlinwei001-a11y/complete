@@ -99,6 +99,8 @@ export class GuardedToolExecutor {
        * 此处不再重复消耗（{ok:false} 直接回 BUDGET_EXCEEDED）。
        */
       budgetDecision?: { ok: true } | { ok: false; reason: string };
+      /** 约束执行层 stage3②：声明此工具输出应符合的本体对象类型 → 运行时强制校验,不符拒（信任边界）。 */
+      expectsObjectType?: string;
     },
   ): Promise<ToolRunResult> {
     const started = Date.now();
@@ -163,6 +165,18 @@ export class GuardedToolExecutor {
     }
     try {
       const payload = await withTimeout(this.dispatch(toolName, input, binding), options?.timeoutMs, toolName);
+      // stage3②：声明了 expectsObjectType → 工具输出按本体对象类型 schema/值域强制校验,不符拒（DENIED）。
+      if (options?.expectsObjectType) {
+        const p = payload as { rows?: unknown; data?: unknown };
+        const rowsRaw = Array.isArray(p?.rows) ? p.rows : Array.isArray(p?.data) ? p.data : Array.isArray(payload) ? payload : [];
+        const rows = (rowsRaw as unknown[]).filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null);
+        if (rows.length > 0) {
+          const vr = await this.deps.dataCore.ontology.validateOutput(this.opts.ctx, options.expectsObjectType, rows);
+          if (!vr.ok) {
+            return this.finish(toolName, input, { error: "ONTOLOGY_VALIDATION_FAILED", objectType: options.expectsObjectType, violations: vr.violations }, "DENIED", started, false);
+          }
+        }
+      }
       if (cacheable) this.readCache.set(ckey, payload);
       return this.finish(toolName, input, payload, "OK", started, true);
     } catch (err) {
