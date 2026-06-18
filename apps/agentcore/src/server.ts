@@ -225,6 +225,51 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { items: await deps.repos.growthTickets.listByTenant(a.tenantId) };
   });
 
+  // P5：code-agent 执行器接缝——工单领取/草稿/重跑验证闭环（厂商中立：任意 agent 经 REST/CLI/MCP 同面操作）。
+  const getTicket = async (tenantId: string, id: string) => {
+    const tk = (await deps.repos.growthTickets.listByTenant(tenantId)).find((t) => t.id === id);
+    if (!tk) throw new HttpError(404, "TICKET_NOT_FOUND", `growth ticket not found: ${id}`);
+    return tk;
+  };
+  app.post("/api/v1/growth/tickets/:id/claim", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const { assignee } = (req.body ?? {}) as { assignee?: string };
+    const tk = await getTicket(a.tenantId, id);
+    const updated = { ...tk, status: "IN_PROGRESS" as const, assignee: assignee ?? a.userId };
+    await deps.repos.growthTickets.upsert(updated);
+    return updated;
+  });
+  app.post("/api/v1/growth/tickets/:id/submit", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const tk = await getTicket(a.tenantId, id);
+    await deps.repos.growthTickets.upsert({ ...tk, status: "IN_REVIEW" });
+    return { ...tk, status: "IN_REVIEW" };
+  });
+  // 重跑验证：施工合并后重跑该工单的问句 → 若现在可答 → VERIFIED（闭环收敛）；否则停 IN_REVIEW 并回带新缺口。
+  app.post("/api/v1/growth/tickets/:id/verify", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const ctxBody = (req.body ?? {}) as { context?: Record<string, unknown> };
+    const tk = await getTicket(a.tenantId, id);
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no package");
+    const probeBody = SubmitQueryBodySchema.parse({ packageId: pkg.id, query: tk.fromQuestion, context: { view: "dash", selectedObjects: [], filters: {}, ...(ctxBody.context ?? {}) } });
+    const { taskId } = await deps.orchestrator.submitQuery(a, probeBody);
+    const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+    let task = await deps.repos.tasks.get(taskId);
+    for (let i = 0; i < 100 && (!task || !TERMINAL.has(task.status)); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      task = await deps.repos.tasks.get(taskId);
+    }
+    const gap = classifyGap(task!);
+    const verified = gap.verdict === "ANSWERABLE";
+    const updated = { ...tk, status: verified ? ("VERIFIED" as const) : ("IN_REVIEW" as const) };
+    await deps.repos.growthTickets.upsert(updated);
+    return { ticket: updated, verified, gapReport: gap };
+  });
+
   // Phase9C 推演历史列表：按租户列最近任务（id/问句/路径/状态/结论摘要/时间），供"推演历史"页浏览+重放。
   app.get("/api/v1/queries", async (req) => {
     const a = await auth(req);

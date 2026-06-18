@@ -73,6 +73,32 @@ async function cmdApprove([id]) {
   console.log(C.green(`✓ 已审批 ${id}`), C.dim(JSON.stringify(r).slice(0, 120)));
 }
 
+// ---- 自成长发动机 P5：成长工单活查询面（厂商中立·人与 code agent 共用同一 CLI） ----------
+async function cmdTickets() {
+  const r = await http(`${AC}/api/v1/growth/tickets`, { headers: authHeader() });
+  const items = r.items ?? [];
+  console.log(C.bold(`成长工单（缺功能·需开发，${items.length}）`));
+  for (const t of items) {
+    console.log(`  ${C.cyan(t.id)} [${C.yellow(t.status)}] ${C.dim(t.gapCode)} ← ${t.fromQuestion}`);
+    console.log(`     I/O 契约: in[${(t.ioContract?.inputs ?? []).join(",")}] out[${(t.ioContract?.outputShape ?? []).join(",")}] · 验收: ${C.dim(t.acceptance ?? "")}`);
+  }
+}
+async function cmdClaim([id, assignee]) {
+  if (!id) { console.error("用法: claim <ticketId> [assignee]"); process.exit(1); }
+  const r = await http(`${AC}/api/v1/growth/tickets/${encodeURIComponent(id)}/claim`, { method: "POST", body: JSON.stringify({ assignee: assignee ?? "cli-agent" }), headers: authHeader() });
+  console.log(C.green(`✓ 已认领 ${id}`), C.dim(`status=${r.status} assignee=${r.assignee}`));
+}
+async function cmdGrow(args) {
+  const q = args.filter((a) => !a.startsWith("--")).join(" ");
+  if (!q) { console.error("用法: grow \"<问句>\" [--package <pkg>] [--rounds N]"); process.exit(1); }
+  const pkg = argVal(args, "--package") ?? "pkg_battery_manufacturing";
+  const rounds = Number(argVal(args, "--rounds") ?? 8);
+  const r = await http(`${AC}/api/v1/growth/run`, { method: "POST", headers: authHeader(), body: JSON.stringify({ packageId: pkg, query: q, context: { view: argVal(args, "--view") ?? "dash", selectedObjects: [], filters: {} }, maxRounds: rounds }) });
+  console.log(C.bold(`自成长运行：${r.terminalState}（${r.rounds?.length ?? 0} 轮 / K=${r.maxRounds}）`));
+  for (const tk of r.openTickets ?? []) console.log(`  ${C.yellow("⚑ 工单")} ${tk.gapCode}: ${C.dim(tk.detail)}`);
+}
+function argVal(args, flag) { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : undefined; }
+
 // ---- ask：提交 → SSE 流 → 渲染 → 多轮澄清 -----------------------------------
 function renderBlocks(blocks = []) {
   for (const b of blocks) {
@@ -165,7 +191,7 @@ function help() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, ask: cmdAsk, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami };
+const run = { login: cmdLogin, ask: cmdAsk, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();
