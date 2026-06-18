@@ -36,7 +36,7 @@
 >
 > **覆盖盲区登记（2026-06-18，用户复核 17 原子需求矩阵后补）**：以下能力此前**既不在 demand-pulled P1–P6，也不在 TODO**——正是 `prd:coverage` 盲区在 g8 层面的复发（PRD 有但未跟踪）。现逐条拉进 backlog：
 
-- ⬜ **g8-P1（A 栈先行·G-6 残留收口）** rawin 去模板化统一到 `SyntheticService`（删独立 `genCsv`，`generateFromSchema(objectTypes,links,seed)` schema 驱动·battery 模板字节级回归锁 R6）+ `StoryBuildRun` 仓储双实现持久（新表 `story_build_runs` 四处同改 R9）+ **历史推演记录前端时间线**（过程数据可见，逐 StoryBuildRun 下钻）【覆盖需求 O 过程数据持久化】
+- ◐ **g8-P1（A 栈先行·G-6 残留收口）** —— **持久层已落（2026-06-18）**：`StoryBuildRun`/`InputManifest`/`ScaffoldReceipt` 契约（`packages/contracts/src/storybuildrun.ts`，嵌 BuildPlan/ClosureReport/GapReport，P2/P3 字段 forward-compatible 可选）+ `StoryBuildRun` 仓储双实现（R9 四处同改：repo.ts 接口 + memory.ts + pg.ts `story_build_runs` + migration 015）+ round-trip/R2 隔离回归（storybuildrun-repo ×2）。**余**：rawin 去模板化统一到 `SyntheticService`（删 `genCsv`，`generateFromSchema` schema 驱动·battery 字节级回归锁 R6）+ `POST/GET /a/v1/databuilder/runs` 端点写读 StoryBuildRun + **历史推演记录前端时间线**（逐 StoryBuildRun 下钻）【覆盖需求 O 过程数据持久化】
 - ⬜ **g8-P2（倒推页面录入·自描述表单）** `InputManifest` 契约 + comprehend 产出"脚本没说清的最小集"（规模/seed/时间跨度/复用哪些连接器…）+ 数据发动机页**动态补录表单 HITL**（`source=ASK_USER` 项渲染，`REUSE_EXISTING` 给复用下拉）【覆盖需求 J 倒推页面录入项 —— 唯 g8 有】
 - ⬜ **g8-P3（跨系统闭包·G-8 核心）** `BuildPlanSchema` 扩 7 字段（slice/intent/plan/workflow/skill/agent/mcp/sceneNeeds 全 `.default([])` 向后兼容）+ `POST /b/v1/internal/scaffold`（SERVICE_TOKEN，仿 invalidate，B 幂等 upsert DRAFT + scenarioClosure → ScaffoldReceipt）+ closure 合并 `fullChainOk` + **R11 跨系统构建时 HARD 门**【覆盖需求 D/E/F agent/skill/mcp 倒推 + 全链闭包】
 - ⬜ **g8-P4（自检/压测副产物）** artifacts REUSED/SCAFFOLDED/MISSING 聚合 → MISSING 映射 7 码 `classifyGap` 产 GapReport = **功能缺失自检** + `POST /a/v1/databuilder/stress` 批量脚本 = **自动生成压测**（覆盖率/失败率统计落 StoryBuildRun）【覆盖需求 L 压测 + M 自检】

@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, DataBuilderAgent } from "@platform/contracts";
+import type { BuildJob, BuildPlan, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -282,6 +282,8 @@ export interface Repos {
   dataBuilderAgents: Store<DataBuilderAgent>;
   buildPlans: Store<BuildPlan>;
   buildJobs: Store<BuildJob>;
+  // g8 故事驱动全栈倒推 · P1：构建期历史推演记录（与 GrowthLedgerEntry 经 runId 归一）
+  storyBuildRuns: Store<StoryBuildRun>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

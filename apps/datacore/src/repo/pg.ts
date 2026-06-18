@@ -592,6 +592,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     dataBuilderAgents: new PgStore(pool, "data_builder_agents"),
     buildPlans: new PgStore(pool, "build_plans"),
     buildJobs: new PgStore(pool, "build_jobs"),
+    storyBuildRuns: new PgStore(pool, "story_build_runs"),
     async ping() {
       await pool.query("SELECT 1");
     },
