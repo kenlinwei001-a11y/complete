@@ -17,7 +17,7 @@ const TICKET_BADGE: Record<string, string> = { OPEN: "amber", IN_PROGRESS: "blue
 
 export default function GrowthCockpitPage() {
   const qc = useQueryClient();
-  const [query, setQuery] = useState("常州影响哪些订单？");
+  const [query, setQuery] = useState("常州影响哪些订单？"); // debattery-allow（输入框示例占位，非业务常数）
   const [maxRounds, setMaxRounds] = useState(4);
   const [report, setReport] = useState<GrowthRunReport | null>(null);
   const { data: ledger } = useQuery({ queryKey: ["b", "growth-ledger"], queryFn: fetchGrowthLedger });

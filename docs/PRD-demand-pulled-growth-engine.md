@@ -7,6 +7,8 @@
 | 先读 | 根 `CLAUDE.md` · `docs/SYSTEM-ONTOLOGY.md` · `docs/OPERATING-MODEL.md` · `docs/PRD-unified-build-engine.md` · `docs/PRD-addendum-validation-loop.md` |
 | 核心一句话 | 把"**一个明确的客户问题**"当作系统进化的最小燃料：**真跑一遍 QOS** 诊断系统缺什么（数据 or 功能），**能自动补的经审批补上（走真人正门）**、不能的（真·新功能）由**厂商中立的 code agent** 按带 I/O 契约的工单施工，**循环重跑直到答得出**，并把每次"问题→缺口→补法"记入**成长账本**。需求侧（发动机）⊕ 施工侧（code agent）合成完整的需求拉动自成长闭环。|
 
+> **归一说明（2026-06-18）**：本 PRD 是发动机的**「运行期」半边**（问句→QOS 实跑探针→诊断→补→施工→成长账本）。**「构建期」半边**（故事脚本→全栈 A+B 倒推→跨系统 scaffold→闭包→历史推演记录 + InputManifest 自省 + 去模板化合成 + 存量回填）见 `docs/PRD-fullstack-story-build-g8.md`。两半共用 `classifyGap` 7 码分类法、`GapReport` 契约、`runGrowthLoop` 收敛 LOOP 与 GrowthTicket/GrowthLedger；**`BuildRun`（构建期记录）与 `GrowthLedgerEntry`（运行期记录）归一为同一"历史推演记录"的两面**（归一三点详见 g8 §9）。本 PRD 的 P1–P6 已落部分（见 TODO）即两半共用的内核。
+
 ## 0. 本体引用与影响（强制）
 
 - **触及对象类型**（本体 §2）：BuildPlan / BuildJob / ClosureReport / DataBuilderAgent · OntologyType / SliceSpec / Rule / Solver / SyntheticJob / Connector / RawDataset · ActionType / ActionDraft · Intent / ExecutionPlan / Task / Query / ScenarioCard · **新增：GapReport（缺口报告）/ GrowthTicket（成长工单）/ GrowthLedger（成长账本）**。

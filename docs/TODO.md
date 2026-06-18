@@ -30,6 +30,20 @@
 - ✅ **P6 部分落（2026-06-17）** 自成长驾驶舱前端 `/admin/growth`（GrowthCockpitPage：运行 LOOP→GapReport 逐轮+收敛终态 / 成长账本 demand-indexed / 工单看板+认领 / 需求可答率指标）+ `/b/v1/growth` 别名；f45 ×1。余: 瀑布流逐产物 HITL（数据构建发动机页）+ 全链闭包可视化（PRD §16，待后续）
 - ⬜ **前端·构建驾驶舱**（PRD §16，收编历史未落地页面缺口）：`DataBuilderPage.tsx` 现仅"七阶段状态灯+闭包数字+JSON dump"，**远落后 `PRD-unified-build-engine.md` §1.1.8/§5.3 的瀑布流逐产物HITL**；GapReport/就地审批/真人正门可视化/成长账本/工单看板全未建
 
+## 🚀 主线 · 故事驱动全栈倒推与跨系统闭包 G-8（PRD 已立，2026-06-18 · 发动机「构建期」半边）
+
+> `docs/PRD-fullstack-story-build-g8.md`（含《本体引用与影响》R2/R3/R4/R5/R6/R8/R11/R12·G-8主修/G-1/G-5/G-6/G-3/G-7）。与上面 demand-pulled（运行期半边）**归一为同一发动机**：共用 `classifyGap` 7码/`GapReport`/`runGrowthLoop`/GrowthTicket/GrowthLedger；`BuildRun`⊕`GrowthLedgerEntry`=同一"历史推演记录"两面（归一三点见 g8 §9）。把"数据发动机"从「故事→DataCore 栈」升级为「故事→全栈(数据/本体/切片/规则/求解器 ⊕ 意图/计划/工作流/技能/Agent/MCP/场景)」跨系统倒推编译器。**全部为 backlog（尚未动工）**，逐期对齐 g8 §8 分期。
+>
+> **覆盖盲区登记（2026-06-18，用户复核 17 原子需求矩阵后补）**：以下能力此前**既不在 demand-pulled P1–P6，也不在 TODO**——正是 `prd:coverage` 盲区在 g8 层面的复发（PRD 有但未跟踪）。现逐条拉进 backlog：
+
+- ⬜ **g8-P1（A 栈先行·G-6 残留收口）** rawin 去模板化统一到 `SyntheticService`（删独立 `genCsv`，`generateFromSchema(objectTypes,links,seed)` schema 驱动·battery 模板字节级回归锁 R6）+ `BuildRun` 仓储双实现持久（新表 `build_runs` 四处同改 R9）+ **历史推演记录前端时间线**（过程数据可见，逐 BuildRun 下钻）【覆盖需求 O 过程数据持久化】
+- ⬜ **g8-P2（倒推页面录入·自描述表单）** `InputManifest` 契约 + comprehend 产出"脚本没说清的最小集"（规模/seed/时间跨度/复用哪些连接器…）+ 数据发动机页**动态补录表单 HITL**（`source=ASK_USER` 项渲染，`REUSE_EXISTING` 给复用下拉）【覆盖需求 J 倒推页面录入项 —— 唯 g8 有】
+- ⬜ **g8-P3（跨系统闭包·G-8 核心）** `BuildPlanSchema` 扩 7 字段（slice/intent/plan/workflow/skill/agent/mcp/sceneNeeds 全 `.default([])` 向后兼容）+ `POST /b/v1/internal/scaffold`（SERVICE_TOKEN，仿 invalidate，B 幂等 upsert DRAFT + scenarioClosure → ScaffoldReceipt）+ closure 合并 `fullChainOk` + **R11 跨系统构建时 HARD 门**【覆盖需求 D/E/F agent/skill/mcp 倒推 + 全链闭包】
+- ⬜ **g8-P4（自检/压测副产物）** artifacts REUSED/SCAFFOLDED/MISSING 聚合 → MISSING 映射 7 码 `classifyGap` 产 GapReport = **功能缺失自检** + `POST /a/v1/databuilder/stress` 批量脚本 = **自动生成压测**（覆盖率/失败率统计落 BuildRun）【覆盖需求 L 压测 + M 自检】
+- ⬜ **g8-P5（推演回填 + 自动脚本）** 生成场景跑一遍 QOS 推演 → answer 回填 BuildRun（内层调 demand-pulled `growth/run`，归一点 3）+ **故事脚本自动生成器**（从 GapReport/模板派生，确定性可测）【覆盖需求 B 脚本自动生成】
+- ⬜ **g8-P6（存量回填·覆盖已有场景）** 存量场景**逆向导出器** `POST /a/v1/databuilder/backfill`（遍历既有 scenarios/视图绑定/求解器注册 → 反推故事脚本）→ 批量灌 `databuilder/runs` → 每个存量场景获 BuildRun 血缘（缺的标 MISSING）= 既补血缘又首次全量压测；**不删手敲种子，并行补血缘+标差距**【覆盖需求 P 存量覆盖 —— demand-pulled 完全缺】
+- 📌 **归一执行（2026-06-18 已落文档侧）**：g8 PRD 落盘 + demand-pulled PRD 顶部加归一交叉引用 + 本主线入册。**代码侧归一**（BuildRun↔GrowthLedger 关联实现、入口端点内外层串接）随 g8-P1/P5 落地。
+
 ## 🩺 治理缺陷 · PRD-DoD↔实现 coverage 盲区（2026-06-17 发现，根因级）
 
 > **触发**：用户问"数据构建发动机页面差距这么大、PRD 有记录、却不在 TODO？其他模块也类似"。**根因**：`prd:check` 只验"PRD↔本体(R/G) 引用完整 + 制品锚点入图"，**不验 PRD 的《验收/DoD》是否真被实现**。于是"PRD 写了需求→从未实现→无门禁察觉→未进 TODO"是**结构性盲区**——地图记了想要的疆域，但没有机制把"未建的部分"拉进 backlog。这正是本平台自身缺"需求↔缺口↔补"闭环的铁证（= 自成长发动机要解的问题，作用于平台自己的开发）。
