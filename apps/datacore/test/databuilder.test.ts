@@ -223,6 +223,37 @@ describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期�
     expect(otherGet.statusCode).toBe(404);
   });
 
+  it("SBR4 (g8-P3): closure 后跨系统 scaffold（A→B）→ 回执并入 StoryBuildRun；fullChainOk 决定终态（R11 跨系统）", async () => {
+    let chainOk = true;
+    let sawServiceToken = "";
+    const fetchImpl = (async (url: string | URL, init?: { headers?: Record<string, string>; body?: string }) => {
+      if (String(url).includes("/b/v1/internal/scaffold")) {
+        sawServiceToken = init?.headers?.["x-service-token"] ?? "";
+        const m = JSON.parse(init?.body ?? "{}") as { sceneNeeds: { scenarioKey: string }[] };
+        return new Response(JSON.stringify({
+          items: m.sceneNeeds.map((s) => ({ kind: "scene", key: s.scenarioKey, status: chainOk ? "SCAFFOLDED" : "MISSING" })),
+          fullChainOk: chainOk,
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    const t = await makeApp({ env: { AGENTCORE_BASE_URL: "http://agent.test", SERVICE_TOKEN: "svc-tok" }, fetchImpl });
+
+    // 全链闭合 → 回执并入 + SUCCEEDED
+    const ok = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 31 } })).json()) as StoryRunResp & { scaffoldReceipt?: { fullChainOk: boolean; items: unknown[] } };
+    expect(sawServiceToken).toBe("svc-tok"); // SERVICE_TOKEN 透传（R8）
+    expect(ok.scaffoldReceipt?.fullChainOk).toBe(true);
+    expect((ok.scaffoldReceipt?.items.length ?? 0)).toBeGreaterThan(0);
+    expect(ok.status).toBe("SUCCEEDED");
+
+    // B 栈断链 → fullChainOk=false → StoryBuildRun 终态 FAILED（A 数据虽建，全链未闭 = 跨系统 HARD 门）
+    chainOk = false;
+    const broken = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 32 } })).json()) as StoryRunResp & { scaffoldReceipt?: { fullChainOk: boolean } };
+    expect(broken.scaffoldReceipt?.fullChainOk).toBe(false);
+    expect(broken.status).toBe("FAILED");
+  });
+
   it("SBR3 (g8-P2): stage=manifest → 倒推补录表单（PENDING_INPUT，未建域）→ PATCH inputs 续跑建域", async () => {
     const t = await makeApp();
     // ① 倒推：返回 InputManifest（STORY 抽取 + ASK_USER seed + REUSE_EXISTING 连接器），状态 PENDING_INPUT

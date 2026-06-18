@@ -7,6 +7,8 @@ import type {
   DataBuilderAgent,
   DataBuilderConfig,
   InputManifest,
+  ScaffoldManifest,
+  ScaffoldReceipt,
   StoryBuildRun,
 } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
@@ -165,12 +167,48 @@ export class DataBuilderService {
   // 与自成长发动机 GrowthLedgerEntry 经 runId 归一为同一历史两面（PRD g8 §9）。
   // 产物（连接器/数据集）以 run() 前后仓储差集精确捕获，不改既有管线（零风险）。
 
+  /**
+   * g8-P3 跨系统 scaffold 客户端（A→B）：DataCore closure 后把 B 栈需求下发 AgentCore
+   * /b/v1/internal/scaffold（SERVICE_TOKEN）。未配置 AGENTCORE_BASE_URL/SERVICE_TOKEN 则为
+   * undefined（跳过，向后兼容；纯 A 栈构建不受影响）。在 app.ts 注入。
+   */
+  private scaffoldClient?: (m: ScaffoldManifest) => Promise<ScaffoldReceipt | undefined>;
+  setScaffoldClient(fn: (m: ScaffoldManifest) => Promise<ScaffoldReceipt | undefined>): void {
+    this.scaffoldClient = fn;
+  }
+
+  /** 把 BuildPlan 的 B 栈需求下发 AgentCore scaffold，返回回执（未配置/无需求则 undefined）。 */
+  private async crossSystemScaffold(ctx: AuthCtx, runId: string, plan: BuildPlan | undefined): Promise<ScaffoldReceipt | undefined> {
+    if (!this.scaffoldClient || !plan) return undefined;
+    if (plan.intentNeeds.length === 0 && plan.planNeeds.length === 0 && plan.sceneNeeds.length === 0) return undefined;
+    return this.scaffoldClient({
+      tenantId: ctx.tenantId,
+      runId,
+      intentNeeds: plan.intentNeeds,
+      planNeeds: plan.planNeeds,
+      workflowNeeds: plan.workflowNeeds,
+      skillNeeds: plan.skillNeeds,
+      agentNeeds: plan.agentNeeds,
+      mcpNeeds: plan.mcpNeeds,
+      sceneNeeds: plan.sceneNeeds,
+    });
+  }
+
+  /** A 栈构建成功 ⊕ 跨系统全链闭合 → SUCCEEDED；任一断 → FAILED（R11 跨系统）。 */
+  private mergeStatus(jobStatus: string, receipt: ScaffoldReceipt | undefined): StoryBuildRun["status"] {
+    if (jobStatus !== "SUCCEEDED") return "FAILED";
+    if (receipt && !receipt.fullChainOk) return "FAILED";
+    return "SUCCEEDED";
+  }
+
   async runStory(ctx: AuthCtx, body: BuildRunBody): Promise<StoryBuildRun> {
+    const id = newId("sbr");
     const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
     const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
 
     const job = await this.run(ctx, body);
     const plan = job.planId ? await this.repos.buildPlans.get(ctx.tenantId, job.planId) : undefined;
+    const scaffoldReceipt = await this.crossSystemScaffold(ctx, id, plan);
 
     const producedConnections = (await this.repos.connections.list(ctx.tenantId))
       .filter((c) => !connBefore.has(c.id))
@@ -180,14 +218,15 @@ export class DataBuilderService {
       .map((d) => d.id);
 
     const run: StoryBuildRun = {
-      id: newId("sbr"),
+      id,
       tenantId: ctx.tenantId,
       script: body.script.trim(),
       buildPlan: plan,
       closureReport: job.closure,
+      scaffoldReceipt,
       producedConnections,
       producedDatasets,
-      status: job.status === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
+      status: this.mergeStatus(job.status, scaffoldReceipt),
       createdAt: nowIso(),
     };
     await this.repos.storyBuildRuns.put(run);
@@ -261,14 +300,16 @@ export class DataBuilderService {
     const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
     const job = await this.run(ctx, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY });
     const plan = job.planId ? await this.repos.buildPlans.get(ctx.tenantId, job.planId) : undefined;
+    const scaffoldReceipt = await this.crossSystemScaffold(ctx, run.id, plan);
 
     const updated: StoryBuildRun = {
       ...run,
       buildPlan: plan,
       closureReport: job.closure,
+      scaffoldReceipt,
       producedConnections: (await this.repos.connections.list(ctx.tenantId)).filter((c) => !connBefore.has(c.id)).map((c) => c.id),
       producedDatasets: (await this.repos.rawDatasets.list(ctx.tenantId)).filter((d) => !dsBefore.has(d.id)).map((d) => d.id),
-      status: job.status === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
+      status: this.mergeStatus(job.status, scaffoldReceipt),
     };
     await this.repos.storyBuildRuns.put(updated);
     return updated;

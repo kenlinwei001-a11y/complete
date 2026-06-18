@@ -26,6 +26,8 @@ describe("F46 · 历史推演记录时间线（StoryBuildRun）", () => {
     expect(within(timeline).getAllByText("SUCCEEDED").length).toBeGreaterThan(0);
     // 闭包门禁通过呈现
     expect(within(timeline).getByText(/通过 ✓/)).toBeTruthy();
+    // g8-P3 跨系统 scaffold（B 栈）全链闭合呈现
+    expect(within(timeline).getByText(/全链闭合 ✓/)).toBeTruthy();
   });
 
   it("g8-P2：倒推建域 → 待补录表单（seed/复用连接器）→ 确认并建域 → 转 SUCCEEDED", async () => {

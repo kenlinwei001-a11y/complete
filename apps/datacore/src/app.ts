@@ -337,6 +337,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // §3-① ask 经 AgentCore QOS（HTTP）；未配置 AGENTCORE_BASE_URL 则 ask 跳过。
   const fetchImpl = deps.fetchImpl ?? fetch;
+  // g8-P3 跨系统 scaffold（A→B）：closure 后把 B 栈需求下发 AgentCore；未配 AGENTCORE_BASE_URL/SERVICE_TOKEN 则跳过。
+  if (config.AGENTCORE_BASE_URL && config.SERVICE_TOKEN) {
+    const agentBase = config.AGENTCORE_BASE_URL;
+    const svcToken = config.SERVICE_TOKEN;
+    databuilder.setScaffoldClient(async (manifest) => {
+      try {
+        const res = await fetchImpl(`${agentBase}/b/v1/internal/scaffold`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-service-token": svcToken },
+          body: JSON.stringify(manifest),
+        });
+        if (!res.ok) return undefined;
+        return (await res.json()) as import("@platform/contracts").ScaffoldReceipt;
+      } catch {
+        return undefined; // 网络抖动/连接失败 → 跳过（A 栈构建不受影响）
+      }
+    });
+  }
   const debugHeaderFor = (a: AuthCtx): string =>
     encodeURIComponent(a.tenantId) + ":" + encodeURIComponent(a.userId) + ":" + a.roles.map(encodeURIComponent).join("|");
   const opsReplay = new OpsReplayService({

@@ -325,6 +325,16 @@ export default function DataBuilderPage() {
                       产出源数据：<b>{r.producedConnections.length}</b> 连接器 · <b>{r.producedDatasets.length}</b> 数据集{" "}
                       <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页下钻</a>
                     </div>
+                    {r.scaffoldReceipt && (
+                      <div>
+                        跨系统 scaffold（B 栈）：{" "}
+                        <b style={{ color: r.scaffoldReceipt.fullChainOk ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}>
+                          {r.scaffoldReceipt.fullChainOk ? "全链闭合 ✓" : "断链 ✗"}
+                        </b>{" "}
+                        · {r.scaffoldReceipt.items.length} 制品（
+                        {["SCAFFOLDED", "REUSED", "MISSING"].map((st) => `${r.scaffoldReceipt!.items.filter((i) => i.status === st).length} ${st}`).join(" / ")}）
+                      </div>
+                    )}
                     {r.gapReport && <div style={{ color: "var(--amber,#DD9551)" }}>功能缺失自检：{r.gapReport.findings.length} 项缺口</div>}
                   </div>
                 )}

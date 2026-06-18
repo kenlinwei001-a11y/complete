@@ -1720,8 +1720,9 @@ export const handlers = [
       id,
       tenantId: "demo",
       script,
-      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}] },
+      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
       closureReport: job.closure,
+      scaffoldReceipt: { items: [{ kind: "scene", key: "scene_mock", status: "SCAFFOLDED" }, { kind: "intent", key: "intent_mock", status: "SCAFFOLDED" }], fullChainOk: true },
       producedConnections: ["conn_mock"],
       producedDatasets: ["rds_mock"],
       status: "SUCCEEDED",
@@ -1736,8 +1737,9 @@ export const handlers = [
     if (!run) return new HttpResponse(null, { status: 404 });
     const job = mockBuildJob({ script: run.script, seed: body.inputs?.seed }) as { planId: string; closure: unknown };
     Object.assign(run, {
-      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}] },
+      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
       closureReport: job.closure,
+      scaffoldReceipt: { items: [{ kind: "scene", key: "scene_mock", status: "SCAFFOLDED" }], fullChainOk: true },
       producedConnections: ["conn_mock"],
       producedDatasets: ["rds_mock"],
       status: "SUCCEEDED",
