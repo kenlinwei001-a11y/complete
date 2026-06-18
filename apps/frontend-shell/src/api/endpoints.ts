@@ -694,6 +694,11 @@ export const runStoryBuild = (body: BuildRunBody) =>
   api.a<StoryBuildRun>("/a/v1/databuilder/runs", { method: "POST", body });
 export const fetchStoryRuns = () => api.a<StoryBuildRun[]>("/a/v1/databuilder/runs");
 export const fetchStoryRun = (id: string) => api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}`);
+// g8-P2：倒推补录表单（先 manifest 后补录续跑）
+export const previewStoryBuild = (script: string, seed?: number) =>
+  api.a<StoryBuildRun>("/a/v1/databuilder/runs", { method: "POST", body: { script, seed, stage: "manifest" } });
+export const submitStoryInputs = (id: string, inputs: Record<string, string | number | boolean>) =>
+  api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/inputs`, { method: "PATCH", body: { inputs } });
 export const newDataBuilderVersion = (id: string) =>
   api.a<DataBuilderAgent>(`/a/v1/data-builders/${id}/new-version`, { method: "POST" });
 export const publishDataBuilder = (id: string) =>

@@ -6,6 +6,7 @@ import type {
   BuildRunBody,
   DataBuilderAgent,
   DataBuilderConfig,
+  InputManifest,
   StoryBuildRun,
 } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
@@ -201,6 +202,76 @@ export class DataBuilderService {
     const r = await this.repos.storyBuildRuns.get(ctx.tenantId, id);
     if (!r) throw notFound("story build run");
     return r;
+  }
+
+  // ---- g8-P2：InputManifest 倒推补录（自描述表单）-------------------------
+  // comprehend 故事 → 比对"脚本已给" vs "构建必需" → 产 InputManifest：
+  //   STORY=脚本已抽取（只读展示） · ASK_USER=须补录（seed） · REUSE_EXISTING=可复用既有连接器。
+  // 发动机自己告诉页面"还要问什么"；补录后 PATCH 续跑建域。
+
+  private async buildManifest(ctx: AuthCtx, runId: string, script: string, seed: number): Promise<InputManifest> {
+    const plan = comprehendScript(script, seed);
+    const existingConns = (await this.repos.connections.list(ctx.tenantId)).map((c) => c.name);
+    const fields: InputManifest["fields"] = [
+      // STORY：脚本已抽取的对象类型（只读展示，让用户看清发动机理解了什么）
+      ...plan.objectTypes.map((t) => ({
+        key: `type:${t.typeKey}`,
+        label: `对象类型 · ${t.displayName}`,
+        dataType: "string" as const,
+        required: false,
+        default: t.typeKey,
+        source: "STORY" as const,
+      })),
+      // ASK_USER：脚本没说清、构建必需 —— 确定性 seed
+      { key: "seed", label: "确定性 seed（同 seed 重跑字节级一致）", dataType: "number" as const, required: true, default: seed, source: "ASK_USER" as const },
+      // REUSE_EXISTING：可复用的既有连接器（gap 阶段幂等复用）
+      { key: "reuseConnectors", label: "复用既有连接器（可选）", dataType: "string" as const, required: false, source: "REUSE_EXISTING" as const, options: existingConns },
+    ];
+    return { runId, fields };
+  }
+
+  /** stage="manifest"：comprehend → 产 InputManifest → 落 PENDING_INPUT 记录（不建域），返回供页面补录。 */
+  async previewStory(ctx: AuthCtx, body: { script: string; seed?: number }): Promise<StoryBuildRun> {
+    const script = body.script.trim();
+    if (!script) throw validationError("script required");
+    const seed = body.seed ?? 42;
+    const id = newId("sbr");
+    const run: StoryBuildRun = {
+      id,
+      tenantId: ctx.tenantId,
+      script,
+      inputManifest: await this.buildManifest(ctx, id, script, seed),
+      producedConnections: [],
+      producedDatasets: [],
+      status: "PENDING_INPUT",
+      createdAt: nowIso(),
+    };
+    await this.repos.storyBuildRuns.put(run);
+    return run;
+  }
+
+  /** PATCH inputs：补录 ASK_USER 字段（seed）→ 续跑既有七阶段建域 → 更新同一条历史记录。 */
+  async submitStoryInputs(ctx: AuthCtx, id: string, inputs: Record<string, string | number | boolean>): Promise<StoryBuildRun> {
+    const run = await this.getStoryRun(ctx, id);
+    if (run.status !== "PENDING_INPUT") throw invalidState("story run not awaiting input");
+    const seedRaw = inputs.seed;
+    const seed = typeof seedRaw === "number" ? seedRaw : typeof seedRaw === "string" && seedRaw.trim() !== "" ? Number(seedRaw) : 42;
+
+    const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
+    const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
+    const job = await this.run(ctx, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY });
+    const plan = job.planId ? await this.repos.buildPlans.get(ctx.tenantId, job.planId) : undefined;
+
+    const updated: StoryBuildRun = {
+      ...run,
+      buildPlan: plan,
+      closureReport: job.closure,
+      producedConnections: (await this.repos.connections.list(ctx.tenantId)).filter((c) => !connBefore.has(c.id)).map((c) => c.id),
+      producedDatasets: (await this.repos.rawDatasets.list(ctx.tenantId)).filter((d) => !dsBefore.has(d.id)).map((d) => d.id),
+      status: job.status === "SUCCEEDED" ? "SUCCEEDED" : "FAILED",
+    };
+    await this.repos.storyBuildRuns.put(updated);
+    return updated;
   }
 
   // ---- 七阶段引擎 --------------------------------------------------------

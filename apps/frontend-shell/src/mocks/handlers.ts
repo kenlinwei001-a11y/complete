@@ -1690,12 +1690,36 @@ export const handlers = [
     return r ? HttpResponse.json(r) : new HttpResponse(null, { status: 404 });
   }),
   http.post("*/a/v1/databuilder/runs", async ({ request }) => {
-    const body = (await request.json()) as { script?: string; seed?: number };
-    const job = mockBuildJob({ script: body.script, seed: body.seed }) as { planId: string; closure: unknown };
+    const body = (await request.json()) as { script?: string; seed?: number; stage?: string };
+    const id = newId("sbr");
+    const script = (body.script ?? "").trim();
+    // g8-P2：stage=manifest → 倒推补录表单（PENDING_INPUT，不建域）
+    if (body.stage === "manifest") {
+      const run = {
+        id,
+        tenantId: "demo",
+        script,
+        inputManifest: {
+          runId: id,
+          fields: [
+            { key: "type:Order", label: "对象类型 · 订单", dataType: "string", required: false, default: "Order", source: "STORY" },
+            { key: "seed", label: "确定性 seed（同 seed 重跑字节级一致）", dataType: "number", required: true, default: body.seed ?? 42, source: "ASK_USER" },
+            { key: "reuseConnectors", label: "复用既有连接器（可选）", dataType: "string", required: false, source: "REUSE_EXISTING", options: ["合成数据源（确定性生成）"] },
+          ],
+        },
+        producedConnections: [],
+        producedDatasets: [],
+        status: "PENDING_INPUT",
+        createdAt: new Date().toISOString(),
+      };
+      MOCK_STORY_RUNS.unshift(run);
+      return HttpResponse.json(run, { status: 201 });
+    }
+    const job = mockBuildJob({ script, seed: body.seed }) as { planId: string; closure: unknown };
     const run = {
-      id: newId("sbr"),
+      id,
       tenantId: "demo",
-      script: (body.script ?? "").trim(),
+      script,
       buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}] },
       closureReport: job.closure,
       producedConnections: ["conn_mock"],
@@ -1704,6 +1728,20 @@ export const handlers = [
       createdAt: new Date().toISOString(),
     };
     MOCK_STORY_RUNS.unshift(run);
+    return HttpResponse.json(run, { status: 201 });
+  }),
+  http.patch("*/a/v1/databuilder/runs/:id/inputs", async ({ request, params }) => {
+    const body = (await request.json()) as { inputs?: { seed?: number } };
+    const run = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!run) return new HttpResponse(null, { status: 404 });
+    const job = mockBuildJob({ script: run.script, seed: body.inputs?.seed }) as { planId: string; closure: unknown };
+    Object.assign(run, {
+      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}] },
+      closureReport: job.closure,
+      producedConnections: ["conn_mock"],
+      producedDatasets: ["rds_mock"],
+      status: "SUCCEEDED",
+    });
     return HttpResponse.json(run, { status: 201 });
   }),
 ];

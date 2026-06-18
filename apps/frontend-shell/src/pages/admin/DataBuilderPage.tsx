@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -29,6 +29,65 @@ function InPlaceApprovalPanel() {
           <button className="btn sm" data-testid={`db-reject-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "REJECT" })}>驳回</button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * g8-P2：InputManifest 自描述补录表单——发动机倒推出"脚本没说清、构建必需"的字段，
+ * 页面据 source 动态渲染：ASK_USER=须补录输入 · REUSE_EXISTING=复用既有连接器下拉 · STORY=只读展示。
+ */
+function ManifestForm({ run, pending, onSubmit }: { run: StoryBuildRun; pending: boolean; onSubmit: (inputs: Record<string, string | number | boolean>) => void }) {
+  const fields = run.inputManifest?.fields ?? [];
+  const [vals, setVals] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.filter((f) => f.source !== "STORY").map((f) => [f.key, f.default !== undefined ? String(f.default) : ""])),
+  );
+  const story = fields.filter((f) => f.source === "STORY");
+  const ask = fields.filter((f) => f.source === "ASK_USER");
+  const reuse = fields.filter((f) => f.source === "REUSE_EXISTING");
+  const submit = () => {
+    const inputs: Record<string, string | number | boolean> = {};
+    for (const f of [...ask, ...reuse]) {
+      const v = vals[f.key];
+      if (v === undefined || v === "") continue;
+      inputs[f.key] = f.dataType === "number" ? Number(v) : f.dataType === "boolean" ? v === "true" : v;
+    }
+    onSubmit(inputs);
+  };
+  return (
+    <div data-testid={`sbr-form-${run.id}`} style={{ marginTop: 8, paddingLeft: 22, display: "grid", gap: 8 }}>
+      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>发动机倒推：脚本没说清、构建必需的信息——补录后建域。</div>
+      {story.length > 0 && (
+        <div style={{ fontSize: 12 }}>
+          已从脚本抽取：{story.map((f) => <span key={f.key} className="badge" style={{ marginRight: 4 }}>{f.label}</span>)}
+        </div>
+      )}
+      {ask.map((f) => (
+        <label key={f.key} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ minWidth: 220 }}>{f.label}{f.required && <span style={{ color: "var(--danger,#E5484D)" }}> *</span>}</span>
+          <input
+            data-testid={`sbr-field-${f.key}`}
+            type={f.dataType === "number" ? "number" : "text"}
+            value={vals[f.key] ?? ""}
+            onChange={(e) => setVals((s) => ({ ...s, [f.key]: e.target.value }))}
+            style={{ flex: 1 }}
+          />
+        </label>
+      ))}
+      {reuse.map((f) => (
+        <label key={f.key} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ minWidth: 220 }}>{f.label}</span>
+          <select data-testid={`sbr-field-${f.key}`} value={vals[f.key] ?? ""} onChange={(e) => setVals((s) => ({ ...s, [f.key]: e.target.value }))} style={{ flex: 1 }}>
+            <option value="">（不复用 / 新建）</option>
+            {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </label>
+      ))}
+      <div>
+        <button className="btn primary sm" data-testid={`sbr-confirm-${run.id}`} disabled={pending} onClick={submit}>
+          {pending ? "建域中…" : "确认并建域"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -87,6 +146,26 @@ export default function DataBuilderPage() {
     onError: (e) => toastError(e as Error),
   });
 
+  // g8-P2：倒推补录 —— 先 comprehend 出 InputManifest（PENDING_INPUT），由时间线内表单补录后续跑
+  const previewM = useMutation({
+    mutationFn: () => previewStoryBuild(script, seed),
+    onSuccess: (r) => {
+      toast("已倒推补录表单，请在历史记录中补录后建域", "success");
+      setExpandedRun(r.id);
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
+  const submitM = useMutation({
+    mutationFn: ({ id, inputs }: { id: string; inputs: Record<string, string | number | boolean> }) => submitStoryInputs(id, inputs),
+    onSuccess: (r) => {
+      toast(r.status === "SUCCEEDED" ? "补录完成，建域成功" : "建域失败（见闭包/缺口）", r.status === "SUCCEEDED" ? "success" : "error");
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+      void jobsQ.refetch();
+    },
+    onError: (e) => toastError(e as Error),
+  });
+
   const preset = buildersQ.data?.find((b) => b.key === "foundry-grade-data-builder");
 
   return (
@@ -135,6 +214,9 @@ export default function DataBuilderPage() {
           </button>
           <button className="btn primary" data-testid="sbr-run" disabled={storyM.isPending || !script.trim()} onClick={() => storyM.mutate()} title="按故事脚本建域并记入历史推演记录（构建期/故事驱动燃料口）">
             {storyM.isPending ? "建域中…" : "建域并记入历史"}
+          </button>
+          <button className="btn" data-testid="sbr-preview" disabled={previewM.isPending || !script.trim()} onClick={() => previewM.mutate()} title="先倒推补录表单：发动机告诉你脚本没说清、构建必需的信息（seed/可复用连接器…），补录后再建域">
+            {previewM.isPending ? "倒推中…" : "倒推建域（先补录）"}
           </button>
         </div>
       </div>
@@ -210,6 +292,8 @@ export default function DataBuilderPage() {
           (storyRunsQ.data ?? []).map((r) => {
             const open = expandedRun === r.id;
             const ok = r.status === "SUCCEEDED";
+            const pendingInput = r.status === "PENDING_INPUT";
+            const badgeColor = ok ? "var(--c-capacity,#36BFA5)" : pendingInput ? "var(--amber,#DD9551)" : "var(--danger,#E5484D)";
             return (
               <div key={r.id} data-testid={`sbr-item-${r.id}`} style={{ borderBottom: "1px solid var(--border)", padding: "8px 0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setExpandedRun(open ? null : r.id)}>
@@ -217,14 +301,17 @@ export default function DataBuilderPage() {
                   <span
                     className="badge"
                     data-testid={`sbr-status-${r.id}`}
-                    style={{ background: ok ? "var(--c-capacity,#36BFA5)22" : "var(--danger,#E5484D)22", color: ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}
+                    style={{ background: `${badgeColor}22`, color: badgeColor }}
                   >
-                    {r.status}
+                    {r.status === "PENDING_INPUT" ? "待补录" : r.status}
                   </span>
                   <span style={{ flex: 1, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.script}</span>
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>{r.createdAt.slice(0, 19).replace("T", " ")}</span>
                 </div>
-                {open && (
+                {open && pendingInput && (
+                  <ManifestForm run={r} pending={submitM.isPending} onSubmit={(inputs) => submitM.mutate({ id: r.id, inputs })} />
+                )}
+                {open && !pendingInput && (
                   <div data-testid={`sbr-detail-${r.id}`} style={{ marginTop: 8, paddingLeft: 22, fontSize: 12, display: "grid", gap: 4 }}>
                     <div>
                       闭包门禁：{" "}

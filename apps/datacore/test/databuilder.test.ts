@@ -217,4 +217,28 @@ describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期�
     const otherGet = await t.app.inject({ method: "GET", url: `/a/v1/databuilder/runs/${created.id}`, headers: OTHER });
     expect(otherGet.statusCode).toBe(404);
   });
+
+  it("SBR3 (g8-P2): stage=manifest → 倒推补录表单（PENDING_INPUT，未建域）→ PATCH inputs 续跑建域", async () => {
+    const t = await makeApp();
+    // ① 倒推：返回 InputManifest（STORY 抽取 + ASK_USER seed + REUSE_EXISTING 连接器），状态 PENDING_INPUT
+    const m = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, stage: "manifest" } });
+    expect(m.statusCode).toBe(201);
+    const pending = m.json() as StoryRunResp & { inputManifest?: { fields: { key: string; source: string }[] } };
+    expect(pending.status).toBe("PENDING_INPUT");
+    const fields = pending.inputManifest?.fields ?? [];
+    expect(fields.some((f) => f.key === "seed" && f.source === "ASK_USER")).toBe(true);
+    expect(fields.some((f) => f.source === "STORY")).toBe(true); // 脚本抽取的对象类型
+    expect(fields.some((f) => f.key === "reuseConnectors" && f.source === "REUSE_EXISTING")).toBe(true);
+    // 未建域：此刻还没有产物
+    expect(pending.producedDatasets.length).toBe(0);
+
+    // ② 补录 seed → 续跑建域，同一条记录转 SUCCEEDED 且产出源数据
+    const patched = await t.app.inject({ method: "PATCH", url: `/a/v1/databuilder/runs/${pending.id}/inputs`, headers: ADMIN, payload: { inputs: { seed: 21 } } });
+    expect(patched.statusCode).toBe(201);
+    const done = patched.json() as StoryRunResp;
+    expect(done.id).toBe(pending.id);
+    expect(done.status).toBe("SUCCEEDED");
+    expect(done.closureReport?.gatePassed).toBe(true);
+    expect(done.producedDatasets.length).toBeGreaterThan(0);
+  });
 });

@@ -27,4 +27,30 @@ describe("F46 · 历史推演记录时间线（StoryBuildRun）", () => {
     // 闭包门禁通过呈现
     expect(within(timeline).getByText(/通过 ✓/)).toBeTruthy();
   });
+
+  it("g8-P2：倒推建域 → 待补录表单（seed/复用连接器）→ 确认并建域 → 转 SUCCEEDED", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/data-builder");
+    await screen.findByTestId("data-builder-page");
+    const timeline = await screen.findByTestId("sbr-timeline");
+
+    // 点「倒推建域（先补录）」→ 出现 PENDING_INPUT 记录 + 自描述补录表单
+    await user.click(screen.getByTestId("sbr-preview"));
+    expect(await within(timeline).findByText("待补录")).toBeTruthy();
+    // 表单含 ASK_USER seed 字段 + REUSE_EXISTING 连接器下拉
+    const seedField = await within(timeline).findByTestId("sbr-field-seed");
+    expect(seedField).toBeTruthy();
+    expect(within(timeline).getByTestId("sbr-field-reuseConnectors")).toBeTruthy();
+
+    // 补录 seed → 确认并建域
+    await user.clear(seedField);
+    await user.type(seedField, "21");
+    const confirm = within(timeline).getAllByText("确认并建域")[0]!;
+    await user.click(confirm);
+
+    // 转 SUCCEEDED + 闭包通过
+    expect(await within(timeline).findByText(/产出源数据/)).toBeTruthy();
+    expect(within(timeline).getAllByText("SUCCEEDED").length).toBeGreaterThan(0);
+  });
 });

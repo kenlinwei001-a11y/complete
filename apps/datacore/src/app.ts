@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, SyntheticJobBodySchema } from "@platform/contracts";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
@@ -1958,11 +1958,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   // g8 故事驱动全栈倒推 · P1：StoryBuildRun = 构建期历史推演记录（提交故事脚本 → 建域 → 记录可回放）
+  // P2：stage="manifest" → 先倒推补录表单（PENDING_INPUT，不建域），由 PATCH inputs 续跑。
   app.post("/a/v1/databuilder/runs", async (req, reply) => {
     const c = ctx(req);
     requireAdmin(c);
-    const body = parseBody(BuildRunBodySchema, req.body);
-    const run = await databuilder.runStory(c, body);
+    const body = parseBody(StoryRunRequestSchema, req.body);
+    if (body.stage === "manifest") {
+      const run = await databuilder.previewStory(c, { script: body.script, seed: body.seed });
+      return reply.status(201).send(run);
+    }
+    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey });
+    return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
+  });
+  app.patch("/a/v1/databuilder/runs/:id/inputs", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(StoryInputsBodySchema, req.body);
+    const run = await databuilder.submitStoryInputs(c, (req.params as { id: string }).id, body.inputs);
     return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
   });
   app.get("/a/v1/databuilder/runs", async (req) => {

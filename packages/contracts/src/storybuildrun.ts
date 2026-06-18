@@ -97,3 +97,20 @@ export const StoryBuildRunSchema = z.object({
   createdAt: IsoTime,
 });
 export type StoryBuildRun = z.infer<typeof StoryBuildRunSchema>;
+
+// ---- P2 请求体：两阶段（manifest 倒推补录 / build 直接建域）------------------
+
+/** POST /a/v1/databuilder/runs 请求体。stage 缺省=直接建域（P1 兼容）；"manifest"=先倒推补录表单。 */
+export const StoryRunRequestSchema = z.object({
+  script: z.string().min(1),
+  builderKey: z.string().default("foundry-grade-data-builder"),
+  seed: z.number().int().optional(),
+  stage: z.enum(["manifest", "build"]).optional(),
+});
+export type StoryRunRequest = z.infer<typeof StoryRunRequestSchema>;
+
+/** PATCH /a/v1/databuilder/runs/:id/inputs 请求体：补录 ASK_USER 字段 → 续跑建域。 */
+export const StoryInputsBodySchema = z.object({
+  inputs: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
+});
+export type StoryInputsBody = z.infer<typeof StoryInputsBodySchema>;
