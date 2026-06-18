@@ -390,6 +390,34 @@ export const QueryTaskSchema = z.object({
 });
 export type QueryTask = z.infer<typeof QueryTaskSchema>;
 
+/**
+ * 实时验证审计层 · 统一决策痕迹（可导出）：把散落在 task/answer/toolCalls 的证据要素
+ * 聚合为单一可导出 JSON——监管"直接出示决策痕迹"一站到位。
+ * ontology_validation 总判定 + human_review_required 显式字段（差距评审 2026-06-16）。
+ */
+export const DecisionTraceSchema = z.object({
+  decisionId: z.string(), // = taskId
+  tenantId: z.string(),
+  question: z.string(),
+  status: z.string(),
+  path: z.string().optional(),
+  classification: ClassificationResultSchema.optional(),
+  matchedIntent: z.object({ intentId: z.string(), intentKey: z.string(), version: z.number().int() }).optional(),
+  /** 版本钉留痕（plan/solver/rule 当时生效版本）。 */
+  resolvedRefs: z.array(ResolvedRefSchema).default([]),
+  trustLevel: z.string().optional(),
+  unverifiedNumerics: z.boolean().default(false),
+  provenanceCount: z.number().int().default(0),
+  /** 本体校验总判定：ALL_PASS / PARTIAL / CONFLICT / NO_EVIDENCE / NONE（无切片即 NONE）。 */
+  ontologyValidation: z.enum(["ALL_PASS", "PARTIAL", "CONFLICT", "NO_EVIDENCE", "NONE"]),
+  /** 显式人工复核标志：AGENT_EXPLORATORY / 未验证数字 / 交叉验证冲突 → true。 */
+  humanReviewRequired: z.boolean(),
+  toolCalls: z.array(z.object({ tool: z.string(), outcome: z.string(), durationMs: z.number().optional(), at: z.string().optional() })).default([]),
+  createdAt: IsoTime,
+  completedAt: IsoTime.optional(),
+});
+export type DecisionTrace = z.infer<typeof DecisionTraceSchema>;
+
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.5 Agent 运行与孵化留痕
 // ---------------------------------------------------------------------------

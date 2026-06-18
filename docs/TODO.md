@@ -141,7 +141,7 @@
   - **8e `generic-inference`** ✅ **已落**（PRD `docs/PRD-generic-inference.md`）：`recompute(dryRun+apply)` 克隆图前向重算派生、不落真值 + `POST /a/v1/inference/whatif`，行业无关；O4b 回归（前向重算+无副作用）。注：作用于 compileSpecs 派生本体；合成 demo 用 runDerivations 另一路（后续可统一）
   - **门禁 `debattery:check`**（待办）：静态扫描视图/页内联业务常数 + i18n 租户串 → 自动盘出剩余 + 防回潮（落地 R14）
   - 注：出厂种子（场景目录/意图/计划/场景入口/经验库/规则库）经核实**可被租户 DRAFT→PUBLISH 覆盖 = 可接受**
-- ⬜ **8.5 `debattery:check` 门禁**（独立工具，与 `ontology:check`/`chain:check` 同级，并入 `pnpm gates`）：静态扫描 `views/`+`pages/` 内联业务常数（基地名/型号/工序/坐标）+ `zh.ts` 租户专属串 → 自动盘出剩余写死项 + 防回潮（落地不变量 R14）。`DEFAULT_*` 兜底常量白名单豁免。
+- ✅ **8.5 `debattery:check` 门禁（已落）**：`scripts/check-debattery.mjs` 已在 `pnpm gates`，静态扫描 views/pages 内联业务常数 + 防回潮（基线 0）。`// debattery-allow` 豁免兜底。
 - ✅ **9. G-6**（全完成）：✅ `parseXlsx`（node-xlsx，三路 csv/json/xlsx 统一；CN1b 回归）· ✅ 合成并入连接器（活数据 P1）· ✅ **在线数据模版**（本体浏览器节点检视器：CSV 数据模版下载 + 每字段来源溯源——在线可见可下，已覆盖）
 - ⏸ **10. G-7 余项**（评估为低价值，暂缓）：6 用途各对应固定调用点（classifier/agent/compose…），"枚举可扩展"无消费点即无意义；真实 LLM 扩展性（多供应商/按用途绑定模型/降级）已由 `roleModel`/`bindingFor` 满足。如需自定义用途，须先定义其调用点（另起 PRD）。
 - 🔄 **11. 外部域（EXT_SIG）** —— PRD `docs/PRD-external-signal-domain.md`：✅ **P1 一等对象化 + EXTERNAL 连接器**：`ExternalSignal` 对象（domain=external；锂价/镍价/汇率/需求指数/政策/电价，带 value/unit/asOf/source/trend/impact，R13 可溯）+ `mock_external` 连接器（EXTERNAL 类，StaticAdapter）+ 合成出厂期 putAll 落对象 + `GET /a/v1/external-signals`；本体 §2/§3/§10 回写；synthetic/connectors 回归。✅ **P2 敏感性**：`POST /a/v1/external-signals/sensitivity`（信号冲击 → 规划指标，确定性弹性 Δ指标pp=Δ信号%×elasticity，按 impact 聚合：毛利/需求/出口营收/成本；锂价+10%→毛利-0.8pp 回归）。✅ **前端面板**：`ExternalSignalsPage`(/admin/external-signals)——信号清单(来源/单位/新鲜度可溯)+敏感性 what-if(冲击→指标聚合)；左导航入口；f41 回归。✅ **信号时序**：`GET /a/v1/external-signals/:key/series`（近 12 月确定性历史，从当前值按 trend 反推）+ 前端面板「时序」迷你折线（懒加载）。注：A8 ts_points 管道服务高频传感器序列；稀疏市场信号走此轻量时序。**EXT_SIG 端到端全闭合**（一等对象+连接器+敏感性+时序+前端）
@@ -173,7 +173,7 @@
 
 > 现状：实体经本体解析才放行（约 60–70%）——`objectRef` 槽位强制 `ontology.getObject` 命中（`router/slots.ts:44`），解析不到则澄清/降级。差距如下。
 
-- 🟢 **动态对象类型 + 显式域外预警（低成本，可优先）**：`router/slots.ts:5` `OBJECT_TYPES=["Base","Model","Order"]` 硬编码（踩 R14 应用层无业务常数），裸串实体（如「供应商A」/Supplier 类）解析不到 → 改为从 DataCore 本体动态拉对象类型清单；并在解析失败时发显式 `entity.out_of_domain` 预警（带最近邻候选 + 可埋点「域外误触发率」），把隐式澄清升级为显式信号。
+- ✅ **动态对象类型（已落 2026-06-18）**：`router/slots.ts` 删 `OBJECT_TYPES` 硬编码,裸串实体改用 `ontology.listObjectTypeKeys(ctx)` 动态拉本租户已发布类型 → 任意已建模类型（供应商A/Supplier 等）可解析,消 R14。解析不到=域外→澄清/降级。**余（小）**：显式 `entity.out_of_domain` 事件 + 最近邻候选 + 误触发率埋点（当前走澄清路径,未发独立事件）。
 - 🟡 **自由文本全实体 NER 对照本体（高成本）**：当前仅校验意图声明的 `objectRef` 槽位；自由文本里未进槽位的实体不逐个对照本体。需独立 NER 抽取层（对等参考伪代码 `extract_entities`）。
 - 🟡 **关系类型校验 `is_valid_relation`（高成本）**：关系是否符合本体 link 规范，目前只在建模期/派生闭包校验，不在输入感知期。
 
@@ -211,7 +211,7 @@
 > 现状证据要素**几乎全已采集**：数字必有出处（`scanBlocks`/`unverifiedNumerics` + provenance 六要素 R13，`util/numerics.ts`、`workflow/executor.ts:292`）；高风险写真值强制审批 + 审批痕迹（Action R4：DRAFT→PENDING_APPROVAL→APPROVED…，多步链/不得自批/approverId+decision，`datacore/actions.ts:52`）；版本钉留痕 `resolvedRefs`（plan/solver/rule 当时生效版本）；规则裁决 `rule_violation` block（ruleId/severity/explanation/ruleVersion）；本体外标记（trustLevel=AGENT_EXPLORATORY）。差距如下。
 
 - ✅ **Layer 2 知识图谱交叉验证（已落地 2026-06-16）**：`POST /a/v1/ontology/cross-validate` 对结论对象断言反查 KG 已有 props/链路（CONSISTENT/CONFLICT/NO_EVIDENCE），凡用到本体切片即组装入 `Answer.validationTrace`，前端 `ValidationTracePanel` 展示。**余项**：当前对**结构化对象断言**（切片解析出的对象属性）核对；自由文本里的断言（如"已通过ISO9001"）抽取为结构化 claim 仍需 NER（见「感知层·自由文本全实体 NER」条）。
-- 🟡 **统一 Decision Trace 一等制品 + 导出**：证据要素现**散落**在 task（classification/resolvedRefs）/answer（provenance/blocks/trustLevel）/actionDraft（审批链）/toolCalls（审计）多处，无聚合成单一可导出 JSON（`{decision_id, decision_trace[], ontology_validation:ALL_PASS, human_review_required, review_history}`）。监管"直接出示决策痕迹"目前需跨端点拼。需一个**决策痕迹聚合/导出层** + `ontology_validation` 总判定字段 + `human_review_required` 显式字段。
+- ✅ **统一 Decision Trace 导出（已落 2026-06-18）**：`GET /api/v1/queries/:taskId/decision-trace`（`DecisionTrace` 契约）聚合 task（classification/resolvedRefs 版本钉）/answer（trustLevel/provenance/validationTrace）/toolCalls（审计）为单一可导出 JSON + **`ontologyValidation` 总判定**（ALL_PASS/PARTIAL/CONFLICT/NO_EVIDENCE/NONE,取自交叉验证 verdict）+ **`humanReviewRequired` 显式字段**（AGENT_EXPLORATORY/未验证数字/冲突→true）。回归 decision-trace ×2。**余（小）**：actionDraft 审批链 review_history 跨系统深拉（当前 agentcore 侧聚合）。
 - ↪ 逐步 `axiom_check` + `confidence_per_step`（置信度<80%自动标"需人工确认"）—— 见「可验证推理规划层」条，不重复立项。
 - ↪ 数据取值范围自动校验（概率∈[0,1]）+ 输出实体/关系统一本体校验 —— 见「本体约束执行层」条，不重复立项。
 

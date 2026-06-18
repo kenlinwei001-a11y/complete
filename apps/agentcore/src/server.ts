@@ -14,6 +14,7 @@ import {
   SceneEntryConfigSchema,
   ScenarioSchema,
   ScaffoldManifestSchema,
+  DecisionTraceSchema,
   EvalCaseSchema,
   EvalSuiteSchema,
   SkillDefinitionSchema,
@@ -340,6 +341,40 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
     }
     return task;
+  });
+
+  // 实时验证审计层：统一决策痕迹导出（聚合 task/answer/toolCalls → 单一可导出 JSON）。
+  // ontology_validation 总判定 + human_review_required 显式字段；监管可直接出示。
+  app.get("/api/v1/queries/:taskId/decision-trace", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const toolCalls = await deps.repos.toolCalls.listByTask(taskId);
+    const verdict = task.answer?.validationTrace?.crossValidation?.verdict;
+    const ontologyValidation = !task.answer?.validationTrace
+      ? "NONE"
+      : verdict === "ALL_CONSISTENT" ? "ALL_PASS" : verdict === "CONFLICT" ? "CONFLICT" : verdict === "PARTIAL" ? "PARTIAL" : "NO_EVIDENCE";
+    const humanReviewRequired =
+      task.answer?.trustLevel === "AGENT_EXPLORATORY" || !!task.answer?.unverifiedNumerics || ontologyValidation === "CONFLICT";
+    return DecisionTraceSchema.parse({
+      decisionId: task.id,
+      tenantId: task.tenantId,
+      question: task.query,
+      status: task.status,
+      path: task.path,
+      classification: task.classification,
+      matchedIntent: task.matchedIntent,
+      resolvedRefs: task.resolvedRefs ?? [],
+      trustLevel: task.answer?.trustLevel,
+      unverifiedNumerics: task.answer?.unverifiedNumerics ?? false,
+      provenanceCount: task.answer?.provenance?.length ?? 0,
+      ontologyValidation,
+      humanReviewRequired,
+      toolCalls: toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs, at: tc.createdAt })),
+      createdAt: task.createdAt,
+      completedAt: task.completedAt,
+    });
   });
 
   // 活数据可溯（PRD-live-traceable-data §3.2，结果→入参对象）：一次推演结果引用了哪些对象。
