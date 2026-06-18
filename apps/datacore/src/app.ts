@@ -262,7 +262,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings);
-  const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb);
+  const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);
@@ -1985,7 +1985,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const run = await databuilder.previewStory(c, { script: body.script, seed: body.seed });
       return reply.status(201).send(run);
     }
-    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey });
+    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey }, body.inference ?? false);
     return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
   });
   app.patch("/a/v1/databuilder/runs/:id/inputs", async (req, reply) => {
@@ -2017,6 +2017,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     const body = parseBody(StressBodySchema, req.body);
     return databuilder.stress(c, body.scripts, body.seed);
+  });
+  // g8-P5 故事脚本自动生成器：从平台能力目录派生候选脚本（供持续自动输入/压测）
+  app.get("/a/v1/databuilder/generate-scripts", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.generateScripts();
   });
 
   app.get("/a/v1/features/registry", async (req) => {

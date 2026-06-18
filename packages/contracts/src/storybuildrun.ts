@@ -130,6 +130,8 @@ export const StoryRunRequestSchema = z.object({
   builderKey: z.string().default("foundry-grade-data-builder"),
   seed: z.number().int().optional(),
   stage: z.enum(["manifest", "build"]).optional(),
+  /** g8-P5：建域后跑一次推演,answer 回填（可选,默认 false）。 */
+  inference: z.boolean().optional(),
 });
 export type StoryRunRequest = z.infer<typeof StoryRunRequestSchema>;
 

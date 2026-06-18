@@ -135,6 +135,21 @@ export function deriveBackfillScripts(): { key: string; script: string }[] {
   });
 }
 
+/**
+ * g8-P5 故事脚本自动生成器：从平台自有能力目录（求解器 + 规则）确定性派生候选故事脚本，
+ * 供"持续自动输入"压测/探索。programmatic、无写死脚本、同环境字节级一致（R6）。
+ * = 求解器能力覆盖（deriveBackfillScripts）⊕ 规则覆盖（每条约束一条探索脚本）。
+ */
+export function deriveGeneratedScripts(): { key: string; script: string }[] {
+  const out = [...deriveBackfillScripts()];
+  for (const r of RULES) {
+    const entNames = [...new Set(r.scopeObjectTypes.map((t) => ENTITIES.find((e) => e.typeKey === t)?.keywords[0]).filter((x): x is string => !!x))];
+    if (entNames.length === 0) continue;
+    out.push({ key: `rule_${r.key}`, script: `检查${entNames.join("、")}的${r.keywords[0] ?? r.name}约束` });
+  }
+  return out;
+}
+
 /** 确定性 32-bit 哈希（用于 seed 派生行数，避免随机）。 */
 export function hashString(s: string): number {
   let h = 2166136261;

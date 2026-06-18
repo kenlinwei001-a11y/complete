@@ -1732,6 +1732,28 @@ export const handlers = [
     MOCK_STORY_RUNS.unshift(run);
     return HttpResponse.json(run, { status: 201 });
   }),
+  http.post("*/a/v1/databuilder/stress", async ({ request }) => {
+    const body = (await request.json()) as { scripts: string[] };
+    const runs = body.scripts.map((script) => {
+      const job = mockBuildJob({ script, seed: 42 }) as { planId: string; closure: unknown };
+      const id = newId("sbr");
+      MOCK_STORY_RUNS.unshift({
+        id, tenantId: "demo", script,
+        buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
+        closureReport: job.closure,
+        gapReport: { question: script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
+        producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
+        status: "SUCCEEDED", createdAt: new Date().toISOString(),
+      });
+      return { key: script.slice(0, 40), runId: id, status: "SUCCEEDED", fullChainOk: true };
+    });
+    return HttpResponse.json({ total: runs.length, succeeded: runs.length, failed: 0, runs });
+  }),
+  http.get("*/a/v1/databuilder/generate-scripts", () => HttpResponse.json([
+    { key: "affected_orders", script: "针对订单做风险推演分析" },
+    { key: "capacity_forecast", script: "针对基地做产能推演分析" },
+    { key: "rule_C03", script: "检查订单的产能约束" },
+  ])),
   http.post("*/a/v1/databuilder/backfill", () => {
     // g8-P6：逆向导出既有推演能力（风险/产能）→ 逐条建域 → 写入历史 + 压测报告
     const caps = [
@@ -1746,6 +1768,8 @@ export const handlers = [
         buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
         closureReport: job.closure,
         scaffoldReceipt: { items: [{ kind: "scene", key: `scene_${c.key}`, status: "SCAFFOLDED" }], fullChainOk: true },
+        gapReport: { question: c.script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
+        answer: `${c.key}: p50=1200, p90=900`,
         producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
         status: "SUCCEEDED", createdAt: new Date().toISOString(),
       });

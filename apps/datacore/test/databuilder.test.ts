@@ -288,6 +288,25 @@ describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期�
     expect(report.succeeded + report.failed).toBe(2);
   });
 
+  it("SBR7 (g8-P5): 故事脚本自动生成器 + 推演回填（inference → answer）", async () => {
+    const t = await makeApp();
+    // 自动生成器：从能力目录派生候选脚本（求解器覆盖 + 规则覆盖）
+    const gen = (await (await t.app.inject({ method: "GET", url: "/a/v1/databuilder/generate-scripts", headers: ADMIN })).json()) as { key: string; script: string }[];
+    expect(gen.length).toBeGreaterThanOrEqual(2);
+    expect(gen.map((g) => g.key)).toContain("affected_orders");
+    expect(gen.every((g) => typeof g.script === "string" && g.script.length > 0)).toBe(true);
+
+    // 推演回填：inference=true → 建域后跑求解器 → answer 摘要
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 51, inference: true } })).json()) as StoryRunResp & { answer?: string };
+    expect(run.status).toBe("SUCCEEDED");
+    expect(typeof run.answer).toBe("string");
+    expect(run.answer!.length).toBeGreaterThan(0); // 含求解器推演摘要
+
+    // 不带 inference → 无 answer（默认快路径）
+    const noInf = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 52 } })).json()) as StoryRunResp & { answer?: string };
+    expect(noInf.answer).toBeUndefined();
+  });
+
   it("SBR3 (g8-P2): stage=manifest → 倒推补录表单（PENDING_INPUT，未建域）→ PATCH inputs 续跑建域", async () => {
     const t = await makeApp();
     // ① 倒推：返回 InputManifest（STORY 抽取 + ASK_USER seed + REUSE_EXISTING 连接器），状态 PENDING_INPUT

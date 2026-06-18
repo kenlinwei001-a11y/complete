@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -178,6 +178,16 @@ export default function DataBuilderPage() {
     },
     onError: (e) => toastError(e as Error),
   });
+  // g8-P5：故事脚本自动生成 → 压测（持续自动输入的最小闭环）
+  const generateM = useMutation({
+    mutationFn: async () => stressStoryRuns((await fetchGeneratedScripts()).map((g) => g.script)),
+    onSuccess: (r) => {
+      setBackfillReport(r);
+      toast(`自动生成 ${r.total} 脚本压测：${r.succeeded}/${r.total} 通过`, r.failed === 0 ? "success" : "error");
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
 
   const preset = buildersQ.data?.find((b) => b.key === "foundry-grade-data-builder");
 
@@ -295,7 +305,10 @@ export default function DataBuilderPage() {
         <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           历史推演记录（故事驱动建域）{" "}
           <span className="badge" data-testid="sbr-count">{storyRunsQ.data?.length ?? 0}</span>
-          <button className="btn sm" data-testid="sbr-backfill" style={{ marginLeft: "auto" }} disabled={backfillM.isPending} onClick={() => backfillM.mutate()} title="逆向导出既有推演能力为故事脚本，逐条建域补血缘 = 首次全量压测">
+          <button className="btn sm" data-testid="sbr-generate" style={{ marginLeft: "auto" }} disabled={generateM.isPending} onClick={() => generateM.mutate()} title="从平台能力目录自动生成故事脚本并压测（持续自动输入）">
+            {generateM.isPending ? "生成压测中…" : "自动生成脚本压测"}
+          </button>
+          <button className="btn sm" data-testid="sbr-backfill" disabled={backfillM.isPending} onClick={() => backfillM.mutate()} title="逆向导出既有推演能力为故事脚本，逐条建域补血缘 + 推演回填 = 首次全量压测">
             {backfillM.isPending ? "回填中…" : "存量回填（首次全量压测）"}
           </button>
         </div>
@@ -355,6 +368,11 @@ export default function DataBuilderPage() {
                         </b>{" "}
                         · {r.scaffoldReceipt.items.length} 制品（
                         {["SCAFFOLDED", "REUSED", "MISSING"].map((st) => `${r.scaffoldReceipt!.items.filter((i) => i.status === st).length} ${st}`).join(" / ")}）
+                      </div>
+                    )}
+                    {r.answer && (
+                      <div data-testid={`sbr-answer-${r.id}`} style={{ fontSize: 11.5 }}>
+                        推演答案（回填）：<span className="mono">{r.answer}</span>
                       </div>
                     )}
                     {r.gapReport && (

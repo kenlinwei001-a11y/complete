@@ -19,9 +19,10 @@ import type { OntologyService } from "../ontology.js";
 import type { RulesService } from "../rules.js";
 import type { ConnectorService } from "../connectors/service.js";
 import type { KbService } from "../kb.js";
+import type { SolverService } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, deriveBackfillScripts } from "./comprehend.js";
+import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts } from "./comprehend.js";
 import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
@@ -42,6 +43,7 @@ export class DataBuilderService {
     private rules: RulesService,
     private connectors: ConnectorService,
     private kb: KbService,
+    private solvers?: SolverService,
   ) {}
 
   // ---- builder-agent 资源（统一资源模式 DRAFT/PUBLISHED/RETIRED）-----------
@@ -203,7 +205,27 @@ export class DataBuilderService {
     return "SUCCEEDED";
   }
 
-  async runStory(ctx: AuthCtx, body: BuildRunBody): Promise<StoryBuildRun> {
+  /** g8-P5 推演回填：以生成场景的求解器在建好的对象上跑一次推演 → answer 摘要（best-effort，确定性）。 */
+  private async runInference(ctx: AuthCtx, plan: BuildPlan | undefined): Promise<string | undefined> {
+    if (!this.solvers || !plan || plan.solverNeeds.length === 0) return undefined;
+    const parts: string[] = [];
+    for (const sn of plan.solverNeeds) {
+      try {
+        const out = await this.solvers.invoke(ctx, sn.solverKey, {});
+        const summary = Object.entries(out)
+          .filter(([, v]) => typeof v === "number" || typeof v === "string")
+          .slice(0, 3)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ");
+        parts.push(`${sn.solverKey}: ${summary || "ok"}`);
+      } catch (e) {
+        parts.push(`${sn.solverKey}: 推演跳过（${(e as Error).message.slice(0, 40)}）`);
+      }
+    }
+    return parts.join(" · ");
+  }
+
+  async runStory(ctx: AuthCtx, body: BuildRunBody, inference = false): Promise<StoryBuildRun> {
     const id = newId("sbr");
     const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
     const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
@@ -211,6 +233,7 @@ export class DataBuilderService {
     const job = await this.run(ctx, body);
     const plan = job.planId ? await this.repos.buildPlans.get(ctx.tenantId, job.planId) : undefined;
     const scaffoldReceipt = await this.crossSystemScaffold(ctx, id, plan);
+    const answer = inference && job.status === "SUCCEEDED" ? await this.runInference(ctx, plan) : undefined;
 
     const producedConnections = (await this.repos.connections.list(ctx.tenantId))
       .filter((c) => !connBefore.has(c.id))
@@ -227,6 +250,7 @@ export class DataBuilderService {
       closureReport: job.closure,
       scaffoldReceipt,
       gapReport: selfCheckGaps(body.script.trim(), id, job.closure, scaffoldReceipt),
+      answer,
       producedConnections,
       producedDatasets,
       status: this.mergeStatus(job.status, scaffoldReceipt),
@@ -234,6 +258,11 @@ export class DataBuilderService {
     };
     await this.repos.storyBuildRuns.put(run);
     return run;
+  }
+
+  /** g8-P5 故事脚本自动生成器：从平台能力目录确定性派生候选脚本（供持续自动输入/压测）。 */
+  generateScripts(): { key: string; script: string }[] {
+    return deriveGeneratedScripts();
   }
 
   /** g8-P4 压测：跑一组脚本，逐条建域，统计覆盖率/失败率（= 自动生成管线压测）。 */
@@ -260,7 +289,8 @@ export class DataBuilderService {
     const scripts = deriveBackfillScripts();
     const runs: BackfillReport["runs"] = [];
     for (const { key, script } of scripts) {
-      const run = await this.runStory(ctx, { script, builderKey: DEFAULT_BUILDER_KEY });
+      // 回填同时跑一次推演（P5）：每个存量推演场景补出 answer，闭环 故事→建域→推演→答案。
+      const run = await this.runStory(ctx, { script, builderKey: DEFAULT_BUILDER_KEY }, true);
       runs.push({ key, runId: run.id, status: run.status, fullChainOk: run.scaffoldReceipt?.fullChainOk });
     }
     return {

@@ -702,6 +702,9 @@ export const submitStoryInputs = (id: string, inputs: Record<string, string | nu
   api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/inputs`, { method: "PATCH", body: { inputs } });
 // g8-P6：存量回填（逆向导出既有推演能力 → 逐条建域 = 首次全量压测）
 export const backfillStoryRuns = () => api.a<BackfillReport>("/a/v1/databuilder/backfill", { method: "POST" });
+// g8-P5：故事脚本自动生成器 + 压测
+export const fetchGeneratedScripts = () => api.a<{ key: string; script: string }[]>("/a/v1/databuilder/generate-scripts");
+export const stressStoryRuns = (scripts: string[]) => api.a<BackfillReport>("/a/v1/databuilder/stress", { method: "POST", body: { scripts } });
 export const newDataBuilderVersion = (id: string) =>
   api.a<DataBuilderAgent>(`/a/v1/data-builders/${id}/new-version`, { method: "POST" });
 export const publishDataBuilder = (id: string) =>

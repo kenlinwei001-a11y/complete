@@ -73,5 +73,22 @@ describe("F46 · 历史推演记录时间线（StoryBuildRun）", () => {
     expect(report).toHaveTextContent(/覆盖/);
     // 既有推演能力回填进时间线（≥2 条 SUCCEEDED）
     expect(within(timeline).getAllByText("SUCCEEDED").length).toBeGreaterThanOrEqual(2);
+    // g8-P5 推演回填：展开首条见 answer
+    const firstItem = within(timeline).getAllByText("SUCCEEDED")[0]!.closest("[data-testid^='sbr-item-']") as HTMLElement;
+    await user.click(within(firstItem).getByText(/针对|检查/));
+    expect(await within(timeline).findByText(/推演答案（回填）/)).toBeTruthy();
+  });
+
+  it("g8-P5：自动生成脚本压测 → 报告（覆盖率）+ 脚本进时间线", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/data-builder");
+    await screen.findByTestId("data-builder-page");
+    const timeline = await screen.findByTestId("sbr-timeline");
+
+    await user.click(screen.getByTestId("sbr-generate"));
+    const report = await within(timeline).findByTestId("sbr-backfill-report");
+    expect(report).toHaveTextContent(/覆盖率 100%/);
+    expect(within(timeline).getAllByText("SUCCEEDED").length).toBeGreaterThanOrEqual(2);
   });
 });
