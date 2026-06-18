@@ -108,12 +108,12 @@
 > 本区回答用户的"我凭什么信这是**完整**的？"——四个递进信号：
 - **① 全链闭包可视化**：故事→意图→计划→求解器(输出形状)→渲染，每段 `BOUND/MISSING`（CHAIN/SHAPE）；任一 MISSING = 不完整、可见。
 - **② R12 双向闭包徽章**：对象必落切片（HARD）/ 字段必被消费（SOFT）/ 求解器入参必存在（HARD）——本体级"建全了没有"。
-- **③ 故事覆盖度（绿地）**：把故事**逐句**与 BuildPlan 产物对账——每句映射到哪些制品；**未映射的句子高亮标"未理解/未建模"**（呼应 TODO「切片缺失/超域」诊断）。这是"没遗漏"的直接证据，也喂区 8 的下一步。
+- **③ 故事覆盖度（绿地）**：把故事**逐句**与 BuildPlan 产物对账——每句映射到哪些制品；**未映射的句子高亮标"未理解/未建模"**（呼应 TODO「切片缺失/超域」诊断）。这是"没遗漏"的直接证据，也喂区 7 的下一步。
 - **④ 验证痕迹 ValidationTrace（复用）**：构建产物若已可推演，复用 `buildValidationTrace`（一致性验证：实体定义/公理裁决/数字溯源/版本钉 + 交叉验证：结论断言 vs 知识图谱 CONSISTENT/CONFLICT/NO_EVIDENCE），前端 `ValidationTracePanel` 内嵌——R13 的"可视化成品"。
 - **GapReport 自检面板**：7 码缺口分类 + QOS 实跑证据（断在哪步）；缺功能 → **GrowthTicket 工单看板**。
 - 数据来源：closure findings + 故事覆盖度（BuildPlan↔script 映射）+ `ValidationTrace`（`contracts/qos.ts`）+ 自成长 `GET /api/v1/growth/{probe结果,tickets}`。
 
-### 区 8 · 一键「推演」→ 落到真实触发页面（绿地编排，复用场景启动器）
+### 区 7 · 一键「推演」→ 落到真实触发页面（绿地编排，复用场景启动器）
 > 本区回答用户的"这东西**真能用**吗？"——不靠绿测试，靠**亲手在真实页面跑通**。
 - **「推演」按钮**（构建完成后高亮）。点击流程：
   1. 取该 `StoryBuildRun` 的**主问句**（故事派生的触发问句 / 主意图）。
@@ -124,13 +124,13 @@
 - **失败也诚实**：若主问句跑 QOS 仍断（区 6 有 MISSING），「推演」按钮显示"当前不可达：断在 <缺口码>"，并链到该缺口的补齐/工单——**不假装能跳**（守"绿测试≠能用"）。
 - 数据来源：复用 `POST /b/v1/scenarios/:key/launch` + `useScenarioLaunch`（场景启动器 P3 已建）+ orchestrator classify。
 
-### 区 7 · 历史推演记录（复用故事入口 PRD StoryBuildRun + 扩）
+### 区 8 · 历史推演记录（复用故事入口 PRD StoryBuildRun + 扩）
 - **时间线**：逐 `StoryBuildRun` 卡片 → 点击回放全过程（区 2–6 的当时快照）。
 - 与成长账本并列/合并：账本按"问句↔缺口↔补法"索引,本时间线按"故事↔建域全过程"索引。
 - 数据来源：`GET /a/v1/databuilder/runs`。
 
 ### 页面归属决议（消除两张皮）
-- **`DataBuilderPage` = 唯一控制台**（区 1–7）。`/admin/growth` 的 LOOP/GapReport/账本/工单**降为本页区 6/区 7 的内嵌面板**；`/admin/growth` 路由保留为"自成长聚焦视图"或 301 到本页对应锚点（实现期二选一，本 PRD 倾向**内嵌合并**）。
+- **`DataBuilderPage` = 唯一控制台**（区 1–8）。`/admin/growth` 的 LOOP/GapReport/账本/工单**降为本页区 6/区 8 的内嵌面板**；`/admin/growth` 路由保留为"自成长聚焦视图"或 301 到本页对应锚点（实现期二选一，本 PRD 倾向**内嵌合并**）。
 
 ## 4. 契约 / 端点 / 数据模型（前端为主；contracts-only-shared）
 - **复用端点**：`POST/PATCH /a/v1/databuilder/runs*`（故事入口 PRD）· `GET /a/v1/build-jobs`·`/data-builders` · `GET·POST /a/v1/actions*`（就地审批）· `GET /api/v1/growth/*`（自成长）· 各模块只读列表端点（深链核对）。
@@ -144,8 +144,8 @@
   → 区4 七阶段瀑布流逐步点亮 + 逐产物卡片 + 逐产物 HITL 批复(R4)
   → 区5 模块同步矩阵：每建一个制品 → 对应模块行 +1 → 对应事件到达 → 徽章点亮(R10) → 可深链去该模块核对
   → 区6 完整性信任四信号：全链闭包(BOUND/MISSING) + R12 双向闭包 + 故事覆盖度(未映射高亮) + ValidationTrace + GapReport 自检/工单
-  → 区8 点「推演」→ classify 主问句 → 解析场景 → 跳 targetView 真实业务页 → useScenarioLaunch 注入出答案(亲手验证能用)
-  → 区7 整个过程沉淀为 StoryBuildRun → 时间线可回放
+  → 区7 点「推演」→ classify 主问句 → 解析场景 → 跳 targetView 真实业务页 → useScenarioLaunch 注入出答案(亲手验证能用)
+  → 区8 整个过程沉淀为 StoryBuildRun → 时间线可回放
 ```
 
 ## 6. 非功能与约定（§5 不变量逐条满足）
@@ -163,7 +163,7 @@
 4. **UI-3 瀑布流逐产物 + HITL**：区 4 七阶段逐步点亮，逐产物卡片可展开 diff + 就地批复（不跳转）→ 物化生效。
 5. **UI-4 模块同步矩阵（核心）**：构建后区 5 显示"本体 +N / 工作流 +N / agent +N …"，DRAFT/已发布正确，**点深链跳到对应模块管理页能核对到该制品**；对应事件到达后徽章由灰转亮（R10 回归：发事件→矩阵刷新）。
 6. **UI-5 闭包+自检**：区 6 显示全链 BOUND/MISSING + GapReport 7 码 + 缺的入工单。
-7. **UI-6 历史推演记录**：区 7 时间线逐 run 可回放全过程快照。
+7. **UI-6 历史推演记录**：区 8 时间线逐 run 可回放全过程快照。
 8. **UI-7 单页统揽**：`/admin/growth` 能力在本页可达（内嵌或合并），无功能丢失。
 9. **UI-8 信任完整**：区 6 显示故事覆盖度（构造一段含未建模片段的故事 → 该句高亮"未理解"）+ ValidationTrace 面板 + R12 双向闭包徽章；闭包有 MISSING 时不显示"完整"。
 10. **UI-9 一键推演跳转**：构建一个端到端可跑的场景 → 点「推演」→ **跳转到该场景 `targetView` 页并出答案**（回归：跳对页 + 注入 presetContext + SSE）；构造一个仍缺求解器的故事 → 「推演」显示"不可达：断在 SOLVER_NOT_FOUND"并链到工单（不假装可跳）。
@@ -173,9 +173,9 @@
 - **P1（骨架 + 理解 + 瀑布流）**：区 1/2/4 —— 故事输入 + BuildPlan 结构化理解 + 七阶段瀑布流逐产物卡片（接已有 BuildJob.phases）。
 - **P2（模块同步矩阵 · 核心）**：区 5 —— `producedArtifacts` + `ModuleSyncMatrix` + 事件订阅点亮 + 深链核对 + DRAFT/已发布三态。
 - **P3（补录 + 闭包 + 自检 + 信任）**：区 3 InputManifest 表单 + 区 6 全链闭包可视化 + 故事覆盖度 + ValidationTrace + R12 徽章 + GapReport/工单内嵌（合并 `/admin/growth`）。
-- **P3.5（一键推演）**：区 8 「推演」按钮 —— classify 主问句 → 解析场景 → 跳 `targetView` + `useScenarioLaunch` 注入出答案（复用场景启动器，不可达时诚实提示）。依赖故事建出的 Scenario 已可启动。
-- **P4（历史推演记录 + 合并收口）**：区 7 StoryBuildRun 时间线回放 + 页面归属最终合并 + 指标。
-- **依赖**：区 2/3/5/7 依赖 `PRD-fullstack-story-build-g8` 后端(StoryBuildRun/InputManifest/producedArtifacts)；区 6 依赖自成长发动机。**故本页落地需那两条后端先合 main**（见下纪律）。
+- **P3.5（一键推演）**：区 7 「推演」按钮 —— classify 主问句 → 解析场景 → 跳 `targetView` + `useScenarioLaunch` 注入出答案（复用场景启动器，不可达时诚实提示）。依赖故事建出的 Scenario 已可启动。
+- **P4（历史推演记录 + 合并收口）**：区 8 StoryBuildRun 时间线回放 + 页面归属最终合并 + 指标。
+- **依赖**：区 2/3/5/8 依赖 `PRD-fullstack-story-build-g8` 后端(StoryBuildRun/InputManifest/producedArtifacts)；区 6 依赖自成长发动机。**故本页落地需那两条后端先合 main**（见下纪律）。
 
 ---
 
