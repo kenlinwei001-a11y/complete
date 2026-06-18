@@ -130,6 +130,19 @@ InputField = { key, label, dataType, required, default?, source: "STORY"|"ASK_US
 7. **历史持久回归**：StoryBuildRun 双仓储 parity；前端时间线展示源/过程数据 + 答案回放。
 8. **本体回写（合并后）**：仅零冲突追加 §2/§4/§8，`ontology:check` 不漂，不动母体 GapReport 行 / L13。
 
+### 7.A 验收场景 A1–A5（跨域多跳 · 对抗性用例 · 报表切不出、唯图谱可答）
+> 这 5 问是检验"故事驱动倒推全栈"的标尺：每问喂入构建发动机，验收**倒推是否正确 + 缺口是否如实暴露 + 自动补到位 + 求解器缺则出工单不臆造**。当前本体**缺 Supplier/二级供应商/BOM 对象**及对应求解器（`battery.ts` 仅有文案，无一等对象；22 求解器无 BOM爆炸/共享传导/集中度敞口），故这些用例也验证 demand-pulled 新建能力。
+
+| 用例 | 问句要点 | 多跳链路 | 验收：comprehend 须倒推出 + 缺口须暴露 |
+|---|---|---|---|
+| **A1 违约传导面** | A 客户大单延迟两周 → 挤占哪些共享产线/物料 → 拖累哪些其他客户订单 → 波及多少在手营收 | 订单→共享产线/设备→其他订单→客户→营收 | 复用 Order/Line/Equipment/Customer/ARInvoice；**scaffold 切片(共享节点多跳)**；求解器 `affected_orders` 需扩"共享资源传导"→若不足 **GrowthTicket** |
+| **A2 断供影响半径** | 关键正极材料供应商断供两周 → 击穿哪些 BOM → 波及哪些在产订单/客户/金额 → 有无已认证替代供应商 | 供应商→物料→BOM→产品→订单→客户 + 质量认证 | **scaffold 新对象 Supplier+BOM+链路** + 合成/上传数据 + 切片；叠加 Certification(认证)；求解器(BOM爆炸/断供影响)**缺→GrowthTicket** |
+| **A3 毛利倒挂根因** | B 产品线毛利为何掉，沿链归因到哪个环节吃掉多少 | 订单→工艺→设备稼动→物料价→质量返工 | 复用 Process/Equipment/Material/QualityLot；**scaffold 因果路径切片**；`yield_diagnosis`+`quote_margin`+归因组合，缺归因解→**GrowthTicket** |
+| **A4 瓶颈优先级冲突** | 同时吃下 C/D 扩产单，哪些工序/设备成共享瓶颈、谁挤占谁、按排产规则哪单降级、后果 | 两订单工艺-设备图共享节点 + 排产规则 | 复用 Order/Process/Equipment；**scaffold 排产降级规则(C规则)**；`bottleneck_matrix`+冲突推演，缺→**GrowthTicket** |
+| **A5 隐性集中度** | 看似分散的客户，是否最终依赖同一物料/产线/二级供应商，对哪个单点隐性敞口最大 | 客户→订单→物料→二级供应商 反向聚合 | **scaffold 新对象 二级供应商+链路** + 数据；**scaffold 反向聚合切片**；求解器(隐性集中度敞口)**缺→GrowthTicket** |
+
+**A1–A5 共同验收点**：① comprehend 产出的 `BuildPlan` 对象/切片/规则/求解器需求与上表一致（HITL 可纠）；② **故事覆盖度**把问句每个语义跳点映射到制品，未映射高亮；③ 缺对象(A2/A5) → scaffold objectTypes + 合成填数（确定性 R6）；④ 缺求解器 → **GrowthTicket（不臆造算法，明确非目标）**；⑤ 闭包 CHAIN/SHAPE 对"缺求解器"段如实标 MISSING、publish 被拒（R11）。
+
 ## 8. 分期
 - **P1（最低风险，先行）**：rawin 去模板化统一 `SyntheticService`（消 `genCsv`，G-6 残留收口）+ StoryBuildRun 持久 + 历史推演记录前端时间线。
 - **P2（故事入口）**：BuildPlan 扩 A 栈 sliceNeeds + InputManifest 契约 + comprehend 产出 + 数据发动机页动态补录表单。
