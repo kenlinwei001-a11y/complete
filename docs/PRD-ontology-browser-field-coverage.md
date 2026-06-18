@@ -79,6 +79,17 @@
 - 字段/KPI 悬浮出处：复用 `resolvedRefs`/lineage（来源系统+公式+输入+规则引用）。
 - 源系统新鲜度徽章：绑 `connection.sync_completed`（§4 DL9）+ 数据流 SLO，●正常 / ⚠延迟Nh。
 
+### 3.5 「基于文档建模」入口（用户需求 2026-06-18）【绿地前端 + 解析器扩展】
+> 现状：建模工作台只能从**已上传的 `rawDatasetIds`** 出发（`suggest`/`derive`，`app.ts:1750/1756`）；且 `parseXlsx` **只取第一个 sheet**（`parsers.ts:10`），**YAML 完全无支持**（grep 0）。本节加一个**一步式「基于文档建模」入口**：在 ModelingPage 上传**多个 Excel/YAML 文件** → 直接出本体草稿。
+
+- **入口**：ModelingPage 新建草案旁加「基于文档建模」按钮 → 多文件拖拽上传（`.xlsx/.csv/.json` ⊕ `.yaml/.yml`）。
+- **两类文档、两种语义**：
+  - **Excel/CSV = 数据文档（data-first）**：① 扩 `parseXlsx` **遍历全部 sheet**（每 sheet = 一张表）；② 多文件 × 多 sheet → 各落一个 `RawDataset`；③ 复用 `deterministicSuggest`/`derive`（dataset→ObjectType、column→Property、PK=唯一率最高、FK/值重叠→Link，100% 覆盖、无 LLM、R6）；④ **跨文件/跨表 FK 推断**（如 `orders.xlsx#Order.modelId` ↔ `master.xlsx#Model.id` → Link）。
+  - **YAML = 结构/规格文档（schema-first）**：新增 `parseYamlOntologySpec`（依赖 `js-yaml`）——YAML 声明式给出 `types[]{key,domain,properties[]{propKey,dataType,isPrimaryKey,refToTypeKey}}`、`links[]{from,to,cardinality}`、可选 `rules[]`，**直接解析为对象类型/链路**（无需数据行），合并进同一草稿。用于"我已有一份本体/数据字典定义，直接导入建模"。
+- **多文档协调**：跨文件**同名类型归并**（Excel 推断的 + YAML 声明的同 key → 合并属性，YAML 显式声明优先、Excel 补字段画像）；冲突（同属性不同类型）标注待人裁。
+- **产物**：统一为 **`OntologyDraft`** → 人 PATCH 微调 → 经字段全建模门（§3.2）→ **publish 经 Action/domainExecutor（R4）**。**完全复用现有草稿→发布管线，不另起真值路径。**
+- **与数据发动机的关系**：这是"**文档直接建模**"（工作台内、确定性优先）；与数据发动机"**故事→倒推建模**"（LLM comprehend）互补——两者都产 `OntologyDraft`，下游同一发布门。模块同步矩阵的"本体 +N"深链亦可回到此入口续编辑。
+
 ## 4. 契约 / 端点 / 数据模型（双仓储四处同改；contracts-only-shared）
 
 **契约（`packages/contracts`）**
@@ -91,6 +102,7 @@
 - `POST /a/v1/modeling/coverage`（新，评估字段覆盖）· `POST .../coverage/waive`（豁免某列+理由，经 Action）。
 - `GET /a/v1/ontology/types/:typeKey/template.csv`（新，CSV 模板下载）。
 - `GET /a/v1/ontology/browser`（新，按域分组的 types+links+schema+引用，供浏览器渲染）。
+- **`POST /a/v1/modeling/from-documents`（新，§3.5）**：multipart 多文件（Excel/CSV/YAML）→ 解析（Excel 全 sheet→RawDataset+`deterministicSuggest`；YAML→`parseYamlOntologySpec`）→ 跨文件归并 → 出 `OntologyDraft`。依赖：扩 `parseXlsx` 全 sheet + 新增 `js-yaml`/`parseYamlOntologySpec`。
 
 **数据模型（R9 四处同改）**：`migrations/*.sql` + `pg.ts` + `memory.ts` + `repo` 接口新增 `fieldCoverageReports`；列级映射存于 modeling draft/version。
 
@@ -120,6 +132,7 @@
 - `pnpm -r build && test` 全绿；新测试净增（确定性管线 / 覆盖门 / 模板 CSV / 浏览器渲染）。
 - **`coverage:check`**（新 CI 门）：构造一份含未映射列的样例 → 闭包 fieldCoverage HARD 必红；全映射 → 绿。故障注入可验。
 - 确定性：同一组 RawDataset 重跑 `deterministicSuggest` 字节级一致（不依赖 LLM）。
+- **基于文档建模（§3.5）**：上传 2 个 Excel（各含多 sheet）+ 1 个 YAML 规格 → 出单一 `OntologyDraft`：Excel 多 sheet 各成类型、跨文件 FK 成 Link；YAML 声明的类型/链路直接入草稿并与 Excel 同名类型归并；同输入重跑字节级一致（R6）；草稿经字段全建模门 + Action 发布（R4）。`parseXlsx` 全 sheet + YAML 解析各有单测。
 - 本体浏览器：点节点出 schema+数据源+样例+公式+规则+被谁操作；CSV 模板下载列与 schema 一致、样例确定性一致。
 - `ontology:check` 绿（`field_coverage.evaluated` 登记进 §4 与 `event-subscriptions.ts` 一致）。
 - 本体 §2/§3/§4/§5(R12)/§7/§8/§10.3 已回写。
@@ -130,3 +143,4 @@
 - **P3**：CSV 模板端点 + FK/值重叠 link 推断 + 基数。
 - **P4**：本体浏览器前端（域分组图谱 + 节点检视器 + 覆盖徽章 + CSV 下载按钮）。
 - **P5**：出处悬浮 + 新鲜度徽章（小增量）；与 G-6 rawin 三路对齐收口。
+- **P6（基于文档建模，§3.5）**：扩 `parseXlsx` 全 sheet + 新增 `parseYamlOntologySpec`（js-yaml）+ `POST /a/v1/modeling/from-documents` + ModelingPage「基于文档建模」多文件上传入口 + 跨文件归并；复用草稿→字段全建模门→Action 发布。
