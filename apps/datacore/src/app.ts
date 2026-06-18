@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, SyntheticJobBodySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema } from "@platform/contracts";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
@@ -2010,6 +2010,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     requireAdmin(c);
     return databuilder.backfill(c);
+  });
+  // g8-P4 压测：跑一组故事脚本，统计覆盖率/失败率（自动生成管线压测）
+  app.post("/a/v1/databuilder/stress", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(StressBodySchema, req.body);
+    return databuilder.stress(c, body.scripts, body.seed);
   });
 
   app.get("/a/v1/features/registry", async (req) => {

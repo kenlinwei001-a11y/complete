@@ -139,6 +139,13 @@ export const StoryInputsBodySchema = z.object({
 });
 export type StoryInputsBody = z.infer<typeof StoryInputsBodySchema>;
 
+/** g8-P4 压测请求体：跑一组故事脚本，统计覆盖率/失败率（= 自动生成管线压测）。 */
+export const StressBodySchema = z.object({
+  scripts: z.array(z.string().min(1)).min(1).max(50),
+  seed: z.number().int().optional(),
+});
+export type StressBody = z.infer<typeof StressBodySchema>;
+
 /** g8-P6 存量回填批量报告（= 首次全量压测：覆盖率/失败率 + 逐条 StoryBuildRun 引用）。 */
 export const BackfillReportSchema = z.object({
   total: z.number().int(),

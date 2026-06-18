@@ -22,6 +22,7 @@ import type { KbService } from "../kb.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts } from "./comprehend.js";
+import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
@@ -225,6 +226,7 @@ export class DataBuilderService {
       buildPlan: plan,
       closureReport: job.closure,
       scaffoldReceipt,
+      gapReport: selfCheckGaps(body.script.trim(), id, job.closure, scaffoldReceipt),
       producedConnections,
       producedDatasets,
       status: this.mergeStatus(job.status, scaffoldReceipt),
@@ -232,6 +234,21 @@ export class DataBuilderService {
     };
     await this.repos.storyBuildRuns.put(run);
     return run;
+  }
+
+  /** g8-P4 压测：跑一组脚本，逐条建域，统计覆盖率/失败率（= 自动生成管线压测）。 */
+  async stress(ctx: AuthCtx, scripts: string[], seed?: number): Promise<BackfillReport> {
+    const runs: BackfillReport["runs"] = [];
+    for (const script of scripts) {
+      const run = await this.runStory(ctx, { script, seed, builderKey: DEFAULT_BUILDER_KEY });
+      runs.push({ key: script.slice(0, 40), runId: run.id, status: run.status, fullChainOk: run.scaffoldReceipt?.fullChainOk });
+    }
+    return {
+      total: runs.length,
+      succeeded: runs.filter((r) => r.status === "SUCCEEDED").length,
+      failed: runs.filter((r) => r.status === "FAILED").length,
+      runs,
+    };
   }
 
   /**
@@ -328,6 +345,7 @@ export class DataBuilderService {
       buildPlan: plan,
       closureReport: job.closure,
       scaffoldReceipt,
+      gapReport: selfCheckGaps(run.script, run.id, job.closure, scaffoldReceipt),
       producedConnections: (await this.repos.connections.list(ctx.tenantId)).filter((c) => !connBefore.has(c.id)).map((c) => c.id),
       producedDatasets: (await this.repos.rawDatasets.list(ctx.tenantId)).filter((d) => !dsBefore.has(d.id)).map((d) => d.id),
       status: this.mergeStatus(job.status, scaffoldReceipt),

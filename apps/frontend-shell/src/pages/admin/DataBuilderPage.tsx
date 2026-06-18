@@ -357,7 +357,13 @@ export default function DataBuilderPage() {
                         {["SCAFFOLDED", "REUSED", "MISSING"].map((st) => `${r.scaffoldReceipt!.items.filter((i) => i.status === st).length} ${st}`).join(" / ")}）
                       </div>
                     )}
-                    {r.gapReport && <div style={{ color: "var(--amber,#DD9551)" }}>功能缺失自检：{r.gapReport.findings.length} 项缺口</div>}
+                    {r.gapReport && (
+                      <div data-testid={`sbr-selfcheck-${r.id}`} style={{ color: r.gapReport.findings.length === 0 ? "var(--c-capacity,#36BFA5)" : "var(--amber,#DD9551)" }}>
+                        功能缺失自检：{r.gapReport.findings.length === 0
+                          ? "通过（0 缺口）✓"
+                          : `${r.gapReport.findings.length} 项缺口 · ${[...new Set(r.gapReport.findings.map((f) => f.gapCode))].join(", ")}`}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

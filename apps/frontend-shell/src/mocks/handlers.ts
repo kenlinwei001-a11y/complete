@@ -1723,6 +1723,7 @@ export const handlers = [
       buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
       closureReport: job.closure,
       scaffoldReceipt: { items: [{ kind: "scene", key: "scene_mock", status: "SCAFFOLDED" }, { kind: "intent", key: "intent_mock", status: "SCAFFOLDED" }], fullChainOk: true },
+      gapReport: { question: script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
       producedConnections: ["conn_mock"],
       producedDatasets: ["rds_mock"],
       status: "SUCCEEDED",

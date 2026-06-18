@@ -273,6 +273,21 @@ describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期�
     }
   });
 
+  it("SBR6 (g8-P4): 功能缺失自检 GapReport（干净建域 → ANSWERABLE 0 缺口）+ 压测覆盖率", async () => {
+    const t = await makeApp();
+    // 干净建域 → 自检 ANSWERABLE、零缺口
+    const ok = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 41 } })).json()) as StoryRunResp & { gapReport?: { verdict: string; findings: unknown[] } };
+    expect(ok.gapReport?.verdict).toBe("ANSWERABLE");
+    expect(ok.gapReport?.findings.length).toBe(0);
+
+    // 压测：跑一组脚本 → 覆盖率/失败率统计
+    const stress = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/stress", headers: ADMIN, payload: { scripts: ["针对订单做风险推演分析", "针对基地做产能推演分析"], seed: 7 } });
+    expect(stress.statusCode).toBe(200);
+    const report = stress.json() as { total: number; succeeded: number; failed: number };
+    expect(report.total).toBe(2);
+    expect(report.succeeded + report.failed).toBe(2);
+  });
+
   it("SBR3 (g8-P2): stage=manifest → 倒推补录表单（PENDING_INPUT，未建域）→ PATCH inputs 续跑建域", async () => {
     const t = await makeApp();
     // ① 倒推：返回 InputManifest（STORY 抽取 + ASK_USER seed + REUSE_EXISTING 连接器），状态 PENDING_INPUT
