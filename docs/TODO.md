@@ -146,7 +146,10 @@
 - ⏸ **10. G-7 余项**（评估为低价值，暂缓）：6 用途各对应固定调用点（classifier/agent/compose…），"枚举可扩展"无消费点即无意义；真实 LLM 扩展性（多供应商/按用途绑定模型/降级）已由 `roleModel`/`bindingFor` 满足。如需自定义用途，须先定义其调用点（另起 PRD）。
 - 🔄 **11. 外部域（EXT_SIG）** —— PRD `docs/PRD-external-signal-domain.md`：✅ **P1 一等对象化 + EXTERNAL 连接器**：`ExternalSignal` 对象（domain=external；锂价/镍价/汇率/需求指数/政策/电价，带 value/unit/asOf/source/trend/impact，R13 可溯）+ `mock_external` 连接器（EXTERNAL 类，StaticAdapter）+ 合成出厂期 putAll 落对象 + `GET /a/v1/external-signals`；本体 §2/§3/§10 回写；synthetic/connectors 回归。✅ **P2 敏感性**：`POST /a/v1/external-signals/sensitivity`（信号冲击 → 规划指标，确定性弹性 Δ指标pp=Δ信号%×elasticity，按 impact 聚合：毛利/需求/出口营收/成本；锂价+10%→毛利-0.8pp 回归）。✅ **前端面板**：`ExternalSignalsPage`(/admin/external-signals)——信号清单(来源/单位/新鲜度可溯)+敏感性 what-if(冲击→指标聚合)；左导航入口；f41 回归。✅ **信号时序**：`GET /a/v1/external-signals/:key/series`（近 12 月确定性历史，从当前值按 trend 反推）+ 前端面板「时序」迷你折线（懒加载）。注：A8 ts_points 管道服务高频传感器序列；稀疏市场信号走此轻量时序。**EXT_SIG 端到端全闭合**（一等对象+连接器+敏感性+时序+前端）
 
-## 🔭 Tier 4 · dogfooding 终态（⏸ **暂缓** —— 思路已评审通过，待启动）
+## 🔭 Tier 4 · dogfooding 终态（🔄 **启动** —— PRD 已立 `docs/PRD-dogfooding-self-ontology.md` v0.2）
+
+> **2026-06-18 重启**：用户改优先级,Tier4 从暂缓转启动。PRD v0.2 定:鉴权 `/meta/*` 默认仅 `admin` + per-tenant 角色白名单 `MetaAccessPolicy` 可配置;本分支直接同步回写本体（新事件 `meta.ontology_synced` 与代码同步登记 §4,避免 ontology:check 红）;impact 用轻量 BFS（非硬套 executeSlice）;运行时需 datacore 容器含 docs/ 两文件。分期 P1(#12 落库)→P2(#13 查询面+鉴权)→P3(MCP)→P4(#14 派生保守)。
+
 
 > **决策（2026-06-16）**：方向正确、地基扎实（SYSTEM-ONTOLOGY.md 已是单一来源、prd-ontology-index.json 已机器可读、check-system-ontology 已解析 §4），但**优先级低于租户功能**（服务平台团队的治理/自治，非终端用户），故暂缓、入册。启动前先出 `docs/PRD-dogfooding-self-ontology.md`（含 §0，本身即一次 dogfooding）。
 >

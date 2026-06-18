@@ -349,6 +349,31 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-dogfooding-self-ontology.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [
+        "packages/contracts/src/meta-ontology.ts",
+        "scripts/check-prd-ontology.mjs",
+        "scripts/check-system-ontology.mjs"
+      ],
+      "brokenArtifacts": [
+        "packages/contracts/src/meta-ontology.ts"
+      ]
+    },
     "PRD-external-signal-domain.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -643,6 +668,7 @@
       "PRD-addendum-validation-loop.md",
       "PRD-catalog-battery-20-scenarios.md",
       "PRD-demand-pulled-growth-engine.md",
+      "PRD-dogfooding-self-ontology.md",
       "PRD-frontend-addendum-remaining-views.md",
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
@@ -677,6 +703,7 @@
       "PRD-addendum-validation-loop.md",
       "PRD-catalog-battery-20-scenarios.md",
       "PRD-demand-pulled-growth-engine.md",
+      "PRD-dogfooding-self-ontology.md",
       "PRD-frontend-addendum-remaining-views.md",
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
@@ -738,6 +765,15 @@
     ],
     "scripts/platform-cli.mjs": [
       "PRD-demand-pulled-growth-engine.md"
+    ],
+    "packages/contracts/src/meta-ontology.ts": [
+      "PRD-dogfooding-self-ontology.md"
+    ],
+    "scripts/check-prd-ontology.mjs": [
+      "PRD-dogfooding-self-ontology.md"
+    ],
+    "scripts/check-system-ontology.mjs": [
+      "PRD-dogfooding-self-ontology.md"
     ],
     "apps/agentcore/src/growth/probe.ts": [
       "PRD-fullstack-story-build-g8.md"
