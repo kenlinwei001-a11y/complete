@@ -1,7 +1,9 @@
 /**
  * Rule DSL (platform PRD §4.2) — shared by A5 rule engine and the A6 rowFilter subset.
  *
- *   expr       := comparison | expr ("AND"|"OR") expr | "NOT" expr
+ *   expr       := implies
+ *   implies    := orExpr ("IMPLIES" orExpr)*           // a IMPLIES b ≡ NOT a OR b（C33）
+ *   orExpr     := comparison | orExpr ("AND"|"OR") orExpr | "NOT" orExpr
  *   comparison := operand op operand
  *   operand    := field | literal | func "(" args ")" | userRef
  *   field      := objectType "." propName            // e.g. Order.demandDelta
@@ -50,7 +52,7 @@ type Token = (
   | { t: "userref"; v: string } // ${user.x.y}
 ) & { pos: number }; // 字符位（0 起，token 起始）
 
-const KEYWORDS = new Set(["AND", "OR", "NOT", "IN", "TRUE", "FALSE", "NULL"]);
+const KEYWORDS = new Set(["AND", "OR", "NOT", "IN", "TRUE", "FALSE", "NULL", "IMPLIES"]);
 const FUNCS = new Set(["SUM", "MIN", "MAX", "COUNT", "AVG"]);
 
 function lex(src: string): Token[] {
@@ -134,9 +136,20 @@ class Parser {
   }
 
   parse(): AstNode {
-    const node = this.parseOr();
+    const node = this.parseImplies();
     if (this.pos < this.tokens.length) this.fail("unexpected trailing tokens");
     return node;
+  }
+
+  /** IMPLIES（最低优先级）：`a IMPLIES b` ≡ `NOT a OR b`（PRD-catalog §3 C33；解析期脱糖,复用 or/not 节点,求值器零改）。 */
+  private parseImplies(): AstNode {
+    let left = this.parseOr();
+    while (this.isKeyword("IMPLIES")) {
+      this.pos++;
+      const right = this.parseOr();
+      left = { kind: "or", left: { kind: "not", operand: left }, right };
+    }
+    return left;
   }
 
   private peek(): Token | undefined {
@@ -194,7 +207,7 @@ class Parser {
       const save = this.pos;
       this.pos++;
       try {
-        const inner = this.parseOr();
+        const inner = this.parseImplies(); // 括号内走最高层（含 IMPLIES，支持 NOT (a IMPLIES b)）
         const close = this.peek();
         if (close?.t === "punct" && close.v === ")") {
           this.pos++;

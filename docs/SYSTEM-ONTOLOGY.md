@@ -66,7 +66,7 @@
 - **Domain**：归域（治理）· `domains`。
 
 ### C. 规则/约束域（DataCore）
-- **Rule（C01–C33…）**：规则 DSL（severity BLOCK/WARN，scopeObjectTypes）· `ruledsl.ts`,`rules.ts`。
+- **Rule（C01–C33…）**：规则 DSL（severity BLOCK/WARN，scopeObjectTypes；算子 AND/OR/NOT/IN/SUSTAIN/**IMPLIES**，IMPLIES=`NOT a OR b` 解析期脱糖）· `ruledsl.ts`,`rules.ts`。catalog §3 **C26–C33 已注册为一等规则**（`battery.ts rules` + `BATTERY_RULE_SCOPES`，此前硬编码在求解器、规则引擎不可见 → 现可解析/可评估/可列出；表达式=违规谓词,复杂算术取去归一化/派生字段如 `Process.yieldFloor`/`Order.daysToStart`；C33 碳护照用 IMPLIES：`NOT (Order.destination=='EU' IMPLIES Order.carbonFootprint<=Order.euCarbonThreshold)`）。
 - **RuleDoc / RuleCandidate / ExtractSegment**：规则文档抽取（A2，LLM extraction）· `ruleDocs`,`ruleCandidates`。
 
 ### D. 行动/权限域（DataCore）

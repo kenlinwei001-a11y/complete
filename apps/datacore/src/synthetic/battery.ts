@@ -745,6 +745,18 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
     { key: "C18", name: "现金垫底线", expression: "AnnualScenario.cashCushion < 50", severity: "BLOCK" },
     { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN" },
+    // catalog-battery §3 C26–C33（DSL 表达式 = 违规谓词,expression 真→passed=false；复杂算术取
+    // 去归一化/派生字段：yieldFloor=基线-0.02 / minYieldRate=自产-0.02 / daysToStart=开工日-today
+    // / deviationPct=ABS(实际-计划)/计划。此前硬编码在求解器,规则引擎不可见;现注册为一等规则。
+    { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK" },
+    { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN" },
+    { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN" },
+    { key: "C29", name: "排产冻结期", expression: "Order.daysToStart < 3", severity: "BLOCK" },
+    { key: "C30", name: "良率连降停线评审", expression: "SUSTAIN(Process.dailyYield < Process.yieldFloor, 3)", severity: "BLOCK" },
+    { key: "C31", name: "外协质量门", expression: "Outsource.yieldRate < Outsource.minYieldRate", severity: "BLOCK" },
+    { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK" },
+    // C33 碳护照前置：约束 = 目的地EU IMPLIES 碳足迹<=阈值；违规 = NOT(约束)（用 IMPLIES，C33 的招牌用例）。
+    { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK" },
   ],
   scenarioSeed: { views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"], intents: [] },
   features: [...ALL_FEATURE_KEYS],
@@ -885,6 +897,15 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C12: ["Model"],
   C18: ["AnnualScenario"],
   C23: ["AnnualScenario"],
+  // catalog §3 C26–C33 作用域（映射表/影响面按此关联；与 expression 对象前缀一致）。
+  C26: ["Cert"],
+  C27: ["Lta"],
+  C28: ["Batch"],
+  C29: ["Order"],
+  C30: ["Process"],
+  C31: ["Outsource"],
+  C32: ["Customer"],
+  C33: ["Order"],
 };
 
 export interface GeneratedBattery {
