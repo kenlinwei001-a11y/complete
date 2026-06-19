@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ClosurePolicySchema, buildModuleSyncMatrix, type BuildPlan } from "@platform/contracts";
 import { validateClosure } from "../src/databuilder/closure.js";
 import { deriveProducedArtifacts } from "../src/databuilder/artifacts.js";
+import { comprehendScript, deriveStoryCoverage } from "../src/databuilder/comprehend.js";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 import { makeApp, ADMIN, debugUser } from "./helpers.js";
 
@@ -394,5 +395,36 @@ describe("数据构建发动机页面统一规格 P2 · 模块同步矩阵（pro
     // 矩阵派生（前端同一函数）
     const matrix = buildModuleSyncMatrix(run.producedArtifacts as Parameters<typeof buildModuleSyncMatrix>[0]);
     expect(matrix.some((r) => r.status !== "NONE")).toBe(true);
+  });
+});
+
+describe("数据构建发动机页面统一规格 P3/P3.5 · 故事覆盖度 + 落点视图（区6③/区7）", () => {
+  it("deriveStoryCoverage: 命中关键词且制品已建 → mapped+refs；未建模句 → 未映射（没遗漏证据，确定性 R6）", () => {
+    const plan = comprehendScript(SCRIPT, 42);
+    const cov = deriveStoryCoverage(SCRIPT, plan);
+    expect(cov.length).toBeGreaterThan(0);
+    // 至少一句映射到制品（基地/订单/风险 → Base/Order/affected_orders）
+    expect(cov.some((c) => c.mapped && c.refs.length > 0)).toBe(true);
+    // 同输入两次字节级一致（R6）
+    expect(JSON.stringify(deriveStoryCoverage(SCRIPT, plan))).toBe(JSON.stringify(cov));
+    // 纯无关句 → 未映射（喂"未理解/未建模"高亮）
+    const off = deriveStoryCoverage("今天天气很好", plan);
+    expect(off.every((c) => !c.mapped)).toBe(true);
+  });
+
+  it("comprehend 落点视图（区7）：求解器场景带真实 targetView（risk/project，非空）", () => {
+    const plan = comprehendScript(SCRIPT, 42);
+    expect(plan.sceneNeeds.length).toBeGreaterThan(0);
+    expect(plan.sceneNeeds.every((s) => s.targetView.length > 0)).toBe(true);
+    const risk = plan.sceneNeeds.find((s) => s.scenarioKey === "scene_affected_orders");
+    expect(risk?.targetView).toBe("risk");
+  });
+
+  it("SBR P3 端点：POST run → storyCoverage 落库 + sceneNeeds.targetView 非空（区7 可落点）", async () => {
+    const t = await makeApp();
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 11 } })).json()) as StoryRunResp & { storyCoverage: { mapped: boolean }[]; buildPlan?: { sceneNeeds: { targetView: string }[] } };
+    expect(run.storyCoverage.length).toBeGreaterThan(0);
+    expect(run.storyCoverage.some((c) => c.mapped)).toBe(true);
+    expect(run.buildPlan?.sceneNeeds.every((s) => s.targetView.length > 0)).toBe(true);
   });
 });

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, DataBuilderAgent, ProducedArtifact, StoryBuildRun } from "@platform/contracts";
+import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, ClosureReport, DataBuilderAgent, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets } from "@/api/endpoints";
+import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -175,6 +176,101 @@ function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) 
 }
 
 /**
+ * 区6①② 完整性可视化（PRD §3 区6）：全链闭包逐段 BOUND/MISSING（CHAIN/SHAPE/OBJECT/DATA/FORWARD）
+ * + R12 双向闭包徽章（对象落切片 HARD / 字段被消费 SOFT / 求解器入参 HARD）。任一 MISSING = 不完整、可见。
+ */
+function ClosureVizView({ closure }: { closure: ClosureReport }) {
+  const badges = [
+    { k: "对象落切片", hard: true, ok: closure.objectsBound > 0 && !closure.findings.some((f) => f.kind === "OBJECT" && f.status === "MISSING") },
+    { k: "字段被消费", hard: false, ok: true, note: `${closure.dataOrphans} 孤儿放行` },
+    { k: "求解器入参", hard: true, ok: closure.forwardMissing === 0 },
+    { k: "全链注册 CHAIN", hard: true, ok: (closure.chainBroken ?? 0) === 0 },
+    { k: "渲染形状 SHAPE", hard: true, ok: (closure.shapeBroken ?? 0) === 0 },
+  ];
+  const broken = closure.findings.filter((f) => f.status === "MISSING" || f.status === "FAILED");
+  return (
+    <div data-testid="sbr-closureviz">
+      <div style={{ marginBottom: 2 }}>
+        全链闭包：<b style={{ color: closure.gatePassed ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}>{closure.gatePassed ? "完整 ✓" : "不完整 ✗"}</b>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: broken.length ? 4 : 0 }}>
+        {badges.map((b) => (
+          <span key={b.k} className="badge" data-testid={`r12-${b.ok ? "ok" : "missing"}`}
+            style={{ fontSize: 10.5, color: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)", borderColor: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}
+            title={b.note}>
+            {b.ok ? "✓" : "✗"} {b.k}{b.hard ? "(HARD)" : "(SOFT)"}
+          </span>
+        ))}
+      </div>
+      {broken.length > 0 && (
+        <ul style={{ margin: "2px 0 0", color: "var(--danger,#E5484D)", fontSize: 11 }}>
+          {broken.map((f, i) => <li key={i}>[{f.kind}] {f.ref} — {f.detail ?? f.status}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 区6③ 故事覆盖度（PRD §3 区6）：故事逐句 ↔ 制品对账。未映射的句子高亮"未理解/未建模"
+ * = "没遗漏"的直接证据，也喂区7 下一步与建模待办。数据源 StoryBuildRun.storyCoverage（后端确定性派生）。
+ */
+function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentence[] }) {
+  if (!coverage || coverage.length === 0) return null;
+  const unmapped = coverage.filter((c) => !c.mapped).length;
+  return (
+    <div data-testid="sbr-coverage">
+      <div style={{ marginBottom: 2 }}>
+        故事覆盖度：
+        {unmapped === 0
+          ? <span style={{ color: "var(--c-capacity,#36BFA5)" }}>逐句已建模 ✓（没遗漏）</span>
+          : <span style={{ color: "var(--amber,#DD9551)" }}>{unmapped} 句未映射（未理解/未建模）</span>}
+      </div>
+      {coverage.map((c, i) => (
+        <div key={i} data-testid={`coverage-${c.mapped ? "mapped" : "unmapped"}`}
+          style={{ fontSize: 11, padding: "2px 6px", marginBottom: 2, borderLeft: `3px solid ${c.mapped ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)"}`, background: c.mapped ? "transparent" : "var(--danger,#E5484D)14" }}>
+          {c.mapped ? "✓" : "⚠ 未理解"} {c.text}
+          {c.refs.length > 0 && <span style={{ color: "var(--muted)" }}> → {c.refs.join(", ")}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 区7 一键「推演」（PRD §3 区7 · P3.5）：以故事主问句跑 QOS → 跳该故事最可能被触发的真实业务页
+ * （Scenario.targetView）→ useQuickLaunch 注入 presetContext + submitQuery 出答案 = 亲手验证"真能用"。
+ * 失败也诚实：区6 有 MISSING（闭包未过/自检有缺口/跨系统断链）→ 显示"不可达：断在 <缺口码>"，不假装能跳。
+ */
+function InferenceButton({ run }: { run: StoryBuildRun }) {
+  const quickLaunch = useQuickLaunch();
+  const reachable =
+    run.status === "SUCCEEDED" &&
+    (run.closureReport?.gatePassed ?? false) &&
+    (run.gapReport?.findings.length ?? 0) === 0 &&
+    (run.scaffoldReceipt?.fullChainOk ?? true);
+  const targetView = run.buildPlan?.sceneNeeds?.[0]?.targetView || "dash";
+  if (!reachable) {
+    const code =
+      run.gapReport?.findings[0]?.gapCode ??
+      (run.closureReport && !run.closureReport.gatePassed ? "CLOSURE_GATE_FAILED" : undefined) ??
+      (run.scaffoldReceipt && !run.scaffoldReceipt.fullChainOk ? "CHAIN_BROKEN" : "UNKNOWN");
+    return (
+      <div data-testid={`sbr-inference-${run.id}`} style={{ fontSize: 11.5, color: "var(--danger,#E5484D)" }}>
+        ⛔ 推演当前不可达：断在 <b data-testid={`sbr-inference-gap-${run.id}`}>{code}</b>（先补齐缺口/工单，守"绿测试≠能用"）
+      </div>
+    );
+  }
+  return (
+    <button className="btn primary sm" data-testid={`sbr-inference-${run.id}`}
+      onClick={() => quickLaunch({ query: run.script, targetView })}
+      title={`以故事主问句跑 QOS → 跳「${targetView}」页注入出答案，亲手验证建出来的真能用`}>
+      ▶ 一键推演（落「{targetView}」页）
+    </button>
+  );
+}
+
+/**
  * 区4 rawin 填数模式 a（PRD §3 区4 + 页面归属决议）：收编合成数据页「模板驱动合成」——
  * 选行业模板 + 规模 + seed → SyntheticService.runJob（无 LLM、确定性 R6）→ 产物落连接器，
  * 报告内嵌（rowCounts）。"快速合成"入口：已知模板出 demo/测试数据，不强迫先写故事。
@@ -234,6 +330,39 @@ function QuickSynthPanel() {
           </table>
           <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页核对产物</a>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * P4 三页归一（页面归属决议）：把自成长发动机的「缺口工单看板」收编进数据构建发动机控制台——
+ * 建域/推演自检出的功能缺口在此沉淀为厂商中立工单，与每条记录区6 功能缺失自检贯通；
+ * 路由 /admin/growth 保留为"自成长聚焦视图"（LOOP/账本/工单全貌），本页内嵌摘要 = 无功能丢失（UI-7）。
+ */
+function GrowthConsolePanel() {
+  const { data } = useQuery({ queryKey: ["b", "growth-tickets"], queryFn: fetchGrowthTickets });
+  const tickets = data?.items ?? [];
+  const open = tickets.filter((t) => t.status !== "VERIFIED").length;
+  return (
+    <div className="panel" style={{ marginBottom: 14 }} data-testid="db-growth-console">
+      <div className="section-title">
+        自检与成长 · 缺口工单（三页归一：自成长收编） <span className="badge amber" data-testid="db-ticket-open">{open} 未结</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>
+        建域/推演自检出的功能缺口在此沉淀为工单（厂商中立施工），与每条历史记录区6 的功能缺失自检贯通。
+        <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 自成长聚焦视图（LOOP / 成长账本 / 工单全貌）</a>
+      </div>
+      {tickets.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>暂无缺口工单（建域/推演自检全通过）。</div>
+      ) : (
+        tickets.slice(0, 5).map((t) => (
+          <div key={t.id} data-testid={`db-ticket-${t.id}`} style={{ fontSize: 11.5, display: "flex", gap: 8, padding: "3px 0", borderBottom: "1px solid var(--border)" }}>
+            <span className="badge">{t.gapCode}</span>
+            <span style={{ flex: 1, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.fromQuestion}</span>
+            <span className="badge">{t.status}</span>
+          </div>
+        ))
       )}
     </div>
   );
@@ -497,13 +626,6 @@ export default function DataBuilderPage() {
                 )}
                 {open && !pendingInput && (
                   <div data-testid={`sbr-detail-${r.id}`} style={{ marginTop: 8, paddingLeft: 22, fontSize: 12, display: "grid", gap: 4 }}>
-                    <div>
-                      闭包门禁：{" "}
-                      <b style={{ color: r.closureReport?.gatePassed ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}>
-                        {r.closureReport ? (r.closureReport.gatePassed ? "通过 ✓" : "未通过 ✗") : "—"}
-                      </b>
-                      {r.closureReport && <> · 对象绑定 {r.closureReport.objectsBound} · 正向缺失 {r.closureReport.forwardMissing}</>}
-                    </div>
                     {r.buildPlan ? (
                       <div>
                         <div style={{ marginBottom: 2 }}>故事理解（全栈倒推 · LLM 读出的制品，悬浮见依据）：</div>
@@ -532,6 +654,10 @@ export default function DataBuilderPage() {
                         推演答案（回填）：<span className="mono">{r.answer}</span>
                       </div>
                     )}
+                    {/* 区6 完整性·自检·信任：全链闭包可视化 + R12 双向闭包徽章 + 故事覆盖度 + 功能缺失自检 */}
+                    <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>完整性 · 自检 · 信任（凭什么信这是完整的）：</div>
+                    {r.closureReport && <ClosureVizView closure={r.closureReport} />}
+                    <StoryCoverageView coverage={r.storyCoverage ?? []} />
                     {r.gapReport && (
                       <div data-testid={`sbr-selfcheck-${r.id}`} style={{ color: r.gapReport.findings.length === 0 ? "var(--c-capacity,#36BFA5)" : "var(--amber,#DD9551)" }}>
                         功能缺失自检：{r.gapReport.findings.length === 0
@@ -539,6 +665,10 @@ export default function DataBuilderPage() {
                           : `${r.gapReport.findings.length} 项缺口 · ${[...new Set(r.gapReport.findings.map((f) => f.gapCode))].join(", ")}`}
                       </div>
                     )}
+                    {/* 区7 一键推演（P3.5）：落到该故事最可能被触发的真实业务页，亲手验证"真能用" */}
+                    <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
+                      <InferenceButton run={r} />
+                    </div>
                   </div>
                 )}
               </div>
@@ -546,6 +676,8 @@ export default function DataBuilderPage() {
           })
         )}
       </div>
+
+      <GrowthConsolePanel />
 
       <div className="panel">
         <div className="section-title">最近构建</div>

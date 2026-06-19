@@ -129,9 +129,21 @@ function mockBuildPlan(planId: string) {
     skillNeeds: [{ skillKey: "risk_skill", capability: "风险评估", resources: [] }],
     agentNeeds: [{ agentKey: "risk_agent", systemPrompt: "", tools: [], skills: [], ruleBindings: [], scopeObjectTypes: [] }],
     mcpNeeds: [{ serverName: "risk_mcp", tools: [] }],
-    sceneNeeds: [{ scenarioKey: "risk_scene", targetView: "推演与风险", presetContext: {} }],
+    sceneNeeds: [{ scenarioKey: "risk_scene", targetView: "risk", presetContext: {} }],
     kbDocs: [{ title: "风险评估手册", content: "" }],
   };
+}
+/** 区6③ 故事覆盖度 mock：逐句对账，命中已知关键词 = mapped，否则未理解（与后端口径一致）。 */
+function mockStoryCoverage(script: string) {
+  const KW = ["基地", "订单", "风险", "产能", "信用", "客户", "利用率", "物料", "交期"];
+  return script
+    .split(/[。！？；;.!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((text) => {
+      const refs = KW.filter((k) => text.includes(k));
+      return { text, mapped: refs.length > 0, refs };
+    });
 }
 /** 区5 模块同步矩阵真值源 mock：跨多模块的产出（A 栈已发布 + B 栈 DRAFT，对应 scaffold）。 */
 function mockProducedArtifacts() {
@@ -1769,6 +1781,20 @@ export const handlers = [
       MOCK_STORY_RUNS.unshift(run);
       return HttpResponse.json(run, { status: 201 });
     }
+    // 区7 不可达分支（守"绿测试≠能用"）：脚本含"缺求解器"标记 → 闭包断 + 自检缺口 → 推演不可达
+    if (script.includes("缺求解器")) {
+      const run = {
+        id, tenantId: "demo", script,
+        buildPlan: mockBuildPlan("bpl_fail"),
+        closureReport: { gatePassed: false, findings: [{ kind: "CHAIN", ref: "solver:ghost_solver", status: "FAILED", detail: "未注册" }], objectsBound: 0, dataOrphans: 0, forwardMissing: 0, chainBroken: 1, shapeBroken: 0 },
+        gapReport: { question: script, taskId: id, verdict: "GAP", path: "BOUNDARY", findings: [{ gapCode: "SOLVER_NOT_FOUND", detail: "ghost_solver" }], generatedAt: new Date().toISOString() },
+        producedConnections: [], producedDatasets: [], producedArtifacts: [],
+        storyCoverage: mockStoryCoverage(script),
+        status: "FAILED", createdAt: new Date().toISOString(),
+      };
+      MOCK_STORY_RUNS.unshift(run);
+      return HttpResponse.json(run, { status: 201 });
+    }
     const job = mockBuildJob({ script, seed: body.seed }) as { planId: string; closure: unknown };
     const run = {
       id,
@@ -1781,6 +1807,7 @@ export const handlers = [
       producedConnections: ["conn_mock"],
       producedDatasets: ["rds_mock"],
       producedArtifacts: mockProducedArtifacts(),
+      storyCoverage: mockStoryCoverage(script),
       status: "SUCCEEDED",
       createdAt: new Date().toISOString(),
     };
@@ -1798,7 +1825,7 @@ export const handlers = [
         closureReport: job.closure,
         gapReport: { question: script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
         producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
-        producedArtifacts: mockProducedArtifacts(),
+        producedArtifacts: mockProducedArtifacts(), storyCoverage: mockStoryCoverage(script),
         status: "SUCCEEDED", createdAt: new Date().toISOString(),
       });
       return { key: script.slice(0, 40), runId: id, status: "SUCCEEDED", fullChainOk: true };
@@ -1827,7 +1854,7 @@ export const handlers = [
         gapReport: { question: c.script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
         answer: `${c.key}: p50=1200, p90=900`,
         producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
-        producedArtifacts: mockProducedArtifacts(),
+        producedArtifacts: mockProducedArtifacts(), storyCoverage: mockStoryCoverage(c.script),
         status: "SUCCEEDED", createdAt: new Date().toISOString(),
       });
       return { key: c.key, runId: id, status: "SUCCEEDED", fullChainOk: true };
@@ -1846,6 +1873,7 @@ export const handlers = [
       producedConnections: ["conn_mock"],
       producedDatasets: ["rds_mock"],
       producedArtifacts: mockProducedArtifacts(),
+      storyCoverage: mockStoryCoverage(run.script),
       status: "SUCCEEDED",
     });
     return HttpResponse.json(run, { status: 201 });

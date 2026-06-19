@@ -159,6 +159,15 @@ export function buildModuleSyncMatrix(artifacts: ProducedArtifact[]): ModuleSync
   });
 }
 
+// ---- 区6③ 故事覆盖度（每句故事 → 制品映射；未映射高亮"未理解/未建模"）-----------
+
+export const StoryCoverageSentenceSchema = z.object({
+  text: z.string(),
+  mapped: z.boolean(),
+  refs: z.array(z.string()),
+});
+export type StoryCoverageSentence = z.infer<typeof StoryCoverageSentenceSchema>;
+
 // ---- StoryBuildRun（故事先行的一次端到端建域记录 = 历史推演记录主键）---------
 
 export const StoryBuildRunStatusSchema = z.enum([
@@ -188,6 +197,8 @@ export const StoryBuildRunSchema = z.object({
   producedDatasets: z.array(z.string()).default([]),
   /** 区5 模块同步矩阵的真值源（每个下游制品的模块/动作/状态；matrix 由此派生投影）。 */
   producedArtifacts: z.array(ProducedArtifactSchema).default([]),
+  /** 区6③ 故事覆盖度：故事逐句 → 制品映射（未映射=未理解/未建模，"没遗漏"证据）。 */
+  storyCoverage: z.array(StoryCoverageSentenceSchema).default([]),
   /** 功能缺失自检（MISSING 制品映射母体 7 码；P4）。 */
   gapReport: GapReportSchema.optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；内层调母体 growth/run）。 */

@@ -23,7 +23,7 @@ import type { KbService } from "../kb.js";
 import type { SolverService } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts } from "./comprehend.js";
+import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage } from "./comprehend.js";
 import { deriveProducedArtifacts } from "./artifacts.js";
 import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
@@ -280,6 +280,7 @@ export class DataBuilderService {
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,
       producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
+      storyCoverage: deriveStoryCoverage(body.script.trim(), r.buildPlan),
       status: r.status,
       createdAt: nowIso(),
     };
@@ -378,6 +379,7 @@ export class DataBuilderService {
       producedConnections: [],
       producedDatasets: [],
       producedArtifacts: [],
+      storyCoverage: [],
       status: "PENDING_INPUT",
       createdAt: nowIso(),
     };
@@ -403,6 +405,7 @@ export class DataBuilderService {
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,
       producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
+      storyCoverage: deriveStoryCoverage(run.script, r.buildPlan),
       status: r.status,
     };
     await this.repos.storyBuildRuns.put(updated);

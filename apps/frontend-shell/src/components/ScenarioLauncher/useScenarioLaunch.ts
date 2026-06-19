@@ -9,27 +9,29 @@ import { toastError } from "@/store/toastStore";
  * （选中对象 + presetSlots）→ 提交 Query（与 CLI ask / 查询 Dock 同一 QOS 管线）→
  * 展开对话坞看 SSE。前端直接组装提交（PRD §4 二选一之一），复用既有 submitQuery + 对话流。
  */
-export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
+/** 低层启动：注入 presetContext（落点视图 + 选中对象 + presetSlots）→ 提交 QOS Query → 展开对话坞。
+ *  供场景卡启动（useScenarioLaunch）与数据构建发动机「一键推演」（区7）共用，避免重复编排。 */
+export function useQuickLaunch(): (input: {
+  query: string;
+  targetView: string;
+  selectedObjects?: { objectType: string; objectId: string; label?: string }[];
+  slotPresets?: Record<string, unknown>;
+}) => Promise<void> {
   const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
   const packageId = workspace?.scenarioPackages[0] ?? "";
-  return async (card: ScenarioCardVM) => {
+  return async ({ query, targetView, selectedObjects = [], slotPresets = {} }) => {
     if (!packageId) return;
     const store = useSessionStore.getState();
-    const view = card.presetContext.targetView;
-    store.setView(view);
-    store.setSelectedObjects(card.presetContext.selectedObjects);
+    store.setView(targetView);
+    store.setSelectedObjects(selectedObjects);
     const localId = crypto.randomUUID();
-    store.appendConversation({ localId, query: card.triggerQuestion });
+    store.appendConversation({ localId, query });
     store.setDockExpanded(true);
-    navigate(`/v/${view}`);
+    navigate(`/v/${targetView}`);
     try {
       const res = await submitQuery(
-        {
-          packageId,
-          query: card.triggerQuestion,
-          context: { view, selectedObjects: card.presetContext.selectedObjects, filters: {}, presetSlots: card.presetContext.slotPresets },
-        },
+        { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets } },
         crypto.randomUUID(),
       );
       store.updateConversation(localId, { taskId: res.taskId });
@@ -39,4 +41,15 @@ export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
       toastError(e);
     }
   };
+}
+
+export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
+  const quickLaunch = useQuickLaunch();
+  return async (card: ScenarioCardVM) =>
+    quickLaunch({
+      query: card.triggerQuestion,
+      targetView: card.presetContext.targetView,
+      selectedObjects: card.presetContext.selectedObjects,
+      slotPresets: card.presetContext.slotPresets,
+    });
 }

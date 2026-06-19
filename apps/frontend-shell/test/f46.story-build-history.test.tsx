@@ -24,8 +24,8 @@ describe("F46 · 历史推演记录时间线（StoryBuildRun）", () => {
     expect(await within(timeline).findByText(/产出源数据/)).toBeTruthy();
     expect(within(timeline).getByText(/连接器页下钻/)).toBeTruthy();
     expect(within(timeline).getAllByText("SUCCEEDED").length).toBeGreaterThan(0);
-    // 闭包门禁通过呈现
-    expect(within(timeline).getByText(/通过 ✓/)).toBeTruthy();
+    // 闭包门禁通过呈现（区6 全链闭包可视化：完整 ✓）
+    expect(within(timeline).getByText(/完整 ✓/)).toBeTruthy();
     // g8-P3 跨系统 scaffold（B 栈）全链闭合呈现
     expect(within(timeline).getByText(/全链闭合 ✓/)).toBeTruthy();
     // g8-P4 功能缺失自检呈现（干净建域 → 通过）

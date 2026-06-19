@@ -123,6 +123,16 @@ const SOLVERS: SolverTemplate[] = [
 ];
 
 /**
+ * 求解器 → 落点视图（区7 一键推演的目标页）：故事建出的场景该在哪个真实业务页被触发。
+ * 视图键与 workspace 导航/场景目录一致（risk/project/audit/generate/dash/sop/quarter）。
+ * 缺省 dash（驾驶舱）。这同时让 scaffold 出的 DRAFT 场景带真实 targetView（非空）。
+ */
+const SOLVER_TARGET_VIEW: Record<string, string> = {
+  affected_orders: "risk",
+  capacity_forecast: "project",
+};
+
+/**
  * g8-P6 存量回填：把既有"推演能力（求解器）"逆向导出为确定性故事脚本。
  * 用求解器关键词 + 其输入对象类型的关键词组句，保证 comprehend 重解析回同一全栈链
  * （场景→意图→计划→求解器），从而给每个存量推演场景补出可追溯血缘。programmatic，无写死脚本。
@@ -149,6 +159,37 @@ export function deriveGeneratedScripts(): { key: string; script: string }[] {
     out.push({ key: `rule_${r.key}`, script: `检查${entNames.join("、")}的${r.keywords[0] ?? r.name}约束` });
   }
   return out;
+}
+
+/**
+ * 区6③ 故事覆盖度（"没遗漏"的直接证据，确定性 R6）：把故事逐句与已建制品对账——
+ * 每句若命中某实体/规则/求解器关键词且该制品确已在 plan 中建出 → mapped + refs；
+ * 否则 mapped=false（"未理解/未建模"高亮），喂"切片缺失/超域"诊断与建模待办。
+ * 复用 comprehend 同一关键词目录，故映射口径与建域一致（不另造一套启发式）。
+ */
+export interface CoverageSentence {
+  text: string;
+  mapped: boolean;
+  refs: string[];
+}
+export function deriveStoryCoverage(
+  script: string,
+  plan?: Pick<BuildPlan, "objectTypes" | "rules" | "solverNeeds">,
+): CoverageSentence[] {
+  const sentences = script
+    .split(/[。！？；;.!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const planTypes = new Set((plan?.objectTypes ?? []).map((t) => t.typeKey));
+  const planRules = new Set((plan?.rules ?? []).map((r) => r.key));
+  const planSolvers = new Set((plan?.solverNeeds ?? []).map((s) => s.solverKey));
+  return sentences.map((text) => {
+    const refs: string[] = [];
+    for (const e of ENTITIES) if (planTypes.has(e.typeKey) && matches(text, e.keywords)) refs.push(e.typeKey);
+    for (const r of RULES) if (planRules.has(r.key) && matches(text, r.keywords)) refs.push(r.key);
+    for (const s of SOLVERS) if (planSolvers.has(s.solverKey) && matches(text, s.keywords)) refs.push(s.solverKey);
+    return { text, mapped: refs.length > 0, refs };
+  });
 }
 
 /** 确定性 32-bit 哈希（用于 seed 派生行数，避免随机）。 */
@@ -236,7 +277,7 @@ export function comprehendScript(
   }));
   const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({
     scenarioKey: `scene_${s.solverKey}`,
-    targetView: "",
+    targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash",
     intentKey: `intent_${s.solverKey}`,
     mode: "WORKFLOW" as const,
     presetContext: {},
