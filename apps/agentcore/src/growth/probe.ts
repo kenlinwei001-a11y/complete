@@ -6,7 +6,7 @@ import type { GapCode, GapFinding, GapReport, QueryTask } from "@platform/contra
  * 纯函数、确定性（R6）：同终态 → 同缺口分类。不调网络/LLM。
  */
 
-const FILL: Record<GapCode, string> = {
+export const FILL: Record<GapCode, string> = {
   ANSWERABLE: "无需补齐",
   NO_INTENT: "scaffold 意图（跨系统经 B catalog）或归并到既有意图",
   NO_PLAN: "scaffold 执行计划并绑回意图",

@@ -45,7 +45,7 @@ import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
-import { classifyGap } from "./growth/probe.js";
+import { classifyGap, FILL } from "./growth/probe.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
@@ -193,29 +193,57 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
       return classifyGap(task);
     };
-    // 补法分派：缺数据→真人正门补(P2 真实)；其余暂不可自动补→出需开发工单（收敛到边界）。
+    // 补法分派：缺数据→真人正门补(P2 真实)；缺求解器→B 兜底（generic_inference 已注册为通用 what-if
+    // 求解器,FILL 命名该兜底路径,骨架工单带 I/O 契约供 code-agent 接）；其余→骨架工单收敛到边界。
+    // 每次 fill 发 growth.fill_proposed（经 E-c domain_events → F1 全局通道反映到驾驶舱）。
     const fill = async (gap: import("@platform/contracts").GapFinding) => {
+      await emitDomainEvent(a.tenantId, "growth.gap_detected", { gapCode: gap.gapCode, atStep: gap.atStep ?? null });
+      let result: import("@platform/contracts").GrowthFillResult;
       if (gap.gapCode === "EMPTY_DATA") {
         try {
           await deps.dataCore.ontology.fillData(a, { typeKey: body.context.view || "Object", fields: ["id", "name", "value"], rows: 6, seed: 42 });
-          return { gapCode: gap.gapCode, action: "缺数据真人正门补(fill-data)", advanced: true };
+          result = { gapCode: gap.gapCode, action: "缺数据真人正门补(fill-data)", advanced: true };
         } catch {
-          return { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+          result = { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
         }
+      } else {
+        result = { gapCode: gap.gapCode, action: `${FILL[gap.gapCode]}（当前不可自动补→骨架工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
       }
-      return { gapCode: gap.gapCode, action: `${gap.suggestedFill}（当前不可自动补→工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+      await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: result.advanced });
+      return result;
     };
     const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
-    // P4：成长账本(demand-indexed) + 缺功能→成长工单(厂商中立施工契约)
+    // P4：成长账本(demand-indexed) + 缺功能→成长工单（厂商中立施工契约，带真实 I/O 契约 + 本体引用骨架）
     const now = new Date().toISOString();
     await deps.repos.growthLedger.insert({ id: newId("glr"), tenantId: a.tenantId, report, createdAt: now });
+    // 从真实 context 推断骨架（agentcore 可见：view + selectedObjects + filters）；非空，供 code-agent 定位施工。
+    const ctxTypes = [...new Set((body.context.selectedObjects ?? []).map((o) => o.objectType).filter((x): x is string => !!x))];
+    const refObjectTypes = [...new Set([...ctxTypes, ...(body.context.view ? [body.context.view] : [])])];
+    // 每 gapCode 期望输出形状骨架（求解器骨架契约的签名来源；B 兜底/求解器骨架知道该产出什么）。
+    const OUTPUT_SHAPE_BY_GAP: Partial<Record<import("@platform/contracts").GapCode, string[]>> = {
+      SOLVER_NOT_FOUND: ["value", "unit", "rows", "provenance"],
+      NO_CAPABILITY: ["answer", "provenance"],
+      SHAPE_MISMATCH: ["rows", "columns"],
+      NO_PLAN: ["steps", "rows"],
+      NO_SLICE: ["sliceKey", "rows"],
+      NO_RULE: ["verdict", "explanation"],
+    };
     for (const tk of report.openTickets) {
+      const ticketId = newId("gtk");
       await deps.repos.growthTickets.upsert({
-        id: newId("gtk"), tenantId: a.tenantId, fromQuestion: body.query, gapCode: tk.gapCode,
-        ioContract: { inputs: Object.keys(body.context.filters ?? {}), outputShape: [] },
-        ontologyRefs: { objectTypes: [], slices: [], rules: [] },
-        acceptance: `问句「${body.query}」应能答出可验证答案并过门禁`, status: "OPEN", createdAt: now,
+        id: ticketId, tenantId: a.tenantId, fromQuestion: body.query, gapCode: tk.gapCode,
+        ioContract: {
+          inputs: [...new Set([...Object.keys(body.context.filters ?? {}), ...ctxTypes])],
+          outputShape: OUTPUT_SHAPE_BY_GAP[tk.gapCode] ?? ["answer", "provenance"],
+        },
+        ontologyRefs: { objectTypes: refObjectTypes, slices: [], rules: [] },
+        acceptance: `问句「${body.query}」应能答出可验证答案并过门禁。建议补法：${FILL[tk.gapCode]}`,
+        status: "OPEN", createdAt: now,
       });
+      await emitDomainEvent(a.tenantId, "growth.ticket_opened", { ticketId, gapCode: tk.gapCode });
+    }
+    if (report.terminalState === "CONVERGED") {
+      await emitDomainEvent(a.tenantId, "growth.converged", { question: body.query, rounds: report.rounds.length });
     }
     return reply.status(200).send(report);
   });

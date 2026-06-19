@@ -59,7 +59,10 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   // L10 实体解析环 / DL8
   { event: "objects.merged", producer: "实体合并", tier: "IN_SESSION", invalidates: ["object-queries", "dashboard", "search"], dl: "DL8" },
   { event: "merge_candidate.created", producer: "实体解析增量跑", tier: "NOTIFY", invalidates: ["notifications", "merge-queue"] },
+  { event: "growth.gap_detected", producer: "自成长发动机·探针检出缺口", tier: "IN_SESSION", invalidates: ["growth-ledger"] },
+  { event: "growth.fill_proposed", producer: "自成长发动机·补法分派（缺数据正门/缺求解器 B 兜底）", tier: "IN_SESSION", invalidates: ["growth-ledger"] },
   { event: "growth.ticket_opened", producer: "自成长发动机·缺功能落工单", tier: "NOTIFY", invalidates: ["growth-tickets", "notifications"] },
+  { event: "growth.converged", producer: "自成长发动机·LOOP 收敛（问句现可答）", tier: "IN_SESSION", invalidates: ["growth-ledger", "growth-tickets"] },
   { event: "quarantine.row_added", producer: "隔离区入库", tier: "NOTIFY", invalidates: ["notifications", "quarantine"] },
   // L11 权限环 — 换账号即全链过滤（登录态切换，非事件）
   { event: "policy.updated", producer: "权限策略变更", tier: "IN_SESSION", invalidates: ["dashboard", "search", "scenario-data", "history"], dl: "DL11" },

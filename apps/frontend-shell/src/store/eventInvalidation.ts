@@ -27,6 +27,8 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   dashboard: [["a", "dashboard"]],
   "solver-params": [["a", "calibration"], ["b", "scenarios"]],
   "story-runs": [["a", "story-runs"], ["a", "build-jobs"]],
+  "growth-ledger": [["b", "growth-ledger"]],
+  "growth-tickets": [["b", "growth-tickets"]],
 };
 
 /**
@@ -50,6 +52,10 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   "calibration.rolled_back": ["solver-params"],
   "objects.merged": ["object-queries", "scenario-data"],
   "storybuild.run_recorded": ["story-runs"],
+  "growth.gap_detected": ["growth-ledger"],
+  "growth.fill_proposed": ["growth-ledger"],
+  "growth.ticket_opened": ["growth-tickets", "growth-ledger"],
+  "growth.converged": ["growth-ledger", "growth-tickets"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */
