@@ -56,7 +56,7 @@ import { KbService } from "./kb.js";
 import { DataBuilderService } from "./databuilder/service.js";
 import { SimClockService } from "./simclock.js";
 import { HistoryService } from "./livedin/bundle.js";
-import { FeatureService, VIEW_FEATURE_MAP } from "./features.js";
+import { FeatureService, VIEW_FEATURE_MAP, featureNotFound } from "./features.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import { OpsTeamService } from "./opsteam/team.js";
 import { OpsScheduleService } from "./opsteam/schedule.js";
@@ -938,6 +938,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // ---- A4 ontology + objects --------------------------------------------------------
   // Dogfooding（#12/#13）：系统本体自反落库 + 活查询面。鉴权 = MetaAccessPolicy 角色白名单（默认 admin,可配置）。
   const requireMetaAccess = async (c: AuthCtx) => {
+    // Entitlement 先于 authz（铁律）：功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND，先于角色门。
+    if (!(await features.enabled(c.tenantId, "admin.meta-ontology"))) throw featureNotFound();
     if (!(await metaOntology.hasAccess(c))) throw forbidden("无 /meta 访问权（默认仅 admin；可在 meta access-policy 配置角色白名单）");
   };
   app.post("/a/v1/meta/sync", async (req) => {

@@ -105,3 +105,20 @@ describe("Dogfooding P1 · 系统本体自反落库", () => {
     expect(d.note).toContain("不自动改");
   });
 });
+
+describe("Dogfooding · Entitlement 先于 authz（admin.meta-ontology 功能门）", () => {
+  it("功能关闭 → /meta/* 返回 404 FEATURE_NOT_FOUND（先于角色门：连 admin 也 404）", async () => {
+    const t = await makeApp();
+    // 默认开：admin 可 sync
+    expect((await t.app.inject({ method: "POST", url: "/a/v1/meta/sync", headers: ADMIN })).statusCode).toBe(200);
+    // 关闭 admin.meta-ontology 功能
+    const put = await t.app.inject({ method: "PUT", url: "/a/v1/tenants/demo/features", headers: ADMIN, payload: { overrides: { "admin.meta-ontology": false } } });
+    expect(put.statusCode).toBe(200);
+    // 关闭后：admin 访问 /meta/* → 404 FEATURE_NOT_FOUND（entitlement 先于 authz，铁律）
+    const r = await t.app.inject({ method: "POST", url: "/a/v1/meta/sync", headers: ADMIN });
+    expect(r.statusCode).toBe(404);
+    expect((r.json() as { error: { code: string } }).error.code).toBe("FEATURE_NOT_FOUND");
+    const g = await t.app.inject({ method: "GET", url: "/a/v1/meta/ontology", headers: ADMIN });
+    expect(g.statusCode).toBe(404);
+  });
+});
