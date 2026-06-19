@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActionDraft, BuildJob, BuildPhase, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
+import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, DataBuilderAgent, ProducedArtifact, StoryBuildRun } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns } from "@/api/endpoints";
+import { buildModuleSyncMatrix } from "@platform/contracts";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -89,6 +90,151 @@ function ManifestForm({ run, pending, onSubmit }: { run: StoryBuildRun; pending:
           {pending ? "建域中…" : "确认并建域"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 区2 故事理解（PRD 数据构建发动机页面统一规格 §3 区2）：把 comprehend 倒推的全栈 BuildPlan
+ * 结构化为分组卡片 —— 让用户「看到 LLM 完整理解」，而非 JSON dump/黑盒。每组列出读出的条目，
+ * 条目悬浮（title）显示其依据（表达式/能力/触发问句 = R13 溯源的最小形态）。空组不渲染。
+ */
+function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
+  const groups: { key: string; label: string; items: { k: string; hint?: string }[] }[] = [
+    { key: "dataSources", label: "数据源", items: (plan.dataSources ?? []).map((d) => ({ k: d.name || d.datasetKey, hint: `${d.connType} · ${d.rowCount} 行` })) },
+    { key: "objectTypes", label: "对象类型", items: (plan.objectTypes ?? []).map((o) => ({ k: o.displayName || o.typeKey, hint: o.domain })) },
+    { key: "sliceNeeds", label: "切片", items: (plan.sliceNeeds ?? []).map((s) => ({ k: s.sliceKey, hint: `root ${s.rootType}` })) },
+    { key: "rules", label: "规则", items: (plan.rules ?? []).map((r) => ({ k: r.name || r.key, hint: r.expression })) },
+    { key: "solverNeeds", label: "求解器", items: (plan.solverNeeds ?? []).map((s) => ({ k: s.solverKey })) },
+    { key: "intentNeeds", label: "意图", items: (plan.intentNeeds ?? []).map((i) => ({ k: i.intentKey, hint: (i.triggers ?? []).join(" / ") })) },
+    { key: "planNeeds", label: "计划", items: (plan.planNeeds ?? []).map((p) => ({ k: p.planKey, hint: (p.steps ?? []).join(" → ") })) },
+    { key: "workflowNeeds", label: "工作流", items: (plan.workflowNeeds ?? []).map((w) => ({ k: w.workflowKey })) },
+    { key: "skillNeeds", label: "技能", items: (plan.skillNeeds ?? []).map((s) => ({ k: s.skillKey, hint: s.capability })) },
+    { key: "agentNeeds", label: "Agent", items: (plan.agentNeeds ?? []).map((a) => ({ k: a.agentKey })) },
+    { key: "mcpNeeds", label: "MCP", items: (plan.mcpNeeds ?? []).map((m) => ({ k: m.serverName })) },
+    { key: "sceneNeeds", label: "场景", items: (plan.sceneNeeds ?? []).map((s) => ({ k: s.scenarioKey, hint: s.targetView })) },
+    { key: "kbDocs", label: "知识库", items: (plan.kbDocs ?? []).map((d) => ({ k: d.title })) },
+  ];
+  const shown = groups.filter((g) => g.items.length > 0);
+  return (
+    <div data-testid="sbr-comprehension" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
+      {shown.map((g) => (
+        <div key={g.key} data-testid={`comprehend-${g.key}`} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px" }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>
+            {g.label} <span className="badge">{g.items.length}</span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {g.items.map((it, i) => (
+              <span key={`${it.k}-${i}`} className="badge" title={it.hint || it.k} style={{ fontSize: 10.5, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {it.k || "—"}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 区5 模块同步矩阵（PRD §3 区5 · 统一规格 P2 的核心交付）：把一次建域对每个下游模块的同步
+ * 摊开成一张表 —— 本次新增/更新/复用了几个 + DRAFT/已发布（R4）+ 制品名 + 深链跳去该模块核对。
+ * 派生自 StoryBuildRun.producedArtifacts（不是新真值源，R13）；只显本次触及的模块（status≠NONE）。
+ */
+function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) {
+  const matrix = buildModuleSyncMatrix(artifacts).filter((row) => row.status !== "NONE");
+  if (matrix.length === 0) {
+    return <div data-testid="sbr-syncmatrix" style={{ fontSize: 11.5, color: "var(--muted)" }}>模块同步矩阵：本次未新增下游制品。</div>;
+  }
+  return (
+    <div data-testid="sbr-syncmatrix">
+      <div style={{ marginBottom: 2 }}>模块同步矩阵（为匹配故事新增到各下游模块 · 点深链去核对）：</div>
+      <table className="cmp" style={{ fontSize: 11.5 }}>
+        <thead>
+          <tr><th>模块</th><th>新增</th><th>更新</th><th>复用</th><th>状态</th><th>制品</th><th>核对</th></tr>
+        </thead>
+        <tbody>
+          {matrix.map((row) => {
+            const color = row.status === "PUBLISHED" ? "var(--c-capacity,#36BFA5)" : "var(--amber,#DD9551)";
+            return (
+              <tr key={row.module} data-testid={`syncrow-${row.module}`}>
+                <td>{row.label}</td>
+                <td>{row.added || "—"}</td>
+                <td>{row.updated || "—"}</td>
+                <td>{row.reused || "—"}</td>
+                <td><span className="badge" style={{ color, borderColor: color }}>{row.status === "PUBLISHED" ? "已发布" : "草稿（未生效）"}</span></td>
+                <td title={row.artifactRefs.join(", ")} style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.artifactRefs.join(", ") || "—"}</td>
+                <td><a href={row.deepLink} style={{ fontSize: 11 }}>去核对 →</a></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * 区4 rawin 填数模式 a（PRD §3 区4 + 页面归属决议）：收编合成数据页「模板驱动合成」——
+ * 选行业模板 + 规模 + seed → SyntheticService.runJob（无 LLM、确定性 R6）→ 产物落连接器，
+ * 报告内嵌（rowCounts）。"快速合成"入口：已知模板出 demo/测试数据，不强迫先写故事。
+ */
+function QuickSynthPanel() {
+  const { data: templates } = useQuery({ queryKey: ["a", "industry-templates", {}], queryFn: fetchIndustryTemplates });
+  const [industry, setIndustry] = useState("battery-manufacturing");
+  const [scale, setScale] = useState<"S" | "M" | "L">("M");
+  const [seed, setSeed] = useState(42);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const { data: job } = useQuery({
+    queryKey: ["a", "synthetic-job", { id: jobId }],
+    queryFn: () => fetchSyntheticJob(jobId!),
+    enabled: jobId != null,
+    refetchInterval: (q) => (q.state.data?.status === "RUNNING" ? 700 : false),
+  });
+  const startM = useMutation({
+    mutationFn: () => createSyntheticJob({ industry, scale, seed }),
+    onSuccess: (r) => { setJobId(r.jobId); toast("已启动模板合成（确定性生成）", "success"); },
+    onError: toastError,
+  });
+  return (
+    <div className="panel" style={{ marginBottom: 14 }} data-testid="db-quick-synth">
+      <div className="section-title">快速合成（模板驱动 · 无需故事）</div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
+        已知行业模板直接出 demo/测试数据（无 LLM、确定性 R6）；产物统一落连接器，可在连接器页核对。与上方「故事建域」并列双入口。
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12 }}>
+          行业模板{" "}
+          <select data-testid="qs-industry" value={industry} onChange={(e) => setIndustry(e.target.value)}>
+            {(templates ?? []).map((tp) => <option key={tp.industryKey}>{tp.industryKey}</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 12 }}>
+          规模{" "}
+          <select data-testid="qs-scale" value={scale} onChange={(e) => setScale(e.target.value as "S" | "M" | "L")}>
+            {(["S", "M", "L"] as const).map((s) => <option key={s}>{s}</option>)}
+          </select>
+        </label>
+        <label style={{ fontSize: 12 }}>
+          seed <input data-testid="qs-seed" type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} style={{ width: 80 }} />
+        </label>
+        <button className="btn" data-testid="qs-run" disabled={startM.isPending} onClick={() => startM.mutate()}>
+          {startM.isPending ? "合成中…" : "快速合成"}
+        </button>
+      </div>
+      {job?.report && (
+        <div data-testid="qs-report" style={{ marginTop: 10, fontSize: 12 }}>
+          <div className="section-title">合成报告 · 行数表</div>
+          <table className="cmp">
+            <tbody>
+              {Object.entries(job.report.rowCounts).map(([k, v]) => (
+                <tr key={k}><td className="zh">{k}</td><td>{v}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页核对产物</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -244,6 +390,8 @@ export default function DataBuilderPage() {
         </div>
       </div>
 
+      <QuickSynthPanel />
+
       {job && (
         <div className="panel" style={{ marginBottom: 14 }} data-testid="db-result">
           <div className="section-title">
@@ -257,16 +405,17 @@ export default function DataBuilderPage() {
             </span>{" "}
             {job.replayed && <span className="badge" data-testid="db-replayed">重放（字节级一致）</span>}
           </div>
-          {/* 七阶段进度 */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "8px 0" }}>
+          {/* 七阶段瀑布流（区4）：纵向逐阶段 + 状态 + 该阶段明细 */}
+          <div data-testid="db-waterfall" style={{ display: "grid", gap: 6, margin: "8px 0" }}>
             {job.phases.map((p) => (
               <div
                 key={p.name}
                 data-testid={`db-phase-${p.name}`}
-                title={p.detail}
-                style={{ padding: "4px 9px", borderRadius: 6, fontSize: 11.5, border: `1px solid ${PHASE_COLOR[p.status]}`, color: PHASE_COLOR[p.status] }}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", borderRadius: 6, fontSize: 11.5, borderLeft: `3px solid ${PHASE_COLOR[p.status]}`, background: "var(--panel2,#1113)" }}
               >
-                {PHASE_LABEL[p.name]} · {p.status}
+                <span style={{ minWidth: 110, fontWeight: 600 }}>{PHASE_LABEL[p.name]}</span>
+                <span className="badge" style={{ color: PHASE_COLOR[p.status], borderColor: PHASE_COLOR[p.status] }}>{p.status}</span>
+                {p.detail && <span style={{ flex: 1, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.detail}</span>}
               </div>
             ))}
           </div>
@@ -355,7 +504,15 @@ export default function DataBuilderPage() {
                       </b>
                       {r.closureReport && <> · 对象绑定 {r.closureReport.objectsBound} · 正向缺失 {r.closureReport.forwardMissing}</>}
                     </div>
-                    <div>全栈计划：{r.buildPlan ? <>{r.buildPlan.objectTypes.length} 对象类型 · {r.buildPlan.rules.length} 规则 · {r.buildPlan.solverNeeds.length} 求解器 · {r.buildPlan.intentNeeds.length} 意图 · {r.buildPlan.planNeeds.length} 计划 · {r.buildPlan.sceneNeeds.length} 场景</> : "—"}</div>
+                    {r.buildPlan ? (
+                      <div>
+                        <div style={{ marginBottom: 2 }}>故事理解（全栈倒推 · LLM 读出的制品，悬浮见依据）：</div>
+                        <BuildPlanComprehension plan={r.buildPlan} />
+                      </div>
+                    ) : (
+                      <div>全栈计划：—</div>
+                    )}
+                    <ModuleSyncMatrixView artifacts={r.producedArtifacts ?? []} />
                     <div>
                       产出源数据：<b>{r.producedConnections.length}</b> 连接器 · <b>{r.producedDatasets.length}</b> 数据集{" "}
                       <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页下钻</a>

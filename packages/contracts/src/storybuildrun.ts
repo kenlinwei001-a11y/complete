@@ -86,6 +86,79 @@ export const ScaffoldManifestSchema = z.object({
 });
 export type ScaffoldManifest = z.infer<typeof ScaffoldManifestSchema>;
 
+// ---- ProducedArtifact + ModuleSyncMatrix（区5 模块同步矩阵 · 统一规格 P2）-----
+// 一次建域对每个下游模块的同步快照：让用户看到"为匹配故事新增了哪些本体/workflow/agent…、
+// DRAFT 还是已发布、去哪核对"。ModuleSyncMatrix 为 producedArtifacts 的按模块派生投影
+// （不是新真值源，R13）；DRAFT/PUBLISHED 区分守 R4（审批前未在该模块生效）。
+
+/** 下游模块枚举（页面同步矩阵的行 = 平台元模型，非租户业务常数 → R14 安全）。 */
+export const ProducedModuleSchema = z.enum([
+  "ontology", "connector", "rule", "slice", "solver",
+  "catalog", "workflow", "skill", "agent", "mcp", "scene",
+]);
+export type ProducedModule = z.infer<typeof ProducedModuleSchema>;
+
+export const ProducedArtifactSchema = z.object({
+  module: ProducedModuleSchema,
+  /** objectType | rule | slice | connection | dataset | solver | intent | plan | workflow | skill | agent | mcp | scene */
+  kind: z.string(),
+  key: z.string(),
+  action: z.enum(["CREATED", "UPDATED", "REUSED"]),
+  /** R4：scaffold/未发布制品 = DRAFT（未生效）；建域成功落库的 A 栈/真实复用 = PUBLISHED。 */
+  status: z.enum(["DRAFT", "PUBLISHED"]),
+});
+export type ProducedArtifact = z.infer<typeof ProducedArtifactSchema>;
+
+/** 模块 → 标签 + 管理页深链（点击跳去该模块核对；R14：来自共享元模型，前端不重定义 R1）。 */
+export const MODULE_REGISTRY: { module: ProducedModule; label: string; deepLink: string }[] = [
+  { module: "ontology", label: "本体建模", deepLink: "/admin/modeling" },
+  { module: "connector", label: "数据连接器", deepLink: "/admin/connections" },
+  { module: "rule", label: "规则库", deepLink: "/admin/rules" },
+  { module: "slice", label: "切片", deepLink: "/admin/slices" },
+  { module: "solver", label: "求解器", deepLink: "/admin/modeling" },
+  { module: "catalog", label: "意图/计划", deepLink: "/admin/catalog" },
+  { module: "workflow", label: "工作流", deepLink: "/admin/workflows" },
+  { module: "skill", label: "技能", deepLink: "/admin/skills" },
+  { module: "agent", label: "Agent", deepLink: "/admin/agents" },
+  { module: "mcp", label: "MCP", deepLink: "/admin/mcp" },
+  { module: "scene", label: "场景", deepLink: "/admin/scenes" },
+];
+
+export const ModuleSyncRowSchema = z.object({
+  module: ProducedModuleSchema,
+  label: z.string(),
+  added: z.number().int(),
+  updated: z.number().int(),
+  reused: z.number().int(),
+  /** 该模块本次制品综合状态：有任一 DRAFT → DRAFT；全 PUBLISHED → PUBLISHED；无制品 → NONE。 */
+  status: z.enum(["DRAFT", "PUBLISHED", "NONE"]),
+  artifactRefs: z.array(z.string()),
+  deepLink: z.string(),
+});
+export type ModuleSyncRow = z.infer<typeof ModuleSyncRowSchema>;
+
+export const ModuleSyncMatrixSchema = z.array(ModuleSyncRowSchema);
+export type ModuleSyncMatrix = z.infer<typeof ModuleSyncMatrixSchema>;
+
+/** 派生投影（纯函数，确定性 R6）：按 MODULE_REGISTRY 把 producedArtifacts 聚合成模块同步矩阵。 */
+export function buildModuleSyncMatrix(artifacts: ProducedArtifact[]): ModuleSyncMatrix {
+  return MODULE_REGISTRY.map(({ module, label, deepLink }) => {
+    const items = artifacts.filter((a) => a.module === module);
+    const status: ModuleSyncRow["status"] =
+      items.length === 0 ? "NONE" : items.some((a) => a.status === "DRAFT") ? "DRAFT" : "PUBLISHED";
+    return {
+      module,
+      label,
+      added: items.filter((a) => a.action === "CREATED").length,
+      updated: items.filter((a) => a.action === "UPDATED").length,
+      reused: items.filter((a) => a.action === "REUSED").length,
+      status,
+      artifactRefs: items.map((a) => a.key),
+      deepLink,
+    };
+  });
+}
+
 // ---- StoryBuildRun（故事先行的一次端到端建域记录 = 历史推演记录主键）---------
 
 export const StoryBuildRunStatusSchema = z.enum([
@@ -113,6 +186,8 @@ export const StoryBuildRunSchema = z.object({
   producedConnections: z.array(z.string()).default([]),
   /** 本次建域产出的 RawDataset id。 */
   producedDatasets: z.array(z.string()).default([]),
+  /** 区5 模块同步矩阵的真值源（每个下游制品的模块/动作/状态；matrix 由此派生投影）。 */
+  producedArtifacts: z.array(ProducedArtifactSchema).default([]),
   /** 功能缺失自检（MISSING 制品映射母体 7 码；P4）。 */
   gapReport: GapReportSchema.optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；内层调母体 growth/run）。 */

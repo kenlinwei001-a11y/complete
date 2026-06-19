@@ -24,6 +24,7 @@ import type { SolverService } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts } from "./comprehend.js";
+import { deriveProducedArtifacts } from "./artifacts.js";
 import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
@@ -278,6 +279,7 @@ export class DataBuilderService {
       answer: r.answer,
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,
+      producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
       status: r.status,
       createdAt: nowIso(),
     };
@@ -375,6 +377,7 @@ export class DataBuilderService {
       inputManifest: await this.buildManifest(ctx, id, script, seed),
       producedConnections: [],
       producedDatasets: [],
+      producedArtifacts: [],
       status: "PENDING_INPUT",
       createdAt: nowIso(),
     };
@@ -399,6 +402,7 @@ export class DataBuilderService {
       answer: r.answer,
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,
+      producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
       status: r.status,
     };
     await this.repos.storyBuildRuns.put(updated);

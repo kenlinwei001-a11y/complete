@@ -114,6 +114,41 @@ const MOCK_BUILD_JOBS: unknown[] = [];
 // g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录（mock 模式内存存储，提交→列出可见）
 const META_POLICY = { tenantId: "demo", roles: ["admin"] as string[] };
 const MOCK_STORY_RUNS: { id: string; script: string; status: string; createdAt: string; [k: string]: unknown }[] = [];
+/** 全栈 BuildPlan mock（区2 故事理解分组卡片渲染源）：故事倒推出的全栈制品，命名条目供前端结构化展示。 */
+function mockBuildPlan(planId: string) {
+  return {
+    id: planId,
+    dataSources: [{ connType: "synthetic", name: "合成数据源（确定性生成）", datasetKey: "ds_order", rowCount: 120, fields: [] }],
+    objectTypes: [{ typeKey: "Order", displayName: "订单", domain: "order", properties: [] }, { typeKey: "Base", displayName: "基地", domain: "capacity", properties: [] }],
+    sliceNeeds: [{ sliceKey: "order_risk", rootType: "Order", hops: [] }],
+    rules: [{ key: "C03", name: "产能约束", expression: "load <= capacity", scopeObjectTypes: ["Base"], severity: "WARN" }],
+    solverNeeds: [{ solverKey: "affected_orders", inputFields: [] }],
+    intentNeeds: [{ intentKey: "risk_inference", triggers: ["风险推演"], slots: [], riskLevel: "MEDIUM" }],
+    planNeeds: [{ planKey: "risk_plan", steps: ["invoke_solver", "render_answer"], renderBindings: [] }],
+    workflowNeeds: [{ workflowKey: "risk_workflow", kind: "workflow", steps: [] }],
+    skillNeeds: [{ skillKey: "risk_skill", capability: "风险评估", resources: [] }],
+    agentNeeds: [{ agentKey: "risk_agent", systemPrompt: "", tools: [], skills: [], ruleBindings: [], scopeObjectTypes: [] }],
+    mcpNeeds: [{ serverName: "risk_mcp", tools: [] }],
+    sceneNeeds: [{ scenarioKey: "risk_scene", targetView: "推演与风险", presetContext: {} }],
+    kbDocs: [{ title: "风险评估手册", content: "" }],
+  };
+}
+/** 区5 模块同步矩阵真值源 mock：跨多模块的产出（A 栈已发布 + B 栈 DRAFT，对应 scaffold）。 */
+function mockProducedArtifacts() {
+  return [
+    { module: "connector", kind: "connection", key: "conn_mock", action: "CREATED", status: "PUBLISHED" },
+    { module: "connector", kind: "dataset", key: "rds_mock", action: "CREATED", status: "PUBLISHED" },
+    { module: "ontology", kind: "objectType", key: "Order", action: "CREATED", status: "PUBLISHED" },
+    { module: "ontology", kind: "objectType", key: "Base", action: "CREATED", status: "PUBLISHED" },
+    { module: "slice", kind: "slice", key: "order_risk", action: "CREATED", status: "PUBLISHED" },
+    { module: "rule", kind: "rule", key: "C03", action: "CREATED", status: "PUBLISHED" },
+    { module: "solver", kind: "solver", key: "affected_orders", action: "REUSED", status: "PUBLISHED" },
+    { module: "catalog", kind: "intent", key: "risk_inference", action: "CREATED", status: "DRAFT" },
+    { module: "workflow", kind: "workflow", key: "risk_workflow", action: "CREATED", status: "DRAFT" },
+    { module: "agent", kind: "agent", key: "risk_agent", action: "CREATED", status: "DRAFT" },
+    { module: "scene", kind: "scene", key: "risk_scene", action: "CREATED", status: "DRAFT" },
+  ];
+}
 const MOCK_RAW_ROWS: Record<string, Record<string, unknown>[]> = {
   default: [
     { so: "SO-10001", cust: "蔚途汽车", qty: "1.5", due: "2026-06-20" },
@@ -1739,12 +1774,13 @@ export const handlers = [
       id,
       tenantId: "demo",
       script,
-      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
+      buildPlan: mockBuildPlan(job.planId),
       closureReport: job.closure,
       scaffoldReceipt: { items: [{ kind: "scene", key: "scene_mock", status: "SCAFFOLDED" }, { kind: "intent", key: "intent_mock", status: "SCAFFOLDED" }], fullChainOk: true },
       gapReport: { question: script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
       producedConnections: ["conn_mock"],
       producedDatasets: ["rds_mock"],
+      producedArtifacts: mockProducedArtifacts(),
       status: "SUCCEEDED",
       createdAt: new Date().toISOString(),
     };
@@ -1758,10 +1794,11 @@ export const handlers = [
       const id = newId("sbr");
       MOCK_STORY_RUNS.unshift({
         id, tenantId: "demo", script,
-        buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
+        buildPlan: mockBuildPlan(job.planId),
         closureReport: job.closure,
         gapReport: { question: script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
         producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
+        producedArtifacts: mockProducedArtifacts(),
         status: "SUCCEEDED", createdAt: new Date().toISOString(),
       });
       return { key: script.slice(0, 40), runId: id, status: "SUCCEEDED", fullChainOk: true };
@@ -1784,12 +1821,13 @@ export const handlers = [
       const id = newId("sbr");
       MOCK_STORY_RUNS.unshift({
         id, tenantId: "demo", script: c.script,
-        buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
+        buildPlan: mockBuildPlan(job.planId),
         closureReport: job.closure,
         scaffoldReceipt: { items: [{ kind: "scene", key: `scene_${c.key}`, status: "SCAFFOLDED" }], fullChainOk: true },
         gapReport: { question: c.script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
         answer: `${c.key}: p50=1200, p90=900`,
         producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
+        producedArtifacts: mockProducedArtifacts(),
         status: "SUCCEEDED", createdAt: new Date().toISOString(),
       });
       return { key: c.key, runId: id, status: "SUCCEEDED", fullChainOk: true };
@@ -1802,11 +1840,12 @@ export const handlers = [
     if (!run) return new HttpResponse(null, { status: 404 });
     const job = mockBuildJob({ script: run.script, seed: body.inputs?.seed }) as { planId: string; closure: unknown };
     Object.assign(run, {
-      buildPlan: { id: job.planId, objectTypes: [{}, {}], rules: [{}], solverNeeds: [{}], intentNeeds: [{}], planNeeds: [{}], sceneNeeds: [{}] },
+      buildPlan: mockBuildPlan(job.planId),
       closureReport: job.closure,
       scaffoldReceipt: { items: [{ kind: "scene", key: "scene_mock", status: "SCAFFOLDED" }], fullChainOk: true },
       producedConnections: ["conn_mock"],
       producedDatasets: ["rds_mock"],
+      producedArtifacts: mockProducedArtifacts(),
       status: "SUCCEEDED",
     });
     return HttpResponse.json(run, { status: 201 });

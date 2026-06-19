@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ClosurePolicySchema, type BuildPlan } from "@platform/contracts";
+import { ClosurePolicySchema, buildModuleSyncMatrix, type BuildPlan } from "@platform/contracts";
 import { validateClosure } from "../src/databuilder/closure.js";
+import { deriveProducedArtifacts } from "../src/databuilder/artifacts.js";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 import { makeApp, ADMIN, debugUser } from "./helpers.js";
 
@@ -184,6 +185,7 @@ interface StoryRunResp {
   closureReport?: { gatePassed: boolean };
   producedConnections: string[];
   producedDatasets: string[];
+  producedArtifacts: { module: string; kind: string; key: string; action: string; status: string }[];
 }
 
 describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期历史推演记录）", () => {
@@ -329,5 +331,68 @@ describe("g8 故事驱动全栈倒推 · P1 · StoryBuildRun 端点（构建期�
     expect(done.status).toBe("SUCCEEDED");
     expect(done.closureReport?.gatePassed).toBe(true);
     expect(done.producedDatasets.length).toBeGreaterThan(0);
+  });
+});
+
+describe("数据构建发动机页面统一规格 P2 · 模块同步矩阵（producedArtifacts → ModuleSyncMatrix）", () => {
+  const PLAN: BuildPlan = {
+    id: "bpl_m", tenantId: "demo", builderKey: "test", scriptHash: "h", seed: 1, script: "",
+    dataSources: [], objectTypes: [{ typeKey: "Order", displayName: "订单", domain: "order", properties: [] }],
+    rules: [{ key: "C03", name: "产能约束", expression: "x<=y", scopeObjectTypes: ["Order"], severity: "WARN" }],
+    solverNeeds: [{ solverKey: "affected_orders", inputFields: [] }], kbDocs: [],
+    sliceNeeds: [{ sliceKey: "order_risk", rootType: "Order", hops: [] }],
+    intentNeeds: [], planNeeds: [], workflowNeeds: [], skillNeeds: [], agentNeeds: [], mcpNeeds: [], sceneNeeds: [],
+    createdAt: "2026-01-01",
+  };
+
+  it("deriveProducedArtifacts: 成功建域 → A 栈 PUBLISHED(CREATED) + 求解器 REUSED；B 栈 scaffold → DRAFT(CREATED) / 既有 REUSED；MISSING 不入", () => {
+    const receipt = { items: [
+      { kind: "scene" as const, key: "risk_scene", status: "SCAFFOLDED" as const },
+      { kind: "intent" as const, key: "risk_intent", status: "REUSED" as const },
+      { kind: "workflow" as const, key: "ghost_wf", status: "MISSING" as const },
+    ], fullChainOk: true };
+    const arts = deriveProducedArtifacts(PLAN, receipt, ["conn_x"], ["rds_x"], "SUCCEEDED");
+    // A 栈：对象/切片/规则 CREATED+PUBLISHED；求解器 REUSED+PUBLISHED
+    expect(arts.find((a) => a.kind === "objectType" && a.key === "Order")).toMatchObject({ module: "ontology", action: "CREATED", status: "PUBLISHED" });
+    expect(arts.find((a) => a.kind === "slice")).toMatchObject({ module: "slice", status: "PUBLISHED" });
+    expect(arts.find((a) => a.kind === "solver")).toMatchObject({ module: "solver", action: "REUSED" });
+    // 连接器差集
+    expect(arts.filter((a) => a.module === "connector").length).toBe(2);
+    // B 栈：SCAFFOLDED → DRAFT(CREATED)；REUSED → PUBLISHED(REUSED)；MISSING 跳过
+    expect(arts.find((a) => a.kind === "scene")).toMatchObject({ module: "scene", action: "CREATED", status: "DRAFT" });
+    expect(arts.find((a) => a.kind === "intent")).toMatchObject({ module: "catalog", action: "REUSED", status: "PUBLISHED" });
+    expect(arts.some((a) => a.key === "ghost_wf")).toBe(false);
+  });
+
+  it("deriveProducedArtifacts: 建域失败 → A 栈 DRAFT（R4 未生效）", () => {
+    const arts = deriveProducedArtifacts(PLAN, undefined, [], [], "FAILED");
+    expect(arts.find((a) => a.kind === "objectType")?.status).toBe("DRAFT");
+  });
+
+  it("buildModuleSyncMatrix: 按模块聚合 added/reused + 综合状态（有 DRAFT 即 DRAFT）+ 深链", () => {
+    const arts = deriveProducedArtifacts(PLAN, { items: [{ kind: "scene" as const, key: "s1", status: "SCAFFOLDED" as const }], fullChainOk: true }, ["c1"], ["d1"], "SUCCEEDED");
+    const matrix = buildModuleSyncMatrix(arts);
+    const ontologyRow = matrix.find((r) => r.module === "ontology")!;
+    expect(ontologyRow.added).toBe(1);
+    expect(ontologyRow.status).toBe("PUBLISHED");
+    expect(ontologyRow.deepLink).toBe("/admin/modeling");
+    const sceneRow = matrix.find((r) => r.module === "scene")!;
+    expect(sceneRow.added).toBe(1);
+    expect(sceneRow.status).toBe("DRAFT"); // scaffold 未发布
+    // 未触及模块 status=NONE
+    expect(matrix.find((r) => r.module === "mcp")!.status).toBe("NONE");
+  });
+
+  it("SBR P2 端点：POST run → producedArtifacts 跨模块齐全（本体/连接器/场景），矩阵可投影", async () => {
+    const t = await makeApp();
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 11 } })).json()) as StoryRunResp;
+    expect(run.status).toBe("SUCCEEDED");
+    expect(run.producedArtifacts.length).toBeGreaterThan(0);
+    const modules = new Set(run.producedArtifacts.map((a) => a.module));
+    expect(modules.has("ontology")).toBe(true);
+    expect(modules.has("connector")).toBe(true);
+    // 矩阵派生（前端同一函数）
+    const matrix = buildModuleSyncMatrix(run.producedArtifacts as Parameters<typeof buildModuleSyncMatrix>[0]);
+    expect(matrix.some((r) => r.status !== "NONE")).toBe(true);
   });
 });
