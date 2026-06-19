@@ -330,7 +330,9 @@ export type ObjectOrigin =
   // 落地，origin 记源头 backref（sourceConnId/rawDatasetId/rawRowIdx）→ 结果可溯回原始行与连接器。
   | { type: "SYNTHETIC"; jobId: string; sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number }
   | { type: "MATERIALIZED"; datasetId: string; jobId: string }
-  | { type: "MANUAL" };
+  | { type: "MANUAL" }
+  // Dogfooding：系统本体自反投影（从 SYSTEM-ONTOLOGY.md/prd-index 确定性重生成,可溯回章节锚点）。
+  | { type: "META"; source: string; anchor?: string };
 
 export interface ObjectInstance {
   id: string; // obj_

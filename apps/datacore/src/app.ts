@@ -24,6 +24,7 @@ import { AuthzService } from "./authz.js";
 import { OutboxService } from "./outbox.js";
 import { ExecutionLockService } from "./execlock.js";
 import { QuarantineService } from "./quarantine.js";
+import { MetaOntologyService } from "./meta/service.js";
 import { NotificationService } from "./notifications.js";
 import { EntityResolutionService } from "./entity-resolution.js";
 import { CatalogService } from "./catalog.js";
@@ -228,6 +229,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const outbox = new OutboxService(repos, logger, deps.fetchImpl, metrics);
   const execLocks = new ExecutionLockService(repos, metrics);
   const quarantine = new QuarantineService(repos);
+  const metaOntology = new MetaOntologyService(repos, outbox);
   const notifications = new NotificationService(repos);
   const entityResolution = new EntityResolutionService(repos, outbox);
   const rules = new RulesService(repos, outbox);
@@ -933,6 +935,35 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   // ---- A4 ontology + objects --------------------------------------------------------
+  // Dogfooding P1（#12 落库 PoC）：系统本体自反落库 + 最小活查询（admin-gated;MetaAccessPolicy 配置化 P2）。
+  app.post("/a/v1/meta/sync", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return metaOntology.sync(c);
+  });
+  app.get("/a/v1/meta/ontology", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const objs = await metaOntology.listAll(c);
+    const byKind: Record<string, number> = {};
+    for (const o of objs) byKind[o.type] = (byKind[o.type] ?? 0) + 1;
+    return { total: objs.length, byKind };
+  });
+  app.get("/a/v1/meta/breakpoints/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const bp = await metaOntology.getBreakpoint(c, (req.params as { id: string }).id);
+    if (!bp) throw notFound("system breakpoint");
+    return bp;
+  });
+  app.get("/a/v1/meta/impact", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const node = String((req.query as { node?: string }).node ?? "");
+    if (!node) throw validationError("node required");
+    return metaOntology.impact(c, node);
+  });
+
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));
   // 约束执行层：工具/外部/MCP 输出按本体对象类型 schema + 属性值域强制校验（可配置,按租户）。
   // policy 缺省用全局默认（安全侧 REJECT）;调用方（连接器导入/MCP 工具执行器）按源覆盖。

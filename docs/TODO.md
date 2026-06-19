@@ -161,7 +161,7 @@
 >
 > **与传统开发的本质区别**：传统=地图（文档/图）与疆域（代码）分离且漂移、"改这影响什么"靠 grep+经验；狗粮化=地图即系统从疆域派生并校验的活数据，且系统用同一引擎读取/重塑自己——"关于系统的文档" → "构造上自反的系统"。
 
-- ⏸ **12.** 本体落库 PoC（解析 SYSTEM-ONTOLOGY+prd-index → SystemObjectType/Link/Invariant/Breakpoint/Event/Domain 物化为元租户 ObjectInstance；markdown 仍为源、对象为投影）
+- ✅ **12. 本体落库 PoC（P1 已落 2026-06-18）**：`meta/parse.ts`（纯解析 R6:prd-index 权威 R/G/PRD覆盖 + §8 断点状态/§4 事件/§10 域 正则）+ `MetaOntologyService.sync` 物化八类元对象+链路进元租户 `__platform__`（origin META,复用 objects/links 仓储不新建表）+ `POST /a/v1/meta/sync`(发 `meta.ontology_synced` L14) + `GET /a/v1/meta/{ontology,breakpoints/:id,impact}`（admin-gated）+ 影响分析轻量 BFS。本体 §2/§4 回写。回归 meta-ontology ×3（parse 确定性+八类齐全·sync+R2 隔离+impact·非 admin 403）。**余 P1**：独立 `meta:sync` 漂移门脚本（当前确定性由测试覆盖）。
 - ⏸ **13.** 本体活查询面（`GET /a/v1/meta/ontology`·`/meta/breakpoints/:id`(状态+PRD覆盖+关联不变量)·`/meta/invariants/:id` + 可选 MCP 工具让 Claude 问运行中的系统）
 - ⏸ **14.** 本体自动派生扩展（§2/§3/§4 机器段从 code 内省生成，人只策展语义）—— **保守、最后做**
 
