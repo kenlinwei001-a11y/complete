@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { OpsSchedule } from "@platform/contracts";
 import { fetchOpsSchedule, saveOpsSchedule } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import { SimClockConsole } from "./SimClockConsole";
 
 const EMPTY: OpsSchedule = { forecasts: [] };
 
@@ -244,6 +245,12 @@ export default function OpsSchedulePage() {
       <button className="btn primary" data-testid="save-schedule" disabled={saveMut.isPending} onClick={() => saveMut.mutate(draft)}>
         保存配置
       </button>
+
+      {/* 统一规格页面归属决议：模拟时钟（A8 §6.3）从合成数据页移出，迁至运营自动化页（运营时序关切）。 */}
+      <section style={{ marginTop: 16 }}>
+        <h3 style={{ fontSize: 13 }}>C · 模拟时钟（A8 时序推进 · 自合成数据页迁入）</h3>
+        <SimClockConsole />
+      </section>
     </div>
   );
 }
