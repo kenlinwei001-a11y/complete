@@ -444,8 +444,12 @@ export const fetchTickReports = () => api.a<TickReportVM[]>("/a/v1/synthetic/clo
 
 /** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
 export interface DomainEventVM { eventId: string; event: string; createdAt: string }
+/** DataCore 侧事件源（数据→本体→推演链：ontology/materialize/rules/action/calibration/tick/build…）。 */
 export const fetchDomainEvents = (since?: string) =>
   api.a<DomainEventVM[]>(`/a/v1/outbox${since ? `?since=${encodeURIComponent(since)}` : ""}`);
+/** AgentCore 侧事件源（E-c：workflow/agent/intent/scenario 发布类，B 侧配置变更跨会话传播）。 */
+export const fetchAgentEvents = (since?: string) =>
+  api.b<DomainEventVM[]>(`/b/v1/outbox${since ? `?since=${encodeURIComponent(since)}` : ""}`);
 
 // ---- 剩余视图增量（§7.14/7.15/7.20/7.21/7.22）：计划域 / 映射表 / 校准 / 数据健康度 ----
 

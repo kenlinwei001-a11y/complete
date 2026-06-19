@@ -91,6 +91,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     });
   };
 
+  /** D-29 实时环 E-c：B 侧发布类领域事件落库（经 /b/v1/outbox 馈源供前端 F1 全局轮询传播）。 */
+  const emitDomainEvent = (tenantId: string, event: string, payload: Record<string, unknown> = {}): Promise<void> =>
+    deps.repos.domainEvents.append({ id: newId("evt"), tenantId, event, payload, createdAt: new Date().toISOString() });
+
   app.setErrorHandler((err, req, reply) => {
     const requestId = req.id as string;
     if (err instanceof HttpError) {
@@ -436,7 +440,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     requireRole(a, "catalog_admin");
     const { intentId } = req.params as { intentId: string };
-    return deps.catalog.publishIntent(intentId);
+    const published = await deps.catalog.publishIntent(intentId);
+    await emitDomainEvent(a.tenantId, "intent.published", { intentId });
+    return published;
   });
 
   app.post("/api/v1/catalog/intents/:intentId/retire", async (req) => {
@@ -622,6 +628,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (deps.reportRefs && ruleRefs.length > 0) {
       void deps.reportRefs(a.tenantId, { source: { kind: "agent", key: published.key, name: published.name }, refs: ruleRefs });
     }
+    await emitDomainEvent(a.tenantId, "agent.published", { id: published.id, key: published.key });
     // 前端消费形态 { ok, ...agent }（SPA AgentsPage 读 r.ok / r.errors）
     return { ok: true, ...published };
   });
@@ -866,6 +873,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (deps.reportRefs && wfRuleRefs.length > 0) {
       void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfRuleRefs });
     }
+    await emitDomainEvent(a.tenantId, "workflow.published", { id: published.id, key: published.key });
     // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）；§2.3 附 impact
     return { ok: true, ...published, impact, ...(forced ? { forced: true, breakingChanges: breaking } : {}) };
   });
@@ -1583,6 +1591,14 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { total: items.length, items };
   });
 
+  // D-29 实时环 E-c：B 侧领域事件馈源（前端 F1 双源轮询之一；?since=<ISO> 游标，R2 租户隔离）。
+  app.get("/b/v1/outbox", async (req) => {
+    const a = await auth(req);
+    const since = (req.query as { since?: string }).since;
+    const events = await deps.repos.domainEvents.listSince(a.tenantId, since);
+    return events.map((e) => ({ eventId: e.id, event: e.event, createdAt: e.createdAt }));
+  });
+
   // 场景启动器 P2：Scenario 升一等持久化对象（repo 单一来源；出厂 SCENARIO_CATALOG 懒播种）。
   // 首次访问某租户若仓储为空 → 幂等播种出厂 20 场景，保证目录始终完整（含自助新增场景）。
   const ensureScenarios = async (tenantId: string): Promise<Scenario[]> => {
@@ -1919,7 +1935,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!closure.ready) throw new HttpError(409, ErrorCodes.VALIDATION_ERROR, `场景引用未闭合（死路），不可发布：${closure.issues.join("；")}`);
     const published: Scenario = { ...sc, status: "PUBLISHED", version: sc.version + 1, updatedAt: new Date().toISOString() };
     await deps.repos.scenarios.upsert(published);
-    // scenario.published 事件登记于 event-subscriptions.ts（§4 单一来源）；前端按 invalidates 失效缓存。
+    // scenario.published 事件登记于 event-subscriptions.ts（§4 单一来源）；经 F1 双源轮询失效缓存。
+    await emitDomainEvent(a.tenantId, "scenario.published", { key });
     return published;
   });
   app.post("/b/v1/scenarios/:key/retire", async (req) => {
@@ -1930,6 +1947,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
     const retired: Scenario = { ...sc, status: "RETIRED", updatedAt: new Date().toISOString() };
     await deps.repos.scenarios.upsert(retired);
+    await emitDomainEvent(a.tenantId, "scenario.retired", { key });
     return retired;
   });
 

@@ -15,6 +15,7 @@ import type {
 } from "@platform/contracts";
 import type {
   CredentialRow,
+  DomainEventRow,
   ExperienceCaseRow,
   FallbackTraceRow,
   IdempotencyRow,
@@ -51,6 +52,7 @@ export function createMemoryRepos(): Repos {
   const llmProviders = new Map<string, LlmProviderConfig>();
   const llmBindings = new Map<string, ModelBinding[]>();
   const experience = new Map<string, ExperienceCaseRow>();
+  const domainEvents: DomainEventRow[] = [];
   const growthLedger = new Map<string, import("@platform/contracts").GrowthLedgerEntry>();
   const growthTickets = new Map<string, import("@platform/contracts").GrowthTicket>();
   const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
@@ -340,6 +342,16 @@ export function createMemoryRepos(): Repos {
     growthTickets: {
       async upsert(t) { growthTickets.set(t.id, clone(t)); },
       async listByTenant(tenantId) { return [...growthTickets.values()].filter((t) => t.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
+    },
+    domainEvents: {
+      async append(e) { domainEvents.push(clone(e)); },
+      async listSince(tenantId, since) {
+        return domainEvents
+          .filter((e) => e.tenantId === tenantId && (!since || e.createdAt >= since))
+          .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
+          .slice(-200)
+          .map(clone);
+      },
     },
     credentials: {
       async insert(c) {

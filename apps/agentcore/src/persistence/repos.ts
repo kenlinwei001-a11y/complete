@@ -69,6 +69,15 @@ export interface ExperienceCaseRow {
   embedding: number[]; // pseudoEmbed(question + approach)
 }
 
+/** D-29 实时环 E-c：B 侧领域事件持久化行（发布类事件落库，经 /b/v1/outbox 馈源供 F1 轮询）。 */
+export interface DomainEventRow {
+  id: string; // evt_
+  tenantId: string;
+  event: string; // workflow.published / agent.published / intent.published / scenario.published|retired
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface IdempotencyRow {
   key: string; // tenantId|userId|Idempotency-Key
   taskId: string;
@@ -227,6 +236,11 @@ export interface Repos {
   growthTickets: {
     upsert(t: import("@platform/contracts").GrowthTicket): Promise<void>;
     listByTenant(tenantId: string): Promise<import("@platform/contracts").GrowthTicket[]>;
+  };
+  /** D-29 实时环 E-c：B 侧领域事件馈源（append + 按 since 游标列出，供 /b/v1/outbox 轮询）。 */
+  domainEvents: {
+    append(e: DomainEventRow): Promise<void>;
+    listSince(tenantId: string, since?: string): Promise<DomainEventRow[]>;
   };
   close(): Promise<void>;
 }

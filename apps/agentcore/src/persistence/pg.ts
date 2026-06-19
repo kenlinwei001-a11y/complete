@@ -531,6 +531,24 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows[0].task_id as string;
       },
     },
+    domainEvents: {
+      async append(e) {
+        await q(`INSERT INTO domain_events(id, tenant_id, event, payload, created_at) VALUES ($1,$2,$3,$4,$5)`, [e.id, e.tenantId, e.event, JSON.stringify(e.payload), e.createdAt]);
+      },
+      async listSince(tenantId, since) {
+        const r = await q(
+          `SELECT id, tenant_id, event, payload, created_at FROM domain_events WHERE tenant_id = $1 AND ($2::text IS NULL OR created_at >= $2::timestamptz) ORDER BY created_at ASC LIMIT 200`,
+          [tenantId, since ?? null],
+        );
+        return r.rows.map((x) => ({
+          id: x.id as string,
+          tenantId: x.tenant_id as string,
+          event: x.event as string,
+          payload: (x.payload ?? {}) as Record<string, unknown>,
+          createdAt: new Date(x.created_at as string | Date).toISOString(),
+        }));
+      },
+    },
     async close() {
       await pool.end();
     },

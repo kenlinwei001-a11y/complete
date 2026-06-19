@@ -171,7 +171,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
 >
-> **F1 全局领域事件交付通道（实时环地基，2026 收口）**：前端 `useDomainEventStream`（挂 `ShellLayout`，登录后常驻）按 `?since` 游标轮询 `GET /a/v1/outbox`（datacore 真实 outbox 馈源，租户隔离 R2），对**任何来源**的领域事件调 `invalidateForEvent`——补上此前"`invalidateForEvent` 仅由发起方自己 mutation 本地触发、跨用户/被动页不更新"的缺口（PROP-1 不重登反映）。`store/eventInvalidation.ts` 的 `EVENT_INVALIDATES` 扩入真实发出的 `synthetic.tick_completed/action.executed/calibration.proposed/calibration.rolled_back/objects.merged`。**余**：AgentCore 侧事件（scenario/workflow/agent/intent.published）尚未落 outbox 馈源、暂仍靠发起方本地触发；随 E 事件发射补全并入同一通道。
+> **F1 全局领域事件交付通道（实时环地基，2026 收口）**：前端 `useDomainEventStream`（挂 `ShellLayout`，登录后常驻）按 `?since` 游标轮询 `GET /a/v1/outbox`（datacore 真实 outbox 馈源，租户隔离 R2），对**任何来源**的领域事件调 `invalidateForEvent`——补上此前"`invalidateForEvent` 仅由发起方自己 mutation 本地触发、跨用户/被动页不更新"的缺口（PROP-1 不重登反映）。`store/eventInvalidation.ts` 的 `EVENT_INVALIDATES` 扩入真实发出的 `synthetic.tick_completed/action.executed/calibration.proposed/calibration.rolled_back/objects.merged`。**E-c 双源（已落）**：AgentCore 新建 `domain_events` 持久化（migration008，R9 四处）+ 发布时 `emitDomainEvent`（intent/agent/workflow/scenario.published+retired）+ `GET /b/v1/outbox` 馈源；前端 `useDomainEventStream` 同时轮询 `/a` 与 `/b` 两源（独立游标、跨源 eventId 去重），B 侧管理配置变更从此也跨会话传播。**E-a（已落）**：`storybuild.run_recorded`。
 
 | 环 | 事件 | 生产者 | 层级 | 失效下游 | 断链审计 |
 |---|---|---|---|---|---|
@@ -182,6 +182,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L2 | `ts.ingested` | 时序上传 | IN_SESSION | dashboard.curves, solver-inputs | — |
 | L3 | `rules.updated` | 规则发布 | IN_SESSION | rule-library, agent/workflow-editor.rule-bindings | DL3 |
 | L4 | `workflow.published` | 工作流发布 | IN_SESSION | intent-editor.workflow-bindings, agent-editor.tool-bindings, workflow-list | — |
+| L4 | `agent.published` | Agent 发布 | IN_SESSION | agent-editor.tool-bindings | — |
 | L4 | `intent.published` | 意图发布 | IN_SESSION | scene-entry.intent-filter, scenarios, intent-catalog | — |
 | L4 | `scene_entry.updated` | 场景入口编辑 | IN_SESSION | scenarios, scene-entries | — |
 | L4 | `scenario.published` | 场景发布（升一等对象） | IN_SESSION | scenarios, scene-entries, intent-catalog | — |

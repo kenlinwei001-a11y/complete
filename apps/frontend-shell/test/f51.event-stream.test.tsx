@@ -51,6 +51,22 @@ describe("F51 · 全局领域事件交付（被动页面实时反映）", () => 
     cap.restore();
   });
 
+  it("E-c 双源：AgentCore /b/v1/outbox 发出 workflow.published → 同一通道失效 workflow-list（B 侧配置变更跨会话传播）", async () => {
+    loginAs("planner");
+    server.use(
+      http.get("*/b/v1/outbox", () =>
+        HttpResponse.json([
+          { eventId: "evt_wf_1", event: "workflow.published", createdAt: new Date(Date.now() + 60_000).toISOString() },
+        ]),
+      ),
+    );
+    const cap = captureInvalidations();
+    const { unmount } = render(<Harness />);
+    await waitFor(() => expect(keyHit(cap.calls, ["b", "workflows"])).toBe(true), { timeout: 3000 });
+    unmount();
+    cap.restore();
+  });
+
   it("去重：同 eventId 多轮只失效一次（不抖动）", async () => {
     loginAs("planner");
     server.use(
