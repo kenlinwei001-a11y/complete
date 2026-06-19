@@ -2410,7 +2410,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(201).send(hook);
   });
   app.get("/a/v1/webhooks", async (req) => repos.webhooks.list(ctx(req).tenantId));
-  app.get("/a/v1/outbox", async (req) => repos.outboxEvents.list(ctx(req).tenantId));
+  app.get("/a/v1/outbox", async (req) => {
+    // 领域事件馈源（D-29 实时环 F1）：前端按 ?since=<ISO> 游标轮询，把上游变更反映到被动页面。
+    // 缺省返回全量（向后兼容）；带 since 则只回 createdAt>=since（含边界,前端按 eventId 去重），按时间升序、上限 200。
+    const since = (req.query as { since?: string } | undefined)?.since;
+    const all = await repos.outboxEvents.list(ctx(req).tenantId);
+    const sorted = all.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+    const filtered = since ? sorted.filter((e) => e.createdAt >= since) : sorted;
+    return filtered.slice(-200).map((e) => ({ eventId: e.eventId, event: e.event, createdAt: e.createdAt }));
+  });
 
   // ---- LLM Provider 配置体系增量 §1 + 引用上报（§2.3） -------------------------------------------
   registerLlmProviderRoutes(app, { repos, service: llmProviders, outbox, ctx, fetchImpl: deps.fetchImpl ?? fetch });

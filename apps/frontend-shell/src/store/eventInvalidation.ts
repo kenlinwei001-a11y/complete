@@ -42,6 +42,12 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   "ontology.published": ["object-types", "dashboard", "scenario-data"],
   "derivation.completed": ["dashboard", "scenario-data", "object-queries"],
   "materialize.completed": ["object-queries", "scenario-data"],
+  // D-29 实时环 F2：以下事件由后端 outbox 真实发出（datacore），经 F1 全局轮询交付到被动页面。
+  "synthetic.tick_completed": ["dashboard", "object-queries", "scenario-data"],
+  "action.executed": ["object-queries", "dashboard", "scenario-data"],
+  "calibration.proposed": ["solver-params"],
+  "calibration.rolled_back": ["solver-params"],
+  "objects.merged": ["object-queries", "scenario-data"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */

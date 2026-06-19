@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tokenStore } from "@/api/tokenStore";
 import { fetchHistoryWatermark, fetchResolvedFeatures } from "@/api/endpoints";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
+import { useDomainEventStream } from "@/store/useDomainEventStream";
 import { applyTheme } from "@/workspace/theme";
 import { featureOn } from "@/workspace/featureGate";
 import { logoutSession } from "@/store/authSession";
@@ -118,6 +119,9 @@ export default function ShellLayout() {
   const location = useLocation();
   const { data: workspace, isLoading, isError } = useWorkspace();
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // D-29 实时环 F1：登录后常驻轮询领域事件，把上游变更反映到被动页面（跨会话传播）。
+  useDomainEventStream(!!workspace);
 
   useEffect(() => {
     if (!tokenStore.get()) navigate("/login", { replace: true });

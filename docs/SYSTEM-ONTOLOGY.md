@@ -170,6 +170,8 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
+>
+> **F1 全局领域事件交付通道（实时环地基，2026 收口）**：前端 `useDomainEventStream`（挂 `ShellLayout`，登录后常驻）按 `?since` 游标轮询 `GET /a/v1/outbox`（datacore 真实 outbox 馈源，租户隔离 R2），对**任何来源**的领域事件调 `invalidateForEvent`——补上此前"`invalidateForEvent` 仅由发起方自己 mutation 本地触发、跨用户/被动页不更新"的缺口（PROP-1 不重登反映）。`store/eventInvalidation.ts` 的 `EVENT_INVALIDATES` 扩入真实发出的 `synthetic.tick_completed/action.executed/calibration.proposed/calibration.rolled_back/objects.merged`。**余**：AgentCore 侧事件（scenario/workflow/agent/intent.published）尚未落 outbox 馈源、暂仍靠发起方本地触发；随 E 事件发射补全并入同一通道。
 
 | 环 | 事件 | 生产者 | 层级 | 失效下游 | 断链审计 |
 |---|---|---|---|---|---|

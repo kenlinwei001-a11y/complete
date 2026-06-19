@@ -1269,6 +1269,8 @@ export const handlers = [
   // ---- 模拟时钟（A8 §6.2） ----
   http.get("*/a/v1/synthetic/clock/ticks", () => HttpResponse.json(db.tickReports)),
   http.get("*/a/v1/synthetic/clock", () => HttpResponse.json(db.clock)),
+  // D-29 实时环 F1：领域事件馈源（默认空；f51 经 server.use 注入事件验证全局传播）。
+  http.get("*/a/v1/outbox", () => HttpResponse.json([])),
   http.post("*/a/v1/synthetic/clock/tick", async ({ request }) => {
     const body = (await request.json()) as { advance: "1d" | "7d" };
     const days = body.advance === "7d" ? 7 : 1;

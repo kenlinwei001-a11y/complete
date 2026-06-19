@@ -442,6 +442,11 @@ export const tickSimClock = (advance: "1d" | "7d") =>
 export const resetSimClock = () => api.a<SimClockVM>("/a/v1/synthetic/clock/reset", { body: {} });
 export const fetchTickReports = () => api.a<TickReportVM[]>("/a/v1/synthetic/clock/ticks");
 
+/** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
+export interface DomainEventVM { eventId: string; event: string; createdAt: string }
+export const fetchDomainEvents = (since?: string) =>
+  api.a<DomainEventVM[]>(`/a/v1/outbox${since ? `?since=${encodeURIComponent(since)}` : ""}`);
+
 // ---- 剩余视图增量（§7.14/7.15/7.20/7.21/7.22）：计划域 / 映射表 / 校准 / 数据健康度 ----
 
 import {
