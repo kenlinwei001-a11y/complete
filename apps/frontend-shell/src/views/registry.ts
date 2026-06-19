@@ -17,8 +17,24 @@ export function registerRenderer(key: string, loader: () => Promise<{ default: C
   registry.set(key, lazy(loader));
 }
 
+/**
+ * 视图键别名（场景目录用短键 sop/quarter/audit/generate/project/risk/dash，渲染器注册用规范键）：
+ * 修接缝断点——S18(sop)/S19(quarter) 启动器落点此前 getRenderer 直查不中 → "视图不支持"兜底卡。
+ * 与后端 features/registry.ts VIEW_ALIAS 同源口径。
+ */
+const VIEW_ALIAS: Record<string, string> = {
+  sop: "sop-balance",
+  quarter: "quarterly-rolling",
+  audit: "plan-audit",
+  generate: "plan-generate",
+  project: "project-sim",
+  risk: "risk-board",
+  dash: "dashboard",
+};
+
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {
-  return key ? registry.get(key) : undefined;
+  if (!key) return undefined;
+  return registry.get(VIEW_ALIAS[key] ?? key);
 }
 
 registerRenderer("dashboard", () => import("./DashboardView"));
