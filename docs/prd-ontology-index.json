@@ -370,9 +370,7 @@
         "scripts/check-prd-ontology.mjs",
         "scripts/check-system-ontology.mjs"
       ],
-      "brokenArtifacts": [
-        "packages/contracts/src/meta-ontology.ts"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-external-signal-domain.md": {
       "hasOntologyRef": true,
