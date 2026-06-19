@@ -236,6 +236,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const solvers = new SolverService(repos);
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
+  solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
   const catalog = new CatalogService(repos, features);

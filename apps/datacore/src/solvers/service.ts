@@ -1,5 +1,6 @@
 import type { AuthCtx, CalibrationForecastRecord, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
+import type { OntologyCoreService } from "../ontology-core.js";
 import { notFound, validationError } from "../errors.js";
 import { round } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
@@ -37,6 +38,9 @@ export const SOLVER_KEYS = [
   "carbon_footprint",
   // Phase6B 跨求解器编排器（meta-solver）
   "countermeasure_combo",
+  // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
+  // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
+  "generic_inference",
 ] as const;
 
 /**
@@ -54,6 +58,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   plan_generate: shapeKeys(PlanGenerateOutputSchema),
   // 其余 17 求解器输出形状（取自实现的成功路径返回对象顶层 key；权威=求解器实现）
   capacity_rollup: ["bases", "ruleRefs"],
+  // 通用 what-if（recompute dryRun 包装）：顶层渲染键 = 派生 before/after deltas + 受影响计数。
+  generic_inference: ["deltas", "rows", "affectedObjects", "count", "rootTypes"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -85,6 +91,33 @@ const DAY_MS = 86400000;
  */
 export class SolverService {
   constructor(private repos: Repos) {}
+
+  /** generic_inference 需读对象图 + 前向重算（recompute 在 OntologyCore）；app.ts 构造后注入。 */
+  private ontologyCore?: OntologyCoreService;
+  setOntologyCore(oc: OntologyCoreService): void {
+    this.ontologyCore = oc;
+  }
+
+  /**
+   * 通用 what-if（generic_inference，G-5）：包装本体派生引擎 recompute(dryRun+apply)——对任意已发布
+   * 本体套假设源属性值、前向重算下游派生链，返回 before/after deltas（不落库、无副作用，确定性 R6）。
+   * args.apply: [{objectType,objectId,prop,value}]。非电池专用；growth 缺求解器 B 兜底路由到此。
+   */
+  private async genericInference(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.ontologyCore) throw validationError("generic_inference 未注入 ontologyCore");
+    const apply = Array.isArray(args.apply) ? (args.apply as { objectType: string; objectId: string; prop: string; value: unknown }[]) : [];
+    if (apply.length === 0) throw validationError("generic_inference 需 apply:[{objectType,objectId,prop,value}]（假设值）");
+    const changes = apply.map((a) => ({ typeKey: a.objectType, prop: a.prop, objectIds: [a.objectId] }));
+    const result = await this.ontologyCore.recompute(ctx, changes, { dryRun: true, apply: apply.map((a) => ({ objectId: a.objectId, prop: a.prop, value: a.value })) });
+    const deltas = result.dryRunDeltas ?? [];
+    return {
+      deltas,
+      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after })),
+      affectedObjects: result.updatedObjects,
+      count: deltas.length,
+      rootTypes: [...new Set(apply.map((a) => a.objectType))],
+    };
+  }
 
   async getParams(tenantId: string): Promise<SolverParamsShape> {
     const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
@@ -301,6 +334,8 @@ export class SolverService {
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
   ): Promise<Record<string, unknown>> {
+    // generic_inference 走本体派生引擎（非纯 compute；需对象图 + recompute），先于 loadContext 拦截。
+    if (solverKey === "generic_inference") return this.genericInference(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, type TestApp } from "./helpers.js";
+import { makeApp, invokeSolver, type TestApp } from "./helpers.js";
 import type { AuthCtx, LinkTypeDef, ObjectInstance, ObjectTypeDef, PropertyDef } from "../src/domain.js";
 import { CyclicDerivationError } from "../src/ontology-core.js";
+import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 import { parseFormula, extractDeps, evaluate, decimalRound } from "../src/ontology-dsl.js";
 
 const ADMIN_CTX: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
@@ -442,5 +443,104 @@ describe("O1–O10 本体原子规格", () => {
     };
     const injF = await t.services.ontologyCore.executeSlice(ADMIN_CTX, fspec, { factoryId: malicious });
     expect(injF.nodes).toHaveLength(0);
+  });
+});
+
+// ---- H: generic_inference 通用 what-if 求解器（注册 + 经求解器路径走本体 recompute，工业级）----
+
+/** 规模化派生金字塔：1 工厂 × N 产线 × M 工序 × K 设备，4 层派生链（复用 PYRAMID_SPECS 公式）。 */
+async function buildScaledPyramid(
+  t: TestApp,
+  lines: number,
+  procPerLine: number,
+  equipPerProc: number,
+): Promise<{ equipIds: string[]; firstProcessKey: string; siblingProcessKey: string }> {
+  const epoch = await t.services.ontologyCore.beginEpoch("demo");
+  await putObj(t, "Factory", "F1", { factoryId: "F1" }, epoch);
+  const equipIds: string[] = [];
+  let pIdx = 0;
+  let eIdx = 0;
+  let firstProcessKey = "";
+  let siblingProcessKey = "";
+  for (let l = 0; l < lines; l++) {
+    const lk = `L${l}`;
+    await putObj(t, "Line", lk, { lineId: lk }, epoch);
+    await link(t, "归属基地", `obj_Line_${lk}`, "obj_Factory_F1");
+    for (let p = 0; p < procPerLine; p++) {
+      const pk = `P${pIdx++}`;
+      if (!firstProcessKey) firstProcessKey = pk;
+      else if (!siblingProcessKey) siblingProcessKey = pk;
+      await putObj(t, "Process", pk, { processId: pk, yield_baseline: 0.9 + (p % 5) * 0.01 }, epoch);
+      await link(t, "包含工序", `obj_Line_${lk}`, `obj_Process_${pk}`);
+      for (let e = 0; e < equipPerProc; e++) {
+        const ek = `E${eIdx++}`;
+        await putObj(t, "Equipment", ek, { equipId: ek, takt: 2 + (e % 3) * 0.5, availFactor: 0.85 + (e % 4) * 0.02, oee_current: 0.7 + (e % 5) * 0.03 }, epoch);
+        await link(t, "使用于", `obj_Equipment_${ek}`, `obj_Process_${pk}`);
+        equipIds.push(`obj_Equipment_${ek}`);
+      }
+    }
+  }
+  return { equipIds, firstProcessKey, siblingProcessKey };
+}
+
+describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if，工业级）", () => {
+  it("注册：SOLVER_KEYS 含 generic_inference（=23）+ 输出形状已声明（chain:check/SHAPE 覆盖）", () => {
+    expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
+    expect(SOLVER_KEYS.length).toBe(23);
+    expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("规模化派生图（73 对象/4 层）× 10 源假设变更 → 经 /a/v1/solvers/generic_inference/invoke 前向重算 before/after；无副作用 + 确定性 + R2", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds } = await buildScaledPyramid(t, 2, 5, 6); // 60 设备 + 10 工序 + 2 产线 + 1 工厂 = 73 对象
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]); // 初算落 before 基线
+
+    const targets = equipIds.slice(0, 10);
+    const apply = targets.map((id) => ({ objectType: "Equipment", objectId: id, prop: "oee_current", value: 0.5 }));
+    const snapshotBefore = JSON.stringify(await t.repos.objects.list("demo"));
+
+    const res = await invokeSolver(t, "generic_inference", { apply });
+    expect(res.statusCode).toBe(200);
+    const out = (res.json() as { data: { deltas: { objId: string; prop: string; before: number; after: number }[]; count: number; affectedObjects: number; rows: unknown[] } }).data;
+    // 10 台设备 capacity_h + 上游工序/产线/工厂 capacity 全被重算
+    expect(out.count).toBeGreaterThan(10);
+    expect(out.rows.length).toBe(out.count);
+    for (const id of targets) {
+      const d = out.deltas.find((x) => x.objId === id && x.prop === "capacity_h");
+      expect(d, `${id} capacity_h delta`).toBeTruthy();
+      expect(Number(d!.after)).toBeLessThan(Number(d!.before)); // oee 降→产能降
+    }
+    expect(out.deltas.some((d) => d.objId === "obj_Factory_F1" && d.prop === "capacity")).toBe(true); // 顶层聚合受影响
+
+    // 无副作用：全量对象快照字节级一致（dryRun 不落库）
+    expect(JSON.stringify(await t.repos.objects.list("demo"))).toBe(snapshotBefore);
+    // 确定性 R6：同 apply 再跑 → deltas 字节级一致
+    const res2 = await invokeSolver(t, "generic_inference", { apply });
+    expect(JSON.stringify((res2.json() as { data: { deltas: unknown } }).data.deltas)).toBe(JSON.stringify(out.deltas));
+    // R2：他租户（无这些对象/未编译派生）→ 不泄漏本租户对象
+    const resOther = await invokeSolver(t, "generic_inference", { apply }, { "X-Debug-User": "acme:u:admin" });
+    expect((resOther.json() as { data: { deltas: { objId: string }[] } }).data.deltas.every((d) => !targets.includes(d.objId))).toBe(true);
+  });
+
+  it("选择性最小集：只改 1 台设备 → 仅其工序/产线/工厂链入 deltas，无关兄弟工序不在", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds, firstProcessKey, siblingProcessKey } = await buildScaledPyramid(t, 1, 4, 5);
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]);
+
+    const one = equipIds[0]!; // 属 firstProcess
+    const res = await invokeSolver(t, "generic_inference", { apply: [{ objectType: "Equipment", objectId: one, prop: "oee_current", value: 0.4 }] });
+    const out = (res.json() as { data: { deltas: { objId: string; prop: string }[] } }).data;
+    expect(out.deltas.some((d) => d.objId === `obj_Process_${firstProcessKey}`)).toBe(true); // 直属工序重算
+    expect(out.deltas.some((d) => d.objId === `obj_Process_${siblingProcessKey}`)).toBe(false); // 兄弟工序不重算
+  });
+
+  it("边界：空 apply → 400（need 假设值），不静默返回空", async () => {
+    const t = await makeApp();
+    const res = await invokeSolver(t, "generic_inference", { apply: [] });
+    expect(res.statusCode).toBe(400);
   });
 });
