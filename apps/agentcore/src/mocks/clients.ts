@@ -171,6 +171,17 @@ export class MockOntologyClient implements OntologyClient {
     return { ok: violations.length === 0, violations };
   }
 
+  // Dogfooding P3：meta 问系统自己（mock）。
+  async queryMetaOntology(): Promise<{ total: number; byKind: Record<string, number> }> {
+    return { total: 64, byKind: { SystemInvariant: 14, SystemBreakpoint: 8, SystemEvent: 27 } };
+  }
+  async getMetaBreakpoint(_ctx: ToolAuthCtx, id: string): Promise<unknown> {
+    return { type: "SystemBreakpoint", props: { id, status: "PARTIAL", relatedInvariants: ["R11"], relatedPRDs: ["PRD-fullstack-story-build-g8.md"] } };
+  }
+  async metaImpact(_ctx: ToolAuthCtx, node: string): Promise<{ node: string; affected: { id: string; via: string }[] }> {
+    return { node: `meta_SystemInvariant_${node}`, affected: [{ id: "PRD:PRD-platform-foundry-aip.md", via: "covered_by" }] };
+  }
+
   // B→A 探针：出厂本体已发布对象类型全集（覆盖 seed 的 agent scope / intent slot 引用）。
   async listObjectTypeKeys(): Promise<string[]> {
     return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];

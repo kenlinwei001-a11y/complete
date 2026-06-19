@@ -976,6 +976,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!node) throw validationError("node required");
     return metaOntology.impact(c, node);
   });
+  // P4 #14 自动派生（保守、只读）：code 求解器注册表 vs 本体 markdown diff;只产 diff 不写。
+  app.get("/a/v1/meta/derive", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    return metaOntology.deriveDiff(c, [...SOLVER_KEYS]);
+  });
   // 鉴权策略读写（admin only —— 谁能配"哪些角色可访问 /meta"）
   app.get("/a/v1/meta/access-policy", async (req) => {
     const c = ctx(req);

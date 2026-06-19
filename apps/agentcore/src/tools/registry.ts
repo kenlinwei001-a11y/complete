@@ -50,6 +50,28 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     sideEffect: "READ",
     costClass: "CHEAP",
   },
+  // Dogfooding P3：问运行中的系统自己（元本体活查询;受 DataCore MetaAccessPolicy 白名单门控,默认仅 admin）。
+  {
+    name: "query_system_ontology",
+    descriptionForLLM: "查询平台自身的系统本体落库摘要（八类元对象计数：不变量/断点/事件/域/对象类型/门禁/切片）。回答『系统本体里有哪些断点/不变量』类元问题时调用。",
+    inputSchema: { type: "object", properties: {} },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "get_breakpoint",
+    descriptionForLLM: "取某断点（G-1..G-8）的状态 + 关联不变量 + 覆盖它的 PRD。回答『G-8 修了没/谁覆盖它』时调用。",
+    inputSchema: { type: "object", properties: { id: { type: "string", description: "断点 id，如 G-8" } }, required: ["id"] },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "impact_of",
+    descriptionForLLM: "影响分析：以某节点（R14 / G-5 / SystemObjectType:Solver …）为根在系统本体图上 BFS，返回受影响节点集（『改 X 影响什么』= 图查询，自动化铁律0 read-first）。",
+    inputSchema: { type: "object", properties: { node: { type: "string", description: "R14 / G-5 / SystemObjectType:<key>" } }, required: ["node"] },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
   {
     name: "aggregate_objects",
     descriptionForLLM:

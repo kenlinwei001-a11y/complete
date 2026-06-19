@@ -31,6 +31,10 @@ export interface OntologyClient {
   fillData(ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }): Promise<{ connId: string; rowCount: number }>;
   /** 约束执行层 stage3②：工具输出按本体对象类型 schema/值域校验（不符即 ok=false，执行器据此拒）。 */
   validateOutput(ctx: ToolAuthCtx, objectType: string, rows: Record<string, unknown>[]): Promise<{ ok: boolean; violations: { field: string; kind: string; detail: string }[] }>;
+  // Dogfooding P3：让 Agent 问运行中的系统自己（受 DataCore 侧 MetaAccessPolicy 白名单门控）。
+  queryMetaOntology(ctx: ToolAuthCtx): Promise<{ total: number; byKind: Record<string, number> }>;
+  getMetaBreakpoint(ctx: ToolAuthCtx, id: string): Promise<unknown>;
+  metaImpact(ctx: ToolAuthCtx, node: string): Promise<{ node: string; affected: { id: string; via: string }[] }>;
 }
 
 export interface SolverClient {

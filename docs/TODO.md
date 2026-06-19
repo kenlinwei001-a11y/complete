@@ -162,8 +162,10 @@
 > **与传统开发的本质区别**：传统=地图（文档/图）与疆域（代码）分离且漂移、"改这影响什么"靠 grep+经验；狗粮化=地图即系统从疆域派生并校验的活数据，且系统用同一引擎读取/重塑自己——"关于系统的文档" → "构造上自反的系统"。
 
 - ✅ **12. 本体落库 PoC（P1 已落 2026-06-18）**：`meta/parse.ts`（纯解析 R6:prd-index 权威 R/G/PRD覆盖 + §8 断点状态/§4 事件/§10 域 正则）+ `MetaOntologyService.sync` 物化八类元对象+链路进元租户 `__platform__`（origin META,复用 objects/links 仓储不新建表）+ `POST /a/v1/meta/sync`(发 `meta.ontology_synced` L14) + `GET /a/v1/meta/{ontology,breakpoints/:id,impact}`（admin-gated）+ 影响分析轻量 BFS。本体 §2/§4 回写。回归 meta-ontology ×3（parse 确定性+八类齐全·sync+R2 隔离+impact·非 admin 403）。**余 P1**：独立 `meta:sync` 漂移门脚本（当前确定性由测试覆盖）。
-- ◐ **13. 本体活查询面（P2 已落 2026-06-18 / P3 MCP 待）**：可配置鉴权 `MetaAccessPolicy`（角色白名单,默认 `["admin"]`,per-tenant,admin 改;仓储四处+migration016）+ `requireMetaAccess` 门替代 admin-only + 完整只读端点 `GET /a/v1/meta/{ontology,breakpoints/:id,invariants/:id,events/:id,domains/:id,slices/:id,object-types/:id,impact}` + `GET/PUT /a/v1/meta/access-policy`(admin) + 前端"系统自我"页 `/admin/meta`(落库摘要+影响分析+白名单编辑)。回归 meta-ontology ×5 + f48。**余 P3**：`meta` MCP server（让 Agent 问系统自己,受同一门控）。
-- ⏸ **14.** 本体自动派生扩展（§2/§3/§4 机器段从 code 内省生成，人只策展语义）—— **保守、最后做**
+- ✅ **13. 本体活查询面（P2+P3 全落 2026-06-18）**：可配置鉴权 `MetaAccessPolicy` + 完整只读端点 + `GET/PUT /meta/access-policy` + 前端"系统自我"页 `/admin/meta`（P2）；**P3 meta 内置工具** `query_system_ontology`/`get_breakpoint`/`impact_of`（执行器 dispatch + 注册目录 + DataCore OBO,受同一 MetaAccessPolicy 白名单门控 →"AI 可操作平台"落地 §10.2）。回归 meta-ontology ×6 + meta-tools ×2 + f48。
+- ✅ **14. 自动派生（P4 保守只读已落 2026-06-18）**：`MetaOntologyService.deriveDiff` + `GET /a/v1/meta/derive`——code 求解器注册表(`SOLVER_KEYS`)内省 vs 本体 markdown diff,**只产 diff、绝不自动改 markdown/不 commit**（评审纪律:人只策展语义;现状守门仍靠 ontology:check）。默认即"保守"。
+- ✅ **meta:sync 漂移门已落**：`scripts/check-meta-sync.mjs` 并入 `pnpm gates`——守系统本体 markdown 结构稳定(断点带 §8 状态行/不变量出现/L14 登记 §4),元投影不失真。
+- ✅ **dogfooding 终态全落（#12/#13/#14 + 门）**：用平台自有本体引擎承载平台自身;"改 X 影响什么/哪些断点未修"从 grep 变图查询 + Agent 可问系统自己 + 派生保守只读。**Tier 4 收口。**
 
 ## 💭 to-do consider（待讨论，未排期 —— 架构差距评审 2026-06-16）
 

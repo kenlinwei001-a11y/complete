@@ -121,6 +121,27 @@ export class MetaOntologyService {
     return roles.some((r) => callerBaseRoles.has(r));
   }
 
+  /**
+   * P4 #14 自动派生（保守、只读、默认不写）：从 code 内省机器可派生段（求解器注册表）→ 与本体
+   * markdown 现状 diff。**只产 diff,绝不自动改 markdown / 不 commit**（评审纪律:人只策展语义）。
+   */
+  async deriveDiff(_ctx: AuthCtx, solverKeys: string[], ontologyMd?: string): Promise<{
+    dimension: string;
+    code: string[];
+    inCodeNotInDoc: string[];
+    note: string;
+  }> {
+    const md = ontologyMd ?? (await this.readSources()).ontologyMd;
+    const docMentions = new Set([...md.matchAll(/`([a-z_]{3,})`/g)].map((m) => m[1] as string));
+    const inCodeNotInDoc = solverKeys.filter((k) => !docMentions.has(k)).sort();
+    return {
+      dimension: "solvers",
+      code: [...solverKeys].sort(),
+      inCodeNotInDoc,
+      note: "只读 diff（#14 保守:不自动改 markdown,人确认后手工策展;现状守门仍靠 ontology:check）",
+    };
+  }
+
   /** 影响分析（轻量 BFS）：以 node（R14 / G-5 / SystemObjectType:Solver …）为 root，沿 META links 遍历。 */
   async impact(_ctx: AuthCtx, node: string, maxDepth = 3): Promise<MetaImpactResult> {
     const links = (await this.repos.links.list(META_TENANT)).filter((l) => l.origin.type === "META");

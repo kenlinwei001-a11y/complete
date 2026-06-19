@@ -96,6 +96,15 @@ class HttpOntologyClient implements OntologyClient {
   validateOutput(ctx: ToolAuthCtx, objectType: string, rows: Record<string, unknown>[]) {
     return call<{ ok: boolean; violations: { field: string; kind: string; detail: string }[] }>(this.baseUrl, ctx, "POST", `/a/v1/ontology/validate-output`, { objectType, rows });
   }
+  queryMetaOntology(ctx: ToolAuthCtx) {
+    return call<{ total: number; byKind: Record<string, number> }>(this.baseUrl, ctx, "GET", `/a/v1/meta/ontology`);
+  }
+  getMetaBreakpoint(ctx: ToolAuthCtx, id: string) {
+    return call<unknown>(this.baseUrl, ctx, "GET", `/a/v1/meta/breakpoints/${encodeURIComponent(id)}`);
+  }
+  metaImpact(ctx: ToolAuthCtx, node: string) {
+    return call<{ node: string; affected: { id: string; via: string }[] }>(this.baseUrl, ctx, "GET", `/a/v1/meta/impact?node=${encodeURIComponent(node)}`);
+  }
 }
 
 class HttpSolverClient implements SolverClient {

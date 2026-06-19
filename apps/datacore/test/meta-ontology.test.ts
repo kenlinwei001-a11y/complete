@@ -93,4 +93,15 @@ describe("Dogfooding P1 · 系统本体自反落库", () => {
     // 不存在 → 404
     expect((await t.app.inject({ method: "GET", url: "/a/v1/meta/invariants/R999", headers: ADMIN })).statusCode).toBe(404);
   });
+
+  it("P4 #14 派生（保守只读）：/meta/derive 返回 code 求解器 + 与本体 diff,不改 markdown", async () => {
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/meta/derive", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const d = res.json() as { dimension: string; code: string[]; inCodeNotInDoc: string[]; note: string };
+    expect(d.dimension).toBe("solvers");
+    expect(d.code.length).toBeGreaterThan(0); // SOLVER_KEYS 内省
+    expect(Array.isArray(d.inCodeNotInDoc)).toBe(true);
+    expect(d.note).toContain("不自动改");
+  });
 });

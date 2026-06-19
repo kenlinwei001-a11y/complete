@@ -224,6 +224,13 @@ export class GuardedToolExecutor {
         );
       case "get_object":
         return this.deps.dataCore.ontology.getObject(ctx, String(args.objectType), String(args.objectId));
+      // Dogfooding P3：问运行中的系统自己（受 DataCore MetaAccessPolicy 白名单门控,OBO 透传）。
+      case "query_system_ontology":
+        return this.deps.dataCore.ontology.queryMetaOntology(ctx);
+      case "get_breakpoint":
+        return this.deps.dataCore.ontology.getMetaBreakpoint(ctx, String(args.id));
+      case "impact_of":
+        return this.deps.dataCore.ontology.metaImpact(ctx, String(args.node));
       case "aggregate_objects":
         // 治理增量 §3.6 / G8：contracts IO 强校验，聚合下推（避免拉全量行）。
         return this.deps.dataCore.ontology.aggregateObjects(ctx, AggregateRequestSchema.parse(input));
