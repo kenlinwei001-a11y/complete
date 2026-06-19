@@ -428,3 +428,36 @@ describe("数据构建发动机页面统一规格 P3/P3.5 · 故事覆盖度 + �
     expect(run.buildPlan?.sceneNeeds.every((s) => s.targetView.length > 0)).toBe(true);
   });
 });
+
+describe("数据构建发动机页面统一规格 P3 收尾 · 推演验证痕迹回写 run（区6④）", () => {
+  it("建域成功 → StoryBuildRun.validationTrace（一致性 ALL_PASS + 交叉验证 ALL_CONSISTENT，确定性 R6）", async () => {
+    const t = await makeApp();
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 11 } })).json()) as StoryRunResp & {
+      validationTrace?: { slicesUsed: string[]; consistency: { checks: { kind: string; status: string }[]; verdict: string }; crossValidation: { claims: unknown[]; verdict: string } };
+    };
+    expect(run.status).toBe("SUCCEEDED");
+    const vt = run.validationTrace!;
+    expect(vt).toBeTruthy();
+    // 一致性：实体定义 + 公理 + 版本钉 + 数字溯源，全 PASS
+    expect(vt.consistency.verdict).toBe("ALL_PASS");
+    expect(vt.consistency.checks.some((c) => c.kind === "ENTITY_DEFINED")).toBe(true);
+    expect(vt.consistency.checks.some((c) => c.kind === "VERSION_PIN")).toBe(true);
+    expect(vt.consistency.checks.some((c) => c.kind === "NUMERIC_PROVENANCE")).toBe(true);
+    // 交叉验证：结论依据的输入对象逐条核对知识图谱 → 全一致（刚建出，必有据）
+    expect(vt.crossValidation.claims.length).toBeGreaterThan(0);
+    expect(vt.crossValidation.verdict).toBe("ALL_CONSISTENT");
+    // slicesUsed 非空 → 前端 ValidationTracePanel 强制展示
+    expect(vt.slicesUsed.length).toBeGreaterThan(0);
+  });
+
+  it("R6 确定性：同 (script, seed) 在全新实例重跑 → validationTrace 一致（除 generatedAt）", async () => {
+    const get = async () => {
+      const t = await makeApp();
+      const r = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 99 } })).json()) as { validationTrace?: { generatedAt?: string } };
+      const vt = { ...(r.validationTrace as Record<string, unknown>) };
+      delete vt.generatedAt;
+      return JSON.stringify(vt);
+    };
+    expect(await get()).toBe(await get());
+  });
+});

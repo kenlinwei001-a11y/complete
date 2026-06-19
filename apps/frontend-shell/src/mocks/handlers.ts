@@ -145,6 +145,26 @@ function mockStoryCoverage(script: string) {
       return { text, mapped: refs.length > 0, refs };
     });
 }
+/** 区6④ 推演验证痕迹 mock：一致性（实体/公理/版本钉/数字溯源）+ 交叉验证（结论依据对象 vs KG）。 */
+function mockValidationTrace() {
+  return {
+    slicesUsed: ["order_risk"],
+    consistency: {
+      checks: [
+        { kind: "ENTITY_DEFINED", ref: "Order", status: "PASS", detail: "对象类型 订单 已在本体定义" },
+        { kind: "AXIOM", ref: "C03", status: "PASS", detail: "load <= capacity" },
+        { kind: "VERSION_PIN", ref: "bpl_mock", status: "PASS" },
+        { kind: "NUMERIC_PROVENANCE", ref: "affected_orders", status: "PASS" },
+      ],
+      verdict: "ALL_PASS",
+    },
+    crossValidation: {
+      claims: [{ claim: "Order:SO-1.qty == 1.5", kind: "PROPERTY", subjectType: "Order", subjectId: "SO-1", property: "qty", assertedValue: 1.5, status: "CONSISTENT" }],
+      verdict: "ALL_CONSISTENT",
+    },
+    generatedAt: new Date().toISOString(),
+  };
+}
 /** 区5 模块同步矩阵真值源 mock：跨多模块的产出（A 栈已发布 + B 栈 DRAFT，对应 scaffold）。 */
 function mockProducedArtifacts() {
   return [
@@ -1808,6 +1828,7 @@ export const handlers = [
       producedDatasets: ["rds_mock"],
       producedArtifacts: mockProducedArtifacts(),
       storyCoverage: mockStoryCoverage(script),
+      validationTrace: mockValidationTrace(),
       status: "SUCCEEDED",
       createdAt: new Date().toISOString(),
     };
@@ -1825,7 +1846,7 @@ export const handlers = [
         closureReport: job.closure,
         gapReport: { question: script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
         producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
-        producedArtifacts: mockProducedArtifacts(), storyCoverage: mockStoryCoverage(script),
+        producedArtifacts: mockProducedArtifacts(), storyCoverage: mockStoryCoverage(script), validationTrace: mockValidationTrace(),
         status: "SUCCEEDED", createdAt: new Date().toISOString(),
       });
       return { key: script.slice(0, 40), runId: id, status: "SUCCEEDED", fullChainOk: true };
@@ -1854,7 +1875,7 @@ export const handlers = [
         gapReport: { question: c.script, taskId: id, verdict: "ANSWERABLE", path: "NONE", findings: [], generatedAt: new Date().toISOString() },
         answer: `${c.key}: p50=1200, p90=900`,
         producedConnections: ["conn_mock"], producedDatasets: ["rds_mock"],
-        producedArtifacts: mockProducedArtifacts(), storyCoverage: mockStoryCoverage(c.script),
+        producedArtifacts: mockProducedArtifacts(), storyCoverage: mockStoryCoverage(c.script), validationTrace: mockValidationTrace(),
         status: "SUCCEEDED", createdAt: new Date().toISOString(),
       });
       return { key: c.key, runId: id, status: "SUCCEEDED", fullChainOk: true };
@@ -1874,6 +1895,7 @@ export const handlers = [
       producedDatasets: ["rds_mock"],
       producedArtifacts: mockProducedArtifacts(),
       storyCoverage: mockStoryCoverage(run.script),
+      validationTrace: mockValidationTrace(),
       status: "SUCCEEDED",
     });
     return HttpResponse.json(run, { status: 201 });

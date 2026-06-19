@@ -5,6 +5,7 @@ import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
 import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
+import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -658,6 +659,8 @@ export default function DataBuilderPage() {
                     <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>完整性 · 自检 · 信任（凭什么信这是完整的）：</div>
                     {r.closureReport && <ClosureVizView closure={r.closureReport} />}
                     <StoryCoverageView coverage={r.storyCoverage ?? []} />
+                    {/* 区6④ 推演验证痕迹（一致性 + 交叉验证）：建域成功即由 crossValidate 回写 run，内嵌让用户信任 */}
+                    {r.validationTrace && <ValidationTracePanel trace={r.validationTrace} />}
                     {r.gapReport && (
                       <div data-testid={`sbr-selfcheck-${r.id}`} style={{ color: r.gapReport.findings.length === 0 ? "var(--c-capacity,#36BFA5)" : "var(--amber,#DD9551)" }}>
                         功能缺失自检：{r.gapReport.findings.length === 0

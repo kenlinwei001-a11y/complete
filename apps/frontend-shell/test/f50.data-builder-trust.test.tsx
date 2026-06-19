@@ -26,6 +26,8 @@ describe("F50 · 数据构建发动机控制台 P3/P3.5/P4（区6 信任 + 区7 
     const coverage = await within(timeline).findByTestId("sbr-coverage");
     expect(within(coverage).getByText(/逐句已建模/)).toBeTruthy();
     expect(within(coverage).getAllByTestId("coverage-mapped").length).toBeGreaterThan(0);
+    // 区6④ 推演验证痕迹（一致性 + 交叉验证）回写 run → 内嵌 ValidationTracePanel
+    expect(await within(timeline).findByTestId("validation-trace")).toBeTruthy();
   });
 
   it("区7 可达：构建端到端可跑场景 → 「一键推演」按钮出现（落 targetView 真实业务页）", async () => {

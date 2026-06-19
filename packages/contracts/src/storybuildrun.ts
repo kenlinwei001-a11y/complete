@@ -12,6 +12,7 @@ import {
   PlanSceneNeedSchema,
 } from "./databuilder.js";
 import { GapReportSchema } from "./growth.js";
+import { ValidationTraceSchema } from "./qos.js";
 
 /**
  * 故事驱动全栈倒推与跨系统闭包（PRD-fullstack-story-build-g8，v0.2）· P1 契约。
@@ -203,6 +204,9 @@ export const StoryBuildRunSchema = z.object({
   gapReport: GapReportSchema.optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；内层调母体 growth/run）。 */
   answer: z.string().optional(),
+  /** 区6④ 推演验证痕迹（一致性 + 交叉验证）：建域成功即由 crossValidate 把结论依据对象
+   *  反向核对知识图谱 → 前端 ValidationTracePanel 内嵌，让用户信任"完整且有据"（R13）。 */
+  validationTrace: ValidationTraceSchema.optional(),
   status: StoryBuildRunStatusSchema,
   createdAt: IsoTime,
 });

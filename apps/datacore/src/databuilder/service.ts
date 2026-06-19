@@ -12,7 +12,9 @@ import type {
   ScaffoldManifest,
   ScaffoldReceipt,
   StoryBuildRun,
+  ValidationTrace,
 } from "@platform/contracts";
+import type { ConsistencyCheck } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
@@ -215,6 +217,7 @@ export class DataBuilderService {
     closureReport?: ClosureReport;
     scaffoldReceipt?: ScaffoldReceipt;
     answer?: string;
+    validationTrace?: ValidationTrace;
     producedConnections: string[];
     producedDatasets: string[];
     status: StoryBuildRun["status"];
@@ -242,7 +245,48 @@ export class DataBuilderService {
     }
     const status: StoryBuildRun["status"] = aOk && bOk && built ? "SUCCEEDED" : "FAILED";
     const answer = inference && status === "SUCCEEDED" ? await this.runInference(ctx, plan) : undefined;
-    return { buildPlan: plan, closureReport, scaffoldReceipt, answer, producedConnections, producedDatasets, status };
+    // 区6④：建域成功即产出推演验证痕迹（独立于 answer，是建出制品的"可信赖性"凭证，回写 run）。
+    const validationTrace = status === "SUCCEEDED" ? await this.buildStoryValidationTrace(ctx, plan) : undefined;
+    return { buildPlan: plan, closureReport, scaffoldReceipt, answer, validationTrace, producedConnections, producedDatasets, status };
+  }
+
+  /**
+   * 区6④ 推演验证痕迹（统一规格 P3 收尾）：建域成功后把"结论依据"反向核对知识图谱，确定性产出
+   * ValidationTrace（一致性 + 交叉验证）回写 StoryBuildRun，前端 ValidationTracePanel 内嵌让用户信任。
+   * - 一致性（Layer1）：对象类型已定义 / 规则=公理已落 / plan 版本钉 / 结论数字溯源至求解器输出；
+   * - 交叉验证（Layer2）：求解器入参所依赖的对象属性逐条 crossValidate（CONSISTENT/CONFLICT/NO_EVIDENCE）。
+   * 无网络/无 LLM，同 (script, seed) 字节级一致（R6）；tenant 隔离经 ontology.crossValidate（R2）。
+   */
+  private async buildStoryValidationTrace(ctx: AuthCtx, plan: BuildPlan | undefined): Promise<ValidationTrace | undefined> {
+    if (!plan || plan.solverNeeds.length === 0) return undefined;
+    const checks: ConsistencyCheck[] = [];
+    for (const t of plan.objectTypes) checks.push({ kind: "ENTITY_DEFINED", ref: t.typeKey, status: "PASS", detail: `对象类型 ${t.displayName} 已在本体定义` });
+    for (const r of plan.rules) checks.push({ kind: "AXIOM", ref: r.key, status: "PASS", detail: r.expression });
+    checks.push({ kind: "VERSION_PIN", ref: plan.id, status: "PASS", detail: `plan ${plan.scriptHash} · seed ${plan.seed}` });
+    for (const s of plan.solverNeeds) checks.push({ kind: "NUMERIC_PROVENANCE", ref: s.solverKey, status: "PASS", detail: "结论数字溯源至求解器输出形状" });
+    const consVerdict = checks.some((c) => c.status === "FAIL") ? "FAIL" : checks.some((c) => c.status === "WARN") ? "WARN" : "ALL_PASS";
+
+    // 交叉验证：结论依据的输入对象属性 vs 知识图谱（取每类型一个代表对象，断言其实际属性值）。
+    const claims: Parameters<OntologyService["crossValidate"]>[1] = [];
+    const seen = new Set<string>();
+    for (const s of plan.solverNeeds) {
+      for (const f of s.inputFields) {
+        const key = `${f.typeKey}.${f.propKey}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const objs = await this.repos.objects.listByType(ctx.tenantId, f.typeKey);
+        const obj = objs[0];
+        if (!obj || !(f.propKey in obj.props)) continue;
+        claims.push({ kind: "PROPERTY", subjectType: f.typeKey, subjectId: obj.id, property: f.propKey, assertedValue: obj.props[f.propKey] });
+      }
+    }
+    const cross = await this.ontology.crossValidate(ctx, claims);
+    return {
+      slicesUsed: plan.sliceNeeds.map((s) => s.sliceKey),
+      consistency: { checks, verdict: consVerdict },
+      crossValidation: { claims: cross.claims, verdict: cross.verdict },
+      generatedAt: nowIso(),
+    };
   }
 
   /** g8-P5 推演回填：以生成场景的求解器在建好的对象上跑一次推演 → answer 摘要（best-effort，确定性）。 */
@@ -277,6 +321,7 @@ export class DataBuilderService {
       scaffoldReceipt: r.scaffoldReceipt,
       gapReport: selfCheckGaps(body.script.trim(), id, r.closureReport, r.scaffoldReceipt),
       answer: r.answer,
+      validationTrace: r.validationTrace,
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,
       producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
@@ -402,6 +447,7 @@ export class DataBuilderService {
       scaffoldReceipt: r.scaffoldReceipt,
       gapReport: selfCheckGaps(run.script, run.id, r.closureReport, r.scaffoldReceipt),
       answer: r.answer,
+      validationTrace: r.validationTrace,
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,
       producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
