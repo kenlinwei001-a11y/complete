@@ -461,3 +461,18 @@ describe("数据构建发动机页面统一规格 P3 收尾 · 推演验证痕�
     expect(await get()).toBe(await get());
   });
 });
+
+describe("数据构建发动机 · D-29 事件发射（storybuild.run_recorded → F1 全局通道）", () => {
+  it("建域成功 → outbox 出 storybuild.run_recorded（含 runId/status），前端经 F1 失效历史/区5", async () => {
+    const t = await makeApp();
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 11 } })).json()) as StoryRunResp;
+    const outbox = (await (await t.app.inject({ method: "GET", url: "/a/v1/outbox", headers: ADMIN })).json()) as { event: string; createdAt: string }[];
+    const evt = outbox.filter((e) => e.event === "storybuild.run_recorded");
+    expect(evt.length).toBeGreaterThan(0);
+    // ?since 游标：用未来时刻过滤应为空（F1 轮询语义）
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    const sinceFuture = (await (await t.app.inject({ method: "GET", url: `/a/v1/outbox?since=${encodeURIComponent(future)}`, headers: ADMIN })).json()) as unknown[];
+    expect(sinceFuture.length).toBe(0);
+    expect(run.status).toBe("SUCCEEDED");
+  });
+});

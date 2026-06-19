@@ -18,6 +18,7 @@ import type { ConsistencyCheck } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
+import type { OutboxService } from "../outbox.js";
 import type { OntologyService } from "../ontology.js";
 import type { RulesService } from "../rules.js";
 import type { ConnectorService } from "../connectors/service.js";
@@ -48,6 +49,8 @@ export class DataBuilderService {
     private connectors: ConnectorService,
     private kb: KbService,
     private solvers?: SolverService,
+    /** D-29：建域记录完成发 storybuild.run_recorded（经 F1 全局通道反映到历史/区5）。 */
+    private outbox?: OutboxService,
   ) {}
 
   // ---- builder-agent 资源（统一资源模式 DRAFT/PUBLISHED/RETIRED）-----------
@@ -330,6 +333,11 @@ export class DataBuilderService {
       createdAt: nowIso(),
     };
     await this.repos.storyBuildRuns.put(run);
+    await this.outbox?.emit(ctx.tenantId, "storybuild.run_recorded", {
+      runId: run.id,
+      status: run.status,
+      fullChainOk: run.scaffoldReceipt?.fullChainOk ?? null,
+    });
     return run;
   }
 

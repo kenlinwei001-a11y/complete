@@ -64,6 +64,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "policy.updated", producer: "权限策略变更", tier: "IN_SESSION", invalidates: ["dashboard", "search", "scenario-data", "history"], dl: "DL11" },
   // L12 功能开通环
   { event: "features.updated", producer: "功能开通配置", tier: "IN_SESSION", invalidates: ["workspace", "navigation", "scenarios", "intent-catalog"], dl: "DL12" },
+  // L15 数据构建发动机环：故事建域记录完成 → 失效历史推演记录/模块同步矩阵（经 F1 全局通道反映）
+  { event: "storybuild.run_recorded", producer: "数据构建发动机·故事建域记录完成", tier: "IN_SESSION", invalidates: ["story-runs"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

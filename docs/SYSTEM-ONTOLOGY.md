@@ -202,6 +202,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L12 | `features.updated` | 功能开通 | IN_SESSION | workspace, navigation, scenarios, intent-catalog | DL12 |
 | L13 | `growth.ticket_opened` | 自成长发动机·缺功能落工单（P5 推送触达；拉兜底=`GET /api/v1/growth/tickets`） | NOTIFY | growth-tickets, notifications | — |
 | L14 | `meta.ontology_synced` | Dogfooding·系统本体自反投影重物化完成（`POST /a/v1/meta/sync`）→ 失效 `/a/v1/meta/*` 查询缓存 + meta MCP 工具结果 | INVALIDATE | meta-ontology(`/meta/*` 视图) | — |
+| L15 | `storybuild.run_recorded` | 数据构建发动机·故事建域记录完成（`runStory`）→ 经 F1 全局通道失效历史推演记录/模块同步矩阵 | IN_SESSION | story-runs | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。
 

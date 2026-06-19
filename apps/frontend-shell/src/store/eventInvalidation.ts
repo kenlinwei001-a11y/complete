@@ -26,6 +26,7 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   "object-queries": [["a", "objects"]],
   dashboard: [["a", "dashboard"]],
   "solver-params": [["a", "calibration"], ["b", "scenarios"]],
+  "story-runs": [["a", "story-runs"], ["a", "build-jobs"]],
 };
 
 /**
@@ -48,6 +49,7 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   "calibration.proposed": ["solver-params"],
   "calibration.rolled_back": ["solver-params"],
   "objects.merged": ["object-queries", "scenario-data"],
+  "storybuild.run_recorded": ["story-runs"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */
