@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, MetaAccessPolicyBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
@@ -935,15 +935,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   // ---- A4 ontology + objects --------------------------------------------------------
-  // Dogfooding P1（#12 落库 PoC）：系统本体自反落库 + 最小活查询（admin-gated;MetaAccessPolicy 配置化 P2）。
+  // Dogfooding（#12/#13）：系统本体自反落库 + 活查询面。鉴权 = MetaAccessPolicy 角色白名单（默认 admin,可配置）。
+  const requireMetaAccess = async (c: AuthCtx) => {
+    if (!(await metaOntology.hasAccess(c))) throw forbidden("无 /meta 访问权（默认仅 admin；可在 meta access-policy 配置角色白名单）");
+  };
   app.post("/a/v1/meta/sync", async (req) => {
     const c = ctx(req);
-    requireAdmin(c);
+    await requireMetaAccess(c);
     return metaOntology.sync(c);
   });
   app.get("/a/v1/meta/ontology", async (req) => {
     const c = ctx(req);
-    requireAdmin(c);
+    await requireMetaAccess(c);
     const objs = await metaOntology.listAll(c);
     const byKind: Record<string, number> = {};
     for (const o of objs) byKind[o.type] = (byKind[o.type] ?? 0) + 1;
@@ -951,17 +954,39 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.get("/a/v1/meta/breakpoints/:id", async (req) => {
     const c = ctx(req);
-    requireAdmin(c);
+    await requireMetaAccess(c);
     const bp = await metaOntology.getBreakpoint(c, (req.params as { id: string }).id);
     if (!bp) throw notFound("system breakpoint");
     return bp;
   });
+  // 通用元对象读取：invariants/events/domains/slices/object-types
+  for (const [seg, kind] of [["invariants", "SystemInvariant"], ["events", "SystemEvent"], ["domains", "SystemDomain"], ["slices", "SystemSlice"], ["object-types", "SystemObjectType"]] as const) {
+    app.get(`/a/v1/meta/${seg}/:id`, async (req) => {
+      const c = ctx(req);
+      await requireMetaAccess(c);
+      const node = await metaOntology.getNode(c, kind, decodeURIComponent((req.params as { id: string }).id));
+      if (!node) throw notFound(`system ${seg}`);
+      return node;
+    });
+  }
   app.get("/a/v1/meta/impact", async (req) => {
     const c = ctx(req);
-    requireAdmin(c);
+    await requireMetaAccess(c);
     const node = String((req.query as { node?: string }).node ?? "");
     if (!node) throw validationError("node required");
     return metaOntology.impact(c, node);
+  });
+  // 鉴权策略读写（admin only —— 谁能配"哪些角色可访问 /meta"）
+  app.get("/a/v1/meta/access-policy", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return metaOntology.getAccessPolicy(c);
+  });
+  app.put("/a/v1/meta/access-policy", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(MetaAccessPolicyBodySchema, req.body);
+    return metaOntology.setAccessPolicy(c, body.roles);
   });
 
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));

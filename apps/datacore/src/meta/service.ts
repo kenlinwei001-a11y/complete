@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { AuthCtx, LinkInstance, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { OutboxService } from "../outbox.js";
+import { META_ACCESS_DEFAULT_ROLES } from "@platform/contracts";
 import { parseMetaOntology, type MetaEdge, type MetaNode } from "./parse.js";
 
 /** Dogfooding 元租户：系统自我模型挂此命名空间,业务租户经 R2 天然见不到（铁纪律①）。 */
@@ -94,6 +95,30 @@ export class MetaOntologyService {
 
   async getBreakpoint(_ctx: AuthCtx, id: string): Promise<ObjectInstance | undefined> {
     return this.repos.objects.get(META_TENANT, `meta_SystemBreakpoint_${id}`.replace(/[^\w-]/g, "_"));
+  }
+
+  /** 按类型+键取元对象（invariants/events/domains/slices/object-types 通用）。 */
+  async getNode(_ctx: AuthCtx, kind: string, key: string): Promise<ObjectInstance | undefined> {
+    return this.repos.objects.get(META_TENANT, `meta_${kind}_${key}`.replace(/[^\w-]/g, "_"));
+  }
+
+  // ---- P2 可配置鉴权：MetaAccessPolicy（角色白名单,按调用方租户;默认 ["admin"]）----
+
+  async getAccessPolicy(ctx: AuthCtx): Promise<{ tenantId: string; roles: string[] }> {
+    const rec = await this.repos.metaAccessPolicies.get(ctx.tenantId, ctx.tenantId);
+    return { tenantId: ctx.tenantId, roles: rec?.roles ?? [...META_ACCESS_DEFAULT_ROLES] };
+  }
+
+  async setAccessPolicy(ctx: AuthCtx, roles: string[]): Promise<{ tenantId: string; roles: string[] }> {
+    await this.repos.metaAccessPolicies.put({ id: ctx.tenantId, tenantId: ctx.tenantId, roles, updatedAt: new Date().toISOString() });
+    return { tenantId: ctx.tenantId, roles };
+  }
+
+  /** 鉴权门：调用方角色 ∩ 本租户白名单 ≠ ∅ → 放行。默认仅 admin。 */
+  async hasAccess(ctx: AuthCtx): Promise<boolean> {
+    const { roles } = await this.getAccessPolicy(ctx);
+    const callerBaseRoles = new Set(ctx.roles.map((r) => r.split(":")[0]));
+    return roles.some((r) => callerBaseRoles.has(r));
   }
 
   /** 影响分析（轻量 BFS）：以 node（R14 / G-5 / SystemObjectType:Solver …）为 root，沿 META links 遍历。 */

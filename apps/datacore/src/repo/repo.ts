@@ -19,6 +19,7 @@ import type {
   IdempotencyRecord,
   NotificationRecord,
   QuarantineRowRecord,
+  MetaAccessPolicyRecord,
   ReplayProgressRecord,
   ValidationRunRecord,
   ObjectPropHistoryRecord,
@@ -284,6 +285,8 @@ export interface Repos {
   buildJobs: Store<BuildJob>;
   // g8 故事驱动全栈倒推 · P1：构建期历史推演记录（与 GrowthLedgerEntry 经 runId 归一）
   storyBuildRuns: Store<StoryBuildRun>;
+  // Dogfooding P2：元本体访问策略（角色白名单,按租户;id=tenantId）
+  metaAccessPolicies: Store<MetaAccessPolicyRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

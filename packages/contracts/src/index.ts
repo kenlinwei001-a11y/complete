@@ -20,3 +20,4 @@ export * from "./growth.js";
 export * from "./storybuildrun.js";
 export * from "./entity-resolution.js";
 export * from "./output-validation.js";
+export * from "./meta-ontology.js";

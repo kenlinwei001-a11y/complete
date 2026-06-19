@@ -55,9 +55,42 @@ describe("Dogfooding P1 · 系统本体自反落库", () => {
     expect(Array.isArray(rows) ? rows.length : 0).toBe(0);
   });
 
-  it("非 admin → /meta/* 403（P1 admin-gated;MetaAccessPolicy 配置化 P2）", async () => {
+  it("默认仅 admin（planner → 403）", async () => {
     const t = await makeApp();
     const r = await t.app.inject({ method: "POST", url: "/a/v1/meta/sync", headers: debugUser("demo", "planner", "planner") });
     expect(r.statusCode).toBe(403);
+  });
+
+  it("P2 鉴权可配置：默认 [admin] → 授予 planner 可访问 → 撤销回 403（按租户）", async () => {
+    const t = await makeApp();
+    const PLANNER = debugUser("demo", "planner", "planner");
+    await t.app.inject({ method: "POST", url: "/a/v1/meta/sync", headers: ADMIN });
+
+    // 默认策略 [admin];planner 不可
+    const pol = (await (await t.app.inject({ method: "GET", url: "/a/v1/meta/access-policy", headers: ADMIN })).json()) as { roles: string[] };
+    expect(pol.roles).toEqual(["admin"]);
+    expect((await t.app.inject({ method: "GET", url: "/a/v1/meta/ontology", headers: PLANNER })).statusCode).toBe(403);
+
+    // admin 把 planner 加入白名单 → planner 可访问
+    const put = await t.app.inject({ method: "PUT", url: "/a/v1/meta/access-policy", headers: ADMIN, payload: { roles: ["admin", "planner"] } });
+    expect(put.statusCode).toBe(200);
+    expect((await t.app.inject({ method: "GET", url: "/a/v1/meta/ontology", headers: PLANNER })).statusCode).toBe(200);
+
+    // 撤销 → planner 回 403
+    await t.app.inject({ method: "PUT", url: "/a/v1/meta/access-policy", headers: ADMIN, payload: { roles: ["admin"] } });
+    expect((await t.app.inject({ method: "GET", url: "/a/v1/meta/ontology", headers: PLANNER })).statusCode).toBe(403);
+
+    // planner 改策略 = 403（仅 admin 可配）
+    expect((await t.app.inject({ method: "PUT", url: "/a/v1/meta/access-policy", headers: PLANNER, payload: { roles: ["planner"] } })).statusCode).toBe(403);
+  });
+
+  it("P2 通用元对象读取端点：invariants/:id · events/:name 命中", async () => {
+    const t = await makeApp();
+    await t.app.inject({ method: "POST", url: "/a/v1/meta/sync", headers: ADMIN });
+    const r14 = await t.app.inject({ method: "GET", url: "/a/v1/meta/invariants/R14", headers: ADMIN });
+    expect(r14.statusCode).toBe(200);
+    expect((r14.json() as { type: string }).type).toBe("SystemInvariant");
+    // 不存在 → 404
+    expect((await t.app.inject({ method: "GET", url: "/a/v1/meta/invariants/R999", headers: ADMIN })).statusCode).toBe(404);
   });
 });

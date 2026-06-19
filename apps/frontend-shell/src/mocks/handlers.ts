@@ -112,6 +112,7 @@ const DATA_BUILDER_PRESET = {
 };
 const MOCK_BUILD_JOBS: unknown[] = [];
 // g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录（mock 模式内存存储，提交→列出可见）
+const META_POLICY = { tenantId: "demo", roles: ["admin"] as string[] };
 const MOCK_STORY_RUNS: { id: string; script: string; status: string; createdAt: string; [k: string]: unknown }[] = [];
 const MOCK_RAW_ROWS: Record<string, Record<string, unknown>[]> = {
   default: [
@@ -1697,6 +1698,12 @@ export const handlers = [
   http.get("*/a/v1/data-builders/jobs/list", () => HttpResponse.json(MOCK_BUILD_JOBS)),
   // g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录
   http.get("*/a/v1/databuilder/runs", () => HttpResponse.json(MOCK_STORY_RUNS)),
+  // Dogfooding meta（系统自我）
+  http.post("*/a/v1/meta/sync", () => HttpResponse.json({ objects: 64, links: 120, byKind: { SystemInvariant: 14, SystemBreakpoint: 8, SystemEvent: 27, SystemDomain: 11, SystemObjectType: 30, SystemGate: 5, SystemSlice: 9 } })),
+  http.get("*/a/v1/meta/ontology", () => HttpResponse.json({ total: 104, byKind: { SystemInvariant: 14, SystemBreakpoint: 8, SystemEvent: 27, SystemDomain: 11, SystemObjectType: 30, SystemGate: 5, SystemSlice: 9 } })),
+  http.get("*/a/v1/meta/impact", ({ request }) => { const n = new URL(request.url).searchParams.get("node") ?? ""; return HttpResponse.json({ node: `meta_SystemInvariant_${n}`, affected: [{ id: "PRD:PRD-platform-foundry-aip.md", via: "covered_by" }, { id: "meta_SystemBreakpoint_G-5", via: "related_to" }] }); }),
+  http.get("*/a/v1/meta/access-policy", () => HttpResponse.json(META_POLICY)),
+  http.put("*/a/v1/meta/access-policy", async ({ request }) => { const b = (await request.json()) as { roles: string[] }; META_POLICY.roles = b.roles; return HttpResponse.json(META_POLICY); }),
   http.get("*/a/v1/databuilder/runs/:id", ({ params }) => {
     const r = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
     return r ? HttpResponse.json(r) : new HttpResponse(null, { status: 404 });

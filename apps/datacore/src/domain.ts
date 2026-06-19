@@ -657,6 +657,14 @@ export interface NotificationRecord {
 }
 
 /** 运营完备性 §4 数据隔离区：行级失败不再使批次失败，异常行落隔离区可修复重处理。 */
+/** Dogfooding P2：元本体访问策略记录（id=tenantId;角色白名单,默认 ["admin"]）。 */
+export interface MetaAccessPolicyRecord {
+  id: string; // = tenantId
+  tenantId: string;
+  roles: string[];
+  updatedAt?: string;
+}
+
 export interface QuarantineRowRecord {
   id: string; // qr_
   tenantId: string;

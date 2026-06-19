@@ -763,3 +763,11 @@ export const runGrowth = (query: string, maxRounds = 4, packageId = "pkg_battery
 export const fetchGrowthLedger = () => api.b<{ items: GrowthLedgerEntry[] }>("/b/v1/growth/ledger");
 export const fetchGrowthTickets = () => api.b<{ items: GrowthTicket[] }>("/b/v1/growth/tickets");
 export const claimGrowthTicket = (id: string) => api.b<GrowthTicket>(`/b/v1/growth/tickets/${id}/claim`, { method: "POST", body: { assignee: "cli-agent" } });
+
+// Dogfooding P2：系统本体活查询面（meta）。MetaAccessPolicy 角色白名单门控（默认 admin）。
+export interface MetaImpact { node: string; affected: { id: string; via: string }[] }
+export const syncMeta = () => api.a<{ objects: number; links: number; byKind: Record<string, number> }>("/a/v1/meta/sync", { method: "POST" });
+export const fetchMetaOntology = () => api.a<{ total: number; byKind: Record<string, number> }>("/a/v1/meta/ontology");
+export const fetchMetaImpact = (node: string) => api.a<MetaImpact>(`/a/v1/meta/impact?node=${encodeURIComponent(node)}`);
+export const fetchMetaAccessPolicy = () => api.a<{ tenantId: string; roles: string[] }>("/a/v1/meta/access-policy");
+export const setMetaAccessPolicy = (roles: string[]) => api.a<{ tenantId: string; roles: string[] }>("/a/v1/meta/access-policy", { method: "PUT", body: { roles } });
