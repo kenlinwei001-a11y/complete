@@ -27,6 +27,7 @@ import type { SolverService } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, COMPREHEND_SYSTEM } from "./comprehend.js";
+import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
 import { deriveProducedArtifacts } from "./artifacts.js";
 import { selfCheckGaps } from "./selfcheck.js";
@@ -61,7 +62,7 @@ export class DataBuilderService {
    * 缺绑定 / 无 key / 解析失败 → 确定性关键词地板 comprehendScript（R6 字节级一致）。
    * 诚实：LLM 倒推出的求解器若系统未注册，后续闭包/自检会照常暴露为缺口（不静默假装能答）。
    */
-  private async comprehendPlanBody(ctx: AuthCtx, script: string, seed: number): Promise<ReturnType<typeof comprehendScript>> {
+  private async comprehendPlanBody(ctx: AuthCtx, script: string, seed: number): Promise<ReturnType<typeof assemblePlanBody>> {
     if (this.llm) {
       try {
         const core = await this.llm.parseStructured({
@@ -610,11 +611,36 @@ export class DataBuilderService {
       const existingRuleKeys = new Set((await this.repos.rules.list(ctx.tenantId)).map((r) => r.key));
       setPhase("gap", "DONE", `已有 ${existingTypes.size} 对象类型 / ${existingRuleKeys.size} 规则`);
 
-      // ④ raw-in 灌注：结构化数据→A1 连接器上传（留上传记录）；脚本→知识库
+      // ④ raw-in 灌注：FK 一致 + 场景拓扑生成（PRD-fde §3.4）→ A1 连接器上传；脚本→知识库。
+      //    从 objectTypes 建 specs(带 PK/refToDataset)→ generateRelatedDatasets(跨表 FK 闭合)→
+      //    applyScenarioTopology(让"被问现象真实存在")。拓扑用 typeKey,数据用 datasetKey,此处翻译。
       setPhase("rawin", "RUNNING");
       const datasetIdByKey = new Map<string, string>();
+      const typeToDataset = new Map(plan.objectTypes.map((t) => [t.typeKey, t.sourceDataset ?? t.typeKey.toLowerCase()]));
+      const rowCountByDataset = new Map(plan.dataSources.map((d) => [d.datasetKey, d.rowCount]));
+      const specs: DatasetSpec[] = plan.objectTypes.map((t) => {
+        const dsk = t.sourceDataset ?? t.typeKey.toLowerCase();
+        return {
+          datasetKey: dsk,
+          rowCount: rowCountByDataset.get(dsk) ?? 10,
+          fields: t.properties.map((p) => ({
+            name: p.sourceField ?? p.propKey,
+            dataType: p.dataType,
+            isPrimaryKey: p.isPrimaryKey,
+            ...(p.refToTypeKey && typeToDataset.has(p.refToTypeKey) ? { refToDataset: typeToDataset.get(p.refToTypeKey)! } : {}),
+          })),
+        };
+      });
+      let csvByDataset = specs.length > 0 ? generateRelatedDatasets(specs, seed) : {};
+      if (plan.scenarioTopology) {
+        const dk = (tk: string) => typeToDataset.get(tk) ?? tk.toLowerCase();
+        csvByDataset = applyScenarioTopology(csvByDataset, specs, {
+          sharedResources: (plan.scenarioTopology.sharedResources ?? []).map((s) => ({ ...s, resourceType: dk(s.resourceType), sharedByType: dk(s.sharedByType) })),
+          plantedValues: (plan.scenarioTopology.plantedValues ?? []).map((p) => ({ ...p, typeKey: dk(p.typeKey) })),
+        });
+      }
       for (const ds of plan.dataSources) {
-        const csv = generateFromSchema(ds.datasetKey, ds.fields, ds.rowCount, seed);
+        const csv = csvByDataset[ds.datasetKey] ?? generateFromSchema(ds.datasetKey, ds.fields, ds.rowCount, seed);
         const { connection } = await this.connectors.upload(ctx, `${ds.datasetKey}.csv`, Buffer.from(csv, "utf8"));
         const raws = await this.connectors.listRawDatasets(ctx, connection.id);
         if (raws[0]) datasetIdByKey.set(ds.datasetKey, raws[0].id);

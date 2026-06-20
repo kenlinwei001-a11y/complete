@@ -59,7 +59,7 @@ export function assemblePlanBody(
   core: LlmComprehendOutput,
   script: string,
   seed: number,
-): ReturnType<typeof comprehendScript> {
+): ReturnType<typeof comprehendScript> & { scenarioTopology?: ScenarioTopology } {
   const typeKeys = new Set(core.objectTypes.map((t) => t.typeKey));
   const dataSources: PlanDataSource[] = core.objectTypes.map((e) => ({
     connType: "mock_generic",
@@ -74,7 +74,7 @@ export function assemblePlanBody(
   }));
   const rules: PlanRule[] = core.rules.filter((r) => r.scopeObjectTypes.every((t) => typeKeys.has(t)));
   const solverNeeds: PlanSolverNeed[] = core.solverNeeds.filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)));
-  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script) };
+  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology };
 }
 
 /** B 栈倒推（确定性）：对象→切片；求解器→计划/意图/场景/工作流/技能/Agent。LLM 与关键词地板共用。 */

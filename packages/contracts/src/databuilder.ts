@@ -207,6 +207,11 @@ export const BuildPlanSchema = z.object({
   agentNeeds: z.array(PlanAgentNeedSchema).default([]),
   mcpNeeds: z.array(PlanMcpNeedSchema).default([]),
   sceneNeeds: z.array(PlanSceneNeedSchema).default([]),
+  // PRD-fde §3.4 场景拓扑（comprehend/Kimi 产出；rawin 据此造"被问现象真实存在"的数据）。缺省=无（仅 FK 一致）。
+  scenarioTopology: z.object({
+    sharedResources: z.array(z.object({ resourceType: z.string(), sharedByType: z.string(), viaField: z.string(), count: z.number().int().min(1).default(1) })).default([]),
+    plantedValues: z.array(z.object({ typeKey: z.string(), field: z.string(), value: z.union([z.number(), z.string()]), everyN: z.number().int().min(1).default(1) })).default([]),
+  }).optional(),
   createdAt: z.string(),
 });
 export type BuildPlan = z.infer<typeof BuildPlanSchema>;
