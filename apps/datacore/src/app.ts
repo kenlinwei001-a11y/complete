@@ -43,6 +43,14 @@ import { SyntheticService } from "./synthetic/service.js";
 import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
 import { buildFieldCatalog, resolveEntity } from "./databuilder/entity-catalog.js";
+import { diffNeeds, type CapabilityInventory } from "./databuilder/capability-inventory.js";
+
+const CapabilityNeedsSchema = z.object({
+  objectTypes: z.array(z.string()).optional(),
+  rules: z.array(z.string()).optional(),
+  solvers: z.array(z.string()).optional(),
+  slices: z.array(z.string()).optional(),
+});
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
 import { TimeseriesService } from "./timeseries.js";
@@ -1168,6 +1176,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const candidates = await resolveEntity(c, String(q.q), ontology, { type: q.type, topK: q.topK ? Number(q.topK) : 5 });
     // 命中=具体候选;空=域外（调用方走 InputManifest 补录,不猜）
     return { query: q.q, resolved: candidates.length > 0, candidates };
+  });
+
+  // PRD-fde §3.5 能力清单(schema 级) + 比对差异：知现状→算缺口（建之前就知缺什么）。
+  const buildInventory = async (c: AuthCtx): Promise<CapabilityInventory> => ({
+    objectTypes: (await ontology.listTypes(c)).filter((t) => t.status === "ACTIVE").map((t) => t.key),
+    rules: (await rules.list(c, "PUBLISHED")).map((r) => r.key),
+    solvers: [...SOLVER_KEYS],
+    slices: (await repos.sliceSpecs.list(c.tenantId)).map((s) => s.sliceKey),
+  });
+  app.get("/a/v1/capability-inventory", async (req) => buildInventory(ctx(req)));
+  app.post("/a/v1/capability-inventory/diff", async (req) => {
+    const c = ctx(req);
+    const needs = parseBody(CapabilityNeedsSchema, req.body);
+    return diffNeeds(needs, await buildInventory(c));
   });
 
   // A2 在线数据模版（G-6 收口）：从本租户已发布对象类型派生"该上传哪些列"的 CSV 模版；
