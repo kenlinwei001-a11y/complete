@@ -256,6 +256,9 @@ export class DataBuilderService {
       producedConnections = (await this.repos.connections.list(ctx.tenantId)).filter((c) => !connBefore.has(c.id)).map((c) => c.id);
       producedDatasets = (await this.repos.rawDatasets.list(ctx.tenantId)).filter((d) => !dsBefore.has(d.id)).map((d) => d.id);
       built = job.status === "SUCCEEDED";
+      // 故事倒推的本体切片落库 → 在切片库（GET /a/v1/ontology/slices）可见，而非只记 key（修：
+      // 此前 sliceNeeds 仅入 StoryBuildRun.slicesUsed，切片库看不到倒推切片）。
+      if (built && plan) await this.registerStorySlices(ctx, plan);
     }
     const status: StoryBuildRun["status"] = aOk && bOk && built ? "SUCCEEDED" : "FAILED";
     const inf = inference && status === "SUCCEEDED" ? await this.runInference(ctx, plan) : {};
@@ -656,6 +659,29 @@ export class DataBuilderService {
   }
 
   /** 物化：读 RawDataset 行 → 确定性对象实例（origin=MATERIALIZED）。 */
+  /**
+   * 故事倒推切片落库：把 plan.sliceNeeds 注册为真实 SliceSpec → 切片库可见、可解析。
+   * 确定性路给单根切片（hops=[] → paths=[]，即"取该类型对象"）；多跳富切片需 LLM 语义推断（后续）。
+   * 幂等（R6）：同 sliceKey 同 id → put 覆盖。仅在 build 成功（对象已物化）后调用。
+   */
+  private async registerStorySlices(ctx: AuthCtx, plan: BuildPlan): Promise<void> {
+    for (const s of plan.sliceNeeds) {
+      const paths = s.hops.length > 0 ? [s.hops.map((linkKey) => ({ linkKey, direction: "out" as const }))] : [];
+      await this.repos.sliceSpecs.put({
+        id: `slice_${s.sliceKey}`.replace(/[^\w-]/g, "_"),
+        tenantId: ctx.tenantId,
+        sliceKey: s.sliceKey,
+        version: 1,
+        spec: {
+          root: { typeKey: s.rootType, selector: {} },
+          paths,
+          maxNodes: 500,
+          contractFixtures: [{ name: "smoke", args: {}, expect: { rootType: s.rootType, minNodes: 1, mustIncludeTypes: [s.rootType] } }],
+        },
+      });
+    }
+  }
+
   private async materialize(ctx: AuthCtx, typeKey: string, t: BuildPlan["objectTypes"][number], datasetId: string, jobId: string): Promise<void> {
     const rows = await this.repos.rawRows.list(ctx.tenantId, datasetId);
     const pk = t.properties.find((p) => p.isPrimaryKey)?.propKey ?? t.properties[0]?.propKey ?? "id";
