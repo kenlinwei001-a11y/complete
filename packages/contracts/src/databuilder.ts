@@ -124,6 +124,13 @@ export const PlanSolverNeedSchema = z.object({
   solverKey: z.string(),
   inputFields: z.array(z.object({ typeKey: z.string(), propKey: z.string() })),
   /**
+   * 求解器调用参数（FDE 自动倒推：从对象类型的字段/ref 结构推导出多跳路径与字段映射，
+   * 如 shared_bottleneck 的 {resourceType,sharedByType,viaField,capacityField,demandField}）。
+   * 经 BuildPlan→ScaffoldManifest→ExecutionPlan invoke_solver step.params.args 贯通到启动器,
+   * 使"故事→建域→在启动器点一下出答案"成立。缺省=空（求解器若需参数则报缺,不静默空答）。
+   */
+  args: z.record(z.string(), z.unknown()).optional(),
+  /**
    * R11-SHAPE（渲染契约）：渲染步骤将从求解器输出消费的字段路径（顶层 key 或 `key.sub`）。
    * validateClosure 校验这些绑定 ⊆ 求解器声明输出形状 —— 把"绿测试≠能用"的 G-2 跨服务形状
    * 断点挡在建图期（BuildPlan 扩 AgentCore 渲染栈）。缺省=不声明渲染绑定（跳过 SHAPE）。
@@ -153,6 +160,8 @@ export type PlanIntentNeed = z.infer<typeof PlanIntentNeedSchema>;
 export const PlanPlanNeedSchema = z.object({
   planKey: z.string(),
   steps: z.array(z.string()).default([]), // invoke_solver | query_objects | evaluate_rules | render（粗粒度声明）
+  solverKey: z.string().optional(), // 该计划调用的求解器（scaffold 据此建 invoke_solver step；缺省从 planKey 去前缀推）
+  args: z.record(z.string(), z.unknown()).default({}), // FDE 倒推出的求解器参数 → scaffold 写入 step.params.args（启动器可答的关键）
   renderBindings: z.array(z.string()).default([]),
 });
 export type PlanPlanNeed = z.infer<typeof PlanPlanNeedSchema>;

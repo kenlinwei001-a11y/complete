@@ -4,6 +4,7 @@ import type {
   PlanSliceNeed, PlanIntentNeed, PlanPlanNeed, PlanSceneNeed,
   PlanWorkflowNeed, PlanSkillNeed, PlanAgentNeed,
 } from "@platform/contracts";
+import { deriveSolverArgs } from "./solver-args.js";
 
 /**
  * §2 LLM comprehend：让 LLM 只产出"听懂故事"的难点部分——对象类型 / 规则 / 求解器需求；
@@ -73,14 +74,17 @@ export function assemblePlanBody(
     properties: e.fields.map((f) => ({ propKey: f.name, sourceField: f.name, dataType: f.dataType, isPrimaryKey: f.isPrimaryKey ?? false, refToTypeKey: f.refToTypeKey ?? null })),
   }));
   const rules: PlanRule[] = core.rules.filter((r) => r.scopeObjectTypes.every((t) => typeKeys.has(t)));
-  const solverNeeds: PlanSolverNeed[] = core.solverNeeds.filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)));
+  const solverNeeds: PlanSolverNeed[] = core.solverNeeds
+    .filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)))
+    // FDE 自动倒推求解器参数（多跳路径/字段映射）→ 贯通到启动器使"点一下出答案"成立。
+    .map((s) => ({ ...s, args: deriveSolverArgs(s.solverKey, objectTypes) }));
   return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology };
 }
 
 /** B 栈倒推（确定性）：对象→切片；求解器→计划/意图/场景/工作流/技能/Agent。LLM 与关键词地板共用。 */
 function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed[], script: string) {
   const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] }));
-  const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], renderBindings: [] }));
+  const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], solverKey: s.solverKey, args: s.args ?? {}, renderBindings: [] }));
   const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({ intentKey: `intent_${s.solverKey}`, triggers: [s.solverKey], slots: [], planRef: `plan_${s.solverKey}`, riskLevel: "LOW" as const }));
   const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({ scenarioKey: `scene_${s.solverKey}`, targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash", intentKey: `intent_${s.solverKey}`, mode: "WORKFLOW" as const, presetContext: {} }));
   const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({ workflowKey: `wf_${s.solverKey}`, kind: "workflow", steps: ["invoke_solver", "render"] }));
@@ -341,7 +345,7 @@ export function comprehendScript(
   // 求解器：命中关键词且其依赖类型已在 plan 中。
   const solverNeeds: PlanSolverNeed[] = SOLVERS.filter(
     (s) => matches(script, s.keywords) && s.inputFields.every((f) => typeKeys.has(f.typeKey)),
-  ).map((s) => ({ solverKey: s.solverKey, inputFields: s.inputFields }));
+  ).map((s) => ({ solverKey: s.solverKey, inputFields: s.inputFields, args: deriveSolverArgs(s.solverKey, objectTypes) }));
 
   // 知识库：把脚本原文作为一篇知识文档灌入（可溯源）。
   const kbDocs = [{ title: "场景脚本", content: script.slice(0, 4000) }];
@@ -352,6 +356,8 @@ export function comprehendScript(
   const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({
     planKey: `plan_${s.solverKey}`,
     steps: ["invoke_solver", "render"],
+    solverKey: s.solverKey,
+    args: s.args ?? {},
     renderBindings: s.renderBindings ?? [],
   }));
   const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({

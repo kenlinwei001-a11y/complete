@@ -155,7 +155,11 @@ ObjectInstance --lineage 反查--> RawRow→RawDataset→Connection + 派生口�
 ```
 **数据构建发动机链（需求拉动）**
 ```
-StoryScript --comprehend(LLM)--> BuildPlan{dataSources,objectTypes,rules,solverNeeds,kbDocs}
+StoryScript --comprehend(LLM)--> BuildPlan{dataSources,objectTypes,rules,solverNeeds(+args 倒推),kbDocs}
+  └ **FDE 求解器参数自动倒推**（`databuilder/solver-args.ts deriveSolverArgs`，确定性 R6）：从对象类型字段/ref 结构推出
+    多跳求解器路径/字段映射（shared_bottleneck/concentration_risk/margin_attribution），写入 `solverNeeds.args`→`planNeeds.args`
+    →scaffold `ExecutionPlan invoke_solver step.params.args`→启动器跑此计划即真调求解器**出答案（非空答）**；
+    需运行期标量(rootId/budget)的求解器诚实留空（不编造）。闭合 G-3"场景→答案"的求解器入参一环。
 BuildPlan --validateClosure--> ClosureReport{反向-对象, 反向-data, 正向-求解器入参}  ⚠ 闭包不含 AgentCore 栈/全链
 BuildPlan --gap(幂等)--> 复用已有/标缺  --rawin--> Connector/KB  --transform--> 本体/规则/派生  --publish(Action)--> 真值
 ```

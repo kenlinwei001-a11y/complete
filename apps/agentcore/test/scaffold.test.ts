@@ -53,6 +53,24 @@ describe("g8-P3 · POST /b/v1/internal/scaffold", () => {
     expect(r2.items.every((i) => i.status === "REUSED")).toBe(true);
   });
 
+  it("SC2b: FDE 倒推的求解器参数贯通到 plan step.params.args（启动器点一下真出答案,非空答）", async () => {
+    const t = await createTestApp({ env: { SERVICE_TOKEN: SVC } });
+    const m = {
+      tenantId: TENANT, runId: "sbr_args_1",
+      // comprehend 倒推出的 args 随 planNeed 下发
+      planNeeds: [{ planKey: "plan_shared_bottleneck", steps: ["invoke_solver", "render"], solverKey: "shared_bottleneck", args: { resourceType: "Proc", sharedByType: "Ord", viaField: "procRef", capacityField: "capacity", demandField: "qty", priorityField: "prio" }, renderBindings: [] }],
+      intentNeeds: [], sceneNeeds: [],
+    };
+    const res = await t.app.inject({ method: "POST", url: "/b/v1/internal/scaffold", headers: { "x-service-token": SVC }, payload: m });
+    expect(res.statusCode).toBe(200);
+    // 取回 scaffold 出的计划,确认 invoke_solver step 带真实 args（非 {}）
+    const pkg = (await t.repos.packages.listByTenant(TENANT))[0]!;
+    const plan = (await t.repos.plans.listByPackage(pkg.id)).find((p) => p.key === "plan_shared_bottleneck")!;
+    const step = plan.steps.find((s) => s.type === "invoke_solver")! as { params: { solverKey: string; args: Record<string, unknown> } };
+    expect(step.params.solverKey).toBe("shared_bottleneck");
+    expect(step.params.args).toEqual({ resourceType: "Proc", sharedByType: "Ord", viaField: "procRef", capacityField: "capacity", demandField: "qty", priorityField: "prio" });
+  });
+
   it("SC3: 场景引用未 scaffold 的意图 → 无死路门报 MISSING，fullChainOk=false（R11 跨系统断链）", async () => {
     const t = await createTestApp({ env: { SERVICE_TOKEN: SVC } });
     const broken = { tenantId: TENANT, runId: "sbr_test_2", planNeeds: [], intentNeeds: [], sceneNeeds: [{ scenarioKey: "scene_orphan", targetView: "orders", intentKey: "intent_does_not_exist", mode: "WORKFLOW", presetContext: {} }] };

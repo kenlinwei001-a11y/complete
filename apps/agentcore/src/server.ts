@@ -1733,11 +1733,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const existingPlans = await deps.repos.plans.listByPackage(pkg.id);
     for (const pn of m.planNeeds) {
       if (existingPlans.some((p) => p.key === pn.planKey)) { items.push({ kind: "plan", key: pn.planKey, status: "REUSED" }); continue; }
-      const solverKey = pn.planKey.replace(/^plan_/, "");
+      const solverKey = pn.solverKey ?? pn.planKey.replace(/^plan_/, "");
+      // FDE 倒推出的求解器参数贯通到 step.params.args → 启动器跑此计划即真调求解器出答案（非空答）。
       await deps.catalog.createPlan(pkg.id, {
         key: pn.planKey,
         steps: [
-          { id: "s1", type: "invoke_solver", params: { solverKey, args: {} } },
+          { id: "s1", type: "invoke_solver", params: { solverKey, args: (pn.args ?? {}) as Record<string, import("@platform/contracts").TemplateValue> } },
           { id: "s2", type: "render_answer", params: { blocks: [] } },
         ],
       });
