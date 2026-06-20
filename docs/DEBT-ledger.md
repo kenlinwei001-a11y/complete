@@ -30,7 +30,7 @@
 
 | # | 事项 | 为什么我做不了 |
 |---|---|---|
-| B1 | **真调 Kimi（comprehend 用真 LLM）** | 需你填 Kimi API key（凭据，我不能代填）。机制(provider/用途绑定/降级地板)已就绪，缺 key。 |
+| B1 | **真调 Kimi（comprehend 用真 LLM）** | ◐ 用户已给 key,实测：Kimi 可达+key 有效;**修了一个真断点**——Moonshot 即便 json_schema 也把 JSON 包 ```围栏```,适配器直接 JSON.parse 失败→静默回落地板（已修 extractJsonText,直调适配器真 Kimi 对咖啡馆故事正确倒推 Store/Member/Supplier…）。**仍欠**：经"用途绑定矩阵"路由 + **完整 comprehend schema**（嵌套 fields/规则DSL/求解器需求）下是否全通,需对全 schema 迭代验证（沙箱 node server 易被 SIGURG kill,迭代调试受限）。**安全**：key 已在对话泄露,请轮换。 |
 | B2 | **泄露的 Gemini key 轮换/吊销** | 外部凭据安全，必须你在 Google 侧吊销/换。 |
 | B3 | **浏览器像素级 hand-run** | 沙箱无浏览器；前端验证到 vitest+MSW 组件层 + HTTP 端到端层，未到像素层。 |
 
