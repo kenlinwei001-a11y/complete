@@ -23,30 +23,38 @@ const refs = (t: PlanObjectType): Prop[] => t.properties.filter((p) => p.dataTyp
 const pick = (props: Prop[], re: RegExp): Prop | undefined => props.find((p) => re.test(p.propKey));
 const byKey = (a: PlanObjectType, b: PlanObjectType) => a.typeKey.localeCompare(b.typeKey);
 
-/** 共享瓶颈：资源类型(有产能字段、被引用) + 共享者类型(引用资源、有需求字段)。 */
+/**
+ * 共享瓶颈：资源类型(有产能字段、被引用) + 共享者类型(引用资源、有需求字段)。
+ * 多实体共存时按"字段名语义强度"打分挑最像的一对（产能命名 + 需求命名 + 有优先级），
+ * 避免在 Base/Line 等无关数值对上误选；确定性 tie-break。
+ */
 function deriveSharedBottleneck(types: PlanObjectType[]): Record<string, unknown> | undefined {
   const sorted = [...types].sort(byKey);
-  // 候选：(资源 R, 共享者 S, viaField)——S 有 ref→R 且 R/S 都有数值字段
+  let best: { args: Record<string, unknown>; score: number; rk: string; sk: string } | undefined;
   for (const R of sorted) {
     if (num(R).length === 0) continue;
     for (const S of sorted) {
-      if (S.typeKey === R.typeKey) continue;
+      if (S.typeKey === R.typeKey || num(S).length === 0) continue; // 共享者需有数值(需求)字段
       const via = refs(S).find((p) => p.refToTypeKey === R.typeKey);
-      if (!via || num(S).length === 0) continue;
-      const capacityField = (pick(num(R), CAPACITY_RE) ?? num(R)[0])!.propKey;
-      const demandField = (pick(num(S), DEMAND_RE) ?? num(S)[0])!.propKey;
-      const priorityProp = pick(num(S), PRIORITY_RE);
-      return {
+      if (!via) continue;
+      const capProp = pick(num(R), CAPACITY_RE);
+      const demProp = pick(num(S), DEMAND_RE);
+      const priProp = pick(num(S), PRIORITY_RE);
+      const score = (capProp ? 2 : 0) + (demProp ? 2 : 0) + (priProp ? 1 : 0);
+      const args = {
         resourceType: R.typeKey,
         sharedByType: S.typeKey,
         viaField: via.propKey,
-        capacityField,
-        demandField,
-        ...(priorityProp ? { priorityField: priorityProp.propKey } : {}),
+        capacityField: (capProp ?? num(R)[0])!.propKey,
+        demandField: (demProp ?? num(S)[0])!.propKey,
+        ...(priProp ? { priorityField: priProp.propKey } : {}),
       };
+      if (!best || score > best.score || (score === best.score && (R.typeKey < best.rk || (R.typeKey === best.rk && S.typeKey < best.sk)))) {
+        best = { args, score, rk: R.typeKey, sk: S.typeKey };
+      }
     }
   }
-  return undefined;
+  return best?.args;
 }
 
 /** 隐性集中度：沿 ref 正向链从起点走到终端根；取能走出的最长链（≥1 跳）。 */
