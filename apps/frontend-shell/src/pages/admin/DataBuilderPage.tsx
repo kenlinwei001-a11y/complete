@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, ClosureReport, DataBuilderAgent, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
@@ -369,7 +370,7 @@ function QuickSynthPanel() {
               ))}
             </tbody>
           </table>
-          <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页核对产物</a>
+          <Link to="/admin/connections" data-testid="qs-connections-link" style={{ fontSize: 11 }}>→ 连接器页核对产物</Link>
         </div>
       )}
     </div>
@@ -558,6 +559,13 @@ export default function DataBuilderPage() {
             {previewM.isPending ? "倒推中…" : "倒推建域（先补录）"}
           </button>
         </div>
+        {/* Q6：三个建域入口的取舍说明（交互可读性）。 */}
+        <div data-testid="db-build-modes-help" style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)", lineHeight: 1.6 }}>
+          三种建域方式按「要不要留痕 / 脚本够不够清楚」选其一：
+          <br />· <b>运行构建</b> —— 一次性构建（勾 dry-run 仅预览不落库），用于快速试跑/调脚本，<b>不</b>进历史推演记录。
+          <br />· <b>建域并记入历史</b>（推荐默认）—— 脚本信息齐全时一键建域，并把这次构建<b>记入历史推演记录</b>时间线，可下钻溯源/重放。
+          <br />· <b>倒推建域（先补录）</b> —— 脚本没说清时先用它：发动机倒推出"构建必需但脚本没给"的字段（seed/可复用连接器…）生成补录表单，在下方历史记录里补齐后再续跑建域。
+        </div>
       </div>
 
       <QuickSynthPanel />
@@ -678,7 +686,7 @@ export default function DataBuilderPage() {
                     <ModuleSyncMatrixView artifacts={r.producedArtifacts ?? []} />
                     <div>
                       产出源数据：<b>{r.producedConnections.length}</b> 连接器 · <b>{r.producedDatasets.length}</b> 数据集{" "}
-                      <a href="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页下钻</a>
+                      <Link to="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页下钻</Link>
                     </div>
                     {r.scaffoldReceipt && (
                       <div>

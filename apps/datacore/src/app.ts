@@ -41,6 +41,7 @@ import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
 import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
+import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
 import { TimeseriesService } from "./timeseries.js";
@@ -2162,7 +2163,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!job) throw notFound("synthetic job");
     return syntheticJobVM(job);
   });
-  app.get("/a/v1/industry-templates", async (req) => repos.industryTemplates.list(ctx(req).tenantId));
+  // 行业模版下拉：内置模版（代码常数，如 battery-manufacturing —— 项目沙盘/演示数据正是它确定性生成的）
+  // ∪ 本租户已存模版（LLM 生成/克隆）。内置模版此前不入 industry_templates 表 → 下拉空；这里并入surf 出来。
+  app.get("/a/v1/industry-templates", async (req) => {
+    const stored = await repos.industryTemplates.list(ctx(req).tenantId);
+    const builtinKeys = new Set(BUILTIN_INDUSTRY_TEMPLATES.map((t) => t.industryKey));
+    const builtins = BUILTIN_INDUSTRY_TEMPLATES.map((t) => ({ industryKey: t.industryKey, source: "BUILTIN" as const }));
+    const rest = stored.filter((s) => !builtinKeys.has(s.industryKey)).map((s) => ({ industryKey: s.industryKey, source: s.source }));
+    return [...builtins, ...rest];
+  });
 
   // ---- Feature entitlement -----------------------------------------------------------------
   const requireAdmin = (c: AuthCtx) => {
