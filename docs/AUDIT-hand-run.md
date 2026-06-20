@@ -60,6 +60,16 @@ solvers/rules/scenes/agents 全部真建出，跨系统 scaffold 全链 `fullCha
 - FK 一致生成 11k 行：**23ms**，全量闭合 + 确定性字节级一致。
 - shared_bottleneck 求解 11k 对象：**51ms**，20 瓶颈 / 10000 单争用 / 20 单降级，正确。线性，无 O(n²)。
 
+### ③ 5 个杀手级多跳求解器全部落地 + 真实 HTTP 端到端（generic-solvers-http-e2e.test）
+5 问全有确定性求解器后端（净室零依赖、R6、读对象图）：
+- Q1 `affected_orders`（客户违约传导面）· Q2 `supplier_disruption_radius`（断供影响半径,反向逐层扇出）·
+  Q3 `margin_attribution`（毛利倒挂根因,成本项归因）· Q4 `shared_bottleneck`（产能瓶颈优先级冲突）·
+  Q5 `concentration_risk`（隐性客户集中度,多源收敛）。
+- **经真实路由** `POST /a/v1/solvers/{key}/invoke`（entitlement 闸 + 鉴权 + zod 反序列化 + JSON 序列化）：
+  Q2/Q3/Q4/Q5 各 HTTP **200** + 正确形状（化成瓶颈 / 华东电解液敞口 3 / 2 单倒挂 / 半径 3 层）;
+  缺参 → **≥400 错误信封**（不静默空结果）。补齐了 service 层 invoke() 抓不到的"路由/契约/序列化"那一层。
+- 注：4 个通用求解器未绑定任何 feature → entitlement `requireByBinding` 视为不受控放行（任意租户可调）。
+
 ### 仍诚实欠的
 - 🔴 **真调 Kimi**：需用户填 API key（凭据,我无法代填）；本次 comprehend 走确定性地板 live。
 - 🔴 **浏览器 UI hand-run**：沙箱无浏览器；live 验证到 HTTP 端到端层,未到像素层。
