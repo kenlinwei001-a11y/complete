@@ -72,6 +72,7 @@
 - ⬜ **8d 约束求解 / 排产冲突（Q4 shared_bottleneck）**：主选 **OR-Tools**(Apache-2.0,Google,成熟;CP-SAT 钉 seed 可确定性)。集成=sidecar 封装为 `shared_bottleneck` 求解器,声明输出形状。
 - ⬜ **8e 归因 / 因果（毛利倒挂 Q3）**：主选 **DoWhy**(MIT,因果推断,比 SHAP 更适合"哪个环节吃掉多少毛利")；备 **EconML**(MIT)、**SHAP**(MIT,⚠️ 默认不确定,须钉种子)。**或**先净室确定性归因分解(沿因果链逐环节差分),够用就不引依赖。
 - ⬜ **8f 求解器 sidecar 基建**：起 Python/原生求解器微服务(docker-compose 加服务)+ 平台自有 REST 契约 + OBO 透传 + 4 闸评审流水。8b/8c/8d/8e 的依赖落地都靠它。**这是 8 类落地的前置基建。**
+- ⬜ **8g 封装引擎暴露为 MCP 工具(B3,可见+可治理)**：依赖引入的引擎(OR-Tools/DoWhy/Soufflé sidecar)封装成平台自有 API 后，**注册为一个 MCP server**(`mcpConfigs`)→ 其工具(shared_bottleneck/margin_attribution… 带 `inputSchema`)在 **MCP 页(`McpPage` `mcp-tools`)可见、连接测试可发现、agent 经 `mcp-router` 可调**;凭据 AES-GCM(no-secrets-echo)。**即:不止是内部求解器调用,而是在 MCP 模块看得到它们 + API/schema。** 同时按需注册为 datacore 求解器(SOLVER_KEYS,声明输出形状,供闭包/渲染 R11)——一鱼两吃:确定性 workflow 走求解器、agent 探索走 MCP 工具。
 
 > 落地顺序建议：先净室扩 8b(传导)/8c(聚合)满足 Q1/Q2/Q5(平台底座已有雏形,零依赖)；Q4 上 **OR-Tools**、Q3 上 **DoWhy**(需 8f sidecar)；8a 图库规模不够才上。**默认不全上 12 个。**
 

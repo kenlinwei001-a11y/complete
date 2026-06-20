@@ -42,6 +42,7 @@ import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
 import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
+import { buildFieldCatalog, resolveEntity } from "./databuilder/entity-catalog.js";
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
 import { TimeseriesService } from "./timeseries.js";
@@ -1153,6 +1154,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));
+
+  // PRD-fde §3.2 实体与字段目录索引（P1 读模型）：
+  // 字段目录（类型→字段,标时序）+ 消歧（模糊实体→系统里具体候选,绝不带占位符进数据生成）。
+  app.get("/a/v1/entity-catalog", async (req) => {
+    const c = ctx(req);
+    return { items: buildFieldCatalog(await ontology.listTypes(c)) };
+  });
+  app.get("/a/v1/entity-catalog/resolve", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { q?: string; type?: string; topK?: string };
+    if (!q.q) throw validationError("缺少查询参数 q");
+    const candidates = await resolveEntity(c, String(q.q), ontology, { type: q.type, topK: q.topK ? Number(q.topK) : 5 });
+    // 命中=具体候选;空=域外（调用方走 InputManifest 补录,不猜）
+    return { query: q.q, resolved: candidates.length > 0, candidates };
+  });
 
   // A2 在线数据模版（G-6 收口）：从本租户已发布对象类型派生"该上传哪些列"的 CSV 模版；
   // ?withSamples=N&seed= 时多表 FK 一致生成样例（ref 值必指向父表实际 PK，可直接试灌）。
