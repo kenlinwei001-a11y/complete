@@ -209,6 +209,20 @@ export const queryTimeseriesAgg = (input: {
   agg: string;
 }) => api.a<QueryTimeseriesAggOutput>("/a/v1/timeseries/agg-query", { body: input });
 
+// 数据接入分类（数据接入控制台）：按业务域归类 + 每类接入方式 + 上传模版（可看可下载）。
+export interface DataCategoryView {
+  key: string;
+  displayName: string;
+  description: string;
+  mode: "SYSTEM_INTEGRATION" | "FILE_UPLOAD";
+  modes: ("SYSTEM_INTEGRATION" | "FILE_UPLOAD")[];
+  connectorTypeKeys: string[];
+  types: { typeKey: string; displayName: string; columns: string[]; present: boolean }[];
+}
+export const fetchDataCategories = () => api.a<{ items: DataCategoryView[] }>("/a/v1/data-categories");
+export const setDataCategoryMode = (key: string, mode: "SYSTEM_INTEGRATION" | "FILE_UPLOAD") =>
+  api.a<{ categoryKey: string; mode: string }>(`/a/v1/data-categories/${key}/mode`, { method: "PUT", body: { mode } });
+
 export const fetchConnectorTypes = () => api.a<ConnectorType[]>("/a/v1/connector-types");
 export const fetchConnections = () => api.a<ConnectionInstance[]>("/a/v1/connections");
 export const createConnection = (body: { connectorTypeKey: string; name: string; config: Record<string, unknown> }) =>

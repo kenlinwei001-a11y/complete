@@ -12,6 +12,7 @@ import {
   triggerSync,
   uploadFile,
 } from "@/api/endpoints";
+import { DataCategoriesPanel } from "./DataCategoriesPanel";
 import { healthStatusLabel, HEALTH_POLL_MS } from "@/components/Health/HealthBadge";
 import { JsonSchemaForm } from "@/components/JsonSchemaForm/JsonSchemaForm";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -54,6 +55,8 @@ export default function ConnectionsPage() {
           {t.newConnection}
         </button>
       </div>
+
+      <DataCategoriesPanel />
 
       <UploadCard onDone={(connId) => navigate(`/admin/connections/${connId}/schema`)} />
 
