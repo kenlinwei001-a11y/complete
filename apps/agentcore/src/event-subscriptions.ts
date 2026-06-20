@@ -64,6 +64,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "growth.ticket_opened", producer: "自成长发动机·缺功能落工单", tier: "NOTIFY", invalidates: ["growth-tickets", "notifications"] },
   { event: "growth.converged", producer: "自成长发动机·LOOP 收敛（问句现可答）", tier: "IN_SESSION", invalidates: ["growth-ledger", "growth-tickets"] },
   { event: "quarantine.row_added", producer: "隔离区入库", tier: "NOTIFY", invalidates: ["notifications", "quarantine"] },
+  // L16 感知层环：用户实体在本租户任何已发布类型都解析不到 → 域外信号（最近邻候选 + 误触发率埋点）
+  { event: "entity.out_of_domain", producer: "感知层·槽位解析（裸串实体域外）", tier: "NOTIFY", invalidates: ["perception-metrics"] },
   // L11 权限环 — 换账号即全链过滤（登录态切换，非事件）
   { event: "policy.updated", producer: "权限策略变更", tier: "IN_SESSION", invalidates: ["dashboard", "search", "scenario-data", "history"], dl: "DL11" },
   // L12 功能开通环

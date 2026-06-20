@@ -36,6 +36,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
+import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
 
@@ -473,13 +474,27 @@ export class Orchestrator {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
 
-    const { slots, missing } = await fillSlots(
+    const { slots, missing, outOfDomain } = await fillSlots(
       intent,
       extracted,
       task.context,
       this.deps.engine.deps.dataCore.ontology,
       auth,
     );
+    // A5 感知层埋点：objectRef 解析尝试（分母）+ 域外实体（分子）→ 发独立事件 + 记误触发率。
+    const objectRefAttempts = intent.slots.filter(
+      (s) => s.type === "objectRef" && extracted[s.name] !== undefined && extracted[s.name] !== null && extracted[s.name] !== "",
+    ).length;
+    recordResolutionAttempts(auth.tenantId, objectRefAttempts, outOfDomain.length);
+    for (const ood of outOfDomain) {
+      recordOutOfDomain({ tenantId: auth.tenantId, intentKey: intent.key, slotName: ood.slotName, value: ood.value, candidates: ood.candidates, at: new Date().toISOString() });
+      await this.deps.events.emit(taskId, "entity.out_of_domain", {
+        slot: ood.slotName,
+        value: ood.value,
+        candidates: ood.candidates,
+        nearest: ood.candidates[0]?.label ?? null,
+      });
+    }
     const finalSlots = { ...slots };
     for (const [k, v] of Object.entries(presetSlots)) {
       if (finalSlots[k] === undefined || finalSlots[k] === null) finalSlots[k] = v;

@@ -46,6 +46,7 @@ import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap, FILL } from "./growth/probe.js";
+import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
@@ -302,6 +303,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const updated = { ...tk, status: verified ? ("VERIFIED" as const) : ("IN_REVIEW" as const) };
     await deps.repos.growthTickets.upsert(updated);
     return { ticket: updated, verified, gapReport: gap };
+  });
+
+  // A5 感知层埋点：实体解析"误触发率"（域外/尝试）+ 最近域外明细（带最近邻候选）。
+  app.get("/api/v1/perception/metrics", async (req) => {
+    const a = await auth(req);
+    return perceptionMetrics(a.tenantId);
   });
 
   // Phase9C 推演历史列表：按租户列最近任务（id/问句/路径/状态/结论摘要/时间），供"推演历史"页浏览+重放。
