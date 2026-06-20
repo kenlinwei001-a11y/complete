@@ -30,8 +30,22 @@ export const LlmComprehendSchema = z.object({
     solverKey: z.string(),
     inputFields: z.array(z.object({ typeKey: z.string(), propKey: z.string() })),
   })),
+  /**
+   * §3.4 场景拓扑：数据模拟的核心——不是造类型对的随机行,而是构造"被问现象真实存在"的世界。
+   * sharedResources：哪些上游对象(sharedByType)共享同一关键资源(resourceType,count 越小越挤)→ 制造瓶颈。
+   * plantedValues：植入特定字段值(产能<需求 / 优先级低 / 越线)→ 让争用/降级真实可被求解器发现。
+   */
+  scenarioTopology: z.object({
+    sharedResources: z.array(z.object({
+      resourceType: z.string(), sharedByType: z.string(), viaField: z.string(), count: z.number().int().min(1).default(1),
+    })).default([]),
+    plantedValues: z.array(z.object({
+      typeKey: z.string(), field: z.string(), value: z.union([z.number(), z.string()]), everyN: z.number().int().min(1).default(1),
+    })).default([]),
+  }).optional(),
 });
 export type LlmComprehendOutput = z.infer<typeof LlmComprehendSchema>;
+export type ScenarioTopology = NonNullable<LlmComprehendOutput["scenarioTopology"]>;
 
 export const COMPREHEND_SYSTEM = [
   "你是制造业运营本体建模专家。把用户的业务故事/问题解析为推演所需的本体骨架。",
