@@ -45,3 +45,21 @@ solvers/rules/scenes/agents 全部真建出，跨系统 scaffold 全链 `fullCha
 4. 富多跳切片 + 拟真值（§3）。
 
 > 其余模块（连接器/对象浏览/Agent 页/推演链路）的逐一 hand-run 待续,方法同上。
+
+## 真服务端到端 + 大数据压测（补"能用级"验证）
+
+### ① 真服务 live HTTP 端到端（datacore:4001 + agentcore:4002，非内存 inject）
+起真服务、真 HTTP 请求驱动 FDE 链，真实响应：
+- **消歧**：`GET /a/v1/entity-catalog/resolve?q=常州&type=Base` → `resolved=true, top=常州`。
+- **能力清单**：`GET /a/v1/capability-inventory` → `26 类型, solvers 含 shared_bottleneck=true`。
+- **比对差异**：`POST /a/v1/capability-inventory/diff {solvers:[…,margin_attribution]}` → `GAPS: margin_attribution:SOLVER_NOT_FOUND`。
+- **求解器**：`POST /a/v1/solvers/shared_bottleneck/invoke` → HTTP 200，返回 bottlenecks/contention/downgraded 形状。
+- **P4 终态闭环（live）**：createPlan/createIntent(201) → DRAFT 场景 → `POST /b/v1/scenarios/scene_live_demo/publish-chain` → HTTP 200，`chain=plan→intent→scenario`；**场景启动器 `GET /b/v1/scenarios` 从 20 → 21，新场景可见**。无死路门 live 生效（缺意图时 409）。
+
+### ② 大数据压测（1000 工序 / 10000 订单，stress-bottleneck.test）
+- FK 一致生成 11k 行：**23ms**，全量闭合 + 确定性字节级一致。
+- shared_bottleneck 求解 11k 对象：**51ms**，20 瓶颈 / 10000 单争用 / 20 单降级，正确。线性，无 O(n²)。
+
+### 仍诚实欠的
+- 🔴 **真调 Kimi**：需用户填 API key（凭据,我无法代填）；本次 comprehend 走确定性地板 live。
+- 🔴 **浏览器 UI hand-run**：沙箱无浏览器；live 验证到 HTTP 端到端层,未到像素层。
