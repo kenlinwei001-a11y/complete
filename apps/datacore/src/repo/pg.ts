@@ -579,6 +579,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     promptTemplates: new PgStore(pool, "prompt_templates"),
     llmBudgets: new PgStore(pool, "llm_budgets"),
     factoryCalendars: new PgStore(pool, "factory_calendars"),
+    dataCategorySettings: new PgStore(pool, "data_category_settings"),
     writebackEchoes: new PgStore(pool, "writeback_echoes"),
     featureAudit: new PgStore(pool, "feature_audit"),
     scenarioPackages: new PgStore(pool, "scenario_packages"),

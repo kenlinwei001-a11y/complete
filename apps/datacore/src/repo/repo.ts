@@ -267,6 +267,8 @@ export interface Repos {
   llmBudgets: Store<import("@platform/contracts").LlmBudget>;
   factoryCalendars: Store<import("@platform/contracts").FactoryCalendar>;
   writebackEchoes: Store<import("@platform/contracts").WritebackEcho>;
+  /** 数据接入分类的接入方式覆盖（系统对接/文件上传，按租户，migration022）。 */
+  dataCategorySettings: Store<import("@platform/contracts").DataCategorySetting>;
   // 管理平台增量 §3
   scenarioPackages: Store<ScenarioPackageRecord>;
   dynamicFeatures: Store<DynamicFeatureRecord>;

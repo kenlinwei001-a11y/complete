@@ -50,6 +50,7 @@
 - **Connection / Connector**：数据源连接（含 EXTERNAL 类：rest_api/external_feed/generic_jdbc/**mock_external**；file_upload/mock_erp/mock_crm/mock_external 有适配器）· `connectors/registry.ts`。
 - **ExternalSignal（外部域 EXT_SIG）**：环境/市场信号一等对象（锂价/镍价/汇率/需求指数/政策/电价；signalKey 键 + value/unit/asOf/source/trend/impact）· domain=`external` · 经 mock_external 连接器同步或合成出厂 · `GET /a/v1/external-signals`（规划体检/建议敏感性输入，P2）· `synthetic/service.ts`,`connectors/registry.ts MOCK_EXTERNAL_DATA`。
 - **RawDataset / RawRow**：上传/同步产出的原始表 · `connections`,`rawDatasets`,`rawRows`。
+- **DataCategory（数据接入分类）**：把"目前的数据"（对象类型）按锂电业务域归类（销售订单/物料/设备台账…，全部出厂类型恰好归入一类）；每类可设 **系统对接 / 文件上传**（`DataCategorySetting` 按租户持久化覆盖，migration022），文件上传走该类对象类型派生的字段模版（`buildDataTemplates`，可看可下载）· `synthetic/data-categories.ts batteryDataCategories` · `GET /a/v1/data-categories[/:key/template]`、`PUT /a/v1/data-categories/:key/mode`。**字段覆盖铁律**：`batteryCoverageSlices` 为每对象类型生成单实体全字段覆盖切片 → `computeFieldCoverage`（`databuilder/slice-coverage.ts`）证每个非派生字段∈≥1 切片（`GET /a/v1/field-coverage`，battery 域 172/172 100%）。
 - **IndustryTemplate**：行业模板（合成数据 GenSpec 来源；battery-manufacturing 等）· `industryTemplates`。
 - **SyntheticJob**：合成数据作业（industry×scale×seed 确定性）· `syntheticJobs`。
 - **BuildPlan / BuildJob / DataBuilderAgent / ClosureReport**：**数据构建发动机**（七阶段 intake→comprehend→gap→rawin→transform→closure→publish）· `databuilder/service.ts`,`closure.ts`。

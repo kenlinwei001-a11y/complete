@@ -16,6 +16,7 @@ import { AuthService } from "../auth.js";
 import { newId } from "../ids.js";
 import { mulberry32, hashString, round } from "../prng.js";
 import { evaluateExpression } from "../ruledsl.js";
+import { batteryCoverageSlices } from "./data-categories.js";
 import {
   BATTERY_ACTION_TYPES,
   BATTERY_RULE_SCOPES,
@@ -752,8 +753,8 @@ export class SyntheticService {
       if (monthTargets.has(month)) await putLink(`lnk_otp_${o.so}`, "order_to_plantarget", oid("Order", o.so), oid("PlanTarget", `PT-${month}`));
     }
 
-    // 跨 6 域内置切片 order_fulfillment_360：合成即落库（resolve 不依赖外部配置脚本）。
-    for (const s of batteryBuiltinSlices()) {
+    // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
+    for (const s of [...batteryBuiltinSlices(), ...batteryCoverageSlices()]) {
       await this.repos.sliceSpecs.put({
         id: `slice_${s.sliceKey}`.replace(/[^\w-]/g, "_"),
         tenantId: ctx.tenantId,

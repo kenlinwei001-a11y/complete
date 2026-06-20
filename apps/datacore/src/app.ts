@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
@@ -41,6 +41,8 @@ import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
 import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
+import { dataCategoriesForIndustry } from "./synthetic/data-categories.js";
+import { computeFieldCoverage, computeCategoryCoverage } from "./databuilder/slice-coverage.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
 import { buildFieldCatalog, resolveEntity } from "./databuilder/entity-catalog.js";
 import { diffNeeds, type CapabilityInventory } from "./databuilder/capability-inventory.js";
@@ -1215,6 +1217,64 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!tpl) throw validationError(`未知对象类型 '${typeKey}'（本租户）`);
     return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${typeKey}.template.csv"`).send(tpl.csv);
   });
+  // 数据接入分类（数据接入控制台）：按业务域把"目前的数据"归类（销售订单/物料/设备台账…）；
+  // 每类可设 系统对接/文件上传，文件上传走该类对象类型派生的字段模版（可看可下载）。
+  app.get("/a/v1/data-categories", async (req) => {
+    const c = ctx(req);
+    const cats = dataCategoriesForIndustry();
+    const types = await ontology.listTypes(c);
+    const tplByType = new Map(buildDataTemplates(types).map((t) => [t.typeKey, t]));
+    const overrides = await repos.dataCategorySettings.list(c.tenantId);
+    const modeOf = (key: string, dflt: string) => overrides.find((o) => o.categoryKey === key)?.mode ?? dflt;
+    return {
+      items: cats.map((cat) => ({
+        ...cat,
+        mode: modeOf(cat.key, cat.defaultMode),
+        // 该类对象类型 + 各自上传列数（前端可见"分类里有哪些数据/字段"）。
+        types: cat.typeKeys.map((tk) => ({ typeKey: tk, displayName: tplByType.get(tk)?.displayName ?? tk, columns: tplByType.get(tk)?.columns ?? [], present: tplByType.has(tk) })),
+      })),
+    };
+  });
+  // 分类上传模版（可看 JSON / ?format=csv 下载该类全部类型的合并 CSV）。
+  app.get("/a/v1/data-categories/:key/template", async (req, reply) => {
+    const c = ctx(req);
+    const { key } = req.params as { key: string };
+    const q = req.query as { withSamples?: string; seed?: string; format?: string };
+    const cat = dataCategoriesForIndustry().find((x) => x.key === key);
+    if (!cat) throw validationError(`未知数据分类 '${key}'`);
+    const types = await ontology.listTypes(c);
+    const opts = { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 };
+    const templates = cat.typeKeys.map((tk) => buildDataTemplate(types, tk, opts)).filter((t): t is NonNullable<typeof t> => !!t);
+    if (q.format === "csv") {
+      const csv = templates.map((t) => `# ${t.displayName} (${t.typeKey})\n${t.csv}`).join("\n\n");
+      return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${key}.template.csv"`).send(csv);
+    }
+    return { category: { key: cat.key, displayName: cat.displayName, description: cat.description, mode: cat.defaultMode, modes: cat.modes, connectorTypeKeys: cat.connectorTypeKeys }, templates };
+  });
+  // 设置分类接入方式（系统对接/文件上传，按租户持久化覆盖；admin）。
+  app.put("/a/v1/data-categories/:key/mode", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const cat = dataCategoriesForIndustry().find((x) => x.key === key);
+    if (!cat) throw validationError(`未知数据分类 '${key}'`);
+    const mode = IngestModeSchema.parse((req.body as { mode?: unknown })?.mode);
+    if (!cat.modes.includes(mode)) throw validationError(`分类 '${key}' 不支持接入方式 '${mode}'`);
+    const rec = { id: `dcs_${c.tenantId}_${key}`, tenantId: c.tenantId, categoryKey: key, mode, updatedAt: new Date().toISOString() };
+    await repos.dataCategorySettings.put(rec);
+    return rec;
+  });
+  // 本体切片字段覆盖检查（铁律："所有字段实体都需被至少一个本体切片覆盖"）+ 分类归并完整性。
+  app.get("/a/v1/field-coverage", async (req) => {
+    const c = ctx(req);
+    const types = await ontology.listTypes(c);
+    const links = await repos.ontologyLinks.list(c.tenantId);
+    const slices = await repos.sliceSpecs.list(c.tenantId);
+    const fieldCoverage = computeFieldCoverage(types, links, slices.map((s) => ({ sliceKey: s.sliceKey, spec: s.spec })));
+    const categoryCoverage = computeCategoryCoverage(types, dataCategoriesForIndustry());
+    return { fieldCoverage, categoryCoverage };
+  });
+
   // 约束执行层：工具/外部/MCP 输出按本体对象类型 schema + 属性值域强制校验（可配置,按租户）。
   // policy 缺省用全局默认（安全侧 REJECT）;调用方（连接器导入/MCP 工具执行器）按源覆盖。
   app.post("/a/v1/ontology/validate-output", async (req) => {

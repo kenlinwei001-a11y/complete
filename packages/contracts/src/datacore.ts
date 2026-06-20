@@ -247,3 +247,37 @@ export const IndustryTemplateSchema = z.object({
   solverParams: z.record(z.string(), z.unknown()).optional(),
 });
 export type IndustryTemplate = z.infer<typeof IndustryTemplateSchema>;
+
+// ---------------------------------------------------------------------------
+// 数据接入分类（数据接入控制台：按业务域把"目前的数据"归类；每类可设系统对接/文件上传）
+// ---------------------------------------------------------------------------
+
+/** 接入方式：系统对接（连接器/API 同步）或文件上传（按模版灌入）。 */
+export const IngestModeSchema = z.enum(["SYSTEM_INTEGRATION", "FILE_UPLOAD"]);
+export type IngestMode = z.infer<typeof IngestModeSchema>;
+
+/** 数据分类定义（行业域包派生；如 锂电「销售订单/物料/设备台账…」）。 */
+export const DataCategorySchema = z.object({
+  key: z.string(),
+  displayName: z.string(),
+  description: z.string().default(""),
+  /** 归入本分类的本体对象类型键（"目前的数据"按此合并到分类）。 */
+  typeKeys: z.array(z.string()),
+  /** 本分类支持的接入方式（至少一种）。 */
+  modes: z.array(IngestModeSchema).min(1),
+  /** 默认接入方式（未设置覆盖时生效）。 */
+  defaultMode: IngestModeSchema,
+  /** 系统对接时建议的连接器类型键。 */
+  connectorTypeKeys: z.array(z.string()).default([]),
+});
+export type DataCategory = z.infer<typeof DataCategorySchema>;
+
+/** 分类接入方式覆盖（持久化，按租户 R2；缺省回落 defaultMode）。 */
+export const DataCategorySettingSchema = z.object({
+  id: z.string(), // dcs_{tenant}_{categoryKey}
+  tenantId: z.string(),
+  categoryKey: z.string(),
+  mode: IngestModeSchema,
+  updatedAt: IsoTime,
+});
+export type DataCategorySetting = z.infer<typeof DataCategorySettingSchema>;
