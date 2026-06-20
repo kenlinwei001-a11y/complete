@@ -48,6 +48,8 @@ export const SOLVER_KEYS = [
   "concentration_risk",
   // PRD-fde §8 Q3 毛利倒挂根因归因（净室通用）：成本项拆解 + 倒挂群主驱动聚合。
   "margin_attribution",
+  // PRD-fde §8 Q2 单一供应商断供影响半径（净室通用）：反向多跳逐层扇出算扩散半径与叶层敞口。
+  "supplier_disruption_radius",
 ] as const;
 
 /**
@@ -70,6 +72,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   shared_bottleneck: ["bottlenecks", "contention", "downgraded", "summary"],
   concentration_risk: ["concentrations", "topExposure", "summary"],
   margin_attribution: ["inverted", "rootDrivers", "invertedCount", "summary"],
+  supplier_disruption_radius: ["rootType", "rootId", "layers", "radius", "totalAffected", "leafType", "leafCount", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -302,6 +305,46 @@ export class SolverService {
     };
   }
 
+  /**
+   * PRD-fde §8 Q2 单一供应商断供的影响半径（净室,零依赖,确定性 R6）：从断供根（如某二级供应商）
+   * 沿"谁引用我"的反向多跳逐层扇出——物料→订单→客户，逐层算出受冲击集合、扩散半径（穿透层数）、
+   * 叶层敞口。与 concentration_risk（多源收敛到一根）互为反向：这里是一根扇出冲击多个叶子。
+   * args: { rootType, rootId, layers:[{type, viaField}] }（每层 type 对象的 viaField 引用上一层的主键/根）。
+   */
+  private async supplierDisruptionRadius(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const rootType = str(args.rootType);
+    const rootId = str(args.rootId);
+    const layers = Array.isArray(args.layers) ? (args.layers as { type: string; viaField: string }[]) : [];
+    if (!rootType || !rootId || layers.length === 0) throw validationError("supplier_disruption_radius 需 rootType + rootId + layers:[{type,viaField}]");
+
+    let frontier = new Set<string>([rootId]); // 当前层可被引用的"上一层主键"集合
+    const result: { type: string; viaField: string; count: number; ids: string[] }[] = [];
+    let radius = 0;
+    for (const layer of layers) {
+      const objs = await this.repos.objects.listByType(ctx.tenantId, layer.type);
+      const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === layer.type))[0];
+      const pk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+      const hit = objs.filter((o) => frontier.has(String(o.props[layer.viaField] ?? "")));
+      const ids = hit.map((o) => String((pk ? o.props[pk] : undefined) ?? o.id)).sort();
+      result.push({ type: layer.type, viaField: layer.viaField, count: ids.length, ids });
+      if (ids.length > 0) radius += 1; // 半径 = 实际穿透到的层数
+      frontier = new Set(ids);
+      if (ids.length === 0) break; // 断链：再深的层不会有受冲击对象
+    }
+    const leaf = result[result.length - 1];
+    const totalAffected = result.reduce((s, l) => s + l.count, 0);
+    return {
+      rootType,
+      rootId,
+      layers: result,
+      radius,
+      totalAffected,
+      leafType: leaf?.type ?? null,
+      leafCount: leaf?.count ?? 0,
+      summary: `断供「${rootId}」影响半径 ${radius} 层、波及 ${totalAffected} 个对象；叶层 ${leaf?.type ?? "—"} ${leaf?.count ?? 0} 个`,
+    };
+  }
+
   async getParams(tenantId: string): Promise<SolverParamsShape> {
     const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
     const stored = (rec?.params ?? {}) as Record<string, unknown>;
@@ -523,6 +566,7 @@ export class SolverService {
     if (solverKey === "shared_bottleneck") return this.sharedBottleneck(ctx, args);
     if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
+    if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
