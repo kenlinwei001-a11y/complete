@@ -1,6 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, type TestApp } from "./helpers.js";
-import { assemblePlanBody, type LlmComprehendOutput } from "../src/databuilder/comprehend.js";
+import { assemblePlanBody, LlmComprehendSchema, type LlmComprehendOutput } from "../src/databuilder/comprehend.js";
+
+/**
+ * 真 LLM 措辞容错（实测必要）：Kimi/Moonshot 即便给 json_schema 仍常用别名（name↔typeKey、
+ * type↔dataType、float→number、domain 放顶层）→ 旧严格 schema 校验失败 → 静默回落地板。
+ * 归一层把别名映射回严格形状，使真 LLM comprehend 全 schema 可用（实测真 Kimi 已通过）。
+ */
+describe("§2 LLM comprehend · 真 LLM 措辞容错归一", () => {
+  it("name→typeKey / type→dataType / float→number / 顶层 domain 下放 → 严格校验通过", () => {
+    const aliased = {
+      domain: "capacity", // 顶层 domain（Kimi 实测形态）
+      objectTypes: [
+        { name: "Order", fields: [{ name: "so", type: "string", isPrimaryKey: true }, { name: "qty", type: "float" }] },
+        { name: "Process", domain: "process", properties: [{ name: "procId", type: "id", isPrimaryKey: true }, { name: "cap", type: "int" }] },
+      ],
+      rules: [{ name: "瓶颈", expression: "Process.cap < Order.qty", scope: ["Process"] }],
+      solverNeeds: [{ solver: "shared_bottleneck", inputFields: [{ type: "Process", field: "cap" }] }],
+    };
+    const out = LlmComprehendSchema.parse(aliased) as LlmComprehendOutput;
+    expect(out.objectTypes.map((t) => t.typeKey)).toEqual(["Order", "Process"]);
+    expect(out.objectTypes[0]!.domain).toBe("capacity"); // 顶层 domain 下放
+    expect(out.objectTypes[1]!.domain).toBe("process"); // 自带 domain 优先
+    expect(out.objectTypes[0]!.fields.map((f) => f.dataType)).toEqual(["string", "number"]); // float→number
+    expect(out.objectTypes[1]!.fields.map((f) => f.dataType)).toEqual(["string", "number"]); // id→string, int→number
+    expect(out.objectTypes[1]!.fields.length).toBe(2); // properties↔fields
+    expect(out.rules[0]!.severity).toBe("WARN"); // 缺 severity → 默认 WARN
+    expect(out.solverNeeds[0]!.solverKey).toBe("shared_bottleneck"); // solver→solverKey
+    expect(out.solverNeeds[0]!.inputFields[0]).toEqual({ typeKey: "Process", propKey: "cap" });
+  });
+});
 
 /**
  * §2 LLM comprehend（接 Kimi）：让发动机听懂任意业务故事。LLM 只产出"听懂"的难点(对象/规则/求解器)，

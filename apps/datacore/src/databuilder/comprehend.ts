@@ -11,7 +11,7 @@ import { deriveSolverArgs } from "./solver-args.js";
  * 机械的 B 栈倒推（切片/意图/计划/场景/工作流/技能/Agent）仍由确定性 `assemblePlanBody` 完成。
  * 缺 LLM 绑定/失败时由 `comprehendScript` 关键词地板兜底（R6 字节级一致）。
  */
-export const LlmComprehendSchema = z.object({
+const StrictComprehendSchema = z.object({
   objectTypes: z.array(z.object({
     typeKey: z.string(),
     displayName: z.string(),
@@ -45,14 +45,69 @@ export const LlmComprehendSchema = z.object({
     })).default([]),
   }).optional(),
 });
+
+/**
+ * 容错归一（实测必要）：真 LLM（如 Kimi/Moonshot）即便给了 json_schema 也常用别名措辞——
+ * name↔typeKey、type↔dataType、float/int→number、domain 放顶层、properties↔fields 等。
+ * 在 zod 校验前把原始 LLM JSON 归一到严格形状，使结构化输出对模型措辞鲁棒（否则静默回落地板）。
+ * 确定性纯函数（R6）。
+ */
+function normDataType(v: unknown): string {
+  const s = String(v ?? "").toLowerCase();
+  if (["float", "double", "int", "integer", "decimal", "long", "bigint", "money", "currency"].includes(s)) return "number";
+  if (["datetime", "timestamp", "time"].includes(s)) return "date";
+  if (["bool"].includes(s)) return "boolean";
+  if (["reference", "fk", "foreign", "foreignkey", "relation", "link"].includes(s)) return "ref";
+  if (["category", "categorical", "select"].includes(s)) return "enum";
+  if (["str", "text", "varchar", "char", "uuid", "id"].includes(s)) return "string";
+  return (["string", "number", "boolean", "date", "enum", "ref"] as const).includes(s as never) ? s : "string";
+}
+function asArr(v: unknown): Record<string, unknown>[] {
+  return Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
+}
+function normalizeComprehend(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const r = raw as Record<string, unknown>;
+  const topDomain = typeof r.domain === "string" ? r.domain : undefined;
+  const objectTypes = asArr(r.objectTypes).map((o) => ({
+    typeKey: o.typeKey ?? o.key ?? o.name ?? o.type,
+    displayName: o.displayName ?? o.label ?? o.cnName ?? o.name ?? o.typeKey,
+    domain: o.domain ?? topDomain ?? "general",
+    fields: asArr(o.fields ?? o.properties).map((f) => ({
+      name: f.name ?? f.propKey ?? f.key ?? f.field,
+      dataType: normDataType(f.dataType ?? f.type),
+      ...(f.isPrimaryKey != null ? { isPrimaryKey: !!f.isPrimaryKey } : {}),
+      ...((f.refToTypeKey ?? f.ref ?? f.references) ? { refToTypeKey: f.refToTypeKey ?? f.ref ?? f.references } : {}),
+    })),
+  }));
+  const rules = asArr(r.rules).map((x) => ({
+    key: x.key ?? x.id ?? x.name,
+    name: x.name ?? x.key,
+    expression: x.expression ?? x.expr ?? x.dsl ?? x.condition ?? "",
+    scopeObjectTypes: Array.isArray(x.scopeObjectTypes ?? x.scope) ? (x.scopeObjectTypes ?? x.scope) : [],
+    severity: ["BLOCK", "WARN", "INFO"].includes(String(x.severity ?? "").toUpperCase()) ? String(x.severity).toUpperCase() : "WARN",
+  }));
+  const solverNeeds = asArr(r.solverNeeds).map((s) => ({
+    solverKey: s.solverKey ?? s.key ?? s.solver,
+    inputFields: asArr(s.inputFields).map((f) => ({ typeKey: f.typeKey ?? f.type, propKey: f.propKey ?? f.field ?? f.name })),
+  }));
+  return { objectTypes, rules, solverNeeds, ...(r.scenarioTopology ? { scenarioTopology: r.scenarioTopology } : {}) };
+}
+
+/** LLM comprehend 输出 schema（先归一后严格校验，对真 LLM 措辞鲁棒）。 */
+export const LlmComprehendSchema = z.preprocess(normalizeComprehend, StrictComprehendSchema);
 export type LlmComprehendOutput = z.infer<typeof LlmComprehendSchema>;
 export type ScenarioTopology = NonNullable<LlmComprehendOutput["scenarioTopology"]>;
 
 export const COMPREHEND_SYSTEM = [
-  "你是制造业运营本体建模专家。把用户的业务故事/问题解析为推演所需的本体骨架。",
-  "输出 JSON：objectTypes(对象类型+字段，每类至少一个 isPrimaryKey)、rules(业务约束 DSL，如 'Order.demandDelta > 0.5')、solverNeeds(回答该问题所需的求解器及其输入字段)。",
-  "domain 取：factory/product/process/equip/people/quality/capacity/forecast/sales/material/finance/plan/external 之一。",
-  "若问题涉及工序/设备瓶颈、排产降级、后果推演，应建 Process/Equipment 等对象类型并提出对应 solver（如 shared_bottleneck / schedule_downgrade / impact_forecast）。",
+  "你是制造业运营本体建模专家。把用户的业务故事/问题解析为推演所需的本体骨架。只输出一个 JSON 对象，字段名必须严格如下（不要改名）：",
+  "{",
+  '  "objectTypes": [ { "typeKey": "英文驼峰", "displayName": "中文名", "domain": "见下枚举", "fields": [ { "name": "字段名", "dataType": "string|number|boolean|date|enum|ref", "isPrimaryKey": true|false, "refToTypeKey": "指向的typeKey或null" } ] } ],',
+  '  "rules": [ { "key": "R_XX", "name": "中文名", "expression": "DSL如 Order.demandDelta > 0.5", "scopeObjectTypes": ["typeKey"], "severity": "BLOCK|WARN|INFO" } ],',
+  '  "solverNeeds": [ { "solverKey": "求解器键", "inputFields": [ { "typeKey": "typeKey", "propKey": "字段名" } ] } ]',
+  "}",
+  '硬性约束：用 "typeKey" 不要用 name；字段用 "dataType" 不要用 type；dataType 只能是 string/number/boolean/date/enum/ref（不要 float/int/text）；每个对象类型至少一个字段 isPrimaryKey=true；domain 取 factory/product/process/equip/people/quality/capacity/forecast/sales/material/finance/plan/external 之一。',
+  "若问题涉及工序/设备瓶颈、排产降级、后果推演，应建 Process/Equipment 等对象类型并提出对应 solver（如 shared_bottleneck / margin_attribution / concentration_risk）。",
 ].join("\n");
 
 /** 由 LLM 产出的核心三件 → 装配完整 plan body（确定性 B 栈倒推，复用与关键词地板同一口径）。 */
