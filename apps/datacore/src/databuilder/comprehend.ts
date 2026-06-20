@@ -144,6 +144,11 @@ const ENTITIES: EntityTemplate[] = [
       { name: "due", dataType: "date" },
       { name: "credit", dataType: "number" },
       { name: "demandDelta", dataType: "number" },
+      // A2：订单经哪道工序 + 优先级（共享瓶颈/降级倒推）+ 营收/成本（毛利倒挂倒推）。
+      { name: "procRef", dataType: "ref", refToTypeKey: "Process" },
+      { name: "prio", dataType: "number" },
+      { name: "revenue", dataType: "number" },
+      { name: "rawCost", dataType: "number" },
     ],
   },
   {
@@ -199,6 +204,34 @@ const ENTITIES: EntityTemplate[] = [
       { name: "stockDays", dataType: "number" },
     ],
   },
+  // A2：地板听懂"工序/瓶颈/降级/挤占"——共享瓶颈倒推的资源类型（有产能字段）。
+  {
+    keywords: ["工序", "process", "瓶颈", "bottleneck", "化成", "卷绕", "降级", "挤占"],
+    typeKey: "Process",
+    displayName: "工序",
+    domain: "process",
+    connType: "mock_erp",
+    baseRows: 8,
+    fields: [
+      { name: "procId", dataType: "string", isPrimaryKey: true },
+      { name: "name", dataType: "string" },
+      { name: "capacity", dataType: "number" },
+    ],
+  },
+  // A2：地板听懂"设备/机台"——引用工序（断供/扇出可达）。
+  {
+    keywords: ["设备", "equipment", "机台"],
+    typeKey: "Equipment",
+    displayName: "设备",
+    domain: "equip",
+    connType: "mock_erp",
+    baseRows: 12,
+    fields: [
+      { name: "equipId", dataType: "string", isPrimaryKey: true },
+      { name: "name", dataType: "string" },
+      { name: "procRef", dataType: "ref", refToTypeKey: "Process" },
+    ],
+  },
 ];
 
 const RULES: RuleTemplate[] = [
@@ -210,6 +243,9 @@ const RULES: RuleTemplate[] = [
 const SOLVERS: SolverTemplate[] = [
   { keywords: ["风险", "risk", "受影响", "affected"], solverKey: "affected_orders", inputFields: [{ typeKey: "Order", propKey: "due" }, { typeKey: "Order", propKey: "qty" }] },
   { keywords: ["产能", "capacity", "推演", "forecast"], solverKey: "capacity_forecast", inputFields: [{ typeKey: "Base", propKey: "gwh" }, { typeKey: "Base", propKey: "util" }] },
+  // A2：新求解器进地板（参数由 deriveSolverArgs 据对象结构自动倒推；inputFields 要求的实体须被识别才选中）。
+  { keywords: ["瓶颈", "bottleneck", "共享", "挤占", "降级"], solverKey: "shared_bottleneck", inputFields: [{ typeKey: "Process", propKey: "capacity" }, { typeKey: "Order", propKey: "qty" }] },
+  { keywords: ["毛利", "倒挂", "margin", "成本", "亏损"], solverKey: "margin_attribution", inputFields: [{ typeKey: "Order", propKey: "revenue" }, { typeKey: "Order", propKey: "rawCost" }] },
 ];
 
 /**
@@ -220,6 +256,12 @@ const SOLVERS: SolverTemplate[] = [
 const SOLVER_TARGET_VIEW: Record<string, string> = {
   affected_orders: "risk",
   capacity_forecast: "project",
+  // A2：新求解器落点（推演与风险页）。
+  shared_bottleneck: "risk",
+  concentration_risk: "risk",
+  supplier_disruption_radius: "risk",
+  margin_attribution: "risk",
+  selection_optimize: "project",
 };
 
 /**

@@ -12,7 +12,8 @@
 | # | 需求（用户明确提过） | 状态 | 实情 |
 |---|---|---|---|
 | A1 | **封装引擎暴露为 MCP 工具**（"封装成 API 就要在 MCP 工具里看到他们,包括 API"） | ⬜ | §8g。OR-Tools sidecar 已封装为平台 API + datacore 求解器,但**未注册成 MCP server**、MCP 页看不到、agent 经 mcp-router 调不到。我曾用 AskUserQuestion 把它排在 FDE 之后,用户选了 FDE，此条留欠。 |
-| A2 | **comprehend 地板认新求解器** | ◐ 进行中 | FDE 参数倒推已贯通；已加固 `deriveSharedBottleneck`(多实体按字段名打分挑最佳对)。**待**：给地板加 Process/Equipment 实体 + shared_bottleneck/margin_attribution 关键词 + 更新 llm-comprehend 地板测试。被数据接入控制台实测反馈打断,稍后续。 |
+| A2 | **comprehend 地板认新求解器** | ✅ | 地板加 Process/Equipment 实体 + Order 扩 procRef/prio/revenue/rawCost + shared_bottleneck/margin_attribution 关键词 + SOLVER_TARGET_VIEW；无 Kimi 时锂电故事即可选中新求解器并经 deriveSolverArgs 自动倒推参数（共享瓶颈→Process/Order/procRef…；毛利倒挂→Order/revenue/rawCost）。测试 llm-comprehend 地板用例 + comprehend-floor-a2(×2)。**余**：concentration_risk/supplier_disruption_radius 的地板语义选择仍依赖 Kimi（多源/标量歧义）。 |
+| A14 | **hand-run agent evals 比对 PRD** | 🔒/⬜ | EvalService 存在(发布回归门,用例从 20 场景目录种子)，但我**没亲手跑过 evals 比对 PRD**；且 mock LLM 下评分只证管线不证质量 → 真比对**需先接真模型(B1)**。 |
 | A3 | **14 域参考运营本体 + 域内/跨域两库 + 多跳切片规划器 + 切片索引复用** | ⬜ | §3 用户"最新需求"整块未动。当前切片=单根/全字段覆盖根，**无图路径搜索的多跳切片规划器**，无两库读模型，无切片索引复用。 |
 | A4 | **对象/类型浏览器管理页**（用户实测"找不到"） | ⬜ | §5。无 admin 对象浏览页（列已发布类型+物化计数+下钻实例）；对象图仅 `/v/graph` 业务视图。 |
 | A5 | **FDE 编排工作流（可观测节点图）** | ⬜ | §6。无一条显式、节点状态可视、有保证终态的 FDE 工作流（意图→倒推→查能力→比差→各模块生成→回填节点→进启动器）。 |

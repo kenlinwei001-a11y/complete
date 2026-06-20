@@ -23,7 +23,7 @@ const KIMI_OUTPUT: LlmComprehendOutput = {
   solverNeeds: [{ solverKey: "phantom_solver", inputFields: [{ typeKey: "Process", propKey: "procId" }, { typeKey: "Equipment", propKey: "equipId" }] }],
 };
 
-interface RunResp { status: string; buildPlan?: { objectTypes: { typeKey: string }[]; solverNeeds: { solverKey: string }[]; agentNeeds: { agentKey: string }[]; sliceNeeds: { sliceKey: string }[] }; gapReport?: { verdict: string; findings: { gapCode: string }[] } }
+interface RunResp { status: string; buildPlan?: { objectTypes: { typeKey: string }[]; solverNeeds: { solverKey: string; args?: Record<string, unknown> }[]; agentNeeds: { agentKey: string }[]; sliceNeeds: { sliceKey: string }[] }; gapReport?: { verdict: string; findings: { gapCode: string }[] } }
 
 describe("§2 LLM comprehend（接 Kimi 解析任意故事）", () => {
   it("assemblePlanBody（纯函数）：LLM 三件 → 完整 plan（对象/规则/求解器 + B 栈倒推）", () => {
@@ -52,11 +52,18 @@ describe("§2 LLM comprehend（接 Kimi 解析任意故事）", () => {
     expect(run.gapReport!.findings.some((f) => f.gapCode === "SOLVER_NOT_FOUND" || f.gapCode === "NO_SLICE")).toBe(true);
   });
 
-  it("未绑定/未脚本化 → 确定性关键词地板兜底（新颖故事仍只得 Order/Line/Customer，R6）", async () => {
+  it("未绑定/未脚本化 → 关键词地板兜底（A2：已认工序/设备/瓶颈，选中 shared_bottleneck 并自动倒推参数，R6）", async () => {
     const t: TestApp = await makeApp(); // 不 enqueue → routed LLM 无输出 → 抛错 → 落地板
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 42 } });
     const bp = (res.json() as RunResp).buildPlan!;
-    expect(bp.objectTypes.map((x) => x.typeKey).sort()).toEqual(["Customer", "Line", "Order"]);
-    expect(bp.objectTypes.some((x) => x.typeKey === "Process")).toBe(false); // 地板听不懂工序
+    // A2：地板现在听懂"工序/设备/排产"——倒推出 Process/Equipment（不再只 Order/Line/Customer）。
+    const types = bp.objectTypes.map((x) => x.typeKey);
+    expect(types).toContain("Process");
+    expect(types).toContain("Equipment");
+    // 地板选中 shared_bottleneck（瓶颈/共享/挤占/降级关键词命中）。
+    expect(bp.solverNeeds.map((s) => s.solverKey)).toContain("shared_bottleneck");
+    // 参数自动倒推：资源=工序、共享者=订单经 procRef、产能/需求/优先级字段对齐（无需 Kimi）。
+    const sb = bp.solverNeeds.find((s) => s.solverKey === "shared_bottleneck")!;
+    expect(sb.args).toMatchObject({ resourceType: "Process", sharedByType: "Order", viaField: "procRef", capacityField: "capacity", demandField: "qty", priorityField: "prio" });
   });
 });
