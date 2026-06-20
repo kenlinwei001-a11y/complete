@@ -1,8 +1,80 @@
+import { z } from "zod";
 import type {
   BuildPlan, PlanDataSource, PlanObjectType, PlanRule, PlanSolverNeed,
   PlanSliceNeed, PlanIntentNeed, PlanPlanNeed, PlanSceneNeed,
   PlanWorkflowNeed, PlanSkillNeed, PlanAgentNeed,
 } from "@platform/contracts";
+
+/**
+ * §2 LLM comprehend：让 LLM 只产出"听懂故事"的难点部分——对象类型 / 规则 / 求解器需求；
+ * 机械的 B 栈倒推（切片/意图/计划/场景/工作流/技能/Agent）仍由确定性 `assemblePlanBody` 完成。
+ * 缺 LLM 绑定/失败时由 `comprehendScript` 关键词地板兜底（R6 字节级一致）。
+ */
+export const LlmComprehendSchema = z.object({
+  objectTypes: z.array(z.object({
+    typeKey: z.string(),
+    displayName: z.string(),
+    domain: z.string(),
+    fields: z.array(z.object({
+      name: z.string(),
+      dataType: z.enum(["string", "number", "boolean", "date", "enum", "ref"]),
+      isPrimaryKey: z.boolean().optional(),
+      refToTypeKey: z.string().nullable().optional(),
+    })),
+  })),
+  rules: z.array(z.object({
+    key: z.string(), name: z.string(), expression: z.string(),
+    scopeObjectTypes: z.array(z.string()), severity: z.enum(["BLOCK", "WARN", "INFO"]),
+  })),
+  solverNeeds: z.array(z.object({
+    solverKey: z.string(),
+    inputFields: z.array(z.object({ typeKey: z.string(), propKey: z.string() })),
+  })),
+});
+export type LlmComprehendOutput = z.infer<typeof LlmComprehendSchema>;
+
+export const COMPREHEND_SYSTEM = [
+  "你是制造业运营本体建模专家。把用户的业务故事/问题解析为推演所需的本体骨架。",
+  "输出 JSON：objectTypes(对象类型+字段，每类至少一个 isPrimaryKey)、rules(业务约束 DSL，如 'Order.demandDelta > 0.5')、solverNeeds(回答该问题所需的求解器及其输入字段)。",
+  "domain 取：factory/product/process/equip/people/quality/capacity/forecast/sales/material/finance/plan/external 之一。",
+  "若问题涉及工序/设备瓶颈、排产降级、后果推演，应建 Process/Equipment 等对象类型并提出对应 solver（如 shared_bottleneck / schedule_downgrade / impact_forecast）。",
+].join("\n");
+
+/** 由 LLM 产出的核心三件 → 装配完整 plan body（确定性 B 栈倒推，复用与关键词地板同一口径）。 */
+export function assemblePlanBody(
+  core: LlmComprehendOutput,
+  script: string,
+  seed: number,
+): ReturnType<typeof comprehendScript> {
+  const typeKeys = new Set(core.objectTypes.map((t) => t.typeKey));
+  const dataSources: PlanDataSource[] = core.objectTypes.map((e) => ({
+    connType: "mock_generic",
+    name: `${e.displayName}数据源`,
+    datasetKey: e.typeKey.toLowerCase(),
+    rowCount: 12 + (hashString(`${e.typeKey}|${seed}`) % 12),
+    fields: e.fields.map((f) => ({ name: f.name, dataType: f.dataType, consumedBy: [e.typeKey] })),
+  }));
+  const objectTypes: PlanObjectType[] = core.objectTypes.map((e) => ({
+    typeKey: e.typeKey, displayName: e.displayName, domain: e.domain, sourceDataset: e.typeKey.toLowerCase(),
+    properties: e.fields.map((f) => ({ propKey: f.name, sourceField: f.name, dataType: f.dataType, isPrimaryKey: f.isPrimaryKey ?? false, refToTypeKey: f.refToTypeKey ?? null })),
+  }));
+  const rules: PlanRule[] = core.rules.filter((r) => r.scopeObjectTypes.every((t) => typeKeys.has(t)));
+  const solverNeeds: PlanSolverNeed[] = core.solverNeeds.filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)));
+  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script) };
+}
+
+/** B 栈倒推（确定性）：对象→切片；求解器→计划/意图/场景/工作流/技能/Agent。LLM 与关键词地板共用。 */
+function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed[], script: string) {
+  const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] }));
+  const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], renderBindings: [] }));
+  const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({ intentKey: `intent_${s.solverKey}`, triggers: [s.solverKey], slots: [], planRef: `plan_${s.solverKey}`, riskLevel: "LOW" as const }));
+  const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({ scenarioKey: `scene_${s.solverKey}`, targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash", intentKey: `intent_${s.solverKey}`, mode: "WORKFLOW" as const, presetContext: {} }));
+  const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({ workflowKey: `wf_${s.solverKey}`, kind: "workflow", steps: ["invoke_solver", "render"] }));
+  const skillNeeds: PlanSkillNeed[] = solverNeeds.map((s) => ({ skillKey: `skl_${s.solverKey}`, capability: s.solverKey, resources: [] }));
+  const agentNeeds: PlanAgentNeed[] = solverNeeds.map((s) => ({ agentKey: `agt_${s.solverKey}`, systemPrompt: `针对 ${s.solverKey} 的推演分析 agent`, tools: [s.solverKey], skills: [`skl_${s.solverKey}`], ruleBindings: [], scopeObjectTypes: [...new Set(s.inputFields.map((f) => f.typeKey))] }));
+  const kbDocs = [{ title: "场景脚本", content: script.slice(0, 4000) }];
+  return { kbDocs, sliceNeeds, intentNeeds, planNeeds, sceneNeeds, workflowNeeds, skillNeeds, agentNeeds, mcpNeeds: [] };
+}
 
 /**
  * Comprehend 阶段：把故事脚本确定性地拆解为 build plan。

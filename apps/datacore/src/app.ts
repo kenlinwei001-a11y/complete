@@ -290,7 +290,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings);
-  const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox);
+  const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);

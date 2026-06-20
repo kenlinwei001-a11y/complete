@@ -35,6 +35,7 @@ const PURPOSE_LABEL: Record<LlmPurpose, string> = {
   modeling: "建模建议（A3）",
   template_gen: "行业模板生成（A7）",
   compose: "llm_compose 步骤",
+  comprehend: "数据构建发动机·故事意图解析（接 Kimi）",
 };
 
 /**

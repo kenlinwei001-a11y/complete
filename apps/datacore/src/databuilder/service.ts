@@ -26,7 +26,8 @@ import type { KbService } from "../kb.js";
 import type { SolverService } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage } from "./comprehend.js";
+import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, COMPREHEND_SYSTEM } from "./comprehend.js";
+import type { LlmClient } from "../llm.js";
 import { deriveProducedArtifacts } from "./artifacts.js";
 import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
@@ -51,7 +52,29 @@ export class DataBuilderService {
     private solvers?: SolverService,
     /** D-29：建域记录完成发 storybuild.run_recorded（经 F1 全局通道反映到历史/区5）。 */
     private outbox?: OutboxService,
+    /** §2：comprehend 用途路由 LLM（绑定 Kimi 即用 LLM 解析任意故事；缺/失败→确定性关键词地板）。 */
+    private llm?: LlmClient,
   ) {}
+
+  /**
+   * §2 comprehend：LLM 优先（purpose=comprehend，绑定 Kimi 即听懂任意业务语言）→ assemblePlanBody；
+   * 缺绑定 / 无 key / 解析失败 → 确定性关键词地板 comprehendScript（R6 字节级一致）。
+   * 诚实：LLM 倒推出的求解器若系统未注册，后续闭包/自检会照常暴露为缺口（不静默假装能答）。
+   */
+  private async comprehendPlanBody(ctx: AuthCtx, script: string, seed: number): Promise<ReturnType<typeof comprehendScript>> {
+    if (this.llm) {
+      try {
+        const core = await this.llm.parseStructured({
+          model: "comprehend", maxTokens: 8000, tenantId: ctx.tenantId, purpose: "comprehend",
+          system: COMPREHEND_SYSTEM, messages: [{ role: "user", content: script }], schema: LlmComprehendSchema,
+        });
+        if (core.objectTypes.length > 0) return assemblePlanBody(core, script, seed);
+      } catch {
+        /* 无绑定/无 key/解析失败 → 落地板 */
+      }
+    }
+    return comprehendScript(script, seed);
+  }
 
   // ---- builder-agent 资源（统一资源模式 DRAFT/PUBLISHED/RETIRED）-----------
 
@@ -538,7 +561,7 @@ export class DataBuilderService {
         job.replayed = true;
         setPhase("comprehend", "DONE", "重放已封存 plan（字节级一致）");
       } else {
-        const body0 = comprehendScript(script, seed);
+        const body0 = await this.comprehendPlanBody(ctx, script, seed);
         plan = { id: planId, tenantId: ctx.tenantId, builderKey: builder.key, scriptHash, seed, script, createdAt: nowIso(), ...body0 };
         if (cfg.determinism.freezePlan) await this.repos.buildPlans.put(plan);
         setPhase("comprehend", "DONE", `拆解：${plan.objectTypes.length} 对象 / ${plan.rules.length} 规则 / ${plan.solverNeeds.length} 求解器`);

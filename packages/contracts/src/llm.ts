@@ -209,6 +209,7 @@ export const LlmPurposeSchema = z.enum([
   "modeling", // A3 建模建议
   "template_gen", // A7 行业模板生成
   "compose", // workflow llm_compose 步骤
+  "comprehend", // 数据构建发动机：故事脚本意图解析→全栈倒推（听懂任意业务语言；缺则确定性关键词地板）
 ]);
 export type LlmPurpose = z.infer<typeof LlmPurposeSchema>;
 
@@ -237,6 +238,7 @@ export const PURPOSE_CAPABILITY_REQUIREMENTS: Record<
   modeling: { structuredOutput: true },
   template_gen: { structuredOutput: true },
   compose: {},
+  comprehend: { structuredOutput: true },
 };
 
 /** execution-semantics §5.4：LLM 故障降级逐次 provider 尝试审计（providerId/结果/耗时）。 */

@@ -26,9 +26,12 @@
 - 不自证"完美/100%"——完成需用户过目。
 - 只推指定分支；模型标识不进任何提交物。
 
-## 当前决策门（等用户解锁，解锁后 loop 自动推进对应 §）
+## 决策门（已解锁，2026-06）
 
-- **§3**：①两库=现有本体图读模型 还是 新建持久库? ②多跳路径规划=确定性图搜索(地板) 还是 LLM?
-- **§4**：①分类粒度=大类→数据集两层 还是 单层? ②"字段被≥1切片覆盖"=软提示 还是 硬门?
-- **§2**：LLM provider 与用途绑定口径（comprehend/template_gen）。
-- 推荐默认（用户若说"按你推荐的来"即解锁）：§3 读模型+确定性地板加 LLM 排序；§4 两层+软提示；§2 复用现有多 provider 路由、新增 comprehend 用途绑定、输出 freezePlan 守 R6。
+- ✅ **§3**：两库 = **现有本体图读模型 + 索引**（不复制真值，避免漂移 R9）；只持久化"生成的切片 + 切片索引"。多跳路径规划 = **确定性图搜索做地板**（BFS/最短路，无 LLM 可跑、R6），LLM 作可选"路径排序 + 切片命名/描述 + 听懂新颖意图"层。
+- ✅ **§2**：LLM comprehend **接 Kimi**（openai_compatible provider），新增 `comprehend` 用途（"数据构建发动机·故事意图解析"），在 LLM 用途矩阵绑定 Kimi（modelId 由用户填，如 kimi 2.5）；输出经 freezePlan 守 R6；缺绑定/无 key/失败 → 确定性关键词地板兜底。**Kimi API key 由用户在 provider 凭据处填（我无法代填）。**
+- ✅ **§4**：分类 = **大类→数据集两层**；"字段被≥1切片覆盖" = **软提示**（高亮待办，不硬阻断）。
+
+## 进度（loop 实跑）
+
+- ✅ §2 第一增量：comprehend 大脑可插拔（Kimi 优先 / 确定性地板兜底）+ assemblePlanBody（LLM 三件→全栈倒推）+ comprehend 用途入用途矩阵。mock 验证：新颖故事→Process/Equipment+shared_bottleneck，自检诚实报缺口。**余**：用户绑 Kimi+填 key 才 live；缺的求解器(shared_bottleneck 等)仍需实现/兜底；终态闭环(DRAFT→publish→启动器)。
