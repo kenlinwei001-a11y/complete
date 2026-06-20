@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>合成数据生成 · 全流程与技术（IPO）</title>
+<style>
+  :root{--bg:#f4f6f9;--ink:#1b2430;--muted:#5a6678;--line:#d5dbe4;--blue:#4C7BE0;--green:#3aa76d;--amber:#d79b3a;--red:#b00020;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.5}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 60px}
+  h1{font-size:24px;margin:0 0 4px;color:#0d2b45}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:22px}
+  .stage{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:0 auto;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .stage h2{font-size:16px;margin:0 0 8px;color:#0d3b66}
+  .ipo{display:grid;grid-template-columns:70px 1fr;gap:6px 12px;font-size:14px}
+  .ipo .k{font-weight:700;color:#33506b}
+  .ipo .ko{color:var(--green)} .ipo .kp{color:var(--muted)}
+  .arrow{text-align:center;color:#8a98ac;font-size:22px;margin:6px 0}
+  .row{display:flex;gap:16px;align-items:stretch}
+  .row .stage{flex:1}
+  .tagL{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:10px;margin-left:8px;vertical-align:middle}
+  .det{background:#e7f6ec;border-color:#3aa76d}.det .tagL{background:#d6f0df;color:#1c5e3c}
+  .llm{background:#eef2fb;border-color:#4C7BE0}.llm .tagL{background:#d8e4fb;color:#0d3b66}
+  pre{background:#0d1b2a;color:#cfe6ff;border-radius:10px;padding:14px 16px;font-size:12.5px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;margin:10px 0 0}
+  pre .hl{color:#9ecbff;font-weight:700}
+  .callout{background:#fff7e6;border:1px solid var(--amber);border-radius:12px;padding:16px 18px;margin-top:22px}
+  .callout h2{margin:0 0 10px;font-size:16px;color:#7a4d12}
+  .callout li{margin:6px 0;font-size:14px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px}
+  .em{color:var(--red);font-weight:700}
+  .step-no{display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;background:#0d3b66;color:#fff;border-radius:50%;font-size:13px;margin-right:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>合成数据生成 · 全流程与技术（IPO）</h1>
+  <div class="sub">DataCore · <span class="mono">apps/datacore/src/synthetic/service.ts</span> · 确定性种子(R6)：同 (行业, 规模, seed) → 字节级一致</div>
+
+  <!-- ① 入口两路 -->
+  <div class="row">
+    <div class="stage det">
+      <h2><span class="step-no">①A</span>已知行业<span class="tagL">零 LLM · 零提示词</span></h2>
+      <div class="ipo">
+        <div class="k">输入</div><div>行业名（如 <span class="mono">battery-manufacturing</span>）+ 规模 S/M/L + seed</div>
+        <div class="k kp">过程</div><div>命中内置模板 <span class="mono">BATTERY_TEMPLATE</span>（含 26 对象类型），或库里上次存的模板</div>
+        <div class="k ko">输出</div><div>IndustryTemplate（配方，非数据）</div>
+      </div>
+    </div>
+    <div class="stage llm">
+      <h2><span class="step-no">①B</span>未知 / 自由输入行业<span class="tagL">唯一用 LLM 处</span></h2>
+      <div class="ipo">
+        <div class="k">输入</div><div>行业名（如「连锁咖啡馆」）</div>
+        <div class="k kp">过程</div><div>用途绑定 <span class="mono">template_gen</span> → 路由到所配 Provider/模型，生成模板（仅结构），存库复用，<b>下次不再调 LLM</b></div>
+        <div class="k ko">输出</div><div>IndustryTemplate（source=LLM）</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提示词 -->
+  <div class="stage llm" style="margin-top:14px">
+    <h2>▼ template_gen 实际系统提示词（TEMPLATE_SYSTEM 全文）</h2>
+<pre><span class="hl">你是行业数据模板生成器。给定行业名称，输出 IndustryTemplate：</span>
+ontology.objectTypes（数组，每项 { key, displayName,
+  properties:[{propKey,dataType,isPrimaryKey,refToTypeKey?}],
+  derivedProperties:[{propKey,formula}] }）、
+generation（每对象类型的 count{S,M,L} 与 propGenerators）、
+rules（规则 DSL 表达式）、scenarioSeed。
+生成顺序必须保证先主数据后事务数据（fkSample 只引用更早的类型）。</pre>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:8px">user 消息：<span class="mono">industry: &lt;行业名&gt;</span>　·　输出按 <span class="mono">IndustryTemplateSchema</span>（zod）校验，不符即拒</div>
+  </div>
+
+  <div class="arrow">▼ 两路汇合到「配方」，以下全确定性</div>
+
+  <div class="stage"><h2><span class="step-no">②</span>IndustryTemplate（配方，非数据本身）</h2>
+    <div class="ipo">
+      <div class="k">输入</div><div>—（来自 ①）</div>
+      <div class="k kp">结构</div><div><span class="mono">ontology.objectTypes[]</span> · <span class="mono">generation{ count{S,M,L}, propGenerators:GenSpec }</span> · <span class="mono">rules[DSL]</span> · <span class="mono">scenarioSeed</span></div>
+      <div class="k ko">GenSpec</div><div><span class="mono">number</span>(min/max/精度) · <span class="mono">enum</span>(取值集) · <span class="mono">date</span>(区间) · <span class="mono">pattern</span>(模板串/序列) · <span class="mono">ref</span>(引父类型 PK)</div>
+    </div>
+  </div>
+  <div class="arrow">▼</div>
+
+  <div class="stage" style="border-color:#d79b3a;background:#fdf3e7"><h2><span class="step-no">③</span>确定性伪随机源 —— "没配 LLM 也能生成"的关键</h2>
+    <div class="ipo">
+      <div class="k">输入</div><div>配方 + seed</div>
+      <div class="k kp">过程</div><div><span class="mono">rng = mulberry32( seed ^ hashString(industryKey) )</span> —— 纯函数 PRNG，同种子同序列</div>
+      <div class="k ko">输出</div><div>受 GenSpec 区间约束的值（<b>落业务区间</b>，非乱码假值）</div>
+    </div>
+  </div>
+  <div class="arrow">▼</div>
+
+  <div class="stage"><h2><span class="step-no">④</span>按依赖序生成行（主数据 → 事务数据）</h2>
+    <div class="ipo">
+      <div class="k">输入</div><div>配方 + rng</div>
+      <div class="k kp">过程</div><div>先生成主数据(Base/Model…)收集真实 PK 池 → 事务数据(Order…)的 ref 列只取父表已生成的真实 PK</div>
+      <div class="k ko">输出</div><div><b>FK 一致</b>的多表（<span class="mono">generateRelatedDatasets</span>，环降级不阻塞），每类型一张 CSV</div>
+    </div>
+  </div>
+  <div class="arrow">▼</div>
+
+  <div class="row">
+    <div class="stage"><h2><span class="step-no">⑤</span>落库（可溯源）</h2>
+      <div class="ipo">
+        <div class="k">输入</div><div>CSV</div>
+        <div class="k kp">过程</div><div>写入 Connection(合成源)+RawDataset+RawRow</div>
+        <div class="k ko">输出</div><div>原始表（前端「数据详单」逐行可见）</div>
+      </div>
+    </div>
+    <div class="stage"><h2><span class="step-no">⑥</span>物化为对象</h2>
+      <div class="ipo">
+        <div class="k">输入</div><div>RawDataset + 对象类型</div>
+        <div class="k kp">过程</div><div>幂等 materialize</div>
+        <div class="k ko">输出</div><div><span class="mono">ObjectInstance{ origin:SYNTHETIC, jobId, rawDatasetId, rowIdx }</span> + Link</div>
+      </div>
+    </div>
+  </div>
+  <div class="arrow">▼</div>
+
+  <div class="stage" style="border-color:#2f9e9e;background:#eaf6f6"><h2><span class="step-no">⑦</span>二次加工（仍全确定性）</h2>
+    <div class="ipo">
+      <div class="k">输入</div><div>对象库</div>
+      <div class="k kp">过程</div><div>runDerivations 派生属性(topo 重算) · 注册内置切片 + 每类型全字段覆盖切片 · tsGenerators 生成时序点</div>
+      <div class="k ko">输出</div><div>派生属性 / 子图 / 时序点 + 校验报告（行数·规则扫描·派生抽样·时序）——「生成进度」页可见</div>
+    </div>
+  </div>
+  <div class="arrow">▼</div>
+
+  <div class="stage"><h2><span class="step-no">⑧</span>下游同步（领域事件失效刷新，D-29）</h2>
+    <div class="ipo">
+      <div class="k">事件</div><div><span class="mono">dataset.regenerated · materialize.completed · synthetic.tick_completed</span></div>
+      <div class="k ko">下游</div><div>驾驶舱 dashboard · 推演与风险 risk · 场景数据 scenario-data · 本体图谱 ontology-graph · 规则库 rule-library · 对象查询 object-queries · 校准 calibration</div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <h2>为什么"没配 LLM"也能生成符合场景的数据？</h2>
+    <ul>
+      <li>合成<b>不靠 LLM 编数据</b>。数据的<b>值</b>全部由确定性 PRNG + GenSpec（区间/枚举/模板）产出，关系由 FK 一致保证。</li>
+      <li>LLM <b>只</b>在"未知行业"时生成一次<b>模板（结构）</b>——有哪些对象类型/字段/规则；生成后存库复用，之后同样走确定性管线。</li>
+      <li>已知行业（电池）用内置模板，<span class="em">整条链路零 LLM、零提示词</span>；同 (行业,规模,seed) 重跑字节级一致（R6）。</li>
+      <li>因此本流程只有一处提示词（②上方 TEMPLATE_SYSTEM，用途 template_gen）。<span class="mono">comprehend</span>（故事→建域）是另一条链路的 LLM，不在合成里。</li>
+      <li>锚点：<span class="mono">resolveTemplate</span>(①/②) · <span class="mono">mulberry32</span>(③) · <span class="mono">generateRelatedDatasets</span>(④) · <span class="mono">materialize</span>(⑥) · <span class="mono">runDerivations</span>(⑦)。</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

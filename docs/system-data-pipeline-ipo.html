@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系统数据流转 IPO 全景</title>
+<style>
+  :root{--bg:#f4f6f9;--ink:#1b2430;--muted:#5a6678;--blue:#4C7BE0;--green:#3aa76d;--purple:#7e5bd6;--amber:#d79b3a;--red:#c0504d;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.45}
+  .wrap{max-width:1640px;margin:0 auto;padding:24px 18px 60px}
+  h1{font-size:23px;margin:0 0 4px;color:#0d2b45}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:8px}
+  .spine{display:flex;align-items:center;gap:6px;background:#0d3b66;color:#fff;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;overflow-x:auto;margin:10px 0 16px}
+  .spine span{white-space:nowrap}.spine .ar{opacity:.6;font-weight:400}
+  .grid{display:grid;grid-template-columns:repeat(9,minmax(150px,1fr));gap:10px;overflow-x:auto}
+  .col h3{font-size:13px;margin:0 0 8px;text-align:center;color:#1b2430}
+  .card{border-radius:9px;padding:8px 9px;margin-bottom:9px;font-size:11.5px;border:1px solid #ccc;background:#fff}
+  .card b{font-size:12.5px;display:block;margin-bottom:3px}
+  .card .i{color:#33506b}.card .p{color:var(--muted)}.card .o{color:#2f7d4f}.card .x{color:#b00020}
+  .A{background:#dceafc;border-color:var(--blue)} .A b{color:#0d3b66}
+  .B{background:#e2f3ea;border-color:var(--green)} .B b{color:#15623c}
+  .P{background:#ece6f9;border-color:var(--purple)} .P b{color:#4a2b94}
+  .S{background:#eef1f5;border-color:#8a98ac} .S b{color:#22303f}
+  .F{background:#fde7d6;border-color:var(--amber)} .F b{color:#7a4d12} .F .o{color:#a85a12}
+  .sec{margin-top:22px}
+  .sec h2{font-size:16px;margin:0 0 10px}
+  .loop{background:#fff7e6;border:1px solid var(--amber);border-radius:10px;padding:10px 14px;margin-bottom:9px;font-size:13px}
+  .loop b{color:#7a4d12}
+  .xcut{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .xc{background:#fdeaea;border:1px solid var(--red);border-radius:10px;padding:10px 14px;font-size:12.5px}
+  .xc b{color:#8a2a2a;display:block;margin-bottom:3px;font-size:13.5px}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;background:#eef1f5;padding:0 4px;border-radius:3px}
+  .legend{font-size:12px;color:var(--muted);margin-top:18px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .sw{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .note{font-size:12px;color:#8a98ac;margin-top:10px}
+  @media(max-width:1200px){.grid{grid-template-columns:repeat(9,200px)}.xcut{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>全域数字化智能决策平台 · 数据流转 IPO 全景</h1>
+  <div class="sub">依据 docs/SYSTEM-ONTOLOGY.md（§2 模块 · §3 链路 · §4 事件）。每张卡片 = 一个模块的 输入(I)/过程(P)/输出(O)。</div>
+
+  <div class="spine">
+    <span>原始数据集</span><span class="ar">→</span><span>本体类型/规则</span><span class="ar">→</span><span>对象+链路</span><span class="ar">→</span><span>派生/切片/时序</span><span class="ar">→</span><span>求解结果/裁决</span><span class="ar">→</span><span>真值写回</span><span class="ar">→</span><span>答案块(OBO)</span><span class="ar">→</span><span>SSE→视图</span>
+  </div>
+
+  <div class="grid">
+    <!-- ① 数据源 -->
+    <div class="col"><h3>① 数据源（输入）</h3>
+      <div class="card S"><b>外部业务系统</b><div class="i">I·ERP/CRM/JDBC/REST 凭据</div><div class="p">P·适配器拉取+字段画像</div><div class="o">O·数据集</div></div>
+      <div class="card S"><b>文件上传</b><div class="i">I·CSV/XLSX/JSON</div><div class="p">P·三路解析统一</div><div class="o">O·数据集</div></div>
+      <div class="card S"><b>外部信号源</b><div class="i">I·mock_external / feed</div><div class="p">P·同步+敏感性</div><div class="o">O·锂价/汇率/需求指数</div></div>
+      <div class="card F"><b>故事脚本</b><div class="i">I·一句话业务故事</div><div class="p">P·→数据构建发动机</div><div class="o">O·驱动倒推(回路 L1)</div></div>
+      <div class="card S"><b>模拟时钟 A8</b><div class="i">I·tick(虚拟日)</div><div class="p">P·推进运营态</div><div class="o">O·时序点/态变更</div></div>
+    </div>
+    <!-- ② 接入 -->
+    <div class="col"><h3>② 接入 A1/A7</h3>
+      <div class="card A"><b>连接器 A1</b><div class="i">I·源/上传文件</div><div class="p">P·画像+校验策略</div><div class="o">O·RawDataset/RawRow</div><div class="x">+异常→隔离区</div></div>
+      <div class="card A"><b>合成数据 A7</b><div class="i">I·行业/规模/seed</div><div class="p">P·确定性PRNG+FK一致</div><div class="p">[未知行业→LLM模板]</div><div class="o">O·合成源+RawDataset</div></div>
+      <div class="card A"><b>数据接入分类</b><div class="i">I·数据集+对象类型</div><div class="p">P·锂电域归类+模式</div><div class="o">O·分类视图+上传模版</div></div>
+    </div>
+    <!-- ③ 建模 -->
+    <div class="col"><h3>③ 建模 A2/A3</h3>
+      <div class="card A"><b>半自动建模 A3</b><div class="i">I·数据集字段画像</div><div class="p">P·PK唯一/FK值包含</div><div class="o">O·本体草稿</div></div>
+      <div class="card A"><b>规则文档抽取 A2</b><div class="i">I·规则文档[LLM]</div><div class="p">P·抽取→候选</div><div class="o">O·规则候选</div></div>
+      <div class="card A"><b>本体发布 A4</b><div class="i">I·草稿/类型/链路</div><div class="p">P·版本化发布</div><div class="o">O·OntologyType/Link/Ver</div></div>
+    </div>
+    <!-- ④ 对象化 -->
+    <div class="col"><h3>④ 对象化 A4</h3>
+      <div class="card A"><b>对象物化</b><div class="i">I·RawDataset+类型</div><div class="p">P·幂等 materialize</div><div class="o">O·ObjectInstance+Link</div><div class="p">(origin 可溯 rawDataset/row)</div></div>
+      <div class="card A"><b>实体解析 OC1</b><div class="i">I·多源同实体</div><div class="p">P·归一匹配+人审合并</div><div class="o">O·golden对象(72h可还原)</div></div>
+    </div>
+    <!-- ⑤ 加工 -->
+    <div class="col"><h3>⑤ 加工 A4/A6/A8</h3>
+      <div class="card A"><b>派生 A4</b><div class="i">I·对象+派生DSL</div><div class="p">P·topo 增量重算</div><div class="o">O·派生属性</div></div>
+      <div class="card A"><b>切片 A6</b><div class="i">I·对象图+SliceSpec+Policy</div><div class="p">P·逐跳遍历+行级过滤</div><div class="o">O·子图(nodes/edges)</div></div>
+      <div class="card A"><b>时序 A8</b><div class="i">I·时序上传/tick</div><div class="p">P·聚合+延迟到达</div><div class="o">O·ts点→快照属性/曲线</div></div>
+      <div class="card A"><b>知识库 S4</b><div class="i">I·KbDoc</div><div class="p">P·索引/向量化</div><div class="o">O·KbChunk→检索</div></div>
+    </div>
+    <!-- ⑥ 推演 -->
+    <div class="col"><h3>⑥ 推演 A5/S1</h3>
+      <div class="card A"><b>规则引擎 A5</b><div class="i">I·对象+规则DSL</div><div class="p">P·评估(BLOCK短路)</div><div class="o">O·RuleVerdict</div></div>
+      <div class="card A"><b>求解器 S1（28）</b><div class="i">I·对象图/切片+参数</div><div class="p">P·确定性compute/多跳</div><div class="o">O·瓶颈/风险/毛利…</div><div class="p">R6 同输入同输出</div></div>
+      <div class="card A"><b>CP-SAT sidecar</b><div class="i">I·最优化模型</div><div class="p">P·OR-Tools(自托管)</div><div class="o">O·可证最优解</div></div>
+      <div class="card A"><b>校准 M11</b><div class="i">I·预测↔实际</div><div class="p">P·EMA/重放归因</div><div class="o">O·求解器参数(版本化)</div></div>
+    </div>
+    <!-- ⑦ 行动 -->
+    <div class="col"><h3>⑦ 行动 S2</h3>
+      <div class="card A"><b>Action 审批 S2</b><div class="i">I·ActionDraft(求解建议/用户)</div><div class="p">P·审批 R4 → EXECUTED</div><div class="o">O·写回对象 props</div><div class="x">→二次派生+回声对账</div></div>
+    </div>
+    <!-- ⑧ 编排 -->
+    <div class="col"><h3>⑧ 编排（AgentCore）</h3>
+      <div class="card B"><b>QOS 编排</b><div class="i">I·问句 Query</div><div class="p">P·classify→路径A/B→SSE</div><div class="o">O·AnswerBlock</div></div>
+      <div class="card B"><b>意图/执行计划</b><div class="i">I·Intent(planRef)</div><div class="p">P·→计划步骤</div><div class="o">O·step序列</div></div>
+      <div class="card B"><b>Workflow B2</b><div class="i">I·计划 steps</div><div class="p">P·OBO HTTP→A 取数/求解</div><div class="o">O·stepOutputs</div></div>
+      <div class="card B"><b>Agent/Skill/MCP</b><div class="i">I·定义+问句[LLM]/MCP工具</div><div class="p">P·工具循环/tools.call(OBO)</div><div class="o">O·Answer(路径B)</div></div>
+      <div class="card B"><b>场景启动器 B5</b><div class="i">I·Scenario(preset+intent+view)</div><div class="p">P·launch 注入 slots</div><div class="o">O·→QOS→targetView</div></div>
+      <div class="card B"><b>Agent 评测</b><div class="i">I·用例(20场景种子)</div><div class="p">P·真跑QOS比对期望</div><div class="o">O·回归门(通过率)</div></div>
+    </div>
+    <!-- ⑨ 呈现 -->
+    <div class="col"><h3>⑨ 呈现（前端）</h3>
+      <div class="card P"><b>业务视图</b><div class="i">I·A/B REST + SSE</div><div class="p">P·renderer 分发渲染</div><div class="o">O·规划/推演/驾驶舱</div></div>
+      <div class="card P"><b>对话坞 QueryDock</b><div class="i">I·用户问句</div><div class="p">P·SSE 流式</div><div class="o">O·答案块(table/kpi/draft)</div></div>
+      <div class="card P"><b>管理台(20+页)</b><div class="i">I·两系统配置</div><div class="p">P·CRUD+发布</div><div class="o">O·连接器/本体/规则/Agent/场景</div></div>
+      <div class="card F"><b>数据构建发动机页</b><div class="i">I·故事/产物</div><div class="p">P·全栈倒推可视</div><div class="o">O·历史推演+一键推演</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2 style="color:#7a4d12">反馈回路（数据回流，使系统"成长"与"自洽"）</h2>
+    <div class="loop"><b>L1 数据构建发动机(FDE)</b>：故事脚本 → comprehend(真LLM / 关键词地板) → 倒推写回【②数据 · ③本体/规则 · ⑤切片 · ⑥求解器需求】+ ⑧B栈(计划/意图/场景/Agent DRAFT) → 进启动器可推演（StoryBuildRun 留痕）</div>
+    <div class="loop"><b>L2 自成长发动机(B)</b>：客户问句 → 缺口探针(7码：NO_INTENT/NO_SLICE/SOLVER_NOT_FOUND…) → 补法【缺数据走真人正门② / 否则落施工工单】 → LOOP 重跑 → 收敛(可答)。成长账本+工单持久化</div>
+    <div class="loop"><b>L3 校准回路</b>：⑤时序实际 ↔ ⑥预测快照 → EMA/重放归因 → 回写⑥求解器参数(版本化,可重放回测)</div>
+    <div class="loop"><b>L4 Action 真值写回</b>：⑦审批后 EXECUTED → 回写④对象 props → 触发⑤二次派生 + 写回回声对账(同值抑制/异值告警)</div>
+  </div>
+
+  <div class="sec">
+    <h2 style="color:#7a2a2a">横切关注点（贯穿每个模块的读写）</h2>
+    <div class="xcut">
+      <div class="xc"><b>R2 多租户隔离</b>所有仓储读写/事件/缓存键带 tenantId；跨租户一律 403/404</div>
+      <div class="xc"><b>R3 Entitlement 门控</b>功能关闭=不存在→404；先于 authz（feature 先判）</div>
+      <div class="xc"><b>A6 行级过滤</b>Policy 贯穿 query/slice/solver 读出；无权子树整条不出现</div>
+      <div class="xc"><b>OutboxEvent → 前端失效</b>任意产出(上传/发布/审批/tick)发事件；下游页订阅刷新(D-29, SLO≤60s)</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><b>图例：</b></span>
+    <span><span class="sw" style="background:#dceafc;border:1px solid #4C7BE0"></span>DataCore A</span>
+    <span><span class="sw" style="background:#e2f3ea;border:1px solid #3aa76d"></span>AgentCore B</span>
+    <span><span class="sw" style="background:#ece6f9;border:1px solid #7e5bd6"></span>前端</span>
+    <span><span class="sw" style="background:#fde7d6;border:1px solid #d79b3a"></span>发动机/故事/回路</span>
+    <span><span class="sw" style="background:#fdeaea;border:1px solid #c0504d"></span>横切不变量</span>
+    <span>I=输入 · P=过程 · O=输出</span>
+  </div>
+  <div class="note">松耦合：AgentCore B 只经 DataCore A 的公开 REST（OBO 透传用户身份）取数；前端是两系统汇合点（dual baseURL，部署态经网关同源）。</div>
+</div>
+</body>
+</html>
