@@ -25,6 +25,8 @@ interface SessionState {
   setTimeWindow: (tw?: { from: string; to: string }) => void;
   setConversationId: (id: string) => void;
   setDockExpanded: (v: boolean) => void;
+  /** 开一段全新对话线程（场景卡启动用）：清空上一卡的对话 + 重置 conversationId，保证每张卡独立不混合。 */
+  startConversation: (e: ConversationEntry) => void;
   appendConversation: (e: ConversationEntry) => void;
   updateConversation: (localId: string, patch: Partial<ConversationEntry>) => void;
   buildContext: () => SessionContext;
@@ -60,6 +62,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setTimeWindow: (timeWindow) => set({ timeWindow }),
   setConversationId: (conversationId) => set({ conversationId }),
   setDockExpanded: (dockExpanded) => set({ dockExpanded }),
+  startConversation: (e) => set({ conversation: [e], conversationId: undefined }),
   appendConversation: (e) => set((s) => ({ conversation: [...s.conversation, e] })),
   updateConversation: (localId, patch) =>
     set((s) => ({

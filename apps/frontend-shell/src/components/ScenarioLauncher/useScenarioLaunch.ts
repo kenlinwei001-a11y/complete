@@ -26,7 +26,8 @@ export function useQuickLaunch(): (input: {
     store.setView(targetView);
     store.setSelectedObjects(selectedObjects);
     const localId = crypto.randomUUID();
-    store.appendConversation({ localId, query });
+    // 每张场景卡启动 = 一段独立对话线程（清上一卡、重置 conversationId），不与别的卡混合。
+    store.startConversation({ localId, query });
     store.setDockExpanded(true);
     navigate(`/v/${targetView}`);
     try {
@@ -35,7 +36,7 @@ export function useQuickLaunch(): (input: {
         crypto.randomUUID(),
       );
       store.updateConversation(localId, { taskId: res.taskId });
-      if (!store.conversationId) store.setConversationId(res.taskId);
+      store.setConversationId(res.taskId);
     } catch (e) {
       store.updateConversation(localId, { submitError: (e as Error).message });
       toastError(e);

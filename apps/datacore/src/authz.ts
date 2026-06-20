@@ -39,6 +39,13 @@ export class AuthzService {
         reason: "platform_admin 不在任何租户的业务数据策略中（平台运维角色，禁止读业务对象）",
       };
     }
+    // 租户管理员（admin）= 本租户超级用户：对本租户业务资源（对象/规则/动作）全量访问，不受逐策略授权与
+    // 行级过滤约束（仍守 R2）。修：此前 admin 仅在被显式 grant 的资源上可读，凡有限制性策略而未授 admin 的
+    // 资源即"权限不足"——与"admin 拥有全部模块访问权"相悖。真值写入安全仍由 R4（Action 审批）独立保证。
+    // 例外 CONNECTION：数据源/知识库连接器可对 admin 单独设限（敏感来源隔离，刻意保留的边界，见 kb V11）。
+    if (kind !== "CONNECTION" && ctx.roles.some((r) => r.split(":")[0] === "admin")) {
+      return { allowed: true, matchedPolicies: [], rowFilters: [], reason: "tenant admin: full access within tenant" };
+    }
     const policies = await this.repos.policies.list(
       ctx.tenantId,
       (p) => p.resource.kind === kind && (p.resource.key === key || p.resource.key === "*"),
