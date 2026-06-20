@@ -47,6 +47,23 @@ services:
       - "9000:9000"
       - "9001:9001"
 
+  # 最优化引擎 sidecar：CP-SAT（OR-Tools, Apache-2.0）封装为平台自有内部 REST。
+  # 仅内部网络可达（不映射宿主端口）；无状态、无业务数据落盘；datacore 经 OPTIMIZER_BASE_URL 调用。
+  optimizer:
+    build:
+      context: ./services/optimizer
+      dockerfile: Dockerfile
+    environment:
+      PORT: "4003"
+    expose:
+      - "4003"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4003/healthz').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   datacore:
     build:
       context: .
@@ -68,12 +85,16 @@ services:
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-pseudo}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      # PRD-fde §8d 组合最优化：自托管 CP-SAT sidecar（内部网络发现；未配则 selection_optimize 报"未接入"）
+      OPTIMIZER_BASE_URL: ${OPTIMIZER_BASE_URL:-http://optimizer:4003}
     volumes:
       - blob-data:/data/blobs
     ports:
       - "4001:4001"                          # 直连调试入口（前端走 gateway 同源）
     depends_on:
       postgres-a:
+        condition: service_healthy
+      optimizer:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4001/readyz >/dev/null 2>&1 || exit 1"]

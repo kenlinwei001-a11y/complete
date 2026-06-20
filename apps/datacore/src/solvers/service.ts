@@ -1,6 +1,7 @@
 import type { AuthCtx, CalibrationForecastRecord, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
+import type { OptimizerClient } from "./optimizer-client.js";
 import { notFound, validationError } from "../errors.js";
 import { round } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
@@ -50,6 +51,8 @@ export const SOLVER_KEYS = [
   "margin_attribution",
   // PRD-fde §8 Q2 单一供应商断供影响半径（净室通用）：反向多跳逐层扇出算扩散半径与叶层敞口。
   "supplier_disruption_radius",
+  // PRD-fde §8d 组合最优化（CP-SAT sidecar 代理）：通用 0/1 选择最优化,贪心给不出的可证最优。
+  "selection_optimize",
 ] as const;
 
 /**
@@ -73,6 +76,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   concentration_risk: ["concentrations", "topExposure", "summary"],
   margin_attribution: ["inverted", "rootDrivers", "invertedCount", "summary"],
   supplier_disruption_radius: ["rootType", "rootId", "layers", "radius", "totalAffected", "leafType", "leafCount", "summary"],
+  selection_optimize: ["status", "optimal", "selected", "totalValue", "totalWeight", "itemType", "budget", "candidateCount", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -109,6 +113,12 @@ export class SolverService {
   private ontologyCore?: OntologyCoreService;
   setOntologyCore(oc: OntologyCoreService): void {
     this.ontologyCore = oc;
+  }
+
+  /** selection_optimize 走 CP-SAT sidecar（OPTIMIZER_BASE_URL 配置时注入；测试注入 mock）。 */
+  private optimizer?: OptimizerClient;
+  setOptimizer(client: OptimizerClient): void {
+    this.optimizer = client;
   }
 
   /**
@@ -345,6 +355,48 @@ export class SolverService {
     };
   }
 
+  /**
+   * PRD-fde §8d 组合最优化（CP-SAT sidecar 代理）：通用 0/1 选择最优化（背包族）——从对象图取候选项
+   * （itemType 的 valueField/weightField），在 Σweight≤budget（及可选 maxCount/minValue）下最大化 Σvalue。
+   * 贪心/启发式对 0/1 背包不保证最优,这里走 OR-Tools CP-SAT 给**可证最优**——TS 解不动的"复杂推演"。
+   * 数据不出边界（自托管 sidecar）。args: { itemType, valueField?, weightField?, budget, maxCount?, minValue?, seed? }。
+   */
+  private async selectionOptimize(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const itemType = str(args.itemType);
+    const valueField = str(args.valueField, "value");
+    const weightField = str(args.weightField, "weight");
+    if (!itemType || args.budget === undefined) throw validationError("selection_optimize 需 itemType + budget（+ valueField/weightField）");
+    if (!this.optimizer) throw validationError("selection_optimize 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const budget = num(args.budget);
+
+    const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === itemType))[0];
+    const pk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const objs = await this.repos.objects.listByType(ctx.tenantId, itemType);
+    const items = objs
+      .map((o) => ({ id: String((pk ? o.props[pk] : undefined) ?? o.id), value: num(o.props[valueField]), weight: num(o.props[weightField]) }))
+      .sort((a, b) => a.id.localeCompare(b.id)); // 稳定输入序 → 确定性 R6
+
+    const result = await this.optimizer.solve({
+      model: "selection",
+      seed: Number(args.seed ?? 42),
+      items,
+      budget,
+      maxCount: args.maxCount === undefined ? undefined : Number(args.maxCount),
+      minValue: args.minValue === undefined ? undefined : Number(args.minValue),
+    });
+    return {
+      status: result.status,
+      optimal: result.optimal,
+      selected: [...result.selected].sort(),
+      totalValue: result.totalValue,
+      totalWeight: result.totalWeight,
+      itemType,
+      budget,
+      candidateCount: items.length,
+      summary: `最优选 ${result.selected.length}/${items.length} 项,总价值 ${result.totalValue}（${result.optimal ? "可证最优" : result.status === "INFEASIBLE" ? "不可行" : "可行解"}）`,
+    };
+  }
+
   async getParams(tenantId: string): Promise<SolverParamsShape> {
     const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
     const stored = (rec?.params ?? {}) as Record<string, unknown>;
@@ -567,6 +619,7 @@ export class SolverService {
     if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
+    if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {

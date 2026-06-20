@@ -53,6 +53,7 @@ const CapabilityNeedsSchema = z.object({
 });
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
+import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
@@ -269,6 +270,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
   solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
+  if (process.env.OPTIMIZER_BASE_URL) {
+    // selection_optimize 走自托管 CP-SAT sidecar（OR-Tools, Apache-2.0）；数据不出边界。未配置则该求解器报"未接入"。
+    solvers.setOptimizer(new HttpOptimizerClient(process.env.OPTIMIZER_BASE_URL));
+  }
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
   const configBundle = new ConfigBundleService(repos, features);

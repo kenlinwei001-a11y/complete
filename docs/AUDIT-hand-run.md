@@ -70,6 +70,21 @@ solvers/rules/scenes/agents 全部真建出，跨系统 scaffold 全链 `fullCha
   缺参 → **≥400 错误信封**（不静默空结果）。补齐了 service 层 invoke() 抓不到的"路由/契约/序列化"那一层。
 - 注：4 个通用求解器未绑定任何 feature → entitlement `requireByBinding` 视为不受控放行（任意租户可调）。
 
+### ④ 组合最优化引擎落地（CP-SAT sidecar，自托管，真求解实证）
+回应"复杂推演 TS 解不动、是否要引擎/谷歌在线 API"：查证后**自托管 OR-Tools CP-SAT**（不直连谷歌
+在线 API——那会让 tenant 数据出境，违 R2/离线部署姿态）。`selection_optimize` 走 sidecar 给可证最优。
+- **真求解实证（沙箱已装 ortools 9.15，非 mock）**：`services/optimizer/test_optimizer.py` 6 测全过——
+  经典 0/1 背包反例上 **CP-SAT=100 严格胜过贪心=60**（B+C 装满 vs 贪心先吞 A 后装不下）；
+  **R6 确定性**同 seed 重跑字节级一致；maxCount/minValue/浮点 scale/不可行 全覆盖。
+- **HTTP 面实证**：起 `server.py` → `GET /healthz` ok、`POST /solve` 返回 OPTIMAL B+C=100、坏 model→400 错误信封。
+- **TS↔Python 契约 live**：编译后的 `HttpOptimizerClient` 真打运行中的 sidecar → `optimal B+C=100`，
+  错误路径正确抛 `optimizer 400`。datacore 侧接线（取候选/组请求/映射/R2/未接入报错）由 vitest mock 引擎证。
+- **可部署**：docker-compose 加 `optimizer` 服务（仅内部网络、无端口映射、healthcheck），datacore 经
+  `OPTIMIZER_BASE_URL` 发现；`docker compose config` 校验通过。Apache-2.0 以 pip 依赖引入、不剥版权、UI 无外部名。
+
 ### 仍诚实欠的
 - 🔴 **真调 Kimi**：需用户填 API key（凭据,我无法代填）；本次 comprehend 走确定性地板 live。
 - 🔴 **浏览器 UI hand-run**：沙箱无浏览器；live 验证到 HTTP 端到端层,未到像素层。
+- 🔴 **§8g MCP 暴露 selection_optimize**：引擎已封装为平台 API + datacore 求解器,但尚未注册成 MCP 工具
+  （在 MCP 页可见/可治理）——下一增量。
+- 🔴 **sidecar 镜像 live `docker compose up`**：沙箱未实际构建镜像跑容器;ortools 真求解已在宿主 Python 证。
