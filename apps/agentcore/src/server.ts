@@ -624,8 +624,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!agent.systemPrompt.trim()) {
       fieldErrors.push({ field: "systemPrompt", message: "系统提示词不能为空" });
     }
-    // 管理平台增量 §4 发布校验：模型 ID 合法 + 工具/技能/MCP 引用存在
-    if (!agent.model.trim() || !/^[\w][\w.:/-]*$/.test(agent.model)) {
+    // 管理平台增量 §4 发布校验：模型 ID 合法或留空（空=继承用途矩阵 agent 绑定，运行时 roleModel 回落）。
+    if (agent.model.trim() && !/^[\w][\w.:/-]*$/.test(agent.model)) {
       fieldErrors.push({ field: "model", message: `模型 ID 非法：「${agent.model}」` });
     }
     for (const tool of agent.tools) {

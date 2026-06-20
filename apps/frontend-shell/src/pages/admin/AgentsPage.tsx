@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentDefinition, AgentToolRef } from "@platform/contracts";
-import { fetchAgents, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
+import { fetchAgents, fetchLlmProviders, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -24,7 +24,7 @@ const AGENT_TEMPLATE = {
   key: "",
   name: "新 Agent（模板预填）",
   description: "基于模板创建的探索型 Agent，请按业务场景调整",
-  model: "claude-opus-4-8",
+  model: "", // 默认继承用途绑定矩阵的 agent 模型（与矩阵保持一致；可在编辑器里改为按 Agent 覆盖）
   systemPrompt:
     "你是企业经营决策助手。\n\n# 职责\n- 基于本体对象与时序数据回答产能/订单/风险问题\n- 所有数字必须来自工具结果并附带溯源\n\n# 约束\n- 只读优先：写操作一律生成 Action 草稿走审批\n- 超出 scopeDeclaration 的对象类型与工具不得访问",
   tools: [
@@ -111,6 +111,9 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
   const { data: mcpConfigs } = useQuery({ queryKey: ["b", "mcp-configs", {}], queryFn: fetchMcpConfigs });
   const { data: workflows } = useQuery({ queryKey: ["b", "workflows", {}], queryFn: fetchWorkflows });
   const { data: skills } = useQuery({ queryKey: ["b", "skills", {}], queryFn: fetchSkills });
+  // 模型下拉与用途绑定矩阵同源（同一批 LLM Provider + model）；选项用 dcp:providerId:modelId 路由格式。
+  const { data: providers } = useQuery({ queryKey: ["a", "llm-providers"], queryFn: fetchLlmProviders });
+  const modelOptions = (providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `dcp:${p.id}:${m.modelId}`, label: `${p.name} / ${m.displayName}` })));
 
   const editable = agent.status === "DRAFT";
   const [form, setForm] = useState({
@@ -178,10 +181,18 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
       ))}
 
       <div className="section-title">基础 / 模型</div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-        <input value={form.model} disabled={!editable} aria-label="模型" className="mono" onChange={(e) => set("model", e.target.value)} />
+      <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
+        {/* 模型下拉与用途绑定矩阵一致；空=继承矩阵 agent 绑定。当前值若是旧裸 id 也保留为可选项。 */}
+        <select value={form.model} disabled={!editable} aria-label="模型" className="mono" style={{ minWidth: 240 }} onChange={(e) => set("model", e.target.value)}>
+          <option value="">（继承用途矩阵 · agent 绑定）</option>
+          {form.model && !modelOptions.some((o) => o.value === form.model) && <option value={form.model}>{form.model}（当前）</option>}
+          {modelOptions.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
         <input value={form.description} disabled={!editable} aria-label="描述" style={{ flex: 1 }} onChange={(e) => set("description", e.target.value)} />
       </div>
+      <div style={{ fontSize: 11, color: "var(--muted,#999)", marginBottom: 10 }}>留空则该 Agent 跟随「用途绑定矩阵」的 agent 用途模型（与矩阵保持一致）；选具体模型即按 Agent 覆盖。</div>
 
       <div className="section-title">系统提示词</div>
       <textarea className="mono" style={{ width: "100%", minHeight: 110, fontSize: 12, marginBottom: 10 }} disabled={!editable} value={form.systemPrompt} aria-label="系统提示词" onChange={(e) => set("systemPrompt", e.target.value)} />
