@@ -1077,6 +1077,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!lint.ok && force !== "true") {
       throw new HttpError(422, "SKILL_LINT_FAILED", `技能结构 lint 未通过（${lint.violations.length} 项）：${lint.violations.map((x) => x.rule).join(", ")}`);
     }
+    // Skill 编写规范 §4 门禁二：评测门禁——发布必附 ≥3 个 skill_quality 评测用例（关联本技能，
+    // 应触发/不应触发/行为增益三类）+ 评测套件全过（force=true 审计豁免）。此前仅 lint，无评测门。
+    const skillCases = (await deps.repos.evalCases.listByTenant(a.tenantId, "skill_quality")).filter((c) => c.skillKey === skill.key);
+    if (skillCases.length < 3 && force !== "true") {
+      throw new HttpError(422, "SKILL_EVAL_INSUFFICIENT", `技能发布需 ≥3 个 skill_quality 评测用例（含行为增益维度），当前 ${skillCases.length}；补用例或 force=true 审计豁免`);
+    }
+    if (skillCases.length >= 3 && force !== "true") {
+      const run = await deps.evals.run(a, "skill_quality", {});
+      if (run.passRate < 1) {
+        throw new HttpError(422, "SKILL_EVAL_FAILED", `skill_quality 评测未全过（通过率 ${run.passRate}，${skillCases.length} 用例）；修用例或 force=true 审计豁免`);
+      }
+    }
     const published = { ...skill, status: "PUBLISHED" as const };
     await deps.repos.skills.update(published);
     // 引用模式增量 §2.3：影响面（引用同 key 任一版本的 agent；latest 下次加载即新内容 — L8）

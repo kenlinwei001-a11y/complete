@@ -239,7 +239,7 @@ export type Scenario = z.infer<typeof ScenarioSchema>;
 // AIP Evals（运营完备性增量 §2 / 成熟度 E4）：agent 质量可量化评测
 // ---------------------------------------------------------------------------
 
-export const EvalSuiteSchema = z.enum(["classifier", "agent_quality", "regression"]);
+export const EvalSuiteSchema = z.enum(["classifier", "agent_quality", "regression", "skill_quality"]);
 export type EvalSuite = z.infer<typeof EvalSuiteSchema>;
 
 export const EvalCaseSchema = z.object({
@@ -247,6 +247,8 @@ export const EvalCaseSchema = z.object({
   tenantId: z.string(),
   suite: EvalSuiteSchema,
   packageId: z.string(),
+  /** Skill 评测门禁二（skill_quality）：关联到具体技能 key（发布门禁按此计 ≥3 用例）。 */
+  skillKey: z.string().optional(),
   /** 输入：问句 + 会话上下文（视图/选中对象等）。 */
   input: z.object({
     query: z.string().min(1),
@@ -264,6 +266,8 @@ export const EvalCaseSchema = z.object({
     answerMustNot: z.array(z.string()).optional(),
     maxToolCalls: z.number().int().optional(),
     trust: z.enum(["VERIFIED_WORKFLOW", "AGENT_EXPLORATORY"]).optional(),
+    /** Skill 门禁二·行为增益维度：true = 该用例验证挂载技能后的行为增益（vs 不挂载，§4 评测三类之三）。 */
+    behaviorGain: z.boolean().optional(),
   }),
   /** 出处：手写 / 场景目录派生 / 兜底转化。 */
   origin: z.enum(["MANUAL", "SCENARIO", "FALLBACK"]).default("MANUAL"),
