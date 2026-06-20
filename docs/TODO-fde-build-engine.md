@@ -37,14 +37,15 @@
 - ⬜ **切片索引存储 + 复用**：生成切片附 description + indexEntities，落库；下次近似问句按索引检索复用，不重规划。
 - 验收（体验）：UI 看得见两库 → 跑问句看着现生成跨域切片 → 切片库出现（带描述/索引）→ 再问命中复用 → executeSlice 真解析出跨域子图。
 
-## 4. 数据接入控制台分类（用户需求）
+## 4. 数据接入控制台分类（用户需求）—— ✅ 已落地（2026-06）
 
-- ⬜ **锂电数据分类 taxonomy**（配置化 R14，两层：大类→数据集，对齐 14 域）。
-- ⬜ 现有连接器/对象类型**并入分类**。
-- ⬜ 每类可选 **系统对接 / 文件上传**（ingestMode）。
-- ⬜ 文件上传**模版（字段表）前端可看 + 可下载**（复用已建 `buildDataTemplates` + `/a/v1/data-templates/:typeKey`）。
-- ◐ 合成数据与字段对齐（schema-gen 已从 properties 生成）。
-- ⬜ **每字段实体被 ≥1 本体切片覆盖**（R12 + 切片注册；先软提示，可升硬门）。
+- ✅ **锂电数据分类 taxonomy**（`synthetic/data-categories.ts batteryDataCategories`，12 类，配置化 R14）。
+- ✅ 现有对象类型**并入分类**（全 26 类型恰好归一类，`computeCategoryCoverage` 证完整无重复）。
+- ✅ 每类可选 **系统对接 / 文件上传**（`DataCategorySetting` 按租户持久化，migration022；前端下拉切换）。
+- ✅ 文件上传**模版（字段表）前端可看 + 可下载**（`GET /a/v1/data-categories/:key/template[?format=csv]`，`DataCategoriesPanel` 查看字段/下载模版）。
+- ✅ 合成数据与字段对齐（`synthetic-field-alignment.test` 实测补全 8 个漂移字段 → 无孤儿字段、非派生字段全填）。
+- ✅ **每字段实体被 ≥1 本体切片覆盖**（`batteryCoverageSlices` + `computeFieldCoverage`，`GET /a/v1/field-coverage` 实测 100%）。
+- ⬜ 余：连接创建时打 `Connection.category` 标签（per-connection 归类，细化项）。
 
 ## 5. 模块可见性补缺（用户实测找不到）
 
