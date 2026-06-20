@@ -257,9 +257,38 @@ export class GuardedToolExecutor {
         return this.readSkillResource(String(args.skillId ?? ""), String(args.resourceName ?? ""));
       case "search_experience":
         return this.searchExperience(String(args.query ?? ""), args.topK === undefined ? 3 : Math.min(Math.max(1, Number(args.topK)), 10));
+      // 自成长发动机 A4：成长工单施工面（厂商中立，R2 租户隔离）。
+      case "discover_growth_tickets":
+        return this.discoverGrowthTickets(ctx.tenantId, args.status ? String(args.status) : undefined);
+      case "claim_growth_ticket":
+        return this.transitionGrowthTicket(ctx, String(args.ticketId ?? ""), "IN_PROGRESS", args.assignee ? String(args.assignee) : ctx.userId);
+      case "submit_growth_ticket":
+        return this.transitionGrowthTicket(ctx, String(args.ticketId ?? ""), "IN_REVIEW");
       default:
         throw new Error(`unknown tool: ${toolName}`);
     }
+  }
+
+  /** A4：列出成长工单（R2 租户隔离；按 status 过滤）。施工 agent 据此知道要建什么、骨架到哪。 */
+  private async discoverGrowthTickets(tenantId: string, status?: string): Promise<unknown> {
+    const all = await this.deps.repos.growthTickets.listByTenant(tenantId);
+    const items = status ? all.filter((t) => t.status === status) : all;
+    return {
+      items: items.map((t) => ({
+        id: t.id, fromQuestion: t.fromQuestion, gapCode: t.gapCode, status: t.status,
+        ioContract: t.ioContract, ontologyRefs: t.ontologyRefs, acceptance: t.acceptance,
+        scaffoldedDrafts: t.scaffoldedDrafts ?? [], assignee: t.assignee,
+      })),
+    };
+  }
+
+  /** A4：成长工单状态流转（claim→IN_PROGRESS / submit→IN_REVIEW）；不存在→错误，R2 隔离。 */
+  private async transitionGrowthTicket(ctx: { tenantId: string }, ticketId: string, to: "IN_PROGRESS" | "IN_REVIEW", assignee?: string): Promise<unknown> {
+    const tk = (await this.deps.repos.growthTickets.listByTenant(ctx.tenantId)).find((t) => t.id === ticketId);
+    if (!tk) return { error: `TICKET_NOT_FOUND: ${ticketId}` };
+    const updated = { ...tk, status: to, ...(assignee ? { assignee } : {}) };
+    await this.deps.repos.growthTickets.upsert(updated);
+    return { id: updated.id, status: updated.status, assignee: updated.assignee };
   }
 
   /**

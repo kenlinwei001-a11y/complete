@@ -227,6 +227,41 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     sideEffect: "ACTION_DRAFT",
     costClass: "CHEAP",
   },
+  // 自成长发动机 A4 · 厂商中立 code-agent 施工面（与 REST/CLI 同源操作，经工具接口暴露）：
+  // 让任意被授予这些工具的 agent（含外部 MCP 客户端走同一执行器）发现/认领/提交成长工单。
+  {
+    name: "discover_growth_tickets",
+    descriptionForLLM:
+      "发现待施工的成长工单（缺功能 → 带 I/O 契约 + 本体引用 + 验收 + 已建 DRAFT 骨架）。可按 status 过滤（OPEN/IN_PROGRESS/IN_REVIEW）。施工 agent 先调本工具拿到要建什么、骨架建到哪了。",
+    inputSchema: {
+      type: "object",
+      properties: { status: { type: "string", enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "MERGED", "VERIFIED"], description: "可选状态过滤" } },
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "claim_growth_ticket",
+    descriptionForLLM: "认领一张成长工单（OPEN→IN_PROGRESS），登记施工者。厂商中立：任意 code agent 均可认领。",
+    inputSchema: {
+      type: "object",
+      properties: { ticketId: { type: "string" }, assignee: { type: "string", description: "可选：施工者标识，缺省取当前用户" } },
+      required: ["ticketId"],
+    },
+    sideEffect: "ACTION_DRAFT",
+    costClass: "CHEAP",
+  },
+  {
+    name: "submit_growth_ticket",
+    descriptionForLLM: "提交施工成果待验证（IN_PROGRESS→IN_REVIEW）。提交后由 verify（重跑问句）判定是否 VERIFIED。",
+    inputSchema: {
+      type: "object",
+      properties: { ticketId: { type: "string" }, note: { type: "string", description: "可选：施工说明/PR 链接" } },
+      required: ["ticketId"],
+    },
+    sideEffect: "ACTION_DRAFT",
+    costClass: "CHEAP",
+  },
 ];
 
 export const FINAL_ANSWER_TOOL = {
