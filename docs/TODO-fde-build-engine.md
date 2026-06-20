@@ -59,6 +59,22 @@
 - ✅ `fde-delivery` skill（交付纪律 SOP：完成定义=体验、亲手用一遍、报北极星距离、真实故事验收）。
 - ⬜ 考虑加一道治理维度：现有 `prd:coverage` 只验"PRD↔测试"，缺"PRD实现↔用户目标↔亲手验"——可加一份 hand-run 验收登记（§0 审计的常态化）。
 
+## 8. 多跳跨域推理引擎 · 选型与集成（开源采用，封装为平台自有 API）
+
+> 原则（已定）：**能净室重写的自写（零外部名、零依赖、R6 可控）；重引擎作依赖封装**（产品/UI 零外部名，库的许可证仅保留在依赖清单——MIT/Apache 要求，不可删）。每个采用前**先读真代码/许可证实测**(不信 README)，过 **4 闸**：① 许可证合规 ② R6 确定性(钉种子/确定性封装) ③ R11 声明 SOLVER_OUTPUT_SHAPES ④ R13 审计+供应链安全。
+>
+> ⚠️ **架构现实**：平台是 TS/Node + pg×2；下列多为 **Python/C++** → 集成 = 起一个 **求解器 sidecar 微服务**（Python/原生,REST 暴露,datacore 经 OBO 调）+ docker-compose 加服务。这是新基建,非小事,故按类**选一个**落地,不是 12 个全上。
+> ⚠️ **同类是替代,不是叠加**：每类挑 1 个主选;**RDFox 是商用闭源、Datomic 是专有**(非开源,不采)。
+
+- ⬜ **8a 图查询 / 多跳穿行**：主选 **Gremlin/TinkerPop**(Apache-2.0,厂商中立) 或 **Neo4j Community**(GPLv3;Enterprise 商用)。`Neo4j GDS` 依附 Neo4j。**现状**：平台切片引擎(root+hops+in/out)已覆盖中小规模 → **暂缓,规模/深度顶不住再上**。集成=部署图库服务 + adapter。
+- ⬜ **8b Datalog 递归传导（传导面/影响半径，Q1/Q2）**：主选 **Soufflé**(Apache-2.0,编译 C++,快,**确定性✅**)。~~RDFox(商用闭源)~~、~~Datomic(专有)~~ 不采。**现状**：平台 `recompute`(反向依赖闭包重算) 已是传导雏形 → 先净室扩,规模不够再封 Soufflé。
+- ⬜ **8c 图算法 / 集中度聚合（暗线 Q5）**：主选 **NetworkX**(BSD,Python,确定性) 或 **igraph**(GPLv2,C,快)。**现状**：反向切片 + `aggregate_objects` groupBy 已覆盖基础 → 复杂中心性/社区发现再上。
+- ⬜ **8d 约束求解 / 排产冲突（Q4 shared_bottleneck）**：主选 **OR-Tools**(Apache-2.0,Google,成熟;CP-SAT 钉 seed 可确定性)。集成=sidecar 封装为 `shared_bottleneck` 求解器,声明输出形状。
+- ⬜ **8e 归因 / 因果（毛利倒挂 Q3）**：主选 **DoWhy**(MIT,因果推断,比 SHAP 更适合"哪个环节吃掉多少毛利")；备 **EconML**(MIT)、**SHAP**(MIT,⚠️ 默认不确定,须钉种子)。**或**先净室确定性归因分解(沿因果链逐环节差分),够用就不引依赖。
+- ⬜ **8f 求解器 sidecar 基建**：起 Python/原生求解器微服务(docker-compose 加服务)+ 平台自有 REST 契约 + OBO 透传 + 4 闸评审流水。8b/8c/8d/8e 的依赖落地都靠它。**这是 8 类落地的前置基建。**
+
+> 落地顺序建议：先净室扩 8b(传导)/8c(聚合)满足 Q1/Q2/Q5(平台底座已有雏形,零依赖)；Q4 上 **OR-Tools**、Q3 上 **DoWhy**(需 8f sidecar)；8a 图库规模不够才上。**默认不全上 12 个。**
+
 ---
 
 ### 建议执行顺序（FDE 视角）
