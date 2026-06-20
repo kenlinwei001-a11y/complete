@@ -24,7 +24,7 @@ export default function ScenarioLauncherPage() {
   return (
     <div data-testid="scenario-launcher">
       <div style={{ marginBottom: 14 }}>
-        <h2 style={{ fontSize: 16 }}>场景启动器</h2>
+        <h2 style={{ fontSize: 16 }}>{zh.launcher.title}</h2>
         <div className="muted" style={{ fontSize: 11.5 }}>
           点一张场景卡即注入预置上下文、一键直达推演（不被反问槽位）。按 <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd> 可命令面板快搜。
         </div>

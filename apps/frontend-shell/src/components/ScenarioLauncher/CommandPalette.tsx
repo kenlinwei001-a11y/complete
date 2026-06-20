@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchScenarioCards } from "@/api/endpoints";
 import { Modal } from "@/components/ui/Modal";
 import { useScenarioLaunch } from "./useScenarioLaunch";
+import zh from "@/locales/zh";
 
 /**
  * ⌘K 命令面板（PRD-scenario-launcher §3.5-A）：全局快捷键唤起，搜场景名/触发问句 →
@@ -34,14 +35,14 @@ export function CommandPalette() {
 
   if (!open) return null;
   return (
-    <Modal title="⌘K · 场景命令面板" onClose={() => setOpen(false)} width={560}>
+    <Modal title={zh.launcher.paletteTitle} onClose={() => setOpen(false)} width={560}>
       <div data-testid="command-palette">
         <input
           autoFocus
           value={q}
-          aria-label="搜索场景"
+          aria-label={zh.launcher.searchAria}
           data-testid="command-palette-input"
-          placeholder="搜场景名 / 触发问句…"
+          placeholder={zh.launcher.searchPlaceholder}
           onChange={(e) => setQ(e.target.value)}
           style={{ width: "100%", marginBottom: 10 }}
         />

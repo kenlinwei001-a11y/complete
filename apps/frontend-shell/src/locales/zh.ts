@@ -29,6 +29,20 @@ export const zh = {
     footprint: "足迹",
     searchPlaceholder: "全局搜索对象…",
   },
+  home: {
+    fallbackTenant: "全域决策支撑",
+    hint: "一键启动高频场景直达推演，或进入业务视图。按 ⌘K 随处快搜场景。",
+    hotScenarios: "⚡ 高频场景",
+    businessViews: "业务视图",
+    allScenarios: "⚡ 全部场景启动器 →",
+    writebackBadge: "写回",
+  },
+  launcher: {
+    title: "场景启动器",
+    paletteTitle: "⌘K · 场景命令面板",
+    searchAria: "搜索场景",
+    searchPlaceholder: "搜场景名 / 触发问句…",
+  },
   login: {
     title: "登录",
     tenant: "租户",
