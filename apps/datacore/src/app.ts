@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
@@ -217,6 +217,24 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const r = schema.safeParse(body ?? {});
   if (!r.success) throw validationError(r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
   return r.data;
+}
+
+/** OC9 净生产天数：from..to（含端点）逐日，扣周末（weekendMode）+ 节假日/检修（exceptions），加班日补回。 */
+function netProductionDays(from: string, to: string, cal: { weekendMode: string; exceptions: { date: string; kind: string }[] } | undefined): number {
+  const wm = cal?.weekendMode ?? "SAT_SUN_OFF";
+  const holidays = new Set((cal?.exceptions ?? []).filter((e) => e.kind === "HOLIDAY" || e.kind === "MAINTENANCE").map((e) => e.date));
+  const extra = new Set((cal?.exceptions ?? []).filter((e) => e.kind === "EXTRA_WORKDAY").map((e) => e.date));
+  let n = 0;
+  const end = new Date(`${to}T00:00:00Z`);
+  for (let d = new Date(`${from}T00:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    const dow = d.getUTCDay();
+    let off = wm === "SAT_SUN_OFF" ? dow === 0 || dow === 6 : wm === "SUN_OFF" ? dow === 0 : false;
+    if (extra.has(iso)) off = false;
+    if (holidays.has(iso)) off = true;
+    if (!off) n++;
+  }
+  return n;
 }
 
 export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
@@ -783,6 +801,102 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
     const body = ImportBundleBodySchema.parse(req.body);
     return configBundle.import(c, body.bundle, body.dryRun, body.conflictPolicy);
+  });
+
+  // OC6 平台内置提示词配置化：平台默认 + 租户 override（按租户可改）。admin only。
+  const resolvePrompt = async (tenantId: string, key: (typeof PROMPT_KEYS)[number]) => {
+    const ov = await repos.promptTemplates.get(tenantId, `pt_${tenantId}_${key}`);
+    return ov
+      ? { key, template: ov.template, source: "TENANT_OVERRIDE" as const, version: ov.version }
+      : { key, template: PLATFORM_PROMPT_DEFAULTS[key], source: "PLATFORM_DEFAULT" as const, version: 0 };
+  };
+  app.get("/a/v1/prompt-templates", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    return { items: await Promise.all(PROMPT_KEYS.map((k) => resolvePrompt(c.tenantId, k))) };
+  });
+  app.get("/a/v1/prompt-templates/:key/resolve", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const key = (req.params as { key: string }).key as (typeof PROMPT_KEYS)[number];
+    if (!PROMPT_KEYS.includes(key)) throw notFound("prompt key");
+    return resolvePrompt(c.tenantId, key);
+  });
+  app.put("/a/v1/prompt-templates/:key", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const key = (req.params as { key: string }).key as (typeof PROMPT_KEYS)[number];
+    if (!PROMPT_KEYS.includes(key)) throw notFound("prompt key");
+    const body = PutPromptTemplateBodySchema.parse(req.body);
+    const id = `pt_${c.tenantId}_${key}`;
+    const prev = await repos.promptTemplates.get(c.tenantId, id);
+    const rec = { id, tenantId: c.tenantId, key, template: body.template, version: (prev?.version ?? 0) + 1, updatedAt: new Date().toISOString(), updatedBy: c.userId };
+    await repos.promptTemplates.put(rec);
+    return rec;
+  });
+
+  const mustAdmin = (c: AuthCtx) => { if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only"); };
+
+  // OC7 LLM 成本配额与降级（租户级 token 配额 + 软/硬线）。admin only。
+  const budgetStatus = (b: { hardLimitTokens: number; softLimitPct: number; usedTokens: number } | undefined) => {
+    const hard = b?.hardLimitTokens ?? 0;
+    const soft = Math.floor(hard * (b?.softLimitPct ?? 0.8));
+    const used = b?.usedTokens ?? 0;
+    const state = hard > 0 && used >= hard ? "HARD_EXCEEDED" : hard > 0 && used >= soft ? "SOFT_EXCEEDED" : "OK";
+    return { usedTokens: used, hardLimitTokens: hard, softLimitTokens: soft, state, degrade: state !== "OK" } as const;
+  };
+  app.get("/a/v1/llm-budgets", async (req) => { const c = ctx(req); mustAdmin(c); return budgetStatus(await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`)); });
+  app.put("/a/v1/llm-budgets", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const body = PutLlmBudgetBodySchema.parse(req.body);
+    const prev = await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`);
+    const rec = { id: `lbg_${c.tenantId}`, tenantId: c.tenantId, hardLimitTokens: body.hardLimitTokens, softLimitPct: body.softLimitPct ?? prev?.softLimitPct ?? 0.8, periodStart: prev?.periodStart ?? new Date().toISOString(), usedTokens: prev?.usedTokens ?? 0, updatedAt: new Date().toISOString() };
+    await repos.llmBudgets.put(rec); return budgetStatus(rec);
+  });
+  app.post("/a/v1/llm-budgets/record", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const body = RecordUsageBodySchema.parse(req.body);
+    const prev = await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`);
+    const rec = { id: `lbg_${c.tenantId}`, tenantId: c.tenantId, hardLimitTokens: prev?.hardLimitTokens ?? 0, softLimitPct: prev?.softLimitPct ?? 0.8, periodStart: prev?.periodStart ?? new Date().toISOString(), usedTokens: (prev?.usedTokens ?? 0) + body.tokens, updatedAt: new Date().toISOString() };
+    await repos.llmBudgets.put(rec); return budgetStatus(rec);
+  });
+
+  // OC9 工厂日历 + 净生产窗口扣减（节假日/检修扣除）。admin only。
+  app.get("/a/v1/calendars/:key", async (req) => {
+    const c = ctx(req); mustAdmin(c); const key = (req.params as { key: string }).key;
+    return (await repos.factoryCalendars.get(c.tenantId, `cal_${c.tenantId}_${key}`)) ?? { id: `cal_${c.tenantId}_${key}`, tenantId: c.tenantId, calendarKey: key, weekendMode: "SAT_SUN_OFF", exceptions: [], updatedAt: "" };
+  });
+  app.put("/a/v1/calendars/:key", async (req) => {
+    const c = ctx(req); mustAdmin(c); const key = (req.params as { key: string }).key;
+    const body = PutCalendarBodySchema.parse(req.body);
+    const prev = await repos.factoryCalendars.get(c.tenantId, `cal_${c.tenantId}_${key}`);
+    const rec = { id: `cal_${c.tenantId}_${key}`, tenantId: c.tenantId, calendarKey: key, weekendMode: body.weekendMode ?? prev?.weekendMode ?? "SAT_SUN_OFF", exceptions: body.exceptions ?? prev?.exceptions ?? [], updatedAt: new Date().toISOString() };
+    await repos.factoryCalendars.put(rec); return rec;
+  });
+  app.get("/a/v1/calendars/:key/net-window", async (req) => {
+    const c = ctx(req); mustAdmin(c); const key = (req.params as { key: string }).key;
+    const { from, to } = req.query as { from?: string; to?: string };
+    if (!from || !to) throw validationError("from/to required (YYYY-MM-DD)");
+    const cal = await repos.factoryCalendars.get(c.tenantId, `cal_${c.tenantId}_${key}`);
+    return { calendarKey: key, from, to, netProductionDays: netProductionDays(from, to, cal) };
+  });
+
+  // OC5 写回回声抑制 + 不一致告警。admin only。
+  app.post("/a/v1/writeback-echoes", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const b = req.body as { ref: string; writtenValue: unknown; actionId: string };
+    const rec = { id: newId("wbe"), tenantId: c.tenantId, ref: b.ref, writtenValue: b.writtenValue, writtenAt: new Date().toISOString(), actionId: b.actionId };
+    await repos.writebackEchoes.put(rec); return rec;
+  });
+  app.post("/a/v1/writeback-echoes/reconcile", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const body = ReconcileBodySchema.parse(req.body);
+    const pending = (await repos.writebackEchoes.list(c.tenantId, (e) => e.ref === body.ref)).sort((a, b) => (a.writtenAt < b.writtenAt ? 1 : -1))[0];
+    if (!pending) return { verdict: "NO_PENDING_WRITEBACK", ref: body.ref, incomingValue: body.incomingValue };
+    const echo = JSON.stringify(pending.writtenValue) === JSON.stringify(body.incomingValue);
+    if (echo) { await repos.writebackEchoes.remove(c.tenantId, pending.id); return { verdict: "ECHO_SUPPRESSED", ref: body.ref, writtenValue: pending.writtenValue, incomingValue: body.incomingValue }; }
+    await outbox.emit(c.tenantId, "writeback.divergence", { ref: body.ref, written: pending.writtenValue, incoming: body.incomingValue });
+    return { verdict: "DIVERGENCE", ref: body.ref, writtenValue: pending.writtenValue, incomingValue: body.incomingValue };
   });
 
   // 执行语义增量 §2：Outbox 死信列表 + 手动重投（中台可见）

@@ -262,6 +262,11 @@ export interface Repos {
   featureAudit: Store<FeatureAuditRecord>;
   /** OC3 配置迁移 Saga 状态机持久化（import_jobs，migration017）。 */
   importJobs: Store<import("@platform/contracts").ImportJob>;
+  /** OC6 提示词配置化（prompt_templates，migration018）。 */
+  promptTemplates: Store<import("@platform/contracts").PromptTemplate>;
+  llmBudgets: Store<import("@platform/contracts").LlmBudget>;
+  factoryCalendars: Store<import("@platform/contracts").FactoryCalendar>;
+  writebackEchoes: Store<import("@platform/contracts").WritebackEcho>;
   // 管理平台增量 §3
   scenarioPackages: Store<ScenarioPackageRecord>;
   dynamicFeatures: Store<DynamicFeatureRecord>;
