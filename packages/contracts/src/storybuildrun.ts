@@ -202,8 +202,11 @@ export const StoryBuildRunSchema = z.object({
   storyCoverage: z.array(StoryCoverageSentenceSchema).default([]),
   /** 功能缺失自检（MISSING 制品映射母体 7 码；P4）。 */
   gapReport: GapReportSchema.optional(),
-  /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；内层调母体 growth/run）。 */
+  /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
   answer: z.string().optional(),
+  /** §9 归一 evidence 标记：RUNTIME_PROBE=答案经 QOS orchestrator 实跑（绿测试≠能用的活证据）；
+   *  BUILD_STATIC=未配 AgentCore，兜底直调求解器在建好对象上算（诚实区分，未过 QOS 运行时）。 */
+  inferenceEvidence: z.enum(["RUNTIME_PROBE", "BUILD_STATIC"]).optional(),
   /** 区6④ 推演验证痕迹（一致性 + 交叉验证）：建域成功即由 crossValidate 把结论依据对象
    *  反向核对知识图谱 → 前端 ValidationTracePanel 内嵌，让用户信任"完整且有据"（R13）。 */
   validationTrace: ValidationTraceSchema.optional(),

@@ -188,6 +188,16 @@ export class DataBuilderService {
     this.scaffoldClient = fn;
   }
 
+  /**
+   * g8 §9 归一：推演回填经 AgentCore QOS orchestrator 实跑（不是直调求解器）。注入的 probe →
+   * `POST /api/v1/growth/probe`（submit→等终态→classifyGap，真实运行时）。未配置则 undefined，
+   * runInference 兜底直调求解器并标 evidence=BUILD_STATIC（诚实区分"未过 QOS"）。app.ts 注入。
+   */
+  private inferenceProbe?: (ctx: AuthCtx, question: string) => Promise<{ answer: string; answerable: boolean } | undefined>;
+  setInferenceProbe(fn: (ctx: AuthCtx, question: string) => Promise<{ answer: string; answerable: boolean } | undefined>): void {
+    this.inferenceProbe = fn;
+  }
+
   /** 把 BuildPlan 的 B 栈需求下发 AgentCore scaffold，返回回执（未配置/无需求则 undefined）。 */
   private async crossSystemScaffold(ctx: AuthCtx, runId: string, plan: BuildPlan | undefined): Promise<ScaffoldReceipt | undefined> {
     if (!this.scaffoldClient || !plan) return undefined;
@@ -220,6 +230,7 @@ export class DataBuilderService {
     closureReport?: ClosureReport;
     scaffoldReceipt?: ScaffoldReceipt;
     answer?: string;
+    inferenceEvidence?: "RUNTIME_PROBE" | "BUILD_STATIC";
     validationTrace?: ValidationTrace;
     producedConnections: string[];
     producedDatasets: string[];
@@ -247,10 +258,10 @@ export class DataBuilderService {
       built = job.status === "SUCCEEDED";
     }
     const status: StoryBuildRun["status"] = aOk && bOk && built ? "SUCCEEDED" : "FAILED";
-    const answer = inference && status === "SUCCEEDED" ? await this.runInference(ctx, plan) : undefined;
+    const inf = inference && status === "SUCCEEDED" ? await this.runInference(ctx, plan) : {};
     // 区6④：建域成功即产出推演验证痕迹（独立于 answer，是建出制品的"可信赖性"凭证，回写 run）。
     const validationTrace = status === "SUCCEEDED" ? await this.buildStoryValidationTrace(ctx, plan) : undefined;
-    return { buildPlan: plan, closureReport, scaffoldReceipt, answer, validationTrace, producedConnections, producedDatasets, status };
+    return { buildPlan: plan, closureReport, scaffoldReceipt, answer: inf.answer, inferenceEvidence: inf.evidence, validationTrace, producedConnections, producedDatasets, status };
   }
 
   /**
@@ -292,9 +303,21 @@ export class DataBuilderService {
     };
   }
 
-  /** g8-P5 推演回填：以生成场景的求解器在建好的对象上跑一次推演 → answer 摘要（best-effort，确定性）。 */
-  private async runInference(ctx: AuthCtx, plan: BuildPlan | undefined): Promise<string | undefined> {
-    if (!this.solvers || !plan || plan.solverNeeds.length === 0) return undefined;
+  /**
+   * g8-P5/§9 推演回填：把故事主问句跑一遍**真实推演运行时**得到 answer + evidence 标记。
+   * - 归一优先：注入 inferenceProbe（AgentCore QOS growth/probe 实跑）→ evidence=RUNTIME_PROBE
+   *   （"建出来的域真能在 QOS 跑通"的活证据，绿测试≠能用）；
+   * - 兜底：直调求解器在建好对象上算摘要 → evidence=BUILD_STATIC（诚实区分，未过 QOS 运行时）。
+   * 确定性（同建域同输出）；probe 失败/未配则降级兜底，不阻断建域。
+   */
+  private async runInference(ctx: AuthCtx, plan: BuildPlan | undefined): Promise<{ answer?: string; evidence?: "RUNTIME_PROBE" | "BUILD_STATIC" }> {
+    if (!plan || plan.solverNeeds.length === 0) return {};
+    // §9 归一：故事主问句 = 脚本（自然语言问句），经母体 QOS orchestrator 实跑。
+    if (this.inferenceProbe) {
+      const probed = await this.inferenceProbe(ctx, plan.script).catch(() => undefined);
+      if (probed) return { answer: `经 QOS 实跑：${probed.answer}`, evidence: "RUNTIME_PROBE" };
+    }
+    if (!this.solvers) return {};
     const parts: string[] = [];
     for (const sn of plan.solverNeeds) {
       try {
@@ -309,7 +332,7 @@ export class DataBuilderService {
         parts.push(`${sn.solverKey}: 推演跳过（${(e as Error).message.slice(0, 40)}）`);
       }
     }
-    return parts.join(" · ");
+    return { answer: parts.join(" · "), evidence: "BUILD_STATIC" };
   }
 
   async runStory(ctx: AuthCtx, body: BuildRunBody, inference = false): Promise<StoryBuildRun> {
@@ -324,6 +347,7 @@ export class DataBuilderService {
       scaffoldReceipt: r.scaffoldReceipt,
       gapReport: selfCheckGaps(body.script.trim(), id, r.closureReport, r.scaffoldReceipt),
       answer: r.answer,
+      inferenceEvidence: r.inferenceEvidence,
       validationTrace: r.validationTrace,
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,
@@ -455,6 +479,7 @@ export class DataBuilderService {
       scaffoldReceipt: r.scaffoldReceipt,
       gapReport: selfCheckGaps(run.script, run.id, r.closureReport, r.scaffoldReceipt),
       answer: r.answer,
+      inferenceEvidence: r.inferenceEvidence,
       validationTrace: r.validationTrace,
       producedConnections: r.producedConnections,
       producedDatasets: r.producedDatasets,

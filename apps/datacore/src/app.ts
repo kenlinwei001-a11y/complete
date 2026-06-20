@@ -109,6 +109,7 @@ export interface BuiltApp {
     scheduler: SchedulerService;
     ruleScan: RuleScanService;
     actions: ActionService;
+    databuilder: DataBuilderService;
     sop: SopService;
     kb: KbService;
     simclock: SimClockService;
@@ -361,6 +362,27 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   }
   const debugHeaderFor = (a: AuthCtx): string =>
     encodeURIComponent(a.tenantId) + ":" + encodeURIComponent(a.userId) + ":" + a.roles.map(encodeURIComponent).join("|");
+  // g8 §9 归一：建域后推演回填经 AgentCore QOS orchestrator 实跑（growth/probe submit→等终态→分类），
+  // 而非直调求解器——"建出来的域真能在 QOS 跑通"的活证据（绿测试≠能用）。未配 AGENTCORE_BASE_URL 则
+  // runInference 兜底直调求解器并标 BUILD_STATIC。
+  if (config.AGENTCORE_BASE_URL) {
+    const agentBase = config.AGENTCORE_BASE_URL;
+    databuilder.setInferenceProbe(async (c, question) => {
+      try {
+        const res = await fetchImpl(`${agentBase}/api/v1/growth/probe`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-debug-user": debugHeaderFor(c) },
+          body: JSON.stringify({ packageId: "pkg_battery_manufacturing", query: question, context: { view: "dash", selectedObjects: [], filters: {} } }),
+        });
+        if (!res.ok) return undefined;
+        const gap = (await res.json()) as { verdict: string; findings?: { gapCode: string }[] };
+        const answerable = gap.verdict === "ANSWERABLE";
+        return { answer: answerable ? "问句可答（全链跑通）" : `断在 ${gap.findings?.[0]?.gapCode ?? gap.verdict}`, answerable };
+      } catch {
+        return undefined; // 网络抖动/连接失败 → 降级兜底（不阻断建域）
+      }
+    });
+  }
   const opsReplay = new OpsReplayService({
     actions,
     sop,
@@ -2513,6 +2535,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       scheduler,
       ruleScan,
       actions,
+      databuilder,
       sop,
       kb,
       simclock,

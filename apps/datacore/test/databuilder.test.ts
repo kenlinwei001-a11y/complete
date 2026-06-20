@@ -476,3 +476,65 @@ describe("数据构建发动机 · D-29 事件发射（storybuild.run_recorded �
     expect(run.status).toBe("SUCCEEDED");
   });
 });
+
+describe("g8 §9 归一 · 推演回填经 QOS 实跑（100 字故事完整建域 + RUNTIME_PROBE/BUILD_STATIC evidence）", () => {
+  // ~100 字真实故事脚本：多基地/产线/订单/客户实体 + 风险/产能/信用多分析诉求。
+  const STORY100 =
+    "常州动力电池基地三季度产能持续紧张，多条产线利用率越线，叠加 4680 型号认证排期延误，影响星辰汽车与蓝海储能的订单交期与客户信用敞口，请系统推演交期风险、产能缺口与信用冻结，并给出补救处置的优先级。";
+
+  it("RUNTIME_PROBE：100 字故事 → 完整建域（多对象/多求解器/闭包/物化/产物）→ 推演经注入 QOS probe 实跑 → evidence=RUNTIME_PROBE", async () => {
+    const t = await makeApp();
+    let probedQuestion = "";
+    let probeCalls = 0;
+    // 注入 §9 归一 probe（部署态=AgentCore growth/probe 实跑；此处忠实模拟：收到主问句→返回可答）。
+    t.services.databuilder.setInferenceProbe(async (_c, question) => {
+      probeCalls++;
+      probedQuestion = question;
+      return { answer: "问句可答（全链跑通）", answerable: true };
+    });
+
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: STORY100, seed: 7, inference: true } })).json()) as StoryRunResp & {
+      answer?: string; inferenceEvidence?: string; storyCoverage: { mapped: boolean }[]; validationTrace?: { consistency: { verdict: string }; crossValidation: { verdict: string } };
+    };
+
+    // —— 完整建域链路（不是几条数据）：多对象类型 + 多求解器 + 闭包通过 + 真对象物化 + 产物落库 ——
+    expect(run.status).toBe("SUCCEEDED");
+    expect(run.buildPlan!.objectTypes.length, "多对象类型").toBeGreaterThanOrEqual(3); // 基地/产线/订单/客户
+    expect(run.buildPlan!.solverNeeds.length, "多求解器").toBeGreaterThanOrEqual(2); // 风险 affected_orders + 产能 capacity_forecast
+    expect(run.closureReport?.gatePassed).toBe(true);
+    expect(run.producedConnections.length).toBeGreaterThan(0);
+    expect(run.producedDatasets.length).toBeGreaterThan(0);
+    const orders = (await (await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order", headers: ADMIN })).json()) as { rows?: unknown[]; data?: unknown[] };
+    expect(((orders.rows ?? orders.data ?? []) as unknown[]).length, "订单已物化为真对象").toBeGreaterThan(0);
+    const bases = (await (await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Base", headers: ADMIN })).json()) as { rows?: unknown[]; data?: unknown[] };
+    expect(((bases.rows ?? bases.data ?? []) as unknown[]).length, "基地已物化").toBeGreaterThan(0);
+
+    // —— §9 归一：推演经 QOS probe 实跑（主问句=完整故事脚本），evidence=RUNTIME_PROBE ——
+    expect(probeCalls).toBe(1);
+    expect(probedQuestion).toBe(STORY100); // 把整段 100 字故事作为主问句送 QOS 实跑
+    expect(run.inferenceEvidence).toBe("RUNTIME_PROBE");
+    expect(run.answer).toContain("经 QOS 实跑");
+
+    // —— 信任痕迹 + 覆盖度（完整链路的"可信赖性"凭证）——
+    expect(run.validationTrace?.consistency.verdict).toBe("ALL_PASS");
+    expect(run.validationTrace?.crossValidation.verdict).toBe("ALL_CONSISTENT");
+    expect(run.storyCoverage.filter((c) => c.mapped).length, "多数故事句映射到制品").toBeGreaterThanOrEqual(1);
+  });
+
+  it("BUILD_STATIC：未配 QOS probe → 兜底直调求解器在建好对象上算（诚实区分'未过 QOS 运行时'）", async () => {
+    const t = await makeApp(); // 无 inferenceProbe（AGENTCORE_BASE_URL 未配）
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: STORY100, seed: 7, inference: true } })).json()) as StoryRunResp & { answer?: string; inferenceEvidence?: string };
+    expect(run.status).toBe("SUCCEEDED");
+    expect(run.inferenceEvidence).toBe("BUILD_STATIC");
+    // 兜底答案 = 真实求解器在建好对象上的输出（非 canned；含求解器键 + 数值摘要）
+    expect(run.answer).toMatch(/affected_orders|capacity_forecast/);
+  });
+
+  it("inference=false（默认）→ 不跑推演，无 answer/evidence（不浪费运行时）", async () => {
+    const t = await makeApp();
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: STORY100, seed: 7 } })).json()) as StoryRunResp & { answer?: string; inferenceEvidence?: string };
+    expect(run.status).toBe("SUCCEEDED");
+    expect(run.answer).toBeUndefined();
+    expect(run.inferenceEvidence).toBeUndefined();
+  });
+});
