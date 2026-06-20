@@ -83,10 +83,11 @@ describe("Skill 编写规范 §4 — 发布门禁（endpoint）", () => {
     expect(forced.statusCode).toBe(200);
   });
 
-  it("合规技能 → publish 200，响应附 lint 结果", async () => {
+  it("合规技能（lint 过）→ publish 200，响应附 lint 结果（门禁二评测门见 skill-eval-gate，此处 force 豁免）", async () => {
     const t = await createTestApp();
     const id = await createSkill(t, GOOD_SUMMARY, GOOD_BODY);
-    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish`, headers: debugHeaders(ADMIN) });
+    // 门禁二（≥3 评测用例）单独在 skill-eval-gate 测；本例验门禁一(lint)，force 豁免评测门。
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish?force=true`, headers: debugHeaders(ADMIN) });
     expect(pub.statusCode).toBe(200);
     expect((pub.json() as { lint: { ok: boolean } }).lint.ok).toBe(true);
   });
