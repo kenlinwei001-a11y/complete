@@ -2006,6 +2006,36 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     await emitDomainEvent(a.tenantId, "scenario.published", { key });
     return published;
   });
+  // PRD-fde §3.1/P4 终态闭环：把 scaffold 出的 DRAFT 场景链(计划→意图→场景)一键发布(经审批 R4)→
+  // 进场景启动器、可推演。此前发布场景要先手动逐个 publish 计划/意图,本端点按依赖序一次发布。
+  app.post("/b/v1/scenarios/:key/publish-chain", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a); // R4：发布经审批角色（不自动上线）
+    const { key } = req.params as { key: string };
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no package");
+    const publishedChain: { kind: string; key: string }[] = [];
+    // ① 计划 + 意图（依赖序：计划先，供意图 planRef 解析为 PUBLISHED）
+    const intents = await deps.repos.intents.listByPackage(pkg.id);
+    const intent = intents.filter((i) => i.key === sc.intentKey).sort((x, y) => y.version - x.version)[0];
+    if (intent) {
+      if (intent.planRef) {
+        const plan = await resolvePlanByRef(deps.repos, pkg.id, intent.planRef, { forValidation: true });
+        if (plan && plan.status !== "PUBLISHED") { await deps.catalog.publishPlan(plan.id); publishedChain.push({ kind: "plan", key: plan.key }); }
+      }
+      if (intent.status !== "PUBLISHED") { await deps.catalog.publishIntent(intent.id); publishedChain.push({ kind: "intent", key: intent.key }); }
+    }
+    // ② 场景（链补齐后重跑无死路上架门 → 通过才发布,进启动器）
+    const closure = await scenarioClosure(a.tenantId, sc);
+    if (!closure.ready) throw new HttpError(409, ErrorCodes.VALIDATION_ERROR, `场景引用未闭合（死路），不可发布：${closure.issues.join("；")}`);
+    const published: Scenario = { ...sc, status: "PUBLISHED", version: sc.version + 1, updatedAt: new Date().toISOString() };
+    await deps.repos.scenarios.upsert(published);
+    publishedChain.push({ kind: "scenario", key });
+    await emitDomainEvent(a.tenantId, "scenario.published", { key });
+    return { scenario: published, publishedChain };
+  });
   app.post("/b/v1/scenarios/:key/retire", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);
