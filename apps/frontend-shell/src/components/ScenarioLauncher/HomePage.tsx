@@ -3,11 +3,13 @@ import { NavLink } from "react-router-dom";
 import { fetchScenarioCards } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useScenarioLaunch } from "./useScenarioLaunch";
+import { rankHotScenarios } from "./rankHotScenarios";
 import zh from "@/locales/zh";
 
 /**
  * 首页（场景启动器 §3.5-C）：高频场景区（一键启动）+ 业务视图快捷入口。
- * 高频场景 = 启动器目录前 N 张（出厂高频；后续可按角色/使用频次个性化）。
+ * 高频场景 = 按角色可达落点视图分层排序的前 6 张（落点在本角色可达导航内的优先；
+ * "按角色"派生自服务端按角色计算的 navigation，故不同角色得到不同高频卡，R14 无硬编码）。
  */
 export default function HomePage() {
   const { data: workspace } = useWorkspace();
@@ -15,8 +17,9 @@ export default function HomePage() {
   const launch = useScenarioLaunch();
   if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
 
-  const hot = (data?.items ?? []).slice(0, 6);
   const views = workspace.navigation.filter((n) => n.group !== "admin");
+  const accessibleViewKeys = views.map((n) => n.viewKey ?? n.key);
+  const hot = rankHotScenarios(data?.items ?? [], accessibleViewKeys, 6);
 
   return (
     <div data-testid="home-page" style={{ maxWidth: 1100 }}>
