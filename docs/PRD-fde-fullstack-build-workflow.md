@@ -37,6 +37,9 @@
 7. **终态闭环可推演**：生成→全链闭包→R4 审批→publish→**进场景启动器**→重跑问句**验证真能答**；缺能力诚实落工单。
 8. **达标=亲手用一遍能用**（fde-delivery）：以真实新颖故事（"工序/设备/共享瓶颈/降级/后果"）端到端验，不以测试绿为准。
 
+9. **多跳推演原型库（报表做不到的命脉，一等验收基准）**：把"跨域多跳穿行 + 关系/规则联合推理"做成发动机的核心能力，以下 5 类杀手问题为验收基准（详 §3.8）：① 客户违约传导面 ② 供应商断供影响半径 ③ 毛利倒挂归因链路 ④ 产能瓶颈优先级冲突 ⑤ 隐性客户集中度。每类 = 一个多跳切片(路径) + 一个推理(求解器/聚合/generic_inference/工单)。
+10. **data-first 本体/切片创建（bottom-up，补故事先行盲区）**：真实数据表到达 → A3 `deriveModelingSuggestion`(字段→类型、FK→链路) + Kimi 建模节点(语义增强/多跳切片提议) → 创建本体 + 切片。**复用 A3 + LLM 节点,不嵌独立放养 agent**（守 workflow 决策 + R6）。
+
 ### 1.2 非目标
 - **自动发明并实现领域求解器**（缺求解器 → generic_inference 兜底 + 出带 I/O 契约工单，逻辑由人/agent 填、经审批，不臆造算法；承 `PRD-unified-build-engine` §1.2）。
 - 真值的真实世界有效性（合成是"已知真值世界"，非真数据；真实数据接入是连接器绑定另议）。
@@ -90,6 +93,22 @@
 ### 3.7 复用各模块 create + R4 一致（复用）
 ⑥节点对缺口分派到各模块既有 create，**一律 DRAFT**：数据→`connectors.upload`；类型→`ontology.upsertType`；规则→`rules.create`；切片→注册；B 栈→scaffold。求解器缺 → generic_inference 兜底 / GrowthTicket。**全部经 R4 审批闸 publish**。
 
+### 3.8 多跳推演原型库（5 类杀手问题 → 切片 + 求解器映射；一等验收）
+报表只能给结果数,给不出"横向传导 / 跨域影响 / 反向暗线"。本库把这类推理一等化:每类 = 多跳切片(路径,复用 §3.6 两库+planner,支持 out/in 双向) + 推理件。已验证底座:`generic_inference` 做**沿链路前向/反向重算传导**(ontology-core `recompute` 反向依赖闭包 + 反向链路导航);`aggregate_objects` 做 groupBy 聚合;切片 `direction:"in"` 支持反向遍历。
+
+| 原型 | 多跳切片(路径) | 推理件 | 现状 |
+|---|---|---|---|
+| ① 客户违约传导面 | 订单→共享设备/产线→其他订单→客户→营收(out) | Δ延迟→generic_inference 沿链路重算 + 聚合波及营收 | ✅ 复用 |
+| ② 供应商断供影响半径 | 供应商→物料→BOM→产品→订单→客户(跨采购/生产/质量/销售 out) | 前向遍历 + aggregate 金额 + 质量域查认证替代供应商 | ✅ 复用(跨域库) |
+| ③ 毛利倒挂归因链路 | 订单→工艺路线→设备稼动→物料价格→质量返工(因果链) | **归因分解求解器**(每环节吃掉多少毛利) | 🔴 **绿地新建**(或 calibration REPLAY_ATTRIBUTION 复用探索);缺则 generic_inference 部分 + GrowthTicket |
+| ④ 产能瓶颈优先级冲突 | 订单→工艺-设备共享节点 | shared_bottleneck(对象关系 + 排产行为规则联合推理) | ◐ §5 已含,求解器待实现/兜底 |
+| ⑤ 隐性客户集中度 | 客户←订单←物料←二级供应商(**反向 in** 聚合) | 反向遍历 + aggregate groupBy 找汇聚单点(单点敞口) | ✅ 复用(切片 in + aggregate) |
+
+诚实:命脉(多跳跨域穿行)由切片两库 + planner 提供;1/2/5 推理由 generic_inference/aggregate 复用满足,④求解器待实现/兜底,**③归因分解是唯一须绿地新建的求解器**(否则诚实落工单,不假装)。
+
+### 3.9 data-first 本体/切片创建（bottom-up，补故事先行盲区）
+真实数据表/字段到达(连接器上传或既有 RawDataset) → A3 `deriveModelingSuggestion`(dataset→ObjectType、column→PropertyDef、FK→ref+LinkType,确定性) → **Kimi 建模节点**(语义增强:域归类、关系命名、据字段提议多跳切片) → 经 EntityFieldCatalog 索引 → 创建本体 + 切片(全 DRAFT,R4)。**复用 A3 + LLM 节点,非独立放养 agent**。与故事先行(top-down)互补:故事缺的对象,数据先行可从真实表补齐。
+
 ## 4. 契约 / 端点 / 数据模型（contracts-only-shared；双仓储四处）
 
 - **contracts 新增**：`EntityFieldCatalogEntry` · `SliceIndexEntry` · `LlmComprehendSchema.scenarioTopology` 扩展 · `CapabilityGapReport`（diff 结果）· `FdeWorkflowNode`（节点状态）。
@@ -115,6 +134,7 @@ R2 全索引/数据带 tenantId；R4 全 create DRAFT 经审批；R6 同输入�
 
 ## 7. 验收（DoD：亲手用一遍能用 + 全绿 + 回归锁）
 - **体验级（fde-delivery 主判据）**：起真服务 + 绑 Kimi（用户填 key）→ 那条真实故事 → **亲手走通**：消歧出具体客户 → 数据里瓶颈真实存在 → 各模块 UI 看得见生成物(含切片库) → 场景 publish 进启动器 → 重跑**真答出**谁挤占谁/哪单降级/后果（或诚实落工单）。录证据。
+- **多跳推演原型基准（§3.8 五问）**：1/2/4/5 端到端真答出(横向传导/跨域影响/瓶颈冲突/反向暗线聚合);③毛利归因或建归因求解器答出、或诚实落工单。这是"报表做不到"的命脉验收。
 - **工业级测试**：每期 100 字真实/新颖故事完整测；EntityFieldCatalog 消歧 ×N、scenarioTopology 生成"瓶颈存在" ×N、多跳切片+SliceIndex 复用 ×N、R4 审批闸 ×N、切片覆盖软门 ×N。
 - **全绿**：`pnpm -r build && test` 四包 + `pnpm gates`（含 prd:check / chain:check / debattery:check）+ ontology 回写 + meta:sync。
 - **诚实**：每期报"距离北极星还差什么"，标清合成/兜底/happy-path。
@@ -122,7 +142,8 @@ R2 全索引/数据带 tenantId；R4 全 create DRAFT 经审批；R6 同输入�
 ## 8. 分期（每期按 fde-delivery 亲手验收）
 - **P1** EntityFieldCatalog 索引 + `/entity-catalog/resolve` 消歧 + CapabilityInventory + diff 节点（Q2 地基，自主可验）。
 - **P2** comprehend 扩 scenarioTopology + 场景化数据生成（"瓶颈真实存在"）。
-- **P3** 多跳切片两库 + 规划器 + SliceIndex 检索复用 + 切片库创建 UI + 覆盖软门。
+- **P3** 多跳切片两库 + 规划器(out/in 双向) + SliceIndex 检索复用 + 切片库创建 UI + 覆盖软门 + **data-first 建模节点(§3.9)**；以 §3.8 原型 ①②⑤(复用 generic_inference/aggregate)为回归基准。
 - **P4** 复用各模块 create + R4 审批闸统一 + 终态闭环（publish→启动器→重跑验证）。
+- **P4.5** 多跳推演原型 ③毛利归因分解求解器（绿地新建,§3.8）+ ④shared_bottleneck 实现/兜底收口。
 - **P5** 发动机 workflow 化（FDE 节点图 + 状态回填 + 前端节点状态图）。
 - **P6** 绑 Kimi 端到端 live（用户填 key）+ 真实故事 hand-run 验收 + 审计其余模块收口。
