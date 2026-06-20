@@ -62,6 +62,37 @@ describe("数据接入分类（数据接入控制台）", () => {
     expect(nonAdmin.statusCode).toBeGreaterThanOrEqual(400);
   });
 
+  it("PUT /a/v1/data-categories/:key/template：上传 CSV 列替换模版（非写死）→ GET 返回自定义列 + CSV 下载；复位回派生", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 替换为自定义列
+    const put = await t.app.inject({ method: "PUT", url: "/a/v1/data-categories/sales_orders/template", headers: ADMIN, payload: { columns: ["订单号", "客户编码", "数量"] } });
+    expect(put.statusCode).toBe(200);
+    const tpl = (await t.app.inject({ method: "GET", url: "/a/v1/data-categories/sales_orders/template", headers: ADMIN })).json() as { custom: boolean; templates: { columns: string[] }[] };
+    expect(tpl.custom).toBe(true);
+    expect(tpl.templates[0]!.columns).toEqual(["订单号", "客户编码", "数量"]);
+    // 列表里也反映自定义列
+    const list = (await t.app.inject({ method: "GET", url: "/a/v1/data-categories", headers: ADMIN })).json() as { items: { key: string; customColumns: string[] | null }[] };
+    expect(list.items.find((i) => i.key === "sales_orders")!.customColumns).toEqual(["订单号", "客户编码", "数量"]);
+    // CSV 下载即自定义列
+    const csv = await t.app.inject({ method: "GET", url: "/a/v1/data-categories/sales_orders/template?format=csv", headers: ADMIN });
+    expect(csv.body).toBe("订单号,客户编码,数量");
+    // 复位（columns=[]）→ 回本体派生模版
+    await t.app.inject({ method: "PUT", url: "/a/v1/data-categories/sales_orders/template", headers: ADMIN, payload: { columns: [] } });
+    const back = (await t.app.inject({ method: "GET", url: "/a/v1/data-categories/sales_orders/template", headers: ADMIN })).json() as { custom: boolean };
+    expect(back.custom).toBe(false);
+  });
+
+  it("模式与模版覆盖互不冲掉（读改写保留另一字段）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await t.app.inject({ method: "PUT", url: "/a/v1/data-categories/sales_orders/mode", headers: ADMIN, payload: { mode: "FILE_UPLOAD" } });
+    await t.app.inject({ method: "PUT", url: "/a/v1/data-categories/sales_orders/template", headers: ADMIN, payload: { columns: ["a", "b"] } });
+    const item = ((await t.app.inject({ method: "GET", url: "/a/v1/data-categories", headers: ADMIN })).json() as { items: { key: string; mode: string; customColumns: string[] | null }[] }).items.find((i) => i.key === "sales_orders")!;
+    expect(item.mode).toBe("FILE_UPLOAD"); // 设模版没冲掉模式
+    expect(item.customColumns).toEqual(["a", "b"]); // 模式在前、模版在后,两者并存
+  });
+
   it("GET /a/v1/field-coverage：返回切片字段覆盖 + 分类归并报告（诚实数字）", async () => {
     const t = await makeApp();
     await seedBattery(t);

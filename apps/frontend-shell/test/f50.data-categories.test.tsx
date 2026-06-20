@@ -20,15 +20,33 @@ describe("F50 · 数据接入分类面板", () => {
     expect(await within(sales).findByText(/qty/)).toBeInTheDocument();
   });
 
-  it("切换接入方式为文件上传 → 出现下载模版按钮", async () => {
+  it("切换文件上传 → 出现 上传文件 / 下载模版 / 替换模版", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp("/admin/connections");
     const panel = await screen.findByTestId("data-categories-panel");
     const sales = await within(panel).findByTestId("dc-sales_orders");
-    // 默认系统对接 → 无下载；切到文件上传后出现下载模版
     const select = within(sales).getByLabelText("销售订单 接入方式") as HTMLSelectElement;
     await user.selectOptions(select, "FILE_UPLOAD");
-    expect(await within(sales).findByText("下载模版")).toBeInTheDocument();
+    // 三个动作齐全（修"只有下载模版、没有上传文件"）
+    expect(await within(sales).findByText("上传文件")).toBeInTheDocument();
+    expect(within(sales).getByText("下载模版")).toBeInTheDocument();
+    expect(within(sales).getByText("替换模版")).toBeInTheDocument();
+  });
+
+  it("上传 CSV 替换模版 → 显示自定义模版列（非写死）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/connections");
+    const panel = await screen.findByTestId("data-categories-panel");
+    const sales = await within(panel).findByTestId("dc-sales_orders");
+    await user.selectOptions(within(sales).getByLabelText("销售订单 接入方式") as HTMLSelectElement, "FILE_UPLOAD");
+    // 通过隐藏 input 上传一个自定义表头 CSV
+    const tplInput = within(sales).getByLabelText("销售订单 替换模版") as HTMLInputElement;
+    const csv = new File(["订单号,客户编码,自定义列X\n1,2,3"], "tpl.csv", { type: "text/csv" });
+    await user.upload(tplInput, csv);
+    expect(await within(sales).findByText(/已用自定义模版/)).toBeInTheDocument();
+    await user.click(within(sales).getByText("查看字段"));
+    expect(await within(sales).findByText(/自定义列X/)).toBeInTheDocument();
   });
 });

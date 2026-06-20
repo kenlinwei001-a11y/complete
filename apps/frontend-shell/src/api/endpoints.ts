@@ -217,11 +217,16 @@ export interface DataCategoryView {
   mode: "SYSTEM_INTEGRATION" | "FILE_UPLOAD";
   modes: ("SYSTEM_INTEGRATION" | "FILE_UPLOAD")[];
   connectorTypeKeys: string[];
+  /** 用户上传 CSV 替换的自定义模版列；null=用本体派生模版。 */
+  customColumns: string[] | null;
   types: { typeKey: string; displayName: string; columns: string[]; present: boolean }[];
 }
 export const fetchDataCategories = () => api.a<{ items: DataCategoryView[] }>("/a/v1/data-categories");
 export const setDataCategoryMode = (key: string, mode: "SYSTEM_INTEGRATION" | "FILE_UPLOAD") =>
   api.a<{ categoryKey: string; mode: string }>(`/a/v1/data-categories/${key}/mode`, { method: "PUT", body: { mode } });
+/** 用上传 CSV 的列头替换分类模版（columns=[] 复位为派生模版）。 */
+export const setDataCategoryTemplate = (key: string, columns: string[]) =>
+  api.a<{ categoryKey: string; customColumns?: string[] }>(`/a/v1/data-categories/${key}/template`, { method: "PUT", body: { columns } });
 
 export const fetchConnectorTypes = () => api.a<ConnectorType[]>("/a/v1/connector-types");
 export const fetchConnections = () => api.a<ConnectionInstance[]>("/a/v1/connections");

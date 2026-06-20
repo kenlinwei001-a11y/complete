@@ -1225,14 +1225,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const types = await ontology.listTypes(c);
     const tplByType = new Map(buildDataTemplates(types).map((t) => [t.typeKey, t]));
     const overrides = await repos.dataCategorySettings.list(c.tenantId);
-    const modeOf = (key: string, dflt: string) => overrides.find((o) => o.categoryKey === key)?.mode ?? dflt;
+    const ovOf = (key: string) => overrides.find((o) => o.categoryKey === key);
     return {
-      items: cats.map((cat) => ({
-        ...cat,
-        mode: modeOf(cat.key, cat.defaultMode),
-        // 该类对象类型 + 各自上传列数（前端可见"分类里有哪些数据/字段"）。
-        types: cat.typeKeys.map((tk) => ({ typeKey: tk, displayName: tplByType.get(tk)?.displayName ?? tk, columns: tplByType.get(tk)?.columns ?? [], present: tplByType.has(tk) })),
-      })),
+      items: cats.map((cat) => {
+        const ov = ovOf(cat.key);
+        return {
+          ...cat,
+          mode: ov?.mode ?? cat.defaultMode,
+          // 用户上传 CSV 替换的自定义模版列（设置后前端显示"自定义"；未设=本体派生列）。
+          customColumns: ov?.customColumns ?? null,
+          // 该类对象类型 + 各自上传列数（前端可见"分类里有哪些数据/字段"）。
+          types: cat.typeKeys.map((tk) => ({ typeKey: tk, displayName: tplByType.get(tk)?.displayName ?? tk, columns: tplByType.get(tk)?.columns ?? [], present: tplByType.has(tk) })),
+        };
+      }),
     };
   });
   // 分类上传模版（可看 JSON / ?format=csv 下载该类全部类型的合并 CSV）。
@@ -1242,6 +1247,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const q = req.query as { withSamples?: string; seed?: string; format?: string };
     const cat = dataCategoriesForIndustry().find((x) => x.key === key);
     if (!cat) throw validationError(`未知数据分类 '${key}'`);
+    const ov = (await repos.dataCategorySettings.list(c.tenantId)).find((o) => o.categoryKey === key);
+    // 自定义模版（用户上传 CSV 替换）优先于本体派生列。
+    if (ov?.customColumns && ov.customColumns.length > 0) {
+      if (q.format === "csv") {
+        return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${key}.template.csv"`).send(ov.customColumns.join(","));
+      }
+      return { category: { key: cat.key, displayName: cat.displayName, description: cat.description, mode: ov.mode ?? cat.defaultMode, modes: cat.modes, connectorTypeKeys: cat.connectorTypeKeys }, custom: true, templates: [{ typeKey: "__custom__", displayName: "自定义模版", columns: ov.customColumns, primaryKey: null, refColumns: [], csv: ov.customColumns.join(",") }] };
+    }
     const types = await ontology.listTypes(c);
     const opts = { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 };
     const templates = cat.typeKeys.map((tk) => buildDataTemplate(types, tk, opts)).filter((t): t is NonNullable<typeof t> => !!t);
@@ -1249,8 +1262,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const csv = templates.map((t) => `# ${t.displayName} (${t.typeKey})\n${t.csv}`).join("\n\n");
       return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${key}.template.csv"`).send(csv);
     }
-    return { category: { key: cat.key, displayName: cat.displayName, description: cat.description, mode: cat.defaultMode, modes: cat.modes, connectorTypeKeys: cat.connectorTypeKeys }, templates };
+    return { category: { key: cat.key, displayName: cat.displayName, description: cat.description, mode: cat.defaultMode, modes: cat.modes, connectorTypeKeys: cat.connectorTypeKeys }, custom: false, templates };
   });
+  // 分类设置写入唯一通道：读-改-写同一记录（保留另一字段）。
+  const upsertCategorySetting = async (tenantId: string, key: string, patch: { mode?: import("@platform/contracts").IngestMode; customColumns?: string[] | null }) => {
+    const id = `dcs_${tenantId}_${key}`;
+    const prev = await repos.dataCategorySettings.get(tenantId, id);
+    const rec = {
+      id, tenantId, categoryKey: key,
+      mode: patch.mode ?? prev?.mode,
+      customColumns: patch.customColumns === null ? undefined : (patch.customColumns ?? prev?.customColumns),
+      updatedAt: new Date().toISOString(),
+    };
+    await repos.dataCategorySettings.put(rec);
+    return rec;
+  };
   // 设置分类接入方式（系统对接/文件上传，按租户持久化覆盖；admin）。
   app.put("/a/v1/data-categories/:key/mode", async (req) => {
     const c = ctx(req);
@@ -1260,9 +1286,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!cat) throw validationError(`未知数据分类 '${key}'`);
     const mode = IngestModeSchema.parse((req.body as { mode?: unknown })?.mode);
     if (!cat.modes.includes(mode)) throw validationError(`分类 '${key}' 不支持接入方式 '${mode}'`);
-    const rec = { id: `dcs_${c.tenantId}_${key}`, tenantId: c.tenantId, categoryKey: key, mode, updatedAt: new Date().toISOString() };
-    await repos.dataCategorySettings.put(rec);
-    return rec;
+    return upsertCategorySetting(c.tenantId, key, { mode });
+  });
+  // 替换分类模版（用户上传 CSV 的列头作为自定义模版；columns=[] 复位为本体派生模版；admin）。
+  app.put("/a/v1/data-categories/:key/template", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const cat = dataCategoriesForIndustry().find((x) => x.key === key);
+    if (!cat) throw validationError(`未知数据分类 '${key}'`);
+    const cols = z.array(z.string().min(1)).parse((req.body as { columns?: unknown })?.columns);
+    return upsertCategorySetting(c.tenantId, key, { customColumns: cols.length > 0 ? cols : null });
   });
   // 本体切片字段覆盖检查（铁律："所有字段实体都需被至少一个本体切片覆盖"）+ 分类归并完整性。
   app.get("/a/v1/field-coverage", async (req) => {

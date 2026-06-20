@@ -83,6 +83,7 @@ function filterByScope<T extends { bases?: string; name?: string }>(rows: T[], a
 let idSeq = 1000;
 const newId = (prefix: string) => `${prefix}-${++idSeq}`;
 const mockCategoryMode: Record<string, "SYSTEM_INTEGRATION" | "FILE_UPLOAD"> = {};
+const mockCategoryTpl: Record<string, string[] | null> = {};
 
 // ---- A7 Foundry-Grade Data Builder mock ----
 const DATA_BUILDER_PRESET = {
@@ -307,14 +308,19 @@ export const handlers = [
   http.get("*/a/v1/data-categories", () =>
     HttpResponse.json({
       items: [
-        { key: "sales_orders", displayName: "销售订单", description: "客户下达的电池销售订单。", mode: mockCategoryMode.sales_orders ?? "SYSTEM_INTEGRATION", modes: ["SYSTEM_INTEGRATION", "FILE_UPLOAD"], connectorTypeKeys: ["sap_erp", "file_upload"], types: [{ typeKey: "Order", displayName: "销售订单", columns: ["so", "cust", "model", "qty", "due", "status"], present: true }] },
-        { key: "material_inventory", displayName: "物料与库存", description: "物料/BOM 与批次库存。", mode: mockCategoryMode.material_inventory ?? "SYSTEM_INTEGRATION", modes: ["SYSTEM_INTEGRATION", "FILE_UPLOAD"], connectorTypeKeys: ["sap_erp", "file_upload"], types: [{ typeKey: "Material", displayName: "物料", columns: ["matId", "name", "unitPrice", "leadTime"], present: true }] },
+        { key: "sales_orders", displayName: "销售订单", description: "客户下达的电池销售订单。", mode: mockCategoryMode.sales_orders ?? "SYSTEM_INTEGRATION", modes: ["SYSTEM_INTEGRATION", "FILE_UPLOAD"], connectorTypeKeys: ["sap_erp", "file_upload"], customColumns: mockCategoryTpl.sales_orders ?? null, types: [{ typeKey: "Order", displayName: "销售订单", columns: ["so", "cust", "model", "qty", "due", "status"], present: true }] },
+        { key: "material_inventory", displayName: "物料与库存", description: "物料/BOM 与批次库存。", mode: mockCategoryMode.material_inventory ?? "SYSTEM_INTEGRATION", modes: ["SYSTEM_INTEGRATION", "FILE_UPLOAD"], connectorTypeKeys: ["sap_erp", "file_upload"], customColumns: mockCategoryTpl.material_inventory ?? null, types: [{ typeKey: "Material", displayName: "物料", columns: ["matId", "name", "unitPrice", "leadTime"], present: true }] },
       ],
     })),
   http.put("*/a/v1/data-categories/:key/mode", async ({ request, params }) => {
     const body = (await request.json()) as { mode: "SYSTEM_INTEGRATION" | "FILE_UPLOAD" };
     mockCategoryMode[params.key as string] = body.mode;
     return HttpResponse.json({ categoryKey: params.key, mode: body.mode });
+  }),
+  http.put("*/a/v1/data-categories/:key/template", async ({ request, params }) => {
+    const body = (await request.json()) as { columns: string[] };
+    mockCategoryTpl[params.key as string] = body.columns.length > 0 ? body.columns : null;
+    return HttpResponse.json({ categoryKey: params.key, customColumns: mockCategoryTpl[params.key as string] });
   }),
 
   // ---- 对象查询（GET /a/v1/objects?type=&q=&page=&f_*） ----

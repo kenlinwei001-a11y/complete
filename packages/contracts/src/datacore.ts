@@ -272,12 +272,14 @@ export const DataCategorySchema = z.object({
 });
 export type DataCategory = z.infer<typeof DataCategorySchema>;
 
-/** 分类接入方式覆盖（持久化，按租户 R2；缺省回落 defaultMode）。 */
+/** 分类接入方式 + 自定义模版列覆盖（持久化，按租户 R2；缺省回落 defaultMode + 本体派生模版）。 */
 export const DataCategorySettingSchema = z.object({
   id: z.string(), // dcs_{tenant}_{categoryKey}
   tenantId: z.string(),
   categoryKey: z.string(),
-  mode: IngestModeSchema,
+  mode: IngestModeSchema.optional(),
+  /** 用户上传 CSV 替换的自定义模版列（设置后优先于本体派生列；空=用派生模版）。 */
+  customColumns: z.array(z.string()).optional(),
   updatedAt: IsoTime,
 });
 export type DataCategorySetting = z.infer<typeof DataCategorySettingSchema>;
