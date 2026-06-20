@@ -91,7 +91,13 @@
 - **缺口补**：`SlicesPage` 加前端"创建/新建切片"UI（复用 PUT 端点）。
 
 ### 3.7 复用各模块 create + R4 一致（复用）
-⑥节点对缺口分派到各模块既有 create，**一律 DRAFT**：数据→`connectors.upload`；类型→`ontology.upsertType`；规则→`rules.create`；切片→注册；B 栈→scaffold。求解器缺 → generic_inference 兜底 / GrowthTicket。**全部经 R4 审批闸 publish**。
+⑥节点对缺口分派到各模块既有 create，**一律 DRAFT**：数据→`connectors.upload`；类型→`ontology.upsertType`；规则→`rules.create`；切片→注册；B 栈→scaffold。**全部经 R4 审批闸 publish**。
+
+**缺求解器 = 三级升级（修正"求解器不可创建"的二元说法）**：任意算法不走"运行时凭空 eval"（破 安全/R6/R13/R11 四底线），但能"造"出来——
+1. **声明式组合**（运行时,无代码）：派生属性 `formula`(SUM/COUNT/AVG BY) + 多跳切片 + 规则 + `aggregate_objects` 拼成"求解器"。覆盖一类 聚合/遍历/阈值/传导 问题（如 §3.8 ⑤隐性集中度 = 反向切片 + groupBy）。**发动机优先试这条。**
+2. **generic_inference 兜底**（运行时可配,无代码）：通用 what-if,对任意本体 Δ→沿链路前向/反向重算（§3.8 ①传导面）。
+3. **code-agent 工单施工**（经治理,非运行时 eval）：真正新颖算法 → GrowthTicket（带 I/O 契约 + 输出形状声明）→ code-agent 写求解器代码 → 审查+单测+部署（§3.8 ③毛利归因）。
+comprehend/diff 节点据"问题能否被①组合/②兜底"决定落哪级,只有真新算法才到③。
 
 ### 3.8 多跳推演原型库（5 类杀手问题 → 切片 + 求解器映射；一等验收）
 报表只能给结果数,给不出"横向传导 / 跨域影响 / 反向暗线"。本库把这类推理一等化:每类 = 多跳切片(路径,复用 §3.6 两库+planner,支持 out/in 双向) + 推理件。已验证底座:`generic_inference` 做**沿链路前向/反向重算传导**(ontology-core `recompute` 反向依赖闭包 + 反向链路导航);`aggregate_objects` 做 groupBy 聚合;切片 `direction:"in"` 支持反向遍历。
