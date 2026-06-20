@@ -348,7 +348,7 @@ export class DataBuilderService {
       buildPlan: r.buildPlan,
       closureReport: r.closureReport,
       scaffoldReceipt: r.scaffoldReceipt,
-      gapReport: selfCheckGaps(body.script.trim(), id, r.closureReport, r.scaffoldReceipt),
+      gapReport: selfCheckGaps(body.script.trim(), id, r.closureReport, r.scaffoldReceipt, r.buildPlan?.solverNeeds.length ?? 0),
       answer: r.answer,
       inferenceEvidence: r.inferenceEvidence,
       validationTrace: r.validationTrace,
