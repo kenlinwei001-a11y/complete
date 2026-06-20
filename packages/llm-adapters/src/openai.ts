@@ -292,7 +292,7 @@ export class OpenAiLlmClient implements FullLlmClient {
     if (!content) return null;
     let raw: unknown;
     try {
-      raw = JSON.parse(content);
+      raw = JSON.parse(extractJsonText(content));
     } catch {
       return null;
     }
@@ -307,6 +307,20 @@ export class OpenAiLlmClient implements FullLlmClient {
 
 /** 增量 §1.2 命名别名（OpenAICompatAdapter —— vLLM/国产模型 OpenAI 风格端点）。 */
 export { OpenAiLlmClient as OpenAICompatAdapter };
+
+/**
+ * 从模型回复里提取 JSON 文本：兼容部分 OpenAI 兼容端点（如 Moonshot/Kimi）即便 json_schema 模式
+ * 仍把 JSON 包在 ```json ... ``` 代码围栏里。优先取围栏内容，否则取首个 { 到末个 } 的片段，
+ * 都不命中则原样返回（让 JSON.parse 自行判定）。纯函数、无副作用。
+ */
+export function extractJsonText(content: string): string {
+  const fence = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fence?.[1]) return fence[1].trim();
+  const first = content.indexOf("{");
+  const last = content.lastIndexOf("}");
+  if (first >= 0 && last > first) return content.slice(first, last + 1);
+  return content.trim();
+}
 
 /** Convert an internal LlmAgentMessage to OpenAI chat messages (1:N for tool results). */
 function toOpenAiMessages(m: LlmAgentMessage): OpenAiChatMessage[] {
