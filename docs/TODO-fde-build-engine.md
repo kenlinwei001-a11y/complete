@@ -68,10 +68,10 @@
 
 - ⬜ **8a 图查询 / 多跳穿行**：主选 **Gremlin/TinkerPop**(Apache-2.0,厂商中立) 或 **Neo4j Community**(GPLv3;Enterprise 商用)。`Neo4j GDS` 依附 Neo4j。**现状**：平台切片引擎(root+hops+in/out)已覆盖中小规模 → **暂缓,规模/深度顶不住再上**。集成=部署图库服务 + adapter。
 - ⬜ **8b Datalog 递归传导（传导面/影响半径，Q1/Q2）**：主选 **Soufflé**(Apache-2.0,编译 C++,快,**确定性✅**)。~~RDFox(商用闭源)~~、~~Datomic(专有)~~ 不采。**现状**：平台 `recompute`(反向依赖闭包重算) 已是传导雏形 → 先净室扩,规模不够再封 Soufflé。
-- ⬜ **8c 图算法 / 集中度聚合（暗线 Q5）**：主选 **NetworkX**(BSD,Python,确定性) 或 **igraph**(GPLv2,C,快)。**现状**：反向切片 + `aggregate_objects` groupBy 已覆盖基础 → 复杂中心性/社区发现再上。
-- ⬜ **8d 约束求解 / 排产冲突（Q4 shared_bottleneck）**：主选 **OR-Tools**(Apache-2.0,Google,成熟;CP-SAT 钉 seed 可确定性)。集成=sidecar 封装为 `shared_bottleneck` 求解器,声明输出形状。
+- ✅ **8c 图算法 / 集中度聚合（暗线 Q5）**：净室落地 `concentration_risk`（多源收敛）+ `supplier_disruption_radius`（一根扇出，Q2），确定性 R6、零依赖；复杂中心性/社区发现规模不够再上 NetworkX/igraph。
+- ◐ **8d 约束求解 / 组合最优化（Q4 等）**：**已落地** OR-Tools CP-SAT 自托管 sidecar（services/optimizer，Apache-2.0）+ datacore `selection_optimize` 求解器（0/1 背包族，可证最优）。真求解 6 测全过（CP-SAT 100 胜贪心 60）、R6 钉 seed、docker-compose 加服务。**待扩**：assignment / sequencing / packing 模型（排产换型、订单分配）。
 - ⬜ **8e 归因 / 因果（毛利倒挂 Q3）**：主选 **DoWhy**(MIT,因果推断,比 SHAP 更适合"哪个环节吃掉多少毛利")；备 **EconML**(MIT)、**SHAP**(MIT,⚠️ 默认不确定,须钉种子)。**或**先净室确定性归因分解(沿因果链逐环节差分),够用就不引依赖。
-- ⬜ **8f 求解器 sidecar 基建**：起 Python/原生求解器微服务(docker-compose 加服务)+ 平台自有 REST 契约 + OBO 透传 + 4 闸评审流水。8b/8c/8d/8e 的依赖落地都靠它。**这是 8 类落地的前置基建。**
+- ◐ **8f 求解器 sidecar 基建**：**已落地首条** —— services/optimizer（Python http.server + CP-SAT）+ 平台自有 REST 契约（/solve、/healthz、错误信封）+ Dockerfile + docker-compose 服务（仅内部网络、healthcheck）+ datacore HttpOptimizerClient（env 发现、可注入 mock）。后续 8b/8e 依赖可复用同一基建形态（新增 sidecar 服务 + client）。
 - ⬜ **8g 封装引擎暴露为 MCP 工具(B3,可见+可治理)**：依赖引入的引擎(OR-Tools/DoWhy/Soufflé sidecar)封装成平台自有 API 后，**注册为一个 MCP server**(`mcpConfigs`)→ 其工具(shared_bottleneck/margin_attribution… 带 `inputSchema`)在 **MCP 页(`McpPage` `mcp-tools`)可见、连接测试可发现、agent 经 `mcp-router` 可调**;凭据 AES-GCM(no-secrets-echo)。**即:不止是内部求解器调用,而是在 MCP 模块看得到它们 + API/schema。** 同时按需注册为 datacore 求解器(SOLVER_KEYS,声明输出形状,供闭包/渲染 R11)——一鱼两吃:确定性 workflow 走求解器、agent 探索走 MCP 工具。
 
 > 落地顺序建议：先净室扩 8b(传导)/8c(聚合)满足 Q1/Q2/Q5(平台底座已有雏形,零依赖)；Q4 上 **OR-Tools**、Q3 上 **DoWhy**(需 8f sidecar)；8a 图库规模不够才上。**默认不全上 12 个。**
