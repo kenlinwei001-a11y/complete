@@ -44,6 +44,8 @@ export const SOLVER_KEYS = [
   // PRD-fde §8d/Q4 通用共享瓶颈求解器（净室,零依赖,声明式组合）：读对象图,按 viaField 把上游对象
   // 分组到共享资源,需求和>产能 = 瓶颈;按优先级判哪张单降级。非电池专用,任意本体经 args 字段映射即用。
   "shared_bottleneck",
+  // PRD-fde §8c/Q5 隐性集中度（净室通用）：多跳反向聚合找暗线单点。
+  "concentration_risk",
 ] as const;
 
 /**
@@ -64,6 +66,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // 通用 what-if（recompute dryRun 包装）：顶层渲染键 = 派生 before/after deltas + 受影响计数。
   generic_inference: ["deltas", "rows", "affectedObjects", "count", "rootTypes"],
   shared_bottleneck: ["bottlenecks", "contention", "downgraded", "summary"],
+  concentration_risk: ["concentrations", "topExposure", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -185,6 +188,59 @@ export class SolverService {
       contention,
       downgraded,
       summary: `${bottlenecks.length} 个共享瓶颈,${contention.reduce((a, c) => a + (c.sharers as string[]).length, 0)} 张单争用,${downgraded.length} 张被降级`,
+    };
+  }
+
+  /**
+   * PRD-fde §8c/Q5 隐性集中度（净室,零依赖,确定性 R6）：沿多跳 ref 路径把 startType 对象反向聚合到
+   * 终端 rootType,找出"多个看似分散的起点都依赖同一个根"的隐性单点（如客户→订单→物料→二级供应商：
+   * 哪个二级供应商被最多客户隐性依赖）。报表按客户/产品/区域切永远切不出这条暗线。
+   * args: { startType, path:[{viaField,toType}], minDependents? }。
+   */
+  private async concentrationRisk(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const startType = str(args.startType);
+    const path = Array.isArray(args.path) ? (args.path as { viaField: string; toType: string }[]) : [];
+    const minDependents = Number(args.minDependents ?? 2);
+    if (!startType || path.length === 0) throw validationError("concentration_risk 需 startType + path:[{viaField,toType}]");
+
+    // 每个路径目标类型预建 PK→对象 索引（多跳遍历用）。
+    const idxByType = new Map<string, Map<string, ObjectInstance>>();
+    for (const hop of path) {
+      if (idxByType.has(hop.toType)) continue;
+      const objs = await this.repos.objects.listByType(ctx.tenantId, hop.toType);
+      const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === hop.toType))[0];
+      const pk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+      idxByType.set(hop.toType, new Map(objs.map((o) => [String((pk ? o.props[pk] : undefined) ?? o.id), o])));
+    }
+    const sdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === startType))[0];
+    const sPk = sdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const starts = await this.repos.objects.listByType(ctx.tenantId, startType);
+    const keyOf = (o: ObjectInstance, pk?: string) => String((pk ? o.props[pk] : undefined) ?? o.id);
+
+    // 每个起点沿路径走到终端根；断链(中途 ref 解析不到)则跳过。
+    const byRoot = new Map<string, Set<string>>();
+    for (const s of starts) {
+      let cur: ObjectInstance | undefined = s;
+      for (const hop of path) {
+        const refVal = String(cur!.props[hop.viaField] ?? "");
+        cur = idxByType.get(hop.toType)!.get(refVal);
+        if (!cur) break;
+      }
+      if (!cur || cur === s) continue;
+      const rootKey = keyOf(cur);
+      const set = byRoot.get(rootKey) ?? new Set<string>();
+      set.add(keyOf(s, sPk));
+      byRoot.set(rootKey, set);
+    }
+    const rootType = path[path.length - 1]!.toType;
+    const concentrations = [...byRoot.entries()]
+      .filter(([, deps]) => deps.size >= minDependents)
+      .map(([rootId, deps]) => ({ rootType, rootId, dependents: [...deps].sort(), count: deps.size }))
+      .sort((a, b) => b.count - a.count || a.rootId.localeCompare(b.rootId));
+    return {
+      concentrations,
+      topExposure: concentrations[0] ?? null,
+      summary: `${concentrations.length} 个隐性集中单点（${rootType}）,最大敞口 ${concentrations[0]?.count ?? 0} 个依赖方`,
     };
   }
 
@@ -407,6 +463,7 @@ export class SolverService {
     if (solverKey === "generic_inference") return this.genericInference(ctx, args);
     // shared_bottleneck 通用求解器（读任意对象图,非电池 context）,同样先拦截。
     if (solverKey === "shared_bottleneck") return this.sharedBottleneck(ctx, args);
+    if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
