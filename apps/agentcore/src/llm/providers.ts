@@ -114,6 +114,16 @@ export class LlmProviderRegistry {
   private readonly cache = new Map<string, LlmClient>();
   /** §5: per-provider circuit breaker, persisted across resolves. */
   private readonly breakers = new Map<string, CircuitBreaker>();
+  /** §5.4：provider 尝试审计环（有界 200，按租户可查）。 */
+  private readonly attempts: import("@platform/contracts").ProviderAttempt[] = [];
+  private pushAttempt(tenantId: string, providerId: string, outcome: import("@platform/contracts").ProviderAttempt["outcome"], ms: number): void {
+    this.attempts.push({ tenantId, providerId, outcome, ms, at: new Date().toISOString() });
+    if (this.attempts.length > 200) this.attempts.splice(0, this.attempts.length - 200);
+  }
+  /** §5.4：取本租户最近 provider 尝试审计（最新在前）。 */
+  recentAttempts(tenantId: string, limit = 50): import("@platform/contracts").ProviderAttempt[] {
+    return this.attempts.filter((a) => a.tenantId === tenantId).slice(-limit).reverse();
+  }
 
   constructor(
     private readonly deps: {
@@ -183,6 +193,7 @@ export class LlmProviderRegistry {
       loadFallback,
       this.deps.metrics,
       this.breakerFor(provider.id),
+      (pid, outcome, ms) => this.pushAttempt(tenantId, pid, outcome, ms), // §5.4 审计
     );
     return { client, model: modelId, providerKey: provider.name, providerId: provider.id, modelId };
   }
@@ -252,6 +263,8 @@ class ProviderRoutedClient implements LlmClient {
     >,
     private readonly metrics?: Metrics,
     private readonly breaker?: CircuitBreaker,
+    /** §5.4：逐次 provider 尝试审计回调（providerId/结果/耗时 ms）。 */
+    private readonly attemptSink?: (providerId: string, outcome: "OK" | "FALLBACK_TRIGGERED" | "FALLBACK_OK" | "FALLBACK_FAILED", ms: number) => void,
   ) {}
 
   private structuredOutputSupported(target: { provider: LlmProvider; modelId: string }): boolean {
@@ -266,8 +279,16 @@ class ProviderRoutedClient implements LlmClient {
     const fb = await this.loadFallback().catch(() => undefined);
     if (!fb) throw err instanceof Error ? err : new Error(String(err));
     this.metrics?.llmFallback.inc({ from: this.primary.provider.id, to: fb.provider.id });
-    // 禁止链式：fallback 自身的 fallbackProviderId 不再生效
-    return op(fb);
+    // 禁止链式：fallback 自身的 fallbackProviderId 不再生效。§5.4：审计 fallback 尝试结果+耗时。
+    const t0 = Date.now();
+    try {
+      const r = await op(fb);
+      this.attemptSink?.(fb.provider.id, "FALLBACK_OK", Date.now() - t0);
+      return r;
+    } catch (e) {
+      this.attemptSink?.(fb.provider.id, "FALLBACK_FAILED", Date.now() - t0);
+      throw e;
+    }
   }
 
   private recordBreaker(ok: boolean): void {
@@ -283,14 +304,17 @@ class ProviderRoutedClient implements LlmClient {
     if (this.breaker && !this.breaker.canAttempt()) {
       return this.toFallback(op, new Error(`circuit breaker open for ${this.primary.provider.name}`));
     }
+    const t0 = Date.now();
     try {
       const r = await op(this.primary);
       this.recordBreaker(true);
+      this.attemptSink?.(this.primary.provider.id, "OK", Date.now() - t0);
       return r;
     } catch (err) {
       // §5 4xx 参数错误 / 内容审查拒绝：不切换、不计入熔断，保留原语义
       if (!isFallbackTriggering(err)) throw err;
       this.recordBreaker(false);
+      this.attemptSink?.(this.primary.provider.id, "FALLBACK_TRIGGERED", Date.now() - t0);
       return this.toFallback(op, err);
     }
   }

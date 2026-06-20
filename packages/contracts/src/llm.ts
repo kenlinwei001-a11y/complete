@@ -238,3 +238,13 @@ export const PURPOSE_CAPABILITY_REQUIREMENTS: Record<
   template_gen: { structuredOutput: true },
   compose: {},
 };
+
+/** execution-semantics §5.4：LLM 故障降级逐次 provider 尝试审计（providerId/结果/耗时）。 */
+export const ProviderAttemptSchema = z.object({
+  tenantId: z.string(),
+  providerId: z.string(),
+  outcome: z.enum(["OK", "FALLBACK_TRIGGERED", "FALLBACK_OK", "FALLBACK_FAILED"]),
+  ms: z.number(),
+  at: z.string(),
+});
+export type ProviderAttempt = z.infer<typeof ProviderAttemptSchema>;
