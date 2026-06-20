@@ -18,6 +18,7 @@ export * from "./execution.js";
 export * from "./databuilder.js";
 export * from "./growth.js";
 export * from "./storybuildrun.js";
+export * from "./config-bundle.js";
 export * from "./entity-resolution.js";
 export * from "./output-validation.js";
 export * from "./meta-ontology.js";

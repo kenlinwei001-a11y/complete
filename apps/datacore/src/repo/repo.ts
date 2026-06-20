@@ -260,6 +260,8 @@ export interface Repos {
   // Feature entitlement
   featureConfigs: Store<FeatureConfigRecord>;
   featureAudit: Store<FeatureAuditRecord>;
+  /** OC3 配置迁移 Saga 状态机持久化（import_jobs，migration017）。 */
+  importJobs: Store<import("@platform/contracts").ImportJob>;
   // 管理平台增量 §3
   scenarioPackages: Store<ScenarioPackageRecord>;
   dynamicFeatures: Store<DynamicFeatureRecord>;

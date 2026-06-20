@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, MetaAccessPolicyBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
@@ -57,6 +57,7 @@ import { DataBuilderService } from "./databuilder/service.js";
 import { SimClockService } from "./simclock.js";
 import { HistoryService } from "./livedin/bundle.js";
 import { FeatureService, VIEW_FEATURE_MAP, featureNotFound } from "./features.js";
+import { ConfigBundleService } from "./config-bundle.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import { OpsTeamService } from "./opsteam/team.js";
 import { OpsScheduleService } from "./opsteam/schedule.js";
@@ -114,6 +115,7 @@ export interface BuiltApp {
     kb: KbService;
     simclock: SimClockService;
     features: FeatureService;
+    configBundle: ConfigBundleService;
     embeddings: EmbeddingProvider;
     plan: PlanService;
     calibration: CalibrationService;
@@ -240,6 +242,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
+  const configBundle = new ConfigBundleService(repos, features);
   const catalog = new CatalogService(repos, features);
   const governance = new OntologyGovernanceService(repos, authz, ontology, ontologyCore, features, metrics, outbox);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
@@ -767,6 +770,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       })),
       rowFilter: result.effectiveRowFilter,
     };
+  });
+
+  // OC3 环境间配置迁移 + 跨系统 Saga（execution-semantics §3 / OC3）。admin only。
+  app.get("/a/v1/config-bundles/export", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    return configBundle.export(c);
+  });
+  app.post("/a/v1/config-bundles/import", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const body = ImportBundleBodySchema.parse(req.body);
+    return configBundle.import(c, body.bundle, body.dryRun, body.conflictPolicy);
   });
 
   // 执行语义增量 §2：Outbox 死信列表 + 手动重投（中台可见）
@@ -2540,6 +2556,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       kb,
       simclock,
       features,
+      configBundle,
       embeddings,
       plan,
       calibration,

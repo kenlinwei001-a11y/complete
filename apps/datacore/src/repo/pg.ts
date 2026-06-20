@@ -575,6 +575,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     clockTickReports: new PgStore(pool, "clock_tick_reports"),
     forecastSnapshots: new PgStore(pool, "forecast_snapshots"),
     featureConfigs: new PgStore(pool, "feature_configs"),
+    importJobs: new PgStore(pool, "import_jobs"),
     featureAudit: new PgStore(pool, "feature_audit"),
     scenarioPackages: new PgStore(pool, "scenario_packages"),
     dynamicFeatures: new PgStore(pool, "dynamic_features"),
