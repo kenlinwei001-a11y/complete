@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createSyntheticJob, fetchIndustryTemplates, fetchSyntheticJob } from "@/api/endpoints";
+import { createSyntheticJob, fetchIndustryTemplates, fetchSyntheticJob, fetchRawDatasets, fetchRawDatasetRows } from "@/api/endpoints";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -37,6 +37,48 @@ export default function SyntheticPage() {
       {step === 0 && <StepOne onStarted={setJobId} />}
       {step >= 1 && job && <PhaseStepper job={job} />}
       {step === 2 && job?.report && <Report report={job.report} onRerun={() => setJobId(null)} />}
+      {step === 2 && <DataDetailPanel />}
+    </div>
+  );
+}
+
+/**
+ * 数据详单（在线看"生成了哪些数据 + 逐行明细"）：生成成功后列出产出的数据集，点开任一集看真实行数据。
+ * 数据来自合成落库的 RawDataset/RawRow（与连接器同步产物同一通道，可溯源）。
+ */
+function DataDetailPanel() {
+  const { data: datasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
+  const [pick, setPick] = useState<string | null>(null);
+  const { data: detail } = useQuery({ queryKey: ["a", "raw-dataset-rows", { id: pick }], queryFn: () => fetchRawDatasetRows(pick!), enabled: pick != null });
+  const list = datasets ?? [];
+  if (list.length === 0) return null;
+  const cols = detail?.rows?.[0] ? Object.keys(detail.rows[0]).filter((k) => !k.startsWith("_")) : [];
+
+  return (
+    <div className="panel" style={{ marginBottom: 14 }} data-testid="data-detail-panel">
+      <div className="section-title">数据详单（生成了哪些数据 · 点开看明细）</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+        {list.map((d) => (
+          <button key={d.id} className={`btn sm ${pick === d.id ? "primary" : ""}`} data-testid={`ds-${d.name}`} onClick={() => setPick(pick === d.id ? null : d.id)}>
+            {d.name} <span className="mono" style={{ opacity: 0.7 }}>· {d.rowCount ?? 0}</span>
+          </button>
+        ))}
+      </div>
+      {pick && detail && (
+        <div style={{ overflowX: "auto" }}>
+          <div style={{ fontSize: 12, color: "var(--muted,#999)", marginBottom: 4 }}>
+            {detail.dataset.name} · 共 {detail.dataset.rowCount ?? detail.rows.length} 行（显示前 {detail.rows.length} 行）
+          </div>
+          <table className="cmp" data-testid="data-detail-table">
+            <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+            <tbody>
+              {detail.rows.slice(0, 50).map((r, i) => (
+                <tr key={i}>{cols.map((c) => <td key={c} className="mono" style={{ fontSize: 11 }}>{String(r[c] ?? "")}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

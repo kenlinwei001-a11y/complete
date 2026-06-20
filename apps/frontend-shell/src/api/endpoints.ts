@@ -370,6 +370,7 @@ export interface RawDatasetVM {
   id: string;
   name: string;
   sourceConnId?: string;
+  rowCount?: number;
   fields?: { name: string; inferredType: string }[];
 }
 export const fetchRawDatasets = (connId?: string) =>

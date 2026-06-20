@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1560" viewBox="0 0 1200 1560" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,PingFang SC,Microsoft YaHei,sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#3a4250"/>
+    </marker>
+    <style>
+      .box{stroke:#2a3340;stroke-width:1.5;rx:10;}
+      .t{fill:#1b2430;font-size:14px;}
+      .ts{fill:#56627a;font-size:12px;}
+      .tb{fill:#0d3b66;font-size:15px;font-weight:700;}
+      .tw{fill:#ffffff;font-size:14px;font-weight:600;}
+      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+      .lbl{fill:#3a4250;font-size:12px;}
+    </style>
+  </defs>
+
+  <rect width="1200" height="1560" fill="#f5f7fa"/>
+  <text x="40" y="46" class="tb" font-size="22">合成数据生成 · 全流程与技术（"没配 LLM 也能生成"的原理）</text>
+  <text x="40" y="72" class="ts">DataCore · apps/datacore/src/synthetic/service.ts · 确定性种子(R6)：同 (行业, 规模, seed) → 字节级一致</text>
+
+  <!-- ===== 入口：两条路径 ===== -->
+  <text x="40" y="112" class="tb">① 入口 · 取得行业模板（IndustryTemplate）</text>
+
+  <!-- 已知行业 -->
+  <rect x="40" y="128" width="520" height="118" rx="10" fill="#e7f6ec" class="box" stroke="#3aa76d"/>
+  <text x="60" y="156" class="t" font-weight="700">A. 已知行业（如 battery-manufacturing）</text>
+  <text x="60" y="180" class="ts">→ 用内置模板 BATTERY_TEMPLATE（代码内置，含 26 对象类型）</text>
+  <text x="60" y="202" class="t" fill="#b00020" font-weight="700">零 LLM · 零提示词</text>
+  <text x="60" y="226" class="ts">industryTemplates 命中既有模板即直接返回（含上次 LLM 存的）</text>
+
+  <!-- 未知行业 -->
+  <rect x="600" y="128" width="560" height="118" rx="10" fill="#eef2fb" class="box" stroke="#4C7BE0"/>
+  <text x="620" y="156" class="t" font-weight="700">B. 未知 / 自由输入行业（如 "连锁咖啡馆"）</text>
+  <text x="620" y="180" class="ts">→ 唯一会用 LLM 的地方：生成一份 IndustryTemplate（仅结构）</text>
+  <text x="620" y="202" class="t">用途绑定 <tspan class="mono" fill="#0d3b66">template_gen</tspan> → 路由到所配 Provider/模型</text>
+  <text x="620" y="226" class="ts">生成后存库（source=LLM），下次同行业复用，<tspan font-weight="700">不再调 LLM</tspan></text>
+
+  <!-- LLM prompt box -->
+  <line x1="880" y1="246" x2="880" y2="286" stroke="#4C7BE0" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="600" y="290" width="560" height="232" rx="10" fill="#0d1b2a" class="box" stroke="#0d3b66"/>
+  <text x="620" y="316" class="tw">▼ template_gen 实际系统提示词（TEMPLATE_SYSTEM）</text>
+  <text x="620" y="346" class="mono" fill="#9ecbff" font-size="12.5">你是行业数据模板生成器。给定行业名称，输出</text>
+  <text x="620" y="366" class="mono" fill="#9ecbff" font-size="12.5">IndustryTemplate：</text>
+  <text x="620" y="392" class="mono" fill="#cfe6ff" font-size="12">ontology.objectTypes（数组，每项 { key, displayName,</text>
+  <text x="620" y="410" class="mono" fill="#cfe6ff" font-size="12">  properties:[{propKey,dataType,isPrimaryKey,refToTypeKey?}],</text>
+  <text x="620" y="428" class="mono" fill="#cfe6ff" font-size="12">  derivedProperties:[{propKey,formula}] }）、</text>
+  <text x="620" y="446" class="mono" fill="#cfe6ff" font-size="12">generation（每对象类型的 count{S,M,L} 与 propGenerators）、</text>
+  <text x="620" y="464" class="mono" fill="#cfe6ff" font-size="12">rules（规则 DSL 表达式）、scenarioSeed。</text>
+  <text x="620" y="490" class="mono" fill="#cfe6ff" font-size="12">生成顺序必须保证先主数据后事务数据</text>
+  <text x="620" y="508" class="mono" fill="#cfe6ff" font-size="12">（fkSample 只引用更早的类型）。</text>
+  <text x="620" y="0" class="ts"></text>
+  <text x="600" y="540" class="ts">user 消息：<tspan class="mono">industry: &lt;行业名&gt;</tspan> · 输出按 IndustryTemplateSchema 校验（zod），不符即拒</text>
+
+  <!-- 汇合到 IndustryTemplate -->
+  <line x1="300" y1="246" x2="300" y2="300" stroke="#3a4250" stroke-width="2"/>
+  <line x1="300" y1="300" x2="430" y2="300" stroke="#3a4250" stroke-width="2"/>
+  <line x1="430" y1="300" x2="430" y2="572" stroke="#3a4250" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ===== IndustryTemplate ===== -->
+  <rect x="40" y="576" width="1120" height="92" rx="10" fill="#fff" class="box"/>
+  <text x="60" y="604" class="tb">② IndustryTemplate（"配方"，非数据本身）</text>
+  <text x="60" y="630" class="t mono" font-size="12.5">ontology.objectTypes[ ]  ·  generation{ count{S,M,L}, propGenerators: GenSpec }  ·  rules[DSL]  ·  scenarioSeed</text>
+  <text x="60" y="652" class="ts">GenSpec 值生成器种类：<tspan class="mono">number</tspan>(min/max/precision) · <tspan class="mono">enum</tspan>(取值集) · <tspan class="mono">date</tspan>(区间) · <tspan class="mono">pattern</tspan>(模板串/序列) · <tspan class="mono">ref</tspan>(引用父类型 PK)</text>
+  <line x1="600" y1="668" x2="600" y2="700" stroke="#3a4250" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ===== 确定性 PRNG ===== -->
+  <rect x="40" y="704" width="1120" height="78" rx="10" fill="#fdf3e7" class="box" stroke="#d79b3a"/>
+  <text x="60" y="732" class="tb">③ 确定性伪随机源（这就是"无需 LLM 也能生成符合场景的数据"的关键）</text>
+  <text x="60" y="758" class="t mono" font-size="12.5">rng = mulberry32( seed ^ hashString(industryKey) )   →  纯函数 PRNG，同种子同序列；值由 GenSpec 区间约束 → 落业务区间</text>
+  <text x="60" y="0" class="ts"></text>
+  <line x1="600" y1="782" x2="600" y2="814" stroke="#3a4250" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ===== 生成行 ===== -->
+  <rect x="40" y="818" width="1120" height="86" rx="10" fill="#fff" class="box"/>
+  <text x="60" y="846" class="tb">④ 按依赖序生成行（主数据 → 事务数据）</text>
+  <text x="60" y="872" class="t">先生成主数据（Base/Model/…）收集真实 PK 池 → 事务数据（Order/…）的 ref 列只取父表已生成的真实 PK</text>
+  <text x="60" y="894" class="ts">⇒ <tspan font-weight="700" fill="#0d3b66">FK 一致</tspan>（generateRelatedDatasets，环降级不阻塞）；每对象类型产出一张 CSV</text>
+  <line x1="600" y1="904" x2="600" y2="936" stroke="#3a4250" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ===== 落库 RawDataset ===== -->
+  <rect x="40" y="940" width="540" height="92" rx="10" fill="#fff" class="box"/>
+  <text x="60" y="968" class="tb">⑤ 落库（可溯源）</text>
+  <text x="60" y="992" class="t">Connection(合成源) + RawDataset + RawRow</text>
+  <text x="60" y="1014" class="ts">前端「数据详单」即读这里，逐行可见</text>
+
+  <!-- ===== 物化 ObjectInstance ===== -->
+  <rect x="620" y="940" width="540" height="92" rx="10" fill="#fff" class="box"/>
+  <text x="640" y="968" class="tb">⑥ 物化为对象</text>
+  <text x="640" y="992" class="t mono" font-size="12.5">ObjectInstance{ origin: SYNTHETIC,</text>
+  <text x="640" y="1012" class="t mono" font-size="12.5">  jobId, rawDatasetId, rowIdx } + Link</text>
+  <line x1="310" y1="1032" x2="310" y2="1064" stroke="#3a4250" stroke-width="2"/>
+  <line x1="890" y1="1032" x2="890" y2="1064" stroke="#3a4250" stroke-width="2"/>
+  <line x1="310" y1="1064" x2="890" y2="1064" stroke="#3a4250" stroke-width="2"/>
+  <line x1="600" y1="1064" x2="600" y2="1092" stroke="#3a4250" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ===== 派生/切片/时序 ===== -->
+  <rect x="40" y="1096" width="1120" height="96" rx="10" fill="#eaf6f6" class="box" stroke="#2f9e9e"/>
+  <text x="60" y="1124" class="tb">⑦ 二次加工（仍全确定性）</text>
+  <text x="60" y="1150" class="t">runDerivations 派生属性（topo 重算，如 Base.orderCount/oeeIndex）  ·  注册内置切片 + 每类型全字段覆盖切片  ·  tsGenerators 生成时序点</text>
+  <text x="60" y="1172" class="ts">校验报告：行数表 · 规则扫描(violations) · 派生抽样复算 · 时序点数/缺口/聚合抽样 ——全部可在「生成进度」页看到</text>
+  <line x1="600" y1="1192" x2="600" y2="1224" stroke="#3a4250" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ===== 下游 ===== -->
+  <rect x="40" y="1228" width="1120" height="96" rx="10" fill="#fff" class="box"/>
+  <text x="60" y="1256" class="tb">⑧ 下游同步（领域事件失效刷新，D-29）</text>
+  <text x="60" y="1282" class="t mono" font-size="12.5">dataset.regenerated · materialize.completed · synthetic.tick_completed</text>
+  <text x="60" y="1306" class="ts">→ 驾驶舱 dashboard · 推演与风险 risk · 场景数据 scenario-data · 本体图谱 ontology-graph · 规则库 rule-library · 对象查询 object-queries · 校准 calibration</text>
+
+  <!-- ===== 关键说明 ===== -->
+  <rect x="40" y="1352" width="1120" height="180" rx="10" fill="#fff7e6" class="box" stroke="#d79b3a"/>
+  <text x="60" y="1382" class="tb">为什么"没配 LLM"也能生成符合场景的数据？</text>
+  <text x="60" y="1410" class="t">• 合成<tspan font-weight="700">不靠 LLM 编数据</tspan>。数据的<tspan font-weight="700">值</tspan>全部由确定性 PRNG + GenSpec（区间/枚举/模板）产出，关系由 FK 一致保证。</text>
+  <text x="60" y="1436" class="t">• LLM <tspan font-weight="700">只</tspan>在"未知行业"时生成一次<tspan font-weight="700">模板（结构）</tspan>——有哪些对象类型/字段/规则；生成后存库复用，之后同样走确定性管线。</text>
+  <text x="60" y="1462" class="t">• 已知行业（电池）用内置模板，<tspan font-weight="700" fill="#b00020">整条链路零 LLM、零提示词</tspan>；同 (行业,规模,seed) 重跑字节级一致（R6）。</text>
+  <text x="60" y="1488" class="ts">• 因此本图只有一处提示词（②上方 TEMPLATE_SYSTEM，用途 template_gen）。comprehend(故事→建域) 是另一条链路的 LLM，不在合成里。</text>
+  <text x="60" y="1514" class="ts">• 锚点：service.ts resolveTemplate（①/②）· mulberry32(③)· generateRelatedDatasets(④)· materialize(⑥)· runDerivations(⑦)。</text>
+</svg>
