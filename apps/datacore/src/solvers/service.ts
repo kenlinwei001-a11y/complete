@@ -46,6 +46,8 @@ export const SOLVER_KEYS = [
   "shared_bottleneck",
   // PRD-fde §8c/Q5 隐性集中度（净室通用）：多跳反向聚合找暗线单点。
   "concentration_risk",
+  // PRD-fde §8 Q3 毛利倒挂根因归因（净室通用）：成本项拆解 + 倒挂群主驱动聚合。
+  "margin_attribution",
 ] as const;
 
 /**
@@ -67,6 +69,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   generic_inference: ["deltas", "rows", "affectedObjects", "count", "rootTypes"],
   shared_bottleneck: ["bottlenecks", "contention", "downgraded", "summary"],
   concentration_risk: ["concentrations", "topExposure", "summary"],
+  margin_attribution: ["inverted", "rootDrivers", "invertedCount", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -241,6 +244,61 @@ export class SolverService {
       concentrations,
       topExposure: concentrations[0] ?? null,
       summary: `${concentrations.length} 个隐性集中单点（${rootType}）,最大敞口 ${concentrations[0]?.count ?? 0} 个依赖方`,
+    };
+  }
+
+  /**
+   * PRD-fde §8 Q3 毛利倒挂根因归因（净室,零依赖,确定性 R6）：把每个目标对象的成本拆成多个成本项,
+   * 算出毛利/毛利率,标记"倒挂"(毛利率 < 阈值,默认 0 即亏本),并按成本项占比定位**主驱动**——
+   * 报表只给"毛利为负"的总数,切不出"是哪个成本项把它拉穿的";本求解器跨整个倒挂群聚合出根因驱动。
+   * args: { targetType, revenueField?, costFields:[{field,label?}], marginThreshold?, sign? }。
+   */
+  private async marginAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const targetType = str(args.targetType);
+    const revenueField = str(args.revenueField, "revenue");
+    const costFields = Array.isArray(args.costFields) ? (args.costFields as { field: string; label?: string }[]) : [];
+    const marginThreshold = num(args.marginThreshold, 0);
+    if (!targetType || costFields.length === 0) throw validationError("margin_attribution 需 targetType + costFields:[{field,label?}]");
+
+    const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === targetType))[0];
+    const pk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const objs = await this.repos.objects.listByType(ctx.tenantId, targetType);
+
+    const inverted: {
+      id: string; revenue: number; totalCost: number; margin: number; marginRate: number;
+      topDriver: { label: string; value: number; share: number } | null;
+      attribution: { label: string; value: number; share: number }[];
+    }[] = [];
+    for (const o of objs) {
+      const id = String((pk ? o.props[pk] : undefined) ?? o.id);
+      const revenue = num(o.props[revenueField]);
+      const comps = costFields.map((cf) => ({ label: cf.label ?? cf.field, value: num(o.props[cf.field]) }));
+      const totalCost = comps.reduce((s, c) => s + c.value, 0);
+      const margin = round(revenue - totalCost, 6);
+      const marginRate = revenue !== 0 ? round(margin / revenue, 6) : margin < 0 ? -1 : 0;
+      if (marginRate >= marginThreshold) continue; // 未倒挂
+      const attribution = comps
+        .map((c) => ({ label: c.label, value: c.value, share: totalCost !== 0 ? round(c.value / totalCost, 6) : 0 }))
+        .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+      inverted.push({ id, revenue, totalCost, margin, marginRate, topDriver: attribution[0] ?? null, attribution });
+    }
+    inverted.sort((a, b) => a.marginRate - b.marginRate || a.id.localeCompare(b.id));
+
+    // 跨整个倒挂群聚合根因驱动：某成本项作为主驱动出现的次数 + 累计金额。
+    const driverAgg = new Map<string, { label: string; invertedCount: number; totalValue: number }>();
+    for (const row of inverted) {
+      if (!row.topDriver) continue;
+      const d = driverAgg.get(row.topDriver.label) ?? { label: row.topDriver.label, invertedCount: 0, totalValue: 0 };
+      d.invertedCount += 1;
+      d.totalValue = round(d.totalValue + row.topDriver.value, 6);
+      driverAgg.set(row.topDriver.label, d);
+    }
+    const rootDrivers = [...driverAgg.values()].sort((a, b) => b.invertedCount - a.invertedCount || b.totalValue - a.totalValue || a.label.localeCompare(b.label));
+    return {
+      inverted,
+      rootDrivers,
+      invertedCount: inverted.length,
+      summary: `${inverted.length} 个目标毛利倒挂；根因主驱动 ${rootDrivers[0]?.label ?? "—"}（拉穿 ${rootDrivers[0]?.invertedCount ?? 0} 个）`,
     };
   }
 
@@ -464,6 +522,7 @@ export class SolverService {
     // shared_bottleneck 通用求解器（读任意对象图,非电池 context）,同样先拦截。
     if (solverKey === "shared_bottleneck") return this.sharedBottleneck(ctx, args);
     if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
+    if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
