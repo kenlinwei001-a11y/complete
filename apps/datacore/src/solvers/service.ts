@@ -41,6 +41,9 @@ export const SOLVER_KEYS = [
   // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
   // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
   "generic_inference",
+  // PRD-fde §8d/Q4 通用共享瓶颈求解器（净室,零依赖,声明式组合）：读对象图,按 viaField 把上游对象
+  // 分组到共享资源,需求和>产能 = 瓶颈;按优先级判哪张单降级。非电池专用,任意本体经 args 字段映射即用。
+  "shared_bottleneck",
 ] as const;
 
 /**
@@ -60,6 +63,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   capacity_rollup: ["bases", "ruleRefs"],
   // 通用 what-if（recompute dryRun 包装）：顶层渲染键 = 派生 before/after deltas + 受影响计数。
   generic_inference: ["deltas", "rows", "affectedObjects", "count", "rootTypes"],
+  shared_bottleneck: ["bottlenecks", "contention", "downgraded", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -116,6 +120,71 @@ export class SolverService {
       affectedObjects: result.updatedObjects,
       count: deltas.length,
       rootTypes: [...new Set(apply.map((a) => a.objectType))],
+    };
+  }
+
+  /**
+   * PRD-fde §8d/Q4 共享瓶颈（净室,零依赖,确定性 R6）：读对象图 → 按 viaField 把 sharedByType 对象分组到
+   * resourceType 资源 → 需求和(Σ demandField) > 产能(capacityField) = 瓶颈 → 按 priorityField 判降级。
+   * 通用:任意本体经 args 字段映射即用(args: resourceType/sharedByType/viaField/capacityField/demandField/priorityField?)。
+   * 答"哪些工序/设备瓶颈、谁挤占谁、哪张单降级"——报表做不到的对象关系+行为规则联合推理。
+   */
+  private async sharedBottleneck(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const resourceType = str(args.resourceType);
+    const sharedByType = str(args.sharedByType);
+    const viaField = str(args.viaField);
+    const capacityField = args.capacityField ? str(args.capacityField) : "capacity";
+    const demandField = args.demandField ? str(args.demandField) : "qty";
+    const priorityField = args.priorityField ? str(args.priorityField) : undefined;
+    if (!resourceType || !sharedByType || !viaField) throw validationError("shared_bottleneck 需 resourceType/sharedByType/viaField");
+
+    const resources = await this.repos.objects.listByType(ctx.tenantId, resourceType);
+    const sharers = await this.repos.objects.listByType(ctx.tenantId, sharedByType);
+    const rtype = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === resourceType))[0];
+    const stype = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === sharedByType))[0];
+    const rPk = rtype?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const sPk = stype?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const keyOf = (o: ObjectInstance, pk?: string) => String((pk ? o.props[pk] : undefined) ?? o.id);
+    const resByKey = new Map(resources.map((r) => [keyOf(r, rPk), r]));
+
+    // 分组：每个资源被哪些上游对象共享。
+    const byResource = new Map<string, ObjectInstance[]>();
+    for (const s of sharers) {
+      const rid = String(s.props[viaField] ?? "");
+      if (!rid) continue;
+      const list = byResource.get(rid) ?? [];
+      list.push(s);
+      byResource.set(rid, list);
+    }
+
+    const bottlenecks: Record<string, unknown>[] = [];
+    const contention: Record<string, unknown>[] = [];
+    const downgraded: Record<string, unknown>[] = [];
+    // 确定性：资源键排序
+    for (const rid of [...byResource.keys()].sort()) {
+      const demanders = byResource.get(rid)!;
+      const res = resByKey.get(rid);
+      const capacity = res ? Number(res.props[capacityField]) : NaN;
+      const demand = demanders.reduce((acc, d) => acc + (Number(d.props[demandField]) || 0), 0);
+      const sharerKeys = demanders.map((d) => keyOf(d, sPk)).sort();
+      // 瓶颈：有产能且需求和 > 产能,且 ≥2 个争用者(共享)。
+      if (Number.isFinite(capacity) && demand > capacity && demanders.length >= 2) {
+        bottlenecks.push({ resourceType, resourceId: rid, capacity, demand, sharerCount: demanders.length });
+        contention.push({ resourceId: rid, sharers: sharerKeys });
+        // 降级：优先级最低者(priorityField 升序;缺则需求最小者),确定性 tiebreak by key。
+        const ranked = [...demanders].sort((a, b) => {
+          const pa = priorityField ? Number(a.props[priorityField]) || 0 : Number(a.props[demandField]) || 0;
+          const pb = priorityField ? Number(b.props[priorityField]) || 0 : Number(b.props[demandField]) || 0;
+          return pa - pb || keyOf(a, sPk).localeCompare(keyOf(b, sPk));
+        });
+        downgraded.push({ resourceId: rid, sharedByType, objectId: keyOf(ranked[0]!, sPk), reason: priorityField ? "优先级最低" : "需求最小" });
+      }
+    }
+    return {
+      bottlenecks,
+      contention,
+      downgraded,
+      summary: `${bottlenecks.length} 个共享瓶颈,${contention.reduce((a, c) => a + (c.sharers as string[]).length, 0)} 张单争用,${downgraded.length} 张被降级`,
     };
   }
 
@@ -336,6 +405,8 @@ export class SolverService {
   ): Promise<Record<string, unknown>> {
     // generic_inference 走本体派生引擎（非纯 compute；需对象图 + recompute），先于 loadContext 拦截。
     if (solverKey === "generic_inference") return this.genericInference(ctx, args);
+    // shared_bottleneck 通用求解器（读任意对象图,非电池 context）,同样先拦截。
+    if (solverKey === "shared_bottleneck") return this.sharedBottleneck(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {

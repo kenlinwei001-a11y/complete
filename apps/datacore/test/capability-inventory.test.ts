@@ -47,14 +47,14 @@ describe("PRD-fde §3.5 · 能力清单 + 比对差异", () => {
     await seedBattery(t);
     const res = await t.app.inject({
       method: "POST", url: "/a/v1/capability-inventory/diff", headers: ADMIN,
-      payload: { objectTypes: ["Order", "Process", "Equipment", "MarsColony"], solvers: ["capacity_forecast", "shared_bottleneck"] },
+      payload: { objectTypes: ["Order", "Process", "Equipment", "MarsColony"], solvers: ["capacity_forecast", "shared_bottleneck", "margin_attribution"] },
     });
     const r = res.json() as { verdict: string; gaps: { key: string; gapCode: string }[] };
     expect(r.verdict).toBe("GAPS");
-    // battery 已建 Process/Equipment/Order + capacity_forecast → 不报(清单真实反映现状)
-    for (const k of ["Order", "Process", "Equipment", "capacity_forecast"]) expect(r.gaps.some((g) => g.key === k)).toBe(false);
-    // 真缺的报:虚构类型 MarsColony + 未注册求解器 shared_bottleneck
+    // battery 已建 Process/Equipment/Order + capacity_forecast + 新建的 shared_bottleneck → 不报(清单真实反映现状)
+    for (const k of ["Order", "Process", "Equipment", "capacity_forecast", "shared_bottleneck"]) expect(r.gaps.some((g) => g.key === k)).toBe(false);
+    // 真缺的报:虚构类型 MarsColony + 未注册求解器 margin_attribution(Q3 归因,未建)
     expect(r.gaps.some((g) => g.key === "MarsColony" && g.gapCode === "NO_SLICE")).toBe(true);
-    expect(r.gaps.some((g) => g.key === "shared_bottleneck" && g.gapCode === "SOLVER_NOT_FOUND")).toBe(true);
+    expect(r.gaps.some((g) => g.key === "margin_attribution" && g.gapCode === "SOLVER_NOT_FOUND")).toBe(true);
   });
 });
