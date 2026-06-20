@@ -280,6 +280,10 @@ const baseProps: PropertyDef[] = [
   { propKey: "gwh", dataType: "number", isPrimaryKey: false },
   { propKey: "formationCapDaily", dataType: "number", isPrimaryKey: false },
   { propKey: "agingCapDaily", dataType: "number", isPrimaryKey: false },
+  // 地理坐标（GeoMap 着色/选址）+ 业态（动力/储能）——全建模，合成数据与字段对齐（R12）。
+  { propKey: "lon", dataType: "number", isPrimaryKey: false },
+  { propKey: "lat", dataType: "number", isPrimaryKey: false },
+  { propKey: "position", dataType: "enum", isPrimaryKey: false },
 ];
 const baseDerived: DerivedPropertyDef[] = [
   { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
@@ -314,6 +318,7 @@ const orderProps: PropertyDef[] = [
   { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false },
   { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false },
   { propKey: "leadDays", dataType: "number", isPrimaryKey: false },
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false }, // 按型号反范式化的单价（value 派生依赖）
 ];
 const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
 
@@ -321,6 +326,10 @@ const lineProps: PropertyDef[] = [
   { propKey: "lineId", dataType: "string", isPrimaryKey: true },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
   { propKey: "name", dataType: "string", isPrimaryKey: false },
+  // 运营指标（利用率 + 时序聚合物化：日实际产出 / 排程达成率）——全建模对齐（R12）。
+  { propKey: "utilization", dataType: "number", isPrimaryKey: false },
+  { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false },
+  { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false },
 ];
 
 const processProps: PropertyDef[] = [
@@ -330,6 +339,7 @@ const processProps: PropertyDef[] = [
   { propKey: "name", dataType: "string", isPrimaryKey: false },
   { propKey: "kind", dataType: "enum", isPrimaryKey: false }, // serial | formation | aging
   { propKey: "yield", dataType: "number", isPrimaryKey: false },
+  { propKey: "yield_baseline", dataType: "number", isPrimaryKey: false }, // 良率基线（时序 EMA 物化）——全建模对齐（R12）
   { propKey: "shiftHours", dataType: "number", isPrimaryKey: false },
   { propKey: "shifts", dataType: "number", isPrimaryKey: false },
   { propKey: "attendance", dataType: "number", isPrimaryKey: false },
@@ -350,6 +360,7 @@ const equipmentProps: PropertyDef[] = [
   { propKey: "oeeA", dataType: "number", isPrimaryKey: false },
   { propKey: "oeeP", dataType: "number", isPrimaryKey: false },
   { propKey: "oeeQ", dataType: "number", isPrimaryKey: false },
+  { propKey: "oee_current", dataType: "number", isPrimaryKey: false }, // OEE 当前快照（时序 7d 加权物化，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
 ];
 
 const maintPlanProps: PropertyDef[] = [
