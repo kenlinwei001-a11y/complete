@@ -252,7 +252,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **entitlement 门**：FEATURE_NOT_FOUND（先于 authz）。
 - **规则 BLOCK 短路**（工作流步骤遇 BLOCK 终止）。
 - **A6 行级过滤**（query/slice/solver 读出）。
-- **VLE 闭环验证引擎**（七段断言 + 覆盖率，参照实现双算）· `validation`。
+- **VLE 闭环验证引擎**（七段断言 + 三覆盖率，独立参照预言机双算）· `validation` · `apps/datacore/src/vle.ts`。七段全覆盖：①接入(GenSpec 行数守恒) · ②对象化(产出>0 + 引用完整性) · ③聚合派生(聚合==明细差分,经 query 路径) · ④规则查全查准(独立 plain-JS 谓词:字段齐备查全 + 植入越线行 C03 查准) · ⑤求解器执行(供需双侧非退化,负载非空跑) · ⑥行动终态(R4:已注册 ActionType 审批链非空,无直写后门) · ⑦校准注入(提案 simulatedMapeAfter<mapeBefore,无反校准)。`assertionCov = 已覆盖规范段/7`（非硬编码 1）；VL7 静态独立性:vle.ts 不 import `solvers/service`/`ruledsl`——参照预言机独立于被测，杜绝"用被测算被测"。
 - **断链审计 DL1–DL12**（§4，每个产出环必须有事件+订阅）。
 - **`ontology:check` 本体漂移门禁**（治理新增）：事件/求解器/文件锚点/钩子不漂 即 build 红 · `scripts/check-system-ontology.mjs`，`pnpm ontology:check`。
 - **`chain:check` 全链闭包门（第一块砖，R11）**：跨系统静态校验"场景声明的求解器 DataCore 必须注册"，否则路径A 全链断（SOLVER_NOT_FOUND）即红 · `scripts/check-chain-closure.mjs`，`pnpm chain:check`。

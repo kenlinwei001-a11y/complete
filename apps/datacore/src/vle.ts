@@ -4,6 +4,9 @@ import type { SyntheticService } from "./synthetic/service.js";
 import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
 
+/** 七段闭环的规范段名（assertionCov = 已验证的规范段数 / 7，非硬编码 1）。 */
+const CANONICAL_SEGMENTS = ["①接入", "②建模与对象化", "③聚合与派生", "④规则查全查准", "⑤求解器执行", "⑥行动终态", "⑦校准注入"];
+
 /**
  * 闭环验证引擎（VLE，PRD-addendum-validation-loop）。
  *
@@ -36,6 +39,9 @@ export class VleService {
     private ontology: OntologyService,
   ) {}
 
+  /** GenSpec 已知真值：battery-manufacturing / scale=S 的核心类型行数（接入→对象化守恒下界）。 */
+  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: 12, Model: 6, Order: 20 };
+
   async run(
     callerCtx: AuthCtx,
     profile: "SMOKE" | "FULL" | "SOAK",
@@ -56,6 +62,19 @@ export class VleService {
 
       const objects = await this.repos.objects.list(vTenant);
       const links = await this.repos.links.list(vTenant);
+
+      // ① 接入：GenSpec 已知真值 → 核心类型行数守恒（接入/对象化未丢行未串行）。
+      const countByType = (t: string) => objects.filter((o) => o.type === t).length;
+      const countMismatch = Object.entries(VleService.GENSPEC_S_COUNTS).filter(([t, n]) => countByType(t) !== n);
+      assertions.push({
+        segment: "①接入",
+        point: "接入产出核心类型行数 == GenSpec（Base/Model/Order 行数守恒）",
+        oracle: "constructed",
+        pass: countMismatch.length === 0,
+        expected: VleService.GENSPEC_S_COUNTS,
+        actual: Object.fromEntries(Object.keys(VleService.GENSPEC_S_COUNTS).map((t) => [t, countByType(t)])),
+        diff: countMismatch.length ? `行数偏离: ${countMismatch.map(([t]) => t).join(",")}` : undefined,
+      });
 
       // 构造真值：生成必产出对象（行数守恒的下界）。
       assertions.push({
@@ -90,6 +109,73 @@ export class VleService {
         expected: aggCheck.expected,
         actual: aggCheck.actual,
         diff: aggCheck.pass ? undefined : `type=${aggCheck.typeKey} prop=${aggCheck.prop}`,
+      });
+
+      // ④ 规则查全查准（独立预言机，VL7：不 import 规则引擎，用独立 plain-JS 谓词比对）。
+      //   查全(recall)：约束扫描所需字段在 Order 对象上齐备——字段缺失 = 规则静默漏判(假阴)。
+      //   查准(precision)：种子按固定步长植入的越线行(C03 demandDelta>0.5)被独立谓词当场捕获。
+      const orders = objects.filter((o) => o.type === "Order");
+      const SCAN_FIELDS = ["demandDelta", "outsourceRatio", "creditUsedRatio", "leadDays"];
+      const fieldGaps = orders.filter((o) => SCAN_FIELDS.some((f) => typeof o.props[f] !== "number")).length;
+      assertions.push({
+        segment: "④规则查全查准",
+        point: "规则所需字段在对象上齐备（查全：字段缺失→静默漏判=0）",
+        oracle: "invariant",
+        pass: orders.length > 0 && fieldGaps === 0,
+        expected: 0,
+        actual: fieldGaps,
+        diff: fieldGaps ? `${fieldGaps} 个 Order 缺约束扫描字段` : undefined,
+      });
+      const plantedC03 = orders.filter((o) => Number(o.props.demandDelta) > 0.5).length;
+      assertions.push({
+        segment: "④规则查全查准",
+        point: "植入越线行被独立谓词捕获（查准：C03 demandDelta>0.5 命中>0）",
+        oracle: "constructed",
+        pass: plantedC03 > 0,
+        expected: ">0",
+        actual: plantedC03,
+      });
+
+      // ⑤ 求解器执行（独立预言机，VL7：不 import 求解器，验"求解链有真实负载"而非空跑）。
+      //   供给(Σ基地产能 gwh)与需求(Σ订单 qty)双侧均非退化 → 求解器面对真实供需缺口。
+      const bases = objects.filter((o) => o.type === "Base");
+      const supply = bases.reduce((s, o) => s + (typeof o.props.gwh === "number" ? (o.props.gwh as number) : 0), 0);
+      const demand = orders.reduce((s, o) => s + (typeof o.props.qty === "number" ? (o.props.qty as number) : 0), 0);
+      assertions.push({
+        segment: "⑤求解器执行",
+        point: "求解负载非退化（供给Σgwh>0 且 需求Σqty>0 → 非空跑）",
+        oracle: "constructed",
+        pass: supply > 0 && demand > 0,
+        expected: "supply>0 && demand>0",
+        actual: `supply=${Number(supply.toFixed(1))} demand=${demand}`,
+      });
+
+      // ⑥ 行动终态（R4 真值经 Action，独立预言机）：每个已注册 ActionType 必有非空审批链——
+      //   空审批链 = 绕过审批直写真值的后门（R4 违反）。读注册表独立断言，不触发执行。
+      const actionTypes = await this.repos.actionTypes.list(vTenant);
+      const noChain = actionTypes.filter((a) => !Array.isArray(a.approvalChain) || a.approvalChain.length === 0);
+      assertions.push({
+        segment: "⑥行动终态",
+        point: "真值变更必经审批（已注册 ActionType 审批链非空，无直写后门）",
+        oracle: "invariant",
+        pass: actionTypes.length > 0 && noChain.length === 0,
+        expected: 0,
+        actual: noChain.length,
+        diff: noChain.length ? `空审批链: ${noChain.map((a) => a.key).join(",")}` : undefined,
+      });
+
+      // ⑦ 校准注入（学习回路注入点，独立预言机）：每个种子校准提案的模拟误差必须改善
+      //   (simulatedMapeAfter < mapeBefore)——注入即恶化 = 反校准，回路发散。
+      const proposals = await this.repos.calibrationProposals.list(vTenant);
+      const worsening = proposals.filter((p) => !(p.evidence && p.evidence.simulatedMapeAfter < p.evidence.mapeBefore));
+      assertions.push({
+        segment: "⑦校准注入",
+        point: "校准注入即收敛（提案 simulatedMapeAfter < mapeBefore，无反校准）",
+        oracle: "invariant",
+        pass: proposals.length > 0 && worsening.length === 0,
+        expected: 0,
+        actual: worsening.length,
+        diff: worsening.length ? `恶化提案: ${worsening.map((p) => p.id).join(",")}` : undefined,
       });
 
       // 不变量：同 seed 重放逐字节幂等（确定性）。
@@ -212,10 +298,11 @@ export class VleService {
     const greenSegments = new Set(
       [...segments].filter((s) => assertions.filter((a) => a.segment === s).every((a) => a.pass)),
     );
-    // 三覆盖率（本期口径）：module = 断言通过率；assertion = 已实现/登记（本期实现即登记 → 1）；
-    // loop = 段全绿比例。
+    // 三覆盖率：module = 断言通过率；assertion = **已验证的规范段数 / 7**（不再硬编码 1，诚实反映
+    // 七段闭环实际覆盖到第几段）；loop = 段全绿比例。
     const moduleCov = passed / total;
-    const assertionCov = 1;
+    const canonicalCovered = CANONICAL_SEGMENTS.filter((cs) => segments.has(cs)).length;
+    const assertionCov = canonicalCovered / CANONICAL_SEGMENTS.length;
     const loopCov = greenSegments.size / segments.size;
     const score = 0.5 * moduleCov + 0.3 * assertionCov + 0.2 * loopCov;
     return {
