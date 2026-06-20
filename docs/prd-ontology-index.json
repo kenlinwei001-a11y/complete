@@ -384,6 +384,32 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-fde-fullstack-build-workflow.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-5",
+        "G-6",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/databuilder/comprehend.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-frontend-addendum-remaining-views.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -702,6 +728,7 @@
       "PRD-catalog-battery-20-scenarios.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-dogfooding-self-ontology.md",
+      "PRD-fde-fullstack-build-workflow.md",
       "PRD-frontend-addendum-remaining-views.md",
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
@@ -723,12 +750,14 @@
     "G-7": [
       "PRD-addendum-capability-routing.md",
       "PRD-addendum-llm-providers-and-references.md",
+      "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-unified-build-engine.md"
     ],
     "G-6": [
       "PRD-addendum-dataflow-loop-closure.md",
       "PRD-de-battery-multitenant-config.md",
+      "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-live-traceable-data.md",
       "PRD-ontology-browser-field-coverage.md",
@@ -741,11 +770,13 @@
     ],
     "G-5": [
       "PRD-de-battery-multitenant-config.md",
+      "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-generic-inference.md",
       "PRD-unified-build-engine.md"
     ],
     "G-3": [
+      "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
@@ -772,6 +803,9 @@
     ],
     "scripts/check-system-ontology.mjs": [
       "PRD-dogfooding-self-ontology.md"
+    ],
+    "apps/datacore/src/databuilder/comprehend.ts": [
+      "PRD-fde-fullstack-build-workflow.md"
     ],
     "apps/agentcore/src/growth/probe.ts": [
       "PRD-fullstack-story-build-g8.md"
