@@ -40,6 +40,7 @@ import { CONNECTOR_TYPES } from "./connectors/registry.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
+import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
 import { TimeseriesService } from "./timeseries.js";
@@ -1151,6 +1152,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));
+
+  // A2 在线数据模版（G-6 收口）：从本租户已发布对象类型派生"该上传哪些列"的 CSV 模版；
+  // ?withSamples=N&seed= 时多表 FK 一致生成样例（ref 值必指向父表实际 PK，可直接试灌）。
+  app.get("/a/v1/data-templates", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { withSamples?: string; seed?: string };
+    const types = await ontology.listTypes(c);
+    return { items: buildDataTemplates(types, { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 }) };
+  });
+  // 单类型模版直接下载（text/csv）。
+  app.get("/a/v1/data-templates/:typeKey", async (req, reply) => {
+    const c = ctx(req);
+    const { typeKey } = req.params as { typeKey: string };
+    const q = req.query as { withSamples?: string; seed?: string };
+    const types = await ontology.listTypes(c);
+    const tpl = buildDataTemplate(types, typeKey, { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 });
+    if (!tpl) throw validationError(`未知对象类型 '${typeKey}'（本租户）`);
+    return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${typeKey}.template.csv"`).send(tpl.csv);
+  });
   // 约束执行层：工具/外部/MCP 输出按本体对象类型 schema + 属性值域强制校验（可配置,按租户）。
   // policy 缺省用全局默认（安全侧 REJECT）;调用方（连接器导入/MCP 工具执行器）按源覆盖。
   app.post("/a/v1/ontology/validate-output", async (req) => {
