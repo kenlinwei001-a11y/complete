@@ -50,6 +50,10 @@ export type GapReport = z.infer<typeof GapReportSchema>;
  * 自成长发动机 P3 · LOOP：探针→补齐→重跑→收敛（K 有界）。
  * 收敛终态（PRD §8）：CONVERGED（出可验证答案）/ BOUNDARY（仅剩缺功能工单）/ MAX_ROUNDS（未收敛）。
  */
+/** scaffold 出的 DRAFT 制品（A3 真补：自动建骨架但不发布 R4）。 */
+export const ScaffoldDraftSchema = z.object({ kind: z.string(), key: z.string() });
+export type ScaffoldDraft = z.infer<typeof ScaffoldDraftSchema>;
+
 export const GrowthFillResultSchema = z.object({
   gapCode: GapCodeSchema,
   /** 补法（fill-data 真人正门 / scaffold 切片·规则·意图 / generic-inference 兜底 / ticket 需开发）。 */
@@ -58,6 +62,8 @@ export const GrowthFillResultSchema = z.object({
   advanced: z.boolean(),
   /** 缺功能 → 需开发工单（带 I/O 契约线索）。 */
   ticket: z.object({ gapCode: GapCodeSchema, detail: z.string() }).optional(),
+  /** A3 真补：本轮自动 scaffold 出的 DRAFT 制品（如绑 generic_inference 的执行计划骨架）。 */
+  scaffolded: z.array(ScaffoldDraftSchema).optional(),
 });
 export type GrowthFillResult = z.infer<typeof GrowthFillResultSchema>;
 
@@ -111,6 +117,8 @@ export const GrowthTicketSchema = z.object({
   status: GrowthTicketStatusSchema,
   /** 认领者（任意 code agent，厂商中立）。 */
   assignee: z.string().optional(),
+  /** A3 真补：开工单前已自动 scaffold 的 DRAFT 制品 → 施工从"零开发"降为"审批发布/补全参数"。 */
+  scaffoldedDrafts: z.array(ScaffoldDraftSchema).optional(),
   createdAt: IsoTime,
 });
 export type GrowthTicket = z.infer<typeof GrowthTicketSchema>;

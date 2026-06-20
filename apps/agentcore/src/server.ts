@@ -47,6 +47,7 @@ import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap, FILL } from "./growth/probe.js";
 import { perceptionMetrics } from "./router/perception-metrics.js";
+import { scaffoldDraftPlan, questionSlug } from "./growth/scaffold.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
@@ -194,9 +195,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
       return classifyGap(task);
     };
-    // 补法分派：缺数据→真人正门补(P2 真实)；缺求解器→B 兜底（generic_inference 已注册为通用 what-if
-    // 求解器,FILL 命名该兜底路径,骨架工单带 I/O 契约供 code-agent 接）；其余→骨架工单收敛到边界。
+    // 补法分派：① 缺数据→真人正门补(P2 真实)；② 缺执行计划/缺求解器(in-catalog 接线缺口)→A3 真补：
+    // 自动 scaffold DRAFT 执行计划绑 generic_inference 兜底（不发布 R4，收敛到"待审批发布"边界、
+    // 工单带已建骨架，从"零开发"降级）；③ 其余(缺意图/切片/规则/形状)→骨架工单收敛到边界。
     // 每次 fill 发 growth.fill_proposed（经 E-c domain_events → F1 全局通道反映到驾驶舱）。
+    const SCAFFOLDABLE = new Set<import("@platform/contracts").GapCode>(["NO_PLAN", "SOLVER_NOT_FOUND"]);
+    const scaffoldedByGap = new Map<import("@platform/contracts").GapCode, import("@platform/contracts").ScaffoldDraft[]>();
     const fill = async (gap: import("@platform/contracts").GapFinding) => {
       await emitDomainEvent(a.tenantId, "growth.gap_detected", { gapCode: gap.gapCode, atStep: gap.atStep ?? null });
       let result: import("@platform/contracts").GrowthFillResult;
@@ -207,10 +211,22 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         } catch {
           result = { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
         }
+      } else if (SCAFFOLDABLE.has(gap.gapCode)) {
+        if (!scaffoldedByGap.has(gap.gapCode)) {
+          const planKey = `plan_growth_${questionSlug(body.query)}`;
+          const drafts = await scaffoldDraftPlan(deps, a.tenantId, planKey);
+          scaffoldedByGap.set(gap.gapCode, drafts);
+          result = drafts.length > 0
+            ? { gapCode: gap.gapCode, action: `自动 scaffold DRAFT 执行计划 ${planKey}（绑 generic_inference 兜底）→ 待审批发布`, advanced: true, scaffolded: drafts }
+            : { gapCode: gap.gapCode, action: "执行计划骨架已存在（DRAFT，待审批发布）", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+        } else {
+          // 已 scaffold、缺口仍在（DRAFT 未发布 R4）→ 做完能做的，收敛到边界（工单带已建骨架）
+          result = { gapCode: gap.gapCode, action: "DRAFT 骨架已就绪，待审批发布/补全参数", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+        }
       } else {
         result = { gapCode: gap.gapCode, action: `${FILL[gap.gapCode]}（当前不可自动补→骨架工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
       }
-      await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: result.advanced });
+      await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: result.advanced, scaffolded: result.scaffolded?.length ?? 0 });
       return result;
     };
     const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
@@ -231,6 +247,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     };
     for (const tk of report.openTickets) {
       const ticketId = newId("gtk");
+      const drafts = scaffoldedByGap.get(tk.gapCode);
       await deps.repos.growthTickets.upsert({
         id: ticketId, tenantId: a.tenantId, fromQuestion: body.query, gapCode: tk.gapCode,
         ioContract: {
@@ -238,8 +255,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
           outputShape: OUTPUT_SHAPE_BY_GAP[tk.gapCode] ?? ["answer", "provenance"],
         },
         ontologyRefs: { objectTypes: refObjectTypes, slices: [], rules: [] },
-        acceptance: `问句「${body.query}」应能答出可验证答案并过门禁。建议补法：${FILL[tk.gapCode]}`,
+        acceptance: drafts && drafts.length > 0
+          ? `问句「${body.query}」应能答出可验证答案并过门禁。已 scaffold DRAFT 骨架（${drafts.map((d) => d.key).join(",")}），施工 = 审批发布/补全参数（非从零开发）。`
+          : `问句「${body.query}」应能答出可验证答案并过门禁。建议补法：${FILL[tk.gapCode]}`,
         status: "OPEN", createdAt: now,
+        ...(drafts && drafts.length > 0 ? { scaffoldedDrafts: drafts } : {}),
       });
       await emitDomainEvent(a.tenantId, "growth.ticket_opened", { ticketId, gapCode: tk.gapCode });
     }
