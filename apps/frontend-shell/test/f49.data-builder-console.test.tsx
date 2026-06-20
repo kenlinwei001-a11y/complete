@@ -70,3 +70,45 @@ describe("F49 · 数据构建发动机控制台 P1+P2（区2 理解 + 区4 快�
     expect(within(report).getByText(/连接器页核对产物/)).toBeTruthy();
   });
 });
+
+/**
+ * F49b · D 瀑布流逐产物 HITL + diff（unified §5.3 核心 UX）：100 字故事建域 → 区5 模块行可展开为
+ * 逐产物卡片，每卡带 before→after diff + DRAFT/已发布；DRAFT 产物surface逐产物 HITL（复用就地审批 R4）。
+ */
+describe("F49b · 逐产物瀑布流卡片 + diff（D · 100 字故事完整呈现）", () => {
+  const STORY100 = "常州动力电池基地三季度产能持续紧张，多条产线利用率越线，叠加 4680 型号认证排期延误，影响星辰汽车与蓝海储能的订单交期与客户信用敞口，请系统推演交期风险、产能缺口与信用冻结，并给出补救处置的优先级。";
+
+  it("100 字故事建域 → 区5 模块行展开 → 逐产物 diff 卡（已发布 A 栈 + DRAFT B 栈含逐产物 HITL）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/data-builder");
+    await screen.findByTestId("data-builder-page");
+    const timeline = await screen.findByTestId("sbr-timeline");
+
+    // 输入 100 字真实故事脚本 → 建域
+    const ta = screen.getByTestId("db-script");
+    await user.clear(ta);
+    await user.type(ta, STORY100);
+    await user.click(screen.getByTestId("sbr-run"));
+
+    const matrix = await within(timeline).findByTestId("sbr-syncmatrix");
+
+    // 展开「本体建模」模块 → 逐产物卡片 + diff（已发布 A 栈：Order/Base CREATED）
+    await user.click(within(matrix).getByTestId("syncrow-toggle-ontology"));
+    const ontoDetail = await within(matrix).findByTestId("syncrow-detail-ontology");
+    expect(within(ontoDetail).getByTestId("artifact-objectType-Order")).toBeTruthy();
+    expect(within(ontoDetail).getByTestId("artifact-objectType-Base")).toBeTruthy();
+    // diff：CREATED → before"（无）" + after"新建"
+    const orderDiff = within(ontoDetail).getByTestId("artifact-diff-objectType-Order");
+    expect(orderDiff).toHaveTextContent("（无）");
+    expect(orderDiff).toHaveTextContent("新建 objectType:Order");
+    // A 栈已发布，不带 DRAFT HITL 提示
+    expect(within(ontoDetail).queryByText(/逐产物 HITL/)).toBeNull();
+
+    // 展开「场景」模块（B 栈 scaffold DRAFT）→ 逐产物卡 + DRAFT HITL（复用就地审批）
+    await user.click(within(matrix).getByTestId("syncrow-toggle-scene"));
+    const sceneDetail = await within(matrix).findByTestId("syncrow-detail-scene");
+    expect(within(sceneDetail).getByTestId("artifact-scene-risk_scene")).toBeTruthy();
+    expect(within(sceneDetail).getByText(/逐产物 HITL/)).toBeTruthy(); // DRAFT → 待就地审批
+  });
+});

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, ClosureReport, DataBuilderAgent, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
@@ -143,31 +143,71 @@ function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
  * 摊开成一张表 —— 本次新增/更新/复用了几个 + DRAFT/已发布（R4）+ 制品名 + 深链跳去该模块核对。
  * 派生自 StoryBuildRun.producedArtifacts（不是新真值源，R13）；只显本次触及的模块（status≠NONE）。
  */
+/** 单个产物的 diff 卡（PRD §5.3 逐产物卡片 + diff 预览）：按 action 给 before→after。 */
+function ArtifactDiffCard({ a }: { a: ProducedArtifact }) {
+  const before = a.action === "CREATED" ? "（无）" : `既有 ${a.kind}:${a.key}`;
+  const after = a.action === "CREATED" ? `新建 ${a.kind}:${a.key}` : a.action === "UPDATED" ? `更新 ${a.kind}:${a.key}` : "复用（未改）";
+  const draft = a.status === "DRAFT";
+  const color = draft ? "var(--amber,#DD9551)" : "var(--c-capacity,#36BFA5)";
+  return (
+    <div data-testid={`artifact-${a.kind}-${a.key}`} style={{ border: `1px solid ${color}`, borderRadius: 6, padding: "5px 8px", marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+        <span className="badge" style={{ color, borderColor: color }}>{a.action}</span>
+        <b>{a.kind}:{a.key}</b>
+        <span className="badge" style={{ marginLeft: "auto", color, borderColor: color }}>{draft ? "草稿（未生效）" : "已发布"}</span>
+      </div>
+      {/* diff 预览：before → after（红/绿） */}
+      <div data-testid={`artifact-diff-${a.kind}-${a.key}`} style={{ fontSize: 11, marginTop: 3, fontFamily: "monospace" }}>
+        <div style={{ color: "var(--danger,#E5484D)" }}>- {before}</div>
+        <div style={{ color: "var(--c-capacity,#36BFA5)" }}>+ {after}</div>
+      </div>
+      {draft && (
+        <div style={{ fontSize: 10.5, color: "var(--amber,#DD9551)", marginTop: 2 }}>
+          ⏳ 逐产物 HITL：待页顶「待审批补齐」就地批复后该模块生效（R4 真值经 Action）。
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const matrix = buildModuleSyncMatrix(artifacts).filter((row) => row.status !== "NONE");
   if (matrix.length === 0) {
     return <div data-testid="sbr-syncmatrix" style={{ fontSize: 11.5, color: "var(--muted)" }}>模块同步矩阵：本次未新增下游制品。</div>;
   }
   return (
     <div data-testid="sbr-syncmatrix">
-      <div style={{ marginBottom: 2 }}>模块同步矩阵（为匹配故事新增到各下游模块 · 点深链去核对）：</div>
+      <div style={{ marginBottom: 2 }}>模块同步矩阵（点模块展开逐产物卡片 + diff；深链去核对）：</div>
       <table className="cmp" style={{ fontSize: 11.5 }}>
         <thead>
-          <tr><th>模块</th><th>新增</th><th>更新</th><th>复用</th><th>状态</th><th>制品</th><th>核对</th></tr>
+          <tr><th></th><th>模块</th><th>新增</th><th>更新</th><th>复用</th><th>状态</th><th>制品</th><th>核对</th></tr>
         </thead>
         <tbody>
           {matrix.map((row) => {
             const color = row.status === "PUBLISHED" ? "var(--c-capacity,#36BFA5)" : "var(--amber,#DD9551)";
+            const open = expanded === row.module;
+            const rowArtifacts = artifacts.filter((a) => a.module === row.module);
             return (
-              <tr key={row.module} data-testid={`syncrow-${row.module}`}>
-                <td>{row.label}</td>
-                <td>{row.added || "—"}</td>
-                <td>{row.updated || "—"}</td>
-                <td>{row.reused || "—"}</td>
-                <td><span className="badge" style={{ color, borderColor: color }}>{row.status === "PUBLISHED" ? "已发布" : "草稿（未生效）"}</span></td>
-                <td title={row.artifactRefs.join(", ")} style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.artifactRefs.join(", ") || "—"}</td>
-                <td><a href={row.deepLink} style={{ fontSize: 11 }}>去核对 →</a></td>
-              </tr>
+              <Fragment key={row.module}>
+                <tr data-testid={`syncrow-${row.module}`} style={{ cursor: "pointer" }} onClick={() => setExpanded(open ? null : row.module)}>
+                  <td data-testid={`syncrow-toggle-${row.module}`} style={{ color: "var(--muted)" }}>{open ? "▾" : "▸"}</td>
+                  <td>{row.label}</td>
+                  <td>{row.added || "—"}</td>
+                  <td>{row.updated || "—"}</td>
+                  <td>{row.reused || "—"}</td>
+                  <td><span className="badge" style={{ color, borderColor: color }}>{row.status === "PUBLISHED" ? "已发布" : "草稿（未生效）"}</span></td>
+                  <td title={row.artifactRefs.join(", ")} style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.artifactRefs.join(", ") || "—"}</td>
+                  <td><a href={row.deepLink} style={{ fontSize: 11 }} onClick={(e) => e.stopPropagation()}>去核对 →</a></td>
+                </tr>
+                {open && (
+                  <tr>
+                    <td colSpan={8} data-testid={`syncrow-detail-${row.module}`} style={{ background: "var(--panel2,#1113)", padding: 8 }}>
+                      {rowArtifacts.map((a) => <ArtifactDiffCard key={`${a.kind}-${a.key}`} a={a} />)}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             );
           })}
         </tbody>
