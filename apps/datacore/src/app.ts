@@ -2531,6 +2531,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     return databuilder.recoverInterrupted(c);
   });
+  // A7：单条建域的 B 栈 scaffold 持久清单（单机可见，不依赖 AGENTCORE_BASE_URL）。
+  app.get("/a/v1/databuilder/runs/:id/scaffold-manifest", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.getScaffoldManifest(c, (req.params as { id: string }).id);
+  });
+  // A7.2：B 上线后幂等对账（把单机态 PENDING_BSTACK 清单逐个下发 → 升 SCAFFOLDED/REUSED）。
+  app.post("/a/v1/databuilder/reconcile-scaffold", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.reconcileScaffold(c);
+  });
   app.get("/a/v1/databuilder/workflow-runs", async (req) => {
     const c = ctx(req);
     requireAdmin(c);

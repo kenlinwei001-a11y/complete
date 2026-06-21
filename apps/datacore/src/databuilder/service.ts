@@ -40,7 +40,8 @@ import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } fro
 import { BuildWorkflowEngine, RetryableStepError, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
 import { analyzeGap, summarizeGap } from "./provisioners.js";
 import { fdeGraphForRun, projectFdeNodes, summarizeFdeNodes } from "./fde-graph.js";
-import type { FdeNode } from "@platform/contracts";
+import { buildScaffoldManifestRecord } from "./scaffold-manifest.js";
+import type { FdeNode, ScaffoldManifestRecord } from "@platform/contracts";
 
 const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
@@ -333,8 +334,13 @@ export class DataBuilderService {
           } catch (e) {
             throw new RetryableStepError(`scaffold 下发失败：${(e as Error).message}`, "SCAFFOLD_HTTP");
           }
+          // A7：无条件构建持久 scaffold 清单（单机/未配 B 也可见倒推出的 B 栈制品定义）；receipt 在线则覆盖状态。
+          const manifest = buildScaffoldManifestRecord(id, plan, receipt);
+          if (manifest) {
+            await this.outbox?.emit(ctx.tenantId, "scaffold.manifest_recorded", { runId: id, items: manifest.items.length, pendingBstack: manifest.pendingBstack });
+          }
           const bOk = !receipt || receipt.fullChainOk;
-          return { detail: `bOk=${bOk}`, patch: { scaffoldReceipt: receipt, bOk } };
+          return { detail: `bOk=${bOk}${manifest?.pendingBstack ? " · 单机可见(待B对账)" : ""}`, patch: { scaffoldReceipt: receipt, bOk, scaffoldManifest: manifest }, checkpoint: manifest ? { scaffoldManifest: manifest } : undefined };
         },
       },
       {
@@ -404,6 +410,7 @@ export class DataBuilderService {
             buildPlan: plan,
             closureReport,
             scaffoldReceipt,
+            scaffoldManifest: c["scaffoldManifest"] as ScaffoldManifestRecord | undefined,
             gapReport: selfCheckGaps(body.script.trim(), id, closureReport, scaffoldReceipt, plan?.solverNeeds.length ?? 0),
             gapAnalysis: c["gapAnalysis"] as GapAnalysis | undefined,
             answer: c["answer"] as string | undefined,
@@ -485,6 +492,38 @@ export class DataBuilderService {
 
   async listWorkflowRuns(ctx: AuthCtx): Promise<BuildWorkflowRun[]> {
     return (await this.repos.buildWorkflowRuns.list(ctx.tenantId)).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  /** A7：单条建域的 B 栈 scaffold 持久清单（单机可见；不依赖 AGENTCORE_BASE_URL）。 */
+  async getScaffoldManifest(ctx: AuthCtx, runId: string): Promise<ScaffoldManifestRecord> {
+    const run = await this.repos.storyBuildRuns.get(ctx.tenantId, runId);
+    if (!run) throw notFound("story build run");
+    if (!run.scaffoldManifest) throw notFound("scaffold manifest");
+    return run.scaffoldManifest;
+  }
+
+  /**
+   * A7.2：B 上线后**幂等对账**——对所有含 PENDING_BSTACK 的历史 run，按其 BuildPlan 重新下发 scaffold
+   * （幂等键 = tenant+runId+kind+key，AgentCore /b/v1/internal/scaffold 侧幂等 upsert）→ 状态升 SCAFFOLDED/REUSED，
+   * 写 reconciledAt + 发 scaffold.reconciled。未配 AGENTCORE_BASE_URL（scaffoldClient 未注入）→ 显式报错，不静默。
+   */
+  async reconcileScaffold(ctx: AuthCtx): Promise<{ reconciled: string[]; stillPending: string[] }> {
+    if (!this.scaffoldClient) throw invalidState("AGENTCORE_BASE_URL/SERVICE_TOKEN 未配置，无法对账 B 栈 scaffold");
+    const runs = (await this.repos.storyBuildRuns.list(ctx.tenantId)).filter((r) => r.scaffoldManifest?.pendingBstack);
+    const reconciled: string[] = [];
+    const stillPending: string[] = [];
+    for (const run of runs) {
+      const receipt = await this.crossSystemScaffold(ctx, run.id, run.buildPlan).catch(() => undefined);
+      const manifest = buildScaffoldManifestRecord(run.id, run.buildPlan, receipt);
+      if (!manifest) continue;
+      await this.repos.storyBuildRuns.put({ ...run, scaffoldReceipt: receipt ?? run.scaffoldReceipt, scaffoldManifest: manifest });
+      if (manifest.pendingBstack) stillPending.push(run.id);
+      else {
+        reconciled.push(run.id);
+        await this.outbox?.emit(ctx.tenantId, "scaffold.reconciled", { runId: run.id, items: manifest.items.length, fullChainOk: manifest.fullChainOk });
+      }
+    }
+    return { reconciled, stillPending };
   }
 
   async getWorkflowRun(ctx: AuthCtx, id: string): Promise<BuildWorkflowRun> {

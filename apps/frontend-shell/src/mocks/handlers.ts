@@ -138,6 +138,17 @@ const MOCK_GAP = {
   totals: { needed: 21, existing: 8, toCreate: 12, missing: 1 },
   generatedAt: new Date().toISOString(),
 };
+const MOCK_SCAFFOLD_MANIFEST = {
+  runId: "mock",
+  items: [
+    { module: "agent", key: "agt_affected_orders", status: "PENDING_BSTACK", definition: { systemPrompt: "针对 affected_orders 的推演分析 agent", tools: ["affected_orders"] } },
+    { module: "plan", key: "plan_affected_orders", status: "PENDING_BSTACK", definition: { steps: ["invoke_solver", "render"], solverKey: "affected_orders" } },
+    { module: "scene", key: "scene_affected_orders", status: "PENDING_BSTACK", definition: { targetView: "risk", mode: "WORKFLOW" } },
+  ],
+  fullChainOk: false,
+  pendingBstack: true,
+  recordedAt: new Date().toISOString(),
+};
 function mockWorkflowRun(script: string, seed: number, status: "SUCCEEDED" | "FAILED" = "SUCCEEDED") {
   const id = newId("bwf");
   const storyRunId = newId("sbr");
@@ -149,6 +160,10 @@ function mockWorkflowRun(script: string, seed: number, status: "SUCCEEDED" | "FA
     const skipped = d.stepKey === "inference"; // 演示 SKIPPED（未要求推演）
     if (d.stepKey === "gap_analysis") {
       return { ...d, status: "SUCCEEDED", attempts: 1, maxAttempts: 1, durationMs: 6, detail: "需 21 · 复用 8 · 新建 12 · 缺 1", checkpoint: { gapAnalysis: MOCK_GAP } };
+    }
+    if (d.stepKey === "cross_scaffold") {
+      // A7：单机态 B 栈 scaffold 清单（pending-bstack，看得到倒推出的 agent/plan/scene 定义）
+      return { ...d, status: "SUCCEEDED", attempts: 1, maxAttempts: 3, durationMs: 7, detail: "bOk=true · 单机可见(待B对账)", checkpoint: { scaffoldManifest: MOCK_SCAFFOLD_MANIFEST } };
     }
     return { ...d, status: skipped ? "SKIPPED" : "SUCCEEDED", attempts: 1, maxAttempts: d.stepKey === "cross_scaffold" ? 3 : 1, durationMs: 5 + (idSeq % 9), detail: d.stepKey === "record" ? `status=${status}` : undefined };
   });

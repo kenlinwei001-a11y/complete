@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
+import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
 import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph } from "@/api/endpoints";
@@ -535,6 +535,48 @@ function GapAnalysisTable({ gap }: { gap: GapAnalysis }) {
   );
 }
 
+const SCAFFOLD_STATUS_LABEL: Record<string, string> = { PENDING_BSTACK: "待 B 对账", SCAFFOLDED: "已生成", REUSED: "复用", MISSING: "断链" };
+const SCAFFOLD_STATUS_COLOR: Record<string, string> = {
+  PENDING_BSTACK: "var(--amber, #DD9551)",
+  SCAFFOLDED: "var(--c-capacity, #36BFA5)",
+  REUSED: "var(--c-capacity, #36BFA5)",
+  MISSING: "var(--danger, #E5484D)",
+};
+/**
+ * A7：B 栈 scaffold 持久清单（单机可见）。倒推出的 agent/plan/scene 等 B 栈制品**不依赖 AGENTCORE_BASE_URL**
+ * 即在 DataCore 侧可见——单机态标"待 B 对账（pending-bstack）"+ 制品定义可看（"看得到这个 agent 是什么"），
+ * 诚实区分"看得到"与"真生效"；B 上线 reconcile 后升 已生成/复用。
+ */
+function ScaffoldManifestTable({ manifest }: { manifest: ScaffoldManifestRecord }) {
+  return (
+    <div style={{ marginTop: 6 }} data-testid="wf-scaffold-manifest">
+      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+        B 栈 scaffold 清单（单机可见{manifest.pendingBstack ? " · 待 B 对账生效" : " · 已对账"}）：{manifest.items.length} 项
+        {manifest.pendingBstack && <span className="badge" style={{ marginLeft: 6, background: SCAFFOLD_STATUS_COLOR.PENDING_BSTACK, color: "#fff" }}>pending-bstack</span>}
+      </div>
+      <table style={{ fontSize: 11, borderCollapse: "collapse", width: "100%" }}>
+        <thead>
+          <tr style={{ textAlign: "left", color: "var(--muted, #888)" }}>
+            <th style={{ padding: "2px 8px 2px 0" }}>模块</th><th>制品</th><th>状态</th><th>定义</th>
+          </tr>
+        </thead>
+        <tbody>
+          {manifest.items.map((it) => (
+            <tr key={`${it.module}/${it.key}`} data-testid={`wf-scaffold-${it.module}`}>
+              <td style={{ padding: "2px 8px 2px 0" }}><code>{it.module}</code></td>
+              <td><code>{it.key}</code></td>
+              <td style={{ color: SCAFFOLD_STATUS_COLOR[it.status] }}>{SCAFFOLD_STATUS_LABEL[it.status] ?? it.status}</td>
+              <td className="muted" title={JSON.stringify(it.definition)} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {typeof it.definition.systemPrompt === "string" ? it.definition.systemPrompt : Object.keys(it.definition).join(", ")}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /**
  * 工业级工作流时间线（配套数据构建发动机 · PRD-build-workflow-runtime §1 目标4 可观测）：
  * 把"故事→建域"的持久化步骤状态机逐运行、逐步可视化——每步状态/尝试/计时/检查点/错误一目了然；
@@ -658,6 +700,9 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
                       )}
                       {s.stepKey === "gap_analysis" && s.checkpoint?.gapAnalysis ? (
                         <GapAnalysisTable gap={s.checkpoint.gapAnalysis as GapAnalysis} />
+                      ) : null}
+                      {s.stepKey === "cross_scaffold" && s.checkpoint?.scaffoldManifest ? (
+                        <ScaffoldManifestTable manifest={s.checkpoint.scaffoldManifest as ScaffoldManifestRecord} />
                       ) : null}
                     </div>
                   </li>

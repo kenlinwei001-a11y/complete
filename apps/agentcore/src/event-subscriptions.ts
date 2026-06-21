@@ -76,6 +76,9 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "storybuild.run_recorded", producer: "数据构建发动机·故事建域记录完成", tier: "IN_SESSION", invalidates: ["story-runs"] },
   // L15 A5 FDE 编排工作流：节点状态变更（comprehend/查能力/比差/生成/闭包/publish/进启动器）→ 实时点亮节点图
   { event: "fde.node_advanced", producer: "FDE 编排工作流·节点状态推进（A5 可观测节点图）", tier: "IN_SESSION", invalidates: ["fde-graph", "story-runs", "workflow-runs"] },
+  // L15 A7 B 栈 scaffold 单机可见：清单落 DataCore（不依赖 B 在线）+ B 上线幂等对账
+  { event: "scaffold.manifest_recorded", producer: "数据构建发动机·B 栈 scaffold 清单落库（A7 单机可见）", tier: "IN_SESSION", invalidates: ["scaffold-manifest", "story-runs", "workflow-runs"] },
+  { event: "scaffold.reconciled", producer: "数据构建发动机·B 栈 scaffold 上线对账（A7）", tier: "IN_SESSION", invalidates: ["scaffold-manifest", "story-runs"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

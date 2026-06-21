@@ -74,6 +74,38 @@ export const ScaffoldReceiptSchema = z.object({
 });
 export type ScaffoldReceipt = z.infer<typeof ScaffoldReceiptSchema>;
 
+// ---- A7 · ScaffoldManifest 持久记录（DataCore 侧单机可见 + B 上线对账）------------
+// g8-P3 的 B 栈产物原本只在 A→B 下发成功时存在于 AgentCore；单机/未配 AGENTCORE_BASE_URL 时「看不见」。
+// A7 把倒推的 B 栈需求**无条件**落 DataCore（挂 StoryBuildRun，doc store 无 migration）：每项带定义 + 状态
+// PENDING_BSTACK（看得到、待 B 对账生效）→ B 上线幂等对账升 SCAFFOLDED/REUSED。诚实区分「看得到」与「真生效」。
+
+export const SCAFFOLD_ITEM_STATUS = ["PENDING_BSTACK", "SCAFFOLDED", "REUSED", "MISSING"] as const;
+
+export const ScaffoldManifestItemSchema = z.object({
+  /** B 栈模块（= ScaffoldKind）。 */
+  module: ScaffoldKindSchema,
+  key: z.string(),
+  status: z.enum(SCAFFOLD_ITEM_STATUS),
+  /** 倒推出的制品定义（agent systemPrompt/tools、plan steps/args… 单机可看「这个 agent 是什么」）。 */
+  definition: z.record(z.string(), z.unknown()).default({}),
+  missingRefs: z.array(z.string()).optional(),
+});
+export type ScaffoldManifestItem = z.infer<typeof ScaffoldManifestItemSchema>;
+
+/** 持久的 scaffold 清单记录（挂 StoryBuildRun）：单机态全 PENDING_BSTACK；B 对账后升级。 */
+export const ScaffoldManifestRecordSchema = z.object({
+  runId: z.string(),
+  items: z.array(ScaffoldManifestItemSchema),
+  /** 全 SCAFFOLDED/REUSED = true（HARD）；含 PENDING_BSTACK/MISSING = false（SOFT，"看得到≠真生效"）。 */
+  fullChainOk: z.boolean(),
+  /** 含未对账项（单机/未配 B）= true：看得到但待 B 对账。 */
+  pendingBstack: z.boolean(),
+  /** B 上线对账完成时间（幂等对账后写）。 */
+  reconciledAt: z.string().optional(),
+  recordedAt: z.string(),
+});
+export type ScaffoldManifestRecord = z.infer<typeof ScaffoldManifestRecordSchema>;
+
 /** A→B 推送的 B 栈制品清单（g8 §3.4）：DataCore closure 阶段经 SERVICE_TOKEN 下发 AgentCore。 */
 export const ScaffoldManifestSchema = z.object({
   tenantId: z.string(),
@@ -232,6 +264,8 @@ export const StoryBuildRunSchema = z.object({
   closureReport: ClosureReportSchema.optional(),
   /** B 栈 scaffold 回执（P3）。 */
   scaffoldReceipt: ScaffoldReceiptSchema.optional(),
+  /** A7：B 栈 scaffold 持久清单（DataCore 侧单机可见 + B 上线对账状态；不依赖 AGENTCORE_BASE_URL）。 */
+  scaffoldManifest: ScaffoldManifestRecordSchema.optional(),
   /** 本次建域产出的连接器 id（源数据在连接器页可见，可下钻）。 */
   producedConnections: z.array(z.string()).default([]),
   /** 本次建域产出的 RawDataset id。 */

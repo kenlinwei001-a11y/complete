@@ -108,7 +108,15 @@
   前端 `DataBuilderPage <FdeGraph>`（8 节点横向 DAG，状态色 + 缺口码红标，配置化实时刷新轮询）+ MSW mock。
   测试：a5-fde-graph ×8（L0 投影：空/成功全 DONE/闭包断 FAILED+SKIPPED/步叠加/R6 · L1 真服务建域落 8 节点 + 端点 + 事件 + R2）·
   f58 前端 L3（8 节点 DAG + 失败节点缺口码）。gates 全绿（事件 35/35，含 fde.node_advanced）。回写本体 §2.H/§3/§4。
-- [ ] ⬜ **A7 · B 栈 scaffold 单机可见**（不配 AGENTCORE_BASE_URL 也能看到生成的 agent；DataCore 侧持久可见）。R8 R11。
+- [x] ✅ **A7 · B 栈 scaffold 单机可见**（不配 AGENTCORE_BASE_URL 也能看到生成的 agent；DataCore 侧持久可见）。R8 R11 R2。
+  契约 `storybuildrun.ts`：ScaffoldManifestItem/Record（SCAFFOLD_ITEM_STATUS：PENDING_BSTACK/SCAFFOLDED/REUSED/MISSING）+
+  `StoryBuildRun.scaffoldManifest`（挂 doc store 无 migration）。`databuilder/scaffold-manifest.ts buildScaffoldManifestRecord`
+  （展平 7 类 B 栈需求 + 定义，receipt 缺省=全 PENDING_BSTACK·SOFT，在线=按 (kind,key) 覆盖·HARD，R6）。
+  cross_scaffold 步**无条件**落清单 + 发 `scaffold.manifest_recorded`；record 落 StoryBuildRun.scaffoldManifest。
+  `GET /a/v1/databuilder/runs/:id/scaffold-manifest` + `POST …/reconcile-scaffold`（B 上线幂等对账→升级 + `scaffold.reconciled`；
+  未配 B 显式报错）。不在 DataCore 真建 B 栈真值（R8，真值归 AgentCore）。前端 `ScaffoldManifestTable`（cross_scaffold 下钻，
+  pending-bstack 标 + 定义可看）+ MSW mock。测试：a7-scaffold-manifest ×6（L0 投影/receipt 覆盖/空/R6 · L1 单机落库+浏览+事件+
+  reconcile 幂等）· f59 前端 L3。gates 全绿（事件 37/37）。回写本体 §2.H/§3/§4。
 - [ ] ⬜ **A10 · 终态闭环末步**（建域→R4 审批→publish→**自动重跑问句验证** "现在真能答了"）。R4 R11 R13。
 
 ## Wave 4 · 验证/扩展
@@ -153,9 +161,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **7 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5 ✅）。
-- **Wave 1 + Wave 2 全清**；**Wave 3 进行中**（A5 ✅ · 余 A7/A10）。
-- 下一步：**A7**（B 栈 scaffold 单机可见）→ **A10**（终态闭环自动重跑验证）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **8 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7 ✅）。
+- **Wave 1 + Wave 2 全清**；**Wave 3 进行中**（A5 ✅ · A7 ✅ · 余 A10）。
+- 下一步：**A10**（终态闭环末步：建域→R4 审批→publish→自动重跑问句验证"现在真能答了"）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。
