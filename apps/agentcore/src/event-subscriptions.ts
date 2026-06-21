@@ -81,6 +81,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "scaffold.reconciled", producer: "数据构建发动机·B 栈 scaffold 上线对账（A7）", tier: "IN_SESSION", invalidates: ["scaffold-manifest", "story-runs"] },
   // L15 A10 终态闭环：建域→publish→自动/手动重跑主问句验证"真能答了" → 回灌 FDE 节点图末节点 + 成长账本（runId 归一）
   { event: "build.verified", producer: "数据构建发动机·终态闭环验证（A10 publish 后重跑主问句）", tier: "IN_SESSION", invalidates: ["story-runs", "fde-graph", "growth-ledger"] },
+  // L15 prototype-intake 正门：上传原型 → 确定性抽数据/关系 → 对账预览（映射不上生成候选给人确认）
+  { event: "prototype.intake_recorded", producer: "原型 intake 正门·解析数据表+关系完成（schema 对账预览）", tier: "IN_SESSION", invalidates: ["intake-preview", "reconcile-queue"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

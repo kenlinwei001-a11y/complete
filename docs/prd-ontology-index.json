@@ -643,6 +643,26 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-prototype-intake-databuilder.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R15",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/entity-resolution.ts",
+        "apps/datacore/src/modeling.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-query-orchestration-service.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -812,6 +832,7 @@
       "PRD-maturity-master-plan.md",
       "PRD-ontology-browser-field-coverage.md",
       "PRD-platform-foundry-aip.md",
+      "PRD-prototype-intake-databuilder.md",
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
       "PRD-traceability-and-baseline-v2.md",
@@ -836,6 +857,7 @@
       "PRD-fullstack-story-build-g8.md",
       "PRD-live-traceable-data.md",
       "PRD-ontology-browser-field-coverage.md",
+      "PRD-prototype-intake-databuilder.md",
       "PRD-unified-build-engine.md"
     ],
     "G-2": [
@@ -929,7 +951,11 @@
       "PRD-ontology-browser-field-coverage.md"
     ],
     "apps/datacore/src/modeling.ts": [
-      "PRD-ontology-browser-field-coverage.md"
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-prototype-intake-databuilder.md"
+    ],
+    "apps/datacore/src/entity-resolution.ts": [
+      "PRD-prototype-intake-databuilder.md"
     ],
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
       "PRD-scenario-launcher.md"

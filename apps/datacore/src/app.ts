@@ -39,6 +39,8 @@ import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
+import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
+import { IntakeRequestSchema } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -2548,6 +2550,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     requireAdmin(c);
     return databuilder.verifyBuild(c, (req.params as { id: string }).id);
+  });
+  // prototype-intake 正门：上传原型 HTML → 确定性抽数据表 + 关系（R6）→ 对既有本体字段对账预览
+  // （能映射自动接、映射不上生成候选给人确认，类比 MergeCandidate；不调 LLM）。发 prototype.intake_recorded。
+  app.post("/a/v1/databuilder/intake", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(IntakeRequestSchema, req.body);
+    const intake = parsePrototypeHtml(body.html);
+    const existing: ExistingTypeField[] = (await ontology.listTypes(c)).flatMap((t) => t.properties.map((p) => ({ typeKey: t.key, propKey: p.propKey })));
+    const reconcile = reconcileIntake(intake.dataSources, existing);
+    await outbox.emit(c.tenantId, "prototype.intake_recorded", { datasets: intake.dataSources.length, links: intake.links.length, unparsed: intake.unparsed.length, candidates: reconcile.candidates.length });
+    return { intake, reconcile };
   });
   app.get("/a/v1/databuilder/workflow-runs", async (req) => {
     const c = ctx(req);
