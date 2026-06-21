@@ -88,3 +88,28 @@ solvers/rules/scenes/agents 全部真建出，跨系统 scaffold 全链 `fullCha
 - 🔴 **§8g MCP 暴露 selection_optimize**：引擎已封装为平台 API + datacore 求解器,但尚未注册成 MCP 工具
   （在 MCP 页可见/可治理）——下一增量。
 - 🔴 **sidecar 镜像 live `docker compose up`**：沙箱未实际构建镜像跑容器;ortools 真求解已在宿主 Python 证。
+
+---
+
+## A12 · 其余模块逐一 hand-run（第二轮 · 2026-06-21 真服务真请求）
+
+> 起真服务 datacore:4001 + agentcore:4002（SEED_DEMO=1，SERVICE_TOKEN + AGENTCORE_BASE_URL 配齐，跨系统在线），以 `X-Debug-User: demo:admin:admin` 真请求逐模块走端到端。**非单测**。首轮 🔴/◐ 多由 A5/A6/A10/A7/A1 修复，本轮复验。
+
+| 模块 | 体验验收项 | 实测（真服务真请求） | 证据/锚点 |
+|---|---|---|---|
+| **A12.1 连接器（+A11）** | 连接器归类可枚举（内置并集 + 本租户已用） | ✅ | `GET /a/v1/connector-categories` → `["CRM","ERP","EXTERNAL","FILE","KB"]` |
+| **A12.2 对象浏览（A4）** | 按域分组列已发布类型 + 真物化计数（非 mock） | ✅ **真实数据** | `GET /a/v1/ontology/object-types/stats` → 26 类型 / 11 域有物化；`Base.count=12`、`Equipment.count=72`（远超 mock Base=3，证真后端） |
+| **A12.2 业务域注册表** | 14 域配置驱动 | ✅ | `GET /a/v1/business-domains` → 14 域（factory/product/process/equip/people…） |
+| **A12.3 Agent / MCP（A1）** | `solvers` MCP server 跨服务暴露全部求解器为工具 | ✅ **跨服务** | `GET /b/v1/mcp/servers/solvers`（真 AgentCore→真 DataCore 注册表）→ `count=31`，全 `mcp__solvers__*` |
+| **A12.4 场景启动器（PUBLISHED 可见性）** | 默认（PUBLISHED）即可见场景卡 | ✅ **首轮 🔴 已闭合** | `GET /b/v1/scenarios` → **20 张 PUBLISHED 默认可见**（首轮"仅 includeDraft 可见"已修：出厂 SCENARIO_CATALOG 启动期 upsert 为 PUBLISHED） |
+| **A10 终态闭环（cross-service）** | publish 后自动重跑主问句、经**真 AgentCore QOS** 验证 | ✅ **跨服务活证据** | `POST /a/v1/databuilder/runs {inference:true}` → `status=SUCCEEDED` + `verification=VERIFIED/RUNTIME_PROBE`（onComplete 自动触发，probe 走真 agentcore growth/probe 实跑，非兜底 BUILD_STATIC） |
+
+### Verdict（第二轮，诚实）
+- 首轮记录的"启动器无卡/仅 includeDraft 可见"（G-3 末段）**本轮复验已闭合**：20 场景默认 PUBLISHED 可见。
+- A4 对象浏览跑真后端取到**真实物化计数**（Equipment=72），证"绿测试≠能用"的真服务体检通过，非 mock 假绿。
+- A10 终态闭环在**跨系统在线**下 evidence=RUNTIME_PROBE（真 QOS 实跑），非 BUILD_STATIC 兜底——publish→自动验证末步端到端真通。
+- 跨服务关键路径（solver invoke / `solvers` MCP 注册表 31 工具）已由 `xservice-smoke.test.ts` 固化为回归（守不回潮）。
+
+### 仍待后续（诚实留账）
+- ◐ Agent 页"配 Agent→真 LLM 调用出答案"未在本轮跑真 Kimi（A14 env-gated 真 Kimi parity 已建框架，待配 provider 实跑）。
+- ◐ 规则 BLOCK / 校准注入 / 权限行级过滤的体验级 hand-run 留作 A12 滚动下一批（单测已绿，体验级真请求待补）。

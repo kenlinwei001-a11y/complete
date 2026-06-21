@@ -29,6 +29,20 @@
     ]
   },
   "prds": {
+    "PRD-A9-external-engines-design-deferred.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-addendum-a8-timeseries.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -813,6 +827,9 @@
   },
   "orphanBreakpoints": [],
   "byArtifact": {
+    "apps/datacore/src/solvers/service.ts": [
+      "PRD-A9-external-engines-design-deferred.md"
+    ],
     "apps/datacore/migrations/023_build_workflow_runs.sql": [
       "PRD-build-workflow-runtime.md"
     ],

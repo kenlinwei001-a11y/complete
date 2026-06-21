@@ -134,8 +134,17 @@
   byCase 逐 case 偏差)。`evals.ts classifyFailKind`(首要失因) + `buildParity` + `seedParityCases`(从 20 场景派生 intent+工具序列
   PRD 期望，`POST /b/v1/evals/seed-parity`)。真 Kimi **env-gated**（R6 不进默认 CI），mock 证框架。前端 `EvalsPage` parity 失因列。
   测试：a14-parity ×3（classifyFailKind/run 产 parity 与 results 一致/seed-parity 20 场景幂等）· f43 +parity 列断言。gates 全绿。回写本体 §2.H/§7。
-- [ ] ⬜ **A12 · 其余模块逐一 hand-run 补全**（连接器/对象浏览/Agent 页/规则/校准…，系统化铺 hand-run 纪律）。FDE 纪律。
-- [ ] ⏸ **A9 · 外部引擎接入点设计（Datalog/图库/因果）— 仅设计延后**（不实现真依赖，守 R6 自包含；产设计 PRD 即算交付）。R6。
+- [x] ✅ **A12 · 其余模块逐一 hand-run 补全**（连接器/对象浏览/Agent 页/场景启动器…，系统化铺 hand-run 纪律）。FDE 纪律 · R10/R11/R13 实跑体检。
+  起真服务 datacore:4001 + agentcore:4002（SEED_DEMO + SERVICE_TOKEN + AGENTCORE_BASE_URL 跨系统在线），admin 真请求逐模块复验：
+  A12.1 连接器+A11（connector-categories ✅）· A12.2 对象浏览 A4（object-type-stats 26 类型真物化 Equipment=72，非 mock ✅）·
+  A12.3 Agent/MCP A1（/b/v1/mcp/servers/solvers 跨服务 31 工具 ✅）· A12.4 场景启动器（**20 PUBLISHED 默认可见，首轮 🔴 闭合** ✅）·
+  A10 终态闭环 cross-service（build {inference:true} → VERIFIED/**RUNTIME_PROBE** 真 QOS 实跑非兜底 ✅）。
+  回写 `docs/AUDIT-hand-run.md`（A12 第二轮小节：验收项×实测×证据×Verdict + 诚实留账：Agent 真 Kimi 调用/规则 BLOCK/权限行级 体验级待滚动下批）。
+  固化跨服务冒烟回归 xservice-smoke +1（对象类型跨服务可枚举，A4 数据路径守不回潮）。`pnpm -r test` 全绿。
+- [x] ✅ **A9 · 外部引擎接入点设计（Datalog/图库/因果）— 仅设计延后**（不实现真依赖，守 R6 自包含；产设计 PRD 即算交付）。R6。
+  设计 PRD 落 `docs/PRD-A9-external-engines-design-deferred.md`（含 §0 本体引用，过 prd:check 41 篇无悬空）：三引擎统一
+  CP-SAT sidecar 范式接入点契约（datalog_transitive/graph_query/causal_estimate）+ 取舍 + 触发条件 + **R6 红线**（因果非确定→
+  仅解释层不进真值写回）。**零代码改动**（裁决：按需延后；A3 BFS/派生 = Datalog 替代，A13 结构化归因 = 因果替代，多数场景无需 A9）。
 
 ## Wave 5 · CLI / intake
 
@@ -173,9 +182,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **10 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14 ✅）。
-- **Wave 1 + Wave 2 + Wave 3 全清**；**Wave 4 进行中**（A14 ✅ · 余 A12 模块 hand-run 补全 · A9 设计延后）。
-- 下一步：**A12**（其余模块逐一 hand-run 补全）→ **A9**（外部引擎接入点设计 PRD，仅设计）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **12 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14/A12/A9 ✅）。
+- **Wave 1–4 全清**（A14 ✅ · A12 ✅ · A9 ✅ 设计延后）。
+- 下一步：进 **Wave 5**（A15 CLI 通用操作外壳 / prototype-intake 原型 intake + schema 对账 HITL / A18 未审核态全栈闭环）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

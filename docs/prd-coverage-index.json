@@ -2,6 +2,16 @@
   "generatedAt": "2026-06-21",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
+    "PRD-A9-external-engines-design-deferred.md": {
+      "acceptanceIds": [
+        "A9"
+      ],
+      "covered": [],
+      "uncovered": [
+        "A9"
+      ],
+      "coverage": 0
+    },
     "PRD-addendum-admin-console-closure.md": {
       "acceptanceIds": [
         "A9",
