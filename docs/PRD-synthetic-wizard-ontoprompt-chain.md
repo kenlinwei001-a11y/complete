@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | v0.1 · 状态 DRAFT · 日期 2026-06-21 |
+| 版本 | v0.1 · 状态 **APPROVED（已评审通过 2026-06-21）** · 日期 2026-06-21 |
 | 取代/扩展 | 扩展 `PRD-frontend.md` §7.7 合成数据向导 · `PRD-ontology-browser-field-coverage.md`（借鉴 nano-ontoprompt 的同源）· 关联 `PRD-cockpit-capacity-1to1-parity.md` §A（原型 intake 正门 / schema 对账 HITL） |
 | 先读 | 根 `CLAUDE.md` · `docs/SYSTEM-ONTOLOGY.md`（§3 数据→本体链 / §5 R12 / §10.3 切片 `sys.ingest.data_to_object`） · 现有 `SyntheticPage.tsx` · `apps/datacore/src/modeling.ts` |
 | 参考软件 | [`jingw2/nano-ontoprompt`](https://github.com/jingw2/nano-ontoprompt)（半自动·基于数据的本体建模；**精髓 = 数据分阶段集成链 Data→Raw→Transform→Curated→Ontology Mapping + 每阶段人在环策展 + 基数推断**） |

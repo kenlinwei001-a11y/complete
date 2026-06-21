@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | v0.3 · 状态 DRAFT · 日期 2026-06-21 |
+| 版本 | v0.3 · 状态 **APPROVED（已评审通过 2026-06-21）** · 日期 2026-06-21 |
 | 取代/扩展 | 扩展 `PRD-frontend.md` · `PRD-live-traceable-data.md` · `REFERENCE-HTML-INVENTORY.md`（参考原型盘点） · `PRD-fullstack-story-build-g8.md`（数据构建发动机） |
 | 先读 | 根 `CLAUDE.md` · `docs/SYSTEM-ONTOLOGY.md` · `REFERENCE-HTML-INVENTORY.md` · `PRD-frontend.md` · `PRD-fullstack-story-build-g8.md` |
 | 参考源 | `docs/reference-prototype-decision-platform.html`（5436 行单文件原型，**与本次上传 HTML 字节一致**） |
