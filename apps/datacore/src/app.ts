@@ -38,6 +38,7 @@ import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governanc
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
+import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -1832,6 +1833,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const out = await ontologyCore.executeSlice(c, spec.spec, body.args);
       return { data: { nodes: out.nodes, edges: out.edges, truncated: out.truncated }, snapshotVersion: out.snapshotVersion };
     }
+  });
+  // A13 地板语义确定化：通用图求解器的字段角色确定性解析（结构信号 + 配置词库，去 LLM）+ 候选/置信度。
+  app.get("/a/v1/solvers/:solverKey/field-roles", async (req) => {
+    const c = ctx(req);
+    const { solverKey } = req.params as { solverKey: string };
+    const types = (await ontology.listTypes(c)).map((t) => ({
+      typeKey: t.key,
+      properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType, isPrimaryKey: p.isPrimaryKey, refToTypeKey: p.refToTypeKey ?? null })),
+    }));
+    return resolveFieldRoles(types, solverKey);
   });
   app.post("/a/v1/solvers/:solverKey/invoke", async (req) => {
     const { solverKey } = req.params as { solverKey: string };

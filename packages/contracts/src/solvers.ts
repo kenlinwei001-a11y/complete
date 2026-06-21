@@ -181,3 +181,20 @@ export type PlanVersionCurrent = z.infer<typeof PlanVersionCurrentSchema>;
 /** 场景包 solverParams（全部常数配置化；battery 默认值见 PRD 增量 §S1） */
 export const SolverParamsSchema = z.record(z.string(), z.unknown());
 export type SolverParams = z.infer<typeof SolverParamsSchema>;
+
+// A13 通用图求解器地板语义确定化：字段角色解析结果（确定性 + 候选 + 置信度，去 LLM）。
+export const RoleCandidateSchema = z.object({
+  value: z.string(),
+  score: z.number(),
+  signals: z.array(z.string()),
+});
+export type RoleCandidate = z.infer<typeof RoleCandidateSchema>;
+
+export const FieldRoleResolutionSchema = z.object({
+  solverKey: z.string(),
+  roles: z.record(z.string(), z.string()),
+  candidates: z.record(z.string(), z.array(RoleCandidateSchema)),
+  confidence: z.number(),
+  ambiguous: z.boolean(),
+});
+export type FieldRoleResolution = z.infer<typeof FieldRoleResolutionSchema>;

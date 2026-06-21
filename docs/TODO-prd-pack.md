@@ -67,7 +67,12 @@
 
 - [ ] ⬜ **A1 · 28 求解器暴露为 MCP 工具**（MCP 页可治理 + agent 经 mcp-router 可调，OBO 代理到 /a/v1/solvers）。R3 R5 R8 R11。
 - [ ] ⬜ **A8 · 扩 CP-SAT 模型**：assignment（订单→基地/产线）/ sequencing（换型排序）/ packing（产能装箱）。R6。
-- [ ] ⬜ **A13 · 通用图求解器地板语义确定化**（concentration_risk/supplier_disruption_radius 去 Kimi，root/via/优先级/叶层确定性消歧）。R6。
+- [x] ✅ **A13 · 通用图求解器地板语义确定化**（concentration_risk/supplier_disruption_radius 去 Kimi）。R6。
+  `solvers/field-roles.ts resolveFieldRoles`：纯函数 + 结构信号(扇入/扇出/PK/数值) + 配置词库(`field-role-lexicon.ts` R14)
+  + 固定 tie-break → root/sink/resource/priority(地板)/leaf 角色解析，**去 LLM 消歧(R6 字节一致)**；真歧义返回确定性排序候选
+  + 置信度 + ambiguous(取 top1 默认/喂 A5 比差/A4 让人选,绝不调 Kimi)。覆盖 4 个通用图求解器(supplier_disruption_radius
+  断供根=被 ref 终端汇点)。契约 FieldRoleResolutionSchema + `GET /a/v1/solvers/:key/field-roles` + 门 `floor-semantics:check`。
+  测试 a13-field-roles ×6(断供根/R6 字节一致/真歧义候选/shared_bottleneck 角色/覆盖集/端点)。solver-args 未改(byte-compat)。回写本体 §2.E。
 - [x] ✅ **A4 · 对象/类型浏览器管理页**（按 14 域分组列已发布类型 + 物化计数 + 下钻实例）。R2 R3 R14。
   后端 `GET /a/v1/ontology/object-types/stats`(每类型 {域(归 14 域注册表)/属性数/派生数/PK/物化 count} 一次算)。
   前端 `ObjectTypesBrowserPage` `/admin/object-types`(adminRegistry+nav)：14 域分组 + 物化计数徽章 + 域/关键词/
@@ -115,8 +120,8 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**22 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性）。完成 **3 ✅ + 1 ◐ / 22**（A11/A6/A4 ✅；A3 核心闭合仅余参考基线）。
-- Wave 1 全清；Wave 2 起步：✅ A4（对象浏览器，消费 A3 域）。余 Wave 2：A1 求解器→MCP / A8 CP-SAT / A13 地板语义。
+- 合计：**22 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性）。完成 **4 ✅ + 1 ◐ / 22**（A11/A6/A4/A13 ✅；A3 核心闭合仅余参考基线）。
+- Wave 1 全清；Wave 2 进行中：✅ A4（对象浏览器）· ✅ A13（地板语义去 Kimi）。余 Wave 2：A1 求解器→MCP / A8 CP-SAT。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。
