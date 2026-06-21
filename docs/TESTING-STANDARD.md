@@ -65,7 +65,7 @@ L6 R6 确定性：[✅/N/A]   L7 R2 隔离：[✅/N/A]   L8 VLE：[✅/N/A]
 - 数据量（真实，纠正 CLAUDE.md 过期的 69/66/25+）：**datacore 505 · agentcore 265(+1 skip) · frontend 183 · contracts 3 · llm-adapters 10 · optimizer(Python) 14**。
 - 强的地方：L1 后端 inject 覆盖广；L0/L6/L7 在新功能上到位；L5 CP-SAT 真 ortools 跑通；门齐全。
 - **已知缺口（= DEBT-ledger，必须排期）**：
-  - **A16/L4**：前端**无真浏览器自动化 E2E**、**无打真后端**模式（只 jsdom+MSW + 手动 mock 截图）。
+  - **A16/L4**：前端组件仍 jsdom+MSW；**真浏览器打真后端 E2E 已固化** `scripts/e2e-realbackend.mjs`（实跑 4/4 通过：登录/A4 真计数/A11 归类/工作流+比对现状），但**未进 CI**（需下载 Chromium + 起双后端，重）——待用户拍板进 CI 还是本地/夜间。
   - **A8/L2**：CP-SAT 代理(L1 mock) 与真 Python(L5) **未端到端连**（缺跨服务冒烟）。
   - **A15/L9**：新工作流/provisioner/规划器/异步执行**无规模压测**。
   - pg 仓储仅靠 R9 双实现约定，未逐功能 L1 跑 pg 路径。
