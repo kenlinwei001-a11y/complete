@@ -2,12 +2,13 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | v0.2 · 状态 DRAFT · 日期 2026-06-21 |
+| 版本 | v0.3 · 状态 DRAFT · 日期 2026-06-21 |
 | 取代/扩展 | 扩展 `PRD-frontend.md` · `PRD-live-traceable-data.md` · `REFERENCE-HTML-INVENTORY.md`（参考原型盘点） · `PRD-fullstack-story-build-g8.md`（数据构建发动机） |
 | 先读 | 根 `CLAUDE.md` · `docs/SYSTEM-ONTOLOGY.md` · `REFERENCE-HTML-INVENTORY.md` · `PRD-frontend.md` · `PRD-fullstack-story-build-g8.md` |
 | 参考源 | `docs/reference-prototype-decision-platform.html`（5436 行单文件原型，**与本次上传 HTML 字节一致**） |
 
 > **v0.2 变更**（评审问答沉淀）：① 新增 §3.0 复刻方法论（写死数据三个去处 + 三步法 + ORDERS 端到端样例）；② 新增 §-1 通用前置能力「原型 intake → 数据构建发动机正门」（可分拆独立 PRD）；③ §3.2 澄清「DAG 由求解器装配、`RootCauseChain` 仅存模板、**不做前端/每场景预设 DAG 配置**」；④ 新增绿地求解器 `counterfactual_timeline`（反事实双轨推演：「如不解决 XX，未来 30 天会怎样」do-nothing vs 处置后 双曲线 + 差值）。
+> **v0.3 变更**：新增 **附录 B · 通用化验证（手机产销匹配端到端 + G-5 解耦清单）**——用一个非电池行业把"通用合成路"从建模到推演走通，作为 §A intake 正门与 G-5 去电池锁死的验收剧本与解耦施工单（带 `service.ts` 门控锚点）。
 
 > 目标：把参考原型的 **「经营驾驶舱」** 与 **「产能推演（预判推演看板 + 型号/订单推演）」** 两个模块 **1:1 复刻**进真系统（当前最完整分支 `wizardly-gauss`，含 vigilant-knuth 同名两视图 + 全套数据管线）。
 > **铁律**：所有数字必须经系统数据管线产生（合成 GenSpec → RawDataset → 物化 ObjectInstance → 派生 DerivedProperty / 时序 TsAgg → 求解器 → 声明式 widget 渲染），**前端/后端皆不写死业务数据**（R14 `debattery:check` 基线 0）。每个结论数字带溯源（R13）。
@@ -215,3 +216,43 @@
 
 ## 9. 本体引用与影响（机器索引锚，供 prd:check）
 触及不变量：R2 R6 R10 R11 R12 R13 R14 · 触及断点：G-5（守护不回潮）+ G-8（intake 正门补全）+ riskCases 真闭环 · 新事件：forecast.snapshot_recorded · 新对象类型：DemandSegment SopVersionRow MaterialBalance FinancePlan PlanKpi RootCauseChain SchemaReconcileCandidate(§A) · 新求解器：order_fullchain plan_rootcause counterfactual_timeline。
+
+---
+
+## 附录 B · 通用化验证：手机产销匹配端到端 + G-5 解耦清单
+
+> 目的：用一个**非电池**行业（手机·产销匹配）把"通用合成路"从建模走到推演，作为 §A intake 正门 + **G-5 去电池锁死**的**验收剧本**与**解耦施工单**。本附录只描述验证设计，不含实现。
+> 现状判定（已核实）：`BUILTIN_INDUSTRY_TEMPLATES=[BATTERY_TEMPLATE]`（`builtin-templates.ts:12`，内置仅电池）；非电池行业走 `instantiateGeneric`（`service.ts:771`，通用 GenSpec 引擎，`mulberry32(seed^hash(industryKey))` 确定性 R6）；新行业模板经 `resolveTemplate`（`service.ts:115`）库查→否则 LLM `template_gen` 生成存库。`ontoprompt` = `jingw2/nano-ontoprompt`，已融入确定性建模管线 `modeling.ts:76 deriveModelingSuggestion`（dataset→ObjectType / column→PropertyDef / FK→link / PK 推断，R12 100% 覆盖）。
+
+### B.1 端到端验证剧本（按 §A 通用路，逐步带验证门）
+
+| 步 | 动作 | 期望产物 | 验证门 |
+|---|---|---|---|
+| 1 | 数据驱动建模（nano-ontoprompt 路）：上传手机 CSV（PhoneModel/ProductionOrder/SalesOrder/AssemblyLine/KeyComponent/BomItem/InventoryLot）→ `POST /a/v1/modeling/derive` | ObjectType×7 + PropertyDef + FK→LinkType + PK（唯一率最高字段） | `field-coverage` 100%（R12，构造上每列→属性） |
+| 2 | 发布本体（经 `domainExecutor` 审批，R4） | OntologyVersion + `ontology.published` 事件 | validate（DAG/类型/render） |
+| 3 | 合成作业 `industry=phone-manufacturing, scale=M, seed=42` → `instantiateGeneric` | Connection+RawDataset（可溯）+ ObjectInstance + Link + Derived(`supplyP50/demandP50/gap`) | 同 seed 重跑**字节一致**（R6）；`materialize.completed` 事件 |
+| 4 | 规则注册（模板 `rules` 或 derive 后人工补）P01 ATP/P02 齐套冻结 | Rule scoped to PhoneModel/InventoryLot | 规则可解析/可评估 |
+| 5 | 通用图求解器答产销匹配问句 | 产销缺口 / 产线瓶颈 / 关键料单点 | 非空答 + 可溯源（R13），过 `chain:check`（求解器注册） |
+
+**预期输出样例（M 档，seed=42）**：12 PhoneModel / 240 SalesOrder / ~200 ProductionOrder / 8 AssemblyLine / KeyComponent / BomItem / InventoryLot；**产销缺口表**（每 SKU：demandP50=`SUM(SalesOrder.qty)` / supplyP50=`SUM(ProductionOrder.qty)` / gap）；`shared_bottleneck` 给瓶颈线（ProductionOrder 按 `line` 分组，需求>产能）；`concentration_risk` 给关键料隐性单点（SKU→BomItem→KeyComponent→supplier 反向聚合）；`margin_attribution` 给毛利倒挂根因。**这 6 个通用求解器走对象图、行业无关，手机产销匹配直接可用。**
+
+### B.2 G-5 解耦施工单（battery 门控 → 模板可声明的通用能力）
+
+> 每行 = 当前被 `input.industry === "battery-manufacturing"` 锁死的能力 + 通用化做法。这是"让手机/任意行业走通用路也能拿到富数据"的清单，与 `PRD-de-battery-multitenant-config.md` 对齐。
+
+| 能力 | 当前 battery 门（锚点） | 通用化做法 | 价值 |
+|---|---|---|---|
+| 富生成（戏剧点/深派生） | `service.ts:172` → `instantiateBattery` | 模板加 `conflictScript`（断供/瓶颈/越线注入规约），通用引擎消费 | 高（无冲突=数据"平"，推演无看点） |
+| 时序生成 | `service.ts:181`（ts 仅 battery） | `template.tsGenerators`（契约 `TsGeneratorSchema` 已在）通用执行 | 高（"未来30天"前向推演靠它） |
+| 规则 scope | `service.ts:199` `BATTERY_RULE_SCOPES` 兜底 `["Order"]` | 模板 `rules[].scopeObjectTypes` 自带 | 中 |
+| 计划视图额外项 | `service.ts:211` `PLANVIEW_EXTRA_KEYS`（battery only） | 模板 `scenarioSeed.views` 全量声明 | 中 |
+| 场景包命名 | `service.ts:219` | **已通用**（`${industry} 场景包`）✓ | — |
+| 一年 livedIn 回放 | `service.ts:242` `livedInRunner`（battery only）；案例 `CASE_SPECS` 种子 | livedIn 引擎泛化 + `CASE_SPECS` 模板化（与本 PRD P4 riskCases 真闭环同源） | 高（运营态历史） |
+| 行业专属求解器 | `solvers/*`（产能金字塔/风险曲线为电池域） | 模板 `solverParams` 驱动 + 优先复用 6 个通用图求解器 | 高 |
+
+### B.3 验收（通用路真闭环 DoD）
+- 手机 `phone-manufacturing` 走通 B.1 第 1–5 步全绿；`field-coverage` 100% + R6 字节一致 + 通用求解器非空答可溯（R13）。
+- `debattery:check` 不新增 battery 业务常数（通用化不得把手机常数再写死）。
+- 回写本体 §8 G-5 量化进度（按 B.2 逐项标闭合）+ §10.3 新增通用路切片 `sys.ingest.industry_to_scenario`（IndustryTemplate→合成→对象→规则→场景包→通用求解器）。
+
+> 结论：**通用路今天已能产出"结构正确、可溯源、可被 6 个通用求解器推演"的手机产销匹配数据**；要达到电池那种"富、有戏剧点、有时序、有运营态"的体验，需按 B.2 把 battery 门控逐项升级为模板可声明能力——这与你要的"上传 HTML→真闭环复刻"是同一条解耦主线（§A）。
