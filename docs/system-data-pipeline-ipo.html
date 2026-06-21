@@ -37,6 +37,12 @@
   .sw{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
   .note{font-size:12px;color:#8a98ac;margin-top:10px}
   @media(max-width:1200px){.grid{grid-template-columns:repeat(9,200px)}.xcut{grid-template-columns:repeat(2,1fr)}}
+  .fc{display:flex;align-items:center;overflow-x:auto;margin:14px 0 20px;padding:10px;background:#fff;border:1px solid #d5dbe4;border-radius:12px}
+  .fc .fn{flex:0 0 auto;min-width:84px;background:#0d3b66;color:#fff;border-radius:10px;padding:12px 10px;text-align:center;font-size:13.5px;font-weight:700}
+  .fc .fe{flex:0 0 auto;min-width:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 2px}
+  .fc .fe .fl{font-size:10.5px;color:#0d3b66;white-space:nowrap;margin-bottom:4px;font-weight:600}
+  .fc .fe .fa{width:100%;height:2px;background:#0d3b66;position:relative}
+  .fc .fe .fa::after{content:"";position:absolute;right:-1px;top:-4px;border-left:9px solid #0d3b66;border-top:5px solid transparent;border-bottom:5px solid transparent}
 </style>
 </head>
 <body>
@@ -44,8 +50,24 @@
   <h1>å¨åæ°å­åæºè½å³ç­å¹³å° Â· æ°æ®æµè½¬ IPO å¨æ¯</h1>
   <div class="sub">ä¾æ® docs/SYSTEM-ONTOLOGY.mdï¼Â§2 æ¨¡å Â· Â§3 é¾è·¯ Â· Â§4 äºä»¶ï¼ãæ¯å¼ å¡ç = ä¸ä¸ªæ¨¡åç è¾å¥(I)/è¿ç¨(P)/è¾åº(O)ã</div>
 
-  <div class="spine">
-    <span>åå§æ°æ®é</span><span class="ar">â</span><span>æ¬ä½ç±»å/è§å</span><span class="ar">â</span><span>å¯¹è±¡+é¾è·¯</span><span class="ar">â</span><span>æ´¾ç/åç/æ¶åº</span><span class="ar">â</span><span>æ±è§£ç»æ/è£å³</span><span class="ar">â</span><span>çå¼åå</span><span class="ar">â</span><span>ç­æ¡å(OBO)</span><span class="ar">â</span><span>SSEâè§å¾</span>
+  <div class="fc">
+    <div class="fn">① 数据源</div>
+    <div class="fe"><div class="fl">源/上传/故事</div><div class="fa"></div></div>
+    <div class="fn">② 接入</div>
+    <div class="fe"><div class="fl">原始数据集</div><div class="fa"></div></div>
+    <div class="fn">③ 建模</div>
+    <div class="fe"><div class="fl">本体类型/规则</div><div class="fa"></div></div>
+    <div class="fn">④ 对象化</div>
+    <div class="fe"><div class="fl">对象+链路</div><div class="fa"></div></div>
+    <div class="fn">⑤ 加工</div>
+    <div class="fe"><div class="fl">派生/切片/时序</div><div class="fa"></div></div>
+    <div class="fn">⑥ 推演</div>
+    <div class="fe"><div class="fl">求解结果/裁决</div><div class="fa"></div></div>
+    <div class="fn">⑦ 行动</div>
+    <div class="fe"><div class="fl">真值写回</div><div class="fa"></div></div>
+    <div class="fn">⑧ 编排</div>
+    <div class="fe"><div class="fl">答案块/SSE</div><div class="fa"></div></div>
+    <div class="fn">⑨ 呈现</div>
   </div>
 
   <div class="grid">
