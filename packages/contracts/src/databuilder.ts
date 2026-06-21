@@ -354,6 +354,8 @@ export const BuildWorkflowStartBodySchema = z.object({
   seed: z.number().int().optional(),
   inference: z.boolean().optional(),
   builderKey: z.string().optional(),
+  /** 异步执行：提交即返回初始 RUNNING 快照（202），引擎后台脱离请求驱动，客户端轮询 GET 观察进度。 */
+  async: z.boolean().optional(),
 });
 export type BuildWorkflowStartBody = z.infer<typeof BuildWorkflowStartBodySchema>;
 

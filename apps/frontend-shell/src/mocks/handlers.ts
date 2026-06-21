@@ -155,6 +155,13 @@ function mockWorkflowRun(script: string, seed: number, status: "SUCCEEDED" | "FA
   return { id, tenantId: "demo", kind: "story_build", script, scriptHash: "mockhash", seed, inference: false, status, steps, context: {}, storyRunId: status === "SUCCEEDED" ? storyRunId : undefined, resumedCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as { id: string; status: string; steps: { stepKey: string; status: string }[]; [k: string]: unknown };
 }
 const MOCK_WORKFLOW_RUNS: ReturnType<typeof mockWorkflowRun>[] = [];
+/** 推进一个异步 RUNNING 运行一步（模拟后台脱离驱动；轮询即见逐步实时跳动）。 */
+function advanceMockWorkflow(wf: { status: string; steps: { stepKey: string; status: string; durationMs?: number }[]; storyRunId?: string }) {
+  if (wf.status !== "RUNNING") return;
+  const next = wf.steps.find((s) => s.status === "PENDING");
+  if (next) { next.status = next.stepKey === "inference" ? "SKIPPED" : "SUCCEEDED"; next.durationMs = 6; }
+  if (!wf.steps.some((s) => s.status === "PENDING")) { wf.status = "SUCCEEDED"; wf.storyRunId = wf.storyRunId ?? newId("sbr"); }
+}
 /** 全栈 BuildPlan mock（区2 故事理解分组卡片渲染源）：故事倒推出的全栈制品，命名条目供前端结构化展示。 */
 function mockBuildPlan(planId: string) {
   return {
@@ -1839,18 +1846,37 @@ export const handlers = [
     return r ? HttpResponse.json(r) : new HttpResponse(null, { status: 404 });
   }),
   // 工业级工作流运行时：持久化步骤状态机（检查点/可重入/可重试/可观测）
-  http.get("*/a/v1/databuilder/workflow-runs", () => HttpResponse.json([...MOCK_WORKFLOW_RUNS].reverse())),
+  http.get("*/a/v1/databuilder/workflow-runs", () => {
+    for (const wf of MOCK_WORKFLOW_RUNS) advanceMockWorkflow(wf); // 轮询列表即推进后台异步运行（逐步实时跳动）
+    return HttpResponse.json([...MOCK_WORKFLOW_RUNS].reverse());
+  }),
   http.get("*/a/v1/databuilder/workflow-runs/:id", ({ params }) => {
     const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
-    return wf ? HttpResponse.json(wf) : new HttpResponse(null, { status: 404 });
+    if (!wf) return new HttpResponse(null, { status: 404 });
+    advanceMockWorkflow(wf);
+    return HttpResponse.json(wf);
   }),
   http.post("*/a/v1/databuilder/workflow-runs", async ({ request }) => {
-    const body = (await request.json()) as { script?: string; seed?: number };
-    // 第一条 mock 故意失败（演示断点 + resume 入口）；其余成功
+    const body = (await request.json()) as { script?: string; seed?: number; async?: boolean };
+    if (body.async) {
+      // 异步：返回初始 RUNNING 快照（全 PENDING），后续 GET 逐步推进。
+      const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, "SUCCEEDED");
+      for (const s of wf.steps) s.status = "PENDING";
+      wf.status = "RUNNING";
+      wf.storyRunId = undefined;
+      MOCK_WORKFLOW_RUNS.push(wf);
+      return HttpResponse.json(wf, { status: 202 });
+    }
+    // 同步：第一条 mock 故意失败（演示断点 + resume 入口）；其余成功
     const status = MOCK_WORKFLOW_RUNS.length === 0 ? "FAILED" : "SUCCEEDED";
     const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, status as "SUCCEEDED" | "FAILED");
     MOCK_WORKFLOW_RUNS.push(wf);
     return HttpResponse.json(wf, { status: status === "FAILED" ? 200 : 201 });
+  }),
+  http.post("*/a/v1/databuilder/workflow-runs/recover", () => {
+    const recovered: string[] = [];
+    for (const wf of MOCK_WORKFLOW_RUNS) if (wf.status === "RUNNING") { for (const s of wf.steps) if (s.status === "PENDING") s.status = "SUCCEEDED"; wf.status = "SUCCEEDED"; recovered.push(wf.id as string); }
+    return HttpResponse.json({ recovered });
   }),
   http.post("*/a/v1/databuilder/workflow-runs/:id/resume", ({ params }) => {
     const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);

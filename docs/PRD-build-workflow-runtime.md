@@ -44,8 +44,11 @@
 
 7. **比对现状（gap_analysis）一等步 + ModuleProvisioner 注册表**：把"倒序"管线 query→倒推 BuildPlan→**比对系统现状**→创建 的接缝做成可见的一等步——倒推的每类配套模块对照系统现状产出 `EXISTS(复用)/TO_CREATE(需新建)/MISSING(不能自动建→工单)` 的跨模块统一 diff。**模块全集 = BuildPlan 13 个 need 数组**，一一对应 13 个 provisioner（内容类 dataset/kb_doc · 结构类 ontology_type/rule/slice · 代码类 solver · 跨系统类 intent/plan/workflow/skill/agent/scene/mcp）。**无遗漏 + 未来强制纳入**：覆盖门断言 BuildPlan 每个根级数组字段都已登记并注册 provisioner，新增模块未注册即测试红。合成数据模块 = `DatasetProvisioner` 的创建后端（是某 provisioner 的后端实现，非并列制品）。
 
+8. **异步执行（submit-and-detach）+ 启动恢复 + 配置化实时跳动**：`async:true` 提交即返回初始 RUNNING 快照（202），引擎后台脱离请求驱动、逐步落库；客户端轮询 GET 观察进度。进程死亡留 RUNNING → `POST …/recover` 启动恢复（孤儿逐个 resume，幂等）。前端配置化实时刷新（`wf-live` 0.5s–5s + 有 RUNNING 自动兜底轮询）→ 逐步实时跳动（此前押后项，随异步执行落地）。
+
 ### 1.2 非目标
 - 不做通用工作流编排引擎/可视化 DAG 编辑器（步骤序由代码定义，非用户编排）。
+- 不引入外部消息队列/分布式 worker（异步=同进程 `setImmediate` 脱离请求；跨进程作业队列是后续，按需）。
 - 不复用 AgentCore B2 Workflow（FDE 在 DataCore，复用 B 会反转 A→B 松耦合）。
 - 不改 g8 的倒推/闭包/scaffold 语义。
 - ~~前端工作流时间线视图本期未做~~ **已落**（`DataBuilderPage WorkflowTimelinePanel`，见 §2/§3 AC9）。
@@ -74,3 +77,4 @@
 - **AC8 无回归**：datacore 全套（449）绿；`pnpm gates` 全通过。✓。
 - **AC9 前端时间线**：`/admin/data-builder` 工作流面板逐运行/逐步可观测（状态/尝试/计时/结构化错误）；失败运行一键 resume → 断点消失、运行收敛。✓ F55。
 - **AC10 比对现状无遗漏**：`gap_analysis` 步产出跨模块统一 diff（需要/复用/新建/缺）；13 个 provisioner 覆盖 BuildPlan 全部根级 need 数组，新增模块未注册即测试红；前端 `GapAnalysisTable` 渲染（含"缺"标红）。✓ provisioners.test + F55。
+- **AC11 异步执行 + 恢复 + 实时跳动**：`async:true` → 202 + 初始 RUNNING，后台驱动至终态（轮询 GET 观察）；`detached` 引擎不致进程崩溃；`recover` 把 RUNNING 孤儿续跑至终态；前端 `wf-live` 配置频率轮询使异步运行逐步实时跳动。✓ build-workflow-engine.test（detached/async/recover）+ F55（异步实时刷新）。

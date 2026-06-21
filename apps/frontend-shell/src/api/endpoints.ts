@@ -737,7 +737,7 @@ export const submitStoryInputs = (id: string, inputs: Record<string, string | nu
 // 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）
 export const fetchWorkflowRuns = () => api.a<BuildWorkflowRun[]>("/a/v1/databuilder/workflow-runs");
 export const fetchWorkflowRun = (id: string) => api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}`);
-export const startWorkflowRun = (body: { script: string; seed?: number; inference?: boolean }) =>
+export const startWorkflowRun = (body: { script: string; seed?: number; inference?: boolean; async?: boolean }) =>
   api.a<BuildWorkflowRun>("/a/v1/databuilder/workflow-runs", { method: "POST", body });
 export const resumeWorkflowRun = (id: string) =>
   api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}/resume`, { method: "POST" });

@@ -124,6 +124,29 @@ describe("数据构建工作流引擎 · 工业级保证（持久化/可重入/�
     await expect(engine.resume("tenantB", "bwf_iso", [])).rejects.toThrow();
   });
 
+  it("detached：start 立即返回 RUNNING 初始快照，后台脱离驱动至 SUCCEEDED（轮询观察）", async () => {
+    const { engine, store, init } = harness();
+    const calls: string[] = [];
+    const steps: WorkflowStepDef[] = [
+      { stepKey: "a", title: "A", run: async () => { calls.push("a"); return {}; } },
+      { stepKey: "b", title: "B", run: async () => { calls.push("b"); return {}; } },
+    ];
+    const initial = await engine.start(init("bwf_async"), steps, { detached: true });
+    expect(initial.status).toBe("RUNNING"); // 立即返回初始快照
+    expect(initial.steps.every((s) => s.status === "PENDING")).toBe(true);
+    expect(calls).toEqual([]); // 后台尚未跑（setImmediate）
+    // 轮询落库的真相源直到终态
+    let final = initial;
+    for (let i = 0; i < 50; i++) {
+      const r = await store.get("demo", "bwf_async");
+      if (r && r.status !== "RUNNING") { final = r; break; }
+      await new Promise((res) => setTimeout(res, 5));
+    }
+    expect(final.status).toBe("SUCCEEDED");
+    expect(final.steps.map((s) => s.status)).toEqual(["SUCCEEDED", "SUCCEEDED"]);
+    expect(calls).toEqual(["a", "b"]);
+  });
+
   it("跳过步：业务条件不满足返回 skip → 标 SKIPPED（非错误），run 仍 SUCCEEDED", async () => {
     const { engine, init } = harness();
     const steps: WorkflowStepDef[] = [
@@ -173,6 +196,40 @@ describe("数据构建工作流 · HTTP 端到端（真服务 · 故事建域经
     expect(list.some((w) => w.id === start.id)).toBe(true);
     const resumed = (await t.app.inject({ method: "POST", url: `/a/v1/databuilder/workflow-runs/${start.id}/resume`, headers: ADMIN })).json() as BuildWorkflowRun;
     expect(resumed.status).toBe("SUCCEEDED"); // 已终态 → 幂等返回
+  });
+
+  it("async=true → 202 + 初始 RUNNING 快照，后台驱动至终态（轮询 GET 观察进度）", async () => {
+    const t = await makeApp();
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/workflow-runs", headers: ADMIN, payload: { script: STORY, seed: 42, async: true } });
+    expect(res.statusCode).toBe(202); // Accepted
+    const wf0 = res.json() as BuildWorkflowRun;
+    expect(wf0.status).toBe("RUNNING");
+    expect(wf0.steps.every((s) => s.status === "PENDING")).toBe(true);
+    // 轮询 GET 直到终态
+    let wf = wf0;
+    for (let i = 0; i < 100; i++) {
+      wf = (await t.app.inject({ method: "GET", url: `/a/v1/databuilder/workflow-runs/${wf0.id}`, headers: ADMIN })).json() as BuildWorkflowRun;
+      if (wf.status !== "RUNNING") break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(wf.status).toBe("SUCCEEDED");
+    expect(wf.steps.every((s) => s.status === "SUCCEEDED" || s.status === "SKIPPED")).toBe(true);
+    expect(wf.storyRunId).toBeTruthy();
+  });
+
+  it("recover：进程死亡遗留 RUNNING 的工作流 → recover 端点续跑至终态", async () => {
+    const t = await makeApp();
+    // 先正常跑完一条
+    const wf = (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/workflow-runs", headers: ADMIN, payload: { script: STORY, seed: 5 } })).json() as BuildWorkflowRun;
+    // 模拟崩溃：最终 persist 未落 → 把状态翻回 RUNNING（孤儿）
+    const rec = await t.repos.buildWorkflowRuns.get("demo", wf.id);
+    rec!.status = "RUNNING";
+    await t.repos.buildWorkflowRuns.put(rec!);
+    // recover → 找到 RUNNING 并 resume 至终态
+    const out = (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/workflow-runs/recover", headers: ADMIN })).json() as { recovered: string[] };
+    expect(out.recovered).toContain(wf.id);
+    const after = (await t.app.inject({ method: "GET", url: `/a/v1/databuilder/workflow-runs/${wf.id}`, headers: ADMIN })).json() as BuildWorkflowRun;
+    expect(after.status).toBe("SUCCEEDED");
   });
 
   it("旧端点 /databuilder/runs 仍走同一组持久化步骤（单一执行路径，无回归）", async () => {

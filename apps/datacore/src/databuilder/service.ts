@@ -390,8 +390,14 @@ export class DataBuilderService {
     ];
   }
 
-  /** 启动一次持久化工作流执行（故事建域）；opts.stopAfter 仅测试用（模拟崩溃）。 */
-  async runStoryWorkflow(ctx: AuthCtx, body: BuildRunBody, inference = false, opts: { stopAfter?: string } = {}): Promise<BuildWorkflowRun> {
+  /**
+   * 启动一次持久化工作流执行（故事建域）。
+   * - 同步（默认）：跑完 7 步后返回终态。
+   * - 异步（opts.async）：创建初始 RUNNING 快照即返回（202），引擎在后台脱离请求驱动、逐步落库检查点；
+   *   客户端轮询 GET /workflow-runs/:id 观察进度。进程死亡 → run 留 RUNNING，可 resume / 启动恢复。
+   * opts.stopAfter 仅测试用（模拟崩溃）。
+   */
+  async runStoryWorkflow(ctx: AuthCtx, body: BuildRunBody, inference = false, opts: { stopAfter?: string; async?: boolean } = {}): Promise<BuildWorkflowRun> {
     const id = newId("sbr"); // StoryBuildRun 与工作流共用故事 runId（record 步落 sbr_）
     const wfId = newId("bwf");
     const scriptHash = sha256(body.script.trim());
@@ -399,13 +405,28 @@ export class DataBuilderService {
     const wf = await this.engine().start(
       { id: wfId, tenantId: ctx.tenantId, script: body.script.trim(), scriptHash, seed: body.seed ?? 42, inference },
       steps,
-      opts,
+      { stopAfter: opts.stopAfter, detached: opts.async },
     );
-    if (wf.context["storyRunId"] && !wf.storyRunId) {
+    // 同步模式：storyRunId 已由 drive 完成时从 context 回填；此处兜底（异步模式由后台 drive 回填）。
+    if (!opts.async && wf.context["storyRunId"] && !wf.storyRunId) {
       wf.storyRunId = String(wf.context["storyRunId"]);
       await this.repos.buildWorkflowRuns.put(wf);
     }
     return wf;
+  }
+
+  /**
+   * 启动恢复：把进程死亡时停在 RUNNING 的工作流（孤儿）逐个 resume 续跑（已成功步跳过，幂等）。
+   * 部署侧可在 boot 后调用此端点把中断的执行拉回终态。返回被恢复的 wfId 列表。
+   */
+  async recoverInterrupted(ctx: AuthCtx): Promise<{ recovered: string[] }> {
+    const running = (await this.repos.buildWorkflowRuns.list(ctx.tenantId)).filter((w) => w.status === "RUNNING");
+    const recovered: string[] = [];
+    for (const w of running) {
+      await this.resumeStoryWorkflow(ctx, w.id).catch(() => undefined);
+      recovered.push(w.id);
+    }
+    return { recovered };
   }
 
   /** 重入一个崩溃/失败的工作流执行：从上一个未完成步继续（已成功步跳过、context 复用）。 */

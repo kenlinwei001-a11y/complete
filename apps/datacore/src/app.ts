@@ -2415,8 +2415,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     const body = parseBody(BuildWorkflowStartBodySchema, req.body);
     const rb = BuildRunBodySchema.parse({ script: body.script, seed: body.seed, builderKey: body.builderKey });
-    const wf = await databuilder.runStoryWorkflow(c, rb, body.inference ?? false);
-    return reply.status(wf.status === "FAILED" ? 200 : 201).send(wf);
+    const wf = await databuilder.runStoryWorkflow(c, rb, body.inference ?? false, { async: body.async ?? false });
+    // 异步：202 Accepted + 初始 RUNNING 快照（后台驱动，GET 轮询观察）；同步：201/200 终态。
+    const code = body.async ? 202 : wf.status === "FAILED" ? 200 : 201;
+    return reply.status(code).send(wf);
+  });
+  // 启动恢复：进程死亡时停在 RUNNING 的工作流逐个 resume 续跑（部署侧 boot 后可调）。
+  app.post("/a/v1/databuilder/workflow-runs/recover", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.recoverInterrupted(c);
   });
   app.get("/a/v1/databuilder/workflow-runs", async (req) => {
     const c = ctx(req);

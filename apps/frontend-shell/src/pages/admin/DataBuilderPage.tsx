@@ -477,16 +477,37 @@ function GapAnalysisTable({ gap }: { gap: GapAnalysis }) {
  * 把"故事→建域"的持久化步骤状态机逐运行、逐步可视化——每步状态/尝试/计时/检查点/错误一目了然；
  * 失败/暂停的运行可一键 resume（从未完成步续跑，已成功步跳过）。数据源 GET /a/v1/databuilder/workflow-runs。
  */
+/** 实时刷新频率选项（毫秒；0=关闭，仅在有 RUNNING 运行时自动兜底轮询）。 */
+const WF_LIVE_OPTIONS: { label: string; ms: number }[] = [
+  { label: "关闭", ms: 0 },
+  { label: "0.5s", ms: 500 },
+  { label: "1s", ms: 1000 },
+  { label: "2s", ms: 2000 },
+  { label: "5s", ms: 5000 },
+];
+
 function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number }) {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
-  const runsQ = useQuery<BuildWorkflowRun[]>({ queryKey: ["a", "workflow-runs"], queryFn: fetchWorkflowRuns });
+  const [liveMs, setLiveMs] = useState(0); // 配置化更新频率（异步执行时逐步实时跳动）
+  const runsQ = useQuery<BuildWorkflowRun[]>({
+    queryKey: ["a", "workflow-runs"],
+    queryFn: fetchWorkflowRuns,
+    // 有运行中（异步后台执行）→ 自动轮询（频率取用户设置，未设则 1s 兜底）；否则按用户设置。
+    refetchInterval: (q) => {
+      const data = (q.state.data as BuildWorkflowRun[] | undefined) ?? [];
+      const anyRunning = data.some((w) => w.status === "RUNNING");
+      if (anyRunning) return liveMs || 1000;
+      return liveMs || false;
+    },
+  });
 
   const startM = useMutation({
-    mutationFn: () => startWorkflowRun({ script, seed, inference: false }),
+    mutationFn: (opts: { async: boolean }) => startWorkflowRun({ script, seed, inference: false, async: opts.async }),
     onSuccess: (wf) => {
-      toast(wf.status === "SUCCEEDED" ? "工作流执行完成" : wf.status === "FAILED" ? "工作流执行失败（可 resume）" : "工作流执行中", wf.status === "FAILED" ? "error" : "success");
+      toast(wf.status === "RUNNING" ? "已异步提交，后台执行中（轮询观察）" : wf.status === "SUCCEEDED" ? "工作流执行完成" : wf.status === "FAILED" ? "工作流执行失败（可 resume）" : "工作流执行中", wf.status === "FAILED" ? "error" : "success");
       setExpanded(wf.id);
+      if (wf.status === "RUNNING" && liveMs === 0) setLiveMs(1000); // 异步提交后默认开启实时刷新
       void qc.invalidateQueries({ queryKey: ["a", "workflow-runs"] });
       void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
     },
@@ -506,9 +527,18 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
   return (
     <div className="panel" style={{ marginBottom: 14 }} data-testid="wf-timeline">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        工作流运行时（持久化 · 可重入 · 可重试 · 可观测){" "}
+        工作流运行时（持久化 · 可重入 · 可重试 · 可观测）{" "}
         <span className="badge" data-testid="wf-count">{runs.length}</span>
-        <button className="btn sm" data-testid="wf-start" style={{ marginLeft: "auto" }} disabled={startM.isPending} onClick={() => startM.mutate()} title="用上方脚本/种子启动一次持久化工作流（崩溃可 resume，单步可重试）">
+        <label className="muted" style={{ fontSize: 11, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+          实时刷新
+          <select data-testid="wf-live" value={liveMs} onChange={(e) => setLiveMs(Number(e.target.value))} style={{ fontSize: 11 }}>
+            {WF_LIVE_OPTIONS.map((o) => <option key={o.ms} value={o.ms}>{o.label}</option>)}
+          </select>
+        </label>
+        <button className="btn sm" data-testid="wf-start-async" disabled={startM.isPending} onClick={() => startM.mutate({ async: true })} title="异步提交：立即返回，后台脱离请求执行；逐步实时跳动（按上方频率轮询）">
+          {startM.isPending ? "提交中…" : "异步运行"}
+        </button>
+        <button className="btn sm" data-testid="wf-start" disabled={startM.isPending} onClick={() => startM.mutate({ async: false })} title="同步运行：跑完返回终态（崩溃可 resume，单步可重试）">
           {startM.isPending ? "执行中…" : "运行工作流"}
         </button>
       </div>

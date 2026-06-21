@@ -47,4 +47,21 @@ describe("F55 · 工作流运行时时间线（BuildWorkflowRun）", () => {
     expect(gap.textContent).toMatch(/需 21 · 复用 8 · 新建 12 · 缺 1/);
     expect(within(gap).getByTestId("wf-gap-solver")).toBeTruthy();
   });
+
+  it("异步运行 + 配置化实时刷新：提交即 RUNNING，按设定频率轮询逐步推进至终态（实时跳动）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/data-builder");
+    await screen.findByTestId("data-builder-page");
+    const panel = await screen.findByTestId("wf-timeline");
+
+    // 配置实时刷新频率 0.5s（异步执行时逐步实时跳动）
+    await user.selectOptions(within(panel).getByTestId("wf-live"), "500");
+    // 异步提交 → 立即返回 RUNNING（后台脱离执行）
+    await user.click(within(panel).getByTestId("wf-start-async"));
+    expect(await within(panel).findByText("RUNNING")).toBeTruthy();
+
+    // 配置化轮询逐步推进 → RUNNING 最终消失（异步运行收敛到终态）
+    await waitFor(() => expect(within(panel).queryByText("RUNNING")).toBeNull(), { timeout: 9000 });
+  });
 });

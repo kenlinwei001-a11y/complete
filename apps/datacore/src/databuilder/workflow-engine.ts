@@ -43,6 +43,9 @@ export interface WorkflowStepDef {
 export interface DriveOpts {
   /** 测试用：某步成功落库后停止驱动（模拟进程崩溃，run 保持 RUNNING → 可 resume）。 */
   stopAfter?: string;
+  /** 异步执行：创建初始 run（RUNNING/全 PENDING）后立即返回，引擎在后台脱离请求驱动并逐步落库检查点。
+   *  客户端轮询 GET 观察进度。进程死亡 → run 留 RUNNING（可 resume / 启动恢复）。 */
+  detached?: boolean;
 }
 
 export class BuildWorkflowEngine {
@@ -85,6 +88,19 @@ export class BuildWorkflowEngine {
     };
     await this.persist(run);
     await this.emit(run, "buildworkflow.run_started", { kind: run.kind, steps: run.steps.length });
+    if (opts.detached) {
+      // 后台脱离请求驱动：不 await。逐步落库；意外异常兜底标 FAILED（不致进程崩溃）。
+      setImmediate(() => {
+        void this.drive(run, steps, { stopAfter: opts.stopAfter }).catch(async (e) => {
+          run.status = "FAILED";
+          run.error = e instanceof Error ? e.message : String(e);
+          run.finishedAt = nowIso();
+          await this.persist(run).catch(() => undefined);
+          await this.emit(run, "buildworkflow.run_failed", { stepKey: "drive" }).catch(() => undefined);
+        });
+      });
+      return structuredClone(run); // 初始 RUNNING 快照（后续进度经 GET 轮询观察）
+    }
     return this.drive(run, steps, opts);
   }
 
@@ -156,6 +172,7 @@ export class BuildWorkflowEngine {
       if (opts.stopAfter && rec.stepKey === opts.stopAfter) return run; // 测试：模拟崩溃（run 保持 RUNNING）
     }
 
+    if (run.context["storyRunId"] && !run.storyRunId) run.storyRunId = String(run.context["storyRunId"]);
     run.status = "SUCCEEDED";
     run.finishedAt = nowIso();
     await this.persist(run);
