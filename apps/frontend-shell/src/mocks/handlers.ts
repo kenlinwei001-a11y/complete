@@ -811,10 +811,16 @@ export const handlers = [
     return HttpResponse.json(ok ? { ok: true } : { ok: false, message: "配置为空" });
   }),
   http.post("*/a/v1/connections", async ({ request }) => {
-    const body = (await request.json()) as { connectorTypeKey: string; name: string; config: Record<string, unknown> };
-    const conn = { id: newId("conn"), tenantId: TENANT_ID, connectorTypeKey: body.connectorTypeKey, name: body.name, config: {}, status: "ACTIVE" as const };
+    const body = (await request.json()) as { connectorTypeKey: string; name: string; config: Record<string, unknown>; category?: string };
+    // A11：缺省取连接器类型 category（mock 默认 ERP），显式传则覆盖、可自定义。
+    const typeCat: Record<string, string> = { mock_erp: "ERP", mock_crm: "CRM", file_upload: "FILE", rest_api: "EXTERNAL", knowledge_base: "KB" };
+    const conn = { id: newId("conn"), tenantId: TENANT_ID, connectorTypeKey: body.connectorTypeKey, name: body.name, config: {}, status: "ACTIVE" as const, category: body.category?.trim() || typeCat[body.connectorTypeKey] || "EXTERNAL" };
     db.connections.push(conn);
     return HttpResponse.json(conn, { status: 201 });
+  }),
+  http.get("*/a/v1/connector-categories", () => {
+    const used = db.connections.map((c) => (c as { category?: string }).category).filter((v): v is string => !!v);
+    return HttpResponse.json({ categories: [...new Set(["ERP", "CRM", "EXTERNAL", "KB", "FILE", ...used])].sort() });
   }),
   http.post("*/a/v1/connections/:id/sync", () => {
     const id = newId("sync");

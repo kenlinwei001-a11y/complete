@@ -31,8 +31,12 @@
   在 OntologyLink 图上做确定性路径搜索 → 自动产 SliceSpec；切片索引先查复用、查不到再规划。R1 R2 R6 R12 R14。
 - [ ] ⬜ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
   通用路 `instantiateGeneric`/GenSpec 去平坦 hash → 业务分布 + 戏剧点（VLE 查准有素材）。R6 R12 VLE。
-- [ ] ⬜ **A11 · 连接创建打 `Connection.category` 标签（per-instance 归类，可自定义值）**
-  Connection 加可覆盖 category（默认取连接器类型）。R2 R9。
+- [x] ✅ **A11 · 连接创建打 `Connection.category` 标签（per-instance 归类，可自定义值）**
+  Connection 加可覆盖 category（默认取连接器类型 registry category）+ RawDataset 溯源继承 `sourceCategory` +
+  `GET /a/v1/connector-categories`（内置并集 + 本租户已用值，R2 隔离）+ `connection.created` 事件（§4 L8）+
+  前端归类列/筛选/向导可自由输入 category。**亲手验**：Playwright 截图 connections 页归类列 + MES 自定义徽章。
+  测试：datacore a11(×5 含 R2) + frontend f56；ontology:check 过。**注**：Connection 是 JSONB doc 存储，
+  无需 migration（PRD 的 ALTER TABLE 假设列式存储，实际架构是 doc store）。CLI/R15 待 A15 落地后补登记。
 
 ## Wave 2 · 引擎/能力（A1 是 A8/A7 暴露口；A13 让 A14 去抖；A4 依赖 A3/A11）
 
@@ -66,5 +70,6 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：21 项（19 PRD + A9 设计延后 + 2 特性）。完成 0 / 21。
-- 下一步：Wave 1 起（A3/A6/A11 可并行）；A11 最小、最有界，先做以验证 SOP 闭环。
+- 合计：21 项（19 PRD + A9 设计延后 + 2 特性）。完成 **1 / 21**（A11）。
+- 已完成：✅ A11（per-connection 归类，Wave 1）。
+- 下一步：Wave 1 余项 A6（拟真值域合成）/ A3（14 域本体 + 多跳切片规划器，最大、是 A4/A5/A10 前置）。

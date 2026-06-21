@@ -105,6 +105,8 @@ export interface Connection {
   status: "ACTIVE" | "DISABLED" | "ERROR";
   lastSyncAt?: string;
   lastError?: string;
+  /** A11 per-connection 归类：实例级来源系统类（创建时默认取连接器类型 category，可覆盖、可自定义值 R14）。 */
+  category?: string;
   /** 约束执行层（可配置,按租户）：该源导入数据的本体校验策略 + 字段映射（适配不同数据字段）。 */
   validationPolicy?: import("@platform/contracts").ValidationPolicy;
 }
@@ -128,6 +130,8 @@ export interface RawDataset {
   fields: FieldProfile[];
   rowCount: number;
   syncedAt: string;
+  /** A11 溯源继承：产出该数据集的连接 category（便于数据浏览按来源类筛）。 */
+  sourceCategory?: string;
 }
 
 // ---------------------------------------------------------------------------

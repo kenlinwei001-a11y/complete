@@ -36,7 +36,7 @@ import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
 import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
 import { ConnectorService } from "./connectors/service.js";
-import { CONNECTOR_TYPES } from "./connectors/registry.js";
+import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
@@ -176,6 +176,8 @@ const ConnectionCreateSchema = z.object({
   name: z.string().min(1),
   config: z.record(z.string(), z.unknown()).default({}),
   schedule: z.object({ cron: z.string() }).optional(),
+  /** A11 per-connection 归类：缺省取连接器类型 category，可覆盖、可自定义值（R14 不锁死枚举）。 */
+  category: z.string().optional(),
 });
 
 const ReviewSchema = z.object({
@@ -2055,10 +2057,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { ok: true };
   });
   app.post("/a/v1/connections", async (req, reply) => {
+    const c = ctx(req);
     const body = parseBody(ConnectionCreateSchema, req.body);
-    return reply.status(201).send(await connectors.createConnection(ctx(req), body));
+    const conn = await connectors.createConnection(c, body);
+    // A11 D-29：连接创建（带 category）→ 失效连接器列表/数据分类视图。
+    await outbox.emit(c.tenantId, "connection.created", { connId: conn.id, category: conn.category ?? null });
+    return reply.status(201).send(conn);
   });
   app.get("/a/v1/connections", async (req) => connectors.listConnections(ctx(req)));
+  // A11：连接 category 枚举并集（注册表内置 + 本租户已用自定义值）→ 前端 chip/筛选（R14 非内联）。
+  app.get("/a/v1/connector-categories", async (req) => {
+    const c = ctx(req);
+    const used = (await connectors.listConnections(c)).map((x) => x.category).filter((v): v is string => !!v);
+    return { categories: [...new Set([...connectorCategories(), ...used])].sort() };
+  });
   app.post("/a/v1/connections/:id/sync", async (req, reply) => {
     const { id } = req.params as { id: string };
     const job = await connectors.sync(ctx(req), id);

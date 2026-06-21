@@ -231,7 +231,8 @@ export const setDataCategoryTemplate = (key: string, columns: string[]) =>
 
 export const fetchConnectorTypes = () => api.a<ConnectorType[]>("/a/v1/connector-types");
 export const fetchConnections = () => api.a<ConnectionInstance[]>("/a/v1/connections");
-export const createConnection = (body: { connectorTypeKey: string; name: string; config: Record<string, unknown> }) =>
+export const fetchConnectorCategories = () => api.a<{ categories: string[] }>("/a/v1/connector-categories");
+export const createConnection = (body: { connectorTypeKey: string; name: string; config: Record<string, unknown>; category?: string }) =>
   api.a<ConnectionInstance>("/a/v1/connections", { body });
 export const testConnection = (body: { connectorTypeKey: string; config: Record<string, unknown> }) =>
   api.a<{ ok: boolean; message?: string }>("/a/v1/connections/test", { body });

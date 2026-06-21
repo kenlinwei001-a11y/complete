@@ -28,6 +28,8 @@ export const ConnectionInstanceSchema = z.object({
   status: z.enum(["ACTIVE", "DISABLED", "ERROR"]),
   lastSyncAt: IsoTime.optional(),
   lastError: z.string().optional(),
+  /** A11 per-connection 归类：实例级来源系统类（默认取连接器类型 category，可覆盖、可自定义值 R14）。 */
+  category: z.string().optional(),
   /** 约束执行层（可配置,按租户）：该源导入数据的本体校验策略 + 字段映射。 */
   validationPolicy: ValidationPolicySchema.optional(),
 });

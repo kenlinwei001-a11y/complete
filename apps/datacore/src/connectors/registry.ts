@@ -139,6 +139,11 @@ export function getConnectorType(key: string): ConnectorType | undefined {
   return CONNECTOR_TYPES.find((t) => t.key === key);
 }
 
+/** A11：注册表内置 category 并集（连接器类型 category 去重排序）——前端 chip/筛选枚举来源（R14 非内联）。 */
+export function connectorCategories(): string[] {
+  return [...new Set(CONNECTOR_TYPES.map((t) => t.category).filter(Boolean) as string[])].sort();
+}
+
 // ---------------------------------------------------------------------------
 // Adapters
 // ---------------------------------------------------------------------------

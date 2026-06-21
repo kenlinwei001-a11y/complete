@@ -5,6 +5,7 @@ import type { ConnectorType } from "@platform/contracts";
 import {
   createConnection,
   fetchConnections,
+  fetchConnectorCategories,
   fetchConnectorTypes,
   fetchDataHealth,
   fetchSyncJob,
@@ -27,6 +28,8 @@ export default function ConnectionsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: connections } = useQuery({ queryKey: ["a", "connections", {}], queryFn: fetchConnections });
+  const { data: catData } = useQuery({ queryKey: ["a", "connector-categories"], queryFn: fetchConnectorCategories });
+  const [catFilter, setCatFilter] = useState(""); // A11 按归类筛选
   // §7.22 数据健康度（轻量轮询，与顶栏徽章同源）
   const { data: health } = useQuery({
     queryKey: ["a", "data-health", {}],
@@ -83,6 +86,15 @@ export default function ConnectionsPage() {
       )}
 
       <div className="panel" style={{ marginTop: 14 }}>
+        {(connections ?? []).length > 0 && (catData?.categories.length ?? 0) > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, fontSize: 12 }}>
+            <span className="muted">按归类筛选</span>
+            <select data-testid="conn-cat-filter" value={catFilter} onChange={(e) => setCatFilter(e.target.value)} style={{ fontSize: 12 }}>
+              <option value="">全部</option>
+              {catData!.categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+          </div>
+        )}
         {(connections ?? []).length === 0 && (
           // 管理平台增量 §6：无连接器 → 「上传文件或创建连接」
           <EmptyState message={zh.admin.empty.connections}>
@@ -96,6 +108,7 @@ export default function ConnectionsPage() {
             <tr>
               <th>名称</th>
               <th>类型</th>
+              <th>归类</th>
               <th>状态</th>
               <th>{zh.health.column}</th>
               <th>{t.lastSync}</th>
@@ -104,7 +117,7 @@ export default function ConnectionsPage() {
             </tr>
           </thead>
           <tbody>
-            {(connections ?? []).map((c) => {
+            {(connections ?? []).filter((c) => !catFilter || c.category === catFilter).map((c) => {
               const h = healthOf(c.id);
               return (
               <tr key={c.id} data-testid={`conn-${c.id}`}>
@@ -112,6 +125,7 @@ export default function ConnectionsPage() {
                   <Link to={`/admin/connections/${c.id}/schema`}>{c.name}</Link>
                 </td>
                 <td>{c.connectorTypeKey}</td>
+                <td data-testid={`conn-cat-${c.id}`}>{c.category ? <span className="badge">{c.category}</span> : "—"}</td>
                 <td>
                   <span className={`badge ${c.status === "ACTIVE" ? "green" : c.status === "ERROR" ? "red" : ""}`}>
                     {c.status}
@@ -171,6 +185,7 @@ export default function ConnectionsPage() {
           onCreated={() => {
             setWizardOpen(false);
             void queryClient.invalidateQueries({ queryKey: ["a", "connections"] });
+            void queryClient.invalidateQueries({ queryKey: ["a", "connector-categories"] }); // A11：新归类并入筛选
           }}
         />
       )}
@@ -181,9 +196,11 @@ export default function ConnectionsPage() {
 /** 新建向导：选类型 → configSchema 动态表单（secret 不回显）→ 测试连接 → 保存 */
 function ConnectionWizard({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { data: types } = useQuery({ queryKey: ["a", "connector-types", {}], queryFn: fetchConnectorTypes });
+  const { data: catData } = useQuery({ queryKey: ["a", "connector-categories"], queryFn: fetchConnectorCategories });
   const [step, setStep] = useState<0 | 1>(0);
   const [type, setType] = useState<ConnectorType | null>(null);
   const [name, setName] = useState("");
+  const [category, setCategory] = useState(""); // A11 归类：默认取类型 category，可自由输入覆盖
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
 
@@ -194,7 +211,7 @@ function ConnectionWizard({ onClose, onCreated }: { onClose: () => void; onCreat
   });
 
   const saveMut = useMutation({
-    mutationFn: () => createConnection({ connectorTypeKey: type!.key, name, config }),
+    mutationFn: () => createConnection({ connectorTypeKey: type!.key, name, config, category: category.trim() || undefined }),
     onSuccess: () => {
       toast("连接已创建", "success");
       onCreated();
@@ -214,6 +231,7 @@ function ConnectionWizard({ onClose, onCreated }: { onClose: () => void; onCreat
               style={{ justifyContent: "flex-start", flexDirection: "column", alignItems: "flex-start", gap: 2 }}
               onClick={() => {
                 setType(ct);
+                setCategory(ct.category ?? ""); // A11：默认取连接器类型 category
                 setStep(1);
               }}
             >
@@ -230,6 +248,15 @@ function ConnectionWizard({ onClose, onCreated }: { onClose: () => void; onCreat
               名称
             </label>
             <input id="conn-name" style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label htmlFor="conn-category" style={{ fontSize: 12, color: "var(--muted)" }}>
+              归类（默认取连接器类型，可选既有或自由输入）
+            </label>
+            <input id="conn-category" list="conn-category-options" data-testid="conn-category-input" style={{ width: "100%" }} value={category} onChange={(e) => setCategory(e.target.value)} />
+            <datalist id="conn-category-options">
+              {(catData?.categories ?? []).map((cat) => <option key={cat} value={cat} />)}
+            </datalist>
           </div>
           <JsonSchemaForm schema={type.configSchema} value={config} onChange={setConfig} />
           {testResult && (

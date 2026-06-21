@@ -52,6 +52,7 @@ export class ConnectorService {
       name: string;
       config: Record<string, unknown>;
       schedule?: { cron: string };
+      category?: string;
     },
   ): Promise<Connection> {
     const type = getConnectorType(input.connectorTypeKey);
@@ -75,6 +76,8 @@ export class ConnectorService {
       config,
       schedule: input.schedule,
       status: "ACTIVE",
+      // A11：实例 category 默认取连接器类型 registry category，显式传则覆盖（可自定义值 R14）。
+      category: input.category?.trim() || type.category,
     };
     await this.repos.connections.put(conn);
     // S3: connections with schedule.cron auto-register a CONNECTOR_SYNC job.
@@ -229,6 +232,8 @@ export class ConnectorService {
           fields: profileRows(rows),
           rowCount: rows.length,
           syncedAt: new Date().toISOString(),
+          sourceCategory: conn.category, // A11 溯源继承
+
         };
         await this.repos.rawDatasets.put(ds);
         await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
