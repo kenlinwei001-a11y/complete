@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   BuildJob,
+  BuildWorkflowRun,
   BuildPhase,
   BuildPlan,
   BuildRunBody,
@@ -35,6 +36,7 @@ import { selfCheckGaps } from "./selfcheck.js";
 import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
+import { BuildWorkflowEngine, RetryableStepError, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
 
 const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
@@ -241,56 +243,180 @@ export class DataBuilderService {
     });
   }
 
+  /** 工业级工作流引擎（持久化步骤状态机）：懒构造，复用 repos + outbox。 */
+  private engineInstance?: BuildWorkflowEngine;
+  private engine(): BuildWorkflowEngine {
+    if (!this.engineInstance) this.engineInstance = new BuildWorkflowEngine(this.repos, this.outbox, this.backoffMs);
+    return this.engineInstance;
+  }
+  /** 退避策略可注入（测试 ()=>0 去抖）；默认指数有上限。 */
+  private backoffMs: (attempt: number) => number = (a) => Math.min(2000, 100 * 2 ** (a - 1));
+  setWorkflowBackoff(fn: (attempt: number) => number): void {
+    this.backoffMs = fn;
+    this.engineInstance = undefined;
+  }
+
   /**
-   * g8 债1 · 跨系统 HARD 门（R11）：先 dry build 出 plan + A 三向闭包（不 publish），A 闭包通过才
-   * 下发 B 栈 scaffold；A 闭包 ⊕ B 全链闭合 → 才真建 publish A（数据落库）；任一断 → 拒发布
-   * （数据不落库）。把"全链 HARD 断→拒发布"做成构建期前置门，而非建完再记终态。
+   * g8 债1 · 跨系统 HARD 门（R11），现以**工业级工作流步骤**表达（持久化/可重入/可重试/可观测）：
+   * dry_build（出 plan + A 三向闭包，不 publish）→ cross_scaffold（A 闭包过才下发 B 栈，HTTP 失败可重试）
+   * → publish_build（A⊕B 闭合才真建 publish + 落切片，否则跳过=拒发布数据不落库）→ validation → inference
+   * → record（装配 StoryBuildRun 落库 + 发事件）。每步落库检查点 → 崩溃可从未完成步 resume。
+   * 控制流（aOk/bOk/built 经 context 标志的跳过条件）忠实复现原 executeStoryBuild 的 HARD 门语义。
    */
-  private async executeStoryBuild(
-    ctx: AuthCtx,
-    id: string,
-    body: BuildRunBody,
-    inference: boolean,
-  ): Promise<{
-    buildPlan?: BuildPlan;
-    closureReport?: ClosureReport;
-    scaffoldReceipt?: ScaffoldReceipt;
-    answer?: string;
-    inferenceEvidence?: "RUNTIME_PROBE" | "BUILD_STATIC";
-    validationTrace?: ValidationTrace;
-    producedConnections: string[];
-    producedDatasets: string[];
-    status: StoryBuildRun["status"];
-  }> {
-    // ① dry build：出 plan + A 闭包，不 publish
-    const dry = await this.run(ctx, { ...body, dryRun: true });
-    const plan = dry.planId ? await this.repos.buildPlans.get(ctx.tenantId, dry.planId) : undefined;
-    const aOk = dry.status === "SUCCEEDED" && (dry.closure?.gatePassed ?? false);
-    // ② A 闭包通过才下发跨系统 scaffold（避免 A 失败时产生孤儿 B DRAFT）
-    const scaffoldReceipt = aOk ? await this.crossSystemScaffold(ctx, id, plan) : undefined;
-    const bOk = !scaffoldReceipt || scaffoldReceipt.fullChainOk;
-    // ③ 全链 HARD 门：A⊕B 闭合 → 真建 publish；否则拒发布（数据不落库，R11 跨系统）
-    let closureReport = dry.closure;
-    let producedConnections: string[] = [];
-    let producedDatasets: string[] = [];
-    let built = false;
-    if (aOk && bOk) {
-      const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((c) => c.id));
-      const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((d) => d.id));
-      const job = await this.run(ctx, body); // 真建 + publish（replay 已封存 plan，字节级一致）
-      closureReport = job.closure;
-      producedConnections = (await this.repos.connections.list(ctx.tenantId)).filter((c) => !connBefore.has(c.id)).map((c) => c.id);
-      producedDatasets = (await this.repos.rawDatasets.list(ctx.tenantId)).filter((d) => !dsBefore.has(d.id)).map((d) => d.id);
-      built = job.status === "SUCCEEDED";
-      // 故事倒推的本体切片落库 → 在切片库（GET /a/v1/ontology/slices）可见，而非只记 key（修：
-      // 此前 sliceNeeds 仅入 StoryBuildRun.slicesUsed，切片库看不到倒推切片）。
-      if (built && plan) await this.registerStorySlices(ctx, plan);
+  private buildStorySteps(ctx: AuthCtx, id: string, body: BuildRunBody, inference: boolean): WorkflowStepDef[] {
+    const getPlan = async (c: StepContext): Promise<BuildPlan | undefined> =>
+      c["planId"] ? this.repos.buildPlans.get(ctx.tenantId, String(c["planId"])) : undefined;
+    return [
+      {
+        stepKey: "dry_build",
+        title: "试建：出 BuildPlan + A 三向闭包（不发布）",
+        run: async () => {
+          const dry = await this.run(ctx, { ...body, dryRun: true });
+          const aOk = dry.status === "SUCCEEDED" && (dry.closure?.gatePassed ?? false);
+          return {
+            detail: `planId=${dry.planId ?? "?"} aOk=${aOk}`,
+            patch: { planId: dry.planId, aOk, closureReport: dry.closure },
+          };
+        },
+      },
+      {
+        stepKey: "cross_scaffold",
+        title: "跨系统下发：A 闭包通过则向 AgentCore 下发 B 栈 scaffold",
+        maxAttempts: 3, // 跨系统 HTTP：瞬时失败有界重试
+        isRetryable: (e) => e instanceof RetryableStepError,
+        run: async (c) => {
+          if (!c["aOk"]) return { skip: true, detail: "A 闭包未过 → 不下发（拒发布）" };
+          const plan = await getPlan(c);
+          let receipt: ScaffoldReceipt | undefined;
+          try {
+            receipt = await this.crossSystemScaffold(ctx, id, plan);
+          } catch (e) {
+            throw new RetryableStepError(`scaffold 下发失败：${(e as Error).message}`, "SCAFFOLD_HTTP");
+          }
+          const bOk = !receipt || receipt.fullChainOk;
+          return { detail: `bOk=${bOk}`, patch: { scaffoldReceipt: receipt, bOk } };
+        },
+      },
+      {
+        stepKey: "publish_build",
+        title: "全链 HARD 门：A⊕B 闭合则真建 + 发布 + 落切片",
+        run: async (c) => {
+          if (!(c["aOk"] && c["bOk"])) return { skip: true, detail: "全链未闭合 → 拒发布（数据不落库）" };
+          const plan = await getPlan(c);
+          const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((x) => x.id));
+          const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((x) => x.id));
+          const job = await this.run(ctx, body); // 真建 + publish（replay 已封存 plan，字节级一致 R6）
+          const producedConnections = (await this.repos.connections.list(ctx.tenantId)).filter((x) => !connBefore.has(x.id)).map((x) => x.id);
+          const producedDatasets = (await this.repos.rawDatasets.list(ctx.tenantId)).filter((x) => !dsBefore.has(x.id)).map((x) => x.id);
+          const built = job.status === "SUCCEEDED";
+          if (built && plan) await this.registerStorySlices(ctx, plan);
+          return {
+            detail: `built=${built} +conn=${producedConnections.length} +ds=${producedDatasets.length}`,
+            patch: { built, producedConnections, producedDatasets, closureReport: job.closure },
+          };
+        },
+      },
+      {
+        stepKey: "validation",
+        title: "推演验证痕迹：结论依据反向核对知识图谱",
+        run: async (c) => {
+          if (!c["built"]) return { skip: true };
+          const plan = await getPlan(c);
+          const validationTrace = await this.buildStoryValidationTrace(ctx, plan);
+          return { detail: validationTrace ? `verdict=${validationTrace.consistency.verdict}` : "无求解器→跳过", patch: { validationTrace } };
+        },
+      },
+      {
+        stepKey: "inference",
+        title: "一键推演：故事主问句经 QOS/求解器跑出答案",
+        run: async (c) => {
+          if (!(inference && c["built"])) return { skip: true };
+          const plan = await getPlan(c);
+          const inf = await this.runInference(ctx, plan);
+          return { detail: inf.evidence ?? "无", patch: { answer: inf.answer, inferenceEvidence: inf.evidence } };
+        },
+      },
+      {
+        stepKey: "record",
+        title: "记账：装配 StoryBuildRun 落库 + 发 storybuild.run_recorded",
+        run: async (c) => {
+          const plan = await getPlan(c);
+          const aOk = !!c["aOk"], bOk = !!c["bOk"], built = !!c["built"];
+          const status: StoryBuildRun["status"] = aOk && bOk && built ? "SUCCEEDED" : "FAILED";
+          const scaffoldReceipt = c["scaffoldReceipt"] as ScaffoldReceipt | undefined;
+          const closureReport = c["closureReport"] as ClosureReport | undefined;
+          const producedConnections = (c["producedConnections"] as string[] | undefined) ?? [];
+          const producedDatasets = (c["producedDatasets"] as string[] | undefined) ?? [];
+          const run: StoryBuildRun = {
+            id,
+            tenantId: ctx.tenantId,
+            script: body.script.trim(),
+            buildPlan: plan,
+            closureReport,
+            scaffoldReceipt,
+            gapReport: selfCheckGaps(body.script.trim(), id, closureReport, scaffoldReceipt, plan?.solverNeeds.length ?? 0),
+            answer: c["answer"] as string | undefined,
+            inferenceEvidence: c["inferenceEvidence"] as "RUNTIME_PROBE" | "BUILD_STATIC" | undefined,
+            validationTrace: c["validationTrace"] as ValidationTrace | undefined,
+            producedConnections,
+            producedDatasets,
+            producedArtifacts: deriveProducedArtifacts(plan, scaffoldReceipt, producedConnections, producedDatasets, status),
+            storyCoverage: deriveStoryCoverage(body.script.trim(), plan),
+            status,
+            createdAt: nowIso(),
+          };
+          await this.repos.storyBuildRuns.put(run);
+          await this.outbox?.emit(ctx.tenantId, "storybuild.run_recorded", {
+            runId: run.id,
+            status: run.status,
+            fullChainOk: run.scaffoldReceipt?.fullChainOk ?? null,
+          });
+          return { detail: `status=${status}`, patch: { storyRunId: id } };
+        },
+      },
+    ];
+  }
+
+  /** 启动一次持久化工作流执行（故事建域）；opts.stopAfter 仅测试用（模拟崩溃）。 */
+  async runStoryWorkflow(ctx: AuthCtx, body: BuildRunBody, inference = false, opts: { stopAfter?: string } = {}): Promise<BuildWorkflowRun> {
+    const id = newId("sbr"); // StoryBuildRun 与工作流共用故事 runId（record 步落 sbr_）
+    const wfId = newId("bwf");
+    const scriptHash = sha256(body.script.trim());
+    const steps = this.buildStorySteps(ctx, id, body, inference);
+    const wf = await this.engine().start(
+      { id: wfId, tenantId: ctx.tenantId, script: body.script.trim(), scriptHash, seed: body.seed ?? 42, inference },
+      steps,
+      opts,
+    );
+    if (wf.context["storyRunId"] && !wf.storyRunId) {
+      wf.storyRunId = String(wf.context["storyRunId"]);
+      await this.repos.buildWorkflowRuns.put(wf);
     }
-    const status: StoryBuildRun["status"] = aOk && bOk && built ? "SUCCEEDED" : "FAILED";
-    const inf = inference && status === "SUCCEEDED" ? await this.runInference(ctx, plan) : {};
-    // 区6④：建域成功即产出推演验证痕迹（独立于 answer，是建出制品的"可信赖性"凭证，回写 run）。
-    const validationTrace = status === "SUCCEEDED" ? await this.buildStoryValidationTrace(ctx, plan) : undefined;
-    return { buildPlan: plan, closureReport, scaffoldReceipt, answer: inf.answer, inferenceEvidence: inf.evidence, validationTrace, producedConnections, producedDatasets, status };
+    return wf;
+  }
+
+  /** 重入一个崩溃/失败的工作流执行：从上一个未完成步继续（已成功步跳过、context 复用）。 */
+  async resumeStoryWorkflow(ctx: AuthCtx, wfId: string): Promise<BuildWorkflowRun> {
+    const existing = await this.repos.buildWorkflowRuns.get(ctx.tenantId, wfId);
+    if (!existing) throw notFound("build workflow run");
+    const storyId = existing.storyRunId ?? String(existing.context["storyRunId"] ?? newId("sbr"));
+    const steps = this.buildStorySteps(ctx, storyId, { script: existing.script, seed: existing.seed, builderKey: DEFAULT_BUILDER_KEY }, existing.inference);
+    const wf = await this.engine().resume(ctx.tenantId, wfId, steps);
+    if (wf.context["storyRunId"] && !wf.storyRunId) {
+      wf.storyRunId = String(wf.context["storyRunId"]);
+      await this.repos.buildWorkflowRuns.put(wf);
+    }
+    return wf;
+  }
+
+  async listWorkflowRuns(ctx: AuthCtx): Promise<BuildWorkflowRun[]> {
+    return (await this.repos.buildWorkflowRuns.list(ctx.tenantId)).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  }
+
+  async getWorkflowRun(ctx: AuthCtx, id: string): Promise<BuildWorkflowRun> {
+    const wf = await this.repos.buildWorkflowRuns.get(ctx.tenantId, id);
+    if (!wf) throw notFound("build workflow run");
+    return wf;
   }
 
   /**
@@ -364,34 +490,20 @@ export class DataBuilderService {
     return { answer: parts.join(" · "), evidence: "BUILD_STATIC" };
   }
 
+  /**
+   * 故事建域（兼容入口）：现统一经**工业级工作流引擎**执行（持久化/可重入/可重试/可观测），
+   * record 步落 StoryBuildRun 并发 storybuild.run_recorded → 返回该记录（行为与历史一致）。
+   * 单一执行路径：无论旧端点还是新工作流端点，都走同一组持久化步骤。
+   */
   async runStory(ctx: AuthCtx, body: BuildRunBody, inference = false): Promise<StoryBuildRun> {
-    const id = newId("sbr");
-    const r = await this.executeStoryBuild(ctx, id, body, inference);
-    const run: StoryBuildRun = {
-      id,
-      tenantId: ctx.tenantId,
-      script: body.script.trim(),
-      buildPlan: r.buildPlan,
-      closureReport: r.closureReport,
-      scaffoldReceipt: r.scaffoldReceipt,
-      gapReport: selfCheckGaps(body.script.trim(), id, r.closureReport, r.scaffoldReceipt, r.buildPlan?.solverNeeds.length ?? 0),
-      answer: r.answer,
-      inferenceEvidence: r.inferenceEvidence,
-      validationTrace: r.validationTrace,
-      producedConnections: r.producedConnections,
-      producedDatasets: r.producedDatasets,
-      producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
-      storyCoverage: deriveStoryCoverage(body.script.trim(), r.buildPlan),
-      status: r.status,
-      createdAt: nowIso(),
-    };
-    await this.repos.storyBuildRuns.put(run);
-    await this.outbox?.emit(ctx.tenantId, "storybuild.run_recorded", {
-      runId: run.id,
-      status: run.status,
-      fullChainOk: run.scaffoldReceipt?.fullChainOk ?? null,
-    });
-    return run;
+    const wf = await this.runStoryWorkflow(ctx, body, inference);
+    const storyId = wf.storyRunId ?? String(wf.context["storyRunId"] ?? "");
+    if (storyId) {
+      const rec = await this.repos.storyBuildRuns.get(ctx.tenantId, storyId);
+      if (rec) return rec;
+    }
+    // 工作流在 record 步前因基础设施异常中止（罕见）：诚实抛出工作流错误，不伪造成功记录。
+    throw new Error(wf.error ?? "story build workflow did not reach record step");
   }
 
   /** g8-P5 故事脚本自动生成器：从平台能力目录确定性派生候选脚本（供持续自动输入/压测）。 */
@@ -500,22 +612,14 @@ export class DataBuilderService {
     const seedRaw = inputs.seed;
     const seed = typeof seedRaw === "number" ? seedRaw : typeof seedRaw === "string" && seedRaw.trim() !== "" ? Number(seedRaw) : 42;
 
-    const r = await this.executeStoryBuild(ctx, run.id, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY }, false);
-    const updated: StoryBuildRun = {
-      ...run,
-      buildPlan: r.buildPlan,
-      closureReport: r.closureReport,
-      scaffoldReceipt: r.scaffoldReceipt,
-      gapReport: selfCheckGaps(run.script, run.id, r.closureReport, r.scaffoldReceipt),
-      answer: r.answer,
-      inferenceEvidence: r.inferenceEvidence,
-      validationTrace: r.validationTrace,
-      producedConnections: r.producedConnections,
-      producedDatasets: r.producedDatasets,
-      producedArtifacts: deriveProducedArtifacts(r.buildPlan, r.scaffoldReceipt, r.producedConnections, r.producedDatasets, r.status),
-      storyCoverage: deriveStoryCoverage(run.script, r.buildPlan),
-      status: r.status,
-    };
+    // 经同一组持久化工作流步骤续跑（record 步以同一 id 覆盖该记录）；保留 inputManifest/createdAt。
+    const steps = this.buildStorySteps(ctx, run.id, { script: run.script, seed, builderKey: DEFAULT_BUILDER_KEY }, false);
+    await this.engine().start(
+      { id: newId("bwf"), tenantId: ctx.tenantId, script: run.script, scriptHash: sha256(run.script), seed, inference: false },
+      steps,
+    );
+    const rebuilt = await this.repos.storyBuildRuns.get(ctx.tenantId, run.id);
+    const updated: StoryBuildRun = { ...(rebuilt ?? run), inputManifest: run.inputManifest, createdAt: run.createdAt };
     await this.repos.storyBuildRuns.put(updated);
     return updated;
   }

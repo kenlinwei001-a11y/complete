@@ -68,7 +68,9 @@ describe("OpenAI adapter (amends QOS-PRD §6 — multi-provider)", () => {
     };
     expect(req.model).toBe("gpt-test");
     expect(req.response_format.type).toBe("json_schema");
-    expect(req.response_format.json_schema.strict).toBe(true);
+    // strict:false 是刻意为之——实测 Moonshot/Kimi 在 strict:true 下返空/不可解析且会加 reason 等额外字段；
+    // 兼容端点放宽 strict，靠 zod 校验兜底（见 packages/llm-adapters/src/openai.ts classifyOnce）。
+    expect(req.response_format.json_schema.strict).toBe(false);
     expect(req.response_format.json_schema.name).toBe("intent_classification");
     expect(req.response_format.json_schema.schema.type).toBe("object");
     expect(req.messages[0]?.role).toBe("system");
@@ -77,12 +79,14 @@ describe("OpenAI adapter (amends QOS-PRD §6 — multi-provider)", () => {
 
   it("classification: unparsable content → ClassifierParseError (typed, no string matching)", async () => {
     const stub = new StubOpenAi();
-    stub.script.push(() => assistant({ content: "definitely not json" }));
+    // classify 对不可解析结果有界重试 3 次（思维型模型偶发空/不可解析 → 重试即稳）；
+    // 此处每次都喂不可解析内容，耗尽重试 → 抛 ClassifierParseError（脚本须铺满 3 次）。
+    for (let i = 0; i < 3; i++) stub.script.push(() => assistant({ content: "definitely not json" }));
     const llm = new OpenAiLlmClient({ client: stub });
     await expect(llm.classify({ model: "m", system: "s", user: "u" })).rejects.toBeInstanceOf(ClassifierParseError);
 
-    // schema-invalid JSON also maps to ClassifierParseError
-    stub.script.push(() => assistant({ content: JSON.stringify({ candidates: "nope" }) }));
+    // schema-invalid JSON also maps to ClassifierParseError（同样铺满 3 次重试）
+    for (let i = 0; i < 3; i++) stub.script.push(() => assistant({ content: JSON.stringify({ candidates: "nope" }) }));
     await expect(llm.classify({ model: "m", system: "s", user: "u" })).rejects.toBeInstanceOf(ClassifierParseError);
   });
 

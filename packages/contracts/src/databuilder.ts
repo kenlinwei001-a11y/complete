@@ -289,3 +289,70 @@ export const BuildRunBodySchema = z.object({
   dryRun: z.boolean().optional(),
 });
 export type BuildRunBody = z.infer<typeof BuildRunBodySchema>;
+
+// ---- 数据构建发动机 · 工业级工作流运行时（持久化/检查点/可重入/可重试/可观测）-------
+// 把"故事→建域"七阶段从内存 try-块升级为持久化步骤状态机：每步落库检查点 → 进程崩溃后可从
+// 上一个未完成步重入；瞬时失败按重试策略有界退避重试；致命失败止于该步、保留现场；每步状态迁移
+// 发领域事件可观测（D-29）。R6：被包裹的阶段仍幂等 + freezePlan，产出制品字节级一致（工作流日志
+// 的时间戳/尝试次数不属确定性范畴）。
+
+/** 步骤错误（分类决定是否重试）：retryable=瞬时（重试），否则致命（止于该步）。 */
+export const BuildStepErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  retryable: z.boolean(),
+});
+export type BuildStepError = z.infer<typeof BuildStepErrorSchema>;
+
+export const BUILD_WORKFLOW_STEP_STATUS = ["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "SKIPPED"] as const;
+
+/** 单步持久化记录：状态/尝试/计时/检查点（可重入的真相源，逐步落库）。 */
+export const BuildWorkflowStepSchema = z.object({
+  stepKey: z.string(),
+  title: z.string(),
+  status: z.enum(BUILD_WORKFLOW_STEP_STATUS),
+  attempts: z.number().int().default(0),
+  maxAttempts: z.number().int().default(1),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  durationMs: z.number().optional(),
+  detail: z.string().optional(),
+  error: BuildStepErrorSchema.optional(),
+  /** 步成功后存的可序列化产出（重入时跳过该步、后续步读此检查点）。 */
+  checkpoint: z.record(z.string(), z.unknown()).optional(),
+});
+export type BuildWorkflowStep = z.infer<typeof BuildWorkflowStepSchema>;
+
+export const BUILD_WORKFLOW_RUN_STATUS = ["RUNNING", "SUCCEEDED", "FAILED", "PAUSED"] as const;
+
+/** 工作流运行：一次故事建域的持久化执行，串多步 + 累积可序列化 context（重入复用）。 */
+export const BuildWorkflowRunSchema = z.object({
+  id: z.string(), // bwf_
+  tenantId: z.string(),
+  kind: z.literal("story_build").default("story_build"),
+  script: z.string(),
+  scriptHash: z.string(),
+  seed: z.number().int(),
+  inference: z.boolean().default(false),
+  status: z.enum(BUILD_WORKFLOW_RUN_STATUS),
+  steps: z.array(BuildWorkflowStepSchema),
+  /** 步间累积的可序列化状态（planId / producedConnections / built …），重入时复用。 */
+  context: z.record(z.string(), z.unknown()).default({}),
+  /** 产出的历史推演记录主键（record 步落 StoryBuildRun 后回填）。 */
+  storyRunId: z.string().optional(),
+  /** 重入次数（崩溃/失败后 resume 累加，可观测）。 */
+  resumedCount: z.number().int().default(0),
+  error: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  finishedAt: z.string().optional(),
+});
+export type BuildWorkflowRun = z.infer<typeof BuildWorkflowRunSchema>;
+
+export const BuildWorkflowStartBodySchema = z.object({
+  script: z.string().min(1),
+  seed: z.number().int().optional(),
+  inference: z.boolean().optional(),
+  builderKey: z.string().optional(),
+});
+export type BuildWorkflowStartBody = z.infer<typeof BuildWorkflowStartBodySchema>;

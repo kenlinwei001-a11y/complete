@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -294,6 +294,8 @@ export interface Repos {
   buildJobs: Store<BuildJob>;
   // g8 故事驱动全栈倒推 · P1：构建期历史推演记录（与 GrowthLedgerEntry 经 runId 归一）
   storyBuildRuns: Store<StoryBuildRun>;
+  // 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）
+  buildWorkflowRuns: Store<BuildWorkflowRun>;
   // Dogfooding P2：元本体访问策略（角色白名单,按租户;id=tenantId）
   metaAccessPolicies: Store<MetaAccessPolicyRecord>;
   /** Liveness for /readyz. */

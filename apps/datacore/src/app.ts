@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
@@ -2407,6 +2407,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     requireAdmin(c);
     return databuilder.getStoryRun(c, (req.params as { id: string }).id);
+  });
+  // 工业级工作流运行时：持久化步骤状态机（检查点/可重入/可重试/可观测）。
+  // POST 启动一次故事建域工作流；GET 看运行 + 逐步状态/尝试/计时（可观测）；resume 从崩溃/失败处续跑。
+  app.post("/a/v1/databuilder/workflow-runs", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(BuildWorkflowStartBodySchema, req.body);
+    const rb = BuildRunBodySchema.parse({ script: body.script, seed: body.seed, builderKey: body.builderKey });
+    const wf = await databuilder.runStoryWorkflow(c, rb, body.inference ?? false);
+    return reply.status(wf.status === "FAILED" ? 200 : 201).send(wf);
+  });
+  app.get("/a/v1/databuilder/workflow-runs", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.listWorkflowRuns(c);
+  });
+  app.get("/a/v1/databuilder/workflow-runs/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.getWorkflowRun(c, (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/databuilder/workflow-runs/:id/resume", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const wf = await databuilder.resumeStoryWorkflow(c, (req.params as { id: string }).id);
+    return reply.status(wf.status === "FAILED" ? 200 : 201).send(wf);
   });
   // g8-P6 存量回填：逆向导出既有推演能力为故事脚本 → 逐条建域补血缘 = 首次全量压测
   app.post("/a/v1/databuilder/backfill", async (req) => {

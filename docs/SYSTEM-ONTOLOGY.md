@@ -54,6 +54,7 @@
 - **IndustryTemplate**：行业模板（合成数据 GenSpec 来源；battery-manufacturing 等）· `industryTemplates`。
 - **SyntheticJob**：合成数据作业（industry×scale×seed 确定性）· `syntheticJobs`。
 - **BuildPlan / BuildJob / DataBuilderAgent / ClosureReport**：**数据构建发动机**（七阶段 intake→comprehend→gap→rawin→transform→closure→publish）· `databuilder/service.ts`,`closure.ts`。
+- **BuildWorkflowRun（工业级工作流运行时）**：把"故事→建域"从内存 try-块升级为**持久化步骤状态机**——6 步（dry_build→cross_scaffold→publish_build→validation→inference→record），每步状态/尝试/计时/检查点逐步落库（`build_workflow_runs`，migration023，R9 四处）→ **进程崩溃可从未完成步 resume**（已成功步跳过、context 复用）；瞬时失败按 maxAttempts **有界退避重试**（跨系统 scaffold HTTP 标 RetryableStepError）；致命失败止于该步保留现场；业务门未过返回 skip（非错误，标 SKIPPED）。执行状态（工作流跑完）与业务结论（StoryBuildRun.status，可 BLOCKED）两轴分离。引擎与步骤解耦（`databuilder/workflow-engine.ts BuildWorkflowEngine`，步骤是闭包住 AuthCtx 的纯定义）· `databuilder/service.ts runStoryWorkflow/resumeStoryWorkflow`（`runStory` 现统一经此单一执行路径）· `POST/GET /a/v1/databuilder/workflow-runs`、`POST …/:id/resume`。每步状态迁移发 `buildworkflow.*` 到 outbox 作**可观测/审计流**（GET /a/v1/outbox 实时尾随；非缓存失效事件——产出缓存事件仍是已注册的 `storybuild.run_recorded` L15）。
 - **QuarantineRow**：异常行隔离区（SCHEMA_MISMATCH/DUP_KEY）· `quarantine.ts`。
 
 ### B. 本体/对象域（DataCore）
@@ -168,6 +169,10 @@ StoryScript --comprehend(LLM)--> BuildPlan{dataSources,objectTypes,rules,solverN
     需运行期标量(rootId/budget)的求解器诚实留空（不编造）。闭合 G-3"场景→答案"的求解器入参一环。
 BuildPlan --validateClosure--> ClosureReport{反向-对象, 反向-data, 正向-求解器入参}  ⚠ 闭包不含 AgentCore 栈/全链
 BuildPlan --gap(幂等)--> 复用已有/标缺  --rawin--> Connector/KB  --transform--> 本体/规则/派生  --publish(Action)--> 真值
+  └ **工业级工作流运行时**（`workflow-engine.ts BuildWorkflowEngine`）：上述 HARD 门以**持久化步骤状态机**承载——
+    StoryScript→[dry_build→cross_scaffold→publish_build→validation→inference→record] 每步落库检查点 →
+    崩溃可 resume（已成功步跳过、context 复用）；瞬时失败有界退避重试；致命失败止于该步保留现场。
+    `runStory` 与 `POST /a/v1/databuilder/workflow-runs` 共用同一组步骤（单一执行路径）。**不再是内存 try-块**。
 ```
 **平台横切**
 ```
@@ -289,7 +294,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | G-5 | 应用层电池锁死（**本轮审计量化**：8a 视图结构写死≈9 视图含 DAG · 8b 业务数据进生产 · 8c 文案/i18n 租户专属 · 8d Agent 配置/模型写死 · 8e ✅ `generic-inference` 通用 what-if 已落：`recompute(dryRun+apply)` 在克隆图上前向重算派生、不落真值 + `POST /a/v1/inference/whatif`，行业无关；O4b 回归证明无副作用。注：作用于 compileSpecs 派生本体；合成 demo 走 runDerivations 另一路）→ **撑不起其他租户/行业**。修法见 `docs/PRD-de-battery-multitenant-config.md`（结构←plan/ViewConfig.layout · 数据←API/WorkspaceConfig · 文案←i18n+行业别名 · Agent←表/Provider绑定）+ 新不变量 R14 + `debattery:check` 门 | 本体→生成应用→推演 | ◐ 大部修：8a 结构/8b 数据/8c 文案/8e generic-inference 已落；**`debattery:check` 基线 0**（业务常数全 genericize/config-drive/`debattery-allow` 声明）。通用 UI 文案 i18n 卫生（低价值）：启动器/首页 chrome 已迁入 `locales/zh.ts`（zh.home/zh.launcher），机制就位、其余页渐进迁移 |
 | G-6 | ~~Excel parser TODO；合成在独立页；rawin 用独立 genCsv；数据模版/FK 驱动待~~ **✅ 收口（A2）**：`parseXlsx`（node-xlsx）三路统一(csv/json/xlsx)；合成并入连接器；rawin 去模板化统一到 `synthetic/schema-gen.ts`；**在线数据模版**：`synthetic/data-template.ts buildDataTemplates`（从已发布对象类型派生上传列模版、排除派生列、ref 列标注父类型）+ `GET /a/v1/data-templates[/:typeKey]`（列表/单类型 text/csv 下载）；**FK 一致生成**：`generateRelatedDatasets`（依赖序生成父表→收集真实 PK 池→子表 ref 取父表实际 PK，环降级不阻塞；样例可直接试灌、非凭空假值），单表无 ref 与旧 `generateFromSchema` 字节级一致（R6 向后兼容） | Connector→RawDataset | ✅ 三路+生成器统一；数据模版+FK 一致收口 |
 | G-7 | LLM 用途枚举写死不可扩展（待 PRD P5）；~~矩阵 model 下拉 stale 绑定显示空白~~ **已修**：已绑 model 不在目录仍可见可选 `LlmProvidersPage.tsx:474` | LlmPurposeBinding | ◐ 部分修（枚举扩展待 PRD） |
-| G-8 | 数据构建闭包仅 DataCore 栈、不验全链 → **◐ 大部闭合**：① `chain:check` 跨系统门 ② **ClosureReport 加 CHAIN 维**（求解器需求未注册即 gate FAIL）③ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**：`SOLVER_OUTPUT_SHAPES` + `renderBindings`，`validateClosure` 校验渲染绑定 ⊆ 输出形状（建图期挡 G-2）④ **跨系统 scaffold 闭合（g8-P3）**：BuildPlan 扩 B 栈需求 + comprehend 故事倒推全栈（求解器→计划/意图/场景）+ `POST /b/v1/internal/scaffold`（SERVICE_TOKEN 守闸，幂等 DRAFT scaffold + DRAFT-aware 无死路门 → ScaffoldReceipt）+ DataCore closure 后 A→B 下发、`fullChainOk` 并入 StoryBuildRun 终态（断链→FAILED，R11 跨系统）。**待**：scaffold 前置到 A publish 阻断（当前记录于 StoryBuildRun 终态，A 数据已建）；补齐其余求解器输出形状声明 | BuildPlan→ClosureReport→ScaffoldManifest→B 制品 | ◐ CHAIN+SHAPE+跨系统 scaffold 已闭合 |
+| G-8 | 数据构建闭包仅 DataCore 栈、不验全链 → **◐ 大部闭合**：① `chain:check` 跨系统门 ② **ClosureReport 加 CHAIN 维**（求解器需求未注册即 gate FAIL）③ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**：`SOLVER_OUTPUT_SHAPES` + `renderBindings`，`validateClosure` 校验渲染绑定 ⊆ 输出形状（建图期挡 G-2）④ **跨系统 scaffold 闭合（g8-P3）**：BuildPlan 扩 B 栈需求 + comprehend 故事倒推全栈（求解器→计划/意图/场景）+ `POST /b/v1/internal/scaffold`（SERVICE_TOKEN 守闸，幂等 DRAFT scaffold + DRAFT-aware 无死路门 → ScaffoldReceipt）+ DataCore closure 后 A→B 下发、`fullChainOk` 并入 StoryBuildRun 终态（断链→FAILED，R11 跨系统）。**待**：scaffold 前置到 A publish 阻断（当前记录于 StoryBuildRun 终态，A 数据已建）；补齐其余求解器输出形状声明。⑤ **工业级工作流运行时（已落）**：构建执行从内存 try-块升级为持久化步骤状态机 `BuildWorkflowRun`（检查点/可重入 resume/有界重试/逐步可观测，migration023）→ 崩溃不再丢状态、单步可重试、可审计 | BuildPlan→ClosureReport→ScaffoldManifest→B 制品 | ◐ CHAIN+SHAPE+跨系统 scaffold 已闭合；执行已工作流化 |
 
 ---
 

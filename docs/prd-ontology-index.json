@@ -297,6 +297,31 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-build-workflow-runtime.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/migrations/023_build_workflow_runs.sql",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/databuilder/service.ts",
+        "apps/datacore/src/databuilder/workflow-engine.ts",
+        "apps/datacore/test/build-workflow-engine.test.ts",
+        "packages/contracts/src/databuilder.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-catalog-battery-20-scenarios.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -725,6 +750,7 @@
       "PRD-addendum-skill-authoring.md",
       "PRD-addendum-solvers-and-gaps.md",
       "PRD-addendum-validation-loop.md",
+      "PRD-build-workflow-runtime.md",
       "PRD-catalog-battery-20-scenarios.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-dogfooding-self-ontology.md",
@@ -785,6 +811,25 @@
   },
   "orphanBreakpoints": [],
   "byArtifact": {
+    "apps/datacore/migrations/023_build_workflow_runs.sql": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/src/app.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/src/databuilder/service.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/src/databuilder/workflow-engine.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/test/build-workflow-engine.test.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "packages/contracts/src/databuilder.ts": [
+      "PRD-build-workflow-runtime.md",
+      "PRD-fullstack-story-build-g8.md"
+    ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
     ],
@@ -813,9 +858,6 @@
     "apps/agentcore/src/server.ts": [
       "PRD-fullstack-story-build-g8.md",
       "PRD-scenario-launcher.md"
-    ],
-    "packages/contracts/src/databuilder.ts": [
-      "PRD-fullstack-story-build-g8.md"
     ],
     "packages/contracts/src/growth.ts": [
       "PRD-fullstack-story-build-g8.md"
