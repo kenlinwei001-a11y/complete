@@ -256,6 +256,8 @@ export const EvalCaseSchema = z.object({
       view: z.string(),
       selectedObjects: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string().optional() })).default([]),
       filters: z.record(z.string(), z.union([z.string(), z.array(z.string())])).default({}),
+      /** 场景 slotPresets 搭车进 eval（否则需必填槽的工作流被反问澄清→不执行→评测假阴）。 */
+      presetSlots: z.record(z.string(), z.unknown()).optional(),
     }),
   }),
   /** 断言期望（§2）。 */

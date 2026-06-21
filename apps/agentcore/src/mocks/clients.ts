@@ -117,7 +117,10 @@ export class MockOntologyClient implements OntologyClient {
   async getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
     const result = await this.queryObjects(ctx, objectType, {});
     const items = (result.data as { items: Record<string, unknown>[] }).items;
-    const found = items.find((i) => i.objectId === objectId || i.name === objectId || i.so === objectId);
+    // 也匹配生产风格主键（场景目录用 baseId/modelId 如 "changzhou"/"4680-NCM"；本 mock 历史用前缀 id
+    // 如 "base_changzhou"）——剥前缀对齐，使 mock 解析与生产一致（否则场景 objectRef 槽解析不到→假阴）。
+    const strip = (v: unknown) => String(v ?? "").replace(/^(base_|model_|order_|line_|process_|equipment_)/, "");
+    const found = items.find((i) => i.objectId === objectId || i.name === objectId || i.so === objectId || strip(i.objectId) === objectId);
     if (!found) throw new Error(`object not found: ${objectType}/${objectId}`);
     return { data: found, snapshotVersion: SNAPSHOT };
   }

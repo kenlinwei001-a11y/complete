@@ -41,12 +41,11 @@ export class EvalService {
         tenantId,
         suite: "classifier",
         packageId,
-        input: { query: sc.triggerQuestion, context: { view: sc.view, selectedObjects: sc.presetContext.selectedObjects, filters: {} } },
-        expect: {
-          intentKey: sc.intentKey,
-          // 复用的求解器在工具序列中应出现（新增求解器分阶段建设，不强断言其调用）
-          ...(sc.solverStatus === "REUSED" ? { toolSequence: [{ name: "invoke_solver" }] } : {}),
-        },
+        // slotPresets 搭车进 context → 必填槽满足 → 工作流"打开即可推演"，不触发反问澄清。
+        input: { query: sc.triggerQuestion, context: { view: sc.view, selectedObjects: sc.presetContext.selectedObjects, filters: {}, presetSlots: sc.presetContext.slotPresets } },
+        // 仅断言意图。"是否真计算"不用一刀切 invoke_solver——不同场景计划合法地走 invoke_solver / resolve_slice /
+        // S&OP 工作流；强求 invoke_solver 会对 resolve_slice 类场景（如风险根因）假阴。计算性由 hand-run 套件按"产出真答案"校验。
+        expect: { intentKey: sc.intentKey },
         origin: "SCENARIO",
         createdAt: new Date().toISOString(),
       };
@@ -122,8 +121,8 @@ export class EvalService {
       const sub = await this.deps.orchestrator.submitQuery(caseAuth, {
         packageId: c.packageId,
         query: c.input.query,
-        context: { view: c.input.context.view, selectedObjects: c.input.context.selectedObjects, filters: c.input.context.filters },
-      });
+        context: { view: c.input.context.view, selectedObjects: c.input.context.selectedObjects, filters: c.input.context.filters, ...(c.input.context.presetSlots ? { presetSlots: c.input.context.presetSlots } : {}) },
+      }, undefined, { internal: true });
       taskId = sub.taskId;
     } catch (err) {
       return { caseId: c.id, pass: false, failures: [`submit failed: ${err instanceof Error ? err.message : String(err)}`], observed: { toolNames: [], toolCount: 0, latencyMs: Date.now() - t0 } };

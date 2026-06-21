@@ -106,6 +106,7 @@ export class Orchestrator {
     auth: RequestAuth,
     body: SubmitQueryBody,
     idempotencyKey?: string,
+    opts?: { internal?: boolean },
   ): Promise<{ taskId: string; status: string; streamUrl: string; reused: boolean }> {
     // entitlement PRD §5: shell.query-dock off → the endpoint "does not exist" (404, not 403)
     if (!(await this.deps.features.isEnabled(auth.tenantId, "shell.query-dock", auth.token))) {
@@ -115,9 +116,12 @@ export class Orchestrator {
     if (!pkg || pkg.tenantId !== auth.tenantId) {
       throw new HttpError(404, ErrorCodes.PACKAGE_NOT_FOUND, `package not found: ${body.packageId}`);
     }
-    const active = await this.deps.repos.tasks.countActiveByUser(auth.tenantId, auth.userId);
-    if (active >= 3) {
-      throw new HttpError(429, ErrorCodes.RATE_LIMITED, "每用户并发执行中任务 ≤3");
+    // 内部批量（如 eval 套件逐条跑）不受"每用户并发 ≤3"节流——那是面向交互用户的限流，不应卡内部回归。
+    if (!opts?.internal) {
+      const active = await this.deps.repos.tasks.countActiveByUser(auth.tenantId, auth.userId);
+      if (active >= 3) {
+        throw new HttpError(429, ErrorCodes.RATE_LIMITED, "每用户并发执行中任务 ≤3");
+      }
     }
 
     const taskId = newId("task");
