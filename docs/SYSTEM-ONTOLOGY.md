@@ -66,6 +66,7 @@
 - **PropertyDef / DerivedPropertyDef**：属性 / 派生属性 · `domain.ts`。
 - **DerivationSpec / DerivationRun**：派生 DSL（A4，topo 重算）· `ontology-core.ts`。
 - **SliceSpec**：本体切片（root + hops，A6 逐跳过滤）· `ontology-core.ts:534`。
+- **SlicePlan（A3.3 多跳切片规划器产物）**：在本租户已发布本体的 OntologyLink 图上做**确定性路径搜索**（BFS 最短路 + 固定 tie-break：跳数↑→域内边优先→toType 字典序→linkKey 字典序）→ 自动产可执行切片（root→每目标最短路 hops{linkKey,direction,toType} + 路径证据 + 跨越域集），经既有 executeSlice 可跑；搜不到→结构化 `NO_PATH`(unreachable[]，喂 A5 比差/GapReport NO_SLICE)。纯函数无 LLM/无随机（R6，同图同请求字节一致）· `ontology/slice-planner.ts planSlice` · 契约 `contracts/slice-planner.ts` · `POST /a/v1/slices/plan`（R2：仅本租户图）· 门 `slice-planner:check`。**A3.4 切片索引复用 + slice.planned 事件待后续；A3.1 14 域基线 / A3.2 两库待后续**。
 - **ObjectPropHistory**：属性时序历史（temporal）· `objectPropHistory`。
 - **Domain**：归域（治理）· `domains`。
 

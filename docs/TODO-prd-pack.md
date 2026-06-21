@@ -27,8 +27,13 @@
 
 ## Wave 1 · 基座（同波并行；A3 是 A4/A5/A10 前置）
 
-- [ ] ⬜ **A3 · 14 域参考本体 + 域内/跨域两库 + 多跳切片规划器（图路径搜索）+ 切片索引**
-  在 OntologyLink 图上做确定性路径搜索 → 自动产 SliceSpec；切片索引先查复用、查不到再规划。R1 R2 R6 R12 R14。
+- [~] ◐ **A3 · 14 域参考本体 + 域内/跨域两库 + 多跳切片规划器（图路径搜索）+ 切片索引**
+  **A3.3 ✅（keystone）多跳切片规划器**：`ontology/slice-planner.ts planSlice` 在 OntologyLink 图上确定性
+  BFS 最短路 + 固定 tie-break（跳数→域内边优先→toType 字典序→linkKey 字典序）→ SlicePlan（root→每目标
+  最短路 + 路径证据 + 跨域集），搜不到→NO_PATH(unreachable[])；纯函数 R6 字节一致；`POST /a/v1/slices/plan`
+  (R2 仅本租户图) + 契约 `contracts/slice-planner.ts` + 门 `pnpm slice-planner:check`。测试 a3-slice-planner ×9
+  (链式/多目标/反向 in 边/NO_PATH/maxHops/R6/tie-break 域内优先 + 端点 root===target/未知类型/R2 空租户)。
+  回写本体 §2。**余**：A3.1 14 域注册表+参考本体基线 · A3.2 域内/跨域两库 · A3.4 切片索引复用+slice.planned 事件。
 - [~] ◐ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
   **A6.1 ✅** `GenSpec.valueDomain` + 值域库 `synthetic/value-domains.ts`(按属性语义配置化 R14) + `genValue`
   扩(normal/banded/uniform 确定性采样,落业务区间);**A6.2 ✅** `PlantSpec` + `applyPlantCrossings`(固定索引
@@ -77,7 +82,8 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：21 项（19 PRD + A9 设计延后 + 2 特性）。完成 **1 ✅ + 1 ◐ / 21**。
+- 合计：21 项（19 PRD + A9 设计延后 + 2 特性）。完成 **1 ✅ + 2 ◐ / 21**。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
-- ◐ A6（拟真值域 + 越线植入，A6.1/A6.2 逻辑完成+门+无回归；A6.3 收编 + 全服务 e2e 待补）。
-- 下一步：Wave 1 余 **A3**（14 域本体 + 多跳切片规划器，最大、是 A4/A5/A10 前置）→ Wave 1 收尾后进 Wave 2。
+- ◐ A6（拟真值域 + 越线植入，A6.1/A6.2 完成+门+无回归；A6.3 收编 + 全服务 e2e 待补）。
+- ◐ A3（**keystone A3.3 多跳切片规划器**完成+门 9 测；A3.1 域基线 / A3.2 两库 / A3.4 索引待补）。
+- 下一步：补 A3 余分期（A3.1→A3.2→A3.4）收尾 Wave 1，或先把 A6 尾巴补 ✅；再进 Wave 2。

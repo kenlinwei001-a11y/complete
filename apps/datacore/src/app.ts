@@ -9,7 +9,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
+import { AggregateRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, PlanSliceRequestSchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
@@ -37,6 +37,7 @@ import { OntologyCoreService } from "./ontology-core.js";
 import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
+import { planSlice } from "./ontology/slice-planner.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
@@ -1741,6 +1742,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { kind, query } = req.query as { kind?: string; query?: string };
     if (kind !== "slices" && kind !== "solvers") throw validationError("kind must be slices|solvers");
     return catalog.discover(ctx(req), kind, query);
+  });
+  // A3.3 多跳切片规划器：在本租户已发布本体的 OntologyLink 图上确定性路径搜索 → SlicePlan（root→hops）。
+  app.post("/a/v1/slices/plan", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(PlanSliceRequestSchema, req.body);
+    const types = (await ontology.listTypes(c)).map((t) => ({ key: t.key, domain: t.domain }));
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    return planSlice(types, links, body);
   });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };
