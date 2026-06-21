@@ -45,15 +45,17 @@
   跨域 `biz.x.<from>_to_<to>` 每接缝单跳切片) + `GET /a/v1/slices/library?scope=` + `POST /slices/library/build`
   (幂等登记为一等切片→进 A3.4 索引、QOS 可调)。测试 a3-slice-library ×4(域内/跨域派生/R6/端点登记进索引)。回写本体 §2。
   **A3 仅余**：A3.1 参考本体基线(元租户 95 节点,数据量大,低优先)——A3 核心能力链(域→规划器→索引→两库)已闭合。
-- [~] ◐ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
+- [x] ✅ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**（Wave1 尾巴已清：全服务 e2e 跑通）
   **A6.1 ✅** `GenSpec.valueDomain` + 值域库 `synthetic/value-domains.ts`(按属性语义配置化 R14) + `genValue`
   扩(normal/banded/uniform 确定性采样,落业务区间);**A6.2 ✅** `PlantSpec` + `applyPlantCrossings`(固定索引
   植入越线/近边界) + `autoPlant` 从 BLOCK 规则 `derivePlantFromRule` 反推 + `instantiateGeneric` opt-in 接入
   (护 R6 向后兼容) + `pnpm value-domain:check` 门(test-backed)。测试 a6-value-domains(×7:三形采样落区间+
   R6 字节一致+植入查准+lt 方向+规则反推)。datacore 470 全绿(+7,无字节回归:synthetic/genspec/scale-baseline 通过)。
-  **余(诚实)**：A6.3 电池路收编同机制(generateBattery 未改→字节保持,收编后续);**全服务 e2e 未跑**——
-  注册自定义模板跑 synthetic job 被无关的模板 plumbing(views/workspace)500 挡住,逻辑由 7 单测+门+无回归验证,
-  **未亲手过真服务合成路**(守"绿测试≠能用",诚实标 ◐ 非 ✅)。回写本体 §2.A/§8(G-5 8f)。
+  **A6 全服务 e2e ✅（Wave1 尾巴已清）**：注册自定义行业模板(util valueDomain + autoPlant + scenarioSeed)→
+  真 synthetic job → 物化对象 util 落业务区间[0.62,0.95] + autoPlant 越线>0.95 ≥2 行 + **R6 同 seed 重跑字节一致**
+  (a6-value-domains 第 8 测，亲手过真服务合成路)。`pnpm value-domain:check` 即跑此文件含 e2e。回写本体 §2.A/§8(G-5 8f)。
+  **唯一余项(诚实)**：A6.3 电池路收编(让 generateBattery 也用共享机制)——纯内部 consolidation，**generateBattery 未改→
+  电池字节保持(DoD"电池字节不变"已满足)**，收编是可选优化、不影响通用路价值，留作后续。
 - [x] ✅ **A11 · 连接创建打 `Connection.category` 标签（per-instance 归类，可自定义值）**
   Connection 加可覆盖 category（默认取连接器类型 registry category）+ RawDataset 溯源继承 `sourceCategory` +
   `GET /a/v1/connector-categories`（内置并集 + 本租户已用值，R2 隔离）+ `connection.created` 事件（§4 L8）+
@@ -84,7 +86,19 @@
 
 - [ ] ⬜ **A15 · CLI 通用操作外壳**（意图识别→模块路由→CLI 交互补参→触发模块；含 QOS 推演问答；全模块↔CLI 对等矩阵）。R15。
 - [ ] ⬜ **prototype-intake · 原型 intake 正门 + schema 对账 HITL**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。
-- [ ] ⬜ **A16 · LLM 临时求解器（origin=LLM · 沙箱跑通 · 可溯可替换 · 受治理晋升）**（用户新增需求，修订"求解器不可由 LLM 生成"红线）：
+- [ ] ⬜ **A18 · 未审核态全栈建域闭环（吸收并取代 A16+A17，三合一自包含）**（用户新增需求 v0.2）：
+  开 **PROVISIONAL 未审核模式**——闭包门从 HARD 原子闸(缺一环→全 0)降为 **ADVISORY**(如实记缺口不阻断)；缺求解器
+  由 **LLM 生成临时件 + 锁死沙箱跑通**；本体/数据/规则/切片/B栈全以未审核态建出(隔离·强标 origin=LLM_PROVISIONAL/
+  status=PROVISIONAL/trustLevel=UNVERIFIED) → 端到端 **PROVISIONAL_ANSWER**(绝不 ANSWERABLE/VERIFIED) → 人工审核→发布晋升 GOVERNED。
+  目标：那道"30% 储能→动力"问句再跑，实证表 6 行(P1 数据/P2 本体/P3 切片/P4 规则/P5 求解器/P6 B栈)全翻 ✅(未审核态)。
+  分期 A18.1 双模闭包+buildMode+PROVISIONAL_ANSWER+origin/status/隔离+`provisional-honesty:check`(消 P2/3/4+解阻断) ·
+  A18.2 SolverArtifact+锁死沙箱+`solver-sandbox:check`+LLM 生成跑通注册+写真值门控(消 P5)+修 A5 矩阵乐观误报 bug ·
+  A18.3 PROVISIONAL 合成数据物化(消 P1)+B栈 scaffold(消 P6,A7 单机可见) · A18.4 端到端推演+人工审核台+逐项/整域晋升(VLE/校准+R4)+接 A5/A10。
+  **✅ 已定（沿用 A16 裁决）**：沙箱=独立子进程/容器。**⚠ 需用户复核 1 个冲突 + 3 个 A18 新确认点**：
+  ① **冲突**：你 A16 时说"临时求解器**可**写真值(带标签)"，但 A18 设计red线是"PROVISIONAL **绝不**写真值、只 GOVERNED 写"(§3.0/R4)——A18 取 A16 → 默认按 A18 即**不写真值、晋升后才写**；如仍要"临时件可写真值"请明示(与 A18 不谎报红线冲突，需你拍板)。
+  ② 未审核数据可见范围(默认隔离，不进受治理查询)；③ 默认模式(默认 STRICT，PROVISIONAL opt-in，发动机页是否默认 PROVISIONAL)；④ 晋升粒度(默认整域一键+逐制品)。
+  注：A16/A17 已被 A18 合并取代（原 A16 文件作废）。
+- ~~A16 · LLM 临时求解器~~（**已并入 A18**）：
   缺求解器时 LLM 生成 `{compute 纯函数 + outputSchema + rationale}` → **冻结 SolverArtifact(hash+版本 R6)** → **锁死沙箱跑通自检**(无网络/fs/clock/random，R5) → 注册 `origin=LLM_PROVISIONAL, status=PROVISIONAL, trustLevel=UNVERIFIED` → 推演可调(全程标"临时·未验证" R13)，**输出不可自动写真值(R4)** → 人工 看代码/编辑/替换/晋升(VLE+校准 advisory+审批→GOVERNED 解锁写真值)。分期 A16.1 沙箱+SolverArtifact+`solver-sandbox:check` · A16.2 LLM 生成+跑通+注册+写真值门控 · A16.3 人工生命周期+MCP 标+接 A5/A10。
   **✅ 用户已裁决（2026-06-21）**：① **沙箱技术 = 独立子进程/容器**（复用 CP-SAT sidecar 隔离范式，数据不出边界，比进程内 isolated-vm 更强隔离）。② **临时求解器可写真值**——用户明确接受：只要**每个求解器有状态标签**标注其可信级（origin=LLM/status=PROVISIONAL/trustLevel=UNVERIFIED 全程显示）即可写真值。**这放宽了 R4（真值经 Action 审批）对 PROVISIONAL 件的默认禁写**：实现时 PROVISIONAL 输出驱动的 Action 草稿**允许执行写真值，但必须带醒目"临时·LLM·未验证"标 + provenance 代码可查（R13 强标注代偿）**；用户已知并接受"未验证逻辑可进真值链"的风险。晋升 GOVERNED 仍解除"临时"标。
 
@@ -96,8 +110,8 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**22 项**（20 PRD[+A16 新增] + A9 设计延后 + 2 特性）。完成 **1 ✅ + 2 ◐ / 22**。
+- 合计：**22 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性）。完成 **2 ✅ + 1 ◐ / 22**（A11/A6 ✅；A3 核心闭合仅余参考基线）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
-- ◐ A6（拟真值域 + 越线植入，A6.1/A6.2 完成+门+无回归；A6.3 收编 + 全服务 e2e 待补）。
+- ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。
 - 下一步：A3 核心已闭合（域→规划器→索引→两库）；可进 **Wave 2**（A1 求解器→MCP / A8 CP-SAT / A13 地板语义 / A4 对象浏览器），或补 A6 尾巴 / A3.1 参考基线。A16 决策已定可排期。

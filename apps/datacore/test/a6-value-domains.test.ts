@@ -72,3 +72,38 @@ describe("A6 · 规则反推默认 PlantSpec（违规谓词 → 植入规约）"
   });
 });
 
+
+import { makeApp, ADMIN } from "./helpers.js";
+
+describe("A6 · 通用合成路端到端（真服务：拟真值落区间 + autoPlant 越线可溯）", () => {
+  it("注册测试行业模板 → 合成 job → 对象 util 落业务区间且有 autoPlant 越线（R6 重跑一致）", async () => {
+    const t = await makeApp({ seed: false }); // 隔离断言（非电池规则 scope 固定 Order）
+    await t.repos.industryTemplates.put({
+      id: "tmpl_a6", tenantId: "demo", industryKey: "a6-phone", source: "LLM", createdAt: new Date().toISOString(),
+      template: {
+        industryKey: "a6-phone",
+        ontology: { objectTypes: [{ key: "Order", displayName: "订单", properties: [{ propKey: "orderId", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }] }] },
+        generation: [{
+          typeKey: "Order", count: { S: 12, M: 12, L: 12 },
+          propGenerators: { orderId: { kind: "pattern", pattern: "O-{seq:3}" }, util: { kind: "valueDomain", domainKey: "util", shape: "normal" } },
+          autoPlant: true,
+        }],
+        rules: [{ key: "C_UTIL", name: "产能利用率越线", expression: "Order.util > 0.95", severity: "BLOCK" }],
+        scenarioSeed: { views: [], intents: [] },
+      },
+    } as never);
+
+    const job = await t.app.inject({ method: "POST", url: "/a/v1/synthetic/jobs", headers: ADMIN, payload: { industry: "a6-phone", scale: "S", seed: 42 } });
+    expect(job.statusCode).toBe(202);
+    const objs = (await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&pageSize=100", headers: ADMIN })).json() as { data: { props: { util: number } }[] };
+    const utils = objs.data.map((o) => Number(o.props.util));
+    expect(utils.length).toBe(12);
+    expect(utils.filter((u) => u > 0.95).length).toBeGreaterThanOrEqual(2); // autoPlant 越线
+    expect(utils.filter((u) => u >= 0.62 && u <= 0.95).length).toBeGreaterThanOrEqual(8); // 拟真值域落区间
+
+    const job2 = await t.app.inject({ method: "POST", url: "/a/v1/synthetic/jobs", headers: ADMIN, payload: { industry: "a6-phone", scale: "S", seed: 42 } });
+    expect(job2.statusCode).toBe(202);
+    const objs2 = (await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&pageSize=100", headers: ADMIN })).json() as { data: { props: { util: number } }[] };
+    expect(objs2.data.map((o) => Number(o.props.util)).sort()).toEqual(utils.slice().sort()); // R6 重跑一致
+  });
+});
