@@ -147,6 +147,20 @@ export class OpenAiLlmClient implements FullLlmClient {
   }
 
   async classify(req: { model: string; system: string; user: string }): Promise<RawClassification> {
+    // 思维型/温度强制模型（如 kimi-k2.5）偶发返回空/不可解析的结构化输出 → 重试（实测 ~1/4 概率，重试即稳）。
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.classifyOnce(req);
+      } catch (err) {
+        if (!(err instanceof ClassifierParseError)) throw err;
+        lastErr = err;
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new ClassifierParseError();
+  }
+
+  private async classifyOnce(req: { model: string; system: string; user: string }): Promise<RawClassification> {
     const resp = await this.client.chat.completions.create({
       model: req.model,
       messages: [
@@ -154,8 +168,10 @@ export class OpenAiLlmClient implements FullLlmClient {
         { role: "user", content: req.user },
       ],
       response_format: {
+        // strict:false 兼容国产/兼容端点（实测 Moonshot/Kimi 在 strict:true 下返空/不可解析，且会加 reason 等额外字段）；
+        // 形状由 OpenAiClassificationSchema 兜底校验（zod 默认剔除未知键）。
         type: "json_schema",
-        json_schema: { name: "intent_classification", strict: true, schema: CLASSIFICATION_JSON_SCHEMA },
+        json_schema: { name: "intent_classification", strict: false, schema: CLASSIFICATION_JSON_SCHEMA },
       },
     });
     this.trackUsage(req.model, resp.usage);
@@ -163,7 +179,7 @@ export class OpenAiLlmClient implements FullLlmClient {
     if (typeof content !== "string" || content.length === 0) throw new ClassifierParseError();
     let raw: unknown;
     try {
-      raw = JSON.parse(content);
+      raw = JSON.parse(extractJsonText(content)); // 兼容 Moonshot/Kimi 的 ```json``` 围栏
     } catch {
       throw new ClassifierParseError();
     }
