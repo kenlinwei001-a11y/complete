@@ -71,3 +71,52 @@ def test_dispatch_unknown_model_raises():
 
     with pytest.raises(ValueError):
         server.dispatch({"model": "nope"})
+
+
+def test_assignment_optimize_min_cost_and_capacity():
+    """A8.1 指派：2 订单→2 基地，容量约束 + 成本最小化，CP-SAT 可证最优。"""
+    payload = {
+        "model": "assignment", "seed": 42,
+        "items": [{"id": "O1", "weight": 6}, {"id": "O2", "weight": 5}],
+        "bins": [{"id": "B_cheap", "capacity": 6}, {"id": "B_exp", "capacity": 10}],
+        # O1 在 cheap 更便宜但 cheap 容量只够一个；O2 也偏好 cheap → 求解器需权衡。
+        "costs": [
+            {"item": "O1", "bin": "B_cheap", "cost": 1}, {"item": "O1", "bin": "B_exp", "cost": 5},
+            {"item": "O2", "bin": "B_cheap", "cost": 2}, {"item": "O2", "bin": "B_exp", "cost": 3},
+        ],
+    }
+    out = server.solve_assignment(payload)
+    assert out["status"] == "OPTIMAL"
+    assert out["optimal"] is True
+    # 每订单恰一指派
+    assert len(out["assignments"]) == 2
+    assigned = {a["item"]: a["bin"] for a in out["assignments"]}
+    assert set(assigned) == {"O1", "O2"}
+    # cheap 容量 6 只够 O1(6)；O2 必须去 exp → 最优 = O1@cheap(1) + O2@exp(3) = 4
+    assert assigned["O1"] == "B_cheap"
+    assert assigned["O2"] == "B_exp"
+    assert out["objective"] == 4
+
+
+def test_assignment_determinism_r6():
+    payload = {
+        "model": "assignment", "seed": 42,
+        "items": [{"id": "O1", "weight": 1}, {"id": "O2", "weight": 1}],
+        "bins": [{"id": "A", "capacity": 5}, {"id": "B", "capacity": 5}],
+        "costs": [{"item": i, "bin": b, "cost": 1} for i in ["O1", "O2"] for b in ["A", "B"]],
+    }
+    a = server.solve_assignment(payload)
+    b = server.solve_assignment(payload)
+    assert a == b  # 同输入同 seed 字节一致（二级目标消多解抖动）
+
+
+def test_assignment_infeasible_no_eligible_bin():
+    payload = {
+        "model": "assignment", "seed": 42,
+        "items": [{"id": "O1", "weight": 1}],
+        "bins": [{"id": "A", "capacity": 5}],
+        "costs": [],  # 无资格对 → 不可行
+    }
+    out = server.solve_assignment(payload)
+    assert out["status"] == "INFEASIBLE"
+    assert out["assignments"] == []

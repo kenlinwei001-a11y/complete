@@ -76,7 +76,72 @@ def solve_selection(payload: dict) -> dict:
     }
 
 
-MODELS = {"selection": solve_selection}
+def solve_assignment(payload: dict) -> dict:
+    """A8.1 指派最优化：item i 指派到 bin j（x[i,j]∈{0,1}），每 item 恰一指派、Σweight≤cap_j、
+    资格 mask（仅给出 cost 的 (i,j) 对可指派）；min Σ cost·x。CP-SAT 可证最优。
+
+    确定性：固定 seed + 单线程 + 二级目标（同成本下偏靠前 item/bin）消除多解抖动。
+    """
+    items = payload.get("items") or []
+    bins = payload.get("bins") or []
+    costs = payload.get("costs") or []
+    if not items or not bins:
+        return {"status": "INFEASIBLE", "optimal": False, "assignments": [], "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+
+    def to_int(x: float) -> int:
+        return int(round(float(x) * scale))
+
+    item_ids = [str(it["id"]) for it in items]
+    bin_ids = [str(b["id"]) for b in bins]
+    weight = {str(it["id"]): to_int(it.get("weight", 0)) for it in items}
+    cap = {str(b["id"]): to_int(b.get("capacity", 0)) for b in bins}
+    cost = {(str(c["item"]), str(c["bin"])): to_int(c.get("cost", 0)) for c in costs}
+
+    model = cp_model.CpModel()
+    x = {(i, j): model.NewBoolVar(f"x_{i}_{j}") for i in item_ids for j in bin_ids if (i, j) in cost}
+    if not x:
+        return {"status": "INFEASIBLE", "optimal": False, "assignments": [], "objective": 0}
+    # 每 item 恰一指派（仅在有资格对时）。
+    for i in item_ids:
+        vars_i = [x[(i, j)] for j in bin_ids if (i, j) in x]
+        if not vars_i:
+            return {"status": "INFEASIBLE", "optimal": False, "assignments": [], "objective": 0}
+        model.Add(sum(vars_i) == 1)
+    # bin 容量：Σ weight·x ≤ capacity。
+    for j in bin_ids:
+        model.Add(sum(weight[i] * x[(i, j)] for i in item_ids if (i, j) in x) <= cap[j])
+    # 主目标 min Σ cost·x；二级确定性目标：同成本下偏靠前 item/bin（消抖）。
+    ni, nj = len(item_ids), len(bin_ids)
+    big = ni * nj + 1
+    model.Minimize(
+        sum(cost[(i, j)] * x[(i, j)] for (i, j) in x) * big
+        + sum((item_ids.index(i) * nj + bin_ids.index(j)) * x[(i, j)] for (i, j) in x)
+    )
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "assignments": [], "objective": 0}
+    assignments = [
+        {"item": i, "bin": j, "cost": round(cost[(i, j)] / scale, 6)}
+        for (i, j) in x
+        if solver.Value(x[(i, j)]) == 1
+    ]
+    assignments.sort(key=lambda a: a["item"])
+    return {
+        "status": status_name,
+        "optimal": status == cp_model.OPTIMAL,
+        "assignments": assignments,
+        "objective": round(sum(a["cost"] for a in assignments), 6),
+    }
+
+
+MODELS = {"selection": solve_selection, "assignment": solve_assignment}
 
 
 def dispatch(payload: dict) -> dict:

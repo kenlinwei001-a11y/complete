@@ -53,6 +53,8 @@ export const SOLVER_KEYS = [
   "supplier_disruption_radius",
   // PRD-fde §8d 组合最优化（CP-SAT sidecar 代理）：通用 0/1 选择最优化,贪心给不出的可证最优。
   "selection_optimize",
+  // A8.1 指派最优化（订单/需求 → 基地/产线，CP-SAT 可证最优）
+  "assignment_optimize",
 ] as const;
 
 /**
@@ -77,6 +79,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   margin_attribution: ["inverted", "rootDrivers", "invertedCount", "summary"],
   supplier_disruption_radius: ["rootType", "rootId", "layers", "radius", "totalAffected", "leafType", "leafCount", "summary"],
   selection_optimize: ["status", "optimal", "selected", "totalValue", "totalWeight", "itemType", "budget", "candidateCount", "summary"],
+  assignment_optimize: ["status", "optimal", "assignments", "objective", "itemType", "binType", "itemCount", "binCount", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -397,6 +400,46 @@ export class SolverService {
     };
   }
 
+  /**
+   * A8.1 指派最优化（CP-SAT sidecar 代理）：把 itemType 对象指派到 binType 对象（订单→基地/产线），
+   * 每 item 一指派、Σweight ≤ bin.capacity、按 (item,bin) 成本最小化（资格 mask=缺成本对不可指派）。
+   * 贪心给不出全局最优,走 OR-Tools CP-SAT 可证最优；数据不出边界。未配 OPTIMIZER_BASE_URL → 显式"未接入"不兜底。
+   * args: { itemType, binType, weightField?, capacityField?, costField?(item 上每 bin 同成本) | costMatrix?, seed? }。
+   */
+  private async assignmentOptimize(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const itemType = str(args.itemType);
+    const binType = str(args.binType);
+    const weightField = str(args.weightField, "weight");
+    const capacityField = str(args.capacityField, "capacity");
+    const costField = str(args.costField, "cost");
+    if (!itemType || !binType) throw validationError("assignment_optimize 需 itemType + binType（+ weightField/capacityField/costField）");
+    if (!this.optimizer?.solveAssignment) throw validationError("assignment_optimize 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+
+    const pkOf = async (type: string): Promise<string | undefined> =>
+      (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === type))[0]?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const itemPk = await pkOf(itemType);
+    const binPk = await pkOf(binType);
+    const itemObjs = (await this.repos.objects.listByType(ctx.tenantId, itemType)).sort((a, b) => a.id.localeCompare(b.id));
+    const binObjs = (await this.repos.objects.listByType(ctx.tenantId, binType)).sort((a, b) => a.id.localeCompare(b.id));
+    const items = itemObjs.map((o) => ({ id: String((itemPk ? o.props[itemPk] : undefined) ?? o.id), weight: num(o.props[weightField]) }));
+    const bins = binObjs.map((o) => ({ id: String((binPk ? o.props[binPk] : undefined) ?? o.id), capacity: num(o.props[capacityField]) }));
+    // 成本：每 item 携带一个 costField 标量 → 对所有 bin 同成本（默认完全图，资格全开）。
+    const costs = items.flatMap((it) => bins.map((b) => ({ item: it.id, bin: b.id, cost: num(itemObjs.find((o) => String((itemPk ? o.props[itemPk] : undefined) ?? o.id) === it.id)?.props[costField] ?? 1) })));
+
+    const result = await this.optimizer.solveAssignment({ model: "assignment", seed: Number(args.seed ?? 42), items, bins, costs });
+    return {
+      status: result.status,
+      optimal: result.optimal,
+      assignments: [...result.assignments].sort((a, b) => a.item.localeCompare(b.item)),
+      objective: result.objective,
+      itemType,
+      binType,
+      itemCount: items.length,
+      binCount: bins.length,
+      summary: `指派 ${result.assignments.length}/${items.length} 个${itemType}到${bins.length}个${binType}，总成本 ${result.objective}（${result.optimal ? "可证最优" : result.status === "INFEASIBLE" ? "不可行" : "可行解"}）`,
+    };
+  }
+
   async getParams(tenantId: string): Promise<SolverParamsShape> {
     const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
     const stored = (rec?.params ?? {}) as Record<string, unknown>;
@@ -620,6 +663,7 @@ export class SolverService {
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
+    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {

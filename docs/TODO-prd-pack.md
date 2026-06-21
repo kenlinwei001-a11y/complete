@@ -66,7 +66,12 @@
 ## Wave 2 · 引擎/能力（A1 是 A8/A7 暴露口；A13 让 A14 去抖；A4 依赖 A3/A11）
 
 - [ ] ⬜ **A1 · 28 求解器暴露为 MCP 工具**（MCP 页可治理 + agent 经 mcp-router 可调，OBO 代理到 /a/v1/solvers）。R3 R5 R8 R11。
-- [ ] ⬜ **A8 · 扩 CP-SAT 模型**：assignment（订单→基地/产线）/ sequencing（换型排序）/ packing（产能装箱）。R6。
+- [~] ◐ **A8 · 扩 CP-SAT 模型**：assignment（订单→基地/产线）/ sequencing（换型排序）/ packing（产能装箱）。R6。
+  **A8.1 ✅ assignment_optimize**：Python sidecar `solve_assignment`(CP-SAT：每 item 一指派 + Σweight≤cap + 资格 mask +
+  min Σcost·x + 二级目标消多解抖动 R6) + DataCore 代理 `assignmentOptimize`(loadContext 组 items/bins/costs，未配
+  OPTIMIZER_BASE_URL 显式"未接入"不兜底) + SOLVER_KEYS 29 + SOLVER_OUTPUT_SHAPES + `solveAssignment` client。
+  测试 a8-assignment-optimize ×4(取对象图组请求/未接入报错/校验/R2) + Python test_optimizer +3(可证最优@真 CP-SAT/
+  R6 字节一致/不可行)。回写本体 §2.E。**余**：A8.2 sequencing_optimize(换型矩阵) · A8.3 packing_optimize + 经 A1 MCP 暴露。
 - [x] ✅ **A13 · 通用图求解器地板语义确定化**（concentration_risk/supplier_disruption_radius 去 Kimi）。R6。
   `solvers/field-roles.ts resolveFieldRoles`：纯函数 + 结构信号(扇入/扇出/PK/数值) + 配置词库(`field-role-lexicon.ts` R14)
   + 固定 tie-break → root/sink/resource/priority(地板)/leaf 角色解析，**去 LLM 消歧(R6 字节一致)**；真歧义返回确定性排序候选
@@ -104,9 +109,11 @@
   分期 A18.1 双模闭包+buildMode+PROVISIONAL_ANSWER+origin/status/隔离+`provisional-honesty:check`(消 P2/3/4+解阻断) ·
   A18.2 SolverArtifact+锁死沙箱+`solver-sandbox:check`+LLM 生成跑通注册+写真值门控(消 P5)+修 A5 矩阵乐观误报 bug ·
   A18.3 PROVISIONAL 合成数据物化(消 P1)+B栈 scaffold(消 P6,A7 单机可见) · A18.4 端到端推演+人工审核台+逐项/整域晋升(VLE/校准+R4)+接 A5/A10。
-  **✅ 已定（沿用 A16 裁决）**：沙箱=独立子进程/容器。**⚠ 需用户复核 1 个冲突 + 3 个 A18 新确认点**：
-  ① **冲突**：你 A16 时说"临时求解器**可**写真值(带标签)"，但 A18 设计red线是"PROVISIONAL **绝不**写真值、只 GOVERNED 写"(§3.0/R4)——A18 取 A16 → 默认按 A18 即**不写真值、晋升后才写**；如仍要"临时件可写真值"请明示(与 A18 不谎报红线冲突，需你拍板)。
-  ② 未审核数据可见范围(默认隔离，不进受治理查询)；③ 默认模式(默认 STRICT，PROVISIONAL opt-in，发动机页是否默认 PROVISIONAL)；④ 晋升粒度(默认整域一键+逐制品)。
+  **✅ 用户已裁决（2026-06-21，冲突已解）**：① 沙箱=独立子进程/容器。② **临时件可写真值——但限创建人**：PROVISIONAL
+  求解器的输出**可驱动 Action 写真值，仅当 actor === createdBy（创建人本人）**，且**写入的真值带标签**（status=审核中/
+  未认证 · trustLevel=UNVERIFIED · origin=LLM · 代码可查）。**这是 R4 的创建人作用域放宽 + 强标注代偿**：创建人自担风险用
+  自己造的临时件写真值，他人/自动链仍需晋升 GOVERNED 才能写。实现：ActionDraft 门检查 `solver.createdBy === ctx.userId`
+  → 放行写真值但打"未认证"标；非创建人 → 拒/需晋升。③ 未审核数据默认隔离；④ 默认 STRICT，PROVISIONAL opt-in；⑤ 晋升整域+逐制品。
   注：A16/A17 已被 A18 合并取代（原 A16 文件作废）。
 - ~~A16 · LLM 临时求解器~~（**已并入 A18**）：
   缺求解器时 LLM 生成 `{compute 纯函数 + outputSchema + rationale}` → **冻结 SolverArtifact(hash+版本 R6)** → **锁死沙箱跑通自检**(无网络/fs/clock/random，R5) → 注册 `origin=LLM_PROVISIONAL, status=PROVISIONAL, trustLevel=UNVERIFIED` → 推演可调(全程标"临时·未验证" R13)，**输出不可自动写真值(R4)** → 人工 看代码/编辑/替换/晋升(VLE+校准 advisory+审批→GOVERNED 解锁写真值)。分期 A16.1 沙箱+SolverArtifact+`solver-sandbox:check` · A16.2 LLM 生成+跑通+注册+写真值门控 · A16.3 人工生命周期+MCP 标+接 A5/A10。
@@ -114,14 +121,20 @@
 
 ## 特性（已 APPROVED，可独立排期）
 
+- [ ] ⬜ **nav-reorg · 左侧导航信息架构整理 + 层级字号修正**（用户新增需求，纯前端 IA/样式，零业务常数 R14）：
+  管理区 32 项扁平 → **按业务域统一分组**(NAV_GROUPS 配置驱动)；推演/数据/建模 立为一级；图谱并入「建模与图谱」组；
+  补回 meta(系统自我)；字号改 **父≥子**(navGroupHeader 11→13px / section-title 10.5→12px，层级靠字重/大写/颜色)。
+  逐项可见性仍按角色(visibleAdminPages)+entitlement 过滤、空组隐藏、折叠记忆保留。分期 N1 NAV_GROUPS 统一分组+渲染+meta ·
+  N2 图谱并入建模组 · N3 字号方案 B。**确认点(默认取消)**：顶层"业务/管理"两 section-title 是否保留(默认全用域分组)。无需回写本体。
+
 - [ ] ⬜ **cockpit · 经营驾驶舱 + 产能推演 参考原型 1:1 复刻**（数字全部从本体关系算出=数据闭环，非写死/非挪配置）。
 - [ ] ⬜ **synthetic-wizard · 合成向导「生成进度」按 nano-ontoprompt 分阶段集成链重设计**（把"看数据逐阶段策展本体"的 UX 精髓真正落进页面，非仅算法）。
 
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**22 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性）。完成 **4 ✅ + 1 ◐ / 22**（A11/A6/A4/A13 ✅；A3 核心闭合仅余参考基线）。
-- Wave 1 全清；Wave 2 进行中：✅ A4（对象浏览器）· ✅ A13（地板语义去 Kimi）。余 Wave 2：A1 求解器→MCP / A8 CP-SAT。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **4 ✅ + 3 ◐ / 23**（A11/A6/A4/A13 ✅）。
+- Wave 1 全清；Wave 2 进行中：✅ A4 · ✅ A13 · ◐ A8（A8.1 assignment done）。余 Wave 2：A1 求解器→MCP / A8.2 sequencing / A8.3 packing。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

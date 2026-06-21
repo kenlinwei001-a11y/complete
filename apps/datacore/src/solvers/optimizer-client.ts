@@ -29,16 +29,35 @@ export interface OptimizationResult {
   totalWeight: number;
 }
 
-export interface OptimizerClient {
-  solve(req: OptimizationRequest): Promise<OptimizationResult>;
+// A8.1 指派最优化（订单/需求 → 基地/产线）：x[i,j]∈{0,1}，每 item 一指派、Σ 容量约束、资格 mask；min Σ cost·x。
+export interface AssignmentRequest {
+  model: "assignment";
+  seed: number;
+  items: { id: string; weight: number }[];
+  bins: { id: string; capacity: number }[];
+  /** 每 (item,bin) 指派成本；缺省对 = 不可指派（资格 mask）。 */
+  costs: { item: string; bin: string; cost: number }[];
+}
+export interface AssignmentResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  /** item→bin 指派（INFEASIBLE 时空）。 */
+  assignments: { item: string; bin: string; cost: number }[];
+  objective: number;
 }
 
-/** 生产实现：POST {baseUrl}/solve。错误转平台错误信封风格的异常。 */
+export interface OptimizerClient {
+  solve(req: OptimizationRequest): Promise<OptimizationResult>;
+  /** A8.1 指派（可选实现；未实现的 client 被调时抛"未接入"）。 */
+  solveAssignment?(req: AssignmentRequest): Promise<AssignmentResult>;
+}
+
+/** 生产实现：POST {baseUrl}/solve（背包）、/assignment（指派）。错误转平台错误信封风格的异常。 */
 export class HttpOptimizerClient implements OptimizerClient {
   constructor(private readonly baseUrl: string) {}
 
-  async solve(req: OptimizationRequest): Promise<OptimizationResult> {
-    const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}/solve`, {
+  private async post<T>(path: string, req: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(req),
@@ -47,6 +66,14 @@ export class HttpOptimizerClient implements OptimizerClient {
       const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       throw new Error(`optimizer ${res.status}: ${body.error?.message ?? "solve failed"}`);
     }
-    return (await res.json()) as OptimizationResult;
+    return (await res.json()) as T;
+  }
+
+  async solve(req: OptimizationRequest): Promise<OptimizationResult> {
+    return this.post<OptimizationResult>("/solve", req);
+  }
+
+  async solveAssignment(req: AssignmentRequest): Promise<AssignmentResult> {
+    return this.post<AssignmentResult>("/solve", req); // sidecar 单端点按 model 判别（dispatch）
   }
 }
