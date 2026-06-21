@@ -39,6 +39,7 @@ import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
+import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
@@ -1765,6 +1766,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     if (res.ok) await outbox.emit(c.tenantId, "slice.planned", { sliceKey: res.plan.sliceKey, rootType: body.rootType, reused: res.plan.reused });
     return res;
+  });
+  // A3.2 域内/跨域两库（派生）：biz.<域>.<root> 单域子图 + biz.x.<from>_to_<to> 跨域接缝。scope=intra|cross|all。
+  app.get("/a/v1/slices/library", async (req) => {
+    const c = ctx(req);
+    const scope = (req.query as { scope?: string }).scope ?? "all";
+    const types = (await ontology.listTypes(c)).map((t) => ({ key: t.key, domain: t.domain }));
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    const lib = deriveSliceLibrary(types, links);
+    if (scope === "intra") return { intra: lib.intra };
+    if (scope === "cross") return { cross: lib.cross };
+    return lib;
+  });
+  // A3.2 登记两库为一等 SliceSpec（幂等 putSliceSpec → 进 A3.4 索引 + QOS 可调）；发 slice.planned。
+  app.post("/a/v1/slices/library/build", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const types = (await ontology.listTypes(c)).map((t) => ({ key: t.key, domain: t.domain }));
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    const lib = deriveSliceLibrary(types, links);
+    const all = [...lib.intra, ...lib.cross];
+    for (const e of all) await ontologyCore.putSliceSpec(c, e.sliceKey, 1, libEntryToSpec(e) as never);
+    await outbox.emit(c.tenantId, "slice.planned", { sliceKey: "library", rootType: "*", reused: false });
+    return reply.status(201).send({ registered: all.map((e) => ({ sliceKey: e.sliceKey, scope: e.scope })), intra: lib.intra.length, cross: lib.cross.length });
   });
   // A3.4 切片索引（派生投影 R13）：按 rootType + 覆盖类型集 索引已发布切片，供规划器复用 + A4 浏览。
   app.get("/a/v1/slices/index", async (req) => {

@@ -41,7 +41,10 @@
   lookupReusable`(派生投影 R13——沿 link 图解析每切片覆盖类型集，按 rootType 索引)；`POST /a/v1/slices/plan`
   先查索引命中即复用(reused:true)、未命中才新规划 + `GET /a/v1/slices/index` + `slice.planned` 事件(§4 L1)。
   测试 a3-slice-planner +4(resolveSpannedTypes/lookup 复用/tie-break 最贴合/端点索引)。回写本体 §2/§4。
-  **A3 余分期**：A3.2 域内/跨域两库派生(biz.<域>.<形状> / biz.x.<seam>)。**A3.1 参考本体基线**。
+  **A3.2 ✅ 域内/跨域两库**：`ontology/slice-library.ts deriveSliceLibrary`(确定性——域内 `biz.<域>.<root>` 单域子图 +
+  跨域 `biz.x.<from>_to_<to>` 每接缝单跳切片) + `GET /a/v1/slices/library?scope=` + `POST /slices/library/build`
+  (幂等登记为一等切片→进 A3.4 索引、QOS 可调)。测试 a3-slice-library ×4(域内/跨域派生/R6/端点登记进索引)。回写本体 §2。
+  **A3 仅余**：A3.1 参考本体基线(元租户 95 节点,数据量大,低优先)——A3 核心能力链(域→规划器→索引→两库)已闭合。
 - [~] ◐ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
   **A6.1 ✅** `GenSpec.valueDomain` + 值域库 `synthetic/value-domains.ts`(按属性语义配置化 R14) + `genValue`
   扩(normal/banded/uniform 确定性采样,落业务区间);**A6.2 ✅** `PlantSpec` + `applyPlantCrossings`(固定索引
@@ -83,7 +86,7 @@
 - [ ] ⬜ **prototype-intake · 原型 intake 正门 + schema 对账 HITL**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。
 - [ ] ⬜ **A16 · LLM 临时求解器（origin=LLM · 沙箱跑通 · 可溯可替换 · 受治理晋升）**（用户新增需求，修订"求解器不可由 LLM 生成"红线）：
   缺求解器时 LLM 生成 `{compute 纯函数 + outputSchema + rationale}` → **冻结 SolverArtifact(hash+版本 R6)** → **锁死沙箱跑通自检**(无网络/fs/clock/random，R5) → 注册 `origin=LLM_PROVISIONAL, status=PROVISIONAL, trustLevel=UNVERIFIED` → 推演可调(全程标"临时·未验证" R13)，**输出不可自动写真值(R4)** → 人工 看代码/编辑/替换/晋升(VLE+校准 advisory+审批→GOVERNED 解锁写真值)。分期 A16.1 沙箱+SolverArtifact+`solver-sandbox:check` · A16.2 LLM 生成+跑通+注册+写真值门控 · A16.3 人工生命周期+MCP 标+接 A5/A10。
-  **⚠ 开工前需用户确认 2 点**：① 沙箱技术(默认 isolated-vm 进程内 V8 隔离;或子进程/容器;或 Python sidecar) ② 临时求解器能否写真值(默认**不能**,晋升 GOVERNED 才解锁——若要临时件也能写真值需明确接受"未验证逻辑进真值链"风险)。
+  **✅ 用户已裁决（2026-06-21）**：① **沙箱技术 = 独立子进程/容器**（复用 CP-SAT sidecar 隔离范式，数据不出边界，比进程内 isolated-vm 更强隔离）。② **临时求解器可写真值**——用户明确接受：只要**每个求解器有状态标签**标注其可信级（origin=LLM/status=PROVISIONAL/trustLevel=UNVERIFIED 全程显示）即可写真值。**这放宽了 R4（真值经 Action 审批）对 PROVISIONAL 件的默认禁写**：实现时 PROVISIONAL 输出驱动的 Action 草稿**允许执行写真值，但必须带醒目"临时·LLM·未验证"标 + provenance 代码可查（R13 强标注代偿）**；用户已知并接受"未验证逻辑可进真值链"的风险。晋升 GOVERNED 仍解除"临时"标。
 
 ## 特性（已 APPROVED，可独立排期）
 
@@ -96,5 +99,5 @@
 - 合计：**22 项**（20 PRD[+A16 新增] + A9 设计延后 + 2 特性）。完成 **1 ✅ + 2 ◐ / 22**。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ◐ A6（拟真值域 + 越线植入，A6.1/A6.2 完成+门+无回归；A6.3 收编 + 全服务 e2e 待补）。
-- ◐ A3（**keystone A3.3 多跳切片规划器**完成+门 9 测；A3.1 域基线 / A3.2 两库 / A3.4 索引待补）。
-- 下一步：补 A3 余分期（A3.1→A3.2→A3.4）收尾 Wave 1，或先把 A6 尾巴补 ✅；再进 Wave 2。
+- ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。
+- 下一步：A3 核心已闭合（域→规划器→索引→两库）；可进 **Wave 2**（A1 求解器→MCP / A8 CP-SAT / A13 地板语义 / A4 对象浏览器），或补 A6 尾巴 / A3.1 参考基线。A16 决策已定可排期。
