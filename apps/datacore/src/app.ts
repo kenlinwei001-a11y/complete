@@ -58,7 +58,7 @@ const CapabilityNeedsSchema = z.object({
   slices: z.array(z.string()).optional(),
 });
 import { LivedInEngine } from "./livedin/engine.js";
-import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
+import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
 import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
@@ -1833,6 +1833,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const out = await ontologyCore.executeSlice(c, spec.spec, body.args);
       return { data: { nodes: out.nodes, edges: out.edges, truncated: out.truncated }, snapshotVersion: out.snapshotVersion };
     }
+  });
+  // A1 求解器注册表（业务场景 22 + 通用 9 = 31，feature 过滤）：供 AgentCore 构建 `solvers`
+  // MCP server 的全部工具（含 A8 新模型 + 净室通用族）；附输出形状供治理页/渲染绑定校验参考。
+  app.get("/a/v1/solvers/registry", async (req) => {
+    const c = ctx(req);
+    const { query } = req.query as { query?: string };
+    const { items } = await catalog.solverRegistry(c, query);
+    return { solvers: items.map((it) => ({ ...it, outputShape: SOLVER_OUTPUT_SHAPES[it.key] ?? [] })) };
   });
   // A13 地板语义确定化：通用图求解器的字段角色确定性解析（结构信号 + 配置词库，去 LLM）+ 候选/置信度。
   app.get("/a/v1/solvers/:solverKey/field-roles", async (req) => {

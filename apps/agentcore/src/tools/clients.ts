@@ -89,6 +89,11 @@ export interface CatalogClient {
     kind: "slices" | "solvers",
     query?: string,
   ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }>;
+  /** A1：求解器全集注册表（31，feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。 */
+  solverRegistry(
+    ctx: ToolAuthCtx,
+    query?: string,
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }>;
 }
 
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */

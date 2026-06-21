@@ -138,6 +138,15 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
                           --OBO HTTP /a/v1/ontology/cross-validate--> DataCore 对照知识图谱已有事实核对（fail-open），
                           连同一致性检查组装为 Answer.validationTrace（前端 ValidationTracePanel 展示，让用户信任）
 ```
+**求解器 MCP 暴露链（A1）**
+```
+DataCore SolverRegistry(全集 31 = 业务场景 22 + 净室通用 9，feature 过滤) --GET /a/v1/solvers/registry-->
+  AgentCore `solvers` MCP server(mcp/solvers-catalog.ts buildSolverMcpTools，确定性按名排序) --GET /b/v1/mcp/servers/solvers-->
+    工具 mcp__solvers__{key}(治理页可见/mcp-router 可选) --Agent 调用--> executor A1 shim(零重写归一回 invoke_solver)
+      --OBO HTTP /a/v1/solvers/{key}/invoke--> DataCore Solver
+  · 收敛纪律：「无 LLM 描述不允许发布」→ 注册表每条带描述（catalog.test 守无漂移：注册表键集 === SOLVER_KEYS）
+  · feature 过滤先于 authz（关 view.plan-audit → plan_audit 工具消失，R3）；与 QOS 场景 discover(22) 分列、互不影响
+```
 **场景/入口链**
 ```
 ScenarioCard --view--> View(规划与平衡/推演与风险/…)

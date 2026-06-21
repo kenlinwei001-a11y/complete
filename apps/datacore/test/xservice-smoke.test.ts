@@ -3,6 +3,8 @@ import { makeApp, seedBattery, type TestApp } from "./helpers.js";
 // 跨包导入：AgentCore 真实 HTTP DataCore 客户端（生产同一份代码路径，非 mock）。
 import { createHttpDataCore } from "../../agentcore/src/tools/datacore-http.js";
 import type { DataCoreClient, ToolAuthCtx } from "../../agentcore/src/tools/clients.js";
+import { buildSolverMcpTools } from "../../agentcore/src/mcp/solvers-catalog.js";
+import { parseSolverMcpToolName } from "@platform/contracts";
 
 /**
  * 跨服务真实联调冒烟（系统本体 §8 G-2 守护）：起真实 DataCore（监听端口）+ 真实 AgentCore
@@ -49,5 +51,19 @@ describe("跨服务真实联调冒烟 — 真实 AgentCore HTTP 客户端 ↔ �
 
   it("错误信封透传：未知求解器 → DataCoreHttpError(404)", async () => {
     await expect(dc.solver.invoke(ctx, "no_such_solver", {})).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("A1 跨服务：`solvers` MCP 工具目录由真实 DataCore 求解器注册表构建（全集 31，mcp__solvers__{key}，含 A8 新模型）", async () => {
+    // 源=求解器全集注册表（业务场景 22 + 净室通用 9 = 31），非 QOS 场景 discover（22）。
+    const items = (await dc.catalog.solverRegistry(ctx)).items;
+    const tools = buildSolverMcpTools(items);
+    expect(tools.length).toBe(items.length);
+    expect(tools.length).toBeGreaterThanOrEqual(28);
+    expect(tools.every((t) => t.name.startsWith("mcp__solvers__"))).toBe(true);
+    expect(tools.some((t) => t.solverKey === "assignment_optimize")).toBe(true); // A8 新求解器并入
+    expect(tools.some((t) => t.solverKey === "supplier_disruption_radius")).toBe(true); // 净室通用并入
+    // 工具名 ↔ 真 solverKey 双向；该 key 可经真 DataCore invoke（executor shim 归一路径终点，上面 capacity_forecast 已验）
+    const cf = tools.find((t) => t.solverKey === "capacity_forecast")!;
+    expect(parseSolverMcpToolName(cf.name)).toBe("capacity_forecast");
   });
 });

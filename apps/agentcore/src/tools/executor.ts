@@ -1,4 +1,4 @@
-import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -116,6 +116,15 @@ export class GuardedToolExecutor {
     if (exp !== undefined && exp * 1000 - Date.now() < 60_000) {
       this.deps.metrics.oboDenied.inc();
       return this.finish(toolName, input, { error: "OBO_TOKEN_EXPIRING" }, "DENIED", started, false);
+    }
+
+    // A1 求解器 MCP 工具：mcp__solvers__{key} → 复用既有 invoke_solver 执行路径（OBO 到 DataCore，零重写）。
+    // scope 门已用原名校验（line 110），此处归一到 invoke_solver 供下游分发；审计名亦记为 invoke_solver。
+    const solverKeyFromMcp = parseSolverMcpToolName(toolName);
+    if (solverKeyFromMcp) {
+      const inp = (input ?? {}) as Record<string, unknown>;
+      toolName = "invoke_solver";
+      input = { solverKey: solverKeyFromMcp, args: (inp.args as Record<string, unknown>) ?? {} };
     }
 
     // 1) coarse-grained IAM check

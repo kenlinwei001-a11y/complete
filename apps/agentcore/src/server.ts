@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import { buildSolverMcpTools, SOLVERS_MCP_SERVER_INFO } from "./mcp/solvers-catalog.js";
 import cors from "@fastify/cors";
 import { z, ZodError } from "zod";
 import {
@@ -768,6 +769,17 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     } catch {
       return { items: [], createHint: "求解器由平台提供，如需新增请联系实施" };
     }
+  });
+
+  // A1 求解器 MCP server 治理：列内置 `solvers` server + 全部工具（mcp__solvers__{key}，含净室通用族 +
+  // A8 CP-SAT；OBO 已 entitlement 过滤）。源=求解器全集注册表（31，与 SOLVER_KEYS 对齐），非 QOS 场景
+  // discover（22）。关某求解器 feature → 注册表不返回 → 工具消失（R3 先于 authz）。MCP 页据此显示/治理。
+  app.get("/b/v1/mcp/servers/solvers", async (req) => {
+    const a = await auth(req);
+    const { query } = req.query as { query?: string };
+    let items: { key: string; name: string; description: string; domain?: string; argHints?: Record<string, string> }[] = [];
+    try { items = (await deps.dataCore.catalog.solverRegistry(a, query)).items; } catch { items = []; }
+    return { server: SOLVERS_MCP_SERVER_INFO, tools: buildSolverMcpTools(items), count: items.length };
   });
 
   app.get("/b/v1/workflows", async (req, reply) => {

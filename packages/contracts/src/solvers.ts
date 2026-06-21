@@ -198,3 +198,12 @@ export const FieldRoleResolutionSchema = z.object({
   ambiguous: z.boolean(),
 });
 export type FieldRoleResolution = z.infer<typeof FieldRoleResolutionSchema>;
+
+// A1 求解器暴露为 MCP 工具：内置 server 名 + 工具命名（mcp__solvers__{key}），AgentCore/前端共用（R1）。
+export const SOLVERS_MCP_SERVER = "solvers";
+export const solverMcpToolName = (key: string): string => `mcp__${SOLVERS_MCP_SERVER}__${key}`;
+/** 反解：mcp__solvers__{key} → key；非求解器工具名 → undefined。 */
+export function parseSolverMcpToolName(name: string): string | undefined {
+  const prefix = `mcp__${SOLVERS_MCP_SERVER}__`;
+  return name.startsWith(prefix) ? name.slice(prefix.length) : undefined;
+}

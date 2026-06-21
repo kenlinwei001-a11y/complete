@@ -17,7 +17,7 @@
 
 ## 全局裁决（已定，写死）
 - A9 仅设计延后（不引真依赖，守 R6）。
-- A1 全部 28 求解器注册为 MCP 工具。
+- A1 全部 **31** 求解器注册为 MCP 工具（业务场景 22 + 净室通用 9；与 SOLVER_KEYS 对齐，含 A8 CP-SAT 族）。
 - A3 参考原型 16 域裁成 14 业务域（factory/product/process/equip/people/quality/capacity/forecast/sales/material/finance/plan/external/decision）。
 - A11 连接 category 允许自定义值。
 - A15 意图路由 = `POST /b/v1/operations/classify`；"求解器上传"不做 CLI 子命令 → CLI 输出深链跳 GUI。
@@ -65,7 +65,18 @@
 
 ## Wave 2 · 引擎/能力（A1 是 A8/A7 暴露口；A13 让 A14 去抖；A4 依赖 A3/A11）
 
-- [ ] ⬜ **A1 · 28 求解器暴露为 MCP 工具**（MCP 页可治理 + agent 经 mcp-router 可调，OBO 代理到 /a/v1/solvers）。R3 R5 R8 R11。
+- [x] ✅ **A1 · 31 求解器暴露为 `solvers` MCP 工具**（MCP 页可治理 + agent 经 mcp-router 可调，OBO 代理到 /a/v1/solvers）。R3 R5 R8 R11。
+  契约 `solvers.ts`：`SOLVERS_MCP_SERVER` + `solverMcpToolName(key)→mcp__solvers__{key}` + `parseSolverMcpToolName`（双向）。
+  供给侧 `catalog.ts`：业务场景 `SOLVER_CATALOG`(22，QOS discover 不变) **分列** 净室通用 `GENERIC_SOLVER_CATALOG`(9：
+  generic_inference/shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius/selection/
+  assignment/sequencing/packing_optimize，均带 LLM 描述「无描述不允许发布」) → `CatalogService.solverRegistry`(31，**同走
+  feature 过滤**：关 view.plan-audit → plan_audit 工具消失，R3 先于 authz) + `GET /a/v1/solvers/registry`(附 outputShape)。
+  AgentCore `mcp/solvers-catalog.ts buildSolverMcpTools`(确定性按名排序) + `GET /b/v1/mcp/servers/solvers`(源=注册表 31) +
+  **executor A1 shim**(mcp__solvers__{key} 调用零重写归一回 invoke_solver 走既有 OBO 路径) + Http/Mock CatalogClient.solverRegistry。
+  测试：datacore catalog(+2：注册表=SOLVER_KEYS 全集无漂移·每条带描述·feature 过滤) + a1-solvers-mcp ×3(L1) +
+  **xservice-smoke L2**(真 AgentCore HTTP 客户端 ↔ 真 DataCore 端口：注册表 31 构 31 工具，assignment/supplier_disruption 并入)。
+  **T12 亲手验 L2**：起真 DataCore:4001 + 真 AgentCore:4002 → curl /b/v1/mcp/servers/solvers → count=31，全 mcp__solvers__ 前缀。
+  gates 全绿（SOLVER_KEYS 31 = 注册表 31 = R11-SHAPE 31/31）。回写本体 §3（求解器 MCP 暴露链）。
 - [x] ✅ **A8 · 扩 CP-SAT 模型**：assignment（订单→基地/产线）/ sequencing（换型排序）/ packing（产能装箱）。R6。
   **A8.1 assignment_optimize · A8.2 sequencing_optimize · A8.3 packing_optimize 均 ✅**：Python sidecar 三模型
   (assignment 每 item 一指派+容量+成本; sequencing AddCircuit 开放路径最小化换型; packing bin-packing 最小箱数+对称破除)
@@ -134,8 +145,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **5 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8 ✅）。
-- Wave 1 全清；**Wave 2 仅余 A1**（A4 ✅ · A13 ✅ · A8 ✅；A8 的 3 个 CP-SAT 求解器等 A1 落地后经 MCP 暴露）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **6 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1 ✅）。
+- **Wave 1 + Wave 2 全清**（A3 ◐ + A6 ✅ + A11 ✅ ‖ A1 ✅ · A8 ✅ · A13 ✅ · A4 ✅；A8 的 3 个 CP-SAT 求解器已经 A1 MCP 暴露）。
+- 下一步：进 **Wave 3**（A5 FDE 编排可观测节点图 / A7 B 栈 scaffold 单机可见 / A10 终态闭环自动重跑验证）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
+import { ALL_SOLVER_CATALOG } from "../src/catalog.js";
+import { SOLVER_KEYS } from "../src/solvers/service.js";
 
 describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", () => {
   it("kind=solvers 返回求解器目录，每条带 description + argHints", async () => {
@@ -41,5 +43,28 @@ describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", (
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=bogus", headers: ADMIN });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("A1 求解器注册表 = SOLVER_KEYS 全集（31，无漂移）+ 每条带描述（无描述不允许发布）", async () => {
+    const t = await makeApp();
+    const reg = (await t.app.inject({ method: "GET", url: "/a/v1/solvers/registry", headers: ADMIN })).json() as {
+      solvers: { key: string; description: string; outputShape: string[] }[];
+    };
+    // 注册表键集 === SOLVER_KEYS（防漂移：新增求解器忘补目录描述即红）
+    expect(new Set(reg.solvers.map((s) => s.key))).toEqual(new Set(SOLVER_KEYS));
+    expect(reg.solvers.length).toBe(SOLVER_KEYS.length);
+    expect(reg.solvers.length).toBe(ALL_SOLVER_CATALOG.length);
+    // 每条求解器都有 LLM-facing 描述（治理纪律）
+    expect(reg.solvers.every((s) => s.description.trim().length > 0)).toBe(true);
+    // A8 + 净室通用确已并入（discover 22 不含）
+    expect(reg.solvers.map((s) => s.key)).toContain("assignment_optimize");
+    expect(reg.solvers.map((s) => s.key)).toContain("supplier_disruption_radius");
+  });
+
+  it("A1 注册表同走 feature 过滤：关 view.plan-audit → plan_audit 从注册表消失（与 discover 同构）", async () => {
+    const t = await makeApp();
+    await t.services.features.putTenantConfig(t.adminCtx, "demo", { "view.plan-audit": false });
+    const reg = (await t.app.inject({ method: "GET", url: "/a/v1/solvers/registry", headers: ADMIN })).json() as { solvers: { key: string }[] };
+    expect(reg.solvers.map((s) => s.key)).not.toContain("plan_audit");
   });
 });

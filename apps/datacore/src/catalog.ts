@@ -65,6 +65,26 @@ export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "countermeasure_combo", name: "对策组合编排器", description: "跨求解器编排：多杠杆按成本贪心闭合缺口，每段标注来源求解器，返回组合/残差/总成本/可行性。", argHints: { gap: "缺口", levers: "杠杆集(可选)" }, domain: "plan" },
 ];
 
+/**
+ * 通用求解器目录（A1）：净室零依赖 + CP-SAT 可证最优族。与业务场景目录（SOLVER_CATALOG）分列——
+ * 这些不绑定电池域，按 args 字段映射对任意已发布本体即用，故不进 QOS 场景 discover（22），
+ * 但作为 `solvers` MCP server 的工具对 Agent 公开（mcp__solvers__{key}）。「无描述不允许发布」同样适用。
+ */
+export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
+  { key: "generic_inference", name: "通用假设推演", description: "对任意已发布本体套假设源属性值、前向重算下游派生链，返回 before/after deltas（不落库、确定性）。回答『把某属性改成 X，下游会怎样』。", argHints: { apply: "[{objectType,objectId,prop,value}] 假设值集" }, domain: "generic" },
+  { key: "shared_bottleneck", name: "共享瓶颈", description: "读对象图，按 viaField 把上游对象分组到共享资源，需求和>产能即瓶颈，按优先级判哪张单降级。净室通用。", argHints: { upstreamType: "上游对象类型", viaField: "指向共享资源的字段" }, domain: "generic" },
+  { key: "concentration_risk", name: "隐性集中度", description: "多跳反向聚合，沿暗线找单点集中（看似分散实则汇聚到同一上游）。净室通用。", argHints: { rootType: "起点对象类型" }, domain: "generic" },
+  { key: "margin_attribution", name: "毛利倒挂归因", description: "成本项拆解 + 倒挂群主驱动聚合，定位毛利倒挂的根因成本项。净室通用。", argHints: { itemType: "成本承载对象类型" }, domain: "generic" },
+  { key: "supplier_disruption_radius", name: "断供影响半径", description: "给定单一供应商断供，反向多跳逐层扇出算扩散半径与叶层敞口。净室通用。", argHints: { rootType: "供应来源类型", rootId: "断供来源 ID" }, domain: "generic" },
+  { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。贪心给不出最优时用。", argHints: { items: "候选项(价值/重量)", budget: "预算上限" }, domain: "generic" },
+  { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）：把待办项指派到容器/基地，最小化总成本，满足容量约束。", argHints: { items: "待指派项", bins: "容器(容量/成本)" }, domain: "generic" },
+  { key: "sequencing_optimize", name: "排序最优化", description: "通用排序最优化（CP-SAT 可证最优）：在切换成本矩阵上求最短换型路径序列。", argHints: { jobs: "作业集", changeover: "两两切换成本" }, domain: "generic" },
+  { key: "packing_optimize", name: "装箱最优化", description: "通用装箱最优化（CP-SAT 可证最优）：按容量把项装入最少容器（产能填充/批次合并）。", argHints: { items: "待装项(尺寸)", binCapacity: "单箱容量" }, domain: "generic" },
+];
+
+/** A1 求解器全集目录（业务场景 22 + 通用 9 = 31，与 SOLVER_KEYS 对齐；漂移由 catalog-registry.test 守护）。 */
+export const ALL_SOLVER_CATALOG: CatalogItem[] = [...SOLVER_CATALOG, ...GENERIC_SOLVER_CATALOG];
+
 function matches(item: CatalogItem, query?: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
@@ -110,5 +130,20 @@ export class CatalogService {
     }
     // §1：带关键词的发现（agent 上下文预算）截断 ≤20；无关键词=管理台全量列表。
     return { items: query ? filtered.slice(0, 20) : filtered };
+  }
+
+  /**
+   * A1：求解器全集注册表（业务场景 22 + 通用 9 = 31）。供 AgentCore 构建 `solvers` MCP server 的
+   * 全部工具（mcp__solvers__{key}）。与 discover 同走 feature 过滤——关某求解器 feature → 工具消失
+   * （R3 先于 authz，与 404 不泄露存在性同构）。不做 ≤20 截断（治理页需全量）。
+   */
+  async solverRegistry(ctx: AuthCtx, query?: string): Promise<{ items: CatalogItem[] }> {
+    const out: CatalogItem[] = [];
+    for (const it of ALL_SOLVER_CATALOG) {
+      if (!matches(it, query)) continue;
+      if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
+      out.push(it);
+    }
+    return { items: out };
   }
 }

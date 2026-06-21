@@ -720,8 +720,7 @@ export class SolverService {
     if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
-    if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
-    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
+    if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);
     if (solverKey === "packing_optimize") return this.packingOptimize(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
