@@ -66,7 +66,8 @@ Wave1 基座            Wave2 引擎/能力              Wave3 编排/闭环    
 - 实现期门禁在各子 PRD §7 列明（chain:check / ontology:check / debattery:check / field-coverage / VLE / 前端回归）。
 
 ## 4. 状态
-- ✅ Wave 1 PRD 产出（A3 / A6 / A11 + 本索引）→ **待评审**。
-- ⬜ Wave 2/3/4：评审通过逐波产出。
+- ✅ Wave 1 PRD 产出（A3 / A6 / A11 + 本索引）→ **已评审通过**。
+- ✅ Wave 2 PRD 产出（A1 / A8 / A13 地板语义 / A4）→ **待评审**。
+- ⬜ Wave 3（A5 / A7 / A10）/ Wave 4（A14 / A12 / A9）：评审通过逐波产出。
 
 > 基线分支：A 系列实现前需定准 `wizardly-gauss`（推荐，超集）vs `vigilant-knuth`，见各子 PRD §8 备注。
