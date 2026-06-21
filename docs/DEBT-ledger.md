@@ -25,6 +25,9 @@
 | A11 | **连接打 Connection.category 标签**（per-connection 归类） | ⬜ | §4 细化项：分类层(组织+模版+模式)已成，单个连接尚未带 category。 |
 | A13 | **数据接入控制台数据归类页（与 §6.x 一致）** | ✅ | （见 C）补 上传文件 + 模版可替换。 |
 | A12 | **§0 全量真相审计 + §7 hand-run 验收登记常态化** | ◐ | `docs/AUDIT-hand-run.md` 已记数据构建发动机主线 + 求解器 live；其余模块(连接器/对象浏览/Agent 页)逐一 hand-run 未补全。 |
+| A15 | **新工作流代码的工业级压测**（用户："你做了工业级压测吗？"） | ⬜ | 工作流运行时 / ModuleProvisioner / gap_analysis / 异步执行只有功能性单测+集成(20 条)，**无规模/并发/负载压测**。该仿 `stress-bottleneck`/`scale-baseline`：大 BuildPlan(数百对象/规则/求解器)的 gap_analysis 规模、N 条并发异步运行、resume 风暴、确定性(R6)+性能预算。我曾说"工业级"指架构形态，非压测验证——不该混说。 |
+| A16 | **真浏览器 UI E2E 测试套件**（用户："包括前端 UI 的测试？"） | ⬜ | 前端只有 jsdom+RTL+MSW **组件级 mock 测试**；Playwright 仅用于**手动截图**，未固化成自动化 E2E 套件，无 UI 性能/负载测试。该把"登录→建域→跑工作流→断言时间线/比对现状/resume"的 Playwright 流程固化。**待用户拍板**：进 CI（要下载 Chromium，受网络策略/耗时影响）还是单独本地/夜间套件。 |
+| A17 | **成文测试标准 `docs/TESTING-STANDARD.md`**（用户："测试标准有吗？"） | ⬜ | **无单一成文标准**。约定散落（CLAUDE.md "4 包全绿底线"数字已过期 69/66/25+ vs 实际 458/265/181；R6 确定性/R2 隔离/no network·clock·LLM-mock；`fde-delivery` skill；VLE 7 段断言+3 覆盖率；`pnpm gates`）。该写：测试分类法 + 每类功能必备测试矩阵 + 性能预算 + 覆盖门 + 修正过期数字 + 接进 gates。 |
 
 ## B. 阻塞在用户（我做不了，需你处理）
 
