@@ -64,6 +64,11 @@
 - **rule**：NL → 规则抽取（RuleDoc extraction）或直接表达式 → `POST /a/v1/rules/dry-run` 预览命中 → 确认 → 创建 + `publish`(R4)。
 - **solver**：① 调用既有 `solvers/:key/invoke`（args 交互补 / A13 角色解析默认）② 或"注册求解器需求"→ 走 A5 FDE 建域 scaffold（DRAFT，非代码上传）。
 - **synth / build**：`synthetic/jobs` / `databuilder/runs`（FDE 节点图状态文本化输出，A5）→ 建完接 A10 自动验证。
+### 3.6 CLI→GUI 深链回退（不适合 CLI 内联的操作）
+- 某些操作更适合在 GUI 完成（**求解器上传/编排**、复杂可视化建模、大图浏览等）。此时 CLI **不强行内联**，而是**输出一个可点击深链**（终端超链接 OSC 8 / 或打印 URL）→ 跳 GUI 对应页（带上下文参数，如租户/草稿 id）。
+- 典型：`solve --new "<NL>"` 或意图判为"新增求解器" → CLI 打印 `🔗 求解器上传：<baseUrl>/admin/solvers/new?ctx=...`（GUI 完成）。
+- 这是 R15 CLI 对等的**诚实边界**：CLI 覆盖"能在 CLI 干净完成的"，其余给**一键深链**直达 GUI——既不假装能做、也不让用户自己找页。深链目标页登记进 `OPERATION_CATALOG`（`uiDeepLink` 字段），`cli-parity:check` 认"有 CLI 命令或有深链"为已覆盖。
+
 ### 3.4 同源 + 末步
 - 全部 OBO 带 JWT；写操作生成 ActionDraft → CLI 内 `approve`（R4）→ 触发事件 → GUI 实时可见。
 - 每步末给"下一步建议"（import→model→rule→solve→ask 验证），形成 CLI 内闭环。
@@ -97,7 +102,7 @@ R8（JWT）· R4（写经审批，CLI 内批）· R3（entitlement 路由）· R
 
 ## 9. 已确认（用户裁决 2026-06-21）
 1. **意图路由落点 ✅**：采用**服务端轻端点** `POST /b/v1/operations/classify`（分类在 AgentCore、CLI 瘦客户端）——便于真 Kimi、人机共用、与 GUI/QOS 同源。定稿。
-2. **"求解器上传"语义（默认采用，未否决）**：`solve` 子命令做 **① 调用既有求解器 + ② 经 FDE 建域注册"求解器需求"(DRAFT scaffold)**；任意求解器**代码上传不做**（R6/安全）；DSL/规则型可计算逻辑归 `rule`/派生路。保留"求解器需求登记"子命令。如需调整再议。
+2. **"求解器上传"语义 ✅（用户裁决 2026-06-21）**：`solve <key>` **只做调用既有求解器**；**不保留** CLI"求解器需求登记"子命令。"上传/新增求解器"由 CLI **输出一个可点击深链** → 跳转 GUI **求解器上传页**（见 §3.6 CLI→GUI 深链回退），由该页完成（R6/安全：求解器是受治理的代码/规约注册，不在 CLI 内联完成）。
 
 > 基线分支：CLI(scripts) + AgentCore 轻端点为主，冲突小。依赖 A1(求解器调用)/A3(能力发现)/A5(建域)/A10(验证)——可独立先做 import/model/rule 三条，solver/build 随依赖项就绪接入。
 
@@ -132,7 +137,7 @@ R8（JWT）· R4（写经审批，CLI 内批）· R3（entitlement 路由）· R
 | 半自动建模 | 数据→本体草稿→发布 | `model <datasetIds>` / `model --publish` | `/modeling/derive\|suggest` + R4 |
 | 对象/类型浏览（A4）| 列类型/物化数/下钻实例 | `types [--domain]` / `objects <type>` / `obj <type> <id>` | `/ontology/object-types` · `/objects` · Object360 |
 | 规则库 | 建/改/dry-run/发布 | `rule "<NL或表达式>"` / `rule dry-run` / `rule publish <id>` | `/rules*`（+extraction） |
-| 求解器 | 调用/参数 | `solve <key> [--args]` / `solvers ls`（discover）| `/solvers/:key/invoke`（+A1 MCP/A13 角色） |
+| 求解器 | 调用/参数 | `solve <key> [--args]` / `solvers ls`（discover）；**新增求解器→深链**跳 `/admin/solvers/new`（§3.6）| `/solvers/:key/invoke`（+A1 MCP/A13 角色） |
 | 合成数据 | 生成作业 + 报告 | `synth <industry> --scale --seed` | `/synthetic/jobs` |
 | 数据构建发动机（FDE）| 故事→建域→闭包 | `build "<story>"`（FDE 节点状态文本流，A5）| `/databuilder/runs`（+A7/A10）|
 | 场景入口/启动器 | 场景目录/启动 | `scenarios` / `launch <key>` | `/b/v1/scenarios*`（+launch）|

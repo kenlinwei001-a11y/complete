@@ -241,7 +241,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | **R13** | **结论可溯源（信任 = 出处 + 推导可当场亮出）**：凡推演结论里的数字必为可溯源对象——悬浮即出 `{来源系统·新鲜度·推导公式·输入因子·关联规则·备注}`（参考 PRD §1.2/§4，与 R12 输入侧"字段全建模"对称的输出侧纪律）。源系统降级时，依赖它的派生数字自动标降级、置信度(P90)随之下调(C09)。覆盖优先级见 `docs/REFERENCE-HTML-INVENTORY.md` 信任章。 | `<Provenance>` + lineage 端点；前端 `provenance.test` |
 | R-一致 | **一个事实一个出处**：同一指标在驾驶舱/S&OP/体检口径一致（同一对象库派生），跨视图同值 | 单一对象库 + 聚合下推 |
 | **R14** | **应用层无业务常数（多租户）**：前端组件不得内联业务数据/结构/租户专属文案；一律来自本体/WorkspaceConfig/ViewConfig.layout/i18n。换租户=换配置不改代码。守护 G-5 不回潮。 | ✅ `debattery:check`（基线 0：无未声明业务常数；兜底逐行 `// debattery-allow`）；标杆 `DashboardView`/`LedgerView` |
-| **R15** | **CLI 对等（GUI↔CLI 平行同源）**：每个对外模块能力**必须有 CLI 等价命令**（注册进 `OPERATION_CATALOG`），经**同一 REST + R3 entitlement + R4 审批 + 事件总线**触发——新增模块/功能无 CLI 命令 = 功能洼地，**返工**。GUI-only 须显式声明理由。人与 code-agent 共用同一操作面。 | ⏳ `cli-parity:check`（待落，A15）；A15 覆盖矩阵（附录 A）；PRD 模板 §0 强制声明 CLI 打通 |
+| **R15** | **CLI 对等（GUI↔CLI 平行同源）**：每个对外模块能力**必须有 CLI 等价命令**（注册进 `OPERATION_CATALOG`），经**同一 REST + R3 entitlement + R4 审批 + 事件总线**触发——新增模块/功能无 CLI 命令 = 功能洼地，**返工**。不适合 CLI 内联者（如求解器上传）须登记 **GUI 深链 `uiDeepLink`**（CLI 输出一键直达），仍算覆盖。纯 GUI-only 须显式声明理由。人与 code-agent 共用同一操作面。 | ⏳ `cli-parity:check`（待落，A15）；A15 覆盖矩阵（附录 A）；PRD 模板 §0 强制声明 CLI 打通 |
 
 ---
 
