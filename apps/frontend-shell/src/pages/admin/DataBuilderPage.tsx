@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -438,6 +438,69 @@ const WF_STATUS_COLOR: Record<string, string> = {
   PENDING: "var(--muted2, #555)",
 };
 
+/** A5：FDE 节点状态色/图标（DONE/RUNNING/FAILED/SKIPPED/PENDING）。 */
+const FDE_NODE_COLOR: Record<string, string> = {
+  DONE: "var(--c-capacity, #36BFA5)",
+  RUNNING: "var(--amber, #DD9551)",
+  FAILED: "var(--danger, #E5484D)",
+  SKIPPED: "var(--muted, #888)",
+  PENDING: "var(--muted2, #555)",
+};
+const FDE_NODE_ICON: Record<string, string> = { DONE: "✓", RUNNING: "◷", FAILED: "✗", SKIPPED: "⊘", PENDING: "○" };
+
+/**
+ * A5：FDE 编排工作流节点状态图（意图→倒推→查能力→比差→各模块生成→闭包→publish→进启动器）。
+ * 把既有 7 步执行语义投影成 8 个 FDE 节点的横向 DAG——一眼看建域走到哪、断在哪（FAILED 红 + 缺口码）。
+ * 数据源 GET /a/v1/databuilder/workflow-runs/:id/fde-graph（实时投影）；随 fde.node_advanced/轮询点亮。
+ */
+function FdeGraph({ runId, liveMs, running }: { runId: string; liveMs: number; running: boolean }) {
+  const graphQ = useQuery({
+    queryKey: ["a", "fde-graph", runId],
+    queryFn: () => fetchFdeGraph(runId),
+    refetchInterval: running ? (liveMs || 1000) : (liveMs || false),
+  });
+  const nodes = graphQ.data?.nodes ?? [];
+  if (nodes.length === 0) return null;
+  return (
+    <div data-testid={`fde-graph-${runId}`} style={{ margin: "8px 0 4px" }}>
+      <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
+        FDE 编排节点图（{graphQ.data?.summary.done}/{nodes.length} 完成{graphQ.data?.summary.failedAt ? ` · 断在 ${graphQ.data.summary.failedAt}` : ""}）
+      </div>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 4, overflowX: "auto", paddingBottom: 4 }}>
+        {nodes.map((n, i) => (
+          <Fragment key={n.key}>
+            <div
+              data-testid={`fde-node-${n.key}`}
+              data-status={n.status}
+              title={`${n.status}${n.detail ? ` · ${n.detail}` : ""}${typeof n.durationMs === "number" ? ` · ${n.durationMs}ms` : ""}`}
+              style={{
+                minWidth: 96, flex: "0 0 auto", padding: "6px 8px", borderRadius: 6,
+                border: `1px solid ${FDE_NODE_COLOR[n.status]}`,
+                background: n.status === "FAILED" ? "rgba(229,72,77,0.08)" : "transparent",
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ color: FDE_NODE_COLOR[n.status] }}>{FDE_NODE_ICON[n.status] ?? "•"}</span>
+                {n.label}
+              </div>
+              <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
+                {typeof n.durationMs === "number" ? `${n.durationMs}ms` : "—"}
+                {typeof n.io?.out === "number" && ` · 出${n.io.out}`}
+              </div>
+              {n.gapCode && (
+                <div data-testid={`fde-node-gapcode-${n.key}`} style={{ fontSize: 10, color: FDE_NODE_COLOR.FAILED, marginTop: 2 }}>
+                  缺口 {n.gapCode}
+                </div>
+              )}
+            </div>
+            {i < nodes.length - 1 && <span style={{ alignSelf: "center", color: "var(--muted2, #555)", fontSize: 11 }}>→</span>}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const GAP_SIDE_LABEL: Record<string, string> = { content: "内容", structure: "结构", code: "代码", cross_system: "跨系统" };
 /**
  * 比对现状表（gap_analysis 步的统一 diff）：倒推 BuildPlan vs 系统现状 → 每类配套模块
@@ -572,6 +635,7 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
               )}
               <span style={{ marginLeft: failedStep || wf.status === "FAILED" || wf.status === "PAUSED" ? 0 : "auto" }} className="muted">{isOpen ? "▾" : "▸"}</span>
             </div>
+            {isOpen && <FdeGraph runId={wf.id} liveMs={liveMs} running={wf.status === "RUNNING"} />}
             {isOpen && (
               <ol style={{ margin: "10px 0 0", paddingLeft: 0, listStyle: "none" }} data-testid={`wf-steps-${wf.id}`}>
                 {wf.steps.map((s) => (

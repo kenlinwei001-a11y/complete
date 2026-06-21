@@ -46,6 +46,8 @@ export interface DriveOpts {
   /** 异步执行：创建初始 run（RUNNING/全 PENDING）后立即返回，引擎在后台脱离请求驱动并逐步落库检查点。
    *  客户端轮询 GET 观察进度。进程死亡 → run 留 RUNNING（可 resume / 启动恢复）。 */
   detached?: boolean;
+  /** A5：每次步状态迁移落库后回调（引擎保持业务无关；服务用它把执行步投影成 FDE 节点 + 发 fde.node_advanced）。 */
+  onAdvance?: (run: BuildWorkflowRun) => Promise<void>;
 }
 
 export class BuildWorkflowEngine {
@@ -88,10 +90,11 @@ export class BuildWorkflowEngine {
     };
     await this.persist(run);
     await this.emit(run, "buildworkflow.run_started", { kind: run.kind, steps: run.steps.length });
+    await opts.onAdvance?.(run).catch(() => undefined);
     if (opts.detached) {
       // 后台脱离请求驱动：不 await。逐步落库；意外异常兜底标 FAILED（不致进程崩溃）。
       setImmediate(() => {
-        void this.drive(run, steps, { stopAfter: opts.stopAfter }).catch(async (e) => {
+        void this.drive(run, steps, { stopAfter: opts.stopAfter, onAdvance: opts.onAdvance }).catch(async (e) => {
           run.status = "FAILED";
           run.error = e instanceof Error ? e.message : String(e);
           run.finishedAt = nowIso();
@@ -129,6 +132,7 @@ export class BuildWorkflowEngine {
       rec.status = "RUNNING";
       rec.startedAt = nowIso();
       await this.persist(run);
+      await opts.onAdvance?.(run).catch(() => undefined);
 
       const started = Date.now();
       let done = false;
@@ -147,6 +151,7 @@ export class BuildWorkflowEngine {
             stepKey: rec.stepKey,
             attempts: rec.attempts,
           });
+          await opts.onAdvance?.(run).catch(() => undefined);
           done = true;
         } catch (e) {
           const retryable = def.isRetryable ? def.isRetryable(e) : e instanceof RetryableStepError;
@@ -165,6 +170,7 @@ export class BuildWorkflowEngine {
           await this.persist(run);
           await this.emit(run, "buildworkflow.step_failed", { stepKey: rec.stepKey, attempts: rec.attempts, code: rec.error.code });
           await this.emit(run, "buildworkflow.run_failed", { stepKey: rec.stepKey });
+          await opts.onAdvance?.(run).catch(() => undefined);
           return run; // 致命：止于该步，保留现场，可 resume
         }
       }
@@ -177,6 +183,7 @@ export class BuildWorkflowEngine {
     run.finishedAt = nowIso();
     await this.persist(run);
     await this.emit(run, "buildworkflow.run_completed", { storyRunId: run.storyRunId ?? null });
+    await opts.onAdvance?.(run).catch(() => undefined);
     return run;
   }
 }

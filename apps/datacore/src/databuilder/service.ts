@@ -39,6 +39,8 @@ import { validateClosure } from "./closure.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
 import { BuildWorkflowEngine, RetryableStepError, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
 import { analyzeGap, summarizeGap } from "./provisioners.js";
+import { fdeGraphForRun, projectFdeNodes, summarizeFdeNodes } from "./fde-graph.js";
+import type { FdeNode } from "@platform/contracts";
 
 const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
@@ -251,6 +253,42 @@ export class DataBuilderService {
     if (!this.engineInstance) this.engineInstance = new BuildWorkflowEngine(this.repos, this.outbox, this.backoffMs);
     return this.engineInstance;
   }
+
+  /**
+   * A5：构造 onAdvance 回调（每运行一个，闭包记上次节点状态）。每次步迁移 → 把执行步投影成 FDE 8 节点，
+   * 对状态变化的节点发 `fde.node_advanced`（R10 实时，跨会话/被动页点亮）；run 落到 record 后把节点
+   * 快照持久化进 StoryBuildRun（历史可观测）。纯观测，不改建域真值。
+   */
+  private fdeOnAdvance(ctx: AuthCtx): (run: BuildWorkflowRun) => Promise<void> {
+    const last = new Map<string, string>();
+    return async (run: BuildWorkflowRun) => {
+      const nodes = fdeGraphForRun(run);
+      for (const n of nodes) {
+        if (last.get(n.key) !== n.status) {
+          last.set(n.key, n.status);
+          await this.outbox?.emit(ctx.tenantId, "fde.node_advanced", {
+            runId: run.id,
+            nodeKey: n.key,
+            status: n.status,
+            gapCode: n.gapCode ?? null,
+          });
+        }
+      }
+      // 节点快照落 StoryBuildRun（record 步后 storyRunId 可解析；早于 record 则 SBR 未建，跳过）。
+      const storyId = run.storyRunId ?? (run.context["storyRunId"] ? String(run.context["storyRunId"]) : undefined);
+      if (storyId) {
+        const rec = await this.repos.storyBuildRuns.get(ctx.tenantId, storyId);
+        if (rec) await this.repos.storyBuildRuns.put({ ...rec, nodes });
+      }
+    };
+  }
+
+  /** A5：工作流运行的 FDE 节点状态图（实时投影：steps + context → 8 节点）。 */
+  async fdeGraph(ctx: AuthCtx, wfId: string): Promise<{ runId: string; status: BuildWorkflowRun["status"]; nodes: FdeNode[]; summary: ReturnType<typeof summarizeFdeNodes> }> {
+    const wf = await this.getWorkflowRun(ctx, wfId);
+    const nodes = fdeGraphForRun(wf);
+    return { runId: wf.id, status: wf.status, nodes, summary: summarizeFdeNodes(nodes) };
+  }
   /** 退避策略可注入（测试 ()=>0 去抖）；默认指数有上限。 */
   private backoffMs: (attempt: number) => number = (a) => Math.min(2000, 100 * 2 ** (a - 1));
   setWorkflowBackoff(fn: (attempt: number) => number): void {
@@ -375,6 +413,8 @@ export class DataBuilderService {
             producedDatasets,
             producedArtifacts: deriveProducedArtifacts(plan, scaffoldReceipt, producedConnections, producedDatasets, status),
             storyCoverage: deriveStoryCoverage(body.script.trim(), plan),
+            // A5：FDE 节点快照（context 投影，含此刻终态语义）；引擎完成时 onAdvance 再以 steps+计时覆盖刷新。
+            nodes: projectFdeNodes({ context: c }),
             status,
             createdAt: nowIso(),
           };
@@ -405,7 +445,7 @@ export class DataBuilderService {
     const wf = await this.engine().start(
       { id: wfId, tenantId: ctx.tenantId, script: body.script.trim(), scriptHash, seed: body.seed ?? 42, inference },
       steps,
-      { stopAfter: opts.stopAfter, detached: opts.async },
+      { stopAfter: opts.stopAfter, detached: opts.async, onAdvance: this.fdeOnAdvance(ctx) },
     );
     // 同步模式：storyRunId 已由 drive 完成时从 context 回填；此处兜底（异步模式由后台 drive 回填）。
     if (!opts.async && wf.context["storyRunId"] && !wf.storyRunId) {
@@ -435,7 +475,7 @@ export class DataBuilderService {
     if (!existing) throw notFound("build workflow run");
     const storyId = existing.storyRunId ?? String(existing.context["storyRunId"] ?? newId("sbr"));
     const steps = this.buildStorySteps(ctx, storyId, { script: existing.script, seed: existing.seed, builderKey: DEFAULT_BUILDER_KEY }, existing.inference);
-    const wf = await this.engine().resume(ctx.tenantId, wfId, steps);
+    const wf = await this.engine().resume(ctx.tenantId, wfId, steps, { onAdvance: this.fdeOnAdvance(ctx) });
     if (wf.context["storyRunId"] && !wf.storyRunId) {
       wf.storyRunId = String(wf.context["storyRunId"]);
       await this.repos.buildWorkflowRuns.put(wf);
@@ -632,6 +672,7 @@ export class DataBuilderService {
       producedDatasets: [],
       producedArtifacts: [],
       storyCoverage: [],
+      nodes: projectFdeNodes({ context: {} }), // 仅 comprehend 待跑 → story DONE，其余 PENDING
       status: "PENDING_INPUT",
       createdAt: nowIso(),
     };
@@ -651,6 +692,7 @@ export class DataBuilderService {
     await this.engine().start(
       { id: newId("bwf"), tenantId: ctx.tenantId, script: run.script, scriptHash: sha256(run.script), seed, inference: false },
       steps,
+      { onAdvance: this.fdeOnAdvance(ctx) },
     );
     const rebuilt = await this.repos.storyBuildRuns.get(ctx.tenantId, run.id);
     const updated: StoryBuildRun = { ...(rebuilt ?? run), inputManifest: run.inputManifest, createdAt: run.createdAt };

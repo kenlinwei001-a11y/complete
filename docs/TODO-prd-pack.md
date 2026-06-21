@@ -99,7 +99,15 @@
 
 ## Wave 3 · 编排/闭环
 
-- [ ] ⬜ **A5 · FDE 编排工作流·可观测节点状态图**（意图→倒推→查能力→比差→各模块生成→进启动器）。R10 R11 R13。
+- [x] ✅ **A5 · FDE 编排工作流·可观测节点状态图**（意图→倒推→查能力→比差→各模块生成→闭包→publish→进启动器）。R10 R11 R13 R6。
+  观测层（不重写建域逻辑，PRD-A5 §1 非目标）：把 BuildWorkflowRun 7 执行步**确定性投影**成 8 FDE 语义节点。
+  契约 `storybuildrun.ts`：FDE_NODE_KEYS(8)/FdeNodeSchema/FDE_NODE_STATUS + `StoryBuildRun.nodes`（doc store 无 migration）。
+  `databuilder/fde-graph.ts projectFdeNodes`（状态主判产物存在性 + 步状态叠加 RUNNING/计时 + 闭包断缺口码，R6 字节一致）+
+  引擎 `onAdvance` 钩子（每步迁移回调）→ service 发 `fde.node_advanced`（L15 事件，event-subscriptions + 本体 §4）+ 落
+  StoryBuildRun.nodes 快照 + `GET /a/v1/databuilder/workflow-runs/:id/fde-graph` 实时投影。
+  前端 `DataBuilderPage <FdeGraph>`（8 节点横向 DAG，状态色 + 缺口码红标，配置化实时刷新轮询）+ MSW mock。
+  测试：a5-fde-graph ×8（L0 投影：空/成功全 DONE/闭包断 FAILED+SKIPPED/步叠加/R6 · L1 真服务建域落 8 节点 + 端点 + 事件 + R2）·
+  f58 前端 L3（8 节点 DAG + 失败节点缺口码）。gates 全绿（事件 35/35，含 fde.node_advanced）。回写本体 §2.H/§3/§4。
 - [ ] ⬜ **A7 · B 栈 scaffold 单机可见**（不配 AGENTCORE_BASE_URL 也能看到生成的 agent；DataCore 侧持久可见）。R8 R11。
 - [ ] ⬜ **A10 · 终态闭环末步**（建域→R4 审批→publish→**自动重跑问句验证** "现在真能答了"）。R4 R11 R13。
 
@@ -145,9 +153,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **6 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1 ✅）。
-- **Wave 1 + Wave 2 全清**（A3 ◐ + A6 ✅ + A11 ✅ ‖ A1 ✅ · A8 ✅ · A13 ✅ · A4 ✅；A8 的 3 个 CP-SAT 求解器已经 A1 MCP 暴露）。
-- 下一步：进 **Wave 3**（A5 FDE 编排可观测节点图 / A7 B 栈 scaffold 单机可见 / A10 终态闭环自动重跑验证）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **7 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5 ✅）。
+- **Wave 1 + Wave 2 全清**；**Wave 3 进行中**（A5 ✅ · 余 A7/A10）。
+- 下一步：**A7**（B 栈 scaffold 单机可见）→ **A10**（终态闭环自动重跑验证）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

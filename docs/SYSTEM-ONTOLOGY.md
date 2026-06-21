@@ -57,6 +57,7 @@
 - **BuildPlan / BuildJob / DataBuilderAgent / ClosureReport**：**数据构建发动机**（七阶段 intake→comprehend→gap→rawin→transform→closure→publish）· `databuilder/service.ts`,`closure.ts`。
 - **BuildWorkflowRun（工业级工作流运行时）**：把"故事→建域"从内存 try-块升级为**持久化步骤状态机**——6 步（dry_build→cross_scaffold→publish_build→validation→inference→record），每步状态/尝试/计时/检查点逐步落库（`build_workflow_runs`，migration023，R9 四处）→ **进程崩溃可从未完成步 resume**（已成功步跳过、context 复用）；瞬时失败按 maxAttempts **有界退避重试**（跨系统 scaffold HTTP 标 RetryableStepError）；致命失败止于该步保留现场；业务门未过返回 skip（非错误，标 SKIPPED）。执行状态（工作流跑完）与业务结论（StoryBuildRun.status，可 BLOCKED）两轴分离。引擎与步骤解耦（`databuilder/workflow-engine.ts BuildWorkflowEngine`，步骤是闭包住 AuthCtx 的纯定义）· `databuilder/service.ts runStoryWorkflow/resumeStoryWorkflow`（`runStory` 现统一经此单一执行路径）· `POST/GET /a/v1/databuilder/workflow-runs`、`POST …/:id/resume`。**异步执行**（`async:true`）：提交即返回初始 RUNNING 快照（202），引擎 `setImmediate` 后台脱离请求驱动、逐步落库检查点，客户端轮询 GET 观察进度；进程死亡留 RUNNING → `POST …/recover`（启动恢复：把孤儿 RUNNING 逐个 resume 续跑，幂等）。前端**配置化实时刷新**（`wf-live` 选择器：关闭/0.5s/1s/2s/5s；有 RUNNING 自动兜底轮询）→ 异步执行逐步实时跳动。每步状态迁移发 `buildworkflow.*` 到 outbox 作**可观测/审计流**（GET /a/v1/outbox 实时尾随；非缓存失效事件——产出缓存事件仍是已注册的 `storybuild.run_recorded` L15）。**前端时间线**（`DataBuilderPage WorkflowTimelinePanel`，data-testid `wf-timeline`）：逐运行/逐步可视化状态/尝试/计时/检查点/结构化错误，失败/暂停运行一键 `resume` 续跑（自愈），F55 回归。
 - **ModuleProvisioner 注册表 + 比对现状（gap_analysis 一等步）**（`databuilder/provisioners.ts`）：把散在 gap 阶段/闭包/scaffold 三处的"需要 vs 已有"收敛成**跨模块统一 diff**——倒推 BuildPlan 的每类配套模块 `EXISTS(复用)/TO_CREATE(需新建)/MISSING(不能自动建→工单)`。**模块全集 = BuildPlan 13 个 need 数组**一一对应 13 个 provisioner（内容类 dataset/kb_doc · 结构类 ontology_type/rule/slice · 代码类 solver[缺即 MISSING] · 跨系统类 intent/plan/workflow/skill/agent/scene/mcp[现状由 scaffold 回执判定]）。**无遗漏保证**：`provisioners.test` 断言"BuildPlan 每个根级数组字段都已登记 + 已注册 provisioner"——新增配套模块未注册即测试红（"倒序"管线强制纳入统一机制）。产物落 `StoryBuildRun.gapAnalysis` + 工作流 `gap_analysis` 步检查点 + 前端 `GapAnalysisTable`（data-testid `wf-gap-analysis`）。`DatasetProvisioner` 的创建后端 = 合成数据模块（合成是某个 provisioner 的后端实现，非并列制品）。
+- **FDE 编排工作流节点状态图（A5，§2.H 投影读模型）**（`databuilder/fde-graph.ts projectFdeNodes`）：把 BuildWorkflowRun 的 7 个执行步**确定性投影**成 8 个 FDE 语义节点（`story→comprehend→capability→gap→generate→closure→publish→launcher`，FDE_NODE_KEYS 固定序），每节点带状态（PENDING/RUNNING/DONE/FAILED/SKIPPED）+ IO + 计时 + 下钻产物引用 + **缺口码**（FAILED：闭包断=首个失败维 CHAIN_BROKEN/SHAPE_MISMATCH…；步致命=step.error.code）。节点状态主判**产物存在性**（context 的 planId/aOk/built/closureReport/answer），步状态仅作 RUNNING/计时叠加（R6 同输入同输出）。落 `StoryBuildRun.nodes`（record 步快照 + 引擎 `onAdvance` 钩子每步迁移以 steps+计时刷新）；实时投影端点 `GET /a/v1/databuilder/workflow-runs/:id/fde-graph`；每节点状态变更发 `fde.node_advanced`（L15，跨会话/被动页实时点亮）。前端 `DataBuilderPage <FdeGraph>`（data-testid `fde-graph-*`/`fde-node-*`）：8 节点横向 DAG，状态色 + 缺口码红标，F58 回归。**观测层纪律**：不重写建域逻辑，仅把既有阶段表达为节点图（PRD-A5 §1 非目标）。
 - **QuarantineRow**：异常行隔离区（SCHEMA_MISMATCH/DUP_KEY）· `quarantine.ts`。
 
 ### B. 本体/对象域（DataCore）
@@ -189,6 +190,10 @@ BuildPlan --gap(幂等)--> 复用已有/标缺  --rawin--> Connector/KB  --trans
   └ **比对现状 gap_analysis（一等步 · ModuleProvisioner 注册表）**：cross_scaffold 后插入——倒推 BuildPlan
     vs 系统现状 → 跨模块统一 diff（需要/复用/新建/缺）。这是"倒序"管线 query→倒推→**比对现状**→创建 的接缝。
     13 个 provisioner 覆盖 BuildPlan 全部 need 数组，覆盖门强制新模块纳入（`provisioners.ts analyzeGap`）。
+  └ **FDE 编排节点化（A5，观测层）**：上述执行步**确定性投影**为 8 个 FDE 语义节点
+    `意图→倒推→查能力→比差→各模块生成→闭包→publish→进启动器`（`fde-graph.ts projectFdeNodes`）→
+    引擎 onAdvance 每步迁移发 `fde.node_advanced` 实时点亮 + 落 `StoryBuildRun.nodes` → 前端 `<FdeGraph>`
+    一眼看建域走到哪/断在哪（FAILED 节点红 + 缺口码）。不改建域真值，仅把既有阶段表达成可观测节点图。
 ```
 **平台横切**
 ```
@@ -242,6 +247,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L13 | `growth.converged` | 自成长发动机·LOOP 收敛（问句现可答） | IN_SESSION | growth-ledger, growth-tickets | — |
 | L14 | `meta.ontology_synced` | Dogfooding·系统本体自反投影重物化完成（`POST /a/v1/meta/sync`）→ 失效 `/a/v1/meta/*` 查询缓存 + meta MCP 工具结果 | INVALIDATE | meta-ontology(`/meta/*` 视图) | — |
 | L15 | `storybuild.run_recorded` | 数据构建发动机·故事建域记录完成（`runStory`）→ 经 F1 全局通道失效历史推演记录/模块同步矩阵 | IN_SESSION | story-runs | — |
+| L15 | `fde.node_advanced` | A5 FDE 编排工作流·节点状态推进（`fde-graph.ts projectFdeNodes` 投影 7 执行步→8 语义节点，引擎 onAdvance 每步迁移发）→ 实时点亮节点状态图（跨会话/被动页） | IN_SESSION | fde-graph, story-runs, workflow-runs | — |
 | L16 | `entity.out_of_domain` | 感知层·槽位解析裸串实体在本租户任何已发布类型都解析不到（`router/slots.ts fillSlots`）→ orchestrator 发任务事件 + `perception-metrics.ts` 记误触发率（域外/尝试）+ 取最近邻候选供澄清 | NOTIFY | perception-metrics | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。

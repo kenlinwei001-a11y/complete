@@ -1893,6 +1893,37 @@ export const handlers = [
     advanceMockWorkflow(wf);
     return HttpResponse.json(wf);
   }),
+  // A5：FDE 编排工作流节点状态图（mock：从工作流步状态投影 8 语义节点）。
+  http.get("*/a/v1/databuilder/workflow-runs/:id/fde-graph", ({ params }) => {
+    const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!wf) return new HttpResponse(null, { status: 404 });
+    advanceMockWorkflow(wf);
+    const st = (key: string) => wf.steps.find((s) => s.stepKey === key)?.status ?? "PENDING";
+    const map = (s: string) => (s === "SUCCEEDED" ? "DONE" : s);
+    const FDE: { key: string; label: string; from: string }[] = [
+      { key: "story", label: "意图/故事", from: "" },
+      { key: "comprehend", label: "comprehend 倒推", from: "dry_build" },
+      { key: "capability", label: "查能力", from: "dry_build" },
+      { key: "gap", label: "比差", from: "gap_analysis" },
+      { key: "generate", label: "各模块生成", from: "publish_build" },
+      { key: "closure", label: "闭包", from: "dry_build" },
+      { key: "publish", label: "publish（R4）", from: "publish_build" },
+      { key: "launcher", label: "进启动器", from: "inference" },
+    ];
+    const crossFailed = st("cross_scaffold") === "FAILED";
+    const nodes = FDE.map((d) => {
+      let status = d.from ? map(st(d.from)) : "DONE";
+      let gapCode: string | undefined;
+      if (crossFailed && (d.key === "generate" || d.key === "publish")) { status = "FAILED"; gapCode = "SCAFFOLD_HTTP"; }
+      return { key: d.key, label: d.label, status, gapCode, io: d.key === "generate" && status === "DONE" ? { out: 16 } : undefined };
+    });
+    const done = nodes.filter((n) => n.status === "DONE").length;
+    const failed = nodes.find((n) => n.status === "FAILED");
+    return HttpResponse.json({
+      runId: wf.id, status: wf.status, nodes,
+      summary: { total: nodes.length, done, failed: nodes.filter((n) => n.status === "FAILED").length, running: nodes.filter((n) => n.status === "RUNNING").length, skipped: nodes.filter((n) => n.status === "SKIPPED").length, pending: nodes.filter((n) => n.status === "PENDING").length, failedAt: failed?.key },
+    });
+  }),
   http.post("*/a/v1/databuilder/workflow-runs", async ({ request }) => {
     const body = (await request.json()) as { script?: string; seed?: number; async?: boolean };
     if (body.async) {

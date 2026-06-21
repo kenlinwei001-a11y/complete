@@ -9,6 +9,7 @@ import type {
   BuildRunBody,
   BuildWorkflowRun,
   StoryBuildRun,
+  FdeNode,
   BackfillReport,
   DataBuilderAgent,
   ConnectionInstance,
@@ -747,6 +748,14 @@ export const startWorkflowRun = (body: { script: string; seed?: number; inferenc
   api.a<BuildWorkflowRun>("/a/v1/databuilder/workflow-runs", { method: "POST", body });
 export const resumeWorkflowRun = (id: string) =>
   api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}/resume`, { method: "POST" });
+// A5：FDE 编排工作流节点状态图（8 节点语义投影，实时点亮）
+export interface FdeGraphResponse {
+  runId: string;
+  status: BuildWorkflowRun["status"];
+  nodes: FdeNode[];
+  summary: { total: number; done: number; failed: number; running: number; skipped: number; pending: number; failedAt?: string };
+}
+export const fetchFdeGraph = (id: string) => api.a<FdeGraphResponse>(`/a/v1/databuilder/workflow-runs/${id}/fde-graph`);
 // g8-P6：存量回填（逆向导出既有推演能力 → 逐条建域 = 首次全量压测）
 export const backfillStoryRuns = () => api.a<BackfillReport>("/a/v1/databuilder/backfill", { method: "POST" });
 // g8-P5：故事脚本自动生成器 + 压测

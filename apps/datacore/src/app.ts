@@ -2541,6 +2541,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     return databuilder.getWorkflowRun(c, (req.params as { id: string }).id);
   });
+  // A5：FDE 编排工作流节点状态图（8 节点实时投影；前端 <FdeGraph> 轮询 + fde.node_advanced 点亮）。
+  app.get("/a/v1/databuilder/workflow-runs/:id/fde-graph", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.fdeGraph(c, (req.params as { id: string }).id);
+  });
   app.post("/a/v1/databuilder/workflow-runs/:id/resume", async (req, reply) => {
     const c = ctx(req);
     requireAdmin(c);

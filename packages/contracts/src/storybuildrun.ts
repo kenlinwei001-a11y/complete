@@ -180,6 +180,45 @@ export const StoryBuildRunStatusSchema = z.enum([
 ]);
 export type StoryBuildRunStatus = z.infer<typeof StoryBuildRunStatusSchema>;
 
+// ---- A5 · FDE 编排工作流节点状态图（建域过程的可观测语义投影）---------------------
+// 既有 7 步持久化执行（BuildWorkflowRun）是「执行真相」；A5 把它语义投影成 8 个 FDE 节点
+// （意图→倒推→查能力→比差→各模块生成→闭包→publish→进启动器），每节点带状态/IO/下钻/缺口码，
+// 让「建域走到哪、断在哪」一眼可见。节点为派生读模型（projectFdeNodes，确定性 R6），非另一套执行。
+
+/** FDE 8 节点固定序（与 fde-graph.ts FDE_NODES 对齐）。 */
+export const FDE_NODE_KEYS = [
+  "story",       // ① 意图/故事（输入燃料）
+  "comprehend",  // ② comprehend 倒推（产 BuildPlan）
+  "capability",  // ③ 查能力（capability-inventory，A3 切片/求解器覆盖）
+  "gap",         // ④ 比差（GapAnalysis，缺口高亮）
+  "generate",    // ⑤ 各模块生成（对象/规则/求解器/切片/B 栈 scaffold）
+  "closure",     // ⑥ 闭包（R11 全链：CHAIN/SHAPE/OBJECT/DATA/FORWARD）
+  "publish",     // ⑦ publish（R4 审批落真值）
+  "launcher",    // ⑧ 进启动器（出答案，交 A10 验证）
+] as const;
+export type FdeNodeKey = (typeof FDE_NODE_KEYS)[number];
+
+export const FDE_NODE_STATUS = ["PENDING", "RUNNING", "DONE", "FAILED", "SKIPPED"] as const;
+export type FdeNodeStatus = (typeof FDE_NODE_STATUS)[number];
+
+/** FDE 节点状态（投影自 BuildWorkflowRun 步状态 + 产物存在性）。 */
+export const FdeNodeSchema = z.object({
+  key: z.enum(FDE_NODE_KEYS),
+  label: z.string(),
+  status: z.enum(FDE_NODE_STATUS),
+  startedAt: z.string().optional(),
+  endedAt: z.string().optional(),
+  durationMs: z.number().optional(),
+  /** IO 计数（入/出，best-effort：如产出连接器+数据集数、缺口条数）。 */
+  io: z.object({ in: z.number().optional(), out: z.number().optional() }).optional(),
+  /** 下钻真实产物引用（buildPlan/capabilityInventory/gapAnalysis/producedArtifacts/closureReport/answer/script）。 */
+  drilldownRef: z.string().optional(),
+  /** FAILED 节点的缺口码（如闭包断 = 首个失败维 CHAIN/SHAPE；步致命 = 步 error.code）。 */
+  gapCode: z.string().optional(),
+  detail: z.string().optional(),
+});
+export type FdeNode = z.infer<typeof FdeNodeSchema>;
+
 export const StoryBuildRunSchema = z.object({
   id: z.string(), // sbr_（= InputManifest.runId 指向的运行主键）
   tenantId: z.string(),
@@ -205,6 +244,8 @@ export const StoryBuildRunSchema = z.object({
   gapReport: GapReportSchema.optional(),
   /** 比对现状：倒推 BuildPlan vs 系统现状的跨模块统一 diff（需要/复用/新建/缺，ModuleProvisioner 注册表产出）。 */
   gapAnalysis: GapAnalysisSchema.optional(),
+  /** A5：FDE 编排工作流 8 节点状态图（建域过程可观测投影；record 步落最终快照，运行中由 workflow-run 实时投影）。 */
+  nodes: z.array(FdeNodeSchema).default([]),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
   answer: z.string().optional(),
   /** §9 归一 evidence 标记：RUNTIME_PROBE=答案经 QOS orchestrator 实跑（绿测试≠能用的活证据）；
