@@ -108,7 +108,8 @@
   cursor: pointer;
   text-align: left;
   color: var(--muted2, #7a8699);
-  font-size: 11px;
+  /* nav-reorg N3：组头字号 ≥ 叶项（navItem 13px），消除"父小于子"的层级倒挂；层级靠字重/大写/颜色区分。 */
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;

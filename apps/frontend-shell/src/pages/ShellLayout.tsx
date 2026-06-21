@@ -9,7 +9,7 @@ import { applyTheme } from "@/workspace/theme";
 import { featureOn } from "@/workspace/featureGate";
 import { logoutSession } from "@/store/authSession";
 import { toast } from "@/store/toastStore";
-import { visibleAdminPages } from "./adminRegistry";
+import { visibleAdminPages, groupAdminPages } from "./adminRegistry";
 import { QueryDock } from "@/components/QueryDock/QueryDock";
 import { CommandPalette } from "@/components/ScenarioLauncher/CommandPalette";
 import { HistoryPanel } from "@/components/History/HistoryPanel";
@@ -187,14 +187,19 @@ export default function ShellLayout() {
           <>
             <div className="section-title">{zh.nav.adminGroup}</div>
             <nav className={styles.group} data-testid="nav-admin">
-              {adminPages.map((p) => (
-                <NavLink
-                  key={p.path}
-                  to={`/admin/${p.path}`}
-                  className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-                >
-                  {p.label}
-                </NavLink>
+              {/* nav-reorg：按业务域分组（配置驱动 R14）；空组隐藏、折叠记忆复用 NavGroup；父级字号≥子级。 */}
+              {groupAdminPages(adminPages).map((g, i) => (
+                <NavGroup key={g.key} title={g.title} index={i} defaultCollapsed={false}>
+                  {g.pages.map((p) => (
+                    <NavLink
+                      key={p.path}
+                      to={`/admin/${p.path}`}
+                      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
+                    >
+                      {p.label}
+                    </NavLink>
+                  ))}
+                </NavGroup>
               ))}
             </nav>
           </>

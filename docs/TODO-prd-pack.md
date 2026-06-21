@@ -184,7 +184,12 @@
 
 ## 特性（已 APPROVED，可独立排期）
 
-- [ ] ⬜ **nav-reorg · 左侧导航信息架构整理 + 层级字号修正**（用户新增需求，纯前端 IA/样式，零业务常数 R14）：
+- [x] ✅ **nav-reorg · 左侧导航信息架构整理 + 层级字号修正**（用户新增需求，纯前端 IA/样式，零业务常数 R14）：
+  **N1+N2+N3 ✅**：`adminRegistry.ts ADMIN_NAV_GROUPS`（7 业务域分组配置驱动 R14：数据接入/建模与图谱[含图谱并入 meta]/规则与校准/
+  构建与成长/编排与场景/运营与审批/平台治理）+ `groupAdminPages`（确定性归组，空组剔除，未配置页落「其它」不丢）。
+  `ShellLayout` 管理区改用 NavGroup 分组渲染（折叠记忆 + 角色/entitlement 过滤上游保留）。**N3 字号倒挂修复**：navGroupHeader
+  11→13px（≥ navItem 13px，消除"父小于子"）+ section-title 10.5→12px。测试 f61 ×3（无遗漏归组/空组剔除+其它兜底/渲染分组头）。
+  无需回写本体（纯前端 IA）。
   管理区 32 项扁平 → **按业务域统一分组**(NAV_GROUPS 配置驱动)；推演/数据/建模 立为一级；图谱并入「建模与图谱」组；
   补回 meta(系统自我)；字号改 **父≥子**(navGroupHeader 11→13px / section-title 10.5→12px，层级靠字重/大写/颜色)。
   逐项可见性仍按角色(visibleAdminPages)+entitlement 过滤、空组隐藏、折叠记忆保留。分期 N1 NAV_GROUPS 统一分组+渲染+meta ·
@@ -196,9 +201,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **12 ✅ + 4 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14/A12/A9 ✅；A3/A15/prototype-intake ◐）。
-- **Wave 1–4 全清**；**Wave 5 进行中**（A15 backbone ✅ · prototype-intake P1+P2-core ✅ · 余 A18）。
-- 下一步：**A18**（未审核态全栈建域闭环，用户已裁决：创建人写真值 + 锁死沙箱 + 默认隔离）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **13 ✅ + 4 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14/A12/A9/nav-reorg ✅；A3/A15/prototype-intake ◐）。
+- **Wave 1–4 全清**；**Wave 5**（A15 backbone ✅ · prototype-intake P1+P2-core ✅ · 余 A18）；**特性**（nav-reorg ✅ · 余 cockpit/synthetic-wizard）。
+- 余下大件（需各自完整 PRD + 多期）：**A18**（未审核态全栈闭环，三合一，用户已裁决；A18 PRD 全文需重新提供）· **cockpit**（驾驶舱 1:1 复刻）· **synthetic-wizard**（合成向导 ontoprompt 链 UX）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

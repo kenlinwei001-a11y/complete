@@ -145,7 +145,8 @@ a {
 }
 
 .section-title {
-  font-size: 10.5px;
+  /* nav-reorg N3：区头字号上调（10.5→12px），与组头/叶项层级更协调（不再过小到难读）。 */
+  font-size: 12px;
   letter-spacing: 1.4px;
   color: var(--muted);
   text-transform: uppercase;

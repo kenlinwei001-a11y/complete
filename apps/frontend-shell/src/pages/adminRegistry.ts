@@ -64,3 +64,39 @@ export function canAccessAdmin(userRoles: string[], page: AdminPageDef): boolean
 export function visibleAdminPages(userRoles: string[]): AdminPageDef[] {
   return ADMIN_PAGES.filter((p) => canAccessAdmin(userRoles, p));
 }
+
+/**
+ * nav-reorg：管理区导航按业务域统一分组（配置驱动，R14——组名=平台模块域，非租户业务常数）。
+ * 把 ~33 项扁平管理页归入 7 组，父级字号≥子级（见 ShellLayout 渲染）。逐项可见性仍按角色 + entitlement
+ * 上游过滤后传入；空组自动隐藏；折叠记忆复用 NavGroup。未在配置内的新页 → 落「其它」组（不丢，提示补配）。
+ */
+export interface AdminNavGroup {
+  key: string;
+  title: string;
+  /** 组内成员页 path（顺序即展示序）。 */
+  paths: string[];
+}
+
+export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
+  { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
+  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "meta"] },
+  { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
+  { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals"] },
+  { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },
+  { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
+  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers"] },
+];
+
+/** 把（已按角色过滤的）管理页归入分组；空组剔除；未配置页落「其它」组（不丢）。确定性顺序。 */
+export function groupAdminPages(pages: AdminPageDef[]): { key: string; title: string; pages: AdminPageDef[] }[] {
+  const byPath = new Map(pages.map((p) => [p.path, p]));
+  const used = new Set<string>();
+  const groups = ADMIN_NAV_GROUPS.map((g) => {
+    const gp = g.paths.map((path) => byPath.get(path)).filter((p): p is AdminPageDef => !!p);
+    gp.forEach((p) => used.add(p.path));
+    return { key: g.key, title: g.title, pages: gp };
+  }).filter((g) => g.pages.length > 0);
+  const rest = pages.filter((p) => !used.has(p.path));
+  if (rest.length > 0) groups.push({ key: "other", title: "其它", pages: rest });
+  return groups;
+}
