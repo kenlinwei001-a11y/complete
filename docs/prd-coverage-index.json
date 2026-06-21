@@ -131,6 +131,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-build-workflow-runtime.md": {
+      "acceptanceIds": [
+        "F55"
+      ],
+      "covered": [
+        "F55"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-catalog-battery-20-scenarios.md": {
       "acceptanceIds": [
         "A9",

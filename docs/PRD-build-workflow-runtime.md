@@ -46,7 +46,8 @@
 - 不做通用工作流编排引擎/可视化 DAG 编辑器（步骤序由代码定义，非用户编排）。
 - 不复用 AgentCore B2 Workflow（FDE 在 DataCore，复用 B 会反转 A→B 松耦合）。
 - 不改 g8 的倒推/闭包/scaffold 语义。
-- 前端工作流时间线视图本期未做（端点已可观测，时间线为后续）。
+- ~~前端工作流时间线视图本期未做~~ **已落**（`DataBuilderPage WorkflowTimelinePanel`，见 §2/§3 AC9）。
+- 不做通用工作流编排引擎的拖拽式 DAG 编辑（步骤序由代码定义）。
 
 ## 2. 实现锚点
 
@@ -56,6 +57,7 @@
 - `apps/datacore/src/app.ts`：`POST/GET /a/v1/databuilder/workflow-runs`、`POST …/:id/resume`。
 - `apps/datacore/src/repo/{repo.ts,memory.ts,pg.ts}` + `apps/datacore/migrations/023_build_workflow_runs.sql`（R9 四处）。
 - `apps/datacore/test/build-workflow-engine.test.ts`：引擎工业级保证单测（happy/重试/致命/重试上限/崩溃重入/失败自愈/R2 隔离/跳过）+ HTTP 端到端。
+- `apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx WorkflowTimelinePanel` + `api/endpoints.ts`（fetch/start/resumeWorkflowRun）+ `mocks/handlers.ts`（4 端点 mock）+ `test/f55.workflow-timeline.test.tsx`：前端时间线（逐运行/逐步状态/尝试/计时/错误 + 一键 resume）。
 
 ## 3. 验收
 
@@ -67,3 +69,4 @@
 - **AC6 R2 隔离**：A 租户工作流 B 租户 resume 取不到 → not-found。✓。
 - **AC7 端到端**：`POST /workflow-runs` 全步终态 + storyRunId 落 StoryBuildRun + GET 可观测；旧端点同源无回归。✓。
 - **AC8 无回归**：datacore 全套（449）绿；`pnpm gates` 全通过。✓。
+- **AC9 前端时间线**：`/admin/data-builder` 工作流面板逐运行/逐步可观测（状态/尝试/计时/结构化错误）；失败运行一键 resume → 断点消失、运行收敛。✓ F55。

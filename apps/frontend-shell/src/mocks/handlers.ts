@@ -116,6 +116,29 @@ const MOCK_BUILD_JOBS: unknown[] = [];
 // g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录（mock 模式内存存储，提交→列出可见）
 const META_POLICY = { tenantId: "demo", roles: ["admin"] as string[] };
 const MOCK_STORY_RUNS: { id: string; script: string; status: string; createdAt: string; [k: string]: unknown }[] = [];
+/** 工业级工作流运行时 mock：6 步持久化步骤状态机（happy 路径全 SUCCEEDED，含一个 SKIPPED 演示两轴分离）。 */
+const WF_STEP_DEFS: { stepKey: string; title: string }[] = [
+  { stepKey: "dry_build", title: "试建：出 BuildPlan + A 三向闭包（不发布）" },
+  { stepKey: "cross_scaffold", title: "跨系统下发：A 闭包通过则向 AgentCore 下发 B 栈 scaffold" },
+  { stepKey: "publish_build", title: "全链 HARD 门：A⊕B 闭合则真建 + 发布 + 落切片" },
+  { stepKey: "validation", title: "推演验证痕迹：结论依据反向核对知识图谱" },
+  { stepKey: "inference", title: "一键推演：故事主问句经 QOS/求解器跑出答案" },
+  { stepKey: "record", title: "记账：装配 StoryBuildRun 落库 + 发 storybuild.run_recorded" },
+];
+function mockWorkflowRun(script: string, seed: number, status: "SUCCEEDED" | "FAILED" = "SUCCEEDED") {
+  const id = newId("bwf");
+  const storyRunId = newId("sbr");
+  const failAt = status === "FAILED" ? "cross_scaffold" : null;
+  let hitFail = false;
+  const steps = WF_STEP_DEFS.map((d) => {
+    if (hitFail) return { ...d, status: "PENDING", attempts: 0, maxAttempts: d.stepKey === "cross_scaffold" ? 3 : 1 };
+    if (d.stepKey === failAt) { hitFail = true; return { ...d, status: "FAILED", attempts: 3, maxAttempts: 3, durationMs: 12, error: { code: "SCAFFOLD_HTTP", message: "scaffold 下发失败：连接超时", retryable: true } }; }
+    const skipped = d.stepKey === "inference"; // 演示 SKIPPED（未要求推演）
+    return { ...d, status: skipped ? "SKIPPED" : "SUCCEEDED", attempts: 1, maxAttempts: d.stepKey === "cross_scaffold" ? 3 : 1, durationMs: 5 + (idSeq % 9), detail: d.stepKey === "record" ? `status=${status}` : undefined };
+  });
+  return { id, tenantId: "demo", kind: "story_build", script, scriptHash: "mockhash", seed, inference: false, status, steps, context: {}, storyRunId: status === "SUCCEEDED" ? storyRunId : undefined, resumedCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as { id: string; status: string; steps: { stepKey: string; status: string }[]; [k: string]: unknown };
+}
+const MOCK_WORKFLOW_RUNS: ReturnType<typeof mockWorkflowRun>[] = [];
 /** 全栈 BuildPlan mock（区2 故事理解分组卡片渲染源）：故事倒推出的全栈制品，命名条目供前端结构化展示。 */
 function mockBuildPlan(planId: string) {
   return {
@@ -1798,6 +1821,30 @@ export const handlers = [
   http.get("*/a/v1/databuilder/runs/:id", ({ params }) => {
     const r = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
     return r ? HttpResponse.json(r) : new HttpResponse(null, { status: 404 });
+  }),
+  // 工业级工作流运行时：持久化步骤状态机（检查点/可重入/可重试/可观测）
+  http.get("*/a/v1/databuilder/workflow-runs", () => HttpResponse.json([...MOCK_WORKFLOW_RUNS].reverse())),
+  http.get("*/a/v1/databuilder/workflow-runs/:id", ({ params }) => {
+    const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
+    return wf ? HttpResponse.json(wf) : new HttpResponse(null, { status: 404 });
+  }),
+  http.post("*/a/v1/databuilder/workflow-runs", async ({ request }) => {
+    const body = (await request.json()) as { script?: string; seed?: number };
+    // 第一条 mock 故意失败（演示断点 + resume 入口）；其余成功
+    const status = MOCK_WORKFLOW_RUNS.length === 0 ? "FAILED" : "SUCCEEDED";
+    const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, status as "SUCCEEDED" | "FAILED");
+    MOCK_WORKFLOW_RUNS.push(wf);
+    return HttpResponse.json(wf, { status: status === "FAILED" ? 200 : 201 });
+  }),
+  http.post("*/a/v1/databuilder/workflow-runs/:id/resume", ({ params }) => {
+    const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!wf) return new HttpResponse(null, { status: 404 });
+    // 重入：失败/PENDING 步全部转 SUCCEEDED，run 收敛（演示自愈）
+    for (const s of wf.steps) if (s.status === "FAILED" || s.status === "PENDING") s.status = "SUCCEEDED";
+    wf.status = "SUCCEEDED";
+    wf.resumedCount = ((wf.resumedCount as number) ?? 0) + 1;
+    wf.storyRunId = wf.storyRunId ?? newId("sbr");
+    return HttpResponse.json(wf);
   }),
   http.post("*/a/v1/databuilder/runs", async ({ request }) => {
     const body = (await request.json()) as { script?: string; seed?: number; stage?: string };

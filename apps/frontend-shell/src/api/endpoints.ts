@@ -7,6 +7,7 @@ import type {
   BuildJob,
   BuildPlan,
   BuildRunBody,
+  BuildWorkflowRun,
   StoryBuildRun,
   BackfillReport,
   DataBuilderAgent,
@@ -733,6 +734,13 @@ export const previewStoryBuild = (script: string, seed?: number) =>
   api.a<StoryBuildRun>("/a/v1/databuilder/runs", { method: "POST", body: { script, seed, stage: "manifest" } });
 export const submitStoryInputs = (id: string, inputs: Record<string, string | number | boolean>) =>
   api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/inputs`, { method: "PATCH", body: { inputs } });
+// 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）
+export const fetchWorkflowRuns = () => api.a<BuildWorkflowRun[]>("/a/v1/databuilder/workflow-runs");
+export const fetchWorkflowRun = (id: string) => api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}`);
+export const startWorkflowRun = (body: { script: string; seed?: number; inference?: boolean }) =>
+  api.a<BuildWorkflowRun>("/a/v1/databuilder/workflow-runs", { method: "POST", body });
+export const resumeWorkflowRun = (id: string) =>
+  api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}/resume`, { method: "POST" });
 // g8-P6：存量回填（逆向导出既有推演能力 → 逐条建域 = 首次全量压测）
 export const backfillStoryRuns = () => api.a<BackfillReport>("/a/v1/databuilder/backfill", { method: "POST" });
 // g8-P5：故事脚本自动生成器 + 压测

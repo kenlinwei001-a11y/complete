@@ -1,10 +1,10 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, ClosureReport, DataBuilderAgent, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
+import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -427,6 +427,119 @@ const PHASE_COLOR: Record<string, string> = {
   PENDING: "var(--muted2, #555)",
 };
 
+/** 工作流步/运行状态 → 图标 + 颜色（持久化步骤状态机的可观测呈现）。 */
+const WF_STEP_ICON: Record<string, string> = { SUCCEEDED: "✓", SKIPPED: "⊘", FAILED: "✗", RUNNING: "◷", PENDING: "○" };
+const WF_STATUS_COLOR: Record<string, string> = {
+  SUCCEEDED: "var(--c-capacity, #36BFA5)",
+  RUNNING: "var(--amber, #DD9551)",
+  PAUSED: "var(--amber, #DD9551)",
+  FAILED: "var(--danger, #E5484D)",
+  SKIPPED: "var(--muted, #888)",
+  PENDING: "var(--muted2, #555)",
+};
+
+/**
+ * 工业级工作流时间线（配套数据构建发动机 · PRD-build-workflow-runtime §1 目标4 可观测）：
+ * 把"故事→建域"的持久化步骤状态机逐运行、逐步可视化——每步状态/尝试/计时/检查点/错误一目了然；
+ * 失败/暂停的运行可一键 resume（从未完成步续跑，已成功步跳过）。数据源 GET /a/v1/databuilder/workflow-runs。
+ */
+function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number }) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const runsQ = useQuery<BuildWorkflowRun[]>({ queryKey: ["a", "workflow-runs"], queryFn: fetchWorkflowRuns });
+
+  const startM = useMutation({
+    mutationFn: () => startWorkflowRun({ script, seed, inference: false }),
+    onSuccess: (wf) => {
+      toast(wf.status === "SUCCEEDED" ? "工作流执行完成" : wf.status === "FAILED" ? "工作流执行失败（可 resume）" : "工作流执行中", wf.status === "FAILED" ? "error" : "success");
+      setExpanded(wf.id);
+      void qc.invalidateQueries({ queryKey: ["a", "workflow-runs"] });
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
+  const resumeM = useMutation({
+    mutationFn: (id: string) => resumeWorkflowRun(id),
+    onSuccess: (wf) => {
+      toast(wf.status === "SUCCEEDED" ? "重入完成，工作流已收敛" : "重入后仍未完成（见失败步）", wf.status === "SUCCEEDED" ? "success" : "error");
+      void qc.invalidateQueries({ queryKey: ["a", "workflow-runs"] });
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
+
+  const runs = runsQ.data ?? [];
+  return (
+    <div className="panel" style={{ marginBottom: 14 }} data-testid="wf-timeline">
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        工作流运行时（持久化 · 可重入 · 可重试 · 可观测){" "}
+        <span className="badge" data-testid="wf-count">{runs.length}</span>
+        <button className="btn sm" data-testid="wf-start" style={{ marginLeft: "auto" }} disabled={startM.isPending} onClick={() => startM.mutate()} title="用上方脚本/种子启动一次持久化工作流（崩溃可 resume，单步可重试）">
+          {startM.isPending ? "执行中…" : "运行工作流"}
+        </button>
+      </div>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        每步落库检查点 → 进程崩溃可从未完成步续跑；瞬时失败有界重试；致命失败止于该步保留现场。执行状态与业务结论（建域可 BLOCKED）两轴分离。
+      </div>
+      {runs.length === 0 && <div className="muted" style={{ fontSize: 13 }} data-testid="wf-empty">尚无工作流运行。点「运行工作流」以持久化步骤状态机执行一次故事建域。</div>}
+      {runs.map((wf) => {
+        const isOpen = expanded === wf.id;
+        const done = wf.steps.filter((s) => s.status === "SUCCEEDED").length;
+        const skipped = wf.steps.filter((s) => s.status === "SKIPPED").length;
+        const failedStep = wf.steps.find((s) => s.status === "FAILED");
+        return (
+          <div key={wf.id} className="card" style={{ marginBottom: 8, padding: 10 }} data-testid={`wf-run-${wf.id}`}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : wf.id)}>
+              <span className="badge" style={{ background: WF_STATUS_COLOR[wf.status], color: "#fff" }} data-testid={`wf-status-${wf.id}`}>{wf.status}</span>
+              <code style={{ fontSize: 12 }}>{wf.id}</code>
+              <span className="muted" style={{ fontSize: 12 }}>{done + skipped}/{wf.steps.length} 步完成{wf.resumedCount > 0 ? ` · 重入 ${wf.resumedCount} 次` : ""}</span>
+              {failedStep && <span className="badge" style={{ background: WF_STATUS_COLOR.FAILED, color: "#fff" }}>断在 {failedStep.stepKey}</span>}
+              {(wf.status === "FAILED" || wf.status === "PAUSED") && (
+                <button
+                  className="btn sm"
+                  data-testid={`wf-resume-${wf.id}`}
+                  style={{ marginLeft: "auto" }}
+                  disabled={resumeM.isPending}
+                  onClick={(e) => { e.stopPropagation(); resumeM.mutate(wf.id); }}
+                  title="从首个未完成步续跑（已成功步跳过、context 复用）"
+                >
+                  {resumeM.isPending ? "重入中…" : "↻ 重入续跑"}
+                </button>
+              )}
+              <span style={{ marginLeft: failedStep || wf.status === "FAILED" || wf.status === "PAUSED" ? 0 : "auto" }} className="muted">{isOpen ? "▾" : "▸"}</span>
+            </div>
+            {isOpen && (
+              <ol style={{ margin: "10px 0 0", paddingLeft: 0, listStyle: "none" }} data-testid={`wf-steps-${wf.id}`}>
+                {wf.steps.map((s) => (
+                  <li key={s.stepKey} style={{ display: "flex", gap: 8, padding: "5px 0", borderTop: "1px solid var(--border, #2a2a2a)" }} data-testid={`wf-step-${s.stepKey}`}>
+                    <span style={{ color: WF_STATUS_COLOR[s.status], fontWeight: 700, width: 16 }}>{WF_STEP_ICON[s.status] ?? "•"}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13 }}>
+                        <code style={{ fontSize: 12 }}>{s.stepKey}</code> · {s.title}
+                      </div>
+                      <div className="muted" style={{ fontSize: 11 }}>
+                        {s.status}
+                        {s.attempts > 1 && ` · 尝试 ${s.attempts}/${s.maxAttempts}`}
+                        {typeof s.durationMs === "number" && ` · ${s.durationMs}ms`}
+                        {s.detail && ` · ${s.detail}`}
+                      </div>
+                      {s.error && (
+                        <div style={{ fontSize: 11, color: WF_STATUS_COLOR.FAILED }} data-testid={`wf-step-error-${s.stepKey}`}>
+                          错误 [{s.error.code}{s.error.retryable ? " · 可重试" : " · 致命"}]：{s.error.message}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）：
  * 故事脚本 → 七阶段（intake→comprehend→gap→rawin→transform→closure→publish）→ 双向闭包报告。
@@ -626,6 +739,9 @@ export default function DataBuilderPage() {
           )}
         </div>
       )}
+
+      {/* 工业级工作流运行时：故事建域的持久化步骤状态机时间线（可观测 + 一键 resume） */}
+      <WorkflowTimelinePanel script={script} seed={seed} />
 
       {/* g8 故事驱动建域 · P1：历史推演记录时间线（StoryBuildRun，与自成长发动机成长账本归一为同一历史两面） */}
       <div className="panel" style={{ marginBottom: 14 }} data-testid="sbr-timeline">
