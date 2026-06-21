@@ -8,6 +8,7 @@
       "R12",
       "R13",
       "R14",
+      "R15",
       "R2",
       "R3",
       "R4",
@@ -29,6 +30,255 @@
     ]
   },
   "prds": {
+    "PRD-A-series-roadmap.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-A1-solvers-as-mcp-tools.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R2",
+        "R3",
+        "R5",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/mcp-router.ts",
+        "apps/agentcore/src/mcp/solvers-server.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/src/mcp/solvers-server.ts"
+      ]
+    },
+    "PRD-A10-build-to-verify-closure.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/app.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A11-per-connection-category.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R2",
+        "R5",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-6"
+      ],
+      "artifacts": [
+        "apps/datacore/src/connectors/registry.ts",
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/synthetic/data-categories.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A12-module-handrun-completion.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R13",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/test/xservice-smoke.test.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A13-floor-semantics-deterministic.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/databuilder/solver-args.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A14-agent-evals-handrun.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/evals.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A15-cli-universal-operation-shell.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R15",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/datacore/src/app.ts",
+        "scripts/check-cli-parity.mjs",
+        "scripts/cli-parity-baseline.json",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": [
+        "scripts/check-cli-parity.mjs",
+        "scripts/cli-parity-baseline.json"
+      ]
+    },
+    "PRD-A3-reference-ontology-slice-planner.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-5",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/graphmeta.ts",
+        "apps/datacore/src/ontology-core.ts",
+        "apps/datacore/src/synthetic/reference-ontology.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/synthetic/reference-ontology.ts"
+      ]
+    },
+    "PRD-A4-object-type-browser.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R2",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/frontend-shell/src/pages/Object360Page.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A5-fde-orchestration-workflow.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R11",
+        "R13",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/workflow/executor.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A6-realistic-value-domain-synthesis.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/synthetic/battery.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A7-bstack-scaffold-standalone.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R2",
+        "R8"
+      ],
+      "breakpoints": [
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/config.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A8-more-cpsat-models.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A9-external-engines-design-deferred.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-addendum-a8-timeseries.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -312,6 +562,27 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-cockpit-capacity-1to1-parity.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-2",
+        "G-5"
+      ],
+      "artifacts": [
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-de-battery-multitenant-config.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -577,6 +848,26 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-prototype-intake-databuilder.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R15",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/entity-resolution.ts",
+        "apps/datacore/src/modeling.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-query-orchestration-service.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -616,6 +907,24 @@
         "packages/contracts/src/agentcore.ts",
         "packages/contracts/src/qos.ts",
         "scripts/check-chain-closure.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-synthetic-wizard-ontoprompt-chain.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/modeling.ts"
       ],
       "brokenArtifacts": []
     },
@@ -671,7 +980,75 @@
     }
   },
   "breakpointCoverage": {
+    "G-3": [
+      "PRD-A10-build-to-verify-closure.md",
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-A3-reference-ontology-slice-planner.md",
+      "PRD-A5-fde-orchestration-workflow.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-8": [
+      "PRD-A10-build-to-verify-closure.md",
+      "PRD-A12-module-handrun-completion.md",
+      "PRD-A3-reference-ontology-slice-planner.md",
+      "PRD-A5-fde-orchestration-workflow.md",
+      "PRD-A7-bstack-scaffold-standalone.md",
+      "PRD-addendum-a8-timeseries.md",
+      "PRD-addendum-admin-console-closure.md",
+      "PRD-addendum-admin-platform.md",
+      "PRD-addendum-agent-runtime.md",
+      "PRD-addendum-capability-routing.md",
+      "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-addendum-execution-semantics.md",
+      "PRD-addendum-feature-entitlement.md",
+      "PRD-addendum-lived-in-state.md",
+      "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-m11-calibration.md",
+      "PRD-addendum-ontology-core.md",
+      "PRD-addendum-ontology-governance.md",
+      "PRD-addendum-operational-completeness.md",
+      "PRD-addendum-replay-orchestrator.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-addendum-validation-loop.md",
+      "PRD-catalog-battery-20-scenarios.md",
+      "PRD-demand-pulled-growth-engine.md",
+      "PRD-dogfooding-self-ontology.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-frontend-addendum-remaining-views.md",
+      "PRD-frontend-addendum-sim-views.md",
+      "PRD-frontend.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-implementation-handbook.md",
+      "PRD-maturity-master-plan.md",
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-platform-foundry-aip.md",
+      "PRD-prototype-intake-databuilder.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher.md",
+      "PRD-synthetic-wizard-ontoprompt-chain.md",
+      "PRD-traceability-and-baseline-v2.md",
+      "PRD-traceability-and-baseline.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-6": [
+      "PRD-A11-per-connection-category.md",
+      "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-live-traceable-data.md",
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-prototype-intake-databuilder.md",
+      "PRD-synthetic-wizard-ontoprompt-chain.md",
+      "PRD-unified-build-engine.md"
+    ],
     "G-1": [
+      "PRD-A12-module-handrun-completion.md",
       "PRD-addendum-a8-timeseries.md",
       "PRD-addendum-admin-console-closure.md",
       "PRD-addendum-admin-platform.md",
@@ -706,41 +1083,14 @@
       "PRD-traceability-and-baseline.md",
       "PRD-unified-build-engine.md"
     ],
-    "G-8": [
-      "PRD-addendum-a8-timeseries.md",
-      "PRD-addendum-admin-console-closure.md",
-      "PRD-addendum-admin-platform.md",
-      "PRD-addendum-agent-runtime.md",
-      "PRD-addendum-capability-routing.md",
-      "PRD-addendum-dataflow-loop-closure.md",
-      "PRD-addendum-execution-semantics.md",
-      "PRD-addendum-feature-entitlement.md",
-      "PRD-addendum-lived-in-state.md",
-      "PRD-addendum-llm-providers-and-references.md",
-      "PRD-addendum-m11-calibration.md",
-      "PRD-addendum-ontology-core.md",
-      "PRD-addendum-ontology-governance.md",
-      "PRD-addendum-operational-completeness.md",
-      "PRD-addendum-replay-orchestrator.md",
-      "PRD-addendum-skill-authoring.md",
-      "PRD-addendum-solvers-and-gaps.md",
-      "PRD-addendum-validation-loop.md",
-      "PRD-catalog-battery-20-scenarios.md",
-      "PRD-demand-pulled-growth-engine.md",
-      "PRD-dogfooding-self-ontology.md",
+    "G-5": [
+      "PRD-A3-reference-ontology-slice-planner.md",
+      "PRD-A6-realistic-value-domain-synthesis.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-de-battery-multitenant-config.md",
       "PRD-fde-fullstack-build-workflow.md",
-      "PRD-frontend-addendum-remaining-views.md",
-      "PRD-frontend-addendum-sim-views.md",
-      "PRD-frontend.md",
       "PRD-fullstack-story-build-g8.md",
-      "PRD-implementation-handbook.md",
-      "PRD-maturity-master-plan.md",
-      "PRD-ontology-browser-field-coverage.md",
-      "PRD-platform-foundry-aip.md",
-      "PRD-query-orchestration-service.md",
-      "PRD-scenario-launcher.md",
-      "PRD-traceability-and-baseline-v2.md",
-      "PRD-traceability-and-baseline.md",
+      "PRD-generic-inference.md",
       "PRD-unified-build-engine.md"
     ],
     "G-4": [
@@ -754,46 +1104,98 @@
       "PRD-fullstack-story-build-g8.md",
       "PRD-unified-build-engine.md"
     ],
-    "G-6": [
-      "PRD-addendum-dataflow-loop-closure.md",
-      "PRD-de-battery-multitenant-config.md",
-      "PRD-fde-fullstack-build-workflow.md",
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-live-traceable-data.md",
-      "PRD-ontology-browser-field-coverage.md",
-      "PRD-unified-build-engine.md"
-    ],
     "G-2": [
       "PRD-addendum-solvers-and-gaps.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-query-orchestration-service.md",
-      "PRD-unified-build-engine.md"
-    ],
-    "G-5": [
-      "PRD-de-battery-multitenant-config.md",
-      "PRD-fde-fullstack-build-workflow.md",
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-generic-inference.md",
-      "PRD-unified-build-engine.md"
-    ],
-    "G-3": [
-      "PRD-fde-fullstack-build-workflow.md",
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-query-orchestration-service.md",
-      "PRD-scenario-launcher.md",
       "PRD-unified-build-engine.md"
     ]
   },
   "orphanBreakpoints": [],
   "byArtifact": {
-    "packages/contracts/src/workspace.ts": [
-      "PRD-de-battery-multitenant-config.md"
+    "apps/agentcore/src/agent/mcp-router.ts": [
+      "PRD-A1-solvers-as-mcp-tools.md"
+    ],
+    "apps/agentcore/src/mcp/solvers-server.ts": [
+      "PRD-A1-solvers-as-mcp-tools.md"
+    ],
+    "apps/agentcore/src/tools/registry.ts": [
+      "PRD-A1-solvers-as-mcp-tools.md",
+      "PRD-A15-cli-universal-operation-shell.md"
+    ],
+    "apps/datacore/src/solvers/service.ts": [
+      "PRD-A1-solvers-as-mcp-tools.md",
+      "PRD-A13-floor-semantics-deterministic.md",
+      "PRD-A8-more-cpsat-models.md",
+      "PRD-A9-external-engines-design-deferred.md"
+    ],
+    "apps/datacore/src/app.ts": [
+      "PRD-A10-build-to-verify-closure.md",
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-A4-object-type-browser.md"
+    ],
+    "apps/datacore/src/connectors/registry.ts": [
+      "PRD-A11-per-connection-category.md"
+    ],
+    "apps/datacore/src/domain.ts": [
+      "PRD-A11-per-connection-category.md"
+    ],
+    "apps/datacore/src/synthetic/data-categories.ts": [
+      "PRD-A11-per-connection-category.md"
+    ],
+    "apps/datacore/test/xservice-smoke.test.ts": [
+      "PRD-A12-module-handrun-completion.md"
+    ],
+    "apps/datacore/src/databuilder/solver-args.ts": [
+      "PRD-A13-floor-semantics-deterministic.md"
+    ],
+    "apps/datacore/src/solvers/extended.ts": [
+      "PRD-A13-floor-semantics-deterministic.md"
+    ],
+    "apps/agentcore/src/evals.ts": [
+      "PRD-A14-agent-evals-handrun.md"
     ],
     "apps/agentcore/src/router/orchestrator.ts": [
+      "PRD-A15-cli-universal-operation-shell.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-scenario-launcher.md"
     ],
+    "scripts/check-cli-parity.mjs": [
+      "PRD-A15-cli-universal-operation-shell.md"
+    ],
+    "scripts/cli-parity-baseline.json": [
+      "PRD-A15-cli-universal-operation-shell.md"
+    ],
     "scripts/platform-cli.mjs": [
+      "PRD-A15-cli-universal-operation-shell.md",
       "PRD-demand-pulled-growth-engine.md"
+    ],
+    "apps/datacore/src/graphmeta.ts": [
+      "PRD-A3-reference-ontology-slice-planner.md"
+    ],
+    "apps/datacore/src/ontology-core.ts": [
+      "PRD-A3-reference-ontology-slice-planner.md"
+    ],
+    "apps/datacore/src/synthetic/reference-ontology.ts": [
+      "PRD-A3-reference-ontology-slice-planner.md"
+    ],
+    "apps/frontend-shell/src/pages/Object360Page.tsx": [
+      "PRD-A4-object-type-browser.md"
+    ],
+    "apps/agentcore/src/workflow/executor.ts": [
+      "PRD-A5-fde-orchestration-workflow.md"
+    ],
+    "apps/datacore/src/synthetic/battery.ts": [
+      "PRD-A6-realistic-value-domain-synthesis.md"
+    ],
+    "apps/datacore/src/config.ts": [
+      "PRD-A7-bstack-scaffold-standalone.md"
+    ],
+    "packages/contracts/src/solvers.ts": [
+      "PRD-cockpit-capacity-1to1-parity.md"
+    ],
+    "packages/contracts/src/workspace.ts": [
+      "PRD-de-battery-multitenant-config.md"
     ],
     "packages/contracts/src/meta-ontology.ts": [
       "PRD-dogfooding-self-ontology.md"
@@ -824,7 +1226,12 @@
       "PRD-ontology-browser-field-coverage.md"
     ],
     "apps/datacore/src/modeling.ts": [
-      "PRD-ontology-browser-field-coverage.md"
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-prototype-intake-databuilder.md",
+      "PRD-synthetic-wizard-ontoprompt-chain.md"
+    ],
+    "apps/datacore/src/entity-resolution.ts": [
+      "PRD-prototype-intake-databuilder.md"
     ],
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
       "PRD-scenario-launcher.md"
