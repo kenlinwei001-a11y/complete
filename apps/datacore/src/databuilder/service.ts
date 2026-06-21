@@ -45,6 +45,8 @@ import type { BuildVerification, FdeNode, ScaffoldManifestRecord } from "@platfo
 
 const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
+/** A18 §3.7：模块同步矩阵求解器注册存在性核验集（注册求解器 + 工作流求解器 sop_balance，与 closure CHAIN 口径一致）。 */
+const REGISTERED_SOLVERS: ReadonlySet<string> = new Set<string>([...SOLVER_KEYS, "sop_balance"]);
 
 /**
  * A7 Foundry-Grade Data Builder — agent 驱动的 data pipeline 发动机。
@@ -432,7 +434,7 @@ export class DataBuilderService {
             validationTrace: c["validationTrace"] as ValidationTrace | undefined,
             producedConnections,
             producedDatasets,
-            producedArtifacts: deriveProducedArtifacts(plan, scaffoldReceipt, producedConnections, producedDatasets, status),
+            producedArtifacts: deriveProducedArtifacts(plan, scaffoldReceipt, producedConnections, producedDatasets, status, REGISTERED_SOLVERS),
             storyCoverage: deriveStoryCoverage(body.script.trim(), plan),
             // A5：FDE 节点快照（context 投影，含此刻终态语义）；引擎完成时 onAdvance 再以 steps+计时覆盖刷新。
             nodes: projectFdeNodes({ context: c }),

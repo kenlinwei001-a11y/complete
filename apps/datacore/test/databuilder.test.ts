@@ -352,7 +352,7 @@ describe("数据构建发动机页面统一规格 P2 · 模块同步矩阵（pro
       { kind: "intent" as const, key: "risk_intent", status: "REUSED" as const },
       { kind: "workflow" as const, key: "ghost_wf", status: "MISSING" as const },
     ], fullChainOk: true };
-    const arts = deriveProducedArtifacts(PLAN, receipt, ["conn_x"], ["rds_x"], "SUCCEEDED");
+    const arts = deriveProducedArtifacts(PLAN, receipt, ["conn_x"], ["rds_x"], "SUCCEEDED", new Set(SOLVER_KEYS));
     // A 栈：对象/切片/规则 CREATED+PUBLISHED；求解器 REUSED+PUBLISHED
     expect(arts.find((a) => a.kind === "objectType" && a.key === "Order")).toMatchObject({ module: "ontology", action: "CREATED", status: "PUBLISHED" });
     expect(arts.find((a) => a.kind === "slice")).toMatchObject({ module: "slice", status: "PUBLISHED" });
@@ -366,12 +366,21 @@ describe("数据构建发动机页面统一规格 P2 · 模块同步矩阵（pro
   });
 
   it("deriveProducedArtifacts: 建域失败 → A 栈 DRAFT（R4 未生效）", () => {
-    const arts = deriveProducedArtifacts(PLAN, undefined, [], [], "FAILED");
+    const arts = deriveProducedArtifacts(PLAN, undefined, [], [], "FAILED", new Set(SOLVER_KEYS));
     expect(arts.find((a) => a.kind === "objectType")?.status).toBe("DRAFT");
   });
 
+  it("A18 §3.7：未注册求解器不再乐观标 REUSED/PUBLISHED → CREATED/DRAFT（矩阵取闭包真相，不谎报）", () => {
+    const planWithGhost: BuildPlan = { ...PLAN, solverNeeds: [{ solverKey: "affected_orders", inputFields: [] }, { solverKey: "capacity_switch_optimizer", inputFields: [] }] };
+    const arts = deriveProducedArtifacts(planWithGhost, undefined, [], [], "SUCCEEDED", new Set(SOLVER_KEYS));
+    // 已注册 → REUSED/PUBLISHED
+    expect(arts.find((a) => a.key === "affected_orders")).toMatchObject({ action: "REUSED", status: "PUBLISHED" });
+    // 未注册 → CREATED/DRAFT（诚实"缺·未生效"，非乐观 REUSED/PUBLISHED）
+    expect(arts.find((a) => a.key === "capacity_switch_optimizer")).toMatchObject({ module: "solver", action: "CREATED", status: "DRAFT" });
+  });
+
   it("buildModuleSyncMatrix: 按模块聚合 added/reused + 综合状态（有 DRAFT 即 DRAFT）+ 深链", () => {
-    const arts = deriveProducedArtifacts(PLAN, { items: [{ kind: "scene" as const, key: "s1", status: "SCAFFOLDED" as const }], fullChainOk: true }, ["c1"], ["d1"], "SUCCEEDED");
+    const arts = deriveProducedArtifacts(PLAN, { items: [{ kind: "scene" as const, key: "s1", status: "SCAFFOLDED" as const }], fullChainOk: true }, ["c1"], ["d1"], "SUCCEEDED", new Set(SOLVER_KEYS));
     const matrix = buildModuleSyncMatrix(arts);
     const ontologyRow = matrix.find((r) => r.module === "ontology")!;
     expect(ontologyRow.added).toBe(1);
