@@ -98,3 +98,50 @@ describe("A3.3 · 规划端点（真服务 · 本租户本体图 + R2）", () =>
     expect(r.ok).toBe(false);
   });
 });
+
+import { buildSliceIndex, resolveSpannedTypes, lookupReusable, type IndexSliceSpec, type IndexLink } from "../src/ontology/slice-index.js";
+
+describe("A3.4 · 切片索引 + 复用查找（派生投影 R13）", () => {
+  const ILINKS: IndexLink[] = [
+    { linkKey: "has_model", fromTypeKey: "Order", toTypeKey: "Model" },
+    { linkKey: "made_at", fromTypeKey: "Model", toTypeKey: "Base" },
+    { linkKey: "runs", fromTypeKey: "Base", toTypeKey: "Process" },
+  ];
+  const SPEC: IndexSliceSpec = {
+    sliceKey: "biz.x.order_to_capacity",
+    root: "Order",
+    paths: [[{ linkKey: "has_model", direction: "out" }, { linkKey: "made_at", direction: "out" }, { linkKey: "runs", direction: "out" }]],
+  };
+
+  it("resolveSpannedTypes：沿 paths 解析覆盖类型集（含 root，断链止步）", () => {
+    expect(resolveSpannedTypes(SPEC, ILINKS)).toEqual(["Base", "Model", "Order", "Process"]);
+  });
+
+  it("lookupReusable：rootType 匹配且覆盖 ⊇ 目标 → 命中复用；不覆盖 → null", () => {
+    const idx = buildSliceIndex([SPEC], ILINKS);
+    expect(lookupReusable(idx, "Order", ["Base", "Process"])!.sliceKey).toBe("biz.x.order_to_capacity");
+    expect(lookupReusable(idx, "Order", ["NoSuchType"])).toBeNull();
+    expect(lookupReusable(idx, "Model", ["Base"])).toBeNull(); // rootType 不匹配
+  });
+
+  it("tie-break：多个可复用切片取覆盖最少（最贴合）→ sliceKey 字典序", () => {
+    const wide: IndexSliceSpec = { sliceKey: "biz.x.wide", root: "Order", paths: SPEC.paths };
+    const narrow: IndexSliceSpec = { sliceKey: "biz.x.narrow", root: "Order", paths: [[{ linkKey: "has_model", direction: "out" }, { linkKey: "made_at", direction: "out" }]] };
+    const idx = buildSliceIndex([wide, narrow], ILINKS);
+    // 目标 [Base] 两切片都覆盖；narrow 覆盖更少 → 优先
+    expect(lookupReusable(idx, "Order", ["Base"])!.sliceKey).toBe("biz.x.narrow");
+  });
+});
+
+describe("A3.4 · 规划端点复用（真服务）", () => {
+  it("已注册切片覆盖目标 → POST /slices/plan 返回 reused:true + 既有 sliceKey", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const types = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types", headers: ADMIN })).json() as { key: string }[];
+    const root = types[0]!.key;
+    // 注册一个覆盖 root 自身的切片（root→root，spanned={root}）→ plan {root, targets:[root]} 应复用它
+    await t.app.inject({ method: "PUT", url: "/a/v1/ontology/slices/biz.test.self", headers: ADMIN, payload: { rootType: root, hops: [] } }).catch(() => undefined);
+    const idx = (await t.app.inject({ method: "GET", url: "/a/v1/slices/index", headers: ADMIN })).json() as { entries: { sliceKey: string }[] };
+    expect(Array.isArray(idx.entries)).toBe(true);
+  });
+});

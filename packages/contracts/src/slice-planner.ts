@@ -48,6 +48,15 @@ export const NoPathReasonSchema = z.object({
 });
 export type NoPathReason = z.infer<typeof NoPathReasonSchema>;
 
+/** A3.4 切片索引项（派生投影 R13，非新真值源）：按 rootType + 覆盖类型集 索引已发布切片，供规划器先查复用。 */
+export const SliceIndexEntrySchema = z.object({
+  sliceKey: z.string(),
+  rootType: z.string(),
+  /** 该切片从 root 沿 paths 可达的全部类型（含 root）；规划器以"⊇ 目标集"判复用。 */
+  spannedTypes: z.array(z.string()),
+});
+export type SliceIndexEntry = z.infer<typeof SliceIndexEntrySchema>;
+
 /** 规划响应：ok=true 给 SlicePlan；ok=false 给 NO_PATH（部分目标可达也算失败，列 unreachable）。 */
 export const PlanSliceResponseSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), plan: SlicePlanSchema }),

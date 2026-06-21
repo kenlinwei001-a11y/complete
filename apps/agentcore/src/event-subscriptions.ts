@@ -55,6 +55,7 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "dataset.regenerated", producer: "合成数据生成", tier: "IN_SESSION", invalidates: ["dashboard", "risk", "scenario-data", "ontology-graph", "rule-library"] },
   { event: "connection.sync_completed", producer: "连接器同步", tier: "IN_SESSION", invalidates: ["dashboard", "scenario-data", "object-queries"], dl: "DL9" },
   { event: "connection.created", producer: "连接器创建（A11 带 category）", tier: "IN_SESSION", invalidates: ["connectors", "data-categories"] },
+  { event: "slice.planned", producer: "切片规划器（A3.4 规划/复用）", tier: "IN_SESSION", invalidates: ["slice-library", "slice-index"] },
   // L9 知识环 / DL10
   { event: "kb.indexed", producer: "知识库上传索引", tier: "IN_SESSION", invalidates: ["kb-search", "search-test"], dl: "DL10" },
   // L10 实体解析环 / DL8

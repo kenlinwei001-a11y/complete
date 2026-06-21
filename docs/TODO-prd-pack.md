@@ -37,7 +37,11 @@
   **A3.1 ✅ 14 域注册表**：`graphmeta.ts BUSINESS_DOMAINS`(14 域 key/显示名/配色/primaryTypes，新增 sales/material/
   finance/external/decision 5 域，配置驱动 R14)+ `GET /a/v1/business-domains` + GRAPH_DOMAIN 补 ExternalSignal→external。
   测试 a3-business-domains ×4(恰好 14 域/无野域/primaryTypes 自洽/端点)。**A3.1 余**：参考本体基线(元租户 95 节点)数据量大待后续。
-  **余分期**：A3.2 域内/跨域两库 · A3.4 切片索引复用+slice.planned 事件。
+  **A3.4 ✅ 切片索引复用 + slice.planned 事件**：`ontology/slice-index.ts buildSliceIndex/resolveSpannedTypes/
+  lookupReusable`(派生投影 R13——沿 link 图解析每切片覆盖类型集，按 rootType 索引)；`POST /a/v1/slices/plan`
+  先查索引命中即复用(reused:true)、未命中才新规划 + `GET /a/v1/slices/index` + `slice.planned` 事件(§4 L1)。
+  测试 a3-slice-planner +4(resolveSpannedTypes/lookup 复用/tie-break 最贴合/端点索引)。回写本体 §2/§4。
+  **A3 余分期**：A3.2 域内/跨域两库派生(biz.<域>.<形状> / biz.x.<seam>)。**A3.1 参考本体基线**。
 - [~] ◐ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
   **A6.1 ✅** `GenSpec.valueDomain` + 值域库 `synthetic/value-domains.ts`(按属性语义配置化 R14) + `genValue`
   扩(normal/banded/uniform 确定性采样,落业务区间);**A6.2 ✅** `PlantSpec` + `applyPlantCrossings`(固定索引

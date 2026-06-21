@@ -38,6 +38,7 @@ import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governanc
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
+import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
@@ -1748,13 +1749,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     ctx(req); // 鉴权上下文（域注册表为平台参考基线，按租户读）
     return { domains: BUSINESS_DOMAINS };
   });
-  // A3.3 多跳切片规划器：在本租户已发布本体的 OntologyLink 图上确定性路径搜索 → SlicePlan（root→hops）。
+  // A3.3 多跳切片规划器 + A3.4 索引复用：先查索引（命中既有切片即复用 reused:true），未命中才新规划。
   app.post("/a/v1/slices/plan", async (req) => {
     const c = ctx(req);
     const body = parseBody(PlanSliceRequestSchema, req.body);
     const types = (await ontology.listTypes(c)).map((t) => ({ key: t.key, domain: t.domain }));
     const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
-    return planSlice(types, links, body);
+    const specs = (await repos.sliceSpecs.list(c.tenantId)).map((s) => ({ sliceKey: s.sliceKey, root: s.spec.root.typeKey, paths: s.spec.paths }));
+    const index = buildSliceIndex(specs, links);
+    const reuse = lookupReusable(index, body.rootType, body.targets);
+    const res = planSlice(types, links, body);
+    if (res.ok && reuse) {
+      res.plan.sliceKey = reuse.sliceKey; // A3.4：复用既有已发布切片
+      res.plan.reused = true;
+    }
+    if (res.ok) await outbox.emit(c.tenantId, "slice.planned", { sliceKey: res.plan.sliceKey, rootType: body.rootType, reused: res.plan.reused });
+    return res;
+  });
+  // A3.4 切片索引（派生投影 R13）：按 rootType + 覆盖类型集 索引已发布切片，供规划器复用 + A4 浏览。
+  app.get("/a/v1/slices/index", async (req) => {
+    const c = ctx(req);
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    const specs = (await repos.sliceSpecs.list(c.tenantId)).map((s) => ({ sliceKey: s.sliceKey, root: s.spec.root.typeKey, paths: s.spec.paths }));
+    return { entries: buildSliceIndex(specs, links) };
   });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };
