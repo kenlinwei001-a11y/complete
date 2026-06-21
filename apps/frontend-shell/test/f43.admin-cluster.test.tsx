@@ -56,6 +56,8 @@ describe("F43 · 管理页整簇", () => {
     await screen.findByTestId("evals-page");
     expect(await screen.findByTestId("eval-case-ec_1")).toHaveTextContent("capacity_feasibility");
     expect(await screen.findByTestId("eval-run-erun_1")).toHaveTextContent("95%");
+    // A14：parity 失因列（对 PRD 期望的偏差）
+    expect(await screen.findByTestId("eval-parity-erun_1")).toHaveTextContent(/意图错分 1/);
     await user.click(screen.getByTestId("eval-run"));
     await screen.findByText(/评测完成：20\/20 通过/);
   });

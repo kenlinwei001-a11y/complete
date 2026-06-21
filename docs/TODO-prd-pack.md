@@ -128,7 +128,12 @@
 
 ## Wave 4 · 验证/扩展
 
-- [ ] ⬜ **A14 · 亲手跑 agent evals 比对 PRD**（真 Kimi env-gated，观测 vs 期望 diff，parity 报告）。R6 R8。
+- [x] ✅ **A14 · 亲手跑 agent evals 比对 PRD**（真 Kimi env-gated，观测 vs 期望 diff，parity 报告）。R6 R8 R13。
+  现状基建已在（evals.ts 逐 case 跑真 QOS + expect.intentKey/toolSequence/answerMust + EvalRunReport.metrics + MOCK/REAL）。
+  本轮补 parity 层：契约 `EvalCaseResult.failKind`(INTENT/TOOLSEQ/ANSWER/OTHER) + `EvalRunReport.parity`(byFailKind 直方图 +
+  byCase 逐 case 偏差)。`evals.ts classifyFailKind`(首要失因) + `buildParity` + `seedParityCases`(从 20 场景派生 intent+工具序列
+  PRD 期望，`POST /b/v1/evals/seed-parity`)。真 Kimi **env-gated**（R6 不进默认 CI），mock 证框架。前端 `EvalsPage` parity 失因列。
+  测试：a14-parity ×3（classifyFailKind/run 产 parity 与 results 一致/seed-parity 20 场景幂等）· f43 +parity 列断言。gates 全绿。回写本体 §2.H/§7。
 - [ ] ⬜ **A12 · 其余模块逐一 hand-run 补全**（连接器/对象浏览/Agent 页/规则/校准…，系统化铺 hand-run 纪律）。FDE 纪律。
 - [ ] ⏸ **A9 · 外部引擎接入点设计（Datalog/图库/因果）— 仅设计延后**（不实现真依赖，守 R6 自包含；产设计 PRD 即算交付）。R6。
 
@@ -168,9 +173,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **9 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10 ✅）。
-- **Wave 1 + Wave 2 + Wave 3 全清**（A5 ✅ · A7 ✅ · A10 ✅）。
-- 下一步：进 **Wave 4**（A14 真 Kimi agent evals parity / A12 模块 hand-run 补全 / A9 外部引擎设计延后）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **10 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14 ✅）。
+- **Wave 1 + Wave 2 + Wave 3 全清**；**Wave 4 进行中**（A14 ✅ · 余 A12 模块 hand-run 补全 · A9 设计延后）。
+- 下一步：**A12**（其余模块逐一 hand-run 补全）→ **A9**（外部引擎接入点设计 PRD，仅设计）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

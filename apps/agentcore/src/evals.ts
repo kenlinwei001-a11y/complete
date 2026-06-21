@@ -1,9 +1,17 @@
-import type { EvalCase, EvalCaseResult, EvalRunReport, EvalSuite } from "@platform/contracts";
+import type { EvalCase, EvalCaseResult, EvalFailKind, EvalRunReport, EvalSuite } from "@platform/contracts";
 import type { Repos } from "./persistence/repos.js";
 import type { Orchestrator } from "./router/orchestrator.js";
 import type { RequestAuth } from "./auth.js";
 import { newId } from "./ids.js";
 import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
+
+/** A14：把失败信息归类为 parity 失因（首要项；意图>工具序列>答案>其它）。 */
+export function classifyFailKind(failures: string[]): EvalFailKind {
+  if (failures.some((f) => f.startsWith("intent"))) return "INTENT";
+  if (failures.some((f) => f.startsWith("toolSequence") || f.startsWith("maxToolCalls"))) return "TOOLSEQ";
+  if (failures.some((f) => f.startsWith("answer"))) return "ANSWER";
+  return "OTHER";
+}
 
 /**
  * AIP Evals（运营完备性增量 §2 / 成熟度 E4）。
@@ -53,6 +61,53 @@ export class EvalService {
       created++;
     }
     return { created };
+  }
+
+  /**
+   * A14 PRD 期望用例库：从 20 场景目录派生**带行为期望**的 parity 用例（期望 intent + 工具序列 + 答案断言）。
+   * 与 seedScenarioCases（仅 intent）互补——这套表达"PRD 说该走的工具/该出现的答案"，真 Kimi 实跑后由
+   * parity 报告标出哪些场景与 PRD 不符（INTENT/TOOLSEQ/ANSWER）。env-gated 真跑；mock 仅证框架。
+   */
+  async seedParityCases(tenantId: string, packageId: string): Promise<{ created: number }> {
+    let created = 0;
+    for (const sc of SCENARIO_CATALOG) {
+      const id = `ec_parity_${sc.sNo}`;
+      if (await this.deps.repos.evalCases.get(id)) continue;
+      const c: EvalCase = {
+        id,
+        tenantId,
+        suite: "agent_quality",
+        packageId,
+        input: { query: sc.triggerQuestion, context: { view: sc.view, selectedObjects: sc.presetContext.selectedObjects, filters: {}, presetSlots: sc.presetContext.slotPresets } },
+        // PRD 期望三元：意图 + 工具序列（COMPUTE 场景应调求解器 invoke_solver）+ 答案断言（解读类不强求关键词，留空 → 由真跑观测）。
+        expect: {
+          intentKey: sc.intentKey,
+          toolSequence: [{ name: "invoke_solver" }],
+        },
+        origin: "SCENARIO",
+        createdAt: new Date().toISOString(),
+      };
+      await this.deps.repos.evalCases.upsert(c);
+      created++;
+    }
+    return { created };
+  }
+
+  /** A14：组装 parity 报告（按失因聚合 + 逐 case 偏差），供 /admin/evals 可视、下钻。 */
+  private buildParity(cases: EvalCase[], results: EvalCaseResult[]): EvalRunReport["parity"] {
+    const byFailKind = { INTENT: 0, TOOLSEQ: 0, ANSWER: 0, OTHER: 0 };
+    const caseById = new Map(cases.map((c) => [c.id, c]));
+    const byCase = results.map((r) => {
+      if (r.failKind) byFailKind[r.failKind] += 1;
+      const c = caseById.get(r.caseId);
+      return {
+        caseId: r.caseId,
+        ...(c?.expect.intentKey !== undefined ? { expectIntent: c.expect.intentKey } : {}),
+        pass: r.pass,
+        ...(r.failKind ? { failKind: r.failKind } : {}),
+      };
+    });
+    return { byFailKind, byCase };
   }
 
   /** §2 FallbackTrace 一键转 EvalCase（兜底真问句沉淀为回归资产）。 */
@@ -107,6 +162,7 @@ export class EvalService {
       },
       results,
       llmMode: opts.llmMode ?? "MOCK",
+      parity: this.buildParity(cases, results),
     };
     await this.deps.repos.evalRuns.insert(report);
     return report;
@@ -164,6 +220,7 @@ export class EvalService {
       caseId: c.id,
       pass: failures.length === 0,
       failures,
+      ...(failures.length > 0 ? { failKind: classifyFailKind(failures) } : {}),
       observed: {
         intentKey: observedIntent,
         ...(task?.path ? { path: task.path } : {}),

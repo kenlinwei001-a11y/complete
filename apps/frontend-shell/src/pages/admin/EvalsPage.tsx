@@ -9,6 +9,8 @@ import { toastError, toast } from "@/store/toastStore";
  */
 const SUITES = ["classifier", "agent_quality", "regression"] as const;
 const SUITE_LABEL: Record<string, string> = { classifier: "分类器", agent_quality: "Agent 质量", regression: "回归" };
+/** A14：parity 失因短标签（对 PRD 期望的偏差类型）。 */
+const PARITY_LABEL: Record<string, string> = { INTENT: "意图错分", TOOLSEQ: "工具序列偏", ANSWER: "答案未中", OTHER: "其它" };
 
 export default function EvalsPage() {
   const qc = useQueryClient();
@@ -65,7 +67,7 @@ export default function EvalsPage() {
 
       <div className="section-title">评测历史</div>
       <table className="cmp" data-testid="eval-runs" style={{ width: "100%" }}>
-        <thead><tr><th>套件</th><th>通过率</th><th>意图准确率</th><th>工具正确率</th><th>平均时延</th><th>模式</th></tr></thead>
+        <thead><tr><th>套件</th><th>通过率</th><th>意图准确率</th><th>工具正确率</th><th>parity 失因（对 PRD 期望）</th><th>平均时延</th><th>模式</th></tr></thead>
         <tbody>
           {runItems.map((r) => (
             <tr key={r.id} data-testid={`eval-run-${r.id}`}>
@@ -73,6 +75,14 @@ export default function EvalsPage() {
               <td className="mono"><b style={{ color: r.passRate >= 0.9 ? "var(--ok)" : "var(--warn,#c90)" }}>{Math.round(r.passRate * 100)}%</b> ({r.passed}/{r.total})</td>
               <td className="mono">{Math.round(r.metrics.intentAccuracy * 100)}%</td>
               <td className="mono">{Math.round(r.metrics.toolCorrectness * 100)}%</td>
+              <td className="mono" data-testid={`eval-parity-${r.id}`}>
+                {r.parity
+                  ? (["INTENT", "TOOLSEQ", "ANSWER", "OTHER"] as const)
+                      .filter((k) => r.parity!.byFailKind[k] > 0)
+                      .map((k) => `${PARITY_LABEL[k]} ${r.parity!.byFailKind[k]}`)
+                      .join(" · ") || "全对 ✓"
+                  : "—"}
+              </td>
               <td className="mono">{Math.round(r.metrics.avgLatencyMs)}ms</td>
               <td><span className={`badge ${r.llmMode === "REAL" ? "green" : ""}`}>{r.llmMode}</span></td>
             </tr>

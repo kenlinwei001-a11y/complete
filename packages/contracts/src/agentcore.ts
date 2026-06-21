@@ -277,10 +277,17 @@ export const EvalCaseSchema = z.object({
 });
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
 
+/** A14 parity 失因分类（对 PRD 期望的偏差类型）：意图错分 / 工具序列偏 / 答案断言未中 / 其它。 */
+export const EVAL_FAIL_KIND = ["INTENT", "TOOLSEQ", "ANSWER", "OTHER"] as const;
+export const EvalFailKindSchema = z.enum(EVAL_FAIL_KIND);
+export type EvalFailKind = z.infer<typeof EvalFailKindSchema>;
+
 export const EvalCaseResultSchema = z.object({
   caseId: z.string(),
   pass: z.boolean(),
   failures: z.array(z.string()),
+  /** A14：首要失因分类（pass 时省略）——供 parity 报告按失因聚合 + 前端失因色。 */
+  failKind: EvalFailKindSchema.optional(),
   observed: z.object({
     intentKey: z.string().nullable().optional(),
     path: z.string().optional(),
@@ -314,5 +321,12 @@ export const EvalRunReportSchema = z.object({
   results: z.array(EvalCaseResultSchema),
   /** mock LLM 跑出的分数仅证框架，非真实质量（接真模型后即真）。 */
   llmMode: z.enum(["MOCK", "REAL"]),
+  /** A14：对 PRD 期望的 parity 报告——按失因聚合 + 逐 case 偏差（哪些场景的意图/工具/答案与 PRD 不符）。 */
+  parity: z
+    .object({
+      byFailKind: z.object({ INTENT: z.number().int(), TOOLSEQ: z.number().int(), ANSWER: z.number().int(), OTHER: z.number().int() }),
+      byCase: z.array(z.object({ caseId: z.string(), expectIntent: z.string().nullable().optional(), pass: z.boolean(), failKind: EvalFailKindSchema.optional() })),
+    })
+    .optional(),
 });
 export type EvalRunReport = z.infer<typeof EvalRunReportSchema>;

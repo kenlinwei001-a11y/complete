@@ -1638,6 +1638,14 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!packageId) throw new HttpError(400, "VALIDATION_ERROR", "packageId required");
     return deps.evals.seedScenarioCases(a.tenantId, packageId);
   });
+  // A14：PRD 期望用例库（intent + 工具序列 + 答案）—— 真 Kimi 实跑后由 parity 报告标偏差。
+  app.post("/b/v1/evals/seed-parity", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { packageId } = req.body as { packageId: string };
+    if (!packageId) throw new HttpError(400, "VALIDATION_ERROR", "packageId required");
+    return deps.evals.seedParityCases(a.tenantId, packageId);
+  });
   app.post("/b/v1/evals/from-fallback/:taskId", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);
