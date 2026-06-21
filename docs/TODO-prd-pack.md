@@ -29,8 +29,15 @@
 
 - [ ] ⬜ **A3 · 14 域参考本体 + 域内/跨域两库 + 多跳切片规划器（图路径搜索）+ 切片索引**
   在 OntologyLink 图上做确定性路径搜索 → 自动产 SliceSpec；切片索引先查复用、查不到再规划。R1 R2 R6 R12 R14。
-- [ ] ⬜ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
-  通用路 `instantiateGeneric`/GenSpec 去平坦 hash → 业务分布 + 戏剧点（VLE 查准有素材）。R6 R12 VLE。
+- [~] ◐ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
+  **A6.1 ✅** `GenSpec.valueDomain` + 值域库 `synthetic/value-domains.ts`(按属性语义配置化 R14) + `genValue`
+  扩(normal/banded/uniform 确定性采样,落业务区间);**A6.2 ✅** `PlantSpec` + `applyPlantCrossings`(固定索引
+  植入越线/近边界) + `autoPlant` 从 BLOCK 规则 `derivePlantFromRule` 反推 + `instantiateGeneric` opt-in 接入
+  (护 R6 向后兼容) + `pnpm value-domain:check` 门(test-backed)。测试 a6-value-domains(×7:三形采样落区间+
+  R6 字节一致+植入查准+lt 方向+规则反推)。datacore 470 全绿(+7,无字节回归:synthetic/genspec/scale-baseline 通过)。
+  **余(诚实)**：A6.3 电池路收编同机制(generateBattery 未改→字节保持,收编后续);**全服务 e2e 未跑**——
+  注册自定义模板跑 synthetic job 被无关的模板 plumbing(views/workspace)500 挡住,逻辑由 7 单测+门+无回归验证,
+  **未亲手过真服务合成路**(守"绿测试≠能用",诚实标 ◐ 非 ✅)。回写本体 §2.A/§8(G-5 8f)。
 - [x] ✅ **A11 · 连接创建打 `Connection.category` 标签（per-instance 归类，可自定义值）**
   Connection 加可覆盖 category（默认取连接器类型 registry category）+ RawDataset 溯源继承 `sourceCategory` +
   `GET /a/v1/connector-categories`（内置并集 + 本租户已用值，R2 隔离）+ `connection.created` 事件（§4 L8）+
@@ -70,6 +77,7 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：21 项（19 PRD + A9 设计延后 + 2 特性）。完成 **1 / 21**（A11）。
-- 已完成：✅ A11（per-connection 归类，Wave 1）。
-- 下一步：Wave 1 余项 A6（拟真值域合成）/ A3（14 域本体 + 多跳切片规划器，最大、是 A4/A5/A10 前置）。
+- 合计：21 项（19 PRD + A9 设计延后 + 2 特性）。完成 **1 ✅ + 1 ◐ / 21**。
+- ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
+- ◐ A6（拟真值域 + 越线植入，A6.1/A6.2 逻辑完成+门+无回归；A6.3 收编 + 全服务 e2e 待补）。
+- 下一步：Wave 1 余 **A3**（14 域本体 + 多跳切片规划器，最大、是 A4/A5/A10 前置）→ Wave 1 收尾后进 Wave 2。

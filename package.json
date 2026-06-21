@@ -13,6 +13,7 @@
     "prd:check": "node scripts/check-prd-ontology.mjs",
     "prd:coverage": "node scripts/check-prd-coverage.mjs",
     "meta:sync": "node scripts/check-meta-sync.mjs",
+    "value-domain:check": "pnpm --filter datacore exec vitest run test/a6-value-domains.test.ts",
     "gates": "node scripts/check-system-ontology.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs",
     "lint": "pnpm -r lint",
     "ontology:check": "node scripts/check-system-ontology.mjs",

@@ -1,4 +1,5 @@
-import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type PermissionPolicy } from "@platform/contracts";
+import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
 import { MOCK_EXTERNAL_DATA } from "../connectors/registry.js";
@@ -805,12 +806,27 @@ export class SyntheticService {
       const pkProp = td?.properties?.find((p) => p.isPrimaryKey)?.propKey ?? "id";
       const count = gen.count[scale] ?? gen.count.L; // XL 缺省回落 L（通用模板未声明 XL 时）
       const pks: string[] = [];
+      // A6：先把整批行生成出来（rng 序列与旧版一致），再在固定索引植入越线/近边界（opt-in），最后物化。
+      const rows: Record<string, unknown>[] = [];
       for (let i = 0; i < count; i++) {
         const props: Record<string, unknown> = {};
         for (const [propKey, spec] of Object.entries(gen.propGenerators)) {
-          props[propKey] = this.genValue(spec as GenSpec, rng, i, generatedPks);
+          props[propKey] = this.genValue(spec as GenSpec, rng, i, generatedPks, propKey);
         }
         if (props[pkProp] == null) props[pkProp] = `${gen.typeKey.toLowerCase()}-${i + 1}`;
+        rows.push(props);
+      }
+      // A6 越线植入（opt-in，护 R6 向后兼容）：显式 plants ⊕ autoPlant 从 BLOCK 规则反推（无声明则不植）。
+      const plants: PlantSpec[] = [...(gen.plants ?? [])];
+      if (gen.autoPlant) {
+        for (const r of template.rules ?? []) {
+          if (String(r.severity).toUpperCase() !== "BLOCK") continue;
+          const p = derivePlantFromRule({ key: r.key, expression: r.expression }, gen.typeKey);
+          if (p) plants.push(p);
+        }
+      }
+      for (const plant of plants) if (plant.typeKey === gen.typeKey) applyPlantCrossings(rows, plant);
+      for (const props of rows) {
         const pkValue = String(props[pkProp]);
         pks.push(pkValue);
         await this.repos.objects.put({
@@ -827,12 +843,14 @@ export class SyntheticService {
     return n;
   }
 
-  private genValue(spec: GenSpec, rng: () => number, seq: number, pks: Map<string, string[]>): unknown {
+  private genValue(spec: GenSpec, rng: () => number, seq: number, pks: Map<string, string[]>, propKey = ""): unknown {
     switch (spec.kind) {
       case "enum":
         return spec.values[Math.floor(rng() * spec.values.length)];
       case "number":
         return round(spec.min + rng() * (spec.max - spec.min), spec.precision ?? 2);
+      case "valueDomain":
+        return sampleValueDomain(spec, propKey, rng); // A6 拟真值域分布采样（确定性）
       case "pattern":
         return spec.pattern.replace(/\{seq(?::(\d+))?\}/g, (_, width?: string) =>
           String(seq + 1).padStart(width ? Number(width) : 1, "0"),

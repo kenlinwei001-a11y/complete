@@ -202,6 +202,10 @@ export const SyntheticJobBodySchema = z.object({
 });
 export type SyntheticJobBody = z.infer<typeof SyntheticJobBodySchema>;
 
+/** A6 值域分布形：uniform=区间均匀 · normal=固定 Box–Muller(截断到 band) · banded=按权重确定性落桶。 */
+export const ValueDomainShapeSchema = z.enum(["uniform", "normal", "banded"]);
+export type ValueDomainShape = z.infer<typeof ValueDomainShapeSchema>;
+
 export const GenSpecSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("enum"), values: z.array(z.string()) }),
   z.object({
@@ -213,8 +217,32 @@ export const GenSpecSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("pattern"), pattern: z.string() }), // 命名模式，如 "SO-{seq:5}"
   z.object({ kind: z.literal("fkSample"), refTypeKey: z.string() }),
   z.object({ kind: z.literal("date"), from: z.string(), to: z.string() }),
+  // A6 拟真值域：按业务可信区间 + 分布形产值（domainKey 命中值域库则可省 band/shape）。确定性 R6。
+  z.object({
+    kind: z.literal("valueDomain"),
+    domainKey: z.string().optional(),
+    band: z.tuple([z.number(), z.number()]).optional(),
+    shape: ValueDomainShapeSchema.optional(),
+    bands: z.array(z.object({ range: z.tuple([z.number(), z.number()]), weight: z.number() })).optional(),
+    precision: z.number().int().optional(),
+  }),
 ]);
 export type GenSpec = z.infer<typeof GenSpecSchema>;
+
+/** A6 越线植入规约：对一条规则的阈值字段，确定性植入 crossCount 行越线 + nearCount 行近边界（固定索引）。 */
+export const PlantSpecSchema = z.object({
+  ruleKey: z.string(),
+  typeKey: z.string(),
+  field: z.string(),
+  /** 违规方向：gt=值需 > threshold 才违规则植 > 的越线；lt 反之。 */
+  op: z.enum(["gt", "lt"]),
+  threshold: z.number(),
+  crossCount: z.number().int().default(2),
+  nearCount: z.number().int().default(2),
+  /** 边界 δ（越线/近边界偏移量，相对阈值）。 */
+  delta: z.number().default(0.02),
+});
+export type PlantSpec = z.infer<typeof PlantSpecSchema>;
 
 export const IndustryTemplateSchema = z.object({
   industryKey: z.string(),
@@ -224,6 +252,10 @@ export const IndustryTemplateSchema = z.object({
       typeKey: z.string(),
       count: z.object({ S: z.number().int(), M: z.number().int(), L: z.number().int(), XL: z.number().int().optional() }),
       propGenerators: z.record(z.string(), GenSpecSchema),
+      /** A6 越线植入（显式声明）：固定索引植入越线/近边界样本，喂 VLE 查准 + 推演戏剧点。 */
+      plants: z.array(PlantSpecSchema).optional(),
+      /** A6 opt-in：对该类型 scope 的 BLOCK 规则自动派生默认 PlantSpec（保守默认 false，护 R6 向后兼容）。 */
+      autoPlant: z.boolean().optional(),
     }),
   ),
   rules: z.array(
