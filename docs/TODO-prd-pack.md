@@ -33,7 +33,11 @@
   最短路 + 路径证据 + 跨域集），搜不到→NO_PATH(unreachable[])；纯函数 R6 字节一致；`POST /a/v1/slices/plan`
   (R2 仅本租户图) + 契约 `contracts/slice-planner.ts` + 门 `pnpm slice-planner:check`。测试 a3-slice-planner ×9
   (链式/多目标/反向 in 边/NO_PATH/maxHops/R6/tie-break 域内优先 + 端点 root===target/未知类型/R2 空租户)。
-  回写本体 §2。**余**：A3.1 14 域注册表+参考本体基线 · A3.2 域内/跨域两库 · A3.4 切片索引复用+slice.planned 事件。
+  回写本体 §2/§10.1。
+  **A3.1 ✅ 14 域注册表**：`graphmeta.ts BUSINESS_DOMAINS`(14 域 key/显示名/配色/primaryTypes，新增 sales/material/
+  finance/external/decision 5 域，配置驱动 R14)+ `GET /a/v1/business-domains` + GRAPH_DOMAIN 补 ExternalSignal→external。
+  测试 a3-business-domains ×4(恰好 14 域/无野域/primaryTypes 自洽/端点)。**A3.1 余**：参考本体基线(元租户 95 节点)数据量大待后续。
+  **余分期**：A3.2 域内/跨域两库 · A3.4 切片索引复用+slice.planned 事件。
 - [~] ◐ **A6 · 拟真值域合成数据（值落业务区间 + 确定性植入越线样本）**
   **A6.1 ✅** `GenSpec.valueDomain` + 值域库 `synthetic/value-domains.ts`(按属性语义配置化 R14) + `genValue`
   扩(normal/banded/uniform 确定性采样,落业务区间);**A6.2 ✅** `PlantSpec` + `applyPlantCrossings`(固定索引
@@ -73,6 +77,9 @@
 
 - [ ] ⬜ **A15 · CLI 通用操作外壳**（意图识别→模块路由→CLI 交互补参→触发模块；含 QOS 推演问答；全模块↔CLI 对等矩阵）。R15。
 - [ ] ⬜ **prototype-intake · 原型 intake 正门 + schema 对账 HITL**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。
+- [ ] ⬜ **A16 · LLM 临时求解器（origin=LLM · 沙箱跑通 · 可溯可替换 · 受治理晋升）**（用户新增需求，修订"求解器不可由 LLM 生成"红线）：
+  缺求解器时 LLM 生成 `{compute 纯函数 + outputSchema + rationale}` → **冻结 SolverArtifact(hash+版本 R6)** → **锁死沙箱跑通自检**(无网络/fs/clock/random，R5) → 注册 `origin=LLM_PROVISIONAL, status=PROVISIONAL, trustLevel=UNVERIFIED` → 推演可调(全程标"临时·未验证" R13)，**输出不可自动写真值(R4)** → 人工 看代码/编辑/替换/晋升(VLE+校准 advisory+审批→GOVERNED 解锁写真值)。分期 A16.1 沙箱+SolverArtifact+`solver-sandbox:check` · A16.2 LLM 生成+跑通+注册+写真值门控 · A16.3 人工生命周期+MCP 标+接 A5/A10。
+  **⚠ 开工前需用户确认 2 点**：① 沙箱技术(默认 isolated-vm 进程内 V8 隔离;或子进程/容器;或 Python sidecar) ② 临时求解器能否写真值(默认**不能**,晋升 GOVERNED 才解锁——若要临时件也能写真值需明确接受"未验证逻辑进真值链"风险)。
 
 ## 特性（已 APPROVED，可独立排期）
 
@@ -82,7 +89,7 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：21 项（19 PRD + A9 设计延后 + 2 特性）。完成 **1 ✅ + 2 ◐ / 21**。
+- 合计：**22 项**（20 PRD[+A16 新增] + A9 设计延后 + 2 特性）。完成 **1 ✅ + 2 ◐ / 22**。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ◐ A6（拟真值域 + 越线植入，A6.1/A6.2 完成+门+无回归；A6.3 收编 + 全服务 e2e 待补）。
 - ◐ A3（**keystone A3.3 多跳切片规划器**完成+门 9 测；A3.1 域基线 / A3.2 两库 / A3.4 索引待补）。

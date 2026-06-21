@@ -318,7 +318,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 
 ### 10.1 两级域辨析（别混）
 
-- **业务本体域**（`graphmeta.ts:8` GRAPH_DOMAIN）：factory/product/capacity/process/equip/people/quality/forecast/plan ——给**电池业务对象**分组；图谱视角另挂 solver/agent 元节点。**这不是本节对象。**
+- **业务本体域**（`graphmeta.ts` GRAPH_DOMAIN + **A3.1 `BUSINESS_DOMAINS` 14 域参考注册表**）：14 业务域 = factory/product/process/equip/people/quality/capacity/forecast/**sales/material/finance**/plan/**external/decision**（配置驱动 R14，可被行业模板覆盖；参考原型 16 域去 solver/agent 计算元域）——给业务对象分组、A4 浏览器分组、切片规划器 tie-break（域内边优先）、跨域接缝识别共用。`GET /a/v1/business-domains`。**这不是本节对象（本节是系统自我域）。** A3.1 余：参考本体基线（元租户 95 节点）数据量大，待后续分期。
 - **系统自我域**（本节）：平台**机器本身**的功能域——比业务域高一个抽象层，描述"系统由哪些功能簇构成、簇间怎么接线"。本节正式化 §2 的 A–H 分组为"域 + 域内切片 + 跨域节点"。
 
 ### 10.2 系统自我域清单（11 域）

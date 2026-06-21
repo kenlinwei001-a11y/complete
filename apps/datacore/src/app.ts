@@ -65,7 +65,7 @@ import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
 import { buildDataHealth } from "./datahealth.js";
 import { buildMappingRows } from "./mapping.js";
-import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH } from "./graphmeta.js";
+import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH, BUSINESS_DOMAINS } from "./graphmeta.js";
 import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
 import { DataBuilderService } from "./databuilder/service.js";
@@ -1742,6 +1742,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { kind, query } = req.query as { kind?: string; query?: string };
     if (kind !== "slices" && kind !== "solvers") throw validationError("kind must be slices|solvers");
     return catalog.discover(ctx(req), kind, query);
+  });
+  // A3.1 · 14 业务域参考注册表（配置驱动 R14）：给 A4 浏览器分组、切片规划器 tie-break、跨域接缝识别共用。
+  app.get("/a/v1/business-domains", async (req) => {
+    ctx(req); // 鉴权上下文（域注册表为平台参考基线，按租户读）
+    return { domains: BUSINESS_DOMAINS };
   });
   // A3.3 多跳切片规划器：在本租户已发布本体的 OntologyLink 图上确定性路径搜索 → SlicePlan（root→hops）。
   app.post("/a/v1/slices/plan", async (req) => {

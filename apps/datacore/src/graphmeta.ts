@@ -11,12 +11,43 @@ export const GRAPH_DOMAIN: Record<string, string> = {
   DataSourceHealth: "quality", CapacityPyramid: "capacity", DemandForecast: "forecast",
   Crew: "people", QualityLot: "quality",
   AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
+  ExternalSignal: "external", // A3.1：外部信号归 external 域
 };
 
 /** 数据域分组展示顺序（映射表组头行排序） */
 export const DOMAIN_ORDER = [
   "factory", "product", "capacity", "process", "equip", "people", "quality", "forecast", "plan", "solver", "agent",
 ];
+
+/**
+ * A3.1 · 14 业务域参考注册表（配置驱动，R14 可被行业模板覆盖；参考原型 16 域去 solver/agent 计算元域）。
+ * 这是业务本体域（区别于本体 §10 系统自我域）的单一来源——给对象类型归域、A4 浏览器分组、
+ * 切片规划器 tie-break（域内边优先）、跨域接缝识别共用。新增 5 域：sales/material/finance/external/decision。
+ */
+export interface BusinessDomain {
+  key: string;
+  displayName: string;
+  color: string;
+  /** 该域主对象类型（规划器域内切片 root 候选；空则待业务实体落域）。 */
+  primaryTypes: string[];
+}
+export const BUSINESS_DOMAINS: BusinessDomain[] = [
+  { key: "factory", displayName: "工厂/基地", color: "#4C8BF5", primaryTypes: ["Base", "Line"] },
+  { key: "product", displayName: "产品/型号", color: "#36BFA5", primaryTypes: ["Model", "Order", "Segment"] },
+  { key: "process", displayName: "工艺/工序", color: "#9C6ADE", primaryTypes: ["Process"] },
+  { key: "equip", displayName: "设备", color: "#DD9551", primaryTypes: ["Equipment", "MaintPlan"] },
+  { key: "people", displayName: "人员/班组", color: "#E2719B", primaryTypes: ["Crew"] },
+  { key: "quality", displayName: "质量", color: "#46A758", primaryTypes: ["QualityLot", "DataSourceHealth"] },
+  { key: "capacity", displayName: "产能", color: "#3D9AE8", primaryTypes: ["CapacityPyramid", "Shipment"] },
+  { key: "forecast", displayName: "预测/需求", color: "#8E6FE8", primaryTypes: ["DemandForecast"] },
+  { key: "sales", displayName: "销售/订单", color: "#E5894B", primaryTypes: [] },
+  { key: "material", displayName: "物料/供应", color: "#C2A33B", primaryTypes: [] },
+  { key: "finance", displayName: "财务/成本", color: "#5BB98C", primaryTypes: [] },
+  { key: "plan", displayName: "规划/情景", color: "#7C8CF8", primaryTypes: ["AnnualScenario", "ScenarioTrigger", "PlanTarget"] },
+  { key: "external", displayName: "外部信号", color: "#B36AC2", primaryTypes: ["ExternalSignal"] },
+  { key: "decision", displayName: "决策/根因", color: "#E5484D", primaryTypes: [] },
+];
+export const BUSINESS_DOMAIN_KEYS = BUSINESS_DOMAINS.map((d) => d.key);
 
 export const SOLVER_GRAPH: Record<string, { label: string; target: string; ruleRefs: string[] }> = {
   capacity_forecast: { label: "产能推演", target: "Model", ruleRefs: ["C03", "C08", "C09"] },
