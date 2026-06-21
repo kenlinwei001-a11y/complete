@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph, verifyStoryRun } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -309,6 +309,45 @@ function InferenceButton({ run }: { run: StoryBuildRun }) {
       title={`以故事主问句跑 QOS → 跳「${targetView}」页注入出答案，亲手验证建出来的真能用`}>
       ▶ 一键推演（落「{targetView}」页）
     </button>
+  );
+}
+
+const VERIFY_STATUS: Record<string, { label: string; color: string }> = {
+  VERIFIED: { label: "已验证可答 ✓", color: "var(--c-capacity, #36BFA5)" },
+  NOT_VERIFIED: { label: "未验证（不可答）✗", color: "var(--danger, #E5484D)" },
+  BUILD_STATIC: { label: "兜底静态（未过 QOS 运行时）", color: "var(--amber, #DD9551)" },
+  PENDING: { label: "待验证", color: "var(--muted, #888)" },
+};
+/**
+ * A10：终态闭环验证（建域→publish→重跑主问句"现在真能答了"）。显示 verification 终态 + "重跑验证"按钮
+ * （亲手跑通同 verifyBuild 逻辑）。诚实区分 VERIFIED(活证据)/NOT_VERIFIED(+缺口码)/BUILD_STATIC(未过 QOS)。
+ */
+function VerificationPanel({ run }: { run: StoryBuildRun }) {
+  const qc = useQueryClient();
+  const m = useMutation({
+    mutationFn: () => verifyStoryRun(run.id),
+    onSuccess: (r) => {
+      const v = r.verification;
+      toast(v?.status === "VERIFIED" ? "验证通过：现在真能答了" : v?.status === "NOT_VERIFIED" ? `未验证：断在 ${v.gapCode ?? "未知"}` : "兜底静态验证（未过 QOS）", v?.status === "NOT_VERIFIED" ? "error" : "success");
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
+  const v = run.verification;
+  const meta = v ? VERIFY_STATUS[v.status] ?? VERIFY_STATUS.PENDING : undefined;
+  return (
+    <div data-testid={`sbr-verify-${run.id}`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+      {v && (
+        <span data-testid={`sbr-verify-status-${run.id}`} style={{ fontSize: 11.5, color: meta!.color, fontWeight: 600 }}>
+          终态验证：{meta!.label}
+          {v.status === "NOT_VERIFIED" && v.gapCode ? ` · 断在 ${v.gapCode}` : ""}
+        </span>
+      )}
+      <button className="btn sm" data-testid={`sbr-verify-btn-${run.id}`} disabled={m.isPending || run.status !== "SUCCEEDED"}
+        onClick={() => m.mutate()} title="把主问句再经 QOS 实跑一遍，验证 publish 后'现在真能答了'（亲手跑通）">
+        {m.isPending ? "验证中…" : "↻ 重跑验证"}
+      </button>
+    </div>
   );
 }
 
@@ -1011,6 +1050,7 @@ export default function DataBuilderPage() {
                     {/* 区7 一键推演（P3.5）：落到该故事最可能被触发的真实业务页，亲手验证"真能用" */}
                     <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
                       <InferenceButton run={r} />
+                      <VerificationPanel run={r} />
                     </div>
                   </div>
                 )}

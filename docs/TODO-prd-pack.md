@@ -117,7 +117,14 @@
   未配 B 显式报错）。不在 DataCore 真建 B 栈真值（R8，真值归 AgentCore）。前端 `ScaffoldManifestTable`（cross_scaffold 下钻，
   pending-bstack 标 + 定义可看）+ MSW mock。测试：a7-scaffold-manifest ×6（L0 投影/receipt 覆盖/空/R6 · L1 单机落库+浏览+事件+
   reconcile 幂等）· f59 前端 L3。gates 全绿（事件 37/37）。回写本体 §2.H/§3/§4。
-- [ ] ⬜ **A10 · 终态闭环末步**（建域→R4 审批→publish→**自动重跑问句验证** "现在真能答了"）。R4 R11 R13。
+- [x] ✅ **A10 · 终态闭环末步**（建域→R4 审批→publish→**自动重跑问句验证** "现在真能答了"）。R4 R11 R13 R6 R10。
+  契约 `storybuildrun.ts`：BuildVerification（VERIFIED/NOT_VERIFIED/BUILD_STATIC/PENDING）+ `StoryBuildRun.verification`。
+  `service.ts verifyBuild`：主问句经 QOS 实跑（inferenceProbe）→ 可答 VERIFIED(RUNTIME_PROBE 活证据)/不可答 NOT_VERIFIED+gapCode/
+  未配 QOS 兜底 BUILD_STATIC；复用 inference 步已 probe 结果避免双跑；不越界覆盖 run.answer（归 inference 步）。
+  **双路**：引擎 `onComplete` 钩子 publish 后自动触发 + `POST /runs/:id/verify` 亲手跑通。回灌 FDE launcher 节点（VERIFIED 绿/
+  NOT_VERIFIED 红+缺口码）+ 发 `build.verified`（runId 与 growth LOOP CONVERGED 归一）。前端 `VerificationPanel`（终态徽章 + 重跑按钮）+ MSW mock。
+  测试：a10-build-verify ×5（VERIFIED/NOT_VERIFIED/BUILD_STATIC/自动触发/R2）· f60 前端 L3；修 3 处既有测试回归（verifyBuild 不越界写 answer）。
+  gates 全绿（事件 38/38）。回写本体 §2.H/§3/§4。
 
 ## Wave 4 · 验证/扩展
 
@@ -161,9 +168,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **8 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7 ✅）。
-- **Wave 1 + Wave 2 全清**；**Wave 3 进行中**（A5 ✅ · A7 ✅ · 余 A10）。
-- 下一步：**A10**（终态闭环末步：建域→R4 审批→publish→自动重跑问句验证"现在真能答了"）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **9 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10 ✅）。
+- **Wave 1 + Wave 2 + Wave 3 全清**（A5 ✅ · A7 ✅ · A10 ✅）。
+- 下一步：进 **Wave 4**（A14 真 Kimi agent evals parity / A12 模块 hand-run 补全 / A9 外部引擎设计延后）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

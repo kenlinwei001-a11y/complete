@@ -251,6 +251,26 @@ export const FdeNodeSchema = z.object({
 });
 export type FdeNode = z.infer<typeof FdeNodeSchema>;
 
+// ---- A10 · 终态闭环验证（建域→R4 审批→publish→自动/手动重跑主问句验证"真能答了"）-----
+export const BUILD_VERIFICATION_STATUS = ["PENDING", "VERIFIED", "NOT_VERIFIED", "BUILD_STATIC"] as const;
+export type BuildVerificationStatus = (typeof BUILD_VERIFICATION_STATUS)[number];
+
+export const BuildVerificationSchema = z.object({
+  /** VERIFIED=QOS 实跑可答（活证据）· NOT_VERIFIED=不可答(+gapCode 回灌节点图/工单) · BUILD_STATIC=QOS 未配,兜底直调求解器(诚实"未过运行时") · PENDING。 */
+  status: z.enum(BUILD_VERIFICATION_STATUS),
+  /** 被验证的主问句（= BuildPlan.script）。 */
+  question: z.string(),
+  answer: z.string().optional(),
+  /** QOS 实跑是否判定可答（RUNTIME_PROBE 时有值）。 */
+  answerable: z.boolean().optional(),
+  evidence: z.enum(["RUNTIME_PROBE", "BUILD_STATIC"]).optional(),
+  /** NOT_VERIFIED 缺口码（NOT_ANSWERABLE / NO_SOLVER_NEED…）回灌 FDE 节点图末节点红 + 可选工单。 */
+  gapCode: z.string().optional(),
+  validationTrace: ValidationTraceSchema.optional(),
+  verifiedAt: z.string(),
+});
+export type BuildVerification = z.infer<typeof BuildVerificationSchema>;
+
 export const StoryBuildRunSchema = z.object({
   id: z.string(), // sbr_（= InputManifest.runId 指向的运行主键）
   tenantId: z.string(),
@@ -280,6 +300,8 @@ export const StoryBuildRunSchema = z.object({
   gapAnalysis: GapAnalysisSchema.optional(),
   /** A5：FDE 编排工作流 8 节点状态图（建域过程可观测投影；record 步落最终快照，运行中由 workflow-run 实时投影）。 */
   nodes: z.array(FdeNodeSchema).default([]),
+  /** A10：终态闭环验证（publish 后/手动 把主问句经 QOS 实跑一遍验证"现在真能答了"；诚实区分 VERIFIED/NOT_VERIFIED/BUILD_STATIC）。 */
+  verification: BuildVerificationSchema.optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
   answer: z.string().optional(),
   /** §9 归一 evidence 标记：RUNTIME_PROBE=答案经 QOS orchestrator 实跑（绿测试≠能用的活证据）；

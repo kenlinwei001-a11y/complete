@@ -2543,6 +2543,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     return databuilder.reconcileScaffold(c);
   });
+  // A10：终态闭环末步——手动重跑主问句验证"现在真能答了"（亲手跑通；自动路由由 publish 后 onComplete 触发）。
+  app.post("/a/v1/databuilder/runs/:id/verify", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.verifyBuild(c, (req.params as { id: string }).id);
+  });
   app.get("/a/v1/databuilder/workflow-runs", async (req) => {
     const c = ctx(req);
     requireAdmin(c);

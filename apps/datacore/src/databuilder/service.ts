@@ -41,7 +41,7 @@ import { BuildWorkflowEngine, RetryableStepError, type WorkflowStepDef, type Ste
 import { analyzeGap, summarizeGap } from "./provisioners.js";
 import { fdeGraphForRun, projectFdeNodes, summarizeFdeNodes } from "./fde-graph.js";
 import { buildScaffoldManifestRecord } from "./scaffold-manifest.js";
-import type { FdeNode, ScaffoldManifestRecord } from "@platform/contracts";
+import type { BuildVerification, FdeNode, ScaffoldManifestRecord } from "@platform/contracts";
 
 const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
@@ -284,6 +284,20 @@ export class DataBuilderService {
     };
   }
 
+  /**
+   * A10：onComplete 回调（publish 完成后自动触发终态闭环验证）。workflow 跑到 SUCCEEDED 后，
+   * 仅当 StoryBuildRun 真建成（status SUCCEEDED）→ 自动 verifyBuild（主问句经 QOS 重跑验证"真能答了"）。
+   * 失败/BLOCKED 的建域不验证（无真值可答，不假绿）。
+   */
+  private buildOnComplete(ctx: AuthCtx): (run: BuildWorkflowRun) => Promise<void> {
+    return async (run: BuildWorkflowRun) => {
+      const storyId = run.storyRunId ?? (run.context["storyRunId"] ? String(run.context["storyRunId"]) : undefined);
+      if (!storyId) return;
+      const sbr = await this.repos.storyBuildRuns.get(ctx.tenantId, storyId);
+      if (sbr?.status === "SUCCEEDED") await this.verifyBuild(ctx, storyId).catch(() => undefined);
+    };
+  }
+
   /** A5：工作流运行的 FDE 节点状态图（实时投影：steps + context → 8 节点）。 */
   async fdeGraph(ctx: AuthCtx, wfId: string): Promise<{ runId: string; status: BuildWorkflowRun["status"]; nodes: FdeNode[]; summary: ReturnType<typeof summarizeFdeNodes> }> {
     const wf = await this.getWorkflowRun(ctx, wfId);
@@ -452,7 +466,7 @@ export class DataBuilderService {
     const wf = await this.engine().start(
       { id: wfId, tenantId: ctx.tenantId, script: body.script.trim(), scriptHash, seed: body.seed ?? 42, inference },
       steps,
-      { stopAfter: opts.stopAfter, detached: opts.async, onAdvance: this.fdeOnAdvance(ctx) },
+      { stopAfter: opts.stopAfter, detached: opts.async, onAdvance: this.fdeOnAdvance(ctx), onComplete: this.buildOnComplete(ctx) },
     );
     // 同步模式：storyRunId 已由 drive 完成时从 context 回填；此处兜底（异步模式由后台 drive 回填）。
     if (!opts.async && wf.context["storyRunId"] && !wf.storyRunId) {
@@ -482,7 +496,7 @@ export class DataBuilderService {
     if (!existing) throw notFound("build workflow run");
     const storyId = existing.storyRunId ?? String(existing.context["storyRunId"] ?? newId("sbr"));
     const steps = this.buildStorySteps(ctx, storyId, { script: existing.script, seed: existing.seed, builderKey: DEFAULT_BUILDER_KEY }, existing.inference);
-    const wf = await this.engine().resume(ctx.tenantId, wfId, steps, { onAdvance: this.fdeOnAdvance(ctx) });
+    const wf = await this.engine().resume(ctx.tenantId, wfId, steps, { onAdvance: this.fdeOnAdvance(ctx), onComplete: this.buildOnComplete(ctx) });
     if (wf.context["storyRunId"] && !wf.storyRunId) {
       wf.storyRunId = String(wf.context["storyRunId"]);
       await this.repos.buildWorkflowRuns.put(wf);
@@ -585,22 +599,109 @@ export class DataBuilderService {
       const probed = await this.inferenceProbe(ctx, plan.script).catch(() => undefined);
       if (probed) return { answer: `经 QOS 实跑：${probed.answer}`, evidence: "RUNTIME_PROBE" };
     }
-    if (!this.solvers) return {};
+    const summary = await this.solverSummary(ctx, plan);
+    return summary ? { answer: summary, evidence: "BUILD_STATIC" } : {};
+  }
+
+  /** 兜底直调求解器在建好对象上算摘要（BUILD_STATIC，未过 QOS）；无 solvers → undefined。 */
+  private async solverSummary(ctx: AuthCtx, plan: BuildPlan): Promise<string | undefined> {
+    if (!this.solvers) return undefined;
     const parts: string[] = [];
     for (const sn of plan.solverNeeds) {
       try {
         const out = await this.solvers.invoke(ctx, sn.solverKey, {});
-        const summary = Object.entries(out)
+        const s = Object.entries(out)
           .filter(([, v]) => typeof v === "number" || typeof v === "string")
           .slice(0, 3)
           .map(([k, v]) => `${k}=${v}`)
           .join(", ");
-        parts.push(`${sn.solverKey}: ${summary || "ok"}`);
+        parts.push(`${sn.solverKey}: ${s || "ok"}`);
       } catch (e) {
         parts.push(`${sn.solverKey}: 推演跳过（${(e as Error).message.slice(0, 40)}）`);
       }
     }
-    return { answer: parts.join(" · "), evidence: "BUILD_STATIC" };
+    return parts.join(" · ");
+  }
+
+  /**
+   * A10 终态闭环末步：把建域的**主问句**（BuildPlan.script）再经 QOS 实跑一遍验证"现在真能答了"。
+   * - QOS 实跑可答 → VERIFIED（evidence RUNTIME_PROBE，活证据"绿测试≠能用"）；
+   * - QOS 实跑不可答 → NOT_VERIFIED + gapCode（回灌 FDE 节点图末节点红 / 可选工单）；
+   * - QOS 未配/不可达 → 兜底直调求解器 → BUILD_STATIC（诚实标"未过 QOS 运行时"）；无求解器需求 → NOT_VERIFIED。
+   * 回写 `StoryBuildRun.verification` + 发 `build.verified`（VERIFIED 经 runId 与 growth LOOP CONVERGED 归一）。
+   * 全自动（publish 后由 onComplete 触发）+ 可亲手跑通（POST /runs/:id/verify）双路同逻辑。
+   */
+  async verifyBuild(ctx: AuthCtx, runId: string): Promise<StoryBuildRun> {
+    const run = await this.repos.storyBuildRuns.get(ctx.tenantId, runId);
+    if (!run) throw notFound("story build run");
+    const plan = run.buildPlan;
+    const question = plan?.script ?? run.script;
+    const hasSolver = !!plan && plan.solverNeeds.length > 0;
+
+    let status: BuildVerification["status"];
+    let answer: string | undefined;
+    let answerable: boolean | undefined;
+    let evidence: "RUNTIME_PROBE" | "BUILD_STATIC" | undefined;
+    let gapCode: string | undefined;
+
+    if (run.inferenceEvidence === "RUNTIME_PROBE" && run.answer) {
+      // inference 步已 QOS 实跑过（同一主问句）→ 复用为 VERIFIED，不重复 probe（避免双跑）。
+      status = "VERIFIED";
+      answer = run.answer;
+      answerable = true;
+      evidence = "RUNTIME_PROBE";
+    } else {
+      const probed = hasSolver && this.inferenceProbe ? await this.inferenceProbe(ctx, question).catch(() => undefined) : undefined;
+      if (probed) {
+        evidence = "RUNTIME_PROBE";
+        answer = `经 QOS 实跑：${probed.answer}`;
+        answerable = probed.answerable;
+        status = probed.answerable ? "VERIFIED" : "NOT_VERIFIED";
+        if (!probed.answerable) gapCode = "NOT_ANSWERABLE";
+      } else if (hasSolver) {
+        // QOS 未配/不可达 → 兜底直调求解器（诚实标 BUILD_STATIC，未过运行时）。
+        answer = await this.solverSummary(ctx, plan!);
+        evidence = "BUILD_STATIC";
+        status = "BUILD_STATIC";
+      } else {
+        // 无求解器需求 → 无法做运行时验证（不假绿）。
+        status = "NOT_VERIFIED";
+        gapCode = "NO_SOLVER_NEED";
+      }
+    }
+
+    // 复用 validation 步已算的 trace（避免重复 crossValidate）；缺则补算。
+    const validationTrace = run.validationTrace ?? (await this.buildStoryValidationTrace(ctx, plan));
+    const verification: BuildVerification = {
+      status, question,
+      ...(answer !== undefined ? { answer } : {}),
+      ...(answerable !== undefined ? { answerable } : {}),
+      ...(evidence !== undefined ? { evidence } : {}),
+      ...(gapCode !== undefined ? { gapCode } : {}),
+      ...(validationTrace ? { validationTrace } : {}),
+      verifiedAt: nowIso(),
+    };
+    // A10.3：把验证终态回灌 FDE 节点图末节点（launcher）——VERIFIED 绿"已验证可答"/NOT_VERIFIED 红 + 缺口码。
+    const nodes = (run.nodes ?? []).map((n) =>
+      n.key === "launcher"
+        ? {
+            ...n,
+            status: status === "VERIFIED" ? ("DONE" as const) : status === "NOT_VERIFIED" ? ("FAILED" as const) : n.status,
+            ...(status === "NOT_VERIFIED" && gapCode ? { gapCode } : {}),
+            detail: `验证 ${status}`,
+          }
+        : n,
+    );
+    // 仅写 verification + 回灌节点；run.answer/inferenceEvidence 归 inference 步所有（A10 不越界覆盖）。
+    const updated: StoryBuildRun = { ...run, verification, nodes };
+    await this.repos.storyBuildRuns.put(updated);
+    await this.outbox?.emit(ctx.tenantId, "build.verified", {
+      runId: run.id,
+      status,
+      answerable: answerable ?? null,
+      gapCode: gapCode ?? null,
+    });
+    return updated;
   }
 
   /**
@@ -731,7 +832,7 @@ export class DataBuilderService {
     await this.engine().start(
       { id: newId("bwf"), tenantId: ctx.tenantId, script: run.script, scriptHash: sha256(run.script), seed, inference: false },
       steps,
-      { onAdvance: this.fdeOnAdvance(ctx) },
+      { onAdvance: this.fdeOnAdvance(ctx), onComplete: this.buildOnComplete(ctx) },
     );
     const rebuilt = await this.repos.storyBuildRuns.get(ctx.tenantId, run.id);
     const updated: StoryBuildRun = { ...(rebuilt ?? run), inputManifest: run.inputManifest, createdAt: run.createdAt };

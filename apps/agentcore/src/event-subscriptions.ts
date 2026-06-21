@@ -79,6 +79,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   // L15 A7 B 栈 scaffold 单机可见：清单落 DataCore（不依赖 B 在线）+ B 上线幂等对账
   { event: "scaffold.manifest_recorded", producer: "数据构建发动机·B 栈 scaffold 清单落库（A7 单机可见）", tier: "IN_SESSION", invalidates: ["scaffold-manifest", "story-runs", "workflow-runs"] },
   { event: "scaffold.reconciled", producer: "数据构建发动机·B 栈 scaffold 上线对账（A7）", tier: "IN_SESSION", invalidates: ["scaffold-manifest", "story-runs"] },
+  // L15 A10 终态闭环：建域→publish→自动/手动重跑主问句验证"真能答了" → 回灌 FDE 节点图末节点 + 成长账本（runId 归一）
+  { event: "build.verified", producer: "数据构建发动机·终态闭环验证（A10 publish 后重跑主问句）", tier: "IN_SESSION", invalidates: ["story-runs", "fde-graph", "growth-ledger"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

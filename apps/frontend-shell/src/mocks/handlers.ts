@@ -2031,6 +2031,16 @@ export const handlers = [
     MOCK_STORY_RUNS.unshift(run);
     return HttpResponse.json(run, { status: 201 });
   }),
+  // A10：终态闭环末步——手动重跑主问句验证（mock：可答则 VERIFIED + 回灌 launcher 节点 DONE）。
+  http.post("*/a/v1/databuilder/runs/:id/verify", ({ params }) => {
+    const r = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!r) return new HttpResponse(null, { status: 404 });
+    const reachable = r.status === "SUCCEEDED" && (((r.gapReport as { findings?: unknown[] } | undefined)?.findings?.length ?? 0) === 0);
+    r.verification = reachable
+      ? { status: "VERIFIED", question: r.script, answer: "经 QOS 实跑：可答", answerable: true, evidence: "RUNTIME_PROBE", verifiedAt: new Date().toISOString() }
+      : { status: "NOT_VERIFIED", question: r.script, gapCode: "NOT_ANSWERABLE", verifiedAt: new Date().toISOString() };
+    return HttpResponse.json(r);
+  }),
   http.post("*/a/v1/databuilder/stress", async ({ request }) => {
     const body = (await request.json()) as { scripts: string[] };
     const runs = body.scripts.map((script) => {

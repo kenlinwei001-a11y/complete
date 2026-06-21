@@ -741,6 +741,9 @@ export const previewStoryBuild = (script: string, seed?: number) =>
   api.a<StoryBuildRun>("/a/v1/databuilder/runs", { method: "POST", body: { script, seed, stage: "manifest" } });
 export const submitStoryInputs = (id: string, inputs: Record<string, string | number | boolean>) =>
   api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/inputs`, { method: "PATCH", body: { inputs } });
+// A10：终态闭环末步——手动重跑主问句验证"现在真能答了"（亲手跑通）
+export const verifyStoryRun = (id: string) =>
+  api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/verify`, { method: "POST" });
 // 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）
 export const fetchWorkflowRuns = () => api.a<BuildWorkflowRun[]>("/a/v1/databuilder/workflow-runs");
 export const fetchWorkflowRun = (id: string) => api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}`);

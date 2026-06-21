@@ -48,6 +48,8 @@ export interface DriveOpts {
   detached?: boolean;
   /** A5：每次步状态迁移落库后回调（引擎保持业务无关；服务用它把执行步投影成 FDE 节点 + 发 fde.node_advanced）。 */
   onAdvance?: (run: BuildWorkflowRun) => Promise<void>;
+  /** A10：run 跑到终态 SUCCEEDED 后回调一次（publish 完成 → 服务触发终态闭环验证 verifyBuild）。 */
+  onComplete?: (run: BuildWorkflowRun) => Promise<void>;
 }
 
 export class BuildWorkflowEngine {
@@ -94,7 +96,7 @@ export class BuildWorkflowEngine {
     if (opts.detached) {
       // 后台脱离请求驱动：不 await。逐步落库；意外异常兜底标 FAILED（不致进程崩溃）。
       setImmediate(() => {
-        void this.drive(run, steps, { stopAfter: opts.stopAfter, onAdvance: opts.onAdvance }).catch(async (e) => {
+        void this.drive(run, steps, { stopAfter: opts.stopAfter, onAdvance: opts.onAdvance, onComplete: opts.onComplete }).catch(async (e) => {
           run.status = "FAILED";
           run.error = e instanceof Error ? e.message : String(e);
           run.finishedAt = nowIso();
@@ -184,6 +186,7 @@ export class BuildWorkflowEngine {
     await this.persist(run);
     await this.emit(run, "buildworkflow.run_completed", { storyRunId: run.storyRunId ?? null });
     await opts.onAdvance?.(run).catch(() => undefined);
+    await opts.onComplete?.(run).catch(() => undefined);
     return run;
   }
 }
