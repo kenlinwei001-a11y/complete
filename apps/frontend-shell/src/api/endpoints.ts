@@ -161,6 +161,11 @@ export const fetchObjectTypes = () =>
     "/a/v1/ontology/object-types",
   );
 
+// A4 对象/类型浏览器：每已发布类型物化计数 + 域 + 属性数（一次算）。
+export interface ObjectTypeStat { key: string; displayName: string; domain: string; propCount: number; derivedCount: number; pk: string | null; count: number }
+export const fetchObjectTypeStats = () => api.a<{ stats: ObjectTypeStat[] }>("/a/v1/ontology/object-types/stats");
+export const fetchBusinessDomains = () => api.a<{ domains: { key: string; displayName: string; color: string }[] }>("/a/v1/business-domains");
+
 export const fetchDomains = () =>
   api.a<{ domainKey: string; displayName: string; color?: string }[]>("/a/v1/ontology/domains");
 

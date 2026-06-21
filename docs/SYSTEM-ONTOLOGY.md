@@ -60,7 +60,7 @@
 - **QuarantineRow**：异常行隔离区（SCHEMA_MISMATCH/DUP_KEY）· `quarantine.ts`。
 
 ### B. 本体/对象域（DataCore）
-- **OntologyType / OntologyLink / OntologyVersion / OntologyDraft**：本体类型/链路/快照版本/草稿 · `ontology.ts`,`modeling.ts`。
+- **OntologyType / OntologyLink / OntologyVersion / OntologyDraft**：本体类型/链路/快照版本/草稿 · `ontology.ts`,`modeling.ts`。**A4 对象/类型浏览器**（前端 `ObjectTypesBrowserPage` `/admin/object-types`）：列已发布类型按 14 域(A3 `BUSINESS_DOMAINS`)分组 + 每类型物化对象数(`GET /a/v1/ontology/object-types/stats` 一次算 {域/属性数/派生数/PK/count}) + 域/关键词/仅有物化 筛选 + 点「看实例」下钻实例表(`GET /a/v1/objects?type=`,A6 行级过滤) → Object360/lineage(`/o/:type/:key`)。闭合用户实测"找不到已发布对象类型在哪看"缺口（R2 隔离/R3 entitlement/R14 零业务常数）。
 - **ObjectInstance(objects) / Link(links)**：对象库与对象间链路（带 `origin`: SYNTHETIC/MATERIALIZED/MANUAL）· `domain.ts`。
 - **MergeCandidate / ObjectMerge（实体解析 OC1）**：多源同实体 → 归一名称匹配产候选 → 人审合并（golden 存活、被并置 `mergedInto` 只见 golden、links 重指）→ 72h 可 unmerge 还原 · 真值留痕 mergedBy/mergedAt(R4) · `entity-resolution.ts` · 端点 `/a/v1/objects/merge*` · 事件 merge_candidate.created/objects.merged(§4)。
 - **PropertyDef / DerivedPropertyDef**：属性 / 派生属性 · `domain.ts`。

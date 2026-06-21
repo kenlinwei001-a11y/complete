@@ -68,7 +68,12 @@
 - [ ] ⬜ **A1 · 28 求解器暴露为 MCP 工具**（MCP 页可治理 + agent 经 mcp-router 可调，OBO 代理到 /a/v1/solvers）。R3 R5 R8 R11。
 - [ ] ⬜ **A8 · 扩 CP-SAT 模型**：assignment（订单→基地/产线）/ sequencing（换型排序）/ packing（产能装箱）。R6。
 - [ ] ⬜ **A13 · 通用图求解器地板语义确定化**（concentration_risk/supplier_disruption_radius 去 Kimi，root/via/优先级/叶层确定性消歧）。R6。
-- [ ] ⬜ **A4 · 对象/类型浏览器管理页**（按 14 域分组列已发布类型 + 物化计数 + 下钻实例）。R2 R3 R14。
+- [x] ✅ **A4 · 对象/类型浏览器管理页**（按 14 域分组列已发布类型 + 物化计数 + 下钻实例）。R2 R3 R14。
+  后端 `GET /a/v1/ontology/object-types/stats`(每类型 {域(归 14 域注册表)/属性数/派生数/PK/物化 count} 一次算)。
+  前端 `ObjectTypesBrowserPage` `/admin/object-types`(adminRegistry+nav)：14 域分组 + 物化计数徽章 + 域/关键词/
+  仅有物化 筛选 + 点「看实例」下钻实例表(queryObjectsPaged,A6 行级过滤) → Object360(`/o/:type/:key`)。零业务常数 R14。
+  测试 f57(域分组/计数 Base=3·Order=20/域筛选/仅有物化去 count=0/实例下钻 360 链接)。**T12 亲手验**：Playwright 截图
+  真 UI(14 域 + Base 实例 12 行下钻)。回写本体 §2.B。消费 A3 14 域 + A11 category(筛选可后续接)。
 
 ## Wave 3 · 编排/闭环
 
@@ -110,7 +115,8 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**22 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性）。完成 **2 ✅ + 1 ◐ / 22**（A11/A6 ✅；A3 核心闭合仅余参考基线）。
+- 合计：**22 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性）。完成 **3 ✅ + 1 ◐ / 22**（A11/A6/A4 ✅；A3 核心闭合仅余参考基线）。
+- Wave 1 全清；Wave 2 起步：✅ A4（对象浏览器，消费 A3 域）。余 Wave 2：A1 求解器→MCP / A8 CP-SAT / A13 地板语义。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

@@ -585,6 +585,37 @@ export const handlers = [
     HttpResponse.json({ id: "erun_2", tenantId: "demo", suite: "classifier", startedAt: "2026-06-17T09:00:00Z", finishedAt: "2026-06-17T09:01:00Z", total: 20, passed: 20, passRate: 1, metrics: { intentAccuracy: 1, toolCorrectness: 1, avgToolCalls: 2, avgLatencyMs: 300, avgTokenCost: 1100 }, results: [], llmMode: "MOCK" }),
   ),
 
+  // A4 对象/类型浏览器：每类型物化计数（与 object-types mock 对齐）+ 14 业务域注册表。
+  http.get("*/a/v1/ontology/object-types/stats", () =>
+    HttpResponse.json({
+      stats: [
+        { key: "Base", displayName: "生产基地", domain: "factory", propCount: 4, derivedCount: 1, pk: "baseId", count: 3 },
+        { key: "Model", displayName: "电池型号", domain: "product", propCount: 3, derivedCount: 0, pk: "modelId", count: 5 },
+        { key: "Order", displayName: "订单", domain: "product", propCount: 6, derivedCount: 0, pk: "so", count: 20 },
+        { key: "ExternalSignal", displayName: "外部信号", domain: "external", propCount: 5, derivedCount: 0, pk: "signalKey", count: 0 },
+      ],
+    }),
+  ),
+  http.get("*/a/v1/business-domains", () =>
+    HttpResponse.json({
+      domains: [
+        { key: "factory", displayName: "工厂/基地", color: "#4C8BF5" },
+        { key: "product", displayName: "产品/型号", color: "#36BFA5" },
+        { key: "process", displayName: "工艺/工序", color: "#9C6ADE" },
+        { key: "equip", displayName: "设备", color: "#DD9551" },
+        { key: "people", displayName: "人员/班组", color: "#E2719B" },
+        { key: "quality", displayName: "质量", color: "#46A758" },
+        { key: "capacity", displayName: "产能", color: "#3D9AE8" },
+        { key: "forecast", displayName: "预测/需求", color: "#8E6FE8" },
+        { key: "sales", displayName: "销售/订单", color: "#E5894B" },
+        { key: "material", displayName: "物料/供应", color: "#C2A33B" },
+        { key: "finance", displayName: "财务/成本", color: "#5BB98C" },
+        { key: "plan", displayName: "规划/情景", color: "#7C8CF8" },
+        { key: "external", displayName: "外部信号", color: "#B36AC2" },
+        { key: "decision", displayName: "决策/根因", color: "#E5484D" },
+      ],
+    }),
+  ),
   http.get("*/a/v1/ontology/object-types", () =>
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
     HttpResponse.json([

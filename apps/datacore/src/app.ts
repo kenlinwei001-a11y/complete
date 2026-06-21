@@ -1174,6 +1174,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));
+  // A4 对象/类型浏览器：每已发布类型 {域(归 14 域注册表)/属性数/派生数/PK/物化对象数}，一次算（避免 N 次聚合）。
+  app.get("/a/v1/ontology/object-types/stats", async (req) => {
+    const c = ctx(req);
+    const types = await ontology.listTypes(c);
+    const stats = [];
+    for (const t of types) {
+      const objs = await repos.objects.listByType(c.tenantId, t.key);
+      stats.push({
+        key: t.key,
+        displayName: t.displayName,
+        domain: t.domain ?? GRAPH_DOMAIN[t.key] ?? "unassigned",
+        propCount: t.properties.length,
+        derivedCount: t.derivedProperties?.length ?? 0,
+        pk: t.properties.find((p) => p.isPrimaryKey)?.propKey ?? null,
+        count: objs.filter((o) => !o.mergedInto).length,
+      });
+    }
+    return { stats };
+  });
 
   // PRD-fde §3.2 实体与字段目录索引（P1 读模型）：
   // 字段目录（类型→字段,标时序）+ 消歧（模糊实体→系统里具体候选,绝不带占位符进数据生成）。
