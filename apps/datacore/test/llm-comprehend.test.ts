@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, type TestApp } from "./helpers.js";
-import { assemblePlanBody, LlmComprehendSchema, type LlmComprehendOutput } from "../src/databuilder/comprehend.js";
+import { assemblePlanBody, LlmComprehendSchema, normalizeSolverKey, type LlmComprehendOutput } from "../src/databuilder/comprehend.js";
+import { SOLVER_KEYS } from "../src/solvers/service.js";
 
 /**
  * 真 LLM 措辞容错（实测必要）：Kimi/Moonshot 即便给 json_schema 仍常用别名（name↔typeKey、
@@ -28,6 +29,48 @@ describe("§2 LLM comprehend · 真 LLM 措辞容错归一", () => {
     expect(out.rules[0]!.severity).toBe("WARN"); // 缺 severity → 默认 WARN
     expect(out.solverNeeds[0]!.solverKey).toBe("shared_bottleneck"); // solver→solverKey
     expect(out.solverNeeds[0]!.inputFields[0]).toEqual({ typeKey: "Process", propKey: "cap" });
+  });
+});
+
+/**
+ * 真 LLM 自造求解器名收敛（实测 5万套订单故事必要）：思维型模型即便给了已注册目录，仍会按问句语义
+ * 自造 capacity_feasibility / schedule_impact 等名 → 后续闭包 SOLVER_NOT_FOUND，链路 BLOCKED。
+ * normalizeSolverKey 是硬兜底：把已知同义名确定性收敛到平台真实 key，使链路闭合不依赖 LLM 措辞（R6）。
+ */
+describe("§2 LLM comprehend · 自造求解器名 → 已注册 key 确定性收敛", () => {
+  it("capacity_feasibility→capacity_forecast / schedule_impact→affected_orders（命中且目标已注册）", () => {
+    expect(normalizeSolverKey("capacity_feasibility", SOLVER_KEYS)).toBe("capacity_forecast");
+    expect(normalizeSolverKey("schedule_impact", SOLVER_KEYS)).toBe("affected_orders");
+    expect(normalizeSolverKey("displacement", SOLVER_KEYS)).toBe("shared_bottleneck");
+    expect(normalizeSolverKey("profit_loss", SOLVER_KEYS)).toBe("margin_attribution");
+  });
+
+  it("收敛目标必须是真实注册的 solverKey（别名表不引入幽灵 key）", () => {
+    for (const target of new Set(Object.values({ capacity_feasibility: "capacity_forecast", schedule_impact: "affected_orders" }))) {
+      expect(SOLVER_KEYS).toContain(target);
+    }
+  });
+
+  it("未命中别名 → 原样保留（仍作为自成长工单浮现，不静默吞）", () => {
+    expect(normalizeSolverKey("phantom_solver", SOLVER_KEYS)).toBe("phantom_solver");
+  });
+
+  it("贯通 assemblePlanBody：自造 solverKey 在装配阶段即收敛 → 后续闭包不再 SOLVER_NOT_FOUND", () => {
+    const story: LlmComprehendOutput = {
+      objectTypes: [
+        { typeKey: "SalesOrder", displayName: "订单", domain: "sales", fields: [{ name: "so", dataType: "string", isPrimaryKey: true }, { name: "qty", dataType: "number" }] },
+        { typeKey: "ProductionLine", displayName: "产线", domain: "capacity", fields: [{ name: "lineId", dataType: "string", isPrimaryKey: true }, { name: "util", dataType: "number" }] },
+      ],
+      rules: [],
+      solverNeeds: [
+        { solverKey: "capacity_feasibility", inputFields: [{ typeKey: "ProductionLine", propKey: "util" }] },
+        { solverKey: "schedule_impact", inputFields: [{ typeKey: "SalesOrder", propKey: "so" }] },
+      ],
+    };
+    const body = assemblePlanBody(story, "5万套电芯订单提前15天能否满足、挤占哪些项目、影响哪些客户、利润损失", 42, SOLVER_KEYS);
+    expect(body.solverNeeds.map((s) => s.solverKey)).toEqual(["capacity_forecast", "affected_orders"]);
+    // B 栈倒推随之收敛到真实 key
+    expect(body.planNeeds.map((p) => p.solverKey)).toEqual(["capacity_forecast", "affected_orders"]);
   });
 });
 

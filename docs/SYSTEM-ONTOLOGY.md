@@ -157,6 +157,11 @@ ObjectInstance --lineage 反查--> RawRow→RawDataset→Connection + 派生口�
 **数据构建发动机链（需求拉动）**
 ```
 StoryScript --comprehend(LLM)--> BuildPlan{dataSources,objectTypes,rules,solverNeeds(+args 倒推),kbDocs}
+  └ **自造求解器名确定性收敛**（`comprehend.ts SOLVER_ALIASES/normalizeSolverKey`，R6）：思维型 LLM 即便给了已注册
+    目录(`comprehendSystemWithSolvers`)，仍会按问句语义自造 capacity_feasibility/schedule_impact 等名 →
+    闭包 SOLVER_NOT_FOUND、链路 BLOCKED。装配 `assemblePlanBody(...,SOLVER_KEYS)` 时把已知同义名硬收敛到
+    平台真实 key（capacity_feasibility→capacity_forecast、schedule_impact→affected_orders、displacement→
+    shared_bottleneck、profit_loss→margin_attribution…），使链路闭合不依赖 LLM 措辞；未命中者原样保留→仍作自成长工单浮现。
   └ **FDE 求解器参数自动倒推**（`databuilder/solver-args.ts deriveSolverArgs`，确定性 R6）：从对象类型字段/ref 结构推出
     多跳求解器路径/字段映射（shared_bottleneck/concentration_risk/margin_attribution），写入 `solverNeeds.args`→`planNeeds.args`
     →scaffold `ExecutionPlan invoke_solver step.params.args`→启动器跑此计划即真调求解器**出答案（非空答）**；

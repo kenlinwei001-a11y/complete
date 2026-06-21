@@ -24,9 +24,10 @@ import type { RulesService } from "../rules.js";
 import type { ConnectorService } from "../connectors/service.js";
 import type { KbService } from "../kb.js";
 import type { SolverService } from "../solvers/service.js";
+import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, COMPREHEND_SYSTEM } from "./comprehend.js";
+import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
 import { deriveProducedArtifacts } from "./artifacts.js";
@@ -67,9 +68,10 @@ export class DataBuilderService {
       try {
         const core = await this.llm.parseStructured({
           model: "comprehend", maxTokens: 8000, tenantId: ctx.tenantId, purpose: "comprehend",
-          system: COMPREHEND_SYSTEM, messages: [{ role: "user", content: script }], schema: LlmComprehendSchema,
+          // 把已注册求解器目录拼进提示 → LLM 优先映射到真实存在的 solverKey（减少自造名导致的 SOLVER_NOT_FOUND）。
+          system: comprehendSystemWithSolvers(SOLVER_KEYS), messages: [{ role: "user", content: script }], schema: LlmComprehendSchema,
         });
-        if (core.objectTypes.length > 0) return assemblePlanBody(core, script, seed);
+        if (core.objectTypes.length > 0) return assemblePlanBody(core, script, seed, SOLVER_KEYS);
       } catch {
         /* 无绑定/无 key/解析失败 → 落地板 */
       }

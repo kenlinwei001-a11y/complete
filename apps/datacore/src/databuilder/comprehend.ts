@@ -110,11 +110,92 @@ export const COMPREHEND_SYSTEM = [
   "若问题涉及工序/设备瓶颈、排产降级、后果推演，应建 Process/Equipment 等对象类型并提出对应 solver（如 shared_bottleneck / margin_attribution / concentration_risk）。",
 ].join("\n");
 
+/** 已注册求解器的语义提示（让 LLM 把意图映射到平台真实存在的 solverKey，而非自造名 → 减少 SOLVER_NOT_FOUND）。 */
+export const SOLVER_HINTS: Record<string, string> = {
+  capacity_forecast: "产能可行性/能否承接某需求/产能预测 P50P90",
+  affected_orders: "受影响订单/某基地或事件影响哪些订单/交期风险传导(车型/数量/金额)",
+  risk_timeline: "风险越线根因/时序定位某天为何越线",
+  shared_bottleneck: "共享瓶颈/谁挤占谁/抢占在产项目/按优先级哪张单降级",
+  margin_attribution: "毛利倒挂根因/利润损失归因/哪个成本项把毛利拉穿",
+  concentration_risk: "隐性客户或供应商集中度/暗线单点",
+  supplier_disruption_radius: "单一供应商断供影响半径",
+  selection_optimize: "组合最优化/在预算约束下选最优子集",
+  outsourcing_split: "外协vs自产分配/缺口怎么补",
+  quote_margin: "接单毛利评审/这单毛利过线吗",
+  credit_exposure: "客户信用敞口/还能接新单吗",
+  quarterly_gap: "季度缺口对策组合",
+  inventory_optimize: "库存超储欠储/释放资金",
+  changeover_sequence: "换型排序优化/少换型",
+  lta_gap: "长协覆盖与补缺",
+  kit_readiness: "物料齐套/缺料开不了工",
+  cert_schedule: "认证排期",
+  maintenance_stagger: "检修窗口错峰",
+  yield_diagnosis: "良率波动诊断",
+  capex_scenario: "产能投资评审",
+  carbon_footprint: "碳足迹核算",
+  countermeasure_combo: "对策组合补缺口",
+};
+
+/**
+ * LLM 自造求解器名 → 已注册 solverKey 的确定性别名表。
+ * 提示工程（comprehendSystemWithSolvers）是软约束，思维型模型仍会偶发自造语义名；
+ * 此表是硬兜底：在装配 plan 时把已知同义名收敛到平台真实存在的 key，使链路确定性闭合
+ * （R6：不依赖 LLM 措辞，同 core 同输出），未命中者保留原样 → 作为自成长工单浮现。
+ */
+export const SOLVER_ALIASES: Record<string, string> = {
+  // 产能可行性族
+  capacity_feasibility: "capacity_forecast",
+  feasibility_check: "capacity_forecast",
+  capacity_check: "capacity_forecast",
+  capacity_availability: "capacity_forecast",
+  can_fulfill: "capacity_forecast",
+  capacity_p50p90: "capacity_forecast",
+  // 受影响订单/交期传导族
+  schedule_impact: "affected_orders",
+  delivery_impact: "affected_orders",
+  affected_customers: "affected_orders",
+  order_impact: "affected_orders",
+  impacted_orders: "affected_orders",
+  customer_impact: "affected_orders",
+  // 挤占/抢占族
+  displacement: "shared_bottleneck",
+  preemption: "shared_bottleneck",
+  capacity_contention: "shared_bottleneck",
+  resource_contention: "shared_bottleneck",
+  priority_displacement: "shared_bottleneck",
+  // 利润损失/毛利归因族
+  profit_loss: "margin_attribution",
+  margin_loss: "margin_attribution",
+  profit_impact: "margin_attribution",
+  margin_erosion: "margin_attribution",
+  // 集中度族
+  concentration: "concentration_risk",
+  customer_concentration: "concentration_risk",
+};
+
+/** 把可能自造的 solverKey 收敛到已注册 key：先查别名表，命中且目标已注册→替换；否则原样。 */
+export function normalizeSolverKey(key: string, registeredKeys?: readonly string[]): string {
+  const aliased = SOLVER_ALIASES[key];
+  if (aliased && (!registeredKeys || registeredKeys.includes(aliased))) return aliased;
+  return key;
+}
+
+/** 把已注册求解器目录拼进 comprehend 系统提示——LLM 的 solverKey 必须优先从中选语义最贴近的一个。 */
+export function comprehendSystemWithSolvers(registeredKeys: readonly string[]): string {
+  const catalog = registeredKeys.map((k) => `- ${k}${SOLVER_HINTS[k] ? "：" + SOLVER_HINTS[k] : ""}`).join("\n");
+  return (
+    COMPREHEND_SYSTEM +
+    "\n\n【已注册求解器目录】solverNeeds[].solverKey **必须优先从下表选语义最贴近的现有 key**（如'能否满足产能'→capacity_forecast、'挤占哪些项目'→shared_bottleneck、'影响哪些客户/订单'→affected_orders、'利润损失'→margin_attribution）；只有确实没有任何贴近项时才用新 key（新 key 将作为自成长工单，不要轻易新造）：\n" +
+    catalog
+  );
+}
+
 /** 由 LLM 产出的核心三件 → 装配完整 plan body（确定性 B 栈倒推，复用与关键词地板同一口径）。 */
 export function assemblePlanBody(
   core: LlmComprehendOutput,
   script: string,
   seed: number,
+  registeredSolverKeys?: readonly string[],
 ): ReturnType<typeof comprehendScript> & { scenarioTopology?: ScenarioTopology } {
   const typeKeys = new Set(core.objectTypes.map((t) => t.typeKey));
   const dataSources: PlanDataSource[] = core.objectTypes.map((e) => ({
@@ -131,6 +212,8 @@ export function assemblePlanBody(
   const rules: PlanRule[] = core.rules.filter((r) => r.scopeObjectTypes.every((t) => typeKeys.has(t)));
   const solverNeeds: PlanSolverNeed[] = core.solverNeeds
     .filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)))
+    // 自造求解器名 → 已注册 key 的确定性收敛（修 SOLVER_NOT_FOUND，使链路闭合不依赖 LLM 措辞）。
+    .map((s) => ({ ...s, solverKey: normalizeSolverKey(s.solverKey, registeredSolverKeys) }))
     // FDE 自动倒推求解器参数（多跳路径/字段映射）→ 贯通到启动器使"点一下出答案"成立。
     .map((s) => ({ ...s, args: deriveSolverArgs(s.solverKey, objectTypes) }));
   return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology };
