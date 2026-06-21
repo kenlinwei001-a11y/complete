@@ -436,6 +436,9 @@ export class DataBuilderService {
             storyCoverage: deriveStoryCoverage(body.script.trim(), plan),
             // A5：FDE 节点快照（context 投影，含此刻终态语义）；引擎完成时 onAdvance 再以 steps+计时覆盖刷新。
             nodes: projectFdeNodes({ context: c }),
+            // A18：构建模式 + 整域信任级（PROVISIONAL 建出的域强标 UNVERIFIED，绝不当真值）。
+            buildMode: body.buildMode ?? "STRICT",
+            domainTrustLevel: (body.buildMode ?? "STRICT") === "PROVISIONAL" ? "UNVERIFIED" : "GOVERNED",
             status,
             createdAt: nowIso(),
           };
@@ -445,6 +448,14 @@ export class DataBuilderService {
             status: run.status,
             fullChainOk: run.scaffoldReceipt?.fullChainOk ?? null,
           });
+          // A18：PROVISIONAL 建域完成额外发 domain.provisional_built（域强标 UNVERIFIED + ADVISORY 缺口数）。
+          if (run.buildMode === "PROVISIONAL") {
+            await this.outbox?.emit(ctx.tenantId, "domain.provisional_built", {
+              runId: run.id,
+              domainTrustLevel: run.domainTrustLevel ?? "UNVERIFIED",
+              advisoryCount: closureReport?.advisoryCount ?? 0,
+            });
+          }
           return { detail: `status=${status}`, patch: { storyRunId: id } };
         },
       },
@@ -644,7 +655,13 @@ export class DataBuilderService {
     let evidence: "RUNTIME_PROBE" | "BUILD_STATIC" | undefined;
     let gapCode: string | undefined;
 
-    if (run.inferenceEvidence === "RUNTIME_PROBE" && run.answer) {
+    if (run.buildMode === "PROVISIONAL") {
+      // A18 红线：未审核域上跑出的答案**绝不** VERIFIED/ANSWERABLE——终态恒 PROVISIONAL_ANSWER，强标"基于未审核临时件"。
+      const probed = hasSolver && this.inferenceProbe ? await this.inferenceProbe(ctx, question).catch(() => undefined) : undefined;
+      answer = probed ? `（未审核·临时件）${probed.answer}` : await this.solverSummary(ctx, plan!).then((s) => (s ? `（未审核·临时件）${s}` : undefined)).catch(() => undefined);
+      status = "PROVISIONAL_ANSWER";
+      gapCode = "UNVERIFIED_DOMAIN";
+    } else if (run.inferenceEvidence === "RUNTIME_PROBE" && run.answer) {
       // inference 步已 QOS 实跑过（同一主问句）→ 复用为 VERIFIED，不重复 probe（避免双跑）。
       status = "VERIFIED";
       answer = run.answer;
@@ -813,6 +830,7 @@ export class DataBuilderService {
       producedArtifacts: [],
       storyCoverage: [],
       nodes: projectFdeNodes({ context: {} }), // 仅 comprehend 待跑 → story DONE，其余 PENDING
+      buildMode: "STRICT",
       status: "PENDING_INPUT",
       createdAt: nowIso(),
     };
@@ -891,8 +909,9 @@ export class DataBuilderService {
       }
       job.planId = planId;
 
-      // 闭包前置校验（gate 在 phase 6 记录；失败则不灌注/加工，避免半成品写入）
-      const closure = validateClosure(plan, cfg.closure);
+      // 闭包前置校验（gate 在 phase 6 记录；失败则不灌注/加工，避免半成品写入）。
+      // A18 双模：PROVISIONAL 把 HARD 缺口降 ADVISORY、不阻断（blocked=false），但 gatePassed 仍诚实反映 STRICT 口径。
+      const closure = validateClosure(plan, cfg.closure, body.buildMode ?? "STRICT");
       job.closure = closure;
 
       if (dryRun) {

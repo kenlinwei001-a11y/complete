@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IsoTime } from "./common.js";
 import {
+  BuildModeSchema,
   BuildPlanSchema,
   ClosureReportSchema,
   PlanIntentNeedSchema,
@@ -252,7 +253,7 @@ export const FdeNodeSchema = z.object({
 export type FdeNode = z.infer<typeof FdeNodeSchema>;
 
 // ---- A10 · 终态闭环验证（建域→R4 审批→publish→自动/手动重跑主问句验证"真能答了"）-----
-export const BUILD_VERIFICATION_STATUS = ["PENDING", "VERIFIED", "NOT_VERIFIED", "BUILD_STATIC"] as const;
+export const BUILD_VERIFICATION_STATUS = ["PENDING", "VERIFIED", "NOT_VERIFIED", "BUILD_STATIC", "PROVISIONAL_ANSWER"] as const;
 export type BuildVerificationStatus = (typeof BUILD_VERIFICATION_STATUS)[number];
 
 export const BuildVerificationSchema = z.object({
@@ -302,6 +303,10 @@ export const StoryBuildRunSchema = z.object({
   nodes: z.array(FdeNodeSchema).default([]),
   /** A10：终态闭环验证（publish 后/手动 把主问句经 QOS 实跑一遍验证"现在真能答了"；诚实区分 VERIFIED/NOT_VERIFIED/BUILD_STATIC）。 */
   verification: BuildVerificationSchema.optional(),
+  /** A18：构建模式（STRICT 写真值 / PROVISIONAL 未审核预览）。 */
+  buildMode: BuildModeSchema.default("STRICT"),
+  /** A18：整域信任级——PROVISIONAL 建出的域为 UNVERIFIED（强标"未审核·基于临时件"，绝不当真值）。 */
+  domainTrustLevel: z.enum(["GOVERNED", "UNVERIFIED"]).optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
   answer: z.string().optional(),
   /** §9 归一 evidence 标记：RUNTIME_PROBE=答案经 QOS orchestrator 实跑（绿测试≠能用的活证据）；
@@ -325,6 +330,8 @@ export const StoryRunRequestSchema = z.object({
   stage: z.enum(["manifest", "build"]).optional(),
   /** g8-P5：建域后跑一次推演,answer 回填（可选,默认 false）。 */
   inference: z.boolean().optional(),
+  /** A18：构建模式（默认 STRICT；PROVISIONAL=未审核预览，闭包降 ADVISORY 不阻断、不写真值）。 */
+  buildMode: BuildModeSchema.optional(),
 });
 export type StoryRunRequest = z.infer<typeof StoryRunRequestSchema>;
 

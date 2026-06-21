@@ -1,4 +1,4 @@
-import type { BuildPlan, ClosureFinding, ClosurePolicy, ClosureReport } from "@platform/contracts";
+import type { BuildMode, BuildPlan, ClosureFinding, ClosurePolicy, ClosureReport } from "@platform/contracts";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../solvers/service.js";
 
 /** 工作流求解器（非注册求解器，走 /a/v1/sop/*）—— 与 chain:check 口径一致。 */
@@ -11,8 +11,12 @@ const WORKFLOW_SOLVERS = new Set(["sop_balance"]);
  *  - 正向：脚本所需分析（求解器入参 / 规则 scope）依赖字段缺失 = HARD，FAILED。
  *  - CHAIN（R11 全链闭包）：求解器需求必须在 DataCore 注册，否则路径A 全链断(SOLVER_NOT_FOUND)
  *    —— 把 chain:check 的跨系统校验焊进构建发动机的闭包报告，建图时即挡 G-1/G-2 类断点。
+ *
+ * A18 双模：buildMode=STRICT（默认）维持 HARD 原子闸（缺一环→gatePassed=false→阻断/不写真值）；
+ * buildMode=PROVISIONAL 把所有 HARD 失败**降级为 ADVISORY**（severity=ADVISORY），如实记录全部缺口但
+ * `blocked=false`（不阻断，守"不靠阻断成 0"）。gatePassed 始终保留"STRICT 口径下是否过"的诚实判定。
  */
-export function validateClosure(plan: BuildPlan, policy: ClosurePolicy): ClosureReport {
+export function validateClosure(plan: BuildPlan, policy: ClosurePolicy, buildMode: BuildMode = "STRICT"): ClosureReport {
   const findings: ClosureFinding[] = [];
   const typeByKey = new Map(plan.objectTypes.map((t) => [t.typeKey, t]));
 
@@ -143,7 +147,20 @@ export function validateClosure(plan: BuildPlan, policy: ClosurePolicy): Closure
 
   const hasObjectFail = findings.some((f) => f.kind === "OBJECT" && f.status === "FAILED");
   const hasDataFail = findings.some((f) => f.kind === "DATA" && f.status === "FAILED");
+  // gatePassed = STRICT 口径下是否过（诚实保留，不随 buildMode 变）。
   const gatePassed = !hasObjectFail && !hasDataFail && forwardMissing === 0 && chainBroken === 0 && shapeBroken === 0;
 
-  return { gatePassed, findings, objectsBound, dataOrphans, forwardMissing, chainBroken, shapeBroken };
+  // A18 双模：PROVISIONAL 把所有 FAILED/MISSING 降级 ADVISORY（如实记录、不阻断）；STRICT 维持 HARD 阻断。
+  let advisoryCount = 0;
+  if (buildMode === "PROVISIONAL") {
+    for (const f of findings) {
+      if (f.status === "FAILED" || f.status === "MISSING") {
+        f.severity = "ADVISORY";
+        advisoryCount++;
+      }
+    }
+  }
+  const blocked = buildMode === "STRICT" ? !gatePassed : false;
+
+  return { gatePassed, findings, objectsBound, dataOrphans, forwardMissing, chainBroken, shapeBroken, buildMode, advisoryCount, blocked };
 }

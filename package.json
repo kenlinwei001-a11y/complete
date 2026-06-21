@@ -17,6 +17,7 @@
     "slice-planner:check": "pnpm --filter datacore exec vitest run test/a3-slice-planner.test.ts",
     "floor-semantics:check": "pnpm --filter datacore exec vitest run test/a13-field-roles.test.ts",
     "cli-parity:check": "node scripts/check-cli-parity.mjs",
+    "provisional-honesty:check": "pnpm --filter datacore exec vitest run test/a18-provisional-closure.test.ts",
     "gates": "node scripts/check-system-ontology.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs && node scripts/check-cli-parity.mjs",
     "lint": "pnpm -r lint",
     "ontology:check": "node scripts/check-system-ontology.mjs",

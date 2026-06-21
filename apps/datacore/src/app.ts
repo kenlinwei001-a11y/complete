@@ -2495,7 +2495,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const run = await databuilder.previewStory(c, { script: body.script, seed: body.seed });
       return reply.status(201).send(run);
     }
-    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey }, body.inference ?? false);
+    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey, buildMode: body.buildMode }, body.inference ?? false);
     return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
   });
   app.patch("/a/v1/databuilder/runs/:id/inputs", async (req, reply) => {
@@ -2521,7 +2521,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     requireAdmin(c);
     const body = parseBody(BuildWorkflowStartBodySchema, req.body);
-    const rb = BuildRunBodySchema.parse({ script: body.script, seed: body.seed, builderKey: body.builderKey });
+    const rb = BuildRunBodySchema.parse({ script: body.script, seed: body.seed, builderKey: body.builderKey, buildMode: body.buildMode });
     const wf = await databuilder.runStoryWorkflow(c, rb, body.inference ?? false, { async: body.async ?? false });
     // 异步：202 Accepted + 初始 RUNNING 快照（后台驱动，GET 轮询观察）；同步：201/200 终态。
     const code = body.async ? 202 : wf.status === "FAILED" ? 200 : 201;

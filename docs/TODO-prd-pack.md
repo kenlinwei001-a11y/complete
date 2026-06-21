@@ -164,7 +164,16 @@
   （解析+对账既有本体预览）+ 事件 `prototype.intake_recorded`（L15）。CLI 经既有 `import` op 覆盖（cli-parity 绿）。
   测试 prototype-intake ×7（解析/关系/R6 字节锁/无script兜底/对账 autoMap+候选 · L1 真服务端点+事件+R2）。回写本体 §2.A/B/§3/§4。
   **余（增量）**：P2 候选落库 + `/reconcile-candidates/:id/resolve` HITL（R4）· P3 串发动机 comprehend→closure→publish + 参考原型回归 + 前端上传面板/对账候选面板。
-- [ ] ⬜ **A18 · 未审核态全栈建域闭环（吸收并取代 A16+A17，三合一自包含）**（用户新增需求 v0.2）：
+- [~] ◐ **A18 · 未审核态全栈建域闭环（吸收并取代 A16+A17，三合一自包含）**（用户新增需求 v0.2）：
+  **A18.1 ✅（keystone · 双模闭包解阻断）**：契约 `databuilder.ts`（`BuildMode STRICT|PROVISIONAL` + `ClosureFinding.severity HARD|ADVISORY` +
+  `ClosureReport.buildMode/advisoryCount/blocked` + `BuildRunBody/StoryRunRequest/WorkflowStartBody.buildMode`）+ `storybuildrun.ts`
+  （`StoryBuildRun.buildMode/domainTrustLevel` + verdict `PROVISIONAL_ANSWER`）。`closure.ts validateClosure(plan,policy,buildMode)`：
+  PROVISIONAL 把 FAILED/MISSING 降 ADVISORY、`blocked=false`（守"不靠阻断成 0"）、`gatePassed` 仍诚实=STRICT 口径。
+  `verifyBuild` **R13 红线**：PROVISIONAL 终态恒 PROVISIONAL_ANSWER（绝不 VERIFIED/answerable）。`POST /runs {buildMode}` +
+  发 `domain.provisional_built`（L15）。诚实门 `provisional-honesty.ts checkProvisionalHonesty` + `pnpm provisional-honesty:check`。
+  测试 a18-provisional-closure ×4（STRICT HARD 阻断不变 / PROVISIONAL 降 ADVISORY 不阻断 / 诚实门 / L1 真服务 UNVERIFIED+PROVISIONAL_ANSWER+事件）。
+  回写本体 §2.H/§4/§7；docs/PRD-A18-*.md 入库。gates 全绿（事件 40/40，STRICT 行为不变）。
+  **✅ 用户已裁决（2026-06-21，冲突已解）**：① 沙箱=独立子进程/容器。② **临时件可写真值——但限创建人**：PROVISIONAL
   开 **PROVISIONAL 未审核模式**——闭包门从 HARD 原子闸(缺一环→全 0)降为 **ADVISORY**(如实记缺口不阻断)；缺求解器
   由 **LLM 生成临时件 + 锁死沙箱跑通**；本体/数据/规则/切片/B栈全以未审核态建出(隔离·强标 origin=LLM_PROVISIONAL/
   status=PROVISIONAL/trustLevel=UNVERIFIED) → 端到端 **PROVISIONAL_ANSWER**(绝不 ANSWERABLE/VERIFIED) → 人工审核→发布晋升 GOVERNED。
@@ -201,9 +210,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **13 ✅ + 4 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14/A12/A9/nav-reorg ✅；A3/A15/prototype-intake ◐）。
-- **Wave 1–4 全清**；**Wave 5**（A15 backbone ✅ · prototype-intake P1+P2-core ✅ · 余 A18）；**特性**（nav-reorg ✅ · 余 cockpit/synthetic-wizard）。
-- 余下大件（需各自完整 PRD + 多期）：**A18**（未审核态全栈闭环，三合一，用户已裁决；A18 PRD 全文需重新提供）· **cockpit**（驾驶舱 1:1 复刻）· **synthetic-wizard**（合成向导 ontoprompt 链 UX）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **13 ✅ + 5 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14/A12/A9/nav-reorg ✅；A3/A15/prototype-intake/A18 ◐）。
+- **Wave 1–4 全清**；**Wave 5**（A15 backbone ✅ · prototype-intake P1+P2-core ✅ · A18.1 双模闭包 ✅）；**特性**（nav-reorg ✅ · 余 cockpit/synthetic-wizard）。
+- 余下：**A18.2–4**（LLM 临时求解器+锁死沙箱 · PROVISIONAL 隔离物化+创建人写真值门控 · 审核台+晋升）· **cockpit**（驾驶舱 1:1）· **synthetic-wizard**（ontoprompt 链 UX）· A15.2–4 handlers · prototype-intake P3。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

@@ -234,8 +234,15 @@ export const ClosureFindingSchema = z.object({
   ref: z.string(),
   status: z.enum(["BOUND", "ORPHAN_PASSED", "DROPPED", "MISSING", "FAILED"]),
   detail: z.string().optional(),
+  /** A18 双模闭包：STRICT 下失败=HARD（阻断，缺省即 HARD）；PROVISIONAL 下失败降级 ADVISORY（如实记录、不阻断）。 */
+  severity: z.enum(["HARD", "ADVISORY"]).optional(),
 });
 export type ClosureFinding = z.infer<typeof ClosureFindingSchema>;
+
+/** A18：构建模式。STRICT=HARD 原子闸（写真值默认）；PROVISIONAL=ADVISORY 不阻断（未审核预览/推演）。 */
+export const BUILD_MODES = ["STRICT", "PROVISIONAL"] as const;
+export const BuildModeSchema = z.enum(BUILD_MODES);
+export type BuildMode = z.infer<typeof BuildModeSchema>;
 
 export const ClosureReportSchema = z.object({
   gatePassed: z.boolean(),
@@ -247,6 +254,12 @@ export const ClosureReportSchema = z.object({
   chainBroken: z.number().int().default(0),
   /** R11-SHAPE：渲染绑定字段不在求解器输出形状的条数（>0 即跨服务形状断 G-2）。 */
   shapeBroken: z.number().int().default(0),
+  /** A18 双模：本次闭包模式。 */
+  buildMode: BuildModeSchema.default("STRICT"),
+  /** A18：PROVISIONAL 下被降级为 ADVISORY 的缺口数（STRICT 会 HARD 阻断的那些；如实记录）。 */
+  advisoryCount: z.number().int().default(0),
+  /** A18：是否真正阻断构建。STRICT=!gatePassed；PROVISIONAL=false（缺口转告警不阻断，守"不靠阻断成 0"）。 */
+  blocked: z.boolean().default(false),
 });
 export type ClosureReport = z.infer<typeof ClosureReportSchema>;
 
@@ -287,6 +300,8 @@ export const BuildRunBodySchema = z.object({
   builderKey: z.string().default("foundry-grade-data-builder"),
   seed: z.number().int().optional(),
   dryRun: z.boolean().optional(),
+  /** A18：构建模式（默认 STRICT 写真值；PROVISIONAL=未审核预览，闭包降 ADVISORY 不阻断、不写真值）。 */
+  buildMode: BuildModeSchema.optional(),
 });
 export type BuildRunBody = z.infer<typeof BuildRunBodySchema>;
 
@@ -356,6 +371,8 @@ export const BuildWorkflowStartBodySchema = z.object({
   builderKey: z.string().optional(),
   /** 异步执行：提交即返回初始 RUNNING 快照（202），引擎后台脱离请求驱动，客户端轮询 GET 观察进度。 */
   async: z.boolean().optional(),
+  /** A18：构建模式（STRICT 写真值 / PROVISIONAL 未审核预览，闭包降 ADVISORY 不阻断）。 */
+  buildMode: BuildModeSchema.optional(),
 });
 export type BuildWorkflowStartBody = z.infer<typeof BuildWorkflowStartBodySchema>;
 

@@ -20,6 +20,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-A18-provisional-build-closure.md": {
+      "acceptanceIds": [
+        "A5"
+      ],
+      "covered": [
+        "A5"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-A9-external-engines-design-deferred.md": {
       "acceptanceIds": [
         "A9"

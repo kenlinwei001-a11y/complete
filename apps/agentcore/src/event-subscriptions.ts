@@ -83,6 +83,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "build.verified", producer: "数据构建发动机·终态闭环验证（A10 publish 后重跑主问句）", tier: "IN_SESSION", invalidates: ["story-runs", "fde-graph", "growth-ledger"] },
   // L15 prototype-intake 正门：上传原型 → 确定性抽数据/关系 → 对账预览（映射不上生成候选给人确认）
   { event: "prototype.intake_recorded", producer: "原型 intake 正门·解析数据表+关系完成（schema 对账预览）", tier: "IN_SESSION", invalidates: ["intake-preview", "reconcile-queue"] },
+  // L15 A18 未审核态：PROVISIONAL 建域完成（域强标 UNVERIFIED，闭包 ADVISORY 不阻断）→ 失效历史/审核台
+  { event: "domain.provisional_built", producer: "数据构建发动机·PROVISIONAL 未审核态建域完成（A18 双模闭包）", tier: "IN_SESSION", invalidates: ["story-runs", "provisional-review"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */
