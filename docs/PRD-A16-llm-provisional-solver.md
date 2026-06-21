@@ -91,8 +91,30 @@
 - 事件 `solver.provisional_generated/status_changed/promoted/replaced` 入 `event-subscriptions.ts`。
 - 仓储：`SolverArtifact` 双实现 + migration（R9）。
 
-## 5. 关键流程（端到端，解你那道题）
-建域/growth 检出缺 `mix_reallocation` → `POST /a/v1/solvers/generate` → LLM 产 compute(储能→动力 产能重分配→Δ收入/Δ毛利) + outputSchema → 冻结 SolverArtifact → **沙箱用样例数据跑通**(否则拒) → 注册 PROVISIONAL(origin=LLM) → A10 重跑主问句 → **闭环出答案**（标 `临时·LLM·未验证`，写真值被挡）→ 人工审阅代码 → 跑 VLE/校准 → 晋升 GOVERNED 或替换为手写版 → 此后可写真值。
+## 5. 关键流程（端到端 · 对齐真实实证的 gap）
+本流程**直接续上 §5.1 实证里被 BLOCKED 的那次建域**——数据构建发动机已把缺口精确定位为 `capacity_switch_optimizer`（+`delivery_delay_forecast`）：
+
+```
+数据构建发动机建域 → 闭包 CHAIN 维 BLOCKED：SOLVER_NOT_FOUND(capacity_switch_optimizer, delivery_delay_forecast)
+  → A16 介入：POST /a/v1/solvers/generate（对每个缺失 solverNeed）
+  → LLM 按 BuildPlan 的 I/O 契约 + 对象图 schema 产 {compute 纯函数, outputSchema, argsSchema, rationale}
+      · capacity_switch_optimizer：读 CapacityAllocation/ProductionOrder/Product → 储能→动力 重分配 → Δ收入/Δ毛利
+      · delivery_delay_forecast：读 ProductionOrder/Equipment(瓶颈) → 受影响订单 + 延迟天数
+  → 冻结 SolverArtifact（verbatim+hash+版本，R6）
+  → 锁死沙箱用样例 ctx 跑通 + 输出过 outputSchema（跑不通则拒，status=UNREGISTERED）
+  → 注册 PROVISIONAL(origin=LLM, trustLevel=UNVERIFIED)，写 SOLVER_OUTPUT_SHAPES
+  → 闭包 CHAIN 维转 PASS（求解器已注册，临时件亦满足"已注册"）→ 建域从 FAILED→闭合
+  → A10 重跑主问句 → 路径A 出答案（收入↑/毛利↑/延迟客户），全程标 `临时·LLM·未验证`，写真值被 R4 门挡
+  → 人工审阅 capacity_switch_optimizer 代码 + rationale → 跑 VLE/校准 advisory → 晋升 GOVERNED 或替换为手写确定性版 → 此后可写真值
+```
+
+### 5.1 实证（2026-06-21 真服务 + 真 Kimi 实跑，本 PRD 的动机证据）
+把那道"30% 储能→动力 切换、60 天收入/毛利、延迟客户"问句当故事跑 `POST /a/v1/databuilder/runs`（comprehend 绑真 Kimi）：
+- **comprehend 真听懂**：倒推 7 对象类型（含自创 `CapacityAllocation`）+ 4 规则（含 `grossMarginRate>0.3`、`isBottleneck && utilizedHours>maxDailyCap` 表达"不新增设备"约束）+ 7 数据源 + **5 求解器需求**；storyCoverage 2/2 句全覆盖。
+- **诚实 BLOCKED**：`status=FAILED`、gapReport `verdict=BLOCKED`，2 条 `SOLVER_NOT_FOUND`：`capacity_switch_optimizer` / `delivery_delay_forecast` 未注册 → 路径A 全链断；`suggestedFill=注册求解器/出骨架工单`。**未谎报 ANSWERABLE。**
+- **数据未生成**（`producedDatasets=0`）：build 在闭包即停，未物化。
+- → **结论**：系统能理解并倒推到精确缺口，就差这两个求解器。**A16 正是把"缺口"补成"可跑临时件"的那一步**——补上即闭合。
+- **附带发现的真实小 bug**（已转 A5）：`producedArtifacts` 模块同步矩阵把 2 个不存在的求解器乐观标成 `REUSED/PUBLISHED`，与闭包门 `SOLVER_NOT_FOUND` 矛盾 → 矩阵 solver 状态应取闭包真相（A5 FDE 节点图修）。
 
 ## 6. 非功能（§5）
 R6（冻结+沙箱确定）· R5（沙箱隔离不出边界）· R4（PROVISIONAL 不写真值）· R13（全程可信级标注+代码可查）· R3/R2。

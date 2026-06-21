@@ -43,6 +43,8 @@
 | 节点执行范式 | `workflow/executor.ts`（QOS path-A 节点状态） | 未用于 BUILD 管线 |
 | 实时 | `storybuild.run_recorded`（终态） | 无逐节点实时事件 |
 
+> **实证缺口（2026-06-21 真跑发现）**：一次真 Kimi 建域中，`producedArtifacts` 模块同步矩阵把 2 个**未注册**的求解器（`capacity_switch_optimizer`/`delivery_delay_forecast`）乐观标成 `REUSED/PUBLISHED`，而权威 `gapReport`/闭包门正确判为 `SOLVER_NOT_FOUND`（status=FAILED）。**矩阵状态与闭包真相不一致** → A5 的⑤模块生成/⑥闭包节点必须**以闭包门为真相源**渲染求解器产物状态（REUSED 须经"DataCore 已注册"核验，否则标 MISSING/红），不得乐观误报。`databuilder/artifacts.ts deriveProducedArtifacts` 需对 solver 项做注册存在性核验。
+
 ## 3. 设计（节点图 = 既有阶段的可观测编排表达）
 ### 3.1 FDE 编排定义（声明式节点序）
 - `databuilder/fde-graph.ts`（新）：定义 `FDE_NODES`（8 节点 + 各自 `produces`/`consumes`/`gateKind`）。可选把它注册为一条平台 `ExecutionPlan kind=ORCHESTRATION`（dogfooding：用平台工作流表达平台建域）。
