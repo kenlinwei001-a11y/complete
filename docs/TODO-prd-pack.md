@@ -148,7 +148,14 @@
 
 ## Wave 5 · CLI / intake
 
-- [ ] ⬜ **A15 · CLI 通用操作外壳**（意图识别→模块路由→CLI 交互补参→触发模块；含 QOS 推演问答；全模块↔CLI 对等矩阵）。R15。
+- [~] ◐ **A15 · CLI 通用操作外壳**（意图识别→模块路由→CLI 交互补参→触发模块；含 QOS 推演问答；全模块↔CLI 对等矩阵）。R15 R8 R4 R3 R6。
+  **A15.1 backbone ✅（keystone）**：契约 `operation-intent.ts`（`OPERATION_CATALOG` 17 条覆盖矩阵配置化 R14 +
+  `classifyOperation` **确定性关键词打分** R6 无 LLM）+ AgentCore `POST /b/v1/operations/classify`（QUERY 走 ask / OPERATION
+  路由 + 低置信多候选不瞎猜）+ CLI `platform do "<NL>"` 万能路由（QUERY→ask · OPERATION→路由+下一步命令+R4 标 + uiDeepLink）。
+  **R15 永续机制 ✅**：§5 新不变量 R15「CLI 对等」+ §7 `cli-parity:check` 门（`check-cli-parity.mjs` 棘轮基线，并入 pnpm gates）+
+  `_PRD-TEMPLATE.md` §0 加"CLI 打通（R15，强制）"必填行。测试 a15-operation-classify ×7（分类/QUERY/深链/R6/端点）。回写本体 §2.H/§5/§7。
+  **余（A15.2–4，增量）**：各 op 交互式 handler 真跑（import 上传/model derive/rule dry-run→publish/solve invoke 补参）——
+  当前 `do` 给路由 + 下一步命令提示 + 深链，未内联完成上传/建模交互流；REPL `shell` 持续对话。复用既有 REST，随用补。
 - [ ] ⬜ **prototype-intake · 原型 intake 正门 + schema 对账 HITL**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。
 - [ ] ⬜ **A18 · 未审核态全栈建域闭环（吸收并取代 A16+A17，三合一自包含）**（用户新增需求 v0.2）：
   开 **PROVISIONAL 未审核模式**——闭包门从 HARD 原子闸(缺一环→全 0)降为 **ADVISORY**(如实记缺口不阻断)；缺求解器
@@ -182,9 +189,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **12 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14/A12/A9 ✅）。
-- **Wave 1–4 全清**（A14 ✅ · A12 ✅ · A9 ✅ 设计延后）。
-- 下一步：进 **Wave 5**（A15 CLI 通用操作外壳 / prototype-intake 原型 intake + schema 对账 HITL / A18 未审核态全栈闭环）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **12 ✅ + 3 ◐ / 23**（A11/A6/A4/A13/A8/A1/A5/A7/A10/A14/A12/A9 ✅；A3/A15 ◐）。
+- **Wave 1–4 全清**；**Wave 5 进行中**（A15 backbone ✅/handlers 增量 · 余 prototype-intake · A18）。
+- 下一步：**prototype-intake**（原型 intake + schema 对账 HITL）→ **A18**（未审核态全栈闭环，用户已裁决）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

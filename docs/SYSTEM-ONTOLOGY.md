@@ -110,6 +110,7 @@
 - **Intent**：意图（触发问句/示例→分类；slots；**planRef→执行计划**；riskLevel）· `contracts/agentcore.ts`。
 - **ExecutionPlan / Workflow**：执行计划（kind=PLAN）/ 编排（kind=ORCHESTRATION，含 invoke_agent/mcp）；步骤 query_objects/invoke_solver/evaluate_rules/render · `workflow/executor.ts`。
 - **Skill / Agent**：技能（解读能力句）/ 智能体（systemPrompt+tools+skills+ruleBindings）· `agent/loop.ts`。
+- **CLI 通用操作外壳 + OperationIntent（A15）**（`scripts/platform-cli.mjs` + `contracts/operation-intent.ts`）：把"只能 ask 问句"的 CLI 升级为**通用操作外壳**——`platform do "<NL>"` 万能入口经 `POST /b/v1/operations/classify`（**确定性关键词打分** `classifyOperation`，R6 无 LLM；低置信/多候选→列 candidates 不瞎猜）判 **QUERY**（走 QOS ask）或 **OPERATION**（路由模块：import/model/rule/solve/synth/build/approve…）。`OPERATION_CATALOG`（配置 R14，17 条覆盖矩阵）每条带关键词/端点/必填槽/是否 R4/`cliCommand`/（不宜内联→`uiDeepLink` 跳 GUI，§3.6 求解器上传）。CLI 与 GUI **平行同源**（同一 REST + R3/R4/R8 + 事件，一端操作另一端可见），不绕审批/不本地直写。**R15 CLI 对等**（§5 新不变量 + `cli-parity:check` §7 门）：新增对外能力必须注册 cliCommand 或 uiDeepLink，否则功能洼地返工。
 - **EvalSuite / EvalCase / EvalRunReport（agent evals + A14 parity）**（`agentcore/evals.ts`，§7 检测）：逐 case 经**真实 QOS 管线**实跑观测意图/工具序列/答案/时延/token，与期望（`expect{intentKey,toolSequence,answerMust/MustNot,maxToolCalls}`）比对落 `EvalRunReport`（`MOCK` 证框架 / `REAL` 真分）。**A14 parity（对 PRD 期望）**：`EvalCaseResult.failKind`（INTENT/TOOLSEQ/ANSWER/OTHER，`classifyFailKind` 首要失因）+ `EvalRunReport.parity{byFailKind 直方图, byCase 逐 case 偏差}`；PRD 期望用例库 `seedParityCases`（从 20 场景目录派生 intent+工具序列期望，`POST /b/v1/evals/seed-parity`）；真 Kimi **env-gated** 实跑（R6：不进默认 CI 抖动），mock 仅证框架。前端 `EvalsPage` parity 失因列（data-testid `eval-parity-*`）。
 - **Scenario（一等对象，升级自 ScenarioCard）**：场景为一等主键（scenarioKey/name/domain/targetView/intentKey/mode/defaultAgentId/presetContext/rules/riskLevel/status DRAFT→PUBLISHED→RETIRED/version）· 持久化于 AgentCore `scenarios` 仓储 · 出厂 SCENARIO_CATALOG 启动期幂等 upsert（单一来源）· `contracts/agentcore.ts ScenarioSchema` · `scenarios-catalog.ts:60`。**所有使用 workflow/agent 的场景都在此完整可配（治理铁律）**。
 - **SceneEntry（降为投影）**：视图侧投影（**viewKey 为键** · mode 兜底 · defaultAgentId · intentCatalogFilter · suggestedQuestions）· 主键关系反转为 `View ← Scenario.targetView` · `contracts/agentcore.ts:171`。
@@ -287,6 +288,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | **R13** | **结论可溯源（信任 = 出处 + 推导可当场亮出）**：凡推演结论里的数字必为可溯源对象——悬浮即出 `{来源系统·新鲜度·推导公式·输入因子·关联规则·备注}`（参考 PRD §1.2/§4，与 R12 输入侧"字段全建模"对称的输出侧纪律）。源系统降级时，依赖它的派生数字自动标降级、置信度(P90)随之下调(C09)。覆盖优先级见 `docs/REFERENCE-HTML-INVENTORY.md` 信任章。 | `<Provenance>` + lineage 端点；前端 `provenance.test` |
 | R-一致 | **一个事实一个出处**：同一指标在驾驶舱/S&OP/体检口径一致（同一对象库派生），跨视图同值 | 单一对象库 + 聚合下推 |
 | **R14** | **应用层无业务常数（多租户）**：前端组件不得内联业务数据/结构/租户专属文案；一律来自本体/WorkspaceConfig/ViewConfig.layout/i18n。换租户=换配置不改代码。守护 G-5 不回潮。 | ✅ `debattery:check`（基线 0：无未声明业务常数；兜底逐行 `// debattery-allow`）；标杆 `DashboardView`/`LedgerView` |
+| **R15** | **CLI 对等（A15）**：每个对外模块能力必须有 CLI 等价命令（注册 `OPERATION_CATALOG`），经同一 REST + R3 + R4 + 事件触发——CLI 与 GUI 平行同源、无功能洼地；不宜 CLI 内联的（求解器上传/复杂可视化）须登记 GUI 深链（`uiDeepLink`）。新增对外能力无 CLI 命令/深链 = 功能洼地，返工。 | ✅ `cli-parity:check`（棘轮基线 `cli-parity-baseline.json`；OPERATION_CATALOG 每条须 cliCommand 或 uiDeepLink，新增不可达即红）；`POST /b/v1/operations/classify` + `platform do` 万能路由 |
 
 ---
 
@@ -309,6 +311,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **`ontology:check` 本体漂移门禁**（治理新增）：事件/求解器/文件锚点/钩子不漂 即 build 红 · `scripts/check-system-ontology.mjs`，`pnpm ontology:check`。
 - **`chain:check` 全链闭包门（第一块砖，R11）**：跨系统静态校验"场景声明的求解器 DataCore 必须注册"，否则路径A 全链断（SOLVER_NOT_FOUND）即红 · `scripts/check-chain-closure.mjs`，`pnpm chain:check`。
 - **`debattery:check` 去电池锁死门（R14）**：静态扫描前端视图/页内联的业务常数（基地名/型号/工序/产品段）；棘轮基线 `scripts/debattery-baseline.json` 防回潮——命中超基线即红 · `scripts/check-debattery.mjs`，`pnpm debattery:check`。`// debattery-allow` 豁免必要兜底。
+- **`cli-parity:check` CLI 对等门（R15，A15）**：静态校验 `OPERATION_CATALOG`（`contracts/operation-intent.ts`）每条都有 `cliCommand` 或 `uiDeepLink`，且 cliCommand 经 CLI 调度（`platform-cli.mjs` run{} 或 `do` 万能路由）可达；棘轮基线 `scripts/cli-parity-baseline.json` 防回潮——新增对外能力无 CLI 命令/深链即红 · `scripts/check-cli-parity.mjs`，`pnpm cli-parity:check`。已并入 `pnpm gates`。
 - **`prd:check` PRD 库结构化门（治理 #2）**：解析每篇 PRD 的《本体引用与影响》§0 → 写机器可读索引 `docs/prd-ontology-index.json`（PRD↔不变量/断点，需求↔制品↔缺口可查）；校验引用的 R/G 在本体真实存在（悬空引用即红），报告断点 PRD 覆盖与缺口、遗留 PRD 缺 §0（告警） · `scripts/check-prd-ontology.mjs`，`pnpm prd:check`。
 - **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。
 - **场景接线回归**（守护 G-1）：20 场景全有意图+计划+求解器 · `apps/agentcore/test/scenarios-wiring.test.ts`。

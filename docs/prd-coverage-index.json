@@ -2,6 +2,24 @@
   "generatedAt": "2026-06-21",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
+    "PRD-A15-cli-universal-operation-shell.md": {
+      "acceptanceIds": [
+        "A1",
+        "A4",
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "covered": [
+        "A1",
+        "A4",
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-A9-external-engines-design-deferred.md": {
       "acceptanceIds": [
         "A9"

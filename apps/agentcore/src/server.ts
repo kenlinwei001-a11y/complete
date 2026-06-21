@@ -18,6 +18,8 @@ import {
   DecisionTraceSchema,
   EvalCaseSchema,
   EvalSuiteSchema,
+  OperationClassifyRequestSchema,
+  classifyOperation,
   SkillDefinitionSchema,
   SubmitQueryBodySchema,
   WorkflowDefinitionSchema,
@@ -1637,6 +1639,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { packageId } = req.body as { packageId: string };
     if (!packageId) throw new HttpError(400, "VALIDATION_ERROR", "packageId required");
     return deps.evals.seedScenarioCases(a.tenantId, packageId);
+  });
+  // A15：CLI 通用操作外壳——操作型意图分类（NL → QUERY 走 QOS ask / OPERATION 路由模块）。
+  // 确定性关键词打分（R6，无 LLM）；低置信/多候选 → candidates 让 CLI 列出不瞎猜。CLI 与 GUI 平行同源。
+  app.post("/b/v1/operations/classify", async (req) => {
+    await auth(req); // R8：带 JWT（OBO）
+    const { input } = OperationClassifyRequestSchema.parse(req.body);
+    return classifyOperation(input);
   });
   // A14：PRD 期望用例库（intent + 工具序列 + 答案）—— 真 Kimi 实跑后由 parity 报告标偏差。
   app.post("/b/v1/evals/seed-parity", async (req) => {

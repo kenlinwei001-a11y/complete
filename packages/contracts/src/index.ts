@@ -27,3 +27,4 @@ export * from "./entity-resolution.js";
 export * from "./output-validation.js";
 export * from "./meta-ontology.js";
 export * from "./slice-planner.js";
+export * from "./operation-intent.js";

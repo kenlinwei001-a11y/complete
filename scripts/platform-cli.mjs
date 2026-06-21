@@ -179,10 +179,34 @@ async function cmdAsk(args) {
   try { await streamTask(submit.taskId, rl); } finally { rl.close(); }
 }
 
+// ---- A15：do 万能路由（NL → operations/classify → QUERY 走 ask / OPERATION 路由模块）----------
+async function cmdDo(args) {
+  const json = args.includes("--json");
+  const input = args.filter((a) => a !== "--json").join(" ");
+  if (!input) { console.error('用法: do "<自然语言>" [--json]'); process.exit(1); }
+  const cls = await http(`${AC}/b/v1/operations/classify`, { method: "POST", headers: authHeader(), body: JSON.stringify({ input }) });
+  if (json) { console.log(JSON.stringify(cls)); return; }
+  if (cls.kind === "QUERY") {
+    console.log(C.dim("· 判为查询型 → 走 QOS ask"));
+    return cmdAsk([input]);
+  }
+  // OPERATION：低置信/多候选 → 列候选不瞎猜
+  if (cls.confidence < 0.6 && cls.candidates.length > 1) {
+    console.log(C.dim("· 不确定，候选能力（请用对应子命令明确）："));
+    for (const c of cls.candidates) console.log(`    ${c.op}  —  ${c.label}`);
+    return;
+  }
+  console.log(`· 判为操作型：${C.dim(cls.op)}  →  ${cls.endpoint}${cls.r4 ? "  (经 R4 审批)" : ""}`);
+  if (cls.requiredSlots?.length) console.log(C.dim(`  需补参：${cls.requiredSlots.join(", ")}（用 \`${cls.cliCommand ?? cls.op} …\` 子命令）`));
+  if (cls.uiDeepLink) console.log(`  🔗 或在 GUI 完成：${DC.replace(/\/$/, "")}${cls.uiDeepLink}`);
+  if (cls.cliCommand) console.log(C.dim(`  CLI 等价命令：${cls.cliCommand}`));
+}
+
 function help() {
   console.log(`平台对话式 CLI —— 一句话驱动整个平台（QOS 意图识别 + 权限路由 + 求解器/工作流/Agent）
 
   login <tenant> <user> <pass>     登录取 token（如 demo admin demo1234）
+  do "<自然语言>" [--json]          万能入口：意图识别 → 查询走 ask / 操作路由模块（A15）
   ask "<问句>" [--view v] [--package p]   提问 → 流式答案（含多轮澄清）
   scenarios                        列可用场景
   approve <draftId>                审批写操作草稿
@@ -191,7 +215,7 @@ function help() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, ask: cmdAsk, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
+const run = { login: cmdLogin, do: cmdDo, ask: cmdAsk, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();
