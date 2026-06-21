@@ -68,7 +68,8 @@ Wave1 基座            Wave2 引擎/能力              Wave3 编排/闭环    
 ## 4. 状态
 - ✅ Wave 1 PRD 产出（A3 / A6 / A11 + 本索引）→ **已评审通过**。
 - ✅ Wave 2 PRD 产出（A1 / A8 / A13 地板语义 / A4）→ **已评审通过**。
-- ✅ Wave 3 PRD 产出（A5 FDE 编排工作流 / A7 scaffold 单机可见 / A10 终态闭环验证）→ **待评审**。
-- ⬜ Wave 4（A14 / A12 / A9）：评审通过产出（收尾波）。
+- ✅ Wave 3 PRD 产出（A5 FDE 编排工作流 / A7 scaffold 单机可见 / A10 终态闭环验证）→ **已评审通过**。
+- ✅ Wave 4 PRD 产出（A14 agent evals parity / A12 模块 hand-run 补全 / A9 外部引擎设计延后）→ **待评审**。
+- 🎉 **A 系列 13 项工程 PRD 全部产出**（14 文件 = 13 子 PRD + 本索引）。逐项子 PRD 见 §2 登记表。
 
 > 基线分支：A 系列实现前需定准 `wizardly-gauss`（推荐，超集）vs `vigilant-knuth`，见各子 PRD §8 备注。
