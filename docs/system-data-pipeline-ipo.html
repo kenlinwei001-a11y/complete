@@ -43,6 +43,13 @@
   .fc .fe .fl{font-size:10.5px;color:#0d3b66;white-space:nowrap;margin-bottom:4px;font-weight:600}
   .fc .fe .fa{width:100%;height:2px;background:#0d3b66;position:relative}
   .fc .fe .fa::after{content:"";position:absolute;right:-1px;top:-4px;border-left:9px solid #0d3b66;border-top:5px solid transparent;border-bottom:5px solid transparent}
+  .vsec{margin-top:22px}
+  .vtbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .vtbl th,.vtbl td{border:1px solid #d5dbe4;padding:6px 9px;text-align:left;vertical-align:top}
+  .vtbl th{background:#eaf6f6;color:#15623c}
+  .vtbl .ok{color:#15623c;font-weight:700;white-space:nowrap}
+  .vtbl .as{color:#a85a12;font-weight:700;white-space:nowrap}
+  .vfrom{color:#0d3b66;font-weight:600}
 </style>
 </head>
 <body>
@@ -158,6 +165,12 @@
     </div>
   </div>
 
+
+  <div class="vsec">
+    <h2 style="color:#15623c">模块级连线 · 真实性核验（起真服务实测，非 mock / 非写死）</h2>
+    <table class="vtbl"><thead><tr><th>模块级连线（下钻）</th><th>实际调用端点</th><th>真后端返回（实测）</th><th>状态</th></tr></thead><tbody><tr><td class="vfrom">合成数据 A7 / 连接器 ──► RawDataset</td><td class="mono">GET /a/v1/raw-datasets/:id/rows</td><td>Order 20 行，首行 so=SO-10001（真实逐行）</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">RawDataset ──► 对象物化</td><td class="mono">GET /a/v1/objects?type=Order</td><td>total=20，首条 obj_order_SO-10001</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">对象物化 ──► 派生 A4</td><td class="mono">GET /a/v1/objects?type=Base</td><td>派生<b>动态算出</b> orderCount=3 · oeeIndex=0.754757 · committedQty=5988</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">对象+链路 ──► 切片 A6</td><td class="mono">POST /a/v1/slices/order_fulfillment_360/resolve</td><td>跨域子图 46 节点 / 45 边（真解析非空）</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">切片/对象 ──► 求解器 S1</td><td class="mono">POST /b/v1/scenarios/S02/launch → invoke_solver</td><td>受影响订单 <b>SO-10003/SO-10005 由求解器算出</b>（非写死）</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">真 Kimi 分类器 ──► 意图</td><td class="mono">agentcore classifier(绑 kimi-k2.5)</td><td>问句「常州影响哪些订单」→ matchedIntent=affected_orders</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">意图→计划→求解器 ──► 答案</td><td class="mono">GET /api/v1/queries/:taskId</td><td>COMPLETED · path=WORKFLOW · answer.table 真实订单行 + 「受影响 2 张」</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">答案 ──► 前端风险页/对话坞</td><td class="mono">（前端 fetch 同上端点渲染 answer.blocks）</td><td>API 层真实；像素层沙箱无浏览器未验</td><td class="as">◐ API真实/像素未验</td></tr><tr><td class="vfrom">数据分类 ──► 前端面板/模版</td><td class="mono">GET /a/v1/data-categories</td><td>12 分类，销售订单类含 Order</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">时序 A8 ──► 驾驶舱曲线</td><td class="mono">GET /a/v1/timeseries/agg-specs</td><td>6 个时序聚合规约</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">字段全覆盖核验</td><td class="mono">GET /a/v1/field-coverage</td><td>181/181</td><td class="ok">✅ 真实</td></tr><tr><td class="vfrom">规则 ──► 规则库页</td><td class="mono">GET /a/v1/rules</td><td>15 条规则（C03…）</td><td class="ok">✅ 真实</td></tr></tbody></table>
+    <div class="note">起真服务 datacore:4021(SEED_DEMO)+agentcore:4022(OBO) 打<b>前端页同一批端点</b>核对真返回；MSW mock 只在 VITE_MOCK 用，部署态前端打的就是这些真端点。详见 docs/pipeline-verification.md。核验到 HTTP/API 层，未到浏览器像素层。</div>
+  </div>
   <div class="legend">
     <span><b>å¾ä¾ï¼</b></span>
     <span><span class="sw" style="background:#dceafc;border:1px solid #4C7BE0"></span>DataCore A</span>
