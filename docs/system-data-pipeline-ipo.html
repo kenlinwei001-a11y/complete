@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>系统数据流转 IPO 全景</title>
+<title>ç³»ç»æ°æ®æµè½¬ IPO å¨æ¯</title>
 <style>
   :root{--bg:#f4f6f9;--ink:#1b2430;--muted:#5a6678;--blue:#4C7BE0;--green:#3aa76d;--purple:#7e5bd6;--amber:#d79b3a;--red:#c0504d;}
   *{box-sizing:border-box}
@@ -13,9 +13,11 @@
   .sub{color:var(--muted);font-size:13px;margin-bottom:8px}
   .spine{display:flex;align-items:center;gap:6px;background:#0d3b66;color:#fff;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;overflow-x:auto;margin:10px 0 16px}
   .spine span{white-space:nowrap}.spine .ar{opacity:.6;font-weight:400}
-  .grid{display:grid;grid-template-columns:repeat(9,minmax(150px,1fr));gap:10px;overflow-x:auto}
-  .col h3{font-size:13px;margin:0 0 8px;text-align:center;color:#1b2430}
-  .card{border-radius:9px;padding:8px 9px;margin-bottom:9px;font-size:11.5px;border:1px solid #ccc;background:#fff}
+  .grid{display:flex;gap:0;overflow-x:auto;align-items:stretch;padding-bottom:6px}
+  .col{flex:0 0 168px;display:flex;flex-direction:column}
+  .conn{flex:0 0 30px;display:flex;align-items:center;justify-content:center;color:#0d3b66;font-size:24px;font-weight:700;align-self:center;min-height:120px}
+  .col h3{font-size:13px;margin:0 0 8px;text-align:center;color:#1b2430;min-height:32px}
+  .card{border-radius:9px;padding:8px 9px;margin-bottom:9px;font-size:11.5px;border:1px solid #ccc;background:#fff;position:relative}
   .card b{font-size:12.5px;display:block;margin-bottom:3px}
   .card .i{color:#33506b}.card .p{color:var(--muted)}.card .o{color:#2f7d4f}.card .x{color:#b00020}
   .A{background:#dceafc;border-color:var(--blue)} .A b{color:#0d3b66}
@@ -39,103 +41,111 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>全域数字化智能决策平台 · 数据流转 IPO 全景</h1>
-  <div class="sub">依据 docs/SYSTEM-ONTOLOGY.md（§2 模块 · §3 链路 · §4 事件）。每张卡片 = 一个模块的 输入(I)/过程(P)/输出(O)。</div>
+  <h1>å¨åæ°å­åæºè½å³ç­å¹³å° Â· æ°æ®æµè½¬ IPO å¨æ¯</h1>
+  <div class="sub">ä¾æ® docs/SYSTEM-ONTOLOGY.mdï¼Â§2 æ¨¡å Â· Â§3 é¾è·¯ Â· Â§4 äºä»¶ï¼ãæ¯å¼ å¡ç = ä¸ä¸ªæ¨¡åç è¾å¥(I)/è¿ç¨(P)/è¾åº(O)ã</div>
 
   <div class="spine">
-    <span>原始数据集</span><span class="ar">→</span><span>本体类型/规则</span><span class="ar">→</span><span>对象+链路</span><span class="ar">→</span><span>派生/切片/时序</span><span class="ar">→</span><span>求解结果/裁决</span><span class="ar">→</span><span>真值写回</span><span class="ar">→</span><span>答案块(OBO)</span><span class="ar">→</span><span>SSE→视图</span>
+    <span>åå§æ°æ®é</span><span class="ar">â</span><span>æ¬ä½ç±»å/è§å</span><span class="ar">â</span><span>å¯¹è±¡+é¾è·¯</span><span class="ar">â</span><span>æ´¾ç/åç/æ¶åº</span><span class="ar">â</span><span>æ±è§£ç»æ/è£å³</span><span class="ar">â</span><span>çå¼åå</span><span class="ar">â</span><span>ç­æ¡å(OBO)</span><span class="ar">â</span><span>SSEâè§å¾</span>
   </div>
 
   <div class="grid">
-    <!-- ① 数据源 -->
-    <div class="col"><h3>① 数据源（输入）</h3>
-      <div class="card S"><b>外部业务系统</b><div class="i">I·ERP/CRM/JDBC/REST 凭据</div><div class="p">P·适配器拉取+字段画像</div><div class="o">O·数据集</div></div>
-      <div class="card S"><b>文件上传</b><div class="i">I·CSV/XLSX/JSON</div><div class="p">P·三路解析统一</div><div class="o">O·数据集</div></div>
-      <div class="card S"><b>外部信号源</b><div class="i">I·mock_external / feed</div><div class="p">P·同步+敏感性</div><div class="o">O·锂价/汇率/需求指数</div></div>
-      <div class="card F"><b>故事脚本</b><div class="i">I·一句话业务故事</div><div class="p">P·→数据构建发动机</div><div class="o">O·驱动倒推(回路 L1)</div></div>
-      <div class="card S"><b>模拟时钟 A8</b><div class="i">I·tick(虚拟日)</div><div class="p">P·推进运营态</div><div class="o">O·时序点/态变更</div></div>
+    <!-- â  æ°æ®æº -->
+    <div class="col"><h3>â  æ°æ®æºï¼è¾å¥ï¼</h3>
+      <div class="card S"><b>å¤é¨ä¸å¡ç³»ç»</b><div class="i">IÂ·ERP/CRM/JDBC/REST å­æ®</div><div class="p">PÂ·ééå¨æå+å­æ®µç»å</div><div class="o">OÂ·æ°æ®é</div></div>
+      <div class="card S"><b>æä»¶ä¸ä¼ </b><div class="i">IÂ·CSV/XLSX/JSON</div><div class="p">PÂ·ä¸è·¯è§£æç»ä¸</div><div class="o">OÂ·æ°æ®é</div></div>
+      <div class="card S"><b>å¤é¨ä¿¡å·æº</b><div class="i">IÂ·mock_external / feed</div><div class="p">PÂ·åæ­¥+æææ§</div><div class="o">OÂ·éä»·/æ±ç/éæ±ææ°</div></div>
+      <div class="card F"><b>æäºèæ¬</b><div class="i">IÂ·ä¸å¥è¯ä¸å¡æäº</div><div class="p">PÂ·âæ°æ®æå»ºåå¨æº</div><div class="o">OÂ·é©±å¨åæ¨(åè·¯ L1)</div></div>
+      <div class="card S"><b>æ¨¡ææ¶é A8</b><div class="i">IÂ·tick(èææ¥)</div><div class="p">PÂ·æ¨è¿è¿è¥æ</div><div class="o">OÂ·æ¶åºç¹/æåæ´</div></div>
     </div>
-    <!-- ② 接入 -->
-    <div class="col"><h3>② 接入 A1/A7</h3>
-      <div class="card A"><b>连接器 A1</b><div class="i">I·源/上传文件</div><div class="p">P·画像+校验策略</div><div class="o">O·RawDataset/RawRow</div><div class="x">+异常→隔离区</div></div>
-      <div class="card A"><b>合成数据 A7</b><div class="i">I·行业/规模/seed</div><div class="p">P·确定性PRNG+FK一致</div><div class="p">[未知行业→LLM模板]</div><div class="o">O·合成源+RawDataset</div></div>
-      <div class="card A"><b>数据接入分类</b><div class="i">I·数据集+对象类型</div><div class="p">P·锂电域归类+模式</div><div class="o">O·分类视图+上传模版</div></div>
+    <div class="conn">▸</div>
+    <!-- â¡ æ¥å¥ -->
+    <div class="col"><h3>â¡ æ¥å¥ A1/A7</h3>
+      <div class="card A"><b>è¿æ¥å¨ A1</b><div class="i">IÂ·æº/ä¸ä¼ æä»¶</div><div class="p">PÂ·ç»å+æ ¡éªç­ç¥</div><div class="o">OÂ·RawDataset/RawRow</div><div class="x">+å¼å¸¸âéç¦»åº</div></div>
+      <div class="card A"><b>åææ°æ® A7</b><div class="i">IÂ·è¡ä¸/è§æ¨¡/seed</div><div class="p">PÂ·ç¡®å®æ§PRNG+FKä¸è´</div><div class="p">[æªç¥è¡ä¸âLLMæ¨¡æ¿]</div><div class="o">OÂ·åææº+RawDataset</div></div>
+      <div class="card A"><b>æ°æ®æ¥å¥åç±»</b><div class="i">IÂ·æ°æ®é+å¯¹è±¡ç±»å</div><div class="p">PÂ·éçµåå½ç±»+æ¨¡å¼</div><div class="o">OÂ·åç±»è§å¾+ä¸ä¼ æ¨¡ç</div></div>
     </div>
-    <!-- ③ 建模 -->
-    <div class="col"><h3>③ 建模 A2/A3</h3>
-      <div class="card A"><b>半自动建模 A3</b><div class="i">I·数据集字段画像</div><div class="p">P·PK唯一/FK值包含</div><div class="o">O·本体草稿</div></div>
-      <div class="card A"><b>规则文档抽取 A2</b><div class="i">I·规则文档[LLM]</div><div class="p">P·抽取→候选</div><div class="o">O·规则候选</div></div>
-      <div class="card A"><b>本体发布 A4</b><div class="i">I·草稿/类型/链路</div><div class="p">P·版本化发布</div><div class="o">O·OntologyType/Link/Ver</div></div>
+    <div class="conn">▸</div>
+    <!-- â¢ å»ºæ¨¡ -->
+    <div class="col"><h3>â¢ å»ºæ¨¡ A2/A3</h3>
+      <div class="card A"><b>åèªå¨å»ºæ¨¡ A3</b><div class="i">IÂ·æ°æ®éå­æ®µç»å</div><div class="p">PÂ·PKå¯ä¸/FKå¼åå«</div><div class="o">OÂ·æ¬ä½èç¨¿</div></div>
+      <div class="card A"><b>è§åææ¡£æ½å A2</b><div class="i">IÂ·è§åææ¡£[LLM]</div><div class="p">PÂ·æ½åâåé</div><div class="o">OÂ·è§ååé</div></div>
+      <div class="card A"><b>æ¬ä½åå¸ A4</b><div class="i">IÂ·èç¨¿/ç±»å/é¾è·¯</div><div class="p">PÂ·çæ¬ååå¸</div><div class="o">OÂ·OntologyType/Link/Ver</div></div>
     </div>
-    <!-- ④ 对象化 -->
-    <div class="col"><h3>④ 对象化 A4</h3>
-      <div class="card A"><b>对象物化</b><div class="i">I·RawDataset+类型</div><div class="p">P·幂等 materialize</div><div class="o">O·ObjectInstance+Link</div><div class="p">(origin 可溯 rawDataset/row)</div></div>
-      <div class="card A"><b>实体解析 OC1</b><div class="i">I·多源同实体</div><div class="p">P·归一匹配+人审合并</div><div class="o">O·golden对象(72h可还原)</div></div>
+    <div class="conn">▸</div>
+    <!-- â£ å¯¹è±¡å -->
+    <div class="col"><h3>â£ å¯¹è±¡å A4</h3>
+      <div class="card A"><b>å¯¹è±¡ç©å</b><div class="i">IÂ·RawDataset+ç±»å</div><div class="p">PÂ·å¹ç­ materialize</div><div class="o">OÂ·ObjectInstance+Link</div><div class="p">(origin å¯æº¯ rawDataset/row)</div></div>
+      <div class="card A"><b>å®ä½è§£æ OC1</b><div class="i">IÂ·å¤æºåå®ä½</div><div class="p">PÂ·å½ä¸å¹é+äººå®¡åå¹¶</div><div class="o">OÂ·goldenå¯¹è±¡(72hå¯è¿å)</div></div>
     </div>
-    <!-- ⑤ 加工 -->
-    <div class="col"><h3>⑤ 加工 A4/A6/A8</h3>
-      <div class="card A"><b>派生 A4</b><div class="i">I·对象+派生DSL</div><div class="p">P·topo 增量重算</div><div class="o">O·派生属性</div></div>
-      <div class="card A"><b>切片 A6</b><div class="i">I·对象图+SliceSpec+Policy</div><div class="p">P·逐跳遍历+行级过滤</div><div class="o">O·子图(nodes/edges)</div></div>
-      <div class="card A"><b>时序 A8</b><div class="i">I·时序上传/tick</div><div class="p">P·聚合+延迟到达</div><div class="o">O·ts点→快照属性/曲线</div></div>
-      <div class="card A"><b>知识库 S4</b><div class="i">I·KbDoc</div><div class="p">P·索引/向量化</div><div class="o">O·KbChunk→检索</div></div>
+    <div class="conn">▸</div>
+    <!-- â¤ å å·¥ -->
+    <div class="col"><h3>â¤ å å·¥ A4/A6/A8</h3>
+      <div class="card A"><b>æ´¾ç A4</b><div class="i">IÂ·å¯¹è±¡+æ´¾çDSL</div><div class="p">PÂ·topo å¢ééç®</div><div class="o">OÂ·æ´¾çå±æ§</div></div>
+      <div class="card A"><b>åç A6</b><div class="i">IÂ·å¯¹è±¡å¾+SliceSpec+Policy</div><div class="p">PÂ·éè·³éå+è¡çº§è¿æ»¤</div><div class="o">OÂ·å­å¾(nodes/edges)</div></div>
+      <div class="card A"><b>æ¶åº A8</b><div class="i">IÂ·æ¶åºä¸ä¼ /tick</div><div class="p">PÂ·èå+å»¶è¿å°è¾¾</div><div class="o">OÂ·tsç¹âå¿«ç§å±æ§/æ²çº¿</div></div>
+      <div class="card A"><b>ç¥è¯åº S4</b><div class="i">IÂ·KbDoc</div><div class="p">PÂ·ç´¢å¼/åéå</div><div class="o">OÂ·KbChunkâæ£ç´¢</div></div>
     </div>
-    <!-- ⑥ 推演 -->
-    <div class="col"><h3>⑥ 推演 A5/S1</h3>
-      <div class="card A"><b>规则引擎 A5</b><div class="i">I·对象+规则DSL</div><div class="p">P·评估(BLOCK短路)</div><div class="o">O·RuleVerdict</div></div>
-      <div class="card A"><b>求解器 S1（28）</b><div class="i">I·对象图/切片+参数</div><div class="p">P·确定性compute/多跳</div><div class="o">O·瓶颈/风险/毛利…</div><div class="p">R6 同输入同输出</div></div>
-      <div class="card A"><b>CP-SAT sidecar</b><div class="i">I·最优化模型</div><div class="p">P·OR-Tools(自托管)</div><div class="o">O·可证最优解</div></div>
-      <div class="card A"><b>校准 M11</b><div class="i">I·预测↔实际</div><div class="p">P·EMA/重放归因</div><div class="o">O·求解器参数(版本化)</div></div>
+    <div class="conn">▸</div>
+    <!-- â¥ æ¨æ¼ -->
+    <div class="col"><h3>â¥ æ¨æ¼ A5/S1</h3>
+      <div class="card A"><b>è§åå¼æ A5</b><div class="i">IÂ·å¯¹è±¡+è§åDSL</div><div class="p">PÂ·è¯ä¼°(BLOCKç­è·¯)</div><div class="o">OÂ·RuleVerdict</div></div>
+      <div class="card A"><b>æ±è§£å¨ S1ï¼28ï¼</b><div class="i">IÂ·å¯¹è±¡å¾/åç+åæ°</div><div class="p">PÂ·ç¡®å®æ§compute/å¤è·³</div><div class="o">OÂ·ç¶é¢/é£é©/æ¯å©â¦</div><div class="p">R6 åè¾å¥åè¾åº</div></div>
+      <div class="card A"><b>CP-SAT sidecar</b><div class="i">IÂ·æä¼åæ¨¡å</div><div class="p">PÂ·OR-Tools(èªæç®¡)</div><div class="o">OÂ·å¯è¯æä¼è§£</div></div>
+      <div class="card A"><b>æ ¡å M11</b><div class="i">IÂ·é¢æµâå®é</div><div class="p">PÂ·EMA/éæ¾å½å </div><div class="o">OÂ·æ±è§£å¨åæ°(çæ¬å)</div></div>
     </div>
-    <!-- ⑦ 行动 -->
-    <div class="col"><h3>⑦ 行动 S2</h3>
-      <div class="card A"><b>Action 审批 S2</b><div class="i">I·ActionDraft(求解建议/用户)</div><div class="p">P·审批 R4 → EXECUTED</div><div class="o">O·写回对象 props</div><div class="x">→二次派生+回声对账</div></div>
+    <div class="conn">▸</div>
+    <!-- â¦ è¡å¨ -->
+    <div class="col"><h3>â¦ è¡å¨ S2</h3>
+      <div class="card A"><b>Action å®¡æ¹ S2</b><div class="i">IÂ·ActionDraft(æ±è§£å»ºè®®/ç¨æ·)</div><div class="p">PÂ·å®¡æ¹ R4 â EXECUTED</div><div class="o">OÂ·ååå¯¹è±¡ props</div><div class="x">âäºæ¬¡æ´¾ç+åå£°å¯¹è´¦</div></div>
     </div>
-    <!-- ⑧ 编排 -->
-    <div class="col"><h3>⑧ 编排（AgentCore）</h3>
-      <div class="card B"><b>QOS 编排</b><div class="i">I·问句 Query</div><div class="p">P·classify→路径A/B→SSE</div><div class="o">O·AnswerBlock</div></div>
-      <div class="card B"><b>意图/执行计划</b><div class="i">I·Intent(planRef)</div><div class="p">P·→计划步骤</div><div class="o">O·step序列</div></div>
-      <div class="card B"><b>Workflow B2</b><div class="i">I·计划 steps</div><div class="p">P·OBO HTTP→A 取数/求解</div><div class="o">O·stepOutputs</div></div>
-      <div class="card B"><b>Agent/Skill/MCP</b><div class="i">I·定义+问句[LLM]/MCP工具</div><div class="p">P·工具循环/tools.call(OBO)</div><div class="o">O·Answer(路径B)</div></div>
-      <div class="card B"><b>场景启动器 B5</b><div class="i">I·Scenario(preset+intent+view)</div><div class="p">P·launch 注入 slots</div><div class="o">O·→QOS→targetView</div></div>
-      <div class="card B"><b>Agent 评测</b><div class="i">I·用例(20场景种子)</div><div class="p">P·真跑QOS比对期望</div><div class="o">O·回归门(通过率)</div></div>
+    <div class="conn">▸</div>
+    <!-- â§ ç¼æ -->
+    <div class="col"><h3>â§ ç¼æï¼AgentCoreï¼</h3>
+      <div class="card B"><b>QOS ç¼æ</b><div class="i">IÂ·é®å¥ Query</div><div class="p">PÂ·classifyâè·¯å¾A/BâSSE</div><div class="o">OÂ·AnswerBlock</div></div>
+      <div class="card B"><b>æå¾/æ§è¡è®¡å</b><div class="i">IÂ·Intent(planRef)</div><div class="p">PÂ·âè®¡åæ­¥éª¤</div><div class="o">OÂ·stepåºå</div></div>
+      <div class="card B"><b>Workflow B2</b><div class="i">IÂ·è®¡å steps</div><div class="p">PÂ·OBO HTTPâA åæ°/æ±è§£</div><div class="o">OÂ·stepOutputs</div></div>
+      <div class="card B"><b>Agent/Skill/MCP</b><div class="i">IÂ·å®ä¹+é®å¥[LLM]/MCPå·¥å·</div><div class="p">PÂ·å·¥å·å¾ªç¯/tools.call(OBO)</div><div class="o">OÂ·Answer(è·¯å¾B)</div></div>
+      <div class="card B"><b>åºæ¯å¯å¨å¨ B5</b><div class="i">IÂ·Scenario(preset+intent+view)</div><div class="p">PÂ·launch æ³¨å¥ slots</div><div class="o">OÂ·âQOSâtargetView</div></div>
+      <div class="card B"><b>Agent è¯æµ</b><div class="i">IÂ·ç¨ä¾(20åºæ¯ç§å­)</div><div class="p">PÂ·çè·QOSæ¯å¯¹ææ</div><div class="o">OÂ·åå½é¨(éè¿ç)</div></div>
     </div>
-    <!-- ⑨ 呈现 -->
-    <div class="col"><h3>⑨ 呈现（前端）</h3>
-      <div class="card P"><b>业务视图</b><div class="i">I·A/B REST + SSE</div><div class="p">P·renderer 分发渲染</div><div class="o">O·规划/推演/驾驶舱</div></div>
-      <div class="card P"><b>对话坞 QueryDock</b><div class="i">I·用户问句</div><div class="p">P·SSE 流式</div><div class="o">O·答案块(table/kpi/draft)</div></div>
-      <div class="card P"><b>管理台(20+页)</b><div class="i">I·两系统配置</div><div class="p">P·CRUD+发布</div><div class="o">O·连接器/本体/规则/Agent/场景</div></div>
-      <div class="card F"><b>数据构建发动机页</b><div class="i">I·故事/产物</div><div class="p">P·全栈倒推可视</div><div class="o">O·历史推演+一键推演</div></div>
+    <div class="conn">▸</div>
+    <!-- â¨ åç° -->
+    <div class="col"><h3>â¨ åç°ï¼åç«¯ï¼</h3>
+      <div class="card P"><b>ä¸å¡è§å¾</b><div class="i">IÂ·A/B REST + SSE</div><div class="p">PÂ·renderer ååæ¸²æ</div><div class="o">OÂ·è§å/æ¨æ¼/é©¾é©¶è±</div></div>
+      <div class="card P"><b>å¯¹è¯å QueryDock</b><div class="i">IÂ·ç¨æ·é®å¥</div><div class="p">PÂ·SSE æµå¼</div><div class="o">OÂ·ç­æ¡å(table/kpi/draft)</div></div>
+      <div class="card P"><b>ç®¡çå°(20+é¡µ)</b><div class="i">IÂ·ä¸¤ç³»ç»éç½®</div><div class="p">PÂ·CRUD+åå¸</div><div class="o">OÂ·è¿æ¥å¨/æ¬ä½/è§å/Agent/åºæ¯</div></div>
+      <div class="card F"><b>æ°æ®æå»ºåå¨æºé¡µ</b><div class="i">IÂ·æäº/äº§ç©</div><div class="p">PÂ·å¨æ åæ¨å¯è§</div><div class="o">OÂ·åå²æ¨æ¼+ä¸é®æ¨æ¼</div></div>
     </div>
   </div>
 
   <div class="sec">
-    <h2 style="color:#7a4d12">反馈回路（数据回流，使系统"成长"与"自洽"）</h2>
-    <div class="loop"><b>L1 数据构建发动机(FDE)</b>：故事脚本 → comprehend(真LLM / 关键词地板) → 倒推写回【②数据 · ③本体/规则 · ⑤切片 · ⑥求解器需求】+ ⑧B栈(计划/意图/场景/Agent DRAFT) → 进启动器可推演（StoryBuildRun 留痕）</div>
-    <div class="loop"><b>L2 自成长发动机(B)</b>：客户问句 → 缺口探针(7码：NO_INTENT/NO_SLICE/SOLVER_NOT_FOUND…) → 补法【缺数据走真人正门② / 否则落施工工单】 → LOOP 重跑 → 收敛(可答)。成长账本+工单持久化</div>
-    <div class="loop"><b>L3 校准回路</b>：⑤时序实际 ↔ ⑥预测快照 → EMA/重放归因 → 回写⑥求解器参数(版本化,可重放回测)</div>
-    <div class="loop"><b>L4 Action 真值写回</b>：⑦审批后 EXECUTED → 回写④对象 props → 触发⑤二次派生 + 写回回声对账(同值抑制/异值告警)</div>
+    <h2 style="color:#7a4d12">åé¦åè·¯ï¼æ°æ®åæµï¼ä½¿ç³»ç»"æé¿"ä¸"èªæ´½"ï¼</h2>
+    <div class="loop"><b>L1 æ°æ®æå»ºåå¨æº(FDE)</b>ï¼æäºèæ¬ â comprehend(çLLM / å³é®è¯å°æ¿) â åæ¨ååãâ¡æ°æ® Â· â¢æ¬ä½/è§å Â· â¤åç Â· â¥æ±è§£å¨éæ±ã+ â§Bæ (è®¡å/æå¾/åºæ¯/Agent DRAFT) â è¿å¯å¨å¨å¯æ¨æ¼ï¼StoryBuildRun ççï¼</div>
+    <div class="loop"><b>L2 èªæé¿åå¨æº(B)</b>ï¼å®¢æ·é®å¥ â ç¼ºå£æ¢é(7ç ï¼NO_INTENT/NO_SLICE/SOLVER_NOT_FOUNDâ¦) â è¡¥æ³ãç¼ºæ°æ®èµ°çäººæ­£é¨â¡ / å¦åè½æ½å·¥å·¥åã â LOOP éè· â æ¶æ(å¯ç­)ãæé¿è´¦æ¬+å·¥åæä¹å</div>
+    <div class="loop"><b>L3 æ ¡ååè·¯</b>ï¼â¤æ¶åºå®é â â¥é¢æµå¿«ç§ â EMA/éæ¾å½å  â ååâ¥æ±è§£å¨åæ°(çæ¬å,å¯éæ¾åæµ)</div>
+    <div class="loop"><b>L4 Action çå¼åå</b>ï¼â¦å®¡æ¹å EXECUTED â ååâ£å¯¹è±¡ props â è§¦åâ¤äºæ¬¡æ´¾ç + åååå£°å¯¹è´¦(åå¼æå¶/å¼å¼åè­¦)</div>
   </div>
 
   <div class="sec">
-    <h2 style="color:#7a2a2a">横切关注点（贯穿每个模块的读写）</h2>
+    <h2 style="color:#7a2a2a">æ¨ªåå³æ³¨ç¹ï¼è´¯ç©¿æ¯ä¸ªæ¨¡åçè¯»åï¼</h2>
     <div class="xcut">
-      <div class="xc"><b>R2 多租户隔离</b>所有仓储读写/事件/缓存键带 tenantId；跨租户一律 403/404</div>
-      <div class="xc"><b>R3 Entitlement 门控</b>功能关闭=不存在→404；先于 authz（feature 先判）</div>
-      <div class="xc"><b>A6 行级过滤</b>Policy 贯穿 query/slice/solver 读出；无权子树整条不出现</div>
-      <div class="xc"><b>OutboxEvent → 前端失效</b>任意产出(上传/发布/审批/tick)发事件；下游页订阅刷新(D-29, SLO≤60s)</div>
+      <div class="xc"><b>R2 å¤ç§æ·éç¦»</b>ææä»å¨è¯»å/äºä»¶/ç¼å­é®å¸¦ tenantIdï¼è·¨ç§æ·ä¸å¾ 403/404</div>
+      <div class="xc"><b>R3 Entitlement é¨æ§</b>åè½å³é­=ä¸å­å¨â404ï¼åäº authzï¼feature åå¤ï¼</div>
+      <div class="xc"><b>A6 è¡çº§è¿æ»¤</b>Policy è´¯ç©¿ query/slice/solver è¯»åºï¼æ æå­æ æ´æ¡ä¸åºç°</div>
+      <div class="xc"><b>OutboxEvent â åç«¯å¤±æ</b>ä»»æäº§åº(ä¸ä¼ /åå¸/å®¡æ¹/tick)åäºä»¶ï¼ä¸æ¸¸é¡µè®¢éå·æ°(D-29, SLOâ¤60s)</div>
     </div>
   </div>
 
   <div class="legend">
-    <span><b>图例：</b></span>
+    <span><b>å¾ä¾ï¼</b></span>
     <span><span class="sw" style="background:#dceafc;border:1px solid #4C7BE0"></span>DataCore A</span>
     <span><span class="sw" style="background:#e2f3ea;border:1px solid #3aa76d"></span>AgentCore B</span>
-    <span><span class="sw" style="background:#ece6f9;border:1px solid #7e5bd6"></span>前端</span>
-    <span><span class="sw" style="background:#fde7d6;border:1px solid #d79b3a"></span>发动机/故事/回路</span>
-    <span><span class="sw" style="background:#fdeaea;border:1px solid #c0504d"></span>横切不变量</span>
-    <span>I=输入 · P=过程 · O=输出</span>
+    <span><span class="sw" style="background:#ece6f9;border:1px solid #7e5bd6"></span>åç«¯</span>
+    <span><span class="sw" style="background:#fde7d6;border:1px solid #d79b3a"></span>åå¨æº/æäº/åè·¯</span>
+    <span><span class="sw" style="background:#fdeaea;border:1px solid #c0504d"></span>æ¨ªåä¸åé</span>
+    <span>I=è¾å¥ Â· P=è¿ç¨ Â· O=è¾åº</span>
   </div>
-  <div class="note">松耦合：AgentCore B 只经 DataCore A 的公开 REST（OBO 透传用户身份）取数；前端是两系统汇合点（dual baseURL，部署态经网关同源）。</div>
+  <div class="note">æ¾è¦åï¼AgentCore B åªç» DataCore A çå¬å¼ RESTï¼OBO éä¼ ç¨æ·èº«ä»½ï¼åæ°ï¼åç«¯æ¯ä¸¤ç³»ç»æ±åç¹ï¼dual baseURLï¼é¨ç½²æç»ç½å³åæºï¼ã</div>
 </div>
 </body>
 </html>
