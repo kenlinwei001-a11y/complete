@@ -196,6 +196,8 @@ export class OpenAiLlmClient implements FullLlmClient {
         /* slot extraction is best effort — malformed slot JSON degrades to {} */
       }
     }
+    // 不完整结果（既无候选意图、又未明确判域外）= 退化输出（温度强制模型偶发）→ 当作可解析失败触发重试。
+    if (parsed.data.candidates.length === 0 && !parsed.data.outOfCatalog) throw new ClassifierParseError();
     return {
       candidates: parsed.data.candidates,
       outOfCatalog: parsed.data.outOfCatalog,

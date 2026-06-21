@@ -37,6 +37,25 @@ describe("OpenAI 适配器 · classify 重试（思维型模型偶发不可解�
     expect(r.candidates[0]!.intentKey).toBe("affected_orders");
   });
 
+  it("不完整结果(空候选+非域外) → 视为失败重试；下次有效 → 成功", async () => {
+    const incomplete = JSON.stringify({ candidates: [], outOfCatalog: false, extractedSlots: {} });
+    const { client, calls } = stubClient([incomplete, VALID]);
+    const a = new OpenAICompatAdapter({ client: client as never });
+    const r = await a.classify({ model: "m", system: "s", user: "u" });
+    expect(r.candidates[0]!.intentKey).toBe("affected_orders");
+    expect(calls.n).toBe(2);
+  });
+
+  it("合法域外(空候选+outOfCatalog=true) → 不重试，直接返回", async () => {
+    const outOfCat = JSON.stringify({ candidates: [], outOfCatalog: true, extractedSlots: {} });
+    const { client, calls } = stubClient([outOfCat]);
+    const a = new OpenAICompatAdapter({ client: client as never });
+    const r = await a.classify({ model: "m", system: "s", user: "u" });
+    expect(r.outOfCatalog).toBe(true);
+    expect(r.candidates).toEqual([]);
+    expect(calls.n).toBe(1); // 域外是合法答案,不重试
+  });
+
   it("连续 3 次都不可解析 → 抛错（有界重试）", async () => {
     const { client, calls } = stubClient([null, null, null]);
     const a = new OpenAICompatAdapter({ client: client as never });
