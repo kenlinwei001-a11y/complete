@@ -66,12 +66,13 @@
 ## Wave 2 · 引擎/能力（A1 是 A8/A7 暴露口；A13 让 A14 去抖；A4 依赖 A3/A11）
 
 - [ ] ⬜ **A1 · 28 求解器暴露为 MCP 工具**（MCP 页可治理 + agent 经 mcp-router 可调，OBO 代理到 /a/v1/solvers）。R3 R5 R8 R11。
-- [~] ◐ **A8 · 扩 CP-SAT 模型**：assignment（订单→基地/产线）/ sequencing（换型排序）/ packing（产能装箱）。R6。
-  **A8.1 ✅ assignment_optimize**：Python sidecar `solve_assignment`(CP-SAT：每 item 一指派 + Σweight≤cap + 资格 mask +
-  min Σcost·x + 二级目标消多解抖动 R6) + DataCore 代理 `assignmentOptimize`(loadContext 组 items/bins/costs，未配
-  OPTIMIZER_BASE_URL 显式"未接入"不兜底) + SOLVER_KEYS 29 + SOLVER_OUTPUT_SHAPES + `solveAssignment` client。
-  测试 a8-assignment-optimize ×4(取对象图组请求/未接入报错/校验/R2) + Python test_optimizer +3(可证最优@真 CP-SAT/
-  R6 字节一致/不可行)。回写本体 §2.E。**余**：A8.2 sequencing_optimize(换型矩阵) · A8.3 packing_optimize + 经 A1 MCP 暴露。
+- [x] ✅ **A8 · 扩 CP-SAT 模型**：assignment（订单→基地/产线）/ sequencing（换型排序）/ packing（产能装箱）。R6。
+  **A8.1 assignment_optimize · A8.2 sequencing_optimize · A8.3 packing_optimize 均 ✅**：Python sidecar 三模型
+  (assignment 每 item 一指派+容量+成本; sequencing AddCircuit 开放路径最小化换型; packing bin-packing 最小箱数+对称破除)
+  + DataCore 代理(loadContext 组请求，未配 OPTIMIZER_BASE_URL 显式"未接入"不兜底) + SOLVER_KEYS 31 + 输出形状 +
+  `solve{Assignment,Sequencing,Packing}` client。测试 a8-assignment ×4 + a8-sequencing-packing ×3(mock 接线) +
+  Python test_optimizer ×8(真 ortools 9.15：三模型可证最优 + R6 字节一致 + 不可行)。回写本体 §2.E(31 求解器)。
+  **余(低优先)**：经 A1 MCP 暴露(待 A1 落地后自动覆盖,3 个新求解器即成 mcp__solvers__ 工具)。
 - [x] ✅ **A13 · 通用图求解器地板语义确定化**（concentration_risk/supplier_disruption_radius 去 Kimi）。R6。
   `solvers/field-roles.ts resolveFieldRoles`：纯函数 + 结构信号(扇入/扇出/PK/数值) + 配置词库(`field-role-lexicon.ts` R14)
   + 固定 tie-break → root/sink/resource/priority(地板)/leaf 角色解析，**去 LLM 消歧(R6 字节一致)**；真歧义返回确定性排序候选
@@ -133,8 +134,8 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **4 ✅ + 3 ◐ / 23**（A11/A6/A4/A13 ✅）。
-- Wave 1 全清；Wave 2 进行中：✅ A4 · ✅ A13 · ◐ A8（A8.1 assignment done）。余 Wave 2：A1 求解器→MCP / A8.2 sequencing / A8.3 packing。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **5 ✅ + 2 ◐ / 23**（A11/A6/A4/A13/A8 ✅）。
+- Wave 1 全清；**Wave 2 仅余 A1**（A4 ✅ · A13 ✅ · A8 ✅；A8 的 3 个 CP-SAT 求解器等 A1 落地后经 MCP 暴露）。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。

@@ -120,3 +120,49 @@ def test_assignment_infeasible_no_eligible_bin():
     out = server.solve_assignment(payload)
     assert out["status"] == "INFEASIBLE"
     assert out["assignments"] == []
+
+
+def test_sequencing_minimize_changeovers():
+    """A8.2 排序：6 个 job 三种 group → 最优排序应把同 group 聚拢，换型 = group 数 - 1 = 2。"""
+    jobs = [
+        {"id": "j1", "group": "A"}, {"id": "j2", "group": "B"}, {"id": "j3", "group": "A"},
+        {"id": "j4", "group": "C"}, {"id": "j5", "group": "B"}, {"id": "j6", "group": "A"},
+    ]
+    out = server.solve_sequencing({"model": "sequencing", "seed": 42, "jobs": jobs})
+    assert out["status"] == "OPTIMAL"
+    assert out["changeovers"] == 2  # 3 组聚拢 → 2 次换型（最优）
+    # 同 group 相邻（聚拢）
+    seq_groups = [next(j["group"] for j in jobs if j["id"] == sid) for sid in out["sequence"]]
+    runs = sum(1 for k in range(len(seq_groups) - 1) if seq_groups[k] != seq_groups[k + 1])
+    assert runs == 2
+
+
+def test_sequencing_determinism_r6():
+    jobs = [{"id": f"j{i}", "group": g} for i, g in enumerate(["A", "B", "A", "B"])]
+    a = server.solve_sequencing({"model": "sequencing", "seed": 42, "jobs": jobs})
+    b = server.solve_sequencing({"model": "sequencing", "seed": 42, "jobs": jobs})
+    assert a == b
+
+
+def test_packing_min_bins():
+    """A8.3 装箱：items [6,5,4,3] 容量 10 → 最优 2 箱（6+4, 5+3 或 6+3, 5+4）。"""
+    items = [{"id": "a", "size": 6}, {"id": "b", "size": 5}, {"id": "c", "size": 4}, {"id": "d", "size": 3}]
+    out = server.solve_packing({"model": "packing", "seed": 42, "items": items, "binCapacity": 10})
+    assert out["status"] == "OPTIMAL"
+    assert out["binCount"] == 2  # 18/10 → 至少 2 箱，且可行
+    # 每箱 load ≤ 容量，全 item 装入
+    assert all(b["load"] <= 10 for b in out["bins"])
+    assert sorted(i for b in out["bins"] for i in b["items"]) == ["a", "b", "c", "d"]
+
+
+def test_packing_determinism_r6():
+    items = [{"id": chr(97 + i), "size": s} for i, s in enumerate([4, 4, 4, 4])]
+    a = server.solve_packing({"model": "packing", "seed": 42, "items": items, "binCapacity": 8})
+    b = server.solve_packing({"model": "packing", "seed": 42, "items": items, "binCapacity": 8})
+    assert a == b
+    assert a["binCount"] == 2  # 4 个 size4 → 每箱装 2 → 2 箱
+
+
+def test_packing_infeasible_oversize():
+    out = server.solve_packing({"model": "packing", "seed": 42, "items": [{"id": "x", "size": 99}], "binCapacity": 10})
+    assert out["status"] == "INFEASIBLE"

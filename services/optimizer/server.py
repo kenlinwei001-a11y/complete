@@ -141,7 +141,135 @@ def solve_assignment(payload: dict) -> dict:
     }
 
 
-MODELS = {"selection": solve_selection, "assignment": solve_assignment}
+def solve_sequencing(payload: dict) -> dict:
+    """A8.2 排序最优化：jobs 按 group 排序，最小化相邻 group 切换换型损失。开放路径（用 0 成本虚拟 depot 闭环）。
+
+    确定性：固定 seed + 单线程 + 二级目标（同换型成本下偏字典序）。换型矩阵缺省 = 不同 group 计 1。
+    """
+    jobs = payload.get("jobs") or []
+    if not jobs:
+        return {"status": "INFEASIBLE", "optimal": False, "sequence": [], "changeovers": 0, "objective": 0}
+    if len(jobs) == 1:
+        return {"status": "OPTIMAL", "optimal": True, "sequence": [str(jobs[0]["id"])], "changeovers": 0, "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+    ids = [str(j["id"]) for j in jobs]
+    groups = [str(j.get("group", "")) for j in jobs]
+    co = {(str(c["from"]), str(c["to"])): int(round(float(c.get("cost", 0)) * scale)) for c in (payload.get("changeover") or [])}
+
+    def cost(a: int, b: int) -> int:
+        ga, gb = groups[a], groups[b]
+        if (ga, gb) in co:
+            return co[(ga, gb)]
+        return 0 if ga == gb else scale  # 缺省：不同 group 计 1（×scale）
+
+    n = len(jobs)
+    depot = n  # 虚拟节点：到/从任一 job 成本 0 → 开放路径
+    model = cp_model.CpModel()
+    arcs = []
+    lit = {}
+    for i in range(n + 1):
+        for j in range(n + 1):
+            if i == j:
+                continue
+            v = model.NewBoolVar(f"a_{i}_{j}")
+            lit[(i, j)] = v
+            arcs.append((i, j, v))
+    model.AddCircuit(arcs)
+    # 目标：min Σ cost·arc（depot 弧成本 0）+ 二级 tie-break（弧索引消多解抖动）。
+    big = (n + 1) * (n + 1) + 1
+    obj = []
+    for (i, j), v in lit.items():
+        c = 0 if (i == depot or j == depot) else cost(i, j)
+        obj.append(c * big * v + (i * (n + 1) + j) * v)
+    model.Minimize(sum(obj))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "sequence": [], "changeovers": 0, "objective": 0}
+    # 从 depot 后继重建开放路径。
+    nxt = {i: j for (i, j), v in lit.items() if solver.Value(v) == 1}
+    order = []
+    cur = nxt[depot]
+    while cur != depot:
+        order.append(cur)
+        cur = nxt[cur]
+    changeovers = sum(1 for k in range(len(order) - 1) if groups[order[k]] != groups[order[k + 1]])
+    total = sum(cost(order[k], order[k + 1]) for k in range(len(order) - 1)) / scale
+    return {
+        "status": status_name,
+        "optimal": status == cp_model.OPTIMAL,
+        "sequence": [ids[i] for i in order],
+        "changeovers": changeovers,
+        "objective": round(total, 6),
+    }
+
+
+def solve_packing(payload: dict) -> dict:
+    """A8.3 装箱最优化：items(size) 装入容量 binCapacity 的 bin，最小化 bin 数（bin-packing）。
+
+    确定性：固定 seed + 单线程 + 二级目标（同 bin 数下偏靠前装箱）。
+    """
+    items = payload.get("items") or []
+    cap_raw = payload.get("binCapacity", 0)
+    if not items or float(cap_raw) <= 0:
+        return {"status": "INFEASIBLE", "optimal": False, "bins": [], "binCount": 0, "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+
+    def to_int(x: float) -> int:
+        return int(round(float(x) * scale))
+
+    ids = [str(it["id"]) for it in items]
+    sizes = [to_int(it.get("size", 0)) for it in items]
+    cap = to_int(cap_raw)
+    n = len(items)
+    max_bins = int(payload.get("maxBins", n))  # 最多 n 个 bin（每 item 独占）
+    if any(s > cap for s in sizes):
+        return {"status": "INFEASIBLE", "optimal": False, "bins": [], "binCount": 0, "objective": 0}
+
+    model = cp_model.CpModel()
+    x = {(i, b): model.NewBoolVar(f"x_{i}_{b}") for i in range(n) for b in range(max_bins)}
+    y = [model.NewBoolVar(f"y_{b}") for b in range(max_bins)]
+    for i in range(n):
+        model.Add(sum(x[(i, b)] for b in range(max_bins)) == 1)  # 每 item 恰一 bin
+    for b in range(max_bins):
+        model.Add(sum(sizes[i] * x[(i, b)] for i in range(n)) <= cap * y[b])  # 容量 + bin 启用
+    # 对称性破除：bin 按序启用（确定性，去等价解）。
+    for b in range(max_bins - 1):
+        model.Add(y[b] >= y[b + 1])
+    big = n * max_bins + 1
+    model.Minimize(sum(y) * big + sum((i * max_bins + b) * x[(i, b)] for i in range(n) for b in range(max_bins)))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "bins": [], "binCount": 0, "objective": 0}
+    bins = []
+    for b in range(max_bins):
+        if solver.Value(y[b]) != 1:
+            continue
+        members = [i for i in range(n) if solver.Value(x[(i, b)]) == 1]
+        if not members:
+            continue
+        bins.append({"items": [ids[i] for i in members], "load": round(sum(float(items[i].get("size", 0)) for i in members), 6)})
+    return {
+        "status": status_name,
+        "optimal": status == cp_model.OPTIMAL,
+        "bins": bins,
+        "binCount": len(bins),
+        "objective": len(bins),
+    }
+
+
+MODELS = {"selection": solve_selection, "assignment": solve_assignment, "sequencing": solve_sequencing, "packing": solve_packing}
 
 
 def dispatch(payload: dict) -> dict:

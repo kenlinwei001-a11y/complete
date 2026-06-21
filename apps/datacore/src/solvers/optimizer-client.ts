@@ -46,10 +46,48 @@ export interface AssignmentResult {
   objective: number;
 }
 
+// A8.2 排序最优化（产线换型排序）：把 jobs 按 group 排序，最小化相邻 group 切换的换型损失（默认每次切换=1，
+// 或给 changeover 矩阵 group→group 成本）。开放路径（非环）。
+export interface SequencingRequest {
+  model: "sequencing";
+  seed: number;
+  jobs: { id: string; group: string }[];
+  /** 可选换型成本矩阵（from group → to group）；缺省 = 不同 group 相邻计 1，同 group 计 0。 */
+  changeover?: { from: string; to: string; cost: number }[];
+}
+export interface SequencingResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  /** 最优生产顺序（job id 序）。 */
+  sequence: string[];
+  /** 换型次数（相邻 group 不同的段数）。 */
+  changeovers: number;
+  objective: number;
+}
+
+// A8.3 装箱最优化（产能装箱/排产填充）：items(size) 装入容量为 binCapacity 的 bin，最小化 bin 数（bin-packing 族）。
+export interface PackingRequest {
+  model: "packing";
+  seed: number;
+  items: { id: string; size: number }[];
+  binCapacity: number;
+  maxBins?: number;
+}
+export interface PackingResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  /** 每个使用中的 bin 及其装入的 item id。 */
+  bins: { items: string[]; load: number }[];
+  binCount: number;
+  objective: number;
+}
+
 export interface OptimizerClient {
   solve(req: OptimizationRequest): Promise<OptimizationResult>;
-  /** A8.1 指派（可选实现；未实现的 client 被调时抛"未接入"）。 */
+  /** A8.1 指派 / A8.2 排序 / A8.3 装箱（可选实现；未实现的 client 被调时抛"未接入"）。 */
   solveAssignment?(req: AssignmentRequest): Promise<AssignmentResult>;
+  solveSequencing?(req: SequencingRequest): Promise<SequencingResult>;
+  solvePacking?(req: PackingRequest): Promise<PackingResult>;
 }
 
 /** 生产实现：POST {baseUrl}/solve（背包）、/assignment（指派）。错误转平台错误信封风格的异常。 */
@@ -75,5 +113,13 @@ export class HttpOptimizerClient implements OptimizerClient {
 
   async solveAssignment(req: AssignmentRequest): Promise<AssignmentResult> {
     return this.post<AssignmentResult>("/solve", req); // sidecar 单端点按 model 判别（dispatch）
+  }
+
+  async solveSequencing(req: SequencingRequest): Promise<SequencingResult> {
+    return this.post<SequencingResult>("/solve", req);
+  }
+
+  async solvePacking(req: PackingRequest): Promise<PackingResult> {
+    return this.post<PackingResult>("/solve", req);
   }
 }
