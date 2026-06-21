@@ -241,6 +241,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | **R13** | **结论可溯源（信任 = 出处 + 推导可当场亮出）**：凡推演结论里的数字必为可溯源对象——悬浮即出 `{来源系统·新鲜度·推导公式·输入因子·关联规则·备注}`（参考 PRD §1.2/§4，与 R12 输入侧"字段全建模"对称的输出侧纪律）。源系统降级时，依赖它的派生数字自动标降级、置信度(P90)随之下调(C09)。覆盖优先级见 `docs/REFERENCE-HTML-INVENTORY.md` 信任章。 | `<Provenance>` + lineage 端点；前端 `provenance.test` |
 | R-一致 | **一个事实一个出处**：同一指标在驾驶舱/S&OP/体检口径一致（同一对象库派生），跨视图同值 | 单一对象库 + 聚合下推 |
 | **R14** | **应用层无业务常数（多租户）**：前端组件不得内联业务数据/结构/租户专属文案；一律来自本体/WorkspaceConfig/ViewConfig.layout/i18n。换租户=换配置不改代码。守护 G-5 不回潮。 | ✅ `debattery:check`（基线 0：无未声明业务常数；兜底逐行 `// debattery-allow`）；标杆 `DashboardView`/`LedgerView` |
+| **R15** | **CLI 对等（GUI↔CLI 平行同源）**：每个对外模块能力**必须有 CLI 等价命令**（注册进 `OPERATION_CATALOG`），经**同一 REST + R3 entitlement + R4 审批 + 事件总线**触发——新增模块/功能无 CLI 命令 = 功能洼地，**返工**。GUI-only 须显式声明理由。人与 code-agent 共用同一操作面。 | ⏳ `cli-parity:check`（待落，A15）；A15 覆盖矩阵（附录 A）；PRD 模板 §0 强制声明 CLI 打通 |
 
 ---
 
@@ -264,6 +265,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **`chain:check` 全链闭包门（第一块砖，R11）**：跨系统静态校验"场景声明的求解器 DataCore 必须注册"，否则路径A 全链断（SOLVER_NOT_FOUND）即红 · `scripts/check-chain-closure.mjs`，`pnpm chain:check`。
 - **`debattery:check` 去电池锁死门（R14）**：静态扫描前端视图/页内联的业务常数（基地名/型号/工序/产品段）；棘轮基线 `scripts/debattery-baseline.json` 防回潮——命中超基线即红 · `scripts/check-debattery.mjs`，`pnpm debattery:check`。`// debattery-allow` 豁免必要兜底。
 - **`prd:check` PRD 库结构化门（治理 #2）**：解析每篇 PRD 的《本体引用与影响》§0 → 写机器可读索引 `docs/prd-ontology-index.json`（PRD↔不变量/断点，需求↔制品↔缺口可查）；校验引用的 R/G 在本体真实存在（悬空引用即红），报告断点 PRD 覆盖与缺口、遗留 PRD 缺 §0（告警） · `scripts/check-prd-ontology.mjs`，`pnpm prd:check`。
+- **`cli-parity:check` CLI 对等门（R15，待落 A15）**：静态校验"模块/操作注册表 ⊆ CLI `OPERATION_CATALOG`/子命令"——新增对外模块能力无 CLI 命令即红（棘轮基线防回潮，`// cli-only` 豁免需注明理由）· `scripts/check-cli-parity.mjs`，`pnpm cli-parity:check`。详 `docs/PRD-A15-cli-universal-operation-shell.md`。
 - **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。
 - **场景接线回归**（守护 G-1）：20 场景全有意图+计划+求解器 · `apps/agentcore/test/scenarios-wiring.test.ts`。
 - **本体必读强制**（治理）：CLAUDE.md 铁律 0 + SessionStart 钩子（从 §8 动态注入未修断点，结构上不漂）+ `/ontology` skill。

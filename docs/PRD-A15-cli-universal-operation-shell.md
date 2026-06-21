@@ -20,6 +20,7 @@
   - **R6 确定性**：操作本身确定（合成/建模/规则求值）；意图分类用 LLM（mock 测试 / 真 Kimi env-gated），**分类不确定不影响被触发操作的确定性**。
   - **R13 可溯源**：CLI 输出的结论数字带溯源（answer + validationTrace 文本化）。
   - **R2** 租户隔离：CLI session 带 tenantId。
+  - **R15 CLI 对等（本 PRD 定义）**：本 PRD 即 R15 的来源——确立"每个对外模块能力必须有 CLI 等价命令"为系统不变量 + `cli-parity:check` 门 + PRD 模板必填（见 §10/§11，已回写本体 §5/§7）。
 - **关闭/影响断点**（§8）：补 **G-3**（CLI 作为第四个场景/操作启动器入口，与 ⌘K/目录/首页并列）；让"人与 code-agent 共用同一操作面"（CLI 即 agent 可驱动的接口）。
 - **门禁**（§7）：跨服务联调冒烟（CLI → 真 DataCore/AgentCore 端到端）· `chain:check`（操作路由命中真实端点）· `ontology:check`（事件锚不漂）· CLI 回归脚本。
 - **回写承诺**：回写本体 §2.H（CLI 通用操作外壳 + OperationIntent）· §3（CLI→操作链）· §8（G-3 第四入口）· §10.3（`sys.orch.query_to_answer` 客户端补 CLI 操作面）。
@@ -99,6 +100,23 @@ R8（JWT）· R4（写经审批，CLI 内批）· R3（entitlement 路由）· R
 2. **意图路由落点**：默认加一个轻量 `POST /b/v1/operations/classify`（服务端分类，CLI 瘦客户端，便于人机共用 + 真 Kimi）。若你希望**纯客户端关键词路由**（不加端点、离线可用），告诉我。
 
 > 基线分支：CLI(scripts) + AgentCore 轻端点为主，冲突小。依赖 A1(求解器调用)/A3(能力发现)/A5(建域)/A10(验证)——可独立先做 import/model/rule 三条，solver/build 随依赖项就绪接入。
+
+## 10. 永续机制：让"未来新功能必须 CLI 打通"不靠自觉（不变量 + 门禁 + 模板）
+
+> 仅靠附录 A 的时点矩阵会随新功能漂移。本节把"CLI 对等"固化为**三件套永续机制**（已回写本体）：
+
+1. **不变量 R15「CLI 对等」**（本体 §5 已新增）：每个对外模块能力**必须有 CLI 等价命令**（注册 `OPERATION_CATALOG`），经同一 REST + R3 + R4 + 事件触发；新模块无 CLI = 功能洼地，返工。GUI-only 须显式声明理由。
+2. **门禁 `cli-parity:check`**（本体 §7 已登记，A15 落 `scripts/check-cli-parity.mjs`）：静态校验"模块/操作注册表 ⊆ `OPERATION_CATALOG`/CLI 子命令"——新增对外能力无 CLI 命令即 **CI 红**；棘轮基线 `scripts/cli-parity-baseline.json` 防回潮；`// cli-only` 豁免须注明理由。**与 `debattery:check`/`chain:check` 同款治理范式**。
+3. **PRD 模板 §0 强制声明**（`docs/_PRD-TEMPLATE.md` 已加"CLI 打通（R15，强制）"必填行）：今后**每篇 PRD** 在《本体引用与影响》必须声明其 CLI 等价命令或 GUI-only 理由；`prd:check` 解析校验（缺失告警）。
+4. **注册即对等**：新模块端点落地时，**同 PR 必须在 `OPERATION_CATALOG` 注册 CLI 命令**（与"新表四处同改 R9"同纪律），否则 `cli-parity:check` 红。
+
+→ 三者叠加：新功能**没法绕过 CLI**（模板逼声明 + 门禁逼实现 + 不变量定纪律），CLI 对等从"自觉"变"强制"。
+
+## 11. 回写本体（已落）
+- §5 新增 **R15 CLI 对等**（不变量表）。
+- §7 新增 **`cli-parity:check`** 门（待落脚本 A15）。
+- `_PRD-TEMPLATE.md` §0 加"CLI 打通（R15，强制）"必填项 + 不变量范围 R1–R15。
+- 实现期再回写 §2.H（CLI 通用操作外壳 + OperationIntent）· §3（CLI→操作链）· §8（G-3 第四入口）· §10.3（`sys.orch.query_to_answer` 客户端补 CLI 操作面）。
 
 ---
 
