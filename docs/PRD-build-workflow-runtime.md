@@ -10,9 +10,9 @@
 ## 0. 本体引用与影响（强制 · 不填即未读本体）
 
 **触及对象类型**（本体 §2）：
-- 既有：BuildPlan / BuildJob / ClosureReport / DataBuilderAgent · StoryBuildRun · ScaffoldManifest/ScaffoldReceipt(DTO) · Connector / RawDataset · SliceSpec · Solver(SOLVER_KEYS)。
-- **新增对象类型（已回写 §2 数据接入域，追加新行）**：**BuildWorkflowRun**（一次"故事→建域"的持久化执行记录：串 6 步 `BuildWorkflowStep`{stepKey/status/attempts/maxAttempts/计时/error/checkpoint} + 累积 context + storyRunId）。
-- 传输/内部契约（仅 contracts，不入 §2 持久本体）：`BuildWorkflowStep` / `BuildStepError` / `BuildWorkflowStartBody`。
+- 既有：BuildPlan / BuildJob / ClosureReport / DataBuilderAgent · StoryBuildRun · ScaffoldManifest/ScaffoldReceipt(DTO) · Connector / RawDataset · SliceSpec · Solver(SOLVER_KEYS) · Intent/ExecutionPlan/Workflow/Skill/Agent/Scene/MCP(B 栈)。
+- **新增对象类型（已回写 §2 数据接入域，追加新行）**：**BuildWorkflowRun**（一次"故事→建域"的持久化执行记录：串 7 步 `BuildWorkflowStep`{stepKey/status/attempts/maxAttempts/计时/error/checkpoint} + 累积 context + storyRunId）。
+- 传输/内部契约（仅 contracts，不入 §2 持久本体）：`BuildWorkflowStep` / `BuildStepError` / `BuildWorkflowStartBody` · **`GapAnalysis`/`GapAnalysisEntry`/`GapItem`/`ModuleKind`（比对现状统一 diff）**。`StoryBuildRun.gapAnalysis` 字段新增。
 
 **触及链路**（§3）：数据构建发动机链（StoryScript→BuildPlan→ClosureReport→…→真值）。新增执行容器：链上 HARD 门以 `BuildWorkflowEngine` 的 6 步状态机（dry_build→cross_scaffold→publish_build→validation→inference→record）承载；`runStory` 与新端点共用同一组步骤（单一执行路径）。
 
@@ -42,6 +42,8 @@
 5. **两轴分离**：工作流执行状态（跑完=SUCCEEDED）与业务结论（StoryBuildRun.status，可 BLOCKED）解耦——闭包未过是合法业务结论（步 SKIPPED + 工作流 SUCCEEDED + StoryBuildRun FAILED），不是基础设施失败。
 6. **单一执行路径**：`runStory`（旧端点）与新工作流端点共用同一组步骤，无双实现漂移。
 
+7. **比对现状（gap_analysis）一等步 + ModuleProvisioner 注册表**：把"倒序"管线 query→倒推 BuildPlan→**比对系统现状**→创建 的接缝做成可见的一等步——倒推的每类配套模块对照系统现状产出 `EXISTS(复用)/TO_CREATE(需新建)/MISSING(不能自动建→工单)` 的跨模块统一 diff。**模块全集 = BuildPlan 13 个 need 数组**，一一对应 13 个 provisioner（内容类 dataset/kb_doc · 结构类 ontology_type/rule/slice · 代码类 solver · 跨系统类 intent/plan/workflow/skill/agent/scene/mcp）。**无遗漏 + 未来强制纳入**：覆盖门断言 BuildPlan 每个根级数组字段都已登记并注册 provisioner，新增模块未注册即测试红。合成数据模块 = `DatasetProvisioner` 的创建后端（是某 provisioner 的后端实现，非并列制品）。
+
 ### 1.2 非目标
 - 不做通用工作流编排引擎/可视化 DAG 编辑器（步骤序由代码定义，非用户编排）。
 - 不复用 AgentCore B2 Workflow（FDE 在 DataCore，复用 B 会反转 A→B 松耦合）。
@@ -57,7 +59,8 @@
 - `apps/datacore/src/app.ts`：`POST/GET /a/v1/databuilder/workflow-runs`、`POST …/:id/resume`。
 - `apps/datacore/src/repo/{repo.ts,memory.ts,pg.ts}` + `apps/datacore/migrations/023_build_workflow_runs.sql`（R9 四处）。
 - `apps/datacore/test/build-workflow-engine.test.ts`：引擎工业级保证单测（happy/重试/致命/重试上限/崩溃重入/失败自愈/R2 隔离/跳过）+ HTTP 端到端。
-- `apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx WorkflowTimelinePanel` + `api/endpoints.ts`（fetch/start/resumeWorkflowRun）+ `mocks/handlers.ts`（4 端点 mock）+ `test/f55.workflow-timeline.test.tsx`：前端时间线（逐运行/逐步状态/尝试/计时/错误 + 一键 resume）。
+- `apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx WorkflowTimelinePanel` + `api/endpoints.ts`（fetch/start/resumeWorkflowRun）+ `mocks/handlers.ts`（4 端点 mock）+ `test/f55.workflow-timeline.test.tsx`：前端时间线（逐运行/逐步状态/尝试/计时/错误 + 一键 resume + 比对现状表 `GapAnalysisTable`）。
+- `apps/datacore/src/databuilder/provisioners.ts`：`MODULE_PROVISIONERS`（13 类）· `NEED_ARRAY_TO_KIND` · `analyzeGap` · `summarizeGap`；`service.ts buildStorySteps` 新增 `gap_analysis` 步。`apps/datacore/test/provisioners.test.ts`：无遗漏覆盖门 + analyzeGap 正确性。
 
 ## 3. 验收
 
@@ -70,3 +73,4 @@
 - **AC7 端到端**：`POST /workflow-runs` 全步终态 + storyRunId 落 StoryBuildRun + GET 可观测；旧端点同源无回归。✓。
 - **AC8 无回归**：datacore 全套（449）绿；`pnpm gates` 全通过。✓。
 - **AC9 前端时间线**：`/admin/data-builder` 工作流面板逐运行/逐步可观测（状态/尝试/计时/结构化错误）；失败运行一键 resume → 断点消失、运行收敛。✓ F55。
+- **AC10 比对现状无遗漏**：`gap_analysis` 步产出跨模块统一 diff（需要/复用/新建/缺）；13 个 provisioner 覆盖 BuildPlan 全部根级 need 数组，新增模块未注册即测试红；前端 `GapAnalysisTable` 渲染（含"缺"标红）。✓ provisioners.test + F55。

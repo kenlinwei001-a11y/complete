@@ -356,3 +356,47 @@ export const BuildWorkflowStartBodySchema = z.object({
   builderKey: z.string().optional(),
 });
 export type BuildWorkflowStartBody = z.infer<typeof BuildWorkflowStartBodySchema>;
+
+// ---- 比对现状（gap_analysis）· ModuleProvisioner 注册表的统一产物 ----------------
+// "倒序"管线的接缝：query→倒推 BuildPlan→**比对系统现状**→创建缺的。把散在 gap 阶段/闭包/scaffold
+// 三处的"需要 vs 已有"收敛成一张跨模块统一 diff。模块全集 = BuildPlan 的全部 need 数组（13 类），
+// 一一对应注册表里的 ModuleProvisioner——新增模块必须注册（覆盖门禁强制，见 provisioners.test）。
+
+/** 模块全集（= BuildPlan 13 个 need 数组）。新增 BuildPlan need 数组 → 必须在此追加并注册 provisioner。 */
+export const MODULE_KINDS = [
+  // 内容类（content）：产数据/文档
+  "dataset", "kb_doc",
+  // 结构类（structure，DataCore 本体栈）
+  "ontology_type", "rule", "slice",
+  // 代码类（check-only）：求解器是代码，不能自动建 → 缺则落工单
+  "solver",
+  // 跨系统类（cross_system，AgentCore B 栈，经 scaffold 创建）
+  "intent", "plan", "workflow", "skill", "agent", "scene", "mcp",
+] as const;
+export const ModuleKindSchema = z.enum(MODULE_KINDS);
+export type ModuleKind = z.infer<typeof ModuleKindSchema>;
+
+/** EXISTS=已有可复用 · TO_CREATE=需新建（可自动建）· MISSING=不能自动建（如求解器代码→工单）。 */
+export const GapStatusSchema = z.enum(["EXISTS", "TO_CREATE", "MISSING"]);
+export type GapStatus = z.infer<typeof GapStatusSchema>;
+
+export const GapItemSchema = z.object({ key: z.string(), status: GapStatusSchema });
+export type GapItem = z.infer<typeof GapItemSchema>;
+
+export const GapAnalysisEntrySchema = z.object({
+  kind: ModuleKindSchema,
+  side: z.enum(["content", "structure", "code", "cross_system"]),
+  needed: z.number().int(),
+  existing: z.number().int(),
+  toCreate: z.number().int(),
+  missing: z.number().int(),
+  items: z.array(GapItemSchema),
+});
+export type GapAnalysisEntry = z.infer<typeof GapAnalysisEntrySchema>;
+
+export const GapAnalysisSchema = z.object({
+  entries: z.array(GapAnalysisEntrySchema),
+  totals: z.object({ needed: z.number().int(), existing: z.number().int(), toCreate: z.number().int(), missing: z.number().int() }),
+  generatedAt: z.string(),
+});
+export type GapAnalysis = z.infer<typeof GapAnalysisSchema>;

@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
+import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
 import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun } from "@/api/endpoints";
@@ -438,6 +438,40 @@ const WF_STATUS_COLOR: Record<string, string> = {
   PENDING: "var(--muted2, #555)",
 };
 
+const GAP_SIDE_LABEL: Record<string, string> = { content: "内容", structure: "结构", code: "代码", cross_system: "跨系统" };
+/**
+ * 比对现状表（gap_analysis 步的统一 diff）：倒推 BuildPlan vs 系统现状 → 每类配套模块
+ * 需要/复用/新建/缺。这是"倒序"管线的接缝可视化——一眼看清"要建什么、能复用什么、缺什么"。
+ */
+function GapAnalysisTable({ gap }: { gap: GapAnalysis }) {
+  return (
+    <div style={{ marginTop: 6 }} data-testid="wf-gap-analysis">
+      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+        比对现状：需 {gap.totals.needed} · 复用 {gap.totals.existing} · 新建 {gap.totals.toCreate} · 缺 {gap.totals.missing}
+      </div>
+      <table style={{ fontSize: 11, borderCollapse: "collapse", width: "100%" }}>
+        <thead>
+          <tr style={{ textAlign: "left", color: "var(--muted, #888)" }}>
+            <th style={{ padding: "2px 8px 2px 0" }}>模块</th><th>类</th><th>需要</th><th>复用</th><th>新建</th><th>缺</th>
+          </tr>
+        </thead>
+        <tbody>
+          {gap.entries.map((e) => (
+            <tr key={e.kind} data-testid={`wf-gap-${e.kind}`}>
+              <td style={{ padding: "2px 8px 2px 0" }}><code>{e.kind}</code></td>
+              <td className="muted">{GAP_SIDE_LABEL[e.side] ?? e.side}</td>
+              <td>{e.needed}</td>
+              <td style={{ color: "var(--c-capacity, #36BFA5)" }}>{e.existing}</td>
+              <td style={{ color: "var(--amber, #DD9551)" }}>{e.toCreate}</td>
+              <td style={{ color: e.missing > 0 ? "var(--danger, #E5484D)" : undefined }}>{e.missing}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /**
  * 工业级工作流时间线（配套数据构建发动机 · PRD-build-workflow-runtime §1 目标4 可观测）：
  * 把"故事→建域"的持久化步骤状态机逐运行、逐步可视化——每步状态/尝试/计时/检查点/错误一目了然；
@@ -528,6 +562,9 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
                           错误 [{s.error.code}{s.error.retryable ? " · 可重试" : " · 致命"}]：{s.error.message}
                         </div>
                       )}
+                      {s.stepKey === "gap_analysis" && s.checkpoint?.gapAnalysis ? (
+                        <GapAnalysisTable gap={s.checkpoint.gapAnalysis as GapAnalysis} />
+                      ) : null}
                     </div>
                   </li>
                 ))}

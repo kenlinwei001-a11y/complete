@@ -41,5 +41,10 @@ describe("F55 · 工作流运行时时间线（BuildWorkflowRun）", () => {
     expect((await within(panel).findAllByText("SUCCEEDED")).length).toBeGreaterThan(0);
     // 运行计数增长到 2
     expect(within(panel).getByTestId("wf-count").textContent).toBe("2");
+
+    // 成功运行展开 → 比对现状表（倒推 vs 现状的跨模块统一 diff）可见，含"缺"的求解器
+    const gap = await within(panel).findByTestId("wf-gap-analysis");
+    expect(gap.textContent).toMatch(/需 21 · 复用 8 · 新建 12 · 缺 1/);
+    expect(within(gap).getByTestId("wf-gap-solver")).toBeTruthy();
   });
 });

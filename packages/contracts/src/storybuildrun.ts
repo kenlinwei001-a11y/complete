@@ -10,6 +10,7 @@ import {
   PlanAgentNeedSchema,
   PlanMcpNeedSchema,
   PlanSceneNeedSchema,
+  GapAnalysisSchema,
 } from "./databuilder.js";
 import { GapReportSchema } from "./growth.js";
 import { ValidationTraceSchema } from "./qos.js";
@@ -202,6 +203,8 @@ export const StoryBuildRunSchema = z.object({
   storyCoverage: z.array(StoryCoverageSentenceSchema).default([]),
   /** 功能缺失自检（MISSING 制品映射母体 7 码；P4）。 */
   gapReport: GapReportSchema.optional(),
+  /** 比对现状：倒推 BuildPlan vs 系统现状的跨模块统一 diff（需要/复用/新建/缺，ModuleProvisioner 注册表产出）。 */
+  gapAnalysis: GapAnalysisSchema.optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
   answer: z.string().optional(),
   /** §9 归一 evidence 标记：RUNTIME_PROBE=答案经 QOS orchestrator 实跑（绿测试≠能用的活证据）；

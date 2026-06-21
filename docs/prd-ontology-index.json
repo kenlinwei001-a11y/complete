@@ -315,9 +315,11 @@
       "artifacts": [
         "apps/datacore/migrations/023_build_workflow_runs.sql",
         "apps/datacore/src/app.ts",
+        "apps/datacore/src/databuilder/provisioners.ts",
         "apps/datacore/src/databuilder/service.ts",
         "apps/datacore/src/databuilder/workflow-engine.ts",
         "apps/datacore/test/build-workflow-engine.test.ts",
+        "apps/datacore/test/provisioners.test.ts",
         "packages/contracts/src/databuilder.ts"
       ],
       "brokenArtifacts": []
@@ -817,6 +819,9 @@
     "apps/datacore/src/app.ts": [
       "PRD-build-workflow-runtime.md"
     ],
+    "apps/datacore/src/databuilder/provisioners.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
     "apps/datacore/src/databuilder/service.ts": [
       "PRD-build-workflow-runtime.md"
     ],
@@ -824,6 +829,9 @@
       "PRD-build-workflow-runtime.md"
     ],
     "apps/datacore/test/build-workflow-engine.test.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/test/provisioners.test.ts": [
       "PRD-build-workflow-runtime.md"
     ],
     "packages/contracts/src/databuilder.ts": [

@@ -55,6 +55,7 @@
 - **SyntheticJob**：合成数据作业（industry×scale×seed 确定性）· `syntheticJobs`。
 - **BuildPlan / BuildJob / DataBuilderAgent / ClosureReport**：**数据构建发动机**（七阶段 intake→comprehend→gap→rawin→transform→closure→publish）· `databuilder/service.ts`,`closure.ts`。
 - **BuildWorkflowRun（工业级工作流运行时）**：把"故事→建域"从内存 try-块升级为**持久化步骤状态机**——6 步（dry_build→cross_scaffold→publish_build→validation→inference→record），每步状态/尝试/计时/检查点逐步落库（`build_workflow_runs`，migration023，R9 四处）→ **进程崩溃可从未完成步 resume**（已成功步跳过、context 复用）；瞬时失败按 maxAttempts **有界退避重试**（跨系统 scaffold HTTP 标 RetryableStepError）；致命失败止于该步保留现场；业务门未过返回 skip（非错误，标 SKIPPED）。执行状态（工作流跑完）与业务结论（StoryBuildRun.status，可 BLOCKED）两轴分离。引擎与步骤解耦（`databuilder/workflow-engine.ts BuildWorkflowEngine`，步骤是闭包住 AuthCtx 的纯定义）· `databuilder/service.ts runStoryWorkflow/resumeStoryWorkflow`（`runStory` 现统一经此单一执行路径）· `POST/GET /a/v1/databuilder/workflow-runs`、`POST …/:id/resume`。每步状态迁移发 `buildworkflow.*` 到 outbox 作**可观测/审计流**（GET /a/v1/outbox 实时尾随；非缓存失效事件——产出缓存事件仍是已注册的 `storybuild.run_recorded` L15）。**前端时间线**（`DataBuilderPage WorkflowTimelinePanel`，data-testid `wf-timeline`）：逐运行/逐步可视化状态/尝试/计时/检查点/结构化错误，失败/暂停运行一键 `resume` 续跑（自愈），F55 回归。
+- **ModuleProvisioner 注册表 + 比对现状（gap_analysis 一等步）**（`databuilder/provisioners.ts`）：把散在 gap 阶段/闭包/scaffold 三处的"需要 vs 已有"收敛成**跨模块统一 diff**——倒推 BuildPlan 的每类配套模块 `EXISTS(复用)/TO_CREATE(需新建)/MISSING(不能自动建→工单)`。**模块全集 = BuildPlan 13 个 need 数组**一一对应 13 个 provisioner（内容类 dataset/kb_doc · 结构类 ontology_type/rule/slice · 代码类 solver[缺即 MISSING] · 跨系统类 intent/plan/workflow/skill/agent/scene/mcp[现状由 scaffold 回执判定]）。**无遗漏保证**：`provisioners.test` 断言"BuildPlan 每个根级数组字段都已登记 + 已注册 provisioner"——新增配套模块未注册即测试红（"倒序"管线强制纳入统一机制）。产物落 `StoryBuildRun.gapAnalysis` + 工作流 `gap_analysis` 步检查点 + 前端 `GapAnalysisTable`（data-testid `wf-gap-analysis`）。`DatasetProvisioner` 的创建后端 = 合成数据模块（合成是某个 provisioner 的后端实现，非并列制品）。
 - **QuarantineRow**：异常行隔离区（SCHEMA_MISMATCH/DUP_KEY）· `quarantine.ts`。
 
 ### B. 本体/对象域（DataCore）
@@ -173,6 +174,9 @@ BuildPlan --gap(幂等)--> 复用已有/标缺  --rawin--> Connector/KB  --trans
     StoryScript→[dry_build→cross_scaffold→publish_build→validation→inference→record] 每步落库检查点 →
     崩溃可 resume（已成功步跳过、context 复用）；瞬时失败有界退避重试；致命失败止于该步保留现场。
     `runStory` 与 `POST /a/v1/databuilder/workflow-runs` 共用同一组步骤（单一执行路径）。**不再是内存 try-块**。
+  └ **比对现状 gap_analysis（一等步 · ModuleProvisioner 注册表）**：cross_scaffold 后插入——倒推 BuildPlan
+    vs 系统现状 → 跨模块统一 diff（需要/复用/新建/缺）。这是"倒序"管线 query→倒推→**比对现状**→创建 的接缝。
+    13 个 provisioner 覆盖 BuildPlan 全部 need 数组，覆盖门强制新模块纳入（`provisioners.ts analyzeGap`）。
 ```
 **平台横切**
 ```

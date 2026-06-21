@@ -148,7 +148,11 @@ describe("数据构建工作流 · HTTP 端到端（真服务 · 故事建域经
     expect(wf.status).toBe("SUCCEEDED");
     // 每步都到终态（SUCCEEDED/SKIPPED），无 PENDING/RUNNING 残留 → 真跑完
     expect(wf.steps.every((s) => s.status === "SUCCEEDED" || s.status === "SKIPPED")).toBe(true);
-    expect(wf.steps.map((s) => s.stepKey)).toEqual(["dry_build", "cross_scaffold", "publish_build", "validation", "inference", "record"]);
+    expect(wf.steps.map((s) => s.stepKey)).toEqual(["dry_build", "cross_scaffold", "gap_analysis", "publish_build", "validation", "inference", "record"]);
+    // 比对现状步产出跨模块统一 diff（倒推 vs 现状）
+    const gapStep = wf.steps.find((s) => s.stepKey === "gap_analysis")!;
+    expect(gapStep.status).toBe("SUCCEEDED");
+    expect(gapStep.detail).toMatch(/需 \d+ · 复用 \d+ · 新建 \d+ · 缺 \d+/);
     expect(wf.storyRunId).toBeTruthy();
 
     // 可观测：GET 单运行带逐步计时/尝试

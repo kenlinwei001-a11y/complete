@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type {
   BuildJob,
   BuildWorkflowRun,
+  GapAnalysis,
   BuildPhase,
   BuildPlan,
   BuildRunBody,
@@ -37,6 +38,7 @@ import { generateFromSchema } from "../synthetic/schema-gen.js";
 import { validateClosure } from "./closure.js";
 import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } from "./preset.js";
 import { BuildWorkflowEngine, RetryableStepError, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
+import { analyzeGap, summarizeGap } from "./provisioners.js";
 
 const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
@@ -298,6 +300,16 @@ export class DataBuilderService {
         },
       },
       {
+        stepKey: "gap_analysis",
+        title: "比对现状：倒推 BuildPlan vs 系统现状（跨模块统一 diff）",
+        run: async (c) => {
+          const plan = await getPlan(c);
+          if (!plan) return { skip: true, detail: "无 plan" };
+          const gap = await analyzeGap({ repos: this.repos, ontology: this.ontology }, ctx, plan, c["scaffoldReceipt"] as ScaffoldReceipt | undefined);
+          return { detail: summarizeGap(gap), patch: { gapAnalysis: gap }, checkpoint: { gapAnalysis: gap } };
+        },
+      },
+      {
         stepKey: "publish_build",
         title: "全链 HARD 门：A⊕B 闭合则真建 + 发布 + 落切片",
         run: async (c) => {
@@ -355,6 +367,7 @@ export class DataBuilderService {
             closureReport,
             scaffoldReceipt,
             gapReport: selfCheckGaps(body.script.trim(), id, closureReport, scaffoldReceipt, plan?.solverNeeds.length ?? 0),
+            gapAnalysis: c["gapAnalysis"] as GapAnalysis | undefined,
             answer: c["answer"] as string | undefined,
             inferenceEvidence: c["inferenceEvidence"] as "RUNTIME_PROBE" | "BUILD_STATIC" | undefined,
             validationTrace: c["validationTrace"] as ValidationTrace | undefined,
