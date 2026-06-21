@@ -72,8 +72,6 @@ Wave1 基座            Wave2 引擎/能力              Wave3 编排/闭环    
 - ✅ Wave 4 PRD 产出（A14 agent evals parity / A12 模块 hand-run 补全 / A9 外部引擎设计延后）→ **待评审**。
 - 🎉 **A 系列 13 项工程 PRD 全部产出**（14 文件 = 13 子 PRD + 本索引）。逐项子 PRD 见 §2 登记表。
 - ✅ **Wave 5（新增需求）A15 · CLI 通用操作外壳** PRD 产出 → 待评审。`PRD-A15-cli-universal-operation-shell.md`：意图识别→模块路由→CLI 交互→触发模块；含查询/推演类问答（QOS ask）；**全模块→CLI 覆盖矩阵**（附录 A，与 GUI 功能对等）。依赖 A1/A3/A5/A10，可独立先做 import/model/rule。
-- ✅ **Wave 5（总装/交付）A18 · 建域全栈产出闭环（消灭"全 0"）** PRD 产出 → 待评审。`PRD-A18-build-output-closure.md`：以"那次建域全 0"实证表为问题清单，逐行(数据/本体/切片/规则/求解器/B栈)给修法+验收，整合 A16/A17/A7 为单一交付规格——同题再跑，6 行从 ❌/◐ 全翻 ✅(未审核态产出)+ 端到端 PROVISIONAL_ANSWER。
-- ✅ **Wave 5（新增需求·修订红线）A17 · 未审核态全域构建（PROVISIONAL 模式）** PRD 产出 → 待评审。`PRD-A17-provisional-domain-build.md`：把 A16"临时件"推广到整条域——本体/数据/规则/Agent/工作流/技能/意图/计划/场景 皆可作"未审核态"先用（可推演、不写真值、强标未审核、绝不报 ANSWERABLE）；闭包门 STRICT(HARD 写真值默认) / PROVISIONAL(ADVISORY 未审核可跑) 双模；人工审核→发布全流程晋升 GOVERNED。**未审核=可用但未走完审核+发布。** A16 为其"求解器维"特例。
-- ✅ **Wave 5（新增需求·修订红线）A16 · LLM 临时求解器** PRD 产出 → 待评审。`PRD-A16-llm-provisional-solver.md`：LLM 生成求解器代码 → 冻结 → **锁死沙箱跑通才注册** → 状态机标签（GENERATED/未注册/PROVISIONAL未验证/ADVISORY_PASSED/GOVERNED/RETIRED）→ 推演可用但**临时件不写真值**（R4）→ 人工调/换/晋升。**确定性靠"生成一次即冻结+沙箱强制确定"满足，安全靠沙箱隔离**。落地后前述"收入/毛利 what-if"可端到端跑完（临时件）。依赖 A1（MCP 标）/A5/A10（建域出可跑临时求解器）。
+- ✅ **Wave 5（自包含总装·已并 A16+A17）A18 · 未审核态全栈建域闭环** PRD 产出 → 待评审。`PRD-A18-build-output-closure.md`（v0.2）：**吸收并取代 A16（LLM 临时求解器）+ A17（未审核态全域构建）**，三合一自包含。以那次建域全 0 实证表为问题清单，逐行（数据/本体/切片/规则/求解器/B栈）给修法+验收：开 PROVISIONAL 模式（闭包 ADVISORY 不阻断）+ LLM 临时求解器（冻结+锁死沙箱跑通）+ 全域未审核件（隔离/强标/不写真值）→ 端到端 PROVISIONAL_ANSWER（绝不谎报）→ 人工审核发布晋升 GOVERNED。同题再跑 6 行全翻 ✅。关联 A7（scaffold 单机可见）/A5/A10。
 
 > 基线分支：A 系列实现前需定准 `wizardly-gauss`（推荐，超集）vs `vigilant-knuth`，见各子 PRD §8 备注。
