@@ -215,6 +215,44 @@ export class SolverService {
     return this.activeArtifact(tenantId, key);
   }
 
+  /**
+   * A18.3 写真值门控（用户裁决 2026-06-21）：未审核临时件**默认不写真值**（R4）；放宽：**仅创建人**
+   * （actor===createdBy）可用自己造的临时件写真值，且写入打"未认证·UNVERIFIED·LLM"标。GOVERNED 件任何人可写。
+   * 纯函数，便于 Action 执行层调用 + 单测。返回 {allowed, label?, reason?}。
+   */
+  static canArtifactWriteTruth(art: SolverArtifact, actorUserId: string): { allowed: boolean; label?: string; reason?: string } {
+    if (art.status === "GOVERNED") return { allowed: true };
+    if (art.status === "PROVISIONAL" || art.status === "ADVISORY_PASSED") {
+      if (actorUserId === art.createdBy) {
+        return { allowed: true, label: `审核中·未认证·origin=${art.origin}·trustLevel=${art.trustLevel}` };
+      }
+      return { allowed: false, reason: `临时求解器 ${art.key} 未审核：仅创建人(${art.createdBy})可用其写真值；他人需先晋升 GOVERNED` };
+    }
+    return { allowed: false, reason: `求解器 ${art.key} 状态 ${art.status} 不可写真值` };
+  }
+
+  /** 经 key + actor 查门控（Action 执行层用；非临时件 key 视为内置正式 → 允许）。 */
+  async checkWriteTruth(ctx: AuthCtx, solverKey: string): Promise<{ allowed: boolean; label?: string; reason?: string }> {
+    if ((SOLVER_KEYS as readonly string[]).includes(solverKey)) return { allowed: true }; // 内置正式求解器
+    const art = await this.activeArtifact(ctx.tenantId, solverKey);
+    if (!art) return { allowed: false, reason: `求解器 ${solverKey} 未注册` };
+    return SolverService.canArtifactWriteTruth(art, ctx.userId);
+  }
+
+  /**
+   * A18.4 晋升：把跑通的临时件 PROVISIONAL/ADVISORY_PASSED → GOVERNED（人工审批解锁写真值）。
+   * 发 solver.status_changed。逐制品晋升的求解器一环（整域晋升由 databuilder 编排逐项调用）。
+   */
+  async promoteSolver(ctx: AuthCtx, key: string): Promise<SolverArtifact> {
+    const art = await this.activeArtifact(ctx.tenantId, key);
+    if (!art) throw notFound("solver artifact");
+    if (art.status === "GOVERNED") return art; // 幂等
+    const promoted: SolverArtifact = { ...art, status: "GOVERNED", trustLevel: "VERIFIED" };
+    await this.repos.solverArtifacts.put(promoted);
+    await this.outbox?.emit(ctx.tenantId, "solver.status_changed", { key, from: art.status, to: "GOVERNED" });
+    return promoted;
+  }
+
   /** A18.2：在锁死沙箱里执行已注册的 LLM 临时求解器，输出强标 trustLevel/origin（推演可用、写真值另受门控）。 */
   private async invokeArtifact(ctx: AuthCtx, art: SolverArtifact, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const sandboxCtx = await this.buildSandboxCtx(ctx.tenantId);

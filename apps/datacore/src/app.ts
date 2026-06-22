@@ -1862,6 +1862,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!art) throw notFound("solver artifact");
     return art;
   });
+  // A18.4 晋升：人工审批把临时求解器 PROVISIONAL → GOVERNED（解锁写真值，R4）。
+  app.post("/a/v1/solvers/:solverKey/promote", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return solvers.promoteSolver(c, (req.params as { solverKey: string }).solverKey);
+  });
+  // A18.3 写真值门控查询：某临时求解器对当前 actor 是否可写真值（创建人作用域 + 标签）。
+  app.get("/a/v1/solvers/:solverKey/write-truth-check", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return solvers.checkWriteTruth(c, (req.params as { solverKey: string }).solverKey);
+  });
   // A13 地板语义确定化：通用图求解器的字段角色确定性解析（结构信号 + 配置词库，去 LLM）+ 候选/置信度。
   app.get("/a/v1/solvers/:solverKey/field-roles", async (req) => {
     const c = ctx(req);
