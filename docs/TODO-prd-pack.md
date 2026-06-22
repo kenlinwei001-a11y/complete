@@ -1,5 +1,24 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
+> **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
+> **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。
+>
+> **CL 簇 · "本月未达成原因"端到端闭合（依赖链，按序）**
+> - [x] CL.0 **空响应护栏**（PRD-llm-agent-empty-response-guard）= **W0 已完成** ✅。
+> - [ ] CL.1 **admin 自审批**（PRD-admin-self-approval｜SA.1/.2）：放宽 `actions.ts` 硬职责分离为**可配置留痕例外** `selfApproveAllowed`（租户/ActionType；默认 STRICT=现行为，demo=ALLOW_ADMIN）；submit 不再 `NO_ELIGIBLE_APPROVER`、approve 放行 + `ApprovalStep.selfApproved=true` 留痕。**⚠️ 有意放宽 R4**（须回写本体 §5 注记）→ **解锁所有 R4 收尾闭环**（provisional→governed / SOP 定稿 / gap-fill 收尾 / 数据生成转正）。**无依赖，是后续闭环前提**。
+> - [ ] CL.2 **agent 合规产数据工具**（PRD-agent-data-generation-tools｜ADT.1–.3）：`BUILTIN_TOOLS` 补 `fill_data`(客户端已在仅注册)/`run_synthetic`/`build_domain`；触发确定性合成→落 PROVISIONAL→agent `query_*` 读回真实物化值再推演（**触发合成≠伪造**，回执只含元信息不产业务数字，铁律自洽）；登记 OPERATION_CATALOG（R15）。deps CL.1。闭 G-3 agent 侧。
+> - [ ] CL.3 **discover 暴露真实类型名**（PRD-discover-real-type-names｜DTN.1/.2）：`discover{object_types}` 返本租户已发布 `ObjectType{key,label,domain,instanceCount}`；`query_objects/get_object` 未知 typeKey → `UNKNOWN_TYPE`+did-you-mean（编辑距离），不静默返空；区分"空 vs 不存在"。agent 照真名查不再猜 `plan_version/production_target`。与 ADT 同处 discover 增强。闭 G-3。
+> - [ ] CL.4 **空租户冷启动引导**（PRD-empty-tenant-bootstrap｜BS.1–.3）：`POST /a/v1/bootstrap` 编排端点串 7 步（合成 seed 计划域→核对物化→建 SopVersion→五步法→定稿 FINAL 走 R4→核对 currentPlanVersion→plan_audit 有料），幂等确定（R6）；CLI `platform bootstrap` + GUI 空态向导 + agent 工具组合三面同源。**注：与既有 `bootstrap.ts`(platform_admin 超管创建)无关，是新的计划域冷启动**。deps CL.1+CL.2。闭 G-3 冷启动入口。
+> - [ ] CL.5 **基地级日达成率时序**（PRD-attainment-base-daily-timeseries｜TS.1/.2）：补 `attainment:base`（基地级日序，建议复用 `attainment:line` 日上卷 TsAgg → `Base.attainment_daily`，加权 by output）；达成率口径接 `Metric{achievement,day}`（spine，R-一致）；seed/lived-in 一并产。deps spine ✅。供"逐日时间维度归因"。
+> - [ ] CL.6 **达成率/偏差归因路由**（PRD-attribution-routing-plan-audit｜AR.1/.2）：comprehend/classify 关键词（达成率归因/未达成原因/偏差根因）→ `plan_audit`；`discover` 暴露 plan_audit 为归因入口；plan_audit 入参三级兜底 `plan_version_id ?? currentPlanVersion ?? deriveBaseline(PlanTarget)`（solvers.ts:170 已支持，补到调用/agent 路径）；配 CL.5 日序做逐日归因；真空→结构化缺口提示引导。deps CL.4+CL.5。闭 G-3 路由接缝。
+> - [ ] CL.7 **对话坞 gap-fill HITL** = **既有 W4**（PRD-in-dialog-gap-fill-loop）：deps CL.2+CL.4。**端到端闭合收口**（缺口卡→触发产数据→反馈→续推）。
+>
+> **独立新增件（非 CL 链）**
+> - [ ] **nav-ia-reorg 余项**（PRD-nav-ia-reorg｜N1–N3）：admin 区分组 `groupAdminPages` **已做**（f40/f61）；**余**：业务+admin 合一套域分组（现仍"业务/管理"两堆）· 图谱并入建模组 · meta 补回 · 字号父级≥子级（3 处 CSS）。纯前端 IA，低风险低优先。
+> - [ ] **R16 发育闭环总纲**（PRD-system-ontogenesis-spec｜宪法级）：立 R16 不变量（每次发育自动闭合数据/本体/能力三环 + AUTO-DERIVE/NEEDS-HUMAN 二分处置 + 透明可视 + PROVISIONAL→GOVERNED 分相位）+ `ontogenesis:check` 门 + `sys.meta.ontogenesis_loop` 切片 + `ontogenesis.organ_matured` 事件。**多为统摄既有机制 + 立门**，回写本体 §5/§3/§4/§10。高抽象、收口性，建议 CL 簇落地后再做。
+>
+
+
 > **2026-06-22 依赖排序 to-do（含 2 新 PRD：空响应护栏 / 对话坞 gap-fill）**——按"谁阻塞谁"排，✅=已就绪可接，⛔=被阻塞。
 > 已完成底座（不重列）：SPINE.1–.4 · 求解器 38（plan_rootcause/metric_rollup/counterfactual_timeline/order_fullchain/mrp_netting/finance_pnl/audit_timeline）· SopVersionRow · AUDIT.1 逐日圆点轴 · ORD 订单全链前端 · A18 全部 · cockpit P1–P3。L4 真后端 17/17。
 >
