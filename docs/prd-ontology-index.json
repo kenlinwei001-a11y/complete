@@ -360,6 +360,40 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-IND-model.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx",
+        "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-IND-order.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/api/types.ts",
+        "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-IND-plan-generate.md": {
       "hasOntologyRef": false,
       "invariants": [],
@@ -1505,6 +1539,7 @@
       "PRD-A-series-roadmap.md",
       "PRD-A3-reference-ontology-slice-planner.md",
       "PRD-A6-realistic-value-domain-synthesis.md",
+      "PRD-IND-order.md",
       "PRD-IND-quarter.md",
       "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-data-closure-spec.md",
@@ -1656,7 +1691,8 @@
       "PRD-A13-floor-semantics-deterministic.md",
       "PRD-A18-build-output-closure.md",
       "PRD-A8-more-cpsat-models.md",
-      "PRD-A9-external-engines-design-deferred.md"
+      "PRD-A9-external-engines-design-deferred.md",
+      "PRD-IND-order.md"
     ],
     "apps/datacore/src/app.ts": [
       "PRD-A10-build-to-verify-closure.md",
@@ -1723,6 +1759,8 @@
       "PRD-A6-realistic-value-domain-synthesis.md",
       "PRD-IND-aop.md",
       "PRD-IND-dash.md",
+      "PRD-IND-model.md",
+      "PRD-IND-order.md",
       "PRD-IND-quarter.md",
       "PRD-IND-sop.md",
       "PRD-aop-annual-scenario-1to1.md",
@@ -1755,6 +1793,7 @@
     ],
     "apps/frontend-shell/src/api/types.ts": [
       "PRD-IND-dash.md",
+      "PRD-IND-order.md",
       "PRD-IND-sop.md"
     ],
     "apps/frontend-shell/src/views/DashboardView.tsx": [
@@ -1770,6 +1809,37 @@
     "apps/frontend-shell/src/views/graph/MappingOverlay.tsx": [
       "PRD-IND-map.md"
     ],
+    "apps/datacore/src/synthetic/service.ts": [
+      "PRD-IND-model.md",
+      "PRD-IND-order.md",
+      "PRD-verbatim-1to1-replication.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PmDag.tsx": [
+      "PRD-IND-model.md",
+      "PRD-inference-process-enhancement.md",
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": [
+      "PRD-IND-model.md",
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-IND-order.md",
+      "PRD-IND-risk.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
+      "PRD-IND-order.md",
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "packages/contracts/src/solvers.ts": [
+      "PRD-IND-order.md",
+      "PRD-IND-sop.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
     "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
       "PRD-IND-plan-generate.md",
       "PRD-plan-generate-1to1.md"
@@ -1777,11 +1847,6 @@
     "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
       "PRD-IND-quarter.md",
       "PRD-quarter-rolling-1to1.md"
-    ],
-    "apps/datacore/src/solvers/risk.ts": [
-      "PRD-IND-risk.md",
-      "PRD-order-project-sim-1to1.md",
-      "PRD-plan-audit-1to1.md"
     ],
     "apps/frontend-shell/src/views/RiskBoardView.tsx": [
       "PRD-IND-risk.md"
@@ -1793,12 +1858,6 @@
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-IND-sop.md",
       "PRD-sop-balance-1to1.md"
-    ],
-    "packages/contracts/src/solvers.ts": [
-      "PRD-IND-sop.md",
-      "PRD-cockpit-capacity-1to1-parity.md",
-      "PRD-plan-audit-1to1.md",
-      "PRD-plan-generate-1to1.md"
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-IND-sop.md",
@@ -1873,10 +1932,6 @@
     "apps/frontend-shell/src/sse/useTaskStream.ts": [
       "PRD-inference-process-enhancement.md"
     ],
-    "apps/frontend-shell/src/views/sim/PmDag.tsx": [
-      "PRD-inference-process-enhancement.md",
-      "PRD-order-project-sim-1to1.md"
-    ],
     "apps/frontend-shell/src/pages/ShellLayout.tsx": [
       "PRD-nav-ia-reorg.md"
     ],
@@ -1890,12 +1945,6 @@
       "PRD-ontology-browser-field-coverage.md",
       "PRD-prototype-intake-databuilder.md",
       "PRD-synthetic-wizard-ontoprompt-chain.md"
-    ],
-    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
-      "PRD-order-project-sim-1to1.md"
-    ],
-    "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": [
-      "PRD-order-project-sim-1to1.md"
     ],
     "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": [
       "PRD-plan-audit-1to1.md"
@@ -1916,9 +1965,6 @@
       "PRD-scenario-launcher.md"
     ],
     "apps/datacore/src/features.ts": [
-      "PRD-verbatim-1to1-replication.md"
-    ],
-    "apps/datacore/src/synthetic/service.ts": [
       "PRD-verbatim-1to1-replication.md"
     ]
   }
