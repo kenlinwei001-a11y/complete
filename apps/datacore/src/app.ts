@@ -280,6 +280,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
   solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
+  solvers.setLlm(llm); // A18.2 LLM 临时求解器生成
+  solvers.setOutbox(outbox); // A18.2 solver.provisional_generated 事件
   if (process.env.OPTIMIZER_BASE_URL) {
     // selection_optimize 走自托管 CP-SAT sidecar（OR-Tools, Apache-2.0）；数据不出边界。未配置则该求解器报"未接入"。
     solvers.setOptimizer(new HttpOptimizerClient(process.env.OPTIMIZER_BASE_URL));
@@ -1843,6 +1845,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { query } = req.query as { query?: string };
     const { items } = await catalog.solverRegistry(c, query);
     return { solvers: items.map((it) => ({ ...it, outputShape: SOLVER_OUTPUT_SHAPES[it.key] ?? [] })) };
+  });
+  // A18.2 LLM 临时求解器生成：缺求解器 → LLM 生成纯函数 → 冻结 + 锁死沙箱跑通自检 → 注册 PROVISIONAL（未审核·UNVERIFIED）。
+  app.post("/a/v1/solvers/generate", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const b = req.body as { key?: string; intent?: string };
+    if (!b?.key || !b?.intent) throw validationError("key + intent required");
+    return solvers.generateProvisionalSolver(c, { key: b.key, intent: b.intent, objectTypes: [] });
+  });
+  // A18.2 看临时求解器代码 + rationale + 状态（人工审核台用；GOVERNED 才能写真值）。
+  app.get("/a/v1/solvers/:solverKey/artifact", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const art = await solvers.getArtifact(c.tenantId, (req.params as { solverKey: string }).solverKey);
+    if (!art) throw notFound("solver artifact");
+    return art;
   });
   // A13 地板语义确定化：通用图求解器的字段角色确定性解析（结构信号 + 配置词库，去 LLM）+ 候选/置信度。
   app.get("/a/v1/solvers/:solverKey/field-roles", async (req) => {

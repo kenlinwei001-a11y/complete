@@ -265,6 +265,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L15 | `build.verified` | A10 终态闭环验证（`verifyBuild`：publish 后/手动把主问句经 QOS 重跑 → VERIFIED/NOT_VERIFIED/BUILD_STATIC，回灌 FDE 节点图末节点 + 经 runId 与 growth LOOP CONVERGED 归一）| IN_SESSION | story-runs, fde-graph, growth-ledger | — |
 | L15 | `prototype.intake_recorded` | 原型 intake 正门（`prototype-intake.ts parsePrototypeHtml` 确定性抽数据表+关系 → `reconcileIntake` 对既有本体字段对账预览：映射不上生成 SchemaReconcileCandidate 给人确认）→ 失效 intake 预览/对账队列 | IN_SESSION | intake-preview, reconcile-queue | — |
 | L15 | `domain.provisional_built` | A18 双模闭包·PROVISIONAL 未审核态建域完成（`closure.ts` HARD 缺口降 ADVISORY 不阻断、`buildMode=PROVISIONAL`，整域强标 `domainTrustLevel=UNVERIFIED`，终态 `PROVISIONAL_ANSWER` 绝不 VERIFIED）→ 失效历史/审核台 | IN_SESSION | story-runs, provisional-review | — |
+| L15 | `solver.provisional_generated` | A18.2 LLM 临时求解器（`solvers/llm-gen.ts` 生成 → 冻结 hash+版本 → `sandbox.ts` 锁死子进程跑通自检 → 注册 SolverArtifact `status=PROVISIONAL/trustLevel=UNVERIFIED`）→ 失效求解器目录/审核台 | IN_SESSION | solver-registry, provisional-review | — |
 | L16 | `entity.out_of_domain` | 感知层·槽位解析裸串实体在本租户任何已发布类型都解析不到（`router/slots.ts fillSlots`）→ orchestrator 发任务事件 + `perception-metrics.ts` 记误触发率（域外/尝试）+ 取最近邻候选供澄清 | NOTIFY | perception-metrics | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。

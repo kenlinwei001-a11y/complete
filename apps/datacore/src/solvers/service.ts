@@ -8,6 +8,12 @@ import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
 import { num, str, type SolverContext, type SolverParamsShape } from "./types.js";
+import { createHash } from "node:crypto";
+import { runSolverSandbox } from "./sandbox.js";
+import type { LlmClient } from "../llm.js";
+import { generateSolverDraft, type SolverGenSpec } from "./llm-gen.js";
+import type { OutboxService } from "../outbox.js";
+import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
 import { affectedOrders, affectedOrdersAggregate, bottleneckMatrix, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
@@ -126,6 +132,97 @@ export class SolverService {
   private optimizer?: OptimizerClient;
   setOptimizer(client: OptimizerClient): void {
     this.optimizer = client;
+  }
+
+  /** A18.2 LLM 临时求解器生成用 LLM + outbox（app.ts 注入；未注入则 generate 报错，不静默）。 */
+  private llm?: LlmClient;
+  private outbox?: OutboxService;
+  setLlm(llm: LlmClient): void { this.llm = llm; }
+  setOutbox(o: OutboxService): void { this.outbox = o; }
+
+  /** A18.2：构建沙箱 ctx（按对象类型分组的实例图；LLM 临时求解器只读这个 + args，净室隔离）。 */
+  private async buildSandboxCtx(tenantId: string): Promise<{ objectsByType: Record<string, Record<string, unknown>[]> }> {
+    const types = await this.repos.ontologyTypes.list(tenantId);
+    const objectsByType: Record<string, Record<string, unknown>[]> = {};
+    for (const t of types) {
+      const rows = await this.repos.objects.listByType(tenantId, t.key);
+      objectsByType[t.key] = rows.map((r) => ({ id: r.id, ...r.props }));
+    }
+    return { objectsByType };
+  }
+
+  /**
+   * A18.2 消灭 P5：LLM 生成临时求解器 → 冻结(hash+版本) → 锁死沙箱跑通自检 → 注册 PROVISIONAL（或 UNREGISTERED）。
+   * LLM 只在此调一次，产物冻结；运行期确定性由沙箱保证（Date/random 禁）。注册成功发 solver.provisional_generated。
+   */
+  async generateProvisionalSolver(ctx: AuthCtx, spec: SolverGenSpec): Promise<SolverArtifact> {
+    if (!this.llm) throw validationError("LLM 未注入，无法生成临时求解器（A18.2 需配 comprehend provider）");
+    const draft = await this.generateDraftWithSchema(ctx, spec);
+    return this.registerProvisionalSolver(ctx, spec.key, draft);
+  }
+
+  private async generateDraftWithSchema(ctx: AuthCtx, spec: SolverGenSpec): Promise<SolverGenDraft> {
+    // spec.objectTypes 缺省则从本租户本体填充（让 LLM 写对字段引用）。
+    if (spec.objectTypes.length === 0) {
+      const types = await this.repos.ontologyTypes.list(ctx.tenantId);
+      spec = { ...spec, objectTypes: types.map((t) => ({ typeKey: t.key, props: t.properties.map((p) => p.propKey) })) };
+    }
+    return generateSolverDraft(this.llm!, spec, { tenantId: ctx.tenantId });
+  }
+
+  /** 冻结 + 沙箱跑通自检 + 注册（纯逻辑，确定性；draft 已由 LLM 产出/或测试直供）。 */
+  async registerProvisionalSolver(ctx: AuthCtx, key: string, draft: SolverGenDraft): Promise<SolverArtifact> {
+    const hash = createHash("sha256").update(draft.computeSource).digest("hex").slice(0, 16);
+    const prior = (await this.repos.solverArtifacts.list(ctx.tenantId, (a) => a.key === key)).sort((a, b) => b.version - a.version)[0];
+    const version = prior ? prior.version + 1 : 1;
+    const base: Omit<SolverArtifact, "status" | "trustLevel" | "rejectReason"> = {
+      id: `sart_${ctx.tenantId}_${key}_v${version}`,
+      tenantId: ctx.tenantId,
+      key,
+      computeSource: draft.computeSource,
+      outputShape: draft.outputShape,
+      argHints: draft.argHints,
+      rationale: draft.rationale,
+      origin: "LLM",
+      hash,
+      version,
+      createdBy: ctx.userId,
+      createdAt: new Date().toISOString(),
+    };
+    // 跑通自检：用本租户对象图样例 ctx + 空 args 在沙箱执行，输出须为对象。
+    const sampleCtx = await this.buildSandboxCtx(ctx.tenantId);
+    const probe = await runSolverSandbox(draft.computeSource, sampleCtx, {}, { timeoutMs: 1500 });
+    let artifact: SolverArtifact;
+    if (probe.ok && probe.output !== null && typeof probe.output === "object") {
+      artifact = { ...base, status: "PROVISIONAL", trustLevel: "UNVERIFIED" };
+    } else {
+      artifact = { ...base, status: "UNREGISTERED", trustLevel: "UNVERIFIED", rejectReason: probe.error ?? "跑通自检输出非对象" };
+    }
+    await this.repos.solverArtifacts.put(artifact);
+    if (artifact.status === "PROVISIONAL") {
+      await this.outbox?.emit(ctx.tenantId, "solver.provisional_generated", { key, version, hash, trustLevel: "UNVERIFIED" });
+    }
+    return artifact;
+  }
+
+  /** 取某 key 的最新可调用 SolverArtifact（PROVISIONAL/ADVISORY_PASSED/GOVERNED）。 */
+  private async activeArtifact(tenantId: string, key: string): Promise<SolverArtifact | undefined> {
+    const all = (await this.repos.solverArtifacts.list(tenantId, (a) => a.key === key)).sort((a, b) => b.version - a.version);
+    return all.find((a) => a.status === "PROVISIONAL" || a.status === "ADVISORY_PASSED" || a.status === "GOVERNED");
+  }
+
+  getArtifact(tenantId: string, key: string): Promise<SolverArtifact | undefined> {
+    return this.activeArtifact(tenantId, key);
+  }
+
+  /** A18.2：在锁死沙箱里执行已注册的 LLM 临时求解器，输出强标 trustLevel/origin（推演可用、写真值另受门控）。 */
+  private async invokeArtifact(ctx: AuthCtx, art: SolverArtifact, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const sandboxCtx = await this.buildSandboxCtx(ctx.tenantId);
+    const r = await runSolverSandbox(art.computeSource, sandboxCtx, args, { timeoutMs: 1500 });
+    if (!r.ok) throw validationError(`临时求解器 ${art.key} 沙箱执行失败：${r.error ?? "未知"}`);
+    const out = (r.output && typeof r.output === "object" ? r.output : { result: r.output }) as Record<string, unknown>;
+    // 强标未审核（R13）：每个临时求解器结果都带 origin/status/trustLevel，绝不冒充正式。
+    return { ...out, __provisional: { origin: art.origin, status: art.status, trustLevel: art.trustLevel, solverKey: art.key, version: art.version } };
   }
 
   /**
@@ -713,6 +810,11 @@ export class SolverService {
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
   ): Promise<Record<string, unknown>> {
+    // A18.2：内置求解器优先；非内置 key 若有已注册 SolverArtifact（PROVISIONAL+），走锁死沙箱执行（强标未验证）。
+    if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) {
+      const art = await this.activeArtifact(ctx.tenantId, solverKey);
+      if (art) return this.invokeArtifact(ctx, art, args);
+    }
     // generic_inference 走本体派生引擎（非纯 compute；需对象图 + recompute），先于 loadContext 拦截。
     if (solverKey === "generic_inference") return this.genericInference(ctx, args);
     // shared_bottleneck 通用求解器（读任意对象图,非电池 context）,同样先拦截。

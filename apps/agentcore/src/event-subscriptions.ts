@@ -85,6 +85,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "prototype.intake_recorded", producer: "原型 intake 正门·解析数据表+关系完成（schema 对账预览）", tier: "IN_SESSION", invalidates: ["intake-preview", "reconcile-queue"] },
   // L15 A18 未审核态：PROVISIONAL 建域完成（域强标 UNVERIFIED，闭包 ADVISORY 不阻断）→ 失效历史/审核台
   { event: "domain.provisional_built", producer: "数据构建发动机·PROVISIONAL 未审核态建域完成（A18 双模闭包）", tier: "IN_SESSION", invalidates: ["story-runs", "provisional-review"] },
+  // L15 A18.2 LLM 临时求解器：生成 + 锁死沙箱跑通 → 注册 PROVISIONAL（未审核·UNVERIFIED）→ 失效求解器目录/审核台
+  { event: "solver.provisional_generated", producer: "求解器·LLM 临时生成沙箱跑通注册 PROVISIONAL（A18.2）", tier: "IN_SESSION", invalidates: ["solver-registry", "provisional-review"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

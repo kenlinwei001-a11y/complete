@@ -207,3 +207,54 @@ export function parseSolverMcpToolName(name: string): string | undefined {
   const prefix = `mcp__${SOLVERS_MCP_SERVER}__`;
   return name.startsWith(prefix) ? name.slice(prefix.length) : undefined;
 }
+
+// ---- A18.2 · LLM 临时求解器件（SolverArtifact）+ 状态机（§3.0）---------------------
+// LLM 生成的纯函数代码冻结件：verbatim+hash+版本，不可变（改=新版本，R6）。只有 GOVERNED 能写真值。
+export const SOLVER_ORIGINS = ["BATTERY", "GENERIC", "HUMAN", "LLM"] as const;
+export const SolverOriginSchema = z.enum(SOLVER_ORIGINS);
+export type SolverOrigin = z.infer<typeof SolverOriginSchema>;
+
+/** §3.0 生命周期状态机（每态一标签，可观测）。 */
+export const SOLVER_STATUSES = ["GENERATED", "UNREGISTERED", "PROVISIONAL", "ADVISORY_PASSED", "GOVERNED", "RETIRED"] as const;
+export const SolverStatusSchema = z.enum(SOLVER_STATUSES);
+export type SolverStatus = z.infer<typeof SolverStatusSchema>;
+
+export const SOLVER_TRUST_LEVELS = ["UNVERIFIED", "ADVISORY_PASSED", "VERIFIED", "CALIBRATED"] as const;
+export const SolverTrustLevelSchema = z.enum(SOLVER_TRUST_LEVELS);
+export type SolverTrustLevel = z.infer<typeof SolverTrustLevelSchema>;
+
+export const SolverArtifactSchema = z.object({
+  id: z.string(), // sart_
+  tenantId: z.string(),
+  /** 求解器 key（注册后 invoke 用）。 */
+  key: z.string(),
+  /** LLM 生成的纯函数源码 `(ctx,args)=>output`（冻结 verbatim，沙箱执行）。 */
+  computeSource: z.string(),
+  /** 顶层输出 key（进 SOLVER_OUTPUT_SHAPES，跑通即正向闭包）。 */
+  outputShape: z.array(z.string()).default([]),
+  /** 入参提示（CLI/Agent 补参用）。 */
+  argHints: z.record(z.string(), z.string()).default({}),
+  /** LLM 给的设计理由（人工审核可看）。 */
+  rationale: z.string().default(""),
+  origin: SolverOriginSchema.default("LLM"),
+  status: SolverStatusSchema,
+  trustLevel: SolverTrustLevelSchema,
+  /** 冻结哈希（同源同 hash，R6 可校验未篡改）。 */
+  hash: z.string(),
+  version: z.number().int().default(1),
+  /** 创建人（A18.3 创建人作用域写真值门控用：actor===createdBy 才放行写真值）。 */
+  createdBy: z.string(),
+  createdAt: z.string(),
+  /** 注册失败原因（status=UNREGISTERED 时）。 */
+  rejectReason: z.string().optional(),
+});
+export type SolverArtifact = z.infer<typeof SolverArtifactSchema>;
+
+/** LLM 生成草稿（沙箱跑通自检前）。 */
+export const SolverGenDraftSchema = z.object({
+  computeSource: z.string().min(1),
+  outputShape: z.array(z.string()).default([]),
+  argHints: z.record(z.string(), z.string()).default({}),
+  rationale: z.string().default(""),
+});
+export type SolverGenDraft = z.infer<typeof SolverGenDraftSchema>;
