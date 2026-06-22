@@ -8,7 +8,7 @@
 >
 > **W1 后端已就绪的前端（零跨依赖，可并行）**
 > - [ ] **sop 前端**（deps ✅ mrp_netting/finance_pnl/SopVersionRow）：SOP.1 ② 滚动 P90 列 · SOP.2 ③ 物料线 MRP 表 · SOP.3 ④ 量价本利科目表 · SOP.4 ⑤ 版本演进对比表。
-> - [ ] **aop 前端**（deps ✅ PlanTarget/Principal）：年度情景规划台 1:1 + 目标分解挂 Principal 责任。
+> - [x] **aop 前端** ✅：note 行 + 三情景对比 chip + 分解 header 基准数字 + 缺口/过剩窗口曲线 + C18/C23 行内 RuleRef；修 2027/2026 年份接线；契约 AnnualScenario.note + 生成器 note 种子；f21 +1 L3，frontend 202 全绿，回写本体 §2.B。
 > - [ ] **cockpit P5 前端**（deps ✅ SopVersionRow/counterfactual_timeline；AI 对话依赖 W0）：V5/V7 版本切换 · 反事实双线图（counterfactual_timeline）· 回采校准链 · AI 对话 · 导出。
 >
 > **W2 需新建共享组件（audit.3 → generate，有序）**
