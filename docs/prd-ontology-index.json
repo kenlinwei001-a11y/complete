@@ -770,6 +770,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-discover-real-type-names.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/agentcore/src/tools/registry.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-dogfooding-self-ontology.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1357,6 +1374,7 @@
       "PRD-A5-fde-orchestration-workflow.md",
       "PRD-agent-data-generation-tools.md",
       "PRD-attribution-routing-plan-audit.md",
+      "PRD-discover-real-type-names.md",
       "PRD-empty-tenant-bootstrap.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
@@ -1514,7 +1532,8 @@
     "apps/agentcore/src/tools/registry.ts": [
       "PRD-A1-solvers-as-mcp-tools.md",
       "PRD-A15-cli-universal-operation-shell.md",
-      "PRD-agent-data-generation-tools.md"
+      "PRD-agent-data-generation-tools.md",
+      "PRD-discover-real-type-names.md"
     ],
     "apps/datacore/src/solvers/service.ts": [
       "PRD-A1-solvers-as-mcp-tools.md",
@@ -1619,7 +1638,8 @@
       "PRD-attainment-base-daily-timeseries.md"
     ],
     "apps/agentcore/src/tools/executor.ts": [
-      "PRD-attribution-routing-plan-audit.md"
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-discover-real-type-names.md"
     ],
     "apps/datacore/src/catalog.ts": [
       "PRD-attribution-routing-plan-audit.md"
