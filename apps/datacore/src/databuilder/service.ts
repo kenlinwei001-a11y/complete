@@ -323,15 +323,18 @@ export class DataBuilderService {
   private buildStorySteps(ctx: AuthCtx, id: string, body: BuildRunBody, inference: boolean): WorkflowStepDef[] {
     const getPlan = async (c: StepContext): Promise<BuildPlan | undefined> =>
       c["planId"] ? this.repos.buildPlans.get(ctx.tenantId, String(c["planId"])) : undefined;
+    // A18：PROVISIONAL 未审核态——闭包降 ADVISORY 不阻断，建域跑完出 PROVISIONAL_ANSWER，但**不写 GOVERNED 真值**（守 R4）。
+    const provisional = (body.buildMode ?? "STRICT") === "PROVISIONAL";
     return [
       {
         stepKey: "dry_build",
         title: "试建：出 BuildPlan + A 三向闭包（不发布）",
         run: async () => {
           const dry = await this.run(ctx, { ...body, dryRun: true });
-          const aOk = dry.status === "SUCCEEDED" && (dry.closure?.gatePassed ?? false);
+          // STRICT：aOk=gatePassed（HARD）；PROVISIONAL：aOk=!blocked（advisory 缺口不阻断，守"不靠阻断成 0"）。
+          const aOk = dry.status === "SUCCEEDED" && (provisional ? !(dry.closure?.blocked ?? false) : (dry.closure?.gatePassed ?? false));
           return {
-            detail: `planId=${dry.planId ?? "?"} aOk=${aOk}`,
+            detail: `planId=${dry.planId ?? "?"} aOk=${aOk}${provisional ? " (PROVISIONAL)" : ""}`,
             patch: { planId: dry.planId, aOk, closureReport: dry.closure },
           };
         },
@@ -374,6 +377,11 @@ export class DataBuilderService {
         title: "全链 HARD 门：A⊕B 闭合则真建 + 发布 + 落切片",
         run: async (c) => {
           if (!(c["aOk"] && c["bOk"])) return { skip: true, detail: "全链未闭合 → 拒发布（数据不落库）" };
+          // A18：PROVISIONAL 未审核态绝不写 GOVERNED 真值——跑到这步即视为"未审核预览产出"，built=false，
+          // 真值待人工审核→晋升 GOVERNED 才落（隔离 PROVISIONAL 数据物化为 A18.3-data 深水区，单列）。
+          if (provisional) {
+            return { detail: "PROVISIONAL 未审核态：预览产出、不写真值（晋升 GOVERNED 后落）", patch: { built: false, producedConnections: [], producedDatasets: [], provisionalPreview: true } };
+          }
           const plan = await getPlan(c);
           const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((x) => x.id));
           const dsBefore = new Set((await this.repos.rawDatasets.list(ctx.tenantId)).map((x) => x.id));
@@ -414,7 +422,8 @@ export class DataBuilderService {
         run: async (c) => {
           const plan = await getPlan(c);
           const aOk = !!c["aOk"], bOk = !!c["bOk"], built = !!c["built"];
-          const status: StoryBuildRun["status"] = aOk && bOk && built ? "SUCCEEDED" : "FAILED";
+          // STRICT：真建成才 SUCCEEDED；PROVISIONAL：advisory 不阻断跑完即 SUCCEEDED（未审核预览，built=false 不写真值）。
+          const status: StoryBuildRun["status"] = provisional ? (aOk ? "SUCCEEDED" : "FAILED") : (aOk && bOk && built ? "SUCCEEDED" : "FAILED");
           const scaffoldReceipt = c["scaffoldReceipt"] as ScaffoldReceipt | undefined;
           const closureReport = c["closureReport"] as ClosureReport | undefined;
           const producedConnections = (c["producedConnections"] as string[] | undefined) ?? [];
@@ -929,7 +938,8 @@ export class DataBuilderService {
           solverNeeds: plan.solverNeeds.map((s) => s.solverKey),
           kbDocs: plan.kbDocs.length,
         };
-        job.status = closure.gatePassed ? "SUCCEEDED" : "FAILED";
+        // A18：PROVISIONAL dry-run advisory 不阻断（!blocked 即 SUCCEEDED），STRICT 仍按 gatePassed。
+        job.status = closure.gatePassed || (body.buildMode === "PROVISIONAL" && !closure.blocked) ? "SUCCEEDED" : "FAILED";
         job.finishedAt = nowIso();
         await this.repos.buildJobs.put(job);
         return job;

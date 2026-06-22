@@ -77,10 +77,36 @@ describe("A18 · 真服务 PROVISIONAL 建域（L1）", () => {
     const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "domain.provisional_built");
     expect(events.some((e) => (e.payload as { runId?: string }).runId === prov.id)).toBe(true);
 
-    // STRICT（默认）：buildMode=STRICT + GOVERNED（行为不变）
-    const strict = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 8 } })).json()) as { buildMode: string; domainTrustLevel: string; verification?: { status: string } };
+    // A18 解阻断 + 不写真值：PROVISIONAL 跑完为预览（SUCCEEDED），但**不写 GOVERNED 真值**（producedDatasets 空）。
+    const provFull = full as { status: string; producedDatasets: string[]; producedConnections: string[] };
+    expect(provFull.status).toBe("SUCCEEDED"); // 跑完出预览，非 FAILED-全0
+    expect(provFull.producedDatasets).toEqual([]); // 未审核态不落 GOVERNED 真值
+    expect(provFull.producedConnections).toEqual([]);
+
+    // STRICT（默认）：buildMode=STRICT + GOVERNED + 真建落库（行为不变，无回归）
+    const strict = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 8 } })).json()) as { buildMode: string; domainTrustLevel: string; status: string; producedDatasets: string[]; verification?: { status: string } };
     expect(strict.buildMode).toBe("STRICT");
     expect(strict.domainTrustLevel).toBe("GOVERNED");
+    expect(strict.status).toBe("SUCCEEDED");
+    expect(strict.producedDatasets.length).toBeGreaterThan(0); // STRICT 真落 GOVERNED 数据
     expect(strict.verification?.status).not.toBe("PROVISIONAL_ANSWER");
+  });
+
+  it("解阻断：缺求解器（STRICT 会 BLOCKED 全 0）→ PROVISIONAL 跑完出 SUCCEEDED 预览 + PROVISIONAL_ANSWER（不 FAILED）", async () => {
+    const t: TestApp = await makeApp();
+    // 注入会自造未注册求解器的 comprehend（缺件 → STRICT chainBroken 阻断）。
+    t.llm.enqueue({
+      objectTypes: [{ typeKey: "Cap", displayName: "产能", domain: "capacity", fields: [{ name: "capId", dataType: "string", isPrimaryKey: true }, { name: "tons", dataType: "number" }] }],
+      rules: [],
+      solverNeeds: [{ solverKey: "capacity_switch_optimizer", inputFields: [] }], // 未注册 → STRICT 闭包 CHAIN 断
+    } as never);
+    const prov = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: "30% 储能产能切换到动力，收入毛利怎么变", seed: 9, buildMode: "PROVISIONAL" } })).json()) as {
+      status: string; buildMode: string; domainTrustLevel: string; closureReport?: { blocked: boolean; advisoryCount: number; chainBroken: number };
+    };
+    expect(prov.status).toBe("SUCCEEDED"); // 缺件不再 FAILED-全0
+    expect(prov.domainTrustLevel).toBe("UNVERIFIED");
+    expect(prov.closureReport?.chainBroken).toBeGreaterThan(0); // 缺口如实记录
+    expect(prov.closureReport?.blocked).toBe(false); // 但不阻断
+    expect(prov.closureReport?.advisoryCount).toBeGreaterThan(0); // 降级 ADVISORY
   });
 });
