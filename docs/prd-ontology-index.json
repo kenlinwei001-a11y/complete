@@ -362,6 +362,21 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-admin-self-approval.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R4",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/actions.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1127,6 +1142,9 @@
     "apps/datacore/src/solvers/service.ts": [
       "PRD-A18-provisional-build-closure.md",
       "PRD-A9-external-engines-design-deferred.md"
+    ],
+    "apps/datacore/src/actions.ts": [
+      "PRD-admin-self-approval.md"
     ],
     "apps/datacore/src/planviews.ts": [
       "PRD-aop-annual-scenario-1to1.md",

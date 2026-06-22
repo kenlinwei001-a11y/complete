@@ -25,6 +25,32 @@ function baseRole(r: string): string {
   return r.split(":")[0] as string;
 }
 
+type SelfApprovePolicy = "STRICT" | "ALLOW_ADMIN" | "ALLOW_ALL";
+
+/**
+ * SA：解析租户级自审策略（粗粒度兜底）。优先级：env `SELF_APPROVE_POLICY` 显式覆盖 →
+ * demo 演示租户默认 `ALLOW_ADMIN`（解锁单 admin 演示闭环）→ 其余 `STRICT`（现行职责分离，向后兼容）。
+ * 确定性、零迁移；细粒度由 `ActionType.selfApproveAllowed` 覆盖。
+ */
+function tenantSelfApprovePolicy(tenantId: string): SelfApprovePolicy {
+  const env = (process.env.SELF_APPROVE_POLICY ?? "").toUpperCase();
+  if (env === "STRICT" || env === "ALLOW_ADMIN" || env === "ALLOW_ALL") return env;
+  if (tenantId === "demo") return "ALLOW_ADMIN";
+  return "STRICT";
+}
+
+/** SA：在给定租户/类型/审批人角色下，发起人自审是否生效（类型显式 ∨ 租户策略允许）。 */
+function selfApproveAllowedFor(tenantId: string, type: ActionTypeRecord | undefined, approverRoles: string[]): boolean {
+  if (type?.selfApproveAllowed === true) return true;
+  const policy = tenantSelfApprovePolicy(tenantId);
+  if (policy === "ALLOW_ALL") return true;
+  if (policy === "ALLOW_ADMIN") return approverRoles.some((r) => baseRole(r) === "admin");
+  return false;
+}
+
+const hasStepRole = (roles: string[], stepRole: string): boolean =>
+  roles.some((r) => baseRole(r) === stepRole || r === stepRole);
+
 /** Minimal JSON-schema check: required keys + primitive type tags. */
 function validateParams(schema: Record<string, unknown>, payload: Record<string, unknown>): void {
   const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
@@ -134,8 +160,12 @@ export class ActionService {
     if (type) {
       // Self-approval guard: every step role must have an approver ≠ the originator
       // (the step auto-skips to another user with the role; none → submit fails).
+      // SA：当租户策略/类型允许自审且发起人本人持该步角色时，把发起人计入 eligible（不再误抛）。
       const users = await this.repos.users.list(ctx.tenantId);
       const originId = draft.origin.userId;
+      const originUser = users.find((u) => u.id === originId || u.username === originId);
+      const originRoles = originUser?.roles ?? ctx.roles;
+      const selfOk = selfApproveAllowedFor(ctx.tenantId, type, originRoles);
       for (const step of chain) {
         const eligible = users.filter(
           (u) =>
@@ -143,7 +173,10 @@ export class ActionService {
             u.username !== originId && // debug-auth contexts carry the username as userId
             u.roles.some((r) => baseRole(r) === step.role || r === step.role),
         );
-        if (eligible.length === 0) throw noEligibleApprover(step.role);
+        if (eligible.length === 0) {
+          const selfEligible = selfOk && hasStepRole(originRoles, step.role);
+          if (!selfEligible) throw noEligibleApprover(step.role);
+        }
       }
     }
     draft.approvalSteps = chain.map((s, i) => ({ seq: i + 1, role: s.role }));
@@ -184,11 +217,14 @@ export class ActionService {
     let drafts = await this.repos.actionDrafts.list(ctx.tenantId, (d) => (q.status ? d.status === q.status : true));
     if (q.role === "mine") {
       // "待我审批" = current step role ∈ my roles (and I am not the originator).
+      // SA：自审生效时，也含我自己发起、当前步由我可审的草稿（前端按 origin.userId===me 标"自审"）。
       const myRoles = new Set(ctx.roles.map(baseRole));
+      const selfOk = selfApproveAllowedFor(ctx.tenantId, undefined, ctx.roles);
       drafts = drafts.filter((d) => {
         if (d.status !== "PENDING_APPROVAL") return false;
         const step = this.currentStep(d);
-        return !!step && myRoles.has(step.role) && d.origin.userId !== ctx.userId;
+        if (!step || !myRoles.has(step.role)) return false;
+        return d.origin.userId !== ctx.userId || selfOk;
       });
     }
     return drafts.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -202,7 +238,12 @@ export class ActionService {
     if (!ctx.roles.some((r) => baseRole(r) === step.role || r === step.role)) {
       throw invalidStep(`当前步骤需要角色 ${step.role}`);
     }
-    if (ctx.userId === draft.origin.userId) throw invalidStep("发起人不得自批");
+    if (ctx.userId === draft.origin.userId) {
+      // SA：发起人自批——按租户策略/类型放行并显式留痕（R13）；否则维持现职责分离阻断。
+      const type = await this.getType(ctx.tenantId, draft.actionTypeKey);
+      if (!selfApproveAllowedFor(ctx.tenantId, type, ctx.roles)) throw invalidStep("发起人不得自批");
+      step.selfApproved = true;
+    }
     step.decision = "APPROVE";
     step.approverId = ctx.userId;
     step.comment = comment;

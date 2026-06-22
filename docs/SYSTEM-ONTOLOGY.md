@@ -287,7 +287,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | R1 | **contracts-only-shared**：跨包只依赖 `@platform/contracts`；前端不重定义契约类型 | 构建/评审 |
 | R2 | **tenant_id everywhere**：所有读写/事件/缓存键带 tenantId；跨租户 403/404 | 仓储层 |
 | R3 | **entitlement 先于 authz**：功能关 = 不存在 → 404 `FEATURE_NOT_FOUND` | `features.ts`/`gate.ts` |
-| R4 | **真值写入经 Action 审批**：对象物化/本体变更经 `domainExecutor`（Phase9B），EXECUTED 才落 | `app.ts:290` |
+| R4 | **真值写入经 Action 审批**：对象物化/本体变更经 `domainExecutor`（Phase9B），EXECUTED 才落。**职责分离为默认策略、可配置留痕例外（SA，有意放宽）**：发起人自批默认硬阻断（STRICT=现行为）；按租户策略 `selfApprovePolicy`（env `SELF_APPROVE_POLICY` 覆盖；demo 默认 ALLOW_ADMIN）或类型 `ActionType.selfApproveAllowed` 可放行发起人自审，但**必显式留痕 `ApprovalStep.selfApproved=true`**（R13 透明可审计，杜绝悄绕）——解锁单 admin/演示租户下 provisional→governed / SOP 定稿 / gap-fill 收尾等 R4 收尾闭环 | `app.ts:290` · `actions.ts`（`tenantSelfApprovePolicy`/`selfApproveAllowedFor`） |
 | R5 | **no-secrets-echo**：凭据 AES-GCM 落库，响应仅 credentialRef | 连接器/LLM/MCP |
 | R6 | **确定性**：同 (industry,scale,seed) 字节级一致；求解器同输入同输出；测试不依赖网络/时钟/随机；LLM mock | 合成/求解器/构建 freezePlan |
 | R7 | **错误信封统一** `{error:{code,message,requestId}}` | 两系统 |

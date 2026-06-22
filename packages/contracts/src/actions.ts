@@ -23,8 +23,14 @@ export const ApprovalStepSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT"]).optional(),
   comment: z.string().optional(),
   decidedAt: z.string().optional(),
+  /** SA：发起人=审批人的可配置留痕例外（R4 放宽；STRICT 租户恒 undefined）。R13 透明可审计。 */
+  selfApproved: z.boolean().optional(),
 });
 export type ApprovalStep = z.infer<typeof ApprovalStepSchema>;
+
+/** SA：租户级自审策略（粗粒度兜底）。默认 STRICT=现行职责分离；demo 默认 ALLOW_ADMIN。 */
+export const SelfApprovePolicySchema = z.enum(["STRICT", "ALLOW_ADMIN", "ALLOW_ALL"]);
+export type SelfApprovePolicy = z.infer<typeof SelfApprovePolicySchema>;
 
 export const ActionDraftSchema = z.object({
   id: z.string(), // act_
@@ -58,6 +64,8 @@ export const ActionTypeSchema = z.object({
   paramsSchema: z.record(z.string(), z.unknown()), // JSONSchema
   checkRules: z.array(z.string()), // 提交时规则引擎预检
   approvalChain: z.array(z.object({ role: z.string() })).min(1).max(3),
+  /** SA：本类型显式允许发起人自审（细粒度，覆盖租户策略）。默认 undefined=随租户策略。 */
+  selfApproveAllowed: z.boolean().optional(),
 });
 export type ActionType = z.infer<typeof ActionTypeSchema>;
 
