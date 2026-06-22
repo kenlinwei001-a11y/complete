@@ -2118,6 +2118,17 @@ export const handlers = [
       : { status: "NOT_VERIFIED", question: r.script, gapCode: "NOT_ANSWERABLE", verifiedAt: new Date().toISOString() };
     return HttpResponse.json(r);
   }),
+  http.post("*/a/v1/databuilder/runs/:id/promote", ({ params }) => {
+    const r = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!r) return new HttpResponse(null, { status: 404 });
+    if (r.buildMode !== "PROVISIONAL") return err(400, "VALIDATION_ERROR", "仅 PROVISIONAL 未审核域可整域晋升");
+    r.domainTrustLevel = "GOVERNED";
+    r.domainPromotion = {
+      promotedAt: new Date().toISOString(), promotedBy: "usr-planner", fromNamespace: r.provisionalNamespace ?? `demo::prov::${r.id}`,
+      migratedObjects: 12, migratedDatasets: 3, migratedConnections: 1, migratedTypes: 2, promotedSolvers: [],
+    };
+    return HttpResponse.json(r);
+  }),
   http.post("*/a/v1/databuilder/stress", async ({ request }) => {
     const body = (await request.json()) as { scripts: string[] };
     const runs = body.scripts.map((script) => {

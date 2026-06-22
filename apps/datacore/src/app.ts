@@ -2588,6 +2588,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     return databuilder.verifyBuild(c, (req.params as { id: string }).id);
   });
+  // A18.4 整域晋升编排：人工审核通过 PROVISIONAL 未审核域 → 隔离数据迁入真租户 + 逐制品晋升临时求解器
+  // GOVERNED + 翻转域信任级（R4：晋升=人工审批动作）。发 domain.promoted。
+  app.post("/a/v1/databuilder/runs/:id/promote", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.promoteDomain(c, (req.params as { id: string }).id);
+  });
   // prototype-intake 正门：上传原型 HTML → 确定性抽数据表 + 关系（R6）→ 对既有本体字段对账预览
   // （能映射自动接、映射不上生成候选给人确认，类比 MergeCandidate；不调 LLM）。发 prototype.intake_recorded。
   app.post("/a/v1/databuilder/intake", async (req) => {

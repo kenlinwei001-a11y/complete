@@ -309,6 +309,20 @@ export const StoryBuildRunSchema = z.object({
   domainTrustLevel: z.enum(["GOVERNED", "UNVERIFIED"]).optional(),
   /** A18.3：PROVISIONAL 隔离物化命名空间（伪租户 `tenant::prov::runId`；未审核数据落此，governed 查询默认不可见 R2）。 */
   provisionalNamespace: z.string().optional(),
+  /** A18.4 整域晋升编排：人工审核通过 → 把隔离域数据迁入真租户 + 逐制品晋升临时求解器 GOVERNED + 翻转域信任级。 */
+  domainPromotion: z
+    .object({
+      promotedAt: IsoTime,
+      promotedBy: z.string(),
+      fromNamespace: z.string(),
+      migratedObjects: z.number().int().default(0),
+      migratedDatasets: z.number().int().default(0),
+      migratedConnections: z.number().int().default(0),
+      migratedTypes: z.number().int().default(0),
+      /** 整域内逐制品晋升为 GOVERNED 的临时求解器 key。 */
+      promotedSolvers: z.array(z.string()).default([]),
+    })
+    .optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
   answer: z.string().optional(),
   /** §9 归一 evidence 标记：RUNTIME_PROBE=答案经 QOS orchestrator 实跑（绿测试≠能用的活证据）；

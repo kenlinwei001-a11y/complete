@@ -14,11 +14,12 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）13 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+// 断言（真后端真数据，区别于 mock 写死值）14 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
 //   cockpit P3 风险对症方案→工单 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 /
-//   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / nav-reorg 业务域分组 / A14 evals parity 失因列 / A18.4 审核台。
+//   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / A18.4 整域晋升编排 / nav-reorg 业务域分组 /
+//   A14 evals parity 失因列 / A18.4 审核台。
 // 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 9/9 通过（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
-//   cockpit P1+P2+P3 + A18.4 扩为 13 项。
+//   cockpit P1+P2+P3 + A18.4(审核台+整域晋升) 扩为 14 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -114,6 +115,20 @@ try {
     const vstatus = await page.locator("[data-testid^=sbr-verify-status-]").count();
     vstatus > 0 ? ok("A10 真后端：重跑验证 → 终态徽章真浏览器渲染") : bad("A10 真后端：验证终态徽章缺失");
   } else { bad("A10 真后端：无重跑验证按钮（历史记录未现）"); }
+
+  // ── A18.4 整域晋升编排（L4 真后端）：勾选 PROVISIONAL → 建域（隔离物化、UNVERIFIED）→ 整域晋升 → GOVERNED ──
+  await page.check("[data-testid=db-provisional]").catch(() => {});
+  await page.click("[data-testid=sbr-run]").catch(() => {});
+  await page.waitForTimeout(5000); // 真后端 PROVISIONAL 建域（闭包降级 + 隔离物化到伪租户）
+  const promoteBtns = await page.locator("[data-testid^=sbr-promote-btn-]").count();
+  if (promoteBtns > 0) {
+    await page.locator("[data-testid^=sbr-promote-btn-]").first().click().catch(() => {});
+    await page.waitForTimeout(3000); // 迁移隔离域 → 真租户 + 翻转域信任级
+    const governed = await page.locator("[data-testid^=sbr-promote-summary-]").count();
+    governed > 0
+      ? ok("A18.4 真后端：PROVISIONAL 域整域晋升 GOVERNED（隔离数据迁入真租户，晋升摘要真浏览器渲染）")
+      : bad("A18.4 真后端：整域晋升后未见 GOVERNED 摘要");
+  } else { bad("A18.4 真后端：PROVISIONAL 域无整域晋升按钮（UNVERIFIED 未现）"); }
 
   // ── nav-reorg 导航分组（L4 真后端，数据无关）：管理区业务域分组头 ──
   const navGroups = await page.$$eval("[data-testid^=nav-group-]", (els) => els.map((e) => e.getAttribute("data-testid")));

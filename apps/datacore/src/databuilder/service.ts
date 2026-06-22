@@ -812,6 +812,99 @@ export class DataBuilderService {
     return r;
   }
 
+  /**
+   * A18.4 整域晋升编排（用户裁决 ⑤：晋升整域 + 逐制品）：人工审核通过一个 PROVISIONAL 未审核域后，
+   * 一次性把"隔离预览"转为"治理真值"——① 把隔离命名空间（伪租户 `tenant::prov::runId`）的
+   * 本体类型/链路/对象/链路/原始表/连接器/规则/切片整体迁入真租户 → 发布版本 + 跑派生（governed 可查）；
+   * ② 逐制品晋升本域产出的临时求解器 PROVISIONAL → GOVERNED（解锁写真值，复用 promoteSolver）；
+   * ③ 翻转 domainTrustLevel UNVERIFIED→GOVERNED + 记 domainPromotion + 发 domain.promoted。
+   * 幂等：已 GOVERNED 直接返回（不重复迁移）。守 R4：晋升=人工审批动作（端点 requireAdmin）。
+   */
+  async promoteDomain(ctx: AuthCtx, runId: string): Promise<StoryBuildRun> {
+    const run = await this.repos.storyBuildRuns.get(ctx.tenantId, runId);
+    if (!run) throw notFound("story build run");
+    if (run.buildMode !== "PROVISIONAL") throw validationError("仅 PROVISIONAL 未审核域可整域晋升");
+    if (run.domainTrustLevel === "GOVERNED") return run; // 幂等：已晋升
+    const provNs = run.provisionalNamespace;
+    if (!provNs) throw validationError("该 PROVISIONAL 域无隔离命名空间，无法晋升");
+
+    // ① 迁移本体类型/链路（real 缺则建；已存在则 upsert 续版本）。
+    const provTypes = await this.repos.ontologyTypes.list(provNs);
+    let migratedTypes = 0;
+    for (const t of provTypes) {
+      if (!(await this.ontology.getType(ctx, t.key))) {
+        await this.ontology.upsertType(ctx, { key: t.key, displayName: t.displayName, domain: t.domain, properties: t.properties, derivedProperties: t.derivedProperties, sourceBindings: t.sourceBindings });
+        migratedTypes++;
+      }
+    }
+    for (const lt of await this.repos.ontologyLinks.list(provNs)) {
+      await this.ontology.upsertLinkType(ctx, { key: lt.key, fromTypeKey: lt.fromTypeKey, toTypeKey: lt.toTypeKey, cardinality: lt.cardinality });
+    }
+
+    // ② 迁移连接器 + 原始表 + 原始行（id 保持 → run.producedDatasets/Connections 引用迁移后仍有效）。
+    let migratedConnections = 0;
+    for (const c of await this.repos.connections.list(provNs)) {
+      await this.repos.connections.put({ ...c, tenantId: ctx.tenantId });
+      migratedConnections++;
+    }
+    let migratedDatasets = 0;
+    for (const ds of await this.repos.rawDatasets.list(provNs)) {
+      await this.repos.rawDatasets.put({ ...ds, tenantId: ctx.tenantId });
+      await this.repos.rawRows.replace(ctx.tenantId, ds.id, await this.repos.rawRows.list(provNs, ds.id));
+      migratedDatasets++;
+    }
+
+    // ③ 迁移对象 + 链路（origin 保持；晋升来源 provNs 记于 domainPromotion.fromNamespace，R13 可溯）。
+    let migratedObjects = 0;
+    for (const t of provTypes) {
+      for (const o of await this.repos.objects.listByType(provNs, t.key)) {
+        await this.repos.objects.put({ ...o, tenantId: ctx.tenantId });
+        migratedObjects++;
+      }
+    }
+    for (const l of await this.repos.links.list(provNs)) {
+      await this.repos.links.put({ ...l, tenantId: ctx.tenantId });
+    }
+
+    // ④ 迁移规则 + 切片。
+    for (const r of await this.repos.rules.list(provNs)) await this.repos.rules.put({ ...r, tenantId: ctx.tenantId });
+    for (const s of await this.repos.sliceSpecs.list(provNs)) await this.repos.sliceSpecs.put({ ...s, tenantId: ctx.tenantId });
+
+    // ⑤ 发布本体版本 + 跑派生（迁移对象在 governed 真值库可查、派生算出）。
+    if (migratedTypes > 0 || (await this.ontology.currentVersion(ctx.tenantId)) === 0) await this.ontology.publishVersion(ctx);
+    await this.ontology.runDerivations(ctx);
+
+    // ⑥ 逐制品晋升：本域产出的临时求解器（producedArtifacts module=solver）PROVISIONAL → GOVERNED。
+    const promotedSolvers: string[] = [];
+    const solverKeys = [...new Set(run.producedArtifacts.filter((a) => a.module === "solver").map((a) => a.key))];
+    for (const key of solverKeys) {
+      const art = await this.solvers?.getArtifact(ctx.tenantId, key);
+      if (art && (art.status === "PROVISIONAL" || art.status === "ADVISORY_PASSED")) {
+        await this.solvers!.promoteSolver(ctx, key);
+        promotedSolvers.push(key);
+      }
+    }
+
+    // ⑦ 翻转域信任级 + 记录 + 事件。
+    const promoted: StoryBuildRun = {
+      ...run,
+      domainTrustLevel: "GOVERNED",
+      domainPromotion: {
+        promotedAt: new Date().toISOString(),
+        promotedBy: ctx.userId,
+        fromNamespace: provNs,
+        migratedObjects,
+        migratedDatasets,
+        migratedConnections,
+        migratedTypes,
+        promotedSolvers,
+      },
+    };
+    await this.repos.storyBuildRuns.put(promoted);
+    await this.outbox?.emit(ctx.tenantId, "domain.promoted", { runId, migratedObjects, migratedDatasets, promotedSolvers: promotedSolvers.length });
+    return promoted;
+  }
+
   // ---- g8-P2：InputManifest 倒推补录（自描述表单）-------------------------
   // comprehend 故事 → 比对"脚本已给" vs "构建必需" → 产 InputManifest：
   //   STORY=脚本已抽取（只读展示） · ASK_USER=须补录（seed） · REUSE_EXISTING=可复用既有连接器。

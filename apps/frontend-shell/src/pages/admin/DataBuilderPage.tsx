@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph, verifyStoryRun } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph, verifyStoryRun, promoteStoryDomain } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -347,6 +347,45 @@ function VerificationPanel({ run }: { run: StoryBuildRun }) {
         onClick={() => m.mutate()} title="把主问句再经 QOS 实跑一遍，验证 publish 后'现在真能答了'（亲手跑通）">
         {m.isPending ? "验证中…" : "↻ 重跑验证"}
       </button>
+    </div>
+  );
+}
+
+/**
+ * A18.4 整域晋升编排：PROVISIONAL 未审核域（domainTrustLevel=UNVERIFIED）人工审核通过 →
+ * 隔离命名空间数据整体迁入真租户 + 逐制品晋升临时求解器 GOVERNED + 翻转域信任级（R4 审批动作）。
+ * 只对 PROVISIONAL 域显示；已 GOVERNED 显示晋升摘要。
+ */
+export function DomainPromotePanel({ run }: { run: StoryBuildRun }) {
+  const qc = useQueryClient();
+  const m = useMutation({
+    mutationFn: () => promoteStoryDomain(run.id),
+    onSuccess: (r) => {
+      const p = r.domainPromotion;
+      toast(`整域已晋升 GOVERNED：迁入 ${p?.migratedObjects ?? 0} 对象 / ${p?.migratedDatasets ?? 0} 原始表${p?.promotedSolvers?.length ? ` + ${p.promotedSolvers.length} 求解器` : ""}`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+      void qc.invalidateQueries({ queryKey: ["a", "object-types"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
+  if (run.buildMode !== "PROVISIONAL") return null;
+  const governed = run.domainTrustLevel === "GOVERNED";
+  return (
+    <div data-testid={`sbr-promote-${run.id}`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+      <span className={`badge ${governed ? "green" : "amber"}`} data-testid={`sbr-trust-${run.id}`}>
+        {governed ? "已治理（GOVERNED）" : "未审核·隔离（UNVERIFIED）"}
+      </span>
+      {governed ? (
+        <span style={{ fontSize: 11.5, color: "var(--muted)" }} data-testid={`sbr-promote-summary-${run.id}`}>
+          整域已晋升：迁入 {run.domainPromotion?.migratedObjects ?? 0} 对象 / {run.domainPromotion?.migratedDatasets ?? 0} 原始表
+          {run.domainPromotion?.promotedSolvers?.length ? ` + 求解器 ${run.domainPromotion.promotedSolvers.join("、")}` : ""}
+        </span>
+      ) : (
+        <button className="btn primary sm" data-testid={`sbr-promote-btn-${run.id}`} disabled={m.isPending}
+          onClick={() => m.mutate()} title="审核通过：把隔离预览数据迁入真值库 + 逐制品晋升临时求解器 GOVERNED（解锁写真值，R4）">
+          {m.isPending ? "晋升中…" : "✓ 审核通过 → 整域晋升"}
+        </button>
+      )}
     </div>
   );
 }
@@ -764,6 +803,7 @@ export default function DataBuilderPage() {
   const [script, setScript] = useState("常州基地产能紧张，影响订单交期与客户信用，请做风险推演"); // debattery-allow：构建脚本输入框 demo 占位（用户自行覆写）
   const [seed, setSeed] = useState(42);
   const [dryRun, setDryRun] = useState(false);
+  const [provisional, setProvisional] = useState(false); // A18 未审核预览模式（PROVISIONAL：隔离物化、不写真值）
   const [job, setJob] = useState<(BuildJob & { jobId?: string }) | null>(null);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [backfillReport, setBackfillReport] = useState<BackfillReport | null>(null);
@@ -783,7 +823,7 @@ export default function DataBuilderPage() {
 
   // g8 故事驱动建域 · P1：提交故事脚本 → StoryBuildRun（写入历史推演记录时间线）
   const storyM = useMutation({
-    mutationFn: () => runStoryBuild({ script, seed, builderKey: "foundry-grade-data-builder" }),
+    mutationFn: () => runStoryBuild({ script, seed, builderKey: "foundry-grade-data-builder", ...(provisional ? { buildMode: "PROVISIONAL" as const } : {}) }),
     onSuccess: (r) => {
       toast(r.status === "SUCCEEDED" ? "建域完成，已记入历史推演记录" : "建域失败（见闭包/缺口）", r.status === "SUCCEEDED" ? "success" : "error");
       setExpandedRun(r.id);
@@ -876,6 +916,9 @@ export default function DataBuilderPage() {
           </label>
           <label style={{ fontSize: 12 }}>
             <input data-testid="db-dryrun" type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> dry-run（仅预览不落库）
+          </label>
+          <label style={{ fontSize: 12 }} title="A18 未审核预览：缺口降 ADVISORY 不阻断、隔离物化到伪租户，不写真值；审核通过可整域晋升">
+            <input data-testid="db-provisional" type="checkbox" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} /> 未审核预览（PROVISIONAL）
           </label>
           <button className="btn" data-testid="db-run" disabled={runM.isPending || !script.trim()} onClick={() => runM.mutate()}>
             {runM.isPending ? "构建中…" : dryRun ? "预览构建" : "运行构建"}
@@ -1051,6 +1094,7 @@ export default function DataBuilderPage() {
                     <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
                       <InferenceButton run={r} />
                       <VerificationPanel run={r} />
+                      <DomainPromotePanel run={r} />
                     </div>
                   </div>
                 )}

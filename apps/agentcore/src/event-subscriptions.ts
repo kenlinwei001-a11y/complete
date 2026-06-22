@@ -91,6 +91,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "solver.provisional_generated", producer: "求解器·LLM 临时生成沙箱跑通注册 PROVISIONAL（A18.2）", tier: "IN_SESSION", invalidates: ["solver-registry", "provisional-review"] },
   // L15 A18.4 晋升：临时求解器人工审批 PROVISIONAL→GOVERNED（解锁写真值）→ 失效求解器目录/审核台
   { event: "solver.status_changed", producer: "求解器·临时件状态推进/晋升 GOVERNED（A18.4）", tier: "IN_SESSION", invalidates: ["solver-registry", "provisional-review"] },
+  // L15 A18.4 整域晋升编排：PROVISIONAL 域人工审批 → 隔离数据迁入真租户 + 逐制品晋升求解器 → 失效历史/审核台/对象库
+  { event: "domain.promoted", producer: "数据构建发动机·PROVISIONAL 整域晋升 GOVERNED（A18.4 编排：迁移隔离域+逐制品晋升）", tier: "IN_SESSION", invalidates: ["story-runs", "provisional-review", "object-queries", "solver-registry"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */
