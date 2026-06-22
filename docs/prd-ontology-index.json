@@ -838,6 +838,19 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-llm-agent-empty-response-guard.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R6",
+        "R7",
+        "R8"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-maturity-master-plan.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -851,6 +864,21 @@
         "G-8"
       ],
       "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-nav-ia-reorg.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R15",
+        "R2",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/src/pages/adminRegistry.ts"
+      ],
       "brokenArtifacts": []
     },
     "PRD-ontology-browser-field-coverage.md": {
@@ -1125,6 +1153,7 @@
       "PRD-fullstack-story-build-g8.md",
       "PRD-in-dialog-gap-fill-loop.md",
       "PRD-inference-process-enhancement.md",
+      "PRD-llm-agent-empty-response-guard.md",
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
       "PRD-system-ontogenesis-spec.md",
@@ -1406,6 +1435,12 @@
     "apps/frontend-shell/src/views/sim/PmDag.tsx": [
       "PRD-inference-process-enhancement.md",
       "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/pages/ShellLayout.tsx": [
+      "PRD-nav-ia-reorg.md"
+    ],
+    "apps/frontend-shell/src/pages/adminRegistry.ts": [
+      "PRD-nav-ia-reorg.md"
     ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"

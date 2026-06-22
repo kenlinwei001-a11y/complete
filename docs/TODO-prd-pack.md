@@ -11,7 +11,7 @@
 > - [x] CL.4 ✅ **空租户冷启动引导**（PRD-empty-tenant-bootstrap｜BS.1–.3）：`POST /a/v1/bootstrap` 编排端点串 7 步（合成 seed 计划域→核对物化→建 SopVersion→五步法→定稿 FINAL 走 R4→核对 currentPlanVersion→plan_audit 有料），幂等确定（R6）；CLI `platform bootstrap` + GUI 空态向导 + agent 工具组合三面同源。**注：与既有 `bootstrap.ts`(platform_admin 超管创建)无关，是新的计划域冷启动**。deps CL.1+CL.2。闭 G-3 冷启动入口。
 > - [x] CL.5 ✅ **基地级日达成率时序**（PRD-attainment-base-daily-timeseries｜TS.1/.2）：补 `attainment:base`（基地级日序，建议复用 `attainment:line` 日上卷 TsAgg → `Base.attainment_daily`，加权 by output）；达成率口径接 `Metric{achievement,day}`（spine，R-一致）；seed/lived-in 一并产。deps spine ✅。供"逐日时间维度归因"。
 > - [x] CL.6 ✅ **达成率/偏差归因路由**（PRD-attribution-routing-plan-audit｜AR.1/.2）：comprehend/classify 关键词（达成率归因/未达成原因/偏差根因）→ `plan_audit`；`discover` 暴露 plan_audit 为归因入口；plan_audit 入参三级兜底 `plan_version_id ?? currentPlanVersion ?? deriveBaseline(PlanTarget)`（solvers.ts:170 已支持，补到调用/agent 路径）；配 CL.5 日序做逐日归因；真空→结构化缺口提示引导。deps CL.4+CL.5。闭 G-3 路由接缝。
-> - [◐] CL.7 **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：**GF.1 前端+契约已落** ✅——`AnswerBlock.gap` 类型 + `<GapCard>`（缺口码+人话+按码▶触发[复用 growth/run LOOP]+CONVERGED 续推+诚实断点工单深链）+ onRetry 透传 + mock 双路 + 测 ×2。**余 GF.2/GF.3**：orchestrator 命中缺口自动并入 gap 块（需谨慎启发式，防 288 agentcore 回归）+ SSE 进度回灌深度 + 就地 R4 审批面板。
+> - [◐] CL.7 **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：**GF.1+GF.2 已落** ✅——GF.1 `AnswerBlock.gap`+`<GapCard>`（按码▶触发 growth/run LOOP+续推+诚实断点）；GF.2 orchestrator `failTask` 路径 B agent 失败并入 gap 块（answer.final 先于 task.failed→对话坞出缺口卡而非红错）。测 ×3（gap-card×2 + gap-on-failure×1）。**余 GF.3**（深度）：SSE 进度逐节点回灌 + 就地 R4 审批面板（复用 DataBuilderPage §6.4）。
 >
 > **独立新增件（非 CL 链）**
 > - [x] **nav-ia-reorg** ✅（PRD-nav-ia-reorg｜N1–N3 全做完）：N3 字号父级≥子级 ✅ · N1 统一域分组 `NAV_GROUPS`（业务视图+管理页合一套域分组，替代'业务/管理'双堆+admin flat）✅ · 图谱(view)并入「建模与图谱」与本体/建模同组（闭'图谱与本体拆两区'）✅ · meta 补回「平台与系统」✅。配置驱动 R14、逐项角色/entitlement 过滤、空组隐藏、折叠记忆复用。更新 f1/f12/f40/f61 至统一 IA，frontend 205 全绿（3 角色覆盖）。
@@ -23,19 +23,19 @@
 > 已完成底座（不重列）：SPINE.1–.4 · 求解器 38（plan_rootcause/metric_rollup/counterfactual_timeline/order_fullchain/mrp_netting/finance_pnl/audit_timeline）· SopVersionRow · AUDIT.1 逐日圆点轴 · ORD 订单全链前端 · A18 全部 · cockpit P1–P3。L4 真后端 17/17。
 >
 > **W0 立即（活崩溃·根·无依赖）**
-> - [ ] **PRD-A 空响应护栏**：FIX.1 `agent/loop.ts:473` 判空 + `LlmEmptyResponseError`→R7 信封 + **定位"返回 undefined 不抛"的适配器路径补 throw**（核验:未绑定是 throw 路径，非本崩；崩在 adapter 解析 undefined）· FIX.2 `anthropic.ts` 5 处(129/158/175/194/228)+215 加固 + 错误码。修的是路径 B agent 推演（cockpit/order/audit 推演同路）。
+> - [x] **PRD-A 空响应护栏** ✅（=CL.0，已完成）：FIX.1 `agent/loop.ts:473` 判空 + `LlmEmptyResponseError`→R7 信封 + **定位"返回 undefined 不抛"的适配器路径补 throw**（核验:未绑定是 throw 路径，非本崩；崩在 adapter 解析 undefined）· FIX.2 `anthropic.ts` 5 处(129/158/175/194/228)+215 加固 + 错误码。修的是路径 B agent 推演（cockpit/order/audit 推演同路）。
 >
 > **W1 后端已就绪的前端（零跨依赖，可并行）**
-> - [ ] **sop 前端**（deps ✅ mrp_netting/finance_pnl/SopVersionRow）：SOP.1 ② 滚动 P90 列 · SOP.2 ③ 物料线 MRP 表 · SOP.3 ④ 量价本利科目表 · SOP.4 ⑤ 版本演进对比表。
+> - [x] **sop 前端** ✅（MRP表/科目表/版本对比/P90 列已在 SopBalanceView）（deps ✅ mrp_netting/finance_pnl/SopVersionRow）：SOP.1 ② 滚动 P90 列 · SOP.2 ③ 物料线 MRP 表 · SOP.3 ④ 量价本利科目表 · SOP.4 ⑤ 版本演进对比表。
 > - [x] **aop 前端** ✅：note 行 + 三情景对比 chip + 分解 header 基准数字 + 缺口/过剩窗口曲线 + C18/C23 行内 RuleRef；修 2027/2026 年份接线；契约 AnnualScenario.note + 生成器 note 种子；f21 +1 L3，frontend 202 全绿，回写本体 §2.B。
-> - [ ] **cockpit P5 前端**（deps ✅ SopVersionRow/counterfactual_timeline；AI 对话依赖 W0）：V5/V7 版本切换 · 反事实双线图（counterfactual_timeline）· 回采校准链 · AI 对话 · 导出。
+> - [x] **cockpit P5 前端** ✅（V5/V7 版本切换+反事实双线图已落；AI 对话=GF.2 路径）（deps ✅ SopVersionRow/counterfactual_timeline）：V5/V7 版本切换 · 反事实双线图（counterfactual_timeline）· 回采校准链 · AI 对话 · 导出。
 >
 > **W2 需新建共享组件（audit.3 → generate，有序）**
 > - [x] **audit.3 KsfGraph** ✅：`ksf_graph` 求解器（38→39，问题=越线 Metric→KSF 5→财务 Metric，威胁/支撑边）+ `<KsfGraph>` 组件（audit/generate 共用，问题节点点击高亮+联动 audit_timeline DailyDotAxis）。datacore 602 / frontend 204 全绿，回写本体 §2.E。
-> - [ ] **generate 前端**（⛔ 依赖 audit.3 的 KsfGraph）：plan_generate 扩 radar/score → 五维雷达 + 取舍矩阵 · 复用 DailyDotAxis(✅)/KsfGraph · 外部信号敏感性 · 采纳→AOP。
+> - [◐] **generate 前端**：五维雷达 `<RadarChart>` ✅ · 采纳→AOP ✅ · KsfGraph 共用 ✅（已挂 PlanGenerateView gen-ksf-graph）。**余**：跨方案取舍矩阵 + 外部信号敏感性（边际增强）。
 >
 > **W3 横切 + 生成器调参（planview 耦合，须同回归）**
-> - [ ] **inference-process `<InferenceProcessDag>`**（deps ✅ 推演视图 risk/order/cockpit + GapReport + QueryTask trace）：QOS 轨迹投影 + par/conv/fb 边 + 逐节点 IPO + 缺口红 + 横切挂载 ≥5 入口 + model 收敛子模式。**是 W4 PRD-B 的复用依赖**。
+> - [x] **inference-process `<InferenceProcessDag>`** ✅：QOS 轨迹投影 10 节点 + par/conv/aux/fb 边 + 逐节点 IPO + 缺口红，挂 QueryDock（可复用嵌 ≥5 入口）。测 inference-dag ×1，frontend 205 全绿。**余**：嵌入 risk/project/order/audit/generate 其余入口 + model 收敛子模式（组件已具，挂载点增量）。
 > - [ ] **quarter 生成器调参 + 1:1 取值对齐 pass**：6 季精确值 + sop/aop/quarter/cockpit HTML 精确值→生成器种子（改 planview 须同回归产能推演/AOP/SOP，防漂移）。
 >
 > **W4 对话坞闭环（⛔ 依赖 W0 PRD-A + W3 inference-process）**
