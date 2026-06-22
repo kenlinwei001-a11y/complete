@@ -300,6 +300,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | R-一致 | **一个事实一个出处**：同一指标在驾驶舱/S&OP/体检口径一致（同一对象库派生），跨视图同值 | 单一对象库 + 聚合下推 |
 | **R14** | **应用层无业务常数（多租户）**：前端组件不得内联业务数据/结构/租户专属文案；一律来自本体/WorkspaceConfig/ViewConfig.layout/i18n。换租户=换配置不改代码。守护 G-5 不回潮。 | ✅ `debattery:check`（基线 0：无未声明业务常数；兜底逐行 `// debattery-allow`）；标杆 `DashboardView`/`LedgerView` |
 | **R15** | **CLI 对等（A15）**：每个对外模块能力必须有 CLI 等价命令（注册 `OPERATION_CATALOG`），经同一 REST + R3 + R4 + 事件触发——CLI 与 GUI 平行同源、无功能洼地；不宜 CLI 内联的（求解器上传/复杂可视化）须登记 GUI 深链（`uiDeepLink`）。新增对外能力无 CLI 命令/深链 = 功能洼地，返工。 | ✅ `cli-parity:check`（棘轮基线 `cli-parity-baseline.json`；OPERATION_CATALOG 每条须 cliCommand 或 uiDeepLink，新增不可达即红）；`POST /b/v1/operations/classify` + `platform do` 万能路由 |
+| **R16** | **发育闭环（system-ontogenesis 总纲）**：系统是个体发生的有机体——**倒序发育**（从场景/需求倒推长出数据/对象/规则/求解器/Agent/工作流）⊕ **正序运作**（QOS 问句→答案沿已长成管线）是同一有机体两相（`StoryBuildRun⊕GrowthLedgerEntry by runId` 认两面）。每次发育（建域/补缺/scaffold）须自动闭合**三环**：①数据（build-to-verify 真能在正序跑通，A10）②本体（新对象/链路/事件进活体本体，dogfooding §9，非手抄）③能力（目录从注册表自动派生 `deriveOperationCatalog`/`FEATURE_REGISTRY`/`SOLVER_CATALOG`，非手维护）；产物**二分处置**（AUTO-DERIVE 自动生成 / NEEDS-HUMAN 自动开 `GrowthTicket`+通知+收件箱+深链，**绝不静默残缺**）；发育过程**透明可视**（FDE 节点图/模块同步矩阵/覆盖度）；成熟**分相位** PROVISIONAL→ADVISORY→GOVERNED（只 GOVERNED 计真值，A18）。正序 `GapReport`=生长信号自动触发倒序生长——越用越大。复用 R4/R6/R11/R12/R13/R14/R-一致。 | ◐ 机制散落已具雏形（runStory/growth LOOP/A10/A18/dogfooding/CL.1–CL.7）；`ontogenesis:check` 门（三环+二分声明性校验，已并入 `pnpm gates`）；活体本体落库 + 自动派生目录分相位演进。事件 `ontogenesis.organ_matured`（L-onto，产物 GOVERNED 转正，可选）·切片 `sys.meta.ontogenesis_loop` |
 
 ---
 

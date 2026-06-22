@@ -328,6 +328,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-in-dialog-gap-fill-loop.md": {
+      "acceptanceIds": [
+        "D7"
+      ],
+      "covered": [],
+      "uncovered": [
+        "D7"
+      ],
+      "coverage": 0
+    },
     "PRD-platform-foundry-aip.md": {
       "acceptanceIds": [
         "A1",
