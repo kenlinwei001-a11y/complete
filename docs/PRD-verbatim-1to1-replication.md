@@ -82,6 +82,35 @@ rev=base×eff.rev;revGrowAbs=(eff.rev−1)×100;gm=base.gm+eff.gm;shareGrow=eff.
 ### 3.5 `GEN_EXT_SENS`(5×3 · L4501-4517)·`GEN_FOCUS`(5×2 含 why+chain4 · L4518-4559)·`timelineFor`(9 类×4 阶段 · L4342-4405)·`KSF_DEF`(5 · L4407-4413)·`radarSVG`(L4594)·`probSeqHTML`(SEV_V{0:64,1:79,2:90};anchors[[0,58]]+阶段;三档<70/70-84/≥85;90 天压缩 · L4481-4500)·AI QA(L3493-3498)。
 > **全部逐字段见对应行**——实现者打开这些行转抄,不得概括。
 
+### 3.6 系统字段级落地（现状种子 vs HTML → 精确须改/须加）★ 这才是"让系统生成什么"
+> 不止分类——直接对照系统**已有字段/种子值**,写清 1:1 须**改哪些值、加哪些字段**。系统 `plan_generate` 已参数化(`c.params.planGenerate`,battery.ts:217-242,R14 合规)+ 评分系数**与 HTML 完全一致**(profitBase50/profitK22/scaleBase40/scaleK3/cashBase50/cashK4/growthBase30/growthK2.5/stabBase90/stabK2.2/hardPenalty15 ✓);缺口在 base/targets 值 + 两个字段。
+
+**A. 基线/目标种子值（battery.ts:218-219）须对齐 HTML（GEN_BASE/GEN_GOALS）**
+| 字段 | 系统现值 | HTML 应为 | 动作 |
+|---|---|---|---|
+| base.rev | **100**(归一) | 3400(亿) | 统一显示口径:KPI 卡显绝对亿元需 base.rev=3400 或派生×34（择一,声明清楚） |
+| base.gm | **0.142**(=14.2%) | **0.160**(16.0%) | **改值** 0.142→0.16(系统用小数,渲染×100) |
+| base.share | 17 | 18.0 | 改 17→18 |
+| base.turns | 6.0 | 5.6 | 改 6.0→5.6 |
+| base.cash | 70 | 58 | 改 70→58 |
+| targets.gmFloor | 0.135(13.5%) | 0.155(15.5%) | **改** 0.135→0.155 |
+| targets.cashFloor | 45 | 50 | **改** 45→50 |
+| targets.capexCap/revGrowthPct/sharePts/turnsFloor | 20/18/12/6.0 | 同 | ✓ 已一致 |
+| paths A–E rev/share/capex/turns/cash | 1.12/6/0/0.6/6 等 | 同 HTML | ✓ 一致（gm 用小数 0.014=+1.4%,口径转换） |
+
+**B. 须新增字段（系统当前没有）**
+| 缺什么 | 系统现状 | 须加 |
+|---|---|---|
+| **库存周转目标 invTurns** | `PLAN_GENERATE_GOAL_FIELDS`(service.ts:993)只 5 项,前端 `GOAL_FIELDS`(PlanGenerateView.tsx:45)只 5 项——**无 invTurns**;但求解器 `turnsFloor`+`meetTurns` 已有 | **加目标面板字段** `{key:"invTurns",label:"库存周转",unit:"次",step:0.5,default 6.0,soft}` 到 service.ts:993 + 前端 GOAL_FIELDS。求解器侧已支持,只缺面板暴露 |
+| **外部信号敏感性 extSensitivity** | `GenSchemeSchema`(solvers.ts)**无此字段** | **加输出字段** `extSensitivity:[{signal,impact,color}]`(GEN_EXT_SENS 5×3,见 §3.5)+ 种子;接 ExternalSignal |
+| **问题结构 problems** | `problems: array(record)` 泛型 | **结构化** `{n,kind,rule,why,chain:[[标签,对象,色]×4]}`(GEN_FOCUS 5×2)+ 种子 why 长文/chain(④i18n) |
+| **共享时序/KSF** | 无(audit 子 PRD 落 audit_timeline/KsfGraph) | 复用 audit 的 `audit_timeline`(timelineFor 9×4 口径)+ `ksfSVG`(KSF_DEF 5) |
+
+**C. 须改求解器口径（1 处）**
+- growth 评分:系统 `growthBase + (outcome.rev − base.rev)×growthK`(plan.ts:256,用绝对营收差) vs HTML `30 + revGrowAbs×2.5`(用%增长)。**改为 revGrowAbs=(eff.rev−1)×100**,口径才与 HTML 一致(growthBase/K 值已对)。
+
+> **结论(generate)**：系统骨架/评分**已对**;1:1 只须 ①改 6 个 base/targets 种子值 ②加 invTurns 面板字段 + extSensitivity 输出字段 + 结构化 problems ③改 1 处 growth 口径 ④复用 audit 时序/KSF。**这就是"让系统生成什么"的精确清单**——其余 11 视图须各做一份本节这样的字段级对照(现状种子/对象字段 → HTML → 精确改/加)。
+
 ## 4. 数据来源归属（HTML 前端写死 → 系统管线分流）★ 核心
 > **本质差异**：HTML 把数据**写死在前端代码里**（`const GEN_GOALS=…`、`SOP_SEG=…` 就在脚本里）；**我们系统代码与数据分离**——前端**不持有任何业务值**,只拿 ViewDef + 求解器/查询输出渲染。所以 verbatim 1:1 = **可见的值与 HTML 逐字一致,但每个值的"出处"必须是管线里的正确一层,不得照抄进 React**（R14/`debattery:check`）。
 
