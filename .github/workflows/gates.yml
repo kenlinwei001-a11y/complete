@@ -1,0 +1,31 @@
+name: gates
+
+# 治理门禁（不靠自觉）：每个 PR / push 必须四包构建+测试全绿，且全部本体/闭包/去电池/PRD 门禁通过。
+# 仓主在 Settings → Branches 开启分支保护并勾选本 workflow（gates）为必过项 → 不绿合不进。
+
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build (4 packages)
+        run: pnpm -r build
+      - name: Test (datacore / agentcore / frontend / contracts)
+        run: pnpm -r test
+      - name: Governance gates
+        # = ontology:check + chain:check + debattery:check + prd:check + prd-coverage + meta-sync
+        run: pnpm gates
