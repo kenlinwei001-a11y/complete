@@ -555,6 +555,10 @@ export class SyntheticService {
     await putAll("Segment", g.segments, "segKey");
     await putAll("Shipment", g.shipments, "shipId");
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
+    // cockpit P1 绿地
+    await putAll("DemandSegment", g.demandSegments, "segId");
+    await putAll("FinancePlan", g.financePlans, "finId");
+    await putAll("MaterialBalance", g.materialBalances, "matBalId");
     // 20 场景目录 §7 扩展数据（E6b）：13 求解器所需对象类型 + 实例（确定性 + 戏剧点植入）。
     for (const t of extendedObjectTypes()) {
       if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
@@ -931,6 +935,22 @@ export class SyntheticService {
           // livedIn：已交付订单也在 Order 表（生命周期完整），在手口径过滤 status=OPEN
           query: { kind: "objects-aggregate", objectType: "Order", agg: "count", ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
           provenance: { toolName: "query_objects", outputPath: "$.count", label: "Order 行计数" },
+        },
+        // cockpit P1 富 KPI（数字经合成 DemandSegment/FinancePlan/MaterialBalance + 派生/聚合算出，前端零写死 R14；R13 溯源）。
+        {
+          key: "demand-p50", type: "kpi", title: "需求 P50 (万)", unit: "万", featureKey: "view.dash.widget.demand",
+          query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "p50" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(p50)", label: "三细分需求 P50 合计" },
+        },
+        {
+          key: "gross-margin", type: "kpi", title: "毛利总额 (万)", unit: "万", featureKey: "view.dash.widget.demand",
+          query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "marginWan" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写" },
+        },
+        {
+          key: "material-gap", type: "kpi", title: "物料现货缺口 (吨)", unit: "吨", featureKey: "view.dash.widget.material",
+          query: { kind: "objects-aggregate", objectType: "MaterialBalance", agg: "sum", prop: "gapTon" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(gapTon)", label: "净需求×(1−长协覆盖) 缺口合计" },
         },
         {
           key: "oee-trend", type: "chart", title: "OEE 14 日趋势", span: 2, chartKind: "line",

@@ -38,6 +38,16 @@ try {
   await page.waitForTimeout(2000);
   page.url().endsWith("/login") ? bad("登录失败,停在 /login") : ok(`真后端登录成功 → ${page.url()}`);
 
+  // cockpit P1 经营驾驶舱富 KPI（L4 真后端）：DemandSegment/FinancePlan/MaterialBalance 合成→派生→聚合→widget
+  await page.click('a[href="/v/dash"]').catch(() => {});
+  await page.waitForTimeout(1500);
+  const demandKpi = await page.locator("[data-testid=widget-demand-p50]").count();
+  const marginKpi = await page.locator("[data-testid=widget-gross-margin]").count();
+  const matKpi = await page.locator("[data-testid=widget-material-gap]").count();
+  demandKpi > 0 && marginKpi > 0 && matKpi > 0
+    ? ok("cockpit P1 真后端：需求P50/毛利总额/物料缺口 富 KPI 真浏览器渲染（数据闭环）")
+    : bad(`cockpit P1 真后端：富 KPI 缺失（demand=${demandKpi} margin=${marginKpi} mat=${matKpi}）`);
+
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});
   await page.waitForSelector("[data-testid=object-types-page]", { timeout: 10000 });

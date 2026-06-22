@@ -18,7 +18,7 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "demand_forecast", displayName: "销售预测与计划", description: "需求预测、年度情景与触发条件、计划目标（驱动产能/排产推演）。",
-      typeKeys: ["PlanTarget", "AnnualScenario", "ScenarioTrigger"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      typeKeys: ["PlanTarget", "AnnualScenario", "ScenarioTrigger", "DemandSegment"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "customer_ar", displayName: "客户与应收", description: "客户主数据（信用/账期）与应收发票。",
@@ -42,7 +42,7 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "material_inventory", displayName: "物料与库存", description: "物料/BOM 与物料批次库存（断供/集中度推演）。",
-      typeKeys: ["Material", "MaterialBatch"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      typeKeys: ["Material", "MaterialBatch", "MaterialBalance"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "procurement", displayName: "采购与在途", description: "采购订单与在途批次（到货延误/缺料推演）。",
@@ -53,8 +53,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
-      key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标与碳因子。",
-      typeKeys: ["FinanceAccount", "FinanceMetric", "CarbonFactor"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）与碳因子。",
+      typeKeys: ["FinanceAccount", "FinanceMetric", "CarbonFactor", "FinancePlan"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "external_signal", displayName: "外部信号", description: "锂价/镍价/汇率/需求指数/政策等市场与环境信号。",

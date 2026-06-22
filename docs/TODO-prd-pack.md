@@ -223,7 +223,12 @@
   逐项可见性仍按角色(visibleAdminPages)+entitlement 过滤、空组隐藏、折叠记忆保留。分期 N1 NAV_GROUPS 统一分组+渲染+meta ·
   N2 图谱并入建模组 · N3 字号方案 B。**确认点(默认取消)**：顶层"业务/管理"两 section-title 是否保留(默认全用域分组)。无需回写本体。
 
-- [ ] ⬜ **cockpit · 经营驾驶舱 + 产能推演 参考原型 1:1 复刻**（数字全部从本体关系算出=数据闭环，非写死/非挪配置）。
+- [~] ◐ **cockpit · 经营驾驶舱 + 产能推演 参考原型 1:1 复刻**（数字全部从本体关系算出=数据闭环，非写死）。
+  **P1 富 KPI 数据闭环 ✅**：3 绿地对象类型 `DemandSegment`(forecast)/`FinancePlan`(finance)/`MaterialBalance`(material) 走真合成管线
+  (`battery.ts` 独立子流 `seed^hash("cockpit")` R6 向后兼容 + `instantiateBattery` putAll) + 派生 `revenueWan/marginWan`(Σ需求×单价×毛利率) +
+  `DASH_LAYOUT` 3 富 KPI(需求P50/毛利总额/物料缺口，objects-aggregate 算出，R13 provenance) + features 注册 + data-categories 归类 + 覆盖切片。
+  测试 cockpit-kpi ×3(L1 物化+派生回写+聚合 · L6 字节一致+财务交叉一致 · R2) · **L4 真后端 10/10**(富 KPI 真浏览器渲染)。debattery 零写死。
+  **余**：P2 规划决策推演+根因 DAG · P3 风险看板补全+对症方案→工单 · P4 型号/订单推演+反事实双轨 `counterfactual_timeline`+riskCases 真闭环 · P5 回采校准链/V5V7/AI对话/导出。
 - [ ] ⬜ **synthetic-wizard · 合成向导「生成进度」按 nano-ontoprompt 分阶段集成链重设计**（把"看数据逐阶段策展本体"的 UX 精髓真正落进页面，非仅算法）。
 
 ---

@@ -33,6 +33,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.risk-board.mitigation", name: "处置方案区", level: "BLOCK", defaultOn: true, requires: ["view.risk-board"] },
   { key: "view.dash.widget.capacity", name: "驾驶舱·产能卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   { key: "view.dash.widget.risk", name: "驾驶舱·风险卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  // cockpit P1 富 KPI（需求/财务、物料）
+  { key: "view.dash.widget.demand", name: "驾驶舱·需求与毛利卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  { key: "view.dash.widget.material", name: "驾驶舱·物料缺口卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   // §7.19 任务详情编排 DAG（默认开）
   { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
   // §7.18 图谱八视角（每个视角可单独开关，BLOCK 级，依赖本体图谱）

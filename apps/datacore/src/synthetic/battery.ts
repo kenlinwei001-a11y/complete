@@ -377,6 +377,37 @@ const segmentProps: PropertyDef[] = [
   { propKey: "baselineShare", dataType: "number", isPrimaryKey: false },
 ];
 
+// cockpit P1 绿地：经营驾驶舱富 KPI 数据闭环（数字从本体关系算出，前后端零写死 R14）。
+const demandSegmentProps: PropertyDef[] = [
+  { propKey: "segId", dataType: "string", isPrimaryKey: true },
+  { propKey: "segment", dataType: "string", isPrimaryKey: false }, // 乘用车/储能/商用车
+  { propKey: "tgt", dataType: "number", isPrimaryKey: false }, // 目标(万)
+  { propKey: "p50", dataType: "number", isPrimaryKey: false }, // 需求 P50(万)
+  { propKey: "p90", dataType: "number", isPrimaryKey: false },
+  { propKey: "act", dataType: "number", isPrimaryKey: false }, // 实际(万)
+  { propKey: "priceWan", dataType: "number", isPrimaryKey: false }, // 单价(万/万件)
+  { propKey: "marginPct", dataType: "number", isPrimaryKey: false }, // 毛利率(%)
+  { propKey: "floorPct", dataType: "number", isPrimaryKey: false }, // 毛利底线(%)
+];
+const demandSegmentDerived: DerivedPropertyDef[] = [
+  { propKey: "revenueWan", formula: "p50 * priceWan" }, // 收入(万) = 需求×单价
+  { propKey: "marginWan", formula: "p50 * priceWan * marginPct / 100" }, // 毛利额(万)
+];
+const financePlanProps: PropertyDef[] = [
+  { propKey: "finId", dataType: "string", isPrimaryKey: true },
+  { propKey: "line", dataType: "string", isPrimaryKey: false }, // 收入/销售成本/毛利
+  { propKey: "budget", dataType: "number", isPrimaryKey: false }, // 预算(万)
+  { propKey: "rolling", dataType: "number", isPrimaryKey: false }, // 滚动预测(万)
+];
+const materialBalanceProps: PropertyDef[] = [
+  { propKey: "matBalId", dataType: "string", isPrimaryKey: true },
+  { propKey: "material", dataType: "string", isPrimaryKey: false }, // 三元正极/隔膜/电解液
+  { propKey: "netDemandTon", dataType: "number", isPrimaryKey: false },
+  { propKey: "ltaPct", dataType: "number", isPrimaryKey: false }, // 长协覆盖(%)
+  { propKey: "gapTon", dataType: "number", isPrimaryKey: false }, // 现货缺口(吨)
+  { propKey: "etaDate", dataType: "string", isPrimaryKey: false },
+];
+
 const shipmentProps: PropertyDef[] = [
   { propKey: "shipId", dataType: "string", isPrimaryKey: true },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
@@ -448,6 +479,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
   DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
+  // cockpit P1 绿地
+  DemandSegment: "forecast", FinancePlan: "finance", MaterialBalance: "material",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -492,6 +525,10 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("AnnualScenario", "年度情景", annualScenarioProps),
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
     plain("PlanTarget", "计划目标", planTargetProps),
+    // cockpit P1 绿地：经营驾驶舱富 KPI（数字经派生/聚合算出，R14 零写死）。
+    { key: "DemandSegment", displayName: "需求细分", domain: "forecast", properties: withGovernance("DemandSegment", demandSegmentProps), derivedProperties: demandSegmentDerived, sourceBindings: BINDINGS.DemandSegment ?? [] },
+    plain("FinancePlan", "财务预算", financePlanProps),
+    plain("MaterialBalance", "物料平衡", materialBalanceProps),
   ];
 }
 
@@ -930,6 +967,10 @@ export interface GeneratedBattery {
   segments: Record<string, unknown>[];
   shipments: Record<string, unknown>[];
   dataHealth: Record<string, unknown>[];
+  // cockpit P1 绿地
+  demandSegments: Record<string, unknown>[];
+  financePlans: Record<string, unknown>[];
+  materialBalances: Record<string, unknown>[];
   /** model ↔ line certification edges with props.status (量产 | 认证中). */
   certLinks: { modelId: string; lineId: string; baseId: string; status: "量产" | "认证中" }[];
 }
@@ -1156,7 +1197,43 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, certLinks };
+  // cockpit P1 绿地（独立子流 mulberry32(seed^hash("cockpit"))，不动既有字节流 → R6 向后兼容）。
+  const rngCk = mulberry32(seed ^ hashString("cockpit"));
+  const SEGMENTS = [
+    { segment: "乘用车", price: 3.2, margin: 18, floor: 12 },
+    { segment: "储能", price: 2.1, margin: 11, floor: 8 },
+    { segment: "商用车", price: 4.6, margin: 15, floor: 10 },
+  ];
+  const demandSegments = SEGMENTS.map((s, i) => {
+    const tgt = round(80 + rngCk() * 120, 1);
+    const p50 = round(tgt * (0.85 + rngCk() * 0.25), 1);
+    return {
+      segId: `dseg-${i + 1}`, segment: s.segment, tgt, p50,
+      p90: round(p50 * (1.08 + rngCk() * 0.1), 1),
+      act: round(p50 * (0.9 + rngCk() * 0.18), 1),
+      priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
+    };
+  });
+  const MAT = ["三元正极", "隔膜", "电解液"];
+  const materialBalances = MAT.map((m, i) => {
+    const netDemandTon = round(2000 + rngCk() * 6000, 0);
+    const ltaPct = round(60 + rngCk() * 35, 1);
+    return {
+      matBalId: `mbal-${i + 1}`, material: m, netDemandTon, ltaPct,
+      gapTon: round(Math.max(0, netDemandTon * (1 - ltaPct / 100)), 0),
+      etaDate: isoDate(Date.UTC(2026, 6, 1) + Math.floor(rngCk() * 60) * 86400000),
+    };
+  });
+  // 财务预算三线：收入=Σ收入细分、销售成本=收入-毛利、毛利=Σ毛利额（与 DemandSegment 交叉一致）。
+  const totalRev = demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number), 0);
+  const totalMargin = demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0);
+  const financePlans = [
+    { finId: "fin-rev", line: "收入", budget: round(totalRev * 0.98, 1), rolling: round(totalRev, 1) },
+    { finId: "fin-cogs", line: "销售成本", budget: round((totalRev - totalMargin) * 0.98, 1), rolling: round(totalRev - totalMargin, 1) },
+    { finId: "fin-gm", line: "毛利", budget: round(totalMargin * 0.98, 1), rolling: round(totalMargin, 1) },
+  ];
+
+  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, certLinks };
 }
 
 // ---------------------------------------------------------------------------
