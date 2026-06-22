@@ -1363,6 +1363,17 @@
       ],
       "artifacts": [],
       "brokenArtifacts": []
+    },
+    "PRD-verbatim-1to1-replication.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
     }
   },
   "breakpointCoverage": {
