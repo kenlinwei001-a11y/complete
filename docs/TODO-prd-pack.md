@@ -31,7 +31,7 @@
 > - [ ] **cockpit P5 前端**（deps ✅ SopVersionRow/counterfactual_timeline；AI 对话依赖 W0）：V5/V7 版本切换 · 反事实双线图（counterfactual_timeline）· 回采校准链 · AI 对话 · 导出。
 >
 > **W2 需新建共享组件（audit.3 → generate，有序）**
-> - [ ] **audit.3 KsfGraph**：问题→KSF→财务指标 投影（spine KSF ✅）+ `<KsfGraph>` 组件（audit/generate 共用）+ 问题节点联动 DailyDotAxis。
+> - [x] **audit.3 KsfGraph** ✅：`ksf_graph` 求解器（38→39，问题=越线 Metric→KSF 5→财务 Metric，威胁/支撑边）+ `<KsfGraph>` 组件（audit/generate 共用，问题节点点击高亮+联动 audit_timeline DailyDotAxis）。datacore 602 / frontend 204 全绿，回写本体 §2.E。
 > - [ ] **generate 前端**（⛔ 依赖 audit.3 的 KsfGraph）：plan_generate 扩 radar/score → 五维雷达 + 取舍矩阵 · 复用 DailyDotAxis(✅)/KsfGraph · 外部信号敏感性 · 采纳→AOP。
 >
 > **W3 横切 + 生成器调参（planview 耦合，须同回归）**
