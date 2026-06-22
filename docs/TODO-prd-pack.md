@@ -9,7 +9,16 @@
 >   （plan_rootcause/dash/data-categories/tests 全切 Metric，零回归）。测 spine ×5(L6 字节一致 · L1 物化+链路 · metric_rollup delta/miss · level 过滤 · R2)。
 >   datacore 577 · agentcore 278 · frontend 196 全绿;gates 全过(33 求解器/44 事件本体覆盖);**L4 真后端 14/14**(A4 33 类型)。回写本体 §2.B/§2.E/§3。
 > - 余 spine：SPINE.2(Metric↔Connection 血缘 + Principal 责任闭环 + metric.snapshot_recorded/breached 事件) · SPINE.3(KSF 越线推演接入) · SPINE.4(7 视图绑定迁移读 Metric 去硬编码,附录B)。
-> - 注：包内 bundled `SYSTEM-ONTOLOGY.md`(372 行)是旧快照,**未覆盖**——本仓本体(428+行,含 A18/cockpit/R15/33 求解器)更新。
+> - **SPINE.2/.3/.4 ✅**：血缘 `GET /metrics/:key` + 责任闭环 `plantarget_ownedby` + `metric.snapshot_recorded`/`metric.breached` 事件 ·
+>   `plan_rootcause` 插 KSF 层(Metric→KSF→factor→evidence) · 驾驶舱 `metric-strip` 读 Metric(R-一致)。L4 真后端 15/15。
+> - **cockpit P4 后端 ✅**：`counterfactual_timeline`(反事实双轨"如不解决XX未来N天") + `order_fullchain`(订单三判+统一结论+11节点DAG)。
+> - **wave③ sop 后端 ✅**：`SopVersionRow`(V1-V7 版本演进,服务 cockpit P5 V5/V7) + `mrp_netting`(物料线) + `finance_pnl`(量价本利)。
+> - **wave④ audit 后端 ✅**：`audit_timeline`(每审计项 kind 逐日 series + 4 阶段,audit/generate 共用)。
+> - **求解器 33→38**(plan_rootcause/metric_rollup/counterfactual_timeline/order_fullchain/mrp_netting/finance_pnl/audit_timeline)；datacore 592 全绿。
+> - **余(主要为前端视图 1:1 复刻 + 取值对齐,各需 L3/L4/FDE)**：cockpit P5 前端(V5V7/AI/导出/回采链) · riskCases 真闭环(livedin 回算,已评估为高风险延后) ·
+>   sop 前端(P90列/MRP表/科目表/版本对比) · audit 前端(逐日圆点轴+KsfGraph,消费已产 series) · generate 前端(雷达+复用audit) ·
+>   order 前端(OrderChainView 接 order_fullchain) · quarter 生成器调参 · inference-process `<InferenceProcessDag>` · 1:1 取值对齐(HTML 精确值→种子)。
+> - 注：包内 bundled `SYSTEM-ONTOLOGY.md`(372 行)是旧快照,**未覆盖**——本仓本体(440+行,含 A18/cockpit/spine/R15/38 求解器)更新。
 
 
 > 来源：用户上传的 `decision-platform-prd-pack.zip`（25 文件 / 19 份 PRD + SOP + 路线图）。
