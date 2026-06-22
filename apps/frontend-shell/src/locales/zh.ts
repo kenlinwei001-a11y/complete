@@ -340,6 +340,13 @@ export const zh = {
   sim: {
     run: "开始推演",
     runAudit: "体检",
+    ksf: {
+      title: "财务计划 KSF 图（问题 → 关键成功要素 → 财务指标）",
+      problems: "待解决问题",
+      ksf: "关键成功要素",
+      fin: "财务计划指标",
+      timelineHint: (name: string) => `${name} 的时序推演（逐日传导度）`,
+    },
     snapshotBadge: (v: string) => `快照 ${v}`,
     adoptToDraft: "采纳为草稿",
     adoptDone: "已生成 Action 草稿并进入审批流",

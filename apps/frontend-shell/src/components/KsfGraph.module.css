@@ -1,0 +1,67 @@
+.graph {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  overflow-x: auto;
+}
+.col {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.colHead {
+  font-size: 10.5px;
+  color: var(--muted2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.arrow {
+  align-self: center;
+  color: var(--muted2);
+  font-size: 18px;
+}
+.node {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  text-align: left;
+  background: var(--bg2);
+  transition: opacity 0.15s, border-color 0.15s;
+}
+.problem {
+  cursor: pointer;
+  border-style: dashed; /* 威胁=虚线 */
+  border-color: var(--red, #dd7e9e);
+}
+.ksf {
+  display: flex;
+  flex-direction: column;
+  border-color: var(--accent);
+}
+.ksf .sub {
+  font-size: 10px;
+  color: var(--muted2);
+  margin-top: 2px;
+}
+.fin {
+  border-color: var(--c-solver, #54b5c4); /* 支撑=实线 */
+}
+.sel {
+  outline: 2px solid var(--accent);
+}
+.lit {
+  opacity: 1;
+  border-width: 2px;
+}
+.dim {
+  opacity: 0.35;
+}
+.tl {
+  margin-top: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}

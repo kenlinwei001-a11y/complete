@@ -1719,6 +1719,41 @@ export const handlers = [
         snapshotVersion: "ov-12",
       });
     }
+    if (key === "ksf_graph")
+      return HttpResponse.json({
+        data: {
+          problems: [
+            { id: "prob:kpi-margin", name: "毛利率越线", severity: "H", ksfRef: "ksf-dem", gap: 3.0 },
+            { id: "prob:kpi-attain", name: "产销达成越线", severity: "M", ksfRef: "ksf-bal", gap: 1.5 },
+          ],
+          ksfNodes: [
+            { id: "ksf:ksf-dem", ksfId: "ksf-dem", key: "k_dem", name: "需求结构", sub: "细分占比与价格" },
+            { id: "ksf:ksf-bal", ksfId: "ksf-bal", key: "k_bal", name: "产销爬坡", sub: "产能与达成" },
+            { id: "ksf:ksf-kit", ksfId: "ksf-kit", key: "k_kit", name: "物料齐套", sub: "长协与现货缺口" },
+            { id: "ksf:ksf-cash", ksfId: "ksf-cash", key: "k_cash", name: "信用现金", sub: "应收与现金垫" },
+            { id: "ksf:ksf-cost", ksfId: "ksf-cost", key: "k_cost", name: "成本外协", sub: "制造成本与外协" },
+          ],
+          finNodes: [
+            { id: "fin:kpi-margin", name: "毛利率", actual: 13, target: 16, unit: "%", status: "RED" },
+            { id: "fin:kpi-attain", name: "产销达成率", actual: 91, target: 95, unit: "%", status: "AMBER" },
+          ],
+          edges: [
+            { from: "prob:kpi-margin", to: "ksf:ksf-dem", kind: "threat" },
+            { from: "prob:kpi-attain", to: "ksf:ksf-bal", kind: "threat" },
+            { from: "ksf:ksf-dem", to: "fin:kpi-margin", kind: "support" },
+            { from: "ksf:ksf-bal", to: "fin:kpi-attain", kind: "support" },
+          ],
+          summary: "2 个待解决问题压在 2 个关键成功要素上，传导至 2 项财务计划指标",
+        },
+        snapshotVersion: "ov-12",
+      });
+    if (key === "audit_timeline") {
+      const series = Array.from({ length: 90 }, (_, d) => Math.min(100, Math.round(40 + d * 0.7)));
+      return HttpResponse.json({
+        data: { kind: String(args.kind ?? "毛利"), series, stages: [{ label: "事件窗" }, { label: "约束越线" }, { label: "波及订单" }, { label: "财务击穿" }], peak: 100, crossDay: 64, threshold: 85 },
+        snapshotVersion: "ov-12",
+      });
+    }
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 

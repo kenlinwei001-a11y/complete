@@ -14,6 +14,7 @@ import { SnapshotBadge, useAdoptToDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
 import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
+import { KsfGraph } from "@/components/KsfGraph";
 import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
@@ -168,6 +169,9 @@ export default function PlanAuditView({ view }: ViewRendererProps) {
           )}
         </div>
       </div>
+
+      {/* audit.3：财务 KSF 图（问题→KSF→财务指标 3 层；问题节点点击联动其时序轴）。audit/generate 共用组件。 */}
+      <KsfGraph />
     </div>
   );
 }

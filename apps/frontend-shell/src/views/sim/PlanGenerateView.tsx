@@ -11,6 +11,7 @@ import { SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
+import { KsfGraph } from "@/components/KsfGraph";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -358,6 +359,9 @@ function SchemeCard({
           </>
         )}
       </div>
+
+      {/* audit.3：财务 KSF 图（audit/generate 共用同一组件，问题→KSF→财务指标 + 问题节点联动时序） */}
+      <KsfGraph testId="gen-ksf-graph" />
     </div>
   );
 }
