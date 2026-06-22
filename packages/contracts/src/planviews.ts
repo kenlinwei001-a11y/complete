@@ -11,6 +11,7 @@ export const AnnualScenarioSchema = z.object({
   name: z.string(), // 保守/基准/激进
   year: z.number().int(),
   demand: z.number(), // 年需求（万套）
+  note: z.string().optional(), // 情景前提注解（乘用车放缓/储能放量/海外大单——电池域种子文案，非前端写死）
   capacityDecision: z.string(),
   ltaLock: z.string(), // 长协锁量描述
   finance: z.object({ revenue: z.number(), capex: z.number(), irr: z.number() }),

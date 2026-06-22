@@ -489,6 +489,7 @@ const annualScenarioProps: PropertyDef[] = [
   { propKey: "name", dataType: "string", isPrimaryKey: false },
   { propKey: "year", dataType: "number", isPrimaryKey: false },
   { propKey: "demand", dataType: "number", isPrimaryKey: false },
+  { propKey: "note", dataType: "string", isPrimaryKey: false },
   { propKey: "capacityDecision", dataType: "string", isPrimaryKey: false },
   { propKey: "ltaLock", dataType: "string", isPrimaryKey: false },
   { propKey: "revenue", dataType: "number", isPrimaryKey: false },
@@ -1387,12 +1388,13 @@ export function generatePlanDomain(weeklyTotalWan: number, avgUnitPrice: number)
   const annualBase = round(weeklyTotalWan * 52, 1);
   const fin = pv.scenarios.finance;
   const revenueOf = (demand: number) => round((demand * avgUnitPrice) / 10000, 1); // 万套×元/套 → 亿
-  const scenario = (key: string, name: string, demand: number, decision: string, lta: string, finalized: boolean) => ({
+  const scenario = (key: string, name: string, demand: number, note: string, decision: string, lta: string, finalized: boolean) => ({
     scnId: `AOP-${year}-${key}`,
     key,
     name,
     year,
     demand,
+    note,
     capacityDecision: decision,
     ltaLock: lta,
     revenue: revenueOf(demand),
@@ -1403,9 +1405,9 @@ export function generatePlanDomain(weeklyTotalWan: number, avgUnitPrice: number)
     ...(finalized ? { finalizedAt: `${year}-06-20T09:00:00.000Z` } : {}),
   });
   const scenarios = [
-    scenario("conservative", "保守", round(annualBase * pv.scenarios.conservativeFactor, 1), "维持现有产线，不新增产能投资", "锂盐长协锁量 60%，季度滚动议价", false),
-    scenario("baseline", "基准", annualBase, "合肥四期 8GWh 扩产，2027-Q2 投产", "锂盐长协锁量 70%，年度锁价", true),
-    scenario("aggressive", "激进", round(annualBase * pv.scenarios.aggressiveFactor, 1), "合肥四期 + 盐城二期合计 20GWh 扩产", "锂盐长协锁量 85%，并签三年框架", false),
+    scenario("conservative", "保守", round(annualBase * pv.scenarios.conservativeFactor, 1), "乘用车放缓、储能温和；不赌新增产能，守现金", "维持现有产线，不新增产能投资", "锂盐长协锁量 60%，季度滚动议价", false),
+    scenario("baseline", "基准", annualBase, "乘用车持平 +8%、储能放量；按年度承诺扩产", "合肥四期 8GWh 扩产，2027-Q2 投产", "锂盐长协锁量 70%，年度锁价", true),
+    scenario("aggressive", "激进", round(annualBase * pv.scenarios.aggressiveFactor, 1), "海外大单落地、储能高增；双基地并扩抢份额", "合肥四期 + 盐城二期合计 20GWh 扩产", "锂盐长协锁量 85%，并签三年框架", false),
   ];
 
   // 目标分解：月值 = 年需求 × 季节权重/12；末月吸收舍入差 → 年 = Σ季 = Σ月（同源勾稽）。

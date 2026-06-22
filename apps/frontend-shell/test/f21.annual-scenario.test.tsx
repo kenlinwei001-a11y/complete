@@ -79,6 +79,27 @@ describe("F21 · 年度情景规划台（annual-scenario）", () => {
     expect(pop).toHaveTextContent("S&OP 平衡台目标线");
   });
 
+  it("1:1 补齐：三情景对比 chip + 情景前提 note 行 + 分解 header 基准数字 + 缺口/过剩窗口曲线", async () => {
+    loginAs("planner");
+    renderApp("/v/annual-scenario");
+
+    // 头部"三情景对比" chip（取情景数，非写死）
+    const chip = await screen.findByTestId("aop-compare-chip");
+    expect(chip).toHaveTextContent("三情景对比 · 3 情景");
+
+    // 情景卡 note 行（电池域种子文案，经契约下发）
+    const conservative = screen.getByTestId("scen-card-conservative");
+    expect(within(conservative).getByTestId("scen-note-conservative")).toHaveTextContent("守现金");
+
+    // 目标分解 header 基准情景数字（取 finalized=基准 demand=1580，非写死）
+    expect(screen.getByTestId("aop-dec-baseline")).toHaveTextContent("基准情景 1,580 万套");
+
+    // 缺口/过剩窗口曲线：消费基准 capexScenario.windows（基准含一段 2027-Q1 过剩窗）
+    const curve = screen.getByTestId("aop-window-curve");
+    expect(within(curve).getByTestId("aop-window-surplus-2027-Q1")).toHaveTextContent("过剩窗口 2027-Q1");
+    expect(within(curve).getByTestId("aop-window-chart")).toBeTruthy();
+  });
+
   it("拍板情景（catalog_admin + act.aop-finalize）→ actionType=AOP情景拍板 草稿", async () => {
     const user = userEvent.setup();
     loginAs("planner"); // planner 账号含 catalog_admin

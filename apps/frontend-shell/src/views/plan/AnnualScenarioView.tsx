@@ -5,12 +5,16 @@ import { createActionDraft, fetchAop } from "@/api/endpoints";
 import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
+import { RuleRef } from "@/components/RuleRef";
+import { EChart } from "@/components/ui/EChart";
 import type { ViewRendererProps } from "../registry";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
 
-const YEAR = 2027;
+// 接线：合成生成器与端点默认均种 2026（battery generatePlanDomain / PlanService.aop 默认年）；
+// 视图请求年须与之统一，否则 plan.aop(year) 过滤空 → 视图空数据（修 §2#15 接线 bug）。
+const YEAR = 2026;
 
 /** 情景顶边色条（保守灰蓝 / 基准蓝 / 激进琥珀，对齐原型 AOP_SCEN.c） */
 const SCEN_COLORS: Record<string, string> = {
@@ -28,15 +32,21 @@ export default function AnnualScenarioView(_props: ViewRendererProps) {
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
+  // 基准情景（已拍板优先，否则 key=baseline）——分解 header 数字与窗口曲线均取真实数据，非写死。
+  const baseline = data.scenarios.find((s) => s.finalized) ?? data.scenarios.find((s) => s.key === "baseline") ?? data.scenarios[0];
+
   return (
     <div data-testid="annual-scenario-view">
       <div className={simStyles.head}>
         <div>
           <h3>{zh.aop.title(YEAR)}</h3>
           <div className={simStyles.sub}>
-            产能建设求解器：情景需求曲线 vs 投产时点 → 缺口/过剩窗口 · IRR · 利用率预测（C23 门槛校验）· 情景挂触发条件活在系统里。
+            产能建设求解器：情景需求曲线 vs 投产时点 → 缺口/过剩窗口 · IRR · 利用率预测（<RuleRef code="C23" /> 门槛校验，<RuleRef code="C18" /> 现金垫底线）· 情景挂触发条件活在系统里。
           </div>
         </div>
+        <span className="badge" data-testid="aop-compare-chip" style={{ marginLeft: "auto" }}>
+          {zh.aop.compareChip(data.scenarios.length)}
+        </span>
       </div>
 
       <div className={styles.scenGrid}>
@@ -45,8 +55,46 @@ export default function AnnualScenarioView(_props: ViewRendererProps) {
         ))}
       </div>
 
+      {baseline?.capexScenario && <CapexWindowCurve scenario={baseline} />}
       <TriggerBoard triggers={data.triggers} />
-      <DecompositionFlow decomposition={data.decomposition} />
+      <DecompositionFlow decomposition={data.decomposition} baselineDemand={baseline?.demand} />
+    </div>
+  );
+}
+
+/** 缺口/过剩窗口曲线（消费 capex_scenario 已产 demand/supply/gap/windows）：季度需求 vs 供给双线 + 缺口柱 + 窗口标段。 */
+function CapexWindowCurve({ scenario: s }: { scenario: AnnualScenario }) {
+  const cs = s.capexScenario;
+  if (!cs || cs.quarters.length === 0) return null;
+  const markAreas = cs.windows.map((w) => [
+    { xAxis: w.fromQ, itemStyle: { color: w.kind === "gap" ? "rgba(221,126,158,.14)" : "rgba(84,181,196,.12)" } },
+    { xAxis: w.toQ },
+  ]);
+  const option = {
+    grid: { left: 44, right: 16, top: 28, bottom: 24 },
+    tooltip: { trigger: "axis" },
+    legend: { data: [zh.aop.wcDemand, zh.aop.wcSupply, zh.aop.wcGap], top: 0, textStyle: { color: "#9AA8B6" } },
+    xAxis: { type: "category", data: cs.quarters, axisLine: { lineStyle: { color: "#3A4655" } } },
+    yAxis: { type: "value", splitLine: { lineStyle: { color: "rgba(58,70,85,.4)" } } },
+    series: [
+      { name: zh.aop.wcDemand, type: "line", smooth: true, data: cs.demand, lineStyle: { color: "#E8B54A" }, itemStyle: { color: "#E8B54A" },
+        markArea: markAreas.length > 0 ? { silent: true, data: markAreas } : undefined },
+      { name: zh.aop.wcSupply, type: "line", smooth: true, data: cs.supply, lineStyle: { color: "#54B5C4" }, itemStyle: { color: "#54B5C4" } },
+      { name: zh.aop.wcGap, type: "bar", data: cs.gap, itemStyle: { color: "rgba(221,126,158,.55)" }, barWidth: "40%" },
+    ],
+  };
+  return (
+    <div className="panel" style={{ marginBottom: 14 }} data-testid="aop-window-curve">
+      <div className="section-title">{zh.aop.windowSection}</div>
+      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }}>
+        {zh.aop.windowHint(s.name)}
+        {cs.windows.map((w) => (
+          <span key={`${w.kind}-${w.fromQ}`} className={`badge ${w.kind === "gap" ? "amber" : "green"}`} data-testid={`aop-window-${w.kind}-${w.fromQ}`} style={{ marginLeft: 6 }}>
+            {w.kind === "gap" ? zh.aop.wcGapWin(w.fromQ, w.toQ) : zh.aop.wcSurplusWin(w.fromQ, w.toQ)}
+          </span>
+        ))}
+      </div>
+      <EChart option={option} height={240} testId="aop-window-chart" />
     </div>
   );
 }
@@ -99,6 +147,11 @@ function ScenarioCard({ scenario: s }: { scenario: AnnualScenario }) {
       <div className={styles.scenBig}>
         {s.demand.toLocaleString("zh-CN")} <small>{zh.aop.demandUnit}</small>
       </div>
+      {s.note && (
+        <div className={styles.scenNote} data-testid={`scen-note-${s.key}`}>
+          {s.note}
+        </div>
+      )}
       <div className={styles.scenRow}>
         <span>{zh.aop.capacityDecision}</span>
         <div className="zh">{s.capacityDecision}</div>
@@ -197,7 +250,7 @@ function TriggerBoard({ triggers }: { triggers: AopResponse["triggers"] }) {
 }
 
 /** 目标分解流（年 → 季 → 月）：分解节点悬停溯源（targetRef 与 S&OP 目标线同源） */
-function DecompositionFlow({ decomposition }: { decomposition: AopResponse["decomposition"] }) {
+function DecompositionFlow({ decomposition, baselineDemand }: { decomposition: AopResponse["decomposition"]; baselineDemand?: number }) {
   const [prov, setProv] = useState<{ ref: string; top: number; left: number } | null>(null);
   const year = decomposition.find((d) => d.level === "year");
   const quarters = decomposition.filter((d) => d.level === "quarter");
@@ -211,7 +264,14 @@ function DecompositionFlow({ decomposition }: { decomposition: AopResponse["deco
 
   return (
     <div className="panel">
-      <div className="section-title">{zh.aop.decompSection}</div>
+      <div className="section-title">
+        {zh.aop.decompSection}
+        {baselineDemand !== undefined && (
+          <span className={styles.decBaseline} data-testid="aop-dec-baseline">
+            {zh.aop.decompBaseline(baselineDemand)}
+          </span>
+        )}
+      </div>
       <div className={styles.decFlow} data-testid="aop-dec-flow">
         {year && (
           <div className={styles.decNode} data-testid="dec-node-year" onMouseEnter={(e) => hover(e, year.targetRef)} onMouseLeave={() => setProv(null)}>

@@ -192,8 +192,17 @@ export const zh = {
     triggeredAt: (ts: string) => `触发时间 ${ts}`,
     notified: (who: string) => `已通知：${who}`,
     decompSection: "目标分解流（年 → 季 → 月）",
+    decompBaseline: (demand: number) => `基准情景 ${demand.toLocaleString("zh-CN")} 万套`,
     decompFootnote: "分解值 = S&OP 平衡台目标线（同源勾稽）",
     decompProv: (ref: string) => `同源目标对象：${ref}（= S&OP 平衡台目标线）`,
+    compareChip: (n: number) => `三情景对比 · ${n} 情景`,
+    windowSection: "缺口 / 过剩窗口曲线",
+    windowHint: (scen: string) => `${scen}情景：季度需求曲线 vs 产能供给（capex_scenario 活算）→ 缺口/过剩窗口标段`,
+    wcDemand: "需求",
+    wcSupply: "供给",
+    wcGap: "缺口",
+    wcGapWin: (from: string, to: string) => `缺口窗口 ${from}→${to}`,
+    wcSurplusWin: (from: string, to: string) => `过剩窗口 ${from}→${to}`,
   },
   /** §7.15 季度滚动看板 */
   quarter: {

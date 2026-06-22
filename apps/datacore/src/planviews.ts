@@ -82,6 +82,7 @@ export class PlanService {
         name: str(s.props.name),
         year: num(s.props.year),
         demand: num(s.props.demand),
+        ...(s.props.note ? { note: str(s.props.note) } : {}),
         capacityDecision: str(s.props.capacityDecision),
         ltaLock: str(s.props.ltaLock),
         finance: { revenue: num(s.props.revenue), capex: num(s.props.capex), irr },
