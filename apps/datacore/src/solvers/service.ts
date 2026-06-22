@@ -505,7 +505,7 @@ export class SolverService {
         const floorVal = num(p.floorVal);
         const offTarget = actual < floorVal;
         return {
-          kpiId: str(p.metricId), name: str(p.name), category: str(p.category),
+          kpiId: str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
           actual, target, floorVal, unit: str(p.unit),
           gap: round(target - actual, 4), offTarget,
           status: offTarget ? "RED" : actual < target ? "AMBER" : "GREEN",
@@ -530,9 +530,21 @@ export class SolverService {
       return driverCache.get(type)!;
     };
     const MAX_LEAVES = 4;
+    // SPINE.3：KSF 层接入——指标越线沿 KSF 关键成功要素再到因子（Metric→KSF→factor→evidence），
+    // 给 audit/generate 的 KsfGraph 同源数据；KSF 缺失则退化为 kpi→factor（向后兼容）。
+    const ksfObjs = await this.repos.objects.listByType(ctx.tenantId, "KSF");
+    const ksfById = new Map(ksfObjs.map((o) => [str(o.props.ksfId), { name: str(o.props.name), sub: str(o.props.sub) }]));
 
     for (const k of roots) {
       addNode({ id: `kpi:${k.kpiId}`, kind: "kpi", label: k.name, value: k.gap, actual: k.actual, target: k.target, status: k.status, unit: k.unit });
+      // 因子父节点：若指标归挂 KSF 则插 KSF 层（kpi→ksf→factor），否则 kpi→factor。
+      let factorParent = `kpi:${k.kpiId}`;
+      if (k.ksfRef && ksfById.has(k.ksfRef)) {
+        const ksf = ksfById.get(k.ksfRef)!;
+        addNode({ id: `ksf:${k.ksfRef}`, kind: "ksf", label: ksf.name, sub: ksf.sub });
+        edges.push({ from: `kpi:${k.kpiId}`, to: `ksf:${k.ksfRef}`, weight: 1, kind: "kpi_ksf" });
+        factorParent = `ksf:${k.ksfRef}`;
+      }
       const chains = chainObjs.map((o) => o.props).filter((c) => str(c.kpiCategory) === k.category).sort((a, b) => str(a.chainId).localeCompare(str(b.chainId)));
       // 每因子贡献 = driverType 对象 evidenceField 之和 × baseWeight（活数据量化，非写死）。
       const factors: { chainId: string; factor: string; contribution: number; leaves: { id: string; label: string; value: number }[] }[] = [];
@@ -553,7 +565,7 @@ export class SolverService {
       for (const f of factors) {
         const share = totalContribution > 0 ? round(f.contribution / totalContribution, 4) : 0;
         addNode({ id: `factor:${f.chainId}`, kind: "factor", label: f.factor, value: f.contribution, share });
-        edges.push({ from: `kpi:${k.kpiId}`, to: `factor:${f.chainId}`, weight: share, kind: "kpi_factor" });
+        edges.push({ from: factorParent, to: `factor:${f.chainId}`, weight: share, kind: factorParent.startsWith("ksf:") ? "ksf_factor" : "kpi_factor" });
         for (const l of f.leaves) {
           addNode({ id: `leaf:${l.id}`, kind: "evidence", label: l.label, value: l.value });
           edges.push({ from: `factor:${f.chainId}`, to: `leaf:${l.id}`, weight: f.contribution > 0 ? round(l.value / f.contribution, 4) : 0, kind: "factor_evidence" });

@@ -9,12 +9,14 @@ import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
 const DAG: DagData = {
   nodes: [
     { id: "kpi:kpi-material", kind: "kpi", label: "物料保障率", status: "RED", actual: 77.3, target: 100, value: 22.7, unit: "%" },
+    { id: "ksf:ksf-kit", kind: "ksf", label: "物料齐套", sub: "长协与现货缺口" },
     { id: "factor:rc-material-gap", kind: "factor", label: "现货缺口扩大", value: 4200, share: 1 },
     { id: "leaf:rc-material-gap:三元正极", kind: "evidence", label: "三元正极", value: 2600 },
     { id: "leaf:rc-material-gap:隔膜", kind: "evidence", label: "隔膜", value: 1600 },
   ],
   edges: [
-    { from: "kpi:kpi-material", to: "factor:rc-material-gap", weight: 1, kind: "kpi_factor" },
+    { from: "kpi:kpi-material", to: "ksf:ksf-kit", weight: 1, kind: "kpi_ksf" },
+    { from: "ksf:ksf-kit", to: "factor:rc-material-gap", weight: 1, kind: "ksf_factor" },
     { from: "factor:rc-material-gap", to: "leaf:rc-material-gap:三元正极", weight: 0.62, kind: "factor_evidence" },
     { from: "factor:rc-material-gap", to: "leaf:rc-material-gap:隔膜", weight: 0.38, kind: "factor_evidence" },
   ],
@@ -26,6 +28,8 @@ describe("cockpit P2 · <ProvenanceDag>（L3）", () => {
     expect(screen.getByTestId("provenance-dag")).toBeTruthy();
     // 三层节点都在
     expect(screen.getByTestId("dag-node-kpi:kpi-material").getAttribute("data-kind")).toBe("kpi");
+    // SPINE.3 KSF 层
+    expect(screen.getByTestId("dag-node-ksf:ksf-kit").getAttribute("data-kind")).toBe("ksf");
     expect(screen.getByTestId("dag-node-factor:rc-material-gap").getAttribute("data-kind")).toBe("factor");
     expect(screen.getByTestId("dag-node-leaf:rc-material-gap:三元正极").getAttribute("data-kind")).toBe("evidence");
     // KPI 越线状态徽章 + 实际/目标可见
