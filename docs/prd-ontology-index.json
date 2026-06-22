@@ -1372,7 +1372,11 @@
         "R6"
       ],
       "breakpoints": [],
-      "artifacts": [],
+      "artifacts": [
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/views/registry.ts"
+      ],
       "brokenArtifacts": []
     }
   },
@@ -1770,6 +1774,15 @@
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-sop-balance-1to1.md"
+    ],
+    "apps/datacore/src/features.ts": [
+      "PRD-verbatim-1to1-replication.md"
+    ],
+    "apps/datacore/src/synthetic/service.ts": [
+      "PRD-verbatim-1to1-replication.md"
+    ],
+    "apps/frontend-shell/src/views/registry.ts": [
+      "PRD-verbatim-1to1-replication.md"
     ]
   }
 }

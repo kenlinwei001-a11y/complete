@@ -115,14 +115,45 @@ rev=base×eff.rev;revGrowAbs=(eff.rev−1)×100;gm=base.gm+eff.gm;shareGrow=eff.
 
 > **同 seed 字节一致**(R6)、**逐数可溯**(R13)、**前端零写死**(R14)——三者一起保证"值=HTML 且来源=管线"。
 
-## 5. 验收（DoD = 真 1:1）
+## 5. 与现有系统模块的融合映射（不是新建,是融入）★ 核心
+> 这些 HTML 视图在系统里**已有对应 renderer/view/求解器/导航**——1:1 复刻是**融入并增强现有模块**,不是另起一套页面。每视图须落到下表的现有落点,复用其求解器/对象/管线,只在缺口处补。
+
+| HTML 视图 | 现有系统落点（renderer · file） | 融合方式 | 复用求解器/数据 |
+|---|---|---|---|
+| dash | `DashboardView`（`dashboard`）| **增强**（八卡溯源/问题卡/逐单 DAG 按 §3 补全） | DASH_LAYOUT(service.ts) · margin_attribution/capacity_rollup |
+| risk | `RiskBoardView`（`risk-board`）| **增强** | risk_timeline · affected_orders · showDayTip |
+| aop | `AnnualScenarioView`（`annual-scenario`）| **增强**（系统已较富,补 note/三情景/曲线） | capex_scenario · PlanTarget |
+| sop | `SopBalanceView`（`sop-balance`,737 行状态机）| **增强**（补 P90列/MRP/量价本利/版本对比） | /a/v1/sop · mrp_netting/finance_pnl |
+| quarter | `QuarterlyRollingView`（`quarterly-rolling`,近 1:1）| **种子对齐**（结构已 1:1,调生成器复现精确值） | quarterlyFromContext · 枣庄项目种子 |
+| audit | `PlanAuditView` + `PropagationTimeline`（`plan-audit`）| **增强**（消费 series→逐日轴 + KSF 图） | plan_audit · audit_timeline |
+| generate | `PlanGenerateView` + `RadarChart`（`plan-generate`）| **增强**（补五维矩阵/敏感性/问题链/共享时序） | plan_generate · 复用 audit 时序+KSF |
+| order | `OrderChainView`（`order-chain`,稀疏）| **大改**（补订单选择器/6KPI/三判/11 节点 DAG） | affected_orders + 新 order_fullchain |
+| model | `ProjectSimView` + `PmDag`（`project-sim`,~70%）| **增强**（补可产网络收敛标注） | capacity_forecast |
+| story | 无独立视图 → `<InferenceProcessDag>` 横切组件 | **新建横切**（融入各推演答案,不占导航） | QOS trace · A5 FDE 节点图 |
+| map | `OntologyGraphView`（已坍缩图谱族）| **借鉴**（colorBy/MappingOverlay,不逐个复刻） | 本体图 |
+| 受影响订单聚合 | `OrderChainView` 问题归并 4 类 | **复用** | affected_orders |
+
+### 5.1 统一集成点（每视图都经这五处接入,不绕过）
+1. **Renderer 注册**：`apps/frontend-shell/src/views/registry.ts`（`registerRenderer(key,…)` + 短键别名 sop/quarter/audit/generate/project/risk/dash）。
+2. **ViewDef / layout 下发**：`apps/datacore/src/synthetic/service.ts`（`VIEW_DEFS`/`DASH_LAYOUT`——后端声明结构,前端按它渲染;§4 的②⑤落此）。
+3. **Feature / entitlement**：`apps/datacore/src/features.ts`（`VIEW_FEATURE_MAP`,功能关=404,先于 authz）。
+4. **导航**：`ShellLayout` `BUSINESS_NAV_GROUPS`（见 `PRD-nav-ia-reorg`:推演/数据/建模 一级分组）。
+5. **场景启动器**：scenario catalog（场景入口 → view + presetContext,QOS/CLI/GUI 同源）。
+
+### 5.2 原则
+- **复用 > 新建**：现有 renderer/求解器/对象/管线能用就用（多数视图系统已有成熟实现,只补缺口）。
+- **求解器同源**（R-一致）：产能口径(capacity_rollup)、时序(audit_timeline/risk_timeline)、KSF、财务测算 跨视图复用同一求解器,不各算一套。
+- **融合后仍 1:1**：增强不破坏 HTML 可见的结构/值/交互;系统超集(活求解器/Action/溯源)作底层,可见层与 HTML 一致。
+- 各结构子 PRD(`PRD-{view}-1to1.md`)已给出**逐视图的现状 file:line + 缺口表 + 复用清单**——本表是其汇总;实现以子 PRD 的接缝分析 + 本 PRD §2 源行号 + §4 来源归属 三者合一。
+
+## 6. 验收（DoD = 真 1:1）
 - **逐元素勾验**:每视图与 HTML **并排截图**,常量/字符串/公式/交互**逐项核对一致**(色/字可不同)。漏一项即不通过。
 - 数据走管线、前端零写死(`debattery:check`);同 (industry,seed) 字节一致(R6)。
 - `pnpm -r build && pnpm -r test` 全绿;`chain:check`/`ontology:check` 过。
 - **FDE 亲手跑每视图**(不是绿测试)——真人操作每个交互,核对行为=HTML。
 - 回写本体 §2/§3。
 
-## 6. 分期（按视图,各做到 §3 深度）
+## 7. 分期（按视图,各做到 §3 深度）
 - **V.1** generate(样板已备)→ 校核落地。
 - **V.2** sop · quarter(数据密集,种子转抄量大)。
 - **V.3** dash · risk(共享时序/KSF 引擎 + 八卡 + 逐单 DAG)。
@@ -131,7 +162,7 @@ rev=base×eff.rev;revGrowAbs=(eff.rev−1)×100;gm=base.gm+eff.gm;shareGrow=eff.
 - **V.6** story(编排 DAG) · map(图谱) — 横切。
 > 每波交付前过 §5 DoD(逐元素勾验 + 像素对比)。
 
-## 7. 与既有 1:1 子 PRD 的关系
+## 8. 与既有 1:1 子 PRD 的关系
 - 各子 PRD(`PRD-{cockpit,aop,sop,quarter,plan-audit,plan-generate,order-project-sim,inference-process}-1to1.md`)**保留为结构/接缝说明**(讲清复用哪些求解器、断点、对象类型);**数据/字符串/公式/交互以本 PRD §2 源行号 + §3 样板深度为准**。
 - `PRD-plan-generate-1to1.md` 已含 generate 的部分结构;本 PRD §3 是其 verbatim 补全。
 
