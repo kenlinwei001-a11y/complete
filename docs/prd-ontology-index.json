@@ -372,6 +372,15 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-IND-order-aggregate.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/plan/OrderChainView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-IND-order.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -442,6 +451,26 @@
         "packages/contracts/src/workspace.ts"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-IND-story.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrationSkeleton.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/router/traceProjection.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/frontend-shell/src/components/InferenceDag/InferenceProcessDag.tsx",
+        "apps/frontend-shell/src/components/QueryDock/TaskRun.tsx",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx",
+        "packages/contracts/src/qos.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/src/router/orchestrationSkeleton.ts",
+        "apps/agentcore/src/router/traceProjection.ts",
+        "apps/frontend-shell/src/components/InferenceDag/InferenceProcessDag.tsx"
+      ]
     },
     "PRD-MASTER-INDEX.md": {
       "hasOntologyRef": true,
@@ -1725,6 +1754,7 @@
     ],
     "apps/agentcore/src/router/orchestrator.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-IND-story.md",
       "PRD-attribution-routing-plan-audit.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-scenario-launcher.md"
@@ -1816,6 +1846,7 @@
     ],
     "apps/frontend-shell/src/views/sim/PmDag.tsx": [
       "PRD-IND-model.md",
+      "PRD-IND-story.md",
       "PRD-inference-process-enhancement.md",
       "PRD-order-project-sim-1to1.md"
     ],
@@ -1823,15 +1854,16 @@
       "PRD-IND-model.md",
       "PRD-order-project-sim-1to1.md"
     ],
+    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
+      "PRD-IND-order-aggregate.md",
+      "PRD-IND-order.md",
+      "PRD-order-project-sim-1to1.md"
+    ],
     "apps/datacore/src/solvers/risk.ts": [
       "PRD-IND-order.md",
       "PRD-IND-risk.md",
       "PRD-order-project-sim-1to1.md",
       "PRD-plan-audit-1to1.md"
-    ],
-    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
-      "PRD-IND-order.md",
-      "PRD-order-project-sim-1to1.md"
     ],
     "packages/contracts/src/solvers.ts": [
       "PRD-IND-order.md",
@@ -1862,6 +1894,28 @@
     "packages/contracts/src/workspace.ts": [
       "PRD-IND-sop.md",
       "PRD-de-battery-multitenant-config.md"
+    ],
+    "apps/agentcore/src/router/orchestrationSkeleton.ts": [
+      "PRD-IND-story.md"
+    ],
+    "apps/agentcore/src/router/traceProjection.ts": [
+      "PRD-IND-story.md"
+    ],
+    "apps/agentcore/src/server.ts": [
+      "PRD-IND-story.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-scenario-launcher.md"
+    ],
+    "apps/frontend-shell/src/components/InferenceDag/InferenceProcessDag.tsx": [
+      "PRD-IND-story.md"
+    ],
+    "apps/frontend-shell/src/components/QueryDock/TaskRun.tsx": [
+      "PRD-IND-story.md"
+    ],
+    "packages/contracts/src/qos.ts": [
+      "PRD-IND-story.md",
+      "PRD-scenario-launcher.md"
     ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
@@ -1912,11 +1966,6 @@
       "PRD-fullstack-story-build-g8.md",
       "PRD-in-dialog-gap-fill-loop.md"
     ],
-    "apps/agentcore/src/server.ts": [
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-in-dialog-gap-fill-loop.md",
-      "PRD-scenario-launcher.md"
-    ],
     "packages/contracts/src/databuilder.ts": [
       "PRD-fullstack-story-build-g8.md"
     ],
@@ -1956,9 +2005,6 @@
       "PRD-scenario-launcher.md"
     ],
     "packages/contracts/src/agentcore.ts": [
-      "PRD-scenario-launcher.md"
-    ],
-    "packages/contracts/src/qos.ts": [
       "PRD-scenario-launcher.md"
     ],
     "scripts/check-chain-closure.mjs": [
