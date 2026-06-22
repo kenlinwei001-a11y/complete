@@ -93,6 +93,9 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "solver.status_changed", producer: "求解器·临时件状态推进/晋升 GOVERNED（A18.4）", tier: "IN_SESSION", invalidates: ["solver-registry", "provisional-review"] },
   // L15 A18.4 整域晋升编排：PROVISIONAL 域人工审批 → 隔离数据迁入真租户 + 逐制品晋升求解器 → 失效历史/审核台/对象库
   { event: "domain.promoted", producer: "数据构建发动机·PROVISIONAL 整域晋升 GOVERNED（A18.4 编排：迁移隔离域+逐制品晋升）", tier: "IN_SESSION", invalidates: ["story-runs", "provisional-review", "object-queries", "solver-registry"] },
+  // L17 SPINE 经营目标-指标-责任骨架：指标快照回采（actual 更新）/ 指标越线（触发推演）→ 失效驾驶舱/各视图 KPI/风险页
+  { event: "metric.snapshot_recorded", producer: "SPINE·指标快照回采（metric_rollup 实算 actual → 执行回采更新口径，SPINE.2）", tier: "IN_SESSION", invalidates: ["metrics", "dashboard", "scenario-data"] },
+  { event: "metric.breached", producer: "SPINE·指标越线（actual<floor → 触发 plan_rootcause/risk_timeline 推演，SPINE.2）", tier: "NOTIFY", invalidates: ["metrics", "dashboard", "risk", "notifications"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

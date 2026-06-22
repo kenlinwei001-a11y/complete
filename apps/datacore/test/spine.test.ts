@@ -58,6 +58,33 @@ describe("SPINE · 目标-指标-责任骨架（L6 + L1 + R2）", () => {
     expect((none.json() as { data: { metrics: unknown[] } }).data.metrics.length).toBe(0);
   });
 
+  it("SPINE.2 责任闭环：目标树→责任人（plantarget_ownedby）+ Metric 血缘可溯到数据源（R13）", async () => {
+    const t: TestApp = await makeApp();
+    await seedBattery(t);
+    const ptOwn = await t.repos.links.list("demo", (l) => l.type === "plantarget_ownedby");
+    expect(ptOwn.length).toBeGreaterThan(0);
+    // Metric 血缘：GET /a/v1/metrics/:key 返回 lineage（源连接 → 原始表）
+    const lin = (await (await t.app.inject({ method: "GET", url: "/a/v1/metrics/kpi-material", headers: ADMIN })).json()) as { metric: { metricId: string }; lineage: { connectionName: string | null; rawDatasetName: string | null } };
+    expect(lin.metric.metricId).toBe("kpi-material");
+    expect(lin.lineage.connectionName).toBeTruthy(); // 合成数据源可溯
+    expect(lin.lineage.rawDatasetName).toBe("Metric"); // 原始表
+  });
+
+  it("SPINE.2 事件：指标快照回采发 metric.snapshot_recorded（每指标）+ 越线发 metric.breached", async () => {
+    const t: TestApp = await makeApp();
+    await seedBattery(t);
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/metrics/snapshot", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const out = res.json() as { recorded: number; breached: number };
+    expect(out.recorded).toBe(3);
+    expect(out.breached).toBeGreaterThanOrEqual(1); // 物料保障率越线
+    const snap = await t.repos.outboxEvents.list("demo", (e) => e.event === "metric.snapshot_recorded");
+    expect(snap.length).toBe(3);
+    const breach = await t.repos.outboxEvents.list("demo", (e) => e.event === "metric.breached");
+    expect(breach.length).toBeGreaterThanOrEqual(1);
+    expect(breach.some((e) => (e.payload as { key?: string }).key === "material_cov")).toBe(true);
+  });
+
   it("R2：另一租户无 Metric/KSF/Principal（隔离）", async () => {
     const t: TestApp = await makeApp();
     await seedBattery(t);

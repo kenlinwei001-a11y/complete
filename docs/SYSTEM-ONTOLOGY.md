@@ -270,6 +270,8 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L15 | `solver.provisional_generated` | A18.2 LLM 临时求解器（`solvers/llm-gen.ts` 生成 → 冻结 hash+版本 → `sandbox.ts` 锁死子进程跑通自检 → 注册 SolverArtifact `status=PROVISIONAL/trustLevel=UNVERIFIED`）→ 失效求解器目录/审核台 | IN_SESSION | solver-registry, provisional-review | — |
 | L15 | `solver.status_changed` | A18.4 临时求解器晋升（`promoteSolver` 人工审批 PROVISIONAL→GOVERNED，trustLevel→VERIFIED，解锁写真值 R4）→ 失效求解器目录/审核台 | IN_SESSION | solver-registry, provisional-review | — |
 | L15 | `domain.promoted` | A18.4 整域晋升编排（`promoteDomain` 人工审批 PROVISIONAL 域→把隔离命名空间 `tenant::prov::runId` 的本体/对象/链路/原始表/连接器/规则/切片整体迁入真租户+发布版本+跑派生 ⊕ 逐制品晋升临时求解器 GOVERNED ⊕ 翻转 domainTrustLevel→GOVERNED）→ 失效历史/审核台/对象库/求解器目录 | IN_SESSION | story-runs, provisional-review, object-queries, solver-registry | — |
+| L17 | `metric.snapshot_recorded` | SPINE.2 指标快照回采（`POST /a/v1/metrics/snapshot`：`metric_rollup` 实算 actual → 执行回采更新口径，派生投影非新真值 R13）→ 失效驾驶舱/各视图 KPI | IN_SESSION | metrics, dashboard, scenario-data | — |
+| L17 | `metric.breached` | SPINE.2 指标越线（actual<floorVal → 触发 `plan_rootcause`/`risk_timeline` 推演、派 `Principal` 行动）→ 通知 + 失效风险页 | NOTIFY | metrics, dashboard, risk, notifications | — |
 | L16 | `entity.out_of_domain` | 感知层·槽位解析裸串实体在本租户任何已发布类型都解析不到（`router/slots.ts fillSlots`）→ orchestrator 发任务事件 + `perception-metrics.ts` 记误触发率（域外/尝试）+ 取最近邻候选供澄清 | NOTIFY | perception-metrics | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。

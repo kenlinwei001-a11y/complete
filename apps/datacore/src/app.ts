@@ -1855,6 +1855,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const items = objProps(rows).filter((p) => (!level || String(p.level) === level) && (!ksf || String(p.ksfRef) === ksf));
     return { items, snapshotVersion: rows.snapshotVersion };
   });
+  app.get("/a/v1/metrics/:key", async (req) => {
+    const c = ctx(req);
+    const key = (req.params as { key: string }).key;
+    const all = await repos.objects.listByType(c.tenantId, "Metric");
+    const obj = all.find((o) => String(o.props.metricId) === key || String(o.props.key) === key);
+    if (!obj) throw notFound("metric");
+    // R13 血缘：actual 经合成→物化，origin 记 sourceConnId/rawDatasetId/rowIdx（数据源→原始表可溯）。
+    const o = obj.origin as { sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number };
+    const conn = o.sourceConnId ? await repos.connections.get(c.tenantId, o.sourceConnId) : undefined;
+    const ds = o.rawDatasetId ? await repos.rawDatasets.get(c.tenantId, o.rawDatasetId) : undefined;
+    return {
+      metric: obj.props,
+      lineage: { sourceConnId: o.sourceConnId ?? null, connectionName: conn?.name ?? null, rawDatasetId: o.rawDatasetId ?? null, rawDatasetName: ds?.name ?? null, rowIdx: o.rawRowIdx ?? null },
+    };
+  });
   app.get("/a/v1/ksf", async (req) => {
     const rows = await ontology.queryObjects(ctx(req), "KSF", {});
     return { items: objProps(rows), snapshotVersion: rows.snapshotVersion };
@@ -1862,6 +1877,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/principals", async (req) => {
     const rows = await ontology.queryObjects(ctx(req), "Principal", {});
     return { items: objProps(rows), snapshotVersion: rows.snapshotVersion };
+  });
+  // SPINE.2 指标快照回采（执行回采更新口径 → 发 metric.snapshot_recorded；越线项发 metric.breached 触发推演）。
+  // actual 仍为派生投影（metric_rollup 实算，非凭空写真值 R13）；事件驱动驾驶舱/风险页失效 + 越线接 plan_rootcause。
+  app.post("/a/v1/metrics/snapshot", async (req) => {
+    const c = ctx(req);
+    const out = (await ontology.invokeSolver(c, "metric_rollup", {})).data as {
+      metrics: { metricId: string; key: string; actual: number; target: number; miss: boolean; chainKey?: string; ownerRef?: string | null }[];
+    };
+    const asOf = new Date().toISOString();
+    for (const m of out.metrics) {
+      await outbox.emit(c.tenantId, "metric.snapshot_recorded", { metricId: m.metricId, key: m.key, actual: m.actual, asOf });
+      if (m.miss) await outbox.emit(c.tenantId, "metric.breached", { metricId: m.metricId, key: m.key, actual: m.actual, target: m.target, chainKey: m.chainKey ?? null, ownerRef: m.ownerRef ?? null });
+    }
+    return { recorded: out.metrics.length, breached: out.metrics.filter((m) => m.miss).length, asOf, metrics: out.metrics };
   });
   // A18.2 LLM 临时求解器生成：缺求解器 → LLM 生成纯函数 → 冻结 + 锁死沙箱跑通自检 → 注册 PROVISIONAL（未审核·UNVERIFIED）。
   app.post("/a/v1/solvers/generate", async (req) => {

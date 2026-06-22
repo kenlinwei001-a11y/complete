@@ -771,6 +771,11 @@ export class SyntheticService {
       if (P(m).ksfRef) await putLink(`lnk_mak_${P(m).metricId}`, "metric_affects_ksf", mid, oid("KSF", P(m).ksfRef));
       if (P(m).ownerRef) await putLink(`lnk_mob_${P(m).metricId}`, "metric_ownedby", mid, oid("Principal", P(m).ownerRef));
     }
+    // SPINE.2 责任闭环：目标树→责任人（年/季→运营负责人，月→计划部，确定性派生）。
+    for (const t of pd.planTargets) {
+      const owner = String(P(t).level) === "month" ? "prin-plan" : "prin-coo";
+      await putLink(`lnk_pto_${P(t).tgtId}`, "plantarget_ownedby", oid("PlanTarget", P(t).tgtId), oid("Principal", owner));
+    }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
     for (const s of [...batteryBuiltinSlices(), ...batteryCoverageSlices()]) {
