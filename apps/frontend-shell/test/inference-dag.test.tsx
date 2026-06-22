@@ -37,4 +37,30 @@ describe("inference-process · 推演过程编排 DAG", () => {
     expect(ipo).toHaveTextContent("输入");
     expect(ipo).toHaveTextContent("输出");
   });
+
+  it("横切挂载 ≥5 入口：规划体检视图 → 推演过程 DAG（solved 全节点 done）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/plan-audit");
+    await screen.findByTestId("plan-audit-view");
+
+    await user.click(await screen.findByTestId("inference-audit-toggle"));
+    const dag = await screen.findByTestId("inference-audit");
+    for (let id = 1; id <= 10; id++) expect(within(dag).getByTestId(`inference-node-${id}`)).toBeTruthy();
+    // solved → 节点 done（非 pending）
+    expect(within(dag).getByTestId("inference-node-1")).toHaveAttribute("data-status", "done");
+  });
+
+  it("model 收敛子模式：项目推演视图 → 型号→认证产线→基地 收敛网络", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+    await screen.findByTestId("project-sim-view");
+
+    await user.click(await screen.findByTestId("inference-project-toggle"));
+    const dag = await screen.findByTestId("inference-project");
+    expect(dag).toHaveAttribute("data-mode", "model-network");
+    expect(within(dag).getByTestId("model-net-col-0")).toHaveTextContent("型号");
+    expect(within(dag).getByTestId("model-net-col-2")).toHaveTextContent("基地");
+  });
 });

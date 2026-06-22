@@ -95,6 +95,15 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-IND-plan-generate-1to1.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-addendum-a8-timeseries.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1314,6 +1323,10 @@
       "PRD-A18-provisional-build-closure.md",
       "PRD-A9-external-engines-design-deferred.md"
     ],
+    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
+      "PRD-IND-plan-generate-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
     ],
@@ -1464,9 +1477,6 @@
     ],
     "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": [
       "PRD-plan-audit-1to1.md"
-    ],
-    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
-      "PRD-plan-generate-1to1.md"
     ],
     "apps/datacore/src/entity-resolution.ts": [
       "PRD-prototype-intake-databuilder.md"

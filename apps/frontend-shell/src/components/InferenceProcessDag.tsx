@@ -60,9 +60,55 @@ function deriveStatus(state: TaskStreamState): { reached: number; gapNode: numbe
   return { reached, gapNode };
 }
 
-export function InferenceProcessDag({ state, testId = "inference-dag" }: { state: TaskStreamState; testId?: string }) {
+/** model 收敛子模式：型号→已认证产线→基地 收敛网络（项目/产能推演 driven by 型号；同 pmDagSVG 收敛形态）。 */
+const MODEL_NET = {
+  cols: [
+    { title: "型号", nodes: [{ label: "目标型号", sub: "Model" }] },
+    { title: "已认证产线", nodes: [{ label: "认证产线集", sub: "Line · cert✓" }] },
+    { title: "可产基地", nodes: [{ label: "收敛基地网络", sub: "Base · producible_at" }] },
+  ],
+};
+
+export function InferenceProcessDag({
+  state,
+  solved,
+  gapNode: gapNodeProp,
+  mode = "orchestration",
+  testId = "inference-dag",
+}: {
+  /** QueryDock 实时任务流（轨迹由 SSE 派生）。 */
+  state?: TaskStreamState;
+  /** 求解器视图（risk/project/order/audit/generate）：该次推演已出结论 → 全节点 done。 */
+  solved?: boolean;
+  /** 求解器视图缺口节点（如结论含缺口/不可达），可选。 */
+  gapNode?: number | null;
+  /** orchestration=10 节点编排图（默认）；model-network=型号收敛子模式。 */
+  mode?: "orchestration" | "model-network";
+  testId?: string;
+}) {
   const [sel, setSel] = useState<number | null>(null);
-  const { reached, gapNode } = deriveStatus(state);
+  const derived = state ? deriveStatus(state) : { reached: solved ? 10 : 0, gapNode: gapNodeProp ?? null };
+  const { reached, gapNode } = derived;
+
+  // model 收敛子模式：型号→认证产线→基地 收敛网络（复用 ProjectSim 的 PmDag 形态，组件内简版）。
+  if (mode === "model-network") {
+    return (
+      <div className={styles.box} data-testid={testId} data-mode="model-network">
+        <div className={styles.legend} data-testid="inference-model-net">型号 → 已认证产线 → 可产基地（收敛网络）</div>
+        <div style={{ display: "flex", gap: 6, alignItems: "stretch" }}>
+          {MODEL_NET.cols.map((c, ci) => (
+            <span key={c.title} style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+              {ci > 0 && <span style={{ color: "var(--muted2)" }}>⇢</span>}
+              <div className={`${styles.node} ${styles.done}`} style={{ flex: 1, padding: "8px 10px" }} data-testid={`model-net-col-${ci}`}>
+                <div style={{ fontSize: 10, color: "var(--muted2)" }}>{c.title}</div>
+                {c.nodes.map((n) => (<div key={n.label} style={{ fontSize: 11.5 }}><b>{n.label}</b> <i style={{ fontStyle: "normal", color: "var(--muted2)", fontSize: 10 }}>{n.sub}</i></div>))}
+              </div>
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
   const statusOf = (id: number): NodeStatus =>
     gapNode === id ? "gap" : id <= reached ? "done" : id === reached + 1 ? "running" : "pending";
   const byId = (id: number) => NODES.find((n) => n.id === id)!;

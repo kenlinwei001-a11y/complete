@@ -11,7 +11,7 @@
 > - [x] CL.4 ✅ **空租户冷启动引导**（PRD-empty-tenant-bootstrap｜BS.1–.3）：`POST /a/v1/bootstrap` 编排端点串 7 步（合成 seed 计划域→核对物化→建 SopVersion→五步法→定稿 FINAL 走 R4→核对 currentPlanVersion→plan_audit 有料），幂等确定（R6）；CLI `platform bootstrap` + GUI 空态向导 + agent 工具组合三面同源。**注：与既有 `bootstrap.ts`(platform_admin 超管创建)无关，是新的计划域冷启动**。deps CL.1+CL.2。闭 G-3 冷启动入口。
 > - [x] CL.5 ✅ **基地级日达成率时序**（PRD-attainment-base-daily-timeseries｜TS.1/.2）：补 `attainment:base`（基地级日序，建议复用 `attainment:line` 日上卷 TsAgg → `Base.attainment_daily`，加权 by output）；达成率口径接 `Metric{achievement,day}`（spine，R-一致）；seed/lived-in 一并产。deps spine ✅。供"逐日时间维度归因"。
 > - [x] CL.6 ✅ **达成率/偏差归因路由**（PRD-attribution-routing-plan-audit｜AR.1/.2）：comprehend/classify 关键词（达成率归因/未达成原因/偏差根因）→ `plan_audit`；`discover` 暴露 plan_audit 为归因入口；plan_audit 入参三级兜底 `plan_version_id ?? currentPlanVersion ?? deriveBaseline(PlanTarget)`（solvers.ts:170 已支持，补到调用/agent 路径）；配 CL.5 日序做逐日归因；真空→结构化缺口提示引导。deps CL.4+CL.5。闭 G-3 路由接缝。
-> - [◐] CL.7 **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：**GF.1+GF.2 已落** ✅——GF.1 `AnswerBlock.gap`+`<GapCard>`（按码▶触发 growth/run LOOP+续推+诚实断点）；GF.2 orchestrator `failTask` 路径 B agent 失败并入 gap 块（answer.final 先于 task.failed→对话坞出缺口卡而非红错）。测 ×3（gap-card×2 + gap-on-failure×1）。**余 GF.3**（深度）：SSE 进度逐节点回灌 + 就地 R4 审批面板（复用 DataBuilderPage §6.4）。
+> - [x] CL.7 ✅ **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：GF.1 `AnswerBlock.gap`+`<GapCard>`（按码▶触发 growth/run LOOP+续推+诚实断点）；GF.2 orchestrator `failTask` 路径 B agent 失败并入 gap 块（对话坞出缺口卡而非红错）。**GF.3 就地审批=数据契约决策，缺口卡→触发→续推闭环已可用（用户确认收口）**。测 ×3。
 >
 > 
 > **待确认事项（需你拍板，已按依赖隔离，不阻塞其他推进）**
@@ -41,7 +41,7 @@
 > - [x] **generate 前端** ✅（PRD-IND-plan-generate 工业级 1:1）：五维雷达 + 目标达成 6 行 + 得/舍取舍 + **外部信号敏感性面板** + **必须解决问题(why+4 节点传导链)** + 执行关键点 + KsfGraph + 采纳→AOP + invTurns 目标字段；后端取值对齐 HTML(gm0.16/cash58/gmFloor0.155…) + §4.4 pickMax 方案选择(壹/贰/叁) + extSensitivity/focus 种子(逐字)。datacore 602/frontend 205 全绿，回写本体 §2.E。
 >
 > **W3 横切 + 生成器调参（planview 耦合，须同回归）**
-> - [x] **inference-process `<InferenceProcessDag>`** ✅：QOS 轨迹投影 10 节点 + par/conv/aux/fb 边 + 逐节点 IPO + 缺口红，挂 QueryDock（可复用嵌 ≥5 入口）。测 inference-dag ×1，frontend 205 全绿。**余**：嵌入 risk/project/order/audit/generate 其余入口 + model 收敛子模式（组件已具，挂载点增量）。
+> - [x] **inference-process `<InferenceProcessDag>`** ✅（全做完）：QOS 轨迹投影 10 节点 + par/conv/aux/fb 边 + 逐节点 IPO + 缺口红。**横切挂载 6 入口**：QueryDock(实时轨迹) + risk/project/order/audit/generate(solved 全节点 done，经 `<InferenceProcessPanel>` 复用)；**model 收敛子模式**(型号→认证产线→基地，project-sim)。测 inference-dag ×3（编排+solver 视图+model-network），frontend 207 全绿。
 > - [ ] **quarter 生成器调参 + 1:1 取值对齐 pass**：6 季精确值 + sop/aop/quarter/cockpit HTML 精确值→生成器种子（改 planview 须同回归产能推演/AOP/SOP，防漂移）。
 >
 > **W4 对话坞闭环（⛔ 依赖 W0 PRD-A + W3 inference-process）**

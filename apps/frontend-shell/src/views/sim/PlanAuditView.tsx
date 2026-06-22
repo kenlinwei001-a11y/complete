@@ -15,6 +15,7 @@ import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
 import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
 import { KsfGraph } from "@/components/KsfGraph";
+import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
@@ -172,6 +173,8 @@ export default function PlanAuditView({ view }: ViewRendererProps) {
 
       {/* audit.3：财务 KSF 图（问题→KSF→财务指标 3 层；问题节点点击联动其时序轴）。audit/generate 共用组件。 */}
       <KsfGraph />
+      {/* inference-process 横切：本次规划体检推演的编排过程 DAG */}
+      <InferenceProcessPanel testId="inference-audit" solved />
     </div>
   );
 }

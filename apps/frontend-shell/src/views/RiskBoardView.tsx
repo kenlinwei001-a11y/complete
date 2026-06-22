@@ -10,6 +10,7 @@ import { EChart } from "@/components/ui/EChart";
 import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
 import type { ViewRendererProps } from "./registry";
+import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
 
@@ -132,6 +133,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
       {/* 运营态出厂配置增量 §4.3：历史处置案例区（越线→采纳→消解；点击回放当时的时序曲线） */}
       <HistoricalCasesSection />
+      {/* inference-process 横切：风险推演的编排过程 DAG */}
+      <InferenceProcessPanel testId="inference-risk" solved />
     </div>
   );
 }

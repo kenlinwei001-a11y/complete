@@ -16,6 +16,7 @@ import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { PmDag, type PmDagNode } from "./PmDag";
+import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -388,6 +389,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
           onClose={() => setDagNode(null)}
         />
       )}
+      {/* inference-process 横切：产能/项目推演的编排过程 DAG（model 收敛子模式：型号→认证产线→基地） */}
+      <InferenceProcessPanel testId="inference-project" solved mode="model-network" />
     </div>
   );
 }

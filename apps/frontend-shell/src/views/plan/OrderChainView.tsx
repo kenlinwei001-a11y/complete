@@ -11,6 +11,7 @@ import { Provenance } from "@/components/Provenance";
 import type { AffectedOrdersOutputVM } from "@/api/types";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge } from "../sim/shared";
+import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
@@ -244,6 +245,8 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           <ProblemDag group={openProblem} />
         </Modal>
       )}
+      {/* inference-process 横切：订单全链推演的编排过程 DAG */}
+      <InferenceProcessPanel testId="inference-order" solved />
     </div>
   );
 }

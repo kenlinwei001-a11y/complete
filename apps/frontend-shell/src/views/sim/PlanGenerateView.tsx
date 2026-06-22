@@ -12,6 +12,7 @@ import { useLiveSolver } from "./useLiveSolver";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
 import { KsfGraph } from "@/components/KsfGraph";
+import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -392,6 +393,8 @@ function SchemeCard({
 
       {/* audit.3：财务 KSF 图（audit/generate 共用同一组件，问题→KSF→财务指标 + 问题节点联动时序） */}
       <KsfGraph testId="gen-ksf-graph" />
+      {/* inference-process 横切：本次方案生成推演的编排过程 DAG */}
+      <InferenceProcessPanel testId="inference-gen" solved />
     </div>
   );
 }
