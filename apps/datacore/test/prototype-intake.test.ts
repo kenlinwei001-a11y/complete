@@ -86,6 +86,32 @@ describe("prototype-intake · 真服务端点（L1）", () => {
     expect(events.length).toBe(1);
   });
 
+  it("P2 HITL：intake 落对账候选队列 → resolve(NEW) → RESOLVED + 事件（R2 隔离）", async () => {
+    const t: TestApp = await makeApp();
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake", headers: ADMIN, payload: { html: PROTOTYPE } });
+    const body = res.json() as { reconcile: { candidates: { id: string; status: string }[] } };
+    const pending = body.reconcile.candidates;
+    expect(pending.length).toBeGreaterThan(0);
+    expect(pending[0]!.id).toBeTruthy();
+
+    // 队列可查
+    const queue = (await (await t.app.inject({ method: "GET", url: "/a/v1/databuilder/reconcile-candidates?status=PENDING", headers: ADMIN })).json()) as { items: { id: string }[] };
+    expect(queue.items.length).toBe(pending.length);
+
+    // 人确认（NEW = 新建字段）→ RESOLVED
+    const id = pending[0]!.id;
+    const resolved = (await (await t.app.inject({ method: "POST", url: `/a/v1/databuilder/reconcile-candidates/${id}/resolve`, headers: ADMIN, payload: { action: "NEW", target: "priority" } })).json()) as { status: string; resolvedAction: string; resolvedTarget: string };
+    expect(resolved.status).toBe("RESOLVED");
+    expect(resolved.resolvedAction).toBe("NEW");
+    expect(resolved.resolvedTarget).toBe("priority");
+    // 事件
+    const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "schema_reconcile.resolved");
+    expect(events.length).toBe(1);
+    // R2：另一租户看不到该候选队列
+    const other = (await (await t.app.inject({ method: "GET", url: "/a/v1/databuilder/reconcile-candidates", headers: { "x-debug-user": "acme:admin:admin" } })).json()) as { items: unknown[] };
+    expect(other.items.length).toBe(0);
+  });
+
   it("R2：另一租户独立解析（解析无跨租户泄露，对账用各自本体）", async () => {
     const t: TestApp = await makeApp();
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake", headers: { "x-debug-user": "acme:admin:admin" }, payload: { html: PROTOTYPE } });

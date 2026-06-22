@@ -170,8 +170,10 @@
   **绝不 eval 不可信输入**：受限正则+平衡扫描+轻量归一 JSON.parse，失败入 unparsed 诚实，R6 字节锁）+ `reconcileIntake`（列↔既有字段
   确定性对账：精确命中 autoMapped / 映射不上多义→候选给人确认，不调 LLM，类比 MergeCandidate）+ `POST /a/v1/databuilder/intake`
   （解析+对账既有本体预览）+ 事件 `prototype.intake_recorded`（L15）。CLI 经既有 `import` op 覆盖（cli-parity 绿）。
-  测试 prototype-intake ×7（解析/关系/R6 字节锁/无script兜底/对账 autoMap+候选 · L1 真服务端点+事件+R2）。回写本体 §2.A/B/§3/§4。
-  **余（增量）**：P2 候选落库 + `/reconcile-candidates/:id/resolve` HITL（R4）· P3 串发动机 comprehend→closure→publish + 参考原型回归 + 前端上传面板/对账候选面板。
+  **P2 HITL ✅**：候选落库（仓储 R9 四处 + migration025 reconcile_candidates）+ `GET /a/v1/databuilder/reconcile-candidates`（队列）+
+  `POST …/:id/resolve`（USE/RENAME/NEW/MERGE/DISCARD → RESOLVED + `schema_reconcile.resolved` 事件 L15）。
+  测试 prototype-intake ×8（解析/关系/R6 字节锁/无script兜底/对账 autoMap+候选 · L1 端点+事件+R2 · **P2 队列+resolve+R2**）。回写本体 §2.A/B/§3/§4。
+  **余（增量）**：P3 串发动机 comprehend→closure→publish（resolve 决议真应用到本体）+ 参考原型回归 + 前端上传面板/对账候选面板（L3+L4）。
 - [~] ◐ **A18 · 未审核态全栈建域闭环（吸收并取代 A16+A17，三合一自包含）**（用户新增需求 v0.2）：
   **A18.1 ✅（keystone · 双模闭包解阻断）**：契约 `databuilder.ts`（`BuildMode STRICT|PROVISIONAL` + `ClosureFinding.severity HARD|ADVISORY` +
   `ClosureReport.buildMode/advisoryCount/blocked` + `BuildRunBody/StoryRunRequest/WorkflowStartBody.buildMode`）+ `storybuildrun.ts`

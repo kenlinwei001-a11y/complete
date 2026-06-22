@@ -599,6 +599,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     buildPlans: new PgStore(pool, "build_plans"),
     buildJobs: new PgStore(pool, "build_jobs"),
     solverArtifacts: new PgStore(pool, "solver_artifacts"),
+    reconcileCandidates: new PgStore(pool, "reconcile_candidates"),
     storyBuildRuns: new PgStore(pool, "story_build_runs"),
     buildWorkflowRuns: new PgStore(pool, "build_workflow_runs"),
     metaAccessPolicies: new PgStore(pool, "meta_access_policies"),

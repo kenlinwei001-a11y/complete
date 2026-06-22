@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, SchemaReconcileCandidate, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -294,6 +294,8 @@ export interface Repos {
   buildJobs: Store<BuildJob>;
   // A18.2 LLM 临时求解器件（冻结代码 + 状态机；只有 GOVERNED 能写真值）
   solverArtifacts: Store<SolverArtifact>;
+  // prototype-intake P2：schema 对账人确认候选（HITL 队列；类比 MergeCandidate）
+  reconcileCandidates: Store<SchemaReconcileCandidate & { id: string; tenantId: string }>;
   // g8 故事驱动全栈倒推 · P1：构建期历史推演记录（与 GrowthLedgerEntry 经 runId 归一）
   storyBuildRuns: Store<StoryBuildRun>;
   // 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）

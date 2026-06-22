@@ -51,8 +51,23 @@ export const SchemaReconcileCandidateSchema = z.object({
   /** 系统建议动作（人可改）：有高分候选→USE；无候选→NEW。 */
   suggestedAction: ReconcileActionSchema,
   status: z.enum(["PENDING", "RESOLVED"]).default("PENDING"),
+  /** P2 持久化字段（preview 态可空；落库后填）。 */
+  id: z.string().optional(),
+  tenantId: z.string().optional(),
+  /** 人确认的动作（RESOLVED 时）。 */
+  resolvedAction: ReconcileActionSchema.optional(),
+  /** RENAME/USE 时人选的目标字段；NEW 时新建字段名。 */
+  resolvedTarget: z.string().optional(),
+  resolvedAt: z.string().optional(),
 });
 export type SchemaReconcileCandidate = z.infer<typeof SchemaReconcileCandidateSchema>;
+
+/** P2 resolve 请求：人对某对账候选拍板 USE/RENAME/NEW/MERGE/DISCARD（+目标字段）。 */
+export const ReconcileResolveBodySchema = z.object({
+  action: ReconcileActionSchema,
+  target: z.string().optional(),
+});
+export type ReconcileResolveBody = z.infer<typeof ReconcileResolveBodySchema>;
 
 /** 对账预览：自动映射成功项 + 待人确认候选。 */
 export const ReconcilePreviewSchema = z.object({

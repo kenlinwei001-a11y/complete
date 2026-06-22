@@ -40,7 +40,7 @@ import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
-import { IntakeRequestSchema } from "@platform/contracts";
+import { IntakeRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -2590,8 +2590,34 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const intake = parsePrototypeHtml(body.html);
     const existing: ExistingTypeField[] = (await ontology.listTypes(c)).flatMap((t) => t.properties.map((p) => ({ typeKey: t.key, propKey: p.propKey })));
     const reconcile = reconcileIntake(intake.dataSources, existing);
-    await outbox.emit(c.tenantId, "prototype.intake_recorded", { datasets: intake.dataSources.length, links: intake.links.length, unparsed: intake.unparsed.length, candidates: reconcile.candidates.length });
-    return { intake, reconcile };
+    // P2：把对账候选落库为 HITL 队列（人确认 USE/RENAME/NEW/MERGE/DISCARD），preview 同时返回。
+    const persisted = await Promise.all(reconcile.candidates.map(async (cand, i) => {
+      const id = `rcc_${c.tenantId}_${Date.now()}_${i}`;
+      const rec = { ...cand, id, tenantId: c.tenantId };
+      await repos.reconcileCandidates.put(rec);
+      return rec;
+    }));
+    await outbox.emit(c.tenantId, "prototype.intake_recorded", { datasets: intake.dataSources.length, links: intake.links.length, unparsed: intake.unparsed.length, candidates: persisted.length });
+    return { intake, reconcile: { ...reconcile, candidates: persisted } };
+  });
+  // prototype-intake P2：对账候选队列（HITL）。
+  app.get("/a/v1/databuilder/reconcile-candidates", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const items = (await repos.reconcileCandidates.list(c.tenantId)).filter((x) => (req.query as { status?: string }).status ? x.status === (req.query as { status?: string }).status : true);
+    return { items };
+  });
+  // prototype-intake P2：人确认某候选（USE/RENAME/NEW/MERGE/DISCARD + 目标字段）→ RESOLVED + 事件。
+  app.post("/a/v1/databuilder/reconcile-candidates/:id/resolve", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const cand = await repos.reconcileCandidates.get(c.tenantId, (req.params as { id: string }).id);
+    if (!cand) throw notFound("reconcile candidate");
+    const body = parseBody(ReconcileResolveBodySchema, req.body);
+    const resolved = { ...cand, status: "RESOLVED" as const, resolvedAction: body.action, ...(body.target ? { resolvedTarget: body.target } : {}), resolvedAt: new Date().toISOString() };
+    await repos.reconcileCandidates.put(resolved);
+    await outbox.emit(c.tenantId, "schema_reconcile.resolved", { id: resolved.id, column: resolved.prototypeColumn, action: body.action });
+    return resolved;
   });
   app.get("/a/v1/databuilder/workflow-runs", async (req) => {
     const c = ctx(req);
