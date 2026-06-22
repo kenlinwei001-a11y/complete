@@ -32,9 +32,19 @@
   },
   "prds": {
     "PRD-A-series-roadmap.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R14",
+        "R15",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-5",
+        "G-8"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -297,6 +307,18 @@
       "artifacts": [
         "apps/datacore/src/solvers/service.ts"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-MASTER-INDEX.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-addendum-a8-timeseries.md": {
@@ -1186,9 +1208,15 @@
       "brokenArtifacts": []
     },
     "PRD-reference-views-1to1-roadmap.md": {
-      "hasOntologyRef": false,
-      "invariants": [],
-      "breakpoints": [],
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -1322,6 +1350,7 @@
   },
   "breakpointCoverage": {
     "G-3": [
+      "PRD-A-series-roadmap.md",
       "PRD-A10-build-to-verify-closure.md",
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-A3-reference-ontology-slice-planner.md",
@@ -1339,7 +1368,26 @@
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
+    "G-5": [
+      "PRD-A-series-roadmap.md",
+      "PRD-A3-reference-ontology-slice-planner.md",
+      "PRD-A6-realistic-value-domain-synthesis.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-data-closure-spec.md",
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-generic-inference.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-quarter-rolling-1to1.md",
+      "PRD-reference-views-1to1-roadmap.md",
+      "PRD-sop-balance-1to1.md",
+      "PRD-system-ontogenesis-spec.md",
+      "PRD-unified-build-engine.md"
+    ],
     "G-8": [
+      "PRD-A-series-roadmap.md",
       "PRD-A10-build-to-verify-closure.md",
       "PRD-A12-module-handrun-completion.md",
       "PRD-A18-build-output-closure.md",
@@ -1434,22 +1482,6 @@
       "PRD-scenario-launcher.md",
       "PRD-traceability-and-baseline-v2.md",
       "PRD-traceability-and-baseline.md",
-      "PRD-unified-build-engine.md"
-    ],
-    "G-5": [
-      "PRD-A3-reference-ontology-slice-planner.md",
-      "PRD-A6-realistic-value-domain-synthesis.md",
-      "PRD-cockpit-capacity-1to1-parity.md",
-      "PRD-data-closure-spec.md",
-      "PRD-de-battery-multitenant-config.md",
-      "PRD-fde-fullstack-build-workflow.md",
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-generic-inference.md",
-      "PRD-goal-metric-owner-spine.md",
-      "PRD-order-project-sim-1to1.md",
-      "PRD-quarter-rolling-1to1.md",
-      "PRD-sop-balance-1to1.md",
-      "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
     "G-4": [
