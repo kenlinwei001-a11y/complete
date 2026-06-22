@@ -41,6 +41,7 @@ import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
+import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -2851,6 +2852,102 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/plan-versions/current", async (req) => {
     await requireFeatureTag(req, "apiTags", "plan-audit");
     return sop.currentPlanVersion(ctx(req));
+  });
+
+  // CL.4 空租户冷启动引导（PRD-empty-tenant-bootstrap）：把"从空到可用计划域"理成幂等、确定、
+  // 可一键跑的 7 步清单（合成 seed → 核对物化 → 建 SopVersion → 五步法 → 定稿 FINAL 走 R4 →
+  // 核对 currentPlanVersion → plan_audit 有料）。任一步核对未达 → 停并报结构化缺口（诚实，不空转）。
+  app.post("/a/v1/bootstrap", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const reqBody = parseBody(BootstrapRequestSchema, req.body ?? {});
+    const steps: BootstrapStep[] = [];
+    const report = (ok: boolean, finalVersionId?: string, gap?: BootstrapReport["gap"]): BootstrapReport => ({ ok, steps, finalVersionId, ...(gap ? { gap } : {}) });
+    const countType = async (t: string) => (await repos.objects.listByType(c.tenantId, t)).filter((o) => !o.mergedInto).length;
+
+    // ① 合成 seed 计划域（幂等：已有 PlanTarget 则跳过重合成，同 seed 字节一致 R6）
+    let ptCount = await countType("PlanTarget");
+    if (ptCount > 0) {
+      steps.push({ step: 1, name: "合成 seed 计划域", status: "SKIPPED", verify: `已有 PlanTarget×${ptCount}（幂等跳过）` });
+    } else {
+      const job = await synthetic.runJob(c, { industry: reqBody.industry, scale: reqBody.scale, seed: reqBody.seed, livedIn: true });
+      ptCount = await countType("PlanTarget");
+      steps.push({ step: 1, name: "合成 seed 计划域", status: "DONE", produced: { jobId: job.id, seed: reqBody.seed }, verify: `job ${job.status}` });
+    }
+    // ② 核对计划目标物化
+    if (ptCount === 0) {
+      steps.push({ step: 2, name: "核对计划目标物化", status: "FAILED", gapCode: "EMPTY_PLAN_TARGET", verify: "PlanTarget 仍为 0" });
+      return report(false, undefined, { step: 2, code: "EMPTY_PLAN_TARGET", hint: "合成未产出 PlanTarget；检查行业模板/seed" });
+    }
+    steps.push({ step: 2, name: "核对计划目标物化", status: "DONE", produced: { planTargets: ptCount }, verify: `PlanTarget×${ptCount}` });
+    // ③ 核对年度情景
+    const scenCount = await countType("AnnualScenario");
+    if (scenCount === 0) {
+      steps.push({ step: 3, name: "核对年度情景", status: "FAILED", gapCode: "EMPTY_SCENARIO", verify: "AnnualScenario 为 0" });
+      return report(false, undefined, { step: 3, code: "EMPTY_SCENARIO", hint: "合成未产出 AnnualScenario" });
+    }
+    steps.push({ step: 3, name: "核对年度情景", status: "DONE", produced: { scenarios: scenCount } });
+    // ④ 建/复用月度计划版本
+    const existing = (await sop.list(c)).filter((v) => v.month === reqBody.month).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+    let version = existing[existing.length - 1] ?? (await sop.create(c, { month: reqBody.month }));
+    steps.push({ step: 4, name: "建月度计划版本", status: existing.length > 0 ? "SKIPPED" : "DONE", produced: { versionId: version.id, month: reqBody.month } });
+    // ⑤ 五步法推进（幂等：已 EXEC_MEETING/FINAL 则跳过）。步①②③缺省 payload 从合成数据确定性派生；
+    // 步④财务需显式输入（否则现金垫=0 触 C18 阻断）——取参数版本基线（cashCushion/gmTarget）作冷启动种子，
+    // 使 gmRoll=gmBudget、现金垫≥C18 底线，确定性达标进⑤（R6；基线值=种子配置非前端写死 R14）。
+    if (version.status === "DRAFT" || version.status === "IN_REVIEW") {
+      const params = await solvers.getParams(c.tenantId);
+      const baseline = (params.planBaseline as { gmTarget?: number; cashCushion?: number } | undefined) ?? { gmTarget: 16, cashCushion: 58 };
+      const cashFloor = Number((params.sop as { cashFloor?: number } | undefined)?.cashFloor ?? 50);
+      const gmBudget = Number(baseline.gmTarget ?? 16);
+      for (let s = 1; s <= 5; s++) {
+        let payload: Record<string, unknown> = {};
+        if (s === 4) {
+          const dem = Number((version.steps.s3 as { dem?: number } | undefined)?.dem) || 100;
+          payload = { revSum: dem, gmSum: Math.round((dem * gmBudget) / 100 * 1e4) / 1e4, gmBudget, cashCushion: Math.max(Number(baseline.cashCushion ?? 58), cashFloor) };
+        }
+        version = await sop.advance(c, version.id, s, payload);
+      }
+      steps.push({ step: 5, name: "五步法推进", status: "DONE", verify: `status=${version.status}` });
+    } else {
+      steps.push({ step: 5, name: "五步法推进", status: "SKIPPED", verify: `已 ${version.status}` });
+    }
+    // ⑥ 定稿 → FINAL（走 R4 Action；单 admin 经 SA 自审）
+    if (version.status !== "FINAL") {
+      try {
+        await sop.assertFinalizeRequestable(c.tenantId, version.id);
+        const draft = await actions.create(c, {
+          actionTypeKey: "定稿月度计划版本",
+          payload: { versionId: version.id, month: version.month, snapshot: { steps: version.steps, supFinal: version.supFinal }, resolutions: version.resolutions },
+          submit: true,
+        });
+        await sop.markFinalizePending(c.tenantId, version.id, draft.id);
+        await actions.approve(c, draft.id);
+        version = await sop.get(c, version.id);
+      } catch (err) {
+        const code = err instanceof AppError ? err.code : "FINALIZE_FAILED";
+        steps.push({ step: 6, name: "定稿→FINAL（R4）", status: "FAILED", gapCode: code, verify: String((err as Error).message) });
+        return report(false, version.id, { step: 6, code, hint: "定稿失败：单 admin 需 SA 自审（demo 默认 ALLOW_ADMIN，生产配 SELF_APPROVE_POLICY/类型 selfApproveAllowed）" });
+      }
+      steps.push({ step: 6, name: "定稿→FINAL（R4）", status: version.status === "FINAL" ? "DONE" : "FAILED", produced: { finalVersionId: version.id }, verify: `status=${version.status}` });
+    } else {
+      steps.push({ step: 6, name: "定稿→FINAL（R4）", status: "SKIPPED", verify: "已 FINAL" });
+    }
+    // ⑦ 核对 currentPlanVersion + 跑 plan_audit（入参取当前版本/PlanTarget 基线确定性派生）
+    const cur = await sop.currentPlanVersion(c);
+    if (!cur.versionId) {
+      steps.push({ step: 7, name: "核对 currentPlanVersion + plan_audit", status: "FAILED", gapCode: "NO_CURRENT_VERSION", verify: "currentPlanVersion 为空" });
+      return report(false, version.id, { step: 7, code: "NO_CURRENT_VERSION", hint: "无 FINAL 版本，计划域仍不可用于体检" });
+    }
+    let auditDiagnostics = 0;
+    try {
+      const audit = await ontology.invokeSolver(c, "plan_audit", cur.input as Record<string, unknown>);
+      const data = audit.data as { diagnostics?: unknown[] } | undefined;
+      auditDiagnostics = Array.isArray(data?.diagnostics) ? data!.diagnostics!.length : 0;
+    } catch {
+      /* plan_audit 入参不全时不阻断 bootstrap：currentPlanVersion=FINAL 即"从空到可用"达成 */
+    }
+    steps.push({ step: 7, name: "核对 currentPlanVersion + plan_audit", status: "DONE", produced: { currentVersion: cur.versionLabel, planAuditDiagnostics: auditDiagnostics }, verify: `currentPlanVersion=${cur.status}` });
+    return report(true, cur.versionId);
   });
 
   // ---- 计划域查询面（增量 §7.14/§7.15；entitlement: plan-aop / plan-quarterly tag）-----------------

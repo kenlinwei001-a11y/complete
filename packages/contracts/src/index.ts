@@ -30,3 +30,4 @@ export * from "./slice-planner.js";
 export * from "./operation-intent.js";
 export * from "./prototype-intake.js";
 export * from "./spine.js";
+export * from "./bootstrap.js";

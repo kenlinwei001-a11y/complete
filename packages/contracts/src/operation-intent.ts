@@ -13,7 +13,7 @@ import { z } from "zod";
 export const OPERATION_KINDS = [
   "import", "model", "browse", "rule", "solve", "synth", "build",
   "scenario", "approve", "agent", "calibration", "policy", "signal",
-  "quarantine", "features", "growth", "kb",
+  "quarantine", "features", "growth", "kb", "bootstrap",
 ] as const;
 export type OperationKind = (typeof OPERATION_KINDS)[number];
 
@@ -59,6 +59,7 @@ export const OPERATION_CATALOG: OperationCatalogEntry[] = [
   { op: "features", label: "功能开通·entitlement", keywords: ["功能", "开通", "features", "entitlement", "开关"], endpoint: "/a/v1/features", requiredSlots: [], r4: false, cliCommand: "features" },
   { op: "growth", label: "自成长·工单/施工", keywords: ["工单", "成长", "ticket", "claim", "grow"], endpoint: "/api/v1/growth", requiredSlots: [], r4: false, cliCommand: "tickets" },
   { op: "kb", label: "知识库·索引/检索", keywords: ["知识库", "kb", "检索", "索引", "文档"], endpoint: "/a/v1/kb", requiredSlots: [], r4: false, cliCommand: "kb" },
+  { op: "bootstrap", label: "空租户冷启动引导·计划域 seed→SopVersion 定稿", keywords: ["引导", "冷启动", "bootstrap", "空租户", "初始化", "一键引导"], endpoint: "/a/v1/bootstrap", requiredSlots: [], r4: true, cliCommand: "bootstrap" },
 ];
 
 export const OperationClassifyKindSchema = z.enum(["QUERY", "OPERATION"]);
