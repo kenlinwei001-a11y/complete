@@ -765,6 +765,42 @@ export const handlers = [
     if (key === "capacity_forecast")
       return HttpResponse.json({ data: { p50: 21.4, p90: 18.9, gap: -1.2, ok: false, healthFactor: 0.93, mainBn: "化成柜", perBaseRows: [], pendingCertList: [] }, snapshotVersion: "ov-12" });
     if (key === "affected_orders") return HttpResponse.json({ data: affectedOrdersOutput(), snapshotVersion: "ov-12" });
+    if (key === "mitigation_select")
+      // cockpit P3 对症方案优选（与 params.risk.mitigations 同源形状）
+      return HttpResponse.json({
+        data: {
+          factor: "物料齐套", baseName: "常州", urgency: 0.67, recommended: "early_stock",
+          plans: [
+            { key: "early_stock", name: "提前备料", eff: 12, tn: 2, cost: "中", risk: "低", score: 2.0 },
+            { key: "air_freight", name: "空运补料", eff: 15, tn: 1, cost: "极高", risk: "低", score: 1.5 },
+            { key: "alt_supplier", name: "备选供应商切换", eff: 9, tn: 5, cost: "高", risk: "中", score: 0.4 },
+          ],
+          draftPayload: { base: "常州", factor: "物料齐套", planKey: "early_stock" },
+        },
+        snapshotVersion: "ov-12",
+      });
+    if (key === "plan_rootcause")
+      // cockpit P2 根因归因 DAG（mock：物料保障率越线 → 现货缺口 → 取证叶）
+      return HttpResponse.json({
+        data: {
+          kpis: [{ kpiId: "kpi-material", name: "物料保障率", category: "material", actual: 77, target: 100, gap: 23, offTarget: true, status: "RED" }],
+          dag: {
+            nodes: [
+              { id: "kpi:kpi-material", kind: "kpi", label: "物料保障率", status: "RED", actual: 77, target: 100, value: 23, unit: "%" },
+              { id: "factor:rc-material-gap", kind: "factor", label: "现货缺口扩大", value: 4200, share: 1 },
+              { id: "leaf:rc-material-gap:三元正极", kind: "evidence", label: "三元正极", value: 2600 },
+              { id: "leaf:rc-material-gap:隔膜", kind: "evidence", label: "隔膜", value: 1600 },
+            ],
+            edges: [
+              { from: "kpi:kpi-material", to: "factor:rc-material-gap", weight: 1, kind: "kpi_factor" },
+              { from: "factor:rc-material-gap", to: "leaf:rc-material-gap:三元正极", weight: 0.62, kind: "factor_evidence" },
+              { from: "factor:rc-material-gap", to: "leaf:rc-material-gap:隔膜", weight: 0.38, kind: "factor_evidence" },
+            ],
+          },
+          offTargetCount: 1, summary: "1 项 KPI 越线", ruleRefs: [],
+        },
+        snapshotVersion: "ov-12",
+      });
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 

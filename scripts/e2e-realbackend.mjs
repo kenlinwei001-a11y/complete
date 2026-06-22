@@ -14,11 +14,11 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）11 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
-//   A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 / A7 scaffold 清单(单机可见) /
-//   A10 重跑验证终态徽章 / nav-reorg 业务域分组 / A14 evals parity 失因列。
-// 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 **9/9 通过**（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
-//   cockpit P1+P2 扩为 11 项。
+// 断言（真后端真数据，区别于 mock 写死值）12 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+//   cockpit P3 风险对症方案→工单 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 /
+//   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / nav-reorg 业务域分组 / A14 evals parity 失因列。
+// 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 9/9 通过（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
+//   cockpit P1+P2+P3 扩为 12 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -59,6 +59,20 @@ try {
   dagRoot > 0 && dagKpi > 0 && dagFactor > 0 && dagLeaf > 0
     ? ok(`cockpit P2 真后端：根因归因 DAG 真浏览器渲染（${dagKpi} KPI 根 · ${dagFactor} 因子 · ${dagLeaf} 取证叶，结构=活数据算出）`)
     : bad(`cockpit P2 真后端：根因 DAG 缺失（dag=${dagRoot} kpi=${dagKpi} factor=${dagFactor} leaf=${dagLeaf}）`);
+
+  // cockpit P3 风险看板补全 · 对症方案→工单（L4 真后端）：风险卡 → 详情弹窗 → mitigation_select 方案表 + 采纳→工单按钮
+  await page.click('a[href="/v/risk"]').catch(() => {});
+  await page.waitForSelector("[data-testid^=risk-card-]", { timeout: 10000 }).catch(() => {});
+  await page.locator("[data-testid^=risk-card-]").first().click().catch(() => {});
+  await page.waitForSelector("[data-testid=mitigation-panel]", { timeout: 8000 }).catch(() => {});
+  const mitPanel = await page.locator("[data-testid=mitigation-panel]").count();
+  const mitPlans = await page.locator("[data-testid^=mitigation-plan-]").count();
+  const mitAdopt = await page.locator("[data-testid^=mitigation-adopt-]").count();
+  mitPanel > 0 && mitPlans > 0 && mitAdopt > 0
+    ? ok(`cockpit P3 真后端：风险因子对症方案 ${mitPlans} 条 + 采纳→工单按钮真浏览器渲染（mitigation_select 全因子可用）`)
+    : bad(`cockpit P3 真后端：对症方案缺失（panel=${mitPanel} plans=${mitPlans} adopt=${mitAdopt}）`);
+  await page.keyboard.press("Escape").catch(() => {}); // 关风险详情弹窗，避免遮挡后续导航
+  await page.waitForTimeout(400);
 
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});

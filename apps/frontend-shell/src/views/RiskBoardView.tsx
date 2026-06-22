@@ -8,6 +8,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
 import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
+import { useActionDraft } from "./sim/shared";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
@@ -122,6 +123,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               </div>
             ))}
           </div>
+          {/* cockpit P3 对症方案 → 工单（mitigation_select 优选 → 采纳经 adopt_mitigation Action 审批，R4 不直改） */}
+          <MitigationPanel base={detail.base} factor={detail.factor} tightness={detail.peak} />
         </Modal>
       )}
 
@@ -251,6 +254,65 @@ function CaseReplayModal({ kase, onClose }: { kase: HistoryRiskCase; onClose: ()
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * cockpit P3 · 对症方案 → 工单（mitigation_select 求解器按因子优选方案 → 采纳生成 adopt_mitigation
+ * Action 草稿待审批，R4 真值经 Action；不直改）。方案库 = params.risk.mitigations 单一来源（全 7 因子可用）。
+ */
+type MitPlan = { key: string; name: string; eff: number; tn: number; cost: string; risk?: string; score: number };
+function MitigationPanel({ base, factor, tightness }: { base: string; factor: string; tightness: number }) {
+  const adopt = useActionDraft();
+  const { data, isLoading } = useQuery({
+    queryKey: ["a", "mitigation_select", base, factor, tightness],
+    queryFn: async () => {
+      const res = await invokeSolver("mitigation_select", { baseName: base, factor, tightness });
+      return res.data as { plans?: MitPlan[]; recommended?: string; error?: string };
+    },
+  });
+  return (
+    <div style={{ marginTop: 14 }} data-testid="mitigation-panel">
+      <div className="section-title">对症方案（按 见效/成本/周期 优选 · 采纳 → 工单审批）</div>
+      {isLoading ? (
+        <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
+      ) : !data?.plans?.length ? (
+        <div className="empty-state">{zh.common.none}</div>
+      ) : (
+        <table className="cmp" data-testid="mitigation-plans-table">
+          <thead>
+            <tr>
+              <th>方案</th><th>见效(pp)</th><th>周期(周)</th><th>成本</th><th>风险</th><th>评分</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.plans.map((p) => (
+              <tr key={p.key} data-testid={`mitigation-plan-${p.key}`}>
+                <td className="zh">
+                  {p.name}
+                  {p.key === data.recommended && <span className="badge" style={{ marginLeft: 6, background: "#36BFA5", color: "#fff" }}>推荐</span>}
+                </td>
+                <td className="mono">{p.eff}</td>
+                <td className="mono">{p.tn}</td>
+                <td className="zh">{p.cost}</td>
+                <td className="zh">{p.risk ?? "—"}</td>
+                <td className="mono">{p.score}</td>
+                <td>
+                  <button
+                    className="btn-sm"
+                    data-testid={`mitigation-adopt-${p.key}`}
+                    disabled={adopt.isPending}
+                    onClick={() => adopt.mutate({ actionTypeKey: "adopt_mitigation", payload: { base, factor, planKey: p.key } })}
+                  >
+                    采纳→工单
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

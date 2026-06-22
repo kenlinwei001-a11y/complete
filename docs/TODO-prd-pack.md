@@ -232,7 +232,10 @@
   + `plan_rootcause` 求解器(SOLVER_KEYS 31→32，决策驾驶舱目录 COCKPIT_SOLVER_CATALOG，不进 QOS discover 22、进注册表 32；invoke 拦截读对象图)：经营 KPI 越线沿归因模板逐层取证 → 多根 DAG(kpi→factor→evidence，边权重=活数据贡献占比，「结构=算、模板=配成对象」)
   + `DASH_LAYOUT` dag widget(query.solver) + `<ProvenanceDag>` 前端三层渲染 + features 注册 + data-categories 决策驾驶舱类 + decision 域。
   测试 cockpit-rootcause ×4(L6 字节一致+KPI 与财务交叉一致 · L1 DAG 三层+边归一+逐 KPI 归因 · L1 kpiCategory 过滤 · R2) · cockpit-rootcause-dag ×2(L3 三层渲染) · **L4 真后端 11/11**(根因 DAG 真浏览器渲染)。回写本体 §2.B/§2.E/§3。
-  **余**：P3 风险看板补全+对症方案→工单 · P4 型号/订单推演+反事实双轨 `counterfactual_timeline`+riskCases 真闭环 · P5 回采校准链/V5V7/AI对话/导出。
+  **P3 风险看板补全 · 对症方案→工单闭环 ✅**：修复接缝 G（`mitigation_select` 方案库 canonical 取 `params.risk.mitigations` 经 `deriveExtendedArgs` 注入 → 全 7 风险因子可用，
+  消除"风险卡全因子名 vs 方案库短名"漂移）+ `RiskBoardView` 风险卡详情内嵌 `<MitigationPanel>`（mitigation_select 优选方案表 → "采纳→工单"经 `adopt_mitigation` Action 审批，R4 不直改）
+  + mock 同源。测试 cockpit-risk ×2(L1 全 7 因子有方案+adopt payload · L1 采纳→Action 草稿) · **L4 真后端 12/12**(对症方案 3 条+采纳按钮真浏览器渲染)。回写本体 §2.B。
+  **余**：P4 型号/订单推演+反事实双轨 `counterfactual_timeline`+riskCases 真闭环 · P5 回采校准链/V5V7/AI对话/导出。
 - [ ] ⬜ **synthetic-wizard · 合成向导「生成进度」按 nano-ontoprompt 分阶段集成链重设计**（把"看数据逐阶段策展本体"的 UX 精髓真正落进页面，非仅算法）。
 
 ---

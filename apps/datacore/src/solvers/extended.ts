@@ -54,8 +54,14 @@ export function mitigationSelect(args: Record<string, unknown>) {
   const factor = str(args.factor);
   const baseName = str(args.baseName);
   const tightness = num(args.tightness, 85);
-  const lib = MITIGATION_LIB[factor];
-  if (!lib) return { error: `unknown factor: ${factor}`, factors: Object.keys(MITIGATION_LIB) };
+  // 优先用注入的 canonical 方案库（params.risk.mitigations，全因子名 + risk 字段，R14 单一来源）；
+  // 直接单测无 context 时回落内置 MITIGATION_LIB（消除"风险卡全因子名 vs 方案库短名"接缝 G）。
+  const injected = args.mitigations as Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk?: string }[]> | undefined;
+  const lib = injected?.[factor] ?? MITIGATION_LIB[factor];
+  if (!lib) {
+    const factors = [...new Set([...Object.keys(injected ?? {}), ...Object.keys(MITIGATION_LIB)])];
+    return { error: `unknown factor: ${factor}`, factors };
+  }
   const urgency = Math.max(0, (tightness - 70) / 30);
   const scored = lib
     .map((p) => ({ ...p, costRank: COST_RANK[p.cost] ?? 2, score: round((p.eff * urgency) / ((COST_RANK[p.cost] ?? 2) * p.tn), 4) }))
@@ -478,7 +484,8 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       return { gap: num(args.gap, Math.round(totalDemand * 0.15)), ...args };
     }
     case "mitigation_select":
-      return { tightness: 85, ...args };
+      // 注入 canonical 方案库（params.risk.mitigations）→ mitigation_select 对全部 7 个风险因子可用。
+      return { tightness: 85, mitigations: c.params?.risk?.mitigations, ...args };
     default:
       return args;
   }
