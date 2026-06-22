@@ -1622,6 +1622,38 @@ export const handlers = [
       const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;
       return HttpResponse.json({ data: affectedOrdersOutput(base), snapshotVersion: "ov-12" });
     }
+    if (key === "order_fullchain") {
+      // ORD 订单全链推演（mock：储能单越线财务提价）
+      const so = typeof args.so === "string" && args.so ? args.so : "SO-10001";
+      return HttpResponse.json({
+        data: {
+          so, verdict: "提价3%接", vc: "#E8B54A",
+          kpis: { qty: 800, segment: "储能", marginPct: 11, floorPct: 14, deliveryP90: 1400, kitGap: 654 },
+          judges: {
+            cap: { verdict: "可达", p50: 1400, p90: 1260, demand: 800, ruleRefs: ["C02", "C03"] },
+            kit: { verdict: "缺料", material: "三元正极", gapTon: 654, eta: "2026-06-28", ruleRefs: ["C06", "C16"] },
+            fin: { verdict: "需提价3%", marginPct: 11, floorPct: 14, creditUsedRatio: 0.8, priceUpPct: 3, ruleRefs: ["C15", "C13", "C18"] },
+          },
+          conds: ["毛利率 11% < 细分底线 14%（C15），提价 3% 达线", "三元正极 缺口 654 吨（C06），最早齐套 2026-06-28"],
+          dag: {
+            nodes: [
+              { id: `order:${so}`, kind: "order", label: `订单 ${so}` },
+              { id: "net", kind: "network", label: "可产网络" }, { id: "bom", kind: "bom", label: "BOM 展开" },
+              { id: "eco", kind: "economics", label: "单价与细分" }, { id: "cred", kind: "credit", label: "信用档案" },
+              { id: "jcap", kind: "judge", label: "①交期判" }, { id: "jkit", kind: "judge", label: "②齐套判" }, { id: "jfin", kind: "judge", label: "③财务判" },
+              { id: "vrd", kind: "verdict", label: "提价3%接" },
+            ],
+            edges: [
+              { from: `order:${so}`, to: "net" }, { from: `order:${so}`, to: "bom" }, { from: `order:${so}`, to: "eco" }, { from: `order:${so}`, to: "cred" },
+              { from: "net", to: "jcap" }, { from: "bom", to: "jkit" }, { from: "eco", to: "jfin" }, { from: "cred", to: "jfin" },
+              { from: "jcap", to: "vrd" }, { from: "jkit", to: "vrd" }, { from: "jfin", to: "vrd" },
+            ],
+          },
+          summary: `订单 ${so} 结论：提价3%接`,
+        },
+        snapshotVersion: "ov-12",
+      });
+    }
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
   }),
 

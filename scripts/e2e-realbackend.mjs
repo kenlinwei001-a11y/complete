@@ -14,12 +14,12 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）16 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+// 断言（真后端真数据，区别于 mock 写死值）17 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
 //   cockpit P3 风险对症方案→工单 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 /
 //   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / A18.4 整域晋升编排 / nav-reorg 业务域分组 /
 //   A14 evals parity 失因列 / A18.4 审核台。
 // 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 9/9 通过（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
-//   cockpit P1+P2+P3 + SPINE.4 + AUDIT.1 逐日圆点轴 + A18.4 扩为 16 项。
+//   cockpit P1+P2+P3 + SPINE.4 + AUDIT.1 + ORD 订单全链 + A18.4 扩为 17 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -92,9 +92,20 @@ try {
     ? ok(`AUDIT.1 真后端：规划体检逐日圆点轴 ${ddaDots} 日点真浏览器渲染（消费 risk_timeline 已产 series）`)
     : bad(`AUDIT.1 真后端：逐日圆点轴缺失（summary=${ddaAxis} dots=${ddaDots}）`);
 
+  // ORD 订单全链推演（L4 真后端）：order_fullchain 三判 + 统一结论 + 11 节点建模链 DAG 真渲染
+  await page.click('a[href="/v/order-chain"]').catch(() => {});
+  await page.waitForSelector("[data-testid=ofc-verdict]", { timeout: 10000 }).catch(() => {});
+  const ofcVerdict = await page.locator("[data-testid=ofc-verdict]").count();
+  const ofcJudges = await page.locator("[data-testid=ofc-judges]").count();
+  const ofcDag = await page.locator("[data-testid=ofc-dag]").count();
+  ofcVerdict > 0 && ofcJudges > 0 && ofcDag > 0
+    ? ok("ORD 真后端：订单全链推演（统一结论 + 三判明细 + 建模链 DAG）真浏览器渲染（order_fullchain）")
+    : bad(`ORD 真后端：订单全链缺失（verdict=${ofcVerdict} judges=${ofcJudges} dag=${ofcDag}）`);
+
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});
   await page.waitForSelector("[data-testid=object-types-page]", { timeout: 10000 });
+  await page.waitForSelector("[data-testid^=ot-count-]", { timeout: 8000 }).catch(() => {}); // 等物化计数 stats 异步加载
   const rows = await page.$$eval("[data-testid^=ot-row-]", (els) => els.length);
   const counts = await page.$$eval("[data-testid^=ot-count-]", (els) => els.map((e) => e.textContent));
   rows > 0 && counts.some((c) => c && c !== "0") ? ok(`A4 真后端：${rows} 类型 + 真物化计数`) : bad("A4 真后端：类型/计数异常");
