@@ -88,6 +88,7 @@ export const zh = {
     slices: "本体切片",
     merge: "实体合并",
     growth: "自成长发动机",
+    solverReview: "求解器审核台",
   },
   errors: {
     notFoundTitle: "页面不存在",

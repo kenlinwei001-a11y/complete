@@ -220,6 +220,22 @@ export class SolverService {
   }
 
   /**
+   * A18.4 审核台：列临时求解器制品（每 key 取最新版本），供人工审核台展示队列（按状态分组/晋升）。
+   * 默认全量；status 过滤（如只看 PROVISIONAL 待审）。确定性按 key 排序。
+   */
+  async listArtifacts(tenantId: string, status?: string): Promise<SolverArtifact[]> {
+    const all = await this.repos.solverArtifacts.list(tenantId);
+    const latestByKey = new Map<string, SolverArtifact>();
+    for (const a of all) {
+      const prev = latestByKey.get(a.key);
+      if (!prev || a.version > prev.version) latestByKey.set(a.key, a);
+    }
+    return [...latestByKey.values()]
+      .filter((a) => !status || a.status === status)
+      .sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  /**
    * A18.3 写真值门控（用户裁决 2026-06-21）：未审核临时件**默认不写真值**（R4）；放宽：**仅创建人**
    * （actor===createdBy）可用自己造的临时件写真值，且写入打"未认证·UNVERIFIED·LLM"标。GOVERNED 件任何人可写。
    * 纯函数，便于 Action 执行层调用 + 单测。返回 {allowed, label?, reason?}。

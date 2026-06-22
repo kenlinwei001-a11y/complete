@@ -64,4 +64,24 @@ describe("A18.4 · 晋升 GOVERNED + 写真值门控端点（L1）", () => {
     const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "solver.status_changed");
     expect(events.some((e) => (e.payload as { to?: string }).to === "GOVERNED")).toBe(true);
   });
+
+  it("审核台队列 GET /a/v1/solvers/artifacts：列制品（每 key 最新版本）+ status 过滤 + R2 隔离", async () => {
+    const t: TestApp = await makeApp();
+    const ADMIN = { "x-debug-user": "demo:usr_demo_admin:admin" };
+    t.llm.enqueue(GOOD_DRAFT);
+    await t.app.inject({ method: "POST", url: "/a/v1/solvers/generate", headers: ADMIN, payload: { key: "demo_count", intent: "统计" } });
+    // 全量列出 → 含刚生成的 PROVISIONAL 件
+    const all = (await (await t.app.inject({ method: "GET", url: "/a/v1/solvers/artifacts", headers: ADMIN })).json()) as { artifacts: SolverArtifact[] };
+    expect(all.artifacts.some((a) => a.key === "demo_count" && a.status === "PROVISIONAL")).toBe(true);
+    // status 过滤 GOVERNED → 不含未晋升件
+    const governed = (await (await t.app.inject({ method: "GET", url: "/a/v1/solvers/artifacts?status=GOVERNED", headers: ADMIN })).json()) as { artifacts: SolverArtifact[] };
+    expect(governed.artifacts.some((a) => a.key === "demo_count")).toBe(false);
+    // 晋升后再过滤 GOVERNED → 含
+    await t.app.inject({ method: "POST", url: "/a/v1/solvers/demo_count/promote", headers: ADMIN });
+    const governed2 = (await (await t.app.inject({ method: "GET", url: "/a/v1/solvers/artifacts?status=GOVERNED", headers: ADMIN })).json()) as { artifacts: SolverArtifact[] };
+    expect(governed2.artifacts.some((a) => a.key === "demo_count")).toBe(true);
+    // R2：另一租户审核台空
+    const other = (await (await t.app.inject({ method: "GET", url: "/a/v1/solvers/artifacts", headers: { "x-debug-user": "acme:admin:admin" } })).json()) as { artifacts: SolverArtifact[] };
+    expect(other.artifacts.length).toBe(0);
+  });
 });

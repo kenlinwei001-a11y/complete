@@ -501,6 +501,7 @@ import {
   type CalibrationReport,
   type DataHealthResponse,
   type MappingRow,
+  type SolverArtifact,
 } from "@platform/contracts";
 
 export const fetchAop = async (year: number): Promise<AopResponse> =>
@@ -546,6 +547,16 @@ export const fetchHistoryBundle = async (params?: { page?: number; pageSize?: nu
 /** 全局合成水印（§4.5）：hover 显示 generatedFrom 与 seed；随 LIVE 占比消退 */
 export const fetchHistoryWatermark = async (): Promise<HistoryWatermark> =>
   HistoryWatermarkSchema.parse(await api.a<unknown>("/a/v1/history/watermark"));
+
+// A18.4 求解器审核台：列临时求解器制品（每 key 最新版本）/ 看代码 / 写真值门控 / 晋升 GOVERNED。
+export const fetchSolverArtifacts = (status?: string) =>
+  api.a<{ artifacts: SolverArtifact[] }>(`/a/v1/solvers/artifacts${status ? `?status=${status}` : ""}`);
+export const fetchSolverArtifact = (key: string) =>
+  api.a<SolverArtifact>(`/a/v1/solvers/${encodeURIComponent(key)}/artifact`);
+export const checkSolverWriteTruth = (key: string) =>
+  api.a<{ allowed: boolean; label?: string; reason?: string }>(`/a/v1/solvers/${encodeURIComponent(key)}/write-truth-check`);
+export const promoteSolverArtifact = (key: string) =>
+  api.a<SolverArtifact>(`/a/v1/solvers/${encodeURIComponent(key)}/promote`, { body: {} });
 
 export const fetchActionDrafts = (status?: string) =>
   api.a<ActionDraft[]>(`/a/v1/action-drafts${status ? `?status=${status}` : ""}`);

@@ -1854,6 +1854,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!b?.key || !b?.intent) throw validationError("key + intent required");
     return solvers.generateProvisionalSolver(c, { key: b.key, intent: b.intent, objectTypes: [] });
   });
+  // A18.4 审核台队列：列临时求解器制品（每 key 最新版本 + 状态；status 过滤）。供人工审核台。
+  app.get("/a/v1/solvers/artifacts", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { status } = req.query as { status?: string };
+    return { artifacts: await solvers.listArtifacts(c.tenantId, status) };
+  });
   // A18.2 看临时求解器代码 + rationale + 状态（人工审核台用；GOVERNED 才能写真值）。
   app.get("/a/v1/solvers/:solverKey/artifact", async (req) => {
     const c = ctx(req);

@@ -48,6 +48,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "slices", label: zh.nav.slices, roles: ["admin", "data_admin"] },
   { path: "merge", label: zh.nav.merge, roles: ["admin", "data_admin"] },
   { path: "growth", label: zh.nav.growth, roles: ["admin", "data_admin"] },
+  // A18.4 求解器审核台：审 PROVISIONAL 临时求解器 → 晋升 GOVERNED（解锁写真值，R4）
+  { path: "solver-review", label: zh.nav.solverReview, roles: ["admin"] },
   { path: "meta", label: "系统自我", roles: ["admin"] },
 ];
 
@@ -81,7 +83,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
   { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "meta"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
-  { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals"] },
+  { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
   { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers"] },

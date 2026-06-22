@@ -54,6 +54,7 @@ const EvalsPage = lazy(() => import("@/pages/admin/EvalsPage"));
 const SlicesPage = lazy(() => import("@/pages/admin/SlicesPage"));
 const MergePage = lazy(() => import("@/pages/admin/MergePage"));
 const GrowthCockpitPage = lazy(() => import("@/pages/admin/GrowthCockpitPage"));
+const SolverReviewPage = lazy(() => import("@/pages/admin/SolverReviewPage"));
 const MetaPage = lazy(() => import("@/pages/admin/MetaPage"));
 const QueryHistoryPage = lazy(() => import("@/pages/admin/QueryHistoryPage"));
 const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
@@ -124,6 +125,7 @@ export const routes: RouteObject[] = [
       admin("slices", <SlicesPage />),
       admin("merge", <MergePage />),
       admin("growth", <GrowthCockpitPage />),
+      admin("solver-review", <SolverReviewPage />),
       admin("meta", <MetaPage />),
       admin("query-history", <QueryHistoryPage />),
       admin("tenants", <TenantsPage />),

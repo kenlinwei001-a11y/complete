@@ -14,11 +14,11 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）12 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+// 断言（真后端真数据，区别于 mock 写死值）13 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
 //   cockpit P3 风险对症方案→工单 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 /
-//   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / nav-reorg 业务域分组 / A14 evals parity 失因列。
+//   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / nav-reorg 业务域分组 / A14 evals parity 失因列 / A18.4 审核台。
 // 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 9/9 通过（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
-//   cockpit P1+P2+P3 扩为 12 项。
+//   cockpit P1+P2+P3 + A18.4 扩为 13 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -131,6 +131,15 @@ try {
     const parityCol = await page.locator("[data-testid^=eval-parity-]").count();
     parityCol > 0 ? ok("A14 真后端：评测 parity 失因列真浏览器渲染") : bad("A14 真后端：parity 列缺失");
   } else { bad("A14 真后端：evals 页无运行入口"); }
+
+  // ── A18.4 求解器审核台（L4 真后端）：SPA 导航 → 页面渲染 + 真 /a/v1/solvers/artifacts 端点（无临时件→空态）──
+  await page.click('a[href="/admin/solver-review"]').catch(() => {});
+  await page.waitForSelector("[data-testid=solver-review-page]", { timeout: 10000 }).catch(() => {});
+  const reviewPage = await page.locator("[data-testid=solver-review-page]").count();
+  const reviewBody = await page.locator("[data-testid=solver-artifacts-table], [data-testid=solver-review-empty]").count();
+  reviewPage > 0 && reviewBody > 0
+    ? ok("A18.4 真后端：求解器审核台页渲染 + 真 artifacts 端点（队列/空态）")
+    : bad(`A18.4 真后端：审核台缺失（page=${reviewPage} body=${reviewBody}）`);
 } catch (e) {
   bad(`E2E 异常: ${String(e.message).slice(0, 160)}`);
 } finally {

@@ -293,6 +293,25 @@ function mockBuildJob(body: { script?: string; seed?: number; dryRun?: boolean }
   return job;
 }
 
+// A18.4 求解器审核台 mock：一个审核中临时件（LLM 生成、未认证）+ 一个已治理件（mutable，promote 翻转）。
+const MOCK_SOLVER_ARTIFACTS: {
+  id: string; tenantId: string; key: string; computeSource: string; outputShape: string[]; argHints: Record<string, string>;
+  rationale: string; origin: string; status: string; trustLevel: string; hash: string; version: number; createdBy: string; createdAt: string; rejectReason?: string;
+}[] = [
+  {
+    id: "sart_demo_seg_share_v1", tenantId: "demo", key: "seg_share_forecast",
+    computeSource: "(ctx, args) => {\n  const segs = ctx.objectsByType.DemandSegment || [];\n  const total = segs.reduce((s, d) => s + (d.p50 || 0), 0);\n  return { rows: segs.map(d => ({ segment: d.segment, share: total ? d.p50 / total : 0 })) };\n}",
+    outputShape: ["rows"], argHints: {}, rationale: "按需求细分 P50 计算各业态占比，回答『储能占比是多少』。",
+    origin: "LLM", status: "PROVISIONAL", trustLevel: "UNVERIFIED", hash: "a1b2c3d4e5f60718", version: 1, createdBy: "usr_demo_admin", createdAt: "2026-06-22T02:00:00.000Z",
+  },
+  {
+    id: "sart_demo_mat_cov_v2", tenantId: "demo", key: "material_coverage",
+    computeSource: "(ctx, args) => {\n  const m = ctx.objectsByType.MaterialBalance || [];\n  return { rows: m.map(x => ({ material: x.material, cov: x.ltaPct })) };\n}",
+    outputShape: ["rows"], argHints: {}, rationale: "列各物料长协覆盖率。",
+    origin: "LLM", status: "GOVERNED", trustLevel: "VERIFIED", hash: "f0e1d2c3b4a59687", version: 2, createdBy: "usr_demo_planner", createdAt: "2026-06-21T09:00:00.000Z",
+  },
+];
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -802,6 +821,28 @@ export const handlers = [
         snapshotVersion: "ov-12",
       });
     return err(404, "FEATURE_NOT_FOUND", "求解器不存在或未开通");
+  }),
+
+  // A18.4 求解器审核台：列临时求解器制品 / 看代码 / 晋升 GOVERNED（mock 同源）。
+  http.get("*/a/v1/solvers/artifacts", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    const list = status ? MOCK_SOLVER_ARTIFACTS.filter((a) => a.status === status) : MOCK_SOLVER_ARTIFACTS;
+    return HttpResponse.json({ artifacts: list });
+  }),
+  http.get("*/a/v1/solvers/:key/artifact", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const art = MOCK_SOLVER_ARTIFACTS.find((a) => a.key === String(params.key));
+    return art ? HttpResponse.json(art) : err(404, "NOT_FOUND", "solver artifact");
+  }),
+  http.post("*/a/v1/solvers/:key/promote", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const art = MOCK_SOLVER_ARTIFACTS.find((a) => a.key === String(params.key));
+    if (!art) return err(404, "NOT_FOUND", "solver artifact");
+    art.status = "GOVERNED";
+    art.trustLevel = "VERIFIED";
+    return HttpResponse.json(art);
   }),
 
   // ---- 增量 §7.10：规划体检基线（当前定稿 S&OP 版本 → plan_audit 输入字段集） ----
