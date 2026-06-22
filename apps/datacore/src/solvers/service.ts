@@ -63,6 +63,9 @@ export const SOLVER_KEYS = [
   "finance_pnl",
   // audit / generate 视图 每审计项独立时序（按 kind 出 90 天逐日 series + 4 阶段，与产能推演同款逐日交互，确定性 R6）。
   "audit_timeline",
+  // audit.3 / generate 视图 财务 KSF 图：3 层有向图（待解决问题=越线 Metric → 关键成功要素 KSF 5 → 财务指标 Metric），
+  // 读 Metric(ksfRef)+KSF 一等对象投影（问题→KSF 威胁边、KSF→财务 支撑边），确定性 R6；audit/generate 共用。
+  "ksf_graph",
   // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
   // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
   "generic_inference",
@@ -131,6 +134,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   mrp_netting: ["materials", "shortageCount", "summary"],
   finance_pnl: ["pnl", "gmRow", "attribution", "summary"],
   audit_timeline: ["kind", "series", "stages", "peak", "crossDay", "threshold"],
+  ksf_graph: ["problems", "ksfNodes", "finNodes", "edges", "summary"],
 };
 
 const DAY_MS = 86400000;
@@ -598,6 +602,55 @@ export class SolverService {
       offTargetCount,
       summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证`,
       ruleRefs: [],
+    };
+  }
+
+  /**
+   * audit.3 / generate · ksf_graph（净室读对象图,确定性 R6,派生投影非新真值 R13）：
+   * 3 层有向图投影——待解决问题（越线 Metric）→ 关键成功要素 KSF（5 一等对象）→ 财务计划指标（Metric）。
+   * 问题→KSF = 威胁边（问题压在哪个 KSF 上，由 Metric.ksfRef 确定）；KSF→财务 = 支撑边（该 KSF 影响哪些指标）。
+   * 全达标则取最弱一项保图非空（"最大风险"）。audit/generate 的 <KsfGraph> 同源数据。
+   */
+  private async ksfGraph(ctx: AuthCtx): Promise<Record<string, unknown>> {
+    const metricObjs = await this.repos.objects.listByType(ctx.tenantId, "Metric");
+    const ksfObjs = await this.repos.objects.listByType(ctx.tenantId, "KSF");
+    if (metricObjs.length === 0) throw validationError("ksf_graph 需先合成 Metric（经营指标）对象");
+
+    const ksfNodes = ksfObjs
+      .map((o) => ({ id: `ksf:${str(o.props.ksfId)}`, ksfId: str(o.props.ksfId), key: str(o.props.key), name: str(o.props.name), sub: str(o.props.sub) }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    const metrics = metricObjs.map((o) => o.props).map((p) => {
+      const actual = num(p.actual), target = num(p.target), floorVal = num(p.floorVal);
+      return {
+        metricId: str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
+        actual, target, floorVal, unit: str(p.unit),
+        offTarget: actual < floorVal,
+        status: actual < floorVal ? "RED" : actual < target ? "AMBER" : "GREEN",
+        gap: round(target - actual, 4),
+      };
+    }).sort((a, b) => a.metricId.localeCompare(b.metricId));
+
+    // 财务计划指标层 = 全体 Metric（计划指标）；问题层 = 越线 Metric（无则取 actual/target 最低一项）。
+    const finNodes = metrics.map((m) => ({ id: `fin:${m.metricId}`, name: m.name, actual: m.actual, target: m.target, unit: m.unit, status: m.status }));
+    let breached = metrics.filter((m) => m.offTarget);
+    if (breached.length === 0 && metrics.length > 0) {
+      breached = [[...metrics].sort((a, b) => a.actual / (a.target || 1) - b.actual / (b.target || 1) || a.metricId.localeCompare(b.metricId))[0]!];
+    }
+    const sev = (m: { gap: number; offTarget: boolean }) => (m.offTarget && m.gap >= 2 ? "H" : m.offTarget ? "M" : "S");
+    const problems = breached.map((m) => ({ id: `prob:${m.metricId}`, name: `${m.name}越线`, severity: sev(m), ksfRef: m.ksfRef, gap: m.gap }));
+
+    const ksfIds = new Set(ksfNodes.map((k) => k.ksfId));
+    const edges: { from: string; to: string; kind: "threat" | "support" }[] = [];
+    // 问题 → KSF（威胁边，按 Metric.ksfRef）
+    for (const p of problems) if (p.ksfRef && ksfIds.has(p.ksfRef)) edges.push({ from: p.id, to: `ksf:${p.ksfRef}`, kind: "threat" });
+    // KSF → 财务指标（支撑边：该 KSF 关联的全部 Metric）
+    for (const m of metrics) if (m.ksfRef && ksfIds.has(m.ksfRef)) edges.push({ from: `ksf:${m.ksfRef}`, to: `fin:${m.metricId}`, kind: "support" });
+    edges.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+
+    return {
+      problems, ksfNodes, finNodes, edges,
+      summary: `${problems.length} 个待解决问题压在 ${new Set(problems.map((p) => p.ksfRef)).size} 个关键成功要素上，传导至 ${finNodes.length} 项财务计划指标`,
     };
   }
 
@@ -1188,6 +1241,7 @@ export class SolverService {
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
     if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
+    if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
     if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);

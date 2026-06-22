@@ -77,6 +77,7 @@ export const COCKPIT_SOLVER_CATALOG: CatalogItem[] = [
   { key: "mrp_netting", name: "物料 MRP 净需求", description: "读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）。S&OP 供应评审物料线。", argHints: {}, domain: "plan" },
   { key: "finance_pnl", name: "量价本利科目表", description: "读 FinancePlan+DemandSegment 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 结构归因（C15）。S&OP 财务整合。", argHints: {}, domain: "plan" },
   { key: "audit_timeline", name: "审计项时序推演", description: "按审计项 kind 出 90 天逐日传导度 series + 4 阶段（事件窗→约束越线→波及订单→财务击穿），与产能推演同款逐日交互。规划体检/规划建议共用。", argHints: { kind: "审计项类别(产销/毛利/齐套/现金…)", horizon: "天数(默认90)" }, domain: "plan" },
+  { key: "ksf_graph", name: "财务 KSF 图", description: "3 层有向图投影：待解决问题（越线 Metric）→ 关键成功要素 KSF（5 一等对象）→ 财务计划指标（Metric）。问题→KSF 威胁边、KSF→财务 支撑边，读 Metric(ksfRef)+KSF 投影。规划体检/规划建议共用。", argHints: {}, domain: "decision" },
 ];
 
 /**
@@ -96,7 +97,7 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "packing_optimize", name: "装箱最优化", description: "通用装箱最优化（CP-SAT 可证最优）：按容量把项装入最少容器（产能填充/批次合并）。", argHints: { items: "待装项(尺寸)", binCapacity: "单箱容量" }, domain: "generic" },
 ];
 
-/** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 7 = 38，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */
+/** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */
 export const ALL_SOLVER_CATALOG: CatalogItem[] = [...SOLVER_CATALOG, ...GENERIC_SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG];
 
 function matches(item: CatalogItem, query?: string): boolean {
@@ -147,7 +148,7 @@ export class CatalogService {
   }
 
   /**
-   * A1：求解器全集注册表（业务场景 22 + 通用 9 + 决策/骨架 7 = 38）。供 AgentCore 构建 `solvers` MCP server 的
+   * A1：求解器全集注册表（业务场景 22 + 通用 9 + 决策/骨架 8 = 39）。供 AgentCore 构建 `solvers` MCP server 的
    * 全部工具（mcp__solvers__{key}）。与 discover 同走 feature 过滤——关某求解器 feature → 工具消失
    * （R3 先于 authz，与 404 不泄露存在性同构）。不做 ≤20 截断（治理页需全量）。
    */
