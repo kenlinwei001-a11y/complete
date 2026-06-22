@@ -798,6 +798,19 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    if (key === "metric_rollup")
+      // SPINE.4 经营指标条（mock：op 级三指标，物料保障率越线）
+      return HttpResponse.json({
+        data: {
+          metrics: [
+            { metricId: "kpi-margin", key: "gm_rate", name: "毛利率", unit: "%", level: "op", category: "profit", target: 16, actual: 15.2, delta: -0.8, miss: false },
+            { metricId: "kpi-attain", key: "demand_attain", name: "需求达成率", unit: "%", level: "op", category: "scale", target: 100, actual: 96.4, delta: -3.6, miss: false },
+            { metricId: "kpi-material", key: "material_cov", name: "物料保障率", unit: "%", level: "op", category: "material", target: 100, actual: 77.3, delta: -22.7, miss: true },
+          ],
+          missCount: 1, byLevel: { op: 3 }, summary: "3 项指标，1 项越线",
+        },
+        snapshotVersion: "ov-12",
+      });
     if (key === "plan_rootcause")
       // cockpit P2 根因归因 DAG（mock：物料保障率越线 → 现货缺口 → 取证叶）
       return HttpResponse.json({

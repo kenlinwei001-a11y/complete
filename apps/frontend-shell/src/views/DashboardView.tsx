@@ -124,9 +124,33 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
         <SummaryWidget data={data} />
       ) : def.type === "dag" ? (
         <ProvenanceDag data={data as DagData | undefined} />
+      ) : def.type === "metric-strip" ? (
+        <MetricStrip metrics={data as MetricRow[] | undefined} />
       ) : (
         <TableWidget data={data} columns={(def.query as { columns?: string[] }).columns} />
       )}
+    </div>
+  );
+}
+
+/** SPINE.4 经营指标条：metric_rollup 产出的 Metric（目标 vs 实际 + delta + 越线红），各视图 KPI 单一出处 R-一致。 */
+type MetricRow = { metricId: string; name: string; unit?: string; target: number; actual: number; delta: number; miss: boolean };
+function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
+  const rows = metrics ?? [];
+  if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  return (
+    <div data-testid="metric-strip" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {rows.map((m) => (
+        <div key={m.metricId} data-testid={`metric-${m.metricId}`} className="panel" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${m.miss ? "#DD7E9E" : "#62BE77"}` }}>
+          <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.name}</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>
+            {m.actual}<small style={{ fontSize: 11 }}>{m.unit}</small>
+          </div>
+          <div style={{ fontSize: 10.5, color: m.miss ? "#DD7E9E" : "var(--muted2)" }}>
+            目标 {m.target}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{m.delta}{m.miss ? " · 越线" : ""}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
