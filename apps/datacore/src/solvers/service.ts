@@ -46,8 +46,11 @@ export const SOLVER_KEYS = [
   // Phase6B 跨求解器编排器（meta-solver）
   "countermeasure_combo",
   // cockpit P2 规划决策推演 · 根因归因 DAG：经营 KPI 越线沿 RootCauseChain 归因模板逐层取证，
-  // DAG 结构与每条边的贡献均从 PlanKpi/RootCauseChain/活数据算出（确定性 R6，「结构=算、模板=配成对象」）。
+  // DAG 结构与每条边的贡献均从 Metric/RootCauseChain/活数据算出（确定性 R6，「结构=算、模板=配成对象」）。
   "plan_rootcause",
+  // SPINE 经营目标-指标-责任骨架：从对象库聚合 actual + 对齐 PlanTarget target → 算 delta/miss，
+  // 输出指标数组（各视图 KPI 单一出处 R-一致，派生投影非新真值 R13，确定性 R6）。
+  "metric_rollup",
   // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
   // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
   "generic_inference",
@@ -110,6 +113,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
+  metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
 };
 
 const DAY_MS = 86400000;
@@ -485,12 +489,13 @@ export class SolverService {
    * args: { kpiCategory? }（指定单一 KPI 类别；缺省=所有越线 KPI；全部达标则取最弱一个,DAG 恒有内容）。
    */
   private async planRootcause(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const kpiObjs = await this.repos.objects.listByType(ctx.tenantId, "PlanKpi");
+    // SPINE 归一：经营指标读 Metric 一等对象（PlanKpi 已归一为 Metric）。
+    const kpiObjs = await this.repos.objects.listByType(ctx.tenantId, "Metric");
     const chainObjs = await this.repos.objects.listByType(ctx.tenantId, "RootCauseChain");
-    if (kpiObjs.length === 0) throw validationError("plan_rootcause 需先合成 PlanKpi（经营 KPI）对象");
+    if (kpiObjs.length === 0) throw validationError("plan_rootcause 需先合成 Metric（经营指标）对象");
     const onlyCategory = args.kpiCategory ? str(args.kpiCategory) : undefined;
 
-    // 1) KPI 越线判定（actual < floorVal；缺口 gap=target-actual，确定性按 kpiId 排序）。
+    // 1) 指标越线判定（actual < floorVal；缺口 gap=target-actual，确定性按 metricId 排序）。
     const kpis = kpiObjs
       .map((o) => o.props)
       .filter((p) => !onlyCategory || str(p.category) === onlyCategory)
@@ -500,7 +505,7 @@ export class SolverService {
         const floorVal = num(p.floorVal);
         const offTarget = actual < floorVal;
         return {
-          kpiId: str(p.kpiId), name: str(p.name), category: str(p.category),
+          kpiId: str(p.metricId), name: str(p.name), category: str(p.category),
           actual, target, floorVal, unit: str(p.unit),
           gap: round(target - actual, 4), offTarget,
           status: offTarget ? "RED" : actual < target ? "AMBER" : "GREEN",
@@ -564,6 +569,47 @@ export class SolverService {
       offTargetCount,
       summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证`,
       ruleRefs: [],
+    };
+  }
+
+  /**
+   * SPINE 经营目标-指标-责任骨架 · metric_rollup（净室读对象图,确定性 R6,派生投影非新真值 R13）：
+   * 从对象库读 Metric 一等对象 → target 对齐目标树(若 metric.key 命中 PlanTarget.period 则取其 value，否则用 Metric.target)
+   * → actual 取 Metric.actual（已由合成 P1 同源数据算出/或数据源派生）→ 算 delta=actual−target、miss=actual<floorVal。
+   * 输出 Metric[] + 越线数 + 按 level 分布。各视图 KPI 读此单一出处（R-一致）。args: { level? }。
+   */
+  private async metricRollup(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const metricObjs = await this.repos.objects.listByType(ctx.tenantId, "Metric");
+    if (metricObjs.length === 0) throw validationError("metric_rollup 需先合成 Metric（经营指标）对象");
+    const onlyLevel = args.level ? str(args.level) : undefined;
+    const planTargets = await this.repos.objects.listByType(ctx.tenantId, "PlanTarget");
+    const targetByKey = new Map(planTargets.map((t) => [str(t.props.period), num(t.props.value)]));
+
+    const metrics = metricObjs
+      .map((o) => o.props)
+      .filter((p) => !onlyLevel || str(p.level) === onlyLevel)
+      .map((p) => {
+        const actual = num(p.actual);
+        // target 优先对齐目标树（PlanTarget），命中则取，否则用 Metric 自带 target（不复制第二口径）。
+        const target = targetByKey.has(str(p.key)) ? targetByKey.get(str(p.key))! : num(p.target);
+        const floorVal = p.floorVal !== undefined ? num(p.floorVal) : target;
+        return {
+          metricId: str(p.metricId), key: str(p.key), name: str(p.name), unit: str(p.unit),
+          level: str(p.level), category: str(p.category), target, actual,
+          delta: round(actual - target, 4), miss: actual < floorVal, floorVal,
+          ksfRef: p.ksfRef ?? null, ownerRef: p.ownerRef ?? null, chainKey: str(p.chainKey),
+        };
+      })
+      .sort((a, b) => a.metricId.localeCompare(b.metricId));
+
+    const byLevel: Record<string, number> = {};
+    for (const m of metrics) byLevel[m.level] = (byLevel[m.level] ?? 0) + 1;
+    const missCount = metrics.filter((m) => m.miss).length;
+    return {
+      metrics,
+      missCount,
+      byLevel,
+      summary: `${metrics.length} 项指标，${missCount} 项越线（按 level：${Object.entries(byLevel).map(([k, v]) => `${k}:${v}`).join(" ")}）`,
     };
   }
 
@@ -970,6 +1016,7 @@ export class SolverService {
     if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
+    if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);

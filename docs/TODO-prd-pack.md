@@ -1,5 +1,17 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
+> **2026-06-22 新增包 · 参考原型全视图 1:1 复刻 + 经营骨架**（`PRD-1to1-replication.zip`，8 PRD + spine + SOP，已入 docs/）。
+> 评估结论：cockpit-capacity PRD 的 P1–P5 = 我已做的 cockpit P1–P3（结构闭环 ✅，但 1:1=100% 要求 HTML 精确值→生成器种子，
+> 我的合成值需"取值对齐"补丁）。**spine（Metric/KSF/Principal）是各视图 KPI 单一出处底座，最大改动面 → 决定先做（用户裁决）**。
+> 调整后顺序：**① spine → ② cockpit P4/P5(+取值对齐) → ③ 计划三视图 sop/quarter/aop(共享 planview) → ④ audit→generate → ⑤ order → ⑥ inference-process**。
+> - **SPINE.1 ✅**：`KSF`/`Metric`/`Principal` 绿地对象（R9 免新表，走 ObjectInstance）+ `metric_rollup` 求解器（SOLVER_KEYS 32→33）
+>   + 骨架链路 `metric_affects_ksf`/`metric_ownedby` + 端点 `/a/v1/{metrics,ksf,principals}` + 契约 `spine.ts`。**PlanKpi 已归一为 Metric**
+>   （plan_rootcause/dash/data-categories/tests 全切 Metric，零回归）。测 spine ×5(L6 字节一致 · L1 物化+链路 · metric_rollup delta/miss · level 过滤 · R2)。
+>   datacore 577 · agentcore 278 · frontend 196 全绿;gates 全过(33 求解器/44 事件本体覆盖);**L4 真后端 14/14**(A4 33 类型)。回写本体 §2.B/§2.E/§3。
+> - 余 spine：SPINE.2(Metric↔Connection 血缘 + Principal 责任闭环 + metric.snapshot_recorded/breached 事件) · SPINE.3(KSF 越线推演接入) · SPINE.4(7 视图绑定迁移读 Metric 去硬编码,附录B)。
+> - 注：包内 bundled `SYSTEM-ONTOLOGY.md`(372 行)是旧快照,**未覆盖**——本仓本体(428+行,含 A18/cockpit/R15/33 求解器)更新。
+
+
 > 来源：用户上传的 `decision-platform-prd-pack.zip`（25 文件 / 19 份 PRD + SOP + 路线图）。
 > 施工规程 = `DEV-SOP-and-LOOP.md` 七步闭环（① READ → ② PLAN 契约先行 → ③ DEV 后端→前端→CLI →
 > ④ T1–T12 工业级检测 → ⑤ 亲手跑通真服务/真 UI → ⑥ 回写本体 → ⑦ COMMIT），任一红回退。

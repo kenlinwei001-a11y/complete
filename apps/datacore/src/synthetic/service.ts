@@ -561,8 +561,10 @@ export class SyntheticService {
     await putAll("DemandSegment", g.demandSegments, "segId");
     await putAll("FinancePlan", g.financePlans, "finId");
     await putAll("MaterialBalance", g.materialBalances, "matBalId");
-    // cockpit P2 绿地（规划决策推演 + 根因 DAG）
-    await putAll("PlanKpi", g.planKpis, "kpiId");
+    // cockpit P2 + SPINE 绿地（规划决策推演 + 根因 DAG + 目标-指标-责任骨架）
+    await putAll("KSF", g.ksfs, "ksfId");
+    await putAll("Principal", g.principals, "principalId");
+    await putAll("Metric", g.metrics, "metricId");
     await putAll("RootCauseChain", g.rootCauseChains, "chainId");
     // 20 场景目录 §7 扩展数据（E6b）：13 求解器所需对象类型 + 实例（确定性 + 戏剧点植入）。
     for (const t of extendedObjectTypes()) {
@@ -761,6 +763,13 @@ export class SyntheticService {
     for (const o of g.orders) {
       const month = String((o as { due?: string }).due ?? "").slice(0, 7);
       if (monthTargets.has(month)) await putLink(`lnk_otp_${o.so}`, "order_to_plantarget", oid("Order", o.so), oid("PlanTarget", `PT-${month}`));
+    }
+
+    // SPINE 骨架链：指标→KSF / 指标→责任人（由 Metric.ksfRef/ownerRef 确定性派生，骨架可视化 + R-一致）。
+    for (const m of g.metrics) {
+      const mid = oid("Metric", P(m).metricId);
+      if (P(m).ksfRef) await putLink(`lnk_mak_${P(m).metricId}`, "metric_affects_ksf", mid, oid("KSF", P(m).ksfRef));
+      if (P(m).ownerRef) await putLink(`lnk_mob_${P(m).metricId}`, "metric_ownedby", mid, oid("Principal", P(m).ownerRef));
     }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。

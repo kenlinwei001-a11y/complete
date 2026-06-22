@@ -30,6 +30,13 @@
     ]
   },
   "prds": {
+    "PRD-1to1-README-HANDOFF.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-A15-cli-universal-operation-shell.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -355,6 +362,24 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-aop-annual-scenario-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/planviews.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx",
+        "packages/contracts/src/planviews.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-build-workflow-runtime.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -395,6 +420,27 @@
         "G-8"
       ],
       "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-cockpit-capacity-1to1-parity.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-2",
+        "G-5"
+      ],
+      "artifacts": [
+        "packages/contracts/src/solvers.ts"
+      ],
       "brokenArtifacts": []
     },
     "PRD-de-battery-multitenant-config.md": {
@@ -582,6 +628,24 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-goal-metric-owner-spine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R2",
+        "R4"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/ontology-governance.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/data-categories.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-implementation-handbook.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -595,6 +659,22 @@
         "G-8"
       ],
       "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-inference-process-enhancement.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/frontend-shell/src/sse/useTaskStream.ts",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx"
+      ],
       "brokenArtifacts": []
     },
     "PRD-live-traceable-data.md": {
@@ -645,6 +725,59 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-order-project-sim-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx",
+        "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-plan-audit-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-2"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/sim/PlanAuditView.tsx",
+        "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-plan-generate-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-platform-foundry-aip.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -682,6 +815,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-quarter-rolling-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/planviews.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-query-orchestration-service.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -697,6 +847,13 @@
         "G-3",
         "G-8"
       ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-reference-views-1to1-roadmap.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -721,6 +878,22 @@
         "packages/contracts/src/agentcore.ts",
         "packages/contracts/src/qos.ts",
         "scripts/check-chain-closure.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sop-balance-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/SopBalanceView.tsx"
       ],
       "brokenArtifacts": []
     },
@@ -780,6 +953,7 @@
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
+      "PRD-inference-process-enhancement.md",
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
       "PRD-unified-build-engine.md"
@@ -814,6 +988,7 @@
       "PRD-frontend.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-implementation-handbook.md",
+      "PRD-inference-process-enhancement.md",
       "PRD-maturity-master-plan.md",
       "PRD-ontology-browser-field-coverage.md",
       "PRD-platform-foundry-aip.md",
@@ -882,14 +1057,21 @@
     ],
     "G-2": [
       "PRD-addendum-solvers-and-gaps.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
       "PRD-query-orchestration-service.md",
       "PRD-unified-build-engine.md"
     ],
     "G-5": [
+      "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-de-battery-multitenant-config.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-generic-inference.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-quarter-rolling-1to1.md",
+      "PRD-sop-balance-1to1.md",
       "PRD-unified-build-engine.md"
     ]
   },
@@ -905,6 +1087,7 @@
     ],
     "apps/datacore/src/app.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-aop-annual-scenario-1to1.md",
       "PRD-build-workflow-runtime.md"
     ],
     "scripts/check-cli-parity.mjs": [
@@ -920,6 +1103,21 @@
     "apps/datacore/src/solvers/service.ts": [
       "PRD-A18-provisional-build-closure.md",
       "PRD-A9-external-engines-design-deferred.md"
+    ],
+    "apps/datacore/src/planviews.ts": [
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/datacore/src/synthetic/battery.ts": [
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": [
+      "PRD-aop-annual-scenario-1to1.md"
+    ],
+    "packages/contracts/src/planviews.ts": [
+      "PRD-aop-annual-scenario-1to1.md"
     ],
     "apps/datacore/migrations/023_build_workflow_runs.sql": [
       "PRD-build-workflow-runtime.md"
@@ -942,6 +1140,11 @@
     "packages/contracts/src/databuilder.ts": [
       "PRD-build-workflow-runtime.md",
       "PRD-fullstack-story-build-g8.md"
+    ],
+    "packages/contracts/src/solvers.ts": [
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
@@ -968,6 +1171,19 @@
     "packages/contracts/src/growth.ts": [
       "PRD-fullstack-story-build-g8.md"
     ],
+    "apps/datacore/src/ontology-governance.ts": [
+      "PRD-goal-metric-owner-spine.md"
+    ],
+    "apps/datacore/src/synthetic/data-categories.ts": [
+      "PRD-goal-metric-owner-spine.md"
+    ],
+    "apps/frontend-shell/src/sse/useTaskStream.ts": [
+      "PRD-inference-process-enhancement.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PmDag.tsx": [
+      "PRD-inference-process-enhancement.md",
+      "PRD-order-project-sim-1to1.md"
+    ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
     ],
@@ -975,8 +1191,34 @@
       "PRD-ontology-browser-field-coverage.md",
       "PRD-prototype-intake-databuilder.md"
     ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": [
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/datacore/src/solvers/plan.ts": [
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": [
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": [
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
+      "PRD-plan-generate-1to1.md"
+    ],
     "apps/datacore/src/entity-resolution.ts": [
       "PRD-prototype-intake-databuilder.md"
+    ],
+    "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
+      "PRD-quarter-rolling-1to1.md"
     ],
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
       "PRD-scenario-launcher.md"
@@ -989,6 +1231,9 @@
     ],
     "scripts/check-chain-closure.mjs": [
       "PRD-scenario-launcher.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
+      "PRD-sop-balance-1to1.md"
     ]
   }
 }

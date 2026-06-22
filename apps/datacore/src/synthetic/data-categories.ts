@@ -61,8 +61,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["ExternalSignal"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["external_feed", "mock_external", "rest_api"],
     },
     {
-      key: "decision_cockpit", displayName: "经营决策驾驶舱", description: "经营 KPI 追踪与根因归因模板（驱动规划决策推演 · 根因 DAG）。",
-      typeKeys: ["PlanKpi", "RootCauseChain"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      key: "decision_cockpit", displayName: "经营决策驾驶舱", description: "经营指标库/KSF/责任主体与根因归因模板（目标-指标-责任骨架，驱动各视图 KPI · 根因 DAG）。",
+      typeKeys: ["Metric", "KSF", "Principal", "RootCauseChain"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
   ];
 }

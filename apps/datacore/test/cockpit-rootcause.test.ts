@@ -4,19 +4,19 @@ import { generateBattery } from "../src/synthetic/battery.js";
 
 /**
  * cockpit P2 · 规划决策推演 + 根因归因 DAG（铁律：KPI 与因果链均经本体关系算出，前后端零写死 R14；
- * R13 求解器溯源；R6 字节一致）。绿地 PlanKpi/RootCauseChain 走真合成管线，plan_rootcause 求解器
+ * R13 求解器溯源；R6 字节一致）。绿地 Metric(=PlanKpi 归一)/RootCauseChain 走真合成管线，plan_rootcause 求解器
  * 经营 KPI 越线沿归因模板逐层取证 → DAG 结构与每条边贡献占比全部从活数据算出。
  */
 describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
-  it("L6 确定性：generateBattery 同 seed PlanKpi/RootCauseChain 字节级一致 + KPI 与 P1 数据交叉一致", () => {
+  it("L6 确定性：generateBattery 同 seed Metric/RootCauseChain 字节级一致 + KPI 与 P1 数据交叉一致", () => {
     const a = generateBattery(42, "S");
     const b = generateBattery(42, "S");
-    expect(JSON.stringify(a.planKpis)).toBe(JSON.stringify(b.planKpis));
+    expect(JSON.stringify(a.metrics)).toBe(JSON.stringify(b.metrics));
     expect(JSON.stringify(a.rootCauseChains)).toBe(JSON.stringify(b.rootCauseChains));
-    expect(a.planKpis.length).toBe(3);
+    expect(a.metrics.length).toBe(3);
     expect(a.rootCauseChains.length).toBe(4);
     // 毛利率 KPI 的 actual 与财务"毛利"线/收入交叉一致（非写死）：actual = 毛利/收入×100。
-    const margin = a.planKpis.find((k) => k.kpiId === "kpi-margin")!;
+    const margin = a.metrics.find((k) => k.metricId === "kpi-margin")!;
     const rev = (a.financePlans.find((f) => f.line === "收入")!.rolling as number);
     const gm = (a.financePlans.find((f) => f.line === "毛利")!.rolling as number);
     expect(margin.actual as number).toBeCloseTo(Math.round(gm / rev * 100 * 10) / 10, 1);
@@ -27,7 +27,7 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
     await seedBattery(t);
 
     // 两绿地类型真物化
-    const kpiRows = (await (await t.app.inject({ method: "POST", url: "/a/v1/objects/query", headers: ADMIN, payload: { objectType: "PlanKpi", filter: {}, limit: 10 } })).json()) as { rows?: { props: Record<string, unknown> }[]; data?: { props: Record<string, unknown> }[] };
+    const kpiRows = (await (await t.app.inject({ method: "POST", url: "/a/v1/objects/query", headers: ADMIN, payload: { objectType: "Metric", filter: {}, limit: 10 } })).json()) as { rows?: { props: Record<string, unknown> }[]; data?: { props: Record<string, unknown> }[] };
     const kpis = (kpiRows.rows ?? kpiRows.data ?? []);
     expect(kpis.length).toBe(3);
     // gapPct 派生回写（= (actual-target)/target*100）
@@ -70,7 +70,7 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
   it("R2：另一租户无这些绿地对象（隔离）", async () => {
     const t: TestApp = await makeApp();
     await seedBattery(t);
-    const other = await t.app.inject({ method: "POST", url: "/a/v1/objects/query", headers: { "x-debug-user": "acme:admin:admin" }, payload: { objectType: "PlanKpi", filter: {}, limit: 10 } });
+    const other = await t.app.inject({ method: "POST", url: "/a/v1/objects/query", headers: { "x-debug-user": "acme:admin:admin" }, payload: { objectType: "Metric", filter: {}, limit: 10 } });
     const rows = (other.json() as { rows?: unknown[]; data?: unknown[] });
     expect((rows.rows ?? rows.data ?? []).length).toBe(0);
   });

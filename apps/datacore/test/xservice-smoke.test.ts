@@ -61,8 +61,8 @@ describe("跨服务真实联调冒烟 — 真实 AgentCore HTTP 客户端 ↔ �
     expect(keys).toContain("Base"); // 种子电池域核心类型，跨服务可见
   });
 
-  it("A1 跨服务：`solvers` MCP 工具目录由真实 DataCore 求解器注册表构建（全集 32，mcp__solvers__{key}，含 A8 新模型）", async () => {
-    // 源=求解器全集注册表（业务场景 22 + 净室通用 9 + 决策驾驶舱 1 = 32），非 QOS 场景 discover（22）。
+  it("A1 跨服务：`solvers` MCP 工具目录由真实 DataCore 求解器注册表构建（全集 33，mcp__solvers__{key}，含 A8 新模型）", async () => {
+    // 源=求解器全集注册表（业务场景 22 + 净室通用 9 + 决策/骨架 2 = 33），非 QOS 场景 discover（22）。
     const items = (await dc.catalog.solverRegistry(ctx)).items;
     const tools = buildSolverMcpTools(items);
     expect(tools.length).toBe(items.length);

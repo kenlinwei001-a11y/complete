@@ -1846,6 +1846,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { items } = await catalog.solverRegistry(c, query);
     return { solvers: items.map((it) => ({ ...it, outputShape: SOLVER_OUTPUT_SHAPES[it.key] ?? [] })) };
   });
+  // SPINE 经营目标-指标-责任骨架：指标库 / KSF / 责任人（各视图 KPI 单一出处 R-一致；Metric 经 metric_rollup 派生投影）。
+  const objProps = (rows: { data: unknown }) => (rows.data as { props: Record<string, unknown> }[]).map((o) => o.props);
+  app.get("/a/v1/metrics", async (req) => {
+    const c = ctx(req);
+    const { level, ksf } = req.query as { level?: string; ksf?: string };
+    const rows = await ontology.queryObjects(c, "Metric", {});
+    const items = objProps(rows).filter((p) => (!level || String(p.level) === level) && (!ksf || String(p.ksfRef) === ksf));
+    return { items, snapshotVersion: rows.snapshotVersion };
+  });
+  app.get("/a/v1/ksf", async (req) => {
+    const rows = await ontology.queryObjects(ctx(req), "KSF", {});
+    return { items: objProps(rows), snapshotVersion: rows.snapshotVersion };
+  });
+  app.get("/a/v1/principals", async (req) => {
+    const rows = await ontology.queryObjects(ctx(req), "Principal", {});
+    return { items: objProps(rows), snapshotVersion: rows.snapshotVersion };
+  });
   // A18.2 LLM 临时求解器生成：缺求解器 → LLM 生成纯函数 → 冻结 + 锁死沙箱跑通自检 → 注册 PROVISIONAL（未审核·UNVERIFIED）。
   app.post("/a/v1/solvers/generate", async (req) => {
     const c = ctx(req);
