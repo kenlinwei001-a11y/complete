@@ -340,6 +340,15 @@ export const zh = {
   sim: {
     run: "开始推演",
     runAudit: "体检",
+    inference: {
+      toggle: "▸ 推演过程（编排 DAG）",
+      hide: "▾ 推演过程（编排 DAG）",
+      in: "输入",
+      proc: "过程",
+      out: "输出",
+      gap: "缺口·断在此",
+      notRun: "未跑/未接入",
+    },
     ksf: {
       title: "财务计划 KSF 图（问题 → 关键成功要素 → 财务指标）",
       problems: "待解决问题",

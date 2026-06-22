@@ -1,0 +1,84 @@
+.box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  background: var(--bg2);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 10.5px;
+  color: var(--muted2);
+  margin-bottom: 4px;
+}
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.legendItem i {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.svg {
+  width: 100%;
+  height: auto;
+}
+.node {
+  fill: var(--bg);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.done {
+  fill: rgba(124, 196, 160, 0.16);
+  stroke: #7cc4a0;
+}
+.running {
+  fill: rgba(84, 181, 196, 0.16);
+  stroke: #54b5c4;
+  stroke-width: 1.6;
+}
+.pending {
+  fill: var(--bg);
+  stroke: var(--line);
+  opacity: 0.5;
+}
+.gap {
+  fill: rgba(221, 126, 158, 0.18);
+  stroke: #dd7e9e;
+  stroke-width: 1.6;
+}
+.sel {
+  stroke-width: 2.2;
+}
+.nodeLabel {
+  font-size: 10px;
+  fill: var(--text);
+  font-weight: 600;
+}
+.nodeKind {
+  font-size: 8px;
+  fill: var(--muted2);
+  font-family: var(--font-mono);
+}
+.ipo {
+  margin-top: 8px;
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  font-size: 11.5px;
+}
+.ipoRow {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 8px;
+  line-height: 1.6;
+  margin-top: 3px;
+}
+.ipoRow > span {
+  color: var(--muted2);
+  font-size: 10.5px;
+}
