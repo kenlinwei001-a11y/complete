@@ -13,6 +13,12 @@
 > - [x] CL.6 ✅ **达成率/偏差归因路由**（PRD-attribution-routing-plan-audit｜AR.1/.2）：comprehend/classify 关键词（达成率归因/未达成原因/偏差根因）→ `plan_audit`；`discover` 暴露 plan_audit 为归因入口；plan_audit 入参三级兜底 `plan_version_id ?? currentPlanVersion ?? deriveBaseline(PlanTarget)`（solvers.ts:170 已支持，补到调用/agent 路径）；配 CL.5 日序做逐日归因；真空→结构化缺口提示引导。deps CL.4+CL.5。闭 G-3 路由接缝。
 > - [◐] CL.7 **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：**GF.1+GF.2 已落** ✅——GF.1 `AnswerBlock.gap`+`<GapCard>`（按码▶触发 growth/run LOOP+续推+诚实断点）；GF.2 orchestrator `failTask` 路径 B agent 失败并入 gap 块（answer.final 先于 task.failed→对话坞出缺口卡而非红错）。测 ×3（gap-card×2 + gap-on-failure×1）。**余 GF.3**（深度）：SSE 进度逐节点回灌 + 就地 R4 审批面板（复用 DataBuilderPage §6.4）。
 >
+> 
+> **待确认事项（需你拍板，已按依赖隔离，不阻塞其他推进）**
+> - [待确认] **CL.7 GF.3 就地 R4 审批面板**：gap 卡触发 growth/run LOOP 后，若产数据需写真值转正（R4），PRD 要"对话内就地审批面板（复用 DataBuilderPage §6.4）"。但 `GrowthRunReport` 当前不回传可审批 draftId/provisional 域引用——需先定**数据契约**（LOOP 输出附待审 draft 引用 ⇒ 对话内嵌审批），属架构决策。GF.1+GF.2 已让缺口卡→触发→续推闭环可用。
+> - [待确认] **riskCases 真闭环**（W5）：livedin 历史快照回算，**高风险**（触 F40/replay 重算路径），评估为延后；是否承担风险请示下。
+> - [PRD 待发] **quarter / 其余 1:1 视图取值对齐**：plan-generate 工业 PRD 已交付并完成；其 §结尾注明"其余 11 视图各须一份同样的完整工业 PRD"。quarter/dash/risk/sop/audit/order/model/story/map 的逐字取值对齐待各自工业 PRD 到位（你在逐一提供）。生成器调参须跨 sop/aop/quarter/cockpit 同回归。
+> 
 > **独立新增件（非 CL 链）**
 > - [x] **nav-ia-reorg** ✅（PRD-nav-ia-reorg｜N1–N3 全做完）：N3 字号父级≥子级 ✅ · N1 统一域分组 `NAV_GROUPS`（业务视图+管理页合一套域分组，替代'业务/管理'双堆+admin flat）✅ · 图谱(view)并入「建模与图谱」与本体/建模同组（闭'图谱与本体拆两区'）✅ · meta 补回「平台与系统」✅。配置驱动 R14、逐项角色/entitlement 过滤、空组隐藏、折叠记忆复用。更新 f1/f12/f40/f61 至统一 IA，frontend 205 全绿（3 角色覆盖）。
 > - [x] **R16 发育闭环总纲** ✅（PRD-system-ontogenesis-spec｜宪法级）：本体 §5 立 R16（倒序发育⊕正序运作两相、三环自动闭合、二分处置、透明可视、分相位成熟）+ `ontogenesis.organ_matured` 事件 + `sys.meta.ontogenesis_loop` 切片 + `scripts/check-ontogenesis.mjs` 门并入 `pnpm gates`（保守声明性校验）。回写本体 §5/§3/§4/§10。
