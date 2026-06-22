@@ -4,6 +4,7 @@ import type {
   ActionClient,
   CatalogClient,
   DataCoreClient,
+  DataGenClient,
   IamClient,
   KbClient,
   KbHit,
@@ -493,6 +494,26 @@ class MockCatalogClient implements CatalogClient {
   }
 }
 
+/** CL.2 合规数据生成 mock：确定性元信息回执（不产业务数字），R6 同入参字节一致。 */
+export class MockDataGenClient implements DataGenClient {
+  async runSynthetic(_ctx: ToolAuthCtx, req: { industry: string; scale: string; seed?: number; livedIn?: boolean }): Promise<Record<string, unknown>> {
+    const seed = req.seed ?? 42;
+    return {
+      jobId: `synjob-${req.industry}-${req.scale}-${seed}`,
+      status: "DONE",
+      producedSeriesKeys: ["attainment:line", "oee:base"],
+      objectCounts: { PlanTarget: 17, AnnualScenario: 3, SopVersion: 1 },
+    };
+  }
+  async buildDomain(_ctx: ToolAuthCtx, req: { story: string; seed?: number }): Promise<Record<string, unknown>> {
+    return {
+      runId: `sbr-${hashSeed(req.story) % 100000}`,
+      producedArtifacts: [{ module: "ontology", kind: "object_type", action: "CREATED", status: "DRAFT" }],
+      gapReport: { gaps: [] },
+    };
+  }
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
   solver: MockSolverClient;
@@ -502,6 +523,7 @@ export interface MockDataCore extends DataCoreClient {
   kb: MockKbClient;
   timeseries: MockTimeseriesClient;
   catalog: MockCatalogClient;
+  datagen: MockDataGenClient;
 }
 
 export function createMockDataCore(): MockDataCore {
@@ -515,5 +537,6 @@ export function createMockDataCore(): MockDataCore {
     timeseries: new MockTimeseriesClient(),
     catalog: new MockCatalogClient(),
     epoch: { async current() { return { epoch: 1 }; } },
+    datagen: new MockDataGenClient(),
   };
 }

@@ -251,6 +251,33 @@ export class GuardedToolExecutor {
           args.ruleIds as string[] | "ALL_APPLICABLE",
           args.payload,
         );
+      // CL.2 合规数据生成：触发确定性合成/建域（**触发合成 ≠ 伪造**），落未审核态（PROVISIONAL）。
+      // 回执只含元信息 + provisional 标记；业务数字由 agent 后续 query_* 读回真实物化值（铁律自洽）。
+      case "fill_data": {
+        const r = await this.deps.dataCore.ontology.fillData(ctx, {
+          typeKey: String(args.typeKey),
+          fields: (args.fields ?? []) as string[],
+          ...(args.rows === undefined ? {} : { rows: Number(args.rows) }),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+        });
+        return { ...r, provisional: true, _note: "未审核合成数据（PROVISIONAL）：业务数字请用 query_objects 读回真实物化值；转正经 create_action_draft 走审批。" };
+      }
+      case "run_synthetic": {
+        const r = await this.deps.dataCore.datagen.runSynthetic(ctx, {
+          industry: String(args.industry),
+          scale: String(args.scale),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+          ...(args.livedIn === undefined ? {} : { livedIn: Boolean(args.livedIn) }),
+        });
+        return { ...r, provisional: true, _note: "未审核合成数据（PROVISIONAL）：业务数字请用 query_objects/query_timeseries_agg 读回真实物化值；答案须标注'基于本轮合成的未审核数据'。" };
+      }
+      case "build_domain": {
+        const r = await this.deps.dataCore.datagen.buildDomain(ctx, {
+          story: String(args.story),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+        });
+        return { ...r, provisional: true, _note: "未审核建域（PROVISIONAL）：建出对象/规则/求解器骨架；读回/推演用 query_objects/invoke_solver；转正走 R4。" };
+      }
       case "create_action_draft":
         return this.deps.dataCore.action.createDraft(ctx, String(args.actionType), args.payload ?? args);
       case "search_knowledge":

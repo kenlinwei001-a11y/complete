@@ -215,6 +215,59 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     sideEffect: "READ",
     costClass: "CHEAP",
   },
+  // CL.2 合规数据生成（fill_data / run_synthetic / build_domain）：在"信息不足/空租户"时
+  // 触发确定性、走管线、可溯源的合成（**触发合成 ≠ 伪造**）。回执只含元信息（jobId/runId/counts），
+  // 业务数字必须由你随后用 query_objects/query_timeseries_agg 读回真实物化值；产出落未审核态
+  // （PROVISIONAL），答案须显式标注"基于本轮合成的未审核数据"，转正经 create_action_draft 走 R4。
+  {
+    name: "fill_data",
+    descriptionForLLM:
+      "缺某对象类型的数据时，按字段确定性补一批数据（经唯一上传口入管线，未审核态）。入参 typeKey/fields[]/rows?/seed?。回执只含 {connId,rowCount}；补完后用 query_objects 读回真实值再分析。不要把回执当业务数字。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        typeKey: { type: "string", description: "对象类型 key（先用 discover 取真实类型名，勿猜）" },
+        fields: { type: "array", items: { type: "string" } },
+        rows: { type: "number", description: "可选，行数" },
+        seed: { type: "number", description: "可选，确定性种子" },
+      },
+      required: ["typeKey", "fields"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "EXPENSIVE",
+  },
+  {
+    name: "run_synthetic",
+    descriptionForLLM:
+      "触发合成数据作业（industry×scale×seed 确定性，可选 livedIn 回放一年运营态），物化计划域/时序等对象到未审核态。回执只含 {jobId,...}；随后用 query_objects/query_timeseries_agg 读回真实物化值再分析。空租户问'达成率/未达成原因'缺数据时优先用本工具，而非拒绝或编造。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        industry: { type: "string", description: "行业模板 key，如 battery-manufacturing" },
+        scale: { type: "string", enum: ["S", "M", "L", "XL"] },
+        seed: { type: "number", description: "可选，确定性种子（默认 42）" },
+        livedIn: { type: "boolean", description: "可选，true=合成后回放 T−365→T0 一年运营态时序" },
+      },
+      required: ["industry", "scale"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "EXPENSIVE",
+  },
+  {
+    name: "build_domain",
+    descriptionForLLM:
+      "故事驱动建域：以用户问句为故事，倒推全栈 BuildPlan 并建出对象/规则/求解器骨架（未审核态 PROVISIONAL）。回执只含 {runId,...}；建好后用 query_objects/invoke_solver 读回/推演。需要新业务域而非仅补数据时用本工具。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        story: { type: "string", description: "建域故事（通常=用户问句）" },
+        seed: { type: "number", description: "可选，确定性种子" },
+      },
+      required: ["story"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "EXPENSIVE",
+  },
   {
     name: "create_action_draft",
     descriptionForLLM:

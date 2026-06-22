@@ -97,6 +97,19 @@ export interface CatalogClient {
 }
 
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */
+/**
+ * CL.2 合规数据生成：触发确定性、走管线、可溯源的合成/建域（**触发合成 ≠ 伪造**）。
+ * 回执只含元信息（jobId/runId/counts），业务数字由 agent 后续 query_* 工具读回真实物化值。
+ * 产出落 PROVISIONAL（未审核态），经 R4 转正才计真值。
+ */
+export interface DataGenClient {
+  runSynthetic(
+    ctx: ToolAuthCtx,
+    req: { industry: string; scale: string; seed?: number; livedIn?: boolean },
+  ): Promise<Record<string, unknown>>;
+  buildDomain(ctx: ToolAuthCtx, req: { story: string; seed?: number }): Promise<Record<string, unknown>>;
+}
+
 export interface DataCoreClient {
   ontology: OntologyClient;
   solver: SolverClient;
@@ -107,6 +120,7 @@ export interface DataCoreClient {
   timeseries: TimeseriesClient;
   catalog: CatalogClient;
   epoch: EpochClient;
+  datagen: DataGenClient;
 }
 
 export class DataCoreUnavailableError extends Error {

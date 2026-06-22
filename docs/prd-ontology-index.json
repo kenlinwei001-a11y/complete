@@ -377,6 +377,28 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-agent-data-generation-tools.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R15",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/tools/clients.ts",
+        "apps/agentcore/src/tools/datacore-http.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/datacore/src/app.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -987,6 +1009,7 @@
   "breakpointCoverage": {
     "G-3": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-agent-data-generation-tools.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-inference-process-enhancement.md",
@@ -1122,10 +1145,12 @@
       "PRD-scenario-launcher.md"
     ],
     "apps/agentcore/src/tools/registry.ts": [
-      "PRD-A15-cli-universal-operation-shell.md"
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-agent-data-generation-tools.md"
     ],
     "apps/datacore/src/app.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-agent-data-generation-tools.md",
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-build-workflow-runtime.md"
     ],
@@ -1145,6 +1170,12 @@
     ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
+    ],
+    "apps/agentcore/src/tools/clients.ts": [
+      "PRD-agent-data-generation-tools.md"
+    ],
+    "apps/agentcore/src/tools/datacore-http.ts": [
+      "PRD-agent-data-generation-tools.md"
     ],
     "apps/datacore/src/planviews.ts": [
       "PRD-aop-annual-scenario-1to1.md",

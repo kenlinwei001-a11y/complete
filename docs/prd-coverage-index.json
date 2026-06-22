@@ -169,6 +169,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-agent-data-generation-tools.md": {
+      "acceptanceIds": [
+        "D7"
+      ],
+      "covered": [],
+      "uncovered": [
+        "D7"
+      ],
+      "coverage": 0
+    },
     "PRD-build-workflow-runtime.md": {
       "acceptanceIds": [
         "F55"

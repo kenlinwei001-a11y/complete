@@ -4,6 +4,7 @@ import {
   DataCoreUnavailableError,
   type ActionClient,
   type CatalogClient,
+  type DataGenClient,
   type EpochClient,
   type DataCoreClient,
   type IamClient,
@@ -159,6 +160,27 @@ class HttpEpochClient implements EpochClient {
   }
 }
 
+class HttpDataGenClient implements DataGenClient {
+  constructor(private readonly baseUrl: string) {}
+  runSynthetic(ctx: ToolAuthCtx, req: { industry: string; scale: string; seed?: number; livedIn?: boolean }): Promise<Record<string, unknown>> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/synthetic/jobs`, {
+      industry: req.industry,
+      scale: req.scale,
+      ...(req.seed !== undefined ? { seed: req.seed } : {}),
+      ...(req.livedIn !== undefined ? { livedIn: req.livedIn } : {}),
+    });
+  }
+  buildDomain(ctx: ToolAuthCtx, req: { story: string; seed?: number }): Promise<Record<string, unknown>> {
+    // 故事驱动建域；落 PROVISIONAL（未审核态，A18），R4 转正才计真值。
+    return call(this.baseUrl, ctx, "POST", `/a/v1/databuilder/runs`, {
+      script: req.story,
+      stage: "build",
+      buildMode: "PROVISIONAL",
+      ...(req.seed !== undefined ? { seed: req.seed } : {}),
+    });
+  }
+}
+
 class HttpCatalogClient implements CatalogClient {
   constructor(private readonly baseUrl: string) {}
   discover(
@@ -231,5 +253,6 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     timeseries: new HttpTimeseriesClient(baseUrl),
     catalog: new HttpCatalogClient(baseUrl),
     epoch: new HttpEpochClient(baseUrl),
+    datagen: new HttpDataGenClient(baseUrl),
   };
 }
