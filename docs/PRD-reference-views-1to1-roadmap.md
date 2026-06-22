@@ -28,7 +28,7 @@
 | **quarter·季度滚动看板** | quarterly-rolling | ◐ 有差异 | **子 PRD ✅ `PRD-quarter-rolling-1to1.md`** |
 | **audit·规划体检** | plan-audit(PlanAuditView) | ◐ 有差异 | **子 PRD ✅ `PRD-plan-audit-1to1.md`** |
 | **generate·规划建议（=方案生成）** | plan-generate(PlanGenerateView) | ◐ 有差异 | **子 PRD ✅ `PRD-plan-generate-1to1.md`** |
-| **order·项目推演** | order-chain(OrderChainView) | ◐ 有差异 | 子 PRD 待写（model 融入此处） |
+| **order·项目推演** | order-chain(OrderChainView) | ◐ 有差异 | **子 PRD ✅ `PRD-order-project-sim-1to1.md`（model 融入）** |
 | story·编排推演 DAG | —（A5/QOS DAG block） | ➡ 横切增强 | 并入"推演过程展示增强"PRD |
 | model·型号产能推演 | —（项目推演子模式） | ➡ 横切增强 | 同上（融入推演入口） |
 | all/flow/source/solver/agent/loop/backbone/mvp·图谱族 | OntologyGraphView | ◐ 坍缩 | 不逐个复刻，按需小增强 |
@@ -41,7 +41,7 @@
 | 3 | `PRD-quarter-rolling-1to1.md` | quarter 季度滚动看板 | ✅ 已出 |
 | 4 | `PRD-plan-audit-1to1.md` | audit 规划体检（含时序推演交互 1:1） | ✅ 已出 |
 | 5 | `PRD-plan-generate-1to1.md` | generate 规划建议/方案生成 | ✅ 已出 |
-| 6 | `PRD-order-project-sim-1to1.md` | order 项目推演（model 融入） | ⬜ |
+| 6 | `PRD-order-project-sim-1to1.md` | order 项目推演（model 融入） | ✅ 已出 |
 | 7 | `PRD-inference-process-enhancement.md` | **推演过程展示增强**（story DAG + model 收敛网络，融入各推演入口） | ⬜ |
 
 > 依赖：2–6 各自独立（前端+生成器+契约，冲突小）；7 横切，建议在 ≥1 个推演视图(order/risk)就绪后接入，复用 A5 FDE 节点图与 QOS 答案 DAG block。
@@ -53,8 +53,8 @@
 - **1:1 尺度 = 100%**（结构/功能/数据值/交互逐项对齐，唯色调/字体可调；见 §0）——各子 PRD 不再单留尺度确认。
 
 ## 4. 状态
-- ✅ 已出子 PRD：**aop（年度情景规划台）· sop（月度 S&OP）· quarter（季度滚动看板）· audit（规划体检·含时序推演交互 1:1）· generate（规划建议/方案生成·复用 audit 时序+KSF）**。
-- ⬜ 待写：order（项目推演，model 融入）· 推演过程展示增强（story+model）。
+- ✅ 已出子 PRD：**aop（年度情景规划台）· sop（月度 S&OP）· quarter（季度滚动看板）· audit（规划体检·含时序推演交互 1:1）· generate（规划建议/方案生成·复用 audit 时序+KSF）· order（项目推演·订单全链三判+11节点DAG，model 融入）**。
+- ⬜ 待写：推演过程展示增强（story DAG + model 收敛网络，横切融入各推演入口）。
 - 横切决定（story/model=增强、generate=方案生成、1:1=100% 色字可调）已固化于本文 §0。
 
 > 基线分支：各子 PRD 实现前定准 wizardly-gauss vs vigilant-knuth（涉前端+生成器+契约）。
