@@ -32,7 +32,7 @@
 >
 > **W2 需新建共享组件（audit.3 → generate，有序）**
 > - [x] **audit.3 KsfGraph** ✅：`ksf_graph` 求解器（38→39，问题=越线 Metric→KSF 5→财务 Metric，威胁/支撑边）+ `<KsfGraph>` 组件（audit/generate 共用，问题节点点击高亮+联动 audit_timeline DailyDotAxis）。datacore 602 / frontend 204 全绿，回写本体 §2.E。
-> - [◐] **generate 前端**：五维雷达 `<RadarChart>` ✅ · 采纳→AOP ✅ · KsfGraph 共用 ✅（已挂 PlanGenerateView gen-ksf-graph）。**余**：跨方案取舍矩阵 + 外部信号敏感性（边际增强）。
+> - [x] **generate 前端** ✅（PRD-IND-plan-generate 工业级 1:1）：五维雷达 + 目标达成 6 行 + 得/舍取舍 + **外部信号敏感性面板** + **必须解决问题(why+4 节点传导链)** + 执行关键点 + KsfGraph + 采纳→AOP + invTurns 目标字段；后端取值对齐 HTML(gm0.16/cash58/gmFloor0.155…) + §4.4 pickMax 方案选择(壹/贰/叁) + extSensitivity/focus 种子(逐字)。datacore 602/frontend 205 全绿，回写本体 §2.E。
 >
 > **W3 横切 + 生成器调参（planview 耦合，须同回归）**
 > - [x] **inference-process `<InferenceProcessDag>`** ✅：QOS 轨迹投影 10 节点 + par/conv/aux/fb 边 + 逐节点 IPO + 缺口红，挂 QueryDock（可复用嵌 ≥5 入口）。测 inference-dag ×1，frontend 205 全绿。**余**：嵌入 risk/project/order/audit/generate 其余入口 + model 收敛子模式（组件已具，挂载点增量）。
