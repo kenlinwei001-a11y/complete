@@ -54,6 +54,9 @@ export const SOLVER_KEYS = [
   // cockpit P4 反事实双轨推演（"如不解决 XX，未来 30 天会怎样"）：编排 risk_timeline(do-nothing baseline)
   // 与处置后曲线(mitigation eff/tn 衰减) → 双序列 + 差值(峰值削减/越线日推迟/少越线日)，确定性 R6。
   "counterfactual_timeline",
+  // cockpit P4 / order 视图 订单全链推演：逐单三关联判（交期/齐套/财务三闸 C15→C13→C18）+ 统一结论
+  // (可接/提价X%接/不建议接) + 业务建模链 DAG，读对象图（Order×Model×MaterialBalance×DemandSegment），确定性 R6。
+  "order_fullchain",
   // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
   // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
   "generic_inference",
@@ -118,6 +121,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
+  order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
 };
 
 const DAY_MS = 86400000;
@@ -630,6 +634,94 @@ export class SolverService {
   }
 
   /**
+   * cockpit P4 / order 视图 订单全链推演（净室读对象图,确定性 R6）：逐单三关联判 + 统一结论 + 业务建模链 DAG。
+   * ①交期判（qty vs 可产基地周供给 P50/P90，C02/C03）②齐套判（型号物料 MaterialBalance 缺口，C06/C16）
+   * ③财务判三闸（毛利率 vs 细分底线 C15 → 信用占用 C13 → 现金 C18）→ 统一结论（信用阻断>毛利提价>交期/齐套对冲）。
+   * args: { so }（缺省取首单）。前端零写死：ORDERS/价格/BOM/底线均为合成种子，三判由本求解器实算（R14）。
+   */
+  private async orderFullchain(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const so = str(args.so);
+    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
+    if (orders.length === 0) throw validationError("order_fullchain 需先合成 Order");
+    const order = (so ? orders.find((o) => str(o.props.so) === so) : orders.sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0]);
+    if (!order) throw notFound(`order ${so}`);
+    const op = order.props;
+    const modelId = str(op.model);
+    const qty = num(op.qty);
+    const models = await this.repos.objects.listByType(ctx.tenantId, "Model");
+    const model = models.find((m) => str(m.props.modelId) === modelId);
+    const bases = Array.isArray(model?.props.bases) ? (model!.props.bases as string[]) : [];
+    // 细分映射（确定性化学体系）：S192→储能 · L148→商用车 · 其余→乘用车。
+    const seg = modelId.includes("S192") ? "储能" : modelId.includes("L148") ? "商用车" : "乘用车";
+    const dsegs = await this.repos.objects.listByType(ctx.tenantId, "DemandSegment");
+    const dseg = dsegs.find((d) => str(d.props.segment) === seg);
+    const marginPct = num(dseg?.props.marginPct);
+    const floorPct = num(dseg?.props.floorPct);
+
+    // ① 交期判（C02/C03）：可产基地数 × 周产能基线 → P50/P90 vs 周需求（qty 视为单周需求，确定性代理）。
+    const weeklyBase = Math.max(1, bases.length) * 700;
+    const p50 = round(weeklyBase, 0);
+    const p90 = round(weeklyBase * 0.9, 0);
+    const deliveryOk = p90 >= qty;
+    const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
+
+    // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
+    const mbals = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
+    const worstMat = [...mbals].sort((a, b) => num(b.props.gapTon) - num(a.props.gapTon))[0];
+    const kitGap = worstMat ? num(worstMat.props.gapTon) : 0;
+    const kitOk = kitGap <= 0;
+    const kitJudge = { material: str(worstMat?.props.material), gapTon: kitGap, eta: str(worstMat?.props.etaDate), verdict: kitOk ? "齐套" : "缺料", ruleRefs: ["C06", "C16"] };
+
+    // ③ 财务判三闸：毛利率 vs 底线（C15）→ 信用占用（C13）→ 现金（C18，订单无现金数据→按信用代理）。
+    const marginOk = marginPct >= floorPct;
+    const priceUpPct = marginOk ? 0 : Math.ceil(floorPct - marginPct);
+    const creditUsedRatio = num(op.creditUsedRatio);
+    const creditOk = creditUsedRatio <= 1;
+    const financeJudge = { marginPct, floorPct, marginOk, priceUpPct, creditUsedRatio, creditOk, verdict: !creditOk ? "信用阻断" : marginOk ? "通过" : `需提价${priceUpPct}%`, ruleRefs: ["C15", "C13", "C18"] };
+
+    // 统一结论：信用阻断 > 毛利提价 > 交期/齐套对冲。
+    let verdict: string;
+    let vc: string;
+    const conds: string[] = [];
+    if (!creditOk) { verdict = "不建议接"; vc = "#DD7E9E"; conds.push("信用占用超限（C13），需先收款/降额"); }
+    else if (!marginOk) { verdict = `提价${priceUpPct}%接`; vc = "#E8B54A"; conds.push(`毛利率 ${marginPct}% < 细分底线 ${floorPct}%（C15），提价 ${priceUpPct}% 达线`); }
+    else { verdict = "可接"; vc = "#62BE77"; }
+    if (!deliveryOk) conds.push(`周供给 P90 ${p90} < 需求 ${qty}（C02），需夜班/外协对冲`);
+    if (!kitOk) conds.push(`${kitJudge.material} 缺口 ${kitGap} 吨（C06），最早齐套 ${kitJudge.eta}`);
+
+    // 业务建模链 DAG：so → {net 可产网络 · bom BOM · eco 单价细分 · cred 信用} → {jcap · jkit · jfin} → vrd。
+    const N = (id: string, kind: string, label: string, extra: Record<string, unknown> = {}) => ({ id, kind, label, ...extra });
+    const nodes = [
+      N(`order:${str(op.so)}`, "order", `订单 ${str(op.so)}`, { qty, model: modelId, due: str(op.due), cust: str(op.cust) }),
+      N("net", "network", "可产网络", { bases }),
+      N("bom", "bom", "BOM 展开", { material: kitJudge.material }),
+      N("eco", "economics", "单价与细分", { segment: seg, marginPct, floorPct }),
+      N("cred", "credit", "信用档案", { creditUsedRatio }),
+      N("jcap", "judge", "①交期判", { verdict: deliveryJudge.verdict }),
+      N("jkit", "judge", "②齐套判", { verdict: kitJudge.verdict }),
+      N("jfin", "judge", "③财务判", { verdict: financeJudge.verdict }),
+      N("vrd", "verdict", verdict, { vc }),
+    ];
+    const edges = [
+      { from: `order:${str(op.so)}`, to: "net" }, { from: `order:${str(op.so)}`, to: "bom" },
+      { from: `order:${str(op.so)}`, to: "eco" }, { from: `order:${str(op.so)}`, to: "cred" },
+      { from: "net", to: "jcap" }, { from: "bom", to: "jkit" }, { from: "eco", to: "jfin" }, { from: "cred", to: "jfin" },
+      { from: "jcap", to: "vrd" }, { from: "jkit", to: "vrd" }, { from: "jfin", to: "vrd" },
+    ];
+
+    return {
+      so: str(op.so),
+      verdict,
+      vc,
+      kpis: { qty, segment: seg, marginPct, floorPct, deliveryP90: p90, kitGap },
+      judges: { cap: deliveryJudge, kit: kitJudge, fin: financeJudge },
+      conds,
+      dag: { nodes, edges },
+      summary: `订单 ${str(op.so)}（${modelId}·${qty}）结论：${verdict}${conds.length ? "；" + conds.join("；") : ""}`,
+    };
+  }
+
+  /**
    * PRD-fde §8 Q2 单一供应商断供的影响半径（净室,零依赖,确定性 R6）：从断供根（如某二级供应商）
    * 沿"谁引用我"的反向多跳逐层扇出——物料→订单→客户，逐层算出受冲击集合、扩散半径（穿透层数）、
    * 叶层敞口。与 concentration_risk（多源收敛到一根）互为反向：这里是一根扇出冲击多个叶子。
@@ -1035,6 +1127,7 @@ export class SolverService {
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
     if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
+    if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);

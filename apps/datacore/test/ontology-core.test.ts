@@ -484,9 +484,9 @@ async function buildScaledPyramid(
 }
 
 describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if，工业级）", () => {
-  it("注册：SOLVER_KEYS 含通用求解器（=34）+ 输出形状已声明（chain:check/SHAPE 覆盖）", () => {
+  it("注册：SOLVER_KEYS 含通用求解器（=35）+ 输出形状已声明（chain:check/SHAPE 覆盖）", () => {
     expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
-    expect(SOLVER_KEYS.length).toBe(34);
+    expect(SOLVER_KEYS.length).toBe(35);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 
