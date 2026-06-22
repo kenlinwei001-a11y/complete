@@ -14,12 +14,12 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）17 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+// 断言（真后端真数据，区别于 mock 写死值）18 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
 //   cockpit P3 风险对症方案→工单 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 /
 //   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / A18.4 整域晋升编排 / nav-reorg 业务域分组 /
 //   A14 evals parity 失因列 / A18.4 审核台。
 // 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 9/9 通过（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
-//   cockpit P1+P2+P3 + SPINE.4 + AUDIT.1 + ORD 订单全链 + A18.4 扩为 17 项。
+//   cockpit P1+P2+P3 + SPINE.4 + AUDIT.1 + ORD + SOP前端 + A18.4 扩为 18 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -101,6 +101,20 @@ try {
   ofcVerdict > 0 && ofcJudges > 0 && ofcDag > 0
     ? ok("ORD 真后端：订单全链推演（统一结论 + 三判明细 + 建模链 DAG）真浏览器渲染（order_fullchain）")
     : bad(`ORD 真后端：订单全链缺失（verdict=${ofcVerdict} judges=${ofcJudges} dag=${ofcDag}）`);
+
+  // SOP 前端 1:1（L4 真后端）：新建版本 → ③ 供应评审 → 物料线 MRP 表（真 mrp_netting）真渲染
+  await page.click('a[href="/v/sop-balance"]').catch(() => {});
+  await page.waitForSelector("[data-testid=sop-create]", { timeout: 10000 }).catch(() => {});
+  await page.click("[data-testid=sop-create]").catch(() => {});
+  await page.waitForSelector("[data-testid=sop-run-1]", { timeout: 8000 }).catch(() => {});
+  await page.click("[data-testid=sop-run-1]").catch(() => {});
+  await page.click("[data-testid=sop-step-chip-3]").catch(() => {});
+  await page.click("[data-testid=sop-run-3]").catch(() => {});
+  await page.waitForSelector("[data-testid=sop-mrp-table]", { timeout: 8000 }).catch(() => {});
+  const sopMrp = await page.locator("[data-testid^=sop-mrp-row-]").count();
+  sopMrp > 0
+    ? ok(`SOP 前端真后端：物料线 MRP 表 ${sopMrp} 物料真浏览器渲染（mrp_netting，C06 齐套）`)
+    : bad(`SOP 前端真后端：MRP 表缺失（rows=${sopMrp}）`);
 
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});

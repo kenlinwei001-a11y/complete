@@ -419,6 +419,20 @@ export const handlers = [
       rows = filterByScope(BASES, account).map((b) => ({ id: b.id, props: { ...b } }));
     } else if (type === "Model") {
       rows = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"].map((m) => ({ id: `model-${m}`, props: { name: m } }));
+    } else if (type === "DemandSegment") {
+      rows = [
+        { segId: "dseg-1", segment: "乘用车", tgt: 69, p50: 71, p90: 78, act: 66.8 },
+        { segId: "dseg-2", segment: "储能", tgt: 45, p50: 49, p90: 54, act: 41.9 },
+        { segId: "dseg-3", segment: "商用车", tgt: 13.6, p50: 12, p90: 13, act: 12.9 },
+      ].map((r) => ({ id: r.segId, props: r }));
+    } else if (type === "SopVersionRow") {
+      // SOP.4 版本演进对比（V1/V3/V5/V7）
+      rows = [
+        { ver: "V1", date: "2026-05-01", demand: 127, supply: 114, gap: 13, note: "初版需求", isFinal: false },
+        { ver: "V3", date: "2026-05-15", demand: 130, supply: 123, gap: 7, note: "供给评审上修", isFinal: false },
+        { ver: "V5", date: "2026-05-29", demand: 132, supply: 129, gap: 3, note: "财务整合", isFinal: false },
+        { ver: "V7", date: "2026-06-12", demand: 134, supply: 133, gap: 1, note: "高管会待定稿", isFinal: true },
+      ].map((r) => ({ id: `sopv-${r.ver}`, props: r }));
     } else {
       let orders = filterByScope(ORDERS, account);
       if (base) orders = orders.filter((o) => o.bases.includes(base));
@@ -1622,6 +1636,32 @@ export const handlers = [
       const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;
       return HttpResponse.json({ data: affectedOrdersOutput(base), snapshotVersion: "ov-12" });
     }
+    if (key === "mrp_netting")
+      return HttpResponse.json({
+        data: {
+          materials: [
+            { material: "三元正极", netDemand: 8180, ltaCoverPct: 92, gap: 654, earliestComplete: "2026-06-28" },
+            { material: "隔膜", netDemand: 2376, ltaCoverPct: 100, gap: 0, earliestComplete: "" },
+            { material: "电解液", netDemand: 5544, ltaCoverPct: 96, gap: 222, earliestComplete: "2026-06-25" },
+          ],
+          shortageCount: 2, summary: "3 种物料，2 种现货缺口（C06 齐套口径）",
+        },
+        snapshotVersion: "ov-12",
+      });
+    if (key === "finance_pnl")
+      return HttpResponse.json({
+        data: {
+          pnl: [
+            { subject: "收入", budget: 248, rolling: 243, diff: -5 },
+            { subject: "销售成本", budget: 207, rolling: 204, diff: -3 },
+            { subject: "毛利", budget: 41, rolling: 39, diff: -2 },
+          ],
+          gmRow: { budgetPct: 16.4, rollPct: 16.0, diffPp: -0.4 },
+          attribution: "毛利率 16.4%→16.0%（-0.4pp）：储能占比 37% 结构拉低（单价/成本未恶化）",
+          summary: "收入/成本/毛利三科目 + 毛利率 16.0%（C15）",
+        },
+        snapshotVersion: "ov-12",
+      });
     if (key === "order_fullchain") {
       // ORD 订单全链推演（mock：储能单越线财务提价）
       const so = typeof args.so === "string" && args.so ? args.so : "SO-10001";

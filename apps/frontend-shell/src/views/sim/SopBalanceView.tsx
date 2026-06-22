@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion } from "@/api/endpoints";
+import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion, runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
 import type { SopVersionVM, Workspace } from "@/api/types";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
@@ -431,6 +431,10 @@ function Step2({
   const s2 = v.steps.s2 as
     | { rows?: { key: string; name: string; target: number; rolling: number; lastActual: number; dv: number; flagged: boolean }[]; total?: { target: number; rolling: number; dv: number } }
     | undefined;
+  // SOP.1 ② 滚动 P90 列：取自需求细分 DemandSegment.p90（按细分名匹配，R-一致；缺则 —）。
+  const { data: dsegData } = useQuery({ queryKey: ["a", "objects", "DemandSegment"], queryFn: () => queryObjectsPaged("DemandSegment", 1, 20, {}) });
+  const p90ByName = new Map((dsegData?.items ?? []).map((o) => [String(o.props.segment), Number(o.props.p90)]));
+  const p90Total = [...p90ByName.values()].reduce((a, b) => a + b, 0);
   return (
     <div data-testid="sop-step2">
       {!locked && (
@@ -478,6 +482,7 @@ function Step2({
               <th>应用细分</th>
               <th>目标</th>
               <th>滚动 P50</th>
+              <th>滚动 P90</th>
               <th>上月实际</th>
               <th>滚动 vs 目标</th>
               <th>规则</th>
@@ -491,6 +496,7 @@ function Step2({
                 </td>
                 <td>{fmt(r.target)}</td>
                 <td>{fmt(r.rolling)}</td>
+                <td data-testid={`sop-p90-${r.key}`}>{p90ByName.has(r.name) ? fmt(p90ByName.get(r.name)!) : "—"}</td>
                 <td>{fmt(r.lastActual)}</td>
                 <td style={{ color: r.flagged ? "var(--danger)" : r.dv >= 0 ? "var(--ok)" : "var(--amber)", fontWeight: 700 }} data-testid={`sop-dv-${r.key}`}>
                   {r.dv > 0 ? "+" : ""}
@@ -518,6 +524,7 @@ function Step2({
                 <td>
                   <b>{fmt(s2.total.rolling)}</b>
                 </td>
+                <td data-testid="sop-p90-total">{p90Total > 0 ? <b>{fmt(p90Total)}</b> : "—"}</td>
                 <td>—</td>
                 <td>
                   <b>
@@ -587,6 +594,8 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
           </div>
         </>
       )}
+      {/* SOP.2 ③ 物料线 MRP（产能线 ∥ 物料线，C06） */}
+      <MrpTable />
     </div>
   );
 }
@@ -645,6 +654,8 @@ function Step4({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
           </div>
         </div>
       )}
+      {/* SOP.3 ④ 量价本利科目表（C15 毛利归因） */}
+      <PnlTable />
     </div>
   );
 }
@@ -681,6 +692,9 @@ function Step5({
           </div>
         );
       })}
+
+      {/* SOP.4 ⑤ 版本演进对比表（V1→V7） */}
+      <VersionCompare />
 
       {!locked && v.status !== "EXEC_MEETING" && (
         <>
@@ -732,6 +746,101 @@ function Step5({
           {zh.sim.sop.finalizeDone} —— 草稿 <span className="mono">{v.pendingApproval.draftId}</span>（{zh.sim.gotoActions}：/admin/actions）
         </div>
       )}
+    </div>
+  );
+}
+
+// ── sop 前端 1:1 增量（SOP.2/.3/.4）：物料线 MRP / 量价本利科目 / 版本演进对比，读新求解器/对象，前端零写死 ──
+
+/** SOP.2 ③ 物料线 MRP 净需求表（mrp_netting：净需求/长协覆盖/现货缺口/最早齐套，C06/C16）。 */
+function MrpTable() {
+  const { data } = useQuery({
+    queryKey: ["b", "mrp_netting"],
+    queryFn: async () => (await runSolver("mrp_netting", {})).data as { materials: { material: string; netDemand: number; ltaCoverPct: number; gap: number; earliestComplete: string }[]; shortageCount: number },
+  });
+  const mats = data?.materials ?? [];
+  return (
+    <div style={{ marginTop: 10 }} data-testid="sop-mrp">
+      <div className="section-title">物料线 · MRP 净需求（净需求 = Σ需求×BOM − 库存 − 在途，C06）</div>
+      <table className="cmp" data-testid="sop-mrp-table">
+        <thead><tr><th>物料</th><th>净需求</th><th>长协覆盖</th><th>现货缺口</th><th>最早齐套</th></tr></thead>
+        <tbody>
+          {mats.map((m) => (
+            <tr key={m.material} data-testid={`sop-mrp-row-${m.material}`}>
+              <td className="zh"><b>{m.material}</b></td>
+              <td className="mono">{fmt(m.netDemand)}</td>
+              <td className="mono">{m.ltaCoverPct}%</td>
+              <td className="mono" style={{ color: m.gap > 0 ? "var(--danger)" : "var(--ok)" }}>{m.gap > 0 ? m.gap : "—"}</td>
+              <td className="mono">{m.gap > 0 ? m.earliestComplete : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className={styles.noteInfo}>{data ? `${data.shortageCount} 种现货缺口；两瓶颈与决策推演大屏同源（C06 齐套口径）` : "加载中…"}</div>
+    </div>
+  );
+}
+
+/** SOP.3 ④ 量价本利科目表（finance_pnl：收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 结构归因，C15）。 */
+function PnlTable() {
+  const { data } = useQuery({
+    queryKey: ["b", "finance_pnl"],
+    queryFn: async () => (await runSolver("finance_pnl", {})).data as { pnl: { subject: string; budget: number; rolling: number; diff: number }[]; gmRow: { budgetPct: number; rollPct: number; diffPp: number }; attribution: string },
+  });
+  if (!data) return null;
+  return (
+    <div style={{ marginTop: 10 }} data-testid="sop-pnl">
+      <div className="section-title">量·价·本·利 科目表（预算 vs 滚动 vs 差异）</div>
+      <table className="cmp" data-testid="sop-pnl-table">
+        <thead><tr><th>科目</th><th>预算</th><th>滚动</th><th>差异</th></tr></thead>
+        <tbody>
+          {data.pnl.map((p) => (
+            <tr key={p.subject} data-testid={`sop-pnl-row-${p.subject}`}>
+              <td className="zh"><b>{p.subject}</b></td>
+              <td className="mono">{fmt(p.budget)}</td>
+              <td className="mono">{fmt(p.rolling)}</td>
+              <td className="mono" style={{ color: p.diff < 0 ? "var(--danger)" : "var(--ok)" }}>{p.diff > 0 ? "+" : ""}{fmt(p.diff)}</td>
+            </tr>
+          ))}
+          <tr data-testid="sop-pnl-gm">
+            <td className="zh"><b>毛利率</b></td>
+            <td className="mono">{data.gmRow.budgetPct}%</td>
+            <td className="mono">{data.gmRow.rollPct}%</td>
+            <td className="mono" style={{ color: data.gmRow.diffPp < 0 ? "var(--danger)" : "var(--ok)" }}>{data.gmRow.diffPp > 0 ? "+" : ""}{data.gmRow.diffPp}pp</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className={styles.noteInfo} data-testid="sop-pnl-attr">{data.attribution}</div>
+    </div>
+  );
+}
+
+/** SOP.4 ⑤ 版本演进对比表（SopVersionRow：V1/V3/V5/V7 需求/供给/缺口/备注，V7 待定稿高亮）。 */
+function VersionCompare() {
+  const { data } = useQuery({
+    queryKey: ["a", "objects", "SopVersionRow"],
+    queryFn: () => queryObjectsPaged("SopVersionRow", 1, 20, {}),
+  });
+  const rows = (data?.items ?? []).map((o) => o.props as { ver: string; date: string; demand: number; supply: number; gap: number; note: string; isFinal: boolean }).sort((a, b) => a.ver.localeCompare(b.ver));
+  if (rows.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10 }} data-testid="sop-version-compare">
+      <div className="section-title">版本演进对比（V1 → V7，缺口 = 需求 − 供给）</div>
+      <table className="cmp" data-testid="sop-version-compare-table">
+        <thead><tr><th>版本</th><th>日期</th><th>需求</th><th>供给</th><th>缺口</th><th>变化备注</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.ver} data-testid={`sop-ver-${r.ver}`} style={r.isFinal ? { background: "rgba(76,144,240,.08)", fontWeight: 600 } : undefined}>
+              <td className="mono">{r.ver}{r.isFinal ? "（待定稿）" : ""}</td>
+              <td className="mono">{r.date}</td>
+              <td className="mono">{fmt(r.demand)}</td>
+              <td className="mono">{fmt(r.supply)}</td>
+              <td className="mono" style={{ color: r.gap > 2 ? "var(--danger)" : "var(--ok)" }}>{fmt(r.gap)}</td>
+              <td className="zh">{r.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
