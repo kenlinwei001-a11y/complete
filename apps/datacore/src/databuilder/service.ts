@@ -377,10 +377,22 @@ export class DataBuilderService {
         title: "全链 HARD 门：A⊕B 闭合则真建 + 发布 + 落切片",
         run: async (c) => {
           if (!(c["aOk"] && c["bOk"])) return { skip: true, detail: "全链未闭合 → 拒发布（数据不落库）" };
-          // A18：PROVISIONAL 未审核态绝不写 GOVERNED 真值——跑到这步即视为"未审核预览产出"，built=false，
-          // 真值待人工审核→晋升 GOVERNED 才落（隔离 PROVISIONAL 数据物化为 A18.3-data 深水区，单列）。
+          // A18.3：PROVISIONAL 未审核态——**隔离物化**到伪租户 `tenant::prov::runId`（R2 天然隔离，governed
+          // 查询默认看不到），绝不写 GOVERNED 真值。该 run 的推演读这个隔离命名空间；晋升 GOVERNED 才落真值。
           if (provisional) {
-            return { detail: "PROVISIONAL 未审核态：预览产出、不写真值（晋升 GOVERNED 后落）", patch: { built: false, producedConnections: [], producedDatasets: [], provisionalPreview: true } };
+            const provNs = `${ctx.tenantId}::prov::${id}`;
+            const provCtx: AuthCtx = { ...ctx, tenantId: provNs };
+            // 把 dry_build 冻结的同一 plan 复制进隔离 NS（让 run 重放而非重解析，与 dry 字节一致 R6）。
+            const dryPlan = await getPlan(c);
+            if (dryPlan) await this.repos.buildPlans.put({ ...dryPlan, id: `bpl_${provNs}_${dryPlan.scriptHash}_${dryPlan.seed}`, tenantId: provNs });
+            const job = await this.run(provCtx, body); // 闭包 advisory(!blocked) → 重放 plan 真物化进隔离 NS
+            const producedDatasets = (await this.repos.rawDatasets.list(provNs)).map((x) => x.id);
+            const producedConnections = (await this.repos.connections.list(provNs)).map((x) => x.id);
+            const built = job.status === "SUCCEEDED";
+            return {
+              detail: `PROVISIONAL 隔离物化 ns=${provNs} built=${built} +ds=${producedDatasets.length}（不写 governed 真值）`,
+              patch: { built, producedConnections, producedDatasets, provisionalNamespace: provNs, provisionalPreview: true, closureReport: job.closure },
+            };
           }
           const plan = await getPlan(c);
           const connBefore = new Set((await this.repos.connections.list(ctx.tenantId)).map((x) => x.id));
@@ -450,6 +462,7 @@ export class DataBuilderService {
             // A18：构建模式 + 整域信任级（PROVISIONAL 建出的域强标 UNVERIFIED，绝不当真值）。
             buildMode: body.buildMode ?? "STRICT",
             domainTrustLevel: (body.buildMode ?? "STRICT") === "PROVISIONAL" ? "UNVERIFIED" : "GOVERNED",
+            ...(c["provisionalNamespace"] ? { provisionalNamespace: String(c["provisionalNamespace"]) } : {}),
             status,
             createdAt: nowIso(),
           };
@@ -945,7 +958,7 @@ export class DataBuilderService {
         return job;
       }
 
-      if (!closure.gatePassed) {
+      if (closure.blocked) {
         setPhase("gap", "SKIPPED");
         setPhase("rawin", "SKIPPED");
         setPhase("transform", "SKIPPED");

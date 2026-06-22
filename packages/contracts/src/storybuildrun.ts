@@ -307,6 +307,8 @@ export const StoryBuildRunSchema = z.object({
   buildMode: BuildModeSchema.default("STRICT"),
   /** A18：整域信任级——PROVISIONAL 建出的域为 UNVERIFIED（强标"未审核·基于临时件"，绝不当真值）。 */
   domainTrustLevel: z.enum(["GOVERNED", "UNVERIFIED"]).optional(),
+  /** A18.3：PROVISIONAL 隔离物化命名空间（伪租户 `tenant::prov::runId`；未审核数据落此，governed 查询默认不可见 R2）。 */
+  provisionalNamespace: z.string().optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
   answer: z.string().optional(),
   /** §9 归一 evidence 标记：RUNTIME_PROBE=答案经 QOS orchestrator 实跑（绿测试≠能用的活证据）；

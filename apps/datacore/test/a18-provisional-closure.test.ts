@@ -77,11 +77,20 @@ describe("A18 · 真服务 PROVISIONAL 建域（L1）", () => {
     const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "domain.provisional_built");
     expect(events.some((e) => (e.payload as { runId?: string }).runId === prov.id)).toBe(true);
 
-    // A18 解阻断 + 不写真值：PROVISIONAL 跑完为预览（SUCCEEDED），但**不写 GOVERNED 真值**（producedDatasets 空）。
-    const provFull = full as { status: string; producedDatasets: string[]; producedConnections: string[] };
+    // A18.3 隔离物化：PROVISIONAL 跑完为预览（SUCCEEDED）+ 真产数据，但落**隔离命名空间**（伪租户），governed 不可见。
+    const provFull = full as { status: string; producedDatasets: string[]; provisionalNamespace?: string; buildPlan?: { objectTypes: { typeKey: string }[] } };
     expect(provFull.status).toBe("SUCCEEDED"); // 跑完出预览，非 FAILED-全0
-    expect(provFull.producedDatasets).toEqual([]); // 未审核态不落 GOVERNED 真值
-    expect(provFull.producedConnections).toEqual([]);
+    expect(provFull.provisionalNamespace).toMatch(/::prov::/); // 隔离命名空间
+    expect(provFull.producedDatasets.length).toBeGreaterThan(0); // P1：真产数据 rows（消灭 producedDatasets=0）
+    const provNs = provFull.provisionalNamespace!;
+    // 隔离证明：数据在 provNs，governed 租户 demo 看不到这些 rawDataset
+    const provDs = await t.repos.rawDatasets.list(provNs);
+    expect(provDs.length).toBeGreaterThan(0);
+    const govDsIds = new Set((await t.repos.rawDatasets.list("demo")).map((x) => x.id));
+    expect(provDs.every((d) => !govDsIds.has(d.id))).toBe(true); // 未污染 governed 真值库
+    // 隔离命名空间里有真物化对象（该 run 推演可读）
+    const t0 = provFull.buildPlan?.objectTypes?.[0]?.typeKey;
+    if (t0) expect((await t.repos.objects.listByType(provNs, t0)).length).toBeGreaterThan(0);
 
     // STRICT（默认）：buildMode=STRICT + GOVERNED + 真建落库（行为不变，无回归）
     const strict = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 8 } })).json()) as { buildMode: string; domainTrustLevel: string; status: string; producedDatasets: string[]; verification?: { status: string } };
