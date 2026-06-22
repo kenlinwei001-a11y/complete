@@ -25,7 +25,8 @@ const GAP_DISPOSITION: Record<GapCode, { label: string; triggerable: boolean }> 
   SOLVER_NOT_FOUND: { label: "缺求解器（需开发/骨架）", triggerable: false },
   SHAPE_MISMATCH: { label: "渲染形状不匹配", triggerable: false },
   NO_CAPABILITY: { label: "缺领域能力（需开发）", triggerable: false },
-  OTHER: { label: "其他缺口", triggerable: false },
+  // OTHER（含路径 B agent 中断）：触发自成长 LOOP 做真实 classifyGap 诊断+补，再续推。
+  OTHER: { label: "未定位缺口（触发诊断）", triggerable: true },
 };
 
 export function GapCard({ report, onRetry }: { report: GapReport; onRetry?: () => void }) {

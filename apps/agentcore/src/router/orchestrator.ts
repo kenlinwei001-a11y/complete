@@ -864,6 +864,29 @@ export class Orchestrator {
   private async failTask(taskId: string, code: string, message: string): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task || ["COMPLETED", "FAILED", "CANCELLED"].includes(task.status)) return;
+    // CL.7 GF.2：路径 B agent 硬失败 → 在答案流并入结构化缺口块，对话坞渲染可点缺口卡（▶触发
+    // 自成长 LOOP 实诊断+补 → 续推），而非只剩红错叙述。闭 G-3 对话侧（诚实暴露断点）。其余路径（工作流/
+    // 校验）维持纯 FAILED。answer.final 先于 task.failed 发出 → useTaskStream 既得 gap 答案又得失败态。
+    if (task.path === "AGENT" && !task.answer) {
+      const gapAnswer: Answer = {
+        trustLevel: "AGENT_EXPLORATORY",
+        unverifiedNumerics: false,
+        provenance: [],
+        blocks: [{
+          type: "gap",
+          report: {
+            question: task.query,
+            taskId,
+            verdict: "BLOCKED",
+            path: "AGENT",
+            findings: [{ gapCode: "OTHER", evidence: `路径 B agent 推演中断（${code}）`, suggestedFill: "触发自成长 LOOP 诊断缺口并补齐后续推", blocking: true }],
+            generatedAt: new Date().toISOString(),
+          },
+        }],
+      };
+      await this.deps.repos.tasks.patch(taskId, { answer: gapAnswer });
+      await this.deps.events.emit(taskId, "answer.final", gapAnswer);
+    }
     await this.deps.repos.tasks.patch(taskId, {
       status: "FAILED",
       error: { code, message },
