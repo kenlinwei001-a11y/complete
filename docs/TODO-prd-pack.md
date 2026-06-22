@@ -1,5 +1,35 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
+> **2026-06-22 依赖排序 to-do（含 2 新 PRD：空响应护栏 / 对话坞 gap-fill）**——按"谁阻塞谁"排，✅=已就绪可接，⛔=被阻塞。
+> 已完成底座（不重列）：SPINE.1–.4 · 求解器 38（plan_rootcause/metric_rollup/counterfactual_timeline/order_fullchain/mrp_netting/finance_pnl/audit_timeline）· SopVersionRow · AUDIT.1 逐日圆点轴 · ORD 订单全链前端 · A18 全部 · cockpit P1–P3。L4 真后端 17/17。
+>
+> **W0 立即（活崩溃·根·无依赖）**
+> - [ ] **PRD-A 空响应护栏**：FIX.1 `agent/loop.ts:473` 判空 + `LlmEmptyResponseError`→R7 信封 + **定位"返回 undefined 不抛"的适配器路径补 throw**（核验:未绑定是 throw 路径，非本崩；崩在 adapter 解析 undefined）· FIX.2 `anthropic.ts` 5 处(129/158/175/194/228)+215 加固 + 错误码。修的是路径 B agent 推演（cockpit/order/audit 推演同路）。
+>
+> **W1 后端已就绪的前端（零跨依赖，可并行）**
+> - [ ] **sop 前端**（deps ✅ mrp_netting/finance_pnl/SopVersionRow）：SOP.1 ② 滚动 P90 列 · SOP.2 ③ 物料线 MRP 表 · SOP.3 ④ 量价本利科目表 · SOP.4 ⑤ 版本演进对比表。
+> - [ ] **aop 前端**（deps ✅ PlanTarget/Principal）：年度情景规划台 1:1 + 目标分解挂 Principal 责任。
+> - [ ] **cockpit P5 前端**（deps ✅ SopVersionRow/counterfactual_timeline；AI 对话依赖 W0）：V5/V7 版本切换 · 反事实双线图（counterfactual_timeline）· 回采校准链 · AI 对话 · 导出。
+>
+> **W2 需新建共享组件（audit.3 → generate，有序）**
+> - [ ] **audit.3 KsfGraph**：问题→KSF→财务指标 投影（spine KSF ✅）+ `<KsfGraph>` 组件（audit/generate 共用）+ 问题节点联动 DailyDotAxis。
+> - [ ] **generate 前端**（⛔ 依赖 audit.3 的 KsfGraph）：plan_generate 扩 radar/score → 五维雷达 + 取舍矩阵 · 复用 DailyDotAxis(✅)/KsfGraph · 外部信号敏感性 · 采纳→AOP。
+>
+> **W3 横切 + 生成器调参（planview 耦合，须同回归）**
+> - [ ] **inference-process `<InferenceProcessDag>`**（deps ✅ 推演视图 risk/order/cockpit + GapReport + QueryTask trace）：QOS 轨迹投影 + par/conv/fb 边 + 逐节点 IPO + 缺口红 + 横切挂载 ≥5 入口 + model 收敛子模式。**是 W4 PRD-B 的复用依赖**。
+> - [ ] **quarter 生成器调参 + 1:1 取值对齐 pass**：6 季精确值 + sop/aop/quarter/cockpit HTML 精确值→生成器种子（改 planview 须同回归产能推演/AOP/SOP，防漂移）。
+>
+> **W4 对话坞闭环（⛔ 依赖 W0 PRD-A + W3 inference-process）**
+> - [ ] **PRD-B 对话坞 gap-fill HITL**：GF.1 `AnswerBlock.gap` 类型 + QueryDock `<GapCard>` + 按码触发（**注:无独立 `/growth/fill-data` 端点，需改调 `/growth/run` 或加薄端点**）· GF.2 SSE 回灌 + 就地 R4 审批(复用 §6.4) + "继续推演"重跑 · GF.3 databuilder/scaffold 触发 + 诚实断点 + GrowthTicket + presetContext 闭 G-3。
+>
+> **W5 收尾/延后（低优先或高风险）**
+> - [ ] riskCases 真闭环（livedin 历史快照回算，**高风险**触 F40/replay，延后）· synthetic-wizard（ontoprompt 链 UX）· prototype-intake P3（resolve 真应用本体 + 串发动机 closure/publish）· A3 参考本体基线（元租户 95 节点，低价值）。
+>
+> **关键依赖边**：PRD-A ⊳ PRD-B（同路径 B 推演，崩溃不修则 gap-fill 走不到）· audit.3(KsfGraph) ⊳ generate · inference-process ⊳ PRD-B(过程 DAG 复用) · sop/aop/quarter 共享 planview(取值对齐须同回归)。
+
+---
+
+
 > **2026-06-22 新增包 · 参考原型全视图 1:1 复刻 + 经营骨架**（`PRD-1to1-replication.zip`，8 PRD + spine + SOP，已入 docs/）。
 > 评估结论：cockpit-capacity PRD 的 P1–P5 = 我已做的 cockpit P1–P3（结构闭环 ✅，但 1:1=100% 要求 HTML 精确值→生成器种子，
 > 我的合成值需"取值对齐"补丁）。**spine（Metric/KSF/Principal）是各视图 KPI 单一出处底座，最大改动面 → 决定先做（用户裁决）**。
