@@ -14,7 +14,7 @@
 - **触及对象类型**（本体 §2）：<如 Intent / ExecutionPlan / Solver / Connector …>
 - **触及链路**（§3）：<如 ScenarioCard→Intent→Plan→Solver→render>
 - **触及事件/数据流**（§4）：<新增或改动的领域事件 + 下游订阅；遵守 D-29>
-- **触及不变量**（§5，R1–R15）：<本变更如何满足 tenant_id / entitlement 先于 authz / 真值经 Action / 确定性 / 全链闭包 R11 / 应用层无业务常数 R14 / **CLI 对等 R15** …>
+- **触及不变量**（§5，R1–R16）：<本变更如何满足 tenant_id / entitlement 先于 authz / 真值经 Action / 确定性 / 全链闭包 R11 / 应用层无业务常数 R14 / **CLI 对等 R15** / **发育闭环 R16**（产物三环自动闭合 + AUTO-DERIVE/NEEDS-HUMAN 二分处置）…>
 - **CLI 打通（R15，强制）**：<本功能是否对外模块能力？若是，其 **CLI 等价命令**（注册进 `OPERATION_CATALOG`，复用同一 REST/R3/R4/事件）= ？；纯 GUI-only 须在此声明理由。详 `PRD-A15-cli-universal-operation-shell.md`。>
 - **关闭/影响的已知断点**（§8）：<G-1…G-8 中本 PRD 解决或触及哪些>
 - **需走的检测门禁**（§7）：<闭包门 / validate / 准备度 / A6 / VLE / 断链审计 / **cli-parity:check（R15）**>
