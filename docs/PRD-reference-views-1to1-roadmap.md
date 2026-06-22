@@ -50,10 +50,11 @@
 - 含《本体引用与影响》§0；过 `prd:check`。
 - **1:1 = 结构/功能/UI/交互对齐 + 数据走管线**（R14 零写死、R6 确定）；**保留系统超集**（活求解器/真规则/Action 审批/溯源）。
 - 逐项 gap 表（HTML↔系统，带 file:line）+ DoD parity 勾验 + FDE 亲手跑。
-- §需确认：1:1 尺度（A 对齐结构口径·数值走活管线 / B 逐字对齐演示值）——默认 A。
+- **1:1 尺度 = 100%**（结构/功能/数据值/交互逐项对齐，唯色调/字体可调；见 §0）——各子 PRD 不再单留尺度确认。
 
 ## 4. 状态
-- ✅ aop 子 PRD 已出。⬜ sop/quarter/audit/generate/order + 推演过程增强 待写（评审/确认尺度后逐个产）。
-- 横切决定（story/model=增强、generate=方案生成）已固化于本文 §0。
+- ✅ 已出子 PRD：**aop（年度情景规划台）· audit（规划体检·含时序推演交互 1:1）**。
+- ⬜ 待写：sop · quarter · generate（方案生成）· order（项目推演，model 融入）· 推演过程展示增强（story+model）。
+- 横切决定（story/model=增强、generate=方案生成、1:1=100% 色字可调）已固化于本文 §0。
 
 > 基线分支：各子 PRD 实现前定准 wizardly-gauss vs vigilant-knuth（涉前端+生成器+契约）。
