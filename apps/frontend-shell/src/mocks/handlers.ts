@@ -798,6 +798,11 @@ export const handlers = [
     if (key === "capacity_forecast")
       return HttpResponse.json({ data: { p50: 21.4, p90: 18.9, gap: -1.2, ok: false, healthFactor: 0.93, mainBn: "化成柜", perBaseRows: [], pendingCertList: [] }, snapshotVersion: "ov-12" });
     if (key === "affected_orders") return HttpResponse.json({ data: affectedOrdersOutput(), snapshotVersion: "ov-12" });
+    if (key === "counterfactual_timeline") {
+      const baseline = Array.from({ length: 30 }, (_, d) => Math.min(97, Math.round(60 + d * 1.2)));
+      const mitigated = baseline.map((v, d) => Math.max(40, Math.round(v - 10 * Math.min(1, Math.max(0, (d - 21) / 7)))));
+      return HttpResponse.json({ data: { baselineSeries: baseline, mitigatedSeries: mitigated, threshold: 85, base: "常州", factor: "瓶颈工序", mitigation: "瓶颈工序扩容", delta: { peakCut: Math.max(...baseline) - Math.max(...mitigated), crossDelayDays: 3, ordersSaved: 4 }, events: [], summary: "反事实双轨" }, snapshotVersion: "ov-12" });
+    }
     if (key === "mitigation_select")
       // cockpit P3 对症方案优选（与 params.risk.mitigations 同源形状）
       return HttpResponse.json({
@@ -1635,6 +1640,18 @@ export const handlers = [
       // §S1.5 扩展输出：summary + rows + problems[]（4 类归并 + rootChains）
       const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;
       return HttpResponse.json({ data: affectedOrdersOutput(base), snapshotVersion: "ov-12" });
+    }
+    if (key === "counterfactual_timeline") {
+      const baseline = Array.from({ length: 30 }, (_, d) => Math.min(97, Math.round(60 + d * 1.2)));
+      const mitigated = baseline.map((v, d) => Math.max(40, Math.round(v - 10 * Math.min(1, Math.max(0, (d - 21) / 7)))));
+      return HttpResponse.json({
+        data: {
+          baselineSeries: baseline, mitigatedSeries: mitigated, threshold: 85, base: "常州", factor: "瓶颈工序", mitigation: "瓶颈工序扩容",
+          delta: { peakCut: Math.max(...baseline) - Math.max(...mitigated), crossDelayDays: 3, ordersSaved: 4 },
+          events: [], summary: "如不解决「常州·瓶颈工序」：峰值削减、越线日推迟 3 天",
+        },
+        snapshotVersion: "ov-12",
+      });
     }
     if (key === "mrp_netting")
       return HttpResponse.json({

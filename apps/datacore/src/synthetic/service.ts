@@ -986,6 +986,18 @@ export class SyntheticService {
           query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
           provenance: { toolName: "invoke_solver", outputPath: "$.dag", label: "plan_rootcause：经营 KPI 越线沿归因模板逐层取证（贡献=活数据聚合）" },
         },
+        // cockpit P5：S&OP 版本切换（V1/V3/V5/V7，SopVersionRow；选版本看供给/缺口/备注，R14 零写死）。
+        {
+          key: "version-toggle", type: "version-toggle", title: "S&OP 版本切换（V5/V7）", span: 1, featureKey: "view.dash.widget.version",
+          query: { kind: "objects", objectType: "SopVersionRow", limit: 20 },
+          provenance: { toolName: "query_objects", outputPath: "$.items", label: "SopVersionRow 版本演进（gap=demand−supply 派生）" },
+        },
+        // cockpit P5：反事实双轨推演（"如不解决 XX 未来 N 天"，counterfactual_timeline → baseline ‖ mitigated 双曲线 + 差值）。
+        {
+          key: "counterfactual", type: "counterfactual", title: "反事实双轨推演（如不解决会怎样）", span: 2, featureKey: "view.dash.widget.counterfactual",
+          query: { kind: "solver", solverKey: "counterfactual_timeline", args: { horizon: 30 } },
+          provenance: { toolName: "invoke_solver", outputPath: "$", label: "counterfactual_timeline：do-nothing vs 处置后双曲线 + 峰值削减/越线日推迟" },
+        },
         {
           key: "oee-trend", type: "chart", title: "OEE 14 日趋势", span: 2, chartKind: "line",
           query: { kind: "timeseries", seriesKey: "oee:equip", entityIds: [], grain: "day", agg: "avg", days: 14 },

@@ -302,6 +302,17 @@ const DASH_LAYOUT = {
       query: { kind: "solver", solverKey: "affected_orders", args: {} },
       provenance: { toolName: "affected_orders", outputPath: "$.problems", label: "受影响订单按类别归并（交期/毛利/齐套/信用）" },
     },
+    // cockpit P5：S&OP 版本切换（SopVersionRow）+ 反事实双轨推演（counterfactual_timeline）
+    {
+      key: "version-toggle", type: "version-toggle", title: "S&OP 版本切换（V5/V7）", span: 1,
+      query: { kind: "objects", objectType: "SopVersionRow", limit: 20 },
+      provenance: { toolName: "query_objects", outputPath: "$.items", label: "SopVersionRow 版本演进" },
+    },
+    {
+      key: "counterfactual", type: "counterfactual", title: "反事实双轨推演（如不解决会怎样）", span: 2,
+      query: { kind: "solver", solverKey: "counterfactual_timeline", args: { horizon: 30 } },
+      provenance: { toolName: "invoke_solver", outputPath: "$", label: "counterfactual_timeline 双曲线" },
+    },
   ],
 };
 

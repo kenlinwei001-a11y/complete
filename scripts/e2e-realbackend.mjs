@@ -14,12 +14,12 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）18 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+// 断言（真后端真数据，区别于 mock 写死值）19 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
 //   cockpit P3 风险对症方案→工单 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 /
 //   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / A18.4 整域晋升编排 / nav-reorg 业务域分组 /
 //   A14 evals parity 失因列 / A18.4 审核台。
 // 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 9/9 通过（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
-//   cockpit P1+P2+P3 + SPINE.4 + AUDIT.1 + ORD + SOP前端 + A18.4 扩为 18 项。
+//   cockpit P1+P2+P3 + SPINE.4 + AUDIT.1 + ORD + SOP前端 + cockpit P5 + A18.4 扩为 19 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -66,6 +66,14 @@ try {
   mstrip > 0 && mcards > 0
     ? ok(`SPINE.4 真后端：经营指标条（Metric 单一出处 R-一致）${mcards} 卡真浏览器渲染（metric_rollup 对齐目标树算 delta/miss）`)
     : bad(`SPINE.4 真后端：经营指标条缺失（strip=${mstrip} cards=${mcards}）`);
+  // cockpit P5 驾驶舱：V5/V7 版本切换（SopVersionRow）+ 反事实双轨双线图（counterfactual_timeline）
+  await page.waitForTimeout(1200);
+  const verToggle = await page.locator("[data-testid=version-toggle]").count();
+  const cfWidget = await page.locator("[data-testid=cf-widget]").count();
+  const cfChart = await page.locator("[data-testid=cf-chart]").count();
+  verToggle > 0 && cfWidget > 0 && cfChart > 0
+    ? ok("cockpit P5 真后端：V5/V7 版本切换 + 反事实双轨双线图真浏览器渲染（SopVersionRow + counterfactual_timeline）")
+    : bad(`cockpit P5 真后端：P5 widget 缺失（ver=${verToggle} cf=${cfWidget} chart=${cfChart}）`);
 
   // cockpit P3 风险看板补全 · 对症方案→工单（L4 真后端）：风险卡 → 详情弹窗 → mitigation_select 方案表 + 采纳→工单按钮
   await page.click('a[href="/v/risk"]').catch(() => {});

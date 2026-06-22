@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
 import type { DashboardWidgetDef, WidgetQueryDef } from "@/api/types";
@@ -126,6 +127,10 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
         <ProvenanceDag data={data as DagData | undefined} />
       ) : def.type === "metric-strip" ? (
         <MetricStrip metrics={data as MetricRow[] | undefined} />
+      ) : def.type === "counterfactual" ? (
+        <CounterfactualWidget data={data as CounterfactualData | undefined} />
+      ) : def.type === "version-toggle" ? (
+        <VersionToggleWidget data={data as { items?: { props: Record<string, unknown> }[] } | undefined} />
       ) : (
         <TableWidget data={data} columns={(def.query as { columns?: string[] }).columns} />
       )}
@@ -151,6 +156,62 @@ function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** cockpit P5 反事实双轨推演：counterfactual_timeline → do-nothing baseline ‖ 处置后 双曲线 + 差值（前端零写死）。 */
+type CounterfactualData = { baselineSeries: number[]; mitigatedSeries: number[]; threshold: number; base: string; factor: string; mitigation: string; delta: { peakCut: number; crossDelayDays: number; ordersSaved: number } };
+function CounterfactualWidget({ data }: { data: CounterfactualData | undefined }) {
+  if (!data) return <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>;
+  const days = data.baselineSeries.map((_, i) => `D+${i}`);
+  return (
+    <div data-testid="cf-widget">
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>
+        {data.base}·{data.factor}：不解决 vs「{data.mitigation}」—— 峰值削减 <b className="mono" data-testid="cf-peakcut">{data.delta.peakCut}</b> · 越线日推迟 <b className="mono">{data.delta.crossDelayDays}</b> 天 · 少越线 <b className="mono">{data.delta.ordersSaved}</b> 日
+      </div>
+      <EChart
+        height={180}
+        testId="cf-chart"
+        option={{
+          grid: { top: 24, bottom: 24, left: 36, right: 12 },
+          legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 10 }, data: ["不解决", "处置后"] },
+          tooltip: { trigger: "axis" },
+          xAxis: { type: "category", data: days },
+          yAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+          series: [
+            { name: "不解决", type: "line", smooth: true, data: data.baselineSeries, itemStyle: { color: "#DD7E9E" } },
+            { name: "处置后", type: "line", smooth: true, data: data.mitigatedSeries, itemStyle: { color: "#62BE77" } },
+            { name: "阈值", type: "line", data: data.baselineSeries.map(() => data.threshold), lineStyle: { type: "dashed", color: "#E8B54A", width: 1 }, symbol: "none" },
+          ],
+        }}
+      />
+    </div>
+  );
+}
+
+/** cockpit P5 S&OP 版本切换（V1/V3/V5/V7，SopVersionRow）：选版本看供给/缺口/备注。 */
+function VersionToggleWidget({ data }: { data: { items?: { props: Record<string, unknown> }[] } | undefined }) {
+  const rows = (data?.items ?? []).map((o) => o.props as { ver: string; demand: number; supply: number; gap: number; note: string; isFinal: boolean }).sort((a, b) => String(a.ver).localeCompare(String(b.ver)));
+  const [sel, setSel] = useState<string>(rows.find((r) => r.isFinal)?.ver ?? rows[rows.length - 1]?.ver ?? "");
+  const cur = rows.find((r) => r.ver === sel);
+  if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  return (
+    <div data-testid="version-toggle">
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {rows.map((r) => (
+          <button key={r.ver} data-testid={`ver-chip-${r.ver}`} className="badge" onClick={() => setSel(r.ver)}
+            style={{ cursor: "pointer", background: r.ver === sel ? "#4C90F0" : undefined, color: r.ver === sel ? "#fff" : undefined }}>
+            {r.ver}{r.isFinal ? "·待定稿" : ""}
+          </button>
+        ))}
+      </div>
+      {cur && (
+        <div style={{ marginTop: 6, fontSize: 12 }} data-testid="version-detail">
+          供给 <b className="mono">{cur.supply}</b> · 缺口 <b className="mono" style={{ color: cur.gap > 2 ? "var(--danger)" : "var(--ok)" }}>{cur.gap}</b> 万套
+          <div style={{ fontSize: 11, color: "var(--muted)" }}>{cur.note}</div>
+        </div>
+      )}
     </div>
   );
 }
