@@ -431,6 +431,24 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-attribution-routing-plan-audit.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/plan.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-build-workflow-runtime.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1061,6 +1079,7 @@
     "G-3": [
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-agent-data-generation-tools.md",
+      "PRD-attribution-routing-plan-audit.md",
       "PRD-discover-real-type-names.md",
       "PRD-empty-tenant-bootstrap.md",
       "PRD-fde-fullstack-build-workflow.md",
@@ -1194,6 +1213,7 @@
   "byArtifact": {
     "apps/agentcore/src/router/orchestrator.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-attribution-routing-plan-audit.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-scenario-launcher.md"
     ],
@@ -1253,6 +1273,18 @@
     "packages/contracts/src/timeseries.ts": [
       "PRD-attainment-base-daily-timeseries.md"
     ],
+    "apps/agentcore/src/tools/executor.ts": [
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-discover-real-type-names.md"
+    ],
+    "apps/datacore/src/catalog.ts": [
+      "PRD-attribution-routing-plan-audit.md"
+    ],
+    "apps/datacore/src/solvers/plan.ts": [
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
     "apps/datacore/migrations/023_build_workflow_runs.sql": [
       "PRD-build-workflow-runtime.md"
     ],
@@ -1282,9 +1314,6 @@
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
-    ],
-    "apps/agentcore/src/tools/executor.ts": [
-      "PRD-discover-real-type-names.md"
     ],
     "packages/contracts/src/meta-ontology.ts": [
       "PRD-dogfooding-self-ontology.md"
@@ -1346,10 +1375,6 @@
     ],
     "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": [
       "PRD-order-project-sim-1to1.md"
-    ],
-    "apps/datacore/src/solvers/plan.ts": [
-      "PRD-plan-audit-1to1.md",
-      "PRD-plan-generate-1to1.md"
     ],
     "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": [
       "PRD-plan-audit-1to1.md"

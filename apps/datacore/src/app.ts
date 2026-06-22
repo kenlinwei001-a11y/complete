@@ -1943,7 +1943,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // entitlement first (404 FEATURE_NOT_FOUND), then authz/execution
     await requireFeatureTag(req, "solverKeys", solverKey);
     const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
-    return ontology.invokeSolver(ctx(req), solverKey, body.args);
+    let args = body.args;
+    // CL.6（PRD-attribution-routing-plan-audit）：plan_audit 入参三级兜底——缺数值入参时自动取
+    // currentPlanVersion（其本身再 ?? PlanTarget/场景包基线确定性派生，sop.ts:419），使"未达成原因/
+    // 达成率归因"问句直达 plan_audit 出 X01–X05，agent 不因"无 plan_version_id"而放弃（R6 确定）。
+    if (solverKey === "plan_audit") {
+      const required = ["dem", "seg_pas", "seg_ess", "seg_com", "sup", "ltaCov", "kitGap", "gmTarget", "cashCushion", "capex"];
+      if (!required.every((k) => typeof args[k] === "number")) {
+        const cur = await sop.currentPlanVersion(ctx(req));
+        args = { ...cur.input, ...args }; // 基线兜底 + 显式 args 覆盖
+      }
+    }
+    return ontology.invokeSolver(ctx(req), solverKey, args);
   });
   app.post("/a/v1/derivations/run", async (req, reply) => {
     const run = await ontology.runDerivations(ctx(req));
