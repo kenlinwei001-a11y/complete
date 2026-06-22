@@ -328,6 +328,15 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-IND-audit.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/PlanAuditView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-IND-dash.md": {
       "hasOntologyRef": false,
       "invariants": [],
@@ -1740,6 +1749,10 @@
       "PRD-IND-aop.md",
       "PRD-aop-annual-scenario-1to1.md"
     ],
+    "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": [
+      "PRD-IND-audit.md",
+      "PRD-plan-audit-1to1.md"
+    ],
     "apps/frontend-shell/src/api/types.ts": [
       "PRD-IND-dash.md",
       "PRD-IND-sop.md"
@@ -1883,9 +1896,6 @@
     ],
     "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": [
       "PRD-order-project-sim-1to1.md"
-    ],
-    "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": [
-      "PRD-plan-audit-1to1.md"
     ],
     "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": [
       "PRD-plan-audit-1to1.md"
