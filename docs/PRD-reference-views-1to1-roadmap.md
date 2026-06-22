@@ -24,7 +24,7 @@
 | risk·产能推演 | risk-board(RiskBoardView) | ✅ 已复刻 | cockpit PRD |
 | map·业务建模映射表 | OntologyGraphView/MappingOverlay | ✅ 有 | 借鉴即可 |
 | **aop·年度情景规划台** | annual-scenario | ◐ 有差异 | **子 PRD ✅ `PRD-aop-annual-scenario-1to1.md`** |
-| **sop·月度 S&OP** | sop-balance(SopBalanceView) | ◐ 有差异 | 子 PRD 待写 |
+| **sop·月度 S&OP** | sop-balance(SopBalanceView) | ◐ 有差异 | **子 PRD ✅ `PRD-sop-balance-1to1.md`** |
 | **quarter·季度滚动看板** | quarterly-rolling | ◐ 有差异 | 子 PRD 待写 |
 | **audit·规划体检** | plan-audit(PlanAuditView) | ◐ 有差异 | **子 PRD ✅ `PRD-plan-audit-1to1.md`** |
 | **generate·规划建议（=方案生成）** | plan-generate(PlanGenerateView) | ◐ 有差异 | **子 PRD ✅ `PRD-plan-generate-1to1.md`** |
@@ -37,7 +37,7 @@
 | # | 子 PRD | 视图 | 状态 |
 |---|---|---|---|
 | 1 | `PRD-aop-annual-scenario-1to1.md` | aop 年度情景规划台 | ✅ 已出 |
-| 2 | `PRD-sop-balance-1to1.md` | sop 月度 S&OP（规划脊柱核心） | ⬜ |
+| 2 | `PRD-sop-balance-1to1.md` | sop 月度 S&OP（规划脊柱核心） | ✅ 已出 |
 | 3 | `PRD-quarter-rolling-1to1.md` | quarter 季度滚动看板 | ⬜ |
 | 4 | `PRD-plan-audit-1to1.md` | audit 规划体检（含时序推演交互 1:1） | ✅ 已出 |
 | 5 | `PRD-plan-generate-1to1.md` | generate 规划建议/方案生成 | ✅ 已出 |
@@ -53,8 +53,8 @@
 - **1:1 尺度 = 100%**（结构/功能/数据值/交互逐项对齐，唯色调/字体可调；见 §0）——各子 PRD 不再单留尺度确认。
 
 ## 4. 状态
-- ✅ 已出子 PRD：**aop（年度情景规划台）· audit（规划体检·含时序推演交互 1:1）· generate（规划建议/方案生成·复用 audit 时序+KSF）**。
-- ⬜ 待写：sop · quarter · order（项目推演，model 融入）· 推演过程展示增强（story+model）。
+- ✅ 已出子 PRD：**aop（年度情景规划台）· sop（月度 S&OP）· audit（规划体检·含时序推演交互 1:1）· generate（规划建议/方案生成·复用 audit 时序+KSF）**。
+- ⬜ 待写：quarter（季度滚动看板）· order（项目推演，model 融入）· 推演过程展示增强（story+model）。
 - 横切决定（story/model=增强、generate=方案生成、1:1=100% 色字可调）已固化于本文 §0。
 
 > 基线分支：各子 PRD 实现前定准 wizardly-gauss vs vigilant-knuth（涉前端+生成器+契约）。
