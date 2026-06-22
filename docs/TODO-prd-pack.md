@@ -11,7 +11,7 @@
 > - [x] CL.4 ✅ **空租户冷启动引导**（PRD-empty-tenant-bootstrap｜BS.1–.3）：`POST /a/v1/bootstrap` 编排端点串 7 步（合成 seed 计划域→核对物化→建 SopVersion→五步法→定稿 FINAL 走 R4→核对 currentPlanVersion→plan_audit 有料），幂等确定（R6）；CLI `platform bootstrap` + GUI 空态向导 + agent 工具组合三面同源。**注：与既有 `bootstrap.ts`(platform_admin 超管创建)无关，是新的计划域冷启动**。deps CL.1+CL.2。闭 G-3 冷启动入口。
 > - [x] CL.5 ✅ **基地级日达成率时序**（PRD-attainment-base-daily-timeseries｜TS.1/.2）：补 `attainment:base`（基地级日序，建议复用 `attainment:line` 日上卷 TsAgg → `Base.attainment_daily`，加权 by output）；达成率口径接 `Metric{achievement,day}`（spine，R-一致）；seed/lived-in 一并产。deps spine ✅。供"逐日时间维度归因"。
 > - [x] CL.6 ✅ **达成率/偏差归因路由**（PRD-attribution-routing-plan-audit｜AR.1/.2）：comprehend/classify 关键词（达成率归因/未达成原因/偏差根因）→ `plan_audit`；`discover` 暴露 plan_audit 为归因入口；plan_audit 入参三级兜底 `plan_version_id ?? currentPlanVersion ?? deriveBaseline(PlanTarget)`（solvers.ts:170 已支持，补到调用/agent 路径）；配 CL.5 日序做逐日归因；真空→结构化缺口提示引导。deps CL.4+CL.5。闭 G-3 路由接缝。
-> - [ ] CL.7 **对话坞 gap-fill HITL** = **既有 W4**（PRD-in-dialog-gap-fill-loop）：deps CL.2+CL.4。**端到端闭合收口**（缺口卡→触发产数据→反馈→续推）。
+> - [◐] CL.7 **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：**GF.1 前端+契约已落** ✅——`AnswerBlock.gap` 类型 + `<GapCard>`（缺口码+人话+按码▶触发[复用 growth/run LOOP]+CONVERGED 续推+诚实断点工单深链）+ onRetry 透传 + mock 双路 + 测 ×2。**余 GF.2/GF.3**：orchestrator 命中缺口自动并入 gap 块（需谨慎启发式，防 288 agentcore 回归）+ SSE 进度回灌深度 + 就地 R4 审批面板。
 >
 > **独立新增件（非 CL 链）**
 > - [ ] **nav-ia-reorg 余项**（PRD-nav-ia-reorg｜N1–N3）：admin 区分组 `groupAdminPages` **已做**（f40/f61）；**余**：业务+admin 合一套域分组（现仍"业务/管理"两堆）· 图谱并入建模组 · meta 补回 · 字号父级≥子级（3 处 CSS）。纯前端 IA，低风险低优先。
