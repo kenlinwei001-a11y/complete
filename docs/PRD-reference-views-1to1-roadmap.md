@@ -13,7 +13,9 @@
 - **story(编排推演 DAG) + model(型号产能推演) = 横切增强，不做独立导航**（用户裁决）：融入**每个推演入口**作为"推演过程展示"增强——model=型号驱动可产网络收敛（融入项目推演/产能推演）；story=11 步可追溯过程 DAG（融入任意推演答案/过程面板，与 A5 FDE 节点图同源）。单列一份"推演过程展示增强"PRD，不占导航。
 - **命名映射**：HTML `generate`(规划建议) = 系统 `plan-generate`(**规划建议 / 方案生成**，同一视图，registry.ts:29 已映射)。
 - **图谱族**（all/flow/source/solver/agent/loop/backbone/mvp/map）：已坍缩进 `OntologyGraphView`（colorBy/focusId + MappingOverlay）→ **不逐个复刻**，仅借鉴各 preset 叙事高亮（按需小增强）。
-- **数据铁律**：每个 1:1 复刻数据走管线（合成→物化→派生/求解器→渲染），前端零写死（R14）；系统已强于 HTML 处**保留超集**，不退回静态 demo。
+- **1:1 尺度 = 100%（用户裁决 2026-06-21，全局）**：**结构/功能/数据值/交互 逐项 100% 对齐 HTML**；**唯色调(配色)与字体可调**。即 HTML 的精确演示数值/字符串/逐项交互都要还原——但**不在前端写死**，而是把这些值作为**电池域生成器种子配置**产出（R14/R6，数据仍走管线）。这把各子 PRD §9 的"1:1 尺度"统一定为**严格档**（原 A/B 选择作废，取 B+色字可调）。
+- **数据铁律**：每个 1:1 复刻数据走管线（合成→物化→派生/求解器→渲染），前端零写死（R14）。
+- **系统超集处置**：系统已强于 HTML 的活能力（活求解器/真规则/Action 审批/溯源）**保留为底层实现**——只要**可见的数值/结构/交互与 HTML 100% 一致**即可（活算出来的数=HTML 的数）；系统独有的额外 UI 元素（如 finalize 按钮、项目测算 C1 行）默认**收为不破坏 1:1 基线的附加增强**（可隐藏/次级呈现）。若你要"绝不多于 HTML"，在子 PRD 标注即可。
 
 ## 1. 全视图覆盖图谱（19 视图）
 | HTML view·label | 系统对应 | 状态 | 处置 |
@@ -24,7 +26,7 @@
 | **aop·年度情景规划台** | annual-scenario | ◐ 有差异 | **子 PRD ✅ `PRD-aop-annual-scenario-1to1.md`** |
 | **sop·月度 S&OP** | sop-balance(SopBalanceView) | ◐ 有差异 | 子 PRD 待写 |
 | **quarter·季度滚动看板** | quarterly-rolling | ◐ 有差异 | 子 PRD 待写 |
-| **audit·规划体检** | plan-audit(PlanAuditView) | ◐ 有差异 | 子 PRD 待写 |
+| **audit·规划体检** | plan-audit(PlanAuditView) | ◐ 有差异 | **子 PRD ✅ `PRD-plan-audit-1to1.md`** |
 | **generate·规划建议（=方案生成）** | plan-generate(PlanGenerateView) | ◐ 有差异 | 子 PRD 待写 |
 | **order·项目推演** | order-chain(OrderChainView) | ◐ 有差异 | 子 PRD 待写（model 融入此处） |
 | story·编排推演 DAG | —（A5/QOS DAG block） | ➡ 横切增强 | 并入"推演过程展示增强"PRD |
@@ -37,7 +39,7 @@
 | 1 | `PRD-aop-annual-scenario-1to1.md` | aop 年度情景规划台 | ✅ 已出 |
 | 2 | `PRD-sop-balance-1to1.md` | sop 月度 S&OP（规划脊柱核心） | ⬜ |
 | 3 | `PRD-quarter-rolling-1to1.md` | quarter 季度滚动看板 | ⬜ |
-| 4 | `PRD-plan-audit-1to1.md` | audit 规划体检 | ⬜ |
+| 4 | `PRD-plan-audit-1to1.md` | audit 规划体检（含时序推演交互 1:1） | ✅ 已出 |
 | 5 | `PRD-plan-generate-1to1.md` | generate 规划建议/方案生成 | ⬜ |
 | 6 | `PRD-order-project-sim-1to1.md` | order 项目推演（model 融入） | ⬜ |
 | 7 | `PRD-inference-process-enhancement.md` | **推演过程展示增强**（story DAG + model 收敛网络，融入各推演入口） | ⬜ |
