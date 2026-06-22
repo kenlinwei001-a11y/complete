@@ -18,6 +18,7 @@
     "floor-semantics:check": "pnpm --filter datacore exec vitest run test/a13-field-roles.test.ts",
     "cli-parity:check": "node scripts/check-cli-parity.mjs",
     "provisional-honesty:check": "pnpm --filter datacore exec vitest run test/a18-provisional-closure.test.ts",
+    "e2e:realbackend": "bash scripts/run-l4-realbackend.sh",
     "gates": "node scripts/check-system-ontology.mjs && node scripts/check-chain-closure.mjs && node scripts/check-debattery.mjs && node scripts/check-prd-ontology.mjs && node scripts/check-prd-coverage.mjs && node scripts/check-meta-sync.mjs && node scripts/check-cli-parity.mjs",
     "lint": "pnpm -r lint",
     "ontology:check": "node scripts/check-system-ontology.mjs",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^9.39.4",
+    "playwright-core": "^1.61.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.61.0",
     "vitest": "^3.2.6"

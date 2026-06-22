@@ -66,7 +66,7 @@ L6 R6 确定性：[✅/N/A]   L7 R2 隔离：[✅/N/A]   L8 VLE：[✅/N/A]
   （上轮 2026-06-21 为 505/265/183；本会话 +A1/A5/A7/A10/A14/A12/A15/prototype-intake/A18.1/nav-reorg 各层测试见 §8 登记。）
 - 强的地方：L1 后端 inject 覆盖广；L0/L6/L7 在新功能上到位；L2 跨服务冒烟在 A1(MCP 注册表 31)/A12(真起双服务 curl) 真连；L5 CP-SAT 真 ortools 跑通；门齐全（+ `cli-parity:check`/`provisional-honesty:check`）。
 - **已知缺口（= DEBT-ledger，必须排期）**：
-  - **A16/L4（本会话扩大）**：`scripts/e2e-realbackend.mjs` L4 真后端 E2E 仅覆盖**旧页**（登录/A4 真计数/A11 归类/工作流+比对现状，实跑 4/4 通过）；**本会话新增前端组件**（A5 `<FdeGraph>` / A7 scaffold 表 / A10 `<VerificationPanel>` / A14 parity 列 / nav-reorg 分组）**只到 L3(jsdom+MSW)，L4 真浏览器未跑** → 受影响项已由 ✅ 降 ◐（TODO 2026-06-22 修正）。Playwright 未装（chromium 已缓存，缺 `playwright-core` 绑定）；待装 + 扩 e2e 脚本覆盖新组件，或拍板进 CI/夜间。
+  - **A16/L4（2026-06-22 已补实）**：`scripts/e2e-realbackend.mjs` 扩到 **9 项**覆盖本会话新组件（A5 FDE 8 节点 / A7 scaffold 清单 / A10 重跑验证→徽章 / A14 parity 列 / nav-reorg 分组），`scripts/run-l4-realbackend.sh` 一键编排 + 真 Chromium **9/9 通过**（playwright-core 1.61 装好、ms-playwright chromium 缓存）→ 5 项回 ✅。**余**：未进 CI `pnpm test`（起三进程 + chromium，重；`pnpm e2e:realbackend` 本地/夜间跑）；A14 真 Kimi parity 实跑仍 env-gated 未执行。
   - **A8/L2**：CP-SAT 代理(L1 mock) 与真 Python(L5) **未端到端连**（缺跨服务冒烟）。
   - **A15/L9（本会话扩大）**：新工作流/provisioner/规划器/异步执行 + 本会话新增（FDE 投影/intake 解析/双模闭包/operation-classify）**无规模压测**。
   - pg 仓储仅靠 R9 双实现约定，未逐功能 L1 跑 pg 路径。
@@ -108,15 +108,17 @@ VITE_MOCK=1 pnpm --filter frontend-shell dev   # mock 模式
 | 功能 | L0 纯函数 | L1 后端inject | L2 跨服务 | L3 前端(jsdom+MSW) | L4 真浏览器 | L6 R6 | L7 R2 | 门 | 状态 |
 |---|---|---|---|---|---|---|---|---|---|
 | **A1** 求解器→MCP | parse helpers | ✅ a1-solvers-mcp×3 | ✅ xservice-smoke(真AC↔真DC,31) | — | — | ✅ registry===SOLVER_KEYS | — | ✅ | ✅ |
-| **A5** FDE 节点图 | ✅ a5(投影×6) | ✅ a5(真服务+端点+事件) | — | ✅ f58 | **⬜欠** | ✅ | ✅ | ✅ | ◐(L4) |
-| **A7** scaffold 单机可见 | ✅ a7(buildRecord) | ✅ a7(单机+reconcile+事件) | — | ✅ f59 | **⬜欠** | ✅(R6 结构) | ✅ | ✅ | ◐(L4) |
-| **A10** 终态闭环验证 | — | ✅ a10×5 | — | ✅ f60 | **⬜欠** | — | ✅ | ✅ | ◐(L4) |
-| **A14** evals parity | ✅ classifyFailKind | ✅ a14×3 | — | ✅ f43(parity列) | **⬜欠** | — | — | ✅ | ◐(L4+真Kimi env-gated未跑) |
+| **A5** FDE 节点图 | ✅ a5(投影×6) | ✅ a5(真服务+端点+事件) | — | ✅ f58 | ✅ **真后端**(e2e 8节点) | ✅ | ✅ | ✅ | ✅ |
+| **A7** scaffold 单机可见 | ✅ a7(buildRecord) | ✅ a7(单机+reconcile+事件) | — | ✅ f59 | ✅ **真后端**(e2e 清单) | ✅(R6 结构) | ✅ | ✅ | ✅ |
+| **A10** 终态闭环验证 | — | ✅ a10×5 | — | ✅ f60 | ✅ **真后端**(e2e 重跑验证→徽章) | — | ✅ | ✅ | ✅ |
+| **A14** evals parity | ✅ classifyFailKind | ✅ a14×3 | — | ✅ f43(parity列) | ✅ **真后端**(e2e parity 列) | — | — | ✅ | ✅(真Kimi env-gated 未跑→DEBT) |
 | **A12** 模块 hand-run | — | — | ✅ **真起双服务 curl**(非browser) + xservice +1 | — | ◐(curl 非 Playwright) | — | — | ✅ | ✅(审计) |
 | **A15** operation-classify | ✅ a15×7 | ✅ a15(端点) | — | — | — | ✅ 确定性 | — | ✅ cli-parity | ◐(handlers A15.2-4 未做) |
 | **prototype-intake** | ✅ ×5(解析/对账/R6) | ✅ ×2(端点+事件) | — | — (P3 未做) | — | ✅ 字节锁 | ✅ | ✅ | ◐(P2-HITL/P3) |
 | **A18.1** 双模闭包 | ✅ ×3(STRICT/PROV/诚实门) | ✅ ×1(真服务) | — | — | — | ◐(冻结语义,sandbox 未做) | ✅ | ✅ provisional-honesty | ◐(A18.2-4) |
-| **nav-reorg** 导航分组 | groupAdminPages(在 f61) | — (纯前端) | — | ✅ f61×3 | **⬜欠** | — | — | ✅ debattery | ◐(L4) |
+| **nav-reorg** 导航分组 | groupAdminPages(在 f61) | — (纯前端) | — | ✅ f61×3 | ✅ **真后端**(e2e 分组头) | — | — | ✅ debattery | ✅ |
+
+> **L4 真后端补实（2026-06-22）**：A5/A7/A10/A14/nav-reorg 经 `scripts/run-l4-realbackend.sh`（真 datacore:4001 + agentcore:4002 + vite 真后端模式 + Playwright 真 Chromium）**9/9 通过** → 由 ◐ 回 ✅。这是 L4 **真后端**模式（非 VITE_MOCK）；access token 仅内存(PRD §4.1)故脚本用 SPA 导航不硬刷。`pnpm e2e:realbackend` 可重跑（本地/夜间；未进 CI——需 chromium 缓存 + 起三进程，重）。
 
 **诚实边界（逐项）**：
 - 全部 L1 = `makeApp()` 真 Fastify+service+路由，**mock 边界 = memory 仓储 + ScriptedLlmClient(LLM) + 注入 mock optimizer**；非 pg、非真 LLM。

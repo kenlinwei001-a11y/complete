@@ -99,8 +99,8 @@
 
 ## Wave 3 · 编排/闭环
 
-- [~] ◐ **A5 · FDE 编排工作流·可观测节点状态图**（意图→倒推→查能力→比差→各模块生成→闭包→publish→进启动器）。R10 R11 R13 R6。
-  **测试欠 L4**（按 SOP §2 矩阵"前端页面/交互=L3+L4"）：后端 L0/L1/L6/L7 ✅、前端仅 L3(jsdom+MSW f58)，**L4 真浏览器 E2E 未跑** → 见 §3 登记 + DEBT A16。
+- [x] ✅ **A5 · FDE 编排工作流·可观测节点状态图**（意图→倒推→查能力→比差→各模块生成→闭包→publish→进启动器）。R10 R11 R13 R6。
+  L0/L1/L6/L7 ✅ + L3(f58) ✅ + **L4 真后端 ✅**（`e2e-realbackend.mjs` 真 Chromium↔真 datacore/agentcore：展开运行 → FDE 8 节点真浏览器渲染，9/9 通过 2026-06-22）。
   观测层（不重写建域逻辑，PRD-A5 §1 非目标）：把 BuildWorkflowRun 7 执行步**确定性投影**成 8 FDE 语义节点。
   契约 `storybuildrun.ts`：FDE_NODE_KEYS(8)/FdeNodeSchema/FDE_NODE_STATUS + `StoryBuildRun.nodes`（doc store 无 migration）。
   `databuilder/fde-graph.ts projectFdeNodes`（状态主判产物存在性 + 步状态叠加 RUNNING/计时 + 闭包断缺口码，R6 字节一致）+
@@ -109,8 +109,8 @@
   前端 `DataBuilderPage <FdeGraph>`（8 节点横向 DAG，状态色 + 缺口码红标，配置化实时刷新轮询）+ MSW mock。
   测试：a5-fde-graph ×8（L0 投影：空/成功全 DONE/闭包断 FAILED+SKIPPED/步叠加/R6 · L1 真服务建域落 8 节点 + 端点 + 事件 + R2）·
   f58 前端 L3（8 节点 DAG + 失败节点缺口码）。gates 全绿（事件 35/35，含 fde.node_advanced）。回写本体 §2.H/§3/§4。
-- [~] ◐ **A7 · B 栈 scaffold 单机可见**（不配 AGENTCORE_BASE_URL 也能看到生成的 agent；DataCore 侧持久可见）。R8 R11 R2。
-  **测试欠 L4**：后端 L0/L1/L7 ✅、前端仅 L3(f59)，**L4 真浏览器未跑** → §3 登记 + DEBT A16。
+- [x] ✅ **A7 · B 栈 scaffold 单机可见**（不配 AGENTCORE_BASE_URL 也能看到生成的 agent；DataCore 侧持久可见）。R8 R11 R2。
+  L0/L1/L7 ✅ + L3(f59) ✅ + **L4 真后端 ✅**（e2e-realbackend：cross_scaffold 步下 scaffold 清单真浏览器渲染）。
   契约 `storybuildrun.ts`：ScaffoldManifestItem/Record（SCAFFOLD_ITEM_STATUS：PENDING_BSTACK/SCAFFOLDED/REUSED/MISSING）+
   `StoryBuildRun.scaffoldManifest`（挂 doc store 无 migration）。`databuilder/scaffold-manifest.ts buildScaffoldManifestRecord`
   （展平 7 类 B 栈需求 + 定义，receipt 缺省=全 PENDING_BSTACK·SOFT，在线=按 (kind,key) 覆盖·HARD，R6）。
@@ -119,8 +119,8 @@
   未配 B 显式报错）。不在 DataCore 真建 B 栈真值（R8，真值归 AgentCore）。前端 `ScaffoldManifestTable`（cross_scaffold 下钻，
   pending-bstack 标 + 定义可看）+ MSW mock。测试：a7-scaffold-manifest ×6（L0 投影/receipt 覆盖/空/R6 · L1 单机落库+浏览+事件+
   reconcile 幂等）· f59 前端 L3。gates 全绿（事件 37/37）。回写本体 §2.H/§3/§4。
-- [~] ◐ **A10 · 终态闭环末步**（建域→R4 审批→publish→**自动重跑问句验证** "现在真能答了"）。R4 R11 R13 R6 R10。
-  **测试欠 L4**：后端 L1/L7 ✅(a10 ×5)、前端仅 L3(f60)，**L4 真浏览器未跑** → §3 登记 + DEBT A16。
+- [x] ✅ **A10 · 终态闭环末步**（建域→R4 审批→publish→**自动重跑问句验证** "现在真能答了"）。R4 R11 R13 R6 R10。
+  L1/L7 ✅(a10 ×5) + L3(f60) ✅ + **L4 真后端 ✅**（e2e-realbackend：sbr-run 建域 → 重跑验证按钮 → 终态徽章真浏览器渲染）。
   契约 `storybuildrun.ts`：BuildVerification（VERIFIED/NOT_VERIFIED/BUILD_STATIC/PENDING）+ `StoryBuildRun.verification`。
   `service.ts verifyBuild`：主问句经 QOS 实跑（inferenceProbe）→ 可答 VERIFIED(RUNTIME_PROBE 活证据)/不可答 NOT_VERIFIED+gapCode/
   未配 QOS 兜底 BUILD_STATIC；复用 inference 步已 probe 结果避免双跑；不越界覆盖 run.answer（归 inference 步）。
@@ -131,8 +131,9 @@
 
 ## Wave 4 · 验证/扩展
 
-- [~] ◐ **A14 · 亲手跑 agent evals 比对 PRD**（真 Kimi env-gated，观测 vs 期望 diff，parity 报告）。R6 R8 R13。
-  **测试欠 L4 + 真 Kimi**：后端 L0/L1 ✅(a14 ×3)、前端仅 L3(f43 parity 列)，**L4 真浏览器未跑**；**真 Kimi parity 实跑(env-gated)未执行**(仅 mock 证框架) → §3 登记 + DEBT A16。
+- [x] ✅ **A14 · 亲手跑 agent evals 比对 PRD**（真 Kimi env-gated，观测 vs 期望 diff，parity 报告）。R6 R8 R13。
+  L0/L1 ✅(a14 ×3) + L3(f43) ✅ + **L4 真后端 ✅**（e2e-realbackend：评测页跑一次 → parity 失因列真浏览器渲染）。
+  **诚实留账（非 L4）**：真 Kimi parity 实跑仍 env-gated 未执行（mock 证框架，≠ agent 质量达标）—— 该项属 LLM 真跑欠账，与 L4 无关，仍记 DEBT。
   现状基建已在（evals.ts 逐 case 跑真 QOS + expect.intentKey/toolSequence/answerMust + EvalRunReport.metrics + MOCK/REAL）。
   本轮补 parity 层：契约 `EvalCaseResult.failKind`(INTENT/TOOLSEQ/ANSWER/OTHER) + `EvalRunReport.parity`(byFailKind 直方图 +
   byCase 逐 case 偏差)。`evals.ts classifyFailKind`(首要失因) + `buildParity` + `seedParityCases`(从 20 场景派生 intent+工具序列
@@ -197,8 +198,8 @@
 
 ## 特性（已 APPROVED，可独立排期）
 
-- [~] ◐ **nav-reorg · 左侧导航信息架构整理 + 层级字号修正**（用户新增需求，纯前端 IA/样式，零业务常数 R14）：
-  **测试欠 L4**（纯前端 → 矩阵要求 L3+L4）：L3(f61 分组/字号) ✅，**L4 真浏览器未跑**(字号/折叠像素级未验) → §3 登记 + DEBT A16。
+- [x] ✅ **nav-reorg · 左侧导航信息架构整理 + 层级字号修正**（用户新增需求，纯前端 IA/样式，零业务常数 R14）：
+  L3(f61) ✅ + **L4 真后端 ✅**（e2e-realbackend：管理区业务域分组头真浏览器渲染，含 数据接入/建模与图谱）。
   **N1+N2+N3 ✅**：`adminRegistry.ts ADMIN_NAV_GROUPS`（7 业务域分组配置驱动 R14：数据接入/建模与图谱[含图谱并入 meta]/规则与校准/
   构建与成长/编排与场景/运营与审批/平台治理）+ `groupAdminPages`（确定性归组，空组剔除，未配置页落「其它」不丢）。
   `ShellLayout` 管理区改用 NavGroup 分组渲染（折叠记忆 + 角色/entitlement 过滤上游保留）。**N3 字号倒挂修复**：navGroupHeader
@@ -215,9 +216,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **8 ✅ + 9 ◐ / 23**（✅ A11/A6/A4/A13/A8/A1/A12/A9；◐ A3/A15/prototype-intake/A18/**A5/A7/A10/A14/nav-reorg(欠 L4)**）。
-  > **2026-06-22 测试欠账修正**（按 TESTING-STANDARD §2 矩阵 + line-54 规则）：A5/A7/A10/A14/nav-reorg 前端仅到 L3(jsdom+MSW)、**L4 真浏览器未跑** → 由 ✅ 降 ◐。后端层(L0/L1/L2/L6/L7+门)仍真测无虚标。A4 保留 ✅（有 `e2e-realbackend.mjs` L4 真后端实跑证据）。
-- **Wave 1–4 全清（后端）**；**Wave 5**（A15 backbone · prototype-intake P1+P2-core · A18.1 双模闭包，均后端 ✅）；**特性**（nav-reorg L3✅/L4 欠 · 余 cockpit/synthetic-wizard）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **13 ✅ + 4 ◐ / 23**（✅ A11/A6/A4/A13/A8/A1/A12/A9/**A5/A7/A10/A14/nav-reorg**；◐ A3/A15/prototype-intake/A18）。
+  > **2026-06-22 测试欠账已补实**：A5/A7/A10/A14/nav-reorg 先按 SOP line-54 由 ✅ 降 ◐（前端只到 L3）；随后**补 L4 真后端 E2E**（`scripts/run-l4-realbackend.sh` 起真 datacore+agentcore+vite 真后端模式 → Playwright 真 Chromium，**9/9 通过**）→ 5 项回 ✅。A14 的"真 Kimi parity 实跑"仍 env-gated 未执行（与 L4 无关，记 DEBT）。
+- **Wave 1–4 全清（后端 + L4 真后端 E2E）**；**Wave 5**（A15 backbone · prototype-intake P1+P2-core · A18.1 双模闭包，均后端 ✅）；**特性**（nav-reorg ✅ · 余 cockpit/synthetic-wizard）。
 - 余下：**A18.2–4**（LLM 临时求解器+锁死沙箱 · PROVISIONAL 隔离物化+创建人写真值门控 · 审核台+晋升）· **cockpit**（驾驶舱 1:1）· **synthetic-wizard**（ontoprompt 链 UX）· A15.2–4 handlers · prototype-intake P3。
 - ✅ A11（per-connection 归类，Wave 1，亲手验过真 UI）。
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
