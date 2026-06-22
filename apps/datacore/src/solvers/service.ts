@@ -15,7 +15,7 @@ import { generateSolverDraft, type SolverGenSpec } from "./llm-gen.js";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
-import { affectedOrders, affectedOrdersAggregate, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
+import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
@@ -61,6 +61,8 @@ export const SOLVER_KEYS = [
   "mrp_netting",
   // sop 视图 / cockpit P5 量·价·本·利科目表（读 FinancePlan+DemandSegment → 收入/成本/毛利 预算vs滚动vs差异 + 毛利率归因，确定性 R6）。
   "finance_pnl",
+  // audit / generate 视图 每审计项独立时序（按 kind 出 90 天逐日 series + 4 阶段，与产能推演同款逐日交互，确定性 R6）。
+  "audit_timeline",
   // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
   // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
   "generic_inference",
@@ -128,6 +130,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
   mrp_netting: ["materials", "shortageCount", "summary"],
   finance_pnl: ["pnl", "gmRow", "attribution", "summary"],
+  audit_timeline: ["kind", "series", "stages", "peak", "crossDay", "threshold"],
 };
 
 const DAY_MS = 86400000;
@@ -1126,6 +1129,8 @@ export class SolverService {
         return riskTimeline(c, args as unknown as RiskTimelineArgs);
       case "counterfactual_timeline":
         return counterfactualTimeline(c, args);
+      case "audit_timeline":
+        return auditTimeline(c, args);
       case "affected_orders": {
         // baseId → 单基地明细（risk-board/内部/测试）；无 baseId → 跨基地聚合（order-chain 视图 VM）。
         if (!args.baseId) return affectedOrdersAggregate(c, args as { base?: string; horizon?: number });

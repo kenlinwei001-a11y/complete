@@ -250,6 +250,36 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
 }
 
 /**
+ * audit / generate 视图 · 每审计项独立时序（audit_timeline，确定性 R6）：按 kind（产销/毛利/齐套/现金/份额/
+ * 爬坡/外协/capex23/struct）出 90 天逐日传导度 series——4 阶段（事件窗→约束越线→波及订单→财务击穿）锚点
+ * 分段线性 + 固定 hashN 微抖动 + clamp[40,97]，越线日/峰值。**与产能推演 risk_timeline 同款逐日交互**（前端共用组件）。
+ * 形状由 kind 名 hash 确定性派生（R14 无 per-kind 业务常数），阈值取 params.risk.threshold。args: { kind, horizon=90 }。
+ */
+export function auditTimeline(c: SolverContext, args: Record<string, unknown>): Record<string, unknown> {
+  const kind = str(args.kind, "struct");
+  const horizon = Math.max(30, Math.floor(num(args.horizon, 90)));
+  const threshold = c.params.risk.threshold;
+  const h = hashString(kind);
+  const peakDay = 16 + (h % 40);
+  const peakVal = clamp(threshold + 2 + (h % 12), 40, 97);
+  const base = 48 + (h % 10);
+  const series: number[] = [];
+  for (let d = 0; d < horizon; d++) {
+    const ramp = d <= peakDay ? base + (peakVal - base) * (d / Math.max(1, peakDay)) : peakVal - (peakVal - base) * 0.4 * ((d - peakDay) / Math.max(1, horizon - peakDay));
+    const jitter = (hashString(`${kind}:${d}`) % 7) - 3;
+    series.push(round(clamp(ramp + jitter, 40, 97), 0));
+  }
+  const crossIdx = series.findIndex((v) => v >= threshold);
+  const stages = [
+    { d: Math.max(2, peakDay - 14), label: "事件窗" },
+    { d: peakDay, label: "约束越线" },
+    { d: Math.min(horizon - 1, peakDay + 7), label: "波及订单" },
+    { d: Math.min(horizon - 1, peakDay + 18), label: "财务击穿" },
+  ];
+  return { kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold };
+}
+
+/**
  * cockpit P4 反事实双轨推演（"如不解决 XX，未来 N 天会怎样"）：编排 risk_timeline——baseline = do-nothing
  * 前向曲线、mitigated = 处置后曲线（mitigation eff/tn 衰减，复用 tensionSeries 同口径）→ 双序列 + 差值
  * （峰值削减/越线日推迟/少越线日）。确定性 R6（同 base/factor/mitigation 字节一致），不引入新时序基建。
