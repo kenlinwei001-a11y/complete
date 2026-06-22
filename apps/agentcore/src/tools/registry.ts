@@ -7,11 +7,11 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     // mcp_tools 列出未加载的 MCP 工具（>24 按需加载模式）。不确定用什么时先调本工具。
     name: "discover",
     descriptionForLLM:
-      "发现当前可用的能力目录。kind=slices 返回可用本体切片（含用途说明与参数）；kind=solvers 返回求解器；kind=mcp_tools 返回未加载的 MCP 工具。当不确定该用哪个切片/求解器/工具时先调用本工具拿到准确的 key。",
+      "发现当前可用的能力目录。kind=object_types 返回本租户真实已发布对象类型（key+中文标签+域+实例数）——查对象前先用本工具拿真实类型名，勿凭空猜英文名（如 plan_version/production_target 多半不存在）；kind=slices 返回可用本体切片；kind=solvers 返回求解器；kind=mcp_tools 返回未加载的 MCP 工具。不确定用什么时先调本工具。",
     inputSchema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["slices", "solvers", "mcp_tools"] },
+        kind: { type: "string", enum: ["object_types", "slices", "solvers", "mcp_tools"] },
         query: { type: "string", description: "可选关键词过滤" },
       },
       required: ["kind"],

@@ -538,6 +538,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-discover-real-type-names.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/agentcore/src/tools/registry.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-dogfooding-self-ontology.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1010,6 +1027,7 @@
     "G-3": [
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-agent-data-generation-tools.md",
+      "PRD-discover-real-type-names.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-inference-process-enhancement.md",
@@ -1146,7 +1164,8 @@
     ],
     "apps/agentcore/src/tools/registry.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
-      "PRD-agent-data-generation-tools.md"
+      "PRD-agent-data-generation-tools.md",
+      "PRD-discover-real-type-names.md"
     ],
     "apps/datacore/src/app.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
@@ -1221,6 +1240,9 @@
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
+    ],
+    "apps/agentcore/src/tools/executor.ts": [
+      "PRD-discover-real-type-names.md"
     ],
     "packages/contracts/src/meta-ontology.ts": [
       "PRD-dogfooding-self-ontology.md"

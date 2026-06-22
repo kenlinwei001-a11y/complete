@@ -226,6 +226,16 @@
       ],
       "coverage": 0
     },
+    "PRD-discover-real-type-names.md": {
+      "acceptanceIds": [
+        "D7"
+      ],
+      "covered": [],
+      "uncovered": [
+        "D7"
+      ],
+      "coverage": 0
+    },
     "PRD-frontend-addendum-remaining-views.md": {
       "acceptanceIds": [
         "F21",

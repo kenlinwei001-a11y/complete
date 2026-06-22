@@ -88,6 +88,12 @@ class HttpOntologyClient implements OntologyClient {
     const types = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types`);
     return (types ?? []).map((t) => t.key);
   }
+  async listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]> {
+    const res = await call<{ stats: { key: string; displayName?: string; domain?: string; count?: number }[] }>(
+      this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types/stats`,
+    );
+    return (res?.stats ?? []).map((s) => ({ key: s.key, label: s.displayName ?? s.key, domain: s.domain ?? "unassigned", instanceCount: s.count ?? 0 }));
+  }
   crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/ontology/cross-validate`, req);
   }

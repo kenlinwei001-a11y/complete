@@ -190,6 +190,15 @@ export class MockOntologyClient implements OntologyClient {
   async listObjectTypeKeys(): Promise<string[]> {
     return ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
   }
+  async listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]> {
+    // 确定性真实类型清单（key+中文标签+域+实例数）；count 取 mock 可见集，体现"空 vs 不存在"区分。
+    const count = async (k: string) => ((await this.queryObjects(ctx, k, {})).data as { total: number }).total;
+    return [
+      { key: "Base", label: "生产基地", domain: "factory", instanceCount: await count("Base") },
+      { key: "Order", label: "销售订单", domain: "sales", instanceCount: await count("Order") },
+      { key: "Model", label: "产品型号", domain: "product", instanceCount: await count("Model") },
+    ];
+  }
 
   // 推演验证痕迹 Layer 2：对照 mock 知识图谱事实核对断言（确定性，与 mock 对象一致）。
   async crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {

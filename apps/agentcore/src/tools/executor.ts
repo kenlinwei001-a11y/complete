@@ -207,8 +207,15 @@ export class GuardedToolExecutor {
     switch (toolName) {
       case "discover": {
         const kind = String(args.kind);
-        if (kind !== "slices" && kind !== "solvers" && kind !== "mcp_tools") {
-          return { error: "kind must be slices|solvers|mcp_tools" };
+        if (kind !== "object_types" && kind !== "slices" && kind !== "solvers" && kind !== "mcp_tools") {
+          return { error: "kind must be object_types|slices|solvers|mcp_tools" };
+        }
+        if (kind === "object_types") {
+          // CL.3：列本租户真实已发布对象类型名（agent 照真名查不再猜）。
+          const q = args.query ? String(args.query).toLowerCase() : undefined;
+          const types = await this.deps.dataCore.ontology.listObjectTypes(ctx);
+          const items = q ? types.filter((t) => t.key.toLowerCase().includes(q) || t.label.includes(String(args.query))) : types;
+          return { items, hint: "用 query_objects 时 objectType 必须是上列真实 key（区分大小写）；勿猜英文名。" };
         }
         if (kind === "mcp_tools") {
           // §2 MCP 按需加载目录：当前部署未启用 >24 工具按需加载模式 → 空目录
@@ -222,8 +229,11 @@ export class GuardedToolExecutor {
           String(args.sliceKey),
           (args.args ?? {}) as Record<string, unknown>,
         );
-      case "query_objects":
-        return this.deps.dataCore.ontology.queryObjects(
+      case "query_objects": {
+        // CL.3：未知 typeKey → 结构化 UNKNOWN_TYPE + did-you-mean（不静默返空，agent 据此改名重查）。
+        const dym = await this.unknownTypeGuard(ctx, String(args.objectType));
+        if (dym) return dym;
+        const res = await this.deps.dataCore.ontology.queryObjects(
           ctx,
           String(args.objectType),
           (args.filter ?? {}) as Record<string, unknown>,
@@ -231,8 +241,16 @@ export class GuardedToolExecutor {
           // 并发一致性 §13.1：任务内首读捕获 taskEpoch，后续读复用 → 任务级快照一致（近似 MVCC）
           await this.taskSnapshotEpoch(ctx),
         );
-      case "get_object":
+        // CL.3：类型存在但 0 实例 → 区分"空 vs 不存在"，提示先引导（接 bootstrap/gap-fill），不让 agent 误判无数据。
+        const total = (res?.data as { total?: number } | undefined)?.total;
+        if (total === 0) return { ...res, empty: true, hint: `对象类型 ${String(args.objectType)} 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定"无数据"。` };
+        return res;
+      }
+      case "get_object": {
+        const dym = await this.unknownTypeGuard(ctx, String(args.objectType));
+        if (dym) return dym;
         return this.deps.dataCore.ontology.getObject(ctx, String(args.objectType), String(args.objectId));
+      }
       // Dogfooding P3：问运行中的系统自己（受 DataCore MetaAccessPolicy 白名单门控,OBO 透传）。
       case "query_system_ontology":
         return this.deps.dataCore.ontology.queryMetaOntology(ctx);
@@ -303,6 +321,27 @@ export class GuardedToolExecutor {
       default:
         throw new Error(`unknown tool: ${toolName}`);
     }
+  }
+
+  /**
+   * CL.3：未知对象类型守卫——typeKey 不在本租户已发布类型集 → 返结构化 UNKNOWN_TYPE +
+   * validTypes + did-you-mean（最近编辑距离），而非静默返空。命中真实类型 → 返 undefined（放行）。
+   * R6 确定性（编辑距离纯函数）；类型清单经 listObjectTypeKeys（OBO，R2 隔离）。
+   */
+  private async unknownTypeGuard(ctx: ToolAuthCtx, typeKey: string): Promise<{ error: string; validTypes: string[]; suggestion?: string } | undefined> {
+    let valid: string[];
+    try {
+      valid = await this.deps.dataCore.ontology.listObjectTypeKeys(ctx);
+    } catch {
+      return undefined; // 类型清单不可达时不拦（退化为既有行为），避免误伤
+    }
+    if (valid.length === 0 || valid.includes(typeKey)) return undefined;
+    const suggestion = nearestType(typeKey, valid);
+    return {
+      error: "UNKNOWN_TYPE",
+      validTypes: valid,
+      ...(suggestion ? { suggestion } : {}),
+    };
   }
 
   /** A4：列出成长工单（R2 租户隔离；按 status 过滤）。施工 agent 据此知道要建什么、骨架到哪。 */
@@ -426,6 +465,33 @@ export class GuardedToolExecutor {
 }
 
 /** #6 稳定参数键：键名排序后序列化，使 {a,b} 与 {b,a} 命中同一缓存。 */
+/** CL.3：did-you-mean —— 在候选类型里找与 typeKey 最近的（不区分大小写的 Levenshtein），过远则不建议。 */
+function nearestType(typeKey: string, candidates: string[]): string | undefined {
+  const lev = (a: string, b: string): number => {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) => i);
+    for (let j = 1; j <= n; j++) {
+      let prev = dp[0]!;
+      dp[0] = j;
+      for (let i = 1; i <= m; i++) {
+        const tmp = dp[i]!;
+        dp[i] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[i]!, dp[i - 1]!);
+        prev = tmp;
+      }
+    }
+    return dp[m]!;
+  };
+  const lk = typeKey.toLowerCase();
+  let best: string | undefined;
+  let bestD = Infinity;
+  for (const c of candidates) {
+    const d = lev(lk, c.toLowerCase());
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  // 过远（超过类型名长度一半）不建议，避免误导
+  return best !== undefined && bestD <= Math.max(2, Math.ceil(typeKey.length / 2)) ? best : undefined;
+}
+
 function canonicalArgs(input: unknown): string {
   const norm = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(norm);
