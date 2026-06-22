@@ -13,6 +13,7 @@ import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useAdoptToDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
+import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
 import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
@@ -316,10 +317,23 @@ function RiskPropagation({ itemId }: { itemId: string }) {
     },
   });
   const vm = data ? buildPropagation(data) : null;
+  const card = data?.cards?.[0];
   return (
     <div className={styles.tlBox} data-testid={`audit-risk-timeline-${itemId}`}>
       <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.audit.timelineHint}</div>
       {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
+      {/* AUDIT.1：逐日圆点轴（与产能推演同款，消费 risk_timeline 已产 series；4 节点 stepper 保留为概览） */}
+      {card && (
+        <DailyDotAxis
+          series={card.series}
+          threshold={data!.threshold}
+          crossDay={card.crossDay}
+          peak={card.peak}
+          events={card.events}
+          affectedOrders={(card.affectedOrders ?? []) as unknown as DotOrder[]}
+          testId={`dda-${itemId}`}
+        />
+      )}
       {vm && <PropagationTimeline vm={vm} testId={`ptl-${itemId}`} />}
     </div>
   );

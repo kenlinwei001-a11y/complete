@@ -14,12 +14,12 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）15 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+// 断言（真后端真数据，区别于 mock 写死值）16 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
 //   cockpit P3 风险对症方案→工单 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 /
 //   A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / A18.4 整域晋升编排 / nav-reorg 业务域分组 /
 //   A14 evals parity 失因列 / A18.4 审核台。
 // 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 9/9 通过（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
-//   cockpit P1+P2+P3 + SPINE.4 指标条 + A18.4(审核台+整域晋升) 扩为 15 项。
+//   cockpit P1+P2+P3 + SPINE.4 + AUDIT.1 逐日圆点轴 + A18.4 扩为 16 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -80,6 +80,17 @@ try {
     : bad(`cockpit P3 真后端：对症方案缺失（panel=${mitPanel} plans=${mitPlans} adopt=${mitAdopt}）`);
   await page.keyboard.press("Escape").catch(() => {}); // 关风险详情弹窗，避免遮挡后续导航
   await page.waitForTimeout(400);
+
+  // AUDIT.1 规划体检逐日圆点轴（L4 真后端）：展开审计项时序 → 消费 risk_timeline 已产 series 的逐日圆点轴
+  await page.click('a[href="/v/plan-audit"]').catch(() => {});
+  await page.waitForTimeout(1500);
+  await page.locator("[data-testid^=tl-toggle-]").first().click().catch(() => {});
+  await page.waitForSelector("[data-testid^=dda-]", { timeout: 8000 }).catch(() => {});
+  const ddaAxis = await page.locator("[data-testid$=-summary][data-testid^=dda-]").count();
+  const ddaDots = await page.locator('[data-testid*="-dot-"]').count();
+  ddaAxis > 0 && ddaDots > 0
+    ? ok(`AUDIT.1 真后端：规划体检逐日圆点轴 ${ddaDots} 日点真浏览器渲染（消费 risk_timeline 已产 series）`)
+    : bad(`AUDIT.1 真后端：逐日圆点轴缺失（summary=${ddaAxis} dots=${ddaDots}）`);
 
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});
