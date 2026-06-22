@@ -378,7 +378,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | **D7 编排域 Orchestration** | 问句→答案 | QOS·Intent·ExecutionPlan/Workflow·Skill·Agent·MCP·Task·classify/route/SSE |
 | **D8 场景域 Scenario** | 场景/入口/视图 | ScenarioPackage·ScenarioCard·SceneEntry·View·presetContext·launcher(TO-BE) |
 | **D9 信息流域 Flow** | 事件/失效/通知 | OutboxEvent·EventSubscription(§4)·Notification·B→A缓存失效·D-29 |
-| **D10 运营时序域 Ops** | 时序/时钟/回放 | TsAggSpec/Run·SimulationClock·LivedInState·OpsSchedule·Replay |
+| **D10 运营时序域 Ops** | 时序/时钟/回放 | TsAggSpec/Run·SimulationClock·LivedInState·OpsSchedule·Replay。时序剧本 `tsGenerators`（battery）：oee:equip · yield:process · output:line · attainment:line（产线日）· util:line · **attainment:base（CL.5 基地级日达成率序，day grain，达成率=实际/目标 接 Metric achievement 口径，供"逐日时间维度归因"；末位追加保前序列 R6 字节一致）** |
 | **D11 治理元域 Meta** | 管理其余 10 域 | 系统本体·PRD库·ontology:check·闭包/全链闭包门·CLAUDE.md/钩子/skill |
 
 > D11 是"管理其它域"的元域——协同进化机制（§9 + 运行模型）就活在这里。

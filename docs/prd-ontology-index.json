@@ -417,6 +417,20 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-attainment-base-daily-timeseries.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/timeseries.ts",
+        "packages/contracts/src/timeseries.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-build-workflow-runtime.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -575,6 +589,26 @@
         "packages/contracts/src/meta-ontology.ts",
         "scripts/check-prd-ontology.mjs",
         "scripts/check-system-ontology.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-empty-tenant-bootstrap.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/datacore/src/livedin/engine.ts",
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/src/synthetic/battery.ts"
       ],
       "brokenArtifacts": []
     },
@@ -1028,6 +1062,7 @@
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-agent-data-generation-tools.md",
       "PRD-discover-real-type-names.md",
+      "PRD-empty-tenant-bootstrap.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-inference-process-enhancement.md",
@@ -1202,6 +1237,7 @@
     ],
     "apps/datacore/src/synthetic/battery.ts": [
       "PRD-aop-annual-scenario-1to1.md",
+      "PRD-empty-tenant-bootstrap.md",
       "PRD-goal-metric-owner-spine.md",
       "PRD-quarter-rolling-1to1.md"
     ],
@@ -1210,6 +1246,12 @@
     ],
     "packages/contracts/src/planviews.ts": [
       "PRD-aop-annual-scenario-1to1.md"
+    ],
+    "apps/datacore/src/timeseries.ts": [
+      "PRD-attainment-base-daily-timeseries.md"
+    ],
+    "packages/contracts/src/timeseries.ts": [
+      "PRD-attainment-base-daily-timeseries.md"
     ],
     "apps/datacore/migrations/023_build_workflow_runs.sql": [
       "PRD-build-workflow-runtime.md"
@@ -1252,6 +1294,15 @@
     ],
     "scripts/check-system-ontology.mjs": [
       "PRD-dogfooding-self-ontology.md"
+    ],
+    "apps/datacore/src/livedin/engine.ts": [
+      "PRD-empty-tenant-bootstrap.md"
+    ],
+    "apps/datacore/src/seed.ts": [
+      "PRD-empty-tenant-bootstrap.md"
+    ],
+    "apps/datacore/src/sop.ts": [
+      "PRD-empty-tenant-bootstrap.md"
     ],
     "apps/datacore/src/databuilder/comprehend.ts": [
       "PRD-fde-fullstack-build-workflow.md"

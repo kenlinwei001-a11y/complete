@@ -890,6 +890,10 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     { seriesKey: "output:line", entityType: "Line", grain: "day", base: { mean: 30000, noise: 1800 }, drift: 8, effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "output" },
     { seriesKey: "attainment:line", entityType: "Line", grain: "day", base: { mean: 0.914, noise: 0.02 }, measureField: "attainment" },
     { seriesKey: "util:line", entityType: "Line", grain: "day", base: { mean: 92, noise: 1.2 }, effects: ["maint_window_dip"], measureField: "util" },
+    // CL.5（PRD-attainment-base-daily-timeseries）：基地级日达成率序列——"本月逐日为何未达成"时间维度归因
+    // 所需（现仅 attainment:line 产线级 + schedule_attainment 周聚合）。day grain、含检修/周末/爬坡剧本，
+    // 达成率口径 = 实际/目标（与 Metric achievement 同源）。末位追加，保前序列 R6 字节一致。
+    { seriesKey: "attainment:base", entityType: "Base", grain: "day", base: { mean: 0.918, noise: 0.018 }, effects: ["maint_window_dip", "weekend_dip", "ramp_curve"], measureField: "attainment" },
   ],
   scenarioScript: [
     { tick: 3, event: "iot_delay", params: { lagHours: 4.2 } },
