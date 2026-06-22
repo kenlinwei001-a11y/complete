@@ -14,7 +14,7 @@
 > - [◐] CL.7 **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：**GF.1 前端+契约已落** ✅——`AnswerBlock.gap` 类型 + `<GapCard>`（缺口码+人话+按码▶触发[复用 growth/run LOOP]+CONVERGED 续推+诚实断点工单深链）+ onRetry 透传 + mock 双路 + 测 ×2。**余 GF.2/GF.3**：orchestrator 命中缺口自动并入 gap 块（需谨慎启发式，防 288 agentcore 回归）+ SSE 进度回灌深度 + 就地 R4 审批面板。
 >
 > **独立新增件（非 CL 链）**
-> - [◐] **nav-ia-reorg**（PRD-nav-ia-reorg｜N1–N3）：N3 字号父级≥子级 **已在**（navGroupHeader 13px / section-title 12px）· admin 区分组 `groupAdminPages` **已做**（f40/f61）。**余 N1**：业务+admin 合一套域分组（现仍"业务/管理"两堆）+ 图谱并入建模组 + meta 补回——较大 UX 重构、触 f40/f53/f61 角色门回归，低优先延后。
+> - [x] **nav-ia-reorg** ✅（PRD-nav-ia-reorg｜N1–N3 全做完）：N3 字号父级≥子级 ✅ · N1 统一域分组 `NAV_GROUPS`（业务视图+管理页合一套域分组，替代'业务/管理'双堆+admin flat）✅ · 图谱(view)并入「建模与图谱」与本体/建模同组（闭'图谱与本体拆两区'）✅ · meta 补回「平台与系统」✅。配置驱动 R14、逐项角色/entitlement 过滤、空组隐藏、折叠记忆复用。更新 f1/f12/f40/f61 至统一 IA，frontend 205 全绿（3 角色覆盖）。
 > - [x] **R16 发育闭环总纲** ✅（PRD-system-ontogenesis-spec｜宪法级）：本体 §5 立 R16（倒序发育⊕正序运作两相、三环自动闭合、二分处置、透明可视、分相位成熟）+ `ontogenesis.organ_matured` 事件 + `sys.meta.ontogenesis_loop` 切片 + `scripts/check-ontogenesis.mjs` 门并入 `pnpm gates`（保守声明性校验）。回写本体 §5/§3/§4/§10。
 >
 

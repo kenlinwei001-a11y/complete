@@ -28,10 +28,10 @@ describe("nav-reorg · 管理区分组（groupAdminPages + 渲染）", () => {
     expect(withUnknown.some((g) => g.key === "other" && g.pages.some((p) => p.path === "brand-new-page"))).toBe(true);
   });
 
-  it("渲染：admin 登录 → 管理区出现业务域分组头（数据接入）含连接器叶项", async () => {
+  it("渲染（N1 统一域分组）：admin 登录 → 统一导航出现业务域分组头（数据接入/建模与图谱）含连接器叶项", async () => {
     loginAs("planner"); // planner 含 admin 角色 → 见全部管理页
     renderApp("/admin/connections");
-    const nav = await screen.findByTestId("nav-admin");
+    const nav = await screen.findByTestId("nav-business"); // N1：业务+管理合一套域分组
     // 分组头（NavGroup）出现
     expect(within(nav).getByTestId("nav-group-数据接入")).toBeInTheDocument();
     expect(within(nav).getByTestId("nav-group-建模与图谱")).toBeInTheDocument();

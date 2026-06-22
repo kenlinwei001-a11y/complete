@@ -9,7 +9,7 @@ import { applyTheme } from "@/workspace/theme";
 import { featureOn } from "@/workspace/featureGate";
 import { logoutSession } from "@/store/authSession";
 import { toast } from "@/store/toastStore";
-import { visibleAdminPages, groupAdminPages } from "./adminRegistry";
+import { visibleAdminPages } from "./adminRegistry";
 import { QueryDock } from "@/components/QueryDock/QueryDock";
 import { CommandPalette } from "@/components/ScenarioLauncher/CommandPalette";
 import { HistoryPanel } from "@/components/History/HistoryPanel";
@@ -25,40 +25,82 @@ const CONFIG_VERSION_TTL_MS = 5 * 60_000;
  * 业务视图导航分级（21 项 → 5 个功能分组，可折叠）。按视图功能归类；
  * 未归类的视图（后端新增）落入「其他」组，确保不丢项。折叠态记 localStorage。
  */
-const BUSINESS_NAV_GROUPS: { title: string | null; keys: string[]; collapsed?: boolean }[] = [
-  { title: null, keys: ["dash"] },
-  { title: "规划与平衡", keys: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"] },
-  { title: "推演与风险", keys: ["project-sim", "risk"] },
-  { title: "数据与台账", keys: ["order", "order-chain", "geo-map"] },
+// nav-ia-reorg N1：统一按业务域分组（替代"业务/管理"双堆 + admin flat）。配置驱动 R14——
+// 每项 kind=view（查 workspace.navigation，/v/:key）或 admin（查 visibleAdminPages，/admin/:path）；
+// 逐项可见性仍按角色 + entitlement 过滤；空组自动隐藏；折叠记忆复用 NavGroup。图谱(view)并入「建模与图谱」与本体/建模同组（闭"图谱与本体拆两区"）；meta 补回「平台与系统」。
+type NavItemRef = { kind: "view" | "admin"; key: string };
+const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
+  { title: null, items: [{ kind: "view", key: "dash" }] },
+  { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
+  { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })) },
+  { title: "台账与地图", items: ["order", "geo-map"].map((key) => ({ kind: "view" as const, key })) },
+  { title: "数据接入", items: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"].map((key) => ({ kind: "admin" as const, key })) },
+  {
+    title: "建模与图谱",
+    items: [
+      { kind: "view", key: "graph" },
+      ...["modeling", "object-types", "domains", "slices", "merge"].map((key) => ({ kind: "admin" as const, key })),
+    ],
+  },
+  // 图谱八视角子视图：折叠子组，保留既有 collapsed 行为（图谱页内亦可 tab）。
   {
     title: "图谱体系",
-    keys: ["graph", "graph-all", "graph-backbone", "graph-flow", "graph-source", "graph-solver", "graph-mvp", "graph-agent", "graph-loop"],
     collapsed: true,
+    items: ["graph-all", "graph-backbone", "graph-flow", "graph-source", "graph-solver", "graph-mvp", "graph-agent", "graph-loop"].map((key) => ({ kind: "view" as const, key })),
   },
+  { title: "规则与校准", items: ["rules", "calibration"].map((key) => ({ kind: "admin" as const, key })) },
+  { title: "构建与成长", items: ["data-builder", "growth", "evals", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
+  { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
+  { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
+  { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "meta"].map((key) => ({ kind: "admin" as const, key })) },
 ];
 
 type NavItemVM = { key: string; label: string; viewKey?: string; group?: string };
+type AdminPage = { path: string; label: string };
 
-function BusinessNav({ items }: { items: NavItemVM[] }) {
-  const keyOf = (it: NavItemVM) => it.viewKey ?? it.key;
-  const assigned = new Set(BUSINESS_NAV_GROUPS.flatMap((g) => g.keys));
-  const leftover = items.filter((it) => !assigned.has(keyOf(it)));
-  const groups = BUSINESS_NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.keys.map((k) => items.find((it) => keyOf(it) === k)).filter((x): x is NavItemVM => !!x),
-  })).filter((g) => g.items.length > 0);
-  if (leftover.length > 0) groups.push({ title: "其他", keys: [], items: leftover });
+/**
+ * 统一域分组导航（N1）：视图项 + 管理页合一套域分组渲染。view 项查 workspace.navigation（命中且可见）、
+ * admin 项查 visibleAdminPages（角色命中）；空组隐藏；NAV_GROUPS 未覆盖的项落「其它」组不丢；复用 NavGroup 折叠记忆。
+ */
+function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: AdminPage[] }) {
+  const viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]));
+  const adminByPath = new Map(adminPages.map((p) => [p.path, p]));
+  const usedViews = new Set<string>();
+  const usedAdmin = new Set<string>();
+
+  const resolved = NAV_GROUPS.map((g) => {
+    const links = g.items
+      .map((ref) => {
+        if (ref.kind === "view") {
+          const it = viewByKey.get(ref.key);
+          if (!it) return null;
+          usedViews.add(ref.key);
+          return <NavItemLink key={`v:${ref.key}`} item={it} />;
+        }
+        const p = adminByPath.get(ref.key);
+        if (!p) return null;
+        usedAdmin.add(ref.key);
+        return <AdminItemLink key={`a:${ref.key}`} page={p} />;
+      })
+      .filter((x): x is JSX.Element => !!x);
+    return { title: g.title, collapsed: g.collapsed, links };
+  }).filter((g) => g.links.length > 0);
+
+  // 未归组的项落「其它」（不丢，R3 仍过滤后才到这里）。
+  const leftover = [
+    ...views.filter((it) => !usedViews.has(it.viewKey ?? it.key)).map((it) => <NavItemLink key={`v:${it.viewKey ?? it.key}`} item={it} />),
+    ...adminPages.filter((p) => !usedAdmin.has(p.path)).map((p) => <AdminItemLink key={`a:${p.path}`} page={p} />),
+  ];
+  if (leftover.length > 0) resolved.push({ title: "其它", collapsed: undefined, links: leftover });
 
   return (
     <>
-      {groups.map((g, i) =>
+      {resolved.map((g, i) =>
         g.title === null ? (
-          g.items.map((it) => <NavItemLink key={it.key} item={it} />)
+          g.links
         ) : (
           <NavGroup key={g.title} title={g.title} defaultCollapsed={g.collapsed} index={i}>
-            {g.items.map((it) => (
-              <NavItemLink key={it.key} item={it} />
-            ))}
+            {g.links}
           </NavGroup>
         ),
       )}
@@ -74,6 +116,15 @@ function NavItemLink({ item }: { item: NavItemVM }) {
     >
       <span className={styles.dot} />
       {item.label}
+    </NavLink>
+  );
+}
+
+function AdminItemLink({ page }: { page: AdminPage }) {
+  return (
+    <NavLink to={`/admin/${page.path}`} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}>
+      <span className={styles.dot} />
+      {page.label}
     </NavLink>
   );
 }
@@ -179,31 +230,13 @@ export default function ShellLayout() {
         <NavLink to="/scenarios" data-testid="nav-scenario-launcher" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}>
           ⚡ 场景启动器
         </NavLink>
-        <div className="section-title">{zh.nav.businessGroup}</div>
+        {/* N1 统一域分组：视图 + 管理页合一套域分组（配置驱动 R14）；逐项按角色/entitlement 过滤；空组隐藏；折叠记忆。 */}
         <nav className={styles.group} data-testid="nav-business">
-          <BusinessNav items={workspace.navigation.filter((item) => item.group !== "admin")} />
+          <UnifiedNav
+            views={workspace.navigation.filter((item) => item.group !== "admin")}
+            adminPages={adminPages}
+          />
         </nav>
-        {adminPages.length > 0 && (
-          <>
-            <div className="section-title">{zh.nav.adminGroup}</div>
-            <nav className={styles.group} data-testid="nav-admin">
-              {/* nav-reorg：按业务域分组（配置驱动 R14）；空组隐藏、折叠记忆复用 NavGroup；父级字号≥子级。 */}
-              {groupAdminPages(adminPages).map((g, i) => (
-                <NavGroup key={g.key} title={g.title} index={i} defaultCollapsed={false}>
-                  {g.pages.map((p) => (
-                    <NavLink
-                      key={p.path}
-                      to={`/admin/${p.path}`}
-                      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-                    >
-                      {p.label}
-                    </NavLink>
-                  ))}
-                </NavGroup>
-              ))}
-            </nav>
-          </>
-        )}
       </aside>
 
       <main className={styles.content}>

@@ -3,15 +3,15 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 
-describe("F40 · 业务导航分级（21 项 → 5 组可折叠）", () => {
+describe("F40 · 统一域分组导航（N1：视图+管理合一套域分组，可折叠）", () => {
   it("功能分组头渲染；图谱体系默认折叠；点击展开", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp("/v/dash");
 
     const nav = await screen.findByTestId("nav-business");
-    // 功能分组头
-    for (const g of ["规划与平衡", "推演与风险", "数据与台账", "图谱体系"]) {
+    // N1 统一域分组头（推演/台账与地图/建模与图谱…）
+    for (const g of ["规划与平衡", "推演", "台账与地图", "建模与图谱", "图谱体系"]) {
       expect(within(nav).getByTestId(`nav-group-${g}`)).toBeInTheDocument();
     }
     // 概览项（无组头）直接可见
