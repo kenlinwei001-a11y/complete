@@ -114,6 +114,10 @@
 
 ---
 
+> **提案对象类型（PRD 待落 · 未落库 · 勿当 as-is）**：以下为本轮 PRD 新增/提升的一等对象,落地后并入上方分组并删除本注:
+> `KSF`·`Metric`(=cockpit `PlanKpi` plan 域投影)·`Principal`(责任人)·`IndustryTemplate`(一等化·可上传/编辑/fork)·`ViewDef`(声明式渲染契约)·`OperationIntent`(CLI 操作意图目录) · cockpit 绿地 `DemandSegment`/`SopVersionRow`/`MaterialBalance`/`FinancePlan`/`RootCauseChain`。
+> 出处：`PRD-goal-metric-owner-spine` · `PRD-data-closure-spec` · `PRD-A15` · `PRD-cockpit-capacity-1to1-parity` · `PRD-system-ontogenesis-spec`。
+
 ## 3. 关系图谱（链路 = 模块间关系）
 
 > `A --关系--> B`。**⚠ = 已知断/弱链（见 §8）**。
@@ -213,6 +217,9 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L13 | `growth.ticket_opened` | 自成长发动机·缺功能落工单（带真实 I/O 契约+本体引用骨架；P5 推送触达；拉兜底=`GET /api/v1/growth/tickets`） | NOTIFY | growth-tickets, notifications | — |
 | L13 | `growth.converged` | 自成长发动机·LOOP 收敛（问句现可答） | IN_SESSION | growth-ledger, growth-tickets | — |
 | L14 | `meta.ontology_synced` | Dogfooding·系统本体自反投影重物化完成（`POST /a/v1/meta/sync`）→ 失效 `/a/v1/meta/*` 查询缓存 + meta MCP 工具结果 | INVALIDATE | meta-ontology(`/meta/*` 视图) | — |
+| L15 | `metric.snapshot_recorded` | 目标-指标-责任骨架·指标快照（actual 更新，**PRD 待落** spine） | IN_SESSION | dashboard, sop, audit, metric-library | — |
+| L15 | `metric.breached` | 指标越线（触发推演根因，**PRD 待落** spine） | NOTIFY | notifications, audit, risk | — |
+| L15 | `ontogenesis.organ_matured` | 发育·产物转正 GOVERNED（PROVISIONAL→真值，**PRD 待落** ontogenesis） | IN_SESSION | module-sync-matrix, ontology-graph | — |
 | L15 | `storybuild.run_recorded` | 数据构建发动机·故事建域记录完成（`runStory`）→ 经 F1 全局通道失效历史推演记录/模块同步矩阵 | IN_SESSION | story-runs | — |
 | L16 | `entity.out_of_domain` | 感知层·槽位解析裸串实体在本租户任何已发布类型都解析不到（`router/slots.ts fillSlots`）→ orchestrator 发任务事件 + `perception-metrics.ts` 记误触发率（域外/尝试）+ 取最近邻候选供澄清 | NOTIFY | perception-metrics | — |
 
@@ -242,6 +249,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | R-一致 | **一个事实一个出处**：同一指标在驾驶舱/S&OP/体检口径一致（同一对象库派生），跨视图同值 | 单一对象库 + 聚合下推 |
 | **R14** | **应用层无业务常数（多租户）**：前端组件不得内联业务数据/结构/租户专属文案；一律来自本体/WorkspaceConfig/ViewConfig.layout/i18n。换租户=换配置不改代码。守护 G-5 不回潮。 | ✅ `debattery:check`（基线 0：无未声明业务常数；兜底逐行 `// debattery-allow`）；标杆 `DashboardView`/`LedgerView` |
 | **R15** | **CLI 对等（GUI↔CLI 平行同源）**：每个对外模块能力**必须有 CLI 等价命令**（注册进 `OPERATION_CATALOG`），经**同一 REST + R3 entitlement + R4 审批 + 事件总线**触发——新增模块/功能无 CLI 命令 = 功能洼地，**返工**。不适合 CLI 内联者（如求解器上传）须登记 **GUI 深链 `uiDeepLink`**（CLI 输出一键直达），仍算覆盖。纯 GUI-only 须显式声明理由。人与 code-agent 共用同一操作面。 | ⏳ `cli-parity:check`（待落，A15）；A15 覆盖矩阵（附录 A）；PRD 模板 §0 强制声明 CLI 打通 |
+| **R16** | **发育闭环（个体发生）**：每次发育（建域/补缺/scaffold）**必自动闭合三环**——数据(build-to-verify)/本体(新对象·链路·事件自动进活体本体,非手抄)/能力(目录从注册表自动派生)；产物**二分处置**(可派生→自动生成 / 须人工→自动开 typed 工单+通知+收件箱+深链,**绝不静默残缺**)；发育过程**透明可视**；成熟**分相位**(PROVISIONAL→GOVERNED,只 GOVERNED 计真值)。正序 GapReport=生长信号自动触发倒序生长。 | ⏳ `ontogenesis:check`（待落）；`docs/PRD-system-ontogenesis-spec.md` |
 
 ---
 
@@ -265,7 +273,11 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **`chain:check` 全链闭包门（第一块砖，R11）**：跨系统静态校验"场景声明的求解器 DataCore 必须注册"，否则路径A 全链断（SOLVER_NOT_FOUND）即红 · `scripts/check-chain-closure.mjs`，`pnpm chain:check`。
 - **`debattery:check` 去电池锁死门（R14）**：静态扫描前端视图/页内联的业务常数（基地名/型号/工序/产品段）；棘轮基线 `scripts/debattery-baseline.json` 防回潮——命中超基线即红 · `scripts/check-debattery.mjs`，`pnpm debattery:check`。`// debattery-allow` 豁免必要兜底。
 - **`prd:check` PRD 库结构化门（治理 #2）**：解析每篇 PRD 的《本体引用与影响》§0 → 写机器可读索引 `docs/prd-ontology-index.json`（PRD↔不变量/断点，需求↔制品↔缺口可查）；校验引用的 R/G 在本体真实存在（悬空引用即红），报告断点 PRD 覆盖与缺口、遗留 PRD 缺 §0（告警） · `scripts/check-prd-ontology.mjs`，`pnpm prd:check`。
-- **`cli-parity:check` CLI 对等门（R15，待落 A15）**：静态校验"模块/操作注册表 ⊆ CLI `OPERATION_CATALOG`/子命令"——新增对外模块能力无 CLI 命令即红（棘轮基线防回潮，`// cli-only` 豁免需注明理由）· `scripts/check-cli-parity.mjs`，`pnpm cli-parity:check`。详 `docs/PRD-A15-cli-universal-operation-shell.md`。
+- **`cli-parity:check` CLI 对等门（R15，待落 A15）**：静态校验"模块/操作注册表 ⊆ CLI `OPERATION_CATALOG`/子命令"——新增对外模块能力无 CLI 命令即红（棘轮基线防回潮，`// cli-only` 豁免需注明理由）· 门禁脚本 + 基线 A15 **待建**，`pnpm cli-parity:check`。详 `docs/PRD-A15-cli-universal-operation-shell.md`。
+- **`ontogenesis:check` 发育闭环门（R16，待落）**：静态校验"每次发育产物三环自动闭合声明 + AUTO-DERIVE/NEEDS-HUMAN 二分处置覆盖 + 透明产物登记"——漏闭合/静默残缺即红 · `docs/PRD-system-ontogenesis-spec.md`。
+- **`template-lifecycle:check` 模版生命周期门（R14/G-6，待落）**：模版必库化（IndustryTemplate 可上传/编辑/fork，无新代码常数模版）· `docs/PRD-data-closure-spec.md`。
+- **`auto-onboard:check` 新类型自动登记门（待落）**：发布对象类型 → 五处登记齐（切片/数据类目/渲染/特性/事件），漏则红 · `docs/PRD-data-closure-spec.md`。
+- **`shape:check` 渲染契约门（R14/G-2，待落）**：`ViewDef ⊆ solver 输出形状`，挡渲染-求解器漂移 · `docs/PRD-data-closure-spec.md`。
 - **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。
 - **场景接线回归**（守护 G-1）：20 场景全有意图+计划+求解器 · `apps/agentcore/test/scenarios-wiring.test.ts`。
 - **本体必读强制**（治理）：CLAUDE.md 铁律 0 + SessionStart 钩子（从 §8 动态注入未修断点，结构上不漂）+ `/ontology` skill。
@@ -344,6 +356,8 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | `sys.flow.event_to_refresh` | D9 | OutboxEvent→EventSubscription→ConsumerView（=§4 全表） |
 | `sys.ops.tick` | D10 | SimulationClock→tick→{ObjectInstance,TS}→Derivation→dashboard |
 | **`sys.meta.change_loop`** | **D11** | **Requirement(PRD)→Ontology(影响分析)→Code→回写→门禁→Release（=协同进化闭环）** |
+| `sys.ingest.template_to_seed` | D1 | IndustryTemplate(模版 schema)→种子配置(值)→generateFromSchema→RawDataset（模版+种子双层，**PRD 待落** data-closure）|
+| **`sys.meta.ontogenesis_loop`** | **D11** | **场景/需求→倒推建域(scaffold)→PROVISIONAL 产物→正序 GapReport(生长信号)→成熟 GOVERNED→回写活体本体+派生目录（=发育闭环 R16，**PRD 待落**）** |
 
 ### 10.4 跨域节点（接缝 = 断点高发区）
 

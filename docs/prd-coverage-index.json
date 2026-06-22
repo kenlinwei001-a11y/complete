@@ -1,7 +1,55 @@
 {
-  "generatedAt": "2026-06-21",
+  "generatedAt": "2026-06-22",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
+    "PRD-A15-cli-universal-operation-shell.md": {
+      "acceptanceIds": [
+        "A1",
+        "A4",
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "covered": [
+        "A1",
+        "A4",
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-A18-build-output-closure.md": {
+      "acceptanceIds": [
+        "A5"
+      ],
+      "covered": [
+        "A5"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-A8-more-cpsat-models.md": {
+      "acceptanceIds": [
+        "A1"
+      ],
+      "covered": [
+        "A1"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-A9-external-engines-design-deferred.md": {
+      "acceptanceIds": [
+        "A9"
+      ],
+      "covered": [],
+      "uncovered": [
+        "A9"
+      ],
+      "coverage": 0
+    },
     "PRD-addendum-admin-console-closure.md": {
       "acceptanceIds": [
         "A9",
@@ -130,6 +178,16 @@
       ],
       "uncovered": [],
       "coverage": 1
+    },
+    "PRD-agent-data-generation-tools.md": {
+      "acceptanceIds": [
+        "D7"
+      ],
+      "covered": [],
+      "uncovered": [
+        "D7"
+      ],
+      "coverage": 0
     },
     "PRD-catalog-battery-20-scenarios.md": {
       "acceptanceIds": [
@@ -260,6 +318,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-in-dialog-gap-fill-loop.md": {
+      "acceptanceIds": [
+        "D7"
+      ],
+      "covered": [],
+      "uncovered": [
+        "D7"
+      ],
+      "coverage": 0
+    },
     "PRD-platform-foundry-aip.md": {
       "acceptanceIds": [
         "A1",
@@ -350,6 +418,16 @@
         "D2",
         "E1",
         "E2"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-synthetic-wizard-ontoprompt-chain.md": {
+      "acceptanceIds": [
+        "F13"
+      ],
+      "covered": [
+        "F13"
       ],
       "uncovered": [],
       "coverage": 1
