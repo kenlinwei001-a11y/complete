@@ -309,12 +309,45 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-IND-aop.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/planviews.ts",
+        "apps/datacore/src/solvers/capex.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx",
+        "packages/contracts/src/planviews.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-IND-plan-generate.md": {
       "hasOntologyRef": false,
       "invariants": [],
       "breakpoints": [],
       "artifacts": [
         "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-IND-sop.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/api/types.ts",
+        "apps/frontend-shell/src/views/sim/SopBalanceView.tsx",
+        "packages/contracts/src/solvers.ts",
+        "packages/contracts/src/workspace.ts"
       ],
       "brokenArtifacts": []
     },
@@ -1628,6 +1661,8 @@
     ],
     "apps/datacore/src/synthetic/battery.ts": [
       "PRD-A6-realistic-value-domain-synthesis.md",
+      "PRD-IND-aop.md",
+      "PRD-IND-sop.md",
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-empty-tenant-bootstrap.md",
       "PRD-goal-metric-owner-spine.md",
@@ -1636,9 +1671,46 @@
     "apps/datacore/src/config.ts": [
       "PRD-A7-bstack-scaffold-standalone.md"
     ],
+    "apps/datacore/src/planviews.ts": [
+      "PRD-IND-aop.md",
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/datacore/src/solvers/capex.ts": [
+      "PRD-IND-aop.md"
+    ],
+    "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": [
+      "PRD-IND-aop.md",
+      "PRD-aop-annual-scenario-1to1.md"
+    ],
+    "packages/contracts/src/planviews.ts": [
+      "PRD-IND-aop.md",
+      "PRD-aop-annual-scenario-1to1.md"
+    ],
     "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
       "PRD-IND-plan-generate.md",
       "PRD-plan-generate-1to1.md"
+    ],
+    "apps/datacore/src/sop.ts": [
+      "PRD-IND-sop.md",
+      "PRD-empty-tenant-bootstrap.md"
+    ],
+    "apps/frontend-shell/src/api/types.ts": [
+      "PRD-IND-sop.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
+      "PRD-IND-sop.md",
+      "PRD-sop-balance-1to1.md"
+    ],
+    "packages/contracts/src/solvers.ts": [
+      "PRD-IND-sop.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
+    "packages/contracts/src/workspace.ts": [
+      "PRD-IND-sop.md",
+      "PRD-de-battery-multitenant-config.md"
     ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
@@ -1648,16 +1720,6 @@
     ],
     "apps/agentcore/src/tools/datacore-http.ts": [
       "PRD-agent-data-generation-tools.md"
-    ],
-    "apps/datacore/src/planviews.ts": [
-      "PRD-aop-annual-scenario-1to1.md",
-      "PRD-quarter-rolling-1to1.md"
-    ],
-    "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": [
-      "PRD-aop-annual-scenario-1to1.md"
-    ],
-    "packages/contracts/src/planviews.ts": [
-      "PRD-aop-annual-scenario-1to1.md"
     ],
     "apps/datacore/src/timeseries.ts": [
       "PRD-attainment-base-daily-timeseries.md"
@@ -1677,14 +1739,6 @@
       "PRD-plan-audit-1to1.md",
       "PRD-plan-generate-1to1.md"
     ],
-    "packages/contracts/src/solvers.ts": [
-      "PRD-cockpit-capacity-1to1-parity.md",
-      "PRD-plan-audit-1to1.md",
-      "PRD-plan-generate-1to1.md"
-    ],
-    "packages/contracts/src/workspace.ts": [
-      "PRD-de-battery-multitenant-config.md"
-    ],
     "packages/contracts/src/meta-ontology.ts": [
       "PRD-dogfooding-self-ontology.md"
     ],
@@ -1698,9 +1752,6 @@
       "PRD-empty-tenant-bootstrap.md"
     ],
     "apps/datacore/src/seed.ts": [
-      "PRD-empty-tenant-bootstrap.md"
-    ],
-    "apps/datacore/src/sop.ts": [
       "PRD-empty-tenant-bootstrap.md"
     ],
     "apps/datacore/src/databuilder/comprehend.ts": [
@@ -1781,9 +1832,6 @@
     ],
     "scripts/check-chain-closure.mjs": [
       "PRD-scenario-launcher.md"
-    ],
-    "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
-      "PRD-sop-balance-1to1.md"
     ],
     "apps/datacore/src/features.ts": [
       "PRD-verbatim-1to1-replication.md"
