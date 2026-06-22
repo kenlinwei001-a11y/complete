@@ -8,7 +8,7 @@ import {
   type ProvenanceRef,
 } from "@platform/contracts";
 import { newId } from "../ids.js";
-import { isContextWindowExceededError, type LlmAgentMessage, type LlmClient, type LlmContentBlock } from "../llm/types.js";
+import { isContextWindowExceededError, LlmEmptyResponseError, type LlmAgentMessage, type LlmClient, type LlmContentBlock } from "../llm/types.js";
 import { COMPACTION_BETA } from "../llm/anthropic.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
@@ -469,6 +469,11 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         continue;
       }
       throw err;
+    }
+    // 空响应护栏（PRD）：agent 用途 LLM 返回 undefined/缺 usage（多因用途未绑定/key 失效/兼容网关缺 usage）→
+    // 早失败为结构化错误（R7 code=LLM_EMPTY_RESPONSE），不再裸读 .usage 崩成 INTERNAL_ERROR·reading 'usage'。
+    if (!response || !response.usage) {
+      throw new LlmEmptyResponseError(`agent 用途 LLM 返回空响应（model=${opts.model}）——检查 LLM 用途绑定 'agent' 是否配置且 key 有效`);
     }
     totalInput += response.usage.inputTokens;
     totalOutput += response.usage.outputTokens;

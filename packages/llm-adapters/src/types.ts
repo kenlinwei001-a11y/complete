@@ -147,3 +147,29 @@ export function isContextWindowExceededError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /model_context_window_exceeded|context window|prompt is too long/i.test(msg);
 }
+
+/**
+ * LLM 空响应护栏（PRD 空响应护栏）：当适配器/客户端**返回 undefined 或缺 usage** 的非法响应时抛此错误，
+ * 由编排层错误中间件收敛为 R7 信封 `code=LLM_EMPTY_RESPONSE`（指明 model/用途），把"裸 TypeError·reading usage"
+ * 变成可诊断错误（多因 `agent` 用途未绑定/key 失效/兼容网关返回缺 usage）。
+ */
+export class LlmEmptyResponseError extends Error {
+  readonly code = "LLM_EMPTY_RESPONSE";
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmEmptyResponseError";
+  }
+}
+
+/**
+ * 校验 LLM 响应含合法 usage；缺响应/缺 usage → 抛 LlmEmptyResponseError（含 model）。
+ * 适配器 create/parse 后调用，使"空响应"早失败为结构化错误而非下游裸 deref（R7）。
+ */
+export function requireUsage(
+  resp: { usage?: { input_tokens?: number; output_tokens?: number } | null } | null | undefined,
+  model: string,
+): void {
+  if (!resp || !resp.usage) {
+    throw new LlmEmptyResponseError(`LLM 返回空响应或缺 usage（model=${model}）——检查该用途的 LLM 绑定是否配置且 key 有效`);
+  }
+}

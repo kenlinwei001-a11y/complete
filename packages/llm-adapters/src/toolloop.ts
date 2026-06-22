@@ -1,4 +1,5 @@
 import type { AgentLlmClient, LlmAgentMessage, ToolLoopEvent, ToolLoopReq } from "./types.js";
+import { LlmEmptyResponseError } from "./types.js";
 
 const DEFAULT_MAX_ITERATIONS = 16;
 
@@ -21,6 +22,7 @@ export async function* runToolLoop(adapter: AgentLlmClient, req: ToolLoopReq): A
       messages,
       maxTokens: req.maxTokens,
     });
+    if (!response || !response.content) throw new LlmEmptyResponseError(`toolLoop agent 返回空响应（model=${req.model}）`);
     messages.push({ role: "assistant", content: response.content, raw: response.raw });
     const toolUses = response.content.filter(
       (b): b is { type: "tool_use"; id: string; name: string; input: unknown } => b.type === "tool_use",

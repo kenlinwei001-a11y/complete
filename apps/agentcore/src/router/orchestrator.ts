@@ -159,7 +159,7 @@ export class Orchestrator {
     // run the pipeline asynchronously
     setImmediate(() => {
       void this.runPipeline(taskId, auth).catch(async (err) => {
-        await this.failTask(taskId, "INTERNAL_ERROR", err instanceof Error ? err.message : String(err));
+        await this.failFromError(taskId, err);
       });
     });
 
@@ -436,7 +436,7 @@ export class Orchestrator {
       }
       setImmediate(() => {
         void this.proceedWithIntent(taskId, auth, intent, task.classification?.extractedSlots ?? {}).catch((err) =>
-          this.failTask(taskId, "INTERNAL_ERROR", err instanceof Error ? err.message : String(err)),
+          this.failFromError(taskId, err),
         );
       });
       return;
@@ -450,7 +450,7 @@ export class Orchestrator {
     }
     setImmediate(() => {
       void this.continueSlotFilling(taskId, auth, intent, pending, body.slotValues ?? {}).catch((err) =>
-        this.failTask(taskId, "INTERNAL_ERROR", err instanceof Error ? err.message : String(err)),
+        this.failFromError(taskId, err),
       );
     });
   }
@@ -768,7 +768,7 @@ export class Orchestrator {
       this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
       await this.recordExperience(task.id);
     } catch (err) {
-      await this.failTask(task.id, "AGENT_ERROR", err instanceof Error ? err.message : String(err));
+      await this.failFromError(task.id, err, "AGENT_ERROR");
     }
   }
 
@@ -850,6 +850,15 @@ export class Orchestrator {
       // 路径 A 仅落审计
       await this.deps.events.emit(taskId, "feedback.recorded", { vote });
     }
+  }
+
+  /**
+   * R7：把抛出的错误落统一信封——错误若自带 `code`（如 LlmEmptyResponseError.code=LLM_EMPTY_RESPONSE）则用之，
+   * 否则用 fallbackCode（默认 INTERNAL_ERROR）。把"神秘 TypeError"变可诊断错误码（PRD 空响应护栏）。
+   */
+  private async failFromError(taskId: string, err: unknown, fallbackCode = "INTERNAL_ERROR"): Promise<void> {
+    const code = typeof (err as { code?: unknown })?.code === "string" ? (err as { code: string }).code : fallbackCode;
+    await this.failTask(taskId, code, err instanceof Error ? err.message : String(err));
   }
 
   private async failTask(taskId: string, code: string, message: string): Promise<void> {

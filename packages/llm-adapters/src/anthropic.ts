@@ -16,6 +16,7 @@ import type {
   ToolLoopEvent,
   ToolLoopReq,
 } from "./types.js";
+import { requireUsage } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
 
 /** beta flag for server-side compaction (Agent 运行时增量 §1.3 第 2 刀). */
@@ -126,6 +127,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: [{ role: "user", content: req.user }],
       output_config: { format: zodOutputFormat(ClassificationSchema) },
     });
+    requireUsage(resp, req.model);
     this.track(req.model, "input", resp.usage.input_tokens);
     this.track(req.model, "output", resp.usage.output_tokens);
     if (resp.parsed_output == null) throw new ClassifierParseError();
@@ -155,6 +157,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       params as unknown as Anthropic.MessageCreateParamsNonStreaming,
       compacting ? { headers: { "anthropic-beta": COMPACTION_BETA } } : undefined,
     );
+    requireUsage(response, req.model);
     this.track(req.model, "input", response.usage.input_tokens);
     this.track(req.model, "output", response.usage.output_tokens);
     const content: LlmContentBlock[] = [];
@@ -191,6 +194,7 @@ export class AnthropicLlmClient implements FullLlmClient {
         },
       ],
     });
+    requireUsage(response, req.model);
     this.track(req.model, "input", response.usage.input_tokens);
     this.track(req.model, "output", response.usage.output_tokens);
     const text = response.content.find((b) => b.type === "text");
@@ -225,6 +229,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
       output_config: { format: zodOutputFormat(req.schema as never) },
     });
+    requireUsage(resp, req.model);
     this.track(req.model, "input", resp.usage.input_tokens);
     this.track(req.model, "output", resp.usage.output_tokens);
     return (resp.parsed_output as T | null | undefined) ?? null;
