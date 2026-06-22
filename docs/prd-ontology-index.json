@@ -328,12 +328,61 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-IND-dash.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/api/types.ts",
+        "apps/frontend-shell/src/views/DashboardView.tsx",
+        "apps/frontend-shell/src/views/registry.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-IND-map.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/graphmeta.ts",
+        "apps/frontend-shell/src/views/OntologyGraphView.tsx",
+        "apps/frontend-shell/src/views/graph/MappingOverlay.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-IND-plan-generate.md": {
       "hasOntologyRef": false,
       "invariants": [],
       "breakpoints": [],
       "artifacts": [
         "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-IND-quarter.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-IND-risk.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx"
       ],
       "brokenArtifacts": []
     },
@@ -1447,6 +1496,7 @@
       "PRD-A-series-roadmap.md",
       "PRD-A3-reference-ontology-slice-planner.md",
       "PRD-A6-realistic-value-domain-synthesis.md",
+      "PRD-IND-quarter.md",
       "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-data-closure-spec.md",
       "PRD-de-battery-multitenant-config.md",
@@ -1645,7 +1695,8 @@
       "PRD-demand-pulled-growth-engine.md"
     ],
     "apps/datacore/src/graphmeta.ts": [
-      "PRD-A3-reference-ontology-slice-planner.md"
+      "PRD-A3-reference-ontology-slice-planner.md",
+      "PRD-IND-map.md"
     ],
     "apps/datacore/src/ontology-core.ts": [
       "PRD-A3-reference-ontology-slice-planner.md"
@@ -1662,6 +1713,8 @@
     "apps/datacore/src/synthetic/battery.ts": [
       "PRD-A6-realistic-value-domain-synthesis.md",
       "PRD-IND-aop.md",
+      "PRD-IND-dash.md",
+      "PRD-IND-quarter.md",
       "PRD-IND-sop.md",
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-empty-tenant-bootstrap.md",
@@ -1687,16 +1740,42 @@
       "PRD-IND-aop.md",
       "PRD-aop-annual-scenario-1to1.md"
     ],
+    "apps/frontend-shell/src/api/types.ts": [
+      "PRD-IND-dash.md",
+      "PRD-IND-sop.md"
+    ],
+    "apps/frontend-shell/src/views/DashboardView.tsx": [
+      "PRD-IND-dash.md"
+    ],
+    "apps/frontend-shell/src/views/registry.ts": [
+      "PRD-IND-dash.md",
+      "PRD-verbatim-1to1-replication.md"
+    ],
+    "apps/frontend-shell/src/views/OntologyGraphView.tsx": [
+      "PRD-IND-map.md"
+    ],
+    "apps/frontend-shell/src/views/graph/MappingOverlay.tsx": [
+      "PRD-IND-map.md"
+    ],
     "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
       "PRD-IND-plan-generate.md",
       "PRD-plan-generate-1to1.md"
     ],
+    "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
+      "PRD-IND-quarter.md",
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-IND-risk.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/RiskBoardView.tsx": [
+      "PRD-IND-risk.md"
+    ],
     "apps/datacore/src/sop.ts": [
       "PRD-IND-sop.md",
       "PRD-empty-tenant-bootstrap.md"
-    ],
-    "apps/frontend-shell/src/api/types.ts": [
-      "PRD-IND-sop.md"
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-IND-sop.md",
@@ -1799,10 +1878,6 @@
       "PRD-prototype-intake-databuilder.md",
       "PRD-synthetic-wizard-ontoprompt-chain.md"
     ],
-    "apps/datacore/src/solvers/risk.ts": [
-      "PRD-order-project-sim-1to1.md",
-      "PRD-plan-audit-1to1.md"
-    ],
     "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
       "PRD-order-project-sim-1to1.md"
     ],
@@ -1817,9 +1892,6 @@
     ],
     "apps/datacore/src/entity-resolution.ts": [
       "PRD-prototype-intake-databuilder.md"
-    ],
-    "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
-      "PRD-quarter-rolling-1to1.md"
     ],
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
       "PRD-scenario-launcher.md"
@@ -1837,9 +1909,6 @@
       "PRD-verbatim-1to1-replication.md"
     ],
     "apps/datacore/src/synthetic/service.ts": [
-      "PRD-verbatim-1to1-replication.md"
-    ],
-    "apps/frontend-shell/src/views/registry.ts": [
       "PRD-verbatim-1to1-replication.md"
     ]
   }
