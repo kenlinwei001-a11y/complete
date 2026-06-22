@@ -566,6 +566,7 @@ export class SyntheticService {
     await putAll("Principal", g.principals, "principalId");
     await putAll("Metric", g.metrics, "metricId");
     await putAll("RootCauseChain", g.rootCauseChains, "chainId");
+    await putAll("SopVersionRow", g.sopVersionRows, "verId");
     // 20 场景目录 §7 扩展数据（E6b）：13 求解器所需对象类型 + 实例（确定性 + 戏剧点植入）。
     for (const t of extendedObjectTypes()) {
       if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);

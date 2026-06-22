@@ -57,6 +57,10 @@ export const SOLVER_KEYS = [
   // cockpit P4 / order 视图 订单全链推演：逐单三关联判（交期/齐套/财务三闸 C15→C13→C18）+ 统一结论
   // (可接/提价X%接/不建议接) + 业务建模链 DAG，读对象图（Order×Model×MaterialBalance×DemandSegment），确定性 R6。
   "order_fullchain",
+  // sop 视图 物料线 MRP 净需求（读 MaterialBalance → 净需求/长协覆盖/缺口/最早齐套表，C06/C16，确定性 R6）。
+  "mrp_netting",
+  // sop 视图 / cockpit P5 量·价·本·利科目表（读 FinancePlan+DemandSegment → 收入/成本/毛利 预算vs滚动vs差异 + 毛利率归因，确定性 R6）。
+  "finance_pnl",
   // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
   // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
   "generic_inference",
@@ -122,6 +126,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
+  mrp_netting: ["materials", "shortageCount", "summary"],
+  finance_pnl: ["pnl", "gmRow", "attribution", "summary"],
 };
 
 const DAY_MS = 86400000;
@@ -634,6 +640,56 @@ export class SolverService {
   }
 
   /**
+   * sop 视图 ③物料线 MRP 净需求（净室读对象图,确定性 R6）：读 MaterialBalance → 净需求/长协覆盖/现货缺口/
+   * 最早齐套 表（C06 齐套 / C16 安全库存口径）。前端零写死（HTML SOP_MAT 精确值=合成种子）。
+   */
+  private async mrpNetting(ctx: AuthCtx): Promise<Record<string, unknown>> {
+    const mbals = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
+    const materials = mbals
+      .map((o) => o.props)
+      .map((p) => ({
+        material: str(p.material),
+        netDemand: num(p.netDemandTon),
+        ltaCoverPct: num(p.ltaPct),
+        gap: num(p.gapTon),
+        earliestComplete: str(p.etaDate),
+      }))
+      .sort((a, b) => b.gap - a.gap || a.material.localeCompare(b.material));
+    const shortageCount = materials.filter((m) => m.gap > 0).length;
+    return { materials, shortageCount, summary: `${materials.length} 种物料，${shortageCount} 种现货缺口（C06 齐套口径）` };
+  }
+
+  /**
+   * sop 视图 ④ / cockpit P5 量·价·本·利科目表（净室读对象图,确定性 R6）：读 FinancePlan（收入/成本/毛利 预算vs滚动）
+   * + DemandSegment（结构归因）→ 科目表 + 毛利率行（预算/滚动/差pp，C15）+ 归因文案（储能占比拉低）。
+   */
+  private async financePnl(ctx: AuthCtx): Promise<Record<string, unknown>> {
+    const fps = await this.repos.objects.listByType(ctx.tenantId, "FinancePlan");
+    const byLine = new Map(fps.map((o) => [str(o.props.line), o.props]));
+    const subj = (line: string) => {
+      const p = byLine.get(line);
+      const budget = num(p?.budget);
+      const rolling = num(p?.rolling);
+      return { subject: line, budget, rolling, diff: round(rolling - budget, 1) };
+    };
+    const pnl = ["收入", "销售成本", "毛利"].map(subj);
+    const rev = byLine.get("收入");
+    const gm = byLine.get("毛利");
+    const budgetPct = rev && num(rev.budget) ? round(num(gm?.budget) / num(rev.budget) * 100, 1) : 0;
+    const rollPct = rev && num(rev.rolling) ? round(num(gm?.rolling) / num(rev.rolling) * 100, 1) : 0;
+    // 结构归因：储能细分占比 vs 预算（拉低毛利率主因）。
+    const dsegs = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
+    const totalP50 = dsegs.reduce((s, d) => s + num(d.p50), 0) || 1;
+    const essShare = round((num(dsegs.find((d) => str(d.segment) === "储能")?.p50) / totalP50) * 100, 0);
+    return {
+      pnl,
+      gmRow: { subject: "毛利率", budgetPct, rollPct, diffPp: round(rollPct - budgetPct, 1) },
+      attribution: `毛利率 ${budgetPct}%→${rollPct}%（${round(rollPct - budgetPct, 1)}pp）：储能占比 ${essShare}% 结构拉低（单价/成本未恶化）`,
+      summary: `收入/成本/毛利三科目 + 毛利率 ${rollPct}%（C15）`,
+    };
+  }
+
+  /**
    * cockpit P4 / order 视图 订单全链推演（净室读对象图,确定性 R6）：逐单三关联判 + 统一结论 + 业务建模链 DAG。
    * ①交期判（qty vs 可产基地周供给 P50/P90，C02/C03）②齐套判（型号物料 MaterialBalance 缺口，C06/C16）
    * ③财务判三闸（毛利率 vs 细分底线 C15 → 信用占用 C13 → 现金 C18）→ 统一结论（信用阻断>毛利提价>交期/齐套对冲）。
@@ -1128,6 +1184,8 @@ export class SolverService {
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
     if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
+    if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
+    if (solverKey === "finance_pnl") return this.financePnl(ctx);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);

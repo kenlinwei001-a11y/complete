@@ -443,6 +443,19 @@ const principalProps: PropertyDef[] = [
   { propKey: "kind", dataType: "enum", isPrimaryKey: false }, // org/role/person
   { propKey: "parentRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Principal" },
 ];
+// cockpit P5 / sop 绿地：S&OP 版本演进（V1→V7 需求/供给/缺口/备注），驱动 V5/V7 版本切换 + 版本对比表。
+const sopVersionRowProps: PropertyDef[] = [
+  { propKey: "verId", dataType: "string", isPrimaryKey: true },
+  { propKey: "ver", dataType: "string", isPrimaryKey: false }, // V1..V7
+  { propKey: "date", dataType: "string", isPrimaryKey: false },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false },
+  { propKey: "supply", dataType: "number", isPrimaryKey: false },
+  { propKey: "note", dataType: "string", isPrimaryKey: false },
+  { propKey: "isFinal", dataType: "boolean", isPrimaryKey: false },
+];
+const sopVersionRowDerived: DerivedPropertyDef[] = [
+  { propKey: "gap", formula: "demand - supply" }, // 产销缺口（派生）
+];
 const rootCauseChainProps: PropertyDef[] = [
   { propKey: "chainId", dataType: "string", isPrimaryKey: true },
   { propKey: "kpiCategory", dataType: "enum", isPrimaryKey: false }, // 关联 Metric.category
@@ -528,6 +541,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   DemandSegment: "forecast", FinancePlan: "finance", MaterialBalance: "material",
   // cockpit P2 + SPINE 绿地（规划决策推演 + 根因 DAG + 目标-指标-责任骨架）
   Metric: "decision", RootCauseChain: "decision", KSF: "decision", Principal: "people",
+  // cockpit P5 / sop 绿地（S&OP 版本演进）
+  SopVersionRow: "plan",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -581,6 +596,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("KSF", "关键成功要素", ksfProps),
     plain("Principal", "责任主体", principalProps),
     plain("RootCauseChain", "根因归因链", rootCauseChainProps),
+    // cockpit P5 / sop 绿地：S&OP 版本演进（gap 派生）。
+    { key: "SopVersionRow", displayName: "S&OP版本演进", domain: "plan", properties: withGovernance("SopVersionRow", sopVersionRowProps), derivedProperties: sopVersionRowDerived, sourceBindings: BINDINGS.SopVersionRow ?? [] },
   ];
 }
 
@@ -1032,6 +1049,8 @@ export interface GeneratedBattery {
   ksfs: Record<string, unknown>[];
   principals: Record<string, unknown>[];
   rootCauseChains: Record<string, unknown>[];
+  // cockpit P5 / sop 绿地
+  sopVersionRows: Record<string, unknown>[];
   /** model ↔ line certification edges with props.status (量产 | 认证中). */
   certLinks: { modelId: string; lineId: string; baseId: string; status: "量产" | "认证中" }[];
 }
@@ -1319,6 +1338,19 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { metricId: "kpi-attain", key: "demand_attain", name: "需求达成率", level: "op", category: "scale", target: 100, actual: round(totalAct / totalTgt * 100, 1), floorVal: 95, unit: "%", weight: 0.3, ksfRef: "ksf-bal", ownerRef: "prin-plan", chainKey: "rc-scale-demand" },
     { metricId: "kpi-material", key: "material_cov", name: "物料保障率", level: "op", category: "material", target: 100, actual: round(totalCovered / totalNet * 100, 1), floorVal: 92, unit: "%", weight: 0.3, ksfRef: "ksf-kit", ownerRef: "prin-supply", chainKey: "rc-material-gap" },
   ];
+  // cockpit P5 / sop：S&OP 版本演进 V1→V7（需求渐增、供给追赶、缺口收敛；V7 待定稿）。同源 totalRev/需求规模派生。
+  const demBase = round(totalTgt, 0);
+  const sopVersionRows = [1, 3, 5, 7].map((v, i) => {
+    const demand = round(demBase * (0.96 + i * 0.02), 0);
+    const supply = round(demand * (0.9 + i * 0.03), 0);
+    return {
+      verId: `sopv-V${v}`, ver: `V${v}`,
+      date: isoDate(Date.UTC(2026, 4, 1) + i * 14 * 86400000),
+      demand, supply,
+      note: ["初版需求", "供给评审上修", "财务整合", "高管会待定稿"][i],
+      isFinal: v === 7,
+    };
+  });
   // 根因归因模板（配成对象，确定性常数；求解器沿 driverType 取活数据算贡献 → 「结构=算、模板=配成对象」）。
   const rootCauseChains = [
     { chainId: "rc-profit-mix", kpiCategory: "profit", factor: "低毛利细分占比偏高", driverType: "DemandSegment", evidenceField: "marginWan", selectField: "segment", baseWeight: 0.5 },
@@ -1327,7 +1359,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { chainId: "rc-material-gap", kpiCategory: "material", factor: "现货缺口扩大", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 1 },
   ];
 
-  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, certLinks };
+  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };
 }
 
 // ---------------------------------------------------------------------------

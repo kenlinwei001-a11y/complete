@@ -18,7 +18,7 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "demand_forecast", displayName: "销售预测与计划", description: "需求预测、年度情景与触发条件、计划目标（驱动产能/排产推演）。",
-      typeKeys: ["PlanTarget", "AnnualScenario", "ScenarioTrigger", "DemandSegment"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      typeKeys: ["PlanTarget", "AnnualScenario", "ScenarioTrigger", "DemandSegment", "SopVersionRow"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "customer_ar", displayName: "客户与应收", description: "客户主数据（信用/账期）与应收发票。",
