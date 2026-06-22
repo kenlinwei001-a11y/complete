@@ -88,6 +88,7 @@ export const WorkspaceSchema = z.object({
       sharePts: z.number().optional(),
       capexCap: z.number().optional(),
       cashFloor: z.number().optional(),
+      invTurns: z.number().optional(),
     })
     .optional(),
 });

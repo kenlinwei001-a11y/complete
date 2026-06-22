@@ -188,6 +188,7 @@ const PLAN_GENERATE_LAYOUT = {
     { key: "sharePts", label: "份额增·配置驱动X", unit: "pct", step: 1 },
     { key: "capexCap", label: "CAPEX 上限", unit: "亿", step: 1, hardKey: "hardCapex" },
     { key: "cashFloor", label: "现金底线", unit: "亿", step: 1, hardKey: "hardCash" },
+    { key: "invTurns", label: "库存周转", unit: "次", step: 0.5 },
   ],
 };
 
@@ -460,7 +461,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
         { name: "江门正极加急 200 吨", delta: 0.5 },
       ],
     },
-    planGoals: { revGrowthPct: 18, gmFloorPct: 13.5, sharePts: 12, capexCap: 20, cashFloor: 45 },
+    planGoals: { revGrowthPct: 18, gmFloorPct: 15.5, sharePts: 12, capexCap: 20, cashFloor: 50, invTurns: 6.0 },
     features: routeFeatures,
     configVersion,
   };

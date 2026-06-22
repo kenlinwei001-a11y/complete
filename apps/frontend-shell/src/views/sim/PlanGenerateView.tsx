@@ -18,7 +18,8 @@ import styles from "./SimViews.module.css";
 type Scheme = PlanGenerateOutput["schemes"][number];
 
 /** 编号色块：稳健绿 / 均衡青 / 进取紫（§7.11） */
-const SCHEME_COLORS: Record<string, string> = { S1: "#62BE77", S2: "#54B5C4", S3: "#B07FD8" };
+// 编号色块：稳健绿 / 均衡青 / 进取紫（壹/贰/叁，§7.11 / PRD-IND §2.3）
+const SCHEME_COLORS: Record<string, string> = { 壹: "#62BE77", 贰: "#54B5C4", 叁: "#B07FD8" };
 
 interface GoalsState {
   revGrowthPct: number;
@@ -26,29 +27,32 @@ interface GoalsState {
   sharePts: number;
   capexCap: number;
   cashFloor: number;
+  invTurns: number;
   hardGm: boolean;
   hardCash: boolean;
   hardCapex: boolean;
 }
 
-/** 目标面板默认值 = 电池行业 solverParams.planGenerate.targets */
+/** 目标面板默认值 = 电池行业 solverParams.planGenerate.targets（PRD-IND §4.5 取值对齐） */
 const DEFAULT_GOALS: GoalsState = {
   revGrowthPct: 18,
-  gmFloorPct: 13.5,
+  gmFloorPct: 15.5,
   sharePts: 12,
   capexCap: 20,
-  cashFloor: 45,
+  cashFloor: 50,
+  invTurns: 6.0,
   hardGm: true,
   hardCash: true,
   hardCapex: true,
 };
 
-const GOAL_FIELDS: { key: "revGrowthPct" | "gmFloorPct" | "sharePts" | "capexCap" | "cashFloor"; label: string; unit: string; step: number; hardKey?: "hardGm" | "hardCash" | "hardCapex" }[] = [
+const GOAL_FIELDS: { key: "revGrowthPct" | "gmFloorPct" | "sharePts" | "capexCap" | "cashFloor" | "invTurns"; label: string; unit: string; step: number; hardKey?: "hardGm" | "hardCash" | "hardCapex" }[] = [
   { key: "revGrowthPct", label: zh.sim.gen.targetLabels.revGrowthPct, unit: "%", step: 1 },
   { key: "gmFloorPct", label: zh.sim.gen.targetLabels.gmFloor, unit: "%", step: 0.1, hardKey: "hardGm" },
   { key: "sharePts", label: zh.sim.gen.targetLabels.sharePts, unit: "pct", step: 1 },
   { key: "capexCap", label: zh.sim.gen.targetLabels.capexCap, unit: "亿", step: 1, hardKey: "hardCapex" },
   { key: "cashFloor", label: zh.sim.gen.targetLabels.cashFloor, unit: "亿", step: 1, hardKey: "hardCash" },
+  { key: "invTurns", label: "库存周转", unit: "次", step: 0.5 },
 ];
 
 const MEET_KEYS = ["meetRevenue", "meetGm", "meetShare", "meetCapex", "meetCash", "meetTurns"] as const;
@@ -76,6 +80,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
         capexCap: goals.capexCap,
         revGrowthPct: goals.revGrowthPct,
         sharePts: goals.sharePts,
+        turnsFloor: goals.invTurns,
       },
       hard: { gm: goals.hardGm, cash: goals.hardCash, capex: goals.hardCapex },
     },
@@ -113,6 +118,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
           revGrowthPct: goals.revGrowthPct,
           gmFloor: goals.gmFloorPct / 100,
           sharePts: goals.sharePts,
+          turnsFloor: goals.invTurns,
           capexCap: goals.capexCap,
           cashFloor: goals.cashFloor,
           hard: { gm: goals.hardGm, cash: goals.hardCash, capex: goals.hardCapex },
@@ -321,39 +327,63 @@ function SchemeCard({
               </div>
             </div>
 
-            {/* 展开体下部：硬约束违反清单（红条+解锁提示）+ 问题卡（规则徽章+why+传导链） */}
+            {/* PRD-IND §2.3-6：外部信号敏感性（s.extSensitivity 5×3） */}
+            {(s.extSensitivity?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 8 }} data-testid={`extsens-${s.no}`}>
+                <h5 style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)" }}>{zh.sim.gen.extSens}</h5>
+                {s.extSensitivity!.map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 10.5, lineHeight: 1.6, padding: "4px 0", borderBottom: "1px dotted var(--line)" }} data-testid={`extsens-${s.no}-${i}`}>
+                    <b style={{ color: e.color, flex: "none", minWidth: 150 }}>{e.signal}</b>
+                    <span style={{ color: "var(--muted)" }}>{e.impact}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* PRD-IND §2.3-7：执行关键点 + 必须解决问题（结构化 n/rule/why/4 节点传导链）+ 硬违规清单 */}
             {s.problems.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <h5 style={{ fontSize: 10.5, color: "var(--danger)", letterSpacing: 1, fontFamily: "var(--font-mono)" }}>
-                  {zh.sim.gen.violList}
-                </h5>
-                {s.problems.map((p, i) => (
+                {s.focusKeys && (
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }} data-testid={`focus-keys-${s.no}`}>
+                    <b>{zh.sim.gen.focusKeys}：</b>{s.focusKeys}
+                  </div>
+                )}
+                {/* 硬违规清单（有 title） */}
+                {s.problems.filter((p) => (p as { title?: string }).title).map((p, i) => (
                   <div className={styles.violBar} key={`v-${i}`} data-testid={`viol-${s.no}-${i}`}>
-                    <b>⛔ {String((p as { title?: string }).title ?? "")}</b>
-                    <div className="unlock">
-                      {zh.sim.gen.unlock}：{String((p as { unlock?: string }).unlock ?? "—")}
+                    <b>⛔ {String((p as { title?: string }).title)}</b>
+                    <div className="unlock">{zh.sim.gen.unlock}：{String((p as { unlock?: string }).unlock ?? "—")}</div>
+                  </div>
+                ))}
+                <h5 style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)", marginTop: 8 }}>{zh.sim.gen.problems(s.no)}</h5>
+                {/* 必须解决的问题（focus：n + rule + why + 风险传播链 4 节点） */}
+                {s.problems.filter((p) => (p as { n?: string }).n).map((p, i) => {
+                  const fp = p as { n: string; rule?: string | null; why?: string; chain?: { label: string; object: string; color: string }[] };
+                  return (
+                    <div className={styles.problem} key={`p-${i}`} data-testid={`problem-${s.no}-${i}`}>
+                      <b>必须解决「{fp.n}」</b>
+                      {fp.rule && <span className="badge red" style={{ marginLeft: 6 }}>{fp.rule}</span>}
+                      <div style={{ marginTop: 3, fontSize: 10.5, color: "var(--muted)" }}>{zh.sim.gen.whyPrefix}{fp.why}</div>
+                      {(fp.chain?.length ?? 0) > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 6 }} data-testid={`prob-chain-${s.no}-${i}`}>
+                          {fp.chain!.map((node, ci) => (
+                            <span key={ci} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              {ci > 0 && <span style={{ color: "var(--muted2)" }}>→</span>}
+                              <span style={{ borderLeft: `3px solid ${node.color}`, padding: "2px 6px", background: "var(--bg2)", borderRadius: 4, fontSize: 10 }}>
+                                <b>{node.label}</b><i style={{ fontStyle: "normal", color: "var(--muted2)", marginLeft: 4 }}>{node.object}</i>
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {propagation && (
+                        <div style={{ marginTop: 6 }}>
+                          <PropagationTimeline vm={propagation} testId={`ptl-${s.no}-${i}`} />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
-                <h5 style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)", marginTop: 8 }}>
-                  {zh.sim.gen.problems(s.no)}
-                </h5>
-                {s.problems.map((p, i) => (
-                  <div className={styles.problem} key={i} data-testid={`problem-${s.no}-${i}`}>
-                    <b style={{ color: "var(--danger)" }}>⛔ {String((p as { title?: string }).title ?? "")}</b>
-                    {(p as { ruleRef?: string }).ruleRef && (
-                      <span className="badge red" style={{ marginLeft: 6 }}>
-                        {String((p as { ruleRef?: string }).ruleRef)}
-                      </span>
-                    )}
-                    <div style={{ marginTop: 3, fontSize: 10.5, color: "var(--muted)" }}>{String((p as { why?: string }).why ?? "")}</div>
-                    {propagation && (
-                      <div style={{ marginTop: 6 }}>
-                        <PropagationTimeline vm={propagation} testId={`ptl-${s.no}-${i}`} />
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>

@@ -202,8 +202,9 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 
 const GEN = {
-  base: { rev: 100, gm: 0.142, share: 17, turns: 6.0, cash: 70 },
-  targets: { gmFloor: 0.135, cashFloor: 45, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
+  // PRD-IND-plan-generate §4.5 取值对齐（同 datacore battery planGenerate）。
+  base: { rev: 100, gm: 0.16, share: 18, turns: 5.6, cash: 58 },
+  targets: { gmFloor: 0.155, cashFloor: 50, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
   paths: {
     A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
     B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },
@@ -227,6 +228,22 @@ const GEN = {
     D: ["外协质量风险"],
     E: ["中等 CAPEX 投入"],
   } as Record<string, string[]>,
+};
+
+// PRD-IND-plan-generate §4.6（mock 侧代表性数据；datacore 种子为 HTML 逐字全集）。
+const GEN_EXT_SENS: Record<string, [string, string, string][]> = {
+  A: [["碳酸锂 +9.8%", "守价空间被成本上移部分抵消：毛利 +1.4pct→约 +0.9pct", "#E8B54A"], ["竞对储能报价 −6%", "挑单退出份额更快被承接，挽留窗口收窄", "#E8B54A"], ["终端上险 +11% < 假设", "需求走弱反而有利守价路径", "#62BE77"]],
+  B: [["碳酸锂 +9.8%", "低毛利储能单被成本挤压，更易击穿底线", "#DD7E9E"], ["客户舆情（集成商D）", "冲量应收风险被放大：C13 复核或拒量", "#DD7E9E"], ["终端上险背离", "冲量建立在偏乐观需求上，份额或不及预期", "#E8B54A"]],
+  C: [["四川限电预案", "化成 7–8 月折减 5–8%：扩产叠加限电 Q3 更紧", "#DD7E9E"], ["欧盟电池法", "新线供海外需碳足迹护照同步规划", "#E8B54A"], ["利率/汇率环境", "CAPEX 融资 + 海外回款双重敏感", "#E8B54A"]],
+  D: [["竞争动态（利用率 71%）", "产能宽松利好外协议价：可再压 3–5%", "#62BE77"], ["舆情（供应商负面）", "外协伙伴经营异常需动态复核", "#E8B54A"], ["碳酸锂 +9.8%", "外协报价随行就市，毛利侵蚀略增", "#E8B54A"]],
+  E: [["四川限电预案", "枣庄扩高端不受川区限电影响；川区量走外协对冲", "#62BE77"], ["碳酸锂 +9.8%", "高端守价+长尾外协组合对成本上行缓冲最好", "#62BE77"], ["欧盟电池法", "枣庄一线同步预留碳足迹采集，合规成本最优", "#62BE77"]],
+};
+const GEN_FOCUS: Record<string, { keys: string; probs: { n: string; kind: string; rule: string | null; why: string; chain: [string, string, string][] }[] }> = {
+  A: { keys: "严守 C15 接单毛利线上浮 1pct；主动收缩储能长尾单；乘用车与高端储能守价。", probs: [{ n: "储能客户份额流失", kind: "share", rule: "C21", why: "拒掉低毛利储能单后客户转向竞对，次年框架议价反转，守价被瓦解。", chain: [["拒低毛利储能单", "C15 上浮执行", "#E8B54A"], ["电网F/集成商D 转单", "储能客户·框架协议", "#54B5C4"], ["次年框架议价权弱化", "长协锁量/价格条款", "#5E8FE8"], ["份额不达 · 守价基础动摇", "C21 结构监测", "#DD7E9E"]] }] },
+  B: { keys: "照单全收冲市场份额；信用额度从严（C13）；应收账期按周管控。", probs: [{ n: "毛利率击穿底线", kind: "margin", rule: "C15", why: "储能低毛利放量使结构毛利下滑直逼底线，C15 将阻断接单。", chain: [["低毛利储能单放量", "储能占比 ↑", "#E8B54A"], ["结构毛利 −0.8pct", "细分结构反推", "#54B5C4"], ["逼近 15.5% 底线", "毛利率预算线", "#5E8FE8"], ["击穿即 C15 阻断", "规则 C15", "#DD7E9E"]] }] },
+  C: { keys: "枣庄+江门新线动工；C23 门槛测算前置；爬坡曲线保守化。", probs: [{ n: "CAPEX 挤占现金垫", kind: "cash", rule: "C18/C23", why: "27 亿 CAPEX 集中支付击穿现金红线，须分期/融资并先过 C23。", chain: [["CAPEX 27 亿集中支付", "枣庄+江门建设", "#E8B54A"], ["现金垫 58→46 亿", "13周现金最低点", "#54B5C4"], ["击穿红线 50 亿", "现金安全垫", "#5E8FE8"], ["C18 阻断 · C23 未过", "规则 C18/C23", "#DD7E9E"]] }] },
+  D: { keys: "CAPEX 不动；外协补量走资质名录；质量管控与放量同步。", probs: [{ n: "外协比例触红线", kind: "outsource", rule: "C08", why: "缺口全靠外协逼近 20% 红线，超出无法承接，须组合使用。", chain: [["缺口全量外协", "外协占比 ↗", "#E8B54A"], ["比例逼近 20%", "外协比例监测", "#54B5C4"], ["承接能力封顶", "超出无法承接", "#5E8FE8"], ["C08 红线触线即拒", "规则 C08", "#DD7E9E"]] }] },
+  E: { keys: "乘用车守价 + 枣庄扩高端 + 长尾外协；三对策 S&OP 第⑤步统一编排时序。", probs: [{ n: "三对策时序错配", kind: "gap", rule: null, why: "扩产/外协/守价脱节则缺口回弹，时序编排是方案成立前提。", chain: [["任一对策延期", "三线编排", "#E8B54A"], ["爬坡空窗×外协未就位", "供给缺口回弹", "#54B5C4"], ["交付违约+客户流失", "订单交期/客户关系", "#5E8FE8"], ["规模毛利双失", "综合评分坍塌", "#DD7E9E"]] }] },
 };
 
 export function mockPlanGenerate(args: {
@@ -272,9 +289,15 @@ export function mockPlanGenerate(args: {
     return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol, meets };
   });
 
-  const byKey = new Map(evals.map((e) => [e.pathKey, e]));
-  const pick = (k: string) => byKey.get(k)!;
-  const aggressive = pick("C").scores.total >= pick("B").scores.total ? pick("C") : pick("B");
+  // §4.4 / HTML gen3Plans：稳健(盈利+现金+稳健 max,可行优先) / 进取(规模+增长 max,全集) / 均衡(total max)；去重。
+  const pickMax = (pool: typeof evals, fn: (e: (typeof evals)[number]) => number, used: Set<string>) =>
+    pool.filter((e) => !used.has(e.pathKey)).sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1))[0] ??
+    [...pool].sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1))[0]!;
+  const feas = evals.filter((e) => e.hardViol.length === 0);
+  const used = new Set<string>();
+  const std = pickMax(feas.length ? feas : evals, (e) => e.scores.profit + e.scores.cash + e.scores.stability, used); used.add(std.pathKey);
+  const agg = pickMax(evals, (e) => e.scores.scale + e.scores.growth, used); used.add(agg.pathKey);
+  const bal = pickMax(feas.length ? feas : evals, (e) => e.scores.total, used); used.add(bal.pathKey);
   const schemeOf = (no: string, name: string, ev: (typeof evals)[number]) => ({
     no,
     name,
@@ -285,33 +308,26 @@ export function mockPlanGenerate(args: {
     meets: ev.meets,
     gain: GEN.gains[ev.pathKey] ?? [],
     give: GEN.gives[ev.pathKey] ?? [],
-    problems: ev.hardViol.map((v) => ({
-      ruleRef: v,
-      title:
-        v === "C15"
-          ? `毛利 ${ev.outcome.gm} 低于底线 ${targets.gmFloor}`
-          : v === "C18"
-            ? `现金垫 ${ev.outcome.cash} 低于底线 ${targets.cashFloor}`
-            : `CAPEX ${ev.outcome.capex} 超过上限 ${targets.capexCap}`,
-      why:
-        v === "C15"
-          ? `路径 ${ev.pathKey} 结构毛利 ${round(ev.outcome.gm * 100, 2)}% 低于目标面板毛利底线 ${round(targets.gmFloor * 100, 2)}%（C15 硬约束）`
-          : v === "C18"
-            ? `路径 ${ev.pathKey} 推演现金垫 ${ev.outcome.cash} 亿低于目标面板现金底线 ${targets.cashFloor} 亿（C18 硬约束）`
-            : `路径 ${ev.pathKey} CAPEX ${ev.outcome.capex} 亿超过目标面板上限 ${targets.capexCap} 亿`,
-      unlock: v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
-    })),
+    extSensitivity: (GEN_EXT_SENS[ev.pathKey] ?? []).map((e) => ({ signal: e[0], impact: e[1], color: e[2] })),
+    focusKeys: GEN_FOCUS[ev.pathKey]?.keys ?? "",
+    problems: [
+      ...(GEN_FOCUS[ev.pathKey]?.probs ?? []).map((q) => ({ n: q.n, kind: q.kind, rule: q.rule, why: q.why, chain: q.chain.map((c) => ({ label: c[0], object: c[1], color: c[2] })) })),
+      ...ev.hardViol.map((v) => ({
+        ruleRef: v,
+        title: v === "C15" ? `毛利 ${ev.outcome.gm} 低于底线 ${targets.gmFloor}` : v === "C18" ? `现金垫 ${ev.outcome.cash} 低于底线 ${targets.cashFloor}` : `CAPEX ${ev.outcome.capex} 超过上限 ${targets.capexCap}`,
+        why: `路径 ${ev.pathKey} ${v} 硬约束`,
+        unlock: v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
+      })),
+    ],
   });
   const schemes = [
-    schemeOf("S1", GEN.schemeNames.steady, pick("A")),
-    schemeOf("S2", GEN.schemeNames.balanced, pick("E")),
-    schemeOf("S3", GEN.schemeNames.aggressive, aggressive),
+    schemeOf("壹", `${GEN.schemeNames.steady}方案 · 守盈利`, std),
+    schemeOf("贰", `${GEN.schemeNames.balanced}方案`, bal),
+    schemeOf("叁", `${GEN.schemeNames.aggressive}方案 · 冲规模`, agg),
   ];
   const eligible = schemes.filter((s) => s.hardViol.length === 0);
-  const recommend =
-    eligible.length > 0
-      ? [...eligible].sort((x, y) => y.scores.total - x.scores.total || (x.no < y.no ? -1 : 1))[0]!.pathKey
-      : "";
+  const pool = eligible.length > 0 ? eligible : schemes;
+  const recommend = [...pool].sort((x, y) => y.scores.total - x.scores.total || (x.pathKey < y.pathKey ? -1 : 1))[0]!.pathKey;
   return { schemes, recommend, paths: evals, targets, base };
 }
 
