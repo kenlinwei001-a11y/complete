@@ -42,7 +42,7 @@
 >
 > **W3 横切 + 生成器调参（planview 耦合，须同回归）**
 > - [x] **inference-process `<InferenceProcessDag>`** ✅（全做完）：QOS 轨迹投影 10 节点 + par/conv/aux/fb 边 + 逐节点 IPO + 缺口红。**横切挂载 6 入口**：QueryDock(实时轨迹) + risk/project/order/audit/generate(solved 全节点 done，经 `<InferenceProcessPanel>` 复用)；**model 收敛子模式**(型号→认证产线→基地，project-sim)。测 inference-dag ×3（编排+solver 视图+model-network），frontend 207 全绿。
-> - [ ] **quarter 生成器调参 + 1:1 取值对齐 pass**：6 季精确值 + sop/aop/quarter/cockpit HTML 精确值→生成器种子（改 planview 须同回归产能推演/AOP/SOP，防漂移）。
+> - [◐] **quarter 生成器调参 + 1:1 取值对齐**：结构/交互已 1:1（QuarterlyRollingView 双条+缺口三档+事件深链+长协偏差表，全管线派生）；段头副标注 ✅（rampNote 同源勾稽）。**余 6 季精确值字节还原**=跨视图生成器**校准 pass**（rollup×cert×maint 拟合 HTML 382/376… + 枣庄储能线 CAPEX 项目种子），改 planview 须同回归 AOP/SOP/cockpit/capacity——高回归面，作专项校准（非单视图改动），与各视图工业 PRD 同期。
 >
 > **W4 对话坞闭环（⛔ 依赖 W0 PRD-A + W3 inference-process）**
 > - [ ] **PRD-B 对话坞 gap-fill HITL**：GF.1 `AnswerBlock.gap` 类型 + QueryDock `<GapCard>` + 按码触发（**注:无独立 `/growth/fill-data` 端点，需改调 `/growth/run` 或加薄端点**）· GF.2 SSE 回灌 + 就地 R4 审批(复用 §6.4) + "继续推演"重跑 · GF.3 databuilder/scaffold 触发 + 诚实断点 + GrowthTicket + presetContext 闭 G-3。

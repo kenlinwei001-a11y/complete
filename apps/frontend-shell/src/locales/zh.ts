@@ -218,6 +218,7 @@ export const zh = {
     sub: "4–6 季滚动 · 需求 vs 供给 · 承接年度分解、向月度再分解",
     demand: "需求",
     supply: "供给",
+    rampNote: "产能增量项目按年度基准情景投产时点入季（与 AOP/capex_scenario 同源勾稽）；缺口三档 >4 红 / >0 黄 / ≤0 绿。",
     gap: (v: number) => `缺 ${v}`,
     surplus: (v: number) => `冗余 ${v}`,
     ltaSection: "长协执行偏差 · 本季",

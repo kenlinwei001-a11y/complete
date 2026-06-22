@@ -58,6 +58,8 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
 
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">产能爬坡 vs 需求（万套/季）</div>
+        {/* PRD-quarter-rolling §3-①：段头副标注（产能增量项目同年度基准情景，溯源同源） */}
+        <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }} data-testid="quarter-ramp-note">{zh.quarter.rampNote}</div>
         <div className={styles.qbars} data-testid="qbars">
           {data.rows.map((r) => {
             const tier = tierOf(r.gap);
