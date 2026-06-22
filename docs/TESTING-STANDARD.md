@@ -60,15 +60,17 @@ L6 R6 确定性：[✅/N/A]   L7 R2 隔离：[✅/N/A]   L8 VLE：[✅/N/A]
 - **绝不**把"手动截图"说成"自动化 E2E"。
 - CP-SAT 类：L5 真求解 ≠ 全链真测；必须点明 L1 代理是 mock optimizer、缺 L2 端到端。
 
-## 5. 当前真实覆盖快照（2026-06-21，本会话末）
+## 5. 当前真实覆盖快照（2026-06-22 刷新）
 
-- 数据量（真实，纠正 CLAUDE.md 过期的 69/66/25+）：**datacore 505 · agentcore 265(+1 skip) · frontend 183 · contracts 3 · llm-adapters 10 · optimizer(Python) 14**。
-- 强的地方：L1 后端 inject 覆盖广；L0/L6/L7 在新功能上到位；L5 CP-SAT 真 ortools 跑通；门齐全。
+- 数据量（真实）：**datacore 540 · agentcore 278(+1 skip) · frontend 189 · contracts 3 · llm-adapters 10 · optimizer(Python) 14**。
+  （上轮 2026-06-21 为 505/265/183；本会话 +A1/A5/A7/A10/A14/A12/A15/prototype-intake/A18.1/nav-reorg 各层测试见 §8 登记。）
+- 强的地方：L1 后端 inject 覆盖广；L0/L6/L7 在新功能上到位；L2 跨服务冒烟在 A1(MCP 注册表 31)/A12(真起双服务 curl) 真连；L5 CP-SAT 真 ortools 跑通；门齐全（+ `cli-parity:check`/`provisional-honesty:check`）。
 - **已知缺口（= DEBT-ledger，必须排期）**：
-  - **A16/L4**：前端组件仍 jsdom+MSW；**真浏览器打真后端 E2E 已固化** `scripts/e2e-realbackend.mjs`（实跑 4/4 通过：登录/A4 真计数/A11 归类/工作流+比对现状），但**未进 CI**（需下载 Chromium + 起双后端，重）——待用户拍板进 CI 还是本地/夜间。
+  - **A16/L4（本会话扩大）**：`scripts/e2e-realbackend.mjs` L4 真后端 E2E 仅覆盖**旧页**（登录/A4 真计数/A11 归类/工作流+比对现状，实跑 4/4 通过）；**本会话新增前端组件**（A5 `<FdeGraph>` / A7 scaffold 表 / A10 `<VerificationPanel>` / A14 parity 列 / nav-reorg 分组）**只到 L3(jsdom+MSW)，L4 真浏览器未跑** → 受影响项已由 ✅ 降 ◐（TODO 2026-06-22 修正）。Playwright 未装（chromium 已缓存，缺 `playwright-core` 绑定）；待装 + 扩 e2e 脚本覆盖新组件，或拍板进 CI/夜间。
   - **A8/L2**：CP-SAT 代理(L1 mock) 与真 Python(L5) **未端到端连**（缺跨服务冒烟）。
-  - **A15/L9**：新工作流/provisioner/规划器/异步执行**无规模压测**。
+  - **A15/L9（本会话扩大）**：新工作流/provisioner/规划器/异步执行 + 本会话新增（FDE 投影/intake 解析/双模闭包/operation-classify）**无规模压测**。
   - pg 仓储仅靠 R9 双实现约定，未逐功能 L1 跑 pg 路径。
+  - **§3 登记纪律**：本会话补登记见 §8（此前各 PR 未填 §3 表，已追溯补齐）。
 
 ## 6. 反"丢三落四" checklist（开工 ③DEV 前 + 收尾前各过一遍）
 
@@ -95,3 +97,31 @@ VITE_MOCK=1 pnpm --filter frontend-shell dev   # mock 模式
 
 > 本标准接进 `DEV-SOP-and-LOOP.md` 的 T1–T12：T2 = L0/L1/L3，T11 = L2，T12 = L4（含真后端模式），新增 T13 = L5/L9 按矩阵。
 > 关联：`docs/DEBT-ledger.md`（A15 压测 / A16 真 E2E / A17 本标准）· `fde-delivery` skill（亲手用一遍）。
+
+---
+
+## 8. 本会话测试登记表（2026-06-22 追溯补齐 · §3 履行）
+
+> 此前各 PR 未填 §3 表，现按实际跑过的层追溯登记。`✅`=真跑该层，`—`=该类型不需要该层，`⬜欠`=矩阵要求但未跑（→ 该项 TODO 标 ◐）。
+> 北极星：绿测试≠能用；下表 mock 边界一律点明。
+
+| 功能 | L0 纯函数 | L1 后端inject | L2 跨服务 | L3 前端(jsdom+MSW) | L4 真浏览器 | L6 R6 | L7 R2 | 门 | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| **A1** 求解器→MCP | parse helpers | ✅ a1-solvers-mcp×3 | ✅ xservice-smoke(真AC↔真DC,31) | — | — | ✅ registry===SOLVER_KEYS | — | ✅ | ✅ |
+| **A5** FDE 节点图 | ✅ a5(投影×6) | ✅ a5(真服务+端点+事件) | — | ✅ f58 | **⬜欠** | ✅ | ✅ | ✅ | ◐(L4) |
+| **A7** scaffold 单机可见 | ✅ a7(buildRecord) | ✅ a7(单机+reconcile+事件) | — | ✅ f59 | **⬜欠** | ✅(R6 结构) | ✅ | ✅ | ◐(L4) |
+| **A10** 终态闭环验证 | — | ✅ a10×5 | — | ✅ f60 | **⬜欠** | — | ✅ | ✅ | ◐(L4) |
+| **A14** evals parity | ✅ classifyFailKind | ✅ a14×3 | — | ✅ f43(parity列) | **⬜欠** | — | — | ✅ | ◐(L4+真Kimi env-gated未跑) |
+| **A12** 模块 hand-run | — | — | ✅ **真起双服务 curl**(非browser) + xservice +1 | — | ◐(curl 非 Playwright) | — | — | ✅ | ✅(审计) |
+| **A15** operation-classify | ✅ a15×7 | ✅ a15(端点) | — | — | — | ✅ 确定性 | — | ✅ cli-parity | ◐(handlers A15.2-4 未做) |
+| **prototype-intake** | ✅ ×5(解析/对账/R6) | ✅ ×2(端点+事件) | — | — (P3 未做) | — | ✅ 字节锁 | ✅ | ✅ | ◐(P2-HITL/P3) |
+| **A18.1** 双模闭包 | ✅ ×3(STRICT/PROV/诚实门) | ✅ ×1(真服务) | — | — | — | ◐(冻结语义,sandbox 未做) | ✅ | ✅ provisional-honesty | ◐(A18.2-4) |
+| **nav-reorg** 导航分组 | groupAdminPages(在 f61) | — (纯前端) | — | ✅ f61×3 | **⬜欠** | — | — | ✅ debattery | ◐(L4) |
+
+**诚实边界（逐项）**：
+- 全部 L1 = `makeApp()` 真 Fastify+service+路由，**mock 边界 = memory 仓储 + ScriptedLlmClient(LLM) + 注入 mock optimizer**；非 pg、非真 LLM。
+- A1/A12 的 L2 是真跨服务连接但仍 memory 仓储；A12 的"真后端"是 **curl 驱动**，**非 Playwright 真浏览器**（像素/交互未验）。
+- A5/A7/A10/A14/nav-reorg 的前端**只到 L3（假后端 MSW）**，**L4 真浏览器（mock 或真后端两模式）一律未跑** → 这些项 TODO 已由 ✅ 降 ◐。
+- A14 的"真 Kimi parity"是 **env-gated 未执行**，当前仅 mock 证框架（不等于 agent 质量达标）。
+- A18.1 的 R6 仅覆盖双模闭包纯函数；**LLM 临时求解器的"生成冻结+锁死沙箱确定性"(A18.2) 尚未实现/未测**。
+- **L9 压测**：本会话所有新代码（FDE 投影/intake 解析/双模闭包/operation-classify/工作流引擎）**均未做规模压测**（DEBT A15）。
