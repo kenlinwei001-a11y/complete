@@ -229,7 +229,9 @@
 ---
 
 ## 进度账（每完成一项回填）
-- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **13 ✅ + 4 ◐ / 23**（✅ A11/A6/A4/A13/A8/A1/A12/A9/**A5/A7/A10/A14/nav-reorg**；◐ A3/A15/prototype-intake/A18）。
+- 合计：**23 项**（20 PRD[A16+A17 并入 A18] + A9 设计延后 + 2 特性 + nav-reorg 新增）。完成 **14 ✅ + 3 ◐ / 23**（✅ A11/A6/A4/A13/A8/A1/A12/A9/A5/A7/A10/A14/nav-reorg/**A15**；◐ A3/prototype-intake/A18）。
+  > **A18 进度**（核心几近完成，均后端测过）：A18.1 双模闭包 ✅ · A18.2 锁死沙箱+LLM 临时求解器 ✅ · A18.3 创建人写真值门控 ✅ · A18.4 晋升 GOVERNED ✅ · **端到端解阻断 ✅**（缺一环 PROVISIONAL 跑完出预览+PROVISIONAL_ANSWER，不写真值，STRICT 零回归）。**余 A18**：PROVISIONAL 隔离命名空间数据物化(P1 真产 rows)· 审核台前端 UI · 整域晋升编排。
+  > **prototype-intake 余**：P3 串发动机(resolve 决议真应用本体 + closure/publish)+ 前端面板。**A3 余**：参考本体基线(元租户 95 节点，低价值数据撰写)。
   > **2026-06-22 测试欠账已补实**：A5/A7/A10/A14/nav-reorg 先按 SOP line-54 由 ✅ 降 ◐（前端只到 L3）；随后**补 L4 真后端 E2E**（`scripts/run-l4-realbackend.sh` 起真 datacore+agentcore+vite 真后端模式 → Playwright 真 Chromium，**9/9 通过**）→ 5 项回 ✅。A14 的"真 Kimi parity 实跑"仍 env-gated 未执行（与 L4 无关，记 DEBT）。
 - **Wave 1–4 全清（后端 + L4 真后端 E2E）**；**Wave 5**（A15 backbone · prototype-intake P1+P2-core · A18.1 双模闭包，均后端 ✅）；**特性**（nav-reorg ✅ · 余 cockpit/synthetic-wizard）。
 - 余下：**A18.3**（PROVISIONAL 隔离物化+创建人写真值门控）· **A18.4**（审核台+晋升 GOVERNED）· **cockpit**（驾驶舱 1:1）· **synthetic-wizard**（ontoprompt 链 UX）· A15.2–4 handlers · prototype-intake P3 · A3 参考基线。
