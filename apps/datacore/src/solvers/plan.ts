@@ -262,11 +262,23 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
     return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol, meets };
   });
 
-  const byKey = new Map(evals.map((e) => [e.pathKey, e]));
-  const pick = (k: string): PathEval => byKey.get(k) as PathEval;
-  const cEval = pick("C");
-  const bEval = pick("B");
-  const aggressive = cEval.scores.total >= bEval.scores.total ? cEval : bEval;
+  // PRD-IND-plan-generate §4.4 / HTML gen3Plans：5 路径骨架 → 按取向收敛 3 方案（1:1）。
+  // 先锁 稳健(盈利+现金+稳健 max，可行优先) 与 进取(规模+增长 max，全集)，再从剩余可行取 total max 为 均衡；去重。
+  const pickMax = (pool: PathEval[], fn: (e: PathEval) => number, used: Set<string>): PathEval => {
+    const free = pool.filter((e) => !used.has(e.pathKey)).sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1));
+    return free[0] ?? [...pool].sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1))[0]!;
+  };
+  const feas = evals.filter((e) => e.hardViol.length === 0);
+  const used = new Set<string>();
+  const std = pickMax(feas.length ? feas : evals, (e) => e.scores.profit + e.scores.cash + e.scores.stability, used); used.add(std.pathKey);
+  const agg = pickMax(evals, (e) => e.scores.scale + e.scores.growth, used); used.add(agg.pathKey);
+  const bal = pickMax(feas.length ? feas : evals, (e) => e.scores.total, used); used.add(bal.pathKey);
+  // PRD-IND-plan-generate §4.6 种子（extSens/focus 为电池域 IndustryTemplate 增量字段）。
+  type FocusProb = { n: string; kind: string; rule: string | null; why: string; chain: [string, string, string][] };
+  const extCfg = cfg as unknown as {
+    extSens?: Record<string, [string, string, string][]>;
+    focus?: Record<string, { keys: string; probs: FocusProb[] }>;
+  };
   const schemeOf = (no: string, name: string, ev: PathEval): Record<string, unknown> => ({
     no,
     name,
@@ -277,7 +289,16 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
     meets: ev.meets,
     gain: cfg.gains[ev.pathKey] ?? [],
     give: cfg.gives[ev.pathKey] ?? [],
-    problems: ev.hardViol.map((v) => ({
+    // PRD-IND-plan-generate §4.6：外部信号敏感性 + 执行关键点（种子 extSens/focus；R14 前端零写死）。
+    extSensitivity: ((extCfg.extSens?.[ev.pathKey] ?? []) as [string, string, string][]).map((e) => ({ signal: e[0], impact: e[1], color: e[2] })),
+    focusKeys: extCfg.focus?.[ev.pathKey]?.keys ?? "",
+    // 必须解决的问题：先 GEN_FOCUS 焦点问题（含 why/chain，恒在），再硬违规问题（解锁提示）。
+    problems: [
+      ...((extCfg.focus?.[ev.pathKey]?.probs ?? []) as FocusProb[]).map((q) => ({
+        n: q.n, kind: q.kind, rule: q.rule ?? null, why: q.why,
+        chain: q.chain.map((node) => ({ label: node[0], object: node[1], color: node[2] })),
+      })),
+      ...ev.hardViol.map((v) => ({
       ruleRef: v,
       title:
         v === "C15"
@@ -293,25 +314,23 @@ export function planGenerate(c: SolverContext, args: PlanGenerateArgs): Record<s
             : `路径 ${ev.pathKey} CAPEX ${ev.outcome.capex} 亿超过目标面板上限 ${targets.capexCap} 亿`,
       unlock:
         v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
-    })),
+      })),
+    ],
   });
+  // 顺序：壹=稳健·守盈利 / 贰=均衡 / 叁=进取·冲规模（1:1 HTML gen3Plans）。
   const schemes = [
-    schemeOf("S1", cfg.schemeNames.steady, pick("A")),
-    schemeOf("S2", cfg.schemeNames.balanced, pick("E")),
-    schemeOf("S3", cfg.schemeNames.aggressive, aggressive),
+    schemeOf("壹", `${cfg.schemeNames.steady}方案 · 守盈利`, std),
+    schemeOf("贰", `${cfg.schemeNames.balanced}方案`, bal),
+    schemeOf("叁", `${cfg.schemeNames.aggressive}方案 · 冲规模`, agg),
   ];
+  // ★推荐 = 三案中可行且综合分最高（无可行则全集 total 最高）；recommend 返回其 pathKey。
   const eligible = schemes.filter((s) => (s.hardViol as string[]).length === 0);
-  // recommend = 无违规方案中 total 最高（以路径键标识，如默认数据下为 E）
-  const recommend =
-    eligible.length > 0
-      ? str(
-          [...eligible].sort(
-            (x, y) =>
-              ((y.scores as { total: number }).total - (x.scores as { total: number }).total) ||
-              (str(x.no) < str(y.no) ? -1 : 1),
-          )[0]?.pathKey,
-        )
-      : "";
+  const pool = eligible.length > 0 ? eligible : schemes;
+  const recommend = str(
+    [...pool].sort(
+      (x, y) => ((y.scores as { total: number }).total - (x.scores as { total: number }).total) || (str(x.pathKey) < str(y.pathKey) ? -1 : 1),
+    )[0]?.pathKey,
+  );
 
   return {
     schemes,

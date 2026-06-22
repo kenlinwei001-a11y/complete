@@ -373,8 +373,13 @@ describe("S1 solvers", () => {
     }).data;
     const pathC = data.paths.find((p) => p.pathKey === "C")!;
     expect(pathC.hardViol).toContain("CAPEX");
-    expect(data.recommend).toBe("E");
     expect(data.schemes).toHaveLength(3);
+    // 1:1 §4.4 方案编号 壹/贰/叁（稳健·守盈利 / 均衡 / 进取·冲规模）
+    expect(data.schemes.map((s) => s.no)).toEqual(["壹", "贰", "叁"]);
+    // ★推荐 = 三案中可行且综合分最高（动态，非固定 E）
+    const feasSchemes = data.schemes.filter((s) => s.hardViol.length === 0);
+    const expectRec = [...feasSchemes].sort((a, b) => (b.scores.total! - a.scores.total!) || (a.pathKey < b.pathKey ? -1 : 1))[0];
+    expect(data.recommend).toBe(expectRec!.pathKey);
     // exact 5-dim for every path, recomputed from the scenario-pack coefficients
     const cfg = P.planGenerate;
     for (const p of data.paths) {
@@ -391,11 +396,14 @@ describe("S1 solvers", () => {
       const mean = (p.scores.profit! + p.scores.scale! + p.scores.cash! + p.scores.growth! + p.scores.stability!) / 5;
       expect(p.scores.total).toBe(Math.max(0, Math.round(mean) - 15 * p.hardViol.length));
     }
-    // 进取 = max(C, B) by total → B on defaults (B violates C15 but still outranks C)
-    const aggressive = data.schemes[2]!;
-    const totalB = data.paths.find((p) => p.pathKey === "B")!.scores.total!;
-    const totalC = pathC.scores.total!;
-    expect(aggressive.pathKey).toBe(totalC >= totalB ? "C" : "B");
+    // 1:1 §4.4：进取(叁) = 全集 规模+增长 最高（pickMax，排除已选稳健）；去重 → 三案 pathKey 互异
+    const agg = data.schemes[2]!;
+    const keys = data.schemes.map((s) => s.pathKey);
+    expect(new Set(keys).size).toBe(3); // 去重：三案路径互异
+    const stdKey = data.schemes[0]!.pathKey;
+    const scaleGrowth = (k: string) => { const p = data.paths.find((x) => x.pathKey === k)!; return p.scores.scale! + p.scores.growth!; };
+    const aggExpect = [...data.paths].filter((p) => p.pathKey !== stdKey).sort((a, b) => (scaleGrowth(b.pathKey) - scaleGrowth(a.pathKey)) || (a.pathKey < b.pathKey ? -1 : 1))[0]!;
+    expect(agg.pathKey).toBe(aggExpect.pathKey);
   });
 
   it("capacity_rollup returns 4-level intermediates with formulas and inputs", async () => {

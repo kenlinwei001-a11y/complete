@@ -1080,6 +1080,8 @@ export class SyntheticService {
       { key: "sharePts", label: "份额增", unit: "pct", step: 1 },
       { key: "capexCap", label: "CAPEX 上限", unit: "亿", step: 1, hardKey: "hardCapex" },
       { key: "cashFloor", label: "现金底线", unit: "亿", step: 1, hardKey: "hardCash" },
+      // PRD-IND-plan-generate §4.1/§8.4：库存周转目标（求解器 turnsFloor/meetTurns 已支持，补面板暴露）。
+      { key: "invTurns", label: "库存周转", unit: "次", step: 0.5 },
     ];
     const PROJECT_SIM_DRIVER_FACTORS = [
       { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },

@@ -143,6 +143,10 @@ export const GenSchemeSchema = z.object({
   gain: z.array(z.string()),
   give: z.array(z.string()),
   problems: z.array(z.record(z.string(), z.unknown())),
+  /** PRD-IND-plan-generate §4.6：外部信号敏感性（5×3，[signal,impact,color]）——接 ExternalSignal/种子。 */
+  extSensitivity: z.array(z.object({ signal: z.string(), impact: z.string(), color: z.string() })).optional(),
+  /** §4.6：执行关键点（GEN_FOCUS keys 一句话）。 */
+  focusKeys: z.string().optional(),
   /** 增量 §7.11：目标达成清单（六项 meet* 布尔 → ✓/✗ 行）—— 服务端代入目标面板值后输出 */
   meets: z
     .object({
