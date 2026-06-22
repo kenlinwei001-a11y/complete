@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-21",
+  "generatedAt": "2026-06-22",
   "ontology": {
     "invariants": [
       "R1",
@@ -165,6 +165,25 @@
         "scripts/check-cli-parity.mjs",
         "scripts/cli-parity-baseline.json"
       ]
+    },
+    "PRD-A18-build-output-closure.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R12",
+        "R13",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
     },
     "PRD-A3-reference-ontology-slice-planner.md": {
       "hasOntologyRef": true,
@@ -547,6 +566,93 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-admin-self-approval.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R4",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/actions.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-agent-data-generation-tools.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R15",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/tools/clients.ts",
+        "apps/agentcore/src/tools/datacore-http.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/datacore/src/app.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-aop-annual-scenario-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/planviews.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx",
+        "packages/contracts/src/planviews.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-attainment-base-daily-timeseries.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/timeseries.ts",
+        "packages/contracts/src/timeseries.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-attribution-routing-plan-audit.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/plan.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-catalog-battery-20-scenarios.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -581,6 +687,27 @@
       "artifacts": [
         "packages/contracts/src/solvers.ts"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-data-closure-spec.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-de-battery-multitenant-config.md": {
@@ -640,6 +767,26 @@
         "packages/contracts/src/meta-ontology.ts",
         "scripts/check-prd-ontology.mjs",
         "scripts/check-system-ontology.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-empty-tenant-bootstrap.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/datacore/src/livedin/engine.ts",
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/src/synthetic/battery.ts"
       ],
       "brokenArtifacts": []
     },
@@ -768,6 +915,24 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-goal-metric-owner-spine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R2",
+        "R4"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/ontology-governance.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/data-categories.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-implementation-handbook.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -783,6 +948,41 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-in-dialog-gap-fill-loop.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/growth/loop.ts",
+        "apps/agentcore/src/growth/probe.ts",
+        "apps/agentcore/src/server.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-inference-process-enhancement.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/frontend-shell/src/sse/useTaskStream.ts",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-live-traceable-data.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -793,6 +993,19 @@
       ],
       "breakpoints": [
         "G-6"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-llm-agent-empty-response-guard.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R6",
+        "R7",
+        "R8"
+      ],
+      "breakpoints": [
+        "G-3"
       ],
       "artifacts": [],
       "brokenArtifacts": []
@@ -812,6 +1025,21 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-nav-ia-reorg.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R15",
+        "R2",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/src/pages/adminRegistry.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-ontology-browser-field-coverage.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -828,6 +1056,59 @@
       "artifacts": [
         "apps/datacore/src/databuilder/closure.ts",
         "apps/datacore/src/modeling.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-order-project-sim-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx",
+        "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-plan-audit-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-2"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/sim/PlanAuditView.tsx",
+        "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-plan-generate-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx",
+        "packages/contracts/src/solvers.ts"
       ],
       "brokenArtifacts": []
     },
@@ -868,6 +1149,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-quarter-rolling-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/planviews.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-query-orchestration-service.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -883,6 +1181,13 @@
         "G-3",
         "G-8"
       ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-reference-views-1to1-roadmap.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
       "artifacts": [],
       "brokenArtifacts": []
     },
@@ -910,6 +1215,22 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sop-balance-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/SopBalanceView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-synthetic-wizard-ontoprompt-chain.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -926,6 +1247,25 @@
       "artifacts": [
         "apps/datacore/src/modeling.ts"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-system-ontogenesis-spec.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R16",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-5",
+        "G-8"
+      ],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-traceability-and-baseline-v2.md": {
@@ -985,15 +1325,23 @@
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-A3-reference-ontology-slice-planner.md",
       "PRD-A5-fde-orchestration-workflow.md",
+      "PRD-agent-data-generation-tools.md",
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-empty-tenant-bootstrap.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-inference-process-enhancement.md",
+      "PRD-llm-agent-empty-response-guard.md",
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
+      "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
     "G-8": [
       "PRD-A10-build-to-verify-closure.md",
       "PRD-A12-module-handrun-completion.md",
+      "PRD-A18-build-output-closure.md",
       "PRD-A3-reference-ontology-slice-planner.md",
       "PRD-A5-fde-orchestration-workflow.md",
       "PRD-A7-bstack-scaffold-standalone.md",
@@ -1016,6 +1364,7 @@
       "PRD-addendum-solvers-and-gaps.md",
       "PRD-addendum-validation-loop.md",
       "PRD-catalog-battery-20-scenarios.md",
+      "PRD-data-closure-spec.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-dogfooding-self-ontology.md",
       "PRD-fde-fullstack-build-workflow.md",
@@ -1024,6 +1373,7 @@
       "PRD-frontend.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-implementation-handbook.md",
+      "PRD-inference-process-enhancement.md",
       "PRD-maturity-master-plan.md",
       "PRD-ontology-browser-field-coverage.md",
       "PRD-platform-foundry-aip.md",
@@ -1031,6 +1381,7 @@
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
       "PRD-synthetic-wizard-ontoprompt-chain.md",
+      "PRD-system-ontogenesis-spec.md",
       "PRD-traceability-and-baseline-v2.md",
       "PRD-traceability-and-baseline.md",
       "PRD-unified-build-engine.md"
@@ -1038,6 +1389,7 @@
     "G-6": [
       "PRD-A11-per-connection-category.md",
       "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-data-closure-spec.md",
       "PRD-de-battery-multitenant-config.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
@@ -1087,10 +1439,16 @@
       "PRD-A3-reference-ontology-slice-planner.md",
       "PRD-A6-realistic-value-domain-synthesis.md",
       "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-data-closure-spec.md",
       "PRD-de-battery-multitenant-config.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-generic-inference.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-quarter-rolling-1to1.md",
+      "PRD-sop-balance-1to1.md",
+      "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
     "G-4": [
@@ -1107,6 +1465,7 @@
     "G-2": [
       "PRD-addendum-solvers-and-gaps.md",
       "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
       "PRD-query-orchestration-service.md",
       "PRD-unified-build-engine.md"
     ]
@@ -1121,18 +1480,22 @@
     ],
     "apps/agentcore/src/tools/registry.ts": [
       "PRD-A1-solvers-as-mcp-tools.md",
-      "PRD-A15-cli-universal-operation-shell.md"
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-agent-data-generation-tools.md"
     ],
     "apps/datacore/src/solvers/service.ts": [
       "PRD-A1-solvers-as-mcp-tools.md",
       "PRD-A13-floor-semantics-deterministic.md",
+      "PRD-A18-build-output-closure.md",
       "PRD-A8-more-cpsat-models.md",
       "PRD-A9-external-engines-design-deferred.md"
     ],
     "apps/datacore/src/app.ts": [
       "PRD-A10-build-to-verify-closure.md",
       "PRD-A15-cli-universal-operation-shell.md",
-      "PRD-A4-object-type-browser.md"
+      "PRD-A4-object-type-browser.md",
+      "PRD-agent-data-generation-tools.md",
+      "PRD-aop-annual-scenario-1to1.md"
     ],
     "apps/datacore/src/connectors/registry.ts": [
       "PRD-A11-per-connection-category.md"
@@ -1141,7 +1504,8 @@
       "PRD-A11-per-connection-category.md"
     ],
     "apps/datacore/src/synthetic/data-categories.ts": [
-      "PRD-A11-per-connection-category.md"
+      "PRD-A11-per-connection-category.md",
+      "PRD-goal-metric-owner-spine.md"
     ],
     "apps/datacore/test/xservice-smoke.test.ts": [
       "PRD-A12-module-handrun-completion.md"
@@ -1157,6 +1521,7 @@
     ],
     "apps/agentcore/src/router/orchestrator.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-attribution-routing-plan-audit.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-scenario-launcher.md"
     ],
@@ -1186,13 +1551,55 @@
       "PRD-A5-fde-orchestration-workflow.md"
     ],
     "apps/datacore/src/synthetic/battery.ts": [
-      "PRD-A6-realistic-value-domain-synthesis.md"
+      "PRD-A6-realistic-value-domain-synthesis.md",
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-quarter-rolling-1to1.md"
     ],
     "apps/datacore/src/config.ts": [
       "PRD-A7-bstack-scaffold-standalone.md"
     ],
+    "apps/datacore/src/actions.ts": [
+      "PRD-admin-self-approval.md"
+    ],
+    "apps/agentcore/src/tools/clients.ts": [
+      "PRD-agent-data-generation-tools.md"
+    ],
+    "apps/agentcore/src/tools/datacore-http.ts": [
+      "PRD-agent-data-generation-tools.md"
+    ],
+    "apps/datacore/src/planviews.ts": [
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": [
+      "PRD-aop-annual-scenario-1to1.md"
+    ],
+    "packages/contracts/src/planviews.ts": [
+      "PRD-aop-annual-scenario-1to1.md"
+    ],
+    "apps/datacore/src/timeseries.ts": [
+      "PRD-attainment-base-daily-timeseries.md"
+    ],
+    "packages/contracts/src/timeseries.ts": [
+      "PRD-attainment-base-daily-timeseries.md"
+    ],
+    "apps/agentcore/src/tools/executor.ts": [
+      "PRD-attribution-routing-plan-audit.md"
+    ],
+    "apps/datacore/src/catalog.ts": [
+      "PRD-attribution-routing-plan-audit.md"
+    ],
+    "apps/datacore/src/solvers/plan.ts": [
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
     "packages/contracts/src/solvers.ts": [
-      "PRD-cockpit-capacity-1to1-parity.md"
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
     ],
     "packages/contracts/src/workspace.ts": [
       "PRD-de-battery-multitenant-config.md"
@@ -1206,14 +1613,25 @@
     "scripts/check-system-ontology.mjs": [
       "PRD-dogfooding-self-ontology.md"
     ],
+    "apps/datacore/src/livedin/engine.ts": [
+      "PRD-empty-tenant-bootstrap.md"
+    ],
+    "apps/datacore/src/seed.ts": [
+      "PRD-empty-tenant-bootstrap.md"
+    ],
+    "apps/datacore/src/sop.ts": [
+      "PRD-empty-tenant-bootstrap.md"
+    ],
     "apps/datacore/src/databuilder/comprehend.ts": [
       "PRD-fde-fullstack-build-workflow.md"
     ],
     "apps/agentcore/src/growth/probe.ts": [
-      "PRD-fullstack-story-build-g8.md"
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md"
     ],
     "apps/agentcore/src/server.ts": [
       "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
       "PRD-scenario-launcher.md"
     ],
     "packages/contracts/src/databuilder.ts": [
@@ -1221,6 +1639,25 @@
     ],
     "packages/contracts/src/growth.ts": [
       "PRD-fullstack-story-build-g8.md"
+    ],
+    "apps/datacore/src/ontology-governance.ts": [
+      "PRD-goal-metric-owner-spine.md"
+    ],
+    "apps/agentcore/src/growth/loop.ts": [
+      "PRD-in-dialog-gap-fill-loop.md"
+    ],
+    "apps/frontend-shell/src/sse/useTaskStream.ts": [
+      "PRD-inference-process-enhancement.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PmDag.tsx": [
+      "PRD-inference-process-enhancement.md",
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/pages/ShellLayout.tsx": [
+      "PRD-nav-ia-reorg.md"
+    ],
+    "apps/frontend-shell/src/pages/adminRegistry.ts": [
+      "PRD-nav-ia-reorg.md"
     ],
     "apps/datacore/src/databuilder/closure.ts": [
       "PRD-ontology-browser-field-coverage.md"
@@ -1230,8 +1667,30 @@
       "PRD-prototype-intake-databuilder.md",
       "PRD-synthetic-wizard-ontoprompt-chain.md"
     ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": [
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": [
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": [
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
+      "PRD-plan-generate-1to1.md"
+    ],
     "apps/datacore/src/entity-resolution.ts": [
       "PRD-prototype-intake-databuilder.md"
+    ],
+    "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
+      "PRD-quarter-rolling-1to1.md"
     ],
     "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
       "PRD-scenario-launcher.md"
@@ -1244,6 +1703,9 @@
     ],
     "scripts/check-chain-closure.mjs": [
       "PRD-scenario-launcher.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
+      "PRD-sop-balance-1to1.md"
     ]
   }
 }
