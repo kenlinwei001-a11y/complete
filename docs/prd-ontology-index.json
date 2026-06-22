@@ -309,6 +309,15 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-IND-plan-generate.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-MASTER-INDEX.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1627,6 +1636,10 @@
     "apps/datacore/src/config.ts": [
       "PRD-A7-bstack-scaffold-standalone.md"
     ],
+    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
+      "PRD-IND-plan-generate.md",
+      "PRD-plan-generate-1to1.md"
+    ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
     ],
@@ -1750,9 +1763,6 @@
     ],
     "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": [
       "PRD-plan-audit-1to1.md"
-    ],
-    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
-      "PRD-plan-generate-1to1.md"
     ],
     "apps/datacore/src/entity-resolution.ts": [
       "PRD-prototype-intake-databuilder.md"
