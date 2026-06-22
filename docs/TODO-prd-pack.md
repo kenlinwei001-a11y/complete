@@ -228,7 +228,11 @@
   (`battery.ts` 独立子流 `seed^hash("cockpit")` R6 向后兼容 + `instantiateBattery` putAll) + 派生 `revenueWan/marginWan`(Σ需求×单价×毛利率) +
   `DASH_LAYOUT` 3 富 KPI(需求P50/毛利总额/物料缺口，objects-aggregate 算出，R13 provenance) + features 注册 + data-categories 归类 + 覆盖切片。
   测试 cockpit-kpi ×3(L1 物化+派生回写+聚合 · L6 字节一致+财务交叉一致 · R2) · **L4 真后端 10/10**(富 KPI 真浏览器渲染)。debattery 零写死。
-  **余**：P2 规划决策推演+根因 DAG · P3 风险看板补全+对症方案→工单 · P4 型号/订单推演+反事实双轨 `counterfactual_timeline`+riskCases 真闭环 · P5 回采校准链/V5V7/AI对话/导出。
+  **P2 规划决策推演 + 根因 DAG ✅**：2 绿地对象类型 `PlanKpi`(decision，actual 经 P1 同源数据算出 + 派生 `gapPct`)/`RootCauseChain`(decision，归因模板配成对象) 走真合成管线
+  + `plan_rootcause` 求解器(SOLVER_KEYS 31→32，决策驾驶舱目录 COCKPIT_SOLVER_CATALOG，不进 QOS discover 22、进注册表 32；invoke 拦截读对象图)：经营 KPI 越线沿归因模板逐层取证 → 多根 DAG(kpi→factor→evidence，边权重=活数据贡献占比，「结构=算、模板=配成对象」)
+  + `DASH_LAYOUT` dag widget(query.solver) + `<ProvenanceDag>` 前端三层渲染 + features 注册 + data-categories 决策驾驶舱类 + decision 域。
+  测试 cockpit-rootcause ×4(L6 字节一致+KPI 与财务交叉一致 · L1 DAG 三层+边归一+逐 KPI 归因 · L1 kpiCategory 过滤 · R2) · cockpit-rootcause-dag ×2(L3 三层渲染) · **L4 真后端 11/11**(根因 DAG 真浏览器渲染)。回写本体 §2.B/§2.E/§3。
+  **余**：P3 风险看板补全+对症方案→工单 · P4 型号/订单推演+反事实双轨 `counterfactual_timeline`+riskCases 真闭环 · P5 回采校准链/V5V7/AI对话/导出。
 - [ ] ⬜ **synthetic-wizard · 合成向导「生成进度」按 nano-ontoprompt 分阶段集成链重设计**（把"看数据逐阶段策展本体"的 UX 精髓真正落进页面，非仅算法）。
 
 ---

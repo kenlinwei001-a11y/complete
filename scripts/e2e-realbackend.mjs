@@ -14,9 +14,11 @@
 //   5) CHROME=<chrome 路径> FRONT=http://127.0.0.1:5200 node scripts/e2e-realbackend.mjs
 //
 // 一键编排：bash scripts/run-l4-realbackend.sh（起双后端+vite 真后端模式+跑本脚本，自动清理）。
-// 断言（真后端真数据，区别于 mock 写死值）9 项：登录 / A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 /
-//   A5 FDE 8 节点图 / A7 scaffold 清单(单机可见) / A10 重跑验证终态徽章 / nav-reorg 业务域分组 / A14 evals parity 失因列。
-// 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 **9/9 通过**（playwright-core 1.61 + ms-playwright chromium-1148 缓存）。
+// 断言（真后端真数据，区别于 mock 写死值）11 项：登录 / cockpit P1 富 KPI / cockpit P2 根因 DAG /
+//   A4 真物化计数 / A11 连接归类 / 工作流 7 步 + 比对现状 / A5 FDE 8 节点图 / A7 scaffold 清单(单机可见) /
+//   A10 重跑验证终态徽章 / nav-reorg 业务域分组 / A14 evals parity 失因列。
+// 实测：2026-06-22 真 Chromium(headless_shell) + 真后端 **9/9 通过**（playwright-core 1.61 + ms-playwright chromium-1148 缓存）;
+//   cockpit P1+P2 扩为 11 项。
 import { chromium } from "playwright-core";
 
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
@@ -47,6 +49,16 @@ try {
   demandKpi > 0 && marginKpi > 0 && matKpi > 0
     ? ok("cockpit P1 真后端：需求P50/毛利总额/物料缺口 富 KPI 真浏览器渲染（数据闭环）")
     : bad(`cockpit P1 真后端：富 KPI 缺失（demand=${demandKpi} margin=${marginKpi} mat=${matKpi}）`);
+
+  // cockpit P2 规划决策推演 · 根因 DAG（L4 真后端）：plan_rootcause 求解器经营 KPI 越线 → 因子 → 取证叶三层真渲染
+  await page.waitForTimeout(1500); // 等 plan_rootcause solver widget 拉取
+  const dagRoot = await page.locator("[data-testid=provenance-dag]").count();
+  const dagKpi = await page.locator('[data-testid^="dag-node-kpi:"]').count();
+  const dagFactor = await page.locator('[data-testid^="dag-node-factor:"]').count();
+  const dagLeaf = await page.locator('[data-testid^="dag-node-leaf:"]').count();
+  dagRoot > 0 && dagKpi > 0 && dagFactor > 0 && dagLeaf > 0
+    ? ok(`cockpit P2 真后端：根因归因 DAG 真浏览器渲染（${dagKpi} KPI 根 · ${dagFactor} 因子 · ${dagLeaf} 取证叶，结构=活数据算出）`)
+    : bad(`cockpit P2 真后端：根因 DAG 缺失（dag=${dagRoot} kpi=${dagKpi} factor=${dagFactor} leaf=${dagLeaf}）`);
 
   // A4 对象/类型浏览器：真后端真物化计数
   await page.click('a[href="/admin/object-types"]').catch(() => {});

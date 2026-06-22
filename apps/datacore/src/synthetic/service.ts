@@ -457,6 +457,8 @@ export class SyntheticService {
       { domainKey: "supply", displayName: "供给", color: "#0d9488", ownerUserId: "usr_demo_planner" },
       { domainKey: "commercial", displayName: "商务", color: "#be185d", ownerUserId: "usr_demo_admin" },
       { domainKey: "external", displayName: "外部信号", color: "#475569", ownerUserId: "usr_demo_admin" },
+      // cockpit P2：决策应用域（驾驶舱 KPI / 规划决策推演 / 根因归因链的归域）。
+      { domainKey: "decision", displayName: "决策应用", color: "#7c3aed", ownerUserId: "usr_demo_admin" },
       { domainKey: "unassigned", displayName: "未归域", color: "#9ca3af", ownerUserId: null },
     ];
     for (const s of seeds) {
@@ -559,6 +561,9 @@ export class SyntheticService {
     await putAll("DemandSegment", g.demandSegments, "segId");
     await putAll("FinancePlan", g.financePlans, "finId");
     await putAll("MaterialBalance", g.materialBalances, "matBalId");
+    // cockpit P2 绿地（规划决策推演 + 根因 DAG）
+    await putAll("PlanKpi", g.planKpis, "kpiId");
+    await putAll("RootCauseChain", g.rootCauseChains, "chainId");
     // 20 场景目录 §7 扩展数据（E6b）：13 求解器所需对象类型 + 实例（确定性 + 戏剧点植入）。
     for (const t of extendedObjectTypes()) {
       if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
@@ -951,6 +956,13 @@ export class SyntheticService {
           key: "material-gap", type: "kpi", title: "物料现货缺口 (吨)", unit: "吨", featureKey: "view.dash.widget.material",
           query: { kind: "objects-aggregate", objectType: "MaterialBalance", agg: "sum", prop: "gapTon" },
           provenance: { toolName: "query_objects", outputPath: "$.sum(gapTon)", label: "净需求×(1−长协覆盖) 缺口合计" },
+        },
+        // cockpit P2 规划决策推演 · 根因 DAG（KPI 越线 → 因子 → 取证叶，结构与贡献均经 plan_rootcause 求解器
+        // 从 PlanKpi/RootCauseChain/活数据算出，前端零写死 R14；R13 求解器溯源）。
+        {
+          key: "rootcause", type: "dag", title: "规划决策推演 · 根因归因 DAG", span: 2, featureKey: "view.dash.widget.rootcause",
+          query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.dag", label: "plan_rootcause：经营 KPI 越线沿归因模板逐层取证（贡献=活数据聚合）" },
         },
         {
           key: "oee-trend", type: "chart", title: "OEE 14 日趋势", span: 2, chartKind: "line",

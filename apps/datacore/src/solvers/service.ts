@@ -45,6 +45,9 @@ export const SOLVER_KEYS = [
   "carbon_footprint",
   // Phase6B 跨求解器编排器（meta-solver）
   "countermeasure_combo",
+  // cockpit P2 规划决策推演 · 根因归因 DAG：经营 KPI 越线沿 RootCauseChain 归因模板逐层取证，
+  // DAG 结构与每条边的贡献均从 PlanKpi/RootCauseChain/活数据算出（确定性 R6，「结构=算、模板=配成对象」）。
+  "plan_rootcause",
   // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
   // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
   "generic_inference",
@@ -106,6 +109,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
   carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
+  plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
 };
 
 const DAY_MS = 86400000;
@@ -454,6 +458,96 @@ export class SolverService {
       rootDrivers,
       invertedCount: inverted.length,
       summary: `${inverted.length} 个目标毛利倒挂；根因主驱动 ${rootDrivers[0]?.label ?? "—"}（拉穿 ${rootDrivers[0]?.invertedCount ?? 0} 个）`,
+    };
+  }
+
+  /**
+   * cockpit P2 规划决策推演 · 根因归因 DAG（净室读对象图,确定性 R6,「结构=算、模板=配成对象」）：
+   * 经营 KPI（PlanKpi）越线 → 按 RootCauseChain 归因模板沿 driverType 取活数据逐层取证 →
+   * 产出多根 DAG（kpi 越线根 → factor 因子 → evidence 取证叶）,每条边权重=贡献占比（活数据聚合算出,非写死）。
+   * 报表只会告诉你"毛利率低了",这里把"为什么低、低在哪个因子、证据是哪些细分/物料"沿因果链量化展开。
+   * args: { kpiCategory? }（指定单一 KPI 类别；缺省=所有越线 KPI；全部达标则取最弱一个,DAG 恒有内容）。
+   */
+  private async planRootcause(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const kpiObjs = await this.repos.objects.listByType(ctx.tenantId, "PlanKpi");
+    const chainObjs = await this.repos.objects.listByType(ctx.tenantId, "RootCauseChain");
+    if (kpiObjs.length === 0) throw validationError("plan_rootcause 需先合成 PlanKpi（经营 KPI）对象");
+    const onlyCategory = args.kpiCategory ? str(args.kpiCategory) : undefined;
+
+    // 1) KPI 越线判定（actual < floorVal；缺口 gap=target-actual，确定性按 kpiId 排序）。
+    const kpis = kpiObjs
+      .map((o) => o.props)
+      .filter((p) => !onlyCategory || str(p.category) === onlyCategory)
+      .map((p) => {
+        const actual = num(p.actual);
+        const target = num(p.target);
+        const floorVal = num(p.floorVal);
+        const offTarget = actual < floorVal;
+        return {
+          kpiId: str(p.kpiId), name: str(p.name), category: str(p.category),
+          actual, target, floorVal, unit: str(p.unit),
+          gap: round(target - actual, 4), offTarget,
+          status: offTarget ? "RED" : actual < target ? "AMBER" : "GREEN",
+        };
+      })
+      .sort((a, b) => a.kpiId.localeCompare(b.kpiId));
+
+    // 2) 选定要归因的 KPI：越线者；若全达标则取最弱一个（actual/target 最低）→ DAG 恒有内容（"最大风险"）。
+    let roots = kpis.filter((k) => k.offTarget);
+    if (roots.length === 0 && kpis.length > 0) {
+      roots = [[...kpis].sort((a, b) => a.actual / a.target - b.actual / b.target || a.kpiId.localeCompare(b.kpiId))[0]!];
+    }
+
+    // 3) 沿归因模板逐层取证（driverType 活数据聚合 → 因子贡献 → 取证叶，贡献占比 = 边权重）。
+    const nodes: Record<string, unknown>[] = [];
+    const edges: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    const addNode = (n: Record<string, unknown>) => { if (!seen.has(n.id as string)) { seen.add(n.id as string); nodes.push(n); } };
+    const driverCache = new Map<string, { props: Record<string, unknown> }[]>();
+    const loadDriver = async (type: string) => {
+      if (!driverCache.has(type)) driverCache.set(type, (await this.repos.objects.listByType(ctx.tenantId, type)).map((o) => ({ props: o.props })));
+      return driverCache.get(type)!;
+    };
+    const MAX_LEAVES = 4;
+
+    for (const k of roots) {
+      addNode({ id: `kpi:${k.kpiId}`, kind: "kpi", label: k.name, value: k.gap, actual: k.actual, target: k.target, status: k.status, unit: k.unit });
+      const chains = chainObjs.map((o) => o.props).filter((c) => str(c.kpiCategory) === k.category).sort((a, b) => str(a.chainId).localeCompare(str(b.chainId)));
+      // 每因子贡献 = driverType 对象 evidenceField 之和 × baseWeight（活数据量化，非写死）。
+      const factors: { chainId: string; factor: string; contribution: number; leaves: { id: string; label: string; value: number }[] }[] = [];
+      for (const c of chains) {
+        const driverType = str(c.driverType);
+        const evidenceField = str(c.evidenceField);
+        const selectField = str(c.selectField);
+        const rows = await loadDriver(driverType);
+        const leaves = rows
+          .map((r) => ({ id: `${str(c.chainId)}:${str(r.props[selectField] ?? "?")}`, label: str(r.props[selectField] ?? "?"), value: round(Math.abs(num(r.props[evidenceField])), 4) }))
+          .filter((l) => l.value > 0)
+          .sort((a, b) => b.value - a.value || a.id.localeCompare(b.id))
+          .slice(0, MAX_LEAVES);
+        const contribution = round(leaves.reduce((s, l) => s + l.value, 0) * num(c.baseWeight, 1), 4);
+        if (contribution > 0) factors.push({ chainId: str(c.chainId), factor: str(c.factor), contribution, leaves });
+      }
+      const totalContribution = factors.reduce((s, f) => s + f.contribution, 0);
+      for (const f of factors) {
+        const share = totalContribution > 0 ? round(f.contribution / totalContribution, 4) : 0;
+        addNode({ id: `factor:${f.chainId}`, kind: "factor", label: f.factor, value: f.contribution, share });
+        edges.push({ from: `kpi:${k.kpiId}`, to: `factor:${f.chainId}`, weight: share, kind: "kpi_factor" });
+        for (const l of f.leaves) {
+          addNode({ id: `leaf:${l.id}`, kind: "evidence", label: l.label, value: l.value });
+          edges.push({ from: `factor:${f.chainId}`, to: `leaf:${l.id}`, weight: f.contribution > 0 ? round(l.value / f.contribution, 4) : 0, kind: "factor_evidence" });
+        }
+      }
+    }
+
+    const offTargetCount = kpis.filter((k) => k.offTarget).length;
+    const worst = roots[0];
+    return {
+      kpis,
+      dag: { nodes, edges },
+      offTargetCount,
+      summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证`,
+      ruleRefs: [],
     };
   }
 
@@ -859,6 +953,7 @@ export class SolverService {
     if (solverKey === "shared_bottleneck") return this.sharedBottleneck(ctx, args);
     if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
+    if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);

@@ -61,8 +61,8 @@ describe("跨服务真实联调冒烟 — 真实 AgentCore HTTP 客户端 ↔ �
     expect(keys).toContain("Base"); // 种子电池域核心类型，跨服务可见
   });
 
-  it("A1 跨服务：`solvers` MCP 工具目录由真实 DataCore 求解器注册表构建（全集 31，mcp__solvers__{key}，含 A8 新模型）", async () => {
-    // 源=求解器全集注册表（业务场景 22 + 净室通用 9 = 31），非 QOS 场景 discover（22）。
+  it("A1 跨服务：`solvers` MCP 工具目录由真实 DataCore 求解器注册表构建（全集 32，mcp__solvers__{key}，含 A8 新模型）", async () => {
+    // 源=求解器全集注册表（业务场景 22 + 净室通用 9 + 决策驾驶舱 1 = 32），非 QOS 场景 discover（22）。
     const items = (await dc.catalog.solverRegistry(ctx)).items;
     const tools = buildSolverMcpTools(items);
     expect(tools.length).toBe(items.length);
@@ -70,6 +70,7 @@ describe("跨服务真实联调冒烟 — 真实 AgentCore HTTP 客户端 ↔ �
     expect(tools.every((t) => t.name.startsWith("mcp__solvers__"))).toBe(true);
     expect(tools.some((t) => t.solverKey === "assignment_optimize")).toBe(true); // A8 新求解器并入
     expect(tools.some((t) => t.solverKey === "supplier_disruption_radius")).toBe(true); // 净室通用并入
+    expect(tools.some((t) => t.solverKey === "plan_rootcause")).toBe(true); // cockpit P2 决策驾驶舱并入
     // 工具名 ↔ 真 solverKey 双向；该 key 可经真 DataCore invoke（executor shim 归一路径终点，上面 capacity_forecast 已验）
     const cf = tools.find((t) => t.solverKey === "capacity_forecast")!;
     expect(parseSolverMcpToolName(cf.name)).toBe("capacity_forecast");

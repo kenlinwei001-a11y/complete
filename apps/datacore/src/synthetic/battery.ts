@@ -408,6 +408,32 @@ const materialBalanceProps: PropertyDef[] = [
   { propKey: "etaDate", dataType: "string", isPrimaryKey: false },
 ];
 
+// cockpit P2 绿地：规划决策推演 + 根因 DAG（KPI 与因果链均经本体关系算出，前后端零写死 R14）。
+// PlanKpi = 被追踪的经营 KPI（达成/缺口由派生算出）；RootCauseChain = 因子→KPI 的「归因模板」
+// （配成对象 → 求解器据此沿 driverType 取活数据算贡献，「结构=算、模板=配成对象」）。
+const planKpiProps: PropertyDef[] = [
+  { propKey: "kpiId", dataType: "string", isPrimaryKey: true },
+  { propKey: "name", dataType: "string", isPrimaryKey: false },
+  { propKey: "category", dataType: "enum", isPrimaryKey: false }, // profit/scale/material
+  { propKey: "target", dataType: "number", isPrimaryKey: false },
+  { propKey: "actual", dataType: "number", isPrimaryKey: false },
+  { propKey: "floorVal", dataType: "number", isPrimaryKey: false }, // 底线（actual<floor → 越线）
+  { propKey: "unit", dataType: "string", isPrimaryKey: false },
+  { propKey: "weight", dataType: "number", isPrimaryKey: false }, // KSF 权重
+];
+const planKpiDerived: DerivedPropertyDef[] = [
+  { propKey: "gapPct", formula: "(actual - target) / target * 100" }, // 缺口%（带符号，越线为负）
+];
+const rootCauseChainProps: PropertyDef[] = [
+  { propKey: "chainId", dataType: "string", isPrimaryKey: true },
+  { propKey: "kpiCategory", dataType: "enum", isPrimaryKey: false }, // 关联 PlanKpi.category
+  { propKey: "factor", dataType: "string", isPrimaryKey: false }, // 根因因子名
+  { propKey: "driverType", dataType: "string", isPrimaryKey: false }, // 取证对象类型（DemandSegment/MaterialBalance…）
+  { propKey: "evidenceField", dataType: "string", isPrimaryKey: false }, // 量化字段（marginWan/gapTon/act…）
+  { propKey: "selectField", dataType: "string", isPrimaryKey: false }, // 叶节点标签字段（segment/material）
+  { propKey: "baseWeight", dataType: "number", isPrimaryKey: false }, // 配置基准权重
+];
+
 const shipmentProps: PropertyDef[] = [
   { propKey: "shipId", dataType: "string", isPrimaryKey: true },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
@@ -481,6 +507,8 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
   // cockpit P1 绿地
   DemandSegment: "forecast", FinancePlan: "finance", MaterialBalance: "material",
+  // cockpit P2 绿地（规划决策推演 + 根因 DAG）
+  PlanKpi: "decision", RootCauseChain: "decision",
 };
 
 /** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
@@ -529,6 +557,9 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     { key: "DemandSegment", displayName: "需求细分", domain: "forecast", properties: withGovernance("DemandSegment", demandSegmentProps), derivedProperties: demandSegmentDerived, sourceBindings: BINDINGS.DemandSegment ?? [] },
     plain("FinancePlan", "财务预算", financePlanProps),
     plain("MaterialBalance", "物料平衡", materialBalanceProps),
+    // cockpit P2 绿地：经营 KPI（gapPct 派生）+ 根因归因模板（求解器据此沿 driverType 算贡献）。
+    { key: "PlanKpi", displayName: "经营KPI", domain: "decision", properties: withGovernance("PlanKpi", planKpiProps), derivedProperties: planKpiDerived, sourceBindings: BINDINGS.PlanKpi ?? [] },
+    plain("RootCauseChain", "根因归因链", rootCauseChainProps),
   ];
 }
 
@@ -971,6 +1002,9 @@ export interface GeneratedBattery {
   demandSegments: Record<string, unknown>[];
   financePlans: Record<string, unknown>[];
   materialBalances: Record<string, unknown>[];
+  // cockpit P2 绿地
+  planKpis: Record<string, unknown>[];
+  rootCauseChains: Record<string, unknown>[];
   /** model ↔ line certification edges with props.status (量产 | 认证中). */
   certLinks: { modelId: string; lineId: string; baseId: string; status: "量产" | "认证中" }[];
 }
@@ -1233,7 +1267,25 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { finId: "fin-gm", line: "毛利", budget: round(totalMargin * 0.98, 1), rolling: round(totalMargin, 1) },
   ];
 
-  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, certLinks };
+  // cockpit P2：经营 KPI 的 actual 全部经 P1 同源数据算出（与驾驶舱数字交叉一致 → 数据闭环 R14/R13）。
+  const totalTgt = demandSegments.reduce((s, d) => s + (d.tgt as number), 0);
+  const totalAct = demandSegments.reduce((s, d) => s + (d.act as number), 0);
+  const totalNet = materialBalances.reduce((s, m) => s + (m.netDemandTon as number), 0);
+  const totalCovered = materialBalances.reduce((s, m) => s + (m.netDemandTon as number) * (m.ltaPct as number) / 100, 0);
+  const planKpis = [
+    { kpiId: "kpi-margin", name: "毛利率", category: "profit", target: 16, actual: round(totalMargin / totalRev * 100, 1), floorVal: 13, unit: "%", weight: 0.4 },
+    { kpiId: "kpi-attain", name: "需求达成率", category: "scale", target: 100, actual: round(totalAct / totalTgt * 100, 1), floorVal: 95, unit: "%", weight: 0.3 },
+    { kpiId: "kpi-material", name: "物料保障率", category: "material", target: 100, actual: round(totalCovered / totalNet * 100, 1), floorVal: 92, unit: "%", weight: 0.3 },
+  ];
+  // 根因归因模板（配成对象，确定性常数；求解器沿 driverType 取活数据算贡献 → 「结构=算、模板=配成对象」）。
+  const rootCauseChains = [
+    { chainId: "rc-profit-mix", kpiCategory: "profit", factor: "低毛利细分占比偏高", driverType: "DemandSegment", evidenceField: "marginWan", selectField: "segment", baseWeight: 0.5 },
+    { chainId: "rc-profit-material", kpiCategory: "profit", factor: "物料成本上行", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 0.5 },
+    { chainId: "rc-scale-demand", kpiCategory: "scale", factor: "细分需求未达预期", driverType: "DemandSegment", evidenceField: "act", selectField: "segment", baseWeight: 1 },
+    { chainId: "rc-material-gap", kpiCategory: "material", factor: "现货缺口扩大", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 1 },
+  ];
+
+  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, planKpis, rootCauseChains, certLinks };
 }
 
 // ---------------------------------------------------------------------------

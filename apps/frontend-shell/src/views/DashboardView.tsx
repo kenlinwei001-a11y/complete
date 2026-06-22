@@ -4,6 +4,7 @@ import type { DashboardWidgetDef, WidgetQueryDef } from "@/api/types";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
 import { Provenance } from "@/components/Provenance";
+import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 import styles from "./DashboardView.module.css";
@@ -121,6 +122,8 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
         <ChartWidget data={data} kind={def.chartKind ?? "line"} series={def.chartSeries} />
       ) : def.type === "summary" ? (
         <SummaryWidget data={data} />
+      ) : def.type === "dag" ? (
+        <ProvenanceDag data={data as DagData | undefined} />
       ) : (
         <TableWidget data={data} columns={(def.query as { columns?: string[] }).columns} />
       )}

@@ -45,7 +45,7 @@ describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", (
     expect(res.statusCode).toBe(400);
   });
 
-  it("A1 求解器注册表 = SOLVER_KEYS 全集（31，无漂移）+ 每条带描述（无描述不允许发布）", async () => {
+  it("A1 求解器注册表 = SOLVER_KEYS 全集（32，无漂移）+ 每条带描述（无描述不允许发布）", async () => {
     const t = await makeApp();
     const reg = (await t.app.inject({ method: "GET", url: "/a/v1/solvers/registry", headers: ADMIN })).json() as {
       solvers: { key: string; description: string; outputShape: string[] }[];

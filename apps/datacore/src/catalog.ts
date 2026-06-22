@@ -66,6 +66,14 @@ export const SOLVER_CATALOG: CatalogItem[] = [
 ];
 
 /**
+ * 决策驾驶舱求解器目录（cockpit P2）：经营驾驶舱页直接调用（声明式 widget query.solver），不经 QOS
+ * 场景分类，故与 SOLVER_CATALOG（QOS discover 22）分列；作为 `solvers` MCP 工具对 Agent 公开。
+ */
+export const COCKPIT_SOLVER_CATALOG: CatalogItem[] = [
+  { key: "plan_rootcause", name: "规划决策根因归因", description: "经营 KPI（PlanKpi）越线后，沿 RootCauseChain 归因模板逐层取证，产出 KPI→因子→证据的多根归因 DAG（每条边权重=活数据贡献占比）。回答『某 KPI 为什么没达标、根因在哪个因子、证据是哪些细分/物料』。", argHints: { kpiCategory: "KPI 类别(profit/scale/material，可选)" }, domain: "decision", featureKey: "view.dash.widget.rootcause" },
+];
+
+/**
  * 通用求解器目录（A1）：净室零依赖 + CP-SAT 可证最优族。与业务场景目录（SOLVER_CATALOG）分列——
  * 这些不绑定电池域，按 args 字段映射对任意已发布本体即用，故不进 QOS 场景 discover（22），
  * 但作为 `solvers` MCP server 的工具对 Agent 公开（mcp__solvers__{key}）。「无描述不允许发布」同样适用。
@@ -82,8 +90,8 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "packing_optimize", name: "装箱最优化", description: "通用装箱最优化（CP-SAT 可证最优）：按容量把项装入最少容器（产能填充/批次合并）。", argHints: { items: "待装项(尺寸)", binCapacity: "单箱容量" }, domain: "generic" },
 ];
 
-/** A1 求解器全集目录（业务场景 22 + 通用 9 = 31，与 SOLVER_KEYS 对齐；漂移由 catalog-registry.test 守护）。 */
-export const ALL_SOLVER_CATALOG: CatalogItem[] = [...SOLVER_CATALOG, ...GENERIC_SOLVER_CATALOG];
+/** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策驾驶舱 1 = 32，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */
+export const ALL_SOLVER_CATALOG: CatalogItem[] = [...SOLVER_CATALOG, ...GENERIC_SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG];
 
 function matches(item: CatalogItem, query?: string): boolean {
   if (!query) return true;
@@ -133,7 +141,7 @@ export class CatalogService {
   }
 
   /**
-   * A1：求解器全集注册表（业务场景 22 + 通用 9 = 31）。供 AgentCore 构建 `solvers` MCP server 的
+   * A1：求解器全集注册表（业务场景 22 + 通用 9 + 决策驾驶舱 1 = 32）。供 AgentCore 构建 `solvers` MCP server 的
    * 全部工具（mcp__solvers__{key}）。与 discover 同走 feature 过滤——关某求解器 feature → 工具消失
    * （R3 先于 authz，与 404 不泄露存在性同构）。不做 ≤20 截断（治理页需全量）。
    */
