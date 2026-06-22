@@ -14,8 +14,8 @@
 > - [◐] CL.7 **对话坞 gap-fill HITL**（PRD-in-dialog-gap-fill-loop）：**GF.1 前端+契约已落** ✅——`AnswerBlock.gap` 类型 + `<GapCard>`（缺口码+人话+按码▶触发[复用 growth/run LOOP]+CONVERGED 续推+诚实断点工单深链）+ onRetry 透传 + mock 双路 + 测 ×2。**余 GF.2/GF.3**：orchestrator 命中缺口自动并入 gap 块（需谨慎启发式，防 288 agentcore 回归）+ SSE 进度回灌深度 + 就地 R4 审批面板。
 >
 > **独立新增件（非 CL 链）**
-> - [ ] **nav-ia-reorg 余项**（PRD-nav-ia-reorg｜N1–N3）：admin 区分组 `groupAdminPages` **已做**（f40/f61）；**余**：业务+admin 合一套域分组（现仍"业务/管理"两堆）· 图谱并入建模组 · meta 补回 · 字号父级≥子级（3 处 CSS）。纯前端 IA，低风险低优先。
-> - [ ] **R16 发育闭环总纲**（PRD-system-ontogenesis-spec｜宪法级）：立 R16 不变量（每次发育自动闭合数据/本体/能力三环 + AUTO-DERIVE/NEEDS-HUMAN 二分处置 + 透明可视 + PROVISIONAL→GOVERNED 分相位）+ `ontogenesis:check` 门 + `sys.meta.ontogenesis_loop` 切片 + `ontogenesis.organ_matured` 事件。**多为统摄既有机制 + 立门**，回写本体 §5/§3/§4/§10。高抽象、收口性，建议 CL 簇落地后再做。
+> - [◐] **nav-ia-reorg**（PRD-nav-ia-reorg｜N1–N3）：N3 字号父级≥子级 **已在**（navGroupHeader 13px / section-title 12px）· admin 区分组 `groupAdminPages` **已做**（f40/f61）。**余 N1**：业务+admin 合一套域分组（现仍"业务/管理"两堆）+ 图谱并入建模组 + meta 补回——较大 UX 重构、触 f40/f53/f61 角色门回归，低优先延后。
+> - [x] **R16 发育闭环总纲** ✅（PRD-system-ontogenesis-spec｜宪法级）：本体 §5 立 R16（倒序发育⊕正序运作两相、三环自动闭合、二分处置、透明可视、分相位成熟）+ `ontogenesis.organ_matured` 事件 + `sys.meta.ontogenesis_loop` 切片 + `scripts/check-ontogenesis.mjs` 门并入 `pnpm gates`（保守声明性校验）。回写本体 §5/§3/§4/§10。
 >
 
 
