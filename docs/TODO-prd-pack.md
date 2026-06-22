@@ -153,7 +153,7 @@
 
 ## Wave 5 · CLI / intake
 
-- [~] ◐ **A15 · CLI 通用操作外壳**（意图识别→模块路由→CLI 交互补参→触发模块；含 QOS 推演问答；全模块↔CLI 对等矩阵）。R15 R8 R4 R3 R6。
+- [x] ✅ **A15 · CLI 通用操作外壳**（意图识别→模块路由→CLI 交互补参→触发模块；含 QOS 推演问答；全模块↔CLI 对等矩阵）。R15 R8 R4 R3 R6。
   **A15.1 backbone ✅（keystone）**：契约 `operation-intent.ts`（`OPERATION_CATALOG` 17 条覆盖矩阵配置化 R14 +
   `classifyOperation` **确定性关键词打分** R6 无 LLM）+ AgentCore `POST /b/v1/operations/classify`（QUERY 走 ask / OPERATION
   路由 + 低置信多候选不瞎猜）+ CLI `platform do "<NL>"` 万能路由（QUERY→ask · OPERATION→路由+下一步命令+R4 标 + uiDeepLink）。
@@ -161,9 +161,9 @@
   `_PRD-TEMPLATE.md` §0 加"CLI 打通（R15，强制）"必填行。测试 a15-operation-classify ×7（分类/QUERY/深链/R6/端点）。回写本体 §2.H/§5/§7。
   **A15.2–4 ✅（模块交互流 handler + shell REPL）**：`platform-cli.mjs` 加 `build`(FDE,--mode PROVISIONAL)/`solve`(A1,--args)/
   `synth`/`types`(A4)/`generate`(A18.2 LLM 临时求解器)/`shell`(REPL 走 do) 真 handler，复用同一 REST + R3/R4 + `--json` 供 agent 解析。
-  **L2 真后端冒烟** `scripts/run-cli-smoke.sh`（`pnpm cli:smoke`）**5/5 PASS**：do→OPERATION(import)/do→QUERY/types 真计数/
-  build 真建域/solve 真求解（generate 需 LLM provider，env-gated 略，同 A14 真 Kimi）。**余（增量）**：import 文件上传/model derive/
-  rule dry-run→publish 的多步交互流（当前经 `do` 路由 + 深链；这三个有文件/多步语义，随用补）。
+  **import/model/rule 多步流 ✅**：`import <file>`（base64 上传→连接器+RawDataset）· `model <rds>`（→本体草稿派生）·
+  `rule "<DSL>" --key --scope [--publish]`（建规则+发布）。**L2 真后端冒烟** `scripts/run-cli-smoke.sh`（`pnpm cli:smoke`）**8/8 PASS**：
+  do→OPERATION/do→QUERY/types/build/solve/**import/model/rule**（generate 需 LLM provider，env-gated 略，同 A14 真 Kimi）。
 - [~] ◐ **prototype-intake · 原型 intake 正门 + schema 对账 HITL**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。R6 R4 R12 R2 R15。
   **P1 + P2-core ✅**：契约 `prototype-intake.ts`（IntakeResult/ProtoDataset/ProtoLink/SchemaReconcileCandidate/ReconcileAction）+
   `databuilder/prototype-intake.ts`：`parsePrototypeHtml`（确定性抽 `const NAME=[...]` 对象数组→数据表 + `L()`/`xxxRef` 命名→关系，

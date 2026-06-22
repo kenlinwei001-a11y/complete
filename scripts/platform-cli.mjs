@@ -186,6 +186,39 @@ function parseFlags(args) {
   return { flags, pos };
 }
 
+// import：上传文件（CSV/JSON）→ 连接器 + RawDataset（A11 category 可选）。下一步提示 model。
+async function cmdImport(args) {
+  const { flags, pos } = parseFlags(args);
+  const file = pos[0];
+  if (!file || !existsSync(file)) { console.error("用法: import <file.csv|json> [--category ERP] [--json]"); process.exit(1); }
+  const content = readFileSync(file);
+  const r = await http(`${DC}/a/v1/uploads`, { method: "POST", headers: authHeader(), body: JSON.stringify({ filename: file.split("/").pop(), contentBase64: content.toString("base64"), ...(flags.category ? { category: flags.category } : {}) }) });
+  if (flags.json) return console.log(JSON.stringify(r));
+  console.log(`${C.green("✓")} 已上传 ${C.dim(r.connId)} 数据集=${r.datasetName}  行=${r.schema?.datasets?.[0]?.rowCount ?? "?"}`);
+  console.log(C.dim(`  下一步：model ${r.connId}（数据→本体草稿）`));
+}
+
+// model：选 RawDataset → 半自动建模派生本体草稿（R12 字段覆盖）。下一步提示 approve/publish。
+async function cmdModel(args) {
+  const { flags, pos } = parseFlags(args);
+  if (pos.length === 0) { console.error("用法: model <rawDatasetId...> [--json]"); process.exit(1); }
+  const r = await http(`${DC}/a/v1/modeling/derive`, { method: "POST", headers: authHeader(), body: JSON.stringify({ rawDatasetIds: pos }) });
+  if (flags.json) return console.log(JSON.stringify(r));
+  console.log(`${C.green("✓")} 本体草稿 ${C.dim(r.draftId)} 状态=${r.status}`);
+  console.log(C.dim("  下一步：在 GUI 建模页发布(R4) 或 approve <draftId>；覆盖率 GET /modeling/drafts/:id/coverage"));
+}
+
+// rule：建规则（DSL 表达式）；默认 DRAFT，--publish 走发布。
+async function cmdRule(args) {
+  const { flags, pos } = parseFlags(args);
+  const expression = pos.join(" ");
+  if (!expression || !flags.key || !flags.scope) { console.error('用法: rule "<DSL 表达式>" --key C99 --name "<名>" --scope Order [--severity WARN] [--publish]'); process.exit(1); }
+  const created = await http(`${DC}/a/v1/rules`, { method: "POST", headers: authHeader(), body: JSON.stringify({ key: flags.key, name: flags.name ?? flags.key, expression, scopeObjectTypes: String(flags.scope).split(","), severity: flags.severity ?? "WARN" }) });
+  console.log(`${C.green("✓")} 规则 ${created.key ?? flags.key} 已建（DRAFT）`);
+  if (flags.publish && created.id) { await http(`${DC}/a/v1/rules/${created.id}/publish`, { method: "POST", headers: authHeader() }); console.log(C.green("  ✓ 已发布（R4）")); }
+  else console.log(C.dim("  下一步：rule publish 或 GUI 审批生效"));
+}
+
 // build：故事建域（FDE）；--mode PROVISIONAL 走未审核态；--json 供 agent 解析。
 async function cmdBuild(args) {
   const { flags, pos } = parseFlags(args);
@@ -292,7 +325,7 @@ function help() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, build: cmdBuild, solve: cmdSolve, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
+const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();
