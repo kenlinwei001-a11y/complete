@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IsoTime } from "./common.js";
 import { PlanRefSchema, ResolvedRefSchema } from "./refs.js";
+import { GapReportSchema } from "./growth.js";
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.1 场景包与意图目录
@@ -244,6 +245,12 @@ export const AnswerBlockSchema = z.discriminatedUnion("type", [
     draftId: z.string(),
     actionType: z.string(),
     summary: z.string(),
+  }),
+  // CL.7（PRD-in-dialog-gap-fill-loop）：答案命中缺口时并入结构化缺口块——对话坞渲染可点缺口卡
+  // （缺口码 + 人话 + 按码触发产数据 + 续推），而非干叙述"让我检索…"。闭 G-3 对话侧。
+  z.object({
+    type: z.literal("gap"),
+    report: GapReportSchema,
   }),
 ]);
 export type AnswerBlock = z.infer<typeof AnswerBlockSchema>;

@@ -604,6 +604,14 @@ export const handlers = [
 
   http.post("*/b/v1/growth/run", async ({ request }) => {
     const b = (await request.json()) as { query: string; maxRounds?: number };
+    // CL.7：可补齐的缺口（EMPTY_DATA 类，含"达成率"标记）→ CONVERGED（续推可出答案）；其余 → BOUNDARY（诚实工单）。
+    if (b.query.includes("达成率")) {
+      return HttpResponse.json({
+        question: b.query, maxRounds: b.maxRounds ?? 4,
+        rounds: [{ round: 1, gapReport: { question: b.query, taskId: "t1", verdict: "ANSWERABLE", path: "AGENT", findings: [], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "EMPTY_DATA", action: "fill-data 已补", advanced: true } }],
+        terminalState: "CONVERGED", openTickets: [], generatedAt: "2026-06-17T00:00:00Z",
+      });
+    }
     return HttpResponse.json({
       question: b.query, maxRounds: b.maxRounds ?? 4,
       rounds: [{ round: 1, gapReport: { question: b.query, taskId: "t1", verdict: "BOUNDARY", path: "AGENT", findings: [{ gapCode: "NO_INTENT", evidence: "无意图覆盖", suggestedFill: "scaffold", blocking: true }], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "NO_INTENT", action: "scaffold待建（出工单）", advanced: false, ticket: { gapCode: "NO_INTENT", detail: "无意图覆盖" } } }],

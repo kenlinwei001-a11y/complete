@@ -13,7 +13,7 @@ export function TaskRun({ taskId, onRetry }: { taskId: string; onRetry?: () => v
       {state.clarification && state.status === "awaiting_clarification" && (
         <ClarificationView taskId={taskId} payload={state.clarification} />
       )}
-      {state.answer && <AnswerCard answer={state.answer} taskId={taskId} />}
+      {state.answer && <AnswerCard answer={state.answer} taskId={taskId} onRetry={onRetry} />}
       {state.status === "failed" && state.error && state.error.code === "INTERRUPTED_BY_RESTART" ? (
         // Agent 运行时增量 §2-2：重启中断 → 一键重发（提交时幂等键自动更换）
         <div className="badge red" style={{ margin: "6px 0" }} data-testid="task-interrupted">

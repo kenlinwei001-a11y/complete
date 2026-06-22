@@ -19,11 +19,14 @@ export function AnswerCard({
   taskId,
   showFeedback = true,
   showDetailLink = true,
+  onRetry,
 }: {
   answer: Answer;
   taskId: string;
   showFeedback?: boolean;
   showDetailLink?: boolean;
+  /** CL.7：gap 块"继续推演"重跑原问句（QueryDock 注入）。 */
+  onRetry?: () => void;
 }) {
   const exploratory = answer.trustLevel === "AGENT_EXPLORATORY";
   const provOrder = useMemo(() => answer.provenance.map((p) => p.id), [answer.provenance]);
@@ -63,7 +66,7 @@ export function AnswerCard({
       </div>
       <div className={styles.blocks}>
         {answer.blocks.map((b, i) => (
-          <AnswerBlockView key={i} block={b} taskId={taskId} provIndex={provIndex} />
+          <AnswerBlockView key={i} block={b} taskId={taskId} provIndex={provIndex} onRetry={onRetry} />
         ))}
       </div>
       {answer.validationTrace && <ValidationTracePanel trace={answer.validationTrace} />}

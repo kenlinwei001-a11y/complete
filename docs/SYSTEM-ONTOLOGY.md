@@ -398,7 +398,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | `sys.action.writeback` | D5 | ActionType→ActionDraft→approval→ObjectInstance(props)→Derivation(二次) |
 | `sys.access.row_filter` | D6 | User→Role→Policy(A6)→ObjectInstance(过滤) |
 | `sys.access.entitlement` | D6 | Feature→{endpoint,view,solver}(门控,先于authz) |
-| **`sys.orch.query_to_answer`** | **D7** | **Client(Web对话坞/CLI)→Query→Intent→Plan→Step*→{Solver\|Slice\|Rule}→AnswerBlock→SSE（中枢链=审核全链）**。CL.6 归因补丁：「未达成原因/达成率归因」问句 → path-B agent discover{solvers} 命中 `plan_audit` → `invoke_solver(plan_audit)` 入参三级兜底（`plan_version_id ?? currentPlanVersion ?? deriveBaseline(PlanTarget/场景包)`，`/a/v1/solvers/plan_audit/invoke` 自动补，sop.ts:419）→ X01–X05 诊断（配 attainment:base 日序做逐日时间维度归因），不再因"无版本"放弃 |
+| **`sys.orch.query_to_answer`** | **D7** | **Client(Web对话坞/CLI)→Query→Intent→Plan→Step*→{Solver\|Slice\|Rule}→AnswerBlock→SSE（中枢链=审核全链）**。CL.7 缺口块：`AnswerBlock` 增 `gap` 类型（含 GapReport）——答案命中缺口时对话坞渲染 `<GapCard>`（缺口码 + 人话 + 按码「▶触发生成缺失数据」复用 growth/run LOOP + CONVERGED 后「继续推演」重跑原问句 + 需开发码诚实"不可达:断在<码>"+工单深链），闭 G-3 对话侧（GF.1 前端+契约已落；orchestrator 命中缺口自动并入 gap 块 + SSE回灌深度/就地审批=GF.2/GF.3 续）。CL.6 归因补丁：「未达成原因/达成率归因」问句 → path-B agent discover{solvers} 命中 `plan_audit` → `invoke_solver(plan_audit)` 入参三级兜底（`plan_version_id ?? currentPlanVersion ?? deriveBaseline(PlanTarget/场景包)`，`/a/v1/solvers/plan_audit/invoke` 自动补，sop.ts:419）→ X01–X05 诊断（配 attainment:base 日序做逐日时间维度归因），不再因"无版本"放弃 |
 | `sys.scenario.launch` | D8 | ScenarioCard→View + →Intent + →presetContext→Query |
 | `sys.flow.event_to_refresh` | D9 | OutboxEvent→EventSubscription→ConsumerView（=§4 全表） |
 | `sys.ops.tick` | D10 | SimulationClock→tick→{ObjectInstance,TS}→Derivation→dashboard |

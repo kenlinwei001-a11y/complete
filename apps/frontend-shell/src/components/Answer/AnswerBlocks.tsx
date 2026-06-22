@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { AnswerBlock } from "@platform/contracts";
 import { Markdown, renderInline } from "@/components/ui/markdown";
 import { ProvHoverArea, ProvMark } from "@/components/Provenance/ProvTrigger";
+import { GapCard } from "./GapCard";
 import zh from "@/locales/zh";
 import styles from "./AnswerBlocks.module.css";
 
@@ -13,10 +14,12 @@ export function AnswerBlockView({
   block,
   taskId,
   provIndex,
+  onRetry,
 }: {
   block: AnswerBlock;
   taskId: string;
   provIndex: (provId: string) => number;
+  onRetry?: () => void;
 }) {
   switch (block.type) {
     case "text":
@@ -38,6 +41,8 @@ export function AnswerBlockView({
       );
     case "action_draft":
       return <ActionDraftBlock draftId={block.draftId} actionType={block.actionType} summary={block.summary} />;
+    case "gap":
+      return <GapCard report={block.report} onRetry={onRetry} />;
     default:
       return null;
   }
