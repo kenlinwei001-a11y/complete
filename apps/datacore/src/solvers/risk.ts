@@ -249,6 +249,56 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
   };
 }
 
+/**
+ * cockpit P4 反事实双轨推演（"如不解决 XX，未来 N 天会怎样"）：编排 risk_timeline——baseline = do-nothing
+ * 前向曲线、mitigated = 处置后曲线（mitigation eff/tn 衰减，复用 tensionSeries 同口径）→ 双序列 + 差值
+ * （峰值削减/越线日推迟/少越线日）。确定性 R6（同 base/factor/mitigation 字节一致），不引入新时序基建。
+ * args: { base?, factor?, horizon=30, mitigationKey? }（缺 base/factor → 取自动卡里峰值最高者）。
+ */
+export function counterfactualTimeline(c: SolverContext, args: Record<string, unknown>): Record<string, unknown> {
+  const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
+  let base = args.base ? str(args.base) : "";
+  let factor = args.factor ? str(args.factor) : "";
+  if (!base || !factor) {
+    const probe = riskTimeline(c, { horizon }) as { cards: { base: string; factor: string; peak: number }[] };
+    const worst = [...probe.cards].sort((a, b) => b.peak - a.peak || (a.base < b.base ? -1 : 1))[0];
+    if (!worst) throw validationError("counterfactual_timeline 无可推演风险卡（指定 base+factor）");
+    base = base || worst.base;
+    factor = factor || worst.factor;
+  }
+  const mits = c.params.risk.mitigations[factor] ?? [];
+  const mitKey = args.mitigationKey ? str(args.mitigationKey) : mits[0]?.key;
+  if (!mitKey) throw validationError(`counterfactual_timeline 因子 ${factor} 无对症方案`);
+  const run = riskTimeline(c, { base, factor, horizon, mitigation: { base, factor, planKey: mitKey } }) as {
+    threshold: number;
+    cards: { base: string; factor: string; series: number[]; peak: number; crossDay: number | null; events: unknown[]; mitigated?: { series: number[]; appliedPlan: string; peak: number; crossDay: number | null } }[];
+  };
+  const card = run.cards[0];
+  if (!card?.mitigated) throw validationError("counterfactual_timeline 处置曲线生成失败");
+  const threshold = run.threshold;
+  const baselineSeries = card.series;
+  const mitigatedSeries = card.mitigated.series;
+  const overDays = (s: number[]) => s.filter((v) => v >= threshold).length;
+  const bCross = card.crossDay;
+  const mCross = card.mitigated.crossDay;
+  const crossDelayDays = bCross === null ? 0 : mCross === null ? baselineSeries.length - bCross : mCross - bCross;
+  return {
+    baselineSeries,
+    mitigatedSeries,
+    threshold,
+    factor,
+    base: card.base,
+    mitigation: card.mitigated.appliedPlan,
+    delta: {
+      peakCut: round(card.peak - card.mitigated.peak, 4),
+      crossDelayDays,
+      ordersSaved: Math.max(0, overDays(baselineSeries) - overDays(mitigatedSeries)),
+    },
+    events: card.events,
+    summary: `如不解决「${card.base}·${factor}」：峰值 ${Math.round(card.peak)} → 处置后 ${Math.round(card.mitigated.peak)}（削 ${Math.round(card.peak - card.mitigated.peak)}）、越线日推迟 ${crossDelayDays} 天`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // S1.5 affected_orders — window [day−7, day+14], delay estimate, condition
 // filter with nearest-due fallback.
