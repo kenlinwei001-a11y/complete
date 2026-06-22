@@ -159,8 +159,11 @@
   路由 + 低置信多候选不瞎猜）+ CLI `platform do "<NL>"` 万能路由（QUERY→ask · OPERATION→路由+下一步命令+R4 标 + uiDeepLink）。
   **R15 永续机制 ✅**：§5 新不变量 R15「CLI 对等」+ §7 `cli-parity:check` 门（`check-cli-parity.mjs` 棘轮基线，并入 pnpm gates）+
   `_PRD-TEMPLATE.md` §0 加"CLI 打通（R15，强制）"必填行。测试 a15-operation-classify ×7（分类/QUERY/深链/R6/端点）。回写本体 §2.H/§5/§7。
-  **余（A15.2–4，增量）**：各 op 交互式 handler 真跑（import 上传/model derive/rule dry-run→publish/solve invoke 补参）——
-  当前 `do` 给路由 + 下一步命令提示 + 深链，未内联完成上传/建模交互流；REPL `shell` 持续对话。复用既有 REST，随用补。
+  **A15.2–4 ✅（模块交互流 handler + shell REPL）**：`platform-cli.mjs` 加 `build`(FDE,--mode PROVISIONAL)/`solve`(A1,--args)/
+  `synth`/`types`(A4)/`generate`(A18.2 LLM 临时求解器)/`shell`(REPL 走 do) 真 handler，复用同一 REST + R3/R4 + `--json` 供 agent 解析。
+  **L2 真后端冒烟** `scripts/run-cli-smoke.sh`（`pnpm cli:smoke`）**5/5 PASS**：do→OPERATION(import)/do→QUERY/types 真计数/
+  build 真建域/solve 真求解（generate 需 LLM provider，env-gated 略，同 A14 真 Kimi）。**余（增量）**：import 文件上传/model derive/
+  rule dry-run→publish 的多步交互流（当前经 `do` 路由 + 深链；这三个有文件/多步语义，随用补）。
 - [~] ◐ **prototype-intake · 原型 intake 正门 + schema 对账 HITL**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。R6 R4 R12 R2 R15。
   **P1 + P2-core ✅**：契约 `prototype-intake.ts`（IntakeResult/ProtoDataset/ProtoLink/SchemaReconcileCandidate/ReconcileAction）+
   `databuilder/prototype-intake.ts`：`parsePrototypeHtml`（确定性抽 `const NAME=[...]` 对象数组→数据表 + `L()`/`xxxRef` 命名→关系，

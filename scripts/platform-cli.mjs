@@ -179,6 +179,79 @@ async function cmdAsk(args) {
   try { await streamTask(submit.taskId, rl); } finally { rl.close(); }
 }
 
+// ---- A15.2/3：模块交互流 handler（复用同一 REST + R3/R4，与 GUI 平行同源）-----------------
+function parseFlags(args) {
+  const flags = {}; const pos = [];
+  for (let i = 0; i < args.length; i++) { if (args[i].startsWith("--")) flags[args[i].slice(2)] = (args[i + 1] && !args[i + 1].startsWith("--")) ? args[++i] : true; else pos.push(args[i]); }
+  return { flags, pos };
+}
+
+// build：故事建域（FDE）；--mode PROVISIONAL 走未审核态；--json 供 agent 解析。
+async function cmdBuild(args) {
+  const { flags, pos } = parseFlags(args);
+  const script = pos.join(" ");
+  if (!script) { console.error('用法: build "<故事脚本>" [--seed 42] [--mode STRICT|PROVISIONAL] [--inference] [--json]'); process.exit(1); }
+  const body = { script, ...(flags.seed ? { seed: Number(flags.seed) } : {}), ...(flags.mode ? { buildMode: flags.mode } : {}), ...(flags.inference ? { inference: true } : {}) };
+  const r = await http(`${DC}/a/v1/databuilder/runs`, { method: "POST", headers: authHeader(), body: JSON.stringify(body) });
+  if (flags.json) return console.log(JSON.stringify(r));
+  console.log(`${r.status === "SUCCEEDED" ? C.green("✓") : C.yellow("◐")} 建域 ${r.status}  ${C.dim(r.id)}  buildMode=${r.buildMode ?? "STRICT"}${r.domainTrustLevel ? "/" + r.domainTrustLevel : ""}`);
+  if (r.verification) console.log(`  终态验证：${r.verification.status}`);
+  console.log(C.dim("  下一步：solve <求解器> / ask \"<问句>\" 验证真能答"));
+}
+
+// solve：调用既有求解器（A1）；--args '<json>'。
+async function cmdSolve(args) {
+  const { flags, pos } = parseFlags(args);
+  const key = pos[0];
+  if (!key) { console.error('用法: solve <solverKey> [--args \'{"baseId":"changzhou"}\'] [--json]；新增求解器见深链(do)'); process.exit(1); }
+  let solverArgs = {}; try { solverArgs = flags.args ? JSON.parse(flags.args) : {}; } catch { console.error(C.red("--args 非合法 JSON")); process.exit(1); }
+  const r = await http(`${DC}/a/v1/solvers/${encodeURIComponent(key)}/invoke`, { method: "POST", headers: authHeader(), body: JSON.stringify({ args: solverArgs }) });
+  if (flags.json) return console.log(JSON.stringify(r));
+  const prov = r.data?.__provisional;
+  console.log(`${C.green("✓")} ${key}${prov ? C.yellow(` [未审核·${prov.trustLevel}·${prov.origin}]`) : ""}  snapshot=${r.snapshotVersion ?? "-"}`);
+  console.log("  " + C.dim(JSON.stringify(r.data).slice(0, 300)));
+}
+
+// synth：合成数据作业。
+async function cmdSynth(args) {
+  const { flags, pos } = parseFlags(args);
+  const industry = pos[0] ?? flags.industry;
+  if (!industry) { console.error("用法: synth <industry> [--scale S|M|L] [--seed 42] [--json]"); process.exit(1); }
+  const r = await http(`${DC}/a/v1/synthetic/jobs`, { method: "POST", headers: authHeader(), body: JSON.stringify({ industry, scale: flags.scale ?? "S", seed: flags.seed ? Number(flags.seed) : 42 }) });
+  console.log(flags.json ? JSON.stringify(r) : `${C.green("✓")} 合成作业 ${r.status ?? "提交"}  ${C.dim(r.id ?? "")}`);
+}
+
+// types：对象/类型浏览（A4），按域分组计数。
+async function cmdTypes(args) {
+  const { flags } = parseFlags(args);
+  const r = await http(`${DC}/a/v1/ontology/object-types/stats`, { headers: authHeader() });
+  const stats = r.stats ?? [];
+  if (flags.json) return console.log(JSON.stringify(stats));
+  console.log(C.bold(`对象类型（${stats.length}）`));
+  for (const s of stats.filter((x) => !flags.domain || x.domain === flags.domain)) console.log(`  ${C.cyan(s.key)} ${C.dim("[" + s.domain + "]")} 属性${s.propCount} 派生${s.derivedCount} 物化${s.count}`);
+}
+
+// generate：A18.2 LLM 临时求解器生成（缺求解器→生成+沙箱跑通+注册 PROVISIONAL）。
+async function cmdGenerate(args) {
+  const { flags, pos } = parseFlags(args);
+  const key = pos[0]; const intent = pos.slice(1).join(" ") || flags.intent;
+  if (!key || !intent) { console.error('用法: generate <solverKey> "<意图>"（LLM 临时求解器，沙箱跑通注册 PROVISIONAL）'); process.exit(1); }
+  const r = await http(`${DC}/a/v1/solvers/generate`, { method: "POST", headers: authHeader(), body: JSON.stringify({ key, intent }) });
+  console.log(flags.json ? JSON.stringify(r) : `${r.status === "PROVISIONAL" ? C.green("✓") : C.red("✗")} ${key} → ${r.status}${r.rejectReason ? " (" + r.rejectReason + ")" : C.yellow(" [未审核·" + r.trustLevel + "]")}`);
+}
+
+// shell：REPL，每行走 do 万能路由（人机共用）。
+async function cmdShell() {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  console.log(C.dim("platform shell — 输入自然语言（do 路由），exit 退出"));
+  for (;;) {
+    const line = (await rl.question(C.cyan("platform> "))).trim();
+    if (!line || line === "exit" || line === "quit") break;
+    try { await cmdDo([line]); } catch (e) { console.error(C.red("✗ " + (e?.message ?? e))); }
+  }
+  rl.close();
+}
+
 // ---- A15：do 万能路由（NL → operations/classify → QUERY 走 ask / OPERATION 路由模块）----------
 async function cmdDo(args) {
   const json = args.includes("--json");
@@ -207,15 +280,19 @@ function help() {
 
   login <tenant> <user> <pass>     登录取 token（如 demo admin demo1234）
   do "<自然语言>" [--json]          万能入口：意图识别 → 查询走 ask / 操作路由模块（A15）
-  ask "<问句>" [--view v] [--package p]   提问 → 流式答案（含多轮澄清）
-  scenarios                        列可用场景
-  approve <draftId>                审批写操作草稿
-  whoami                           当前身份
-环境：DATACORE_URL / AGENTCORE_URL / PACKAGE_ID`);
+  shell                            REPL：每行走 do 万能路由（人机共用）
+  ask "<问句>" [--view v]          提问 → 流式答案（含多轮澄清）
+  build "<故事>" [--mode PROVISIONAL] 故事建域（FDE）；--mode 走未审核态
+  solve <key> [--args '<json>']    调用既有求解器（A1）
+  generate <key> "<意图>"          LLM 临时求解器（沙箱跑通注册 PROVISIONAL，A18.2）
+  synth <industry> [--scale --seed] 合成数据作业
+  types [--domain d]               对象/类型浏览（A4）
+  scenarios / approve <id> / whoami / tickets / claim / grow
+环境：DATACORE_URL / AGENTCORE_URL / PACKAGE_ID · --json 供 agent 解析`);
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, do: cmdDo, ask: cmdAsk, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
+const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, build: cmdBuild, solve: cmdSolve, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();
