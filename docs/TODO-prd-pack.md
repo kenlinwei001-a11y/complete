@@ -46,7 +46,11 @@
 > - **DF.9 已落（真人正门 HARD/SOFT 分流，接地核心）✅**：`agentcore/growth/data-boundary.ts decideDataGap`——EMPTY_DATA 缺数据涉真实业务实体（命中 BASE/SEG 词表，与 DF.8 同源）→ HARD 不静默合成、出精确 DataRequest 走真人正门（R4），否则 SOFT 管线合成 PROVISIONAL（CL.2）；server.ts EMPTY_DATA 分支分流 + `GrowthFillResult.fillMode/dataRequest`（contracts）+ 事件载 fillMode。回写本体 §2.B GapReport P2 / L13 / §8 G-3。测 data-boundary ×6。**完整压测：datacore 619 · agentcore 304(+1 skip) · frontend 214 · gates 全绿。**
 > - **DF.4 已落（规划目标阈值单一来源）✅**：grep 核实 DF.4 本义"提升 ROOT_LIB"无价值（方案库 mitigations/审计阈值已单一来源、前端经 solver API 消费），真漂移在 **plan_generate 目标阈值三处重复**（后端 `battery.ts targets` · 前端 `PlanGenerateView DEFAULT_GOALS` · `fixtures.ts planGoals`）→ 收敛 `PLAN_GOAL_TARGETS`（canonical 百分口径，后端 ÷100 派生 gmFloor，R6 字节复现 0.155）；扩 boundary 门 + BOUNDARY_IMPACT。完整压测：datacore 619 · frontend 214 · agentcore 304 · gates 全绿。回写本体 §2.A/§7/§8 G-5。
 > - **A 组全清 ✅**：DF.10 版本化 ✅ · DF.11 自动抽 ✅ · **DF.12 边界册治理面板 ✅（门B 真验）** · DF.13b BP-7 意图 scaffold（grep 核实已建，同 BP-4）· **DF.13c 原型 intake 前端面板 ✅（门B 真验）** · DF.14 需求可溯（主体已建 demand-indexed GrowthLedger）。
-> - 余 DF.15/16（A-B 归一评估 / C-D 真缺 delta，需确认范围）+ [数据专项] DS.1 月季年 Metric / DS.2 富 KPI 数据源（见顶部，高回归待排期）。
+> - **DF.15 A-B 归一评估 ✅（评审产出）**：A(datacore)/B(agentcore)归一现状良好——共享 `@platform/contracts`(zod 单一契约) + OBO 透传 + 缓存失效事件(60s SLO) + grounding 词表两系统同源(DF.8 datacore `checkGrounding` + DF.9 agentcore `data-boundary` 同 `groundingVocab` 自 BASE/SEG) + tenant_id everywhere + 错误信封统一。无重大归一缺口。
+> - **DF.16 C/D 真缺 delta ✅（评审产出）**：grounding Part C/D（真人正门 + 需求可溯/A-B 归一）已由 DF.9（HARD/SOFT 真人正门）+ DF.14（需求可溯 demand-indexed GrowthLedger）+ DF.15（A-B 归一）覆盖；§EV 10 卡断点账本详情在原始上传，能 grep 核实的 5 缺口已全落（DF.5/6/8/9/14）。真缺 delta≈0（已落地或核实已建）。**生成接地层 DF.0–DF.16 全部收口。**
+> - **§2.2-a 风险看板精修 ✅**：三档图例文案（越线/临近/正常）+ 首要风险（peak 最高）标注。门B Playwright 真验。
+> - **[C 取值对齐专项 · 高回归，诚实不硬做]**：quarter 6 季 + risk/audit/order/model/story/map 逐字取值字节还原 = 需 HTML 原型完整值清单 + 跨视图生成器校准 pass，会破现有 633+224 钉死测试基线；结构均已 1:1（差精确数值字节还原），ROI 递减 → **不硬塞破基线**，待 HTML 完整值清单 + 系统校准专项。
+> - **[D 低优先]**：synthetic-wizard（ontoprompt 链 UX 重设计）· prototype-intake P3（候选 resolve 真应用本体 + 串发动机 closure/publish）· A3 参考本体基线（元租户 95 节点，低价值）。
 
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
 > **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。

@@ -373,6 +373,10 @@ export const zh = {
   risk: {
     peak: "峰值",
     crossDay: "越线日",
+    legendHigh: "越线（≥阈值，高危）",
+    legendMid: "临近（阈值−15，预警）",
+    legendLow: "正常",
+    primaryTag: "⚠ 首要风险",
     noCross: "未越线",
     // PRD-IND-risk §2.4：处置行动计划表
     planTitle: "产能风险处置 · 最终方案与行动计划",

@@ -31,11 +31,19 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
+  const maxPeak = Math.max(0, ...data.cards.map((c) => c.peak));
   return (
     <div>
+      {/* §2.2-a 三档图例文案（红/黄/蓝档与 heat strip/MiniStrip 同色阈值口径）+ 首要风险（peak 最高）标注 */}
+      <div data-testid="risk-legend" style={{ display: "flex", gap: 14, fontSize: 12, marginBottom: 8, alignItems: "center", color: "var(--muted)" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: "#E0626C", borderRadius: 2 }} />{zh.risk.legendHigh}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: "#E8B54A", borderRadius: 2 }} />{zh.risk.legendMid}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: "#43B7D7", borderRadius: 2 }} />{zh.risk.legendLow}</span>
+      </div>
       <div className={styles.grid}>
         {data.cards.map((card) => {
           const selected = selectedObjects.some((o) => o.label === card.base);
+          const isPrimary = maxPeak > 0 && card.peak === maxPeak;
           return (
             <div
               key={`${card.base}:${card.factor}`}
@@ -56,6 +64,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
             >
               <div className={styles.cardHead}>
                 <strong>{card.base}</strong>
+                {isPrimary && <span className="badge" data-testid={`risk-primary-${card.base}`} style={{ background: "var(--danger)", color: "#fff", fontSize: 10 }}>{zh.risk.primaryTag}</span>}
                 {/* §7.3 风险弹窗（与 order-chain 风险点 chip 共用 RiskPopover 组件） */}
                 <RiskHoverTrigger
                   data={{ base: card.base, factor: card.factor, peak: card.peak, crossDay: card.crossDay, series: card.series, threshold: data.threshold }}
