@@ -120,10 +120,10 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(conv).toHaveTextContent("3");
     expect(conv).toHaveTextContent("12");
 
-    // 不可产基地：储能基地业态不匹配（成都·储能 vs 动力型号）
-    expect(screen.getByTestId("nonproducible-成都")).toHaveTextContent("不匹配");
-    // 动力基地但 NCM 产线未铺/认证（西安·动力）
-    expect(screen.getByTestId("nonproducible-西安")).toHaveTextContent("产线未");
+    // 不可产基地：储能基地业态不匹配（江门·储能 vs 动力型号）
+    expect(screen.getByTestId("nonproducible-江门")).toHaveTextContent("不匹配");
+    // 动力基地但 NCM 产线未铺/认证（厦门·动力）
+    expect(screen.getByTestId("nonproducible-厦门")).toHaveTextContent("产线未");
   });
 
   it("CSV 上传分批交货表（PRD-IND-model §4.3）：解析 → 切分批 → 导入提示", async () => {

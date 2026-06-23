@@ -17,7 +17,7 @@ import zh from "@/locales/zh";
 const t = zh.calib;
 
 const OBJECT_TYPES = ["产能预测", "良率", "OEE"];
-const BASE_IDS = ["常州", "合肥", "宜宾", "成都"]; // debattery-allow：校准页基地选择器 demo 兜底（真连应取自对象库）
+const BASE_IDS = ["常州", "合肥", "江门", "成都"]; // debattery-allow：校准页基地选择器 demo 兜底（真连应取自对象库）
 const SOLVER_KEYS = ["capacity_forecast", "聚合求解器", "精度校准器"];
 
 /** M11 方法徽章文案（A=EMA / B=重放归因 / C=分位数匹配） */

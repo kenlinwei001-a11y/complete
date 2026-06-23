@@ -53,19 +53,21 @@ export const ACCOUNTS: MockAccount[] = [
 // 基地 ×12 / 型号 ×6 / 订单 ×20（电池种子）
 // ---------------------------------------------------------------------------
 
+// 基地集以 HTML 参考原型 BASE_DATA 为准（用户裁决 2026-06-23）：12 基地（util/gwh/pos 取自 HTML，
+// bottleneck 由 HTML bn 工序映射、mainProduct 取代表型号）。position 动力/储能/混合（动力+储能）。
 export const BASES = [
-  { id: "base-常州", name: "常州", util: 92, bottleneck: "化成柜", gwh: 24, position: "动力", lines: 8, prodYear: 2019, mainProduct: "4680-NCM", lon: 119.95, lat: 31.78 },
-  { id: "base-合肥", name: "合肥", util: 87, bottleneck: "卷绕机", gwh: 18, position: "动力", lines: 6, prodYear: 2021, mainProduct: "4680-NCM", lon: 117.28, lat: 31.86 },
-  { id: "base-西安", name: "西安", util: 78, bottleneck: "注液机", gwh: 12, position: "混合", lines: 4, prodYear: 2020, mainProduct: "刀片-LFP", lon: 108.95, lat: 34.27 },
-  { id: "base-宜宾", name: "宜宾", util: 95, bottleneck: "化成柜", gwh: 30, position: "混合", lines: 10, prodYear: 2018, mainProduct: "储能-280Ah", lon: 104.64, lat: 28.75 },
-  { id: "base-溧阳", name: "溧阳", util: 83, bottleneck: "分容柜", gwh: 21, position: "动力", lines: 7, prodYear: 2017, mainProduct: "VDA-NCM", lon: 119.48, lat: 31.42 },
-  { id: "base-南京", name: "南京", util: 74, bottleneck: "涂布机", gwh: 9, position: "动力", lines: 3, prodYear: 2022, mainProduct: "VDA-NCM", lon: 118.78, lat: 32.06 },
-  { id: "base-成都", name: "成都", util: 88, bottleneck: "卷绕机", gwh: 15, position: "储能", lines: 5, prodYear: 2021, mainProduct: "4680-LFP", lon: 104.07, lat: 30.67 },
-  { id: "base-青海", name: "青海", util: 66, bottleneck: "人员", gwh: 6, position: "储能", lines: 2, prodYear: 2023, mainProduct: "储能-280Ah", lon: 101.78, lat: 36.62 },
-  { id: "base-匈牙利", name: "匈牙利", util: 71, bottleneck: "认证", gwh: 8, position: "动力", lines: 3, prodYear: 2024, mainProduct: "VDA-NCM" },
-  { id: "base-德国", name: "德国", util: 69, bottleneck: "认证", gwh: 10, position: "动力", lines: 4, prodYear: 2024, mainProduct: "4680-NCM" },
-  { id: "base-印尼", name: "印尼", util: 58, bottleneck: "产线爬坡", gwh: 5, position: "储能", lines: 2, prodYear: 2025, mainProduct: "储能-314Ah" },
-  { id: "base-美国", name: "美国", util: 62, bottleneck: "政策", gwh: 7, position: "混合", lines: 3, prodYear: 2025, mainProduct: "储能-314Ah" },
+  { id: "base-常州", name: "常州", util: 88, bottleneck: "化成柜", gwh: 35, position: "混合", lines: 8, prodYear: 2015, mainProduct: "4680-NCM", lon: 119.95, lat: 31.78 },
+  { id: "base-厦门", name: "厦门", util: 85, bottleneck: "化成柜", gwh: 28, position: "动力", lines: 6, prodYear: 2019, mainProduct: "VDA-NCM", lon: 118.10, lat: 24.46 },
+  { id: "base-成都", name: "成都", util: 82, bottleneck: "老化库", gwh: 30, position: "混合", lines: 7, prodYear: 2018, mainProduct: "4680-LFP", lon: 104.07, lat: 30.67 },
+  { id: "base-眉山", name: "眉山", util: 79, bottleneck: "化成柜", gwh: 22, position: "储能", lines: 5, prodYear: 2021, mainProduct: "储能-280Ah", lon: 103.83, lat: 30.05 },
+  { id: "base-武汉", name: "武汉", util: 80, bottleneck: "涂布机", gwh: 20, position: "动力", lines: 5, prodYear: 2022, mainProduct: "VDA-NCM", lon: 114.30, lat: 30.59 },
+  { id: "base-江门", name: "江门", util: 83, bottleneck: "老化库", gwh: 26, position: "储能", lines: 6, prodYear: 2021, mainProduct: "储能-280Ah", lon: 113.08, lat: 22.58 },
+  { id: "base-合肥", name: "合肥", util: 78, bottleneck: "化成柜", gwh: 20, position: "动力", lines: 5, prodYear: 2022, mainProduct: "4680-NCM", lon: 117.28, lat: 31.86 },
+  { id: "base-信阳", name: "信阳", util: 75, bottleneck: "涂布机", gwh: 16, position: "储能", lines: 4, prodYear: 2023, mainProduct: "储能-314Ah", lon: 114.09, lat: 32.13 },
+  { id: "base-枣庄", name: "枣庄", util: 73, bottleneck: "化成柜", gwh: 15, position: "混合", lines: 4, prodYear: 2023, mainProduct: "4680-LFP", lon: 117.32, lat: 34.81 },
+  { id: "base-邯郸", name: "邯郸", util: 70, bottleneck: "老化库", gwh: 12, position: "储能", lines: 3, prodYear: 2023, mainProduct: "储能-314Ah", lon: 114.49, lat: 36.61 },
+  { id: "base-自贡", name: "自贡", util: 77, bottleneck: "化成柜", gwh: 16, position: "动力", lines: 4, prodYear: 2022, mainProduct: "刀片-LFP", lon: 104.78, lat: 29.34 },
+  { id: "base-洛阳", name: "洛阳", util: 68, bottleneck: "涂布机", gwh: 12, position: "储能", lines: 3, prodYear: 2024, mainProduct: "储能-314Ah", lon: 112.45, lat: 34.62 },
 ];
 
 export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
@@ -563,14 +565,14 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
       ],
     },
     {
-      base: "宜宾", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91),
+      base: "江门", factor: "交付高峰", peak: 91, crossDay: 8, series: riskSeries(2, 8, 91),
       events: [{ type: "delivery_peak", day: 8, amp: 16, factors: ["交付"] }],
       affectedOrders: [{ so: "SO-10002", cust: "星河储能", model: "储能-314Ah", qty: 820, due: "2026-06-25", dueDay: 13, delay: 2, impact: 0.4 }],
     },
     { base: "合肥", factor: "到货间隙", peak: 82, crossDay: null, series: riskSeries(3, 9, 82), events: [{ type: "arrival_gap", day: 9, amp: 10, factors: ["供料"] }] },
-    { base: "溧阳", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
+    { base: "眉山", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
     { base: "成都", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
-    { base: "西安", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
+    { base: "武汉", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
   ],
 };
 
@@ -891,7 +893,7 @@ export const ACTION_DRAFTS: ActionDraft[] = [
   },
   {
     id: "act-002", tenantId: TENANT_ID, actionTypeKey: "outsource_transfer",
-    payload: { base: "宜宾", ratio: 0.15 },
+    payload: { base: "江门", ratio: 0.15 },
     origin: { userId: "usr-planner" },
     status: "APPROVED",
     approvalSteps: [{ seq: 1, role: "planner", approverId: "usr-planner", decision: "APPROVE", comment: "同意", decidedAt: now }],

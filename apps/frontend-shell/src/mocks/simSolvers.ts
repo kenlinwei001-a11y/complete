@@ -365,50 +365,51 @@ interface CapBaseDef {
   tightness: number;
 }
 
+// 基地集以 HTML BASE_DATA / MODEL_DEF 为准（用户裁决）：NCM 型号铺动力/混合基地、LFP 储能型号铺储能/混合。
 const MODEL_CAP_NET: Record<string, CapBaseDef[]> = {
   "4680-NCM": [
     { base: "常州", baseId: "常州", weeklyCap: 3.2, status: "量产", maintWeek: 4, bottleneck: "化成通道", tightness: 92 },
     { base: "合肥", baseId: "合肥", weeklyCap: 2.6, status: "认证中", maintWeek: null, bottleneck: "设备OEE", tightness: 78 },
-    { base: "宜宾", baseId: "宜宾", weeklyCap: 2.9, status: "量产", maintWeek: 6, bottleneck: "物料齐套", tightness: 84 },
+    { base: "成都", baseId: "成都", weeklyCap: 2.9, status: "量产", maintWeek: 6, bottleneck: "物料齐套", tightness: 84 },
   ],
   // 4680-LFP 命中 C09 数据健康度降级（IoT 延迟 > 2h → P90 系数 0.93→0.90）
   "4680-LFP": [
     { base: "常州", baseId: "常州", weeklyCap: 2.4, status: "量产", maintWeek: 3, bottleneck: "化成通道", tightness: 88 },
-    { base: "成都", baseId: "成都", weeklyCap: 2.2, status: "认证中", maintWeek: null, bottleneck: "卷绕机稼动", tightness: 74 },
+    { base: "枣庄", baseId: "枣庄", weeklyCap: 2.2, status: "认证中", maintWeek: null, bottleneck: "卷绕机稼动", tightness: 74 },
   ],
   "刀片-LFP": [
-    { base: "宜宾", baseId: "宜宾", weeklyCap: 3.4, status: "量产", maintWeek: 5, bottleneck: "物料齐套", tightness: 86 },
-    { base: "西安", baseId: "西安", weeklyCap: 1.8, status: "量产", maintWeek: null, bottleneck: "注液机", tightness: 66 },
+    { base: "江门", baseId: "江门", weeklyCap: 3.4, status: "量产", maintWeek: 5, bottleneck: "物料齐套", tightness: 90 },
+    { base: "眉山", baseId: "眉山", weeklyCap: 1.8, status: "量产", maintWeek: null, bottleneck: "化成柜", tightness: 66 },
   ],
   "VDA-NCM": [
-    { base: "溧阳", baseId: "溧阳", weeklyCap: 2.1, status: "量产", maintWeek: 4, bottleneck: "分容柜", tightness: 76 },
-    { base: "南京", baseId: "南京", weeklyCap: 1.6, status: "量产", maintWeek: null, bottleneck: "涂布机", tightness: 62 },
+    { base: "武汉", baseId: "武汉", weeklyCap: 2.1, status: "量产", maintWeek: 4, bottleneck: "涂布机", tightness: 76 },
+    { base: "厦门", baseId: "厦门", weeklyCap: 1.6, status: "量产", maintWeek: null, bottleneck: "化成柜", tightness: 62 },
   ],
   "储能-280Ah": [
-    { base: "宜宾", baseId: "宜宾", weeklyCap: 3.0, status: "量产", maintWeek: 6, bottleneck: "化成柜", tightness: 90 },
-    { base: "青岛", baseId: "青岛", weeklyCap: 1.2, status: "认证中", maintWeek: null, bottleneck: "人员", tightness: 58 },
+    { base: "江门", baseId: "江门", weeklyCap: 3.0, status: "量产", maintWeek: 6, bottleneck: "老化库", tightness: 90 },
+    { base: "邯郸", baseId: "邯郸", weeklyCap: 1.2, status: "认证中", maintWeek: null, bottleneck: "人员", tightness: 58 },
   ],
   "储能-314Ah": [
-    { base: "常州", baseId: "常州", weeklyCap: 2.0, status: "量产", maintWeek: 4, bottleneck: "化成柜", tightness: 85 },
-    { base: "合肥", baseId: "合肥", weeklyCap: 1.7, status: "量产", maintWeek: null, bottleneck: "卷绕机", tightness: 70 },
+    { base: "信阳", baseId: "信阳", weeklyCap: 2.0, status: "量产", maintWeek: 4, bottleneck: "涂布机", tightness: 85 },
+    { base: "洛阳", baseId: "洛阳", weeklyCap: 1.7, status: "量产", maintWeek: null, bottleneck: "涂布机", tightness: 70 },
   ],
 };
 
-// PRD-IND-model 缺口①③：收敛可产网络的全基地业态册 + 型号化学/业态元信息（镜像 battery BASES/MODELS 种子，
-// reason 由 chem×kind 派生；前端零写死，与 datacore solvers/capacity.ts nonProducible 同源）。
-const MOCK_BASES: { name: string; kind: "动力" | "储能" }[] = [
-  { name: "常州", kind: "动力" },
+// PRD-IND-model 缺口①③：收敛可产网络的全基地业态册（镜像 battery BASES，HTML 集，含 动力+储能 混合）；
+// reason 由 chem×kind 派生；前端零写死，与 datacore solvers/capacity.ts nonProducible 同源。
+const MOCK_BASES: { name: string; kind: "动力" | "储能" | "动力+储能" }[] = [
+  { name: "常州", kind: "动力+储能" },
+  { name: "厦门", kind: "动力" },
+  { name: "成都", kind: "动力+储能" },
+  { name: "眉山", kind: "储能" },
+  { name: "武汉", kind: "动力" },
+  { name: "江门", kind: "储能" },
   { name: "合肥", kind: "动力" },
-  { name: "西安", kind: "动力" },
-  { name: "宜宾", kind: "储能" },
-  { name: "溧阳", kind: "动力" },
-  { name: "青岛", kind: "储能" },
-  { name: "南京", kind: "动力" },
-  { name: "成都", kind: "储能" },
-  { name: "福州", kind: "储能" },
-  { name: "长沙", kind: "动力" },
-  { name: "惠州", kind: "储能" },
-  { name: "盐城", kind: "动力" },
+  { name: "信阳", kind: "储能" },
+  { name: "枣庄", kind: "动力+储能" },
+  { name: "邯郸", kind: "储能" },
+  { name: "自贡", kind: "动力" },
+  { name: "洛阳", kind: "储能" },
 ];
 
 function modelMeta(modelId: string): { chem: string; pos: "动力" | "储能" } {
@@ -574,7 +575,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     .map((b) => ({
       base: b.name,
       reason:
-        b.kind !== pos
+        !b.kind.includes(pos) && !pos.includes(b.kind)
           ? `基地业态「${b.kind}」与型号「${pos}」不匹配`
           : `${chem} 体系产线未在该基地铺设 / 认证`,
     }))
@@ -609,17 +610,17 @@ export const BN_FACTORS = ["瓶颈工序", "设备OEE", "人力工时", "物料�
 
 const BN_PRIMARY: Record<string, string> = {
   常州: "瓶颈工序",
-  合肥: "设备OEE",
-  西安: "人力工时",
-  宜宾: "物料齐套",
-  溧阳: "换型损失",
-  青岛: "物流时长",
-  南京: "良率波动",
+  厦门: "设备OEE",
   成都: "设备OEE",
-  福州: "物料齐套",
-  长沙: "瓶颈工序",
-  惠州: "物流时长",
-  盐城: "人力工时",
+  眉山: "人力工时",
+  武汉: "良率波动",
+  江门: "物料齐套",
+  合肥: "设备OEE",
+  信阳: "物流时长",
+  枣庄: "换型损失",
+  邯郸: "物料齐套",
+  自贡: "人力工时",
+  洛阳: "良率波动",
 };
 
 const BN_MOCK = { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilLowAdd: 2 };

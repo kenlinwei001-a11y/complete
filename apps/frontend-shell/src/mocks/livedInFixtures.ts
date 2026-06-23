@@ -11,8 +11,8 @@ const MONTHS = ["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12"
 const LIVED_BASES = [
   { baseId: "changzhou", name: "常州", monthlyWan: 5.2, maintMonth: "2026-04" },
   { baseId: "hefei", name: "合肥", monthlyWan: 4.1, maintMonth: "2026-05" },
-  { baseId: "xian", name: "西安", monthlyWan: 2.6, maintMonth: "2026-03" },
-  { baseId: "yibin", name: "宜宾", monthlyWan: 6.0, maintMonth: "2026-06" },
+  { baseId: "wuhan", name: "武汉", monthlyWan: 2.6, maintMonth: "2026-03" },
+  { baseId: "jiangmen", name: "江门", monthlyWan: 6.0, maintMonth: "2026-06" },
 ];
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -55,7 +55,7 @@ export const LIVED_RISK_CASES: HistoryBundle["riskCases"] = [
     tags: ["到货危机"], curve: { seriesKey: "output:line", entityId: "LINE-changzhou", from: "2025-11-08", to: "2025-12-08" },
   },
   {
-    id: "case_lh_demo_9", caseNo: "CASE-009", title: "西安·物流时长风险处置", baseId: "xian", baseName: "西安",
+    id: "case_lh_demo_9", caseNo: "CASE-009", title: "武汉·物流时长风险处置", baseId: "wuhan", baseName: "武汉",
     factor: "物流时长", severity: "MEDIUM", windowFrom: "2026-03-10", windowTo: "2026-03-23",
     crossedAt: "2026-03-10", adoptedAt: "2026-03-13", resolvedAt: "2026-03-23",
     mitigation: { name: "双路由切换", planKey: "dual_route" }, actionId: "act_lh_demo_009",
@@ -262,7 +262,7 @@ export function historyBundleFor(baseScope: string[] | null, page: number, pageS
           i === 4
             ? [{ name: "正极提前备料专项（到货危机对策，CASE-007）", delta: 0.8 }]
             : i === 2
-              ? [{ name: "宜宾二线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }]
+              ? [{ name: "枣庄一线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }]
               : [],
       };
     }),

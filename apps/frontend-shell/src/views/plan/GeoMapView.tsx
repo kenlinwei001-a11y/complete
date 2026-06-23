@@ -20,13 +20,17 @@ export const POSITION_COLORS: Record<string, string> = {
  *  此表仅当对象缺坐标时兜底。debattery-allow：地名→坐标纯地理映射，非业务逻辑常数。 */
 const BASE_COORDS: Record<string, [number, number]> = {
   常州: [119.95, 31.78], // debattery-allow
-  合肥: [117.28, 31.86], // debattery-allow
-  西安: [108.95, 34.27], // debattery-allow
-  宜宾: [104.64, 28.75], // debattery-allow
-  溧阳: [119.48, 31.42], // debattery-allow
-  南京: [118.78, 32.06], // debattery-allow
+  厦门: [118.10, 24.46], // debattery-allow
   成都: [104.07, 30.67], // debattery-allow
-  青海: [101.78, 36.62], // debattery-allow
+  眉山: [103.83, 30.05], // debattery-allow
+  武汉: [114.30, 30.59], // debattery-allow
+  江门: [113.08, 22.58], // debattery-allow
+  合肥: [117.28, 31.86], // debattery-allow
+  信阳: [114.09, 32.13], // debattery-allow
+  枣庄: [117.32, 34.81], // debattery-allow
+  邯郸: [114.49, 36.61], // debattery-allow
+  自贡: [104.78, 29.34], // debattery-allow
+  洛阳: [112.45, 34.62], // debattery-allow
 };
 
 /** 利用率色档（阈值可由 ViewConfig.layout.utilThresholds 配置；去电池锁死 8a / R14） */

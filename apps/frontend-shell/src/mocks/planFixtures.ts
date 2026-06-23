@@ -256,13 +256,13 @@ const riskRef = (base: string, factor?: string) => {
 };
 
 export const AFFECTED_ROWS: AffectedOrderRowVM[] = [
-  { so: "SO-10001", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 1.5, due: "2026-06-20", delay: 6, risks: [riskRef("常州"), riskRef("宜宾")] },
-  { so: "SO-10006", cust: "星河储能", seg: "储能", model: "储能-280Ah", qty: 1.82, due: "2026-06-24", delay: 4, risks: [riskRef("宜宾")] },
+  { so: "SO-10001", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 1.5, due: "2026-06-20", delay: 6, risks: [riskRef("常州"), riskRef("江门")] },
+  { so: "SO-10006", cust: "星河储能", seg: "储能", model: "储能-280Ah", qty: 1.82, due: "2026-06-24", delay: 4, risks: [riskRef("江门")] },
   { so: "SO-10013", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 1.5, due: "2026-07-02", delay: 3, risks: [riskRef("常州")] },
-  { so: "SO-10004", cust: "蓝海电网", seg: "储能", model: "储能-314Ah", qty: 1.1, due: "2026-06-28", delay: 5, risks: [riskRef("常州"), riskRef("合肥"), riskRef("宜宾"), riskRef("溧阳"), riskRef("成都")] },
-  { so: "SO-10008", cust: "山岳重工", seg: "商用车", model: "VDA-NCM", qty: 0.9, due: "2026-07-05", delay: 2, risks: [riskRef("溧阳")] },
-  { so: "SO-10011", cust: "极光新能源", seg: "储能", model: "储能-280Ah", qty: 1.3, due: "2026-07-08", delay: 2, risks: [riskRef("宜宾")] },
-  { so: "SO-10016", cust: "山岳重工", seg: "商用车", model: "刀片-LFP", qty: 0.8, due: "2026-07-12", delay: 1, risks: [riskRef("西安")] },
+  { so: "SO-10004", cust: "蓝海电网", seg: "储能", model: "储能-314Ah", qty: 1.1, due: "2026-06-28", delay: 5, risks: [riskRef("常州"), riskRef("合肥"), riskRef("江门"), riskRef("眉山"), riskRef("成都")] },
+  { so: "SO-10008", cust: "山岳重工", seg: "商用车", model: "VDA-NCM", qty: 0.9, due: "2026-07-05", delay: 2, risks: [riskRef("眉山")] },
+  { so: "SO-10011", cust: "极光新能源", seg: "储能", model: "储能-280Ah", qty: 1.3, due: "2026-07-08", delay: 2, risks: [riskRef("江门")] },
+  { so: "SO-10016", cust: "山岳重工", seg: "商用车", model: "刀片-LFP", qty: 0.8, due: "2026-07-12", delay: 1, risks: [riskRef("武汉")] },
   { so: "SO-10019", cust: "蔚途汽车", seg: "乘用车", model: "4680-LFP", qty: 1.2, due: "2026-07-15", delay: 2, risks: [riskRef("成都")] },
 ];
 

@@ -43,7 +43,7 @@ interface BatchRowInput {
 
 // PRD-IND-model §4.3：分批交货 CSV 模板（含 BOM）+ 解析（parseBatchTable/pmNormDate/pmMatchAddr，纯前端）。
 const PM_CSV_TEMPLATE = "﻿数量(万套),交付日期,交付地址\n15,2026-07-10,华东 · 上海\n25,2026-08-07,华南 · 深圳\n10,2026-09-04,海外 · 欧洲（海运）\n";
-const PM_KNOWN_ADDRS = ["上海", "广州", "北京", "成都", "深圳", "武汉", "欧洲", "海外"];
+const PM_KNOWN_ADDRS = ["上海", "广州", "北京", "成都", "深圳", "武汉", "欧洲", "海外"]; // debattery-allow：CSV 地址模糊匹配的交付地名词表（物流地，非业务种子）
 
 function pmNormDate(raw: string): string {
   const s = raw.trim().replace(/[./年月]/g, "-").replace(/日/g, "");
