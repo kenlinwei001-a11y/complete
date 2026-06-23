@@ -47,7 +47,8 @@
 > - **DF.7 已落（边界影响图）✅**：`BOUNDARY_IMPACT`（contracts base-registry.ts 单一来源，members 派生自册长 · consumers 镜像门强制派生端 · downstream grep 核实下游面）+ `GET /a/v1/boundary/impact?registry=` 回答铁律0「改 X 影响什么」；防漂哨兵 `boundary-impact.test` ×3（逐条复核 consumer 在源文件确实派生，影响图脱节即红）。回写本体 §2.A。**datacore 619 + frontend 214 + gates 全绿。**
 > - **DF.9 已落（真人正门 HARD/SOFT 分流，接地核心）✅**：`agentcore/growth/data-boundary.ts decideDataGap`——EMPTY_DATA 缺数据涉真实业务实体（命中 BASE/SEG 词表，与 DF.8 同源）→ HARD 不静默合成、出精确 DataRequest 走真人正门（R4），否则 SOFT 管线合成 PROVISIONAL（CL.2）；server.ts EMPTY_DATA 分支分流 + `GrowthFillResult.fillMode/dataRequest`（contracts）+ 事件载 fillMode。回写本体 §2.B GapReport P2 / L13 / §8 G-3。测 data-boundary ×6。**完整压测：datacore 619 · agentcore 304(+1 skip) · frontend 214 · gates 全绿。**
 > - **DF.4 已落（规划目标阈值单一来源）✅**：grep 核实 DF.4 本义"提升 ROOT_LIB"无价值（方案库 mitigations/审计阈值已单一来源、前端经 solver API 消费），真漂移在 **plan_generate 目标阈值三处重复**（后端 `battery.ts targets` · 前端 `PlanGenerateView DEFAULT_GOALS` · `fixtures.ts planGoals`）→ 收敛 `PLAN_GOAL_TARGETS`（canonical 百分口径，后端 ÷100 派生 gmFloor，R6 字节复现 0.155）；扩 boundary 门 + BOUNDARY_IMPACT。完整压测：datacore 619 · frontend 214 · agentcore 304 · gates 全绿。回写本体 §2.A/§7/§8 G-5。
-> - 余 DF.10 boundary 版本化 · DF.11 A5 自动抽 · DF.12 绑定面板 · DF.13b BP-7 · DF.13c 前端文件↔表可见 · DF.14–16（需求可溯/A-B 归一）。
+> - **A 组全清 ✅**：DF.10 版本化 ✅ · DF.11 自动抽 ✅ · **DF.12 边界册治理面板 ✅（门B 真验）** · DF.13b BP-7 意图 scaffold（grep 核实已建，同 BP-4）· **DF.13c 原型 intake 前端面板 ✅（门B 真验）** · DF.14 需求可溯（主体已建 demand-indexed GrowthLedger）。
+> - 余 DF.15/16（A-B 归一评估 / C-D 真缺 delta，需确认范围）+ [数据专项] DS.1 月季年 Metric / DS.2 富 KPI 数据源（见顶部，高回归待排期）。
 
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
 > **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。

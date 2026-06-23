@@ -57,6 +57,7 @@ const GrowthCockpitPage = lazy(() => import("@/pages/admin/GrowthCockpitPage"));
 const SolverReviewPage = lazy(() => import("@/pages/admin/SolverReviewPage"));
 const MetaPage = lazy(() => import("@/pages/admin/MetaPage"));
 const BoundaryPage = lazy(() => import("@/pages/admin/BoundaryPage"));
+const PrototypeIntakePage = lazy(() => import("@/pages/admin/PrototypeIntakePage"));
 const QueryHistoryPage = lazy(() => import("@/pages/admin/QueryHistoryPage"));
 const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
 // 管理平台增量：租户 / 用户 / 视图配置
@@ -129,6 +130,7 @@ export const routes: RouteObject[] = [
       admin("solver-review", <SolverReviewPage />),
       admin("meta", <MetaPage />),
       admin("boundary", <BoundaryPage />),
+      admin("prototype-intake", <PrototypeIntakePage />),
       admin("query-history", <QueryHistoryPage />),
       admin("tenants", <TenantsPage />),
       admin("users", <UsersPage />),

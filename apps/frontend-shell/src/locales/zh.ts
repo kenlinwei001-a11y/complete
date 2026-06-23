@@ -537,6 +537,18 @@ export const zh = {
       },
     },
   },
+  intake: {
+    title: "原型 intake（HTML → 数据表/关系/对账）",
+    sub: "粘贴 HTML 原型 → 确定性解析内嵌数据表（列+样例）与关系 → 与既有本体字段对账（自动映射/待确认候选/诚实标未解析），让「下一个 HTML 自动复刻数据与关系」可见可重复。",
+    placeholder: "粘贴含 <script>const NAME=[...]</script> 的 HTML 原型……",
+    parse: "解析 + 对账",
+    tablesTitle: (n: number) => `解析出的数据表（${n}）`,
+    relations: "关系",
+    reconcileTitle: "与既有本体对账",
+    autoMapped: "自动映射",
+    candidates: "待确认候选",
+    unparsed: "未解析（诚实跳过，不静默丢）",
+  },
   boundary: {
     title: "边界册治理（单一来源 + 影响图）",
     sub: "基地/应用细分/规划目标阈值的单一来源册——改某条业务常数会波及谁（回答「改 X 影响什么」）。册为 @platform/contracts 单一来源，改值=改代码经 boundary-singlesource 门。",

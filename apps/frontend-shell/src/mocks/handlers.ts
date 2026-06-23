@@ -350,6 +350,28 @@ export const handlers = [
   // DF.12 边界册治理：影响图 + 版本（直接派生 contracts 单一来源，与真后端同源）。
   http.get("*/a/v1/boundary/impact", () => HttpResponse.json({ impact: BOUNDARY_IMPACT, registries: BOUNDARY_IMPACT.map((b) => b.registry) })),
   http.get("*/a/v1/boundary/version", () => HttpResponse.json(boundaryVersion())),
+  // DF.13c 原型 intake（mock：返回确定性示例解析 + 对账；真后端 parsePrototypeHtml 确定性解析上传 HTML）。
+  http.post("*/a/v1/databuilder/intake", () =>
+    HttpResponse.json({
+      intake: {
+        dataSources: [
+          { name: "BASE_DATA", columns: ["baseId", "name", "util", "gwh"], sampleRows: [{ baseId: "changzhou", name: "常州", util: 88, gwh: 35 }, { baseId: "xiamen", name: "厦门", util: 85, gwh: 28 }] },
+          { name: "ORDER_DATA", columns: ["so", "cust", "model", "qty", "baseRef"], sampleRows: [{ so: "SO-001", cust: "星辰汽车", model: "4680-NCM", qty: 1200, baseRef: "changzhou" }] },
+        ],
+        links: [{ src: "ORDER_DATA", tgt: "BASE_DATA", rel: "produced_at" }],
+        unparsed: [{ name: "CHART_CONFIG", reason: "非数据表（图表配置对象，已诚实跳过不静默丢）" }],
+      },
+      reconcile: {
+        autoMapped: [
+          { datasetName: "BASE_DATA", column: "name", targetType: "Base", targetField: "name" },
+          { datasetName: "BASE_DATA", column: "util", targetType: "Base", targetField: "util" },
+        ],
+        candidates: [
+          { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
+        ],
+      },
+    }),
+  ),
 
   // ---- Entitlement ----
   http.get("*/a/v1/features/registry", () => HttpResponse.json(FEATURE_REGISTRY)),

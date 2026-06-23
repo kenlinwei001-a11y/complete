@@ -859,3 +859,17 @@ export interface BoundaryVersionVM {
 }
 export const fetchBoundaryImpact = () => api.a<{ impact: BoundaryImpactRow[]; registries: string[] }>("/a/v1/boundary/impact");
 export const fetchBoundaryVersion = () => api.a<BoundaryVersionVM>("/a/v1/boundary/version");
+
+// DF.13c 原型 intake：上传 HTML 原型 → 确定性解析数据表/关系 + 对账既有本体字段（文件↔表可见）。
+export interface IntakePreview {
+  intake: {
+    dataSources: { name: string; columns: string[]; sampleRows: Record<string, unknown>[] }[];
+    links: { src: string; tgt: string; rel: string }[];
+    unparsed: { name: string; reason: string }[];
+  };
+  reconcile: {
+    autoMapped: { datasetName: string; column: string; targetType: string; targetField: string }[];
+    candidates: { datasetName: string; column: string; candidates: { targetType: string; targetField: string; score: number }[] }[];
+  };
+}
+export const submitIntake = (html: string) => api.a<IntakePreview>("/a/v1/databuilder/intake", { method: "POST", body: { html } });
