@@ -15,6 +15,7 @@
 | 🔴1 | §171 `migration024_boundary.sql` | `ls apps/datacore/migrations/` → `022_data_category_settings` `023_build_workflow_runs` **`024_solver_artifacts`** `025_reconcile_candidates` 已占 | **改 `026_boundary.sql`**（024 = A18 solver_artifacts，撞车；下一个空号 026）。与 v0.2 的 014 撞车**同款错**。 |
 | 🔴2 | §170 `apps/datacore/src/growth/loop.ts`（HARD/SOFT 分流锚点） | `apps/datacore/src/growth/` **不存在**；`loop.ts/probe.ts/scaffold.ts` **在 `apps/agentcore/src/growth/`**；`/api/v1/growth/{probe,run}` 在 `agentcore/server.ts:204/219`；datacore 侧仅 `app.ts:1036 /a/v1/growth/fill-data` | **分流是跨服务接缝**：HARD→DataRequest 改 **agentcore `growth/loop.ts`**；SOFT→合成 改 **datacore `app.ts:1036 fill-data`**。非单 datacore。 |
 | 🟠3 | §3.7 / 附录B / DF.13 BP-4 当缺口 | `orchestrator.ts:295/438` 已传 `classification.extractedSlots`；`slots.ts:123` objectRef 已从 context(`getObject`)+裸串("常州"/"4680-NCM")跨类型解析 | **BP-4 已建** → 从 DF.13 移除；仅当能复现 §EV-S01「永久澄清」具体 case 才查残留，不预先开发。 |
+| 🟠4 | §13/§166/§4(L147) 把 `FieldProfileSchema`/`PropertyDef` 都当作在 `contracts/datacore.ts`、且写 "`PropertyDefSchema` += description" | `PropertyDef` 在 **`apps/datacore/src/domain.ts:208`** 且是 **`interface` 非 zod schema**；`FieldProfileSchema`(zod) 才在 `contracts/datacore.ts:38` | **分开改**：① `FieldProfileSchema`(zod) `contracts/datacore.ts:38` += `description?: z.string().optional()`；② `PropertyDef`(**interface**) `domain.ts:208` += `description?: string`（**不是** PropertyDefSchema，domain 里无此 zod）。 |
 
 **附加（§5 锚点表其余条目）**：落地前逐条 grep；附录 A 复用声明偏薄——`FactoryCalendar`（OC9）仅 `repo.ts` 一处、`ExternalSignal`（§51）须复核存在性后再写"接 X"。
 
