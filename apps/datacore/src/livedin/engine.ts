@@ -8,6 +8,8 @@ import type { RulesService } from "../rules.js";
 import { hashString, mulberry32, randInt, round } from "../prng.js";
 import { BATTERY_SOLVER_PARAMS, BATTERY_TEMPLATE, BASES, generateBattery } from "../synthetic/battery.js";
 import { entityRefFieldOf } from "../synthetic/service.js";
+import { caseSeverityFromData } from "../solvers/risk.js";
+import { BASE_REGISTRY } from "@platform/contracts";
 import type { TsGenSpec } from "../synthetic/tsgen.js";
 import { livedMaintWindows, livedPoint, type LivedGenContext, type LivedIncident } from "./tsgen.js";
 
@@ -54,22 +56,23 @@ interface CaseSpec {
   baseId: string;
   factor: string;
   crossed: string; // 越线日
-  severity: string;
+  // severity 不再写死：由 caseSeverityFromData(基地利用率 + 主瓶颈 + 危机) 真闭环派生（PRD §2.3 / P4）。
   crisis?: boolean;
 }
 
 /** 10 例告警-处置闭环案例骨架（CASE-007 = Q4 到货危机，与场景预置问答互引）。 */
+// 案例骨架 = 事件事实（哪个基地/哪个因子/何时越线/是否结构性危机）；severity 由 caseSeverityFromData 真闭环派生。
 const CASE_SPECS: CaseSpec[] = [
-  { n: 1, baseId: "hefei", factor: "设备OEE", crossed: "2025-08-12", severity: "MEDIUM" },
-  { n: 2, baseId: "xiamen", factor: "人力工时", crossed: "2025-09-09", severity: "MEDIUM" },
-  { n: 3, baseId: "jiangmen", factor: "物料齐套", crossed: "2025-09-24", severity: "HIGH" },
-  { n: 4, baseId: "meishan", factor: "换型损失", crossed: "2025-10-14", severity: "MEDIUM" },
-  { n: 5, baseId: "handan", factor: "物流时长", crossed: "2025-10-28", severity: "MEDIUM" },
-  { n: 6, baseId: "wuhan", factor: "良率波动", crossed: "2025-11-04", severity: "MEDIUM" },
-  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-11-18", severity: "HIGH", crisis: true },
-  { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20", severity: "MEDIUM" },
-  { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: "2026-03-10", severity: "HIGH" },
-  { n: 10, baseId: "luoyang", factor: "物流时长", crossed: "2026-04-21", severity: "MEDIUM" },
+  { n: 1, baseId: "hefei", factor: "设备OEE", crossed: "2025-08-12" },
+  { n: 2, baseId: "xiamen", factor: "人力工时", crossed: "2025-09-09" },
+  { n: 3, baseId: "jiangmen", factor: "物料齐套", crossed: "2025-09-24" },
+  { n: 4, baseId: "meishan", factor: "换型损失", crossed: "2025-10-14" },
+  { n: 5, baseId: "handan", factor: "物流时长", crossed: "2025-10-28" },
+  { n: 6, baseId: "wuhan", factor: "良率波动", crossed: "2025-11-04" },
+  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-11-18", crisis: true },
+  { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20" },
+  { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: "2026-03-10" },
+  { n: 10, baseId: "luoyang", factor: "物流时长", crossed: "2026-04-21" },
 ];
 
 /** 延期挽回链（Y5）：9 单曾延期，7 单经案例处置挽回至 ≤2 天。 */
@@ -264,6 +267,8 @@ export class LivedInEngine {
 
   private buildCases(tenantId: string, replayFrom: string): LivedCase[] {
     const baseNames = new Map(BASES.map((b) => [b.baseId, b.name]));
+    const baseUtil = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.util]));
+    const bn = BATTERY_SOLVER_PARAMS.bottleneck as { primary: Record<string, string>; defaultPrimary: string };
     const mitigations = (BATTERY_SOLVER_PARAMS.risk as { mitigations: Record<string, { key: string; name: string }[]> })
       .mitigations;
     void replayFrom;
@@ -271,6 +276,9 @@ export class LivedInEngine {
       const adopted = addDays(s.crossed, 3);
       const resolved = addDays(s.crossed, 13);
       const baseName = baseNames.get(s.baseId) ?? s.baseId;
+      // P4 真闭环：severity 由基地真实利用率 + 是否主瓶颈因子 + 危机派生（替代写死，R13 可溯源 R6 确定）。
+      const isPrimary = s.factor === (bn.primary[baseName] ?? bn.defaultPrimary);
+      const severity = caseSeverityFromData(baseUtil.get(s.baseId) ?? 0, isPrimary, s.crisis ?? false);
       const mit = (mitigations[s.factor] ?? [])[0] ?? { key: "early_stock", name: "提前备料" };
       const actionId = `act_lh_${tenantId}_${String(s.n).padStart(3, "0")}`;
       const tags = s.crisis ? ["到货危机"] : [];
@@ -283,7 +291,7 @@ export class LivedInEngine {
         baseId: s.baseId,
         baseName,
         factor: s.factor,
-        severity: s.severity,
+        severity,
         windowFrom: s.crossed,
         windowTo: resolved,
         crossedAt: s.crossed,

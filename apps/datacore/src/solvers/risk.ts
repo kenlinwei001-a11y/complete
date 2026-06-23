@@ -12,6 +12,18 @@ export function primaryFactor(c: SolverContext, baseId: string): string {
   return c.params.bottleneck.primary[name] ?? c.params.bottleneck.defaultPrimary;
 }
 
+/**
+ * cockpit P4 真闭环（PRD §2.3「riskCases 由实时算而非写死」）：历史处置案例严重度由**基地真实数据**
+ * 确定性派生——基地利用率压力 + 该因子是否为基地主瓶颈（加成）+ 是否结构性危机事件。
+ * 替代 CASE_SPECS 手写 severity 字面量（R13 可溯源：severity 来自 util/primaryFactor/crisis；R6 同输入同判）。
+ * 阈值 92/78 + 主瓶颈加成 12（业务区间，后端求解器域参数；高利用率基地的主瓶颈因子=高危）。
+ */
+export function caseSeverityFromData(util: number, isPrimaryFactor: boolean, crisis: boolean): "LOW" | "MEDIUM" | "HIGH" {
+  if (crisis) return "HIGH"; // 结构性危机（到货断供）恒高危
+  const score = util + (isPrimaryFactor ? 12 : 0);
+  return score >= 92 ? "HIGH" : score >= 78 ? "MEDIUM" : "LOW";
+}
+
 /** MOCK 口径 (exact prototype formula): seed=(base首字符码+因素首字符码×7) mod 9. */
 export function mockTightness(c: SolverContext, baseId: string, factor: string): number {
   const m = c.params.bottleneck.mock;
