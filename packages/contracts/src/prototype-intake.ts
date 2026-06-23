@@ -89,3 +89,19 @@ export const IntakeRequestSchema = z.object({
   format: z.enum(["html"]).default("html"),
 });
 export type IntakeRequest = z.infer<typeof IntakeRequestSchema>;
+
+/** P3 导入正门请求：原型 HTML 物化进库（经 prototype_html 连接器，数据连接器可见 + 在线查看）。 */
+export const IntakeImportRequestSchema = z.object({
+  html: z.string().min(1),
+  filename: z.string().default("prototype.html"),
+  format: z.enum(["html"]).default("html"),
+});
+export type IntakeImportRequest = z.infer<typeof IntakeImportRequestSchema>;
+
+/** P3 导入响应：落库的连接 + 各 RawDataset 概要（id/name/rowCount/列）。 */
+export const IntakeImportResponseSchema = z.object({
+  connection: z.object({ id: z.string(), name: z.string(), category: z.string().optional() }).passthrough(),
+  datasets: z.array(z.object({ id: z.string(), name: z.string(), rowCount: z.number().int(), fields: z.array(z.string()) })),
+  rowCounts: z.record(z.string(), z.number()),
+});
+export type IntakeImportResponse = z.infer<typeof IntakeImportResponseSchema>;

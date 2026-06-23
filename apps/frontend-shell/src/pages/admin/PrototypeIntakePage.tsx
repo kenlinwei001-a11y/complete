@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { submitIntake, type IntakePreview } from "@/api/endpoints";
+import { submitIntake, importIntake, type IntakePreview, type IntakeImportResult } from "@/api/endpoints";
 import zh from "@/locales/zh";
 
 /**
@@ -10,8 +11,11 @@ import zh from "@/locales/zh";
  */
 export default function PrototypeIntakePage() {
   const [html, setHtml] = useState("");
+  const [filename, setFilename] = useState("prototype.html");
   const m = useMutation({ mutationFn: () => submitIntake(html) });
+  const imp = useMutation({ mutationFn: () => importIntake(html, filename.trim() || "prototype.html") });
   const r: IntakePreview | undefined = m.data;
+  const ir: IntakeImportResult | undefined = imp.data;
 
   return (
     <div data-testid="intake-page">
@@ -26,9 +30,40 @@ export default function PrototypeIntakePage() {
         rows={6}
         style={{ width: "100%", fontFamily: "monospace", fontSize: 12, marginBottom: 8 }}
       />
-      <button className="btn" data-testid="intake-submit" disabled={m.isPending || html.trim().length === 0} onClick={() => m.mutate()}>
-        {m.isPending ? zh.common.loading : zh.intake.parse}
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn" data-testid="intake-submit" disabled={m.isPending || html.trim().length === 0} onClick={() => m.mutate()}>
+          {m.isPending ? zh.common.loading : zh.intake.parse}
+        </button>
+        <input
+          data-testid="intake-filename"
+          value={filename}
+          onChange={(e) => setFilename(e.target.value)}
+          placeholder={zh.intake.filenamePlaceholder}
+          style={{ fontSize: 12, padding: "4px 8px", minWidth: 220 }}
+        />
+        <button className="btn" data-testid="intake-import" disabled={imp.isPending || html.trim().length === 0} onClick={() => imp.mutate()}>
+          {imp.isPending ? zh.common.loading : zh.intake.importBtn}
+        </button>
+        <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.importHint}</span>
+      </div>
+
+      {ir && (
+        <div className="panel" style={{ marginTop: 12 }} data-testid="intake-imported">
+          <div className="section-title">{zh.intake.importedTitle(ir.datasets.length)}</div>
+          <div style={{ fontSize: 12, marginBottom: 6 }}>
+            <b>{zh.intake.importedConn}</b>：<span className="mono" data-testid="intake-imported-conn">{ir.connection.name}</span>
+            {" · "}
+            <Link to="/admin/connections" data-testid="intake-imported-link">→ 数据接入</Link>
+          </div>
+          <ul style={{ margin: "4px 0", paddingLeft: 18, fontSize: 12 }}>
+            {ir.datasets.map((d) => (
+              <li key={d.id} data-testid={`intake-imported-ds-${d.name}`}>
+                <b className="mono">{d.name}</b> · {d.rowCount} {zh.intake.importedRows} · {d.fields.join(", ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {r && (
         <div data-testid="intake-result" style={{ marginTop: 14 }}>

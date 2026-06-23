@@ -373,6 +373,18 @@ export const handlers = [
     }),
   ),
 
+  // P3 导入正门（mock）：HTML 物化进库 → 返回落库连接 + RawDataset 概要（值与原型一致）。
+  http.post("*/a/v1/databuilder/intake/import", () =>
+    HttpResponse.json({
+      connection: { id: "conn_proto_mock", name: "原型导入:prototype.html", category: "PROTOTYPE" },
+      datasets: [
+        { id: "rds_base", name: "BASE_DATA", rowCount: 2, fields: ["baseId", "name", "util", "gwh"] },
+        { id: "rds_order", name: "ORDER_DATA", rowCount: 1, fields: ["so", "cust", "model", "qty", "baseRef"] },
+      ],
+      rowCounts: { BASE_DATA: 2, ORDER_DATA: 1 },
+    }),
+  ),
+
   // ---- Entitlement ----
   http.get("*/a/v1/features/registry", () => HttpResponse.json(FEATURE_REGISTRY)),
 

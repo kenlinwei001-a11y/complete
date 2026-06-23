@@ -40,7 +40,7 @@ import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
-import { IntakeRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
+import { IntakeRequestSchema, IntakeImportRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
@@ -2716,6 +2716,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }));
     await outbox.emit(c.tenantId, "prototype.intake_recorded", { datasets: intake.dataSources.length, links: intake.links.length, unparsed: intake.unparsed.length, candidates: persisted.length });
     return { intake, reconcile: { ...reconcile, candidates: persisted } };
+  });
+  // prototype-intake P3 导入正门：HTML 物化进库 = 经连接器（prototype_html）落 RawDataset，
+  // 数据连接器可见此"导入文件"+ 在线查看每张表（值与原型一致；不写死前端代码 R8 数据流）。
+  app.post("/a/v1/databuilder/intake/import", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(IntakeImportRequestSchema, req.body);
+    const result = await connectors.importPrototype(c, body.filename, body.html);
+    const datasets = (await connectors.listRawDatasets(c, result.connection.id)).map((d) => ({
+      id: d.id, name: d.name, rowCount: d.rowCount, fields: d.fields.map((f) => f.name),
+    }));
+    await outbox.emit(c.tenantId, "prototype.materialized", { connId: result.connection.id, datasets: datasets.length, rows: Object.values(result.rowCounts).reduce((a, b) => a + b, 0) });
+    return { connection: result.connection, datasets, rowCounts: result.rowCounts };
   });
   // prototype-intake P2：对账候选队列（HITL）。
   app.get("/a/v1/databuilder/reconcile-candidates", async (req) => {

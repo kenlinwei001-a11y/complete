@@ -3,6 +3,7 @@ import type { BlobStore } from "../blob.js";
 import { parseCsv, parseJsonRows, parseXlsx } from "./parsers.js";
 import { profileRows } from "./profiler.js";
 import { validationError } from "../errors.js";
+import { extractPrototypeDatasets } from "../databuilder/prototype-intake.js";
 
 /** Unified adapter interface (PRD §2.1). */
 export interface SourceAdapter {
@@ -112,6 +113,18 @@ export const CONNECTOR_TYPES: ConnectorType[] = [
     capabilities: { batch: true, incremental: false, schemaDiscovery: true },
   },
   {
+    // prototype-intake P3：把上传的原型 HTML 当"文件型数据源"——内嵌数据表（const NAME=[...]）
+    // 多表落 RawDataset，前端 数据连接器可见此"导入文件"+ 在线查看每张表（值与原型一致）。
+    key: "prototype_html",
+    category: "PROTOTYPE",
+    configSchema: {
+      type: "object",
+      required: ["blobKey"],
+      properties: { blobKey: { type: "string" }, filename: { type: "string" } },
+    },
+    capabilities: { batch: true, incremental: false, schemaDiscovery: true },
+  },
+  {
     key: "mock_erp",
     category: "ERP",
     configSchema: { type: "object", properties: {} },
@@ -183,6 +196,24 @@ export class FileUploadAdapter extends RowsAdapter {
     if (fmt === "json") return { [this.config.datasetName]: parseJsonRows(buf.toString("utf8")) };
     if (fmt === "xlsx") return { [this.config.datasetName]: parseXlsx(buf) }; // G-6：xlsx 经 node-xlsx 解析
     throw validationError(`unsupported file format: ${fmt} (csv/json/xlsx supported)`);
+  }
+}
+
+/** prototype-intake P3：原型 HTML blob → 多数据表（内嵌 const 字面量，全量行）。解析纯函数（R6）。 */
+export class PrototypeHtmlAdapter extends RowsAdapter {
+  constructor(
+    private blob: BlobStore,
+    private config: { blobKey: string },
+  ) {
+    super();
+  }
+
+  protected async loadAll(): Promise<Record<string, Record<string, unknown>[]>> {
+    const buf = await this.blob.get(this.config.blobKey);
+    const { dataSources } = extractPrototypeDatasets(buf.toString("utf8"));
+    const out: Record<string, Record<string, unknown>[]> = {};
+    for (const d of dataSources) out[d.name] = d.rows;
+    return out;
   }
 }
 
@@ -283,6 +314,8 @@ export function createAdapter(
   switch (connectorTypeKey) {
     case "file_upload":
       return new FileUploadAdapter(blob, config as { blobKey: string; format: string; datasetName: string });
+    case "prototype_html":
+      return new PrototypeHtmlAdapter(blob, config as { blobKey: string });
     case "rest_api":
       return new RestApiAdapter(config as { url: string; datasetName?: string }, fetchImpl);
     case "mock_erp":

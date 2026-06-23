@@ -37,15 +37,21 @@ const SCRIPT_RE = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
 const CONST_RE = /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*([[{])/g;
 const L_RE = /\bL\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/g;
 
-/** 解析原型 HTML → 数据表 + 关系 + 未解析块（确定性）。 */
-export function parsePrototypeHtml(html: string): IntakeResult {
+/** 解析出的完整数据表（含全部行——P3 物化进库用；解析仍是纯函数，R6 确定性）。 */
+export interface ProtoRawDataset { name: string; columns: string[]; rows: Record<string, unknown>[] }
+
+/**
+ * 解析原型 HTML 的完整数据表（全部行）——P2 预览取样例、P3 物化进库取全量，**单一解析逻辑**。
+ * 与 parsePrototypeHtml 同源（同 HTML 同结果，R6）。
+ */
+export function extractPrototypeDatasets(html: string): { dataSources: ProtoRawDataset[]; unparsed: { name: string; reason: string }[] } {
   const scripts: string[] = [];
   let m: RegExpExecArray | null;
   SCRIPT_RE.lastIndex = 0;
   while ((m = SCRIPT_RE.exec(html))) scripts.push(m[1]!);
   const code = scripts.length > 0 ? scripts.join("\n") : html; // 无 <script> 则全文兜底
 
-  const dataSources: ProtoDataset[] = [];
+  const dataSources: ProtoRawDataset[] = [];
   const unparsed: { name: string; reason: string }[] = [];
   const seen = new Set<string>();
 
@@ -64,7 +70,7 @@ export function parsePrototypeHtml(html: string): IntakeResult {
     if (Array.isArray(value) && value.length > 0 && value.every((r) => r && typeof r === "object" && !Array.isArray(r))) {
       const rows = value as Record<string, unknown>[];
       const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
-      dataSources.push({ name, columns: cols, rowCount: rows.length, sampleRows: rows.slice(0, 3) });
+      dataSources.push({ name, columns: cols, rows });
       seen.add(name);
     } else {
       unparsed.push({ name, reason: Array.isArray(value) ? "非对象数组（标量/嵌套数组）" : "对象字面量（非数据表）" });
@@ -72,8 +78,25 @@ export function parsePrototypeHtml(html: string): IntakeResult {
     }
   }
   dataSources.sort((a, b) => a.name.localeCompare(b.name));
+  return { dataSources, unparsed };
+}
+
+/** 解析原型 HTML → 数据表（样例行预览）+ 关系 + 未解析块（确定性）。 */
+export function parsePrototypeHtml(html: string): IntakeResult {
+  const { dataSources: raws, unparsed } = extractPrototypeDatasets(html);
+  const dataSources: ProtoDataset[] = raws.map((d) => ({
+    name: d.name,
+    columns: d.columns,
+    rowCount: d.rows.length,
+    sampleRows: d.rows.slice(0, 3),
+  }));
 
   // 关系：① L(src,tgt,rel) 显式；② ref 命名约定（列 xxxRef/xxxId 指向同名数据表）。
+  const scripts: string[] = [];
+  let m: RegExpExecArray | null;
+  SCRIPT_RE.lastIndex = 0;
+  while ((m = SCRIPT_RE.exec(html))) scripts.push(m[1]!);
+  const code = scripts.length > 0 ? scripts.join("\n") : html;
   const links: ProtoLink[] = [];
   const linkSeen = new Set<string>();
   const addLink = (l: ProtoLink) => { const k = `${l.from}|${l.to}|${l.rel}|${l.origin}`; if (!linkSeen.has(k)) { linkSeen.add(k); links.push(l); } };

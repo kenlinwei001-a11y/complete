@@ -279,6 +279,29 @@ export class ConnectorService {
     return { connection: conn, schema, syncJobId: job.id };
   }
 
+  /**
+   * prototype-intake P3 导入正门：原型 HTML → BlobStore → prototype_html 连接（数据连接器可见）
+   * → discovery + sync 把内嵌数据表全量落 RawDataset（在线查看，值与原型一致）。**不写死前端**。
+   */
+  async importPrototype(
+    ctx: AuthCtx,
+    filename: string,
+    html: string,
+  ): Promise<{ connection: Connection; schema: SourceSchema; syncJobId: string; rowCounts: Record<string, number> }> {
+    const safeName = filename.trim() || "prototype.html";
+    const blobKey = `prototype/${ctx.tenantId}/${newId("blob")}-${safeName}`;
+    await this.blob.put(blobKey, Buffer.from(html, "utf8"));
+    const conn = await this.createConnection(ctx, {
+      connectorTypeKey: "prototype_html",
+      name: `原型导入:${safeName}`,
+      config: { blobKey, filename: safeName },
+      category: "PROTOTYPE",
+    });
+    const schema = await this.discoverSchema(ctx, conn.id);
+    const job = await this.sync(ctx, conn.id);
+    return { connection: conn, schema, syncJobId: job.id, rowCounts: job.rowCounts };
+  }
+
   async listRawDatasets(ctx: AuthCtx, connId?: string): Promise<RawDataset[]> {
     return this.repos.rawDatasets.list(ctx.tenantId, (d) =>
       connId ? d.sourceConnId === connId : true,

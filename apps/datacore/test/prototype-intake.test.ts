@@ -112,6 +112,30 @@ describe("prototype-intake · 真服务端点（L1）", () => {
     expect(other.items.length).toBe(0);
   });
 
+  it("P3 导入正门：HTML 物化进库 → 数据连接器可见导入文件 + 在线查看各表（全量行）", async () => {
+    const t: TestApp = await makeApp();
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake/import", headers: ADMIN, payload: { html: PROTOTYPE, filename: "demo.html" } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { connection: { id: string; name: string; category: string }; datasets: { id: string; name: string; rowCount: number }[]; rowCounts: Record<string, number> };
+    // 连接（导入文件）落库 + 归类 PROTOTYPE
+    expect(body.connection.name).toBe("原型导入:demo.html");
+    expect(body.connection.category).toBe("PROTOTYPE");
+    // 数据连接器列表可见该连接
+    const conns = (await (await t.app.inject({ method: "GET", url: "/a/v1/connections", headers: ADMIN })).json()) as { id: string; connectorTypeKey: string }[];
+    expect(conns.some((x) => x.id === body.connection.id && x.connectorTypeKey === "prototype_html")).toBe(true);
+    // 两张表（ORDERS/BASES）全量落 RawDataset
+    expect(body.datasets.map((d) => d.name).sort()).toEqual(["BASES", "ORDERS"]);
+    const orders = body.datasets.find((d) => d.name === "ORDERS")!;
+    expect(orders.rowCount).toBe(2);
+    // 在线查看：从库读行，值与原型一致
+    const rows = (await (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets/${orders.id}/rows`, headers: ADMIN })).json()) as { rows: Record<string, unknown>[] };
+    expect(rows.rows.length).toBe(2);
+    expect(rows.rows.some((r) => r.so === "SO-1" && r.qty === 1200)).toBe(true);
+    // 事件
+    const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "prototype.materialized");
+    expect(events.length).toBe(1);
+  });
+
   it("R2：另一租户独立解析（解析无跨租户泄露，对账用各自本体）", async () => {
     const t: TestApp = await makeApp();
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake", headers: { "x-debug-user": "acme:admin:admin" }, payload: { html: PROTOTYPE } });

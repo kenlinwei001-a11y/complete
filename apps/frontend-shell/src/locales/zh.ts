@@ -552,6 +552,12 @@ export const zh = {
     autoMapped: "自动映射",
     candidates: "待确认候选",
     unparsed: "未解析（诚实跳过，不静默丢）",
+    importBtn: "导入到库",
+    importHint: "把解析出的数据表物化进统一数据库（经原型连接器），在「数据接入」可见此导入文件并在线查看每张表（值与原型一致，不写死前端）。",
+    importedTitle: (n: number) => `已导入到库（连接器 + ${n} 张表）`,
+    importedConn: "导入文件（数据连接器可见）",
+    importedRows: "行",
+    filenamePlaceholder: "文件名（如 cockpit-prototype.html）",
   },
   boundary: {
     title: "边界册治理（单一来源 + 影响图）",

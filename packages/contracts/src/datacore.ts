@@ -7,8 +7,8 @@ import { ValidationPolicySchema } from "./output-validation.js";
 // ---------------------------------------------------------------------------
 
 export const ConnectorTypeSchema = z.object({
-  key: z.string(), // sap_erp / salesforce_crm / generic_jdbc / rest_api / knowledge_base / external_feed / file_upload / mock_erp / mock_crm
-  category: z.enum(["ERP", "CRM", "KB", "EXTERNAL", "FILE"]),
+  key: z.string(), // sap_erp / salesforce_crm / generic_jdbc / rest_api / knowledge_base / external_feed / file_upload / prototype_html / mock_erp / mock_crm
+  category: z.enum(["ERP", "CRM", "KB", "EXTERNAL", "FILE", "PROTOTYPE"]),
   configSchema: JsonSchemaObject,
   capabilities: z.object({
     batch: z.boolean(),

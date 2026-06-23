@@ -873,3 +873,12 @@ export interface IntakePreview {
   };
 }
 export const submitIntake = (html: string) => api.a<IntakePreview>("/a/v1/databuilder/intake", { method: "POST", body: { html } });
+
+// DF.13c P3 导入正门：HTML 物化进库（经 prototype_html 连接器）→ 数据连接器可见导入文件 + 在线查看。
+export interface IntakeImportResult {
+  connection: { id: string; name: string; category?: string };
+  datasets: { id: string; name: string; rowCount: number; fields: string[] }[];
+  rowCounts: Record<string, number>;
+}
+export const importIntake = (html: string, filename: string) =>
+  api.a<IntakeImportResult>("/a/v1/databuilder/intake/import", { method: "POST", body: { html, filename } });
