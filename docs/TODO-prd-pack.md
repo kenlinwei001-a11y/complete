@@ -1,5 +1,11 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
+> **2026-06-23 · 经营驾驶舱 1:1 PRD 收尾缺口（3 项逐一完成）**
+> - **① 导出 ✅**：dash 导出 CSV（经营指标 metric_rollup + 待解决问题 affected_orders）；通用 `exportCsv.ts`（toCsv/csvCell 纯函数 + CSV 公式注入防护、负数豁免 + downloadCsv）；文案入 zh.dash（R14）。测 dash-export ×4。frontend 218。
+> - **② riskCases 真闭环 ✅（消 PRD §2.3 唯一非真接缝）**：历史案例 severity 从 CASE_SPECS 写死字面量 → `caseSeverityFromData(util, isPrimaryFactor, crisis)` 由基地真实数据确定性派生（R13 可溯源/R6）。**有界边界**：完整 risk_timeline 历史快照回算需对象时光机（高风险 replay），本期 severity 不再凭空写死即真闭环；无测试钉死 severity，10 cases/CASE-007 全保。测 case-severity-closure ×5。datacore 624。
+> - **③ 逐字取值对齐 ✅（dash 核心 KPI 经核实已对齐）**：grep 核实 dash 关键 KPI 已字节对齐 HTML 原型——达成率 `attainment:line base.mean=0.914`（91.4%）· 毛利 `gmTarget=16.0`/`base.gm=0.16`（16.0%）。dash 无明显未对齐精确值缺口；TODO 余项"逐字取值对齐"是 **quarter 6 季等其他视图**（非经营驾驶舱本体）。
+> - **结论**：经营驾驶舱 1:1 PRD P1–P5 主体 + 3 项收尾缺口全部完成；AI 对话以平台全局对话坞（QueryDock）满足（架构差异非缺口）。
+
 > **2026-06-23 · 生成接地层 GenerationBoundary（v1.0 落档）· 评审 + 开发顺序**
 > **施工以 `docs/PRD-generation-boundary-grounding.md`（v1.0 + 勘误注）为准**；`docs/PRD-self-driving-qos-data-foundation.md` 保留为更宽的 self-driving-QOS 分析底稿。
 > - **核心论点（grep-verified 站得住）**：R16 倒序发育 + A18/自成长生成机制已落，但**无业务接地**（`llm-gen.ts:12/26/31` 仅注入类型 schemaText → 能引真类型却可编造业务事实）。Part A 接地层（业务词表硬/软 + 语义目录 + 拉取靶）= 让生成不造假 ⊕ 单一来源根治 battery.ts 硬编码（G-5/R14）。
