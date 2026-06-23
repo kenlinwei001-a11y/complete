@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup } from "@platform/contracts";
 import { SEG_REGISTRY } from "@platform/contracts";
@@ -65,6 +66,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   const segColors = (view.layout?.segColors as Record<string, string> | undefined) ?? SEG_COLOR;
   const [baseFilter, setBaseFilter] = useState<string>("");
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
+  const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG
   const [segMode, setSegMode] = useState<"app" | "base">("app"); // econ 看板分组：应用细分 / 风险基地
   const econCfg = (view.layout?.econ as typeof ECON_DEFAULT | undefined) ?? ECON_DEFAULT;
 
@@ -88,6 +90,14 @@ export default function OrderChainView({ view }: ViewRendererProps) {
     () => [...new Set((allData?.out.rows ?? []).flatMap((r) => r.risks.map((k) => k.base)))],
     [allData],
   );
+
+  // 驾驶舱「待解决问题」卡下钻：?problem=<category> → 数据就绪后自动展开该类逐单根因 DAG。
+  const problemQuery = searchParams.get("problem");
+  useEffect(() => {
+    if (!problemQuery || !data) return;
+    const match = data.out.problems.find((p) => p.category === problemQuery);
+    if (match) setOpenProblem(match);
+  }, [problemQuery, data]);
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
   const { out, snapshotVersion } = data;

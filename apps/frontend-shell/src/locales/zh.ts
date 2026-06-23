@@ -228,6 +228,7 @@ export const zh = {
     problemsSub: (orders: number, n: number) => `自下而上：${orders} 单逐单归因 → 汇成 ${n} 类问题清单`,
     feedbackTitle: "回采校准 · 逐级反馈链（实际 → 月度 → 季度 → 年度）",
     modulesTitle: "模块直达（点击进入）",
+    problemDrill: "点击查看该问题的订单全链与逐单根因",
     exportLabel: "导出 CSV",
     exportTitleRow: "经营驾驶舱导出",
     exportMetricHeader: ["经营指标", "目标", "实际", "偏差", "越线"] as const,

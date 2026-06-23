@@ -119,6 +119,7 @@ export default function DashboardView({ view }: ViewRendererProps) {
 
 /** PRD-IND-dash §2.3：待解决的问题面板——自下而上把受影响订单归并为问题清单（affected_orders 同源）。 */
 function ProblemPanel() {
+  const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ["b", "affected-orders", { dash: true }],
     queryFn: async () => (await invokeSolver("affected_orders", {})).data as { rows?: unknown[]; problems?: { category: string; title: string; orderCount: number; financeImpact: number }[] },
@@ -133,12 +134,20 @@ function ProblemPanel() {
       <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.dash.problemsSub(orderCount, problems.length)}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
         {problems.map((p) => (
-          <div key={p.category} className={styles.card} style={{ borderLeft: "3px solid var(--danger)" }} data-testid={`dash-problem-${p.category}`}>
+          // 点击下钻订单全链聚合并自动展开该问题的逐单根因 DAG（PRD-cockpit §2.3 问题归并→台账逐单根因）。
+          <button
+            key={p.category}
+            className={styles.card}
+            style={{ borderLeft: "3px solid var(--danger)", cursor: "pointer", textAlign: "left" }}
+            data-testid={`dash-problem-${p.category}`}
+            title={zh.dash.problemDrill}
+            onClick={() => navigate(`/v/order-chain?problem=${encodeURIComponent(p.category)}`)}
+          >
             <b>{p.title}</b>
             <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4 }}>
-              影响 <b className="mono">{p.orderCount}</b> 单 · <b className="mono">{p.financeImpact.toFixed(0)}</b> 亿
+              影响 <b className="mono">{p.orderCount}</b> 单 · <b className="mono">{p.financeImpact.toFixed(0)}</b> 亿 <span style={{ color: "var(--accent)" }}>›</span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>
