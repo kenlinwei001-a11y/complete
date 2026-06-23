@@ -223,7 +223,9 @@ export const zh = {
   },
   /** §7.15 季度滚动看板 */
   dash: {
-    // PRD-IND-dash §2.5/§2.6
+    // PRD-IND-dash §2.3/§2.5/§2.6
+    problemsTitle: (n: number) => `🧩 待解决的问题（${n}）· 全部订单根源归并`,
+    problemsSub: (orders: number, n: number) => `自下而上：${orders} 单逐单归因 → 汇成 ${n} 类问题清单`,
     feedbackTitle: "回采校准 · 逐级反馈链（实际 → 月度 → 季度 → 年度）",
     modulesTitle: "模块直达（点击进入）",
   },

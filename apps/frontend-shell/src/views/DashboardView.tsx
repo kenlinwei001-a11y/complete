@@ -53,6 +53,9 @@ export default function DashboardView({ view }: ViewRendererProps) {
         )}
       </div>
 
+      {/* 待解决的问题（自下而上：受影响订单逐单归因 → 问题清单） */}
+      <ProblemPanel />
+
       {/* 回采校准链（实际 → 月度 → 季度 → 年度 · C12 反向调参） */}
       <div className="panel" style={{ marginTop: 16 }} data-testid="dash-feedback-chain">
         <div className="section-title">{zh.dash.feedbackTitle}</div>
@@ -85,6 +88,34 @@ export default function DashboardView({ view }: ViewRendererProps) {
         </div>
       </div>
     </>
+  );
+}
+
+/** PRD-IND-dash §2.3：待解决的问题面板——自下而上把受影响订单归并为问题清单（affected_orders 同源）。 */
+function ProblemPanel() {
+  const { data } = useQuery({
+    queryKey: ["b", "affected-orders", { dash: true }],
+    queryFn: async () => (await invokeSolver("affected_orders", {})).data as { rows?: unknown[]; problems?: { category: string; title: string; orderCount: number; financeImpact: number }[] },
+    retry: false,
+  });
+  const problems = data?.problems ?? [];
+  if (problems.length === 0) return null;
+  const orderCount = data?.rows?.length ?? problems.reduce((s, p) => s + p.orderCount, 0);
+  return (
+    <div className="panel" style={{ marginTop: 16 }} data-testid="dash-problems">
+      <div className="section-title">{zh.dash.problemsTitle(problems.length)}</div>
+      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.dash.problemsSub(orderCount, problems.length)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+        {problems.map((p) => (
+          <div key={p.category} className={styles.card} style={{ borderLeft: "3px solid var(--danger)" }} data-testid={`dash-problem-${p.category}`}>
+            <b>{p.title}</b>
+            <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4 }}>
+              影响 <b className="mono">{p.orderCount}</b> 单 · <b className="mono">{p.financeImpact.toFixed(0)}</b> 亿
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

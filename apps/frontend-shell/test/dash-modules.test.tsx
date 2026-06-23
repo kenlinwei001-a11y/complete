@@ -14,6 +14,11 @@ describe("dash · 回采校准链 + 模块直达", () => {
     const { router } = renderApp("/v/dash");
     await screen.findByTestId("dashboard-grid");
 
+    // 待解决的问题面板（自下而上归并，affected_orders 同源）
+    const probs = await screen.findByTestId("dash-problems");
+    expect(probs).toHaveTextContent("待解决的问题");
+    expect(probs).toHaveTextContent("影响");
+
     // 回采校准链 5 节点（实际 → 月度 → 季度 → 年度 → C12 反向调参）
     const fb = await screen.findByTestId("dash-feedback-chain");
     expect(fb).toHaveTextContent("月度 S&OP 三线差异");
