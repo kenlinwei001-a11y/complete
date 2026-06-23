@@ -86,7 +86,7 @@ import { OpsScheduleService } from "./opsteam/schedule.js";
 import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
-import { BOUNDARY_IMPACT } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import type { AuthCtx } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 
@@ -1251,6 +1251,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const impact = reg ? BOUNDARY_IMPACT.filter((b) => b.registry === reg) : BOUNDARY_IMPACT;
     return { impact, registries: BOUNDARY_IMPACT.map((b) => b.registry) };
   });
+
+  // DF.10 边界册版本：semver + 各册内容指纹（改值留痕/跨服务缓存失效锚）。确定性（R6）。
+  app.get("/a/v1/boundary/version", async () => boundaryVersion());
 
   // PRD-fde §3.5 能力清单(schema 级) + 比对差异：知现状→算缺口（建之前就知缺什么）。
   const buildInventory = async (c: AuthCtx): Promise<CapabilityInventory> => ({

@@ -187,15 +187,38 @@ export class SolverService {
    */
   async generateProvisionalSolver(ctx: AuthCtx, spec: SolverGenSpec): Promise<SolverArtifact> {
     if (!this.llm) throw validationError("LLM 未注入，无法生成临时求解器（A18.2 需配 comprehend provider）");
-    // DF.8 接地：业务词表（基地/细分实例名）注入生成 + 注册前越界校验，使生成不造业务事实。
-    const vocab = this.groundingVocab();
+    // DF.8 接地：业务词表注入生成 + 注册前越界校验，使生成不造业务事实。DF.11：词表自本体自成长。
+    const vocab = await this.deriveGroundingVocab(ctx);
     const draft = await this.generateDraftWithSchema(ctx, { ...spec, vocab });
     return this.registerProvisionalSolver(ctx, spec.key, draft, { vocab });
   }
 
-  /** DF.8 已发布业务词表（基地名 + 细分名），供生成接地校验。 */
-  private groundingVocab(): string[] {
+  /** DF.8 静态业务词表（基地名 + 细分名，单一来源册），自成长兜底基底。 */
+  private staticGroundingVocab(): string[] {
     return [...BASE_REGISTRY.map((b) => b.name), ...SEG_REGISTRY.map((s) => s.seg)];
+  }
+
+  /**
+   * DF.11 A5 自动抽接地词表（自成长）：在静态册基底上，自动抽取本租户**已发布本体**中
+   * `searchable` 字段（A3 标记的名称类业务字段）的实例名 → 新建业务域的实体自动纳入接地词表，
+   * 不必手改静态册。R2 仅本租户、R6 确定性（排序去重）；空本体退化为静态册（向后兼容）。
+   */
+  async deriveGroundingVocab(ctx: AuthCtx): Promise<string[]> {
+    const out = new Set<string>(this.staticGroundingVocab());
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE");
+    for (const t of types) {
+      const searchProps = t.properties.filter((p) => p.searchable).map((p) => p.propKey);
+      if (searchProps.length === 0) continue;
+      const objs = await this.repos.objects.listByType(ctx.tenantId, t.key);
+      for (const o of objs) {
+        if (o.mergedInto) continue; // 被并实体只见 golden
+        for (const pk of searchProps) {
+          const v = (o.props as Record<string, unknown>)[pk];
+          if (typeof v === "string" && v.trim()) out.add(v);
+        }
+      }
+    }
+    return [...out].sort();
   }
 
   private async generateDraftWithSchema(ctx: AuthCtx, spec: SolverGenSpec): Promise<SolverGenDraft> {

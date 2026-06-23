@@ -154,3 +154,40 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
     ],
   },
 ];
+
+/**
+ * DF.10 边界册版本化（GenerationBoundary · 改值留痕 + 跨服务缓存失效锚）：
+ * semver 手维护（结构变更时 bump）；digest 自动——对各册内容算确定性指纹（djb2，R6 同内容同 digest），
+ * 改任一业务常数（基地/价利/目标）→ digest 变，可被审计/缓存失效检测（呼应 DF.7 影响图「改 X」的时间维）。
+ * 纯 JS hash（contracts 跨前后端，不用 node:crypto）。
+ */
+export const BOUNDARY_SEMVER = "1.0.0";
+
+/** 确定性字符串指纹（djb2，无依赖，前后端一致 R6）。 */
+function djb2Hex(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (((h << 5) + h) + s.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0");
+}
+
+export interface BoundaryRegistryVersion {
+  registry: "BASE_REGISTRY" | "SEG_REGISTRY" | "PLAN_GOAL_TARGETS";
+  members: number;
+  digest: string;
+}
+export interface BoundaryVersion {
+  semver: string;
+  /** 全册合并指纹（任一册改值即变）。 */
+  digest: string;
+  registries: BoundaryRegistryVersion[];
+}
+
+/** 计算当前边界册版本（semver + 内容指纹）。确定性（R6）：同内容恒同 digest。 */
+export function boundaryVersion(): BoundaryVersion {
+  const registries: BoundaryRegistryVersion[] = [
+    { registry: "BASE_REGISTRY", members: BASE_REGISTRY.length, digest: djb2Hex(JSON.stringify(BASE_REGISTRY)) },
+    { registry: "SEG_REGISTRY", members: SEG_REGISTRY.length, digest: djb2Hex(JSON.stringify(SEG_REGISTRY)) },
+    { registry: "PLAN_GOAL_TARGETS", members: Object.keys(PLAN_GOAL_TARGETS).length, digest: djb2Hex(JSON.stringify(PLAN_GOAL_TARGETS)) },
+  ];
+  return { semver: BOUNDARY_SEMVER, digest: djb2Hex(registries.map((r) => `${r.registry}:${r.digest}`).join("|")), registries };
+}
