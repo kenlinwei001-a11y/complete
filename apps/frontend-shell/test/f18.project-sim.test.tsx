@@ -126,6 +126,42 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(screen.getByTestId("nonproducible-西安")).toHaveTextContent("产线未");
   });
 
+  it("CSV 上传分批交货表（PRD-IND-model §4.3）：解析 → 切分批 → 导入提示", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+    await screen.findByTestId("pm-stepper");
+
+    // 切分批 → 见上传/模板工具条
+    await user.click(screen.getByTestId("mode-batch"));
+    const input = screen.getByTestId("batch-upload");
+    const csv = "数量(万套),交付日期,交付地址\n15,2026/07/10,华东 · 上海\n25,2026-08-07,华南 · 深圳\n30,2026-09-04,海外 · 欧洲（海运）\n";
+    const file = new File(["﻿" + csv], "批次.csv", { type: "text/csv" });
+    await user.upload(input, file);
+
+    // 三行导入 + 提示；地址模糊匹配（上海/深圳/欧洲）、日期归一（2026/07/10→2026-07-10）
+    await waitFor(() => expect(screen.getByTestId("batch-upload-msg")).toHaveTextContent("已导入 3 批"));
+    expect(screen.getByTestId("batch-editor")).toBeInTheDocument();
+  });
+
+  it("⑥对症对策表（PRD-IND-model §4.4-⑥）：缺口时显示方案库 acts 三行（i18n 零写死）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+    await screen.findByTestId("pm-stepper");
+
+    // 放大需求制造缺口（单批 200 万套 · 6 周 → P90 远不足）
+    fireEvent.change(screen.getByLabelText("需求(万套)"), { target: { value: "200" } });
+    await user.click(screen.getByTestId("pm-step-chip-6"));
+    await screen.findByTestId("pm-step6");
+
+    // 缺口结论 → 对症对策表三行
+    const acts = await screen.findByTestId("pm-acts-table");
+    expect(within(acts).getByTestId("pm-act-加 2 夜班")).toHaveTextContent("+12%");
+    expect(within(acts).getByTestId("pm-act-扩化成通道")).toHaveTextContent("直击主瓶颈");
+    expect(within(acts).getByTestId("pm-act-部分外协")).toHaveTextContent("C08");
+  });
+
   it("型号选择器/订单点击写入 selectedObjects（查询 Dock 上下文）", async () => {
     const user = userEvent.setup();
     loginAs("planner");

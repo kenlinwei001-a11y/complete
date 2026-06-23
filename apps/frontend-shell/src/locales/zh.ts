@@ -446,6 +446,13 @@ export const zh = {
       logistics: (days: number) => `物流 ${days} 天`,
       pendingCert: "认证中（产能按 60% 计）",
       certPending: "认证中",
+      // PRD-IND-model §4.4-⑥：不达标时对症对策表（acts，方案库「按约束因素对症」，缺口时显示，与滑杆并存）。
+      actsTitle: "对症对策（按约束因素 · 方案库）",
+      acts: [
+        { action: "加 2 夜班", effect: "+12% 产能 · 当周见效 · 低成本" },
+        { action: "扩化成通道", effect: "+20% · 直击主瓶颈 · 含 2 周爬坡" },
+        { action: "部分外协", effect: "+15% · 受 C08 ≤20% 约束" },
+      ],
     },
     sop: {
       title: "S&OP 月度平衡台",

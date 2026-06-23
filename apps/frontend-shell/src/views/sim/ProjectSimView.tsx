@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BottleneckMatrixOutputSchema,
@@ -39,6 +39,52 @@ interface BatchRowInput {
   qty: number;
   dueDate: string;
   address: string;
+}
+
+// PRD-IND-model §4.3：分批交货 CSV 模板（含 BOM）+ 解析（parseBatchTable/pmNormDate/pmMatchAddr，纯前端）。
+const PM_CSV_TEMPLATE = "﻿数量(万套),交付日期,交付地址\n15,2026-07-10,华东 · 上海\n25,2026-08-07,华南 · 深圳\n10,2026-09-04,海外 · 欧洲（海运）\n";
+const PM_KNOWN_ADDRS = ["上海", "广州", "北京", "成都", "深圳", "武汉", "欧洲", "海外"];
+
+function pmNormDate(raw: string): string {
+  const s = raw.trim().replace(/[./年月]/g, "-").replace(/日/g, "");
+  const m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m ? `${m[1]}-${m[2]!.padStart(2, "0")}-${m[3]!.padStart(2, "0")}` : "";
+}
+function pmMatchAddr(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  const exact = PM_KNOWN_ADDRS.find((a) => a === s);
+  if (exact) return exact;
+  const contained = PM_KNOWN_ADDRS.find((a) => s.includes(a));
+  if (contained) return contained;
+  const parts = s.split(/[·\s]+/).filter(Boolean);
+  return parts[parts.length - 1] ?? s;
+}
+function parseBatchTable(text: string): { rows: BatchRowInput[]; skipped: number } {
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { rows: [], skipped: 0 };
+  const head = lines[0]!;
+  const delim = head.includes("\t") ? "\t" : head.includes("，") ? "，" : ",";
+  let q = 0, d = 1, a = 2, start = 0;
+  if (/数量|qty|日期|date|地址|addr/i.test(head)) {
+    head.split(delim).map((c) => c.trim()).forEach((c, i) => {
+      if (/数量|qty/i.test(c)) q = i;
+      else if (/日期|date/i.test(c)) d = i;
+      else if (/地址|addr/i.test(c)) a = i;
+    });
+    start = 1;
+  }
+  const rows: BatchRowInput[] = [];
+  let skipped = 0;
+  for (let i = start; i < lines.length; i++) {
+    const cells = lines[i]!.split(delim).map((c) => c.trim());
+    const qty = parseFloat(cells[q] || "") || 0;
+    const dueDate = pmNormDate(cells[d] || "");
+    const address = pmMatchAddr(cells[a] || "");
+    if (qty > 0 && dueDate && address) rows.push({ qty, dueDate, address });
+    else skipped++;
+  }
+  return { rows, skipped };
 }
 
 interface WhatIfState {
@@ -86,11 +132,41 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     { qty: 22, dueDate: "2026-08-10", address: "海外" },
   ]);
   const [whatIf, setWhatIf] = useState<WhatIfState>({ nightShifts: 0, extraChannels: 0, outsourcePct: 0 });
+  const [uploadMsg, setUploadMsg] = useState(""); // PRD-IND-model §4.3 CSV 导入提示
   const [step, setStep] = useState(1);
   const [bnOpen, setBnOpen] = useState(false);
   const [dagNode, setDagNode] = useState<string | null>(null); // #3：点 DAG 节点 → 抽屉看判定/推导/输入/规则
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const action = useActionDraft();
+
+  // PRD-IND-model §4.3：CSV 上传 → parseBatchTable → 切分批模式；模板下载（纯前端文件交互）。
+  const onUploadCsv = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, skipped } = parseBatchTable(String(reader.result || ""));
+      if (rows.length > 0) {
+        setBatches(rows);
+        setMode("batch");
+        setStep((s) => Math.min(s, 1));
+        setUploadMsg(`✓ 已导入 ${rows.length} 批${skipped > 0 ? ` · 跳过 ${skipped} 行` : ""}`);
+      } else {
+        setUploadMsg("⚠ 未识别有效批次（需含 数量 / 交付日期 / 交付地址 列）");
+      }
+    };
+    reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  };
+  const downloadTemplate = () => {
+    const blob = new Blob([PM_CSV_TEMPLATE], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "分批交货模板.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const orders = useQuery({
     queryKey: ["a", "objects", { type: "Order", view: "project-sim" }],
@@ -222,6 +298,15 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
             {mode === "batch" && (
               <div>
+                {/* PRD-IND-model §4.3：分批交货 CSV 上传 + 模板下载 */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "4px 0 8px" }}>
+                  <label className="btn sm" data-testid="batch-upload-label" style={{ cursor: "pointer" }}>
+                    ⬆ 上传表格
+                    <input type="file" accept=".csv,text/csv" aria-label="上传分批交货表格" data-testid="batch-upload" style={{ display: "none" }} onChange={onUploadCsv} />
+                  </label>
+                  <button className="btn sm" data-testid="batch-template" onClick={downloadTemplate}>模板.csv</button>
+                  {uploadMsg && <span data-testid="batch-upload-msg" style={{ fontSize: 12, color: "var(--muted2)" }}>{uploadMsg}</span>}
+                </div>
                 <table className="cmp" data-testid="batch-editor">
                   <thead>
                     <tr>
@@ -699,6 +784,25 @@ function StepBody({
       <div className={styles.okBar} style={{ borderColor: okColor, color: okColor }} data-testid="proj-verdict-bar">
         {mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`}
       </div>
+      {/* PRD-IND-model §4.4-⑥：缺口时显示对症对策表（acts，方案库，i18n 下发零写死），与下方 what-if 滑杆并存 */}
+      {!out.ok && (
+        <table className="cmp" style={{ marginTop: 10 }} data-testid="pm-acts-table">
+          <thead>
+            <tr>
+              <th>{zh.sim.proj.actsTitle}</th>
+              <th>效果（场景求解器口径）</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zh.sim.proj.acts.map((a) => (
+              <tr key={a.action} data-testid={`pm-act-${a.action}`}>
+                <td className="zh"><b>{a.action}</b></td>
+                <td>{a.effect}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <div className={styles.threeKpiRow}>
         <div className={styles.kpi} data-testid="kpi-p50">
           {/* 可信赖的推演（R13）：结论数字六要素溯源 */}
