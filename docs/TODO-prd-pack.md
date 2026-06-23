@@ -344,5 +344,13 @@
 > - [~] **quarter**（段头副标注 ✅；本轮 §4.5(C)(F)）：LTA 偏差三物料精确化（三元正极/隔膜/电解液 + ltaPlanned[2800,820,1900]/ltaDevPct[-8,1,-2] 专属种子配置位，actual 实算 R6，datacore+mock 同源）+ LTA 脚注去硬编码迁 i18n（R14）。测 planviews F22 + f22 footnote。**待确认（naming/反解 cluster）**：§4.5(A)(D) 6 季 dem/sup 绝对值（382/376…452/448）多参数联立反解需 quarterOverride 配置位 + 跨 AOP/risk/S&OP 回归 + FDE 核对；§4.5(B) 枣庄 CAPEX 项目种子（与 dash 同属基地/项目 naming 体系决策——现种子合肥四期/盐城二期入 AOP/capex 叙事，重命名会连锁 capex/c2c3/f21）；§4.5(E) 事件叙事逐字模板。
 > - [ ] **order / order-aggregate**（order_fullchain 已落；余 econTable + 细分维度）。
 > - [x] **model** ✅（缺口①③）：chem/pos 入 battery MODELS 种子；capacity_forecast 输出 nonProducible（不可产基地+reason 由 chem×kind 派生）+ totalBases/producibleCount；前端 ②可产网络收敛步显 N/总数 注解 + 不可产基地✗带派生原因（datacore+mock 同源，零写死）。测 model-producible ×2 + f18 ②收敛。**余 ✅**（本轮收口）：②CSV 上传/模板（parseBatchTable 分隔符/表头自识别 + pmNormDate 日期归一 + pmMatchAddr 地址模糊匹配 + 模板下载，纯前端）+ ④step6 对症对策表（acts 三行方案库，缺口时显示，i18n 零写死，与滑杆并存）。测 f18 ×2（CSV 导入 3 批 / acts 三行）。**model 视图 1:1 完成。**
-> - [ ] **story**（inference DAG 已落 10 节点；余 projectTrace 投影 9 PlanStep→10 节点）。
-> 进度：5/12 完成（plan-generate/map/audit/model/sop），结构性底座（aop/sop/order/inference 等前序已建）。数据 loop 纪律：精确值/文案入 battery 种子或 ViewDef config，前端零写死，过 debattery:check。
+> - [x] **story** ✅：inference DAG 10 节点（QueryDock 由 SSE state 渲染）+ **projectTrace 后端投影集成**（并行 agent worktree 成果择优集成：InferenceTraceSchema 契约 + orchestration-skeleton + project-trace.ts WORKFLOW/AGENT 确定性投影 + GET /api/v1/queries/:taskId/trace + deriveTraceGap）。测 project-trace ×6 + trace-endpoint ×4，agentcore 299 全绿。**余** 前端实时接 backend trace（现 SSE state 已渲染 DAG，1:1 已满足）。
+> 进度：**9/12 主体完成**（plan-generate/map/audit/model/sop/order/risk/story + 基地 keystone），quarter 部分、dash 起步（G+B）。数据 loop 纪律：精确值/文案入 battery 种子或 ViewDef config，前端零写死，过 debattery:check。
+>
+> **剩余（精确）**：
+> - **dash**（最大，4 块）：A 八卡 KPI 八卡（需 8 卡数据源 + 六要素，ViewConfig 重构）· 8 根因 ROOT_LIB/PROB_META（backend 4→8）· C/E 三 DAG（ROOT_CHAINS 逐字下发）· D 台账筛选 · F 毛利 Σ勾稽（order_margin_contrib）。已落 G 回采链+模块直达、B 待解决问题面板。
+> - **quarter**：6 季 dem/sup 绝对值（382/376…）—— 多参数联立反解 vs quarterOverride，触同源勾稽 F22，PRD「诚实声明」难点，需 FDE 核对。
+> - **risk**：②forecastStart 2026-07→06-10（高 ripple，dueDay 全偏 21 天）· ⑦逐日 tip 事件 desc/src · ⑧圆点轴 1:1 重写。
+> - **audit**：9-kind audit_timeline 逐日 series（求解器已注册，余 kind 口径）+ 每项 kind 标注。
+> - **map**：②decision 一等对象（Problem/PlanOption/RiskTimeline，触 ontology 计数）。
+> - **order**：B 分段按客户口径 / C SEG_PRICE 移种子 / F ORDER_OVR 6 单 override（口径对齐，互耦合）。
