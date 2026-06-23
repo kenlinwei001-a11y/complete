@@ -13,7 +13,8 @@
 > - **DF.5 已落（语义目录）✅**：`PropertyDef`(domain.ts interface)+`FieldProfileSchema`(contracts/datacore.ts zod) += `description?`；`buildFieldCatalog` 补 description + 新纯函数 `searchCatalog`（按名/描述/单位语义匹配，确定性 R6/仅 ACTIVE R2）+ `GET /a/v1/catalog/search`；描述经 `SolverGenSpec.objectTypes.propDocs` 注入生成 prompt（LLM 按语义选字段，强化 DF.8）。测 catalog-search ×3。
 > - **DF.6 已落（拉取靶 keystone）✅**：5 个 solver-backed 视图 `VIEW_DEFS.layout += outputFields`（字段经 SOLVER_OUTPUT_SHAPES 核验为真实产出）；`databuilder/pull-target.ts deriveViewPullTargets/checkPullTargetCoverage`（COVERED/UNMET/SHAPE_UNKNOWN，纯函数 R6/R14）+ `GET /a/v1/views/pull-targets`——拉取靶 ⊄ 求解器输出形状→UNMET=缺该输出字段→TO_CREATE（G-8 输出侧 SHAPE 维，与 renderBindings 互补）。测 pull-target ×3。**datacore 616 + frontend 214 + gates 全绿。**
 > - **回写本体已落 ✅**：§2.A（BASE_REGISTRY/SEG_REGISTRY 单一来源）+ §2.B（PropertyDef/FieldProfile += description 语义目录 + catalog/search）+ §2.H A18.2（生成接地 checkGrounding）+ §7（boundary-singlesource:check 门）+ §8 G-5 收窄/G-8 ⑥拉取靶 SHAPE 维。
-> - 余 DF.4（审计阈值/ORDER 等剩余硬编码迁 boundary）· DF.7（影响图）· DF.9（HARD/SOFT 真人正门，接 **agentcore** growth/loop.ts，**非 datacore**）· DF.10–16。
+> - **DF.7 已落（边界影响图）✅**：`BOUNDARY_IMPACT`（contracts base-registry.ts 单一来源，members 派生自册长 · consumers 镜像门强制派生端 · downstream grep 核实下游面）+ `GET /a/v1/boundary/impact?registry=` 回答铁律0「改 X 影响什么」；防漂哨兵 `boundary-impact.test` ×3（逐条复核 consumer 在源文件确实派生，影响图脱节即红）。回写本体 §2.A。**datacore 619 + frontend 214 + gates 全绿。**
+> - 余 DF.4（审计阈值/ORDER 等剩余硬编码迁 boundary，**注：calibration-coupled，须同回归 audit/sop/quarter**）· DF.9（HARD/SOFT 真人正门，接 **agentcore** growth/loop.ts、**非 datacore**，触 R4 须回写 §5）· DF.10–16。
 
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
 > **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。
