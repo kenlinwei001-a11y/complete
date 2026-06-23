@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
 import type { DashboardWidgetDef, WidgetQueryDef } from "@/api/types";
@@ -14,21 +15,76 @@ import styles from "./DashboardView.module.css";
  * 驾驶舱（renderer=dashboard，PRD §7.3）：
  * 卡片网格由 ViewConfig.layout 声明（kpi/chart/table），数据源为声明式 query 定义——前端只执行不硬编码。
  */
+// PRD-IND-dash §2.5/§2.6：回采校准链（5 节点）+ 模块直达（6 卡）。结构/导航/叙事，view.layout 优先下发。
+type ModLink = { key: string; route: string; title: string; sub: string; color: string };
+const MODULE_LINKS: ModLink[] = [
+  { key: "aop", route: "/v/annual-scenario", title: "年度情景规划台", sub: "三情景 · 触发挂牌 · 目标分解", color: "#9D8BF0" }, // debattery-allow
+  { key: "quarter", route: "/v/quarterly-rolling", title: "季度滚动看板", sub: "爬坡 vs 需求 · 长协偏差", color: "#5E8FE8" }, // debattery-allow
+  { key: "sop", route: "/v/sop-balance", title: "月度 S&OP", sub: "五步法 · 三线差异 · 版本管理", color: "#B07FD8" }, // debattery-allow
+  { key: "risk", route: "/v/risk", title: "产能推演", sub: "计划-执行之桥 · 8 风险基地", color: "#DD7E9E" }, // debattery-allow
+  { key: "order", route: "/v/project-sim", title: "项目推演", sub: "订单全链 + 型号产能模拟", color: "#36BFA5" }, // debattery-allow
+  { key: "all", route: "/v/graph", title: "业务建模全景", sub: "14 域 · 含外部域与决策应用域", color: "#54B5C4" }, // debattery-allow
+];
+const FEEDBACK_CHAIN: string[] = [
+  "实际产出 / 销量 / 到货 / 回款", // debattery-allow：回采链叙事节点
+  "月度 S&OP 三线差异（V7 vs 实际）",
+  "季度滚动重估（爬坡 / 长协偏差）",
+  "年度情景校准与触发监测",
+  "↻ 精度校准器 C12 反向调参",
+];
+
 export default function DashboardView({ view }: ViewRendererProps) {
+  const navigate = useNavigate();
   const widgets = ((view.layout?.widgets as DashboardWidgetDef[] | undefined) ?? []).filter(Boolean);
   if (widgets.length === 0) return <div className="empty-state">{zh.common.none}</div>;
+  const modLinks = (view.layout?.moduleLinks as ModLink[] | undefined) ?? MODULE_LINKS;
+  const feedbackChain = (view.layout?.feedbackChain as string[] | undefined) ?? FEEDBACK_CHAIN;
   return (
-    <div className={styles.grid} data-testid="dashboard-grid">
-      {widgets.map((w) =>
-        w.featureKey ? (
-          <Feature key={w.key} flag={w.featureKey}>
-            <Widget def={w} />
-          </Feature>
-        ) : (
-          <Widget key={w.key} def={w} />
-        ),
-      )}
-    </div>
+    <>
+      <div className={styles.grid} data-testid="dashboard-grid">
+        {widgets.map((w) =>
+          w.featureKey ? (
+            <Feature key={w.key} flag={w.featureKey}>
+              <Widget def={w} />
+            </Feature>
+          ) : (
+            <Widget key={w.key} def={w} />
+          ),
+        )}
+      </div>
+
+      {/* 回采校准链（实际 → 月度 → 季度 → 年度 · C12 反向调参） */}
+      <div className="panel" style={{ marginTop: 16 }} data-testid="dash-feedback-chain">
+        <div className="section-title">{zh.dash.feedbackTitle}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, fontSize: 12 }}>
+          {feedbackChain.map((n, i) => (
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span className="badge" data-testid={`dash-fb-${i}`}>{n}</span>
+              {i < feedbackChain.length - 1 && <span style={{ color: "var(--muted2)" }}>→</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 模块直达（点击进入对应视图） */}
+      <div className="panel" style={{ marginTop: 14 }} data-testid="dash-modules">
+        <div className="section-title">{zh.dash.modulesTitle}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+          {modLinks.map((m) => (
+            <button
+              key={m.key}
+              className={styles.card}
+              style={{ borderLeft: `3px solid ${m.color}`, cursor: "pointer", textAlign: "left" }}
+              data-testid={`dash-mod-${m.key}`}
+              onClick={() => navigate(m.route)}
+            >
+              <b style={{ color: m.color }}>{m.title}</b>
+              <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4 }}>{m.sub}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
 

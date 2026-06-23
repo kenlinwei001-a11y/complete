@@ -222,6 +222,11 @@ export const zh = {
     wcSurplusWin: (from: string, to: string) => `过剩窗口 ${from}→${to}`,
   },
   /** §7.15 季度滚动看板 */
+  dash: {
+    // PRD-IND-dash §2.5/§2.6
+    feedbackTitle: "回采校准 · 逐级反馈链（实际 → 月度 → 季度 → 年度）",
+    modulesTitle: "模块直达（点击进入）",
+  },
   quarter: {
     title: "季度滚动看板",
     sub: "4–6 季滚动 · 需求 vs 供给 · 承接年度分解、向月度再分解",
