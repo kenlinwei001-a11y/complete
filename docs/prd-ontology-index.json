@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-22",
+  "generatedAt": "2026-06-23",
   "ontology": {
     "invariants": [
       "R1",
@@ -1400,6 +1400,23 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-scenario-launcher-selfheal-loop.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R16",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/server.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-scenario-launcher.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1560,6 +1577,7 @@
       "PRD-inference-process-enhancement.md",
       "PRD-llm-agent-empty-response-guard.md",
       "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher-selfheal-loop.md",
       "PRD-scenario-launcher.md",
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
@@ -1905,6 +1923,7 @@
       "PRD-IND-story.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-scenario-launcher-selfheal-loop.md",
       "PRD-scenario-launcher.md"
     ],
     "apps/frontend-shell/src/components/InferenceDag/InferenceProcessDag.tsx": [
