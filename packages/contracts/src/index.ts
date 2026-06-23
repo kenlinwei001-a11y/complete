@@ -31,3 +31,5 @@ export * from "./operation-intent.js";
 export * from "./prototype-intake.js";
 export * from "./spine.js";
 export * from "./bootstrap.js";
+
+export * from "./base-registry.js";

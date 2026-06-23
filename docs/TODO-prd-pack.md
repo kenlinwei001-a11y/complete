@@ -7,6 +7,7 @@
 > - **v1.0 勘误（3 处同类锚点错，落地前必改，详见落档勘误注）**：🔴 migration `024`→**`026`**（024=solver_artifacts 已占）· 🔴 HARD/SOFT 分流锚点 `datacore/growth/loop.ts`→**`agentcore/growth/loop.ts`**（growth LOOP 在 agentcore；datacore 只有 app.ts:1036 fill-data）· 🟠 **BP-4 已建**（orchestrator:295/438 + slots.ts:123）→ DF.13 删，不预先开发。
 > - **开发顺序 DF.0–DF.16（grounding 为脊柱）**：P0 = DF.0 对账 + DF.1 单一来源 keystone（battery→boundary 字节一致 R6 + `boundary-singlesource:check` 门）+ DF.2/3 提升 BASES/SEG；紧接 **DF.5 目录 + DF.6 拉取靶 + DF.8 接地 hook**（不可后置）。**migration 用 026、growth 分流认 agentcore、不做 BP-4。**
 > - 联动断点 **G-5/G-8**；落地后回写本体 §2.A + §8 + §4 + §5 R16。
+> - **DF.1 已落（BASES 单一来源）✅**：`@platform/contracts/base-registry.ts BASE_REGISTRY`（12 基地全字段并集，HTML BASE_DATA 命名）；datacore `battery.ts BASES` + 前端 `fixtures.ts BASES` + `simSolvers.ts MOCK_BASES` 三端均改 `BASE_REGISTRY.map(...)` 派生（值字节复现 R6）；新门 `boundary-singlesource:check`（并入 `pnpm gates`，防内联回潮）。**datacore 607 + frontend 214 + gates 全绿。漂移根因 a 在 BASES 上已根治。** 余 DF.2 起手做 SEG（同模式扩）。
 
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
 > **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。

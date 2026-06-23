@@ -1,4 +1,5 @@
 import type { SopVersionVM } from "@/api/types";
+import { BASE_REGISTRY } from "@platform/contracts";
 import zh from "@/locales/zh";
 
 /**
@@ -408,20 +409,8 @@ const MODEL_CAP_NET: Record<string, CapBaseDef[]> = {
 
 // PRD-IND-model 缺口①③：收敛可产网络的全基地业态册（镜像 battery BASES，HTML 集，含 动力+储能 混合）；
 // reason 由 chem×kind 派生；前端零写死，与 datacore solvers/capacity.ts nonProducible 同源。
-const MOCK_BASES: { name: string; kind: "动力" | "储能" | "动力+储能" }[] = [
-  { name: "常州", kind: "动力+储能" },
-  { name: "厦门", kind: "动力" },
-  { name: "成都", kind: "动力+储能" },
-  { name: "眉山", kind: "储能" },
-  { name: "武汉", kind: "动力" },
-  { name: "江门", kind: "储能" },
-  { name: "合肥", kind: "动力" },
-  { name: "信阳", kind: "储能" },
-  { name: "枣庄", kind: "动力+储能" },
-  { name: "邯郸", kind: "储能" },
-  { name: "自贡", kind: "动力" },
-  { name: "洛阳", kind: "储能" },
-];
+// DF.1 单一来源：从 @platform/contracts BASE_REGISTRY 派生（与 datacore/fixtures 同源，灭漂移）。
+const MOCK_BASES: { name: string; kind: "动力" | "储能" | "动力+储能" }[] = BASE_REGISTRY.map((b) => ({ name: b.name, kind: b.kind }));
 
 function modelMeta(modelId: string): { chem: string; pos: "动力" | "储能" } {
   const chem = modelId.includes("NCM") ? "NCM" : modelId.includes("LFP") ? "LFP" : modelId.includes("储能") ? "LFP" : "NCM";

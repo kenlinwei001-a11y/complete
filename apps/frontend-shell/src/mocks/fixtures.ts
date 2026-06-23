@@ -1,4 +1,4 @@
-import { LIVED_IN_SCENE_HISTORY } from "@platform/contracts";
+import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY } from "@platform/contracts";
 import type {
   ActionDraft,
   AdminTenant,
@@ -53,22 +53,21 @@ export const ACCOUNTS: MockAccount[] = [
 // 基地 ×12 / 型号 ×6 / 订单 ×20（电池种子）
 // ---------------------------------------------------------------------------
 
-// 基地集以 HTML 参考原型 BASE_DATA 为准（用户裁决 2026-06-23）：12 基地（util/gwh/pos 取自 HTML，
-// bottleneck 由 HTML bn 工序映射、mainProduct 取代表型号）。position 动力/储能/混合（动力+储能）。
-export const BASES = [
-  { id: "base-常州", name: "常州", util: 88, bottleneck: "化成柜", gwh: 35, position: "混合", lines: 8, prodYear: 2015, mainProduct: "4680-NCM", lon: 119.95, lat: 31.78 },
-  { id: "base-厦门", name: "厦门", util: 85, bottleneck: "化成柜", gwh: 28, position: "动力", lines: 6, prodYear: 2019, mainProduct: "VDA-NCM", lon: 118.10, lat: 24.46 },
-  { id: "base-成都", name: "成都", util: 82, bottleneck: "老化库", gwh: 30, position: "混合", lines: 7, prodYear: 2018, mainProduct: "4680-LFP", lon: 104.07, lat: 30.67 },
-  { id: "base-眉山", name: "眉山", util: 79, bottleneck: "化成柜", gwh: 22, position: "储能", lines: 5, prodYear: 2021, mainProduct: "储能-280Ah", lon: 103.83, lat: 30.05 },
-  { id: "base-武汉", name: "武汉", util: 80, bottleneck: "涂布机", gwh: 20, position: "动力", lines: 5, prodYear: 2022, mainProduct: "VDA-NCM", lon: 114.30, lat: 30.59 },
-  { id: "base-江门", name: "江门", util: 83, bottleneck: "老化库", gwh: 26, position: "储能", lines: 6, prodYear: 2021, mainProduct: "储能-280Ah", lon: 113.08, lat: 22.58 },
-  { id: "base-合肥", name: "合肥", util: 78, bottleneck: "化成柜", gwh: 20, position: "动力", lines: 5, prodYear: 2022, mainProduct: "4680-NCM", lon: 117.28, lat: 31.86 },
-  { id: "base-信阳", name: "信阳", util: 75, bottleneck: "涂布机", gwh: 16, position: "储能", lines: 4, prodYear: 2023, mainProduct: "储能-314Ah", lon: 114.09, lat: 32.13 },
-  { id: "base-枣庄", name: "枣庄", util: 73, bottleneck: "化成柜", gwh: 15, position: "混合", lines: 4, prodYear: 2023, mainProduct: "4680-LFP", lon: 117.32, lat: 34.81 },
-  { id: "base-邯郸", name: "邯郸", util: 70, bottleneck: "老化库", gwh: 12, position: "储能", lines: 3, prodYear: 2023, mainProduct: "储能-314Ah", lon: 114.49, lat: 36.61 },
-  { id: "base-自贡", name: "自贡", util: 77, bottleneck: "化成柜", gwh: 16, position: "动力", lines: 4, prodYear: 2022, mainProduct: "刀片-LFP", lon: 104.78, lat: 29.34 },
-  { id: "base-洛阳", name: "洛阳", util: 68, bottleneck: "涂布机", gwh: 12, position: "储能", lines: 3, prodYear: 2024, mainProduct: "储能-314Ah", lon: 112.45, lat: 34.62 },
-];
+// DF.1 单一来源：基地集从 @platform/contracts BASE_REGISTRY 派生（与 datacore 同源，灭漂移 G-5/R14）。
+// 前端表示 = {id=base-${name}, name, util, bottleneck, gwh, position, lines, prodYear, mainProduct, lon, lat}（值字节复现，R6）。
+export const BASES = BASE_REGISTRY.map((b) => ({
+  id: `base-${b.name}`,
+  name: b.name,
+  util: b.util,
+  bottleneck: b.bottleneck,
+  gwh: b.gwh,
+  position: b.position,
+  lines: b.lines,
+  prodYear: b.prodYear,
+  mainProduct: b.mainProduct,
+  lon: b.lon,
+  lat: b.lat,
+}));
 
 export const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
 

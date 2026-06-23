@@ -1,4 +1,5 @@
 import type { IndustryTemplate } from "@platform/contracts";
+import { BASE_REGISTRY } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
@@ -6,22 +7,10 @@ import { ALL_FEATURE_KEYS } from "../features.js";
 /** Built-in battery-manufacturing template (QOS-PRD §7.6 + addendum §S1/§A8 semantics). */
 
 // 去电池锁死（R14）：基地经纬度作为对象数据随合成下发（前端 GeoMap 读 Base.props.lon/lat，不再写死）。
-// 基地集以 HTML 参考原型 BASE_DATA 为单一真相源（用户裁决 2026-06-23）：12 基地含「动力+储能」混合业态。
-// 保留 常州/合肥/成都 三个重叠基地的 baseId（测试/C16 在途口径稳定），其余九基地换为 HTML 集。
-export const BASES: { baseId: string; name: string; kind: "动力" | "储能" | "动力+储能"; lon: number; lat: number }[] = [
-  { baseId: "changzhou", name: "常州", kind: "动力+储能", lon: 119.95, lat: 31.78 },
-  { baseId: "xiamen", name: "厦门", kind: "动力", lon: 118.10, lat: 24.46 },
-  { baseId: "chengdu", name: "成都", kind: "动力+储能", lon: 104.07, lat: 30.67 },
-  { baseId: "meishan", name: "眉山", kind: "储能", lon: 103.83, lat: 30.05 },
-  { baseId: "wuhan", name: "武汉", kind: "动力", lon: 114.30, lat: 30.59 },
-  { baseId: "jiangmen", name: "江门", kind: "储能", lon: 113.08, lat: 22.58 },
-  { baseId: "hefei", name: "合肥", kind: "动力", lon: 117.28, lat: 31.86 },
-  { baseId: "xinyang", name: "信阳", kind: "储能", lon: 114.09, lat: 32.13 },
-  { baseId: "zaozhuang", name: "枣庄", kind: "动力+储能", lon: 117.32, lat: 34.81 },
-  { baseId: "handan", name: "邯郸", kind: "储能", lon: 114.49, lat: 36.61 },
-  { baseId: "zigong", name: "自贡", kind: "动力", lon: 104.78, lat: 29.34 },
-  { baseId: "luoyang", name: "洛阳", kind: "储能", lon: 112.45, lat: 34.62 },
-];
+// DF.1 单一来源：基地集从 @platform/contracts BASE_REGISTRY 派生（跨包唯一真相源，灭漂移 G-5/R14）。
+// 命名以 HTML BASE_DATA 为准；datacore 用 {baseId,name,kind,lon,lat} 子集（值字节复现，R6）。
+export const BASES: { baseId: string; name: string; kind: "动力" | "储能" | "动力+储能"; lon: number; lat: number }[] =
+  BASE_REGISTRY.map((b) => ({ baseId: b.baseId, name: b.name, kind: b.kind, lon: b.lon, lat: b.lat }));
 
 // PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
 export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: string }[] = [
