@@ -318,6 +318,24 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     }
   }
 
+  // PRD-IND-model 缺口①：收敛可产网络——不可产基地清单 + N/总数 收敛注解（reason 由 chem×kind 派生，R13/R14）。
+  const model = c.models.find((m) => str(m.props.modelId) === modelId);
+  const chem = str(model?.props.chem);
+  const pos = str(model?.props.pos);
+  const totalBases = c.bases.length;
+  const producibleCount = cert.size;
+  const nonProducible = c.bases
+    .filter((b) => !cert.has(str(b.props.baseId)))
+    .map((b) => {
+      const kind = str(b.props.kind);
+      // 三档原因：业态不符（动力↔储能）/ 化学体系产线未铺 / 未认证产线。
+      const reason = pos && kind && !kind.includes(pos.replace("动力+储能", "动力")) && !pos.includes(kind)
+        ? `基地业态「${kind}」与型号「${pos}」不匹配`
+        : `${chem} 体系产线未在该基地铺设 / 认证`;
+      return { base: baseName(c, str(b.props.baseId)), reason };
+    })
+    .sort((a, b) => (a.base < b.base ? -1 : 1));
+
   return {
     p50,
     p90,
@@ -325,6 +343,9 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     gap,
     ok,
     perBaseRows,
+    nonProducible,
+    totalBases,
+    producibleCount,
     ...(batchRows ? { batchRows } : {}),
     mainBn,
     pendingCertList,

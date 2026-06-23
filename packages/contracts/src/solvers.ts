@@ -25,6 +25,10 @@ export const CapacityForecastOutputSchema = z
     gap: z.number(),
     ok: z.boolean(),
     perBaseRows: z.array(PerBaseRowSchema),
+    // PRD-IND-model 缺口①：收敛可产网络（不可产基地 + N/总数 注解）。
+    nonProducible: z.array(z.object({ base: z.string(), reason: z.string() })).optional(),
+    totalBases: z.number().optional(),
+    producibleCount: z.number().optional(),
     batchRows: z
       .array(
         z.object({

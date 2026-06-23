@@ -21,13 +21,14 @@ export const BASES: { baseId: string; name: string; kind: "动力" | "储能"; l
   { baseId: "yancheng", name: "盐城", kind: "动力", lon: 120.16, lat: 33.35 },
 ];
 
-export const MODELS: { modelId: string; name: string }[] = [
-  { modelId: "4680-NCM", name: "4680 三元圆柱" },
-  { modelId: "4680-LFP", name: "4680 磷酸铁锂圆柱" },
-  { modelId: "L300-NCM", name: "L300 三元长电芯" },
-  { modelId: "L148-LFP", name: "L148 铁锂方形" },
-  { modelId: "P28-NCM", name: "P28 软包三元" },
-  { modelId: "S192-LFP", name: "S192 储能电芯" },
+// PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
+export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: string }[] = [
+  { modelId: "4680-NCM", name: "4680 三元圆柱", chem: "NCM", pos: "动力" },
+  { modelId: "4680-LFP", name: "4680 磷酸铁锂圆柱", chem: "LFP", pos: "动力+储能" },
+  { modelId: "L300-NCM", name: "L300 三元长电芯", chem: "NCM", pos: "动力" },
+  { modelId: "L148-LFP", name: "L148 铁锂方形", chem: "LFP", pos: "储能" },
+  { modelId: "P28-NCM", name: "P28 软包三元", chem: "NCM", pos: "动力" },
+  { modelId: "S192-LFP", name: "S192 储能电芯", chem: "LFP", pos: "储能" },
 ];
 
 const CUSTOMERS = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源", "晨风车业", "沧浪电网"];
@@ -322,6 +323,9 @@ const baseDerived: DerivedPropertyDef[] = [
 const modelProps: PropertyDef[] = [
   { propKey: "modelId", dataType: "string", isPrimaryKey: true },
   { propKey: "name", dataType: "string", isPrimaryKey: false },
+  // PRD-IND-model 缺口③：化学体系 + 业态（step1/DAG 元信息，求解器 nonProducible 判定依据）。
+  { propKey: "chem", dataType: "enum", isPrimaryKey: false },
+  { propKey: "pos", dataType: "enum", isPrimaryKey: false },
   { propKey: "bases", dataType: "json", isPrimaryKey: false },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false },
   // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
@@ -1133,6 +1137,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     return {
       modelId: m.modelId,
       name: m.name,
+      chem: m.chem,
+      pos: m.pos,
       bases: shuffled.slice(0, n).sort(),
       unitPrice: randInt(rng, 380, 980),
       // C33：NCM 体系碳足迹 >70 阈值（越线），LFP 达标。
