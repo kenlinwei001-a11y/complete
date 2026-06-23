@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
-import type { DashboardWidgetDef, WidgetQueryDef } from "@/api/types";
+import type { DashboardWidgetDef, WidgetQueryDef, AffectedOrdersOutputVM } from "@/api/types";
+import { SEG_REGISTRY } from "@platform/contracts";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
 import { Provenance } from "@/components/Provenance";
@@ -154,6 +155,115 @@ function ProblemPanel() {
   );
 }
 
+/** SEG 经济派生（单价/毛利率，单一来源 SEG_REGISTRY，R14）。 */
+const SEG_ECON: Record<string, { price: number; margin: number }> = Object.fromEntries(
+  SEG_REGISTRY.map((s) => [s.seg, { price: s.priceWan, margin: s.marginPct }]),
+);
+
+/** PRD-cockpit §2.1 订单经营台账：受影响订单台账 + 应用细分筛选 + 综合毛利率聚合 + 点单下钻逐单根因 DAG。 */
+function OrderLedgerWidget() {
+  const navigate = useNavigate();
+  const [seg, setSeg] = useState<string>("");
+  const { data, isLoading } = useQuery({
+    queryKey: ["b", "affected-orders", { ledger: true }],
+    queryFn: async () => (await invokeSolver("affected_orders", {})).data as AffectedOrdersOutputVM,
+    retry: false,
+  });
+  if (isLoading) return <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>;
+  const rows = data?.rows ?? [];
+  if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  const segs = [...new Set(rows.map((r) => r.seg))];
+  const filtered = seg ? rows.filter((r) => r.seg === seg) : rows;
+  let sales = 0;
+  let gp = 0;
+  for (const r of filtered) {
+    const e = SEG_ECON[r.seg] ?? { price: 0.6, margin: 13 };
+    const s = r.qty * e.price;
+    sales += s;
+    gp += (s * e.margin) / 100;
+  }
+  const gmRate = sales > 0 ? (gp / sales) * 100 : 0;
+  return (
+    <div data-testid="dash-order-ledger">
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+        <button className="badge" data-testid="ledger-seg-all" style={{ cursor: "pointer", opacity: seg ? 0.55 : 1 }} onClick={() => setSeg("")}>{zh.dash.ledgerAll}</button>
+        {segs.map((s) => (
+          <button key={s} className="badge" data-testid={`ledger-seg-${s}`} style={{ cursor: "pointer", opacity: seg === s ? 1 : 0.55 }} onClick={() => setSeg(s)}>{s}</button>
+        ))}
+        <span style={{ marginLeft: "auto", fontSize: 12 }}>{zh.dash.ledgerGm} <b className="mono" data-testid="ledger-gmrate">{gmRate.toFixed(1)}%</b> · {filtered.length} 单</span>
+      </div>
+      <table className="cmp" data-testid="ledger-table" style={{ fontSize: 12, width: "100%" }}>
+        <thead><tr><th>订单</th><th>客户</th><th>细分</th><th>型号</th><th>数量</th><th>交期</th><th>延期</th><th>风险</th></tr></thead>
+        <tbody>
+          {filtered.slice(0, 12).map((r) => (
+            <tr key={r.so} data-testid={`ledger-row-${r.so}`} style={{ cursor: "pointer" }} title={zh.dash.ledgerDrill} onClick={() => navigate("/v/order-chain")}>
+              <td>{r.so}</td><td>{r.cust}</td><td>{r.seg}</td><td>{r.model}</td>
+              <td className="mono">{r.qty}</td><td>{r.due}</td>
+              <td className="mono" style={{ color: r.delay > 0 ? "var(--danger)" : "var(--muted2)" }}>{r.delay > 0 ? `+${r.delay}d` : "—"}</td>
+              <td style={{ fontSize: 11 }}>{[...new Set(r.risks.map((k) => k.factor))].join("/") || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type DrillKpi = { kpiId: string; name: string; category: string; actual: number; target: number; floorVal: number; unit: string; offTarget: boolean; status: string };
+/** PRD-cockpit §2.1 规划决策推演：月/季/年 KPI 条 + 点未达成→根因 DAG + 一键去建议/体检。 */
+function PlanDrillWidget() {
+  const navigate = useNavigate();
+  const [level, setLevel] = useState<string>("op");
+  const { data, isLoading } = useQuery({
+    queryKey: ["a", "plan-rootcause", { level }],
+    queryFn: async () => (await invokeSolver("plan_rootcause", level === "op" ? {} : { level })).data as { kpis?: DrillKpi[]; dag?: DagData },
+    retry: false,
+  });
+  const kpis = data?.kpis ?? [];
+  const [openKpi, setOpenKpi] = useState<string | null>(null);
+  return (
+    <div data-testid="dash-plan-drill">
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
+        {(["op", "month", "quarter", "year"] as const).map((lv) => (
+          <button key={lv} className="badge" data-testid={`drill-level-${lv}`} style={{ cursor: "pointer", opacity: level === lv ? 1 : 0.55 }} onClick={() => { setLevel(lv); setOpenKpi(null); }}>
+            {zh.dash.drillLevels[lv]}
+          </button>
+        ))}
+        <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button className="badge" data-testid="drill-to-generate" style={{ cursor: "pointer" }} onClick={() => navigate("/v/plan-generate")}>{zh.dash.drillToGenerate} ›</button>
+          <button className="badge" data-testid="drill-to-audit" style={{ cursor: "pointer" }} onClick={() => navigate("/v/plan-audit")}>{zh.dash.drillToAudit} ›</button>
+        </span>
+      </div>
+      {isLoading ? (
+        <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
+      ) : kpis.length === 0 ? (
+        <div style={{ color: "var(--muted2)" }} data-testid="drill-empty">{zh.dash.drillEmpty(zh.dash.drillLevels[level] ?? level)}</div>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {kpis.map((k) => (
+            <button
+              key={k.kpiId}
+              data-testid={`drill-kpi-${k.kpiId}`}
+              className="panel"
+              style={{ padding: 8, minWidth: 130, textAlign: "left", cursor: "pointer", borderLeft: `3px solid ${k.offTarget ? "#DD7E9E" : k.status === "AMBER" ? "#E8B54A" : "#62BE77"}` }}
+              onClick={() => setOpenKpi(openKpi === k.kpiId ? null : k.kpiId)}
+            >
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>{k.name}</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>{k.actual}<small style={{ fontSize: 10 }}>{k.unit}</small></div>
+              <div style={{ fontSize: 10, color: k.offTarget ? "#DD7E9E" : "var(--muted2)" }}>目标 {k.target}{k.unit}{k.offTarget ? " · 未达成" : ""}</div>
+            </button>
+          ))}
+        </div>
+      )}
+      {openKpi && data?.dag && (
+        <div style={{ marginTop: 10 }} data-testid="drill-dag">
+          <ProvenanceDag data={data.dag} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function useWidgetData(q: WidgetQueryDef) {
   return useQuery({
     queryKey: ["a", "widget", q],
@@ -253,6 +363,10 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
         <CounterfactualWidget data={data as CounterfactualData | undefined} />
       ) : def.type === "version-toggle" ? (
         <VersionToggleWidget data={data as { items?: { props: Record<string, unknown> }[] } | undefined} />
+      ) : def.type === "order-ledger" ? (
+        <OrderLedgerWidget />
+      ) : def.type === "plan-drill" ? (
+        <PlanDrillWidget />
       ) : (
         <TableWidget data={data} columns={(def.query as { columns?: string[] }).columns} />
       )}

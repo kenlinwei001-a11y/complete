@@ -1,5 +1,22 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
+> **2026-06-23 · 经营驾驶舱 PRD §2 缺口表逐行核实（grep，补 fde-delivery 真前端验收欠债）**
+> 教训：此前判"经营驾驶舱完成"靠 jsdom 绿测试、未真前端走查 → 漏掉死按钮 + 整块缺失 widget。本清单逐行对照 PRD §2 缺口表与 DASH_LAYOUT 实际。
+> **§2.1 经营驾驶舱（dash 页）：**
+> - [ ] **富 KPI 内容缺口**：PRD 8 富 KPI（需求P50/可供给V5V7/收入达成/毛利率/利用率瓶颈/齐套预警/现金垫C18/AOP基准）；dash 现仅覆盖 需求P50/毛利总额/齐套 3 个 + 通用 gwh/util/attain/orders → 缺 可供给(V5/V7)/收入达成/利用率瓶颈/现金垫C18/AOP基准。
+> - [x] 待解决问题归并 ✓（ProblemPanel；卡片可点击下钻已修 b442d06）
+> - [x] **订单经营台账（order-ledger widget）✅**：受影响订单台账 + 应用细分筛选 + 综合毛利率聚合(SEG_REGISTRY 派生) + 点行下钻 order-chain 逐单根因 DAG。门B Playwright 真验（8 行/毛利15.9%/筛选8→3/下钻）。
+> - [x] **规划决策推演（plan-drill widget）✅**：月/季/年 level 切换 + KPI 条 + 点未达成→根因 DAG + 一键去建议(plan-generate)/去体检(plan-audit)；`plan_rootcause` 加 level 过滤。门B 真验。**注：月/季/年 level Metric 合成待补（现 op 层完整，月季年显 drillEmpty）。**
+> - [x] **mock/后端 DASH_LAYOUT 漂移修复 ✅**：门A 落地即抓出 mock fixtures 缺 metric-strip/dag widget（后端有）→ 已补齐两套同步。
+> - [x] 回采校准链 ✓ · 模块直达 ✓ · V5/V7 ✓ · 导出 ✓（已补） · 反事实双轨 ✓
+> - [ ] AI 对话：PRD 要"驾驶舱预设 QA"；现以全局对话坞 QueryDock 满足，dash 内无预设 QA 入口（架构差异，待确认是否需 dash 内置）
+> **§2.2 产能推演（risk/project 视图，非 dash；待 grep + 真前端核实，勿凭印象判定）：**
+> - [ ] 逐日轴/悬停当日详情/三档图例文案/首要风险标注（RiskBoardView）— 待核实
+> - [ ] 处置最终方案表（越线日前置7天排程 + peak≥90备份 + C21反提差异）— 待核实
+> - [ ] 型号产能推演六步透明UI + 逐步点亮DAG + 分批/交付地址净窗口（project-sim）— 待核实
+> **防复发 LOOP 机制（已落地）✅：** 门A `cockpit-widgets:check`（PRD↔widget 覆盖对账，静态，**已并入 `pnpm gates`**，落地即抓出 mock 漂移）+ 门B `ui-smoke`（Playwright 真交互冒烟，`pnpm ui-smoke`，真浏览器点关键交互断言可达；环境无 chromium 则 SKIP，CI 启用需 playwright install，独立 job 以免环境依赖致 gates 不稳）。LOOP：PRD→门A(结构)+门B(交互)→缺/断即红→修。新 UI 功能须门B 真验才算完成（不再 commit 即宣布）。
+
+
 > **2026-06-23 · 经营驾驶舱 1:1 PRD 收尾缺口（3 项逐一完成）**
 > - **① 导出 ✅**：dash 导出 CSV（经营指标 metric_rollup + 待解决问题 affected_orders）；通用 `exportCsv.ts`（toCsv/csvCell 纯函数 + CSV 公式注入防护、负数豁免 + downloadCsv）；文案入 zh.dash（R14）。测 dash-export ×4。frontend 218。
 > - **② riskCases 真闭环 ✅（消 PRD §2.3 唯一非真接缝）**：历史案例 severity 从 CASE_SPECS 写死字面量 → `caseSeverityFromData(util, isPrimaryFactor, crisis)` 由基地真实数据确定性派生（R13 可溯源/R6）。**有界边界**：完整 risk_timeline 历史快照回算需对象时光机（高风险 replay），本期 severity 不再凭空写死即真闭环；无测试钉死 severity，10 cases/CASE-007 全保。测 case-severity-closure ×5。datacore 624。

@@ -566,11 +566,13 @@ export class SolverService {
     const chainObjs = await this.repos.objects.listByType(ctx.tenantId, "RootCauseChain");
     if (kpiObjs.length === 0) throw validationError("plan_rootcause 需先合成 Metric（经营指标）对象");
     const onlyCategory = args.kpiCategory ? str(args.kpiCategory) : undefined;
+    // 规划决策推演 plan-drill：可按 level（月/季/年）下钻该层指标根因；缺省（无 level）保持读全部（向后兼容 rootcause widget）。
+    const onlyLevel = args.level ? str(args.level) : undefined;
 
     // 1) 指标越线判定（actual < floorVal；缺口 gap=target-actual，确定性按 metricId 排序）。
     const kpis = kpiObjs
       .map((o) => o.props)
-      .filter((p) => !onlyCategory || str(p.category) === onlyCategory)
+      .filter((p) => (!onlyCategory || str(p.category) === onlyCategory) && (!onlyLevel || str(p.level) === onlyLevel))
       .map((p) => {
         const actual = num(p.actual);
         const target = num(p.target);

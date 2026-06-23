@@ -986,6 +986,18 @@ export class SyntheticService {
           query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
           provenance: { toolName: "invoke_solver", outputPath: "$.dag", label: "plan_rootcause：经营 KPI 越线沿归因模板逐层取证（贡献=活数据聚合）" },
         },
+        // PRD-cockpit §2.1 订单经营台账（逐单根因 DAG + 状态筛选 + 综合毛利率聚合）：affected_orders rows/problems 同源。
+        {
+          key: "order-ledger", type: "order-ledger", title: "订单经营台账 · 逐单根因下钻", span: 2,
+          query: { kind: "solver", solverKey: "affected_orders", args: {} },
+          provenance: { toolName: "invoke_solver", outputPath: "$.rows", label: "affected_orders：受影响订单逐单 + problems 归并 + 综合毛利率（SEG 单价×毛利率派生）" },
+        },
+        // PRD-cockpit §2.1 规划决策推演（月/季/年 KPI 条 + 根因链 DAG + 一键去建议/体检）：metric_rollup 按 level + plan_rootcause 根因。
+        {
+          key: "plan-drill", type: "plan-drill", title: "规划决策推演 · 未达成指标根因下钻", span: 2,
+          query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "kpis" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.kpis", label: "plan_rootcause 按 level（月/季/年）越线指标 + 根因 DAG；一键去建议/体检" },
+        },
         // cockpit P5：S&OP 版本切换（V1/V3/V5/V7，SopVersionRow；选版本看供给/缺口/备注，R14 零写死）。
         {
           key: "version-toggle", type: "version-toggle", title: "S&OP 版本切换（V5/V7）", span: 1, featureKey: "view.dash.widget.version",

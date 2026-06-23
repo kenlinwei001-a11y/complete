@@ -221,6 +221,28 @@ const DASH_LAYOUT = {
       query: { kind: "objects-aggregate", objectType: "Order", agg: "count" },
       provenance: { toolName: "query_objects", outputPath: "$.count", snapshotVersion: "ov-12" },
     },
+    // PRD-cockpit §2.1 订单经营台账 + 规划决策推演（与后端 DASH_LAYOUT 同步；门A 守两套不漂）。
+    {
+      key: "order-ledger", type: "order-ledger", title: "订单经营台账 · 逐单根因下钻", span: 2,
+      query: { kind: "solver", solverKey: "affected_orders", args: {} },
+      provenance: { toolName: "invoke_solver", outputPath: "$.rows", snapshotVersion: "ov-12" },
+    },
+    {
+      key: "plan-drill", type: "plan-drill", title: "规划决策推演 · 未达成指标根因下钻", span: 2,
+      query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "kpis" },
+      provenance: { toolName: "invoke_solver", outputPath: "$.kpis", snapshotVersion: "ov-12" },
+    },
+    // 与后端 DASH_LAYOUT 同步（门A 守不漂）：经营指标条 + 根因归因 DAG。
+    {
+      key: "metric-strip", type: "metric-strip", title: "经营指标（目标 vs 实际 · 单一出处）", span: 2,
+      query: { kind: "solver", solverKey: "metric_rollup", args: { level: "op" }, valuePath: "metrics" },
+      provenance: { toolName: "invoke_solver", outputPath: "$.metrics", snapshotVersion: "ov-12" },
+    },
+    {
+      key: "rootcause", type: "dag", title: "规划决策推演 · 根因归因 DAG", span: 2,
+      query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
+      provenance: { toolName: "invoke_solver", outputPath: "$.dag", snapshotVersion: "ov-12" },
+    },
     {
       key: "util",
       type: "kpi",

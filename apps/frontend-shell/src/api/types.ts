@@ -100,7 +100,7 @@ export type WorkspaceInput = z.input<typeof WorkspaceSchema>;
 
 export interface DashboardWidgetDef {
   key: string;
-  type: "kpi" | "chart" | "table" | "summary" | "dag" | "metric-strip" | "counterfactual" | "version-toggle";
+  type: "kpi" | "chart" | "table" | "summary" | "dag" | "metric-strip" | "counterfactual" | "version-toggle" | "order-ledger" | "plan-drill";
   title: string;
   /** BLOCK 级 feature key（view.dash.widget.{key}），缺省不受控 */
   featureKey?: string;
