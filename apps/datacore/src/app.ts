@@ -86,6 +86,7 @@ import { OpsScheduleService } from "./opsteam/schedule.js";
 import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
+import { BOUNDARY_IMPACT } from "@platform/contracts";
 import type { AuthCtx } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 
@@ -1241,6 +1242,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const findings = checkPullTargetCoverage(targets, SOLVER_OUTPUT_SHAPES);
     const unmet = unmetPullTargets(findings);
     return { targets, findings, unmet, covered: unmet.length === 0 };
+  });
+
+  // DF.7 边界影响图：改某条单一来源边界册（BASE/SEG）会波及谁——回答铁律0「改 X 影响什么」。
+  // ?registry=BASE_REGISTRY|SEG_REGISTRY 可只看一条；members 派生自册长（改册自动同步）。
+  app.get("/a/v1/boundary/impact", async (req) => {
+    const reg = (req.query as { registry?: string }).registry;
+    const impact = reg ? BOUNDARY_IMPACT.filter((b) => b.registry === reg) : BOUNDARY_IMPACT;
+    return { impact, registries: BOUNDARY_IMPACT.map((b) => b.registry) };
   });
 
   // PRD-fde §3.5 能力清单(schema 级) + 比对差异：知现状→算缺口（建之前就知缺什么）。

@@ -61,3 +61,63 @@ export const BASE_REGISTRY: CanonicalBase[] = [
   { baseId: "zigong", name: "自贡", kind: "动力", position: "动力", lon: 104.78, lat: 29.34, util: 77, gwh: 16, bottleneck: "化成柜", lines: 4, prodYear: 2022, mainProduct: "刀片-LFP" },
   { baseId: "luoyang", name: "洛阳", kind: "储能", position: "储能", lon: 112.45, lat: 34.62, util: 68, gwh: 12, bottleneck: "涂布机", lines: 3, prodYear: 2024, mainProduct: "储能-314Ah" },
 ];
+
+/**
+ * DF.7 边界影响图（GenerationBoundary · 单一来源+影响图）：把"改某条边界册会波及谁"显式登记——
+ * 回答铁律0 的"改 X 会影响什么"。`members` 派生自册长（非写死）；`consumers` 镜像
+ * boundary-singlesource 门所强制校验的派生消费端（门保证其不漂、`boundary-impact.test` 复核每条确实派生）；
+ * `downstream` 是 grep 核实的下游受影响面（视图/求解器/派生对象），供改值前评估爆炸半径。
+ */
+export interface BoundaryConsumer {
+  /** 派生消费端源文件。 */
+  file: string;
+  /** 派生绑定名（消费端把册映射成的本地表示）。 */
+  binding: string;
+  /** 派生方式 token（门/测试据此校验源码确实从册派生，非内联回潮）。 */
+  derivesVia: string;
+}
+export interface BoundaryRegistryImpact {
+  registry: "BASE_REGISTRY" | "SEG_REGISTRY";
+  title: string;
+  /** 成员数（派生自册长，改册自动同步）。 */
+  members: number;
+  /** 派生消费端（boundary-singlesource 门强制其从册派生）。 */
+  consumers: BoundaryConsumer[];
+  /** 下游受影响面（grep 核实：视图/求解器/派生对象）。 */
+  downstream: string[];
+}
+
+export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
+  {
+    registry: "BASE_REGISTRY",
+    title: "基地集",
+    members: BASE_REGISTRY.length,
+    consumers: [
+      { file: "apps/datacore/src/synthetic/battery.ts", binding: "BASES", derivesVia: "BASE_REGISTRY.map" },
+      { file: "apps/frontend-shell/src/mocks/fixtures.ts", binding: "BASES", derivesVia: "BASE_REGISTRY.map" },
+      { file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "MOCK_BASES", derivesVia: "BASE_REGISTRY.map" },
+    ],
+    downstream: [
+      "Base 对象库（合成物化）",
+      "geo-map 视图（objectType=Base，service.ts）",
+      "capacity_forecast/capacity_rollup 求解器（perBaseRows 逐基地）",
+      "MODEL_BASE_MAP 型号→基地确定性映射（battery.ts）",
+    ],
+  },
+  {
+    registry: "SEG_REGISTRY",
+    title: "应用细分集",
+    members: SEG_REGISTRY.length,
+    consumers: [
+      { file: "apps/datacore/src/synthetic/battery.ts", binding: "SEGMENTS / audit.segMargins", derivesVia: "SEG_REGISTRY" },
+      { file: "apps/datacore/src/solvers/risk.ts", binding: "SEG_PRICE", derivesVia: "SEG_REGISTRY" },
+      { file: "apps/frontend-shell/src/views/plan/OrderChainView.tsx", binding: "ECON / SEG_COLOR", derivesVia: "SEG_REGISTRY" },
+      { file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "AUDIT_T.segMargins", derivesVia: "SEG_REGISTRY" },
+    ],
+    downstream: [
+      "order-chain 视图 econTable（量价本利）",
+      "risk 求解器 affectedOrders.summary.revenue（与 econTable 同源 DF.3b）",
+      "DemandSegment 派生 revenueWan=p50×priceWan / marginWan=p50×priceWan×marginPct/100（battery.ts）",
+    ],
+  },
+];
