@@ -17,7 +17,7 @@
 > **[数据专项 · 待排期] 经营驾驶舱后端数据层颗粒扩充（高回归，独立做；用户确认作为 to-do）**
 > 前端区块层已清完整；本专项动合成数据 + 重校准被钉死的测试基线，同 quarter 取值对齐的高回归纪律。
 > - [x] **DS.1 月/季/年 level 派生 ✅（闭合 plan-drill drillEmpty）**：采**派生投影**而非补对象——`plan_rootcause` 月/季/年 = op 指标按时间粒度系数（month 1.0/quarter 0.97/year 1.04）确定性派生（kpiId 带 -level 后缀，R13 溯源 op+系数）。**关键：不落 Metric 对象 → 默认读全部仍只 op，零污染 /metrics/snapshot/rootcause widget/spine 骨架（避开补对象会破的 spine 4 处 =3 + cockpit-rootcause 重校准）**。后端单测 plan-drill-levels ×2（op原值/year×1.04/默认不污染/确定性）+ 门B 月季年切换全非空。完整 PlanKpi 月季年对象化待后续（如需真对象 KPI）。
-> - [ ] **DS.2 补富 KPI 4-5 项数据源 + dash kpi widget**：可供给(V5/V7→SopVersionRow isFinal.supply) · 收入达成(FinancePlan rolling÷budget，需比值，objects-aggregate 不够→solver/派生) · 利用率瓶颈(Base max util，dash 聚合需补 max agg) · 现金垫C18(无对象行→需建 cash 行/对象) · AOP基准(AnnualScenario 基准营收对象)。
+> - [x] **DS.2 富 KPI 补全 ✅（5 项，统一 cockpit_kpi solver）**：不逐个 mock 聚合适配，改**一个 `cockpit_kpi` solver** 从 SopVersionRow/FinancePlan/Base/AnnualScenario 对象确定性派生 5 标量（可供给V7=最终版supply · 收入达成=收入行rolling÷budget×100 · 利用率瓶颈=max(util)转百分 · AOP基准=baseline revenue · 现金垫C18=baseline cashCushion），各 dash kpi widget valuePath 取（R13 溯源对象/R6）。后端+mock DASH_LAYOUT 同步 5 widget + catalog 描述 + 本体登记。后端单测 cockpit-kpi-ds2 + 前端 rich-kpi + 门B 真验（5 KPI 全有值：132万/102%/88%/240万/58亿）。SOLVER_KEYS 39→40，重校准 ontology-core/catalog 断言。datacore 633 · frontend 224 · gates 全绿。
 > - **验收**：每项门B 真前端验 + 全套回归（datacore 630 基线，破则重校准并逐条说明，绝不静默改期望）。
 >
 > **防复发 LOOP 机制（已落地）✅：** 门A `cockpit-widgets:check`（PRD↔widget 覆盖对账，静态，**已并入 `pnpm gates`**，落地即抓出 mock 漂移）+ 门B `ui-smoke`（Playwright 真交互冒烟，`pnpm ui-smoke`，真浏览器点关键交互断言可达；环境无 chromium 则 SKIP，CI 启用需 playwright install，独立 job 以免环境依赖致 gates 不稳）。LOOP：PRD→门A(结构)+门B(交互)→缺/断即红→修。新 UI 功能须门B 真验才算完成（不再 commit 即宣布）。

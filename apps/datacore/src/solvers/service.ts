@@ -52,6 +52,9 @@ export const SOLVER_KEYS = [
   // SPINE 经营目标-指标-责任骨架：从对象库聚合 actual + 对齐 PlanTarget target → 算 delta/miss，
   // 输出指标数组（各视图 KPI 单一出处 R-一致，派生投影非新真值 R13，确定性 R6）。
   "metric_rollup",
+  // DS.2 经营驾驶舱富 KPI（可供给V7/收入达成/利用率瓶颈/AOP基准/现金垫）：从 SopVersionRow/FinancePlan/
+  // Base/AnnualScenario 对象确定性派生（R13 溯源对象 / R6），一个 solver 出 5 标量、各 kpi widget valuePath 取。
+  "cockpit_kpi",
   // cockpit P4 反事实双轨推演（"如不解决 XX，未来 30 天会怎样"）：编排 risk_timeline(do-nothing baseline)
   // 与处置后曲线(mitigation eff/tn 衰减) → 双序列 + 差值(峰值削减/越线日推迟/少越线日)，确定性 R6。
   "counterfactual_timeline",
@@ -130,6 +133,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
+  cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
   mrp_netting: ["materials", "shortageCount", "summary"],
@@ -560,6 +564,29 @@ export class SolverService {
    * 报表只会告诉你"毛利率低了",这里把"为什么低、低在哪个因子、证据是哪些细分/物料"沿因果链量化展开。
    * args: { kpiCategory? }（指定单一 KPI 类别；缺省=所有越线 KPI；全部达标则取最弱一个,DAG 恒有内容）。
    */
+  /**
+   * DS.2 经营驾驶舱富 KPI：从对象库确定性派生 5 标量（R13 溯源对象 / R6），各 kpi widget valuePath 取。
+   * 可供给V7=最终版 SopVersionRow.supply · 收入达成=收入行 rolling÷budget×100 · 利用率瓶颈=max(Base.util)
+   * · AOP基准=baseline 情景 revenue · 现金垫=baseline 情景 cashCushion。
+   */
+  private async cockpitKpi(ctx: AuthCtx): Promise<Record<string, unknown>> {
+    const sops = await this.repos.objects.listByType(ctx.tenantId, "SopVersionRow");
+    const fins = await this.repos.objects.listByType(ctx.tenantId, "FinancePlan");
+    const bases = await this.repos.objects.listByType(ctx.tenantId, "Base");
+    const scns = await this.repos.objects.listByType(ctx.tenantId, "AnnualScenario");
+    const finalSop = sops.find((s) => s.props.isFinal === true) ?? [...sops].sort((a, b) => str(b.props.ver).localeCompare(str(a.props.ver)))[0];
+    const rev = fins.find((f) => str(f.props.line) === "收入");
+    const baseline = scns.find((s) => str(s.props.key) === "baseline");
+    const utils = bases.map((b) => num(b.props.util)).filter((u) => u > 0);
+    return {
+      supplyV7: finalSop ? round(num(finalSop.props.supply), 1) : 0,
+      revAttainPct: rev && num(rev.props.budget) > 0 ? round((num(rev.props.rolling) / num(rev.props.budget)) * 100, 1) : 0,
+      utilPeak: utils.length > 0 ? round(Math.max(...utils) <= 1 ? Math.max(...utils) * 100 : Math.max(...utils), 1) : 0, // 转百分（datacore 小数/mock 整数兼容）
+      aopBaseRev: baseline ? round(num(baseline.props.revenue), 1) : 0,
+      cashCushion: baseline ? round(num(baseline.props.cashCushion), 1) : 0,
+    };
+  }
+
   private async planRootcause(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     // SPINE 归一：经营指标读 Metric 一等对象（PlanKpi 已归一为 Metric）。
     const kpiObjs = await this.repos.objects.listByType(ctx.tenantId, "Metric");
@@ -1300,6 +1327,7 @@ export class SolverService {
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
     if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
+    if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
     if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
     if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
     if (solverKey === "mrp_netting") return this.mrpNetting(ctx);

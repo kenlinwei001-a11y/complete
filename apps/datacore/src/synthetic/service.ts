@@ -972,6 +972,32 @@ export class SyntheticService {
           query: { kind: "objects-aggregate", objectType: "MaterialBalance", agg: "sum", prop: "gapTon" },
           provenance: { toolName: "query_objects", outputPath: "$.sum(gapTon)", label: "净需求×(1−长协覆盖) 缺口合计" },
         },
+        // DS.2 富 KPI 补全（PRD §2 缺口表 8 富 KPI）：cockpit_kpi 一 solver 出 5 标量，各 valuePath 取（R13 溯源对象）。
+        {
+          key: "supply-v7", type: "kpi", title: "可供给 (万·终版)", unit: "万",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "supplyV7" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.supplyV7", label: "最终版 SopVersionRow.supply（S&OP 定稿可供给）" },
+        },
+        {
+          key: "rev-attain", type: "kpi", title: "收入达成率", unit: "%",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "revAttainPct" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "FinancePlan 收入行 rolling÷budget×100" },
+        },
+        {
+          key: "util-peak", type: "kpi", title: "利用率瓶颈 (峰)", unit: "%",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "utilPeak" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.utilPeak", label: "max(Base.util)：最高负荷基地（瓶颈风险）" },
+        },
+        {
+          key: "aop-base", type: "kpi", title: "AOP 基准营收 (万)", unit: "万",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "aopBaseRev" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.aopBaseRev", label: "baseline 年度情景 revenue（AOP 基准）" },
+        },
+        {
+          key: "cash-cushion", type: "kpi", title: "现金垫 C18 (亿)", unit: "亿",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "cashCushion" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.cashCushion", label: "baseline 年度情景 cashCushion（C18 现金安全垫）" },
+        },
         // SPINE.4 经营指标条（视图绑定迁移：驾驶舱 KPI 读 Metric 单一出处 R-一致）。metric_rollup 对齐目标树
         // 算 target/actual/delta/miss，前端零写死（R14）；越线红标，与各视图同一 Metric（一处事实一处出处）。
         {

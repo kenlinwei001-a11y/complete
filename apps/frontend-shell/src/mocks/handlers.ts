@@ -876,6 +876,9 @@ export const handlers = [
         },
         snapshotVersion: "ov-12",
       });
+    if (key === "cockpit_kpi")
+      // DS.2 富 KPI（mock：从对象派生的 5 标量确定性示例）
+      return HttpResponse.json({ data: { supplyV7: 132, revAttainPct: 102, utilPeak: 88, aopBaseRev: 240, cashCushion: 58 }, snapshotVersion: "ov-12" });
     if (key === "metric_rollup")
       // SPINE.4 经营指标条（mock：op 级三指标，物料保障率越线）
       return HttpResponse.json({

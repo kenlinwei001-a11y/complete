@@ -243,6 +243,12 @@ const DASH_LAYOUT = {
       query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
       provenance: { toolName: "invoke_solver", outputPath: "$.dag", snapshotVersion: "ov-12" },
     },
+    // DS.2 富 KPI 补全（与后端 DASH_LAYOUT 同步，门A 守不漂）：cockpit_kpi 一 solver 出 5 标量。
+    { key: "supply-v7", type: "kpi", title: "可供给 (万·终版)", unit: "万", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "supplyV7" }, provenance: { toolName: "invoke_solver", outputPath: "$.supplyV7", snapshotVersion: "ov-12" } },
+    { key: "rev-attain", type: "kpi", title: "收入达成率", unit: "%", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "revAttainPct" }, provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", snapshotVersion: "ov-12" } },
+    { key: "util-peak", type: "kpi", title: "利用率瓶颈 (峰)", unit: "%", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "utilPeak" }, provenance: { toolName: "invoke_solver", outputPath: "$.utilPeak", snapshotVersion: "ov-12" } },
+    { key: "aop-base", type: "kpi", title: "AOP 基准营收 (万)", unit: "万", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "aopBaseRev" }, provenance: { toolName: "invoke_solver", outputPath: "$.aopBaseRev", snapshotVersion: "ov-12" } },
+    { key: "cash-cushion", type: "kpi", title: "现金垫 C18 (亿)", unit: "亿", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "cashCushion" }, provenance: { toolName: "invoke_solver", outputPath: "$.cashCushion", snapshotVersion: "ov-12" } },
     {
       key: "util",
       type: "kpi",
