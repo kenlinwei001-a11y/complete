@@ -51,7 +51,7 @@ import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template
 import { dataCategoriesForIndustry } from "./synthetic/data-categories.js";
 import { computeFieldCoverage, computeCategoryCoverage } from "./databuilder/slice-coverage.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
-import { buildFieldCatalog, resolveEntity } from "./databuilder/entity-catalog.js";
+import { buildFieldCatalog, resolveEntity, searchCatalog } from "./databuilder/entity-catalog.js";
 import { diffNeeds, type CapabilityInventory } from "./databuilder/capability-inventory.js";
 
 const CapabilityNeedsSchema = z.object({
@@ -1213,6 +1213,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const candidates = await resolveEntity(c, String(q.q), ontology, { type: q.type, topK: q.topK ? Number(q.topK) : 5 });
     // 命中=具体候选;空=域外（调用方走 InputManifest 补录,不猜）
     return { query: q.q, resolved: candidates.length > 0, candidates };
+  });
+
+  // DF.5 语义目录检索：自然语言 → 具体 {typeKey.propKey}（按字段名/业务描述/单位语义匹配），
+  // 喂生成接地与字段发现（"我要算毛利率"落到真实列），R2 仅本租户已发布本体、确定性排序（R6）。
+  app.get("/a/v1/catalog/search", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { q?: string; type?: string; topK?: string };
+    if (!q.q) throw validationError("缺少查询参数 q");
+    const hits = searchCatalog(await ontology.listTypes(c), String(q.q), {
+      ...(q.type ? { type: q.type } : {}),
+      ...(q.topK ? { topK: Number(q.topK) } : {}),
+    });
+    return { query: q.q, found: hits.length > 0, hits };
   });
 
   // PRD-fde §3.5 能力清单(schema 级) + 比对差异：知现状→算缺口（建之前就知缺什么）。

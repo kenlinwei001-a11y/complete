@@ -8,8 +8,9 @@ export interface SolverGenSpec {
   key: string;
   /** 自然语言意图（这个求解器要算什么）。 */
   intent: string;
-  /** 可用对象类型 schema（ctx.objectsByType 的键 + 字段），供 LLM 写正确字段引用。 */
-  objectTypes: { typeKey: string; props: string[] }[];
+  /** 可用对象类型 schema（ctx.objectsByType 的键 + 字段），供 LLM 写正确字段引用。
+   * DF.5 语义目录：`propDocs` 给字段业务描述（propKey→描述），注入 prompt 让 LLM 按语义选对字段、不臆造列名。 */
+  objectTypes: { typeKey: string; props: string[]; propDocs?: Record<string, string> }[];
   /** DF.8 生成接地：已发布业务词表（基地/细分实例名）。注入 prompt + 注册前越界校验，使生成不造业务事实。 */
   vocab?: string[];
 }
@@ -43,7 +44,13 @@ const SYSTEM = [
 
 /** 调 LLM 产出求解器草稿（沙箱跑通自检前）。mock LLM 测试；真 Kimi env-gated。 */
 export async function generateSolverDraft(llm: LlmClient, spec: SolverGenSpec, opts: { tenantId?: string } = {}): Promise<SolverGenDraft> {
-  const schemaText = spec.objectTypes.map((t) => `${t.typeKey}{${t.props.join(",")}}`).join(" · ");
+  const schemaText = spec.objectTypes
+    .map((t) => {
+      // DF.5：有语义描述的字段渲染 propKey(描述)，让 LLM 按业务含义选字段。
+      const props = t.props.map((p) => (t.propDocs && t.propDocs[p] ? `${p}(${t.propDocs[p]})` : p));
+      return `${t.typeKey}{${props.join(",")}}`;
+    })
+    .join(" · ");
   // DF.8 接地：注入业务词表，约束 LLM 只引用边界内实体、不造业务事实。
   const vocabText = spec.vocab && spec.vocab.length > 0
     ? `\n**业务词表（实体只能引用以下，禁止编造基地/型号/细分名，越界将被拒）**：${spec.vocab.join("、")}`

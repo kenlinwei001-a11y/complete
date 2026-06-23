@@ -221,6 +221,8 @@ export interface PropertyDef {
   /** 治理增量 §4：单位（场景包单位字典约束）+ 展示格式（如 "0.0"）。 */
   unit?: string;
   displayFormat?: string;
+  /** DF.5 语义目录：属性业务语义描述（"这字段是什么"），喂生成接地 prompt + /catalog/search 检索。 */
+  description?: string;
 }
 
 export interface SourceBinding {

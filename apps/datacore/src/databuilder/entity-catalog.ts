@@ -36,10 +36,10 @@ export interface FieldCatalogEntry {
   displayName: string;
   domain?: string;
   primaryKey: string | null;
-  fields: { name: string; dataType: string; isPrimaryKey: boolean; temporal: boolean; unit?: string; refToTypeKey?: string | null }[];
+  fields: { name: string; dataType: string; isPrimaryKey: boolean; temporal: boolean; unit?: string; refToTypeKey?: string | null; description?: string }[];
 }
 
-/** 字段目录：每个已发布对象类型 → 字段明细（含 temporal 时序标记）。 */
+/** 字段目录：每个已发布对象类型 → 字段明细（含 temporal 时序标记 + DF.5 语义描述）。 */
 export function buildFieldCatalog(types: ObjectTypeDef[]): FieldCatalogEntry[] {
   return types
     .filter((t) => t.status === "ACTIVE")
@@ -54,9 +54,59 @@ export function buildFieldCatalog(types: ObjectTypeDef[]): FieldCatalogEntry[] {
         isPrimaryKey: p.isPrimaryKey,
         temporal: p.temporal ?? false,
         ...(p.unit ? { unit: p.unit } : {}),
+        ...(p.description ? { description: p.description } : {}),
         refToTypeKey: p.refToTypeKey ?? null,
       })),
     }));
+}
+
+export interface CatalogSearchHit {
+  typeKey: string;
+  displayName: string;
+  domain?: string;
+  propKey: string;
+  dataType: string;
+  unit?: string;
+  description?: string;
+  score: number;
+}
+
+/**
+ * DF.5 语义目录检索（纯函数，确定性 R6）：在已发布对象类型的字段上按 q 做语义匹配——
+ * 同时打分字段名(propKey)、业务描述(description)、单位(unit)，取最高相似度。
+ * 让"我要算毛利率"这类自然语言能落到具体 {typeKey.propKey}，喂生成接地 + 字段发现，绝不带模糊词进生成。
+ */
+export function searchCatalog(
+  types: ObjectTypeDef[],
+  q: string,
+  opts: { topK?: number; minScore?: number; type?: string } = {},
+): CatalogSearchHit[] {
+  const topK = opts.topK ?? 10;
+  const minScore = opts.minScore ?? 0.34;
+  const hits: CatalogSearchHit[] = [];
+  for (const t of types) {
+    if (t.status !== "ACTIVE") continue;
+    if (opts.type && t.key !== opts.type) continue;
+    for (const p of t.properties) {
+      const cands = [p.propKey, p.description ?? "", p.unit ?? ""].filter(Boolean);
+      let best = 0;
+      for (const c of cands) best = Math.max(best, entitySimilarity(q, c));
+      if (best >= minScore) {
+        hits.push({
+          typeKey: t.key,
+          displayName: t.displayName,
+          ...(t.domain ? { domain: t.domain } : {}),
+          propKey: p.propKey,
+          dataType: p.dataType,
+          ...(p.unit ? { unit: p.unit } : {}),
+          ...(p.description ? { description: p.description } : {}),
+          score: Number(best.toFixed(3)),
+        });
+      }
+    }
+  }
+  hits.sort((a, b) => b.score - a.score || `${a.typeKey}.${a.propKey}`.localeCompare(`${b.typeKey}.${b.propKey}`));
+  return hits.slice(0, topK);
 }
 
 export interface EntityCandidate {

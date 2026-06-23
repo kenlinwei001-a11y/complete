@@ -202,7 +202,15 @@ export class SolverService {
     // spec.objectTypes 缺省则从本租户本体填充（让 LLM 写对字段引用）。
     if (spec.objectTypes.length === 0) {
       const types = await this.repos.ontologyTypes.list(ctx.tenantId);
-      spec = { ...spec, objectTypes: types.map((t) => ({ typeKey: t.key, props: t.properties.map((p) => p.propKey) })) };
+      spec = {
+        ...spec,
+        objectTypes: types.map((t) => {
+          // DF.5 语义目录：把字段业务描述带进生成 prompt，LLM 按语义选对字段。
+          const propDocs: Record<string, string> = {};
+          for (const p of t.properties) if (p.description) propDocs[p.propKey] = p.description;
+          return { typeKey: t.key, props: t.properties.map((p) => p.propKey), ...(Object.keys(propDocs).length > 0 ? { propDocs } : {}) };
+        }),
+      };
     }
     return generateSolverDraft(this.llm!, spec, { tenantId: ctx.tenantId });
   }

@@ -42,6 +42,8 @@ export const FieldProfileSchema = z.object({
   nullRate: z.number(),
   uniqueRate: z.number(),
   enumCandidates: z.array(z.string()).optional(),
+  /** DF.5 语义目录：列业务语义描述（"这列是什么"），喂生成接地 prompt + /catalog/search 检索。 */
+  description: z.string().optional(),
 });
 export type FieldProfile = z.infer<typeof FieldProfileSchema>;
 
