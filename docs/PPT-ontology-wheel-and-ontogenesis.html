@@ -1,136 +1,130 @@
 <!doctype html>
 <html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>系统本体开发轮 · 从胚胎到完整系统</title>
+<title>系统本体开发轮 · 从胚胎到完整系统（含传统模式对比）</title>
 <style>
   :root{--bg:#0e1320;--panel:#161d2c;--line:#27324a;--txt:#eef3fb;--mut:#9fb0c6;--mut2:#6f7e93;
-    --gold:#D2B04C;--cyan:#54B5C4;--indigo:#7E8BEE;--green:#62BE77;--pink:#DF747E;--purple:#9D8BF0;}
+    --gold:#D2B04C;--cyan:#54B5C4;--indigo:#7E8BEE;--green:#62BE77;--pink:#DF747E;--purple:#9D8BF0;--red:#DD7E9E;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:#06090f;font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;color:var(--txt);padding:24px;display:flex;flex-direction:column;align-items:center;gap:28px}
-  .slide{width:1280px;height:720px;background:radial-gradient(120% 100% at 0% 0%,#141b2b 0%,var(--bg) 55%);border:1px solid var(--line);border-radius:16px;padding:46px 56px;position:relative;overflow:hidden}
+  .slide{width:1280px;height:720px;background:radial-gradient(120% 100% at 0% 0%,#141b2b 0%,var(--bg) 55%);border:1px solid var(--line);border-radius:16px;padding:42px 54px;position:relative;overflow:hidden}
   .kicker{font-size:13px;letter-spacing:3px;color:var(--gold);font-weight:700;text-transform:uppercase}
-  h1{font-size:34px;font-weight:800;margin:6px 0 2px;letter-spacing:.5px}
-  .sub{font-size:14.5px;color:var(--mut);margin-bottom:18px;line-height:1.5}
-  .pageno{position:absolute;right:22px;bottom:16px;color:var(--mut2);font-size:12px}
-  .grid2{display:grid;grid-template-columns:560px 1fr;gap:30px;align-items:start}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
-  .panel h3{font-size:14px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  h1{font-size:33px;font-weight:800;margin:5px 0 2px;letter-spacing:.5px}
+  .sub{font-size:14px;color:var(--mut);margin-bottom:14px;line-height:1.5}
+  .pageno{position:absolute;right:22px;bottom:15px;color:var(--mut2);font-size:12px}
+  .foot{position:absolute;left:54px;bottom:15px;color:var(--mut2);font-size:11px}
+  .row{display:grid;gap:26px;align-items:start}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .panel h3{font-size:13.5px;font-weight:800;margin-bottom:9px;display:flex;align-items:center;gap:8px}
   .panel h3 i{width:9px;height:9px;border-radius:50%}
-  ul{list-style:none;display:flex;flex-direction:column;gap:9px}
-  li{font-size:12.8px;line-height:1.5;color:#dbe5f2;padding-left:16px;position:relative}
-  li::before{content:"▸";position:absolute;left:0;color:var(--cyan);font-size:11px;top:1px}
-  li b{color:#fff}
-  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:5px;margin-right:5px}
-  .valline{margin-top:14px;background:linear-gradient(90deg,rgba(210,176,76,.14),rgba(210,176,76,.03));border:1px solid rgba(210,176,76,.35);border-radius:10px;padding:12px 16px;font-size:13.5px;color:#f3e9cf;line-height:1.55}
+  /* comparison table */
+  .cmp{width:100%;border-collapse:collapse}
+  .cmp th{font-size:11.5px;text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);font-weight:800}
+  .cmp th.t1{color:var(--red)} .cmp th.t2{color:var(--green)} .cmp th.dim{color:var(--mut)}
+  .cmp td{font-size:12px;padding:6.5px 9px;border-bottom:1px solid #1f2940;vertical-align:top;line-height:1.38}
+  .cmp tr:last-child td{border-bottom:0}
+  .dimc{color:#cdd9e8;font-weight:700;width:96px}
+  .old{color:#caa2a9} .new{color:#c5e7ce} .new b{color:#fff}
+  .x{color:var(--red);font-weight:800;margin-right:3px} .v{color:var(--green);font-weight:800;margin-right:3px}
+  .valline{margin-top:12px;background:linear-gradient(90deg,rgba(210,176,76,.14),rgba(210,176,76,.03));border:1px solid rgba(210,176,76,.35);border-radius:10px;padding:11px 15px;font-size:13px;color:#f3e9cf;line-height:1.5}
   .valline b{color:var(--gold)}
-  .bizrow{display:flex;gap:10px;align-items:flex-start;font-size:12.6px;line-height:1.5;padding:7px 0;border-bottom:1px dotted var(--line)}
-  .bizrow:last-child{border:0}
-  .bizrow .bt{flex:none;width:118px;color:var(--green);font-weight:700}
-  .foot{position:absolute;left:56px;bottom:16px;color:var(--mut2);font-size:11.5px}
+  /* CLI value band */
+  .cli{margin-top:11px;background:linear-gradient(90deg,rgba(84,181,196,.16),rgba(84,181,196,.03));border:1px solid rgba(84,181,196,.40);border-radius:10px;padding:9px 14px;font-size:12px;color:#d6eef2;line-height:1.5}
+  .cli b{color:var(--cyan)} .cli code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#10202a;border:1px solid #234049;border-radius:4px;padding:0 5px;color:#9fe0ea;font-size:11px}
+  .cli .tag{color:var(--cyan);font-weight:800;margin-right:6px}
   text{font-family:inherit}
 </style></head>
 <body>
 
 <!-- ================= SLIDE 1 ================= -->
 <section class="slide">
-  <div class="kicker">PART 1 · 技术实现模式</div>
+  <div class="kicker">PART 1 · 技术实现模式　vs　传统开发</div>
   <h1>系统本体开发轮</h1>
-  <div class="sub">本体（SYSTEM-ONTOLOGY）= 系统的<b style="color:#fff">单一接线真相源 + 活体自我模型</b>。一切开发绕它转——"不靠人记性，靠机器约束"地保持架构一致、可演进、不腐化。</div>
+  <div class="sub">活体本体（SYSTEM-ONTOLOGY）= 系统<b style="color:#fff">单一接线真相源 + 自我模型</b>。一切开发绕它转——告别"文档腐化、架构靠人脑"，<b style="color:var(--gold)">不靠记性、靠机器约束</b>。</div>
 
-  <div class="grid2">
-    <!-- wheel -->
-    <svg viewBox="0 0 560 460" width="560" height="460">
+  <div class="row" style="grid-template-columns:430px 1fr">
+    <svg viewBox="0 0 430 380" width="430" height="380">
       <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7C8896"/></marker></defs>
-      <circle cx="280" cy="220" r="160" fill="none" stroke="#2a3550" stroke-width="1.4" stroke-dasharray="3 5"/>
-      <circle cx="280" cy="220" r="62" fill="#10182a" stroke="var(--gold)" stroke-width="1.6"/>
-      <text x="280" y="212" text-anchor="middle" font-size="15" font-weight="800" fill="var(--gold)">活体本体</text>
-      <text x="280" y="231" text-anchor="middle" font-size="10.5" fill="var(--mut)">单一接线源 · R16</text>
-      <!-- 6 spokes -->
-      <g font-size="12.5" font-weight="700" text-anchor="middle">
-        <g><circle cx="280" cy="60" r="40" fill="#1b2440" stroke="var(--indigo)" stroke-width="1.5"/><text x="280" y="56" fill="#fff">① 需求/PRD</text><text x="280" y="72" font-size="9.5" fill="var(--mut)">本体引用必填</text></g>
-        <g><circle cx="470" cy="150" r="40" fill="#1b2440" stroke="var(--cyan)" stroke-width="1.5"/><text x="470" y="146" fill="#fff">② 影响分析</text><text x="470" y="162" font-size="9.5" fill="var(--mut)">沿链路追全链</text></g>
-        <g><circle cx="470" cy="290" r="40" fill="#1b2440" stroke="var(--green)" stroke-width="1.5"/><text x="470" y="286" fill="#fff">③ 编码</text><text x="470" y="302" font-size="9.5" fill="var(--mut)">复用接缝优先</text></g>
-        <g><circle cx="280" cy="380" r="40" fill="#1b2440" stroke="var(--gold)" stroke-width="1.5"/><text x="280" y="376" fill="#fff">④ 回写本体</text><text x="280" y="392" font-size="9.5" fill="var(--mut)">不回写即过期</text></g>
-        <g><circle cx="90" cy="290" r="40" fill="#1b2440" stroke="var(--pink)" stroke-width="1.5"/><text x="90" y="286" fill="#fff">⑤ 门禁</text><text x="90" y="302" font-size="9.5" fill="var(--mut)">漂移即红</text></g>
-        <g><circle cx="90" cy="150" r="40" fill="#1b2440" stroke="var(--purple)" stroke-width="1.5"/><text x="90" y="146" fill="#fff">⑥ 发布</text><text x="90" y="162" font-size="9.5" fill="var(--mut)">绿测试≠能用</text></g>
+      <circle cx="215" cy="185" r="135" fill="none" stroke="#2a3550" stroke-width="1.3" stroke-dasharray="3 5"/>
+      <circle cx="215" cy="185" r="54" fill="#10182a" stroke="var(--gold)" stroke-width="1.6"/>
+      <text x="215" y="179" text-anchor="middle" font-size="14" font-weight="800" fill="var(--gold)">活体本体</text>
+      <text x="215" y="197" text-anchor="middle" font-size="9.5" fill="var(--mut)">单一接线源 · R16</text>
+      <g font-size="11.5" font-weight="700" text-anchor="middle">
+        <g><circle cx="215" cy="48" r="35" fill="#1b2440" stroke="var(--indigo)" stroke-width="1.4"/><text x="215" y="45" fill="#fff">①需求/PRD</text><text x="215" y="60" font-size="8.5" fill="var(--mut)">本体引用必填</text></g>
+        <g><circle cx="375" cy="125" r="35" fill="#1b2440" stroke="var(--cyan)" stroke-width="1.4"/><text x="375" y="122" fill="#fff">②影响分析</text><text x="375" y="137" font-size="8.5" fill="var(--mut)">沿链路追全链</text></g>
+        <g><circle cx="375" cy="245" r="35" fill="#1b2440" stroke="var(--green)" stroke-width="1.4"/><text x="375" y="242" fill="#fff">③编码</text><text x="375" y="257" font-size="8.5" fill="var(--mut)">复用接缝优先</text></g>
+        <g><circle cx="215" cy="322" r="35" fill="#1b2440" stroke="var(--gold)" stroke-width="1.4"/><text x="215" y="319" fill="#fff">④回写本体</text><text x="215" y="334" font-size="8.5" fill="var(--mut)">不回写即过期</text></g>
+        <g><circle cx="55" cy="245" r="35" fill="#1b2440" stroke="var(--pink)" stroke-width="1.4"/><text x="55" y="242" fill="#fff">⑤门禁</text><text x="55" y="257" font-size="8.5" fill="var(--mut)">漂移即红</text></g>
+        <g><circle cx="55" cy="125" r="35" fill="#1b2440" stroke="var(--purple)" stroke-width="1.4"/><text x="55" y="122" fill="#fff">⑥发布</text><text x="55" y="137" font-size="8.5" fill="var(--mut)">绿测试≠能用</text></g>
       </g>
-      <g stroke="#7C8896" stroke-width="1.6" fill="none" marker-end="url(#ar)" opacity=".75">
-        <path d="M318 78 C 380 92, 420 112, 446 124"/>
-        <path d="M478 190 C 484 230, 482 250, 478 250"/>
-        <path d="M452 322 C 410 352, 360 366, 322 372"/>
-        <path d="M240 372 C 180 366, 138 350, 110 324"/>
-        <path d="M82 250 C 78 232, 80 208, 84 190"/>
-        <path d="M108 116 C 150 92, 200 78, 242 72"/>
+      <g stroke="#7C8896" stroke-width="1.5" fill="none" marker-end="url(#ar)" opacity=".72">
+        <path d="M248 62 C 300 78, 332 96, 352 108"/>
+        <path d="M383 162 C 386 196, 384 210, 380 210"/>
+        <path d="M360 275 C 322 300, 286 312, 250 318"/>
+        <path d="M180 318 C 144 312, 108 298, 82 276"/>
+        <path d="M48 210 C 44 194, 46 176, 50 162"/>
+        <path d="M72 92 C 110 76, 150 64, 184 58"/>
       </g>
     </svg>
 
     <div>
       <div class="panel">
-        <h3><i style="background:var(--cyan)"></i>技术实现（治理不靠自觉，四层强制）</h3>
-        <ul>
-          <li><b>必读前置</b>：铁律 0 + SessionStart 钩子（每会话注入本体未修断点）+ /ontology skill</li>
-          <li><b>模板必填</b>：PRD §0《本体引用与影响》——对象类型/链路/事件/<b>不变量 R1–R16</b>/断点/数据闭环 checklist</li>
-          <li><b>门禁红线</b>：<span class="tag" style="background:#9d8bf022;color:var(--purple)">ontology:check</span><span class="tag" style="background:#54b5c422;color:var(--cyan)">chain:check</span><span class="tag" style="background:#62be7722;color:var(--green)">debattery:check</span><span class="tag" style="background:#d2b04c22;color:var(--gold)">prd:check</span>——漂移/悬空即 CI 红，合不进</li>
-          <li><b>回写强制</b>：改了链路/事件/对象/不变量/门禁 → 必须回写本体，否则"大脑过期失效"</li>
-          <li><b>载体</b>：16 不变量 · 8 断点登记 · 11 自我域 + 域内切片（端到端可验证子图）</li>
-        </ul>
+        <h3><i style="background:var(--cyan)"></i>对比：传统开发　vs　本体开发轮</h3>
+        <table class="cmp">
+          <tr><th class="dim">维度</th><th class="t1">✕ 传统开发</th><th class="t2">✓ 本体开发轮</th></tr>
+          <tr><td class="dimc">架构真相</td><td class="old">散落在文档/人脑，<b style="color:#e0a7af">文档随代码腐化</b></td><td class="new"><b>活体本体单一源</b>，ontology:check 机器校验、不漂移</td></tr>
+          <tr><td class="dimc">改动影响</td><td class="old">靠经验猜，跨模块盲区多、接缝处暴雷</td><td class="new"><b>沿链路追全链</b>，门禁(chain/shape)拦跨服务漂移</td></tr>
+          <tr><td class="dimc">一致性</td><td class="old">靠 code review / 自觉，规则口口相传</td><td class="new"><b>16 不变量 + 门禁红线</b>，漏即 CI 红、合不进</td></tr>
+          <tr><td class="dimc">演进</td><td class="old">文档与代码渐行渐远，知识流失</td><td class="new"><b>回写强制</b>，本体随每次改动同步、可持续演进</td></tr>
+        </table>
       </div>
-      <div class="valline">价值：<b>大型双系统平台的"架构防腐 + 协同进化"机制</b>——把"系统怎么接线、改这会影响什么"沉淀为机器可校验的单一来源，让多人/多 agent 并行开发不漂移、可持续演进。</div>
+      <div class="valline">价值：<b>大型双系统的"架构防腐 + 协同进化"机制</b>——多人/多 agent 并行开发不漂移；把"改这会影响什么"从口头经验沉淀为机器可校验的单一来源。<b>CLI skill（/ontology）</b>把"先读本体"前置为不可绕过的开发动作。</div>
     </div>
   </div>
-  <div class="foot">协同进化闭环 · sys.meta.change_loop ：需求 → 本体影响 → 编码 → 回写 → 门禁 → 发布 →（循环）</div>
+  <div class="foot">协同进化闭环 · sys.meta.change_loop：需求 → 本体影响 → 编码 → 回写 → 门禁 → 发布 →（循环）</div>
   <div class="pageno">1 / 2</div>
 </section>
 
 <!-- ================= SLIDE 2 ================= -->
 <section class="slide">
-  <div class="kicker">PART 2 · 发育论 · 技术 + 商业价值</div>
+  <div class="kicker">PART 2 · 发育论　vs　传统瀑布 · 技术 + 商业价值</div>
   <h1>从胚胎到完整系统</h1>
-  <div class="sub">系统像<b style="color:#fff">受精卵发育成人</b>：<b style="color:var(--gold)">倒序发育</b>（从一句场景/需求，倒着长出数据·对象·规则·求解器·Agent）<b>⊕</b> <b style="color:var(--cyan)">正序运作</b>（用户使用）—— 同一有机体的两个相位（runId 归一）。</div>
+  <div class="sub">系统像<b style="color:#fff">受精卵发育成人</b>：<b style="color:var(--gold)">倒序发育</b>（一句场景倒推出 数据·对象·规则·求解器·Agent）<b>⊕</b> <b style="color:var(--cyan)">正序运作</b>（用户使用）——同一有机体两相位。对照传统"先穷举需求、再瀑布开发"。</div>
 
-  <!-- axis diagram -->
-  <svg viewBox="0 0 1170 130" width="1170" height="130" style="margin:2px 0 14px">
+  <svg viewBox="0 0 1172 112" width="1172" height="112" style="margin:0 0 12px">
     <defs><marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--gold)"/></marker>
       <marker id="a3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--cyan)"/></marker></defs>
-    <g font-size="11.5" font-weight="700" text-anchor="middle">
-      <g><rect x="12" y="40" width="118" height="48" rx="9" fill="#1d1830" stroke="var(--gold)"/><text x="71" y="60" fill="#fff">受精卵</text><text x="71" y="76" font-size="9.5" fill="var(--mut)">场景/需求一句话</text></g>
-      <text x="170" y="68" fill="var(--gold)" font-size="11">倒序发育→</text>
-      <g><rect x="214" y="40" width="150" height="48" rx="9" fill="#16202e" stroke="var(--cyan)"/><text x="289" y="60" fill="#fff">数据构建发动机</text><text x="289" y="76" font-size="9" fill="var(--mut)">comprehend→scaffold 全栈</text></g>
-      <g><rect x="384" y="40" width="140" height="48" rx="9" fill="#16202e" stroke="var(--green)"/><text x="454" y="60" fill="#fff">自成长发动机</text><text x="454" y="76" font-size="9" fill="var(--mut)">缺口→补→重跑→收敛</text></g>
-      <g><rect x="544" y="40" width="150" height="48" rx="9" fill="#1a2331" stroke="var(--purple)"/><text x="619" y="58" fill="#fff">成熟分相位</text><text x="619" y="75" font-size="9" fill="var(--mut)">PROVISIONAL→GOVERNED</text></g>
-      <g><rect x="714" y="40" width="150" height="48" rx="9" fill="#1b2440" stroke="var(--indigo)"/><text x="789" y="58" fill="#fff">完整有机体</text><text x="789" y="75" font-size="9" fill="var(--mut)">可推演的运行系统</text></g>
-      <text x="905" y="58" fill="var(--cyan)" font-size="11">正序运作</text>
-      <g><rect x="958" y="40" width="200" height="48" rx="9" fill="#16202e" stroke="var(--cyan)"/><text x="1058" y="58" fill="#fff">用户使用 → GapReport</text><text x="1058" y="75" font-size="9" fill="var(--mut)">= 生长信号 → 触发倒序生长</text></g>
+    <g font-size="11" font-weight="700" text-anchor="middle">
+      <g><rect x="10" y="30" width="112" height="44" rx="9" fill="#1d1830" stroke="var(--gold)"/><text x="66" y="49" fill="#fff">受精卵</text><text x="66" y="64" font-size="9" fill="var(--mut)">场景/需求一句话</text></g>
+      <text x="158" y="55" fill="var(--gold)" font-size="10.5">倒序→</text>
+      <g><rect x="196" y="30" width="146" height="44" rx="9" fill="#16202e" stroke="var(--cyan)"/><text x="269" y="49" fill="#fff">数据构建发动机</text><text x="269" y="64" font-size="8.5" fill="var(--mut)">comprehend→scaffold全栈</text></g>
+      <g><rect x="356" y="30" width="138" height="44" rx="9" fill="#16202e" stroke="var(--green)"/><text x="425" y="49" fill="#fff">自成长发动机</text><text x="425" y="64" font-size="8.5" fill="var(--mut)">缺口→补→重跑→收敛</text></g>
+      <g><rect x="508" y="30" width="150" height="44" rx="9" fill="#1a2331" stroke="var(--purple)"/><text x="583" y="47" fill="#fff">成熟分相位</text><text x="583" y="63" font-size="8.5" fill="var(--mut)">PROVISIONAL→GOVERNED</text></g>
+      <g><rect x="672" y="30" width="142" height="44" rx="9" fill="#1b2440" stroke="var(--indigo)"/><text x="743" y="47" fill="#fff">完整有机体</text><text x="743" y="63" font-size="8.5" fill="var(--mut)">可推演的运行系统</text></g>
+      <text x="852" y="47" fill="var(--cyan)" font-size="10.5">正序→</text>
+      <g><rect x="902" y="30" width="260" height="44" rx="9" fill="#16202e" stroke="var(--cyan)"/><text x="1032" y="47" fill="#fff">用户使用 → GapReport</text><text x="1032" y="63" font-size="8.5" fill="var(--mut)">= 生长信号 → 触发倒序生长</text></g>
     </g>
-    <path d="M130 64 L208 64" stroke="var(--gold)" stroke-width="1.6" marker-end="url(#a2)"/>
-    <path d="M364 64 L382 64" stroke="#7C8896" stroke-width="1.4" marker-end="url(#a2)"/>
-    <path d="M524 64 L542 64" stroke="#7C8896" stroke-width="1.4" marker-end="url(#a2)"/>
-    <path d="M694 64 L712 64" stroke="#7C8896" stroke-width="1.4" marker-end="url(#a2)"/>
-    <path d="M864 64 L956 64" stroke="var(--cyan)" stroke-width="1.6" marker-end="url(#a3)"/>
-    <path d="M1058 90 C 1058 118, 460 118, 289 90" stroke="var(--green)" stroke-width="1.5" fill="none" stroke-dasharray="5 4" marker-end="url(#a2)"/>
-    <text x="640" y="126" text-anchor="middle" font-size="10.5" fill="var(--green)">自适应闭环：越用越大（需求拉动自成长）</text>
+    <path d="M122 52 L190 52" stroke="var(--gold)" stroke-width="1.5" marker-end="url(#a2)"/>
+    <path d="M342 52 L354 52" stroke="#7C8896" stroke-width="1.3" marker-end="url(#a2)"/>
+    <path d="M494 52 L506 52" stroke="#7C8896" stroke-width="1.3" marker-end="url(#a2)"/>
+    <path d="M658 52 L670 52" stroke="#7C8896" stroke-width="1.3" marker-end="url(#a2)"/>
+    <path d="M814 52 L900 52" stroke="var(--cyan)" stroke-width="1.5" marker-end="url(#a3)"/>
+    <path d="M1032 76 C 1032 100, 430 100, 269 76" stroke="var(--green)" stroke-width="1.4" fill="none" stroke-dasharray="5 4" marker-end="url(#a2)"/>
+    <text x="640" y="110" text-anchor="middle" font-size="10" fill="var(--green)">自适应闭环：越用越大（需求拉动自成长）</text>
   </svg>
 
-  <div class="grid2" style="grid-template-columns:540px 1fr">
-    <div class="panel">
-      <h3><i style="background:var(--cyan)"></i>技术实现</h3>
-      <ul>
-        <li><b>倒序发育引擎</b>：StoryScript→comprehend(LLM)→BuildPlan→<b>跨系统 scaffold</b>（对象/规则/求解器/Agent/工作流/场景）</li>
-        <li><b>三环自动闭合</b>：数据(build-to-verify)·本体(活体自更新)·能力目录(从注册表自派生)</li>
-        <li><b>成熟分相位</b>：合成/补出的产物先 <b>未审核态</b>，经使用+审批(R4)成熟为 <b>GOVERNED 真值</b></li>
-        <li><b>正序↔倒序咬合</b>：用户问句答不出→<b>GapReport=生长信号</b>→自动补齐→回写本体+刷新目录</li>
-        <li><b>护栏</b>：有界收敛 · 单一上传口 · 确定性(R6) · 真断点→工单（不自动改架构）</li>
-      </ul>
-    </div>
-    <div class="panel">
-      <h3><i style="background:var(--green)"></i>商业价值</h3>
-      <div class="bizrow"><span class="bt">交付提速</span><span>一句场景倒推全栈；新行业/客户从"零"到"可推演"<b style="color:#fff">一键引导(bootstrap)</b>，周期从月级→天级</span></div>
-      <div class="bizrow"><span class="bt">越用越强</span><span>缺口即生长信号，系统随使用<b style="color:#fff">自我补全</b>（需求拉动），无需预先穷举需求</span></div>
-      <div class="bizrow"><span class="bt">低边际成本</span><span>换行业=换<b style="color:#fff">种子配置/模版</b>，不改代码（模版+种子双层），一套引擎多行业复用</span></div>
-      <div class="bizrow"><span class="bt">可信可审计</span><span>产物分相位成熟·全程溯源·走审批；<b style="color:#fff">"绿测试≠能用"</b>守诚实，企业级决策敢用</span></div>
-      <div class="bizrow"><span class="bt">护城河</span><span><b style="color:#fff">活体本体=自我认知</b>，平台用自己分析自己(dogfooding)，数据+演进双壁垒，竞品难复制</span></div>
-    </div>
+  <div class="panel">
+    <h3><i style="background:var(--green)"></i>对比：传统瀑布开发　vs　胚胎发育模式（含商业价值）</h3>
+    <table class="cmp">
+      <tr><th class="dim">维度</th><th class="t1">✕ 传统瀑布</th><th class="t2">✓ 发育模式 → 商业价值</th></tr>
+      <tr><td class="dimc">需求</td><td class="old">先穷举、定死全部需求再开发，变更代价大</td><td class="new">一句场景<b>倒推全栈</b> + 需求拉动自长 → <b>越用越强，无需预先穷举</b></td></tr>
+      <tr><td class="dimc">数据</td><td class="old">写死在代码，换行业=大量重写</td><td class="new"><b>模版+种子双层</b>，换行业=换配置 → <b>一套引擎多行业复用、低边际成本</b></td></tr>
+      <tr><td class="dimc">新能力</td><td class="old">人工从零开发，周期月级、边际成本高</td><td class="new">倒序 scaffold + 自成长 + 一键引导 → <b>交付从月级压到天级</b></td></tr>
+      <tr><td class="dimc">可信</td><td class="old">测试绿即发布，"能跑"≠"能用"</td><td class="new">分相位成熟 + 审批 + 全程溯源 → <b>"绿测试≠能用"守诚实，企业级决策敢用</b></td></tr>
+      <tr><td class="dimc">壁垒</td><td class="old">功能可被快速复刻，无结构性护城河</td><td class="new"><b>活体本体=自我认知</b>，平台用自己分析自己(dogfooding) → <b>数据+演进双护城河</b></td></tr>
+    </table>
   </div>
-  <div class="foot">发育闭环 · sys.meta.ontogenesis_loop ：场景→倒推建域→未审核产物→正序生长信号→成熟 GOVERNED→回写活体本体+派生目录</div>
+  <div class="cli"><span class="tag">CLI 模式价值</span>统一触发面 = 把发育/运作闭环装进一行对话：<b>① 对话即操作</b>——<code>上传数据→触发推演→出方案</code>一线直达，免在多页面间跳转；<b>② 预设 skill</b>（<code>/ontology</code> 强制读本体、<code>/loop</code> 跑场景自愈）让 人/agent 100% 守铁律 0 与流程；<b>③ 可脚本化、可接 CI 门禁</b>——同一入口既是"一句话场景→倒序发育"的扳机，也是机器约束（漂移即红）的落地点：<b>人与 agent 同一面、可自动化、可审计</b>。</div>
+  <div class="foot">发育闭环 · sys.meta.ontogenesis_loop：场景→倒推建域→未审核产物→正序生长信号→成熟 GOVERNED→回写活体本体+派生目录</div>
   <div class="pageno">2 / 2</div>
 </section>
 
