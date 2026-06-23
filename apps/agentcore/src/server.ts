@@ -23,6 +23,9 @@ import {
   SkillDefinitionSchema,
   SubmitQueryBodySchema,
   WorkflowDefinitionSchema,
+  InferenceTraceSchema,
+  type QueryTask,
+  type ExecutionPlan,
   type AgentDefinition,
   type LlmProviderConfig,
   type McpServerConfig,
@@ -42,6 +45,7 @@ import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { HttpError } from "./router/orchestrator.js";
+import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
 import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
@@ -56,6 +60,35 @@ import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { SCENARIO_CATALOG, seedScenarios } from "./scenarios-catalog.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
+
+/** PRD-IND-story §4.3：从 task.error/path 确定性派生缺口（本 base 用 task.error 归类断点 → projectTrace 标 gap 节点）。 */
+function deriveTraceGap(task: QueryTask): TraceGapInput | undefined {
+  if (task.status === "FAILED" && task.error) {
+    const s = `${task.error.code} ${task.error.message}`.toLowerCase();
+    const gapCode = /plan_not_found|plan not found/.test(s)
+      ? "NO_PLAN"
+      : /solver/.test(s)
+        ? "SOLVER_NOT_FOUND"
+        : /slice/.test(s)
+          ? "NO_SLICE"
+          : /shape|render|template_resolution|output\./.test(s)
+            ? "SHAPE_MISMATCH"
+            : /rule/.test(s)
+              ? "NO_RULE"
+              : /empty|no data|空/.test(s)
+                ? "EMPTY_DATA"
+                : "OTHER";
+    return { verdict: "BLOCKED", findings: [{ gapCode, atStep: task.error.stepId, blocking: true }] };
+  }
+  if (task.status === "COMPLETED" && task.path === "AGENT") {
+    const outOfCatalog = task.classification?.outOfCatalog ?? true;
+    return {
+      verdict: "BOUNDARY",
+      findings: [{ gapCode: outOfCatalog ? "NO_INTENT" : "NO_CAPABILITY", atStep: "routing", blocking: false }],
+    };
+  }
+  return undefined;
+}
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -437,6 +470,29 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       createdAt: task.createdAt,
       completedAt: task.completedAt,
     });
+  });
+
+  // PRD-IND-story §4.3：编排推演 DAG —— 把真实 QueryTask 轨迹确定性投影为 10 节点编排图。
+  app.get("/api/v1/queries/:taskId/trace", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const toolCalls = await deps.repos.toolCalls.listByTask(taskId);
+    let plan: ExecutionPlan | undefined;
+    if (task.path === "WORKFLOW" && task.matchedIntent) {
+      const intent = await deps.repos.intents.get(task.matchedIntent.intentId);
+      if (intent) plan = (await resolvePlanForIntent(deps.repos, intent))?.plan;
+    }
+    const gap = deriveTraceGap(task);
+    const trace = projectTrace(
+      task,
+      plan,
+      toolCalls.map((tc) => ({ toolName: tc.toolName, input: tc.input, outcome: tc.outcome })),
+      gap,
+      task.answer,
+    );
+    return InferenceTraceSchema.parse(trace);
   });
 
   // 活数据可溯（PRD-live-traceable-data §3.2，结果→入参对象）：一次推演结果引用了哪些对象。

@@ -399,6 +399,102 @@ export const QueryTaskSchema = z.object({
 });
 export type QueryTask = z.infer<typeof QueryTaskSchema>;
 
+// ---------------------------------------------------------------------------
+// 编排推演 DAG（InferenceTrace）—— PRD-IND-story §4.3/§4.5.A。
+// 把一次真实 QueryTask 运行投影为 HTML 同构的 10 节点非线性编排 DAG（par/conv/aux/fb 边）。
+// 10 节点骨架 + 边拓扑 + IPO 模板 = 视图定义级常量（i18n/ViewDef，不违反 R14）；
+// 各节点 status/data/solvers/agents/gapCode 由真实轨迹 **确定性派生**（R6），不新增真值（R13）。
+// ---------------------------------------------------------------------------
+
+/** 节点状态：pending(本次未执行该步) / running / done / gap(GapReport 命中该步)。 */
+export const InferenceNodeStatusSchema = z.enum(["pending", "running", "done", "gap"]);
+export type InferenceNodeStatus = z.infer<typeof InferenceNodeStatusSchema>;
+
+/** 节点域色 kind（§2.2 色板语义，1:1 必须语义一致；色值可调）。 */
+export const InferenceNodeKindSchema = z.enum([
+  "factory", // ① 解析场景
+  "capacity", // ②③ 检索切片 / 装载因子
+  "solver", // ④⑤⑥ 聚合产能 / 识别瓶颈 / 情景推演
+  "agent", // ⑦⑧ 方案比对 / 校验解释
+  "forecast", // ⑨ 写回行动
+  "quality", // ⑩ 执行回采
+]);
+export type InferenceNodeKind = z.infer<typeof InferenceNodeKindSchema>;
+
+/** 边类型：par 并行分叉 / conv 汇聚 / seq 序列 / aux 历史校正旁路 / fb 跨周期反馈。 */
+export const InferenceEdgeTypeSchema = z.enum(["par", "conv", "seq", "aux", "fb"]);
+export type InferenceEdgeType = z.infer<typeof InferenceEdgeTypeSchema>;
+
+/** ⑦节点专属：候选方案比对行（仅 trace 含候选方案集时填充；否则空，不写死 HTML 5 行）。 */
+export const InferenceCmpRowSchema = z.object({
+  n: z.string(), // 方案
+  bn: z.string(), // 针对瓶颈
+  cap: z.string(), // 新增产能
+  gap: z.string(), // 6 周缺口
+  cost: z.string(), // 投入
+  due: z.string(), // 交期
+  risk: z.string(), // 风险
+});
+export type InferenceCmpRow = z.infer<typeof InferenceCmpRowSchema>;
+
+/** ⑦节点专属：人机对话问答（仅 Answer 含追问时填充）。 */
+export const InferenceQaSchema = z.object({ q: z.string(), a: z.string() });
+export type InferenceQa = z.infer<typeof InferenceQaSchema>;
+
+export const InferenceNodeSchema = z.object({
+  /** 1..10 同序节点 id（= ordinal）。 */
+  id: z.number().int(),
+  ordinal: z.number().int(),
+  /** 详情标题（steps[].t）。 */
+  label: z.string(),
+  /** DAG 短名（STORY_SHORT）。 */
+  shortLabel: z.string(),
+  kind: InferenceNodeKindSchema,
+  /** 自由布局坐标（rank/row → x/y，§2.2）。 */
+  rank: z.number().int(),
+  row: z.number().int(),
+  /** IPO 文案（骨架模板，可被真实 trace 覆盖/补充）。 */
+  in: z.string().optional(),
+  proc: z.string().optional(),
+  out: z.string().optional(),
+  /** 真实轨迹填充：引用数据 / 求解器 / Agent。 */
+  data: z.array(z.string()),
+  solvers: z.array(z.string()),
+  agents: z.array(z.string()),
+  status: InferenceNodeStatusSchema,
+  /** gap 态：GapReport.findings[].gapCode。 */
+  gapCode: z.string().optional(),
+  /** gap 态：断在哪一步（GapReport.findings[].atStep）。 */
+  atStep: z.string().optional(),
+  /** 命中该节点的真实步骤 id 集（多步并归一节点时列全部子步）。 */
+  stepIds: z.array(z.string()),
+  /** ⑦节点：候选方案比对表（仅 trace 含时）。 */
+  cmp: z.array(InferenceCmpRowSchema).optional(),
+  /** ⑦节点：人机对话（仅 Answer 含追问时）。 */
+  qa: z.array(InferenceQaSchema).optional(),
+});
+export type InferenceNode = z.infer<typeof InferenceNodeSchema>;
+
+export const InferenceEdgeSchema = z.object({
+  from: z.number().int(),
+  to: z.number().int(),
+  type: InferenceEdgeTypeSchema,
+  label: z.string().optional(),
+});
+export type InferenceEdge = z.infer<typeof InferenceEdgeSchema>;
+
+export const InferenceTraceSchema = z.object({
+  taskId: z.string(),
+  /** = task.query（真实问句，覆盖示例 scenario 文案）。 */
+  scenario: z.string(),
+  path: z.enum(["WORKFLOW", "AGENT", "NONE"]),
+  /** GapReport.verdict（若有缺口报告）。 */
+  verdict: z.enum(["ANSWERABLE", "BLOCKED", "BOUNDARY"]).optional(),
+  nodes: z.array(InferenceNodeSchema),
+  edges: z.array(InferenceEdgeSchema),
+});
+export type InferenceTrace = z.infer<typeof InferenceTraceSchema>;
+
 /**
  * 实时验证审计层 · 统一决策痕迹（可导出）：把散落在 task/answer/toolCalls 的证据要素
  * 聚合为单一可导出 JSON——监管"直接出示决策痕迹"一站到位。
