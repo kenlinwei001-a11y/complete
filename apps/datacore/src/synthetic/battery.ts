@@ -153,17 +153,17 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     scenarios: {
       // 保守：不新增产能 → 无项目（IRR/util24 不参与，c23pass 视为不适用）
       conservative: { projects: [] },
-      // 基准：合肥四期 8GWh，2027-Q2（窗口起点 2026-Q3 → 第 3 季投产）。IRR≈19% > 15% 门槛。
+      // 命名以 HTML 参考原型为准（用户裁决 2026-06-23）：枣庄储能线（基准，IRR≈19% > 15% 门槛通过）。
       baseline: {
         projects: [
-          { id: "HF4", name: "合肥四期", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
+          { id: "ZZ", name: "枣庄储能线", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
         ],
       },
-      // 激进：合肥四期 + 盐城二期（盐城 2027-Q3 → 第 4 季投产）。盐城 IRR≈9% < 15% → C23 不通过。
+      // 激进：枣庄储能线 + 江门动力线（江门 IRR < 15% → C23 不通过）。
       aggressive: {
         projects: [
-          { id: "HF4", name: "合肥四期", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
-          { id: "YC2", name: "盐城二期", q0: 4, cap: 6.0, capex: [4, 8, 7], m: 1700, salvageRate: 0.05, lifeQuarters: 40 },
+          { id: "ZZ", name: "枣庄储能线", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
+          { id: "JM", name: "江门动力线", q0: 4, cap: 6.0, capex: [4, 8, 7], m: 1700, salvageRate: 0.05, lifeQuarters: 40 },
         ],
       },
     },
