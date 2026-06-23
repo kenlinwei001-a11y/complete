@@ -1,5 +1,12 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
+> **2026-06-23 · 自驱动 QOS 数据底座（PRD-self-driving-qos-data-foundation）· 评审落档 + 开发顺序**
+> 评审结论（详见 `docs/PRD-self-driving-qos-data-foundation.md`）：方向通过，**按增量融合推进，非自包含全量新建**。
+> - **Part C(=A18)/D(=自成长发动机) 已 ~90% 建好** → 只对账查漏，**禁止照字面重建**（PRD 契约与现存 growth.ts/SolverArtifact 打架）。
+> - **Part A（GenerationBoundary）是真新增、真对症 G-5「应用层电池锁死」** → 单一来源 + 版本化，根治"改一处崩前后端不同步"（根因 a）；跨视图值耦合（根因 b）变可分析、不变免费。
+> - **开发顺序 DF.0–DF.12**（依赖排序见落档 §4）。**P0 = DF.0 对账 + DF.1 Boundary keystone + DF.2/DF.3 提升 BASES/SEG**（投入产出比最高，直击本会话一半重复劳动）。守 R6 字节一致 + 全绿基线不回潮。
+> - 联动断点 **G-5**（本体 §8）：DF.* 落地后回写"Part A 增量收窄"。
+
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
 > **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。
 >
