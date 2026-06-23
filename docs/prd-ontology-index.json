@@ -1075,9 +1075,7 @@
       "breakpoints": [
         "G-5"
       ],
-      "artifacts": [
-        "packages/contracts/src/growth.ts"
-      ],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-sop-balance-1to1.md": {
@@ -1447,8 +1445,7 @@
       "PRD-scenario-launcher.md"
     ],
     "packages/contracts/src/growth.ts": [
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-self-driving-qos-data-foundation.md"
+      "PRD-fullstack-story-build-g8.md"
     ],
     "apps/datacore/src/ontology-governance.ts": [
       "PRD-goal-metric-owner-spine.md"
