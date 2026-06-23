@@ -10,6 +10,23 @@ import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 import styles from "./DashboardView.module.css";
+import { downloadCsv } from "./exportCsv";
+
+/** 导出行数据结构（metric_rollup.metrics + affected_orders.problems）。 */
+export interface DashExportMetric { name?: string; key?: string; target?: number; actual?: number; delta?: number; miss?: boolean }
+export interface DashExportProblem { title?: string; orderCount?: number; financeImpact?: number }
+
+/** PRD-cockpit §8 P5「导出」：把经营指标 + 待解决问题拼成 CSV 行（纯函数，确定性，可单测）。 */
+export function buildDashExportRows(metrics: DashExportMetric[], problems: DashExportProblem[]): (readonly unknown[])[] {
+  return [
+    [zh.dash.exportTitleRow],
+    zh.dash.exportMetricHeader,
+    ...metrics.map((m) => [m.name ?? m.key ?? "", m.target ?? "", m.actual ?? "", m.delta ?? "", m.miss ? "越线" : ""]),
+    [],
+    zh.dash.exportProblemHeader,
+    ...problems.map((p) => [p.title ?? "", p.orderCount ?? "", p.financeImpact ?? ""]),
+  ];
+}
 
 /**
  * 驾驶舱（renderer=dashboard，PRD §7.3）：
@@ -39,8 +56,17 @@ export default function DashboardView({ view }: ViewRendererProps) {
   if (widgets.length === 0) return <div className="empty-state">{zh.common.none}</div>;
   const modLinks = (view.layout?.moduleLinks as ModLink[] | undefined) ?? MODULE_LINKS;
   const feedbackChain = (view.layout?.feedbackChain as string[] | undefined) ?? FEEDBACK_CHAIN;
+  const handleExport = async () => {
+    const [ao, mr] = await Promise.allSettled([invokeSolver("affected_orders", {}), invokeSolver("metric_rollup", { level: "op" })]);
+    const problems = ao.status === "fulfilled" ? ((ao.value.data as { problems?: DashExportProblem[] })?.problems ?? []) : [];
+    const metrics = mr.status === "fulfilled" ? ((mr.value.data as { metrics?: DashExportMetric[] })?.metrics ?? []) : [];
+    downloadCsv(`dashboard-${new Date().toISOString().slice(0, 10)}`, buildDashExportRows(metrics, problems));
+  };
   return (
     <>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <button className="btn" data-testid="dash-export" onClick={handleExport}>{zh.dash.exportLabel}</button>
+      </div>
       <div className={styles.grid} data-testid="dashboard-grid">
         {widgets.map((w) =>
           w.featureKey ? (
