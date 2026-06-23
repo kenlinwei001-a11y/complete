@@ -4,7 +4,8 @@
 > 评审结论（详见 `docs/PRD-self-driving-qos-data-foundation.md`，**已按用户提醒纠正**）：方向通过，**按增量融合推进**。
 > - **纠正**：Part C/D 只有*机制*（A18 沙箱/promote、自成长 LOOP/ledger）；**缺的是 PRD 核心论点 Part A 接地层**——实测 5 项即便本分支也没有：①生成接地（llm-gen 仅注入类型 schema、可造业务事实）②语义目录(description+catalog/search)③拉取靶 keystone(VIEW_DEFS.outputFields)④精确数据请求正门(fill-data 是自动合成非反推工单)⑤A/B 归一+需求可溯(§EV)。**现有 growth 是无边界生成。**
 > - **Part A 是让 C/D 安全/非编造的前置地基 + 对症 G-5**（单一来源根治根因 a，影响图使根因 b 可分析）。
-> - **开发顺序 DF.0–DF.16（grounding 为脊柱）**：P0 = DF.0 对账 + DF.1 单一来源 keystone + DF.2/3 提升 BASES/SEG（灭根因 a）；紧接 **DF.5 目录 + DF.6 拉取靶 + DF.8 接地 hook**（PRD 真论点：生成不造业务事实，不可后置）。守 R6 + 全绿不回潮。
+> - **开发顺序 DF.0–DF.15（grounding 为脊柱）**：P0 = DF.0 对账 + DF.1 单一来源 keystone + DF.2/3 提升 BASES/SEG（灭根因 a）；紧接 **DF.5 目录 + DF.6 拉取靶 + DF.8 接地 hook**（PRD 真论点：生成不造业务事实，不可后置）。守 R6 + 全绿不回潮。
+> - **逐句 grep 核实账本（§2.2，治理铁律 ~25% 误判唯 grep 可信）**：PRD 自身 + 我前两版都有错——PRD Part D 大面积落点错（growth.ts 已存在/搞错服务[实在 agentcore 非 datacore]/迁移 014 撞车/锚点不存在/BP-4 误报没建[slots.ts+orchestrator 已接线]）；**照字面自包含建会撞车+双实现**。grep-verified 真缺口仅 5 项：①生成接地 ②语义目录 ③outputFields 拉取靶 ④精确数据请求正门 ⑤A/B归一+需求可溯。**DF.13 BP-4 已 grep 否决（删）**；Part D 增量全接 agentcore 既有 growth、不新建。
 > - 联动断点 **G-5**；落地后回写本体 §2.A + §8。
 
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。

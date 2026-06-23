@@ -41,6 +41,35 @@
 
 > **修正后的整合判断**：Part C/D 的**机制**可复用（不重建），但 PRD 的**真正价值 = 给这套机制装上 Part A 接地层** —— 没有 Part A，现有 growth 引擎是**无边界生成**（能跑通、会造假、违"不造业务事实"）。所以 **Part A 不是"配置数据的 nice-to-have"，而是让 C/D 安全/非编造的前置地基**。这与 R13（诚实）正交且更强：A18 标 PROVISIONAL 是"诚实告诉你不可信"，Part A 接地是"从源头不让它编造"。
 
+### 2.2 逐句 grep 核实账本（治理铁律：并行/印象式审计 ~25% 误判，唯 grep 可信）
+
+> 用户提醒后做的**逐条 grep 核实**。结论：**PRD 自身 + 我前两版评估都有错，两个方向都有**——grep ground truth 才是准。
+
+| PRD 声明 | grep 实测（file:line） | 裁定 |
+|---|---|---|
+| A2 `RawDataset` / migration 001 | `domain.ts:125` + `001_init.sql` | ✅ PRD 对（行号 PRD :121 偏 4） |
+| A1 parsers CSV/JSON/XLSX | `connectors/parsers.ts:1-2`（node-xlsx） | ✅ PRD 对 |
+| A3 `FieldProfile`/`PropertyDef` **加 description** | `datacore.ts:38` / `domain.ts:208`；**无 description、无 catalog/search**（0 命中） | ✅ **PRD 对（缺）** |
+| A4 业务词表硬编码 battery.ts | `BASES:11`/`MODELS:27`/`CUSTOMERS:47`/`BOTTLENECKS:48` | ✅ PRD 对 |
+| B sourceBindings / SliceSpec / A6 行级 | `domain.ts:257 sourceBindings`/`domain.ts:416 SliceSpecRecord`/`authz.ts` | ✅ PRD 对 |
+| C `EXTENDED_SOLVERS` extended.ts:386 | 实 `:392` | ✅（行号偏 6） |
+| C `PROVISIONAL_SOLVERS` 静态 Map（新建） | **被 A18 `SolverArtifact`（DB+锁死沙箱）取代**（`solvers/service.ts:187/203/237`），更强 | ◐ **PRD 提案被现有更优机制取代** |
+| **③ `VIEW_DEFS.outputFields` 拉取靶** | **0 命中** | ✅ **PRD/我对（缺）** |
+| **① 生成接地** | `llm-gen.ts:31` 只注入「可用对象类型 schemaText」，无词表实例/列目录/越界拒绝 | ✅ **缺（能引真类型仍可造实例）** |
+| D.2 `growth.ts` **新文件·全量** | **已存在**（`GapFinding/GapReport/GrowthRunReport`，`growth.ts:24/37/77`）；PRD 的 `GrowthLoopRun/CapabilityNeed/ReverseDerivePlan/DataRequestTicket/PromotionSpec` **0 命中** | 🔴 **PRD 错：当新建，实则已存在且形态不同→照建即双实现/契约打架** |
+| D.1 `classifyGap` 签名 | 已存在 `growth/probe.ts:33 classifyGap(task:QueryTask):GapReport`，**≠ PRD 的 probe-struct 签名** | 🔴 **PRD 错（签名不同）** |
+| D.9 growth 端点 **DataCore /a/v1** | 实在 **AgentCore** `server.ts:204/219 /api/v1/growth/{probe,run}`（仅 `fill-data` 在 datacore） | 🔴 **PRD 错（搞错服务）** |
+| D.3 `repo.ts growthRuns`（datacore）+ `014_growth.sql` | growth 持久化在 **agentcore** `persistence/{pg,memory,repos}`；**`014` 已被 `014_entity_resolution.sql` 占用** | 🔴 **PRD 错（错服务 + 迁移号撞车）** |
+| D.10 锚点 `app.ts /a/v1/ontology-workflows ~1337` | **0 命中** | 🔴 **PRD 错（锚点不存在）** |
+| **§EV BP-4** `extractedSlots 未回灌` / `objectRef 槽无法解析` | **均已接线**：`orchestrator.ts:295/438` 传 `classification.extractedSlots`；`slots.ts:123` objectRef 从 context `getObject` + 裸串（"常州"/"4680-NCM"）跨类型解析 | 🔴 **PRD 错（误报没建，实则已建）** |
+| ④ `fill-data` 精确数据请求正门 | 实 `app.ts:1036` 自动合成 CSV→`connectors.upload`（非反推 importName/必填列工单） | ✅ **缺（语义确不同）** |
+| §EV BP-1 sop_balance 非求解器(404) | 不在 SOLVER_KEYS（工作流） | ✅ PRD 对 |
+
+**这份账本的硬结论**：
+1. **我第一版"C/D 已建"= 误报已建**（25% 失效的一种）；我的纠正在 ①②③⑤ 上**对**（grep 确认缺），但 **④/BP-4 上我若照 PRD 信"DF.10 BP-4 真缺口"= 会误报没建**（slots/extractedSlots 实测已建）——**两个方向我都踩过，唯 grep 救场**。
+2. **PRD 自身 Part D 实现契约大面积错**：growth.ts 当新建（已存在）、搞错服务（datacore vs agentcore）、迁移号撞车（014）、锚点不存在、BP-4 误报。**"照字面自包含建"会撞车 + 双实现 + 建错服务**——必须以 grep 现状为准重写 Part D 落点。
+3. **真正确认仍缺、且是 PRD 核心的**：① 生成接地（词表/目录约束 LLM）· ② 语义目录 description+catalog/search · ③ `VIEW_DEFS.outputFields` 拉取靶 · ④ 精确数据请求正门 · ⑤ A/B 归一+需求可溯。**这 5 项是 grep-verified 的真缺口，开发顺序据此（非据 PRD 文字）。**
+
 
 ## 3. 它真能解决"改数据崩其他模块"吗？（诚实，最关键）
 
@@ -73,7 +102,7 @@
 
 ### Phase 2 — 接地核心（PRD 论点 · 对应 §2.1 ①④）：把生成框进 Part A
 - [ ] **DF.8 生成接地 hook（① · 核心论点）**：`solvers/llm-gen.ts` + scaffold 生成时，把 prompt 从"类型 schemaText"升级为注入 **已发布业务词表(硬)实例 + 语义目录(A3)列**；产物**实体只能取词表、列只能取目录**，越界标红/拒绝；软默认可提议待确认。**使现有 A18 生成从"能引用真类型"升到"不造业务事实"**。**依赖**：DF.2–DF.5。**验收**：注入虚构基地名 → 拒绝/标红；同 seed 确定性。
-- [ ] **DF.9 真人正门精确数据请求（④）**：从 need 的 `sourceBindings` 期望列**反推** `DataRequestTicket{importName,描述,必填列}` → 连接器导入 → 按 importName 匹配 fulfill → 重跑（与现 `fill-data` 自动合成分流：**HARD 数据走正门、SOFT 才合成**，`boundaryCanSynthesize` 判定）。**依赖**：DF.1(HARD/SOFT) + 自成长(已有)。**验收**：HARD 缺 → BOUNDARY + 精确列工单，非静默合成。
+- [ ] **DF.9 真人正门精确数据请求（④）**：从 need 的 `sourceBindings` 期望列**反推** `DataRequestTicket{importName,描述,必填列}` → 连接器导入 → 按 importName fulfill → 重跑（与现 `app.ts:1036 fill-data` 自动合成分流：**HARD 走正门、SOFT 才合成**，`boundaryCanSynthesize` 判定）。**落点纠正（grep）**：现有 growth 引擎在 **AgentCore `server.ts /api/v1/growth/*`** + 仓储 `agentcore/persistence/*`，**不在 datacore**（PRD Part D 落点错）；`fill-data` 在 datacore。新件须接 agentcore growth，**不照 PRD 的 datacore repo/migration（014 已被占用）**。**依赖**：DF.1。**验收**：HARD 缺 → BOUNDARY + 精确列工单，非静默合成。
 
 ### Phase 3 — 版本化 + 自动抽
 - [ ] **DF.10 Boundary DRAFT→PUBLISH + version**；`boundaryVersion` 进 R6 key（测试按版本钉）。**依赖**：DF.1。
@@ -81,12 +110,12 @@
 
 ### Phase 4 — Part B 绑定补缺
 - [ ] **DF.12 绑定面板**（意图↔workflow/agent↔切片↔sourceBindings↔槽位↔权限）。**依赖**：sourceBindings(已有)。
-- [ ] **DF.13 BP-4 objectRef 槽解析**（`extractedSlots` 回灌 `fillSlots` + `selectedObjects` 解析 + B3 权限）。*闭 §EV BP-4。*
+- [ ] ~~**DF.13 BP-4 objectRef 槽解析**~~ —— **grep 否决（PRD 误报没建）**：`orchestrator.ts:295/438` 已传 `classification.extractedSlots`；`slots.ts:123` objectRef 已从 context+裸串跨类型解析。**非真缺口**；仅当能复现 §EV BP-4「永久澄清」具体 case 才查残留，不预先开发。
 
-### Phase 5 — A/B 归一 + 需求可溯（⑤）+ C/D delta 补缺
-- [ ] **DF.14 需求可溯（⑤）**：§EV 10 卡→D1–D7→落点 建 demand-indexed 索引，连 `GrowthLedger`（问句=需求索引，可答率回溯到断点）。**依赖**：自成长(已有)。
-- [ ] **DF.15 A/B 归一评估（⑤）**：引擎"一套不按服务切分"——现状 ModuleProvisioner(datacore) + cross-system scaffold(A→B) 已部分归一；评估与 PRD 主张差距，必要处补。**依赖**：DF.0。
-- [ ] **DF.16 补 C/D 真缺 delta**（按 DF.0：如 `reverseDerive` 从 outputFields 反推 vs ModuleProvisioner 接缝、`SCAFFOLD_ORDER/DEPS` 形式化）。**依赖**：DF.0+DF.6。
+### Phase 5 — A/B 归一 + 需求可溯（⑤）+ C/D delta 补缺（**全部接 AgentCore growth，非 datacore**）
+- [ ] **DF.13 需求可溯（⑤）**：§EV 10 卡→D1–D7→落点 建 demand-indexed 索引，连**现存 `GrowthLedger`（agentcore）**。**依赖**：自成长(已有)。
+- [ ] **DF.14 A/B 归一评估（⑤）**：现状 ModuleProvisioner(datacore diff) + cross-system scaffold(A→B 服务令牌) + growth(agentcore) 已部分归一；评估与 PRD"一套不按服务切分"主张差距、必要处补。**依赖**：DF.0。
+- [ ] **DF.15 补 C/D 真缺 delta（接现存，不照 PRD 文字）**：① `reverseDerive` 从 `outputFields`(DF.6) 反推 —— 现 `classifyGap(task)` 是运行后分类，PRD 的"视图输出字段静态倒推"是另一路，评估并入 ModuleProvisioner/probe；② 不新建 `growth.ts`/datacore repo/migration（已存在/会撞 014），只在 **agentcore growth 既有契约**上加缺字段。**依赖**：DF.0+DF.6。
 
 ### 关键依赖边（grounding 为脊柱）
 `DF.1 → {DF.2,DF.3,DF.4}` · `{DF.2–DF.5} → DF.8(接地核心)` · `DF.5+DF.6 → DF.7(影响图)` · `DF.1 → DF.9(正门) / DF.10(版本化)`。**DF.6 拉取靶 + DF.8 接地 hook 是 PRD 论点的两块地基，不可后置为收尾。**
