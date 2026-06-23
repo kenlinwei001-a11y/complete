@@ -566,20 +566,26 @@ export class SolverService {
     const chainObjs = await this.repos.objects.listByType(ctx.tenantId, "RootCauseChain");
     if (kpiObjs.length === 0) throw validationError("plan_rootcause 需先合成 Metric（经营指标）对象");
     const onlyCategory = args.kpiCategory ? str(args.kpiCategory) : undefined;
-    // 规划决策推演 plan-drill：可按 level（月/季/年）下钻该层指标根因；缺省（无 level）保持读全部（向后兼容 rootcause widget）。
-    const onlyLevel = args.level ? str(args.level) : undefined;
+    // 规划决策推演 plan-drill：按 level（月/季/年）下钻指标根因。月/季/年 = op 指标按时间粒度
+    // **确定性派生投影**（R13 溯源 op Metric + level 系数，不落 Metric 对象 → 不污染默认读全部/
+    // /metrics/snapshot/rootcause widget，零破坏 spine 骨架；PlanKpi 完整对象化待 spine 扩展，见 DS.1）。
+    const reqLevel = args.level ? str(args.level) : undefined;
+    const PERIODIC: Record<string, number> = { month: 1.0, quarter: 0.97, year: 1.04 };
+    const periodic = reqLevel !== undefined && PERIODIC[reqLevel] !== undefined;
+    const baseLevel = periodic ? "op" : reqLevel; // 月季年从 op 派生；其余按原 level（缺省读全部）
+    const adj = periodic ? PERIODIC[reqLevel as string]! : 1;
 
     // 1) 指标越线判定（actual < floorVal；缺口 gap=target-actual，确定性按 metricId 排序）。
     const kpis = kpiObjs
       .map((o) => o.props)
-      .filter((p) => (!onlyCategory || str(p.category) === onlyCategory) && (!onlyLevel || str(p.level) === onlyLevel))
+      .filter((p) => (!onlyCategory || str(p.category) === onlyCategory) && (!baseLevel || str(p.level) === baseLevel))
       .map((p) => {
-        const actual = num(p.actual);
+        const actual = round(num(p.actual) * adj, 1); // 月季年按粒度系数派生，op 时 adj=1 原值
         const target = num(p.target);
         const floorVal = num(p.floorVal);
         const offTarget = actual < floorVal;
         return {
-          kpiId: str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
+          kpiId: periodic ? `${str(p.metricId)}-${reqLevel}` : str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
           actual, target, floorVal, unit: str(p.unit),
           gap: round(target - actual, 4), offTarget,
           status: offTarget ? "RED" : actual < target ? "AMBER" : "GREEN",

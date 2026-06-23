@@ -16,9 +16,7 @@
 > - [◐] §2.2-a 逐日轴/悬停/颜色档 ✅ 已做（risk-heat-strip + heatColor + RiskHoverTrigger 悬停）；三档图例文案 + 首要风险标注 = 精修（非整块缺，可选）
 > **[数据专项 · 待排期] 经营驾驶舱后端数据层颗粒扩充（高回归，独立做；用户确认作为 to-do）**
 > 前端区块层已清完整；本专项动合成数据 + 重校准被钉死的测试基线，同 quarter 取值对齐的高回归纪律。
-> - [ ] **DS.1 补 month/quarter/year level Metric 合成**（plan-drill 月/季/年 KPI 条有数据，闭合现 drillEmpty）：
->   改 `generateBattery.metrics`（现 3 op → +9 月季年，确定性派生）→ 须重校准 `cockpit-rootcause` 的 `metrics===3` + 字节一致断言；
->   并改 `metric_rollup`/`plan_rootcause` 默认 `level=op`（防波及 `/a/v1/metrics/snapshot` 端点 + rootcause widget 读到月季年）。
+> - [x] **DS.1 月/季/年 level 派生 ✅（闭合 plan-drill drillEmpty）**：采**派生投影**而非补对象——`plan_rootcause` 月/季/年 = op 指标按时间粒度系数（month 1.0/quarter 0.97/year 1.04）确定性派生（kpiId 带 -level 后缀，R13 溯源 op+系数）。**关键：不落 Metric 对象 → 默认读全部仍只 op，零污染 /metrics/snapshot/rootcause widget/spine 骨架（避开补对象会破的 spine 4 处 =3 + cockpit-rootcause 重校准）**。后端单测 plan-drill-levels ×2（op原值/year×1.04/默认不污染/确定性）+ 门B 月季年切换全非空。完整 PlanKpi 月季年对象化待后续（如需真对象 KPI）。
 > - [ ] **DS.2 补富 KPI 4-5 项数据源 + dash kpi widget**：可供给(V5/V7→SopVersionRow isFinal.supply) · 收入达成(FinancePlan rolling÷budget，需比值，objects-aggregate 不够→solver/派生) · 利用率瓶颈(Base max util，dash 聚合需补 max agg) · 现金垫C18(无对象行→需建 cash 行/对象) · AOP基准(AnnualScenario 基准营收对象)。
 > - **验收**：每项门B 真前端验 + 全套回归（datacore 630 基线，破则重校准并逐条说明，绝不静默改期望）。
 >
