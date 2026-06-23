@@ -56,6 +56,7 @@ import { classifyGap, FILL } from "./growth/probe.js";
 import { perceptionMetrics } from "./router/perception-metrics.js";
 import { scaffoldDraftPlan, questionSlug } from "./growth/scaffold.js";
 import { runGrowthLoop } from "./growth/loop.js";
+import { decideDataGap, groundingVocab } from "./growth/data-boundary.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { SCENARIO_CATALOG, seedScenarios } from "./scenarios-catalog.js";
@@ -241,11 +242,29 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       await emitDomainEvent(a.tenantId, "growth.gap_detected", { gapCode: gap.gapCode, atStep: gap.atStep ?? null });
       let result: import("@platform/contracts").GrowthFillResult;
       if (gap.gapCode === "EMPTY_DATA") {
-        try {
-          await deps.dataCore.ontology.fillData(a, { typeKey: body.context.view || "Object", fields: ["id", "name", "value"], rows: 6, seed: 42 });
-          result = { gapCode: gap.gapCode, action: "缺数据真人正门补(fill-data)", advanced: true };
-        } catch {
-          result = { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+        // DF.9 真人正门 HARD/SOFT 分流：缺数据涉真实业务实体 → HARD（不静默合成，出精确 DataRequest 走真人正门）；否则 SOFT 合成 PROVISIONAL。
+        const ctxText = [
+          ...(body.context.selectedObjects ?? []).map((o) => o.objectId),
+          ...Object.values(body.context.filters ?? {}).map((v) => String(v)),
+        ].join(" ");
+        const typeKey = body.context.selectedObjects?.[0]?.objectType || body.context.view || "Object";
+        const decision = decideDataGap(body.query, ctxText, groundingVocab(), { typeKey });
+        if (decision.mode === "HARD") {
+          result = {
+            gapCode: gap.gapCode,
+            action: `HARD 缺真实业务数据（${decision.entities.join("、")}）→ 真人正门导入，不静默合成`,
+            advanced: false,
+            fillMode: "HARD",
+            dataRequest: decision.dataRequest!,
+            ticket: { gapCode: gap.gapCode, detail: decision.dataRequest!.reason },
+          };
+        } else {
+          try {
+            await deps.dataCore.ontology.fillData(a, { typeKey, fields: ["id", "name", "value"], rows: 6, seed: 42 });
+            result = { gapCode: gap.gapCode, action: "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL(fill-data)", advanced: true, fillMode: "SOFT" };
+          } catch {
+            result = { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, fillMode: "SOFT", ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
+          }
         }
       } else if (SCAFFOLDABLE.has(gap.gapCode)) {
         if (!scaffoldedByGap.has(gap.gapCode)) {
@@ -262,7 +281,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       } else {
         result = { gapCode: gap.gapCode, action: `${FILL[gap.gapCode]}（当前不可自动补→骨架工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
       }
-      await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: result.advanced, scaffolded: result.scaffolded?.length ?? 0 });
+      await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: result.advanced, scaffolded: result.scaffolded?.length ?? 0, ...(result.fillMode ? { fillMode: result.fillMode } : {}) });
       return result;
     };
     const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });

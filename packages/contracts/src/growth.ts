@@ -64,8 +64,19 @@ export const GrowthFillResultSchema = z.object({
   ticket: z.object({ gapCode: GapCodeSchema, detail: z.string() }).optional(),
   /** A3 真补：本轮自动 scaffold 出的 DRAFT 制品（如绑 generic_inference 的执行计划骨架）。 */
   scaffolded: z.array(ScaffoldDraftSchema).optional(),
+  /** DF.9 真人正门 HARD/SOFT 分流：HARD 缺数据（涉真实业务实体，合成会造业务事实）→ 不静默合成、出精确 DataRequest 经真人正门补。 */
+  fillMode: z.enum(["HARD", "SOFT"]).optional(),
+  dataRequest: z
+    .object({
+      typeKey: z.string(),
+      columns: z.array(z.string()),
+      entities: z.array(z.string()),
+      reason: z.string(),
+    })
+    .optional(),
 });
 export type GrowthFillResult = z.infer<typeof GrowthFillResultSchema>;
+export type DataRequest = NonNullable<GrowthFillResult["dataRequest"]>;
 
 export const GrowthRoundSchema = z.object({
   round: z.number().int(),
