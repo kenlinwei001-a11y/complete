@@ -61,15 +61,15 @@ interface CaseSpec {
 /** 10 例告警-处置闭环案例骨架（CASE-007 = Q4 到货危机，与场景预置问答互引）。 */
 const CASE_SPECS: CaseSpec[] = [
   { n: 1, baseId: "hefei", factor: "设备OEE", crossed: "2025-08-12", severity: "MEDIUM" },
-  { n: 2, baseId: "xian", factor: "人力工时", crossed: "2025-09-09", severity: "MEDIUM" },
-  { n: 3, baseId: "yibin", factor: "物料齐套", crossed: "2025-09-24", severity: "HIGH" },
-  { n: 4, baseId: "liyang", factor: "换型损失", crossed: "2025-10-14", severity: "MEDIUM" },
-  { n: 5, baseId: "qingdao", factor: "物流时长", crossed: "2025-10-28", severity: "MEDIUM" },
-  { n: 6, baseId: "nanjing", factor: "良率波动", crossed: "2025-11-04", severity: "MEDIUM" },
+  { n: 2, baseId: "xiamen", factor: "人力工时", crossed: "2025-09-09", severity: "MEDIUM" },
+  { n: 3, baseId: "jiangmen", factor: "物料齐套", crossed: "2025-09-24", severity: "HIGH" },
+  { n: 4, baseId: "meishan", factor: "换型损失", crossed: "2025-10-14", severity: "MEDIUM" },
+  { n: 5, baseId: "handan", factor: "物流时长", crossed: "2025-10-28", severity: "MEDIUM" },
+  { n: 6, baseId: "wuhan", factor: "良率波动", crossed: "2025-11-04", severity: "MEDIUM" },
   { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-11-18", severity: "HIGH", crisis: true },
   { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20", severity: "MEDIUM" },
-  { n: 9, baseId: "changsha", factor: "瓶颈工序", crossed: "2026-03-10", severity: "HIGH" },
-  { n: 10, baseId: "huizhou", factor: "物流时长", crossed: "2026-04-21", severity: "MEDIUM" },
+  { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: "2026-03-10", severity: "HIGH" },
+  { n: 10, baseId: "luoyang", factor: "物流时长", crossed: "2026-04-21", severity: "MEDIUM" },
 ];
 
 /** 延期挽回链（Y5）：9 单曾延期，7 单经案例处置挽回至 ≤2 天。 */
@@ -588,7 +588,7 @@ export class LivedInEngine {
       String(a.props.segKey) < String(b.props.segKey) ? -1 : 1,
     );
     const resolutionsByIdx: Record<number, { name: string; delta: number }[]> = {
-      2: [{ name: "宜宾二线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }],
+      2: [{ name: "枣庄一线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }],
       4: [{ name: "正极提前备料专项（到货危机对策）", delta: 0.8 }],
       9: [{ name: "检修季错峰排产", delta: 0.5 }],
     };

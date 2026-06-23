@@ -175,8 +175,9 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
   it("F23/§S1.5: affected_orders problems[] 确定性归并 + 逐单 4 层根因链（既有字段不变）", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    // 常州基地：多类归并（DELIVERY/KIT/CREDIT），含 KIT（到货晚于交期）
     const run = async () =>
-      (await invokeSolver(t, "affected_orders", { baseId: "fuzhou", fromDay: 0, toDay: 180 })).json() as {
+      (await invokeSolver(t, "affected_orders", { baseId: "changzhou", fromDay: 0, toDay: 180 })).json() as {
         data: { affected: { so: string }[]; total: number; fallback: boolean; problems: unknown[] };
       };
     const r1 = await run();
@@ -197,12 +198,12 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
         expect(chain.layers[1]!.label).toMatch(/规则 C/); // 判定层引用规则键
       }
     }
-    // KIT 类在 hefei（到货晚于交期）出现；MARGIN 在 fuzhou（储能细分 13% < 13.5%）
-    expect(problems.some((p) => p.category === "MARGIN")).toBe(true);
-    const hefei = (await invokeSolver(t, "affected_orders", { baseId: "hefei", fromDay: 0, toDay: 180 })).json() as {
+    // KIT 类在 常州（到货晚于交期）出现；MARGIN 在 洛阳（储能细分毛利偏低）
+    expect(problems.some((p) => p.category === "KIT")).toBe(true);
+    const luoyang = (await invokeSolver(t, "affected_orders", { baseId: "luoyang", fromDay: 0, toDay: 180 })).json() as {
       data: { problems: { category: string }[] };
     };
-    expect(hefei.data.problems.some((p) => p.category === "KIT")).toBe(true);
+    expect(luoyang.data.problems.some((p) => p.category === "MARGIN")).toBe(true);
   });
 
   it("F27/§7.20: mapping 行按数据域分组排序、血缘 fieldCount 正确、含求解器/Agent 行", async () => {

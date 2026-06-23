@@ -6,19 +6,21 @@ import { ALL_FEATURE_KEYS } from "../features.js";
 /** Built-in battery-manufacturing template (QOS-PRD §7.6 + addendum §S1/§A8 semantics). */
 
 // 去电池锁死（R14）：基地经纬度作为对象数据随合成下发（前端 GeoMap 读 Base.props.lon/lat，不再写死）。
-export const BASES: { baseId: string; name: string; kind: "动力" | "储能"; lon: number; lat: number }[] = [
-  { baseId: "changzhou", name: "常州", kind: "动力", lon: 119.95, lat: 31.78 },
+// 基地集以 HTML 参考原型 BASE_DATA 为单一真相源（用户裁决 2026-06-23）：12 基地含「动力+储能」混合业态。
+// 保留 常州/合肥/成都 三个重叠基地的 baseId（测试/C16 在途口径稳定），其余九基地换为 HTML 集。
+export const BASES: { baseId: string; name: string; kind: "动力" | "储能" | "动力+储能"; lon: number; lat: number }[] = [
+  { baseId: "changzhou", name: "常州", kind: "动力+储能", lon: 119.95, lat: 31.78 },
+  { baseId: "xiamen", name: "厦门", kind: "动力", lon: 118.10, lat: 24.46 },
+  { baseId: "chengdu", name: "成都", kind: "动力+储能", lon: 104.07, lat: 30.67 },
+  { baseId: "meishan", name: "眉山", kind: "储能", lon: 103.83, lat: 30.05 },
+  { baseId: "wuhan", name: "武汉", kind: "动力", lon: 114.30, lat: 30.59 },
+  { baseId: "jiangmen", name: "江门", kind: "储能", lon: 113.08, lat: 22.58 },
   { baseId: "hefei", name: "合肥", kind: "动力", lon: 117.28, lat: 31.86 },
-  { baseId: "xian", name: "西安", kind: "动力", lon: 108.95, lat: 34.27 },
-  { baseId: "yibin", name: "宜宾", kind: "储能", lon: 104.64, lat: 28.75 },
-  { baseId: "liyang", name: "溧阳", kind: "动力", lon: 119.48, lat: 31.42 },
-  { baseId: "qingdao", name: "青岛", kind: "储能", lon: 120.38, lat: 36.07 },
-  { baseId: "nanjing", name: "南京", kind: "动力", lon: 118.78, lat: 32.06 },
-  { baseId: "chengdu", name: "成都", kind: "储能", lon: 104.07, lat: 30.67 },
-  { baseId: "fuzhou", name: "福州", kind: "储能", lon: 119.30, lat: 26.08 },
-  { baseId: "changsha", name: "长沙", kind: "动力", lon: 112.94, lat: 28.23 },
-  { baseId: "huizhou", name: "惠州", kind: "储能", lon: 114.42, lat: 23.11 },
-  { baseId: "yancheng", name: "盐城", kind: "动力", lon: 120.16, lat: 33.35 },
+  { baseId: "xinyang", name: "信阳", kind: "储能", lon: 114.09, lat: 32.13 },
+  { baseId: "zaozhuang", name: "枣庄", kind: "动力+储能", lon: 117.32, lat: 34.81 },
+  { baseId: "handan", name: "邯郸", kind: "储能", lon: 114.49, lat: 36.61 },
+  { baseId: "zigong", name: "自贡", kind: "动力", lon: 104.78, lat: 29.34 },
+  { baseId: "luoyang", name: "洛阳", kind: "储能", lon: 112.45, lat: 34.62 },
 ];
 
 // PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
@@ -30,6 +32,17 @@ export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: 
   { modelId: "P28-NCM", name: "P28 软包三元", chem: "NCM", pos: "动力" },
   { modelId: "S192-LFP", name: "S192 储能电芯", chem: "LFP", pos: "储能" },
 ];
+
+// PRD-IND-model：型号→可产基地确定性映射（HTML MODEL_DEF 范式，非随机）——NCM 型号铺动力/混合基地、
+// LFP 储能型号铺储能/混合基地，混合型号铺混合基地。每型号 ≥2 基地（含 1 量产 + 末位认证中）。
+const MODEL_BASE_MAP: Record<string, string[]> = {
+  "4680-NCM": ["changzhou", "chengdu", "hefei"], // HTML 4680-NCM → 常州/成都/合肥
+  "4680-LFP": ["changzhou", "zaozhuang"], // HTML 4680-LFP → 常州/枣庄（动力+储能）
+  "L300-NCM": ["xiamen", "wuhan", "zigong"], // NCM 动力线
+  "L148-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // LFP 储能（方形）
+  "P28-NCM": ["changzhou", "chengdu"], // NCM 动力（方形）
+  "S192-LFP": ["xinyang", "luoyang"], // LFP 储能（圆柱）
+};
 
 const CUSTOMERS = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源", "晨风车业", "沧浪电网"];
 const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
@@ -59,19 +72,20 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }, defaultDays: 7 },
   bottleneck: {
     factors: [...BN_FACTORS],
+    // 基地→主瓶颈因素（HTML 为准：常州·化成=瓶颈工序 92 · 江门·物料齐套 90，dash/sop 同源）。
     primary: {
       常州: "瓶颈工序",
-      合肥: "设备OEE",
-      西安: "人力工时",
-      宜宾: "物料齐套",
-      溧阳: "换型损失",
-      青岛: "物流时长",
-      南京: "良率波动",
+      厦门: "设备OEE",
       成都: "设备OEE",
-      福州: "物料齐套",
-      长沙: "瓶颈工序",
-      惠州: "物流时长",
-      盐城: "人力工时",
+      眉山: "人力工时",
+      武汉: "良率波动",
+      江门: "物料齐套",
+      合肥: "设备OEE",
+      信阳: "物流时长",
+      枣庄: "换型损失",
+      邯郸: "物料齐套",
+      自贡: "人力工时",
+      洛阳: "良率波动",
     },
     defaultPrimary: "瓶颈工序",
     mock: { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilHigh: 0.82, utilHighAdd: 6, utilLowAdd: 2 },
@@ -1132,6 +1146,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   }));
 
   const models = MODELS.map((m) => {
+    // rng 仍按原步长消耗（n + 洗牌），保持下游订单/拓扑字节流稳定；可产基地改取确定性 MODEL_BASE_MAP。
     const n = randInt(rng, 2, 5);
     const shuffled = [...BASES.map((b) => b.baseId)];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -1140,12 +1155,13 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       shuffled[i] = shuffled[j] as string;
       shuffled[j] = tmp;
     }
+    const mappedBases = MODEL_BASE_MAP[m.modelId] ?? shuffled.slice(0, n);
     return {
       modelId: m.modelId,
       name: m.name,
       chem: m.chem,
       pos: m.pos,
-      bases: shuffled.slice(0, n).sort(),
+      bases: [...mappedBases].sort(),
       unitPrice: randInt(rng, 380, 980),
       // C33：NCM 体系碳足迹 >70 阈值（越线），LFP 达标。
       carbonFootprint: m.modelId.includes("NCM") ? 76 : 58,
