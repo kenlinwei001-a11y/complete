@@ -350,7 +350,7 @@ describe("S1 solvers", () => {
     for (const r of cz.rows) expect(r.risks.some((k) => k.base === "常州")).toBe(true);
   });
 
-  it("V6: plan_audit 5H+2M → score 0 → 不通过; why carries substituted numbers; fix.patch correct", async () => {
+  it("V6: plan_audit 5H+4M（含外部信号 E01/E03）→ score 0 → 站不住; why carries substituted numbers; fix.patch correct", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const input = {
@@ -369,8 +369,9 @@ describe("S1 solvers", () => {
     const res = await invokeSolver(t, "plan_audit", input);
     const data = (res.json() as { data: { H: { id: string; why: string; fix?: { patch: Record<string, number> } }[]; M: { id: string; why: string }[]; score: number; verdict: string; gmStruct: number } }).data;
     expect(data.H.map((h) => h.id).sort()).toEqual(["X01", "X02", "X03", "X04", "X05"]);
-    expect(data.M.map((m) => m.id).sort()).toEqual(["R01", "R02"]);
-    expect(data.score).toBe(0); // clamp(100 − 22×5 − 7×2)=0
+    // R01/R02 + 外部信号 E01（毛利缓冲 15−16<1.2 击穿）/E03（客户舆情恒提示）；E02 不触（dem 100<130）
+    expect(data.M.map((m) => m.id).sort()).toEqual(["E01", "E03", "R01", "R02"]);
+    expect(data.score).toBe(0); // clamp(100 − 22×5 − 7×4)=0
     expect(data.verdict).toBe("站不住"); // §3.1：H>0 → 站不住
     // why texts contain the substituted numbers
     expect(data.H.find((h) => h.id === "X01")!.why).toContain("90");

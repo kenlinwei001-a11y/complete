@@ -35,6 +35,8 @@ const AUDIT_T = {
   scoreM: 7, //  PRD-IND-audit §4.5-A2 取值对齐
   passScore: 85,
   condScore: 60,
+  extGmBufferMin: 1.2, // PRD-IND-audit §4.4 E01
+  extDemHigh: 130, // E02
 };
 
 export interface MockAuditInput {
@@ -187,6 +189,15 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
       fix: { label: "引导年度情景测算", patch: {} },
     });
   }
+
+  // PRD-IND-audit §4.4：外部信号诊断 E01–E03（与 datacore plan.ts 同源）。
+  if (gmStruct - input.gmTarget < t.extGmBufferMin) {
+    M.push({ id: "E01", title: "外部·原料成本", ruleRef: "C24", why: `外部信号「碳酸锂价上行」：结构毛利 ${gmStruct}% 与目标 ${input.gmTarget}% 缓冲仅 ${round(gmStruct - input.gmTarget, 2)}pp（<${t.extGmBufferMin}），成本上行即击穿` });
+  }
+  if (input.dem >= t.extDemHigh) {
+    M.push({ id: "E02", title: "外部·终端需求", ruleRef: "C25", why: `外部信号「终端上险低于假设」：需求 P50 ${input.dem} 万套（≥${t.extDemHigh}）高位，若终端上量不及预期则产销缺口扩大` });
+  }
+  M.push({ id: "E03", title: "外部·客户信用", ruleRef: "C13", why: `外部信号「重点客户负面舆情」：建议动态复核应收周期与信用额度（C13），防止回款逾期击穿现金垫` });
 
   for (const item of [...H, ...M]) {
     if (item.fix && Object.keys(item.fix.patch).length > 0) {

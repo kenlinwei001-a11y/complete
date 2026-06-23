@@ -24,8 +24,8 @@ describe("F14 · 规划体检（plan-audit）改参即重算", () => {
 
     // 首次自动体检（无「体检」按钮 —— 改参即重算）：V7 基线确定性结果
     const verdict = await screen.findByTestId("audit-verdict");
-    await waitFor(() => expect(verdict).toHaveTextContent("体检结论：可定稿但有重要风险（评分 79/100）"));
-    expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 3 软风险 / 3 建议");
+    await waitFor(() => expect(verdict).toHaveTextContent("体检结论：可定稿但有重要风险（评分 58/100）"));
+    expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 6 软风险 / 3 建议");
     expect(verdict.getAttribute("style")).toContain("var(--amber)");
 
     // 改 cashCushion 至 45（< C18 底线 50）→ debounce 重算 → X05 硬卡 + C18 徽章 + 档位转红
@@ -34,8 +34,8 @@ describe("F14 · 规划体检（plan-audit）改参即重算", () => {
     expect(x05).toHaveTextContent("现金垫");
     expect(x05).toHaveTextContent("45 亿低于底线 50 亿");
     expect(screen.getByTestId("rule-badge-hard-X05")).toHaveTextContent("C18");
-    expect(screen.getByTestId("audit-counts")).toHaveTextContent("1 硬矛盾 / 3 软风险 / 4 建议");
-    expect(screen.getByTestId("audit-verdict")).toHaveTextContent("体检结论：站不住（评分 57/100）");
+    expect(screen.getByTestId("audit-counts")).toHaveTextContent("1 硬矛盾 / 6 软风险 / 4 建议");
+    expect(screen.getByTestId("audit-verdict")).toHaveTextContent("体检结论：站不住（评分 36/100）");
     expect(screen.getByTestId("audit-verdict").getAttribute("style")).toContain("var(--danger)");
 
     // 一键应用 fix → patch 回写左栏（cashCushion → 50）→ 自动重检 → X05 降为软风险
@@ -43,15 +43,15 @@ describe("F14 · 规划体检（plan-audit）改参即重算", () => {
     await waitFor(() => expect(screen.getByTestId("audit-input-cashCushion")).toHaveValue(50));
     await screen.findByTestId("audit-item-med-X05");
     expect(screen.queryByTestId("audit-item-hard-X05")).not.toBeInTheDocument();
-    expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 4 软风险 / 4 建议");
-    expect(screen.getByTestId("audit-verdict")).toHaveTextContent("体检结论：可定稿但有重要风险（评分 72/100）");
+    expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 7 软风险 / 4 建议");
+    expect(screen.getByTestId("audit-verdict")).toHaveTextContent("体检结论：可定稿但有重要风险（评分 51/100）");
     // fix 脚注：演示用——实际生效走 S&OP 议程与 Action 审批
     expect(screen.getAllByText(zh.sim.audit.fixFootnote).length).toBeGreaterThan(0);
 
     // 重置输入 → 恢复基线并重检
     await user.click(screen.getByTestId("audit-reset"));
     await waitFor(() => expect(screen.getByTestId("audit-input-cashCushion")).toHaveValue(58));
-    await waitFor(() => expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 3 软风险 / 3 建议"));
+    await waitFor(() => expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 6 软风险 / 3 建议"));
   });
 
   it("feature 关闭（base_manager）：/v/plan-audit → 404（FEATURE_NOT_FOUND 语义）", async () => {

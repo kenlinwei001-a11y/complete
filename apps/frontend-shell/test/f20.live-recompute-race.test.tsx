@@ -19,7 +19,7 @@ describe("F20 · 改参即重算：debounce 300ms + 竞态最后发出者胜", (
 
     // 基线结果就绪
     await screen.findByTestId("audit-verdict");
-    await waitFor(() => expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 3 软风险 / 3 建议"));
+    await waitFor(() => expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 6 软风险 / 3 建议"));
 
     // 第一次改参：dem=999（mock 侧该请求慢 400ms）
     fireEvent.change(screen.getByTestId("audit-input-dem"), { target: { value: "999" } });

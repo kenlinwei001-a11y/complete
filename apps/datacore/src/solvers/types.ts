@@ -120,6 +120,8 @@ export interface SolverParamsShape {
     scoreM: number;
     passScore: number;
     condScore: number;
+    extGmBufferMin: number;
+    extDemHigh: number;
   };
   planGenerate: {
     base: { rev: number; gm: number; share: number; turns: number; cash: number };

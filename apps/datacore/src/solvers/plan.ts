@@ -174,6 +174,33 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
     });
   }
 
+  // PRD-IND-audit §4.4：外部信号诊断 E01–E03（环境感知，纳入软风险 M；ruleRef C24/C25/C13）。
+  // E01 碳酸锂上行挤压毛利缓冲：结构毛利与目标缓冲 < extGmBufferMin → 成本上行即击穿。
+  if (gmStruct - input.gmTarget < t.extGmBufferMin) {
+    M.push({
+      id: "E01",
+      title: "外部·原料成本",
+      ruleRef: "C24",
+      why: `外部信号「碳酸锂价上行」：结构毛利 ${gmStruct}% 与目标 ${input.gmTarget}% 缓冲仅 ${round(gmStruct - input.gmTarget, 2)}pp（<${t.extGmBufferMin}），成本上行即击穿`,
+    });
+  }
+  // E02 终端上险低于假设：高位需求依赖未兑现的终端上量。
+  if (input.dem >= t.extDemHigh) {
+    M.push({
+      id: "E02",
+      title: "外部·终端需求",
+      ruleRef: "C25",
+      why: `外部信号「终端上险低于假设」：需求 P50 ${input.dem} 万套（≥${t.extDemHigh}）高位，若终端上量不及预期则产销缺口扩大`,
+    });
+  }
+  // E03 重点客户负面舆情：应收/信用承压（环境感知恒提示）。
+  M.push({
+    id: "E03",
+    title: "外部·客户信用",
+    ruleRef: "C13",
+    why: `外部信号「重点客户负面舆情」：建议动态复核应收周期与信用额度（C13），防止回款逾期击穿现金垫`,
+  });
+
   // 建议修正 S[] — one suggestion per fix-able finding.
   for (const item of [...H, ...M]) {
     if (item.fix && Object.keys(item.fix.patch).length > 0) {

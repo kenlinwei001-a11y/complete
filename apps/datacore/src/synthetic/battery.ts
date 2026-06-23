@@ -232,6 +232,9 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     scoreM: 7, //  PRD-IND-audit §4.5-A2 取值对齐 HTML（8→7）
     passScore: 85,
     condScore: 60,
+    // PRD-IND-audit §4.4：外部信号诊断 E01–E03 阈值（环境感知纳入软风险）。
+    extGmBufferMin: 1.2, // E01 结构毛利与目标缓冲 < 1.2pp → 碳酸锂上行即击穿
+    extDemHigh: 130, // E02 需求 P50 ≥130 → 终端上险不及预期则缺口扩大
   },
   planGenerate: {
     // PRD-IND-plan-generate §4.5 取值对齐 HTML GEN_BASE/GEN_GOALS（rev=100 归一保 growth 评分=revGrowAbs×2.5）。
