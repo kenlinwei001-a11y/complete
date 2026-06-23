@@ -39,7 +39,7 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
     const res = await t.app.inject({ method: "POST", url: "/a/v1/solvers/plan_rootcause/invoke", headers: ADMIN, payload: { args: {} } });
     expect(res.statusCode).toBe(200);
     const out = (res.json() as { data: { kpis: { kpiId: string; status: string; offTarget: boolean }[]; dag: { nodes: { id: string; kind: string }[]; edges: { from: string; to: string; weight: number }[] }; offTargetCount: number; summary: string } }).data;
-    // 物料保障率必越线（长协覆盖 < 92 floor）→ 至少 1 项越线，DAG 恒有内容
+    // 物料保障率必越线（齐套覆盖 94.6% < 95 floor，正极 654 吨缺口 C06 预警）→ 至少 1 项越线，DAG 恒有内容
     expect(out.offTargetCount).toBeGreaterThanOrEqual(1);
     const dag = out.dag;
     expect(dag.nodes.some((n) => n.kind === "kpi")).toBe(true);

@@ -450,11 +450,11 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     sopConfig: {
       gapRed: 2,
       cashFloor: 50,
-      revBudget: 248,
+      revBudget: 240, // PRD-IND-sop §4.5-5：真预算 240（滚动确认收入 248 → 达成率 103%）
       segments: [
-        { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, lastActual: 66.8 },
-        { key: "ess", name: "储能", target: 45.0, rolling: 49.0, lastActual: 41.9 },
-        { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 },
+        { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, p90: 66.5, lastActual: 66.8 },
+        { key: "ess", name: "储能", target: 45.0, rolling: 49.0, p90: 45.2, lastActual: 41.9 },
+        { key: "com", name: "商用车", target: 13.6, rolling: 12.0, p90: 11.1, lastActual: 12.9 },
       ],
       defaultResolutions: [
         { name: "常州化成夜班×1", delta: 1.2 },

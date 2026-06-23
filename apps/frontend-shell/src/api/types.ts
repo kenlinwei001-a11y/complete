@@ -74,7 +74,7 @@ export const WorkspaceSchema = z.object({
       cashFloor: z.number().optional(),
       revBudget: z.number().optional(),
       segments: z
-        .array(z.object({ key: z.string(), name: z.string(), target: z.number(), rolling: z.number(), lastActual: z.number() }))
+        .array(z.object({ key: z.string(), name: z.string(), target: z.number(), rolling: z.number(), p90: z.number().optional(), lastActual: z.number() }))
         .optional(),
       /** 决议增量默认项（去电池锁死 R14：按租户/行业下发，替代前端写死电池决议名）。 */
       defaultResolutions: z.array(z.object({ name: z.string(), delta: z.number() })).optional(),

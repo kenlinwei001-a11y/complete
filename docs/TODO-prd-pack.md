@@ -335,11 +335,11 @@
 > - [x] **plan-generate** ✅（黄金样板）：取值对齐 + §4.4 方案选择 + extSensitivity/focus 种子 + invTurns。
 > - [x] **map** ✅（缺口①④）：6 业务域配色 + 7 视角叙事描述（ViewDef config 下发）。**余**②decision 对象本体化（Metric/KSF 已 spine）/③映射表 4 注册表段。
 > - [x] **audit** ✅（§4.5-A1/A2 口径 + C 时序/KSF 此前已落）：segTot 分母 + scoreH/M 22/7 + essShare 49/132（种子配置）；co-regress V6/F14/F20。**余** A3 verdict 4 态 + 9-kind timeline 逐字口径 + E01–E03 外部信号诊断。
-> - [ ] **dash**（最大缺口：约 6 卡 vs 八卡+台账+3DAG；9 区块；4→8 根因）。
+> - [ ] **dash**（最大缺口：约 6 卡 vs 八卡+台账+3DAG；9 区块；4→8 根因）。**待确认**：§4.5/§4.5★ 诚实标注——系统基地集（常州/合肥/西安/宜宾…）与 HTML（江门/枣庄/眉山/邯郸…）非同一套基地体系，产能项目命名（合肥四期/盐城二期 vs 枣庄线 Q4）不同；八卡 K4「江门齐套90」/K7「枣庄线 Q4」1:1 要求重播 BASES+AnnualScenario+ScenarioTrigger 命名体系——此种子层命名对齐会跨视图（capacity/quarter/planview）连锁，须人工确认是否以 HTML 命名为种子真相源。其余无依赖块（8 根因 ROOT_LIB/PROB_META、order_margin_contrib Σ勾稽、问题面板/3DAG）可独立推进。
 > - [ ] **risk**（targetHash 绝对目标位口径 + forecastStart + 逐日 tip/弹框/订单聚合/行动计划表）。
-> - [ ] **sop**（revBudget 248→240 口径 + 已补 P90/MRP/量价本利/版本对比）。
+> - [x] **sop** ✅（SOP.1–.4 面板前序已建；本轮数据 loop 精确化）：DemandSegment 三线精确种子（P90 66.5/45.2/11.1 保守下分位）+ MaterialBalance unit + 精确 MRP 缺口（654/0/222）+ finance_pnl SOP_FIN 精确（240/248,200.6/208.3,39.4/39.7）+ s2.rows.p90 后端透传 + revBudget 248→240 口径（达成率 103%）；cockpit 物料保障率 floor 92→95（齐套 94.6% C06 预警，正极 654 吨）+ 毛利率 actual 财务勾稽舍入一致。测 sop-frontend-1to1（P90/MRP/科目 240·248/版本）+ cockpit-rootcause + datacore 604/frontend 208。
 > - [ ] **quarter**（段头副标注 ✅；余 6 季精确值生成器校准 + 枣庄 CAPEX 项目种子）。
 > - [ ] **order / order-aggregate**（order_fullchain 已落；余 econTable + 细分维度）。
 > - [x] **model** ✅（缺口①③）：chem/pos 入 battery MODELS 种子；capacity_forecast 输出 nonProducible（不可产基地+reason 由 chem×kind 派生）+ totalBases/producibleCount；前端 ②可产网络收敛步显 N/总数 注解 + 不可产基地✗带派生原因（datacore+mock 同源，零写死）。测 model-producible ×2 + f18 ②收敛。**余** ②CSV 上传/模板（纯前端）+ ④对症对策表。
 > - [ ] **story**（inference DAG 已落 10 节点；余 projectTrace 投影 9 PlanStep→10 节点）。
-> 进度：4/12 完成（plan-generate/map/audit/model），结构性底座（aop/sop/order/inference 等前序已建）。数据 loop 纪律：精确值/文案入 battery 种子或 ViewDef config，前端零写死，过 debattery:check。
+> 进度：5/12 完成（plan-generate/map/audit/model/sop），结构性底座（aop/sop/order/inference 等前序已建）。数据 loop 纪律：精确值/文案入 battery 种子或 ViewDef config，前端零写死，过 debattery:check。

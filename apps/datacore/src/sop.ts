@@ -146,10 +146,13 @@ export class SopService {
       const target = num(s.target);
       const rolling = num(s.rolling);
       const dv = target === 0 ? 0 : round((rolling - target) / target, 4);
-      return { key: str(s.key), name: str(s.name, str(s.key)), target, rolling, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > threshold };
+      // PRD-IND-sop §4.3：三线对照新增「滚动 P90」列（需求预测下分位，payload 透传或缺省派生）。
+      const p90 = s.p90 != null ? num(s.p90) : round(rolling * 0.936, 2);
+      return { key: str(s.key), name: str(s.name, str(s.key)), target, rolling, p90, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > threshold };
     });
     const totalTarget = rows.reduce((a, r) => a + r.target, 0);
     const totalRolling = rows.reduce((a, r) => a + r.rolling, 0);
+    const totalP90 = round(rows.reduce((a, r) => a + r.p90, 0), 2);
     const totalDv = totalTarget === 0 ? 0 : round((totalRolling - totalTarget) / totalTarget, 4);
     for (const r of rows) {
       if (!r.flagged) continue;
@@ -161,7 +164,7 @@ export class SopService {
         });
       }
     }
-    v.steps.s2 = { rows, total: { target: totalTarget, rolling: totalRolling, dv: totalDv } };
+    v.steps.s2 = { rows, total: { target: totalTarget, rolling: totalRolling, p90: totalP90, dv: totalDv } };
     v.updatedAt = new Date().toISOString();
     await this.repos.sopVersions.put(v);
     return v;

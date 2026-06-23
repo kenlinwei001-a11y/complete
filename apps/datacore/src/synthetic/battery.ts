@@ -269,7 +269,8 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
         { n: "枣庄线认证爬坡风险", kind: "ramp", rule: "C23", why: "4680 高端线认证 T+20 若延期，高端储能供给出现缺口、只能回退外协兜底，外协费会吞掉混合型 +0.4pct 的毛利收益。认证里程碑必须像产能推演一样按时间窗挂牌监测、提前预判。", chain: [["认证 T+20 延期", "PLM 认证里程碑", "#E8B54A"], ["高端储能供给缺口", "枣庄一线产能", "#54B5C4"], ["回退外协兜底 · 外协费上升", "C08 外协占用", "#5E8FE8"], ["+0.4pct 毛利收益被吞噬", "方案收益", "#DD7E9E"]] }] },
     },
   },
-  sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 248 },
+  // PRD-IND-sop §4.5-5：收入预算口径=240（真预算 SOP_FIN[0].bud），滚动确认收入 248 → 达成率 248/240=103%（非 248/248=100%）。
+  sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 240 },
   // M11 校准算法层（PRD-addendum-m11-calibration §4）：可校准参数注册表 + 阈值/开关（场景包配置）。
   calibration: {
     alpha: 0.3, // 方法 A · EMA
@@ -433,6 +434,7 @@ const financePlanProps: PropertyDef[] = [
 const materialBalanceProps: PropertyDef[] = [
   { propKey: "matBalId", dataType: "string", isPrimaryKey: true },
   { propKey: "material", dataType: "string", isPrimaryKey: false }, // 三元正极/隔膜/电解液
+  { propKey: "unit", dataType: "string", isPrimaryKey: false }, // 吨/万㎡（MRP 表单位，PRD-IND-sop §4.4）
   { propKey: "netDemandTon", dataType: "number", isPrimaryKey: false },
   { propKey: "ltaPct", dataType: "number", isPrimaryKey: false }, // 长协覆盖(%)
   { propKey: "gapTon", dataType: "number", isPrimaryKey: false }, // 现货缺口(吨)
@@ -1315,33 +1317,28 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  // cockpit P1 绿地（独立子流 mulberry32(seed^hash("cockpit"))，不动既有字节流 → R6 向后兼容）。
-  const rngCk = mulberry32(seed ^ hashString("cockpit"));
+  // PRD-IND-sop §4.3 / PRD-IND-dash §4.1：三线对照精确种子（SOP_SEG + SEG_PRICE/MARGIN/FLOOR），
+  // P90 为保守下分位（< P50）；同 seed 字节一致（R6），前端三线/科目/台账同源（R-一致）。
   const SEGMENTS = [
-    { segment: "乘用车", price: 3.2, margin: 18, floor: 12 },
-    { segment: "储能", price: 2.1, margin: 11, floor: 8 },
-    { segment: "商用车", price: 4.6, margin: 15, floor: 10 },
+    { segment: "乘用车", tgt: 69.0, p50: 71.0, p90: 66.5, act: 66.8, price: 2.2, margin: 18, floor: 12 },
+    { segment: "储能", tgt: 45.0, p50: 49.0, p90: 45.2, act: 41.9, price: 1.4, margin: 13, floor: 11 },
+    { segment: "商用车", tgt: 13.6, p50: 12.0, p90: 11.1, act: 12.9, price: 1.8, margin: 15, floor: 11 },
   ];
-  const demandSegments = SEGMENTS.map((s, i) => {
-    const tgt = round(80 + rngCk() * 120, 1);
-    const p50 = round(tgt * (0.85 + rngCk() * 0.25), 1);
-    return {
-      segId: `dseg-${i + 1}`, segment: s.segment, tgt, p50,
-      p90: round(p50 * (1.08 + rngCk() * 0.1), 1),
-      act: round(p50 * (0.9 + rngCk() * 0.18), 1),
-      priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
-    };
-  });
-  const MAT = ["三元正极", "隔膜", "电解液"];
-  const materialBalances = MAT.map((m, i) => {
-    const netDemandTon = round(2000 + rngCk() * 6000, 0);
-    const ltaPct = round(60 + rngCk() * 35, 1);
-    return {
-      matBalId: `mbal-${i + 1}`, material: m, netDemandTon, ltaPct,
-      gapTon: round(Math.max(0, netDemandTon * (1 - ltaPct / 100)), 0),
-      etaDate: isoDate(Date.UTC(2026, 6, 1) + Math.floor(rngCk() * 60) * 86400000),
-    };
-  });
+  const demandSegments = SEGMENTS.map((s, i) => ({
+    segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt, p50: s.p50, p90: s.p90, act: s.act,
+    priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
+  }));
+  // PRD-IND-sop §4.4 SOP_MAT：MRP 净需求精确种子（缺口 = net×(1−lta/100)，C06 齐套口径）。
+  const MAT = [
+    { material: "三元正极", unit: "吨", net: 8180, lta: 92, eta: "2026-06-28" },
+    { material: "隔膜", unit: "万㎡", net: 2376, lta: 100, eta: "" },
+    { material: "电解液", unit: "吨", net: 5544, lta: 96, eta: "2026-06-25" },
+  ];
+  const materialBalances = MAT.map((m, i) => ({
+    matBalId: `mbal-${i + 1}`, material: m.material, unit: m.unit, netDemandTon: m.net, ltaPct: m.lta,
+    gapTon: round(Math.max(0, m.net * (1 - m.lta / 100)), 0),
+    etaDate: m.eta,
+  }));
   // 财务预算三线：收入=Σ收入细分、销售成本=收入-毛利、毛利=Σ毛利额（与 DemandSegment 交叉一致）。
   const totalRev = demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number), 0);
   const totalMargin = demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0);
@@ -1372,9 +1369,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const totalNet = materialBalances.reduce((s, m) => s + (m.netDemandTon as number), 0);
   const totalCovered = materialBalances.reduce((s, m) => s + (m.netDemandTon as number) * (m.ltaPct as number) / 100, 0);
   const metrics = [
-    { metricId: "kpi-margin", key: "gm_rate", name: "毛利率", level: "op", category: "profit", target: 16, actual: round(totalMargin / totalRev * 100, 1), floorVal: 13, unit: "%", weight: 0.4, ksfRef: "ksf-dem", ownerRef: "prin-fin", chainKey: "rc-profit-mix" },
+    { metricId: "kpi-margin", key: "gm_rate", name: "毛利率", level: "op", category: "profit", target: 16, actual: round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), floorVal: 13, unit: "%", weight: 0.4, ksfRef: "ksf-dem", ownerRef: "prin-fin", chainKey: "rc-profit-mix" },
     { metricId: "kpi-attain", key: "demand_attain", name: "需求达成率", level: "op", category: "scale", target: 100, actual: round(totalAct / totalTgt * 100, 1), floorVal: 95, unit: "%", weight: 0.3, ksfRef: "ksf-bal", ownerRef: "prin-plan", chainKey: "rc-scale-demand" },
-    { metricId: "kpi-material", key: "material_cov", name: "物料保障率", level: "op", category: "material", target: 100, actual: round(totalCovered / totalNet * 100, 1), floorVal: 92, unit: "%", weight: 0.3, ksfRef: "ksf-kit", ownerRef: "prin-supply", chainKey: "rc-material-gap" },
+    { metricId: "kpi-material", key: "material_cov", name: "物料保障率", level: "op", category: "material", target: 100, actual: round(totalCovered / totalNet * 100, 1), floorVal: 95, unit: "%", weight: 0.3, ksfRef: "ksf-kit", ownerRef: "prin-supply", chainKey: "rc-material-gap" },
   ];
   // cockpit P5 / sop：S&OP 版本演进 V1→V7（需求渐增、供给追赶、缺口收敛；V7 待定稿）。同源 totalRev/需求规模派生。
   const demBase = round(totalTgt, 0);

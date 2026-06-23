@@ -22,7 +22,8 @@ describe("SOP 前端 1:1（P90 列 / MRP 表 / 科目表 / 版本对比）", () 
     // ② 需求评审 → P90 列（取自 DemandSegment.p90）
     await user.click(screen.getByTestId("sop-step-chip-2"));
     await user.click(await screen.findByTestId("sop-run-2"));
-    await waitFor(() => expect(screen.getByTestId("sop-p90-com")).toHaveTextContent("13"));
+    // 商用车 P90 = 11.1（保守下分位，< P50 12.0；PRD-IND-sop §4.3 精确种子）
+    await waitFor(() => expect(screen.getByTestId("sop-p90-com")).toHaveTextContent("11"));
     expect(screen.getByTestId("sop-p90-total")).toBeInTheDocument();
 
     // ③ 供应评审 → 物料线 MRP 表（3 物料，三元正极缺口 654）
@@ -36,6 +37,9 @@ describe("SOP 前端 1:1（P90 列 / MRP 表 / 科目表 / 版本对比）", () 
     await user.click(await screen.findByTestId("sop-run-4"));
     const pnl = await screen.findByTestId("sop-pnl-table");
     expect(within(pnl).getByTestId("sop-pnl-row-毛利")).toBeInTheDocument();
+    // PRD-IND-sop §4.5-5：收入预算口径 240（真预算），滚动确认收入 248 → 达成率 103%
+    expect(within(pnl).getByTestId("sop-pnl-row-收入")).toHaveTextContent("240");
+    expect(within(pnl).getByTestId("sop-pnl-row-收入")).toHaveTextContent("248");
     expect(screen.getByTestId("sop-pnl-attr")).toHaveTextContent("储能占比");
 
     // ⑤ 高管会 → 版本演进对比（V7 待定稿）

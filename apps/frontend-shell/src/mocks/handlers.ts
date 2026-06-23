@@ -421,9 +421,9 @@ export const handlers = [
       rows = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"].map((m) => ({ id: `model-${m}`, props: { name: m } }));
     } else if (type === "DemandSegment") {
       rows = [
-        { segId: "dseg-1", segment: "乘用车", tgt: 69, p50: 71, p90: 78, act: 66.8 },
-        { segId: "dseg-2", segment: "储能", tgt: 45, p50: 49, p90: 54, act: 41.9 },
-        { segId: "dseg-3", segment: "商用车", tgt: 13.6, p50: 12, p90: 13, act: 12.9 },
+        { segId: "dseg-1", segment: "乘用车", tgt: 69, p50: 71, p90: 66.5, act: 66.8 },
+        { segId: "dseg-2", segment: "储能", tgt: 45, p50: 49, p90: 45.2, act: 41.9 },
+        { segId: "dseg-3", segment: "商用车", tgt: 13.6, p50: 12, p90: 11.1, act: 12.9 },
       ].map((r) => ({ id: r.segId, props: r }));
     } else if (type === "SopVersionRow") {
       // SOP.4 版本演进对比（V1/V3/V5/V7）
@@ -1677,9 +1677,9 @@ export const handlers = [
       return HttpResponse.json({
         data: {
           pnl: [
-            { subject: "收入", budget: 248, rolling: 243, diff: -5 },
-            { subject: "销售成本", budget: 207, rolling: 204, diff: -3 },
-            { subject: "毛利", budget: 41, rolling: 39, diff: -2 },
+            { subject: "收入", budget: 240, rolling: 248, diff: 8 },
+            { subject: "销售成本", budget: 200.6, rolling: 208.3, diff: 7.7 },
+            { subject: "毛利", budget: 39.4, rolling: 39.7, diff: 0.3 },
           ],
           gmRow: { budgetPct: 16.4, rollPct: 16.0, diffPp: -0.4 },
           attribution: "毛利率 16.4%→16.0%（-0.4pp）：储能占比 37% 结构拉低（单价/成本未恶化）",

@@ -20,7 +20,7 @@ const STATUS_BADGE: Record<SopVersionVM["status"], { label: string; cls: string 
 };
 
 /** KPI 条常数（battery solverParams.sop）：缺口红线 2 / 现金底线 50 / 收入预算 248 亿 */
-const SOP_KPI_P = { gapRed: 2, cashFloor: 50, revBudget: 248 };
+const SOP_KPI_P = { gapRed: 2, cashFloor: 50, revBudget: 240 }; // debattery-allow（PRD-IND-sop §4.5-5：真预算 240，兜底；workspace.sopConfig 优先）
 
 /** ② 需求评审默认三线（sopConfig.segments 缺失时的电池行业兜底；换租户经 WorkspaceConfig 下发）。 */
 const DEFAULT_SEGMENTS = [
