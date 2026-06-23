@@ -571,7 +571,8 @@ export function affectedOrdersAggregate(
     }
   }
 
-  const rows = [...byOrder.values()].sort((a, b) => (a.so < b.so ? -1 : 1));
+  // PRD-IND-order-aggregate §4.5-D：明细按交期升序（最早到期最先看），交期相同按订单号。
+  const rows = [...byOrder.values()].sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.so < b.so ? -1 : 1));
   const totalQty = round(rows.reduce((s, r) => s + r.qty, 0), 2);
   const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.model).key] ?? 0.6), 0), 2);
   const summary = { orderCount: rows.length, totalQty, custCount: new Set(rows.map((r) => r.cust)).size, revenue };

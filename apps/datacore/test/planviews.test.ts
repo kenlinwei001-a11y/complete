@@ -236,6 +236,17 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(rows.find((r) => r.objectKey === "AnnualScenario")!.sourceSystem).toBe("平台·计划域");
   });
 
+  it("order §4.5-D: affected_orders 聚合明细按交期升序（最早到期最先看）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = (await invokeSolver(t, "affected_orders", { fromDay: 0, toDay: 180 })).json() as {
+      data: { rows: { so: string; due: string }[] };
+    };
+    const dues = out.data.rows.map((r) => r.due);
+    expect(dues.length).toBeGreaterThan(1);
+    expect([...dues].sort()).toEqual(dues); // 交期字符串升序 = dueDay 升序
+  });
+
   it("§4.5-③: mapping/registries 四注册表段（关系类型←本体 / 规则←规则库 / Action·事件←静态种子）", async () => {
     const t = await makeApp();
     await seedBattery(t);
