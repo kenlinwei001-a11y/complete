@@ -537,6 +537,15 @@ export const zh = {
       },
     },
   },
+  boundary: {
+    title: "边界册治理（单一来源 + 影响图）",
+    sub: "基地/应用细分/规划目标阈值的单一来源册——改某条业务常数会波及谁（回答「改 X 影响什么」）。册为 @platform/contracts 单一来源，改值=改代码经 boundary-singlesource 门。",
+    versionTitle: "版本指纹（改值留痕 / 缓存失效锚）",
+    consumers: "派生消费端",
+    consumersNote: "boundary-singlesource 门强制其从册派生、不内联",
+    derivesVia: "派生方式",
+    downstream: "下游受影响面",
+  },
   admin: {
     connections: {
       title: "数据接入控制台",

@@ -51,6 +51,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   // A18.4 求解器审核台：审 PROVISIONAL 临时求解器 → 晋升 GOVERNED（解锁写真值，R4）
   { path: "solver-review", label: zh.nav.solverReview, roles: ["admin"] },
   { path: "meta", label: "系统自我", roles: ["admin"] },
+  { path: "boundary", label: "边界册治理", roles: ["admin"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */
@@ -81,7 +82,7 @@ export interface AdminNavGroup {
 
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
-  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "meta"] },
+  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "meta", "boundary"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },

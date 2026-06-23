@@ -1161,6 +1161,7 @@ export class SyntheticService {
       { key: "synthetic", label: "合成数据" },
       { key: "actions", label: "Action 审批" },
       { key: "features", label: "功能开通" },
+      { key: "boundary", label: "边界册治理" },
       { key: "catalog", label: "意图目录" },
       { key: "agents", label: "Agent 注册表" },
       { key: "workflows", label: "Workflow" },

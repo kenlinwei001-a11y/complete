@@ -843,3 +843,19 @@ export const fetchMetaOntology = () => api.a<{ total: number; byKind: Record<str
 export const fetchMetaImpact = (node: string) => api.a<MetaImpact>(`/a/v1/meta/impact?node=${encodeURIComponent(node)}`);
 export const fetchMetaAccessPolicy = () => api.a<{ tenantId: string; roles: string[] }>("/a/v1/meta/access-policy");
 export const setMetaAccessPolicy = (roles: string[]) => api.a<{ tenantId: string; roles: string[] }>("/a/v1/meta/access-policy", { method: "PUT", body: { roles } });
+
+// DF.12 边界册治理面板：单一来源册影响图（改 X 波及谁）+ 版本指纹（改值留痕）。
+export interface BoundaryImpactRow {
+  registry: string;
+  title: string;
+  members: number;
+  consumers: { file: string; binding: string; derivesVia: string }[];
+  downstream: string[];
+}
+export interface BoundaryVersionVM {
+  semver: string;
+  digest: string;
+  registries: { registry: string; members: number; digest: string }[];
+}
+export const fetchBoundaryImpact = () => api.a<{ impact: BoundaryImpactRow[]; registries: string[] }>("/a/v1/boundary/impact");
+export const fetchBoundaryVersion = () => api.a<BoundaryVersionVM>("/a/v1/boundary/version");

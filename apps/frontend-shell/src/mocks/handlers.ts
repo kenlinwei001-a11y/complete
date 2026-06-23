@@ -1,5 +1,6 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import type { PlanStep, Scenario } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -346,6 +347,9 @@ export const handlers = [
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
     return HttpResponse.json(LIVED_WATERMARK);
   }),
+  // DF.12 边界册治理：影响图 + 版本（直接派生 contracts 单一来源，与真后端同源）。
+  http.get("*/a/v1/boundary/impact", () => HttpResponse.json({ impact: BOUNDARY_IMPACT, registries: BOUNDARY_IMPACT.map((b) => b.registry) })),
+  http.get("*/a/v1/boundary/version", () => HttpResponse.json(boundaryVersion())),
 
   // ---- Entitlement ----
   http.get("*/a/v1/features/registry", () => HttpResponse.json(FEATURE_REGISTRY)),
