@@ -327,3 +327,19 @@
 - ✅ A6（拟真值域 + 越线植入；全服务 e2e 跑通，仅余 A6.3 电池内部收编=可选，电池字节已保持）。
 - ◐ A3（A3.3 规划器 + A3.1 14 域注册表 + A3.4 索引复用 + A3.2 两库 **均 done**；仅余 A3.1 参考本体基线 95 节点，低优先 → A3 核心能力链已闭合）。
 - 下一步：A3 核心已闭合（域→规划器→索引→两库）；可进 **Wave 2**（A1 求解器→MCP / A8 CP-SAT / A13 地板语义 / A4 对象浏览器），或补 A6 尾巴 / A3.1 参考基线。A16 决策已定可排期。
+
+---
+
+> **2026-06-23 工业级 1:1 PRD 包（industrial-prd-pack，12 视图）· 逐视图字段级落地 + 完整数据 loop（值入种子配置，非写死）**
+> 黄金样板 plan-generate 已完成。逐视图推进（每项数据走管线 R14、同 seed 字节一致 R6、可溯 R13；改 planview 口径须跨视图同回归）：
+> - [x] **plan-generate** ✅（黄金样板）：取值对齐 + §4.4 方案选择 + extSensitivity/focus 种子 + invTurns。
+> - [x] **map** ✅（缺口①④）：6 业务域配色 + 7 视角叙事描述（ViewDef config 下发）。**余**②decision 对象本体化（Metric/KSF 已 spine）/③映射表 4 注册表段。
+> - [x] **audit** ✅（§4.5-A1/A2 口径 + C 时序/KSF 此前已落）：segTot 分母 + scoreH/M 22/7 + essShare 49/132（种子配置）；co-regress V6/F14/F20。**余** A3 verdict 4 态 + 9-kind timeline 逐字口径 + E01–E03 外部信号诊断。
+> - [ ] **dash**（最大缺口：约 6 卡 vs 八卡+台账+3DAG；9 区块；4→8 根因）。
+> - [ ] **risk**（targetHash 绝对目标位口径 + forecastStart + 逐日 tip/弹框/订单聚合/行动计划表）。
+> - [ ] **sop**（revBudget 248→240 口径 + 已补 P90/MRP/量价本利/版本对比）。
+> - [ ] **quarter**（段头副标注 ✅；余 6 季精确值生成器校准 + 枣庄 CAPEX 项目种子）。
+> - [ ] **order / order-aggregate**（order_fullchain 已落；余 econTable + 细分维度）。
+> - [ ] **model**（~70% 成；缺口①nonProducible 收敛标注 + ②CSV 上传/模板 + ③chem/pos 种子 + ④对症对策表）。
+> - [ ] **story**（inference DAG 已落 10 节点；余 projectTrace 投影 9 PlanStep→10 节点）。
+> 进度：3/12 完成（plan-generate/map/audit），结构性底座（aop/sop/order/inference 等前序已建）。数据 loop 纪律：精确值/文案入 battery 种子或 ViewDef config，前端零写死，过 debattery:check。
