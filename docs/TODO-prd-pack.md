@@ -333,7 +333,7 @@
 > **2026-06-23 工业级 1:1 PRD 包（industrial-prd-pack，12 视图）· 逐视图字段级落地 + 完整数据 loop（值入种子配置，非写死）**
 > 黄金样板 plan-generate 已完成。逐视图推进（每项数据走管线 R14、同 seed 字节一致 R6、可溯 R13；改 planview 口径须跨视图同回归）：
 > - [x] **plan-generate** ✅（黄金样板）：取值对齐 + §4.4 方案选择 + extSensitivity/focus 种子 + invTurns。
-> - [x] **map** ✅（缺口①④）：6 业务域配色 + 7 视角叙事描述（ViewDef config 下发）。**余**②decision 对象本体化（Metric/KSF 已 spine）/③映射表 4 注册表段。
+> - [x] **map** ✅（缺口①③④）：6 业务域配色 + 7 视角叙事描述 + **③映射表四注册表段**（关系类型←OntologyLink / 规则←规则库 / Action·事件←静态种子；`GET /a/v1/ontology/mapping/registries` + MappingRegistriesSchema + MappingOverlay 4 分段表）。测 planviews §4.5-③ + f27。**余**②decision 对象本体化（Metric/KSF 已 spine，余 Problem/PlanOption/RiskTimeline 一等节点，触 ontology 计数）。
 > - [x] **audit** ✅（§4.5-A1/A2 口径 + C 时序/KSF 此前已落）：segTot 分母 + scoreH/M 22/7 + essShare 49/132（种子配置）；co-regress V6/F14/F20。**余**（A3 verdict 4 态 ✅本轮）：verdict 状态机 3 态（按分数）→ 4 态（按 H/M 计数：站不住 / 可定稿但有重要风险 / 可定稿·关注 N 项风险 / 全部通过·可直接定稿），契约枚举同步扩 + 前端 4 态色板（站不住红/重要黄/关注青/全通过绿）+ 展示插入 M 计数；datacore+mock 同源。测 solvers V6（站不住）+ attribution-routing + f14（三处 verdict）。**仍余** 9-kind audit_timeline 求解器（逐日 series）+ E01–E03 外部信号诊断项（会移 M 计数，需联动 f14 回归）+ 每项 kind 标注。
 > **命名体系裁决（2026-06-23 用户拍板）：以 HTML 参考原型为单一真相源。**
 > - [x] CAPEX 情景项目命名对齐 ✅：枣庄储能线 / 江门动力线（datacore capexScenario 已对齐前端 mock；c2c3 测更新）。

@@ -70,7 +70,7 @@ import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
 import { buildDataHealth } from "./datahealth.js";
-import { buildMappingRows } from "./mapping.js";
+import { buildMappingRows, buildMappingRegistries } from "./mapping.js";
 import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH, BUSINESS_DOMAINS } from "./graphmeta.js";
 import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
@@ -1763,6 +1763,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/ontology/mapping", async (req) => {
     const c = ctx(req);
     return buildMappingRows(repos, c.tenantId);
+  });
+  // PRD-IND-map §4.5-③：映射表四注册表段（关系类型 / 规则 / Action / 事件）。
+  app.get("/a/v1/ontology/mapping/registries", async (req) => {
+    const c = ctx(req);
+    return buildMappingRegistries(repos, c.tenantId);
   });
   // 能力发现与路由 §1：资源目录（discover 供给侧；权限/功能开通过滤）
   app.get("/a/v1/catalog", async (req) => {

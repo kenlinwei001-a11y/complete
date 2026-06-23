@@ -115,6 +115,15 @@ export const MappingRowSchema = z.object({
 });
 export type MappingRow = z.infer<typeof MappingRowSchema>;
 
+// PRD-IND-map §4.4/§4.5-③：映射表四注册表段（关系类型 / 规则 / Action / 事件）。
+export const MappingRegistriesSchema = z.object({
+  linkTypes: z.array(z.object({ key: z.string(), fromType: z.string(), toType: z.string(), cardinality: z.string() })),
+  rules: z.array(z.object({ key: z.string(), expression: z.string(), scope: z.string(), severity: z.string() })),
+  actions: z.array(z.object({ name: z.string(), params: z.string(), check: z.string(), target: z.string(), perm: z.string() })),
+  events: z.array(z.object({ name: z.string(), window: z.string(), affects: z.string(), source: z.string() })),
+});
+export type MappingRegistries = z.infer<typeof MappingRegistriesSchema>;
+
 /** M11 校准增量（PRD-addendum-m11-calibration）：方法/证据/paramRef —— 全部 ADDITIVE。 */
 export const CalibrationMethodSchema = z.enum(["EMA", "REPLAY_ATTRIBUTION", "QUANTILE"]);
 export type CalibrationMethod = z.infer<typeof CalibrationMethodSchema>;

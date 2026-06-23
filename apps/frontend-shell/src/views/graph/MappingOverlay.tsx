@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { MappingRow } from "@platform/contracts";
-import { fetchOntologyMapping, fetchRules } from "@/api/endpoints";
+import { fetchOntologyMapping, fetchRules, fetchMappingRegistries } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
 import { buildMappingCsv, buildMappingHtml, downloadBlob, lineageSummary } from "./mappingExport";
 import zh from "@/locales/zh";
@@ -17,6 +17,7 @@ export function MappingOverlay({ packageId, onClose, onLocate }: { packageId: st
     queryFn: () => fetchOntologyMapping(packageId),
   });
   const { data: rules } = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules });
+  const { data: registries } = useQuery({ queryKey: ["a", "mapping-registries", {}], queryFn: fetchMappingRegistries });
   const [openRule, setOpenRule] = useState<string | null>(null);
 
   const domains = [...new Set((rows ?? []).map((r) => r.domain))];
@@ -73,6 +74,19 @@ export function MappingOverlay({ packageId, onClose, onLocate }: { packageId: st
                 ))}
               </tbody>
             </table>
+            {/* PRD-IND-map §4.5-③：四注册表段（关系类型 / 规则 / Action / 事件） */}
+            {registries && (
+              <div data-testid="mapping-registries">
+                <RegistrySection testId="reg-link" title={zh.mapping.regLinkTypes} cols={[zh.mapping.regColLink, zh.mapping.regColFrom, zh.mapping.regColTo, zh.mapping.regColCard]}
+                  rows={registries.linkTypes.map((r) => [r.key, r.fromType, r.toType, r.cardinality])} keyOf={(r) => r[0]!} />
+                <RegistrySection testId="reg-rule" title={zh.mapping.regRules} cols={[zh.mapping.regColRule, zh.mapping.regColExpr, zh.mapping.regColScope, zh.mapping.regColSev]}
+                  rows={registries.rules.map((r) => [r.key, r.expression, r.scope, r.severity])} keyOf={(r) => r[0]!} />
+                <RegistrySection testId="reg-action" title={zh.mapping.regActions} cols={[zh.mapping.regColAct, zh.mapping.regColParams, zh.mapping.regColCheck, zh.mapping.regColTarget, zh.mapping.regColPerm]}
+                  rows={registries.actions.map((r) => [r.name, r.params, r.check, r.target, r.perm])} keyOf={(r) => r[0]!} />
+                <RegistrySection testId="reg-event" title={zh.mapping.regEvents} cols={[zh.mapping.regColEvent, zh.mapping.regColWindow, zh.mapping.regColAffects, zh.mapping.regColSrc]}
+                  rows={registries.events.map((r) => [r.name, r.window, r.affects, r.source])} keyOf={(r) => r[0]!} />
+              </div>
+            )}
             <div className={styles.foot}>{zh.mapping.footnote}</div>
           </div>
         )}
@@ -129,5 +143,30 @@ function DomainGroup({
         </tr>
       ))}
     </>
+  );
+}
+
+/** 注册表段（关系类型 / 规则 / Action / 事件）：标题 + 列头 + 行。 */
+function RegistrySection({ testId, title, cols, rows, keyOf }: { testId: string; title: string; cols: string[]; rows: string[][]; keyOf: (r: string[]) => string }) {
+  return (
+    <div style={{ marginTop: 16 }} data-testid={`mapping-${testId}`}>
+      <div className="section-title" style={{ fontSize: 13 }}>
+        {title} <span className="mono" style={{ color: "var(--muted2)", fontSize: 11 }}>（{rows.length}）</span>
+      </div>
+      <table className="cmp" data-testid={`mapping-${testId}-table`}>
+        <thead>
+          <tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={keyOf(r)} data-testid={`mapping-${testId}-row-${keyOf(r)}`}>
+              {r.map((cell, i) => (
+                <td key={i} className={i === 0 ? "mono" : "zh"}>{i === 0 ? <b>{cell}</b> : cell || "—"}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

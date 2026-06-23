@@ -71,6 +71,27 @@ describe("F27 · 业务建模映射表（§7.20 图谱内功能）", () => {
     ]);
   });
 
+  it("四注册表段（PRD-IND-map §4.5-③）：关系类型/规则/Action/事件分段表渲染", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/graph");
+    await user.click(await screen.findByTestId("graph-mapping-btn"));
+    await screen.findByTestId("mapping-table");
+
+    const regs = await screen.findByTestId("mapping-registries");
+    // 4 段都在
+    expect(within(regs).getByTestId("mapping-reg-link-table")).toBeInTheDocument();
+    expect(within(regs).getByTestId("mapping-reg-rule-table")).toBeInTheDocument();
+    expect(within(regs).getByTestId("mapping-reg-action-table")).toBeInTheDocument();
+    expect(within(regs).getByTestId("mapping-reg-event-table")).toBeInTheDocument();
+    // Action 注册表逐字（采纳产能保障方案 + C10 审批人）
+    expect(within(regs).getByTestId("mapping-reg-action-row-采纳产能保障方案")).toHaveTextContent("生产工单MO");
+    // 事件对象表（到货间隙 ← WMS/ERP）
+    expect(within(regs).getByTestId("mapping-reg-event-row-到货间隙")).toHaveTextContent("WMS/ERP");
+    // 关系类型（model_producible_at N:N）
+    expect(within(regs).getByTestId("mapping-reg-link-row-model_producible_at")).toHaveTextContent("N:N");
+  });
+
   it("导出 CSV 与自包含 HTML（标题/导出时间/同源脚注）内容抽查", async () => {
     const user = userEvent.setup();
     const dl = captureDownloads();

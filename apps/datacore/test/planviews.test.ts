@@ -4,6 +4,7 @@ import {
   AopResponseSchema,
   GraphOptionsSchema,
   MappingRowSchema,
+  MappingRegistriesSchema,
   OrderProblemGroupSchema,
   QuarterlyResponseSchema,
 } from "@platform/contracts";
@@ -233,6 +234,25 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(rows.filter((r) => r.kind === "agent").map((r) => r.displayName)).toContain("学习Agent");
     // 计划域对象也在映射表（源系统 = 平台·计划域）
     expect(rows.find((r) => r.objectKey === "AnnualScenario")!.sourceSystem).toBe("平台·计划域");
+  });
+
+  it("§4.5-③: mapping/registries 四注册表段（关系类型←本体 / 规则←规则库 / Action·事件←静态种子）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/ontology/mapping/registries", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const reg = MappingRegistriesSchema.parse(res.json());
+    // 关系类型来自真实 OntologyLink（含 model_producible_at N:N）
+    expect(reg.linkTypes.length).toBeGreaterThan(0);
+    expect(reg.linkTypes.find((l) => l.key === "model_producible_at")?.cardinality).toBe("N:N");
+    // 规则来自规则库（含 C03，级别中文化），按 key 升序
+    expect(reg.rules.some((r) => r.key === "C03")).toBe(true);
+    expect(["阻断", "告警", "提示"]).toContain(reg.rules[0]!.severity);
+    expect([...reg.rules].sort((a, b) => (a.key < b.key ? -1 : 1)).map((r) => r.key)).toEqual(reg.rules.map((r) => r.key));
+    // Action 4 行 + 事件 3 行（静态种子逐字）
+    expect(reg.actions.map((a) => a.name)).toEqual(["采纳产能保障方案", "预警处置方案", "调整排产分配", "定稿月度计划版本"]);
+    expect(reg.events.map((e) => e.name)).toEqual(["检修窗口", "交付高峰", "到货间隙"]);
+    expect(reg.actions[0]!.check).toContain("C10");
   });
 
   it("F25/§7.18: 图谱边带 kind；八视角 ViewConfig 下发；学习闭环 nodeFilter.ids 全部存在", async () => {

@@ -744,6 +744,31 @@ export const handlers = [
     const n = Math.min(Number(url.searchParams.get("n") ?? "6") || 6, QUARTERLY_RESPONSE.rows.length);
     return HttpResponse.json({ ...QUARTERLY_RESPONSE, rows: QUARTERLY_RESPONSE.rows.slice(0, n) });
   }),
+  http.get("*/a/v1/ontology/mapping/registries", () =>
+    HttpResponse.json({
+      linkTypes: [
+        { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
+        { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
+        { key: "line_belongs_to_base", fromType: "Line", toType: "Base", cardinality: "1:N" },
+      ],
+      rules: [
+        { key: "C03", expression: "weeklySupply.p90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
+        { key: "C06", expression: "kitCoverDays >= 5", scope: "MaterialBalance", severity: "阻断" },
+        { key: "C15", expression: "marginPct >= floorPct", scope: "Order", severity: "告警" },
+      ],
+      actions: [
+        { name: "采纳产能保障方案", params: "型号 / 需求量 / 交期 / 调参组合(夜班·通道·外协)", check: "C03 上限校验 · C08 外协红线 · 需含审批人(C10)", target: "生产工单MO（写回）", perm: "发起:规划员 · 审批:生产计划部" },
+        { name: "预警处置方案", params: "基地 / 风险对象 / 方案编号 / 起效时间", check: "C06 齐套冻结 · C11 错峰评审", target: "处置工单（写回）+ 风险曲线消解", perm: "发起:基地负责人 · 审批:生产计划部" },
+        { name: "调整排产分配", params: "订单 / 基地分配比例 / 生效周", check: "C04 仅认证产线 · C01 产线上限", target: "排产计划（写回）", perm: "发起:计划员 · 审批:基地负责人" },
+        { name: "定稿月度计划版本", params: "计划版本号 / 三张评审表快照 / 高管决议", check: "C21 差异已提报 · C18 现金安全垫 · C22 定稿后锁定", target: "月度S&OP版本（定稿+锁定）", perm: "发起:S&OP主持人 · 审批:经营决策会" },
+      ],
+      events: [
+        { name: "检修窗口", window: "每基地年度检修周（如常州第8周）", affects: "设备OEE / 产线负载率 +14", source: "EAM/CMMS 检修计划" },
+        { name: "交付高峰", window: "订单交期聚集日 ±3天", affects: "产线负载率 / 人力工时 +9", source: "S&OP 订单交期" },
+        { name: "到货间隙", window: "采购批次周期(≈14天)末端", affects: "物料供给齐套 / 物流在途 +10", source: "WMS/ERP 采购批次" },
+      ],
+    }),
+  ),
   http.get("*/a/v1/ontology/mapping", () => HttpResponse.json(MAPPING_ROWS)),
   http.get("*/a/v1/calibration/report", ({ request }) => {
     const url = new URL(request.url);

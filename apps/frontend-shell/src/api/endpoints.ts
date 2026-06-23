@@ -501,6 +501,7 @@ import {
   type CalibrationReport,
   type DataHealthResponse,
   type MappingRow,
+  type MappingRegistries,
   type SolverArtifact,
 } from "@platform/contracts";
 
@@ -512,6 +513,8 @@ export const fetchQuarterly = async (from: string, n = 6): Promise<QuarterlyResp
 
 export const fetchOntologyMapping = (packageId: string) =>
   api.a<MappingRow[]>(`/a/v1/ontology/mapping?packageId=${encodeURIComponent(packageId)}`);
+
+export const fetchMappingRegistries = () => api.a<MappingRegistries>(`/a/v1/ontology/mapping/registries`);
 
 export const fetchCalibrationReport = async (filters: { objectType?: string; baseId?: string; solverKey?: string }): Promise<CalibrationReport> => {
   const params = new URLSearchParams();
