@@ -11,7 +11,8 @@ import { num, str, type SolverContext, type SolverParamsShape } from "./types.js
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
 import type { LlmClient } from "../llm.js";
-import { generateSolverDraft, type SolverGenSpec } from "./llm-gen.js";
+import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-gen.js";
+import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
@@ -186,8 +187,15 @@ export class SolverService {
    */
   async generateProvisionalSolver(ctx: AuthCtx, spec: SolverGenSpec): Promise<SolverArtifact> {
     if (!this.llm) throw validationError("LLM 未注入，无法生成临时求解器（A18.2 需配 comprehend provider）");
-    const draft = await this.generateDraftWithSchema(ctx, spec);
-    return this.registerProvisionalSolver(ctx, spec.key, draft);
+    // DF.8 接地：业务词表（基地/细分实例名）注入生成 + 注册前越界校验，使生成不造业务事实。
+    const vocab = this.groundingVocab();
+    const draft = await this.generateDraftWithSchema(ctx, { ...spec, vocab });
+    return this.registerProvisionalSolver(ctx, spec.key, draft, { vocab });
+  }
+
+  /** DF.8 已发布业务词表（基地名 + 细分名），供生成接地校验。 */
+  private groundingVocab(): string[] {
+    return [...BASE_REGISTRY.map((b) => b.name), ...SEG_REGISTRY.map((s) => s.seg)];
   }
 
   private async generateDraftWithSchema(ctx: AuthCtx, spec: SolverGenSpec): Promise<SolverGenDraft> {
@@ -199,8 +207,8 @@ export class SolverService {
     return generateSolverDraft(this.llm!, spec, { tenantId: ctx.tenantId });
   }
 
-  /** 冻结 + 沙箱跑通自检 + 注册（纯逻辑，确定性；draft 已由 LLM 产出/或测试直供）。 */
-  async registerProvisionalSolver(ctx: AuthCtx, key: string, draft: SolverGenDraft): Promise<SolverArtifact> {
+  /** 冻结 + 接地校验 + 沙箱跑通自检 + 注册（纯逻辑，确定性；draft 已由 LLM 产出/或测试直供）。 */
+  async registerProvisionalSolver(ctx: AuthCtx, key: string, draft: SolverGenDraft, opts: { vocab?: string[] } = {}): Promise<SolverArtifact> {
     const hash = createHash("sha256").update(draft.computeSource).digest("hex").slice(0, 16);
     const prior = (await this.repos.solverArtifacts.list(ctx.tenantId, (a) => a.key === key)).sort((a, b) => b.version - a.version)[0];
     const version = prior ? prior.version + 1 : 1;
@@ -218,6 +226,18 @@ export class SolverService {
       createdBy: ctx.userId,
       createdAt: new Date().toISOString(),
     };
+    // DF.8 接地校验（沙箱前）：computeSource 引用了边界外业务实体（编造的基地/型号名）→ 直接 UNREGISTERED。
+    const groundingViolations = opts.vocab ? checkGrounding(draft.computeSource, opts.vocab) : [];
+    if (groundingViolations.length > 0) {
+      const artifact: SolverArtifact = {
+        ...base,
+        status: "UNREGISTERED",
+        trustLevel: "UNVERIFIED",
+        rejectReason: `接地校验失败：引用边界外业务实体 [${groundingViolations.join(", ")}]（实体只能取自已发布业务词表，禁止编造）`,
+      };
+      await this.repos.solverArtifacts.put(artifact);
+      return artifact;
+    }
     // 跑通自检：用本租户对象图样例 ctx + 空 args 在沙箱执行，输出须为对象。
     const sampleCtx = await this.buildSandboxCtx(ctx.tenantId);
     const probe = await runSolverSandbox(draft.computeSource, sampleCtx, {}, { timeoutMs: 1500 });

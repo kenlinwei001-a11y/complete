@@ -9,7 +9,8 @@
 > - 联动断点 **G-5/G-8**；落地后回写本体 §2.A + §8 + §4 + §5 R16。
 > - **DF.1 已落（BASES 单一来源）✅**：`@platform/contracts/base-registry.ts BASE_REGISTRY`（12 基地全字段并集，HTML 命名）；datacore `battery.ts` + 前端 `fixtures.ts`/`simSolvers.ts` 三端 `BASE_REGISTRY.map` 派生（R6 字节复现）；新门 `boundary-singlesource:check`。
 > - **DF.2/DF.3 已落（SEG 单一来源）✅**：`SEG_REGISTRY`（乘/储/商 价 2.2/1.4/1.8 · 利 18/13/15 · 底 12/11/11 · 配色）。**DF.3a 字节复现搬家**：battery SEGMENTS price/margin/floor + audit.segMargins + 前端 OrderChainView ECON/SEG_COLOR + simSolvers AUDIT_T.segMargins 全改 SEG_REGISTRY 派生。**DF.3b 营收口径统一（PRD order §4.5-C，值变非搬家）**：risk.ts `SEG_PRICE {0.6/0.55/0.5}`→原型 2.2/1.4/1.8，affectedOrders summary.revenue 与 order econTable 同源一致（无测试钉旧值，安全）。门扩 SEG。**datacore 607 + frontend 214 + gates 全绿。漂移根因 a 在 BASES+SEG 上已根治。**
-> - 余 DF.5/6/8（接地地基+核心：语义目录 description / VIEW_DEFS.outputFields 拉取靶 / llm-gen 接地 hook）——PRD 真论点"生成不造业务事实"，下一阶段。
+> - **DF.8 已落（生成接地 hook · PRD 核心论点）✅**：`llm-gen.ts` 注入业务词表（BASE_REGISTRY/SEG_REGISTRY 实例名）+ `checkGrounding` 确定性越界校验（窄规则：CJK 实体后缀 基地/产线/工厂 字面量不在词表→越界，不误伤单位/状态/工序文案）；`registerProvisionalSolver` 注册前校验，编造基地名→`UNREGISTERED`+接地 rejectReason（**使现有 A18 生成从"能引真类型"升到"不造业务事实"**，与沙箱正交）。测 grounding-hook ×3（纯函数窄规则 + 编造拒 + 真实过）+ a18 backward-compat。**datacore 610 + gates（含 provisional-honesty）全绿。**
+> - 余 DF.5（语义目录 description+catalog/search）· DF.6（VIEW_DEFS.outputFields 拉取靶，需配 consumer）· DF.4（审计阈值/ORDER 等剩余硬编码迁 boundary）· DF.9（HARD/SOFT 真人正门，接 agentcore growth）。**回写本体 §2.H（A18+接地）/§8 G-5（收窄）/§2.A（GenerationBoundary）待 DF 簇收口一并做。**
 
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
 > **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。
