@@ -1,12 +1,12 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
-> **2026-06-23 · 自驱动 QOS 数据底座（PRD-self-driving-qos-data-foundation）· 评审落档 + 开发顺序**
-> 评审结论（详见 `docs/PRD-self-driving-qos-data-foundation.md`，**已按用户提醒纠正**）：方向通过，**按增量融合推进**。
-> - **纠正**：Part C/D 只有*机制*（A18 沙箱/promote、自成长 LOOP/ledger）；**缺的是 PRD 核心论点 Part A 接地层**——实测 5 项即便本分支也没有：①生成接地（llm-gen 仅注入类型 schema、可造业务事实）②语义目录(description+catalog/search)③拉取靶 keystone(VIEW_DEFS.outputFields)④精确数据请求正门(fill-data 是自动合成非反推工单)⑤A/B 归一+需求可溯(§EV)。**现有 growth 是无边界生成。**
-> - **Part A 是让 C/D 安全/非编造的前置地基 + 对症 G-5**（单一来源根治根因 a，影响图使根因 b 可分析）。
-> - **开发顺序 DF.0–DF.15（grounding 为脊柱）**：P0 = DF.0 对账 + DF.1 单一来源 keystone + DF.2/3 提升 BASES/SEG（灭根因 a）；紧接 **DF.5 目录 + DF.6 拉取靶 + DF.8 接地 hook**（PRD 真论点：生成不造业务事实，不可后置）。守 R6 + 全绿不回潮。
-> - **逐句 grep 核实账本（§2.2，治理铁律 ~25% 误判唯 grep 可信）**：PRD 自身 + 我前两版都有错——PRD Part D 大面积落点错（growth.ts 已存在/搞错服务[实在 agentcore 非 datacore]/迁移 014 撞车/锚点不存在/BP-4 误报没建[slots.ts+orchestrator 已接线]）；**照字面自包含建会撞车+双实现**。grep-verified 真缺口仅 5 项：①生成接地 ②语义目录 ③outputFields 拉取靶 ④精确数据请求正门 ⑤A/B归一+需求可溯。**DF.13 BP-4 已 grep 否决（删）**；Part D 增量全接 agentcore 既有 growth、不新建。
-> - 联动断点 **G-5**；落地后回写本体 §2.A + §8。
+> **2026-06-23 · 生成接地层 GenerationBoundary（v1.0 落档）· 评审 + 开发顺序**
+> **施工以 `docs/PRD-generation-boundary-grounding.md`（v1.0 + 勘误注）为准**；`docs/PRD-self-driving-qos-data-foundation.md` 保留为更宽的 self-driving-QOS 分析底稿。
+> - **核心论点（grep-verified 站得住）**：R16 倒序发育 + A18/自成长生成机制已落，但**无业务接地**（`llm-gen.ts:12/26/31` 仅注入类型 schemaText → 能引真类型却可编造业务事实）。Part A 接地层（业务词表硬/软 + 语义目录 + 拉取靶）= 让生成不造假 ⊕ 单一来源根治 battery.ts 硬编码（G-5/R14）。
+> - **grep-verified 真缺口 5 项**：①生成接地 ②语义目录(description+catalog/search) ③拉取靶 VIEW_DEFS.outputFields ④精确数据请求正门 ⑤A/B归一+需求可溯。
+> - **v1.0 勘误（3 处同类锚点错，落地前必改，详见落档勘误注）**：🔴 migration `024`→**`026`**（024=solver_artifacts 已占）· 🔴 HARD/SOFT 分流锚点 `datacore/growth/loop.ts`→**`agentcore/growth/loop.ts`**（growth LOOP 在 agentcore；datacore 只有 app.ts:1036 fill-data）· 🟠 **BP-4 已建**（orchestrator:295/438 + slots.ts:123）→ DF.13 删，不预先开发。
+> - **开发顺序 DF.0–DF.16（grounding 为脊柱）**：P0 = DF.0 对账 + DF.1 单一来源 keystone（battery→boundary 字节一致 R6 + `boundary-singlesource:check` 门）+ DF.2/3 提升 BASES/SEG；紧接 **DF.5 目录 + DF.6 拉取靶 + DF.8 接地 hook**（不可后置）。**migration 用 026、growth 分流认 agentcore、不做 BP-4。**
+> - 联动断点 **G-5/G-8**；落地后回写本体 §2.A + §8 + §4 + §5 R16。
 
 > **2026-06-22 新包 `decision-platform-prd-pack.zip`（78 PRD）已研判**：绝大多数是已交付特性的 PRD 文档（A1–A18 / spine / 1:1 复刻 / empty-response-guard=W0 已做 / gap-fill=W4 / synthetic-wizard=W5）——`data-closure-spec` 与本仓 docs/ 字节一致。
 > **真正新增需求 = "驾驶舱问'本月未达成原因'端到端答不出"闭合增量（CL 簇，7 PRD 依赖链）+ 3 独立件**。逐环修复后空租户也能端到端答出（达成率/偏差/逐日时间归因）。诚实边界：缺任一环都会卡在对应断点。

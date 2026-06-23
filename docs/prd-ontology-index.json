@@ -752,6 +752,31 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-generation-boundary-grounding.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R12",
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/growth/loop.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/growth/loop.ts"
+      ]
+    },
     "PRD-generic-inference.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1211,6 +1236,7 @@
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
       "PRD-fullstack-story-build-g8.md",
+      "PRD-generation-boundary-grounding.md",
       "PRD-implementation-handbook.md",
       "PRD-inference-process-enhancement.md",
       "PRD-maturity-master-plan.md",
@@ -1294,6 +1320,7 @@
       "PRD-de-battery-multitenant-config.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
+      "PRD-generation-boundary-grounding.md",
       "PRD-generic-inference.md",
       "PRD-goal-metric-owner-spine.md",
       "PRD-order-project-sim-1to1.md",
@@ -1446,6 +1473,9 @@
     ],
     "packages/contracts/src/growth.ts": [
       "PRD-fullstack-story-build-g8.md"
+    ],
+    "apps/datacore/src/growth/loop.ts": [
+      "PRD-generation-boundary-grounding.md"
     ],
     "apps/datacore/src/ontology-governance.ts": [
       "PRD-goal-metric-owner-spine.md"
