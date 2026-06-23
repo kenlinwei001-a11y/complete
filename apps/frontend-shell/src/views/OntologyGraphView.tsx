@@ -22,6 +22,13 @@ const DOMAIN_COLORS: Record<string, string> = {
   quality: "var(--c-quality)",
   capacity: "var(--c-capacity)",
   forecast: "var(--c-forecast)",
+  // PRD-IND-map 缺口①：补 6 业务域配色（与 GRAPH_DOMAIN 14 域对齐，配置驱动 R14）。
+  sales: "#7E8BEE",
+  material: "#BC9A63",
+  finance: "#DF747E",
+  plan: "#B07FD8",
+  external: "#D08A66",
+  decision: "#54B5C4",
   solver: "var(--c-solver)",
   agent: "var(--c-agent)",
 };
@@ -35,6 +42,13 @@ const DOMAIN_LABELS: Record<string, string> = {
   quality: "质量",
   capacity: "产能",
   forecast: "预测",
+  // PRD-IND-map 缺口①：6 业务域中文名。
+  sales: "销售",
+  material: "物料",
+  finance: "财务",
+  plan: "计划",
+  external: "外部",
+  decision: "决策应用",
   solver: "求解器",
   agent: "Agent",
 };
