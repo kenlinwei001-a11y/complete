@@ -26,6 +26,27 @@ export interface CanonicalBase {
   mainProduct: string;
 }
 
+/**
+ * DF.3 单一来源应用细分册（GenerationBoundary · VOCAB+ENUM+RANGE）。
+ * 原型 SEG（万元/套单价 + 毛利%/底线% + 配色）此前重复在 battery SEGMENTS / audit.segMargins /
+ * 前端 econ / simSolvers / SEG_COLOR 多处——统一为唯一来源，各端派生（值字节复现，R6）。
+ * 注：risk.ts affectedOrders 的 SEG_PRICE{0.6…} 是另一营收口径，DF.3b 单独统一（值变、非搬家）。
+ */
+export interface CanonicalSeg {
+  seg: string; // 乘用车/储能/商用车（前端中文 key）
+  key: "pas" | "ess" | "com"; // 拼音（audit/risk key）
+  priceWan: number; // 万元/套
+  marginPct: number; // 毛利率 %
+  floorPct: number; // 毛利底线 %
+  color: string; // 配色
+}
+
+export const SEG_REGISTRY: CanonicalSeg[] = [
+  { seg: "乘用车", key: "pas", priceWan: 2.2, marginPct: 18, floorPct: 12, color: "#5E8FE8" },
+  { seg: "储能", key: "ess", priceWan: 1.4, marginPct: 13, floorPct: 11, color: "#36BFA5" },
+  { seg: "商用车", key: "com", priceWan: 1.8, marginPct: 15, floorPct: 11, color: "#DD9551" },
+];
+
 export const BASE_REGISTRY: CanonicalBase[] = [
   { baseId: "changzhou", name: "常州", kind: "动力+储能", position: "混合", lon: 119.95, lat: 31.78, util: 88, gwh: 35, bottleneck: "化成柜", lines: 8, prodYear: 2015, mainProduct: "4680-NCM" },
   { baseId: "xiamen", name: "厦门", kind: "动力", position: "动力", lon: 118.1, lat: 24.46, util: 85, gwh: 28, bottleneck: "化成柜", lines: 6, prodYear: 2019, mainProduct: "VDA-NCM" },

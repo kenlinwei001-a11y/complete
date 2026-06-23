@@ -12,6 +12,13 @@ const CONSUMERS = [
   { file: "apps/frontend-shell/src/mocks/fixtures.ts", binding: "BASES" },
   { file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "MOCK_BASES" },
 ];
+// DF.3 SEG 单一来源消费端：均须引用 SEG_REGISTRY（防 SEG 价/利/色内联回潮）。
+const SEG_CONSUMERS = [
+  "apps/datacore/src/synthetic/battery.ts",
+  "apps/datacore/src/solvers/risk.ts",
+  "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+  "apps/frontend-shell/src/mocks/simSolvers.ts",
+];
 
 let red = false;
 for (const { file, binding } of CONSUMERS) {
@@ -36,8 +43,23 @@ for (const { file, binding } of CONSUMERS) {
   }
 }
 
+for (const file of SEG_CONSUMERS) {
+  let src;
+  try {
+    src = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  } catch {
+    console.error(`✗ 读不到 ${file}`);
+    red = true;
+    continue;
+  }
+  if (!/SEG_REGISTRY/.test(src)) {
+    console.error(`✗ ${file}：SEG 价/利/色未从 SEG_REGISTRY 派生（疑内联回潮）`);
+    red = true;
+  }
+}
+
 if (red) {
-  console.error("\n✗ boundary-singlesource:check 未通过：基地集须单一来源（@platform/contracts BASE_REGISTRY），不得内联。");
+  console.error("\n✗ boundary-singlesource:check 未通过：基地集/应用细分须单一来源（@platform/contracts BASE_REGISTRY/SEG_REGISTRY），不得内联。");
   process.exit(1);
 }
-console.log("✓ boundary-singlesource:check：基地集单一来源（BASE_REGISTRY），三消费端均派生、无内联回潮。");
+console.log("✓ boundary-singlesource:check：BASE_REGISTRY + SEG_REGISTRY 单一来源，消费端均派生、无内联回潮。");

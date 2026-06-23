@@ -1,5 +1,5 @@
 import type { SopVersionVM } from "@/api/types";
-import { BASE_REGISTRY } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import zh from "@/locales/zh";
 
 /**
@@ -31,7 +31,7 @@ const AUDIT_T = {
   essShareBaseline: 49 / 132, // PRD-IND-audit §4.5-A2 取值对齐（≈0.3712）
   essShareTol: 0.05,
   capexSoft: 10,
-  segMargins: { pas: 18, ess: 13, com: 15 },
+  segMargins: Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.marginPct])) as { pas: number; ess: number; com: number }, // DF.3 单一来源
   scoreH: 22, // PRD-IND-audit §4.5-A2 取值对齐
   scoreM: 7, //  PRD-IND-audit §4.5-A2 取值对齐
   passScore: 85,

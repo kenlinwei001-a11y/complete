@@ -1,5 +1,5 @@
 import type { IndustryTemplate } from "@platform/contracts";
-import { BASE_REGISTRY } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
@@ -216,7 +216,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     essShareBaseline: 49 / 132, // PRD-IND-audit §4.5-A2 取值对齐 HTML（≈0.3712）
     essShareTol: 0.05,
     capexSoft: 10,
-    segMargins: { pas: 18, ess: 13, com: 15 },
+    segMargins: Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.marginPct])) as { pas: number; ess: number; com: number }, // DF.3 单一来源
     scoreH: 22, // PRD-IND-audit §4.5-A2 取值对齐 HTML（25→22）
     scoreM: 7, //  PRD-IND-audit §4.5-A2 取值对齐 HTML（8→7）
     passScore: 85,
@@ -1331,11 +1331,16 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
 
   // PRD-IND-sop §4.3 / PRD-IND-dash §4.1：三线对照精确种子（SOP_SEG + SEG_PRICE/MARGIN/FLOOR），
   // P90 为保守下分位（< P50）；同 seed 字节一致（R6），前端三线/科目/台账同源（R-一致）。
-  const SEGMENTS = [
-    { segment: "乘用车", tgt: 69.0, p50: 71.0, p90: 66.5, act: 66.8, price: 2.2, margin: 18, floor: 12 },
-    { segment: "储能", tgt: 45.0, p50: 49.0, p90: 45.2, act: 41.9, price: 1.4, margin: 13, floor: 11 },
-    { segment: "商用车", tgt: 13.6, p50: 12.0, p90: 11.1, act: 12.9, price: 1.8, margin: 15, floor: 11 },
+  // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/p50/p90/act 为 sop 专属，保留内联）。
+  const SEG_DEMAND = [
+    { segment: "乘用车", tgt: 69.0, p50: 71.0, p90: 66.5, act: 66.8 },
+    { segment: "储能", tgt: 45.0, p50: 49.0, p90: 45.2, act: 41.9 },
+    { segment: "商用车", tgt: 13.6, p50: 12.0, p90: 11.1, act: 12.9 },
   ];
+  const SEGMENTS = SEG_DEMAND.map((d) => {
+    const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;
+    return { ...d, price: s.priceWan, margin: s.marginPct, floor: s.floorPct };
+  });
   const demandSegments = SEGMENTS.map((s, i) => ({
     segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt, p50: s.p50, p90: s.p90, act: s.act,
     priceWan: s.price, marginPct: s.margin, floorPct: s.floor,

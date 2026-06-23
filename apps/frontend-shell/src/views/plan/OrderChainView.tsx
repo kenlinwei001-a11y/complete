@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup } from "@platform/contracts";
+import { SEG_REGISTRY } from "@platform/contracts";
 import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
@@ -16,14 +17,15 @@ import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
 
-const SEG_COLOR: Record<string, string> = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" }; // debattery-allow：view.layout.segColors 缺失兜底（纯配色映射）
+// DF.3 单一来源：SEG 配色/价/利从 @platform/contracts SEG_REGISTRY 派生（与 datacore 同源）。
+const SEG_COLOR: Record<string, string> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.color]));
 const CHIP_LIMIT = 4;
 
 // PRD-IND-order-aggregate §4.5-A/C：经营数据看板 econTable 口径（SEG 价/利 + 在制/库存系数）。
 // view.layout 优先下发，常量仅兜底（R14）；ordEcon 逐订单派生、按应用细分聚合。
 const ECON_DEFAULT = {
-  segPrice: { 乘用车: 2.2, 商用车: 1.8, 储能: 1.4 } as Record<string, number>, // debattery-allow：万元/套（原型 SEG_PRICE）
-  segMargin: { 乘用车: 0.18, 商用车: 0.15, 储能: 0.13 } as Record<string, number>, // debattery-allow
+  segPrice: Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.priceWan])) as Record<string, number>, // DF.3 单一来源（万元/套）
+  segMargin: Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.marginPct / 100])) as Record<string, number>, // DF.3 单一来源（%→分数）
   coef: { fg: [0.22, 0.12], wip: [0.3, 0.15], rm: [0.18, 0.1] }, // debattery-allow：成品/在制/原料占营收系数 [base, hash幅度]
 };
 const SEG_ORDER = ["乘用车", "商用车", "储能"]; // debattery-allow：econ 看板细分行展示顺序（非业务数值）

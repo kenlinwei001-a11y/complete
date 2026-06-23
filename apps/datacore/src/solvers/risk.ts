@@ -1,4 +1,5 @@
 import { round, hashString } from "../prng.js";
+import { SEG_REGISTRY } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 
@@ -522,7 +523,9 @@ interface AggRiskRef {
   peak: number;
   threshold: number;
 }
-const SEG_PRICE: Record<string, number> = { pas: 0.6, com: 0.55, ess: 0.5 };
+// DF.3b（PRD order §4.5-C）：营收口径统一到原型 SEG_REGISTRY 万元/套（2.2/1.4/1.8），
+// 取代旧 {0.6/0.55/0.5} 不一致口径 → affectedOrders summary.revenue 与 order econTable 同源一致。
+const SEG_PRICE: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.priceWan]));
 
 export function affectedOrdersAggregate(
   c: SolverContext,
