@@ -1093,11 +1093,13 @@ export class SyntheticService {
     const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
       dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
       graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
-      risk: { title: "预判推演看板", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14 } },
+      // DF.6 拉取靶：每 solver-backed 视图声明它"要拉取的求解器输出字段"（pull target）——
+      // 喂 ModuleProvisioner/SHAPE 闭包：拉取靶 ⊄ 求解器输出形状 → 缺该输出字段 → TO_CREATE（G-8/R12 输出侧）。
+      risk: { title: "预判推演看板", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14, outputFields: ["cards", "planRows", "horizon", "threshold"] } },
       order: { title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
-      "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS } },
-      "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS } },
-      "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS } },
+      "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] } },
+      "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] } },
+      "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] } },
       "sop-balance": { title: "S&OP 月度平衡", renderer: "sop-balance", layout: { apiTag: "sop" } },
       // 增量 §7.14–7.17
       "annual-scenario": {
@@ -1113,7 +1115,7 @@ export class SyntheticService {
       "order-chain": {
         title: "订单全链聚合",
         renderer: "order-chain",
-        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS },
+        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS, outputFields: ["rows", "problems", "summary", "columns"] },
       },
       "geo-map": {
         title: "基地地理视图",

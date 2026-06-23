@@ -52,6 +52,7 @@ import { dataCategoriesForIndustry } from "./synthetic/data-categories.js";
 import { computeFieldCoverage, computeCategoryCoverage } from "./databuilder/slice-coverage.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
 import { buildFieldCatalog, resolveEntity, searchCatalog } from "./databuilder/entity-catalog.js";
+import { deriveViewPullTargets, checkPullTargetCoverage, unmetPullTargets } from "./databuilder/pull-target.js";
 import { diffNeeds, type CapabilityInventory } from "./databuilder/capability-inventory.js";
 
 const CapabilityNeedsSchema = z.object({
@@ -1226,6 +1227,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       ...(q.topK ? { topK: Number(q.topK) } : {}),
     });
     return { query: q.q, found: hits.length > 0, hits };
+  });
+
+  // DF.6 拉取靶登记表 + 覆盖校验：视图声明要拉的求解器输出字段（layout.outputFields）↔ SOLVER_OUTPUT_SHAPES，
+  // 未满足（视图要、求解器算不出）→ UNMET（= 缺该输出字段 → TO_CREATE 生长信号，G-8/R12 输出侧）。
+  app.get("/a/v1/views/pull-targets", async (req) => {
+    const c = ctx(req);
+    const role = (req.query as { role?: string }).role;
+    const configs = await repos.viewConfigs.list(c.tenantId, (v) => !role || v.role === role);
+    const seen = new Map<string, { key: string; layout?: Record<string, unknown> }>();
+    for (const v of configs.flatMap((vc) => vc.views)) if (!seen.has(v.key)) seen.set(v.key, { key: v.key, layout: v.layout });
+    const targets = deriveViewPullTargets([...seen.values()]);
+    const findings = checkPullTargetCoverage(targets, SOLVER_OUTPUT_SHAPES);
+    const unmet = unmetPullTargets(findings);
+    return { targets, findings, unmet, covered: unmet.length === 0 };
   });
 
   // PRD-fde §3.5 能力清单(schema 级) + 比对差异：知现状→算缺口（建之前就知缺什么）。
