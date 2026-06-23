@@ -91,6 +91,9 @@ export interface SolverParamsShape {
     weeksPerQuarter: number;
     increments: { quarter: string; name: string; delta: number }[];
     ltaMaterials: string[];
+    /** PRD-IND-quarter §4.5(C)：LTA 计划吨/季 + 逐行偏差%（专属配置位，缺则回落 Shipment/hash）。 */
+    ltaPlanned?: number[];
+    ltaDevPct?: number[];
     ltaForcedPct: number;
     deliveryPeakMin: number;
     scenarios: {

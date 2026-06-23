@@ -352,8 +352,9 @@ export class PlanService {
     const pv = c.params.planview;
     const ships = [...c.shipments].sort((a, b) => (str(a.props.shipId) < str(b.props.shipId) ? -1 : 1)).slice(0, pv.ltaMaterials.length);
     return ships.map((s, i) => {
-      const planned = num(s.props.qtyTons);
-      const devPct = i === 0 ? pv.ltaForcedPct : ((hashString(str(s.props.shipId)) % 9) - 4); // -4..4，仅首行越线
+      // PRD-IND-quarter §4.5(C)：planned/dev 优先取本视图专属种子配置（确定性 R6），缺则回落 Shipment/hash。
+      const planned = pv.ltaPlanned?.[i] ?? num(s.props.qtyTons);
+      const devPct = pv.ltaDevPct?.[i] ?? (i === 0 ? pv.ltaForcedPct : ((hashString(str(s.props.shipId)) % 9) - 4)); // 仅首行兜底越线
       const actual = round(planned * (1 + devPct / 100), 1);
       const over = Math.abs(devPct) > 5;
       return {
@@ -361,7 +362,7 @@ export class PlanService {
         planned,
         actual,
         deviationPct: devPct,
-        note: over ? "到货缺口，升级供应风险（与风险看板「到货间隙」事件同源）" : "正常波动",
+        note: over ? "到货延迟 · 触发到货间隙事件（升级供应风险，与风险看板同源）" : "正常",
         baseId: str(s.props.baseId),
       };
     });

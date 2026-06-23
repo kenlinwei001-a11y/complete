@@ -149,7 +149,7 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
             })}
           </tbody>
         </table>
-        <div className={simStyles.noteInfo}>正极 −8.0% 偏差与预警大屏「到货间隙」事件同源；已在月度 S&OP 第⑤步决议加急 200 吨对冲。</div>
+        <div className={simStyles.noteInfo} data-testid="quarter-lta-footnote">{zh.quarter.ltaFootnote}</div>
       </div>
     </div>
   );

@@ -230,6 +230,8 @@ export const zh = {
     ltaNote: "说明",
     escalate: "升级供应风险",
     gotoRisk: "查看风险看板 →",
+    // PRD-IND-quarter §4.5(F)：LTA 脚注去硬编码（迁 i18n，R14）；与风险看板「到货间隙」+ S&OP 第⑤步决议同源。
+    ltaFootnote: "正极 −8.0% 偏差与预警大屏「到货间隙」事件同源；已在月度 S&OP 第⑤步决议加急 200 吨对冲。",
   },
   /** §7.16 订单全链聚合 */
   orderChain: {

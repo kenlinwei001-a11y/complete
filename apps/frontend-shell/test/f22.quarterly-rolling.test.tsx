@@ -42,6 +42,8 @@ describe("F22 · 季度滚动看板（quarterly-rolling）", () => {
     expect(screen.getByTestId("lta-escalate-三元正极")).toHaveTextContent("升级供应风险");
     // 正常行不红标
     expect(screen.getByTestId("lta-隔膜")).toHaveAttribute("data-breach", "false");
+    // PRD-IND-quarter §4.5(F)：LTA 脚注去硬编码（i18n 下发，R14），与到货间隙/S&OP 决议同源
+    expect(screen.getByTestId("quarter-lta-footnote")).toHaveTextContent("到货间隙");
 
     // 行尾链接 → /v/risk + 基地写入 selectedObjects（到货间隙事件同源基地：合肥）
     await user.click(screen.getByTestId("lta-goto-risk-三元正极"));

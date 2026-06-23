@@ -182,8 +182,12 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       { quarter: "2027-Q2", name: "合肥四期投产", delta: 2.0 },
       { quarter: "2027-Q3", name: "盐城二期爬坡", delta: 3.0 },
     ],
-    ltaMaterials: ["碳酸锂", "正极材料", "负极材料", "电解液", "隔膜", "铜箔"],
-    /** 强制一行 |偏差|>5%（升级供应风险，与风险看板到货间隙同源） */
+    // PRD-IND-quarter §4.3/§4.5(C)：长协偏差三物料 + 专属配置位（计划吨/季 + 逐行偏差%，确定性 R6，
+    // 不扰动 Shipment 的 C16 齐套逻辑）；actual = planned×(1+dev/100) 实算。
+    ltaMaterials: ["三元正极", "隔膜", "电解液"],
+    ltaPlanned: [2800, 820, 1900],
+    ltaDevPct: [-8, 1, -2],
+    /** 强制一行 |偏差|>5%（升级供应风险，与风险看板到货间隙同源；首行兜底） */
     ltaForcedPct: -8,
     deliveryPeakMin: 5,
     scenarios: {
