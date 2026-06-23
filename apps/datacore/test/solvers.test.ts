@@ -343,7 +343,7 @@ describe("S1 solvers", () => {
     expect(data.H.map((h) => h.id).sort()).toEqual(["X01", "X02", "X03", "X04", "X05"]);
     expect(data.M.map((m) => m.id).sort()).toEqual(["R01", "R02"]);
     expect(data.score).toBe(0); // clamp(100 − 22×5 − 7×2)=0
-    expect(data.verdict).toBe("不通过");
+    expect(data.verdict).toBe("站不住"); // §3.1：H>0 → 站不住
     // why texts contain the substituted numbers
     expect(data.H.find((h) => h.id === "X01")!.why).toContain("90");
     expect(data.H.find((h) => h.id === "X02")!.why).toContain("5");

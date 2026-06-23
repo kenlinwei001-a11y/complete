@@ -118,7 +118,9 @@ export const PlanAuditOutputSchema = z.object({
   M: z.array(AuditItemSchema),
   S: z.array(AuditItemSchema),
   score: z.number(), // clamp(100 − 25|H| − 8|M|, 0, 100)
-  verdict: z.enum(["通过", "有条件通过", "不通过"]),
+  // PRD-IND-audit §3.1：verdict 4 态状态机（按 H/M 计数，非分数阈值）。
+  // 「可定稿·关注风险」为规范枚举值，前端展示时插入 M 计数「可定稿 · 关注 N 项风险」。
+  verdict: z.enum(["站不住", "可定稿但有重要风险", "可定稿·关注风险", "全部通过·可直接定稿"]),
 });
 export type PlanAuditOutput = z.infer<typeof PlanAuditOutputSchema>;
 

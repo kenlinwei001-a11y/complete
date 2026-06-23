@@ -18,7 +18,7 @@ describe("CL.6 · plan_audit 入参兜底（归因直达）", () => {
     });
     expect(res.statusCode).toBe(200);
     const out = (res.json() as { data: { verdict: string; H: unknown[]; M: unknown[]; S: unknown[]; score: number } }).data;
-    expect(["通过", "有条件通过", "不通过"]).toContain(out.verdict);
+    expect(["站不住", "可定稿但有重要风险", "可定稿·关注风险", "全部通过·可直接定稿"]).toContain(out.verdict);
     expect(Array.isArray(out.H) && Array.isArray(out.M) && Array.isArray(out.S)).toBe(true);
     expect(typeof out.score).toBe("number");
   });
@@ -35,7 +35,7 @@ describe("CL.6 · plan_audit 入参兜底（归因直达）", () => {
     });
     expect(res.statusCode).toBe(200);
     const out = (res.json() as { data: { H: { code?: string }[]; verdict: string } }).data;
-    // cashCushion=1 远低于底线 → 触发高危项（H 非空 / verdict 非"通过"）
-    expect(out.H.length > 0 || out.verdict !== "通过").toBe(true);
+    // cashCushion=1 远低于底线 → 触发高危项（H 非空 / verdict=站不住）
+    expect(out.H.length > 0 || out.verdict !== "全部通过·可直接定稿").toBe(true);
   });
 });

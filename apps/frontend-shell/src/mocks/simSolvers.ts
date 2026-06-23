@@ -195,7 +195,15 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
   }
 
   const score = clamp(100 - t.scoreH * H.length - t.scoreM * M.length, 0, 100);
-  const verdict = score >= t.passScore ? "通过" : score >= t.condScore ? "有条件通过" : "不通过";
+  // PRD-IND-audit §3.1：4 态状态机（按 H/M 计数），与 datacore plan.ts 同源。
+  const verdict =
+    H.length > 0
+      ? "站不住"
+      : M.length >= 3
+        ? "可定稿但有重要风险"
+        : M.length > 0
+          ? "可定稿·关注风险"
+          : "全部通过·可直接定稿";
   return { H, M, S, score, verdict, gmStruct };
 }
 

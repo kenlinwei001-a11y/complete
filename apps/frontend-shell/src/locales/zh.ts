@@ -366,7 +366,11 @@ export const zh = {
     audit: {
       title: "规划体检",
       inputTitle: "输入计划字段",
-      verdict: (verdict: string, score: number) => `体检结论：${verdict}（评分 ${score}/100）`,
+      // PRD-IND-audit §3.1：「可定稿·关注风险」展示时插入 M 计数「可定稿 · 关注 N 项风险」。
+      verdict: (verdict: string, score: number, mCount = 0) => {
+        const label = verdict === "可定稿·关注风险" ? `可定稿 · 关注 ${mCount} 项风险` : verdict;
+        return `体检结论：${label}（评分 ${score}/100）`;
+      },
       hardSection: "⛔ 硬矛盾",
       medSection: "⚠ 软风险",
       sugSection: "💡 建议修正",

@@ -50,10 +50,12 @@ const FIELD_GROUPS: { title: string; fields: { key: keyof PlanAuditInput; label:
   },
 ];
 
+// PRD-IND-audit §3.1：verdict 4 态色板（站不住红 / 重要风险黄 / 关注青 / 全通过绿）。
 const VERDICT_COLOR: Record<PlanAuditOutput["verdict"], string> = {
-  通过: "var(--ok)",
-  有条件通过: "var(--amber)",
-  不通过: "var(--danger)",
+  站不住: "var(--danger)",
+  可定稿但有重要风险: "var(--amber)",
+  "可定稿·关注风险": "var(--c-capacity)",
+  "全部通过·可直接定稿": "var(--ok)",
 };
 
 /**
@@ -220,7 +222,7 @@ function AuditResult({
   return (
     <div className="panel" data-testid="audit-result">
       <div className={styles.verdict} style={{ borderColor: color, background: "transparent" }} data-testid="audit-verdict">
-        <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score)}</b>
+        <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score, out.M.length)}</b>
         <SnapshotBadge snapshotVersion={snapshotVersion} tool="plan_audit" />
         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 5 }}>
           <span data-testid="audit-counts" className="mono">
