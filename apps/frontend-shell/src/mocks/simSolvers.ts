@@ -378,13 +378,36 @@ const MODEL_CAP_NET: Record<string, CapBaseDef[]> = {
   ],
   "储能-280Ah": [
     { base: "宜宾", baseId: "宜宾", weeklyCap: 3.0, status: "量产", maintWeek: 6, bottleneck: "化成柜", tightness: 90 },
-    { base: "青海", baseId: "青海", weeklyCap: 1.2, status: "认证中", maintWeek: null, bottleneck: "人员", tightness: 58 },
+    { base: "青岛", baseId: "青岛", weeklyCap: 1.2, status: "认证中", maintWeek: null, bottleneck: "人员", tightness: 58 },
   ],
   "储能-314Ah": [
     { base: "常州", baseId: "常州", weeklyCap: 2.0, status: "量产", maintWeek: 4, bottleneck: "化成柜", tightness: 85 },
     { base: "合肥", baseId: "合肥", weeklyCap: 1.7, status: "量产", maintWeek: null, bottleneck: "卷绕机", tightness: 70 },
   ],
 };
+
+// PRD-IND-model 缺口①③：收敛可产网络的全基地业态册 + 型号化学/业态元信息（镜像 battery BASES/MODELS 种子，
+// reason 由 chem×kind 派生；前端零写死，与 datacore solvers/capacity.ts nonProducible 同源）。
+const MOCK_BASES: { name: string; kind: "动力" | "储能" }[] = [
+  { name: "常州", kind: "动力" },
+  { name: "合肥", kind: "动力" },
+  { name: "西安", kind: "动力" },
+  { name: "宜宾", kind: "储能" },
+  { name: "溧阳", kind: "动力" },
+  { name: "青岛", kind: "储能" },
+  { name: "南京", kind: "动力" },
+  { name: "成都", kind: "储能" },
+  { name: "福州", kind: "储能" },
+  { name: "长沙", kind: "动力" },
+  { name: "惠州", kind: "储能" },
+  { name: "盐城", kind: "动力" },
+];
+
+function modelMeta(modelId: string): { chem: string; pos: "动力" | "储能" } {
+  const chem = modelId.includes("NCM") ? "NCM" : modelId.includes("LFP") ? "LFP" : modelId.includes("储能") ? "LFP" : "NCM";
+  const pos: "动力" | "储能" = modelId.includes("储能") ? "储能" : "动力";
+  return { chem, pos };
+}
 
 function curveMult(w: number, maintWeek: number | null): number {
   let m = w >= CAP_P.ramp.fullWeek ? 1 : CAP_P.ramp.base + CAP_P.ramp.step * (w - 1);
@@ -533,6 +556,22 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     }
   }
 
+  // PRD-IND-model 缺口①③：收敛可产网络——不可产基地清单 + N/总数 注解（reason 由 chem×kind 派生，R13/R14）。
+  const { chem, pos } = modelMeta(args.modelId);
+  const producibleNames = new Set(perBaseRows.map((r) => r.base as string));
+  const totalBases = MOCK_BASES.length;
+  const producibleCount = producibleNames.size;
+  const nonProducible = MOCK_BASES
+    .filter((b) => !producibleNames.has(b.name))
+    .map((b) => ({
+      base: b.name,
+      reason:
+        b.kind !== pos
+          ? `基地业态「${b.kind}」与型号「${pos}」不匹配`
+          : `${chem} 体系产线未在该基地铺设 / 认证`,
+    }))
+    .sort((a, b) => (a.base < b.base ? -1 : 1));
+
   return {
     p50,
     p90,
@@ -540,6 +579,9 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     gap,
     ok,
     perBaseRows,
+    nonProducible,
+    totalBases,
+    producibleCount,
     ...(batchRows ? { batchRows } : {}),
     mainBn,
     pendingCertList,

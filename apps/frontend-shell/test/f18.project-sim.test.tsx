@@ -105,6 +105,27 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(screen.getByTestId("pm-dag").getAttribute("viewBox")).toBe(vb0);
   });
 
+  it("②可产网络收敛（PRD-IND-model 缺口①）：N/总数 注解 + 不可产基地✗带派生原因（chem×业态）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+
+    // 默认 4680-NCM（动力 · NCM）首算完成 → 跳到②可产基地步
+    await screen.findByTestId("pm-stepper");
+    await user.click(screen.getByTestId("pm-step-chip-2"));
+    await screen.findByTestId("pm-step2");
+
+    // 收敛注解：仅在 3/12 个基地可产（producibleCount/totalBases，前端零写死）
+    const conv = screen.getByTestId("pm-step2-converge");
+    expect(conv).toHaveTextContent("3");
+    expect(conv).toHaveTextContent("12");
+
+    // 不可产基地：储能基地业态不匹配（成都·储能 vs 动力型号）
+    expect(screen.getByTestId("nonproducible-成都")).toHaveTextContent("不匹配");
+    // 动力基地但 NCM 产线未铺/认证（西安·动力）
+    expect(screen.getByTestId("nonproducible-西安")).toHaveTextContent("产线未");
+  });
+
   it("型号选择器/订单点击写入 selectedObjects（查询 Dock 上下文）", async () => {
     const user = userEvent.setup();
     loginAs("planner");

@@ -543,6 +543,24 @@ function StepBody({
               <td>{fmt(r.weeklyCap, 2)}</td>
             </tr>
           ))}
+          {(out.nonProducible ?? []).map((nb) => (
+            <tr key={nb.base} style={{ opacity: 0.55 }} data-testid={`nonproducible-${nb.base}`}>
+              <td className="zh">
+                <span style={{ textDecoration: "line-through" }}>{nb.base}</span> ✗
+              </td>
+              <td colSpan={2} style={{ color: "var(--muted)" }}>
+                {nb.reason}
+              </td>
+            </tr>
+          ))}
+          {out.totalBases != null && out.producibleCount != null && (
+            <tr>
+              <td colSpan={3} style={{ color: "var(--accent)" }} data-testid="pm-step2-converge">
+                收敛：型号 <b className="mono">{modelId}</b> 仅在 <b className="mono">{out.producibleCount}</b>/
+                <b className="mono">{out.totalBases}</b> 个基地可产（按化学体系 × 基地业态推演）
+              </td>
+            </tr>
+          )}
           {out.pendingCertList.length > 0 && (
             <tr>
               <td colSpan={3} style={{ color: "var(--amber)" }} data-testid="pending-cert">

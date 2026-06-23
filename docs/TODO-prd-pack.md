@@ -340,6 +340,6 @@
 > - [ ] **sop**（revBudget 248→240 口径 + 已补 P90/MRP/量价本利/版本对比）。
 > - [ ] **quarter**（段头副标注 ✅；余 6 季精确值生成器校准 + 枣庄 CAPEX 项目种子）。
 > - [ ] **order / order-aggregate**（order_fullchain 已落；余 econTable + 细分维度）。
-> - [ ] **model**（~70% 成；缺口①nonProducible 收敛标注 + ②CSV 上传/模板 + ③chem/pos 种子 + ④对症对策表）。
+> - [x] **model** ✅（缺口①③）：chem/pos 入 battery MODELS 种子；capacity_forecast 输出 nonProducible（不可产基地+reason 由 chem×kind 派生）+ totalBases/producibleCount；前端 ②可产网络收敛步显 N/总数 注解 + 不可产基地✗带派生原因（datacore+mock 同源，零写死）。测 model-producible ×2 + f18 ②收敛。**余** ②CSV 上传/模板（纯前端）+ ④对症对策表。
 > - [ ] **story**（inference DAG 已落 10 节点；余 projectTrace 投影 9 PlanStep→10 节点）。
-> 进度：3/12 完成（plan-generate/map/audit），结构性底座（aop/sop/order/inference 等前序已建）。数据 loop 纪律：精确值/文案入 battery 种子或 ViewDef config，前端零写死，过 debattery:check。
+> 进度：4/12 完成（plan-generate/map/audit/model），结构性底座（aop/sop/order/inference 等前序已建）。数据 loop 纪律：精确值/文案入 battery 种子或 ViewDef config，前端零写死，过 debattery:check。
