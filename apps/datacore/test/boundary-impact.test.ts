@@ -37,7 +37,7 @@ describe("DF.7 · 边界影响图（boundary impact）", () => {
     const all = await t.app.inject({ method: "GET", url: "/a/v1/boundary/impact", headers: ADMIN });
     expect(all.statusCode).toBe(200);
     const body = all.json() as { impact: { registry: string; members: number; consumers: unknown[] }[]; registries: string[] };
-    expect(body.registries).toEqual(["BASE_REGISTRY", "SEG_REGISTRY"]);
+    expect(body.registries).toEqual(["BASE_REGISTRY", "SEG_REGISTRY", "PLAN_GOAL_TARGETS"]);
     expect(body.impact.find((b) => b.registry === "BASE_REGISTRY")?.members).toBe(BASE_REGISTRY.length);
 
     const one = await t.app.inject({ method: "GET", url: "/a/v1/boundary/impact?registry=SEG_REGISTRY", headers: ADMIN });

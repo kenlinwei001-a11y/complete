@@ -63,6 +63,25 @@ export const BASE_REGISTRY: CanonicalBase[] = [
 ];
 
 /**
+ * DF.4 单一来源规划目标阈值册（GenerationBoundary · VOCAB+RANGE）。
+ * 方案生成(plan_generate)的经营目标基线此前**三处重复**：后端 `synthetic/battery.ts planGenerate.targets`
+ * （gmFloor 小数口径）· 前端 `PlanGenerateView DEFAULT_GOALS` 兜底（gmFloorPct 百分口径）·
+ * 前端 mock `fixtures.ts planGoals`（WorkspaceConfig 下发）——改一处即三处漂移（G-5/R14）。
+ * 统一为唯一来源：**canonical 取百分口径**（`gmFloorPct`，前端直用、后端 ÷100 派生小数 gmFloor，
+ * R6 字节复现当前值：15.5/100===0.155 精确）。各端派生由 boundary-singlesource 门守不回潮。
+ * 注：审计阈值(audit.*)与方案库(risk.mitigations)只在 battery.ts 一处、前端经 API 消费 → 已单一来源，
+ * 不入此册（迁移=纯搬家且 audit 校准耦合，无去漂价值）。
+ */
+export const PLAN_GOAL_TARGETS = {
+  revGrowthPct: 18, // 营收增长目标 %
+  gmFloorPct: 15.5, // 毛利率底线 %（后端 gmFloor=gmFloorPct/100）
+  sharePts: 12, // 份额提升 pct
+  capexCap: 20, // CAPEX 上限 亿
+  cashFloor: 50, // 现金垫底线 亿
+  turns: 6.0, // 库存周转目标 次（后端 turnsFloor / 前端 invTurns）
+} as const;
+
+/**
  * DF.7 边界影响图（GenerationBoundary · 单一来源+影响图）：把"改某条边界册会波及谁"显式登记——
  * 回答铁律0 的"改 X 会影响什么"。`members` 派生自册长（非写死）；`consumers` 镜像
  * boundary-singlesource 门所强制校验的派生消费端（门保证其不漂、`boundary-impact.test` 复核每条确实派生）；
@@ -77,7 +96,7 @@ export interface BoundaryConsumer {
   derivesVia: string;
 }
 export interface BoundaryRegistryImpact {
-  registry: "BASE_REGISTRY" | "SEG_REGISTRY";
+  registry: "BASE_REGISTRY" | "SEG_REGISTRY" | "PLAN_GOAL_TARGETS";
   title: string;
   /** 成员数（派生自册长，改册自动同步）。 */
   members: number;
@@ -118,6 +137,20 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
       "order-chain 视图 econTable（量价本利）",
       "risk 求解器 affectedOrders.summary.revenue（与 econTable 同源 DF.3b）",
       "DemandSegment 派生 revenueWan=p50×priceWan / marginWan=p50×priceWan×marginPct/100（battery.ts）",
+    ],
+  },
+  {
+    registry: "PLAN_GOAL_TARGETS",
+    title: "规划目标阈值集",
+    members: Object.keys(PLAN_GOAL_TARGETS).length,
+    consumers: [
+      { file: "apps/datacore/src/synthetic/battery.ts", binding: "planGenerate.targets", derivesVia: "PLAN_GOAL_TARGETS" },
+      { file: "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx", binding: "DEFAULT_GOALS", derivesVia: "PLAN_GOAL_TARGETS" },
+      { file: "apps/frontend-shell/src/mocks/fixtures.ts", binding: "planGoals", derivesVia: "PLAN_GOAL_TARGETS" },
+    ],
+    downstream: [
+      "plan_generate 求解器（targets 喂方案达成判定）",
+      "方案生成视图 五目标面板默认值 + WorkspaceConfig.planGoals 下发",
     ],
   },
 ];

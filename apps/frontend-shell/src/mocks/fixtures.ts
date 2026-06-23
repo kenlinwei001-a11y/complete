@@ -1,4 +1,4 @@
-import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY } from "@platform/contracts";
+import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
 import type {
   ActionDraft,
   AdminTenant,
@@ -462,7 +462,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
         { name: "江门正极加急 200 吨", delta: 0.5 },
       ],
     },
-    planGoals: { revGrowthPct: 18, gmFloorPct: 15.5, sharePts: 12, capexCap: 20, cashFloor: 50, invTurns: 6.0 },
+    // DF.4 单一来源：planGoals 从 PLAN_GOAL_TARGETS 派生（与后端 targets 同源，灭三处漂移 R14/R6）。
+    planGoals: { revGrowthPct: PLAN_GOAL_TARGETS.revGrowthPct, gmFloorPct: PLAN_GOAL_TARGETS.gmFloorPct, sharePts: PLAN_GOAL_TARGETS.sharePts, capexCap: PLAN_GOAL_TARGETS.capexCap, cashFloor: PLAN_GOAL_TARGETS.cashFloor, invTurns: PLAN_GOAL_TARGETS.turns },
     features: routeFeatures,
     configVersion,
   };

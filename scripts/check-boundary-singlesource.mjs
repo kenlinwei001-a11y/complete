@@ -19,6 +19,12 @@ const SEG_CONSUMERS = [
   "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
   "apps/frontend-shell/src/mocks/simSolvers.ts",
 ];
+// DF.4 规划目标阈值单一来源消费端：均须引用 PLAN_GOAL_TARGETS（防三处目标阈值漂移回潮）。
+const PLAN_GOAL_CONSUMERS = [
+  "apps/datacore/src/synthetic/battery.ts",
+  "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx",
+  "apps/frontend-shell/src/mocks/fixtures.ts",
+];
 
 let red = false;
 for (const { file, binding } of CONSUMERS) {
@@ -58,8 +64,23 @@ for (const file of SEG_CONSUMERS) {
   }
 }
 
+for (const file of PLAN_GOAL_CONSUMERS) {
+  let src;
+  try {
+    src = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  } catch {
+    console.error(`✗ 读不到 ${file}`);
+    red = true;
+    continue;
+  }
+  if (!/PLAN_GOAL_TARGETS/.test(src)) {
+    console.error(`✗ ${file}：规划目标阈值未从 PLAN_GOAL_TARGETS 派生（疑内联回潮）`);
+    red = true;
+  }
+}
+
 if (red) {
-  console.error("\n✗ boundary-singlesource:check 未通过：基地集/应用细分须单一来源（@platform/contracts BASE_REGISTRY/SEG_REGISTRY），不得内联。");
+  console.error("\n✗ boundary-singlesource:check 未通过：基地集/应用细分/规划目标阈值须单一来源（@platform/contracts BASE_REGISTRY/SEG_REGISTRY/PLAN_GOAL_TARGETS），不得内联。");
   process.exit(1);
 }
-console.log("✓ boundary-singlesource:check：BASE_REGISTRY + SEG_REGISTRY 单一来源，消费端均派生、无内联回潮。");
+console.log("✓ boundary-singlesource:check：BASE_REGISTRY + SEG_REGISTRY + PLAN_GOAL_TARGETS 单一来源，消费端均派生、无内联回潮。");

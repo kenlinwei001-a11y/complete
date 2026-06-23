@@ -1,5 +1,5 @@
 import type { IndustryTemplate } from "@platform/contracts";
-import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
@@ -228,7 +228,15 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   planGenerate: {
     // PRD-IND-plan-generate §4.5 取值对齐 HTML GEN_BASE/GEN_GOALS（rev=100 归一保 growth 评分=revGrowAbs×2.5）。
     base: { rev: 100, gm: 0.16, share: 18, turns: 5.6, cash: 58 },
-    targets: { gmFloor: 0.155, cashFloor: 50, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
+    // DF.4 单一来源：从 PLAN_GOAL_TARGETS 派生（gmFloor=百分÷100，turnsFloor=turns；R6 字节复现 0.155/6.0）。
+    targets: {
+      gmFloor: PLAN_GOAL_TARGETS.gmFloorPct / 100,
+      cashFloor: PLAN_GOAL_TARGETS.cashFloor,
+      capexCap: PLAN_GOAL_TARGETS.capexCap,
+      revGrowthPct: PLAN_GOAL_TARGETS.revGrowthPct,
+      sharePts: PLAN_GOAL_TARGETS.sharePts,
+      turnsFloor: PLAN_GOAL_TARGETS.turns,
+    },
     paths: {
       A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
       B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },

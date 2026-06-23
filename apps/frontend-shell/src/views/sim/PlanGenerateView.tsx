@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlanGenerateOutputSchema, RiskTimelineOutputSchema, type PlanGenerateOutput } from "@platform/contracts";
+import { PlanGenerateOutputSchema, RiskTimelineOutputSchema, PLAN_GOAL_TARGETS, type PlanGenerateOutput } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import type { Workspace } from "@/api/types";
 import { workspaceQueryKey } from "@/workspace/useWorkspace";
@@ -34,14 +34,14 @@ interface GoalsState {
   hardCapex: boolean;
 }
 
-/** 目标面板默认值 = 电池行业 solverParams.planGenerate.targets（PRD-IND §4.5 取值对齐） */
+/** 目标面板默认值 = solverParams.planGenerate.targets（DF.4 单一来源 PLAN_GOAL_TARGETS 派生，去三处漂移 R14/R6）。 */
 const DEFAULT_GOALS: GoalsState = {
-  revGrowthPct: 18,
-  gmFloorPct: 15.5,
-  sharePts: 12,
-  capexCap: 20,
-  cashFloor: 50,
-  invTurns: 6.0,
+  revGrowthPct: PLAN_GOAL_TARGETS.revGrowthPct,
+  gmFloorPct: PLAN_GOAL_TARGETS.gmFloorPct,
+  sharePts: PLAN_GOAL_TARGETS.sharePts,
+  capexCap: PLAN_GOAL_TARGETS.capexCap,
+  cashFloor: PLAN_GOAL_TARGETS.cashFloor,
+  invTurns: PLAN_GOAL_TARGETS.turns,
   hardGm: true,
   hardCash: true,
   hardCapex: true,
