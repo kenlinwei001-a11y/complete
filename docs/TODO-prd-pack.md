@@ -14,6 +14,14 @@
 > - [x] §2.2-b 处置最终方案表 ✅ **已做**（RiskBoardView:134 处置行动计划表 + risk.ts peak≥90 备份/C21 反提差异）
 > - [x] §2.2-c 型号产能推演六步UI + 分批 + 交付地址 ✅ **已做**（ProjectSimView 六步 stepper + 分批交货 CSV + 交付地址净窗口）
 > - [◐] §2.2-a 逐日轴/悬停/颜色档 ✅ 已做（risk-heat-strip + heatColor + RiskHoverTrigger 悬停）；三档图例文案 + 首要风险标注 = 精修（非整块缺，可选）
+> **[数据专项 · 待排期] 经营驾驶舱后端数据层颗粒扩充（高回归，独立做；用户确认作为 to-do）**
+> 前端区块层已清完整；本专项动合成数据 + 重校准被钉死的测试基线，同 quarter 取值对齐的高回归纪律。
+> - [ ] **DS.1 补 month/quarter/year level Metric 合成**（plan-drill 月/季/年 KPI 条有数据，闭合现 drillEmpty）：
+>   改 `generateBattery.metrics`（现 3 op → +9 月季年，确定性派生）→ 须重校准 `cockpit-rootcause` 的 `metrics===3` + 字节一致断言；
+>   并改 `metric_rollup`/`plan_rootcause` 默认 `level=op`（防波及 `/a/v1/metrics/snapshot` 端点 + rootcause widget 读到月季年）。
+> - [ ] **DS.2 补富 KPI 4-5 项数据源 + dash kpi widget**：可供给(V5/V7→SopVersionRow isFinal.supply) · 收入达成(FinancePlan rolling÷budget，需比值，objects-aggregate 不够→solver/派生) · 利用率瓶颈(Base max util，dash 聚合需补 max agg) · 现金垫C18(无对象行→需建 cash 行/对象) · AOP基准(AnnualScenario 基准营收对象)。
+> - **验收**：每项门B 真前端验 + 全套回归（datacore 630 基线，破则重校准并逐条说明，绝不静默改期望）。
+>
 > **防复发 LOOP 机制（已落地）✅：** 门A `cockpit-widgets:check`（PRD↔widget 覆盖对账，静态，**已并入 `pnpm gates`**，落地即抓出 mock 漂移）+ 门B `ui-smoke`（Playwright 真交互冒烟，`pnpm ui-smoke`，真浏览器点关键交互断言可达；环境无 chromium 则 SKIP，CI 启用需 playwright install，独立 job 以免环境依赖致 gates 不稳）。LOOP：PRD→门A(结构)+门B(交互)→缺/断即红→修。新 UI 功能须门B 真验才算完成（不再 commit 即宣布）。
 
 
