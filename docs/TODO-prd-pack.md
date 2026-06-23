@@ -3,17 +3,17 @@
 > **2026-06-23 · 经营驾驶舱 PRD §2 缺口表逐行核实（grep，补 fde-delivery 真前端验收欠债）**
 > 教训：此前判"经营驾驶舱完成"靠 jsdom 绿测试、未真前端走查 → 漏掉死按钮 + 整块缺失 widget。本清单逐行对照 PRD §2 缺口表与 DASH_LAYOUT 实际。
 > **§2.1 经营驾驶舱（dash 页）：**
-> - [ ] **富 KPI 内容缺口**：PRD 8 富 KPI（需求P50/可供给V5V7/收入达成/毛利率/利用率瓶颈/齐套预警/现金垫C18/AOP基准）；dash 现仅覆盖 需求P50/毛利总额/齐套 3 个 + 通用 gwh/util/attain/orders → 缺 可供给(V5/V7)/收入达成/利用率瓶颈/现金垫C18/AOP基准。
+> - [数据专项] **富 KPI 缺 4-5 项 + plan-drill 月/季/年 level**：缺 可供给(V5/V7)/收入达成/利用率瓶颈/现金垫C18/AOP基准 + 月季年 KPI 条。**=后端数据层颗粒扩充**：补它需动 generateBattery 合成（破 `cockpit-rootcause` metrics=3 + 字节一致基线）+ 改 metric_rollup/plan_rootcause 默认行为（波及 `/metrics/snapshot` 端点 + rootcause widget）+ 部分 KPI 无现成对象字段（现金垫无对象行/收入达成需比值/dash 聚合无 max）。**高回归专项**，建议像 quarter 取值对齐独立谨慎做（重校准测试基线），不混入 widget 补遗以免破现有 630 绿测试。dash 现有 7 KPI + metric-strip 指标条已覆盖核心。
 > - [x] 待解决问题归并 ✓（ProblemPanel；卡片可点击下钻已修 b442d06）
 > - [x] **订单经营台账（order-ledger widget）✅**：受影响订单台账 + 应用细分筛选 + 综合毛利率聚合(SEG_REGISTRY 派生) + 点行下钻 order-chain 逐单根因 DAG。门B Playwright 真验（8 行/毛利15.9%/筛选8→3/下钻）。
 > - [x] **规划决策推演（plan-drill widget）✅**：月/季/年 level 切换 + KPI 条 + 点未达成→根因 DAG + 一键去建议(plan-generate)/去体检(plan-audit)；`plan_rootcause` 加 level 过滤。门B 真验。**注：月/季/年 level Metric 合成待补（现 op 层完整，月季年显 drillEmpty）。**
 > - [x] **mock/后端 DASH_LAYOUT 漂移修复 ✅**：门A 落地即抓出 mock fixtures 缺 metric-strip/dag widget（后端有）→ 已补齐两套同步。
 > - [x] 回采校准链 ✓ · 模块直达 ✓ · V5/V7 ✓ · 导出 ✓（已补） · 反事实双轨 ✓
 > - [ ] AI 对话：PRD 要"驾驶舱预设 QA"；现以全局对话坞 QueryDock 满足，dash 内无预设 QA 入口（架构差异，待确认是否需 dash 内置）
-> **§2.2 产能推演（risk/project 视图，非 dash；待 grep + 真前端核实，勿凭印象判定）：**
-> - [ ] 逐日轴/悬停当日详情/三档图例文案/首要风险标注（RiskBoardView）— 待核实
-> - [ ] 处置最终方案表（越线日前置7天排程 + peak≥90备份 + C21反提差异）— 待核实
-> - [ ] 型号产能推演六步透明UI + 逐步点亮DAG + 分批/交付地址净窗口（project-sim）— 待核实
+> **§2.2 产能推演（risk/project 视图）grep 核实结果（纠正"待核实"）：**
+> - [x] §2.2-b 处置最终方案表 ✅ **已做**（RiskBoardView:134 处置行动计划表 + risk.ts peak≥90 备份/C21 反提差异）
+> - [x] §2.2-c 型号产能推演六步UI + 分批 + 交付地址 ✅ **已做**（ProjectSimView 六步 stepper + 分批交货 CSV + 交付地址净窗口）
+> - [◐] §2.2-a 逐日轴/悬停/颜色档 ✅ 已做（risk-heat-strip + heatColor + RiskHoverTrigger 悬停）；三档图例文案 + 首要风险标注 = 精修（非整块缺，可选）
 > **防复发 LOOP 机制（已落地）✅：** 门A `cockpit-widgets:check`（PRD↔widget 覆盖对账，静态，**已并入 `pnpm gates`**，落地即抓出 mock 漂移）+ 门B `ui-smoke`（Playwright 真交互冒烟，`pnpm ui-smoke`，真浏览器点关键交互断言可达；环境无 chromium 则 SKIP，CI 启用需 playwright install，独立 job 以免环境依赖致 gates 不稳）。LOOP：PRD→门A(结构)+门B(交互)→缺/断即红→修。新 UI 功能须门B 真验才算完成（不再 commit 即宣布）。
 
 
