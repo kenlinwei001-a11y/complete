@@ -318,6 +318,24 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-generation-boundary-grounding.md": {
+      "acceptanceIds": [
+        "A1",
+        "A3",
+        "A4",
+        "A5",
+        "A7"
+      ],
+      "covered": [
+        "A1",
+        "A3",
+        "A4",
+        "A5",
+        "A7"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-generic-inference.md": {
       "acceptanceIds": [
         "SY3"
