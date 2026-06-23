@@ -241,12 +241,93 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     const cb = (b.crossDay as number | null) ?? Number.MAX_SAFE_INTEGER;
     return ca - cb || (str(a.base) < str(b.base) ? -1 : 1);
   });
+  const shown = cards.slice(0, p.maxCards);
   return {
     horizon,
     threshold: p.threshold,
-    cards: cards.slice(0, p.maxCards),
+    cards: shown,
     mitigationLibrary: p.mitigations,
+    planRows: buildRiskPlanRows(c, shown, p.threshold),
   };
+}
+
+// PRD-IND-risk §2.4：处置行动计划表——每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP；按启动日排序。
+const RISK_OWNER_NAMES = ["王", "李", "张", "刘", "陈", "杨", "赵", "黄"];
+const RISK_FACTOR_OBJ: Record<string, string> = {
+  瓶颈工序: "产线负载率",
+  设备OEE: "设备OEE",
+  人力工时: "人力工时供给",
+  物料齐套: "物料供给齐套",
+  物流时长: "物流在途时效",
+  换型损失: "换型占用",
+  良率波动: "良率稳定性",
+};
+function riskHashN(s: string, mod: number): number {
+  let x = 0;
+  for (let i = 0; i < s.length; i++) x = (x * 31 + s.charCodeAt(i)) % 997;
+  return x % mod;
+}
+function mmdd(startIso: string, day: number): string {
+  const ms = Date.parse(`${startIso.slice(0, 10)}T00:00:00Z`) + day * 86400000;
+  return new Date(ms).toISOString().slice(5, 10);
+}
+function buildRiskPlanRows(
+  c: SolverContext,
+  cards: Record<string, unknown>[],
+  threshold: number,
+): Record<string, unknown>[] {
+  const fs = c.params.forecastStart;
+  const mits = c.params.risk.mitigations;
+  const rows: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  const early: string[] = [];
+  for (const card of cards) {
+    const base = str(card.base);
+    const factor = str(card.factor);
+    const peak = Math.round(num(card.peak));
+    const cross = (card.crossDay as number | null) ?? num(card.horizon, 14);
+    if (cross <= 14 && !early.includes(base)) early.push(base);
+    if (seen.has(base)) continue; // 每基地主因素一行（cards 已按越线日排序）
+    seen.add(base);
+    const owner = `基地负责人 · ${RISK_OWNER_NAMES[riskHashN(base, 8)]}经理`;
+    const sols = mits[factor] ?? [];
+    const s0 = sols[0];
+    if (!s0) continue;
+    rows.push({
+      act: `${s0.name}（${base.replace("基地", "").replace("·总部", "")}）`,
+      det: `峰值${peak}·${RISK_FACTOR_OBJ[factor] ?? factor}`,
+      owner,
+      start: `T+${cross - 7}·${mmdd(fs, cross - 7)}（越线前7天）`,
+      done: `T+${cross}·${mmdd(fs, cross)}（越线日）`,
+      eff: `消解≈${s0.eff}·${s0.tn}天起效`,
+      rule: "C05",
+    });
+    if (peak >= 90 && sols[1]) {
+      rows.push({
+        act: `${sols[1].name}（${base.replace("基地", "").replace("·总部", "")}·备份方案）`,
+        det: "峰值≥90 双保险",
+        owner,
+        start: `T+${cross - 3}·${mmdd(fs, cross - 3)}`,
+        done: `T+${cross + 7}·${mmdd(fs, cross + 7)}`,
+        eff: `消解≈${sols[1].eff}·${sols[1].tn}天起效`,
+        rule: "C05",
+      });
+    }
+  }
+  if (early.length > 0) {
+    rows.push({
+      act: `反提月度计划差异（${early.map((b) => b.replace("基地", "").replace("·总部", "")).join("、")}）`,
+      det: "14 天内越线，需计划层资源协同",
+      owner: "计划中心 → S&OP",
+      start: `T+1·${mmdd(fs, 1)}`,
+      done: "本周 S&OP",
+      eff: "计划-执行闭环，差异进入月度议程",
+      rule: "C21",
+    });
+  }
+  void threshold;
+  rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
+  return rows;
 }
 
 /**

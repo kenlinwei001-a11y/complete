@@ -574,6 +574,13 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
     { base: "成都", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
     { base: "武汉", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
   ],
+  // PRD-IND-risk §2.4：处置行动计划表（主因素首选 + 峰值≥90 备份 + 14 天内反提 S&OP，按启动排序）
+  planRows: [
+    { act: "关键正极提前备料（常州）", det: "峰值96·产线负载率", owner: "基地负责人 · 王经理", start: "T-2·06-08（越线前7天）", done: "T+5·06-15（越线日）", eff: "消解≈12·2天起效", rule: "C05" },
+    { act: "增开夜班（常州·备份方案）", det: "峰值≥90 双保险", owner: "基地负责人 · 王经理", start: "T+2·06-12", done: "T+12·06-22", eff: "消解≈11·2天起效", rule: "C05" },
+    { act: "近端仓+供应商VMI（江门）", det: "峰值91·物料供给齐套", owner: "基地负责人 · 李经理", start: "T+1·06-11（越线前7天）", done: "T+8·06-18（越线日）", eff: "消解≈9·5天起效", rule: "C05" },
+    { act: "反提月度计划差异（常州、江门）", det: "14 天内越线，需计划层资源协同", owner: "计划中心 → S&OP", start: "T+1·06-11", done: "本周 S&OP", eff: "计划-执行闭环，差异进入月度议程", rule: "C21" },
+  ],
 };
 
 // ---------------------------------------------------------------------------

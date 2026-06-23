@@ -131,6 +131,40 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
       {ordersDay && <AffectedOrdersModal base={ordersDay.base} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
 
+      {/* PRD-IND-risk §2.4：处置行动计划表（按越线日前置 7 天排启动 · 峰值≥90 配备份方案 · 14 天内反提 S&OP） */}
+      {(data.planRows?.length ?? 0) > 0 && (
+        <div className="panel" style={{ marginTop: 18 }} data-testid="risk-plan-panel">
+          <div className="section-title">{zh.risk.planTitle}</div>
+          <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.risk.planSub(data.planRows!.length)}</div>
+          <table className="cmp" data-testid="risk-plan-table">
+            <thead>
+              <tr>
+                <th>{zh.risk.planAct}</th>
+                <th>{zh.risk.planDet}</th>
+                <th>{zh.risk.planOwner}</th>
+                <th>{zh.risk.planStart}</th>
+                <th>{zh.risk.planDone}</th>
+                <th>{zh.risk.planEff}</th>
+                <th>{zh.risk.planRule}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.planRows!.map((r, i) => (
+                <tr key={i} data-testid={`risk-plan-row-${i}`}>
+                  <td className="zh"><b>{r.act}</b></td>
+                  <td className="zh">{r.det}</td>
+                  <td className="zh">{r.owner}</td>
+                  <td className="mono">{r.start}</td>
+                  <td className="mono">{r.done}</td>
+                  <td className="zh">{r.eff}</td>
+                  <td><span className="badge">{r.rule}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* 运营态出厂配置增量 §4.3：历史处置案例区（越线→采纳→消解；点击回放当时的时序曲线） */}
       <HistoricalCasesSection />
       {/* inference-process 横切：风险推演的编排过程 DAG */}

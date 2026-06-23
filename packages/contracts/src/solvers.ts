@@ -82,10 +82,24 @@ export const RiskCardSchema = z.object({
     .object({ series: z.array(z.number()), appliedPlan: z.string(), effectiveFrom: z.number() })
     .optional(),
 });
+/** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
+export const RiskPlanRowSchema = z.object({
+  act: z.string(), // 行动项（方案名（基地））
+  det: z.string(), // 详情（峰值·对象）
+  owner: z.string(), // 责任人（基地负责人 · X经理 / 计划中心→S&OP）
+  start: z.string(), // 启动 T+{cross−7}·{date}
+  done: z.string(), // 完成 T+{cross}·{date}
+  eff: z.string(), // 预期（消解幅度·起效时间）
+  rule: z.string(), // 关联规则 C05/C21
+});
+export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
+
 export const RiskTimelineOutputSchema = z.object({
   horizon: z.number().int(),
   threshold: z.number(), // 默认 85
   cards: z.array(RiskCardSchema).max(8),
+  // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP）。
+  planRows: z.array(RiskPlanRowSchema).optional(),
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
 

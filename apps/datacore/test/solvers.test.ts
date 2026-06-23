@@ -278,6 +278,34 @@ describe("S1 solvers", () => {
     }
   });
 
+  it("V5b: risk_timeline planRows — 每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP（§2.4）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = (await invokeSolver(t, "risk_timeline", { horizon: 30 })).json() as {
+      data: { cards: { base: string; peak: number; crossDay: number | null }[]; planRows: { act: string; det: string; owner: string; start: string; done: string; eff: string; rule: string }[] };
+    };
+    const { cards, planRows } = out.data;
+    expect(planRows.length).toBeGreaterThan(0);
+    // 每行字段完整 + 规则 ∈ {C05, C21}
+    for (const r of planRows) {
+      expect(r.act.length).toBeGreaterThan(0);
+      expect(r.owner.length).toBeGreaterThan(0);
+      expect(["C05", "C21"]).toContain(r.rule);
+    }
+    // 峰值≥90 的基地有备份方案行
+    if (cards.some((c) => c.peak >= 90)) {
+      expect(planRows.some((r) => r.act.includes("备份方案") && r.det.includes("双保险"))).toBe(true);
+    }
+    // 存在 14 天内越线 → 反提 S&OP 行（C21）
+    if (cards.some((c) => c.crossDay != null && c.crossDay <= 14)) {
+      const reflux = planRows.find((r) => r.rule === "C21");
+      expect(reflux?.owner).toContain("S&OP");
+    }
+    // 按启动日排序（start 字符串 numeric 升序）
+    const starts = planRows.map((r) => r.start);
+    expect([...starts].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))).toEqual(starts);
+  });
+
   it("affected_orders: window [day−7, day+14], delay estimate, condition filter + nearest-due fallback", async () => {
     const t = await makeApp();
     await seedBattery(t);
