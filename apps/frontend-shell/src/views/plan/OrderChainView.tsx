@@ -19,6 +19,31 @@ import styles from "./PlanViews.module.css";
 const SEG_COLOR: Record<string, string> = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" }; // debattery-allow：view.layout.segColors 缺失兜底（纯配色映射）
 const CHIP_LIMIT = 4;
 
+// PRD-IND-order-aggregate §4.5-A/C：经营数据看板 econTable 口径（SEG 价/利 + 在制/库存系数）。
+// view.layout 优先下发，常量仅兜底（R14）；ordEcon 逐订单派生、按应用细分聚合。
+const ECON_DEFAULT = {
+  segPrice: { 乘用车: 2.2, 商用车: 1.8, 储能: 1.4 } as Record<string, number>, // debattery-allow：万元/套（原型 SEG_PRICE）
+  segMargin: { 乘用车: 0.18, 商用车: 0.15, 储能: 0.13 } as Record<string, number>, // debattery-allow
+  coef: { fg: [0.22, 0.12], wip: [0.3, 0.15], rm: [0.18, 0.1] }, // debattery-allow：成品/在制/原料占营收系数 [base, hash幅度]
+};
+const SEG_ORDER = ["乘用车", "商用车", "储能"]; // debattery-allow：econ 看板细分行展示顺序（非业务数值）
+
+/** 确定性哈希（与原型 hashN 同式：x=(x*31+code)%997）→ 逐订单 econ 微扰，R6 字节一致。 */
+function hashN(s: string, mod: number): number {
+  let x = 0;
+  for (const c of s) x = (x * 31 + c.charCodeAt(0)) % 997;
+  return x % mod;
+}
+
+interface EconAgg {
+  cap: number;
+  fg: number;
+  wip: number;
+  rm: number;
+  sales: number;
+  gp: number;
+}
+
 /** 问题类别 → 中文（4 类归并：交期/毛利/齐套/信用） */
 const CATEGORY_LABEL: Record<OrderProblemGroup["category"], string> = {
   DELIVERY: "交期",
@@ -38,6 +63,8 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   const segColors = (view.layout?.segColors as Record<string, string> | undefined) ?? SEG_COLOR;
   const [baseFilter, setBaseFilter] = useState<string>("");
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
+  const [segMode, setSegMode] = useState<"app" | "base">("app"); // econ 看板分组：应用细分 / 风险基地
+  const econCfg = (view.layout?.econ as typeof ECON_DEFAULT | undefined) ?? ECON_DEFAULT;
 
   const { data, isLoading } = useQuery({
     queryKey: ["b", "affected-orders", { base: baseFilter }],
@@ -62,6 +89,40 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
   const { out, snapshotVersion } = data;
+
+  // 经营数据看板：逐订单 econ 派生 → 按应用细分 / 风险基地聚合（前端纯派生，零写死值来自 econCfg）。
+  const empty = (): EconAgg => ({ cap: 0, fg: 0, wip: 0, rm: 0, sales: 0, gp: 0 });
+  const econGroups = new Map<string, { color: string; agg: EconAgg }>();
+  const econTotal = empty();
+  for (const r of out.rows) {
+    const price = econCfg.segPrice[r.seg] ?? 0.6;
+    const h = hashN(r.so, 10) / 10;
+    const sales = r.qty * price;
+    const e: EconAgg = {
+      cap: r.qty,
+      sales,
+      gp: sales * (econCfg.segMargin[r.seg] ?? 0.13),
+      fg: sales * (econCfg.coef.fg[0]! + h * econCfg.coef.fg[1]!),
+      wip: sales * (econCfg.coef.wip[0]! + h * econCfg.coef.wip[1]!),
+      rm: sales * (econCfg.coef.rm[0]! + h * econCfg.coef.rm[1]!),
+    };
+    // app 模式按应用细分；base 模式按首个关联风险基地（跨基地订单计入首基地）。
+    const key = segMode === "app" ? r.seg : (r.risks[0]?.base?.replace("基地", "").replace("·总部", "") ?? "其他");
+    const color = segMode === "app" ? (segColors[r.seg] ?? "#7E8BEE") : "#54B5C4";
+    let g = econGroups.get(key);
+    if (!g) {
+      g = { color, agg: empty() };
+      econGroups.set(key, g);
+    }
+    for (const k of ["cap", "fg", "wip", "rm", "sales", "gp"] as const) {
+      g.agg[k] += e[k];
+      econTotal[k] += e[k];
+    }
+  }
+  const econRows = [...econGroups.entries()]
+    .map(([key, g]) => ({ key, color: g.color, ...g.agg, gmRate: g.agg.sales > 0 ? (g.agg.gp / g.agg.sales) * 100 : 0 }))
+    .sort((a, b) => (segMode === "app" ? SEG_ORDER.indexOf(a.key) - SEG_ORDER.indexOf(b.key) : b.sales - a.sales));
+  const econGmRate = econTotal.sales > 0 ? (econTotal.gp / econTotal.sales) * 100 : 0;
 
   return (
     <div data-testid="order-chain-view">
@@ -139,6 +200,73 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           </Provenance>
           <span>{zh.orderChain.sumRevenue}</span>
         </div>
+      </div>
+
+      {/* 经营数据看板 econTable（PRD-IND-order-aggregate §4.5-A）：产能/库存/在制/原料/营收/毛利按细分聚合 */}
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{zh.orderChain.econSection}</span>
+          <span data-testid="oc-segsel">
+            <button
+              className={styles.chip}
+              style={{ cursor: "pointer", ...(segMode === "app" ? { color: "var(--c-capacity)", borderColor: "var(--c-capacity)" } : {}) }}
+              data-testid="oc-segmode-app"
+              onClick={() => setSegMode("app")}
+            >
+              {zh.orderChain.byApp}
+            </button>
+            <button
+              className={styles.chip}
+              style={{ cursor: "pointer", marginLeft: 6, ...(segMode === "base" ? { color: "var(--c-capacity)", borderColor: "var(--c-capacity)" } : {}) }}
+              data-testid="oc-segmode-base"
+              onClick={() => setSegMode("base")}
+            >
+              {zh.orderChain.byBase}
+            </button>
+          </span>
+        </div>
+        <table className="cmp" data-testid="oc-econ-table">
+          <thead>
+            <tr>
+              <th>{segMode === "app" ? zh.orderChain.colSeg : zh.orderChain.colBase}</th>
+              <th>{zh.orderChain.econCap}</th>
+              <th>{zh.orderChain.econFg}</th>
+              <th>{zh.orderChain.econWip}</th>
+              <th>{zh.orderChain.econRm}</th>
+              <th>{zh.orderChain.econSales}</th>
+              <th>{zh.orderChain.econGp}</th>
+              <th>{zh.orderChain.econGmRate}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {econRows.map((r) => (
+              <tr key={r.key} data-testid={`oc-econ-row-${r.key}`}>
+                <td>
+                  <span className={styles.chip} style={{ color: r.color, borderColor: `${r.color}66` }}>
+                    {r.key}
+                  </span>
+                </td>
+                <td>{fmt(r.cap, 1)}</td>
+                <td>{fmt(r.fg, 1)}</td>
+                <td>{fmt(r.wip, 1)}</td>
+                <td>{fmt(r.rm, 1)}</td>
+                <td>{fmt(r.sales, 1)}</td>
+                <td>{fmt(r.gp, 1)}</td>
+                <td>{fmt(r.gmRate, 1)}%</td>
+              </tr>
+            ))}
+            <tr data-testid="oc-econ-total" style={{ fontWeight: 700 }}>
+              <td>{zh.orderChain.econTotal}</td>
+              <td>{fmt(econTotal.cap, 1)}</td>
+              <td>{fmt(econTotal.fg, 1)}</td>
+              <td>{fmt(econTotal.wip, 1)}</td>
+              <td>{fmt(econTotal.rm, 1)}</td>
+              <td>{fmt(econTotal.sales, 1)}</td>
+              <td>{fmt(econTotal.gp, 1)}</td>
+              <td>{fmt(econGmRate, 1)}%</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       {/* 受影响订单明细 */}

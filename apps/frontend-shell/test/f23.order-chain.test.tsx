@@ -37,6 +37,24 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     expect(screen.getByTestId("oc-caliber")).toHaveTextContent("延误取最大");
   });
 
+  it("经营数据看板 econTable（PRD-IND-order-aggregate §4.5-A）：按应用细分聚合 + 合计行 + 基地/细分切换", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/order-chain");
+
+    // 默认按应用细分：储能/商用车细分行 + 合计行（营收/毛利率派生自 qty×SEG 价/利）
+    const econ = await screen.findByTestId("oc-econ-table");
+    expect(within(econ).getByTestId("oc-econ-row-储能")).toBeInTheDocument();
+    const total = within(econ).getByTestId("oc-econ-total");
+    expect(total).toHaveTextContent("合计");
+    expect(total).toHaveTextContent("%"); // 综合毛利率行
+
+    // 切「按风险基地」→ 重新按基地聚合（常州组出现，细分组消失）
+    await user.click(screen.getByTestId("oc-segmode-base"));
+    await waitFor(() => expect(within(screen.getByTestId("oc-econ-table")).getByTestId("oc-econ-row-常州")).toBeInTheDocument());
+    expect(within(screen.getByTestId("oc-econ-table")).queryByTestId("oc-econ-row-储能")).not.toBeInTheDocument();
+  });
+
   it("风险点 chip 悬停弹窗与 risk-board 共用 RiskPopover 组件（同一 data-testid=risk-popover 渲染）", async () => {
     const user = userEvent.setup();
     loginAs("planner");
