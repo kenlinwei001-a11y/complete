@@ -106,4 +106,48 @@ export const OPERATION_REGISTRY: z.infer<typeof OperationRegistryEntrySchema>[] 
 
 ---
 
+## 附录 · DF.1 缺区审计（精确清单 · grounded 2026-06-23 · read-only，无代码）
+
+> **方法**：枚举 4 路由文件（`apps/datacore/src/app.ts` 265 · `adminplatform.ts` · `llmproviders.ts` · `apps/agentcore/src/server.ts` 115）全部 `app.{get,post,put,delete,patch}` 路由 → 按 `/服务/资源` 归域 → 与 `OPERATION_CATALOG` 端点 + CLI run 表命令 + 间接可达（`solve`/`ask`/`scenarios`）交叉。
+> **规模**：**398 路由 · 93 资源域 · 22 已覆盖 · 71 原始未覆盖** → curate（去基础设施/只读噪声）后 **真功能缺口 ≈20 能力域 / ~190 端点无 CLI 路径**。
+
+### A. 真功能缺口（需补 op）
+
+| 能力域 | 端点 | 现状 | 建议 op |
+|---|---|---|---|
+| Workflow 编排 | `workflows` 11 | `agent` op 标称含但无独立命令 | `workflow` |
+| Skill 技能 | `skills` 11 | 同上 | `skill` |
+| MCP 配置/服务 | `mcp-configs` 12 + `mcp` 1 | 无 | `mcp` |
+| Eval 套件 | `evals` 7 | 无 | `eval` |
+| **LLM 供应商/用途绑定/预算** | `llm-providers` 7 + `llm` 5 + `llm-bindings` 2 + `llm-budgets` 3 = **17** | 无（**G-7**） | `llm` |
+| 运营/调度/时钟/回放 | `ops` 11 + `scheduler` 4 + `sync-jobs` 1 = **16** | 无（含模拟时钟 tick/replay·A8） | `ops`/`clock` |
+| 租户/用户/角色 IAM | `tenants` 10 + `users` 1 + `roles` 1 = **12** | 无 | `tenant`/`user` |
+| 语义目录 | `catalog` 11 | 无（Part A 新建·已现端点） | `catalog` |
+| 场景/视图配置 | `scene-entries` 4 + `scenario-packages` 3 + `view-configs` 4 + `scenes` 1 = **12** | `scenario` 仅 launch，无配置 CRUD | `scene-config` |
+| 数据接入实例/分类/模版 | `connections` 7 + `data-categories` 4 + `raw-datasets` 3 + `data-templates` 2 + `uploads` 1 = **17** | `import` 仅上传 | `connection`/`data` |
+| Meta/dogfooding 影响分析 | `meta` 8 | 无 | `meta` |
+| 切片/切片规划器 | `slices` 6 | 无 | `slice` |
+| 规则文档抽取（A2） | `rule-docs` 6 + `rule-candidates` 1 = 7 | `rule` 仅建规则 | `rule-extract` |
+| S&OP 版本台 | `sop` 6 | 无（sop_balance 是工作流） | `sop` |
+| OC 平台配置 | `prompt-templates` 3 + `calendars` 3 + `writeback-echoes` 2 = 8 | 无（OC5/6/9） | `platform-config` |
+| 校验/VLE | `validation` 3 | 无 | `validate` |
+| 指标/SPINE | `metrics` 3 + `ksf` 1 + `principals` 1 = 5 | 读经 ask 部分可达 | `metric` |
+| 通知中心 | `notifications` 3 | 无 | `notify` |
+| 配置迁移 ConfigBundle | `config-bundles` 2 | 无（OC3） | `config-bundle` |
+| 生成边界 GenerationBoundary | `boundary` 2 | 无（Part A 新·已现端点） | `boundary` |
+
+→ **约 20 能力域 / ~190 端点无 CLI 路径。** 其中 G-7(LLM 绑定)、ops/clock(A8) 是 §0 已点的；新发现大块：workflows/skills/mcp/tenants/scene-config/connections。
+
+### B. 只读/元数据（可选 CLI 查询·低优先·不阻断）
+`lineage · derivations · inference · history · plan/aop · plan-versions · data-health · field-coverage · entity-catalog · references · industry-templates · action-types · authz/explain · business-domains` —— 多为读/元数据，经 `ask`/`types` 间接可达，补查询命令是 nice-to-have。
+
+### C. 排除（非用户功能·基础设施）
+`healthz · readyz · .well-known · internal · exec-locks · epoch · webhooks · event-subscriptions · perception · capability-inventory · connector-types/categories · outbox`。
+
+### 结论（喂 DF.2/DF.3）
+- 缺口集中在：**LLM 绑定(G-7) · workflow · skill · mcp · tenant/user · ops/clock(A8) · scene-config · connection · meta · slice · sop · eval · rule-extract · OC 平台配置 · validation · config-bundle · boundary · catalog**。
+- **手补 20 op 易再漏 → DF.3 `deriveOperationCatalog`（从注册表自动派生）+ DF.4 `cli-coverage:check` 才是根治**。本审计即"目录手维护漏一大片（71/93 域未覆盖）"的实证。
+
+---
+
 > 状态：**v1.0 DRAFT，待评审**。grounded 于本体 v1.0。核心 = CLI 已在，补"操作目录自动派生 + 注册表覆盖门"使**每个功能 CLI 可达且不回潮**（落实 R16 能力环）。只定义设计，落地听指示。
