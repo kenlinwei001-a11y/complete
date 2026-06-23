@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 版本 | v0.1 · 状态 DRAFT · 日期 2026-06-21 · 波次 Wave 5（新增需求） |
+| 版本 | v0.2 · 状态 DRAFT（工业级落地规格已补全，可交付研发） · 日期 2026-06-23 · 波次 Wave 5（新增需求） |
 | 取代/扩展 | 扩 `scripts/platform-cli.mjs`（现有 CLI 对话入口）· `PRD-query-orchestration-service.md`（QOS 分类/编排）· `PRD-addendum-capability-routing.md`（能力路由）· 消费 A1（求解器 MCP）/A3（能力发现）/A4（浏览）/A5（FDE 建域）/A10（建域验证） |
 | 先读 | 根 `CLAUDE.md` · `docs/SYSTEM-ONTOLOGY.md`（§2.H CLI 对话入口/客户端 · §3 编排链 · §5 R3/R4/R8/R13 · §10.3 切片 `sys.orch.query_to_answer`） · `scripts/platform-cli.mjs` · `apps/agentcore/src/router/orchestrator.ts`（classify）· `apps/agentcore/src/tools/registry.ts`（discover）· `apps/datacore/src/app.ts`（模块端点：connectors.upload:1041 · modeling/derive · rules · solvers/invoke） |
 | 索引 | `PRD-A-series-roadmap.md` |
@@ -153,3 +153,179 @@ R8（JWT）· R4（写经审批，CLI 内批）· R3（entitlement 路由）· R
 | 知识库 | 索引/检索 | `kb search "<q>"` / `kb index <file>` | KB 端点 |
 
 > 覆盖纪律：A15 验收即"逐行命令真跑通 + 与 GUI 同源（事件互见）"，由 A12 hand-run 复验。未覆盖项 = CLI 功能洼地，须补齐或在本表标"GUI-only + 原因"。
+
+---
+
+# v0.2 增补 · 工业级落地规格（研发可 1:1 实现，无需再问作者）
+
+> 上文（§0–§11 + 附录 A）确立**为什么/做什么**；本增补给**怎么做到可验收的精度**：把 `OPERATION_CATALOG`、契约、`operationClassify`、`cli-parity:check` 从"命名"补成"机器可落地的定稿"。所有锚点已核对真实代码（DataCore `app.ts` 226 路由 / AgentCore `server.ts` 111 路由 / `features.ts` entitlement 键 / `scripts/check-*.mjs` 门禁范式）。
+
+## 附录 B · `OPERATION_CATALOG` 定稿（机器可读 · 单一来源）
+
+落点 `apps/agentcore/src/operations/catalog.ts`（B 栈，与 `operationClassify` 同模块）。每条 = 一个**对外操作能力**到**REST 调用 + CLI 交互**的完整声明。
+
+### B.1 条目结构（契约见附录 C）
+```
+OperationCatalogEntry {
+  opKey: string            // 稳定主键，如 "import" "model" "rule.publish"
+  kind: "QUERY" | "OPERATION"
+  cli: string              // CLI 子命令模板，如 "import <file> [--category]"
+  nl: { keywords: string[]; examples: string[] }   // operationClassify 关键词/示例（确定性预匹配 + LLM few-shot）
+  service: "A" | "B"       // DataCore / AgentCore
+  method: "GET"|"POST"|"PUT"|"DELETE"
+  path: string             // 端点模板（带 :param），如 "/a/v1/connectors/upload"
+  slots: Slot[]            // 必填/选填参数（见 B.2）
+  r4: boolean              // 写真值是否经 Action 审批（true=产 ActionDraft，CLI 内 approve）
+  entitlement: string|null // features.ts 的 feature 键；关闭→404 FEATURE_NOT_FOUND（R3 先于 authz）
+  dryRun: string|null      // 预览端点（如 rule 的 /rules/dry-run），无则 null
+  uiDeepLink: string|null  // 不宜 CLI 内联者的 GUI 深链模板（§3.6），与 path 二选一即算覆盖
+  json: string             // --json 输出形状名（附录 D 的 envelope.data 子型）
+  next: string[]           // 完成后"下一步建议"的 opKey 列表
+  emits: string[]          // 触发的领域事件（§4），用于跨服务冒烟断言 GUI 互见
+}
+Slot { name; type:"file"|"string"|"string[]"|"enum"|"number"|"bool"; required:bool;
+       source:"arg"|"flag"|"prompt"|"discover"; prompt?:string; enum?:string[] }
+```
+
+### B.2 全量条目（与附录 A 逐行对应 · 22 op · dev 照此填 `catalog.ts`）
+
+| opKey | cli | service·method·path | slots(必填) | r4 | entitlement | dryRun | uiDeepLink | emits |
+|---|---|---|---|---|---|---|---|---|
+| `ask` | `ask "<q>"` | B·POST·/api/v1/queries | q:string | – | shell.query-dock | – | – | （只读，task.*） |
+| `import` | `import <file> [--category]` | A·POST·/a/v1/connectors/upload | file:file, category?:enum(discover) | – | – | – | – | raw_dataset.uploaded |
+| `conn.create` | `conn create <type>` | A·POST·/a/v1/connections | type:enum | ✓ | – | – | – | connection.sync_completed |
+| `conn.sync` | `conn sync <id>` | A·POST·/a/v1/connections/:id/sync | id:string | – | – | – | – | connection.sync_completed |
+| `conn.ls` | `conn ls` | A·GET·/a/v1/connections | – | – | – | – | – | – |
+| `model` | `model <datasetIds> [--publish]` | A·POST·/a/v1/modeling/derive | datasetIds:string[] | ✓ | view.ontology-graph | /a/v1/modeling/suggest | – | ontology.published |
+| `types` | `types [--domain]` | A·GET·/a/v1/ontology/object-types | – | – | – | – | – | – |
+| `objects` | `objects <type>` | A·GET·/a/v1/objects?type= | type:string | – | – | – | – | – |
+| `obj` | `obj <type> <id>` | A·GET·/a/v1/objects/:type/:id | type,id:string | – | – | – | – | – |
+| `rule` | `rule "<NL或表达式>"` | A·POST·/a/v1/rules | expr:string | ✓ | view.rule-library | /a/v1/rules/dry-run | – | rules.updated |
+| `rule.publish` | `rule publish <id>` | A·POST·/a/v1/rules/:id/publish | id:string | ✓ | view.rule-library | – | – | rules.updated |
+| `solve` | `solve <key> [--args j]` | A·POST·/a/v1/solvers/:key/invoke | key:enum(discover), args?:string | – | （随 solver） | – | – | – |
+| `solve.new` | `solve --new "<NL>"` | – | nl:string | – | – | – | /admin/solvers/new?ctx= | – |
+| `synth` | `synth <industry> [--scale --seed]` | A·POST·/a/v1/synthetic/jobs | industry:enum, scale?:enum, seed?:number | – | – | – | – | dataset.regenerated |
+| `build` | `build "<story>"` | A·POST·/a/v1/databuilder/runs | story:string | ✓ | – | – | – | storybuild.run_recorded |
+| `scenarios` | `scenarios` | B·GET·/b/v1/scenarios | – | – | – | – | – | – |
+| `launch` | `launch <key>` | B·POST·/b/v1/scenarios/:key/launch | key:string | – | – | – | – | task.* |
+| `drafts` | `drafts ls` | A·GET·/a/v1/action-drafts?status=PENDING | – | – | – | – | – | – |
+| `approve` | `approve <id>` | A·POST·/a/v1/action-drafts/:id/approve | id:string | ✓(本身即批) | – | – | – | action.executed |
+| `agent` / `skill` / `workflow` | `<m> ls\|show <id>\|publish <id>` | B·GET/POST·/b/v1/{agents,skills,workflows}* | m:enum, id?:string | ✓(publish) | – | – | – | {agent,workflow}.published |
+| `mcp` | `mcp ls` | B·GET·/b/v1/mcp/tools | – | – | – | – | – | – |
+| `calib` | `calib ls\|apply <id>` | A·GET/POST·/a/v1/calibration* | id?:string | ✓(apply) | – | – | – | calibration.applied |
+| `policy` | `policy ls\|set <j>` | A·GET/PUT·/a/v1/policies | j?:string | ✓(set) | – | – | – | policy.updated |
+| `signals` | `signals` / `sensitivity --delta j` | A·GET/POST·/a/v1/external-signals[/sensitivity] | delta?:string | – | – | – | – | – |
+| `quarantine` | `quarantine ls\|reprocess <id>` | A·GET/POST·/a/v1/quarantine* | id?:string | ✓(reprocess) | – | – | – | quarantine.row_added |
+| `merge` | `merge <a> <b>` | A·POST·/a/v1/objects/merge | a,b:string | ✓ | – | /a/v1/objects/merge/preview | – | objects.merged |
+| `features` | `features ls\|toggle <key>` | A·GET/PUT·/a/v1/features | key?:string | ✓(toggle, admin) | – | – | – | features.updated |
+| `tickets`/`claim`/`grow` | （已有）| B·/api/v1/growth/* | – | – | – | – | – | growth.* |
+| `kb` | `kb search "<q>"` / `kb index <file>` | A·POST/GET·/a/v1/kb* | q\|file | ✓(index) | view.review | – | – | kb.indexed |
+
+> **裁决项（dev 落地前确认，标注以守诚实）**：① `policy.set`/`features.toggle`/`merge`/`agent.publish` 的精确端点路径需以实现期 `app.ts` 为准（上表 path 为 as-designed，可能与真实命名差一截——`cli-parity:check` 反向校验会暴露 dangling，按真实路径修表）；② `solve` 的 entitlement 随具体 solver 的 feature 键（如 `capacity_forecast`），运行期解析非静态；③ `kb` entitlement 暂挂 `view.review`，若 KB 独立 feature 键则改。
+
+## 附录 C · `contracts/operation-intent.ts` 契约定稿（zod，dev 直接落）
+
+```ts
+import { z } from "zod";
+export const OperationKind = z.enum(["QUERY", "OPERATION"]);
+export const SlotType = z.enum(["file","string","string[]","enum","number","bool"]);
+export const SlotSchema = z.object({
+  name: z.string(), type: SlotType, required: z.boolean(),
+  source: z.enum(["arg","flag","prompt","discover"]),
+  prompt: z.string().optional(), enum: z.array(z.string()).optional(),
+});
+export const OperationCatalogEntrySchema = z.object({
+  opKey: z.string(), kind: OperationKind, cli: z.string(),
+  nl: z.object({ keywords: z.array(z.string()), examples: z.array(z.string()) }),
+  service: z.enum(["A","B"]), method: z.enum(["GET","POST","PUT","DELETE"]),
+  path: z.string(), slots: z.array(SlotSchema),
+  r4: z.boolean(), entitlement: z.string().nullable(),
+  dryRun: z.string().nullable(), uiDeepLink: z.string().nullable(),
+  json: z.string(), next: z.array(z.string()), emits: z.array(z.string()),
+});
+export type OperationCatalogEntry = z.infer<typeof OperationCatalogEntrySchema>;
+
+export const OperationClassifyInput = z.object({
+  text: z.string().min(1), packageId: z.string().optional(), view: z.string().optional(),
+});
+export const OperationClassifyOutput = z.object({
+  kind: OperationKind,
+  opKey: z.string().nullable(),          // 命中的操作；QUERY 时 null（交回 ask）
+  confidence: z.number().min(0).max(1),
+  slots: z.record(z.string(), z.unknown()),   // 已抽到的槽位
+  missing: z.array(z.string()),          // 仍缺的必填槽位 name（CLI prompt 补）
+  candidates: z.array(z.object({ opKey: z.string(), label: z.string(), score: z.number() })),
+  decision: z.enum(["AUTO","CONFIRM","DISAMBIGUATE","FALLBACK_QUERY"]),
+});
+```
+> `OperationIntent` 一等对象（本体 §2.H 提案）= 持久化的 `OperationCatalogEntry` 投影；MVP 阶段 catalog 为代码内常量（R6 确定性），P2 再落库使其可被 dogfooding 切片。
+
+## 附录 D · `operationClassify` 算法 + 阈值 + 永不瞎猜回退
+
+端点 `POST /b/v1/operations/classify`（裁决①已定，§9）。**两段式 = 确定性预匹配优先，LLM 兜底**：
+
+1. **确定性关键词预匹配（R6）**：对 `OPERATION_CATALOG[*].nl.keywords` 做归一化包含匹配，命中唯一 → `decision=AUTO`，`confidence=1.0`，不调 LLM。
+2. **LLM 分类（仅预匹配未命中/多命中时）**：用 `classifier` 用途绑定的 provider（§5 R6：测试 mock / 真 Kimi env-gated），few-shot = catalog 的 `nl.examples` → 返 `{kind, opKey, confidence, slots}`。
+3. **阈值与决策**（硬编码常量，可配）：
+   - `confidence ≥ 0.75` → `AUTO`（直接进 handler，缺槽位走 prompt 补）。
+   - `0.40 ≤ confidence < 0.75` → `CONFIRM`（CLI 打印"将执行 <op>，确认？[y/N]"）。
+   - `< 0.40` 或 `candidates ≥ 2 且分差 < 0.15` → `DISAMBIGUATE`（列候选 + `discover`(slices/solvers/mcp_tools) 让用户选，**绝不瞎猜**，对齐 §3.2）。
+   - `kind=QUERY` → `FALLBACK_QUERY`（交回既有 `ask` SSE 管线）。
+4. **槽位抽取**：从 NL 抽 catalog 声明的 slots；`source=file` 校验路径存在、`source=enum` 经 `discover` 解析候选；缺必填 → 入 `missing`，CLI 逐个 prompt。
+5. **诚实边界**：分类用 LLM **不影响被触发操作的确定性**（操作本身确定 R6）；分类错只会"问错模块"，由 CONFIRM/DISAMBIGUATE 兜住，不会静默误执行写操作。
+
+## 附录 E · `cli-parity:check` 门禁算法定稿（R15 永续机制的命门）
+
+落点 `scripts/check-cli-parity.mjs` + 基线 `scripts/cli-parity-baseline.json`（范式同 `check-debattery.mjs`/`debattery-baseline.json`，已核对存在）。**这是"100% 对等"唯一可机器验证的支点——没有它，附录 A 只是会漂的时点快照。**
+
+### E.1 枚举"对外模块能力"的单一来源（关键）
+- **路由宇宙 `ROUTE_UNIVERSE`** = 正则扫描 `apps/datacore/src/app.ts`（226 条）+ `apps/agentcore/src/server.ts`（111 条）的 `app.<method>("<path>"` 声明（已验证可枚举），归一为 `METHOD path`。
+- **排除集（非对外能力，不计入对等）**：`/healthz`/`/readyz`/`/metrics`、`*/internal/*`（SERVICE_TOKEN 服务间，如 scaffold/invalidate）、`auth/refresh|logout`（会话机制非模块能力）、纯 SSE 子流。排除规则写进脚本常量 `PARITY_EXEMPT_PREFIXES`，每条带注释理由。
+- **覆盖集 `COVERED`** = `OPERATION_CATALOG[*].{method,path}` ∪ `uiDeepLink` 覆盖项 ∪ 路由文件行内 `// cli-only: <理由>` 显式豁免。
+
+### E.2 双向校验
+- **正向（漏命令即红）**：`ROUTE_UNIVERSE \ EXEMPT \ COVERED ≠ ∅` → 列出"有端点无 CLI 命令"的对外能力 → **CI 红**（除非在 `cli-parity-baseline.json` 棘轮基线内；新增能力一律不得进基线，只能补 catalog）。
+- **反向（dangling 即红）**：`OPERATION_CATALOG[*].path \ ROUTE_UNIVERSE ≠ ∅` → catalog 引用了不存在的端点（路径写错/已删）→ 红。**这条直接帮 dev 修正附录 B.2 的 as-designed 路径裁决项。**
+
+### E.3 输出与退出
+- 报告：`✓/✗ CLI 对等：覆盖 N/M 对外端点；未覆盖 K（基线 J）；dangling D`，逐条 `METHOD path → 缺 CLI 命令 / 建议 opKey`。
+- 退出码：全覆盖（或未超基线且无 dangling）→ 0；否则 1。
+- 棘轮：基线只减不增（同 debattery）；CI 跑 `pnpm cli-parity:check`，并入 `pnpm gates`。
+
+### E.4 "注册即对等"PR 纪律（R15 §10.4 落地）
+新模块端点落地的同一 PR 必须在 `catalog.ts` 注册条目（或 `// cli-only` 声明理由），否则 `cli-parity:check` 红——与"新表四处同改 R9"同款强制。
+
+## 附录 F · CLI 命令面定稿（dispatch / flags / --json / 退出码）
+
+扩 `scripts/platform-cli.mjs`（现 8 命令 → 全 catalog）。
+
+- **全局 flag**：`--json`（机读 envelope，人机共用）· `--yes`（跳过非破坏性确认）· `--view <v>` · `--package <p>` · `--base <url>`。
+- **分发**：`do "<NL>"`（万能 → `operationClassify` 路由）· `shell`（REPL，每行走 `do`）· 显式子命令（附录 B.2 `cli` 列）直达对应 handler，跳过分类。
+- **`--json` 输出 envelope**（与错误信封 R7 对齐）：
+  ```
+  { ok:true, op, data:<json型>, draftId?, deepLink?, next:[...], events:[...] }
+  | { ok:false, error:{ code, message, requestId }, decision?, candidates? }
+  ```
+- **退出码**：`0` 成功 · `1` 错误（含 REST 4xx/5xx，error.code 透传）· `2` 需确认被中止（CONFIRM 拒绝/DISAMBIGUATE 未选）· `3` 鉴权/entitlement（401/403/404 FEATURE_NOT_FOUND）。
+- **错误映射**：REST `{error:{code,message,requestId}}` → CLI stderr 红字 + 对应退出码；`FEATURE_NOT_FOUND` → 提示"模块未开通（features toggle）"。
+- **R4 写操作末步**：handler 产 `draftId` → 非 `--yes` 则提示 `approve <draftId>`；`--yes` 且操作声明 `r4` → 自动接 `approve`（仍走真审批端点，非绕过）。
+
+## 附录 G · 行级验收矩阵（DoD 可勾验 · A12 hand-run 复验）
+
+| 验收项 | 通过判据 |
+|---|---|
+| 枚举完整 | `cli-parity:check` 报告覆盖率 = 对外端点 100%（或全部未覆盖项有 `// cli-only` 理由）；dangling = 0 |
+| 分类不瞎猜 | 低置信/多候选输入 → CLI 列候选不执行；CONFIRM 拒绝 → 退出码 2 |
+| 写经审批 | `import→model→approve` 后 `action.executed` 事件发出，GUI 端 `useDomainEventStream` 实时刷新（跨服务冒烟实测） |
+| 同源互见 | CLI `rule publish` 与 GUI 规则库同改、事件互见（双向） |
+| 人机共用 | 每命令 `--json` 输出符合附录 F envelope，code-agent 可解析驱动 |
+| 深链回退 | `solve --new` 输出 `/admin/solvers/new` 可点击深链，`cli-parity:check` 认其覆盖 |
+| 确定性 | `operationClassify` 关键词预匹配段不调网络；LLM 段测试全 mock；`pnpm -r test` 绿 |
+| 门禁并入 | `pnpm gates` 含 `cli-parity:check`；新增端点不注册 catalog → CI 红（注入用例验证） |
+
+## v0.2 增补 · 本体回写增量
+
+本增补**不新增**链路/事件/不变量/断点——R15 与 `cli-parity:check` 已于 v0.1 回写本体 §5/§7。增补仅把它们**精化为可落地算法**，故：
+
+- **无需改 `SYSTEM-ONTOLOGY.md`**（R15 文案、`cli-parity:check` 登记、`OperationIntent` 提案项均已在册）。
+- 实现期落地时按 §11 承诺回写 §2.H（OperationIntent 由提案转一等）· §3（CLI→操作链具体化）· §8（G-3 第四入口）· §10.3（切片补 CLI 操作面）——届时 `OPERATION_CATALOG` 真实路径以 `app.ts` 为准订正附录 B.2 裁决项。
