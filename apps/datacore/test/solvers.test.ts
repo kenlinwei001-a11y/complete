@@ -327,9 +327,10 @@ describe("S1 solvers", () => {
     await seedBattery(t);
     const input = {
       dem: 100,
-      seg_pas: 50,
-      seg_ess: 20,
-      seg_com: 20,
+      // PRD-IND-audit §4.5-A1：seg 合计 90≠dem(触 X01)，且储能(低毛利)占比高 → 结构毛利 15<目标 16(触 X03)
+      seg_pas: 30,
+      seg_ess: 45,
+      seg_com: 15,
       sup: 95,
       ltaCov: 60,
       kitGap: 900,
@@ -341,19 +342,20 @@ describe("S1 solvers", () => {
     const data = (res.json() as { data: { H: { id: string; why: string; fix?: { patch: Record<string, number> } }[]; M: { id: string; why: string }[]; score: number; verdict: string; gmStruct: number } }).data;
     expect(data.H.map((h) => h.id).sort()).toEqual(["X01", "X02", "X03", "X04", "X05"]);
     expect(data.M.map((m) => m.id).sort()).toEqual(["R01", "R02"]);
-    expect(data.score).toBe(0); // clamp(100 − 25×5 − 8×2)
+    expect(data.score).toBe(0); // clamp(100 − 22×5 − 7×2)=0
     expect(data.verdict).toBe("不通过");
     // why texts contain the substituted numbers
     expect(data.H.find((h) => h.id === "X01")!.why).toContain("90");
     expect(data.H.find((h) => h.id === "X02")!.why).toContain("5");
-    const gmStruct = 0.5 * 18 + 0.2 * 13 + 0.2 * 15; // 14.6 from 应用细分 objects
+    // PRD-IND-audit §4.5-A1：结构毛利权重分母用 segTot（三细分合计 90），非 dem → gmStruct=1350/90=15
+    const gmStruct = (30 * 18 + 45 * 13 + 15 * 15) / 90;
     expect(data.gmStruct).toBe(round(gmStruct, 4));
-    expect(data.H.find((h) => h.id === "X03")!.why).toContain("14.6");
+    expect(data.H.find((h) => h.id === "X03")!.why).toContain("15");
     expect(data.H.find((h) => h.id === "X04")!.why).toContain("900");
     expect(data.H.find((h) => h.id === "X05")!.why).toContain("48");
     // fix.patch values
     expect(data.H.find((h) => h.id === "X02")!.fix!.patch.sup).toBe(100);
-    expect(data.H.find((h) => h.id === "X03")!.fix!.patch.gmTarget).toBe(14.6);
+    expect(data.H.find((h) => h.id === "X03")!.fix!.patch.gmTarget).toBe(15);
     expect(data.H.find((h) => h.id === "X04")!.fix!.patch.kitGap).toBe(700);
     expect(data.H.find((h) => h.id === "X05")!.fix!.patch.capex).toBe(10); // 12 − (50−48)
     const segPatch = data.H.find((h) => h.id === "X01")!.fix!.patch;

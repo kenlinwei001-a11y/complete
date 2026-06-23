@@ -81,9 +81,11 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
   }
 
   const m = segMargins(c);
-  const wPas = input.seg_pas / Math.max(0.0001, input.dem);
-  const wEss = input.seg_ess / Math.max(0.0001, input.dem);
-  const wCom = input.seg_com / Math.max(0.0001, input.dem);
+  // PRD-IND-audit §4.5-A1：结构毛利权重分母用 segTot（三细分合计），与 HTML 一致 → X01/gmStruct 自洽。
+  const segTot = Math.max(0.0001, input.seg_pas + input.seg_ess + input.seg_com);
+  const wPas = input.seg_pas / segTot;
+  const wEss = input.seg_ess / segTot;
+  const wCom = input.seg_com / segTot;
   const gmStruct = round(wPas * m.pas + wEss * m.ess + wCom * m.com, 4);
   if (input.gmTarget > gmStruct + t.gmHardOver) {
     H.push({

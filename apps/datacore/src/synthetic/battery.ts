@@ -205,12 +205,12 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     kitFixTons: 200,
     cashHard: 50,
     cashSoft: 55,
-    essShareBaseline: 0.32,
+    essShareBaseline: 49 / 132, // PRD-IND-audit §4.5-A2 取值对齐 HTML（≈0.3712）
     essShareTol: 0.05,
     capexSoft: 10,
     segMargins: { pas: 18, ess: 13, com: 15 },
-    scoreH: 25,
-    scoreM: 8,
+    scoreH: 22, // PRD-IND-audit §4.5-A2 取值对齐 HTML（25→22）
+    scoreM: 7, //  PRD-IND-audit §4.5-A2 取值对齐 HTML（8→7）
     passScore: 85,
     condScore: 60,
   },
