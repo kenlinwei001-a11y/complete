@@ -165,17 +165,18 @@
         "G-3"
       ],
       "artifacts": [
-        "apps/agentcore/src/operations/catalog.ts",
         "apps/agentcore/src/router/orchestrator.ts",
-        "apps/agentcore/src/server.ts",
         "apps/agentcore/src/tools/registry.ts",
+        "apps/agentcore/test/a15-operation-classify.test.ts",
         "apps/datacore/src/app.ts",
+        "packages/contracts/src/operation-intent.ts",
         "scripts/check-cli-parity.mjs",
         "scripts/cli-parity-baseline.json",
         "scripts/platform-cli.mjs"
       ],
       "brokenArtifacts": [
-        "apps/agentcore/src/operations/catalog.ts",
+        "apps/agentcore/test/a15-operation-classify.test.ts",
+        "packages/contracts/src/operation-intent.ts",
         "scripts/check-cli-parity.mjs",
         "scripts/cli-parity-baseline.json"
       ]
@@ -1773,9 +1774,6 @@
     "apps/agentcore/src/evals.ts": [
       "PRD-A14-agent-evals-handrun.md"
     ],
-    "apps/agentcore/src/operations/catalog.ts": [
-      "PRD-A15-cli-universal-operation-shell.md"
-    ],
     "apps/agentcore/src/router/orchestrator.ts": [
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-IND-story.md",
@@ -1783,13 +1781,11 @@
       "PRD-demand-pulled-growth-engine.md",
       "PRD-scenario-launcher.md"
     ],
-    "apps/agentcore/src/server.ts": [
-      "PRD-A15-cli-universal-operation-shell.md",
-      "PRD-IND-story.md",
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-in-dialog-gap-fill-loop.md",
-      "PRD-scenario-launcher-selfheal-loop.md",
-      "PRD-scenario-launcher.md"
+    "apps/agentcore/test/a15-operation-classify.test.ts": [
+      "PRD-A15-cli-universal-operation-shell.md"
+    ],
+    "packages/contracts/src/operation-intent.ts": [
+      "PRD-A15-cli-universal-operation-shell.md"
     ],
     "scripts/check-cli-parity.mjs": [
       "PRD-A15-cli-universal-operation-shell.md"
@@ -1932,6 +1928,13 @@
     ],
     "apps/agentcore/src/router/traceProjection.ts": [
       "PRD-IND-story.md"
+    ],
+    "apps/agentcore/src/server.ts": [
+      "PRD-IND-story.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-scenario-launcher-selfheal-loop.md",
+      "PRD-scenario-launcher.md"
     ],
     "apps/frontend-shell/src/components/InferenceDag/InferenceProcessDag.tsx": [
       "PRD-IND-story.md"
