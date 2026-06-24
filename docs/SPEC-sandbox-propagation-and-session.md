@@ -34,7 +34,7 @@ propagateTick(graph, state_t, rules[], pending) ──纯函数,确定性(R6)─
 
 ### 1.1 PropagationRule —— 一等类型对象（不塞进 RuleEntry）
 
-> 诚实接地：现 `RuleEntrySchema`（datacore.ts:101）**无 params 字段**，塞不进系数/延迟。故 PropagationRule 是**自己的一等类型**，coefficient/delay 为**类型化数值字段**（配置驱动、可编辑）。G-10「规则即引用」落地后，可把 coefficient 升为可编辑规则引用；在此之前它就是一等字段——**不阻塞**。
+> 诚实接地（2026-06-24 更新）：**G-10「规则即引用」P1 已落**（commit 261f29e）——`RuleEntrySchema`（datacore.ts:110）**现已有 `params: Record<string,number>`（命名阈值）**。因此设计取**结构 + 引用分离**：`PropagationRule` 仍是**自己的一等类型**（承载 source/target/link 结构——这是 `rule.params` 那个纯数字表装不下的），但其 `coefficient`/`delayTicks` **应优先引用一条可编辑规则的 `rule.params`**（真正兑现「改规则即改推演」=竞品价值主张+G-10 目标）；冷启动可先内联数值，再接规则引用。**两条路都不阻塞**，且 P1 已把"引用"那条路打通。
 
 ```ts
 // packages/contracts/src/sim.ts  (NEW)

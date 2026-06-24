@@ -45,7 +45,7 @@
 
 ### A.2 真实门清单（`package.json`，实测 · 这是评审项②的锚）
 
-**`pnpm gates` 聚合门 = 10 个**（全绿才算过 gates）：
+**`pnpm gates` 聚合门 = 11 个**（全绿才算过 gates；2026-06-24 由 10 增至 11，G-10 P1 加了 `rule-closure:check`）：
 1. `check-system-ontology.mjs`（`ontology:check`）
 2. `check-chain-closure.mjs`（`chain:check`）
 3. `check-debattery.mjs`（`debattery:check` / R14）
@@ -56,6 +56,7 @@
 8. `check-ontogenesis.mjs`（`ontogenesis:check` / R16）
 9. `check-boundary-singlesource.mjs`（`boundary-singlesource:check`）
 10. `check-cockpit-widgets.mjs`（`cockpit-widgets:check`）
+11. `check-rule-closure.mjs`（`rule-closure:check` / G-10 规则即引用 P1，**2026-06-24 新增**：求解器/场景引用的规则码须有一等定义）
 
 **聚合外的独立命名门**（CI 另跑，沙盘也要守）：`value-domain:check`、`slice-planner:check`、`floor-semantics:check`、`provisional-honesty:check`、`solver-sandbox:check`（均为 vitest）、`ui-smoke` + `ui-smoke:ontogenesis`（门B Playwright）、`cli:smoke`（bash）。
 
@@ -76,10 +77,10 @@
 | G-7 | ◐ 部分修 |
 | G-8 | ◐ 大部闭合（CHAIN+SHAPE+跨系统 scaffold + 工作流化执行） |
 | G-9 | ◐ **P1+P2 已落**（多租户播种 + 确定性绑定 + grow 验证门 + 留痕 + 投影渲染 + 诚实门）——**这是沙盘卡→推演的直接地基** |
-| G-10 | ⬜ 未修（规则即引用，PRD 设计阶段）——**沙盘传导系数=`rule.params` 依赖此，G-10 未落则系数不可一等编辑** |
+| G-10 | ◐ **P1 已落（2026-06-24, commit 261f29e by 另一 agent）**：`RuleEntry+params`(命名阈值) + 13 条规则一等化 + `SOLVER_RULE_REFS`(求解器→规则引用单一来源) + `rule-closure:check` 门 + 前端 RuleRef 显真定义。**沙盘传导系数现可经 `rule.params` 引用（已解锁，不再阻塞）**。待 P2：求解器改读 `rule.params` 去硬编码。⚠ **该 PR 漏回写本体**（§8 G-10 状态原仍写"⬜未修"、§7 缺 `rule-closure:check`）——本轮我已代为回写。 |
 | **G-11** | 🚧 **不在本体**（§8 止于 G-10）。我沙盘文档把 G-11 当"沙盘整合层断点"引用——**= 提议，未立**。增量 0 须把 G-11 写进 §8。 |
 
-> **评审硬判据**：G-10 未修 → 沙盘"系数=可编辑规则引用"只能先用 `rule.params` 读，不能假装规则已是一等可编辑对象（诚实标注）。G-11 须在增量 0 入本体。
+> **评审硬判据**：G-10 P1 已落 → 沙盘"系数=可编辑规则引用"现**有 `rule.params` 真载体**可接（不再是画饼）；但 `PropagationRule` 仍需自己的结构字段(source/target/link)，系数/延迟可内联或引用 rule.params（详 `SPEC-sandbox-propagation-and-session §1.1`）。G-11 仍须在增量 0 入本体。
 
 ---
 
