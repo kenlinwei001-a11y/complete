@@ -23,6 +23,7 @@ interface AuditItem {
   title: string;
   ruleRef?: string;
   why: string;
+  kind?: import("@platform/contracts").AuditKind;
   fix?: { label: string; patch: Record<string, number> };
 }
 
@@ -206,6 +207,17 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
     if (item.fix && Object.keys(item.fix.patch).length > 0) {
       S.push({ id: `S-${item.id}`, title: `${item.title}修正`, ruleRef: item.ruleRef, why: item.fix.label, fix: item.fix });
     }
+  }
+
+  // PRD §2②：给每审计项打 kind（9 种口径）→ 前端按 kind 路由 audit_timeline 出各自逐日 series。
+  // 确定性 id→kind 映射（按审计项语义；S-* 修正项继承其源项 kind）。
+  const AUDIT_KIND_BY_ID: Record<string, import("@platform/contracts").AuditKind> = {
+    X01: "份额", X02: "产销", X03: "毛利", X04: "齐套", X05: "现金",
+    R01: "struct", R02: "capex23", E01: "毛利", E02: "产销", E03: "份额",
+  };
+  for (const item of [...H, ...M, ...S]) {
+    const baseId = item.id.replace(/^S-/, "");
+    item.kind = AUDIT_KIND_BY_ID[baseId] ?? "struct";
   }
 
   const score = clamp(100 - t.scoreH * H.length - t.scoreM * M.length, 0, 100);

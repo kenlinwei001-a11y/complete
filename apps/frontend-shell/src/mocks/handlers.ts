@@ -1825,7 +1825,13 @@ export const handlers = [
     if (key === "audit_timeline") {
       const series = Array.from({ length: 90 }, (_, d) => Math.min(100, Math.round(40 + d * 0.7)));
       return HttpResponse.json({
-        data: { kind: String(args.kind ?? "毛利"), series, stages: [{ label: "事件窗" }, { label: "约束越线" }, { label: "波及订单" }, { label: "财务击穿" }], peak: 100, crossDay: 64, threshold: 85 },
+        data: {
+          kind: String(args.kind ?? "毛利"), series,
+          stages: [{ label: "事件窗" }, { label: "约束越线" }, { label: "波及订单" }, { label: "财务击穿" }],
+          peak: 100, crossDay: 64, threshold: 85,
+          events: [{ type: "delivery_peak", day: 22, amp: 6, factors: ["交付高峰"] }],
+          affectedOrders: [],
+        },
         snapshotVersion: "ov-12",
       });
     }

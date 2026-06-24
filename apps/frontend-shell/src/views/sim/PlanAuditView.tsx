@@ -311,35 +311,46 @@ function AuditCard({
           </button>
         )}
       </div>
-      {tlOpen && <RiskPropagation itemId={item.id} />}
+      {tlOpen && <RiskPropagation itemId={item.id} kind={item.kind} />}
     </div>
   );
 }
 
-/** 时序推演展开（§7.10-4）：risk_timeline 同构传导数据 → PropagationTimeline（与 §7.11 问题卡共用全局唯一实现） */
-function RiskPropagation({ itemId }: { itemId: string }) {
-  const { data, isLoading } = useQuery({
+/** 时序推演展开：逐日圆点轴按审计项 kind 路由 audit_timeline 出各自曲线（PRD §2②，非共用一条）；
+ * 4 节点传导链 stepper 仍由 risk_timeline 渲染（PropagationTimeline，与 §7.11 问题卡共用 + 订单弹窗）。 */
+function RiskPropagation({ itemId, kind }: { itemId: string; kind?: string }) {
+  // ① 逐日圆点轴：按 kind 派生（每审计项独立曲线）。
+  const dot = useQuery({
+    queryKey: ["b", "solver", "audit_timeline", kind ?? "struct"],
+    queryFn: async () => {
+      const res = await runSolver("audit_timeline", { kind: kind ?? "struct" });
+      return res.data as { kind: string; series: number[]; threshold: number; crossDay: number | null; peak: number; events?: unknown[]; affectedOrders?: unknown[] };
+    },
+  });
+  // ② 4 节点传导链 stepper + 受影响订单弹窗：复用 risk_timeline（全局唯一 PropagationTimeline 实现）。
+  const { data: rt, isLoading } = useQuery({
     queryKey: ["b", "solver", "risk_timeline"],
     queryFn: async () => {
       const res = await runSolver("risk_timeline", {});
       return RiskTimelineOutputSchema.parse(res.data);
     },
   });
-  const vm = data ? buildPropagation(data) : null;
-  const card = data?.cards?.[0];
+  const vm = rt ? buildPropagation(rt) : null;
   return (
     <div className={styles.tlBox} data-testid={`audit-risk-timeline-${itemId}`}>
-      <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.audit.timelineHint}</div>
+      <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>
+        {zh.sim.audit.timelineHint}{kind ? ` · 口径：${kind}` : ""}
+      </div>
       {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
-      {/* AUDIT.1：逐日圆点轴（与产能推演同款，消费 risk_timeline 已产 series；4 节点 stepper 保留为概览） */}
-      {card && (
+      {/* PRD §2②：逐日圆点轴消费按 kind 派生的 audit_timeline series（每项独立曲线） */}
+      {dot.data && (
         <DailyDotAxis
-          series={card.series}
-          threshold={data!.threshold}
-          crossDay={card.crossDay}
-          peak={card.peak}
-          events={card.events}
-          affectedOrders={(card.affectedOrders ?? []) as unknown as DotOrder[]}
+          series={dot.data.series}
+          threshold={dot.data.threshold}
+          crossDay={dot.data.crossDay}
+          peak={dot.data.peak}
+          events={(dot.data.events ?? []) as never}
+          affectedOrders={(dot.data.affectedOrders ?? []) as unknown as DotOrder[]}
           testId={`dda-${itemId}`}
         />
       )}

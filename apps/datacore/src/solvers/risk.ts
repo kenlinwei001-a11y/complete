@@ -370,7 +370,17 @@ export function auditTimeline(c: SolverContext, args: Record<string, unknown>): 
     { d: Math.min(horizon - 1, peakDay + 7), label: "波及订单" },
     { d: Math.min(horizon - 1, peakDay + 18), label: "财务击穿" },
   ];
-  return { kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold };
+  // PRD §5：复用 risk_timeline 的 events/affectedOrders 引擎——按 kind hash 选代表基地（确定性 R6），
+  // 使每审计项逐日轴也带当日事件 + 受影响订单（与产能推演同款悬停详情）。
+  const baseIds = c.bases.map((b) => str(b.props.baseId)).sort();
+  const repBase = baseIds.length > 0 ? baseIds[h % baseIds.length]! : "";
+  const events = repBase ? riskEvents(c, repBase, horizon) : [];
+  const orders = repBase ? affectedOrders(c, { baseId: repBase, day: crossIdx < 0 ? horizon : crossIdx, peak: Math.max(...series) }).affected : [];
+  return {
+    kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold,
+    events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors })),
+    affectedOrders: orders,
+  };
 }
 
 /**

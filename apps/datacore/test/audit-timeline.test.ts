@@ -33,4 +33,29 @@ describe("audit_timeline 每审计项时序（L1 + L6）", () => {
     const b = (await invokeSolver(t, "audit_timeline", { kind: "现金" })).json();
     expect(JSON.stringify((a as { data: unknown }).data)).toBe(JSON.stringify((b as { data: unknown }).data));
   });
+
+  // PRD §2②：每审计项带 kind（9 种口径）+ audit_timeline 复用 events/affectedOrders 引擎（同款悬停详情）。
+  it("L1：plan_audit 每项带 kind（9 种口径之一）", async () => {
+    const t: TestApp = await makeApp();
+    await seedBattery(t);
+    const out = (await (await invokeSolver(t, "plan_audit", {})).json() as { data: { H: { id: string; kind?: string }[]; M: { id: string; kind?: string }[]; S: { id: string; kind?: string }[] } }).data;
+    const KINDS = ["产销", "毛利", "齐套", "现金", "份额", "爬坡", "外协", "capex23", "struct"];
+    const all = [...out.H, ...out.M, ...out.S];
+    expect(all.length).toBeGreaterThan(0);
+    for (const item of all) {
+      expect(item.kind).toBeTruthy();
+      expect(KINDS).toContain(item.kind);
+    }
+    // 已知映射抽样：X03→毛利 · X04→齐套 · X05→现金
+    const x03 = all.find((i) => i.id === "X03" || i.id === "S-X03");
+    if (x03) expect(x03.kind).toBe("毛利");
+  });
+
+  it("L1：audit_timeline 带当日事件 + 受影响订单（复用 risk 引擎）", async () => {
+    const t: TestApp = await makeApp();
+    await seedBattery(t);
+    const out = (await (await invokeSolver(t, "audit_timeline", { kind: "齐套" })).json() as { data: { events: unknown[]; affectedOrders: unknown[] } }).data;
+    expect(Array.isArray(out.events)).toBe(true);
+    expect(Array.isArray(out.affectedOrders)).toBe(true);
+  });
 });

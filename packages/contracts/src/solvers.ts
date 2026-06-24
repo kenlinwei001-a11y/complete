@@ -118,11 +118,18 @@ export const PlanAuditInputSchema = z.object({
 });
 export type PlanAuditInput = z.infer<typeof PlanAuditInputSchema>;
 
+// PRD-plan-audit-1to1 §2②：9 种审计口径，每审计项按其 kind 展开各自逐日 series（非共用一条曲线）。
+export const AUDIT_KINDS = ["产销", "毛利", "齐套", "现金", "份额", "爬坡", "外协", "capex23", "struct"] as const;
+export const AuditKindSchema = z.enum(AUDIT_KINDS);
+export type AuditKind = z.infer<typeof AuditKindSchema>;
+
 export const AuditItemSchema = z.object({
   id: z.string(), // X01… / R01…
   title: z.string(),
   ruleRef: z.string().optional(),
   why: z.string(), // 含代入数值的解释文本
+  // PRD §2②：审计口径（前端按 kind 路由 audit_timeline 出各自逐日 series）；旧记录可空（向后兼容）。
+  kind: AuditKindSchema.optional(),
   fix: z
     .object({ label: z.string(), patch: z.record(z.string(), z.number()) })
     .optional(),

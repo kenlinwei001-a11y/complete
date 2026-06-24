@@ -432,7 +432,7 @@ export const zh = {
       applyFix: "一键应用",
       fixFootnote: "演示用——实际生效走 S&OP 议程与 Action 审批 (C10/C22)",
       timeline: "⏱ 时序推演（不解决会怎样）",
-      timelineHint: "不解决会怎样 → 传导链推演（risk_timeline 同构数据）",
+      timelineHint: "不解决会怎样 → 按审计口径(kind)逐日推演（audit_timeline 各项独立曲线）",
       gmStruct: "细分结构反推毛利率上限",
       baseline: (label: string) => `基线：${label}·改任意字段即时体检`,
       resetInput: "重置输入",

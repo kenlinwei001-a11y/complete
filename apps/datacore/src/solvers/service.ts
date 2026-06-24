@@ -138,7 +138,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
   mrp_netting: ["materials", "shortageCount", "summary"],
   finance_pnl: ["pnl", "gmRow", "attribution", "summary"],
-  audit_timeline: ["kind", "series", "stages", "peak", "crossDay", "threshold"],
+  audit_timeline: ["kind", "series", "stages", "peak", "crossDay", "threshold", "events", "affectedOrders"],
   ksf_graph: ["problems", "ksfNodes", "finNodes", "edges", "summary"],
 };
 
