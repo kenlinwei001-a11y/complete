@@ -43,6 +43,10 @@ import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./d
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { PropagationRuleSchema, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
+import { validateClosure } from "./databuilder/closure.js";
+import { selfCheckGaps } from "./databuilder/selfcheck.js";
+import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -1236,6 +1240,124 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const r = PropagationRuleSchema.parse({ ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
     await repos.sim.putPropagationRule(r);
     return reply.status(201).send(r);
+  });
+
+  // ---- 推演沙盘 · 增量 2：就绪认证（SimCertification = 投影既有 closure，零新校验 RL3）----
+  // SPEC docs/SPEC-sandbox-readiness-certification.md。端点只装配既有 closure/gaps/Trial Tick 输入，
+  // 真正的判级/三维/L4/世界完整度由纯函数 deriveCertification 投影（门 check-sim-readiness.mjs 守纯度）。
+  const CLOSURE_POLICY: ClosurePolicy = {
+    object: { mode: "HARD", fallback: ["BIND_EXISTING_SLICE", "CREATE_SLICE"] },
+    data: { mode: "SOFT", onOrphan: "PASS_AND_MARK" },
+    forward: { mode: "HARD" },
+  };
+
+  /**
+   * 从 live 本体装配认证三件输入（closure/gaps/trial）+ scope 计数 —— 全部复用既有产物，零新校验。
+   * scope=LOCAL 时按 target（typeKey）裁出子图；GLOBAL 时全本体。computedAt 由调用方传入（R6）。
+   */
+  const assembleCertification = async (
+    c: AuthCtx,
+    scopeKind: "GLOBAL" | "LOCAL",
+    target: string | null,
+    computedAt: string,
+  ) => {
+    const allTypes = await ontology.listTypes(c);
+    const types = scopeKind === "LOCAL" && target ? allTypes.filter((t) => t.key === target) : allTypes;
+    const typeKeys = new Set(types.map((t) => t.key));
+    const allActions = await actions.listTypes(c);
+    const allRules = await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED");
+    const allDerivs = await repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE");
+    const allSlices = await repos.sliceSpecs.list(c.tenantId);
+    const allProps = await repos.sim.listPropagationRules(c.tenantId, false);
+
+    const derivs = allDerivs.filter((d) => typeKeys.has(d.targetType));
+    const propRules = allProps.filter((p) => typeKeys.has(p.sourceTypeKey) || typeKeys.has(p.targetTypeKey));
+    const slices = allSlices.filter((s) => typeKeys.has(s.spec.root.typeKey));
+    // observability：被 ≥1 切片 root 覆盖的对象集合。
+    const coveredTypeKeys = new Set(allSlices.map((s) => s.spec.root.typeKey));
+    // writeback ActionType：scope 内（checkRules/scope 暂无显式 targetType → 全本体动作均视作可写本体）。
+    const scopeActions = allActions; // ActionType 无 targetTypeKey 字段，按全本体计数（§2.2 writeback=ActionType 计数）
+
+    // ── 投影 closure（复用 validateClosure，唯一允许的 closure 校验器）────────────
+    const plan: BuildPlan = {
+      id: `simcert_${c.tenantId}`, tenantId: c.tenantId, builderKey: "sim-cert", scriptHash: "", seed: 0,
+      script: "", createdAt: computedAt,
+      dataSources: [],
+      objectTypes: types.map((t) => ({
+        typeKey: t.key, displayName: t.displayName, domain: t.domain ?? "unassigned",
+        sourceDataset: undefined,
+        // PlanObjectProperty 不含 "json" 型 → 折成 "string"（仅供 closure OBJECT/FORWARD 维投影，不影响判级）。
+        properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType === "json" ? ("string" as const) : p.dataType, isPrimaryKey: p.isPrimaryKey, refToTypeKey: p.refToTypeKey ?? null })),
+      })),
+      rules: allRules.filter((r) => r.scopeObjectTypes.some((k) => typeKeys.has(k))).map((r) => ({
+        key: r.key, name: r.name, expression: r.expression, scopeObjectTypes: r.scopeObjectTypes, severity: r.severity,
+      })),
+      solverNeeds: [], kbDocs: [],
+      sliceNeeds: [], intentNeeds: [], planNeeds: [], workflowNeeds: [], skillNeeds: [], agentNeeds: [], mcpNeeds: [], sceneNeeds: [],
+    };
+    const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
+    const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);
+
+    // ── Trial Tick（§3）：克隆态跑一遍 recompute（派生）；propagateTick 待增量3 → 传导记 0 ──
+    let trial: TrialTickInput;
+    try {
+      const rc = await ontologyCore.recompute(c, [], { dryRun: true });
+      // rulesFired = 触发的派生规则数（recompute topo order 长度）。传导规则待增量3，记 0。
+      trial = { passed: true, rulesFired: rc.order.length, at: computedAt, error: null };
+    } catch (e) {
+      // 派生图有环（CYCLIC_DERIVATION）等 → 诚实标 FAIL，不假装通过。
+      trial = { passed: false, rulesFired: 0, at: computedAt, error: e instanceof Error ? e.message : String(e) };
+    }
+
+    // ── scope 计数（投影，给纯函数）────────────────────────────────────────────
+    const consumed = (t: (typeof types)[number]): number =>
+      t.properties.filter((p) => allRules.some((r) => r.expression.includes(`${t.key}.${p.propKey}`)) || t.derivedProperties.length > 0).length;
+    const scope: CertScope & { computedAt: string } = {
+      kind: scopeKind, targetRef: scopeKind === "LOCAL" ? target : null, computedAt,
+      objectTypes: types.map((t) => ({
+        typeKey: t.key,
+        bound: !!t.domain && t.domain !== "unassigned",
+        fieldCount: t.properties.length,
+        consumedFieldCount: consumed(t),
+        sliceCovered: coveredTypeKeys.has(t.key),
+        behaviorReady: t.derivedProperties.length > 0 && scopeActions.length > 0,
+      })),
+      derivations: derivs.map((d) => ({
+        typeKey: d.targetType, propKey: d.targetProp,
+        sourceVars: d.deps.map((dep) => `${dep.typeKey}.${dep.prop}`), present: true,
+      })),
+      actions: scopeActions.map((a) => ({ key: a.key, targetTypeKey: null })),
+      slices: slices.map((s) => ({ key: s.sliceKey })),
+      propagationRules: propRules.map((p) => ({
+        key: p.key, sourceTypeKey: p.sourceTypeKey, sourceStateVar: p.sourceStateVar,
+        targetTypeKey: p.targetTypeKey, targetStateVar: p.targetStateVar, present: true,
+      })),
+      needed: {
+        stateVars: types.reduce((a, t) => a + t.derivedProperties.length, 0),
+        derivationRules: types.reduce((a, t) => a + t.derivedProperties.length, 0),
+        actions: Math.max(scopeActions.length, types.length > 0 ? 1 : 0),
+        propagationRules: propRules.length, // 增量3 才声明传导 needed；当前 present=needed（不虚减完整度）
+      },
+    };
+    return deriveCertification(closure, gaps, trial, scope, DEFAULT_CERT_CONFIG);
+  };
+
+  app.get("/a/v1/sim/sessions/:id/certification", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.certification");
+    await getSimOr404(c, (req.params as { id: string }).id); // 404 隔离（R2 租户）
+    const q = req.query as { scope?: string; target?: string };
+    const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
+    return assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
+  });
+
+  app.get("/a/v1/sim/sessions/:id/scope-precheck", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    await getSimOr404(c, (req.params as { id: string }).id);
+    const q = req.query as { scope?: string; target?: string };
+    const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
+    const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
+    // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
+    return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
   });
 
   // ---- A4 ontology + objects --------------------------------------------------------

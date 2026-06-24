@@ -120,7 +120,36 @@ async function cmdSim(args) {
     if (sub === "world") { const r = await http(`${SIM}/sessions/${id}/world`, { headers: authHeader() }); console.log(`tick=${r.tick} state=${JSON.stringify(r.state)}`); return; }
     if (sub === "ls") { const r = await http(`${SIM}/sessions`, { headers: authHeader() }); for (const s of r.items ?? []) console.log(`  ${s.id} status=${s.status} tick=${s.curTick}`); return; }
     if (sub === "rule") { const r = await http(`${SIM}/propagation-rules`, J(JSON.parse(rest.join(" ")))); console.log(C.bold(`传导规则 ${r.key}`) + ` ${r.sourceTypeKey}.${r.sourceStateVar} --${r.viaLinkKey} ${r.coefficient}--> ${r.targetTypeKey}.${r.targetStateVar}`); return; }
-    console.error('用法: sim init|tick|act|checkpoint|rollback|branch|compare|world|ls|rule …'); process.exit(1);
+    if (sub === "certify") {
+      // 就绪认证 L0-L4（投影既有 closure，零新校验）。
+      const scope = (argVal(rest, "--scope") ?? "GLOBAL").toUpperCase();
+      const target = argVal(rest, "--target");
+      const qs = `scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`;
+      const r = await http(`${SIM}/sessions/${id}/certification?${qs}`, { headers: authHeader() });
+      const lvlColor = r.canEnterSimulation ? C.green : C.yellow;
+      console.log(C.bold(`就绪认证 ${r.scope}${r.targetRef ? `:${r.targetRef}` : ""}`) + ` → ${lvlColor(r.level)}`);
+      console.log(`  三维：结构 ${r.dims.structure} · 知识 ${r.dims.knowledge} · 行为 ${r.dims.behavior} · 综合 ${C.bold(r.dims.composite)}/100`);
+      console.log(`  L4 三元组：扇出安全=${r.l4Checks.fanoutSafe} · writeback=${r.l4Checks.writebackComplete} · 可观测=${r.l4Checks.observabilityMet}`);
+      console.log(`  Trial Tick：${r.trialTick.passed ? C.green("PASS") : C.red("FAIL")} 触发 ${r.trialTick.rulesFired} 条规则${r.trialTick.error ? ` (${r.trialTick.error})` : ""}` + C.dim("（传导待增量3）"));
+      console.log(`  世界完整度：${r.worldCompleteness.pct}% · 将进入沙盘 ${r.worldCompleteness.entering.length} 个状态变量`);
+      console.log(`  ${r.canEnterSimulation ? C.green("✓ 可进入推演") : C.red("✗ 不可进入推演")}（缺件 ${r.gaps.length} 个）`);
+      for (const g of r.gaps.slice(0, 20)) console.log(C.dim(`    - [${g.gapCode}] ${g.ref}: ${g.detail}`));
+      return;
+    }
+    if (sub === "precheck") {
+      // init step③ 范围预检：世界完整度 + 将进入沙盘清单。
+      const scope = (argVal(rest, "--scope") ?? "GLOBAL").toUpperCase();
+      const target = argVal(rest, "--target");
+      const qs = `scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`;
+      const r = await http(`${SIM}/sessions/${id}/scope-precheck?${qs}`, { headers: authHeader() });
+      const w = r.worldCompleteness;
+      console.log(C.bold(`范围预检 ${r.scope}${r.targetRef ? `:${r.targetRef}` : ""}`) + ` 世界完整度 ${C.bold(w.pct)}%`);
+      console.log(`  状态变量 ${w.stateVars.present}/${w.stateVars.needed} · 派生 ${w.derivationRules.present}/${w.derivationRules.needed} · 动作 ${w.actions.present}/${w.actions.needed} · 传导 ${w.propagationRules.present}/${w.propagationRules.needed}`);
+      for (const e of w.entering.slice(0, 30)) console.log(C.dim(`    ${e.key} [${e.kind}] ← ${e.source}`));
+      console.log(`  ${r.canEnterSimulation ? C.green("✓ 可进入推演") : C.yellow("· 仍有缺口")}（缺件 ${r.gaps.length} 个）`);
+      return;
+    }
+    console.error('用法: sim init|tick|act|checkpoint|rollback|branch|compare|world|ls|rule|certify|precheck …'); process.exit(1);
   } catch (e) { console.error(C.red(`sim ${sub} 失败: ${e.message}`)); process.exit(1); }
 }
 
