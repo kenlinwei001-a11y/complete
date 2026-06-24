@@ -60,4 +60,22 @@ describe("场景卡发育闭环（grow + 验证门 + 留痕 + 确定性绑定）
     expect(run.verification.status).toBe("NOT_VERIFIED");
     expect(run.verification.gapCode).toBe("RENDER_NOT_PROJECTED");
   });
+
+  it("P2 闭 G-2 残：S03 切片渲染不再硬引用缺失字段（旧 data.summary 真后端无→TEMPLATE_RESOLUTION_ERROR）→ 通用投影 GOVERNED", async () => {
+    const t = await createTestApp();
+    const run = (await (await t.app.inject({ method: "POST", url: "/b/v1/scenarios/S03/grow", headers: debugHeaders(ADMIN) })).json()) as { verification: { status: string; taskId: string | null }; maturity: string };
+    expect(run.maturity).toBe("GOVERNED");
+    expect(run.verification.status).toBe("VERIFIED");
+    const task = await t.repos.tasks.get(run.verification.taskId!);
+    expect((task?.answer?.blocks ?? []).some((b) => b.type === "kpi" || b.type === "table")).toBe(true);
+  });
+
+  it("P2 闭 G-2 残：S06 action-draft payload 合契约（base/factor/planKey）→ 草稿创建成功 GOVERNED（旧 baseId/solutionName 真后端 400）", async () => {
+    const t = await createTestApp();
+    const run = (await (await t.app.inject({ method: "POST", url: "/b/v1/scenarios/S06/grow", headers: debugHeaders(ADMIN) })).json()) as { verification: { status: string; taskId: string | null }; maturity: string };
+    expect(run.maturity).toBe("GOVERNED");
+    expect(run.verification.status).toBe("VERIFIED");
+    const task = await t.repos.tasks.get(run.verification.taskId!);
+    expect((task?.answer?.blocks ?? []).some((b) => b.type === "action_draft")).toBe(true);
+  });
 });

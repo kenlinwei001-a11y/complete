@@ -212,12 +212,11 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           id: "render",
           type: "render_answer",
           params: {
+            // 闭 G-2 残：真实 base_risk_profile 切片不含 `data.summary`（mock 有，真后端无）→ 旧硬引用
+            // {{steps.s1.output.data.summary}} 触 TEMPLATE_RESOLUTION_ERROR。改通用投影，渲染切片真实字段（不写死、不脆断）。
             blocks: [
-              {
-                type: "text",
-                markdown: "{{steps.s1.output.data.summary}} ⟦ref:0⟧",
-                fromStep: "s1",
-              },
+              { type: "text", markdown: "基地风险画像（base_risk_profile 切片）：" },
+              { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
             ],
           },
         },
@@ -243,7 +242,9 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           type: "create_action_draft",
           params: {
             actionType: "adopt_mitigation",
-            payload: { baseId: "{{slots.base.objectId}}", solutionName: "{{slots.solutionName}}" },
+            // 闭 G-2 残：真实 action-drafts 端点 paramsSchema 必填 base/factor/planKey（旧 payload 发
+            // baseId/solutionName → 400 VALIDATION_ERROR）。映射到契约字段（base/factor 取槽，planKey=方案名）。
+            payload: { base: "{{slots.base.label}}", factor: "{{slots.factor}}", planKey: "{{slots.solutionName}}" },
           },
         },
         {
@@ -372,6 +373,15 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           required: true,
           enumValues: ["三班制", "外协", "调拨"],
           description: "处置方案名",
+        },
+        {
+          // 补 factor 槽：create_action_draft 的 adopt_mitigation paramsSchema 必填 base/factor/planKey；
+          // factor 由场景 presetSlots 填（"物料齐套" 等），不写死。可选——自由问句未指明时填 null
+          // （由真后端按契约判，不阻断场景预置路径；presetSlots 有值即真后端接受）。
+          name: "factor",
+          type: "string",
+          required: false,
+          description: "风险因子（如 物料齐套）",
         },
       ],
       planId: `plan_adopt_mitigation_v1${sfx}`,
