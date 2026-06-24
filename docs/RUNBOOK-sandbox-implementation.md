@@ -64,6 +64,8 @@
 
 ## 增量 2 · 就绪认证 = surface 既有闭包（后端 + CLI，**不写新校验逻辑**）
 
+> 📐 **详细落地规格见 `SPEC-sandbox-readiness-certification.md`**（§2 三张映射表钉死 · §5 `deriveCertification` 纯函数签名 · §9 `sim-readiness:check`）——照抄。**注**：本节"三件套门(派生∧动作∧查询)"= 可推演**前提**；SPEC 的"L4 三元组(Fanout/Writeback/Observability)"= **质量认证**；二者同源不同关口、由同一 `deriveCertification` 输出，**别当两套写**（消歧详 SPEC §2.2）。
+
 **目标**：把既有 `ClosureReport`/`chain:check`/A18 相位**投影**成 L0-L4 + 三件套门 + 三维评分；**不发明新判定**。
 
 **做什么**：

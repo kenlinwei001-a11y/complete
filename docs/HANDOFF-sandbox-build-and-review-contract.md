@@ -5,7 +5,9 @@
 > 北极星：用户从 CLI 或 UI（任意行业租户）开沙盘 → tick → 传导 → 干预 → 分支 → 对比，全程配置驱动、确定性、可回退；历史不变量一条不破，每条有门兜底。
 >
 > ── **交接前最新状态（2026-06-24 · 必读）** ──
-> 1. **增量 1/3 已有可照抄工程规格** `SPEC-sandbox-propagation-and-session.md`（传导核纯函数签名+算法+确定性/时间信任纪律 · SimSession 三表 DDL[pg+memory] · 系数=`PropagationRule` 结构+`rule.params` 引用 · **按租户 entitlement 暗发不同模块 lite/Pro/旗舰** · 端点+CLI · **两行业验收证 R14**）。
+> 1. **增量 1/2/3 已有可照抄工程规格**（增量 0–3 图纸已全齐，对方可一路做完后端）：
+>    - `SPEC-sandbox-propagation-and-session.md`（增量 1/3）：传导核纯函数+算法+确定性/时间信任 · SimSession 三表 DDL[pg+memory] · 系数=`PropagationRule` 结构+`rule.params` 引用 · **按租户 entitlement 暗发不同模块 lite/Pro/旗舰** · 端点+CLI · 两行业验收。
+>    - `SPEC-sandbox-readiness-certification.md`（增量 2）：就绪认证=**投影既有 closure 五维，零新校验**；L0-L4 / 三维 / **L4三元组↔我方 closure 维** / Trial Tick / **世界完整度(范围预检)** 三张映射表钉死 + `deriveCertification` 纯函数签名 + `sim-readiness:check` 门。
 > 2. **传导核模型已被竞品成品逐字验证**：竞品 UI 原文 `supplier.delay_risk -- SUPPLIES.risk_propagation 0.85 --> factory.supply_risk` = SPEC 的 `PropagationRule{sourceStateVar,viaLinkKey,coefficient,targetStateVar}`（对照见 `GROUNDING-MAP §F.2`）。
 > 3. **G-10「规则即引用」P1 已落**（commit 261f29e，另一 agent）：`RuleEntry` 现有 `params`，沙盘传导**系数可直接引用 `rule.params`**（真正兑现"改规则即改推演"）；`pnpm gates` 已由 10 增至 **11**（加 `rule-closure:check`）。**别再把系数写成内联常数**。
 > 4. **不需要时序图数据库**：图小（千级节点）、tick 是会话内模拟时间、传导是内存确定性计算（SPEC §0）。
@@ -22,6 +24,7 @@
 3. `PRD-sandbox-ontogenesis-buildplan.md` — 怎么从一句场景倒序长出（数据闭环）
 4. `RUNBOOK-sandbox-implementation.md` — **怎么一步步做 / 前后端怎么测 / 怎么回退（执行主依据）**
    - `SPEC-sandbox-propagation-and-session.md` — **增量 1/3 的可照抄工程规格**：传导核纯函数签名+算法+确定性/时间信任纪律、SimSession 三表 DDL(pg+memory)、`PropagationRule` 承载 source/target/link 结构 + 系数/延迟**引用 `rule.params`**(G-10 P1 已可用)、**按租户 entitlement 暗发不同模块(lite/Pro/旗舰)**、端点+CLI、两行业验收(证 R14 零行业锁死)
+   - `SPEC-sandbox-readiness-certification.md` — **增量 2 的可照抄工程规格**：就绪认证=**投影既有 closure 五维(OBJECT/DATA/FORWARD/CHAIN/SHAPE)，零新校验逻辑(RL3)**；§2 三张映射表钉死(L0-L4 ← closure 状态 · **L4三元组 Fanout/Writeback/Observability ↔ 我方 closure 维** · 三维 结构/知识/行为 ← closure kind) + Trial Tick(空跑1tick) + **世界完整度=范围预检** + `deriveCertification` 纯函数 + 诚实门 + `sim-readiness:check`
 5. `ARCH-sandbox-landing-discipline.md` — 落地纪律（本体先行→CLI→surface→引擎→UI）
 6. `ARCH-global-ia-consolidation.md` — 全局 IA 合并（推演收敛/就绪folded/单源深链）
 7. `ARCH-sandbox-reconciliation.md` — **与在建工作对齐（必读，防分叉）**
@@ -52,7 +55,7 @@
 |---|---|---|
 | **0 本体先行** | 把 SimSession/**SimTickState**/SimCheckpoint/PropagationRule/SimCertification/SandboxViewConfig/`sim.*`事件/G-11/**R17/十红线** 写进 `SYSTEM-ONTOLOGY.md §2/§3/§4/§5/§7/§8`（会话/传导 4 对象 schema 见 `SPEC §1-2/§7`；认证/视图配置对象见 `RUNBOOK 增量0`） | `ontology:check`+`prd:check` 绿；本体含全部新对象/链路/事件/R17/G-11 |
 | **1 CLI 操作先行** | `/a/v1/sim/*`(init/tick/act/checkpoint/rollback/branch/compare)+迁移026+OPERATION_CATALOG+`platform sim`；entitlement **分模块暗发**(`sim.sandbox`/`.propagation[.delay]`/`.checkpoint`/`.branch`/`.certification`/`.commander`，按租户给不同档)。**三表DDL+repo+端点+CLI 详 `SPEC §2/§4/§5`** | **CLI 无头跑通一遍沙盘**（贴输出）；确定性重跑字节一致；`sim:check`(新建·并入gates)+`cli-parity:check` 绿 |
-| **2 就绪认证=surface闭包** | L0-L4 / **L4三元组(Fanout/Writeback/Observability → 对齐我方 closure 维)** / 三维(结构/知识/行为) / **全局⊕局部(逐对象)就绪** / **范围预检(世界完整度+将进入状态变量清单)** 从既有 closure 投影（不写新逻辑；竞品精确锚点 `GROUNDING-MAP §F.1`） | 完整本体认证 L4；缺件诚实 FAIL；`sim-readiness:check`(新建·并入gates)+`chain:check` 绿 |
+| **2 就绪认证=surface闭包** | L0-L4 / **L4三元组(Fanout/Writeback/Observability → 对齐我方 closure 维)** / 三维(结构/知识/行为) / **全局⊕局部(逐对象)就绪** / **范围预检(世界完整度+将进入状态变量清单)** 从既有 closure 投影（**零新校验逻辑**；三张映射表+`deriveCertification` 纯函数详 `SPEC-sandbox-readiness-certification §2/§5`） | 完整本体认证 L4；缺件诚实 FAIL；`sim-readiness:check`(新建·并入gates)+`chain:check` 绿 |
 | **3 传导引擎** | 新写纯函数 `propagateTick`（系数+延迟沿 link；**系数引用 `rule.params`**—G-10 P1 已可用；复用 recompute 链路导航+risk.ts 衰减+延迟队列）；**Temporal Trust：tick 只读 ≤t 态**。详 `SPEC §1` | 传导跑通；改系数即改结果；**两行业验收**；`propagation:check`(新建·并入gates)+`debattery:check` 绿 |
 | **4 UI（最后·暗发）** | 5屏(数据管道/逐实体/就绪/初始化/沙盘)，配置驱动；复用 RadarChart/PropagationTimeline；ModelingPage additive | 起前端+真后端**亲手点一遍**(截图)；**两行业各跑通**(证R14)；`ui-smoke:sandbox`+`debattery:check` 绿 |
 
