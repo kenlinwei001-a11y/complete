@@ -15,11 +15,17 @@
 
 ## 1. 硬边界（防 merge 翻车，必须遵守）
 
+> **⚠️ 本轮（P3）教训修订——上轮真踩过的坑，必须照做：**
+> 1. **开工前基线自检（铁规）**：第一步先 `git log --oneline -3`，确认 HEAD 落在 `claude/vigilant-knuth-b1nmxn` 主线上、最新 commit 主题与主线给你的一致。**若看到 `ontoflow`/`PRD-IND-story`/与本任务无关的 commit → 你的 worktree 基线错了**（上轮两个 agent 都被误基线到 ontoflow）：执行 `git fetch origin claude/vigilant-knuth-b1nmxn && git reset --hard origin/claude/vigilant-knuth-b1nmxn`，再 `git log --oneline -3` 复确认，**绝不在错误基线上开工**（否则全部白做）。
+> 2. **禁改 `docs/SYSTEM-ONTOLOGY.md`**：本体回写由主线**集中**做（上轮两 agent 都改 §8 → merge 冲突）。你在最终报告给**《本体回写清单》**：列出触及的 §2 对象/§3 链路/§4 事件/§7 门禁/§8 断点 + 该写什么文字，主线统一落。
+> 3. **禁改 `package.json`**：新增门/脚本/npm script 只在报告里报，主线集中 wire `pnpm gates` + §7（否则 package.json 撞车 + 漏 §7 被 `ontology-writeback:check` 拦红）。
+
 - ⛔ **禁止改 `packages/contracts/**`**。契约改动只主线做。若你的任务确实需要新契约字段 → **停下，在最终汇报里写明需要什么字段，交回主线加**，不要自己改 contracts。
+- ⛔ **禁止改 `docs/SYSTEM-ONTOLOGY.md` 与 `package.json`**（见上方教训 2/3，主线集中做）。
 - ⛔ **禁止 `git push`、禁止建 PR**。你在 worktree 里 commit 即可；主线负责核验→合并→推送。
 - ⛔ **只碰你 task book 列的文件**。跨出文件清单前先在汇报里说明。
 - ✅ 你的新增**测试文件**用独立文件名（`<feature>.test.ts`），不改他人测试。
-- ✅ 触及共享文件（`mocks/clients.ts`、`mocks/handlers.ts`、`mocks/fixtures.ts`、`scripts/check-*.mjs`）务必最小化改动并在汇报里点名（merge 冲突高发区）。
+- ✅ 触及共享文件（`mocks/clients.ts`、`mocks/handlers.ts`、`mocks/fixtures.ts`）务必最小化改动并在汇报里点名（merge 冲突高发区）。`scripts/check-*.mjs` 新增门只报告、不自己并入 gates。
 
 ## 2. 交付清单（最终汇报必须含，缺一项退回）
 
@@ -55,31 +61,33 @@ cd apps/frontend-shell && VITE_DATACORE_URL=http://127.0.0.1:4001 VITE_AGENTCORE
 
 ---
 
-## Agent A · BP-6 相对时间归结 + BP-7 空结果显性化（诊断账本 D6/D7）
+## Agent A · 规则即引用 P3-a：规则编辑器 UI 完善（编辑闭环·前端）
 
-**文件归你**：`apps/agentcore/src/router/slots.ts`、`apps/agentcore/src/router/orchestrator.ts`（仅 slot 填充相关）、`apps/agentcore/src/workflow/executor.ts`（仅 `summarizeSolverOutput`）、你的新测试文件、你的 `scripts/ui-smoke-*.mjs`。**不碰 contracts**。
+**文件归你**：`apps/frontend-shell/src/pages/admin/RulesPage.tsx`、`apps/frontend-shell/src/api/endpoints.ts`（仅规则 CRUD 端点，缺则补）、`apps/frontend-shell/src/mocks/handlers.ts`（仅规则 CRUD/dry-run mock，最小改动）、你的新测试文件、你的 `scripts/ui-smoke-*.mjs`。**不碰 contracts / SYSTEM-ONTOLOGY.md / package.json**。
 
-**BP-6（相对时间归结）**：S03「常州物料齐套为什么**这天**越线」中 `day` 槽被 Kimi 抽成 `"这天"` 不可解析 → 归结失败。
-- grep 确认 slot 填充在 `router/slots.ts`（fillSlots）。加**确定性归结层**：相对时间引用（这天/today/下周/本月）→ 视图上下文具体日期（这天=视图焦点日/模拟时钟当前日；下周=焦点周+1…），放在 LLM 抽取之后兜底。
-- ⚠️ **优先用现有 SessionContext 字段**（view/filters/已有日期上下文）做归结，**不要新增 contract 字段**。若确实缺字段 → 停，汇报需要什么，交主线加。
-- 验收：S03 端到端 `day` 解析为具体日期（不再 null）；时间相关卡不空槽。后端单测 + 门B（点 S03 看 day 真值/根因不再失准）。
-
-**BP-7（空结果显性化 / D7）**：S19 `quarterly_gap` 跑通但 `combo:[]`、`residualGap:50` → 用户看到"有缺口、对策为空"沉默空数组。
-- 锚点 `workflow/executor.ts:404 summarizeSolverOutput`（已有 P2 通用投影；现仅 `out.length===0` 时出一句"无输出数据"）。
-- 增强：求解器产出**空数组字段**（combo/rows/over…全空）时，render 出"**为何为空 + 下一步建议**"，并**区分"真无解"与"数据未接齐"**（如关键标量在但数组空=真无解；关键标量也缺=数据未接齐）。不静默吞空数组。
-- 验收：S19 出"对策为空，因 X；建议 Y"，可溯源。后端单测（喂空组合 payload → 出显性化文案块）+ 门B（点 S19 看到显性化而非空白）。
+**目标**：让 admin 在规则编辑器**可编辑闭环**——增/改规则的 `expression` + **`params`（命名阈值，键值可编辑）** + `severity` + `scopeObjectTypes`，dry-run 预览，发布/退役走版本。P2 已让前端 RuleRef tooltip **显示** params；P3 让 params 在编辑器**可改**。
+- 后端已有：`POST/PUT /a/v1/rules`、`/:id/publish`、`/:id/retire`、`/a/v1/rules/dry-run`、`/a/v1/rules/:id/references`（发布影响面）。RulesPage 现已有列表 + 部分编辑（grep `RulesPage.tsx` 看现状：编辑器表单是否含 params 字段、dry-run 预览是否接）。
+- 补齐：编辑器表单加 **params 键值编辑**（`Record<string,number>`，增行/删行/改值），保存经 PUT；dry-run 预览块（输入样例 payload → 显示命中/未命中）；发布确认（已有 publish-impact）。
+- 验收：前端单测（编辑器渲染 params 行 + dry-run 调用）+ **门B 真后端真浏览器**：admin 登录 → /admin/rules → 改某 DRAFT 规则的 params/expression → dry-run 预览 → 发布 → 列表显 version+1/PUBLISHED。**注意 `mocks/handlers.ts` 是共享文件**，只加规则 CRUD 所需、最小改动、汇报点名。
 
 ---
 
-## Agent B · BP-4 sop 卡接真数据 + ontogenesis:check 扩断言
+## Agent B · 规则即引用 P3-b：其余求解器 evaluatedRules payload 映射（全求解器真评估）
 
-**文件归你**：`apps/agentcore/src/mocks/seed.ts`（仅 S18/sop_balance 计划分支）、`scripts/check-ontogenesis.mjs`、你的新测试文件、你的 `scripts/ui-smoke-*.mjs`。**不碰 contracts**。共享文件 `mocks/clients.ts` 尽量不碰（优先复用已有 mock 的求解器）。
+**文件归你**：`apps/datacore/src/solvers/service.ts`（**仅 `ruleEvalPayload` 私有方法**——P2 主线刚加，你只扩它，绝不动 `evaluateRuleRefs`/`loadContext`/`invoke` 其它部分）、你的新测试文件、你的 `scripts/ui-smoke-*.mjs`。**不碰 contracts / SYSTEM-ONTOLOGY.md / package.json**。
 
-**BP-4（S18 sop 卡出真数据，D4）**：S18 现仅渲染跳转文本"S&OP 月度平衡台请见对应视图"（`seed.ts:410-413` 的 `sop_balance` 特判），无任何计算/进度/缺口数 → 点卡承诺落空，且被 P2 诚实门正确标 PROVISIONAL/RENDER_NOT_PROJECTED。
-- 改 S18 计划：不再纯跳转，改 `invoke_solver` 一个**已注册且 mock 已支持**的求解器出富 KPI——**首选 `mrp_netting`**（输出 materials/shortageCount/summary）**或 `cockpit_kpi`/`finance_pnl`**（先 grep `SOLVER_OUTPUT_SHAPES` + `mocks/clients.ts` 确认该 solver mock 直连出真值，避免 404/400）→ 配 P2 通用投影 `solver_summary`（`{ type:"solver_summary", output:"{{steps.s1.output}}", fromStep:"s1" }`）出 KPI/表。
-- 目标：grow S18 → GOVERNED（带真数据），不再 RENDER_NOT_PROJECTED。
-- 验收：后端单测（grow S18 → VERIFIED + 答案含 kpi/table 块）+ 门B（点 S18 / grow S18 看到本月平衡/缺口真数据，非一句跳转）。**注意**：S18 当前是 `scenario-ontogenesis.test.ts` 里"诚实门 PROVISIONAL"用例的样本——你改了 S18 会让那条用例失效，需**改用别的纯指针卡**或调整该用例（在汇报里说明你怎么处理的，别静默改挂别人的测试）。
+**背景**：P2 只让 `capacity_forecast` 的 C01/C02/C03/C09 真评估（`ruleEvalPayload` 为它补了 `Order.demandDelta` + `DataSourceHealth`）；其余 18 求解器的规则因**输出字段名 ≠ 规则表达式字段名**全落 NOT_APPLICABLE。
+- **目标**：扩 `ruleEvalPayload(c, solverKey, args, out)`——为高价值求解器把"输出/上下文"映射成规则 expression 期望的 payload 字段，使 evaluatedRules 真出 PASS/WARN/BLOCK。
+- **逐个核对字段**（必须 grep 求解器实现 + `SOLVER_OUTPUT_SHAPES`(service.ts) + 规则 expression（`battery.ts rules[]`）确认真实字段名，别拍脑袋）。优先：
+  - `quote_margin`（C15/C24 `Order.marginPct < Order.floorPct` / `Quote.marginPct<floorPct`）：输出有 `margin`/`floor` → 映射 `Order.marginPct=margin*100? floorPct=floor*100?`（核对口径：margin 是 0.2565 比率还是百分；floor 同）。
+  - `credit_exposure`（C13 `Order.creditUsedRatio>1` / C32 `Customer.maxOverdueDays>30`）：输出 limit/exposure/available/overdue → 映射。
+  - `carbon_footprint`（C33 IMPLIES 碳护照）：输出 total/threshold/verdict → 映射 destination/carbonFootprint/euCarbonThreshold（或用 verdict 直判）。
+  - `kit_readiness`/`lta_gap`/`inventory_optimize`（C06/C16 `MaterialBalance.gapTon>0`）：输出有 gap/shortage → 映射 `MaterialBalance.gapTon`。
+  - `changeover_sequence`（C22 `Order.changeoverMin>120`）：输出 totalChangeoverMin → 映射。
+- **诚实**：映射不了/口径不清的**留 NOT_APPLICABLE，别硬凑**（宁可诚实不适用，不可假评估）。每个映射在汇报里写"字段口径依据"。
+- 验收：后端单测（每个新映射求解器 invoke → evaluatedRules 出真 outcome，且阈值边界翻转可验）+ **门B 真后端**：curl `POST /a/v1/solvers/<key>/invoke` 看 evaluatedRules 真评估（贴响应）。无 chromium 时后端 curl 即可（本任务无前端面）。
 
-**ontogenesis:check 扩断言**：`scripts/check-ontogenesis.mjs`（41 行，现为保守声明性校验）按 PRD-scenario-ontogenesis §6 扩**静态可校验**的逐卡断言。
-- ⚠️ **诚实分清静态 vs 运行期**：§6 有 6 条，其中"每张 GOVERNED 卡有 VERIFIED run"等是**运行期**事实（需真 grow，静态门测不了）→ **不要假装静态能测**。只加**静态可校验**的（如：每张卡 plan 的 render 步存在；卡声明的 solver 在 `SOLVER_OUTPUT_SHAPES` 有形状；卡 rules 引用 ⊆ 已定义——可复用 `rule-closure` 思路）。运行期项**明确 log 跳过+说明原因**，不静默冒充覆盖。
-- 验收：`node scripts/check-ontogenesis.mjs` 绿、并入 `pnpm gates` 不破其他门；汇报列清"加了哪几条静态断言、哪几条运行期的诚实跳过"。
+---
+
+## （主线我做，不分配给 agent）规则即引用 P3-c
+版本/事件失效闭环（`rule.updated`/`rules.updated` → AgentCore 缓存失效 60s SLO，全 7 入口下次读新版）+ 6 入口逐一 FDE 验收 + **集中本体回写**（§2/§3/§7/§8）+ 合并两 agent。Agent A/B 不碰这块。
