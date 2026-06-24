@@ -13,6 +13,8 @@
 | `REQ-fix-scenario-seed-guard.md` | **P0 补丁需求** | 守卫挂错键（`main.ts:24`）→ PG 真部署意图永不再种 → OUT_OF_CATALOG → 探索 → 空答。~4 行修复 + 自愈。 |
 | `PRD-scenario-ontogenesis.md` | **根治 PRD（卡维度）** | 场景卡 = 发育器官：倒序发育长全闭包 + A10 亲手验证才上架 + 正序确定性绑定 + 缺则生长/开单不静默。落 R16。 |
 | `PRD-rules-as-references.md` | **根治 PRD（规则维度）** | 规则即引用：全推演入口汇 `/a/v1/solvers/:key/invoke` 一处注入规则；求解器读规则不写死；规则可编辑 × 版本 × R6。落 R14。 |
+| `DATA-rules-13-undefined-definitions.md` | **配套数据（规则PRD P1）** | 13 未定义规则真定义（阈值已设定·全可配置）+ `SOLVER_RULE_REFS` 引用表 + 硬编码→`rule.params` 迁移图。照此填空。 |
+| `DATA-scenario-genome-20cards.md` | **配套数据（卡PRD P1/P2）** | 20 卡完整 genome：render 投影映射（接地求解器真实输出字段，修 16 占位）+ 规则/切片接线 + `growScenario` 伪代码。照此填空。 |
 | `ROADMAP-implementation.md` | **本文** | 依赖排序 + 相位 + 验收门 + 本体回写。 |
 
 ---
