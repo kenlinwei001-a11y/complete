@@ -9,7 +9,8 @@
 ## 1. 先读这些（canonical · 按序）+ 对齐这些（在建 · 禁分叉）
 
 **先读（本仓库 docs/，我已写好）**：
-1. `ARCH-redlines-and-R17-decision-page.md` — **十红线 + R17 决策单页（先读，最高约束）**
+0. `GROUNDING-MAP-sandbox-review-baseline.md` — **接地地图（评审基线 · 已对源码核验，最先读）**：本设计文档群与真实代码/本体/门的逐条对齐；凡设计文档与它冲突，以它为准。**它纠了三处必须知道的接地真相**：① R17/G-11 尚未入本体（增量 0 硬前提）② 提议的 `ia-single-source:check` 与现存 `boundary-singlesource:check` 重叠（别造第二个，扩展它）③ `comprehend` 是关键词目录不是 LLM（新颖故事会静默退化）。
+1. `ARCH-redlines-and-R17-decision-page.md` — **十红线 + R17 决策单页（最高约束）**
 2. `PRD-simulation-sandbox.md` — 做什么（全栈设计，多行业可配）
 3. `PRD-sandbox-ontogenesis-buildplan.md` — 怎么从一句场景倒序长出（数据闭环）
 4. `RUNBOOK-sandbox-implementation.md` — **怎么一步步做 / 前后端怎么测 / 怎么回退（执行主依据）**

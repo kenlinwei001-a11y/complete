@@ -7,7 +7,9 @@
 
 ## 1. 倒序：沙盘需要什么（从场景反推，映射 BuildPlan 13 need）
 
-输入 = 一句场景（"模拟常州供应商断供，看风险传导到订单"）→ comprehend（LLM 听懂 / 关键词地板兜底）→ 倒推出沙盘 BuildPlan：
+输入 = 一句场景（"模拟常州供应商断供，看风险传导到订单"）→ comprehend → 倒推出沙盘 BuildPlan：
+
+> ⚠️ **诚实接地（核验 `comprehend.ts:481 comprehendScript`）**：当前 `comprehend` **不是 LLM 听懂，而是确定性关键词目录匹配**（`ENTITIES.filter(e => matches(script, e.keywords))`），**无命中即兜底 `Order+Base` 最小集（:491）**。后果：**新颖业务故事（关键词不在目录里）会静默退化成稀薄/错误 BuildPlan**——倒序发育对"目录内场景"成立，对"全新行业故事"不成立。沙盘要让"一句场景→倒推全部所需"对任意故事成立，**须把 comprehend 升为 LLM 听懂（关键词目录降为地板兜底）**，并在退化时显式 GapReport，**绝不静默**（这是沙盘倒序发育的头号前置缺口，见 `GROUNDING-MAP-sandbox-review-baseline §D`）。
 
 | 沙盘所需 | 是什么（对沙盘的作用） | BuildPlan need（映射） | 倒推方法 | 正向长出的源模块 |
 |---|---|---|---|---|
@@ -32,7 +34,7 @@
 ## 2. 正向：经现有管道逐步长出（走正门，与原则一致）
 
 ```
-① 一句场景 ──comprehend(LLM/关键词地板)──> 沙盘 BuildPlan（倒推上表）
+① 一句场景 ──comprehend(★现状=关键词目录，须升 LLM 听懂)──> 沙盘 BuildPlan（倒推上表）
 ② 数据：连接器与上传(真实导入) 或 合成数据(冷启动,确定性) ──> RawDataset 可见
 ③ 数据构建发动机 runStory ──倒序发育──> ModuleProvisioner 比对现状(EXISTS/TO_CREATE/MISSING):
      本体类型/状态变量/传导规则/约束/动作/切片/意图/计划/agent/KPI 逐一 provision
