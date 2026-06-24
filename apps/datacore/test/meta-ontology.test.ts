@@ -22,9 +22,9 @@ describe("Dogfooding P1 · 系统本体自反落库", () => {
     expect(kinds.has("SystemInvariant")).toBe(true);
     expect(kinds.has("SystemBreakpoint")).toBe(true);
     expect(kinds.has("SystemEvent")).toBe(true);
-    // 14 不变量 + 8 断点（与 prd-index 权威集一致）
+    // 不变量 + 断点数均以 prd-index 权威集为准（避免硬编码漂移）
     expect(a.nodes.filter((n) => n.kind === "SystemInvariant").length).toBe(prdIndex.ontology.invariants.length);
-    expect(a.nodes.filter((n) => n.kind === "SystemBreakpoint").length).toBe(8);
+    expect(a.nodes.filter((n) => n.kind === "SystemBreakpoint").length).toBe(prdIndex.ontology.breakpoints.length);
     // G-8 断点带状态 + 关联不变量 + 覆盖 PRD
     const g8 = a.nodes.find((n) => n.kind === "SystemBreakpoint" && n.key === "G-8")!;
     expect(["FIXED", "PARTIAL", "OPEN"]).toContain(g8.props.status);
@@ -34,11 +34,12 @@ describe("Dogfooding P1 · 系统本体自反落库", () => {
 
   it("sync 物化进元租户 __platform__ + R2 隔离（demo 查不到元对象）+ 影响分析 BFS", async () => {
     const t = await makeApp();
+    const { prdIndex } = await sources();
     const res = await t.app.inject({ method: "POST", url: "/a/v1/meta/sync", headers: ADMIN });
     expect(res.statusCode).toBe(200);
     const sync = res.json() as { objects: number; links: number; byKind: Record<string, number> };
     expect(sync.objects).toBeGreaterThan(20);
-    expect(sync.byKind.SystemBreakpoint).toBe(8);
+    expect(sync.byKind.SystemBreakpoint).toBe(prdIndex.ontology.breakpoints.length);
 
     // /meta/breakpoints/G-8 返回状态 + 关联不变量 + 覆盖 PRD（DoD #2）
     const bp = (await (await t.app.inject({ method: "GET", url: "/a/v1/meta/breakpoints/G-8", headers: ADMIN })).json()) as { props: { status: string; relatedPRDs: string[] } };
