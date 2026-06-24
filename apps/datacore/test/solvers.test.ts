@@ -306,6 +306,26 @@ describe("S1 solvers", () => {
     expect([...starts].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))).toEqual(starts);
   });
 
+  // PRD-IND-risk §4.6：逐日 tip 事件可解释——每事件带 tag/obj/desc/src（量化 hashN 确定性 R6）。
+  it("V5c: risk_timeline 事件带 tag/desc/src 可解释文案（§4.6）+ R6 同输入字节一致", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const run = async () => (await invokeSolver(t, "risk_timeline", { horizon: 30 })).json() as { data: { cards: { events: { type: string; tag?: string; desc?: string; src?: string }[] }[] } };
+    const out = await run();
+    const allEvents = out.data.cards.flatMap((c) => c.events);
+    expect(allEvents.length).toBeGreaterThan(0);
+    for (const e of allEvents) {
+      expect(e.tag).toBeTruthy();
+      expect(e.desc).toBeTruthy();
+      expect(e.src).toBeTruthy();
+    }
+    // 来源系统三选一（SRC_META 逐字）
+    const srcs = new Set(allEvents.map((e) => e.src));
+    for (const s of srcs) expect(["EAM/CMMS 检修计划", "S&OP/ERP 订单交期", "WMS/ERP 采购与在途"]).toContain(s);
+    // R6：同输入同输出
+    expect(JSON.stringify(await run())).toBe(JSON.stringify(out));
+  });
+
   it("affected_orders: window [day−7, day+14], delay estimate, condition filter + nearest-due fallback", async () => {
     const t = await makeApp();
     await seedBattery(t);

@@ -69,6 +69,11 @@ export const RiskEventSchema = z.object({
   day: z.number().int(),
   amp: z.number(),
   factors: z.array(z.string()),
+  // PRD-IND-risk §4.6 逐日 tip 可解释：短标签 / 关联对象 / 量化文案 / 来源系统（量化经 hashN 确定性，R6/可空向后兼容）。
+  tag: z.string().optional(),
+  obj: z.string().optional(),
+  desc: z.string().optional(),
+  src: z.string().optional(),
 });
 export const RiskCardSchema = z.object({
   base: z.string(),

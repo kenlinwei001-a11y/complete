@@ -585,7 +585,10 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
   cards: [
     {
       base: "常州", factor: "化成柜张力", peak: 96, crossDay: 5, series: riskSeries(1, 5, 96),
-      events: [{ type: "maint_window", day: 4, amp: 18, factors: ["化成柜"] }, { type: "delivery_peak", day: 6, amp: 12, factors: ["交付"] }],
+      events: [
+        { type: "maint_window", day: 4, amp: 18, factors: ["化成柜"], tag: "检修窗", obj: "常州", desc: "年度检修（第1周）：计划停机 5 天，设备OEE 由基线下调 6 个百分点", src: "EAM/CMMS 检修计划" },
+        { type: "delivery_peak", day: 6, amp: 12, factors: ["交付"], tag: "交付高峰", obj: "SO-10001", desc: "SO-10001·蔚途汽车 交付 1500 万套到期：当周产线排产负载 +9 个百分点", src: "S&OP/ERP 订单交期" },
+      ],
       // 增量 §7.10-4/§7.11 PropagationTimeline：越线窗口内受波及订单（affected_orders 同源）
       affectedOrders: [
         { so: "SO-10001", cust: "蔚途汽车", model: "4680-NCM", qty: 1500, due: "2026-06-20", dueDay: 8, delay: 3, impact: 0.5 },

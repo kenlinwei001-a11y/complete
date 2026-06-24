@@ -6,7 +6,7 @@ import { heatColor } from "@/components/Risk/RiskPopover";
  * → 每日一圆点（三档色）+ 日期刻度（D+n）+ 三档图例 + 顶部摘要 + 悬停/点选日点详情
  * （当日传导度 + 就近阶段事件 + 受影响订单）。数据来自求解器（risk_timeline/audit_timeline），前端零写死。
  */
-export interface DotEvent { type: string; day: number; amp?: number }
+export interface DotEvent { type: string; day: number; amp?: number; tag?: string; obj?: string; desc?: string; src?: string }
 export interface DotOrder { so: string; cust?: string; model?: string; qty?: number; due?: string; delay?: number }
 export interface DailyDotAxisProps {
   series: number[];
@@ -67,7 +67,14 @@ export function DailyDotAxis({ series, threshold, crossDay = null, peak, events 
       {selDetail && (
         <div data-testid={`${testId}-daytip`} className="panel" style={{ marginTop: 6, padding: 8 }}>
           <div><b>D+{sel}</b> · 传导度 <b className="mono" style={{ color: selDetail.v >= threshold ? "var(--danger)" : "var(--txt)" }}>{Math.round(selDetail.v)}</b></div>
-          {selDetail.nearEvent && <div style={{ color: "var(--muted)" }}>就近事件：{EVENT_LABEL[selDetail.nearEvent.type] ?? selDetail.nearEvent.type} D+{selDetail.nearEvent.day}</div>}
+          {selDetail.nearEvent && (
+            <div data-testid={`${testId}-event`} style={{ color: "var(--muted)", marginTop: 2 }}>
+              <span style={{ color: "var(--txt)" }}>就近事件：{selDetail.nearEvent.tag ?? EVENT_LABEL[selDetail.nearEvent.type] ?? selDetail.nearEvent.type} D+{selDetail.nearEvent.day}</span>
+              {/* PRD-IND-risk §4.6 逐日 tip 可解释：事件量化文案 + 来源系统 */}
+              {selDetail.nearEvent.desc && <div style={{ marginTop: 1 }}>{selDetail.nearEvent.desc}</div>}
+              {selDetail.nearEvent.src && <div style={{ fontSize: 10, color: "var(--muted2)" }} data-testid={`${testId}-event-src`}>来源：{selDetail.nearEvent.src}</div>}
+            </div>
+          )}
           {selDetail.orders.length > 0 && (
             <div style={{ marginTop: 4 }}>
               <div style={{ color: "var(--muted2)", fontSize: 10 }}>受影响订单（越线窗口）</div>

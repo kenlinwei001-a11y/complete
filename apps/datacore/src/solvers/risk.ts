@@ -99,6 +99,10 @@ export interface RiskEvent {
   day: number;
   amp: number;
   factors: string[];
+  tag?: string;
+  obj?: string;
+  desc?: string;
+  src?: string;
 }
 
 const EVENT_FACTORS: Record<RiskEvent["type"], string[]> = {
@@ -108,14 +112,24 @@ const EVENT_FACTORS: Record<RiskEvent["type"], string[]> = {
 };
 
 /** Events are first-class objects from the ontology (maint plans / order due days / arrival cycle / delayed shipments). */
+// PRD-IND-risk §4.6 来源系统（③种子，SRC_META 逐字）：检修=EAM/CMMS · 交付=S&OP/ERP · 到货=WMS/ERP。
+const EVENT_SRC = { maint: "EAM/CMMS 检修计划", delivery: "S&OP/ERP 订单交期", arrival: "WMS/ERP 采购与在途" } as const;
+/** §4.6 量化经 hashN 派生（确定性 R6）：同 (key) 同值。 */
+const hn = (key: string, mod: number): number => hashString(key) % mod;
+
 export function riskEvents(c: SolverContext, baseId: string, horizon: number): RiskEvent[] {
   const p = c.params.risk;
   const events: RiskEvent[] = [];
+  const bn = baseName(c, baseId);
   const mw = maintWeekOf(c, baseId);
   if (mw !== null) {
     const day = mw * 7 - 3;
     if (day >= 1 && day <= horizon) {
-      events.push({ type: "maint_window", day, amp: p.eventAmps.maint_window, factors: EVENT_FACTORS.maint_window });
+      // §4.6 检修窗口：年度检修（第w周）：计划停机 d 天，设备OEE 下调 o 个百分点。
+      const days = 3 + hn(`${baseId}:maint:days`, 4);
+      const oee = 4 + hn(`${baseId}:maint:oee`, 5);
+      events.push({ type: "maint_window", day, amp: p.eventAmps.maint_window, factors: EVENT_FACTORS.maint_window,
+        tag: "检修窗", obj: bn, desc: `年度检修（第${mw}周）：计划停机 ${days} 天，设备OEE 由基线下调 ${oee} 个百分点`, src: EVENT_SRC.maint });
     }
   }
   for (const o of c.orders) {
@@ -123,18 +137,30 @@ export function riskEvents(c: SolverContext, baseId: string, horizon: number): R
     if (!bases.includes(baseId)) continue;
     const dueDay = dayFrom(c.params.forecastStart, str(o.props.due));
     if (dueDay >= 1 && dueDay <= horizon) {
-      events.push({ type: "delivery_peak", day: dueDay, amp: p.eventAmps.delivery_peak, factors: EVENT_FACTORS.delivery_peak });
+      // §4.6 交付高峰：{so}·{cust} 交付 {qty} 万套到期：当周排产负载 +{load} 个百分点，需额外工时约 {qty×1.6} 人·班。
+      const so = str(o.props.so); const cust = str(o.props.cust); const qty = num(o.props.qty);
+      const load = 6 + hn(`${so}:load`, 8);
+      events.push({ type: "delivery_peak", day: dueDay, amp: p.eventAmps.delivery_peak, factors: EVENT_FACTORS.delivery_peak,
+        tag: "交付高峰", obj: so, desc: `${so}·${cust} 交付 ${qty} 万套到期：当周产线排产负载 +${load} 个百分点，需额外工时约 ${Math.round(qty * 1.6)} 人·班`, src: EVENT_SRC.delivery });
     }
   }
   for (let d = p.arrivalCycleDays; d <= horizon; d += p.arrivalCycleDays) {
-    events.push({ type: "arrival_gap", day: d, amp: p.eventAmps.arrival_gap, factors: EVENT_FACTORS.arrival_gap });
+    // §4.6 到货间隙（物料）：关键正极安全库存覆盖降至 {cover} 天（阈值 5），物料齐套率 {kit}%（阈值 80）。
+    const cover = 3 + hn(`${baseId}:cover:${d}`, 3);
+    const kit = 70 + hn(`${baseId}:kit:${d}`, 12);
+    events.push({ type: "arrival_gap", day: d, amp: p.eventAmps.arrival_gap, factors: EVENT_FACTORS.arrival_gap,
+      tag: "到货间隙", obj: bn, desc: `关键正极安全库存覆盖降至 ${cover} 天（阈值 5 天），物料齐套率 ${kit}%（阈值 80%）`, src: EVENT_SRC.arrival });
   }
   // Delayed in-transit shipments (scenario shipment_delay) add an extra arrival-gap pulse at the new ETA.
   for (const s of c.shipments) {
     if (s.props.baseId !== baseId || s.props.status !== "DELAYED") continue;
     const day = num(s.props.etaDay);
     if (day >= 1 && day <= horizon) {
-      events.push({ type: "arrival_gap", day, amp: p.eventAmps.arrival_gap, factors: EVENT_FACTORS.arrival_gap });
+      // §4.6 到货间隙（物流）：在途到货延迟 {lead} 天，待检在途 {n} 批。
+      const lead = 2 + hn(`${baseId}:lead:${day}`, 5);
+      const nb = 1 + hn(`${baseId}:ntransit:${day}`, 3);
+      events.push({ type: "arrival_gap", day, amp: p.eventAmps.arrival_gap, factors: EVENT_FACTORS.arrival_gap,
+        tag: "到货间隙", obj: bn, desc: `在途到货延迟 ${lead} 天，待检在途 ${nb} 批`, src: EVENT_SRC.arrival });
     }
   }
   return events.sort((a, b) => a.day - b.day || (a.type < b.type ? -1 : 1));
@@ -225,7 +251,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       peak: Math.max(...series),
       crossDay,
       series,
-      events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors })),
+      events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
       affectedOrders: affectedOrders(c, {
         baseId: pair.baseId,
         day: crossDay ?? horizon,
@@ -378,7 +404,7 @@ export function auditTimeline(c: SolverContext, args: Record<string, unknown>): 
   const orders = repBase ? affectedOrders(c, { baseId: repBase, day: crossIdx < 0 ? horizon : crossIdx, peak: Math.max(...series) }).affected : [];
   return {
     kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold,
-    events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors })),
+    events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
     affectedOrders: orders,
   };
 }

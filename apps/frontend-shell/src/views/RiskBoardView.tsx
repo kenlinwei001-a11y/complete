@@ -126,10 +126,15 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               />
             ))}
           </div>
-          <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted)" }}>
+          {/* PRD-IND-risk §4.6 逐日事件可解释：标签 + 量化文案 + 来源系统（替代裸 type·amp） */}
+          <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted)" }} data-testid="risk-events">
             {detail.events.map((e, i) => (
-              <div key={i}>
-                <span className="mono">D+{e.day}</span> · {e.type} · amp {e.amp}
+              <div key={i} data-testid={`risk-event-${i}`} style={{ marginBottom: 4 }}>
+                <span className="mono" style={{ color: "var(--txt)" }}>D+{e.day}</span>
+                {" · "}<b style={{ color: "var(--txt)" }}>{(e as { tag?: string }).tag ?? e.type}</b>
+                {(e as { obj?: string }).obj ? <span style={{ color: "var(--muted2)" }}> · {(e as { obj?: string }).obj}</span> : null}
+                {(e as { desc?: string }).desc ? <div>{(e as { desc?: string }).desc}</div> : <span> · amp {e.amp}</span>}
+                {(e as { src?: string }).src ? <div style={{ fontSize: 10, color: "var(--muted2)" }} data-testid={`risk-event-src-${i}`}>来源：{(e as { src?: string }).src}</div> : null}
               </div>
             ))}
           </div>
