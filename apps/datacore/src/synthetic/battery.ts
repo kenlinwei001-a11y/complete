@@ -970,6 +970,23 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK" },
     // C33 碳护照前置：约束 = 目的地EU IMPLIES 碳足迹<=阈值；违规 = NOT(约束)（用 IMPLIES，C33 的招牌用例）。
     { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK" },
+    // 规则即引用（PRD-rules-as-references 附录A）：补全 13 条「被引用但未定义」规则为一等规则——
+    // 消灭前端"（当前库中未找到定义）"、规则闸不再空过。expression 用既有 DSL（无算术/无 param 插值），
+    // 命名阈值落 params（求解器 P2 改读 rule.params 去硬编码；改 param 即改推演）。C15/C24 毛利底线
+    // 不复制 SEG_REGISTRY（单一来源），floorPct 由分段对象字段在求值期解析（params 留空）。
+    { key: "C01", name: "产线设计产能上限", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", severity: "BLOCK", params: {} },
+    { key: "C02", name: "化成/老化串并产能口径", expression: "Process.parallelThroughput < Process.requiredThroughput", severity: "WARN", params: { tolerancePct: 0.05 } },
+    { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 } },
+    { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {} },
+    { key: "C09", name: "数据时延临时降级", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", severity: "WARN", params: { staleHours: 2, normalFactor: 0.93, degradedFactor: 0.9 } },
+    { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {} },
+    { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: { minBufferDays: 3 } },
+    { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {} },
+    { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {} },
+    { key: "C21", name: "产销平衡偏差", expression: "SopVersionRow.balanceDeviationPct > 0.10", severity: "WARN", params: { balanceDeviationPct: 0.1 } },
+    { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: { maxChangeoverMin: 120 } },
+    { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {} },
+    { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: { assumeTolerancePct: 0.05 } },
   ],
   scenarioSeed: { views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"], intents: [] },
   features: [...ALL_FEATURE_KEYS],
@@ -1123,6 +1140,20 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C31: ["Outsource"],
   C32: ["Customer"],
   C33: ["Order"],
+  // 规则即引用：13 条补全规则的作用域（与 expression 对象前缀一致）。
+  C01: ["Line"],
+  C02: ["Process"],
+  C04: ["Line"],
+  C06: ["MaterialBalance"],
+  C09: ["DataSourceHealth"],
+  C10: ["Action", "Scenario"],
+  C11: ["MaintPlan"],
+  C15: ["Order", "DemandSegment"],
+  C16: ["MaterialBalance"],
+  C21: ["SopVersionRow"],
+  C22: ["Order"],
+  C24: ["Quote", "DemandSegment"],
+  C25: ["ExternalSignal"],
 };
 
 export interface GeneratedBattery {

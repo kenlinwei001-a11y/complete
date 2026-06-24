@@ -25,4 +25,20 @@ describe("RuleRef · 规则锚点两跳", () => {
     expect(pop.textContent).toContain("creditLimit"); // 表达式
     expect(pop.textContent).toContain("BLOCK"); // 严重级
   });
+
+  it("规则即引用 P1：曾'未找到定义'的 C09 现弹出真定义 + 命名阈值 params（非'未找到定义'）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    render(
+      <AppProviders>
+        <RuleRef code="C09" />
+      </AppProviders>,
+    );
+    await user.hover(screen.getByTestId("ruleref-C09"));
+    await waitFor(() => expect(screen.getByTestId("ruleref-pop").textContent).toContain("数据时延临时降级"));
+    const pop = screen.getByTestId("ruleref-pop");
+    expect(pop.textContent).not.toContain("未找到定义"); // 病灶文案消失
+    expect(pop.textContent).toContain("DataSourceHealth"); // 真 expression
+    expect(screen.getByTestId("ruleref-params-C09").textContent).toContain("staleHours=2"); // 命名阈值可见
+  });
 });

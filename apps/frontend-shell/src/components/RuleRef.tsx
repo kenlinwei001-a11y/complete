@@ -42,6 +42,11 @@ export function RuleRef({ code }: { code: string }) {
                 <div style={{ marginTop: 2 }}>
                   <code style={{ fontSize: 10 }}>{r.expression}</code>
                 </div>
+                {r.params && Object.keys(r.params).length > 0 && (
+                  <div style={{ marginTop: 2, color: "var(--muted2)" }} data-testid={`ruleref-params-${r.key}`}>
+                    阈值：{Object.entries(r.params).map(([k, v]) => `${k}=${v}`).join(" · ")}
+                  </div>
+                )}
                 {r.scopeObjectTypes.length > 0 && (
                   <div style={{ marginTop: 2, color: "var(--muted2)" }}>作用域：{r.scopeObjectTypes.join(" · ")}</div>
                 )}

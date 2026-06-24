@@ -202,6 +202,7 @@ export class SyntheticService {
             | "BLOCK"
             | "WARN"
             | "INFO",
+          params: r.params ?? {},
           origin: { type: "SYNTHETIC" },
           status: "PUBLISHED",
         });

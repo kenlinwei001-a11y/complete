@@ -38,6 +38,7 @@ export class RulesService {
       expression: string;
       scopeObjectTypes: string[];
       severity: "BLOCK" | "WARN" | "INFO";
+      params?: Record<string, number>;
       origin?: RuleOrigin;
       status?: "DRAFT" | "PUBLISHED";
     },
@@ -58,6 +59,7 @@ export class RulesService {
       expression: input.expression,
       scopeObjectTypes: input.scopeObjectTypes,
       severity: input.severity,
+      params: input.params ?? {},
       origin: input.origin ?? { type: "MANUAL" },
       version,
       status: input.status ?? "DRAFT",
@@ -158,7 +160,7 @@ export class RulesService {
   async update(
     ctx: AuthCtx,
     id: string,
-    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity">>,
+    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "params">>,
   ): Promise<Rule> {
     const rule = await this.get(ctx, id);
     if (rule.status !== "DRAFT") {

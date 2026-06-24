@@ -672,6 +672,8 @@ export const RULES: RuleEntry[] = [
   { id: "rule-c08", key: "C08", name: "外协红线", expression: "Outsource.ratio <= 0.2", scopeObjectTypes: ["QualityLot"], severity: "WARN", origin: { type: "MANUAL" }, version: 1, status: "PUBLISHED" },
   { id: "rule-c13", key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit", scopeObjectTypes: ["Order"], severity: "BLOCK", origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
   { id: "rule-c05", key: "C05", name: "利用率持续告警", expression: "SUSTAIN(产线.utilization > 95, 3)", scopeObjectTypes: ["Line"], severity: "WARN", origin: { type: "DOCUMENT", docId: "doc-policy", span: { start: 320, end: 390 }, extractJobId: "job-ex1" }, version: 1, status: "PUBLISHED" },
+  // 规则即引用 P1：曾"未找到定义"的规则补为一等规则（含命名阈值 params）——mock 与真后端同步。
+  { id: "rule-c09", key: "C09", name: "数据时延临时降级", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", scopeObjectTypes: ["DataSourceHealth"], severity: "WARN", params: { staleHours: 2, normalFactor: 0.93, degradedFactor: 0.9 }, origin: { type: "SYNTHETIC" }, version: 1, status: "PUBLISHED" },
 ];
 
 export const POLICIES: PermissionPolicy[] = [

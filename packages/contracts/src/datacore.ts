@@ -105,11 +105,41 @@ export const RuleEntrySchema = z.object({
   expression: z.string(),
   scopeObjectTypes: z.array(z.string()),
   severity: z.enum(["BLOCK", "WARN", "INFO"]),
+  // 规则即引用（PRD-rules-as-references §2.2/§4）：命名阈值（求解器读 rule.params 而非硬编码）。
+  // 改 param 即改推演（P2 求解器接入后，全 7 入口随之变）。可编辑、随规则版本（R6）。可选（旧规则无）。
+  params: z.record(z.string(), z.number()).optional(),
   origin: RuleOriginSchema,
   version: z.number().int(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
 });
 export type RuleEntry = z.infer<typeof RuleEntrySchema>;
+
+/**
+ * 规则即引用（PRD-rules-as-references §4/附录B）：每个求解器声明它引用哪些规则（ruleKey）。
+ * 单一来源——门 `rule-closure:check` 据此校验「⋃ 引用 ⊆ 已发布规则定义」，杜绝"未找到定义"回潮。
+ * （sop_balance 是工作流非求解器，其规则引用由 sop 工作流声明，不在此表。）
+ */
+export const SOLVER_RULE_REFS: Record<string, string[]> = {
+  capacity_forecast: ["C01", "C02", "C03", "C09"],
+  affected_orders: ["C05"],
+  risk_timeline: ["C06", "C11"],
+  plan_audit: ["C15", "C16", "C18", "C21", "C23"],
+  plan_generate: ["C08", "C15", "C18"],
+  mitigation_select: ["C08", "C10"],
+  cert_schedule: ["C04", "C26"],
+  kit_readiness: ["C06", "C16"],
+  lta_gap: ["C16", "C27"],
+  inventory_optimize: ["C16", "C28"],
+  changeover_sequence: ["C22", "C29"],
+  yield_diagnosis: ["C30"],
+  maintenance_stagger: ["C11"],
+  outsourcing_split: ["C08", "C31"],
+  quote_margin: ["C15", "C24"],
+  credit_exposure: ["C13", "C32"],
+  capex_scenario: ["C18", "C23"],
+  quarterly_gap: ["C08", "C29"],
+  carbon_footprint: ["C33"],
+};
 
 // ---------------------------------------------------------------------------
 // 平台 PRD §5 A3 半自动本体建模
@@ -266,6 +296,8 @@ export const IndustryTemplateSchema = z.object({
       name: z.string(),
       expression: z.string(),
       severity: z.string(),
+      // 规则即引用（PRD-rules-as-references）：命名阈值，供求解器读（P2）+ 规则编辑器改。
+      params: z.record(z.string(), z.number()).optional(),
     }),
   ),
   scenarioSeed: z.object({

@@ -1,5 +1,18 @@
 # TODO · 决策平台 PRD 套件（decision-platform-prd-pack）· 逐项追踪
 
+> **2026-06-24 · 新包「场景推演根治方案包-v3」研判 + 推进决策（5 文档：诊断账本 + P0守卫 + 发育闭环PRD含数据 + 规则即引用PRD含数据 + 总路线图）**
+> grep 核验：诊断准确（已定义 15 规则、恰好 13 条未定义 `C01/C02/C04/C06/C09/C10/C11/C15/C16/C21/C22/C24/C25`、`SolverContext` 无 rules、无 `SOLVER_RULE_REFS`、无 rule-closure 门）。**本会话已做掉一大块**：
+> - ✅ P0 守卫bug（02）= `ensureScenarioPackageSeed` 多租户幂等（已落，比 4 行补丁更彻底）。
+> - ✅ 发育闭环 P1（grow+A10验证门+§2.4确定性绑定+诚实缺口）= 已落。
+> - ✅ 发育闭环 P2 / BP-1（16 占位渲染→真投影）= 已落（通用 `solver_summary`）。
+> - ✅ BP-2（S03 `data.summary` TEMPLATE_RESOLUTION_ERROR）+ BP-3（S06 action-draft `payload.base`）= 已落（G-2 残面）。
+> **BP-1 设计决策（用户拍板）**：保留 `solver_summary` 作健壮默认（永不抛错、零逐卡硬编码、贴合"不写死"），仅在标签重要的卡上**叠加**显式 renderBindings——不为 18 张脆弱手写卡拆掉已验证代码。
+> **真正未做（按推荐顺序）**：
+> - [进行中] **规则即引用 G-10 P1**：定义 13 条规则（附录A 全给 expression/severity/params）+ `rule-closure:check` 门 + 前端关联规则显真定义。消灭用户实测的"（未找到定义）"。
+> - [ ] **规则 G-10 P2**：`SolverContext += rules/ruleSetVersion` + 求解器读 `rule.params` 去硬编码 + `evaluatedRules` 透出 + `no-hardcoded-rules:check` 门。让"改规则即改推演"在 7 入口成立。
+> - [ ] **规则 G-10 P3**：规则编辑器 UI + 版本/事件失效 + 6 入口逐一 FDE 验收。
+> - [ ] **发育闭环残项**：`evaluate_rules` 规则环接进卡计划（依赖规则P1）· ADVISORY 成熟相位（现仅 PROVISIONAL/GOVERNED）· `ScenarioGenome` 契约 · `ontogenesis:check` 逐卡断言 · P3 自动生长（GapReport→runGrowthLoop）· BP-4（S18 sop 数据，现诚实 PROVISIONAL）· BP-5（slotPresets→求解器入参契约）· BP-6（相对时间槽归结）· BP-7（空结果显性化）· D2（render 建图期契约门）。
+
 > **2026-06-23 · 经营驾驶舱 PRD §2 缺口表逐行核实（grep，补 fde-delivery 真前端验收欠债）**
 > 教训：此前判"经营驾驶舱完成"靠 jsdom 绿测试、未真前端走查 → 漏掉死按钮 + 整块缺失 widget。本清单逐行对照 PRD §2 缺口表与 DASH_LAYOUT 实际。
 > **§2.1 经营驾驶舱（dash 页）：**

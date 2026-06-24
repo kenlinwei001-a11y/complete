@@ -226,8 +226,9 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(order.lineage.fieldCount).toBe(6);
     expect(order.lineage.dataset).toBe("erp_sales_orders");
     expect(order.sourceSystem).toBe("ERP");
-    // catalog §3 新增 C29（排产冻结期）/C33（碳护照）作用域含 Order → 映射表新增这两行。
-    expect(order.rules).toEqual(["C03", "C08", "C13", "C29", "C33"]);
+    // catalog §3 C29（排产冻结期）/C33（碳护照）+ 规则即引用补全 C15（经营毛利底线）/C22（换型损失）
+    // 作用域含 Order → 映射表含这些行（规则一等化后真定义可见，非"未找到定义"）。
+    expect(order.rules).toEqual(["C03", "C08", "C13", "C15", "C22", "C29", "C33"]);
     expect(order.derivations.some((d) => d.includes("qty * unitPrice"))).toBe(true);
     // 求解器与 Agent 行
     const solverRows = rows.filter((r) => r.kind === "solver");
