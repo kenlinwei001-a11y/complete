@@ -76,6 +76,8 @@ describe("F37 · 场景配置（场景为一等主键）", () => {
     expect(ont).toHaveTextContent("本体环 ✓");
     expect(within(ont).getByTestId("scenario-verif-S01")).toHaveTextContent("VERIFIED");
     expect(ont).toHaveTextContent("答案预览");
+    // 溯源链指向真实任务详情路由 /tasks/:id（门B 实测曾发现写成 /task/ 死链 → 锁回归）
+    expect(within(ont).getByRole("link", { name: /溯源链/ })).toHaveAttribute("href", expect.stringContaining("/tasks/"));
   });
 
   it("已发布场景：「查看配置」只读展示真实后端配置 + 退役转草稿后可编辑（非前端写死）", async () => {

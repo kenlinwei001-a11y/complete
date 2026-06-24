@@ -36,4 +36,28 @@ describe("场景卡发育闭环（grow + 验证门 + 留痕 + 确定性绑定）
     expect(task.classification?.model).toBe("deterministic:scenario-bind");
     expect(task.path).toBe("WORKFLOW"); // 确定性走 Path A，非探索兜底
   });
+
+  it("P2 闭 G-1：grow 一张曾占位的卡（S15 接单毛利）→ 渲染投影求解器真实输出（含承载数据块）→ GOVERNED", async () => {
+    const t = await createTestApp();
+    const res = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/S15/grow", headers: debugHeaders(ADMIN) });
+    expect(res.statusCode).toBe(200);
+    const run = res.json() as { verification: { status: string; taskId: string | null }; maturity: string };
+    expect(run.maturity).toBe("GOVERNED");
+    expect(run.verification.status).toBe("VERIFIED");
+    // 关键：答案块含 kpi/table（投影求解器输出），不再是单一占位文本（用户铁律：数据可见、知来源）。
+    const task = await t.repos.tasks.get(run.verification.taskId!);
+    const blocks = task?.answer?.blocks ?? [];
+    expect(blocks.some((b) => b.type === "kpi" || b.type === "table")).toBe(true);
+    expect(blocks.some((b) => b.type === "text" && /已完成推演.*结果详见步骤溯源/.test(String((b as { markdown?: string }).markdown ?? "")))).toBe(false);
+  });
+
+  it("P2 诚实门：纯占位指向文本（S18 sop 无求解器投影）→ 不充作 GOVERNED → PROVISIONAL + RENDER_NOT_PROJECTED", async () => {
+    const t = await createTestApp();
+    const res = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/S18/grow", headers: debugHeaders(ADMIN) });
+    expect(res.statusCode).toBe(200);
+    const run = res.json() as { verification: { status: string; gapCode: string | null }; maturity: string };
+    expect(run.maturity).toBe("PROVISIONAL");
+    expect(run.verification.status).toBe("NOT_VERIFIED");
+    expect(run.verification.gapCode).toBe("RENDER_NOT_PROJECTED");
+  });
 });

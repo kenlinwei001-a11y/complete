@@ -2058,17 +2058,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         vpath = t?.path === "AGENT" ? "AGENT" : t?.path === "WORKFLOW" ? "WORKFLOW" : "NONE";
         const blocks = t?.answer?.blocks ?? [];
         const gapBlock = blocks.find((b) => b.type === "gap");
-        const hasReal = t?.status === "COMPLETED" && blocks.length > 0 && !gapBlock &&
-          !blocks.some((b) => b.type === "text" && /未能产出回答|探索模式未能/.test(String((b as { markdown?: string }).markdown ?? "")));
+        const fallbackText = blocks.some((b) => b.type === "text" && /未能产出回答|探索模式未能/.test(String((b as { markdown?: string }).markdown ?? "")));
+        // 诚实门（闭 G-1）：答案必须**投影出真实数据**才算 VERIFIED——含承载数据的块
+        // （kpi/table/rule_violation/action_draft，或带 ⟦ref⟧ 溯源的文本）；只有静态占位文本=未投影，
+        // 绝不充作"已验证"（防 P1 把"XX已完成推演"占位文案误判 GOVERNED）。
+        const dataBearing = blocks.some((b) =>
+          b.type === "kpi" || b.type === "table" || b.type === "rule_violation" || b.type === "action_draft" ||
+          (b.type === "text" && /⟦ref:/.test(String((b as { markdown?: string }).markdown ?? ""))));
+        const hasReal = t?.status === "COMPLETED" && blocks.length > 0 && !gapBlock && !fallbackText && dataBearing;
         dataOk = hasReal;
         vstatus = hasReal ? "VERIFIED" : "NOT_VERIFIED";
         if (!hasReal) {
           gapCode = gapBlock ? String(((gapBlock as { report?: { findings?: { gapCode?: string }[] } }).report?.findings?.[0]?.gapCode) ?? "OTHER")
-            : t?.status === "AWAITING_CLARIFICATION" ? "NEEDS_SLOTS" : t?.status === "FAILED" ? "RUNTIME_FAIL" : "NO_ANSWER";
+            : t?.status === "AWAITING_CLARIFICATION" ? "NEEDS_SLOTS" : t?.status === "FAILED" ? "RUNTIME_FAIL"
+            : t?.status === "COMPLETED" && !dataBearing ? "RENDER_NOT_PROJECTED" : "NO_ANSWER";
         }
         const firstText = blocks.find((b) => b.type === "text") as { markdown?: string } | undefined;
         const firstKpi = blocks.find((b) => b.type === "kpi") as { label?: string; value?: unknown; unit?: string } | undefined;
-        answerPreview = firstText?.markdown?.slice(0, 160) ?? (firstKpi ? `${firstKpi.label}: ${String(firstKpi.value)}${firstKpi.unit ?? ""}` : null);
+        const kpiStr = firstKpi ? `${firstKpi.label}=${String(firstKpi.value)}${firstKpi.unit ?? ""}` : "";
+        answerPreview = `${firstText?.markdown ?? ""}${kpiStr ? ` ${kpiStr}` : ""}`.trim().slice(0, 160) || (kpiStr || null);
       } catch (e) {
         vstatus = "NOT_VERIFIED"; gapCode = "RUNTIME_FAIL"; answerPreview = (e as Error).message.slice(0, 160);
       }

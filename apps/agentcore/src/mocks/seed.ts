@@ -403,7 +403,12 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
         ? [{ id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: `${card.name}：S&OP 月度平衡台请见对应视图（${card.view}）。` }] } }]
         : [
             { id: "s1", type: "invoke_solver", params: { solverKey: card.solver, args: solverArgs } },
-            { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: `${card.name}已完成推演（求解器 ${card.solver}）。结果详见步骤溯源；如需解读请切换到 Agent 路径提问。` }] } },
+            // 闭 G-1：渲染**投影求解器真实输出**（solver_summary 通用投影，不写死业务数字/文案）→
+            // 前端见的每个数都是求解器算出的真值，知道来源（用户铁律：推演数据须留痕且前端可见）。
+            { id: "render", type: "render_answer", params: { blocks: [
+              { type: "text", markdown: `${card.name}（求解器 ${card.solver}）推演结果：` },
+              { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
+            ] } },
           ];
     plans.push({ id: planId, packageId: pkgId, key: card.intentKey, version: 1, status: "PUBLISHED", steps });
     intents.push({

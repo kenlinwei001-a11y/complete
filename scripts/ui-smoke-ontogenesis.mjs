@@ -97,12 +97,24 @@ try {
     } else {
       const href = await traceAny.first().getAttribute("href");
       console.log("  溯源链 →", href);
-      if (!href || !/\/task\//.test(href)) fail(`溯源链 href 异常: ${href}`);
+      if (!href || !/\/tasks?\//.test(href)) fail(`溯源链 href 异常: ${href}`);
       // 点进溯源链，断言导航到任务详情（真 taskId 落点）。
       await traceAny.first().click();
-      await p.waitForTimeout(1500);
-      if (!/\/task\//.test(p.url())) fail(`溯源链未导航到 /task/（${p.url()}）`);
+      await p.waitForTimeout(1800);
+      if (!/\/tasks?\//.test(p.url())) fail(`溯源链未导航到 /tasks/（${p.url()}）`);
       else console.log("  溯源链导航到:", p.url());
+
+      // 断言 5（闭 G-1 核心）：任务详情页渲染**投影出的真实数据块**（KPI/表），非占位文本。
+      const kpiBlocks = p.locator('[data-testid^="kpi-"]');
+      const tableBlocks = p.locator('[data-testid="answer-table"]');
+      const nKpi = await kpiBlocks.count();
+      const nTable = await tableBlocks.count();
+      if (nKpi === 0 && nTable === 0) fail("任务页无 KPI/表数据块——渲染未投影求解器输出（G-1 残）");
+      else {
+        const samples = [];
+        for (let i = 0; i < Math.min(nKpi, 4); i++) samples.push((await kpiBlocks.nth(i).innerText()).replace(/\s+/g, " ").trim());
+        console.log(`  任务页投影数据块：${nKpi} KPI / ${nTable} 表 —— 样本:`, samples.join(" | ").slice(0, 160));
+      }
     }
   }
 } catch (e) {

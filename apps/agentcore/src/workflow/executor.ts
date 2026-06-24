@@ -369,6 +369,10 @@ function renderAnswer(
         actionType: String(rest.actionType ?? ""),
         summary: String(rest.summary ?? ""),
       });
+    } else if (type === "solver_summary") {
+      // 通用投影：把求解器真实输出（{{steps.<s>.output}} 经模板解析注入 `output`）投成
+      // KPI/表/规则依据块——不写死任何业务数字/文案，前端见的即求解器算出的真值（闭 G-1）。
+      blocks.push(...summarizeSolverOutput(rest.output, provId ?? newId("prov")));
     }
   }
 
@@ -378,6 +382,61 @@ function renderAnswer(
     metrics.unverifiedNumerics.inc({ path: trustLevel === "VERIFIED_WORKFLOW" ? "WORKFLOW" : "AGENT" });
   }
   return { trustLevel, blocks, provenance, unverifiedNumerics: unverified };
+}
+
+/** 确定性数值格式（R6）：整数原样，小数定 4 位去尾零。 */
+function fmtNum(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  return String(Number(n.toFixed(4)));
+}
+function cellOf(v: unknown): string | number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") return v;
+  return JSON.stringify(v);
+}
+
+/**
+ * 通用求解器输出投影（PRD-scenario-ontogenesis P2 / 闭 G-1）：把求解器**真实输出对象**投成答案块，
+ * 不手写任何业务数字或文案——前端看到的每个数都是求解器算出的真值，字段名即来源（R13 派生投影）。
+ * 标量→KPI、对象→展开一层 KPI、首个对象数组→表、ruleRefs→规则依据文本。确定性按 Object.keys 顺序。
+ */
+function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] {
+  const data =
+    payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)
+      ? (payload as Record<string, unknown>).data
+      : payload;
+  if (!data || typeof data !== "object") return [{ type: "text", markdown: "求解器无结构化输出。" }];
+  const kpis: AnswerBlock[] = [];
+  let table: AnswerBlock | null = null;
+  const ruleRefs: string[] = [];
+  const moreArrays: string[] = [];
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    if (k === "snapshotVersion") continue;
+    if (k === "ruleRefs" && Array.isArray(v)) { ruleRefs.push(...v.map(String)); continue; }
+    if (typeof v === "number") kpis.push({ type: "kpi", label: k, value: fmtNum(v), provId });
+    else if (typeof v === "boolean") kpis.push({ type: "kpi", label: k, value: v ? "是" : "否", provId });
+    else if (typeof v === "string") { if (v) kpis.push({ type: "kpi", label: k, value: v, provId }); }
+    else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === "object") {
+      if (!table) {
+        const cols = Object.keys(v[0] as Record<string, unknown>);
+        table = { type: "table", columns: cols, rows: v.slice(0, 12).map((r) => cols.map((c) => cellOf((r as Record<string, unknown>)[c]))), provId };
+      } else moreArrays.push(`${k}（${v.length} 项）`);
+    } else if (Array.isArray(v) && v.length > 0) {
+      kpis.push({ type: "kpi", label: k, value: v.map(String).slice(0, 8).join("、"), provId });
+    } else if (v && typeof v === "object") {
+      for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
+        if (typeof v2 === "number") kpis.push({ type: "kpi", label: `${k}.${k2}`, value: fmtNum(v2), provId });
+        else if (typeof v2 === "string" && v2) kpis.push({ type: "kpi", label: `${k}.${k2}`, value: v2, provId });
+      }
+    }
+  }
+  const out: AnswerBlock[] = [...kpis.slice(0, 8)];
+  if (table) out.push(table);
+  if (ruleRefs.length > 0) out.push({ type: "text", markdown: `依据规则：${ruleRefs.join("、")} ⟦ref:0⟧` });
+  if (moreArrays.length > 0) out.push({ type: "text", markdown: `另有明细：${moreArrays.join("、")}（详见步骤溯源）。` });
+  if (out.length === 0) out.push({ type: "text", markdown: "求解器本次无输出数据（可能输入为空或全部满足约束）。" });
+  return out;
 }
 
 // ---------------------------------------------------------------------------

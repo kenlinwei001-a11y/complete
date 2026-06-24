@@ -196,7 +196,7 @@ function ScenarioRow({
               </div>
               <div data-testid={`scenario-verif-${scenario.scenarioKey}`}>
                 验证：<b>{run.verification.status}</b>（路径 {run.verification.path}）
-                {run.verification.taskId && <Link to={`/task/${run.verification.taskId}`} style={{ marginLeft: 6 }}>看完整溯源链 →</Link>}
+                {run.verification.taskId && <Link to={`/tasks/${run.verification.taskId}`} style={{ marginLeft: 6 }}>看完整溯源链 →</Link>}
               </div>
               {run.verification.answerPreview && (
                 <div style={{ color: "var(--muted)" }}>答案预览（数据来源 = 真跑求解器输出）：{run.verification.answerPreview}</div>
