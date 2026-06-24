@@ -292,7 +292,8 @@
   **import/model/rule 多步流 ✅**：`import <file>`（base64 上传→连接器+RawDataset）· `model <rds>`（→本体草稿派生）·
   `rule "<DSL>" --key --scope [--publish]`（建规则+发布）。**L2 真后端冒烟** `scripts/run-cli-smoke.sh`（`pnpm cli:smoke`）**8/8 PASS**：
   do→OPERATION/do→QUERY/types/build/solve/**import/model/rule**（generate 需 LLM provider，env-gated 略，同 A14 真 Kimi）。
-- [~] ◐ **prototype-intake · 原型 intake 正门 + schema 对账 HITL**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。R6 R4 R12 R2 R15。
+- [x] ✅ **prototype-intake · 原型 intake 正门 + schema 对账 HITL + P3 物化全链**（上传 HTML/原型→抽数据/关系→InputManifest→建域；列不符弹 SchemaReconcile 人确认）。R6 R4 R12 R2 R15。
+  **P3 全链 ✅（2026-06-24，门B 真前端验证）**：三条路全闭合——① 导入正门 `POST /a/v1/databuilder/intake/import`（`prototype_html` 连接器把 HTML 内嵌多表全量落 RawDataset，数据连接器可见 + field-profile 在线查看，从库读不写死前端；发 `prototype.materialized`）· ② 物化为对象 `POST …/intake/objectify`（按确定性对账映射进既有类型 ObjectInstance，幂等，映射不上诚实跳过；发 `prototype.objectified`）· ③ 建模为新类型（PrototypeIntakePage「建模为新类型」深链 → ModelingPage 预选数据集 → 确定性建模 + 新增类型卡归域控件解 A4 发布门 → 发布 → 物化）。**附带修真 bug**：DataCore 直连端口 CORS 默认拒 PATCH/PUT/DELETE → 显式列全方法。门B 真验全部三路。datacore 635 + frontend 225 + gates 全绿。
   **P1 + P2-core ✅**：契约 `prototype-intake.ts`（IntakeResult/ProtoDataset/ProtoLink/SchemaReconcileCandidate/ReconcileAction）+
   `databuilder/prototype-intake.ts`：`parsePrototypeHtml`（确定性抽 `const NAME=[...]` 对象数组→数据表 + `L()`/`xxxRef` 命名→关系，
   **绝不 eval 不可信输入**：受限正则+平衡扫描+轻量归一 JSON.parse，失败入 unparsed 诚实，R6 字节锁）+ `reconcileIntake`（列↔既有字段
