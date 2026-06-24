@@ -38,6 +38,8 @@
 
 ## 增量 1 · CLI 操作先行（后端 + CLI，**无 UI**）
 
+> 📐 **详细落地规格见 `SPEC-sandbox-propagation-and-session.md` §2/§4/§5**（三表 DDL pg+memory / repo 接口 / entitlement 分模块 / 端点+CLI 表）——照抄。
+
 **目标**：CLI 能**无头跑通一遍沙盘**（init→tick→act→checkpoint→rollback→branch→compare），证明操作层成立。
 
 **做什么**：
@@ -80,14 +82,16 @@
 
 ---
 
-## 增量 3 · 时序传导引擎（后端；接「规则即引用」）
+## 增量 3 · 时序传导引擎（后端；系数可编辑）
 
-**目标**：状态变量沿本体 link 按 **系数 + 延迟** 逐 tick 传导；系数=`rule.params`（可编辑，改即推演变）。
+> 📐 **详细落地规格见 `SPEC-sandbox-propagation-and-session.md` §1**（纯函数签名 / 算法 / 确定性纪律 / 两行业验收）——本节是纲，SPEC 是可照抄的工程细节。
+
+**目标**：状态变量沿本体 link 按 **系数 + 延迟** 逐 tick 传导；**系数=`PropagationRule` 的类型化字段（可编辑，改即推演变）**。
 
 **做什么**：
-1. `ontology-core.ts` 旁路加 `propagate(session, ticks)`：拓扑序 + 延迟队列；环用 `combine`(max/sum/last) + 阻尼收敛；**确定性 R6**。
-2. `PropagationRule`（派生扩展）：`{sourceStateVar, viaLinkType, direction, targetStateVar, coefficient(param), delayTicks(param), combine}`；系数/延迟存 `rule.params`（接 `PRD-rules-as-references`，可编辑）。
-3. 增量1 的 tick 桩换成真 `propagate`。
+1. 新写纯函数 `apps/datacore/src/sim/propagation.ts` `propagateTick(...)`：复用 recompute 链路导航 + risk.ts 衰减 + 延迟队列（`pending`）；环用 `combine`(max/sum) + clamp；**确定性 R6（无 Date.now/随机、遍历按 id 排序）**。详见 SPEC §1.2/§1.3。
+2. `PropagationRule` 是**一等类型对象**（**不是** `rule.params`——现 `RuleEntrySchema` 无 params 字段）：`{sourceTypeKey, sourceStateVar, viaLinkKey, targetTypeKey, targetStateVar, coefficient, delayTicks, combine, decay?, clamp?}`，coefficient/delay 为类型化数值字段、可编辑；**G-10「规则即引用」落地后**可把 coefficient 升为可编辑规则引用——在此之前一等字段即可，不阻塞。契约见 SPEC §1.1。
+3. 增量1 的 tick 桩换成真 `propagateTick`。
 
 **后端测**（`propagation.test.ts`）：
 - 传导：风险 SUP→Factory→Order 按系数+延迟逐 tick，字节一致（R6）。

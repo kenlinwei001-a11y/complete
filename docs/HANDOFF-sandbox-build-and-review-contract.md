@@ -14,6 +14,7 @@
 2. `PRD-simulation-sandbox.md` — 做什么（全栈设计，多行业可配）
 3. `PRD-sandbox-ontogenesis-buildplan.md` — 怎么从一句场景倒序长出（数据闭环）
 4. `RUNBOOK-sandbox-implementation.md` — **怎么一步步做 / 前后端怎么测 / 怎么回退（执行主依据）**
+   - `SPEC-sandbox-propagation-and-session.md` — **增量 1/3 的可照抄工程规格**：传导核纯函数签名+算法+确定性纪律、SimSession 三表 DDL(pg+memory)、系数=`PropagationRule` 一等字段(非 rule.params)、**按租户 entitlement 暗发不同模块(lite/Pro/旗舰)**、端点+CLI、两行业验收(证 R14 零行业锁死)
 5. `ARCH-sandbox-landing-discipline.md` — 落地纪律（本体先行→CLI→surface→引擎→UI）
 6. `ARCH-global-ia-consolidation.md` — 全局 IA 合并（推演收敛/就绪folded/单源深链）
 7. `ARCH-sandbox-reconciliation.md` — **与在建工作对齐（必读，防分叉）**
