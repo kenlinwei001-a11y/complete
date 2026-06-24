@@ -150,4 +150,42 @@ export const OPERATION_REGISTRY: z.infer<typeof OperationRegistryEntrySchema>[] 
 
 ---
 
+## DF.1 验收痕迹（实跑证据 · 2026-06-24 · FDE 亲手验收 · read-only）
+
+> 按 FDE 纪律"完成=亲手用一遍"，对 DF.1 缺口做**负向验证**：`vigilant-knuth` 真后端（datacore:4001 + agentcore:4002，memory/seed/Kimi `kimi-k2.5`）+ 真 CLI（`scripts/platform-cli.mjs`），**未改任何 source**（git clean，仅 build dist[gitignored] + 跑进程 + 还原 pnpm-lock）。证明这 20 类缺口现在**路由不到/误路由**。
+
+### 亲手 `platform do`
+| 输入 | 结果 | 判定 |
+|---|---|---|
+| `看有哪些场景` | 判为操作型 `scenario` → `/b/v1/scenarios` | ✓ 现有能力路由对 |
+| `新建一个工作流编排` | 判为操作型 `agent` → `/b/v1/agents` | ◐ 误路由（工作流→agent 端点） |
+| `配置 LLM 供应商 kimi` | 判为 QUERY → 送 Kimi `ask` 当问句 → 超时 Terminated | ❌ 配置请求被当问题答 |
+| `把常州库存导进来` | 同上 Terminated | ❌ |
+
+### `classifyOperation` 批量（确定性·瞬时·R6 可复现）
+**现有 5（应对，全对）**：导入csv→`import`✓ · 建规则→`rule`✓ · 跑合成→`synth`✓ · 看对象类型→`model`✓ · 审批草稿→`approve`✓
+
+**20 缺区代表 10（应路由不到对应新模块）**：
+
+| 输入 | classify | 判定 |
+|---|---|---|
+| 配置 LLM 供应商 | QUERY / 无 op | ❌ 落问句 |
+| 配 MCP 工具服务 | QUERY / 无 op | ❌ |
+| 跑评测套件 | QUERY / 无 op | ❌ |
+| 看通知中心 | QUERY / 无 op | ❌ |
+| 配工厂日历 | QUERY / 无 op | ❌ |
+| 管理租户用户角色 | QUERY / 无 op | ❌ |
+| S&OP 月度平衡版本 | QUERY / 无 op | ❌ |
+| 看系统本体影响分析 | OPERATION `model` | ◐ 误路由→错模块 |
+| 跑 VLE 校验 | OPERATION `rule` | ◐ 误路由→rule |
+| 本体切片规划 | OPERATION `model` | ◐ 误路由→model |
+
+### 实跑结论（DF.1 验收）
+- **7/10** 缺区 → 落 `QUERY`（无 op）→ 被当**业务问句**送进 QOS/Kimi（就是上面 `platform do` 挂超时的真相：配 LLM 供应商被当问题"回答"）。
+- **3/10** → **误路由到错的现有 op**（影响分析/切片→`model`、VLE→`rule`）→ **会去执行错误操作**（调 modeling/rules 端点）。缺口实为"**做错事**"，非"做不了"。
+- **0/10** 路由到正确新模块。**DF.1 审计的 20 缺口被真系统逐条证实。**
+- ⚠️ **FDE 边界**：本痕迹是**负向验证（证问题真实）**，**非**验证修复——20 op 未建。"CLI 全覆盖"真完成判据 = DF.2 补 op 后**再亲手敲** `platform do "配 LLM 供应商"` 路由到 `/a/v1/llm-providers` 并真出结果。
+
+---
+
 > 状态：**v1.0 DRAFT，待评审**。grounded 于本体 v1.0。核心 = CLI 已在，补"操作目录自动派生 + 注册表覆盖门"使**每个功能 CLI 可达且不回潮**（落实 R16 能力环）。只定义设计，落地听指示。
