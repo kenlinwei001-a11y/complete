@@ -407,3 +407,15 @@
 > - **audit**：9-kind audit_timeline 逐日 series（求解器已注册，余 kind 口径）+ 每项 kind 标注。
 > - **map**：②decision 一等对象（Problem/PlanOption/RiskTimeline，触 ontology 计数）。
 > - [x] **order ✅（整体重播完成 2026-06-24）**：B 分段按客户口径（segOfCust 含商用车→com·储能/电网→ess）✅ · F ORDER_OVR 6 单 override 激活（信用/毛利+why，台账"未接/提价接"）✅ · 订单/型号/客户集整体替换为 HTML 24 单+6 型号+8 客户 ✅ · forecastStart 2026-06-10 ✅（连带 risk ② 闭合）。逐值重基线 ~34 datacore + 前端 mock；datacore 641/frontend 226 全绿；门B 真验。C SEG_PRICE 早经 SEG_REGISTRY 单一来源（DF.2/3）已结。
+
+> **2026-06-24 · 待办登记（避免遗忘）**
+> **A. 场景卡发育闭环（新需求，已核实代码锚点属实）**：
+> - [ ] **REQ-fix-scenario-seed-guard（P0 · `docs/REQ-fix-scenario-seed-guard.md`）**：`main.ts:24` 意图/计划播种挂在"包存在"守卫内 → PG 已存包则意图永不再种 → classify 候选空 → OUT_OF_CATALOG → 探索兜底"未能产出回答"。✅ 根因已 grep 核实（24-29 在包守卫内；32-40 其它 seed 均按各自 id 幂等）。修：意图/计划改 per-id 幂等（~4 行）。低风险，建议先合。
+> - [ ] **PRD-scenario-ontogenesis（治本 · `docs/PRD-scenario-ontogenesis.md`）**：场景卡=R16 发育器官（grow 倒序长全闭包 → A10 验证真出答案才 GOVERNED 上架 → 正序确定性绑定跳过 classify → 缺则生长/开单不静默）。架构合理、复用既有机件（StoryBuildRun/verifyBuild/slice-planner/A18/ModuleProvisioner）。大件，分 P1/P2/P3。风险点见会话分析（A10-at-seed 需 QOS 可达否则卡降 PROVISIONAL/隐藏；20 卡 genome 需补声明）。
+> **B. 1:1 视图剩余（可独立推进）**：
+> - [ ] **map ②decision 一等对象**（Problem/RiskTimeline 物化为对象类型，触 ontology 计数；架构性，需 seed + 计数重基线）。
+> - [ ] **dash 订单台账状态筛选**（OPEN/DELIVERED toggle，后端已支持，前端补；低风险）。
+> - [ ] **risk ⑧ 圆点轴 1:1 重写**（RiskBoardView bar→DailyDotAxis + 6 因素行 + 悬停三段 popover + SRC_META modal；~400 行大改）。
+> - [ ] **quarter §4.5(A)(D) 6 季 dem/sup 绝对值**（382/376…，多参数联立反解 vs quarterOverride，跨 AOP/SOP/cockpit 同回归；高回归取值对齐专项）。
+> - [ ] **dash F order_margin_contrib solver**（毛利 Σ勾稽 −0.40pct；前端已算，后端 solver + 对账，中价值）。
+> **C. 阻塞/待拍板**：riskCases 真闭环（livedin 历史回算，高风险）· AI 对话 dash 内置 QA（架构决策）· CL.7 GF.3 就地审批（数据契约决策）· A14 真 Kimi parity（env-gated）· A3 95 节点参考基线（低价值）· 前端 mock 模式订单集与 HTML 对齐（mock 仅离线测试用，低优先）。
