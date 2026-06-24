@@ -309,6 +309,8 @@ export const createRule = (body: {
   expression: string;
   scopeObjectTypes: string[];
   severity: "BLOCK" | "WARN" | "INFO";
+  // 规则即引用 §2.2/§4：命名阈值键值（求解器读 rule.params），编辑器可增/改；updateRule 经 Omit 同步继承。
+  params?: Record<string, number>;
 }) => api.a<RuleEntry>("/a/v1/rules", { body });
 export const updateRule = (id: string, body: Partial<Omit<Parameters<typeof createRule>[0], "key">>) =>
   api.a<RuleEntry>(`/a/v1/rules/${id}`, { method: "PUT", body });

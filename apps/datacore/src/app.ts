@@ -177,6 +177,9 @@ const RuleCreateSchema = z.object({
   expression: z.string(),
   scopeObjectTypes: z.array(z.string()).default([]),
   severity: z.enum(["BLOCK", "WARN", "INFO"]),
+  // 规则即引用（PRD-rules-as-references §2.2/§4）：命名阈值随 create/update 透传到 RulesService（服务层早已支持 params，
+  // 此前路由 schema 漏列 → zod 默认 strip → 编辑器改 params 静默丢失；P3-a 编辑闭环必需，断点在路由接缝）。
+  params: z.record(z.string(), z.number()).optional(),
   status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT"),
 });
 

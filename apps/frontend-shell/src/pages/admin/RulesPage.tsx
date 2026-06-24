@@ -210,8 +210,24 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
   const [expression, setExpression] = useState(rule?.expression ?? "");
   const [scope, setScope] = useState((rule?.scopeObjectTypes ?? []).join(","));
   const [severity, setSeverity] = useState<RuleEntry["severity"]>(rule?.severity ?? "WARN");
+  // 规则即引用 §2.2/§4：命名阈值（key→value）可增/删/改。用有序数组承载编辑态（保留次序、允许编辑空 key）。
+  const [paramRows, setParamRows] = useState<{ k: string; v: string }[]>(() =>
+    Object.entries(rule?.params ?? {}).map(([k, v]) => ({ k, v: String(v) })),
+  );
   const [payloadText, setPayloadText] = useState('{\n  "Order": { "qty": 100 }\n}');
   const [dryResult, setDryResult] = useState<RuleDryRunResult | null>(null);
+
+  // 数组 → Record<string,number>：丢弃空 key 与非有限数；保存与 dry-run 共用。
+  const paramsObject = (): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const { k, v } of paramRows) {
+      const trimmed = k.trim();
+      if (!trimmed) continue;
+      const num = Number(v);
+      if (v.trim() !== "" && Number.isFinite(num)) out[trimmed] = num;
+    }
+    return out;
+  };
 
   const dryMut = useMutation({
     mutationFn: () => {
@@ -221,7 +237,8 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
       } catch {
         /* 用空载荷测语法 */
       }
-      return dryRunRule(expression, payload);
+      // 命名阈值并入载荷顶层，使 expression 里的裸标识符（如 maxQty）可解析；用户显式载荷字段优先。
+      return dryRunRule(expression, { ...paramsObject(), ...payload });
     },
     onSuccess: setDryResult,
     onError: toastError,
@@ -229,7 +246,13 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
 
   const saveMut = useMutation({
     mutationFn: () => {
-      const body = { name, expression, scopeObjectTypes: scope.split(",").map((s) => s.trim()).filter(Boolean), severity };
+      const body = {
+        name,
+        expression,
+        scopeObjectTypes: scope.split(",").map((s) => s.trim()).filter(Boolean),
+        severity,
+        params: paramsObject(),
+      };
       return rule ? updateRule(rule.id, body) : createRule({ key, ...body });
     },
     onSuccess: () => {
@@ -265,6 +288,66 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
         作用域（逗号分隔对象类型）
         <input style={{ width: "100%" }} value={scope} aria-label="作用域" onChange={(e) => setScope(e.target.value)} />
       </label>
+
+      <div className="section-title">命名阈值（params · 表达式可直接引用 key）</div>
+      <div data-testid="rule-params">
+        {paramRows.length === 0 && (
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>
+            暂无阈值——「+ 阈值」新增键值后即可在 expression 用裸标识符引用（如 <code>Order.qty &gt; maxQty</code>）。
+          </div>
+        )}
+        {paramRows.map((row, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }} data-testid={`rule-param-row-${i}`}>
+            <input
+              className="mono"
+              style={{ flex: 1, fontSize: 12 }}
+              placeholder="阈值名（如 maxQty）"
+              aria-label={`阈值名 ${i}`}
+              value={row.k}
+              onChange={(e) => {
+                setParamRows((rows) => rows.map((r, j) => (j === i ? { ...r, k: e.target.value } : r)));
+                setDryResult(null);
+              }}
+              data-testid={`rule-param-key-${i}`}
+            />
+            <span style={{ color: "var(--muted)" }}>=</span>
+            <input
+              className="mono"
+              type="number"
+              style={{ width: 120, fontSize: 12 }}
+              placeholder="数值"
+              aria-label={`阈值 ${i}`}
+              value={row.v}
+              onChange={(e) => {
+                setParamRows((rows) => rows.map((r, j) => (j === i ? { ...r, v: e.target.value } : r)));
+                setDryResult(null);
+              }}
+              data-testid={`rule-param-value-${i}`}
+            />
+            <button
+              className="btn danger sm"
+              type="button"
+              aria-label={`删除阈值 ${i}`}
+              onClick={() => {
+                setParamRows((rows) => rows.filter((_, j) => j !== i));
+                setDryResult(null);
+              }}
+              data-testid={`rule-param-del-${i}`}
+            >
+              删除
+            </button>
+          </div>
+        ))}
+        <button
+          className="btn sm"
+          type="button"
+          style={{ marginBottom: 8 }}
+          onClick={() => setParamRows((rows) => [...rows, { k: "", v: "" }])}
+          data-testid="rule-param-add"
+        >
+          + 阈值
+        </button>
+      </div>
 
       <div className="section-title">{t.expression}</div>
       <textarea

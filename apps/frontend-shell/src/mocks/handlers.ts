@@ -1159,15 +1159,25 @@ export const handlers = [
         m[3] === ">" ? left > right : m[3] === ">=" ? left >= right : m[3] === "<" ? left < right : left <= right;
       return HttpResponse.json({ ok: true, violated, passed: !violated, explanation: violated ? "命中违规条件" : "未命中" });
     }
+    // 规则即引用 §4：裸标识符比较（key OP number）—— 命名阈值由编辑器并入载荷顶层，按 key 解析求值。
+    const b = /^\s*(\w+)\s*(>=|<=|>|<)\s*([\d.]+)\s*$/.exec(expression);
+    if (b) {
+      const left = Number(samplePayload[b[1]!] ?? NaN);
+      const right = Number(b[3]);
+      const violated =
+        b[2] === ">" ? left > right : b[2] === ">=" ? left >= right : b[2] === "<" ? left < right : left <= right;
+      return HttpResponse.json({ ok: true, violated, passed: !violated, explanation: violated ? "命中违规条件" : "未命中" });
+    }
     return HttpResponse.json({ ok: true, violated: false, passed: true, explanation: "未命中" });
   }),
 
   http.post("*/a/v1/rules", async ({ request }) => {
-    const body = (await request.json()) as { key: string; name: string; expression: string; scopeObjectTypes: string[]; severity: "BLOCK" | "WARN" | "INFO" };
+    // 规则即引用 §2.2/§4：params（命名阈值）随 create 透传（与真后端一致），mock 原样回存。
+    const body = (await request.json()) as { key: string; name: string; expression: string; scopeObjectTypes: string[]; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number> };
     if (body.expression.includes("@@")) {
       return err(400, "VALIDATION_ERROR", `表达式语法错误（位置 ${body.expression.indexOf("@@")}）：expected comparison operator`);
     }
-    const rule = { id: newId("rule"), ...body, origin: { type: "MANUAL" as const }, version: 1, status: "DRAFT" as const };
+    const rule = { id: newId("rule"), ...body, params: body.params ?? {}, origin: { type: "MANUAL" as const }, version: 1, status: "DRAFT" as const };
     db.rules.unshift(rule);
     return HttpResponse.json(rule, { status: 201 });
   }),
