@@ -362,6 +362,30 @@ export function sustainField(inner: AstNode): string[] | null {
   }
 }
 
+/** 收集表达式引用的所有字段路径（field operand）。规则即引用：用于判定该规则字段是否在
+ *  求解器 payload 内可解析——全不可解析 → NOT_APPLICABLE（诚实标，不冒充 PASS）。 */
+export function collectFieldPaths(node: AstNode, acc: string[][] = []): string[][] {
+  const op = (o: Operand): void => { if (o.kind === "field") acc.push(o.path); };
+  switch (node.kind) {
+    case "and":
+    case "or":
+      collectFieldPaths(node.left, acc);
+      collectFieldPaths(node.right, acc);
+      break;
+    case "not":
+      collectFieldPaths(node.operand, acc);
+      break;
+    case "cmp":
+      op(node.left);
+      op(node.right);
+      break;
+    case "sustain":
+      collectFieldPaths(node.inner, acc);
+      break;
+  }
+  return acc;
+}
+
 function drill(root: unknown, path: string[]): unknown {
   let cur = root;
   for (const seg of path) {

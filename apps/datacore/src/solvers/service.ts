@@ -3,11 +3,13 @@ import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { OptimizerClient } from "./optimizer-client.js";
 import { notFound, validationError } from "../errors.js";
-import { round } from "../prng.js";
+import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
 import { num, str, type SolverContext, type SolverParamsShape } from "./types.js";
+import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
+import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
 import type { LlmClient } from "../llm.js";
@@ -1196,6 +1198,13 @@ export class SolverService {
       m.set(baseId, str(link.props?.status, "量产"));
     }
     const params = await this.getParams(tenantId);
+    // 规则即引用：注入本租户已发布规则快照 + 规则集版本指纹（R6 确定性，按 key 排序后 FNV-1a）。
+    const publishedRules = (await this.repos.rules.list(tenantId, (r) => r.status === "PUBLISHED")).sort((a, b) => (a.key < b.key ? -1 : 1));
+    const rules: NonNullable<SolverContext["rules"]> = {};
+    for (const r of publishedRules) {
+      rules[r.key] = { key: r.key, name: r.name, expression: r.expression, severity: r.severity, params: r.params };
+    }
+    const ruleSetVersion = `rsv_${hashString(canonicalJson(publishedRules.map((r) => ({ k: r.key, v: r.version, e: r.expression, s: r.severity, p: r.params ?? {} })))).toString(16)}`;
     // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
     // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
     const empty: ObjectInstance[] = [];
@@ -1238,6 +1247,8 @@ export class SolverService {
       capexProjects: sortById(capexProjects),
       purchaseOrders: sortById(purchaseOrders),
       carbonFactors: sortById(carbonFactors),
+      rules,
+      ruleSetVersion,
     };
   }
 
@@ -1354,7 +1365,59 @@ export class SolverService {
       // M11 §1: 轻量预测记录（按日窗口；含周曲线，供配对引擎与重放归因消费）
       await this.recordCalibrationForecasts(ctx.tenantId, c.params, modelId, out);
     }
+    // 规则即引用（PRD-rules-as-references §2.2/§4）：透出**真评估结果** + 规则集版本（关联规则显
+    // PASS/WARN/BLOCK，非装饰标签；改规则即改此处推演结论；R6 记录 ruleSetVersion）。
+    const evaluatedRules = this.evaluateRuleRefs(c, solverKey, this.ruleEvalPayload(c, solverKey, args, out));
+    if (evaluatedRules.length > 0) out.evaluatedRules = evaluatedRules;
+    if (c.ruleSetVersion) out.ruleSetVersion = c.ruleSetVersion;
     return out;
+  }
+
+  /** 规则即引用：对求解器声明的规则（SOLVER_RULE_REFS）逐条按规则引擎评估 → EvaluatedRule[]。
+   *  字段在 payload 全不可解析 → NOT_APPLICABLE（诚实，不冒充 PASS）；违规 → 按 severity 出 BLOCK/WARN。 */
+  evaluateRuleRefs(c: SolverContext, solverKey: string, payload: Record<string, unknown>): EvaluatedRule[] {
+    const refs = SOLVER_RULE_REFS[solverKey] ?? [];
+    const out: EvaluatedRule[] = [];
+    for (const key of refs) {
+      const rule = c.rules?.[key];
+      if (!rule || !rule.expression.trim()) continue; // 未定义由 rule-closure 门拦
+      let naEvidence: string | null = null;
+      try {
+        const ast = parseExpression(rule.expression);
+        const fields = collectFieldPaths(ast);
+        if (!fields.some((path) => resolveField(payload, path) !== undefined)) naEvidence = "该求解器输出未含此规则字段（P2 续：补 payload 映射）";
+      } catch {
+        naEvidence = "表达式不可解析";
+      }
+      if (naEvidence) {
+        out.push({ key, name: rule.name, severity: rule.severity, outcome: "NOT_APPLICABLE", expression: rule.expression, evidence: naEvidence });
+        continue;
+      }
+      let violated = false;
+      try { violated = evaluateExpression(rule.expression, { payload }); } catch { violated = false; }
+      out.push({
+        key, name: rule.name, severity: rule.severity, expression: rule.expression,
+        outcome: violated ? (rule.severity === "BLOCK" ? "BLOCK" : "WARN") : "PASS",
+        evidence: violated ? `命中违规条件（${rule.expression}）` : `通过（${rule.expression}）`,
+      });
+    }
+    return out;
+  }
+
+  /** 规则评估 payload：通用 = args ⊕ 求解器输出；capacity_forecast 额外按本体对象图补关键闸门字段
+   *  （demandDelta / 最坏关键数据源新鲜度），使 C03/C09 真评估而非 NOT_APPLICABLE。 */
+  private ruleEvalPayload(c: SolverContext, solverKey: string, args: Record<string, unknown>, out: Record<string, unknown>): Record<string, unknown> {
+    const base: Record<string, unknown> = { ...args, ...out };
+    if (solverKey === "capacity_forecast") {
+      base.Order = { demandDelta: num(args.demandDelta) };
+      const worstStale = c.dataHealth
+        .filter((h) => h.props.critical === true)
+        .sort((a, b) => num(b.props.lagHours) - num(a.props.lagHours))[0];
+      base.DataSourceHealth = worstStale
+        ? { critical: true, lagHours: num(worstStale.props.lagHours) }
+        : { critical: false, lagHours: 0 };
+    }
+    return base;
   }
 
   /**

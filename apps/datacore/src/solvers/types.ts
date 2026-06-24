@@ -233,6 +233,11 @@ export interface SolverContext {
   capexProjects?: ObjectInstance[];
   purchaseOrders?: ObjectInstance[];
   carbonFactors?: ObjectInstance[];
+  // 规则即引用（PRD-rules-as-references §2.2/§4）：本租户已发布规则快照（按 ruleKey 索引）+ 规则集版本
+  // 指纹。求解器闸门据此调规则引擎得 PASS/WARN/BLOCK，阈值读 rule.params；推演记录 ruleSetVersion（R6）。
+  // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
+  rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number> }>;
+  ruleSetVersion?: string;
 }
 
 export function num(v: unknown, fallback = 0): number {

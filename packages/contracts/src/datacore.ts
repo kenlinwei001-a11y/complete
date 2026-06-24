@@ -141,6 +141,20 @@ export const SOLVER_RULE_REFS: Record<string, string[]> = {
   carbon_footprint: ["C33"],
 };
 
+/**
+ * 规则即引用（PRD-rules-as-references §4）：求解器透出**真评估结果**（关联规则面板显 PASS/WARN/BLOCK，
+ * 非装饰标签）。NOT_APPLICABLE = 该规则字段不在本求解器可见 payload（诚实标，不冒充通过）。
+ */
+export const EvaluatedRuleSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  severity: z.enum(["BLOCK", "WARN", "INFO"]),
+  outcome: z.enum(["PASS", "WARN", "BLOCK", "NOT_APPLICABLE"]),
+  expression: z.string(),
+  evidence: z.string().optional(),
+});
+export type EvaluatedRule = z.infer<typeof EvaluatedRuleSchema>;
+
 // ---------------------------------------------------------------------------
 // 平台 PRD §5 A3 半自动本体建模
 // ---------------------------------------------------------------------------
