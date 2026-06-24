@@ -129,6 +129,18 @@
 - **MCP tool / RefReport**：外部工具 / 引用上报。
 - **客户端（QOS 入口）**：Web 对话坞（`frontend-shell` QueryDock）· **CLI 对话入口**（`scripts/platform-cli.mjs`：login/ask/scenarios/approve，一句话驱动平台；人与 AI 共用）—— 均为切片 `sys.orch.query_to_answer` 的客户端，复用同一 QOS 管线。
 
+### I. 推演沙盘域（DataCore · 增量 0 本体先行 · 设计待落，对象 schema 见 `docs/SPEC-sandbox-propagation-and-session.md` / `docs/SPEC-sandbox-readiness-certification.md`）
+
+> 行业无关、配置驱动、确定性、可回退。传导核只认 `(typeKey, stateVar, linkKey, 系数, 延迟)`——喂任意租户本体即跑（R14 两行业验收）。复用 recompute 链路导航 + risk.ts 衰减 + simclock tick + slice-planner 范围 + actions 走正门 + closure 投影；真正新写只「propagateTick 合体算法 + SimSession 状态机」（接地真相见 `docs/GROUNDING-MAP-sandbox-review-baseline.md §C`）。
+
+- **SimSession（会话状态机 · 全新，全代码库零命中 simclock 是单租户全局时钟非多会话）**：一次有状态推演会话（`base_snapshot` tick0 世界态[合成/连接器/切片物化，走正门] · `scope` 范围裁剪[复用 slice-planner] · `status` DRAFT|READY|RUNNING|PAUSED|ENDED · `cur_tick` · `parent_checkpoint_id` 非空=分支）· 三张全 jsonb 表（`sim_session`/`sim_tick_state`/`sim_checkpoint`，migration 026，**R9 四处同改**，零业务列换行业不改表）。
+- **SimTickState（逐 tick 态快照）**：每 tick 的 `state`（对象→状态变量值 TickState）+ `pending`（延迟贡献队列快照，resume 确定性）+ `trace`（传导轨迹可视化）· PK `(session_id, tick)`。
+- **SimCheckpoint（命名存档）**：`(session, tick, label)` · rollback=删 tick>cp 的态；branch=以 cp 处 tick 态为 base 开新 session。
+- **PropagationRule（传导规则 · 一等类型，不塞进 RuleEntry）**：承载结构 `sourceTypeKey/sourceStateVar/viaLinkKey/targetTypeKey/targetStateVar` + 配置 `coefficient/delayTicks/combine[sum|max]/decay/clamp` · 系数/延迟**应优先引用一条可编辑规则的 `rule.params`**（G-10 P1 已落，真正兑现"改规则即改推演"；冷启动可内联）· 是**新 BuildPlan need + 注册 provisioner**（R16 倒序发育，新增 need 不注册即测试红）· 契约 `packages/contracts` sim（增量 1/3 新建）。竞品 UI `supplier.delay_risk -- SUPPLIES.risk_propagation 0.85 --> factory.supply_risk` = 本结构逐字命中（GROUNDING-MAP §F.2）。
+- **SimCertification（就绪认证 · 派生投影对象，非真值，R4 豁免）**：把 SimSession 能否进推演投影成 L0-L4（INVALID→CONFIGURED→RUNNABLE→VERIFIED→CERTIFIED）+ 三维准备度（结构/知识/行为/综合）+ L4 三元组（fanoutSafe/writebackComplete/observabilityMet）+ worldCompleteness（范围预检）+ `canEnterSimulation`（=L4 ∧ trialTick.passed ∧ closure.gatePassed）+ `gaps[]`（缺件诚实，绝不静默放行）· **RL3 单源：全部 DERIVE 自既有 `closure.ts` 五维（OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ GapReport + 一次 Trial Tick，零新校验逻辑**（纯函数 `deriveCertification`，增量 2 新建）· `canEnterSimulation` 对齐 `ScenarioOntogenesisRun` maturity 语义（GOVERNED=真可用/PROVISIONAL=有缺口不假装）。
+- **SandboxViewConfig（沙盘视图配置 · 配置驱动 5 屏，R14）**：沙盘 5 屏（数据管道建模/逐实体/就绪认证/初始化向导/沙盘主屏）配置驱动渲染 · 复用既有 `view_configs` 形态 + 前端 `views/sim/` 组件（RadarChart/PropagationTimeline/PmDag/useLiveSolver，基本不重写）· additive 进 ModelingPage（增量 4 才落 UI，本增量只立对象）。
+
+
 ---
 
 ## 3. 关系图谱（链路 = 模块间关系）
@@ -220,6 +232,18 @@ LlmPurposeBinding --路由--> { classifier:QOS分类 · agent:路径B · extract
 OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 ```
 
+**推演沙盘链路（增量 0 立 · 设计待落，详 `docs/SPEC-sandbox-propagation-and-session.md` / `docs/SPEC-sandbox-readiness-certification.md`）**
+```
+本体世界态(合成/连接器/切片物化,走正门 R16/R4) --init--> SimSession
+  --propagateTick(系数×延迟,沿 viaLink 复用 recompute 导航 + risk.ts 衰减,纯函数 R6)--> SimTickState
+  --checkpoint--> SimCheckpoint --branch(以 cp 态为 base)--> SimSession'
+  --compare(复用 counterfactual_timeline 双序列形状)--> KPI 对比
+沙盘 act(模拟态,不写真值) --采纳--> ActionDraft(走正门 R4)         ⚠ 禁直写绕审批(RL4)
+closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(propagateTick/recompute 空跑1tick)
+  --deriveCertification(纯投影,零新校验 RL3)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」
+PropagationRule.coefficient/delayTicks --引用--> rule.params(G-10 P1 可编辑) ⚠ 改规则即改推演,禁内联常数(RL5)
+```
+
 ---
 
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
@@ -279,6 +303,10 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | L17 | `metric.snapshot_recorded` | SPINE.2 指标快照回采（`POST /a/v1/metrics/snapshot`：`metric_rollup` 实算 actual → 执行回采更新口径，派生投影非新真值 R13）→ 失效驾驶舱/各视图 KPI | IN_SESSION | metrics, dashboard, scenario-data | — |
 | L17 | `metric.breached` | SPINE.2 指标越线（actual<floorVal → 触发 `plan_rootcause`/`risk_timeline` 推演、派 `Principal` 行动）→ 通知 + 失效风险页 | NOTIFY | metrics, dashboard, risk, notifications | — |
 | L16 | `entity.out_of_domain` | 感知层·槽位解析裸串实体在本租户任何已发布类型都解析不到（`router/slots.ts fillSlots`）→ orchestrator 发任务事件 + `perception-metrics.ts` 记误触发率（域外/尝试）+ 取最近邻候选供澄清 | NOTIFY | perception-metrics | — |
+| L-sim | `sim.session_created` | 推演沙盘 init 建会话（增量 1，设计待落）→ 失效沙盘会话列表 | IN_SESSION | sim-sessions | — |
+| L-sim | `sim.tick_completed` | 沙盘推进 1+ tick（`propagateTick` 传导落 SimTickState，增量 1/3）→ 失效沙盘态/轨迹可视化 | IN_SESSION | sim-session-view, propagation-timeline | — |
+| L-sim | `sim.checkpoint_saved` | 沙盘命名存档（增量 1）→ 失效检查点列表/分支基点 | IN_SESSION | sim-checkpoints | — |
+| L-sim | `sim.branched` | 以检查点态开新分支会话（增量 1）→ 失效会话树/对比视图 | IN_SESSION | sim-sessions, sim-compare | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。
 
@@ -307,6 +335,8 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | **R14** | **应用层无业务常数（多租户）**：前端组件不得内联业务数据/结构/租户专属文案；一律来自本体/WorkspaceConfig/ViewConfig.layout/i18n。换租户=换配置不改代码。守护 G-5 不回潮。 | ✅ `debattery:check`（基线 0：无未声明业务常数；兜底逐行 `// debattery-allow`）；标杆 `DashboardView`/`LedgerView` |
 | **R15** | **CLI 对等（A15）**：每个对外模块能力必须有 CLI 等价命令（注册 `OPERATION_CATALOG`），经同一 REST + R3 + R4 + 事件触发——CLI 与 GUI 平行同源、无功能洼地；不宜 CLI 内联的（求解器上传/复杂可视化）须登记 GUI 深链（`uiDeepLink`）。新增对外能力无 CLI 命令/深链 = 功能洼地，返工。 | ✅ `cli-parity:check`（棘轮基线 `cli-parity-baseline.json`；OPERATION_CATALOG 每条须 cliCommand 或 uiDeepLink，新增不可达即红）；`POST /b/v1/operations/classify` + `platform do` 万能路由 |
 | **R16** | **发育闭环（system-ontogenesis 总纲）**：系统是个体发生的有机体——**倒序发育**（从场景/需求倒推长出数据/对象/规则/求解器/Agent/工作流）⊕ **正序运作**（QOS 问句→答案沿已长成管线）是同一有机体两相（`StoryBuildRun⊕GrowthLedgerEntry by runId` 认两面）。每次发育（建域/补缺/scaffold）须自动闭合**三环**：①数据（build-to-verify 真能在正序跑通，A10）②本体（新对象/链路/事件进活体本体，dogfooding §9，非手抄）③能力（目录从注册表自动派生 `deriveOperationCatalog`/`FEATURE_REGISTRY`/`SOLVER_CATALOG`，非手维护）；产物**二分处置**（AUTO-DERIVE 自动生成 / NEEDS-HUMAN 自动开 `GrowthTicket`+通知+收件箱+深链，**绝不静默残缺**）；发育过程**透明可视**（FDE 节点图/模块同步矩阵/覆盖度）；成熟**分相位** PROVISIONAL→ADVISORY→GOVERNED（只 GOVERNED 计真值，A18）。正序 `GapReport`=生长信号自动触发倒序生长——越用越大。复用 R4/R6/R11/R12/R13/R14/R-一致。 | ◐ 机制散落已具雏形（runStory/growth LOOP/A10/A18/dogfooding/CL.1–CL.7）；`ontogenesis:check` 门（三环+二分声明性校验，已并入 `pnpm gates`）；活体本体落库 + 自动派生目录分相位演进。事件 `ontogenesis.organ_matured`（L-onto，产物 GOVERNED 转正，可选）·切片 `sys.meta.ontogenesis_loop` |
+| **R17** | **决策单页（Decision-on-one-page · 前端宪法 · 推演沙盘 HANDOFF 增量 0 立）**：决策页一页看全 **数据→推演→溯源→动作→AI**，就地下钻不跳页、配置驱动密度。新决策页（沙盘主屏/数据管道建模/就绪认证）天然遵循；改动到的现有决策页对齐（不主动重排全部，渐进）。竞品沙盘屏三栏（图谱 · Runtime Health/Trust 雷达 · AI 指挥台）= R17.2 的成品参照（`GROUNDING-MAP §F.1`）。 | 🚧 拟立（增量 0 入本体即生效）；配套门 `decision-page:check`（待建·增量 4 随 UI 落）；新决策页须遵循，旧页渐进对齐 |
+| **十红线（推演沙盘落地纪律 · `docs/HANDOFF-sandbox-build-and-review-contract.md` §4 · 越线即停）** | RL1 本体先行(改接线先回写本体过 `ontology:check`) · RL2 暗发(新模块 `defaultOn:false` 不动现有租户) · RL3 单一来源(不出双份；就绪=投影既有 closure 零新校验；单源门复用 `boundary-singlesource:check` 勿造 `ia-single-source:check`) · RL4 走正门(沙盘 act 模拟态，采纳才经 Action R4 写真值) · RL5 零业务常数(传导核/表无行业实体名，两行业验收 R14) · RL6 确定性(传导核纯函数，无 Date.now/随机，R6) · RL7 CLI 先于 UI(R15) · RL8 倒序长出(世界态经连接器/合成/runStory，禁硬编码 seed，R16) · RL9 additive 可回退(迁移有 down，entitlement 关=404，旧路径在) · RL10 不与在建分叉(复用 sim-views/A8/recompute/replay/ontogenesis/closure，不平行造第二套)。 | 大多复用既有不变量（RL1=R16本体先行·RL3=R-一致·RL4=R4·RL5=R14·RL6=R6·RL7=R15·RL8=R16·RL10=不分叉）；逐 PR 评审硬判据（HANDOFF §5） |
 
 ---
 
@@ -345,6 +375,14 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 - **场景接线回归**（守护 G-1）：20 场景全有意图+计划+求解器 · `apps/agentcore/test/scenarios-wiring.test.ts`。
 - **本体必读强制**（治理）：CLAUDE.md 铁律 0 + SessionStart 钩子（从 §8 动态注入未修断点，结构上不漂）+ `/ontology` skill。
 - **全链闭包门（R11）**：`chain:check` 覆盖"场景↔求解器注册" + SHAPE 输出形状覆盖报告；`validateClosure` 焊进 **CHAIN**（求解器注册）+ **SHAPE**（求解器输出形状↔渲染绑定 `renderBindings`，挡 G-2 跨服务形状）两维。**余**：补齐其余求解器输出形状声明 + BuildPlan 渲染契约自动生成。详 `docs/PRD-unified-build-engine.md`。
+- **推演沙盘门（G-11 · 增量 0 登记契约 · 脚本待各增量新建并入 `pnpm gates`，本步不写未存在脚本路径以免文件锚点门红）**：
+  - `sim:check`（增量 1 建）——会话状态机/迁移有 down/确定性重跑字节一致（详 `docs/SPEC-sandbox-propagation-and-session.md §6`）。
+  - `propagation:check`（增量 3 建）——传导系数×延迟正确性 + 改系数即改果 + Temporal Trust（tick 只读 ≤t 态，不窥未来）。
+  - `sim-readiness:check`（增量 2 建）——就绪认证 = 投影既有 closure，静态扫 `deriveCertification` 不 import closure 以外校验器（RL3 单源）+ L4 三子项全真才 CERTIFIED + 缺件入 `gaps[]` 诚实（详 `docs/SPEC-sandbox-readiness-certification.md §9`）。
+  - `ui-smoke:sandbox`（增量 4 建）——门B Playwright 真浏览器点沙盘 5 屏。
+  - `decision-page:check`（R17 配套·增量 4 建）——决策页一页看全 数据→推演→溯源→动作→AI。
+  - **单源门复用现存 `boundary-singlesource:check`**（沙盘 BASE/SEG/系数单一来源），**不新造 `ia-single-source:check`**（GROUNDING-MAP §A.2 裁决：重叠即违 RL3/RL10）。
+  - **零业务常数**：沙盘 `sim/` 目录纳入 `debattery:check` 扫描（出现行业实体名即红，两行业验收 R14）。
 
 ---
 
@@ -364,7 +402,7 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 | G-8 | 数据构建闭包仅 DataCore 栈、不验全链 → **◐ 大部闭合**：① `chain:check` 跨系统门 ② **ClosureReport 加 CHAIN 维**（求解器需求未注册即 gate FAIL）③ **SHAPE 维（BuildPlan 扩 AgentCore 渲染栈）**：`SOLVER_OUTPUT_SHAPES` + `renderBindings`，`validateClosure` 校验渲染绑定 ⊆ 输出形状（建图期挡 G-2）④ **跨系统 scaffold 闭合（g8-P3）**：BuildPlan 扩 B 栈需求 + comprehend 故事倒推全栈（求解器→计划/意图/场景）+ `POST /b/v1/internal/scaffold`（SERVICE_TOKEN 守闸，幂等 DRAFT scaffold + DRAFT-aware 无死路门 → ScaffoldReceipt）+ DataCore closure 后 A→B 下发、`fullChainOk` 并入 StoryBuildRun 终态（断链→FAILED，R11 跨系统）。**待**：scaffold 前置到 A publish 阻断（当前记录于 StoryBuildRun 终态，A 数据已建）；补齐其余求解器输出形状声明。⑥ **DF.6 拉取靶（视图侧 SHAPE 维，keystone）**：solver-backed 视图 `VIEW_DEFS.layout += outputFields`（声明要拉的求解器输出字段，5 视图字段经 SOLVER_OUTPUT_SHAPES 核验）；`databuilder/pull-target.ts deriveViewPullTargets/checkPullTargetCoverage`（纯函数 R6/R14）逐 (视图,字段) 比对求解器输出形状 → COVERED/UNMET/SHAPE_UNKNOWN，UNMET=视图要而求解器算不出 → 该求解器缺此输出字段 → TO_CREATE（输出侧反向-data R12 生长信号，与 renderBindings SHAPE 维互补：一从倒推绑定、一从视图声明）；`GET /a/v1/views/pull-targets`。⑤ **工业级工作流运行时（已落）**：构建执行从内存 try-块升级为持久化步骤状态机 `BuildWorkflowRun`（检查点/可重入 resume/有界重试/逐步可观测，migration023）→ 崩溃不再丢状态、单步可重试、可审计 | BuildPlan→ClosureReport→ScaffoldManifest→B 制品 | ◐ CHAIN+SHAPE+跨系统 scaffold 已闭合；执行已工作流化 |
 | G-9 | 场景卡未走 R16 发育闭环：闭包靠一次性手装播种（意图/计划写死 seed.ts）、上架靠浅门（`scenarioClosure` 只查 intent/plan/agent **存在**≠能用）、运行缺则**静默掉探索**（classify→OUT_OF_CATALOG→Path B→预算耗尽→"未能产出回答"）→ **◐ P1 大部修**：① **多租户 per-id 幂等播种**（`ensureScenarioPackageSeed`，覆盖任意租户非仅 demo，移出"包存在"守卫——修 PG 真部署"包在意图空→候选恒空"根因）② **§2.4 确定性绑定**：卡带 `scenarioIntentKey` → 编排器候选命中即直接绑定意图→计划、**跳过 LLM classify**（不受 classifier 死活/目录影响，`classification.model=deterministic:scenario-bind`）③ **grow=A10 验证即上架门**（`POST /b/v1/scenarios/:key/grow`：把 `triggerQuestion` 经 QOS 正序实跑到终态→验证真出答案[非空/非兜底/非 gap]才标 `maturity=GOVERNED`，否则 PROVISIONAL+`gapCode`，**诚实不静默**）④ **留痕 `ScenarioOntogenesisRun`**（三环 data/ontology/capability + 验证结论 + 答案预览 + taskId 溯源链，落卡上，前端 ScenesPage 可见"从哪来/到哪步/缺什么"）+ 事件 `scenario.matured`/`scenario.gap_detected`（IN_SESSION SSE）。⑤ **P2 投影渲染**：16 卡 render 改 `solver_summary` 通用投影（闭 G-1 静态残面，前端见真值可溯）+ grow 诚实门加 `dataBearing` 校验（无承载数据块→`RENDER_NOT_PROJECTED`，不再把占位文案误判 GOVERNED）。⑥ **BP-4 sop 卡接真数据**：S18 此前仅渲染跳转占位文本（sop_balance 是工作流非求解器，特判只 render）→ 改绑**已注册**求解器 `mrp_netting`（无入参、读 `MaterialBalance` 出 materials/shortageCount/summary 真表，`SOLVER_OUTPUT_SHAPES` 已登记）+ `solver_summary` 投影 → grow S18 → GOVERNED（门B 实测：materials 表 3 行 + shortageCount KPI，非占位）；20 卡现全部 invoke_solver→solver_summary（消灭最后一张纯指针）。⑦ **`ontogenesis:check` 扩静态逐卡断言**（`scripts/check-ontogenesis.mjs`，并入 `pnpm gates`）：A 派生器在位（每卡 plan 有 render 步）· B 卡 solver（sop_balance→mrp_netting 映射后）∈ `SOLVER_OUTPUT_SHAPES` · C 卡 rules ⊆ 已发布规则集 · D 卡 intentKey 有意图/计划；**运行期项（§6.1 GOVERNED 卡有 VERIFIED run / §6.5 未闭环卡 maturity≠GOVERNED+gaps）静态门测不了 → 诚实跳过 log，由 grow 测试 + 门B 保证（绿测试≠能用）**。**待 P3 余**：rules 自动接 evaluate_rules + slice 自动生成 + GapReport→runGrowthLoop 自动补。契约 `ScenarioMaturity`/`ScenarioOntogenesisRun`，PRD `docs/PRD-scenario-ontogenesis.md` | 卡(胚胎)→grow(倒序发育验证)→GOVERNED→launch(确定性绑定)→answer 投影 | ◐ P1+P2 已落（多租户播种+确定性绑定+验证门+留痕+投影渲染+诚实门+BP-4 sop 真数据+静态门扩断言） |
 | G-10 | 规则被引用/被写死，但非一等可编辑引用 → 关联规则半空、规则闸空过、改规则不改推演（`docs/PRD-rules-as-references.md`）→ **◐ P1+P2 已落**：① **P1 闭引用**——补全 13 条曾未定义规则为一等规则（`battery.ts rules[]` C01/C02/C04/C06/C09/C10/C11/C15/C16/C21/C22/C24/C25，含 expression/severity/`params`）+ `SOLVER_RULE_REFS`（contracts 单一来源）+ 门 `rule-closure:check`（⋃ 引用 ⊆ 已定义，杜绝"未找到定义"）+ 前端 RuleRef 显真定义/阈值。② **P2 求解器读规则**——`SolverContext += rules/ruleSetVersion`（`loadContext` 注入已发布规则快照 + FNV-1a 版本指纹，R6）；求解器 `invoke` 透出 `evaluatedRules`（真 PASS/WARN/BLOCK，字段不可解析则诚实 NOT_APPLICABLE，不冒充通过）；**改规则即改推演**已验（改 C03 阈值 0.5→0.3 发布 → capacity 推演 C03 翻转 + ruleSetVersion 变，无需改代码，全 7 入口经 `/a/v1/solvers/:key/invoke` 汇聚点一次生效）+ 门 `no-hardcoded-rules:check`。**待 P3**：规则编辑器 UI 完善 + 版本/事件失效 + 6 入口逐一 FDE 验收 + 其余求解器 payload 映射（现仅 capacity_forecast 全闸门真评估，余者 NOT_APPLICABLE 待补） | 求解器/计划读规则链 ↔ Rule 一等可编辑 | ◐ P1+P2 已落（待 P3 编辑器/全求解器映射） |
-| G-11 | 有仿真积木无交互沙盘 + 沙盘若硬编码行业则违 R14（`docs/PRD-simulation-sandbox.md` / `PRD-sandbox-ontogenesis-buildplan.md` 登记，设计待落；与 G-9 发育闭环、G-10 规则即引用强耦合复用） | 通用推演沙盘链路 ↔ 倒序发育长出（非硬编码行业） | ⬜ 未修（PRD 设计阶段） |
+| G-11 | 有仿真积木（simclock/recompute/risk.ts 逐 tick 衰减/runStory/sim-views 重算）**无交互沙盘**：无 `SimSession` 会话状态机（simclock 是单租户全局时钟非多会话）、无 checkpoint/回滚（`workflow/checkpoint.ts` 是 NoopStore）、无 branch 分支树、无"任意本体×逐 tick×系数×延迟×多跳"通用传导核（recompute 无时间轴、risk.ts 单链路电池语境）；且沙盘若硬编码行业则违 R14 → **◐ 增量 0 本体先行已立（设计待落）**：R17 决策单页(§5) + 十红线(§5) + 6 对象 `SimSession`/`SimTickState`/`SimCheckpoint`/`PropagationRule`/`SimCertification`/`SandboxViewConfig`(§2.I) + 沙盘链路(§3) + 4 `sim.*` 事件(§4) + 沙盘门待建登记(§7) 已写入本体。**待增量 1（CLI 会话+三表 migration026+entitlement 暗发分模块 lite/Pro/旗舰）→ 2（就绪认证=投影既有 closure 零新校验 RL3）→ 3（传导核纯函数 propagateTick 系数引用 rule.params）→ 4（UI 5 屏暗发）**。复用 G-9 发育闭环（卡 grow / `ScenarioOntogenesisRun`）+ G-10 规则即引用（传导系数=`rule.params` 可编辑，P1+P2 已落）。传导核模型经竞品成品逐字验证（`docs/GROUNDING-MAP-sandbox-review-baseline.md §F.2`）。施工契约 `docs/HANDOFF-sandbox-build-and-review-contract.md` | 通用推演沙盘链路 ↔ 倒序发育长出（非硬编码行业，两行业验收 R14） | ◐ 增量 0 本体先行已立（R17/十红线/6对象/sim事件/门登记；增量 1–4 代码待落） |
 | BP-6 | ~~相对时间引用不归结：S03「常州物料齐套为什么**这天**越线」中 `day` 槽被分类器抽成 `"这天"`，不满足 `^YYYY-MM-DD` 校验 → date 槽归结失败、留 null（时间相关卡空槽）~~ **✅ 已修**：`router/slots.ts` 加**确定性相对时间归结兜底层**（`resolveRelativeDate`/`resolveAnchorDate`，LLM 抽取之后、defaultFrom 之前）——把 这天/今天/明天/本周/下周/上周/本月/下月/上月（中英）归结成视图上下文锚点日的具体日期；锚点**仅取现有 SessionContext 字段**（`timeWindow.from` 优先，否则 `filters` 内首个 YYYY-MM-DD 值，**未新增 contract 字段**）；纯函数/UTC/确定性（R6），无锚点则**诚实留空不编造 wall clock**。覆盖 `fillSlots` 抽取槽 + presetSlots 两路。门B 实测 S03（焦点窗 2026-06-24 + presetSlots.day="这天"，确定性绑定）→ `task.slots.day="2026-06-24"`（不再 null/"这天"）。**诚实边界**：归结依赖视图把焦点日放进 `timeWindow.from`/date 类 `filters`；前端 ScenarioLauncher 当前发 `filters:{}` 且无 timeWindow → 该路无锚点时仍诚实留 null（前端注入焦点日属前端文件范畴，未触及） | Query 槽填充：classifier 抽取→`slots.ts fillSlots` 相对时间归结→date 槽 | ✅ 已修（确定性归结层，仅用现有 SessionContext） |
 | BP-7 | ~~空结果静默吞掉：S19 `quarterly_gap` 跑通但 `combo:[]`、`residualGap:50` → `summarizeSolverOutput` 仅在**全空**时出"无输出数据"，对**部分空数组字段**（结果数组空但其它数组/标量非空）静默不提 → 用户看到"有缺口、对策为空"沉默空数组~~ **✅ 已修**：`workflow/executor.ts summarizeSolverOutput` 记录**值为空数组的字段**与**有意义标量数**，凡有空数组字段即 render "**为何为空 + 下一步建议**" 文本块，并**区分两类**：①【真无解】关键标量在（如 residualGap/quarter）仅结果数组空 → 当前约束下无可行项，建议放宽约束/加杠杆/扩窗口；②【数据未接齐】连关键标量也缺 → 上游切片/口径未接齐，建议先接入/补齐数据（触发合成≠伪造，走管线读回真值）再重跑。**关键修复点**：判定**不以 `!table` 为门**——求解器常同时含无关非空数组（如 `evaluatedRules`）投成表，那张表不能掩盖主结果数组（combo/rows）为空，否则又退回静默。门B 实测 S19（真后端 quarterly_gap 返 `combo:[]`+`evaluatedRules` 非空）→ 答案出"**结果为空（真无解）…「combo」为空…下一步建议…**" + 仍保留真实 KPI/表，可溯源 | Plan render：`solver_summary` 通用投影→空数组字段显性化（闭 G-1 沉默空数组面） | ✅ 已修（空结果显性化，真无解 vs 数据未接齐） |
 
