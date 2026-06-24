@@ -92,3 +92,53 @@ export const SimCheckpointSchema = z.object({
   createdAt: z.string(),
 });
 export type SimCheckpoint = z.infer<typeof SimCheckpointSchema>;
+
+// ── SimCertification 就绪认证（增量 2 · 派生投影对象·RL3 投影既有 closure 零新校验） ──
+// schema 见 docs/SPEC-sandbox-readiness-certification.md §1。每个数字可溯回具体 closure finding（R13）。
+export const SimCertLevelSchema = z.enum([
+  "L0_INVALID", // 类型未定义/未发布
+  "L1_CONFIGURED", // 已定义+归域，未发布/未跑派生
+  "L2_RUNNABLE", // 已发布，能跑派生/求解器
+  "L3_VERIFIED", // closure.gatePassed 且 Trial Tick PASS
+  "L4_CERTIFIED", // L3 + L4 三元组全真
+]);
+export type SimCertLevel = z.infer<typeof SimCertLevelSchema>;
+
+export const SimCertificationSchema = z.object({
+  scope: z.enum(["GLOBAL", "LOCAL"]), // 全局整本体 / 局部逐对象
+  targetRef: z.string().nullable(), // LOCAL 时 = objectId 或 typeKey
+  level: SimCertLevelSchema,
+  dims: z.object({ // 三维准备度 0-100（投影，非新算）
+    structure: z.number(), // 结构 ← OBJECT 维
+    knowledge: z.number(), // 知识 ← DATA 维 + 利用率
+    behavior: z.number(), // 行为 ← FORWARD 维 + Action
+    composite: z.number(), // 综合 = 加权
+  }),
+  l4Checks: z.object({ // L4 三元组（竞品 L4 Certified 的三子项）
+    fanoutSafe: z.boolean(), // 无高风险扇出
+    writebackComplete: z.boolean(), // writeback 行动已配置
+    observabilityMet: z.boolean(), // 图查询/切片达标
+  }),
+  trialTick: z.object({
+    passed: z.boolean(),
+    rulesFired: z.number().int(),
+    at: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+  worldCompleteness: z.object({ // 世界完整度（范围预检 = init step③）
+    pct: z.number(), // 0-100
+    stateVars: z.object({ present: z.number().int(), needed: z.number().int() }),
+    derivationRules: z.object({ present: z.number().int(), needed: z.number().int() }),
+    actions: z.object({ present: z.number().int(), needed: z.number().int() }),
+    propagationRules: z.object({ present: z.number().int(), needed: z.number().int() }),
+    entering: z.array(z.object({ // "将进入沙盘的状态变量"清单
+      key: z.string(),
+      kind: z.enum(["DERIVATION", "ACTION", "PROPAGATION"]),
+      source: z.string(),
+    })),
+  }),
+  canEnterSimulation: z.boolean(), // = L4 ∧ trialTick.passed ∧ closure.gatePassed
+  gaps: z.array(z.object({ gapCode: z.string(), ref: z.string(), detail: z.string() })), // 缺件诚实清单
+  computedAt: z.string(),
+});
+export type SimCertification = z.infer<typeof SimCertificationSchema>;
