@@ -410,8 +410,8 @@
 
 > **2026-06-24 · 待办登记（避免遗忘）**
 > **A. 场景卡发育闭环（新需求，已核实代码锚点属实）**：
-> - [ ] **REQ-fix-scenario-seed-guard（P0 · `docs/REQ-fix-scenario-seed-guard.md`）**：`main.ts:24` 意图/计划播种挂在"包存在"守卫内 → PG 已存包则意图永不再种 → classify 候选空 → OUT_OF_CATALOG → 探索兜底"未能产出回答"。✅ 根因已 grep 核实（24-29 在包守卫内；32-40 其它 seed 均按各自 id 幂等）。修：意图/计划改 per-id 幂等（~4 行）。低风险，建议先合。
-> - [ ] **PRD-scenario-ontogenesis（治本 · `docs/PRD-scenario-ontogenesis.md`）**：场景卡=R16 发育器官（grow 倒序长全闭包 → A10 验证真出答案才 GOVERNED 上架 → 正序确定性绑定跳过 classify → 缺则生长/开单不静默）。架构合理、复用既有机件（StoryBuildRun/verifyBuild/slice-planner/A18/ModuleProvisioner）。大件，分 P1/P2/P3。风险点见会话分析（A10-at-seed 需 QOS 可达否则卡降 PROVISIONAL/隐藏；20 卡 genome 需补声明）。
+> - [x] **REQ-fix-scenario-seed-guard ✅（P0，多租户）**：`ensureScenarioPackageSeed` per-id 幂等 + 任意租户懒补齐（非仅 demo）；agentcore 308 全绿 + 含精确 PG bug 复现测试。原文：`main.ts:24` 意图/计划播种挂在"包存在"守卫内 → PG 已存包则意图永不再种 → classify 候选空 → OUT_OF_CATALOG → 探索兜底"未能产出回答"。✅ 根因已 grep 核实（24-29 在包守卫内；32-40 其它 seed 均按各自 id 幂等）。修：意图/计划改 per-id 幂等（~4 行）。低风险，建议先合。
+> - [~] **PRD-scenario-ontogenesis P1 ✅（治本 · `docs/PRD-scenario-ontogenesis.md`）**：确定性绑定(§2.4)+grow 验证即上架门(§2.2/2.3)+留痕 ScenarioOntogenesisRun(前端可见来源)+诚实缺口(§2.5)；maturity GOVERNED/PROVISIONAL；回写本体 G-9。门B 真前端真后端验证（发育验证 S01→真 QOS→可用+留痕真求解器答案）。**待 P2/P3**：投影渲染消灭 16 卡静态文本(闭 G-1 残面)+rules/slice 自动接+自动生长+ontogenesis:check 扩。原文：场景卡=R16 发育器官（grow 倒序长全闭包 → A10 验证真出答案才 GOVERNED 上架 → 正序确定性绑定跳过 classify → 缺则生长/开单不静默）。架构合理、复用既有机件（StoryBuildRun/verifyBuild/slice-planner/A18/ModuleProvisioner）。大件，分 P1/P2/P3。风险点见会话分析（A10-at-seed 需 QOS 可达否则卡降 PROVISIONAL/隐藏；20 卡 genome 需补声明）。
 > **B. 1:1 视图剩余（可独立推进）**：
 > - [ ] **map ②decision 一等对象**（Problem/RiskTimeline 物化为对象类型，触 ontology 计数；架构性，需 seed + 计数重基线）。
 > - [ ] **dash 订单台账状态筛选**（OPEN/DELIVERED toggle，后端已支持，前端补；低风险）。
