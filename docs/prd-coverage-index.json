@@ -173,11 +173,11 @@
       "acceptanceIds": [
         "D7"
       ],
-      "covered": [],
-      "uncovered": [
+      "covered": [
         "D7"
       ],
-      "coverage": 0
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-build-workflow-runtime.md": {
       "acceptanceIds": [
@@ -248,11 +248,11 @@
       "acceptanceIds": [
         "D7"
       ],
-      "covered": [],
-      "uncovered": [
+      "covered": [
         "D7"
       ],
-      "coverage": 0
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-frontend-addendum-remaining-views.md": {
       "acceptanceIds": [
@@ -368,11 +368,11 @@
       "acceptanceIds": [
         "D7"
       ],
-      "covered": [],
-      "uncovered": [
+      "covered": [
         "D7"
       ],
-      "coverage": 0
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-platform-foundry-aip.md": {
       "acceptanceIds": [
