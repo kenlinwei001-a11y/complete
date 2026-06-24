@@ -1417,6 +1417,56 @@ export class SolverService {
         ? { critical: true, lagHours: num(worstStale.props.lagHours) }
         : { critical: false, lagHours: 0 };
     }
+    // P3-b 续：把高价值求解器输出映射成规则 expression 期望字段，使 evaluatedRules 真出 PASS/WARN/BLOCK。
+    // 字段口径逐个核对 battery.ts rules[] 的 expression（不硬凑；映不上/口径不清的求解器仍落 NOT_APPLICABLE）。
+    if (solverKey === "quote_margin") {
+      // C15 Order.marginPct<Order.floorPct / C24 Quote.marginPct<Quote.floorPct。
+      // 口径：求解器 margin/floor 都是「比率」（quoteMargin: margin=(price-bom-mfg-logistics)/price，floor=segmentFloor 同为比率），
+      // 规则两侧同尺度比率比较，无需 ×100。两规则同口径 → 同时填 Order 与 Quote 命名空间。
+      const margin = num(out.margin);
+      const floor = num(out.floor);
+      base.Order = { marginPct: margin, floorPct: floor };
+      base.Quote = { marginPct: margin, floorPct: floor };
+    } else if (solverKey === "credit_exposure") {
+      // C13 Order.creditUsedRatio>1：creditUsedRatio = exposure/limit（求解器 exposure=应收+在产未开票，limit=额度）。
+      // C32 Customer.maxOverdueDays>30：取 overdue[] 中最大 overdueDays（求解器逾期明细字段=overdueDays）。
+      const limit = num(out.limit);
+      const exposure = num(out.exposure);
+      const overdue = Array.isArray(out.overdue) ? (out.overdue as { overdueDays?: unknown }[]) : [];
+      const maxOverdue = overdue.reduce((m, o) => Math.max(m, num(o.overdueDays)), 0);
+      base.Order = { creditUsedRatio: limit > 0 ? exposure / limit : 0 };
+      base.Customer = { maxOverdueDays: maxOverdue };
+    } else if (solverKey === "carbon_footprint") {
+      // C33 NOT(Order.destination=='EU' IMPLIES Order.carbonFootprint<=Order.euCarbonThreshold)。
+      // 口径：carbonFootprint=求解器 total（物料+能耗碳，同阈值单位 kgCO2e），euCarbonThreshold=求解器 threshold(euThreshold)。
+      // destination 由调用方 args 提供（求解器不造目的地；缺省 undefined → 'EU' 判 false → 非欧无碳护照门 → PASS，诚实）。
+      base.Order = {
+        destination: args.destination !== undefined ? str(args.destination) : undefined,
+        carbonFootprint: num(out.total),
+        euCarbonThreshold: num(out.threshold),
+      };
+    } else if (solverKey === "kit_readiness") {
+      // C06/C16 MaterialBalance.gapTon>0：齐套缺口口径。求解器 rows[].shortItems[].shortage（=max(0,need-avail)）；
+      // 取全订单全物料最大缺口（>0 即有齐套缺口 → WARN）。无缺口（齐套）→ gapTon=0 → PASS。
+      const rows = Array.isArray(out.rows) ? (out.rows as { shortItems?: { shortage?: unknown }[] }[]) : [];
+      let maxGap = 0;
+      for (const r of rows) for (const si of r.shortItems ?? []) maxGap = Math.max(maxGap, num(si.shortage));
+      base.MaterialBalance = { gapTon: maxGap };
+    } else if (solverKey === "lta_gap") {
+      // C16 MaterialBalance.gapTon>0：求解器 gap=max(0,净需求-长协可用)（现货缺口，单位吨）→ 直映 gapTon。
+      base.MaterialBalance = { gapTon: num(out.gap) };
+    } else if (solverKey === "inventory_optimize") {
+      // C16 MaterialBalance.gapTon>0：求解器 under[]=欠储明细（underQty=0.8×目标-现库）；取最大 underQty 为缺口。
+      const under = Array.isArray(out.under) ? (out.under as { underQty?: unknown }[]) : [];
+      const maxUnder = under.reduce((m, u) => Math.max(m, num(u.underQty)), 0);
+      base.MaterialBalance = { gapTon: maxUnder };
+    } else if (solverKey === "changeover_sequence") {
+      // C22 Order.changeoverMin>120：求解器 sequence[].changeoverMin 为逐单换型分钟；取序列内最大单步换型
+      //（优化后仍存在 >120 的单步即命中约束）。无单步则 0 → PASS。totalChangeoverMin 是总和，口径不同，不用作 Order.changeoverMin。
+      const seq = Array.isArray(out.sequence) ? (out.sequence as { changeoverMin?: unknown }[]) : [];
+      const maxStep = seq.reduce((m, s) => Math.max(m, num(s.changeoverMin)), 0);
+      base.Order = { changeoverMin: maxStep };
+    }
     return base;
   }
 
