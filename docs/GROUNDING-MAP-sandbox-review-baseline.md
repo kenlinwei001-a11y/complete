@@ -157,6 +157,37 @@
 
 ---
 
-## §F 一句话
+## §F 竞品参考全文×逐图对照锚点（已核验 · 平台术语 · 禁外部产品名不入仓库）
 
-**我已通读分支文档并核验代码：沙盘的"图纸"方向对，但有三处必须钉死的接地真相——① R17/G-11 尚未入本体（增量 0 的硬前提）② `ia-single-source:check` 与现存 `boundary-singlesource:check` 重叠（别造第二个单源门）③ `comprehend` 是关键词目录不是 LLM，新颖故事会静默退化（倒序发育的头号诚实缺口）。** 复用坐标已用 `file:line` 钉死，新写边界已 grep 核验为"会话状态机 + 通用传导核"两层。本表是评审基线，我据此逐 PR 守纪律。
+> 来源：用户上传的参考文档，**全文（146 段/6305 字）逐句 + 7 张真图逐张视觉、文字与图对照读**。此处只留对我方设计有用的**精确事实**，并标"我方映射/状态"。竞品产品名/查询语言名（AbutionQL 等）不入本仓库。
+
+### F.1 逐图×文本对照（image→文本锚→精确事实→我方映射）
+
+| 竞品图 | 文本锚 | 逐图读到的精确事实 | 我方映射/状态 |
+|---|---|---|---|
+| 沙盘屏 | §2.2 三栏 + 18题 | 三栏：左图谱(Supplier→Factory→Order) · 中 **Runtime Health Radar**(Rule Coverage/Utilization/Closure/Cycle Safety/Observability/Activation 综合84) + **Runtime Trust Radar**(Runtime Trust/Explainability/**Temporal Trust 防未来窥视**/**Data Trust 数据血缘**) · 右 AI 指挥台。**指挥台主动提"待办动作"+自动生成查询代码+绑定 Skill/MCP**（非被动问答） | 三栏=R17.2 · 雷达=RadarChart(维度名补全) · Trust=R13 溯源+as-of-epoch · **指挥台"主动配置"比我方 QOS 被动问答更进，记为增量4 富交互目标** |
+| 初始化向导 | §2.1 三步 | ①世界基准时间(实时快照/历史存档) ②推演范围(主体对象/时序记录/关系类型/属性过滤/**关系扩展深度 slider**/每类最多实体数) ③范围预检：**世界完整度 100% + "将进入沙盘的状态变量"清单**(状态变量38/38·派生规则4/4·Action7/7) | init=我方"读物化世界+slice范围"✓ · **③范围预检的"世界完整度+将进入清单"= closure 覆盖展示，我 SPEC 没显式接（属增量2 就绪认证），需补** |
+| 全局认证屏 | §1.3 合并发布 | **Runtime Certification L0-L4**：L0 Invalid/L1 Configured/L2 Runnable/L3 Verified/L4 Certified。**L4=L3 Verified + Fanout安全 + Writeback完整 + Observability达标**；**Trial Tick**=空跑触发规则(PASS 留痕)；L3 认证审计(当前3·历史已修5)。**仿真准备度100/100→可进入推演** | L0-L4+TrialTick 我方有 ✓ · **但 L4 三元组(Fanout/Writeback/Observability) ≠ 我写的"三件套(派生∧动作∧查询)"——两套口径需在增量2 对齐映射** |
+| 逐对象建模 | §1.2 三大能力 | 对象编辑(Order: 字段/**行动 delayOrder**/派生/安全 tab) + **局部仿真准备度 75/100 待补全**(结构100/知识67/行为90/综合86) | **逐对象(局部)就绪——我方只有全局，确认缺口（grounding §D 已记）** · delayOrder=ActionType ✓ |
+
+### F.2 关键验证：我方 `PropagationRule` 模型 = 竞品 UI 逐字命中
+
+沙盘屏指挥台原文：`supplier.delay_risk -- SUPPLIES.risk_propagation 0.85 --> factory.supply_risk`；初始化屏命名规则 `r_supply_risk_from_supplier`(SUPPLIES)、`r_order_risk_from_factory`(FULFILLS)。
+→ **= `SPEC §1.1 PropagationRule{sourceStateVar, viaLinkKey, coefficient, targetStateVar}` 一字不差**。系数 0.85/0.7×延迟1 是"沿 link 命名传导规则"，**正是我方传导核设计**——SPEC 方向已被竞品成品验证。
+
+### F.3 一处竞品自相矛盾（我方取诚实那一面）
+
+§2.2 运行前置条件：「**所有风险传导规则需提前自定义配置，系统无默认内置规则**」 vs 紧接「注意：**推演系统不需要做任何配置**…」——**自相矛盾**。真相是**前者**（规则必须先配/长出）。**我方取诚实面**：规则经倒序发育/规则即引用**显式长出或开工单**，绝不宣称"零配置魔法"（守 fde-delivery「绿测试≠能用」）。
+
+### F.4 重新审视 HANDOFF + 我的结论（对照全文后）
+
+- ✅ **成立（且被竞品成品验证）**：三栏/L0-L4/TrialTick/三维就绪/init=范围+预检/采纳审批/checkpoint-branch/"须配置规则非魔法" 全部对；**传导核模型逐字命中**（F.2）。HANDOFF 的增量序/红线/复用-vs-新写**不需推翻**。
+- 🔧 **需细化（已记本节，増量2/4 落地时对齐）**：① L4 三元组 vs 我"三件套"口径映射 ② 局部(逐对象)就绪 ③ 雷达精确维度名 ④ 指挥台"主动配置" ⑤ 范围预检的"世界完整度+将进入清单"。
+- ⚠ **真缺口**：SPEC(增量1/3)未显式接"init-time 范围预检/世界完整度展示"（属增量2 就绪认证 surface closure）；Temporal Trust(防未来窥视)我只隐含在 R6 确定性、未点名 → 増量3 传导核应显式"tick 不读未来态"。
+- 📏 **诚实距离**：竞品是**已跑通成品**（L4 认证/信任雷达/主动配置 AI/可进入推演）；我方是**零件齐 + 图纸(本规格)，零沙盘实现**。差距真实——我方优势是站在已有本体/closure/recompute/risk.ts/QOS 肩上，劣势是会话层+传导核+统一前端**一行未写**。
+
+---
+
+## §G 一句话
+
+**我已通读分支文档+核验代码+全文逐图对照竞品：沙盘"图纸"方向对，传导核模型被竞品成品逐字验证；三处必钉接地真相不变（R17/G-11 未入本体·单源门勿重造·comprehend 非 LLM）；竞品比我方多的是"已跑通"——L4 认证/信任雷达/主动配置 AI，我方零件齐但沙盘一行未写。** 本表是评审基线，我据此逐 PR 守纪律。

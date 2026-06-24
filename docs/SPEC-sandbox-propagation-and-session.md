@@ -87,6 +87,7 @@ export function propagateTick(
 3. `delayTicks===0` → 当 tick 累加进 `next`；`>0` → push 进 `pending`（`arriveTick = tick + delayTicks`）。
 4. 应用 `clamp`；返回 `{ next, pending(去掉已结算), trace }`。`trace` 喂前端"三级风险轨迹"可视化。
 5. **确定性纪律**：所有遍历对 id 排序；不调 `Date.now()/Math.random()`；浮点按固定精度。单测：同输入跑两次 `expect(a).toEqual(b)`。
+6. **时间信任（Temporal Trust，防未来窥视）**：tick t 的计算**只读 ≤t 的状态 + pending 队列**，**绝不读未来 tick 态**；延迟贡献只能落在 `arriveTick > 当前 tick`。（对应竞品"Temporal Trust"信任维；与 R6 确定性正交——确定性管"可复现"，时间信任管"不作弊读未来"。）
 
 > 复用而非重写：链路导航=recompute（`ontology-core.ts` resolveAffectedTargets / navIn·navOut）；衰减公式=risk.ts:177（`amp×(1-dist/den)`）；tick 循环=simclock。**核只是把这三者在"任意本体 × 逐 tick × 系数 × 延迟"上合体——这是接地地图 §C 说的唯一全新算法。**
 
