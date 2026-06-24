@@ -62,6 +62,22 @@ describe("F37 · 场景配置（场景为一等主键）", () => {
     await waitFor(() => expect(screen.getByTestId("scenario-status-SX9")).toHaveTextContent("RETIRED"));
   });
 
+  it("PRD-ontogenesis：发育验证 → maturity 徽章 + 留痕面板（三环/验证/答案来源前端可见）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/scenes");
+    await screen.findByTestId("scenario-row-S01");
+    // 发育验证（经 QOS 跑通触发问句 → GOVERNED + 留痕）
+    await user.click(screen.getByTestId("scenario-grow-S01"));
+    await waitFor(() => expect(screen.getByTestId("scenario-maturity-S01")).toHaveTextContent("已验证·可用"));
+    // 留痕面板自动展开：三环 + 验证 + 答案预览（数据来源可见）
+    const ont = await screen.findByTestId("scenario-ontogenesis-S01");
+    expect(ont).toHaveTextContent("数据环 ✓");
+    expect(ont).toHaveTextContent("本体环 ✓");
+    expect(within(ont).getByTestId("scenario-verif-S01")).toHaveTextContent("VERIFIED");
+    expect(ont).toHaveTextContent("答案预览");
+  });
+
   it("已发布场景：「查看配置」只读展示真实后端配置 + 退役转草稿后可编辑（非前端写死）", async () => {
     const user = userEvent.setup();
     loginAs("planner");

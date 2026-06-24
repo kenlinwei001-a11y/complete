@@ -211,6 +211,24 @@ export class Orchestrator {
       return;
     }
 
+    // §2.4 确定性绑定（PRD-scenario-ontogenesis）：来自场景卡的查询带 scenarioIntentKey →
+    // 若该意图在候选内（已发布、entitlement 通过）且槽位可从上下文满足 → 直接绑定意图→计划，**跳过 LLM classify**。
+    // 让点卡不受 classifier 死活/目录/缓存影响（卡的闭包已长成则正序确定运作，R16 应有之义）。
+    const forcedKey = task.context.scenarioIntentKey;
+    if (forcedKey) {
+      const forced = candidates.find((c) => c.key === forcedKey);
+      if (forced) {
+        const probe = await fillSlots(forced, {}, task.context, this.deps.engine.deps.dataCore.ontology, auth);
+        if (probe.missing.length === 0) {
+          await this.deps.repos.tasks.patch(taskId, {
+            classification: { candidates: [{ intentKey: forced.key, confidence: 1 }], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "deterministic:scenario-bind" },
+          });
+          await this.proceedWithIntent(taskId, auth, forced, {});
+          return;
+        }
+      }
+    }
+
     // #5 单候选短路：候选收窄后只剩 1 个意图，且其必填槽位可仅从上下文（presetContext/选中对象
     // defaultFrom）满足时，跳过 LLM 分类直接进路径 A —— 省一次分类往返。仍保留槽位填充语义：
     // 若必填槽位无法从上下文满足（需 NL 抽取），不短路、照常走分类。

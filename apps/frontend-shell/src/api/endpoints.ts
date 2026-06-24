@@ -604,6 +604,9 @@ export const publishScenario = (key: string) =>
   api.b<Scenario>(`/b/v1/scenarios/${encodeURIComponent(key)}/publish`, { method: "POST", body: {} });
 export const retireScenario = (key: string) =>
   api.b<Scenario>(`/b/v1/scenarios/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} });
+// PRD-scenario-ontogenesis P1：亲手发育验证一张卡（经 QOS 跑通 triggerQuestion）→ 返回留痕 ScenarioOntogenesisRun。
+export const growScenario = (key: string) =>
+  api.b<import("@platform/contracts").ScenarioOntogenesisRun>(`/b/v1/scenarios/${encodeURIComponent(key)}/grow`, { method: "POST", body: {} });
 
 export const submitQuery = (body: { packageId: string; query: string; context: SessionContext }, idempotencyKey: string) =>
   api.b<{ taskId: string; status: string; streamUrl: string }>("/b/v1/queries", {

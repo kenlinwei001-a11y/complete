@@ -188,6 +188,12 @@ export const SessionContextSchema = z.object({
    */
   presetSlots: z.record(z.string(), z.unknown()).optional(),
   conversationId: z.string().optional(),
+  /**
+   * PRD-scenario-ontogenesis §2.4 确定性绑定：来自场景卡（GOVERNED）的查询带卡声明的意图键 →
+   * 编排器跳过 LLM classify、直接绑定该意图→计划（候选命中且槽位可满足时）。让点卡**不受 classifier 死活/目录影响**。
+   */
+  scenarioIntentKey: z.string().optional(),
+  scenarioKey: z.string().optional(),
 });
 export type SessionContext = z.infer<typeof SessionContextSchema>;
 

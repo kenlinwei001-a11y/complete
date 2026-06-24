@@ -21,13 +21,15 @@
     ],
     "breakpoints": [
       "G-1",
+      "G-10",
       "G-2",
       "G-3",
       "G-4",
       "G-5",
       "G-6",
       "G-7",
-      "G-8"
+      "G-8",
+      "G-9"
     ]
   },
   "prds": {
@@ -1099,6 +1101,20 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-rules-as-references.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-scenario-launcher.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1120,6 +1136,25 @@
         "packages/contracts/src/agentcore.ts",
         "packages/contracts/src/qos.ts",
         "scripts/check-chain-closure.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-scenario-ontogenesis.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-9"
+      ],
+      "artifacts": [
+        "scripts/check-ontogenesis.mjs"
       ],
       "brokenArtifacts": []
     },
@@ -1314,6 +1349,7 @@
       "PRD-platform-foundry-aip.md",
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
+      "PRD-scenario-ontogenesis.md",
       "PRD-traceability-and-baseline-v2.md",
       "PRD-traceability-and-baseline.md",
       "PRD-unified-build-engine.md"
@@ -1363,6 +1399,12 @@
       "PRD-sop-balance-1to1.md",
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
+    ],
+    "G-10": [
+      "PRD-rules-as-references.md"
+    ],
+    "G-9": [
+      "PRD-scenario-ontogenesis.md"
     ]
   },
   "orphanBreakpoints": [],
@@ -1599,6 +1641,9 @@
     ],
     "scripts/check-chain-closure.mjs": [
       "PRD-scenario-launcher.md"
+    ],
+    "scripts/check-ontogenesis.mjs": [
+      "PRD-scenario-ontogenesis.md"
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-sop-balance-1to1.md"

@@ -1913,6 +1913,19 @@ export const handlers = [
     sc.updatedAt = new Date().toISOString();
     return HttpResponse.json(sc);
   }),
+  // PRD-scenario-ontogenesis P1：发育验证（mock）—— 经 QOS 跑通触发问句 → VERIFIED → GOVERNED + 留痕。
+  http.post("*/b/v1/scenarios/:key/grow", ({ params }) => {
+    const sc = db.scenarios.find((s) => s.scenarioKey === params.key) as (typeof db.scenarios)[number] & { maturity?: string; lastOntogenesisRun?: unknown };
+    if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");
+    const run = {
+      runId: `sor_${String(params.key)}`, scenarioKey: String(params.key), ranAt: new Date().toISOString(),
+      rings: { data: true, ontology: true, capability: true },
+      verification: { status: "VERIFIED" as const, path: "WORKFLOW" as const, gapCode: null, answerPreview: "P50 产能 132 GWh · P90 118 GWh · 缺口 3.2%", taskId: "task_mock_grow" },
+      gaps: [] as { gapCode: string; disposition: "AUTO_DERIVE" | "NEEDS_HUMAN"; detail: string }[], maturity: "GOVERNED" as const,
+    };
+    sc.maturity = "GOVERNED"; sc.lastOntogenesisRun = run;
+    return HttpResponse.json(run);
+  }),
   http.post("*/b/v1/scenarios/:key/retire", ({ params }) => {
     const sc = db.scenarios.find((s) => s.scenarioKey === params.key);
     if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");

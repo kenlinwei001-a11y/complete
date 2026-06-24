@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
-import { createScenario, fetchAgents, fetchIntents, fetchScenariosManage, fetchViewConfigs, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
+import { createScenario, fetchAgents, fetchIntents, fetchScenariosManage, fetchViewConfigs, growScenario, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
 import { invalidateForEvent } from "@/store/eventInvalidation";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
@@ -98,10 +99,18 @@ function ScenarioRow({
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
   const publish = useMutation({ mutationFn: () => publishScenario(scenario.scenarioKey), onSuccess: () => { toast("已发布", "success"); invalidateForEvent("scenario.published"); onChanged(); }, onError: toastError });
   const retire = useMutation({ mutationFn: () => retireScenario(scenario.scenarioKey), onSuccess: () => { toast("已退役", "success"); invalidateForEvent("scenario.retired"); onChanged(); }, onError: toastError });
+  // PRD-scenario-ontogenesis P1：发育验证（经 QOS 跑通触发问句）→ 定 maturity + 留痕。
+  const grow = useMutation({
+    mutationFn: () => growScenario(scenario.scenarioKey),
+    onSuccess: (run) => { toast(run.maturity === "GOVERNED" ? "发育验证通过：已可用" : `发育中：缺 ${run.verification.gapCode ?? "?"}`, run.maturity === "GOVERNED" ? "success" : "info"); setDevOpen(true); onChanged(); },
+    onError: toastError,
+  });
   const closure = scenario.closure;
   const ready = closure?.ready !== false;
+  const run = scenario.lastOntogenesisRun;
 
   return (
     <>
@@ -126,6 +135,13 @@ function ScenarioRow({
         </td>
         <td>
           <span className={STATUS_BADGE[scenario.status]} data-testid={`scenario-status-${scenario.scenarioKey}`}>{scenario.status}</span>
+          {/* PRD-ontogenesis：发育态——GOVERNED=已亲手跑通验证·可用 / PROVISIONAL=发育中（诚实标，不假装可用） */}
+          {scenario.maturity && (
+            <span className={`badge ${scenario.maturity === "GOVERNED" ? "green" : "amber"}`} style={{ marginLeft: 4 }} data-testid={`scenario-maturity-${scenario.scenarioKey}`}
+              title={run ? `数据环 ${run.rings.data ? "✓" : "✗"} · 本体环 ${run.rings.ontology ? "✓" : "✗"} · 能力环 ${run.rings.capability ? "✓" : "✗"}` : undefined}>
+              {scenario.maturity === "GOVERNED" ? "已验证·可用" : "发育中"}
+            </span>
+          )}
         </td>
         <td style={{ whiteSpace: "nowrap" }}>
           {scenario.status !== "PUBLISHED" && (
@@ -151,6 +167,15 @@ function ScenarioRow({
               <button className="btn sm" data-testid={`scenario-view-${scenario.scenarioKey}`} onClick={() => setEditing((v) => !v)}>
                 {editing ? "收起" : "查看配置"}
               </button>
+              {/* PRD-ontogenesis P1：亲手把触发问句经 QOS 跑通验证 → 定 maturity + 留痕 */}
+              <button className="btn sm" style={{ marginLeft: 4 }} data-testid={`scenario-grow-${scenario.scenarioKey}`} disabled={grow.isPending} onClick={() => grow.mutate()}>
+                {grow.isPending ? "验证中…" : "发育验证"}
+              </button>
+              {run && (
+                <button className="btn sm" style={{ marginLeft: 4 }} data-testid={`scenario-dev-toggle-${scenario.scenarioKey}`} onClick={() => setDevOpen((v) => !v)}>
+                  {devOpen ? "收起留痕" : "看发育留痕"}
+                </button>
+              )}
               <button className="btn sm danger" style={{ marginLeft: 4 }} data-testid={`scenario-retire-${scenario.scenarioKey}`} disabled={retire.isPending} onClick={() => retire.mutate()}>
                 退役
               </button>
@@ -158,6 +183,33 @@ function ScenarioRow({
           )}
         </td>
       </tr>
+      {/* PRD-ontogenesis 留痕（前端可见：知道这张卡发育到哪一步、答案从哪来、缺什么） */}
+      {devOpen && run && (
+        <tr>
+          <td colSpan={8} style={{ background: "var(--panel2, rgba(255,255,255,.02))", fontSize: 12 }}>
+            <div data-testid={`scenario-ontogenesis-${scenario.scenarioKey}`} style={{ padding: "8px 4px", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div>
+                <b>发育留痕</b>（{run.ranAt.slice(0, 16).replace("T", " ")}）· 三环：
+                <span className={`badge ${run.rings.data ? "green" : "red"}`} style={{ marginLeft: 4 }}>数据环 {run.rings.data ? "✓" : "✗"}</span>
+                <span className={`badge ${run.rings.ontology ? "green" : "red"}`} style={{ marginLeft: 4 }}>本体环 {run.rings.ontology ? "✓" : "✗"}</span>
+                <span className={`badge ${run.rings.capability ? "green" : "red"}`} style={{ marginLeft: 4 }}>能力环 {run.rings.capability ? "✓" : "✗"}</span>
+              </div>
+              <div data-testid={`scenario-verif-${scenario.scenarioKey}`}>
+                验证：<b>{run.verification.status}</b>（路径 {run.verification.path}）
+                {run.verification.taskId && <Link to={`/task/${run.verification.taskId}`} style={{ marginLeft: 6 }}>看完整溯源链 →</Link>}
+              </div>
+              {run.verification.answerPreview && (
+                <div style={{ color: "var(--muted)" }}>答案预览（数据来源 = 真跑求解器输出）：{run.verification.answerPreview}</div>
+              )}
+              {run.gaps.length > 0 && (
+                <div data-testid={`scenario-gaps-${scenario.scenarioKey}`} style={{ color: "var(--amber)" }}>
+                  缺口（诚实，不静默）：{run.gaps.map((g) => `${g.gapCode}·${g.disposition === "AUTO_DERIVE" ? "可自动补" : "需人工/工单"}`).join("；")}
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
       {editing && (
         <tr>
           <td colSpan={8} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>

@@ -31,6 +31,7 @@ import {
   type McpServerConfig,
   type SceneEntryConfig,
   type Scenario,
+  type ScenarioOntogenesisRun,
   type SkillDefinition,
   type WorkflowDefinition,
 } from "@platform/contracts";
@@ -2014,10 +2015,94 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         selectedObjects: sc.presetContext.selectedObjects,
         filters: {},
         presetSlots: sc.presetContext.slotPresets,
+        // §2.4 确定性绑定：卡声明的意图键随上下文进编排器 → GOVERNED 卡直接绑定意图（跳过 classify）。
+        scenarioIntentKey: sc.intentKey,
+        scenarioKey: sc.scenarioKey,
       },
     });
     const result = await deps.orchestrator.submitQuery(a, body);
     return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl, scenario: sc.scenarioKey });
+  });
+
+  // ---- PRD-scenario-ontogenesis P1：卡发育闭环（grow=亲手把 triggerQuestion 经 QOS 跑通验证→留痕→定 maturity）----
+  // §2.2/§2.3：把卡的触发问句正序经 QOS 实跑到终态 → 验证真出答案（非空/非兜底/非 gap）才标 GOVERNED；
+  // 否则 PROVISIONAL + 记缺口（§2.5 诚实，不静默）。留痕 ScenarioOntogenesisRun 落在卡上，前端可见"从哪来/到哪步"。
+  const growScenario = async (a: RequestAuth, sc: Scenario): Promise<ScenarioOntogenesisRun> => {
+    const runId = newId("sor");
+    const ranAt = new Date().toISOString();
+    // 本体环/能力环：意图存在且发布 + 计划可绑定（复用 scenarioClosure 口径）。
+    const closure = await scenarioClosure(a.tenantId, sc);
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    const intents = pkg ? await deps.repos.intents.listByPackage(pkg.id) : [];
+    const intent = intents.filter((i) => i.key === sc.intentKey).sort((x, y) => y.version - x.version)[0];
+    const capabilityOk = !!intent && intent.status === "PUBLISHED" && !!(await resolvePlanForIntent(deps.repos, intent));
+    const ontologyOk = !!intent && !!(intent.planId);
+
+    // 数据环：经 QOS 正序实跑 triggerQuestion 到终态（内部跑、不受并发节流），验证真出答案。
+    let dataOk = false, vstatus: "VERIFIED" | "NOT_VERIFIED" | "NOT_RUN" = "NOT_RUN";
+    let vpath: "WORKFLOW" | "AGENT" | "NONE" = "NONE", gapCode: string | null = null, answerPreview: string | null = null, taskId: string | null = null;
+    if (capabilityOk) {
+      try {
+        const body = SubmitQueryBodySchema.parse({
+          packageId: pkg!.id, query: sc.triggerQuestion,
+          context: { view: sc.presetContext.targetView, selectedObjects: sc.presetContext.selectedObjects, filters: {}, presetSlots: sc.presetContext.slotPresets, scenarioIntentKey: sc.intentKey, scenarioKey: sc.scenarioKey },
+        });
+        const sub = await deps.orchestrator.submitQuery(a, body, undefined, { internal: true });
+        taskId = sub.taskId;
+        // 轮询到终态（COMPLETED/FAILED/CANCELLED/AWAITING_CLARIFICATION），上限 ~12s。
+        let t = await deps.repos.tasks.get(taskId);
+        for (let i = 0; i < 120 && t && !["COMPLETED", "FAILED", "CANCELLED", "AWAITING_CLARIFICATION"].includes(t.status); i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          t = await deps.repos.tasks.get(taskId);
+        }
+        vpath = t?.path === "AGENT" ? "AGENT" : t?.path === "WORKFLOW" ? "WORKFLOW" : "NONE";
+        const blocks = t?.answer?.blocks ?? [];
+        const gapBlock = blocks.find((b) => b.type === "gap");
+        const hasReal = t?.status === "COMPLETED" && blocks.length > 0 && !gapBlock &&
+          !blocks.some((b) => b.type === "text" && /未能产出回答|探索模式未能/.test(String((b as { markdown?: string }).markdown ?? "")));
+        dataOk = hasReal;
+        vstatus = hasReal ? "VERIFIED" : "NOT_VERIFIED";
+        if (!hasReal) {
+          gapCode = gapBlock ? String(((gapBlock as { report?: { findings?: { gapCode?: string }[] } }).report?.findings?.[0]?.gapCode) ?? "OTHER")
+            : t?.status === "AWAITING_CLARIFICATION" ? "NEEDS_SLOTS" : t?.status === "FAILED" ? "RUNTIME_FAIL" : "NO_ANSWER";
+        }
+        const firstText = blocks.find((b) => b.type === "text") as { markdown?: string } | undefined;
+        const firstKpi = blocks.find((b) => b.type === "kpi") as { label?: string; value?: unknown; unit?: string } | undefined;
+        answerPreview = firstText?.markdown?.slice(0, 160) ?? (firstKpi ? `${firstKpi.label}: ${String(firstKpi.value)}${firstKpi.unit ?? ""}` : null);
+      } catch (e) {
+        vstatus = "NOT_VERIFIED"; gapCode = "RUNTIME_FAIL"; answerPreview = (e as Error).message.slice(0, 160);
+      }
+    } else {
+      gapCode = !intent ? "MISSING_INTENT" : intent.status !== "PUBLISHED" ? "INTENT_NOT_PUBLISHED" : "MISSING_PLAN";
+    }
+
+    const maturity = dataOk ? "GOVERNED" : "PROVISIONAL";
+    const gaps = vstatus === "VERIFIED" ? [] : [{
+      gapCode: gapCode ?? "OTHER",
+      // 缺意图/计划=可自动补（重播种子/grow）；运行缺数据/求解器=需人工（真人正门/审批）。
+      disposition: (gapCode === "MISSING_INTENT" || gapCode === "INTENT_NOT_PUBLISHED" || gapCode === "MISSING_PLAN" ? "AUTO_DERIVE" : "NEEDS_HUMAN") as "AUTO_DERIVE" | "NEEDS_HUMAN",
+      detail: closure.issues.join("；") || (answerPreview ?? "触发问句未跑出真实答案"),
+    }];
+    const run: ScenarioOntogenesisRun = {
+      runId, scenarioKey: sc.scenarioKey, ranAt,
+      rings: { data: dataOk, ontology: ontologyOk, capability: capabilityOk },
+      verification: { status: vstatus, path: vpath, gapCode, answerPreview, taskId },
+      gaps, maturity,
+    };
+    await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, updatedAt: new Date().toISOString() });
+    await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode });
+    return run;
+  };
+
+  // POST /b/v1/scenarios/:key/grow —— 亲手发育验证一张卡（admin/catalog_admin）。
+  app.post("/b/v1/scenarios/:key/grow", async (req, reply) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    await ensureScenarios(a.tenantId);
+    const sc = (await deps.repos.scenarios.listByTenant(a.tenantId)).find((c) => c.scenarioKey === key || c.intentKey === key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
+    const run = await growScenario(a, sc);
+    return reply.status(200).send(run);
   });
 
   // ---- 场景管理（PRD §4 管理面）：创建/编辑 DRAFT · 发布/退役（发 scenario.* 事件）----

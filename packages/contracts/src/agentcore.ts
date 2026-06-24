@@ -212,6 +212,31 @@ export const ScenarioPresetContextSchema = z.object({
 });
 export type ScenarioPresetContext = z.infer<typeof ScenarioPresetContextSchema>;
 
+// PRD-scenario-ontogenesis P1：场景卡发育态（相位成熟，A18 二分）。
+// GOVERNED=已亲手跑通验证真出答案（默认呈现"可用"）· PROVISIONAL=发育中/未验证（诚实标，不假装可用）。
+export const ScenarioMaturitySchema = z.enum(["PROVISIONAL", "GOVERNED"]);
+export type ScenarioMaturity = z.infer<typeof ScenarioMaturitySchema>;
+
+/** 一张卡的发育验证运行（留痕：三环 + A10 验证结论 + 缺口）。前端可见 → "知道数据从哪来、发育到哪一步"。 */
+export const ScenarioOntogenesisRunSchema = z.object({
+  runId: z.string(),
+  scenarioKey: z.string(),
+  ranAt: z.string(),
+  // 三环（R16）：data=triggerQuestion 经 QOS 真跑出非空非兜底答案 · ontology=意图/计划已落库 · capability=意图发布且可绑定计划。
+  rings: z.object({ data: z.boolean(), ontology: z.boolean(), capability: z.boolean() }),
+  verification: z.object({
+    status: z.enum(["VERIFIED", "NOT_VERIFIED", "NOT_RUN"]),
+    path: z.enum(["WORKFLOW", "AGENT", "NONE"]).default("NONE"),
+    gapCode: z.string().nullable().default(null),
+    answerPreview: z.string().nullable().default(null), // 验证产出的答案预览（前端可见来源）
+    taskId: z.string().nullable().default(null),         // 可点进任务详情看完整溯源链
+  }),
+  // §2.5：缺口诚实开单（NEEDS_HUMAN）或自动补（AUTO_DERIVE）。
+  gaps: z.array(z.object({ gapCode: z.string(), disposition: z.enum(["AUTO_DERIVE", "NEEDS_HUMAN"]), detail: z.string() })).default([]),
+  maturity: ScenarioMaturitySchema,
+});
+export type ScenarioOntogenesisRun = z.infer<typeof ScenarioOntogenesisRunSchema>;
+
 export const ScenarioSchema = z.object({
   id: z.string(), // scn_
   tenantId: z.string(),
@@ -232,6 +257,10 @@ export const ScenarioSchema = z.object({
   status: ScenarioStatusSchema.default("DRAFT"),
   version: z.number().int().default(1),
   updatedAt: z.string().optional(),
+  // PRD-scenario-ontogenesis P1：卡=发育器官。maturity 由「grow=亲手把 triggerQuestion 经 QOS 跑通验证」
+  // 设定（GOVERNED=验证真出答案 / PROVISIONAL=发育中有缺口）；lastOntogenesisRun 留痕（前端可见，知道来源）。
+  maturity: ScenarioMaturitySchema.optional(),
+  lastOntogenesisRun: ScenarioOntogenesisRunSchema.optional(),
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 
