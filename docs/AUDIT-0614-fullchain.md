@@ -1,11 +1,11 @@
-# 缺口审核 · 0614 构建 · 场景全链条（含 OntoFlow v2 PRD 差距）
+# 缺口审核 · 0614 构建 · 场景全链条（含 某参考的产品 v2 PRD 差距）
 
 | 项 | 值 |
 |---|---|
 | 版本 | v1.0 · 状态 审核结论 · 日期 2026-06-15 |
 | 对象 | `complete0614github` 全量构建（DataCore A `/a/v1` · AgentCore B `/api/v1`+`/b/v1` · frontend-shell） |
 | 方法 | **基于场景的全链条追踪**（问句/数据/本体三类主链端到端走通），非按模块罗列；4 路并行只读审核 + 实测 `pnpm -r build && test` 地面真值；每条结论带 `file:line` 证据 |
-| 基线对照 | 平台总纲 / QOS / 前端 PRD + 新上传 `PRD-ontoflow-v2-unified-modeling`（统一本体建模工作流） |
+| 基线对照 | 平台总纲 / QOS / 前端 PRD + 新上传 `PRD-某参考的产品-v2-unified-modeling`（统一本体建模工作流） |
 
 ---
 
@@ -67,11 +67,11 @@
 **新本体跑通追踪**：发布非电池本体 → 拿得到数据 + 切片/聚合/派生/规则求值，但**无可用视图、无场景入口、无 Agent、无推演**。
 
 ### 链D 前端闭合
-**无场景启动器**（链①）。**自助配置死路（裁决#27）**：前端无创建 plan 的 UI（后端 `POST /catalog/packages/:id/plans` 有、前端没接）；意图绑定下拉只读 `fetchPlans`（`CatalogPage.tsx:217`），plans 只能种子（mock 静态 4 条 `fixtures.ts:507`）；**WorkflowsPage 连 workflow 都建不了**（无"+新建"，`saveWorkflow(null)` 从不调用）；SkillsPage 无创建。健康的有创建路径：AgentsPage/RulesPage/McpPage/意图本身。**OntoFlow 画布只读**（`OntologyGraphView.tsx` 仅力导拖拽+只读 Inspector，无增删改节点/边）。
+**无场景启动器**（链①）。**自助配置死路（裁决#27）**：前端无创建 plan 的 UI（后端 `POST /catalog/packages/:id/plans` 有、前端没接）；意图绑定下拉只读 `fetchPlans`（`CatalogPage.tsx:217`），plans 只能种子（mock 静态 4 条 `fixtures.ts:507`）；**WorkflowsPage 连 workflow 都建不了**（无"+新建"，`saveWorkflow(null)` 从不调用）；SkillsPage 无创建。健康的有创建路径：AgentsPage/RulesPage/McpPage/意图本身。**某参考的产品 画布只读**（`OntologyGraphView.tsx` 仅力导拖拽+只读 Inspector，无增删改节点/边）。
 
 ---
 
-## 5. 对照 OntoFlow v2 PRD 的差距
+## 5. 对照 某参考的产品 v2 PRD 的差距
 
 PRD 要建的**全部是绿地**，逐项核验确认不存在：`/a/v1/ontology-workflows`（+validate/preview/promote/readiness/publish/scaffold）端点、`pipeline/{service,processing,subgraph,scaffold,readiness,generic-inference}.ts`、`packages/contracts/src/pipeline.ts`、`ObjectTypeDef` 的 storageMode/stateVariables/functions/actions/security、`ObjectOrigin.PIPELINE`、`ontology_workflows` 表、可编辑画布、`parseXlsx`——**一个都没有**。
 
@@ -96,7 +96,7 @@ PRD 要建的**全部是绿地**，逐项核验确认不存在：`/a/v1/ontology
 
 ## 6. 优先级建议
 
-分清两件事：**(甲) 让现有 20 场景真能跑** vs **(乙) 建 OntoFlow v2 通用化平台**。建议先甲后乙。
+分清两件事：**(甲) 让现有 20 场景真能跑** vs **(乙) 建 某参考的产品 v2 通用化平台**。建议先甲后乙。
 
 **P0（甲·让场景跑通，工作量小、价值高）**
 1. 补种剩余 16 场景的意图 + 执行计划（求解器 15/16 已在 DataCore 现成）。
@@ -107,7 +107,7 @@ PRD 要建的**全部是绿地**，逐项核验确认不存在：`/a/v1/ontology
 4. 前端接 `createPlan`/`saveWorkflow(null)`/`saveSkill(null)`，消除裁决#27 死路。
 5. 建 `scenarios` 启动器视图 + `SceneEntryConfig.presetContext` + sessionStore 注入动作，闭合"点卡→注入→自动推演"。
 
-**P2（乙·OntoFlow v2 + 通用化）**
+**P2（乙·某参考的产品 v2 + 通用化）**
 6. 按 PRD 分期 P1–P6 建 画布 / ProcessingEngine / storageMode·promote / scaffold / **generic-inference**。其中"通用 what-if"底座（`recompute` 反向增量重算 `ontology-core.ts:339`）已具备，只差 Δ注入 + 前后对比包装——通用化性价比最高的切入点。
 
 ---

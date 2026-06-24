@@ -61,5 +61,5 @@
 - **回写本体**：新增/改动的对象类型/链路/事件/不变量/门禁 → 回写 `SYSTEM-ONTOLOGY.md` 对应章节。
 
 ## 7. 命名纪律
-- 禁用外部产品名（OntoFlow 等是参考产品），一律用平台自有术语。
+- 禁用外部产品名（某参考的产品 等是参考产品），一律用平台自有术语。
 - 错误信封统一 `{ error: { code, message, requestId } }`；租户隔离 tenant_id everywhere；凭据 AES-GCM 不回显。
