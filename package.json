@@ -21,6 +21,7 @@
     "boundary-singlesource:check": "node scripts/check-boundary-singlesource.mjs",
     "cockpit-widgets:check": "node scripts/check-cockpit-widgets.mjs",
     "ui-smoke": "node scripts/ui-smoke.mjs",
+    "ui-smoke:ontogenesis": "node scripts/ui-smoke-ontogenesis.mjs",
     "provisional-honesty:check": "pnpm --filter datacore exec vitest run test/a18-provisional-closure.test.ts",
     "solver-sandbox:check": "pnpm --filter datacore exec vitest run test/a18-sandbox.test.ts",
     "e2e:realbackend": "bash scripts/run-l4-realbackend.sh",
