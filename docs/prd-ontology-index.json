@@ -1115,6 +1115,22 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-sandbox-ontogenesis-buildplan.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R12",
+        "R14",
+        "R16",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-11"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-scenario-launcher.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1167,6 +1183,25 @@
       ],
       "breakpoints": [
         "G-5"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-simulation-sandbox.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-11",
+        "G-9"
       ],
       "artifacts": [],
       "brokenArtifacts": []
@@ -1401,10 +1436,12 @@
       "PRD-unified-build-engine.md"
     ],
     "G-10": [
-      "PRD-rules-as-references.md"
+      "PRD-rules-as-references.md",
+      "PRD-simulation-sandbox.md"
     ],
     "G-9": [
-      "PRD-scenario-ontogenesis.md"
+      "PRD-scenario-ontogenesis.md",
+      "PRD-simulation-sandbox.md"
     ]
   },
   "orphanBreakpoints": [],
