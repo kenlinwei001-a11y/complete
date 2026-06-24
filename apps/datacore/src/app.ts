@@ -589,7 +589,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
   await app.register(cookie);
   // 经网关同源访问时无需 CORS；开放宽松 CORS 仅为直连端口的开发调试（credentials 模式）。
-  await app.register(cors, { origin: true, credentials: true });
+  // 显式列全方法：默认仅 GET/HEAD/POST → PATCH/PUT/DELETE 预检被拒（归域/行内编辑等直连端口失效）。
+  await app.register(cors, {
+    origin: true,
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  });
 
   // Unified error envelope { error: { code, message, requestId } }.
   app.setErrorHandler((err: unknown, req, reply) => {

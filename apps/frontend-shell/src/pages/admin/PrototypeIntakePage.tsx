@@ -69,12 +69,18 @@ export default function PrototypeIntakePage() {
               </li>
             ))}
           </ul>
-          {/* P3 闭环末步：把导入表按对账物化为既有对象类型 ObjectInstance */}
+          {/* P3 闭环末步：把导入表按对账物化为既有对象类型 ObjectInstance；或建模为新类型 */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
             <button className="btn" data-testid="intake-objectify" disabled={obj.isPending} onClick={() => obj.mutate(ir.connection.id)}>
               {obj.isPending ? zh.common.loading : zh.intake.objectifyBtn}
             </button>
             <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.objectifyHint}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+            <Link className="btn" data-testid="intake-model-new" to={`/admin/modeling?datasets=${ir.datasets.map((d) => d.id).join(",")}`}>
+              {zh.intake.modelNewBtn}
+            </Link>
+            <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.modelNewHint}</span>
           </div>
           {or && (
             <div style={{ marginTop: 8, fontSize: 12 }} data-testid="intake-objectified">

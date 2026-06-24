@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deriveModeling,
+  fetchBusinessDomains,
   fetchModelingCoverage,
   fetchModelingDrafts,
   fetchRawDatasets,
@@ -26,7 +27,10 @@ export default function ModelingPage() {
   const queryClient = useQueryClient();
   const { data: drafts } = useQuery({ queryKey: ["a", "modeling-drafts", {}], queryFn: fetchModelingDrafts });
   const [draftId, setDraftId] = useState<string | null>(null);
-  const [suggestOpen, setSuggestOpen] = useState(false);
+  // 原型 intake「建模为新类型」深链：?datasets=id1,id2 → 自动开新建草案弹窗并预选这些数据集。
+  const [params, setParams] = useSearchParams();
+  const preselect = (params.get("datasets") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const [suggestOpen, setSuggestOpen] = useState(preselect.length > 0);
   const draft = drafts?.find((d) => d.id === draftId) ?? drafts?.[0];
 
   return (
@@ -59,9 +63,11 @@ export default function ModelingPage() {
       )}
       {suggestOpen && (
         <SuggestModal
-          onClose={() => setSuggestOpen(false)}
+          initialSelected={preselect}
+          onClose={() => { setSuggestOpen(false); if (params.has("datasets")) { params.delete("datasets"); setParams(params, { replace: true }); } }}
           onCreated={async (newDraftId) => {
             setSuggestOpen(false);
+            if (params.has("datasets")) { params.delete("datasets"); setParams(params, { replace: true }); }
             await queryClient.invalidateQueries({ queryKey: ["a", "modeling-drafts"] });
             setDraftId(newDraftId);
           }}
@@ -72,9 +78,9 @@ export default function ModelingPage() {
 }
 
 /** 新建草案：选原始数据集 → POST /a/v1/modeling/suggest（A3 半自动建模入口） */
-function SuggestModal({ onClose, onCreated }: { onClose: () => void; onCreated: (draftId: string) => void }) {
+function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: () => void; onCreated: (draftId: string) => void; initialSelected?: string[] }) {
   const { data: rawDatasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(initialSelected);
 
   const suggestMut = useMutation({
     mutationFn: () => suggestModeling(selected),
@@ -147,6 +153,9 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
     queryKey: ["a", "modeling-coverage", draft.id, draft.suggestion.objectTypes.length],
     queryFn: () => fetchModelingCoverage(draft.id),
   });
+  // 新类型发布前必须人工归域（A4 治理门）；下拉来源 = 业务域注册表（R14 非内联）。
+  const { data: domainsData } = useQuery({ queryKey: ["a", "business-domains"], queryFn: fetchBusinessDomains });
+  const domains = domainsData?.domains ?? [];
 
   // PATCH 操作：即时调端点，乐观更新 + 失败回滚（PRD §7.6）
   const patchMut = useMutation({
@@ -254,6 +263,19 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
                   <strong>{ot.displayName}</strong>
                   <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{ot.typeKey}</span>
                   {ot.action === "MAP_TO_EXISTING" && <span className="badge green" data-testid="map-existing-badge">{t.mapToExisting} → {ot.existingTypeKey}</span>}
+                  {/* 新类型归域（发布门）：映射既有类型沿用既有域、无需此控件 */}
+                  {ot.action !== "MAP_TO_EXISTING" && (
+                    <select
+                      data-testid={`type-domain-${ot.typeKey}`}
+                      value={ot.domain && ot.domain !== "unassigned" ? ot.domain : ""}
+                      onChange={(e) => patchMut.mutate({ op: "setDomain", typeKey: ot.typeKey, domain: e.target.value })}
+                      style={{ fontSize: 11, padding: "1px 4px" }}
+                      title="发布前必须人工归域（A4 治理门）"
+                    >
+                      <option value="">{t.assignDomain}</option>
+                      {domains.map((d) => <option key={d.key} value={d.key}>{d.displayName}</option>)}
+                    </select>
+                  )}
                   <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>conf {(ot.confidence * 100).toFixed(0)}%</span>
                 </div>
                 {ot.properties.map((p) => (
@@ -404,6 +426,9 @@ export function applyOperationLocally(draft: ModelingDraftVM, op: Record<string,
       }
       break;
     }
+    case "setDomain":
+      if (ot) ot.domain = String(op.domain);
+      break;
     default:
       break;
   }

@@ -563,6 +563,8 @@ export const zh = {
     objectifiedTitle: (n: number) => `已物化为对象（${n} 项）`,
     objectifiedSkipped: "诚实跳过（无可确定映射）",
     objectifyEmpty: "无可确定映射的表——导入数据已在库可在线查看；如需物化为对象，先在建模页对账确认列映射。",
+    modelNewBtn: "建模为新类型（A3）",
+    modelNewHint: "原型表与既有本体不匹配时，到半自动建模页把它们建成新对象类型（确定性建模→审核→发布→物化）。",
   },
   boundary: {
     title: "边界册治理（单一来源 + 影响图）",
@@ -624,6 +626,7 @@ export const zh = {
       materialize: "对象化",
       materializeProgress: "对象化作业进度",
       patchFailed: "操作失败，已回滚",
+      assignDomain: "归域…",
     },
     permissions: {
       title: "权限策略",
