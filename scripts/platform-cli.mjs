@@ -99,6 +99,31 @@ async function cmdGrow(args) {
 }
 function argVal(args, flag) { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : undefined; }
 
+// ---- sim：推演沙盘（G-11·暗发 entitlement，关=404）；行业无关，state 为抽象 objectId→stateVar→number ----
+async function cmdSim(args) {
+  const [sub, ...rest] = args;
+  const SIM = `${DC}/a/v1/sim`;
+  const J = (b) => ({ method: "POST", headers: authHeader(), body: JSON.stringify(b) });
+  try {
+    if (sub === "init") {
+      const state = JSON.parse(argVal(rest, "--state") ?? "{}");
+      const r = await http(`${SIM}/sessions`, J({ baseSnapshot: state, scope: JSON.parse(argVal(rest, "--scope") ?? "{}") }));
+      console.log(C.bold(`会话 ${r.id}`) + ` status=${r.status} tick=${r.curTick}`); return;
+    }
+    const id = rest.find((a) => !a.startsWith("--"));
+    if (sub === "tick") { const r = await http(`${SIM}/sessions/${id}/tick`, J({ n: Number(argVal(rest, "--n") ?? 1) })); console.log(`tick=${r.curTick} state=${JSON.stringify(r.state)}`); return; }
+    if (sub === "act") { const r = await http(`${SIM}/sessions/${id}/act`, J({ objectId: argVal(rest, "--obj"), stateVar: argVal(rest, "--var"), value: Number(argVal(rest, "--val")) })); console.log(`act@tick${r.curTick} state=${JSON.stringify(r.state)}`); return; }
+    if (sub === "checkpoint") { const r = await http(`${SIM}/sessions/${id}/checkpoint`, J({ label: argVal(rest, "--label") })); console.log(C.bold(`检查点 ${r.id}`) + ` @tick${r.tick} "${r.label}"`); return; }
+    if (sub === "rollback") { const r = await http(`${SIM}/sessions/${id}/rollback`, J({ checkpointId: argVal(rest, "--cp") })); console.log(`已回滚 → tick=${r.curTick}`); return; }
+    if (sub === "branch") { const r = await http(`${SIM}/sessions/${id}/branch`, J({ checkpointId: argVal(rest, "--cp") })); console.log(C.bold(`分支会话 ${r.id}`) + ` parentCp=${r.parentCheckpointId}`); return; }
+    if (sub === "compare") { const r = await http(`${SIM}/compare?a=${argVal(rest, "--a")}&b=${argVal(rest, "--b")}`, { headers: authHeader() }); console.log(`A: ${r.a.length} ticks · B: ${r.b.length} ticks`); console.log(C.dim(`A末态=${JSON.stringify(r.a.at(-1)?.state ?? {})} · B末态=${JSON.stringify(r.b.at(-1)?.state ?? {})}`)); return; }
+    if (sub === "world") { const r = await http(`${SIM}/sessions/${id}/world`, { headers: authHeader() }); console.log(`tick=${r.tick} state=${JSON.stringify(r.state)}`); return; }
+    if (sub === "ls") { const r = await http(`${SIM}/sessions`, { headers: authHeader() }); for (const s of r.items ?? []) console.log(`  ${s.id} status=${s.status} tick=${s.curTick}`); return; }
+    if (sub === "rule") { const r = await http(`${SIM}/propagation-rules`, J(JSON.parse(rest.join(" ")))); console.log(C.bold(`传导规则 ${r.key}`) + ` ${r.sourceTypeKey}.${r.sourceStateVar} --${r.viaLinkKey} ${r.coefficient}--> ${r.targetTypeKey}.${r.targetStateVar}`); return; }
+    console.error('用法: sim init|tick|act|checkpoint|rollback|branch|compare|world|ls|rule …'); process.exit(1);
+  } catch (e) { console.error(C.red(`sim ${sub} 失败: ${e.message}`)); process.exit(1); }
+}
+
 // ---- ask：提交 → SSE 流 → 渲染 → 多轮澄清 -----------------------------------
 function renderBlocks(blocks = []) {
   for (const b of blocks) {
@@ -325,7 +350,7 @@ function help() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow };
+const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();

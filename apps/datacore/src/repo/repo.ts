@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, SchemaReconcileCandidate, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -302,7 +302,29 @@ export interface Repos {
   buildWorkflowRuns: Store<BuildWorkflowRun>;
   // Dogfooding P2：元本体访问策略（角色白名单,按租户;id=tenantId）
   metaAccessPolicies: Store<MetaAccessPolicyRecord>;
+  // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
+  sim: SimRepo;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;
+}
+
+/**
+ * 推演沙盘会话仓储（SPEC-sandbox-propagation-and-session §2.3）。
+ * 跨租户读一律 null（R2）；PropagationRule 只返 PUBLISHED。
+ */
+export interface SimRepo {
+  createSession(s: SimSession): Promise<void>;
+  putSession(s: SimSession): Promise<void>; // 状态/cur_tick 更新
+  getSession(tenantId: string, id: string): Promise<SimSession | null>;
+  listSessions(tenantId: string): Promise<SimSession[]>;
+  putTickState(ts: SimTickState): Promise<void>;
+  getTickState(tenantId: string, sessionId: string, tick: number): Promise<SimTickState | null>;
+  listTickStates(tenantId: string, sessionId: string): Promise<SimTickState[]>;
+  deleteTicksAfter(tenantId: string, sessionId: string, tick: number): Promise<void>; // rollback
+  createCheckpoint(cp: SimCheckpoint): Promise<void>;
+  getCheckpoint(tenantId: string, id: string): Promise<SimCheckpoint | null>;
+  listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
+  putPropagationRule(r: PropagationRule): Promise<void>;
+  listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
 }

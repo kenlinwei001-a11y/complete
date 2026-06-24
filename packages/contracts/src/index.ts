@@ -33,3 +33,4 @@ export * from "./spine.js";
 export * from "./bootstrap.js";
 
 export * from "./base-registry.js";
+export * from "./sim.js";

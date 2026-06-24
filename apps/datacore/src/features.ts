@@ -78,6 +78,15 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
+  // 推演沙盘（G-11·SPEC §4）：全部暗发 defaultOn:false——按租户开不同档（lite/Pro/旗舰），
+  // 关 = /a/v1/sim/* 该能力 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
+  { key: "sim.sandbox", name: "推演沙盘", level: "VIEW", defaultOn: false },
+  { key: "sim.propagation", name: "系数传导", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  { key: "sim.propagation.delay", name: "延迟传导", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
+  { key: "sim.checkpoint", name: "检查点/回滚", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
+  { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

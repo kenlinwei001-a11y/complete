@@ -26,11 +26,94 @@ import type {
   TsPointStore,
   UserStore,
   VectorHit,
+  SimRepo,
   VectorIndex,
 } from "./repo.js";
 import { cosineSimilarity } from "./memory.js";
+import type { PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
 
 const { Pool } = pg;
+
+/** 推演沙盘 pg 仓储（migration026·三具名列表 + 传导规则 doc-jsonb；R2 跨租户 null）。 */
+class PgSimRepo implements SimRepo {
+  constructor(private pool: pg.Pool) {}
+  private rowToSession(r: Record<string, unknown>): SimSession {
+    return {
+      id: r.id as string, tenantId: r.tenant_id as string,
+      baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
+      status: r.status as SimSession["status"], curTick: r.cur_tick as number,
+      parentCheckpointId: (r.parent_checkpoint_id as string | null) ?? null,
+      createdAt: (r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)),
+    };
+  }
+  async createSession(s: SimSession) { await this.putSession(s); }
+  async putSession(s: SimSession) {
+    await this.pool.query(
+      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7`,
+      [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId, s.createdAt],
+    );
+  }
+  async getSession(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_session WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return r.rows[0] ? this.rowToSession(r.rows[0]) : null;
+  }
+  async listSessions(tenantId: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_session WHERE tenant_id=$1 ORDER BY created_at`, [tenantId]);
+    return r.rows.map((row) => this.rowToSession(row));
+  }
+  async putTickState(ts: SimTickState) {
+    await this.pool.query(
+      `INSERT INTO sim_tick_state (session_id, tenant_id, tick, state, pending, trace) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (session_id, tick) DO UPDATE SET state=$4, pending=$5, trace=$6`,
+      [ts.sessionId, ts.tenantId, ts.tick, JSON.stringify(ts.state), JSON.stringify(ts.pending), ts.trace ? JSON.stringify(ts.trace) : null],
+    );
+  }
+  private rowToTick(r: Record<string, unknown>): SimTickState {
+    return {
+      sessionId: r.session_id as string, tenantId: r.tenant_id as string, tick: r.tick as number,
+      state: r.state as SimTickState["state"], pending: (r.pending as SimTickState["pending"]) ?? [],
+      trace: (r.trace as SimTickState["trace"]) ?? null,
+    };
+  }
+  async getTickState(tenantId: string, sessionId: string, tick: number) {
+    const r = await this.pool.query(`SELECT * FROM sim_tick_state WHERE tenant_id=$1 AND session_id=$2 AND tick=$3`, [tenantId, sessionId, tick]);
+    return r.rows[0] ? this.rowToTick(r.rows[0]) : null;
+  }
+  async listTickStates(tenantId: string, sessionId: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_tick_state WHERE tenant_id=$1 AND session_id=$2 ORDER BY tick`, [tenantId, sessionId]);
+    return r.rows.map((row) => this.rowToTick(row));
+  }
+  async deleteTicksAfter(tenantId: string, sessionId: string, tick: number) {
+    await this.pool.query(`DELETE FROM sim_tick_state WHERE tenant_id=$1 AND session_id=$2 AND tick>$3`, [tenantId, sessionId, tick]);
+  }
+  async createCheckpoint(cp: SimCheckpoint) {
+    await this.pool.query(`INSERT INTO sim_checkpoint (id, session_id, tenant_id, tick, label, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
+      [cp.id, cp.sessionId, cp.tenantId, cp.tick, cp.label, cp.createdAt]);
+  }
+  private rowToCp(r: Record<string, unknown>): SimCheckpoint {
+    return { id: r.id as string, sessionId: r.session_id as string, tenantId: r.tenant_id as string, tick: r.tick as number, label: r.label as string,
+      createdAt: (r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)) };
+  }
+  async getCheckpoint(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_checkpoint WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return r.rows[0] ? this.rowToCp(r.rows[0]) : null;
+  }
+  async listCheckpoints(tenantId: string, sessionId: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_checkpoint WHERE tenant_id=$1 AND session_id=$2 ORDER BY tick`, [tenantId, sessionId]);
+    return r.rows.map((row) => this.rowToCp(row));
+  }
+  async putPropagationRule(rule: PropagationRule) {
+    await this.pool.query(`INSERT INTO sim_propagation_rule (id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc=$3, updated_at=now()`,
+      [rule.id, rule.tenantId, JSON.stringify(rule)]);
+  }
+  async listPropagationRules(tenantId: string, publishedOnly = true) {
+    const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 ORDER BY doc->>'key'`, [tenantId]);
+    const all = r.rows.map((row) => row.doc as PropagationRule);
+    return publishedOnly ? all.filter((x) => x.status === "PUBLISHED") : all;
+  }
+}
 
 class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
   constructor(
@@ -603,6 +686,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     storyBuildRuns: new PgStore(pool, "story_build_runs"),
     buildWorkflowRuns: new PgStore(pool, "build_workflow_runs"),
     metaAccessPolicies: new PgStore(pool, "meta_access_policies"),
+    sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");
     },

@@ -42,6 +42,7 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
+import { PropagationRuleSchema, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -1124,6 +1125,117 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const policy = { id: newId("pol"), tenantId: c.tenantId, ...body };
     await repos.policies.put(policy);
     return reply.status(201).send(policy);
+  });
+
+  // ---- 推演沙盘（G-11 · 增量 1：会话状态机 · SPEC §2/§5 · 行业无关 jsonb，零业务常数 R14）----
+  // 全部经 entitlement 暗发（R3 先于 authz：关 = 404 FEATURE_NOT_FOUND）。tick 在增量 1 为恒等桩
+  // （状态原样推进 + 逐 tick 快照，确定性 R6）；增量 3 换真 propagateTick（系数×延迟）。act=模拟态不写真值（R4）。
+  const requireSim = async (c: AuthCtx, feature: string) => {
+    if (!(await features.enabled(c.tenantId, feature))) throw featureNotFound();
+  };
+  const simState = (deltaTarget: TickState): TickState => JSON.parse(JSON.stringify(deltaTarget)) as TickState;
+  const simCurrent = async (c: AuthCtx, s: SimSession): Promise<TickState> =>
+    (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? simState(s.baseSnapshot);
+
+  app.post("/a/v1/sim/sessions", async (req, reply) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
+    const base = b.baseSnapshot ?? {};
+    const s: SimSession = {
+      id: newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: b.scope ?? {},
+      status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
+      createdAt: new Date().toISOString(),
+    };
+    await repos.sim.createSession(s);
+    await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: 0, state: simState(base), pending: [], trace: null });
+    await outbox.emit(c.tenantId, "sim.session_created", { sessionId: s.id, status: s.status });
+    return reply.status(201).send(s);
+  });
+  const getSimOr404 = async (c: AuthCtx, id: string): Promise<SimSession> => {
+    const s = await repos.sim.getSession(c.tenantId, id);
+    if (!s) throw notFound("sim session not found");
+    return s;
+  };
+  app.get("/a/v1/sim/sessions", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    return { items: await repos.sim.listSessions(c.tenantId) };
+  });
+  app.get("/a/v1/sim/sessions/:id/world", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    return { tick: s.curTick, state: await simCurrent(c, s) };
+  });
+  app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    let state = await simCurrent(c, s);
+    for (let i = 0; i < n; i++) {
+      // 增量 1 恒等桩：状态原样进位（增量 3 换 propagateTick 做系数×延迟传导）。
+      state = simState(state); s.curTick += 1;
+      await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending: [], trace: null });
+    }
+    s.status = "RUNNING"; await repos.sim.putSession(s);
+    await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
+    return { curTick: s.curTick, state };
+  });
+  app.post("/a/v1/sim/sessions/:id/act", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const b = req.body as { objectId: string; stateVar: string; value: number };
+    const state = await simCurrent(c, s);
+    (state[b.objectId] ??= {})[b.stateVar] = Number(b.value); // 模拟态，不写真值（R4；采纳才出 ActionDraft）
+    await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending: [], trace: null });
+    return { curTick: s.curTick, state };
+  });
+  app.post("/a/v1/sim/sessions/:id/checkpoint", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.checkpoint");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const cp: SimCheckpoint = { id: newId("simcp"), sessionId: s.id, tenantId: c.tenantId, tick: s.curTick,
+      label: String((req.body as { label?: string })?.label ?? `tick${s.curTick}`), createdAt: new Date().toISOString() };
+    await repos.sim.createCheckpoint(cp);
+    await outbox.emit(c.tenantId, "sim.checkpoint_saved", { sessionId: s.id, checkpointId: cp.id, tick: cp.tick });
+    return reply.status(201).send(cp);
+  });
+  app.post("/a/v1/sim/sessions/:id/rollback", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.checkpoint");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const cp = await repos.sim.getCheckpoint(c.tenantId, String((req.body as { checkpointId?: string })?.checkpointId));
+    if (!cp || cp.sessionId !== s.id) throw notFound("checkpoint not found");
+    await repos.sim.deleteTicksAfter(c.tenantId, s.id, cp.tick);
+    s.curTick = cp.tick; await repos.sim.putSession(s);
+    return { curTick: s.curTick, state: await simCurrent(c, s) };
+  });
+  app.post("/a/v1/sim/sessions/:id/branch", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.branch");
+    const parent = await getSimOr404(c, (req.params as { id: string }).id);
+    const cp = await repos.sim.getCheckpoint(c.tenantId, String((req.body as { checkpointId?: string })?.checkpointId));
+    if (!cp || cp.sessionId !== parent.id) throw notFound("checkpoint not found");
+    const baseState = (await repos.sim.getTickState(c.tenantId, parent.id, cp.tick))?.state ?? {};
+    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+      status: "READY", curTick: 0, parentCheckpointId: cp.id, createdAt: new Date().toISOString() };
+    await repos.sim.createSession(child);
+    await repos.sim.putTickState({ sessionId: child.id, tenantId: c.tenantId, tick: 0, state: simState(baseState), pending: [], trace: null });
+    await outbox.emit(c.tenantId, "sim.branched", { parentSessionId: parent.id, childSessionId: child.id, checkpointId: cp.id });
+    return reply.status(201).send(child);
+  });
+  app.get("/a/v1/sim/compare", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.branch");
+    const q = req.query as { a?: string; b?: string };
+    const seriesOf = async (id?: string) => (id ? (await repos.sim.listTickStates(c.tenantId, id)).map((t) => ({ tick: t.tick, state: t.state })) : []);
+    return { a: await seriesOf(q.a), b: await seriesOf(q.b) };
+  });
+  app.get("/a/v1/sim/propagation-rules", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const published = (req.query as { published?: string })?.published !== "false";
+    return { items: await repos.sim.listPropagationRules(c.tenantId, published) };
+  });
+  app.post("/a/v1/sim/propagation-rules", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const r = PropagationRuleSchema.parse({ ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    await repos.sim.putPropagationRule(r);
+    return reply.status(201).send(r);
   });
 
   // ---- A4 ontology + objects --------------------------------------------------------
