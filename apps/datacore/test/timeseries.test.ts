@@ -3,7 +3,7 @@ import { makeApp, seedBattery, ADMIN, BASE_MANAGER } from "./helpers.js";
 import { round } from "../src/prng.js";
 
 const DAY_MS = 86400000;
-const T0 = Date.parse("2026-07-01T00:00:00Z");
+const T0 = Date.parse("2026-06-10T00:00:00Z");
 
 describe("A8 timeseries layer", () => {
   it("T1: 10k-row OEE timeseries sync lands entirely in ts_points — zero growth in objects and raw_datasets", async () => {

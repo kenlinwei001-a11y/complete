@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, ADMIN, type TestApp } from "./helpers.js";
 
 const DAY_MS = 86400000;
-const T0 = Date.parse("2026-07-01T00:00:00Z");
+const T0 = Date.parse("2026-06-10T00:00:00Z");
 
 async function pointsOf(t: TestApp, seriesKey: string, q?: { from?: string; to?: string }) {
   const series = (await t.repos.tsSeries.list("demo", (s) => s.seriesKey === seriesKey))[0]!;
@@ -59,7 +59,7 @@ describe("A8.6 synthetic timeseries + simulation clock", () => {
     expect(body1.report.topChangedSnapshots.length).toBeLessThanOrEqual(10);
     expect(Array.isArray(body1.report.alertsRaised)).toBe(true);
     // points for the simulated day exist; snapshots refreshed through agg → derivation
-    const dayPoints = await pointsOf(t, "util:line", { from: "2026-07-01T00:00:00.000Z", to: new Date(T0 + DAY_MS).toISOString() });
+    const dayPoints = await pointsOf(t, "util:line", { from: "2026-06-10T00:00:00.000Z", to: new Date(T0 + DAY_MS).toISOString() });
     expect(dayPoints.length).toBe(12);
     const clock1 = (await t.app.inject({ method: "GET", url: "/a/v1/synthetic/clock", headers: ADMIN })).json() as {
       currentTick: number;
@@ -67,7 +67,7 @@ describe("A8.6 synthetic timeseries + simulation clock", () => {
       reports: unknown[];
     };
     expect(clock1.currentTick).toBe(1);
-    expect(clock1.simulatedDate).toBe("2026-07-02");
+    expect(clock1.simulatedDate).toBe("2026-06-11");
     expect(clock1.reports).toHaveLength(1);
     const tickValues1 = dayPoints.map((p) => `${p.entityId}|${p.values.util}`);
     expect((await t.repos.outboxEvents.list("demo")).some((e) => e.event === "synthetic.tick_completed")).toBe(true);
@@ -84,7 +84,7 @@ describe("A8.6 synthetic timeseries + simulation clock", () => {
     const r2 = await tick(t, "1d");
     const body2 = r2.json() as { report: { newPoints: number } };
     expect(body2.report.newPoints).toBe(body1.report.newPoints);
-    const dayPoints2 = await pointsOf(t, "util:line", { from: "2026-07-01T00:00:00.000Z", to: new Date(T0 + DAY_MS).toISOString() });
+    const dayPoints2 = await pointsOf(t, "util:line", { from: "2026-06-10T00:00:00.000Z", to: new Date(T0 + DAY_MS).toISOString() });
     expect(dayPoints2.map((p) => `${p.entityId}|${p.values.util}`)).toEqual(tickValues1);
   });
 

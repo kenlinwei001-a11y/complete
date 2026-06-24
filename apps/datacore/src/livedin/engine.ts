@@ -30,7 +30,7 @@ import { livedMaintWindows, livedPoint, type LivedGenContext, type LivedIncident
  *   2026-Q1 持续收敛（参数校准生效）
  *   2026-Q2 检修季（各基地错峰检修，产出月度下凹与 MaintPlan 同月）→ 年末稳定
  *
- * 叙事互引（Y4/Y5 强制）：危机时间窗 2025-11-18 → 2025-12-01 同时出现在
+ * 叙事互引（Y4/Y5 强制）：危机时间窗 2025-10-28 → 2025-11-10 同时出现在
  * ① riskCases CASE-007（windowFrom/To）② 已执行 Action（act_lh_*007）
  * ③ C16 规则变更复盘原因（tags 到货危机复盘）④ mapeSeries 第 21–22 周 event；
  * 延期挽回订单的 rescue.note 反向引用 caseNo + actionId。
@@ -69,7 +69,7 @@ const CASE_SPECS: CaseSpec[] = [
   { n: 4, baseId: "meishan", factor: "换型损失", crossed: "2025-10-14" },
   { n: 5, baseId: "handan", factor: "物流时长", crossed: "2025-10-28" },
   { n: 6, baseId: "wuhan", factor: "良率波动", crossed: "2025-11-04" },
-  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-11-18", crisis: true },
+  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-10-28", crisis: true },
   { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20" },
   { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: "2026-03-10" },
   { n: 10, baseId: "luoyang", factor: "物流时长", crossed: "2026-04-21" },
@@ -226,7 +226,7 @@ export class LivedInEngine {
         replayTo,
         replayDays: REPLAY_DAYS,
       },
-      crisisWindow: { from: "2025-11-18", to: "2025-12-01" },
+      crisisWindow: { from: "2025-10-28", to: "2025-11-10" },
       mapeSeries: mapeSeriesFor(replayFrom),
       taskHistory: Object.entries(LIVED_IN_SCENE_HISTORY).flatMap(([scene, entries]) =>
         entries.map((e) => ({ scene, ...e })),
@@ -666,7 +666,7 @@ export class LivedInEngine {
       "C16",
       "齐套覆盖天数下限",
       "Shipment.coverageDays < 5",
-      "到货危机复盘（2025-11-18~2025-12-01）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
+      "到货危机复盘（2025-10-28~2025-11-10）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
     );
     const row = (
       key: string,
@@ -689,7 +689,7 @@ export class LivedInEngine {
         2,
         "v2.0",
         "Shipment.coverageDays < 5",
-        "到货危机复盘（2025-11-18~2025-12-01）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
+        "到货危机复盘（2025-10-28~2025-11-10）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
         "2025-12-03",
         "PUBLISHED",
         ["到货危机复盘"],
@@ -748,7 +748,7 @@ export class LivedInEngine {
         status: s.status,
         ...(applied ? { appliedFrom: s.cur, appliedAt: `${addDays(s.createdAt, 2)}T08:00:00.000Z` } : {}),
         createdAt: `${s.createdAt}T07:00:00.000Z`,
-        sliceKey: `capacity_forecast|all|${s.k % 2 === 0 ? "S192-LFP" : "4680-NCM"}`,
+        sliceKey: `capacity_forecast|all|${s.k % 2 === 0 ? "圆柱-LFP" : "4680-NCM"}`,
         paramRef: { scope: s.scope, path: s.path },
         method: s.method,
         evidence: {

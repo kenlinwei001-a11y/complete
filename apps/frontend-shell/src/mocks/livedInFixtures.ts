@@ -71,7 +71,7 @@ export const LIVED_RISK_CASES: HistoryBundle["riskCases"] = [
 ];
 
 const CUSTS = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源"];
-const MODELS = ["4680-NCM", "S192-LFP", "VDA-NCM"];
+const MODELS = ["4680-NCM", "圆柱-LFP", "VDA-NCM"];
 
 function deliveredOrders(): HistoryBundle["delivered"] {
   const out: HistoryBundle["delivered"] = [];

@@ -13,28 +13,57 @@ export const BASES: { baseId: string; name: string; kind: "动力" | "储能" | 
   BASE_REGISTRY.map((b) => ({ baseId: b.baseId, name: b.name, kind: b.kind, lon: b.lon, lat: b.lat }));
 
 // PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
+// PRD-IND-order-aggregate：HTML 6 型号（MODEL_DEF L1542），命名以原型为单一真相源。
 export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: string }[] = [
   { modelId: "4680-NCM", name: "4680 三元圆柱", chem: "NCM", pos: "动力" },
   { modelId: "4680-LFP", name: "4680 磷酸铁锂圆柱", chem: "LFP", pos: "动力+储能" },
-  { modelId: "L300-NCM", name: "L300 三元长电芯", chem: "NCM", pos: "动力" },
-  { modelId: "L148-LFP", name: "L148 铁锂方形", chem: "LFP", pos: "储能" },
-  { modelId: "P28-NCM", name: "P28 软包三元", chem: "NCM", pos: "动力" },
-  { modelId: "S192-LFP", name: "S192 储能电芯", chem: "LFP", pos: "储能" },
+  { modelId: "2170-NCM", name: "2170 三元圆柱", chem: "NCM", pos: "动力" },
+  { modelId: "方形-LFP", name: "方形 磷酸铁锂", chem: "LFP", pos: "储能" },
+  { modelId: "方形-NCM", name: "方形 三元", chem: "NCM", pos: "动力" },
+  { modelId: "圆柱-LFP", name: "圆柱 磷酸铁锂", chem: "LFP", pos: "储能" },
 ];
 
-// PRD-IND-model：型号→可产基地确定性映射（HTML MODEL_DEF 范式，非随机）——NCM 型号铺动力/混合基地、
-// LFP 储能型号铺储能/混合基地，混合型号铺混合基地。每型号 ≥2 基地（含 1 量产 + 末位认证中）。
+// PRD-IND-model / PRD-IND-risk §4.6：型号→可产基地确定性映射（HTML MODEL_DEF 范式，非随机）。
 const MODEL_BASE_MAP: Record<string, string[]> = {
   "4680-NCM": ["changzhou", "chengdu", "hefei"], // HTML 4680-NCM → 常州/成都/合肥
   "4680-LFP": ["changzhou", "zaozhuang"], // HTML 4680-LFP → 常州/枣庄（动力+储能）
-  "L300-NCM": ["xiamen", "wuhan", "zigong"], // NCM 动力线
-  "L148-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // LFP 储能（方形）
-  "P28-NCM": ["changzhou", "chengdu"], // NCM 动力（方形）
-  "S192-LFP": ["xinyang", "luoyang"], // LFP 储能（圆柱）
+  "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
+  "方形-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // HTML 方形-LFP → 江门/眉山/邯郸/枣庄
+  "方形-NCM": ["changzhou", "chengdu"], // HTML 方形-NCM → 常州/成都
+  "圆柱-LFP": ["xinyang", "luoyang"], // HTML 圆柱-LFP → 信阳/洛阳
 };
 
-const CUSTOMERS = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源", "晨风车业", "沧浪电网"];
+// PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
+const CUSTOMERS = ["整车厂A", "整车厂B", "整车厂C", "海外车企E", "商用车集团G", "储能集成商D", "储能集成商H", "电网公司F"];
 const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
+
+// PRD-IND-order-aggregate §4：HTML 24 单逐字（so/cust/model/qty[万套]/due/pri）。单一真相源=原型。
+const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
+  { so: "SO-3391", cust: "整车厂A", model: "4680-NCM", qty: 8, due: "2026-06-24", pri: "高" },
+  { so: "SO-3402", cust: "整车厂B", model: "4680-NCM", qty: 12, due: "2026-07-02", pri: "高" },
+  { so: "SO-3415", cust: "整车厂C", model: "4680-NCM", qty: 6, due: "2026-07-18", pri: "中" },
+  { so: "SO-3420", cust: "海外车企E", model: "4680-NCM", qty: 10, due: "2026-07-09", pri: "高" },
+  { so: "SO-3431", cust: "整车厂A", model: "2170-NCM", qty: 9, due: "2026-06-28", pri: "中" },
+  { so: "SO-3437", cust: "商用车集团G", model: "2170-NCM", qty: 7, due: "2026-07-14", pri: "中" },
+  { so: "SO-3445", cust: "整车厂B", model: "方形-NCM", qty: 11, due: "2026-07-05", pri: "高" },
+  { so: "SO-3452", cust: "储能集成商D", model: "方形-LFP", qty: 14, due: "2026-06-30", pri: "高" },
+  { so: "SO-3458", cust: "电网公司F", model: "方形-LFP", qty: 18, due: "2026-07-12", pri: "高" },
+  { so: "SO-3464", cust: "储能集成商H", model: "方形-LFP", qty: 9, due: "2026-07-25", pri: "中" },
+  { so: "SO-3470", cust: "电网公司F", model: "圆柱-LFP", qty: 6, due: "2026-07-08", pri: "中" },
+  { so: "SO-3476", cust: "储能集成商D", model: "4680-LFP", qty: 8, due: "2026-07-20", pri: "中" },
+  { so: "SO-3481", cust: "整车厂A", model: "4680-NCM", qty: 10, due: "2026-07-11", pri: "高" },
+  { so: "SO-3486", cust: "整车厂C", model: "方形-NCM", qty: 7, due: "2026-07-22", pri: "中" },
+  { so: "SO-3490", cust: "海外车企E", model: "4680-NCM", qty: 13, due: "2026-07-06", pri: "高" },
+  { so: "SO-3495", cust: "电网公司F", model: "方形-LFP", qty: 15, due: "2026-07-16", pri: "高" },
+  { so: "SO-3501", cust: "储能集成商H", model: "方形-LFP", qty: 11, due: "2026-07-28", pri: "中" },
+  { so: "SO-3506", cust: "商用车集团G", model: "2170-NCM", qty: 8, due: "2026-07-19", pri: "中" },
+  { so: "SO-3512", cust: "整车厂B", model: "方形-NCM", qty: 9, due: "2026-07-03", pri: "高" },
+  { so: "SO-3518", cust: "储能集成商D", model: "方形-LFP", qty: 13, due: "2026-07-24", pri: "中" },
+  { so: "SO-3523", cust: "整车厂A", model: "4680-NCM", qty: 11, due: "2026-07-13", pri: "高" },
+  { so: "SO-3529", cust: "电网公司F", model: "圆柱-LFP", qty: 7, due: "2026-07-10", pri: "中" },
+  { so: "SO-3534", cust: "海外车企E", model: "4680-NCM", qty: 12, due: "2026-07-27", pri: "高" },
+  { so: "SO-3540", cust: "商用车集团G", model: "2170-NCM", qty: 6, due: "2026-07-17", pri: "低" },
+];
 
 // ---------------------------------------------------------------------------
 // §S1 scenario-pack solver parameters (battery defaults — NEVER hardcoded in solver code)
@@ -51,7 +80,7 @@ export const BN_FACTORS = [
 ] as const;
 
 export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
-  forecastStart: "2026-07-01",
+  forecastStart: "2026-06-10",
   packCellCount: 96,
   certFactors: { 量产: 1.0, 认证中: 0.6 },
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
@@ -146,7 +175,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       comModels: ["L148-LFP"],
       ruleKeys: { DELIVERY: "C03", MARGIN: "C15", KIT: "C06/C16", CREDIT: "C13" },
       // PRD-IND-dash ORDER_OVR（L3222-3229）：6 单 override 逐字种子。按 so 命中即覆盖信用/毛利 + why。
-      // 活化于 HTML 24 单（SO-3391…SO-3540）；现出厂订单为 SO-100xx，命中需待订单集重播为 HTML 口径。
+      // 命中 HTML 24 单（SO-3470/3458/3518 压价 mAdj · SO-3437/3506/3540 信用 credit）→ 台账出现"未接/提价接"。
       overrides: {
         "SO-3470": { mAdj: -3.2, why: "电网公司F 框架价压价" },
         "SO-3437": { credit: true, why: "商用车集团G 在手应收 9.8 亿 + 新单 12.6 亿 > 信用额度 21 亿" },
@@ -186,7 +215,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     /** 12 个月季节权重（和为 12）：月目标 = 年需求 × w/12 */
     seasonal: [0.92, 0.94, 0.99, 1.01, 1.03, 1.04, 1.06, 1.08, 1.1, 1.04, 0.95, 0.84],
     /** 季度滚动修正（按距 forecastStart 的季度序号），dem = 季度目标 × (1 + corr) */
-    rollingCorrPct: [0.02, 0.08, -0.06, 0, 0, 0],
+    rollingCorrPct: [0.02, 0.08, -0.06, 0.05, 0, 0],
     /** 2027 年目标 = 2026 同季 × (1 + growthYoY) */
     growthYoY: 0.08,
     weeksPerQuarter: 13,
@@ -371,6 +400,7 @@ const orderProps: PropertyDef[] = [
   { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
   { propKey: "qty", dataType: "number", isPrimaryKey: false },
   { propKey: "due", dataType: "date", isPrimaryKey: false },
+  { propKey: "pri", dataType: "enum", isPrimaryKey: false }, // PRD-IND-order 优先级（高/中/低）
   { propKey: "bases", dataType: "json", isPrimaryKey: false },
   { propKey: "status", dataType: "enum", isPrimaryKey: false },
   // 约束扫描所需字段（C03/C08/C13/C29）—— 确定性派生，植入少量越线行让规则真触发。
@@ -736,7 +766,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
         contractFixtures: [
           {
             name: "首单全链可达 6 域",
-            args: { so: "SO-10001" },
+            args: { so: "SO-3391" },
             expect: {
               rootType: "Order",
               minNodes: 10,
@@ -804,7 +834,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
         contractFixtures: [
           {
             name: "首单全链可达 10 域（含财务+计划）",
-            args: { so: "SO-10001" },
+            args: { so: "SO-3391" },
             expect: {
               rootType: "Order",
               minNodes: 15,
@@ -844,7 +874,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
         contractFixtures: [
           {
             name: "首单最大广度可达 8 域 + 12 类节点",
-            args: { so: "SO-10001" },
+            args: { so: "SO-3391" },
             expect: {
               rootType: "Order",
               minNodes: 20,
@@ -1138,7 +1168,8 @@ function isoDate(ms: number): string {
  */
 export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): GeneratedBattery {
   const rng = mulberry32(seed);
-  const orderCount = scale === "S" ? 20 : scale === "M" ? 60 : scale === "XL" ? 10000 : 200;
+  // HTML 24 单为语义基底 → 订单数下限 24（小规模即 24 单；M/L/XL 用 rng 补足到目标）。
+  const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 60 : scale === "XL" ? 10000 : 200);
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
   const bases = BASES.map((b) => ({
@@ -1178,27 +1209,53 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     };
   });
 
-  const orders: Record<string, unknown>[] = [];
-  for (let i = 0; i < orderCount; i++) {
-    const model = models[Math.floor(rng() * models.length)] as (typeof models)[number];
-    const producible = model.bases;
-    const nBases = randInt(rng, 1, Math.min(2, producible.length));
-    const start = Math.floor(rng() * producible.length);
-    const orderBases = Array.from({ length: nBases }, (_, k) => producible[(start + k) % producible.length] as string).sort();
-    const dueDay = randInt(rng, 0, 180);
-    const due = new Date(Date.UTC(2026, 6, 1) + dueDay * 86400000).toISOString().slice(0, 10);
-    const so = `SO-${String(10001 + i).padStart(5, "0")}`;
-    // 约束扫描字段：从确定性量(i / hashString(so) / dueDay)派生，不动 rng 流（保持既有字节级一致）；
-    // 按固定步长植入越线行：C03 demandDelta>0.5、C08 outsourceRatio>0.2、C13 creditUsedRatio>1、C29 leadDays<3。
-    orders.push({
-      so,
-      cust: pick(rng, CUSTOMERS),
-      model: model.modelId,
-      qty: randInt(rng, 100, 2500),
-      due,
+  // PRD-IND-order-aggregate：HTML 24 单逐字录入（so/cust/model/qty/due/pri，SO-3391…SO-3540），
+  // 替代随机生成 → 订单全链/台账/根因 1:1。可产基地取该 model 的 MODEL_BASE_MAP（确定性）。
+  const modelById = new Map(models.map((m) => [m.modelId, m]));
+  const t0ms = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+  const orders: Record<string, unknown>[] = HTML_ORDERS.map((o, i) => {
+    const model = modelById.get(o.model);
+    const producible = model?.bases ?? [];
+    // 落单基地：取该型号可产基地前 1（确定性，按 so 选起点以分散）；多基地型号取相邻 1–2。
+    const startIdx = producible.length > 0 ? hashString(o.so) % producible.length : 0;
+    const nBases = producible.length >= 3 ? 2 : 1;
+    const orderBases = producible.length > 0
+      ? Array.from({ length: Math.min(nBases, producible.length) }, (_, k) => producible[(startIdx + k) % producible.length] as string).sort()
+      : [];
+    const dueDay = Math.max(0, Math.round((Date.parse(`${o.due}T00:00:00Z`) - t0ms) / 86400000));
+    return {
+      so: o.so,
+      cust: o.cust,
+      model: o.model,
+      qty: o.qty,
+      due: o.due,
+      pri: o.pri,
       bases: orderBases,
       status: "OPEN",
-      unitPrice: model.unitPrice, // copied for the derived value formula
+      unitPrice: model?.unitPrice ?? 600,
+      // 约束扫描字段：确定性派生（不依赖 rng），按固定步长植入越线行（C03/C08/C13/C29）。
+      demandDelta: i % 8 === 0 ? 0.6 : round((hashString(o.so) % 50) / 100, 2),
+      outsourceRatio: i % 6 === 0 ? 0.35 : round((hashString(`${o.so}o`) % 18) / 100, 2),
+      creditUsedRatio: i % 7 === 0 ? 1.15 : round(0.4 + (hashString(`${o.so}c`) % 50) / 100, 2),
+      leadDays: dueDay,
+    };
+  });
+
+  // 规模测试（M/L/XL）：HTML 24 单为语义基底，超出部分用 rng 生成补足到 orderCount（性能基线 XL=10000）。
+  for (let i = orders.length; i < orderCount; i++) {
+    const model = models[Math.floor(rng() * models.length)] as (typeof models)[number];
+    const producible = model.bases;
+    const nBases = randInt(rng, 1, Math.min(2, Math.max(1, producible.length)));
+    const start = producible.length > 0 ? Math.floor(rng() * producible.length) : 0;
+    const orderBases = producible.length > 0
+      ? Array.from({ length: nBases }, (_, k) => producible[(start + k) % producible.length] as string).sort()
+      : [];
+    const dueDay = randInt(rng, 0, 180);
+    const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
+    const so = `SO-9${String(i).padStart(5, "0")}`;
+    orders.push({
+      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 100, 2500), due,
+      pri: ["高", "中", "低"][i % 3], bases: orderBases, status: "OPEN", unitPrice: model.unitPrice,
       demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
       outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),
       creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
@@ -1206,7 +1263,6 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     });
   }
 
-  // ---- production topology (separate sub-streams keep base/model/order streams stable) --
   const rngTopo = mulberry32(seed ^ hashString("topology"));
   const lines: Record<string, unknown>[] = [];
   const processes: Record<string, unknown>[] = [];

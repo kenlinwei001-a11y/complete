@@ -12,7 +12,7 @@ describe("E6b · GenSpec 扩展：13 求解器所需对象数据（确定性 + �
     await seedBattery(t);
     expect((await query(t, "Material")).length).toBe(8);
     expect((await query(t, "Certification")).length).toBe(18);
-    expect((await query(t, "Customer")).length).toBe(6);
+    expect((await query(t, "Customer")).length).toBe(8);
     expect((await query(t, "CapexProject")).length).toBe(3);
     expect((await query(t, "PurchaseOrder")).length).toBe(30);
     expect((await query(t, "MaterialBatch")).length).toBe(24);

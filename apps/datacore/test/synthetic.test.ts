@@ -19,7 +19,7 @@ describe("A7 synthetic data", () => {
     const job1 = await runJob(t);
     expect(job1.status).toBe("SUCCEEDED");
     const report = job1.report!;
-    expect(report.rowCounts).toMatchObject({ Base: 12, Model: 6, Order: 20 });
+    expect(report.rowCounts).toMatchObject({ Base: 12, Model: 6, Order: 24 });
     for (const check of report.fkChecks) expect(check, check.check).toMatchObject({ passed: true });
     for (const spot of report.derivationSpotChecks) expect(spot.ok, `${spot.typeKey}.${spot.propKey}`).toBe(true);
     expect(report.views).toEqual([
@@ -196,11 +196,11 @@ describe("A7 synthetic data", () => {
     const byName = new Map(datasets.map((d) => [d.name, d]));
     for (const type of ["Base", "Model", "Order"]) expect(byName.get(type), `RawDataset ${type} 存在`).toBeTruthy();
     const orderDs = byName.get("Order")!;
-    expect(orderDs.rowCount).toBe(20);
+    expect(orderDs.rowCount).toBe(24);
     expect(orderDs.sourceConnId).toBe(synth!.id);
 
     const rowsRes = (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets/${orderDs.id}/rows`, headers: ADMIN })).json() as { rows: Record<string, unknown>[] };
-    expect(rowsRes.rows.length).toBe(20); // 原始行可在数据源页查看
+    expect(rowsRes.rows.length).toBe(24); // 原始行可在数据源页查看
 
     // ③ 对象 origin 可溯回原始表：rawDatasetId 指真实数据集 + 行序 + 合成连接
     const orders = await t.repos.objects.listByType("demo", "Order");

@@ -147,16 +147,16 @@ describe("S1 solvers", () => {
     const t = await makeApp();
     await seedBattery(t);
     const batches = [
-      { qty: 100, dueDate: "2026-07-10", address: "海外" }, // tight: wkEff = max(1, floor((9−14)/7)) = 1
-      { qty: 8, dueDate: "2026-07-24", address: "上海" }, // wkEff = floor((23−3)/7) = 2
-      { qty: 10, dueDate: "2026-08-21", address: "广州" }, // wkEff = floor((51−5)/7) = 6
+      { qty: 100, dueDate: "2026-07-10", address: "海外" }, // forecastStart 2026-06-10：dueDay 30，wkEff = floor((30−14)/7) = 2
+      { qty: 8, dueDate: "2026-07-24", address: "上海" }, // dueDay 44，wkEff = floor((44−3)/7) = 5
+      { qty: 10, dueDate: "2026-08-21", address: "广州" }, // dueDay 72，wkEff = floor((72−5)/7) = 9
     ];
     const out = await forecast(t, { modelId: "4680-NCM", batches, weeks: 8 });
     const rows = out.batchRows as { qty: number; dueDate: string; wkEff: number; cumDemand: number; cumP90: number; ok: boolean }[];
     expect(rows).toHaveLength(3);
-    expect(rows[0]!.wkEff).toBe(1);
-    expect(rows[1]!.wkEff).toBe(2);
-    expect(rows[2]!.wkEff).toBe(6);
+    expect(rows[0]!.wkEff).toBe(2);
+    expect(rows[1]!.wkEff).toBe(5);
+    expect(rows[2]!.wkEff).toBe(9);
     // cumulative demand check ordering (sorted by dueDate asc)
     expect(rows[0]!.cumDemand).toBe(100);
     expect(rows[1]!.cumDemand).toBe(108);

@@ -29,7 +29,7 @@ import type { CalibratableParamDef, SolverContext, SolverParamsShape } from "../
 import { round } from "../src/prng.js";
 
 const MODEL = "4680-NCM";
-const T0 = "2026-07-01";
+const T0 = "2026-06-10";
 const CFG = calibrationConfig(BATTERY_SOLVER_PARAMS as unknown as SolverParamsShape);
 
 const tick = (t: TestApp, advance: "1d" | "7d") =>
@@ -92,7 +92,7 @@ function syntheticPairs(
       staleParams: false,
       sliceKey: `capacity_forecast|${baseId ?? "all"}|${MODEL}`,
       weekOfWindow: week,
-      pairedAt: "2026-07-01T00:00:00.000Z",
+      pairedAt: "2026-06-10T00:00:00.000Z",
     });
   };
   for (let d = 0; d < opts.days; d++) {
@@ -393,8 +393,8 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
       basis: { windowFrom: "2026-06-01", windowTo: "2026-06-30", samples: 20 },
       trigger: "C12",
       status: "APPLIED",
-      createdAt: "2026-07-01T00:00:00.000Z",
-      appliedAt: "2026-07-01T08:00:00.000Z",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      appliedAt: "2026-06-10T08:00:00.000Z",
       appliedTick: 0,
       sliceKey: `capacity_forecast|all|${MODEL}`,
       paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" },
@@ -405,7 +405,7 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     await t.repos.calibrationHistory.put({
       id: "calh_demo_c8",
       tenantId: "demo",
-      at: "2026-07-01T08:00:00.000Z",
+      at: "2026-06-10T08:00:00.000Z",
       trigger: "C12",
       changedParams: [proposal.parameter],
       mapeBefore: 12,
@@ -432,9 +432,9 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
       staleParams: false,
       sliceKey: `capacity_forecast|all|${MODEL}`,
       weekOfWindow: 1,
-      pairedAt: "2026-07-15T00:00:00.000Z",
+      pairedAt: "2026-06-24T00:00:00.000Z",
     });
-    await seedPairs(t, [mk("2026-07-05", 0.09), mk("2026-07-10", 0.11)]);
+    await seedPairs(t, [mk("2026-06-14", 0.09), mk("2026-06-19", 0.11)]);
 
     // 未满 14 模拟日 → 不回写
     expect(await t.services.calibration.runMetaLoop("demo")).toBe(0);

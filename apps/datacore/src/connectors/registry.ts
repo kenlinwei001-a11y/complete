@@ -248,8 +248,8 @@ export const MOCK_ERP_DATA: Record<string, Record<string, unknown>[]> = {
     { po: "PO-1002", model: "4680-NCM", baseId: "hefei", qty: 800, status: "RELEASED", startDate: "2026-05-04" },
     { po: "PO-1003", model: "L300-LFP", baseId: "changzhou", qty: 1500, status: "PLANNED", startDate: "2026-05-10" },
     { po: "PO-1004", model: "L300-LFP", baseId: "yibin", qty: 950, status: "PLANNED", startDate: "2026-05-12" },
-    { po: "PO-1005", model: "P28-NCM", baseId: "xian", qty: 400, status: "COMPLETED", startDate: "2026-04-21" },
-    { po: "PO-1006", model: "S192-LFP", baseId: "qingdao", qty: 700, status: "RELEASED", startDate: "2026-05-15" },
+    { po: "PO-1005", model: "方形-NCM", baseId: "xian", qty: 400, status: "COMPLETED", startDate: "2026-04-21" },
+    { po: "PO-1006", model: "圆柱-LFP", baseId: "qingdao", qty: 700, status: "RELEASED", startDate: "2026-05-15" },
     { po: "PO-1007", model: "4680-NCM", baseId: "changzhou", qty: 600, status: "PLANNED", startDate: "2026-05-18" },
     { po: "PO-1008", model: "M50-NCA", baseId: "liyang", qty: 300, status: "RELEASED", startDate: "2026-05-20" },
   ],
@@ -271,10 +271,10 @@ export const MOCK_CRM_DATA: Record<string, Record<string, unknown>[]> = {
   ],
   sales_orders: [
     { so: "SO-90001", custId: "CUST-01", model: "4680-NCM", qty: 2000, due: "2026-07-01", amount: 9000000 },
-    { so: "SO-90002", custId: "CUST-02", model: "S192-LFP", qty: 1500, due: "2026-07-15", amount: 5200000 },
+    { so: "SO-90002", custId: "CUST-02", model: "圆柱-LFP", qty: 1500, due: "2026-07-15", amount: 5200000 },
     { so: "SO-90003", custId: "CUST-01", model: "L300-LFP", qty: 1800, due: "2026-08-01", amount: 6100000 },
     { so: "SO-90004", custId: "CUST-03", model: "4680-NCM", qty: 600, due: "2026-08-10", amount: 2700000 },
-    { so: "SO-90005", custId: "CUST-04", model: "P28-NCM", qty: 350, due: "2026-08-20", amount: 1600000 },
+    { so: "SO-90005", custId: "CUST-04", model: "方形-NCM", qty: 350, due: "2026-08-20", amount: 1600000 },
     { so: "SO-90006", custId: "CUST-02", model: "L300-LFP", qty: 900, due: "2026-09-01", amount: 3050000 },
   ],
 };

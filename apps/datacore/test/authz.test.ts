@@ -102,7 +102,7 @@ describe("A0 IAM + A6 permissions", () => {
       })
     ).json() as { data: { props: { bases: string[] } }[] };
 
-    expect(plannerRows.data).toHaveLength(20);
+    expect(plannerRows.data).toHaveLength(24);
     expect(bmRows.data.length).toBeGreaterThan(0);
     expect(bmRows.data.length).toBeLessThan(plannerRows.data.length);
     for (const row of bmRows.data) expect(row.props.bases).toContain("changzhou");

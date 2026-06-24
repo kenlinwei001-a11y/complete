@@ -605,7 +605,7 @@ export function affectedOrdersAggregate(
       const so = str(a.so);
       let e = byOrder.get(so);
       if (!e) {
-        e = { so, cust: str(a.cust), seg: segmentOf(c, str(a.model)).name, model: str(a.model), qty: num(a.qty), due: str(a.due), delay: num(a.delay), risks: [] };
+        e = { so, cust: str(a.cust), seg: segmentOf(c, str(a.cust)).name, model: str(a.model), qty: num(a.qty), due: str(a.due), delay: num(a.delay), risks: [] };
         byOrder.set(so, e);
       }
       e.delay = Math.max(e.delay, num(a.delay));
@@ -625,7 +625,7 @@ export function affectedOrdersAggregate(
   // PRD-IND-order-aggregate §4.5-D：明细按交期升序（最早到期最先看），交期相同按订单号。
   const rows = [...byOrder.values()].sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.so < b.so ? -1 : 1));
   const totalQty = round(rows.reduce((s, r) => s + r.qty, 0), 2);
-  const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.model).key] ?? 0.6), 0), 2);
+  const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.cust).key] ?? 0.6), 0), 2);
   const summary = { orderCount: rows.length, totalQty, custCount: new Set(rows.map((r) => r.cust)).size, revenue };
   return { summary, rows, problems: [...probByCat.values()] };
 }
@@ -642,11 +642,17 @@ const PROBLEM_TITLES: Record<string, string> = {
   CREDIT: "信用额度超限订单",
 };
 
-function segmentOf(c: SolverContext, modelId: string): { key: string; name: string; gm: number } {
-  const cfg = c.params.affected.problems;
-  const key = cfg.essModels.includes(modelId) ? "ess" : cfg.comModels.includes(modelId) ? "com" : "pas";
+// PRD-IND-order-aggregate §4.5-B：应用细分**按客户名**判定（原型口径，单一真相源）——
+// 含「商用车」→商用车(com) · 含「储能」或「电网」→储能(ess) · 否则乘用车(pas)。
+export function segOfCust(cust: string): "pas" | "ess" | "com" {
+  if (/商用车/.test(cust)) return "com";
+  if (/储能|电网/.test(cust)) return "ess";
+  return "pas";
+}
+function segmentOf(c: SolverContext, cust: string): { key: string; name: string; gm: number } {
+  const key = segOfCust(cust);
   const seg = c.segments.find((s) => s.props.segKey === key);
-  return { key, name: str(seg?.props.name, key), gm: num(seg?.props.gmRate, c.params.audit.segMargins[key as "pas" | "ess" | "com"]) };
+  return { key, name: str(seg?.props.name, key), gm: num(seg?.props.gmRate, c.params.audit.segMargins[key]) };
 }
 
 /**
@@ -701,13 +707,12 @@ function buildOrderProblems(
   for (const row of affected) {
     const so = str(row.so);
     const cust = str(row.cust);
-    const modelId = str(row.model);
     const dueDay = num(row.dueDay);
     const delay = num(row.delay);
     // PRD-IND-dash ORDER_OVR：逐单越线注入——override 信用超限 / 毛利下调（含 why），否则 hash 派生（R6）。
     const ov = cfg.overrides?.[so];
     const baseCredit = round(cfg.creditBase + (hashString(`${cust}|${so}`) % cfg.creditMod) / 100, 2);
-    const seg = segmentOf(c, modelId);
+    const seg = segmentOf(c, cust);
     const { creditRatio, gm: segGm } = applyOrderOverride(baseCredit, seg.gm, ov);
     const etaDay = num(shipment?.props.etaDay);
     const kitGapDays = shipment && (shipment.props.status === "DELAYED" || etaDay > dueDay) ? Math.max(1, etaDay - dueDay) : 0;

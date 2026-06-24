@@ -45,7 +45,7 @@ export const LIVED_IN_SCENE_HISTORY: Record<string, DialogHistoryEntry[]> = {
     { question: "上次采纳的是哪个方案？", answer: "2026-02 采纳「均衡」方案（Action 已执行），营收目标 +18%、毛利率底线 13.5% 保持不变。", trustLevel: "VERIFIED_WORKFLOW", date: "2026-02-20" },
   ],
   graph: [
-    { question: "哪个客户的订单延期风险最高", answer: "经验回看：蓝海储能集中在 S192-LFP 且交付窗口贴近检修月，历史延期 3 次居首（数字均有工具溯源）。", trustLevel: "AGENT_EXPLORATORY", date: "2026-05-19" },
+    { question: "哪个客户的订单延期风险最高", answer: "经验回看：蓝海储能集中在 圆柱-LFP 且交付窗口贴近检修月，历史延期 3 次居首（数字均有工具溯源）。", trustLevel: "AGENT_EXPLORATORY", date: "2026-05-19" },
     { question: "精度为什么越用越准？", answer: "校准闭环 52 周内将 MAPE 从 12% 收敛到 7%：6 次参数生效、2 次按方法学门槛拒绝（漂移闸门/回测不足）。", trustLevel: "AGENT_EXPLORATORY", date: "2026-06-12" },
   ],
   review: [

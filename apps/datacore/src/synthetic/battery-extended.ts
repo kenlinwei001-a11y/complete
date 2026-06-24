@@ -118,8 +118,8 @@ export function generateExtended(
     }
   }
 
-  // Customer：6 命名客户（含戏剧点）+ extraCustomers 工业级补充
-  const custNames = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源", "电网公司F", "商用车集团G"];
+  // Customer：PRD-IND-order-aggregate HTML 8 客户（与订单 cust 对齐，order_of_customer 可连）+ extraCustomers 工业级补充。
+  const custNames = ["整车厂A", "整车厂B", "整车厂C", "海外车企E", "商用车集团G", "储能集成商D", "储能集成商H", "电网公司F"];
   const customers = [
     ...custNames.map((name, ci) => ({
       custId: `cust_${ci}`, // ascii pk（避免中文名 sanitize 后 id 碰撞）

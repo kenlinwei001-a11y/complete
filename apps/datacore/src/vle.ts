@@ -40,7 +40,7 @@ export class VleService {
   ) {}
 
   /** GenSpec 已知真值：battery-manufacturing / scale=S 的核心类型行数（接入→对象化守恒下界）。 */
-  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: 12, Model: 6, Order: 20 };
+  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: 12, Model: 6, Order: 24 };
 
   async run(
     callerCtx: AuthCtx,

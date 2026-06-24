@@ -41,8 +41,8 @@ describe("cockpit P4 / order · 订单全链推演（L1 + L6）", () => {
   it("L6：同 so 字节一致", async () => {
     const t: TestApp = await makeApp();
     await seedBattery(t);
-    const a = (await invokeSolver(t, "order_fullchain", { so: "SO-10001" })).json();
-    const b = (await invokeSolver(t, "order_fullchain", { so: "SO-10001" })).json();
+    const a = (await invokeSolver(t, "order_fullchain", { so: "SO-3391" })).json();
+    const b = (await invokeSolver(t, "order_fullchain", { so: "SO-3391" })).json();
     expect(JSON.stringify((a as { data: unknown }).data)).toBe(JSON.stringify((b as { data: unknown }).data));
   });
 });

@@ -198,7 +198,7 @@ export const CALIBRATION_PROPOSALS: CalibrationProposal[] = CalibrationProposalS
   {
     id: "prop-2", parameter: "良率基线", objectRef: "工序-化成", currentValue: 0.975, proposedValue: 0.968,
     basis: { windowFrom: "2026-03-01", windowTo: "2026-04-30", samples: 1240 }, status: "APPLIED",
-    sliceKey: "capacity_forecast|all|L148-LFP", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
+    sliceKey: "capacity_forecast|all|方形-LFP", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
     evidence: { windowFrom: "2026-03-01", windowTo: "2026-04-30", nPairs: 1240, mapeBefore: 8.8, simulatedMapeAfter: 6.4, bias: -0.034, flags: [] },
     realizedMape: 6.9,
   },
@@ -211,13 +211,13 @@ export const CALIBRATION_PROPOSALS: CalibrationProposal[] = CalibrationProposalS
   {
     id: "prop-4", parameter: "P90 健康度系数", objectRef: "Solver:capacity_forecast", currentValue: 0.93, proposedValue: 0.92,
     basis: { windowFrom: "2026-05-01", windowTo: "2026-05-31", samples: 360 }, status: "REJECTED",
-    sliceKey: "capacity_forecast|all|S192-LFP", paramRef: { scope: "SOLVER_PARAMS", path: "health.normal" }, method: "QUANTILE",
+    sliceKey: "capacity_forecast|all|圆柱-LFP", paramRef: { scope: "SOLVER_PARAMS", path: "health.normal" }, method: "QUANTILE",
     evidence: { windowFrom: "2026-05-01", windowTo: "2026-05-31", nPairs: 360, mapeBefore: 7.2, simulatedMapeAfter: 7.2, bias: 0.01, flags: ["COVERAGE_BEFORE:0.83", "COVERAGE_AFTER:0.83", "NO_IMPROVEMENT"] },
   },
   {
-    id: "prop-5", parameter: "工序良率基线", objectRef: "Model:L300-NCM", currentValue: 0.96, proposedValue: 0.71,
+    id: "prop-5", parameter: "工序良率基线", objectRef: "Model:2170-NCM", currentValue: 0.96, proposedValue: 0.71,
     basis: { windowFrom: "2026-05-01", windowTo: "2026-05-31", samples: 280 }, status: "HOLD",
-    sliceKey: "capacity_forecast|all|L300-NCM", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
+    sliceKey: "capacity_forecast|all|2170-NCM", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
     evidence: { windowFrom: "2026-05-01", windowTo: "2026-05-31", nPairs: 280, mapeBefore: 11.3, simulatedMapeAfter: 11.3, bias: 0.21, flags: ["STRUCTURAL_SHIFT", "DRIFT:0.26"] },
   },
 ]);

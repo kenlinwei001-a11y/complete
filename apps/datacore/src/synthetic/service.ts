@@ -356,7 +356,7 @@ export class SyntheticService {
         proposedValue: 0.75,
         basis: { windowFrom: "2026-06-10", windowTo: "2026-06-30", samples: 96 },
         trigger: "手动",
-        sliceKey: "capacity_forecast|all|S192-LFP",
+        sliceKey: "capacity_forecast|all|圆柱-LFP",
         paramRef: { scope: "SOLVER_PARAMS" as const, path: "maintMult" },
         method: "EMA" as const,
         evidence: { windowFrom: "2026-06-10", windowTo: "2026-06-30", nPairs: 96, mapeBefore: 9.8, simulatedMapeAfter: 8.1, bias: -0.034, flags: [] },
@@ -537,7 +537,7 @@ export class SyntheticService {
       let idx = 0;
       for (const row of rows) {
         await this.repos.objects.put({
-          id: `obj_${type.toLowerCase()}_${String(row[pk])}`.replace(/[^\w-]/g, "_"),
+          id: `obj_${type.toLowerCase()}_${String(row[pk])}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           tenantId: ctx.tenantId,
           type,
           props: row,
@@ -590,10 +590,10 @@ export class SyntheticService {
     for (const m of g.models) {
       for (const baseId of m.bases as string[]) {
         await this.repos.links.put({
-          id: `lnk_mpa_${m.modelId}_${baseId}`.replace(/[^\w-]/g, "_"),
+          id: `lnk_mpa_${m.modelId}_${baseId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           tenantId: ctx.tenantId,
           type: "model_producible_at",
-          fromId: `obj_model_${m.modelId}`.replace(/[^\w-]/g, "_"),
+          fromId: `obj_model_${m.modelId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           toId: `obj_base_${baseId}`,
           origin,
         });
@@ -601,21 +601,21 @@ export class SyntheticService {
     }
     for (const o of g.orders) {
       await this.repos.links.put({
-        id: `lnk_ofm_${o.so}`.replace(/[^\w-]/g, "_"),
+        id: `lnk_ofm_${o.so}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         type: "order_for_model",
-        fromId: `obj_order_${o.so}`.replace(/[^\w-]/g, "_"),
-        toId: `obj_model_${o.model}`.replace(/[^\w-]/g, "_"),
+        fromId: `obj_order_${o.so}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        toId: `obj_model_${o.model}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         origin,
       });
     }
     for (const cl of g.certLinks) {
       await this.repos.links.put({
-        id: `lnk_cert_${cl.modelId}_${cl.lineId}`.replace(/[^\w-]/g, "_"),
+        id: `lnk_cert_${cl.modelId}_${cl.lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         type: "model_certified_on",
-        fromId: `obj_model_${cl.modelId}`.replace(/[^\w-]/g, "_"),
-        toId: `obj_line_${cl.lineId}`.replace(/[^\w-]/g, "_"),
+        fromId: `obj_model_${cl.modelId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        toId: `obj_line_${cl.lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         props: { status: cl.status, modelId: cl.modelId, baseId: cl.baseId },
         origin,
       });
@@ -623,10 +623,10 @@ export class SyntheticService {
 
     // 跨域切片 order_fulfillment_360 的链路边（product→factory→process→equip→supply→commercial）。
     // 全部由对象 FK 确定性派生（无随机/时钟），同 seed 字节级一致。
-    const oid = (type: string, pk: unknown) => `obj_${type.toLowerCase()}_${String(pk)}`.replace(/[^\w-]/g, "_");
+    const oid = (type: string, pk: unknown) => `obj_${type.toLowerCase()}_${String(pk)}`.replace(/[^\p{L}\p{N}_-]/gu, "_");
     const putLink = async (idRaw: string, type: string, fromId: string, toId: string, props?: Record<string, unknown>) => {
       await this.repos.links.put({
-        id: idRaw.replace(/[^\w-]/g, "_"),
+        id: idRaw.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         type,
         fromId,
@@ -781,7 +781,7 @@ export class SyntheticService {
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
     for (const s of [...batteryBuiltinSlices(), ...batteryCoverageSlices()]) {
       await this.repos.sliceSpecs.put({
-        id: `slice_${s.sliceKey}`.replace(/[^\w-]/g, "_"),
+        id: `slice_${s.sliceKey}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         sliceKey: s.sliceKey,
         version: s.version,
@@ -854,7 +854,7 @@ export class SyntheticService {
         const pkValue = String(props[pkProp]);
         pks.push(pkValue);
         await this.repos.objects.put({
-          id: `obj_${gen.typeKey.toLowerCase()}_${pkValue}`.replace(/[^\w-]/g, "_"),
+          id: `obj_${gen.typeKey.toLowerCase()}_${pkValue}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           tenantId: ctx.tenantId,
           type: gen.typeKey,
           props,

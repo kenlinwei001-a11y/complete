@@ -135,14 +135,14 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(res.statusCode).toBe(200);
     const body = QuarterlyResponseSchema.parse(res.json());
     expect(body.rows).toHaveLength(6);
-    expect(body.rows[0]!.q).toBe("2026-Q3"); // forecastStart 所在季度起
+    expect(body.rows[0]!.q).toBe("2026-Q2"); // forecastStart 所在季度起
     for (const r of body.rows) expect(round(r.dem - r.sup, 2)).toBe(r.gap);
     // 三档齐备
     expect(body.rows.some((r) => r.gap > 4)).toBe(true);
     expect(body.rows.some((r) => r.gap > 0 && r.gap <= 4)).toBe(true);
     expect(body.rows.some((r) => r.gap <= 0)).toBe(true);
-    // 需求与年度分解同源：dem(Q3) = PlanTarget(2026-Q3) × (1 + rollingCorrPct[0]=0.02)
-    const decomp = (await aop(t)).decomposition.find((d) => d.period === "2026-Q3")!;
+    // 需求与年度分解同源：dem(Q3) = PlanTarget(2026-Q2) × (1 + rollingCorrPct[0]=0.02)
+    const decomp = (await aop(t)).decomposition.find((d) => d.period === "2026-Q2")!;
     expect(body.rows[0]!.dem).toBe(round(decomp.value * 1.02, 2));
     // 事件注释：检修窗口/交付高峰（规则可点）/已决策增量
     expect(body.rows[0]!.events.some((e) => e.label.includes("检修窗口"))).toBe(true);
@@ -199,12 +199,14 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
         expect(chain.layers[1]!.label).toMatch(/规则 C/); // 判定层引用规则键
       }
     }
-    // KIT 类在 常州（到货晚于交期）出现；MARGIN 在 洛阳（储能细分毛利偏低）
-    expect(problems.some((p) => p.category === "KIT")).toBe(true);
-    const luoyang = (await invokeSolver(t, "affected_orders", { baseId: "luoyang", fromDay: 0, toDay: 180 })).json() as {
+    // PRD-IND-order-aggregate HTML 24 单：常州（动力/乘用车）出 DELIVERY/CREDIT；
+    // MARGIN 在储能基地（眉山，客户名含「储能/电网」→ess 细分毛利 13%<13.5% 底线）。
+    // 注：KIT（到货晚于交期）在 HTML 静态需求集无齐套危机时不触发；其逻辑由 simclock shipment_delay 场景覆盖。
+    expect(problems.some((p) => p.category === "DELIVERY")).toBe(true);
+    const meishan = (await invokeSolver(t, "affected_orders", { baseId: "meishan", fromDay: 0, toDay: 180 })).json() as {
       data: { problems: { category: string }[] };
     };
-    expect(luoyang.data.problems.some((p) => p.category === "MARGIN")).toBe(true);
+    expect(meishan.data.problems.some((p) => p.category === "MARGIN")).toBe(true);
   });
 
   it("F27/§7.20: mapping 行按数据域分组排序、血缘 fieldCount 正确、含求解器/Agent 行", async () => {

@@ -103,7 +103,7 @@ export class OpsScheduleService {
       const models = await this.repos.objects.listByType(tenantId, "Model");
       modelIds = models.map((m) => String(m.props.modelId ?? m.id)).sort();
     }
-    if (modelIds.length === 0) modelIds = ["S192-LFP"];
+    if (modelIds.length === 0) modelIds = ["圆柱-LFP"];
     // capacity_forecast 经 invoke → forecastSnapshots + calibrationForecasts（M11 配对样本）。
     const ctx = this.serviceCtx(tenantId);
     for (const modelId of modelIds) {

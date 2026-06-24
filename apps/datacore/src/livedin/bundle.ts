@@ -278,7 +278,7 @@ export class HistoryService {
       replayFrom: s.generatedFrom.replayFrom,
       replayTo: s.generatedFrom.replayTo,
       liveMonths: s.liveMonths,
-      liveRatio: round(s.liveMonths.length / 12, 4),
+      liveRatio: round(s.liveMonths.length / 13, 4),
     };
   }
 
@@ -346,6 +346,6 @@ export class HistoryService {
       state.liveMonths = [...state.liveMonths, month].sort();
       await this.repos.livedInStates.put(state);
     }
-    return { month, written, liveMonths: state.liveMonths, liveRatio: round(state.liveMonths.length / 12, 4) };
+    return { month, written, liveMonths: state.liveMonths, liveRatio: round(state.liveMonths.length / 13, 4) };
   }
 }

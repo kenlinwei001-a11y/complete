@@ -10,7 +10,7 @@ describe("model · 可产网络收敛（nonProducible + chem/pos 种子）", () 
     const t = await makeApp();
     await seedBattery(t);
     const models = await t.repos.objects.listByType("demo", "Model");
-    const m = models.find((x) => x.props.modelId === "S192-LFP")!;
+    const m = models.find((x) => x.props.modelId === "圆柱-LFP")!;
     expect(m.props.chem).toBe("LFP");
     expect(m.props.pos).toBe("储能");
   });
