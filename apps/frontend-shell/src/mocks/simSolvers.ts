@@ -598,6 +598,15 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     ...(whatIf ? { whatIf } : {}),
     weeks,
     qty,
+    // 规则即引用 P2：求解器真评估的规则闸门（mock 与真后端同步；C09 由 degraded 决定，
+    // C01/C02/C03 mock 无对应输入 → 诚实 NOT_APPLICABLE，与真后端 NOT_APPLICABLE 语义一致）。
+    evaluatedRules: [
+      { key: "C01", name: "产线设计产能上限", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", evidence: "该求解器输出未含此规则字段" },
+      { key: "C02", name: "化成/老化串并产能口径", severity: "WARN", outcome: "NOT_APPLICABLE", expression: "Process.parallelThroughput < Process.requiredThroughput", evidence: "该求解器输出未含此规则字段" },
+      { key: "C03", name: "产能上限约束", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Order.demandDelta > 0.5", evidence: "该求解器输出未含此规则字段" },
+      { key: "C09", name: "数据时延临时降级", severity: "WARN", outcome: degraded ? "WARN" : "PASS", expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 2", evidence: degraded ? "命中：关键数据源新鲜度延迟" : "通过：数据源新鲜" },
+    ],
+    ruleSetVersion: "rsv_mock",
   };
 }
 

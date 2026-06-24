@@ -12,6 +12,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
 import { RuleRef } from "@/components/RuleRef";
+import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
@@ -784,6 +785,8 @@ function StepBody({
       <div className={styles.okBar} style={{ borderColor: okColor, color: okColor }} data-testid="proj-verdict-bar">
         {mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`}
       </div>
+      {/* 规则即引用 P2：求解器真评估的规则闸门（PASS/WARN/BLOCK），改规则即改此处结论 */}
+      <EvaluatedRules rules={out.evaluatedRules} ruleSetVersion={out.ruleSetVersion} />
       {/* PRD-IND-model §4.4-⑥：缺口时显示对症对策表（acts，方案库，i18n 下发零写死），与下方 what-if 滑杆并存 */}
       {!out.ok && (
         <table className="cmp" style={{ marginTop: 10 }} data-testid="pm-acts-table">

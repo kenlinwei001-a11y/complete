@@ -45,6 +45,11 @@ export const CapacityForecastOutputSchema = z
     mainBn: z.string(),
     pendingCertList: z.array(z.string()),
     degradeNote: z.string().optional(), // C09 降级说明
+    // 规则即引用 P2：求解器透出真规则评估 + 规则集版本（关联规则显 PASS/WARN/BLOCK，改规则即改此处）。
+    evaluatedRules: z
+      .array(z.object({ key: z.string(), name: z.string(), severity: z.enum(["BLOCK", "WARN", "INFO"]), outcome: z.enum(["PASS", "WARN", "BLOCK", "NOT_APPLICABLE"]), expression: z.string(), evidence: z.string().optional() }))
+      .optional(),
+    ruleSetVersion: z.string().optional(),
   })
   .catchall(z.unknown());
 export type CapacityForecastOutput = z.infer<typeof CapacityForecastOutputSchema>;
