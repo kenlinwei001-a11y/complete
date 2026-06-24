@@ -88,6 +88,108 @@ export async function nearestEntities(
   return scored.slice(0, topK);
 }
 
+/**
+ * BP-6 相对时间归结（确定性兜底层，diagnostic ledger D6）：LLM/分类器把"这天/今天/下周/本月"
+ * 等相对时间引用原样抽进 date 槽 → 不满足 `^YYYY-MM-DD` 校验 → 归结失败、时间槽空（S03「这天」→ null）。
+ *
+ * 本函数在 LLM 抽取之后兜底：把相对引用归结成视图上下文里的**具体日期**（YYYY-MM-DD）。
+ * 锚点优先级（只用现有 SessionContext 字段，绝不新增 contract 字段，R6 确定性纯函数）：
+ *   1) context.timeWindow.from —— 视图焦点时间窗起点（= 焦点日/当前推演视角日）
+ *   2) context.filters 里任一日期形态值（day/date/asOf/focusDate…，取首个 YYYY-MM-DD）
+ * 拿不到锚点 → 返回 undefined（不编造"今天=wall clock"，保持确定性、不静默伪造）。
+ *
+ * 归结规则（锚点记为 D，ISO 周一为周首，全 UTC）：
+ *   这天/今天/today/当天/本日 → D
+ *   明天/tomorrow → D+1；昨天/yesterday → D-1
+ *   下周/next week → D 所在周 +7 的周一；本周 → D 所在周周一；上周 → -7 周一
+ *   本月/this month → D 所在月 1 号；下月 → 次月 1 号；上月 → 上月 1 号
+ */
+const REL_TIME_PATTERNS: { re: RegExp; kind: "day" | "tomorrow" | "yesterday" | "thisWeek" | "nextWeek" | "lastWeek" | "thisMonth" | "nextMonth" | "lastMonth" }[] = [
+  { re: /^(这天|今天|当天|本日|today|这一天|此日)$/i, kind: "day" },
+  { re: /^(明天|次日|tomorrow)$/i, kind: "tomorrow" },
+  { re: /^(昨天|前一天|yesterday)$/i, kind: "yesterday" },
+  { re: /^(本周|这周|这一周|this\s*week)$/i, kind: "thisWeek" },
+  { re: /^(下周|下一周|next\s*week)$/i, kind: "nextWeek" },
+  { re: /^(上周|上一周|last\s*week)$/i, kind: "lastWeek" },
+  { re: /^(本月|这个月|当月|this\s*month)$/i, kind: "thisMonth" },
+  { re: /^(下月|下个月|next\s*month)$/i, kind: "nextMonth" },
+  { re: /^(上月|上个月|last\s*month)$/i, kind: "lastMonth" },
+];
+
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/** 从 SessionContext 取归结锚点日（YYYY-MM-DD）：timeWindow.from 优先，否则 filters 里首个日期形态值。 */
+export function resolveAnchorDate(context: SessionContext): string | undefined {
+  const tw = context.timeWindow?.from;
+  if (typeof tw === "string" && ISO_DATE.test(tw)) return tw.slice(0, 10);
+  const filters = context.filters ?? {};
+  // 确定性：先查常见日期键名，再按键字典序兜底扫描；任一值是 YYYY-MM-DD 即采用。
+  const preferredKeys = ["day", "date", "asOf", "asof", "focusDate", "focusDay", "currentDay", "anchorDate"];
+  for (const k of preferredKeys) {
+    const v = filters[k];
+    if (typeof v === "string" && ISO_DATE.test(v)) return v.slice(0, 10);
+  }
+  for (const k of Object.keys(filters).sort()) {
+    const v = filters[k];
+    if (typeof v === "string" && ISO_DATE.test(v)) return v.slice(0, 10);
+  }
+  return undefined;
+}
+
+function fmtUtcDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+/** ISO 周一为周首：返回给定日期所在周的周一（UTC，确定性）。 */
+function mondayOf(d: Date): Date {
+  const out = new Date(d.getTime());
+  const dow = out.getUTCDay(); // 0=Sun..6=Sat
+  const deltaToMonday = dow === 0 ? -6 : 1 - dow;
+  out.setUTCDate(out.getUTCDate() + deltaToMonday);
+  return out;
+}
+
+/** 把相对时间引用归结为具体日期；非相对引用/无锚点 → undefined。纯函数、UTC、确定性（R6）。 */
+export function resolveRelativeDate(raw: unknown, context: SessionContext): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const s = raw.trim();
+  if (!s || ISO_DATE.test(s)) return undefined; // 已是具体日期，无需归结
+  const hit = REL_TIME_PATTERNS.find((p) => p.re.test(s));
+  if (!hit) return undefined;
+  const anchorStr = resolveAnchorDate(context);
+  if (!anchorStr) return undefined;
+  const anchor = new Date(`${anchorStr}T00:00:00.000Z`);
+  if (Number.isNaN(anchor.getTime())) return undefined;
+  const d = new Date(anchor.getTime());
+  switch (hit.kind) {
+    case "day":
+      return fmtUtcDate(d);
+    case "tomorrow":
+      d.setUTCDate(d.getUTCDate() + 1);
+      return fmtUtcDate(d);
+    case "yesterday":
+      d.setUTCDate(d.getUTCDate() - 1);
+      return fmtUtcDate(d);
+    case "thisWeek":
+      return fmtUtcDate(mondayOf(d));
+    case "nextWeek": {
+      const m = mondayOf(d);
+      m.setUTCDate(m.getUTCDate() + 7);
+      return fmtUtcDate(m);
+    }
+    case "lastWeek": {
+      const m = mondayOf(d);
+      m.setUTCDate(m.getUTCDate() - 7);
+      return fmtUtcDate(m);
+    }
+    case "thisMonth":
+      return fmtUtcDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
+    case "nextMonth":
+      return fmtUtcDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)));
+    case "lastMonth":
+      return fmtUtcDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)));
+  }
+}
+
 /** Validate + normalize a single slot value per its SlotDef (QOS-PRD §5.2.1 ①). */
 export async function validateSlotValue(
   slot: SlotDef,
@@ -194,6 +296,18 @@ export async function fillSlots(
       slots[slot.name] = fromExtraction.value;
       continue;
     }
+    // ①.b BP-6 相对时间归结兜底：LLM 把"这天/今天/下周/本月"抽进 date 槽但不可解析 →
+    // 用视图上下文锚点归结成具体日期（确定性，仅 date 槽，仅在直校验失败时）。修 S03「这天」→ null。
+    if (slot.type === "date") {
+      const resolved = resolveRelativeDate(extracted[slot.name], context);
+      if (resolved !== undefined) {
+        const revalidated = await validateSlotValue(slot, resolved, ontology, ctx);
+        if (revalidated.ok) {
+          slots[slot.name] = revalidated.value;
+          continue;
+        }
+      }
+    }
     // A5：用户给的实体被判域外（objectRef 裸串解析不到）→ 取最近邻候选，记信号。
     if (fromExtraction.outOfDomain && slot.type === "objectRef") {
       const value = String(extracted[slot.name]);
@@ -207,6 +321,17 @@ export async function fillSlots(
       if (fromPreset.ok) {
         slots[slot.name] = fromPreset.value;
         continue;
+      }
+      // BP-6：场景卡/预置也可能带相对时间引用（如 day:"这天"）→ 同样确定性归结后再校验。
+      if (slot.type === "date") {
+        const resolvedPreset = resolveRelativeDate(preset, context);
+        if (resolvedPreset !== undefined) {
+          const reval = await validateSlotValue(slot, resolvedPreset, ontology, ctx);
+          if (reval.ok) {
+            slots[slot.name] = reval.value;
+            continue;
+          }
+        }
       }
     }
     // ② defaultFrom evaluated against the session context

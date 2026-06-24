@@ -401,7 +401,7 @@ function cellOf(v: unknown): string | number | null {
  * 不手写任何业务数字或文案——前端看到的每个数都是求解器算出的真值，字段名即来源（R13 派生投影）。
  * 标量→KPI、对象→展开一层 KPI、首个对象数组→表、ruleRefs→规则依据文本。确定性按 Object.keys 顺序。
  */
-function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] {
+export function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] {
   const data =
     payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)
       ? (payload as Record<string, unknown>).data
@@ -411,12 +411,17 @@ function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] 
   let table: AnswerBlock | null = null;
   const ruleRefs: string[] = [];
   const moreArrays: string[] = [];
+  // BP-7 空结果显性化（diagnostic ledger D7，闭 G-1 沉默空数组面）：记录值为**空数组**的字段
+  // （combo/rows/over… 全空）与已产出的**有意义标量数**，据此区分"真无解"vs"数据未接齐"，不静默吞空数组。
+  const emptyArrayKeys: string[] = [];
+  let scalarCount = 0; // 有意义标量（number/boolean/非空 string/对象内标量），= 求解器确实算出了上下文
   for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
     if (k === "snapshotVersion") continue;
     if (k === "ruleRefs" && Array.isArray(v)) { ruleRefs.push(...v.map(String)); continue; }
-    if (typeof v === "number") kpis.push({ type: "kpi", label: k, value: fmtNum(v), provId });
-    else if (typeof v === "boolean") kpis.push({ type: "kpi", label: k, value: v ? "是" : "否", provId });
-    else if (typeof v === "string") { if (v) kpis.push({ type: "kpi", label: k, value: v, provId }); }
+    if (typeof v === "number") { kpis.push({ type: "kpi", label: k, value: fmtNum(v), provId }); scalarCount++; }
+    else if (typeof v === "boolean") { kpis.push({ type: "kpi", label: k, value: v ? "是" : "否", provId }); scalarCount++; }
+    else if (typeof v === "string") { if (v) { kpis.push({ type: "kpi", label: k, value: v, provId }); scalarCount++; } }
+    else if (Array.isArray(v) && v.length === 0) { emptyArrayKeys.push(k); }
     else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === "object") {
       if (!table) {
         const cols = Object.keys(v[0] as Record<string, unknown>);
@@ -426,8 +431,8 @@ function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] 
       kpis.push({ type: "kpi", label: k, value: v.map(String).slice(0, 8).join("、"), provId });
     } else if (v && typeof v === "object") {
       for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
-        if (typeof v2 === "number") kpis.push({ type: "kpi", label: `${k}.${k2}`, value: fmtNum(v2), provId });
-        else if (typeof v2 === "string" && v2) kpis.push({ type: "kpi", label: `${k}.${k2}`, value: v2, provId });
+        if (typeof v2 === "number") { kpis.push({ type: "kpi", label: `${k}.${k2}`, value: fmtNum(v2), provId }); scalarCount++; }
+        else if (typeof v2 === "string" && v2) { kpis.push({ type: "kpi", label: `${k}.${k2}`, value: v2, provId }); scalarCount++; }
       }
     }
   }
@@ -435,6 +440,34 @@ function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] 
   if (table) out.push(table);
   if (ruleRefs.length > 0) out.push({ type: "text", markdown: `依据规则：${ruleRefs.join("、")} ⟦ref:0⟧` });
   if (moreArrays.length > 0) out.push({ type: "text", markdown: `另有明细：${moreArrays.join("、")}（详见步骤溯源）。` });
+  // BP-7：求解器产出空数组字段（combo/rows/over… 全空）→ 显性化"为何为空 + 下一步建议"，
+  // 区分两类（不静默吞空数组）：
+  //   ·【真无解】关键标量在（求解器跑了且有上下文，如 residualGap/quarter），仅结果数组为空
+  //      → 求解器确认在当前约束下没有可行项（非数据缺失）。建议放宽约束/加杠杆/扩窗口。
+  //   ·【数据未接齐】连关键标量也缺（输出近乎空壳）→ 上游切片/口径未接齐，求解器无料可算。
+  //      建议先接入/补齐数据再重跑（触发合成≠伪造，走管线读回真实值）。
+  // ⚠ 不以 `!table` 为门：求解器常同时含**无关的非空数组**（如 evaluatedRules）投成表，
+  //   但用户问的**主结果数组**（combo/rows）仍为空 —— 那张表不能掩盖空结果，否则又退回静默吞空。
+  if (emptyArrayKeys.length > 0) {
+    const empties = emptyArrayKeys.join("、");
+    if (scalarCount > 0) {
+      out.push({
+        type: "text",
+        markdown:
+          `**结果为空（真无解）**：求解器已运行并给出上述口径，但「${empties}」为空——` +
+          `在当前输入与约束下没有可行项可纳入。\n下一步建议：放宽约束/补充可选杠杆（如新增对策、提升可释放量）或扩大时间窗后重跑；` +
+          `若残余缺口（如 residualGap）>0 表示缺口未被任何对策覆盖。`,
+      });
+    } else {
+      out.push({
+        type: "text",
+        markdown:
+          `**结果为空（数据未接齐）**：「${empties}」为空，且本次未产出关键标量——` +
+          `多为上游数据/切片未接齐，求解器无可计算的输入。\n下一步建议：先核对并接入该场景所需的对象切片与口径` +
+          `（必要时触发合成补数据，走管线读回真实值，非伪造）后重跑。`,
+      });
+    }
+  }
   if (out.length === 0) out.push({ type: "text", markdown: "求解器本次无输出数据（可能输入为空或全部满足约束）。" });
   return out;
 }
