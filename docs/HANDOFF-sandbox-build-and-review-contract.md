@@ -3,6 +3,13 @@
 > 这是什么：把推演沙盘的全部设计/纪律串成**一张可交接、可评审的契约**。**实现 agent**：从本文开工，照增量顺序做、守红线、过门、附 FDE 证据，逐增量提 PR。**架构评审 agent（我）**：按本文第 5 节逐 PR 评审，对照红线/门/本体回写/不分叉，通过才合。
 > 分支：只推 `claude/vigilant-knuth-b1nmxn`；模型标识不进提交物。
 > 北极星：用户从 CLI 或 UI（任意行业租户）开沙盘 → tick → 传导 → 干预 → 分支 → 对比，全程配置驱动、确定性、可回退；历史不变量一条不破，每条有门兜底。
+>
+> ── **交接前最新状态（2026-06-24 · 必读）** ──
+> 1. **增量 1/3 已有可照抄工程规格** `SPEC-sandbox-propagation-and-session.md`（传导核纯函数签名+算法+确定性/时间信任纪律 · SimSession 三表 DDL[pg+memory] · 系数=`PropagationRule` 结构+`rule.params` 引用 · **按租户 entitlement 暗发不同模块 lite/Pro/旗舰** · 端点+CLI · **两行业验收证 R14**）。
+> 2. **传导核模型已被竞品成品逐字验证**：竞品 UI 原文 `supplier.delay_risk -- SUPPLIES.risk_propagation 0.85 --> factory.supply_risk` = SPEC 的 `PropagationRule{sourceStateVar,viaLinkKey,coefficient,targetStateVar}`（对照见 `GROUNDING-MAP §F.2`）。
+> 3. **G-10「规则即引用」P1 已落**（commit 261f29e，另一 agent）：`RuleEntry` 现有 `params`，沙盘传导**系数可直接引用 `rule.params`**（真正兑现"改规则即改推演"）；`pnpm gates` 已由 10 增至 **11**（加 `rule-closure:check`）。**别再把系数写成内联常数**。
+> 4. **不需要时序图数据库**：图小（千级节点）、tick 是会话内模拟时间、传导是内存确定性计算（SPEC §0）。
+> 5. **竞品全文×逐图对照已沉淀** `GROUNDING-MAP §F`（L0-L4/L4三元组/局部就绪/信任雷达/范围预检 的精确锚点 + 对本 HANDOFF 的审计：**增量序/红线/复用边界不需推翻**，五处细化 + 两处缺口已就地补）。
 
 ---
 
@@ -14,7 +21,7 @@
 2. `PRD-simulation-sandbox.md` — 做什么（全栈设计，多行业可配）
 3. `PRD-sandbox-ontogenesis-buildplan.md` — 怎么从一句场景倒序长出（数据闭环）
 4. `RUNBOOK-sandbox-implementation.md` — **怎么一步步做 / 前后端怎么测 / 怎么回退（执行主依据）**
-   - `SPEC-sandbox-propagation-and-session.md` — **增量 1/3 的可照抄工程规格**：传导核纯函数签名+算法+确定性纪律、SimSession 三表 DDL(pg+memory)、系数=`PropagationRule` 一等字段(非 rule.params)、**按租户 entitlement 暗发不同模块(lite/Pro/旗舰)**、端点+CLI、两行业验收(证 R14 零行业锁死)
+   - `SPEC-sandbox-propagation-and-session.md` — **增量 1/3 的可照抄工程规格**：传导核纯函数签名+算法+确定性/时间信任纪律、SimSession 三表 DDL(pg+memory)、`PropagationRule` 承载 source/target/link 结构 + 系数/延迟**引用 `rule.params`**(G-10 P1 已可用)、**按租户 entitlement 暗发不同模块(lite/Pro/旗舰)**、端点+CLI、两行业验收(证 R14 零行业锁死)
 5. `ARCH-sandbox-landing-discipline.md` — 落地纪律（本体先行→CLI→surface→引擎→UI）
 6. `ARCH-global-ia-consolidation.md` — 全局 IA 合并（推演收敛/就绪folded/单源深链）
 7. `ARCH-sandbox-reconciliation.md` — **与在建工作对齐（必读，防分叉）**
@@ -43,10 +50,10 @@
 
 | 增量 | 内容 | 完成定义（DoD，FDE 亲手） |
 |---|---|---|
-| **0 本体先行** | 把 SimSession/PropagationRule/SimCertification/SandboxViewConfig/`sim.*`事件/G-11/**R17/十红线** 写进 `SYSTEM-ONTOLOGY.md §2/§3/§4/§5/§7/§8` | `ontology:check` 绿；本体含全部新对象/链路/事件/R17/G-11 |
-| **1 CLI 操作先行** | `/a/v1/sim/*`(init/tick/act/checkpoint/rollback/branch/compare)+迁移026+OPERATION_CATALOG+`platform sim`；entitlement `sim.sandbox` 暗发 | **CLI 无头跑通一遍沙盘**（贴输出）；确定性重跑字节一致；`sim:check`+`cli-parity:check` 绿 |
-| **2 就绪认证=surface闭包** | L0-L4/三件套门/三维 从既有 closure 投影（不写新逻辑） | 完整本体认证 L4；缺件诚实 FAIL；`sim-readiness:check`+`chain:check` 绿 |
-| **3 传导引擎** | 系数+延迟沿 link（系数=`rule.params`，接规则即引用）；扩 `recompute` | 传导跑通；改系数即改结果；`propagation:check`+`debattery:check` 绿 |
+| **0 本体先行** | 把 SimSession/**SimTickState**/SimCheckpoint/PropagationRule/SimCertification/SandboxViewConfig/`sim.*`事件/G-11/**R17/十红线** 写进 `SYSTEM-ONTOLOGY.md §2/§3/§4/§5/§7/§8`（会话/传导 4 对象 schema 见 `SPEC §1-2/§7`；认证/视图配置对象见 `RUNBOOK 增量0`） | `ontology:check`+`prd:check` 绿；本体含全部新对象/链路/事件/R17/G-11 |
+| **1 CLI 操作先行** | `/a/v1/sim/*`(init/tick/act/checkpoint/rollback/branch/compare)+迁移026+OPERATION_CATALOG+`platform sim`；entitlement **分模块暗发**(`sim.sandbox`/`.propagation[.delay]`/`.checkpoint`/`.branch`/`.certification`/`.commander`，按租户给不同档)。**三表DDL+repo+端点+CLI 详 `SPEC §2/§4/§5`** | **CLI 无头跑通一遍沙盘**（贴输出）；确定性重跑字节一致；`sim:check`(新建·并入gates)+`cli-parity:check` 绿 |
+| **2 就绪认证=surface闭包** | L0-L4 / **L4三元组(Fanout/Writeback/Observability → 对齐我方 closure 维)** / 三维(结构/知识/行为) / **全局⊕局部(逐对象)就绪** / **范围预检(世界完整度+将进入状态变量清单)** 从既有 closure 投影（不写新逻辑；竞品精确锚点 `GROUNDING-MAP §F.1`） | 完整本体认证 L4；缺件诚实 FAIL；`sim-readiness:check`(新建·并入gates)+`chain:check` 绿 |
+| **3 传导引擎** | 新写纯函数 `propagateTick`（系数+延迟沿 link；**系数引用 `rule.params`**—G-10 P1 已可用；复用 recompute 链路导航+risk.ts 衰减+延迟队列）；**Temporal Trust：tick 只读 ≤t 态**。详 `SPEC §1` | 传导跑通；改系数即改结果；**两行业验收**；`propagation:check`(新建·并入gates)+`debattery:check` 绿 |
 | **4 UI（最后·暗发）** | 5屏(数据管道/逐实体/就绪/初始化/沙盘)，配置驱动；复用 RadarChart/PropagationTimeline；ModelingPage additive | 起前端+真后端**亲手点一遍**(截图)；**两行业各跑通**(证R14)；`ui-smoke:sandbox`+`debattery:check` 绿 |
 
 增量 2、3 可在 1 后**并行**；4（UI）**必须最后**且暗发。**倒序发育起步**（增量1 init 读的世界态经连接器/合成/runStory 长出，禁硬编码 seed，详 `PRD-sandbox-ontogenesis-buildplan`）。
@@ -107,6 +114,6 @@ RL1 本体先行 · RL2 暗发 · RL3 单一来源(不出双份) · RL4 走正�
 
 ## 8. 起步第一步（建议立刻做）
 
-**增量 0（零代码、最先、立得住）**：把 **R17 + 十红线 + SimSession/传导/sim事件/G-11** 写进 `docs/SYSTEM-ONTOLOGY.md §2/§3/§4/§5/§7/§8` → 跑 `ontology:check` 绿 → 提 PR。这一步立"宪法 + 图纸"，后面每增量才有据可依、有门可守。我评审这第一个 PR 时，重点核对 R17/红线/G-11 入本体且 `ontology:check` 绿。
+**增量 0（零代码、最先、立得住）**：把 **R17 + 十红线 + 新对象(`SimSession`/`SimTickState`/`SimCheckpoint`/`PropagationRule`/`SimCertification`/`SandboxViewConfig`) + `sim.*` 事件(`sim.session_created`/`sim.tick_completed`/`sim.checkpoint_saved`/`sim.branched`) + 新门(`sim:check`/`sim-readiness:check`/`propagation:check`；**单源门复用现存 `boundary-singlesource:check` 勿新造**；R17 配套 `decision-page:check`) + G-11** 写进 `docs/SYSTEM-ONTOLOGY.md §2/§3/§4/§5/§7/§8`（**链路/`sim.*`事件/门 + 会话传导对象照抄 `SPEC §7 本体引用与影响`；认证/视图配置对象见 `RUNBOOK 增量0`**）→ 跑 `ontology:check` + `prd:check` 绿（**`prd:check` 当前因两份沙盘 PRD 悬空引用 G-11 而红，此步入 G-11 即转绿**）→ 提 PR。这一步立"宪法 + 图纸"，后面每增量才有据可依、有门可守。我评审这第一个 PR 时，重点核对 R17/红线/G-11 入本体且 `ontology:check`+`prd:check` 绿。
 
 > 契约生效：实现 agent 从增量 0 起逐增量提 PR；我逐 PR 按第 5 节评审。**有疑义先问，不猜；越红线先停，不硬上。**
