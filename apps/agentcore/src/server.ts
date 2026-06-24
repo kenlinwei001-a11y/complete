@@ -59,7 +59,8 @@ import { runGrowthLoop } from "./growth/loop.js";
 import { decideDataGap, groundingVocab } from "./growth/data-boundary.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
-import { SCENARIO_CATALOG, seedScenarios } from "./scenarios-catalog.js";
+import { seedScenarios } from "./scenarios-catalog.js";
+import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
 
 /** PRD-IND-story §4.3：从 task.error/path 确定性派生缺口（本 base 用 task.error 归类断点 → projectTrace 标 gap 节点）。 */
@@ -1773,6 +1774,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // 场景启动器 P2：Scenario 升一等持久化对象（repo 单一来源；出厂 SCENARIO_CATALOG 懒播种）。
   // 首次访问某租户若仓储为空 → 幂等播种出厂 20 场景，保证目录始终完整（含自助新增场景）。
   const ensureScenarios = async (tenantId: string): Promise<Scenario[]> => {
+    // 多租户：任意租户首次访问场景即懒补齐「场景包 + 意图 + 计划」（per-id 幂等，与卡解耦的根因修复）
+    // —— 没有这步，非 demo 租户有卡但无意图 → classify 候选空 → OUT_OF_CATALOG。
+    await ensureScenarioPackageSeed(deps.repos, tenantId);
     const existing = await deps.repos.scenarios.listByTenant(tenantId);
     const keys = new Set(existing.map((s) => s.scenarioKey));
     let added = false;

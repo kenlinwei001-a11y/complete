@@ -85,10 +85,15 @@ export const SEED_ORDERS: SeedOrder[] = Array.from({ length: 20 }, (_, i) => {
   };
 });
 
-export function seedScenarioPackage(now = new Date().toISOString()): ScenarioPackage {
+/** 场景包 id 按租户唯一（demo 保持原 id 向后兼容；其它租户后缀 __<tenant>）—— packages.get(id) 全局键，故须唯一。 */
+export function scenarioPackageIdFor(tenantId: string): string {
+  return tenantId === SEED_TENANT ? SEED_PACKAGE_ID : `${SEED_PACKAGE_ID}__${tenantId}`;
+}
+
+export function seedScenarioPackage(tenantId = SEED_TENANT, now = new Date().toISOString()): ScenarioPackage {
   return {
-    id: SEED_PACKAGE_ID,
-    tenantId: SEED_TENANT,
+    id: scenarioPackageIdFor(tenantId),
+    tenantId,
     name: "battery-manufacturing",
     views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"],
     toolWhitelist: BUILTIN_TOOLS.map((t) => t.name),
@@ -97,15 +102,17 @@ export function seedScenarioPackage(now = new Date().toISOString()): ScenarioPac
   };
 }
 
-/** Published intents ×4 with plans (QOS-PRD §7.6). */
-export function seedIntentsAndPlans(now = new Date().toISOString()): {
+/** Published intents ×4 with plans (QOS-PRD §7.6). 按租户参数化（demo 保持原 id；其它租户 packageId/id 后缀 __<tenant>）。 */
+export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toISOString()): {
   intents: IntentDefinition[];
   plans: ExecutionPlan[];
 } {
+  const pkgId = scenarioPackageIdFor(tenantId);
+  const sfx = tenantId === SEED_TENANT ? "" : `__${tenantId}`;
   const plans: ExecutionPlan[] = [
     {
-      id: "plan_affected_orders_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `plan_affected_orders_v1${sfx}`,
+      packageId: pkgId,
       key: "affected_orders",
       version: 1,
       status: "PUBLISHED",
@@ -143,8 +150,8 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
       ],
     },
     {
-      id: "plan_capacity_feasibility_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `plan_capacity_feasibility_v1${sfx}`,
+      packageId: pkgId,
       key: "capacity_feasibility",
       version: 1,
       status: "PUBLISHED",
@@ -190,8 +197,8 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
       ],
     },
     {
-      id: "plan_risk_root_cause_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `plan_risk_root_cause_v1${sfx}`,
+      packageId: pkgId,
       key: "risk_root_cause",
       version: 1,
       status: "PUBLISHED",
@@ -217,8 +224,8 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
       ],
     },
     {
-      id: "plan_adopt_mitigation_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `plan_adopt_mitigation_v1${sfx}`,
+      packageId: pkgId,
       key: "adopt_mitigation",
       version: 1,
       status: "PUBLISHED",
@@ -263,8 +270,8 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
 
   const intents: IntentDefinition[] = [
     {
-      id: "int_affected_orders_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `int_affected_orders_v1${sfx}`,
+      packageId: pkgId,
       key: "affected_orders",
       version: 1,
       status: "PUBLISHED",
@@ -288,15 +295,15 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
           description: "时间窗（可选）",
         },
       ],
-      planId: "plan_affected_orders_v1",
+      planId: `plan_affected_orders_v1${sfx}`,
       riskLevel: "COMPUTE",
       owner: "seed",
       createdAt: now,
       updatedAt: now,
     },
     {
-      id: "int_capacity_feasibility_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `int_capacity_feasibility_v1${sfx}`,
+      packageId: pkgId,
       key: "capacity_feasibility",
       version: 1,
       status: "PUBLISHED",
@@ -309,15 +316,15 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
         { name: "demandDelta", type: "number", required: true, description: "需求增量比例（0.2 表示 +20%）" },
         { name: "weeks", type: "number", required: false, description: "周数，缺省 6" },
       ],
-      planId: "plan_capacity_feasibility_v1",
+      planId: `plan_capacity_feasibility_v1${sfx}`,
       riskLevel: "COMPUTE",
       owner: "seed",
       createdAt: now,
       updatedAt: now,
     },
     {
-      id: "int_risk_root_cause_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `int_risk_root_cause_v1${sfx}`,
+      packageId: pkgId,
       key: "risk_root_cause",
       version: 1,
       status: "PUBLISHED",
@@ -335,15 +342,15 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
         },
         { name: "day", type: "date", required: false, description: "日期（可选）" },
       ],
-      planId: "plan_risk_root_cause_v1",
+      planId: `plan_risk_root_cause_v1${sfx}`,
       riskLevel: "READ",
       owner: "seed",
       createdAt: now,
       updatedAt: now,
     },
     {
-      id: "int_adopt_mitigation_v1",
-      packageId: SEED_PACKAGE_ID,
+      id: `int_adopt_mitigation_v1${sfx}`,
+      packageId: pkgId,
       key: "adopt_mitigation",
       version: 1,
       status: "PUBLISHED",
@@ -367,7 +374,7 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
           description: "处置方案名",
         },
       ],
-      planId: "plan_adopt_mitigation_v1",
+      planId: `plan_adopt_mitigation_v1${sfx}`,
       riskLevel: "ACTION_DRAFT",
       owner: "seed",
       createdAt: now,
@@ -388,7 +395,7 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
   };
   for (const card of SCENARIO_CATALOG) {
     if (seededKeys.has(card.intentKey)) continue; // 已有的 4 个跳过
-    const planId = `plan_${card.intentKey}_v1`;
+    const planId = `plan_${card.intentKey}_v1${sfx}`;
     const solverArgs = (ARG_OVERRIDE[card.solver] ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
     // sop_balance 是工作流非注册求解器（走 /a/v1/sop/*）→ 该场景计划只渲染、不 invoke_solver。
     const steps: ExecutionPlan["steps"] =
@@ -398,10 +405,10 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
             { id: "s1", type: "invoke_solver", params: { solverKey: card.solver, args: solverArgs } },
             { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: `${card.name}已完成推演（求解器 ${card.solver}）。结果详见步骤溯源；如需解读请切换到 Agent 路径提问。` }] } },
           ];
-    plans.push({ id: planId, packageId: SEED_PACKAGE_ID, key: card.intentKey, version: 1, status: "PUBLISHED", steps });
+    plans.push({ id: planId, packageId: pkgId, key: card.intentKey, version: 1, status: "PUBLISHED", steps });
     intents.push({
-      id: `int_${card.intentKey}_v1`,
-      packageId: SEED_PACKAGE_ID,
+      id: `int_${card.intentKey}_v1${sfx}`,
+      packageId: pkgId,
       key: card.intentKey,
       version: 1,
       status: "PUBLISHED",
@@ -419,6 +426,28 @@ export function seedIntentsAndPlans(now = new Date().toISOString()): {
   }
 
   return { intents, plans };
+}
+
+/** 仓储子集（解耦 main.ts/server.ts，避免循环依赖）。 */
+interface ScenarioSeedRepos {
+  packages: { get(id: string): Promise<unknown>; insert(p: ScenarioPackage): Promise<void> };
+  plans: { get(id: string): Promise<unknown>; insert(p: ExecutionPlan): Promise<void> };
+  intents: { get(id: string): Promise<unknown>; insert(i: IntentDefinition): Promise<void> };
+}
+
+/**
+ * 按租户幂等播种「场景包 + 意图 + 计划」（per-id 守卫，多租户）。
+ * 修复根因：原 main.ts 把意图/计划播种包在「包存在」守卫内 → 包已存在则意图永不再种 →
+ * classify 候选空 → OUT_OF_CATALOG → 探索兜底。改为与 workflows/skills/agents 一致的按各自 id 幂等，
+ * 并覆盖任意租户（不只 demo）：包 id/意图/计划 id 按租户唯一（demo 保持原 id 向后兼容）。
+ * main.ts（boot 时 demo）与 server.ts ensureScenarios（任意租户懒触发）共用此函数。
+ */
+export async function ensureScenarioPackageSeed(repos: ScenarioSeedRepos, tenantId = SEED_TENANT): Promise<void> {
+  const pkg = seedScenarioPackage(tenantId);
+  if (!(await repos.packages.get(pkg.id))) await repos.packages.insert(pkg);
+  const { intents, plans } = seedIntentsAndPlans(tenantId);
+  for (const p of plans) if (!(await repos.plans.get(p.id))) await repos.plans.insert(p);
+  for (const i of intents) if (!(await repos.intents.get(i.id))) await repos.intents.insert(i);
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import { sdkMcpConnectorFactory } from "./mcp/client.js";
 import { McpRuntime } from "./mcp/runtime.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
-import { distillExperienceCases, seedIntentsAndPlans, seedRegistry, seedSceneEntries, seedScenarioPackage } from "./mocks/seed.js";
+import { distillExperienceCases, ensureScenarioPackageSeed, SEED_TENANT, seedRegistry, seedSceneEntries } from "./mocks/seed.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
@@ -19,14 +19,10 @@ async function main(): Promise<void> {
   const repos = await createRepos(config);
   const metrics = new Metrics();
 
-  // Seed the battery-manufacturing package when missing (QOS-PRD §7.6).
-  const seedPkg = seedScenarioPackage();
-  if (!(await repos.packages.get(seedPkg.id))) {
-    await repos.packages.insert(seedPkg);
-    const { intents, plans } = seedIntentsAndPlans();
-    for (const p of plans) await repos.plans.insert(p);
-    for (const i of intents) await repos.intents.insert(i);
-  }
+  // 场景包 + 意图 + 计划：按各自 id 幂等播种（与 workflows/skills/agents 一致），不再挂「包存在」守卫
+  // —— 修复 PG 真部署「包已存在则意图永不再种 → classify 候选空 → OUT_OF_CATALOG → 探索兜底」。
+  // boot 时种 demo；任意其它租户由 server.ts ensureScenarios 懒触发同一函数补齐（多租户）。
+  await ensureScenarioPackageSeed(repos, SEED_TENANT);
   // 真连部署批次：B5 场景入口 + B1/B2/B4 演示注册表（缺失才播种，幂等）。
   const { agents, workflows, skills } = seedRegistry();
   for (const wf of workflows) if (!(await repos.workflows.get(wf.id))) await repos.workflows.insert(wf);
