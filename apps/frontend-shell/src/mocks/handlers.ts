@@ -385,6 +385,15 @@ export const handlers = [
     }),
   ),
 
+  // P3 闭环末步（mock）：按对账把导入表物化为既有对象类型 ObjectInstance。
+  http.post("*/a/v1/databuilder/intake/objectify", () =>
+    HttpResponse.json({
+      jobId: "job_proto_mock",
+      materialized: [{ dataset: "ORDER_DATA", type: "Order", count: 1 }],
+      skipped: [{ dataset: "BASE_DATA", reason: "多义/未命中，待人确认（不猜）" }],
+    }),
+  ),
+
   // ---- Entitlement ----
   http.get("*/a/v1/features/registry", () => HttpResponse.json(FEATURE_REGISTRY)),
 

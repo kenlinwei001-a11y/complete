@@ -98,6 +98,20 @@ export const IntakeImportRequestSchema = z.object({
 });
 export type IntakeImportRequest = z.infer<typeof IntakeImportRequestSchema>;
 
+/** P3 闭环末步请求：把某连接（原型导入）的 RawDataset 按对账物化为 ObjectInstance。 */
+export const IntakeObjectifyRequestSchema = z.object({
+  connId: z.string().min(1),
+});
+export type IntakeObjectifyRequest = z.infer<typeof IntakeObjectifyRequestSchema>;
+
+/** P3 闭环末步响应：物化进既有对象库的明细（每表→类型→条数）+ 诚实跳过项。 */
+export const IntakeObjectifyResponseSchema = z.object({
+  jobId: z.string(),
+  materialized: z.array(z.object({ dataset: z.string(), type: z.string(), count: z.number().int() })),
+  skipped: z.array(z.object({ dataset: z.string(), reason: z.string() })),
+});
+export type IntakeObjectifyResponse = z.infer<typeof IntakeObjectifyResponseSchema>;
+
 /** P3 导入响应：落库的连接 + 各 RawDataset 概要（id/name/rowCount/列）。 */
 export const IntakeImportResponseSchema = z.object({
   connection: z.object({ id: z.string(), name: z.string(), category: z.string().optional() }).passthrough(),

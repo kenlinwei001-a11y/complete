@@ -7,6 +7,7 @@ import type { Metrics } from "./metrics.js";
 import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
 import { invalidState, notFound, validationError } from "./errors.js";
+import { reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 
 const SUGGEST_SYSTEM = `你是本体建模助手。输入为数据集字段画像、跨数据集外键候选与该租户已发布的本体摘要。
 原则：已有本体能映射的不新建（MAP_TO_EXISTING 优先，existingTypeKey 必填）；每个建议必须可追溯到具体字段（sourceField）；
@@ -545,5 +546,86 @@ export class ModelingService {
       rowCounts,
     });
     return { jobId, created, quarantined };
+  }
+
+  /**
+   * prototype-intake P3 闭环末步：把已落库的 RawDataset（如原型导入表）按**确定性 schema 对账**
+   * 物化进既有对象库——不新建/不发布类型（"对账后的列" → 既有 type.field），让导入数据成为可查询
+   * ObjectInstance（/admin/object-types 计数可见），喂派生/求解器。映射不上的列/无映射的表诚实跳过并报告。
+   * 幂等：按 (datasetId, targetType, origin=MATERIALIZED) 清旧再写（R6 同输入同结果）。
+   */
+  async materializeFromReconcile(
+    ctx: AuthCtx,
+    rawDatasetIds: string[],
+  ): Promise<{ jobId: string; materialized: { dataset: string; type: string; count: number }[]; skipped: { dataset: string; reason: string }[] }> {
+    const jobId = newId("job");
+    const startedAt = new Date().toISOString();
+    const types = await this.ontology.listTypes(ctx);
+    const existing: ExistingTypeField[] = types.flatMap((t) => t.properties.map((p) => ({ typeKey: t.key, propKey: p.propKey })));
+    const pkByType = new Map(types.map((t) => [t.key, t.properties.find((p) => p.isPrimaryKey)?.propKey]));
+    const materialized: { dataset: string; type: string; count: number }[] = [];
+    const skipped: { dataset: string; reason: string }[] = [];
+    const rowCounts: Record<string, number> = {};
+
+    for (const dsId of rawDatasetIds) {
+      const ds = await this.repos.rawDatasets.get(ctx.tenantId, dsId);
+      if (!ds) { skipped.push({ dataset: dsId, reason: "原始表不存在" }); continue; }
+      const rows = await this.repos.rawRows.list(ctx.tenantId, ds.id);
+      // 确定性对账：列 → 既有 type.field（仅 autoMapped 精确命中入物化，候选/未命中交人，诚实不猜）。
+      const recon = reconcileIntake([{ name: ds.name, columns: ds.fields.map((f) => f.name), rowCount: ds.rowCount, sampleRows: [] }], existing);
+      if (recon.autoMapped.length === 0) { skipped.push({ dataset: ds.name, reason: "无可确定映射的列（全部待人确认/未命中）" }); continue; }
+      // 按目标类型分组该表的 autoMapped 列。
+      const byType = new Map<string, { column: string; targetField: string }[]>();
+      for (const a of recon.autoMapped) {
+        if (!byType.has(a.targetType)) byType.set(a.targetType, []);
+        byType.get(a.targetType)!.push({ column: a.column, targetField: a.targetField });
+      }
+      for (const [targetKey, cols] of byType) {
+        // 幂等：清掉本表+本类型上一次物化。
+        await this.repos.objects.removeWhere(
+          ctx.tenantId,
+          (o) => o.type === targetKey && o.origin.type === "MATERIALIZED" && o.origin.datasetId === ds.id,
+        );
+        const pkField = pkByType.get(targetKey);
+        const pkCol = pkField ? cols.find((c) => c.targetField === pkField)?.column : undefined;
+        let count = 0;
+        const seenPk = new Set<string>();
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i] as Record<string, unknown>;
+          const props: Record<string, unknown> = {};
+          for (const c of cols) props[c.targetField] = row[c.column];
+          const pkVal = pkCol ? row[pkCol] : undefined;
+          // 有 PK 映射则去重去空（同既有物化纪律）；无 PK 用行序兜底（仍幂等于本表）。
+          if (pkCol) {
+            if (pkVal == null || pkVal === "" || seenPk.has(String(pkVal))) continue;
+            seenPk.add(String(pkVal));
+          }
+          const idSuffix = pkVal != null && pkVal !== "" ? String(pkVal) : String(i);
+          await this.repos.objects.put({
+            id: `obj_${targetKey.toLowerCase()}_${ds.id}_${idSuffix}`.replace(/[^\w-]/g, "_"),
+            tenantId: ctx.tenantId,
+            type: targetKey,
+            props,
+            origin: { type: "MATERIALIZED", datasetId: ds.id, jobId },
+          });
+          count++;
+        }
+        if (count > 0) {
+          materialized.push({ dataset: ds.name, type: targetKey, count });
+          rowCounts[targetKey] = (rowCounts[targetKey] ?? 0) + count;
+        }
+      }
+    }
+    await this.ontology.runDerivations(ctx);
+    await this.repos.syncJobs.put({
+      id: jobId,
+      tenantId: ctx.tenantId,
+      connId: rawDatasetIds[0] ?? jobId,
+      status: "SUCCEEDED",
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      rowCounts,
+    });
+    return { jobId, materialized, skipped };
   }
 }

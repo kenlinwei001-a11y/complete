@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
-import { submitIntake, importIntake, type IntakePreview, type IntakeImportResult } from "@/api/endpoints";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { submitIntake, importIntake, objectifyIntake, type IntakePreview, type IntakeImportResult, type IntakeObjectifyResult } from "@/api/endpoints";
 import zh from "@/locales/zh";
 
 /**
@@ -13,9 +13,16 @@ export default function PrototypeIntakePage() {
   const [html, setHtml] = useState("");
   const [filename, setFilename] = useState("prototype.html");
   const m = useMutation({ mutationFn: () => submitIntake(html) });
+  const qc = useQueryClient();
   const imp = useMutation({ mutationFn: () => importIntake(html, filename.trim() || "prototype.html") });
+  const obj = useMutation({
+    mutationFn: (connId: string) => objectifyIntake(connId),
+    // 物化后失效对象类型计数缓存 → 对象浏览器再进即显新计数（避免 stale）。
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["a", "object-type-stats"] }),
+  });
   const r: IntakePreview | undefined = m.data;
   const ir: IntakeImportResult | undefined = imp.data;
+  const or: IntakeObjectifyResult | undefined = obj.data;
 
   return (
     <div data-testid="intake-page">
@@ -62,6 +69,36 @@ export default function PrototypeIntakePage() {
               </li>
             ))}
           </ul>
+          {/* P3 闭环末步：把导入表按对账物化为既有对象类型 ObjectInstance */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <button className="btn" data-testid="intake-objectify" disabled={obj.isPending} onClick={() => obj.mutate(ir.connection.id)}>
+              {obj.isPending ? zh.common.loading : zh.intake.objectifyBtn}
+            </button>
+            <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.objectifyHint}</span>
+          </div>
+          {or && (
+            <div style={{ marginTop: 8, fontSize: 12 }} data-testid="intake-objectified">
+              {or.materialized.length > 0 ? (
+                <>
+                  <div className="section-title">{zh.intake.objectifiedTitle(or.materialized.length)}</div>
+                  <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+                    {or.materialized.map((mz, i) => (
+                      <li key={i} data-testid={`intake-objectified-${mz.type}`}>
+                        <span className="mono">{mz.dataset}</span> → <Link to="/admin/object-types"><b>{mz.type}</b></Link> · {mz.count} 对象
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div style={{ color: "var(--muted2)" }} data-testid="intake-objectified-empty">{zh.intake.objectifyEmpty}</div>
+              )}
+              {or.skipped.length > 0 && (
+                <div style={{ color: "var(--muted2)", marginTop: 4 }} data-testid="intake-objectified-skipped">
+                  {zh.intake.objectifiedSkipped}：{or.skipped.map((s) => `${s.dataset}（${s.reason}）`).join("；")}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

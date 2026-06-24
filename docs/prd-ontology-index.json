@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-23",
+  "generatedAt": "2026-06-24",
   "ontology": {
     "invariants": [
       "R1",
@@ -500,6 +500,38 @@
       ],
       "artifacts": [],
       "brokenArtifacts": []
+    },
+    "PRD-cli-full-coverage.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R15",
+        "R16",
+        "R2",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-7"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/features/registry.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/components/ScenarioLauncher/CommandPalette.tsx",
+        "packages/contracts/src/operation-intent.ts",
+        "packages/contracts/src/operation-registry.ts",
+        "scripts/check-cli-coverage.mjs",
+        "scripts/check-cli-parity.mjs",
+        "scripts/cli-coverage-baseline.json",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": [
+        "packages/contracts/src/operation-registry.ts",
+        "scripts/check-cli-coverage.mjs",
+        "scripts/cli-coverage-baseline.json"
+      ]
     },
     "PRD-cockpit-capacity-1to1-parity.md": {
       "hasOntologyRef": true,
@@ -1293,6 +1325,7 @@
     "G-7": [
       "PRD-addendum-capability-routing.md",
       "PRD-addendum-llm-providers-and-references.md",
+      "PRD-cli-full-coverage.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-unified-build-engine.md"
@@ -1349,21 +1382,25 @@
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-agent-data-generation-tools.md",
       "PRD-aop-annual-scenario-1to1.md",
-      "PRD-build-workflow-runtime.md"
+      "PRD-build-workflow-runtime.md",
+      "PRD-cli-full-coverage.md"
     ],
     "scripts/check-cli-parity.mjs": [
-      "PRD-A15-cli-universal-operation-shell.md"
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-cli-full-coverage.md"
     ],
     "scripts/cli-parity-baseline.json": [
       "PRD-A15-cli-universal-operation-shell.md"
     ],
     "scripts/platform-cli.mjs": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-cli-full-coverage.md",
       "PRD-demand-pulled-growth-engine.md"
     ],
     "apps/datacore/src/solvers/service.ts": [
       "PRD-A18-provisional-build-closure.md",
-      "PRD-A9-external-engines-design-deferred.md"
+      "PRD-A9-external-engines-design-deferred.md",
+      "PRD-cli-full-coverage.md"
     ],
     "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
       "PRD-IND-plan-generate-1to1.md",
@@ -1434,6 +1471,30 @@
       "PRD-build-workflow-runtime.md",
       "PRD-fullstack-story-build-g8.md"
     ],
+    "apps/agentcore/src/features/registry.ts": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "apps/agentcore/src/server.ts": [
+      "PRD-cli-full-coverage.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-scenario-launcher.md"
+    ],
+    "apps/frontend-shell/src/components/ScenarioLauncher/CommandPalette.tsx": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "packages/contracts/src/operation-intent.ts": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "packages/contracts/src/operation-registry.ts": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "scripts/check-cli-coverage.mjs": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "scripts/cli-coverage-baseline.json": [
+      "PRD-cli-full-coverage.md"
+    ],
     "packages/contracts/src/solvers.ts": [
       "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-plan-audit-1to1.md",
@@ -1466,11 +1527,6 @@
     "apps/agentcore/src/growth/probe.ts": [
       "PRD-fullstack-story-build-g8.md",
       "PRD-in-dialog-gap-fill-loop.md"
-    ],
-    "apps/agentcore/src/server.ts": [
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-in-dialog-gap-fill-loop.md",
-      "PRD-scenario-launcher.md"
     ],
     "packages/contracts/src/growth.ts": [
       "PRD-fullstack-story-build-g8.md"

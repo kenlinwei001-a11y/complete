@@ -40,7 +40,7 @@ import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
-import { IntakeRequestSchema, IntakeImportRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
+import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
@@ -2729,6 +2729,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }));
     await outbox.emit(c.tenantId, "prototype.materialized", { connId: result.connection.id, datasets: datasets.length, rows: Object.values(result.rowCounts).reduce((a, b) => a + b, 0) });
     return { connection: result.connection, datasets, rowCounts: result.rowCounts };
+  });
+  // prototype-intake P3 闭环末步：把已导入的 RawDataset 按确定性 schema 对账物化进既有对象库
+  // （"对账后的列" → 既有 type.field，不新建/不发布类型）→ ObjectInstance 可查（/admin/object-types 计数）。
+  app.post("/a/v1/databuilder/intake/objectify", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(IntakeObjectifyRequestSchema, req.body);
+    const datasets = await connectors.listRawDatasets(c, body.connId);
+    if (datasets.length === 0) throw notFound("connection raw datasets");
+    const result = await modeling.materializeFromReconcile(c, datasets.map((d) => d.id));
+    await outbox.emit(c.tenantId, "prototype.objectified", { connId: body.connId, materialized: result.materialized.length, objects: result.materialized.reduce((a, m) => a + m.count, 0) });
+    return result;
   });
   // prototype-intake P2：对账候选队列（HITL）。
   app.get("/a/v1/databuilder/reconcile-candidates", async (req) => {

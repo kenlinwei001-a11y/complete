@@ -882,3 +882,12 @@ export interface IntakeImportResult {
 }
 export const importIntake = (html: string, filename: string) =>
   api.a<IntakeImportResult>("/a/v1/databuilder/intake/import", { method: "POST", body: { html, filename } });
+
+// DF.13c P3 闭环末步：把导入连接的 RawDataset 按对账物化为 ObjectInstance（"对账后的列"→既有 type.field）。
+export interface IntakeObjectifyResult {
+  jobId: string;
+  materialized: { dataset: string; type: string; count: number }[];
+  skipped: { dataset: string; reason: string }[];
+}
+export const objectifyIntake = (connId: string) =>
+  api.a<IntakeObjectifyResult>("/a/v1/databuilder/intake/objectify", { method: "POST", body: { connId } });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, ADMIN, type TestApp } from "./helpers.js";
+import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { parsePrototypeHtml, reconcileIntake } from "../src/databuilder/prototype-intake.js";
 
 /**
@@ -134,6 +134,38 @@ describe("prototype-intake · 真服务端点（L1）", () => {
     // 事件
     const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "prototype.materialized");
     expect(events.length).toBe(1);
+  });
+
+  it("P3 闭环末步：导入 → objectify 按对账物化进既有对象库（/object-types 计数增）+ 诚实跳过", async () => {
+    const t: TestApp = await makeApp();
+    await seedBattery(t); // 发布 battery 本体（Order 含 so*/qty 字段；ORDERS.so/qty 可对账命中）
+    const imp = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake/import", headers: ADMIN, payload: { html: PROTOTYPE, filename: "demo.html" } })).json()) as { connection: { id: string } };
+    // 物化前 Order 计数
+    const before = (await (await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types/stats", headers: ADMIN })).json()) as { stats: { key: string; count: number }[] };
+    const orderBefore = before.stats.find((s) => s.key === "Order")?.count ?? 0;
+
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake/objectify", headers: ADMIN, payload: { connId: imp.connection.id } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { materialized: { dataset: string; type: string; count: number }[]; skipped: { dataset: string; reason: string }[] };
+    // ORDERS.so(PK)/qty 对账命中 Order → 物化 2 条 Order 对象
+    const orderMat = body.materialized.find((m) => m.dataset === "ORDERS" && m.type === "Order");
+    expect(orderMat?.count).toBe(2);
+    // BASES 列（base/name 多义/未命中）→ 诚实跳过（不猜）
+    expect(body.skipped.some((s) => s.dataset === "BASES")).toBe(true);
+
+    // /object-types 计数确实增长（从库读，可查询）
+    const after = (await (await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types/stats", headers: ADMIN })).json()) as { stats: { key: string; count: number }[] };
+    const orderAfter = after.stats.find((s) => s.key === "Order")?.count ?? 0;
+    expect(orderAfter).toBe(orderBefore + 2);
+
+    // 幂等：再 objectify 一次，计数不翻倍（R6）
+    await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake/objectify", headers: ADMIN, payload: { connId: imp.connection.id } });
+    const after2 = (await (await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types/stats", headers: ADMIN })).json()) as { stats: { key: string; count: number }[] };
+    expect(after2.stats.find((s) => s.key === "Order")?.count ?? 0).toBe(orderAfter);
+
+    // 事件
+    const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "prototype.objectified");
+    expect(events.length).toBe(2);
   });
 
   it("R2：另一租户独立解析（解析无跨租户泄露，对账用各自本体）", async () => {

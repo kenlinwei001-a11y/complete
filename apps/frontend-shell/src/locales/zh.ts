@@ -558,6 +558,11 @@ export const zh = {
     importedConn: "导入文件（数据连接器可见）",
     importedRows: "行",
     filenamePlaceholder: "文件名（如 cockpit-prototype.html）",
+    objectifyBtn: "物化为对象",
+    objectifyHint: "把导入表按确定性对账映射进既有对象类型（对账后的列→既有 type.field，不新建类型），成为可查询 ObjectInstance（对象浏览器计数可见）；映射不上的诚实跳过。",
+    objectifiedTitle: (n: number) => `已物化为对象（${n} 项）`,
+    objectifiedSkipped: "诚实跳过（无可确定映射）",
+    objectifyEmpty: "无可确定映射的表——导入数据已在库可在线查看；如需物化为对象，先在建模页对账确认列映射。",
   },
   boundary: {
     title: "边界册治理（单一来源 + 影响图）",
