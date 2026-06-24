@@ -85,7 +85,7 @@ export const OPERATION_REGISTRY: z.infer<typeof OperationRegistryEntrySchema>[] 
 ## 4. 开发顺序 DF（依赖排序）
 
 - **DF.1 缺区审计**（本 PRD §0 已起）：枚举 `SOLVER_KEYS ∪ FEATURE_REGISTRY ∪ 端点` − `OPERATION_CATALOG` = 精确缺口清单。**无代码。**
-- **DF.2 `OPERATION_REGISTRY` + CLI 命令**：补 ~10 缺区条目 + `platform-cli.mjs` 对应子命令（cliCommand 或 uiDeepLink）。**依赖 DF.1。**
+- **DF.2 `OPERATION_REGISTRY` + CLI 命令**：补 **20** 缺区条目（DF.1 审计实测，非估算 ~10；条目草案见独立文档 `OPERATION_REGISTRY-20-ops.md`）+ `platform-cli.mjs` 对应子命令（cliCommand 或 uiDeepLink）。**依赖 DF.1。验收见 §6 A3b——补完必重跑 classify 批量，0 误路由才算过。**
 - **DF.3 `deriveOperationCatalog`**：求解器/视图/registry 自动派生 + 合并 override；`classifyOperation` 切到它。**依赖 DF.2。**
 - **DF.4 `cli-coverage:check` 门**：注册表↔目录 parity + 基线 + 并入 gates。**依赖 DF.3。**
 - **DF.5（可选）GUI `do`**：前端接 `operations/classify`。**依赖 DF.3。**
@@ -101,6 +101,7 @@ export const OPERATION_REGISTRY: z.infer<typeof OperationRegistryEntrySchema>[] 
 - A1 `deriveOperationCatalog()` 输出覆盖 `SOLVER_KEYS`(32) 全部 + `FEATURE_REGISTRY` view 全部 + `OPERATION_REGISTRY` 缺区全部。
 - A2 `pnpm cli-coverage:check` 绿；故意删一条 registry 对应 cliCommand → 红（证门有效）。
 - A3 `platform do "<任一缺区自然语>"`（如"看常州时序"/"配 LLM provider"）→ 正确路由到对应操作或 uiDeepLink。
+- **A3b（FDE 回归·关键）补 20 op 后必重跑《DF.1 验收痕迹》的 classify 批量**：对 10 缺区代表（配 LLM 供应商 / 配 MCP / 跑评测套件 / 看通知中心 / 配工厂日历 / 管理租户用户 / S&OP 月度平衡 / 看系统本体影响分析 / 跑 VLE 校验 / 本体切片规划）+ 其余，要求 **10/10 路由到正确新 op、0 误路由**（`meta`/`slice` 不再→`model`、`validate` 不再→`rule`、7 个 QUERY 项不再落问句）。**未过则调 `keywords` 重试**（关键词碰撞——如"本体"现把切片/影响分析拉向 model——必须靠词权调到新 op 胜出）。再亲手 `platform do "配 LLM 供应商"` 端到端复核一条真出结果。**保留通过后的 classify 批量为 `cli-routing` 回归测试（确定性 R6）。**
 - A4 R6：同注册表 `deriveOperationCatalog()` 重跑字节一致。
 - A5 四包 `pnpm -r build && test` 全绿 + `pnpm gates`（含新门）全过 + **回写本体 §5 R16/§7**（否则 `ontology:check`/`prd:check` 红）。
 
