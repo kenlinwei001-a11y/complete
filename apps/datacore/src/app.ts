@@ -42,7 +42,8 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
-import { PropagationRuleSchema, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { PropagationRuleSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
@@ -1175,14 +1176,41 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
     let state = await simCurrent(c, s);
+    // 增量 3 传导核接入（opt-in）：本租户有 PUBLISHED PropagationRule 才传导，否则退回恒等 tick
+    // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
+    const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
+    const propagate = propRules.length > 0;
+    let graph: PropagationGraph = { objects: [], links: [] };
+    const ruleParams: RuleParamLookup = {};
+    let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
+    if (propagate) {
+      // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
+      const objects: PropagationGraph["objects"] = [];
+      for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+        for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
+      }
+      const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
+      graph = { objects, links };
+      // coefficientRef 解析表（G-10 P1「改规则即改推演」）：PUBLISHED 规则 key -> params。
+      for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
+        if (r.params) ruleParams[r.key] = r.params;
+      }
+    }
+    let trace: PropagationTrace[] | null = null;
     for (let i = 0; i < n; i++) {
-      // 增量 1 恒等桩：状态原样进位（增量 3 换 propagateTick 做系数×延迟传导）。
-      state = simState(state); s.curTick += 1;
-      await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending: [], trace: null });
+      const beforeTick = s.curTick; // 当前 tick t（结算 pending arriveTick===t）
+      if (propagate) {
+        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams);
+        state = out.next; pending = out.pending; trace = out.trace; s.curTick += 1;
+      } else {
+        // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
+        state = simState(state); pending = []; trace = null; s.curTick += 1;
+      }
+      await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending, trace });
     }
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
-    return { curTick: s.curTick, state };
+    return { curTick: s.curTick, state, ...(propagate ? { trace } : {}) };
   });
   app.post("/a/v1/sim/sessions/:id/act", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
