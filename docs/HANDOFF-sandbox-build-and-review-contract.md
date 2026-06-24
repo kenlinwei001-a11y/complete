@@ -93,19 +93,25 @@ RL1 本体先行 · RL2 暗发 · RL3 单一来源(不出双份) · RL4 走正�
 
 ## 6. 实现 agent 提交规范（让评审高效）
 
-每 PR 描述按此模板：
+> **同分支协同纪律（多 agent 同推 `claude/vigilant-knuth-b1nmxn`，必守，违反=评审打回）**：
+> 1. **不开新分支、不开 PR**：每增量 = 直接 commit + push 到 `claude/vigilant-knuth-b1nmxn`；评审在分支上按 §5 做。
+> 2. **每次 push 前先 rebase**：`git fetch origin claude/vigilant-knuth-b1nmxn && git rebase origin/claude/vigilant-knuth-b1nmxn`（现有规则线等多 agent 同推此分支，不 rebase 必非 fast-forward / merge 冲突）。冲突自行解、解完复跑 `pnpm -r build && pnpm -r test && pnpm gates` 再 push。
+> 3. **三类"高冲突文件"改动须在 commit 描述单独点名**（多 agent 抢改重灾区）：`packages/contracts/**`（新 sim schema）· `package.json`（新门并入 `pnpm gates`）· `docs/SYSTEM-ONTOLOGY.md`（本体回写）。点名让评审重点核"无双份门 / 无双份契约 / 本体回写不撞规则线"。
+
+每 commit 描述按此模板：
 ```
 增量N · <标题>
 - 做了什么（对照 RUNBOOK 增量N）
 - 复用了什么既有 PRD/代码（证不分叉）
 - 本体回写：§? 改了什么
+- 高冲突文件：contracts? / package.json? / SYSTEM-ONTOLOGY.md? （改了哪个点名）
 - CLI：新增 platform sim ... （cli-parity 绿）
 - 测试：命名门 + pnpm gates 输出（贴绿）
 - FDE 亲手证据：CLI 输出 / 截图
 - 北极星距离：还差___ · happy-path/合成的部分：___
 - 回退：flag 关 / 迁移 down / 旧路径
 ```
-自检清单（合并前逐条勾，= 评审协议 8 项）：本体回写✓ CLI注册✓ 命名门✓ gates✓ chain✓ 零业务常数✓ 暗发✓ FDE亲手✓ 北极星✓ 回退✓。
+自检清单（push 前逐条勾，= 评审协议 8 项 + 同分支纪律）：**rebase干净✓** 本体回写✓ CLI注册✓ 命名门✓ gates✓ chain✓ 零业务常数✓ 暗发✓ FDE亲手✓ 北极星✓ 回退✓ **高冲突文件点名✓**。
 
 ---
 
