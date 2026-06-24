@@ -146,16 +146,22 @@ function ScenarioRow({
             </button>
           )}
           {scenario.status === "PUBLISHED" && (
-            <button className="btn sm danger" data-testid={`scenario-retire-${scenario.scenarioKey}`} disabled={retire.isPending} onClick={() => retire.mutate()}>
-              退役
-            </button>
+            <>
+              {/* 已发布场景不可改，但可只读查看其真实后端配置（回应"是否假页面"：非写死，真存后端） */}
+              <button className="btn sm" data-testid={`scenario-view-${scenario.scenarioKey}`} onClick={() => setEditing((v) => !v)}>
+                {editing ? "收起" : "查看配置"}
+              </button>
+              <button className="btn sm danger" style={{ marginLeft: 4 }} data-testid={`scenario-retire-${scenario.scenarioKey}`} disabled={retire.isPending} onClick={() => retire.mutate()}>
+                退役
+              </button>
+            </>
           )}
         </td>
       </tr>
-      {editing && scenario.status !== "PUBLISHED" && (
+      {editing && (
         <tr>
           <td colSpan={8} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>
-            <ScenarioEditor scenario={scenario} agents={agents} viewKeys={viewKeys} intentKeys={intentKeys} inline onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
+            <ScenarioEditor scenario={scenario} agents={agents} viewKeys={viewKeys} intentKeys={intentKeys} inline readOnly={scenario.status === "PUBLISHED"} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged(); }} />
           </td>
         </tr>
       )}
@@ -170,6 +176,7 @@ function ScenarioEditor({
   viewKeys,
   intentKeys,
   inline,
+  readOnly,
   onClose,
   onSaved,
 }: {
@@ -178,6 +185,7 @@ function ScenarioEditor({
   viewKeys: string[];
   intentKeys: string[];
   inline?: boolean;
+  readOnly?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -202,7 +210,7 @@ function ScenarioEditor({
         slots = JSON.parse(slotPresets || "{}");
         objs = JSON.parse(selectedObjects || "[]");
       } catch (e) {
-        throw new Error(`presetContext JSON 解析失败：${(e as Error).message}`);
+        throw new Error(`presetContext JSON 解析失败：${(e as Error).message}`, { cause: e });
       }
       const body: Partial<Scenario> = {
         scenarioKey, name, mode, targetView, intentKey, triggerQuestion, riskLevel,
@@ -225,6 +233,12 @@ function ScenarioEditor({
 
   return (
     <div className="panel" data-testid="scenario-editor" style={{ margin: inline ? "8px 0" : "0 0 14px" }}>
+      {readOnly && (
+        <div data-testid="scenario-readonly-hint" style={{ fontSize: 11, color: "var(--amber)", marginBottom: 8 }}>
+          已发布场景为只读配置（真实存于后端 /b/v1/scenarios，非前端写死）。如需修改：点该行「退役」转为草稿后即可编辑，再「发布」生效。
+        </div>
+      )}
+      <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <label style={lblS}>
           场景键
@@ -305,13 +319,16 @@ function ScenarioEditor({
         </label>
       </div>
       {jsonErr && <div className="empty-state" style={{ color: "var(--danger)" }} data-testid="scenario-json-err">{jsonErr}</div>}
+      </fieldset>
 
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button className="btn primary sm" data-testid="scenario-save" disabled={save.isPending || !scenarioKey || !targetView} onClick={() => save.mutate()}>
-          {isNew ? "创建草稿" : "保存"}
-        </button>
+        {!readOnly && (
+          <button className="btn primary sm" data-testid="scenario-save" disabled={save.isPending || !scenarioKey || !targetView} onClick={() => save.mutate()}>
+            {isNew ? "创建草稿" : "保存"}
+          </button>
+        )}
         <button className="btn sm" onClick={onClose}>
-          {zh.common.cancel}
+          {readOnly ? "收起" : zh.common.cancel}
         </button>
       </div>
     </div>

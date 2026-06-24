@@ -61,4 +61,25 @@ describe("F37 · 场景配置（场景为一等主键）", () => {
     await user.click(screen.getByTestId("scenario-retire-SX9"));
     await waitFor(() => expect(screen.getByTestId("scenario-status-SX9")).toHaveTextContent("RETIRED"));
   });
+
+  it("已发布场景：「查看配置」只读展示真实后端配置 + 退役转草稿后可编辑（非前端写死）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/scenes");
+    await screen.findByTestId("scenario-row-S01");
+
+    // 已发布场景无「编辑」，但有「查看配置」（只读看真实后端配置，回应"是否假页面"）
+    expect(screen.queryByTestId("scenario-edit-S01")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("scenario-view-S01"));
+    const editor = await screen.findByTestId("scenario-editor");
+    // 只读提示 + 名称取自后端真实数据 + 输入禁用 + 无保存按钮
+    expect(within(editor).getByTestId("scenario-readonly-hint")).toBeInTheDocument();
+    expect((within(editor).getByTestId("scenario-name-input") as HTMLInputElement).value.length).toBeGreaterThan(0);
+    expect(within(editor).getByTestId("scenario-name-input")).toBeDisabled();
+    expect(within(editor).queryByTestId("scenario-save")).not.toBeInTheDocument();
+
+    // 退役 → 转为可编辑（编辑按钮出现）
+    await user.click(screen.getByTestId("scenario-retire-S01"));
+    await waitFor(() => expect(screen.getByTestId("scenario-edit-S01")).toBeInTheDocument());
+  });
 });
