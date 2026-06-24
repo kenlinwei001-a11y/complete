@@ -85,7 +85,7 @@ export const OPERATION_REGISTRY: z.infer<typeof OperationRegistryEntrySchema>[] 
 ## 4. 开发顺序 DF（依赖排序）
 
 - **DF.1 缺区审计**（本 PRD §0 已起）：枚举 `SOLVER_KEYS ∪ FEATURE_REGISTRY ∪ 端点` − `OPERATION_CATALOG` = 精确缺口清单。**无代码。**
-- **DF.2 `OPERATION_REGISTRY` + CLI 命令**：补 **20** 缺区条目（DF.1 审计实测，非估算 ~10；条目草案见独立文档 `OPERATION_REGISTRY-20-ops.md`）+ `platform-cli.mjs` 对应子命令（cliCommand 或 uiDeepLink）。**依赖 DF.1。验收见 §6 A3b——补完必重跑 classify 批量，0 误路由才算过。**
+- **DF.2 `OPERATION_REGISTRY` + CLI 命令**：补 **20** 缺区条目（DF.1 审计实测，非估算 ~10；条目草案见**附录 B**，已并入本文）+ `platform-cli.mjs` 对应子命令（cliCommand 或 uiDeepLink）。**依赖 DF.1。验收见 §6 A3b——补完必重跑 classify 批量，0 误路由才算过。**
 - **DF.3 `deriveOperationCatalog`**：求解器/视图/registry 自动派生 + 合并 override；`classifyOperation` 切到它。**依赖 DF.2。**
 - **DF.4 `cli-coverage:check` 门**：注册表↔目录 parity + 基线 + 并入 gates。**依赖 DF.3。**
 - **DF.5（可选）GUI `do`**：前端接 `operations/classify`。**依赖 DF.3。**
@@ -189,4 +189,74 @@ export const OPERATION_REGISTRY: z.infer<typeof OperationRegistryEntrySchema>[] 
 
 ---
 
-> 状态：**v1.0 DRAFT，待评审**。grounded 于本体 v1.0。核心 = CLI 已在，补"操作目录自动派生 + 注册表覆盖门"使**每个功能 CLI 可达且不回潮**（落实 R16 能力环）。只定义设计，落地听指示。
+## 附录 B · OPERATION_REGISTRY 20 条草案（DF.2 数据 · 端点取自 DF.1 审计实测）
+
+> DF.2 的具体内容 = 填满 §2 契约里 `OPERATION_REGISTRY = [/* 缺区 */]` 占位。**纯数据，无执行代码**；实现 agent 转抄进 `packages/contracts/src/operation-registry.ts`。`r4` 仅 `sop`(定稿走 Action)/`boundary`(DRAFT→PUBLISH 经审批) 为 true。补完**必过 §6 A3b**（重跑 classify，0 误路由）。
+
+### B.1 可直接转抄的条目
+```ts
+export const OperationRegistryEntrySchema = z.object({
+  op: z.string(), label: z.string(), keywords: z.array(z.string()),
+  endpoint: z.string(), requiredSlots: z.array(z.string()).default([]),
+  r4: z.boolean().default(false),
+  cliCommand: z.string().optional(), uiDeepLink: z.string().optional(),  // 至少其一（cli-coverage:check 强制）
+});
+export const OPERATION_REGISTRY: z.infer<typeof OperationRegistryEntrySchema>[] = [
+  { op: "workflow",        label: "工作流编排·建/发布/列",            keywords: ["工作流","编排","workflow","流程","步骤"],                          endpoint: "/b/v1/workflows",        requiredSlots: [],    r4: false, cliCommand: "workflow" },
+  { op: "skill",           label: "技能·建/绑定/列",                  keywords: ["技能","skill","能力句","解读"],                                   endpoint: "/b/v1/skills",           requiredSlots: [],    r4: false, cliCommand: "skill" },
+  { op: "mcp",             label: "MCP·服务/工具配置",                keywords: ["mcp","外部工具","工具服务","server","tool"],                      endpoint: "/b/v1/mcp-configs",      requiredSlots: [],    r4: false, cliCommand: "mcp" },
+  { op: "eval",            label: "评测套件·跑/历史/parity",          keywords: ["评测","eval","用例","套件","回归","parity"],                       endpoint: "/b/v1/evals",            requiredSlots: [],    r4: false, cliCommand: "eval" },
+  { op: "llm",             label: "LLM 供应商/用途绑定/预算",         keywords: ["llm","供应商","provider","模型","绑定","binding","预算","budget"], endpoint: "/a/v1/llm-providers",    requiredSlots: [],    r4: false, cliCommand: "llm" },
+  { op: "ops",             label: "运营/调度/模拟时钟/回放",          keywords: ["运营","调度","scheduler","时钟","tick","回放","replay","persona"], endpoint: "/a/v1/scheduler/jobs",   requiredSlots: [],    r4: false, cliCommand: "ops" },
+  { op: "tenant",          label: "租户/用户/角色 IAM",               keywords: ["租户","tenant","用户","user","角色","role","账号"],                endpoint: "/a/v1/tenants",          requiredSlots: [],    r4: false, cliCommand: "tenant", uiDeepLink: "/admin/tenants" },
+  { op: "catalog",         label: "语义目录·检索（schema-linking）",   keywords: ["目录","catalog","检索","schema","找列","找表","描述"],             endpoint: "/a/v1/catalog/search",   requiredSlots: ["q"], r4: false, cliCommand: "catalog" },
+  { op: "scene-config",    label: "场景/视图配置·入口/包/视图",        keywords: ["场景配置","视图配置","scene","入口","包","view-config"],           endpoint: "/b/v1/scene-entries",    requiredSlots: [],    r4: false, cliCommand: "scene-config", uiDeepLink: "/admin/scenes" },
+  { op: "connection",      label: "连接器实例·校验策略/分类/模版",     keywords: ["连接器实例","连接","connection","校验策略","数据分类","模版"],      endpoint: "/a/v1/connections",      requiredSlots: [],    r4: false, cliCommand: "connection" },
+  { op: "meta",            label: "系统自我本体·同步/影响分析",        keywords: ["meta","系统本体","元本体","影响分析","dogfooding","impact"],       endpoint: "/a/v1/meta/sync",        requiredSlots: [],    r4: false, cliCommand: "meta" },
+  { op: "slice",           label: "本体切片·规划/库/索引",            keywords: ["切片","slice","路径","子图","规划器"],                            endpoint: "/a/v1/slices",           requiredSlots: [],    r4: false, cliCommand: "slice" },
+  { op: "rule-extract",    label: "规则文档抽取·上传/候选审核",        keywords: ["规则抽取","规则文档","ruledoc","抽取","候选","审核规则"],          endpoint: "/a/v1/rule-docs",        requiredSlots: [],    r4: false, cliCommand: "rule-extract" },
+  { op: "sop",             label: "S&OP 月度平衡·版本/定稿",          keywords: ["sop","产销平衡","月度平衡","版本","定稿","五步法"],                endpoint: "/a/v1/sop/versions",     requiredSlots: [],    r4: true,  cliCommand: "sop" },
+  { op: "platform-config", label: "平台配置·提示词/工厂日历/写回回声", keywords: ["平台配置","提示词","prompt","日历","calendar","写回","writeback"], endpoint: "/a/v1/prompt-templates", requiredSlots: [],    r4: false, cliCommand: "platform-config" },
+  { op: "validate",        label: "校验/VLE·跑验证",                  keywords: ["校验","validation","vle","验证","查全查准","参照"],                endpoint: "/a/v1/validation/runs",  requiredSlots: [],    r4: false, cliCommand: "validate" },
+  { op: "metric",          label: "经营指标/KSF/责任主体（SPINE）",    keywords: ["指标","metric","ksf","责任主体","principal","达成"],               endpoint: "/a/v1/metrics",          requiredSlots: [],    r4: false, cliCommand: "metric", uiDeepLink: "/admin/metrics" },
+  { op: "notify",          label: "通知中心·列/已读",                 keywords: ["通知","notification","消息","收件箱","提醒"],                      endpoint: "/a/v1/notifications",    requiredSlots: [],    r4: false, cliCommand: "notify" },
+  { op: "config-bundle",   label: "配置迁移·导出/导入（环境间 Saga）", keywords: ["配置迁移","config bundle","导出配置","导入配置","环境迁移","saga"], endpoint: "/a/v1/config-bundles",   requiredSlots: [],    r4: false, cliCommand: "config-bundle" },
+  { op: "boundary",        label: "生成边界·词表/影响/发布",          keywords: ["生成边界","boundary","业务词表","边界","接地","发布边界"],         endpoint: "/a/v1/boundary",         requiredSlots: [],    r4: true,  cliCommand: "boundary" },
+];
+```
+
+### B.2 速览表
+
+| # | op | 能力域 | endpoint | r4 | cliCommand | uiDeepLink |
+|---|---|---|---|---|---|---|
+| 1 | `workflow` | 工作流编排 | `/b/v1/workflows` | – | `workflow` | |
+| 2 | `skill` | 技能 | `/b/v1/skills` | – | `skill` | |
+| 3 | `mcp` | MCP 配置 | `/b/v1/mcp-configs` | – | `mcp` | |
+| 4 | `eval` | 评测套件 | `/b/v1/evals` | – | `eval` | |
+| 5 | `llm` | LLM 供应商/绑定/预算 (G-7) | `/a/v1/llm-providers` | – | `llm` | |
+| 6 | `ops` | 运营/调度/时钟/回放 (A8) | `/a/v1/scheduler/jobs` | – | `ops` | |
+| 7 | `tenant` | 租户/用户/角色 IAM | `/a/v1/tenants` | – | `tenant` | `/admin/tenants` |
+| 8 | `catalog` | 语义目录检索 | `/a/v1/catalog/search` | – | `catalog` | |
+| 9 | `scene-config` | 场景/视图配置 | `/b/v1/scene-entries` | – | `scene-config` | `/admin/scenes` |
+| 10 | `connection` | 连接器实例/分类/模版 | `/a/v1/connections` | – | `connection` | |
+| 11 | `meta` | 系统自我本体/影响分析 | `/a/v1/meta/sync` | – | `meta` | |
+| 12 | `slice` | 本体切片/规划器 | `/a/v1/slices` | – | `slice` | |
+| 13 | `rule-extract` | 规则文档抽取 (A2) | `/a/v1/rule-docs` | – | `rule-extract` | |
+| 14 | `sop` | S&OP 月度平衡 | `/a/v1/sop/versions` | **✓** | `sop` | |
+| 15 | `platform-config` | 提示词/日历/写回回声 (OC5/6/9) | `/a/v1/prompt-templates` | – | `platform-config` | |
+| 16 | `validate` | 校验/VLE | `/a/v1/validation/runs` | – | `validate` | |
+| 17 | `metric` | 指标/KSF/责任主体 (SPINE) | `/a/v1/metrics` | – | `metric` | `/admin/metrics` |
+| 18 | `notify` | 通知中心 | `/a/v1/notifications` | – | `notify` | |
+| 19 | `config-bundle` | 配置迁移 (OC3) | `/a/v1/config-bundles` | – | `config-bundle` | |
+| 20 | `boundary` | 生成边界 GenerationBoundary | `/a/v1/boundary` | **✓** | `boundary` | |
+
+### B.3 说明（给实现 agent）
+- 这 20 是**非 solver/非 view 缺区**——求解器（`SOLVER_KEYS`→`solve <key>`）/视图（`FEATURE_REGISTRY`→`scenarios`/`ask`）由 DF.3 `deriveOperationCatalog` **自动派生**，不在表内。
+- **多资源归一**：`llm`=providers+bindings+budgets · `ops`=ops+scheduler+sync-jobs · `tenant`=tenants+users+roles · `connection`=connections+data-categories+raw-datasets+data-templates · `scene-config`=scene-entries+scenario-packages+view-configs+scenes · `platform-config`=prompt-templates+calendars+writeback-echoes。子动作由 `cliCommand` 参数/子命令分发。
+- **`requiredSlots`** 默认 list/get 故多为 `[]`；`catalog` 需 `q`。
+- 落 DF.2 后**必跑 §6 A3b**（重跑 classify 批量，0 误路由——`meta`/`slice` 不再→`model`、`validate` 不再→`rule`），否则调 keywords。
+- **落地前再 grep 核对端点**（并发分支在动，资源名/路由会漂）。
+
+---
+
+> 状态：**v1.0 DRAFT，待评审**。grounded 于本体 v1.0。本文**自包含**（设计 + DF.1 审计 + FDE 验收痕迹 + DF.2 验收 + 附录 B 20 条数据）。核心 = CLI 已在，补"操作目录自动派生 + 注册表覆盖门"使**每个功能 CLI 可达且不回潮**（落实 R16 能力环）。只定义设计，落地听指示。
