@@ -406,20 +406,21 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
   for (const card of SCENARIO_CATALOG) {
     if (seededKeys.has(card.intentKey)) continue; // 已有的 4 个跳过
     const planId = `plan_${card.intentKey}_v1${sfx}`;
-    const solverArgs = (ARG_OVERRIDE[card.solver] ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
-    // sop_balance 是工作流非注册求解器（走 /a/v1/sop/*）→ 该场景计划只渲染、不 invoke_solver。
-    const steps: ExecutionPlan["steps"] =
-      card.solver === "sop_balance"
-        ? [{ id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: `${card.name}：S&OP 月度平衡台请见对应视图（${card.view}）。` }] } }]
-        : [
-            { id: "s1", type: "invoke_solver", params: { solverKey: card.solver, args: solverArgs } },
-            // 闭 G-1：渲染**投影求解器真实输出**（solver_summary 通用投影，不写死业务数字/文案）→
-            // 前端见的每个数都是求解器算出的真值，知道来源（用户铁律：推演数据须留痕且前端可见）。
-            { id: "render", type: "render_answer", params: { blocks: [
-              { type: "text", markdown: `${card.name}（求解器 ${card.solver}）推演结果：` },
-              { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
-            ] } },
-          ];
+    // BP-4（D4）：sop_balance 此前只渲染跳转文本（无计算/缺口数）→ 点卡承诺落空、被诚实门正确标
+    // PROVISIONAL/RENDER_NOT_PROJECTED。改绑**已注册**求解器 mrp_netting（sop 视图 物料线 MRP 净需求，
+    // 无入参、读 MaterialBalance 出 materials/shortageCount/summary 真表，见 datacore SOLVER_OUTPUT_SHAPES）
+    // → solver_summary 投影出本月平衡/缺口真数据，grow S18 → GOVERNED（不再纯跳转）。其余卡走目录声明 solver。
+    const effectiveSolver = card.solver === "sop_balance" ? "mrp_netting" : card.solver;
+    const solverArgs = (ARG_OVERRIDE[effectiveSolver] ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
+    const steps: ExecutionPlan["steps"] = [
+      { id: "s1", type: "invoke_solver", params: { solverKey: effectiveSolver, args: solverArgs } },
+      // 闭 G-1：渲染**投影求解器真实输出**（solver_summary 通用投影，不写死业务数字/文案）→
+      // 前端见的每个数都是求解器算出的真值，知道来源（用户铁律：推演数据须留痕且前端可见）。
+      { id: "render", type: "render_answer", params: { blocks: [
+        { type: "text", markdown: `${card.name}（求解器 ${effectiveSolver}）推演结果：` },
+        { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
+      ] } },
+    ];
     plans.push({ id: planId, packageId: pkgId, key: card.intentKey, version: 1, status: "PUBLISHED", steps });
     intents.push({
       id: `int_${card.intentKey}_v1${sfx}`,

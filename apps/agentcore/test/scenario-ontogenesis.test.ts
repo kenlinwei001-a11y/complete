@@ -51,14 +51,21 @@ describe("场景卡发育闭环（grow + 验证门 + 留痕 + 确定性绑定）
     expect(blocks.some((b) => b.type === "text" && /已完成推演.*结果详见步骤溯源/.test(String((b as { markdown?: string }).markdown ?? "")))).toBe(false);
   });
 
-  it("P2 诚实门：纯占位指向文本（S18 sop 无求解器投影）→ 不充作 GOVERNED → PROVISIONAL + RENDER_NOT_PROJECTED", async () => {
+  it("BP-4：grow S18 sop（改绑已注册求解器 mrp_netting + solver_summary 投影）→ 出真数据块 → GOVERNED（不再纯跳转/RENDER_NOT_PROJECTED）", async () => {
+    // 注：S18 此前是「纯占位指向文本 → PROVISIONAL/RENDER_NOT_PROJECTED」诚实门样本；BP-4 已把 sop_balance
+    // 计划改为 invoke_solver(mrp_netting)+solver_summary，S18 现应 GOVERNED。诚实门样本迁移到独立用例
+    // （scenario-honest-gate.test.ts 用合成纯指针场景测 RENDER_NOT_PROJECTED，不再依赖 S18）。
     const t = await createTestApp();
     const res = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/S18/grow", headers: debugHeaders(ADMIN) });
     expect(res.statusCode).toBe(200);
-    const run = res.json() as { verification: { status: string; gapCode: string | null }; maturity: string };
-    expect(run.maturity).toBe("PROVISIONAL");
-    expect(run.verification.status).toBe("NOT_VERIFIED");
-    expect(run.verification.gapCode).toBe("RENDER_NOT_PROJECTED");
+    const run = res.json() as { verification: { status: string; taskId: string | null }; maturity: string };
+    expect(run.maturity).toBe("GOVERNED");
+    expect(run.verification.status).toBe("VERIFIED");
+    const task = await t.repos.tasks.get(run.verification.taskId!);
+    const blocks = task?.answer?.blocks ?? [];
+    // 投影求解器真实输出 → 含承载数据块（kpi/table），非单一占位跳转文本。
+    expect(blocks.some((b) => b.type === "kpi" || b.type === "table")).toBe(true);
+    expect(blocks.some((b) => b.type === "text" && /请见对应视图/.test(String((b as { markdown?: string }).markdown ?? "")))).toBe(false);
   });
 
   it("P2 闭 G-2 残：S03 切片渲染不再硬引用缺失字段（旧 data.summary 真后端无→TEMPLATE_RESOLUTION_ERROR）→ 通用投影 GOVERNED", async () => {
