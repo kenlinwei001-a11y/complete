@@ -403,7 +403,7 @@
 > **剩余（精确）**：
 > - **dash**（最大，4 块）：A 八卡 KPI 八卡（需 8 卡数据源 + 六要素，ViewConfig 重构）· 8 根因 ROOT_LIB/PROB_META（backend 4→8）· C/E 三 DAG（ROOT_CHAINS 逐字下发）· D 台账筛选 · F 毛利 Σ勾稽（order_margin_contrib）。已落 G 回采链+模块直达、B 待解决问题面板。
 > - **quarter**：6 季 dem/sup 绝对值（382/376…）—— 多参数联立反解 vs quarterOverride，触同源勾稽 F22，PRD「诚实声明」难点，需 FDE 核对。
-> - **risk**：②forecastStart 2026-07→06-10（高 ripple，dueDay 全偏 21 天）· ⑦逐日 tip 事件 desc/src · ⑧圆点轴 1:1 重写。
+> - **risk**：②forecastStart 2026-06-10 ✅（随订单集重播）· ⑦逐日 tip 事件 desc/src ✅ · ⑧圆点轴 1:1 重写。
 > - **audit**：9-kind audit_timeline 逐日 series（求解器已注册，余 kind 口径）+ 每项 kind 标注。
 > - **map**：②decision 一等对象（Problem/PlanOption/RiskTimeline，触 ontology 计数）。
-> - **order**：B 分段按客户口径 / C SEG_PRICE 移种子 / F ORDER_OVR 6 单 override（口径对齐，互耦合）。
+> - [x] **order ✅（整体重播完成 2026-06-24）**：B 分段按客户口径（segOfCust 含商用车→com·储能/电网→ess）✅ · F ORDER_OVR 6 单 override 激活（信用/毛利+why，台账"未接/提价接"）✅ · 订单/型号/客户集整体替换为 HTML 24 单+6 型号+8 客户 ✅ · forecastStart 2026-06-10 ✅（连带 risk ② 闭合）。逐值重基线 ~34 datacore + 前端 mock；datacore 641/frontend 226 全绿；门B 真验。C SEG_PRICE 早经 SEG_REGISTRY 单一来源（DF.2/3）已结。
