@@ -11,7 +11,7 @@
 
 1. **求解器不读规则**：`capacityForecast`（`capacity.ts:179`）从对象图确定性算 P50/P90/缺口，**全程不碰规则库**；`SolverContext`（`types.ts:210-236`）**根本不带 `rules`** → 求解器读不到规则定义。
 2. **规则逻辑写死在代码**：C09（数据健康降级，`capacity.ts:189-197`）、C01（产能上限，`battery.ts:1285` 注释）等**烘在求解器里**，规则引擎不可见、改不动。
-3. **引用 ≠ 定义**：全代码库被引用 **29 个规则码**，规则库只定义 **15 个**（活系统实测：`C03 C05 C08 C12 C13 C18 C23 C26 C27 C28 C29 C30 C31 C32 C33`）→ **14 个被引用但未定义**：`C01 C02 C04 C06 C09 C10 C11 C15 C16 C21 C22 C24 C25 C90`。
+3. **引用 ≠ 定义**：全代码库被引用 **28 个有效规则码**，规则库只定义 **15 个**（活系统实测：`C03 C05 C08 C12 C13 C18 C23 C26 C27 C28 C29 C30 C31 C32 C33`）→ **13 个被引用但未定义**：`C01 C02 C04 C06 C09 C10 C11 C15 C16 C21 C22 C24 C25`（注：`C90` 经核实是颜色码 `#4C90F0` 误报，非规则，已剔除）。
 4. **关联规则半空 + 规则闸空过**：前端 `RuleRef.tsx:34` 查不到定义即显示"（当前库中未找到定义）"；`evaluate_rules` 遇未定义规则 fail-open（跳过）→ 推演照出数，但**那道规则闸空过**，结论**从未被这些规则真校验**。
 5. **全入口共一个汇聚点**：所有推演（前端 `invokeSolver` / CLI `solve` / QOS path A `invoke_solver` / Agent OBO）**最终都汇到 `POST /a/v1/solvers/:key/invoke`**（`endpoints.ts:176`、`platform-cli.mjs:241`、orchestrator path A、agent executor）。
 
@@ -44,7 +44,7 @@
 - **ruleRefs 从装饰标签升为真正驱动行为的引用**：求解器声明它用哪些 ruleKey（`SOLVER_RULE_REFS[solverKey]`），invoke 时解析为规则对象注入；输出 `evaluatedRules[]`（哪几条真评估了、各自结果）供"关联规则"面板显示**真**结果。
 
 ### 2.3 规则作为一等可编辑对象（补全 + 复用既有 CRUD）
-- **补全 14 个未定义规则**为一等规则（key/name/expression/severity/**params**），含被写死的 C01/C09 的阈值显式化。
+- **补全 13 个未定义规则**为一等规则（key/name/expression/severity/**params**，**全部定义见附录 A**），含被写死的 C01/C09 的阈值显式化。
 - **编辑入口三处复用**（已存在）：API `POST/PUT /a/v1/rules` `/:id/publish` `/:id/retire` `/dry-run` `/evaluate`；CLI `rule`（`platform-cli.mjs:212`）；前端**规则编辑器**（补/完善 UI：列表 + 编辑表达式/params/severity + dry-run 预览 + 发布）。
 - **R14 单一来源**：规则定义只此一处（规则库），求解器/卡/前端**全派生引用**，不得另存阈值副本。
 
@@ -146,7 +146,7 @@ export const EvaluatedRuleSchema = z.object({
 
 ## 9. 分期
 
-- **P1（止血 + 闭引用）**：补全 14 个未定义规则为一等规则（含写死阈值显式化）+ `rule-closure:check` 门 + 前端「关联规则」显示真定义/真评估。**先让"未找到定义""空过"消失。**
+- **P1（止血 + 闭引用）**：补全 13 个未定义规则为一等规则（含写死阈值显式化，**定义见附录 A**）+ `rule-closure:check` 门 + 前端「关联规则」显示真定义/真评估。**先让"未找到定义""空过"消失。**
 - **P2（求解器读规则）**：`SolverContext += rules/ruleSetVersion` + 求解器闸门改调规则引擎、阈值改读 `rule.params` + `evaluatedRules` 透出 + `no-hardcoded-rules:check` 门。**让"改规则即改推演"成立。**
 - **P3（编辑闭环 + 版本 + 全入口验收 + 本体回写）**：规则编辑器 UI 完善 + 版本/事件失效 + 6 入口逐一 FDE 验收 + 回写本体 §2.C/§3/§4/§7/§8。
 
