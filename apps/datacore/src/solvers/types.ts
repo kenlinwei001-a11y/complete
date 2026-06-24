@@ -56,6 +56,8 @@ export interface SolverParamsShape {
       essModels: string[];
       comModels: string[];
       ruleKeys: Record<string, string>;
+      /** PRD-IND-dash ORDER_OVR：逐单越线注入（按 so 覆盖信用/毛利，含 why 文案）——确定性种子让台账出现"未接/提价接"。 */
+      overrides?: Record<string, { credit?: boolean; mAdj?: number; why?: string }>;
     };
   };
   /** C1 · capex_scenario 年度情景测算参数（C23 门槛 + 三情景产能项目集） */

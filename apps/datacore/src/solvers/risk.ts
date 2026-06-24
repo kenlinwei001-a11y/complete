@@ -649,6 +649,22 @@ function segmentOf(c: SolverContext, modelId: string): { key: string; name: stri
   return { key, name: str(seg?.props.name, key), gm: num(seg?.props.gmRate, c.params.audit.segMargins[key as "pas" | "ess" | "com"]) };
 }
 
+/**
+ * PRD-IND-dash ORDER_OVR：逐单越线注入的纯应用函数（确定性 R6）——
+ * `credit:true` 把信用占用比强制越限（≥1.05 → 触发 CREDIT 判定）；`mAdj` 直接下调细分毛利（→ 可能触发 MARGIN）。
+ * 无 override 时原样返回（hash 派生口径不变）。
+ */
+export function applyOrderOverride(
+  baseCredit: number,
+  baseGm: number,
+  ov?: { credit?: boolean; mAdj?: number; why?: string },
+): { creditRatio: number; gm: number } {
+  return {
+    creditRatio: ov?.credit ? Math.max(baseCredit, 1.05) : baseCredit,
+    gm: ov?.mAdj ? round(baseGm + ov.mAdj, 1) : baseGm,
+  };
+}
+
 function buildOrderProblems(
   c: SolverContext,
   baseId: string,
@@ -688,8 +704,11 @@ function buildOrderProblems(
     const modelId = str(row.model);
     const dueDay = num(row.dueDay);
     const delay = num(row.delay);
-    const creditRatio = round(cfg.creditBase + (hashString(`${cust}|${so}`) % cfg.creditMod) / 100, 2);
+    // PRD-IND-dash ORDER_OVR：逐单越线注入——override 信用超限 / 毛利下调（含 why），否则 hash 派生（R6）。
+    const ov = cfg.overrides?.[so];
+    const baseCredit = round(cfg.creditBase + (hashString(`${cust}|${so}`) % cfg.creditMod) / 100, 2);
     const seg = segmentOf(c, modelId);
+    const { creditRatio, gm: segGm } = applyOrderOverride(baseCredit, seg.gm, ov);
     const etaDay = num(shipment?.props.etaDay);
     const kitGapDays = shipment && (shipment.props.status === "DELAYED" || etaDay > dueDay) ? Math.max(1, etaDay - dueDay) : 0;
     const plan = mitPlan(bottleneck);
@@ -699,14 +718,14 @@ function buildOrderProblems(
     if (creditRatio > 1) {
       add("CREDIT", row,
         `信用判定：客户 ${cust} 信用占用比 ${creditRatio} 超过额度上限 1.0（规则 ${cfg.ruleKeys.CREDIT}）`,
-        `根因：${cust} 在手订单集中放量，信用敞口未同步扩容`,
+        ov?.why ? `根因：${ov.why}` : `根因：${cust} 在手订单集中放量，信用敞口未同步扩容`,
         "对策：信用复核 + 预收款比例上调，超限部分分批释放");
       continue;
     }
-    if (seg.gm < cfg.gmFloor) {
+    if (segGm < cfg.gmFloor) {
       add("MARGIN", row,
-        `毛利判定：${seg.name}细分毛利 ${seg.gm}% 低于底线 ${cfg.gmFloor}%（规则 ${cfg.ruleKeys.MARGIN}）`,
-        `根因：${seg.name}细分结构毛利偏低，延误追加成本进一步侵蚀`,
+        `毛利判定：${seg.name}细分毛利 ${segGm}% 低于底线 ${cfg.gmFloor}%（规则 ${cfg.ruleKeys.MARGIN}）`,
+        ov?.why ? `根因：${ov.why}` : `根因：${seg.name}细分结构毛利偏低，延误追加成本进一步侵蚀`,
         "对策：细分结构调优 + 高毛利订单优先排产");
       continue;
     }

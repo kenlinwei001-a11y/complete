@@ -145,6 +145,16 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       essModels: ["S192-LFP"],
       comModels: ["L148-LFP"],
       ruleKeys: { DELIVERY: "C03", MARGIN: "C15", KIT: "C06/C16", CREDIT: "C13" },
+      // PRD-IND-dash ORDER_OVR（L3222-3229）：6 单 override 逐字种子。按 so 命中即覆盖信用/毛利 + why。
+      // 活化于 HTML 24 单（SO-3391…SO-3540）；现出厂订单为 SO-100xx，命中需待订单集重播为 HTML 口径。
+      overrides: {
+        "SO-3470": { mAdj: -3.2, why: "电网公司F 框架价压价" },
+        "SO-3437": { credit: true, why: "商用车集团G 在手应收 9.8 亿 + 新单 12.6 亿 > 信用额度 21 亿" },
+        "SO-3506": { credit: true, why: "商用车集团G 二次追单，信用敞口进一步放大" },
+        "SO-3458": { mAdj: -3.0, why: "电网公司F 框架协议低价条款执行" },
+        "SO-3518": { mAdj: -2.6, why: "储能集成商D 价格战跟价" },
+        "SO-3540": { credit: true, why: "商用车集团G 低优先级单，信用额度已被占满" },
+      },
     },
   },
   // C1 · capex_scenario 年度情景测算（C23 门槛 + 三情景产能项目集）。
