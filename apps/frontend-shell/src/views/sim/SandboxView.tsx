@@ -1,0 +1,317 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
+import {
+  createSimSession,
+  fetchSimCertification,
+  fetchSimViewConfig,
+  simCheckpoint,
+  simTick,
+} from "@/api/endpoints";
+import { toast, toastError } from "@/store/toastStore";
+import { PmDag, type PmDagNode } from "./PmDag";
+import { HeatStrip } from "./shared";
+import styles from "./SimViews.module.css";
+
+/**
+ * 推演沙盘主决策页（增量 4 · R17「一页看全 数据→推演→溯源→动作→AI」· 配置驱动·零业务常数 R14）。
+ *
+ * 全部节点 / 边 / 状态变量 / 雷达维 / KPI 来自 `GET /a/v1/sim/view-config`（= 租户本体 + 传导规则派生），
+ * 代码里**零行业实体名**——换租户 / 换行业 = 换本体内容，本组件一行不改（两配置证见 test/sandbox-view.test.tsx）。
+ *
+ * 交互：init 会话（baseSnapshot 由 view-config 派生）→「推进 tick」simTick → 节点色 / KPI 随 world 态变。
+ * 复用：PmDag（拓扑）· HeatStrip（KPI heat）· 自绘就绪雷达（维 = certification.dims）。
+ */
+
+// ── 确定性派生（R6/R14）：从配置 + 索引算初值，无任何业务常数（纯结构哈希）。 ────────────
+/** 字符串 → 稳定 [0,1)（用于把抽象 key 映射成可视初值；与行业无关）。 */
+function hash01(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+/** 从配置派生 tick0 世界态：每个 nodeType 造一代表对象，逐 stateVar 给确定性初值（0-100）。 */
+function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
+  const state: TickState = {};
+  const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
+  for (const t of cfg.nodeTypes) {
+    const oid = `${t}#0`;
+    const row: Record<string, number> = {};
+    for (const v of vars) row[v] = Math.round(hash01(`${t}|${v}`) * 100);
+    state[oid] = row;
+  }
+  return state;
+}
+
+/** 对象当前态聚合成单值（节点着色用）：所有 stateVar 均值，0-100。 */
+function aggregate(row: Record<string, number> | undefined): number {
+  if (!row) return 0;
+  const vals = Object.values(row);
+  if (vals.length === 0) return 0;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+/** 聚合值 → 着色（高=暖红 警示 / 中=琥珀 / 低=青）。纯函数，无业务语义。 */
+function heatColor(v: number): string {
+  if (v >= 70) return "#E0626C";
+  if (v >= 45) return "#E8B54A";
+  return "#43B7D7";
+}
+
+/** 配置 → PmDag 单层节点（节点=nodeTypes，着色按当前 world 聚合态）。 */
+function buildNodes(cfg: SandboxViewConfig, world: TickState): PmDagNode[] {
+  return cfg.nodeTypes.map((t) => {
+    const v = aggregate(world[`${t}#0`]);
+    return { id: t, label: t, sub: `Σ ${v.toFixed(0)}`, color: heatColor(v), st: 0 };
+  });
+}
+
+/** 配置 → 边：优先用 linkTypes 串成相邻链；无链路则按 nodeTypes 顺序兜底相邻（保证拓扑可见）。 */
+function buildEdges(cfg: SandboxViewConfig): [string, string][] {
+  const n = cfg.nodeTypes;
+  const edges: [string, string][] = [];
+  for (let i = 0; i + 1 < n.length; i++) edges.push([n[i]!, n[i + 1]!]);
+  return edges;
+}
+
+// ── 就绪雷达（自绘·维数动态 = certification.dims，不复用固定 5 维 RadarChart）─────────────
+function ReadinessRadar({
+  dims,
+  values,
+  size = 168,
+}: {
+  dims: { key: string; label: string }[];
+  values: Record<string, number>;
+  size?: number;
+}) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2 - 22;
+  const n = Math.max(dims.length, 3);
+  const pt = (i: number, frac: number): [number, number] => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    const k = Math.max(0, Math.min(100, frac)) / 100;
+    return [Number((cx + r * k * Math.cos(a)).toFixed(2)), Number((cy + r * k * Math.sin(a)).toFixed(2))];
+  };
+  const rings = [1 / 3, 2 / 3, 1].map((f) =>
+    dims.map((_, i) => pt(i, f * 100).join(",")).join(" "),
+  );
+  const poly = dims.map((d, i) => pt(i, values[d.key] ?? 0).join(",")).join(" ");
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="就绪雷达" data-testid="sandbox-radar">
+      {rings.map((pts, i) => (
+        <polygon key={i} points={pts} fill="none" stroke="rgba(226,235,245,.12)" strokeWidth={i === 2 ? 1.2 : 0.8} />
+      ))}
+      {dims.map((_, i) => {
+        const [x, y] = pt(i, 100);
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(226,235,245,.1)" strokeWidth={0.8} />;
+      })}
+      <polygon points={poly} fill="#43B7D7" fillOpacity={0.22} stroke="#43B7D7" strokeWidth={1.6} data-testid="sandbox-radar-polygon" />
+      {dims.map((d, i) => {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        const lx = cx + (size / 2 - 8) * Math.cos(a);
+        const ly = cy + (size / 2 - 8) * Math.sin(a);
+        return (
+          <text key={d.key} x={lx} y={ly + 3} textAnchor="middle" fontSize={9} fill="#9AA8B6" data-testid={`sandbox-radar-axis-${d.key}`}>
+            {d.label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+const CERT_LEVEL_LABEL: Record<string, string> = {
+  L0_INVALID: "L0 未定义",
+  L1_CONFIGURED: "L1 已配置",
+  L2_RUNNABLE: "L2 可运行",
+  L3_VERIFIED: "L3 已验证",
+  L4_CERTIFIED: "L4 已认证",
+};
+
+/** 测试可注入 config（绕过网络，喂两套 mock config 证 R14）；生产留空走 view-config 端点。 */
+export interface SandboxViewProps {
+  injectedConfig?: SandboxViewConfig;
+}
+
+export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
+  const cfgQuery = useQuery({
+    queryKey: ["a", "sim", "view-config"],
+    queryFn: fetchSimViewConfig,
+    enabled: !injectedConfig,
+    retry: false,
+  });
+  const cfg = injectedConfig ?? cfgQuery.data;
+
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [world, setWorld] = useState<TickState>({});
+  const [curTick, setCurTick] = useState(0);
+  const [ticking, setTicking] = useState(false);
+  const [history, setHistory] = useState<number[]>([]); // 逐 tick 全局均值轨迹（时间轴/KPI heat）
+  const [cert, setCert] = useState<SimCertification | null>(null);
+
+  // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
+  const globalKpi = useMemo(() => {
+    const objs = Object.keys(world);
+    if (objs.length === 0) return 0;
+    return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.length;
+  }, [world]);
+
+  // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
+  const init = useCallback(async (c: SandboxViewConfig) => {
+    try {
+      const base = deriveBaseSnapshot(c);
+      const s = await createSimSession({ baseSnapshot: base, scope: {} });
+      setSessionId(s.id);
+      setWorld(base);
+      setCurTick(0);
+      const g0 = Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length);
+      setHistory([g0]);
+      // 就绪认证（GLOBAL）：诚实展示 L0-L4 + canEnter + gaps。
+      try {
+        setCert(await fetchSimCertification(s.id, "GLOBAL"));
+      } catch {
+        /* certification entitlement 关时容错：仅不显认证面板 */
+      }
+    } catch (e) {
+      toastError(e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (cfg && !sessionId) void init(cfg);
+  }, [cfg, sessionId, init]);
+
+  const onTick = useCallback(async () => {
+    if (!sessionId) return;
+    setTicking(true);
+    try {
+      const res = await simTick(sessionId, 1);
+      setWorld(res.state);
+      setCurTick(res.curTick);
+      const g = Object.keys(res.state).reduce((a, o) => a + aggregate(res.state[o]), 0) / Math.max(1, Object.keys(res.state).length);
+      setHistory((h) => [...h, g]);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setTicking(false);
+    }
+  }, [sessionId]);
+
+  const onCheckpoint = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const cp = await simCheckpoint(sessionId, `tick${curTick}`);
+      toast(`检查点已存：${cp.label}（tick ${cp.tick}）`, "success");
+    } catch (e) {
+      toastError(e);
+    }
+  }, [sessionId, curTick]);
+
+  if (!cfg) {
+    if (cfgQuery.isError) return <div className="empty-state" data-testid="sandbox-config-error">沙盘配置不可用（沙盘功能未开通或本体为空）</div>;
+    return <div className="empty-state" data-testid="sandbox-loading">加载沙盘配置…</div>;
+  }
+
+  const nodes = buildNodes(cfg, world);
+  const edges = buildEdges(cfg);
+  const radarValues: Record<string, number> = cert
+    ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
+    : {};
+
+  return (
+    <div data-testid="sandbox-view" className={styles.head}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+        <h3>推演沙盘 · 一页看全（数据 → 推演 → 溯源 → 动作 → AI）</h3>
+        <div className={styles.sub} data-testid="sandbox-config-summary">
+          本体派生：{cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 · {cfg.propagationCount} 传导规则
+        </div>
+      </div>
+
+      {/* KPI 行：全局态 + 逐 stateVar（全从配置 stateVars 渲染） */}
+      <div className={styles.threeKpiRow} data-testid="sandbox-kpis">
+        <div className={styles.kpi} data-testid="sandbox-kpi-global">
+          <span>全局态（tick {curTick}）</span>
+          <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
+        </div>
+        {cfg.stateVars.map((v) => {
+          const objs = Object.keys(world);
+          const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
+          return (
+            <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
+              <span>{v}</span>
+              <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 控制条：推进 tick / 存档 / tick 时间轴 heat */}
+      <div className="panel" data-testid="sandbox-controls" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 12 }}>
+        <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
+          {ticking ? "推进中…" : "推进 tick"}
+        </button>
+        <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
+          存档检查点
+        </button>
+        <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
+          <div className={styles.sub} style={{ marginBottom: 2 }}>tick 时间轴（全局态轨迹）</div>
+          <HeatStrip series={history} threshold={70} />
+        </div>
+      </div>
+
+      <div className={styles.twoCol} style={{ marginTop: 12 }}>
+        {/* 就绪面板（左）：雷达 + L 级 + canEnter + 诚实 gaps */}
+        <div className="panel" data-testid="sandbox-readiness" style={{ padding: 12 }}>
+          <div className={styles.secHead}>就绪认证</div>
+          {cert ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <ReadinessRadar dims={cfg.radarDims} values={radarValues} />
+                <div>
+                  <div data-testid="sandbox-cert-level">
+                    <b style={{ fontSize: 18 }}>{CERT_LEVEL_LABEL[cert.level] ?? cert.level}</b>
+                  </div>
+                  <div data-testid="sandbox-cert-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)", fontWeight: 700, marginTop: 4 }}>
+                    {cert.canEnterSimulation ? "✓ 可进入推演" : "✗ 暂不可进入推演"}
+                  </div>
+                  <div className={styles.sub} style={{ marginTop: 4 }}>
+                    世界完整度 {cert.worldCompleteness.pct.toFixed(0)}%
+                  </div>
+                </div>
+              </div>
+              {cert.gaps.length > 0 && (
+                <div data-testid="sandbox-cert-gaps" style={{ marginTop: 8 }}>
+                  <div className={styles.sub}>缺件清单（诚实，不静默）</div>
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                    {cert.gaps.slice(0, 6).map((g, i) => (
+                      <li key={i} data-testid={`sandbox-gap-${i}`} style={{ fontSize: 12, color: "var(--muted2)" }}>
+                        <b className="mono">{g.gapCode}</b> · {g.ref} — {g.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className={styles.sub} data-testid="sandbox-cert-na">就绪认证未开通（sim.certification 关）</div>
+          )}
+        </div>
+
+        {/* 拓扑（右）：PmDag 单层，节点=nodeTypes，着色随 world 态 */}
+        <div className="panel" data-testid="sandbox-topology" style={{ padding: 12 }}>
+          <div className={styles.secHead}>本体拓扑（节点态随 tick 变色）</div>
+          {nodes.length > 0 ? (
+            <PmDag layers={[nodes]} edges={edges} step={0} testId="sandbox-dag" />
+          ) : (
+            <div className={styles.sub} data-testid="sandbox-topology-empty">本体暂无已发布对象类型——先在建模页发布对象。</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

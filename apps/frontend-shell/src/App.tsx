@@ -64,6 +64,8 @@ const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
 const TenantsPage = lazy(() => import("@/pages/admin/TenantsPage"));
 const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
 const ViewsPage = lazy(() => import("@/pages/admin/ViewsPage"));
+// 推演沙盘（增量 4 · 暗发）：dedicated route，entitlement sim.sandbox 关 → 404（入口同时隐藏）。
+const SandboxView = lazy(() => import("@/views/sim/SandboxView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -81,6 +83,18 @@ const admin = (path: string, node: ReactNode): RouteObject => ({
   element: <AdminGuard path={path}>{lazyWrap(node)}</AdminGuard>,
 });
 
+/**
+ * 推演沙盘 entitlement 守卫（增量 4 · 暗发）：先查 sim.sandbox feature（关 → 404，FEATURE_NOT_FOUND 语义，
+ * 不泄露功能存在性），复用 ViewPage 同款「feature 先于权限」机制。workspace 未下发 features 时向后兼容放行。
+ */
+function SimSandboxGuard() {
+  const { data: workspace } = useWorkspace();
+  if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
+  const features = workspace.features;
+  if (features && !features.includes("sim.sandbox")) return <NotFoundPage />;
+  return lazyWrap(<SandboxView />);
+}
+
 /** 路由表（PRD §3，对外不可变更） */
 export const routes: RouteObject[] = [
   { path: "/login", element: lazyWrap(<LoginPage />) },
@@ -90,6 +104,8 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: lazyWrap(<HomePage />) },
       { path: "scenarios", element: lazyWrap(<ScenarioLauncherPage />) },
+      // 推演沙盘专用 route（静态段先于 :viewKey 匹配；entitlement 守卫内联，暗发）。
+      { path: "v/sim-sandbox", element: <SimSandboxGuard /> },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

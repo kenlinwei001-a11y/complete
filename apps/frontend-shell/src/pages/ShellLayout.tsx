@@ -236,6 +236,17 @@ export default function ShellLayout() {
             views={workspace.navigation.filter((item) => item.group !== "admin")}
             adminPages={adminPages}
           />
+          {/* 推演沙盘入口（增量 4 · 暗发）：仅 sim.sandbox entitlement 开通时出现；关 → 入口消失（瞬时回退）。 */}
+          {featureOn(workspace, "sim.sandbox") && (
+            <NavLink
+              to="/v/sim-sandbox"
+              data-testid="nav-sim-sandbox"
+              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
+            >
+              <span className={styles.dot} />
+              推演沙盘
+            </NavLink>
+          )}
         </nav>
       </aside>
 

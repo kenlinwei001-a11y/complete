@@ -38,6 +38,11 @@ import type {
   PurposeBinding,
   OpsSchedule,
   OpsScheduleRecord,
+  SandboxViewConfig,
+  SimSession,
+  SimCertification,
+  SimCheckpoint,
+  TickState,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import type {
@@ -471,6 +476,26 @@ export const tickSimClock = (advance: "1d" | "7d") =>
   api.a<{ tickJobId: string }>("/a/v1/synthetic/clock/tick", { body: { advance } });
 export const resetSimClock = () => api.a<SimClockVM>("/a/v1/synthetic/clock/reset", { body: {} });
 export const fetchTickReports = () => api.a<TickReportVM[]>("/a/v1/synthetic/clock/ticks");
+
+// ---------------- 推演沙盘（增量 4 · 配置驱动·零业务常数 R14） ----------------
+// 全部经 sim.sandbox entitlement 暗发（关 = 404 FEATURE_NOT_FOUND）。
+/** 沙盘视图配置 = 租户本体 + 传导规则派生（nodeTypes/linkTypes/stateVars/radarDims/screens/propagationCount）。 */
+export const fetchSimViewConfig = () => api.a<SandboxViewConfig>("/a/v1/sim/view-config");
+/** 创建会话（init）：baseSnapshot=tick0 世界态（对象→状态变量→数值），scope=范围裁剪。 */
+export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record<string, unknown> }) =>
+  api.a<SimSession>("/a/v1/sim/sessions", { body });
+/** 推进 n 个 tick（默认 1）→ 返回 curTick + 新世界态（+trace 若有传导规则）。 */
+export const simTick = (sessionId: string, n = 1) =>
+  api.a<{ curTick: number; state: TickState; trace?: unknown[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`, { body: { n } });
+/** 读当前世界态（curTick + state）。 */
+export const simWorld = (sessionId: string) =>
+  api.a<{ tick: number; state: TickState }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`);
+/** 命名存档（检查点）。 */
+export const simCheckpoint = (sessionId: string, label?: string) =>
+  api.a<SimCheckpoint>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/checkpoint`, { body: { label } });
+/** 就绪认证（L0-L4 + 三维 + canEnter + 诚实 gaps）。 */
+export const fetchSimCertification = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
+  api.a<SimCertification>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/certification?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
 
 /** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
 export interface DomainEventVM { eventId: string; event: string; createdAt: string }
