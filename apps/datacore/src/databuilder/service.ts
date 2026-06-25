@@ -63,8 +63,15 @@ export class DataBuilderService {
     private solvers?: SolverService,
     /** D-29：建域记录完成发 storybuild.run_recorded（经 F1 全局通道反映到历史/区5）。 */
     private outbox?: OutboxService,
-    /** §2：comprehend 用途路由 LLM（绑定 Kimi 即用 LLM 解析任意故事；缺/失败→确定性关键词地板）。 */
+    /** §2：comprehend 用途路由 LLM（绑定即用 LLM 解析任意故事；缺/失败→确定性关键词地板）。 */
     private llm?: LlmClient,
+    /**
+     * E13：comprehend 用途**无租户绑定时**回落 env 默认 client 所用的 model id（config.DC_LLM_MODEL）。
+     * 有绑定时 TenantRoutedLlmClient 按 purpose→provider→model 解析出真实 modelId 覆盖此值
+     * （见 llmproviders.ts parseVia）；此值仅作未绑定时的 env-default 兜底，与 ruleDocs/modeling/synthetic 同口径
+     * （此前硬编码占位串 "comprehend" 作 model id → 不是真实模型 id，env 回落路径形同虚设；改为 config 注入，RL5 零写死）。
+     */
+    private defaultModel = "default",
   ) {}
 
   /**
@@ -76,7 +83,9 @@ export class DataBuilderService {
     if (this.llm) {
       try {
         const core = await this.llm.parseStructured({
-          model: "comprehend", maxTokens: 8000, tenantId: ctx.tenantId, purpose: "comprehend",
+          // E13：model 为「无绑定时 env 默认」的 model id；有租户绑定则被 TenantRoutedLlmClient 解析出的真实
+          // modelId 覆盖（purpose=comprehend → provider/model 绑定）。tenantId+purpose 共同驱动路由。
+          model: this.defaultModel, maxTokens: 8000, tenantId: ctx.tenantId, purpose: "comprehend",
           // 把已注册求解器目录拼进提示 → LLM 优先映射到真实存在的 solverKey（减少自造名导致的 SOLVER_NOT_FOUND）。
           system: comprehendSystemWithSolvers(SOLVER_KEYS), messages: [{ role: "user", content: script }], schema: LlmComprehendSchema,
         });
@@ -644,7 +653,10 @@ export class DataBuilderService {
     const parts: string[] = [];
     for (const sn of plan.solverNeeds) {
       try {
-        const out = await this.solvers.invoke(ctx, sn.solverKey, {});
+        // E15：用 FDE 自动倒推出的 sn.args（多跳路径/字段映射）调用——此前传 {} 导致需要 resourceType/
+        // targetType 等的求解器（shared_bottleneck/margin_attribution/concentration_risk）在启动器一律
+        // SKIP，"点一下出答案"形同虚设。带 args 调用 → 启动器真出非空可溯源结果。
+        const out = await this.solvers.invoke(ctx, sn.solverKey, sn.args ?? {});
         const s = Object.entries(out)
           .filter(([, v]) => typeof v === "number" || typeof v === "string")
           .slice(0, 3)
@@ -1015,9 +1027,16 @@ export class DataBuilderService {
       setPhase("comprehend", "RUNNING");
       const planId = `bpl_${ctx.tenantId}_${scriptHash}_${seed}`;
       let plan = cfg.determinism.freezePlan ? await this.repos.buildPlans.get(ctx.tenantId, planId) : undefined;
+      // E4 · freezePlan 重放幂等校验（R6）：封存 plan 必须与本次入参派生的 (scriptHash, seed) 一致才可信重放。
+      // 此前只按 planId 取到即无条件重放（planId 含 scriptHash，正常等价；但若存储被改写/迁移口径变/碰撞，
+      // 会静默服务一份不对应当前脚本的旧 plan）。校验不匹配 → 视为缓存未命中、重新 comprehend（不静默服务陈旧件）。
+      if (plan && (plan.scriptHash !== scriptHash || plan.seed !== seed)) {
+        plan = undefined;
+        setPhase("comprehend", "RUNNING", `封存 plan 与入参不符（hash/seed 漂移）→ 重新解析（不重放陈旧件）`);
+      }
       if (plan) {
         job.replayed = true;
-        setPhase("comprehend", "DONE", "重放已封存 plan（字节级一致）");
+        setPhase("comprehend", "DONE", "重放已封存 plan（字节级一致：scriptHash+seed 校验通过）");
       } else {
         const body0 = await this.comprehendPlanBody(ctx, script, seed);
         plan = { id: planId, tenantId: ctx.tenantId, builderKey: builder.key, scriptHash, seed, script, createdAt: nowIso(), ...body0 };
