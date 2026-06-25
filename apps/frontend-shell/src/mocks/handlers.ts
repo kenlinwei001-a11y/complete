@@ -1389,11 +1389,15 @@ export const handlers = [
   }),
 
   // ---- 建模 ----
-  // 原始数据集（A3 suggest 入口的可选项；与连接器同步/上传产物对应）
+  // 原始数据集（A3 suggest 入口的可选项；与连接器同步/上传产物对应）。
+  // Agent F · 数据源面板 additive：sourceConnId 指向真实 db.connections（分组/provenance 解析），
+  // name 对齐草案 objectType.sourceDataset（orders.csv/plants.csv）使覆盖度可演示；
+  // syncedAt/sourceCategory/rowCount 供新鲜度与来源类标签（值确定性、非业务常数）。
   http.get("*/a/v1/raw-datasets", () =>
     HttpResponse.json([
-      { id: "rds-orders", name: "orders", sourceConnId: "conn-upload-1" },
-      { id: "rds-oee", name: "oee_points", sourceConnId: "conn-iot" },
+      { id: "rds-orders", name: "orders.csv", sourceConnId: "conn-erp", rowCount: 1280, syncedAt: "2026-06-11T22:00:00Z", sourceCategory: "ERP" },
+      { id: "rds-plants", name: "plants.csv", sourceConnId: "conn-erp", rowCount: 6, syncedAt: "2026-06-11T22:00:00Z", sourceCategory: "ERP" },
+      { id: "rds-oee", name: "oee_points", sourceConnId: "conn-iot", rowCount: 9600, syncedAt: "2026-06-12T01:00:00Z", sourceCategory: "EXTERNAL" },
     ]),
   ),
   // 数据源节点行数据 + 在线编辑（A7 增量）

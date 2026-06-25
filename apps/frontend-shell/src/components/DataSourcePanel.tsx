@@ -1,0 +1,143 @@
+import { useQuery } from "@tanstack/react-query";
+import type { ConnectionInstance } from "@platform/contracts";
+import {
+  fetchConnections,
+  fetchRawDatasets,
+  type ModelingDraftVM,
+  type RawDatasetVM,
+} from "@/api/endpoints";
+
+/**
+ * 建模工作台 · 数据源面板（左侧 additive · RL9 可回退）。
+ * 把「连接器与上传」产出的 RawDataset 按来源系统分组，并对每个数据集亮出：
+ *   - provenance：来源系统（连接名 / 连接器类型 / 来源类）+ 新鲜度（最后同步/上传相对时间）。
+ *   - 覆盖度：被多少对象类型消费（跨所有建模草案，按 dataset 名匹配 objectType.sourceDataset）。
+ * 零业务常数：分组键/标签全部从数据派生（连接 name/connectorTypeKey/sourceCategory），不内联行业名。
+ */
+
+/** 新鲜度：最后同步/上传时间 → 人类可读相对时间 + 是否陈旧（>2h 视为延迟，呼应 C09/R13）。 */
+export function freshness(at?: string | null): { label: string; stale: boolean } | null {
+  if (!at) return null;
+  const ms = Date.now() - new Date(at).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const h = ms / 3_600_000;
+  const label =
+    h < 1 ? `${Math.max(1, Math.round(ms / 60_000))} 分钟前` : h < 48 ? `${h.toFixed(1)}h 前` : `${Math.round(h / 24)} 天前`;
+  return { label, stale: h > 2 };
+}
+
+/** 统计每个数据集被多少对象类型消费（跨所有草案，按 dataset 名匹配 objectType.sourceDataset，去重）。 */
+export function coverageByDatasetName(drafts: ModelingDraftVM[] | undefined): Map<string, number> {
+  const m = new Map<string, Set<string>>();
+  for (const d of drafts ?? []) {
+    for (const ot of d.suggestion.objectTypes) {
+      if (!ot.sourceDataset) continue;
+      const set = m.get(ot.sourceDataset) ?? new Set<string>();
+      set.add(ot.typeKey);
+      m.set(ot.sourceDataset, set);
+    }
+  }
+  const out = new Map<string, number>();
+  for (const [name, set] of m) out.set(name, set.size);
+  return out;
+}
+
+/** 分组键：优先连接名（来源系统实例），回退到来源类 / 连接 id / 「未关联来源」。 */
+function groupKeyOf(ds: RawDatasetVM, connById: Map<string, ConnectionInstance>): string {
+  const conn = ds.sourceConnId ? connById.get(ds.sourceConnId) : undefined;
+  if (conn) return conn.name;
+  if (ds.sourceCategory) return ds.sourceCategory;
+  if (ds.sourceConnId) return ds.sourceConnId;
+  return "未关联来源";
+}
+
+export function DataSourcePanel({ drafts }: { drafts?: ModelingDraftVM[] }) {
+  const { data: datasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
+  const { data: connections } = useQuery({ queryKey: ["a", "connections"], queryFn: fetchConnections });
+
+  const connById = new Map((connections ?? []).map((c) => [c.id, c]));
+  const coverage = coverageByDatasetName(drafts);
+
+  // 按来源系统分组（键从数据派生）。分组内按数据集名排序，分组按名排序 → 渲染确定。
+  const groups = new Map<string, RawDatasetVM[]>();
+  for (const ds of datasets ?? []) {
+    const k = groupKeyOf(ds, connById);
+    const bucket = groups.get(k) ?? [];
+    bucket.push(ds);
+    groups.set(k, bucket);
+  }
+  const sortedGroups = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  return (
+    <div className="panel" data-testid="data-source-panel">
+      <div className="section-title">数据源（连接器与上传）</div>
+      {sortedGroups.length === 0 && (
+        <div className="empty-state" data-testid="data-source-empty">
+          暂无数据源（先在「连接器」同步或上传）
+        </div>
+      )}
+      {sortedGroups.map(([groupName, list]) => {
+        const conn = list[0]?.sourceConnId ? connById.get(list[0]!.sourceConnId!) : undefined;
+        return (
+          <div key={groupName} style={{ marginBottom: 12 }} data-testid={`ds-group-${groupName}`}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <strong style={{ fontSize: 12 }}>{groupName}</strong>
+              {/* provenance：来源系统类（连接器类型 / sourceCategory），从数据派生 */}
+              {conn?.connectorTypeKey && (
+                <span className="badge" data-testid="ds-source-system" style={{ fontSize: 10 }}>
+                  {conn.connectorTypeKey}
+                </span>
+              )}
+              {conn?.category && (
+                <span className="badge" style={{ fontSize: 10 }}>
+                  {conn.category}
+                </span>
+              )}
+              <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>
+                {list.length} 个数据集
+              </span>
+            </div>
+            {[...list]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((ds) => {
+                // 新鲜度：数据集自身 syncedAt 优先，回退连接 lastSyncAt（provenance 链路 RawDataset←Connection）。
+                const fresh = freshness(ds.syncedAt ?? conn?.lastSyncAt ?? null);
+                const consumers = coverage.get(ds.name) ?? 0;
+                return (
+                  <div
+                    key={ds.id}
+                    data-testid={`ds-row-${ds.id}`}
+                    style={{ padding: "4px 2px", borderTop: "1px solid var(--line)" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="mono" style={{ fontSize: 11.5 }}>
+                        {ds.name}
+                      </span>
+                      {typeof ds.rowCount === "number" && (
+                        <span style={{ fontSize: 10, color: "var(--muted2)" }}>{ds.rowCount} 行</span>
+                      )}
+                      {/* 覆盖度：被多少对象类型消费（0 = 尚未建模，提示可建模为新类型） */}
+                      <span
+                        className={`badge ${consumers > 0 ? "green" : "amber"}`}
+                        data-testid={`ds-coverage-${ds.id}`}
+                        style={{ marginLeft: "auto", fontSize: 10 }}
+                        title={consumers > 0 ? `被 ${consumers} 个对象类型消费` : "尚未被任何对象类型消费"}
+                      >
+                        {consumers > 0 ? `${consumers} 个对象类型` : "未建模"}
+                      </span>
+                    </div>
+                    {/* 新鲜度（provenance 第二要素）：陈旧标降级 */}
+                    {fresh && (
+                      <div style={{ fontSize: 10, color: fresh.stale ? "var(--c-risk, #e0626c)" : "var(--muted2)" }} data-testid={`ds-freshness-${ds.id}`}>
+                        {fresh.label}同步{fresh.stale ? "（已延迟）" : ""}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

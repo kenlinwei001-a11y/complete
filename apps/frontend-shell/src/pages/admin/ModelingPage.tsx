@@ -16,6 +16,7 @@ import {
 } from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
+import { DataSourcePanel } from "@/components/DataSourcePanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
@@ -48,19 +49,27 @@ export default function ModelingPage() {
           {t.newDraft}
         </button>
       </div>
-      {draft ? (
-        <DraftWorkbench draft={draft} />
-      ) : (
-        // 管理平台增量 §6：无本体 → 「从数据建模」或「一键合成」
-        <EmptyState message={zh.admin.empty.ontology}>
-          <button className="btn primary sm" onClick={() => setSuggestOpen(true)} data-testid="cta-modeling">
-            {zh.admin.empty.modelingCta}
-          </button>
-          <Link className="btn sm" to="/admin/synthetic" data-testid="cta-synthetic">
-            {zh.admin.empty.syntheticCta}
-          </Link>
-        </EmptyState>
-      )}
+      {/* additive（RL9 可回退）：左侧数据源面板 + 右侧既有工作台/空态，原有区块零删改 */}
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+        <div style={{ width: 248, flexShrink: 0 }}>
+          <DataSourcePanel drafts={drafts} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {draft ? (
+            <DraftWorkbench draft={draft} />
+          ) : (
+            // 管理平台增量 §6：无本体 → 「从数据建模」或「一键合成」
+            <EmptyState message={zh.admin.empty.ontology}>
+              <button className="btn primary sm" onClick={() => setSuggestOpen(true)} data-testid="cta-modeling">
+                {zh.admin.empty.modelingCta}
+              </button>
+              <Link className="btn sm" to="/admin/synthetic" data-testid="cta-synthetic">
+                {zh.admin.empty.syntheticCta}
+              </Link>
+            </EmptyState>
+          )}
+        </div>
+      </div>
       {suggestOpen && (
         <SuggestModal
           initialSelected={preselect}

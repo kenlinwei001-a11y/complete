@@ -387,6 +387,10 @@ export interface RawDatasetVM {
   sourceConnId?: string;
   rowCount?: number;
   fields?: { name: string; inferredType: string }[];
+  /** A11 溯源继承：产出该数据集的连接 category（来源系统类，后端 RawDataset.sourceCategory）。 */
+  sourceCategory?: string;
+  /** 新鲜度：该数据集最后一次同步/上传时间（后端 RawDataset.syncedAt）。 */
+  syncedAt?: string;
 }
 export const fetchRawDatasets = (connId?: string) =>
   api.a<RawDatasetVM[]>(`/a/v1/raw-datasets${connId ? `?connId=${encodeURIComponent(connId)}` : ""}`);
