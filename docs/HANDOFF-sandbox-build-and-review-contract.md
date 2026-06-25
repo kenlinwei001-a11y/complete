@@ -118,6 +118,8 @@ RL1 本体先行 · RL2 暗发 · RL3 单一来源(不出双份) · RL4 走正�
 > 评审中发现的"不打回、但该改"的小项记这里，避免散落在对话里丢失。实现 agent 做到对应增量时**一并处理并在 commit 描述里说明已处理**。
 
 - [ ] **增量 4 · `sim compare` CLI 人体工学**（增量 1 评审遗留）：现用法 `sim compare <占位> --a <A> --b <B>`，第一个位置参被忽略、真正读 `--a/--b`，反直觉（评审时实测踩空）。收 CLI 人体工学时改成 `sim compare <A> <B>`（两个位置参直取），或让位置参即 A。
+- [ ] **增量 4 · `entering[].source` 标签真实化**（增量 2 评审遗留）：`certification.ts:~176` 把"将进入沙盘的状态变量"来源**硬编码成 `FULFILLS r_<type>_<prop>`**，与真实派生/链路无关（仅占位标签，显示用）。UI 落地时改成反映真实 link/派生来源（否则前端清单会一律显 FULFILLS，误导）。
+- [ ] **增量 2/3 数据齐时 · 传导 live-fire FDE**（增量 3 评审遗留）：本轮评审已核传导核（9 单测覆盖 改coef改果/delay/decay/clamp/Temporal Trust/coefficientRef）+ live 接线（真本体图 + ruleParams + opt-in），但**未亲手在真种子对象上点燃一次跨对象传导**（种子对象 id 与会话态难手工对齐）。倒序发育/两行业数据接齐后，补一条"发布 PropagationRule → 真对象 tick → 目标态变化"的 FDE 证据（commit 已诚实标 happy-path）。
 
 
 ---
