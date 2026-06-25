@@ -84,7 +84,7 @@ export default function EvalsPage() {
         <div className="panel" style={{ marginBottom: 12, display: "grid", gap: 8 }} data-testid="eval-case-form">
           <label style={{ fontSize: 12 }}>
             问句（input.query）
-            <input data-testid="eval-case-query" value={draft.query} placeholder="如：4680-NCM 加 20% 六周能不能接？" onChange={(e) => setDraft({ ...draft, query: e.target.value })} style={{ width: "100%" }} />
+            <input data-testid="eval-case-query" value={draft.query} placeholder="输入一句用户问句（评测分类器/工具序列）" onChange={(e) => setDraft({ ...draft, query: e.target.value })} style={{ width: "100%" }} />
           </label>
           <div style={{ display: "flex", gap: 10 }}>
             <label style={{ fontSize: 12, flex: 1 }}>
