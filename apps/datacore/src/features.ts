@@ -87,6 +87,13 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
   { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // 优化求解器融合（G-12·SPEC-optimization-template-pool §6）：全部暗发 defaultOn:false——按租户开不同档
+  // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
+  // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
+  { key: "opt.solver-pool", name: "优化模板池", level: "VIEW", defaultOn: false },
+  { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
