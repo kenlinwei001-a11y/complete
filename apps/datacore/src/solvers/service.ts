@@ -1650,7 +1650,72 @@ export class SolverService {
       const seq = Array.isArray(out.sequence) ? (out.sequence as { changeoverMin?: unknown }[]) : [];
       const maxStep = seq.reduce((m, s) => Math.max(m, num(s.changeoverMin)), 0);
       base.Order = { changeoverMin: maxStep };
+    } else if (solverKey === "plan_audit") {
+      // plan_audit 输入是「年度计划口径」聚合标量（args.dem/sup/gmTarget/kitGap/cashCushion/capex），输出 gmStruct。
+      // C18 AnnualScenario.cashCushion<50 与 C23 AnnualScenario.capex>=10 已经由 args 顶层标量经前缀跳过解析（基线即真评估）；
+      // 这里补 C15 / C16 / C21 三条同尺度映射使其不再 NOT_APPLICABLE。
+      // C15 Order.marginPct<Order.floorPct：经营毛利底线 —— marginPct=结构毛利 gmStruct(百分数)，floorPct=毛利目标 gmTarget(百分数)，
+      //   求解器 X03「毛利目标超出结构毛利上限」即此口径（gmTarget>gmStruct ⇔ marginPct<floorPct），两侧同为「%」标度，无需换算。
+      base.Order = { marginPct: num(out.gmStruct), floorPct: num(args.gmTarget) };
+      // C16 MaterialBalance.gapTon>0：齐套缺口 —— plan_audit 的 kitGap 即关键材料缺口（吨），求解器 X04 同口径（>0 关注 / >kitHard 硬）。
+      base.MaterialBalance = { gapTon: num(args.kitGap) };
+      // C21 SopVersionRow.balanceDeviationPct>0.10：产销平衡偏差 —— 求解器 R01 用储能占比偏离基线 essDev=|wEss−baseline|（比率，与 0.10 同标度）。
+      //   essDev 不在输出顶层，故按求解器同公式重算（segTot 用三细分合计，与 plan.ts R01 一致）。essShareBaseline 默认 0.30（params.audit）。
+      const segTot = Math.max(0.0001, num(args.seg_pas) + num(args.seg_ess) + num(args.seg_com));
+      const wEss = num(args.seg_ess) / segTot;
+      const essBaseline = num((c.params.audit as Record<string, unknown>)?.essShareBaseline, 0.3);
+      base.SopVersionRow = { balanceDeviationPct: Math.abs(wEss - essBaseline) };
+    } else if (solverKey === "plan_generate") {
+      // 三方案推演（稳健/均衡/进取）；规则评的是「推荐方案」（recommend → 对应 scheme.outcome）的承接判定。
+      // C15 Order.marginPct<Order.floorPct：方案毛利 gm（比率）vs 目标面板毛利底线 gmFloor（比率，同尺度）。
+      // C18 AnnualScenario.cashCushion<50：方案现金垫 cash（亿，base.cash≈58 同尺度，规则字面阈值 50 亿）。
+      // C08 Order.outsourceRatio>0.3：plan_generate 不产出外协比率（路径名「外协型」是策略标签非比率）→ 诚实 NOT_APPLICABLE（不填 outsourceRatio）。
+      const schemes = Array.isArray(out.schemes) ? (out.schemes as { pathKey?: unknown; outcome?: { gm?: unknown; cash?: unknown } }[]) : [];
+      const rec = schemes.find((s) => str(s.pathKey) === str(out.recommend)) ?? schemes[0];
+      const targets = (out.targets ?? {}) as { gmFloor?: unknown; cashFloor?: unknown };
+      if (rec?.outcome) {
+        base.Order = { marginPct: num(rec.outcome.gm), floorPct: num(targets.gmFloor) };
+        base.AnnualScenario = { cashCushion: num(rec.outcome.cash) };
+      }
+    } else if (solverKey === "cert_schedule") {
+      // C26 Cert.parallelTasks>Cert.engineerGroups：认证资源上限。显式补 parallelTasks=排程中任一周最大并行任务数。
+      //   贪心装箱本就 ≤engineerGroups（求解结果守约束）→ 正常 PASS；若外部传入越界排程则 BLOCK（规则真守，改 engineerGroups 即可翻转）。
+      const schedule = Array.isArray(out.schedule) ? (out.schedule as { startWeek?: unknown; finishWeek?: unknown }[]) : [];
+      const weekCount = new Map<number, number>();
+      for (const s of schedule) {
+        const a = Math.floor(num(s.startWeek));
+        const b = Math.floor(num(s.finishWeek));
+        for (let w = a; w <= b; w++) weekCount.set(w, (weekCount.get(w) ?? 0) + 1);
+      }
+      const maxParallel = weekCount.size ? Math.max(...weekCount.values()) : 0;
+      base.Cert = { parallelTasks: maxParallel, engineerGroups: num(out.engineerGroups) };
+      // C04 Line.certStatus!='量产'：仅认证产线计入产能 —— 属产能聚合口径，cert_schedule 是排程器不产出 Line.certStatus → NOT_APPLICABLE（诚实）。
+    } else if (solverKey === "outsourcing_split") {
+      // C08 Order.outsourceRatio>0.3：外协比例红线。求解器三渠道分配里「outsource」渠道的分配量 / 总需求 = 外协比率。
+      //   求解器对外协渠道设了上限 totalDemand×0.2（即 C08 的 0.2 cap），因此正常 ≤0.2 → PASS；填真比率使规则真评（改 C08 阈值即翻转）。
+      const alloc = Array.isArray(out.allocation) ? (out.allocation as { channel?: unknown; qty?: unknown }[]) : [];
+      const outsourceQty = alloc.filter((a) => str(a.channel) === "outsource").reduce((m, a) => m + num(a.qty), 0);
+      const totalDemand = num(args.totalDemand, num(args.gap));
+      base.Order = { outsourceRatio: totalDemand > 0 ? outsourceQty / totalDemand : 0 };
+      // C31 Outsource.yieldRate<Outsource.minYieldRate：外协质量门 —— 求解器只产出 outsourceQualityGate 文案，无 yieldRate/minYieldRate 数值
+      //   （良率数据不在分配求解的输入/输出里）→ NOT_APPLICABLE（诚实，不伪造良率数）。
+    } else if (solverKey === "capex_scenario") {
+      // C23 AnnualScenario.capex>=10：CAPEX 情景测算门槛。求解器输入 projects[].capex[] 是各项目逐季投资（亿元），
+      //   年度情景的总 CAPEX = Σ_项目 Σ_季 capex（亿，与规则字面阈值 10 亿同尺度）→ ≥10 即应进入年度情景测算（WARN）。
+      const projs = Array.isArray(args.projects) ? (args.projects as { capex?: unknown }[]) : [];
+      let totalCapex = 0;
+      for (const p of projs) for (const x of Array.isArray(p.capex) ? (p.capex as unknown[]) : []) totalCapex += num(x);
+      base.AnnualScenario = { capex: totalCapex };
+      // C18 AnnualScenario.cashCushion<50：现金垫底线 —— capex_scenario 算项目级现金流 IRR/NPV，不产出企业级现金垫 cashCushion
+      //   （现金垫是 plan_audit/plan_generate 的年度口径，不在 CAPEX 情景输出）→ NOT_APPLICABLE（诚实）。
     }
+    // 以下 5 求解器：其声明的规则码（SOLVER_RULE_REFS）所需字段在求解器输出口径中全部不存在 → 整体诚实 NOT_APPLICABLE，不伪造尺度凑 PASS（红线 RL5）。
+    //  · risk_timeline(C06 物料齐套缺口 / C11 检修缓冲)：张力曲线求解器，输出 cards/series，不计算物料缺口或检修缓冲天数。
+    //  · affected_orders(C05 产线利用率持续越线 SUSTAIN)：波及订单投影器，输出受影响订单，不产出产线利用率时序。
+    //  · maintenance_stagger(C11 MaintPlan.bufferDays<3)：在「周负荷」空间错峰，输出 adjustments/unresolved，不建模 bufferDays。
+    //  · mitigation_select(C08 外协比率 / C10 行动审批留痕)：方案打分推荐器，输出 plans/recommended，不算外协比率，draftPayload 是「待审批」草案非已审批 Action。
+    //  · quarterly_gap(C08 外协比率 / C29 排产冻结期 daysToStart)：缺口贪心覆盖器，输出 combo/residualGap，无外协比率、无订单开工日。
+    //  · yield_diagnosis(C30 SUSTAIN(dailyYield<yieldFloor,3))：用 2σ 统计突变法定位 breakpoint，不产出逐日 dailyYield/yieldFloor 时序，SUSTAIN 无法在输出口径成立。
     return base;
   }
 
