@@ -170,10 +170,13 @@ export function deriveCertification(
   const sumNeeded = wc.stateVars.needed + wc.derivationRules.needed + wc.actions.needed + wc.propagationRules.needed;
   const wcPct = sumNeeded <= 0 ? 100 : Math.round((100 * sumPresent) / sumNeeded);
 
-  // entering[]：将进入沙盘的状态变量清单（每条标 source = 派生规则名 / Action / PropagationRule）。
+  // entering[]：将进入沙盘的状态变量清单（每条标 source = **真实来源** 派生依赖 / Action / PropagationRule）。
+  // 评审遗留修：source 不再用占位 `FULFILLS r_<type>_<prop>`，改投影派生的**真实依赖源变量**（sourceVars，
+  // 派生公式所依赖的状态变量）——知道每个将进入态从哪来（R13 可溯源；数据可溯原则）。
   const entering: { key: string; kind: "DERIVATION" | "ACTION" | "PROPAGATION"; source: string }[] = [];
   for (const d of scope.derivations) {
-    entering.push({ key: `${d.typeKey}.${d.propKey}`, kind: "DERIVATION", source: `FULFILLS r_${d.typeKey}_${d.propKey}` });
+    const source = d.sourceVars.length > 0 ? `派生自 ${d.sourceVars.join("·")}` : `派生 ${d.typeKey}.${d.propKey}（无声明依赖）`;
+    entering.push({ key: `${d.typeKey}.${d.propKey}`, kind: "DERIVATION", source });
   }
   for (const a of scope.actions) entering.push({ key: a.key, kind: "ACTION", source: `ACTION ${a.key}` });
   for (const p of scope.propagationRules) entering.push({ key: p.key, kind: "PROPAGATION", source: `PROPAGATION ${p.key}` });

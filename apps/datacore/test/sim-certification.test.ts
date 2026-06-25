@@ -53,7 +53,11 @@ describe("增量2 · deriveCertification 纯投影", () => {
     expect(cert.dims.composite).toBe(Math.round(0.4 * 100 + 0.3 * Math.round((100 * 6) / 7) + 0.3 * 100));
     // 世界完整度 100%（present=needed）+ entering 含派生与 Action。
     expect(cert.worldCompleteness.pct).toBe(100);
-    expect(cert.worldCompleteness.entering.some((e) => e.kind === "DERIVATION" && e.key === "Order.risk")).toBe(true);
+    const ent = cert.worldCompleteness.entering.find((e) => e.kind === "DERIVATION" && e.key === "Order.risk")!;
+    expect(ent).toBeDefined();
+    // 评审遗留修：source 显**真实派生依赖**（非占位 FULFILLS r_…），知道每个将进入态从哪来（R13）。
+    expect(ent.source).toBe("派生自 Order.qty·Factory.cap");
+    expect(ent.source).not.toContain("FULFILLS r_");
     expect(cert.worldCompleteness.entering.some((e) => e.kind === "ACTION")).toBe(true);
   });
 
