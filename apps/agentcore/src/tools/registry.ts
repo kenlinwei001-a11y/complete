@@ -268,6 +268,67 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     sideEffect: "COMPUTE",
     costClass: "EXPENSIVE",
   },
+  // 增量4 §5：AI 推演指挥台 —— 让 path B agent 把沙盘当工具驱动（NL「开个沙盘，tick 3 次看风险」→ 调本组工具）。
+  // 仅在租户开通 sim.commander(+sim.sandbox) 时对 agent 可见/可用（关→工具不存在，R3 暗发；门在 orchestrator 过滤层）。
+  // R4 安全：sim tick/act 是**模拟态，绝不写真值**（DataCore 已保证：只动沙盘 TickState，采纳才出 ActionDraft 走审批）。
+  // 回执只含会话态元信息（sessionId/curTick/state 模拟值），不是真值写出口，不绕审批。
+  {
+    name: "sim_init",
+    descriptionForLLM:
+      "开一个推演沙盘会话（模拟态，绝不写真值）。可选 baseSnapshot（初始世界态）/scope（推演范围）。回执 {id,status,curTick}——把 id 作为后续 sim_tick/sim_world/sim_certify 的 sessionId。要做『假设/推演/沙盘/tick』类探索时用本工具开局。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        baseSnapshot: { type: "object", description: "可选：初始世界态快照（对象→状态变量）" },
+        scope: { type: "object", description: "可选：推演范围（如限定基地/型号）" },
+      },
+    },
+    sideEffect: "COMPUTE",
+    costClass: "CHEAP",
+  },
+  {
+    name: "sim_tick",
+    descriptionForLLM:
+      "推进沙盘 n 个 tick（模拟态传导，**不写真值**，R4）。入参 sessionId（sim_init 返回的 id）+ n（步数，默认 1）。回执 {curTick,state}——state 是模拟值非真值，须显式标注『沙盘推演结果（模拟态）』，落地仍须经 create_action_draft 走审批。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string", description: "sim_init 返回的会话 id" },
+        n: { type: "number", description: "推进步数，默认 1" },
+      },
+      required: ["sessionId"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "CHEAP",
+  },
+  {
+    name: "sim_world",
+    descriptionForLLM:
+      "读沙盘当前世界态（模拟态）。入参 sessionId。回执 {tick,state}。用于 tick 后查看推演到了哪一步、各状态变量的模拟值。",
+    inputSchema: {
+      type: "object",
+      properties: { sessionId: { type: "string", description: "sim_init 返回的会话 id" } },
+      required: ["sessionId"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "sim_certify",
+    descriptionForLLM:
+      "对沙盘会话做就绪认证（L0–L4，只读评估，不写真值）。入参 sessionId + 可选 scope(GLOBAL|LOCAL)/target。回执含世界完整度/可否进入推演/缺件清单，用于判断该会话推演结论是否可采纳。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string", description: "sim_init 返回的会话 id" },
+        scope: { type: "string", enum: ["GLOBAL", "LOCAL"], description: "认证范围，默认 GLOBAL" },
+        target: { type: "string", description: "可选：LOCAL 时的目标对象引用" },
+      },
+      required: ["sessionId"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
   {
     name: "create_action_draft",
     descriptionForLLM:
@@ -316,6 +377,12 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
 ];
+
+/**
+ * 增量4 §5：AI 推演指挥台工具集。仅在租户开通 sim.commander(+sim.sandbox) 时对 path B agent 暴露
+ * （关→工具不存在，R3 暗发）。orchestrator runPathB 据此做 entitlement 过滤。
+ */
+export const SIM_COMMANDER_TOOLS = ["sim_init", "sim_tick", "sim_world", "sim_certify"] as const;
 
 export const FINAL_ANSWER_TOOL = {
   name: "final_answer",

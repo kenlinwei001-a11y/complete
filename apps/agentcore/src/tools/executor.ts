@@ -298,6 +298,24 @@ export class GuardedToolExecutor {
       }
       case "create_action_draft":
         return this.deps.dataCore.action.createDraft(ctx, String(args.actionType), args.payload ?? args);
+      // 增量4 §5：AI 推演指挥台 —— OBO 到 DataCore /a/v1/sim/*（透传用户 JWT）。
+      // R4：sim tick/act 模拟态不写真值（DataCore 保证）；回执只含会话态元信息，不绕审批。
+      case "sim_init":
+        return this.deps.dataCore.sim.init(ctx, {
+          ...(args.baseSnapshot !== undefined ? { baseSnapshot: args.baseSnapshot as Record<string, unknown> } : {}),
+          ...(args.scope !== undefined ? { scope: args.scope as Record<string, unknown> } : {}),
+        });
+      case "sim_tick":
+        return this.deps.dataCore.sim.tick(ctx, String(args.sessionId ?? ""), args.n === undefined ? 1 : Number(args.n));
+      case "sim_world":
+        return this.deps.dataCore.sim.world(ctx, String(args.sessionId ?? ""));
+      case "sim_certify":
+        return this.deps.dataCore.sim.certify(
+          ctx,
+          String(args.sessionId ?? ""),
+          args.scope === undefined ? undefined : String(args.scope),
+          args.target === undefined ? undefined : String(args.target),
+        );
       case "search_knowledge":
         return this.deps.dataCore.kb.search(ctx, {
           query: String(args.query),

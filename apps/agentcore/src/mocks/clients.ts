@@ -10,6 +10,7 @@ import type {
   KbHit,
   OntologyClient,
   RuleEngineClient,
+  SimClient,
   SolverClient,
   TimeseriesClient,
   ToolAuthCtx,
@@ -523,6 +524,43 @@ export class MockDataGenClient implements DataGenClient {
   }
 }
 
+/**
+ * 增量4 §5：沙盘指挥台 mock —— 有状态 in-memory 会话，使 init→tick→world 在测试中连贯
+ * （tenant 隔离；模拟态不写真值：act/tick 只动会话 TickState，回执仅会话态元信息）。
+ * 行为镜像 DataCore /a/v1/sim/*：恒等 tick 进位（无传导规则桩），certify 回轻量就绪摘要。
+ */
+export class MockSimClient implements SimClient {
+  private readonly sessions = new Map<string, { tenantId: string; curTick: number; state: Record<string, unknown>; scope: Record<string, unknown> }>();
+
+  async init(ctx: ToolAuthCtx, req: { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> }): Promise<Record<string, unknown>> {
+    const id = newId("sims");
+    const base = req.baseSnapshot ?? {};
+    const status = Object.keys(base).length > 0 ? "READY" : "DRAFT";
+    this.sessions.set(id, { tenantId: ctx.tenantId, curTick: 0, state: { ...base }, scope: req.scope ?? {} });
+    return { id, status, curTick: 0, _note: "沙盘会话（模拟态，不写真值）。" };
+  }
+  async tick(ctx: ToolAuthCtx, sessionId: string, n: number): Promise<Record<string, unknown>> {
+    const s = this.get(ctx, sessionId);
+    const steps = Math.max(1, Math.floor(n || 1));
+    s.curTick += steps; // 恒等桩进位（无 PUBLISHED 传导规则；确定性 R6）
+    return { curTick: s.curTick, state: s.state, _note: "tick 为模拟态推进，未写真值（R4）。" };
+  }
+  async world(ctx: ToolAuthCtx, sessionId: string): Promise<Record<string, unknown>> {
+    const s = this.get(ctx, sessionId);
+    return { tick: s.curTick, state: s.state };
+  }
+  async certify(ctx: ToolAuthCtx, sessionId: string, scope?: string, target?: string): Promise<Record<string, unknown>> {
+    this.get(ctx, sessionId); // 404 隔离（R2 租户）
+    const scopeKind = scope === "LOCAL" ? "LOCAL" : "GLOBAL";
+    return { scope: scopeKind, targetRef: target ?? null, worldCompleteness: 1, canEnterSimulation: true, level: "L0", gaps: [] };
+  }
+  private get(ctx: ToolAuthCtx, sessionId: string): { tenantId: string; curTick: number; state: Record<string, unknown>; scope: Record<string, unknown> } {
+    const s = this.sessions.get(sessionId);
+    if (!s || s.tenantId !== ctx.tenantId) throw new Error(`sim session not found: ${sessionId}`);
+    return s;
+  }
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
   solver: MockSolverClient;
@@ -533,6 +571,7 @@ export interface MockDataCore extends DataCoreClient {
   timeseries: MockTimeseriesClient;
   catalog: MockCatalogClient;
   datagen: MockDataGenClient;
+  sim: MockSimClient;
 }
 
 export function createMockDataCore(): MockDataCore {
@@ -547,5 +586,6 @@ export function createMockDataCore(): MockDataCore {
     catalog: new MockCatalogClient(),
     epoch: { async current() { return { epoch: 1 }; } },
     datagen: new MockDataGenClient(),
+    sim: new MockSimClient(),
   };
 }

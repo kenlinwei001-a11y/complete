@@ -112,6 +112,22 @@ export interface DataGenClient {
   buildDomain(ctx: ToolAuthCtx, req: { story: string; seed?: number }): Promise<Record<string, unknown>>;
 }
 
+/**
+ * 增量4 §5：AI 推演指挥台 —— path B agent 把沙盘当工具驱动（OBO 到 DataCore /a/v1/sim/*，透传用户 JWT）。
+ * R4 安全：tick/act 是**模拟态不写真值**（DataCore 已保证：act 只改沙盘 TickState，采纳才出 ActionDraft 走审批）；
+ * 这些方法的回执只含会话态元信息（sessionId/curTick/状态值），不绕审批、不出真值写出口。
+ */
+export interface SimClient {
+  /** 开沙盘：建会话（可选 baseSnapshot/scope）。回执 {id,status,curTick,...}。 */
+  init(ctx: ToolAuthCtx, req: { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> }): Promise<Record<string, unknown>>;
+  /** 推进 n 个 tick（模拟态传导，不写真值）。回执 {curTick,state,trace?}。 */
+  tick(ctx: ToolAuthCtx, sessionId: string, n: number): Promise<Record<string, unknown>>;
+  /** 读当前世界态（沙盘内 tick + state）。 */
+  world(ctx: ToolAuthCtx, sessionId: string): Promise<Record<string, unknown>>;
+  /** 就绪认证 L0–L4（只读评估，不写真值）。scope=GLOBAL|LOCAL，可选 target。 */
+  certify(ctx: ToolAuthCtx, sessionId: string, scope?: string, target?: string): Promise<Record<string, unknown>>;
+}
+
 export interface DataCoreClient {
   ontology: OntologyClient;
   solver: SolverClient;
@@ -123,6 +139,8 @@ export interface DataCoreClient {
   catalog: CatalogClient;
   epoch: EpochClient;
   datagen: DataGenClient;
+  /** 增量4 §5：AI 推演指挥台的沙盘工具出口（仅 sim.commander/sim.sandbox 开通时对 agent 可见）。 */
+  sim: SimClient;
 }
 
 export class DataCoreUnavailableError extends Error {

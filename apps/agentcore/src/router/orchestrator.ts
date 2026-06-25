@@ -33,12 +33,22 @@ import type { LlmSettings } from "../llm/providers.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import { BudgetTracker } from "../tools/budget.js";
-import { BUILTIN_TOOLS } from "../tools/registry.js";
+import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * 增量4 §5：AI 推演指挥台 entitlement 判定 —— sim 工具仅当 sim.commander 且 sim.sandbox 同开才对 agent 可见。
+ * 这两键不在 AgentCore FeatureRegistry 里（权威集来自 DataCore），故不能用 featureEnabled（它对未注册键恒真）；
+ * 显式要求两键齐备。set="ALL"（mock 默认/降级 fail-open）→ 视为全开（与现有 entitlement 语义一致）。
+ */
+function simCommanderEnabled(set: FeatureSet): boolean {
+  if (set === "ALL") return true;
+  return set.has("sim.commander") && set.has("sim.sandbox");
+}
 
 export class HttpError extends Error {
   constructor(
@@ -635,13 +645,23 @@ export class Orchestrator {
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
 
-    // 工具集：whitelist ∩ {READ, COMPUTE} + create_action_draft（写降级出口）；final_answer 由循环追加
+    // 增量4 §5：AI 推演指挥台 —— sim 工具仅在租户开通 sim.commander(+sim.sandbox) 时对 agent 可见/可用
+    // （关→工具不存在，R3 暗发）。entitlement 先于 authz；DataCore 侧每端点仍各自门控（双保险）。
+    // 注意 enabledFeatures="ALL"（mock 默认/降级）→ 全开；显式 Set 时要求两键齐备。
+    const simCommanderOn = simCommanderEnabled(enabledFeatures);
+
+    // 工具集：whitelist ∩ {READ, COMPUTE} + create_action_draft（写降级出口）；final_answer 由循环追加。
+    // 增量4 §5：sim 工具的可见性由 entitlement 权威决定（关→不存在，R3 暗发）——即便 package 白名单含它，
+    // entitlement 关也必须剔除；故先把 sim 工具从通用白名单分支排除，仅经 simCommanderOn 分支放行。
+    const simNames = SIM_COMMANDER_TOOLS as readonly string[];
     const tools: AgentToolSpec[] = BUILTIN_TOOLS.filter(
       (t) =>
-        (pkg.toolWhitelist.includes(t.name) && (t.sideEffect === "READ" || t.sideEffect === "COMPUTE")) ||
+        (!simNames.includes(t.name) && pkg.toolWhitelist.includes(t.name) && (t.sideEffect === "READ" || t.sideEffect === "COMPUTE")) ||
         t.name === "create_action_draft" ||
         // 能力发现 §1：discover 是元工具，始终可用（不受 package 白名单约束）
-        t.name === "discover",
+        t.name === "discover" ||
+        // 增量4 §5：sim 指挥台工具——entitlement 开则可用（关则不存在），权威门，先于 package 白名单
+        (simCommanderOn && simNames.includes(t.name)),
     ).map((t) => ({
       name: t.name,
       description: t.descriptionForLLM,

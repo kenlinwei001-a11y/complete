@@ -11,6 +11,7 @@ import {
   type KbClient,
   type OntologyClient,
   type RuleEngineClient,
+  type SimClient,
   type SolverClient,
   type TimeseriesClient,
   type ToolAuthCtx,
@@ -187,6 +188,31 @@ class HttpDataGenClient implements DataGenClient {
   }
 }
 
+/**
+ * 增量4 §5：沙盘指挥台 OBO 出口 —— 透传用户 JWT 调 DataCore /a/v1/sim/*。
+ * DataCore 侧每端点各有 entitlement 门（sandbox/propagation/certification）；
+ * 这里只转发，模拟态不写真值的语义由 DataCore 保证（act 改 TickState、采纳才出 ActionDraft）。
+ */
+class HttpSimClient implements SimClient {
+  constructor(private readonly baseUrl: string) {}
+  init(ctx: ToolAuthCtx, req: { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> }): Promise<Record<string, unknown>> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/sim/sessions`, {
+      ...(req.baseSnapshot !== undefined ? { baseSnapshot: req.baseSnapshot } : {}),
+      ...(req.scope !== undefined ? { scope: req.scope } : {}),
+    });
+  }
+  tick(ctx: ToolAuthCtx, sessionId: string, n: number): Promise<Record<string, unknown>> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`, { n });
+  }
+  world(ctx: ToolAuthCtx, sessionId: string): Promise<Record<string, unknown>> {
+    return call(this.baseUrl, ctx, "GET", `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`);
+  }
+  certify(ctx: ToolAuthCtx, sessionId: string, scope?: string, target?: string): Promise<Record<string, unknown>> {
+    const qs = [scope ? `scope=${encodeURIComponent(scope)}` : "", target ? `target=${encodeURIComponent(target)}` : ""].filter(Boolean).join("&");
+    return call(this.baseUrl, ctx, "GET", `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/certification${qs ? `?${qs}` : ""}`);
+  }
+}
+
 class HttpCatalogClient implements CatalogClient {
   constructor(private readonly baseUrl: string) {}
   discover(
@@ -260,5 +286,6 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     catalog: new HttpCatalogClient(baseUrl),
     epoch: new HttpEpochClient(baseUrl),
     datagen: new HttpDataGenClient(baseUrl),
+    sim: new HttpSimClient(baseUrl),
   };
 }
