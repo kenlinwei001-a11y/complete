@@ -55,9 +55,8 @@ import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap, FILL } from "./growth/probe.js";
 import { perceptionMetrics } from "./router/perception-metrics.js";
-import { scaffoldDraftPlan, questionSlug } from "./growth/scaffold.js";
 import { runGrowthLoop } from "./growth/loop.js";
-import { decideDataGap, groundingVocab } from "./growth/data-boundary.js";
+import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { seedScenarios } from "./scenarios-catalog.js";
@@ -223,69 +222,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     const body = SubmitQueryBodySchema.parse(req.body);
     const maxRounds = Number((req.body as { maxRounds?: number })?.maxRounds ?? 8); // K 前端可配
-    const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
-    const probe = async () => {
-      const { taskId } = await deps.orchestrator.submitQuery(a, body);
-      let task = await deps.repos.tasks.get(taskId);
-      for (let i = 0; i < 100 && (!task || !TERMINAL.has(task.status)); i++) {
-        await new Promise((r) => setTimeout(r, 50));
-        task = await deps.repos.tasks.get(taskId);
-      }
-      if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
-      return classifyGap(task);
-    };
-    // 补法分派：① 缺数据→真人正门补(P2 真实)；② 缺执行计划/缺求解器(in-catalog 接线缺口)→A3 真补：
-    // 自动 scaffold DRAFT 执行计划绑 generic_inference 兜底（不发布 R4，收敛到"待审批发布"边界、
-    // 工单带已建骨架，从"零开发"降级）；③ 其余(缺意图/切片/规则/形状)→骨架工单收敛到边界。
+    // probe/fill 单源（RL3/RL10）：抽到 growth/scenario-grow.ts，与 growScenario(O9) 共用同一套补法引擎，不分叉。
+    // 补法分派：① 缺数据→真人正门补(P2 真实)；② 缺执行计划/缺求解器(in-catalog)→A3 自动 scaffold DRAFT（不发布 R4）；③ 其余→骨架工单收敛到边界。
     // 每次 fill 发 growth.fill_proposed（经 E-c domain_events → F1 全局通道反映到驾驶舱）。
-    const SCAFFOLDABLE = new Set<import("@platform/contracts").GapCode>(["NO_PLAN", "SOLVER_NOT_FOUND"]);
-    const scaffoldedByGap = new Map<import("@platform/contracts").GapCode, import("@platform/contracts").ScaffoldDraft[]>();
-    const fill = async (gap: import("@platform/contracts").GapFinding) => {
-      await emitDomainEvent(a.tenantId, "growth.gap_detected", { gapCode: gap.gapCode, atStep: gap.atStep ?? null });
-      let result: import("@platform/contracts").GrowthFillResult;
-      if (gap.gapCode === "EMPTY_DATA") {
-        // DF.9 真人正门 HARD/SOFT 分流：缺数据涉真实业务实体 → HARD（不静默合成，出精确 DataRequest 走真人正门）；否则 SOFT 合成 PROVISIONAL。
-        const ctxText = [
-          ...(body.context.selectedObjects ?? []).map((o) => o.objectId),
-          ...Object.values(body.context.filters ?? {}).map((v) => String(v)),
-        ].join(" ");
-        const typeKey = body.context.selectedObjects?.[0]?.objectType || body.context.view || "Object";
-        const decision = decideDataGap(body.query, ctxText, groundingVocab(), { typeKey });
-        if (decision.mode === "HARD") {
-          result = {
-            gapCode: gap.gapCode,
-            action: `HARD 缺真实业务数据（${decision.entities.join("、")}）→ 真人正门导入，不静默合成`,
-            advanced: false,
-            fillMode: "HARD",
-            dataRequest: decision.dataRequest!,
-            ticket: { gapCode: gap.gapCode, detail: decision.dataRequest!.reason },
-          };
-        } else {
-          try {
-            await deps.dataCore.ontology.fillData(a, { typeKey, fields: ["id", "name", "value"], rows: 6, seed: 42 });
-            result = { gapCode: gap.gapCode, action: "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL(fill-data)", advanced: true, fillMode: "SOFT" };
-          } catch {
-            result = { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, fillMode: "SOFT", ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
-          }
-        }
-      } else if (SCAFFOLDABLE.has(gap.gapCode)) {
-        if (!scaffoldedByGap.has(gap.gapCode)) {
-          const planKey = `plan_growth_${questionSlug(body.query)}`;
-          const drafts = await scaffoldDraftPlan(deps, a.tenantId, planKey);
-          scaffoldedByGap.set(gap.gapCode, drafts);
-          result = drafts.length > 0
-            ? { gapCode: gap.gapCode, action: `自动 scaffold DRAFT 执行计划 ${planKey}（绑 generic_inference 兜底）→ 待审批发布`, advanced: true, scaffolded: drafts }
-            : { gapCode: gap.gapCode, action: "执行计划骨架已存在（DRAFT，待审批发布）", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
-        } else {
-          // 已 scaffold、缺口仍在（DRAFT 未发布 R4）→ 做完能做的，收敛到边界（工单带已建骨架）
-          result = { gapCode: gap.gapCode, action: "DRAFT 骨架已就绪，待审批发布/补全参数", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
-        }
-      } else {
-        result = { gapCode: gap.gapCode, action: `${FILL[gap.gapCode]}（当前不可自动补→骨架工单）`, advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
-      }
-      await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: result.advanced, scaffolded: result.scaffolded?.length ?? 0, ...(result.fillMode ? { fillMode: result.fillMode } : {}) });
-      return result;
-    };
+    const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, body, emitDomainEvent);
     const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
     // P4：成长账本(demand-indexed) + 缺功能→成长工单（厂商中立施工契约，带真实 I/O 契约 + 本体引用骨架）
     const now = new Date().toISOString();
@@ -2027,9 +1967,14 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // ---- PRD-scenario-ontogenesis P1：卡发育闭环（grow=亲手把 triggerQuestion 经 QOS 跑通验证→留痕→定 maturity）----
   // §2.2/§2.3：把卡的触发问句正序经 QOS 实跑到终态 → 验证真出答案（非空/非兜底/非 gap）才标 GOVERNED；
   // 否则 PROVISIONAL + 记缺口（§2.5 诚实，不静默）。留痕 ScenarioOntogenesisRun 落在卡上，前端可见"从哪来/到哪步"。
-  const growScenario = async (a: RequestAuth, sc: Scenario): Promise<ScenarioOntogenesisRun> => {
-    const runId = newId("sor");
-    const ranAt = new Date().toISOString();
+  // 一次发育验证（A10 正序实跑 triggerQuestion → 三环 + 诚实门 → 结论）。可重复调用：O9 自动补齐后重验。
+  type VerifyResult = {
+    dataOk: boolean; ontologyOk: boolean; capabilityOk: boolean;
+    vstatus: "VERIFIED" | "NOT_VERIFIED" | "NOT_RUN";
+    vpath: "WORKFLOW" | "AGENT" | "NONE"; gapCode: string | null; answerPreview: string | null; taskId: string | null;
+    closureIssues: string[];
+  };
+  const verifyScenario = async (a: RequestAuth, sc: Scenario): Promise<VerifyResult> => {
     // 本体环/能力环：意图存在且发布 + 计划可绑定（复用 scenarioClosure 口径）。
     const closure = await scenarioClosure(a.tenantId, sc);
     const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
@@ -2038,9 +1983,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const capabilityOk = !!intent && intent.status === "PUBLISHED" && !!(await resolvePlanForIntent(deps.repos, intent));
     const ontologyOk = !!intent && !!(intent.planId);
 
-    // 数据环：经 QOS 正序实跑 triggerQuestion 到终态（内部跑、不受并发节流），验证真出答案。
-    let dataOk = false, vstatus: "VERIFIED" | "NOT_VERIFIED" | "NOT_RUN" = "NOT_RUN";
-    let vpath: "WORKFLOW" | "AGENT" | "NONE" = "NONE", gapCode: string | null = null, answerPreview: string | null = null, taskId: string | null = null;
+    let dataOk = false, vstatus: VerifyResult["vstatus"] = "NOT_RUN";
+    let vpath: VerifyResult["vpath"] = "NONE", gapCode: string | null = null, answerPreview: string | null = null, taskId: string | null = null;
     if (capabilityOk) {
       try {
         const body = SubmitQueryBodySchema.parse({
@@ -2049,7 +1993,6 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         });
         const sub = await deps.orchestrator.submitQuery(a, body, undefined, { internal: true });
         taskId = sub.taskId;
-        // 轮询到终态（COMPLETED/FAILED/CANCELLED/AWAITING_CLARIFICATION），上限 ~12s。
         let t = await deps.repos.tasks.get(taskId);
         for (let i = 0; i < 120 && t && !["COMPLETED", "FAILED", "CANCELLED", "AWAITING_CLARIFICATION"].includes(t.status); i++) {
           await new Promise((r) => setTimeout(r, 100));
@@ -2059,9 +2002,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         const blocks = t?.answer?.blocks ?? [];
         const gapBlock = blocks.find((b) => b.type === "gap");
         const fallbackText = blocks.some((b) => b.type === "text" && /未能产出回答|探索模式未能/.test(String((b as { markdown?: string }).markdown ?? "")));
-        // 诚实门（闭 G-1）：答案必须**投影出真实数据**才算 VERIFIED——含承载数据的块
-        // （kpi/table/rule_violation/action_draft，或带 ⟦ref⟧ 溯源的文本）；只有静态占位文本=未投影，
-        // 绝不充作"已验证"（防 P1 把"XX已完成推演"占位文案误判 GOVERNED）。
+        // 诚实门（闭 G-1）：答案必须**投影出真实数据**才算 VERIFIED——含承载数据的块。
         const dataBearing = blocks.some((b) =>
           b.type === "kpi" || b.type === "table" || b.type === "rule_violation" || b.type === "action_draft" ||
           (b.type === "text" && /⟦ref:/.test(String((b as { markdown?: string }).markdown ?? ""))));
@@ -2083,22 +2024,69 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     } else {
       gapCode = !intent ? "MISSING_INTENT" : intent.status !== "PUBLISHED" ? "INTENT_NOT_PUBLISHED" : "MISSING_PLAN";
     }
+    return { dataOk, ontologyOk, capabilityOk, vstatus, vpath, gapCode, answerPreview, taskId, closureIssues: closure.issues };
+  };
 
-    const maturity = dataOk ? "GOVERNED" : "PROVISIONAL";
-    const gaps = vstatus === "VERIFIED" ? [] : [{
-      gapCode: gapCode ?? "OTHER",
-      // 缺意图/计划=可自动补（重播种子/grow）；运行缺数据/求解器=需人工（真人正门/审批）。
-      disposition: (gapCode === "MISSING_INTENT" || gapCode === "INTENT_NOT_PUBLISHED" || gapCode === "MISSING_PLAN" ? "AUTO_DERIVE" : "NEEDS_HUMAN") as "AUTO_DERIVE" | "NEEDS_HUMAN",
-      detail: closure.issues.join("；") || (answerPreview ?? "触发问句未跑出真实答案"),
+  const growScenario = async (a: RequestAuth, sc: Scenario): Promise<ScenarioOntogenesisRun> => {
+    const runId = newId("sor");
+    const ranAt = new Date().toISOString();
+    let v = await verifyScenario(a, sc);
+
+    // O9（P3 wiring，G-9 收尾）：首验未通过 + 缺口可自动补（AUTO_DERIVE）→ 触发 runGrowthLoop（探针→补齐→重跑→收敛），
+    // 收敛后重验一次；真出可验证答案才标 GOVERNED（RL4 不放水）。诚实门：补不上的卡保持 PROVISIONAL + 开 GrowthTicket，绝不假装 GOVERNED。
+    // 复用 §289 同一套 probe/fill 引擎（buildGrowthLoopWiring，RL3/RL10 单源不分叉），被调 runGrowthLoop/fill 零重写（RL3）。
+    let growth: { triggered: boolean; terminalState?: string; rounds?: number; ticketId?: string } = { triggered: false };
+    const initialAutoDerive = !v.dataOk && (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" || v.gapCode === "NO_PLAN" || v.gapCode === "SOLVER_NOT_FOUND" || v.gapCode === "EMPTY_DATA" || v.gapCode === "RENDER_NOT_PROJECTED");
+    if (initialAutoDerive) {
+      const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+      if (pkg) {
+        const loopBody = SubmitQueryBodySchema.parse({
+          packageId: pkg.id, query: sc.triggerQuestion,
+          context: { view: sc.presetContext.targetView, selectedObjects: sc.presetContext.selectedObjects, filters: {}, presetSlots: sc.presetContext.slotPresets, scenarioIntentKey: sc.intentKey, scenarioKey: sc.scenarioKey },
+        });
+        const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, loopBody, emitDomainEvent);
+        await deps.events.emit(sc.scenarioKey, "scenario.growth_triggered", { scenarioKey: sc.scenarioKey, runId, gapCode: v.gapCode });
+        const report = await runGrowthLoop({ question: sc.triggerQuestion, maxRounds: 6, probe, fill });
+        growth = { triggered: true, terminalState: report.terminalState, rounds: report.rounds.length };
+        await deps.repos.growthLedger.insert({ id: newId("glr"), tenantId: a.tenantId, report, createdAt: new Date().toISOString() });
+        // 边界/未收敛（系统已做完它能做的，仍补不上）→ 诚实开 GrowthTicket（不静默、不假装 GOVERNED）。
+        for (const tk of report.openTickets) {
+          const ticketId = newId("gtk");
+          const drafts = scaffoldedByGap.get(tk.gapCode);
+          await deps.repos.growthTickets.upsert({
+            id: ticketId, tenantId: a.tenantId, fromQuestion: sc.triggerQuestion, gapCode: tk.gapCode,
+            ioContract: { inputs: [], outputShape: ["answer", "provenance"] },
+            ontologyRefs: { objectTypes: sc.presetContext.targetView ? [sc.presetContext.targetView] : [], slices: [], rules: sc.rules ?? [] },
+            acceptance: `场景卡「${sc.scenarioKey}」发育：问句「${sc.triggerQuestion}」应跑出可验证答案才能 GOVERNED。${drafts && drafts.length > 0 ? `已 scaffold DRAFT 骨架（${drafts.map((d) => d.key).join(",")}），施工=审批发布/补全参数。` : `建议补法：${tk.detail}`}`,
+            status: "OPEN", createdAt: new Date().toISOString(),
+            ...(drafts && drafts.length > 0 ? { scaffoldedDrafts: drafts } : {}),
+          });
+          growth.ticketId = ticketId;
+          await emitDomainEvent(a.tenantId, "growth.ticket_opened", { ticketId, gapCode: tk.gapCode });
+        }
+        // 收敛（补法已推进）→ 重验一次：现可投影真实答案则升 GOVERNED；否则诚实保持 PROVISIONAL。
+        if (report.terminalState === "CONVERGED") {
+          await emitDomainEvent(a.tenantId, "growth.converged", { question: sc.triggerQuestion, rounds: report.rounds.length });
+          v = await verifyScenario(a, sc);
+        }
+      }
+    }
+
+    const maturity = v.dataOk ? "GOVERNED" : "PROVISIONAL";
+    const gaps = v.vstatus === "VERIFIED" ? [] : [{
+      gapCode: v.gapCode ?? "OTHER",
+      // 缺意图/计划=可自动补（grow/scaffold）；运行缺数据/求解器=需人工（真人正门/审批）。
+      disposition: (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" ? "AUTO_DERIVE" : "NEEDS_HUMAN") as "AUTO_DERIVE" | "NEEDS_HUMAN",
+      detail: v.closureIssues.join("；") || (v.answerPreview ?? "触发问句未跑出真实答案") + (growth.triggered ? `（已触发自动补齐：${growth.terminalState}，${growth.rounds} 轮${growth.ticketId ? "，已开工单 " + growth.ticketId : ""}）` : ""),
     }];
     const run: ScenarioOntogenesisRun = {
       runId, scenarioKey: sc.scenarioKey, ranAt,
-      rings: { data: dataOk, ontology: ontologyOk, capability: capabilityOk },
-      verification: { status: vstatus, path: vpath, gapCode, answerPreview, taskId },
+      rings: { data: v.dataOk, ontology: v.ontologyOk, capability: v.capabilityOk },
+      verification: { status: v.vstatus, path: v.vpath, gapCode: v.gapCode, answerPreview: v.answerPreview, taskId: v.taskId },
       gaps, maturity,
     };
     await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, updatedAt: new Date().toISOString() });
-    await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode });
+    await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode });
     return run;
   };
 
