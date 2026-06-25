@@ -313,6 +313,17 @@ const MOCK_SOLVER_ARTIFACTS: {
   },
 ];
 
+// V11 · VLE 段级红绿矩阵 mock 断言集（七段抽样 + ⑤参照双算 + 一条失败 diff 供下钻）。
+const VLE_MOCK_ASSERTIONS = [
+  { segment: "①接入", point: "接入产出核心类型行数 == GenSpec", oracle: "constructed", pass: true, expected: { Base: 12, Model: 6, Order: 24 }, actual: { Base: 12, Model: 6, Order: 24 } },
+  { segment: "②建模与对象化", point: "链接引用完整性（悬挂引用=0）", oracle: "invariant", pass: true, expected: 0, actual: 0 },
+  { segment: "③聚合与派生", point: "聚合下推 == 明细求和（守恒律）", oracle: "invariant", pass: true, expected: 4680, actual: 4680 },
+  { segment: "④规则查全查准", point: "植入越线行被独立谓词捕获（C03）", oracle: "constructed", pass: true, expected: ">0", actual: 3 },
+  { segment: "⑤求解器执行", point: "参照实现双算 capacity_forecast P50/P90", oracle: "reference", pass: false, expected: { p50: 6.3625, p90: 5.9171 }, actual: { p50: 6.3625, p90: 2.9586 }, diff: "P90 期望 5.9171 实际 2.9586（Δ2.9585）· 首个偏离基地 BASE-CZ" },
+  { segment: "⑥行动终态", point: "真值变更必经审批（审批链非空）", oracle: "invariant", pass: true, expected: 0, actual: 0 },
+  { segment: "⑦校准注入", point: "校准注入即收敛（mapeAfter<mapeBefore）", oracle: "invariant", pass: true, expected: 0, actual: 0 },
+] as const;
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -590,11 +601,18 @@ export const handlers = [
   }),
 
   // ---- 七管理页整簇 mock ----
+  // V11：断言矩阵 mock（含 ⑤参照双算 + 一条失败 diff，供段级红绿矩阵/下钻渲染）。
+  http.get("*/a/v1/validation/runs/:id", ({ params }) =>
+    HttpResponse.json({
+      id: String(params.id), profile: "SMOKE", seed: 42, startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:09:00Z",
+      report: { profile: "SMOKE", seed: 42, pass: false, coverage: { module: 0.92, assertion: 1, loop: 0.86 }, engineeringVerificationScore: 0.95, assertions: VLE_MOCK_ASSERTIONS },
+    }),
+  ),
   http.get("*/a/v1/validation/runs", () =>
     HttpResponse.json([
       {
         id: "vrun_1", profile: "SMOKE", seed: 42, startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:09:00Z",
-        report: { profile: "SMOKE", seed: 42, pass: true, assertions: [], coverage: { module: 0.95, assertion: 0.9, loop: 1 }, engineeringVerificationScore: 0.94 },
+        report: { profile: "SMOKE", seed: 42, pass: true, coverage: { module: 0.95, assertion: 0.9, loop: 1 }, engineeringVerificationScore: 0.94, assertions: [] },
       },
     ]),
   ),
