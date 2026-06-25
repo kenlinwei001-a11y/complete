@@ -37,9 +37,10 @@
 | **E** | 规则即一等 G-10 收尾(P3) | `HANDOFF-rules-firstclass-p3-build-and-review-contract.md` | P1 | 编辑器/版本/事件**已建**；补 **11/19 求解器 payload 映射**+6 入口 FDE；**别重写编辑器** |
 | **F** | 场景发育 G-9 收尾(P3) | `HANDOFF-ontogenesis-p3-build-and-review-contract.md` | P1 | runGrowthLoop/planSlice/规则解析**函数都在**；只是 **wiring**(growScenario 调它们)+ADVISORY；**别重写函数** |
 | **G** | 管理面闭合+AC8 | `HANDOFF-admin-console-closure-build-and-review-contract.md` | P2 | 41 页都在；补 3 页(求解器目录/切片编辑器/评测 CRUD)+引用控件闭合+AC8 死路；**别重写已建 38 页** |
-| **H** | P3 收尾杂项（Pass-2 wave1-4 · 22 块） | `PASS2-wave{1,2,3,4}-finishing-tasks.md` | P1-P2 | 22 块**全 50-95% 已建**；活=钩子接线/补前端页/加字段头/B侧对称/求解器 LIVE 口径/多模板（wave4：A2/A7/松耦合/安全可观测/A4A5/Skill 规范）；**已建主体别重写（尤求解器核心算法/本体 O1-O10/三层权限/A2 全链）** |
+| **H** | P3 收尾杂项（Pass-2 wave1-5 · 全部模块 + 前端） | `PASS2-wave{1,2,3,4,5}-finishing-tasks.md` | P1-P2 | 全 50-95% 已建；活=钩子接线/补前端页(图谱配色/G-3预设上下文/对象360)/加字段头/B侧对称/求解器 LIVE 口径/多模板；**已建主体别重写（求解器核心算法/本体 O1-O10/三层权限/A2 全链/前端核心链路）** |
 | **I** | 驾驶舱数据层颗粒（真半成品） | `PASS2-wave2-finishing-tasks.md §2` | P1（含高回归专项） | 25-30% 已建（求解器框架在）；缺八卡KPI数据源/八根因DAG/毛利勾稽；**三阶段必守：低回归先→中→高回归专项独立PR+FDE逐值核HTML过基线，别混 commit；求解器别重写** |
 | **J** | 数据流闭环 TR1-8（"能用"命脉） | `PASS2-wave3-finishing-tasks.md §1` | **P0** | 50% 已建（订阅/outbox/前端失效框架在）；缺一串**产出事件发射** + **AgentCore→DataCore 跨栈 outbox 通道**→TR1-8 全不真通（违 D-29/UP-1）；DF-5 跨栈通道牵动大可升级独立 HANDOFF |
+| **K** | QOS 全量真跑 + 数字可信（高风险✅坐实） | `PASS2-wave5-finishing-tasks.md §1` | **P0** | 骨架真，但 G-1/G-2"已修"是虚判（仅 4/20 卡真跑、求解器形状无真联测、种子自承"闭G-2残"）+ 路径B数字 provenance LLM 自填可谎报无反向校验；做 20 卡逐卡 probe-e2e+真 DataCore 联测 + 数字↔provenance 一致性校验 |
 
 > ⚠ **每条轨摸底都翻案过——真代码比文档建得多得多**。所以每份 HANDOFF §1 都标死"哪些已建只接不重写、哪些才真建"。**照文档/TODO 从零重写=红线打回。**
 > ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。**先读你那轨 HANDOFF §1 追溯表**再动手。
