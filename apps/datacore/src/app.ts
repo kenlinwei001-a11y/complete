@@ -48,7 +48,7 @@ import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTic
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
-import { buildSliceIndex, lookupReusable } from "./ontology/slice-index.js";
+import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
@@ -2121,13 +2121,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
     const specs = (await repos.sliceSpecs.list(c.tenantId)).map((s) => ({ sliceKey: s.sliceKey, root: s.spec.root.typeKey, paths: s.spec.paths }));
     const index = buildSliceIndex(specs, links);
-    const reuse = lookupReusable(index, body.rootType, body.targets);
+    let reuse = lookupReusable(index, body.rootType, body.targets);
+    // E6 · 切片按近似问句复用（P2，additive）：精确覆盖未命中时，用问句（原文）与既有切片 description/
+    // indexEntities 的词重叠检索命中既有切片复用，不重规划。description 派生自切片覆盖类型（R13 投影，无新存储）。
+    const question = typeof (req.body as { question?: unknown })?.question === "string" ? (req.body as { question: string }).question : undefined;
+    let reusedByQuestion: { sliceKey: string; score: number } | null = null;
+    if (!reuse && question) {
+      const descriptors = index.map((e) => ({ sliceKey: e.sliceKey, rootType: e.rootType, description: `${e.sliceKey} ${e.spannedTypes.join(" ")}`, indexEntities: e.spannedTypes }));
+      reusedByQuestion = lookupReusableByQuestion(descriptors, body.rootType, question);
+      if (reusedByQuestion) reuse = index.find((e) => e.sliceKey === reusedByQuestion!.sliceKey) ?? null;
+    }
     const res = planSlice(types, links, body);
     if (res.ok && reuse) {
-      res.plan.sliceKey = reuse.sliceKey; // A3.4：复用既有已发布切片
+      res.plan.sliceKey = reuse.sliceKey; // A3.4：复用既有已发布切片（精确覆盖 或 E6 近似问句命中）
       res.plan.reused = true;
     }
-    if (res.ok) await outbox.emit(c.tenantId, "slice.planned", { sliceKey: res.plan.sliceKey, rootType: body.rootType, reused: res.plan.reused });
+    if (res.ok) await outbox.emit(c.tenantId, "slice.planned", { sliceKey: res.plan.sliceKey, rootType: body.rootType, reused: res.plan.reused, ...(reusedByQuestion ? { reuseMatch: "QUESTION", score: reusedByQuestion.score } : {}) });
     return res;
   });
   // A3.2 域内/跨域两库（派生）：biz.<域>.<root> 单域子图 + biz.x.<from>_to_<to> 跨域接缝。scope=intra|cross|all。

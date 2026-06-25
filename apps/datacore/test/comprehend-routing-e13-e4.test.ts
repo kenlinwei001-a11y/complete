@@ -17,7 +17,7 @@ import type { LlmComprehendOutput } from "../src/databuilder/comprehend.js";
 const SENTINEL_MODEL = "test-default-model-id"; // 测试自取的 model id（非真实模型标识）
 const NOVEL = "某条化成工序共享一台瓶颈设备，故障时下游订单被迫降级，按优先级哪些订单受影响、毛利损失多少";
 
-const KIMI: LlmComprehendOutput = {
+const LLM_OUT: LlmComprehendOutput = {
   objectTypes: [
     { typeKey: "Order", displayName: "订单", domain: "sales", fields: [{ name: "so", dataType: "string", isPrimaryKey: true }, { name: "qty", dataType: "number" }] },
     { typeKey: "Process", displayName: "工序", domain: "process", fields: [{ name: "procId", dataType: "string", isPrimaryKey: true }, { name: "capacity", dataType: "number" }] },
@@ -31,7 +31,7 @@ interface RunResp { status: string; buildPlan?: { scriptHash: string; seed: numb
 describe("增量1 · E13 comprehend 用途路由（无绑定回落 config.DC_LLM_MODEL，非占位串）", () => {
   it("无租户绑定 → comprehend 的 LLM 调用 model = config.DC_LLM_MODEL（证明读配置而非硬编码占位）", async () => {
     const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: SENTINEL_MODEL } });
-    t.llm.enqueue(KIMI as unknown as Record<string, unknown>);
+    t.llm.enqueue(LLM_OUT as unknown as Record<string, unknown>);
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 42 } });
     expect(res.statusCode).toBeLessThan(300);
     // ScriptedLlmClient 记录每次调用的 model；comprehend 用途无绑定 → 回落 env 默认 client，model 取 config 值。
@@ -44,7 +44,7 @@ describe("增量1 · E13 comprehend 用途路由（无绑定回落 config.DC_LLM
 
   it("配置不同 model id → 调用随之变（路由由 config 单一来源驱动，换租户=换配置 RL5）", async () => {
     const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: "another-model-id" } });
-    t.llm.enqueue(KIMI as unknown as Record<string, unknown>);
+    t.llm.enqueue(LLM_OUT as unknown as Record<string, unknown>);
     await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 7 } });
     const call = t.llm.calls.find((c) => c.user.includes("化成"));
     expect(call!.model).toBe("another-model-id");
@@ -52,7 +52,7 @@ describe("增量1 · E13 comprehend 用途路由（无绑定回落 config.DC_LLM
 
   it("purpose=comprehend：携带 tenantId+purpose 调用（路由可据此选 provider 绑定）", async () => {
     const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: SENTINEL_MODEL } });
-    t.llm.enqueue(KIMI as unknown as Record<string, unknown>);
+    t.llm.enqueue(LLM_OUT as unknown as Record<string, unknown>);
     await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 42 } });
     // system 提示拼了已注册求解器目录（comprehendSystemWithSolvers）→ 含 shared_bottleneck 语义提示。
     const call = t.llm.calls.find((c) => c.user.includes("化成"));
