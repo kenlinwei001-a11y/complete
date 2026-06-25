@@ -27,15 +27,15 @@
 
 | # | 领域 | 源 | 项数 | 真跑判定 |
 |---|---|---|---|---|
-| D1 | 架构松耦合（停 A/停 B 行为、健康/优雅停机、契约隔离） | 总纲 §1 | 9 | ⬜ |
+| D1 | 架构松耦合（停 A/停 B 行为、健康/优雅停机、契约隔离） | 总纲 §1 | 9 | ◐ 75%(Pass2·C-2 webhook=DF-5 缺) |
 | D2 | A1 连接器 + 文件上传（schema discovery/同步幂等/凭据密文） | 总纲 §2 | 8 | ◐ 72%(Pass2·核心通,缺事件+FK映射) |
-| D3 | A2 非结构化规则文档解析（五阶段/sourceQuote 防幻觉/人审/diff） | 总纲 §3 | 6 | ⬜ |
-| D4 | A4/A5 本体服务 + 规则库（血缘/派生拓扑/DSL evaluate） | 总纲 §4 | 4 | ⬜ |
+| D3 | A2 非结构化规则文档解析（五阶段/sourceQuote 防幻觉/人审/diff） | 总纲 §3 | 6 | ◐ 92%(Pass2·完整,RD1-2绿) |
+| D4 | A4/A5 本体服务 + 规则库（血缘/派生拓扑/DSL evaluate） | 总纲 §4 | 4 | ◐ 72%(Pass2·缺口与已知重叠) |
 | D5 | A3 半自动建模（外键候选/MAP_TO_EXISTING/发布校验/materialize） | 总纲 §5 | 6 | ◐(建模页空状态已实拍·功能未跑) |
 | D6 | A0/A6 账号·多前端·三层权限（JWT/JWKS/workspace/行级过滤/OBO） | 总纲 §6 | 15 | ◐ 88%(Pass2·三层权限稳) |
-| D7 | A7 合成数据一键生成（仅源头/seed 字节一致/跨模块同源/新行业 LLM） | 总纲 §7 | 8 | ⬜ |
+| D7 | A7 合成数据一键生成（仅源头/seed 字节一致/跨模块同源/新行业 LLM） | 总纲 §7 | 8 | ◐ 78%(Pass2·核心稳·LLM新行业桩SY3) |
 | D8 | B1–B7（agent/workflow/MCP/skill/场景入口/求解器适配） | 总纲 §8-9 | 18 | ◐ 95%(Pass2·B1-B6就绪) |
-| D9 | 平台级安全可观测（OBO 过期拒调/指标） | 总纲 §11 | 2 | ⬜ |
+| D9 | 平台级安全可观测（OBO 过期拒调/指标） | 总纲 §11 | 2 | ◐ 75%(Pass2·6指标部分) |
 | D10 | A8 时序数据层（ts_points/聚合增量/模拟时钟/剧本/SUSTAIN） | addendum-a8 | 25 | ◐ 90%(Pass2·收尾) |
 | D11 | Feature Entitlement（关=404/四层解析/级联/中台） | addendum-entitlement | 16 | ◐(sim.* 我手动开过·机制真) |
 | D12 | 求解器真实算法 + 四缺口（S1.1–S1.8/S2/S3/S4 算法逐项） | addendum-solvers-and-gaps | 38 | ◐ 78%(Pass2·核心算法真算·LIVE口径MOCK) |
@@ -51,7 +51,7 @@
 | D22 | 管理平台补全（bootstrap/角色/最小可用/视图自动注册/空态有路） | addendum-admin-platform | 17 | ◐ 88%(Pass2·收尾) |
 | D23 | 管理面引用闭合 + 计划编辑器（12 引用控件闭合/工作流编辑器/AC8 零代码自助） | addendum-admin-console-closure | 32 | ◐ ~80%(H7·41页在/缺3页+引用闭合) |
 | D24 | 闭环验证引擎 VLE（七段/三预言机/工程验证度/发布门禁） | addendum-validation-loop | 14 | ◐ 30-40%(H4·七段框架在,❌判定已撤回) |
-| D25 | Skill 编写规范与质量门禁（三级职责/禁用词 lint/评测门禁） | addendum-skill-authoring | 11 | ⬜ |
+| D25 | Skill 编写规范与质量门禁（三级职责/禁用词 lint/评测门禁） | addendum-skill-authoring | 11 | ◐ 65%(Pass2·缺互斥检查+范例) |
 | D26 | 运营态出厂"拎包入住"（livedIn/年度叙事弧/三层下钻/盲测≥半年） | addendum-lived-in-state | 18 | ◐ 87%(Pass2·真缺口0·仅人工盲测) |
 | D27 | 数据流闭环与联动（12 主数据环/TR1-TR8 轨迹/传播 SLO≤60s/D-29） | addendum-dataflow-loop-closure | 19 | ◐ 50%(Pass2·🔴事件未发射,TR1-8未真通)·见 PASS2-wave3 §1 |
 | Q | QOS 全链路（分类/路径A/B/SSE 8 事件/槽填充/兜底/指标/4 意图） | PRD-qos | 86 | ◐(20 卡 API 探针跑过·非逐项) |
