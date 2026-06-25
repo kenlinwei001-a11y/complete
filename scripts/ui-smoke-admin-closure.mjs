@@ -74,8 +74,13 @@ try {
   await nav(p, "/admin/slices");
   if ((await p.locator("[data-testid=slices-page]").count()) > 0) {
     ok("C7 /admin/slices 页可达");
-    if ((await p.locator("[data-testid=slice-create]").count()) > 0) ok("C7 切片＋新建入口存在");
-    else fail("C7 切片无＋新建入口（AC8 步1 死路）");
+    if ((await p.locator("[data-testid=slice-create]").count()) > 0) {
+      ok("C7 切片＋新建入口存在");
+      await p.click("[data-testid=slice-create]");
+      await p.waitForTimeout(1000);
+      if ((await p.locator("[data-testid=slice-builder]").count()) > 0) ok("C7 切片构建器（root+targets+规划+试切）可达");
+      else fail("C7 切片构建器未展开");
+    } else fail("C7 切片无＋新建入口（AC8 步1 死路）");
     await p.screenshot({ path: `${SHOT}/shot-slices.png` });
   } else fail("C7 /admin/slices 不可达");
 

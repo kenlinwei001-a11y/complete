@@ -707,6 +707,32 @@ export const handlers = [
       { sliceKey: "base_risk_profile", version: 1, rootType: "Base", hops: 1, linkKeys: ["HAS_ORDER"], maxNodes: 200, fixtures: 0 },
     ]),
   ),
+  // C7 切片编辑器：规划器求路径 + 入库 + 试切预览。真后端 planSlice/PUT slices/resolveSlice；mock 给确定性结果。
+  http.post("*/a/v1/slices/plan", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { rootType?: string; targets?: string[] };
+    const rootType = body.rootType ?? "Order";
+    const targets = body.targets ?? [];
+    return HttpResponse.json({
+      ok: true,
+      plan: {
+        sliceKey: `custom_${rootType.toLowerCase()}`,
+        rootType,
+        paths: targets.map((t) => ({ target: t, hops: [{ linkKey: `${rootType.toLowerCase()}_to_${t.toLowerCase()}`, direction: "out", toType: t }] })),
+        pathEvidence: targets.map((t) => `${rootType} -[${rootType.toLowerCase()}_to_${t.toLowerCase()}:out]-> ${t}`),
+        spannedDomains: ["factory"],
+        reused: false,
+      },
+    });
+  }),
+  http.put("*/a/v1/ontology/slices/:sliceKey", ({ params }) =>
+    HttpResponse.json({ sliceKey: String(params.sliceKey), version: 1 }, { status: 201 }),
+  ),
+  http.post("*/a/v1/slices/:sliceKey/resolve", () =>
+    HttpResponse.json({
+      data: { nodes: [{ id: "o1", type: "Order" }, { id: "b1", type: "Base" }], edges: [{ from: "o1", to: "b1", linkKey: "order_to_base" }], truncated: false },
+      snapshotVersion: "ov-12",
+    }),
+  ),
   http.post("*/b/v1/evals/run", () =>
     HttpResponse.json({ id: "erun_2", tenantId: "demo", suite: "classifier", startedAt: "2026-06-17T09:00:00Z", finishedAt: "2026-06-17T09:01:00Z", total: 20, passed: 20, passRate: 1, metrics: { intentAccuracy: 1, toolCorrectness: 1, avgToolCalls: 2, avgLatencyMs: 300, avgTokenCost: 1100 }, results: [], llmMode: "MOCK" }),
   ),

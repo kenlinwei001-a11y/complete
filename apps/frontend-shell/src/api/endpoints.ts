@@ -905,6 +905,37 @@ export const createEvalCase = (body: {
 export interface SliceSummary { sliceKey: string; version: number; rootType: string; hops: number; linkKeys: string[]; maxNodes?: number; fixtures: number }
 export const fetchSlices = () => api.a<SliceSummary[]>("/a/v1/ontology/slices");
 
+/** C7 切片编辑器：root+targets 经规划器自动求最短路径（root→hops），复用既有 planSlice（A3.3，确定性图算法）。 */
+export interface SlicePlanResult {
+  ok: boolean;
+  plan?: { sliceKey: string; rootType: string; paths: { target: string; hops: { linkKey: string; direction: "out" | "in"; toType: string }[] }[]; pathEvidence: string[]; spannedDomains: string[]; reused: boolean };
+  reason?: { code: string; rootType: string; unreachable: string[] };
+}
+export const planSlice = (rootType: string, targets: string[], maxHops?: number) =>
+  api.a<SlicePlanResult>("/a/v1/slices/plan", { body: { rootType, targets, ...(maxHops ? { maxHops } : {}) } });
+
+/** C7：注册切片（PUT /a/v1/ontology/slices/:key），spec=root+paths(逐跳)+maxNodes+contractFixtures。 */
+export interface SliceSpecBody {
+  version?: number;
+  spec: {
+    root: { typeKey: string; selector: { byKey?: unknown; filter?: Record<string, unknown> } };
+    paths: { linkKey: string; direction: "out" | "in"; filter?: Record<string, unknown>; limitPerNode?: number; project?: string[] }[][];
+    maxNodes?: number;
+    description?: string;
+    contractFixtures?: { name: string; args: Record<string, string | number>; expect: { rootType: string; minNodes: number; mustIncludeTypes: string[]; mustIncludeLinkKeys?: string[]; maxNodes?: number } }[];
+  };
+}
+export const saveSlice = (sliceKey: string, body: SliceSpecBody) =>
+  api.a<{ sliceKey: string; version: number }>(`/a/v1/ontology/slices/${encodeURIComponent(sliceKey)}`, { method: "PUT", body });
+
+/** C7：试切预览（resolve）→ 子图 nodes/edges（复用既有 resolveSlice / executeSlice）。 */
+export interface SliceResolveResult {
+  data: { nodes: { id: string; type: string }[]; edges: { from: string; to: string; linkKey: string }[]; truncated?: boolean };
+  snapshotVersion: string;
+}
+export const resolveSlice = (sliceKey: string, args: Record<string, unknown>) =>
+  api.a<SliceResolveResult>(`/a/v1/slices/${encodeURIComponent(sliceKey)}/resolve`, { body: { args } });
+
 /** 实体解析与黄金记录（OC1）：扫描候选 / 合并 / 拒绝 / 合并历史 / unmerge。 */
 import type { MergeCandidateView, ObjectMerge } from "@platform/contracts";
 export const scanMerge = (typeKey: string) => api.a<{ candidates: unknown[] }>("/a/v1/objects/merge-scan", { method: "POST", body: { typeKey } });
