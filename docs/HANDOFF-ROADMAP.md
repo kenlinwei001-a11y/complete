@@ -33,22 +33,24 @@
 
 ## 3. 待 Pass-2 先定级，再配 HANDOFF（不确定建到哪步 · 别盲配）
 
-> 这些 addendum 写过、可能已建到不同程度，`COMPLETION-LEDGER` 标 ⬜未跑/◐。**审核方先起真系统 Pass-2 真跑定级，把"⬜待真跑"收敛成"❌真缺/◐真半通"，再按真缺口配 HANDOFF。** 现在配"从零建"会撞已能用的实现。
+> 这些 addendum 写过、可能已建到不同程度。**审核方起真系统 Pass-2 真跑定级，把"⬜待真跑"收敛成真缺口，再决定配 HANDOFF 还是只列收尾任务。**
+>
+> **第一波 6 块已定级（2026-06）：全部 72-95% 已建——又全是虚标！** 都是收尾活，统一收尾清单见 **`PASS2-wave1-finishing-tasks.md`**（P0×8 + P1×13），**不必各配整份 HANDOFF**。其余 6 块待第二波。
 
-| 项目 | 源 | LEDGER 判定 | 卡点 |
+| 项目 | 源 | Pass-2 判定 | 去向 |
 |---|---|---|---|
-| A8 时序数据层 | addendum-a8 (D10) | ⬜ 未跑 | 模拟时钟/聚合/SUSTAIN 建没建未核 |
-| M11 校准引擎 | addendum-m11-calibration (D15) | ⬜ 未跑 | 配对/三方法/回测门未核 |
-| 运营完备性 | addendum-operational-completeness (D20) | ⬜ 未跑 | 实体解析/评测门禁/配置迁移/隔离区/通知未核 |
-| 回放编排器 | addendum-replay-orchestrator (D18) | ⬜ 未跑 | 虚拟操作团队/OpsPlaybook 未核 |
-| 运营态"拎包入住" | addendum-lived-in-state (D26) | ⬜ 未跑 | livedIn 出厂态未核 |
-| Agent 运行时强化 | addendum-agent-runtime (D16) | ⬜ 未跑 | token 预算/三刀上下文/MCP 池未核 |
-| 能力发现与路由 | addendum-capability-routing (D17) | ⬜ 未跑 | discover/load_tools 未核 |
-| 执行语义统一 | addendum-execution-semantics (D19) | ⬜ 未跑 | 锁/fencing/outbox/Saga 未核 |
-| LLM 多厂商+统一引用 | addendum-llm-providers (D21) | ◐ 部分 | 多 provider 路由/失效 SLO 未核 |
-| 管理平台补全 | addendum-admin-platform (D22) | ⬜ 未跑 | bootstrap/角色/最小可用未核 |
-| 本体治理与检索 | addendum-ontology-governance (D14) | ◐ 部分 | 八检索模式/会签/弃用流程未核 |
-| 驾驶舱数据层颗粒 | backlog #34-42 | ◐ 部分 | dash 月季年对象化/取值对齐（高回归专项） |
+| A8 时序数据层 | D10 | ◐ **90% 已建** | → `PASS2-wave1` 收尾清单 |
+| M11 校准引擎 | D15 | ◐ **95%** | → `PASS2-wave1` |
+| 回放编排器 | D18 | ◐ **92%** | → `PASS2-wave1` |
+| Agent 运行时强化 | D16 | ◐ **85%**(余 v2 边界) | → `PASS2-wave1` |
+| 运营完备性 | D20 | ◐ **72%** | → `PASS2-wave1` |
+| 执行语义统一 | D19 | ◐ **72%**(核心锁/outbox/Saga 100%) | → `PASS2-wave1` |
+| 运营态"拎包入住" | D26 | ⬜ 待第二波 | Pass-2 |
+| 能力发现与路由 | D17 | ⬜ 待第二波 | Pass-2 |
+| LLM 多厂商+统一引用 | D21 | ◐ 待第二波细核 | Pass-2 |
+| 管理平台补全 | D22 | ⬜ 待第二波 | Pass-2 |
+| 本体治理与检索 | D14 | ◐ 待第二波细核 | Pass-2 |
+| 驾驶舱数据层颗粒 | backlog #34-42 | ◐ 待第二波 | Pass-2 |
 
 ---
 

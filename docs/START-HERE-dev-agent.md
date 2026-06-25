@@ -37,6 +37,7 @@
 | **E** | 规则即一等 G-10 收尾(P3) | `HANDOFF-rules-firstclass-p3-build-and-review-contract.md` | P1 | 编辑器/版本/事件**已建**；补 **11/19 求解器 payload 映射**+6 入口 FDE；**别重写编辑器** |
 | **F** | 场景发育 G-9 收尾(P3) | `HANDOFF-ontogenesis-p3-build-and-review-contract.md` | P1 | runGrowthLoop/planSlice/规则解析**函数都在**；只是 **wiring**(growScenario 调它们)+ADVISORY；**别重写函数** |
 | **G** | 管理面闭合+AC8 | `HANDOFF-admin-console-closure-build-and-review-contract.md` | P2 | 41 页都在；补 3 页(求解器目录/切片编辑器/评测 CRUD)+引用控件闭合+AC8 死路；**别重写已建 38 页** |
+| **H** | P3 收尾杂项（Pass-2 第一波 6 块） | `PASS2-wave1-finishing-tasks.md`（非整份 HANDOFF，是收尾任务清单） | P1-P2 | A8/M11/回放/agent运行时/运营完备性/执行语义**全 72-95% 已建**；活是钩子接线/补前端页/加字段头（P0×8+P1×13）；**§3 标的已建主体别重写** |
 
 > ⚠ **每条轨摸底都翻案过——真代码比文档建得多得多**。所以每份 HANDOFF §1 都标死"哪些已建只接不重写、哪些才真建"。**照文档/TODO 从零重写=红线打回。**
 > ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。**先读你那轨 HANDOFF §1 追溯表**再动手。

@@ -36,17 +36,17 @@
 | D7 | A7 合成数据一键生成（仅源头/seed 字节一致/跨模块同源/新行业 LLM） | 总纲 §7 | 8 | ⬜ |
 | D8 | B1–B7（agent/workflow/MCP/skill/场景入口/求解器适配） | 总纲 §8-9 | 18 | ⬜ |
 | D9 | 平台级安全可观测（OBO 过期拒调/指标） | 总纲 §11 | 2 | ⬜ |
-| D10 | A8 时序数据层（ts_points/聚合增量/模拟时钟/剧本/SUSTAIN） | addendum-a8 | 25 | ⬜ |
+| D10 | A8 时序数据层（ts_points/聚合增量/模拟时钟/剧本/SUSTAIN） | addendum-a8 | 25 | ◐ 90%(Pass2·收尾) |
 | D11 | Feature Entitlement（关=404/四层解析/级联/中台） | addendum-entitlement | 16 | ◐(sim.* 我手动开过·机制真) |
 | D12 | 求解器真实算法 + 四缺口（S1.1–S1.8/S2/S3/S4 算法逐项） | addendum-solvers-and-gaps | 38 | ⬜ |
 | D13 | 本体核心原子（元模型 DDL/派生 DSL/拓扑/切片语法/行级剪枝） | addendum-ontology-core | 13 | ⬜ |
 | D14 | 本体治理与检索（域一等/会签/弃用流程/八检索模式/对象360） | addendum-ontology-governance | 21 | ◐(域管理/对象360 已实拍) |
-| D15 | M11 校准引擎（配对/MAPE/三方法/回测门/元闭环） | addendum-m11-calibration | 14 | ⬜ |
-| D16 | Agent 运行时强化（token 预算/三刀上下文/MCP 连接池/工具并行） | addendum-agent-runtime | 19 | ⬜ |
+| D15 | M11 校准引擎（配对/MAPE/三方法/回测门/元闭环） | addendum-m11-calibration | 14 | ◐ 95%(Pass2·收尾) |
+| D16 | Agent 运行时强化（token 预算/三刀上下文/MCP 连接池/工具并行） | addendum-agent-runtime | 19 | ◐ 85%·余v2边界(Pass2) |
 | D17 | 能力发现与路由（discover/load_tools 按需/等价能力组熔断） | addendum-capability-routing | 8 | ⬜ |
-| D18 | 回放编排器（虚拟操作团队/正门红线/OpsPlaybook/确定性回放） | addendum-replay-orchestrator | 16 | ⬜ |
-| D19 | 执行语义统一（锁/fencing/outbox 有序/Saga 补偿/LLM 熔断/分段失败） | addendum-execution-semantics | 16 | ⬜ |
-| D20 | 运营完备性（实体解析/评测门禁/配置迁移/隔离区/通知/日历/代次取消） | addendum-operational-completeness | 23 | ⬜ |
+| D18 | 回放编排器（虚拟操作团队/正门红线/OpsPlaybook/确定性回放） | addendum-replay-orchestrator | 16 | ◐ 92%(Pass2·收尾) |
+| D19 | 执行语义统一（锁/fencing/outbox 有序/Saga 补偿/LLM 熔断/分段失败） | addendum-execution-semantics | 16 | ◐ 72%(Pass2·收尾) |
+| D20 | 运营完备性（实体解析/评测门禁/配置迁移/隔离区/通知/日历/代次取消） | addendum-operational-completeness | 23 | ◐ 72%(Pass2·收尾)·见 PASS2-wave1 |
 | D21 | LLM 多厂商 + 统一引用（多 provider/密钥跨系统/latest 解析/影响面/失效 SLO） | addendum-llm-providers-and-references | 13 | ◐(LLM provider 页已实拍) |
 | D22 | 管理平台补全（bootstrap/角色/最小可用/视图自动注册/空态有路） | addendum-admin-platform | 17 | ⬜ |
 | D23 | 管理面引用闭合 + 计划编辑器（12 引用控件闭合/工作流编辑器/AC8 零代码自助） | addendum-admin-console-closure | 32 | ⬜ |
