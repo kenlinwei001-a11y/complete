@@ -517,7 +517,9 @@ async function buildValidationTrace(
     answer: Answer;
   },
 ): Promise<ValidationTrace | undefined> {
-  if (in_.slicesUsed.length === 0) return undefined; // 钩子：不涉及本体切片 → 不附
+  // 钩子：不涉及本体切片**且**无规则裁决 → 不附；有规则裁决（含 O10 自动注入的卡规则）即便无切片也附，
+  // 使 PASS/WARN/BLOCK 透出可见（承接轨E 规则即引用：评估结果非装饰，要能看到）。
+  if (in_.slicesUsed.length === 0 && in_.verdicts.length === 0) return undefined;
 
   // ---- Layer 1 一致性验证 ----
   const checks: ConsistencyCheck[] = [];

@@ -36,6 +36,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
+import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
@@ -588,10 +589,19 @@ export class Orchestrator {
       confidence: task.classification?.candidates[0]?.confidence,
     });
 
+    // O10（G-9 收尾）：来自场景卡的查询（context.scenarioKey）→ 卡声明的 rules[] 若未被既有 evaluate_rules 步 /
+    // 求解器 evaluatedRules（轨E）覆盖 → 自动插一个 evaluate_rules 步，使卡规则在路径 A 真被评估透出 PASS/WARN/BLOCK。
+    let steps = plan.steps;
+    const scenarioKey = (task.context as { scenarioKey?: string }).scenarioKey;
+    if (scenarioKey) {
+      const card = await this.deps.repos.scenarios.byKey(auth.tenantId, scenarioKey);
+      if (card?.rules && card.rules.length > 0) steps = injectScenarioRuleStep(steps, card.rules);
+    }
+
     const budget = new BudgetTracker();
     const result = await this.deps.engine.runWorkflowSteps({
       taskId,
-      steps: plan.steps,
+      steps,
       slots,
       context: task.context,
       ctx: auth,
