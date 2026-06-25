@@ -26,24 +26,21 @@
 
 ## 2. 现在该建什么（两条已就绪的轨 · 按指派选）
 
-### 轨 A · 推演沙盘 UI 收口（北极星 · 最具体，建议先做）
-- **施工合同**：`docs/HANDOFF-sandbox-build-and-review-contract.md`
-- **要做的活**：§6.1.A 缺口队列——**P0×5（红线级）**：采纳→R4 Action 草稿 · 分支→对比 UI · 初始化向导+范围预检 · 就绪面板砌齐(L0-L4 stepper/L4三元组/Trial Tick/scope 切换/gauge/entering) · 给 demo 租户种 PropagationRule+状态变量（否则沙盘开箱空世界）。**P1×5**：健康雷达6维+信任雷达4维 · AI 指挥台 · 逐对象就绪% · ModelingPage 数据源面板+数据管道节点图 · R13 溯源悬浮。
-- **为什么做**：实拍证据见 `docs/AUDIT-sandbox-ui-design-alignment.md §3.5`（后端 0-4 齐，UI 仅 ~30-40%）。设计依据 `docs/SPEC-sandbox-readiness-certification.md`（含 §2.4/§2.5 两雷达）+ 竞品锚点 `docs/GROUNDING-MAP-sandbox-review-baseline.md §F`。
-- **后端数据多已在**（`deriveCertification`/`sim branch`/`sim compare` 都有），多数是**前端砌齐 + demo 种数据**，别重写后端。
+**7 条已就绪轨**（每份 HANDOFF 自带《源↔现状↔设计》§1 追溯表 + 增量/红线/双轴评审。按指派认领一条）：
 
-### 轨 B · 优化求解器融合（独立轨 · 零代码开工）
-- **施工合同**：`docs/HANDOFF-optimization-fusion-build-and-review-contract.md`（增量 0-6）
-- **设计**：`docs/SPEC-optimization-template-pool.md`（抽象模板池+本体绑定+embedding 复用检索）
-- **许可证红线**：`docs/THIRD-PARTY-NOTICES.md`——**借鉴=重写方法+派生产物，绝不把上游内容用作训练语料；Gurobi 示例完全不碰；CDLA 数据只取派生 Results**。先做增量 0（本体先行 + `THIRD-PARTY-NOTICES` + `solver-license:check` 门）。
+| 轨 | 项目 | 施工合同 `docs/` | 优先级 | 一句话（含关键红线） |
+|---|---|---|---|---|
+| **A** | 推演沙盘 UI 收口 | `HANDOFF-sandbox-build-and-review-contract.md`（活在 §6.1.A） | **P0 北极星** | 后端 0-4 齐、UI 仅~30-40%；**前端砌齐+demo 种数据，别重写后端**（采纳→Action/分支对比/向导/就绪面板/双雷达） |
+| **B** | 优化求解器融合 | `HANDOFF-optimization-fusion-build-and-review-contract.md` | P1 | 零代码开工，先增量0；**许可证红线：不训练上游/不碰 Gurobi/CDLA 只取 Results**（`THIRD-PARTY-NOTICES`） |
+| **C** | 数据构建发动机收尾 | `HANDOFF-comprehend-engine-build-and-review-contract.md` | **P0 北极星** | 引擎主体已建；收 3 断点(用途→model 路由/域不变量/入启动器)；**§1 标「真实」13 项只接不重写**；增量0 先 FDE 真跑 |
+| **D** | 闭环验证引擎 VLE 收尾 | `HANDOFF-vle-build-and-review-contract.md` | P1 | ~30-40%已建；补**参照实现双算**(核心可证)+CI 门+前端段级矩阵；**别重写七段框架** |
+| **E** | 规则即一等 G-10 收尾(P3) | `HANDOFF-rules-firstclass-p3-build-and-review-contract.md` | P1 | 编辑器/版本/事件**已建**；补 **11/19 求解器 payload 映射**+6 入口 FDE；**别重写编辑器** |
+| **F** | 场景发育 G-9 收尾(P3) | `HANDOFF-ontogenesis-p3-build-and-review-contract.md` | P1 | runGrowthLoop/planSlice/规则解析**函数都在**；只是 **wiring**(growScenario 调它们)+ADVISORY；**别重写函数** |
+| **G** | 管理面闭合+AC8 | `HANDOFF-admin-console-closure-build-and-review-contract.md` | P2 | 41 页都在；补 3 页(求解器目录/切片编辑器/评测 CRUD)+引用控件闭合+AC8 死路；**别重写已建 38 页** |
 
-### 轨 C · 数据构建发动机收尾（comprehend 引擎 + 终态闭环 · 真北极星）
-- **施工合同**：`docs/HANDOFF-comprehend-engine-build-and-review-contract.md`
-- **要做的活**：摸底翻案后的**真断点收尾**——**增量0 先 FDE 真跑**新颖故事坐实引擎能不能用（别信 TODO 说的"空骨架"，引擎主体已建）→ 收 3 断点：用途→provider→model 路由（P0）/ 域运营本体不变量（P1）/ B栈制品入启动器（P1）→ 切片近似问句复用 → 终态闭环亲手验收。
-- **⚠ 红线**：`HANDOFF §1` 标「真实」的 13 项引擎主体（comprehend/多跳切片/两库/FDE流/闭包链）**已建，只接不重写**——照 stale 的 `TODO-fde` 从零重写=打回。一切以 §1 真代码现状锚点为准。
-
-> ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。
-> ⚠ **全局路线图**见 `docs/HANDOFF-ROADMAP.md`：还有 H4（VLE）/H5（规则P3）/H6（场景发育P3）/H7（管理面闭合）待审核方写；A8时序/M11校准等待 Pass-2 定级再配——**没出 HANDOFF 的别动**。
+> ⚠ **每条轨摸底都翻案过——真代码比文档建得多得多**。所以每份 HANDOFF §1 都标死"哪些已建只接不重写、哪些才真建"。**照文档/TODO 从零重写=红线打回。**
+> ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。**先读你那轨 HANDOFF §1 追溯表**再动手。
+> ⚠ **全局路线图**见 `docs/HANDOFF-ROADMAP.md`（A8时序/M11校准等待 Pass-2 定级再配 HANDOFF——**没出 HANDOFF 的别动**）。
 
 ---
 

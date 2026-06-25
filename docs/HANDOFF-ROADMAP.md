@@ -22,12 +22,12 @@
 | H | 项目 | 源（确凿未建依据） | 优先级 | HANDOFF 状态 |
 |---|---|---|---|---|
 | **H3** | **🔴 数据构建发动机收尾**（comprehend 引擎 + 终态闭环）。**翻案**：真代码摸底发现引擎主体**已建**（非 TODO 说的"空骨架"），H3 = 收尾 3 真断点（用途→provider→model 路由 / 域运营本体不变量 / B栈制品入启动器）+ 先 FDE 真跑坐实 | `TODO-fde §2/§3` 目标 + 2026-06 真代码摸底（HANDOFF §1 现状表）。**注：TODO 状态字段已 stale，以现状锚点为准** | **P0（真北极星）** | ✅ 已就绪 → `HANDOFF-comprehend-engine-build-and-review-contract.md` |
-| **H4** | **闭环验证引擎 VLE**（七段链路 / 三预言机 / 工程验证度 / 发布门禁） | `addendum-validation-loop`；`COMPLETION-LEDGER D24` 判 ❌ 未见实现 | P1 | ⬜ 待写 |
-| **H5** | **规则即一等引用 · 收尾 G-10 P3**（规则编辑器 UI / 版本+事件失效 / 6 入口逐一 FDE / 其余求解器 payload 映射） | `SYSTEM-ONTOLOGY §8 G-10`「待 P3」；backlog #23/#24 | P1 | ⬜ 待写 |
-| **H6** | **场景发育 · 收尾 R16/G-9 P3**（evaluate_rules 自动接 / slice 自动生成 / GapReport→runGrowthLoop 自动补 / ScenarioGenome / ADVISORY 相位） | `SYSTEM-ONTOLOGY §8 G-9`「待 P3 余」；backlog #25-28 | P1 | ⬜ 待写 |
-| **H7** | **管理面引用闭合 + 执行计划编辑器 + 7 整页补缺 + AC8 零代码自助** | `addendum-admin-console-closure`（明标"验收必修 / 7 整页缺失"） | P2 | ⬜ 待写 |
+| **H4** | **闭环验证引擎 VLE 收尾**。**翻案**：台账标❌错——`vle.ts` 七段 runner/三覆盖率/工程验证度/隔离租户/VL1-8 测试**已建~30-40%**；真缺=参照实现双算(桩)+CI门(缺)+前端段级矩阵 | 摸底实勘(HANDOFF §1)。`COMPLETION-LEDGER D24` 标❌**已 stale** | P1 | ✅ 已就绪 → `HANDOFF-vle-build-and-review-contract.md` |
+| **H5** | **规则即一等引用 G-10 收尾(P3)**。**翻案**：本体说"待编辑器"错——编辑器/版本/事件失效**已建**；真缺=11/19 求解器没接 payload 映射(规则空过)+6 入口 FDE 验收 | 摸底实勘(HANDOFF §1)。本体 G-10「待编辑器」**已 stale** | P1 | ✅ 已就绪 → `HANDOFF-rules-firstclass-p3-build-and-review-contract.md` |
+| **H6** | **场景发育 R16/G-9 收尾(P3)**。**翻案**：3 待办函数(runGrowthLoop/planSlice/规则解析)**全已存在**，缺的只是 growScenario 没调它们(wiring)+ADVISORY 相位 | 摸底实勘(HANDOFF §1) | P1 | ✅ 已就绪 → `HANDOFF-ontogenesis-p3-build-and-review-contract.md` |
+| **H7** | **管理面引用闭合 + 编辑器补缺 + AC8 零代码自助**。**翻案**：41 admin 页都在；真缺=3 页(求解器目录/切片编辑器/评测 CRUD)+引用控件 5-7 不闭合+AC8 3-4 死路 | 摸底实勘(HANDOFF §1)。addendum「7整页缺失」**多数已 stale** | P2 | ✅ 已就绪 → `HANDOFF-admin-console-closure-build-and-review-contract.md` |
 
-> H3 是最大、最重、最确凿没建的（确定性关键词 comprehend 对新颖故事产 0 规则/0 求解器/0 agent）——先写它。
+> **重要规律（实证 · 直接回答"如何不遗漏"）**：H3-H7 摸底**每一个**都翻案——真代码比文档/台账声称的**建得多得多**。"未完成"的真相**只能靠摸真代码**得到，文档全在虚标。所以 §3 那批坚持"先 Pass-2 再配 HANDOFF"，绝不照文档盲配。
 
 ---
 
