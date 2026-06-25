@@ -20,6 +20,7 @@
     "ontogenesis:check": "node scripts/check-ontogenesis.mjs",
     "boundary-singlesource:check": "node scripts/check-boundary-singlesource.mjs",
     "cockpit-widgets:check": "node scripts/check-cockpit-widgets.mjs",
+    "validation:check": "node scripts/check-validation.mjs",
     "ui-smoke": "node scripts/ui-smoke.mjs",
     "ui-smoke:ontogenesis": "node scripts/ui-smoke-ontogenesis.mjs",
     "ui-smoke:sandbox": "node scripts/ui-smoke-sandbox.mjs",
