@@ -269,7 +269,273 @@ def solve_packing(payload: dict) -> dict:
     }
 
 
-MODELS = {"selection": solve_selection, "assignment": solve_assignment, "sequencing": solve_sequencing, "packing": solve_packing}
+def solve_facility_location(payload: dict) -> dict:
+    """轨B·增量1 选址最优化（uncapacitated/capacitated facility location）：在候选设施集中选开哪些
+    （开设成本 openCost），把每个需求点指派到一个开着的设施（指派成本 assignCost），min Σ开设 + Σ指派。
+    可选 capacity（设施容量）+ demand（需求量）→ capacitated。CP-SAT 可证最优（贪心给不出）。
+
+    抽象/零业务常数（R14）：facilities/clients/costs 全由绑定层从本体类型化字段填，引擎只认数值。
+    确定性 R6：固定 seed + 单线程 + 二级目标（同成本下偏靠前设施/需求点）消多解抖动。
+    协议：{facilities:[{id,openCost,capacity?}], clients:[{id,demand?}],
+           assignCosts:[{client,facility,cost}], seed?, scale?}。
+    """
+    facilities = payload.get("facilities") or []
+    clients = payload.get("clients") or []
+    assign_costs = payload.get("assignCosts") or []
+    if not facilities or not clients:
+        return {"status": "INFEASIBLE", "optimal": False, "openFacilities": [], "assignments": [], "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+
+    def to_int(x: float) -> int:
+        return int(round(float(x) * scale))
+
+    fac_ids = [str(f["id"]) for f in facilities]
+    cli_ids = [str(c["id"]) for c in clients]
+    open_cost = {str(f["id"]): to_int(f.get("openCost", 0)) for f in facilities}
+    cap = {str(f["id"]): (to_int(f["capacity"]) if f.get("capacity") is not None else None) for f in facilities}
+    demand = {str(c["id"]): to_int(c.get("demand", 0)) for c in clients}
+    a_cost = {(str(c["client"]), str(c["facility"])): to_int(c.get("cost", 0)) for c in assign_costs}
+
+    model = cp_model.CpModel()
+    y = {j: model.NewBoolVar(f"y_{j}") for j in fac_ids}  # 设施开/关
+    x = {(i, j): model.NewBoolVar(f"x_{i}_{j}") for i in cli_ids for j in fac_ids if (i, j) in a_cost}
+    if not x:
+        return {"status": "INFEASIBLE", "optimal": False, "openFacilities": [], "assignments": [], "objective": 0}
+    for i in cli_ids:
+        vars_i = [x[(i, j)] for j in fac_ids if (i, j) in x]
+        if not vars_i:
+            return {"status": "INFEASIBLE", "optimal": False, "openFacilities": [], "assignments": [], "objective": 0}
+        model.Add(sum(vars_i) == 1)  # 每需求点恰一指派
+    for (i, j), v in x.items():
+        model.Add(v <= y[j])  # 只能指派到开着的设施
+    for j in fac_ids:
+        if cap[j] is not None:
+            model.Add(sum(demand[i] * x[(i, j)] for i in cli_ids if (i, j) in x) <= cap[j] * y[j])  # 容量
+    ni, nj = len(cli_ids), len(fac_ids)
+    big = (ni * nj + nj) + 1
+    model.Minimize(
+        (sum(open_cost[j] * y[j] for j in fac_ids) + sum(a_cost[(i, j)] * x[(i, j)] for (i, j) in x)) * big
+        + sum(fac_ids.index(j) * y[j] for j in fac_ids)
+        + sum((cli_ids.index(i) * nj + fac_ids.index(j)) * x[(i, j)] for (i, j) in x)
+    )
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "openFacilities": [], "assignments": [], "objective": 0}
+    open_fac = sorted(j for j in fac_ids if solver.Value(y[j]) == 1)
+    assigns = sorted(
+        ({"client": i, "facility": j} for (i, j) in x if solver.Value(x[(i, j)]) == 1),
+        key=lambda a: a["client"],
+    )
+    obj = (sum(open_cost[j] for j in open_fac) + sum(a_cost[(a["client"], a["facility"])] for a in assigns)) / scale
+    return {
+        "status": status_name,
+        "optimal": status == cp_model.OPTIMAL,
+        "openFacilities": open_fac,
+        "assignments": assigns,
+        "objective": round(obj, 6),
+    }
+
+
+def solve_min_cost_flow(payload: dict) -> dict:
+    """轨B·增量1 最小成本流（single-commodity min-cost flow）：节点有 supply（>0 源 / <0 汇），
+    弧有单位成本 cost 与容量 cap，求满足供需平衡、不超容、总成本最小的流。CP-SAT（整数流）可证最优。
+
+    抽象/零业务常数（R14）：nodes/arcs 全由绑定层从本体填。确定性 R6：固定 seed + 单线程 + 二级目标。
+    协议：{nodes:[{id,supply}], arcs:[{from,to,cost,cap?}], seed?, scale?}。供需须平衡（Σsupply=0）。
+    """
+    nodes = payload.get("nodes") or []
+    arcs = payload.get("arcs") or []
+    if not nodes or not arcs:
+        return {"status": "INFEASIBLE", "optimal": False, "flows": [], "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+
+    def to_int(x: float) -> int:
+        return int(round(float(x) * scale))
+
+    node_ids = [str(n["id"]) for n in nodes]
+    supply = {str(n["id"]): to_int(n.get("supply", 0)) for n in nodes}
+    if sum(supply.values()) != 0:
+        return {"status": "INFEASIBLE", "optimal": False, "flows": [], "objective": 0, "reason": "supply/demand imbalance"}
+    total_supply = sum(s for s in supply.values() if s > 0)
+
+    model = cp_model.CpModel()
+    f = {}
+    for k, a in enumerate(arcs):
+        hi = to_int(a["cap"]) if a.get("cap") is not None else total_supply
+        f[k] = model.NewIntVar(0, max(hi, 0), f"f_{k}")
+    # 流守恒：每节点 出 - 入 = supply。
+    for nid in node_ids:
+        out_flow = sum(f[k] for k, a in enumerate(arcs) if str(a["from"]) == nid)
+        in_flow = sum(f[k] for k, a in enumerate(arcs) if str(a["to"]) == nid)
+        model.Add(out_flow - in_flow == supply[nid])
+    big = len(arcs) + 1
+    cost_term = sum(to_int(arcs[k].get("cost", 0)) * f[k] for k in range(len(arcs)))
+    model.Minimize(cost_term * big + sum(k * f[k] for k in range(len(arcs))))
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "flows": [], "objective": 0}
+    flows = [
+        {"from": str(arcs[k]["from"]), "to": str(arcs[k]["to"]), "flow": round(solver.Value(f[k]) / scale, 6)}
+        for k in range(len(arcs))
+        if solver.Value(f[k]) > 0
+    ]
+    flows.sort(key=lambda x: (x["from"], x["to"]))
+    obj = sum(float(arcs[k].get("cost", 0)) * (solver.Value(f[k]) / scale) for k in range(len(arcs)))
+    return {"status": status_name, "optimal": status == cp_model.OPTIMAL, "flows": flows, "objective": round(obj, 6)}
+
+
+def solve_set_cover(payload: dict) -> dict:
+    """轨B·增量1 集合覆盖（weighted set cover）：选最少（或最小总成本）的集合，使所有元素被覆盖。
+    CP-SAT 可证最优（贪心 ln n 近似给不出最优）。
+
+    抽象/零业务常数（R14）：sets/elements 全由绑定层填。确定性 R6：固定 seed + 单线程 + 二级目标。
+    协议：{sets:[{id,cost?,covers:[elemId...]}], universe:[elemId...]?, seed?, scale?}。
+    universe 缺省 = 所有 set 覆盖元素之并。
+    """
+    sets = payload.get("sets") or []
+    if not sets:
+        return {"status": "INFEASIBLE", "optimal": False, "chosen": [], "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+
+    def to_int(x: float) -> int:
+        return int(round(float(x) * scale))
+
+    set_ids = [str(s["id"]) for s in sets]
+    covers = {str(s["id"]): set(str(e) for e in (s.get("covers") or [])) for s in sets}
+    cost = {str(s["id"]): (to_int(s["cost"]) if s.get("cost") is not None else scale) for s in sets}  # 缺省每集合成本=1
+    universe = set(str(e) for e in (payload.get("universe") or []))
+    if not universe:
+        for c in covers.values():
+            universe |= c
+    if not universe:
+        return {"status": "OPTIMAL", "optimal": True, "chosen": [], "objective": 0}
+
+    model = cp_model.CpModel()
+    z = {sid: model.NewBoolVar(f"z_{sid}") for sid in set_ids}
+    for e in universe:
+        covering = [z[sid] for sid in set_ids if e in covers[sid]]
+        if not covering:
+            return {"status": "INFEASIBLE", "optimal": False, "chosen": [], "objective": 0, "reason": f"element {e} uncoverable"}
+        model.Add(sum(covering) >= 1)
+    big = len(set_ids) + 1
+    model.Minimize(sum(cost[sid] * z[sid] for sid in set_ids) * big + sum(set_ids.index(sid) * z[sid] for sid in set_ids))
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "chosen": [], "objective": 0}
+    chosen = sorted(sid for sid in set_ids if solver.Value(z[sid]) == 1)
+    obj = sum(cost[sid] for sid in chosen) / scale
+    return {"status": status_name, "optimal": status == cp_model.OPTIMAL, "chosen": chosen, "objective": round(obj, 6)}
+
+
+def solve_independent_set(payload: dict) -> dict:
+    """轨B·增量1 最大权独立集（maximum weight independent set）：在图中选一组两两不相邻的节点，
+    使总权重最大（冲突约束：相邻不可同选）。CP-SAT 可证最优（NP-hard，贪心给不出）。
+
+    抽象/零业务常数（R14）：nodes/edges 全由绑定层填（如不可同时执行的项目/不相容的排班）。
+    确定性 R6：固定 seed + 单线程 + 二级目标。协议：{nodes:[{id,weight?}], edges:[{a,b}], seed?, scale?}。
+    """
+    nodes = payload.get("nodes") or []
+    edges = payload.get("edges") or []
+    if not nodes:
+        return {"status": "INFEASIBLE", "optimal": False, "chosen": [], "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+
+    def to_int(x: float) -> int:
+        return int(round(float(x) * scale))
+
+    node_ids = [str(n["id"]) for n in nodes]
+    weight = {str(n["id"]): (to_int(n["weight"]) if n.get("weight") is not None else scale) for n in nodes}
+    model = cp_model.CpModel()
+    s = {nid: model.NewBoolVar(f"s_{nid}") for nid in node_ids}
+    for e in edges:
+        a, b = str(e["a"]), str(e["b"])
+        if a in s and b in s and a != b:
+            model.Add(s[a] + s[b] <= 1)  # 相邻不可同选
+    big = len(node_ids) + 1
+    model.Maximize(sum(weight[nid] * s[nid] for nid in node_ids) * big - sum(node_ids.index(nid) * s[nid] for nid in node_ids))
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "chosen": [], "objective": 0}
+    chosen = sorted(nid for nid in node_ids if solver.Value(s[nid]) == 1)
+    obj = sum(weight[nid] for nid in chosen) / scale
+    return {"status": status_name, "optimal": status == cp_model.OPTIMAL, "chosen": chosen, "objective": round(obj, 6)}
+
+
+def solve_combinatorial_auction(payload: dict) -> dict:
+    """轨B·增量1 组合拍卖赢者裁定（winner determination, WDP）：投标者对物品「打包」出价（bundle bid），
+    选一组互不冲突（不共享任何物品）的中标包，使总收益最大。CP-SAT 可证最优（NP-hard）。
+
+    抽象/零业务常数（R14）：bids/items 全由绑定层填。确定性 R6：固定 seed + 单线程 + 二级目标。
+    协议：{bids:[{id,value,items:[itemId...]}], seed?, scale?}。每物品至多被一个中标包占用。
+    """
+    bids = payload.get("bids") or []
+    if not bids:
+        return {"status": "OPTIMAL", "optimal": True, "winners": [], "objective": 0}
+    seed = int(payload.get("seed", 42))
+    scale = int(payload.get("scale", 1000))
+
+    def to_int(x: float) -> int:
+        return int(round(float(x) * scale))
+
+    bid_ids = [str(b["id"]) for b in bids]
+    value = {str(b["id"]): to_int(b.get("value", 0)) for b in bids}
+    items_of = {str(b["id"]): set(str(it) for it in (b.get("items") or [])) for b in bids}
+    all_items = set()
+    for s in items_of.values():
+        all_items |= s
+
+    model = cp_model.CpModel()
+    w = {bid: model.NewBoolVar(f"w_{bid}") for bid in bid_ids}
+    for it in all_items:
+        conflicting = [w[bid] for bid in bid_ids if it in items_of[bid]]
+        if len(conflicting) > 1:
+            model.Add(sum(conflicting) <= 1)  # 每物品至多一个中标包
+    big = len(bid_ids) + 1
+    model.Maximize(sum(value[bid] * w[bid] for bid in bid_ids) * big - sum(bid_ids.index(bid) * w[bid] for bid in bid_ids))
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = seed
+    status = solver.Solve(model)
+    status_name = {cp_model.OPTIMAL: "OPTIMAL", cp_model.FEASIBLE: "FEASIBLE"}.get(status, "INFEASIBLE")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return {"status": "INFEASIBLE", "optimal": False, "winners": [], "objective": 0}
+    winners = sorted(bid for bid in bid_ids if solver.Value(w[bid]) == 1)
+    obj = sum(value[bid] for bid in winners) / scale
+    return {"status": status_name, "optimal": status == cp_model.OPTIMAL, "winners": winners, "objective": round(obj, 6)}
+
+
+MODELS = {
+    "selection": solve_selection,
+    "assignment": solve_assignment,
+    "sequencing": solve_sequencing,
+    "packing": solve_packing,
+    # 轨B·增量1 5 CP-SAT 核心（抽象优化模板池 OptModelTemplate 的引擎侧实现，零业务常数 R14）。
+    "facility_location": solve_facility_location,
+    "min_cost_flow": solve_min_cost_flow,
+    "set_cover": solve_set_cover,
+    "independent_set": solve_independent_set,
+    "combinatorial_auction": solve_combinatorial_auction,
+}
 
 
 def dispatch(payload: dict) -> dict:

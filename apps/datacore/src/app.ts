@@ -2309,6 +2309,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(202).send(run);
   });
 
+  // ---- 轨B·增量1 优化融合域 /a/v1/opt/*（G-12 · 抽象模板池 · entitlement apiTag "opt"→opt.solver-pool）----
+  // R3 暗发：opt.* defaultOn:false，关 = 404 FEATURE_NOT_FOUND（先于 authz）。CLI/curl 先于 UI（R15）。
+  // 5 CP-SAT 核心走 optimizer-client sidecar（OPTIMIZER_BASE_URL）；未配 → 求解器报"未接入"不兜底。
+  const OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction"] as const;
+  // 求解：{ family, args }（增量1 args 给抽象结构化数组；增量2 由 OntologyBinding 从本体类型化字段填）。
+  app.post("/a/v1/opt/solve", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    const body = parseBody(
+      z.object({ family: z.enum(OPT_FAMILIES), args: z.record(z.string(), z.unknown()).default({}) }),
+      req.body,
+    );
+    return ontology.invokeSolver(ctx(req), body.family, body.args);
+  });
+  // 列模板族（池 comprehend 兜底；增量4 embedding 检索叠其上）。
+  app.get("/a/v1/opt/templates", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    return { families: OPT_FAMILIES };
+  });
+
   // ---- 本体原子规格 §2/§3 atomic-spec engine（additive 端点）-------------------
   // §2.3 编译派生规格：解析→deps→Kahn 拓扑→环拒绝 CYCLIC_DERIVATION。
   app.post("/a/v1/ontology/derivation-specs/compile", async (req, reply) => {

@@ -82,12 +82,91 @@ export interface PackingResult {
   objective: number;
 }
 
+// ── 轨B·增量1 抽象优化模板池 5 CP-SAT 核心（OptModelTemplate 引擎侧请求/结果；零业务常数 R14） ──
+
+// facility_location 选址：选开哪些设施(openCost)+把需求点指派到开着的设施(assignCost)，min Σ开设+Σ指派。
+export interface FacilityLocationRequest {
+  model: "facility_location";
+  seed: number;
+  facilities: { id: string; openCost: number; capacity?: number }[];
+  clients: { id: string; demand?: number }[];
+  assignCosts: { client: string; facility: string; cost: number }[];
+}
+export interface FacilityLocationResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  openFacilities: string[];
+  assignments: { client: string; facility: string }[];
+  objective: number;
+}
+
+// min_cost_flow 最小成本流：节点 supply(>0 源/<0 汇)，弧 cost+cap，求供需平衡、不超容、总成本最小的流。
+export interface MinCostFlowRequest {
+  model: "min_cost_flow";
+  seed: number;
+  nodes: { id: string; supply: number }[];
+  arcs: { from: string; to: string; cost: number; cap?: number }[];
+}
+export interface MinCostFlowResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  flows: { from: string; to: string; flow: number }[];
+  objective: number;
+}
+
+// set_cover 集合覆盖：选最小总成本集合使所有元素被覆盖（universe 缺省=覆盖元素之并）。
+export interface SetCoverRequest {
+  model: "set_cover";
+  seed: number;
+  sets: { id: string; cost?: number; covers: string[] }[];
+  universe?: string[];
+}
+export interface SetCoverResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  chosen: string[];
+  objective: number;
+}
+
+// independent_set 最大权独立集：选两两不相邻(edges 冲突)的节点使总权重最大。
+export interface IndependentSetRequest {
+  model: "independent_set";
+  seed: number;
+  nodes: { id: string; weight?: number }[];
+  edges: { a: string; b: string }[];
+}
+export interface IndependentSetResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  chosen: string[];
+  objective: number;
+}
+
+// combinatorial_auction 组合拍卖赢者裁定（WDP）：选互不共享物品的中标包使总收益最大。
+export interface CombinatorialAuctionRequest {
+  model: "combinatorial_auction";
+  seed: number;
+  bids: { id: string; value: number; items: string[] }[];
+}
+export interface CombinatorialAuctionResult {
+  status: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE";
+  optimal: boolean;
+  winners: string[];
+  objective: number;
+}
+
 export interface OptimizerClient {
   solve(req: OptimizationRequest): Promise<OptimizationResult>;
   /** A8.1 指派 / A8.2 排序 / A8.3 装箱（可选实现；未实现的 client 被调时抛"未接入"）。 */
   solveAssignment?(req: AssignmentRequest): Promise<AssignmentResult>;
   solveSequencing?(req: SequencingRequest): Promise<SequencingResult>;
   solvePacking?(req: PackingRequest): Promise<PackingResult>;
+  /** 轨B·增量1 抽象模板池 5 CP-SAT 核心（OptModelTemplate 引擎侧；未实现 → 调用方抛"未接入"）。 */
+  solveFacilityLocation?(req: FacilityLocationRequest): Promise<FacilityLocationResult>;
+  solveMinCostFlow?(req: MinCostFlowRequest): Promise<MinCostFlowResult>;
+  solveSetCover?(req: SetCoverRequest): Promise<SetCoverResult>;
+  solveIndependentSet?(req: IndependentSetRequest): Promise<IndependentSetResult>;
+  solveCombinatorialAuction?(req: CombinatorialAuctionRequest): Promise<CombinatorialAuctionResult>;
 }
 
 /** 生产实现：POST {baseUrl}/solve（背包）、/assignment（指派）。错误转平台错误信封风格的异常。 */
@@ -121,5 +200,26 @@ export class HttpOptimizerClient implements OptimizerClient {
 
   async solvePacking(req: PackingRequest): Promise<PackingResult> {
     return this.post<PackingResult>("/solve", req);
+  }
+
+  // 轨B·增量1：5 核心同走单端点 /solve（sidecar 按 model 字段 dispatch）。
+  async solveFacilityLocation(req: FacilityLocationRequest): Promise<FacilityLocationResult> {
+    return this.post<FacilityLocationResult>("/solve", req);
+  }
+
+  async solveMinCostFlow(req: MinCostFlowRequest): Promise<MinCostFlowResult> {
+    return this.post<MinCostFlowResult>("/solve", req);
+  }
+
+  async solveSetCover(req: SetCoverRequest): Promise<SetCoverResult> {
+    return this.post<SetCoverResult>("/solve", req);
+  }
+
+  async solveIndependentSet(req: IndependentSetRequest): Promise<IndependentSetResult> {
+    return this.post<IndependentSetResult>("/solve", req);
+  }
+
+  async solveCombinatorialAuction(req: CombinatorialAuctionRequest): Promise<CombinatorialAuctionResult> {
+    return this.post<CombinatorialAuctionResult>("/solve", req);
   }
 }

@@ -90,6 +90,13 @@ export const SOLVER_KEYS = [
   "assignment_optimize",
   "sequencing_optimize",
   "packing_optimize",
+  // 轨B·增量1 抽象优化模板池 5 CP-SAT 核心（OptModelTemplate 引擎侧；零业务常数 R14，行业靠 OntologyBinding 绑进来）。
+  // 走 optimizer-client sidecar 可证最优；args 给抽象 role→本体类型/字段（增量2 OntologyBinding 统一预处理）。
+  "facility_location",
+  "min_cost_flow",
+  "set_cover",
+  "independent_set",
+  "combinatorial_auction",
 ] as const;
 
 /**
@@ -117,6 +124,12 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   assignment_optimize: ["status", "optimal", "assignments", "objective", "itemType", "binType", "itemCount", "binCount", "summary"],
   sequencing_optimize: ["status", "optimal", "sequence", "changeovers", "objective", "jobType", "jobCount", "summary"],
   packing_optimize: ["status", "optimal", "bins", "binCount", "objective", "itemType", "itemCount", "binCapacity", "summary"],
+  // 轨B·增量1 抽象优化模板池 5 核心输出形状（权威=求解器实现成功路径顶层 key）。
+  facility_location: ["status", "optimal", "openFacilities", "assignments", "objective", "facilityType", "clientType", "facilityCount", "clientCount", "summary"],
+  min_cost_flow: ["status", "optimal", "flows", "objective", "nodeType", "arcCount", "nodeCount", "summary"],
+  set_cover: ["status", "optimal", "chosen", "objective", "setType", "universeSize", "setCount", "summary"],
+  independent_set: ["status", "optimal", "chosen", "objective", "nodeType", "edgeCount", "nodeCount", "summary"],
+  combinatorial_auction: ["status", "optimal", "winners", "objective", "bidType", "itemCount", "bidCount", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -1097,6 +1110,109 @@ export class SolverService {
     };
   }
 
+  // ── 轨B·增量1 抽象优化模板池 5 CP-SAT 核心 ──────────────────────────────────
+  // 入参 = 抽象结构化数组（facilities/clients/...），零业务常数（R14：行业由 OntologyBinding 绑进来，
+  // 增量2 在 invoke 前统一从本体类型化字段填这些数组；增量1 也可经 CLI/curl 直接给数组验证求最优）。
+  // 全走 optimizer-client sidecar（FUS1 不进 A18 沙箱）；未配 OPTIMIZER_BASE_URL → 显式"未接入"不兜底。
+
+  /** facility_location 选址：facilities(openCost,capacity?)+clients(demand?)+assignCosts → 选开设施+指派，min 总成本。 */
+  private async facilityLocation(_ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveFacilityLocation) throw validationError("facility_location 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const facilities = asArr<{ id: string; openCost: number; capacity?: number }>(args.facilities, "facilities");
+    const clients = asArr<{ id: string; demand?: number }>(args.clients, "clients");
+    const assignCosts = asArr<{ client: string; facility: string; cost: number }>(args.assignCosts, "assignCosts");
+    if (!facilities.length || !clients.length) throw validationError("facility_location 需 facilities[] + clients[] + assignCosts[]");
+    const r = await this.optimizer.solveFacilityLocation({
+      model: "facility_location",
+      seed: Number(args.seed ?? 42),
+      facilities: [...facilities].sort((a, b) => a.id.localeCompare(b.id)),
+      clients: [...clients].sort((a, b) => a.id.localeCompare(b.id)),
+      assignCosts: [...assignCosts].sort((a, b) => a.client.localeCompare(b.client) || a.facility.localeCompare(b.facility)),
+    });
+    return {
+      status: r.status, optimal: r.optimal, openFacilities: r.openFacilities, assignments: r.assignments, objective: r.objective,
+      facilityType: str(args.facilityType) || undefined, clientType: str(args.clientType) || undefined,
+      facilityCount: facilities.length, clientCount: clients.length,
+      summary: `选址：开 ${r.openFacilities.length}/${facilities.length} 个设施服务 ${clients.length} 个需求点，总成本 ${r.objective}（${optWord(r)}）`,
+    };
+  }
+
+  /** min_cost_flow 最小成本流：nodes(supply)+arcs(cost,cap?) → 供需平衡、不超容、总成本最小的流。 */
+  private async minCostFlow(_ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveMinCostFlow) throw validationError("min_cost_flow 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const nodes = asArr<{ id: string; supply: number }>(args.nodes, "nodes");
+    const arcs = asArr<{ from: string; to: string; cost: number; cap?: number }>(args.arcs, "arcs");
+    if (!nodes.length || !arcs.length) throw validationError("min_cost_flow 需 nodes[] + arcs[]");
+    const r = await this.optimizer.solveMinCostFlow({
+      model: "min_cost_flow",
+      seed: Number(args.seed ?? 42),
+      nodes: [...nodes].sort((a, b) => a.id.localeCompare(b.id)),
+      arcs: [...arcs].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)),
+    });
+    return {
+      status: r.status, optimal: r.optimal, flows: r.flows, objective: r.objective,
+      nodeType: str(args.nodeType) || undefined, nodeCount: nodes.length, arcCount: arcs.length,
+      summary: `最小成本流：${nodes.length} 节点 / ${arcs.length} 弧，总成本 ${r.objective}（${optWord(r)}）`,
+    };
+  }
+
+  /** set_cover 集合覆盖：sets(cost?,covers[])+universe? → 最小总成本集合覆盖所有元素。 */
+  private async setCover(_ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveSetCover) throw validationError("set_cover 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const sets = asArr<{ id: string; cost?: number; covers: string[] }>(args.sets, "sets");
+    if (!sets.length) throw validationError("set_cover 需 sets[]");
+    const universe = args.universe === undefined ? undefined : asArr<string>(args.universe, "universe");
+    const r = await this.optimizer.solveSetCover({
+      model: "set_cover",
+      seed: Number(args.seed ?? 42),
+      sets: [...sets].sort((a, b) => a.id.localeCompare(b.id)),
+      universe: universe ? [...universe].sort() : undefined,
+    });
+    const uSize = universe ? universe.length : new Set(sets.flatMap((s) => s.covers ?? [])).size;
+    return {
+      status: r.status, optimal: r.optimal, chosen: r.chosen, objective: r.objective,
+      setType: str(args.setType) || undefined, setCount: sets.length, universeSize: uSize,
+      summary: `集合覆盖：选 ${r.chosen.length}/${sets.length} 个集合覆盖 ${uSize} 个元素，总成本 ${r.objective}（${optWord(r)}）`,
+    };
+  }
+
+  /** independent_set 最大权独立集：nodes(weight?)+edges(冲突) → 选两两不相邻节点使总权重最大。 */
+  private async independentSet(_ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveIndependentSet) throw validationError("independent_set 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const nodes = asArr<{ id: string; weight?: number }>(args.nodes, "nodes");
+    const edges = args.edges === undefined ? [] : asArr<{ a: string; b: string }>(args.edges, "edges");
+    if (!nodes.length) throw validationError("independent_set 需 nodes[]");
+    const r = await this.optimizer.solveIndependentSet({
+      model: "independent_set",
+      seed: Number(args.seed ?? 42),
+      nodes: [...nodes].sort((a, b) => a.id.localeCompare(b.id)),
+      edges: [...edges].sort((a, b) => a.a.localeCompare(b.a) || a.b.localeCompare(b.b)),
+    });
+    return {
+      status: r.status, optimal: r.optimal, chosen: r.chosen, objective: r.objective,
+      nodeType: str(args.nodeType) || undefined, nodeCount: nodes.length, edgeCount: edges.length,
+      summary: `最大权独立集：选 ${r.chosen.length}/${nodes.length} 个互不冲突节点，总权重 ${r.objective}（${optWord(r)}）`,
+    };
+  }
+
+  /** combinatorial_auction 组合拍卖赢者裁定：bids(value,items[]) → 选互不共享物品的中标包使总收益最大。 */
+  private async combinatorialAuction(_ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.optimizer?.solveCombinatorialAuction) throw validationError("combinatorial_auction 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）");
+    const bids = asArr<{ id: string; value: number; items: string[] }>(args.bids, "bids");
+    if (!bids.length) throw validationError("combinatorial_auction 需 bids[]");
+    const r = await this.optimizer.solveCombinatorialAuction({
+      model: "combinatorial_auction",
+      seed: Number(args.seed ?? 42),
+      bids: [...bids].sort((a, b) => a.id.localeCompare(b.id)),
+    });
+    const itemCount = new Set(bids.flatMap((b) => b.items ?? [])).size;
+    return {
+      status: r.status, optimal: r.optimal, winners: r.winners, objective: r.objective,
+      bidType: str(args.bidType) || undefined, bidCount: bids.length, itemCount,
+      summary: `组合拍卖：${r.winners.length}/${bids.length} 个中标包，总收益 ${r.objective}（${optWord(r)}）`,
+    };
+  }
+
   async getParams(tenantId: string): Promise<SolverParamsShape> {
     const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
     const stored = (rec?.params ?? {}) as Record<string, unknown>;
@@ -1344,9 +1460,16 @@ export class SolverService {
     if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
-    if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
+    if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
+    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
     if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);
     if (solverKey === "packing_optimize") return this.packingOptimize(ctx, args);
+    // 轨B·增量1 抽象优化模板池 5 CP-SAT 核心（sidecar 重解，先于 loadContext 拦截，同既有 *_optimize）。
+    if (solverKey === "facility_location") return this.facilityLocation(ctx, args);
+    if (solverKey === "min_cost_flow") return this.minCostFlow(ctx, args);
+    if (solverKey === "set_cover") return this.setCover(ctx, args);
+    if (solverKey === "independent_set") return this.independentSet(ctx, args);
+    if (solverKey === "combinatorial_auction") return this.combinatorialAuction(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
@@ -1538,4 +1661,15 @@ export function fcstRecId(tenantId: string, modelId: string, baseId: string, dat
 
 function sortById(arr: ObjectInstance[]): ObjectInstance[] {
   return [...arr].sort((a, b) => (a.id < b.id ? -1 : 1));
+}
+
+/** 轨B·增量1：从 args 取结构化数组（缺/非数组 → 验证错误，不静默兜底）。 */
+function asArr<T>(v: unknown, field: string): T[] {
+  if (!Array.isArray(v)) throw validationError(`字段 '${field}' 需为数组`);
+  return v as T[];
+}
+
+/** 轨B·增量1：求解状态人话（可证最优 / 不可行 / 可行解）。 */
+function optWord(r: { optimal: boolean; status: string }): string {
+  return r.optimal ? "可证最优" : r.status === "INFEASIBLE" ? "不可行" : "可行解";
 }

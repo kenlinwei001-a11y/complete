@@ -315,6 +315,30 @@ async function cmdSolve(args) {
   console.log("  " + C.dim(JSON.stringify(r.data).slice(0, 300)));
 }
 
+// opt：轨B·增量1 抽象优化模板池（CP-SAT 可证最优）。CLI 先于 UI（R15）。
+//   opt templates                                     列模板族（gated opt.solver-pool）
+//   opt solve <family> --args '{...}' [--json]        绑定→CP-SAT 求最优（贴 status/objective）
+async function cmdOpt(args) {
+  const { flags, pos } = parseFlags(args);
+  const sub = pos[0];
+  if (sub === "templates") {
+    const r = await http(`${DC}/a/v1/opt/templates`, { headers: authHeader() });
+    return console.log(flags.json ? JSON.stringify(r) : `${C.green("✓")} 模板族: ${(r.families ?? []).join(", ")}`);
+  }
+  if (sub === "solve") {
+    const family = pos[1];
+    if (!family) { console.error("用法: opt solve <family> --args '{...}' [--json]；family ∈ facility_location|min_cost_flow|set_cover|independent_set|combinatorial_auction"); process.exit(1); }
+    let solveArgs = {}; try { solveArgs = flags.args ? JSON.parse(flags.args) : {}; } catch { console.error(C.red("--args 非合法 JSON")); process.exit(1); }
+    const r = await http(`${DC}/a/v1/opt/solve`, { method: "POST", headers: authHeader(), body: JSON.stringify({ family, args: solveArgs }) });
+    if (flags.json) return console.log(JSON.stringify(r));
+    const d = r.data ?? r;
+    console.log(`${C.green("✓")} ${family}  status=${d.status} optimal=${d.optimal} objective=${d.objective}`);
+    console.log("  " + C.dim((d.summary ?? JSON.stringify(d)).slice(0, 400)));
+    return;
+  }
+  console.error("用法: opt <templates|solve> …（solve <family> --args '{...}'）"); process.exit(1);
+}
+
 // synth：合成数据作业。
 async function cmdSynth(args) {
   const { flags, pos } = parseFlags(args);
@@ -395,7 +419,7 @@ function help() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
-const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
+const run = { login: cmdLogin, do: cmdDo, shell: cmdShell, ask: cmdAsk, import: cmdImport, model: cmdModel, rule: cmdRule, build: cmdBuild, solve: cmdSolve, opt: cmdOpt, generate: cmdGenerate, synth: cmdSynth, types: cmdTypes, scenarios: cmdScenarios, approve: cmdApprove, whoami: cmdWhoami, tickets: cmdTickets, claim: cmdClaim, grow: cmdGrow, sim: cmdSim };
 (async () => {
   try {
     if (!cmd || cmd === "--help" || cmd === "-h" || cmd === "help") return help();
