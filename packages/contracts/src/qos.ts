@@ -29,6 +29,9 @@ export const SlotDefSchema = z.object({
   defaultFrom: z.string().optional(),
   clarifyPrompt: z.string().optional(),
   description: z.string(),
+  // C10：objectRef 槽指向的已发布对象类型 key（如 "Order"）；仅 type==="objectRef" 时有意义。
+  // 前端 CatalogPage 槽位表 type=objectRef 时出"目标对象类型"下拉（数据源 fetchObjectTypes）。additive optional。
+  refType: z.string().optional(),
 });
 export type SlotDef = z.infer<typeof SlotDefSchema>;
 
@@ -55,6 +58,22 @@ export const IntentDefinitionSchema = z.object({
   updatedAt: IsoTime,
 });
 export type IntentDefinition = z.infer<typeof IntentDefinitionSchema>;
+
+// C10 试分类（catalog_admin 内联测试意图分类）：确定性词法打分（R6，无 LLM、非 SSE 异步），
+// 对该 package 已发布意图集（name/description/examples）打分返 top-N，让 CatalogPage「试分类」即时显命中/未命中。
+export const IntentClassifyPreviewRequestSchema = z.object({
+  packageId: z.string(),
+  query: z.string().min(1),
+  view: z.string().optional(),
+});
+export type IntentClassifyPreviewRequest = z.infer<typeof IntentClassifyPreviewRequestSchema>;
+
+export const IntentClassifyPreviewResultSchema = z.object({
+  matched: z.array(z.object({ intentKey: z.string(), name: z.string(), score: z.number() })),
+  top: z.string().nullable(),
+  outOfCatalog: z.boolean(),
+});
+export type IntentClassifyPreviewResult = z.infer<typeof IntentClassifyPreviewResultSchema>;
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.2 执行计划 DSL（含平台 PRD §8.2 两种新增步骤）

@@ -19,6 +19,7 @@ import {
   EvalCaseSchema,
   EvalSuiteSchema,
   OperationClassifyRequestSchema,
+  IntentClassifyPreviewRequestSchema,
   classifyOperation,
   SkillDefinitionSchema,
   SubmitQueryBodySchema,
@@ -1669,6 +1670,39 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     await auth(req); // R8：带 JWT（OBO）
     const { input } = OperationClassifyRequestSchema.parse(req.body);
     return classifyOperation(input);
+  });
+  // C10 试分类（catalog_admin 内联测试意图分类）：确定性词法打分（R6，无 LLM、非 SSE 异步），
+  // 对该 package 已发布意图集(name/description/examples)打分返 top-N，让 CatalogPage「试分类」即时显命中/未命中。
+  app.post("/b/v1/intents/classify-preview", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const body = IntentClassifyPreviewRequestSchema.parse(req.body);
+    const all = await deps.repos.intents.listByPackage(body.packageId);
+    const byKey = new Map<string, (typeof all)[number]>();
+    for (const i of all) {
+      if (i.status !== "PUBLISHED") continue;
+      const cur = byKey.get(i.key);
+      if (!cur || i.version > cur.version) byKey.set(i.key, i);
+    }
+    // 词法 token：拉丁词(≥2)+CJK 单字（确定性，R6）。
+    const tok = (s: string): Set<string> => {
+      const set = new Set<string>();
+      const lower = s.toLowerCase();
+      for (const m of lower.match(/[a-z0-9]{2,}/g) ?? []) set.add(m);
+      for (const m of lower.match(/[一-龥]/g) ?? []) set.add(m);
+      return set;
+    };
+    const qtok = tok(body.query);
+    const scored = [...byKey.values()]
+      .map((i) => {
+        const itok = tok([i.name, i.description, ...i.examples].join(" "));
+        const inter = [...qtok].filter((t) => itok.has(t)).length;
+        const union = new Set([...qtok, ...itok]).size || 1;
+        return { intentKey: i.key, name: i.name, score: Math.round((inter / union) * 1000) / 1000 };
+      })
+      .sort((x, y) => (y.score - x.score) || x.intentKey.localeCompare(y.intentKey));
+    const top = scored[0] && scored[0].score > 0 ? scored[0].intentKey : null;
+    return { matched: scored.slice(0, 5), top, outOfCatalog: top === null };
   });
   // A14：PRD 期望用例库（intent + 工具序列 + 答案）—— 真 Kimi 实跑后由 parity 报告标偏差。
   app.post("/b/v1/evals/seed-parity", async (req) => {
