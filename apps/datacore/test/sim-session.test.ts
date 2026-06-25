@@ -105,6 +105,23 @@ describe("推演沙盘增量1 · 会话状态机", () => {
     expect(j.radarDims.length).toBe(3);
   });
 
+  it("传导 live-fire 端到端（增量3 评审遗留）：规则 + 真对象实例 + link → tick 端点真跨对象传导", async () => {
+    const t = await makeApp();
+    await enableSim(t);
+    const org = { type: "SYNTHETIC" as const, jobId: "lf-test" };
+    // 抽象本体（零行业常数）：TypeA --FEEDS--> TypeB，真对象实例 + link 实例。
+    for (const k of ["TypeA", "TypeB"]) await t.repos.ontologyTypes.put({ id: `otype_${k}`, tenantId: "demo", key: k, displayName: k, properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE" });
+    await t.repos.objects.put({ id: "o1", tenantId: "demo", type: "TypeA", props: {}, origin: org });
+    await t.repos.objects.put({ id: "o2", tenantId: "demo", type: "TypeB", props: {}, origin: org });
+    await t.repos.links.put({ id: "lnk1", tenantId: "demo", type: "FEEDS", fromId: "o1", toId: "o2", origin: org });
+    await t.app.inject({ method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
+      payload: { key: "r_lf", sourceTypeKey: "TypeA", sourceStateVar: "risk", viaLinkKey: "FEEDS", targetTypeKey: "TypeB", targetStateVar: "risk", coefficient: 0.5, delayTicks: 0, status: "PUBLISHED" } });
+    const sid = (await (await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot: { o1: { risk: 10 }, o2: { risk: 0 } } } })).json()).id;
+    const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+    // o2.risk = 0 + 0.5×10 = 5：规则解析→图物化(真对象+link)→propagateTick→态更新，全栈过 tick 端点。
+    expect(tick.json().state.o2.risk).toBe(5);
+  });
+
   it("两行业端到端（R14 零行业锁死）：非电池租户(物流 Warehouse/Route/Shipment)同一套 sim 代码跑通 view-config→init→tick", async () => {
     const t = await makeApp();
     const TEN = "logistics";

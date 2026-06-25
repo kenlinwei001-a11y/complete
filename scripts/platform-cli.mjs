@@ -116,7 +116,23 @@ async function cmdSim(args) {
     if (sub === "checkpoint") { const r = await http(`${SIM}/sessions/${id}/checkpoint`, J({ label: argVal(rest, "--label") })); console.log(C.bold(`检查点 ${r.id}`) + ` @tick${r.tick} "${r.label}"`); return; }
     if (sub === "rollback") { const r = await http(`${SIM}/sessions/${id}/rollback`, J({ checkpointId: argVal(rest, "--cp") })); console.log(`已回滚 → tick=${r.curTick}`); return; }
     if (sub === "branch") { const r = await http(`${SIM}/sessions/${id}/branch`, J({ checkpointId: argVal(rest, "--cp") })); console.log(C.bold(`分支会话 ${r.id}`) + ` parentCp=${r.parentCheckpointId}`); return; }
-    if (sub === "compare") { const r = await http(`${SIM}/compare?a=${argVal(rest, "--a")}&b=${argVal(rest, "--b")}`, { headers: authHeader() }); console.log(`A: ${r.a.length} ticks · B: ${r.b.length} ticks`); console.log(C.dim(`A末态=${JSON.stringify(r.a.at(-1)?.state ?? {})} · B末态=${JSON.stringify(r.b.at(-1)?.state ?? {})}`)); return; }
+    if (sub === "compare") {
+      const r = await http(`${SIM}/compare?a=${argVal(rest, "--a")}&b=${argVal(rest, "--b")}`, { headers: authHeader() });
+      const aEnd = r.a.at(-1)?.state ?? {}, bEnd = r.b.at(-1)?.state ?? {};
+      console.log(C.bold(`沙盘对比`) + ` A:${r.a.length} ticks · B:${r.b.length} ticks`);
+      // 评审遗留·人体工学：逐对象·状态变量列出**分歧**（A vs B 末态差异），而非整块 JSON。
+      const keys = [...new Set([...Object.keys(aEnd), ...Object.keys(bEnd)])].sort();
+      let diverged = 0;
+      for (const obj of keys) {
+        const vars = [...new Set([...Object.keys(aEnd[obj] ?? {}), ...Object.keys(bEnd[obj] ?? {})])].sort();
+        for (const v of vars) {
+          const av = aEnd[obj]?.[v], bv = bEnd[obj]?.[v];
+          if (av !== bv) { console.log(`  ${C.yellow("Δ")} ${obj}.${v}: A=${C.cyan(String(av ?? "—"))} vs B=${C.cyan(String(bv ?? "—"))}`); diverged++; }
+        }
+      }
+      console.log(diverged ? C.dim(`  共 ${diverged} 处分歧`) : C.dim("  两分支末态一致（无分歧）"));
+      return;
+    }
     if (sub === "world") { const r = await http(`${SIM}/sessions/${id}/world`, { headers: authHeader() }); console.log(`tick=${r.tick} state=${JSON.stringify(r.state)}`); return; }
     if (sub === "ls") { const r = await http(`${SIM}/sessions`, { headers: authHeader() }); for (const s of r.items ?? []) console.log(`  ${s.id} status=${s.status} tick=${s.curTick}`); return; }
     if (sub === "rule") { const r = await http(`${SIM}/propagation-rules`, J(JSON.parse(rest.join(" ")))); console.log(C.bold(`传导规则 ${r.key}`) + ` ${r.sourceTypeKey}.${r.sourceStateVar} --${r.viaLinkKey} ${r.coefficient}--> ${r.targetTypeKey}.${r.targetStateVar}`); return; }
