@@ -22,6 +22,7 @@
     "cockpit-widgets:check": "node scripts/check-cockpit-widgets.mjs",
     "ui-smoke": "node scripts/ui-smoke.mjs",
     "ui-smoke:ontogenesis": "node scripts/ui-smoke-ontogenesis.mjs",
+    "ui-smoke:sandbox": "node scripts/ui-smoke-sandbox.mjs",
     "rule-closure:check": "node scripts/check-rule-closure.mjs",
     "no-hardcoded-rules:check": "node scripts/check-no-hardcoded-rules.mjs",
     "ontology-writeback:check": "node scripts/check-ontology-writeback.mjs",

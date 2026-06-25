@@ -104,4 +104,25 @@ describe("推演沙盘增量1 · 会话状态机", () => {
     expect(j.propagationCount).toBe(1);
     expect(j.radarDims.length).toBe(3);
   });
+
+  it("两行业端到端（R14 零行业锁死）：非电池租户(物流 Warehouse/Route/Shipment)同一套 sim 代码跑通 view-config→init→tick", async () => {
+    const t = await makeApp();
+    const TEN = "logistics";
+    const H = debugUser(TEN, "admin", "admin");
+    // 给 logistics 租户播一套**非电池**抽象本体（直接落仓储；零代码改——证 sim 不锁行业）。
+    const otype = (key: string) => ({ id: `otype_${key}`, tenantId: TEN, key, displayName: key, properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE" as const });
+    for (const k of ["Warehouse", "Route", "Shipment"]) await t.repos.ontologyTypes.put(otype(k));
+    await t.repos.ontologyLinks.put({ id: "ltype_routed", tenantId: TEN, key: "ROUTED", fromTypeKey: "Shipment", toTypeKey: "Warehouse", cardinality: "N:N", version: 1 } as Parameters<typeof t.repos.ontologyLinks.put>[0]);
+    await t.app.inject({ method: "PUT", url: `/a/v1/tenants/${TEN}/features`, headers: H, payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } } });
+    await t.app.inject({ method: "POST", url: "/a/v1/sim/propagation-rules", headers: H, payload: { key: "r_log", sourceTypeKey: "Shipment", sourceStateVar: "delay", viaLinkKey: "ROUTED", targetTypeKey: "Warehouse", targetStateVar: "congestion", coefficient: 0.6, delayTicks: 0, status: "PUBLISHED" } });
+    // view-config 派生出物流行业的类型/状态变量（非电池）——同一端点同一代码。
+    const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: H })).json()) as { nodeTypes: string[]; stateVars: string[] };
+    expect(cfg.nodeTypes).toEqual(["Route", "Shipment", "Warehouse"]);
+    expect(cfg.stateVars).toEqual(["congestion", "delay"]);
+    // init→tick 同一套 sim 后端跑通物流态（抽象 objectId→stateVar→number，零行业常数）。
+    const sid = (await (await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: H, payload: { baseSnapshot: { ship1: { delay: 3 }, wh1: { congestion: 0 } } } })).json()).id;
+    const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: H, payload: { n: 1 } });
+    expect(tick.statusCode).toBe(200);
+    expect(tick.json().curTick).toBe(1);
+  });
 });
