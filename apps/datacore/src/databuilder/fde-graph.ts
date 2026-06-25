@@ -24,8 +24,22 @@ export const FDE_NODES: FdeNodeDef[] = [
   { key: "generate", label: "各模块生成", drilldownRef: "producedArtifacts", gateKind: "NONE" },
   { key: "closure", label: "闭包", drilldownRef: "closureReport", gateKind: "HARD" },
   { key: "publish", label: "publish（R4）", drilldownRef: "producedArtifacts", gateKind: "HARD" },
-  { key: "launcher", label: "进启动器", drilldownRef: "answer", gateKind: "NONE" },
+  // E15：launcher 从 NONE 升为**有产物+判据**——产物=注册进启动器的 DRAFT 场景 + 验证答案；
+  // 判据(SOFT)=场景已注册且重跑主问句真出非空可溯源答案。跨系统未注册(PENDING_BSTACK)/验证不可答→诚实标缺口码。
+  { key: "launcher", label: "进启动器", drilldownRef: "answer", gateKind: "SOFT" },
 ];
+
+/**
+ * E15 · 启动器就绪判据（确定性，纯 context）：scaffold 倒推的 DRAFT 场景算"注册进启动器的产物"。
+ *  - registeredScenes：scaffoldManifest 中 module=scene 的项数（启动器可见的场景卡数）；
+ *  - pendingBstack：是否仍有项待 B 对账（单机/未配 AGENTCORE → 场景定义可见但未真注册进 QOS 启动器）。
+ * 用于 launcher 节点的 io.out（产物计数）与 gapCode（PENDING_BSTACK 时诚实标"待 B 注册"，不静默假绿）。
+ */
+function launcherReadiness(c: Ctx): { registeredScenes: number; pendingBstack: boolean } {
+  const sm = c["scaffoldManifest"] as { items?: { module?: string; status?: string }[]; pendingBstack?: boolean } | undefined;
+  const sceneItems = (sm?.items ?? []).filter((i) => i.module === "scene");
+  return { registeredScenes: sceneItems.length, pendingBstack: !!sm?.pendingBstack };
+}
 
 const DEF_BY_KEY = new Map<FdeNodeKey, FdeNodeDef>(FDE_NODES.map((d) => [d.key, d]));
 
@@ -105,12 +119,14 @@ export function projectFdeNodes(input: { steps?: BuildWorkflowStep[]; context: C
   const producedConns = (c["producedConnections"] as string[] | undefined)?.length ?? 0;
   const producedDs = (c["producedDatasets"] as string[] | undefined)?.length ?? 0;
   const gap = c["gapAnalysis"] as { summary?: { need?: number; missing?: number } } | undefined;
+  // E15：launcher 产物 = 注册进启动器的 DRAFT 场景数（有答案时取场景卡数，至少 1）。
+  const launch = launcherReadiness(c);
   const io: Partial<Record<FdeNodeKey, { in?: number; out?: number }>> = {
     story: { in: 1 },
     comprehend: planReady ? { out: 1 } : undefined,
     gap: gap?.summary ? { out: gap.summary.need ?? undefined } : undefined,
     generate: built ? { out: producedConns + producedDs } : undefined,
-    launcher: has("answer") ? { out: 1 } : undefined,
+    launcher: has("answer") ? { out: Math.max(1, launch.registeredScenes) } : undefined,
   };
 
   // 计时/缺口码叠加。
@@ -127,6 +143,13 @@ export function projectFdeNodes(input: { steps?: BuildWorkflowStep[]; context: C
     if (st === "FAILED") {
       gapCode = key === "closure" && closure ? closureGapCode(closure) : step?.error?.code;
     }
+    // E15：launcher 节点诚实标"待 B 注册"——有答案但场景仍 PENDING_BSTACK（单机/未配 AGENTCORE）
+    // → 启动器卡定义可见、DataCore 本地可答，但未真注册进 QOS 启动器 → SOFT 缺口码（不静默假装已全注册）。
+    let detail = step?.detail;
+    if (key === "launcher" && st === "DONE" && launch.pendingBstack) {
+      gapCode = "LAUNCHER_PENDING_BSTACK";
+      detail = `${launch.registeredScenes} 个场景卡待 B 对账注册进 QOS 启动器（单机本地可答）`;
+    }
     return {
       key,
       label: def.label,
@@ -137,7 +160,7 @@ export function projectFdeNodes(input: { steps?: BuildWorkflowStep[]; context: C
       io: io[key],
       drilldownRef: def.drilldownRef,
       gapCode,
-      detail: step?.detail,
+      detail,
     };
   });
 }
