@@ -21,7 +21,7 @@
 
 | H | 项目 | 源（确凿未建依据） | 优先级 | HANDOFF 状态 |
 |---|---|---|---|---|
-| **H3** | **🔴 LLM 理解与全栈倒推引擎**（comprehend 大脑 + 富多跳切片 + 14域本体两库 + 终态闭环 + FDE 编排工作流） | `TODO-fde-build-engine §2/§3/§5/§6`（明标 🔴⬜，对新颖故事产空骨架） | **P0（真北极星）** | 🚧 起草中 |
+| **H3** | **🔴 数据构建发动机收尾**（comprehend 引擎 + 终态闭环）。**翻案**：真代码摸底发现引擎主体**已建**（非 TODO 说的"空骨架"），H3 = 收尾 3 真断点（用途→provider→model 路由 / 域运营本体不变量 / B栈制品入启动器）+ 先 FDE 真跑坐实 | `TODO-fde §2/§3` 目标 + 2026-06 真代码摸底（HANDOFF §1 现状表）。**注：TODO 状态字段已 stale，以现状锚点为准** | **P0（真北极星）** | ✅ 已就绪 → `HANDOFF-comprehend-engine-build-and-review-contract.md` |
 | **H4** | **闭环验证引擎 VLE**（七段链路 / 三预言机 / 工程验证度 / 发布门禁） | `addendum-validation-loop`；`COMPLETION-LEDGER D24` 判 ❌ 未见实现 | P1 | ⬜ 待写 |
 | **H5** | **规则即一等引用 · 收尾 G-10 P3**（规则编辑器 UI / 版本+事件失效 / 6 入口逐一 FDE / 其余求解器 payload 映射） | `SYSTEM-ONTOLOGY §8 G-10`「待 P3」；backlog #23/#24 | P1 | ⬜ 待写 |
 | **H6** | **场景发育 · 收尾 R16/G-9 P3**（evaluate_rules 自动接 / slice 自动生成 / GapReport→runGrowthLoop 自动补 / ScenarioGenome / ADVISORY 相位） | `SYSTEM-ONTOLOGY §8 G-9`「待 P3 余」；backlog #25-28 | P1 | ⬜ 待写 |

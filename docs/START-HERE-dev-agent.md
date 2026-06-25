@@ -37,7 +37,13 @@
 - **设计**：`docs/SPEC-optimization-template-pool.md`（抽象模板池+本体绑定+embedding 复用检索）
 - **许可证红线**：`docs/THIRD-PARTY-NOTICES.md`——**借鉴=重写方法+派生产物，绝不把上游内容用作训练语料；Gurobi 示例完全不碰；CDLA 数据只取派生 Results**。先做增量 0（本体先行 + `THIRD-PARTY-NOTICES` + `solver-license:check` 门）。
 
-> ⚠ **别同时铺两轨**——一轨一轨来，每增量一组 commit、跑通再下一个。
+### 轨 C · 数据构建发动机收尾（comprehend 引擎 + 终态闭环 · 真北极星）
+- **施工合同**：`docs/HANDOFF-comprehend-engine-build-and-review-contract.md`
+- **要做的活**：摸底翻案后的**真断点收尾**——**增量0 先 FDE 真跑**新颖故事坐实引擎能不能用（别信 TODO 说的"空骨架"，引擎主体已建）→ 收 3 断点：用途→provider→model 路由（P0）/ 域运营本体不变量（P1）/ B栈制品入启动器（P1）→ 切片近似问句复用 → 终态闭环亲手验收。
+- **⚠ 红线**：`HANDOFF §1` 标「真实」的 13 项引擎主体（comprehend/多跳切片/两库/FDE流/闭包链）**已建，只接不重写**——照 stale 的 `TODO-fde` 从零重写=打回。一切以 §1 真代码现状锚点为准。
+
+> ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。
+> ⚠ **全局路线图**见 `docs/HANDOFF-ROADMAP.md`：还有 H4（VLE）/H5（规则P3）/H6（场景发育P3）/H7（管理面闭合）待审核方写；A8时序/M11校准等待 Pass-2 定级再配——**没出 HANDOFF 的别动**。
 
 ---
 
@@ -108,5 +114,6 @@ push 前自检：**rebase 干净 ✓ 本体回写 ✓ CLI 注册 ✓ 命名门 �
 
 **轨 A**：读 ①②③，跑 `pnpm install && pnpm -r build && pnpm -r test`（4 包应全绿）→ 起内存态双服务 + 前端真看一眼当前沙盘（`/v/sim-sandbox`，需开 `sim.*` entitlement）→ 照 HANDOFF §6.1.A 挑一个 **P0** 开做 → 按 §6 提交。
 **轨 B**：读 ①②③ + `THIRD-PARTY-NOTICES` + `SPEC-optimization-template-pool` → 做增量 0（本体先行 + 许可证门，零业务代码）→ 提交。
+**轨 C**：读 ①②③ + `HANDOFF-comprehend-engine §1 追溯表` → 做增量 0（起内存态 datacore，用一个**新颖故事**调 `runStory`，贴真输出坐实引擎能不能用，**只看不改**）→ 再动 3 断点。
 
 有歧义、或发现要动红线级/架构级的东西 → **先问，别擅自决定**。
