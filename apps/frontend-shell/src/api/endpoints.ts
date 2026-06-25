@@ -16,6 +16,7 @@ import type {
   ValidationPolicy,
   ConnectorType,
   FeatureDef,
+  IntentClassifyPreviewResult,
   IntentDefinition,
   McpServerConfig,
   PermissionPolicy,
@@ -713,6 +714,9 @@ export const createIntent = (
 ) => api.b<IntentDefinition>(`/b/v1/catalog/packages/${packageId}/intents`, { body });
 export const updateIntent = (intentId: string, body: Partial<IntentDefinition>) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}`, { method: "PUT", body });
+/** C10 试分类（catalog_admin 内联测试意图分类）：确定性词法打分（R6 无 LLM）。改 examples/description 后当场验示例问句是否命中本意图。 */
+export const classifyIntentPreview = (packageId: string, query: string, view?: string) =>
+  api.b<IntentClassifyPreviewResult>("/b/v1/intents/classify-preview", { body: { packageId, query, ...(view ? { view } : {}) } });
 export const publishIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/publish`, { body: {} });
 export const retireIntent = (intentId: string) =>

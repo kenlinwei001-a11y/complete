@@ -106,10 +106,23 @@ try {
   else fail("C9 评测无用例 CRUD 入口（阻 agent 发布门禁）");
 
   // ── C10 objectRef refType + 分类测试（意图目录）──────────────────
-  // 已知 mainline 依赖：refType 需 contracts SlotDef 字段、分类测试需后端 classify-preview 端点（均超本轨前端边界）。
+  // enabler 已落（contracts SlotDef.refType + 后端 classify-preview）。前端：refType 下拉 + 试分类。
   await nav(p, "/admin/catalog");
-  if ((await p.locator("[data-testid=intent-classify-test]").count()) > 0) ok("C10 意图分类测试入口存在");
-  else console.log("  ⚠ C10 意图分类测试/objectRef refType 待 mainline 落（需 contracts SlotDef.refType + 后端 classify-preview，见报告）");
+  // 打开含 objectRef 槽的意图（adopt_mitigation: base=objectRef）→ 验 refType 下拉。
+  if ((await p.locator("[data-testid=intent-adopt_mitigation]").count()) > 0) {
+    await p.click("[data-testid=intent-adopt_mitigation]");
+    await p.waitForTimeout(900);
+    const refOpts = await p.locator("[data-testid=slot-reftype-0] option").count();
+    if (refOpts > 1) ok(`C10 objectRef 槽位"目标对象类型"下拉可达（${refOpts - 1} 本体类型，AC4）`);
+    else fail("C10 objectRef 槽无 refType 下拉（违 AC4）");
+  }
+  if ((await p.locator("[data-testid=intent-classify-test]").count()) > 0) {
+    await p.fill("[data-testid=intent-classify-query]", "采纳常州的三班制方案").catch(() => {});
+    await p.click("[data-testid=intent-classify-test]");
+    await p.waitForTimeout(1200);
+    if ((await p.locator("[data-testid=intent-classify-result]").count()) > 0) ok("C10 试分类调端点显命中（无死路）");
+    else fail("C10 试分类无结果");
+  } else fail("C10 无试分类入口");
 
   // ── C6 引用控件：agent 编辑器 ────────────────────────────────────
   await nav(p, "/admin/agents");

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { IntentDefinition, SlotDef } from "@platform/contracts";
-import { createIntent, createPlan, fetchIntents, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
+import type { IntentClassifyPreviewResult, IntentDefinition, SlotDef } from "@platform/contracts";
+import { classifyIntentPreview, createIntent, createPlan, fetchIntents, fetchObjectTypes, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
@@ -106,6 +106,20 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
   const [planId, setPlanId] = useState(intent.planId);
   const editable = intent.status === "DRAFT";
 
+  // C10：objectRef 槽位"目标对象类型"下拉数据源（本体对象类型，AC4）。
+  const { data: objectTypes } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  // C10：objectRef 槽未选 refType → 发布前必填（前端校验提示）。
+  const missingRefType = slots.filter((s) => s.type === "objectRef" && !s.refType?.trim()).map((s) => s.name || "(未命名)");
+
+  // C10 试分类：改 examples/description 后当场验示例问句是否命中本意图（确定性词法打分，无 LLM）。
+  const [classifyQuery, setClassifyQuery] = useState("");
+  const [classifyResult, setClassifyResult] = useState<IntentClassifyPreviewResult | null>(null);
+  const classifyMut = useMutation({
+    mutationFn: () => classifyIntentPreview(packageId, classifyQuery.trim()),
+    onSuccess: setClassifyResult,
+    onError: toastError,
+  });
+
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "intents"] });
 
   // G-4：自助创建可绑定执行计划（消裁决#27 死路 —— 此前下拉只读、无创建入口）。
@@ -196,6 +210,7 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
           <tr>
             <th>name</th>
             <th>type</th>
+            <th>目标对象类型</th>
             <th>required</th>
             <th>clarifyPrompt</th>
           </tr>
@@ -214,6 +229,26 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
                 </select>
               </td>
               <td>
+                {/* C10 闭合（AC4）：objectRef 槽位出"目标对象类型"下拉（引用本体）；其它类型无此字段。未选 → 红框提示（发布前必填）。 */}
+                {s.type === "objectRef" ? (
+                  <select
+                    value={s.refType ?? ""}
+                    disabled={!editable}
+                    aria-label={`槽位${i}目标对象类型`}
+                    data-testid={`slot-reftype-${i}`}
+                    style={{ minWidth: 140, borderColor: !s.refType?.trim() ? "var(--danger)" : undefined }}
+                    onChange={(e) => setSlots(slots.map((x, j) => (j === i ? { ...x, refType: e.target.value || undefined } : x)))}
+                  >
+                    <option value="">（必选）</option>
+                    {(objectTypes ?? []).map((ot) => (
+                      <option key={ot.key} value={ot.key}>{ot.displayName}（{ot.key}）</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="muted" style={{ fontSize: 11 }}>—</span>
+                )}
+              </td>
+              <td>
                 <input type="checkbox" checked={s.required} disabled={!editable} aria-label={`槽位${i}必填`} onChange={(e) => setSlots(slots.map((x, j) => (j === i ? { ...x, required: e.target.checked } : x)))} />
               </td>
               <td>
@@ -223,6 +258,11 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
           ))}
         </tbody>
       </table>
+      {missingRefType.length > 0 && (
+        <div className="badge red" style={{ marginTop: 6 }} data-testid="slot-reftype-missing">
+          objectRef 槽位 [{missingRefType.join("、")}] 未选目标对象类型 —— 发布前必填（AC4）
+        </div>
+      )}
       {editable && (
         <button className="btn sm" style={{ marginTop: 6 }} onClick={() => setSlots([...slots, { name: "", type: "string", required: false, description: "" }])}>
           + 槽位
@@ -247,6 +287,54 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
           </button>
         )}
       </div>
+
+      {/* C10 试分类（AC8 旁证）：改 examples/description 后当场验示例问句是否命中本意图（确定性词法打分，无 LLM）。 */}
+      <div className="section-title" style={{ marginTop: 12 }}>试分类（验示例问句是否命中本意图）</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          data-testid="intent-classify-query"
+          value={classifyQuery}
+          placeholder="输入一句示例问句，看会命中哪个意图"
+          onChange={(e) => setClassifyQuery(e.target.value)}
+          style={{ flex: 1, minWidth: 240 }}
+        />
+        <button
+          className="btn sm"
+          data-testid="intent-classify-test"
+          disabled={classifyMut.isPending || classifyQuery.trim() === ""}
+          onClick={() => classifyMut.mutate()}
+        >
+          {classifyMut.isPending ? "分类中…" : "试分类"}
+        </button>
+      </div>
+      {classifyResult && (
+        <div className="panel" style={{ marginTop: 8, padding: 8 }} data-testid="intent-classify-result">
+          {classifyResult.outOfCatalog || classifyResult.matched.length === 0 ? (
+            <span className="badge amber" data-testid="intent-classify-ooc">未命中目录（域外）</span>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, marginBottom: 6 }}>
+                Top 命中：
+                <span className={`badge ${classifyResult.top === intent.key ? "green" : "amber"}`} data-testid="intent-classify-top">
+                  {classifyResult.top}{classifyResult.top === intent.key ? "（=本意图 ✓）" : "（≠本意图）"}
+                </span>
+              </div>
+              <table className="cmp" style={{ width: "100%" }}>
+                <thead><tr><th>意图键</th><th>名称</th><th>得分</th></tr></thead>
+                <tbody>
+                  {classifyResult.matched.map((m) => (
+                    <tr key={m.intentKey} data-testid={`intent-classify-row-${m.intentKey}`} style={{ fontWeight: m.intentKey === intent.key ? 600 : undefined }}>
+                      <td className="mono" style={{ fontSize: 11 }}>{m.intentKey}</td>
+                      <td>{m.name}</td>
+                      <td className="mono">{m.score.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -2130,6 +2130,28 @@ export const handlers = [
     Object.assign(intent, body);
     return HttpResponse.json(intent);
   }),
+  // C10 试分类（确定性词法打分，无 LLM）：真后端 POST /b/v1/intents/classify-preview。mock 用 query token 与意图 name/examples 交集打分。
+  http.post("*/b/v1/intents/classify-preview", async ({ request }) => {
+    const { query } = ((await request.json().catch(() => ({}))) ?? {}) as { query?: string };
+    const tok = (s: string): Set<string> => {
+      const out = new Set<string>();
+      for (const m of s.toLowerCase().match(/[a-z0-9]{2,}/g) ?? []) out.add(m);
+      for (const m of s.match(/[一-龥]/g) ?? []) out.add(m);
+      return out;
+    };
+    const qtok = tok(query ?? "");
+    const scored = db.intents
+      .filter((i) => i.status === "PUBLISHED")
+      .map((i) => {
+        const itok = tok([i.name, i.description, ...(i.examples ?? [])].join(" "));
+        const inter = [...qtok].filter((x) => itok.has(x)).length;
+        return { intentKey: i.key, name: i.name, score: qtok.size ? inter / qtok.size : 0 };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+    const top = scored[0] && scored[0].score > 0 ? scored[0].intentKey : null;
+    return HttpResponse.json({ matched: scored, top, outOfCatalog: top === null });
+  }),
   http.post("*/b/v1/catalog/intents/:intentId/publish", ({ params }) => {
     const intent = db.intents.find((i) => i.id === params.intentId);
     if (!intent) return err(404, "NOT_FOUND", "意图不存在");
