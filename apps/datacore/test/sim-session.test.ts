@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, ADMIN, debugUser } from "./helpers.js";
+import { makeApp, ADMIN, debugUser, seedBattery } from "./helpers.js";
 
 /**
  * 推演沙盘增量 1 · 会话状态机（SPEC-sandbox-propagation-and-session §2/§5）。
@@ -88,5 +88,20 @@ describe("推演沙盘增量1 · 会话状态机", () => {
     expect(create.statusCode).toBe(201);
     const list = await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN });
     expect((list.json().items as { key: string }[]).some((r) => r.key === "r_demo")).toBe(true);
+  });
+
+  it("增量4 view-config 由本体派生（配置驱动·零业务常数）：节点类型来自租户本体、状态变量来自传导规则", async () => {
+    const t = await makeApp();
+    await seedBattery(t); // 本体有对象类型/链路
+    await enableSim(t);
+    await t.app.inject({ method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
+      payload: { key: "r_v", sourceTypeKey: "Line", sourceStateVar: "util", viaLinkKey: "FEEDS", targetTypeKey: "Base", targetStateVar: "risk", coefficient: 0.5, delayTicks: 0, status: "PUBLISHED" } });
+    const cfg = await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN });
+    expect(cfg.statusCode).toBe(200);
+    const j = cfg.json() as { nodeTypes: string[]; stateVars: string[]; propagationCount: number; radarDims: unknown[] };
+    expect(j.nodeTypes.length).toBeGreaterThan(0); // 派生自本体对象类型（任意行业）
+    expect(j.stateVars).toEqual(["risk", "util"]); // 派生自传导规则 source/target stateVar
+    expect(j.propagationCount).toBe(1);
+    expect(j.radarDims.length).toBe(3);
   });
 });

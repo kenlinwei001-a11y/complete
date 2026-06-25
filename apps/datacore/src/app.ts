@@ -42,7 +42,7 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
-import { PropagationRuleSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
@@ -1268,6 +1268,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const r = PropagationRuleSchema.parse({ ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
     await repos.sim.putPropagationRule(r);
     return reply.status(201).send(r);
+  });
+  // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
+  // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。
+  app.get("/a/v1/sim/view-config", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const types = await repos.ontologyTypes.list(c.tenantId);
+    const links = await repos.ontologyLinks.list(c.tenantId);
+    const rules = await repos.sim.listPropagationRules(c.tenantId, true);
+    const stateVars = [...new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
+    const cfg = {
+      tenantId: c.tenantId,
+      nodeTypes: types.map((t) => t.key).sort(),
+      linkTypes: links.map((l) => l.key).sort(),
+      stateVars,
+      radarDims: [
+        { key: "structure", label: "结构" },
+        { key: "knowledge", label: "知识" },
+        { key: "behavior", label: "行为" },
+      ],
+      screens: ["pipeline", "entity", "readiness", "init", "sandbox"] as const,
+      propagationCount: rules.length,
+    };
+    return SandboxViewConfigSchema.parse(cfg);
   });
 
   // ---- 推演沙盘 · 增量 2：就绪认证（SimCertification = 投影既有 closure，零新校验 RL3）----

@@ -142,3 +142,17 @@ export const SimCertificationSchema = z.object({
   computedAt: z.string(),
 });
 export type SimCertification = z.infer<typeof SimCertificationSchema>;
+
+// ── SandboxViewConfig 沙盘视图配置（增量 4 · 配置驱动 5 屏·零业务常数 R14） ──────────
+// 由租户本体 + 传导规则**派生**（GET /a/v1/sim/view-config），换租户/行业=换本体内容不改代码。
+// 前端 5 屏(数据管道/逐实体/就绪/初始化/沙盘主屏)全从本配置渲染节点/边/状态变量/雷达维。
+export const SandboxViewConfigSchema = z.object({
+  tenantId: z.string(),
+  nodeTypes: z.array(z.string()), // 拓扑节点 = 已发布对象类型 key（任意行业）
+  linkTypes: z.array(z.string()), // 传导边 = 已发布链路 key
+  stateVars: z.array(z.string()), // 状态变量（KPI/雷达维，派生自传导规则 source/target stateVar）
+  radarDims: z.array(z.object({ key: z.string(), label: z.string() })), // 就绪雷达维（结构/知识/行为 + 可扩）
+  screens: z.array(z.enum(["pipeline", "entity", "readiness", "init", "sandbox"])),
+  propagationCount: z.number().int(), // 本租户已发布传导规则数（0=纯建模态）
+});
+export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
