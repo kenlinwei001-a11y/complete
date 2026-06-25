@@ -52,6 +52,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "solver-review", label: zh.nav.solverReview, roles: ["admin"] },
   // C5 求解器目录（只读发现）：workflow invoke_solver 的 solverKey 引用目标（catalog_admin 配工作流需可见）
   { path: "solvers", label: zh.nav.solvers, roles: ["admin", "catalog_admin", "data_admin"] },
+  // C12 配置迁移工作台（OC3 跨系统 Saga）：导出/导入租户配置 bundle。后端 admin only。
+  { path: "config-migration", label: zh.nav.configMigration, roles: ["admin"] },
   { path: "meta", label: "系统自我", roles: ["admin"] },
   { path: "boundary", label: "边界册治理", roles: ["admin"] },
   { path: "prototype-intake", label: "原型 intake", roles: ["admin", "data_admin"] },
@@ -90,7 +92,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
-  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers"] },
+  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration"] },
 ];
 
 /** 把（已按角色过滤的）管理页归入分组；空组剔除；未配置页落「其它」组（不丢）。确定性顺序。 */

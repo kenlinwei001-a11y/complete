@@ -1009,3 +1009,10 @@ export interface IntakeObjectifyResult {
 }
 export const objectifyIntake = (connId: string) =>
   api.a<IntakeObjectifyResult>("/a/v1/databuilder/intake/objectify", { method: "POST", body: { connId } });
+
+// C12 环境间配置迁移（OC3 · 跨系统 Saga）：导出本租户配置 bundle + 另环境导入跑 Saga
+// （VALIDATING→DRY_RUN_OK→APPLYING_A/B→COMMITTED/COMPENSATED）。admin only。over 既有端点，无新契约/后端。
+import type { ConfigBundle, ImportJob, ImportConflictPolicy } from "@platform/contracts";
+export const exportConfigBundle = () => api.a<ConfigBundle>("/a/v1/config-bundles/export");
+export const importConfigBundle = (bundle: ConfigBundle, dryRun: boolean, conflictPolicy: ImportConflictPolicy) =>
+  api.a<ImportJob>("/a/v1/config-bundles/import", { method: "POST", body: { bundle, dryRun, conflictPolicy } });

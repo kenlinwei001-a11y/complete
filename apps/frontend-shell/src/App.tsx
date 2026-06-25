@@ -56,6 +56,7 @@ const MergePage = lazy(() => import("@/pages/admin/MergePage"));
 const GrowthCockpitPage = lazy(() => import("@/pages/admin/GrowthCockpitPage"));
 const SolverReviewPage = lazy(() => import("@/pages/admin/SolverReviewPage"));
 const SolversPage = lazy(() => import("@/pages/admin/SolversPage"));
+const ConfigMigrationPage = lazy(() => import("@/pages/admin/ConfigMigrationPage"));
 const MetaPage = lazy(() => import("@/pages/admin/MetaPage"));
 const BoundaryPage = lazy(() => import("@/pages/admin/BoundaryPage"));
 const PrototypeIntakePage = lazy(() => import("@/pages/admin/PrototypeIntakePage"));
@@ -159,6 +160,7 @@ export const routes: RouteObject[] = [
       admin("growth", <GrowthCockpitPage />),
       admin("solver-review", <SolverReviewPage />),
       admin("solvers", <SolversPage />),
+      admin("config-migration", <ConfigMigrationPage />),
       admin("meta", <MetaPage />),
       admin("boundary", <BoundaryPage />),
       admin("prototype-intake", <PrototypeIntakePage />),

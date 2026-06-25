@@ -408,6 +408,31 @@ export const handlers = [
   // ---- Entitlement ----
   http.get("*/a/v1/features/registry", () => HttpResponse.json(FEATURE_REGISTRY)),
 
+  // C12 配置迁移（OC3 跨系统 Saga）：导出本租户 bundle + 导入跑 Saga。真后端 config-bundle.ts；mock 给确定性 Saga 结果。
+  http.get("*/a/v1/config-bundles/export", () =>
+    HttpResponse.json({ platformSchemaVersion: "1.0", sourceTenantId: "demo", exportedAt: "2026-06-25T00:00:00Z", featureOverrides: { "view.dash": true, "view.plan-audit": false } }),
+  ),
+  http.post("*/a/v1/config-bundles/import", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { bundle?: { platformSchemaVersion?: string; featureOverrides?: Record<string, boolean> }; dryRun?: boolean; conflictPolicy?: string };
+    const overrides = body.bundle?.featureOverrides ?? {};
+    const known = new Set(FEATURE_REGISTRY.map((f) => f.key));
+    const unknown = Object.keys(overrides).filter((k) => !known.has(k));
+    const base = { id: "imp_mock_1", tenantId: "demo", schemaVersion: body.bundle?.platformSchemaVersion ?? "1.0", dryRun: !!body.dryRun, conflictPolicy: body.conflictPolicy ?? "OVERWRITE", createdAt: "2026-06-25T00:00:00Z", updatedAt: "2026-06-25T00:00:01Z" };
+    if (unknown.length > 0) return HttpResponse.json({ ...base, state: "FAILED", error: `未知功能键：${unknown.slice(0, 5).join(", ")}` });
+    // 目标当前（mock）：view.dash=true → 同；view.plan-audit 不存在 → 新增。
+    const current: Record<string, boolean> = { "view.dash": true };
+    const added: string[] = [], changed: { key: string; from: boolean; to: boolean }[] = [], same: string[] = [];
+    for (const [k, v] of Object.entries(overrides)) {
+      if (!(k in current)) added.push(k);
+      else if (current[k] !== v) changed.push({ key: k, from: current[k]!, to: v });
+      else same.push(k);
+    }
+    const diff = { featureOverrides: { added, changed, same }, conflicts: changed.map((c) => c.key) };
+    if (body.conflictPolicy === "FAIL" && diff.conflicts.length > 0) return HttpResponse.json({ ...base, state: "FAILED", diff, error: `存在 ${diff.conflicts.length} 项冲突且 policy=FAIL` });
+    if (body.dryRun) return HttpResponse.json({ ...base, state: "DRY_RUN_OK", diff });
+    return HttpResponse.json({ ...base, state: "COMMITTED", diff });
+  }),
+
   http.get("*/a/v1/tenants/:id/features/preview", ({ request }) => {
     const url = new URL(request.url);
     const role = url.searchParams.get("role") ?? "planner";

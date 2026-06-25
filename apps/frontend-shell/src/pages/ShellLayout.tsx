@@ -52,7 +52,7 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
   { title: "构建与成长", items: ["data-builder", "growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "meta"].map((key) => ({ kind: "admin" as const, key })) },
+  { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"].map((key) => ({ kind: "admin" as const, key })) },
 ];
 
 type NavItemVM = { key: string; label: string; viewKey?: string; group?: string };

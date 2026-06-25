@@ -114,6 +114,22 @@ try {
   // ── C6 引用控件：agent 编辑器 ────────────────────────────────────
   await nav(p, "/admin/agents");
   ok("C6 /admin/agents 可达");
+
+  // ── C12 配置迁移工作台（导出→干跑→应用 Saga）──────────────────────
+  await nav(p, "/admin/config-migration");
+  if ((await p.locator("[data-testid=config-migration-page]").count()) > 0) {
+    ok("C12 /admin/config-migration 页可达");
+    await p.click("[data-testid=cfg-export]").catch(() => {});
+    await p.waitForTimeout(1200);
+    const bundleLen = (await p.locator("[data-testid=cfg-bundle-text]").inputValue().catch(() => "")).length;
+    if (bundleLen > 10) ok(`C12 导出本租户 bundle（${bundleLen} 字符）`);
+    else fail("C12 导出无 bundle");
+    await p.click("[data-testid=cfg-dry-run]").catch(() => {});
+    await p.waitForTimeout(1200);
+    const st = await p.locator("[data-testid=cfg-job-state]").innerText().catch(() => "none");
+    if (/DRY_RUN_OK|COMMITTED/.test(st)) ok(`C12 干跑出 diff（state=${st}）`);
+    else fail(`C12 干跑未通过（state=${st}）`);
+  } else fail("C12 /admin/config-migration 不可达（页缺）");
 } catch (e) {
   fail(`异常：${String(e).slice(0, 300)}`);
 } finally {

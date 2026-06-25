@@ -90,6 +90,7 @@ export const zh = {
     growth: "自成长发动机",
     solverReview: "求解器审核台",
     solvers: "求解器目录",
+    configMigration: "配置迁移",
   },
   errors: {
     notFoundTitle: "页面不存在",
