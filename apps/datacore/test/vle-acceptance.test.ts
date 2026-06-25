@@ -11,7 +11,8 @@ import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER } from "./helpers.js
 interface Report { pass: boolean; assertions: { segment: string; point: string; pass: boolean }[] }
 const MODEL = "4680-NCM";
 
-describe("VLE 验收补齐 · VL2/VL4/VL5/VL7", () => {
+// 见 vle.test.ts 说明：VLE run 多次合成生成耗时，contended CI 下提到 120s（全局 30s 不动）。
+describe("VLE 验收补齐 · VL2/VL4/VL5/VL7", { timeout: 120000 }, () => {
   it("VL2 植入计算 bug（broken_aggregate）→ 独立参照比对处变红，报告 pass=false", async () => {
     const t = await makeApp();
     const clean = (await t.services.vle.run(t.adminCtx, "SMOKE", 42)).report as unknown as Report;

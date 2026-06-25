@@ -3,6 +3,19 @@ import type { Repos } from "./repo/repo.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
+import { referenceCapacityForecast } from "./vle-oracle.js";
+
+/**
+ * 被测求解器调用器（V5 双算注入点）：app.ts 在构造时注入 `solvers.invoke` 的轻量包装，
+ * 使 VLE 能取**被测系统真实产出**（capacity_forecast 的 P50/P90）与独立参照值双算——
+ * 但 vle.ts **绝不 import `solvers/service`**（V9 静态门强制：用被测算被测=双算形同虚设）。
+ * 注入缺省（undefined）时 ⑤段降级为「负载非退化」构造断言（向后兼容旧单测）。
+ */
+export type SolverInvoke = (
+  ctx: AuthCtx,
+  solverKey: string,
+  args: Record<string, unknown>,
+) => Promise<Record<string, unknown>>;
 
 /** 七段闭环的规范段名（assertionCov = 已验证的规范段数 / 7，非硬编码 1）。 */
 const CANONICAL_SEGMENTS = ["①接入", "②建模与对象化", "③聚合与派生", "④规则查全查准", "⑤求解器执行", "⑥行动终态", "⑦校准注入"];
@@ -37,7 +50,12 @@ export class VleService {
     private repos: Repos,
     private synthetic: SyntheticService,
     private ontology: OntologyService,
+    /** 被测求解器调用器（V5 双算）；undefined → ⑤段降级为构造断言。 */
+    private solverInvoke?: SolverInvoke,
   ) {}
+
+  /** ⑤ 双算容差：P50/P90 为 4 位定点累加 → 期望逐位一致；留 1e-6 吸收浮点累加序差异（R6 确定性）。 */
+  private static readonly REF_TOLERANCE = 1e-6;
 
   /** GenSpec 已知真值：battery-manufacturing / scale=S 的核心类型行数（接入→对象化守恒下界）。 */
   private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: 12, Model: 6, Order: 24 };
@@ -136,7 +154,7 @@ export class VleService {
         actual: plantedC03,
       });
 
-      // ⑤ 求解器执行（独立预言机，VL7：不 import 求解器，验"求解链有真实负载"而非空跑）。
+      // ⑤ 求解器执行（前置·构造预言机）：验"求解链有真实负载"而非空跑。
       //   供给(Σ基地产能 gwh)与需求(Σ订单 qty)双侧均非退化 → 求解器面对真实供需缺口。
       const bases = objects.filter((o) => o.type === "Base");
       const supply = bases.reduce((s, o) => s + (typeof o.props.gwh === "number" ? (o.props.gwh as number) : 0), 0);
@@ -149,6 +167,15 @@ export class VleService {
         expected: "supply>0 && demand>0",
         actual: `supply=${Number(supply.toFixed(1))} demand=${demand}`,
       });
+
+      // ⑤ 求解器执行（参照实现双算，V5 核心可证底线 / VL2）：被测 capacity_forecast 真实产出
+      //   P50/P90  vs  vle-oracle.ts 第二套独立代码算出的参照 P50/P90，逐字段比对（容差 REF_TOLERANCE）。
+      //   被测算错一个系数（如 curveMult）→ 此处当场红，diff 精确指出期望/实际/首个偏离基地。
+      //   solverInvoke 缺省（旧单测/未注入）→ 跳过双算（保留前置构造断言，向后兼容）。
+      if (this.solverInvoke) {
+        const refAssertion = await this.referenceDualCompute(vctx, objects);
+        if (refAssertion) assertions.push(refAssertion);
+      }
 
       // ⑥ 行动终态（R4 真值经 Action，独立预言机）：每个已注册 ActionType 必有非空审批链——
       //   空审批链 = 绕过审批直写真值的后门（R4 违反）。读注册表独立断言，不触发执行。
@@ -219,6 +246,80 @@ export class VleService {
   }
 
   // -- oracles --------------------------------------------------------------
+
+  /**
+   * ⑤ 参照实现双算（V5 / VL2）：调被测 capacity_forecast 取真实 P50/P90，与独立参照预言机
+   * (`vle-oracle.referenceCapacityForecast`) 逐字段比对。被测算错任一系数 → pass=false + diff 定位。
+   * 选首个"有认证产线"的模型作被测对象（确定性：按 modelId 排序取首个可产）。
+   */
+  private async referenceDualCompute(
+    ctx: AuthCtx,
+    objects: { id: string; type: string; props: Record<string, unknown> }[],
+  ): Promise<Assertion | null> {
+    if (!this.solverInvoke) return null;
+    // 确定性选模型：取认证关系覆盖到的、modelId 最小的模型（保证 cert.size>0，求解器不抛"无认证产线"）。
+    const certLinks = await this.repos.links.list(ctx.tenantId, (l) => l.type === "model_certified_on");
+    const models = objects.filter((o) => o.type === "Model");
+    const modelById = new Map(models.map((m) => [m.id, String(m.props.modelId ?? "")]));
+    const certifiedModelIds = [...new Set(certLinks.map((l) => modelById.get(l.fromId) ?? String(l.props?.modelId ?? "")).filter(Boolean))].sort();
+    const modelId = certifiedModelIds[0];
+    if (!modelId) {
+      return {
+        segment: "⑤求解器执行",
+        point: "参照双算前置：存在可产模型（认证关系非空）",
+        oracle: "constructed",
+        pass: false,
+        expected: ">=1 个认证模型",
+        actual: 0,
+        diff: "无 model_certified_on 关系 → 无法对 capacity_forecast 双算",
+      };
+    }
+    const weeks = 6; // 整单口径缺省窗口（与被测 capacityForecast 无 batches 时一致）。
+    let actual: Record<string, unknown>;
+    try {
+      actual = await this.solverInvoke(ctx, "capacity_forecast", { modelId, weeks });
+    } catch (e) {
+      return {
+        segment: "⑤求解器执行",
+        point: `参照双算 capacity_forecast(${modelId}) 求解器可执行`,
+        oracle: "reference",
+        pass: false,
+        expected: "求解器返回 P50/P90",
+        actual: String((e as Error)?.message ?? e),
+        diff: "被测求解器抛错，无法双算",
+      };
+    }
+    const ref = await referenceCapacityForecast(this.repos, ctx.tenantId, modelId, weeks);
+    const aP50 = typeof actual.p50 === "number" ? actual.p50 : NaN;
+    const aP90 = typeof actual.p90 === "number" ? actual.p90 : NaN;
+    const dP50 = Math.abs(aP50 - ref.p50);
+    const dP90 = Math.abs(aP90 - ref.p90);
+    const tol = VleService.REF_TOLERANCE;
+    const pass = Number.isFinite(aP50) && Number.isFinite(aP90) && dP50 <= tol && dP90 <= tol;
+    // diff 下钻：找首个 cumTotal 与被测 perBaseRows 偏离的基地（若被测透出 perBaseRows）。
+    let firstDivergentBase: string | undefined;
+    const aRows = Array.isArray(actual.perBaseRows) ? (actual.perBaseRows as Record<string, unknown>[]) : [];
+    if (!pass && aRows.length > 0) {
+      for (const rb of ref.perBase) {
+        const match = aRows.find((r) => String(r.baseId) === rb.baseId);
+        if (match && typeof match.cumTotal === "number" && Math.abs((match.cumTotal as number) - rb.cumTotal) > tol) {
+          firstDivergentBase = `${rb.baseId}: 被测 cumTotal=${match.cumTotal} ≠ 参照 ${rb.cumTotal}`;
+          break;
+        }
+      }
+    }
+    return {
+      segment: "⑤求解器执行",
+      point: `参照实现双算 capacity_forecast(${modelId}) P50/P90（第二套独立代码比对）`,
+      oracle: "reference",
+      pass,
+      expected: { p50: ref.p50, p90: ref.p90 },
+      actual: { p50: aP50, p90: aP90 },
+      diff: pass
+        ? undefined
+        : `P50 期望 ${ref.p50} 实际 ${aP50}（Δ${Number(dP50.toFixed(6))}）· P90 期望 ${ref.p90} 实际 ${aP90}（Δ${Number(dP90.toFixed(6))}）${firstDivergentBase ? ` · 首个偏离基地 ${firstDivergentBase}` : ""}`,
+    };
+  }
 
   /** 取首个有数值属性的对象类型，比较聚合 SUM 与逐行求和。 */
   private async aggregateEqualsDetail(

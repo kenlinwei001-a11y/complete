@@ -322,7 +322,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ruleDocs = new RuleDocService(repos, blob, routedLlm, rules, metrics, config.DC_LLM_MODEL, embeddings);
   const modeling = new ModelingService(repos, routedLlm, ontology, metrics, config.DC_LLM_MODEL, quarantine);
   const synthetic = new SyntheticService(repos, routedLlm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
-  const vle = new VleService(repos, synthetic, ontology);
+  // V5 双算注入：把被测 solvers.invoke 以回调注入 VLE（vle.ts 不 import solvers/service，V9 静态门守）。
+  const vle = new VleService(repos, synthetic, ontology, (c, key, args) => solvers.invoke(c, key, args));
   const actions = new ActionService(repos, rules, outbox, notifications);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
