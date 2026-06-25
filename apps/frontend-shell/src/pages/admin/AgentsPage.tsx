@@ -1,10 +1,20 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentDefinition, AgentToolRef } from "@platform/contracts";
 import { fetchAgents, fetchLlmProviders, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+
+/** C6/D-27 空态有路：被引用资源列表为空 → 给"去创建"链接（跳目标创作页），绝不留无选项死下拉。 */
+function RefEmptyLink({ to, label, testid }: { to: string; label: string; testid: string }) {
+  return (
+    <Link to={to} data-testid={testid} className="badge amber" style={{ textDecoration: "none", display: "inline-block", marginBottom: 10 }}>
+      尚无{label}，点击去创建 →
+    </Link>
+  );
+}
 
 const t = zh.admin.agents;
 
@@ -247,6 +257,7 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
           + MCP
         </button>
       )}
+      {editable && (mcpConfigs?.length ?? 0) === 0 && <RefEmptyLink to="/admin/mcp" label="MCP 服务器" testid="agent-mcp-empty" />}
 
       <div className="section-title">{t.workflowTools}</div>
       {wfRefs.map((ref, i) => (
@@ -275,6 +286,7 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
           + Workflow
         </button>
       )}
+      {editable && (workflows?.length ?? 0) === 0 && <RefEmptyLink to="/admin/workflows" label="工作流" testid="agent-workflow-empty" />}
 
       <div className="section-title">规则绑定</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
@@ -298,6 +310,7 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
       </div>
 
       <div className="section-title">skills</div>
+      {(skills?.length ?? 0) === 0 && <RefEmptyLink to="/admin/skills" label="技能" testid="agent-skills-empty" />}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
         {(skills ?? []).map((s) => {
           const on = form.skills.some((x) => x.skillId === s.id);

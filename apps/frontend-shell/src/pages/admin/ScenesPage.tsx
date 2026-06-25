@@ -318,6 +318,12 @@ function ScenarioEditor({
               </option>
             ))}
           </select>
+          {/* C6/D-27 空态有路：无 Agent 时给"去创建"链接（AGENT_FIRST 场景需默认 Agent，否则前台死路）。 */}
+          {agents.length === 0 && (
+            <Link to="/admin/agents" data-testid="scenario-agent-empty" className="badge amber" style={{ textDecoration: "none", marginTop: 4 }}>
+              尚无 Agent，点击去创建 →
+            </Link>
+          )}
         </label>
       </div>
 
