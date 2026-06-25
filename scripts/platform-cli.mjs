@@ -339,7 +339,22 @@ async function cmdOpt(args) {
     console.log("  " + C.dim((d.summary ?? JSON.stringify(d)).slice(0, 400)));
     return;
   }
-  console.error("用法: opt <templates|solve> …（solve <family> [--args|--binding] '{...}'）"); process.exit(1);
+  if (sub === "whatif") {
+    const family = pos[1];
+    if (!family) { console.error("用法: opt whatif <family> --perturbations '[{...}]' [--args|--binding '{...}'] [--json]"); process.exit(1); }
+    let perturbations = []; try { perturbations = flags.perturbations ? JSON.parse(flags.perturbations) : []; } catch { console.error(C.red("--perturbations 非合法 JSON")); process.exit(1); }
+    const payload = { family, perturbations };
+    if (flags.binding) { try { payload.binding = JSON.parse(flags.binding); } catch { console.error(C.red("--binding 非合法 JSON")); process.exit(1); } }
+    else if (flags.args) { try { payload.args = JSON.parse(flags.args); } catch { console.error(C.red("--args 非合法 JSON")); process.exit(1); } }
+    const r = await http(`${DC}/a/v1/opt/whatif`, { method: "POST", headers: authHeader(), body: JSON.stringify(payload) });
+    if (flags.json) return console.log(JSON.stringify(r));
+    const d = r.data ?? r;
+    console.log(`${C.green("✓")} ${family} what-if  baseline=${d.baselineObjective} perturbed=${d.perturbedObjective} Δ=${d.deltaObjective} feasible=${d.feasible}`);
+    if (!d.feasible) console.log("  " + C.yellow("冲突约束: " + (d.conflictConstraints || []).join(", ")));
+    console.log("  " + C.dim((d.explanation ?? "").slice(0, 400)));
+    return;
+  }
+  console.error("用法: opt <templates|solve|whatif> …（solve <family> [--args|--binding]；whatif <family> --perturbations）"); process.exit(1);
 }
 
 // synth：合成数据作业。

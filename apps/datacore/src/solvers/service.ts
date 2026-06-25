@@ -23,7 +23,8 @@ import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } f
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
-import type { OntologyBinding, OptTemplateFamily } from "@platform/contracts";
+import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
+import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -99,6 +100,8 @@ export const SOLVER_KEYS = [
   "set_cover",
   "independent_set",
   "combinatorial_auction",
+  // 轨B·增量3 优化目标级 what-if：结构化扰动→DF.8 接地→sidecar 重解→Δ目标/可行性/冲突约束（FUS1 不进 A18 沙箱）。
+  "optimize_whatif",
 ] as const;
 
 /**
@@ -132,6 +135,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   set_cover: ["status", "optimal", "chosen", "objective", "setType", "universeSize", "setCount", "summary"],
   independent_set: ["status", "optimal", "chosen", "objective", "nodeType", "edgeCount", "nodeCount", "summary"],
   combinatorial_auction: ["status", "optimal", "winners", "objective", "bidType", "itemCount", "bidCount", "summary"],
+  // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary）。
+  optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "feasible", "conflictConstraints", "explanation", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -1130,6 +1135,40 @@ export class SolverService {
     return { ...out, binding: { templateKey: binding.templateKey || family, roles: binding.roleBindings.map((r) => ({ role: r.role, ...r.bind })) } };
   }
 
+  // ── 轨B·增量3 optimize_whatif（结构化扰动→sidecar 重解→Δ目标/可行性/冲突约束） ────
+  /**
+   * 优化目标级 what-if：基线 args（或绑定）+ OptPerturbation[] → 基线求解 → 扰动克隆（不落真值 R4）→
+   * **sidecar 重解（FUS1 不进 A18 沙箱）** → {Δ目标, 可行性, 冲突约束}。
+   * args 形如 { family, perturbations:[...], (args|binding) }；与 5 核心同一 invoke 通道。
+   */
+  private async optimizeWhatif(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const family = str(args.family) as OptTemplateFamily;
+    if (!family) throw validationError("optimize_whatif 需 family（5 核心之一）");
+    const perturbations = asArr<OptPerturbation>(args.perturbations, "perturbations");
+    // 基线 args：直接给 args 或经 binding 预处理（增量2）。
+    let baselineArgs: Record<string, unknown>;
+    if (args.binding) {
+      const view: BindingOntologyView = {
+        listTypes: (tid) => this.repos.ontologyTypes.list(tid),
+        listByType: (tid, typeKey) => this.repos.objects.listByType(tid, typeKey),
+      };
+      const binding = args.binding as OntologyBinding;
+      if (binding.tenantId !== ctx.tenantId) throw validationError("绑定租户与调用方不一致（R2）");
+      baselineArgs = await bindToSolverArgs(view, family, binding, { seed: args.seed });
+    } else {
+      baselineArgs = (args.args as Record<string, unknown>) ?? {};
+    }
+    // 求解函数：复用 5 核心确定性求解器（经 invoke，走 sidecar）。
+    const solve: SolveArgsFn = (fam, a) => this.invoke(ctx, fam, a);
+    const result = await runOptimizeWhatif(solve, family, baselineArgs, perturbations);
+    return {
+      ...result,
+      summary:
+        result.explanation ??
+        `基线 ${result.baselineObjective ?? "—"} → 扰动后 ${result.perturbedObjective ?? "—"}（Δ=${result.deltaObjective ?? "—"}，${result.feasible ? "可行" : "不可行"}）`,
+    };
+  }
+
   // ── 轨B·增量1 抽象优化模板池 5 CP-SAT 核心 ──────────────────────────────────
   // 入参 = 抽象结构化数组（facilities/clients/...），零业务常数（R14：行业由 OntologyBinding 绑进来，
   // 增量2 在 invoke 前统一从本体类型化字段填这些数组；增量1 也可经 CLI/curl 直接给数组验证求最优）。
@@ -1490,6 +1529,8 @@ export class SolverService {
     if (solverKey === "set_cover") return this.setCover(ctx, args);
     if (solverKey === "independent_set") return this.independentSet(ctx, args);
     if (solverKey === "combinatorial_auction") return this.combinatorialAuction(ctx, args);
+    // 轨B·增量3 optimize_whatif：扰动重解（先于 loadContext 拦截，复用 5 核心求解，FUS1 走 sidecar）。
+    if (solverKey === "optimize_whatif") return this.optimizeWhatif(ctx, args);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {

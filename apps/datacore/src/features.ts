@@ -91,7 +91,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
   // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
   { key: "opt.solver-pool", name: "优化模板池", level: "VIEW", defaultOn: false, bindings: { apiTags: ["opt"] } },
-  { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { apiTags: ["opt-whatif"], solverKeys: ["optimize_whatif"] } },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
 ];

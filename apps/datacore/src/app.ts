@@ -42,7 +42,7 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
-import { OntologyBindingSchema } from "@platform/contracts"; // 轨B·增量2 本体绑定层
+import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
@@ -2337,6 +2337,27 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/opt/templates", async (req) => {
     await requireFeatureTag(req, "apiTags", "opt");
     return { families: OPT_FAMILIES };
+  });
+  // 轨B·增量3 optimize_whatif：{ family, perturbations[], (args|binding) } → Δ目标/可行性/冲突约束。
+  // entitlement opt.whatif（apiTag "opt-whatif"，requires opt.solver-pool）；关 = 404 R3。R4 模拟态不落真值。
+  app.post("/a/v1/opt/whatif", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt-whatif");
+    const body = parseBody(
+      z.object({
+        family: z.enum(OPT_FAMILIES),
+        perturbations: z.array(OptPerturbationSchema).min(1),
+        args: z.record(z.string(), z.unknown()).optional(),
+        binding: OntologyBindingSchema.optional(),
+        seed: z.number().optional(),
+      }),
+      req.body,
+    );
+    return ontology.invokeSolver(ctx(req), "optimize_whatif", {
+      family: body.family,
+      perturbations: body.perturbations,
+      ...(body.binding ? { binding: body.binding } : { args: body.args ?? {} }),
+      ...(body.seed !== undefined ? { seed: body.seed } : {}),
+    });
   });
 
   // ---- 本体原子规格 §2/§3 atomic-spec engine（additive 端点）-------------------
