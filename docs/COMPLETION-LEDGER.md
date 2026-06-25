@@ -40,19 +40,19 @@
 | D11 | Feature Entitlement（关=404/四层解析/级联/中台） | addendum-entitlement | 16 | ◐(sim.* 我手动开过·机制真) |
 | D12 | 求解器真实算法 + 四缺口（S1.1–S1.8/S2/S3/S4 算法逐项） | addendum-solvers-and-gaps | 38 | ⬜ |
 | D13 | 本体核心原子（元模型 DDL/派生 DSL/拓扑/切片语法/行级剪枝） | addendum-ontology-core | 13 | ⬜ |
-| D14 | 本体治理与检索（域一等/会签/弃用流程/八检索模式/对象360） | addendum-ontology-governance | 21 | ◐(域管理/对象360 已实拍) |
+| D14 | 本体治理与检索（域一等/会签/弃用流程/八检索模式/对象360） | addendum-ontology-governance | 21 | ◐ 92%(Pass2·收尾)·见 PASS2-wave2 |
 | D15 | M11 校准引擎（配对/MAPE/三方法/回测门/元闭环） | addendum-m11-calibration | 14 | ◐ 95%(Pass2·收尾) |
 | D16 | Agent 运行时强化（token 预算/三刀上下文/MCP 连接池/工具并行） | addendum-agent-runtime | 19 | ◐ 85%·余v2边界(Pass2) |
-| D17 | 能力发现与路由（discover/load_tools 按需/等价能力组熔断） | addendum-capability-routing | 8 | ⬜ |
+| D17 | 能力发现与路由（discover/load_tools 按需/等价能力组熔断） | addendum-capability-routing | 8 | ◐ 60%(Pass2·load_tools 桩,~1h) |
 | D18 | 回放编排器（虚拟操作团队/正门红线/OpsPlaybook/确定性回放） | addendum-replay-orchestrator | 16 | ◐ 92%(Pass2·收尾) |
 | D19 | 执行语义统一（锁/fencing/outbox 有序/Saga 补偿/LLM 熔断/分段失败） | addendum-execution-semantics | 16 | ◐ 72%(Pass2·收尾) |
 | D20 | 运营完备性（实体解析/评测门禁/配置迁移/隔离区/通知/日历/代次取消） | addendum-operational-completeness | 23 | ◐ 72%(Pass2·收尾)·见 PASS2-wave1 |
-| D21 | LLM 多厂商 + 统一引用（多 provider/密钥跨系统/latest 解析/影响面/失效 SLO） | addendum-llm-providers-and-references | 13 | ◐(LLM provider 页已实拍) |
-| D22 | 管理平台补全（bootstrap/角色/最小可用/视图自动注册/空态有路） | addendum-admin-platform | 17 | ⬜ |
-| D23 | 管理面引用闭合 + 计划编辑器（12 引用控件闭合/工作流编辑器/AC8 零代码自助） | addendum-admin-console-closure | 32 | ⬜ |
-| D24 | 闭环验证引擎 VLE（七段/三预言机/工程验证度/发布门禁） | addendum-validation-loop | 14 | ❌(未见 VLE 实现) |
+| D21 | LLM 多厂商 + 统一引用（多 provider/密钥跨系统/latest 解析/影响面/失效 SLO） | addendum-llm-providers-and-references | 13 | ◐ 75%(Pass2·B侧 impact 对称缺) |
+| D22 | 管理平台补全（bootstrap/角色/最小可用/视图自动注册/空态有路） | addendum-admin-platform | 17 | ◐ 88%(Pass2·收尾) |
+| D23 | 管理面引用闭合 + 计划编辑器（12 引用控件闭合/工作流编辑器/AC8 零代码自助） | addendum-admin-console-closure | 32 | ◐ ~80%(H7·41页在/缺3页+引用闭合) |
+| D24 | 闭环验证引擎 VLE（七段/三预言机/工程验证度/发布门禁） | addendum-validation-loop | 14 | ◐ 30-40%(H4·七段框架在,❌判定已撤回) |
 | D25 | Skill 编写规范与质量门禁（三级职责/禁用词 lint/评测门禁） | addendum-skill-authoring | 11 | ⬜ |
-| D26 | 运营态出厂"拎包入住"（livedIn/年度叙事弧/三层下钻/盲测≥半年） | addendum-lived-in-state | 18 | ⬜ |
+| D26 | 运营态出厂"拎包入住"（livedIn/年度叙事弧/三层下钻/盲测≥半年） | addendum-lived-in-state | 18 | ◐ 87%(Pass2·真缺口0·仅人工盲测) |
 | D27 | 数据流闭环与联动（12 主数据环/TR1-TR8 轨迹/传播 SLO≤60s/D-29） | addendum-dataflow-loop-closure | 19 | ⬜ |
 | Q | QOS 全链路（分类/路径A/B/SSE 8 事件/槽填充/兜底/指标/4 意图） | PRD-qos | 86 | ◐(20 卡 API 探针跑过·非逐项) |
 | F | 前端（§3 路由表/启动序列/renderer/信任级视觉/页面模块/权限驱动） | PRD-frontend | 75 | ◐(多页已实拍·非逐项) |
