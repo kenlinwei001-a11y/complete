@@ -15,7 +15,7 @@ NL/场景需求
 ② 抽象优化模板池 OptModelTemplate(声明式 · 零业务常数 R14 · 可扩展注册表)
   │ ③ 本体绑定层 OntologyBinding(类型→实体 / 链路→关系 / 属性→系数 · A13字段角色 + DF.8接地)
   ▼   绑定到某租户已发布本体
-④ 通用 CP-SAT 引擎(A8 sidecar, seed+单线程 R6) ⊕ optimize_whatif(结构化扰动→重解, A18 锁沙箱)
+④ 通用 CP-SAT 引擎(A8 sidecar `optimizer-client.ts`, seed+单线程 R6) ⊕ optimize_whatif(结构化扰动→**sidecar 重解**;复用 `recompute(dryRun)` 克隆+不落真值骨架)
   ▼   Δ目标值 + 可行性 + 冲突约束(IIS 式)
    R13 溯源解释 → R4 走正门(模拟态,采纳才落真值)
 ⑤ 行业租户 = 绑定演示(entitlement + 绑定 + 合成数据, 非另写代码 → 证 R14 多行业)
@@ -104,10 +104,11 @@ export const OptPerturbationSchema = z.object({   // 结构化扰动, 非任意�
 });
 ```
 
-- **回路**（借上游 what-if 8 步，收敛进我们安全栈）：`NL --comprehend/embedding(听懂)--> 结构化扰动 --DF.8接地--> A18 锁沙箱 CP-SAT 重解 --> {Δ目标值, 可行性, 冲突约束(IIS式)} --R13--> 解释(新 vs 原)`。
-- **不照搬上游 `exec` 任意 LLM 代码**：上游 `_run_with_exec` + LLM 判 SAFE → 我们换 **结构化扰动 schema + A18 锁子进程（`solvers/sandbox-runner.mjs`，确定性/无 IO）**，比上游严。
-- **R4 走正门**：what-if 是模拟态，不写真值；采纳才出 R4 ActionDraft。
-- 并入 `SOLVER_KEYS`（过 `chain:check`）；可作沙盘内一类"优化推演"（接 G-11 SimSession）。
+- **回路**（借上游 what-if 8 步，收敛进我们安全栈）：`NL --comprehend/embedding(听懂)--> 结构化扰动 --DF.8接地--> **optimizer-client sidecar 重解(CP-SAT)** --> {Δ目标值, 可行性, 冲突约束(IIS式)} --R13--> 解释(新 vs 原)`。
+- **⚠ 接地校正（核验 `sandbox.ts`/`sandbox-runner.mjs`）：A18 锁沙箱跑不了 CP-SAT**（子进程 `--permission` 无 `require`/import、只跑纯计算 + FrozenDate/禁 Math.random）。所以 **optimize_whatif 的重解走 `optimizer-client.ts` sidecar**（已隔离的 CP-SAT 服务），**不在 A18 沙箱内**。A18 锁沙箱专给 **§7 进化引擎的 LLM 生成纯函数模板代码**用。
+- **不照搬上游 `exec` 任意 LLM 代码**：上游 `_run_with_exec` + LLM 判 SAFE → 我们换 **结构化扰动 schema + sidecar 重解**；扰动施加+结果对比**复用 `recompute(dryRun)` 克隆图+不落真值骨架**（`ontology-core.ts:341`，`genericInference` 同款），在 `invoke()` 里**先于 loadContext 拦截**（如 `generic_inference` `service.ts:~1333`）。比上游安全得多。
+- **R4 走正门**：what-if 是模拟态，不写真值（复用 `recompute(dryRun)` 不 persist）；采纳才出 R4 ActionDraft。
+- 并入 `SOLVER_KEYS`（42→+1，过 `chain:check`）+ 声明 `SOLVER_OUTPUT_SHAPES`（否则 chain:check 报 SHAPE 盲区）；可作 **G-11 沙盘内一类"优化推演"**（`SimSession`/`propagateTick` 可调任意已发布求解器，已两行业验收）。
 
 ---
 
@@ -199,15 +200,49 @@ export const OptPerturbationSchema = z.object({   // 结构化扰动, 非任意�
 
 ## 12. 《本体引用与影响》（回写 `SYSTEM-ONTOLOGY.md` · 增量 0 先行）
 
-- **对象/求解器**（§2 D4 推演域）：新增 `OptModelTemplate`/`OntologyBinding`/`OptPerturbation` 对象 + 求解器 `optimize_whatif` + 9 核心模板（并入 `SOLVER_KEYS`/`SOLVER_CATALOG`，过 `chain:check`）。
-- **链路**（§3）：`NL --comprehend⊕embedding(advisory)--> 复用/补缺 --OntologyBinding(A13+DF.8)--> CP-SAT 求最优 ⊕ optimize_whatif(扰动重解,A18锁沙箱) --Δ目标--R13--> 解释 --R4--> 采纳`；`行业模型 --派生(CDLA Results)--> 行业租户(合成→runStory→绑定→求解器)`。
-- **不变量**：R3（entitlement 分模块暗发）· R6（CP-SAT 确定，embedding advisory 不入路径）· R4（what-if 模拟态走正门）· R13（目标值溯源）· R14（模板/引擎零业务常数，两行业验收）· R16（进化产物 PROVISIONAL→接地→GOVERNED）· A18（生成走锁沙箱）· DF.8（绑定接地不造实体）。
-- **门**（§7）：`solver-license:check` / `opt-template:check` / `opt-determinism:check`（并入 gates）。
-- **断点**（§8）：可登记 G-12「有确定性派生 what-if 无优化目标级 what-if + 无行业无关优化模板池」→ 本规格修。
+- **对象/求解器**（§2 D4 推演域，挂在 `Calibration` 之后）：新增 `OptModelTemplate`/`OntologyBinding`/`OptPerturbation` 对象 + 求解器 `optimize_whatif` + 9 核心模板（并入 `SOLVER_KEYS`[当前 42]/`SOLVER_OUTPUT_SHAPES`，过 `chain:check`）。契约进 `packages/contracts/src/opt-template.ts`。
+- **链路**（§3）：`NL --comprehend⊕embedding(advisory)--> 复用/补缺 --OntologyBinding(A13+DF.8)--> CP-SAT sidecar 求最优 ⊕ optimize_whatif(扰动重解,**sidecar**,复用 recompute(dryRun) 不落真值) --Δ目标--R13--> 解释 --R4--> 采纳`；`行业模型 --派生(CDLA Results)--> 行业租户(合成→runStory→绑定→求解器)`。
+- **不变量**（复用既有，**不新增 R18**——"不训练"是合规规则进 NOTICES/门，非平台接线不变量）：R3 · R6（CP-SAT 确定，embedding advisory 不入路径）· R4 · R13 · R14（两行业验收）· R16（进化产物 PROVISIONAL→接地→GOVERNED）· A18（**进化引擎生成代码**走锁沙箱；optimize_whatif 重解走 sidecar 非沙箱）· DF.8（绑定接地不造实体）。
+- **门**（§7）：`solver-license:check` / `opt-template:check` / `opt-determinism:check` **追加到当前 16 门聚合末（→19）**。
+- **断点**（§8）：登记 **G-12**（G-1..G-11 已用，G-11 沙盘已全闭）「有确定性派生 what-if 无优化目标级 what-if + 无行业无关优化模板池」→ 本规格修。
 - **回写**：增量 0 把上述对象/链路/事件/门 + `THIRD-PARTY-NOTICES` 红线写进本体。
 
 ---
 
 ## 13. 一句话给实现 agent
 
-**不是写 N 个行业求解器，是建"一个抽象优化模板池（9 核心，零业务常数）+ 一个本体绑定层（A13 角色+DF.8 接地，每租户绑同一模板到自己本体）+ embedding 复用检索（advisory，目标从'多样'倒成'复用/补缺'，R6 地板之上）+ optimize_whatif（结构化扰动→A18 锁沙箱→CP-SAT 重解，不 exec 裸代码）"，行业租户只是绑定演示，全部能力按 entitlement 配置开。** 借鉴=重写方法+派生产物+评测，绝不训练；MIT 署名、CDLA 取 Results、Gurobi 不碰，全进 `THIRD-PARTY-NOTICES` + `solver-license:check`。
+**不是写 N 个行业求解器，是建"一个抽象优化模板池（9 核心，零业务常数）+ 一个本体绑定层（A13 角色+DF.8 接地，每租户绑同一模板到自己本体）+ embedding 复用检索（advisory，目标从'多样'倒成'复用/补缺'，R6 地板之上）+ optimize_whatif（结构化扰动→**optimizer-client sidecar** CP-SAT 重解，复用 recompute(dryRun) 不落真值，不 exec 裸代码）"，行业租户只是绑定演示，全部能力按 entitlement 配置开。** 借鉴=重写方法+派生产物+评测，绝不训练；MIT 署名、CDLA 取 Results、Gurobi 不碰，全进 `THIRD-PARTY-NOTICES` + `solver-license:check`。
+
+---
+
+## 14. 接地核验与校正（对当前真实代码 · 4 路 Explore 核验 · 2026-06-25）
+
+> 本节把 §1–§13 的假设逐一对照分支 `claude/vigilant-knuth-b1nmxn` 当前代码核验，钉死复用锚点（file:line），并记**与初稿的校正**。凡上文与本节冲突，**以本节为准**。
+
+### 14.1 可复用件（已核验 · 直接调）
+
+| 我方件 | file:line | 复用点 |
+|---|---|---|
+| 求解器注册 | `solvers/service.ts:26` SOLVER_KEYS(42) · `:101` SOLVER_OUTPUT_SHAPES · `:1333` invoke 拦截 | 5 核心+optimize_whatif 照此扩，`chain:check` 自动过 |
+| CP-SAT sidecar | `solvers/optimizer-client.ts:85` OptimizerClient 接口 · `:94` HttpOptimizerClient(POST /solve) | 5 核心加 5 个 `solveXxx` 方法;未配 OPTIMIZER_BASE_URL 显式"未接入"不兜底 |
+| A13 字段角色 | `solvers/field-roles.ts:67` resolveFieldRoles(纯函数,返回 roles/candidates/confidence/ambiguous) | 绑定层推"本体类型→模型角色" |
+| 切片复用 | `ontology/slice-planner.ts:69` planSlice · `slice-index.ts:38` buildSliceIndex/lookupReusable | 绑定层选范围 + 结构化复用(embedding 叠其上) |
+| DF.8 接地 | `solvers/llm-gen.ts:23` checkGrounding · `service.ts:212` deriveGroundingVocab | 绑定"不引用本体外实体" |
+| 不落真值 what-if | `ontology-core.ts:341` recompute(dryRun:克隆+不persist) · `service.ts:368` genericInference · 端点 `app.ts:2340` | optimize_whatif 复用克隆+不落真值+R4 骨架 |
+| A18 锁沙箱(纯函数) | `solvers/sandbox.ts:1`(spawn --permission 无 require) · `sandbox-runner.mjs:1`(FrozenDate/禁 random) | **仅 §7 进化引擎的 LLM 生成纯函数模板**用 |
+| PROVISIONAL 相位 | `contracts/solvers.ts:267` SolverArtifact · `service.ts:348` promoteSolver · `:325` canArtifactWriteTruth · `provisional-honesty.ts` | 进化产物 PROVISIONAL→GOVERNED |
+| entitlement 形状 | `features.ts:12` FeatureDef{key,name,level,defaultOn,requires?,bindings?} · sim.* 7 条 :83-90 | opt.* 照此暗发分模块 |
+
+### 14.2 与初稿的校正（**必读**）
+
+1. **A18 锁沙箱跑不了 CP-SAT**（子进程无 require/import,纯计算）→ **optimize_whatif 重解走 `optimizer-client` sidecar，不在沙箱内**;A18 沙箱只给 §7 进化引擎的纯函数模板代码用。（已改 §0/§4/§12/§13）
+2. **`checkGrounding` 现为电池味**（正则只认 `基地/产线/工厂` 后缀,`llm-gen.ts:23`）→ 多行业绑定前须**先去电池化该正则**（R14),否则只挡电池实体。**列为前置任务**。
+3. **系数来源语义**：规则是 gate(expression 求值)，非系数源。→ 系数为 `OntologyBinding` **类型化字段**(对齐沙盘 `PropagationRule`)，可选 `coefficientRef→rule.params`(G-10「改规则即改优化」);**不把系数硬塞进规则**。（§2 采此）
+4. **embedding 层是全新基建**：平台今天**无** embedding 层(现有复用 `lookupReusable` 是确定性结构匹配)。embedding 是叠其上的 advisory 检索,net-new。（§3 已明）
+5. **本体绑定层 = invoke 前统一 args 预处理层**（字段映射+本体加载),别散在各求解器。（§2 采此）
+6. **`floor-semantics:check` 门 docs 提及但代码未实现**（`SYSTEM-ONTOLOGY.md:95` vs 代码无)。绑定层别依赖它已存在;如需则新建。
+7. **本体编号锁定**：当前 §5 最大 R17(无 R18)、§8 最大 G-11(已全闭)、§7 聚合 **16 门**。→ 本规格用 **G-12** + 追加 3 门(→19) + **不新增 R18**(复用既有不变量)。
+
+### 14.3 一句话
+
+**SPEC 主架构（抽象池+绑定层+embedding advisory+optimize_whatif+按租户配置）对照当前代码全部成立;唯一实质校正是"重解走 sidecar 非 A18 沙箱"。其余件均现成可直接复用,锚点已钉死。** 实现 agent 照 §14.1 锚点 + §14.2 校正开工,不会踩我初稿的坑。
