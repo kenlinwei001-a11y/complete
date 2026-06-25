@@ -327,16 +327,19 @@ async function cmdOpt(args) {
   }
   if (sub === "solve") {
     const family = pos[1];
-    if (!family) { console.error("用法: opt solve <family> --args '{...}' [--json]；family ∈ facility_location|min_cost_flow|set_cover|independent_set|combinatorial_auction"); process.exit(1); }
-    let solveArgs = {}; try { solveArgs = flags.args ? JSON.parse(flags.args) : {}; } catch { console.error(C.red("--args 非合法 JSON")); process.exit(1); }
-    const r = await http(`${DC}/a/v1/opt/solve`, { method: "POST", headers: authHeader(), body: JSON.stringify({ family, args: solveArgs }) });
+    if (!family) { console.error("用法: opt solve <family> [--args '{...}' | --binding '{...}'] [--json]；family ∈ facility_location|min_cost_flow|set_cover|independent_set|combinatorial_auction"); process.exit(1); }
+    // 增量1：--args 直接给抽象结构化数组；增量2：--binding 给 OntologyBinding（role→本体类型/属性，R14）。
+    let payload = { family };
+    if (flags.binding) { try { payload.binding = JSON.parse(flags.binding); } catch { console.error(C.red("--binding 非合法 JSON")); process.exit(1); } }
+    else { try { payload.args = flags.args ? JSON.parse(flags.args) : {}; } catch { console.error(C.red("--args 非合法 JSON")); process.exit(1); } }
+    const r = await http(`${DC}/a/v1/opt/solve`, { method: "POST", headers: authHeader(), body: JSON.stringify(payload) });
     if (flags.json) return console.log(JSON.stringify(r));
     const d = r.data ?? r;
     console.log(`${C.green("✓")} ${family}  status=${d.status} optimal=${d.optimal} objective=${d.objective}`);
     console.log("  " + C.dim((d.summary ?? JSON.stringify(d)).slice(0, 400)));
     return;
   }
-  console.error("用法: opt <templates|solve> …（solve <family> --args '{...}'）"); process.exit(1);
+  console.error("用法: opt <templates|solve> …（solve <family> [--args|--binding] '{...}'）"); process.exit(1);
 }
 
 // synth：合成数据作业。

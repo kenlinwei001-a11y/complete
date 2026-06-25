@@ -22,6 +22,8 @@ import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatri
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
+import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
+import type { OntologyBinding, OptTemplateFamily } from "@platform/contracts";
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -1108,6 +1110,24 @@ export class SolverService {
       binCapacity,
       summary: `${items.length} 个${itemType}装入 ${result.binCount} 个箱（容量 ${binCapacity}，${result.optimal ? "可证最优" : result.status === "INFEASIBLE" ? "不可行" : "可行解"}）`,
     };
+  }
+
+  // ── 轨B·增量2 本体绑定层（OntologyBinding · invoke 前统一 args 预处理） ──────────
+  /**
+   * 绑定→求解：把 OntologyBinding（role→本体类型/属性）在 invoke 前统一预处理成 5 核心结构化 args，
+   * 再走增量1 求解器（确定性 CP-SAT）。**同一模板每租户绑不同本体 → 零代码改动，纯配置**（R14）。
+   * DF.8 接地（FUS3，去电池正则）：绑定引用须存在于本租户已发布本体（opt-binding.groundBinding）。
+   * R2：绑定 tenantId 必须等于调用方租户。返回 = 求解结果 + 绑定回执（templateKey/role 映射溯源 R13）。
+   */
+  async solveWithBinding(ctx: AuthCtx, family: OptTemplateFamily, binding: OntologyBinding, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    if (binding.tenantId !== ctx.tenantId) throw validationError("绑定租户与调用方不一致（R2）");
+    const view: BindingOntologyView = {
+      listTypes: (tid) => this.repos.ontologyTypes.list(tid),
+      listByType: (tid, typeKey) => this.repos.objects.listByType(tid, typeKey),
+    };
+    const args = await bindToSolverArgs(view, family, binding, extra);
+    const out = await this.invoke(ctx, family, args);
+    return { ...out, binding: { templateKey: binding.templateKey || family, roles: binding.roleBindings.map((r) => ({ role: r.role, ...r.bind })) } };
   }
 
   // ── 轨B·增量1 抽象优化模板池 5 CP-SAT 核心 ──────────────────────────────────

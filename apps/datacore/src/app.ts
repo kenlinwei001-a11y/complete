@@ -42,6 +42,7 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
+import { OntologyBindingSchema } from "@platform/contracts"; // 轨B·增量2 本体绑定层
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
@@ -2313,14 +2314,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // R3 暗发：opt.* defaultOn:false，关 = 404 FEATURE_NOT_FOUND（先于 authz）。CLI/curl 先于 UI（R15）。
   // 5 CP-SAT 核心走 optimizer-client sidecar（OPTIMIZER_BASE_URL）；未配 → 求解器报"未接入"不兜底。
   const OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction"] as const;
-  // 求解：{ family, args }（增量1 args 给抽象结构化数组；增量2 由 OntologyBinding 从本体类型化字段填）。
+  // 求解：{ family, args } 直接给抽象结构化数组（增量1）；或 { family, binding } 由 OntologyBinding
+  // 从本租户本体类型化字段填（增量2 · R14 同模板绑不同本体零代码改）。二者择一。
   app.post("/a/v1/opt/solve", async (req) => {
     await requireFeatureTag(req, "apiTags", "opt");
     const body = parseBody(
-      z.object({ family: z.enum(OPT_FAMILIES), args: z.record(z.string(), z.unknown()).default({}) }),
+      z.object({
+        family: z.enum(OPT_FAMILIES),
+        args: z.record(z.string(), z.unknown()).optional(),
+        binding: OntologyBindingSchema.optional(),
+        seed: z.number().optional(),
+      }),
       req.body,
     );
-    return ontology.invokeSolver(ctx(req), body.family, body.args);
+    if (body.binding) {
+      // 增量2：绑定层 invoke 前预处理（DF.8 接地 + role→本体字段），再走确定性 CP-SAT。
+      return solvers.solveWithBinding(ctx(req), body.family, body.binding, { seed: body.seed });
+    }
+    return ontology.invokeSolver(ctx(req), body.family, body.args ?? {});
   });
   // 列模板族（池 comprehend 兜底；增量4 embedding 检索叠其上）。
   app.get("/a/v1/opt/templates", async (req) => {
