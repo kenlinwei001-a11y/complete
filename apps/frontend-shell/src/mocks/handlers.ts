@@ -2445,6 +2445,48 @@ export const handlers = [
     });
     return HttpResponse.json(run, { status: 201 });
   }),
+
+  // ---- 推演沙盘 · 初始化向导（增量 4 渐进项 · Agent G）：view-config / session / scope-precheck ----
+  // 最小 mock：让 mock 模式下 /v/sim-init 三步向导可走通；配置驱动·零行业实体名（演示用占位 key）。
+  http.get("*/a/v1/sim/view-config", () =>
+    HttpResponse.json({
+      tenantId: "demo",
+      nodeTypes: ["TypeA", "TypeB", "TypeC"],
+      linkTypes: ["linkAB"],
+      stateVars: ["s1", "s2"],
+      radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
+      screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
+      propagationCount: 1,
+    }),
+  ),
+  http.post("*/a/v1/sim/sessions", async ({ request }) => {
+    const body = (await request.json()) as { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> };
+    return HttpResponse.json(
+      { id: "sims_mock", tenantId: "demo", baseSnapshot: body.baseSnapshot ?? {}, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: new Date().toISOString() },
+      { status: 201 },
+    );
+  }),
+  http.get("*/a/v1/sim/sessions/:id/scope-precheck", ({ request }) => {
+    const url = new URL(request.url);
+    const scope = url.searchParams.get("scope") === "LOCAL" ? "LOCAL" : "GLOBAL";
+    return HttpResponse.json({
+      scope,
+      targetRef: scope === "LOCAL" ? url.searchParams.get("target") : null,
+      worldCompleteness: {
+        pct: 60,
+        stateVars: { present: 2, needed: 3 },
+        derivationRules: { present: 1, needed: 2 },
+        actions: { present: 0, needed: 1 },
+        propagationRules: { present: 1, needed: 1 },
+        entering: [
+          { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
+          { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },
+        ],
+      },
+      canEnterSimulation: false,
+      gaps: [{ gapCode: "G-NO-ACTION", ref: "behavior", detail: "未配置写回行动" }],
+    });
+  }),
 ];
 
 /**

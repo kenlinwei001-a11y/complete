@@ -497,6 +497,15 @@ export const simCheckpoint = (sessionId: string, label?: string) =>
 export const fetchSimCertification = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
   api.a<SimCertification>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/certification?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
 
+/**
+ * 范围预检（init 向导 step③ · 复用增量 2 数据）：scope-precheck 端点回 SimCertification 的轻量子集
+ * —— worldCompleteness（完整度 + 将进入沙盘的状态变量清单 entering[]）+ canEnterSimulation + 诚实 gaps。
+ * 字段全派生自既有 certification，零新契约（投影既有 SimCertification 字段）。
+ */
+export type SimScopePrecheck = Pick<SimCertification, "scope" | "targetRef" | "worldCompleteness" | "canEnterSimulation" | "gaps">;
+export const fetchSimScopePrecheck = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
+  api.a<SimScopePrecheck>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/scope-precheck?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
+
 /** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
 export interface DomainEventVM { eventId: string; event: string; createdAt: string }
 /** DataCore 侧事件源（数据→本体→推演链：ontology/materialize/rules/action/calibration/tick/build…）。 */

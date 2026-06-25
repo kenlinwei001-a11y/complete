@@ -247,6 +247,17 @@ export default function ShellLayout() {
               推演沙盘
             </NavLink>
           )}
+          {/* 推演初始化向导入口（增量 4 渐进项 · 暗发）：同 sim.sandbox entitlement 守门；关 → 入口消失。 */}
+          {featureOn(workspace, "sim.sandbox") && (
+            <NavLink
+              to="/v/sim-init"
+              data-testid="nav-sim-init"
+              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
+            >
+              <span className={styles.dot} />
+              推演初始化向导
+            </NavLink>
+          )}
         </nav>
       </aside>
 

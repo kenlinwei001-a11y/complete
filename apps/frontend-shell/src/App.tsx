@@ -66,6 +66,8 @@ const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
 const ViewsPage = lazy(() => import("@/pages/admin/ViewsPage"));
 // 推演沙盘（增量 4 · 暗发）：dedicated route，entitlement sim.sandbox 关 → 404（入口同时隐藏）。
 const SandboxView = lazy(() => import("@/views/sim/SandboxView"));
+// 推演初始化向导（增量 4 渐进项 · 暗发）：沙盘主屏兄弟子屏，同 sim.sandbox 守门。
+const SimInitWizard = lazy(() => import("@/views/sim/SimInitWizard"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -95,6 +97,15 @@ function SimSandboxGuard() {
   return lazyWrap(<SandboxView />);
 }
 
+/** 推演初始化向导守卫（增量 4 渐进项）：复用沙盘主屏同款 sim.sandbox entitlement 先于权限机制（关 → 404）。 */
+function SimInitGuard() {
+  const { data: workspace } = useWorkspace();
+  if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
+  const features = workspace.features;
+  if (features && !features.includes("sim.sandbox")) return <NotFoundPage />;
+  return lazyWrap(<SimInitWizard />);
+}
+
 /** 路由表（PRD §3，对外不可变更） */
 export const routes: RouteObject[] = [
   { path: "/login", element: lazyWrap(<LoginPage />) },
@@ -106,6 +117,8 @@ export const routes: RouteObject[] = [
       { path: "scenarios", element: lazyWrap(<ScenarioLauncherPage />) },
       // 推演沙盘专用 route（静态段先于 :viewKey 匹配；entitlement 守卫内联，暗发）。
       { path: "v/sim-sandbox", element: <SimSandboxGuard /> },
+      // 推演初始化向导专用 route（沙盘兄弟子屏，同 sim.sandbox 守门）。
+      { path: "v/sim-init", element: <SimInitGuard /> },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）
