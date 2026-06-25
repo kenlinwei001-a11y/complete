@@ -1,11 +1,12 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RuleDryRunResult, RuleEntry } from "@platform/contracts";
-import { createRule, dryRunRule, fetchRuleReferences, fetchRules, publishRule, retireRule, updateRule } from "@/api/endpoints";
+import { createRule, dryRunRule, fetchObjectTypes, fetchRuleReferences, fetchRules, publishRule, retireRule, updateRule } from "@/api/endpoints";
 import { invalidateForEvent } from "@/store/eventInvalidation";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import { DslTextarea, type DslSchema } from "./DslTextarea";
 
 const t = zh.admin.rules;
 
@@ -217,6 +218,18 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
   const [payloadText, setPayloadText] = useState('{\n  "Order": { "qty": 100 }\n}');
   const [dryResult, setDryResult] = useState<RuleDryRunResult | null>(null);
 
+  // C11 DSL 补全数据源（D-28）：本体对象类型→属性 + 命名阈值键 + 已发布规则码。
+  const { data: objectTypes } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  const { data: allRules } = useQuery({ queryKey: ["a", "rules"], queryFn: fetchRules });
+  const dslSchema = useMemo<DslSchema>(
+    () => ({
+      objectTypes: (objectTypes ?? []).map((t2) => ({ key: t2.key, props: t2.properties.map((p) => p.propKey) })),
+      paramKeys: paramRows.map((r) => r.k.trim()).filter(Boolean),
+      ruleCodes: (allRules ?? []).map((r) => r.key),
+    }),
+    [objectTypes, allRules, paramRows],
+  );
+
   // 数组 → Record<string,number>：丢弃空 key 与非有限数；保存与 dry-run 共用。
   const paramsObject = (): Record<string, number> => {
     const out: Record<string, number> = {};
@@ -350,16 +363,17 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
       </div>
 
       <div className="section-title">{t.expression}</div>
-      <textarea
-        className="mono"
-        style={{ width: "100%", minHeight: 64, fontSize: 12, borderColor: syntaxError ? "var(--danger)" : undefined }}
+      {/* C11（D-28）：DSL 输入辅助 —— 输入 `Type.` 联想属性、裸前缀联想对象类型/阈值/操作符（数据源=本体元模型）。 */}
+      <DslTextarea
         value={expression}
-        aria-label={t.expression}
-        onChange={(e) => {
-          setExpression(e.target.value);
+        schema={dslSchema}
+        invalid={!!syntaxError}
+        ariaLabel={t.expression}
+        testid="rule-expression"
+        onChange={(v) => {
+          setExpression(v);
           setDryResult(null);
         }}
-        data-testid="rule-expression"
       />
       {syntaxError && (
         <div className="badge red" style={{ marginBottom: 8 }} data-testid="rule-syntax-error">

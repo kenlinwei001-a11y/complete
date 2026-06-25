@@ -130,6 +130,20 @@ try {
     if (/DRY_RUN_OK|COMMITTED/.test(st)) ok(`C12 干跑出 diff（state=${st}）`);
     else fail(`C12 干跑未通过（state=${st}）`);
   } else fail("C12 /admin/config-migration 不可达（页缺）");
+
+  // ── C11 DSL 输入辅助（规则 expression 补全 · D-28）─────────────────
+  await nav(p, "/admin/rules");
+  if ((await p.locator("[data-testid=rule-create]").count()) > 0) {
+    await p.click("[data-testid=rule-create]");
+    await p.waitForTimeout(800);
+    const expr = p.locator("[data-testid=rule-expression]");
+    await expr.click().catch(() => {});
+    await expr.type("Order.").catch(() => {});
+    await p.waitForTimeout(600);
+    const opts = await p.locator("[data-testid=rule-expression-suggest] [role=option]").count();
+    if (opts > 0) ok(`C11 规则 expression 输入 Order. 弹属性补全（${opts} 候选，数据源=本体，D-28 非裸框）`);
+    else fail("C11 规则 expression 无补全（违 D-28）");
+  } else console.log("  ⚠ C11 规则页无新建入口（跳过补全验）");
 } catch (e) {
   fail(`异常：${String(e).slice(0, 300)}`);
 } finally {
