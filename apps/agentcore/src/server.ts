@@ -107,7 +107,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // 经网关同源访问时无需 CORS；开放宽松 CORS 仅为直连端口的开发调试（credentials 模式）。
-  await app.register(cors, { origin: true, credentials: true });
+  // 显式放行全部写方法：管理控制台 B 侧 PUT/PATCH/DELETE（工作流/Agent/技能/场景编辑）直连端口时
+  // 浏览器预检需 PUT/DELETE 在 Access-Control-Allow-Methods，否则 405（部署态经网关同源不受影响）。
+  await app.register(cors, {
+    origin: true,
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  });
 
   // tolerate empty JSON bodies (e.g. POST .../publish without payload)
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
