@@ -49,7 +49,7 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
     items: ["graph-all", "graph-backbone", "graph-flow", "graph-source", "graph-solver", "graph-mvp", "graph-agent", "graph-loop"].map((key) => ({ kind: "view" as const, key })),
   },
   { title: "规则与校准", items: ["rules", "calibration"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "构建与成长", items: ["data-builder", "growth", "evals", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
+  { title: "构建与成长", items: ["data-builder", "growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "meta"].map((key) => ({ kind: "admin" as const, key })) },

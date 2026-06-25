@@ -181,6 +181,19 @@ export const fetchOntologyGraph = (packageId: string) =>
 export const invokeSolver = (solverKey: string, args: Record<string, unknown>) =>
   api.a<{ data: unknown; snapshotVersion: string }>(`/a/v1/solvers/${solverKey}/invoke`, { body: { args } });
 
+/** C5 求解器目录（只读发现页 + workflow invoke_solver 引用下拉数据源）。
+ *  来自注册表 `/a/v1/solvers/registry`（业务场景 22 + 通用 9 + 决策 8，feature 过滤；R5 零业务常数）。 */
+export interface SolverCatalogItem {
+  key: string;
+  name: string;
+  description: string;
+  argHints: Record<string, string>;
+  domain?: string;
+  outputShape: string[];
+}
+export const fetchSolverRegistry = (query?: string) =>
+  api.a<{ solvers: SolverCatalogItem[] }>(`/a/v1/solvers/registry${query ? `?query=${encodeURIComponent(query)}` : ""}`);
+
 /** 推演类视图统一走 B 侧（entitlement 先行：feature 关 → 404 FEATURE_NOT_FOUND，再 OBO 透传 DataCore）。
  *  signal：改参即重算的竞态控制（AbortController 最后发出者胜，增量 §0-3）。 */
 export const runSolver = (solverKey: string, args: Record<string, unknown>, signal?: AbortSignal) =>
@@ -742,6 +755,18 @@ export const publishWorkflow = (id: string, opts?: { force?: boolean }) =>
     impact?: PublishImpact;
     forced?: boolean;
   }>(`/b/v1/workflows/${id}/publish`, { body: { force: opts?.force ?? false } });
+
+/** C8 工作流试运行（编辑器内所见即所得）：调既有同步端点 POST /b/v1/workflows/:id/run（OBO）。
+ *  注：后端从仓储读 steps，故调用前须先 saveWorkflow（DRAFT 可改）。 */
+export interface WorkflowRunResult {
+  runId: string;
+  status: "COMPLETED" | "FAILED";
+  answer?: { blocks?: unknown[]; [k: string]: unknown };
+  error?: { code: string; message: string; stepId?: string; [k: string]: unknown };
+  stepOutputs?: Record<string, unknown>;
+}
+export const runWorkflow = (id: string, inputs: Record<string, unknown>) =>
+  api.b<WorkflowRunResult>(`/b/v1/workflows/${id}/run`, { body: { inputs } });
 
 export const fetchSkills = () => api.b<SkillDefinition[]>("/b/v1/skills");
 export const saveSkill = (id: string | null, body: Partial<SkillDefinition>) =>
