@@ -1,5 +1,6 @@
 import type { BuildMode, BuildPlan, ClosureFinding, ClosurePolicy, ClosureReport } from "@platform/contracts";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../solvers/service.js";
+import { checkDomainInvariants } from "./domain-invariants.js";
 
 /** 工作流求解器（非注册求解器，走 /a/v1/sop/*）—— 与 chain:check 口径一致。 */
 const WORKFLOW_SOLVERS = new Set(["sop_balance"]);
@@ -33,6 +34,11 @@ export function validateClosure(plan: BuildPlan, policy: ClosurePolicy, buildMod
       findings.push({ kind: "OBJECT", ref: t.typeKey, status: "ORPHAN_PASSED", detail: "domain 缺失（SOFT 放行）" });
     }
   }
+
+  // ---- E14 域运营本体不变量（数据驱动 RL5）：碎片树（悬空 ref / 无根碎片）= OBJECT/FAILED（HARD）----
+  // 倒推出的孤儿 Process（无 factory 根）/ 悬空 refToTypeKey → DOMAIN_INVARIANT_VIOLATION，喂 hasObjectFail。
+  // STRICT 阻断 / PROVISIONAL 降 ADVISORY 如实记录（不静默碎片树）。
+  for (const f of checkDomainInvariants(plan)) findings.push(f);
 
   // ---- 反向-data：字段是否被消费（映射进对象属性 / 规则操作数 / 求解器入参）----
   const consumedFields = new Set<string>();

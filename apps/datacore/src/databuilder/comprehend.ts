@@ -5,6 +5,7 @@ import type {
   PlanWorkflowNeed, PlanSkillNeed, PlanAgentNeed,
 } from "@platform/contracts";
 import { deriveSolverArgs } from "./solver-args.js";
+import { DOMAIN_ROOT_REQUIREMENTS } from "./domain-invariants.js";
 
 /**
  * §2 LLM comprehend：让 LLM 只产出"听懂故事"的难点部分——对象类型 / 规则 / 求解器需求；
@@ -372,6 +373,55 @@ const ENTITIES: EntityTemplate[] = [
   },
 ];
 
+/**
+ * E14 域树补全（确定性纯函数 R6，数据驱动 RL5）：选中的运营域实体（domain ∈ DOMAIN_ROOT_REQUIREMENTS）
+ * 必须能溯源到对应 factory 根域实体，否则倒推出无根碎片树。补全两步：
+ *  1) 缺根 → 从 ENTITIES 拉入该根域的根实体（factory 域 = Base）；
+ *  2) 无根运营实体补一条到根实体的结构 ref（字段 `{root}Ref`），使 ref 链可达根（域完整）。
+ * 仅用 domain 词表（无实体/行业常数）；ENTITIES 无对应根实体时**不硬造**（留 closure 诚实报 ORPHAN_NO_ROOT）。
+ */
+function completeDomainTree(selected: EntityTemplate[]): EntityTemplate[] {
+  const present = new Map(selected.map((e) => [e.typeKey, e]));
+  const presentDomains = new Set(selected.map((e) => e.domain));
+  const result = [...selected];
+
+  // 收集所需根域（去重，确定性排序）。
+  const neededRootDomains = new Set<string>();
+  for (const e of selected) {
+    for (const rd of DOMAIN_ROOT_REQUIREMENTS[e.domain] ?? []) neededRootDomains.add(rd);
+  }
+  for (const rootDomain of [...neededRootDomains].sort()) {
+    if (presentDomains.has(rootDomain)) continue; // 已有该根域实体
+    const root = ENTITIES.find((e) => e.domain === rootDomain);
+    if (!root) continue; // 无候选根实体 → 不硬造，留闭包诚实报无根
+    result.push(root);
+    present.set(root.typeKey, root);
+    presentDomains.add(rootDomain);
+  }
+
+  // 对每个无根运营实体补一条到其根域实体的 ref（若它本身或经现有 ref 还到不了根）。
+  const rootByDomain = new Map<string, string>();
+  for (const e of result) if (!rootByDomain.has(e.domain)) rootByDomain.set(e.domain, e.typeKey);
+  return result.map((e) => {
+    const rootDomains = DOMAIN_ROOT_REQUIREMENTS[e.domain];
+    if (!rootDomains || rootDomains.length === 0) return e;
+    // 已有指向某根域实体的 ref？（直接相邻即可，多跳由 closure BFS 处理）
+    const hasRootRef = e.fields.some((f) => {
+      const tgt = f.refToTypeKey ? present.get(f.refToTypeKey) : undefined;
+      return tgt && rootDomains.includes(tgt.domain);
+    });
+    // 或经其他运营实体间接可达（如 Equipment→Process→Base）：若同 plan 有指向的运营实体已挂根则不重复补。
+    if (hasRootRef) return e;
+    const rootDomain = rootDomains.find((rd) => rootByDomain.has(rd));
+    if (!rootDomain) return e; // 根实体未补成（无候选）→ 留诚实报
+    const rootTypeKey = rootByDomain.get(rootDomain)!;
+    if (rootTypeKey === e.typeKey) return e;
+    const refName = `${rootTypeKey.toLowerCase()}Ref`;
+    if (e.fields.some((f) => f.name === refName)) return e;
+    return { ...e, fields: [...e.fields, { name: refName, dataType: "ref" as const, refToTypeKey: rootTypeKey }] };
+  });
+}
+
 const RULES: RuleTemplate[] = [
   { keywords: ["产能", "capacity", "上限"], key: "C03", name: "产能上限", expression: "Order.demandDelta <= 0.5", scopeObjectTypes: ["Order"], severity: "BLOCK" },
   { keywords: ["信用", "credit"], key: "C13", name: "信用额度", expression: "Order.credit <= Customer.creditLimit", scopeObjectTypes: ["Order"], severity: "BLOCK" },
@@ -489,6 +539,11 @@ export function comprehendScript(
   // 命中实体；无命中则兜底 Order + Base 最小集（保证 pipeline 永远可跑）。
   let entities = ENTITIES.filter((e) => matches(script, e.keywords));
   if (entities.length === 0) entities = ENTITIES.filter((e) => e.typeKey === "Order" || e.typeKey === "Base");
+
+  // E14 域树补全（确定性 R6，数据驱动 RL5）：选中运营域实体（process/equip/capacity）但缺 factory 根
+  // → 倒推会产**无根碎片**（孤儿 Process 无 factory 根，闭包 DOMAIN_INVARIANT_VIOLATION）。这里**自动补根**：
+  // 拉入 factory 根实体（Base）并给无根运营实体补一条到根的结构 ref，使倒推出的对象树**域完整**（非静默残缺）。
+  entities = completeDomainTree(entities);
 
   const typeKeys = new Set(entities.map((e) => e.typeKey));
 
