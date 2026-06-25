@@ -15,6 +15,7 @@ import type { SandboxViewConfig, SimSession } from "@platform/contracts";
 // ── 网络桩：tick 时把每个对象每个状态变量 +10（断言节点色/KPI 随 tick 变化）。 ──────────────
 const tickFn = vi.fn();
 vi.mock("@/api/endpoints", () => ({
+  fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_test", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
@@ -27,6 +28,9 @@ vi.mock("@/api/endpoints", () => ({
   }),
   simWorld: vi.fn(),
   simCheckpoint: vi.fn(async () => ({ id: "cp1", sessionId: "sims_test", tenantId: "t", tick: 1, label: "tick1", createdAt: "x" })),
+  simBranch: vi.fn(async () => ({ id: "sims_child", tenantId: "t", baseSnapshot: {}, scope: {}, status: "READY", curTick: 0, parentCheckpointId: "cp1", createdAt: "x" })),
+  fetchSimCompare: vi.fn(async () => ({ a: [], b: [] })),
+  createActionDraft: vi.fn(async () => ({ draftId: "ad1", status: "PENDING" })),
   fetchSimCertification: vi.fn(async () => ({
     scope: "GLOBAL", targetRef: null, level: "L2_RUNNABLE",
     dims: { structure: 60, knowledge: 40, behavior: 30, composite: 45 },
@@ -84,10 +88,10 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     // KPI 行 = 全局 + 每个 stateVar 一个。
     expect(screen.getByTestId("sandbox-kpi-global")).toBeTruthy();
     for (const v of CONFIG_A.stateVars) expect(screen.getByTestId(`sandbox-kpi-${v}`)).toBeTruthy();
-    // 就绪认证面板（L 级 + canEnter + gaps + 雷达三轴）。
-    await waitFor(() => expect(screen.getByTestId("sandbox-cert-level").textContent).toContain("L2"));
-    expect(screen.getByTestId("sandbox-cert-canenter").textContent).toContain("✗");
-    expect(screen.getByTestId("sandbox-gap-0")).toBeTruthy();
+    // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）。
+    await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
+    expect(screen.getByTestId("sim-cert-canenter").textContent).toContain("✗");
+    expect(screen.getByTestId("sim-cert-gap-0")).toBeTruthy();
     for (const d of CONFIG_A.radarDims) expect(screen.getByTestId(`sandbox-radar-axis-${d.key}`)).toBeTruthy();
   });
 

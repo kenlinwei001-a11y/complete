@@ -510,6 +510,17 @@ export type SimScopePrecheck = Pick<SimCertification, "scope" | "targetRef" | "w
 export const fetchSimScopePrecheck = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
   api.a<SimScopePrecheck>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/scope-precheck?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
 
+/** 分支（北极星）：从某检查点派生子会话（READY，curTick 0，parentCheckpointId 指向源 cp）。 */
+export const simBranch = (sessionId: string, checkpointId: string) =>
+  api.a<SimSession>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/branch`, { body: { checkpointId } });
+
+/** 多场景 KPI 对比（北极星）：返回 A/B 两会话逐 tick 态序列，前端并排/求差。 */
+export type SimCompareSeries = { tick: number; state: TickState }[];
+export const fetchSimCompare = (a: string, b: string) =>
+  api.a<{ a: SimCompareSeries; b: SimCompareSeries }>(
+    `/a/v1/sim/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
+  );
+
 /** D-29 实时环 F1：领域事件馈源（按 ?since 游标轮询；前端据此把上游变更反映到被动页面）。 */
 export interface DomainEventVM { eventId: string; event: string; createdAt: string }
 /** DataCore 侧事件源（数据→本体→推演链：ontology/materialize/rules/action/calibration/tick/build…）。 */

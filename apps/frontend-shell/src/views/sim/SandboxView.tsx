@@ -4,13 +4,18 @@ import type { SandboxViewConfig, SimCertification, TickState } from "@platform/c
 import {
   createSimSession,
   fetchSimCertification,
+  fetchSimCompare,
   fetchSimViewConfig,
+  simBranch,
   simCheckpoint,
   simTick,
+  type SimCompareSeries,
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import { PmDag, type PmDagNode } from "./PmDag";
-import { HeatStrip } from "./shared";
+import { HeatStrip, useActionDraft } from "./shared";
+import { SimReadinessPanel } from "./SimReadinessPanel";
+import { SimComparePanel } from "./SimComparePanel";
 import styles from "./SimViews.module.css";
 
 /**
@@ -125,14 +130,6 @@ function ReadinessRadar({
   );
 }
 
-const CERT_LEVEL_LABEL: Record<string, string> = {
-  L0_INVALID: "L0 未定义",
-  L1_CONFIGURED: "L1 已配置",
-  L2_RUNNABLE: "L2 可运行",
-  L3_VERIFIED: "L3 已验证",
-  L4_CERTIFIED: "L4 已认证",
-};
-
 /** 测试可注入 config（绕过网络，喂两套 mock config 证 R14）；生产留空走 view-config 端点。 */
 export interface SandboxViewProps {
   injectedConfig?: SandboxViewConfig;
@@ -153,6 +150,11 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [ticking, setTicking] = useState(false);
   const [history, setHistory] = useState<number[]>([]); // 逐 tick 全局均值轨迹（时间轴/KPI heat）
   const [cert, setCert] = useState<SimCertification | null>(null);
+  const [certScope, setCertScope] = useState<"GLOBAL" | "LOCAL">("GLOBAL"); // ④ 就绪范围（现可切，不再写死 GLOBAL）
+  const [branching, setBranching] = useState(false);
+  const [branchId, setBranchId] = useState<string | null>(null); // 子分支会话 id（对比用）
+  const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
+  const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
 
   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
   const globalKpi = useMemo(() => {
@@ -171,20 +173,34 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       setCurTick(0);
       const g0 = Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length);
       setHistory([g0]);
-      // 就绪认证（GLOBAL）：诚实展示 L0-L4 + canEnter + gaps。
+      // 就绪认证：诚实展示 L0-L4 + 三元组 + Trial Tick + 完整度 + entering + canEnter + gaps。
       try {
-        setCert(await fetchSimCertification(s.id, "GLOBAL"));
+        setCert(await fetchSimCertification(s.id, certScope));
       } catch {
         /* certification entitlement 关时容错：仅不显认证面板 */
       }
     } catch (e) {
       toastError(e);
     }
-  }, []);
+  }, [certScope]);
 
   useEffect(() => {
     if (cfg && !sessionId) void init(cfg);
   }, [cfg, sessionId, init]);
+
+  // ④ scope 切换 → 重取就绪认证（GLOBAL↔LOCAL），不重建会话。
+  const reloadCert = useCallback(
+    async (scope: "GLOBAL" | "LOCAL") => {
+      setCertScope(scope);
+      if (!sessionId) return;
+      try {
+        setCert(await fetchSimCertification(sessionId, scope));
+      } catch {
+        /* 容错 */
+      }
+    },
+    [sessionId],
+  );
 
   const onTick = useCallback(async () => {
     if (!sessionId) return;
@@ -211,6 +227,56 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       toastError(e);
     }
   }, [sessionId, curTick]);
+
+  // 分支（北极星）：当前 tick 存检查点 → 从该检查点派生子会话 → 取 A(主线)/B(分支) 对比序列。
+  const onBranch = useCallback(async () => {
+    if (!sessionId) return;
+    setBranching(true);
+    try {
+      const cp = await simCheckpoint(sessionId, `branch@tick${curTick}`);
+      const child = await simBranch(sessionId, cp.id);
+      setBranchId(child.id);
+      const cmp = await fetchSimCompare(sessionId, child.id);
+      setCompare(cmp);
+      toast(`已从检查点分支（子会话 ${child.id}），可逐 tick 对比`, "success");
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBranching(false);
+    }
+  }, [sessionId, curTick]);
+
+  // 对比刷新（分支会话各自推进后重新拉序列；A 主线 + B 分支）。
+  const onRefreshCompare = useCallback(async () => {
+    if (!sessionId || !branchId) return;
+    try {
+      setCompare(await fetchSimCompare(sessionId, branchId));
+    } catch (e) {
+      toastError(e);
+    }
+  }, [sessionId, branchId]);
+
+  // 采纳此推演结论 → R4 Action 草稿（RL4 正门）：沙盘是模拟态不写真值，采纳才经 Action 审批流写。
+  const onAdopt = useCallback(() => {
+    if (!sessionId) return;
+    adopt.mutate({
+      actionTypeKey: "plan_change",
+      payload: {
+        // plan_change 必填 versionId + reason（走 S2 审批正门）；沙盘以会话@tick 作版本锚。
+        versionId: `sim:${sessionId}@tick${curTick}`,
+        reason: `采纳推演沙盘结论（${certScope} · 全局态 ${globalKpi.toFixed(1)}${cert ? ` · ${cert.level}` : ""}）`,
+        patch: {
+          source: "sim_sandbox",
+          simulated: true, // 诚实标：此为模拟态结论，采纳才经 Action 正门写真值（RL4）
+          sessionId,
+          tick: curTick,
+          globalKpi: Number(globalKpi.toFixed(2)),
+          certLevel: cert?.level ?? null,
+          scope: certScope,
+        },
+      },
+    });
+  }, [sessionId, curTick, globalKpi, cert, certScope, adopt]);
 
   if (!cfg) {
     if (cfgQuery.isError) return <div className="empty-state" data-testid="sandbox-config-error">沙盘配置不可用（沙盘功能未开通或本体为空）</div>;
@@ -258,6 +324,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
           存档检查点
         </button>
+        <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
+          {branching ? "分支中…" : "分支（多场景对比）"}
+        </button>
+        <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
+          {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
+        </button>
         <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
           <div className={styles.sub} style={{ marginBottom: 2 }}>tick 时间轴（全局态轨迹）</div>
           <HeatStrip series={history} threshold={70} />
@@ -265,40 +337,20 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       </div>
 
       <div className={styles.twoCol} style={{ marginTop: 12 }}>
-        {/* 就绪面板（左）：雷达 + L 级 + canEnter + 诚实 gaps */}
+        {/* 就绪面板（左）：6 项砌齐 —— L0-L4 stepper / L4 三元组 / Trial Tick / scope 切换 / 完整度 gauge / entering 清单 */}
         <div className="panel" data-testid="sandbox-readiness" style={{ padding: 12 }}>
-          <div className={styles.secHead}>就绪认证</div>
           {cert ? (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <ReadinessRadar dims={cfg.radarDims} values={radarValues} />
-                <div>
-                  <div data-testid="sandbox-cert-level">
-                    <b style={{ fontSize: 18 }}>{CERT_LEVEL_LABEL[cert.level] ?? cert.level}</b>
-                  </div>
-                  <div data-testid="sandbox-cert-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)", fontWeight: 700, marginTop: 4 }}>
-                    {cert.canEnterSimulation ? "✓ 可进入推演" : "✗ 暂不可进入推演"}
-                  </div>
-                  <div className={styles.sub} style={{ marginTop: 4 }}>
-                    世界完整度 {cert.worldCompleteness.pct.toFixed(0)}%
-                  </div>
-                </div>
-              </div>
-              {cert.gaps.length > 0 && (
-                <div data-testid="sandbox-cert-gaps" style={{ marginTop: 8 }}>
-                  <div className={styles.sub}>缺件清单（诚实，不静默）</div>
-                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                    {cert.gaps.slice(0, 6).map((g, i) => (
-                      <li key={i} data-testid={`sandbox-gap-${i}`} style={{ fontSize: 12, color: "var(--muted2)" }}>
-                        <b className="mono">{g.gapCode}</b> · {g.ref} — {g.detail}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
+            <SimReadinessPanel
+              cert={cert}
+              scope={certScope}
+              onScopeChange={(s) => void reloadCert(s)}
+              radar={<ReadinessRadar dims={cfg.radarDims} values={radarValues} />}
+            />
           ) : (
-            <div className={styles.sub} data-testid="sandbox-cert-na">就绪认证未开通（sim.certification 关）</div>
+            <>
+              <div className={styles.secHead}>就绪认证</div>
+              <div className={styles.sub} data-testid="sandbox-cert-na">就绪认证未开通（sim.certification 关）</div>
+            </>
           )}
         </div>
 
@@ -312,6 +364,19 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           )}
         </div>
       </div>
+
+      {/* 多场景 KPI 对比面板（北极星）：分支后出现，A 主线 vs B 分支逐 tick 差异 */}
+      {compare && (
+        <div className="panel" data-testid="sandbox-compare" style={{ padding: 12, marginTop: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span className={styles.sub}>分支后各自推进 tick，再刷新对比看 A/B 差异</span>
+            <button className="btn sm ghost" data-testid="sandbox-compare-refresh-btn" disabled={!branchId} onClick={onRefreshCompare}>
+              刷新对比
+            </button>
+          </div>
+          <SimComparePanel a={compare.a} b={compare.b} />
+        </div>
+      )}
     </div>
   );
 }

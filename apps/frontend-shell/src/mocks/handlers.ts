@@ -2491,6 +2491,56 @@ export const handlers = [
       gaps: [{ gapCode: "G-NO-ACTION", ref: "behavior", detail: "未配置写回行动" }],
     });
   }),
+  // ---- 推演沙盘 P0（增量 4 · Agent I）：tick / checkpoint / branch / compare / certification 最小 mock ----
+  http.post("*/a/v1/sim/sessions/:id/tick", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { n?: number };
+    const n = body.n ?? 1;
+    // 占位递增态（mock 模式仅证交互；真后端走传导核）。
+    return HttpResponse.json({ curTick: n, state: { "TypeA#0": { s1: 50 + n * 5, s2: 40 } } });
+  }),
+  http.post("*/a/v1/sim/sessions/:id/checkpoint", async ({ params, request }) => {
+    const body = (await request.json().catch(() => ({}))) as { label?: string };
+    return HttpResponse.json({ id: "cp_mock", sessionId: String((params as { id: string }).id), tenantId: "demo", tick: 1, label: body.label ?? "cp", createdAt: new Date().toISOString() });
+  }),
+  http.post("*/a/v1/sim/sessions/:id/branch", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { checkpointId?: string };
+    return HttpResponse.json(
+      { id: "sims_child_mock", tenantId: "demo", baseSnapshot: {}, scope: {}, status: "READY", curTick: 0, parentCheckpointId: body.checkpointId ?? "cp_mock", createdAt: new Date().toISOString() },
+      { status: 201 },
+    );
+  }),
+  http.get("*/a/v1/sim/compare", () =>
+    HttpResponse.json({
+      a: [{ tick: 0, state: { "TypeA#0": { s1: 50 } } }, { tick: 1, state: { "TypeA#0": { s1: 65 } } }],
+      b: [{ tick: 0, state: { "TypeA#0": { s1: 50 } } }, { tick: 1, state: { "TypeA#0": { s1: 40 } } }],
+    }),
+  ),
+  http.get("*/a/v1/sim/sessions/:id/certification", ({ request }) => {
+    const url = new URL(request.url);
+    const scope = url.searchParams.get("scope") === "LOCAL" ? "LOCAL" : "GLOBAL";
+    return HttpResponse.json({
+      scope,
+      targetRef: scope === "LOCAL" ? url.searchParams.get("target") : null,
+      level: "L2_RUNNABLE",
+      dims: { structure: 70, knowledge: 50, behavior: 35, composite: 52 },
+      l4Checks: { fanoutSafe: true, writebackComplete: false, observabilityMet: false },
+      trialTick: { passed: false, rulesFired: 1, at: null, error: null },
+      worldCompleteness: {
+        pct: scope === "LOCAL" ? 48 : 60,
+        stateVars: { present: 2, needed: 3 },
+        derivationRules: { present: 1, needed: 2 },
+        actions: { present: 0, needed: 1 },
+        propagationRules: { present: 1, needed: 1 },
+        entering: [
+          { key: "s1", kind: "DERIVATION", source: "deriv:s1" },
+          { key: "s2", kind: "PROPAGATION", source: "prop:linkAB" },
+        ],
+      },
+      canEnterSimulation: false,
+      gaps: [{ gapCode: "G-NO-ACTION", ref: "behavior", detail: "未配置写回行动" }],
+      computedAt: new Date().toISOString(),
+    });
+  }),
 ];
 
 /**
