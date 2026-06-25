@@ -166,3 +166,94 @@ def test_packing_determinism_r6():
 def test_packing_infeasible_oversize():
     out = server.solve_packing({"model": "packing", "seed": 42, "items": [{"id": "x", "size": 99}], "binCapacity": 10})
     assert out["status"] == "INFEASIBLE"
+
+
+# ── 轨B·增量1 抽象优化模板池 5 CP-SAT 核心：可证最优 + R6 确定性真求解 ─────────────
+
+def test_facility_location_optimal_opens_cheapest():
+    """选址：F1 开设便宜(10)，F2 贵(100)，全需求可去任一 → 最优只开 F1。"""
+    out = server.solve_facility_location({
+        "facilities": [{"id": "F1", "openCost": 10}, {"id": "F2", "openCost": 100}],
+        "clients": [{"id": "C1"}, {"id": "C2"}],
+        "assignCosts": [
+            {"client": "C1", "facility": "F1", "cost": 1}, {"client": "C2", "facility": "F1", "cost": 2},
+            {"client": "C1", "facility": "F2", "cost": 1}, {"client": "C2", "facility": "F2", "cost": 1},
+        ], "seed": 42,
+    })
+    assert out["status"] == "OPTIMAL" and out["optimal"] is True
+    assert out["openFacilities"] == ["F1"]          # 只开便宜的
+    assert out["objective"] == 13                    # 10 + 1 + 2
+    # R6 确定性
+    a = server.solve_facility_location({"facilities": [{"id": "F1", "openCost": 10}, {"id": "F2", "openCost": 12}], "clients": [{"id": "C1"}], "assignCosts": [{"client": "C1", "facility": "F1", "cost": 1}, {"client": "C1", "facility": "F2", "cost": 1}], "seed": 42})
+    b = server.solve_facility_location({"facilities": [{"id": "F1", "openCost": 10}, {"id": "F2", "openCost": 12}], "clients": [{"id": "C1"}], "assignCosts": [{"client": "C1", "facility": "F1", "cost": 1}, {"client": "C1", "facility": "F2", "cost": 1}], "seed": 42})
+    assert a == b
+
+
+def test_facility_location_capacity_forces_second():
+    """capacitated：每设施容量只够 1 个需求(cap=1)，2 个需求 → 必须开两个设施（容量逼开）。"""
+    out = server.solve_facility_location({
+        "facilities": [{"id": "F1", "openCost": 1, "capacity": 1}, {"id": "F2", "openCost": 1, "capacity": 1}],
+        "clients": [{"id": "C1", "demand": 1}, {"id": "C2", "demand": 1}],
+        "assignCosts": [{"client": c, "facility": f, "cost": 1} for c in ["C1", "C2"] for f in ["F1", "F2"]], "seed": 42,
+    })
+    assert out["status"] == "OPTIMAL"
+    assert set(out["openFacilities"]) == {"F1", "F2"}  # 各 cap=1，2 需求 → 容量逼开两个
+
+
+def test_min_cost_flow_optimal_route_and_balance():
+    """最小成本流：直达 cap6 cost5 vs 经 M cost1+1；10 单位 → 全走 M 最省(20)。"""
+    out = server.solve_min_cost_flow({
+        "nodes": [{"id": "S", "supply": 10}, {"id": "M", "supply": 0}, {"id": "T", "supply": -10}],
+        "arcs": [{"from": "S", "to": "T", "cost": 5, "cap": 6}, {"from": "S", "to": "M", "cost": 1}, {"from": "M", "to": "T", "cost": 1}], "seed": 42,
+    })
+    assert out["status"] == "OPTIMAL"
+    assert out["objective"] == 20
+    a = server.solve_min_cost_flow({"nodes": [{"id": "S", "supply": 5}, {"id": "T", "supply": -5}], "arcs": [{"from": "S", "to": "T", "cost": 2}], "seed": 42})
+    b = server.solve_min_cost_flow({"nodes": [{"id": "S", "supply": 5}, {"id": "T", "supply": -5}], "arcs": [{"from": "S", "to": "T", "cost": 2}], "seed": 42})
+    assert a == b
+
+
+def test_min_cost_flow_imbalance_infeasible():
+    out = server.solve_min_cost_flow({"nodes": [{"id": "S", "supply": 10}, {"id": "T", "supply": -5}], "arcs": [{"from": "S", "to": "T", "cost": 1}], "seed": 42})
+    assert out["status"] == "INFEASIBLE"
+
+
+def test_set_cover_min_cost():
+    """集合覆盖：A{1,2,3} B{3,4} C{4}，universe{1,2,3,4} → 最优 A+B（2 个，成本 2）。"""
+    out = server.solve_set_cover({"sets": [{"id": "A", "covers": ["1", "2", "3"]}, {"id": "B", "covers": ["3", "4"]}, {"id": "C", "covers": ["4"]}], "universe": ["1", "2", "3", "4"], "seed": 42})
+    assert out["status"] == "OPTIMAL"
+    assert out["chosen"] == ["A", "B"]
+    assert out["objective"] == 2
+
+
+def test_set_cover_uncoverable_infeasible():
+    out = server.solve_set_cover({"sets": [{"id": "A", "covers": ["1"]}], "universe": ["1", "9"], "seed": 42})
+    assert out["status"] == "INFEASIBLE"
+
+
+def test_independent_set_max_weight():
+    """最大权独立集：路径 a(1)-b(3)-c(1)，相邻不可同选 → 选 a+c(2) 还是 b(3)？b 更大 → {b}。"""
+    out = server.solve_independent_set({"nodes": [{"id": "a", "weight": 1}, {"id": "b", "weight": 3}, {"id": "c", "weight": 1}], "edges": [{"a": "a", "b": "b"}, {"a": "b", "b": "c"}], "seed": 42})
+    assert out["status"] == "OPTIMAL"
+    assert out["chosen"] == ["b"] and out["objective"] == 3
+    # 无权重默认 1：a-b 一条边 → 选 1 个
+    out2 = server.solve_independent_set({"nodes": [{"id": "a"}, {"id": "b"}], "edges": [{"a": "a", "b": "b"}], "seed": 42})
+    assert out2["objective"] == 1
+
+
+def test_combinatorial_auction_wdp():
+    """组合拍卖：b1{x,y}=10 vs b2{x}=6 + b3{y}=6 → 互斥包 b2+b3=12 > b1=10。"""
+    out = server.solve_combinatorial_auction({"bids": [{"id": "b1", "value": 10, "items": ["x", "y"]}, {"id": "b2", "value": 6, "items": ["x"]}, {"id": "b3", "value": 6, "items": ["y"]}], "seed": 42})
+    assert out["status"] == "OPTIMAL"
+    assert out["winners"] == ["b2", "b3"]
+    assert out["objective"] == 12
+
+
+def test_new_cores_determinism_r6():
+    """5 核心同 seed 重跑字节一致（R6）。"""
+    sc = lambda: server.solve_set_cover({"sets": [{"id": "A", "covers": ["1", "2"]}, {"id": "B", "covers": ["2", "3"]}], "seed": 42})
+    iset = lambda: server.solve_independent_set({"nodes": [{"id": "a", "weight": 2}, {"id": "b", "weight": 2}], "edges": [{"a": "a", "b": "b"}], "seed": 42})
+    ca = lambda: server.solve_combinatorial_auction({"bids": [{"id": "b1", "value": 5, "items": ["x"]}, {"id": "b2", "value": 5, "items": ["x"]}], "seed": 42})
+    assert sc() == sc()
+    assert iset() == iset()
+    assert ca() == ca()
