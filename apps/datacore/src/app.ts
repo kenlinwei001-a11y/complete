@@ -43,6 +43,7 @@ import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./d
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
+import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
@@ -2337,6 +2338,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/opt/templates", async (req) => {
     await requireFeatureTag(req, "apiTags", "opt");
     return { families: OPT_FAMILIES };
+  });
+  // 轨B·增量4 embedding 复用检索（advisory · FUS2 不入确定性求解路径）。
+  // 门：gated 在 opt.solver-pool（apiTag "opt"）；opt.embedding-retrieval 关 → 退回 comprehend 关键词列表
+  // （确定性兜底，不静默 · DoD §3）。开 → 本地确定性词袋检索最近模板 + 覆盖缺口信号。
+  app.get("/a/v1/opt/retrieve", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    const c = ctx(req);
+    const need = String((req.query as { need?: string }).need ?? "").trim();
+    if (!need) throw validationError("opt retrieve 需 ?need=<需求文本>");
+    const resolved = await features.resolve(c.tenantId);
+    const embeddingOn = resolved.features.includes("opt.embedding-retrieval");
+    if (!embeddingOn) {
+      // 退回 comprehend：关键词匹配模板族（确定性，显式标注 mode=comprehend 不静默）。
+      const q = need.toLowerCase();
+      const matched = OPT_FAMILIES.filter((f) => q.includes(f) || q.includes(f.replace(/_/g, " ")));
+      return { mode: "comprehend", embeddingEnabled: false, candidates: (matched.length ? matched : OPT_FAMILIES).map((key) => ({ key })), note: "opt.embedding-retrieval 未开 → 退回 comprehend 关键词列表（不静默）" };
+    }
+    const idx = new LocalTemplateIndex();
+    const candidates = idx.nearestTemplates(need, 3);
+    return { mode: "embedding", embeddingEnabled: true, candidates, coverageGap: idx.coverageGap(need), note: "advisory：embedding 仅排序/听懂，不入确定性求解路径（FUS2）" };
   });
   // 轨B·增量3 optimize_whatif：{ family, perturbations[], (args|binding) } → Δ目标/可行性/冲突约束。
   // entitlement opt.whatif（apiTag "opt-whatif"，requires opt.solver-pool）；关 = 404 R3。R4 模拟态不落真值。

@@ -339,6 +339,15 @@ async function cmdOpt(args) {
     console.log("  " + C.dim((d.summary ?? JSON.stringify(d)).slice(0, 400)));
     return;
   }
+  if (sub === "retrieve") {
+    const need = flags.need ?? pos.slice(1).join(" ");
+    if (!need) { console.error("用法: opt retrieve --need \"选址类需求\" [--json]"); process.exit(1); }
+    const r = await http(`${DC}/a/v1/opt/retrieve?need=${encodeURIComponent(need)}`, { headers: authHeader() });
+    if (flags.json) return console.log(JSON.stringify(r));
+    console.log(`${C.green("✓")} mode=${r.mode}${r.coverageGap ? C.yellow(" [覆盖缺口]") : ""}  ${C.dim(r.note ?? "")}`);
+    for (const c of r.candidates ?? []) console.log(`  · ${c.key}${c.score !== undefined ? "  " + C.dim("score=" + c.score) : ""}`);
+    return;
+  }
   if (sub === "whatif") {
     const family = pos[1];
     if (!family) { console.error("用法: opt whatif <family> --perturbations '[{...}]' [--args|--binding '{...}'] [--json]"); process.exit(1); }
@@ -354,7 +363,7 @@ async function cmdOpt(args) {
     console.log("  " + C.dim((d.explanation ?? "").slice(0, 400)));
     return;
   }
-  console.error("用法: opt <templates|solve|whatif> …（solve <family> [--args|--binding]；whatif <family> --perturbations）"); process.exit(1);
+  console.error("用法: opt <templates|solve|whatif|retrieve> …（solve <family> [--args|--binding]；whatif <family> --perturbations；retrieve --need）"); process.exit(1);
 }
 
 // synth：合成数据作业。
