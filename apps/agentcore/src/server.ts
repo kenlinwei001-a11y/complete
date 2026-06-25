@@ -1970,6 +1970,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // 一次发育验证（A10 正序实跑 triggerQuestion → 三环 + 诚实门 → 结论）。可重复调用：O9 自动补齐后重验。
   type VerifyResult = {
     dataOk: boolean; ontologyOk: boolean; capabilityOk: boolean;
+    // O12 ADVISORY：跑通到终态且产出**非空、非 gap、非兜底**答案，但未达 dataOk（含承载数据块）的 GOVERNED 标尺
+    // ——自动发育所得、待人工坐实的中间态信号（dataOk=true 时不参与定级；dataOk 为更严的 GOVERNED 门）。
+    advisoryAnswer: boolean;
     vstatus: "VERIFIED" | "NOT_VERIFIED" | "NOT_RUN";
     vpath: "WORKFLOW" | "AGENT" | "NONE"; gapCode: string | null; answerPreview: string | null; taskId: string | null;
     closureIssues: string[];
@@ -1983,7 +1986,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const capabilityOk = !!intent && intent.status === "PUBLISHED" && !!(await resolvePlanForIntent(deps.repos, intent));
     const ontologyOk = !!intent && !!(intent.planId);
 
-    let dataOk = false, vstatus: VerifyResult["vstatus"] = "NOT_RUN";
+    let dataOk = false, advisoryAnswer = false, vstatus: VerifyResult["vstatus"] = "NOT_RUN";
     let vpath: VerifyResult["vpath"] = "NONE", gapCode: string | null = null, answerPreview: string | null = null, taskId: string | null = null;
     if (capabilityOk) {
       try {
@@ -2008,6 +2011,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
           (b.type === "text" && /⟦ref:/.test(String((b as { markdown?: string }).markdown ?? ""))));
         const hasReal = t?.status === "COMPLETED" && blocks.length > 0 && !gapBlock && !fallbackText && dataBearing;
         dataOk = hasReal;
+        // O12 ADVISORY：发育闭环经**路径 B 探索（AGENT）**自动推出非空、非 gap、非兜底答案，但未达 dataBearing
+        // （GOVERNED 标尺）→ 自动发育所得、待人工坐实的中间态。**关键边界**：路径 A 工作流只渲染静态占位文本
+        // （RENDER_NOT_PROJECTED，无求解器投影）= 空壳占位，**不算 advisory**（仍 PROVISIONAL，守诚实门 RL4，
+        // 不把占位文案升格）；唯有真经 agent 推理产出的非空答案才算 advisory（待人工坐实）。
+        advisoryAnswer = t?.status === "COMPLETED" && blocks.length > 0 && !gapBlock && !fallbackText && !dataBearing && vpath === "AGENT";
         vstatus = hasReal ? "VERIFIED" : "NOT_VERIFIED";
         if (!hasReal) {
           gapCode = gapBlock ? String(((gapBlock as { report?: { findings?: { gapCode?: string }[] } }).report?.findings?.[0]?.gapCode) ?? "OTHER")
@@ -2024,7 +2032,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     } else {
       gapCode = !intent ? "MISSING_INTENT" : intent.status !== "PUBLISHED" ? "INTENT_NOT_PUBLISHED" : "MISSING_PLAN";
     }
-    return { dataOk, ontologyOk, capabilityOk, vstatus, vpath, gapCode, answerPreview, taskId, closureIssues: closure.issues };
+    return { dataOk, advisoryAnswer, ontologyOk, capabilityOk, vstatus, vpath, gapCode, answerPreview, taskId, closureIssues: closure.issues };
   };
 
   const growScenario = async (a: RequestAuth, sc: Scenario): Promise<ScenarioOntogenesisRun> => {
@@ -2072,13 +2080,48 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       }
     }
 
-    const maturity = v.dataOk ? "GOVERNED" : "PROVISIONAL";
-    const gaps = v.vstatus === "VERIFIED" ? [] : [{
-      gapCode: v.gapCode ?? "OTHER",
-      // 缺意图/计划=可自动补（grow/scaffold）；运行缺数据/求解器=需人工（真人正门/审批）。
-      disposition: (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" ? "AUTO_DERIVE" : "NEEDS_HUMAN") as "AUTO_DERIVE" | "NEEDS_HUMAN",
-      detail: v.closureIssues.join("；") || (v.answerPreview ?? "触发问句未跑出真实答案") + (growth.triggered ? `（已触发自动补齐：${growth.terminalState}，${growth.rounds} 轮${growth.ticketId ? "，已开工单 " + growth.ticketId : ""}）` : ""),
-    }];
+    // O11（P3 wiring）：卡声明 sliceTargets → 自动调 planSlice（OBO → DataCore /a/v1/slices/plan）把切片纳入发育闭环。
+    // 复用既有 OBO 客户端模式（OntologyClient.planSlice，透传用户 JWT/X-Debug-User，与 invoke_solver/resolveSlice 同面）。
+    // 规划器纯确定性图算法（R6）+ 命中索引即复用既有已发布切片（A3.4）。诚实门：NO_PATH（maxHops 内不可达）→ 出 NO_SLICE 缺口，不静默跳过。
+    const sliceGaps: { gapCode: string; disposition: "AUTO_DERIVE" | "NEEDS_HUMAN"; detail: string }[] = [];
+    const plannedSlices: string[] = [];
+    for (const st of sc.sliceTargets ?? []) {
+      if (!st.targets || st.targets.length === 0) continue;
+      try {
+        const res = await deps.dataCore.ontology.planSlice(a, { rootType: st.rootType, targets: st.targets, maxHops: 6 });
+        if (res.ok) {
+          plannedSlices.push(res.plan.sliceKey);
+          // slice.planned 由 DataCore /a/v1/slices/plan 内部发（§4 单源）；此处不重复发，避免双源。
+        } else {
+          // 诚实：maxHops 内不可达 → NO_SLICE 缺口（需补本体链路/真人正门），不假装已长出。
+          sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划失败（${st.rootType}）：${res.reason.unreachable.join("、")} 在 maxHops=6 内不可达——需补本体链路` });
+        }
+      } catch (e) {
+        // DataCore 无 planSlice 路径/不可达 → 诚实标 NO_SLICE，不静默（守诚实门）。
+        sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划调用失败（${st.rootType}）：${(e as Error).message.slice(0, 120)}` });
+      }
+    }
+
+    // O12 三态成熟（PROVISIONAL→ADVISORY→GOVERNED）：
+    //  - GOVERNED：dataOk（VERIFIED 含承载数据块）——最严人工标尺，grow 亲手验证真出数据才到。
+    //  - ADVISORY：发育闭环跑通且产出非空、非 gap、非兜底答案，但未达 dataBearing（自动发育所得，待人工坐实）。
+    //    诚实门（RL4）：不冒充 GOVERNED（未达数据承载标尺），也不含糊降级成 PROVISIONAL（确有 advisory 答案）。
+    //  - PROVISIONAL：纯缺件、补不上、无任何 advisory 答案（诚实开票）。
+    // 切片缺口（O11 NO_SLICE）即便答案验证通过也要诚实并入——切片未长出是发育闭环的真实缺口。
+    const gaps = [
+      ...(v.vstatus === "VERIFIED" ? [] : [{
+        gapCode: v.gapCode ?? "OTHER",
+        // 缺意图/计划=可自动补（grow/scaffold）；运行缺数据/求解器=需人工（真人正门/审批）。
+        disposition: (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" ? "AUTO_DERIVE" : "NEEDS_HUMAN") as "AUTO_DERIVE" | "NEEDS_HUMAN",
+        detail: v.closureIssues.join("；") || (v.answerPreview ?? "触发问句未跑出真实答案") + (growth.triggered ? `（已触发自动补齐：${growth.terminalState}，${growth.rounds} 轮${growth.ticketId ? "，已开工单 " + growth.ticketId : ""}）` : ""),
+      }]),
+      ...sliceGaps,
+    ];
+    // 切片未长齐（NO_SLICE）→ 发育闭环未完整，maturity 不得 GOVERNED（封顶 ADVISORY，诚实降级）。
+    const maturity: import("@platform/contracts").ScenarioMaturity =
+      v.dataOk && sliceGaps.length === 0 ? "GOVERNED"
+      : (v.dataOk || v.advisoryAnswer) ? "ADVISORY"
+      : "PROVISIONAL";
     const run: ScenarioOntogenesisRun = {
       runId, scenarioKey: sc.scenarioKey, ranAt,
       rings: { data: v.dataOk, ontology: v.ontologyOk, capability: v.capabilityOk },
@@ -2086,7 +2129,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       gaps, maturity,
     };
     await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, updatedAt: new Date().toISOString() });
-    await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode });
+    await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });
     return run;
   };
 
@@ -2165,6 +2208,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       mode: body.mode ?? "WORKFLOW_FIRST",
       defaultAgentId: body.defaultAgentId,
       presetContext: body.presetContext ?? { targetView: body.targetView, selectedObjects: [], slotPresets: {} },
+      // O11：卡声明的切片自动规划目标（growScenario 据此 OBO 调 planSlice，纳入发育闭环）。
+      ...(body.sliceTargets ? { sliceTargets: body.sliceTargets } : {}),
       status: "DRAFT",
       version: existing?.version ?? 1,
       updatedAt: now,

@@ -1,4 +1,4 @@
-import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
@@ -90,6 +90,27 @@ export class MockOntologyClient implements OntologyClient {
       };
     }
     throw new Error(`unknown slice: ${sliceKey}`);
+  }
+
+  // P3 O11：切片规划 mock——确定性派生 SlicePlan（rootType+targets），可达即 ok。
+  // unreachable 约定：target 含 "__unreachable" → 模拟 maxHops 内不可达（诚实出 NO_SLICE 那一路用）。
+  async planSlice(_ctx: ToolAuthCtx, req: PlanSliceRequest): Promise<PlanSliceResponse> {
+    const unreachable = req.targets.filter((t) => t.includes("__unreachable"));
+    const reachable = req.targets.filter((t) => !t.includes("__unreachable"));
+    if (reachable.length === 0) {
+      return { ok: false, reason: { code: "NO_PATH", rootType: req.rootType, unreachable } };
+    }
+    return {
+      ok: true,
+      plan: {
+        sliceKey: `biz.${req.rootType}.${reachable.join("_")}`,
+        rootType: req.rootType,
+        paths: reachable.map((t) => ({ target: t, hops: [{ linkKey: `${req.rootType}_to_${t}`, direction: "out" as const, toType: t }] })),
+        pathEvidence: reachable.map((t) => `${req.rootType} -[${req.rootType}_to_${t}:out]-> ${t}`),
+        spannedDomains: ["mock"],
+        reused: false,
+      },
+    };
   }
 
   async queryObjects(

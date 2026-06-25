@@ -116,3 +116,108 @@ describe("O9 · growScenario 自动调 runGrowthLoop（缺件→自动补→诚�
     expect(events.some((e) => e.event === "scenario.growth_triggered")).toBe(true);
   });
 });
+
+/**
+ * O12 · ADVISORY 三态成熟（PROVISIONAL → ADVISORY → GOVERNED）验收。
+ *
+ * ADVISORY = 发育闭环经路径 B 探索（AGENT）自动推出非空、非 gap、非兜底答案，但未达 dataBearing 的 GOVERNED 标尺
+ * ——自动发育所得、待人工坐实的中间态。诚实门（RL4）：不冒充 GOVERNED（未投影承载数据），也不含糊降级 PROVISIONAL（确有 advisory 答案）。
+ * 关键边界：路径 A 工作流只渲染静态占位文本（RENDER_NOT_PROJECTED）≠ advisory（见上方 GROWTH_POINTER 仍 PROVISIONAL）。
+ */
+describe("O12 · ADVISORY 三态（自动发育所得待人工坐实，不冒充 GOVERNED 不降格 PROVISIONAL）", () => {
+  it("grow 一张路径B探索出非空答案的卡（capability 在但当前视图无候选→agent 推出 advisory 答案）→ maturity=ADVISORY（诚实中间态）", async () => {
+    const t = await createTestApp();
+    const now = new Date().toISOString();
+    const intentKey = "advisory_sample_intent";
+    const planId = "plan_advisory_sample_v1";
+    // 意图/计划已发布（capabilityOk=true），但 enabledViews 限定到 dash；卡 targetView=risk（错配）
+    // → 该视图候选为空 → 跳过确定性绑定 → 走路径 B（agent 探索）。
+    const plan: ExecutionPlan = {
+      id: planId, packageId: PKG, key: intentKey, version: 1, status: "PUBLISHED",
+      steps: [{ id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "占位" }] } }],
+    };
+    const intent: IntentDefinition = {
+      id: "int_advisory_sample_v1", packageId: PKG, key: intentKey, version: 1, status: "PUBLISHED",
+      name: "ADVISORY 样本意图", description: "advisory 中间态样本", examples: ["advisory 样本问题"],
+      enabledViews: ["dash"], slots: [], planId, riskLevel: "READ", owner: "test", createdAt: now, updatedAt: now,
+    };
+    const scenario: Scenario = {
+      id: `scn_${TENANT}_ADVISORY`, tenantId: TENANT, scenarioKey: "ADVISORY_CARD",
+      name: "ADVISORY 样本", targetView: "risk", intentKey, triggerQuestion: "advisory 样本问题：本体外探索能给个参考吗？",
+      solver: "", rules: [], riskLevel: "COMPUTE", summary: "advisory 样本", mode: "AGENT_FIRST",
+      presetContext: { targetView: "risk", selectedObjects: [], slotPresets: {} }, status: "PUBLISHED", version: 1,
+    };
+    await t.repos.plans.insert(plan);
+    await t.repos.intents.insert(intent);
+    await t.repos.scenarios.upsert(scenario);
+
+    // 路径 B：分类 outOfCatalog + agent 给出**非空文本**最终答案（非 gap/非兜底，但无承载数据块）。
+    // grow 首验 + 自成长 LOOP 探针会多次跑 QOS → 备足若干轮 agent turn（确定性、文本一致）。
+    for (let i = 0; i < 8; i++) {
+      t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
+      t.llm.queueAgentTurn({ content: [{ type: "text", text: "参考分析" }, { type: "tool_use", id: `tu${i}`, name: "final_answer", input: { blocks: [{ type: "text", markdown: "据现有本体外推：建议关注产能与物流双约束（参考性，待人工核实）。" }], provenance: [] } }] } as never);
+    }
+
+    const res = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/ADVISORY_CARD/grow", headers: debugHeaders(ADMIN) });
+    expect(res.statusCode).toBe(200);
+    const run = res.json() as { maturity: string; verification: { status: string; path: string } };
+    // 三态诚实定级：路径 B 推出非空 advisory 答案、未达数据承载 GOVERNED → ADVISORY（不冒充 GOVERNED，不降格 PROVISIONAL）。
+    expect(run.verification.path).toBe("AGENT");
+    expect(run.maturity).toBe("ADVISORY");
+    expect(run.maturity).not.toBe("GOVERNED"); // RL4：未投影承载数据，绝不冒充 GOVERNED
+    // 留痕落卡，manage 可见 ADVISORY 相位。
+    const manage = (await (await t.app.inject({ method: "GET", url: "/b/v1/scenarios/manage", headers: debugHeaders(ADMIN) })).json()) as { scenarioKey: string; maturity?: string }[];
+    expect(manage.find((s) => s.scenarioKey === "ADVISORY_CARD")?.maturity).toBe("ADVISORY");
+  });
+});
+
+/**
+ * O11 · 自动 planSlice（growScenario 据卡 sliceTargets 自动调 DataCore /a/v1/slices/plan 把切片纳入发育闭环）。
+ *
+ * 复用既有 OBO 客户端模式（OntologyClient.planSlice，透传用户 JWT/X-Debug-User）。DoD：声明 sliceTargets 的卡 grow → 真调
+ * planSlice 出切片（事件携 plannedSlices）；规划不可达（NO_PATH）→ 诚实出 NO_SLICE 缺口，不静默；切片未长齐 → maturity 不得 GOVERNED。
+ */
+describe("O11 · growScenario 自动调 planSlice（sliceTargets→切片，诚实 NO_SLICE 不静默）", () => {
+  const baseCard = (overrides: Partial<Scenario>): Scenario => ({
+    id: `scn_${TENANT}_${overrides.scenarioKey}`, tenantId: TENANT, scenarioKey: "X", name: "切片样本",
+    targetView: "capacity_view", intentKey: "capacity_feasibility", triggerQuestion: "4680-NCM 加 20% 六周产能？",
+    solver: "", rules: [], riskLevel: "COMPUTE", summary: "O11 样本", mode: "WORKFLOW_FIRST",
+    presetContext: { targetView: "capacity_view", selectedObjects: [], slotPresets: { model: { objectId: "4680-NCM" }, demandDelta: 0.2, weeks: 6 } as never },
+    status: "PUBLISHED", version: 1, ...overrides,
+  });
+
+  it("声明可达 sliceTargets 的卡 grow → 真调 planSlice 出切片（事件携 plannedSlices）→ 无 NO_SLICE 缺口", async () => {
+    const t = await createTestApp();
+    await t.repos.scenarios.upsert(baseCard({
+      scenarioKey: "SLICE_OK",
+      sliceTargets: [{ rootType: "Order", targets: ["Model", "Base"] }],
+    }));
+    const res = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/SLICE_OK/grow", headers: debugHeaders(ADMIN) });
+    expect(res.statusCode).toBe(200);
+    const run = res.json() as { maturity: string; gaps: { gapCode: string }[] };
+    // planSlice 真被调用且可达 → 无 NO_SLICE 缺口。
+    expect(run.gaps.some((g) => g.gapCode === "NO_SLICE")).toBe(false);
+    // 事件携规划出的 sliceKey（确定性 biz.Order.Model_Base）。
+    const events = await t.repos.events.listAfter("SLICE_OK", 0);
+    const matured = events.find((e) => e.event === "scenario.matured" || e.event === "scenario.gap_detected");
+    const planned = (matured?.payload as { plannedSlices?: string[] } | undefined)?.plannedSlices ?? [];
+    expect(planned).toContain("biz.Order.Model_Base");
+  });
+
+  it("声明不可达 sliceTargets（NO_PATH）的卡 grow → 诚实出 NO_SLICE 缺口（NEEDS_HUMAN）→ 切片未长齐不冒充 GOVERNED", async () => {
+    const t = await createTestApp();
+    await t.repos.scenarios.upsert(baseCard({
+      scenarioKey: "SLICE_NOPATH",
+      sliceTargets: [{ rootType: "Order", targets: ["__unreachable_Type"] }],
+    }));
+    const res = await t.app.inject({ method: "POST", url: "/b/v1/scenarios/SLICE_NOPATH/grow", headers: debugHeaders(ADMIN) });
+    expect(res.statusCode).toBe(200);
+    const run = res.json() as { maturity: string; gaps: { gapCode: string; disposition: string }[] };
+    // 诚实门：不可达 → NO_SLICE 缺口（不静默），NEEDS_HUMAN（需补本体链路）。
+    const noSlice = run.gaps.find((g) => g.gapCode === "NO_SLICE");
+    expect(noSlice).toBeDefined();
+    expect(noSlice!.disposition).toBe("NEEDS_HUMAN");
+    // 切片未长齐 → 即便答案验证通过也封顶 ADVISORY，绝不冒充 GOVERNED。
+    expect(run.maturity).not.toBe("GOVERNED");
+  });
+});

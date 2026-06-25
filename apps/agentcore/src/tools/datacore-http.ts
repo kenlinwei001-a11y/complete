@@ -1,4 +1,4 @@
-import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -63,6 +63,9 @@ class HttpOntologyClient implements OntologyClient {
   constructor(private readonly baseUrl: string) {}
   resolveSlice(ctx: ToolAuthCtx, sliceKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/slices/${encodeURIComponent(sliceKey)}/resolve`, { args });
+  }
+  planSlice(ctx: ToolAuthCtx, req: PlanSliceRequest): Promise<PlanSliceResponse> {
+    return call<PlanSliceResponse>(this.baseUrl, ctx, "POST", `/a/v1/slices/plan`, req);
   }
   queryObjects(
     ctx: ToolAuthCtx,

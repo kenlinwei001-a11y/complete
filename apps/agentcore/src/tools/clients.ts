@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -12,6 +12,8 @@ export interface ToolAuthCtx extends AuthCtx {
 
 export interface OntologyClient {
   resolveSlice(ctx: ToolAuthCtx, sliceKey: string, args: Record<string, unknown>): Promise<ToolPayload>;
+  /** P3 O11：发育闭环自动规划切片（OBO → DataCore /a/v1/slices/plan，rootType+targets→SliceSpec，复用既有已发布切片）。 */
+  planSlice(ctx: ToolAuthCtx, req: PlanSliceRequest): Promise<PlanSliceResponse>;
   queryObjects(
     ctx: ToolAuthCtx,
     objectType: string,
