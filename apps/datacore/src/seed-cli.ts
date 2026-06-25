@@ -8,7 +8,7 @@ import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
-import { seedDemo, seedDemoSynthetic } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +33,8 @@ async function main(): Promise<void> {
   if (config.SEED_DEMO === "1") {
     await seedDemoSynthetic(services.synthetic, adminCtx);
     logger.info("generated battery-manufacturing synthetic dataset (seed 42)");
+    await seedDemoPropagationRules(repos);
+    logger.info("seeded demo sim propagation rules (sandbox non-empty)");
   }
   await repos.close();
 }

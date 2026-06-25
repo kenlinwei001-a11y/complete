@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -43,6 +43,9 @@ async function main(): Promise<void> {
     const adminCtx = await seedDemo(repos);
     logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
     await seedDemoSynthetic(services.synthetic, adminCtx);
+    // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
+    await seedDemoPropagationRules(repos);
+    logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
   }
 
   services.scheduler.start();
