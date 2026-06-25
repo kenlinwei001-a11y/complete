@@ -212,9 +212,11 @@ export const ScenarioPresetContextSchema = z.object({
 });
 export type ScenarioPresetContext = z.infer<typeof ScenarioPresetContextSchema>;
 
-// PRD-scenario-ontogenesis P1：场景卡发育态（相位成熟，A18 二分）。
-// GOVERNED=已亲手跑通验证真出答案（默认呈现"可用"）· PROVISIONAL=发育中/未验证（诚实标，不假装可用）。
-export const ScenarioMaturitySchema = z.enum(["PROVISIONAL", "GOVERNED"]);
+// PRD-scenario-ontogenesis P1/P3：场景卡发育态（相位成熟，A18 三分）。
+// GOVERNED=已亲手跑通验证真出答案（默认呈现"可用"）· PROVISIONAL=发育中/未验证（诚实标，不假装可用）·
+// ADVISORY（P3 O12）=发育闭环已自动跑通且 advisory 校验出非空答案，但未达 GOVERNED 的人工验证标尺
+// （介于二者之间：可参考、标明"自动发育所得，待人工坐实"，绝不冒充 GOVERNED）。
+export const ScenarioMaturitySchema = z.enum(["PROVISIONAL", "ADVISORY", "GOVERNED"]);
 export type ScenarioMaturity = z.infer<typeof ScenarioMaturitySchema>;
 
 /** 一张卡的发育验证运行（留痕：三环 + A10 验证结论 + 缺口）。前端可见 → "知道数据从哪来、发育到哪一步"。 */
@@ -261,6 +263,9 @@ export const ScenarioSchema = z.object({
   // 设定（GOVERNED=验证真出答案 / PROVISIONAL=发育中有缺口）；lastOntogenesisRun 留痕（前端可见，知道来源）。
   maturity: ScenarioMaturitySchema.optional(),
   lastOntogenesisRun: ScenarioOntogenesisRunSchema.optional(),
+  // PRD-scenario-ontogenesis P3 O11：卡声明要自动长出的切片（rootType + 目标覆盖类型，形同
+  // PlanSliceRequest）；growScenario 缺切片时据此自动调 planSlice（OBO /a/v1/slices/plan），不再手装。
+  sliceTargets: z.array(z.object({ rootType: z.string(), targets: z.array(z.string()).default([]) })).optional(),
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
 
