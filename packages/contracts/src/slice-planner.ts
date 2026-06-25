@@ -36,6 +36,9 @@ export const PlanSliceRequestSchema = z.object({
   rootType: z.string().min(1),
   targets: z.array(z.string().min(1)).min(1),
   maxHops: z.number().int().min(1).max(12).default(6),
+  // E6 切片按近似问句复用（P2，additive）：精确覆盖未命中时用问句原文与既有切片 description/indexEntities
+  // 词重叠检索命中既有切片复用，不重规划（确定性 Jaccard，R6）。
+  question: z.string().optional(),
 });
 export type PlanSliceRequest = z.infer<typeof PlanSliceRequestSchema>;
 
