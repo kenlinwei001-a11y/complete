@@ -646,6 +646,11 @@ export const handlers = [
       ],
     }),
   ),
+  // C9 评测用例创建（input/expect）：真后端 POST /b/v1/evals。mock 回回填一条带 id 的用例。
+  http.post("*/b/v1/evals", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    return HttpResponse.json({ id: `ec_mock_${Date.now()}`, tenantId: "demo", origin: "MANUAL", createdAt: new Date().toISOString(), ...body }, { status: 201 });
+  }),
   http.get("*/b/v1/evals/runs", () =>
     HttpResponse.json({
       items: [
@@ -2169,6 +2174,20 @@ export const handlers = [
     if (!wf) return err(404, "NOT_FOUND", "Workflow 不存在");
     Object.assign(wf, body);
     return HttpResponse.json(wf);
+  }),
+  // C8 试运行（编辑器内所见即所得）：真后端走执行引擎；mock 给确定性步骤输出 + 渲染结果。
+  http.post("*/b/v1/workflows/:id/run", ({ params }) => {
+    const wf = db.workflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "WORKFLOW_NOT_FOUND", "Workflow 不存在");
+    const stepOutputs: Record<string, unknown> = {};
+    for (const s of wf.steps) stepOutputs[s.id] = { type: s.type, ok: true };
+    const renderStep = wf.steps.find((s) => s.type === "render_answer");
+    return HttpResponse.json({
+      runId: `wfr_mock_${wf.id}`,
+      status: "COMPLETED",
+      answer: renderStep ? { blocks: (renderStep.params as { blocks?: unknown[] }).blocks ?? [] } : { blocks: [] },
+      stepOutputs,
+    });
   }),
   http.post("*/b/v1/workflows/:id/publish", async ({ params, request }) => {
     const wf = db.workflows.find((w) => w.id === params.id);

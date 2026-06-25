@@ -79,13 +79,21 @@ try {
     await p.screenshot({ path: `${SHOT}/shot-slices.png` });
   } else fail("C7 /admin/slices 不可达");
 
-  // ── C8 workflow 试运行 + render 可视 ─────────────────────────────
+  // ── C8 workflow 试运行 + render 可视（仅 DRAFT 可编辑 → 先＋新建一个 DRAFT）──
   await nav(p, "/admin/workflows");
   if ((await p.locator("[data-testid=workflow-create]").count()) > 0) ok("C8 工作流＋新建存在");
-  await p.waitForTimeout(500);
-  if ((await p.locator("[data-testid=wf-dry-run]").count()) > 0) ok("C8 工作流试运行按钮存在");
+  await p.click("[data-testid=workflow-create]").catch(() => {});
+  await p.waitForTimeout(1500);
+  if ((await p.locator("[data-testid=wf-dry-run]").count()) > 0) ok("C8 工作流试运行按钮存在（DRAFT）");
   else fail("C8 工作流无试运行按钮（违 AC2）");
-  if ((await p.locator("[data-testid=wf-solver-select]").count()) > 0) ok("C6 workflow solverKey 为引用下拉");
+  if ((await p.locator("[data-testid^=wf-render-blocks-]").count()) > 0) ok("C8 render_answer 为 block 可视编排（非裸 JSON · D-28）");
+  else fail("C8 render_answer 仍裸 JSON（违 D-28）");
+  // 加 invoke_solver 步骤验 solverKey 引用下拉
+  await p.locator("[aria-label=步骤类型]").last().selectOption("invoke_solver").catch(() => {});
+  await p.click("[data-testid=wf-add-step]").catch(() => {});
+  await p.waitForTimeout(600);
+  if ((await p.locator("[data-testid^=wf-solver-select-]").count()) > 0) ok("C6 workflow solverKey 为引用下拉（带查看/＋新建）");
+  else fail("C6 workflow solverKey 仍裸输入");
 
   // ── C9 评测 CRUD ─────────────────────────────────────────────────
   await nav(p, "/admin/evals");

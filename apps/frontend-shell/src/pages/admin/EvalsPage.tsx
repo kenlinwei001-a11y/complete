@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchEvalCases, fetchEvalRuns, runEvalSuite } from "@/api/endpoints";
+import { createEvalCase, fetchEvalCases, fetchEvalRuns, runEvalSuite } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
+import { useWorkspace } from "@/workspace/useWorkspace";
 
 /**
  * Agent 评测体系（运营完备性 OC2）：评测用例库 + 跑评测套件 + 历史报告（意图准确率/工具正确率/时延）。
@@ -17,12 +18,35 @@ export default function EvalsPage() {
   const [suite, setSuite] = useState<string>("classifier");
   const { data: cases } = useQuery({ queryKey: ["b", "eval-cases", suite], queryFn: () => fetchEvalCases(suite) });
   const { data: runs } = useQuery({ queryKey: ["b", "eval-runs"], queryFn: fetchEvalRuns });
+  const { data: workspace } = useWorkspace();
+  const packageId = workspace?.scenarioPackages[0] ?? "";
 
   const run = useMutation({
     mutationFn: () => runEvalSuite(suite),
     onSuccess: (r) => {
       toast(`评测完成：${r.passed}/${r.total} 通过`, "success");
       void qc.invalidateQueries({ queryKey: ["b", "eval-runs"] });
+    },
+    onError: toastError,
+  });
+
+  // C9 评测用例 CRUD：从问句 + 期望意图（+ 视图上下文）建用例（input/expect）。
+  const [showCreate, setShowCreate] = useState(false);
+  const [draft, setDraft] = useState({ query: "", view: "dash", intentKey: "" });
+  const createMut = useMutation({
+    mutationFn: () =>
+      createEvalCase({
+        suite,
+        packageId,
+        input: { query: draft.query.trim(), context: { view: draft.view.trim() || "dash", selectedObjects: [], filters: {} } },
+        expect: { intentKey: draft.intentKey.trim() === "" ? null : draft.intentKey.trim() },
+        origin: "MANUAL",
+      }),
+    onSuccess: () => {
+      toast("用例已创建", "success");
+      setDraft({ query: "", view: "dash", intentKey: "" });
+      setShowCreate(false);
+      void qc.invalidateQueries({ queryKey: ["b", "eval-cases"] });
     },
     onError: toastError,
   });
@@ -50,7 +74,41 @@ export default function EvalsPage() {
         </button>
       </div>
 
-      <div className="section-title">用例库（{SUITE_LABEL[suite]}）</div>
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        用例库（{SUITE_LABEL[suite]}）
+        <button className="btn sm" data-testid="eval-case-create" style={{ marginLeft: "auto" }} onClick={() => setShowCreate((v) => !v)}>
+          {showCreate ? "收起" : "＋新建用例"}
+        </button>
+      </div>
+      {showCreate && (
+        <div className="panel" style={{ marginBottom: 12, display: "grid", gap: 8 }} data-testid="eval-case-form">
+          <label style={{ fontSize: 12 }}>
+            问句（input.query）
+            <input data-testid="eval-case-query" value={draft.query} placeholder="如：4680-NCM 加 20% 六周能不能接？" onChange={(e) => setDraft({ ...draft, query: e.target.value })} style={{ width: "100%" }} />
+          </label>
+          <div style={{ display: "flex", gap: 10 }}>
+            <label style={{ fontSize: 12, flex: 1 }}>
+              视图上下文（context.view）
+              <input data-testid="eval-case-view" value={draft.view} onChange={(e) => setDraft({ ...draft, view: e.target.value })} style={{ width: "100%" }} />
+            </label>
+            <label style={{ fontSize: 12, flex: 1 }}>
+              期望意图（expect.intentKey；留空=应判域外）
+              <input data-testid="eval-case-intent" value={draft.intentKey} placeholder="如：capacity_check（留空=域外）" onChange={(e) => setDraft({ ...draft, intentKey: e.target.value })} style={{ width: "100%" }} />
+            </label>
+          </div>
+          <div>
+            <button
+              className="btn primary sm"
+              data-testid="eval-case-save"
+              disabled={createMut.isPending || draft.query.trim() === "" || packageId === ""}
+              onClick={() => createMut.mutate()}
+            >
+              {createMut.isPending ? "保存中…" : "保存用例"}
+            </button>
+            {packageId === "" && <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>（需先有场景包）</span>}
+          </div>
+        </div>
+      )}
       <table className="cmp" data-testid="eval-cases" style={{ width: "100%", marginBottom: 14 }}>
         <thead><tr><th>问句</th><th>期望意图</th><th>出处</th></tr></thead>
         <tbody>

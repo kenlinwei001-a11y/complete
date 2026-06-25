@@ -892,6 +892,14 @@ export const fetchEvalCases = (suite?: string) =>
 export const fetchEvalRuns = () => api.b<{ items: EvalRunReport[] }>("/b/v1/evals/runs");
 export const runEvalSuite = (suite: string, agentKey?: string) =>
   api.b<EvalRunReport>("/b/v1/evals/run", { method: "POST", body: { suite, ...(agentKey ? { agentKey } : {}) } });
+/** C9 评测用例 CRUD（input/expect）：POST /b/v1/evals（catalog_admin）。满足 agent/skill 发布门禁≥3 用例。 */
+export const createEvalCase = (body: {
+  suite: string;
+  packageId: string;
+  input: { query: string; context: { view: string; selectedObjects?: unknown[]; filters?: Record<string, unknown> } };
+  expect: { intentKey?: string | null };
+  origin?: string;
+}) => api.b<EvalCase>("/b/v1/evals", { method: "POST", body });
 
 /** 本体切片清单（治理：切片=可追溯子图 root→hops）。 */
 export interface SliceSummary { sliceKey: string; version: number; rootType: string; hops: number; linkKeys: string[]; maxNodes?: number; fixtures: number }
