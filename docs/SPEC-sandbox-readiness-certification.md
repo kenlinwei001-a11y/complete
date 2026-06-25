@@ -61,6 +61,20 @@ export const SimCertificationSchema = z.object({
       source: z.string(),                       // 如 "FULFILLS r_order_risk_from_factory"
     })),
   }),
+  // 运行期两雷达（§2.4/§2.5 · 我 PRD 初版漏、2026-06 补 · 投影既有信号 · 非可计算维诚实 RESERVED）。
+  // 全 optional：缺则前端不渲染该雷达、不阻断主流程（守 RL3 不新算 / provisional-honesty 不编造）。
+  healthRadar: z.object({                        // 竞品 Runtime Health Radar 6 维（§2.4）
+    ruleCoverage: z.number(), utilization: z.number(), closure: z.number(),
+    cycleSafety: z.number(), observability: z.number(), activation: z.number(),
+    composite: z.number(),
+  }).optional(),
+  trustRadar: z.object({                         // 竞品 Runtime Trust Radar 4 维（§2.5）
+    runtimeTrust:   z.union([z.number(), z.literal("RESERVED")]),
+    explainability: z.union([z.number(), z.literal("RESERVED")]),
+    temporalTrust:  z.union([z.number(), z.literal("RESERVED")]),
+    dataTrust:      z.union([z.number(), z.literal("RESERVED")]),
+    computableOf4:  z.number().int(),            // 竞品"2/4 可计算"——诚实计数
+  }).optional(),
   canEnterSimulation: z.boolean(),              // = L4 ∧ trialTick.passed ∧ closure.gatePassed
   gaps: z.array(z.object({ gapCode: z.string(), ref: z.string(), detail: z.string() })), // 缺件诚实清单
   computedAt: z.string(),
@@ -108,6 +122,32 @@ export type SimCertification = z.infer<typeof SimCertificationSchema>;
 | **综合** | 加权 | `w_s×结构 + w_k×知识 + w_b×行为` | 综合 86/100 |
 
 > 权重 config（R14），默认 `w_s=0.4 / w_k=0.3 / w_b=0.3`。
+
+### 2.4 运行健康雷达 6 维 ↔ closure/规则/拓扑（**我 PRD 初版漏设计，2026-06 补 · 竞品 image1 Runtime Health Radar**）
+
+> ⚠ **补设计由来**：竞品沙盘主屏除"三维准备度"外，另有**两张运行期雷达**（健康 6 维 + 信任 4 维），我增量 2 SPEC 初版只设计了三维准备度，漏了这两张（`AUDIT-sandbox-ui-design-alignment.md 轴1`）。这里补上，**仍守 RL3——全部投影既有信号，不新写校验**；某维无既有信号则**诚实标 `RESERVED`**（对齐竞品自己也只"2/4 可计算"），不编造。
+
+| 健康维（竞品 image1） | ← 我方既有来源（投影） | **算法（0-100 · 零新校验）** |
+|---|---|---|
+| **Rule Coverage** 规则覆盖 | `rule-closure:check` 的 ⋃引用⊆已定义 + `SOLVER_RULE_REFS` | `100 × 已定义规则数 / 被引用规则数`（复用 rule-closure，不新算） |
+| **Utilization** 利用率 | closure DATA 维 + Action 引用计数（同 §2.3 知识准备度的"利用率"） | `100 × 被 Action/派生消费的状态变量数 / 总状态变量数` |
+| **Closure** 闭包 | `ClosureReport.gatePassed` + 五维 findings | `100 × 通过维数 / 5`（OBJECT/DATA/FORWARD/CHAIN/SHAPE） |
+| **Cycle Safety** 环安全 | recompute 拓扑序环检测（**复用既有，同 §2.2 Fanout**） | 无环=100；有环=`100 × (1 − 环边数/总边数)` |
+| **Observability** 可观测 | SliceSpec 覆盖（同 §2.2 Observability） | `100 × 被切片/查询覆盖的对象数 / 总对象数` |
+| **Activation** 激活 | recompute 可达性（静态可达 + 条件激活派生数） | `100 × 可达派生数 / 总派生数` |
+
+> 综合健康分 = 6 维均值（竞品 image1 显"综合84"）。**6 维全部来自既有 closure / rule-closure / recompute / slice，无一新写算法。**
+
+### 2.5 运行信任雷达 4 维 ↔ 溯源/时序（**同上补设计 · 竞品 image1 Runtime Trust Radar · 诚实部分可计算**）
+
+| 信任维（竞品 image1） | ← 我方既有来源 | **算法 / 诚实状态** |
+|---|---|---|
+| **Runtime Trust** 运行信任 | `canEnterSimulation` + closure.gatePassed | `100 × 可计算维数 / 4`（与竞品"可计算覆盖度"同义；未达则 <100，诚实） |
+| **Explainability** 可解释 | R13 `Provenance`/`RuleRef` 覆盖 | `100 × 有 provenance 的 KPI/状态变量数 / 总数`（复用 R13，不新写） |
+| **Temporal Trust** 时序信任 | 传导核 Temporal Trust 不变量（`propagateTick` 不窥未来，增量3 已守） | tick 全程不读未来=`RESERVED→可计算`：传导已跑则投影"无未来读"为 100，否则 **`RESERVED`**（诚实，竞品此维也标 Reserved） |
+| **Data Trust** 数据信任 | 数据血缘 / 源系统绑定（连接器 lineage） | 当前无统一血缘投影 → **`RESERVED`**（诚实留空，不编造；待数据血缘成一等再接） |
+
+> **诚实红线**：`Temporal/Data Trust` 暂 `RESERVED` 的，前端显"🔒 Reserved + 原因"，**不渲染假分数**（对齐 `provisional-honesty.ts` + A18；竞品自己也只 2/4 可计算）。契约 §1 两雷达字段全 `optional`，缺则不渲染该雷达，不阻断主流程。
 
 ---
 
@@ -180,6 +220,7 @@ export function deriveCertification(
 ## 8. 前端（**增量 4 才做 UI**，本增量只交付数据契约）
 
 - L0-L4 stepper（`data-testid=sim-cert-level`）· 三维 **RadarChart**（复用 `views/sim/RadarChart.tsx`，dims=结构/知识/行为）· 世界完整度 gauge + `entering[]` 清单 · 缺件 `gaps[]` 列表。
+- **运行健康雷达 6 维**（§2.4，复用 `RadarChart`，dims=RuleCoverage/Utilization/Closure/CycleSafety/Observability/Activation + 综合分）· **运行信任雷达 4 维**（§2.5，Runtime/Explainability/Temporal/Data Trust；**`RESERVED` 维显 "🔒 Reserved + 原因" 不画假分**，标"N/4 可计算"）。两雷达字段 `optional`，缺则不渲染（实拍审计 `AUDIT §3.5`：现 SandboxView 仅小三角三维，缺这两张——P1 补）。
 - IA：**folded 进 `modeling`（建模就绪）+ `growth`（运行就绪），不新开就绪页**（见 `ARCH-global-ia-consolidation §2`）。
 > 本增量(2)**不写 UI**；数据契约就绪即可，UI 在增量 4。
 

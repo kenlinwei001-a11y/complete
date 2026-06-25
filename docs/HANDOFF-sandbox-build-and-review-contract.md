@@ -86,8 +86,10 @@ RL1 本体先行 · RL2 暗发 · RL3 单一来源(不出双份) · RL4 走正�
 | **⑥ FDE 证据** | 附"以用户身份亲手跑一遍"证据(CLI 输出/截图)，非只单测绿 | 只有绿测试、无亲手证据 |
 | **⑦ 北极星距离** | PR 描述含"还差什么 + 哪些是 happy-path/合成" | 自证"完美"无诚实盘点 |
 | **⑧ 可回退** | entitlement 关=404/入口消失；迁移有 down；旧路径在 | 删旧页/不可回退 |
+| **⑨ UI 设计对齐（两轴 · UI 增量强制）** | **轴1**=对照竞品 `GROUNDING §F` 逐元素（健康雷达6维/信任雷达4维/L0-L4 stepper/L4三元组/初始化向导/逐对象就绪/AI指挥台/数据管道节点图）；**轴2**=对照设计 mockup 逐元素是否真实现（非只"渲染了诚实数据"）。**两轴逐元素核对、缺项列清单**，并真启动系统 Playwright 实拍佐证 | 只验功能不验设计完整性 / 用"happy-path 渲染了数据"冒充"设计砌齐"（见 `AUDIT-sandbox-ui-design-alignment.md` 教训） |
 
 **评审产物**：我在 PR 上给 ✅可合 / 🔴打回(列项+红线+建议)。打回项修复后重提。**我不替实现，只评审 + 守纪律。**
+**⚠ 评审教训（2026-06）**：增量 2/4 曾被我误判"✅可合/全闭"——只验了功能与 happy-path 渲染，**未做 ⑨ 两轴核对**，实拍才发现 UI 仅 ~30-40% + demo 空世界。故 ⑨ 为 UI 增量**硬门**，详见 `docs/AUDIT-sandbox-ui-design-alignment.md`。
 
 ---
 
@@ -120,6 +122,26 @@ RL1 本体先行 · RL2 暗发 · RL3 单一来源(不出双份) · RL4 走正�
 - [ ] **增量 4 · `sim compare` CLI 人体工学**（增量 1 评审遗留）：现用法 `sim compare <占位> --a <A> --b <B>`，第一个位置参被忽略、真正读 `--a/--b`，反直觉（评审时实测踩空）。收 CLI 人体工学时改成 `sim compare <A> <B>`（两个位置参直取），或让位置参即 A。
 - [ ] **增量 4 · `entering[].source` 标签真实化**（增量 2 评审遗留）：`certification.ts:~176` 把"将进入沙盘的状态变量"来源**硬编码成 `FULFILLS r_<type>_<prop>`**，与真实派生/链路无关（仅占位标签，显示用）。UI 落地时改成反映真实 link/派生来源（否则前端清单会一律显 FULFILLS，误导）。
 - [ ] **增量 2/3 数据齐时 · 传导 live-fire FDE**（增量 3 评审遗留）：本轮评审已核传导核（9 单测覆盖 改coef改果/delay/decay/clamp/Temporal Trust/coefficientRef）+ live 接线（真本体图 + ruleParams + opt-in），但**未亲手在真种子对象上点燃一次跨对象传导**（种子对象 id 与会话态难手工对齐）。倒序发育/两行业数据接齐后，补一条"发布 PropagationRule → 真对象 tick → 目标态变化"的 FDE 证据（commit 已诚实标 happy-path）。
+
+---
+
+#### 6.1.A UI 设计对齐缺口（2026-06 实拍审计 · `AUDIT-sandbox-ui-design-alignment.md §3.5` · 按优先级，做 UI 增量时按 §5⑨ 两轴核对带走）
+
+> 来源：真启动系统 Playwright 三路实拍（竞品/我的设计/实际）。实际 UI 仅实现设计 ~30-40% 且 demo 沙盘是空世界。下列**前端砌齐 + demo 种数据**，非后端契约缺（契约齐）。
+
+**P0（红线/北极星 · 不砌齐不判"可用"）**
+- [ ] **采纳 → R4 Action 草稿**（沙盘 RiskBoardView/SandboxView 均无采纳按钮）：模拟态须走"采纳才写真值"正门（RL4），现完全缺。
+- [ ] **分支 → 多场景 KPI 对比 UI**（北极星）：后端 `sim branch`/`sim compare` 有，前端**无对比面板**；分支→对比断在 UI。
+- [ ] **初始化向导 + 范围预检**（竞品 image7）：现 `SandboxView` 挂载即自动 `init()` 建会话，**无 3 步向导（时间→范围→预检）+ 世界完整度/将进入清单**确认步。
+- [ ] **就绪面板砌齐**（竞品 image6，后端 `deriveCertification` 数据全在）：L0-L4 stepper / L4 三元组卡 / Trial Tick 卡 / 全局↔局部(逐对象)切换（现写死 GLOBAL）/ 完整度 gauge / entering 清单 —— **6 项前端未渲染**，现仅小三维三角 + canEnter 文字。
+- [ ] **给 demo 租户种 PropagationRule + 状态变量**：实拍 demo 沙盘 `0 状态变量/0 传导规则`=空世界（引擎真过 live-fire，是种子缺口）。种几条让沙盘开箱有内容可推。
+
+**P1（设计完整度 · 部分是我 PRD 自身漏的）**
+- [ ] **健康雷达 6 维 + 信任雷达 4 维**（竞品 image1；**我 SPEC 自己漏了**，先回写 `SPEC-sandbox-readiness-certification` 再交付）。
+- [ ] **AI 推演指挥台**（竞品 image1 右栏：主动提待办 + 生成查询代码）：现仅底部被动输入框，无主动配置。
+- [ ] **逐对象就绪 %**（竞品 image5）：`ObjectTypesBrowserPage` 现只有物化数，无逐对象 75/100 + 结构/知识/行为分解。
+- [ ] **ModelingPage 数据源面板 + 就绪面板 + 数据管道节点图**（竞品 image2；`PmDag`/`FdeGraph` 现成未复用）：现为文本映射 + 空状态。
+- [ ] **R13 溯源悬浮**（KPI 上规则/源系统来源，`Provenance`/`RuleRef` 现成未用）。
 
 
 ---
