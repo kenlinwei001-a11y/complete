@@ -60,7 +60,7 @@
 
 ## 3. 红线（破一条即打回）
 
-1. **🔴 真推演 not 假推演（最高红线）**：mock/哈希(`mockTightness`)/写死**不得冒充真算**。凡推演结果(红/黄状态、紧张度、数字)：① 有真数据→真算；② 无真数据→**后端透 dataMode + 前端显"估算/无数据"诚实标**,**绝不渲染成与真算无差别的红/黄**。**洛阳红色却受影响订单空=当前活体反例,必修**。
+1. **🔴 真推演 not 假推演（最高红线 · 见权威清单 `AUDIT-fake-simulation-inventory.md`）**：mock/哈希(`mockTightness`)/写死**不得冒充真算**。凡推演结果(红/黄状态、紧张度、数字)：① 有真数据→真算；② 无真数据→**后端透 dataMode + 前端显"估算/无数据"诚实标**,**绝不渲染成与真算无差别的红/黄**。**对抗审计已坐实 7 处假推演(不止洛阳)**：①风险看板红卡(charCode 哈希恒红)②项目推演紧张度(裸 `mockTightness`)③订单全链库存(`OrderChainView.tsx:30,111` 前端 hashN 现编)④传导链财务击穿(`PropagationTimeline.tsx:60` 写死 0.6万/套)⑤驾驶舱兜底毛利率⑥`extended.ts:472,477` 空对象现编输入⑦方案 100/17 魔法基线。**修法抄典范**:`capex_scenario`(缺数抛错不造假)+ `LedgerView`(逐格 Provenance)+ schema 加 dataMode + 前端必显 + 杀前端现编财务(详 AUDIT §5)。**再发现一处假推演冒充真=打回。**
 2. **融合接/扩/换 · 禁新建并行**：每条差距先接现有(`RuleRef`/`Provenance`/`DagNodeDrawer`/现有求解器);扩须回写本体;禁第二套展示组件/数据层。
 3. **无不可溯源数据 + 无下钻死路**(承 SPEC-trust)：规则号接 RuleRef、数字接 Provenance、下钻 modal/面包屑。
 4. **R6 确定性 · RL5 零业务常数**：同 seed 字节一致,无 Date.now/random,换租户=换配置。
