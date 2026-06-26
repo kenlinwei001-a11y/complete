@@ -8,7 +8,9 @@
 
 ---
 
-## 1. 双布局 Shell（关键 · 复刻时两套都要）
+## 1. 页面内多窗格布局（**非重建应用导航** · 见 §9 范围决定）
+
+> 范围收窄后:**不重建竞品的两套应用 shell/导航**(§9)。下表描述的是竞品两类页面的**页内多窗格布局**——2 个复刻页(建模/沙盘)在**系统现有 ShellLayout 内**采用对应的页内布局(三栏/主区+抽屉),应用级导航沿用系统现有。
 
 | | **Shell A · 顶部横向导航**(建模工作台族) | **Shell B · 左侧竖向导航**(推演沙盘族) |
 |---|---|---|
@@ -18,9 +20,9 @@
 | 备注 | image8 顶横+左竖叠加→两套同源可叠 | 顶部仅 logo+当前页标题 |
 | **平台落法** | 复用现 `ShellLayout` 顶栏扩"操作区段控+保存/发布";建模类页走此 | `ShellLayout` 左 NAV 即此;沙盘类页走此 |
 
-## 2. 导航 IA（13 项主菜单 · 1:1 结构 · 平台术语映射）
+## 2. 导航 IA（认知映射 · **不做 IA 复刻**）
 
-> 竞品菜单 → 平台自有项(多数系统已有能力,IA 复刻=对齐结构+补缺项)：
+> **范围决定(已定)：不复刻竞品 13 顶栏 IA、不重建系统导航**——11 个非建模/非沙盘模块平台多已有(见 §9),沿用系统现有页与入口。下表仅为"竞品模块 ↔ 平台已有能力"的**认知映射(非施工目标)**：
 
 | 竞品菜单(原文) | 平台自有项 | 系统现状 |
 |---|---|---|
@@ -94,7 +96,43 @@
 - **约束类型体系（image8）**：`+ GEO_WITHIN 约束` 等**类型化约束**(约束类型枚举:地理围栏…) + `+ 声明目标`。
 - **运行态状态卡组件（image8）**：`世界状态`卡(健康**字母分级 A–C** + 需关注态势 + 阈控 + 展开详情) · `Schema对齐`卡(时序窗口对齐值 + 聚合算子 `Sum·字段 / Max·字段` + 窗口契约 + 展开 Label 契约) · `诞生N规则✓` · `并行全分支/Step+N`。
 
-## 9. 缺页登记（S0 · 待补竞品截图或映射现有页 · 你定 a/b）
+## 9. 复刻范围（已定 · 11 模块不做 1:1）
 
-竞品 13 模块,本程序仅 **本体建模 + 推演沙盘** 有页面设计。**以下 11 模块零页面设计**(无竞品截图)→ 待 (a) 你补截图后 1:1,或 (b) 映射系统现有页、仅导航 IA 对齐：
-`探索 · 智能体(Agent列表/编排主页) · 元数据摄取 · 元数据资产 · 知识库 · 图谱可视化 · 素材库 · 模型管理 · MCP · 插件 · 系统管理(用户/角色/菜单/日志/定时任务/访问令牌/用户反馈 7 子页)`。
+**决定(用户定)：其余 11 模块无需 1:1 复刻。** 摸真代码核实平台多已有(仅入口分组与竞品扁平 13 顶栏不同),**沿用系统现有页与入口、不重建**：
+
+| 竞品模块 | 平台已有(file/路由) |
+|---|---|
+| 智能体 | `AgentsPage` · `/b/v1/agents` |
+| 元数据摄取 | `ConnectionsPage`/`DataBuilderPage` · `/a/v1/connector` |
+| 元数据资产 | `ObjectTypesBrowserPage`/`FieldProfilePage` · `/a/v1/ontology` |
+| 知识库 | `/a/v1/kb`(前端嵌 DataBuilderPage) |
+| 模型管理 | `LlmProvidersPage` · `/a/v1/llm-providers` |
+| MCP | `McpPage` · `/b/v1/mcp` |
+| 探索 | `QueryHistoryPage`/`ScenesPage`(场景启动器)+QOS |
+| 系统管理 | `UsersPage`/`PermissionsPage`/`OpsSchedulePage`/`CalibrationPage` |
+| 图谱可视化 / 素材库 / 插件 | ◐ 能力在(DomainsPage 图谱 / `SkillsPage` 技能 / Skill+MCP=插件)·无专页,沿用现有 |
+
+**∴ 1:1 复刻范围 = 仅 2 模块**：本体建模(`SPEC-replica-modeling-family` · 轨P)+ 推演沙盘(`SPEC-replica-sandbox-family` · 轨Q)。其页面内容渲染在**系统现有 ShellLayout** 内,套本份 §3 token + §4/§8 组件库;**不重建应用导航、不做 §2 那 13 项 IA 复刻**。
+
+---
+
+## 10. 后端可达性（摸真代码核实 · **修正 §4/各页"接现有"乐观注**）
+
+> 独立后端审计逐元素摸真代码:**§4 与各页里大量"接现有 X"是假设**。实情分三类。**复刻这些元素前先看本节判定;③类必须先建后端或诚实标 RESERVED/空,禁建假数据壳(继承 `AUDIT-fake-simulation-inventory` 真推演红线)。**
+
+**① 真·接现成(0 后端活·SPEC 注准确)**：L0-L4 五级状态机 + 三维准备度条 + 世界完整度环 + entering 清单(`deriveCertification`/`sim/certification.ts`,端点 `app.ts:1410`) · gauge/环 · provenance RawDataset→ObjectType 两层 + 逐对象 lineage(`/ontology/graph`、`/lineage/object`) · tick/checkpoint/branch/curTick(Step+N)/rulesFired(诞生N规则) · 派生计数 · 段控/badge/token/Agent指挥台接 QOS。
+
+**② 要扩后端(有基础·中等)**：数据流 DAG 中间"数据处理"层(前端从 `sourceBindings.fieldMappings` 合成,无新端点) · Schema 聚合算子加 `Last`(现 sum/max) · `[RUNTIME]/[INGEST]` 阶段标(PropagationRule 加 phase 字段) · 风险 TOP3(截断+**守已有 dataMode 红线**;扩 4 个 MOCK 因素真数据源) · 并行分支计数 API · 逐类型 Action 计数(ActionType 加 targetTypeKey) · Query→MCP 动态暴露(B3 框架可扩 `update_exposure`)。
+
+**③ 基本从零建后端(高工作量·复刻前必建·审核方最该警惕)**：
+1. **6 维健康雷达** — 契约无 `healthRadar` 字段,`deriveCertification` 只产 **3 维**;第六维 Cycle Safety 只有布尔无分值投影。要新写投影+加契约+回填。
+2. **4 维信任雷达** — 契约+实现全无;Temporal/Data Trust **连可计算来源都没有**(诚实做=4 维全 RESERVED→雷达=空壳)。
+3. **图查询构建器 + 平台自有查询语言 + 代码生成** — 全 0 命中(Slice 是声明式子图非查询语言)。整块新建。
+4. **Query→Skill 绑定** — Skill 包 markdown 手册无 queryId,要新建绑定+codegen。("接 B4 融合非新建"=**假**)
+5. **4 业务动作(断供/恢复/产能调整/订单延期)+ RL4 驱动运行态** — 动作全缺;且沙盘 `act` 端点绕过 ActionDraft、`propagateTick` 零动作入参→**"动作→改沙盘态→tick 响应"机制断裂**。("接现有 Action/RL4 走正门"=**假**)
+6. **分层推演目标体系(总体/分系统/局部)** — 沙盘 `SimSession` 无 goal 字段。
+7. **类型化约束 + GEO_WITHIN** — 完全不存在,Rule DSL 不能复用为空间约束。
+8. **世界状态 A–C 字母分级** — 无(有 L 级/数值)。
+9. **L4 子项 Schema lint / 已持久化** — cert 链路无这两子项(Trial Tick 有)。
+
+> **施工纪律(修正)**：轨 P/Q **不是纯前端复刻**——③类 9 项(尤其两雷达/图查询/业务动作驱动)是**先建后端能力,再复刻前端**;建不动或未建时,**前端诚实标 RESERVED/空/估算,绝不画假数据雷达**。各页 SPEC 凡与本节③冲突的"接现有"注,**以本节为准(降级为换-build)**。

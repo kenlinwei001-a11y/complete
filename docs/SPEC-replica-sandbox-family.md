@@ -1,6 +1,8 @@
 # SPEC · 复刻沙盘族（1:1 · SandboxView/SimInit：运行评估双雷达 + 初始化向导 + 运行驾驶舱）
 
-> 引用 `SPEC-replica-design-system.md`(Shell B 左导航 + token + 组件库)。本份描述沙盘族 3 页(竞品 image1/7/8)专属布局/数据/融合。**视觉1:1 + 接现有 `/a/v1/sim/*`(轨A)。平台术语。**
+> 引用 `SPEC-replica-design-system.md`(token + 组件库)。本份描述沙盘族 3 页(竞品 image1/7/8)专属布局/数据/融合。**视觉1:1 + 接现有 `/a/v1/sim/*`(轨A)。平台术语。**
+>
+> ⚠️ **后端前置(摸真代码已核·见 `design-system §10`)**：本份多处"接现有"注**已被修正**——**6维健康雷达 / 4维信任雷达 / 业务动作接口(4动作)+RL4驱动 / 分层推演目标 / GEO_WITHIN约束 / 世界状态A-C / 风险榜MOCK因素** 后端**不存在或半套,复刻前必先建后端,或前端诚实标 RESERVED/空/估算——禁画假数据雷达(继承真推演红线)。** 真·接现成的只有:L0-L4/三维准备度/世界完整度/tick·checkpoint·branch/provenance。
 >
 > **落点**：`SandboxView`(`/v/sim-sandbox`,轨A P0 已闭、tick 已修)/ `SimInitWizard`(`/v/sim-init`)→ 升级到竞品像素级(多为轨A 的 P1)。
 

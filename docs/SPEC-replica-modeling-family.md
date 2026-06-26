@@ -3,6 +3,8 @@
 > 引用 `SPEC-replica-design-system.md`(Shell A 顶导航 + token + 组件库)。本份只描述建模族 3 页(竞品 image2/6/5)的页面专属布局/数据/融合。**视觉1:1 + 接现有后端(轨L provenance/deriveCertification)。平台术语。**
 >
 > **落点**：`ModelingPage`(`/admin/modeling`,轨L 已真值闭合三栏)→ 升级到竞品像素级。
+>
+> ⚠️ **后端前置(摸真代码已核·见 `design-system §10`)**：**图查询页(构建器/查询语言/代码生成/Query→Skill/Query→MCP)后端基本不存在,几乎整块新建**;`L4 子项 Schema lint·已持久化` cert 无;`数据流DAG 中间处理层` 需前端从 fieldMappings 合成。真·接现成:L0-L4 五级/三维准备度/绿环/provenance(RawDataset→ObjectType)。凡与 §10③ 冲突的"接现有"注以 §10 为准。
 
 ---
 
