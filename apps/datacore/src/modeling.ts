@@ -101,7 +101,7 @@ export function deriveModelingSuggestion(
         refToTypeKey: refType,
       };
     });
-    return { action: "CREATE" as const, existingTypeKey: null, typeKey, displayName: dataset.name, domain: "unassigned", sourceDataset: dataset.name, properties, confidence: 1 };
+    return { action: "CREATE" as const, existingTypeKey: null, typeKey, displayName: dataset.name, domain: "unassigned", sourceDataset: dataset.name, properties, derivedProperties: [], confidence: 1 };
   });
 
   const linkTypes: ModelingSuggestion["linkTypes"] = [];
@@ -442,7 +442,8 @@ export class ModelingService {
             // 治理增量 §3：A3 对名称类/主键字段建议 searchable。
             searchable: p.isPrimaryKey || p.propKey === "name" || p.propKey === "displayName" || undefined,
           })),
-          derivedProperties: [],
+          // 轨L 增量2：携带草案派生属性（半自动建模人工 PATCH 填入的 R14 KPI 派生图叶子）。
+          derivedProperties: (t.derivedProperties ?? []).map((d) => ({ propKey: d.propKey, formula: d.formula })),
           sourceBindings: binding,
         });
       }

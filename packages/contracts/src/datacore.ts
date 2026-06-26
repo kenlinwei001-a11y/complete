@@ -173,11 +173,18 @@ export const ModelingSuggestionSchema = z.object({
         z.object({
           propKey: z.string(),
           sourceField: z.string(),
-          dataType: z.enum(["string", "number", "boolean", "date", "enum", "ref"]),
+          // json：与 PropertyDef 对齐，使建模链能忠实表达数组/对象型属性（如 Model.bases）。
+          dataType: z.enum(["string", "number", "boolean", "date", "enum", "ref", "json"]),
           isPrimaryKey: z.boolean(),
           refToTypeKey: z.string().nullable(),
         }),
       ),
+      /**
+       * 派生属性（R14 零写死 KPI 的派生图叶子，如 "SUM(Order.qty BY model)"）。
+       * deriveModeling 默认空（数据里长不出公式）；半自动建模的人工 PATCH 阶段填入，
+       * publish 携带进类型定义。轨L 增量2：demo 经真链建模须保策展派生属性不丢。
+       */
+      derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).optional(),
       confidence: z.number(),
     }),
   ),
