@@ -35,9 +35,9 @@ export function validateClosure(plan: BuildPlan, policy: ClosurePolicy, buildMod
     }
   }
 
-  // ---- E14 域运营本体不变量（数据驱动 RL5）：碎片树（悬空 ref / 无根碎片）= OBJECT/FAILED（HARD）----
-  // 倒推出的孤儿 Process（无 factory 根）/ 悬空 refToTypeKey → DOMAIN_INVARIANT_VIOLATION，喂 hasObjectFail。
-  // STRICT 阻断 / PROVISIONAL 降 ADVISORY 如实记录（不静默碎片树）。
+  // ---- E14 域运营本体不变量（数据驱动 RL5）：碎片树（悬空 ref / 无根碎片）= OBJECT/SOFT（ORPHAN_PASSED）----
+  // 评审校正：DANGLING_REF 与 ORPHAN_NO_ROOT 均 SOFT surface 进 GapReport（非静默），但**不 HARD 阻断**——
+  // 合法最小域（LLM 只产 Proc+Ord、不建全工厂）是可建的，"无根/悬空"是"倒推或不完整"的 advisory 信号、非误杀理由。
   for (const f of checkDomainInvariants(plan)) findings.push(f);
 
   // ---- 反向-data：字段是否被消费（映射进对象属性 / 规则操作数 / 求解器入参）----

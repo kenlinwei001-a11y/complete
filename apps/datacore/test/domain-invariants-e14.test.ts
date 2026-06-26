@@ -33,28 +33,22 @@ describe("增量2 · E14 域不变量（约束是数据）", () => {
     }
   });
 
-  it("孤儿 Process（无 factory 根）→ ORPHAN_NO_ROOT finding（OBJECT/FAILED，非静默）", () => {
+  it("孤儿 Process（无 factory 根）→ ORPHAN_NO_ROOT finding 被surface（OBJECT/SOFT ORPHAN_PASSED，非静默）", () => {
+    // 评审校正：无根 = 倒推可能不完整的**信号**，非"此域不可建"的事实 → SOFT 记录（surface 进 GapReport），
+    // 不 HARD 阻断合法最小域（如 LLM 只产 Proc+Ord、不建全工厂）。仍非静默（finding 在、可观测）。
     const findings = checkDomainInvariants(orphanProcessPlan());
     const orphan = findings.find((f) => String(f.detail).includes("ORPHAN_NO_ROOT"));
     expect(orphan).toBeDefined();
     expect(orphan!.kind).toBe("OBJECT");
-    expect(orphan!.status).toBe("FAILED");
+    expect(orphan!.status).toBe("ORPHAN_PASSED");
     expect(orphan!.detail).toContain(DOMAIN_INVARIANT_CODE);
   });
 
-  it("STRICT 闭包：孤儿运营对象 → gatePassed=false + blocked=true（碎片树被挡，不静默通过）", () => {
+  it("STRICT 闭包：孤儿运营对象不 HARD 阻断合法最小域（gatePassed=true），但 ORPHAN_NO_ROOT 进 findings（非静默 surface）", () => {
     const r = validateClosure(orphanProcessPlan(), policy, "STRICT");
-    expect(r.gatePassed).toBe(false);
-    expect(r.blocked).toBe(true);
-    expect(r.findings.some((f) => String(f.detail).includes("ORPHAN_NO_ROOT") && f.status === "FAILED")).toBe(true);
-  });
-
-  it("PROVISIONAL 闭包：同碎片 → 降 ADVISORY、blocked=false（如实记录、不靠阻断成 0），gatePassed 诚实=false", () => {
-    const r = validateClosure(orphanProcessPlan(), policy, "PROVISIONAL");
     expect(r.blocked).toBe(false);
-    expect(r.gatePassed).toBe(false);
-    const dom = r.findings.find((f) => String(f.detail).includes("ORPHAN_NO_ROOT"));
-    expect(dom!.severity).toBe("ADVISORY");
+    expect(r.gatePassed).toBe(true); // 合法最小域可建——E14 无根碎片是 advisory 信号，不误杀
+    expect(r.findings.some((f) => String(f.detail).includes("ORPHAN_NO_ROOT"))).toBe(true); // 仍 surface，不静默
   });
 
   it("地板补根：运营故事（工序/瓶颈/设备）倒推 → 自动拉入 factory 根 + 域完整（无 ORPHAN_NO_ROOT）", () => {

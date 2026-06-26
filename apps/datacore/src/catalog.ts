@@ -96,6 +96,13 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）：把待办项指派到容器/基地，最小化总成本，满足容量约束。", argHints: { items: "待指派项", bins: "容器(容量/成本)" }, domain: "generic" },
   { key: "sequencing_optimize", name: "排序最优化", description: "通用排序最优化（CP-SAT 可证最优）：在切换成本矩阵上求最短换型路径序列。", argHints: { jobs: "作业集", changeover: "两两切换成本" }, domain: "generic" },
   { key: "packing_optimize", name: "装箱最优化", description: "通用装箱最优化（CP-SAT 可证最优）：按容量把项装入最少容器（产能填充/批次合并）。", argHints: { items: "待装项(尺寸)", binCapacity: "单箱容量" }, domain: "generic" },
+  // 优化融合（G-12）：抽象优化模板池 5 核心 + optimize_whatif（经 OntologyBinding 绑租户本体，CP-SAT sidecar 求最优）。
+  { key: "facility_location", name: "选址最优化", description: "通用选址最优化（CP-SAT 可证最优）：在开设成本与服务成本下选最优设施集并分派需求点。经本体绑定喂任意行业（仓/店、诊所/社区…）。", argHints: { facilities: "候选设施(开设成本)", clients: "需求点", serveCost: "服务成本矩阵" }, domain: "generic" },
+  { key: "min_cost_flow", name: "最小成本流", description: "通用最小成本流（CP-SAT 可证最优）：在带容量/成本的网络上满足供需的最小成本流分配。", argHints: { nodes: "节点(供给/需求)", arcs: "弧(容量/单位成本)" }, domain: "generic" },
+  { key: "set_cover", name: "集合覆盖", description: "通用集合覆盖最优化（CP-SAT 可证最优）：用最小成本子集覆盖全部元素。", argHints: { universe: "待覆盖元素集", subsets: "候选子集(覆盖/成本)" }, domain: "generic" },
+  { key: "independent_set", name: "最大独立集", description: "通用最大权独立集（CP-SAT 可证最优）：在冲突图上选互不相邻的最大权点集。", argHints: { nodes: "节点(权重)", edges: "冲突边" }, domain: "generic" },
+  { key: "combinatorial_auction", name: "组合拍卖", description: "通用组合拍卖赢家裁定（CP-SAT 可证最优）：在物品不重复分配约束下最大化中标价值。", argHints: { items: "拍卖物品", bids: "投标(物品组合/出价)" }, domain: "generic" },
+  { key: "optimize_whatif", name: "优化 what-if", description: "对已绑定的优化模板做结构化扰动（改参/加约束/松约束/换目标权重）→ sidecar 重解 → Δ目标值/可行性/冲突约束。", argHints: { templateKey: "模板键", perturbation: "结构化扰动" }, domain: "generic" },
 ];
 
 /** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */

@@ -94,6 +94,9 @@ export function checkDomainInvariants(plan: Pick<BuildPlan, "objectTypes">): Clo
   }
 
   // (2) 无根碎片：需挂根的运营域对象到不了根域。仅对 ref 目标存在的边建图（悬空已在(1)报）。
+  // 诚实但不过度阻断（评审校正）：comprehend 倒推一个最小域（如 Proc+Ord、无 factory）是**合法**的——
+  // 故事可能只讲子工序、不建全工厂。无根 = "倒推可能不完整"的**信号**，非"此域不可建"的事实。
+  // 故记 SOFT（ORPHAN_PASSED，进 GapReport 非静默），不 HARD 阻断合法最小域（与 (1) DANGLING_REF 一致）。
   const edges = new Map<string, string[]>();
   for (const r of refs) if (byKey.has(r.to)) (edges.get(r.from) ?? edges.set(r.from, []).get(r.from)!).push(r.to);
   for (const t of [...objectTypes].sort((a, b) => a.typeKey.localeCompare(b.typeKey))) {
@@ -105,8 +108,8 @@ export function checkDomainInvariants(plan: Pick<BuildPlan, "objectTypes">): Clo
       findings.push({
         kind: "OBJECT",
         ref: t.typeKey,
-        status: "FAILED",
-        detail: `${DOMAIN_INVARIANT_CODE}:ORPHAN_NO_ROOT · 运营域 ${t.domain} 对象 ${t.typeKey} 无 ref 链通达根域 [${rootDomains.join("/")}]（无根碎片）`,
+        status: "ORPHAN_PASSED",
+        detail: `${DOMAIN_INVARIANT_CODE}:ORPHAN_NO_ROOT · 运营域 ${t.domain} 对象 ${t.typeKey} 无 ref 链通达根域 [${rootDomains.join("/")}]（无根碎片，SOFT 记录·倒推或不完整）`,
       });
     }
   }
