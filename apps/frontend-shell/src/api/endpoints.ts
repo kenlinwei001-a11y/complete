@@ -164,7 +164,7 @@ export const fetchObjectByKey = (typeKey: string, objectKey: string) =>
   );
 
 export const fetchObjectTypes = () =>
-  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean }[] }[]>(
+  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[] }[]>(
     "/a/v1/ontology/object-types",
   );
 

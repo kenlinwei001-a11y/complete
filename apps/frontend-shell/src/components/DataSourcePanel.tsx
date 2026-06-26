@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ConnectionInstance } from "@platform/contracts";
 import {
   fetchConnections,
+  fetchObjectTypes,
   fetchRawDatasets,
   type ModelingDraftVM,
   type RawDatasetVM,
@@ -26,16 +27,33 @@ export function freshness(at?: string | null): { label: string; stale: boolean }
   return { label, stale: h > 2 };
 }
 
-/** 统计每个数据集被多少对象类型消费（跨所有草案，按 dataset 名匹配 objectType.sourceDataset，去重）。 */
-export function coverageByDatasetName(drafts: ModelingDraftVM[] | undefined): Map<string, number> {
+/** 已发布对象类型（coverage 权威来源）：sourceBindings[].dataset = 该类型消费的真 rawDataset。 */
+export type PublishedTypeForCoverage = { key: string; sourceBindings?: { dataset: string }[] };
+
+/**
+ * 统计每个数据集被多少对象类型消费（去重），用于"已建模/未建模"徽章。
+ * 轨L 增量3（真值闭合·解决根本问题）：**权威来源 = 已发布对象类型的 `sourceBindings.dataset`**
+ * （demo 经真建模链后 provenance 真实，34 类型各绑其 rawDataset）——不再仅认草案，本体已存在的数据集
+ * 不得显"未建模"。草案仍并入（建模中的 in-progress 草案也计覆盖），二者按 (dataset→typeKey) 去重合并。
+ */
+export function coverageByDatasetName(
+  drafts: ModelingDraftVM[] | undefined,
+  publishedTypes?: PublishedTypeForCoverage[],
+): Map<string, number> {
   const m = new Map<string, Set<string>>();
+  const add = (dataset: string | undefined, typeKey: string) => {
+    if (!dataset) return;
+    const set = m.get(dataset) ?? new Set<string>();
+    set.add(typeKey);
+    m.set(dataset, set);
+  };
+  // ① 权威：已发布类型的真 sourceBindings（provenance 因果真实）。
+  for (const ty of publishedTypes ?? []) {
+    for (const b of ty.sourceBindings ?? []) add(b.dataset, ty.key);
+  }
+  // ② 补充：建模中草案（in-progress，未发布也显"建模中"覆盖）。
   for (const d of drafts ?? []) {
-    for (const ot of d.suggestion.objectTypes) {
-      if (!ot.sourceDataset) continue;
-      const set = m.get(ot.sourceDataset) ?? new Set<string>();
-      set.add(ot.typeKey);
-      m.set(ot.sourceDataset, set);
-    }
+    for (const ot of d.suggestion.objectTypes) add(ot.sourceDataset, ot.typeKey);
   }
   const out = new Map<string, number>();
   for (const [name, set] of m) out.set(name, set.size);
@@ -54,9 +72,11 @@ function groupKeyOf(ds: RawDatasetVM, connById: Map<string, ConnectionInstance>)
 export function DataSourcePanel({ drafts }: { drafts?: ModelingDraftVM[] }) {
   const { data: datasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
   const { data: connections } = useQuery({ queryKey: ["a", "connections"], queryFn: fetchConnections });
+  // 轨L 增量3：已发布类型为 coverage 权威来源（provenance 真实后 sourceBindings 指向真 rawDataset）。
+  const { data: publishedTypes } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
 
   const connById = new Map((connections ?? []).map((c) => [c.id, c]));
-  const coverage = coverageByDatasetName(drafts);
+  const coverage = coverageByDatasetName(drafts, publishedTypes);
 
   // 按来源系统分组（键从数据派生）。分组内按数据集名排序，分组按名排序 → 渲染确定。
   const groups = new Map<string, RawDatasetVM[]>();

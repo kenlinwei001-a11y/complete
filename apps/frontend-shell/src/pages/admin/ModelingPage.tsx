@@ -6,6 +6,7 @@ import {
   fetchBusinessDomains,
   fetchModelingCoverage,
   fetchModelingDrafts,
+  fetchObjectTypes,
   fetchRawDatasets,
   fetchSyncJob,
   materializeDraft,
@@ -27,6 +28,8 @@ const t = zh.admin.modeling;
 export default function ModelingPage() {
   const queryClient = useQueryClient();
   const { data: drafts } = useQuery({ queryKey: ["a", "modeling-drafts", {}], queryFn: fetchModelingDrafts });
+  // 轨L 增量3：已发布本体（中心真值闭合权威源）——本体已存在则中心绝不显"暂无本体"（非只看草案）。
+  const { data: publishedTypes } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
   const [draftId, setDraftId] = useState<string | null>(null);
   // 原型 intake「建模为新类型」深链：?datasets=id1,id2 → 自动开新建草案弹窗并预选这些数据集。
   const [params, setParams] = useSearchParams();
@@ -57,8 +60,11 @@ export default function ModelingPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {draft ? (
             <DraftWorkbench draft={draft} />
+          ) : publishedTypes && publishedTypes.length > 0 ? (
+            // 轨L 增量3：有已发布本体但无活动草案 → 显已发布本体（绝不"暂无本体"），可溯各自 sourceDataset。
+            <PublishedOntologyView types={publishedTypes} />
           ) : (
-            // 管理平台增量 §6：无本体 → 「从数据建模」或「一键合成」
+            // 管理平台增量 §6：真无本体（无草案且无已发布类型）→ 「从数据建模」或「一键合成」
             <EmptyState message={zh.admin.empty.ontology}>
               <button className="btn primary sm" onClick={() => setSuggestOpen(true)} data-testid="cta-modeling">
                 {zh.admin.empty.modelingCta}
@@ -82,6 +88,51 @@ export default function ModelingPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * 轨L 增量3：已发布本体视图（中心真值闭合）。无活动草案但本体已存在时显此——逐类型显
+ * 名称/域/属性数/派生属性数 + **可溯到各自 sourceDataset**（provenance 真实，R13），绝不"暂无本体"。
+ */
+function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fetchObjectTypes>> }) {
+  const sorted = [...types].sort((a, b) => a.key.localeCompare(b.key));
+  return (
+    <div data-testid="published-ontology">
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+        <strong style={{ fontSize: 14 }}>已发布本体</strong>
+        <span style={{ color: "var(--muted, #888)", fontSize: 12 }} data-testid="published-ontology-count">
+          {sorted.length} 个对象类型（经建模链发布 · 可溯数据源）
+        </span>
+      </div>
+      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ textAlign: "left", color: "var(--muted, #888)" }}>
+            <th style={{ padding: "4px 8px" }}>类型</th>
+            <th style={{ padding: "4px 8px" }}>域</th>
+            <th style={{ padding: "4px 8px" }}>属性</th>
+            <th style={{ padding: "4px 8px" }}>派生</th>
+            <th style={{ padding: "4px 8px" }}>来源数据集（provenance）</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((ty) => (
+            <tr key={ty.key} style={{ borderTop: "1px solid var(--border, #2a2a2a)" }} data-testid={`pub-type-${ty.key}`}>
+              <td style={{ padding: "4px 8px" }}>
+                <span style={{ fontWeight: 600 }}>{ty.displayName}</span>{" "}
+                <span style={{ color: "var(--muted, #888)" }}>{ty.key}</span>
+              </td>
+              <td style={{ padding: "4px 8px" }}>{ty.domain ?? "—"}</td>
+              <td style={{ padding: "4px 8px" }}>{ty.properties.length}</td>
+              <td style={{ padding: "4px 8px" }}>{ty.derivedProperties?.length ?? 0}</td>
+              <td style={{ padding: "4px 8px" }} data-testid={`pub-type-src-${ty.key}`}>
+                {(ty.sourceBindings ?? []).map((b) => b.dataset).join(", ") || <span style={{ color: "var(--danger, #e55)" }}>无来源</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
