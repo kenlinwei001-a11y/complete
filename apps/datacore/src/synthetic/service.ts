@@ -1,4 +1,4 @@
-import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
 import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
@@ -7,6 +7,7 @@ import type { Repos } from "../repo/repo.js";
 import type { LlmClient } from "../llm.js";
 import type { Metrics } from "../metrics.js";
 import type { OntologyService } from "../ontology.js";
+import type { ModelingService } from "../modeling.js";
 import type { RulesService } from "../rules.js";
 import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
@@ -86,6 +87,8 @@ export class SyntheticService {
   private scheduler: SchedulerService | null = null;
   private features: FeatureService | null = null;
   private actions: ActionService | null = null;
+  /** 轨L 增量2：demo 经真建模链建本体时注入（modeling 在 synthetic 之前构造，setter 注入避免依赖环）。 */
+  private modeling: ModelingService | null = null;
   /** 运营态出厂配置增量 §1：livedIn=true 时在标准合成后运行回放引擎（注入避免依赖环）。 */
   private livedInRunner: ((ctx: AuthCtx, input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed: number; jobId: string }) => Promise<{ replay: { batches: number; days: number; points: number } }>) | null = null;
 
@@ -105,12 +108,14 @@ export class SyntheticService {
     actions?: ActionService;
     ts?: TimeseriesService;
     livedInRunner?: SyntheticService["livedInRunner"];
+    modeling?: ModelingService;
   }): void {
     this.scheduler = deps.scheduler ?? this.scheduler;
     this.features = deps.features ?? this.features;
     this.actions = deps.actions ?? this.actions;
     this.ts = deps.ts ?? this.ts;
     this.livedInRunner = deps.livedInRunner ?? this.livedInRunner;
+    this.modeling = deps.modeling ?? this.modeling;
   }
 
   private async resolveTemplate(ctx: AuthCtx, industry: string): Promise<IndustryTemplate> {
@@ -143,7 +148,8 @@ export class SyntheticService {
 
   async runJob(
     ctx: AuthCtx,
-    input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed?: number; livedIn?: boolean },
+    // 轨L 增量2：viaModelingChain（仅 demo 种子内部传 true）→ battery 本体经真建模链产出。API 契约不暴露此内部参数。
+    input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed?: number; livedIn?: boolean; viaModelingChain?: boolean },
   ): Promise<SyntheticJob> {
     const t0 = Date.now();
     const seed = input.seed ?? 42;
@@ -171,7 +177,7 @@ export class SyntheticService {
 
       // ②③ ontology from template + source-object generation (topo order).
       if (input.industry === "battery-manufacturing") {
-        await this.instantiateBattery(ctx, seed, input.scale, origin);
+        await this.instantiateBattery(ctx, seed, input.scale, origin, input.viaModelingChain === true);
       } else {
         await this.instantiateGeneric(ctx, template, seed, input.scale, origin);
       }
@@ -503,19 +509,28 @@ export class SyntheticService {
     seed: number,
     scale: "S" | "M" | "L" | "XL",
     origin: { type: "SYNTHETIC"; jobId: string },
+    // 轨L 增量2：chainMode=true（仅 demo）→ 本体类型不在此直 upsert，改由真建模链
+    // （derive→确定性策展PATCH→publish→materialize）产出；仍产 rawDataset+链路类型+链路实例。
+    chainMode = false,
   ): Promise<number> {
-    // 治理增量 §1：先注册域（object_types.domain FK 校验目标 + 检索/图谱按域分组）。
+    // 治理增量 §1：先注册域（object_types.domain FK 校验目标 + 检索/图谱按域分组）。域两模式都先注册（publish 归域校验需要）。
     await this.seedDomains(ctx);
-    for (const t of batteryObjectTypes()) {
-      const existing = await this.ontology.getType(ctx, t.key);
-      if (!existing) await this.ontology.upsertType(ctx, t);
+    if (!chainMode) {
+      // A 路：直接 upsert 策展类型 + 早发布版本。chainMode 下这两步移交建模链（末尾 seedDemoOntologyViaChain）。
+      for (const t of batteryObjectTypes()) {
+        const existing = await this.ontology.getType(ctx, t.key);
+        if (!existing) await this.ontology.upsertType(ctx, t);
+      }
     }
+    // 链路类型：两模式都种（§1.A 末行：A 路链路种法保留，沙盘传导依赖其 key；upsertLinkType 不校验目标类型存在）。
     for (const lt of batteryLinkTypes()) await this.ontology.upsertLinkType(ctx, lt);
-    if ((await this.ontology.currentVersion(ctx.tenantId)) === 0) {
+    if (!chainMode && (await this.ontology.currentVersion(ctx.tenantId)) === 0) {
       await this.ontology.publishVersion(ctx);
     }
     const g = generateBattery(seed, scale);
     let n = 0;
+    // chainMode：收集链产 rawDataset id 喂建模链（按 putAll 调用序）。
+    const rawDsIds: string[] = [];
     // 活数据可溯（PRD-live-traceable-data §3.1）：合成对象不再凭空落库，而是经"合成数据源→
     // RawDataset(原始行)→物化为对象"的真链路；每对象 origin 记 rawDatasetId/rawRowIdx，使数据源页
     // 可见原始数据、推演结果可溯回源头。确定性：连接/原始表/对象/backref 均由 (industry,scale,seed) 决定。
@@ -534,6 +549,11 @@ export class SyntheticService {
       };
       await this.repos.rawDatasets.put(ds);
       await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
+      if (chainMode) {
+        // chainMode：只产 rawDataset+rawRows，对象由建模链 materialize 产（统一 id 字节同 A 路）。
+        rawDsIds.push(ds.id);
+        return;
+      }
       // ② 物化为对象，origin 记源头 backref（rawDatasetId + 行序）
       let idx = 0;
       for (const row of rows) {
@@ -569,8 +589,11 @@ export class SyntheticService {
     await putAll("RootCauseChain", g.rootCauseChains, "chainId");
     await putAll("SopVersionRow", g.sopVersionRows, "verId");
     // 20 场景目录 §7 扩展数据（E6b）：13 求解器所需对象类型 + 实例（确定性 + 戏剧点植入）。
-    for (const t of extendedObjectTypes()) {
-      if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
+    // chainMode：扩展类型同样移交建模链产出（末尾 seedDemoOntologyViaChain 覆盖 battery+extended 全 34 类）。
+    if (!chainMode) {
+      for (const t of extendedObjectTypes()) {
+        if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
+      }
     }
     const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] }, scale);
     await putAll("Material", ext.materials, "matId");
@@ -789,7 +812,64 @@ export class SyntheticService {
         spec: s.spec,
       });
     }
+    // 轨L 增量2：chainMode → 全 34 rawDataset 经真建模链产本体类型+对象（provenance 因果真实）。
+    // 放在末尾：此前无 repo 对象/类型读依赖（putLink 不读、computeRollup 用内存临时对象、sliceSpecs 不读），
+    // 链 materialize 后 runJob 后续步骤（seedViewConfigs 等）即见全 34 类型+对象，与 A 路无差。
+    if (chainMode) {
+      n = await this.seedDemoOntologyViaChain(ctx, rawDsIds);
+    }
     return n;
+  }
+
+  /**
+   * 轨L 增量2：demo 本体经真建模链产出（根因方案，非盖戳捷径）。
+   *  derive(全34 rawDataset → 带噪初稿+真 FK 候选) → 确定性策展 PATCH（以 batteryObjectTypes/
+   *  extendedObjectTypes 为半自动建模"人工修正真值"，覆写 suggestion 的 displayName/domain/属性/
+   *  派生属性；清 linkTypes 不污染 A 路策展链路）→ publishDraft（真 CREATE 类型 + publish 真算
+   *  sourceBindings/sourceDataset from 真 rawDataset → R13 provenance 因果真实）→ materialize（统一
+   *  id obj_${type}_${pk} + §1.2 CJK regex → 字节同基线）。R6：全程确定性 derive，无 LLM/时钟/随机。
+   *  幂等：fresh repo → 全 CREATE；rerun（类型已存在）→ MAP_TO_EXISTING（不崩；materialize 自清重物化）。
+   */
+  private async seedDemoOntologyViaChain(ctx: AuthCtx, rawDsIds: string[]): Promise<number> {
+    if (!this.modeling) throw new Error("modeling chain not wired (synthetic.wire({modeling}))");
+    const existingKeys = new Set((await this.ontology.listTypes(ctx)).map((t) => t.key));
+    const draft = await this.modeling.derive(ctx, rawDsIds);
+    // 确定性策展 PATCH：覆写 derive 的带噪初稿为策展真值（KEY/属性集 derive 已基本对，仅修 FK 过判/枚举/名/域/派生）。
+    draft.suggestion.objectTypes = this.buildCuratedSuggestionObjectTypes(existingKeys);
+    draft.suggestion.linkTypes = []; // 链路类型由 batteryLinkTypes（A 路）种，链不再产，避免 FK 自动命名链路污染。
+    await this.repos.ontologyDrafts.put(draft);
+    await this.modeling.publishDraft(ctx, draft.id);
+    const mat = await this.modeling.materialize(ctx, draft.id);
+    return mat.created;
+  }
+
+  /**
+   * 把策展类型定义（batteryObjectTypes+extendedObjectTypes，半自动建模"人工修正真值"）映射成
+   * ModelingSuggestion.objectTypes。sourceDataset=typeKey（rawDataset.name=typeKey）、sourceField=propKey
+   * （raw 列名=propKey）。已存在类型走 MAP_TO_EXISTING（rerun 幂等），否则 CREATE。
+   */
+  private buildCuratedSuggestionObjectTypes(existingKeys: Set<string>): ModelingSuggestion["objectTypes"] {
+    const defs = [...batteryObjectTypes(), ...extendedObjectTypes()];
+    return defs.map((def) => {
+      const exists = existingKeys.has(def.key);
+      return {
+        action: (exists ? "MAP_TO_EXISTING" : "CREATE") as "CREATE" | "MAP_TO_EXISTING",
+        existingTypeKey: exists ? def.key : null,
+        typeKey: def.key,
+        displayName: def.displayName,
+        domain: def.domain ?? "unassigned",
+        sourceDataset: def.key,
+        properties: def.properties.map((p) => ({
+          propKey: p.propKey,
+          sourceField: p.propKey,
+          dataType: p.dataType,
+          isPrimaryKey: p.isPrimaryKey ?? false,
+          refToTypeKey: p.refToTypeKey ?? null,
+        })),
+        derivedProperties: (def.derivedProperties ?? []).map((d) => ({ propKey: d.propKey, formula: d.formula })),
+        confidence: 1,
+      };
+    });
   }
 
   // -- generic instantiation from (LLM-generated) templates ----------------------

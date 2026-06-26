@@ -346,6 +346,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     features,
     actions,
     ts: timeseries,
+    // 轨L 增量2：注入建模链（modeling 在 synthetic 之前构造），供 demo 本体经真链产出。
+    modeling,
     livedInRunner: async (c, input) => {
       const state = await livedInEngine.run(c, input);
       return { replay: state.replay };
