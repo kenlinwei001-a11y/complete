@@ -169,7 +169,23 @@ export const fetchObjectTypes = () =>
   );
 
 // A4 对象/类型浏览器：每已发布类型物化计数 + 域 + 属性数（一次算）。
-export interface ObjectTypeStat { key: string; displayName: string; domain: string; propCount: number; derivedCount: number; pk: string | null; count: number }
+// 轨A P1 逐对象就绪%：readiness（0-100，三真后端维度算）+ 分解证据（boundCount/sourceProps/hasBindings/materialized）
+// + estimated（无源绑定时绑定覆盖维无数据，诚实降级）。
+export interface ObjectTypeStat {
+  key: string;
+  displayName: string;
+  domain: string;
+  propCount: number;
+  derivedCount: number;
+  pk: string | null;
+  count: number;
+  readiness: number;
+  boundCount: number;
+  sourceProps: number;
+  hasBindings: boolean;
+  materialized: boolean;
+  estimated: boolean;
+}
 export const fetchObjectTypeStats = () => api.a<{ stats: ObjectTypeStat[] }>("/a/v1/ontology/object-types/stats");
 export const fetchBusinessDomains = () => api.a<{ domains: { key: string; displayName: string; color: string }[] }>("/a/v1/business-domains");
 

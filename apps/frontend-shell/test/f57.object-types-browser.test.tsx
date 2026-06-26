@@ -40,4 +40,26 @@ describe("A4 · 对象/类型浏览器（域分组 + 物化计数 + 筛选 + 实
     expect(links.length).toBeGreaterThan(0);
     expect(links[0]!.getAttribute("href")).toMatch(/^\/o\/Base\//); // 下钻到 Object360
   });
+
+  // 轨A P1 逐对象就绪%：每类型显真后端算的就绪% + 展开见三维分解证据 + 域均就绪。
+  it("逐对象就绪%（真后端三维）+ 展开分解证据 + 域均就绪", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/object-types");
+    const page = await screen.findByTestId("object-types-page");
+
+    // 每类型显就绪%条（mock: Base 100% / Order 90% / ExternalSignal 56%）
+    expect((await within(page).findByTestId("ot-readiness-Base")).textContent).toContain("100%");
+    expect(within(page).getByTestId("ot-readiness-Order").textContent).toContain("90%");
+    expect(within(page).getByTestId("ot-readiness-ExternalSignal").textContent).toContain("56%");
+
+    // 域均就绪（product 域含 Model 100% + Order 90% = 95%）
+    expect(within(page).getByTestId("ot-domain-avg-product").textContent).toContain("95%");
+
+    // 展开 Order → 三维分解证据（绑定覆盖 5/6 等）
+    expect(within(page).queryByTestId("ot-readiness-evidence-Order")).toBeNull();
+    await user.click(within(page).getByTestId("ot-expand-Order"));
+    const ev = await within(page).findByTestId("ot-readiness-evidence-Order");
+    expect(ev.textContent).toContain("5/6");
+  });
 });

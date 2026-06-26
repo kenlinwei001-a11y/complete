@@ -53,7 +53,7 @@
 ## 3. 建模页族（Agent 1 补充，同一盲区）
 
 - **ModelingPage**：缺左栏数据源面板 + 就绪面板（ARCH §4 要求）🔴；映射画布是文本非节点图 🟡。
-- **ObjectTypesBrowserPage**：缺逐对象就绪%（竞品 image5）🔴。
+- **ObjectTypesBrowserPage**：~~缺逐对象就绪%（竞品 image5）🔴~~ → **✅ 已补（轨A P1）**：每类型显就绪%（真后端三维算：字段绑定覆盖 R12 / provenance 锚 / 已物化，`GET …/object-types/stats` 加 `readiness/boundCount/sourceProps/hasBindings/materialized/estimated`）+ 域均就绪 + 展开见分解证据 + 缺数诚实标"估算"；零写死 R14 / 确定性 R6；FDE 实拍 `docs/evidence/trackA-p1-object-readiness-fde.png`。
 - **数据管道 DAG**（源→处理→实体）：ModelingPage/DataBuilderPage 均缺，`PmDag`/`FdeGraph` 现成未复用 🔴/🟡。
 - **SlicesPage**：文本表，无子图节点图 🟡。
 - **R13 溯源**：SandboxView/RiskBoard KPI 无规则/源系统悬浮，`Provenance`/`RuleRef` 现成未用 🟡。
@@ -93,7 +93,7 @@
 2. **`SPEC-sandbox-readiness-certification`**：补**健康雷达 6 维 + 信任雷达 4 维**设计（我的设计 bug，轴 1 A.1/A.2）。
 3. **缺口逐条记进 `HANDOFF §6.1`**，交开发 agent 补，按优先级：
    - **P0（红线/北极星）**：采纳→Action · 分支/对比 UI · 初始化向导+范围预检 · 就绪面板砌齐（stepper/三元组/Trial Tick/scope/gauge/entering） · **给 demo 租户种传导规则+状态变量（否则沙盘开箱空世界，实拍证据 §3.5）**。
-   - **P1**：健康/信任雷达 · ModelingPage 数据源+就绪面板 · 逐对象就绪% · 数据管道 DAG · R13 溯源悬浮。
+   - **P1**：健康/信任雷达 · ModelingPage 数据源+就绪面板 · ~~逐对象就绪%~~（✅ 已补·轨A P1，§3 ObjectTypesBrowserPage） · 数据管道 DAG · R13 溯源悬浮。
 4. **修 `HANDOFF §5` 评审协议**：UI 增量**强制两轴核对**——轴 1（竞品 §F 逐元素）+ 轴 2（设计 mockup 逐元素是否实现），不再只验功能。新增评审项 **⑩ UI 设计对齐**。
 
 ---

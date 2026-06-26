@@ -1490,12 +1490,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));
   // A4 对象/类型浏览器：每已发布类型 {域(归 14 域注册表)/属性数/派生数/PK/物化对象数}，一次算（避免 N 次聚合）。
+  // 轨A P1 逐对象就绪%：三真后端维度算出（零写死 R14 / 确定性 R6 / 缺数诚实标 estimated）——
+  //  ① boundCoverage：非派生属性中"被 sourceBindings.fieldMappings 映射到源字段"（= 有 provenance）的占比
+  //     （R12 反向-data「字段必被消费」口径；PK 计入——须能溯源至源字段才算建模到位）。
+  //  ② hasBindings：是否存在任一 sourceBinding（= 该类型有 provenance 锚 / 非凭空直注）。
+  //  ③ materialized：是否已物化出对象（count>0，= 从类型定义走到了实例库）。
+  //  readiness = round(100*(0.6*boundCoverage + 0.2*hasBindings + 0.2*materialized))，全由真后端字段算、确定性。
+  //  无 sourceBindings 整体（如沙盘链路类型/纯派生外缘）→ boundCoverage 维无数据 → estimated 标记，前端诚实降级不裸渲染。
   app.get("/a/v1/ontology/object-types/stats", async (req) => {
     const c = ctx(req);
     const types = await ontology.listTypes(c);
     const stats = [];
     for (const t of types) {
       const objs = await repos.objects.listByType(c.tenantId, t.key);
+      const count = objs.filter((o) => !o.mergedInto).length;
+      // 已被某 sourceBinding 的 fieldMappings 映射到源字段的属性集（= 有 provenance 的属性）。
+      const boundProps = new Set<string>();
+      for (const b of t.sourceBindings ?? []) for (const pk of Object.keys(b.fieldMappings ?? {})) boundProps.add(pk);
+      const sourceProps = t.properties.length; // 分母：非派生属性（派生属性由公式算、不来自源字段）。
+      const boundCount = t.properties.filter((p) => boundProps.has(p.propKey)).length;
+      const boundCoverage = sourceProps > 0 ? boundCount / sourceProps : 0;
+      const hasBindings = (t.sourceBindings?.length ?? 0) > 0;
+      const materialized = count > 0;
+      const estimated = !hasBindings; // 无源绑定 → 绑定覆盖维无数据，诚实标。
+      const readiness = Math.round(
+        100 * (0.6 * boundCoverage + 0.2 * (hasBindings ? 1 : 0) + 0.2 * (materialized ? 1 : 0)),
+      );
       stats.push({
         key: t.key,
         displayName: t.displayName,
@@ -1503,7 +1523,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         propCount: t.properties.length,
         derivedCount: t.derivedProperties?.length ?? 0,
         pk: t.properties.find((p) => p.isPrimaryKey)?.propKey ?? null,
-        count: objs.filter((o) => !o.mergedInto).length,
+        count,
+        // 逐对象就绪%三维分解（真后端字段算，前端展开可见证据）。
+        readiness,
+        boundCount,
+        sourceProps,
+        hasBindings,
+        materialized,
+        estimated,
       });
     }
     return { stats };

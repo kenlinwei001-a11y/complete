@@ -765,11 +765,13 @@ export const handlers = [
   // A4 对象/类型浏览器：每类型物化计数（与 object-types mock 对齐）+ 14 业务域注册表。
   http.get("*/a/v1/ontology/object-types/stats", () =>
     HttpResponse.json({
+      // 轨A P1 逐对象就绪%：readiness=round(100*(0.6*bound/source + 0.2*hasBindings + 0.2*materialized))，
+      // 分解证据（boundCount/sourceProps/hasBindings/materialized/estimated）与后端口径一致。
       stats: [
-        { key: "Base", displayName: "生产基地", domain: "factory", propCount: 4, derivedCount: 1, pk: "baseId", count: 3 },
-        { key: "Model", displayName: "电池型号", domain: "product", propCount: 3, derivedCount: 0, pk: "modelId", count: 5 },
-        { key: "Order", displayName: "订单", domain: "product", propCount: 6, derivedCount: 0, pk: "so", count: 20 },
-        { key: "ExternalSignal", displayName: "外部信号", domain: "external", propCount: 5, derivedCount: 0, pk: "signalKey", count: 0 },
+        { key: "Base", displayName: "生产基地", domain: "factory", propCount: 4, derivedCount: 1, pk: "baseId", count: 3, readiness: 100, boundCount: 4, sourceProps: 4, hasBindings: true, materialized: true, estimated: false },
+        { key: "Model", displayName: "电池型号", domain: "product", propCount: 3, derivedCount: 0, pk: "modelId", count: 5, readiness: 100, boundCount: 3, sourceProps: 3, hasBindings: true, materialized: true, estimated: false },
+        { key: "Order", displayName: "订单", domain: "product", propCount: 6, derivedCount: 0, pk: "so", count: 20, readiness: 90, boundCount: 5, sourceProps: 6, hasBindings: true, materialized: true, estimated: false },
+        { key: "ExternalSignal", displayName: "外部信号", domain: "external", propCount: 5, derivedCount: 0, pk: "signalKey", count: 0, readiness: 56, boundCount: 3, sourceProps: 5, hasBindings: true, materialized: false, estimated: false },
       ],
     }),
   ),
