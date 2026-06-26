@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createSimSession,
   deriveModeling,
   fetchBusinessDomains,
   fetchModelingCoverage,
   fetchModelingDrafts,
   fetchObjectTypes,
   fetchRawDatasets,
+  fetchSimCertification,
   fetchSyncJob,
   materializeDraft,
   patchModelingDraft,
@@ -18,6 +20,7 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { DataSourcePanel } from "@/components/DataSourcePanel";
+import { SimReadinessPanel } from "@/views/sim/SimReadinessPanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
@@ -52,8 +55,10 @@ export default function ModelingPage() {
           {t.newDraft}
         </button>
       </div>
-      {/* 轨A P1（数据管道 DAG·R13 建模层可视化·承轨L 真链路）：本体已存在则显数据源→建模→本体→对象真血缘。 */}
+      {/* 轨P 增量1（数据流 DAG·竞品 image2 横向 ETL·R13 真字段映射）。 */}
       {publishedTypes && publishedTypes.length > 0 && <DataPipelineDag types={publishedTypes} />}
+      {/* 轨P 增量2（L0-L4 认证面板·竞品 image6·接 deriveCertification 真级·禁写死）：复用 SimReadinessPanel。 */}
+      {publishedTypes && publishedTypes.length > 0 && <GlobalReadinessPanel />}
       {/* additive（RL9 可回退）：左侧数据源面板 + 右侧既有工作台/空态，原有区块零删改 */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
         <div style={{ width: 248, flexShrink: 0 }}>
@@ -89,6 +94,45 @@ export default function ModelingPage() {
             setDraftId(newDraftId);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * 轨P 增量2（L0-L4 认证面板·复刻竞品 image6「全局仿真准备度（发布就绪）」）：
+ * 接 `deriveCertification` 真级（demo 真态 L1_CONFIGURED·三维 structure/knowledge/behavior·世界完整度真 pct·
+ * L4 四✓·entering 清单），**复用既有 `SimReadinessPanel`（不新建并行）**。建一个极简 SimSession（空 baseSnapshot·
+ * 仅为算全局本体就绪）→ fetchSimCertification(GLOBAL)。**禁写死 100**：绿环/级别/三维全来自真后端 closure。
+ * ③类不接：6 维健康雷达 / 4 维信任雷达（后端未建·§10③）→ 不传 radar（不画假壳）。
+ */
+function GlobalReadinessPanel() {
+  const [scope, setScope] = useState<"GLOBAL" | "LOCAL">("GLOBAL");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [entOff, setEntOff] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try { const s = await createSimSession({ baseSnapshot: {}, scope: {} }); if (alive) setSessionId(s.id); }
+      catch { if (alive) setEntOff(true); }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const { data: cert, isLoading } = useQuery({
+    queryKey: ["a", "modeling-readiness-cert", sessionId, scope],
+    queryFn: () => fetchSimCertification(sessionId!, scope),
+    enabled: !!sessionId, retry: false,
+  });
+  return (
+    <div className="panel" data-testid="modeling-readiness" style={{ padding: 12, marginBottom: 12 }}>
+      <div className="section-title" style={{ marginBottom: 8 }}>全局仿真准备度（发布就绪）</div>
+      {entOff ? (
+        <div style={{ color: "var(--muted2)", fontSize: 12 }} data-testid="modeling-readiness-entoff">就绪认证功能未开（sim.certification entitlement off）——诚实降级，不画假认证。</div>
+      ) : !cert ? (
+        <div style={{ color: "var(--muted2)", fontSize: 12 }}>{isLoading ? "加载就绪认证…" : "建认证会话中…"}</div>
+      ) : (
+        // radar 不传：6维健康/4维信任雷达后端未建（§10③），不画假壳。
+        <SimReadinessPanel cert={cert} scope={scope} onScopeChange={setScope} />
       )}
     </div>
   );
