@@ -118,7 +118,7 @@
 
 ## 10. 后端可达性（摸真代码核实 · **修正 §4/各页"接现有"乐观注**）
 
-> 独立后端审计逐元素摸真代码:**§4 与各页里大量"接现有 X"是假设**。实情分三类。**复刻这些元素前先看本节判定;③类必须先建后端或诚实标 RESERVED/空,禁建假数据壳(继承 `AUDIT-fake-simulation-inventory` 真推演红线)。**
+> 独立后端审计逐元素摸真代码:**§4 与各页里大量"接现有 X"是假设**。实情分三类。**复刻前先看本节判定;③类后端未建 → 暂不做(见 §10.1 TO-DO),只做①接现成的 full 1:1;禁画假数据壳(继承 `AUDIT-fake-simulation-inventory` 真推演红线)。**
 
 **① 真·接现成(0 后端活·SPEC 注准确)**：L0-L4 五级状态机 + 三维准备度条 + 世界完整度环 + entering 清单(`deriveCertification`/`sim/certification.ts`,端点 `app.ts:1410`) · gauge/环 · provenance RawDataset→ObjectType 两层 + 逐对象 lineage(`/ontology/graph`、`/lineage/object`) · tick/checkpoint/branch/curTick(Step+N)/rulesFired(诞生N规则) · 派生计数 · 段控/badge/token/Agent指挥台接 QOS。
 
@@ -135,4 +135,15 @@
 8. **世界状态 A–C 字母分级** — 无(有 L 级/数值)。
 9. **L4 子项 Schema lint / 已持久化** — cert 链路无这两子项(Trial Tick 有)。
 
-> **施工纪律(修正)**：轨 P/Q **不是纯前端复刻**——③类 9 项(尤其两雷达/图查询/业务动作驱动)是**先建后端能力,再复刻前端**;建不动或未建时,**前端诚实标 RESERVED/空/估算,绝不画假数据雷达**。各页 SPEC 凡与本节③冲突的"接现有"注,**以本节为准(降级为换-build)**。
+> **施工纪律(用户定 · 分层交付 b)**：**③类 9 项后端未建 → 暂不做,登记为 TO-DO(下 §10.1,待后端 backlog 排期)。** 轨 P/Q 当前**只交付 ①接现成的 full 1:1**(+ 便宜的 ②扩);**后端未建前不碰③——不画壳、不画假数据雷达**(画了就是假推演)。各页 SPEC 凡与本节③冲突的"接现有"注以本节为准。后端补齐后再回来复刻+点亮③。
+
+### 10.1 后端 TO-DO 清单（③类 · 暂不做 · 排期建后端后才复刻对应前端）
+1. 6维健康雷达投影(+第六维 Cycle Safety)+ `healthRadar` 契约/端点
+2. 4维信任雷达(Runtime/Explainability/Temporal/Data Trust)契约+实现(含可计算来源)
+3. 图查询构建器 + 平台自有查询语言 + 代码生成
+4. Query→Skill 绑定 + Query→MCP 动态暴露
+5. 4 业务动作(断供/恢复/产能调整/订单延期)+ RL4 驱动运行态(动作→改沙盘态→tick 响应)
+6. 分层推演目标体系(总体/分系统/局部)+ 声明端点
+7. 类型化约束 + GEO_WITHIN(空间约束类型系统)
+8. 世界状态 A–C 字母分级
+9. L4 子项 Schema lint / 已持久化

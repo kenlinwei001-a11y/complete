@@ -2,7 +2,7 @@
 
 > 引用 `SPEC-replica-design-system.md`(token + 组件库)。本份描述沙盘族 3 页(竞品 image1/7/8)专属布局/数据/融合。**视觉1:1 + 接现有 `/a/v1/sim/*`(轨A)。平台术语。**
 >
-> ⚠️ **后端前置(摸真代码已核·见 `design-system §10`)**：本份多处"接现有"注**已被修正**——**6维健康雷达 / 4维信任雷达 / 业务动作接口(4动作)+RL4驱动 / 分层推演目标 / GEO_WITHIN约束 / 世界状态A-C / 风险榜MOCK因素** 后端**不存在或半套,复刻前必先建后端,或前端诚实标 RESERVED/空/估算——禁画假数据雷达(继承真推演红线)。** 真·接现成的只有:L0-L4/三维准备度/世界完整度/tick·checkpoint·branch/provenance。
+> ⚠️ **后端前置(摸真代码已核·见 `design-system §10`)**：本份多处"接现有"注**已被修正**——**6维健康雷达 / 4维信任雷达 / 业务动作接口(4动作)+RL4驱动 / 分层推演目标 / GEO_WITHIN约束 / 世界状态A-C** 后端**不存在 → 本轮暂不做,登记 TO-DO(`design-system §10.1`),后端建成后再复刻;禁画假数据雷达(继承真推演红线)。** 本轮**只做①接现成**:L0-L4/三维准备度/世界完整度/tick·checkpoint·branch/provenance/向导/运行台骨架(+风险榜接 risk_timeline·MOCK 因素诚实标估算)。
 >
 > **落点**：`SandboxView`(`/v/sim-sandbox`,轨A P0 已闭、tick 已修)/ `SimInitWizard`(`/v/sim-init`)→ 升级到竞品像素级(多为轨A 的 P1)。
 
@@ -35,12 +35,19 @@
 
 ---
 
-## 增量（串行 · 接现有不重写）
-- **增量0** 起 demo 真跑现 SandboxView/SimInit(轨A 态)实拍定基线。
-- **增量1 双雷达**(页1)接 certification 6+4 维。
-- **增量2 初始化向导**(页2)完整度环+进入清单接 scope-precheck。
-- **增量3 运行驾驶舱**(页3)场景条/状态卡/Schema规则/AI指挥台,接 tick/checkpoint/QOS/risk_timeline(**守轨M 真推演红线**)。
-- **增量4** 主题接轨O + 溯源接 `SPEC-trust`。
+## 增量（分层交付 b · 只做①接现成 full 1:1;③类后端未建 → TO-DO 不做）
+
+**Phase 1 · ①接现成 full 1:1（真数据·先交付）**
+- **增量0** 起 demo 真跑现 SandboxView/SimInit 实拍定基线。
+- **增量1 初始化向导**(页2)：三步 + 完整度环 + 进入清单,接 `scope-precheck`/`deriveCertification`(现成·真数据)。
+- **增量2 运行台骨架**(页3)：本体结构画布 + tick 节点变色 + 检查点/分支 + curTick(Step+N)/rulesFired(诞生N规则),接 `propagateTick`/checkpoint/branch(现成·真数据);Schema 规则列接 PropagationRule/derivedProperties。
+- **增量3 评估面板①部分**(页1)：State/Action/Writeback/Query 清单 + L0-L4/三维准备度 + 知识激活(接 certification 现成)。**两雷达留到 Phase 2。**
+
+**收尾（①/② 便宜的 · 仍做）**
+- **增量4** 主题接轨O + 溯源接 `SPEC-trust` + 中栏 6 子 tab + Agent 指挥台接 QOS(现成);**风险榜**接 risk_timeline 但 MOCK 因素诚实标估算(守轨M 真推演红线)。
+
+**不做（③类 · 后端未建 · 登记 TO-DO,见 `design-system §10.1`）**
+- **6维健康雷达 / 4维信任雷达 / 业务动作接口+RL4驱动 / 分层推演目标 / GEO_WITHIN 约束** → **本轮不碰**(不画壳、不画假);后端 backlog 排期建成后,再回来复刻+点亮。
 
 ## 红线
 接 `/a/v1/sim/*`/`deriveCertification`/`propagateTick`/QOS,**不新建并行**;风险/数字接真后端或诚实标(**继承轨M:禁 mock 裸红冒充真**);无外部产品名;域色 theme-invariant。**完成=真浏览器像素对竞品 + 数字溯真后端,非测试绿。**

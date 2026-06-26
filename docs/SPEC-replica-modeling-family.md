@@ -34,13 +34,19 @@
 
 ---
 
-## 增量（串行 · 接现有不重写）
+## 增量（分层交付 b · 建模族**大部 ①接现成,可先 full 1:1**）
 
-- **增量0**：起 demo 真跑现 ModelingPage(轨L 态)实拍定基线,标"现有三栏/数据源面板/草案"哪些接着用。
-- **增量1 数据流 DAG**：左画布换 `PmDag`/`FdeGraph` 渲染 RawDataset→对象真链(接轨L provenance),去文本映射。
-- **增量2 L0-L4 认证面板**：中面板接 `deriveCertification`(L0-L4/三联/绿环/审计),像素对 image6。
-- **增量3 对象配置抽屉 + 逐对象 gauge**：点节点出 image5 抽屉,gauge 接逐对象 certification。
-- **增量4 Agent 指挥台接 QOS**(补 G-3)+ 主题接轨O。
+**Phase 1 · ①接现成 full 1:1（真数据·建模族主体在此·成色最好）**
+- **增量0**：实拍现 ModelingPage(轨L 态)定基线,标现有三栏/数据源面板/草案哪些接着用。
+- **增量1 数据流 DAG**：左画布换 `PmDag`/`FdeGraph` 渲染 RawDataset→对象真链(接轨L provenance,真数据);中间"数据处理"层前端从 `fieldMappings` 合成(扩·无新端点)。
+- **增量2 L0-L4 认证面板**：接 `deriveCertification`(L0-L4 五级/三联/绿环/审计,现成·真数据),像素对 image6;**L4 子项 `Schema lint`/`已持久化` 后端无 → 标 RESERVED 或略**。
+- **增量3 对象配置抽屉 + 逐对象 gauge**：接逐对象 certification(scope=LOCAL,现成·真数据)。
+
+**收尾（①/② 便宜的 · 仍做）**
+- **增量4** 中栏 6 子 tab 补齐 + Agent 指挥台接 QOS(补 G-3) + 主题接轨O。
+
+**不做（③类 · 后端未建 · 登记 TO-DO,见 `design-system §10.1`）**
+- **图查询页**(构建器/查询语言/codegen/Query→Skill/Query→MCP) → 后端整块未建,**本轮不做**;后端 backlog 建成后再复刻+点亮。
 
 ## 红线
 接 `deriveCertification`/`PmDag`/`patchModelingDraft`/轨L provenance,**不新建并行**;认证数字接真 closure 非写死(防假推演);无外部产品名;域色 theme-invariant。**完成=真浏览器像素对竞品 + 数字溯真后端,非测试绿。**
