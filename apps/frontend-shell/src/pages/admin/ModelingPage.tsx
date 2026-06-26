@@ -18,6 +18,7 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { DataSourcePanel } from "@/components/DataSourcePanel";
+import { LayeredDag, type DagNodeDef, type DagEdgeDef } from "@/components/Dag/LayeredDag";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
@@ -52,6 +53,8 @@ export default function ModelingPage() {
           {t.newDraft}
         </button>
       </div>
+      {/* 轨A P1（数据管道 DAG·R13 建模层可视化·承轨L 真链路）：本体已存在则显数据源→建模→本体→对象真血缘。 */}
+      {publishedTypes && publishedTypes.length > 0 && <DataPipelineDag types={publishedTypes} />}
       {/* additive（RL9 可回退）：左侧数据源面板 + 右侧既有工作台/空态，原有区块零删改 */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
         <div style={{ width: 248, flexShrink: 0 }}>
@@ -89,6 +92,46 @@ export default function ModelingPage() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * 轨A P1（数据管道 DAG）：把 demo 真建模链投影为 5 层有向图——数据源 → 原始数据集 → 建模发布 →
+ * 对象类型 → 对象化。节点/血缘边全来自真后端（rawDatasets + 类型 sourceBindings·轨L 真链路），
+ * 零写死（R14）、确定性（按 key 序，R6）；缺 sourceBindings 的类型节点标橙（诚实，非裸渲染）。
+ * 示例 6 条真实链路（共 N 类型）以保图清晰，层标题显全量计数。
+ */
+function DataPipelineDag({ types }: { types: Awaited<ReturnType<typeof fetchObjectTypes>> }) {
+  const { data: rawDatasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
+  const [open, setOpen] = useState(false);
+  const sample = [...types].sort((a, b) => a.key.localeCompare(b.key)).slice(0, 6);
+  const nodes: DagNodeDef[] = [
+    { id: "src", layer: 0, label: "合成连接器", sub: "数据源", color: "#5E8FE8" },
+    { id: "chain", layer: 2, label: "deriveModeling→发布", sub: "建模链", color: "#C470B8" },
+    { id: "obj", layer: 4, label: "对象化", sub: `${types.length} 类型已物化`, color: "#62BE77" },
+  ];
+  const edges: DagEdgeDef[] = [];
+  for (const ty of sample) {
+    const sb = (ty.sourceBindings ?? [])[0] as { dataset?: string } | undefined;
+    const dsName = sb?.dataset;
+    if (dsName) {
+      const dsId = `ds:${dsName}`;
+      if (!nodes.find((n) => n.id === dsId)) { nodes.push({ id: dsId, layer: 1, label: dsName, sub: "RawDataset", color: "#43B7D7" }); edges.push({ from: "src", to: dsId }); edges.push({ from: dsId, to: "chain" }); }
+    }
+    const tId = `ty:${ty.key}`;
+    nodes.push({ id: tId, layer: 3, label: ty.displayName || ty.key, sub: ty.key, color: "#7E8BEE", state: dsName ? undefined : "warn" });
+    edges.push({ from: "chain", to: tId });
+    edges.push({ from: tId, to: "obj" });
+  }
+  return (
+    <details data-testid="modeling-pipeline-dag" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} style={{ marginBottom: 12, background: "var(--panel,rgba(255,255,255,.03))", borderRadius: 8, padding: "8px 10px" }}>
+      <summary style={{ cursor: "pointer", fontSize: 13 }}>数据管道 DAG · 数据源→建模→本体→对象（R13 真血缘 · {types.length} 类型）</summary>
+      <div style={{ marginTop: 8 }}>
+        <LayeredDag testId="modeling-pipeline-layered" nodes={nodes} edges={edges}
+          layerTitles={["数据源", `原始数据集 (${rawDatasets?.length ?? "…"})`, "建模发布", `对象类型 (${types.length})`, "对象化"]} />
+        <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 6 }}>示例 6 条真实链路（共 {types.length} 类型 · 血缘边来自类型 sourceBindings·轨L 真建模链）；缺 sourceBindings 的类型标橙。</div>
+      </div>
+    </details>
   );
 }
 
