@@ -147,3 +147,18 @@
 7. 类型化约束 + GEO_WITHIN(空间约束类型系统)
 8. 世界状态 A–C 字母分级
 9. L4 子项 Schema lint / 已持久化
+
+### 10.2 数据 pipeline 断点（①元素 · 前端渲染侧 · 补在轨P/Q 增量内 · **无需建后端**）
+
+> Pipeline 审计:6 个①元素**后端/端点/前端client/字段全对齐,无真后端断点**(无 G-2)。但有两类隐藏断点都在前端/渲染侧——SPEC 写"接现有"准确指**后端**现成,但**前端多处零接线**,须当"前端从零接"做(非"接现成组件"):
+
+| ①元素 | pipeline 现状 | 增量内要补(前端) |
+|---|---|---|
+| ③ tick/检查点/分支/变色 | **全通** | 直接做(SandboxView 已接) |
+| ① L0-L4 认证面板 | **全通**(SimReadinessPanel 已砌齐) | 直接做(只差 demo 开功能) |
+| ② 数据流 DAG | 后端通(`/ontology/graph` 出 `sourceBindings.fieldMappings`) | **建本体专用 DAG 组件**消费 fieldMappings(PmDag/FdeGraph 形状不直接适用) |
+| ④ 风险榜 | 后端通(risk_timeline+dataMode) | SandboxView **从零接** `invokeSolver("risk_timeline")`+**复用 RiskBoardView 诚实 dataMode 渲染**(`RiskBoardView.tsx:79-90`) |
+| ⑤ 逐对象 gauge(LOCAL) | 后端通(`certification?scope=LOCAL`) | ModelingPage **从零接** `fetchSimCertification(type,"LOCAL")`+gauge(现 ModelingPage 零 cert) |
+| ⑥ Agent 指挥台(G-3) | 后端通道全通(presetSlots `slots.ts:318`) | 两页**嵌 QueryDock 类面板**+`setSelectedObjects`→`SessionContext` 注入(后端现成,G-3 前端段未闭) |
+
+**demo 开箱前置(沙盘族·否则增量0 真跑 404)**：① 开 demo 的 `sim.*` 功能(`features.ts:83-89` defaultOn:false,需 demo override 或确认 battery 模板已开)② 加 `/v/sim-sandbox`、`/v/sim-init` 的 demo workspace **nav 入口**(现无入口)③ 可选预建/确认 SimSession 现建路通。**建模族 `/admin/modeling` 常驻 admin 页无此门。**
