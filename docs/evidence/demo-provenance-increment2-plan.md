@@ -76,3 +76,42 @@ A 路用 `[^\p{L}\p{N}_-]gu`（保留 CJK），增量1 我改的 B 路 materiali
 - **建议路线 B（MAP_TO_EXISTING）**：低 blast、零功能回归、provenance 值由真链真算（非盖戳）。
 - **待审核方裁**：(1) MAP_TO_EXISTING「类型先存在、链补真 provenance」是否满足 §3.3？还是 (2) 必须把 derivedProperties/displayName/归域 全部迁入链（大手术，且 R14 公式仍须某处声明）？(3) 或接受路线 A 抹派生属性（需同改驾驶舱口径）？
 - **未动主体代码**：只落了 §1.2 安全 regex（已验绿）。主体待裁，不硬改。
+
+## 7. ✅ 审核方裁决 + 根因方案（"按解决根本问题为原则，不走捷径"）
+> 审核方明示：**按解决根本问题为原则，不走捷径** → §6.3 的路线 B（MAP_TO_EXISTING 在既存类型上补 provenance）属捷径，**否**。须走根因：让 demo 类型**经真链 CREATE**，同时**不丢策展元数据**（零回归）。
+
+### 7.1 根因再定位：建模链表达力不足 → 这正是 demo 当初短路它的原因
+§6 的"冲突"实为**伪冲突**——根因不是"§3.3 与策展元数据不可兼得"，而是**建模链契约缺表达力**：
+1. `ModelingSuggestion.objectTypes[]` **无 `derivedProperties` 字段**（`contracts/datacore.ts:162-183`）→ KPI 公式无法过 derive→publish。
+2. `publishDraft` 硬置 `derivedProperties:[]`（`modeling.ts:445`）。
+3. `DraftOperation` 有 `setDomain` 但无 `setDisplayName`/`setDerivedProperties`（`domain.ts:495-513`）。
+
+⇒ 链产不出生产级策展类型，**所以 demo 当初才 upsertType 直注短路它**。**根因 = 补全链表达力**，再让 demo 走链。
+
+### 7.2 去风险真测：derive 全 34 类 vs 策展类型 逐元素 diff（live datacore 真跑）
+`POST /modeling/derive`（全 34 rawDataset）→ 取 draft.suggestion，逐类比对策展类型（`scratchpad/derive-diff.mjs`）：
+- **PK：34/34 全中**（pk 推断 = 唯一率最高字段，与显式 pk 一致）✓ → obj id 字节红线可守。
+- **displayName**：34/34 异（链=英文 dataset.name vs 策展中文"生产基地"…）。
+- **domain**：34/34 异（链=unassigned vs 策展 factory/product/…）。
+- **derivedProperties**：6 类缺（Base/Model/Order/DemandSegment/Metric/SopVersionRow）。
+- **属性 dataType/ref**：多类异——链 FK 自动探测**过度判 ref**（如 `Base.baseId` 误判 ref→Line，实为 Base 自身 pk string）+ enum/date/json 误推。
+- **属性集**：仅少数策展独有快照属性（Line:utilization/actual_output_daily/schedule_attainment、Process:yield_baseline、Equipment:oee_current——A8 时序快照叶子，原始行无）。
+全量见 `scratchpad/derive-diff-out.txt`。
+
+**结论**：链 derive 是**带噪初稿**（FK 过判、枚举误推），策展 `batteryObjectTypes` 正是**人工修正后的真值**——这恰是 **A3 半自动建模"建议→人工 PATCH→发布"** 的标准形态。**根因方案不是"丢策展就策展"，而是"把人工策展作为确定性 PATCH 焊进链"**。
+
+### 7.3 根因方案（非捷径·三段都真）
+**A. 补全链表达力**（让链能表达生产级类型）：
+- `ModelingSuggestion.objectTypes[]` += `derivedProperties: [{propKey,formula}]`（默认 []）。
+- `publishDraft` CREATE 路 `derivedProperties: t.derivedProperties ?? []`（不再硬置 []）。
+**B. demo 走真链 + 确定性策展 PATCH**（`instantiateBattery` chainMode，仅 demo；A 路对其它租户零变）：
+- chainMode：跳过 `batteryObjectTypes()`/`extendedObjectTypes()` 直 upsert + 早 publishVersion + `objects.put`；**仍产 34 rawDataset+rawRows + 链路类型 + 链路实例**（§1.A 末行：链路 A 路种法不动，沙盘依赖）。
+- 末尾跑链：`modeling.derive(34 rawDatasetIds)`（真带噪初稿+真 FK 候选）→ **确定性策展 overlay**（以 `batteryObjectTypes`/`extendedObjectTypes` 为人工修正真值，映射成 suggestion：displayName/domain/properties(含 sourceField=propKey)/derivedProperties；清 suggestion.linkTypes 以免污染策展链路）→ 持久化草案 → `publishDraft`（**真 CREATE 类型 + publish 真算 sourceBindings/sourceDataset from 真 rawDataset** → R13 provenance 因果真实）→ `materialize`（统一 id `obj_${type}_${pk}` + §1.2 regex → 字节同基线）。
+- 注入：`modeling` 在 `synthetic` 之前构造（`app.ts:325-326`），按既有 `livedInRunner`"注入避免依赖环"先例 setter 注入。
+**C. 为何非捷径/非盖戳**：类型由 `publishDraft` **真 CREATE**（存在性因果由链导致，满足 §3.3），sourceBindings 由 publish **真读真 rawDataset 算**（非硬编码模板）。策展 overlay 改的是**类型定义**（属性/名/域/派生——人工不可自动推导的业务语义），**不碰 provenance**；这是半自动建模的"人工 PATCH"半，确定性化。最终类型 == 策展真值（零回归）且**有真血缘**。
+
+### 7.4 验证门（必跑·任一不达=自打回）
+1. **字节红线**：重导 §增量0 三件，typekeys=cc787b32 / objids=8277a5a7 / noi=a958632a **逐字节相等**。
+2. **零回归**：`pnpm -r build && pnpm -r test`（4 包）全绿；沙盘真浏览器 tick 节点 Σ 仍真变。
+3. **provenance 真**：34 类 sourceBindings 指向真 rawDataset；ModelingPage 34 数据集"已建模"（增量3 UI 闭合）。
+4. **R6 确定性**：同 seed 两跑三 SHA256 一致；链走确定性 derive，无 LLM/时钟/随机。
