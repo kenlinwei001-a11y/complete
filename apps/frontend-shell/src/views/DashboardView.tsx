@@ -9,9 +9,25 @@ import { EChart } from "@/components/ui/EChart";
 import { Provenance } from "@/components/Provenance";
 import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
 import type { ViewRendererProps } from "./registry";
+import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import zh from "@/locales/zh";
 import styles from "./DashboardView.module.css";
 import { downloadCsv } from "./exportCsv";
+
+/** 轨M 增量2b（母版 §1.A AI 对话栏·补 G-3）：驾驶舱板块级 AI 栏——注入 presetContext(落点 dash)→QOS（复用 useQuickLaunch 既有管线，不新建聊天）。 */
+function DashAiBar() {
+  const quickLaunch = useQuickLaunch();
+  const [q, setQ] = useState("");
+  const ask = () => { const query = q.trim(); if (!query) return; void quickLaunch({ query, targetView: "dash", selectedObjects: [] }); setQ(""); };
+  return (
+    <div data-testid="dash-ai-bar" style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: "var(--muted2)" }}>AI 问驾驶舱</span>
+      <input data-testid="dash-ai-input" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ask()}
+        placeholder="本月最大风险是什么 / 哪些产线 7 月会越红线 …" style={{ flex: 1, fontSize: 12.5, padding: "5px 9px", borderRadius: 6, background: "var(--panel2,rgba(255,255,255,.04))", border: "1px solid var(--line,rgba(255,255,255,.12))", color: "var(--txt)" }} />
+      <button className="btn sm" data-testid="dash-ai-submit" disabled={!q.trim()} onClick={ask}>提问</button>
+    </div>
+  );
+}
 
 /** 导出行数据结构（metric_rollup.metrics + affected_orders.problems）。 */
 export interface DashExportMetric { name?: string; key?: string; target?: number; actual?: number; delta?: number; miss?: boolean }
@@ -65,6 +81,9 @@ export default function DashboardView({ view }: ViewRendererProps) {
   };
   return (
     <>
+      {/* 轨M 增量2b（母版 §1.A AI 对话栏·补断点 G-3）：板块级 AI 栏注入 presetContext(落点驾驶舱+实时选中对象)→QOS，
+          复用 useQuickLaunch 既有管线，不新建聊天。 */}
+      <DashAiBar />
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
         <button className="btn" data-testid="dash-export" onClick={handleExport}>{zh.dash.exportLabel}</button>
       </div>
