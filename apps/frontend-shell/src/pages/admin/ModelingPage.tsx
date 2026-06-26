@@ -132,7 +132,16 @@ function GlobalReadinessPanel() {
         <div style={{ color: "var(--muted2)", fontSize: 12 }}>{isLoading ? "加载就绪认证…" : "建认证会话中…"}</div>
       ) : (
         // radar 不传：6维健康/4维信任雷达后端未建（§10③），不画假壳。
-        <SimReadinessPanel cert={cert} scope={scope} onScopeChange={setScope} />
+        <>
+          <SimReadinessPanel cert={cert} scope={scope} onScopeChange={setScope} />
+          {/* 诚实可见：L4 子项 Schema lint / 已持久化 后端无对应（§10③）→ 显式 RESERVED，不画假勾（继承轨M 真推演红线）。 */}
+          <div data-testid="modeling-l4-reserved" style={{ marginTop: 8, fontSize: 11, color: "var(--muted2)", display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <span>L4 子项（竞品 image6 有·本平台后端未建）：</span>
+            <span data-testid="l4-reserved-schemalint">◌ Schema lint · RESERVED</span>
+            <span data-testid="l4-reserved-persisted">◌ 已持久化 · RESERVED</span>
+            <span style={{ opacity: 0.7 }}>（后端 backlog §10.1·建成后点亮，现不画假勾）</span>
+          </div>
+        </>
       )}
     </div>
   );
