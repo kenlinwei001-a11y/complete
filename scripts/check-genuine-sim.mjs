@@ -52,6 +52,13 @@ const riskBoard = read("apps/frontend-shell/src/views/RiskBoardView.tsx");
 if (!/card\.dataMode/.test(riskBoard) || !/估算|实测/.test(riskBoard)) {
   fail("RiskBoardView 未消费 card.dataMode 显估算/实测（风险红/黄裸渲染回潮）");
 }
+// 复审修：MOCK 卡基线是 mockTightness 启发值，绝不叫"实测"——MOCK 分支须含"无实测"且不得在 MOCK 分支叫"实测当前"。
+{
+  const mock = riskBoard.match(/dataMode === "MOCK"[\s\S]{0,400}?\}\)/);
+  if (mock && (/实测当前/.test(mock[0]) || !/无实测/.test(mock[0]))) {
+    fail('RiskBoardView MOCK 卡把 mock 基线标成"实测"（必修文案：MOCK 须"无实测"，不得叫"实测当前"）');
+  }
+}
 const projSim = read("apps/frontend-shell/src/views/sim/ProjectSimView.tsx");
 if (!/r\.live/.test(projSim) || !/估算|实测/.test(projSim)) {
   fail("ProjectSimView 未消费紧张度 r.live 显估算/实测（紧张度色块裸渲染回潮）");
@@ -75,6 +82,14 @@ if (/function hashN|hashN\(/.test(orderChain)) {
 }
 if (!/估算/.test(orderChain)) {
   fail("OrderChainView 经营数据看板库存列未诚实标'估算'（无实测库存数据·假3）");
+}
+// 复审修（RL5 系数 config 化）：库存系数须从后端 view.layout.econ 下发（deliveredEcon.coef），不得用前端写死 ECON_DEFAULT.coef 当主路径。
+if (!/view\.layout\?\.econ|deliveredEcon/.test(orderChain)) {
+  fail("OrderChainView 库存系数未从 view.layout.econ 下发（前端写死系数·RL5 回潮·假3 复审）");
+}
+const svc = read("apps/datacore/src/synthetic/service.ts");
+if (!/ORDER_CHAIN_ECON|econ:\s*ORDER_CHAIN_ECON/.test(svc)) {
+  fail("service.ts order-chain view-config 未下发 econ 系数（config 化未落·假3 复审）");
 }
 
 if (red) {

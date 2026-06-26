@@ -73,12 +73,13 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   <span className="badge">{card.factor}</span>
                 </RiskHoverTrigger>
               </div>
-              {/* 轨M 增量1（真推演红线）：红/黄峰值不再裸渲染当真值——诚实标 dataMode：
-                  MOCK→"估算（实测当前 N）"，LIVE→"实测当前 N"（推演峰值锚定真测量值，R13 可溯）。 */}
+              {/* 轨M 增量1（真推演红线·复审修文案）：红/黄峰值诚实标 dataMode。
+                  MOCK 卡该因素无真数据源 → 基线张力是 mockTightness 启发值（非实测），**绝不叫"实测"**；
+                  LIVE 卡基线来自真 OEE/利用率/良率 → 标"实测当前 N"。 */}
               {card.dataMode === "MOCK" && (
-                <div className="badge" data-testid={`risk-datamode-${card.base}`}
+                <div className="badge" data-testid={`risk-datamode-${card.base}`} title="该因素无真数据源，基线张力为 mockTightness 启发估算（非实测）；峰值含真事件脉冲"
                   style={{ background: "var(--warn, #caa23a)", color: "#1a1400", fontSize: 10, alignSelf: "flex-start" }}>
-                  估算{card.currentTightness ? `（实测当前 ${Math.round(card.currentTightness.value)}）` : "（无实测）"}
+                  估算·无实测{card.currentTightness ? `（mock 基线 ${Math.round(card.currentTightness.value)}）` : ""}
                 </div>
               )}
               {card.dataMode === "LIVE" && card.currentTightness && (

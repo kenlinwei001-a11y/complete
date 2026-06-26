@@ -1209,6 +1209,14 @@ export class SyntheticService {
     ];
     const ORDER_CHAIN_LABELS = { DELIVERY: "交期", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用" };
     const SEG_COLORS = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" };
+    // 轨M 增量1（假3 复审修·RL5 系数 config 化）：经营数据看板 成品库存/在制/原料 占营收系数——
+    // demo 无实测库存数据，是**固定行业占比假设**（非真算）。从后端 view-config 下发（换租户=换配置，
+    // 不再前端写死 0.22）+ assumed/note 让前端明标"估算（固定假设）"，绝不冒充真算。
+    const ORDER_CHAIN_ECON = {
+      assumed: true,
+      note: "成品库存/在制/原料 = 营收 × 行业占比固定假设（无实测库存数据）",
+      coef: { fg: [0.22, 0] as [number, number], wip: [0.3, 0] as [number, number], rm: [0.18, 0] as [number, number] },
+    };
     const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
       dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
       graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
@@ -1234,7 +1242,7 @@ export class SyntheticService {
       "order-chain": {
         title: "订单全链聚合",
         renderer: "order-chain",
-        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS, outputFields: ["rows", "problems", "summary", "columns"] },
+        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS, econ: ORDER_CHAIN_ECON, outputFields: ["rows", "problems", "summary", "columns"] },
       },
       "geo-map": {
         title: "基地地理视图",

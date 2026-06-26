@@ -61,7 +61,12 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
   const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG
   const [segMode, setSegMode] = useState<"app" | "base">("app"); // econ 看板分组：应用细分 / 风险基地
-  const econCfg = (view.layout?.econ as typeof ECON_DEFAULT | undefined) ?? ECON_DEFAULT;
+  // 轨M 增量1（假3 复审修·RL5）：库存占营收系数从后端 view.layout.econ 下发（换租户=换配置），
+  // 不再用前端写死的 ECON_DEFAULT.coef；segPrice/segMargin 仍取 SEG_REGISTRY 契约单一来源（真价/利）。
+  const deliveredEcon = view.layout?.econ as { coef?: typeof ECON_DEFAULT.coef; assumed?: boolean; note?: string } | undefined;
+  const econCfg = { ...ECON_DEFAULT, coef: deliveredEcon?.coef ?? ECON_DEFAULT.coef };
+  // 库存系数是否为后端下发的固定假设（assumed）+ 披露文案（无下发则前端兜底·明标）。
+  const econNote = deliveredEcon?.note ?? "成品库存/在制/原料 = 营收 × 行业占比固定假设（无实测库存数据，前端兜底系数）";
 
   const { data, isLoading } = useQuery({
     queryKey: ["b", "affected-orders", { base: baseFilter }],
@@ -238,9 +243,9 @@ export default function OrderChainView({ view }: ViewRendererProps) {
               <th>{segMode === "app" ? zh.orderChain.colSeg : zh.orderChain.colBase}</th>
               <th>{zh.orderChain.econCap}</th>
               {/* 轨M 增量1（假3）：成品库存/在制/原料无实测库存数据 → 营收×行业占比估算，表头诚实标"估算"。 */}
-              <th title="无实测库存数据 · 营收×行业占比固定系数估算">{zh.orderChain.econFg}<sup data-testid="econ-est-fg" style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算</sup></th>
-              <th title="无实测库存数据 · 营收×行业占比固定系数估算">{zh.orderChain.econWip}<sup style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算</sup></th>
-              <th title="无实测库存数据 · 营收×行业占比固定系数估算">{zh.orderChain.econRm}<sup style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算</sup></th>
+              <th title={`${econNote}（营收×${Math.round(econCfg.coef.fg[0]! * 100)}%）`}>{zh.orderChain.econFg}<sup data-testid="econ-est-fg" style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算·{Math.round(econCfg.coef.fg[0]! * 100)}%</sup></th>
+              <th title={`${econNote}（营收×${Math.round(econCfg.coef.wip[0]! * 100)}%）`}>{zh.orderChain.econWip}<sup style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算·{Math.round(econCfg.coef.wip[0]! * 100)}%</sup></th>
+              <th title={`${econNote}（营收×${Math.round(econCfg.coef.rm[0]! * 100)}%）`}>{zh.orderChain.econRm}<sup style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算·{Math.round(econCfg.coef.rm[0]! * 100)}%</sup></th>
               <th>{zh.orderChain.econSales}</th>
               <th>{zh.orderChain.econGp}</th>
               <th>{zh.orderChain.econGmRate}</th>
