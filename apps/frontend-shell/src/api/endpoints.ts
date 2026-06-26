@@ -381,6 +381,12 @@ export const deleteViewConfig = (viewKey: string, confirm: boolean) =>
   }>(`/a/v1/view-configs/${viewKey}${confirm ? "?confirm=1" : ""}`, { method: "DELETE" });
 
 export const fetchPolicies = () => api.a<PermissionPolicy[]>("/a/v1/policies");
+// C6/C11 评审返工：策略↔role 编辑器写回（POST /a/v1/policies）。
+export const createPolicy = (body: {
+  resource: { kind: string; key: string };
+  grants: { role: string; ops: string[] }[];
+  rowFilter?: string;
+}) => api.a<PermissionPolicy>("/a/v1/policies", { method: "POST", body });
 export const authzExplain = (body: Record<string, unknown>) =>
   api.a<{ matched: { policyId: string; resource: string; grants: string }[]; rowFilter: string | null; allowed: boolean }>(
     "/a/v1/authz/explain",

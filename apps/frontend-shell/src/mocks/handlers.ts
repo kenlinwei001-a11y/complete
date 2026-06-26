@@ -1459,6 +1459,13 @@ export const handlers = [
     ]),
   ),
   http.get("*/a/v1/policies", () => HttpResponse.json(POLICIES)),
+  // C6/C11 评审返工：策略↔role 编辑器写回 mock（POST /a/v1/policies）。
+  http.post("*/a/v1/policies", async ({ request }) => {
+    const body = (await request.json()) as { resource: { kind: string; key: string }; grants: unknown[]; rowFilter?: string };
+    const policy = { id: `pol_${POLICIES.length + 1}`, tenantId: "demo", ...body };
+    POLICIES.push(policy as (typeof POLICIES)[number]);
+    return HttpResponse.json(policy, { status: 201 });
+  }),
   http.post("*/a/v1/authz/explain", async ({ request }) => {
     const body = (await request.json()) as { user?: { roles: string[] }; resource: { kind: string; key: string }; op: string };
     const roles = (body.user?.roles ?? []).map((r) => r.split(":")[0]);

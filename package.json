@@ -26,6 +26,7 @@
     "ui-smoke:sandbox": "node scripts/ui-smoke-sandbox.mjs",
     "ui-smoke:sim-init": "node scripts/ui-smoke-sim-init.mjs",
     "ui-smoke:data-source-panel": "node scripts/ui-smoke-data-source-panel.mjs",
+    "ui-smoke:r6": "node scripts/ui-smoke-r6-policy-ruleids.mjs",
     "rule-closure:check": "node scripts/check-rule-closure.mjs",
     "no-hardcoded-rules:check": "node scripts/check-no-hardcoded-rules.mjs",
     "ontology-writeback:check": "node scripts/check-ontology-writeback.mjs",

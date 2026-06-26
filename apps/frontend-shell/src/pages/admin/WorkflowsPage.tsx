@@ -125,7 +125,7 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
     () => ({
       solvers: (solverReg?.solvers ?? []).map((s) => ({ value: s.key, label: `${s.name}（${s.key}）` })),
       agents: (agents ?? []).map((a) => ({ value: a.id, label: `${a.name} v${a.version}` })),
-      rules: (rules ?? []).map((r) => ({ value: r.id, label: `${r.name}（${r.key}）` })),
+      rules: (rules ?? []).filter((r) => r.status === "PUBLISHED").map((r) => ({ value: r.key, label: `${r.name}（${r.key}）` })),
     }),
     [solverReg, agents, rules],
   );
@@ -359,6 +359,7 @@ function StepParams({
   const refKeys = new Set<string>();
   if (step.type === "invoke_solver") refKeys.add("solverKey");
   if (step.type === "invoke_agent") refKeys.add("agentId");
+  if (step.type === "evaluate_rules") refKeys.add("ruleIds"); // C6 评审返工：ruleIds 改引用多选（去裸 JSON）
 
   const fields: { key: string; label: string; template?: boolean; json?: boolean }[] = (() => {
     switch (step.type) {
@@ -439,6 +440,16 @@ function StepParams({
           emptyText="尚无 Agent，点击创建"
           testid={`wf-agent-select-${step.id}`}
           onChange={(v) => setParam("agentId", v)}
+        />
+      )}
+      {/* C6 评审返工：evaluate_rules 的 ruleIds 改规则引用多选（去裸 JSON 框；ALL_APPLICABLE 或勾选具体已发布规则码） */}
+      {step.type === "evaluate_rules" && (
+        <RuleRefMultiSelect
+          value={p.ruleIds}
+          disabled={!editable}
+          options={refData.rules}
+          testid={`wf-ruleids-select-${step.id}`}
+          onChange={(v) => setParam("ruleIds", v)}
         />
       )}
       {/* C8：render_answer 可视 block 编排（D-28 禁裸 JSON） */}
@@ -637,6 +648,72 @@ function ParamField({
  * C6 引用控件三态（addendum §2 · D-27）：选择 + 查看（跳目标）+ ＋新建（跳目标创作页）+ 空态有路。
  * 数据源为引用目标资源列表；空列表显示"尚无{资源}，点击创建"而非死下拉。
  */
+/** C6 评审返工：evaluate_rules.ruleIds 规则引用多选——ALL_APPLICABLE 或勾选具体已发布规则码（去裸 JSON）。 */
+function RuleRefMultiSelect({
+  value,
+  disabled,
+  options,
+  testid,
+  onChange,
+}: {
+  value: unknown;
+  disabled?: boolean;
+  options: { value: string; label: string }[];
+  testid: string;
+  onChange: (v: "ALL_APPLICABLE" | string[]) => void;
+}) {
+  const isAll = value === "ALL_APPLICABLE" || value == null;
+  const selected = new Set(Array.isArray(value) ? (value as string[]) : []);
+  const toggle = (k: string) => {
+    const next = new Set(selected);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    onChange([...next]);
+  };
+  return (
+    <label className={styles.paramLabel} style={{ minWidth: 260 }}>
+      ruleIds
+      <div data-testid={testid} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <input
+            type="radio"
+            data-testid={`${testid}-all`}
+            checked={isAll}
+            disabled={disabled}
+            onChange={() => onChange("ALL_APPLICABLE")}
+          />
+          <span>ALL_APPLICABLE（按求解器 SOLVER_RULE_REFS 自动取适用规则）</span>
+        </label>
+        <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <input type="radio" data-testid={`${testid}-pick`} checked={!isAll} disabled={disabled} onChange={() => onChange([...selected])} />
+          <span>指定规则码：</span>
+        </label>
+        {!isAll &&
+          (options.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, paddingLeft: 18 }}>
+              {options.map((o) => (
+                <label key={o.value} className="badge" style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    data-testid={`${testid}-opt-${o.value}`}
+                    checked={selected.has(o.value)}
+                    disabled={disabled}
+                    onChange={() => toggle(o.value)}
+                  />
+                  {o.label}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <Link to="/admin/rules" data-testid={`${testid}-empty`} className="badge amber" style={{ marginLeft: 18, textDecoration: "none" }}>
+              尚无已发布规则，点击去规则库创建 →
+            </Link>
+          ))}
+      </div>
+    </label>
+  );
+}
+
 function ReferenceSelect({
   label,
   value,
