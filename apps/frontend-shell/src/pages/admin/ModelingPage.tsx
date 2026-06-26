@@ -18,7 +18,6 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { DataSourcePanel } from "@/components/DataSourcePanel";
-import { LayeredDag, type DagNodeDef, type DagEdgeDef } from "@/components/Dag/LayeredDag";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
@@ -96,41 +95,80 @@ export default function ModelingPage() {
 }
 
 /**
- * 轨A P1（数据管道 DAG）：把 demo 真建模链投影为 5 层有向图——数据源 → 原始数据集 → 建模发布 →
- * 对象类型 → 对象化。节点/血缘边全来自真后端（rawDatasets + 类型 sourceBindings·轨L 真链路），
- * 零写死（R14）、确定性（按 key 序，R6）；缺 sourceBindings 的类型节点标橙（诚实，非裸渲染）。
- * 示例 6 条真实链路（共 N 类型）以保图清晰，层标题显全量计数。
+ * 轨P 增量1（数据流 DAG·复刻竞品 image2「架构本体设计」横向分层 ETL·承轨A P1 #37 升级）：
+ * 每条实体链 数据集(事件表) → 数据处理_XX(**真字段映射** dataset.field→type.prop) → 实体/关系 → 本体库。
+ * 本体专用 SVG（正交折线箭头 + 左右连接桩 + 箭头 + 最右汇本体库）。
+ * **数据处理节点内容 = 真 sourceBindings.fieldMappings（点开看真映射，非凭空造 transform）**——
+ * 零写死（R14）、确定性（取 5 代表链按真类型，R6）、缺 sourceBindings 标橙（诚实，非裸渲染）。
  */
 function DataPipelineDag({ types }: { types: Awaited<ReturnType<typeof fetchObjectTypes>> }) {
-  const { data: rawDatasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
   const [open, setOpen] = useState(false);
-  const sample = [...types].sort((a, b) => a.key.localeCompare(b.key)).slice(0, 6);
-  const nodes: DagNodeDef[] = [
-    { id: "src", layer: 0, label: "合成连接器", sub: "数据源", color: "#5E8FE8" },
-    { id: "chain", layer: 2, label: "deriveModeling→发布", sub: "建模链", color: "#C470B8" },
-    { id: "obj", layer: 4, label: "对象化", sub: `${types.length} 类型已物化`, color: "#62BE77" },
-  ];
-  const edges: DagEdgeDef[] = [];
-  for (const ty of sample) {
-    const sb = (ty.sourceBindings ?? [])[0] as { dataset?: string } | undefined;
-    const dsName = sb?.dataset;
-    if (dsName) {
-      const dsId = `ds:${dsName}`;
-      if (!nodes.find((n) => n.id === dsId)) { nodes.push({ id: dsId, layer: 1, label: dsName, sub: "RawDataset", color: "#43B7D7" }); edges.push({ from: "src", to: dsId }); edges.push({ from: dsId, to: "chain" }); }
-    }
-    const tId = `ty:${ty.key}`;
-    nodes.push({ id: tId, layer: 3, label: ty.displayName || ty.key, sub: ty.key, color: "#7E8BEE", state: dsName ? undefined : "warn" });
-    edges.push({ from: "chain", to: tId });
-    edges.push({ from: tId, to: "obj" });
-  }
+  const [detail, setDetail] = useState<{ dataset: string; typeLabel: string; mappings: [string, string][] } | null>(null);
+  // 5 代表链（真 demo 类型名·竞品 5 条 ETL 链对位），不足按 key 序补。
+  const pref = ["Order", "Base", "Model", "Line", "Material"];
+  const byKey = new Map(types.map((t) => [t.key, t]));
+  const ordered = [...pref.map((k) => byKey.get(k)).filter(Boolean), ...[...types].sort((a, b) => a.key.localeCompare(b.key)).filter((t) => !pref.includes(t.key))] as typeof types;
+  const chains = ordered.slice(0, 5).map((t) => {
+    const sb = (t.sourceBindings ?? [])[0] as { dataset?: string; fieldMappings?: Record<string, string> } | undefined;
+    return { key: t.key, label: t.displayName || t.key, dataset: sb?.dataset, mappings: Object.entries(sb?.fieldMappings ?? {}) as [string, string][], derived: (t.derivedProperties ?? []).length };
+  });
+  // 布局（横向 4 列：数据集 | 数据处理 | 实体/关系 | 本体库）
+  const colW = 188, nodeW = 152, nodeH = 42, vGap = 24, padX = 14, padY = 30;
+  const rows = chains.length;
+  const col0 = padX, col1 = padX + colW, col2 = padX + 2 * colW;
+  const colX = (i: number) => (i === 0 ? col0 : i === 1 ? col1 : col2);
+  const obX = padX + 3 * colW + 8;
+  const W = obX + nodeW + padX;
+  const H = padY + rows * (nodeH + vGap) + 18;
+  const rowY = (i: number) => padY + i * (nodeH + vGap);
+  const obY = padY + (rows * (nodeH + vGap) - vGap) / 2 - nodeH / 2;
+  const ortho = (x1: number, y1: number, x2: number, y2: number) => { const mx = Math.round((x1 + x2) / 2); return `M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`; };
+  const titles = ["数据集（事件表）", "数据处理（字段映射）", "实体 / 关系", "本体库"];
+  const PortNode = ({ x, y, fill, stroke, title, sub, badges, onClick, tid }: { x: number; y: number; fill: string; stroke: string; title: string; sub?: string; badges?: string[]; onClick?: () => void; tid?: string }) => (
+    <g transform={`translate(${x},${y})`} data-testid={tid} role={onClick ? "button" : undefined} style={onClick ? { cursor: "pointer" } : undefined} onClick={onClick}>
+      <rect width={nodeW} height={nodeH} rx={8} fill={fill} stroke={stroke} strokeWidth={1.4} />
+      <circle cx={0} cy={nodeH / 2} r={3} fill={stroke} /><circle cx={nodeW} cy={nodeH / 2} r={3} fill={stroke} />
+      <text x={10} y={sub ? 17 : 25} fontSize={12} fill="var(--txt)">{title.length > 13 ? title.slice(0, 12) + "…" : title}</text>
+      {sub && <text x={10} y={32} fontSize={10} fill="var(--muted2)">{sub}</text>}
+      {badges?.map((b, bi) => <text key={bi} x={nodeW - 14 - bi * 16} y={15} fontSize={9} fill={stroke}>{b}</text>)}
+    </g>
+  );
   return (
     <details data-testid="modeling-pipeline-dag" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} style={{ marginBottom: 12, background: "var(--panel,rgba(255,255,255,.03))", borderRadius: 8, padding: "8px 10px" }}>
-      <summary style={{ cursor: "pointer", fontSize: 13 }}>数据管道 DAG · 数据源→建模→本体→对象（R13 真血缘 · {types.length} 类型）</summary>
-      <div style={{ marginTop: 8 }}>
-        <LayeredDag testId="modeling-pipeline-layered" nodes={nodes} edges={edges}
-          layerTitles={["数据源", `原始数据集 (${rawDatasets?.length ?? "…"})`, "建模发布", `对象类型 (${types.length})`, "对象化"]} />
-        <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 6 }}>示例 6 条真实链路（共 {types.length} 类型 · 血缘边来自类型 sourceBindings·轨L 真建模链）；缺 sourceBindings 的类型标橙。</div>
+      <summary style={{ cursor: "pointer", fontSize: 13 }}>数据流 DAG · 架构本体设计（数据集→数据处理→实体→本体库 · R13 真字段映射 · 共 {types.length} 类型）</summary>
+      <div style={{ marginTop: 8, overflowX: "auto" }}>
+        <svg width={W} height={H} role="img" style={{ display: "block" }}>
+          <defs><marker id="pp-arrow" markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted2)" /></marker></defs>
+          {titles.map((t, i) => <text key={i} x={(i < 3 ? colX(i) : obX) + nodeW / 2} y={14} fontSize={11} textAnchor="middle" fill="var(--muted2)">{t}</text>)}
+          {/* 实体类型 → 本体库 汇聚边（正交折线 + 箭头） */}
+          {chains.map((c, i) => <path key={`ob-${c.key}`} d={ortho(colX(2) + nodeW, rowY(i) + nodeH / 2, obX, obY + nodeH / 2)} fill="none" stroke="var(--muted2)" strokeWidth={1.2} markerEnd="url(#pp-arrow)" opacity={0.7} />)}
+          {/* 每链：数据集 →处理→实体 正交边 */}
+          {chains.map((c, i) => { const y = rowY(i); return (
+            <g key={c.key}>
+              <path d={ortho(colX(0) + nodeW, y + nodeH / 2, colX(1), y + nodeH / 2)} fill="none" stroke="var(--muted2)" strokeWidth={1.2} markerEnd="url(#pp-arrow)" />
+              <path d={ortho(colX(1) + nodeW, y + nodeH / 2, colX(2), y + nodeH / 2)} fill="none" stroke="var(--muted2)" strokeWidth={1.2} markerEnd="url(#pp-arrow)" />
+            </g>
+          ); })}
+          {chains.map((c, i) => { const y = rowY(i); const hasFm = c.mappings.length > 0; return (
+            <g key={`n-${c.key}`}>
+              <PortNode tid={`pp-ds-${c.key}`} x={colX(0)} y={y} fill="rgba(67,183,215,.14)" stroke="#43B7D7" title={c.dataset ?? "（无数据集）"} sub="RawDataset" />
+              <PortNode tid={`pp-proc-${c.key}`} x={colX(1)} y={y} fill={hasFm ? "rgba(98,190,119,.16)" : "rgba(210,162,76,.16)"} stroke={hasFm ? "#62BE77" : "#caa23a"} title={`数据处理_${c.key}`} sub={hasFm ? `${c.mappings.length} 字段映射` : "缺 sourceBindings"} onClick={hasFm ? () => setDetail({ dataset: c.dataset ?? "", typeLabel: c.label, mappings: c.mappings }) : undefined} />
+              <PortNode tid={`pp-ty-${c.key}`} x={colX(2)} y={y} fill="rgba(126,139,238,.16)" stroke="#7E8BEE" title={c.label} sub={c.key} badges={["模", ...(c.derived > 0 ? ["动"] : [])]} />
+            </g>
+          ); })}
+          <PortNode tid="pp-ontolib" x={obX} y={obY} fill="rgba(196,112,184,.18)" stroke="#C470B8" title="本体库" sub={`${types.length} 类型已发布`} />
+        </svg>
+        <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 6 }}>5 条代表实体链（共 {types.length} 类型 · 竞品 image2 横向 ETL）；**数据处理节点 = 真 sourceBindings.fieldMappings**（点开看 dataset.field→type.prop 真映射，非编造 transform）；缺 sourceBindings 标橙。</div>
       </div>
+      {detail && (
+        <Modal title={`数据处理：${detail.dataset} → ${detail.typeLabel}（真字段映射 · ${detail.mappings.length} 条）`} onClose={() => setDetail(null)} width={520}>
+          <table className="cmp" data-testid="pp-mapping-table" style={{ width: "100%", fontSize: 12 }}>
+            <thead><tr><th>源字段（{detail.dataset}.field）</th><th>→</th><th>对象属性（type.prop）</th></tr></thead>
+            <tbody>{detail.mappings.map(([prop, src]) => (<tr key={prop}><td className="mono">{detail.dataset}.{src}</td><td>→</td><td className="mono">{prop}</td></tr>))}</tbody>
+          </table>
+          <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 8 }}>来源：类型 sourceBindings.fieldMappings（轨L 真建模链 publish 产出·R13）；非前端编造转换逻辑。</div>
+        </Modal>
+      )}
     </details>
   );
 }
