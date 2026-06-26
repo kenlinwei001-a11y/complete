@@ -26,7 +26,7 @@
 
 ## 2. 现在该建什么（已就绪轨 · 按指派选）
 
-**12 条已就绪轨**（每份 HANDOFF 自带《源↔现状↔设计》§1 追溯表 + 增量/红线/双轴评审。按指派认领一条）：
+**13 条已就绪轨**（每份 HANDOFF 自带《源↔现状↔设计》§1 追溯表 + 增量/红线/双轴评审。按指派认领一条）：
 
 | 轨 | 项目 | 施工合同 `docs/` | 优先级 | 一句话（含关键红线） |
 |---|---|---|---|---|
@@ -42,6 +42,7 @@
 | **J** | 数据流闭环 TR1-8（"能用"命脉） | `PASS2-wave3-finishing-tasks.md §1` | **P0** | 50% 已建（订阅/outbox/前端失效框架在）；缺一串**产出事件发射** + **AgentCore→DataCore 跨栈 outbox 通道**→TR1-8 全不真通（违 D-29/UP-1）；DF-5 跨栈通道牵动大可升级独立 HANDOFF |
 | **K** | QOS 全量真跑 + 数字可信（高风险✅坐实） | `PASS2-wave5-finishing-tasks.md §1` | **P0** | 骨架真，但 G-1/G-2"已修"是虚判（仅 4/20 卡真跑、求解器形状无真联测、种子自承"闭G-2残"）+ 路径B数字 provenance LLM 自填可谎报无反向校验；做 20 卡逐卡 probe-e2e+真 DataCore 联测 + 数字↔provenance 一致性校验 |
 | **L** | demo 本体 provenance 真实化（最正确·非补丁） | `HANDOFF-demo-ontology-provenance-build-and-review-contract.md` | P1·正确性 | demo 本体短路了建模链（`synthetic.runJob` 直接发已发布类型+对象、与数据集无 provenance）→ ModelingPage 中心"暂无本体"、34 数据集全"未建模"。改 demo **全程走真建模链**(rawDataset→确定性建模→发布→对象化) + 统一对象身份 `obj_${type}_${pk}`；**红线：下游 type key/obj id 字节不变**（增量0 先取基线），别重写 deriveModeling/publish/runJob 主体 |
+| **M** | 三板块对齐设计母版（驾驶舱/规划/项目 · **含真推演红线**） | `HANDOFF-three-boards-html-alignment-build-and-review-contract.md`（它指向 `AUDIT-three-boards-…` / `AUDIT-fake-simulation-inventory` / `SPEC-trust-traceability-interaction`） | **P1** | 三板块多已建(项目~90%/规划~80%/驾驶舱壳70%·数据层30-40%)；补数据颗粒+同源底座+母版级深度；**融合优先(接现有/扩后端/换·禁新建并行)**；**🔴真推演红线**：7 处假推演(mock/哈希/写死冒充真,见 `AUDIT-fake-simulation-inventory`)必修或诚实标 dataMode；溯源接 RuleRef/Provenance、下钻去死路 |
 
 > ⚠ **每条轨摸底都翻案过——真代码比文档建得多得多**。所以每份 HANDOFF §1 都标死"哪些已建只接不重写、哪些才真建"。**照文档/TODO 从零重写=红线打回。**
 > ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。**先读你那轨 HANDOFF §1 追溯表**再动手。
@@ -118,5 +119,6 @@ push 前自检：**rebase 干净 ✓ 本体回写 ✓ CLI 注册 ✓ 命名门 �
 **轨 B**：读 ①②③ + `THIRD-PARTY-NOTICES` + `SPEC-optimization-template-pool` → 做增量 0（本体先行 + 许可证门，零业务代码）→ 提交。
 **轨 C**：读 ①②③ + `HANDOFF-comprehend-engine §1 追溯表` → 做增量 0（起内存态 datacore，用一个**新颖故事**调 `runStory`，贴真输出坐实引擎能不能用，**只看不改**）→ 再动 3 断点。
 **轨 L**：读 ①②③（③=`HANDOFF-demo-ontology-provenance-…`）→ 做增量 0（起 `SEED_DEMO=1` datacore，导出**下游基线三件**：全 type key 集 / 全 obj id 集 / 沙盘 `view-config.nodeObjectIds`，存 `docs/evidence/demo-provenance-baseline.md`，**只看不改**）→ 再按增量 1→2→3。**这是后面证"字节不变"红线的标尺，跳过即返工。**
+**轨 M**：读 ③=`HANDOFF-three-boards-html-alignment-…`（它再带你读 `AUDIT-three-boards`/`AUDIT-fake-simulation-inventory`/`SPEC-trust`）→ 做增量 0（demo 真浏览器走驾驶舱/规划/项目三板块**实拍** + **复现"洛阳红色越线却受影响订单暂无数据"** + 逐推演结果标 **真/半真/假**，存 `docs/evidence/three-boards-baseline.md`，**只看不改**）→ 按增量 1（**真推演红线优先**：7 处假推演修或诚实标 dataMode）→ 2→3。
 
 有歧义、或发现要动红线级/架构级的东西 → **先问，别擅自决定**。
