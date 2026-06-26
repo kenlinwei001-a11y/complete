@@ -24,9 +24,9 @@
 
 ---
 
-## 2. 现在该建什么（两条已就绪的轨 · 按指派选）
+## 2. 现在该建什么（已就绪轨 · 按指派选）
 
-**7 条已就绪轨**（每份 HANDOFF 自带《源↔现状↔设计》§1 追溯表 + 增量/红线/双轴评审。按指派认领一条）：
+**12 条已就绪轨**（每份 HANDOFF 自带《源↔现状↔设计》§1 追溯表 + 增量/红线/双轴评审。按指派认领一条）：
 
 | 轨 | 项目 | 施工合同 `docs/` | 优先级 | 一句话（含关键红线） |
 |---|---|---|---|---|
@@ -41,6 +41,7 @@
 | **I** | 驾驶舱数据层颗粒（真半成品） | `PASS2-wave2-finishing-tasks.md §2` | P1（含高回归专项） | 25-30% 已建（求解器框架在）；缺八卡KPI数据源/八根因DAG/毛利勾稽；**三阶段必守：低回归先→中→高回归专项独立PR+FDE逐值核HTML过基线，别混 commit；求解器别重写** |
 | **J** | 数据流闭环 TR1-8（"能用"命脉） | `PASS2-wave3-finishing-tasks.md §1` | **P0** | 50% 已建（订阅/outbox/前端失效框架在）；缺一串**产出事件发射** + **AgentCore→DataCore 跨栈 outbox 通道**→TR1-8 全不真通（违 D-29/UP-1）；DF-5 跨栈通道牵动大可升级独立 HANDOFF |
 | **K** | QOS 全量真跑 + 数字可信（高风险✅坐实） | `PASS2-wave5-finishing-tasks.md §1` | **P0** | 骨架真，但 G-1/G-2"已修"是虚判（仅 4/20 卡真跑、求解器形状无真联测、种子自承"闭G-2残"）+ 路径B数字 provenance LLM 自填可谎报无反向校验；做 20 卡逐卡 probe-e2e+真 DataCore 联测 + 数字↔provenance 一致性校验 |
+| **L** | demo 本体 provenance 真实化（最正确·非补丁） | `HANDOFF-demo-ontology-provenance-build-and-review-contract.md` | P1·正确性 | demo 本体短路了建模链（`synthetic.runJob` 直接发已发布类型+对象、与数据集无 provenance）→ ModelingPage 中心"暂无本体"、34 数据集全"未建模"。改 demo **全程走真建模链**(rawDataset→确定性建模→发布→对象化) + 统一对象身份 `obj_${type}_${pk}`；**红线：下游 type key/obj id 字节不变**（增量0 先取基线），别重写 deriveModeling/publish/runJob 主体 |
 
 > ⚠ **每条轨摸底都翻案过——真代码比文档建得多得多**。所以每份 HANDOFF §1 都标死"哪些已建只接不重写、哪些才真建"。**照文档/TODO 从零重写=红线打回。**
 > ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。**先读你那轨 HANDOFF §1 追溯表**再动手。
@@ -116,5 +117,6 @@ push 前自检：**rebase 干净 ✓ 本体回写 ✓ CLI 注册 ✓ 命名门 �
 **轨 A**：读 ①②③，跑 `pnpm install && pnpm -r build && pnpm -r test`（4 包应全绿）→ 起内存态双服务 + 前端真看一眼当前沙盘（`/v/sim-sandbox`，需开 `sim.*` entitlement）→ 照 HANDOFF §6.1.A 挑一个 **P0** 开做 → 按 §6 提交。
 **轨 B**：读 ①②③ + `THIRD-PARTY-NOTICES` + `SPEC-optimization-template-pool` → 做增量 0（本体先行 + 许可证门，零业务代码）→ 提交。
 **轨 C**：读 ①②③ + `HANDOFF-comprehend-engine §1 追溯表` → 做增量 0（起内存态 datacore，用一个**新颖故事**调 `runStory`，贴真输出坐实引擎能不能用，**只看不改**）→ 再动 3 断点。
+**轨 L**：读 ①②③（③=`HANDOFF-demo-ontology-provenance-…`）→ 做增量 0（起 `SEED_DEMO=1` datacore，导出**下游基线三件**：全 type key 集 / 全 obj id 集 / 沙盘 `view-config.nodeObjectIds`，存 `docs/evidence/demo-provenance-baseline.md`，**只看不改**）→ 再按增量 1→2→3。**这是后面证"字节不变"红线的标尺，跳过即返工。**
 
 有歧义、或发现要动红线级/架构级的东西 → **先问，别擅自决定**。
