@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
   createSimSession,
+  fetchObjectLineage,
   fetchSimCertification,
   fetchSimCompare,
   fetchSimViewConfig,
   simBranch,
   simCheckpoint,
   simTick,
+  type ObjectLineageVM,
   type SimCompareSeries,
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
@@ -138,6 +140,214 @@ function ReadinessRadar({
   );
 }
 
+// ── 健康6维 + 信任4维 双雷达（轨A P1·AUDIT §1 母版口径） ──────────────────────────────
+// 数据**零写死 R14**：每维 DERIVE 自既有 SimCertification（dims/worldCompleteness/l4Checks/trialTick/gaps）
+// 这些字段本身又是 closure 五维 + GapReport 的投影（R13 派生投影非新真值）。
+// 缺数据**诚实标**（hasData=false → 轴标灰 + 不画该顶点，绝不用占位数冒充真算 RL5）。
+/** 单维：派生值 0-100 + 是否有真数据支撑（无 → 诚实标估算/无数据，不画顶点）。 */
+interface RadarDim {
+  key: string;
+  label: string;
+  value: number;
+  hasData: boolean;
+  /** 该维派生自哪个 cert 字段（溯源文案，悬浮可见）。 */
+  src: string;
+}
+
+/** 比例→百分（分母 0 = 无数据，诚实标）。 */
+function ratioPct(present: number, needed: number): { value: number; hasData: boolean } {
+  if (needed <= 0) return { value: 0, hasData: false };
+  return { value: Math.round((Math.min(present, needed) / needed) * 100), hasData: true };
+}
+
+/** 健康度 6 维（母版：规则覆盖/利用率/闭包/周期安全/可观测/激活）—— 全 DERIVE 自 cert。 */
+function deriveHealthDims(cert: SimCertification | null): RadarDim[] {
+  if (!cert) return [];
+  const wc = cert.worldCompleteness;
+  const ruleCov = ratioPct(wc.propagationRules.present, wc.propagationRules.needed);
+  // 利用率：知识维已含「DATA 维 + 利用率」投影（契约注释），直接取 dims.knowledge。
+  const closure = ratioPct(wc.derivationRules.present, wc.derivationRules.needed);
+  const activation = ratioPct(wc.actions.present, wc.actions.needed);
+  return [
+    { key: "ruleCoverage", label: "规则覆盖", value: ruleCov.value, hasData: ruleCov.hasData, src: "worldCompleteness.propagationRules" },
+    { key: "utilization", label: "利用率", value: Math.round(cert.dims.knowledge), hasData: true, src: "dims.knowledge（DATA维+利用率）" },
+    { key: "closure", label: "闭包", value: closure.value, hasData: closure.hasData, src: "worldCompleteness.derivationRules" },
+    { key: "cycleSafety", label: "周期安全", value: cert.l4Checks.fanoutSafe ? 100 : 0, hasData: true, src: "l4Checks.fanoutSafe（无高风险扇出）" },
+    { key: "observability", label: "可观测", value: cert.l4Checks.observabilityMet ? 100 : Math.round(cert.dims.structure), hasData: true, src: "l4Checks.observabilityMet / dims.structure" },
+    { key: "activation", label: "激活", value: activation.value, hasData: activation.hasData, src: "worldCompleteness.actions（写回行动）" },
+  ];
+}
+
+/** 信任度 4 维（母版：运行时/可解释/时序/数据可信）—— 全 DERIVE 自 cert（Temporal Trust 来自 Trial Tick）。 */
+function deriveTrustDims(cert: SimCertification | null): RadarDim[] {
+  if (!cert) return [];
+  const wc = cert.worldCompleteness;
+  // 数据可信：综合完整度 worldCompleteness.pct（范围预检口径）。
+  const dataTrust = { value: Math.round(wc.pct), hasData: wc.stateVars.needed > 0 };
+  return [
+    { key: "runtime", label: "运行时", value: cert.trialTick.passed ? 100 : cert.trialTick.at ? 0 : 0, hasData: cert.trialTick.at != null, src: "trialTick.passed（实跑一次）" },
+    { key: "explainability", label: "可解释", value: cert.l4Checks.writebackComplete ? 100 : Math.round(cert.dims.behavior), hasData: true, src: "l4Checks.writebackComplete / dims.behavior" },
+    { key: "temporal", label: "时序", value: cert.trialTick.passed ? 100 : 0, hasData: cert.trialTick.at != null, src: "Trial Tick Temporal Trust（只读≤t态）" },
+    { key: "dataTrust", label: "数据可信", value: dataTrust.value, hasData: dataTrust.hasData, src: "worldCompleteness.pct（范围预检）" },
+  ];
+}
+
+/** 健康/信任通用雷达（维含 hasData：无数据维灰轴 + 不计入多边形顶点，诚实标）。 */
+function HealthTrustRadar({ title, dims, color, size = 176 }: { title: string; dims: RadarDim[]; color: string; size?: number }) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2 - 26;
+  const n = Math.max(dims.length, 3);
+  const pt = (i: number, frac: number): [number, number] => {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    const k = Math.max(0, Math.min(100, frac)) / 100;
+    return [Number((cx + r * k * Math.cos(a)).toFixed(2)), Number((cy + r * k * Math.sin(a)).toFixed(2))];
+  };
+  const rings = [1 / 3, 2 / 3, 1].map((f) => dims.map((_, i) => pt(i, f * 100).join(",")).join(" "));
+  // 多边形顶点：无数据维退到圆心（0），仍闭合（诚实——那一边塌陷可见缺数）。
+  const poly = dims.map((d, i) => pt(i, d.hasData ? d.value : 0).join(",")).join(" ");
+  const missing = dims.filter((d) => !d.hasData);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div className={styles.sub} style={{ marginBottom: 2 }} data-testid={`sandbox-${title === "健康度" ? "health" : "trust"}-radar-title`}>{title}雷达 · {dims.length} 维</div>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${title}雷达`} data-testid={`sandbox-${title === "健康度" ? "health" : "trust"}-radar`}>
+        {rings.map((pts, i) => (
+          <polygon key={i} points={pts} fill="none" stroke="rgba(226,235,245,.12)" strokeWidth={i === 2 ? 1.2 : 0.8} />
+        ))}
+        {dims.map((d, i) => {
+          const [x, y] = pt(i, 100);
+          return <line key={d.key} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(226,235,245,.1)" strokeWidth={0.8} />;
+        })}
+        <polygon points={poly} fill={color} fillOpacity={0.22} stroke={color} strokeWidth={1.6} />
+        {dims.map((d, i) => {
+          const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+          const lx = cx + (size / 2 - 10) * Math.cos(a);
+          const ly = cy + (size / 2 - 10) * Math.sin(a);
+          return (
+            <text
+              key={d.key}
+              x={lx}
+              y={ly + 3}
+              textAnchor="middle"
+              fontSize={8.5}
+              fill={d.hasData ? "#9AA8B6" : "#5C6672"}
+              data-testid={`sandbox-${title === "健康度" ? "health" : "trust"}-axis-${d.key}`}
+            >
+              <title>{d.src}{d.hasData ? ` · ${d.value}` : " · 无数据（诚实标，不计入）"}</title>
+              {d.label}{d.hasData ? "" : "*"}
+            </text>
+          );
+        })}
+      </svg>
+      {missing.length > 0 && (
+        <div className={styles.sub} style={{ fontSize: 10, color: "#5C6672" }} data-testid={`sandbox-${title === "健康度" ? "health" : "trust"}-radar-missing`}>
+          *{missing.map((d) => d.label).join("/")}：缺数据（诚实标·未计入）
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AI 指挥台（NL 驱动沙盘 · 确定性意图解析，R6 无 LLM/随机） ────────────────────────────
+// 母版「NL→驱动沙盘动作」：解析意图→映射**现有沙盘 API**（tick/checkpoint/branch/query），不新建并行动作。
+// LLM 不可用即默认走确定性关键词解析（CLI classifyOperation 同范式）；解析不出诚实显「未识别意图」。
+type SandboxIntentKind = "tick" | "checkpoint" | "branch" | "query" | "unknown";
+interface SandboxIntent {
+  kind: SandboxIntentKind;
+  /** tick：推进步数（默认 1）。 */
+  n?: number;
+  /** 人读回执（确定性，作 echo）。 */
+  echo: string;
+}
+
+/** 确定性 NL 意图解析（R6：纯函数，无 Date.now/random/LLM）。中文关键词打分，多候选取首命中（固定优先级）。 */
+export function parseSandboxIntent(text: string): SandboxIntent {
+  const t = text.trim().toLowerCase();
+  if (!t) return { kind: "unknown", echo: "请输入指令" };
+  // 步数抽取（"推进 3 tick" / "走3步"）：取首个 1-3 位数字。
+  const numMatch = t.match(/(\d{1,3})/);
+  const n = numMatch ? Math.max(1, Math.min(50, parseInt(numMatch[1]!, 10))) : 1;
+  const has = (...kw: string[]) => kw.some((k) => t.includes(k));
+  // 固定优先级：分支 > 存档 > 推进 > 查询（避免"推进后分支"歧义瞎跑）。
+  if (has("分支", "对比", "branch", "compare", "场景")) return { kind: "branch", echo: "意图：分支并开多场景对比" };
+  if (has("存档", "检查点", "checkpoint", "保存", "快照")) return { kind: "checkpoint", echo: "意图：存当前检查点" };
+  if (has("推进", "tick", "前进", "走", "推", "步", "演")) return { kind: "tick", n, echo: `意图：推进 ${n} 个 tick` };
+  if (has("查询", "查", "状态", "就绪", "查看", "多少", "怎样", "如何", "认证")) return { kind: "query", echo: "意图：刷新世界态与就绪认证" };
+  return { kind: "unknown", echo: `未识别意图：「${text.trim()}」（支持：推进N tick / 存档检查点 / 分支对比 / 查询状态）` };
+}
+
+// ── R13 节点溯源悬浮（datasource→建模→对象 · 复用 fetchObjectLineage，不裸渲染） ──────────────
+/** 节点悬浮卡：取该类型**代表对象**（nodeObjectIds 首个）的 R13 lineage → 显上游链路。 */
+function NodeLineagePopover({ typeKey, objectId, anchor }: { typeKey: string; objectId: string | null; anchor: { x: number; y: number } }) {
+  const q = useQuery({
+    queryKey: ["a", "lineage", typeKey, objectId],
+    queryFn: () => fetchObjectLineage(typeKey, objectId!),
+    enabled: !!objectId,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const top = Math.min(anchor.y + 10, window.innerHeight - 260);
+  const left = Math.min(anchor.x + 10, window.innerWidth - 320);
+  return (
+    <div
+      style={{
+        position: "fixed", top, left, width: 300, zIndex: 50,
+        background: "var(--panel2)", border: "1px solid var(--line2)", borderRadius: 8,
+        padding: 12, fontSize: 12, boxShadow: "0 8px 24px rgba(0,0,0,.4)",
+      }}
+      role="tooltip"
+      data-testid="sandbox-lineage-popover"
+    >
+      <div className={styles.secHead} style={{ marginBottom: 6 }}>R13 溯源 · {typeKey}</div>
+      {!objectId ? (
+        <div className={styles.sub} data-testid="sandbox-lineage-empty">空世界：该类型无已物化对象，无上游链路可溯。</div>
+      ) : q.isLoading ? (
+        <div className={styles.sub}>读取上游链路…</div>
+      ) : q.isError || !q.data ? (
+        <div className={styles.sub} data-testid="sandbox-lineage-error">溯源不可用（lineage 未开通或对象无来源）。</div>
+      ) : (
+        <LineageChain vm={q.data} />
+      )}
+    </div>
+  );
+}
+
+/** 沿本体链路渲染：数据源 → 原始表 → 建模派生 → 对象（R13 不裸渲染，逐段标）。 */
+function LineageChain({ vm }: { vm: ObjectLineageVM }) {
+  const conn = vm.source?.connection ?? null;
+  const ds = vm.source?.rawDataset ?? null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="sandbox-lineage-chain">
+      <div data-testid="sandbox-lineage-source">
+        <span className="badge blue">数据源</span>{" "}
+        {conn ? <b>{conn.name}</b> : <span className={styles.sub}>无连接来源（origin 非来源派生）</span>}
+        {conn && <span className={styles.sub}> · {conn.connectorTypeKey}</span>}
+      </div>
+      <div className={styles.sub} style={{ textAlign: "center" }}>↓</div>
+      <div data-testid="sandbox-lineage-dataset">
+        <span className="badge">原始表</span>{" "}
+        {ds ? <b className="mono">{ds.name}</b> : <span className={styles.sub}>无原始表</span>}
+        {ds && <span className={styles.sub}> · {ds.rowCount} 行</span>}
+      </div>
+      <div className={styles.sub} style={{ textAlign: "center" }}>↓</div>
+      <div data-testid="sandbox-lineage-derive">
+        <span className="badge">建模派生</span>{" "}
+        {vm.derivations.length > 0 ? (
+          <span className="mono" style={{ fontSize: 11 }}>{vm.derivations.length} 条派生</span>
+        ) : (
+          <span className={styles.sub}>无派生属性</span>
+        )}
+      </div>
+      <div className={styles.sub} style={{ textAlign: "center" }}>↓</div>
+      <div data-testid="sandbox-lineage-object">
+        <span className="badge blue">对象</span>{" "}
+        <b className="mono" style={{ fontSize: 11 }}>{vm.object.id}</b>
+        <span className={styles.sub}> · snapshot {vm.snapshotVersion}</span>
+      </div>
+    </div>
+  );
+}
+
 /** 测试可注入 config（绕过网络，喂两套 mock config 证 R14）；生产留空走 view-config 端点。 */
 export interface SandboxViewProps {
   injectedConfig?: SandboxViewConfig;
@@ -163,6 +373,14 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [branchId, setBranchId] = useState<string | null>(null); // 子分支会话 id（对比用）
   const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
   const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
+
+  // AI 指挥台（NL 驱动沙盘 · 确定性意图解析 R6）：输入条 + 末次回执。
+  const [nlText, setNlText] = useState("");
+  const [nlEcho, setNlEcho] = useState<{ msg: string; ok: boolean } | null>(null);
+  // R13 节点溯源悬浮：点节点（=对象类型）→ 取该类型代表对象 lineage。pointer 位置作锚。
+  const [lineage, setLineage] = useState<{ typeKey: string; objectId: string | null } | null>(null);
+  const pointerRef = useRef({ x: 120, y: 120 });
+  const [anchor, setAnchor] = useState({ x: 120, y: 120 });
 
   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
   const globalKpi = useMemo(() => {
@@ -286,6 +504,74 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     });
   }, [sessionId, curTick, globalKpi, cert, certScope, adopt]);
 
+  // 推进 N 个 tick（AI 指挥台「推进 N」用）：逐次 simTick（引擎逐 tick 真传导，不一次跳）。
+  const runTicks = useCallback(
+    async (n: number) => {
+      if (!sessionId) return;
+      setTicking(true);
+      try {
+        let last: TickState | null = null;
+        let lastTick = curTick;
+        for (let i = 0; i < n; i++) {
+          const res = await simTick(sessionId, 1);
+          last = res.state;
+          lastTick = res.curTick;
+          const g = Object.keys(res.state).reduce((a, o) => a + aggregate(res.state[o]), 0) / Math.max(1, Object.keys(res.state).length);
+          setHistory((h) => [...h, g]);
+        }
+        if (last) {
+          setWorld(last);
+          setCurTick(lastTick);
+        }
+      } catch (e) {
+        toastError(e);
+      } finally {
+        setTicking(false);
+      }
+    },
+    [sessionId, curTick],
+  );
+
+  // AI 指挥台分发：NL → 确定性意图 → 映射**现有沙盘动作**（tick/checkpoint/branch/query），不新建并行动作。
+  const onIntent = useCallback(
+    async (raw: string) => {
+      const intent = parseSandboxIntent(raw);
+      if (!sessionId && intent.kind !== "unknown") {
+        setNlEcho({ msg: "会话尚未就绪，请稍候再下指令", ok: false });
+        return;
+      }
+      switch (intent.kind) {
+        case "tick":
+          setNlEcho({ msg: `${intent.echo} ✓`, ok: true });
+          await runTicks(intent.n ?? 1);
+          break;
+        case "checkpoint":
+          setNlEcho({ msg: `${intent.echo} ✓`, ok: true });
+          await onCheckpoint();
+          break;
+        case "branch":
+          setNlEcho({ msg: `${intent.echo} ✓`, ok: true });
+          await onBranch();
+          break;
+        case "query":
+          setNlEcho({ msg: `${intent.echo} ✓`, ok: true });
+          if (sessionId) {
+            try {
+              setCert(await fetchSimCertification(sessionId, certScope));
+            } catch {
+              /* 容错 */
+            }
+          }
+          break;
+        default:
+          // 诚实降级：无 LLM 时不瞎跑，明示未识别 + 支持的指令集。
+          setNlEcho({ msg: intent.echo, ok: false });
+      }
+      setNlText("");
+    },
+    [sessionId, certScope, runTicks, onCheckpoint, onBranch],
+  );
+
   if (!cfg) {
     if (cfgQuery.isError) return <div className="empty-state" data-testid="sandbox-config-error">沙盘配置不可用（沙盘功能未开通或本体为空）</div>;
     return <div className="empty-state" data-testid="sandbox-loading">加载沙盘配置…</div>;
@@ -296,6 +582,15 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const radarValues: Record<string, number> = cert
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
     : {};
+  // 健康6维 + 信任4维（轨A P1）：全 DERIVE 自 cert（R14 零写死/R13 派生投影/缺数据诚实标）。
+  const healthDims = deriveHealthDims(cert);
+  const trustDims = deriveTrustDims(cert);
+  // 点拓扑节点（=对象类型）→ 取该类型代表对象（nodeObjectIds 首个）开 R13 溯源悬浮。
+  const onNodeClick = (typeKey: string) => {
+    const ids = cfg.nodeObjectIds?.[typeKey] ?? [];
+    setAnchor(pointerRef.current);
+    setLineage({ typeKey, objectId: ids.length > 0 ? ids[0]! : null });
+  };
 
   return (
     <div data-testid="sandbox-view" className={styles.head}>
@@ -323,6 +618,42 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           );
         })}
       </div>
+
+      {/* AI 指挥台（NL 驱动沙盘 · 确定性意图解析 R6）：自然语言→现有沙盘动作（tick/存档/分支/查询）。
+          LLM 不可用即默认确定性解析（无 Date.now/random），未识别意图诚实降级显支持指令集。 */}
+      <form
+        className="panel"
+        data-testid="sandbox-ai-console"
+        style={{ padding: 12, marginTop: 12 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (nlText.trim()) void onIntent(nlText);
+        }}
+      >
+        <div className={styles.secHead}>AI 指挥台 · 自然语言驱动沙盘（确定性解析，无 LLM 依赖）</div>
+        <div className={styles.inputBar} style={{ marginTop: 8 }}>
+          <input
+            data-testid="sandbox-ai-input"
+            style={{ flex: 1, minWidth: 220 }}
+            placeholder="例：推进 5 个 tick / 存档检查点 / 分支对比 / 查询就绪状态"
+            value={nlText}
+            onChange={(e) => setNlText(e.target.value)}
+            disabled={!sessionId || ticking}
+          />
+          <button className="btn sm primary" type="submit" data-testid="sandbox-ai-run" disabled={!sessionId || ticking || !nlText.trim()}>
+            执行
+          </button>
+        </div>
+        {nlEcho && (
+          <div
+            className={styles.sub}
+            data-testid="sandbox-ai-echo"
+            style={{ marginTop: 6, color: nlEcho.ok ? "#43B7D7" : "#E0626C" }}
+          >
+            {nlEcho.msg}
+          </div>
+        )}
+      </form>
 
       {/* 控制条：推进 tick / 存档 / tick 时间轴 heat */}
       <div className="panel" data-testid="sandbox-controls" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 12 }}>
@@ -362,15 +693,32 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           )}
         </div>
 
-        {/* 拓扑（右）：PmDag 单层，节点=nodeTypes，着色随 world 态 */}
+        {/* 拓扑（右）：PmDag 单层，节点=nodeTypes，着色随 world 态；点节点→R13 溯源悬浮 */}
         <div className="panel" data-testid="sandbox-topology" style={{ padding: 12 }}>
-          <div className={styles.secHead}>本体拓扑（节点态随 tick 变色）</div>
+          <div className={styles.secHead}>本体拓扑（节点态随 tick 变色 · 点节点看 R13 上游链路）</div>
           {nodes.length > 0 ? (
-            <PmDag layers={[nodes]} edges={edges} step={0} testId="sandbox-dag" />
+            <div onMouseMove={(e) => { pointerRef.current = { x: e.clientX, y: e.clientY }; }}>
+              <PmDag layers={[nodes]} edges={edges} step={0} testId="sandbox-dag" onNodeClick={onNodeClick} />
+            </div>
           ) : (
             <div className={styles.sub} data-testid="sandbox-topology-empty">本体暂无已发布对象类型——先在建模页发布对象。</div>
           )}
         </div>
+      </div>
+
+      {/* 健康6维 + 信任4维 双雷达（轨A P1·AUDIT §1 母版口径）：数据全 DERIVE 自就绪认证（R14/R13），缺数据诚实标 */}
+      <div className="panel" data-testid="sandbox-dual-radar" style={{ padding: 12, marginTop: 12 }}>
+        <div className={styles.secHead}>运行雷达 · 健康度 6 维 + 信任度 4 维（派生自就绪认证，缺数据诚实标 *）</div>
+        {cert ? (
+          <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+            <HealthTrustRadar title="健康度" dims={healthDims} color="#43B7D7" />
+            <HealthTrustRadar title="信任度" dims={trustDims} color="#7BD389" />
+          </div>
+        ) : (
+          <div className={styles.sub} data-testid="sandbox-dual-radar-na">
+            双雷达需就绪认证数据（sim.certification 未开通或会话未就绪）——不写死占位值（RL5）。
+          </div>
+        )}
       </div>
 
       {/* 多场景 KPI 对比面板（北极星）：分支后出现，A 主线 vs B 分支逐 tick 差异 */}
@@ -384,6 +732,18 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </div>
           <SimComparePanel a={compare.a} b={compare.b} />
         </div>
+      )}
+
+      {/* R13 溯源悬浮（点拓扑节点触发）：沿本体链路 数据源→原始表→建模派生→对象，不裸渲染。点空白关闭。 */}
+      {lineage && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 49 }}
+            onClick={() => setLineage(null)}
+            data-testid="sandbox-lineage-scrim"
+          />
+          <NodeLineagePopover typeKey={lineage.typeKey} objectId={lineage.objectId} anchor={anchor} />
+        </>
       )}
     </div>
   );

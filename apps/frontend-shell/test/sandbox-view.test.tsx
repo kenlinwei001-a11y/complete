@@ -31,6 +31,17 @@ vi.mock("@/api/endpoints", () => ({
   simBranch: vi.fn(async () => ({ id: "sims_child", tenantId: "t", baseSnapshot: {}, scope: {}, status: "READY", curTick: 0, parentCheckpointId: "cp1", createdAt: "x" })),
   fetchSimCompare: vi.fn(async () => ({ a: [], b: [] })),
   createActionDraft: vi.fn(async () => ({ draftId: "ad1", status: "PENDING" })),
+  fetchObjectLineage: vi.fn(async (objectType: string, objectId: string) => ({
+    object: { id: objectId, type: objectType, origin: { kind: "MATERIALIZED" } },
+    source: {
+      connection: { id: "conn1", name: "原型导入:demo", connectorTypeKey: "prototype_html", lastSyncAt: null },
+      rawDataset: { id: "ds1", name: "orders_raw", rowCount: 24, fields: ["so", "cust"] },
+      rawRowIdx: 0,
+      rawRow: { so: "SO-3391" },
+    },
+    derivations: [{ prop: "revenueWan", formula: "p50*priceWan" }],
+    snapshotVersion: "v1",
+  })),
   fetchSimCertification: vi.fn(async () => ({
     scope: "GLOBAL", targetRef: null, level: "L2_RUNNABLE",
     dims: { structure: 60, knowledge: 40, behavior: 30, composite: 45 },
@@ -120,5 +131,95 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     await waitFor(() => expect(tickFn).toHaveBeenCalledWith("sims_test", 1));
     // tick 后全局态来自新 world（桩返回 {__mut:{v:999}}）→ 值应不同于 init 态。
     await waitFor(() => expect(screen.getByTestId("sandbox-kpi-global-val").textContent).not.toBe(before));
+  });
+});
+
+// ── 轨A P1 三项：双雷达 / AI 指挥台 / R13 溯源 ──────────────────────────────────────────
+import { parseSandboxIntent } from "@/views/sim/SandboxView";
+
+describe("轨A P1 · 健康6维+信任4维 双雷达（DERIVE 自 cert，缺数据诚实标）", () => {
+  afterEach(() => cleanup());
+  it("渲染健康6轴 + 信任4轴；needed=0 的维诚实标 *（不写死占位）", async () => {
+    wrap(CONFIG_A);
+    await screen.findByTestId("sandbox-view");
+    await screen.findByTestId("sandbox-dual-radar");
+    // 健康 6 维 + 信任 4 维轴标都在（来自 deriveHealth/TrustDims，非写死）。
+    for (const k of ["ruleCoverage", "utilization", "closure", "cycleSafety", "observability", "activation"]) {
+      await screen.findByTestId(`sandbox-health-axis-${k}`);
+    }
+    for (const k of ["runtime", "explainability", "temporal", "dataTrust"]) {
+      expect(screen.getByTestId(`sandbox-trust-axis-${k}`)).toBeTruthy();
+    }
+    // cert mock: propagationRules.needed=0 → 规则覆盖维诚实标缺数据（轴标带 *）。
+    expect(screen.getByTestId("sandbox-health-axis-ruleCoverage").textContent).toContain("*");
+    expect(screen.getByTestId("sandbox-health-radar-missing")).toBeTruthy();
+  });
+});
+
+describe("轨A P1 · AI 指挥台（确定性意图解析 R6，无 LLM）", () => {
+  afterEach(() => cleanup());
+
+  it("parseSandboxIntent 纯函数确定性：中文意图 → 动作（同输入同输出）", () => {
+    expect(parseSandboxIntent("推进 5 个 tick").kind).toBe("tick");
+    expect(parseSandboxIntent("推进 5 个 tick").n).toBe(5);
+    expect(parseSandboxIntent("存档检查点").kind).toBe("checkpoint");
+    expect(parseSandboxIntent("分支对比").kind).toBe("branch");
+    expect(parseSandboxIntent("查询就绪状态").kind).toBe("query");
+    expect(parseSandboxIntent("帮我画条龙").kind).toBe("unknown");
+    // 确定性：重复解析字节一致。
+    expect(parseSandboxIntent("推进 3 tick")).toEqual(parseSandboxIntent("推进 3 tick"));
+  });
+
+  it("NL「推进 2 tick」→ 经现有沙盘 API 真推进（simTick 调 2 次）+ 回执", async () => {
+    const user = userEvent.setup();
+    wrap(CONFIG_A);
+    await screen.findByTestId("sandbox-view");
+    const input = await screen.findByTestId("sandbox-ai-input");
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
+    tickFn.mockClear(); // 与首 describe 共用同一 tickFn，本测试前清零（确定性断言 2 次）
+    await user.type(input, "推进 2 tick");
+    await user.click(screen.getByTestId("sandbox-ai-run"));
+    await waitFor(() => expect(tickFn).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("sandbox-ai-echo").textContent).toContain("推进 2");
+  });
+
+  it("未识别意图诚实降级（不瞎跑，提示支持指令集）", async () => {
+    const user = userEvent.setup();
+    wrap(CONFIG_A);
+    await screen.findByTestId("sandbox-view");
+    const input = await screen.findByTestId("sandbox-ai-input");
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
+    tickFn.mockClear();
+    await user.type(input, "随便写点啥xyz");
+    await user.click(screen.getByTestId("sandbox-ai-run"));
+    await waitFor(() => expect(screen.getByTestId("sandbox-ai-echo").textContent).toContain("未识别意图"));
+    expect(tickFn).not.toHaveBeenCalled(); // 诚实：未识别不触发任何动作
+  });
+});
+
+describe("轨A P1 · R13 节点溯源悬浮（复用 fetchObjectLineage，沿本体链路）", () => {
+  afterEach(() => cleanup());
+
+  it("空世界（无 nodeObjectIds）：点节点诚实标无上游可溯，不裸渲染", async () => {
+    const user = userEvent.setup();
+    wrap(CONFIG_A);
+    await screen.findByTestId("sandbox-view");
+    const node = await screen.findByTestId("sandbox-dag-node-Supplier");
+    await user.click(node);
+    await screen.findByTestId("sandbox-lineage-popover");
+    await screen.findByTestId("sandbox-lineage-empty");
+  });
+
+  it("有真对象：点节点取代表对象 lineage → 沿链路 数据源→原始表→建模→对象", async () => {
+    const user = userEvent.setup();
+    const cfgWithObjs: SandboxViewConfig = { ...CONFIG_A, nodeObjectIds: { Supplier: ["obj_supplier_s1"], Factory: [], Order: [] } };
+    wrap(cfgWithObjs);
+    await screen.findByTestId("sandbox-view");
+    const node = await screen.findByTestId("sandbox-dag-node-Supplier");
+    await user.click(node);
+    await screen.findByTestId("sandbox-lineage-chain");
+    expect(screen.getByTestId("sandbox-lineage-source").textContent).toContain("原型导入");
+    expect(screen.getByTestId("sandbox-lineage-dataset").textContent).toContain("orders_raw");
+    expect(screen.getByTestId("sandbox-lineage-object").textContent).toContain("obj_supplier_s1");
   });
 });
