@@ -14,7 +14,9 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
     expect(JSON.stringify(a.metrics)).toBe(JSON.stringify(b.metrics));
     expect(JSON.stringify(a.rootCauseChains)).toBe(JSON.stringify(b.rootCauseChains));
     expect(a.metrics.length).toBe(3);
-    expect(a.rootCauseChains.length).toBe(4);
+    // 轨M 增量3（反事实排除层）：4 → 6（加 material 类 rc-material-logistics/rc-material-safety 候选根因，
+    // 反算达标→DAG 显式排除可见）。加性扩充·旧 4 链字节不变（上行 toBe 同对象比对仍过）。
+    expect(a.rootCauseChains.length).toBe(6);
     // 毛利率 KPI 的 actual 与财务"毛利"线/收入交叉一致（非写死）：actual = 毛利/收入×100。
     const margin = a.metrics.find((k) => k.metricId === "kpi-margin")!;
     const rev = (a.financePlans.find((f) => f.line === "收入")!.rolling as number);

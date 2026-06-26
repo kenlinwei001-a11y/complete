@@ -497,6 +497,10 @@ const materialBalanceProps: PropertyDef[] = [
   { propKey: "ltaPct", dataType: "number", isPrimaryKey: false }, // 长协覆盖(%)
   { propKey: "gapTon", dataType: "number", isPrimaryKey: false }, // 现货缺口(吨)
   { propKey: "etaDate", dataType: "string", isPrimaryKey: false },
+  // 轨M 增量3（反事实排除层·根因候选）：物流执行/安全库存维度的缺口（吨）。demo 物流到货在窗口内、安全库存充足
+  // → 两者恒 0（这两个候选根因反算达标）→ plan_rootcause 把它们「已排除」+理由，让根因 DAG 显反事实排除层。
+  { propKey: "logisticsGapTon", dataType: "number", isPrimaryKey: false }, // 物流时效缺口(吨)：到货延误造成的齐套缺口
+  { propKey: "safetyStockGapTon", dataType: "number", isPrimaryKey: false }, // 安全库存缺口(吨)：低于安全水位部分
 ];
 
 // cockpit P2 + SPINE 绿地：规划决策推演 + 根因 DAG + 经营目标-指标-责任骨架。
@@ -1460,6 +1464,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     matBalId: `mbal-${i + 1}`, material: m.material, unit: m.unit, netDemandTon: m.net, ltaPct: m.lta,
     gapTon: round(Math.max(0, m.net * (1 - m.lta / 100)), 0),
     etaDate: m.eta,
+    // 反事实排除候选维度（demo 态）：物流到货在窗口内、安全库存充足 → 这两维缺口恒 0（反算达标→排除）。
+    logisticsGapTon: 0,
+    safetyStockGapTon: 0,
   }));
   // 财务预算三线：收入=Σ收入细分、销售成本=收入-毛利、毛利=Σ毛利额（与 DemandSegment 交叉一致）。
   const totalRev = demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number), 0);
@@ -1514,6 +1521,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { chainId: "rc-profit-material", kpiCategory: "profit", factor: "物料成本上行", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 0.5 },
     { chainId: "rc-scale-demand", kpiCategory: "scale", factor: "细分需求未达预期", driverType: "DemandSegment", evidenceField: "act", selectField: "segment", baseWeight: 1 },
     { chainId: "rc-material-gap", kpiCategory: "material", factor: "现货缺口扩大", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 1 },
+    // 轨M 增量3（反事实排除层·母版 §1.B）：物料保障率缺口的另两个候选根因——物流时效 / 安全库存。
+    // demo 态此两维缺口恒 0（反算达标）→ plan_rootcause 贡献 0 → 显式「已排除」+理由，根因 DAG 出反事实排除层。
+    { chainId: "rc-material-logistics", kpiCategory: "material", factor: "物流时效不足", driverType: "MaterialBalance", evidenceField: "logisticsGapTon", selectField: "material", baseWeight: 1 },
+    { chainId: "rc-material-safety", kpiCategory: "material", factor: "安全库存不足", driverType: "MaterialBalance", evidenceField: "safetyStockGapTon", selectField: "material", baseWeight: 1 },
   ];
 
   return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks };

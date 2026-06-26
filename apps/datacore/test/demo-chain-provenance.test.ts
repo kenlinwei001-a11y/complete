@@ -68,6 +68,8 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
     expect(a.types.length).toBe(34);
-    expect(a.objs.length).toBe(467);
+    // 轨M 增量3 加性冻结超集：467 → 469（+2 RootCauseChain：rc-material-logistics/rc-material-safety）。
+    // 旧 467 逐字节不变、一个不少（superset-gate 守，frozen467.json 为下界）；此处只更新计数上界。
+    expect(a.objs.length).toBe(469);
   });
 });
