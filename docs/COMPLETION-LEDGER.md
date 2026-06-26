@@ -31,7 +31,7 @@
 | D2 | A1 连接器 + 文件上传（schema discovery/同步幂等/凭据密文） | 总纲 §2 | 8 | ◐ 72%(Pass2·核心通,缺事件+FK映射) |
 | D3 | A2 非结构化规则文档解析（五阶段/sourceQuote 防幻觉/人审/diff） | 总纲 §3 | 6 | ◐ 92%(Pass2·完整,RD1-2绿) |
 | D4 | A4/A5 本体服务 + 规则库（血缘/派生拓扑/DSL evaluate） | 总纲 §4 | 4 | ◐ 72%(Pass2·缺口与已知重叠) |
-| D5 | A3 半自动建模（外键候选/MAP_TO_EXISTING/发布校验/materialize） | 总纲 §5 | 6 | ◐(建模页空状态已实拍·功能未跑) |
+| D5 | A3 半自动建模（外键候选/MAP_TO_EXISTING/发布校验/materialize） | 总纲 §5 | 6 | ✅ **轨L 复验全闭(2026-06-26 我真跑坐实)**：demo 走真建模链 derive→草案(PUBLISHED)→publish→materialize·34/34 类真 sourceBindings(原 0)·ModelingPage 中心真本体/34 已建模/0 未建模(实拍)·obj id 字节不变(`obj_base_changzhou` 等原值)·沙盘 tick 不回归 |
 | D6 | A0/A6 账号·多前端·三层权限（JWT/JWKS/workspace/行级过滤/OBO） | 总纲 §6 | 15 | ◐ 88%(Pass2·三层权限稳) |
 | D7 | A7 合成数据一键生成（仅源头/seed 字节一致/跨模块同源/新行业 LLM） | 总纲 §7 | 8 | ◐ 78%(Pass2·核心稳·LLM新行业桩SY3) |
 | D8 | B1–B7（agent/workflow/MCP/skill/场景入口/求解器适配） | 总纲 §8-9 | 18 | ◐ 95%(Pass2·B1-B6就绪) |
