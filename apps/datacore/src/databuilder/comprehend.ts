@@ -225,7 +225,7 @@ function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed
   const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] }));
   const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], solverKey: s.solverKey, args: s.args ?? {}, renderBindings: [] }));
   const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({ intentKey: `intent_${s.solverKey}`, triggers: [s.solverKey], slots: [], planRef: `plan_${s.solverKey}`, riskLevel: "LOW" as const }));
-  const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({ scenarioKey: `scene_${s.solverKey}`, targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash", intentKey: `intent_${s.solverKey}`, mode: "WORKFLOW" as const, presetContext: {} }));
+  const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({ scenarioKey: `scene_${s.solverKey}`, targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash", intentKey: `intent_${s.solverKey}`, mode: "WORKFLOW" as const, presetContext: {}, triggerQuestion: script.trim().slice(0, 500) }));
   const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({ workflowKey: `wf_${s.solverKey}`, kind: "workflow", steps: ["invoke_solver", "render"] }));
   const skillNeeds: PlanSkillNeed[] = solverNeeds.map((s) => ({ skillKey: `skl_${s.solverKey}`, capability: s.solverKey, resources: [] }));
   const agentNeeds: PlanAgentNeed[] = solverNeeds.map((s) => ({ agentKey: `agt_${s.solverKey}`, systemPrompt: `针对 ${s.solverKey} 的推演分析 agent`, tools: [s.solverKey], skills: [`skl_${s.solverKey}`], ruleBindings: [], scopeObjectTypes: [...new Set(s.inputFields.map((f) => f.typeKey))] }));
@@ -608,6 +608,7 @@ export function comprehendScript(
     intentKey: `intent_${s.solverKey}`,
     mode: "WORKFLOW" as const,
     presetContext: {},
+    triggerQuestion: script.trim().slice(0, 500), // E15：DRAFT 场景带触发问句（故事即问句）→ 可 grow/verify
   }));
   // 债2：倒推扩到 workflow/skill/agent（每个求解器 → 工作流+技能+Agent），让 B 栈配置全可见。
   const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({

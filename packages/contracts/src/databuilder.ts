@@ -192,6 +192,9 @@ export const PlanSceneNeedSchema = z.object({
   mode: z.enum(["WORKFLOW", "AGENT"]).default("WORKFLOW"),
   defaultAgentId: z.string().optional(),
   presetContext: z.record(z.string(), z.unknown()).default({}),
+  // E15（评审返工）：scaffold 出的 DRAFT 场景须带触发问句，否则 grow/verify 无问可跑（query 空报错）→
+  // 跨系统闭环断在"末步重跑无答案"。倒推时以故事脚本为问句（"建出来的域真能答这条故事吗"）。
+  triggerQuestion: z.string().optional(),
 });
 export type PlanSceneNeed = z.infer<typeof PlanSceneNeedSchema>;
 

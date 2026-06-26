@@ -1865,7 +1865,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         domain: "",
         targetView: sn.targetView,
         intentKey: sn.intentKey ?? "",
-        triggerQuestion: "",
+        // E15（评审返工）：带上倒推问句（故事即问句）→ DRAFT 场景可经 grow/verify 跑出真答案（此前空串导致 query 报错断链）。
+        triggerQuestion: sn.triggerQuestion ?? "",
         rules: [],
         riskLevel: "COMPUTE",
         summary: "g8 故事倒推 scaffold（DRAFT）",
