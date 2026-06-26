@@ -61,6 +61,13 @@ if (!/bottleneck_matrix"[\s\S]{0,160}dataMode:\s*"LIVE"/.test(projSim)) {
   fail("ProjectSimView 调 bottleneck_matrix 未传 dataMode:LIVE（永远 MOCK 回潮·AUDIT 真值判据③）");
 }
 
+// ⑤ 假4：PropagationTimeline 财务击穿敞口必须用真营收（revenueWan，后端 affected_orders qty×真细分单价），
+// 不再以前端写死 0.6 万/套现编财务为主路径。
+const propTl = read("apps/frontend-shell/src/views/sim/PropagationTimeline.tsx");
+if (!/revenueWan/.test(propTl) || !/hasRealRevenue/.test(propTl)) {
+  fail("PropagationTimeline 财务击穿未用真营收 revenueWan（疑似前端写死 0.6 万/套现编财务回潮·假4）");
+}
+
 if (red) {
   console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 前端消费显估算/实测（抄 capex_scenario 缺数抛错 / LedgerView 逐格 Provenance）。");
   process.exit(1);

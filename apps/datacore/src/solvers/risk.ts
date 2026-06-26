@@ -546,6 +546,9 @@ export function affectedOrders(
   const affected = selected.map(({ o, dueDay }) => {
     const jit = hashString(str(o.props.so)) % p.affected.jitterMod;
     const delay = Math.max(1, Math.round((peak - p.risk.threshold) / p.affected.delayDiv) + jit);
+    // 轨M 增量1（假4 真推演红线）：逐单真营收（qty × 真细分单价 SEG_PRICE 万/套，与 order econTable 同源），
+    // 取代前端 PropagationTimeline 写死 0.6 万/套——财务击穿敞口由真单价真算（R13 可溯，非现编系数）。
+    const revenueWan = round(num(o.props.qty) * (SEG_PRICE[segmentOf(c, str(o.props.cust)).key] ?? 0), 2);
     return {
       so: o.props.so,
       cust: o.props.cust,
@@ -554,6 +557,7 @@ export function affectedOrders(
       due: o.props.due,
       dueDay,
       delay,
+      revenueWan,
       impact: round(Math.min(1, 0.2 + delay / 10), 2),
     };
   });
