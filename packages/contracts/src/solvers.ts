@@ -13,6 +13,8 @@ export const PerBaseRowSchema = z.object({
   maintWeek: z.number().int().nullable(),
   bottleneck: z.string(),
   tightness: z.number(),
+  // 轨M 增量1（假2）：该基地主瓶颈紧张度是否来自真数据（liveTightness）→ 前端红/橙显"实测/估算"。
+  live: z.boolean().optional(),
   cumTotal: z.number(),
 });
 export type PerBaseRow = z.infer<typeof PerBaseRowSchema>;
@@ -21,6 +23,8 @@ export const CapacityForecastOutputSchema = z
   .object({
     p50: z.number(),
     p90: z.number(),
+    // 轨M 增量1（假2 真推演红线）：紧张度/主瓶颈数据模式（LIVE=真 OEE/利用率/良率；MOCK=全回落 → 前端显"估算"）。
+    dataMode: z.enum(["LIVE", "MOCK"]).optional(),
     healthFactor: z.number(), // 默认 0.93；数据源延迟>2h 降 0.90（C09）
     gap: z.number(),
     ok: z.boolean(),

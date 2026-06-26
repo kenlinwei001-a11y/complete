@@ -38,7 +38,7 @@ export function mockTightness(c: SolverContext, baseId: string, factor: string):
 }
 
 /** LIVE 口径: normalize real snapshot metrics (falls back to MOCK per factor when absent). */
-function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number; live: boolean } {
+export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number; live: boolean } {
   const lp = c.params.bottleneck.live;
   if (factor === "设备OEE") {
     const eq = c.equipment.filter((e) => e.props.baseId === baseId && typeof e.props.oee_current === "number");

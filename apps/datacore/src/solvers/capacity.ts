@@ -1,7 +1,7 @@
 import { round } from "../prng.js";
 import { validationError } from "../errors.js";
 import { baseName, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
-import { mockTightness, primaryFactor } from "./risk.js";
+import { liveTightness, primaryFactor } from "./risk.js";
 
 // ---------------------------------------------------------------------------
 // S1.1 capacity_rollup — equipment → process → line → base, with per-level
@@ -219,6 +219,9 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   const pendingCertList: string[] = [];
   let mainBn = "";
   let mainTightness = -1;
+  // 轨M 增量1（假2 真推演红线）：紧张度改用 risk.ts 的 LIVE/MOCK 判别（liveTightness 读真 OEE/利用率/良率），
+  // 不再裸 import mockTightness 绕开真数据；逐基地透 live 标 + 顶层 dataMode → 前端红/橙诚实标"估算"。
+  let anyLive = false;
   for (const [baseId, status] of [...cert.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     const certFactor = p.certFactors[status] ?? 1;
     if (status === "认证中") pendingCertList.push(`${baseName(c, baseId)}·LINE-${baseId}`);
@@ -231,9 +234,11 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       for (let i = w - 1; i < weeks; i++) cumP50ByWeek[i] = (cumP50ByWeek[i] as number) + add;
     }
     p50 += cumTotal;
-    // S1.3 tightness for the per-base bottleneck column + global mainBn.
+    // S1.3 tightness for the per-base bottleneck column + global mainBn —— LIVE 优先（真数据），无真数据源回落 MOCK。
     const bn = primaryFactor(c, baseId);
-    const tight = mockTightness(c, baseId, bn);
+    const lt = liveTightness(c, baseId, bn);
+    const tight = lt.value;
+    anyLive = anyLive || lt.live;
     if (tight > mainTightness) {
       mainTightness = tight;
       mainBn = bn;
@@ -246,6 +251,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       maintWeek: mw,
       bottleneck: bn,
       tightness: tight,
+      live: lt.live, // 该基地主瓶颈紧张度是否来自真数据（前端红/橙据此显"实测/估算"）
       cumTotal: round(cumTotal, 4),
     });
   }
@@ -353,6 +359,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     ...(whatIf ? { whatIf } : {}),
     weeks,
     qty,
+    // 轨M 增量1（假2）：紧张度数据模式——LIVE=任一基地主瓶颈来自真 OEE/利用率/良率；MOCK=全回落 → 前端红/橙显"估算"。
+    dataMode: anyLive ? "LIVE" : "MOCK",
     // legacy aliases consumed by AgentCore QOS seed plans
     gapPct: qty > 0 ? round(Math.max(0, gap) / qty, 4) : 0,
     mainBottleneck: mainBn,

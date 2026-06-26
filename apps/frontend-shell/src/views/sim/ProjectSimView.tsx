@@ -192,7 +192,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const bnMatrix = useQuery({
     queryKey: ["b", "solver", "bottleneck_matrix", bnBases],
     queryFn: async () => {
-      const res = await runSolver("bottleneck_matrix", { baseIds: bnBases });
+      // 轨M 增量1（假2/AUDIT 真值判据③）：请求 LIVE → 有真 OEE/利用率/良率走真算（不再永远 MOCK）。
+      const res = await runSolver("bottleneck_matrix", { baseIds: bnBases, dataMode: "LIVE" });
       return BottleneckMatrixOutputSchema.parse(res.data);
     },
     enabled: bnOpen && bnBases.length > 0,
@@ -761,6 +762,10 @@ function StepBody({
                   </span>
                   <span className="mono" style={{ color: r.tightness >= 85 ? "var(--danger)" : undefined }}>
                     {r.tightness}
+                  </span>
+                  {/* 轨M 增量1（假2）：紧张度色块不再裸渲染当真值——逐基地诚实标实测/估算（LIVE=真 OEE/利用率/良率）。 */}
+                  <span data-testid={`pm-tight-mode-${r.base}`} style={{ marginLeft: 6, fontSize: 10, opacity: 0.75 }}>
+                    {r.live ? "实测" : "估算"}
                   </span>
                 </td>
               </tr>
