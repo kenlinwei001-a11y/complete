@@ -73,6 +73,20 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   <span className="badge">{card.factor}</span>
                 </RiskHoverTrigger>
               </div>
+              {/* 轨M 增量1（真推演红线）：红/黄峰值不再裸渲染当真值——诚实标 dataMode：
+                  MOCK→"估算（实测当前 N）"，LIVE→"实测当前 N"（推演峰值锚定真测量值，R13 可溯）。 */}
+              {card.dataMode === "MOCK" && (
+                <div className="badge" data-testid={`risk-datamode-${card.base}`}
+                  style={{ background: "var(--warn, #caa23a)", color: "#1a1400", fontSize: 10, alignSelf: "flex-start" }}>
+                  估算{card.currentTightness ? `（实测当前 ${Math.round(card.currentTightness.value)}）` : "（无实测）"}
+                </div>
+              )}
+              {card.dataMode === "LIVE" && card.currentTightness && (
+                <div className="badge" data-testid={`risk-datamode-${card.base}`}
+                  style={{ fontSize: 10, alignSelf: "flex-start", opacity: 0.8 }}>
+                  实测当前 {Math.round(card.currentTightness.value)}
+                </div>
+              )}
               <div className={styles.metrics}>
                 <span>
                   {zh.risk.peak}

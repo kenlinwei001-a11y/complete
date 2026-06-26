@@ -83,6 +83,10 @@ export const RiskEventSchema = z.object({
 export const RiskCardSchema = z.object({
   base: z.string(),
   factor: z.string(),
+  // 轨M 增量1（真推演红线）：LIVE=该因素有实测当前张力（真 OEE/利用率/良率）；MOCK=无真数据源 → 前端必显"估算"。
+  dataMode: z.enum(["LIVE", "MOCK"]).optional(),
+  // 实测当前张力（liveTightness）：value=当前值，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值（有真数据→真算可溯）。
+  currentTightness: z.object({ value: z.number(), live: z.boolean() }).optional(),
   peak: z.number(),
   crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）
   series: z.array(z.number()), // 逐日 tension
@@ -107,6 +111,8 @@ export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
 export const RiskTimelineOutputSchema = z.object({
   horizon: z.number().int(),
   threshold: z.number(), // 默认 85
+  // 轨M 增量1：顶层 dataMode（LIVE/MOCK/PARTIAL）——前端据此提示"部分估算"，红/黄状态不再裸渲染当真值。
+  dataMode: z.enum(["LIVE", "MOCK", "PARTIAL"]).optional(),
   cards: z.array(RiskCardSchema).max(8),
   // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP）。
   planRows: z.array(RiskPlanRowSchema).optional(),

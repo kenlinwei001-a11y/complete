@@ -181,9 +181,12 @@ export function tensionSeries(
   horizon: number,
   events: RiskEvent[],
   mitigation?: { eff: number; tn: number },
+  // 轨M 增量1（真推演红线）：基线张力优先用真数据（liveTightness 读 OEE/利用率/良率），
+  // 无真数据源的因素（人力工时/物料齐套/物流时长/换型损失）回落 mock。调用方传入以保 series 与 dataMode 同源。
+  baseline?: number,
 ): number[] {
   const p = c.params.risk;
-  const cur = mockTightness(c, baseId, factor);
+  const cur = baseline ?? mockTightness(c, baseId, factor);
   const tgt = riskTarget(c, baseId, factor, cur);
   const series: number[] = [];
   for (let d = 1; d <= horizon; d++) {
@@ -241,6 +244,11 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
   const cards: Record<string, unknown>[] = [];
   for (const pair of pairs) {
     const events = riskEvents(c, pair.baseId, horizon);
+    // 轨M 增量1（真推演红线）：series 是确定性 forward 推演（基线 climb + 真事件脉冲）。
+    // 诚实披露：liveTightness 给该因素的"实测当前张力"——有真数据(LIVE: 设备OEE/瓶颈工序/良率波动 读
+    // 真 OEE/利用率/良率)则 dataMode=LIVE 且 currentTightness 亮真值；无真数据源(MOCK: 人力工时/物料齐套/
+    // 物流时长/换型损失)则 dataMode=MOCK → 前端显"估算（无实测）"，红/黄不再裸渲染当真值。
+    const lt = liveTightness(c, pair.baseId, pair.factor);
     const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events);
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
@@ -248,6 +256,8 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       base: baseName(c, pair.baseId),
       baseId: pair.baseId,
       factor: pair.factor,
+      dataMode: lt.live ? "LIVE" : "MOCK",
+      currentTightness: { value: lt.value, live: lt.live },
       peak: Math.max(...series),
       crossDay,
       series,
@@ -281,9 +291,13 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     return ca - cb || (str(a.base) < str(b.base) ? -1 : 1);
   });
   const shown = cards.slice(0, p.maxCards);
+  // 顶层 dataMode：全 LIVE→LIVE，全 MOCK→MOCK，混合→PARTIAL（前端据此提示"部分估算"）。
+  const modes = new Set(shown.map((c2) => c2.dataMode as string));
+  const dataMode = modes.size === 0 ? "MOCK" : modes.size === 1 ? [...modes][0] : "PARTIAL";
   return {
     horizon,
     threshold: p.threshold,
+    dataMode,
     cards: shown,
     mitigationLibrary: p.mitigations,
     planRows: buildRiskPlanRows(c, shown, p.threshold),
