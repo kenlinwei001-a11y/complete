@@ -68,6 +68,15 @@ if (!/revenueWan/.test(propTl) || !/hasRealRevenue/.test(propTl)) {
   fail("PropagationTimeline 财务击穿未用真营收 revenueWan（疑似前端写死 0.6 万/套现编财务回潮·假4）");
 }
 
+// ⑥ 假3：OrderChainView 经营数据看板不得用 hashN 现编财务/库存；库存列须诚实标"估算"。
+const orderChain = read("apps/frontend-shell/src/views/plan/OrderChainView.tsx");
+if (/function hashN|hashN\(/.test(orderChain)) {
+  fail("OrderChainView 仍含 hashN 现编财务/库存（假3 回潮）——库存无实测数据须营收×固定系数估算 + 诚实标");
+}
+if (!/估算/.test(orderChain)) {
+  fail("OrderChainView 经营数据看板库存列未诚实标'估算'（无实测库存数据·假3）");
+}
+
 if (red) {
   console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 前端消费显估算/实测（抄 capex_scenario 缺数抛错 / LedgerView 逐格 Provenance）。");
   process.exit(1);

@@ -31,13 +31,6 @@ const ECON_DEFAULT = {
 };
 const SEG_ORDER = ["乘用车", "商用车", "储能"]; // debattery-allow：econ 看板细分行展示顺序（非业务数值）
 
-/** 确定性哈希（与原型 hashN 同式：x=(x*31+code)%997）→ 逐订单 econ 微扰，R6 字节一致。 */
-function hashN(s: string, mod: number): number {
-  let x = 0;
-  for (const c of s) x = (x * 31 + c.charCodeAt(0)) % 997;
-  return x % mod;
-}
-
 interface EconAgg {
   cap: number;
   fg: number;
@@ -108,15 +101,17 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   const econTotal = empty();
   for (const r of out.rows) {
     const price = econCfg.segPrice[r.seg] ?? 0.6;
-    const h = hashN(r.so, 10) / 10;
     const sales = r.qty * price;
+    // 轨M 增量1（假3 真推演红线）：营收/毛利=真算（真细分单价/毛利率 SEG_REGISTRY）。
+    // 成品库存/在制/原料无实测库存数据 → 营收×行业占比固定系数的**透明估算**（去掉 hashN 现编的假精度），
+    // 表头诚实标"估算（营收×行业占比·无实测库存）"——绝不裸渲染成与真算无差别。
     const e: EconAgg = {
       cap: r.qty,
       sales,
       gp: sales * (econCfg.segMargin[r.seg] ?? 0.13),
-      fg: sales * (econCfg.coef.fg[0]! + h * econCfg.coef.fg[1]!),
-      wip: sales * (econCfg.coef.wip[0]! + h * econCfg.coef.wip[1]!),
-      rm: sales * (econCfg.coef.rm[0]! + h * econCfg.coef.rm[1]!),
+      fg: sales * econCfg.coef.fg[0]!,
+      wip: sales * econCfg.coef.wip[0]!,
+      rm: sales * econCfg.coef.rm[0]!,
     };
     // app 模式按应用细分；base 模式按首个关联风险基地（跨基地订单计入首基地）。
     const key = segMode === "app" ? r.seg : (r.risks[0]?.base?.replace("基地", "").replace("·总部", "") ?? "其他");
@@ -242,9 +237,10 @@ export default function OrderChainView({ view }: ViewRendererProps) {
             <tr>
               <th>{segMode === "app" ? zh.orderChain.colSeg : zh.orderChain.colBase}</th>
               <th>{zh.orderChain.econCap}</th>
-              <th>{zh.orderChain.econFg}</th>
-              <th>{zh.orderChain.econWip}</th>
-              <th>{zh.orderChain.econRm}</th>
+              {/* 轨M 增量1（假3）：成品库存/在制/原料无实测库存数据 → 营收×行业占比估算，表头诚实标"估算"。 */}
+              <th title="无实测库存数据 · 营收×行业占比固定系数估算">{zh.orderChain.econFg}<sup data-testid="econ-est-fg" style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算</sup></th>
+              <th title="无实测库存数据 · 营收×行业占比固定系数估算">{zh.orderChain.econWip}<sup style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算</sup></th>
+              <th title="无实测库存数据 · 营收×行业占比固定系数估算">{zh.orderChain.econRm}<sup style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算</sup></th>
               <th>{zh.orderChain.econSales}</th>
               <th>{zh.orderChain.econGp}</th>
               <th>{zh.orderChain.econGmRate}</th>
