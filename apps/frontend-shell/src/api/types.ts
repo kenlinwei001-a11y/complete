@@ -276,6 +276,11 @@ export interface AffectedOrdersOutputVM {
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
   rows: AffectedOrderRowVM[];
   problems: OrderProblemGroup[];
+  // 轨M 增量2a：综合毛利率逐细分贡献勾稽（Σ贡献=综合毛利率·闭合；Σ缺口贡献=缺口·负+正闭合）。
+  marginLedger?: {
+    gmRatePct: number; targetPct: number; gapPp: number; reconciled: boolean;
+    bySegment: { seg: string; revenue: number; revShare: number; marginPct: number; contributionPp: number; gapContributionPp: number; orderCount: number }[];
+  };
 }
 
 // ---- 任务事件（SSE 帧形态，QOS-PRD §8.2） ----

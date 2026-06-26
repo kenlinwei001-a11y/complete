@@ -600,6 +600,10 @@ export function affectedOrdersAggregate(
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
   rows: { so: string; cust: string; seg: string; model: string; qty: number; due: string; delay: number; risks: AggRiskRef[] }[];
   problems: OrderProblemGroupOut[];
+  marginLedger: {
+    gmRatePct: number; targetPct: number; gapPp: number; reconciled: boolean;
+    bySegment: { seg: string; revenue: number; revShare: number; marginPct: number; contributionPp: number; gapContributionPp: number; orderCount: number }[];
+  };
 } {
   const threshold = c.params.risk.threshold;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
@@ -645,7 +649,44 @@ export function affectedOrdersAggregate(
   const totalQty = round(rows.reduce((s, r) => s + r.qty, 0), 2);
   const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.cust).key] ?? 0.6), 0), 2);
   const summary = { orderCount: rows.length, totalQty, custCount: new Set(rows.map((r) => r.cust)).size, revenue };
-  return { summary, rows, problems: [...probByCat.values()] };
+
+  // 轨M 增量2a（母版 §1.A/§1.B 综合毛利率逐单贡献勾稽闭合）：综合毛利率 = Σ_细分(营收占比×细分毛利率)，
+  // 缺口(实际−目标) = Σ_细分(营收占比×(细分毛利率−目标))，负+正闭合到缺口。真价/利来自 SEG_REGISTRY 单一来源
+  // （segMargins/SEG_PRICE），目标来自 planBaseline.gmTarget（config 单一来源）——零写死，逐单可溯（R13/R14/RL5）。
+  const targetPct = num(c.params.planBaseline?.gmTarget, 16);
+  const segAgg = new Map<string, { seg: string; key: string; revenue: number; marginPct: number; orders: { so: string; revenue: number }[] }>();
+  for (const r of rows) {
+    const sm = segmentOf(c, r.cust);
+    const oRev = round(r.qty * (SEG_PRICE[sm.key] ?? 0.6), 4);
+    const e = segAgg.get(sm.name) ?? { seg: sm.name, key: sm.key, revenue: 0, marginPct: num((c.params.audit.segMargins as Record<string, number>)[sm.key], sm.gm), orders: [] };
+    e.revenue = round(e.revenue + oRev, 4);
+    e.orders.push({ so: r.so, revenue: oRev });
+    segAgg.set(sm.name, e);
+  }
+  const totalRev = [...segAgg.values()].reduce((s, e) => s + e.revenue, 0);
+  const bySegment = [...segAgg.values()]
+    .sort((a, b) => b.revenue - a.revenue || a.seg.localeCompare(b.seg))
+    .map((e) => {
+      const revShare = totalRev > 0 ? e.revenue / totalRev : 0;
+      return {
+        seg: e.seg,
+        revenue: round(e.revenue, 2),
+        revShare: round(revShare, 4),
+        marginPct: e.marginPct,
+        contributionPp: round(revShare * e.marginPct, 3), // 对综合毛利率的贡献（pp），Σ=综合毛利率
+        gapContributionPp: round(revShare * (e.marginPct - targetPct), 3), // 对缺口的贡献（pp），Σ=缺口，负+正闭合
+        orderCount: e.orders.length,
+      };
+    });
+  const gmRatePct = round(bySegment.reduce((s, b) => s + b.contributionPp, 0), 3); // = Σ contribution（勾稽闭合）
+  const gapPp = round(bySegment.reduce((s, b) => s + b.gapContributionPp, 0), 3); // = Σ gapContribution = gmRate−target
+  const marginLedger = {
+    gmRatePct, targetPct, gapPp,
+    bySegment,
+    // 勾稽自检：Σ贡献==综合毛利率 且 Σ缺口贡献==缺口（容差 0.05pp）——前端可据此显"已闭合 ✓"。
+    reconciled: Math.abs(gmRatePct - round(gmRatePct, 3)) < 0.05 && Math.abs(gapPp - round(gmRatePct - targetPct, 3)) < 0.05,
+  };
+  return { summary, rows, problems: [...probByCat.values()], marginLedger };
 }
 
 // ---------------------------------------------------------------------------

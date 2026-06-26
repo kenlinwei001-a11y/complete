@@ -174,15 +174,9 @@ function OrderLedgerWidget() {
   if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
   const segs = [...new Set(rows.map((r) => r.seg))];
   const filtered = seg ? rows.filter((r) => r.seg === seg) : rows;
-  let sales = 0;
-  let gp = 0;
-  for (const r of filtered) {
-    const e = SEG_ECON[r.seg] ?? { price: 0.6, margin: 13 };
-    const s = r.qty * e.price;
-    sales += s;
-    gp += (s * e.margin) / 100;
-  }
-  const gmRate = sales > 0 ? (gp / sales) * 100 : 0;
+  // 轨M 增量2a：综合毛利率 = 后端 marginLedger 逐细分贡献勾稽（真算·闭合·可溯），取代前端 Σgp/Σsales。
+  const ml = data?.marginLedger;
+  const gmRate = ml ? ml.gmRatePct : (() => { let s = 0, g = 0; for (const r of filtered) { const e = SEG_ECON[r.seg] ?? { price: 0.6, margin: 13 }; const v = r.qty * e.price; s += v; g += (v * e.margin) / 100; } return s > 0 ? (g / s) * 100 : 0; })();
   return (
     <div data-testid="dash-order-ledger">
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
@@ -192,6 +186,34 @@ function OrderLedgerWidget() {
         ))}
         <span style={{ marginLeft: "auto", fontSize: 12 }}>{zh.dash.ledgerGm} <b className="mono" data-testid="ledger-gmrate">{gmRate.toFixed(1)}%</b> · {filtered.length} 单</span>
       </div>
+      {/* 轨M 增量2a 综合毛利率逐细分贡献勾稽（母版 §1.A/§1.B）：Σ贡献=综合毛利率（闭合）·Σ缺口贡献=缺口（负+正闭合），逐细分可溯。 */}
+      {ml && (
+        <details data-testid="ledger-margin-reconcile" style={{ marginBottom: 8, fontSize: 11.5, background: "var(--panel2,rgba(255,255,255,.03))", borderRadius: 6, padding: "6px 8px" }}>
+          <summary style={{ cursor: "pointer" }}>
+            综合毛利率勾稽：<b className="mono">{ml.gmRatePct.toFixed(2)}%</b> vs 目标 {ml.targetPct.toFixed(1)}% · 缺口 <b className="mono" style={{ color: ml.gapPp < 0 ? "var(--danger)" : "var(--ok,#62BE77)" }}>{ml.gapPp >= 0 ? "+" : ""}{ml.gapPp.toFixed(2)}pp</b> {ml.reconciled ? "· 已闭合 ✓" : "· 未闭合 ✗"}
+          </summary>
+          <table className="cmp" style={{ width: "100%", marginTop: 6, fontSize: 11 }}>
+            <thead><tr><th>细分</th><th>营收占比</th><th>毛利率</th><th>贡献(pp)</th><th>缺口贡献(pp)</th><th>单</th></tr></thead>
+            <tbody>
+              {ml.bySegment.map((b) => (
+                <tr key={b.seg} data-testid={`ledger-recon-${b.seg}`}>
+                  <td className="zh">{b.seg}</td>
+                  <td className="mono">{(b.revShare * 100).toFixed(1)}%</td>
+                  <td className="mono">{b.marginPct}%</td>
+                  <td className="mono">{b.contributionPp.toFixed(2)}</td>
+                  <td className="mono" style={{ color: b.gapContributionPp < 0 ? "var(--danger)" : "var(--ok,#62BE77)" }}>{b.gapContributionPp >= 0 ? "+" : ""}{b.gapContributionPp.toFixed(2)}</td>
+                  <td className="mono">{b.orderCount}</td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: "1px solid var(--line,rgba(255,255,255,.12))", fontWeight: 600 }}>
+                <td>Σ 合计</td><td className="mono">100%</td><td>—</td>
+                <td className="mono">{ml.gmRatePct.toFixed(2)}</td>
+                <td className="mono">{ml.gapPp >= 0 ? "+" : ""}{ml.gapPp.toFixed(2)}</td><td className="mono">{ml.bySegment.reduce((s, b) => s + b.orderCount, 0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </details>
+      )}
       <table className="cmp" data-testid="ledger-table" style={{ fontSize: 12, width: "100%" }}>
         <thead><tr><th>订单</th><th>客户</th><th>细分</th><th>型号</th><th>数量</th><th>交期</th><th>延期</th><th>风险</th></tr></thead>
         <tbody>
