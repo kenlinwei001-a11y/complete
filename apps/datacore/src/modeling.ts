@@ -523,7 +523,9 @@ export class ModelingService {
         }
         const idSuffix = pk && props[pk] != null ? String(props[pk]) : String(i);
         await this.repos.objects.put({
-          id: `obj_${targetKey.toLowerCase()}_${ds.id}_${idSuffix}`.replace(/[^\w-]/g, "_"),
+          // 轨L 增量1：对象身份统一 = obj_${type}_${pk}（业务主键，非来源行）——去 ds.id 段，与 synthetic A 路一致。
+          // 同 type+pk 重物化 → 同 id 覆盖（幂等·正确合并：同业务键即同对象）。provenance 仍在 origin.datasetId。
+          id: `obj_${targetKey.toLowerCase()}_${idSuffix}`.replace(/[^\w-]/g, "_"),
           tenantId: ctx.tenantId,
           type: targetKey,
           props,
@@ -602,7 +604,8 @@ export class ModelingService {
           }
           const idSuffix = pkVal != null && pkVal !== "" ? String(pkVal) : String(i);
           await this.repos.objects.put({
-            id: `obj_${targetKey.toLowerCase()}_${ds.id}_${idSuffix}`.replace(/[^\w-]/g, "_"),
+            // 轨L 增量1：对象身份统一 = obj_${type}_${pk}（去 ds.id 段，与 A 路/另一物化点一致，单一身份约定）。
+            id: `obj_${targetKey.toLowerCase()}_${idSuffix}`.replace(/[^\w-]/g, "_"),
             tenantId: ctx.tenantId,
             type: targetKey,
             props,

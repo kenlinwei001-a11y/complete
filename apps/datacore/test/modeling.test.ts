@@ -270,6 +270,36 @@ describe("A3 modeling", () => {
     expect(runs[0]!.status).toBe("SUCCEEDED");
   });
 
+  it("轨L 增量1: 对象身份统一 obj_${type}_${pk}（去 ds.id 段）+ 同 type+pk 重物化幂等（覆盖非重复·id 字节稳定）", async () => {
+    const t = await makeApp();
+    const ordersDs = await uploadCsv(t, "orders.csv", ORDERS_CSV);
+    const modelsDs = await uploadCsv(t, "models.csv", MODELS_CSV);
+    t.llm.enqueue(SUGGESTION_V1);
+    const s1 = await t.app.inject({ method: "POST", url: "/a/v1/modeling/suggest", headers: ADMIN, payload: { rawDatasetIds: [ordersDs, modelsDs] } });
+    const draft1 = (s1.json() as { draftId: string }).draftId;
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draft1}/publish`, headers: ADMIN });
+
+    const queryIds = async (typeKey: string): Promise<string[]> => {
+      const r = (await t.app.inject({ method: "POST", url: "/a/v1/objects/query", headers: ADMIN, payload: { objectType: typeKey, filter: {}, limit: 100 } })).json() as { data: { id: string }[] };
+      return r.data.map((o) => o.id).sort();
+    };
+
+    // 第一次物化
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draft1}/materialize`, headers: ADMIN });
+    const ids1 = await queryIds("SalesOrder");
+    expect(ids1.length).toBe(6);
+    // 身份统一：id 形态 = obj_salesorder_<pk>，**不含 ds.id 段（无 _rds_ / 无 dataset id）**。
+    for (const id of ids1) {
+      expect(id.startsWith("obj_salesorder_")).toBe(true);
+      expect(id).not.toMatch(/_rds[-_]/); // 旧 B 路 obj_type_${ds.id}_${pk} 的 ds.id 段已去除
+    }
+
+    // 第二次物化（同 draft 同数据）→ 幂等：obj id 集逐字节相等（同 type+pk 覆盖，不产重复对象）。
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draft1}/materialize`, headers: ADMIN });
+    const ids2 = await queryIds("SalesOrder");
+    expect(ids2).toEqual(ids1); // 重物化幂等：id 集不变、不翻倍
+  });
+
   it("OM4: 确定性映射管线 derive → 每个字段都建模（R12 字段全建模 100% 覆盖 + FK→LinkType + PK 推断）", async () => {
     const t = await makeApp();
     const ordersDs = await uploadCsv(t, "orders.csv", ORDERS_CSV);
