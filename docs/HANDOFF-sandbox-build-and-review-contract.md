@@ -129,13 +129,13 @@ RL1 本体先行 · RL2 暗发 · RL3 单一来源(不出双份) · RL4 走正�
 
 > 来源：真启动系统 Playwright 三路实拍（竞品/我的设计/实际）。实际 UI 仅实现设计 ~30-40% 且 demo 沙盘是空世界。下列**前端砌齐 + demo 种数据**，非后端契约缺（契约齐）。
 
-**P0（红线/北极星 · 不砌齐不判"可用"）** — *2026-06-26 真跑复审：原 5 项已砌齐+真能用(✅，实拍/API 证)；新发现 1 项 tick 传导哑必修(末条)。判定详 `REVIEW-VERDICT`/反馈已发 dev*
+**P0（红线/北极星 · 不砌齐不判"可用"）** — *2026-06-26 真跑复审：原 5 项已砌齐+真能用(✅，实拍/API 证)；新发现 1 项 tick 传导哑 → **dev 已修 + 我独立真跑复验坐实(末条 ✅)**。**P0 全闭。** 判定详 `REVIEW-VERDICT`/反馈已发 dev*
 - [x] **采纳 → R4 Action 草稿** ✅（2026-06-26 真跑：点采纳真出 2 条 `PENDING_APPROVAL` action-draft，`patch.simulated:true` 走 RL4 正门，不放水）
 - [x] **分支 → 多场景 KPI 对比 UI** ✅（2026-06-26 真跑：分支→刷新对比，对比面板真出现 `comparePanelShown=1`）
 - [x] **初始化向导 + 范围预检** ✅（2026-06-26 实拍：`/v/sim-init` 3 步向导真渲染）
 - [x] **就绪面板砌齐** ✅（2026-06-26 实拍：L0-L4 stepper / L4 三元组 / Trial Tick / GLOBAL↔LOCAL 切换 / 完整度 gauge / entering 清单 6 件齐）
 - [x] **给 demo 租户种 PropagationRule + 状态变量** ✅（2026-06-26 API 实查：demo 种 3 PUBLISHED PropagationRule + `stateVars=4`，空世界消）
-- [ ] **🔴 新增 P0 · UI tick 传导哑（必修）**：`deriveBaseSnapshot`（`SandboxView.tsx:43` / `SimInitWizard.tsx:37`）建快照键 `${typeKey}#0`（如 `Order#0`），但引擎 `apps/datacore/src/sim/propagation.ts:153` 认真物化对象 id（如 `obj_order_SO-3391`）→ `sourceVal = state[sourceId] ?? 0` 恒 0 → tick 不传导、PmDag 节点不变色。**引擎本身真活**（喂真 id：tick1 `Model.demandLoad=80` / tick2 `Base.loadIndex=98`）。修法：快照键=真物化 id（或 tick 时 `typeKey`→代表对象 id 映射）。修完附"tick 后节点真变色"截图，复审重实拍再判可合。
+- [x] **🔴 P0 · UI tick 传导哑 ✅ 已修 + 我独立真跑复验坐实（2026-06-26）**：原因——`deriveBaseSnapshot` 建快照键 `${typeKey}#0`（`Order#0`）≠ 引擎 `propagation.ts` 认的真物化 id（`obj_order_SO-3391`）→ `state[sourceId]` 恒 0 → tick 不传导、节点不变色。**dev 修法（只动 UI 键、引擎 `propagation.ts` 未动）**：契约 `SandboxViewConfig += nodeObjectIds`（后端从 `repos.objects.listByType` 滤 `!mergedInto` 稳定排序填真物化 id，= 引擎 idsByType 同源）+ `deriveBaseSnapshot`/`buildNodes`（SandboxView+SimInitWizard 两处）快照键改真对象 id、按真对象聚合着色，空世界退占位。**我独立真跑复验（非认其证据）**：① view-config `nodeObjectIds` 真填 34 类 `obj_*` 真 id（Base:12/Model:6/Order:24/Line:12…）② 真浏览器 tick → 节点 Σ `50→184` / `42→153` 真变色（`heatColor` 是 v 纯函数 → Σ 变=色必变；jsdom 测不出）③ tick API 52 条真传导经 `demo_line_util_to_base_load`→`obj_base_changzhou/chengdu/handan` 真对象。证据 `docs/evidence/sandbox-P0-tick-propagation-fix.md`。
 
 **P1（设计完整度 · 部分是我 PRD 自身漏的）**
 - [ ] **健康雷达 6 维 + 信任雷达 4 维**（竞品 image1；**我 SPEC 自己漏了**，先回写 `SPEC-sandbox-readiness-certification` 再交付）。
