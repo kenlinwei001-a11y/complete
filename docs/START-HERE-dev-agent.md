@@ -26,7 +26,7 @@
 
 ## 2. 现在该建什么（已就绪轨 · 按指派选）
 
-**15 条已就绪轨**（每份 HANDOFF 自带《源↔现状↔设计》§1 追溯表 + 增量/红线/双轴评审。按指派认领一条）：
+**17 条已就绪轨**（每份 HANDOFF 自带《源↔现状↔设计》§1 追溯表 + 增量/红线/双轴评审。按指派认领一条）：
 
 | 轨 | 项目 | 施工合同 `docs/` | 优先级 | 一句话（含关键红线） |
 |---|---|---|---|---|
@@ -45,6 +45,8 @@
 | **M** | 三板块对齐设计母版（驾驶舱/规划/项目 · **含真推演红线**） | `HANDOFF-three-boards-html-alignment-build-and-review-contract.md`（它指向 `AUDIT-three-boards-…` / `AUDIT-fake-simulation-inventory` / `SPEC-trust-traceability-interaction`） | **P1** | 三板块多已建(项目~90%/规划~80%/驾驶舱壳70%·数据层30-40%)；补数据颗粒+同源底座+母版级深度；**融合优先(接现有/扩后端/换·禁新建并行)**；**🔴真推演红线**：7 处假推演(mock/哈希/写死冒充真,见 `AUDIT-fake-simulation-inventory`)必修或诚实标 dataMode；溯源接 RuleRef/Provenance、下钻去死路 |
 | **N** | 全域可信溯源交互（HANDOFF③ · **先于 O 做**） | `HANDOFF-trust-traceability-build-and-review-contract.md`（带 `SPEC-trust-traceability-interaction`/`AUDIT-fake-simulation-inventory`） | **P1** | 基建已全(`RuleRef`/`Provenance`/`DagNodeDrawer` 都在)只没接全：① **接** RuleRef/Provenance 到所有裸渲染点(`OrderChainView.tsx:465` C02 裸文本)② **扩** Rule += 谁设定/时间/有效边界 ③ 下钻去死路(modal/面包屑)④ 溯源数据必真(禁包装 mock)；**禁新建并行展示组件** |
 | **O** | 主题/配色开关（HANDOFF② · 浅色↔黑曜石） | `HANDOFF-theme-switch-build-and-review-contract.md`（带 `AUDIT-…master-alignment §5`） | P1 | 母版有 light/dark 开关,系统 `tokens.css` 有 CSS 变量(仅暗)+`applyTheme` 按租户覆盖、无开关：**扩** 加浅色 token 组 `[data-theme=light]` + header toggle + localStorage + 收口 ~10-20 处硬编码十六进制；**语义域色 theme-invariant**、与租户覆盖叠加不冲突、不重构 CSS |
+| **P** | 1:1 复刻·**建模族**（数据流DAG+L0-L4认证+对象配置） | `SPEC-replica-modeling-family.md`（**先读地基 `SPEC-replica-design-system.md`**） | P1 | 竞品像素级复刻 ModelingPage：左画布换数据流DAG(接轨L provenance·复用PmDag/FdeGraph)+中L0-L4认证面板(接 deriveCertification 现成)+对象配置抽屉+逐对象gauge；**接现有不新建并行·认证数字接真closure非写死·无外部产品名·域色theme-invariant** |
+| **Q** | 1:1 复刻·**沙盘族**（运行评估双雷达+初始化向导+运行驾驶舱） | `SPEC-replica-sandbox-family.md`（**先读地基 `SPEC-replica-design-system.md`**） | P1 | 竞品像素级复刻 SandboxView/SimInit：6维健康+4维信任雷达(接certification·不可计算诚实Reserved)+初始化向导完整度环(接scope-precheck)+运行驾驶舱(Schema规则/AI指挥台接QOS/**风险榜守轨M真推演红线·禁mock裸红**)；多为轨A P1·接 `/a/v1/sim/*` 现有不重写 |
 
 > ⚠ **每条轨摸底都翻案过——真代码比文档建得多得多**。所以每份 HANDOFF §1 都标死"哪些已建只接不重写、哪些才真建"。**照文档/TODO 从零重写=红线打回。**
 > ⚠ **别同时铺多轨**——一轨一轨来，每增量一组 commit、跑通再下一个。**先读你那轨 HANDOFF §1 追溯表**再动手。
@@ -124,5 +126,6 @@ push 前自检：**rebase 干净 ✓ 本体回写 ✓ CLI 注册 ✓ 命名门 �
 **轨 M**：读 ③=`HANDOFF-three-boards-html-alignment-…`（它再带你读 `AUDIT-three-boards`/`AUDIT-fake-simulation-inventory`/`SPEC-trust`）→ 做增量 0（demo 真浏览器走驾驶舱/规划/项目三板块**实拍** + **复现"洛阳红色越线却受影响订单暂无数据"** + 逐推演结果标 **真/半真/假**，存 `docs/evidence/three-boards-baseline.md`，**只看不改**）→ 按增量 1（**真推演红线优先**：7 处假推演修或诚实标 dataMode）→ 2→3。
 **轨 N**：读 ③=`HANDOFF-trust-traceability-…` → 增量 0（全仓审计裸渲染规则号/数字 + 下钻死路清单，实拍，只看不改）→ 增量1 接 RuleRef/Provenance 到所有裸点(`OrderChainView.tsx:465` 起)+下钻去死路 → 2 扩 Rule provenance(谁定/时间/边界,种子诚实标系统基线)→ 3 风险详情+`traceability:check` 门。**基建现成,大头是接全。**
 **轨 O**：读 ②=`HANDOFF-theme-switch-…`（带 `AUDIT-…§5`）→ 增量 0（grep 全仓硬编码十六进制 + 实拍暗色基线，只看不改）→ 增量1 加浅色 token 组 → 2 header toggle+localStorage → 3 收口硬编码逐页真浏览器核。**只扩 tokens/applyTheme,别重构 CSS。**
+**轨 P/Q（1:1 复刻）**：**先读地基 `SPEC-replica-design-system.md`**（双 shell+导航IA+token+组件库,各页都依赖它）→ 再读你那族 SPEC（P=`SPEC-replica-modeling-family` / Q=`SPEC-replica-sandbox-family`）→ 增量 0（起 demo 真跑现 ModelingPage / SandboxView 实拍定基线，标哪些现成接着用）→ 按各族增量 1→4。**铁律：像素 1:1 但平台术语（无外部产品名）+ 每个雷达/数字/DAG 接真后端（deriveCertification/PmDag/QOS/propagateTick），禁视觉空壳/禁 mock 裸红（继承轨M 真推演红线）。接现有不重写。**
 
 有歧义、或发现要动红线级/架构级的东西 → **先问，别擅自决定**。
