@@ -23,6 +23,7 @@
 | **WO-6** | E · 规则全入口生效 | `HANDOFF-rules-firstclass-p3-build-and-review-contract.md`（R9+R10） | 11/19 求解器接规则 payload 映射（去 NOT_APPLICABLE）+ 6 入口"改规则即改推演"FDE 对比截图 |
 | **WO-7** | F · 场景自动发育 | `HANDOFF-ontogenesis-p3-build-and-review-contract.md`（增量1 O9） | `growScenario` 自动调 `runGrowthLoop`→缺件卡自动补成 GOVERNED；补不了诚实 PROVISIONAL+开票 |
 | **WO-8** | G · 管理面 AC8 闭合 | `HANDOFF-admin-console-closure-build-and-review-contract.md`（增量1-2 C5+C6） | 求解器目录页 `/admin/solvers` + 12 引用控件闭合（＋新建/可查看，真浏览器点无死路） |
+| **WO-20** | L · demo 本体 provenance 真实化（P1·正确性·非补丁） | `HANDOFF-demo-ontology-provenance-build-and-review-contract.md` | demo 本体短路了建模链（`synthetic.runJob` 直接发已发布类型+对象、与数据集无 provenance→ModelingPage 中心"暂无本体"/34 数据集全"未建模"）→ demo **全程走真建模链**(rawDataset→确定性建模→发布→对象化)+统一对象身份 `obj_${type}_${pk}`；**红线：下游 type key/obj id 字节不变**（增量0 先取基线），修 R13 在建模层断点。**否决 A/B 补丁；别重写 deriveModeling/publish/runJob 主体** |
 
 ## Tier 2 · 核心模块收尾 P0（Pass-2 收尾清单）
 
@@ -57,10 +58,10 @@
 
 ## 相关文档清单（agent 必读顺序）
 
-1. **总入口**：`docs/START-HERE-dev-agent.md`（轨 A–K 表 + 全部纪律）
+1. **总入口**：`docs/START-HERE-dev-agent.md`（轨 A–L 表 + 全部纪律）
 2. **铁律0**：`docs/SYSTEM-ONTOLOGY.md`（对象/链路/不变量 R1-R17/断点 G-1..G-11）
 3. **真相表**：`docs/COMPLETION-LEDGER.md`（全域 Pass-2 定级 · 别照它盲建，按本开工单）
-4. **轨 A-G 施工合同**：`docs/HANDOFF-{sandbox,optimization-fusion,comprehend-engine,vle,rules-firstclass-p3,ontogenesis-p3,admin-console-closure}-*.md`
+4. **轨 A-G+L 施工合同**：`docs/HANDOFF-{sandbox,optimization-fusion,comprehend-engine,vle,rules-firstclass-p3,ontogenesis-p3,admin-console-closure,demo-ontology-provenance}-*.md`
 5. **收尾清单**：`docs/PASS2-wave{1,2,3,4,5}-finishing-tasks.md`
 6. **交付纪律**：`.claude/skills/fde-delivery`（完成=亲手用一遍能用）
 
