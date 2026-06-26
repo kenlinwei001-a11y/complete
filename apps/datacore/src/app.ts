@@ -1280,9 +1280,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const links = await repos.ontologyLinks.list(c.tenantId);
     const rules = await repos.sim.listPropagationRules(c.tenantId, true);
     const stateVars = [...new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
+    // P0 修：每 nodeType → 真物化对象 id（= tick 引擎 idsByType 同源：repos.objects.listByType 非 mergedInto，稳定排序）。
+    const nodeObjectIds: Record<string, string[]> = {};
+    for (const t of types) {
+      nodeObjectIds[t.key] = (await repos.objects.listByType(c.tenantId, t.key))
+        .filter((o) => !o.mergedInto)
+        .map((o) => o.id)
+        .sort((a, b) => a.localeCompare(b));
+    }
     const cfg = {
       tenantId: c.tenantId,
       nodeTypes: types.map((t) => t.key).sort(),
+      nodeObjectIds,
       linkTypes: links.map((l) => l.key).sort(),
       stateVars,
       radarDims: [

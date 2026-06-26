@@ -39,15 +39,19 @@ function hash01(s: string): number {
   return ((h >>> 0) % 1000) / 1000;
 }
 
-/** 从配置派生 tick0 世界态：每个 nodeType 造一代表对象，逐 stateVar 给确定性初值（0-100）。 */
-function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
+/** 从配置派生 tick0 世界态。P0 修：键 = **真物化对象 id**（cfg.nodeObjectIds，= propagateTick 引擎 idsByType
+ * 同源）→ state[sourceId] 真命中 → tick 真传导。空世界（该类型无对象）退 `${type}#0` 占位（无传导，页面仍可跑）。 */
+export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
   const state: TickState = {};
   const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
   for (const t of cfg.nodeTypes) {
-    const oid = `${t}#0`;
-    const row: Record<string, number> = {};
-    for (const v of vars) row[v] = Math.round(hash01(`${t}|${v}`) * 100);
-    state[oid] = row;
+    const ids = cfg.nodeObjectIds?.[t] ?? [];
+    const keys = ids.length > 0 ? ids : [`${t}#0`]; // 有真对象用真 id；空世界退占位键
+    for (const oid of keys) {
+      const row: Record<string, number> = {};
+      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
+      state[oid] = row;
+    }
   }
   return state;
 }
@@ -67,10 +71,14 @@ function heatColor(v: number): string {
   return "#43B7D7";
 }
 
-/** 配置 → PmDag 单层节点（节点=nodeTypes，着色按当前 world 聚合态）。 */
+/** 配置 → PmDag 单层节点（节点=nodeTypes，着色 = 该类型**所有真物化对象**当前态均值）。
+ * P0 修：world 现按真对象 id 键 → 聚合 cfg.nodeObjectIds[t] 各对象态（空世界退 `${t}#0` 占位）。 */
 function buildNodes(cfg: SandboxViewConfig, world: TickState): PmDagNode[] {
   return cfg.nodeTypes.map((t) => {
-    const v = aggregate(world[`${t}#0`]);
+    const ids = cfg.nodeObjectIds?.[t] ?? [];
+    const keys = ids.length > 0 ? ids : [`${t}#0`];
+    const vals = keys.map((k) => aggregate(world[k]));
+    const v = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     return { id: t, label: t, sub: `Σ ${v.toFixed(0)}`, color: heatColor(v), st: 0 };
   });
 }

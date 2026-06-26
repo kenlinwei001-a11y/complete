@@ -34,13 +34,19 @@ function hash01(s: string): number {
   }
   return ((h >>> 0) % 1000) / 1000;
 }
+// P0 修（评审打回·UI tick 传导哑）：键 = 真物化对象 id（cfg.nodeObjectIds，= propagateTick 引擎 idsByType 同源）→
+// state[sourceId] 真命中 → tick 真传导。空世界退 `${type}#0` 占位。与 SandboxView.deriveBaseSnapshot 同构。
 function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
   const state: TickState = {};
   const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"];
   for (const t of cfg.nodeTypes) {
-    const row: Record<string, number> = {};
-    for (const v of vars) row[v] = Math.round(hash01(`${t}|${v}`) * 100);
-    state[`${t}#0`] = row;
+    const ids = cfg.nodeObjectIds?.[t] ?? [];
+    const keys = ids.length > 0 ? ids : [`${t}#0`];
+    for (const oid of keys) {
+      const row: Record<string, number> = {};
+      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
+      state[oid] = row;
+    }
   }
   return state;
 }

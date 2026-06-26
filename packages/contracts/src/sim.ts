@@ -154,5 +154,9 @@ export const SandboxViewConfigSchema = z.object({
   radarDims: z.array(z.object({ key: z.string(), label: z.string() })), // 就绪雷达维（结构/知识/行为 + 可扩）
   screens: z.array(z.enum(["pipeline", "entity", "readiness", "init", "sandbox"])),
   propagationCount: z.number().int(), // 本租户已发布传导规则数（0=纯建模态）
+  // P0 修（评审打回·UI tick 传导哑）：每 nodeType → 真物化对象 id 列表（= propagateTick 引擎 idsByType 同源，
+  // repos.objects.listByType 非 mergedInto，稳定排序）。UI 据此把 tick0 快照键 = 真对象 id（不再 ${type}#0），
+  // 使 state[sourceId] 真命中 → tick 真传导 → 节点真变色。空世界时该类型列表为空（页面退占位仍可跑）。
+  nodeObjectIds: z.record(z.string(), z.array(z.string())).optional(),
 });
 export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
