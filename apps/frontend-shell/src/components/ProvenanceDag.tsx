@@ -8,7 +8,7 @@ import zh from "@/locales/zh";
 
 export interface DagNode {
   id: string;
-  kind: "kpi" | "ksf" | "factor" | "evidence";
+  kind: "kpi" | "ksf" | "factor" | "evidence" | "factor_excluded";
   label: string;
   sub?: string;
   value?: number;
@@ -17,6 +17,9 @@ export interface DagNode {
   actual?: number;
   target?: number;
   unit?: string;
+  // 轨M 增量3（反事实排除层）：该候选因子被反算达标排除 + 理由。
+  excluded?: boolean;
+  reason?: string;
 }
 export interface DagEdge {
   from: string;
@@ -47,8 +50,23 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
       });
   const roots = nodes.filter((n) => n.kind === "kpi");
 
+  // 反事实排除层（母版 §1.B）：被反算达标排除的候选因子——灰显 + 删除线 + "已排除" + 理由（悬浮）。
+  const renderExcluded = ({ node: factor }: { node: DagNode; weight?: number }) => (
+    <div key={factor.id} data-testid={`dag-node-${factor.id}`} data-kind="factor_excluded" title={factor.reason}
+      style={{ paddingLeft: 14, borderLeft: "2px dashed rgba(150,150,150,.35)", opacity: 0.55 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span className="badge" style={{ background: "rgba(150,150,150,.18)", color: "var(--muted2)" }}>已排除</span>
+        <span style={{ textDecoration: "line-through" }}>{factor.label}</span>
+        <span style={{ fontSize: 11, color: "var(--muted2)" }}>反事实：反算达标</span>
+      </div>
+    </div>
+  );
+
   // 因子节点（含取证叶）渲染——kpi 直挂或 ksf 层下挂复用。
-  const renderFactor = ({ node: factor, weight }: { node: DagNode; weight?: number }) => (
+  const renderFactor = (arg: { node: DagNode; weight?: number }) => {
+    if (arg.node.kind === "factor_excluded" || arg.node.excluded) return renderExcluded(arg);
+    const { node: factor, weight } = arg;
+    return (
     <div key={factor.id} data-testid={`dag-node-${factor.id}`} data-kind="factor" style={{ paddingLeft: 14, borderLeft: "2px solid rgba(124,58,237,.4)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span className="badge" style={{ background: "rgba(124,58,237,.18)", color: "#a78bfa" }}>{fmtPct(weight)}</span>
@@ -64,7 +82,8 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
         ))}
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div data-testid="provenance-dag" style={{ display: "flex", flexDirection: "column", gap: 10 }}>

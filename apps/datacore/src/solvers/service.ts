@@ -153,7 +153,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
   carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
   countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
-  plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
+  plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs", "excludedFactors"],
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
   cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
   counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
@@ -663,6 +663,9 @@ export class SolverService {
     // 给 audit/generate 的 KsfGraph 同源数据；KSF 缺失则退化为 kpi→factor（向后兼容）。
     const ksfObjs = await this.repos.objects.listByType(ctx.tenantId, "KSF");
     const ksfById = new Map(ksfObjs.map((o) => [str(o.props.ksfId), { name: str(o.props.name), sub: str(o.props.sub) }]));
+    // 轨M 增量3（根因 DAG 反事实排除层·母版 §1.B）：候选根因因子里贡献=0（证据反算均达标）的，
+    // 不再静默丢弃，而是显式记为「已排除」+ 理由（反事实：该因子不解释本缺口）。
+    const excludedFactors: { kpiId: string; chainId: string; factor: string; reason: string }[] = [];
 
     for (const k of roots) {
       addNode({ id: `kpi:${k.kpiId}`, kind: "kpi", label: k.name, value: k.gap, actual: k.actual, target: k.target, status: k.status, unit: k.unit });
@@ -689,6 +692,7 @@ export class SolverService {
           .slice(0, MAX_LEAVES);
         const contribution = round(leaves.reduce((s, l) => s + l.value, 0) * num(c.baseWeight, 1), 4);
         if (contribution > 0) factors.push({ chainId: str(c.chainId), factor: str(c.factor), contribution, leaves });
+        else excludedFactors.push({ kpiId: k.kpiId, chainId: str(c.chainId), factor: str(c.factor), reason: `反事实排除：${str(c.factor)} 证据（${evidenceField}）反算均达标，贡献 0，不解释「${k.name}」缺口` });
       }
       const totalContribution = factors.reduce((s, f) => s + f.contribution, 0);
       for (const f of factors) {
@@ -700,6 +704,11 @@ export class SolverService {
           edges.push({ from: `factor:${f.chainId}`, to: `leaf:${l.id}`, weight: f.contribution > 0 ? round(l.value / f.contribution, 4) : 0, kind: "factor_evidence" });
         }
       }
+      // 反事实排除层：本 KPI 的已排除候选因子入图（灰节点 + 理由），让 DAG 显"排除了什么、为何"。
+      for (const e of excludedFactors.filter((x) => x.kpiId === k.kpiId)) {
+        addNode({ id: `factor:${e.chainId}`, kind: "factor_excluded", label: e.factor, excluded: true, reason: e.reason, share: 0 });
+        edges.push({ from: factorParent, to: `factor:${e.chainId}`, weight: 0, kind: factorParent.startsWith("ksf:") ? "ksf_factor_excluded" : "kpi_factor_excluded" });
+      }
     }
 
     const offTargetCount = kpis.filter((k) => k.offTarget).length;
@@ -708,7 +717,9 @@ export class SolverService {
       kpis,
       dag: { nodes, edges },
       offTargetCount,
-      summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证`,
+      // 反事实排除层（母版 §1.B）：候选根因里反算达标→排除的因子 + 理由（DAG 灰节点同源）。
+      excludedFactors,
+      summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证${excludedFactors.length ? `（反事实排除 ${excludedFactors.length} 个达标因子）` : ""}`,
       ruleRefs: [],
     };
   }
