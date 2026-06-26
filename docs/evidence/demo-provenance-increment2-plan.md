@@ -55,3 +55,24 @@ A 路用 `[^\p{L}\p{N}_-]gu`（保留 CJK），增量1 我改的 B 路 materiali
   - **可调和回归**（少量读类型元数据处）→ 修后复跑。
   - **不可调和 / 牵动面超预期** → **revert 路线 A（保留本 checkpoint）+ 附具体失败清单报审核方**（HANDOFF §2 注「牵动面超预期停手报审核方」之**带证据**落地）。
 - 现状：安全前置（obj id 净化 regex 对齐 CJK·§1.2）已落并验（datacore 749/749 绿）；下一步落路线 A 主体并过上述 oracle。
+
+## 6. ⛔ 决定性发现（落路线 A 主体前真读代码坐实）：**字面路线 A 不可行 → 牵动面超预期 → 停手报审核方**
+> 落手前真读建模链 publish/materialize + batteryObjectTypes，发现**字面路线 A（链 CREATE 原生产类型）会摧毁 demo 类型的策展元数据**，触发驾驶舱/求解器全面功能回归。此为 HANDOFF §2 注「牵动面超预期→停手报审核方」+「有歧义先问」之**带证据**触发点。
+
+### 6.1 阻断证据（代码行级·可复核）
+1. **归域门硬阻断**：`deriveModelingSuggestion` 恒置 `domain:"unassigned"`（`modeling.ts:104`），而 `publishDraft` 对 `domain==="unassigned"` **硬阻断**（`modeling.ts:361-362`「未归域，发布前必须人工归域」）。⇒ 纯 `derive→publish` 发不出去，必须先注入 `setDomain` op（`modeling.ts:321-325`）做确定性归域。
+2. **`derivedProperties` 被清空（致命）**：`batteryObjectTypes` 的 6 个类型带**非空 `derivedProperties`**（`battery.ts`：`baseDerived`（orderCount/committedQty/oeeIndex=AVG(Equipment.oee_current BY baseId)）、`modelDerived`（totalDemand/orderCount）、`orderDerived`（value=qty*unitPrice）、`demandSegmentDerived`、`metricDerived`、`sopVersionRowDerived`）——这些是 **R14 零写死 KPI 的派生图叶子**，驾驶舱/规划决策推演/求解器读它算数。而链 CREATE 路 publish 恒置 `derivedProperties:[]`（`modeling.ts:445`）。⇒ 路线 A 会**抹掉全部派生属性** → 驾驶舱 KPI/派生求解器空跑（与另一 agent ea13c40「三板块」审计正面冲突）。
+3. **displayName 退英 + 属性策展丢失**：链置 `displayName=dataset.name`（英文 "Base"，`modeling.ts:104`），batteryObjectTypes 是中文（"生产基地"…）；属性 `withGovernance`（searchable 等）也丢。
+4. **origin 变**：链 materialize 对象 `origin.type="MATERIALIZED"`，A 路是 `"SYNTHETIC"`（不在字节红线三件内，但行为差异需验）。
+
+> 注：字节红线只管 type key 集 / obj id 集 / 沙盘 noi——**不管类型元数据**，故路线 A 改元数据**不破字节红线**，但**破「零回归」红线**（功能回归）。要保住 derivedProperties 唯有把它们连同 displayName/归域**经 draft API 全量重注**——那等于用草案 API 手搓重建 batteryObjectTypes，荒谬且脆。
+
+### 6.2 内在冲突（合同 §3.3 vs 代码现实）：只有审核方能裁
+- **§3.3 红线**要 provenance「**因果真实…不是事后盖戳**」——纯因果只有链 CREATE，但链 CREATE 摧毁策展元数据（§6.1）。
+- **平台现实**：`derivedProperties`/中文 displayName/归域 是**策展元数据，数据里长不出来**（R14 KPI 公式不在原始行里）。⇒ §3.3 字面（纯因果 CREATE）与「保策展元数据不回归」**直接冲突**，且此冲突是**合同 §2 未预见代码现实**所致。
+- **可行的真 provenance 路 = MAP_TO_EXISTING publish**（`modeling.ts:411-431`）：保 batteryObjectTypes 策展类型不动，链 publish 以 MAP_TO_EXISTING 把**真 rawDataset 算出的 sourceBindings**（`connId/dataset/fieldMappings`，`modeling.ts:408-410/430`）**追加**到既存类型。**这是真链读真数据集算出的 provenance 值，非被否的「硬编码模板 sourceBindings」**（§1.A 否的是假模板，非 MAP_TO_EXISTING）。残留哲学缺口：类型存在性先于链（§3.3 字面"事后"）——**此点只有审核方能裁**。
+
+### 6.3 dev 建议 + 待裁项（已 surface）
+- **建议路线 B（MAP_TO_EXISTING）**：低 blast、零功能回归、provenance 值由真链真算（非盖戳）。
+- **待审核方裁**：(1) MAP_TO_EXISTING「类型先存在、链补真 provenance」是否满足 §3.3？还是 (2) 必须把 derivedProperties/displayName/归域 全部迁入链（大手术，且 R14 公式仍须某处声明）？(3) 或接受路线 A 抹派生属性（需同改驾驶舱口径）？
+- **未动主体代码**：只落了 §1.2 安全 regex（已验绿）。主体待裁，不硬改。
