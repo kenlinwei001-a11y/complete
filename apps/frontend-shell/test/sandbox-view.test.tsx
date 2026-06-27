@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import type { SandboxViewConfig, SimSession } from "@platform/contracts";
 
 /**
@@ -52,6 +53,15 @@ vi.mock("@/api/endpoints", () => ({
     gaps: [{ gapCode: "G-NO-ACTION", ref: "behavior", detail: "未配置写回行动" }],
     computedAt: "2026-06-25T00:00:00.000Z",
   })),
+  // 轨Q 增量2/3/4：评估清单/Schema规则/风险榜/控制台所需端点桩（benign 空数据，确定性·无后端）。
+  fetchObjectTypes: vi.fn(async () => []),
+  invokeSolver: vi.fn(async () => ({ data: { cards: [] }, snapshotVersion: "x" })),
+  fetchSkills: vi.fn(async () => []),
+  fetchMcpConfigs: vi.fn(async () => []),
+  fetchDomainEvents: vi.fn(async () => []),
+  fetchScenarioCards: vi.fn(async () => ({ launcherEnabled: false, total: 0, items: [] })),
+  fetchWorkspace: vi.fn(async () => ({ scenarioPackages: [], navigation: [], views: [] })),
+  submitQuery: vi.fn(async () => ({ taskId: "t1", status: "ROUTING", streamUrl: "" })),
 }));
 
 // 在 mock 之后 import 组件（确保用到桩）。
@@ -80,7 +90,9 @@ const CONFIG_B: SandboxViewConfig = {
 function wrap(cfg: SandboxViewConfig) {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <SandboxView injectedConfig={cfg} />
+      <MemoryRouter>
+        <SandboxView injectedConfig={cfg} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import type { SandboxViewConfig, SimCertification, SimSession } from "@platform/contracts";
 
 /**
@@ -61,6 +62,14 @@ vi.mock("@/api/endpoints", () => ({
   fetchSimCompare: fetchSimCompareFn,
   fetchSimCertification: fetchCertFn,
   createActionDraft: createActionDraftFn,
+  // 轨Q 增量2/3/4：评估清单/Schema规则/风险榜/控制台所需端点桩（benign 空数据）。
+  fetchObjectTypes: vi.fn(async () => []),
+  invokeSolver: vi.fn(async () => ({ data: { cards: [] }, snapshotVersion: "x" })),
+  fetchSkills: vi.fn(async () => []),
+  fetchMcpConfigs: vi.fn(async () => []),
+  fetchDomainEvents: vi.fn(async () => []),
+  fetchScenarioCards: vi.fn(async () => ({ launcherEnabled: false, total: 0, items: [] })),
+  submitQuery: vi.fn(async () => ({ taskId: "t1", status: "ROUTING", streamUrl: "" })),
 }));
 
 import SandboxView from "@/views/sim/SandboxView";
@@ -78,7 +87,9 @@ const CFG: SandboxViewConfig = {
 function wrap() {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <SandboxView injectedConfig={CFG} />
+      <MemoryRouter>
+        <SandboxView injectedConfig={CFG} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

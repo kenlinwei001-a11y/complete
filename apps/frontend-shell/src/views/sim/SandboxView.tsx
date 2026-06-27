@@ -4,6 +4,7 @@ import type { SandboxViewConfig, SimCertification, TickState } from "@platform/c
 import {
   createSimSession,
   fetchObjectLineage,
+  fetchObjectTypes,
   fetchSimCertification,
   fetchSimCompare,
   fetchSimViewConfig,
@@ -16,6 +17,7 @@ import {
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import { PmDag, type PmDagNode } from "./PmDag";
+import { PlatformConsole } from "@/components/PlatformConsole/PlatformConsole";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
@@ -348,6 +350,37 @@ function RiskTop3({ enabled }: { enabled: boolean }) {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 轨Q 增量2（竞品 image8 运行台右栏 Schema Derive Rules）：列真**派生规则**（ObjectType.derivedProperties·
+ * `Type.prop ← formula`）+ **传导规则**（cert.entering kind=PROPAGATION·`r: source`）。**接现成真数据·零写死**。
+ * ③/②类诚实 RESERVED：`[RUNTIME]/[INGEST]` 阶段标——PropagationRule 后端无 phase 字段（§10②）→ 不画假阶段。
+ */
+function SchemaDeriveRules({ cert }: { cert: SimCertification }) {
+  const { data: types } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes, retry: false });
+  const derivs = (types ?? []).flatMap((t) => (t.derivedProperties ?? []).map((d) => ({ id: `${t.key}.${d.propKey}`, expr: d.formula, kind: "派生" })));
+  const props = cert.worldCompleteness.entering.filter((e) => e.kind === "PROPAGATION").map((e) => ({ id: e.key, expr: e.source, kind: "传导" }));
+  const rules = [...derivs, ...props];
+  return (
+    <div className="panel" data-testid="sandbox-schema-rules" style={{ padding: 12, marginTop: 12 }}>
+      <div className={styles.secHead} style={{ marginBottom: 4 }}>Schema 派生规则（{rules.length} · 真 derivedProperties + 传导规则）</div>
+      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }} data-testid="sandbox-schema-phase-reserved">◌ [RUNTIME]/[INGEST] 阶段标 · RESERVED（PropagationRule 后端无 phase 字段·§10②，不画假阶段）</div>
+      {rules.length === 0 ? (
+        <div className={styles.sub} data-testid="sandbox-schema-rules-empty">无派生/传导规则。</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 240, overflowY: "auto" }}>
+          {rules.map((r, i) => (
+            <div key={`${r.id}-${i}`} data-testid={`sandbox-schema-rule-${i}`} style={{ display: "flex", gap: 8, fontSize: 12, alignItems: "baseline" }}>
+              <span className="badge" style={{ flexShrink: 0 }}>{r.kind}</span>
+              <span className="mono" style={{ color: "var(--txt)", flexShrink: 0 }}>{r.id}</span>
+              <span style={{ color: "var(--muted2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>← {r.expr}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -835,6 +868,31 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
 
       {/* 轨Q 增量4（竞品状态卡条 风险 TOP3·接 risk_timeline 真求解器·MOCK 因素诚实标估算·守轨M 真推演红线）。 */}
       <RiskTop3 enabled={!!sessionId} />
+
+      {/* 轨Q 增量2（竞品 image8 状态卡条·运行台状态：Step / 诞生规则 / 可执行行动·全真 cert + curTick）。 */}
+      {cert && (
+        <div className="panel" data-testid="sandbox-runstate" style={{ display: "flex", gap: 14, flexWrap: "wrap", padding: "10px 12px", marginTop: 12, fontSize: 12.5 }}>
+          <span data-testid="sandbox-runstate-step">Step <b className="mono" style={{ color: "#43B7D7" }}>+{curTick}</b></span>
+          <span data-testid="sandbox-runstate-rules">诞生规则 <b className="mono" style={{ color: "var(--ok)" }}>{cert.trialTick.rulesFired}</b> ✓</span>
+          <span data-testid="sandbox-runstate-actions">可执行行动 <b className="mono">{cert.worldCompleteness.actions.present}/{cert.worldCompleteness.actions.needed}</b></span>
+          <span data-testid="sandbox-runstate-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)" }}>{cert.canEnterSimulation ? "运行中" : "未就绪"}</span>
+        </div>
+      )}
+
+      {/* 轨Q 增量2（竞品 image8 右栏 Schema Derive Rules·真 derivedProperties + 传导规则·[RUNTIME/INGEST] RESERVED）。 */}
+      {cert && <SchemaDeriveRules cert={cert} />}
+
+      {/* 轨Q 增量4b（竞品中栏 6 子 tab + Agent 指挥台接 QOS）：复用平台标准 PlatformConsole（不新建并行）。
+          基本信息=沙盘本体派生摘要；Skills/MCP/日志=接现成真后端；图查询=③类 RESERVED；Agent 点真场景卡→QOS 真出答案。 */}
+      <PlatformConsole
+        testId="sandbox-console"
+        basicInfo={
+          <div style={{ fontSize: 12.5, color: "var(--muted2)", lineHeight: 1.8 }} data-testid="sandbox-console-basic">
+            本体派生：{cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 · {cfg.propagationCount} 传导规则。
+            当前 tick {curTick} · 全局态 {globalKpi.toFixed(1)}{cert ? ` · 就绪 ${cert.level}` : ""}。
+          </div>
+        }
+      />
 
       {/* 多场景 KPI 对比面板（北极星）：分支后出现，A 主线 vs B 分支逐 tick 差异 */}
       {compare && (
