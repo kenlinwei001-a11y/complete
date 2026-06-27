@@ -22,11 +22,18 @@ export async function streamTaskEvents(
   const afterSeq = Number.isFinite(lastSeq) ? lastSeq : 0;
 
   reply.hijack();
+  // CORS（直连端口的开发调试·部署态经网关同源不受影响）：SSE 经 reply.hijack() 绕过 @fastify/cors
+  // 的 onSend 钩子，须在此手动回声 Origin（与全局 cors origin:true 同义），否则跨源 EventSource 被浏览器
+  // 拦截（net::ERR_FAILED）→ 对话坞收不到 answer.final → 永远「仍在执行」。反射 Origin + 允许凭据。
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
   reply.raw.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
     "x-accel-buffering": "no",
+    ...(origin
+      ? { "access-control-allow-origin": origin, "access-control-allow-credentials": "true", vary: "Origin" }
+      : { "access-control-allow-origin": "*" }),
   });
   reply.raw.write(":ok\n\n");
 

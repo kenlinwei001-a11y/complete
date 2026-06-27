@@ -11,6 +11,7 @@ import {
   fetchModelingDrafts,
   fetchObjectTypes,
   fetchRawDatasets,
+  fetchScenarioCards,
   fetchSimCertification,
   fetchSkills,
   fetchSyncJob,
@@ -24,7 +25,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { DataSourcePanel } from "@/components/DataSourcePanel";
 import { SimReadinessPanel } from "@/views/sim/SimReadinessPanel";
-import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
+import { useQuickLaunch, useScenarioLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
@@ -349,12 +350,17 @@ function GuideTab({ typeCount }: { typeCount: number }) {
 }
 
 /**
- * Agent 指挥台（复刻竞品 image2 右栏 Agent·接 QOS 补 G-3 前端段）：持久系统欢迎语 + 选中对象建模摘要，
- * 输入提问 → useQuickLaunch 注入 presetContext（选中 ObjectType）→ 既有 QOS 管线（不新建聊天）。
- * demo 无 LLM 时真答案受限（继承轨M 2b 口径），但提交+presetContext 注入是真 G-3 前段。
+ * Agent 指挥台（复刻竞品 image2 右栏 Agent·接 QOS 补 G-3 前端段）：持久系统欢迎语 + 选中对象建模摘要 +
+ * **真场景卡启动**（真接 QOS·非假壳）。点一张真场景卡 → `useScenarioLaunch`（带 `scenarioIntentKey`
+ * §2.4 确定性绑定·跳过 LLM classify）→ 编排器跑工作流 → **真出推演答案**（answer-card·KPI/表/规则块），
+ * 即使 demo 无 LLM 也真出（确定性绑定路径）。另留自由文本输入：注入选中对象 presetContext → QOS（自由文本走
+ * LLM classify·demo 无 key 受限，诚实标注，不假装能答）。
  */
 function ModelingAgentConsole({ selectedType }: { selectedType: Awaited<ReturnType<typeof fetchObjectTypes>>[number] | null }) {
   const quickLaunch = useQuickLaunch();
+  const launchCard = useScenarioLaunch();
+  const { data: cardsData } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), retry: false });
+  const cards = (cardsData?.items ?? []).filter((c) => !c.inactive).slice(0, 6);
   const [q, setQ] = useState("");
   const ask = () => {
     const query = q.trim();
@@ -370,19 +376,32 @@ function ModelingAgentConsole({ selectedType }: { selectedType: Awaited<ReturnTy
     <div data-testid="modeling-agent" style={{ border: "1px solid var(--border,#2a2a2a)", borderRadius: 8, padding: 10, background: "var(--panel,rgba(255,255,255,.02))" }}>
       <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Agent 指挥台</div>
       {/* 持久系统欢迎语 + 选中对象建模摘要（image2 Agent 形态） */}
-      <div style={{ borderLeft: "3px solid var(--ok,#62BE77)", paddingLeft: 8, fontSize: 12, color: "var(--muted2)", marginBottom: 8, background: "rgba(98,190,119,.06)", borderRadius: 6, padding: "6px 8px" }} data-testid="modeling-agent-welcome">
-        平台 Agent 已就位。对选中对象提问 → 经 QOS 推演（注入对象上下文·补 G-3）。
+      <div style={{ borderLeft: "3px solid var(--ok,#62BE77)", fontSize: 12, color: "var(--muted2)", marginBottom: 8, background: "rgba(98,190,119,.06)", borderRadius: 6, padding: "6px 8px" }} data-testid="modeling-agent-welcome">
+        平台 Agent 已就位。点下方真场景卡 → 经 QOS 工作流真出推演答案（确定性绑定·无需 LLM）。
         {selectedType && (
           <div style={{ marginTop: 4 }} data-testid="modeling-agent-nodesummary">
             📌 node_obj_{selectedType.key} · {selectedType.displayName}：属性 {selectedType.properties.length} · 派生 {selectedType.derivedProperties?.length ?? 0} · 域 {selectedType.domain ?? "—"}
           </div>
         )}
       </div>
-      <textarea data-testid="modeling-agent-input" value={q} onChange={(e) => setQ(e.target.value)} rows={3} style={{ width: "100%", fontSize: 12, resize: "vertical" }}
-        placeholder={selectedType ? `就 ${selectedType.displayName} 提问（→QOS 推演）…` : "提问（→QOS 推演）…"}
+      {/* 真场景卡启动（真出 QOS 响应的确定性路径） */}
+      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>真场景卡（点 → QOS 推演真答案）</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }} data-testid="modeling-agent-cards">
+        {cards.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--muted2)" }}>暂无已发布场景卡。</div>
+        ) : cards.map((c) => (
+          <button key={c.sNo} className="btn sm ghost" data-testid={`modeling-agent-card-${c.intentKey}`} style={{ textAlign: "left", justifyContent: "flex-start", fontSize: 12 }}
+            title={`意图 ${c.intentKey} · 视图 ${c.presetContext.targetView}`} onClick={() => void launchCard(c)}>
+            ▶ {c.triggerQuestion}
+          </button>
+        ))}
+      </div>
+      {/* 自由文本（注入选中对象 presetContext → QOS·走 LLM classify·demo 无 key 受限·诚实标注） */}
+      <textarea data-testid="modeling-agent-input" value={q} onChange={(e) => setQ(e.target.value)} rows={2} style={{ width: "100%", fontSize: 12, resize: "vertical" }}
+        placeholder={selectedType ? `就 ${selectedType.displayName} 自由提问…` : "自由提问…"}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-        <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>⌘/Ctrl+Enter 发送</span>
+        <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>自由文本走 LLM classify（demo 无 key 受限）</span>
         <button className="btn primary sm" data-testid="modeling-agent-send" disabled={!q.trim()} onClick={ask}>推演</button>
       </div>
     </div>

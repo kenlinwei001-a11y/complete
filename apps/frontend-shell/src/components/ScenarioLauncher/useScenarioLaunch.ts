@@ -16,11 +16,15 @@ export function useQuickLaunch(): (input: {
   targetView: string;
   selectedObjects?: { objectType: string; objectId: string; label?: string }[];
   slotPresets?: Record<string, unknown>;
+  /** PRD-scenario-ontogenesis §2.4 确定性绑定：带场景卡声明的意图键 → 编排器跳过 LLM classify、
+   *  直接绑定意图→计划（候选命中且槽位可满足时）→ 无 LLM 也能真出推演答案。 */
+  scenarioIntentKey?: string;
+  scenarioKey?: string;
 }) => Promise<void> {
   const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
   const packageId = workspace?.scenarioPackages[0] ?? "";
-  return async ({ query, targetView, selectedObjects = [], slotPresets = {} }) => {
+  return async ({ query, targetView, selectedObjects = [], slotPresets = {}, scenarioIntentKey, scenarioKey }) => {
     if (!packageId) return;
     const store = useSessionStore.getState();
     store.setView(targetView);
@@ -32,7 +36,7 @@ export function useQuickLaunch(): (input: {
     navigate(`/v/${targetView}`);
     try {
       const res = await submitQuery(
-        { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets } },
+        { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets, ...(scenarioIntentKey ? { scenarioIntentKey } : {}), ...(scenarioKey ? { scenarioKey } : {}) } },
         crypto.randomUUID(),
       );
       store.updateConversation(localId, { taskId: res.taskId });
@@ -52,5 +56,7 @@ export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
       targetView: card.presetContext.targetView,
       selectedObjects: card.presetContext.selectedObjects,
       slotPresets: card.presetContext.slotPresets,
+      // §2.4 确定性绑定：卡声明的意图键随查询搭车 → 编排器跳过 LLM classify 直接绑定（点卡必出真推演答案，不受 classifier 死活影响）。
+      scenarioIntentKey: card.intentKey,
     });
 }
