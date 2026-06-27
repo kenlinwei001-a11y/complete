@@ -1019,50 +1019,50 @@ export class SyntheticService {
         {
           key: "gwh", type: "kpi", title: "总产能 (GWh)", unit: "GWh", featureKey: "view.dash.widget.capacity",
           query: { kind: "objects-aggregate", objectType: "Base", agg: "sum", prop: "gwh" },
-          provenance: { toolName: "query_objects", outputPath: "$.sum(gwh)", label: "全部基地铭牌产能合计" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(gwh)", label: "Σ 各基地铭牌产能 gwh", ruleRefs: "C01/C04", inputs: ["Base.gwh"], sourceSystem: "本体对象库·Base（PLM 铭牌）" },
         },
         {
           key: "util", type: "kpi", title: "平均利用率", unit: "%",
           query: { kind: "objects-aggregate", objectType: "Base", agg: "avg", prop: "util" },
-          provenance: { toolName: "query_objects", outputPath: "$.avg(util)", label: "12 基地利用率算术平均" },
+          provenance: { toolName: "query_objects", outputPath: "$.avg(util)", label: "avg(Base.util) 算术平均", ruleRefs: "C05/C21", inputs: ["Base.util"], sourceSystem: "本体对象库·Base（MES 利用率）" },
         },
         {
           key: "attain", type: "kpi", title: "计划达成率", unit: "%",
           query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
-          provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "attainment:line 周聚合回写值" },
+          provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "avg(Line.schedule_attainment) 周聚合回写", ruleRefs: "C21", inputs: ["Line.schedule_attainment"], sourceSystem: "时序库·attainment:line（MES 周聚合）" },
         },
         {
           key: "orders", type: "kpi", title: "在手订单",
           // livedIn：已交付订单也在 Order 表（生命周期完整），在手口径过滤 status=OPEN
           query: { kind: "objects-aggregate", objectType: "Order", agg: "count", ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
-          provenance: { toolName: "query_objects", outputPath: "$.count", label: "Order 行计数" },
+          provenance: { toolName: "query_objects", outputPath: "$.count", label: "count(Order) 在手行计数", inputs: ["Order.status"], sourceSystem: "本体对象库·Order（ERP 订单）" },
         },
         // cockpit P1 富 KPI（数字经合成 DemandSegment/FinancePlan/MaterialBalance + 派生/聚合算出，前端零写死 R14；R13 溯源）。
         {
           key: "demand-p50", type: "kpi", title: "需求 P50 (万)", unit: "万", featureKey: "view.dash.widget.demand",
           query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "p50" },
-          provenance: { toolName: "query_objects", outputPath: "$.sum(p50)", label: "三细分需求 P50 合计" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(p50)", label: "Σ DemandSegment.p50 三细分合计", ruleRefs: "C25/C12", inputs: ["DemandSegment.p50"], sourceSystem: "本体对象库·DemandSegment（需求预测）" },
         },
         {
           key: "gross-margin", type: "kpi", title: "毛利总额 (万)", unit: "万", featureKey: "view.dash.widget.demand",
           query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "marginWan" },
-          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写", ruleRefs: "C15/C24", inputs: ["DemandSegment.marginWan"], sourceSystem: "本体对象库·DemandSegment（派生·FinancePlan）" },
         },
         {
           key: "material-gap", type: "kpi", title: "物料现货缺口 (吨)", unit: "吨", featureKey: "view.dash.widget.material",
           query: { kind: "objects-aggregate", objectType: "MaterialBalance", agg: "sum", prop: "gapTon" },
-          provenance: { toolName: "query_objects", outputPath: "$.sum(gapTon)", label: "净需求×(1−长协覆盖) 缺口合计" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(gapTon)", label: "Σ 净需求×(1−长协覆盖) 缺口合计", ruleRefs: "C06/C16", inputs: ["MaterialBalance.gapTon"], sourceSystem: "本体对象库·MaterialBalance（MRP）" },
         },
         // DS.2 富 KPI 补全（PRD §2 缺口表 8 富 KPI）：cockpit_kpi 一 solver 出 5 标量，各 valuePath 取（R13 溯源对象）。
         {
           key: "supply-v7", type: "kpi", title: "可供给 (万·终版)", unit: "万",
           query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "supplyV7" },
-          provenance: { toolName: "invoke_solver", outputPath: "$.supplyV7", label: "最终版 SopVersionRow.supply（S&OP 定稿可供给）" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.supplyV7", label: "SopVersionRow.supply 终版(S&OP 定稿)", ruleRefs: "C03/C10", inputs: ["SopVersionRow.supply"], sourceSystem: "求解器·cockpit_kpi（S&OP 定稿）" },
         },
         {
           key: "rev-attain", type: "kpi", title: "收入达成率", unit: "%",
           query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "revAttainPct" },
-          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "FinancePlan 收入行 rolling÷budget×100" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "FinancePlan rolling÷budget×100", ruleRefs: "C21", inputs: ["FinancePlan.rolling","FinancePlan.budget"], sourceSystem: "求解器·cockpit_kpi（FinancePlan）" },
         },
         {
           key: "util-peak", type: "kpi", title: "利用率瓶颈 (峰)", unit: "%",

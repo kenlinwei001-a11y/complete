@@ -378,10 +378,12 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
           <span data-testid={`widget-prov-${def.key}`}>
             <Provenance
               testId={`widget-${def.key}`}
-              src={def.provenance.toolName}
-              formula={`输出路径 ${def.provenance.outputPath}`}
+              src={def.provenance.sourceSystem ?? def.provenance.toolName}
+              formula={def.provenance.label ?? `输出路径 ${def.provenance.outputPath}`}
               freshness={def.provenance.snapshotVersion ? `快照 ${def.provenance.snapshotVersion}` : undefined}
-              note="驾驶舱 widget 声明式查询（ViewConfig.layout.widgets）"
+              rule={def.provenance.ruleRefs}
+              inputs={def.provenance.inputs}
+              note={`输出路径 ${def.provenance.outputPath} · 驾驶舱声明式查询（ViewConfig.layout.widgets）`}
             >
               <span className="badge">ⓘ</span>
             </Provenance>

@@ -106,8 +106,8 @@ export interface DashboardWidgetDef {
   featureKey?: string;
   span?: number;
   query: WidgetQueryDef;
-  /** 悬停溯源描述 */
-  provenance?: { toolName: string; outputPath: string; snapshotVersion?: string; label?: string };
+  /** 悬停溯源描述（轨R #2：六要素 = 来源系统/新鲜度/推导公式/输入因子/规则号/备注）。 */
+  provenance?: { toolName: string; outputPath: string; snapshotVersion?: string; label?: string; ruleRefs?: string; inputs?: string[]; sourceSystem?: string };
   unit?: string;
   chartKind?: "line" | "bar" | "trideviation";
   /** 三线偏差复合图（trideviation）的系列声明：data 各项的数值字段 → 线名/色。 */
