@@ -52,6 +52,12 @@
 | **#8** PropagationTimeline 组件挂载 | **已不是孤儿**——现被 `PlanAuditView.tsx` + `PlanGenerateView.tsx` import；系数已去写死(轨M 增量1d 真算)。**可能已大部建** | dev 增量0 真浏览器实拍 plan-audit/generate 的传播时序是否真渲染+财务击穿真算 → 确认真缺(是否需补 risk 页挂载/逐日曲线)再建 |
 | **#9** 同源本体底座·决策应用域 5 一等对象 | **后端已有部分**——`solvers/service.ts:76,729` 有"KSF 5 一等对象投影(问题→KSF→财务)"、`synthetic/service.ts:467` 有"决策应用域归域"。**比 AUDIT 说的'各板块各自算'建得多** | dev 增量0 摸真代码盘点 5 一等对象(经营KPI/待解决问题/KSF/经营方案/问题传播时序)后端到哪步 → 真缺口可能只剩前端统一引用/小部分；**牵动大·确认后可拆独立 HANDOFF** |
 
+### D · 后端 TO-DO（用户点名·深修·非前端 polish）
+
+| # | 板块/现状 | 真缺（选项2·后端深修·用户拍板） | 真值判据（FDE oracle） |
+|---|---|---|---|
+| **#10 预判推演看板（风险看板 `/v/risk`）· 红色接真数据** | 用户原问："点红色→暂无数据，红色是写死的吗"。假1 已**诚实标**"估算·无实测(mock 基线)"(轨M 增量1·`RiskBoardView.tsx:76-85`·**仅诚实披露**)；但红/峰值/越线日**仍源自 `solvers/risk.ts:28-38 mockTightness` charCode 哈希(非真数据)**，点红卡→`AffectedOrdersModal(:396)` `searchObjects("Order",{base,day})` 查真订单→洛阳等 mock 基地空→`:425` 裸"暂无数据"死路 | **后端深修**：`risk_timeline` 对 MOCK 因素**补真数据源**——真张力计算 + 真受影响订单关联，使红色**由真数据推出**、点红能看**真受影响订单**。**牵动 `risk.ts`/`RiskTimelineOutputSchema`(加 dataMode/真因子)·后端 ask·非前端 polish**；增量0 先摸 risk.ts 真张力可达到哪步 | demo 点红色 → `AffectedOrdersModal` 出**真受影响订单**(非"暂无") · 红峰值/越线日 = **真数据**非 charCode 哈希 · dataMode 真 LIVE |
+
 ---
 
 ## §3 归属 HANDOFF（dev 配合读的合同）
