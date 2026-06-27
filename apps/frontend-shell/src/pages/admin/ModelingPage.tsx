@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -27,6 +27,25 @@ import styles from "./ModelingPage.module.css";
 
 const t = zh.admin.modeling;
 
+/**
+ * 轨P 增量2/3 共享：建/复用一个极简 SimSession（空 baseSnapshot）——仅为驱动 deriveCertification
+ * （全局就绪 + 逐对象就绪）。整页一个 session，全局面板与对象抽屉共用（不各建一个，省往返）。
+ * entOff：sim.certification entitlement 关 → 诚实降级（不画假认证）。
+ */
+function useCertSession() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [entOff, setEntOff] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try { const s = await createSimSession({ baseSnapshot: {}, scope: {} }); if (alive) setSessionId(s.id); }
+      catch { if (alive) setEntOff(true); }
+    })();
+    return () => { alive = false; };
+  }, []);
+  return { sessionId, entOff };
+}
+
 /** 本体建模工作台（PRD §7.6）：AI 建议草案（A3 suggest）+ 三栏 = 源字段 | 映射画布 | 操作面板；PATCH 乐观更新+回滚 */
 export default function ModelingPage() {
   const queryClient = useQueryClient();
@@ -39,6 +58,10 @@ export default function ModelingPage() {
   const preselect = (params.get("datasets") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const [suggestOpen, setSuggestOpen] = useState(preselect.length > 0);
   const draft = drafts?.find((d) => d.id === draftId) ?? drafts?.[0];
+  // 轨P 增量3：共享 cert session + 选中对象（点 DAG 实体节点 / 已发布本体行 → 开对象配置抽屉）。
+  const { sessionId: certSessionId, entOff: certEntOff } = useCertSession();
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const selectedTypeObj = publishedTypes?.find((ty) => ty.key === selectedType) ?? null;
 
   return (
     <div>
@@ -55,10 +78,10 @@ export default function ModelingPage() {
           {t.newDraft}
         </button>
       </div>
-      {/* 轨P 增量1（数据流 DAG·竞品 image2 横向 ETL·R13 真字段映射）。 */}
-      {publishedTypes && publishedTypes.length > 0 && <DataPipelineDag types={publishedTypes} />}
+      {/* 轨P 增量1（数据流 DAG·竞品 image2 横向 ETL·R13 真字段映射）。点实体节点 → 开对象配置抽屉（增量3）。 */}
+      {publishedTypes && publishedTypes.length > 0 && <DataPipelineDag types={publishedTypes} onSelectType={setSelectedType} />}
       {/* 轨P 增量2（L0-L4 认证面板·竞品 image6·接 deriveCertification 真级·禁写死）：复用 SimReadinessPanel。 */}
-      {publishedTypes && publishedTypes.length > 0 && <GlobalReadinessPanel />}
+      {publishedTypes && publishedTypes.length > 0 && <GlobalReadinessPanel sessionId={certSessionId} entOff={certEntOff} />}
       {/* additive（RL9 可回退）：左侧数据源面板 + 右侧既有工作台/空态，原有区块零删改 */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
         <div style={{ width: 248, flexShrink: 0 }}>
@@ -69,7 +92,8 @@ export default function ModelingPage() {
             <DraftWorkbench draft={draft} />
           ) : publishedTypes && publishedTypes.length > 0 ? (
             // 轨L 增量3：有已发布本体但无活动草案 → 显已发布本体（绝不"暂无本体"），可溯各自 sourceDataset。
-            <PublishedOntologyView types={publishedTypes} />
+            // 轨P 增量3：行可点 → 开对象配置抽屉（逐对象就绪 gauge·真 deriveCertification LOCAL）。
+            <PublishedOntologyView types={publishedTypes} onSelectType={setSelectedType} />
           ) : (
             // 管理平台增量 §6：真无本体（无草案且无已发布类型）→ 「从数据建模」或「一键合成」
             <EmptyState message={zh.admin.empty.ontology}>
@@ -83,6 +107,17 @@ export default function ModelingPage() {
           )}
         </div>
       </div>
+      {/* 轨P 增量3：对象配置详情抽屉（复刻竞品 image5）——逐对象就绪 gauge=真 deriveCertification(LOCAL,target)，
+          不同对象数字各不相同（禁全局值冒充）；改属性走真 patchModelingDraft（编辑草案）真持久化。 */}
+      {selectedTypeObj && (
+        <ObjectConfigDrawer
+          type={selectedTypeObj}
+          sessionId={certSessionId}
+          entOff={certEntOff}
+          drafts={drafts ?? []}
+          onClose={() => setSelectedType(null)}
+        />
+      )}
       {suggestOpen && (
         <SuggestModal
           initialSelected={preselect}
@@ -106,18 +141,8 @@ export default function ModelingPage() {
  * 仅为算全局本体就绪）→ fetchSimCertification(GLOBAL)。**禁写死 100**：绿环/级别/三维全来自真后端 closure。
  * ③类不接：6 维健康雷达 / 4 维信任雷达（后端未建·§10③）→ 不传 radar（不画假壳）。
  */
-function GlobalReadinessPanel() {
+function GlobalReadinessPanel({ sessionId, entOff }: { sessionId: string | null; entOff: boolean }) {
   const [scope, setScope] = useState<"GLOBAL" | "LOCAL">("GLOBAL");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [entOff, setEntOff] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try { const s = await createSimSession({ baseSnapshot: {}, scope: {} }); if (alive) setSessionId(s.id); }
-      catch { if (alive) setEntOff(true); }
-    })();
-    return () => { alive = false; };
-  }, []);
   const { data: cert, isLoading } = useQuery({
     queryKey: ["a", "modeling-readiness-cert", sessionId, scope],
     queryFn: () => fetchSimCertification(sessionId!, scope),
@@ -148,13 +173,192 @@ function GlobalReadinessPanel() {
 }
 
 /**
+ * 轨P 增量3（对象配置详情抽屉·复刻竞品 image5「选中实体」）：
+ *  · 中：基础图谱表单（对象标签/类型键/主键/归域）+ 本体构建表（属性/派生 = 真 ObjectType 数据）。
+ *  · 右：**局部准备度**——逐对象 `deriveCertification(scope=LOCAL,target=该类型)`，**不同对象数字各不相同**
+ *        （禁把全局那组值复用到每个对象冒充逐对象）。GLOBAL 切换作对照（看全局≠局部）。
+ *  · 改属性走**真 `patchModelingDraft`**（编辑草案·真持久化，刷新仍在）；仅当存在可编辑草案（status≠PUBLISHED
+ *    且含该类型）时开放编辑，否则诚实只读（已发布本体已锁定，不提供假编辑）。
+ *  · ③类不画假壳（§10③）：本体构建的 类型/函数/行动/安全 tab + 存储模式/对象描述 后端无 → 显式 RESERVED。
+ */
+function ObjectConfigDrawer({
+  type, sessionId, entOff, drafts, onClose,
+}: {
+  type: Awaited<ReturnType<typeof fetchObjectTypes>>[number];
+  sessionId: string | null;
+  entOff: boolean;
+  drafts: ModelingDraftVM[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [scope, setScope] = useState<"GLOBAL" | "LOCAL">("LOCAL");
+  const [tab, setTab] = useState<"属性" | "派生">("属性");
+  const [renaming, setRenaming] = useState<{ prop: string; value: string } | null>(null);
+  // 逐对象 cert：LOCAL 带 target=该类型 → 真·逐对象真值（不同对象不同）；GLOBAL 不带 target 作对照。
+  const { data: cert, isLoading: certLoading } = useQuery({
+    queryKey: ["a", "modeling-objcert", sessionId, scope, type.key],
+    queryFn: () => fetchSimCertification(sessionId!, scope, scope === "LOCAL" ? type.key : undefined),
+    enabled: !!sessionId, retry: false,
+  });
+  // 可编辑草案绑定（改属性真持久化的落点）：含该 typeKey 且未发布。
+  const editableDraft = drafts.find((d) => d.status !== "PUBLISHED" && (d.suggestion?.objectTypes ?? []).some((t) => t.typeKey === type.key));
+  const editableType = editableDraft?.suggestion.objectTypes.find((t) => t.typeKey === type.key);
+  const { data: domainsData } = useQuery({ queryKey: ["a", "business-domains"], queryFn: fetchBusinessDomains });
+  const domains = domainsData?.domains ?? [];
+  // 真 PATCH（编辑草案的该类型）→ 失效 drafts（刷新仍在=真持久化，非乐观）。
+  const patchMut = useMutation({
+    mutationFn: (operation: Record<string, unknown>) => patchModelingDraft(editableDraft!.id, operation),
+    onSuccess: async () => {
+      toast("已保存（真持久化到草案，刷新仍在）", "success");
+      setRenaming(null);
+      await queryClient.invalidateQueries({ queryKey: ["a", "modeling-drafts"] });
+    },
+    onError: (e) => { toast("保存失败", "error"); toastError(e); },
+  });
+  // 属性/主键/归域：存在可编辑草案时显**草案**值（改动即时反映 + 真持久化），否则显已发布类型（只读）。
+  const displayProps = editableType?.properties ?? type.properties;
+  const pk = displayProps.find((p) => p.isPrimaryKey)?.propKey ?? null;
+  const liveDomain = editableType?.domain ?? type.domain ?? "unassigned";
+  const derived = type.derivedProperties ?? [];
+
+  const Field = ({ label, children }: { label: string; children: ReactNode }) => (
+    <label style={{ display: "block", marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 3 }}>{label}</div>
+      {children}
+    </label>
+  );
+
+  return (
+    <Modal title={`对象配置 · ${type.displayName}`} onClose={onClose} width={980}>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }} data-testid={`obj-config-${type.key}`}>
+        {/* 中：基础图谱表单 + 本体构建表 */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="section-title" style={{ marginBottom: 8 }}>基础图谱</div>
+          <Field label="对象标签">
+            <input value={type.displayName} readOnly style={{ width: "100%" }} data-testid="objcfg-label" />
+          </Field>
+          <Field label="类型键（对象类型）">
+            <input value={type.key} readOnly className="mono" style={{ width: "100%" }} data-testid="objcfg-key" />
+          </Field>
+          <Field label="主键字段（实体字段）">
+            <input value={pk ?? "（无主键）"} readOnly className="mono" style={{ width: "100%" }} data-testid="objcfg-pk" />
+          </Field>
+          <Field label="归域（域）">
+            {editableDraft ? (
+              // 真 PATCH：setDomain（编辑草案）→ 真持久化。
+              <select
+                value={liveDomain}
+                data-testid="objcfg-domain-edit"
+                onChange={(e) => patchMut.mutate({ op: "setDomain", typeKey: type.key, domain: e.target.value })}
+                disabled={patchMut.isPending}
+                style={{ width: "100%" }}
+              >
+                <option value="unassigned">unassigned（未归域）</option>
+                {domains.map((d) => (<option key={d.key} value={d.key}>{d.displayName ?? d.key}（{d.key}）</option>))}
+              </select>
+            ) : (
+              <input value={liveDomain} readOnly className="mono" style={{ width: "100%" }} data-testid="objcfg-domain-ro" />
+            )}
+          </Field>
+          {/* ③类诚实 RESERVED（后端无）：存储模式（静态/本体图谱）、对象描述。 */}
+          <div data-testid="objcfg-reserved-fields" style={{ fontSize: 11, color: "var(--muted2)", margin: "2px 0 12px" }}>
+            ◌ 存储模式（静态图谱/本体图谱）· RESERVED · ◌ 对象描述 · RESERVED（后端无对应字段·§10③，不画假输入）
+          </div>
+
+          {/* 本体构建：属性/派生 真数据 tab + RESERVED tab */}
+          <div className="section-title" style={{ marginBottom: 6 }}>本体构建</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }} data-testid="objcfg-tabs">
+            {(["属性", "派生"] as const).map((tb) => (
+              <button key={tb} className={`btn sm ${tab === tb ? "" : "ghost"}`} data-testid={`objcfg-tab-${tb}`} data-active={tab === tb ? "1" : "0"} onClick={() => setTab(tb)}>
+                {tb}（{tb === "属性" ? displayProps.length : derived.length}）
+              </button>
+            ))}
+            {/* ③类 RESERVED tab：后端无 类型/函数/行动/安全 → 禁用不画假表。 */}
+            {["类型", "函数", "行动", "安全"].map((tb) => (
+              <button key={tb} className="btn sm ghost" disabled data-testid={`objcfg-tab-reserved-${tb}`} title="后端未建（§10③）·不画假壳" style={{ opacity: 0.5 }}>
+                {tb} · RESERVED
+              </button>
+            ))}
+          </div>
+
+          {tab === "属性" ? (
+            <table className="cmp" data-testid="objcfg-prop-table" style={{ width: "100%", fontSize: 12 }}>
+              <thead><tr><th>名称</th><th>类型</th><th>主键</th>{editableDraft && <th>改名（真 PATCH）</th>}</tr></thead>
+              <tbody>
+                {displayProps.map((p) => (
+                  <tr key={p.propKey} data-testid={`objcfg-prop-${p.propKey}`}>
+                    <td className="mono">{p.propKey}</td>
+                    <td>{p.dataType}</td>
+                    <td>{p.isPrimaryKey ? "✓" : ""}</td>
+                    {editableDraft && (
+                      <td>
+                        {renaming?.prop === p.propKey ? (
+                          <span style={{ display: "inline-flex", gap: 4 }}>
+                            <input value={renaming.value} className="mono" style={{ width: 110 }} data-testid={`objcfg-rename-input-${p.propKey}`}
+                              onChange={(e) => setRenaming({ prop: p.propKey, value: e.target.value })} />
+                            <button className="btn sm" disabled={patchMut.isPending || !renaming.value.trim() || renaming.value === p.propKey} data-testid={`objcfg-rename-save-${p.propKey}`}
+                              onClick={() => patchMut.mutate({ op: "renameProperty", typeKey: type.key, propKey: p.propKey, newPropKey: renaming.value.trim() })}>保存</button>
+                            <button className="btn sm ghost" onClick={() => setRenaming(null)}>取消</button>
+                          </span>
+                        ) : (
+                          <button className="btn sm ghost" data-testid={`objcfg-rename-${p.propKey}`} onClick={() => setRenaming({ prop: p.propKey, value: p.propKey })}>改名</button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="cmp" data-testid="objcfg-derived-table" style={{ width: "100%", fontSize: 12 }}>
+              <thead><tr><th>派生属性</th><th>公式（真 formula）</th></tr></thead>
+              <tbody>
+                {derived.length > 0 ? derived.map((d) => (
+                  <tr key={d.propKey} data-testid={`objcfg-derived-${d.propKey}`}><td className="mono">{d.propKey}</td><td className="mono" style={{ fontSize: 11 }}>{d.formula}</td></tr>
+                )) : (<tr><td colSpan={2} style={{ color: "var(--muted2)" }}>该对象无派生属性。</td></tr>)}
+              </tbody>
+            </table>
+          )}
+
+          {/* 编辑能力诚实说明 */}
+          <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 8 }} data-testid="objcfg-edit-note">
+            {editableDraft
+              ? <>编辑落点：可编辑草案 <span className="mono">{editableDraft.id}</span>（status {editableDraft.status}）——改归域/属性名走真 <span className="mono">patchModelingDraft</span>，真持久化（刷新仍在）。</>
+              : <>本对象来自<b>已发布本体</b>（草案已锁定，不可改）。编辑归域/属性需先<b>新建可编辑草案</b>（上方「{t.newDraft}」）——不提供假编辑（继承真推演红线）。</>}
+          </div>
+        </div>
+
+        {/* 右：局部准备度（逐对象 gauge·真 deriveCertification LOCAL·target=该类型） */}
+        <div style={{ width: 430, flexShrink: 0 }} data-testid="objcfg-readiness">
+          <div className="section-title" style={{ marginBottom: 6 }}>
+            局部准备度 · 逐对象就绪
+            <span style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 400, marginLeft: 6 }}>
+              deriveCertification(LOCAL·target=<span className="mono">{type.key}</span>)
+            </span>
+          </div>
+          {entOff ? (
+            <div style={{ color: "var(--muted2)", fontSize: 12 }} data-testid="objcfg-readiness-entoff">就绪认证功能未开（entitlement off）——诚实降级，不画假就绪。</div>
+          ) : !cert ? (
+            <div style={{ color: "var(--muted2)", fontSize: 12 }}>{certLoading ? "加载逐对象就绪…" : "建认证会话中…"}</div>
+          ) : (
+            // 复用 SimReadinessPanel（不新建并行）：scope=LOCAL 时 cert.targetRef=该类型 → gauge/三维/L4=逐对象真值。
+            // radar 不传（6维/4维雷达后端未建·§10③）。
+            <SimReadinessPanel cert={cert} scope={scope} onScopeChange={setScope} />
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
  * 轨P 增量1（数据流 DAG·复刻竞品 image2「架构本体设计」横向分层 ETL·承轨A P1 #37 升级）：
  * 每条实体链 数据集(事件表) → 数据处理_XX(**真字段映射** dataset.field→type.prop) → 实体/关系 → 本体库。
  * 本体专用 SVG（正交折线箭头 + 左右连接桩 + 箭头 + 最右汇本体库）。
  * **数据处理节点内容 = 真 sourceBindings.fieldMappings（点开看真映射，非凭空造 transform）**——
  * 零写死（R14）、确定性（取 5 代表链按真类型，R6）、缺 sourceBindings 标橙（诚实，非裸渲染）。
  */
-function DataPipelineDag({ types }: { types: Awaited<ReturnType<typeof fetchObjectTypes>> }) {
+function DataPipelineDag({ types, onSelectType }: { types: Awaited<ReturnType<typeof fetchObjectTypes>>; onSelectType?: (key: string) => void }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<{ dataset: string; typeLabel: string; mappings: [string, string][] } | null>(null);
   // 5 代表链（真 demo 类型名·竞品 5 条 ETL 链对位），不足按 key 序补。
@@ -206,7 +410,7 @@ function DataPipelineDag({ types }: { types: Awaited<ReturnType<typeof fetchObje
             <g key={`n-${c.key}`}>
               <PortNode tid={`pp-ds-${c.key}`} x={colX(0)} y={y} fill="rgba(67,183,215,.14)" stroke="#43B7D7" title={c.dataset ?? "（无数据集）"} sub="RawDataset" />
               <PortNode tid={`pp-proc-${c.key}`} x={colX(1)} y={y} fill={hasFm ? "rgba(98,190,119,.16)" : "rgba(210,162,76,.16)"} stroke={hasFm ? "#62BE77" : "#caa23a"} title={`数据处理_${c.key}`} sub={hasFm ? `${c.mappings.length} 字段映射` : "缺 sourceBindings"} onClick={hasFm ? () => setDetail({ dataset: c.dataset ?? "", typeLabel: c.label, mappings: c.mappings }) : undefined} />
-              <PortNode tid={`pp-ty-${c.key}`} x={colX(2)} y={y} fill="rgba(126,139,238,.16)" stroke="#7E8BEE" title={c.label} sub={c.key} badges={["模", ...(c.derived > 0 ? ["动"] : [])]} />
+              <PortNode tid={`pp-ty-${c.key}`} x={colX(2)} y={y} fill="rgba(126,139,238,.16)" stroke="#7E8BEE" title={c.label} sub={c.key} badges={["模", ...(c.derived > 0 ? ["动"] : [])]} onClick={onSelectType ? () => onSelectType(c.key) : undefined} />
             </g>
           ); })}
           <PortNode tid="pp-ontolib" x={obX} y={obY} fill="rgba(196,112,184,.18)" stroke="#C470B8" title="本体库" sub={`${types.length} 类型已发布`} />
@@ -230,14 +434,14 @@ function DataPipelineDag({ types }: { types: Awaited<ReturnType<typeof fetchObje
  * 轨L 增量3：已发布本体视图（中心真值闭合）。无活动草案但本体已存在时显此——逐类型显
  * 名称/域/属性数/派生属性数 + **可溯到各自 sourceDataset**（provenance 真实，R13），绝不"暂无本体"。
  */
-function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fetchObjectTypes>> }) {
+function PublishedOntologyView({ types, onSelectType }: { types: Awaited<ReturnType<typeof fetchObjectTypes>>; onSelectType?: (key: string) => void }) {
   const sorted = [...types].sort((a, b) => a.key.localeCompare(b.key));
   return (
     <div data-testid="published-ontology">
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
         <strong style={{ fontSize: 14 }}>已发布本体</strong>
         <span style={{ color: "var(--muted, #888)", fontSize: 12 }} data-testid="published-ontology-count">
-          {sorted.length} 个对象类型（经建模链发布 · 可溯数据源）
+          {sorted.length} 个对象类型（经建模链发布 · 可溯数据源 · 点行看逐对象配置/就绪）
         </span>
       </div>
       <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
@@ -252,9 +456,17 @@ function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fet
         </thead>
         <tbody>
           {sorted.map((ty) => (
-            <tr key={ty.key} style={{ borderTop: "1px solid var(--border, #2a2a2a)" }} data-testid={`pub-type-${ty.key}`}>
+            <tr
+              key={ty.key}
+              style={{ borderTop: "1px solid var(--border, #2a2a2a)", cursor: onSelectType ? "pointer" : undefined }}
+              data-testid={`pub-type-${ty.key}`}
+              role={onSelectType ? "button" : undefined}
+              tabIndex={onSelectType ? 0 : undefined}
+              onClick={onSelectType ? () => onSelectType(ty.key) : undefined}
+              onKeyDown={onSelectType ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectType(ty.key); } } : undefined}
+            >
               <td style={{ padding: "4px 8px" }}>
-                <span style={{ fontWeight: 600 }}>{ty.displayName}</span>{" "}
+                <span style={{ fontWeight: 600, color: onSelectType ? "var(--accent, #7E8BEE)" : undefined }}>{ty.displayName}</span>{" "}
                 <span style={{ color: "var(--muted, #888)" }}>{ty.key}</span>
               </td>
               <td style={{ padding: "4px 8px" }}>{ty.domain ?? "—"}</td>
