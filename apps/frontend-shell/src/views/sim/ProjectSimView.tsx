@@ -62,7 +62,7 @@ function pmMatchAddr(raw: string): string {
   return parts[parts.length - 1] ?? s;
 }
 function parseBatchTable(text: string): { rows: BatchRowInput[]; skipped: number } {
-  const lines = text.replace(/^﻿/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return { rows: [], skipped: 0 };
   const head = lines[0]!;
   const delim = head.includes("\t") ? "\t" : head.includes("，") ? "，" : ",";
@@ -110,6 +110,64 @@ interface WhatIfOut {
  * 项目推演（renderer=project-sim，增量 §7.13）：参数区（型号/整单·分批）→ 六步 stepper
  * （①场景解析…⑥结论与对策）+ 常显 DAG 面板（随步骤点亮）；任何参数变更 debounce 重算。
  */
+/**
+ * 轨R 增量1（HANDOFF #7·订单驱动三关联判 verdict）：**接现成 `order_fullchain` 求解器**（B-side runSolver·真后端）——
+ * 选一单 → 交期判(cap)/齐套判(kit)/财务判(fin) 三表 + 4 态 verdict(可接/提价X%接/信用阻断/不建议接) + 对冲条件，
+ * 规则号经 `RuleRef` 溯源（显示即可溯源）。**additive·不重写型号六步**（§1 禁碰）。
+ */
+interface OrderJudge { verdict?: string; ruleRefs?: string[]; [k: string]: unknown }
+interface OrderFullchain {
+  so: string; verdict: string; vc?: string; summary?: string;
+  judges?: { cap?: OrderJudge; kit?: OrderJudge; fin?: OrderJudge };
+  conds?: string[];
+}
+function OrderVerdictPanel({ orderNo }: { orderNo: string }) {
+  const q = useQuery({
+    queryKey: ["b", "solver", "order_fullchain", orderNo],
+    queryFn: async () => (await runSolver("order_fullchain", { orderNo })).data as OrderFullchain,
+    retry: false,
+  });
+  const d = q.data;
+  const cap = d?.judges?.cap, kit = d?.judges?.kit, fin = d?.judges?.fin;
+  const f = (v: unknown) => (v == null ? "—" : String(v));
+  const Judge = ({ tid, label, j, rows }: { tid: string; label: string; j?: OrderJudge; rows: string[] }) => j ? (
+    <div data-testid={`proj-judge-${tid}`} style={{ border: "1px solid var(--border,#2a2a2a)", borderRadius: 8, padding: "8px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <b style={{ fontSize: 12.5 }}>{label}</b><span className="badge" data-testid={`proj-judge-${tid}-verdict`}>{f(j.verdict)}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--muted2)", lineHeight: 1.6 }}>{rows.map((r, i) => <div key={i}>{r}</div>)}</div>
+      {(j.ruleRefs ?? []).length > 0 && <div style={{ marginTop: 5, display: "flex", gap: 4, flexWrap: "wrap" }}>{(j.ruleRefs ?? []).map((r) => <RuleRef key={r} code={r} />)}</div>}
+    </div>
+  ) : null;
+  return (
+    <div className="panel" data-testid="proj-order-verdict" style={{ marginBottom: 12, padding: 12 }}>
+      <div className="section-title">订单驱动 · 三关联判（交期/齐套/财务）→ 裁决 · {orderNo}</div>
+      {!d ? (
+        <div className={styles.sub} data-testid="proj-order-verdict-loading">{q.isLoading ? "推演订单全链（order_fullchain）…" : q.isError ? "求解器不可达——诚实降级" : "加载…"}</div>
+      ) : (
+        <>
+          <div className={styles.okBar} data-testid="proj-order-verdict-bar" style={{ borderColor: d.vc ?? "var(--line2)", color: d.vc ?? "var(--txt)", marginBottom: 10 }}>
+            裁决：<b>{d.verdict}</b>{d.summary ? <span style={{ fontWeight: 400, color: "var(--muted2)" }}> · {d.summary}</span> : null}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
+            <Judge tid="cap" label="① 交期判" j={cap} rows={[`P50 ${f(cap?.p50)} / P90 ${f(cap?.p90)} 万套`, `需求 ${f(cap?.demand)}`]} />
+            <Judge tid="kit" label="② 齐套判" j={kit} rows={[`${f(kit?.material)} 缺口 ${f(kit?.gapTon)} 吨`, `最早齐套 ${f(kit?.eta)}`]} />
+            <Judge tid="fin" label="③ 财务判" j={fin} rows={[`毛利 ${f(fin?.marginPct)}% / 底线 ${f(fin?.floorPct)}%`, `信用占用 ${f(fin?.creditUsedRatio)}${fin?.priceUpPct ? ` · 提价 ${f(fin?.priceUpPct)}%` : ""}`]} />
+          </div>
+          {(d.conds ?? []).length > 0 && (
+            <div data-testid="proj-order-conds" style={{ marginTop: 10 }}>
+              <div className={styles.sub} style={{ marginBottom: 4 }}>对冲条件（{d.conds!.length}）</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--muted2)" }}>
+                {d.conds!.map((c, i) => <li key={i} data-testid={`proj-cond-${i}`}>{c}</li>)}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ProjectSimView({ view }: ViewRendererProps) {
   // R14：型号/地址/物流来自 WorkspaceConfig（按租户/行业），缺失则 DEFAULT_* 兜底
   const { data: workspace } = useWorkspace();
@@ -173,6 +231,11 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     queryKey: ["a", "objects", { type: "Order", view: "project-sim" }],
     queryFn: () => searchObjects("Order", ""),
   });
+  // 轨R 增量1（#7）：选中订单的 SO 号（喂 order_fullchain·真订单号非对象 id）。
+  const selectedOrderSo = useMemo(() => {
+    const o = (orders.data?.items ?? []).find((x) => x.id === selectedOrder);
+    return o ? String(o.props.so ?? o.id) : null;
+  }, [orders.data, selectedOrder]);
 
   // 任何参数变更 → debounce 300ms 重算 capacity_forecast（what-if 滑杆同路径，拖动即重算）
   const args = useMemo<Record<string, unknown>>(
@@ -257,6 +320,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
         </div>
 
         <div>
+          {/* 轨R 增量1（HANDOFF #7）：选中订单 → 订单驱动三关联判 verdict（接现成 order_fullchain·additive·型号六步不变）。 */}
+          {selectedOrderSo && <OrderVerdictPanel orderNo={selectedOrderSo} />}
           {/* 参数区（§7.13）：型号选择器（写 selectedObjects）+ 整单/分批 */}
           <div className="panel" style={{ marginBottom: 12 }}>
             <div className="section-title">📝 输入需求 · 改输入即重演</div>
