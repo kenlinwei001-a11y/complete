@@ -16,7 +16,6 @@ import type { SandboxViewConfig, SimSession } from "@platform/contracts";
 // ── 网络桩：tick 时把每个对象每个状态变量 +10（断言节点色/KPI 随 tick 变化）。 ──────────────
 const tickFn = vi.fn();
 vi.mock("@/api/endpoints", () => ({
-  fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_test", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
