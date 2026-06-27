@@ -35,7 +35,7 @@
 | # | 板块 | 母版 ref（HTML 行·数据值） | 现系统锚点 | 真缺 | 真值判据（FDE oracle） |
 |---|---|---|---|---|---|
 | **#1** | 经营驾驶舱 | 待解决问题 8 根源（line 4097 ROOT_LIB：crm/push/frame/credit/lta/ramp/maint/cost） | `DashboardView.tsx` ProblemPanel(`:141`) → `affected_orders`；根因链种子 `synthetic/battery.ts:1520+`（rc-profit-mix/scale-demand/material-gap…）；实拍问题面板**仅 3 卡**(DELIVERY/CREDIT/MARGIN) | **补根因链种子到 8 类**（扩 battery.ts rootCause chains，**别动求解器**） | demo 驾驶舱问题面板出 **8 类**根源-问题卡，各可下钻 |
-| **#7** | 项目决策推演 | C-1 订单驱动：逐单 **交期判(C02/C03)·齐套判(C06/C16)·财务判(C13/C15/C18) → 4 态 verdict(可接/提价接/不接)+对冲条件**（line 3429） | `ProjectSimView.tsx`：主体是**型号驱动六步**（已建✅）；`proj-verdict-bar(:790)` 的 verdict 是**型号态**（周产能/P50）**非订单三关联判** | **补订单驱动模式**：选一单 → 三关联判表 + 4 态 verdict + 对冲条件（扩 ProjectSimView orderMode，**别重写型号六步**） | 选一单 → 出 ①交期判 ②齐套判 ③财务判 三表 + verdict + 对冲 |
+| **#7 ✅已闭(2fb1d46)** | 项目决策推演 | C-1 订单驱动：逐单 **交期判(C02/C03)·齐套判(C06/C16)·财务判(C13/C15/C18) → 4 态 verdict(可接/提价接/不接)+对冲条件**（line 3429） | `ProjectSimView.tsx` OrderVerdictPanel（additive·型号六步零改·守§1） | **✅已建·审核方复验闭合(2026-06-27)**：接现成 `order_fullchain`·选 SO-3391 → 裁决「不建议接」/①交期判 可达 P50 2100·P90 1890[C02/03]/②齐套判 缺料 三元正极654吨·2026-06-28[C06/16]/③财务判 信用阻断 占用1.15[C15/13/18]/对冲2/**7 RuleRef 芯片**——**全=后端 order_fullchain oracle**（curl+真浏览器双路）·型号六步 additive 未破坏·`pnpm -r build` 亲验绿 | ~~选一单 → 三表+verdict+对冲~~ ✅达成 |
 
 ### B · 半建·需精修（中确信）
 
