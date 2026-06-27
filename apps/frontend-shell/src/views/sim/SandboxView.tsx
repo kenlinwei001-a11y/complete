@@ -7,6 +7,7 @@ import {
   fetchSimCertification,
   fetchSimCompare,
   fetchSimViewConfig,
+  invokeSolver,
   simBranch,
   simCheckpoint,
   simTick,
@@ -298,6 +299,57 @@ function KnowledgeActivation({ cert, curTick }: { cert: SimCertification; curTic
       <span className={`badge ${active ? "green" : ""}`} data-testid="sandbox-knowledge-status">
         {active ? `ACTIVE · 已推进 ${curTick} tick` : "DORMANT · 未推进（tick 0）"}
       </span>
+    </div>
+  );
+}
+
+/**
+ * 轨Q 增量4（竞品状态卡条 风险 TOP3·接 `risk_timeline` 真求解器）：**守轨M 真推演红线**——
+ * MOCK 因素无真数据源 → 基线张力是 mockTightness 启发估算（非实测），诚实标"估算·无实测"，绝不当真红；
+ * LIVE 因素标"实测"。峰值取真求解器 peak·TOP3 按 peak 排序。
+ */
+interface RiskCard { base: string; factor: string; dataMode: "MOCK" | "LIVE"; peak: number; currentTightness?: { value: number } }
+function RiskTop3({ enabled }: { enabled: boolean }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["a", "risk_timeline", "sandbox-top3"],
+    queryFn: async () => (await invokeSolver("risk_timeline", {})).data as { cards?: RiskCard[] },
+    retry: false, enabled,
+  });
+  if (isError) return null;
+  const cards = [...(data?.cards ?? [])].sort((a, b) => (b.peak ?? 0) - (a.peak ?? 0)).slice(0, 3);
+  return (
+    <div className="panel" data-testid="sandbox-risk-top3" style={{ padding: 12, marginTop: 12 }}>
+      <div className={styles.secHead} style={{ marginBottom: 6 }}>风险 TOP3 · 接 risk_timeline 求解器（MOCK 因素诚实标估算·守真推演红线）</div>
+      {isLoading || !data ? (
+        <div className={styles.sub}>加载风险时间线…</div>
+      ) : cards.length === 0 ? (
+        <div className={styles.sub} data-testid="sandbox-risk-empty">无风险因素。</div>
+      ) : (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {cards.map((c, i) => {
+            const col = c.peak >= 80 ? "#E0626C" : c.peak >= 50 ? "#E8B54A" : "#62BE77";
+            return (
+              <div key={`${c.base}:${c.factor}`} data-testid={`sandbox-risk-${i}`} style={{ flex: "1 1 180px", border: "1px solid var(--border,#2a2a2a)", borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <b style={{ fontSize: 13 }}>{c.base} · {c.factor}</b>
+                  <b className="mono" style={{ color: col, fontSize: 16 }}>{c.peak}</b>
+                </div>
+                <div style={{ marginTop: 4 }}>
+                  {c.dataMode === "MOCK" ? (
+                    <span className="badge" data-testid={`sandbox-risk-datamode-${i}`} title="该因素无真数据源·基线张力为 mockTightness 启发估算(非实测)·峰值含真事件脉冲">
+                      估算·无实测{c.currentTightness ? `（mock 基线 ${Math.round(c.currentTightness.value)}）` : ""}
+                    </span>
+                  ) : (
+                    <span className="badge green" data-testid={`sandbox-risk-datamode-${i}`} title="真数据源·实测张力">
+                      实测{c.currentTightness ? `（基线 ${Math.round(c.currentTightness.value)}）` : ""}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -780,6 +832,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </div>
         )}
       </div>
+
+      {/* 轨Q 增量4（竞品状态卡条 风险 TOP3·接 risk_timeline 真求解器·MOCK 因素诚实标估算·守轨M 真推演红线）。 */}
+      <RiskTop3 enabled={!!sessionId} />
 
       {/* 多场景 KPI 对比面板（北极星）：分支后出现，A 主线 vs B 分支逐 tick 差异 */}
       {compare && (
