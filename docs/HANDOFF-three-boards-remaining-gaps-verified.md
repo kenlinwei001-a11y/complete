@@ -42,15 +42,15 @@
 | # | 板块 | 差距 | 现系统锚点 | 真值判据 |
 |---|---|---|---|---|
 | **#2** | 驾驶舱 KPI 八卡溯源富度 | ⓘ 溯源徽已在（20 个 `widget-prov-*`）但**只显推导/输出路径/快照**，缺母版的**来源系统·新鲜度·规则号 C01-25·公式串**逐卡挂载 | `DashboardView.tsx:376` `widget-prov-{key}` + `Provenance.tsx` 六要素组件 | 逐卡悬停出**来源系统/新鲜度/推导公式/输入因子/规则号/备注**六要素，与母版同口径（接 RuleRef，**别造假规则号**） |
-| **#3** | 驾驶舱 问题级归因 DAG event 层 | 有 result→KSF→factor(贡献breakdown)→**反事实排除层**(已建✅)，但**未见 event 层(驱动事件，如 CRM 合同变更 06-05)+ 受影响订单聚合可点跳** | `ProvenanceDag`(`:10`) + `plan_rootcause`(`:218`) | 点问题卡出 5 层 DAG，event 层有真驱动事件 + 受影响订单可点跳（接真事件，**禁现编**） |
-| **#4** | 规划侧 项目级聚合勾稽表 | 驾驶舱有毛利勾稽闭合(已建✅)，但**规划侧(plan-audit/generate)未见等价"项目级聚合勾稽表(Σ负+正贡献闭合)"** | plan-audit 根因侧（KSF 图已在）；同源驾驶舱 marginLedger | 规划根因 DAG 下出聚合表，负+正贡献**勾稽闭合**（与驾驶舱毛利勾稽同源，**别另起并行求解器**） |
+| **#3 ✅已闭(0501e7b)** | 驾驶舱 问题级归因 DAG event 层 | ~~未见 event 层~~ | `ProvenanceDag` + `plan_rootcause` | **✅已建(2026-06-27)**：plan_rootcause 归因根 KPI 之上挂 event 驱动事件层（母版 5 层 KPI→event→KSF→factor→evidence），接现成 `affectedOrdersAggregate` 真 8 根源（信用/成本/框架/合同/长协/齐套/爬坡/排产）·每事件带受影响订单数+财务敞口+规则号+最早交期(真订单 due·禁现编)·点卡下钻 `/v/order-chain?problem=` 看真受影响订单。**curl oracle**：8 event 节点+8 kpi_event 边；**真浏览器实拍**：物料保障率 RED→8 驱动事件带规则芯片[C13/C15-C24/C03/C02/C06-C16/...]→KSF→因子→取证叶。`pnpm -r build` 5 包全绿 |
+| **#4 ✅已闭(7e3cf8a)** | 规划侧 项目级聚合勾稽表 | ~~规划侧未见等价聚合勾稽表~~ | plan-audit/generate KSF 图下；同源驾驶舱 marginLedger | **✅已建(2026-06-27)**：plan-audit/generate KSF 图下挂 MarginLedgerTable，接现成 `affected_orders.marginLedger`（与驾驶舱毛利勾稽**同一求解器同一来源**·不另起并行）·逐细分贡献+合计勾稽行(Σ贡献=综合毛利率·Σ缺口贡献负红正绿)+闭合徽+Provenance 六要素(C15/C24)。**curl oracle**：Σcontribution=16.13=gmRatePct·Σgap=0.13=gapPp·reconciled=true；**真浏览器实拍**：plan-audit 出 3 细分+合计 Σ16.13=综合毛利率·已闭合✓。`pnpm -r build` 5 包全绿 |
 
 ### C · 存疑·锚点显示可能已大部建（**增量0 必先实拍**·别想当然判缺）
 
 | # | 锚点新发现（审核方核实） | 处置 |
 |---|---|---|
-| **#8** PropagationTimeline 组件挂载 | **已不是孤儿**——现被 `PlanAuditView.tsx` + `PlanGenerateView.tsx` import；系数已去写死(轨M 增量1d 真算)。**可能已大部建** | dev 增量0 真浏览器实拍 plan-audit/generate 的传播时序是否真渲染+财务击穿真算 → 确认真缺(是否需补 risk 页挂载/逐日曲线)再建 |
-| **#9** 同源本体底座·决策应用域 5 一等对象 | **后端已有部分**——`solvers/service.ts:76,729` 有"KSF 5 一等对象投影(问题→KSF→财务)"、`synthetic/service.ts:467` 有"决策应用域归域"。**比 AUDIT 说的'各板块各自算'建得多** | dev 增量0 摸真代码盘点 5 一等对象(经营KPI/待解决问题/KSF/经营方案/问题传播时序)后端到哪步 → 真缺口可能只剩前端统一引用/小部分；**牵动大·确认后可拆独立 HANDOFF** |
+| **#8 ✅实拍确认已建** | PropagationTimeline 组件挂载 | **真浏览器实拍确认(2026-06-27)**：plan-audit 软风险/硬矛盾卡"展开时序推演"→ PropagationTimeline 真渲染：逐日圆点轴(audit_timeline 按 kind 派生·当前48→峰值95·T+40越线) + 4 节点传导链(事件窗 D+14→约束越线→波及订单 D+14~28[SO-3470 +1d]→财务击穿)。**已建·无需补**（财务击穿数值随 kind 真算·非缺口） |
+| **#9 ✅实拍确认已建** | 同源本体底座·决策应用域 5 一等对象 | **真浏览器实拍确认(2026-06-27)**：plan-audit KsfGraph 真渲染(问题→KSF→财务指标 3 层·13 节点)，后端 `ksfGraph` 投影 5 一等对象；前端 audit/generate 共用同源 KsfGraph 组件。**已建·"经营方案 countermeasure" 仅小尾·不阻塞** |
 
 ### D · 后端 TO-DO（用户点名·深修·非前端 polish）
 
