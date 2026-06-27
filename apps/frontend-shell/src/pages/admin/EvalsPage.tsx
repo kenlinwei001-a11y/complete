@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createEvalCase, fetchEvalCases, fetchEvalRuns, runEvalSuite } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 
 /**
  * Agent 评测体系（运营完备性 OC2）：评测用例库 + 跑评测套件 + 历史报告（意图准确率/工具正确率/时延）。
@@ -19,7 +19,7 @@ export default function EvalsPage() {
   const { data: cases } = useQuery({ queryKey: ["b", "eval-cases", suite], queryFn: () => fetchEvalCases(suite) });
   const { data: runs } = useQuery({ queryKey: ["b", "eval-runs"], queryFn: fetchEvalRuns });
   const { data: workspace } = useWorkspace();
-  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const packageId = firstPackageId(workspace);
 
   const run = useMutation({
     mutationFn: () => runEvalSuite(suite),

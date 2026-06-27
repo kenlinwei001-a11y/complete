@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
 import { createScenario, fetchAgents, fetchIntents, fetchScenariosManage, fetchViewConfigs, growScenario, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
 import { invalidateForEvent } from "@/store/eventInvalidation";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -21,7 +21,7 @@ export default function ScenesPage() {
   const { data: agents } = useQuery({ queryKey: ["b", "agents", {}], queryFn: fetchAgents });
   const { data: views } = useQuery({ queryKey: ["a", "view-configs"], queryFn: fetchViewConfigs });
   const { data: workspace } = useWorkspace();
-  const packageId = workspace?.scenarioPackages?.[0] ?? "";
+  const packageId = firstPackageId(workspace);
   // 意图命中校验（admin-console-closure §5-②）：intentKey 闭合到真实已发布意图目录。
   const { data: intents } = useQuery({ queryKey: ["b", "intents", packageId], queryFn: () => fetchIntents(packageId, { status: "PUBLISHED" }), enabled: !!packageId });
   const qc = useQueryClient();

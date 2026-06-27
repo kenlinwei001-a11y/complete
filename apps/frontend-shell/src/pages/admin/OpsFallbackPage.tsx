@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchFallbackStats, promoteFallback } from "@/api/endpoints";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -10,7 +10,7 @@ const t = zh.admin.fallback;
 /** 兜底统计与意图孵化（QOS §8.5）：聚类列表 + 一键 promote → DRAFT 意图编辑页 */
 export default function OpsFallbackPage() {
   const { data: workspace } = useWorkspace();
-  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const packageId = firstPackageId(workspace);
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ["b", "fallback-stats", { packageId }],

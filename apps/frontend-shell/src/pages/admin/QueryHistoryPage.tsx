@@ -1,13 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchQueryHistory, submitQuery, type QueryHistoryItem } from "@/api/endpoints";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 
 /** Phase9C 推演历史：浏览本租户最近的 QOS 推演任务（问句/路径/状态/结论摘要/时间），可查看详情或重放。 */
 export default function QueryHistoryPage() {
   const { data: workspace } = useWorkspace();
-  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const packageId = firstPackageId(workspace);
   const navigate = useNavigate();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["b", "query-history"],

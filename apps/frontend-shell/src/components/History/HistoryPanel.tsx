@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchQueryHistory, submitQuery, type QueryHistoryItem } from "@/api/endpoints";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -12,7 +12,7 @@ import zh from "@/locales/zh";
 export function HistoryPanel({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
-  const packageId = workspace?.scenarioPackages?.[0] ?? "";
+  const packageId = firstPackageId(workspace);
   const { data, isLoading, refetch } = useQuery({ queryKey: ["b", "query-history", "panel"], queryFn: () => fetchQueryHistory(50) });
   const replay = useMutation({
     mutationFn: (item: QueryHistoryItem) =>

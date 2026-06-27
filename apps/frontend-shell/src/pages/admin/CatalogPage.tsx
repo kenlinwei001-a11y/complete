@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { IntentClassifyPreviewResult, IntentDefinition, SlotDef } from "@platform/contracts";
 import { classifyIntentPreview, createIntent, createPlan, fetchIntents, fetchObjectTypes, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -13,7 +13,7 @@ const t = zh.admin.catalog;
 /** 意图目录与执行计划（PRD §7.8 catalog）：列表（status 筛选）+ 编辑器 + 发布/退役 */
 export default function CatalogPage() {
   const { data: workspace } = useWorkspace();
-  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const packageId = firstPackageId(workspace);
   const [status, setStatus] = useState("");
   const [params] = useSearchParams();
   const { data: intents } = useQuery({

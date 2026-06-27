@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { submitQuery, type ScenarioCardVM } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 
 /**
@@ -23,11 +23,9 @@ export function useQuickLaunch(): (input: {
 }) => Promise<void> {
   const navigate = useNavigate();
   const { data: workspace } = useWorkspace();
-  // packageId：`scenarioPackages` 经 WorkspaceVMSchema.transform 已归一为 id 字符串数组（api/types.ts），
-  // 此处再加一道防御——万一上游形态漂移回契约的 `{id,name}` 对象（@platform/contracts），也取得到 id；
-  // 否则把对象误当 packageId 传给 QOS → 404 PACKAGE_NOT_FOUND（评审复核遗留·收尾加固，零回归）。
-  const rawPkg = workspace?.scenarioPackages?.[0] as unknown;
-  const packageId = (typeof rawPkg === "string" ? rawPkg : (rawPkg as { id?: string } | undefined)?.id) ?? "";
+  // packageId：统一走 firstPackageId 单一提取点（VM 已归一 string；防御契约 {id,name} 对象漂移 →
+  // 杜绝把对象误当 packageId 传给 QOS → 404 PACKAGE_NOT_FOUND）。见 workspace/useWorkspace.ts。
+  const packageId = firstPackageId(workspace);
   return async ({ query, targetView, selectedObjects = [], slotPresets = {}, scenarioIntentKey, scenarioKey }) => {
     if (!packageId) return;
     const store = useSessionStore.getState();

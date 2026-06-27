@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchScene, fetchScenarioCards, submitQuery } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { TaskRun } from "./TaskRun";
@@ -30,7 +30,7 @@ export function QueryDock() {
   // 经引用闭合验证（intent→plan 全配置好），优先作为建议问句 → 点了必命中、不落死路。
   const { data: cards } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), enabled: expanded });
 
-  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const packageId = firstPackageId(workspace);
 
   const submit = async (q: string) => {
     const text = q.trim();

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { GraphOptionsSchema, type GraphOptions } from "@platform/contracts";
 import { fetchOntologyGraph } from "@/api/endpoints";
-import { useWorkspace } from "@/workspace/useWorkspace";
+import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import type { GraphEdgeVM, GraphNodeVM } from "@/api/types";
 import type { ViewRendererProps } from "./registry";
@@ -70,7 +70,7 @@ const DEFAULT_OPTIONS: GraphOptions = { colorBy: "domain" };
 
 export default function OntologyGraphView({ view }: ViewRendererProps) {
   const { data: workspace } = useWorkspace();
-  const packageId = workspace?.scenarioPackages[0] ?? "";
+  const packageId = firstPackageId(workspace);
   const { data: graph, isLoading } = useQuery({
     queryKey: ["a", "ontology-graph", { packageId }],
     queryFn: () => fetchOntologyGraph(packageId),
