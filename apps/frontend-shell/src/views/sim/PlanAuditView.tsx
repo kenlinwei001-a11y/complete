@@ -10,7 +10,7 @@ import { fetchPlanVersionCurrent, runSolver } from "@/api/endpoints";
 import { useFeature } from "@/workspace/featureGate";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
-import { SnapshotBadge, useAdoptToDraft } from "./shared";
+import { SnapshotBadge, useAdoptToDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
 import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
@@ -175,6 +175,8 @@ export default function PlanAuditView({ view }: ViewRendererProps) {
 
       {/* audit.3：财务 KSF 图（问题→KSF→财务指标 3 层；问题节点点击联动其时序轴）。audit/generate 共用组件。 */}
       <KsfGraph />
+      {/* 轨R #4：项目级聚合毛利勾稽表（Σ负+正贡献闭合·与驾驶舱毛利勾稽同源 affected_orders.marginLedger）。 */}
+      <MarginLedgerTable testId="margin-ledger-audit" />
       {/* inference-process 横切：本次规划体检推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-audit" solved />
     </div>

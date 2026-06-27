@@ -7,7 +7,7 @@ import { workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useFeature } from "@/workspace/featureGate";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
-import { SnapshotBadge, useActionDraft } from "./shared";
+import { SnapshotBadge, useActionDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
@@ -393,6 +393,8 @@ function SchemeCard({
 
       {/* audit.3：财务 KSF 图（audit/generate 共用同一组件，问题→KSF→财务指标 + 问题节点联动时序） */}
       <KsfGraph testId="gen-ksf-graph" />
+      {/* 轨R #4：项目级聚合毛利勾稽表（与驾驶舱毛利勾稽同源 affected_orders.marginLedger·别另起求解器）。 */}
+      <MarginLedgerTable testId="margin-ledger-generate" />
       {/* inference-process 横切：本次方案生成推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-gen" solved />
     </div>

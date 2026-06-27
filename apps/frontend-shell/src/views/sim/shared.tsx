@@ -1,5 +1,7 @@
-import { useMutation } from "@tanstack/react-query";
-import { createActionDraft } from "@/api/endpoints";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { createActionDraft, runSolver } from "@/api/endpoints";
+import type { AffectedOrdersOutputVM } from "@/api/types";
+import { Provenance } from "@/components/Provenance";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -54,6 +56,89 @@ export function useAdoptToDraft() {
     onSuccess: () => toast(`${zh.sim.adoptDone}（${zh.sim.gotoActions}：/admin/actions）`, "success"),
     onError: toastError,
   });
+}
+
+/**
+ * 轨R #4（母版 · 规划侧项目级聚合毛利勾稽表）：规划根因 DAG 下方挂综合毛利率逐细分贡献勾稽——
+ * 数据源 = affected_orders 聚合 marginLedger（与驾驶舱「综合毛利率勾稽闭合」**同一求解器、同一来源**，
+ * 不另起并行求解器·R13/R14/RL5）。Σ贡献 = 综合毛利率（正/负贡献闭合到缺口），表脚显示闭合徽。
+ */
+export function MarginLedgerTable({ testId = "margin-ledger" }: { testId?: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["b", "solver", "affected_orders", "margin-ledger"],
+    queryFn: async () => {
+      const res = await runSolver("affected_orders", {});
+      return (res.data as AffectedOrdersOutputVM).marginLedger;
+    },
+  });
+  if (isLoading) return <div className="panel" data-testid={testId}><div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div></div>;
+  if (!data || data.bySegment.length === 0) return null; // 无聚合数据 → 不渲染（向后兼容，不画空表）
+
+  return (
+    <div className="panel" data-testid={testId} style={{ marginTop: 12 }}>
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        项目级聚合毛利勾稽（Σ负+正贡献闭合 · 与驾驶舱同源）
+        <Provenance
+          testId={`${testId}-prov`}
+          src="affected_orders 求解器（订单全链聚合 · marginLedger）"
+          formula="综合毛利率 = Σ_细分(营收占比 × 细分毛利率)；缺口 = Σ_细分(营收占比 ×(细分毛利率 − 目标))"
+          inputs={["各应用细分营收占比", "各细分毛利率", "毛利率目标"]}
+          rule="C15/C24"
+          note="与经营驾驶舱「综合毛利率勾稽闭合」同一求解器输出（marginLedger）·非另起并行求解器"
+        >
+          <span className="badge">ⓘ</span>
+        </Provenance>
+      </div>
+      <table className="data-table mono" data-testid={`${testId}-table`} style={{ width: "100%", fontSize: 11.5 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left" }}>应用细分</th>
+            <th style={{ textAlign: "right" }}>营收(万)</th>
+            <th style={{ textAlign: "right" }}>营收占比</th>
+            <th style={{ textAlign: "right" }}>细分毛利率</th>
+            <th style={{ textAlign: "right" }}>对综合毛利贡献(pp)</th>
+            <th style={{ textAlign: "right" }}>对缺口贡献(pp)</th>
+            <th style={{ textAlign: "right" }}>订单数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.bySegment.map((s) => (
+            <tr key={s.seg} data-testid={`${testId}-row-${s.seg}`}>
+              <td style={{ textAlign: "left" }}>{s.seg}</td>
+              <td style={{ textAlign: "right" }}>{fmt(s.revenue, 0)}</td>
+              <td style={{ textAlign: "right" }}>{(s.revShare * 100).toFixed(1)}%</td>
+              <td style={{ textAlign: "right" }}>{s.marginPct.toFixed(1)}%</td>
+              <td style={{ textAlign: "right" }}>{s.contributionPp.toFixed(2)}</td>
+              <td style={{ textAlign: "right", color: s.gapContributionPp < 0 ? "var(--danger)" : "var(--ok)" }}>
+                {s.gapContributionPp >= 0 ? "+" : ""}{s.gapContributionPp.toFixed(2)}
+              </td>
+              <td style={{ textAlign: "right" }}>{s.orderCount}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr style={{ borderTop: "1px solid var(--line)", fontWeight: 600 }} data-testid={`${testId}-total`}>
+            <td style={{ textAlign: "left" }}>合计（勾稽）</td>
+            <td style={{ textAlign: "right" }}>—</td>
+            <td style={{ textAlign: "right" }}>100%</td>
+            <td style={{ textAlign: "right" }}>—</td>
+            <td style={{ textAlign: "right" }}>Σ {data.gmRatePct.toFixed(2)} = 综合毛利率</td>
+            <td style={{ textAlign: "right", color: data.gapPp < 0 ? "var(--danger)" : "var(--ok)" }}>
+              Σ {data.gapPp >= 0 ? "+" : ""}{data.gapPp.toFixed(2)}
+            </td>
+            <td style={{ textAlign: "right" }}>—</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
+        综合毛利率 <b className="mono">{data.gmRatePct.toFixed(2)}%</b> vs 目标 <b className="mono">{data.targetPct.toFixed(1)}%</b> · 缺口{" "}
+        <b className="mono" style={{ color: data.gapPp < 0 ? "var(--danger)" : "var(--ok)" }}>{data.gapPp >= 0 ? "+" : ""}{data.gapPp.toFixed(2)}pp</b>{" "}
+        <span className="badge" style={{ background: data.reconciled ? "rgba(98,190,119,.18)" : "rgba(224,98,108,.18)", color: data.reconciled ? "var(--ok)" : "var(--danger)" }} data-testid={`${testId}-reconciled`}>
+          {data.reconciled ? "已闭合 ✓" : "未闭合"}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 /**
