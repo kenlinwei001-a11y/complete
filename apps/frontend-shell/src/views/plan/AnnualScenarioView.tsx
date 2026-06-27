@@ -6,6 +6,7 @@ import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
 import { RuleRef } from "@/components/RuleRef";
+import { Provenance } from "@/components/Provenance";
 import { EChart } from "@/components/ui/EChart";
 import type { ViewRendererProps } from "../registry";
 import zh from "@/locales/zh";
@@ -170,7 +171,8 @@ function ScenarioCard({ scenario: s }: { scenario: AnnualScenario }) {
           <div data-testid={`scen-projects-${s.key}`}>
             {s.capexScenario.projects.map((p) => (
               <div key={p.id} className="mono" data-testid={`scen-project-${s.key}-${p.id}`} style={{ fontSize: 11 }}>
-                {p.name}：IRR {p.irr.toFixed(1)}% · 24月利用率 {(p.util24 * 100).toFixed(1)}%{" "}
+                {/* 轨N 跟进2·KPI 裸数字接 Provenance：IRR/利用率 接 capex_scenario 真算（C23 门槛）。 */}
+                {p.name}：<Provenance testId={`scen-irr-${s.key}-${p.id}`} src="capex_scenario 求解器（年度情景测算）" formula="IRR = 现金流内部收益率；24月利用率 = 投产 24 月累计利用" inputs={["产能项目投资/产出", "需求/单位毛利"]} rule="C23"><b>IRR {p.irr.toFixed(1)}% · 24月利用率 {(p.util24 * 100).toFixed(1)}%</b></Provenance>{" "}
                 <span className={`badge ${p.c23pass ? "green" : "amber"}`}>{p.c23pass ? "C23 ✓" : "C23 ⚠"}</span>
               </div>
             ))}

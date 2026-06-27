@@ -52,4 +52,38 @@ if (violations.length > 0) {
   console.error("  → 换成 <RuleRef code={...} />（组件现成，splits on /、,空格），就地悬浮出 定义/阈值/作用域/版本/谁定/有效边界。");
   process.exit(1);
 }
-console.log("✓ traceability:check：无规则号裸渲染，全部规则号经 <RuleRef> 可溯源（R13）。");
+
+// ── KPI 维（轨N 跟进2）：财务/规划决策视图必须具备 Provenance 溯源能力（import 在位）。
+// 诚实边界：逐数字穷尽 wrap 不可静态可靠检测（任意数字非皆 KPI），故此处为「决策视图 Provenance 能力 presence」
+// 哨兵——确保每个含财务/规划 KPI 的决策视图都接入 Provenance（高价值 KPI 已逐视图 wrap），防"新决策视图裸渲染 KPI"回潮。
+// RiskBoardView 的风险峰值经 RiskPopover 悬浮 + bottleneck 详情溯源（另一机制），不在此列。
+const KPI_DECISION_VIEWS = [
+  "src/views/DashboardView.tsx",
+  "src/views/LedgerView.tsx",
+  "src/views/plan/OrderChainView.tsx",
+  "src/views/plan/AnnualScenarioView.tsx",
+  "src/views/plan/QuarterlyRollingView.tsx",
+  "src/views/sim/PlanAuditView.tsx",
+  "src/views/sim/PlanGenerateView.tsx",
+  "src/views/sim/SopBalanceView.tsx",
+  "src/views/sim/ProjectSimView.tsx",
+];
+const missingProv = [];
+for (const rel of KPI_DECISION_VIEWS) {
+  let src;
+  try {
+    src = readFileSync(new URL("../apps/frontend-shell/" + rel, import.meta.url), "utf8");
+  } catch {
+    missingProv.push(`${rel}（文件不存在）`);
+    continue;
+  }
+  if (!/from\s+"@\/components\/Provenance"/.test(src)) missingProv.push(rel);
+}
+console.log(`· traceability(KPI)：${KPI_DECISION_VIEWS.length} 个财务/规划决策视图 · 缺 Provenance 能力 ${missingProv.length}`);
+if (missingProv.length > 0) {
+  console.error("✗ traceability:check：以下决策视图渲染 KPI 但未接入 Provenance 溯源能力（违 R13）：");
+  for (const v of missingProv) console.error("  " + v);
+  console.error("  → import { Provenance } 并把关键 KPI 数字包 <Provenance src/formula/inputs/rule>…</Provenance>。");
+  process.exit(1);
+}
+console.log("✓ traceability:check：无规则号裸渲染（R13）+ 财务/规划决策视图均接入 Provenance 溯源能力。");

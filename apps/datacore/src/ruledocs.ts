@@ -368,6 +368,9 @@ export class RuleDocService {
       severity: effective.severity,
       origin: { type: "DOCUMENT", docId: cand.docId, span: cand.span, extractJobId: cand.extractJobId },
       status: "PUBLISHED",
+      // 轨N 跟进3 规则 provenance（R13·规则文档抽取路径）：诚实标产出来源——A2 文档抽取经人工审核采纳，依据真实文档。
+      definedBy: "规则文档抽取（A2 · 人工审核采纳）",
+      basis: `规则文档 ${cand.docId}（抽取 span ${cand.span ?? "—"}）`,
     });
     cand.status = "APPROVED";
     cand.candidate = effective;

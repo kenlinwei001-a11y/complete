@@ -12,6 +12,7 @@ import { useLiveSolver } from "./useLiveSolver";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
 import { KsfGraph } from "@/components/KsfGraph";
+import { Provenance } from "@/components/Provenance";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
@@ -265,21 +266,22 @@ function SchemeCard({
           <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{open ? "▼ 收起" : "▸ 展开"}</span>
         </div>
 
+        {/* 轨N 跟进2·KPI 裸数字接 Provenance：方案产出五指标逐个悬浮出 来源/公式/输入（接 plan_generate 真算）。 */}
         <div className={`${styles.outcomeRow} mono`}>
           <span>
-            收入增<b>{(o.rev - 100).toFixed(0)}%</b>
+            收入增<Provenance testId={`gen-out-rev-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="收入增 = 方案收入 − 基线 100" inputs={["路径骨架", "经营目标"]}><b>{(o.rev - 100).toFixed(0)}%</b></Provenance>
           </span>
           <span>
-            毛利率<b>{(o.gm * 100).toFixed(1)}%</b>
+            毛利率<Provenance testId={`gen-out-gm-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="结构毛利率（按需求结构加权）" inputs={["各细分需求", "各细分毛利率"]} rule="C15"><b>{(o.gm * 100).toFixed(1)}%</b></Provenance>
           </span>
           <span>
-            份额<b>{o.share.toFixed(0)}%</b>
+            份额<Provenance testId={`gen-out-share-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="市场份额（方案产出）" inputs={["产能投放", "需求总量"]}><b>{o.share.toFixed(0)}%</b></Provenance>
           </span>
           <span>
-            CAPEX<b>{o.capex} 亿</b>
+            CAPEX<Provenance testId={`gen-out-capex-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="本期 CAPEX（路径产能项目集）" inputs={["产能项目", "投产季"]} rule="C23"><b>{o.capex} 亿</b></Provenance>
           </span>
           <span>
-            现金垫<b>{o.cash.toFixed(0)} 亿</b>
+            现金垫<Provenance testId={`gen-out-cash-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="13 周最低现金点" inputs={["收入回款", "CAPEX 支出"]} rule="C18"><b>{o.cash.toFixed(0)} 亿</b></Provenance>
           </span>
         </div>
 

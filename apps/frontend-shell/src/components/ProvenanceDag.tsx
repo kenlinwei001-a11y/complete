@@ -170,17 +170,17 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
             if (events.length === 0) return null;
             return (
               <div style={{ marginTop: 8 }} data-testid={`dag-events-${kpi.id}`}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>驱动事件（点击下钻受影响订单）</div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>驱动事件（点穿溯源 · 抽屉内可下钻受影响订单）</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {events.map(({ node: ev }) => (
                     <button
                       key={ev.id}
                       data-testid={`dag-node-${ev.id}`}
                       data-kind="event"
-                      title="点击查看受影响订单（订单链）"
-                      onClick={() => ev.category && navigate(`/v/order-chain?problem=${ev.category}`)}
+                      title="点穿溯源（来源/公式/输入/规则 + 查看受影响订单）"
+                      onClick={openDetail(ev)}
                       style={{
-                        cursor: ev.category ? "pointer" : "default", textAlign: "left", padding: "6px 9px",
+                        cursor: "pointer", textAlign: "left", padding: "6px 9px",
                         border: "1px solid rgba(221,126,158,.45)", borderLeft: "3px solid #DD7E9E",
                         borderRadius: 6, background: "rgba(221,126,158,.08)", maxWidth: 280,
                       }}

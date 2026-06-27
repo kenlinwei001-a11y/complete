@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchQuarterly, fetchRules } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
+import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
@@ -128,8 +129,10 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
                   <td>{r.planned.toLocaleString("zh-CN")} 吨/季</td>
                   <td>{r.actual.toLocaleString("zh-CN")}</td>
                   <td style={{ color: breach ? "var(--danger)" : "var(--ok)", fontWeight: 700 }} data-testid={`lta-dev-${r.material}`}>
-                    {r.deviationPct > 0 ? "+" : ""}
-                    {r.deviationPct.toFixed(1)}%
+                    {/* 轨N 跟进2·KPI 裸数字接 Provenance：长协偏差% 接季度滚动求解器真算（C27 长协）。 */}
+                    <Provenance testId={`lta-dev-prov-${r.material}`} src="quarterly_gap 求解器（季度滚动）" formula="偏差% = (实际 − 计划) ÷ 计划 × 100" inputs={["LTA 计划吨/季", "实际提货"]} rule="C27">
+                      <b>{r.deviationPct > 0 ? "+" : ""}{r.deviationPct.toFixed(1)}%</b>
+                    </Provenance>
                     {breach && (
                       <span className="badge red" style={{ marginLeft: 6 }} data-testid={`lta-escalate-${r.material}`}>
                         {zh.quarter.escalate}

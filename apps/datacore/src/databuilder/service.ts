@@ -1160,6 +1160,9 @@ export class DataBuilderService {
           severity: r.severity,
           origin: { type: "SYNTHETIC" },
           status: "PUBLISHED",
+          // 轨N 跟进3 规则 provenance（R13·跨行业建域路径）：诚实标产出来源——数据构建发动机倒序发育（BuildPlan.rules），不编造人名。
+          definedBy: "数据构建发动机（建域产出）",
+          basis: "故事建域倒序发育（StoryBuildRun · BuildPlan.rules · 经闭包/审核）",
         });
       }
       await this.ontology.runDerivations(ctx);

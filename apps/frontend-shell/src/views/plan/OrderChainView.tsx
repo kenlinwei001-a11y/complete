@@ -443,16 +443,21 @@ function OrderFullchainPanel() {
         <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
       ) : (
         <>
-          {/* 6 KPI + 统一结论 */}
+          {/* 6 KPI + 统一结论（轨N 跟进2·KPI 裸数字接 Provenance：逐卡悬浮出 来源/公式/输入/规则，接 order_fullchain 真值）。 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0" }}>
-            {[
-              ["数量×细分", `${data.kpis.qty} · ${data.kpis.segment}`],
-              ["交期判", data.judges.cap.verdict],
-              ["齐套缺口", `${data.kpis.kitGap} 吨`],
-              ["毛利率", `${data.kpis.marginPct}%`],
-              ["毛利底线", `${data.kpis.floorPct}%`],
-            ].map(([k, v]) => (
-              <div key={k} className="panel" style={{ padding: 8, minWidth: 96 }}><div style={{ fontSize: 10.5, color: "var(--muted)" }}>{k}</div><b>{v}</b></div>
+            {([
+              ["数量×细分", `${data.kpis.qty} · ${data.kpis.segment}`, { formula: "订单数量 × 应用细分（按客户名判定）", inputs: ["Order.qty", "客户→细分映射"], rule: undefined }],
+              ["交期判", data.judges.cap.verdict, { formula: "产能周曲线 P90 vs 需求量 → 可达/不可达", inputs: ["可产基地节拍×OEE×良率", "订单需求量"], rule: data.judges.cap.ruleRefs.join("/") }],
+              ["齐套缺口", `${data.kpis.kitGap} 吨`, { formula: "净需求 − 长协覆盖 − 现货", inputs: ["MaterialBalance 净需求", "长协覆盖", "现货库存"], rule: data.judges.kit.ruleRefs.join("/") }],
+              ["毛利率", `${data.kpis.marginPct}%`, { formula: "细分毛利率（SEG_REGISTRY 单一来源）", inputs: ["应用细分", "SEG 毛利率"], rule: data.judges.fin.ruleRefs.join("/") }],
+              ["毛利底线", `${data.kpis.floorPct}%`, { formula: "细分毛利底线（财务计划基线）", inputs: ["应用细分", "毛利底线"], rule: data.judges.fin.ruleRefs.join("/") }],
+            ] as [string, string, { formula: string; inputs: string[]; rule?: string }][]).map(([k, v, prov]) => (
+              <div key={k} className="panel" style={{ padding: 8, minWidth: 96 }}>
+                <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{k}</div>
+                <Provenance testId={`ofc-kpi-${k}`} src="order_fullchain 求解器（订单全链推演）" formula={prov.formula} inputs={prov.inputs} rule={prov.rule}>
+                  <b>{v}</b>
+                </Provenance>
+              </div>
             ))}
             <div className="panel" data-testid="ofc-verdict" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${data.vc}` }}>
               <div style={{ fontSize: 10.5, color: "var(--muted)" }}>统一结论</div>
