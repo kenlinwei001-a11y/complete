@@ -47,10 +47,12 @@ describe("cockpit P2 · 根因归因 DAG（L6 + L1 + R2）", () => {
     expect(dag.nodes.some((n) => n.kind === "kpi")).toBe(true);
     expect(dag.nodes.some((n) => n.kind === "factor")).toBe(true);
     expect(dag.nodes.some((n) => n.kind === "evidence")).toBe(true);
-    // 每条 kpi→factor 边的权重（贡献占比）按 KPI 归一 ≈ 1（非写死，活数据聚合算出）
+    // 每条 kpi→factor 边的权重（贡献占比）按 KPI 归一 ≈ 1（非写死，活数据聚合算出）。
+    // 轨R #3：event 驱动事件层（kpi→event:* 边）是另起的一层（按财务敞口占比归一），
+    // 不参与因子贡献归一断言——故此处仅取归因边（排除 event 目标）。
     const kpiRootIds = dag.nodes.filter((n) => n.kind === "kpi").map((n) => n.id);
     for (const rootId of kpiRootIds) {
-      const kf = dag.edges.filter((e) => e.from === rootId);
+      const kf = dag.edges.filter((e) => e.from === rootId && !e.to.startsWith("event:"));
       if (kf.length === 0) continue;
       const sumShare = kf.reduce((s, e) => s + e.weight, 0);
       expect(sumShare).toBeCloseTo(1, 2);

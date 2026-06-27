@@ -711,6 +711,35 @@ export class SolverService {
       }
     }
 
+    // 轨R #3（母版 5 层 DAG · event 驱动事件层）：归因根 KPI 之上挂「驱动事件」——
+    // 真事件 = affected_orders 聚合的母版 8 根源问题（信用/成本/框架/合同/长协/齐套/爬坡/排产），
+    // 每事件带受影响订单聚合 + 财务敞口 + 规则号，可点跳订单链。接现成 affectedOrdersAggregate，禁现编（R13/R14）。
+    let eventCount = 0;
+    const rootKpi = roots[0];
+    if (rootKpi) {
+      try {
+        const sctx = await this.loadContext(ctx.tenantId, undefined, { withExtended: false });
+        const agg = affectedOrdersAggregate(sctx, {});
+        const dueBySo = new Map(sctx.orders.map((o) => [str(o.props.so), str(o.props.due)]));
+        const probs = [...agg.problems].sort((a, b) => b.financeImpact - a.financeImpact || a.category.localeCompare(b.category));
+        const totalImpact = probs.reduce((s, p) => s + Math.abs(p.financeImpact), 0);
+        for (const prob of probs) {
+          // 事件日期 = 该根源受影响订单的最早交期（真订单 due，找不到则省略——不现编）。
+          const dues = prob.rootChains.map((rc) => dueBySo.get(rc.orderId)).filter((d): d is string => !!d).sort();
+          const eventDate = dues[0];
+          addNode({
+            id: `event:${prob.category}`, kind: "event", label: prob.title,
+            sub: `影响 ${prob.orderCount} 单 · 财务敞口 ${prob.financeImpact} 亿${eventDate ? ` · 最早交期 ${eventDate}` : ""}`,
+            affectedOrders: prob.orderCount, category: prob.category, ruleRefs: prob.ruleRefs, financeImpact: prob.financeImpact, eventDate,
+          });
+          edges.push({ from: `kpi:${rootKpi.kpiId}`, to: `event:${prob.category}`, kind: "kpi_event", weight: totalImpact > 0 ? round(Math.abs(prob.financeImpact) / totalImpact, 4) : 0 });
+        }
+        eventCount = probs.length;
+      } catch {
+        // 无订单数据 / 聚合不可用 → 跳过 event 层，保持向后兼容（不破坏现有 DAG 与测试）。
+      }
+    }
+
     const offTargetCount = kpis.filter((k) => k.offTarget).length;
     const worst = roots[0];
     return {
@@ -719,7 +748,7 @@ export class SolverService {
       offTargetCount,
       // 反事实排除层（母版 §1.B）：候选根因里反算达标→排除的因子 + 理由（DAG 灰节点同源）。
       excludedFactors,
-      summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证${excludedFactors.length ? `（反事实排除 ${excludedFactors.length} 个达标因子）` : ""}`,
+      summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证${excludedFactors.length ? `（反事实排除 ${excludedFactors.length} 个达标因子）` : ""}${eventCount ? `；上挂 ${eventCount} 类驱动事件（受影响订单可下钻）` : ""}`,
       ruleRefs: [],
     };
   }

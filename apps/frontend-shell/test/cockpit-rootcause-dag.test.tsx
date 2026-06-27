@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
+
+// 轨R #3：ProvenanceDag 的 event 层用 useNavigate 做受影响订单下钻 → 测试需 Router 包裹。
+const renderDag = (data: DagData) => render(<MemoryRouter><ProvenanceDag data={data} /></MemoryRouter>);
 
 /**
  * cockpit P2 · 根因归因 DAG 渲染（L3，jsdom）：plan_rootcause 求解器产出的 {nodes,edges}
@@ -24,7 +28,7 @@ const DAG: DagData = {
 
 describe("cockpit P2 · <ProvenanceDag>（L3）", () => {
   it("渲染 KPI→因子→证据三层 + 越线状态 + 贡献占比", () => {
-    render(<ProvenanceDag data={DAG} />);
+    renderDag(DAG);
     expect(screen.getByTestId("provenance-dag")).toBeTruthy();
     // 三层节点都在
     expect(screen.getByTestId("dag-node-kpi:kpi-material").getAttribute("data-kind")).toBe("kpi");
@@ -40,7 +44,23 @@ describe("cockpit P2 · <ProvenanceDag>（L3）", () => {
   });
 
   it("空 DAG → 占位（不崩）", () => {
-    render(<ProvenanceDag data={{ nodes: [], edges: [] }} />);
+    renderDag({ nodes: [], edges: [] });
     expect(screen.queryByTestId("provenance-dag")).toBeNull();
+  });
+
+  it("轨R #3：event 驱动事件层渲染（事件卡 + 受影响订单聚合 + 规则号 + 可下钻）", () => {
+    const withEvent: DagData = {
+      nodes: [
+        ...DAG.nodes,
+        { id: "event:credit", kind: "event", label: "信用额度超限", sub: "影响 18 单 · 财务敞口 9.53 亿 · 最早交期 2026-07-03", affectedOrders: 18, category: "credit", ruleRefs: "C13" },
+      ],
+      edges: [...DAG.edges, { from: "kpi:kpi-material", to: "event:credit", weight: 0.5, kind: "kpi_event" }],
+    };
+    renderDag(withEvent);
+    const ev = screen.getByTestId("dag-node-event:credit");
+    expect(ev.getAttribute("data-kind")).toBe("event");
+    expect(screen.getByText("信用额度超限")).toBeTruthy();
+    expect(screen.getByText("C13")).toBeTruthy(); // 规则号溯源
+    expect(screen.getByText(/影响 18 单/)).toBeTruthy();
   });
 });
