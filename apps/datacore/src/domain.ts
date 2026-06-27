@@ -201,6 +201,12 @@ export interface Rule {
   origin: RuleOrigin;
   version: number;
   status: "DRAFT" | "PUBLISHED" | "RETIRED";
+  /** 轨N 增量2 规则 provenance（R13 溯源延伸到规则层）：谁设定/何时/有效边界/依据。诚实——种子标治理基线，不编造人名。 */
+  definedBy?: string;
+  definedAt?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  basis?: string;
 }
 
 // ---------------------------------------------------------------------------

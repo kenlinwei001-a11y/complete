@@ -22,6 +22,7 @@ import { batteryCoverageSlices } from "./data-categories.js";
 import {
   BATTERY_ACTION_TYPES,
   BATTERY_RULE_SCOPES,
+  RULE_GOVERNANCE,
   BATTERY_SOLVER_PARAMS,
   BATTERY_TEMPLATE,
   BATTERY_TS_AGG_SPECS,
@@ -211,6 +212,11 @@ export class SyntheticService {
           params: r.params ?? {},
           origin: { type: "SYNTHETIC" },
           status: "PUBLISHED",
+          // 轨N 增量2 规则 provenance（R13）：诚实标治理基线（不编造人名）+ 真实出处依据。
+          definedBy: RULE_GOVERNANCE.definedBy,
+          definedAt: RULE_GOVERNANCE.definedAt,
+          effectiveFrom: RULE_GOVERNANCE.effectiveFrom,
+          basis: RULE_GOVERNANCE.basisByKey[r.key] ?? RULE_GOVERNANCE.basisDefault,
         });
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);

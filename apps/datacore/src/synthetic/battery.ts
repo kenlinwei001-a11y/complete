@@ -1177,6 +1177,27 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C25: ["ExternalSignal"],
 };
 
+/**
+ * 轨N 增量2 · 规则 provenance（R13 溯源延伸到规则层）：出厂种子规则的「谁设定/何时/有效边界/依据」。
+ * **诚实红线**：种子规则由系统出厂治理基线定义——definedBy 标"系统治理基线 v1"，**绝不编造人名**；
+ * basis 标真实出处（治理规则集 / PRD），不假装有人签字。definedAt/effectiveFrom 用确定性治理基线日（R6 无 Date.now）。
+ */
+export const RULE_GOVERNANCE = {
+  definedBy: "系统治理基线 v1",
+  definedAt: "2026-06-01T00:00:00Z", // 锂电制造治理规则集出厂基线日（确定性常量）
+  effectiveFrom: "2026-06-01", // 有效起；effectiveTo 留空 = 长期有效（随规则版本演进）
+  basisDefault: "锂电制造治理规则集（出厂种子 · catalog §3 C-rules / PRD-rules-as-references）",
+  basisByKey: {
+    C03: "产能治理：产线设计上限不可突破（catalog §3 · PRD-platform-foundry-aip §S1 求解器约束）",
+    C13: "客户信用风控基线（财务治理规则集 · 信用占用比 ≤ 额度）",
+    C15: "毛利底线治理（财务计划基线 · 结构毛利率 ≥ 目标）",
+    C18: "现金安全垫底线（S&OP 财务约束 · 13 周最低点 ≥ 阈值）",
+    C23: "CAPEX 投资门槛（C1 capex_scenario · IRR/24 月利用率门槛）",
+    C06: "齐套物料缺口治理（MRP 净需求 · 关键正极物料）",
+    C02: "化成/老化串并产能口径（工艺产能治理）",
+  } as Record<string, string>,
+};
+
 export interface GeneratedBattery {
   bases: Record<string, unknown>[];
   models: Record<string, unknown>[];

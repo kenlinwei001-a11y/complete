@@ -50,6 +50,18 @@ export function RuleRef({ code }: { code: string }) {
                 {r.scopeObjectTypes.length > 0 && (
                   <div style={{ marginTop: 2, color: "var(--muted2)" }}>作用域：{r.scopeObjectTypes.join(" · ")}</div>
                 )}
+                {/* 轨N 增量2 规则 provenance（R13）：谁设定·设定时间·有效区间·依据（种子诚实标治理基线，不假装有人签字）。 */}
+                {(r.definedBy || r.definedAt || r.effectiveFrom || r.basis) && (
+                  <div style={{ marginTop: 4, paddingTop: 4, borderTop: "1px dotted var(--line)", color: "var(--muted2)", fontSize: 10.5 }} data-testid={`ruleref-prov-${r.key}`}>
+                    {(r.definedBy || r.definedAt) && (
+                      <div>由 <b>{r.definedBy ?? "—"}</b>{r.definedAt ? ` 于 ${r.definedAt.slice(0, 10)} 设定` : " 设定"}</div>
+                    )}
+                    {(r.effectiveFrom || r.effectiveTo) && (
+                      <div>有效区间：{r.effectiveFrom?.slice(0, 10) ?? "—"} ~ {r.effectiveTo?.slice(0, 10) ?? "长期"}</div>
+                    )}
+                    {r.basis && <div>依据：{r.basis}</div>}
+                  </div>
+                )}
               </div>
             ))
           )}

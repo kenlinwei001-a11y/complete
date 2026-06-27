@@ -111,6 +111,14 @@ export const RuleEntrySchema = z.object({
   origin: RuleOriginSchema,
   version: z.number().int(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+  // 轨N 增量2（规则 provenance · R13 溯源延伸到规则层 · G-10 规则一等）：用户判"规则是否有效"需
+  // "谁设定 / 何时设定 / 有效边界 / 设定依据"。诚实：种子规则 definedBy 标"系统治理基线 vX"，不编造人名；
+  // basis 标真实出处（PRD/治理规则集）。全可选（旧规则/未标者向后兼容）。
+  definedBy: z.string().optional(), // 谁设定（系统治理基线 vX / 用户名）
+  definedAt: z.string().optional(), // 设定/版本时间（ISO）
+  effectiveFrom: z.string().optional(), // 有效起（ISO）
+  effectiveTo: z.string().optional(), // 有效止（ISO，空=长期有效）
+  basis: z.string().optional(), // 设定依据/出处（PRD/治理规则集/合同条款…）
 });
 export type RuleEntry = z.infer<typeof RuleEntrySchema>;
 

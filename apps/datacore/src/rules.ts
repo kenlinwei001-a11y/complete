@@ -41,6 +41,12 @@ export class RulesService {
       params?: Record<string, number>;
       origin?: RuleOrigin;
       status?: "DRAFT" | "PUBLISHED";
+      // 轨N 增量2 规则 provenance（R13）：谁设定/何时/有效边界/依据（可选，向后兼容）。
+      definedBy?: string;
+      definedAt?: string;
+      effectiveFrom?: string;
+      effectiveTo?: string;
+      basis?: string;
     },
   ): Promise<Rule> {
     const existing = await this.repos.rules.list(ctx.tenantId, (r) => r.key === input.key);
@@ -63,6 +69,11 @@ export class RulesService {
       origin: input.origin ?? { type: "MANUAL" },
       version,
       status: input.status ?? "DRAFT",
+      definedBy: input.definedBy,
+      definedAt: input.definedAt,
+      effectiveFrom: input.effectiveFrom,
+      effectiveTo: input.effectiveTo,
+      basis: input.basis,
     };
     await this.repos.rules.put(rule);
     if (rule.status === "PUBLISHED") {
