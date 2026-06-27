@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { SandboxViewConfig, TickState } from "@platform/contracts";
@@ -9,7 +9,6 @@ import {
   type SimScopePrecheck,
 } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
-import { HeatStrip } from "./shared";
 import styles from "./SimViews.module.css";
 
 /**
@@ -62,6 +61,40 @@ const KIND_LABEL: Record<string, string> = {
   ACTION: "行动",
   PROPAGATION: "传导",
 };
+
+/** 轨Q 增量1（复刻竞品 image7 step3·世界完整度蓝环）：pct 真派生自 scope-precheck.worldCompleteness，零写死。 */
+function WorldCompletenessRing({ pct }: { pct: number }) {
+  const p = Math.max(0, Math.min(100, pct));
+  const r = 46;
+  const c = 2 * Math.PI * r;
+  const dash = (p / 100) * c;
+  return (
+    <svg width={120} height={120} viewBox="0 0 120 120" role="img" aria-label="世界完整度" data-testid="siminit-completeness-ring" style={{ flexShrink: 0 }}>
+      <circle cx={60} cy={60} r={r} fill="none" stroke="rgba(67,183,215,.15)" strokeWidth={9} />
+      <circle cx={60} cy={60} r={r} fill="none" stroke="#43B7D7" strokeWidth={9} strokeLinecap="round"
+        strokeDasharray={`${dash.toFixed(2)} ${(c - dash).toFixed(2)}`} transform="rotate(-90 60 60)" data-testid="siminit-completeness-ring-fill" />
+      <text x={60} y={58} textAnchor="middle" fontSize={26} fontWeight={700} fill="#43B7D7" data-testid="siminit-completeness">{p.toFixed(0)}%</text>
+      <text x={60} y={77} textAnchor="middle" fontSize={10} fill="var(--muted2)">世界完整度</text>
+    </svg>
+  );
+}
+
+/** 4 类完整度进度条（present/needed 真派生·零写死·竞品 image7 右统计 4 条）。 */
+function WcBar({ label, present, needed, tid }: { label: string; present: number; needed: number; tid?: string }) {
+  const pct = needed > 0 ? Math.round((present / needed) * 100) : 100;
+  const color = pct >= 100 ? "#62BE77" : pct >= 50 ? "#E8B54A" : "#E0626C";
+  return (
+    <div data-testid={tid} style={{ marginBottom: 7 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, marginBottom: 2 }}>
+        <span style={{ color: "var(--muted2)" }}>{label}</span>
+        <span className="mono">{present}/{needed}</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 3, background: "rgba(226,235,245,.1)" }}>
+        <div style={{ height: 6, borderRadius: 3, width: `${pct}%`, background: color, transition: "width .2s" }} />
+      </div>
+    </div>
+  );
+}
 
 /** 测试可注入 config（绕过网络）；生产留空走 view-config 端点。 */
 export interface SimInitWizardProps {
@@ -134,13 +167,6 @@ export default function SimInitWizard({ injectedConfig }: SimInitWizardProps = {
   }, [navigate]);
 
   const enteringList = precheck?.worldCompleteness.entering ?? [];
-  // 完整度小条（把 4 类完整度比拼成 heat 序列，纯结构、无业务常数）。
-  const completenessSeries = useMemo(() => {
-    const wc = precheck?.worldCompleteness;
-    if (!wc) return [] as number[];
-    const ratio = (p: { present: number; needed: number }) => (p.needed > 0 ? Math.round((p.present / p.needed) * 100) : 100);
-    return [ratio(wc.stateVars), ratio(wc.derivationRules), ratio(wc.actions), ratio(wc.propagationRules)];
-  }, [precheck]);
 
   if (!cfg) {
     if (cfgQuery.isError) return <div className="empty-state" data-testid="siminit-config-error">沙盘配置不可用（沙盘功能未开通或本体为空）</div>;
@@ -248,6 +274,17 @@ export default function SimInitWizard({ injectedConfig }: SimInitWizardProps = {
               ))}
             </div>
           )}
+          {/* ③类诚实 RESERVED（竞品 image7 有·后端 scope 仅支持 全图/单一类型）：多选主体对象/关系类型/属性过滤/
+              关系扩展深度/每类最多实体数 —— 后端 scope-precheck 仅 {kind,target}，不支持子图过滤 → 不画假控件（继承真推演红线）。 */}
+          <div data-testid="siminit-range-reserved" style={{ marginTop: 12, fontSize: 11, color: "var(--muted2)", borderTop: "1px solid var(--border,#2a2a2a)", paddingTop: 8, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <span>子图精细范围（竞品有·后端 scope 仅全图/单类型）：</span>
+            <span>◌ 多选主体对象 · RESERVED</span>
+            <span>◌ 关系类型过滤 · RESERVED</span>
+            <span>◌ 属性过滤 · RESERVED</span>
+            <span>◌ 关系扩展深度 · RESERVED</span>
+            <span>◌ 每类最多实体数 · RESERVED</span>
+            <span style={{ opacity: 0.7 }}>（后端 backlog·建成后点亮，现不画假控件）</span>
+          </div>
           <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
             <button className="btn ghost sm" data-testid="siminit-back-range" onClick={() => setStep(0)}>← 上一步</button>
             <button className="btn" data-testid="siminit-next-range" onClick={() => setStep(2)}>预检范围 →</button>
@@ -269,30 +306,19 @@ export default function SimInitWizard({ injectedConfig }: SimInitWizardProps = {
             <div className={styles.sub} data-testid="siminit-precheck-loading">{checking ? "调用范围预检…" : "准备预检…"}</div>
           ) : (
             <>
-              <div className={styles.threeKpiRow} data-testid="siminit-precheck-kpis" style={{ marginTop: 10 }}>
-                <div className={styles.kpi}>
-                  <span>世界完整度</span>
-                  <b data-testid="siminit-completeness">{precheck.worldCompleteness.pct.toFixed(0)}%</b>
-                </div>
-                <div className={styles.kpi}>
-                  <span>状态变量</span>
-                  <b data-testid="siminit-wc-statevars">{precheck.worldCompleteness.stateVars.present}/{precheck.worldCompleteness.stateVars.needed}</b>
-                </div>
-                <div className={styles.kpi}>
-                  <span>派生规则</span>
-                  <b>{precheck.worldCompleteness.derivationRules.present}/{precheck.worldCompleteness.derivationRules.needed}</b>
-                </div>
-                <div className={styles.kpi}>
-                  <span>写回行动</span>
-                  <b>{precheck.worldCompleteness.actions.present}/{precheck.worldCompleteness.actions.needed}</b>
+              {/* 轨Q 增量1（竞品 image7 右统计·世界完整度蓝环 + 4 条进度·全真 worldCompleteness 派生）。 */}
+              <div style={{ display: "flex", gap: 16, alignItems: "center", margin: "12px 0" }} data-testid="siminit-precheck-summary">
+                <WorldCompletenessRing pct={precheck.worldCompleteness.pct} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <WcBar tid="siminit-wc-statevars" label="状态变量" present={precheck.worldCompleteness.stateVars.present} needed={precheck.worldCompleteness.stateVars.needed} />
+                  <WcBar label="派生规则" present={precheck.worldCompleteness.derivationRules.present} needed={precheck.worldCompleteness.derivationRules.needed} />
+                  <WcBar label="写回行动" present={precheck.worldCompleteness.actions.present} needed={precheck.worldCompleteness.actions.needed} />
+                  <WcBar label="传导规则" present={precheck.worldCompleteness.propagationRules.present} needed={precheck.worldCompleteness.propagationRules.needed} />
                 </div>
               </div>
-
-              {completenessSeries.length > 0 && (
-                <div style={{ margin: "4px 0 12px" }} data-testid="siminit-completeness-strip">
-                  <HeatStrip series={completenessSeries} threshold={100} />
-                </div>
-              )}
+              <div className={styles.sub} data-testid="siminit-selected-types" style={{ marginBottom: 10 }}>
+                已选范围：{scopeKind === "GLOBAL" ? `全图基线（${cfg.nodeTypes.length} 类对象）` : `局部 · ${target}`}
+              </div>
 
               {/* canEnter 诚实结论 */}
               <div
