@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { getRenderer } from "@/views/registry";
+import { BoardHeader } from "@/components/BoardHeader";
 import { ForbiddenPage, NotFoundPage, UnsupportedViewCard } from "./ErrorPages";
 import zh from "@/locales/zh";
 
@@ -37,6 +38,8 @@ export default function ViewPage() {
 
   return (
     <Suspense fallback={<div className="empty-state">{zh.common.loading}</div>}>
+      {/* UI缺口 M1：母版页头 chrome 全局统计条 + 周期/版本（跨业务板 10 屏统一挂载·counts 接真后端 R14）。 */}
+      <BoardHeader />
       <Renderer view={{ ...view, renderer }} />
     </Suspense>
   );
