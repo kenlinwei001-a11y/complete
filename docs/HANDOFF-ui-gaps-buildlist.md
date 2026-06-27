@@ -19,6 +19,7 @@
 | **M5** | **P1** | **外部信号 chip 面板缺**（audit/generate）：母版顶部 环境感知 chip strip（碳酸锂/铜箔/主机厂上险/客户舆情/欧盟电池法/汇率海运/区域电力/竞争动态 7-8 chip）；系统只在 per-item 折进敏感性 | `PlanAuditView`/`PlanGenerateView` 顶部 | 加 `<ExternalSignalStrip>`：接 `GET /a/v1/external-signals`（**EXT_SIG 一等对象已建**·signalKey/value/trend/impact），悬浮出详情 | plan-audit/generate 顶部出 7-8 外部信号 chip，接真 `ExternalSignal`（非写死） |
 | **M6** | **P2** | **系统来源总览无单屏**：母版 map/model 右栏有 对象↔源系统+新鲜度；系统有 data-health/lineage 但非此单屏 | 新页 or 本体图谱右栏 | 加 `<SourceSystemOverview>`：每对象/求解器/Agent 的源系统 + 新鲜度状态，接 `data-health` + `lineage`（现成）；按源系统分组 | 一屏列每对象的源系统(ERP/MES/PLM…)+新鲜度(正常/延迟)，与 data-health 一致 |
 | **M7** | **P0·查 bug** | **疑似利用率格式 bug**：驾驶舱 `平均利用率 0.78%`/`计划达成 0.91`，疑似比率未 ×100（母版同口径 86%/103%） | `DashboardView` KPI 渲染/单位 | 查 KPI 值是比率(0.78)还是百分(78)、单位串是否重复加 %；修显示口径 | 利用率显 **78%** 非 0.78%；达成显 91% 非 0.91 |
+| **M8** | **P0·UX** | **本体建模 AI 建议路径裸 500（审核方亲跑坐实）**：建模模态主按钮"生成建议"调 LLM（`/modeling/suggest`），demo 无 LLM provider → **裸 500 + 无引导**；用户大概率先点醒目蓝色主按钮 → 以为"本体建模坏了"，实则应点次要灰色的"确定性建模（全字段）"（`/modeling/derive`·无 LLM·真能用）。**注：确定性路径审核方已端到端真跑（derive→改名→归域→发布 ok:true→物化 12 对象），本身能用；问题纯在 AI 路径的错误处理 + 按钮默认态。** | `ModelingPage` SuggestModal | ① catch LLM-未配置 → 标"需配置 LLM provider，或用确定性建模"，不裸 500 ② 或无 LLM 环境把"确定性建模（全字段）"设为默认/主按钮 | demo 点"生成建议"出清晰提示而非裸 500/控制台错；或确定性建模为默认、一键可完成建模 |
 
 ## §2 竞品侧缺口（系统 ↔ 竞品参考产品 · 沙盘/建模族 5 屏 · 已登记 ③类 TO-DO）
 
