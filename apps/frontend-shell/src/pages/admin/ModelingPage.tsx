@@ -6,15 +6,11 @@ import {
   createSimSession,
   deriveModeling,
   fetchBusinessDomains,
-  fetchDomainEvents,
-  fetchMcpConfigs,
   fetchModelingCoverage,
   fetchModelingDrafts,
   fetchObjectTypes,
   fetchRawDatasets,
-  fetchScenarioCards,
   fetchSimCertification,
-  fetchSkills,
   fetchSyncJob,
   materializeDraft,
   patchModelingDraft,
@@ -26,7 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { DataSourcePanel } from "@/components/DataSourcePanel";
 import { SimReadinessPanel } from "@/views/sim/SimReadinessPanel";
-import { useQuickLaunch, useScenarioLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
+import { PlatformConsole } from "@/components/PlatformConsole/PlatformConsole";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./ModelingPage.module.css";
@@ -101,16 +97,34 @@ export default function ModelingPage() {
       </div>
       {/* 轨P 增量1（数据流 DAG·竞品 image2 横向 ETL·R13 真字段映射）。点实体节点 → 开对象配置抽屉（增量3）。 */}
       {publishedTypes && publishedTypes.length > 0 && <DataPipelineDag types={publishedTypes} onSelectType={openObject} />}
-      {/* 轨P 增量4（中栏 6 子 tab + Agent 指挥台接 QOS·补 G-3 + 主题接轨O）：
-          基本信息=增量2 就绪认证面板；Skills/MCP/日志=接现成真后端；图查询=③类§10.1 显式 RESERVED 不画假壳。 */}
+      {/* 轨P 增量4 / 轨Q 回迁：中栏 6 子 tab + Agent 指挥台接 QOS——复用**共享 PlatformConsole**（消除与沙盘页重复·单一来源）。
+          基本信息=增量2 就绪认证面板（slot）；Skills/MCP/日志=接现成真后端；图查询=③类§10.1 RESERVED；
+          执行节点胶囊+Agent 逐对象注入经 execNode/agentSelectedObject 透传（建模页专属·image2 形态）。 */}
       {publishedTypes && publishedTypes.length > 0 && (
-        <ModelingConsole
-          sessionId={certSessionId}
-          entOff={certEntOff}
-          selectedType={selectedTypeObj}
-          types={publishedTypes}
-          onReopen={() => { if (selectedType) setDrawerOpen(true); }}
-          onClear={() => { setSelectedType(null); setDrawerOpen(false); }}
+        <PlatformConsole
+          testId="modeling-console"
+          basicInfo={<GlobalReadinessPanel sessionId={certSessionId} entOff={certEntOff} embedded />}
+          guide={
+            <div style={{ fontSize: 13, color: "var(--txt)", lineHeight: 1.7 }} data-testid="modeling-guide">
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>建模工作流指南</div>
+              <ol style={{ paddingLeft: 18, color: "var(--muted2)" }}>
+                <li>数据源 → 新建草案（A3 半自动/确定性建模）：选原始数据集，字段全建模（R12 门）。</li>
+                <li>映射画布逐对象配置属性/派生/归域，发布 → 本体（当前 {publishedTypes.length} 类已发布·可溯 sourceDataset）。</li>
+                <li>数据流 DAG 看真字段映射链；就绪认证看 L0-L4 真级 + 世界完整度。</li>
+                <li>点对象看逐对象就绪 gauge（scope=LOCAL）；改属性走真草案 PATCH（持久化）。</li>
+                <li>Agent 指挥台对选中对象提问 → QOS 推演（注入对象 presetContext）。</li>
+              </ol>
+            </div>
+          }
+          execNode={{
+            label: selectedTypeObj?.displayName ?? null,
+            onReopen: () => { if (selectedType) setDrawerOpen(true); },
+            onClear: () => { setSelectedType(null); setDrawerOpen(false); },
+          }}
+          agentSelectedObject={selectedTypeObj ? {
+            objectType: selectedTypeObj.key, objectId: selectedTypeObj.key, label: selectedTypeObj.displayName,
+            summary: <>📌 node_obj_{selectedTypeObj.key} · {selectedTypeObj.displayName}：属性 {selectedTypeObj.properties.length} · 派生 {selectedTypeObj.derivedProperties?.length ?? 0} · 域 {selectedTypeObj.domain ?? "—"}</>,
+          } : undefined}
         />
       )}
       {/* additive（RL9 可回退）：左侧数据源面板 + 右侧既有工作台/空态，原有区块零删改 */}
@@ -203,228 +217,6 @@ function GlobalReadinessPanel({ sessionId, entOff, embedded = false }: { session
   );
 }
 
-/**
- * 轨P 增量4（中栏 6 子 tab + Agent 指挥台·复刻竞品 image1/2/6 建模/评估中栏标准导航）：
- *  左中栏 6 tab：`基本信息(就绪认证) | 图查询 | Skills | MCP服务 | 日志 | 指南` + 右胶囊「执行节点(选中)|‹折叠」；
- *  右 Agent 指挥台接 QOS（注入选中对象 presetContext → useQuickLaunch 既有管线·补 G-3 前端段，不新建聊天）。
- *  分层交付 b：基本信息=增量2 真就绪认证；Skills(B4)/MCP(B3)/日志(outbox) 接现成真后端；
- *  **图查询=③类§10.1（构建器/查询语言/代码生成 后端未建）→ 显式 RESERVED，不画假构建器**。主题接轨O：全 var(--token)，域色 theme-invariant。
- */
-function ModelingConsole({ sessionId, entOff, selectedType, types, onReopen, onClear }: {
-  sessionId: string | null; entOff: boolean;
-  selectedType: Awaited<ReturnType<typeof fetchObjectTypes>>[number] | null;
-  types: Awaited<ReturnType<typeof fetchObjectTypes>>;
-  onReopen?: () => void; onClear?: () => void;
-}) {
-  const TABS = ["基本信息", "图查询", "Skills", "MCP服务", "日志", "指南"] as const;
-  const [tab, setTab] = useState<(typeof TABS)[number]>("基本信息");
-  const [collapsed, setCollapsed] = useState(false);
-  return (
-    <div className="panel" data-testid="modeling-console" style={{ padding: 12, marginBottom: 12 }}>
-      {/* tab 条 + 右胶囊（执行节点(选中) | 折叠） */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }} data-testid="modeling-console-tabs">
-          {TABS.map((tb) => (
-            <button key={tb} className={`btn sm ${tab === tb ? "" : "ghost"}`} data-testid={`mc-tab-${tb}`} data-active={tab === tb ? "1" : "0"} onClick={() => setTab(tb)}>{tb}</button>
-          ))}
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }} data-testid="modeling-console-cap">
-          {selectedType ? (
-            <button className="badge" data-testid="mc-cap-node" title="点开对象配置抽屉" onClick={onReopen} style={{ cursor: "pointer" }}>
-              执行节点：{selectedType.displayName} ⤢
-            </button>
-          ) : (
-            <span className="badge" data-testid="mc-cap-node" style={{ opacity: 0.7 }}>执行节点：未选中</span>
-          )}
-          {selectedType && <button className="btn sm ghost" data-testid="mc-cap-clear" onClick={onClear} title="清除选中">清除</button>}
-          <button className="btn sm ghost" data-testid="mc-cap-collapse" onClick={() => setCollapsed((c) => !c)}>{collapsed ? "› 展开" : "‹ 折叠"}</button>
-        </div>
-      </div>
-      {!collapsed && (
-        <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-          {/* 中栏：tab 内容 */}
-          <div style={{ flex: 1, minWidth: 0 }} data-testid={`mc-panel-${tab}`}>
-            {tab === "基本信息" && <GlobalReadinessPanel sessionId={sessionId} entOff={entOff} embedded />}
-            {tab === "图查询" && <GraphQueryReserved />}
-            {tab === "Skills" && <SkillsTab />}
-            {tab === "MCP服务" && <McpTab />}
-            {tab === "日志" && <LogsTab />}
-            {tab === "指南" && <GuideTab typeCount={types.length} />}
-          </div>
-          {/* 右：Agent 指挥台（接 QOS·补 G-3） */}
-          <div style={{ width: 340, flexShrink: 0 }}>
-            <ModelingAgentConsole selectedType={selectedType} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 图查询 tab = ③类 §10.1（图查询构建器/平台自有查询语言/代码生成 + Query→Skill/MCP 绑定 后端整块未建）→ 显式 RESERVED，不画假构建器。 */
-function GraphQueryReserved() {
-  return (
-    <div data-testid="mc-graphquery-reserved" style={{ border: "1px dashed var(--border,#333)", borderRadius: 8, padding: 16, color: "var(--muted2)", fontSize: 13 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6, color: "var(--txt)" }}>◌ 图查询 · RESERVED（后端未建·§10.1 TO-DO）</div>
-      图查询构建器 + 平台自有查询语言 + 查询代码生成 + Query→Skill 绑定 + Query→MCP 暴露 —— 后端整块尚未建（design-system §10③ #3/#4）。
-      <div style={{ marginTop: 6 }}>按"分层交付 b"红线：后端未建前不画假构建器/假结果表（画了即假推演）。后端 backlog 排期建成后回来复刻+点亮。</div>
-    </div>
-  );
-}
-
-/** Skills tab = 接现成真后端 B4（GET /b/v1/skills）。demo 真有「产能分析方法论」。 */
-function SkillsTab() {
-  const hasToken = useHasToken();
-  const { data, isLoading, isError } = useQuery({ queryKey: ["b", "skills"], queryFn: fetchSkills, retry: false, enabled: hasToken });
-  if (isError) return <div data-testid="mc-skills-err" style={{ color: "var(--muted2)", fontSize: 12 }}>技能服务不可达（AgentCore off）——诚实降级，不画假技能。</div>;
-  if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载技能…</div>;
-  return (
-    <div data-testid="mc-skills">
-      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }}>平台技能（B4·{data.length}）——建模/评估可引用的方法论技能（真 /b/v1/skills）。</div>
-      {data.length === 0 ? (
-        <div data-testid="mc-skills-empty" style={{ color: "var(--muted2)", fontSize: 12 }}>暂无已发布技能。</div>
-      ) : (
-        <table className="cmp" style={{ width: "100%", fontSize: 12 }}>
-          <thead><tr><th>名称</th><th>键</th><th>状态</th><th>摘要</th></tr></thead>
-          <tbody>
-            {data.map((s) => (
-              <tr key={s.id} data-testid={`mc-skill-${s.key}`}>
-                <td>{s.name}</td><td className="mono">{s.key}</td>
-                <td><span className={`badge ${s.status === "PUBLISHED" ? "green" : ""}`}>{s.status}</span></td>
-                <td style={{ color: "var(--muted2)" }}>{s.summary}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-/** MCP服务 tab = 接现成真后端 B3（GET /b/v1/mcp-configs）。demo 真态为空 → 诚实空态（非假壳）。 */
-function McpTab() {
-  const hasToken = useHasToken();
-  const { data, isLoading, isError } = useQuery({ queryKey: ["b", "mcp-configs"], queryFn: fetchMcpConfigs, retry: false, enabled: hasToken });
-  if (isError) return <div data-testid="mc-mcp-err" style={{ color: "var(--muted2)", fontSize: 12 }}>MCP 服务不可达（AgentCore off）——诚实降级。</div>;
-  if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载 MCP 服务…</div>;
-  return (
-    <div data-testid="mc-mcp">
-      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }}>MCP 服务（B3·{data.length}）——外部工具服务接入（真 /b/v1/mcp-configs）。</div>
-      {data.length === 0 ? (
-        <div data-testid="mc-mcp-empty" style={{ color: "var(--muted2)", fontSize: 12 }}>demo 未配置 MCP 服务（真态为空·非假壳）。可在 MCP 管理页新增。</div>
-      ) : (
-        <table className="cmp" style={{ width: "100%", fontSize: 12 }}>
-          <thead><tr><th>名称</th><th>状态</th></tr></thead>
-          <tbody>{data.map((m) => (<tr key={m.id} data-testid={`mc-mcp-${m.id}`}><td>{m.name}</td><td><span className="badge">{m.status ?? "—"}</span></td></tr>))}</tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-/** 日志 tab = 接现成真后端（GET /a/v1/outbox 领域事件馈源）。数据→本体→规则→推演链真事件。 */
-function LogsTab() {
-  const hasToken = useHasToken();
-  const { data, isLoading, isError } = useQuery({ queryKey: ["a", "outbox-events"], queryFn: () => fetchDomainEvents(), retry: false, enabled: hasToken });
-  if (isError) return <div data-testid="mc-logs-err" style={{ color: "var(--muted2)", fontSize: 12 }}>事件馈源不可达——诚实降级。</div>;
-  if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载事件日志…</div>;
-  const rows = [...data].slice(-30).reverse();
-  return (
-    <div data-testid="mc-logs">
-      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }}>领域事件日志（真 outbox·近 {rows.length}/{data.length}）——本体发布/规则/物化/推演链真事件。</div>
-      <table className="cmp" style={{ width: "100%", fontSize: 11.5 }}>
-        <thead><tr><th>时间</th><th>事件</th><th>eventId</th></tr></thead>
-        <tbody>
-          {rows.map((e) => (
-            <tr key={e.eventId} data-testid={`mc-log-${e.eventId}`}>
-              <td className="mono">{e.createdAt?.replace("T", " ").slice(5, 19)}</td>
-              <td><span className="badge">{e.event}</span></td>
-              <td className="mono" style={{ color: "var(--muted2)" }}>{e.eventId.slice(0, 16)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** 指南 tab = 静态帮助文档（建模工作流指引·非数据·不属假推演）。 */
-function GuideTab({ typeCount }: { typeCount: number }) {
-  return (
-    <div data-testid="mc-guide" style={{ fontSize: 13, color: "var(--txt)", lineHeight: 1.7 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6 }}>建模工作流指南</div>
-      <ol style={{ paddingLeft: 18, color: "var(--muted2)" }}>
-        <li>数据源 → 新建草案（A3 半自动/确定性建模）：选原始数据集，字段全建模（R12 门）。</li>
-        <li>映射画布逐对象配置属性/派生/归域，发布 → 本体（当前 {typeCount} 类已发布·可溯 sourceDataset）。</li>
-        <li>数据流 DAG 看真字段映射链；就绪认证看 L0-L4 真级 + 世界完整度。</li>
-        <li>点对象看逐对象就绪 gauge（scope=LOCAL）；改属性走真草案 PATCH（持久化）。</li>
-        <li>Agent 指挥台对选中对象提问 → QOS 推演（注入对象 presetContext）。</li>
-      </ol>
-      <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)" }}>（静态指引·非后端数据；图查询能力后端建成后本指南补查询章节）</div>
-    </div>
-  );
-}
-
-/**
- * Agent 指挥台（复刻竞品 image2 右栏 Agent·接 QOS 补 G-3 前端段）：持久系统欢迎语 + 选中对象建模摘要 +
- * **真场景卡启动**（真接 QOS·非假壳）。点一张真场景卡 → `useScenarioLaunch`（带 `scenarioIntentKey`
- * §2.4 确定性绑定·跳过 LLM classify）→ 编排器跑工作流 → **真出推演答案**（answer-card·KPI/表/规则块），
- * 即使 demo 无 LLM 也真出（确定性绑定路径）。另留自由文本输入：注入选中对象 presetContext → QOS（自由文本走
- * LLM classify·demo 无 key 受限，诚实标注，不假装能答）。
- */
-function ModelingAgentConsole({ selectedType }: { selectedType: Awaited<ReturnType<typeof fetchObjectTypes>>[number] | null }) {
-  const quickLaunch = useQuickLaunch();
-  const launchCard = useScenarioLaunch();
-  const hasToken = useHasToken();
-  // 评审复核修：token 就绪才发起（pushState 早挂载场景下，retry:false 一次 error → 卡片永久"暂无"）。
-  const { data: cardsData } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), retry: false, enabled: hasToken });
-  const cards = (cardsData?.items ?? []).filter((c) => !c.inactive).slice(0, 6);
-  const [q, setQ] = useState("");
-  const ask = () => {
-    const query = q.trim();
-    if (!query) return;
-    void quickLaunch({
-      query,
-      targetView: "dash",
-      selectedObjects: selectedType ? [{ objectType: selectedType.key, objectId: selectedType.key, label: selectedType.displayName }] : [],
-    });
-    setQ("");
-  };
-  return (
-    <div data-testid="modeling-agent" style={{ border: "1px solid var(--border,#2a2a2a)", borderRadius: 8, padding: 10, background: "var(--panel,rgba(255,255,255,.02))" }}>
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Agent 指挥台</div>
-      {/* 持久系统欢迎语 + 选中对象建模摘要（image2 Agent 形态） */}
-      <div style={{ borderLeft: "3px solid var(--ok,#62BE77)", fontSize: 12, color: "var(--muted2)", marginBottom: 8, background: "rgba(98,190,119,.06)", borderRadius: 6, padding: "6px 8px" }} data-testid="modeling-agent-welcome">
-        平台 Agent 已就位。点下方真场景卡 → 经 QOS 工作流真出推演答案（确定性绑定·无需 LLM）。
-        {selectedType && (
-          <div style={{ marginTop: 4 }} data-testid="modeling-agent-nodesummary">
-            📌 node_obj_{selectedType.key} · {selectedType.displayName}：属性 {selectedType.properties.length} · 派生 {selectedType.derivedProperties?.length ?? 0} · 域 {selectedType.domain ?? "—"}
-          </div>
-        )}
-      </div>
-      {/* 真场景卡启动（真出 QOS 响应的确定性路径） */}
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>真场景卡（点 → QOS 推演真答案）</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }} data-testid="modeling-agent-cards">
-        {cards.length === 0 ? (
-          <div style={{ fontSize: 11, color: "var(--muted2)" }}>暂无已发布场景卡。</div>
-        ) : cards.map((c) => (
-          <button key={c.sNo} className="btn sm ghost" data-testid={`modeling-agent-card-${c.intentKey}`} style={{ textAlign: "left", justifyContent: "flex-start", fontSize: 12 }}
-            title={`意图 ${c.intentKey} · 视图 ${c.presetContext.targetView}`} onClick={() => void launchCard(c)}>
-            ▶ {c.triggerQuestion}
-          </button>
-        ))}
-      </div>
-      {/* 自由文本（注入选中对象 presetContext → QOS·走 LLM classify·demo 无 key 受限·诚实标注） */}
-      <textarea data-testid="modeling-agent-input" value={q} onChange={(e) => setQ(e.target.value)} rows={2} style={{ width: "100%", fontSize: 12, resize: "vertical" }}
-        placeholder={selectedType ? `就 ${selectedType.displayName} 自由提问…` : "自由提问…"}
-        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-        <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>自由文本走 LLM classify（demo 无 key 受限）</span>
-        <button className="btn primary sm" data-testid="modeling-agent-send" disabled={!q.trim()} onClick={ask}>推演</button>
-      </div>
-    </div>
-  );
-}
 
 /**
  * 轨P 增量3（对象配置详情抽屉·复刻竞品 image5「选中实体」）：

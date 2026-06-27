@@ -18,7 +18,16 @@ function useHasToken(): boolean {
 const TABS = ["基本信息", "图查询", "Skills", "MCP服务", "日志", "指南"] as const;
 type Tab = (typeof TABS)[number];
 
-export function PlatformConsole({ testId = "platform-console", basicInfo, guide }: { testId?: string; basicInfo?: ReactNode; guide?: ReactNode }) {
+export interface AgentSelectedObject { objectType: string; objectId: string; label: string; summary?: ReactNode }
+export interface ExecNode { label: string | null; onReopen?: () => void; onClear?: () => void }
+
+export function PlatformConsole({ testId = "platform-console", basicInfo, guide, execNode, agentSelectedObject }: {
+  testId?: string; basicInfo?: ReactNode; guide?: ReactNode;
+  /** 右胶囊「执行节点(选中)⤢ / 清除」（建模页 image2 形态）；不传则只有折叠。 */
+  execNode?: ExecNode;
+  /** Agent 自由文本注入的选中对象 presetContext + 节点摘要（建模页逐对象提问）。 */
+  agentSelectedObject?: AgentSelectedObject;
+}) {
   const [tab, setTab] = useState<Tab>("基本信息");
   const [collapsed, setCollapsed] = useState(false);
   return (
@@ -29,7 +38,17 @@ export function PlatformConsole({ testId = "platform-console", basicInfo, guide 
             <button key={tb} className={`btn sm ${tab === tb ? "" : "ghost"}`} data-testid={`${testId}-tab-${tb}`} data-active={tab === tb ? "1" : "0"} onClick={() => setTab(tb)}>{tb}</button>
           ))}
         </div>
-        <button className="btn sm ghost" style={{ marginLeft: "auto" }} data-testid={`${testId}-collapse`} onClick={() => setCollapsed((c) => !c)}>{collapsed ? "› 展开" : "‹ 折叠"}</button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }} data-testid={`${testId}-cap`}>
+          {execNode && (
+            execNode.label ? (
+              <button className="badge" data-testid={`${testId}-cap-node`} title="点开对象配置抽屉" onClick={execNode.onReopen} style={{ cursor: "pointer" }}>执行节点：{execNode.label} ⤢</button>
+            ) : (
+              <span className="badge" data-testid={`${testId}-cap-node`} style={{ opacity: 0.7 }}>执行节点：未选中</span>
+            )
+          )}
+          {execNode?.label && <button className="btn sm ghost" data-testid={`${testId}-cap-clear`} onClick={execNode.onClear} title="清除选中">清除</button>}
+          <button className="btn sm ghost" data-testid={`${testId}-collapse`} onClick={() => setCollapsed((c) => !c)}>{collapsed ? "› 展开" : "‹ 折叠"}</button>
+        </div>
       </div>
       {!collapsed && (
         <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
@@ -42,7 +61,7 @@ export function PlatformConsole({ testId = "platform-console", basicInfo, guide 
             {tab === "指南" && (guide ?? <GuideTab />)}
           </div>
           <div style={{ width: 340, flexShrink: 0 }}>
-            <AgentConsole />
+            <AgentConsole selected={agentSelectedObject} />
           </div>
         </div>
       )}
@@ -125,20 +144,22 @@ function GuideTab() {
   );
 }
 
-/** Agent 指挥台接 QOS（补 G-3）：真场景卡 → useScenarioLaunch（scenarioIntentKey 确定性绑定·无需 LLM 真出答案）。 */
-function AgentConsole() {
+/** Agent 指挥台接 QOS（补 G-3）：真场景卡 → useScenarioLaunch（scenarioIntentKey 确定性绑定·无需 LLM 真出答案）。
+ *  selected：建模页逐对象提问——自由文本注入该对象 presetContext + 渲染节点摘要。 */
+function AgentConsole({ selected }: { selected?: AgentSelectedObject }) {
   const quickLaunch = useQuickLaunch();
   const launchCard = useScenarioLaunch();
   const hasToken = useHasToken();
   const { data: cardsData } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), retry: false, enabled: hasToken });
   const cards = (cardsData?.items ?? []).filter((c) => !c.inactive).slice(0, 6);
   const [q, setQ] = useState("");
-  const ask = () => { const query = q.trim(); if (!query) return; void quickLaunch({ query, targetView: "dash", selectedObjects: [] }); setQ(""); };
+  const ask = () => { const query = q.trim(); if (!query) return; void quickLaunch({ query, targetView: "dash", selectedObjects: selected ? [{ objectType: selected.objectType, objectId: selected.objectId, label: selected.label }] : [] }); setQ(""); };
   return (
     <div data-testid="pc-agent" style={{ border: "1px solid var(--border,#2a2a2a)", borderRadius: 8, padding: 10, background: "var(--panel,rgba(255,255,255,.02))" }}>
       <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Agent 指挥台</div>
       <div style={{ borderLeft: "3px solid var(--ok,#62BE77)", fontSize: 12, color: "var(--muted2)", marginBottom: 8, background: "rgba(98,190,119,.06)", borderRadius: 6, padding: "6px 8px" }} data-testid="pc-agent-welcome">
         平台 Agent 已就位。点下方真场景卡 → 经 QOS 工作流真出推演答案（确定性绑定·无需 LLM）。
+        {selected?.summary && <div style={{ marginTop: 4 }} data-testid="pc-agent-nodesummary">{selected.summary}</div>}
       </div>
       <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>真场景卡（点 → QOS 推演真答案）</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }} data-testid="pc-agent-cards">
