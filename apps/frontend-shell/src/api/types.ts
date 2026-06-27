@@ -109,6 +109,8 @@ export interface DashboardWidgetDef {
   /** 悬停溯源描述（轨R #2：六要素 = 来源系统/新鲜度/推导公式/输入因子/规则号/备注）。 */
   provenance?: { toolName: string; outputPath: string; snapshotVersion?: string; label?: string; ruleRefs?: string; inputs?: string[]; sourceSystem?: string };
   unit?: string;
+  /** M7 显示比例系数：比率字段（如 Base.util=0.78）→ 显示 78%，scale=100；缺省 1。配置驱动 R14。 */
+  scale?: number;
   chartKind?: "line" | "bar" | "trideviation";
   /** 三线偏差复合图（trideviation）的系列声明：data 各项的数值字段 → 线名/色。 */
   chartSeries?: { key: string; name: string; color?: string }[];

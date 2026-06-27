@@ -393,7 +393,7 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
       {isLoading ? (
         <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
       ) : def.type === "kpi" ? (
-        <KpiWidget value={data} unit={def.unit} />
+        <KpiWidget value={data} unit={def.unit} scale={def.scale} />
       ) : def.type === "chart" ? (
         <ChartWidget data={data} kind={def.chartKind ?? "line"} series={def.chartSeries} />
       ) : def.type === "summary" ? (
@@ -495,9 +495,11 @@ function VersionToggleWidget({ data }: { data: { items?: { props: Record<string,
   );
 }
 
-function KpiWidget({ value, unit }: { value: unknown; unit?: string }) {
+function KpiWidget({ value, unit, scale }: { value: unknown; unit?: string; scale?: number }) {
+  // M7：比率字段 ×scale 显示（如 util 0.78 × 100 = 78%），缺省不缩放。
+  const scaled = typeof value === "number" && scale && scale !== 1 ? value * scale : value;
   const display =
-    typeof value === "number" ? (Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2)) : String(value ?? "—");
+    typeof scaled === "number" ? (Number.isInteger(scaled) ? scaled.toLocaleString() : scaled.toFixed(scale && scale !== 1 ? 1 : 2)) : String(scaled ?? "—");
   return (
     <div className={styles.kpiValue}>
       {display}

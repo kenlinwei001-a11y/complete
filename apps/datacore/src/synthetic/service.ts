@@ -1028,12 +1028,12 @@ export class SyntheticService {
           provenance: { toolName: "query_objects", outputPath: "$.sum(gwh)", label: "Σ 各基地铭牌产能 gwh", ruleRefs: "C01/C04", inputs: ["Base.gwh"], sourceSystem: "本体对象库·Base（PLM 铭牌）" },
         },
         {
-          key: "util", type: "kpi", title: "平均利用率", unit: "%",
+          key: "util", type: "kpi", title: "平均利用率", unit: "%", scale: 100,
           query: { kind: "objects-aggregate", objectType: "Base", agg: "avg", prop: "util" },
           provenance: { toolName: "query_objects", outputPath: "$.avg(util)", label: "avg(Base.util) 算术平均", ruleRefs: "C05/C21", inputs: ["Base.util"], sourceSystem: "本体对象库·Base（MES 利用率）" },
         },
         {
-          key: "attain", type: "kpi", title: "计划达成率", unit: "%",
+          key: "attain", type: "kpi", title: "计划达成率", unit: "%", scale: 100,
           query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
           provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "avg(Line.schedule_attainment) 周聚合回写", ruleRefs: "C21", inputs: ["Line.schedule_attainment"], sourceSystem: "时序库·attainment:line（MES 周聚合）" },
         },
