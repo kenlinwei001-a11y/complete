@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { tokenStore } from "@/api/tokenStore";
 import {
   createSimSession,
   deriveModeling,
@@ -33,6 +34,15 @@ import styles from "./ModelingPage.module.css";
 const t = zh.admin.modeling;
 
 /**
+ * 反应式 token 就绪（评审复核修）：access token 仅存内存（tokenStore），pushState/直挂载等场景组件可能
+ * **早于 token 就绪挂载** → 查询 retry:false 时一次 401 error 不重试 → 卡片永久"暂无"。用 useSyncExternalStore
+ * 订阅 tokenStore，token 到位即反应式重渲染 → enabled 打开 → 查询自动发起（根因修，零重试浪费）。
+ */
+function useHasToken(): boolean {
+  return useSyncExternalStore(tokenStore.subscribe, () => tokenStore.get() != null, () => false);
+}
+
+/**
  * 轨P 增量2/3 共享：建/复用一个极简 SimSession（空 baseSnapshot）——仅为驱动 deriveCertification
  * （全局就绪 + 逐对象就绪）。整页一个 session，全局面板与对象抽屉共用（不各建一个，省往返）。
  * entOff：sim.certification entitlement 关 → 诚实降级（不画假认证）。
@@ -40,14 +50,17 @@ const t = zh.admin.modeling;
 function useCertSession() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [entOff, setEntOff] = useState(false);
+  const hasToken = useHasToken();
   useEffect(() => {
+    // 评审复核修：token 未就绪不建会话（否则一次 401 → entOff 永久真 → 认证面板永久"功能未开"）。
+    if (!hasToken) return;
     let alive = true;
     (async () => {
       try { const s = await createSimSession({ baseSnapshot: {}, scope: {} }); if (alive) setSessionId(s.id); }
       catch { if (alive) setEntOff(true); }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [hasToken]);
   return { sessionId, entOff };
 }
 
@@ -261,7 +274,8 @@ function GraphQueryReserved() {
 
 /** Skills tab = 接现成真后端 B4（GET /b/v1/skills）。demo 真有「产能分析方法论」。 */
 function SkillsTab() {
-  const { data, isLoading, isError } = useQuery({ queryKey: ["b", "skills"], queryFn: fetchSkills, retry: false });
+  const hasToken = useHasToken();
+  const { data, isLoading, isError } = useQuery({ queryKey: ["b", "skills"], queryFn: fetchSkills, retry: false, enabled: hasToken });
   if (isError) return <div data-testid="mc-skills-err" style={{ color: "var(--muted2)", fontSize: 12 }}>技能服务不可达（AgentCore off）——诚实降级，不画假技能。</div>;
   if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载技能…</div>;
   return (
@@ -289,7 +303,8 @@ function SkillsTab() {
 
 /** MCP服务 tab = 接现成真后端 B3（GET /b/v1/mcp-configs）。demo 真态为空 → 诚实空态（非假壳）。 */
 function McpTab() {
-  const { data, isLoading, isError } = useQuery({ queryKey: ["b", "mcp-configs"], queryFn: fetchMcpConfigs, retry: false });
+  const hasToken = useHasToken();
+  const { data, isLoading, isError } = useQuery({ queryKey: ["b", "mcp-configs"], queryFn: fetchMcpConfigs, retry: false, enabled: hasToken });
   if (isError) return <div data-testid="mc-mcp-err" style={{ color: "var(--muted2)", fontSize: 12 }}>MCP 服务不可达（AgentCore off）——诚实降级。</div>;
   if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载 MCP 服务…</div>;
   return (
@@ -309,7 +324,8 @@ function McpTab() {
 
 /** 日志 tab = 接现成真后端（GET /a/v1/outbox 领域事件馈源）。数据→本体→规则→推演链真事件。 */
 function LogsTab() {
-  const { data, isLoading, isError } = useQuery({ queryKey: ["a", "outbox-events"], queryFn: () => fetchDomainEvents(), retry: false });
+  const hasToken = useHasToken();
+  const { data, isLoading, isError } = useQuery({ queryKey: ["a", "outbox-events"], queryFn: () => fetchDomainEvents(), retry: false, enabled: hasToken });
   if (isError) return <div data-testid="mc-logs-err" style={{ color: "var(--muted2)", fontSize: 12 }}>事件馈源不可达——诚实降级。</div>;
   if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载事件日志…</div>;
   const rows = [...data].slice(-30).reverse();
@@ -359,7 +375,9 @@ function GuideTab({ typeCount }: { typeCount: number }) {
 function ModelingAgentConsole({ selectedType }: { selectedType: Awaited<ReturnType<typeof fetchObjectTypes>>[number] | null }) {
   const quickLaunch = useQuickLaunch();
   const launchCard = useScenarioLaunch();
-  const { data: cardsData } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), retry: false });
+  const hasToken = useHasToken();
+  // 评审复核修：token 就绪才发起（pushState 早挂载场景下，retry:false 一次 error → 卡片永久"暂无"）。
+  const { data: cardsData } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards(), retry: false, enabled: hasToken });
   const cards = (cardsData?.items ?? []).filter((c) => !c.inactive).slice(0, 6);
   const [q, setQ] = useState("");
   const ask = () => {
