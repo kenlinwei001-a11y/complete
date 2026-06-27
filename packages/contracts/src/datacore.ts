@@ -129,6 +129,10 @@ export type RuleEntry = z.infer<typeof RuleEntrySchema>;
  */
 export const SOLVER_RULE_REFS: Record<string, string[]> = {
   capacity_forecast: ["C01", "C02", "C03", "C09"],
+  // 轨N 收尾（G-10 诚实边界闭合）：capacity_rollup 登记 C01/C02 → 经 evaluateRuleRefs 真评估路径。
+  // 其产能上限/串并口径字段（Line.designCeilingWan / Process.parallelThroughput）属 forecast 口径、不在 rollup
+  // 输出 payload → 诚实落 NOT_APPLICABLE（与 6 个 NA 求解器同范式·RL5 不伪造尺度），杜绝"装饰 ruleRefs 标签不评估"。
+  capacity_rollup: ["C01", "C02"],
   affected_orders: ["C05"],
   risk_timeline: ["C06", "C11"],
   plan_audit: ["C15", "C16", "C18", "C21", "C23"],
