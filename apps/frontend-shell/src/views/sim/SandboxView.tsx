@@ -207,9 +207,15 @@ function HealthTrustRadar({ title, dims, color, size = 176 }: { title: string; d
   // 多边形顶点：无数据维退到圆心（0），仍闭合（诚实——那一边塌陷可见缺数）。
   const poly = dims.map((d, i) => pt(i, d.hasData ? d.value : 0).join(",")).join(" ");
   const missing = dims.filter((d) => !d.hasData);
+  // 综合分（轨Q 增量3·竞品 image1 母版「综合分位置」）：仅 hasData 维参与均值，缺数据不拉低（诚实）。
+  const scored = dims.filter((d) => d.hasData);
+  const composite = scored.length > 0 ? Math.round(scored.reduce((a, d) => a + d.value, 0) / scored.length) : 0;
+  const slug = title === "健康度" ? "health" : "trust";
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <div className={styles.sub} style={{ marginBottom: 2 }} data-testid={`sandbox-${title === "健康度" ? "health" : "trust"}-radar-title`}>{title}雷达 · {dims.length} 维</div>
+      <div className={styles.sub} style={{ marginBottom: 2 }} data-testid={`sandbox-${slug}-radar-title`}>
+        {title}雷达 · {dims.length} 维 · 综合 <b style={{ color }} data-testid={`sandbox-${slug}-radar-composite`}>{composite}</b>
+      </div>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${title}雷达`} data-testid={`sandbox-${title === "健康度" ? "health" : "trust"}-radar`}>
         {rings.map((pts, i) => (
           <polygon key={i} points={pts} fill="none" stroke="rgba(226,235,245,.12)" strokeWidth={i === 2 ? 1.2 : 0.8} />
@@ -239,11 +245,59 @@ function HealthTrustRadar({ title, dims, color, size = 176 }: { title: string; d
           );
         })}
       </svg>
+      {/* 底部轴值图例（竞品 image1：轴名 值 ×N·真派生·缺数据标 —）。 */}
+      <div data-testid={`sandbox-${slug}-radar-legend`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1px 12px", fontSize: 10, color: "#9AA8B6", marginTop: 4, width: size }}>
+        {dims.map((d) => (
+          <div key={d.key} style={{ display: "flex", justifyContent: "space-between" }} title={d.src}>
+            <span style={{ color: d.hasData ? "#9AA8B6" : "#5C6672" }}>{d.label}</span>
+            <span className="mono" style={{ color: d.hasData ? color : "#5C6672" }}>{d.hasData ? d.value : "—"}</span>
+          </div>
+        ))}
+      </div>
       {missing.length > 0 && (
-        <div className={styles.sub} style={{ fontSize: 10, color: "#5C6672" }} data-testid={`sandbox-${title === "健康度" ? "health" : "trust"}-radar-missing`}>
+        <div className={styles.sub} style={{ fontSize: 10, color: "#5C6672" }} data-testid={`sandbox-${slug}-radar-missing`}>
           *{missing.map((d) => d.label).join("/")}：缺数据（诚实标·未计入）
         </div>
       )}
+    </div>
+  );
+}
+
+/** 轨Q 增量3（竞品 image1 中面板 ① 4 行评估清单）：State/Action/Writeback/Query 全派生自 cert（真·零写死）。 */
+function EvalChecklist({ cert, cfg }: { cert: SimCertification; cfg: SandboxViewConfig }) {
+  const wc = cert.worldCompleteness;
+  const queryCovered = cert.l4Checks.observabilityMet;
+  const rows: { key: string; label: string; val: string; ok: boolean; note: string }[] = [
+    { key: "state", label: "State 状态变量", val: `${cfg.stateVars.length}`, ok: cfg.stateVars.length > 0, note: "纳入推演的状态变量（view-config.stateVars）" },
+    { key: "action", label: "Action 行动", val: `${wc.actions.present} · 利用率 ${Math.round(cert.dims.knowledge)}%`, ok: wc.actions.present > 0, note: "写回行动数 · 知识利用率(dims.knowledge)" },
+    { key: "writeback", label: "Writeback 写回", val: cert.l4Checks.writebackComplete ? "完整" : "缺", ok: cert.l4Checks.writebackComplete, note: "≥1 writeback ActionType(l4Checks.writebackComplete)" },
+    { key: "query", label: "Query 图查询", val: queryCovered ? "已覆盖" : "0", ok: queryCovered, note: queryCovered ? "切片覆盖达标(observabilityMet)" : "无切片覆盖 · 图查询页后端未建(§10.1 RESERVED)" },
+  ];
+  return (
+    <div data-testid="sandbox-eval-checklist" style={{ marginBottom: 10 }}>
+      <div className={styles.secHead} style={{ marginBottom: 6 }}>运行态评估清单</div>
+      {rows.map((r) => (
+        <div key={r.key} data-testid={`sandbox-eval-${r.key}`} title={r.note}
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, padding: "3px 0", borderBottom: "1px solid rgba(226,235,245,.06)" }}>
+          <span style={{ color: "var(--muted2)" }}>{r.label}</span>
+          <span className="mono" style={{ color: r.ok ? "var(--ok)" : "var(--muted2)" }}>{r.val}{r.ok ? " ✓" : ""}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 知识激活（竞品 image1 ④·静态可达传播链 N/N·DORMANT/ACTIVE）：传播链=propagationRules·状态取 curTick 真态。 */
+function KnowledgeActivation({ cert, curTick }: { cert: SimCertification; curTick: number }) {
+  const wc = cert.worldCompleteness;
+  const active = curTick > 0;
+  return (
+    <div data-testid="sandbox-knowledge-activation" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(226,235,245,.1)", fontSize: 12.5 }}>
+      <span style={{ color: "var(--muted2)" }}>知识激活 · 静态可达传播链</span>
+      <b className="mono" data-testid="sandbox-knowledge-chains">{wc.propagationRules.present}/{wc.propagationRules.needed}</b>
+      <span className={`badge ${active ? "green" : ""}`} data-testid="sandbox-knowledge-status">
+        {active ? `ACTIVE · 已推进 ${curTick} tick` : "DORMANT · 未推进（tick 0）"}
+      </span>
     </div>
   );
 }
@@ -678,6 +732,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       <div className={styles.twoCol} style={{ marginTop: 12 }}>
         {/* 就绪面板（左）：6 项砌齐 —— L0-L4 stepper / L4 三元组 / Trial Tick / scope 切换 / 完整度 gauge / entering 清单 */}
         <div className="panel" data-testid="sandbox-readiness" style={{ padding: 12 }}>
+          {/* 轨Q 增量3（竞品 image1 ①）：4 行评估清单 State/Action/Writeback/Query（真派生自 cert）。 */}
+          {cert && <EvalChecklist cert={cert} cfg={cfg} />}
           {cert ? (
             <SimReadinessPanel
               cert={cert}
@@ -710,10 +766,14 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       <div className="panel" data-testid="sandbox-dual-radar" style={{ padding: 12, marginTop: 12 }}>
         <div className={styles.secHead}>运行雷达 · 健康度 6 维 + 信任度 4 维（派生自就绪认证，缺数据诚实标 *）</div>
         {cert ? (
-          <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
-            <HealthTrustRadar title="健康度" dims={healthDims} color="#43B7D7" />
-            <HealthTrustRadar title="信任度" dims={trustDims} color="#7BD389" />
-          </div>
+          <>
+            <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+              <HealthTrustRadar title="健康度" dims={healthDims} color="#43B7D7" />
+              <HealthTrustRadar title="信任度" dims={trustDims} color="#7BD389" />
+            </div>
+            {/* 轨Q 增量3（竞品 image1 ④）：知识激活·静态可达传播链 N/N + DORMANT/ACTIVE（真 cert + curTick）。 */}
+            <KnowledgeActivation cert={cert} curTick={curTick} />
+          </>
         ) : (
           <div className={styles.sub} data-testid="sandbox-dual-radar-na">
             双雷达需就绪认证数据（sim.certification 未开通或会话未就绪）——不写死占位值（RL5）。
