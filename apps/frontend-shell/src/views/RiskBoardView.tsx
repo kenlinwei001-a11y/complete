@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
-import { RiskTimelineOutputSchema } from "@platform/contracts";
+import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema } from "@platform/contracts";
 import type { HistoryRiskCase } from "@platform/contracts";
 import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg, searchObjects } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
@@ -153,6 +153,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               </div>
             ))}
           </div>
+          {/* 轨N 增量3·风险点详情：该基地瓶颈因素逐项（接现成 bottleneck_matrix·LIVE/MOCK 诚实标，不新建风险引擎）。 */}
+          <BottleneckDetailPanel base={detail.base} threshold={data.threshold} />
           {/* cockpit P3 对症方案 → 工单（mitigation_select 优选 → 采纳经 adopt_mitigation Action 审批，R4 不直改） */}
           <MitigationPanel base={detail.base} factor={detail.factor} tightness={detail.peak} />
         </Modal>
@@ -328,6 +330,70 @@ function CaseReplayModal({ kase, onClose }: { kase: HistoryRiskCase; onClose: ()
  * Action 草稿待审批，R4 真值经 Action；不直改）。方案库 = params.risk.mitigations 单一来源（全 7 因子可用）。
  */
 type MitPlan = { key: string; name: string; eff: number; tn: number; cost: string; risk?: string; score: number };
+/**
+ * 轨N 增量3·风险点详情弹窗：该基地瓶颈因素逐项细节（工序/资源 7 维张力 + 主瓶颈 + 越线状态）。
+ * 接现成 bottleneck_matrix 求解器（基地×7因素已算）·请求 LIVE（守 genuine-sim 红线，有真数据走真算）·
+ * 诚实标 dataMode（LIVE 实测 / MOCK 无真数据源估算），不新建风险引擎、不前端写死（R13/R14）。
+ */
+function BottleneckDetailPanel({ base, threshold }: { base: string; threshold: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["a", "bottleneck_matrix", "detail", base],
+    queryFn: async () => {
+      const res = await invokeSolver("bottleneck_matrix", { dataMode: "LIVE" });
+      return BottleneckMatrixOutputSchema.parse(res.data);
+    },
+  });
+  const row = data?.rows.find((r) => r.base === base);
+  return (
+    <div style={{ marginTop: 14 }} data-testid="bottleneck-detail-panel">
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        该基地瓶颈因素逐项（{data?.factors.length ?? 7} 维 · bottleneck_matrix）
+        {data && (
+          <span className="badge" data-testid="bottleneck-detail-datamode"
+            style={{ background: data.dataMode === "LIVE" ? "rgba(98,190,119,.18)" : "rgba(210,176,76,.18)", color: data.dataMode === "LIVE" ? "var(--ok)" : "#D2B04C", fontSize: 10 }}>
+            {data.dataMode === "LIVE" ? "实测 LIVE" : "估算 MOCK（无实测数据源）"}
+          </span>
+        )}
+      </div>
+      {isLoading ? (
+        <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
+      ) : !row ? (
+        <div className="empty-state">{zh.common.none}</div>
+      ) : (
+        <table className="cmp" data-testid="bottleneck-detail-table">
+          <thead><tr><th>瓶颈因素</th><th>张力</th><th>状态</th></tr></thead>
+          <tbody>
+            {data!.factors.map((f) => {
+              const v = row.tightness[f] ?? 0;
+              const isPrimary = row.primary === f;
+              return (
+                <tr key={f} data-testid={`bottleneck-factor-${f}`}>
+                  <td className="zh">
+                    {f}
+                    {isPrimary && <span className="badge" style={{ marginLeft: 6, background: "var(--danger)", color: "#fff", fontSize: 10 }}>主瓶颈</span>}
+                  </td>
+                  <td className="mono">
+                    <span style={{ display: "inline-block", width: 120, height: 8, borderRadius: 4, background: "var(--bg2)", position: "relative", verticalAlign: "middle", marginRight: 6 }}>
+                      <span style={{ position: "absolute", left: 0, top: 0, height: 8, borderRadius: 4, width: `${Math.min(100, v)}%`, background: heatColor(v, threshold) }} />
+                    </span>
+                    {Math.round(v)}
+                  </td>
+                  <td className="zh" style={{ color: v >= threshold ? "var(--danger)" : v >= threshold - 15 ? "#D2B04C" : "var(--muted)" }}>
+                    {v >= threshold ? "越线" : v >= threshold - 15 ? "关注" : "正常"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <div style={{ marginTop: 6, fontSize: 10.5, color: "var(--muted2)" }}>
+        来源：bottleneck_matrix 求解器（基地×7因素 · LIVE=实测 设备OEE/产线利用率/良率，MOCK=无真数据源诚实标）· R13 可溯
+      </div>
+    </div>
+  );
+}
+
 function MitigationPanel({ base, factor, tightness }: { base: string; factor: string; tightness: number }) {
   const adopt = useActionDraft();
   const { data, isLoading } = useQuery({
