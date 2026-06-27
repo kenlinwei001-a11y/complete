@@ -174,15 +174,32 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       essModels: ["S192-LFP"],
       comModels: ["L148-LFP"],
       ruleKeys: { DELIVERY: "C03", MARGIN: "C15", KIT: "C06/C16", CREDIT: "C13" },
-      // PRD-IND-dash ORDER_OVR（L3222-3229）：6 单 override 逐字种子。按 so 命中即覆盖信用/毛利 + why。
-      // 命中 HTML 24 单（SO-3470/3458/3518 压价 mAdj · SO-3437/3506/3540 信用 credit）→ 台账出现"未接/提价接"。
+      // 母版 ROOT_LIB 8 根源（crm/push/frame/credit/lta/ramp/maint/cost）—— 8 类一等问题卡的根因配置。
+      // credit/cost/maint/push 由**真算信号**（信用占用比/细分毛利/齐套间隙/越线窗口）分类；
+      // frame/crm/lta/ramp 由 override.root **种子真相**指定（业务实况·与既有 override.why 同源·非运行时编造）。
+      rootCauses: {
+        credit: { title: "信用额度超限", ruleRefs: "C13", remedy: "信用复核 + 预收款比例上调，超限部分分批释放" },
+        cost: { title: "成本结构毛利偏低", ruleRefs: "C15/C24", remedy: "细分结构调优 + 高毛利订单优先排产" },
+        frame: { title: "框架协议低价条款", ruleRefs: "C03/C15", remedy: "框架价重谈 + 低价条款分批执行" },
+        crm: { title: "客户合同/需求变更", ruleRefs: "C02", remedy: "需求复盘 + 合同变更走 S&OP 重排" },
+        lta: { title: "长协价量波动", ruleRefs: "C03", remedy: "长协年度对标 + 价量双轨对冲" },
+        maint: { title: "设备维护致齐套缺", ruleRefs: "C06/C16", remedy: "维护窗口前置备料 + 加急采购压缩到货间隙" },
+        ramp: { title: "产能爬坡产出不足", ruleRefs: "C03/C21", remedy: "认证加速 + 爬坡曲线提速 / 外协兜底" },
+        push: { title: "排产推动/瓶颈紧张", ruleRefs: "C03", remedy: "瓶颈专项消解 + 越线窗口订单优先排产" },
+      },
+      // PRD-IND-dash ORDER_OVR：逐单 override 种子（按 so 覆盖信用/毛利 + why + root 根因类型）。
+      // credit/cost 既有；frame/crm/lta/ramp/maint 由 root 指定（业务实况种子·让 8 根源各有真订单落桶）。
       overrides: {
-        "SO-3470": { mAdj: -3.2, why: "电网公司F 框架价压价" },
-        "SO-3437": { credit: true, why: "商用车集团G 在手应收 9.8 亿 + 新单 12.6 亿 > 信用额度 21 亿" },
-        "SO-3506": { credit: true, why: "商用车集团G 二次追单，信用敞口进一步放大" },
-        "SO-3458": { mAdj: -3.0, why: "电网公司F 框架协议低价条款执行" },
-        "SO-3518": { mAdj: -2.6, why: "储能集成商D 价格战跟价" },
-        "SO-3540": { credit: true, why: "商用车集团G 低优先级单，信用额度已被占满" },
+        "SO-3470": { mAdj: -3.2, why: "电网公司F 框架价压价", root: "frame" },
+        "SO-3437": { credit: true, why: "商用车集团G 在手应收 9.8 亿 + 新单 12.6 亿 > 信用额度 21 亿", root: "credit" },
+        "SO-3506": { credit: true, why: "商用车集团G 二次追单，信用敞口进一步放大", root: "credit" },
+        "SO-3458": { mAdj: -3.0, why: "电网公司F 框架协议低价条款执行", root: "frame" },
+        "SO-3518": { mAdj: -2.6, why: "储能集成商D 价格战跟价（成本上行）", root: "cost" },
+        "SO-3540": { credit: true, why: "商用车集团G 低优先级单，信用额度已被占满", root: "credit" },
+        "SO-3402": { why: "整车厂B 6-05 合同变更追加，需求结构突变", root: "crm" },
+        "SO-3420": { why: "海外车企E 长协价量年度调整，价量双波动", root: "lta" },
+        "SO-3445": { why: "常州基地 4680 产线认证中，爬坡未达节拍", root: "ramp" },
+        "SO-3452": { why: "成都基地关键设备计划性维护，齐套到货后移", root: "maint" },
       },
     },
   },

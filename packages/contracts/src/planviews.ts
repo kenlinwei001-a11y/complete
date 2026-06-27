@@ -261,7 +261,11 @@ export const GraphOptionsSchema = z.object({
 export type GraphOptions = z.infer<typeof GraphOptionsSchema>;
 
 /** §S1.5 修订：affected_orders 输出扩展（问题归并 + 根因链） */
-export const OrderProblemCategorySchema = z.enum(["DELIVERY", "MARGIN", "KIT", "CREDIT"]);
+// 轨R #1：母版 ROOT_LIB 8 根源（credit/cost/frame/crm/lta/maint/ramp/push）；保留旧 4 键向后兼容。
+export const OrderProblemCategorySchema = z.enum([
+  "credit", "cost", "frame", "crm", "lta", "maint", "ramp", "push",
+  "DELIVERY", "MARGIN", "KIT", "CREDIT",
+]);
 export const OrderRootChainSchema = z.object({
   orderId: z.string(),
   layers: z.array(
@@ -276,6 +280,7 @@ export const OrderProblemGroupSchema = z.object({
   title: z.string(),
   orderCount: z.number().int(),
   financeImpact: z.number(), // 涉及收入（亿）
+  ruleRefs: z.string().optional(), // 轨R #1：该根源类规则号（溯源）
   rootCauseSummary: z.string(),
   rootChains: z.array(OrderRootChainSchema),
 });

@@ -488,10 +488,13 @@ export interface AffectedOrdersArgs {
 }
 
 export interface OrderProblemGroupOut {
-  category: "DELIVERY" | "MARGIN" | "KIT" | "CREDIT";
+  /** 母版 ROOT_LIB 8 根源键（credit/cost/frame/crm/lta/maint/ramp/push）。 */
+  category: string;
   title: string;
   orderCount: number;
   financeImpact: number;
+  /** 该根源类的规则号（溯源·RuleRef）。 */
+  ruleRefs?: string;
   rootCauseSummary: string;
   rootChains: { orderId: string; layers: { kind: "order" | "judgement" | "rootCause" | "remedy"; label: string }[] }[];
 }
@@ -638,7 +641,7 @@ export function affectedOrdersAggregate(
       if (!m) probByCat.set(pr.category, { ...pr, rootChains: [...pr.rootChains] });
       else {
         m.orderCount += pr.orderCount;
-        m.financeImpact += pr.financeImpact;
+        m.financeImpact = round(m.financeImpact + pr.financeImpact, 4);
         m.rootChains.push(...pr.rootChains);
       }
     }
@@ -694,12 +697,6 @@ export function affectedOrdersAggregate(
 // （订单→判定→根因→对策）。完全确定性：从订单属性 + 规则口径推导，不依赖随机。
 // ---------------------------------------------------------------------------
 
-const PROBLEM_TITLES: Record<string, string> = {
-  DELIVERY: "交期风险订单",
-  MARGIN: "毛利承压订单",
-  KIT: "齐套缺口订单",
-  CREDIT: "信用额度超限订单",
-};
 
 // PRD-IND-order-aggregate §4.5-B：应用细分**按客户名**判定（原型口径，单一真相源）——
 // 含「商用车」→商用车(com) · 含「储能」或「电网」→储能(ess) · 否则乘用车(pas)。
@@ -762,75 +759,61 @@ function buildOrderProblems(
     });
   };
   const mitPlan = (factor: string) => (c.params.risk.mitigations[factor] ?? [])[0];
+  const rootCfg = cfg.rootCauses ?? {};
 
   for (const row of affected) {
     const so = str(row.so);
     const cust = str(row.cust);
     const dueDay = num(row.dueDay);
     const delay = num(row.delay);
-    // PRD-IND-dash ORDER_OVR：逐单越线注入——override 信用超限 / 毛利下调（含 why），否则 hash 派生（R6）。
+    // PRD-IND-dash ORDER_OVR：逐单越线注入——override 信用超限 / 毛利下调（含 why / root），否则 hash 派生（R6）。
     const ov = cfg.overrides?.[so];
     const baseCredit = round(cfg.creditBase + (hashString(`${cust}|${so}`) % cfg.creditMod) / 100, 2);
     const seg = segmentOf(c, cust);
     const { creditRatio, gm: segGm } = applyOrderOverride(baseCredit, seg.gm, ov);
     const etaDay = num(shipment?.props.etaDay);
     const kitGapDays = shipment && (shipment.props.status === "DELAYED" || etaDay > dueDay) ? Math.max(1, etaDay - dueDay) : 0;
+    // 母版 ROOT_LIB 8 根源分类：override.root **种子真相**优先（frame/crm/lta/ramp/maint 等业务实况·与 why 同源），
+    // 否则**真算信号**派生（信用占用比>1→credit · 细分毛利<底线→cost · 齐套间隙>0→maint · 越线窗口兜底→push）。
+    const root = ov?.root
+      ? ov.root
+      : creditRatio > 1 ? "credit"
+        : segGm < cfg.gmFloor ? "cost"
+          : kitGapDays > 0 ? "maint"
+            : "push";
+    const rc = rootCfg[root];
+    const rr = rc?.ruleRefs ?? cfg.ruleKeys.DELIVERY;
     const plan = mitPlan(bottleneck);
-    const remedyBn = plan ? `对策：${plan.name}（T+${plan.tn} 生效，预计消解 ${plan.eff} 点）` : `对策：${bottleneck}专项消解`;
-
-    // 归并优先级：更具体的判定（信用/毛利/齐套）优先，交期为窗口内订单的兜底判定。
-    if (creditRatio > 1) {
-      add("CREDIT", row,
-        `信用判定：客户 ${cust} 信用占用比 ${creditRatio} 超过额度上限 1.0（规则 ${cfg.ruleKeys.CREDIT}）`,
-        ov?.why ? `根因：${ov.why}` : `根因：${cust} 在手订单集中放量，信用敞口未同步扩容`,
-        "对策：信用复核 + 预收款比例上调，超限部分分批释放");
-      continue;
-    }
-    if (segGm < cfg.gmFloor) {
-      add("MARGIN", row,
-        `毛利判定：${seg.name}细分毛利 ${segGm}% 低于底线 ${cfg.gmFloor}%（规则 ${cfg.ruleKeys.MARGIN}）`,
-        ov?.why ? `根因：${ov.why}` : `根因：${seg.name}细分结构毛利偏低，延误追加成本进一步侵蚀`,
-        "对策：细分结构调优 + 高毛利订单优先排产");
-      continue;
-    }
-    if (kitGapDays > 0) {
-      add("KIT", row,
-        `齐套判定：关键物料到货晚于交期 ${kitGapDays} 天（在途批次 ${str(shipment?.props.shipId)}，规则 ${cfg.ruleKeys.KIT}）`,
-        `根因：${bName}基地到货间隙，物料齐套率不足`,
-        "对策：加急采购 / 前置仓备货，压缩到货间隙");
-      continue;
-    }
-    if (dueDay <= riskDay) {
-      add("DELIVERY", row,
-        `交期判定：交期 D+${dueDay} 落入越线窗口（风险越线日 D+${riskDay}），预计延误 ${delay} 天（规则 ${cfg.ruleKeys.DELIVERY}）`,
-        `根因：${bName}基地 ${bottleneck} 紧张，越线窗口内产出不足`,
-        remedyBn);
-      continue;
-    }
-    add("DELIVERY", row,
-      `交期判定：交期 D+${dueDay} 处于风险窗口尾段，预计延误 ${delay} 天（规则 ${cfg.ruleKeys.DELIVERY}）`,
-      `根因：${bName}基地 ${bottleneck} 紧张，排产顺延`,
-      remedyBn);
+    const remedy = root === "push" && plan
+      ? `对策：${plan.name}（T+${plan.tn} 生效，预计消解 ${plan.eff} 点）`
+      : `对策：${rc?.remedy ?? `${bottleneck}专项消解`}`;
+    // 判定文案逐类·投影真算值（信用比/细分毛利/齐套天数/交期日/延误），规则号溯源。
+    const judgement =
+      root === "credit" ? `信用判定：客户 ${cust} 信用占用比 ${creditRatio} 超过额度上限 1.0（规则 ${rr}）`
+        : root === "cost" ? `成本判定：${seg.name}细分毛利 ${segGm}% 低于底线 ${cfg.gmFloor}%，成本上行侵蚀（规则 ${rr}）`
+          : root === "frame" ? `框架判定：${cust} 框架协议低价条款执行，细分毛利 ${segGm}%（规则 ${rr}）`
+            : root === "crm" ? `合同判定：${cust} 合同/需求变更，交期 D+${dueDay}、预计延误 ${delay} 天（规则 ${rr}）`
+              : root === "lta" ? `长协判定：${cust} 长协价量年度调整，交期 D+${dueDay}（规则 ${rr}）`
+                : root === "maint" ? `齐套判定：关键物料到货晚于交期${kitGapDays > 0 ? ` ${kitGapDays} 天` : ""}（在途批次 ${str(shipment?.props.shipId)}，规则 ${rr}）`
+                  : root === "ramp" ? `爬坡判定：${bName}基地产线认证/爬坡未达节拍，交期 D+${dueDay} 预计延误 ${delay} 天（规则 ${rr}）`
+                    : `交期判定：交期 D+${dueDay} 落入 ${bName}基地 ${bottleneck} 越线窗口（越线日 D+${riskDay}），预计延误 ${delay} 天（规则 ${rr}）`;
+    const rootCause = ov?.why ? `根因：${ov.why}` : `根因：${rc?.title ?? `${bName}基地排产顺延`}`;
+    add(root, row, judgement, rootCause, remedy);
   }
 
+  // 母版 8 根源固定序输出（仅有真订单落桶的类才出卡·诚实：无真单不画空卡）。
   const out: OrderProblemGroupOut[] = [];
-  for (const cat of ["DELIVERY", "MARGIN", "KIT", "CREDIT"] as const) {
-    const b = buckets.get(cat);
+  for (const root of Object.keys(rootCfg)) {
+    const b = buckets.get(root);
     if (!b || b.rows.length === 0) continue;
     const finance = round(b.rows.reduce((a, r) => a + num(r.qty) * 10000 * num(c.orders.find((o) => o.props.so === r.so)?.props.unitPrice, 600), 0) / 1e8, 4);
     out.push({
-      category: cat,
-      title: PROBLEM_TITLES[cat] as string,
+      category: root,
+      title: rootCfg[root]!.title,
       orderCount: b.rows.length,
       financeImpact: finance,
-      rootCauseSummary:
-        cat === "CREDIT"
-          ? `${b.rows.length} 单客户信用占用超限（C13 口径），需信用复核`
-          : cat === "MARGIN"
-            ? `${b.rows.length} 单落在低毛利细分，结构毛利低于 ${cfg.gmFloor}% 底线`
-            : cat === "KIT"
-              ? `${b.rows.length} 单受 ${bName}基地到货间隙影响，物料齐套不足`
-              : `${b.rows.length} 单交期落入 ${bName}基地 ${bottleneck} 越线窗口`,
+      ruleRefs: rootCfg[root]!.ruleRefs,
+      rootCauseSummary: `${b.rows.length} 单 · ${rootCfg[root]!.title}（${rootCfg[root]!.ruleRefs} 口径）`,
       rootChains: b.chains,
     });
   }

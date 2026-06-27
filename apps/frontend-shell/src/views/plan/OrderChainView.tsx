@@ -40,12 +40,10 @@ interface EconAgg {
   gp: number;
 }
 
-/** 问题类别 → 中文（4 类归并：交期/毛利/齐套/信用） */
-const CATEGORY_LABEL: Record<OrderProblemGroup["category"], string> = {
-  DELIVERY: "交期",
-  MARGIN: "毛利",
-  KIT: "齐套",
-  CREDIT: "信用",
+/** 问题类别 → 中文。轨R #1：母版 ROOT_LIB 8 根源 + 旧 4 类向后兼容。 */
+const CATEGORY_LABEL: Partial<Record<OrderProblemGroup["category"], string>> = {
+  credit: "信用", cost: "成本", frame: "框架", crm: "合同", lta: "长协", maint: "维护", ramp: "爬坡", push: "排产",
+  DELIVERY: "交期", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用",
 };
 
 /** 根因链四层着色：订单 → 判定 → 根因 → 对策 */
@@ -368,7 +366,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
             <button key={p.category} className={styles.probCard} data-testid={`oc-problem-${p.category}`} onClick={() => setOpenProblem(p)}>
               <div className={styles.probTitle}>
                 <span className="badge red" style={{ marginRight: 6 }}>
-                  {categoryLabels[p.category]}
+                  {categoryLabels[p.category] ?? p.category}
                 </span>
                 {p.title}
               </div>
