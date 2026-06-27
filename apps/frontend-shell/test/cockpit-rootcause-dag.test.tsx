@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
 
-// 轨R #3：ProvenanceDag 的 event 层用 useNavigate 做受影响订单下钻 → 测试需 Router 包裹。
-const renderDag = (data: DagData) => render(<MemoryRouter><ProvenanceDag data={data} /></MemoryRouter>);
+// 轨R #3：ProvenanceDag event 层用 useNavigate 下钻 → 需 Router；轨N 增量1：event 规则号接 RuleRef（useQuery）+ 节点点穿 DagNodeDrawer → 需 QueryClientProvider。
+const renderDag = (data: DagData) =>
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <ProvenanceDag data={data} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 
 /**
  * cockpit P2 · 根因归因 DAG 渲染（L3，jsdom）：plan_rootcause 求解器产出的 {nodes,edges}

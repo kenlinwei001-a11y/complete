@@ -17,6 +17,7 @@ import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
 import { KsfGraph } from "@/components/KsfGraph";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { Provenance } from "@/components/Provenance";
+import { RuleRef } from "@/components/RuleRef";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -275,25 +276,18 @@ function AuditCard({
   onAdopt: (item: AuditItem) => void;
 }) {
   const [tlOpen, setTlOpen] = useState(false);
-  const [ruleOpen, setRuleOpen] = useState(false);
   return (
     <div className={`${styles.audCard} ${cls === "hard" ? styles.hard : cls === "med" ? styles.med : styles.sug}`} data-testid={`audit-item-${cls}-${item.id}`}>
       <div className={styles.audHead}>
         <b>
           {cls === "hard" ? "⛔" : cls === "med" ? "⚠" : "✓"} {item.title}
         </b>
+        {/* 轨N 增量1·N-R3：规则号接 RuleRef（就地悬浮出定义/阈值/作用域/版本，不再让用户跳 /admin/rules）。 */}
         {item.ruleRef && (
-          <button className="badge amber" style={{ cursor: "pointer" }} data-testid={`rule-badge-${cls}-${item.id}`} onClick={() => setRuleOpen(!ruleOpen)}>
-            {item.ruleRef}
-          </button>
+          <span data-testid={`rule-badge-${cls}-${item.id}`}><RuleRef code={item.ruleRef} /></span>
         )}
         <span className="badge">{item.id}</span>
       </div>
-      {ruleOpen && (
-        <div className={styles.noteInfo} style={{ fontSize: 10.5 }}>
-          规则 <b className="mono">{item.ruleRef}</b> · 表达式见规则库（/admin/rules），点击徽章收起。
-        </div>
-      )}
       <div className={styles.audWhy}>{item.why}</div>
       <div className={styles.audActions}>
         {item.fix && canApplyFix && Object.keys(item.fix.patch).length > 0 && (

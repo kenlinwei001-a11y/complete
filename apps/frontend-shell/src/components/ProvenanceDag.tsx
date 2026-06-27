@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
+import { RuleRef } from "@/components/RuleRef";
 import zh from "@/locales/zh";
 
 /**
@@ -44,9 +47,64 @@ const fmtPct = (w?: number) => (typeof w === "number" ? `${Math.round(w * 100)}%
 
 export function ProvenanceDag({ data }: { data: DagData | undefined }) {
   const navigate = useNavigate();
+  // 轨N 增量1·N-G1：DAG 节点点穿溯源——复用全平台共享 <DagNodeDrawer>（接现成不新建并行）。
+  const [detail, setDetail] = useState<DagDetail | null>(null);
   const nodes = data?.nodes ?? [];
   const edges = data?.edges ?? [];
   if (nodes.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+
+  // 节点 → 溯源抽屉六要素（来源/公式/输入/规则/备注），数字全取自求解器产出的节点字段（R13 可溯·零写死）。
+  const nodeToDetail = (n: DagNode, weight?: number): DagDetail => {
+    switch (n.kind) {
+      case "kpi":
+        return {
+          title: n.label,
+          verdict: `${n.status} · 实际 ${n.actual}${n.unit ?? ""} vs 目标 ${n.target}${n.unit ?? ""} · 缺口 ${n.value}${n.unit ?? ""}`,
+          src: "plan_rootcause 求解器 · 经营指标 Metric（一等对象）",
+          formula: "越线判定 actual < floorVal；缺口 = target − actual",
+          inputs: ["Metric.actual（同源数据派生）", "Metric.target", "Metric.floorVal"],
+          note: "经营 KPI 越线根（结构与数字来自求解器，前端零写死 R13/R14）",
+        };
+      case "ksf":
+        return {
+          title: n.label,
+          src: "KSF 关键成功要素（一等对象 · SPINE.3）",
+          note: n.sub ?? "经营 KPI 沿关键成功要素归因",
+        };
+      case "factor":
+      case "factor_excluded":
+        return {
+          title: n.label,
+          verdict: n.excluded ? "反事实排除：证据反算均达标，不解释本缺口" : undefined,
+          src: "plan_rootcause · RootCauseChain 归因模板",
+          formula: "贡献 = Σ(取证字段值) × baseWeight；占比 = 贡献 ÷ Σ贡献",
+          inputs: [`贡献 ${n.value ?? 0}`, typeof weight === "number" ? `占比 ${Math.round(weight * 100)}%` : ""].filter(Boolean),
+          note: n.reason ?? "因子层（活数据聚合算出贡献占比）",
+        };
+      case "evidence":
+        return {
+          title: n.label,
+          src: "活数据取证叶（driverType 对象 evidenceField）",
+          formula: "取证值 = |对象.evidenceField|",
+          inputs: [`值 ${n.value ?? 0}`],
+          note: "因子的取证明细（真对象字段）",
+        };
+      case "event":
+        return {
+          title: n.label,
+          src: "affected_orders 聚合 · 母版 ROOT_LIB 根源",
+          formula: "受影响订单按根源分桶；财务敞口 = Σ(qty × 单价)",
+          inputs: [`受影响订单 ${n.affectedOrders ?? "?"} 单`, `财务敞口 ${n.financeImpact ?? "?"} 亿`, n.eventDate ? `最早交期 ${n.eventDate}` : ""].filter(Boolean),
+          rule: n.ruleRefs,
+          note: n.sub,
+          action: n.category ? { label: "查看受影响订单 →", onClick: () => navigate(`/v/order-chain?problem=${n.category}`) } : undefined,
+        };
+    }
+  };
+  const openDetail = (n: DagNode, weight?: number) => (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setDetail(nodeToDetail(n, weight));
+  };
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const childrenOf = (id: string): { node: DagNode; weight?: number }[] =>
@@ -76,15 +134,15 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
     const { node: factor, weight } = arg;
     return (
     <div key={factor.id} data-testid={`dag-node-${factor.id}`} data-kind="factor" style={{ paddingLeft: 14, borderLeft: "2px solid rgba(124,58,237,.4)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }} title="点穿溯源" onClick={openDetail(factor, weight)}>
         <span className="badge" style={{ background: "rgba(124,58,237,.18)", color: "#a78bfa" }}>{fmtPct(weight)}</span>
         <span>{factor.label}</span>
-        <span style={{ fontSize: 11, color: "var(--muted2)" }}>贡献 {factor.value}</span>
+        <span style={{ fontSize: 11, color: "var(--muted2)" }}>贡献 {factor.value} 🔍</span>
       </div>
-      {/* 取证叶（活数据明细） */}
+      {/* 取证叶（活数据明细）——点穿溯源 */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, paddingLeft: 12 }}>
         {childrenOf(factor.id).map(({ node: leaf }) => (
-          <span key={leaf.id} data-testid={`dag-node-${leaf.id}`} data-kind="evidence" className="badge" style={{ background: "var(--panel2,rgba(255,255,255,.04))", fontSize: 10.5 }}>
+          <span key={leaf.id} data-testid={`dag-node-${leaf.id}`} data-kind="evidence" className="badge" style={{ background: "var(--panel2,rgba(255,255,255,.04))", fontSize: 10.5, cursor: "pointer" }} title="点穿溯源" onClick={openDetail(leaf)}>
             {leaf.label} · {leaf.value}
           </span>
         ))}
@@ -97,12 +155,12 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
     <div data-testid="provenance-dag" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {roots.map((kpi) => (
         <div key={kpi.id} className="panel" data-testid={`dag-node-${kpi.id}`} data-kind="kpi" style={{ padding: 10, borderLeft: `3px solid ${STATUS_COLOR[kpi.status ?? ""] ?? "var(--muted2)"}` }}>
-          {/* 第一层：KPI 越线根（实际 vs 目标 + 缺口） */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* 第一层：KPI 越线根（实际 vs 目标 + 缺口）——点穿溯源 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} title="点穿溯源" onClick={openDetail(kpi)}>
             <span className="badge" style={{ background: STATUS_COLOR[kpi.status ?? ""] ?? undefined, color: "#fff" }}>{kpi.status}</span>
             <b>{kpi.label}</b>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
-              实际 {kpi.actual}{kpi.unit} · 目标 {kpi.target}{kpi.unit} · 缺口 {kpi.value}{kpi.unit}
+              实际 {kpi.actual}{kpi.unit} · 目标 {kpi.target}{kpi.unit} · 缺口 {kpi.value}{kpi.unit} 🔍
             </span>
           </div>
           {/* 轨R #3 母版 5 层 · 驱动事件层（event）：归因根 KPI 之下先列驱动事件——真事件来自
@@ -130,7 +188,8 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span className="badge" style={{ background: "rgba(221,126,158,.2)", color: "#DD7E9E" }}>事件</span>
                         <b style={{ fontSize: 12 }}>{ev.label}</b>
-                        {ev.ruleRefs && <span className="badge" style={{ background: "rgba(210,176,76,.18)", color: "#D2B04C", fontSize: 10 }}>{ev.ruleRefs}</span>}
+                        {/* N-R2：event 规则号接 RuleRef（悬浮出定义/阈值/作用域/版本）。click 不触发卡片跳转（RuleRef 仅 hover）。 */}
+                        {ev.ruleRefs && <span onClick={(e) => e.stopPropagation()}><RuleRef code={ev.ruleRefs} /></span>}
                       </div>
                       {ev.sub && <div style={{ fontSize: 10.5, color: "var(--muted2)", marginTop: 2 }}>{ev.sub} ›</div>}
                     </button>
@@ -144,7 +203,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
             {childrenOf(kpi.id).filter((c) => c.node.kind !== "event").map((child) =>
               child.node.kind === "ksf" ? (
                 <div key={child.node.id} data-testid={`dag-node-${child.node.id}`} data-kind="ksf" style={{ paddingLeft: 8, borderLeft: "2px solid rgba(76,144,240,.5)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }} title="点穿溯源" onClick={openDetail(child.node)}>
                     <span className="badge" style={{ background: "rgba(76,144,240,.18)", color: "#4C90F0" }}>KSF</span>
                     <b>{child.node.label}</b>
                     {child.node.sub && <span style={{ fontSize: 11, color: "var(--muted2)" }}>{child.node.sub}</span>}
@@ -160,6 +219,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
           </div>
         </div>
       ))}
+      {detail && <DagNodeDrawer detail={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }

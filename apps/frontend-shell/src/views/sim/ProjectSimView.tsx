@@ -12,6 +12,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
 import { RuleRef } from "@/components/RuleRef";
+import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
 import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
 import { fmt, SnapshotBadge, useActionDraft } from "./shared";
@@ -1070,17 +1071,6 @@ function buildDag(
 // ---------------- DAG 节点点穿（#3 · 哲学 #1/#3/#6：每节点可验证） ----------------
 
 /** 节点详情 = 六要素溯源（结论可溯源 R13）：判定/来源/新鲜度/推导/输入/规则/备注。 */
-interface DagDetail {
-  title: string;
-  verdict?: string;
-  src: string;
-  fresh?: string;
-  formula?: string;
-  inputs?: string[];
-  rule?: string;
-  note?: string;
-}
-
 /** DAG 驱动因子层默认（与 buildDag 一致；ViewConfig.layout.driverFactors 缺失时兜底）。 */
 function defaultDagFactors(healthFactor: number): { id: string; label: string; sub: string }[] {
   return [
@@ -1188,60 +1178,3 @@ function dagNodeDetail(
   return { title: id, src: "—" };
 }
 
-/** 节点详情抽屉：六要素一行一列展开 + 规则两跳（RuleRef）。 */
-function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose: () => void }) {
-  return (
-    <Modal title={`🔍 ${detail.title}`} onClose={onClose} width={560}>
-      <div data-testid="dag-node-drawer">
-        {detail.verdict && (
-          <div className={styles.okBar} style={{ borderColor: "var(--line2)", marginBottom: 10 }} data-testid="dag-node-verdict">
-            {detail.verdict}
-          </div>
-        )}
-        <table className="cmp">
-          <tbody>
-            <tr>
-              <td style={{ width: 96, color: "var(--muted2)" }}>来源系统</td>
-              <td data-testid="dag-node-src">{detail.src}</td>
-            </tr>
-            {detail.fresh && (
-              <tr>
-                <td style={{ color: "var(--muted2)" }}>新鲜度</td>
-                <td>{detail.fresh}</td>
-              </tr>
-            )}
-            {detail.formula && (
-              <tr>
-                <td style={{ color: "var(--muted2)" }}>推导公式</td>
-                <td>
-                  <code style={{ fontSize: 11 }}>{detail.formula}</code>
-                </td>
-              </tr>
-            )}
-            {detail.inputs && detail.inputs.length > 0 && (
-              <tr>
-                <td style={{ color: "var(--muted2)" }}>输入数据</td>
-                <td>{detail.inputs.join(" · ")}</td>
-              </tr>
-            )}
-            {detail.rule && (
-              <tr>
-                <td style={{ color: "var(--muted2)" }}>关联规则</td>
-                <td data-testid="dag-node-rule">
-                  <RuleRef code={detail.rule} />
-                </td>
-              </tr>
-            )}
-            {detail.note && (
-              <tr>
-                <td style={{ color: "var(--muted2)" }}>备注</td>
-                <td style={{ color: "var(--muted)" }}>{detail.note}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        <div style={{ marginTop: 8, fontSize: 10, color: "var(--muted2)" }}>信任 = 出处 + 推导可当场亮出（R13）</div>
-      </div>
-    </Modal>
-  );
-}

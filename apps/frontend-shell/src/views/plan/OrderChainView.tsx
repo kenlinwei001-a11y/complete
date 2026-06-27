@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup } from "@platform/contracts";
 import { SEG_REGISTRY } from "@platform/contracts";
@@ -7,6 +7,7 @@ import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
+import { RuleRef } from "@/components/RuleRef";
 import { useActionDraft } from "../sim/shared";
 import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
@@ -58,6 +59,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   const [baseFilter, setBaseFilter] = useState<string>("");
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
   const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG
+  const navigate = useNavigate(); // 轨N 增量1·N-D：下钻去死路——面包屑/返回（逐单进得去也回得来）
   const [segMode, setSegMode] = useState<"app" | "base">("app"); // econ 看板分组：应用细分 / 风险基地
   // 轨M 增量1（假3 复审修·RL5）：库存占营收系数从后端 view.layout.econ 下发（换租户=换配置），
   // 不再用前端写死的 ECON_DEFAULT.coef；segPrice/segMargin 仍取 SEG_REGISTRY 契约单一来源（真价/利）。
@@ -136,6 +138,13 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 
   return (
     <div data-testid="order-chain-view">
+      {/* 轨N 增量1·N-D1/D2/D3：下钻面包屑 + 返回——从驾驶舱台账/问题卡/事件卡进得来也回得去（去死路）。 */}
+      <div data-testid="order-chain-breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "var(--muted)" }}>
+        <button className="badge" data-testid="order-chain-back" style={{ cursor: "pointer" }} onClick={() => navigate(-1)}>‹ 返回</button>
+        <span style={{ cursor: "pointer" }} onClick={() => navigate("/v/dash")}>经营驾驶舱</span>
+        <span style={{ color: "var(--muted2)" }}>›</span>
+        <b>订单全链聚合</b>
+      </div>
       <div className={simStyles.head}>
         <div>
           <h3>{zh.orderChain.title}</h3>
@@ -461,9 +470,34 @@ function OrderFullchainPanel() {
           <table className="cmp" data-testid="ofc-judges" style={{ marginTop: 8 }}>
             <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>
             <tbody>
-              <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">P90 {data.judges.cap.p90} vs 需求 {data.judges.cap.demand}</td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
-              <tr><td>②齐套·MRP</td><td>{data.judges.kit.verdict}</td><td className="mono">{data.judges.kit.material} 缺 {data.judges.kit.gapTon} 吨</td><td className="mono">{data.judges.kit.ruleRefs.join("/")}</td></tr>
-              <tr><td>③财务·经营</td><td>{data.judges.fin.verdict}</td><td className="mono">毛利 {data.judges.fin.marginPct}% vs 底线 {data.judges.fin.floorPct}%</td><td className="mono">{data.judges.fin.ruleRefs.join("/")}</td></tr>
+              {/* 轨N 增量1·N-R1：规则号接 RuleRef（悬浮出定义/阈值/作用域/版本）·N-N1：关键值接 Provenance（接 order_fullchain 真值）。 */}
+              <tr>
+                <td>①交期·产能</td><td>{data.judges.cap.verdict}</td>
+                <td className="mono">
+                  <Provenance testId="ofc-judge-cap" src="order_fullchain 求解器 · 交期产能判（Order×Model 可产基地周曲线）" formula="P90 = 产能周曲线 90 分位累计；vs 需求量" inputs={["可产基地节拍×OEE×良率", "爬坡曲线+检修窗", "订单需求量"]} rule={data.judges.cap.ruleRefs.join("/")}>
+                    P90 {data.judges.cap.p90} vs 需求 {data.judges.cap.demand}
+                  </Provenance>
+                </td>
+                <td className="mono">{data.judges.cap.ruleRefs.length > 0 ? <RuleRef code={data.judges.cap.ruleRefs.join("/")} /> : "—"}</td>
+              </tr>
+              <tr>
+                <td>②齐套·MRP</td><td>{data.judges.kit.verdict}</td>
+                <td className="mono">
+                  <Provenance testId="ofc-judge-kit" src="order_fullchain 求解器 · 齐套 MRP 判（MaterialBalance 净需求）" formula="缺口吨 = 净需求 − 长协覆盖 − 现货" inputs={["关键物料净需求", "长协覆盖", "现货库存", "在途 ETA"]} rule={data.judges.kit.ruleRefs.join("/")}>
+                    {data.judges.kit.material} 缺 {data.judges.kit.gapTon} 吨
+                  </Provenance>
+                </td>
+                <td className="mono">{data.judges.kit.ruleRefs.length > 0 ? <RuleRef code={data.judges.kit.ruleRefs.join("/")} /> : "—"}</td>
+              </tr>
+              <tr>
+                <td>③财务·经营</td><td>{data.judges.fin.verdict}</td>
+                <td className="mono">
+                  <Provenance testId="ofc-judge-fin" src="order_fullchain 求解器 · 财务三闸（毛利/信用/价）" formula="细分毛利率 vs 底线；信用占用比；提价% = 达底线所需" inputs={["细分毛利率（SEG_REGISTRY）", "毛利底线", "客户信用占用比"]} rule={data.judges.fin.ruleRefs.join("/")}>
+                    毛利 {data.judges.fin.marginPct}% vs 底线 {data.judges.fin.floorPct}%
+                  </Provenance>
+                </td>
+                <td className="mono">{data.judges.fin.ruleRefs.length > 0 ? <RuleRef code={data.judges.fin.ruleRefs.join("/")} /> : "—"}</td>
+              </tr>
             </tbody>
           </table>
           <button className="btn sm" data-testid="ofc-adopt" style={{ marginTop: 8 }} disabled={adopt.isPending}
