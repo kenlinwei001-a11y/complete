@@ -262,6 +262,7 @@ const DASH_LAYOUT = {
       type: "kpi",
       title: "计划达成率",
       unit: "%",
+      drill: { kind: "attainment-decomp", seriesKey: "attainment:line" },
       query: { kind: "solver", solverKey: "schedule_attainment", args: {}, valuePath: "value" },
       provenance: { toolName: "query_timeseries_agg", outputPath: "$.value", snapshotVersion: "agg-77", formula: "达成率 = 设备效率达成(实际OEE/计划OEE) × 良率达成(实际良率/计划良率) × 排程事件损(检修/周末/爬坡)", inputs: ["attainment:line.oeeAttain", "attainment:line.yieldAttain", "attainment:line.eventDip"], sourceSystem: "时序库·attainment:line（逐日真派生·MES 周聚合）", note: "缺口逐日拆为 设备效率损 + 良率损 + 检修·周末·爬坡损（R13 可溯源；分量持久化于 attainment:line 序列）" },
     },

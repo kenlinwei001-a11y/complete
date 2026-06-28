@@ -8,6 +8,7 @@ import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
 import { Provenance } from "@/components/Provenance";
 import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
+import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
 import type { ViewRendererProps } from "./registry";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import zh from "@/locales/zh";
@@ -366,6 +367,90 @@ function useWidgetData(q: WidgetQueryDef) {
   });
 }
 
+/**
+ * 计划达成率逐日拆因下钻（R13 逐日可溯）：读 attainment:line 派生分量（oeeAttain/yieldAttain/eventDip），
+ * 跨产线按日聚合 → 逐日 达成率 = 设备效率达成 × 良率达成 × 排程事件损，标掉日(<期均) + 主因(缺口最大的因子)。
+ * 数据来自后端真派生序列（agg-query measureField 选择器），非前端写死（R14）。
+ */
+async function fetchAttainmentDecomp(seriesKey: string): Promise<DagDetail["breakdown"]> {
+  // 取近 14 个有数据的日：合成历史止于 forecastStart（≈今日前数周），故拉宽窗口（≤120 桶上限）后切末 14 日。
+  const to = new Date();
+  const from = new Date(to.getTime() - 118 * 86400_000);
+  const win = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), grain: "day" };
+  const KEEP = 14;
+  const fields = ["attainment", "oeeAttain", "yieldAttain", "eventDip"] as const;
+  const byField = await Promise.all(
+    fields.map((mf) => queryTimeseriesAgg({ seriesKey, entityIds: [], window: win, agg: "avg", measureField: mf })),
+  );
+  // 跨产线按 bucket 平均（headline 口径 = 各线均值），逐日聚成一行。
+  const dayMap = new Map<string, Record<string, { sum: number; n: number }>>();
+  fields.forEach((mf, fi) => {
+    for (const p of byField[fi]!.points) {
+      const row = dayMap.get(p.bucket) ?? {};
+      const cur = row[mf] ?? { sum: 0, n: 0 };
+      row[mf] = { sum: cur.sum + p.value, n: cur.n + 1 };
+      dayMap.set(p.bucket, row);
+    }
+  });
+  const days = [...dayMap.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-KEEP);
+  if (days.length === 0) return { columns: ["日期"], rows: [], caption: "暂无逐日派生数据（需真后端 attainment:line 序列）" };
+  const avg = (r: Record<string, { sum: number; n: number }>, k: string) => (r[k] && r[k]!.n ? r[k]!.sum / r[k]!.n : 0);
+  const periodAvg = days.reduce((s, [, r]) => s + avg(r, "attainment"), 0) / days.length;
+  const rows = days.map(([date, r]) => {
+    const at = avg(r, "attainment"), oee = avg(r, "oeeAttain"), yld = avg(r, "yieldAttain"), evt = avg(r, "eventDip");
+    // 主因 = 距 1.0 缺口最大的因子
+    const losses: [string, number][] = [["设备效率", 1 - oee], ["良率", 1 - yld], ["排程事件", 1 - evt]];
+    losses.sort((a, b) => b[1] - a[1]);
+    const cause = losses[0]![1] > 0.005 ? losses[0]![0] : "—";
+    return {
+      cells: [date.slice(5), `${(at * 100).toFixed(1)}%`, `${(oee * 100).toFixed(1)}%`, `${(yld * 100).toFixed(1)}%`, evt < 0.999 ? `${(evt * 100).toFixed(0)}%` : "—", cause],
+      dip: at < periodAvg - 0.005,
+    };
+  });
+  return {
+    columns: ["日期", "达成率", "设备效率达成", "良率达成", "排程事件损", "主因"],
+    rows,
+    caption: `近 ${days.length} 日逐日拆解（达成率 = 设备效率达成 × 良率达成 × 排程事件损）·灰底=低于期均 ${(periodAvg * 100).toFixed(1)}%·主因=缺口最大因子`,
+  };
+}
+
+function KpiDrillButton({ def, value, scale }: { def: DashboardWidgetDef; value: unknown; scale?: number }) {
+  const [open, setOpen] = useState(false);
+  const { data: breakdown, isFetching } = useQuery({
+    queryKey: ["attain-decomp", def.drill?.seriesKey],
+    queryFn: () => fetchAttainmentDecomp(def.drill!.seriesKey),
+    enabled: open && !!def.drill,
+  });
+  return (
+    <>
+      <button
+        type="button"
+        data-testid={`kpi-drill-${def.key}`}
+        onClick={() => setOpen(true)}
+        title="点开逐日拆因"
+        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit", font: "inherit" }}
+      >
+        <KpiWidget value={value} unit={def.unit} scale={scale} />
+        <span style={{ fontSize: 10, color: "var(--accent,#6ea8fe)" }}>点开逐日拆因 →</span>
+      </button>
+      {open && (
+        <DagNodeDrawer
+          onClose={() => setOpen(false)}
+          detail={{
+            title: `${def.title} · 逐日拆因`,
+            src: def.provenance?.sourceSystem ?? "时序库·attainment:line",
+            formula: def.provenance?.formula ?? "达成率 = 设备效率达成 × 良率达成 × 排程事件损",
+            inputs: def.provenance?.inputs,
+            rule: def.provenance?.ruleRefs,
+            note: isFetching ? "加载逐日派生数据…" : def.provenance?.note,
+            breakdown: breakdown ?? { columns: ["日期"], rows: [], caption: isFetching ? "加载中…" : "" },
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 function Widget({ def }: { def: DashboardWidgetDef }) {
   const { data, isLoading } = useWidgetData(def.query);
 
@@ -393,7 +478,7 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
       {isLoading ? (
         <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
       ) : def.type === "kpi" ? (
-        <KpiWidget value={data} unit={def.unit} scale={def.scale} />
+        def.drill ? <KpiDrillButton def={def} value={data} scale={def.scale} /> : <KpiWidget value={data} unit={def.unit} scale={def.scale} />
       ) : def.type === "chart" ? (
         <ChartWidget data={data} kind={def.chartKind ?? "line"} series={def.chartSeries} />
       ) : def.type === "summary" ? (

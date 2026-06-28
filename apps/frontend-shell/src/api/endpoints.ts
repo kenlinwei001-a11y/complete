@@ -249,6 +249,8 @@ export const queryTimeseriesAgg = (input: {
   entityIds: string[];
   window: { from: string; to: string; grain: string };
   agg: string;
+  /** 选非主测度（如派生达成率分量 oeeAttain/yieldAttain/eventDip，逐日拆因 R13）。 */
+  measureField?: string;
 }) => api.a<QueryTimeseriesAggOutput>("/a/v1/timeseries/agg-query", { body: input });
 
 // 数据接入分类（数据接入控制台）：按业务域归类 + 每类接入方式 + 上传模版（可看可下载）。

@@ -5,6 +5,7 @@ import { chromium } from "playwright-core";
 const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
 const CHROME = process.env.CHROME;
 const OUT = process.env.OUT ?? "docs/evidence/attainment-derive-fde.png";
+const OUT2 = process.env.OUT2 ?? "docs/evidence/attainment-decomp-drill-fde.png";
 
 const browser = await chromium.launch({ ...(CHROME ? { executablePath: CHROME } : {}), args: ["--no-sandbox", "--disable-dev-shm-usage"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -44,6 +45,25 @@ try {
 
   await page.screenshot({ path: OUT, fullPage: false });
   ok(`截图已存 ${OUT}`);
+
+  // 逐日拆因下钻：点 KPI → DagNodeDrawer 逐日明细表
+  const drill = page.locator('[data-testid="kpi-drill-attain"]');
+  if (await drill.count()) {
+    await drill.click();
+    await page.waitForSelector('[data-testid="dag-node-breakdown"]', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    const bd = page.locator('[data-testid="dag-node-breakdown"]');
+    if (await bd.count()) {
+      const rows = await page.locator('[data-testid="breakdown-row"], [data-testid="breakdown-dip-row"]').count();
+      const dips = await page.locator('[data-testid="breakdown-dip-row"]').count();
+      const bdText = await bd.innerText();
+      const hasCols = bdText.includes("设备效率达成") && bdText.includes("良率达成") && bdText.includes("排程事件损") && bdText.includes("主因");
+      if (rows > 0 && hasCols) ok(`逐日拆因表渲染：${rows} 日（${dips} 日低于期均标灰）·列含 设备效率达成/良率达成/排程事件损/主因`);
+      else bad(`逐日拆因表异常 rows=${rows} cols=${hasCols}`);
+      await page.screenshot({ path: OUT2, fullPage: false });
+      ok(`下钻截图已存 ${OUT2}`);
+    } else bad("点 KPI 后未出现逐日拆因表（dag-node-breakdown）");
+  } else bad("未找到 kpi-drill-attain（计划达成率 KPI 不可点开下钻）");
 } catch (e) {
   bad(`异常：${e.message}`);
 } finally {

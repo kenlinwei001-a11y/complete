@@ -114,6 +114,9 @@ export interface DashboardWidgetDef {
   chartKind?: "line" | "bar" | "trideviation";
   /** 三线偏差复合图（trideviation）的系列声明：data 各项的数值字段 → 线名/色。 */
   chartSeries?: { key: string; name: string; color?: string }[];
+  /** KPI 可点开下钻（配置驱动 R14）：attainment-decomp = 计划达成率逐日拆因
+   *  （逐日 达成率 = 设备效率达成 × 良率达成 × 排程事件损，标掉日+主因），读 seriesKey 派生分量。 */
+  drill?: { kind: "attainment-decomp"; seriesKey: string };
 }
 
 export type WidgetQueryDef =

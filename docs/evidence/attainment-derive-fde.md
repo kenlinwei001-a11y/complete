@@ -49,7 +49,15 @@
 - datacore 751 测 + 新 `attainment-derive.test.ts` 4 测（分解算术 / measureField 选择器 / 未知→400 / R6 字节一致）
 - frontend 279 测 · agentcore build · gates：cockpit-widgets / traceability 全绿
 
+## 逐日拆因下钻（继续增量·已落）
+
+点驾驶舱「计划达成率」KPI → 复用 `DagNodeDrawer`（扩 `breakdown` 表）弹「逐日拆因」抽屉：
+近 14 日逐日 `达成率 = 设备效率达成 × 良率达成 × 排程事件损`，标掉日（低于期均·灰底）+ 主因（缺口最大因子）。
+drill 配置驱动（widget def `drill:{kind,seriesKey}`，R14），数据走 `agg-query measureField` 真派生分量（非写死）。
+实拍 `docs/evidence/attainment-decomp-drill-fde.png`：14 日表，05-30/05-31 周末 主因「排程事件」(eventDip 86%)，
+余日 主因「设备效率」；算术自洽（05-27: 90.5%×98.2%×98% ≈ 86.8%）。FDE 7/7 全绿。
+
 ## 距北极星还差什么（诚实）
 
-- ✅ 真做到：达成率真派生 + 逐日分量持久化 + 可查 + UI 悬浮显分解。
-- 📏 **未做（本次范围外）**：① 驾驶舱暂无"点开 KPI → 逐日拆因瀑布图/堆叠条"的专屏下钻（现为悬浮文案 + API 可查，未建独立可视化页，避免硬造壳）；② OEE/良率分量为镜像分布、非与该线具体设备/工序逐台 join（同源同分布、确定性，但非逐设备勾稽）——若要"点达成率→点到具体停机设备"需再接 oee:equip×line 拓扑聚合，属后续增量。
+- ✅ 真做到：达成率真派生 + 逐日分量持久化 + 可查 + UI 悬浮显分解 + **点 KPI 逐日拆因下钻**。
+- 📏 **未做（后续增量）**：OEE/良率分量为镜像分布、非与该线具体设备/工序逐台 join（同源同分布、确定性，但非逐设备勾稽）——若要"点达成率→点到具体停机设备/工序"需再接 `oee:equip × line` 拓扑聚合。

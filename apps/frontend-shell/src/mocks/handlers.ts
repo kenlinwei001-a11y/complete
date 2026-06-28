@@ -1120,7 +1120,25 @@ export const handlers = [
   }),
 
   // ---- 时序聚合查询（A8.4，无任何参数组合可返回原始行） ----
-  http.post("*/a/v1/timeseries/agg-query", () => HttpResponse.json({ points: TS_AGG_POINTS })),
+  // 计划达成率逐日拆因（drill）：按 measureField 返回各分量（达成率=设备效率达成×良率达成×排程事件损）。
+  http.post("*/a/v1/timeseries/agg-query", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { seriesKey?: string; measureField?: string };
+    if (body.seriesKey === "attainment:line") {
+      const mf = body.measureField ?? "attainment";
+      const points = Array.from({ length: 14 }, (_, i) => {
+        const day = i + 1;
+        const dow = new Date(`2026-06-${String(day).padStart(2, "0")}T00:00:00Z`).getUTCDay();
+        const eventDip = dow === 0 || dow === 6 ? 0.88 : 1; // 周末减产
+        const oeeAttain = Number((0.93 + Math.sin(i * 0.7) * 0.03).toFixed(4)); // 设备效率达成 ~0.78/0.85
+        const yieldAttain = Number((0.982 + Math.cos(i * 0.5) * 0.008).toFixed(4)); // 良率达成 ~0.952/0.97
+        const attainment = Number((oeeAttain * yieldAttain * eventDip).toFixed(4));
+        const value = mf === "oeeAttain" ? oeeAttain : mf === "yieldAttain" ? yieldAttain : mf === "eventDip" ? eventDip : attainment;
+        return { entityId: "LINE-changzhou", bucket: `2026-06-${String(day).padStart(2, "0")}`, value };
+      });
+      return HttpResponse.json({ points });
+    }
+    return HttpResponse.json({ points: TS_AGG_POINTS });
+  }),
 
   // ---- 连接器 ----
   http.get("*/a/v1/connector-types", () => HttpResponse.json(CONNECTOR_TYPES)),

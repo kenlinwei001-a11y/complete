@@ -17,6 +17,12 @@ export interface DagDetail {
   note?: string;
   /** 可选下钻动作（如 event 节点"查看受影响订单"）——保上下文的就地跳转。 */
   action?: { label: string; onClick: () => void };
+  /** 可选逐日拆因表（如计划达成率：逐日 达成率 = 设备效率达成 × 良率达成 × 排程事件损，标主因）。 */
+  breakdown?: {
+    columns: string[];
+    rows: { cells: (string | number)[]; dip?: boolean }[];
+    caption?: string;
+  };
 }
 
 export function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose: () => void }) {
@@ -70,6 +76,33 @@ export function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose:
             )}
           </tbody>
         </table>
+        {detail.breakdown && detail.breakdown.rows.length > 0 && (
+          <div style={{ marginTop: 12 }} data-testid="dag-node-breakdown">
+            {detail.breakdown.caption && (
+              <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }}>{detail.breakdown.caption}</div>
+            )}
+            <div style={{ maxHeight: 280, overflowY: "auto" }}>
+              <table className="cmp" style={{ fontSize: 11 }}>
+                <thead>
+                  <tr>
+                    {detail.breakdown.columns.map((c) => (
+                      <th key={c} style={{ textAlign: "left", color: "var(--muted2)", fontWeight: 500 }}>{c}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.breakdown.rows.map((r, i) => (
+                    <tr key={i} style={r.dip ? { background: "var(--line2)" } : undefined} data-testid={r.dip ? "breakdown-dip-row" : "breakdown-row"}>
+                      {r.cells.map((cell, j) => (
+                        <td key={j} className={j > 0 ? "mono" : undefined}>{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
         {detail.action && (
           <button className="btn sm" style={{ marginTop: 10 }} data-testid="dag-node-action" onClick={detail.action.onClick}>
             {detail.action.label}

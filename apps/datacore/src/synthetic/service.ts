@@ -1038,6 +1038,7 @@ export class SyntheticService {
         },
         {
           key: "attain", type: "kpi", title: "计划达成率", unit: "%", scale: 100,
+          drill: { kind: "attainment-decomp", seriesKey: "attainment:line" },
           query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
           provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", formula: "达成率 = 设备效率达成(实际OEE/计划OEE) × 良率达成(实际良率/计划良率) × 排程事件损(检修/周末/爬坡)", label: "avg(Line.schedule_attainment) 周聚合·真派生", ruleRefs: "C21", inputs: ["attainment:line.oeeAttain", "attainment:line.yieldAttain", "attainment:line.eventDip"], sourceSystem: "时序库·attainment:line（逐日真派生·MES 周聚合）", note: "缺口逐日拆为 设备效率损 + 良率损 + 检修·周末·爬坡损（R13 可溯源；分量持久化于 attainment:line 序列）" },
         },
