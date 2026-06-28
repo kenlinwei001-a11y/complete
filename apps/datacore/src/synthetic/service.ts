@@ -35,7 +35,7 @@ import {
 import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
-import { genPoint, maintWindowsFor, windowFor, type TsGenSpec } from "./tsgen.js";
+import { genPoint, maintWindowsFor, windowFor, ATTAIN_COMPONENT_FIELDS, type TsGenSpec } from "./tsgen.js";
 
 const TEMPLATE_SYSTEM = `你是行业数据模板生成器。给定行业名称，输出 IndustryTemplate：
 ontology.objectTypes（数组，每项 { key, displayName, properties:[{propKey,dataType,isPrimaryKey,refToTypeKey?}], derivedProperties:[{propKey,formula}] }）、
@@ -422,12 +422,16 @@ export class SyntheticService {
     const windows = maintWindowsFor(maintPlans, BATTERY_SOLVER_PARAMS.forecastStart as string);
     const generators = (BATTERY_TEMPLATE.tsGenerators ?? []) as unknown as TsGenSpec[];
     for (const gen of generators) {
+      // 派生达成率序列额外持久化分量字段（oeeAttain/yieldAttain/eventDip）以支持逐日拆因（R13）。
+      const measureFields = gen.derive?.kind === "attainment"
+        ? [gen.measureField, ...ATTAIN_COMPONENT_FIELDS]
+        : gen.weightField ? [gen.measureField, gen.weightField] : [gen.measureField];
       const series = await this.ts.ensureSeries(ctx.tenantId, {
         seriesKey: gen.seriesKey,
         entityType: gen.entityType,
         entityRefField: entityRefFieldOf(gen.entityType),
         timeField: "ts",
-        measureFields: gen.weightField ? [gen.measureField, gen.weightField] : [gen.measureField],
+        measureFields,
         origin: "SYNTHETIC",
       });
       const entities = (await this.repos.objects.listByType(ctx.tenantId, gen.entityType)).sort((a, b) =>
@@ -1035,7 +1039,7 @@ export class SyntheticService {
         {
           key: "attain", type: "kpi", title: "计划达成率", unit: "%", scale: 100,
           query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
-          provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "avg(Line.schedule_attainment) 周聚合回写", ruleRefs: "C21", inputs: ["Line.schedule_attainment"], sourceSystem: "时序库·attainment:line（MES 周聚合）" },
+          provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", formula: "达成率 = 设备效率达成(实际OEE/计划OEE) × 良率达成(实际良率/计划良率) × 排程事件损(检修/周末/爬坡)", label: "avg(Line.schedule_attainment) 周聚合·真派生", ruleRefs: "C21", inputs: ["attainment:line.oeeAttain", "attainment:line.yieldAttain", "attainment:line.eventDip"], sourceSystem: "时序库·attainment:line（逐日真派生·MES 周聚合）", note: "缺口逐日拆为 设备效率损 + 良率损 + 检修·周末·爬坡损（R13 可溯源；分量持久化于 attainment:line 序列）" },
         },
         {
           key: "orders", type: "kpi", title: "在手订单",

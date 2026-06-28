@@ -366,7 +366,11 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     ],
   },
   // 增量 §7.10：plan-versions/current 基线缺省（S&OP 步骤推不出的字段，确定性常数）
-  planBaseline: { ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
+  // oeePlan/yieldPlan：计划达成率真派生的治理计划基准（R14 应用层无业务常数——基准在此声明，由
+  // 时序生成器注入 attainment:line 派生规格）。达成 = 实际/计划：oeePlan 0.85 = 设备综合效率近期改善目标，
+  // yieldPlan 0.97 = 工序良率目标。实际 OEE≈0.78 / 良率≈0.952（见 tsGenerators oee:equip / yield:process），
+  // 故结构性达成 ≈ (0.78/0.85)×(0.952/0.97) ≈ 0.90，缺口逐日拆为 设备效率损 + 良率损 + 排程事件损（R13）。
+  planBaseline: { ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0, oeePlan: 0.85, yieldPlan: 0.97 },
   dupSimilarityThreshold: 0.92,
 };
 
@@ -1017,7 +1021,19 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     { seriesKey: "oee:equip", entityType: "Equipment", grain: "day", base: { mean: 0.78, noise: 0.04 }, effects: ["maint_window_dip", "weekend_dip"], measureField: "oee", weightField: "output" },
     { seriesKey: "yield:process", entityType: "Process", grain: "day", base: { mean: 0.952, noise: 0.008 }, effects: ["maint_window_dip"], measureField: "yield" },
     { seriesKey: "output:line", entityType: "Line", grain: "day", base: { mean: 30000, noise: 1800 }, drift: 8, effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "output" },
-    { seriesKey: "attainment:line", entityType: "Line", grain: "day", base: { mean: 0.914, noise: 0.02 }, measureField: "attainment" },
+    // R13 真派生（非 flat seed）：达成率 = 设备效率达成 × 良率达成 × 排程事件损。逐日持久化分量
+    // （oeeAttain/yieldAttain/eventDip），使"为何未达成"可逐日拆为 设备效率损/良率损/检修·周末·爬坡损。
+    // 计划基准 oeePlan/yieldPlan 由治理 planBaseline 注入（R14）；实际 OEE/良率分布镜像 oee:equip / yield:process。
+    {
+      seriesKey: "attainment:line", entityType: "Line", grain: "day", base: { mean: 0, noise: 0 },
+      effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "attainment",
+      derive: {
+        kind: "attainment",
+        oeePlan: (BATTERY_SOLVER_PARAMS.planBaseline as { oeePlan: number }).oeePlan,
+        yieldPlan: (BATTERY_SOLVER_PARAMS.planBaseline as { yieldPlan: number }).yieldPlan,
+        oeeMean: 0.78, oeeNoise: 0.04, yieldMean: 0.952, yieldNoise: 0.008,
+      },
+    },
     { seriesKey: "util:line", entityType: "Line", grain: "day", base: { mean: 92, noise: 1.2 }, effects: ["maint_window_dip"], measureField: "util" },
     // CL.5（PRD-attainment-base-daily-timeseries）：基地级日达成率序列——"本月逐日为何未达成"时间维度归因
     // 所需（现仅 attainment:line 产线级 + schedule_attainment 周聚合）。day grain、含检修/周末/爬坡剧本，

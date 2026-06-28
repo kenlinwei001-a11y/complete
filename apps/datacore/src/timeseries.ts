@@ -389,7 +389,11 @@ export class TimeseriesService {
       from: new Date(fromMs).toISOString(),
       to: new Date(toMs).toISOString(),
     });
-    const measure = series.measureFields[0] as string;
+    // 默认主测度；可显式选分量字段（派生达成率的 oeeAttain/yieldAttain/eventDip，逐日拆因 R13）。
+    if (input.measureField && !series.measureFields.includes(input.measureField)) {
+      throw validationError(`measureField '${input.measureField}' not in series ${series.seriesKey} (${series.measureFields.join(",")})`);
+    }
+    const measure = (input.measureField ?? series.measureFields[0]) as string;
     const grouped = new Map<string, { values: number[]; weights: number[] }>();
     for (const p of points) {
       const key = `${p.entityId}|${bucketOf(input.window.grain, p.ts)}`;

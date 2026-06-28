@@ -1,5 +1,23 @@
 import { hashString, mulberry32, round } from "../prng.js";
 
+/**
+ * 派生序列规格（R13 结论可溯源）：达成率不再是独立 seed 的"裸数字"，而是由命名损因相乘算出——
+ * `attainment = 设备效率达成 × 良率达成 × 排程事件损`。各因子确定性、可持久化、可逐日拆解（解释"为何未达成"
+ * = 设备效率损 + 良率损 + 检修/周末/爬坡损）。计划基准（oeePlan/yieldPlan）为治理常量，由调用方从
+ * solverParams 注入（R14 应用层无业务常数）。实际 OEE/良率分布镜像 oee:equip / yield:process 生成器。
+ */
+export interface TsGenDerive {
+  kind: "attainment";
+  /** 计划 OEE / 良率基准（治理目标，R14 config-driven）。达成 = 实际 / 计划。 */
+  oeePlan: number;
+  yieldPlan: number;
+  /** 实际 OEE / 良率分布（镜像 oee:equip / yield:process，使派生与底层链路同源）。 */
+  oeeMean: number;
+  oeeNoise: number;
+  yieldMean: number;
+  yieldNoise: number;
+}
+
 /** Battery-pack extension of the A8.6 tsGenerator contract (measure/weight names). */
 export interface TsGenSpec {
   seriesKey: string;
@@ -10,7 +28,12 @@ export interface TsGenSpec {
   effects?: ("weekend_dip" | "maint_window_dip" | "ramp_curve")[];
   measureField: string;
   weightField?: string;
+  /** 派生序列：measureField 由 derive 命名损因相乘算出，并额外持久化各分量（R13 逐日拆因）。 */
+  derive?: TsGenDerive;
 }
+
+/** 派生达成率额外持久化的分量字段（逐日拆因可溯）：设备效率达成 / 良率达成 / 排程事件损。 */
+export const ATTAIN_COMPONENT_FIELDS = ["oeeAttain", "yieldAttain", "eventDip"] as const;
 
 export interface TsGenEntity {
   entityId: string;
@@ -57,8 +80,26 @@ export function genPoint(
   scenario?: ScenarioModifiers,
 ): Record<string, number> {
   const rng = mulberry32(hashString(`${seed}|${spec.seriesKey}|${entity.entityId}|${dateIso}`));
-  let v = spec.base.mean + spec.base.noise * gauss(rng);
-  if (spec.drift) v += spec.drift * dayIndex;
+  // 派生分量（仅 attainment 派生序列）：设备效率达成 / 良率达成，逐日持久化以支持拆因。
+  let oeeAttain = 0;
+  let yieldAttain = 0;
+  let v: number;
+  if (spec.derive?.kind === "attainment") {
+    // R13 真派生：达成率 = 设备效率达成 × 良率达成 × 排程事件损（事件损由下方共用 effects 块施加）。
+    // 实际 OEE/良率独立确定性抽样（镜像 oee:equip / yield:process 分布），除以治理计划基准得达成分量。
+    const d = spec.derive;
+    const oeeRng = mulberry32(hashString(`${seed}|attain-oee|${entity.entityId}|${dateIso}`));
+    const yieldRng = mulberry32(hashString(`${seed}|attain-yield|${entity.entityId}|${dateIso}`));
+    const oeeActual = Math.min(0.995, Math.max(0.4, d.oeeMean + d.oeeNoise * gauss(oeeRng)));
+    const yieldActual = Math.min(0.995, Math.max(0.4, d.yieldMean + d.yieldNoise * gauss(yieldRng)));
+    oeeAttain = round(oeeActual / d.oeePlan, 4);
+    yieldAttain = round(yieldActual / d.yieldPlan, 4);
+    v = oeeAttain * yieldAttain; // 结构性基线（事件损前）
+  } else {
+    v = spec.base.mean + spec.base.noise * gauss(rng);
+    if (spec.drift) v += spec.drift * dayIndex;
+  }
+  const beforeEvents = v;
   const effects = spec.effects ?? [];
   if (effects.includes("weekend_dip")) {
     const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
@@ -77,6 +118,12 @@ export function genPoint(
   }
   v = clampFor(spec, round(v, 4));
   const values: Record<string, number> = { [spec.measureField]: v };
+  if (spec.derive?.kind === "attainment") {
+    // 排程事件损 = 事件后/事件前（1.0 = 无事件；<1 = 周末/检修/爬坡停减产）。逐日持久化供拆因。
+    values.oeeAttain = oeeAttain;
+    values.yieldAttain = yieldAttain;
+    values.eventDip = round(beforeEvents > 0 ? v / beforeEvents : 1, 4);
+  }
   if (spec.weightField) {
     values[spec.weightField] = round(800 + 400 * rng(), 2);
   }

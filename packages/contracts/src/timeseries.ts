@@ -35,6 +35,9 @@ export const QueryTimeseriesAggInputSchema = z.object({
     grain: z.enum(["shift", "day", "week"]),
   }),
   agg: z.enum(["avg", "sum", "min", "max", "p95", "weighted_avg"]),
+  /** 选取非主测度字段（如派生达成率的分量 oeeAttain/yieldAttain/eventDip，逐日拆因 R13）。
+   *  缺省取序列 measureFields[0]；指定的字段必须属于该序列声明的 measureFields，否则 400。 */
+  measureField: z.string().optional(),
 });
 export type QueryTimeseriesAggInput = z.infer<typeof QueryTimeseriesAggInputSchema>;
 
