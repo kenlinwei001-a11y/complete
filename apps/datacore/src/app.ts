@@ -72,6 +72,7 @@ const CapabilityNeedsSchema = z.object({
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
 import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
+import { OPT_MODEL_TEMPLATES } from "./solvers/opt-templates.js";
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
@@ -2375,7 +2376,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 列模板族（池 comprehend 兜底；增量4 embedding 检索叠其上）。
   app.get("/a/v1/opt/templates", async (req) => {
     await requireFeatureTag(req, "apiTags", "opt");
-    return { families: OPT_FAMILIES };
+    // G-12 收 provenance 门空过：返回一等可发现的 OptModelTemplate 实例（含 provenance/requiredRoles/
+    // decisionVars，R14 零业务常数），而非裸 family 字符串。families 保留向后兼容。
+    return { families: OPT_FAMILIES, templates: OPT_MODEL_TEMPLATES };
   });
   // 轨B·增量4 embedding 复用检索（advisory · FUS2 不入确定性求解路径）。
   // 门：gated 在 opt.solver-pool（apiTag "opt"）；opt.embedding-retrieval 关 → 退回 comprehend 关键词列表
