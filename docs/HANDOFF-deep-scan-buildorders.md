@@ -162,6 +162,36 @@
 
 ---
 
+## WO-13 · demo seed 欠播：agent/skill/workflow 太少（P2 · 审核方真跑坐实）
+
+- 缺口：真跑 `GET /b/v1/{agents,workflows,skills}` = **2 agent / 1 workflow / 1 skill**（`mocks/seed.ts:547-636` 只种最小集：1 wf + 1 skill `skl_seed_capacity` + 2 agents 都引用那 1 skill）。**能力在**（创建都能用·见 WO-14 hands-on），是 **seed 欠播**——同多租户/优化簇同一类病：机器建了，demo 没填满，显得"系统就这么点东西"。
+- 现状锚点：`apps/agentcore/src/mocks/seed.ts:547-636`。
+- 怎么建：扩 seed——按 demo 几条典型意图各种 1 个**可跑通**的 skill/workflow/agent（如订单影响分析、风险溯源、达成率拆因），覆盖 Path A 工作流 + Path B agent；每个真能被场景启动器/QOS 命中出真值。R6 确定性种子。
+- FDE 真值判据：demo 开箱 `GET /b/v1/agents,workflows,skills` 各 ≥3-4；点对应场景卡/问句**真出答案**（非空壳）。
+- 本体引用与影响：B1 Agent/B2 Workflow/B4 Skill 种子 · G-9 自成长（理想是长出而非手种，本单是 demo 富度兜底）。**无链路变更 → 不回写**。
+- 审核方复验点：真跑 GET 数量 + 各种子真能跑。
+
+## WO-14 · agent/workflow 配置「可发现性」（P3·UX·**非缺功能·hands-on 已证能用**）
+
+> ⚠️ **先纠偏**：用户报"配置页找不到配 skill/MCP/规则/求解器"——审核方**真手操作坐实：能力全在、且真能存**。① Agent：真勾「产能分析方法论」技能 + `invoke_solver` + `evaluate_rules` → 保存 → 后端确证 `skills:[skl_seed_capacity], tools:[...,invoke_solver,evaluate_rules]` **持久化 ✓**；② Workflow：编辑器步骤构建器实拍 `invoke_solver` 步→**solverKey 下拉(产能推演 capacity_forecast)**、`evaluate_rules` 步→**~30 规则码勾选**、`+MCP`/`invoke_mcp_tool`/`invoke_agent` 步均在。**所以本单不是修 bug，是修"找不到"。**
+- 缺口（可发现性）：① Agent 配置**要点开某个 agent 进编辑器**才见（列表上看不到）；② "求解器"不是叫"求解器"的标签段，是 `invoke_solver` **工具勾选**；③ Workflow 的 solver/规则配置**藏在每个步骤里**（加 `invoke_solver` 步选 solverKey），没有总览式"配置求解器/规则"入口 → 用户找不到。
+- 现状锚点：`AgentsPage.tsx`（编辑器内 内置工具/MCP/规则绑定/SKILLS/scope）· `WorkflowsPage.tsx`（步骤构建器·`invoke_solver`/`evaluate_rules`/`invoke_agent`/`invoke_mcp_tool` 步）。
+- 怎么建（不改能力·只提可发现性）：① 列表项加显式「配置/编辑」入口（别只靠点整行）；② 编辑器把 skill/MCP/规则/求解器 归成**带标题的分区**（"求解器"独立段而非混在工具勾选）；③ Workflow 加一句提示"加 `invoke_solver`/`evaluate_rules` 步骤即配求解器/规则"或一个"引用资源"总览。
+- FDE 真值判据：新用户**不看文档**能在 agent/workflow 页找到并配上 skill/MCP/规则/求解器（可用性走查）。
+- 本体引用与影响：纯前端可发现性/信息架构。**无链路/不变量变更 → 不回写**。
+- 审核方复验点：盲走查能找到配置入口。
+
+## WO-15 · 二级/详情页「返回」一致性（P2·UX·审核方真跑坐实）
+
+- 缺口：真跑实拍——44 个 admin 页**只 6 个**有返回模式；抽样 object-types/rules/calibration/agents **都无返回**，只 solvers 有。顶级导航页无返回尚可（用左导航），但**详情/钻取二级页缺返回**（点进对象/草案/版本后无路回上一层，只能浏览器后退/重导航）= 真 UX 缺口。
+- 现状锚点：`apps/frontend-shell/src/pages`（仅 WorkflowsPage/ModelingPage/DataBuilderPage/FieldProfilePage 等 6 处有返回）。
+- 怎么建：抽一个共享 `<BackLink>`/面包屑组件，统一给所有**钻取/详情二级视图**加返回上一层（或面包屑）；列表→详情、详情→子详情都可回退。与 WO-11.4 深链 F5 续期正交。
+- FDE 真值判据：随机点进 ≥5 个二级/详情页，**每个都有可见返回/面包屑**回上一层（真渲染走查）。
+- 本体引用与影响：纯前端导航一致性。**无回写**。
+- 审核方复验点：抽样二级页都能返回。
+
+---
+
 ## WO-0（收尾·建议）· 防"陈旧 dist"复发 + 越界代码复核
 
 - **CI dist↔源码一致性门**（P1#4 根因·防复发）：S&OP 空壳根因=运行 dist 早于源码修复提交。建议 CI/部署链加「dist 与最新提交一致性」或 real-backend 烟测，拦截陈旧构建。深扫盲区④提示**其他模块也可能潜伏同类陈旧**——建议 dev 跑一轮全模块 dist↔源码核对。
