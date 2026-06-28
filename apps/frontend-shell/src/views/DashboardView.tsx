@@ -482,7 +482,22 @@ async function fetchEquipTrend(equipId: string): Promise<NonNullable<DagDetail["
   if (days.length === 0) return { columns: ["日期"], rows: [], caption: `${equipId} 无 OEE 序列` };
   const avg = days.reduce((s, p) => s + p.value, 0) / days.length;
   const rows = days.map((p) => ({ cells: [p.bucket.slice(5), `${(p.value * 100).toFixed(1)}%`], dip: p.value < avg - 0.02 }));
-  return { columns: ["日期", "OEE"], rows, caption: `设备「${equipId}」近 ${days.length} 日 OEE 趋势（灰底=低于均值 ${(avg * 100).toFixed(1)}%）` };
+  // A1-深：把设备 OEE 趋势接到所属基地的真实检修计划（MaintPlan）——低效是否撞检修窗口/下次检修何时（insight→运维，R13）。
+  let maintNote = "";
+  try {
+    const eq = (await queryObjectsPaged("Equipment", 1, 1, { equipId })).items[0];
+    const baseId = eq ? String(eq.props.baseId ?? "") : "";
+    if (baseId) {
+      const mps = (await queryObjectsPaged("MaintPlan", 1, 20, { baseId })).items
+        .map((m) => ({ start: String(m.props.lastMaintStart ?? m.props.start ?? ""), week: Number(m.props.week ?? 0) }))
+        .filter((m) => m.start);
+      if (mps.length > 0) {
+        const next = mps.sort((a, b) => (a.start < b.start ? -1 : 1))[0]!;
+        maintNote = ` · 所属基地「${baseId}」检修计划：${next.start}${next.week ? `（第 ${next.week} 周）` : ""}（低 OEE 若撞检修窗口属计划内停机）`;
+      }
+    }
+  } catch { /* MaintPlan 缺失则不附（不阻断趋势主表） */ }
+  return { columns: ["日期", "OEE"], rows, caption: `设备「${equipId}」近 ${days.length} 日 OEE 趋势（灰底=低于均值 ${(avg * 100).toFixed(1)}%）${maintNote}` };
 }
 
 function KpiDrillButton({ def, value, scale }: { def: DashboardWidgetDef; value: unknown; scale?: number }) {

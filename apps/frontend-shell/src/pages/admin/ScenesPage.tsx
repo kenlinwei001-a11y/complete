@@ -218,6 +218,12 @@ function ScenarioRow({
               {run.gaps.length > 0 && (
                 <div data-testid={`scenario-gaps-${scenario.scenarioKey}`} style={{ color: "var(--amber)" }}>
                   缺口（诚实，不静默）：{run.gaps.map((g) => `${g.gapCode}·${g.disposition === "AUTO_DERIVE" ? "可自动补" : "需人工/工单"}`).join("；")}
+                  {/* G9-HARD：真实业务数据缺口（NEEDS_HUMAN）不自动合成真数据 → 一键去真人正门导入（连接器/上传），不死路 */}
+                  {run.gaps.some((g) => g.disposition === "NEEDS_HUMAN") && (
+                    <Link to="/admin/connections" data-testid={`scenario-import-${scenario.scenarioKey}`} style={{ marginLeft: 8, color: "var(--accent, #6ea8fe)" }}>
+                      去真人正门导入真数据 →
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
