@@ -18,6 +18,7 @@ import { KsfGraph } from "@/components/KsfGraph";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { Provenance } from "@/components/Provenance";
 import { RuleRef } from "@/components/RuleRef";
+import { ExternalSignalStrip } from "@/components/ExternalSignalStrip";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -102,6 +103,8 @@ export default function PlanAuditView({ view }: ViewRendererProps) {
 
   return (
     <div data-testid="plan-audit-view">
+      {/* UI缺口 M5：外部信号 chip 条（环境感知·接 EXT_SIG 现成）。 */}
+      <ExternalSignalStrip testId="ext-signal-audit" />
       <div className={styles.head}>
         <div>
           <h3>{zh.sim.audit.title}</h3>

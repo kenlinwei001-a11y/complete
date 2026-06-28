@@ -13,6 +13,7 @@ import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
 import { KsfGraph } from "@/components/KsfGraph";
 import { Provenance } from "@/components/Provenance";
+import { ExternalSignalStrip } from "@/components/ExternalSignalStrip";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
@@ -131,6 +132,8 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
 
   return (
     <div data-testid="plan-generate-view">
+      {/* UI缺口 M5：外部信号 chip 条（环境感知·接 EXT_SIG 现成）。 */}
+      <ExternalSignalStrip testId="ext-signal-generate" />
       <div className={styles.head}>
         <div>
           <h3>{zh.sim.gen.title}</h3>
