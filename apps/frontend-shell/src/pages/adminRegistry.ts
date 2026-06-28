@@ -16,6 +16,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "rule-docs", label: zh.nav.ruleDocs, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "modeling", label: zh.nav.modeling, roles: ["admin", "data_admin"] },
   { path: "object-types", label: zh.nav.objectTypes, roles: ["admin", "data_admin"] },
+  { path: "source-overview", label: zh.nav.sourceOverview, roles: ["admin", "data_admin"] },
   { path: "rules", label: zh.nav.rules, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "permissions", label: zh.nav.permissions, roles: ["admin"] },
   { path: "synthetic", label: zh.nav.synthetic, roles: ["admin"] },
@@ -87,7 +88,7 @@ export interface AdminNavGroup {
 
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
-  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "slices", "merge", "meta", "boundary", "prototype-intake"] },
+  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "source-overview", "domains", "slices", "merge", "meta", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },

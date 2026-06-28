@@ -30,6 +30,7 @@ const FieldProfilePage = lazy(() => import("@/pages/admin/FieldProfilePage"));
 const RuleDocsPage = lazy(() => import("@/pages/admin/RuleDocsPage"));
 const ModelingPage = lazy(() => import("@/pages/admin/ModelingPage"));
 const ObjectTypesBrowserPage = lazy(() => import("@/pages/admin/ObjectTypesBrowserPage"));
+const SourceSystemOverviewPage = lazy(() => import("@/pages/admin/SourceSystemOverviewPage"));
 const RulesPage = lazy(() => import("@/pages/admin/RulesPage"));
 const PermissionsPage = lazy(() => import("@/pages/admin/PermissionsPage"));
 const SyntheticPage = lazy(() => import("@/pages/admin/SyntheticPage"));
@@ -133,6 +134,7 @@ export const routes: RouteObject[] = [
       admin("rule-docs", <RuleDocsPage />),
       admin("modeling", <ModelingPage />),
       admin("object-types", <ObjectTypesBrowserPage />),
+      admin("source-overview", <SourceSystemOverviewPage />),
       admin("rules", <RulesPage />),
       admin("permissions", <PermissionsPage />),
       admin("synthetic", <SyntheticPage />),

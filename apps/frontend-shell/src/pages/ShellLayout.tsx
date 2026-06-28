@@ -39,7 +39,7 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
     title: "建模与图谱",
     items: [
       { kind: "view", key: "graph" },
-      ...["modeling", "object-types", "domains", "slices", "merge"].map((key) => ({ kind: "admin" as const, key })),
+      ...["modeling", "object-types", "source-overview", "domains", "slices", "merge"].map((key) => ({ kind: "admin" as const, key })),
     ],
   },
   // 图谱八视角子视图：折叠子组，保留既有 collapsed 行为（图谱页内亦可 tab）。
