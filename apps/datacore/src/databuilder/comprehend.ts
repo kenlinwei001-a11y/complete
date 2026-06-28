@@ -6,6 +6,19 @@ import type {
 } from "@platform/contracts";
 import { deriveSolverArgs } from "./solver-args.js";
 import { DOMAIN_ROOT_REQUIREMENTS } from "./domain-invariants.js";
+import { SOLVER_OUTPUT_SHAPES } from "../solvers/service.js";
+
+/**
+ * G-8 优化：BuildPlan 渲染契约自动生成。此前 planNeeds.renderBindings 出厂为 `[]`（空），靠后续手工填——
+ * 接缝（G-2 伏笔）：建出的计划无渲染契约、视图无字段可投影。改为从求解器**已声明输出形状**
+ * `SOLVER_OUTPUT_SHAPES` 派生默认渲染绑定（取数据承载字段），故 **renderBindings ⊆ SHAPE 天然成立**
+ * （closure SHAPE 维零破），免手工、去接缝。排除控制/规则裁决信封键（error/evaluatedRules/ruleSetVersion，
+ * 由专用 UI 渲染非数据绑定）。未声明形状的求解器回退 `[]`（向后兼容，不造假 RL5）。
+ */
+const RENDER_ENVELOPE_EXCLUDE = new Set(["error", "evaluatedRules", "ruleSetVersion"]);
+export function defaultRenderBindings(solverKey: string): string[] {
+  return (SOLVER_OUTPUT_SHAPES[solverKey] ?? []).filter((k) => !RENDER_ENVELOPE_EXCLUDE.has(k));
+}
 
 /**
  * §2 LLM comprehend：让 LLM 只产出"听懂故事"的难点部分——对象类型 / 规则 / 求解器需求；
@@ -223,7 +236,7 @@ export function assemblePlanBody(
 /** B 栈倒推（确定性）：对象→切片；求解器→计划/意图/场景/工作流/技能/Agent。LLM 与关键词地板共用。 */
 function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed[], script: string) {
   const sliceNeeds: PlanSliceNeed[] = objectTypes.map((t) => ({ sliceKey: `slice_${t.typeKey.toLowerCase()}`, rootType: t.typeKey, hops: [] }));
-  const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], solverKey: s.solverKey, args: s.args ?? {}, renderBindings: [] }));
+  const planNeeds: PlanPlanNeed[] = solverNeeds.map((s) => ({ planKey: `plan_${s.solverKey}`, steps: ["invoke_solver", "render"], solverKey: s.solverKey, args: s.args ?? {}, renderBindings: defaultRenderBindings(s.solverKey) }));
   const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({ intentKey: `intent_${s.solverKey}`, triggers: [s.solverKey], slots: [], planRef: `plan_${s.solverKey}`, riskLevel: "LOW" as const }));
   const sceneNeeds: PlanSceneNeed[] = solverNeeds.map((s) => ({ scenarioKey: `scene_${s.solverKey}`, targetView: SOLVER_TARGET_VIEW[s.solverKey] ?? "dash", intentKey: `intent_${s.solverKey}`, mode: "WORKFLOW" as const, presetContext: {}, triggerQuestion: script.trim().slice(0, 500) }));
   const workflowNeeds: PlanWorkflowNeed[] = solverNeeds.map((s) => ({ workflowKey: `wf_${s.solverKey}`, kind: "workflow", steps: ["invoke_solver", "render"] }));
@@ -593,7 +606,8 @@ export function comprehendScript(
     steps: ["invoke_solver", "render"],
     solverKey: s.solverKey,
     args: s.args ?? {},
-    renderBindings: s.renderBindings ?? [],
+    // 显式声明优先；否则从 SOLVER_OUTPUT_SHAPES 自动派生默认渲染契约（⊆SHAPE 天然成立·去 G-2 接缝）。
+    renderBindings: s.renderBindings && s.renderBindings.length > 0 ? s.renderBindings : defaultRenderBindings(s.solverKey),
   }));
   const intentNeeds: PlanIntentNeed[] = solverNeeds.map((s) => ({
     intentKey: `intent_${s.solverKey}`,
