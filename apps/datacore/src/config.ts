@@ -32,6 +32,11 @@ export const ConfigSchema = z.object({
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().default(15 * 60),
   REFRESH_TOKEN_TTL_SEC: z.coerce.number().int().default(7 * 24 * 3600),
   SEED_DEMO: z.string().optional(),
+  /** demo LLM 持久化（M·G-3 收尾）：设了 KIMI_API_KEY 则 SEED_DEMO 时自动配 openai_compatible provider
+   *  + 绑定 classifier/agent/comprehend，使 demo 重启不丢 LLM 能力。key 仅从 env 读、AES-GCM 落库、绝不入 git（R5）。 */
+  KIMI_API_KEY: z.string().optional(),
+  KIMI_BASE_URL: z.string().default("https://api.moonshot.cn/v1"),
+  KIMI_MODEL: z.string().default("kimi-k2.6"),
   /** LLM Provider 增量 §1.1：服务间凭证 —— 仅服务间路由接受（X-Service-Token），
    *  AgentCore 据此拉取 provider 配置与解密密钥；未设置 = 服务间端点恒 403。 */
   SERVICE_TOKEN: z.string().optional(),

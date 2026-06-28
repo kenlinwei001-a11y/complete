@@ -5,8 +5,43 @@ import type { AuthCtx } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import type { SopService } from "./sop.js";
 import type { SolverService } from "./solvers/service.js";
+import type { LlmProviderService } from "./llmproviders.js";
 
 export const DEMO_TENANT = "demo";
+
+/**
+ * demo LLM 持久化（G-3 收尾）：设了 KIMI_API_KEY 则自动配一个 openai_compatible provider（Kimi）+ 绑定
+ * classifier/agent/comprehend，使 demo 重启不丢 LLM 能力。key **仅从 env 读、经 AES-GCM 落库、绝不入 git**（R5）。
+ * 幂等：已有同 baseUrl 的 provider 则复用；已绑定的 purpose 不重绑。运行态临时配置由此定型为可复现 seed。
+ */
+export async function seedDemoLlmProvider(
+  llm: LlmProviderService,
+  ctx: AuthCtx,
+  cfg: { apiKey: string; baseUrl: string; model: string },
+): Promise<void> {
+  if (!cfg.apiKey) return;
+  const existing = (await llm.list(ctx.tenantId)).find((p) => p.kind === "openai_compatible" && p.baseUrl === cfg.baseUrl);
+  const provider =
+    existing ??
+    (await llm.create(ctx, {
+      name: "Kimi (Moonshot)",
+      kind: "openai_compatible",
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey, // write-only → AES-GCM 密文落库，响应仅 hasApiKey（R5 no-secrets-echo）
+      models: [{ modelId: cfg.model, displayName: cfg.model, capabilities: { tools: true, structuredOutput: false, maxContext: 131072 } }],
+      status: "ACTIVE",
+      scope: "tenant",
+    }));
+  const cur = await llm.bindings(ctx.tenantId);
+  const want = ["classifier", "agent", "comprehend"] as const;
+  const missing = want.filter((p) => !cur.some((b) => b.purpose === p));
+  if (missing.length > 0) {
+    await llm.putBindings(ctx, [
+      ...cur,
+      ...missing.map((purpose) => ({ purpose, providerId: provider.id, modelId: cfg.model })),
+    ]);
+  }
+}
 
 /**
  * UI缺口 M3：demo 种一个月度 S&OP 版本（2026-07）并五步法推进到评审态，使 /v/sop-balance 直接出

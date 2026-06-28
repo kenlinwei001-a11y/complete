@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,6 +52,15 @@ async function main(): Promise<void> {
       logger.info("SEED_DEMO=1: seeded demo S&OP version 2026-07 (sop-balance non-empty)");
     } catch (e) {
       logger.warn({ err: (e as Error).message }, "SEED_DEMO=1: seed S&OP version skipped");
+    }
+    // G-3 收尾：设了 KIMI_API_KEY 则定型 demo LLM（Kimi provider + 绑定·key 走 env 不入 git·R5），重启不丢。
+    if (config.KIMI_API_KEY) {
+      try {
+        await seedDemoLlmProvider(services.llmProviders, adminCtx, { apiKey: config.KIMI_API_KEY, baseUrl: config.KIMI_BASE_URL, model: config.KIMI_MODEL });
+        logger.info(`SEED_DEMO=1: seeded demo LLM provider Kimi (${config.KIMI_MODEL}, key from env, AES-GCM at rest)`);
+      } catch (e) {
+        logger.warn({ err: (e as Error).message }, "SEED_DEMO=1: seed LLM provider skipped");
+      }
     }
   }
 
