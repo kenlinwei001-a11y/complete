@@ -145,7 +145,9 @@ export const LLM_VENDOR_CATALOG: LlmVendor[] = [
     key: "moonshot", displayName: "Moonshot（月之暗面 Kimi）", kind: "openai_compatible",
     defaultBaseUrl: "https://api.moonshot.cn/v1", docUrl: "https://platform.moonshot.cn",
     models: [
-      m("kimi-k2-0905-preview", "Kimi K2", cap(true, true, 256000)),
+      // 修：原 kimi-k2-0905-preview 线上 API 已下线（实测 /models 不返回）→ 改当前在线型号（审核方 2026-06 真探）。
+      m("kimi-k2.6", "Kimi K2.6", cap(true, true, 256000)),
+      m("kimi-k2.5", "Kimi K2.5", cap(true, true, 256000)),
       m("moonshot-v1-128k", "Moonshot v1 128K", cap(true, true, 128000)),
       m("moonshot-v1-32k", "Moonshot v1 32K", cap(true, true, 32000)),
       m("moonshot-v1-8k", "Moonshot v1 8K", cap(true, true, 8000)),

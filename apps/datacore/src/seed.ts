@@ -33,7 +33,8 @@ export async function seedDemoLlmProvider(
       scope: "tenant",
     }));
   const cur = await llm.bindings(ctx.tenantId);
-  const want = ["classifier", "agent", "comprehend"] as const;
+  // 含 modeling：/modeling/suggest（A3 AI 建模建议）走 purpose=modeling，缺则 demo 仍裸 500（审核方真测坐实）。
+  const want = ["classifier", "agent", "comprehend", "modeling"] as const;
   const missing = want.filter((p) => !cur.some((b) => b.purpose === p));
   if (missing.length > 0) {
     await llm.putBindings(ctx, [
