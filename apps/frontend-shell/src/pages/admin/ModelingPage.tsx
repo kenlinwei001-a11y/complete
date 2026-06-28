@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tokenStore } from "@/api/tokenStore";
@@ -9,6 +9,7 @@ import {
   fetchModelingCoverage,
   fetchModelingDrafts,
   fetchObjectTypes,
+  fetchObjectTypeStats,
   fetchRawDatasets,
   fetchSimCertification,
   fetchSyncJob,
@@ -16,6 +17,7 @@ import {
   patchModelingDraft,
   publishModelingDraft,
   suggestModeling,
+  type FieldCoverageVM,
   type ModelingDraftVM,
 } from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -80,6 +82,42 @@ export default function ModelingPage() {
   const selectedTypeObj = publishedTypes?.find((ty) => ty.key === selectedType) ?? null;
   const openObject = (key: string) => { setSelectedType(key); setDrawerOpen(true); };
 
+  // 任务#2 创建过程管道：活动草案（与下方下拉同源 = draft），状态全取真草案态（R14）。
+  const activeDraft = draft ?? null;
+  const hasActiveDraft = !!activeDraft;
+  // ③ 字段全建模门 coverage（真值·驱动阶段③/⑤ %）；仅活动草案时拉。
+  const { data: pipelineCoverage } = useQuery({
+    queryKey: ["a", "modeling-coverage", activeDraft?.id ?? "", activeDraft?.suggestion.objectTypes.length ?? 0],
+    queryFn: () => fetchModelingCoverage(activeDraft!.id),
+    enabled: !!activeDraft,
+    retry: false,
+  });
+  // ⑥ 物化信号（真值）：本草案的类型键里，已物化(materialized=true)的计数。
+  const { data: typeStats } = useQuery({ queryKey: ["a", "object-type-stats"], queryFn: fetchObjectTypeStats });
+  const draftTypeKeys = new Set((activeDraft?.suggestion.objectTypes ?? []).map((o) => o.existingTypeKey ?? o.typeKey));
+  const materializedCount = (typeStats?.stats ?? []).filter((s) => draftTypeKeys.has(s.key) && s.materialized).length;
+  // 草案态数据流 DAG：受控展开（点阶段③→展开）；用真草案 suggestion 适配为 DAG 形状。
+  const [draftDagOpen, setDraftDagOpen] = useState(true);
+  const draftDagTypes = activeDraft ? draftTypesForDag(activeDraft) : [];
+  const showDraftDag = hasActiveDraft && draftDagTypes.length > 0;
+  // 阶段点击锚点（客户端滚动，不掉登录）：①数据源 ②建议/操作 ④操作面板 ⑥已发布本体。
+  const dataSourceRef = useRef<HTMLDivElement>(null);
+  const draftDagRef = useRef<HTMLDivElement>(null);
+  const workbenchRef = useRef<HTMLDivElement>(null);
+  const publishedRef = useRef<HTMLDivElement>(null);
+  const onPipelineStage = (stage: number) => {
+    const scroll = (el: HTMLElement | null) => el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (stage === 1) scroll(dataSourceRef.current);
+    else if (stage === 2 || stage === 4) {
+      if (activeDraft) scroll(workbenchRef.current);
+      else setSuggestOpen(true);
+    } else if (stage === 3) {
+      setDraftDagOpen(true);
+      scroll(draftDagRef.current);
+    } else if (stage === 5) scroll(workbenchRef.current);
+    else if (stage === 6) scroll(publishedRef.current ?? workbenchRef.current);
+  };
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -95,8 +133,36 @@ export default function ModelingPage() {
           {t.newDraft}
         </button>
       </div>
-      {/* 轨P 增量1（数据流 DAG·竞品 image2 横向 ETL·R13 真字段映射）。点实体节点 → 开对象配置抽屉（增量3）。 */}
-      {publishedTypes && publishedTypes.length > 0 && <DataPipelineDag types={publishedTypes} onSelectType={openObject} />}
+      {/* 任务#2 · 核心交付：本体模型「创建过程」低代码 Pipeline（6 阶段节点+连线·默认展开·状态驱动自真草案态）。
+          放在草案选择器下方、就绪认证/成品 DAG 上方；有活动草案即显（不依赖已发布类型）。 */}
+      {activeDraft && (
+        <ModelingCreationPipeline
+          draft={activeDraft}
+          coverage={pipelineCoverage}
+          materializedCount={materializedCount}
+          onStage={onPipelineStage}
+        />
+      )}
+      {/* 任务#2 · 次要：草案态数据流 DAG（在建草案管道）——复用既有 DataPipelineDag，喂 draft.suggestion 适配真字段映射，
+          active draft 默认展开。点阶段③即展开此处看 dataset.sourceField→type.propKey 真映射。 */}
+      {showDraftDag && (
+        <div ref={draftDagRef}>
+          <DataPipelineDag
+            types={draftDagTypes}
+            onSelectType={openObject}
+            open={draftDagOpen}
+            onToggle={setDraftDagOpen}
+            draftMode
+          />
+        </div>
+      )}
+      {/* 轨P 增量1（数据流 DAG·竞品 image2 横向 ETL·R13 真字段映射）。点实体节点 → 开对象配置抽屉（增量3）。
+          已发布成品本体的静态架构图（维持折叠默认·与上方草案管道互补）。 */}
+      {publishedTypes && publishedTypes.length > 0 && (
+        <div ref={publishedRef}>
+          <DataPipelineDag types={publishedTypes} onSelectType={openObject} />
+        </div>
+      )}
       {/* 轨P 增量4 / 轨Q 回迁：中栏 6 子 tab + Agent 指挥台接 QOS——复用**共享 PlatformConsole**（消除与沙盘页重复·单一来源）。
           基本信息=增量2 就绪认证面板（slot）；Skills/MCP/日志=接现成真后端；图查询=③类§10.1 RESERVED；
           执行节点胶囊+Agent 逐对象注入经 execNode/agentSelectedObject 透传（建模页专属·image2 形态）。 */}
@@ -129,10 +195,10 @@ export default function ModelingPage() {
       )}
       {/* additive（RL9 可回退）：左侧数据源面板 + 右侧既有工作台/空态，原有区块零删改 */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-        <div style={{ width: 248, flexShrink: 0 }}>
+        <div style={{ width: 248, flexShrink: 0 }} ref={dataSourceRef}>
           <DataSourcePanel drafts={drafts} />
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }} ref={workbenchRef}>
           {draft ? (
             <DraftWorkbench draft={draft} />
           ) : publishedTypes && publishedTypes.length > 0 ? (
@@ -398,14 +464,208 @@ function ObjectConfigDrawer({
 }
 
 /**
+ * 任务#2：草案 → DataPipelineDag「已发布类型」形状适配器（**真数据·R13，非编造**）。
+ * 草案 objectType 携 `sourceDataset`(string) + `properties[].sourceField`；已发布类型 DAG 消费
+ * `sourceBindings:[{dataset, fieldMappings:{propKey→sourceField}}]`。此处仅**重排同一批真字段**为 DAG 形状——
+ * fieldMappings 的每个 propKey→sourceField 都取自草案真 property（缺 sourceDataset 则不造 binding → DAG 标橙）。
+ * 不复用全局值、不写死 transform；连接器 id 草案态无（connId 置空，DAG 不依赖它显示）。
+ */
+function draftTypesForDag(
+  draft: ModelingDraftVM,
+): Awaited<ReturnType<typeof fetchObjectTypes>> {
+  return (draft.suggestion.objectTypes ?? []).map((ot) => ({
+    key: ot.typeKey,
+    displayName: ot.displayName || ot.typeKey,
+    domain: ot.domain,
+    properties: ot.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType, isPrimaryKey: p.isPrimaryKey })),
+    derivedProperties: ot.derivedProperties ?? [],
+    sourceBindings: ot.sourceDataset
+      ? [{
+          connId: "",
+          dataset: ot.sourceDataset,
+          // 真字段映射：propKey ← sourceField（取自草案 property，非凭空造）。DataPipelineDag 读 fieldMappings。
+          fieldMappings: Object.fromEntries(ot.properties.map((p) => [p.propKey, p.sourceField])),
+        } as { connId: string; dataset: string }]
+      : [],
+  }));
+}
+
+/**
+ * 任务#2 · 核心交付：本体模型「创建过程」低代码 Pipeline（顶部贯通进度流）。
+ * 6 阶段节点 + 连线箭头，**状态全取真草案态**（R14 零业务常量·零写死步数）：
+ *   ① 选数据源   = draft.rawDatasetIds.length
+ *   ② 派生/AI建议 = draft.suggestion.objectTypes.length（只显新建/复用类型数·payload 无引擎来源字段→不臆造）
+ *   ③ 字段映射审核 = 含 sourceDataset 的类型数 + 字段全建模门 coverage%（fetchModelingCoverage 真值）
+ *   ④ 改名/归域   = draft.operationLog.length（renameType/setDomain 等留痕）
+ *   ⑤ 发布(R12门) = draft.status==='PUBLISHED'（否则看 coverage 是否 100% → 就绪/未就绪）
+ *   ⑥ 物化       = 本草案已发布类型的 materialized 计数（fetchObjectTypeStats 真值）
+ * 每节点三态 done✓ / active◉(最靠前未完成) / pending○；连线随完成高亮。
+ * 点击 → onStage(n)：跳/展开对应区（③→展开 DataPipelineDag 看真字段映射）。
+ * 与既有 DataPipelineDag 关系：本 Pipeline=纵向「流程进度」，DAG=横向「数据架构」，互补复用不并行。
+ */
+type StageState = "done" | "active" | "pending";
+function ModelingCreationPipeline({
+  draft,
+  coverage,
+  materializedCount,
+  onStage,
+}: {
+  draft: ModelingDraftVM;
+  coverage?: FieldCoverageVM;
+  materializedCount: number;
+  onStage: (stage: number) => void;
+}) {
+  const rawCount = draft.rawDatasetIds?.length ?? 0;
+  const otCount = draft.suggestion.objectTypes?.length ?? 0;
+  const mappedTypes = (draft.suggestion.objectTypes ?? []).filter((ot) => !!ot.sourceDataset).length;
+  const opCount = draft.operationLog?.length ?? 0;
+  const isPublished = draft.status === "PUBLISHED";
+  const coveragePct = coverage ? Math.round(coverage.coverage * 100) : null;
+  const coverageReady = coverage?.fullyCovered ?? false;
+  // 阶段②诚实标注：草案 payload **无 derive/suggest 来源字段**（两路 confidence 多为 1，不可凭此断言引擎）。
+  // 只显真草案可知事实：新建(CREATE) vs 复用既有(MAP_TO_EXISTING) 的类型数；不写死/不臆造引擎名（继承真推演红线）。
+  const ots = draft.suggestion.objectTypes ?? [];
+  const createCount = ots.filter((ot) => ot.action === "CREATE").length;
+  const mapCount = ots.filter((ot) => ot.action === "MAP_TO_EXISTING").length;
+  const linkCount = draft.suggestion.linkTypes?.length ?? draft.fkCandidates?.length ?? 0;
+
+  // done 判定全取真草案态（R14）：每阶段 done 即"该阶段产物已存在于真草案"。
+  const done: boolean[] = [
+    rawCount > 0, // ①
+    otCount > 0, // ②
+    otCount > 0 && mappedTypes === otCount, // ③ 全类型有数据源映射（coverage% 另显）
+    opCount > 0, // ④ 有策展操作
+    isPublished, // ⑤
+    materializedCount > 0, // ⑥
+  ];
+  // active = 最靠前的未完成阶段；全完成则无 active。
+  const activeIdx = done.findIndex((d) => !d);
+  const stateOf = (i: number): StageState => (done[i] ? "done" : i === activeIdx ? "active" : "pending");
+
+  const stages: { n: number; label: string; sub: string; testid: string }[] = [
+    { n: 1, label: "选数据源", sub: `${rawCount} 个原始数据集`, testid: "mcp-stage-1" },
+    {
+      n: 2,
+      label: "派生 / AI 建议",
+      // 诚实：只显真草案可知（新建/复用类型数），不臆造 derive/suggest 引擎名（payload 无来源字段）。
+      sub: otCount > 0 ? `${otCount} 类型${createCount > 0 ? ` · 新建 ${createCount}` : ""}${mapCount > 0 ? ` · 复用 ${mapCount}` : ""}` : "未生成",
+      testid: "mcp-stage-2",
+    },
+    {
+      n: 3,
+      label: "字段映射审核",
+      sub: otCount > 0 ? `${mappedTypes}/${otCount} 映射${coveragePct != null ? ` · 全建模 ${coveragePct}%` : ""}` : "—",
+      testid: "mcp-stage-3",
+    },
+    { n: 4, label: "改名 / 归域", sub: opCount > 0 ? `${opCount} 条策展操作` : (linkCount > 0 ? `${linkCount} 链接候选` : "未策展"), testid: "mcp-stage-4" },
+    { n: 5, label: "发布 (R12 门)", sub: isPublished ? "已发布 ✓" : coverageReady ? "就绪可发布" : coveragePct != null ? `待补全 ${coveragePct}%` : "未就绪", testid: "mcp-stage-5" },
+    { n: 6, label: "物化", sub: materializedCount > 0 ? `${materializedCount} 类型已物化` : "未物化", testid: "mcp-stage-6" },
+  ];
+
+  const palette: Record<StageState, { bg: string; bd: string; fg: string; mark: string }> = {
+    done: { bg: "rgba(98,190,119,.16)", bd: "#62BE77", fg: "#62BE77", mark: "✓" },
+    active: { bg: "rgba(126,139,238,.18)", bd: "#7E8BEE", fg: "#7E8BEE", mark: "◉" },
+    pending: { bg: "rgba(255,255,255,.04)", bd: "var(--line2,#3a3a3a)", fg: "var(--muted2)", mark: "○" },
+  };
+  const doneCount = done.filter(Boolean).length;
+
+  return (
+    <div
+      data-testid="modeling-creation-pipeline"
+      style={{ marginBottom: 12, background: "var(--panel,rgba(255,255,255,.03))", borderRadius: 8, padding: "10px 12px" }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 13 }}>创建过程 · 低代码建模管道</strong>
+        <span style={{ fontSize: 11, color: "var(--muted2)" }} data-testid="mcp-progress">
+          草案 <span className="mono">{draft.id}</span> · {draft.status} · 进度 {doneCount}/6（状态实时取真草案态 · R14 零写死）
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 0, overflowX: "auto", paddingBottom: 4 }}>
+        {stages.map((s, i) => {
+          const st = stateOf(i);
+          const pal = palette[st];
+          return (
+            <div key={s.n} style={{ display: "flex", alignItems: "center", flex: "0 0 auto" }}>
+              <button
+                type="button"
+                data-testid={s.testid}
+                data-state={st}
+                onClick={() => onStage(s.n)}
+                title={`阶段${s.n} ${s.label}（${st}）— 点击跳转/展开对应区`}
+                style={{
+                  width: 138,
+                  minHeight: 60,
+                  textAlign: "left",
+                  cursor: "pointer",
+                  background: pal.bg,
+                  border: `1.4px solid ${pal.bd}`,
+                  borderRadius: 8,
+                  padding: "7px 9px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 3,
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--txt)" }}>
+                  <span data-testid={`${s.testid}-mark`} style={{ color: pal.fg, fontWeight: 700 }}>{pal.mark}</span>
+                  <span style={{ color: pal.fg, fontSize: 10 }}>{s.n}</span>
+                  {s.label}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--muted2)", lineHeight: 1.4 }}>{s.sub}</span>
+              </button>
+              {i < stages.length - 1 && (
+                // 连线随进度高亮：本阶段 done → 连线高亮（绿），否则灰。
+                <span
+                  data-testid={`mcp-link-${s.n}`}
+                  style={{
+                    width: 22,
+                    height: 0,
+                    borderTop: `2px solid ${done[i] ? "#62BE77" : "var(--line2,#3a3a3a)"}`,
+                    margin: "0 -1px",
+                    position: "relative",
+                    flex: "0 0 auto",
+                  }}
+                >
+                  <span style={{ position: "absolute", right: -1, top: -4, color: done[i] ? "#62BE77" : "var(--muted2)", fontSize: 11, lineHeight: 1 }}>›</span>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--muted2)", marginTop: 8 }}>
+        每阶段状态溯真草案端点：① rawDatasetIds · ② suggestion.objectTypes · ③ sourceDataset+coverage · ④ operationLog · ⑤ status · ⑥ object-types/stats.materialized。点①→数据源 · ②→建议区 · ③→展开数据流 DAG · ④→操作面板 · ⑤→发布 · ⑥→已发布本体。
+      </div>
+    </div>
+  );
+}
+
+/**
  * 轨P 增量1（数据流 DAG·复刻竞品 image2「架构本体设计」横向分层 ETL·承轨A P1 #37 升级）：
  * 每条实体链 数据集(事件表) → 数据处理_XX(**真字段映射** dataset.field→type.prop) → 实体/关系 → 本体库。
  * 本体专用 SVG（正交折线箭头 + 左右连接桩 + 箭头 + 最右汇本体库）。
  * **数据处理节点内容 = 真 sourceBindings.fieldMappings（点开看真映射，非凭空造 transform）**——
  * 零写死（R14）、确定性（取 5 代表链按真类型，R6）、缺 sourceBindings 标橙（诚实，非裸渲染）。
  */
-function DataPipelineDag({ types, onSelectType }: { types: Awaited<ReturnType<typeof fetchObjectTypes>>; onSelectType?: (key: string) => void }) {
-  const [open, setOpen] = useState(false);
+function DataPipelineDag({
+  types,
+  onSelectType,
+  open: openProp,
+  onToggle,
+  draftMode = false,
+}: {
+  types: Awaited<ReturnType<typeof fetchObjectTypes>>;
+  onSelectType?: (key: string) => void;
+  /** 受控展开态（任务#2：顶部创建管道点③→展开本 DAG 看在建草案）；不传则内部自管（已发布成品图维持折叠默认）。 */
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+  /** 草案态：标题改「在建草案」、最右汇点改「草案对象库」，与已发布成品图区分（数据来自 draft.suggestion 适配）。 */
+  draftMode?: boolean;
+}) {
+  const [openInner, setOpenInner] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openInner;
+  const setOpen = (v: boolean) => { if (!controlled) setOpenInner(v); onToggle?.(v); };
   const [detail, setDetail] = useState<{ dataset: string; typeLabel: string; mappings: [string, string][] } | null>(null);
   // 5 代表链（真 demo 类型名·竞品 5 条 ETL 链对位），不足按 key 序补。
   const pref = ["Order", "Base", "Model", "Line", "Material"];
@@ -426,7 +686,7 @@ function DataPipelineDag({ types, onSelectType }: { types: Awaited<ReturnType<ty
   const rowY = (i: number) => padY + i * (nodeH + vGap);
   const obY = padY + (rows * (nodeH + vGap) - vGap) / 2 - nodeH / 2;
   const ortho = (x1: number, y1: number, x2: number, y2: number) => { const mx = Math.round((x1 + x2) / 2); return `M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`; };
-  const titles = ["数据集（事件表）", "数据处理（字段映射）", "实体 / 关系", "本体库"];
+  const titles = ["数据集（事件表）", "数据处理（字段映射）", "实体 / 关系", draftMode ? "草案对象库" : "本体库"];
   const PortNode = ({ x, y, fill, stroke, title, sub, badges, onClick, tid }: { x: number; y: number; fill: string; stroke: string; title: string; sub?: string; badges?: string[]; onClick?: () => void; tid?: string }) => (
     <g transform={`translate(${x},${y})`} data-testid={tid} role={onClick ? "button" : undefined} style={onClick ? { cursor: "pointer" } : undefined} onClick={onClick}>
       <rect width={nodeW} height={nodeH} rx={8} fill={fill} stroke={stroke} strokeWidth={1.4} />
@@ -437,8 +697,12 @@ function DataPipelineDag({ types, onSelectType }: { types: Awaited<ReturnType<ty
     </g>
   );
   return (
-    <details data-testid="modeling-pipeline-dag" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} style={{ marginBottom: 12, background: "var(--panel,rgba(255,255,255,.03))", borderRadius: 8, padding: "8px 10px" }}>
-      <summary style={{ cursor: "pointer", fontSize: 13 }}>数据流 DAG · 架构本体设计（数据集→数据处理→实体→本体库 · R13 真字段映射 · 共 {types.length} 类型）</summary>
+    <details data-testid={draftMode ? "modeling-pipeline-dag-draft" : "modeling-pipeline-dag"} open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} style={{ marginBottom: 12, background: "var(--panel,rgba(255,255,255,.03))", borderRadius: 8, padding: "8px 10px" }}>
+      <summary style={{ cursor: "pointer", fontSize: 13 }}>
+        {draftMode
+          ? `数据流 DAG · 在建草案管道（数据集→数据处理→实体→草案对象库 · R13 真字段映射 draft.suggestion · 共 ${types.length} 类型）`
+          : `数据流 DAG · 架构本体设计（数据集→数据处理→实体→本体库 · R13 真字段映射 · 共 ${types.length} 类型）`}
+      </summary>
       <div style={{ marginTop: 8, overflowX: "auto" }}>
         <svg width={W} height={H} role="img" style={{ display: "block" }}>
           <defs><marker id="pp-arrow" markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted2)" /></marker></defs>
@@ -459,9 +723,13 @@ function DataPipelineDag({ types, onSelectType }: { types: Awaited<ReturnType<ty
               <PortNode tid={`pp-ty-${c.key}`} x={colX(2)} y={y} fill="rgba(126,139,238,.16)" stroke="#7E8BEE" title={c.label} sub={c.key} badges={["模", ...(c.derived > 0 ? ["动"] : [])]} onClick={onSelectType ? () => onSelectType(c.key) : undefined} />
             </g>
           ); })}
-          <PortNode tid="pp-ontolib" x={obX} y={obY} fill="rgba(196,112,184,.18)" stroke="#C470B8" title="本体库" sub={`${types.length} 类型已发布`} />
+          <PortNode tid="pp-ontolib" x={obX} y={obY} fill="rgba(196,112,184,.18)" stroke="#C470B8" title={draftMode ? "草案对象库" : "本体库"} sub={draftMode ? `${types.length} 类型在建` : `${types.length} 类型已发布`} />
         </svg>
-        <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 6 }}>5 条代表实体链（共 {types.length} 类型 · 竞品 image2 横向 ETL）；**数据处理节点 = 真 sourceBindings.fieldMappings**（点开看 dataset.field→type.prop 真映射，非编造 transform）；缺 sourceBindings 标橙。</div>
+        <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 6 }}>
+          {draftMode
+            ? <>5 条代表实体链（共 {types.length} 类型 · 在建草案）；<b>数据处理节点 = 真 draft.suggestion 字段映射</b>（dataset.sourceField→type.propKey，非编造 transform）；缺 sourceDataset 标橙。</>
+            : <>5 条代表实体链（共 {types.length} 类型 · 横向 ETL）；<b>数据处理节点 = 真 sourceBindings.fieldMappings</b>（点开看 dataset.field→type.prop 真映射，非编造 transform）；缺 sourceBindings 标橙。</>}
+        </div>
       </div>
       {detail && (
         <Modal title={`数据处理：${detail.dataset} → ${detail.typeLabel}（真字段映射 · ${detail.mappings.length} 条）`} onClose={() => setDetail(null)} width={520}>

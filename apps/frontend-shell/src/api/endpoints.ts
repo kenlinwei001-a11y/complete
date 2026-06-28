@@ -413,8 +413,12 @@ export interface ModelingDraftVM {
   id: string;
   status: string;
   rawDatasetIds: string[];
+  /** FK 候选（确定性/AI 推断的外键链接候选数·后端 draft.fkCandidates）。 */
+  fkCandidates?: { fromTypeKey: string; toTypeKey: string; fromField: string; toField: string }[];
   datasets: { name: string; fields: { name: string; inferredType: string; nullRate: number; uniqueRate: number; enumCandidates?: string[] }[] }[];
   suggestion: ModelingSuggestion;
+  /** 草案策展操作日志（PATCH renameType/setDomain/… 留痕·后端 draft.operationLog）——驱动「改名/归域」阶段判活。 */
+  operationLog?: { at: string; operation: { op: string; typeKey?: string; [k: string]: unknown } }[];
   publishErrors?: { typeKey: string; message: string }[];
 }
 export interface RawDatasetVM {
