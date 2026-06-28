@@ -236,6 +236,25 @@
 
 ---
 
+## WO-20 · ErrorBoundary 韧性：一页崩不该卡死全站（P1·审核方真跑坐实·compounding）
+
+> 走查别的页时真跑发现的**叠加链**——比单页崩严重得多：碰一个坏页 → **整站卡死且救不回来**。
+
+- 缺口（真跑链·实拍 `eb-quarantine.png`）：
+  1. 打开 **隔离区** → ErrorBoundary 崩「页面出错了 · **`(data ?? []).filter is not a function`** · 刷新」（崩源=WO-3 信封契约·`QuarantinePage.tsx:17`）。
+  2. **ErrorBoundary 不随路由复位** → 客户端导航**离开崩页也不恢复**：synthetic(正常 574)→quarantine(崩 526)→**再回 synthetic 仍卡 526 错误态**→domains 仍卡。**一崩，之后所有页都卡在那个错误屏。**
+  3. 唯一出路「刷新」→ **整页 reload 掉登录**（WO-11.4）→ 还丢了所在位置。
+  → 净效果：**点错一个页 = 整站不可用，且自救（刷新）把你踢回登录**。
+- 现状锚点：全局 ErrorBoundary 组件（**reset key 未绑 location**）；崩源 `QuarantinePage.tsx:17`/`ValidationPage`（WO-3）；`ShellLayout.tsx:177`（reload 掉登录·WO-11.4）。
+- 怎么建（正交三处·本单专修"韧性"）：ErrorBoundary **绑 `location.pathname` 作 reset key**（React Router 标准：路由一变即 reset componentDidCatch 状态）→ 导航到别页自动恢复，不再一崩全卡。（崩源本身由 WO-3 修、reload 续期由 WO-11.4 修——三单合力才彻底，但本单"reset on nav"独立可立即缓解。）
+- FDE 真值判据：制造一次页面崩（或开 quarantine）后，**点左导航去别页 → 自动恢复正常**（非全卡 526 错误屏）。
+- 本体引用与影响：纯前端错误韧性·正交 WO-3(崩源)/WO-11.4(续期)。**无回写。**
+- 审核方复验点：崩一页 → 导航别页自动恢复（真渲染）。
+
+> 走查附记（本轮真跑顺带确认）：① 隔离区崩=WO-3 **live 复现**；② **12 个被走查页全部"无返回"**=WO-15 **广泛属实**；③ 连接器页首屏带"错误"文案（渲染未崩·低优先·dev 顺查）。
+
+---
+
 ## WO-0（收尾·建议）· 防"陈旧 dist"复发 + 越界代码复核
 
 - **CI dist↔源码一致性门**（P1#4 根因·防复发）：S&OP 空壳根因=运行 dist 早于源码修复提交。建议 CI/部署链加「dist 与最新提交一致性」或 real-backend 烟测，拦截陈旧构建。深扫盲区④提示**其他模块也可能潜伏同类陈旧**——建议 dev 跑一轮全模块 dist↔源码核对。
