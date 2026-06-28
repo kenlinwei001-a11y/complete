@@ -30,20 +30,39 @@ function codeFromError(errCode: string, errMsg: string): GapCode {
   return "OTHER";
 }
 
+/**
+ * 诚实门（G-9 收尾，与 server.ts verifyScenario 同口径单一来源）：答案必须**投影出真实承载数据**才算可答。
+ * 含承载数据块 = kpi/table/rule_violation/action_draft 或带 ⟦ref:⟧ 的文本。此前 classifyGap 只认 trustLevel
+ * 而不查 dataBearing → "WORKFLOW 完成但空投影" 被误判 ANSWERABLE，使发育闭环 runGrowthLoop **零补齐假收敛**、
+ * 重验仍空、永不 GOVERNED。对齐后空投影正确产 EMPTY_DATA（可自动补 → SOFT fill 真触发）。
+ */
+function isDataBearing(blocks: { type?: string; markdown?: string }[]): boolean {
+  return blocks.some(
+    (b) =>
+      b.type === "kpi" || b.type === "table" || b.type === "rule_violation" || b.type === "action_draft" ||
+      (b.type === "text" && /⟦ref:/.test(String(b.markdown ?? ""))),
+  );
+}
+
 export function classifyGap(task: QueryTask): GapReport {
   const findings: GapFinding[] = [];
   const path = task.path ?? "NONE";
   const answer = task.answer;
 
-  // ① 路径A 完成 + VERIFIED → 可答，无缺口
+  // ① 路径A 完成 + VERIFIED → 需再过诚实门（dataBearing）才算可答
   if (task.status === "COMPLETED" && path === "WORKFLOW" && answer?.trustLevel === "VERIFIED_WORKFLOW") {
     // 但若是 WORKFLOW_ONLY「请换个问法」兜底答案，也走 WORKFLOW/VERIFIED → 需判文本
     const isMiss = answer.blocks.some((b) => b.type === "text" && /请换个问法/.test(b.markdown));
-    if (!isMiss) {
-      return { question: task.query, taskId: task.id, verdict: "ANSWERABLE", path, findings: [], generatedAt: new Date().toISOString() };
+    if (isMiss) {
+      findings.push({ gapCode: "NO_INTENT", atStep: "classify", evidence: "本入口无意图命中（WORKFLOW_ONLY 兜底「请换个问法」）", suggestedFill: FILL.NO_INTENT, blocking: true });
+      return { question: task.query, taskId: task.id, verdict: "BLOCKED", path, findings, generatedAt: new Date().toISOString() };
     }
-    findings.push({ gapCode: "NO_INTENT", atStep: "classify", evidence: "本入口无意图命中（WORKFLOW_ONLY 兜底「请换个问法」）", suggestedFill: FILL.NO_INTENT, blocking: true });
-    return { question: task.query, taskId: task.id, verdict: "BLOCKED", path, findings, generatedAt: new Date().toISOString() };
+    // 诚实门：VERIFIED 但未投影承载数据（空集）→ EMPTY_DATA（可自动补），不再误判 ANSWERABLE 致假收敛。
+    if (!isDataBearing(answer.blocks)) {
+      findings.push({ gapCode: "EMPTY_DATA", atStep: "render", evidence: "工作流跑通但未投影承载数据（对象类型在、数据空/未物化）", suggestedFill: FILL.EMPTY_DATA, blocking: true });
+      return { question: task.query, taskId: task.id, verdict: "BLOCKED", path, findings, generatedAt: new Date().toISOString() };
+    }
+    return { question: task.query, taskId: task.id, verdict: "ANSWERABLE", path, findings: [], generatedAt: new Date().toISOString() };
   }
 
   // ② 失败 → 按错误码归类断点

@@ -14,10 +14,21 @@ const base = (over: Partial<QueryTask>): QueryTask => ({
 });
 
 describe("classifyGap · 终态→缺口分类", () => {
-  it("路径A + VERIFIED 答案 → ANSWERABLE 无缺口", () => {
-    const r = classifyGap(base({ path: "WORKFLOW", answer: { trustLevel: "VERIFIED_WORKFLOW", blocks: [{ type: "text", markdown: "可接" }], provenance: [], unverifiedNumerics: false } }));
+  it("路径A + VERIFIED + 承载数据块（kpi）→ ANSWERABLE 无缺口", () => {
+    const r = classifyGap(base({ path: "WORKFLOW", answer: { trustLevel: "VERIFIED_WORKFLOW", blocks: [{ type: "kpi", label: "可承接", value: 1 } as never], provenance: [], unverifiedNumerics: false } }));
     expect(r.verdict).toBe("ANSWERABLE");
     expect(r.findings).toHaveLength(0);
+  });
+
+  it("路径A + VERIFIED 但仅纯文本无承载数据（空投影）→ EMPTY_DATA BLOCKED（诚实门，不假收敛 G-9）", () => {
+    const r = classifyGap(base({ path: "WORKFLOW", answer: { trustLevel: "VERIFIED_WORKFLOW", blocks: [{ type: "text", markdown: "可接" }], provenance: [], unverifiedNumerics: false } }));
+    expect(r.verdict).toBe("BLOCKED");
+    expect(r.findings[0]!.gapCode).toBe("EMPTY_DATA");
+  });
+
+  it("路径A + VERIFIED + 带 ⟦ref:⟧ 溯源文本 → 视为承载数据 → ANSWERABLE", () => {
+    const r = classifyGap(base({ path: "WORKFLOW", answer: { trustLevel: "VERIFIED_WORKFLOW", blocks: [{ type: "text", markdown: "可接 ⟦ref:Order.gapTon⟧" }], provenance: [], unverifiedNumerics: false } }));
+    expect(r.verdict).toBe("ANSWERABLE");
   });
 
   it("WORKFLOW_ONLY「请换个问法」兜底 → NO_INTENT BLOCKED", () => {
