@@ -6,6 +6,7 @@ const FRONT = process.env.FRONT ?? "http://127.0.0.1:5200";
 const CHROME = process.env.CHROME;
 const OUT = process.env.OUT ?? "docs/evidence/attainment-derive-fde.png";
 const OUT2 = process.env.OUT2 ?? "docs/evidence/attainment-decomp-drill-fde.png";
+const OUT3 = process.env.OUT3 ?? "docs/evidence/attainment-equip-drill-fde.png";
 
 const browser = await chromium.launch({ ...(CHROME ? { executablePath: CHROME } : {}), args: ["--no-sandbox", "--disable-dev-shm-usage"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -38,10 +39,10 @@ try {
   await attainProv.hover();
   await page.waitForTimeout(600);
   const tipText = await attainProv.innerText().catch(() => "");
-  const wantFormula = tipText.includes("设备效率达成") && tipText.includes("良率达成") && tipText.includes("排程事件损");
-  const wantNote = tipText.includes("设备效率损") || tipText.includes("逐日拆");
-  if (wantFormula) ok("悬浮溯源显分解公式：达成率 = 设备效率达成 × 良率达成 × 排程事件损"); else bad(`悬浮未见分解公式（tip=${JSON.stringify(tipText).slice(0,200)}）`);
-  if (wantNote) ok("悬浮备注显缺口拆因（设备效率损 + 良率损 + 排程事件损）"); else console.log("ℹ️ 备注拆因文案未匹配（看截图）");
+  const wantFormula = tipText.includes("设备效率达成") && tipText.includes("良率达成") && tipText.includes("oee:equip");
+  const wantNote = tipText.includes("具体设备/工序") || tipText.includes("逐台勾稽") || tipText.includes("逐台设备");
+  if (wantFormula) ok("悬浮溯源显分解公式：达成率 = 设备效率达成 × 良率达成（产线OEE=Σoee:equip×产量/Σ产量）"); else bad(`悬浮未见分解公式（tip=${JSON.stringify(tipText).slice(0,200)}）`);
+  if (wantNote) ok("悬浮显逐台勾稽口径（点到具体设备/工序）"); else console.log("ℹ️ 备注勾稽文案未匹配（看截图）");
 
   await page.screenshot({ path: OUT, fullPage: false });
   ok(`截图已存 ${OUT}`);
@@ -57,11 +58,26 @@ try {
       const rows = await page.locator('[data-testid="breakdown-row"], [data-testid="breakdown-dip-row"]').count();
       const dips = await page.locator('[data-testid="breakdown-dip-row"]').count();
       const bdText = await bd.innerText();
-      const hasCols = bdText.includes("设备效率达成") && bdText.includes("良率达成") && bdText.includes("排程事件损") && bdText.includes("主因");
-      if (rows > 0 && hasCols) ok(`逐日拆因表渲染：${rows} 日（${dips} 日低于期均标灰）·列含 设备效率达成/良率达成/排程事件损/主因`);
+      const hasCols = bdText.includes("设备效率达成") && bdText.includes("良率达成") && bdText.includes("产线OEE") && bdText.includes("主因");
+      if (rows > 0 && hasCols) ok(`逐日拆因表渲染：${rows} 日（${dips} 日低于期均标灰）·列含 设备效率达成/良率达成/产线OEE/主因`);
       else bad(`逐日拆因表异常 rows=${rows} cols=${hasCols}`);
       await page.screenshot({ path: OUT2, fullPage: false });
       ok(`下钻截图已存 ${OUT2}`);
+
+      // Level-3 逐设备勾稽：点 action「下钻最差日·最差产线逐设备」
+      const action = page.locator('[data-testid="dag-node-action"]');
+      if (await action.count()) {
+        await action.first().click();
+        await page.waitForTimeout(1500);
+        const bd3 = page.locator('[data-testid="dag-node-breakdown"]');
+        const t3 = await bd3.innerText().catch(() => "");
+        const rows3 = await page.locator('[data-testid="breakdown-row"], [data-testid="breakdown-dip-row"]').count();
+        const hasEquip = t3.includes("设备 OEE") || t3.includes("工序良率");
+        if (rows3 > 0 && hasEquip) ok(`逐设备勾稽表渲染：${rows3} 行（含 设备 OEE / 工序良率·最低 OEE 设备标灰=拖累点）`);
+        else bad(`逐设备勾稽表异常 rows=${rows3} hasEquip=${hasEquip} text=${JSON.stringify(t3).slice(0,160)}`);
+        await page.screenshot({ path: OUT3, fullPage: false });
+        ok(`逐设备截图已存 ${OUT3}`);
+      } else bad("逐日拆因抽屉无「下钻逐设备」action");
     } else bad("点 KPI 后未出现逐日拆因表（dag-node-breakdown）");
   } else bad("未找到 kpi-drill-attain（计划达成率 KPI 不可点开下钻）");
 } catch (e) {

@@ -367,22 +367,22 @@ function useWidgetData(q: WidgetQueryDef) {
   });
 }
 
+const EVENT_LABEL: Record<number, string> = { 0: "正常", 1: "周末", 2: "检修" };
+
 /**
- * 计划达成率逐日拆因下钻（R13 逐日可溯）：读 attainment:line 派生分量（oeeAttain/yieldAttain/eventDip），
- * 跨产线按日聚合 → 逐日 达成率 = 设备效率达成 × 良率达成 × 排程事件损，标掉日(<期均) + 主因(缺口最大的因子)。
- * 数据来自后端真派生序列（agg-query measureField 选择器），非前端写死（R14）。
+ * Level-2 逐日拆因（R13）：读 attainment:line 真 rollup 分量（oeeAttain/yieldAttain/lineOee/eventFlag），
+ * 跨产线按日均聚 → 逐日 达成率 = 设备效率达成 × 良率达成，标掉日(<期均) + 主因。返回 breakdown + 最差日（供 level-3）。
+ * 分量为后端沿 Line→Process→Equipment 拓扑逐台勾稽算出（agg-query measureField），非前端写死（R14）。
  */
-async function fetchAttainmentDecomp(seriesKey: string): Promise<DagDetail["breakdown"]> {
-  // 取近 14 个有数据的日：合成历史止于 forecastStart（≈今日前数周），故拉宽窗口（≤120 桶上限）后切末 14 日。
+async function fetchAttainmentDecomp(seriesKey: string): Promise<{ breakdown: NonNullable<DagDetail["breakdown"]>; worstDay?: string }> {
+  // 取近 14 个有数据的日：合成历史止于 forecastStart（≈今日前数周），拉宽窗口（≤120 桶上限）后切末 14 日。
   const to = new Date();
   const from = new Date(to.getTime() - 118 * 86400_000);
   const win = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), grain: "day" };
-  const KEEP = 14;
-  const fields = ["attainment", "oeeAttain", "yieldAttain", "eventDip"] as const;
+  const fields = ["attainment", "oeeAttain", "yieldAttain", "lineOee", "eventFlag"] as const;
   const byField = await Promise.all(
     fields.map((mf) => queryTimeseriesAgg({ seriesKey, entityIds: [], window: win, agg: "avg", measureField: mf })),
   );
-  // 跨产线按 bucket 平均（headline 口径 = 各线均值），逐日聚成一行。
   const dayMap = new Map<string, Record<string, { sum: number; n: number }>>();
   fields.forEach((mf, fi) => {
     for (const p of byField[fi]!.points) {
@@ -392,58 +392,126 @@ async function fetchAttainmentDecomp(seriesKey: string): Promise<DagDetail["brea
       dayMap.set(p.bucket, row);
     }
   });
-  const days = [...dayMap.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-KEEP);
-  if (days.length === 0) return { columns: ["日期"], rows: [], caption: "暂无逐日派生数据（需真后端 attainment:line 序列）" };
+  const days = [...dayMap.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-14);
+  if (days.length === 0) return { breakdown: { columns: ["日期"], rows: [], caption: "暂无逐日派生数据（需真后端 attainment:line 序列）" } };
   const avg = (r: Record<string, { sum: number; n: number }>, k: string) => (r[k] && r[k]!.n ? r[k]!.sum / r[k]!.n : 0);
   const periodAvg = days.reduce((s, [, r]) => s + avg(r, "attainment"), 0) / days.length;
+  let worstDay = days[0]![0];
+  let worstAt = 1;
   const rows = days.map(([date, r]) => {
-    const at = avg(r, "attainment"), oee = avg(r, "oeeAttain"), yld = avg(r, "yieldAttain"), evt = avg(r, "eventDip");
-    // 主因 = 距 1.0 缺口最大的因子
-    const losses: [string, number][] = [["设备效率", 1 - oee], ["良率", 1 - yld], ["排程事件", 1 - evt]];
-    losses.sort((a, b) => b[1] - a[1]);
-    const cause = losses[0]![1] > 0.005 ? losses[0]![0] : "—";
+    const at = avg(r, "attainment"), oee = avg(r, "oeeAttain"), yld = avg(r, "yieldAttain"), loee = avg(r, "lineOee");
+    const flag = Math.round(avg(r, "eventFlag"));
+    if (at < worstAt) { worstAt = at; worstDay = date; }
+    // 主因：排程日（周末/检修）OEE 自然走低标排程；否则取设备效率/良率缺口大者。
+    const cause = flag > 0 ? `排程·${EVENT_LABEL[flag]}` : 1 - oee >= 1 - yld ? "设备效率" : "良率";
     return {
-      cells: [date.slice(5), `${(at * 100).toFixed(1)}%`, `${(oee * 100).toFixed(1)}%`, `${(yld * 100).toFixed(1)}%`, evt < 0.999 ? `${(evt * 100).toFixed(0)}%` : "—", cause],
+      cells: [date.slice(5), `${(at * 100).toFixed(1)}%`, `${(oee * 100).toFixed(1)}%`, `${(yld * 100).toFixed(1)}%`, `${(loee * 100).toFixed(1)}%`, cause],
       dip: at < periodAvg - 0.005,
     };
   });
   return {
-    columns: ["日期", "达成率", "设备效率达成", "良率达成", "排程事件损", "主因"],
-    rows,
-    caption: `近 ${days.length} 日逐日拆解（达成率 = 设备效率达成 × 良率达成 × 排程事件损）·灰底=低于期均 ${(periodAvg * 100).toFixed(1)}%·主因=缺口最大因子`,
+    breakdown: {
+      columns: ["日期", "达成率", "设备效率达成", "良率达成", "产线OEE", "主因"],
+      rows,
+      caption: `近 ${days.length} 日逐日拆解（达成率 = 设备效率达成 × 良率达成·OEE 为逐台设备产量加权 rollup）·灰底=低于期均 ${(periodAvg * 100).toFixed(1)}%`,
+    },
+    worstDay,
+  };
+}
+
+/**
+ * Level-3 逐设备勾稽（R13 点到具体设备/工序）：取最差日达成率最低的产线 → 沿 Line→Equipment / Line→Process
+ * 拓扑列出该线逐台 oee:equip 与逐工序 yield:process（升序，最低者=拖累点）。真接后端序列 + 对象图（非写死）。
+ */
+async function fetchEquipDrill(seriesKey: string, day: string): Promise<NonNullable<DagDetail["breakdown"]>> {
+  const win = { from: day, to: new Date(Date.parse(`${day}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10), grain: "day" };
+  // 最差产线（该日 attainment:line 各线最低）
+  const linePts = (await queryTimeseriesAgg({ seriesKey, entityIds: [], window: win, agg: "avg", measureField: "attainment" })).points;
+  if (linePts.length === 0) return { columns: ["对象"], rows: [], caption: `${day} 无产线数据` };
+  const worst = linePts.slice().sort((a, b) => a.value - b.value)[0]!;
+  const lineId = worst.entityId;
+  // 该线设备 / 工序（对象图按 lineId 过滤）
+  const [equips, procs] = await Promise.all([
+    queryObjectsPaged("Equipment", 1, 100, { lineId }),
+    queryObjectsPaged("Process", 1, 100, { lineId }),
+  ]);
+  const equipIds = equips.items.map((e) => String(e.props.equipId ?? e.id));
+  const procIds = procs.items.map((p) => String(p.props.processId ?? p.id));
+  const [oeePts, yldPts] = await Promise.all([
+    equipIds.length ? queryTimeseriesAgg({ seriesKey: "oee:equip", entityIds: equipIds.slice(0, 20), window: win, agg: "avg" }) : Promise.resolve({ points: [] as { entityId: string; value: number }[] }),
+    procIds.length ? queryTimeseriesAgg({ seriesKey: "yield:process", entityIds: procIds.slice(0, 20), window: win, agg: "avg" }) : Promise.resolve({ points: [] as { entityId: string; value: number }[] }),
+  ]);
+  const eqRows = oeePts.points.slice().sort((a, b) => a.value - b.value).map((p, i) => ({
+    cells: [p.entityId.replace(`${lineId}-`, ""), "设备 OEE", `${(p.value * 100).toFixed(1)}%`],
+    dip: i === 0, // 最低=拖累点
+  }));
+  const prRows = yldPts.points.slice().sort((a, b) => a.value - b.value).map((p) => ({
+    cells: [p.entityId.replace(`${lineId}-`, ""), "工序良率", `${(p.value * 100).toFixed(1)}%`],
+    dip: false,
+  }));
+  if (eqRows.length === 0 && prRows.length === 0) return { columns: ["对象"], rows: [], caption: `${day}·${lineId} 无设备/工序序列（需真后端）` };
+  const worstEq = eqRows[0]?.cells[0] ?? "—";
+  return {
+    columns: ["设备/工序", "类型", "实际值"],
+    rows: [...eqRows, ...prRows],
+    caption: `${day} 达成率最低产线「${lineId}」逐台勾稽（OEE 升序·灰底=最低拖累点：${worstEq}）·达成率 = (Σoee×产量/Σ产量)/计划OEE × avg(yield)/计划良率`,
   };
 }
 
 function KpiDrillButton({ def, value, scale }: { def: DashboardWidgetDef; value: unknown; scale?: number }) {
   const [open, setOpen] = useState(false);
-  const { data: breakdown, isFetching } = useQuery({
-    queryKey: ["attain-decomp", def.drill?.seriesKey],
-    queryFn: () => fetchAttainmentDecomp(def.drill!.seriesKey),
-    enabled: open && !!def.drill,
+  const [view, setView] = useState<"days" | "equip">("days");
+  const seriesKey = def.drill?.seriesKey;
+  const { data: l2, isFetching: l2Loading } = useQuery({
+    queryKey: ["attain-decomp", seriesKey],
+    queryFn: () => fetchAttainmentDecomp(seriesKey!),
+    enabled: open && !!seriesKey,
   });
+  const worstDay = l2?.worstDay;
+  const { data: l3, isFetching: l3Loading } = useQuery({
+    queryKey: ["attain-equip", seriesKey, worstDay],
+    queryFn: () => fetchEquipDrill(seriesKey!, worstDay!),
+    enabled: open && view === "equip" && !!seriesKey && !!worstDay,
+  });
+  const close = () => { setOpen(false); setView("days"); };
   return (
     <>
       <button
         type="button"
         data-testid={`kpi-drill-${def.key}`}
-        onClick={() => setOpen(true)}
-        title="点开逐日拆因"
+        onClick={() => { setView("days"); setOpen(true); }}
+        title="点开逐日拆因 → 逐设备勾稽"
         style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit", font: "inherit" }}
       >
         <KpiWidget value={value} unit={def.unit} scale={scale} />
         <span style={{ fontSize: 10, color: "var(--accent,#6ea8fe)" }}>点开逐日拆因 →</span>
       </button>
-      {open && (
+      {open && view === "days" && (
         <DagNodeDrawer
-          onClose={() => setOpen(false)}
+          onClose={close}
           detail={{
             title: `${def.title} · 逐日拆因`,
             src: def.provenance?.sourceSystem ?? "时序库·attainment:line",
-            formula: def.provenance?.formula ?? "达成率 = 设备效率达成 × 良率达成 × 排程事件损",
+            formula: def.provenance?.formula ?? "达成率 = 设备效率达成 × 良率达成",
             inputs: def.provenance?.inputs,
             rule: def.provenance?.ruleRefs,
-            note: isFetching ? "加载逐日派生数据…" : def.provenance?.note,
-            breakdown: breakdown ?? { columns: ["日期"], rows: [], caption: isFetching ? "加载中…" : "" },
+            note: l2Loading ? "加载逐日派生数据…" : def.provenance?.note,
+            breakdown: l2?.breakdown ?? { columns: ["日期"], rows: [], caption: l2Loading ? "加载中…" : "" },
+            action: worstDay ? { label: `下钻最差日 ${worstDay.slice(5)} · 最差产线逐设备 →`, onClick: () => setView("equip") } : undefined,
+          }}
+        />
+      )}
+      {open && view === "equip" && (
+        <DagNodeDrawer
+          onClose={close}
+          detail={{
+            title: `${def.title} · 逐设备勾稽（${worstDay?.slice(5) ?? ""}）`,
+            src: "时序库·oee:equip / yield:process（沿 Line→Equipment/Process 拓扑）",
+            formula: "产线OEE = Σ(设备oee×产量)/Σ产量；产线良率 = avg(工序yield)",
+            rule: def.provenance?.ruleRefs,
+            note: l3Loading ? "加载逐台设备/工序数据…" : "最低 OEE 设备 = 该日该线达成率主要拖累点（停机/低效），点到具体设备/工序（R13）",
+            breakdown: l3 ?? { columns: ["对象"], rows: [], caption: l3Loading ? "加载中…" : "" },
+            action: { label: "← 返回逐日拆因", onClick: () => setView("days") },
           }}
         />
       )}

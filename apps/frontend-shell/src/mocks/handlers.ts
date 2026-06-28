@@ -1120,7 +1120,7 @@ export const handlers = [
   }),
 
   // ---- 时序聚合查询（A8.4，无任何参数组合可返回原始行） ----
-  // 计划达成率逐日拆因（drill）：按 measureField 返回各分量（达成率=设备效率达成×良率达成×排程事件损）。
+  // 计划达成率逐日拆因 / 逐设备勾稽（drill）：达成率=设备效率达成×良率达成；level-3 逐台 oee:equip / 逐工序 yield:process。
   http.post("*/a/v1/timeseries/agg-query", async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as { seriesKey?: string; measureField?: string };
     if (body.seriesKey === "attainment:line") {
@@ -1128,14 +1128,25 @@ export const handlers = [
       const points = Array.from({ length: 14 }, (_, i) => {
         const day = i + 1;
         const dow = new Date(`2026-06-${String(day).padStart(2, "0")}T00:00:00Z`).getUTCDay();
-        const eventDip = dow === 0 || dow === 6 ? 0.88 : 1; // 周末减产
-        const oeeAttain = Number((0.93 + Math.sin(i * 0.7) * 0.03).toFixed(4)); // 设备效率达成 ~0.78/0.85
-        const yieldAttain = Number((0.982 + Math.cos(i * 0.5) * 0.008).toFixed(4)); // 良率达成 ~0.952/0.97
-        const attainment = Number((oeeAttain * yieldAttain * eventDip).toFixed(4));
-        const value = mf === "oeeAttain" ? oeeAttain : mf === "yieldAttain" ? yieldAttain : mf === "eventDip" ? eventDip : attainment;
-        return { entityId: "LINE-changzhou", bucket: `2026-06-${String(day).padStart(2, "0")}`, value };
+        const wknd = dow === 0 || dow === 6;
+        const lineOee = Number(((wknd ? 0.69 : 0.785) + Math.sin(i * 0.7) * 0.02).toFixed(4)); // 真 rollup 近似，周末走低
+        const lineYield = Number((0.951 + Math.cos(i * 0.5) * 0.006).toFixed(4));
+        const oeeAttain = Number((lineOee / 0.85).toFixed(4));
+        const yieldAttain = Number((lineYield / 0.97).toFixed(4));
+        const attainment = Number((oeeAttain * yieldAttain).toFixed(4));
+        const v: Record<string, number> = { attainment, oeeAttain, yieldAttain, lineOee, lineYield, eventFlag: wknd ? 1 : 0 };
+        return { entityId: "LINE-changzhou", bucket: `2026-06-${String(day).padStart(2, "0")}`, value: v[mf] ?? attainment };
       });
       return HttpResponse.json({ points });
+    }
+    if (body.seriesKey === "oee:equip") {
+      // 逐台设备 OEE（level-3 勾稽）：assembly-E2 最差（停机/低效拖累）。
+      const eqs = ["LINE-changzhou-assembly-E2", "LINE-changzhou-assembly-E1", "LINE-changzhou-coating-E2", "LINE-changzhou-winding-E2", "LINE-changzhou-coating-E1", "LINE-changzhou-winding-E1"];
+      return HttpResponse.json({ points: eqs.map((e, i) => ({ entityId: e, bucket: "2026-06-07", value: Number((0.642 + i * 0.022).toFixed(4)) })) });
+    }
+    if (body.seriesKey === "yield:process") {
+      const prs = ["LINE-changzhou-coating", "LINE-changzhou-winding", "LINE-changzhou-assembly"];
+      return HttpResponse.json({ points: prs.map((p, i) => ({ entityId: p, bucket: "2026-06-07", value: Number((0.945 + i * 0.004).toFixed(4)) })) });
     }
     return HttpResponse.json({ points: TS_AGG_POINTS });
   }),

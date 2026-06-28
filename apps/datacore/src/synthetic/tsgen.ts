@@ -32,8 +32,13 @@ export interface TsGenSpec {
   derive?: TsGenDerive;
 }
 
-/** 派生达成率额外持久化的分量字段（逐日拆因可溯）：设备效率达成 / 良率达成 / 排程事件损。 */
-export const ATTAIN_COMPONENT_FIELDS = ["oeeAttain", "yieldAttain", "eventDip"] as const;
+/**
+ * 派生达成率额外持久化的分量字段（逐日拆因 / 逐设备勾稽 R13）：
+ * 设备效率达成 / 良率达成 / 产线实际OEE / 产线实际良率 / 排程标记（0正常·1周末·2检修）。
+ * 注：demo 历史（generateHistory）走真拓扑 rollup 填 lineOee/lineYield（与 oee:equip×line / yield:process×line
+ * 逐台勾稽）；simclock/livedin 前向逐 tick 经 genPoint 近似生成（无跨序列 rollup），仅填可算字段。
+ */
+export const ATTAIN_COMPONENT_FIELDS = ["oeeAttain", "yieldAttain", "lineOee", "lineYield", "eventFlag"] as const;
 
 export interface TsGenEntity {
   entityId: string;
@@ -99,7 +104,6 @@ export function genPoint(
     v = spec.base.mean + spec.base.noise * gauss(rng);
     if (spec.drift) v += spec.drift * dayIndex;
   }
-  const beforeEvents = v;
   const effects = spec.effects ?? [];
   if (effects.includes("weekend_dip")) {
     const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
@@ -119,10 +123,13 @@ export function genPoint(
   v = clampFor(spec, round(v, 4));
   const values: Record<string, number> = { [spec.measureField]: v };
   if (spec.derive?.kind === "attainment") {
-    // 排程事件损 = 事件后/事件前（1.0 = 无事件；<1 = 周末/检修/爬坡停减产）。逐日持久化供拆因。
+    // 前向 tick 近似（simclock/livedin）：分量为镜像分布，事件经 effects 已乘入 v。
+    // 排程标记 eventFlag：2 检修 / 1 周末 / 0 正常（demo 历史由 generateHistory 真 rollup 覆盖）。
+    const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
+    const inMaint = !!(maintWindow && dateIso >= maintWindow.start && dateIso < maintWindow.end);
     values.oeeAttain = oeeAttain;
     values.yieldAttain = yieldAttain;
-    values.eventDip = round(beforeEvents > 0 ? v / beforeEvents : 1, 4);
+    values.eventFlag = inMaint ? 2 : dow === 0 || dow === 6 ? 1 : 0;
   }
   if (spec.weightField) {
     values[spec.weightField] = round(800 + 400 * rng(), 2);

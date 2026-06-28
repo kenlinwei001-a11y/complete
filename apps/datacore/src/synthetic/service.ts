@@ -421,17 +421,21 @@ export class SyntheticService {
     }));
     const windows = maintWindowsFor(maintPlans, BATTERY_SOLVER_PARAMS.forecastStart as string);
     const generators = (BATTERY_TEMPLATE.tsGenerators ?? []) as unknown as TsGenSpec[];
+    // 逐设备勾稽（R13）：累积 oee:equip / yield:process 逐日点，供 attainment:line 沿真拓扑 rollup
+    // （达成率 = 产线设备OEE/计划OEE × 产线工序良率/计划良率，OEE 按产量加权），而非镜像分布。
+    const oeeByEquipDay = new Map<string, Map<string, { oee: number; output: number }>>();
+    const yieldByProcDay = new Map<string, Map<string, number>>();
     for (const gen of generators) {
-      // 派生达成率序列额外持久化分量字段（oeeAttain/yieldAttain/eventDip）以支持逐日拆因（R13）。
-      const measureFields = gen.derive?.kind === "attainment"
-        ? [gen.measureField, ...ATTAIN_COMPONENT_FIELDS]
-        : gen.weightField ? [gen.measureField, gen.weightField] : [gen.measureField];
+      if (gen.derive?.kind === "attainment") {
+        await this.writeAttainmentRollup(ctx, gen, t0, windows, oeeByEquipDay, yieldByProcDay);
+        continue;
+      }
       const series = await this.ts.ensureSeries(ctx.tenantId, {
         seriesKey: gen.seriesKey,
         entityType: gen.entityType,
         entityRefField: entityRefFieldOf(gen.entityType),
         timeField: "ts",
-        measureFields,
+        measureFields: gen.weightField ? [gen.measureField, gen.weightField] : [gen.measureField],
         origin: "SYNTHETIC",
       });
       const entities = (await this.repos.objects.listByType(ctx.tenantId, gen.entityType)).sort((a, b) =>
@@ -443,16 +447,108 @@ export class SyntheticService {
         const baseId = String(e.props.baseId ?? "");
         for (let d = 0; d < HISTORY_DAYS; d++) {
           const dateIso = new Date(t0 - (HISTORY_DAYS - d) * DAY_MS).toISOString().slice(0, 10);
-          points.push({
-            entityId,
-            ts: `${dateIso}T00:00:00.000Z`,
-            values: genPoint(gen, { entityId, baseId }, dateIso, d, seed, windowFor(windows, baseId, dateIso)),
-            tick: 0,
-          });
+          const values = genPoint(gen, { entityId, baseId }, dateIso, d, seed, windowFor(windows, baseId, dateIso));
+          // 累积设备/工序逐日值，供达成率 rollup 逐台勾稽。
+          if (gen.seriesKey === "oee:equip") {
+            let m = oeeByEquipDay.get(entityId);
+            if (!m) oeeByEquipDay.set(entityId, (m = new Map()));
+            m.set(dateIso, { oee: values.oee ?? 0, output: values.output ?? 1 });
+          } else if (gen.seriesKey === "yield:process") {
+            let m = yieldByProcDay.get(entityId);
+            if (!m) yieldByProcDay.set(entityId, (m = new Map()));
+            m.set(dateIso, values.yield ?? 0);
+          }
+          points.push({ entityId, ts: `${dateIso}T00:00:00.000Z`, values, tick: 0 });
         }
       }
       await this.ts.writePoints(ctx.tenantId, series, points);
     }
+  }
+
+  /**
+   * 逐设备勾稽 rollup（R13）：attainment:line 逐日点由该产线**真实设备/工序序列**算出，非镜像分布——
+   *   设备效率达成 = (Σ oee:equip×产量 / Σ产量) / 计划OEE   （沿 Line→Process→Equipment 拓扑，产量加权）
+   *   良率达成     = avg(yield:process) / 计划良率
+   *   达成率       = 设备效率达成 × 良率达成（钳 [0.4,0.995]）
+   * 逐日持久化 lineOee/lineYield/eventFlag，使"点达成率→点到具体停机设备/工序"勾稽一致。
+   * 计划基准 oeePlan/yieldPlan 取治理 planBaseline（R14）；确定性（上游序列确定，rollup 纯函数 R6）。
+   */
+  private async writeAttainmentRollup(
+    ctx: AuthCtx,
+    gen: TsGenSpec,
+    t0: number,
+    windows: Map<string, { start: string; end: string }[]>,
+    oeeByEquipDay: Map<string, Map<string, { oee: number; output: number }>>,
+    yieldByProcDay: Map<string, Map<string, number>>,
+  ): Promise<void> {
+    if (!this.ts) return;
+    const plan = BATTERY_SOLVER_PARAMS.planBaseline as { oeePlan: number; yieldPlan: number };
+    const series = await this.ts.ensureSeries(ctx.tenantId, {
+      seriesKey: gen.seriesKey,
+      entityType: gen.entityType,
+      entityRefField: entityRefFieldOf(gen.entityType),
+      timeField: "ts",
+      measureFields: [gen.measureField, ...ATTAIN_COMPONENT_FIELDS],
+      origin: "SYNTHETIC",
+    });
+    // 拓扑：产线 → 其设备 equipId 列 / 其工序 processId 列（Equipment/Process 均带 lineId）。
+    const equipByLine = new Map<string, string[]>();
+    for (const e of await this.repos.objects.listByType(ctx.tenantId, "Equipment")) {
+      const lineId = String(e.props.lineId ?? "");
+      const equipId = String(e.props.equipId ?? e.id);
+      (equipByLine.get(lineId) ?? equipByLine.set(lineId, []).get(lineId)!).push(equipId);
+    }
+    const procByLine = new Map<string, string[]>();
+    for (const p of await this.repos.objects.listByType(ctx.tenantId, "Process")) {
+      const lineId = String(p.props.lineId ?? "");
+      const processId = String(p.props.processId ?? p.id);
+      (procByLine.get(lineId) ?? procByLine.set(lineId, []).get(lineId)!).push(processId);
+    }
+    const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).sort((a, b) => (a.id < b.id ? -1 : 1));
+    const points: { entityId: string; ts: string; values: Record<string, number>; tick?: number }[] = [];
+    for (const line of lines) {
+      const lineId = String(line.props.lineId ?? line.id);
+      const baseId = String(line.props.baseId ?? "");
+      const eqs = equipByLine.get(lineId) ?? [];
+      const prs = procByLine.get(lineId) ?? [];
+      for (let d = 0; d < HISTORY_DAYS; d++) {
+        const dateIso = new Date(t0 - (HISTORY_DAYS - d) * DAY_MS).toISOString().slice(0, 10);
+        // 产量加权产线 OEE（与 oee_daily_7d 同口径），缺数据回退计划基准（不放水）。
+        let wOee = 0;
+        let wSum = 0;
+        for (const eq of eqs) {
+          const pt = oeeByEquipDay.get(eq)?.get(dateIso);
+          if (pt) {
+            wOee += pt.oee * pt.output;
+            wSum += pt.output;
+          }
+        }
+        const lineOee = wSum > 0 ? wOee / wSum : plan.oeePlan;
+        let ySum = 0;
+        let yN = 0;
+        for (const pr of prs) {
+          const y = yieldByProcDay.get(pr)?.get(dateIso);
+          if (y != null) {
+            ySum += y;
+            yN++;
+          }
+        }
+        const lineYield = yN > 0 ? ySum / yN : plan.yieldPlan;
+        const oeeAttain = round(lineOee / plan.oeePlan, 4);
+        const yieldAttain = round(lineYield / plan.yieldPlan, 4);
+        const attainment = Math.min(0.995, Math.max(0.4, round(oeeAttain * yieldAttain, 4)));
+        const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
+        const inMaint = !!windowFor(windows, baseId, dateIso);
+        const eventFlag = inMaint ? 2 : dow === 0 || dow === 6 ? 1 : 0;
+        points.push({
+          entityId: lineId,
+          ts: `${dateIso}T00:00:00.000Z`,
+          values: { attainment, oeeAttain, yieldAttain, lineOee: round(lineOee, 4), lineYield: round(lineYield, 4), eventFlag },
+          tick: 0,
+        });
+      }
+    }
+    await this.ts.writePoints(ctx.tenantId, series, points);
   }
 
   // -- battery instantiation (master data → transactions, FK by construction) --
@@ -1040,7 +1136,7 @@ export class SyntheticService {
           key: "attain", type: "kpi", title: "计划达成率", unit: "%", scale: 100,
           drill: { kind: "attainment-decomp", seriesKey: "attainment:line" },
           query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
-          provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", formula: "达成率 = 设备效率达成(实际OEE/计划OEE) × 良率达成(实际良率/计划良率) × 排程事件损(检修/周末/爬坡)", label: "avg(Line.schedule_attainment) 周聚合·真派生", ruleRefs: "C21", inputs: ["attainment:line.oeeAttain", "attainment:line.yieldAttain", "attainment:line.eventDip"], sourceSystem: "时序库·attainment:line（逐日真派生·MES 周聚合）", note: "缺口逐日拆为 设备效率损 + 良率损 + 检修·周末·爬坡损（R13 可溯源；分量持久化于 attainment:line 序列）" },
+          provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", formula: "达成率 = 设备效率达成(产线OEE/计划OEE) × 良率达成(产线良率/计划良率)；产线OEE=Σ(oee:equip×产量)/Σ产量·产线良率=avg(yield:process)", label: "avg(Line.schedule_attainment) 周聚合·逐设备rollup", ruleRefs: "C21", inputs: ["oee:equip（逐台设备·产量加权）", "yield:process（逐工序）", "planBaseline.oeePlan/yieldPlan"], sourceSystem: "时序库·attainment:line（沿 Line→Process→Equipment 拓扑逐台勾稽·MES 周聚合）", note: "缺口逐日可拆到具体设备/工序（点 KPI 下钻：逐日 → 最差日最差线 → 逐台 oee:equip/yield:process）；周末/检修日 OEE 自然走低（R13）" },
         },
         {
           key: "orders", type: "kpi", title: "在手订单",

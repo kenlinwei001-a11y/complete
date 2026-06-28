@@ -57,7 +57,20 @@ drill 配置驱动（widget def `drill:{kind,seriesKey}`，R14），数据走 `a
 实拍 `docs/evidence/attainment-decomp-drill-fde.png`：14 日表，05-30/05-31 周末 主因「排程事件」(eventDip 86%)，
 余日 主因「设备效率」；算术自洽（05-27: 90.5%×98.2%×98% ≈ 86.8%）。FDE 7/7 全绿。
 
+## 逐设备勾稽（再下一层·已落）
+
+把 attainment:line 从**镜像分布**改为沿 **Line→Process→Equipment 拓扑用该线真实序列 rollup**：
+`generateHistory.writeAttainmentRollup` 算 `产线OEE = Σ(oee:equip×产量)/Σ产量`、`产线良率 = avg(yield:process)`，
+`达成率 = 产线OEE/计划OEE × 产线良率/计划良率`；周末/检修经 oee:equip 的 weekend/maint_dip 自然传导（不重复相乘）。
+逐日持久化 `lineOee/lineYield/eventFlag`。后端测试新增「勾稽真实」断言：`lineOee == 该线设备 oee:equip 产量加权均值`（容差 2‰）。
+
+UI 拆因下钻加 **level-3**：逐日表 → 点「下钻最差日·最差产线逐设备」→ 该日达成率最低产线的**逐台 oee:equip / 逐工序 yield:process**（OEE 升序，最低=拖累点）。
+实拍 `docs/evidence/attainment-equip-drill-fde.png`：最差线 LINE-jiangmen，**assembly-E2 OEE 45.6%**（灰底=拖累点），定位到具体停机/低效设备。
+
+验证：datacore 757（含 6 项 attainment-derive：分解/勾稽 join/周末传导/选择器/400/R6）· frontend 279 · FDE **9/9**（KPI 90.2% → 逐日 → 逐设备三级点穿）。
+
 ## 距北极星还差什么（诚实）
 
-- ✅ 真做到：达成率真派生 + 逐日分量持久化 + 可查 + UI 悬浮显分解 + **点 KPI 逐日拆因下钻**。
-- 📏 **未做（后续增量）**：OEE/良率分量为镜像分布、非与该线具体设备/工序逐台 join（同源同分布、确定性，但非逐设备勾稽）——若要"点达成率→点到具体停机设备/工序"需再接 `oee:equip × line` 拓扑聚合。
+- ✅ 真做到：达成率沿真拓扑逐台勾稽 rollup（非镜像）+ 逐日分量持久化/可查 + 三级点穿（KPI → 逐日 → 逐设备/工序，定位拖累设备）。
+- 📏 **口径取舍**：OEE 含周末/检修 dip（来自 oee:equip），故 2 因子分解（设备效率达成 × 良率达成）中排程事件已并入设备效率达成（主因列以 eventFlag 标「排程·周末/检修」区分），不再单列「排程事件损」乘子——避免与 OEE 内的 dip 双重计数。
+- 📏 **simclock/livedin 前向 tick** 仍走 genPoint 镜像近似（无跨序列 rollup），不参与 demo 历史；如需前向沙盘也逐台勾稽，是后续增量。
