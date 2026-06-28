@@ -147,6 +147,21 @@
 
 ---
 
+## WO-12 · 本体建模工作台 + Skill/MCP 入口（审核方真浏览器实拍坐实 · 新发现）
+
+> 来源：审核方应用户问"为何无法编辑/新增 Skill/MCP·图查询为何 RESERVED·为何找不到新建本体"，**真浏览器实拍**逐一核（非代码推断——其中 12-1 正是"读代码以为能用、真点才 400"的 fde 反例）。**已实拍确认能用的不在此单**：MCP 保存（`/admin/mcp` 新建→填→保存→toast 已保存→后端 `GET /b/v1/mcp-configs` 持久化 ✓）、确定性建模（`/admin/modeling` 新建草案→确定性建模(全字段)→toast「每字段已建模 100% 覆盖」+ 真出草案 ✓）、图查询 RESERVED（诚实·见 C1，不在本单）。
+
+| # | 级 | 缺口（实拍坐实） | 现状锚点 | 怎么建 | FDE 真值判据 |
+|---|---|---|---|---|---|
+| **12-1** | **P2·真bug** | **`/admin/skills` ＋新建技能点击当场 400**：`VALIDATION_ERROR: resources: expected array, received undefined`（实拍 toast req-7）——"自助创建技能"入口在但**点了就报错** | 前端 `SkillsPage.tsx:17` create payload `{key,name,summary,body}` **漏 `resources`**；后端 `CreateSkillBody = SkillDefinitionSchema.omit(...)`，`resources: z.array(...)` **必填无默认**（`contracts/agentcore.ts:146`） | 二选一（接现成不改契约优先）：① 前端创建 payload 补 `resources: []`；② 或后端 `SkillDefinitionSchema.resources` 加 `.default([])` | 点 ＋新建技能 → **201 建出 DRAFT 技能**（非 400），列表出现新技能可编辑 |
+| **12-2** | **P2·可发现性** | **找不到"新建本体"功能**：建模页创建入口被标成 **「AI 建议草案」**（误导=以为只能 AI），用户找"新建本体"找不到 | `ModelingPage.tsx:133` 用 `t.newDraft`；`locales/zh.ts:619 newDraft:"AI 建议草案"` | 改文案为「**新建本体（模型）**」或「新建本体草案」，弹窗内再分**AI 建议** / **确定性建模（全字段）**两条路径；空态 CTA 已是「从数据建模」可对齐。**注**：建模是**数据驱动**（选数据集→字段全建模 R12·无 from-scratch 凭空建型，R13 provenance 设计如此）——若要"空本体手建类型"是另一需求，本单只解决"入口找得到+名字对" | demo 用户在建模页**一眼能认出"新建本体"入口**；点开两路径清晰；不再误以为"只能 AI / 没有新建" |
+| **12-3** | **P3·设计弱点** | **建模页只读 Skill/MCP tab 几乎无用且不解释**：实拍两 tab **0 个动作按钮**（纯只读裸列表），看得见点不了、也不说为啥在这 | `PlatformConsole.tsx:82 SkillsTab`/`:100 McpTab` 纯 `fetch`+列表 | 三选一：① 图查询绑定（C1）建成前**先隐藏**这俩 tab；② 或**明确标注**"此处将用于 图查询→技能绑定/暴露 MCP（待 §10.1 后端 C1）"；③ 或**现在就让它有用**——深链到 `/admin/skills`+`/admin/mcp` 专用页 + 标"这些可被本体查询引用"。**真 CRUD 在专用页**（Skill 见 12-1 修后；MCP 已验能用） | 建模页 Skill/MCP tab 要么不显示、要么有明确用途说明/可跳转——不再"裸列表无动作无解释" |
+
+- 本体引用与影响：B4 Skill（`SkillDefinition.resources`）· B3 MCP · 图查询 RESERVED（C1·§10.1）· 建模链入口文案。**无链路/不变量变更 → 不回写本体**（纯前端文案/校验 + 一个后端 schema 默认值）。
+- 审核方复验点：12-1 点新建出 201 非 400；12-2 建模页认得出"新建本体"入口；12-3 只读 tab 有去处/有说明或隐藏。**全部真浏览器实拍。**
+
+---
+
 ## WO-0（收尾·建议）· 防"陈旧 dist"复发 + 越界代码复核
 
 - **CI dist↔源码一致性门**（P1#4 根因·防复发）：S&OP 空壳根因=运行 dist 早于源码修复提交。建议 CI/部署链加「dist 与最新提交一致性」或 real-backend 烟测，拦截陈旧构建。深扫盲区④提示**其他模块也可能潜伏同类陈旧**——建议 dev 跑一轮全模块 dist↔源码核对。
