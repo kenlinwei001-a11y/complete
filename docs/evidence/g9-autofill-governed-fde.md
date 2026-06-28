@@ -42,5 +42,19 @@
 
 实拍 `docs/evidence/g9-grow-ui-fde.png`（真后端 demo）：20 卡均显「一键长出此卡」；点 S01 →
 徽章「已验证·可用」+ 留痕三环全✓·VERIFIED·WORKFLOW·答案预览「P50 产能=5.1836GWh ⟦ref:0⟧⟦ref:1⟧⟦ref:2⟧」+ toast「已长出：发育验证通过·可用」。
-（demo 预播租户 provisionedObjects=0 故走标准"已长出"；provision N 对象留痕行在**空租户**长出时渲染——
-后端 curl FDE 已坐实 empty→GOVERNED，run.growth.provisionedObjects 真填，前端条件渲染 type-safe+build 绿。）
+（demo 预播租户 provisionedObjects=0 故走标准"已长出"；provision N 对象留痕行在**空租户**长出时渲染。）
+
+## 真·空租户端到端浏览器实拍（招牌全链·非 curl）
+
+为浏览器端到端坐实招牌，加 env 门 `SEED_EMPTY_TENANT=1`（dev/demo）：建**可登录但对象世界全空**的租户
+`fresh`（admin/demo1234·industry=battery·**不跑合成**），镜像"新租户刚开通还没数据"开箱态。
+
+实拍 `docs/evidence/g9-grow-empty-tenant-fde.png`（真双服务 + 真浏览器，登录 **fresh** 租户）：
+- 顶栏「新租户 (fresh·空世界开箱)」· 登录前 `GET /objects?type=Line` = **0**（世界全空）。
+- 场景管理台点 S01「一键长出此卡」→ 徽章 **「已验证·可用」**（GOVERNED）。
+- 发育留痕：三环全✓ · **VERIFIED·路径 WORKFLOW** · 答案预览「P50 产能=5.1836GWh ⟦ref:0⟧⟦ref:1⟧⟦ref:2⟧」·
+  **发育闭环：触发自动补齐（CONVERGED·2 轮）· 经合成正门 provision 469 对象起步世界（SYNTHETIC·可溯）**。
+- toast「已长出：自动 provision 469 对象起步世界 → 已验证可用」。
+
+即：空租户 → 一键长出 → 后端探测世界全空 → 合成正门 provision 469 对象一致世界 → 路由归位 path-A →
+求解器真投影 → 重验 dataOk → GOVERNED，**全链浏览器可见**（招牌不再只 curl 证）。

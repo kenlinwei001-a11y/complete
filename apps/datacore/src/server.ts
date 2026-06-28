@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +39,15 @@ async function main(): Promise<void> {
   // ② SEED_DEMO=1 才播种 demo 租户与演示账号（两者可叠加）；
   // ③ 空表 + 无变量 + 未播种 → /readyz 持续 503（BOOTSTRAP_REQUIRED）。
   await bootstrapPlatformAdmin(repos, bootstrapEnv, logger);
+  // G-9 招牌演示：可登录的空世界租户（dev/demo），用于实拍「一键长出此卡」空→自动 provision→GOVERNED。
+  if (config.SEED_EMPTY_TENANT === "1") {
+    try {
+      await seedEmptyTenant(repos);
+      logger.info("SEED_EMPTY_TENANT=1: seeded loginable empty-world tenant 'fresh' (admin/demo1234) for G-9 provision demo");
+    } catch (e) {
+      logger.warn({ err: (e as Error).message }, "SEED_EMPTY_TENANT=1: seed empty tenant skipped");
+    }
+  }
   if (config.SEED_DEMO === "1") {
     const adminCtx = await seedDemo(repos);
     logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");

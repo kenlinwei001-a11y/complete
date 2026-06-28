@@ -70,6 +70,31 @@ export async function seedDemoSopVersion(sop: SopService, solvers: SolverService
   }
 }
 
+/**
+ * G-9 招牌可演示性（env SEED_EMPTY_TENANT=1·dev/demo 专用）：建一个**可登录但对象世界全空**的租户 `fresh`
+ * （admin 账号 fresh/admin/demo1234，industry=battery 供 provision 取口径），**不跑合成**。
+ * 镜像真实"新租户刚开通、还没数据"的开箱态——让「一键长出此卡」的"空→自动 provision 起步世界→GOVERNED"
+ * 招牌能在浏览器端到端实拍（普通 demo 租户已预播数据、走不到 provision 分支）。幂等：账号已存在则跳过。
+ */
+export async function seedEmptyTenant(repos: Repos, tenantId = "fresh"): Promise<void> {
+  const tenant = await repos.tenants.get(tenantId, tenantId);
+  if (!tenant) {
+    await repos.tenants.put({ id: tenantId, tenantId, name: `新租户（${tenantId}·空世界开箱）`, industry: "battery-manufacturing" });
+  }
+  const existing = (await repos.users.list(tenantId, (u) => u.username === "admin"))[0];
+  if (!existing) {
+    await repos.users.put({
+      id: `usr_${tenantId}_admin`,
+      tenantId,
+      username: "admin",
+      passwordHash: await AuthService.hashPassword("demo1234"),
+      // admin+catalog_admin：可进场景管理台「一键长出此卡」；不预播任何对象（世界全空，触发 provision 招牌）。
+      roles: ["admin", "catalog_admin", "tenant_admin"],
+      attributes: {},
+    });
+  }
+}
+
 /** Seed tenant "demo" + admin/planner/base_manager(常州) accounts (password demo1234). */
 export async function seedDemo(repos: Repos): Promise<AuthCtx> {
   const tenant = await repos.tenants.get(DEMO_TENANT, DEMO_TENANT);

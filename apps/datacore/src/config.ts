@@ -32,6 +32,9 @@ export const ConfigSchema = z.object({
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().default(15 * 60),
   REFRESH_TOKEN_TTL_SEC: z.coerce.number().int().default(7 * 24 * 3600),
   SEED_DEMO: z.string().optional(),
+  /** G-9 招牌演示（dev/demo）：=1 时建可登录的空世界租户 `fresh`（admin/demo1234），用于实拍
+   *  「一键长出此卡」的"空→自动 provision 起步世界→GOVERNED"。不跑合成（世界全空才触发 provision）。 */
+  SEED_EMPTY_TENANT: z.string().optional(),
   /** demo LLM 持久化（M·G-3 收尾）：设了 KIMI_API_KEY 则 SEED_DEMO 时自动配 openai_compatible provider
    *  + 绑定 classifier/agent/comprehend，使 demo 重启不丢 LLM 能力。key 仅从 env 读、AES-GCM 落库、绝不入 git（R5）。 */
   KIMI_API_KEY: z.string().optional(),
