@@ -1075,6 +1075,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { connId: result.connection.id, datasetName: result.schema.datasets[0]?.name ?? result.connection.name, rowCount: body.rows, filename, viaFrontDoor: true };
   });
 
+  // G-9 发育闭环招牌（缺件卡→自动补→GOVERNED 活体）：空租户自动 provision 确定性合成起步世界。
+  // 走真合成正门（synthetic.runJob，FK 一致·R6 字节复现·SYNTHETIC origin 可溯），industry 取**租户自身配置**
+  // （服务端派生，agentcore 零行业常数 R14）。**安全门**：仅当租户当前对象世界近空（≤ 阈值）才执行——
+  // 绝不覆盖已有真实数据（入空租户无可 clobber）。被场景发育 fill 在 EMPTY_DATA/空世界时调用。
+  app.post("/a/v1/growth/provision-world", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const body = parseBody(z.object({ scale: z.enum(["S", "M", "L", "XL"]).default("S"), seed: z.number().int().default(42) }), req.body);
+    const existing = (await repos.objects.list(c.tenantId)).length;
+    if (existing > 20) {
+      // 非空租户：不自动合成（守 R——不伪造/覆盖真实业务数据），诚实回报。
+      return { provisioned: false, reason: "TENANT_NOT_EMPTY", existingObjects: existing };
+    }
+    const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
+    const industry = (tenant?.industry as string) || "battery-manufacturing";
+    const job = await synthetic.runJob(c, { industry, scale: body.scale, seed: body.seed, viaModelingChain: true });
+    const objectCount = (await repos.objects.list(c.tenantId)).length;
+    return { provisioned: true, jobId: job.id, industry, scale: body.scale, seed: body.seed, objectCount };
+  });
+
   // 运营完备性 §9：通知中心（铃铛未读 + 列表 + 标记已读）
   app.get("/a/v1/notifications", async (req) => {
     const c = ctx(req);

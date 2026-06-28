@@ -2085,7 +2085,15 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // 收敛后重验一次；真出可验证答案才标 GOVERNED（RL4 不放水）。诚实门：补不上的卡保持 PROVISIONAL + 开 GrowthTicket，绝不假装 GOVERNED。
     // 复用 §289 同一套 probe/fill 引擎（buildGrowthLoopWiring，RL3/RL10 单源不分叉），被调 runGrowthLoop/fill 零重写（RL3）。
     let growth: { triggered: boolean; terminalState?: string; rounds?: number; ticketId?: string } = { triggered: false };
-    const initialAutoDerive = !v.dataOk && (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" || v.gapCode === "NO_PLAN" || v.gapCode === "SOLVER_NOT_FOUND" || v.gapCode === "EMPTY_DATA" || v.gapCode === "RENDER_NOT_PROJECTED");
+    // G-9 招牌：空租户根因（无对象世界）使卡路由落 path-B、gapCode 落 OTHER/NO_INTENT——本身不在可自动补集，
+    // 但"世界全空"是确定可自动补的（经合成正门 provision 起步世界，见 fill）。故首验未过且租户世界全空 → 也触发
+    // runGrowthLoop（fill 首轮 provision world → 重跑路由归位 → 收敛）。仅探测计数，零行业常数（R14）。
+    let worldEmpty = false;
+    if (!v.dataOk) {
+      const types = await deps.dataCore.ontology.listObjectTypes(a).catch(() => [] as { instanceCount: number }[]);
+      worldEmpty = types.length === 0 || types.every((t) => (t.instanceCount ?? 0) === 0);
+    }
+    const initialAutoDerive = !v.dataOk && (worldEmpty || v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" || v.gapCode === "NO_PLAN" || v.gapCode === "SOLVER_NOT_FOUND" || v.gapCode === "EMPTY_DATA" || v.gapCode === "RENDER_NOT_PROJECTED");
     if (initialAutoDerive) {
       const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
       if (pkg) {

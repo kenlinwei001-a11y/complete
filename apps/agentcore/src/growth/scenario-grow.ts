@@ -54,6 +54,26 @@ export function buildGrowthLoopWiring(
   const fill = async (gap: GapFinding): Promise<GrowthFillResult> => {
     await emitDomainEvent(a.tenantId, "growth.gap_detected", { gapCode: gap.gapCode, atStep: gap.atStep ?? null });
     let result: GrowthFillResult;
+    // G-9 发育闭环招牌（缺件卡→自动补→GOVERNED 活体）：空租户根因 = 无任何对象世界 → 卡的预设对象/槽位
+    // 填不上 → 路由落 path-B、求解器无数据可投影。单类型 fillData 无法重构 solver 级一致世界；故先探测
+    // "世界全空"，是则经 datacore 真合成正门**一次性 provision 确定性一致起步世界**（FK 一致·R6·SYNTHETIC
+    // 可溯·datacore 据租户配置定 industry 故零行业常数 R14·仅入空租户不 clobber 真数据）。world ready 后
+    // 槽位可填→确定性绑定→path-A→求解器真投影→重验 dataOk→GOVERNED。任一可自动补缺口（含 EMPTY_DATA/
+    // RENDER_NOT_PROJECTED/路由类）首轮先过此门。
+    if (gap.gapCode === "EMPTY_DATA" || gap.gapCode === "NO_INTENT" || gap.gapCode === "OTHER") {
+      const types = await deps.dataCore.ontology.listObjectTypes(a).catch(() => [] as { instanceCount: number }[]);
+      const worldEmpty = types.length === 0 || types.every((t) => (t.instanceCount ?? 0) === 0);
+      if (worldEmpty) {
+        const prov: { provisioned: boolean; reason?: string; industry?: string; objectCount?: number } =
+          await deps.dataCore.ontology.provisionWorld(a, { scale: "S", seed: 42 }).catch((e) => ({ provisioned: false, reason: (e as Error).message }));
+        if (prov.provisioned) {
+          result = { gapCode: gap.gapCode, action: `空租户自动 provision 确定性合成起步世界（真合成正门·SYNTHETIC·${prov.industry ?? "?"}·${prov.objectCount ?? 0} 对象）`, advanced: true, fillMode: "SOFT" };
+          await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: true, fillMode: "SOFT", provisioned: prov.objectCount ?? 0 });
+          return result;
+        }
+        // 非空租户/拒绝 → 落既有分流（HARD 真人正门 / 单类型 SOFT / 骨架工单），不静默。
+      }
+    }
     if (gap.gapCode === "EMPTY_DATA") {
       // DF.9 真人正门 HARD/SOFT 分流：缺真实业务实体 → HARD（出 DataRequest，不静默合成）；否则 SOFT 合成 PROVISIONAL。
       const ctxText = [

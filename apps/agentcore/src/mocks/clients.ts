@@ -190,6 +190,9 @@ export class MockOntologyClient implements OntologyClient {
   async fillData(_ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }): Promise<{ connId: string; rowCount: number }> {
     return { connId: `conn_growth_${req.typeKey}`, rowCount: req.rows ?? 6 };
   }
+  async provisionWorld(_ctx: ToolAuthCtx, _req?: { scale?: string; seed?: number }): Promise<{ provisioned: boolean; reason?: string; industry?: string; objectCount?: number }> {
+    return { provisioned: true, industry: "battery-manufacturing", objectCount: 120 };
+  }
 
   // stage3②：轻量本体校验 mock——行含 `__invalid` 标记字段即判不符（供执行器关卡测试）。
   async validateOutput(_ctx: ToolAuthCtx, _objectType: string, rows: Record<string, unknown>[]): Promise<{ ok: boolean; violations: { field: string; kind: string; detail: string }[] }> {
