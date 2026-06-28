@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDomainEvents, fetchMcpConfigs, fetchScenarioCards, fetchSkills } from "@/api/endpoints";
 import { useQuickLaunch, useScenarioLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
@@ -86,7 +87,11 @@ function SkillsTab() {
   if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载技能…</div>;
   return (
     <div data-testid="pc-skills">
-      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }}>平台技能（B4·{data.length}·真 /b/v1/skills）</div>
+      {/* WO-12-3：只读列表 → 加用途说明 + 深链专用页（增改/新建走 /admin/skills，避免"看得见点不了无解释"）。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <span>平台技能（B4·{data.length}·真 /b/v1/skills）· 此处只读总览；可被本体查询引用（图查询绑定·待 C1）</span>
+        <Link to="/admin/skills" data-testid="pc-skills-manage" style={{ color: "var(--accent,#6ea8fe)", whiteSpace: "nowrap" }}>新建/管理技能 →</Link>
+      </div>
       {data.length === 0 ? <div style={{ color: "var(--muted2)", fontSize: 12 }}>暂无已发布技能。</div> : (
         <table className="cmp" style={{ width: "100%", fontSize: 12 }}>
           <thead><tr><th>名称</th><th>键</th><th>状态</th></tr></thead>
@@ -104,7 +109,11 @@ function McpTab() {
   if (isLoading || !data) return <div style={{ color: "var(--muted2)", fontSize: 12 }}>加载 MCP 服务…</div>;
   return (
     <div data-testid="pc-mcp">
-      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }}>MCP 服务（B3·{data.length}·真 /b/v1/mcp-configs）</div>
+      {/* WO-12-3：只读总览 + 深链专用页（配置/新建走 /admin/mcp）。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <span>MCP 服务（B3·{data.length}·真 /b/v1/mcp-configs）· 此处只读总览；工具可被 Agent/本体查询调用</span>
+        <Link to="/admin/mcp" data-testid="pc-mcp-manage" style={{ color: "var(--accent,#6ea8fe)", whiteSpace: "nowrap" }}>新建/配置 MCP →</Link>
+      </div>
       {data.length === 0 ? <div data-testid="pc-mcp-empty" style={{ color: "var(--muted2)", fontSize: 12 }}>demo 未配置 MCP 服务（真态为空·非假壳）。</div> : (
         <table className="cmp" style={{ width: "100%", fontSize: 12 }}><tbody>{data.map((m) => (<tr key={m.id}><td>{m.name}</td></tr>))}</tbody></table>
       )}

@@ -14,7 +14,8 @@ export default function SkillsPage() {
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "skills"] });
   // G-4：自助创建技能（消"无创建入口"死路）
   const createMut = useMutation({
-    mutationFn: () => saveSkill(null, { key: `skill_${Date.now()}`, name: "新技能（模板预填）", summary: "解读某类结论的口径。当…时使用。不适用：…", body: "# 步骤要点\n# 反例\n# 输出要求" }),
+    // WO-12-1：CreateSkillBody.resources 必填无默认（contracts），漏传则后端 400 VALIDATION_ERROR。新建预填空 resources。
+    mutationFn: () => saveSkill(null, { key: `skill_${Date.now()}`, name: "新技能（模板预填）", summary: "解读某类结论的口径。当…时使用。不适用：…", body: "# 步骤要点\n# 反例\n# 输出要求", resources: [] }),
     onSuccess: (s) => { invalidate(); setSelectedId(s.id); },
     onError: toastError,
   });

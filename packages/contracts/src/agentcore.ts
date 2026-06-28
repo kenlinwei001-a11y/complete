@@ -150,7 +150,7 @@ export const SkillDefinitionSchema = z.object({
       mime: z.string().optional(),
       description: z.string().optional(),
     }),
-  ),
+  ).default([]), // WO-12-1 根因修：缺省空数组——创建技能未传 resources 不再 400（CLI/任意客户端同享）
   /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
 });

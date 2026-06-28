@@ -616,8 +616,8 @@ export const zh = {
     },
     modeling: {
       title: "本体建模工作台",
-      newDraft: "AI 建议草案",
-      newDraftHint: "选择原始数据集（来自连接器同步/文件上传），由 AI 给出对象建模建议",
+      newDraft: "新建本体（模型）",
+      newDraftHint: "选择原始数据集（来自连接器同步/文件上传）→ 两条路径：AI 建议草案 / 确定性建模（全字段·无 LLM）",
       newDraftEmpty: "暂无原始数据集 —— 先在「数据接入」同步连接器或上传文件",
       suggestRun: "生成建议",
       suggestDone: "建议草案已生成",
