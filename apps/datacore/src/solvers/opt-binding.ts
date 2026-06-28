@@ -74,6 +74,14 @@ async function groundBinding(
   return byKey;
 }
 
+/**
+ * DF.8 接地校验（落库 /a/v1/opt/bindings 前用）：绑定引用的类型/属性须在本租户已发布本体内，否则抛错。
+ * 不读对象、不组 args，仅校验存在性——供 REST 创建端点把"引用本体外实体"挡在落库之前（绝不静默造实体）。
+ */
+export async function assertBindingGrounded(view: BindingOntologyView, binding: OntologyBinding): Promise<void> {
+  await groundBinding(view, binding);
+}
+
 /** 取 role 对应的类型 def（必须是 objectType 绑定）。 */
 function typeForRole(role: string, rm: Map<string, { kind: string; ref: string }>, byKey: Map<string, ObjectTypeDef>): ObjectTypeDef {
   const bind = rm.get(role);

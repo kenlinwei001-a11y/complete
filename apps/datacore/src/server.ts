@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +48,15 @@ async function main(): Promise<void> {
       logger.warn({ err: (e as Error).message }, "SEED_EMPTY_TENANT=1: seed empty tenant skipped");
     }
   }
+  // G-12 收口（增量B·U2）：真立非电池行业租户 logi（物流仓配·空世界·opt 已开），FDE 经 provision-world 立世界。
+  if (config.SEED_OPT_INDUSTRY === "1") {
+    try {
+      await seedLogisticsTenant(repos, services.features);
+      logger.info("SEED_OPT_INDUSTRY=1: seeded non-battery logistics tenant 'logi' (admin/demo1234, opt.* on) for G-12 two-industry demo");
+    } catch (e) {
+      logger.warn({ err: (e as Error).message }, "SEED_OPT_INDUSTRY=1: seed logistics tenant skipped");
+    }
+  }
   if (config.SEED_DEMO === "1") {
     const adminCtx = await seedDemo(repos);
     logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
@@ -55,6 +64,14 @@ async function main(): Promise<void> {
     // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
     await seedDemoPropagationRules(repos);
     logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
+    // G-12 收口（增量A·U1）：demo 出厂开 opt.solver-pool+opt.whatif 暗发（L3 override，出厂默认可覆盖）→
+    // /a/v1/opt/* 可见，CP-SAT 这一公里在活系统可发生（接 OPTIMIZER_BASE_URL sidecar 后真求最优）。
+    try {
+      await seedDemoOptEntitlement(services.features, adminCtx);
+      logger.info("SEED_DEMO=1: enabled demo opt.solver-pool+opt.whatif entitlement (override, revertible)");
+    } catch (e) {
+      logger.warn({ err: (e as Error).message }, "SEED_DEMO=1: seed opt entitlement skipped");
+    }
     // UI缺口 M3：种月度 S&OP 版本（2026-07·五步法评审态），使 /v/sop-balance 非空壳（best-effort，不阻断启动）。
     try {
       await seedDemoSopVersion(services.sop, services.solvers, adminCtx);

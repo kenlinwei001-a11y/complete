@@ -73,6 +73,7 @@ import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
 import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { OPT_MODEL_TEMPLATES } from "./solvers/opt-templates.js";
+import { assertBindingGrounded, type BindingOntologyView } from "./solvers/opt-binding.js"; // 增量E：落库前 DF.8 接地校验
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
@@ -2383,15 +2384,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         family: z.enum(OPT_FAMILIES),
         args: z.record(z.string(), z.unknown()).optional(),
         binding: OntologyBindingSchema.optional(),
+        bindingId: z.string().optional(), // 增量E：用落库绑定（create→solve 闭环）
         seed: z.number().optional(),
       }),
       req.body,
     );
-    if (body.binding) {
+    const c = ctx(req);
+    // 增量E：bindingId 优先载入落库绑定（R2 仅本租户）；与 inline binding 二选一。
+    const binding = body.binding ?? (body.bindingId ? await repos.optBindings.get(c.tenantId, body.bindingId) : undefined);
+    if (body.bindingId && !binding) throw notFound("binding not found");
+    if (binding) {
       // 增量2：绑定层 invoke 前预处理（DF.8 接地 + role→本体字段），再走确定性 CP-SAT。
-      return solvers.solveWithBinding(ctx(req), body.family, body.binding, { seed: body.seed });
+      return solvers.solveWithBinding(c, body.family, binding, { seed: body.seed });
     }
-    return ontology.invokeSolver(ctx(req), body.family, body.args ?? {});
+    return ontology.invokeSolver(c, body.family, body.args ?? {});
   });
   // 列模板族（池 comprehend 兜底；增量4 embedding 检索叠其上）。
   app.get("/a/v1/opt/templates", async (req) => {
@@ -2440,6 +2446,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       ...(body.binding ? { binding: body.binding } : { args: body.args ?? {} }),
       ...(body.seed !== undefined ? { seed: body.seed } : {}),
     });
+  });
+  // 增量E·U5：OntologyBinding 落库（绑定即一等资源，每租户绑不同本体 R14）。绑定层视图（解耦 Repos）。
+  const bindingView = (): BindingOntologyView => ({
+    listTypes: (tid) => repos.ontologyTypes.list(tid),
+    listByType: (tid, key) => repos.objects.listByType(tid, key),
+  });
+  // 创建绑定：DF.8 接地校验（引用须在本租户已发布本体内）通过才落库；否则 400 不落库（绝不静默造实体）。
+  app.post("/a/v1/opt/bindings", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    const c = ctx(req);
+    const body = parseBody(OntologyBindingSchema.partial({ id: true, tenantId: true }), req.body);
+    const binding = { ...body, id: body.id || newId("optbnd"), tenantId: c.tenantId };
+    await assertBindingGrounded(bindingView(), binding); // 接地失败 → validationError 400
+    await repos.optBindings.put(binding);
+    return binding;
+  });
+  app.get("/a/v1/opt/bindings", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    return { items: await repos.optBindings.list(ctx(req).tenantId) };
+  });
+  app.get("/a/v1/opt/bindings/:id", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    const c = ctx(req);
+    const b = await repos.optBindings.get(c.tenantId, (req.params as { id: string }).id);
+    if (!b) throw notFound("binding not found");
+    return b;
   });
 
   // ---- 本体原子规格 §2/§3 atomic-spec engine（additive 端点）-------------------

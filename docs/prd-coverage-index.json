@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-26",
+  "generatedAt": "2026-06-28",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
     "PRD-A15-cli-universal-operation-shell.md": {
@@ -370,6 +370,16 @@
       ],
       "covered": [
         "D7"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-opensource-fusion-lastmile.md": {
+      "acceptanceIds": [
+        "SY3"
+      ],
+      "covered": [
+        "SY3"
       ],
       "uncovered": [],
       "coverage": 1

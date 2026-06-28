@@ -117,6 +117,8 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | `EMBEDDING_PROVIDER` | 默认 `pseudo`（确定性哈希向量，零依赖可演示）。配 `openai_compatible` + `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL`（及对应 key 环境变量 `EMBEDDING_API_KEY_ENV`）启用真实向量；postgres-a 用 pgvector 镜像，扩展可用时知识库走原生向量索引，不可用时自动回退 JSONB + 应用侧余弦 |
 | `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动 —— 此时必须配置 BOOTSTRAP 变量，否则 `/readyz` 503） |
 | `SEED_EMPTY_TENANT` | 置 `1`（dev/demo）建一个**可登录但对象世界全空**的租户 `fresh`（登录 `fresh / admin / demo1234`），用于演示 **G-9「一键长出此卡」onboarding 招牌**（见下方 §6.1）；默认关，不影响生产 |
+| `OPTIMIZER_BASE_URL` | 最优化引擎 sidecar 地址（CP-SAT/OR-Tools·`services/optimizer`）。compose 默认 `http://optimizer:4003`（已起 sidecar 服务）。**未配则 `/a/v1/opt/*` 求解器诚实报「未接入最优化引擎」**（区别于功能关闭的 404）。本地裸跑：`PORT=4003 python3 services/optimizer/server.py &` 后 export 此变量 |
+| `SEED_OPT_INDUSTRY` | 置 `1`（compose 默认 1）建**非电池行业租户** `logi`（物流仓配·登录 `logi / admin / demo1234`·`opt.*` 已开·空世界），用于演示 **G-12 两行业 R14 真 CP-SAT**（见下方 §6.2） |
 | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | 管理平台增量 §1：空库首启创建平台超管（`default` 租户，角色 `platform_admin`，登录名 = 邮箱）；幂等，表非空跳过 |
 | HTTPS | 自备 `decision.local` 证书放 `deploy/certs/`，取消 `deploy/nginx.conf` 末尾 443 server 块与 `docker-compose.yml` 中 gateway 的 443 端口/证书挂载注释，浏览器改走 `https://decision.local` |
 
@@ -135,6 +137,26 @@ SEED_DEMO=1 SEED_EMPTY_TENANT=1 ... node apps/datacore/dist/server.js
 2. 进 `/admin/scenes`（场景入口配置）→ 任一卡点 **「一键长出此卡」**。
 3. 观察：徽章转 **「已验证·可用」**；发育留痕显「触发自动补齐（CONVERGED）· **经合成正门 provision N 对象起步世界（SYNTHETIC·可溯）**」+ 真答案预览（带 `⟦ref⟧` 溯源）。
    - 实拍证据：`docs/evidence/g9-grow-empty-tenant-fde.png`、口径与多根诊断见 `docs/evidence/g9-autofill-governed-fde.md`。
+
+### 6.2 G-12 两行业 R14 真 CP-SAT 复现（非电池行业 + 优化融合活系统通电）
+
+验证"**≥1 非电池行业租户全链立起来 + 真 CP-SAT 出最优 + optimize_whatif 出 Δ目标**"（同一 `facility_location`
+抽象模板对电池/物流两行业**代码零改仅 OntologyBinding 不同**各出不同最优·R14 去行业锁死）：
+
+```bash
+# ① 起真 CP-SAT sidecar（compose 已含 optimizer 服务；裸跑如下）
+PORT=4003 python3 services/optimizer/server.py &
+# ② datacore 接 sidecar + 建非电池 logi 租户
+SEED_DEMO=1 SEED_OPT_INDUSTRY=1 OPTIMIZER_BASE_URL=http://127.0.0.1:4003 ... node apps/datacore/dist/server.js
+```
+
+1. 登录 **`logi / admin / demo1234`**（物流仓配·非电池行业·`opt.*` 已开）。
+2. `POST /a/v1/growth/provision-world` → `synthetic.runJob` 经**内置确定性物流模板**（`synthetic/logistics.ts`·无 LLM·R6）
+   真物化 Warehouse/Store 世界（S 档 16 对象）。
+3. `POST /a/v1/opt/solve {family:facility_location, binding:{facility=Warehouse,client=Store,open_cost=Warehouse.openCost,assign_cost=Warehouse.serveCost}}`
+   → **status:OPTIMAL**（真 CP-SAT）；对照 demo 电池租户同模板绑 Base/DemandSegment 各出不同最优。
+4. `POST /a/v1/opt/whatif {perturbations:[{kind:data_override,target:"facilities.WH-002.openCost",value:9999}]}` → **Δ目标≠0**（真 sidecar 双解）。
+   - 全链 FDE 证据与逐条 curl：`docs/evidence/G12-opt-fusion-lastmile-fde.md`（复跑脚本 `docs/evidence/G12-opt-fde.sh`）。
 4. **诚实边界**：仅对空/新租户自动合成确定性 starter 世界；**真实业务数据缺口（HARD）走真人正门导入**，不自动合成真数据；非空租户 `provision-world` 拒执行。
 
 ## 7. 故障排查

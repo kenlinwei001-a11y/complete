@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-26",
+  "generatedAt": "2026-06-28",
   "ontology": {
     "invariants": [
       "R1",
@@ -972,6 +972,22 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-opensource-fusion-lastmile.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-12",
+        "G-5"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-order-project-sim-1to1.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1431,12 +1447,16 @@
       "PRD-generation-boundary-grounding.md",
       "PRD-generic-inference.md",
       "PRD-goal-metric-owner-spine.md",
+      "PRD-opensource-fusion-lastmile.md",
       "PRD-order-project-sim-1to1.md",
       "PRD-quarter-rolling-1to1.md",
       "PRD-self-driving-qos-data-foundation.md",
       "PRD-sop-balance-1to1.md",
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
+    ],
+    "G-12": [
+      "PRD-opensource-fusion-lastmile.md"
     ],
     "G-10": [
       "PRD-rules-as-references.md",
@@ -1451,9 +1471,7 @@
       "PRD-simulation-sandbox.md"
     ]
   },
-  "orphanBreakpoints": [
-    "G-12"
-  ],
+  "orphanBreakpoints": [],
   "byArtifact": {
     "apps/agentcore/src/router/orchestrator.ts": [
       "PRD-A15-cli-universal-operation-shell.md",

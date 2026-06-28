@@ -6,6 +6,7 @@ import type { SyntheticService } from "./synthetic/service.js";
 import type { SopService } from "./sop.js";
 import type { SolverService } from "./solvers/service.js";
 import type { LlmProviderService } from "./llmproviders.js";
+import type { FeatureService } from "./features.js";
 
 export const DEMO_TENANT = "demo";
 
@@ -95,6 +96,35 @@ export async function seedEmptyTenant(repos: Repos, tenantId = "fresh"): Promise
   }
 }
 
+/**
+ * G-12 收口（增量B·U2）：真立 **≥1 非电池行业租户**（物流仓配 logistics-warehouse）。
+ * env `SEED_OPT_INDUSTRY=1`·dev/demo 专用。建可登录租户 `logi`（admin 账号 logi/admin/demo1234），
+ * industry=logistics-warehouse（对应内置确定性模板，无 LLM），并开 opt.solver-pool+opt.whatif（L3 override）。
+ * **不跑合成**（世界空）——让「provision-world → synthetic.runJob 真物化 Warehouse/Store → facility_location 真 CP-SAT」
+ * 这条全链在活系统作为可复现步骤被实拍（DEPLOY.md 给复跑命令）。幂等：账号/override 已在则跳过/合并。
+ * R14：非电池行业=绑定进来的内容（内置模板配置），求解器/绑定层代码零改。
+ */
+export async function seedLogisticsTenant(repos: Repos, features: FeatureService, tenantId = "logi"): Promise<void> {
+  const tenant = await repos.tenants.get(tenantId, tenantId);
+  if (!tenant) {
+    await repos.tenants.put({ id: tenantId, tenantId, name: "物流仓配选址（非电池行业演示）", industry: "logistics-warehouse" });
+  }
+  const existing = (await repos.users.list(tenantId, (u) => u.username === "admin"))[0];
+  if (!existing) {
+    await repos.users.put({
+      id: `usr_${tenantId}_admin`,
+      tenantId,
+      username: "admin",
+      passwordHash: await AuthService.hashPassword("demo1234"),
+      roles: ["admin", "catalog_admin", "tenant_admin", "planner"],
+      attributes: {},
+    });
+  }
+  // 开 opt 暗发（L3 override，出厂可覆盖）——非电池租户同样需开 entitlement 才见 /a/v1/opt/*（R3）。
+  const ctx: AuthCtx = { tenantId, userId: `usr_${tenantId}_admin`, roles: ["admin"], attributes: {} };
+  await features.mergeTenantOverride(ctx, tenantId, { "opt.solver-pool": true, "opt.whatif": true });
+}
+
 /** Seed tenant "demo" + admin/planner/base_manager(常州) accounts (password demo1234). */
 export async function seedDemo(repos: Repos): Promise<AuthCtx> {
   const tenant = await repos.tenants.get(DEMO_TENANT, DEMO_TENANT);
@@ -133,6 +163,25 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
     });
   }
   return { tenantId: DEMO_TENANT, userId: `usr_${DEMO_TENANT}_admin`, roles: ["admin"], attributes: {} };
+}
+
+/**
+ * G-12 收口（增量 A·U1）：demo 租户出厂开 `opt.solver-pool` + `opt.whatif` 暗发功能（L3 租户 override）。
+ *
+ * 为什么：opt.* 平台默认 `defaultOn:false`（R3 暗发），且 battery 模板 L2=ALL_FEATURE_KEYS 仅"不删"
+ * 不"加" defaultOn:false 键 → demo 不开 override 则 `/a/v1/opt/*` 恒 404，CP-SAT 这一公里在活系统从不发生。
+ * 这里以 **L3 租户 override** 出厂开启（=true），使 demo admin 即见优化模板池/什么-if 功能；
+ * **"出厂默认可覆盖"**：admin 仍可经管理台把 override 设 false → 关→ `/a/v1/opt/solve` 404（验收点1 R3 双向可证）。
+ *
+ * 边界：merge 写入（幂等·不 clobber 其他 override）；opt.whatif requires opt.solver-pool（cascade 守）。
+ * 仅开 entitlement，**不配 OPTIMIZER_BASE_URL**（那是部署/启动链接 sidecar 的事，见 DEPLOY.md）——
+ * 未接 sidecar 时端点可见但求解器诚实报"未接入最优化引擎"（非 404，区别于功能关闭）。
+ */
+export async function seedDemoOptEntitlement(features: FeatureService, ctx: AuthCtx): Promise<void> {
+  await features.mergeTenantOverride(ctx, DEMO_TENANT, {
+    "opt.solver-pool": true,
+    "opt.whatif": true,
+  });
 }
 
 /**

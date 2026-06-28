@@ -35,6 +35,9 @@ export const ConfigSchema = z.object({
   /** G-9 招牌演示（dev/demo）：=1 时建可登录的空世界租户 `fresh`（admin/demo1234），用于实拍
    *  「一键长出此卡」的"空→自动 provision 起步世界→GOVERNED"。不跑合成（世界全空才触发 provision）。 */
   SEED_EMPTY_TENANT: z.string().optional(),
+  /** G-12 收口（增量B）：=1 时建非电池行业租户 `logi`（物流仓配·admin/demo1234·opt.* 开·空世界），
+   *  用于两行业 R14 真 CP-SAT 演示（FDE 经 provision-world 立世界→facility_location 求最优）。 */
+  SEED_OPT_INDUSTRY: z.string().optional(),
   /** demo LLM 持久化（M·G-3 收尾）：设了 KIMI_API_KEY 则 SEED_DEMO 时自动配 openai_compatible provider
    *  + 绑定 classifier/agent/comprehend，使 demo 重启不丢 LLM 能力。key 仅从 env 读、AES-GCM 落库、绝不入 git（R5）。 */
   KIMI_API_KEY: z.string().optional(),

@@ -33,6 +33,7 @@ import {
   generatePlanDomain,
 } from "./battery.js";
 import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
+import { BUILTIN_INDUSTRY_TEMPLATES } from "./builtin-templates.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
 import { genPoint, maintWindowsFor, windowFor, ATTAIN_COMPONENT_FIELDS, attainEventFlag, rollupLineAttainment, type TsGenSpec } from "./tsgen.js";
@@ -121,6 +122,9 @@ export class SyntheticService {
 
   private async resolveTemplate(ctx: AuthCtx, industry: string): Promise<IndustryTemplate> {
     if (industry === "battery-manufacturing") return BATTERY_TEMPLATE;
+    // 内置非电池行业模板优先（确定性 R6·非 LLM）：G-12 收口让 ≥1 非电池行业可无 LLM 真立世界。
+    const builtin = BUILTIN_INDUSTRY_TEMPLATES.find((t) => t.industryKey === industry);
+    if (builtin) return builtin;
     const stored = (
       await this.repos.industryTemplates.list(ctx.tenantId, (t) => t.industryKey === industry)
     )[0];

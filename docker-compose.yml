@@ -77,6 +77,9 @@ services:
       SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
       BLOB_DIR: /data/blobs
       SEED_DEMO: ${SEED_DEMO:-1}             # 默认播种电池制造演示数据（seed 42，幂等）
+      # G-12 last-mile：建非电池行业租户 logi（物流仓配·admin/demo1234·opt.* 开·空世界），
+      # 两行业 R14 真 CP-SAT 演示（登录 logi→provision-world→/opt/solve）。幂等·空租户轻量。
+      SEED_OPT_INDUSTRY: ${SEED_OPT_INDUSTRY:-1}
       # 管理平台增量 §1：空库首启创建平台超管（default 租户 platform_admin；SEED_DEMO=0 冷启动时必配）
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}

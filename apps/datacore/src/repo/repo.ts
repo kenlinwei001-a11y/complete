@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -304,6 +304,8 @@ export interface Repos {
   metaAccessPolicies: Store<MetaAccessPolicyRecord>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
+  // G-12 收口（增量E·U5）：OntologyBinding 落库（/a/v1/opt/bindings·migration027；R14 每租户绑不同本体）
+  optBindings: Store<OntologyBinding>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;
