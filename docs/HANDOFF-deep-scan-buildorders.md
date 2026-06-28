@@ -192,6 +192,50 @@
 
 ---
 
+## WO-16..19 · 统一资源引用模型（用户亲定架构 · 审核方对码核实现状）
+
+> **用户定义的目标模型**：① **规则库** = 规则，其中**「约束条件」是规则的一种类型**；② **MCP** = 工具，其中**「求解器」是 MCP 的一种类型**；③ **workflow / agent / skill 三方配置页都能统一引用「规则」（含约束）与「MCP」（含求解器）**。
+>
+> **现状矩阵（审核方真跑+对码坐实）**：
+> | | 引用规则(含约束) | 引用MCP(含求解器) |
+> |---|---|---|
+> | Workflow | ✅ `fetchRules` picker（`/a/v1/rules` 28 条真规则·码对上） | ✅ invoke_mcp_tool / invoke_solver |
+> | Agent | ◐ 自由文本 ruleKeys·**无库 picker**（`AgentsPage:296`） | ✅ mcpServers/+MCP · invoke_solver |
+> | Skill | ❌ 无（`SkillDefinition` 仅 key/name/summary/body/resources） | ❌ 无 |
+>
+> 另：规则 schema **无 type/category 字段**区分约束 vs 评估；**求解器-as-MCP 后端已就绪**（`GET /b/v1/mcp/servers/solvers` 200·内置 server "求解器（平台内置）"·每 solver 暴露为 `mcp__solvers__<key>` 工具），仅 `/admin/mcp` UI 未显。
+>
+> 🔑 **强烈建议**：抽一个**共享「资源引用控件」**（规则多选[含约束 type]·MCP/工具多选[含求解器 type]），workflow/agent/skill 三方复用——否则三处各写一套必再分叉（接现成 workflow 的 `fetchRules` + `mcp-configs` 数据源）。
+
+### WO-16（P2）· Agent 规则绑定补「规则库选择器」
+- 缺口：agent 规则绑定是自由文本（ALL_APPLICABLE 或手敲码），**无法从规则库浏览/勾选**（对比 workflow 有 picker）。
+- 锚点：`AgentsPage.tsx:291-300`（规则绑定段·无 fetchRules）；对照 `WorkflowsPage.tsx:123/128/446`（已有 picker）。
+- 怎么建：agent 规则绑定改**规则库多选**（复用 workflow 同款 `fetchRules` 过滤 PUBLISHED·支持 ALL_APPLICABLE + 勾选具体码 + 含约束 type 过滤）。
+- FDE 真值判据：agent 编辑器能**从规则库勾选**具体规则（含约束类）并保存→后端持久化 ruleBindings.ruleKeys=真码。
+
+### WO-17（P2）· `/admin/mcp` 显示内置「求解器」MCP（求解器=MCP 类型）
+- 缺口：求解器-as-MCP 后端已就绪，但 MCP 管理页只显用户自建 MCP，**不显内置 solvers server**。
+- 锚点：后端 `GET /b/v1/mcp/servers/solvers`（已返回）；前端 `McpPage.tsx`（仅 `fetchMcpConfigs`=用户自建）。
+- 怎么建：MCP 页加一区/标签显示**内置 MCP 服务**（solvers·"内置·求解器·READ"标签），与用户自建并列；点开列其 `mcp__solvers__*` 工具。求解器作为 MCP 类型显式化。
+- FDE 真值判据：`/admin/mcp` 实拍出现"求解器（平台内置）"MCP·带类型标签·列出求解器工具。
+
+### WO-18（P1·新建）· 规则库纳入「约束条件」规则类型
+- 缺口：规则当前无 type/category；"约束条件"（类型化约束 GEO_WITHIN 等·原 C3 RESERVED）未作为规则的一种类型存在。
+- 锚点：DataCore 规则 schema（`RuleDefinition`·**需加 `ruleType: "evaluation" | "constraint"` 字段**，dev 先核 schema 现状）；`/admin/rules` 规则库页。
+- 怎么建：① 规则 schema 加 `ruleType`（评估规则 / 约束条件）；② `/admin/rules` 按类型分 tab/筛（"规则" / "约束条件"子页）；③ 约束条件类型支持类型化约束声明（GEO_WITHIN 等·接原 C3）。**边界**：约束条件**就是规则的一种**（评估/闸门语义·非求解器输入·按用户定义），统一在规则库管理、统一被引用。
+- FDE 真值判据：`/admin/rules` 出"约束条件"子页/筛；建一条约束类规则→发布→在 workflow/agent/skill 的规则引用里**可被勾选**（与评估规则同库）。
+- 本体引用与影响：R 规则体系 · 断点 **G-10**（规则一等可编辑引用）· 原 C3 类型化约束。**规则 schema 加字段 → 回写本体规则章 + §8 G-10。**
+
+### WO-19（P2·新建）· Skill 配置补「规则 + MCP」引用
+- 缺口：`SkillDefinition` 无 rule/MCP 引用字段；skill 配置页无法引用规则/MCP（agent/workflow 有）。
+- 锚点：`contracts/agentcore.ts SkillDefinitionSchema`（加 `ruleBindings?` + `mcpServers?`）；`SkillsPage.tsx`（加引用 UI）。
+- 怎么建：SkillDefinition 加 `ruleBindings`（含约束）+ `mcpServers`（含求解器工具）引用字段；SkillsPage 复用**共享资源引用控件**渲染。
+- FDE 真值判据：skill 编辑器能引用规则(含约束)+MCP(含求解器)并保存→后端持久化。
+
+> **统一验收**：三方（workflow/agent/skill）配置页**同一套引用控件**引用 规则(含约束 type) + MCP(含求解器 type)；规则库下约束条件子页；MCP 页显内置求解器。**先抽共享控件再接三方**（WO-16/19 接它·17/18 供数据），避免三处分叉。
+
+---
+
 ## WO-0（收尾·建议）· 防"陈旧 dist"复发 + 越界代码复核
 
 - **CI dist↔源码一致性门**（P1#4 根因·防复发）：S&OP 空壳根因=运行 dist 早于源码修复提交。建议 CI/部署链加「dist 与最新提交一致性」或 real-backend 烟测，拦截陈旧构建。深扫盲区④提示**其他模块也可能潜伏同类陈旧**——建议 dev 跑一轮全模块 dist↔源码核对。
