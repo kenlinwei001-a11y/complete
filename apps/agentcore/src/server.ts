@@ -2171,11 +2171,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       v.dataOk && sliceGaps.length === 0 ? "GOVERNED"
       : (v.dataOk || v.advisoryAnswer) ? "ADVISORY"
       : "PROVISIONAL";
+    // G-9 招牌留痕：若发育闭环触发且原世界全空 → 统计经合成正门 provision 出的对象世界规模（前端"长出"故事）。
+    let provisionedObjects = 0;
+    if (growth.triggered && worldEmpty) {
+      const after = await deps.dataCore.ontology.listObjectTypes(a).catch(() => [] as { instanceCount: number }[]);
+      provisionedObjects = after.reduce((s, t) => s + (t.instanceCount ?? 0), 0);
+    }
     const run: ScenarioOntogenesisRun = {
       runId, scenarioKey: sc.scenarioKey, ranAt,
       rings: { data: v.dataOk, ontology: v.ontologyOk, capability: v.capabilityOk },
       verification: { status: v.vstatus, path: v.vpath, gapCode: v.gapCode, answerPreview: v.answerPreview, taskId: v.taskId },
       gaps, maturity,
+      growth: { triggered: growth.triggered, terminalState: growth.terminalState ?? null, rounds: growth.rounds ?? 0, provisionedObjects },
     };
     await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, updatedAt: new Date().toISOString() });
     await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });

@@ -105,7 +105,14 @@ function ScenarioRow({
   // PRD-scenario-ontogenesis P1：发育验证（经 QOS 跑通触发问句）→ 定 maturity + 留痕。
   const grow = useMutation({
     mutationFn: () => growScenario(scenario.scenarioKey),
-    onSuccess: (run) => { toast(run.maturity === "GOVERNED" ? "发育验证通过：已可用" : `发育中：缺 ${run.verification.gapCode ?? "?"}`, run.maturity === "GOVERNED" ? "success" : "info"); setDevOpen(true); onChanged(); },
+    onSuccess: (run) => {
+      const prov = run.growth?.provisionedObjects ?? 0;
+      const msg = run.maturity === "GOVERNED"
+        ? (prov > 0 ? `已长出：自动 provision ${prov} 对象起步世界 → 已验证可用` : "已长出：发育验证通过·可用")
+        : `发育中：缺 ${run.verification.gapCode ?? "?"}`;
+      toast(msg, run.maturity === "GOVERNED" ? "success" : "info");
+      setDevOpen(true); onChanged();
+    },
     onError: toastError,
   });
   const closure = scenario.closure;
@@ -167,9 +174,10 @@ function ScenarioRow({
               <button className="btn sm" data-testid={`scenario-view-${scenario.scenarioKey}`} onClick={() => setEditing((v) => !v)}>
                 {editing ? "收起" : "查看配置"}
               </button>
-              {/* PRD-ontogenesis P1：亲手把触发问句经 QOS 跑通验证 → 定 maturity + 留痕 */}
-              <button className="btn sm" style={{ marginLeft: 4 }} data-testid={`scenario-grow-${scenario.scenarioKey}`} disabled={grow.isPending} onClick={() => grow.mutate()}>
-                {grow.isPending ? "验证中…" : "发育验证"}
+              {/* PRD-ontogenesis P1 + G-9 招牌：一键长出此卡——把触发问句经 QOS 跑通验证；空租户自动经合成正门
+                  provision 一致起步世界→路由归位→求解器真投影→GOVERNED（发育留痕显"长出"故事）。 */}
+              <button className="btn sm" style={{ marginLeft: 4 }} data-testid={`scenario-grow-${scenario.scenarioKey}`} disabled={grow.isPending} onClick={() => grow.mutate()} title="经 QOS 跑通验证；空租户自动 provision 起步世界后再验，长出即 GOVERNED">
+                {grow.isPending ? "长出中…" : "一键长出此卡"}
               </button>
               {run && (
                 <button className="btn sm" style={{ marginLeft: 4 }} data-testid={`scenario-dev-toggle-${scenario.scenarioKey}`} onClick={() => setDevOpen((v) => !v)}>
@@ -200,6 +208,12 @@ function ScenarioRow({
               </div>
               {run.verification.answerPreview && (
                 <div style={{ color: "var(--muted)" }}>答案预览（数据来源 = 真跑求解器输出）：{run.verification.answerPreview}</div>
+              )}
+              {run.growth?.triggered && (
+                <div data-testid={`scenario-growth-${scenario.scenarioKey}`} style={{ color: "var(--accent, #6ea8fe)" }}>
+                  发育闭环：触发自动补齐（{run.growth.terminalState ?? "?"}·{run.growth.rounds} 轮）
+                  {(run.growth.provisionedObjects ?? 0) > 0 && <b>· 经合成正门 provision {run.growth.provisionedObjects} 对象起步世界（SYNTHETIC·可溯）</b>}
+                </div>
               )}
               {run.gaps.length > 0 && (
                 <div data-testid={`scenario-gaps-${scenario.scenarioKey}`} style={{ color: "var(--amber)" }}>

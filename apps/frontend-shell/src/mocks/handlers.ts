@@ -2071,6 +2071,8 @@ export const handlers = [
       rings: { data: true, ontology: true, capability: true },
       verification: { status: "VERIFIED" as const, path: "WORKFLOW" as const, gapCode: null, answerPreview: "P50 产能 132 GWh · P90 118 GWh · 缺口 3.2%", taskId: "task_mock_grow" },
       gaps: [] as { gapCode: string; disposition: "AUTO_DERIVE" | "NEEDS_HUMAN"; detail: string }[], maturity: "GOVERNED" as const,
+      // G-9 招牌：mock 演示"空→自动 provision 起步世界→长出"故事（真后端据租户实况）。
+      growth: { triggered: true, terminalState: "CONVERGED", rounds: 1, provisionedObjects: 120 },
     };
     sc.maturity = "GOVERNED"; sc.lastOntogenesisRun = run;
     return HttpResponse.json(run);

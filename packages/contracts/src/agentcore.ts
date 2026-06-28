@@ -235,6 +235,14 @@ export const ScenarioOntogenesisRunSchema = z.object({
   }),
   // §2.5：缺口诚实开单（NEEDS_HUMAN）或自动补（AUTO_DERIVE）。
   gaps: z.array(z.object({ gapCode: z.string(), disposition: z.enum(["AUTO_DERIVE", "NEEDS_HUMAN"]), detail: z.string() })).default([]),
+  // G-9 招牌：发育闭环自动补齐留痕——是否触发 runGrowthLoop / 终态 / 轮次 / 是否经合成正门 provision 起步世界（对象数）。
+  // 前端「一键长出此卡」据此展示"空→自动 provision N 对象世界→已长出"的真实发育故事。
+  growth: z.object({
+    triggered: z.boolean(),
+    terminalState: z.string().nullable().default(null),
+    rounds: z.number().default(0),
+    provisionedObjects: z.number().default(0),
+  }).optional(),
   maturity: ScenarioMaturitySchema,
 });
 export type ScenarioOntogenesisRun = z.infer<typeof ScenarioOntogenesisRunSchema>;
