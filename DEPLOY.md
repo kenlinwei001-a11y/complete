@@ -116,8 +116,26 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | OpenAI 兼容 LLM | 登录后在 `/admin/`（意图目录-模型供应商）经 `POST /b/v1/llm/providers` 配置 `openai_compatible`（baseUrl + credential，凭据 AES-GCM 加密存储不回显），再用 `PUT /b/v1/llm/bindings` 把 classifier/agent 角色绑到该供应商；DataCore 侧用 `DC_LLM_PROVIDER=openai_compatible` + `DC_LLM_BASE_URL` + `DC_LLM_API_KEY_ENV` |
 | `EMBEDDING_PROVIDER` | 默认 `pseudo`（确定性哈希向量，零依赖可演示）。配 `openai_compatible` + `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL`（及对应 key 环境变量 `EMBEDDING_API_KEY_ENV`）启用真实向量；postgres-a 用 pgvector 镜像，扩展可用时知识库走原生向量索引，不可用时自动回退 JSONB + 应用侧余弦 |
 | `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动 —— 此时必须配置 BOOTSTRAP 变量，否则 `/readyz` 503） |
+| `SEED_EMPTY_TENANT` | 置 `1`（dev/demo）建一个**可登录但对象世界全空**的租户 `fresh`（登录 `fresh / admin / demo1234`），用于演示 **G-9「一键长出此卡」onboarding 招牌**（见下方 §6.1）；默认关，不影响生产 |
 | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | 管理平台增量 §1：空库首启创建平台超管（`default` 租户，角色 `platform_admin`，登录名 = 邮箱）；幂等，表非空跳过 |
 | HTTPS | 自备 `decision.local` 证书放 `deploy/certs/`，取消 `deploy/nginx.conf` 末尾 443 server 块与 `docker-compose.yml` 中 gateway 的 443 端口/证书挂载注释，浏览器改走 `https://decision.local` |
+
+### 6.1 G-9「一键长出此卡」onboarding 招牌复现（新租户开箱自助）
+
+验证"**缺件卡 → 自动补 → GOVERNED 活体**"：新租户对象世界全空时，发育闭环经合成正门
+（`POST /a/v1/growth/provision-world` → `synthetic.runJob`，FK 一致·R6·SYNTHETIC 可溯·仅入空租户不覆盖真数据）
+一次性 provision 确定性起步世界 → 路由归位 → 求解器真投影 → 验证 GOVERNED。
+
+```bash
+# datacore 同时播 demo（满世界）与 fresh（空世界，可登录）
+SEED_DEMO=1 SEED_EMPTY_TENANT=1 ... node apps/datacore/dist/server.js
+```
+
+1. 浏览器登录 **`fresh / admin / demo1234`**（顶栏显「新租户 fresh·空世界开箱」；此时对象库为空）。
+2. 进 `/admin/scenes`（场景入口配置）→ 任一卡点 **「一键长出此卡」**。
+3. 观察：徽章转 **「已验证·可用」**；发育留痕显「触发自动补齐（CONVERGED）· **经合成正门 provision N 对象起步世界（SYNTHETIC·可溯）**」+ 真答案预览（带 `⟦ref⟧` 溯源）。
+   - 实拍证据：`docs/evidence/g9-grow-empty-tenant-fde.png`、口径与多根诊断见 `docs/evidence/g9-autofill-governed-fde.md`。
+4. **诚实边界**：仅对空/新租户自动合成确定性 starter 世界；**真实业务数据缺口（HARD）走真人正门导入**，不自动合成真数据；非空租户 `provision-world` 拒执行。
 
 ## 7. 故障排查
 
