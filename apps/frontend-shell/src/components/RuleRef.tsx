@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRules } from "@/api/endpoints";
+import zh from "@/locales/zh";
 
 /**
  * 规则锚点（R13 两跳溯源 · 参考原型 linkRules/showRulePop）：把规则编号（C01–C33，
@@ -29,7 +30,7 @@ export function RuleRef({ code }: { code: string }) {
           style={{ position: "absolute", zIndex: 70, top: "130%", left: 0, minWidth: 300, padding: 10, fontSize: 11, textAlign: "left", whiteSpace: "normal", boxShadow: "0 8px 28px rgba(0,0,0,.45)" }}
         >
           {!data ? (
-            <span style={{ color: "var(--muted2)" }}>加载中…</span>
+            <span style={{ color: "var(--muted2)" }}>{zh.common.loading}</span>
           ) : rules.length === 0 ? (
             <span style={{ color: "var(--muted2)" }}>规则 {code}（当前库中未找到定义）</span>
           ) : (

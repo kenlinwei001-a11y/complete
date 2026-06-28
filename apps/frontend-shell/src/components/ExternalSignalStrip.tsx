@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchExternalSignals, type ExternalSignalVM } from "@/api/endpoints";
+import zh from "@/locales/zh";
 
 /**
  * 外部信号 chip 条（UI缺口 M5·母版 audit/generate 顶部环境感知 strip）：碳酸锂/铜箔/主机厂上险/
@@ -15,7 +16,7 @@ const trendIcon = (t: string): { icon: string; color: string } => {
 export function ExternalSignalStrip({ testId = "external-signal-strip" }: { testId?: string }) {
   const { data, isLoading } = useQuery({ queryKey: ["a", "external-signals"], queryFn: fetchExternalSignals, staleTime: 60_000, retry: false });
   const signals: ExternalSignalVM[] = data?.signals ?? [];
-  if (isLoading) return <div className="panel" data-testid={testId} style={{ padding: 8, color: "var(--muted2)", fontSize: 11 }}>外部信号加载中…</div>;
+  if (isLoading) return <div className="panel" data-testid={testId} style={{ padding: 8, color: "var(--muted2)", fontSize: 11 }}>外部信号{zh.common.loading}</div>;
   if (signals.length === 0) return null; // 无外部信号 → 不渲染（向后兼容，不画空壳）
 
   return (
