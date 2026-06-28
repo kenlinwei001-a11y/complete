@@ -17,6 +17,7 @@ import type { SandboxViewConfig, SimSession } from "@platform/contracts";
 const tickFn = vi.fn();
 vi.mock("@/api/endpoints", () => ({
   fetchSimViewConfig: vi.fn(),
+  fetchSimPropagationRules: vi.fn(async () => ({ items: [] })),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_test", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
     curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",
@@ -65,6 +66,7 @@ vi.mock("@/api/endpoints", () => ({
 
 // 在 mock 之后 import 组件（确保用到桩）。
 import SandboxView from "@/views/sim/SandboxView";
+import { fetchSimPropagationRules } from "@/api/endpoints";
 
 // 配置 A（供应链行业）vs 配置 B（物流行业）—— 结构不同，证同代码跑通两行业（R14）。
 const CONFIG_A: SandboxViewConfig = {
@@ -205,6 +207,47 @@ describe("轨A P1 · AI 指挥台（确定性意图解析 R6，无 LLM）", () =
     await user.click(screen.getByTestId("sandbox-ai-run"));
     await waitFor(() => expect(screen.getByTestId("sandbox-ai-echo").textContent).toContain("未识别意图"));
     expect(tickFn).not.toHaveBeenCalled(); // 诚实：未识别不触发任何动作
+  });
+});
+
+describe("G-11 P3 · 传导边标注（×系数·Δ延迟，接真传导规则·零行业常数 R14）", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(fetchSimPropagationRules).mockResolvedValue({ items: [] });
+  });
+
+  const rule = (over: Partial<import("@platform/contracts").PropagationRule>): import("@platform/contracts").PropagationRule => ({
+    id: "pr", tenantId: "tenant-a", key: "pr_key",
+    sourceTypeKey: "Supplier", sourceStateVar: "risk",
+    viaLinkKey: "supplies", targetTypeKey: "Factory", targetStateVar: "load",
+    coefficient: 0.85, delayTicks: 0, combine: "sum", decay: null, clamp: null,
+    coefficientRef: null, status: "PUBLISHED", ...over,
+  });
+
+  it("有真规则：边标 ×系数（delayTicks>0 加 ·Δ延迟），系数全来自规则字段（非写死）", async () => {
+    vi.mocked(fetchSimPropagationRules).mockResolvedValue({
+      items: [
+        rule({ id: "p1", sourceTypeKey: "Supplier", targetTypeKey: "Factory", coefficient: 0.85, delayTicks: 0 }),
+        rule({ id: "p2", sourceTypeKey: "Factory", targetTypeKey: "Order", coefficient: 0.7, delayTicks: 2 }),
+      ],
+    });
+    wrap(CONFIG_A);
+    await screen.findByTestId("sandbox-view");
+    const e1 = await screen.findByTestId("sandbox-dag-edge-label-Supplier-Factory");
+    expect(e1.textContent).toContain("×0.85");
+    expect(e1.textContent).not.toContain("Δ"); // delayTicks=0 不显延迟
+    const e2 = await screen.findByTestId("sandbox-dag-edge-label-Factory-Order");
+    expect(e2.textContent).toContain("×0.7");
+    expect(e2.textContent).toContain("·Δ2"); // delayTicks=2 显延迟
+  });
+
+  it("无规则（纯建模态/entitlement 关）：诚实不标 label（不造假占位）", async () => {
+    vi.mocked(fetchSimPropagationRules).mockResolvedValue({ items: [] });
+    wrap(CONFIG_A);
+    await screen.findByTestId("sandbox-view");
+    await screen.findByTestId("sandbox-dag-node-Supplier");
+    // 兜底相邻边仍在（拓扑可见），但无系数标注。
+    expect(screen.queryByTestId("sandbox-dag-edge-label-Supplier-Factory")).toBeNull();
   });
 });
 

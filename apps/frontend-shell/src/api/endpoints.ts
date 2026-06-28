@@ -44,6 +44,7 @@ import type {
   SimCertification,
   SimCheckpoint,
   TickState,
+  PropagationRule,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import type {
@@ -527,6 +528,10 @@ export const fetchTickReports = () => api.a<TickReportVM[]>("/a/v1/synthetic/clo
 // 全部经 sim.sandbox entitlement 暗发（关 = 404 FEATURE_NOT_FOUND）。
 /** 沙盘视图配置 = 租户本体 + 传导规则派生（nodeTypes/linkTypes/stateVars/radarDims/screens/propagationCount）。 */
 export const fetchSimViewConfig = () => api.a<SandboxViewConfig>("/a/v1/sim/view-config");
+/** 传导规则（PUBLISHED）= 真 (source→target 类型 · viaLinkKey · coefficient · delayTicks)。沙盘传导边 label 用，
+ *  零业务常数（系数/延迟全自规则字段，换租户=换规则）。经 sim.propagation entitlement 暗发（关=404，前端容错不显 label）。 */
+export const fetchSimPropagationRules = () =>
+  api.a<{ items: PropagationRule[] }>("/a/v1/sim/propagation-rules");
 /** 创建会话（init）：baseSnapshot=tick0 世界态（对象→状态变量→数值），scope=范围裁剪。 */
 export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record<string, unknown> }) =>
   api.a<SimSession>("/a/v1/sim/sessions", { body });

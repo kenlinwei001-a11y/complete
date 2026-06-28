@@ -30,6 +30,7 @@ export function PmDag({
   step,
   testId = "pm-dag",
   onNodeClick,
+  edgeLabel,
 }: {
   layers: PmDagNode[][];
   edges: [string, string][];
@@ -37,6 +38,8 @@ export function PmDag({
   testId?: string;
   /** 点 DAG 节点 → 抽屉看判定/推导/输入/规则（#3 可点穿）。 */
   onNodeClick?: (id: string) => void;
+  /** 可选边标注（沙盘传导边 G-11：`×系数 ·Δ延迟`）。返回 null/空 = 不标（向后兼容，其它调用方不传即无影响）。 */
+  edgeLabel?: (from: string, to: string) => string | null | undefined;
 }) {
   const pos = new Map<string, { x: number; y: number; w: number }>();
   const meta = new Map<string, PmDagNode>();
@@ -140,16 +143,37 @@ export function PmDag({
         if (!a || !b || !ma || !mb) return null;
         const lit = step >= ma.st && step >= mb.st;
         const my = (a.y + b.y) / 2;
+        // 边中点（贝塞尔 t=0.5 近似：两端点与控制点的平均）—— 标注锚点。
+        const lx = (a.x + b.x) / 2;
+        const ly = my;
+        const label = edgeLabel?.(from, to);
         return (
-          <path
-            key={i}
-            d={`M ${a.x} ${a.y + NH / 2} C ${a.x} ${my}, ${b.x} ${my}, ${b.x} ${b.y - NH / 2}`}
-            fill="none"
-            stroke={lit ? "#7C8896" : "var(--line2)"}
-            strokeWidth={lit ? 1.5 : 1}
-            opacity={lit ? 0.8 : 0.3}
-            markerEnd="url(#pm-arrow)"
-          />
+          <g key={i}>
+            <path
+              d={`M ${a.x} ${a.y + NH / 2} C ${a.x} ${my}, ${b.x} ${my}, ${b.x} ${b.y - NH / 2}`}
+              fill="none"
+              stroke={lit ? "#7C8896" : "var(--line2)"}
+              strokeWidth={lit ? 1.5 : 1}
+              opacity={lit ? 0.8 : 0.3}
+              markerEnd="url(#pm-arrow)"
+            />
+            {label ? (
+              <text
+                x={lx}
+                y={ly + 3}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight={600}
+                fill="#9AA8B6"
+                opacity={lit ? 1 : 0.5}
+                data-testid={`${testId}-edge-label-${from}-${to}`}
+              >
+                <tspan paintOrder="stroke" stroke="var(--panel,#0e141b)" strokeWidth={3}>
+                  {label}
+                </tspan>
+              </text>
+            ) : null}
+          </g>
         );
       })}
       {[...meta.values()].map((n) => {

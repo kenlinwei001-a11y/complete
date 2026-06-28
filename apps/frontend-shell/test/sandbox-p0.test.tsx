@@ -51,6 +51,7 @@ const CERT_LOCAL: SimCertification = {
 vi.mock("@/api/endpoints", () => ({
   fetchWorkspace: vi.fn(),
   fetchSimViewConfig: vi.fn(),
+  fetchSimPropagationRules: vi.fn(async () => ({ items: [] })),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_main", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
     curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",

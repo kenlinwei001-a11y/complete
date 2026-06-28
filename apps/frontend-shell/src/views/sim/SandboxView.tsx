@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
+import type { PropagationRule, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
   createSimSession,
   fetchObjectLineage,
   fetchObjectTypes,
   fetchSimCertification,
   fetchSimCompare,
+  fetchSimPropagationRules,
   fetchSimViewConfig,
   invokeSolver,
   simBranch,
@@ -88,12 +89,44 @@ function buildNodes(cfg: SandboxViewConfig, world: TickState): PmDagNode[] {
   });
 }
 
-/** 配置 → 边：优先用 linkTypes 串成相邻链；无链路则按 nodeTypes 顺序兜底相邻（保证拓扑可见）。 */
-function buildEdges(cfg: SandboxViewConfig): [string, string][] {
+/** 边 + 传导规则元数据（G-11 P3）：边来自**真传导规则**（sourceTypeKey→targetTypeKey）时带系数/延迟标注；
+ *  无规则时退 nodeTypes 顺序相邻（保证拓扑可见，无标注）。系数/延迟全自规则字段——零行业常数 R14。 */
+interface SandboxEdges {
+  /** 渲染用边列表（节点 = 对象类型 key）。 */
+  list: [string, string][];
+  /** `from→to` → 标注文案（`×系数` + 若 delayTicks>0 加 `·Δ延迟`）；缺则不在 map（不显，向后兼容 RL5）。 */
+  labels: Map<string, string>;
+}
+
+/** 多条同 (source,target) 规则去重为一条边；标注合并各规则 `×系数`（多 viaLinkKey 同型对时）。 */
+function edgeKey(from: string, to: string): string {
+  return from + "->" + to;
+}
+
+/** 配置 + 真传导规则 → 边 + 系数/延迟标注。规则为空（纯建模态/sim.propagation 关）则退相邻兜底（无标注）。 */
+function buildEdges(cfg: SandboxViewConfig, rules: PropagationRule[]): SandboxEdges {
+  const nodeSet = new Set(cfg.nodeTypes);
+  const list: [string, string][] = [];
+  const labels = new Map<string, string>();
+  const seen = new Set<string>();
+  // 真边：来自传导规则的 source→target 类型对（仅当两端都是已发布对象类型，避免悬空边）。
+  for (const r of rules) {
+    if (!nodeSet.has(r.sourceTypeKey) || !nodeSet.has(r.targetTypeKey)) continue;
+    const k = edgeKey(r.sourceTypeKey, r.targetTypeKey);
+    if (!seen.has(k)) {
+      seen.add(k);
+      list.push([r.sourceTypeKey, r.targetTypeKey]);
+    }
+    // 标注：`×系数`（+ delayTicks>0 显 `·Δ延迟`）。同型对多规则用 / 串接（一眼看全各条系数）。
+    const part = `×${r.coefficient}${r.delayTicks > 0 ? `·Δ${r.delayTicks}` : ""}`;
+    const prev = labels.get(k);
+    labels.set(k, prev ? `${prev} / ${part}` : part);
+  }
+  if (list.length > 0) return { list, labels };
+  // 兜底（无传导规则）：按 nodeTypes 顺序相邻，仅为拓扑可见——无系数可标，labels 空（诚实不造假）。
   const n = cfg.nodeTypes;
-  const edges: [string, string][] = [];
-  for (let i = 0; i + 1 < n.length; i++) edges.push([n[i]!, n[i + 1]!]);
-  return edges;
+  for (let i = 0; i + 1 < n.length; i++) list.push([n[i]!, n[i + 1]!]);
+  return { list, labels };
 }
 
 // ── 就绪雷达（自绘·维数动态 = certification.dims，不复用固定 5 维 RadarChart）─────────────
@@ -501,6 +534,15 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   });
   const cfg = injectedConfig ?? cfgQuery.data;
 
+  // G-11 P3：真传导规则（系数/延迟）→ 拓扑边标注。sim.propagation 关时 404 → 容错（retry:false），边退无标注兜底。
+  const rulesQuery = useQuery({
+    queryKey: ["a", "sim", "propagation-rules"],
+    queryFn: fetchSimPropagationRules,
+    enabled: !!cfg,
+    retry: false,
+  });
+  const propRules = rulesQuery.data?.items ?? [];
+
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [world, setWorld] = useState<TickState>({});
   const [curTick, setCurTick] = useState(0);
@@ -717,7 +759,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   }
 
   const nodes = buildNodes(cfg, world);
-  const edges = buildEdges(cfg);
+  const { list: edges, labels: edgeLabels } = buildEdges(cfg, propRules);
   const radarValues: Record<string, number> = cert
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
     : {};
@@ -836,10 +878,17 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
 
         {/* 拓扑（右）：PmDag 单层，节点=nodeTypes，着色随 world 态；点节点→R13 溯源悬浮 */}
         <div className="panel" data-testid="sandbox-topology" style={{ padding: 12 }}>
-          <div className={styles.secHead}>本体拓扑（节点态随 tick 变色 · 点节点看 R13 上游链路）</div>
+          <div className={styles.secHead}>本体拓扑（节点态随 tick 变色 · 边标 ×系数·Δ延迟 · 点节点看 R13 上游链路）</div>
           {nodes.length > 0 ? (
             <div onMouseMove={(e) => { pointerRef.current = { x: e.clientX, y: e.clientY }; }}>
-              <PmDag layers={[nodes]} edges={edges} step={0} testId="sandbox-dag" onNodeClick={onNodeClick} />
+              <PmDag
+                layers={[nodes]}
+                edges={edges}
+                step={0}
+                testId="sandbox-dag"
+                onNodeClick={onNodeClick}
+                edgeLabel={(from, to) => edgeLabels.get(edgeKey(from, to)) ?? null}
+              />
             </div>
           ) : (
             <div className={styles.sub} data-testid="sandbox-topology-empty">本体暂无已发布对象类型——先在建模页发布对象。</div>
