@@ -33,8 +33,10 @@ export async function seedDemoLlmProvider(
       scope: "tenant",
     }));
   const cur = await llm.bindings(ctx.tenantId);
-  // 含 modeling：/modeling/suggest（A3 AI 建模建议）走 purpose=modeling，缺则 demo 仍裸 500（审核方真测坐实）。
-  const want = ["classifier", "agent", "comprehend", "modeling"] as const;
+  // 绑全部 DataCore 用途（深扫 P0 坐实：凡未绑用途回落无凭据 SDK→裸鉴权串）：
+  // extraction=A2 规则抽取 · template_gen=未知行业合成 · modeling=A3 AI 建议 · comprehend=A2 故事解析。
+  // compose 运行期回落 agent 绑定（roleModel），无需单列。
+  const want = ["classifier", "agent", "comprehend", "modeling", "extraction", "template_gen"] as const;
   const missing = want.filter((p) => !cur.some((b) => b.purpose === p));
   if (missing.length > 0) {
     await llm.putBindings(ctx, [
