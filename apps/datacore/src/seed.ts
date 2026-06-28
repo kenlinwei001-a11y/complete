@@ -3,8 +3,34 @@ import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
 import type { AuthCtx } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
+import type { SopService } from "./sop.js";
+import type { SolverService } from "./solvers/service.js";
 
 export const DEMO_TENANT = "demo";
+
+/**
+ * UI缺口 M3：demo 种一个月度 S&OP 版本（2026-07）并五步法推进到评审态，使 /v/sop-balance 直接出
+ * 三线对照表（目标/滚动P50/滚动P90/上月实际），非"暂无数据"空壳。复用 CL.4 bootstrap ⑤ 同一编排
+ * （sop.create + advance 1..5·步④财务取参数基线种子），幂等（已有该月版本则跳过）。不 FINAL（留评审态）。
+ */
+export async function seedDemoSopVersion(sop: SopService, solvers: SolverService, ctx: AuthCtx): Promise<void> {
+  const month = "2026-07";
+  const existing = (await sop.list(ctx)).filter((v) => v.month === month);
+  if (existing.length > 0) return; // 幂等
+  let version = await sop.create(ctx, { month });
+  const params = await solvers.getParams(ctx.tenantId);
+  const baseline = (params.planBaseline as { gmTarget?: number; cashCushion?: number } | undefined) ?? { gmTarget: 16, cashCushion: 58 };
+  const cashFloor = Number((params.sop as { cashFloor?: number } | undefined)?.cashFloor ?? 50);
+  const gmBudget = Number(baseline.gmTarget ?? 16);
+  for (let s = 1; s <= 5; s++) {
+    let payload: Record<string, unknown> = {};
+    if (s === 4) {
+      const dem = Number((version.steps.s3 as { dem?: number } | undefined)?.dem) || 100;
+      payload = { revSum: dem, gmSum: Math.round((dem * gmBudget) / 100 * 1e4) / 1e4, gmBudget, cashCushion: Math.max(Number(baseline.cashCushion ?? 58), cashFloor) };
+    }
+    version = await sop.advance(ctx, version.id, s, payload);
+  }
+}
 
 /** Seed tenant "demo" + admin/planner/base_manager(常州) accounts (password demo1234). */
 export async function seedDemo(repos: Repos): Promise<AuthCtx> {

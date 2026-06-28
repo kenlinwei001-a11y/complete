@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion, runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
@@ -47,6 +47,17 @@ export default function SopBalanceView(_props: ViewRendererProps) {
     queryFn: () => fetchSopVersion(selectedId!),
     enabled: selectedId != null,
   });
+
+  // UI缺口 M3：版本到达且未选 → 自动选最新（list 按 createdAt 倒序，[0] 即最新），使打开即出三线对照表（非空壳）。
+  useEffect(() => {
+    if (!selectedId && versions.data && versions.data.length > 0) {
+      const latest = versions.data[0]!;
+      setSelectedId(latest.id);
+      useSessionStore.getState().setSelectedObjects([
+        { objectType: "SopVersion", objectId: latest.id, label: `S&OP ${latest.month}` },
+      ]);
+    }
+  }, [versions.data, selectedId]);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["a", "sop-versions"] });

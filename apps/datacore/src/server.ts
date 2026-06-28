@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +46,13 @@ async function main(): Promise<void> {
     // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
     await seedDemoPropagationRules(repos);
     logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
+    // UI缺口 M3：种月度 S&OP 版本（2026-07·五步法评审态），使 /v/sop-balance 非空壳（best-effort，不阻断启动）。
+    try {
+      await seedDemoSopVersion(services.sop, services.solvers, adminCtx);
+      logger.info("SEED_DEMO=1: seeded demo S&OP version 2026-07 (sop-balance non-empty)");
+    } catch (e) {
+      logger.warn({ err: (e as Error).message }, "SEED_DEMO=1: seed S&OP version skipped");
+    }
   }
 
   services.scheduler.start();
