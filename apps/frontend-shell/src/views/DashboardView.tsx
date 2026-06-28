@@ -419,18 +419,32 @@ async function fetchAttainmentDecomp(seriesKey: string): Promise<{ breakdown: No
   };
 }
 
+const dayWin = (day: string) => ({ from: day, to: new Date(Date.parse(`${day}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10), grain: "day" });
+
+/** A3 跨线排行：某日全部产线达成率升序（最低在前），行可点选下钻其逐设备。 */
+async function fetchLineRanking(seriesKey: string, day: string, onPick: (lineId: string) => void): Promise<NonNullable<DagDetail["breakdown"]>> {
+  const pts = (await queryTimeseriesAgg({ seriesKey, entityIds: [], window: dayWin(day), agg: "avg", measureField: "attainment" })).points;
+  if (pts.length === 0) return { columns: ["产线"], rows: [], caption: `${day} 无产线数据` };
+  const rows = pts.slice().sort((a, b) => a.value - b.value).map((p, i) => ({
+    cells: [p.entityId, `${(p.value * 100).toFixed(1)}%`],
+    dip: i === 0,
+    onClick: () => onPick(p.entityId),
+  }));
+  return { columns: ["产线", "达成率"], rows, caption: `${day} 全 ${pts.length} 线达成率升序（灰底=最低）·点任一线下钻其逐台设备/工序` };
+}
+
 /**
- * Level-3 逐设备勾稽（R13 点到具体设备/工序）：取最差日达成率最低的产线 → 沿 Line→Equipment / Line→Process
- * 拓扑列出该线逐台 oee:equip 与逐工序 yield:process（升序，最低者=拖累点）。真接后端序列 + 对象图（非写死）。
+ * Level-3 逐设备勾稽（R13 点到具体设备/工序）：给定产线（缺省取最差线）→ 沿 Line→Equipment/Process 拓扑
+ * 列逐台 oee:equip / 逐工序 yield:process（升序，最低=拖累点）。设备行可点 → 看该设备 OEE 趋势（A2）。
  */
-async function fetchEquipDrill(seriesKey: string, day: string): Promise<NonNullable<DagDetail["breakdown"]>> {
-  const win = { from: day, to: new Date(Date.parse(`${day}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10), grain: "day" };
-  // 最差产线（该日 attainment:line 各线最低）
-  const linePts = (await queryTimeseriesAgg({ seriesKey, entityIds: [], window: win, agg: "avg", measureField: "attainment" })).points;
-  if (linePts.length === 0) return { columns: ["对象"], rows: [], caption: `${day} 无产线数据` };
-  const worst = linePts.slice().sort((a, b) => a.value - b.value)[0]!;
-  const lineId = worst.entityId;
-  // 该线设备 / 工序（对象图按 lineId 过滤）
+async function fetchEquipDrill(seriesKey: string, day: string, lineIdIn: string | undefined, onPickEquip: (equipId: string) => void): Promise<NonNullable<DagDetail["breakdown"]>> {
+  const win = dayWin(day);
+  let lineId = lineIdIn;
+  if (!lineId) {
+    const linePts = (await queryTimeseriesAgg({ seriesKey, entityIds: [], window: win, agg: "avg", measureField: "attainment" })).points;
+    if (linePts.length === 0) return { columns: ["对象"], rows: [], caption: `${day} 无产线数据` };
+    lineId = linePts.slice().sort((a, b) => a.value - b.value)[0]!.entityId;
+  }
   const [equips, procs] = await Promise.all([
     queryObjectsPaged("Equipment", 1, 100, { lineId }),
     queryObjectsPaged("Process", 1, 100, { lineId }),
@@ -443,7 +457,8 @@ async function fetchEquipDrill(seriesKey: string, day: string): Promise<NonNulla
   ]);
   const eqRows = oeePts.points.slice().sort((a, b) => a.value - b.value).map((p, i) => ({
     cells: [p.entityId.replace(`${lineId}-`, ""), "设备 OEE", `${(p.value * 100).toFixed(1)}%`],
-    dip: i === 0, // 最低=拖累点
+    dip: i === 0,
+    onClick: () => onPickEquip(p.entityId), // A2：点设备看趋势
   }));
   const prRows = yldPts.points.slice().sort((a, b) => a.value - b.value).map((p) => ({
     cells: [p.entityId.replace(`${lineId}-`, ""), "工序良率", `${(p.value * 100).toFixed(1)}%`],
@@ -454,13 +469,27 @@ async function fetchEquipDrill(seriesKey: string, day: string): Promise<NonNulla
   return {
     columns: ["设备/工序", "类型", "实际值"],
     rows: [...eqRows, ...prRows],
-    caption: `${day} 达成率最低产线「${lineId}」逐台勾稽（OEE 升序·灰底=最低拖累点：${worstEq}）·达成率 = (Σoee×产量/Σ产量)/计划OEE × avg(yield)/计划良率`,
+    caption: `${day} 产线「${lineId}」逐台勾稽（OEE 升序·灰底=最低拖累点：${worstEq}）·点设备行看其 OEE 趋势`,
   };
+}
+
+/** A2 设备级时间轴：单台设备 oee:equip 近窗口逐日趋势（接现成 agg-query，单设备）。 */
+async function fetchEquipTrend(equipId: string): Promise<NonNullable<DagDetail["breakdown"]>> {
+  const to = new Date();
+  const from = new Date(to.getTime() - 118 * 86400_000);
+  const pts = (await queryTimeseriesAgg({ seriesKey: "oee:equip", entityIds: [equipId], window: { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), grain: "day" }, agg: "avg" })).points;
+  const days = pts.slice(-14);
+  if (days.length === 0) return { columns: ["日期"], rows: [], caption: `${equipId} 无 OEE 序列` };
+  const avg = days.reduce((s, p) => s + p.value, 0) / days.length;
+  const rows = days.map((p) => ({ cells: [p.bucket.slice(5), `${(p.value * 100).toFixed(1)}%`], dip: p.value < avg - 0.02 }));
+  return { columns: ["日期", "OEE"], rows, caption: `设备「${equipId}」近 ${days.length} 日 OEE 趋势（灰底=低于均值 ${(avg * 100).toFixed(1)}%）` };
 }
 
 function KpiDrillButton({ def, value, scale }: { def: DashboardWidgetDef; value: unknown; scale?: number }) {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<"days" | "equip">("days");
+  const [view, setView] = useState<"days" | "lines" | "equip" | "equiptrend">("days");
+  const [pickedLine, setPickedLine] = useState<string | undefined>();
+  const [pickedEquip, setPickedEquip] = useState<string | undefined>();
   const seriesKey = def.drill?.seriesKey;
   const { data: l2, isFetching: l2Loading } = useQuery({
     queryKey: ["attain-decomp", seriesKey],
@@ -468,19 +497,29 @@ function KpiDrillButton({ def, value, scale }: { def: DashboardWidgetDef; value:
     enabled: open && !!seriesKey,
   });
   const worstDay = l2?.worstDay;
+  const { data: lineRank, isFetching: lineLoading } = useQuery({
+    queryKey: ["attain-lines", seriesKey, worstDay],
+    queryFn: () => fetchLineRanking(seriesKey!, worstDay!, (lineId) => { setPickedLine(lineId); setView("equip"); }),
+    enabled: open && view === "lines" && !!seriesKey && !!worstDay,
+  });
   const { data: l3, isFetching: l3Loading } = useQuery({
-    queryKey: ["attain-equip", seriesKey, worstDay],
-    queryFn: () => fetchEquipDrill(seriesKey!, worstDay!),
+    queryKey: ["attain-equip", seriesKey, worstDay, pickedLine],
+    queryFn: () => fetchEquipDrill(seriesKey!, worstDay!, pickedLine, (eq) => { setPickedEquip(eq); setView("equiptrend"); }),
     enabled: open && view === "equip" && !!seriesKey && !!worstDay,
   });
-  const close = () => { setOpen(false); setView("days"); };
+  const { data: trend, isFetching: trendLoading } = useQuery({
+    queryKey: ["equip-trend", pickedEquip],
+    queryFn: () => fetchEquipTrend(pickedEquip!),
+    enabled: open && view === "equiptrend" && !!pickedEquip,
+  });
+  const close = () => { setOpen(false); setView("days"); setPickedLine(undefined); setPickedEquip(undefined); };
   return (
     <>
       <button
         type="button"
         data-testid={`kpi-drill-${def.key}`}
         onClick={() => { setView("days"); setOpen(true); }}
-        title="点开逐日拆因 → 逐设备勾稽"
+        title="点开逐日拆因 → 逐线 → 逐设备 → 设备趋势"
         style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "inherit", font: "inherit" }}
       >
         <KpiWidget value={value} unit={def.unit} scale={scale} />
@@ -497,7 +536,21 @@ function KpiDrillButton({ def, value, scale }: { def: DashboardWidgetDef; value:
             rule: def.provenance?.ruleRefs,
             note: l2Loading ? "加载逐日派生数据…" : def.provenance?.note,
             breakdown: l2?.breakdown ?? { columns: ["日期"], rows: [], caption: l2Loading ? "加载中…" : "" },
-            action: worstDay ? { label: `下钻最差日 ${worstDay.slice(5)} · 最差产线逐设备 →`, onClick: () => setView("equip") } : undefined,
+            action: worstDay ? { label: `下钻最差日 ${worstDay.slice(5)} · 全线排行 →`, onClick: () => setView("lines") } : undefined,
+          }}
+        />
+      )}
+      {open && view === "lines" && (
+        <DagNodeDrawer
+          onClose={close}
+          detail={{
+            title: `${def.title} · 全线达成率排行（${worstDay?.slice(5) ?? ""}）`,
+            src: "时序库·attainment:line（各线该日达成率）",
+            formula: "点任一产线 → 下钻其逐台 oee:equip / yield:process",
+            rule: def.provenance?.ruleRefs,
+            note: lineLoading ? "加载全线排行…" : "灰底=该日达成率最低产线；点行下钻该线逐设备勾稽（A3）",
+            breakdown: lineRank ?? { columns: ["产线"], rows: [], caption: lineLoading ? "加载中…" : "" },
+            action: { label: "← 返回逐日拆因", onClick: () => setView("days") },
           }}
         />
       )}
@@ -505,13 +558,26 @@ function KpiDrillButton({ def, value, scale }: { def: DashboardWidgetDef; value:
         <DagNodeDrawer
           onClose={close}
           detail={{
-            title: `${def.title} · 逐设备勾稽（${worstDay?.slice(5) ?? ""}）`,
+            title: `${def.title} · 逐设备勾稽（${pickedLine ?? "最差线"}·${worstDay?.slice(5) ?? ""}）`,
             src: "时序库·oee:equip / yield:process（沿 Line→Equipment/Process 拓扑）",
             formula: "产线OEE = Σ(设备oee×产量)/Σ产量；产线良率 = avg(工序yield)",
             rule: def.provenance?.ruleRefs,
-            note: l3Loading ? "加载逐台设备/工序数据…" : "最低 OEE 设备 = 该日该线达成率主要拖累点（停机/低效），点到具体设备/工序（R13）",
+            note: l3Loading ? "加载逐台设备/工序数据…" : "最低 OEE 设备 = 该日该线达成率主要拖累点（停机/低效）；点设备行看其 OEE 趋势（A2·R13）",
             breakdown: l3 ?? { columns: ["对象"], rows: [], caption: l3Loading ? "加载中…" : "" },
-            action: { label: "← 返回逐日拆因", onClick: () => setView("days") },
+            action: { label: "← 返回全线排行", onClick: () => setView("lines") },
+          }}
+        />
+      )}
+      {open && view === "equiptrend" && (
+        <DagNodeDrawer
+          onClose={close}
+          detail={{
+            title: `${def.title} · 设备 OEE 趋势`,
+            src: "时序库·oee:equip（单台设备逐日）",
+            formula: "OEE = 可用率 × 性能 × 良率（设备级），逐日时序",
+            note: trendLoading ? "加载设备趋势…" : "该设备近期 OEE 走势——定位停机/低效是持续性还是单日（R13 逐设备时间轴）",
+            breakdown: trend ?? { columns: ["日期"], rows: [], caption: trendLoading ? "加载中…" : "" },
+            action: { label: "← 返回逐设备", onClick: () => setView("equip") },
           }}
         />
       )}

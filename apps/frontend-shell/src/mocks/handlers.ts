@@ -1122,9 +1122,16 @@ export const handlers = [
   // ---- 时序聚合查询（A8.4，无任何参数组合可返回原始行） ----
   // 计划达成率逐日拆因 / 逐设备勾稽（drill）：达成率=设备效率达成×良率达成；level-3 逐台 oee:equip / 逐工序 yield:process。
   http.post("*/a/v1/timeseries/agg-query", async ({ request }) => {
-    const body = (await request.json().catch(() => ({}))) as { seriesKey?: string; measureField?: string };
+    const body = (await request.json().catch(() => ({}))) as { seriesKey?: string; measureField?: string; entityIds?: string[]; window?: { from: string; to: string } };
+    const spanDays = body.window ? Math.round((Date.parse(`${body.window.to}T00:00:00Z`) - Date.parse(`${body.window.from}T00:00:00Z`)) / 86400000) : 30;
+    const lineNames = ["LINE-changzhou", "LINE-jiangmen", "LINE-zaozhuang", "LINE-yibin", "LINE-chengdu", "LINE-hefei"];
     if (body.seriesKey === "attainment:line") {
       const mf = body.measureField ?? "attainment";
+      // A3 单日全线排行：entityIds 空 + 单日窗口 → 多线该日达成率
+      if (spanDays <= 1 && (body.entityIds?.length ?? 0) === 0) {
+        const day = body.window!.from;
+        return HttpResponse.json({ points: lineNames.map((ln, i) => ({ entityId: ln, bucket: day, value: Number((0.86 + i * 0.012 - (i === 1 ? 0.06 : 0)).toFixed(4)) })) });
+      }
       const points = Array.from({ length: 14 }, (_, i) => {
         const day = i + 1;
         const dow = new Date(`2026-06-${String(day).padStart(2, "0")}T00:00:00Z`).getUTCDay();
@@ -1140,6 +1147,11 @@ export const handlers = [
       return HttpResponse.json({ points });
     }
     if (body.seriesKey === "oee:equip") {
+      // A2 单设备趋势：entityIds 单台 + 多日窗口 → 该设备逐日 OEE
+      if ((body.entityIds?.length ?? 0) === 1 && spanDays > 1) {
+        const eq = body.entityIds![0]!;
+        return HttpResponse.json({ points: Array.from({ length: 14 }, (_, i) => ({ entityId: eq, bucket: `2026-06-${String(i + 1).padStart(2, "0")}`, value: Number((0.7 + Math.sin(i * 0.6) * 0.05).toFixed(4)) })) });
+      }
       // 逐台设备 OEE（level-3 勾稽）：assembly-E2 最差（停机/低效拖累）。
       const eqs = ["LINE-changzhou-assembly-E2", "LINE-changzhou-assembly-E1", "LINE-changzhou-coating-E2", "LINE-changzhou-winding-E2", "LINE-changzhou-coating-E1", "LINE-changzhou-winding-E1"];
       return HttpResponse.json({ points: eqs.map((e, i) => ({ entityId: e, bucket: "2026-06-07", value: Number((0.642 + i * 0.022).toFixed(4)) })) });

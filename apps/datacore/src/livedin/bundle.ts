@@ -6,7 +6,7 @@ import { notFound, validationError } from "../errors.js";
 import { round } from "../prng.js";
 import { BATTERY_SOLVER_PARAMS, BATTERY_TEMPLATE } from "../synthetic/battery.js";
 import { entityRefFieldOf } from "../synthetic/service.js";
-import type { TsGenSpec } from "../synthetic/tsgen.js";
+import { attainEventFlag, rollupLineAttainment, type TsGenSpec } from "../synthetic/tsgen.js";
 import { livedMaintWindows, livedPoint, maintMonthOf, type LivedGenContext } from "./tsgen.js";
 import { incidentsFromCases } from "./engine.js";
 
@@ -317,11 +317,26 @@ export class HistoryService {
       }
     }
     const ingestedAt = new Date().toISOString();
+    // 逐设备勾稽（A1）：attainment:line 由该线真实 oee:equip/yield:process rollup（与历史/sim/engine 单一来源）。
+    const planBase = BATTERY_SOLVER_PARAMS.planBaseline as { oeePlan: number; yieldPlan: number };
+    const equipByLine = new Map<string, string[]>();
+    for (const e of await this.repos.objects.listByType(tid, "Equipment")) {
+      const ln = String(e.props.lineId ?? "");
+      (equipByLine.get(ln) ?? equipByLine.set(ln, []).get(ln)!).push(String(e.props.equipId ?? e.id));
+    }
+    const procByLine = new Map<string, string[]>();
+    for (const p of await this.repos.objects.listByType(tid, "Process")) {
+      const ln = String(p.props.lineId ?? "");
+      (procByLine.get(ln) ?? procByLine.set(ln, []).get(ln)!).push(String(p.props.processId ?? p.id));
+    }
+    const oeeByEquipDay = new Map<string, Map<string, { oee: number; output: number }>>();
+    const yieldByProcDay = new Map<string, Map<string, number>>();
     let written = 0;
     for (const gen of generators) {
       const series = (await this.repos.tsSeries.list(tid, (s) => s.seriesKey === gen.seriesKey))[0];
       if (!series) continue;
       const refField = entityRefFieldOf(gen.entityType);
+      const isAttain = gen.derive?.kind === "attainment";
       const entities = (await this.repos.objects.listByType(tid, gen.entityType))
         .sort((a, b) => (a.id < b.id ? -1 : 1))
         .map((e) => ({ entityId: String(e.props[refField] ?? e.id), baseId: String(e.props.baseId ?? "") }));
@@ -329,15 +344,24 @@ export class HistoryService {
       for (const e of entities) {
         for (const dateIso of days) {
           const dayIndex = Math.round((Date.parse(`${dateIso}T00:00:00Z`) - genCtx.replayFromMs) / DAY_MS);
-          rows.push({
-            seriesId: series.id,
-            entityId: e.entityId,
-            ts: `${dateIso}T00:00:00.000Z`,
-            values: livedPoint(gen, e, dateIso, dayIndex, genCtx),
-            ingestedAt,
-            tick: 0,
-            origin: "LIVE",
-          });
+          let values: Record<string, number>;
+          if (isAttain) {
+            const eqs = (equipByLine.get(e.entityId) ?? []).map((eq) => oeeByEquipDay.get(eq)?.get(dateIso)).filter((x): x is { oee: number; output: number } => !!x);
+            const prs = (procByLine.get(e.entityId) ?? []).map((pr) => yieldByProcDay.get(pr)?.get(dateIso)).filter((y): y is number => y != null);
+            values = rollupLineAttainment(eqs, prs, planBase, attainEventFlag(dateIso, genCtx.maint.get(e.baseId)));
+          } else {
+            values = livedPoint(gen, e, dateIso, dayIndex, genCtx);
+            if (gen.seriesKey === "oee:equip") {
+              let m = oeeByEquipDay.get(e.entityId);
+              if (!m) oeeByEquipDay.set(e.entityId, (m = new Map()));
+              m.set(dateIso, { oee: values.oee ?? 0, output: values.output ?? 1 });
+            } else if (gen.seriesKey === "yield:process") {
+              let m = yieldByProcDay.get(e.entityId);
+              if (!m) yieldByProcDay.set(e.entityId, (m = new Map()));
+              m.set(dateIso, values.yield ?? 0);
+            }
+          }
+          rows.push({ seriesId: series.id, entityId: e.entityId, ts: `${dateIso}T00:00:00.000Z`, values, ingestedAt, tick: 0, origin: "LIVE" });
         }
       }
       written += await this.repos.tsPoints.upsert(tid, rows);

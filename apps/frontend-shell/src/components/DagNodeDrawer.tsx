@@ -17,10 +17,10 @@ export interface DagDetail {
   note?: string;
   /** 可选下钻动作（如 event 节点"查看受影响订单"）——保上下文的就地跳转。 */
   action?: { label: string; onClick: () => void };
-  /** 可选逐日拆因表（如计划达成率：逐日 达成率 = 设备效率达成 × 良率达成 × 排程事件损，标主因）。 */
+  /** 可选逐日拆因表（如计划达成率：逐日 达成率 = 设备效率达成 × 良率达成，标主因）。行可带 onClick 再下钻。 */
   breakdown?: {
     columns: string[];
-    rows: { cells: (string | number)[]; dip?: boolean }[];
+    rows: { cells: (string | number)[]; dip?: boolean; onClick?: () => void }[];
     caption?: string;
   };
 }
@@ -92,9 +92,15 @@ export function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose:
                 </thead>
                 <tbody>
                   {detail.breakdown.rows.map((r, i) => (
-                    <tr key={i} style={r.dip ? { background: "var(--line2)" } : undefined} data-testid={r.dip ? "breakdown-dip-row" : "breakdown-row"}>
+                    <tr
+                      key={i}
+                      onClick={r.onClick}
+                      style={{ ...(r.dip ? { background: "var(--line2)" } : {}), ...(r.onClick ? { cursor: "pointer" } : {}) }}
+                      title={r.onClick ? "点击再下钻" : undefined}
+                      data-testid={r.dip ? "breakdown-dip-row" : "breakdown-row"}
+                    >
                       {r.cells.map((cell, j) => (
-                        <td key={j} className={j > 0 ? "mono" : undefined}>{cell}</td>
+                        <td key={j} className={j > 0 ? "mono" : undefined}>{cell}{j === 0 && r.onClick ? " ›" : ""}</td>
                       ))}
                     </tr>
                   ))}

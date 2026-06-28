@@ -40,6 +40,40 @@ export interface TsGenSpec {
  */
 export const ATTAIN_COMPONENT_FIELDS = ["oeeAttain", "yieldAttain", "lineOee", "lineYield", "eventFlag"] as const;
 
+/** 排程标记：2 检修 / 1 周末 / 0 正常。由日期 + 检修窗口确定性派生。 */
+export function attainEventFlag(dateIso: string, maintWindow: { start: string; end: string } | undefined): number {
+  if (maintWindow && dateIso >= maintWindow.start && dateIso < maintWindow.end) return 2;
+  const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
+  return dow === 0 || dow === 6 ? 1 : 0;
+}
+
+/**
+ * 逐设备勾稽核心（R13·单一来源）：产线达成率由该线**真实**设备/工序值算出——
+ *   产线OEE = Σ(设备oee×产量)/Σ产量   产线良率 = avg(工序yield)
+ *   达成率 = (产线OEE/计划OEE) × (产线良率/计划良率)，钳 [0.4,0.995]
+ * 纯函数、确定性（R6）。被 generateHistory（历史）与 simclock（前向 tick）共用，消除"历史真 rollup、
+ * 前向却镜像"的口径裂缝。缺数据回退计划基准（不放水）。
+ */
+export function rollupLineAttainment(
+  equipOee: { oee: number; output: number }[],
+  procYield: number[],
+  plan: { oeePlan: number; yieldPlan: number },
+  eventFlag: number,
+): Record<string, number> {
+  let wOee = 0;
+  let wSum = 0;
+  for (const e of equipOee) {
+    wOee += e.oee * e.output;
+    wSum += e.output;
+  }
+  const lineOee = wSum > 0 ? wOee / wSum : plan.oeePlan;
+  const lineYield = procYield.length ? procYield.reduce((a, b) => a + b, 0) / procYield.length : plan.yieldPlan;
+  const oeeAttain = round(lineOee / plan.oeePlan, 4);
+  const yieldAttain = round(lineYield / plan.yieldPlan, 4);
+  const attainment = Math.min(0.995, Math.max(0.4, round(oeeAttain * yieldAttain, 4)));
+  return { attainment, oeeAttain, yieldAttain, lineOee: round(lineOee, 4), lineYield: round(lineYield, 4), eventFlag };
+}
+
 export interface TsGenEntity {
   entityId: string;
   baseId: string;

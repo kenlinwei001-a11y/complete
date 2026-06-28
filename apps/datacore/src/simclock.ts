@@ -5,8 +5,8 @@ import type { TimeseriesService } from "./timeseries.js";
 import type { OntologyService } from "./ontology.js";
 import type { RuleScanService } from "./scheduler.js";
 import type { SolverService } from "./solvers/service.js";
-import { genPoint, maintWindowsFor, windowFor, type ScenarioModifiers, type TsGenSpec } from "./synthetic/tsgen.js";
-import { BATTERY_TEMPLATE } from "./synthetic/battery.js";
+import { genPoint, maintWindowsFor, windowFor, attainEventFlag, rollupLineAttainment, type ScenarioModifiers, type TsGenSpec } from "./synthetic/tsgen.js";
+import { BATTERY_TEMPLATE, BATTERY_SOLVER_PARAMS } from "./synthetic/battery.js";
 import { newId } from "./ids.js";
 import { invalidState, notFound } from "./errors.js";
 import { round } from "./prng.js";
@@ -189,23 +189,49 @@ export class SimClockService {
     const windows = maintWindowsFor(maintPlans, clock.t0);
     const mods = this.scenarioModifiers(clock);
 
-    // ① new ts points for the advanced day
+    // ① new ts points for the advanced day.
+    // 逐设备勾稽口径与历史一致（A1）：本 tick 先累积 oee:equip/yield:process，attainment:line 用共享
+    // rollupLineAttainment 沿 Line→Equipment/Process 拓扑算（与 generateHistory 单一来源），不再走 genPoint 镜像。
+    const plan = BATTERY_SOLVER_PARAMS.planBaseline as { oeePlan: number; yieldPlan: number };
+    const tickOeeByEquip = new Map<string, { oee: number; output: number }>();
+    const tickYieldByProc = new Map<string, number>();
+    const lineTopo = async () => {
+      const eqByLine = new Map<string, string[]>();
+      for (const e of await this.repos.objects.listByType(ctx.tenantId, "Equipment")) {
+        const ln = str(e.props.lineId);
+        (eqByLine.get(ln) ?? eqByLine.set(ln, []).get(ln)!).push(str(e.props.equipId, e.id));
+      }
+      const prByLine = new Map<string, string[]>();
+      for (const p of await this.repos.objects.listByType(ctx.tenantId, "Process")) {
+        const ln = str(p.props.lineId);
+        (prByLine.get(ln) ?? prByLine.set(ln, []).get(ln)!).push(str(p.props.processId, p.id));
+      }
+      return { eqByLine, prByLine };
+    };
+    const topo = await lineTopo();
     let newPoints = 0;
     for (const gen of generators) {
       const entities = await this.repos.objects.listByType(ctx.tenantId, gen.entityType);
       const series = await this.ts.seriesByKey(ctx.tenantId, gen.seriesKey);
       if (!series) continue;
+      const isAttain = gen.derive?.kind === "attainment";
       const points = entities
         .sort((a, b) => (a.id < b.id ? -1 : 1))
         .map((e) => {
           const entityId = str(e.props[series.entityRefField], e.id);
           const baseId = str(e.props.baseId);
-          return {
-            entityId,
-            ts: `${dateIso}T00:00:00.000Z`,
-            values: genPoint(gen, { entityId, baseId }, dateIso, dayIndex, clock.seed, windowFor(windows, baseId, dateIso), mods),
-            tick: tickIndex,
-          };
+          let values: Record<string, number>;
+          if (isAttain) {
+            // 真 rollup（同历史口径）：本 tick 已生成的该线设备 OEE / 工序良率（oee:equip、yield:process 在前序生成）。
+            const eqs = (topo.eqByLine.get(entityId) ?? []).map((eq) => tickOeeByEquip.get(eq)).filter((x): x is { oee: number; output: number } => !!x);
+            const prs = (topo.prByLine.get(entityId) ?? []).map((pr) => tickYieldByProc.get(pr)).filter((y): y is number => y != null);
+            values = rollupLineAttainment(eqs, prs, plan, attainEventFlag(dateIso, windowFor(windows, baseId, dateIso)));
+          } else {
+            values = genPoint(gen, { entityId, baseId }, dateIso, dayIndex, clock.seed, windowFor(windows, baseId, dateIso), mods);
+            if (gen.seriesKey === "oee:equip") tickOeeByEquip.set(entityId, { oee: values.oee ?? 0, output: values.output ?? 1 });
+            else if (gen.seriesKey === "yield:process") tickYieldByProc.set(entityId, values.yield ?? 0);
+          }
+          return { entityId, ts: `${dateIso}T00:00:00.000Z`, values, tick: tickIndex };
         });
       const r = await this.ts.writePoints(ctx.tenantId, series, points);
       newPoints += r.written;

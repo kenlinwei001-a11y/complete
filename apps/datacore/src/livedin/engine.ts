@@ -10,7 +10,7 @@ import { BATTERY_SOLVER_PARAMS, BATTERY_TEMPLATE, BASES, generateBattery } from 
 import { entityRefFieldOf } from "../synthetic/service.js";
 import { caseSeverityFromData } from "../solvers/risk.js";
 import { BASE_REGISTRY } from "@platform/contracts";
-import type { TsGenSpec } from "../synthetic/tsgen.js";
+import { ATTAIN_COMPONENT_FIELDS, attainEventFlag, rollupLineAttainment, type TsGenSpec } from "../synthetic/tsgen.js";
 import { livedMaintWindows, livedPoint, type LivedGenContext, type LivedIncident } from "./tsgen.js";
 
 /**
@@ -542,26 +542,62 @@ export class LivedInEngine {
     }
     const packCellCount = BATTERY_SOLVER_PARAMS.packCellCount as number;
     const baseMonthCells = new Map<string, number>();
+    // 逐设备勾稽（A1）：回放期 attainment:line 亦由该线真实 oee:equip/yield:process rollup（与历史/sim 单一来源），
+    // 非镜像/裸 base（attainment:line.base.mean=0，livedPoint 出 0 是错的）。拓扑一次性载入。
+    const planBase = BATTERY_SOLVER_PARAMS.planBaseline as { oeePlan: number; yieldPlan: number };
+    const equipByLine = new Map<string, string[]>();
+    for (const e of await this.repos.objects.listByType(ctx.tenantId, "Equipment")) {
+      const ln = String(e.props.lineId ?? "");
+      (equipByLine.get(ln) ?? equipByLine.set(ln, []).get(ln)!).push(String(e.props.equipId ?? e.id));
+    }
+    const procByLine = new Map<string, string[]>();
+    for (const p of await this.repos.objects.listByType(ctx.tenantId, "Process")) {
+      const ln = String(p.props.lineId ?? "");
+      (procByLine.get(ln) ?? procByLine.set(ln, []).get(ln)!).push(String(p.props.processId ?? p.id));
+    }
     let points = 0;
     let lastWriteMs = 0;
     for (const batch of months) {
       // 增量聚合按 ingestedAt 水位推进：保证批与批的 ingestedAt 严格递增（毫秒级）
       while (Date.now() <= lastWriteMs) await new Promise((r) => setTimeout(r, 1));
+      // 本批 oee:equip / yield:process 逐日累积（供 attainment:line rollup；generators 序中 oee/yield 在 attain 前）。
+      const oeeByEquipDay = new Map<string, Map<string, { oee: number; output: number }>>();
+      const yieldByProcDay = new Map<string, Map<string, number>>();
       for (const gen of generators) {
         const series = await this.ts.ensureSeries(ctx.tenantId, {
           seriesKey: gen.seriesKey,
           entityType: gen.entityType,
           entityRefField: entityRefFieldOf(gen.entityType),
           timeField: "ts",
-          measureFields: gen.weightField ? [gen.measureField, gen.weightField] : [gen.measureField],
+          measureFields: gen.derive?.kind === "attainment"
+            ? [gen.measureField, ...ATTAIN_COMPONENT_FIELDS]
+            : gen.weightField ? [gen.measureField, gen.weightField] : [gen.measureField],
           origin: "SYNTHETIC",
         });
         const entities = entitiesByType.get(gen.entityType) ?? [];
+        const isAttain = gen.derive?.kind === "attainment";
         const batchPoints: { entityId: string; ts: string; values: Record<string, number>; tick?: number }[] = [];
         for (const e of entities) {
           for (const dateIso of batch.days) {
             const dayIndex = Math.round((Date.parse(`${dateIso}T00:00:00Z`) - genCtx.replayFromMs) / DAY_MS);
-            const values = livedPoint(gen, e, dateIso, dayIndex, genCtx);
+            let values: Record<string, number>;
+            if (isAttain) {
+              const eqs = (equipByLine.get(e.entityId) ?? []).map((eq) => oeeByEquipDay.get(eq)?.get(dateIso)).filter((x): x is { oee: number; output: number } => !!x);
+              const prs = (procByLine.get(e.entityId) ?? []).map((pr) => yieldByProcDay.get(pr)?.get(dateIso)).filter((y): y is number => y != null);
+              const w = genCtx.maint.get(e.baseId);
+              values = rollupLineAttainment(eqs, prs, planBase, attainEventFlag(dateIso, w));
+            } else {
+              values = livedPoint(gen, e, dateIso, dayIndex, genCtx);
+              if (gen.seriesKey === "oee:equip") {
+                let m = oeeByEquipDay.get(e.entityId);
+                if (!m) oeeByEquipDay.set(e.entityId, (m = new Map()));
+                m.set(dateIso, { oee: values.oee ?? 0, output: values.output ?? 1 });
+              } else if (gen.seriesKey === "yield:process") {
+                let m = yieldByProcDay.get(e.entityId);
+                if (!m) yieldByProcDay.set(e.entityId, (m = new Map()));
+                m.set(dateIso, values.yield ?? 0);
+              }
+            }
             batchPoints.push({ entityId: e.entityId, ts: `${dateIso}T00:00:00.000Z`, values, tick: 0 });
             if (gen.seriesKey === "output:line") {
               const key = `${e.baseId}|${batch.month}`;

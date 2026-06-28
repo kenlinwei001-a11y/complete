@@ -35,7 +35,7 @@ import {
 import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
-import { genPoint, maintWindowsFor, windowFor, ATTAIN_COMPONENT_FIELDS, type TsGenSpec } from "./tsgen.js";
+import { genPoint, maintWindowsFor, windowFor, ATTAIN_COMPONENT_FIELDS, attainEventFlag, rollupLineAttainment, type TsGenSpec } from "./tsgen.js";
 
 const TEMPLATE_SYSTEM = `你是行业数据模板生成器。给定行业名称，输出 IndustryTemplate：
 ontology.objectTypes（数组，每项 { key, displayName, properties:[{propKey,dataType,isPrimaryKey,refToTypeKey?}], derivedProperties:[{propKey,formula}] }）、
@@ -513,37 +513,22 @@ export class SyntheticService {
       const prs = procByLine.get(lineId) ?? [];
       for (let d = 0; d < HISTORY_DAYS; d++) {
         const dateIso = new Date(t0 - (HISTORY_DAYS - d) * DAY_MS).toISOString().slice(0, 10);
-        // 产量加权产线 OEE（与 oee_daily_7d 同口径），缺数据回退计划基准（不放水）。
-        let wOee = 0;
-        let wSum = 0;
+        // 产量加权产线 OEE（与 oee_daily_7d 同口径）+ 工序均良率，经共享 rollup helper（与 simclock 前向 tick 单一来源）。
+        const equipOee: { oee: number; output: number }[] = [];
         for (const eq of eqs) {
           const pt = oeeByEquipDay.get(eq)?.get(dateIso);
-          if (pt) {
-            wOee += pt.oee * pt.output;
-            wSum += pt.output;
-          }
+          if (pt) equipOee.push(pt);
         }
-        const lineOee = wSum > 0 ? wOee / wSum : plan.oeePlan;
-        let ySum = 0;
-        let yN = 0;
+        const procYield: number[] = [];
         for (const pr of prs) {
           const y = yieldByProcDay.get(pr)?.get(dateIso);
-          if (y != null) {
-            ySum += y;
-            yN++;
-          }
+          if (y != null) procYield.push(y);
         }
-        const lineYield = yN > 0 ? ySum / yN : plan.yieldPlan;
-        const oeeAttain = round(lineOee / plan.oeePlan, 4);
-        const yieldAttain = round(lineYield / plan.yieldPlan, 4);
-        const attainment = Math.min(0.995, Math.max(0.4, round(oeeAttain * yieldAttain, 4)));
-        const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
-        const inMaint = !!windowFor(windows, baseId, dateIso);
-        const eventFlag = inMaint ? 2 : dow === 0 || dow === 6 ? 1 : 0;
+        const eventFlag = attainEventFlag(dateIso, windowFor(windows, baseId, dateIso));
         points.push({
           entityId: lineId,
           ts: `${dateIso}T00:00:00.000Z`,
-          values: { attainment, oeeAttain, yieldAttain, lineOee: round(lineOee, 4), lineYield: round(lineYield, 4), eventFlag },
+          values: rollupLineAttainment(equipOee, procYield, plan, eventFlag),
           tick: 0,
         });
       }

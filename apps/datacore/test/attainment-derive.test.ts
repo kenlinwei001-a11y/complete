@@ -104,6 +104,25 @@ describe("计划达成率真派生 · 逐设备勾稽", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("A1 前向 tick 勾稽：simclock 推进 1 天后，新 tick 的 attainment:line 是真 rollup（非 base.mean=0 的 0.4 镜像）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const series = (await t.repos.tsSeries.list("demo", (s) => s.seriesKey === "attainment:line"))[0]!;
+    const before = (await t.repos.tsPoints.list("demo", series.id)).length;
+    const r = await t.app.inject({ method: "POST", url: "/a/v1/synthetic/clock/tick", headers: ADMIN, payload: { advance: "1d" } });
+    expect([200, 202]).toContain(r.statusCode);
+    const newPts = (await t.repos.tsPoints.list("demo", series.id)).filter((p) => (p as { tick?: number }).tick === 1);
+    expect(newPts.length).toBeGreaterThan(0);
+    expect((await t.repos.tsPoints.list("demo", series.id)).length).toBeGreaterThan(before);
+    for (const p of newPts) {
+      const v = p.values as Record<string, number>;
+      // 真 rollup：attainment≈oeeAttain×yieldAttain 且 oeeAttain=lineOee/计划OEE（非裸 base 出的 0.4 钳值）
+      expect(Math.abs(v.attainment - v.oeeAttain * v.yieldAttain)).toBeLessThan(0.011);
+      expect(Math.abs(v.oeeAttain - v.lineOee / OEE_PLAN)).toBeLessThan(0.002);
+      expect(v.lineOee).toBeGreaterThan(0.5); // 真设备 OEE rollup（~0.78），绝非 base.mean=0 → 0.4
+    }
+  });
+
   it("R6：同 seed 重跑 → attainment:line 逐日点（含分量）字节一致", async () => {
     const t1 = await makeApp();
     await seedBattery(t1);
