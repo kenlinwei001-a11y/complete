@@ -5,9 +5,18 @@
 
 | # | 工单 | 优先级 | 状态 | 详细单 |
 |---|---|---|---|---|
+| 0 | **WO-4-FIX** 归域门枚举 vs 合成种子域不一致致 demo 崩 | **P0·回归** | 审核方打回 | 本文件 §0（核发 `REVIEW-WO4-WO5-WO6-verdict.md`） |
 | 1 | **WO-Q1** QOS Path B 流式反馈 | P1 | 待开工 | 见本文件 §1（走查报告 `REVIEW-four-chains-live-walkthrough.md` 内 WO-Q1） |
 | 2 | **1C** 规则文档抽取解析率 | P2 | 待开工 | `docs/HANDOFF-1C-rule-extraction-parse-rate.md`（自包含） |
 | 3 | **A6-T2** 真 socket e2e 固化为回归 | P3 | 待开工 | 本文件 §3（核发 `REVIEW-A6-tails-verdict.md`） |
+
+## §0 · WO-4-FIX — 归域门 14 域枚举 vs 合成种子域不一致（P0·回归·阻断 demo）
+
+- **现象（审核方真跑）**：WO-4(80e351a) 新构建 `SEED_DEMO=1` 真启动 datacore → **崩 Exit 1·demo 整站起不来**：`publishDraft` 拒 Customer/ARInvoice(`commercial`)、Material/MaterialBatch/PurchaseOrder/CarbonFactor(`supply`)——这些域 ∉ 收紧后的 `BUSINESS_DOMAINS`(14：…sales/material…无 commercial/supply)。
+- **根因**：归域门由「存在性」收紧为「∈14」，但 14 枚举与合成电池种子实际域名不一致；dev 单测用合法域 `product`、从不跑真合成种子链 → 漏（绿测试≠能用）。
+- **修向**：① 种子域↔14 枚举对齐（commercial→sales / supply→material 或补枚举）；② **加 `SEED_DEMO=1` 真启动冒烟门**（CI 真起 datacore，非仅单测）防复发。
+- **FDE 判据**：新构建 `SEED_DEMO=1` 启动不崩+对象浏览器 34 类型在 · setDomain 垃圾域仍 400 · 无垃圾域。
+- **连带**：修好才能验 **WO-6 活体**（其判据需 demo 数据面）。
 
 ---
 
