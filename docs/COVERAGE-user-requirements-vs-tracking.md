@@ -5,13 +5,16 @@
 >
 > **判据来源诚实标注**：✅真跑 = 审核方起真系统+真浏览器/curl 双路取证；◐dev报 = dev 已 commit 但审核方未复验；🔎grep = 仅代码静态确认存在/缺失（非运行时）。**凡 grep 推断的，本表显式标 🔎，未冒充真跑。**
 
+> ### ⚠️ 审核方纠偏（后续 📖读源坐实·本表部分行已过期）
+> 本表初写时「轨N 0 提交」**已过期**。审核方 📖读源复核（`REVIEW-hollow-data-iceberg-and-requeue.md` §D1）：`RuleRef.tsx`（带 `definedBy/definedAt/effectiveFrom/effectiveTo/basis` 全字段）+ `Provenance`/`ProvenanceDag` **已建并接入** Dashboard/Ledger/SopBalance/PlanGenerate/ProjectSim/PlanAudit/**OrderChainView**（含 N-R1/R2/R3·跟进2 commit 标记）；`OrderChainView:486/495/504` 的 `ruleRefs.join("/")` **已包进 `<RuleRef>`**（非裸文本）；`:141` 下钻面包屑+返回已加。**⇒ 轨N 现状 = ◐ 大部接全·待真浏览器复验（下钻回退真不死路 + provenance 字段后端真返回），绝非「0 提交」。** 下方 U3-U6/U11/§4 的「轨N 0 提交」按此纠正。
+
 ---
 
 ## §0 一句话结论
 
 **纸面上全覆盖**——用户点名的每一项要求都能在某份 PRD/HANDOFF/清单里找到登记。**但有两簇"已登记·未在施工"，会随 dev 做完 轨R 而被默认遗忘**，必须显式重新入队：
 
-1. ⚠️ **可信溯源 4 项（轨N）**：逐单下钻回退 / C02 悬停谁设定·时间·边界 / 数据可信溯源 / 关联风险点详情——**轨N HANDOFF 已完整成文且 P1"先于 O 做"，但 0 提交**；铁证 `OrderChainView.tsx:464-466` 裸文本规则号**此刻仍在**（🔎刚确认）。
+1. ✅ **可信溯源 4 项（轨N）**：逐单下钻回退 / C02 悬停谁设定·时间·边界 / 数据可信溯源 / 关联风险点详情——**~~0 提交~~ 已纠正：组件全建+接入 7 视图+`OrderChainView` 裸文本已换 `<RuleRef>`+下钻回退已加（见顶部纠偏 + `REVIEW-hollow-data-iceberg-and-requeue.md` §D1）。现状 ◐ 大部接全·待审核方真浏览器复验**（下钻不死路 + provenance 字段真返回）。
 2. ⚠️ **主题/配色开关（轨O）**：HANDOFF 已成文，但**功能本体未建**（🔎无 `[data-theme=light]` token 组、无 header toggle、无 localStorage）；"主题接轨O审计"提交只是让 轨P/Q 组件**合规**，非建开关。
 
 外加 2 项**已在清单·尚未做**：预判推演看板红色接真数据（#10·后端 TO-DO）、订单全链 C02 溯源（与轨N同根）。

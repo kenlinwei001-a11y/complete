@@ -3,16 +3,26 @@
 > **来源**：审核方（独立真跑复验）对 lastmile / 四链路走查 / WO-1 / A6 的复核结论。每项均**审核方亲手真跑发现/定位**，含 FDE 真值判据；dev 实装 + 自验贴证后，审核方按判据**独立真跑复验**核发闭合。
 > **红线（全项通用）**：禁 mock 冒充 / 禁 skip-by-default / 禁门空过 / 禁造假过判据；解析失败/降级**诚实报不静默**；只推 `claude/vigilant-knuth-b1nmxn`；密钥仅 env 不入 git（R5）。
 
+> **🆕 本轮重新入队（用户「都找出来·重新入队」）→ 详见 `docs/REVIEW-hollow-data-iceberg-and-requeue.md`**：空洞数据冰山（哈希/魔数冒充真算）+ 死路 + 已登记未做，全部 📖读源逐行坐实。下表 H/A/B 段即其 §F 优先级总表落地。
+
 | # | 工单 | 优先级 | 状态 | 详细单 |
 |---|---|---|---|---|
-
-> ~~WO-7-FIX / WO-7-LIMS~~ **已闭**（审核方拓扑序 `pnpm -r build` 全绿坐实契约 members 已落；LabTest 20 对象·LIMS 24·9/9 源真实）。
+| **H** | **B-HIGH** 方案「份额 +Npct」-17 魔数错算·与求解器自己的 ✓/✗ 闸门差 1pct·自相矛盾（`PlanGenerateView.tsx:240` vs `plan.ts:297`/`battery.ts:297` base.share=18） | **P1** | 🆕 待开工 | `REVIEW-hollow-data-iceberg-and-requeue.md` §B-HIGH |
+| **A0** | **契约层 dataMode 推广**：`audit_timeline`+13×extended 全族补诚实位（抄 `risk_timeline` 范式·`solvers.ts`+求解器+UI） | **P1** | 🆕 待开工 | 同上 §A0 |
+| **A★** | **洛阳红色死路**：点红→裸「暂无数据」（红=kind 哈希非真订单·`risk.ts:28/64`→`RiskBoardView:491`） | **P1** | 🆕 待开工 | 同上 §A-旗舰 |
+| **A1** | **audit_timeline 哈希曲线**：整条 90 天曲线+越线日 = kind 名哈希·无徽章（`risk.ts:392-424`） | P2 | 🆕 待开工 | 同上 §A1 |
+| **A2-4** | **extended 魔数**：yield 0.95/0.85·creditLimit 5000·loadByWeek 写死·兜底无诚实位（`extended.ts:457/463/472/477`） | P2 | 🆕 待开工 | 同上 §A2-A4 |
+| **B-M** | **SopBalance 兜底簇**：`sopConfig` 永不填→默认租户恒走魔数兜底喂 C15/C18 verdict（`SopBalanceView.tsx:26/288/615`）+ 收入增 100 魔数（`PlanGenerateView:238/275`） | P2 | 🆕 待开工 | 同上 §B-MED |
+| **C-O** | **轨O 主题/配色开关**（U8）——**先真浏览器核「真缺到哪步」再交 dev**（grep 可能漏报） | P3 | 待核 | `HANDOFF-theme-switch-…md` |
 | E | **核查·WO-10② 真分** dev 称 0.90·审核方干净 run 仅 0.20·未复现→dev 复核证据/分类器真分 | P3 | 待核 | `REVIEW-WO11-WO10b-verdict.md` |
-| 1 | **WO-Q1 增量3** QueryDock 渲染 streamingText/reasoningText + 真浏览器实拍（用户可见逐字流）+ §3③ 开放式预算收敛 | P1 | 待补 | `REVIEW-WO-Q1-inc2-verdict.md`（增量1/2 后端已闭） |
-| 2 | **1C** 规则文档抽取解析率 | P2 | 待开工 | `docs/HANDOFF-1C-rule-extraction-parse-rate.md`（自包含） |
-| 3 | **A6-T2** 真 socket e2e 固化为回归 | P3 | 待开工 | 本文件 §3（核发 `REVIEW-A6-tails-verdict.md`） |
 
-> **已闭（审核方核发）**：WO-1/2/3/**4(+FIX)**/5/**6(活体)**/**8** + lastmile + A6尾巴① + 四链路走查 + 结构化接入臂。WO-4-FIX 已闭（demo 真启动不崩·域迁净·冒烟门）。
+> **✅ 本轮转闭/转复验（📖读源坐实·原「待补/待开工」过期）**：
+> - **WO-Q1 增量3** → **闭合**：真 Kimi 真浏览器实拍 逐字流(`task-streaming`)✓·思考中折叠(`task-reasoning`)✓·`answer.final`切 AnswerCard✓·§3③非死答(标「探索推理·未结构化收尾」)✓。
+> - **1C** → **done·待审核方复验闭合**：commit `3e82e91` 真 Kimi `candidateCount=4`（修前 0）。
+> - **A6-T2** → **done·待审核方复验闭合**：commit `be4eeb0` + `apps/datacore/test/a6-e2e-socket.test.ts` 已存在。
+> - **轨N 可信溯源** → **◐大部接全·待真跑**（**非「0 提交」**·见 COVERAGE 纠偏 D1）：`RuleRef`+`Provenance`+`ProvenanceDag` 全建并接入 7 视图；`OrderChainView:486/495/504` join 已包进 `<RuleRef>`、`:141` 下钻回退已加。
+
+> **已闭（审核方核发）**：WO-1/2/3/**4(+FIX)**/5/**6(活体)**/**8**/**11**/**20** + lastmile + A6尾巴① + 四链路走查 + 结构化接入臂。
 > **⚠️ 另需核查**：前端 3 测试（f43.admin-cluster + vle-segment-matrix·15s 超时）dev 称既存——建议另开单独立确认。
 
 ## §0 · WO-4-FIX — 归域门 14 域枚举 vs 合成种子域不一致（P0·回归·阻断 demo）
