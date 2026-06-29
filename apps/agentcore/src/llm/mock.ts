@@ -17,8 +17,8 @@ export function text(t: string): LlmContentBlock {
 }
 
 export type ScriptedTurn =
-  | { content: LlmContentBlock[]; stopReason?: string }
-  | ((req: LlmAgentRequest) => { content: LlmContentBlock[]; stopReason?: string });
+  | { content: LlmContentBlock[]; stopReason?: string; reasoningText?: string }
+  | ((req: LlmAgentRequest) => { content: LlmContentBlock[]; stopReason?: string; reasoningText?: string });
 
 /**
  * Scripted LLM mock: fixed classification sequences + scripted tool_use turns for the agent loop.
@@ -81,6 +81,7 @@ export class ScriptedLlmClient implements LlmClient {
       content: turn.content,
       stopReason: turn.stopReason ?? (hasToolUse ? "tool_use" : "end_turn"),
       usage: { inputTokens: 100, outputTokens: 50 },
+      ...(turn.reasoningText ? { reasoningText: turn.reasoningText } : {}),
     };
   }
 

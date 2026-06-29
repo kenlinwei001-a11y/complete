@@ -168,6 +168,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   let totalInput = 0;
   let totalOutput = 0;
   let lastText = "";
+  // WO-Q1 §3③ 开放式收敛：捕获模型最近一轮的推理文本（Kimi reasoning_content）——开放式深问句
+  // 常烧光预算在推理上、终答 text 为空，此时不丢弃推理（见 degrade 兜底），避免「未能产出回答」死答。
+  let lastReasoning = "";
   let consecutiveDenies = 0;
   let forceFinishNotified = false;
   // 增量 §1.3 第 3 刀：收尾提醒已注入（finalizePending = 本轮就是「最后机会」轮）
@@ -212,7 +215,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   });
 
   const degrade = (outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED"): AgentLoopResult => {
-    const markdown = lastText || "（探索模式未能产出回答）";
+    // WO-Q1 §3③：终答文本为空时，若模型产出了推理（开放式深问句常如此）→ 把推理作为
+    // 「探索性初步结论」诚实呈现（trustLevel 已 AGENT_EXPLORATORY），收敛到真模型产出，
+    // 而非「未能产出回答」死答；推理也空才回落最终兜底文案。
+    const reasoning = lastReasoning.trim();
+    const markdown =
+      lastText ||
+      (reasoning ? `（探索推理·未结构化收尾，仅供参考）\n\n${reasoning}` : "") ||
+      "（探索模式未能产出回答）";
     const blocks: AnswerBlock[] = [{ type: "text", markdown }];
     const unverified = scanBlocks(blocks);
     if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
@@ -443,12 +453,15 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       }
     }
 
+    // §3③ 开放式收敛：「最后机会」轮（预算耗尽收尾）只暴露 final_answer 工具——逼模型结构化收尾，
+    // 不再续发 tool 调用/纯推理而把预算耗光。普通轮维持全工具集（不影响既有探索行为）。
+    const iterTools = finalizePending ? llmTools.filter((t) => t.name === "final_answer") : llmTools;
     let response;
     try {
       response = await opts.llm.agent({
         model: opts.model,
         system: await effectiveSystem(), // §7C 注入滚动前情摘要（Phase8 可为 LLM 摘要）
-        tools: llmTools,
+        tools: iterTools,
         messages,
         maxTokens: 16000,
         tenantId: opts.tenantId,
@@ -494,6 +507,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     const texts = response.content.filter((b): b is Extract<LlmContentBlock, { type: "text" }> => b.type === "text");
     if (texts.length > 0) lastText = texts.map((t) => t.text).join("\n");
+    // §3③：记录最近一轮推理文本（reasoning_content），供终答为空时的收敛兜底。
+    if (response.reasoningText) lastReasoning = response.reasoningText;
 
     const toolUses = response.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
 

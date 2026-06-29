@@ -16,7 +16,9 @@ const ExtractionSchema = z.object({ candidates: z.array(CandidateRuleSchema) });
 
 const EXTRACTION_SYSTEM = `你是企业规则抽取器。只抽取可执行的约束/阈值/审批要求，不抽取叙述性内容。
 对每个文本段落输出 0..n 条候选规则。sourceQuote 必须逐字摘录输入文本的子串（服务端会做子串校验，不通过的候选会被丢弃）。
-expression 使用规则 DSL（如 Order.demandDelta > 0.5，支持 AND/OR/NOT、>,>=,<,<=,==,!=、SUM/MIN/MAX/COUNT/AVG），无法形式化时置空字符串。`;
+expression 使用规则 DSL（如 Order.demandDelta > 0.5，支持 AND/OR/NOT、>,>=,<,<=,==,!=、SUM/MIN/MAX/COUNT/AVG），无法形式化时置空字符串。
+1C 输出纪律：严格只输出符合 schema 的 JSON 对象，不要任何解释文字、不要 Markdown 代码围栏。
+即使段落只含一条规则，也要放进 candidates 数组；段落确无可执行规则时返回 {"candidates": []}（空数组，不要省略字段）。`;
 
 /** Extract plain text from pdf/docx/md/txt buffers. */
 export async function extractText(filename: string, buf: Buffer): Promise<string> {

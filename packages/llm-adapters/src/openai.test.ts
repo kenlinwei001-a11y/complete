@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { extractJsonText, OpenAICompatAdapter } from "./openai.js";
 
 /** 最小 chat 端口桩：按队列依次返回 content（模拟思维型模型偶发空/不可解析）。 */
@@ -132,6 +133,37 @@ describe("OpenAI 适配器 · classify 重试（思维型模型偶发不可解�
  * 模式仍把 JSON 包在 ```json ... ``` 代码围栏里，直接 JSON.parse 会失败 → comprehend 静默回落关键词地板。
  * extractJsonText 先剥围栏 / 取首末花括号片段,修这条"真 LLM 被静默吞掉"的真实集成断点（实测验证）。
  */
+describe("1C · OpenAI parse 结构化重试（复杂 schema 单次失败 → 纠错重试稳，仍失败诚实 null）", () => {
+  const Schema = z.object({ candidates: z.array(z.object({ code: z.string() })) });
+  it("首次 shape 不合 schema → 回灌错误纠错重试 → 第二次有效", async () => {
+    const bad = JSON.stringify({ candidates: "不是数组" });
+    const good = JSON.stringify({ candidates: [{ code: "C01" }] });
+    const { client, calls } = stubClient([bad, good]);
+    const a = new OpenAICompatAdapter({ client: client as never });
+    const r = await a.parse({ model: "m", system: "s", messages: [{ role: "user", content: "u" }], schema: Schema });
+    expect(r?.candidates[0]?.code).toBe("C01");
+    expect(calls.n).toBe(2); // 重试了一次
+  });
+
+  it("连续 3 次都不合 schema → null（有界重试 ≤2，绝不塞假数据）", async () => {
+    const bad = JSON.stringify({ candidates: "x" });
+    const { client, calls } = stubClient([bad, bad, bad]);
+    const a = new OpenAICompatAdapter({ client: client as never });
+    const r = await a.parse({ model: "m", system: "s", messages: [{ role: "user", content: "u" }], schema: Schema });
+    expect(r).toBeNull();
+    expect(calls.n).toBe(3); // 首次 + 2 重试
+  });
+
+  it("首次有效 → 不重试（成功路径零额外调用）", async () => {
+    const good = JSON.stringify({ candidates: [{ code: "C02" }] });
+    const { client, calls } = stubClient([good]);
+    const a = new OpenAICompatAdapter({ client: client as never });
+    const r = await a.parse({ model: "m", system: "s", messages: [{ role: "user", content: "u" }], schema: Schema });
+    expect(r?.candidates[0]?.code).toBe("C02");
+    expect(calls.n).toBe(1);
+  });
+});
+
 describe("extractJsonText（OpenAI 兼容端点 JSON 兜底解析）", () => {
   it("剥 ```json 围栏（Moonshot/Kimi 实测形态）", () => {
     const fenced = "```json\n{\n  \"objectTypes\": [{\"typeKey\":\"Store\"}]\n}\n```";

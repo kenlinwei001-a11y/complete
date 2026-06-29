@@ -120,6 +120,26 @@ describe("Path B (QOS-PRD §12 B1–B5)", () => {
     expect(calls.filter((c) => c.outcome === "OK").length).toBeLessThanOrEqual(10);
   });
 
+  it("WO-Q1 §3③: 终答文本为空但有推理 → 收敛到「探索推理」初步结论（非「未能产出回答」死答）", async () => {
+    t.llm.queueClassification(OUT_OF_CATALOG);
+    // 开放式深问句典型形态：模型烧在推理（reasoning_content），本轮 content 无 text/无工具 → 直接结束。
+    // 旧实现：lastText 空 → degrade「（探索模式未能产出回答）」死答，丢掉真模型产出的分析。
+    t.llm.queueAgentTurn({
+      content: [],
+      stopReason: "end_turn",
+      reasoningText: "评估供应链韧性：单一供应商风险高，建议①多源采购②安全库存③本地化产能。",
+    });
+    const { taskId } = await submitQuery(t, PLANNER, "评估我们的供应链韧性并给三条建议", { view: "dash" });
+    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+    expect(task.path).toBe("AGENT");
+    const md = (task.answer?.blocks[0] as { type: "text"; markdown: string } | undefined)?.markdown ?? "";
+    // 收敛：终答呈现真模型推理（含三条建议），并诚实标「探索推理·未结构化收尾」；绝非死答。
+    expect(md).toContain("多源采购");
+    expect(md).toContain("探索推理");
+    expect(md).not.toContain("未能产出回答");
+    expect(task.answer?.trustLevel).toBe("AGENT_EXPLORATORY");
+  });
+
   it("B4: unreferenced number → unverifiedNumerics=true + metric", async () => {
     t.llm.queueClassification(OUT_OF_CATALOG);
     t.llm.queueAgentTurn(

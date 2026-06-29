@@ -381,32 +381,66 @@ export class OpenAiLlmClient implements FullLlmClient {
     };
   }
 
-  /** 结构化输出：response_format json_schema + zod 校验（不可解析 → null）。 */
+  /**
+   * 结构化输出：response_format json_schema + zod 校验。
+   * 1C：原生 parse 此前**零重试**——单次 JSON.parse/safeParse 失败即 null（复杂嵌套抽取 schema 对
+   * Kimi 保真不足 → 规则文档抽取 candidateCount=0 死在第一跳）。改为**有界纠错重试 ≤2**：把上次不合
+   * schema 的输出 + 具体校验错误回灌，让模型严格按 schema 重出（确定性策略·不依赖时钟随机）；仍失败
+   * 才 null（保留诚实降级——绝不塞假数据）。与 classify 的重试范式对齐。
+   */
   async parse<T>(req: ParseReq<T>): Promise<T | null> {
     const jsonSchema = z.toJSONSchema(req.schema as never, { target: "draft-7" });
-    const resp = await this.client.chat.completions.create({
-      model: req.model,
-      ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-      messages: [
-        { role: "system", content: req.system },
-        ...req.messages.map((m) => ({ role: m.role, content: m.content })),
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "structured_output", schema: jsonSchema as Record<string, unknown>, strict: false },
-      },
-    });
-    this.trackUsage(req.model, resp.usage);
-    const content = resp.choices[0]?.message?.content;
-    if (!content) return null;
-    let raw: unknown;
-    try {
-      raw = JSON.parse(extractJsonText(content));
-    } catch {
-      return null;
+    const messages: { role: string; content: string }[] = [
+      { role: "system", content: req.system },
+      ...req.messages.map((m) => ({ role: m.role, content: m.content })),
+    ];
+    const MAX_ATTEMPTS = 3; // 首次 + 2 纠错重试
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const last = attempt === MAX_ATTEMPTS - 1;
+      const resp = await this.client.chat.completions.create({
+        model: req.model,
+        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+        messages,
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "structured_output", schema: jsonSchema as Record<string, unknown>, strict: false },
+        },
+      });
+      this.trackUsage(req.model, resp.usage);
+      const content = resp.choices[0]?.message?.content;
+      if (!content) {
+        if (last) return null;
+        continue; // 空响应（思维型模型偶发）→ 直接重试
+      }
+      let raw: unknown;
+      let jsonError = "";
+      try {
+        raw = JSON.parse(extractJsonText(content));
+      } catch (e) {
+        jsonError = e instanceof Error ? e.message : String(e);
+      }
+      if (!jsonError) {
+        const parsed = req.schema.safeParse(raw);
+        if (parsed.success) return parsed.data;
+        if (last) return null;
+        // 纠错重提：回灌上次输出 + 具体 zod 校验错误，要求严格按 schema 重出。
+        const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+        messages.push({ role: "assistant", content });
+        messages.push({
+          role: "user",
+          content: `上次输出不符合所需 JSON schema：${issues}。请严格按 schema 重新输出完整结果，只输出 JSON、不要解释、不要代码围栏。`,
+        });
+        continue;
+      }
+      if (last) return null;
+      // JSON 解析失败 → 纠错重提
+      messages.push({ role: "assistant", content });
+      messages.push({
+        role: "user",
+        content: `上次输出不是合法 JSON（${jsonError}）。请只输出严格符合 schema 的 JSON，不要解释、不要代码围栏。`,
+      });
     }
-    const parsed = req.schema.safeParse(raw);
-    return parsed.success ? parsed.data : null;
+    return null;
   }
 
   toolLoop(req: ToolLoopReq): AsyncIterable<ToolLoopEvent> {

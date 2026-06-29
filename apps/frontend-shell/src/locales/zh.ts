@@ -108,6 +108,8 @@ export const zh = {
     expand: "展开对话",
     collapse: "收起",
     running: "仍在执行…",
+    thinking: "思考中…",
+    streaming: "正在生成回答…",
     exploreMode: "探索模式",
     verifiedBadge: "已验证 · 工作流",
     exploratoryBadge: "探索 · AI",
