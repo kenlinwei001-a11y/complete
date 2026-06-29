@@ -24,6 +24,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
+  // WO-8：场景启动器视图——AgentCore registry 已注册(defaultOn) 但 DataCore(权威 entitlement 源)此前缺 →
+  // 解析集无 view.scenarios → launcherEnabled 恒 false、SL2「关 view.scenarios 隐藏启动器」门结构性永不可触发。
+  // 两系统功能注册表对此键同源（同 defaultOn:true）。关→/b/v1/scenarios launcherEnabled=false（启动器隐藏）。
+  { key: "view.scenarios", name: "场景启动器", level: "VIEW", defaultOn: true },
   // 运营态出厂配置增量 §2/§4：运营回顾（只读历史证据链页面，消费 GET /a/v1/history/bundle）
   { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   // BLOCK level
