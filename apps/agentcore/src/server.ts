@@ -1746,8 +1746,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/evals/run", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);
-    const body = z.object({ suite: EvalSuiteSchema.default("classifier"), agentKey: z.string().optional() }).parse(req.body ?? {});
-    return deps.evals.run(a, body.suite, { ...(body.agentKey ? { agentKey: body.agentKey } : {}) });
+    // WO-10-②：REST 透传 llmMode（MOCK 仅证框架 / REAL 真打 LLM·真分·能红路径B故障）+ 可选超时。
+    const body = z.object({
+      suite: EvalSuiteSchema.default("classifier"),
+      agentKey: z.string().optional(),
+      llmMode: z.enum(["MOCK", "REAL"]).optional(),
+      timeoutMs: z.number().int().positive().max(600000).optional(),
+    }).parse(req.body ?? {});
+    return deps.evals.run(a, body.suite, {
+      ...(body.agentKey ? { agentKey: body.agentKey } : {}),
+      ...(body.llmMode ? { llmMode: body.llmMode } : {}),
+      ...(body.timeoutMs ? { timeoutMs: body.timeoutMs } : {}),
+    });
   });
   app.get("/b/v1/evals/runs", async (req) => {
     const a = await auth(req);

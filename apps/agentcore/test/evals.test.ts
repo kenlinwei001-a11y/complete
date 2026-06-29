@@ -109,4 +109,14 @@ describe("AIP Evals §2 / E4 — 评测框架（mock LLM 证框架，真分待�
     expect(report.metrics.intentAccuracy).toBe(0);
     expect(report.metrics.toolCorrectness).toBe(0);
   });
+
+  it("WO-10-②: REST 透传 llmMode（默认 MOCK·诚实标注；可请求 REAL → 真打 LLM 真分）", async () => {
+    const t = await createTestApp();
+    // 不传 → 默认 MOCK（mock 跑出的分只证框架·非真 agent 质量）。
+    const def = await t.app.inject({ method: "POST", url: "/b/v1/evals/run", headers: debugHeaders(ADMIN), payload: { suite: "classifier" } });
+    expect((def.json() as { llmMode: string }).llmMode).toBe("MOCK");
+    // 传 llmMode:REAL → 透传进 report（真打需配真 provider·此处验透传链路，真分由 env-gated 真 Kimi FDE 证）。
+    const real = await t.app.inject({ method: "POST", url: "/b/v1/evals/run", headers: debugHeaders(ADMIN), payload: { suite: "classifier", llmMode: "REAL" } });
+    expect((real.json() as { llmMode: string }).llmMode).toBe("REAL");
+  });
 });
