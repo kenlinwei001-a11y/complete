@@ -28,4 +28,5 @@ jobs:
         run: pnpm -r test
       - name: Governance gates
         # = ontology:check + chain:check + debattery:check + prd:check + prd-coverage + meta-sync
+        #   + datacore build + seed-demo-smoke:check（WO-0：真起 SEED_DEMO=1 datacore·挡"种子/启动期崩"回归）
         run: pnpm gates
