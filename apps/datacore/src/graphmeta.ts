@@ -69,6 +69,40 @@ export const CONN_SYSTEM: Record<string, string> = {
   "conn-srm": "SRM",
 };
 
+/**
+ * WO-7：对象类型 → 真实来源系统（DataSourceHealth.sourceId 命名空间）的权威归因。
+ *
+ * 背景：demo 全部对象经"单一合成连接器"物化（provenance 真实——确实只有一个合成数据源），
+ * 故图谱 sourceBindings.connId 对 9 业务源系统恒不匹配 → 来源系统总览逐源对象数恒 0。
+ * 此表按"该数据类别在制造业 IT 架构中的真实系统主"归因（SCADA 实时遥测 / MES 生产执行 /
+ * ERP 销售财务计划 / SRM 供应商协同 / PLM 型号认证 / WMS 仓储物料 / QMS 质量 / EMS 能耗），
+ * 是真实业务建模而非伪造数字。未列入的类型（派生/决策/外部信号）= 无内部源系统主 → 前端
+ * 归"派生/求解器/智能体"诚实单列。
+ *
+ * 注：这是"源系统归属"业务事实，独立于合成 provenance 管道（后者诚实=单一合成连接器）。
+ */
+export const TYPE_SOURCE_SYSTEM: Record<string, string> = {
+  // iot-scada：设备实时遥测
+  Equipment: "iot-scada",
+  // mes：生产执行（基地/产线/工序/检修）
+  Base: "mes", Line: "mes", Process: "mes", MaintPlan: "mes",
+  // erp：销售/财务/计划/情景
+  Order: "erp", Segment: "erp", Customer: "erp", ARInvoice: "erp", DemandSegment: "erp",
+  FinancePlan: "erp", FinanceAccount: "erp", FinanceMetric: "erp", SopVersionRow: "erp",
+  AnnualScenario: "erp", ScenarioTrigger: "erp", PlanTarget: "erp", CapexProject: "erp",
+  // srm：供应商协同（在途/采购）
+  Shipment: "srm", PurchaseOrder: "srm",
+  // plm：型号/认证/换型
+  Model: "plm", Certification: "plm", ChangeoverMatrix: "plm",
+  // wms：仓储/物料
+  Material: "wms", MaterialBatch: "wms", MaterialBalance: "wms",
+  // qms：质量（数据源健康监控属质量管理体系）
+  DataSourceHealth: "qms", QualityLot: "qms",
+  // ems：能耗/碳
+  EnergyMeter: "ems", CarbonFactor: "ems",
+  // lims（实验室）：当前 demo 无物化对象类型 → 诚实留空（监控中·无物化对象），不伪造。
+};
+
 /** 映射表 kind="agent" 行（静态种子清单；AgentCore 侧注册表为运行态来源） */
 export const AGENT_SEEDS: { key: string; displayName: string; summary: string }[] = [
   { key: "learning-agent", displayName: "学习Agent", summary: "经验回流：偏差→校准提案→经验记忆库" },

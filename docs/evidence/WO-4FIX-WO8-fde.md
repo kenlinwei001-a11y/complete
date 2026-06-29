@@ -74,3 +74,47 @@ PUT ... {"overrides":{"view.scenarios":true}} → GET /b/v1/scenarios → launch
   最迟 60s（或重启）。本验证用重启 agentcore 取干净读。SLO「传播≤60s」对 launcher 切换成立
   （TTL 兜底），但「事件即时失效」对 gate 缓存不成立——属既有失效链缺口，非 WO-8 缺陷，记此备查。
 - ⚠️ dev X-Debug-User 跨服务 fail-open 到 ALL：launcher 在 dev 调试头下恒真，仅真 JWT 链可证伪。
+
+## WO-7：来源系统总览逐源真对象数归因（非0非假）
+
+### 根因
+来源系统总览前端 join `graph.nodes[].sourceBindings[].connId` ↔ `data-health.sources[].connId`。
+但 demo 全部对象经"单一合成连接器"物化（provenance 诚实——确实只有一个合成数据源），34 类型
+的 sourceBindings.connId 全 = 合成连接器 id，与 9 业务源系统的 sourceId(mes/erp/...) 恒不匹配
+→ 逐源对象数恒 0（实测修前 0/9）。
+
+### 修向（根因解·不伪造分布）
+按"对象类型→真实来源系统主"权威归因（制造业 IT 架构事实：SCADA 实时遥测 / MES 生产执行 /
+ERP 销售财务计划 / SRM 供应商 / PLM 型号认证 / WMS 仓储物料 / QMS 质量 / EMS 能耗）建
+`graphmeta.TYPE_SOURCE_SYSTEM`；服务端 `buildDataHealth` 据此计算逐源**真实物化实例数**下发
+`sources[].members/objectCount`（契约 additive）；前端改读服务端归因（弃失效的 graph 连接）。
+此归因是真实业务建模而非伪造数字；**对象 provenance 管道仍诚实=单一合成连接器**（两概念分离）。
+
+### FDE 真跑（真 HTTP GET /a/v1/data-health，修后）
+```
+ems         26 对象 / 2 类型  [CarbonFactor:14, EnergyMeter:12]
+erp        111 对象 / 13 类型 [ARInvoice:24, AnnualScenario:3, CapexProject:3, Customer:8,
+                              DemandSegment:3, FinanceAccount:12, FinanceMetric:3, FinancePlan:3,
+                              Order:24, PlanTarget:17, ScenarioTrigger:4, Segment:3, SopVersionRow:4]
+iot-scada   72 对象 / 1 类型  [Equipment:72]
+lims         0 对象 / 0 类型  [监控中·无物化对象]   ← 诚实空，不伪造
+mes         96 对象 / 4 类型  [Base:12, Line:12, MaintPlan:12, Process:60]
+plm         54 对象 / 3 类型  [Certification:18, ChangeoverMatrix:30, Model:6]
+qms          9 对象 / 1 类型  [DataSourceHealth:9]
+srm         42 对象 / 2 类型  [PurchaseOrder:30, Shipment:12]
+wms         35 对象 / 3 类型  [Material:8, MaterialBalance:3, MaterialBatch:24]
+非0 业务源: 8/9（修前 0/9）
+```
+集成门：`test/wo7-source-attribution.test.ts`（真 endpoint·3 用例）——8 源非0+归因键一致、
+LIMS 诚实空、objectCount=成员实例和（无虚增）。
+
+### 距北极星 / 诚实标注（FDE 红线）
+- 📏 FDE 字面要求"9 源各非0"。当前诚实只达 **8/9**：**LIMS(实验室) demo 无任何物化对象类型**，
+  强行塞对象=伪造分布（违反 WO-7 红线"禁止伪造"）。
+- 🔭 **达 9/9 的根因解（待操作方拍板·避免擅自扩 demo 数据模型）**：给 demo 走正门确定性合成
+  新增一个真实属于 LIMS 的对象类型（如 电芯实验室检测 `LabTest`：批次/测试项/结果/采样时延），
+  并入 `TYPE_SOURCE_SYSTEM[LabTest]="lims"`（归因表已就位，加一行即生效）。届时 9/9 真实非0。
+  > 我未擅自新增该类型——它会把 34→35 类型、动多处"34"断言与基线，属扩 demo 数据模型的产品
+  > 决策，应由操作方批准。归因基础设施已建好，批准后补 LabTest 即闭合 9/9。
+- ⚠️ `AskUserQuestion` 在本会话两次因容器重启/权限流中断不可用，故未能交互确认 LIMS 方向；
+  按 FDE 红线"诚实优先"先交付 8/9 真实归因（共用基础设施，9/9 不返工），并在此显式上呈根因解待批。

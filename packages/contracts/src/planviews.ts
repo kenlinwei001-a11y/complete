@@ -236,6 +236,16 @@ export const DataHealthSourceSchema = z.object({
       affectedSolvers: z.array(z.string()),
     })
     .optional(),
+  /**
+   * WO-7：归属该源系统的物化对象类型 + 真实实例数（按"对象类型→真实来源系统"权威归因，
+   * 单一来源=服务端 TYPE_SOURCE_SYSTEM）。前端来源系统总览据此显示逐源真对象数，不再靠
+   * 图谱 sourceBindings.connId 连接（demo 全经单一合成连接器 → 该 join 对 9 业务源恒空）。
+   * 缺省 undefined（旧端点/无归因场景向后兼容）；空数组=该源被监控但无物化对象（诚实，非伪造）。
+   */
+  members: z
+    .array(z.object({ typeKey: z.string(), displayName: z.string(), count: z.number().int() }))
+    .optional(),
+  objectCount: z.number().int().optional(),
 });
 export const DataHealthResponseSchema = z.object({
   sources: z.array(DataHealthSourceSchema),

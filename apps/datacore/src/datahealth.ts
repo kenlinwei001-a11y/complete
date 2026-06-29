@@ -5,7 +5,7 @@ import { FEATURE_REGISTRY } from "./features.js";
 import type { FeatureService } from "./features.js";
 import { num, str } from "./solvers/types.js";
 import { round } from "./prng.js";
-import { CONN_SYSTEM } from "./graphmeta.js";
+import { CONN_SYSTEM, TYPE_SOURCE_SYSTEM } from "./graphmeta.js";
 
 const DEFAULT_CONN_THRESHOLD_MIN = 24 * 60;
 
@@ -40,6 +40,21 @@ export async function buildDataHealth(
   };
 
   const sources: Source[] = [];
+  // WO-7：逐源真对象数归因（对象类型→真实来源系统，权威表 TYPE_SOURCE_SYSTEM）。demo 全对象经单一
+  // 合成连接器物化，故不能靠 sourceBindings.connId 连接（对 9 业务源恒空）；改按"该数据类别真实系统主"
+  // 归因 + 真实例数。空数组=该源被监控但无物化对象（诚实，非伪造）。
+  const typeNames = new Map(
+    (await repos.ontologyTypes.list(tenantId)).map((t) => [t.key, t.displayName || t.key] as const),
+  );
+  const membersBySource = new Map<string, { typeKey: string; displayName: string; count: number }[]>();
+  for (const [typeKey, sourceId] of Object.entries(TYPE_SOURCE_SYSTEM)) {
+    const count = (await repos.objects.listByType(tenantId, typeKey)).length;
+    if (count === 0) continue; // 类型未物化 → 不计（不虚增）
+    if (!membersBySource.has(sourceId)) membersBySource.set(sourceId, []);
+    membersBySource.get(sourceId)!.push({ typeKey, displayName: typeNames.get(typeKey) ?? typeKey, count });
+  }
+  for (const m of membersBySource.values()) m.sort((a, b) => (a.typeKey < b.typeKey ? -1 : 1));
+
   // ① DataSourceHealth 对象（IoT 等关键实时源；C09 的判定输入）
   const healthObjs = (await repos.objects.listByType(tenantId, "DataSourceHealth")).sort((a, b) =>
     str(a.props.sourceId) < str(b.props.sourceId) ? -1 : 1,
@@ -48,14 +63,18 @@ export async function buildDataHealth(
     const lagHours = num(h.props.lagHours);
     const critical = h.props.critical === true;
     const delayed = critical && lagHours > staleHours;
+    const sourceId = str(h.props.sourceId, h.id);
+    const members = membersBySource.get(sourceId) ?? [];
     sources.push({
-      connId: str(h.props.sourceId, h.id),
-      name: str(h.props.name, str(h.props.sourceId)),
+      connId: sourceId,
+      name: str(h.props.name, sourceId),
       system: str(h.props.name).includes("IoT") ? "IoT/SCADA" : str(h.props.name, "源系统"),
       lastDataAt: new Date(now - lagHours * 3600_000).toISOString(),
       latencyMin: round(lagHours * 60, 1),
       thresholdMin: round(staleHours * 60, 1),
       status: delayed ? "DELAYED" : "OK",
+      members,
+      objectCount: members.reduce((s, x) => s + x.count, 0),
       ...(delayed ? { degradeImpact } : {}),
     });
   }
