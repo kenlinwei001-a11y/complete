@@ -31,6 +31,19 @@ import { CircuitBreaker, isFallbackTriggering, type BreakerOptions } from "./bre
  * Model ids are never hardcoded at call sites.
  */
 
+/**
+ * WO-1B（与 DataCore 1A 同根）：LLM 用途未解析到**可用凭据**的 provider 时抛此结构化错误，
+ * 而非回落无凭据内置客户端 → 让 SDK 在调用时抛原始鉴权串（"Could not resolve authentication method"）泄漏给用户。
+ * `code` 被编排层 `failFromError` 取用（R7 信封），message 对用户有中文引导、不含 SDK 串。
+ */
+export class LlmPurposeUnboundError extends Error {
+  readonly code = "LLM_PURPOSE_UNBOUND";
+  constructor(message: string) {
+    super(message);
+    this.name = "LlmPurposeUnboundError";
+  }
+}
+
 /** Built-in provider configs available without any tenant configuration. */
 const BUILTIN_PROVIDERS: Record<string, LlmProviderConfig> = {
   anthropic: { id: "llmp_builtin_anthropic", key: "anthropic", kind: "anthropic", status: "ACTIVE" },
@@ -216,10 +229,10 @@ export class LlmProviderRegistry {
 
   private async clientFor(providerKey: string, tenantId?: string): Promise<LlmClient> {
     // tenant config → platform config → builtin defaults
-    const cfg =
+    const fromConfig =
       (tenantId ? await this.deps.repos.llmProviders.byKey(tenantId, providerKey) : undefined) ??
-      (await this.deps.repos.llmProviders.byKey(undefined, providerKey)) ??
-      BUILTIN_PROVIDERS[providerKey];
+      (await this.deps.repos.llmProviders.byKey(undefined, providerKey));
+    const cfg = fromConfig ?? BUILTIN_PROVIDERS[providerKey];
     if (!cfg) throw new Error(`unknown LLM provider: ${providerKey}`);
     if (cfg.status === "DISABLED") throw new Error(`LLM provider disabled: ${providerKey}`);
 
@@ -228,6 +241,14 @@ export class LlmProviderRegistry {
     if (cached) return cached;
 
     const apiKey = await this.resolveApiKey(cfg);
+    // WO-1B 根因（同 1A）：未配置任何 provider → 回落内置默认且无凭据 → 真适配器调用抛 SDK 鉴权串泄漏给用户
+    // （路径B 3ms AGENT_ERROR=SDK 串）。改：内置默认 + 无凭据 + 非测试 factory → 抛结构化 LLM_PURPOSE_UNBOUND
+    // （failFromError 取 .code → R7 信封，message 中文引导不含 SDK 串）。测试 factory（mock）与有凭据路径不受影响。
+    if (!fromConfig && !apiKey && !this.deps.factory) {
+      throw new LlmPurposeUnboundError(
+        `LLM 用途未解析到可用 provider（回落内置 ${providerKey} 但无可用凭据）——请在 设置→LLM 用途绑定 配置 provider 与密钥`,
+      );
+    }
     const factory = this.deps.factory ?? defaultAdapterFactory;
     const client = factory(cfg, apiKey, this.deps.metrics);
     this.cache.set(cacheKey, client);

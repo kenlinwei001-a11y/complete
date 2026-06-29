@@ -29,7 +29,9 @@ export async function seedDemoLlmProvider(
       kind: "openai_compatible",
       baseUrl: cfg.baseUrl,
       apiKey: cfg.apiKey, // write-only → AES-GCM 密文落库，响应仅 hasApiKey（R5 no-secrets-echo）
-      models: [{ modelId: cfg.model, displayName: cfg.model, capabilities: { tools: true, structuredOutput: false, maxContext: 131072 } }],
+      // WO-1C：structuredOutput true（原 false 走 JSON-mode，复杂抽取 schema 解析率低致 "unparseable output"）。
+      // 审核方实测 classifier/modeling 用 true（原生 strict json_schema）可解析；提升 A2 抽取/A3 建模解析率。
+      models: [{ modelId: cfg.model, displayName: cfg.model, capabilities: { tools: true, structuredOutput: true, maxContext: 131072 } }],
       status: "ACTIVE",
       scope: "tenant",
     }));

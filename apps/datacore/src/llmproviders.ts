@@ -324,6 +324,28 @@ export class TenantRoutedLlmClient implements LlmClient {
     private adapterFactory?: (rec: LlmProviderRecord, apiKey: string | undefined) => FullLlmClient,
   ) {}
 
+  /**
+   * WO-1A：用途未解析到 provider 时的回落（同根接缝单点）。
+   * 仍尝试 env 默认 fallback（有真凭据则正常服务；测试态注入的 mock client 安全可用），
+   * 但**捕获 LLM SDK 原始鉴权失败串**（无凭据/key 失效）→ 归一为结构化 `LLM_PURPOSE_UNBOUND`（R7 信封·中文引导），
+   * 绝不把 SDK 内部串泄漏给用户。其它错误（如 mock 的 LlmParseError）原样抛，保留既有失败语义。
+   */
+  private async fallbackOrThrow<T>(req: LlmParseRequest<T>): Promise<T> {
+    try {
+      return await this.fallback.parseStructured(req);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/could not resolve authentication|x-api-key|authentication_error|no api key|api[_ ]?key/i.test(msg)) {
+        throw new AppError(
+          "LLM_PURPOSE_UNBOUND",
+          `用途 ${req.purpose ?? "(未指定)"} 未绑定 LLM provider，请在 设置→LLM 用途绑定 配置`,
+          400,
+        );
+      }
+      throw err;
+    }
+  }
+
   private buildAdapter(rec: LlmProviderRecord): FullLlmClient {
     const cacheKey = `${rec.tenantId}|${rec.id}|${rec.updatedAt}`;
     const hit = this.adapterCache.get(cacheKey);
@@ -367,9 +389,10 @@ export class TenantRoutedLlmClient implements LlmClient {
   }
 
   async parseStructured<T>(req: LlmParseRequest<T>): Promise<T> {
-    if (!req.tenantId || !req.purpose) return this.fallback.parseStructured(req);
+    // WO-1A：无路由信息 / 无用途绑定 → 经 fallbackOrThrow（仅 env 真有凭据才回落，否则结构化错误，不泄漏 SDK 串）。
+    if (!req.tenantId || !req.purpose) return this.fallbackOrThrow(req);
     const target = await this.resolveBinding(req.tenantId, req.purpose);
-    if (!target) return this.fallback.parseStructured(req);
+    if (!target) return this.fallbackOrThrow(req);
     try {
       return await this.parseVia(target, req);
     } catch (err) {

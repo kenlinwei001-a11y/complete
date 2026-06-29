@@ -42,6 +42,28 @@ import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metric
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
 
 /**
+ * WO-1B 兜底：LLM SDK 鉴权失败的原始串（如 Anthropic "Could not resolve authentication method"）绝不透传给用户。
+ * 命中已知签名 → 归一为 LLM_PURPOSE_UNBOUND + 中文引导（R7 信封·诚实降级，不泄漏 SDK 内部串）。
+ */
+const LLM_AUTH_LEAK_SIGNATURES = [
+  "could not resolve authentication",
+  "x-api-key",
+  "authentication_error",
+  "no api key",
+  "apikey",
+];
+function sanitizeLlmAuthLeak(code: string, message: string): { code: string; message: string } {
+  const lower = (message ?? "").toLowerCase();
+  if (LLM_AUTH_LEAK_SIGNATURES.some((s) => lower.includes(s))) {
+    return {
+      code: "LLM_PURPOSE_UNBOUND",
+      message: "LLM 用途未解析到可用 provider 或密钥无效——请在 设置→LLM 用途绑定 配置 provider 与密钥",
+    };
+  }
+  return { code, message };
+}
+
+/**
  * 增量4 §5：AI 推演指挥台 entitlement 判定 —— sim 工具仅当 sim.commander 且 sim.sandbox 同开才对 agent 可见。
  * 这两键不在 AgentCore FeatureRegistry 里（权威集来自 DataCore），故不能用 featureEnabled（它对未注册键恒真）；
  * 显式要求两键齐备。set="ALL"（mock 默认/降级 fail-open）→ 视为全开（与现有 entitlement 语义一致）。
@@ -909,9 +931,13 @@ export class Orchestrator {
     await this.failTask(taskId, code, err instanceof Error ? err.message : String(err));
   }
 
-  private async failTask(taskId: string, code: string, message: string): Promise<void> {
+  private async failTask(taskId: string, code: string, rawMessage: string): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task || ["COMPLETED", "FAILED", "CANCELLED"].includes(task.status)) return;
+    // WO-1B 红线：禁止把 LLM SDK 原始鉴权串透传给用户。即便根因修在解析层（LlmPurposeUnboundError），
+    // 这里兜底扫描已知 SDK 鉴权签名 → 替换为结构化中文引导（防任意未覆盖泄漏路径，R7 信封·诚实降级）。
+    const { code: safeCode, message } = sanitizeLlmAuthLeak(code, rawMessage);
+    code = safeCode;
     // CL.7 GF.2：路径 B agent 硬失败 → 在答案流并入结构化缺口块，对话坞渲染可点缺口卡（▶触发
     // 自成长 LOOP 实诊断+补 → 续推），而非只剩红错叙述。闭 G-3 对话侧（诚实暴露断点）。其余路径（工作流/
     // 校验）维持纯 FAILED。answer.final 先于 task.failed 发出 → useTaskStream 既得 gap 答案又得失败态。
