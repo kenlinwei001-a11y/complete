@@ -634,21 +634,33 @@ export const handlers = [
     }),
   ),
   http.get("*/a/v1/validation/runs", () =>
-    HttpResponse.json([
-      {
-        id: "vrun_1", profile: "SMOKE", seed: 42, startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:09:00Z",
-        report: { profile: "SMOKE", seed: 42, pass: true, coverage: { module: 0.95, assertion: 0.9, loop: 1 }, engineeringVerificationScore: 0.94, assertions: [] },
-      },
-    ]),
+    // 真后端形态为 { items: [...] }（app.ts:1132）；mock 此前回裸数组 → fetchValidationRuns 取 r.items
+    // 恒空 → 列表空、vle-run-* 永不渲染（f43 / vle-segment-matrix 两测真失败根因）。对齐契约。
+    HttpResponse.json({
+      items: [
+        {
+          id: "vrun_1", profile: "SMOKE", seed: 42, startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:09:00Z",
+          report: { profile: "SMOKE", seed: 42, pass: true, coverage: { module: 0.95, assertion: 0.9, loop: 1 }, engineeringVerificationScore: 0.94, assertions: [] },
+        },
+      ],
+    }),
   ),
   http.post("*/a/v1/validation/runs", () => HttpResponse.json({ id: "vrun_2" }, { status: 202 })),
 
-  http.get("*/a/v1/quarantine", () =>
-    HttpResponse.json([
+  http.get("*/a/v1/quarantine", ({ request }) => {
+    // 真后端形态 { items, byReason, total }，按 ?status（默认 PENDING）过滤（quarantine.ts:54）；
+    // mock 此前回裸数组（含 DISCARDED）→ fetchQuarantine 取 r.items 恒空 + 未按状态过滤
+    // → q-row-qr_1 不渲染 / qr_2(DISCARDED) 不该出现却混入（f43 隔离区测失败根因）。对齐契约 + 状态过滤。
+    const status = new URL(request.url).searchParams.get("status") ?? "PENDING";
+    const all = [
       { id: "qr_1", connId: "conn_1", dataset: "orders", raw: { so: "", qty: 10 }, reason: "SCHEMA_MISMATCH", detail: "缺主键 so", status: "PENDING", createdAt: "2026-06-17T08:00:00Z" },
       { id: "qr_2", connId: "conn_1", dataset: "orders", raw: { so: "SO-1", qty: "x" }, reason: "TYPE_ERROR", detail: "qty 非数字", status: "DISCARDED", createdAt: "2026-06-17T08:01:00Z" },
-    ]),
-  ),
+    ];
+    const items = all.filter((q) => q.status === status);
+    const byReason: Record<string, number> = {};
+    for (const q of items) byReason[q.reason] = (byReason[q.reason] ?? 0) + 1;
+    return HttpResponse.json({ items, byReason, total: items.length });
+  }),
   http.post("*/a/v1/quarantine/:id/reprocess", () => HttpResponse.json({ ok: true })),
   http.post("*/a/v1/quarantine/discard", () => HttpResponse.json({ discarded: 1 })),
 
