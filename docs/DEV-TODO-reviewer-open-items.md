@@ -7,6 +7,8 @@
 |---|---|---|---|---|
 | A | **WO-7-FIX** 补 DataHealthResponse 契约 members/objectCount（修 tsc 构建红·gates 红） | **P1·必做** | 待开工 | `REVIEW-WO4fix-WO6-WO7-WO8-verdict.md` 缺陷① |
 | B | **WO-7-LIMS** 合成正门补 LabTest 类型 → 真 9/9（审核方拍板 A） | P2 | 待开工 | 同上 拍板 |
+| C | **WO-10-②** Eval REST 透传 llmMode + 真打 LLM（agent_quality LIVE 能红路径B故障·实质半截） | P3 | 待补 | `REVIEW-WO9-WO10-WO11-verdict.md` |
+| D | **WO-11** UX/语义裂缝合集（5 子项·未开发） | P3 | 未开发 | buildorders §WO-11 |
 | 1 | **WO-Q1** QOS Path B 流式反馈 | P1 | 待开工 | 见本文件 §1（走查报告 `REVIEW-four-chains-live-walkthrough.md` 内 WO-Q1） |
 | 2 | **1C** 规则文档抽取解析率 | P2 | 待开工 | `docs/HANDOFF-1C-rule-extraction-parse-rate.md`（自包含） |
 | 3 | **A6-T2** 真 socket e2e 固化为回归 | P3 | 待开工 | 本文件 §3（核发 `REVIEW-A6-tails-verdict.md`） |
