@@ -9,7 +9,7 @@
 | D | **WO-11** UX/语义裂缝合集（5 子项·未开发） | P3 | 未开发 | buildorders §WO-11 |
 
 > ~~WO-7-FIX / WO-7-LIMS~~ **已闭**（审核方拓扑序 `pnpm -r build` 全绿坐实契约 members 已落；LabTest 20 对象·LIMS 24·9/9 源真实）。
-| 1 | **WO-Q1** QOS Path B 流式反馈 | P1 | 待开工 | 见本文件 §1（走查报告 `REVIEW-four-chains-live-walkthrough.md` 内 WO-Q1） |
+| 1 | **WO-Q1 增量3** QueryDock 渲染 streamingText/reasoningText + 真浏览器实拍（用户可见逐字流）+ §3③ 开放式预算收敛 | P1 | 待补 | `REVIEW-WO-Q1-inc2-verdict.md`（增量1/2 后端已闭） |
 | 2 | **1C** 规则文档抽取解析率 | P2 | 待开工 | `docs/HANDOFF-1C-rule-extraction-parse-rate.md`（自包含） |
 | 3 | **A6-T2** 真 socket e2e 固化为回归 | P3 | 待开工 | 本文件 §3（核发 `REVIEW-A6-tails-verdict.md`） |
 
