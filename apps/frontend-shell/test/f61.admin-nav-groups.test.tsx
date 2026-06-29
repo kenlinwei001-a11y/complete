@@ -18,6 +18,16 @@ describe("nav-reorg · 管理区分组（groupAdminPages + 渲染）", () => {
     expect(groups.map((g) => g.key)).toEqual(ADMIN_NAV_GROUPS.filter((g) => g.paths.some((path) => ADMIN_PAGES.some((p) => p.path === path))).map((g) => g.key));
   });
 
+  it("WO-11.5：推演历史（query-history）不再是孤儿页——注册进 ADMIN_PAGES 且落「编排与场景」组（导航可达）", () => {
+    expect(ADMIN_PAGES.some((p) => p.path === "query-history")).toBe(true);
+    const orchestration = ADMIN_NAV_GROUPS.find((g) => g.key === "orchestration")!;
+    expect(orchestration.paths).toContain("query-history");
+    // 经分组后真出现在「编排与场景」组（不落「其它」兜底）
+    const groups = groupAdminPages(ADMIN_PAGES);
+    const orch = groups.find((g) => g.title === "编排与场景")!;
+    expect(orch.pages.some((p) => p.path === "query-history")).toBe(true);
+  });
+
   it("空组剔除 + 未配置页落「其它」组（不丢）", () => {
     const subset = ADMIN_PAGES.filter((p) => p.path === "connections"); // 仅一页
     const groups = groupAdminPages(subset);

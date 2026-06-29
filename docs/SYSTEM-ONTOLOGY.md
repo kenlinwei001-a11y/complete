@@ -108,7 +108,7 @@
 - **FeatureConfig / DynamicFeature / FeatureAudit**：功能开通（entitlement）· `features.ts`。
 - **PromptTemplate（OC6）/ LlmBudget（OC7）/ FactoryCalendar（OC9）/ WritebackEcho（OC5）· 运营完备性平台配置**：① OC6 平台内置提示词配置化（平台默认 `PLATFORM_PROMPT_DEFAULTS` + 租户 override，`resolvePrompt` 生效；`GET/PUT /a/v1/prompt-templates`,migration018）；② OC7 LLM 成本配额（租户 token 软/硬线 → 降级/拒，`GET/PUT/record /a/v1/llm-budgets`,migration019）；③ OC9 工厂日历（净生产窗口扣减：周末+节假日/检修扣除、加班日补回，春节周用例；`/a/v1/calendars/:key{,/net-window}`,migration020）；④ OC5 写回回声抑制（Action 写回登记→源回流对账：同值 `ECHO_SUPPRESSED`/异值 `writeback.divergence`(L5) 告警；`/a/v1/writeback-echoes{,/reconcile}`,migration021）。`contracts/{prompt-template,llm-budget,factory-calendar,writeback-echo}.ts`,仓储四处。
 - **ConfigBundle / ImportJob（OC3 环境间配置迁移 + 跨系统 Saga · execution-semantics §3）**：导出本租户配置（首维=featureOverrides，entitlement=可售包形态）为 `ConfigBundle`（带 `platformSchemaVersion`）→ 另一环境导入跑 **Saga 状态机**：`VALIDATING`(schemaVersion major 兼容 + 未知键拒)→`DRY_RUN_OK`(diff vs 目标,冲突=changed)→`APPLYING_A`(DataCore featureOverrides)→`APPLYING_B`(AgentCore,注入客户端)→`COMMITTED`；B 失败→`COMPENSATING`(回滚 A 到导入前)→`COMPENSATED`（Saga 一致）。冲突策略 SKIP/OVERWRITE/FAIL · `config-bundle.ts ConfigBundleService` · `GET/POST /a/v1/config-bundles/{export,import}`(admin) · `import_jobs`(migration017,R9 四处) · `bundle_import` 执行锁。`contracts/config-bundle.ts`。
-- **LlmProvider / LlmPurposeBinding**：LLM 供应商 + **用途绑定矩阵**（6 用途 classifier/agent/extraction/modeling/template_gen/compose）· `contracts/llm.ts:205`。
+- **LlmProvider / LlmPurposeBinding**：LLM 供应商 + **用途绑定矩阵**（6 用途 classifier/agent/extraction/modeling/template_gen/compose）· `contracts/llm.ts:205`。**绑定 API 语义（WO-11.3）**：`PUT /a/v1/llm-bindings` = **幂等替换**（body 即用途绑定全集，省略的用途自动解绑）+ `DELETE /a/v1/llm-bindings/:purpose` 单用途解绑（幂等）——修旧 add-only 语义致"错绑无法撤回"的死绑定；解绑与新绑同发 llm_binding.updated 事件（被删用途并入失效集合 → B 侧 TTL 60s + 事件失效），均 tenant_admin only。
 - **Notification / OutboxEvent / IdempotencyRecord**：通知中心 / 事件出箱 / 幂等 · `outbox.ts`。
 - **KbDoc / KbChunk**：知识库（索引/检索）· `kb.ts`。
 - **ElementRef / ReportedRef**：引用图谱（rule/skill/workflow/plan/agent/mcp/intent 的出向引用）· `refs.ts`。
@@ -351,7 +351,7 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 | R5 | **no-secrets-echo**：凭据 AES-GCM 落库，响应仅 credentialRef | 连接器/LLM/MCP |
 | R6 | **确定性**：同 (industry,scale,seed) 字节级一致；求解器同输入同输出；测试不依赖网络/时钟/随机；LLM mock | 合成/求解器/构建 freezePlan |
 | R7 | **错误信封统一** `{error:{code,message,requestId}}` | 两系统 |
-| R8 | **认证**：生产 Bearer JWT（A 签发，B 经 JWKS 验签）；开发 `X-Debug-User`；服务间 `SERVICE_TOKEN` | `auth.ts` |
+| R8 | **认证**：生产 Bearer JWT（A 签发，B 经 JWKS 验签）；开发 `X-Debug-User`；服务间 `SERVICE_TOKEN`。**深链续期（WO-11.4）**：前端 access token 仅驻内存，refresh token 走 httpOnly cookie（Path=/a/v1/auth）；F5 刷新任意深链时 `ShellLayout` 启动守卫先 `silentRefresh()`（POST /a/v1/auth/refresh，单飞与 401 重试共享）再判跳登录——续期成功 setState 触发重渲染使 `useWorkspace`（enabled=内存有 token）真拉取，续期失败才跳 /login，消除"刷新深链必掉登录、丢所在位置"。 | `auth.ts` · `apiClient.silentRefresh` · `ShellLayout` |
 | R9 | **仓储双实现**：memory(测试)+pg(DATABASE_URL)；新表四处同改(migrations+pg+memory+repo接口) | `repo/` |
 | R10 | **D-29 数据流闭环**：产出操作必发事件、下游必订阅（§4） | `event-subscriptions.ts` |
 | **R11** | **全链闭包（审核新增，当前部分违反）**：每个 ScenarioCard 必须 Intent+Plan+Solver(输出形状匹配渲染模板)+render 全接通，否则不可上架 | ⚠ 16/20 违反；缺构建时门禁 |

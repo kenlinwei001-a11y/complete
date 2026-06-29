@@ -7,7 +7,7 @@ import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
 import { CredentialCipher } from "../crypto.js";
 import { newId } from "../ids.js";
-import { notFound, validationError } from "../errors.js";
+import { AppError, notFound, validationError } from "../errors.js";
 import { createAdapter, CREDENTIAL_FIELDS, getConnectorType } from "./registry.js";
 import { profileRows, suggestDatasetKind } from "./profiler.js";
 
@@ -153,7 +153,21 @@ export class ConnectorService {
   async discoverSchema(ctx: AuthCtx, connId: string): Promise<SourceSchema> {
     const conn = await this.getConnection(ctx, connId);
     const adapter = createAdapter(conn.connectorTypeKey, this.decryptedConfig(conn), this.blob, this.fetchImpl);
-    const schema = await adapter.discoverSchema();
+    // WO-11.2 优雅降级（对齐 sync）：外部源 4xx/5xx 或解析失败不应裸暴 500 INTERNAL_ERROR。
+    // 既有 AppError（如不支持的文件格式 400）原样透出；其余（如 RestApiAdapter HTTP 错误）
+    // 包装成可读的 502 上游错误，回执注明连接器名 + 原因，前端可呈现而非吞成"内部错误"。
+    let schema: SourceSchema;
+    try {
+      schema = await adapter.discoverSchema();
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new AppError(
+        "CONNECTOR_SCHEMA_DISCOVERY_FAILED",
+        `连接器「${conn.name}」schema 发现失败（上游源不可用或返回错误）：${reason}`,
+        502,
+      );
+    }
     // A8.1: schema discovery suggests kind=TIMESERIES (time col + entity key + numeric measures);
     // explicit per-dataset connection config overrides the suggestion (人工可改).
     for (const ds of schema.datasets) {

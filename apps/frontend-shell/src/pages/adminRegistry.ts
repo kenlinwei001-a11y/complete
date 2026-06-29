@@ -58,6 +58,9 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "meta", label: "系统自我", roles: ["admin"] },
   { path: "boundary", label: "边界册治理", roles: ["admin"] },
   { path: "prototype-intake", label: "原型 intake", roles: ["admin", "data_admin"] },
+  // WO-11.5：推演历史——此前路由+组件在但无导航入口（孤儿页，仅顶栏 🕐 侧滑可达）。
+  // 任何能发起 QOS 推演的角色都该能回看自己的历史：admin/planner/catalog_admin。
+  { path: "query-history", label: zh.nav.queryHistory, roles: ["admin", "planner", "catalog_admin"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */
@@ -91,7 +94,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "source-overview", "domains", "slices", "merge", "meta", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
-  { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"] },
+  { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "query-history", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
   { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration"] },
 ];

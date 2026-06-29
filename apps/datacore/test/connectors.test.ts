@@ -153,6 +153,25 @@ describe("A1 connectors", () => {
     expect(datasets[0]).toMatchObject({ name: "stuff", rowCount: 2 });
   });
 
+  it("WO-11.2: 外部源 4xx → schema 发现优雅降级（可读 502 而非裸 500 INTERNAL_ERROR）", async () => {
+    // 上游 REST 源返回 404 → 旧实现裸抛 Error → 全局映射成 500 INTERNAL_ERROR（不可读）。
+    const fetchImpl = (async () => new Response("not found", { status: 404 })) as unknown as typeof fetch;
+    const t = await makeApp({ fetchImpl });
+    const create = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/connections",
+      headers: ADMIN,
+      payload: { connectorTypeKey: "rest_api", name: "外部行情源", config: { url: "https://x/missing.json" } },
+    });
+    const connId = (create.json() as { id: string }).id;
+    const res = await t.app.inject({ method: "GET", url: `/a/v1/connections/${connId}/schema`, headers: ADMIN });
+    expect(res.statusCode).toBe(502); // 上游错误，非内部错误
+    const err = (res.json() as { error: { code: string; message: string } }).error;
+    expect(err.code).toBe("CONNECTOR_SCHEMA_DISCOVERY_FAILED");
+    expect(err.message).toContain("外部行情源"); // 回执含连接器名 + 原因，可读
+    expect(err.code).not.toBe("INTERNAL_ERROR");
+  });
+
   it("accepts multipart uploads (≤100MB) on POST /a/v1/uploads", async () => {
     const t = await makeApp();
     const boundary = "----dcTestBoundary42";

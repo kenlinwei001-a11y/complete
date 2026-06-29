@@ -37,8 +37,12 @@ function baseUrl(system: System): string {
 
 let refreshing: Promise<boolean> | null = null;
 
-/** 401 时静默刷新（单飞）；刷新失败 → 跳登录 */
-async function silentRefresh(): Promise<boolean> {
+/**
+ * 401 时静默刷新（单飞）；刷新失败 → 跳登录。
+ * WO-11.4：导出供启动守卫复用——F5 深链时内存 access token=null，但 refresh httpOnly
+ * cookie 可能仍有效，启动应先试静默续期再判跳登录（单飞 promise 与 401 重试共享，不会重复刷）。
+ */
+export async function silentRefresh(): Promise<boolean> {
   refreshing ??= (async () => {
     try {
       const res = await fetch(`${baseUrl("a")}/a/v1/auth/refresh`, {

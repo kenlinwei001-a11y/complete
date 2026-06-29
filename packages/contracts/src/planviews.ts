@@ -228,6 +228,11 @@ export const DataHealthSourceSchema = z.object({
   latencyMin: z.number(),
   thresholdMin: z.number(),
   status: z.enum(["OK", "DELAYED", "DOWN"]),
+  /**
+   * WO-11.1：是否关键源（critical）。非关键源 lag 超阈不触发 C09 降级、status 仍 OK；前端据此不把
+   * "超阈"渲成告警（避免"⚠超阈"与"正常"徽章自相矛盾——非关键源超阈是参考信息，非故障）。
+   */
+  critical: z.boolean().optional(),
   /** 命中 C09 时的降级影响 */
   degradeImpact: z
     .object({

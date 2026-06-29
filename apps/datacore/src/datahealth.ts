@@ -73,6 +73,7 @@ export async function buildDataHealth(
       latencyMin: round(lagHours * 60, 1),
       thresholdMin: round(staleHours * 60, 1),
       status: delayed ? "DELAYED" : "OK",
+      critical, // WO-11.1：非关键源超阈不告警（前端据此消除"⚠超阈 vs 正常"矛盾）
       members,
       objectCount: members.reduce((s, x) => s + x.count, 0),
       ...(delayed ? { degradeImpact } : {}),

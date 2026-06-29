@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tokenStore } from "@/api/tokenStore";
+import { silentRefresh } from "@/api/apiClient";
 import { fetchHistoryWatermark, fetchResolvedFeatures } from "@/api/endpoints";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useDomainEventStream } from "@/store/useDomainEventStream";
@@ -174,8 +175,22 @@ export default function ShellLayout() {
   // D-29 实时环 F1：登录后常驻轮询领域事件，把上游变更反映到被动页面（跨会话传播）。
   useDomainEventStream(!!workspace);
 
+  // WO-11.4：F5 深链守卫。内存 access token=null 不代表未登录——refresh httpOnly cookie
+  // 可能仍有效，启动应先静默续期再判跳登录，否则刷新任意深链都被踢回 /login（丢所在位置）。
+  // 续期成功后 setState 触发重渲染：useWorkspace 的 enabled=tokenStore.get()!=null 非响应式，
+  // 不重渲染则查询恒禁用→深链卡"加载中"。续期失败才跳登录（守卫不误放行）。
+  const [, setRefreshed] = useState(0);
   useEffect(() => {
-    if (!tokenStore.get()) navigate("/login", { replace: true });
+    if (tokenStore.get()) return;
+    let cancelled = false;
+    void silentRefresh().then((ok) => {
+      if (cancelled) return;
+      if (ok) setRefreshed((n) => n + 1);
+      else navigate("/login", { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 主题由 workspace.theme 覆盖 token（不同账号不同前端的视觉部分）

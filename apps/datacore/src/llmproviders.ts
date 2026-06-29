@@ -294,10 +294,31 @@ export class LlmProviderService {
       };
       await this.repos.llmPurposeBindings.put(rec);
     }
+    // WO-11.3：PUT = 幂等替换（body 即用途绑定全集）。body 中省略的用途 → 解绑（删除其绑定记录），
+    // 否则错绑无法仅靠 PUT 撤回（旧 add-only 语义遗留死绑定）。被删用途一并进事件失效集合。
+    const keep = new Set(bindings.map((b) => b.purpose));
+    const removed: string[] = [];
+    for (const rec of await this.repos.llmPurposeBindings.list(ctx.tenantId)) {
+      if (!keep.has(rec.purpose as LlmPurpose)) {
+        await this.repos.llmPurposeBindings.remove(ctx.tenantId, rec.id);
+        removed.push(rec.purpose);
+      }
+    }
     await this.outbox.emit(ctx.tenantId, "llm_binding.updated", {
-      purposes: bindings.map((b) => b.purpose),
+      purposes: [...new Set([...bindings.map((b) => b.purpose), ...removed])],
     });
     return { bindings: await this.bindings(ctx.tenantId), warnings };
+  }
+
+  /** WO-11.3：解绑单个用途（DELETE /a/v1/llm-bindings/:purpose）。幂等——不存在亦返回当前全集。 */
+  async deleteBinding(ctx: AuthCtx, purpose: string): Promise<{ bindings: PurposeBinding[] }> {
+    const id = `llmb_${ctx.tenantId}_${purpose}`;
+    const existing = await this.repos.llmPurposeBindings.get(ctx.tenantId, id);
+    if (existing) {
+      await this.repos.llmPurposeBindings.remove(ctx.tenantId, id);
+      await this.outbox.emit(ctx.tenantId, "llm_binding.updated", { purposes: [purpose] });
+    }
+    return { bindings: await this.bindings(ctx.tenantId) };
   }
 }
 
@@ -521,6 +542,14 @@ export function registerLlmProviderRoutes(app: FastifyInstance, deps: LlmProvide
     requireTenantAdmin(c);
     const body = parseBody(BindingsPutSchema, req.body);
     return service.putBindings(c, body.bindings);
+  });
+
+  // WO-11.3：单用途解绑（错绑可撤回）。tenant_admin only，与 PUT 同权。
+  app.delete("/a/v1/llm-bindings/:purpose", async (req) => {
+    const c = ctx(req);
+    requireTenantAdmin(c);
+    const { purpose } = req.params as { purpose: string };
+    return service.deleteBinding(c, purpose);
   });
 
   // ---- 引用模式增量 §2.3：B→A 引用上报（服务间） -------------------------------

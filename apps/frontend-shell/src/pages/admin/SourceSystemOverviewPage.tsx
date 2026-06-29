@@ -48,15 +48,18 @@ export default function SourceSystemOverviewPage() {
             const st = STATUS_LABEL[s.status] ?? { label: s.status, color: "var(--muted2)" };
             const members = s.members ?? [];
             const objCount = s.objectCount ?? members.reduce((a, m) => a + m.count, 0);
+            // WO-11.1：非关键源(critical===false)超阈不告警——它不触发 C09 降级、status 仍 OK，
+            // "超阈"仅作参考；只有关键源/已降级(status≠OK)的超阈才标⚠，消除"⚠超阈 vs 正常徽章"矛盾。
             const overThreshold = s.latencyMin > s.thresholdMin;
+            const alarmOver = overThreshold && s.critical !== false;
             return (
               <div key={s.connId} className="panel" data-testid={`source-system-${s.system}`} style={{ padding: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: members.length ? 6 : 0 }}>
                   <b style={{ fontSize: 13 }}>{s.system}</b>
                   <span style={{ fontSize: 11, color: "var(--muted2)" }}>{s.name}</span>
                   <span className="badge" data-testid={`source-status-${s.system}`} style={{ background: `${st.color}28`, color: st.color }}>{st.label}</span>
-                  <span style={{ fontSize: 11, color: overThreshold ? "var(--amber,#E8B54A)" : "var(--muted2)" }}>
-                    新鲜度 延迟 {s.latencyMin}min / 阈值 {s.thresholdMin}min{overThreshold ? " ⚠超阈" : ""}
+                  <span style={{ fontSize: 11, color: alarmOver ? "var(--amber,#E8B54A)" : "var(--muted2)" }}>
+                    新鲜度 延迟 {s.latencyMin}min / 阈值 {s.thresholdMin}min{alarmOver ? " ⚠超阈" : overThreshold ? "（非关键源·参考）" : ""}
                   </span>
                   {s.degradeImpact && <span style={{ fontSize: 11, color: "var(--amber,#E8B54A)" }}>· C09 降级 P90 {s.degradeImpact.p90From}→{s.degradeImpact.p90To}</span>}
                   <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted2)" }} data-testid={`source-objcount-${s.connId}`}>

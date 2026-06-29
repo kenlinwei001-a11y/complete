@@ -241,6 +241,46 @@ describe("用途绑定矩阵（§1.3）：能力校验（L2）", () => {
     const events = await t.repos.outboxEvents.list("demo", (e) => e.event === "llm_binding.updated");
     expect(events.length).toBe(1);
   });
+
+  it("WO-11.3：PUT = 幂等替换（body 即全集）——省略的用途被解绑，不再 add-only 残留死绑定", async () => {
+    const { t, full } = await appWithProviders();
+    const put = (purposes: string[]) =>
+      t.app.inject({
+        method: "PUT",
+        url: "/a/v1/llm-bindings",
+        headers: TENANT_ADMIN,
+        payload: { bindings: purposes.map((p) => ({ purpose: p, providerId: full, modelId: "m1" })) },
+      });
+    // 先绑两个用途
+    await put(["classifier", "agent"]);
+    let svc = await t.app.inject({ method: "GET", url: "/a/v1/llm-bindings", headers: SERVICE });
+    expect((svc.json() as { bindings: { purpose: string }[] }).bindings.map((b) => b.purpose).sort()).toEqual(["agent", "classifier"]);
+    // 再 PUT 只含 agent → classifier 应被解绑（替换语义，非追加）
+    const res = await put(["agent"]);
+    expect(res.statusCode).toBe(200);
+    svc = await t.app.inject({ method: "GET", url: "/a/v1/llm-bindings", headers: SERVICE });
+    expect((svc.json() as { bindings: { purpose: string }[] }).bindings.map((b) => b.purpose)).toEqual(["agent"]);
+    // 被删用途也进事件失效集合（B 侧缓存可据此失效）
+    const ev = await t.repos.outboxEvents.list("demo", (e) => e.event === "llm_binding.updated");
+    expect(ev.some((e) => (e.payload as { purposes: string[] }).purposes.includes("classifier"))).toBe(true);
+  });
+
+  it("WO-11.3：DELETE /a/v1/llm-bindings/:purpose 撤回错绑（幂等）", async () => {
+    const { t, full } = await appWithProviders();
+    await t.app.inject({
+      method: "PUT",
+      url: "/a/v1/llm-bindings",
+      headers: TENANT_ADMIN,
+      payload: { bindings: [{ purpose: "agent", providerId: full, modelId: "m1" }, { purpose: "classifier", providerId: full, modelId: "m1" }] },
+    });
+    const del = await t.app.inject({ method: "DELETE", url: "/a/v1/llm-bindings/classifier", headers: TENANT_ADMIN });
+    expect(del.statusCode).toBe(200);
+    expect((del.json() as { bindings: { purpose: string }[] }).bindings.map((b) => b.purpose)).toEqual(["agent"]);
+    // 幂等：再删一次不报错，全集不变
+    const again = await t.app.inject({ method: "DELETE", url: "/a/v1/llm-bindings/classifier", headers: TENANT_ADMIN });
+    expect(again.statusCode).toBe(200);
+    expect((again.json() as { bindings: { purpose: string }[] }).bindings.map((b) => b.purpose)).toEqual(["agent"]);
+  });
 });
 
 describe("引用模式增量 §2.3 A 侧：引用上报 + 规则发布影响面（L5 A 半）", () => {
