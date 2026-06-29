@@ -906,13 +906,18 @@ export const publishDataBuilder = (id: string) =>
 import type { ValidationRunView, QuarantineRowView } from "@platform/contracts";
 
 /** VLE 闭环验证引擎运行历史（PRD-addendum-validation-loop）。 */
-export const fetchValidationRuns = () => api.a<ValidationRunView[]>("/a/v1/validation/runs");
+// WO-3：后端返 `{items}` 信封；此前谎报裸数组 → 页面 `runs.map` 崩 ErrorBoundary。取 `.items` + 运行时守
+// Array（缺失/非数组 → []，空态而非崩）。R1：前端不重声明契约形状。
+export const fetchValidationRuns = () =>
+  api.a<{ items: ValidationRunView[] }>("/a/v1/validation/runs").then((r) => (Array.isArray(r?.items) ? r.items : []));
 export const fetchValidationRun = (id: string) => api.a<ValidationRunView>(`/a/v1/validation/runs/${id}`);
 export const startValidationRun = (profile: string, seed?: number) =>
   api.a<{ id: string }>("/a/v1/validation/runs", { method: "POST", body: { profile, ...(seed !== undefined ? { seed } : {}) } });
 
 /** 隔离区（异常行 SCHEMA_MISMATCH/DUP_KEY…）。 */
-export const fetchQuarantine = () => api.a<QuarantineRowView[]>("/a/v1/quarantine");
+// WO-3：后端返 `{items,byReason,total}` 信封；此前谎报裸数组 → `(data ?? []).filter` 崩。取 `.items` + 守 Array。
+export const fetchQuarantine = () =>
+  api.a<{ items: QuarantineRowView[] }>("/a/v1/quarantine").then((r) => (Array.isArray(r?.items) ? r.items : []));
 export const reprocessQuarantine = (id: string) => api.a<{ ok: boolean }>(`/a/v1/quarantine/${id}/reprocess`, { method: "POST" });
 export const discardQuarantine = (ids: string[]) => api.a<{ discarded: number }>("/a/v1/quarantine/discard", { method: "POST", body: { ids } });
 
