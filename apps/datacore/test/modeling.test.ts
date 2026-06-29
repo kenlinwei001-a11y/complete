@@ -438,4 +438,42 @@ describe("A3 modeling", () => {
     expect(all).toContain("primary key");
     expect(all).toContain("Nope");
   });
+
+  it("WO-9: A3 发布新 CREATE 类型 → 自动建 coverage_${type} 切片（字段覆盖铁律自维护·零写死）", async () => {
+    const t = await makeApp();
+    const ordersDs = await uploadCsv(t, "orders.csv", ORDERS_CSV);
+    const modelsDs = await uploadCsv(t, "models.csv", MODELS_CSV);
+    t.llm.enqueue(SUGGESTION_V1); // SalesOrder + BatteryModel（domain=product 合法 → 发布不被归域门拒）
+    const suggest = await t.app.inject({
+      method: "POST", url: "/a/v1/modeling/suggest", headers: ADMIN,
+      payload: { rawDatasetIds: [ordersDs, modelsDs] },
+    });
+    const draftId = (suggest.json() as { draftId: string }).draftId;
+
+    // 发布前：这两个新类型无 coverage 切片。
+    const before = await t.repos.sliceSpecs.list("demo");
+    expect(before.some((s) => s.sliceKey === "coverage_salesorder")).toBe(false);
+    expect(before.some((s) => s.sliceKey === "coverage_batterymodel")).toBe(false);
+
+    const publish = await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draftId}/publish`, headers: ADMIN });
+    expect(publish.statusCode).toBe(200);
+
+    // 发布后：每个新 CREATE 类型各自动建一个单实体全字段覆盖切片（root=该类型·无 hop）。
+    const after = await t.repos.sliceSpecs.list("demo");
+    for (const tk of ["SalesOrder", "BatteryModel"]) {
+      const sk = `coverage_${tk.toLowerCase()}`;
+      const sl = after.find((s) => s.sliceKey === sk);
+      expect(sl, `应自动建 ${sk}`).toBeTruthy();
+      expect((sl!.spec.root as { typeKey: string }).typeKey).toBe(tk);
+      expect(sl!.spec.paths).toEqual([]); // 单实体全字段·无 hop
+    }
+    // 幂等：再发布一次同类型不重复建（有则不覆盖）。
+    const sliceCount = after.filter((s) => s.sliceKey.startsWith("coverage_")).length;
+    t.llm.enqueue(SUGGESTION_V1);
+    const s2 = await t.app.inject({ method: "POST", url: "/a/v1/modeling/suggest", headers: ADMIN, payload: { rawDatasetIds: [ordersDs, modelsDs] } });
+    const d2 = (s2.json() as { draftId: string }).draftId;
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${d2}/publish`, headers: ADMIN });
+    const after2 = await t.repos.sliceSpecs.list("demo");
+    expect(after2.filter((s) => s.sliceKey.startsWith("coverage_")).length).toBe(sliceCount);
+  });
 });

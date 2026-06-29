@@ -99,11 +99,14 @@ describe("AIP Evals §2 / E4 — 评测框架（mock LLM 证框架，真分待�
     expect(runs.items.some((r) => r.suite === "agent_quality" && r.agentKey === "gated_agent")).toBe(true);
   });
 
-  it("空套件 → passRate=1（无回归项），结构合法", async () => {
+  it("WO-10: 空套件 → passRate=0（无用例不充作满分·防假阳性），结构合法", async () => {
     const t = await createTestApp();
     const res = await t.app.inject({ method: "POST", url: "/b/v1/evals/run", headers: debugHeaders(ADMIN), payload: { suite: "agent_quality" } });
-    const report = res.json() as { total: number; passRate: number };
+    const report = res.json() as { total: number; passRate: number; metrics: { intentAccuracy: number; toolCorrectness: number } };
     expect(report.total).toBe(0);
-    expect(report.passRate).toBe(1);
+    // 0 用例证明不了任何质量 → 不给满分（此前 passRate=1 是"什么都没测=满分"假阳性）。
+    expect(report.passRate).toBe(0);
+    expect(report.metrics.intentAccuracy).toBe(0);
+    expect(report.metrics.toolCorrectness).toBe(0);
   });
 });

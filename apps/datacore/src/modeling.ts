@@ -417,6 +417,7 @@ export class ModelingService {
     }
 
     let accepted = 0;
+    const createdTypeKeys: string[] = []; // WO-9：本次新 CREATE 的类型 → 自动建 coverage 切片
     for (const t of suggestion.objectTypes) {
       accepted++;
       const ds = datasetByName.get(t.sourceDataset);
@@ -462,6 +463,25 @@ export class ModelingService {
           // 轨L 增量2：携带草案派生属性（半自动建模人工 PATCH 填入的 R14 KPI 派生图叶子）。
           derivedProperties: (t.derivedProperties ?? []).map((d) => ({ propKey: d.propKey, formula: d.formula })),
           sourceBindings: binding,
+        });
+        createdTypeKeys.push(t.typeKey);
+      }
+    }
+    // WO-9：A3 发布新类型自动建 coverage 切片（字段覆盖铁律自维护·零写死 R14）——每个新 CREATE 的
+    // 类型补一个单实体全字段覆盖切片（coverage_${type}：root=该类型/selector 全/无 hop），缺则建、
+    // 有则不覆盖。使「所有字段必被≥1 切片覆盖」对 A3 自助建模的类型自动成立（此前仅出厂电池类型有，
+    // 用户上传 → A3 建新类型 → 无 coverage 切片 → 字段覆盖检查露空、新类型不可全字段浏览/导出）。
+    {
+      const existingSliceKeys = new Set((await this.repos.sliceSpecs.list(ctx.tenantId)).map((s) => s.sliceKey));
+      for (const tk of createdTypeKeys) {
+        const sliceKey = `coverage_${tk.toLowerCase()}`;
+        if (existingSliceKeys.has(sliceKey)) continue;
+        await this.repos.sliceSpecs.put({
+          id: `slice_${sliceKey}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+          tenantId: ctx.tenantId,
+          sliceKey,
+          version: 1,
+          spec: { root: { typeKey: tk, selector: {} }, paths: [], maxNodes: 2000 },
         });
       }
     }

@@ -152,10 +152,12 @@ export class EvalService {
       finishedAt: new Date().toISOString(),
       total,
       passed,
-      passRate: total === 0 ? 1 : round(passed / total),
+      // WO-10：空用例不满分——0 用例证明不了任何质量，passRate=1 是假阳性（"什么都没测=满分"）。
+      // 空套件 → 0（逼着补用例），非 1。同理 total===0 时各 accuracy 子指标亦 0（整跑无证据）。
+      passRate: total === 0 ? 0 : round(passed / total),
       metrics: {
-        intentAccuracy: intentCases.length === 0 ? 1 : round(intentPassed / intentCases.length),
-        toolCorrectness: toolCases.length === 0 ? 1 : round(toolPassed / toolCases.length),
+        intentAccuracy: total === 0 ? 0 : intentCases.length === 0 ? 1 : round(intentPassed / intentCases.length),
+        toolCorrectness: total === 0 ? 0 : toolCases.length === 0 ? 1 : round(toolPassed / toolCases.length),
         avgToolCalls: total === 0 ? 0 : round(results.reduce((s, r) => s + r.observed.toolCount, 0) / total),
         avgLatencyMs: total === 0 ? 0 : Math.round(results.reduce((s, r) => s + r.observed.latencyMs, 0) / total),
         avgTokenCost: total === 0 ? 0 : Math.round(results.reduce((s, r) => s + (r.observed.tokenCost ?? 0), 0) / total),
