@@ -215,12 +215,33 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const body = SubmitQueryBodySchema.parse(req.body);
     const { taskId } = await deps.orchestrator.submitQuery(a, body);
     const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+    // WO-6：轮询预算覆盖 LLM 时延上界（Kimi 单次 10-90s）。原 5s（100×50ms）<< LLM → 可答 in-catalog 问句
+    // 被超时当失败 → classifyGap 落 BLOCKED/OTHER 假缺口、污染 StoryBuildRun。现 ~90s（180×500ms）。
+    const PROBE_POLL_INTERVAL_MS = 500;
+    const PROBE_MAX_POLLS = 180; // ≈90s，覆盖 Kimi 时延上界
     let task = await deps.repos.tasks.get(taskId);
-    for (let i = 0; i < 100 && (!task || !TERMINAL.has(task.status)); i++) {
-      await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < PROBE_MAX_POLLS && (!task || !TERMINAL.has(task.status)); i++) {
+      await new Promise((r) => setTimeout(r, PROBE_POLL_INTERVAL_MS));
       task = await deps.repos.tasks.get(taskId);
     }
     if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
+    // WO-6：超预算仍非终态（极少数超长推演）→ 诚实报"仍在推演"（BOUNDARY·非 blocking·非缺口），
+    // **不**把未完成任务误判 BLOCKED 写进 GapReport/StoryBuildRun。
+    if (!TERMINAL.has(task.status)) {
+      return reply.status(200).send({
+        question: task.query,
+        taskId: task.id,
+        verdict: "BOUNDARY" as const,
+        path: task.path ?? "NONE",
+        findings: [{
+          gapCode: "OTHER" as const,
+          evidence: `仍在推演（${task.status}，超 probe 预算 ${(PROBE_MAX_POLLS * PROBE_POLL_INTERVAL_MS) / 1000}s 未达终态）`,
+          suggestedFill: "LLM 推演时延较长，请稍后重探或经 SSE 事件流等待终态；非缺口、不触发自动补",
+          blocking: false,
+        }],
+        generatedAt: new Date().toISOString(),
+      });
+    }
     return reply.status(200).send(classifyGap(task));
   });
 

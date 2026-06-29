@@ -36,7 +36,7 @@ import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
 import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
 import { ConnectorService } from "./connectors/service.js";
-import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
+import { CONNECTOR_TYPES, connectorCategories, hasAdapter } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
@@ -2751,6 +2751,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     );
     const ct = CONNECTOR_TYPES.find((t) => t.key === body.connectorTypeKey);
     if (!ct) return { ok: false, message: `未知连接器类型：${body.connectorTypeKey}` };
+    // WO-5：测试连接须反映真实可用性——无 adapter 实现的类型（sap_erp/salesforce_crm/generic_jdbc/
+    // knowledge_base/external_feed…）建后必 sync FAILED、schema 500，不得返 ok:true 假绿。先于必填校验
+    // （无 adapter 即不可用，与配置是否齐全无关；不让"必填齐全"假绿盖过"根本无法同步"）。
+    if (!hasAdapter(body.connectorTypeKey)) {
+      return { ok: false, stub: true, message: "该连接器类型尚无 adapter 实现，创建后无法同步" };
+    }
     const schema = (ct.configSchema ?? {}) as { required?: string[] };
     const required = Array.isArray(schema.required) ? schema.required : [];
     const missing = required.filter((k) => {

@@ -305,6 +305,23 @@ class StaticAdapter extends RowsAdapter {
   }
 }
 
+/**
+ * WO-5：已实现 adapter 的连接器类型（= createAdapter switch 真实 case，单一来源）。
+ * 其余类型（sap_erp/salesforce_crm/generic_jdbc/knowledge_base/external_feed…）注册但无 adapter——
+ * 创建后首次 sync 必 FAILED、schema 500。connections/test 据此返 {ok:false} 反映真实可用性，不假绿。
+ */
+export const ADAPTER_IMPL_KEYS: ReadonlySet<string> = new Set([
+  "file_upload",
+  "prototype_html",
+  "rest_api",
+  "mock_erp",
+  "mock_crm",
+  "mock_external",
+]);
+export function hasAdapter(connectorTypeKey: string): boolean {
+  return ADAPTER_IMPL_KEYS.has(connectorTypeKey);
+}
+
 export function createAdapter(
   connectorTypeKey: string,
   config: Record<string, unknown>,

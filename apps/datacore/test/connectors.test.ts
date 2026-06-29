@@ -185,4 +185,22 @@ describe("A1 connectors", () => {
       expect(keys).toContain(k);
     }
   });
+
+  // WO-5：connections/test 反映真实可用性——无 adapter 实现的类型不再假绿 ok:true。
+  it("WO-5: 无 adapter 类型(sap_erp/salesforce_crm/...) test → ok:false stub；有 adapter(mock_erp) → ok:true", async () => {
+    const t = await makeApp();
+    const test = (connectorTypeKey: string, config: Record<string, unknown> = {}) =>
+      t.app
+        .inject({ method: "POST", url: "/a/v1/connections/test", headers: ADMIN, payload: { connectorTypeKey, config } })
+        .then((r) => r.json() as { ok: boolean; stub?: boolean; message?: string });
+    for (const k of ["sap_erp", "salesforce_crm", "generic_jdbc", "knowledge_base", "external_feed"]) {
+      const r = await test(k);
+      expect(r.ok).toBe(false); // 不假绿
+      expect(r.stub).toBe(true);
+      expect(r.message).toContain("adapter");
+    }
+    // 有 adapter 且无必填的类型仍 ok:true（不误伤）。
+    expect((await test("mock_erp")).ok).toBe(true);
+    expect((await test("mock_crm")).ok).toBe(true);
+  });
 });
