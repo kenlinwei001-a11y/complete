@@ -5,10 +5,14 @@
 
 | # | 工单 | 优先级 | 状态 | 详细单 |
 |---|---|---|---|---|
-| 0 | **WO-4-FIX** 归域门枚举 vs 合成种子域不一致致 demo 崩 | **P0·回归** | 审核方打回 | 本文件 §0（核发 `REVIEW-WO4-WO5-WO6-verdict.md`） |
+| A | **WO-7-FIX** 补 DataHealthResponse 契约 members/objectCount（修 tsc 构建红·gates 红） | **P1·必做** | 待开工 | `REVIEW-WO4fix-WO6-WO7-WO8-verdict.md` 缺陷① |
+| B | **WO-7-LIMS** 合成正门补 LabTest 类型 → 真 9/9（审核方拍板 A） | P2 | 待开工 | 同上 拍板 |
 | 1 | **WO-Q1** QOS Path B 流式反馈 | P1 | 待开工 | 见本文件 §1（走查报告 `REVIEW-four-chains-live-walkthrough.md` 内 WO-Q1） |
 | 2 | **1C** 规则文档抽取解析率 | P2 | 待开工 | `docs/HANDOFF-1C-rule-extraction-parse-rate.md`（自包含） |
 | 3 | **A6-T2** 真 socket e2e 固化为回归 | P3 | 待开工 | 本文件 §3（核发 `REVIEW-A6-tails-verdict.md`） |
+
+> **已闭（审核方核发）**：WO-1/2/3/**4(+FIX)**/5/**6(活体)**/**8** + lastmile + A6尾巴① + 四链路走查 + 结构化接入臂。WO-4-FIX 已闭（demo 真启动不崩·域迁净·冒烟门）。
+> **⚠️ 另需核查**：前端 3 测试（f43.admin-cluster + vle-segment-matrix·15s 超时）dev 称既存——建议另开单独立确认。
 
 ## §0 · WO-4-FIX — 归域门 14 域枚举 vs 合成种子域不一致（P0·回归·阻断 demo）
 
