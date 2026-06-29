@@ -2859,12 +2859,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       filename = body.filename;
       content = Buffer.from(body.contentBase64, "base64");
     }
-    const result = await ruleDocs.uploadAndProcess(c, filename, content);
+    // T1：异步——准备 doc（进 EXTRACTING）后立即 202 返回，抽取后台跑（真打 LLM 数百秒不阻塞 HTTP，
+    // 不再被客户端/网关超时中断）；前端轮询 GET /a/v1/rule-docs/:id 状态 + /candidates 至终态。
+    const result = await ruleDocs.uploadAndStartExtraction(c, filename, content);
     return reply.status(202).send({
       docId: result.doc.id,
       jobId: result.jobId,
-      status: result.doc.status,
-      candidateCount: result.candidates.length,
+      status: result.doc.status, // EXTRACTING
+      candidateCount: 0, // 异步：候选随后台抽取产出，前端轮询 /candidates
       droppedCandidates: result.doc.droppedCandidates,
     });
   });

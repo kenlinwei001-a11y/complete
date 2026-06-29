@@ -42,9 +42,12 @@ describe("execution semantics §6 — A2 partial extraction (three-state)", () =
       payload: { filename: "capacity-policy.md", contentBase64: b64(FIXTURE_MD) },
     });
     expect(up.statusCode).toBe(202);
-    const { docId, status, candidateCount } = up.json() as { docId: string; status: string; candidateCount: number };
-    expect(status).toBe("PARTIAL"); // §6: not failed, not dropped
-    expect(candidateCount).toBe(2); // the two healthy segments produced candidates
+    const { docId } = up.json() as { docId: string };
+    await t.services.ruleDocs.flushExtractions(); // T1：异步——等后台抽取收敛
+    const doc = (await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}`, headers: ADMIN })).json() as { status: string };
+    expect(doc.status).toBe("PARTIAL"); // §6: not failed, not dropped
+    const cands0 = (await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}/candidates`, headers: ADMIN })).json() as unknown[];
+    expect(cands0).toHaveLength(2); // the two healthy segments produced candidates
 
     // segment-level status table
     const segRes = await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}/segments`, headers: ADMIN });
@@ -80,6 +83,7 @@ describe("execution semantics §6 — A2 partial extraction (three-state)", () =
       payload: { filename: "ok.md", contentBase64: b64(FIXTURE_MD) },
     });
     const { docId } = up.json() as { docId: string };
+    await t.services.ruleDocs.flushExtractions(); // 等抽取收敛（doc → IN_REVIEW，非 PARTIAL）
     const retry = await t.app.inject({ method: "POST", url: `/a/v1/rule-docs/${docId}/segments/0/retry`, headers: ADMIN });
     expect(retry.statusCode).toBe(409);
   });

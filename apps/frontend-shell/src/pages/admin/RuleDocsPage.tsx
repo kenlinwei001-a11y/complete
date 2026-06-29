@@ -17,7 +17,12 @@ const t = zh.admin.ruleDocs;
 /** 规则文档审核台（PRD §7.5）：上传（A2 抽取）+ 左=文档段落（sourceQuote 高亮）右=候选卡；diff 模式三组 */
 export default function RuleDocsPage() {
   const queryClient = useQueryClient();
-  const { data: docs } = useQuery({ queryKey: ["a", "rule-docs", {}], queryFn: fetchRuleDocs });
+  // T1：抽取异步——文档列表在有 EXTRACTING 文档时轮询，候选随后台抽取产出后自动出现。
+  const { data: docs } = useQuery({
+    queryKey: ["a", "rule-docs", {}],
+    queryFn: fetchRuleDocs,
+    refetchInterval: (q) => (q.state.data?.some((d) => d.status === "EXTRACTING") ? 2000 : false),
+  });
   const [docId, setDocId] = useState<string | null>(null);
   const doc = docs?.find((d) => d.id === docId) ?? docs?.[0];
   const fileRef = useRef<HTMLInputElement>(null);
@@ -25,7 +30,8 @@ export default function RuleDocsPage() {
   const uploadMut = useMutation({
     mutationFn: (file: File) => uploadRuleDoc(file),
     onSuccess: async (r) => {
-      toast(t.uploadDone(r.candidateCount), "success");
+      // 异步：202 立返 status=EXTRACTING（候选随后台抽取出现，轮询自动刷新）。
+      toast(r.status === "EXTRACTING" ? t.uploadStarted : t.uploadDone(r.candidateCount), "success");
       await queryClient.invalidateQueries({ queryKey: ["a", "rule-docs"] });
       await queryClient.invalidateQueries({ queryKey: ["a", "rule-candidates"] });
       setDocId(r.docId);
@@ -73,9 +79,12 @@ export default function RuleDocsPage() {
 
 function DocReview({ doc }: { doc: RuleDocVM }) {
   const queryClient = useQueryClient();
+  const extracting = doc.status === "EXTRACTING";
   const { data: candidates } = useQuery({
     queryKey: ["a", "rule-candidates", { docId: doc.id }],
     queryFn: () => fetchRuleCandidates(doc.id),
+    // T1：抽取异步——本文档抽取中时轮询候选，后台产出后自动出现。
+    refetchInterval: extracting ? 2000 : false,
   });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [diffMode, setDiffMode] = useState(false);
@@ -99,6 +108,11 @@ function DocReview({ doc }: { doc: RuleDocVM }) {
         <span className="badge blue" data-testid="review-progress">
           {t.progress(reviewed, list.length)}
         </span>
+        {extracting && (
+          <span className="badge amber" data-testid="rule-doc-extracting" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="spinner-sm" aria-hidden /> {t.extracting}
+          </span>
+        )}
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "var(--muted)" }}>
           <input type="checkbox" checked={diffMode} onChange={(e) => setDiffMode(e.target.checked)} />
           diff 模式

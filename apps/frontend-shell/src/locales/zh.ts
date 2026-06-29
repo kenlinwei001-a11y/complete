@@ -604,8 +604,10 @@ export const zh = {
     ruleDocs: {
       title: "规则文档审核台",
       upload: "上传规则文档",
-      uploading: "上传抽取中…",
+      uploading: "上传中…",
       uploadDone: (n: number) => `抽取完成：${n} 条候选待审`,
+      uploadStarted: "已上传，正在后台抽取规则（稍候自动出现候选）…",
+      extracting: "后台抽取中…（真打 LLM，稍候自动刷新）",
       progress: (n: number, m: number) => `${n}/${m} 已审`,
       approve: "通过",
       editApprove: "修改后通过",

@@ -111,6 +111,7 @@ describe("S4 knowledge base (V11) + rule near-duplicates (V12)", () => {
     });
     expect(up.statusCode).toBe(202);
     const docId = (up.json() as { docId: string }).docId;
+    await t.services.ruleDocs.flushExtractions(); // T1：异步——等后台抽取收敛后再读候选
     const cands = (
       await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}/candidates`, headers: ADMIN })
     ).json() as { candidate: { name: string }; suspectedDuplicateOf?: { ruleId: string; ruleKey: string; similarity: number } }[];

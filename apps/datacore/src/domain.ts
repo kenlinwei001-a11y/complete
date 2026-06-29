@@ -141,6 +141,8 @@ export interface RawDataset {
 export type RuleDocStatus =
   | "UPLOADED"
   | "PARSED"
+  // T1：抽取异步化——doc 解析完成后进 EXTRACTING（后台 job 真打 LLM 抽取中），前端轮询至终态。
+  | "EXTRACTING"
   | "EXTRACTED"
   | "IN_REVIEW"
   | "PUBLISHED"
@@ -165,6 +167,7 @@ export interface RuleDoc {
   extractJobId?: string;
   segments?: DocSegment[];
   droppedCandidates: number; // failed sourceQuote substring validation
+  extractError?: string; // T1：后台异步抽取整体失败时的兜底原因（doc 落 PARTIAL）
   createdAt: string;
 }
 

@@ -82,15 +82,14 @@ describe("A2 rule-doc parsing", () => {
       payload: { filename: "capacity-policy.md", contentBase64: b64(FIXTURE_MD) },
     });
     expect(res.statusCode).toBe(202);
-    const { docId, jobId, candidateCount, droppedCandidates } = res.json() as {
-      docId: string;
-      jobId: string;
-      candidateCount: number;
-      droppedCandidates: number;
-    };
+    const { docId, jobId, status } = res.json() as { docId: string; jobId: string; status: string };
     expect(docId).toMatch(/^doc_/);
-    expect(candidateCount).toBeGreaterThanOrEqual(3);
-    expect(droppedCandidates).toBe(0);
+    expect(status).toBe("EXTRACTING"); // T1：异步——202 立返，候选随后台抽取产出
+    // 等后台抽取收敛（生产为前端轮询；测试 mock LLM 即时，flush 即收敛）
+    await t.services.ruleDocs.flushExtractions();
+    const doc = (await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}`, headers: ADMIN })).json() as { status: string; droppedCandidates: number };
+    expect(doc.status).toBe("IN_REVIEW");
+    expect(doc.droppedCandidates).toBe(0);
 
     const cands = (
       await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}/candidates?status=PENDING`, headers: ADMIN })
@@ -153,9 +152,13 @@ describe("A2 rule-doc parsing", () => {
       headers: ADMIN,
       payload: { filename: "one.md", contentBase64: b64("需求增量超过 50% 时必须阻断排产。\n") },
     });
-    const body = res.json() as { candidateCount: number; droppedCandidates: number };
-    expect(body.candidateCount).toBe(1);
-    expect(body.droppedCandidates).toBe(1);
+    expect(res.statusCode).toBe(202);
+    const { docId } = res.json() as { docId: string };
+    await t.services.ruleDocs.flushExtractions();
+    const cands = (await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}/candidates`, headers: ADMIN })).json() as unknown[];
+    const doc = (await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}`, headers: ADMIN })).json() as { droppedCandidates: number };
+    expect(cands.length).toBe(1); // 真实规则保留
+    expect(doc.droppedCandidates).toBe(1); // 幻觉规则（非子串）被丢弃并计数
     expect(t.services.metrics.get("dc_rule_extract_candidates_total", { disposition: "dropped" })).toBe(1);
     expect(t.services.metrics.get("dc_rule_extract_candidates_total", { disposition: "accepted" })).toBe(1);
   });
@@ -197,6 +200,8 @@ describe("A2 rule-doc parsing", () => {
       }
       return base;
     });
+    // 首传也要等抽取收敛（diff 基线需已有前一版候选）
+    await t.services.ruleDocs.flushExtractions();
     const r2 = await t.app.inject({
       method: "POST",
       url: "/a/v1/rule-docs",
@@ -204,6 +209,7 @@ describe("A2 rule-doc parsing", () => {
       payload: { filename: "policy.md", contentBase64: b64(v2) },
     });
     const doc2 = r2.json() as { docId: string };
+    await t.services.ruleDocs.flushExtractions();
     const cands = (
       await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${doc2.docId}/candidates`, headers: ADMIN })
     ).json() as { candidate: { name: string }; diff?: string }[];

@@ -79,10 +79,12 @@ export type CandidateRule = z.infer<typeof CandidateRuleSchema>;
 export const RuleDocStatusSchema = z.enum([
   "UPLOADED",
   "PARSED",
+  "EXTRACTING", // T1：后台异步抽取中（前端轮询至终态）
   "EXTRACTED",
   "IN_REVIEW",
   "PUBLISHED",
   "REJECTED",
+  "PARTIAL", // 执行语义 §6：分段部分失败（契约此前漏登，补齐）
 ]);
 
 export const RuleOriginSchema = z.discriminatedUnion("type", [

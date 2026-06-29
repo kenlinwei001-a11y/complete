@@ -103,6 +103,14 @@ export class RuleDocService {
     private embeddings?: import("./embeddings.js").EmbeddingProvider,
   ) {}
 
+  /** T1：在途后台抽取（fire-and-forget）的句柄集——测试可 await 收敛，生产仅用于优雅停机/可观测。 */
+  private pendingExtractions = new Set<Promise<unknown>>();
+
+  /** 等待所有在途后台抽取收敛（测试用：异步路由 202 后断言候选前调用）。 */
+  async flushExtractions(): Promise<void> {
+    await Promise.allSettled([...this.pendingExtractions]);
+  }
+
   private async dupThreshold(tenantId: string): Promise<number> {
     const rec = await this.repos.solverParams.get(tenantId, `spar_${tenantId}`);
     const t = (rec?.params as { dupSimilarityThreshold?: number } | undefined)?.dupSimilarityThreshold;
@@ -148,31 +156,71 @@ export class RuleDocService {
     filename: string,
     content: Buffer,
   ): Promise<{ doc: RuleDoc; jobId: string; candidates: RuleCandidate[] }> {
+    // 同步变体（测试 / CLI 即时需要候选）：准备 + 当场跑完抽取。
+    const { doc, jobId } = await this.prepareDoc(ctx, filename, content);
+    const candidates = await this.runExtraction(ctx, doc.id, jobId);
+    const finalDoc = (await this.repos.ruleDocs.get(ctx.tenantId, doc.id)) ?? doc;
+    return { doc: finalDoc, jobId, candidates };
+  }
+
+  /**
+   * T1：异步抽取入口（HTTP 路由用）。准备 doc（blob/解析/分段，进 EXTRACTING）后**立即返回**，
+   * 抽取在后台跑（真打 LLM 可达数百秒·不阻塞 HTTP·不被客户端/网关超时中断）；前端轮询 doc 状态至终态。
+   */
+  async uploadAndStartExtraction(
+    ctx: AuthCtx,
+    filename: string,
+    content: Buffer,
+  ): Promise<{ doc: RuleDoc; jobId: string }> {
+    const { doc, jobId } = await this.prepareDoc(ctx, filename, content);
+    // fire-and-forget：后台抽取，错误兜底落 doc 状态 + 审计（绝不静默吞）；句柄入集供测试收敛。
+    const p = this.runExtraction(ctx, doc.id, jobId)
+      .catch(async (err) => {
+        this.metrics.inc("dc_rule_extract_segments_total", { status: "failed" });
+        const d = await this.repos.ruleDocs.get(ctx.tenantId, doc.id);
+        if (d && d.status === "EXTRACTING") {
+          d.status = "PARTIAL";
+          d.extractError = err instanceof Error ? err.message : String(err);
+          await this.repos.ruleDocs.put(d);
+        }
+      })
+      .finally(() => this.pendingExtractions.delete(p));
+    this.pendingExtractions.add(p);
+    return { doc, jobId };
+  }
+
+  /** 准备阶段（确定性·快）：落 blob → 解析文本 → 分段 → 分配 extractJobId → 进 EXTRACTING。 */
+  private async prepareDoc(
+    ctx: AuthCtx,
+    filename: string,
+    content: Buffer,
+  ): Promise<{ doc: RuleDoc; jobId: string }> {
     const blobKey = `rule-docs/${ctx.tenantId}/${newId("blob")}-${filename}`;
     await this.blob.put(blobKey, content);
+    const extractJobId = newId("xjob");
+    const text = await extractText(filename, content);
     const doc: RuleDoc = {
       id: newId("doc"),
       tenantId: ctx.tenantId,
       filename,
       blobKey,
-      status: "UPLOADED",
+      status: "EXTRACTING",
       droppedCandidates: 0,
       createdAt: new Date().toISOString(),
+      segments: segmentText(text),
+      extractJobId,
     };
     await this.repos.ruleDocs.put(doc);
+    return { doc, jobId: extractJobId };
+  }
 
-    // PARSED
-    const text = await extractText(filename, content);
-    doc.segments = segmentText(text);
-    doc.status = "PARSED";
-    await this.repos.ruleDocs.put(doc);
-
-    // EXTRACTED —— 执行语义 §6：分段抽取三态，段落级失败不丢弃已成功段落
-    const extractJobId = newId("xjob");
-    doc.extractJobId = extractJobId;
+  /** 抽取阶段（慢·真打 LLM）：逐段抽取（§6 段级三态，部分失败不丢已成功段落）→ 落候选 → 终态。 */
+  private async runExtraction(ctx: AuthCtx, docId: string, extractJobId: string): Promise<RuleCandidate[]> {
+    const doc = await this.repos.ruleDocs.get(ctx.tenantId, docId);
+    if (!doc) return [];
     const candidates: RuleCandidate[] = [];
     let failedSegments = 0;
-    for (const segment of doc.segments) {
+    for (const segment of doc.segments ?? []) {
       try {
         const segCands = await this.extractSegment(ctx, doc, segment, extractJobId);
         candidates.push(...segCands);
@@ -195,7 +243,7 @@ export class RuleDocService {
     // §6: 任一段落失败 → PARTIAL（已成功段落候选可审，失败段落可单独重试）
     doc.status = failedSegments > 0 ? "PARTIAL" : candidates.length > 0 ? "IN_REVIEW" : "EXTRACTED";
     await this.repos.ruleDocs.put(doc);
-    return { doc, jobId: extractJobId, candidates };
+    return candidates;
   }
 
   /** Extract candidates from a single segment (throws on LLM failure → caller marks FAILED). */

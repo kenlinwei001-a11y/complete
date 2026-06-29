@@ -171,11 +171,36 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   // WO-Q1 §3③ 开放式收敛：捕获模型最近一轮的推理文本（Kimi reasoning_content）——开放式深问句
   // 常烧光预算在推理上、终答 text 为空，此时不丢弃推理（见 degrade 兜底），避免「未能产出回答」死答。
   let lastReasoning = "";
+  let restatedReasoning = false; // T2：§3③ 结构化重述只尝试一次
   let consecutiveDenies = 0;
   let forceFinishNotified = false;
   // 增量 §1.3 第 3 刀：收尾提醒已注入（finalizePending = 本轮就是「最后机会」轮）
   let finalizeUsed = false;
   let finalizePending = false;
+
+  // T4：answer.delta 高频帧批量化——按累计 ~120 字或 ~80ms 合并一帧（大幅降帧数·不丢一字），
+  // 每轮流式结束（agent 返回）前 flush 余量。前端 reducer 累计语义不变（合并只少帧不少内容）。
+  const DELTA_FLUSH_CHARS = 120;
+  const DELTA_FLUSH_MS = 80;
+  let pendingDeltaText = "";
+  let pendingDeltaReasoning = "";
+  let deltaTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushDeltas = (): void => {
+    if (deltaTimer) { clearTimeout(deltaTimer); deltaTimer = null; }
+    if (!pendingDeltaText && !pendingDeltaReasoning) return;
+    const payload: { text?: string; reasoning?: string } = {};
+    if (pendingDeltaText) payload.text = pendingDeltaText;
+    if (pendingDeltaReasoning) payload.reasoning = pendingDeltaReasoning;
+    pendingDeltaText = "";
+    pendingDeltaReasoning = "";
+    void opts.emit("answer.delta", payload);
+  };
+  const onStreamDelta = (c: { text?: string; reasoning?: string }): void => {
+    if (c.text) pendingDeltaText += c.text;
+    if (c.reasoning) pendingDeltaReasoning += c.reasoning;
+    if (pendingDeltaText.length + pendingDeltaReasoning.length >= DELTA_FLUSH_CHARS) flushDeltas();
+    else if (!deltaTimer) deltaTimer = setTimeout(flushDeltas, DELTA_FLUSH_MS);
+  };
 
   const budgeter = new ContextBudgeter(opts.llm, opts.model, opts.tenantId, opts.metrics);
   await budgeter.init();
@@ -214,13 +239,41 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     ...(budgeter.ops.length > 0 ? { contextOps: [...budgeter.ops] } : {}),
   });
 
-  const degrade = (outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED"): AgentLoopResult => {
-    // WO-Q1 §3③：终答文本为空时，若模型产出了推理（开放式深问句常如此）→ 把推理作为
-    // 「探索性初步结论」诚实呈现（trustLevel 已 AGENT_EXPLORATORY），收敛到真模型产出，
-    // 而非「未能产出回答」死答；推理也空才回落最终兜底文案。
+  /**
+   * T2 §3③：把模型已产出的推理重述为一段简洁、结构化的最终答复（单次·无工具→只能出纯文本；
+   * 失败/空 → 返回空串，调用方回落原始推理）。不依赖工具/预算，故 finalize 死路也能用。
+   */
+  const restateReasoning = async (reasoning: string): Promise<string> => {
+    try {
+      const resp = await opts.llm.agent({
+        model: opts.model,
+        system:
+          "你是助手。把下面给定的「分析过程」整理成一段简洁、结构化的最终答复（纯文本，可用要点列表），" +
+          "直接给结论与建议，不要复述思考过程、不要前言。只输出答复本身。",
+        tools: [],
+        messages: [{ role: "user", content: `分析过程：\n${reasoning}\n\n请整理成最终答复。` }],
+        maxTokens: 4000,
+        tenantId: opts.tenantId,
+      });
+      return resp?.content?.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n") ?? "";
+    } catch {
+      return ""; // 重述失败不致命：调用方回落原始推理（floor 保证）
+    }
+  };
+
+  const degrade = async (outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED"): Promise<AgentLoopResult> => {
+    // WO-Q1 §3③：终答文本为空时，若模型产出了推理（开放式深问句常如此）→ 先尝试一次「结构化重述」
+    // （T2：把推理整理成简洁最终答复·单次无工具纯文本调用），重述失败/空才把原始推理作为
+    // 「探索性初步结论」诚实呈现（trustLevel 已 AGENT_EXPLORATORY）；推理也空才回落最终兜底文案。
     const reasoning = lastReasoning.trim();
+    let restated = "";
+    if (!lastText && reasoning && !restatedReasoning && outcome !== "FAILED" && !opts.isCancelled?.()) {
+      restatedReasoning = true;
+      restated = (await restateReasoning(reasoning)).trim();
+    }
     const markdown =
       lastText ||
+      restated ||
       (reasoning ? `（探索推理·未结构化收尾，仅供参考）\n\n${reasoning}` : "") ||
       "（探索模式未能产出回答）";
     const blocks: AnswerBlock[] = [{ type: "text", markdown }];
@@ -421,8 +474,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   };
 
   for (let i = 0; opts.budget.iterations < opts.budget.budget.maxIterations; i++) {
-    if (opts.isCancelled?.()) return degrade("FAILED");
-    if (opts.budget.durationExceeded()) return degrade("BUDGET_EXHAUSTED");
+    if (opts.isCancelled?.()) return await degrade("FAILED");
+    if (opts.budget.durationExceeded()) return await degrade("BUDGET_EXHAUSTED");
     opts.budget.iterations += 1;
 
     // -----------------------------------------------------------------------
@@ -445,7 +498,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       }
       // 第 3 刀：硬阈值 → 注入收尾提醒，再给 1 次迭代机会
       if (tokens >= budgeter.hardLimit && !finalizePending) {
-        if (finalizeUsed) return degrade("BUDGET_EXHAUSTED");
+        if (finalizeUsed) return await degrade("BUDGET_EXHAUSTED");
         finalizeUsed = true;
         finalizePending = true;
         budgeter.record("force_finalize", i, "hard threshold");
@@ -469,12 +522,15 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         // WO-Q1 增量2：终答增量流式——adapter 支持(openai-compat·Kimi)时逐 token 经 SSE answer.delta
         // 实时回吐（text=答案/前情增量、reasoning=推理思考增量）。Path A 工作流不走本循环故不受影响；
         // mock/不支持流式的 adapter 忽略 onDelta（无 answer.delta·answer.final 照常）。fire-and-forget 不阻塞循环。
-        onDelta: (c) => { void opts.emit("answer.delta", c); },
+        // T4：onStreamDelta 批量累计 → 合并帧 emit；本轮 agent 返回后 flushDeltas() 推余量。
+        onDelta: onStreamDelta,
       });
+      flushDeltas(); // 本轮流式结束 → 推出未达阈值的尾帧（不丢内容）
     } catch (err) {
+      flushDeltas(); // 失败/上下文超限重试前也推出已累计的分片
       // 第 3 刀（model_context_window_exceeded 形态）：折叠所有可折叠轮 + 注入收尾提醒后重试一次
       if (isContextWindowExceededError(err)) {
-        if (finalizeUsed) return degrade("BUDGET_EXHAUSTED");
+        if (finalizeUsed) return await degrade("BUDGET_EXHAUSTED");
         for (let f = foldOldestFrame(messages, frames); f; f = foldOldestFrame(messages, frames)) {
           rollingNotes.push(noteOfFrame(f));
           budgeter.record("fold", i, "context window exceeded");
@@ -514,7 +570,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     if (response.stopReason !== "tool_use" || toolUses.length === 0) {
       // finished without final_answer (§5.4-6 degraded text answer)
-      return degrade("ANSWERED");
+      return await degrade("ANSWERED");
     }
 
     // If this turn carries final_answer, accept it first and terminate (no tool_results needed).
@@ -532,7 +588,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         };
       }
       // 第 3 刀「最后机会」轮给出的 final_answer 无效 → 按预算耗尽语义降级（不再续轮）
-      if (finalizePending) return degrade("BUDGET_EXHAUSTED");
+      if (finalizePending) return await degrade("BUDGET_EXHAUSTED");
       // invalid final_answer input → tell the model and continue
       messages.push({
         role: "user",
@@ -550,7 +606,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     }
 
     // 第 3 刀「最后机会」轮未调用 final_answer → 按预算耗尽语义（QOS-PRD §5.4-6）降级收尾
-    if (finalizePending) return degrade("BUDGET_EXHAUSTED");
+    if (finalizePending) return await degrade("BUDGET_EXHAUSTED");
 
     for (const block of toolUses) {
       if (!(block.name === "load_skill" && opts.loadSkillEnabled)) {
@@ -602,7 +658,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     // 3 consecutive permission denials → force finish (§5.4-4)
     if (consecutiveDenies >= 3) {
-      if (forceFinishNotified) return degrade("ANSWERED");
+      if (forceFinishNotified) return await degrade("ANSWERED");
       forceFinishNotified = true;
       messages.push({
         role: "user",
@@ -611,7 +667,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     }
   }
 
-  return degrade("BUDGET_EXHAUSTED");
+  return await degrade("BUDGET_EXHAUSTED");
 }
 
 async function acceptFinalAnswer(
