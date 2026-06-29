@@ -1,4 +1,5 @@
 import type { AuthCtx, CalibrationForecastRecord, ObjectInstance } from "../domain.js";
+import type { AuthzService } from "../authz.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { OptimizerClient } from "./optimizer-client.js";
@@ -22,6 +23,12 @@ import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatri
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
+
+/**
+ * WO-2：读出型求解器——其输出即 Base/Line/Process/Equipment 拓扑聚合本身（非以订单为主结果）。
+ * 这些经 loadContext 套 A6 行级过滤（base_manager 只见本基地）；其余求解器 A6 经 visibleOrders 作用于订单结果。
+ */
+const A6_READOUT_SOLVERS = new Set<string>(["capacity_rollup", "bottleneck_matrix"]);
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
@@ -182,6 +189,27 @@ export class SolverService {
   private ontologyCore?: OntologyCoreService;
   setOntologyCore(oc: OntologyCoreService): void {
     this.ontologyCore = oc;
+  }
+
+  /** WO-2：A6 行级过滤（求解器读出层）。app.ts 构造后注入 authz；loadContext 带 ctx 时按本租户策略过滤对象。 */
+  private authz?: AuthzService;
+  setAuthz(a: AuthzService): void {
+    this.authz = a;
+  }
+
+  /**
+   * WO-2 A6 行级过滤（求解器读出层·复用 query_objects 同一套策略引擎，杜绝平行漏过滤）：
+   * 按 (ctx, objectType, READ) 解出 rowFilters，对列表逐对象套 `rowAllowed`。
+   * - 无 ctx / 未注入 authz（内部系统计算：sop/calibration/simclock 等）→ 不过滤（向后兼容）。
+   * - admin / 无策略附着 → rowFilters 空 → 全量可见。
+   * - 显式拒绝（有限制策略但本角色无 grant）→ 视为不可见（[]，与 query_objects require 语义一致）。
+   */
+  private async a6<T extends ObjectInstance>(ctx: AuthCtx | undefined, objectType: string, list: T[]): Promise<T[]> {
+    if (!ctx || !this.authz) return list;
+    const d = await this.authz.decide(ctx, "OBJECT_TYPE", objectType, "READ");
+    if (!d.allowed) return [];
+    if (d.rowFilters.length === 0) return list;
+    return list.filter((o) => this.authz!.rowAllowed(ctx, d.rowFilters, o.props));
   }
 
   /** selection_optimize 走 CP-SAT sidecar（OPTIMIZER_BASE_URL 配置时注入；测试注入 mock）。 */
@@ -1383,18 +1411,21 @@ export class SolverService {
     tenantId: string,
     visibleOrders?: ObjectInstance[],
     opts?: { withExtended?: boolean },
+    // WO-2：传入 ctx 即对读出对象套 A6 行级过滤（求解器读出层与 query_objects 同一套策略）。
+    // 内部系统计算（sop/calibration/simclock）不传 ctx → 全量（向后兼容）。
+    ctx?: AuthCtx,
   ): Promise<SolverContext> {
     const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth] =
       await Promise.all([
-        this.repos.objects.listByType(tenantId, "Base"),
-        this.repos.objects.listByType(tenantId, "Line"),
-        this.repos.objects.listByType(tenantId, "Process"),
-        this.repos.objects.listByType(tenantId, "Equipment"),
-        this.repos.objects.listByType(tenantId, "MaintPlan"),
-        this.repos.objects.listByType(tenantId, "Model"),
-        visibleOrders ? Promise.resolve(visibleOrders) : this.repos.objects.listByType(tenantId, "Order"),
-        this.repos.objects.listByType(tenantId, "Shipment"),
-        this.repos.objects.listByType(tenantId, "Segment"),
+        this.repos.objects.listByType(tenantId, "Base").then((l) => this.a6(ctx, "Base", l)),
+        this.repos.objects.listByType(tenantId, "Line").then((l) => this.a6(ctx, "Line", l)),
+        this.repos.objects.listByType(tenantId, "Process").then((l) => this.a6(ctx, "Process", l)),
+        this.repos.objects.listByType(tenantId, "Equipment").then((l) => this.a6(ctx, "Equipment", l)),
+        this.repos.objects.listByType(tenantId, "MaintPlan").then((l) => this.a6(ctx, "MaintPlan", l)),
+        this.repos.objects.listByType(tenantId, "Model").then((l) => this.a6(ctx, "Model", l)),
+        (visibleOrders ? Promise.resolve(visibleOrders) : this.repos.objects.listByType(tenantId, "Order")).then((l) => this.a6(ctx, "Order", l)),
+        this.repos.objects.listByType(tenantId, "Shipment").then((l) => this.a6(ctx, "Shipment", l)),
+        this.repos.objects.listByType(tenantId, "Segment").then((l) => this.a6(ctx, "Segment", l)),
         this.repos.objects.listByType(tenantId, "DataSourceHealth"),
       ]);
     const certByModel = new Map<string, Map<string, string>>();
@@ -1571,7 +1602,10 @@ export class SolverService {
     if (solverKey === "combinatorial_auction") return this.combinatorialAuction(ctx, args);
     // 轨B·增量3 optimize_whatif：扰动重解（先于 loadContext 拦截，复用 5 核心求解，FUS1 走 sidecar）。
     if (solverKey === "optimize_whatif") return this.optimizeWhatif(ctx, args);
-    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] });
+    // WO-2：仅对**读出型**求解器（输出即 Base/Line/Process/Equipment 拓扑本身）传 ctx → A6 行级过滤读出层。
+    // 其余求解器（如 affected_orders 以 baseId 入参跨基地推演、A6 经 visibleOrders 作用于订单结果）不传 ctx，
+    // 避免过滤其拓扑入参改变计算语义（外基地查询应受订单结果约束，而非读不到外基地拓扑）。
+    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] }, A6_READOUT_SOLVERS.has(solverKey) ? ctx : undefined);
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.

@@ -53,3 +53,29 @@ describe("A6 行级权限贯穿求解器（#1 回归锁）", () => {
     }
   });
 });
+
+/**
+ * WO-2：A6 行级过滤补到求解器**读出层**（非仅 Order）——capacity_rollup/bottleneck_matrix 读
+ * Base/Line/Process/Equipment 此前全量不过滤；现 loadContext 带 ctx 经同一策略引擎过滤。
+ * FDE 判据：base_manager:常州 → bases/rows 只含常州（length 1）；admin 仍见全 12。
+ */
+describe("WO-2 · A6 行级过滤求解器读出层（capacity_rollup / bottleneck_matrix）", () => {
+  it("capacity_rollup：base_manager 只见常州（1 基地），admin 见全 12", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const bm = (await invokeSolver(t, "capacity_rollup", {}, BASE_MANAGER).then((r) => (r.json() as { data: { bases: { baseId?: string; base?: string }[] } }).data));
+    const ad = (await invokeSolver(t, "capacity_rollup", {}, ADMIN).then((r) => (r.json() as { data: { bases: unknown[] } }).data));
+    expect(bm.bases.length).toBe(1);
+    expect(JSON.stringify(bm.bases)).toContain("changzhou");
+    expect(ad.bases.length).toBe(12);
+  });
+
+  it("bottleneck_matrix：base_manager 只见常州一行，admin 见全 12", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const bm = (await invokeSolver(t, "bottleneck_matrix", {}, BASE_MANAGER).then((r) => (r.json() as { data: { rows: { base: string }[] } }).data));
+    const ad = (await invokeSolver(t, "bottleneck_matrix", {}, ADMIN).then((r) => (r.json() as { data: { rows: unknown[] } }).data));
+    expect(bm.rows.length).toBe(1);
+    expect(ad.rows.length).toBe(12);
+  });
+});

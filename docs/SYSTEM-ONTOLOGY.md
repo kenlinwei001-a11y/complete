@@ -86,7 +86,7 @@
 
 ### D. 行动/权限域（DataCore）
 - **ActionType / ActionDraft**：动作类型 + 草稿（审批后 EXECUTED 才写真值；Phase9B 对象级变更）· `actions.ts`,`app.ts:290`。
-- **Policy（A6）**：行级过滤策略（贯穿 query/slice/solver 读出）· `policies`,`authz`。
+- **Policy（A6）**：行级过滤策略（贯穿 query/slice/solver 读出）· `policies`,`authz`。**WO-2 真闭 solver 读出**：此前仅 query/Order(visibleOrders) 实闭、求解器读出层（capacity_rollup/bottleneck_matrix 读 Base/Line/Process/Equipment）声明覆盖但实测全量不过滤；现 `SolverService.loadContext(ctx)` 对**读出型求解器**（`A6_READOUT_SOLVERS`）经同一策略引擎（`authz.decide`+`rowAllowed`）过滤 Base/Line/Order（复用 query_objects 同一套·杜绝平行漏过滤）。FDE：base_manager:常州 调 capacity_rollup/bottleneck_matrix → bases/rows 只含常州(len1)，admin 见全12。其余求解器（affected_orders 等以 baseId 跨基地推演）A6 仍经 visibleOrders 作用于订单结果（不过滤其拓扑入参以保计算语义）。
 
 ### E. 求解/推演域（DataCore）
 - **Solver（SOLVER_KEYS，38 个）**：确定性求解器（电池域纯函数 compute；通用求解器走对象图而非电池 context）· `solvers/service.ts:14`,`extended.ts`。**A8 CP-SAT 可证最优族（经自托管 sidecar，单端点按 model 判别，未配 OPTIMIZER_BASE_URL 显式"未接入"不兜底，R6 seed+单线程确定）**：`selection_optimize`（0/1 背包）· **`assignment_optimize`**（订单/需求→基地/产线指派：每 item 一指派 + Σweight≤capacity + 成本最小化 + 资格 mask）· **`sequencing_optimize`**（产线换型排序：jobs 按 group 排序最小化相邻换型损失，AddCircuit 开放路径）· **`packing_optimize`**（产能装箱：items[size]→容量 binCapacity 箱，最小化箱数，对称破除确定性）。client `solveAssignment/solveSequencing/solvePacking`。注册表（`ontology:check` 门禁核对）：`assignment_optimize` `sequencing_optimize` `packing_optimize`

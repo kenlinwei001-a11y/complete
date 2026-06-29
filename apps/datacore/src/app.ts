@@ -296,6 +296,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
   solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
+  solvers.setAuthz(authz); // WO-2：A6 行级过滤求解器读出层（与 query_objects 同一套策略引擎）
   solvers.setLlm(llm); // A18.2 LLM 临时求解器生成
   solvers.setOutbox(outbox); // A18.2 solver.provisional_generated 事件
   if (process.env.OPTIMIZER_BASE_URL) {
