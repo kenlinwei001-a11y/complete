@@ -278,7 +278,18 @@ export class Orchestrator {
     }
 
     // ② LLM classification (with up to 2 retries)
+    // WO-Q1：分类期 LLM 往返慢（Kimi 推理模型可达 ~30s），此前 task.accepted→routing.completed 间纯静默。
+    // 发一个 "classify" 处理步（复用既有 step.started/completed 帧·前端 selectStepRows 直接渲染 → 思考态可见），
+    // 让首进度帧在 accept 后毫秒级出现（不改 §8.2 事件集·不改前端·不动 Path A）。
+    await this.deps.events.emit(taskId, "step.started", { stepId: "classify", type: "classify" });
+    const classifyT0 = Date.now();
     const classification = await this.classify(task, pkg, candidates);
+    await this.deps.events.emit(taskId, "step.completed", {
+      stepId: "classify",
+      type: "classify",
+      outcome: classification ? "matched" : "fallback",
+      durationMs: Date.now() - classifyT0,
+    });
     if (!classification) {
       this.deps.metrics.classifierErrors.inc();
       if (mode === "WORKFLOW_ONLY") {

@@ -39,6 +39,21 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
     expect(answer?.unverifiedNumerics).toBe(false); // A6
   });
 
+  it("WO-Q1: 分类期发 classify 处理步（首进度帧·非静默）—— accept 后毫秒级出 step.started{classify}", async () => {
+    // selectedObjects=[] → 必填槽不可从上下文满足 → 不走单候选短路 → 真调 LLM classify（慢往返本是静默期）。
+    t.llm.queueClassification({ candidates: [{ intentKey: "affected_orders", confidence: 0.95 }], outOfCatalog: false, extractedSlots: {} });
+    const { taskId } = await submitQuery(t, PLANNER, "影响哪些订单？", { view: "risk", selectedObjects: [] });
+    await waitForTask(t, taskId);
+    const events = await t.repos.events.listAfter(taskId, 0);
+    const idxAccepted = events.findIndex((e) => e.event === "task.accepted");
+    const idxClassifyStart = events.findIndex((e) => e.event === "step.started" && (e.payload as { stepId?: string }).stepId === "classify");
+    // 分类期有首进度帧（思考态可见·非纯静默），且在 accept 之后（accept→classify 帧→…）。
+    expect(idxClassifyStart).toBeGreaterThanOrEqual(0);
+    expect(idxClassifyStart).toBeGreaterThan(idxAccepted);
+    // classify 步有配对完成帧（前端 selectStepRows 据此渲染 running→done）。
+    expect(events.some((e) => e.event === "step.completed" && (e.payload as { stepId?: string }).stepId === "classify")).toBe(true);
+  });
+
   it("A2: capacity_feasibility → 3 kpi blocks each with provId", async () => {
     t.llm.queueClassification({
       candidates: [{ intentKey: "capacity_feasibility", confidence: 0.92 }],
