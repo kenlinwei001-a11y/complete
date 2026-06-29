@@ -262,7 +262,7 @@ export default function ShellLayout() {
       </aside>
 
       <main className={styles.content}>
-        <ErrorBoundary>
+        <ErrorBoundary resetKey={location.pathname}>
           <Outlet />
         </ErrorBoundary>
       </main>

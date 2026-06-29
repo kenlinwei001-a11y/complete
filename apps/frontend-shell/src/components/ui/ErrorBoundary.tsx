@@ -3,6 +3,11 @@ import zh from "@/locales/zh";
 
 interface Props {
   children: ReactNode;
+  /**
+   * WO-20：导航复位键（传当前路由 pathname）。变化即清除已捕获错误 → 崩页后跳别页自动恢复，
+   * 不再卡在错误页直到手动刷新（此前唯一出路是点"刷新"按钮·切路由不复位）。
+   */
+  resetKey?: string;
 }
 interface State {
   error: Error | null;
@@ -14,6 +19,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
+  }
+
+  componentDidUpdate(prev: Props) {
+    // 导航到别页（resetKey 变）且当前处于错误态 → 复位，渲染新页（WO-20 崩页导航自愈）。
+    if (this.state.error && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
   }
 
   render() {
