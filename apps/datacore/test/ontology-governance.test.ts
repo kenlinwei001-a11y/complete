@@ -68,12 +68,21 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
     const body = J<{ ok: boolean; errors: { message: string }[] }>(blocked);
     expect(body.ok).toBe(false);
     expect(body.errors.some((e) => e.message.includes("未归域"))).toBe(true);
-    // 归域后通过
+    // WO-4：归域门收紧——setDomain 灌非法（非 14 合法业务域）幽灵域 → 400 VALIDATION_ERROR（拒绝 conn_xxx）。
+    const garbage = await t.app.inject({
+      method: "PATCH",
+      url: `/a/v1/modeling/drafts/${id}`,
+      headers: ADMIN,
+      payload: { operations: [{ op: "setDomain", typeKey: "Foo", domain: "not_a_domain" }] },
+    });
+    expect(garbage.statusCode).toBe(400);
+    expect(J<{ error: { code: string } }>(garbage).error.code).toBe("VALIDATION_ERROR");
+    // 归域到 14 合法域之一（product）后通过。
     await t.app.inject({
       method: "PATCH",
       url: `/a/v1/modeling/drafts/${id}`,
       headers: ADMIN,
-      payload: { operations: [{ op: "setDomain", typeKey: "Foo", domain: "anything" }] },
+      payload: { operations: [{ op: "setDomain", typeKey: "Foo", domain: "product" }] },
     });
     const ok = await post(t, `/a/v1/modeling/drafts/${id}/publish`, {});
     expect(J<{ ok: boolean }>(ok).ok).toBe(true);

@@ -8,6 +8,13 @@ import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
 import { invalidState, notFound, validationError } from "./errors.js";
 import { reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
+import { BUSINESS_DOMAIN_KEYS } from "./graphmeta.js";
+
+/** WO-4：归域门——域须取自 14 合法业务域（或 unassigned 暂存）。非成员 → 拒（杜绝 conn_xxx 幽灵域）。 */
+function assertValidDomain(domain: string): void {
+  if (domain === "unassigned" || BUSINESS_DOMAIN_KEYS.includes(domain)) return;
+  throw validationError(`域 '${domain}' 非法：须为 14 合法业务域之一（${BUSINESS_DOMAIN_KEYS.join("/")}）或 unassigned`);
+}
 
 const SUGGEST_SYSTEM = `你是本体建模助手。输入为数据集字段画像、跨数据集外键候选与该租户已发布的本体摘要。
 原则：已有本体能映射的不新建（MAP_TO_EXISTING 优先，existingTypeKey 必填）；每个建议必须可追溯到具体字段（sourceField）；
@@ -213,14 +220,15 @@ export class ModelingService {
       // LLM Provider 增量 §1.3：A3 建模建议走用途绑定（modeling）
       tenantId: ctx.tenantId,
       purpose: "modeling",
-      system: SUGGEST_SYSTEM,
+      // WO-4：domain 必须取自 14 合法业务域（防幽灵域）；connId 不入建模输入（属 provenance/sourceBindings，非 domain）。
+      system: `${SUGGEST_SYSTEM}\ndomain 字段必须取自以下 14 合法业务域之一（按对象语义选最贴切的；拿不准填 unassigned）：${BUSINESS_DOMAIN_KEYS.join("/")}。`,
       messages: [
         {
           role: "user",
           content: JSON.stringify({
+            // WO-4：移除 connId —— 连接器 id 属溯源（sourceBindings），不得灌入 domain 推断。
             datasets: datasets.map((d) => ({
               name: d.dataset.name,
-              connId: d.dataset.sourceConnId,
               fields: d.dataset.fields,
             })),
             fkCandidates,
@@ -230,6 +238,11 @@ export class ModelingService {
       ],
       schema: ModelingSuggestionSchema,
     });
+    // WO-4：LLM 偶返 14 域外的 domain（含误把 connId/数据集名当域）→ coerce 到 unassigned（人工再归真域），
+    // 杜绝幽灵域进草案；R6 确定性（纯校验，无随机）。
+    for (const t of suggestion.objectTypes) {
+      if (t.domain && t.domain !== "unassigned" && !BUSINESS_DOMAIN_KEYS.includes(t.domain)) t.domain = "unassigned";
+    }
     const draft: OntologyDraft = {
       id: newId("draft"),
       tenantId: ctx.tenantId,
@@ -319,8 +332,9 @@ export class ModelingService {
         break;
       }
       case "setDomain": {
-        // 治理增量 §1：人工归域（解除 unassigned 阻断）。
+        // 治理增量 §1：人工归域（解除 unassigned 阻断）。WO-4：归域门约束 14 合法业务域（杜绝 conn_xxx 幽灵域）。
         const t = findType(op.typeKey);
+        assertValidDomain(op.domain);
         t.domain = op.domain;
         break;
       }
@@ -360,6 +374,9 @@ export class ModelingService {
       // 治理增量 §1：归域强制 —— unassigned 阻断发布（必须人工归域）。
       if (!t.domain || t.domain === "unassigned") {
         errors.push(`${t.typeKey}: 未归域（domain=unassigned），发布前必须人工归域`);
+      } else if (!BUSINESS_DOMAIN_KEYS.includes(t.domain)) {
+        // WO-4：归域门收紧——域须为 14 合法业务域成员（防 LLM/手工灌入 conn_xxx 幽灵域）。
+        errors.push(`${t.typeKey}: 域 '${t.domain}' 非法（须为 14 合法业务域之一：${BUSINESS_DOMAIN_KEYS.join("/")}）`);
       }
       for (const p of t.properties) {
         if (p.refToTypeKey && !draftKeys.has(p.refToTypeKey) && !existingKeys.has(p.refToTypeKey)) {
