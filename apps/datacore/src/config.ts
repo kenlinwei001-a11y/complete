@@ -38,6 +38,9 @@ export const ConfigSchema = z.object({
   /** G-12 收口（增量B）：=1 时建非电池行业租户 `logi`（物流仓配·admin/demo1234·opt.* 开·空世界），
    *  用于两行业 R14 真 CP-SAT 演示（FDE 经 provision-world 立世界→facility_location 求最优）。 */
   SEED_OPT_INDUSTRY: z.string().optional(),
+  /** A6 收尾：=1 时建 `a6demo` 租户 + 注册 valueDomain+autoPlant 参考行业模板，
+   *  用于「拟真值落区间 + 越线植入」全服务 HTTP e2e（POST /a/v1/synthetic/jobs 真跑实拍）。 */
+  SEED_A6_DEMO: z.string().optional(),
   /** demo LLM 持久化（M·G-3 收尾）：设了 KIMI_API_KEY 则 SEED_DEMO 时自动配 openai_compatible provider
    *  + 绑定 classifier/agent/comprehend，使 demo 重启不丢 LLM 能力。key 仅从 env 读、AES-GCM 落库、绝不入 git（R5）。 */
   KIMI_API_KEY: z.string().optional(),

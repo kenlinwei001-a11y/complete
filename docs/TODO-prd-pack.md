@@ -192,11 +192,14 @@
   植入越线/近边界) + `autoPlant` 从 BLOCK 规则 `derivePlantFromRule` 反推 + `instantiateGeneric` opt-in 接入
   (护 R6 向后兼容) + `pnpm value-domain:check` 门(test-backed)。测试 a6-value-domains(×7:三形采样落区间+
   R6 字节一致+植入查准+lt 方向+规则反推)。datacore 470 全绿(+7,无字节回归:synthetic/genspec/scale-baseline 通过)。
-  **A6 全服务 e2e ✅（Wave1 尾巴已清）**：注册自定义行业模板(util valueDomain + autoPlant + scenarioSeed)→
-  真 synthetic job → 物化对象 util 落业务区间[0.62,0.95] + autoPlant 越线>0.95 ≥2 行 + **R6 同 seed 重跑字节一致**
-  (a6-value-domains 第 8 测，亲手过真服务合成路)。`pnpm value-domain:check` 即跑此文件含 e2e。回写本体 §2.A/§8(G-5 8f)。
-  **唯一余项(诚实)**：A6.3 电池路收编(让 generateBattery 也用共享机制)——纯内部 consolidation，**generateBattery 未改→
-  电池字节保持(DoD"电池字节不变"已满足)**，收编是可选优化、不影响通用路价值，留作后续。
+  **A6 全服务 e2e ✅（两尾巴已清·真 HTTP socket 实拍）**：① vitest 全栈(a6-value-domains 第 8 测 app.inject)；
+  ② **真服务 live-process e2e**(`SEED_A6_DEMO=1` 起 datacore→curl `POST /a/v1/synthetic/jobs{industry:a6-reference}`
+  →`GET /a/v1/objects?type=Order`)：12 对象 util 落业务区间[0.62,0.95]=10 行 + autoPlant 越线>0.95=2 行 +
+  **R6 同 seed 重跑逐位一致**(run1==run2)。证据 `docs/evidence/A6-tails-fde.md`。回写本体 §2.A/§8(G-5 8f)。
+  **A6.3 电池收编 ✅（字节不变）**：`generateBattery`(util/gwh) + `generateExtended`(carbonFactor/bomUnit/dailyUse/onHand/
+  qty/creditLimit×2/amount/energyPerUnit/gridFactor 共 10 字段)连续值域字段改走**与通用路同一个 `sampleValueDomain`**
+  (显式 uniform spec·band/precision 精确匹配原内联式)→ 电池路与通用路单一值生成入口收编完成。**字节不变**(乘性
+  unitPrice 因浮点次序保留内联)：datacore 770 测全绿(scale-baseline/synthetic/genspec/R6 字节一致 oracle 守)。
 - [x] ✅ **A11 · 连接创建打 `Connection.category` 标签（per-instance 归类，可自定义值）**
   Connection 加可覆盖 category（默认取连接器类型 registry category）+ RawDataset 溯源继承 `sourceCategory` +
   `GET /a/v1/connector-categories`（内置并集 + 本租户已用值，R2 隔离）+ `connection.created` 事件（§4 L8）+

@@ -1,5 +1,15 @@
 import type { ObjectTypeDef, PropertyDef } from "../domain.js";
 import { mulberry32, round } from "../prng.js";
+import { sampleValueDomain } from "./value-domains.js";
+
+/**
+ * A6.3 电池收编：电池扩展路连续值域字段改走共享 `sampleValueDomain`（同通用路单一值生成入口）。
+ * 字节不变：显式 uniform + band=[lo, lo+range] + 同 precision，公式与原内联 `round(lo+rng()*range,p)` 逐位一致。
+ * （乘性字段如 unitPrice=base×factor 因浮点运算次序不同不收编，保留内联以护字节。）
+ */
+function uniformDomain(rng: () => number, lo: number, range: number, precision: number, propKey = ""): number {
+  return sampleValueDomain({ kind: "valueDomain", shape: "uniform", band: [lo, lo + range], precision }, propKey, rng);
+}
 
 /**
  * 20 场景目录 §7 GenSpec 扩展（成熟度 E6b）：为 13 个新求解器确定性生成所需对象数据，
@@ -91,10 +101,10 @@ export function generateExtended(
     name: m.name,
     unitPrice: round(m.base * (0.9 + rng() * 0.2), 2),
     leadTime: 7 + Math.floor(rng() * 21),
-    carbonFactor: round(8 + rng() * 40, 2),
-    bomUnit: round(0.5 + rng() * 2, 3),
-    dailyUse: round(50 + rng() * 200, 1),
-    onHand: round(500 + rng() * 4000, 0),
+    carbonFactor: uniformDomain(rng, 8, 40, 2, "carbonFactor"),
+    bomUnit: uniformDomain(rng, 0.5, 2, 3, "bomUnit"),
+    dailyUse: uniformDomain(rng, 50, 200, 1, "dailyUse"),
+    onHand: uniformDomain(rng, 500, 4000, 0, "onHand"),
     inTransit: round(rng() * 1500, 0),
     // C27 长协执行偏差 / C31 外协质量门：从 matId 确定性派生，各植入一处越线。
     devPct: m.matId === "pos_ncm" ? 0.08 : 0.02,
@@ -111,7 +121,7 @@ export function generateExtended(
       materialBatches.push({
         batchId: `${m.matId}_b${i}`,
         matId: m.matId,
-        qty: round(200 + rng() * 800, 0),
+        qty: uniformDomain(rng, 200, 800, 0, "qty"),
         ageDays: makeDormant ? 95 + Math.floor(rng() * 60) : Math.floor(rng() * 80),
         idleDays: makeDormant ? 95 + Math.floor(rng() * 30) : Math.floor(rng() * 60),
       });
@@ -124,7 +134,7 @@ export function generateExtended(
     ...custNames.map((name, ci) => ({
       custId: `cust_${ci}`, // ascii pk（避免中文名 sanitize 后 id 碰撞）
       custName: name,
-      creditLimit: round(2000 + rng() * 8000, 0),
+      creditLimit: uniformDomain(rng, 2000, 8000, 0, "creditLimit"),
       termDays: 60,
       receivables: round(rng() * 3000, 0),
       wipUnbilled: round(rng() * 2000, 0),
@@ -133,7 +143,7 @@ export function generateExtended(
     ...Array.from({ length: extraCustomers }, (_, k) => ({
       custId: `cust_x${k}`,
       custName: `客户${String(k + 1).padStart(3, "0")}`,
-      creditLimit: round(1000 + rng() * 9000, 0),
+      creditLimit: uniformDomain(rng, 1000, 9000, 0, "creditLimit"),
       termDays: 60,
       receivables: round(rng() * 3000, 0),
       wipUnbilled: round(rng() * 2000, 0),
@@ -148,7 +158,7 @@ export function generateExtended(
       arInvoices.push({
         invoiceId: `arinvoice_${ci}_${i}`, // ascii pk（避免与搜索 token 碰撞）
         custName: c.custName,
-        amount: round(200 + rng() * 1500, 0),
+        amount: uniformDomain(rng, 200, 1500, 0, "amount"),
         overdueDays: c.custName === "商用车集团G" && i === 0 ? 38 : Math.floor(rng() * 20),
       });
     }
@@ -178,8 +188,8 @@ export function generateExtended(
     meterId: `em_${b.baseId}`,
     baseId: b.baseId,
     processKey: "涂布",
-    energyPerUnit: round(1.5 + rng() * 1.5, 3),
-    gridFactor: PROVINCE_GRID[b.baseId] ?? round(0.5 + rng() * 0.3, 2),
+    energyPerUnit: uniformDomain(rng, 1.5, 1.5, 3, "energyPerUnit"),
+    gridFactor: PROVINCE_GRID[b.baseId] ?? uniformDomain(rng, 0.5, 0.3, 2, "gridFactor"),
   }));
 
   // ChangeoverMatrix：型号两两（对角 0，同体系 30–60，跨体系 90–180 —— 用名字简化）

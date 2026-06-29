@@ -127,6 +127,52 @@ export async function seedLogisticsTenant(repos: Repos, features: FeatureService
   await features.mergeTenantOverride(ctx, tenantId, { "opt.solver-pool": true, "opt.whatif": true });
 }
 
+/**
+ * A6 收尾（全服务 e2e·env `SEED_A6_DEMO=1`·dev/demo）：注册一个用 `valueDomain + autoPlant` 的参考行业模板
+ * 到独立租户 `a6demo`（不污染 demo/内置下拉），让「拟真值落业务区间 + 越线植入」能经**真服务 HTTP**
+ * (POST /a/v1/synthetic/jobs)端到端实跑实拍（非仅 vitest app.inject）。模板与 a6-value-domains 单测同构。
+ * 幂等：固定 id 直接 put 覆盖。R6：同 (seed,scale) 字节一致。
+ */
+export async function seedA6ReferenceTemplate(repos: Repos, tenantId = "a6demo"): Promise<void> {
+  const tenant = await repos.tenants.get(tenantId, tenantId);
+  if (!tenant) {
+    await repos.tenants.put({ id: tenantId, tenantId, name: "A6 拟真值域参考（e2e 演示）", industry: "a6-reference" });
+  }
+  await repos.industryTemplates.put({
+    id: `tmpl_a6_${tenantId}`,
+    tenantId,
+    industryKey: "a6-reference",
+    source: "CUSTOM",
+    createdAt: new Date(0).toISOString(),
+    template: {
+      industryKey: "a6-reference",
+      ontology: {
+        objectTypes: [
+          {
+            key: "Order",
+            displayName: "订单",
+            properties: [
+              { propKey: "orderId", dataType: "string", isPrimaryKey: true },
+              { propKey: "util", dataType: "number" },
+            ],
+          },
+        ],
+      },
+      generation: [
+        {
+          typeKey: "Order",
+          count: { S: 12, M: 12, L: 12 },
+          // util 走 A6 拟真值域（业务区间 [0.62,0.95]·normal）；autoPlant 从 BLOCK 规则反推植入越线样本。
+          propGenerators: { orderId: { kind: "pattern", pattern: "O-{seq:3}" }, util: { kind: "valueDomain", domainKey: "util", shape: "normal" } },
+          autoPlant: true,
+        },
+      ],
+      rules: [{ key: "C_UTIL", name: "产能利用率越线", expression: "Order.util > 0.95", severity: "BLOCK" }],
+      scenarioSeed: { views: [], intents: [] },
+    },
+  } as never);
+}
+
 /** Seed tenant "demo" + admin/planner/base_manager(常州) accounts (password demo1234). */
 export async function seedDemo(repos: Repos): Promise<AuthCtx> {
   const tenant = await repos.tenants.get(DEMO_TENANT, DEMO_TENANT);

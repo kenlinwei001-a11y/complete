@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedA6ReferenceTemplate, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +55,15 @@ async function main(): Promise<void> {
       logger.info("SEED_OPT_INDUSTRY=1: seeded non-battery logistics tenant 'logi' (admin/demo1234, opt.* on) for G-12 two-industry demo");
     } catch (e) {
       logger.warn({ err: (e as Error).message }, "SEED_OPT_INDUSTRY=1: seed logistics tenant skipped");
+    }
+  }
+  // A6 收尾（全服务 e2e）：注册 valueDomain+autoPlant 参考行业模板到 a6demo 租户（不污染 demo/内置）。
+  if (config.SEED_A6_DEMO === "1") {
+    try {
+      await seedA6ReferenceTemplate(repos);
+      logger.info("SEED_A6_DEMO=1: seeded a6-reference industry template (tenant a6demo) for A6 value-domain e2e");
+    } catch (e) {
+      logger.warn({ err: (e as Error).message }, "SEED_A6_DEMO=1: seed a6 reference template skipped");
     }
   }
   if (config.SEED_DEMO === "1") {

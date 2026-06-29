@@ -2,7 +2,18 @@ import type { IndustryTemplate } from "@platform/contracts";
 import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
+import { sampleValueDomain } from "./value-domains.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
+
+/**
+ * A6.3 电池收编：电池路连续值域字段（util/gwh 等）改走与通用路同一个 `sampleValueDomain` 共享机制
+ * （单一值生成入口），消除电池独立的 `round(lo+rng()*range,p)` 平行实现。
+ * **字节不变**：显式声明 `shape:"uniform"`（不走值域库默认的 normal）+ band=[lo, lo+range] + 同 precision，
+ * sampleValueDomain 的 uniform 分支公式 `round(lo+rng()*(hi-lo),p)` 与原内联式逐位一致（单次 rng 抽样·R6 baseline 门守）。
+ */
+function uniformDomain(rng: () => number, lo: number, range: number, precision: number, propKey = ""): number {
+  return sampleValueDomain({ kind: "valueDomain", shape: "uniform", band: [lo, lo + range], precision }, propKey, rng);
+}
 
 /** Built-in battery-manufacturing template (QOS-PRD §7.6 + addendum §S1/§A8 semantics). */
 
@@ -1268,9 +1279,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     position: b.kind, // GeoMap 按 position 着色（动力/储能）
     lon: b.lon,
     lat: b.lat,
-    util: round(0.62 + rng() * 0.35, 2),
+    util: uniformDomain(rng, 0.62, 0.35, 2, "util"), // A6.3 收编：原 round(0.62+rng()*0.35,2)，字节一致
     bottleneck: pick(rng, BOTTLENECKS),
-    gwh: round(6 + rng() * 36, 1),
+    gwh: uniformDomain(rng, 6, 36, 1, "gwh"), // A6.3 收编：原 round(6+rng()*36,1)，字节一致
     formationCapDaily: 0, // filled after process generation (shared-resource cap)
     agingCapDaily: 0,
   }));
