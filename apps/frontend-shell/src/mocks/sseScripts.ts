@@ -26,6 +26,29 @@ const step = (stepId: string, type: string, durationMs: number): ScriptFrame[] =
 export function scriptForQuery(taskId: string, query: string, context: SessionContext): TaskScriptPlan {
   const accepted: ScriptFrame = { event: "task.accepted", data: { taskId } };
 
+  // WO-Q1 增量3 演示流：哨兵问句「逐字流」走 Path B 终答增量流式——逐帧 reasoning/text answer.delta
+  // （拉开间隔 + 延迟 answer.final），用于真浏览器实拍逐字流预览（不影响既有测试·其问句不含此词）。
+  if (query.includes("逐字流")) {
+    return {
+      path: "AGENT",
+      intentKey: null,
+      finalAnswer: ANSWER_B1,
+      segments: [
+        [
+          accepted,
+          { event: "routing.completed", data: { path: "AGENT", classification: { intentKey: null, confidence: 0 } }, delayMs: 200 },
+          { event: "answer.delta", data: { reasoning: "先梳理供应链各环节风险敞口…" }, delayMs: 400 },
+          { event: "answer.delta", data: { reasoning: "再对照库存与产能数据…" }, delayMs: 400 },
+          { event: "answer.delta", data: { text: "供应链韧性评估：\n" }, delayMs: 500 },
+          { event: "answer.delta", data: { text: "① 多源采购降低单点风险；" }, delayMs: 500 },
+          { event: "answer.delta", data: { text: "② 关键物料安全库存；" }, delayMs: 500 },
+          { event: "answer.delta", data: { text: "③ 本地化产能布局。" }, delayMs: 500 },
+          { event: "answer.final", data: ANSWER_B1 as unknown as Record<string, unknown>, delayMs: 1800 },
+        ],
+      ],
+    };
+  }
+
   // 断线重放流（F6 / D1）
   if (query.includes("断线")) {
     return {

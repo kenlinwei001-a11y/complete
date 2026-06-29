@@ -38,5 +38,16 @@ path=AGENT  trustLevel=AGENT_EXPLORATORY  len=3889 字
 - 即审核方 inc2 verdict 实测的「1944 reasoning 帧 → text=0 → 未能产出回答」场景，现**收敛到真实、可用、含真数据的答案**（守"绿测试≠能用"：不再空答）。
 - 诚实边界：终答是「未结构化的推理」而非「结构化 final_answer」——理想是模型直接产 final_answer（强制工具集已尽力逼它）；但即便模型不配合，用户也拿到真分析而非死答。这是收敛的地板保证。
 
+## ① 真浏览器实拍（T3·Chromium·非 jsdom）
+
+`scripts/fde-wo-q1-streaming-shot.mjs`：起 vite(VITE_MOCK=1) → 登录 → /v/dash 开查询 Dock →
+发哨兵问句「逐字流演示…」（mock SSE 拉开 answer.delta 间隔 + 延迟 answer.final）→ 等
+`task-streaming-*` 预览出现 → 截图 + 断言累加文本。
+- **实拍结果**（`docs/evidence/WO-Q1-inc3-streaming.png`）：对话坞内「探索模式」徽章 + 旋转中 +
+  「▶ 思考中…」可折叠推理 + 逐帧累加答案「供应链韧性评估：① 多源采购降低单点风险；② 关键物料
+  安全库存；③ 本地化产能布局。▍」（**实时光标**），终答 AnswerCard 到达前可见。✓
+- 即增量3(a) 用户可见逐字流，**真 Chromium 像素级坐实**（补 jsdom render 测的最后一环）。
+- 哨兵 SSE 分支仅「逐字流」问句触发（既有测试问句不含此词·零影响；f2/f6/f39 SSE 消费测全绿）。
+
 ## 本体回写
 - §2 Task/Query（WO-Q1）：增量3 两项（展示层逐字流 + §3③ 收敛）记为已落，「余」缩为 answer.delta 批量化生产优化。
