@@ -100,7 +100,8 @@ export const TYPE_SOURCE_SYSTEM: Record<string, string> = {
   DataSourceHealth: "qms", QualityLot: "qms",
   // ems：能耗/碳
   EnergyMeter: "ems", CarbonFactor: "ems",
-  // lims（实验室）：当前 demo 无物化对象类型 → 诚实留空（监控中·无物化对象），不伪造。
+  // lims（实验室）：电芯实验室检测（WO-7 9/9·正门合成的真实 LIMS 源对象）
+  LabTest: "lims",
 };
 
 /** 映射表 kind="agent" 行（静态种子清单；AgentCore 侧注册表为运行态来源） */

@@ -694,6 +694,7 @@ export class SyntheticService {
     const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] }, scale);
     await putAll("Material", ext.materials, "matId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
+    await putAll("LabTest", ext.labTests, "testId");
     await putAll("Customer", ext.customers, "custId");
     await putAll("ARInvoice", ext.arInvoices, "invoiceId");
     await putAll("Certification", ext.certifications, "certId");
@@ -798,6 +799,8 @@ export class SyntheticService {
     }
     // supply（批次）: Material → MaterialBatch（batch.matId）
     for (const bt of ext.materialBatches) await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
+    // quality（LIMS 实验室检测·WO-7 9/9）: MaterialBatch → LabTest（test.batchId）
+    for (const lt of ext.labTests) await putLink(`lnk_blt_${P(lt).testId}`, "batch_lab_test", oid("MaterialBatch", P(lt).batchId), oid("LabTest", P(lt).testId));
     // supply（采购）: Material → PurchaseOrder（po.matId）
     for (const po of ext.purchaseOrders) await putLink(`lnk_mpo_${P(po).poId}`, "material_supplied_by_po", oid("Material", P(po).matId), oid("PurchaseOrder", P(po).poId));
     // supply（碳因子）: Material → CarbonFactor（kind=material 时 key=matId）

@@ -9,8 +9,8 @@ import { TYPE_SOURCE_SYSTEM } from "../src/graphmeta.js";
  * 系统恒不匹配 → 前端 join 逐源对象数恒 0。修：服务端 buildDataHealth 按权威表
  * TYPE_SOURCE_SYSTEM（对象类型→真实来源系统）归因 + 真实实例数，下发 sources[].members/objectCount。
  *
- * 红线：禁止伪造分布——只计真实物化类型的真实实例数；LIMS 当前 demo 无物化对象类型 → 诚实空
- * （监控中·无物化对象），不虚增。
+ * 红线：禁止伪造分布——只计真实物化类型的真实实例数。WO-7 9/9：经正门确定性合成新增真实 LIMS
+ * 源对象类型 LabTest（电芯实验室检测，FK batch_lab_test→MaterialBatch），9 业务源全部真实非0。
  */
 const fetchHealth = (t: TestApp) =>
   t.app
@@ -20,14 +20,14 @@ const fetchHealth = (t: TestApp) =>
     });
 
 describe("WO-7 来源系统逐源真对象数归因", () => {
-  it("8 个有物化类型的业务源各 join 非0真对象数；归因键与 TYPE_SOURCE_SYSTEM 一致", async () => {
+  it("9 个业务源各 join 非0真对象数（含 LIMS·LabTest）；归因键与 TYPE_SOURCE_SYSTEM 一致", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const { sources } = await fetchHealth(t);
     const bySrc = new Map(sources.map((s) => [s.connId, s]));
 
-    // demo 现有 34 类型归因下，这 8 源各应有 ≥1 真实物化类型与非0实例数。
-    for (const sid of ["iot-scada", "mes", "erp", "srm", "plm", "wms", "qms", "ems"]) {
+    // WO-7 9/9：含 LIMS 在内的 9 业务源各应有 ≥1 真实物化类型与非0实例数。
+    for (const sid of ["iot-scada", "mes", "erp", "srm", "plm", "wms", "qms", "ems", "lims"]) {
       const s = bySrc.get(sid);
       expect(s, `源 ${sid} 应在 data-health`).toBeTruthy();
       expect((s!.objectCount ?? 0) > 0, `源 ${sid} objectCount 应>0（非0真对象）`).toBe(true);
@@ -40,14 +40,14 @@ describe("WO-7 来源系统逐源真对象数归因", () => {
     }
   });
 
-  it("LIMS 无物化对象类型 → 诚实空(objectCount 0/无 members)，不伪造", async () => {
+  it("LIMS 由 LabTest 真实物化（WO-7 9/9·正门合成，非伪造）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const { sources } = await fetchHealth(t);
     const lims = sources.find((s) => s.connId === "lims");
-    expect(lims, "lims 源仍在监控列表").toBeTruthy();
-    expect(lims!.objectCount ?? 0).toBe(0);
-    expect((lims!.members ?? []).length).toBe(0);
+    expect(lims, "lims 源在监控列表").toBeTruthy();
+    expect((lims!.objectCount ?? 0)).toBeGreaterThan(0);
+    expect((lims!.members ?? []).some((m) => m.typeKey === "LabTest" && m.count > 0)).toBe(true);
   });
 
   it("逐源对象数 = 该源归因类型真实实例数之和（无虚增）", async () => {

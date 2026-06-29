@@ -49,8 +49,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["PurchaseOrder", "Shipment"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
-      key: "quality_compliance", displayName: "质量与认证", description: "数据源健康度与产品认证（合规/碳护照前置）。",
-      typeKeys: ["DataSourceHealth", "Certification"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      key: "quality_compliance", displayName: "质量与认证", description: "数据源健康度、产品认证与实验室检测（合规/碳护照前置）。",
+      typeKeys: ["DataSourceHealth", "Certification", "LabTest"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）与碳因子。",

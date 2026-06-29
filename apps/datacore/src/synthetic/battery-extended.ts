@@ -39,6 +39,9 @@ export function extendedObjectTypes(): TypeDef[] {
   return [
     def("Material", "物料", "material", [p("matId", "string", true), p("name", "string"), p("unitPrice"), p("leadTime"), p("carbonFactor"), p("bomUnit"), p("dailyUse"), p("onHand"), p("inTransit"), p("devPct"), p("outsourceYield")]),
     def("MaterialBatch", "物料批次", "material", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
+    // WO-7 9/9：电芯实验室检测（LIMS 源·domain=quality）——每物料批次的实验室抽检（容量保持率/直流内阻/
+    // 循环寿命轮转），samplingLagH 体现实验室数据采样时延（LIMS 新鲜度）。FK：batchId→MaterialBatch。
+    def("LabTest", "电芯实验室检测", "quality", [p("testId", "string", true), p("batchId", "string"), p("testItem", "string"), p("result"), p("passed", "boolean"), p("samplingLagH")]),
     def("Customer", "客户", "sales", [p("custId", "string", true), p("custName", "string"), p("creditLimit"), p("termDays"), p("receivables"), p("wipUnbilled"), p("maxOverdueDays")]),
     def("ARInvoice", "应收发票", "sales", [p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays")]),
     def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), p("certHours"), p("gapContribution")]),
@@ -81,6 +84,7 @@ export interface ExtendedData {
   carbonFactors: Record<string, unknown>[];
   financeAccounts: Record<string, unknown>[];
   financeMetrics: Record<string, unknown>[];
+  labTests: Record<string, unknown>[];
 }
 
 /** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。scale 控工业级数据量（XL）。 */
@@ -245,5 +249,23 @@ export function generateExtended(
   const FIN = { conservative: { cashCushion: 72, capex: 3, irr: 9.5, netMargin: 12.5 }, baseline: { cashCushion: 58, capex: 8, irr: 14.2, netMargin: 14.0 }, aggressive: { cashCushion: 42, capex: 27, irr: 18.6, netMargin: 13.2 } };
   const financeMetrics = Object.entries(FIN).map(([k, v]) => ({ metricId: `fm_${k}`, scenarioKey: k, cashCushion: v.cashCushion, irr: v.irr, capexSpent: v.capex, netMargin: v.netMargin }));
 
-  return { materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics };
+  // LabTest（LIMS 实验室检测·WO-7 9/9）：每物料批次一条电芯抽检（检测项轮转），植入 2 条不合格。
+  // 置于生成末尾消费 rng → 不移位既有对象（R6 字节不变·frozen 超集只增不改）。FK：batchId→MaterialBatch。
+  const LAB_ITEMS = ["容量保持率", "直流内阻", "循环寿命"];
+  const labTests: Record<string, unknown>[] = [];
+  let labFail = 0;
+  materialBatches.forEach((b, i) => {
+    const fail = labFail < 2 && i % 11 === 3; // 确定性植入 2 条不合格
+    if (fail) labFail++;
+    labTests.push({
+      testId: `lab_${String((b as Record<string, unknown>).batchId)}`,
+      batchId: (b as Record<string, unknown>).batchId,
+      testItem: LAB_ITEMS[i % LAB_ITEMS.length]!,
+      result: uniformDomain(rng, fail ? 60 : 88, fail ? 8 : 12, 2, "result"),
+      passed: !fail,
+      samplingLagH: uniformDomain(rng, 1, 5, 1, "samplingLagH"),
+    });
+  });
+
+  return { materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, labTests };
 }

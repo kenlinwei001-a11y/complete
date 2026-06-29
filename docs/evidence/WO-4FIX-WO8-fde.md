@@ -90,31 +90,29 @@ ERP 销售财务计划 / SRM 供应商 / PLM 型号认证 / WMS 仓储物料 / Q
 `sources[].members/objectCount`（契约 additive）；前端改读服务端归因（弃失效的 graph 连接）。
 此归因是真实业务建模而非伪造数字；**对象 provenance 管道仍诚实=单一合成连接器**（两概念分离）。
 
-### FDE 真跑（真 HTTP GET /a/v1/data-health，修后）
+### FDE 真跑（真 HTTP GET /a/v1/data-health，**操作方批 A 后达 9/9**）
 ```
 ems         26 对象 / 2 类型  [CarbonFactor:14, EnergyMeter:12]
 erp        111 对象 / 13 类型 [ARInvoice:24, AnnualScenario:3, CapexProject:3, Customer:8,
                               DemandSegment:3, FinanceAccount:12, FinanceMetric:3, FinancePlan:3,
                               Order:24, PlanTarget:17, ScenarioTrigger:4, Segment:3, SopVersionRow:4]
 iot-scada   72 对象 / 1 类型  [Equipment:72]
-lims         0 对象 / 0 类型  [监控中·无物化对象]   ← 诚实空，不伪造
+lims        24 对象 / 1 类型  [LabTest:24]   ← WO-7 9/9 正门合成的真实 LIMS 源对象
 mes         96 对象 / 4 类型  [Base:12, Line:12, MaintPlan:12, Process:60]
 plm         54 对象 / 3 类型  [Certification:18, ChangeoverMatrix:30, Model:6]
 qms          9 对象 / 1 类型  [DataSourceHealth:9]
 srm         42 对象 / 2 类型  [PurchaseOrder:30, Shipment:12]
 wms         35 对象 / 3 类型  [Material:8, MaterialBalance:3, MaterialBatch:24]
-非0 业务源: 8/9（修前 0/9）
+非0 业务源: 9/9（修前 0/9 → 中途诚实 8/9 → 操作方批 A 后 9/9）
 ```
-集成门：`test/wo7-source-attribution.test.ts`（真 endpoint·3 用例）——8 源非0+归因键一致、
-LIMS 诚实空、objectCount=成员实例和（无虚增）。
+集成门：`test/wo7-source-attribution.test.ts`（真 endpoint·3 用例）——9 源非0+归因键一致、
+LIMS 由 LabTest 真物化、objectCount=成员实例和（无虚增）。
 
-### 距北极星 / 诚实标注（FDE 红线）
-- 📏 FDE 字面要求"9 源各非0"。当前诚实只达 **8/9**：**LIMS(实验室) demo 无任何物化对象类型**，
-  强行塞对象=伪造分布（违反 WO-7 红线"禁止伪造"）。
-- 🔭 **达 9/9 的根因解（待操作方拍板·避免擅自扩 demo 数据模型）**：给 demo 走正门确定性合成
-  新增一个真实属于 LIMS 的对象类型（如 电芯实验室检测 `LabTest`：批次/测试项/结果/采样时延），
-  并入 `TYPE_SOURCE_SYSTEM[LabTest]="lims"`（归因表已就位，加一行即生效）。届时 9/9 真实非0。
-  > 我未擅自新增该类型——它会把 34→35 类型、动多处"34"断言与基线，属扩 demo 数据模型的产品
-  > 决策，应由操作方批准。归因基础设施已建好，批准后补 LabTest 即闭合 9/9。
-- ⚠️ `AskUserQuestion` 在本会话两次因容器重启/权限流中断不可用，故未能交互确认 LIMS 方向；
-  按 FDE 红线"诚实优先"先交付 8/9 真实归因（共用基础设施，9/9 不返工），并在此显式上呈根因解待批。
+### WO-7 9/9 收口（操作方选 A：加真实 LIMS 对象类型 LabTest）
+- 新增对象类型 `LabTest`（电芯实验室检测·domain=quality）经**正门确定性合成**：每物料批次一条抽检
+  （容量保持率/直流内阻/循环寿命轮转 + 2 条不合格戏剧点 + samplingLagH 体现 LIMS 采样时延），
+  FK 链 `batch_lab_test`(MaterialBatch→LabTest)；`TYPE_SOURCE_SYSTEM[LabTest]="lims"`。
+- **R6 字节不变**：LabTest 生成置于 `generateExtended` rng 流末尾 → 不移位既有对象；frozen 超集只增不改
+  （旧对象逐字节一致）。计数上界更新：类型 34→35、demo 对象 469→493（S 档 +24 LabTest=8 料×3 批）。
+- 真跑：9/9 全部真实非0（无伪造）；datacore 全测绿（含 demo-chain-provenance 35/493、wo7 9/9、冒烟门 ≥35）。
+- 诚实标注：LabTest 是**正门确定性合成数据**（R6 可复现），非真实采集——与 demo 全量同口径（合成≠真实接入）。

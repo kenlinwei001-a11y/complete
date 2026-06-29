@@ -395,7 +395,7 @@ describe("回归门：demo 合成对象类型归域均为 14 合法业务域（c
   // materialize）。seedBattery/helpers 走 A 路(chainMode=false)绕开发布门——故此前 WO-4 归域门收紧只在
   // 真 SEED_DEMO 启动时崩、单测全绿漏过。此用例直呼 synthetic.runJob({viaModelingChain:true}) 复刻真启动，
   // 任何归域/字段全建模门漂移都会在此 throw，不再靠"真起服务"才暴露。
-  it("SEED_DEMO 真路径冒烟：synthetic.runJob(viaModelingChain:true) 不抛 + 34 类型经真建模链物化", async () => {
+  it("SEED_DEMO 真路径冒烟：synthetic.runJob(viaModelingChain:true) 不抛 + 35 类型经真建模链物化", async () => {
     const t = await makeApp();
     const job = await t.services.synthetic.runJob(t.adminCtx, {
       industry: "battery-manufacturing",
@@ -405,7 +405,7 @@ describe("回归门：demo 合成对象类型归域均为 14 合法业务域（c
     });
     expect(job.status).toBe("SUCCEEDED");
     const types = await t.repos.ontologyTypes.list(t.adminCtx.tenantId);
-    expect(types.length).toBeGreaterThanOrEqual(34);
+    expect(types.length).toBeGreaterThanOrEqual(35);
     // 发布门前置不变量：物化类型无一落 unassigned/非法域（否则 publishDraft 已先抛）。
     const bad = types.filter((x) => !BUSINESS_DOMAIN_KEYS.includes(x.domain));
     expect(bad.map((x) => `${x.key}:${x.domain}`)).toEqual([]);
