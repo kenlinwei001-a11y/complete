@@ -25,6 +25,7 @@ const KNOWN_EVENTS = [
   "clarification.required",
   "step.started",
   "step.completed",
+  "answer.delta",
   "answer.final",
   "action_draft.created",
   "task.failed",

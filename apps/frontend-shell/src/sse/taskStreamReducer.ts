@@ -9,6 +9,7 @@ export interface StreamEvent {
     | "clarification.required"
     | "step.started"
     | "step.completed"
+    | "answer.delta"
     | "answer.final"
     | "action_draft.created"
     | "task.failed"
@@ -47,6 +48,10 @@ export interface TaskStreamState {
   seenIds: Record<string, true>;
   lastEventId: string | null;
   routing?: { path: "WORKFLOW" | "AGENT"; intentKey?: string; confidence?: number };
+  /** WO-Q1 增量2：终答增量流式累计——agent 逐 token 回吐的答案/前情文本（answer.final 前的实时预览·非静默）。 */
+  streamingText?: string;
+  /** WO-Q1 增量2：推理模型思考增量累计（Kimi reasoning_content·实时"思考中"可见）。 */
+  reasoningText?: string;
   answer?: Answer;
   clarification?: ClarificationPayload;
   actionDraft?: { draftId: string; actionType: string };
@@ -100,6 +105,14 @@ export function taskStreamReducer(state: TaskStreamState, action: StreamAction):
         case "step.completed":
           next.status = "streaming";
           break;
+        case "answer.delta": {
+          // WO-Q1 增量2：累计增量文本（终答实时预览·非静默）；reasoning 单独累计（思考态）。
+          const d = frame.data as { text?: string; reasoning?: string };
+          if (typeof d.text === "string") next.streamingText = (next.streamingText ?? "") + d.text;
+          if (typeof d.reasoning === "string") next.reasoningText = (next.reasoningText ?? "") + d.reasoning;
+          next.status = "streaming";
+          break;
+        }
         case "answer.final":
           next.answer = frame.data as unknown as Answer;
           next.status = "completed";

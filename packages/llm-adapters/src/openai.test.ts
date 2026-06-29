@@ -21,6 +21,69 @@ function stubClient(contents: (string | null)[]) {
 
 const VALID = JSON.stringify({ candidates: [{ intentKey: "affected_orders", confidence: 0.9 }], outOfCatalog: false, extractedSlots: {} });
 
+/** WO-Q1 增量2：流式 chat 端口桩——create({stream:true}) 返异步迭代器逐 chunk 吐 delta。 */
+function streamStubClient(chunks: Record<string, unknown>[]) {
+  const calls: { stream?: boolean } = {};
+  const client = {
+    chat: {
+      completions: {
+        create: async (params: Record<string, unknown>) => {
+          calls.stream = params.stream === true;
+          async function* gen() { for (const c of chunks) yield c; }
+          return gen();
+        },
+      },
+    },
+  };
+  return { client, calls };
+}
+
+describe("WO-Q1 增量2 · OpenAI 适配器 agent 终答增量流式", () => {
+  it("onDelta 逐 token 回吐 content + Kimi reasoning_content；累计=content；tool_calls 跨 chunk 重组", async () => {
+    const chunks = [
+      { choices: [{ delta: { reasoning_content: "想一" } }] },
+      { choices: [{ delta: { reasoning_content: "想二" } }] },
+      { choices: [{ delta: { content: "答案" } }] },
+      { choices: [{ delta: { content: "片段" } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: "tc1", function: { name: "final_answer", arguments: '{"a":' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: "1}" } }] }, finish_reason: "tool_calls" }] },
+      { usage: { prompt_tokens: 5, completion_tokens: 9 } },
+    ];
+    const { client, calls } = streamStubClient(chunks);
+    const a = new OpenAICompatAdapter({ client: client as never });
+    const textDeltas: string[] = [];
+    const reasoningDeltas: string[] = [];
+    const resp = await a.agent({
+      model: "kimi-k2", system: "s", tools: [], messages: [{ role: "user", content: "q" }],
+      onDelta: (c) => { if (c.text) textDeltas.push(c.text); if (c.reasoning) reasoningDeltas.push(c.reasoning); },
+    });
+    expect(calls.stream).toBe(true); // 真走 stream:true
+    expect(textDeltas).toEqual(["答案", "片段"]); // 逐 token 回吐
+    expect(reasoningDeltas).toEqual(["想一", "想二"]); // reasoning_content 不再丢
+    expect(resp.reasoningText).toBe("想一想二");
+    const text = resp.content.find((b) => b.type === "text");
+    expect(text && text.type === "text" && text.text).toBe("答案片段");
+    const tool = resp.content.find((b) => b.type === "tool_use");
+    expect(tool && tool.type === "tool_use" && tool.name).toBe("final_answer");
+    expect(tool && tool.type === "tool_use" && (tool.input as { a: number }).a).toBe(1); // 跨 chunk arguments 重组解析
+    expect(resp.stopReason).toBe("tool_use");
+    expect(resp.usage).toEqual({ inputTokens: 5, outputTokens: 9 });
+  });
+
+  it("无 onDelta → 非流式（不传 stream:true，向后兼容）", async () => {
+    const { client, calls } = streamStubClient([]);
+    // 复用非流式桩：create 返单次补全
+    (client.chat.completions as { create: unknown }).create = async (p: Record<string, unknown>) => {
+      calls.stream = p.stream === true;
+      return { choices: [{ message: { content: "x" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } };
+    };
+    const a = new OpenAICompatAdapter({ client: client as never });
+    const resp = await a.agent({ model: "m", system: "s", tools: [], messages: [{ role: "user", content: "q" }] });
+    expect(calls.stream).toBe(false);
+    expect(resp.content.find((b) => b.type === "text")).toBeTruthy();
+  });
+});
+
 describe("OpenAI 适配器 · classify 重试（思维型模型偶发不可解析 → 重试即稳）", () => {
   it("首次返回空 → 重试 → 第二次有效 → 成功", async () => {
     const { client, calls } = stubClient([null, VALID]);

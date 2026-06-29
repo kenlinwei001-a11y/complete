@@ -58,6 +58,12 @@ export interface LlmAgentRequest {
    * 仅 Anthropic adapter（capability 开启时）下发；其它 adapter 忽略。
    */
   contextEdits?: { type: string }[];
+  /**
+   * WO-Q1 增量2：终答增量流式回调。adapter 支持时（openai-compat·Kimi）以 `stream:true` 逐 token
+   * 回吐——`text` = 助手内容增量、`reasoning` = 推理模型思考增量（Kimi `reasoning_content`，此前被丢弃）。
+   * 未提供则保持非流式（mock/其它 adapter 忽略，向后兼容）。语义层（预算/工具闸/final_answer）不变。
+   */
+  onDelta?: (chunk: { text?: string; reasoning?: string }) => void;
 }
 
 export interface LlmAgentResponse {
@@ -65,6 +71,8 @@ export interface LlmAgentResponse {
   stopReason: string; // "tool_use" | "end_turn" | ...
   usage: { inputTokens: number; outputTokens: number };
   raw?: unknown;
+  /** WO-Q1 增量2：推理模型思考全文（Kimi reasoning_content 累计；非推理模型/非流式为空）。 */
+  reasoningText?: string;
 }
 
 /** Agent 运行时增量 §1.1：provider 能力声明（token 预算器/服务端 compaction）。 */

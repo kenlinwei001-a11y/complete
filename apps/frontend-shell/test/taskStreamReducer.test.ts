@@ -44,6 +44,17 @@ describe("taskStreamReducer", () => {
     expect(s.clarification).toBeUndefined();
   });
 
+  it("WO-Q1 增量2: answer.delta 增量累计 streamingText/reasoningText（终答实时预览·非静默）", () => {
+    let s = initialStreamState;
+    s = taskStreamReducer(s, { type: "event", frame: frame("1", "answer.delta", { reasoning: "想" }) });
+    s = taskStreamReducer(s, { type: "event", frame: frame("2", "answer.delta", { reasoning: "一下" }) });
+    s = taskStreamReducer(s, { type: "event", frame: frame("3", "answer.delta", { text: "答" }) });
+    s = taskStreamReducer(s, { type: "event", frame: frame("4", "answer.delta", { text: "案" }) });
+    expect(s.status).toBe("streaming");
+    expect(s.reasoningText).toBe("想一下");
+    expect(s.streamingText).toBe("答案");
+  });
+
   it("失败/取消是终态", () => {
     let s = initialStreamState;
     s = taskStreamReducer(s, { type: "event", frame: frame("1", "task.failed", { code: "X", message: "boom", stepId: "s2" }) });

@@ -453,6 +453,10 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
         maxTokens: 16000,
         tenantId: opts.tenantId,
         ...(contextEdits ? { contextEdits } : {}),
+        // WO-Q1 增量2：终答增量流式——adapter 支持(openai-compat·Kimi)时逐 token 经 SSE answer.delta
+        // 实时回吐（text=答案/前情增量、reasoning=推理思考增量）。Path A 工作流不走本循环故不受影响；
+        // mock/不支持流式的 adapter 忽略 onDelta（无 answer.delta·answer.final 照常）。fire-and-forget 不阻塞循环。
+        onDelta: (c) => { void opts.emit("answer.delta", c); },
       });
     } catch (err) {
       // 第 3 刀（model_context_window_exceeded 形态）：折叠所有可折叠轮 + 注入收尾提醒后重试一次

@@ -210,17 +210,25 @@ export class OpenAiLlmClient implements FullLlmClient {
       { role: "system", content: req.system },
       ...req.messages.flatMap((m) => toOpenAiMessages(m)),
     ];
+    const tools = req.tools.map((t) => ({
+      type: "function" as const,
+      function: { name: t.name, description: t.description, parameters: t.inputSchema },
+    }));
+    // WO-Q1 增量2：终答增量流式——调用方给了 onDelta 即走 stream:true 逐 token 回吐（content + Kimi
+    // reasoning_content），否则保持非流式（mock/无回调向后兼容）。
+    if (req.onDelta) return this.agentStreaming(req, messages, tools);
     const resp = await this.client.chat.completions.create({
       model: req.model,
       max_tokens: req.maxTokens ?? 16000,
-      tools: req.tools.map((t) => ({
-        type: "function",
-        function: { name: t.name, description: t.description, parameters: t.inputSchema },
-      })),
+      tools,
       messages,
     });
     this.trackUsage(req.model, resp.usage);
+    return this.responseFromCompletion(resp);
+  }
 
+  /** 单次补全 → LlmAgentResponse（非流式路径 + 流式回退共用；raw=助手消息原样供 tool_calls 往返）。 */
+  private responseFromCompletion(resp: OpenAiChatCompletion): LlmAgentResponse {
     const choice = resp.choices[0];
     const msg = choice?.message;
     const content: LlmContentBlock[] = [];
@@ -246,6 +254,89 @@ export class OpenAiLlmClient implements FullLlmClient {
       },
       // assistant message echoed verbatim on the next turn (tool_calls round-trip)
       raw: msg,
+    };
+  }
+
+  /**
+   * WO-Q1 增量2：流式 agent —— `stream:true` 逐 chunk 累计 content/reasoning_content/tool_calls，
+   * 每段经 `onDelta` 实时回吐（终答增量流式·Kimi 推理思考不再丢）。语义与非流式 agent() 等价：
+   * 同样产出 content 块（text+tool_use）、stopReason、usage；raw 重建为助手消息（tool_calls 回合往返兼容）。
+   */
+  private async agentStreaming(
+    req: LlmAgentRequest,
+    messages: OpenAiChatMessage[],
+    tools: { type: "function"; function: { name: string; description: string; parameters: Record<string, unknown> } }[],
+  ): Promise<LlmAgentResponse> {
+    // 结构化端口 create() 类型固定返单次补全；stream:true 运行时返异步迭代器 → 经 unknown 转型。
+    const result = (await this.client.chat.completions.create({
+      model: req.model,
+      max_tokens: req.maxTokens ?? 16000,
+      tools,
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
+    })) as unknown;
+    // 兜底：桩/不支持流式的兼容网关返单次补全（非异步迭代器）→ 退回单次处理（不崩·不重复调用·不触发 onDelta）。
+    if (!result || typeof (result as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== "function") {
+      const resp = result as OpenAiChatCompletion;
+      this.trackUsage(req.model, resp?.usage);
+      return this.responseFromCompletion(resp);
+    }
+    const stream = result as AsyncIterable<Record<string, unknown>>;
+    let contentText = "";
+    let reasoningText = "";
+    let finishReason: string | null = null;
+    let usage: OpenAiChatCompletion["usage"];
+    const toolAcc = new Map<number, { id: string; name: string; args: string }>();
+    for await (const chunk of stream) {
+      const c = chunk as { usage?: typeof usage; choices?: { delta?: Record<string, unknown>; finish_reason?: string | null }[] };
+      if (c.usage) usage = c.usage;
+      const choice = c.choices?.[0];
+      if (!choice) continue;
+      const delta = (choice.delta ?? {}) as { content?: string | null; reasoning_content?: string | null; tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[] };
+      if (typeof delta.content === "string" && delta.content.length > 0) {
+        contentText += delta.content;
+        req.onDelta?.({ text: delta.content });
+      }
+      // Kimi/Moonshot 推理模型非标字段：reasoning_content（此前被丢弃 → WO-Q1 根因之一）。
+      if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) {
+        reasoningText += delta.reasoning_content;
+        req.onDelta?.({ reasoning: delta.reasoning_content });
+      }
+      for (const tc of delta.tool_calls ?? []) {
+        const idx = tc.index ?? 0;
+        const cur = toolAcc.get(idx) ?? { id: "", name: "", args: "" };
+        if (tc.id) cur.id = tc.id;
+        if (tc.function?.name) cur.name = tc.function.name;
+        if (tc.function?.arguments) cur.args += tc.function.arguments;
+        toolAcc.set(idx, cur);
+      }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+    }
+    this.trackUsage(req.model, usage);
+    const ordered = [...toolAcc.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
+    const content: LlmContentBlock[] = [];
+    if (contentText.length > 0) content.push({ type: "text", text: contentText });
+    for (const tc of ordered) {
+      let input: unknown;
+      try { input = tc.args ? JSON.parse(tc.args) : {}; } catch { input = {}; }
+      content.push({ type: "tool_use", id: tc.id, name: tc.name, input });
+    }
+    const hasToolUse = ordered.length > 0;
+    // raw = 重建助手消息（toOpenAiMessages 对 role:"assistant" 的 raw 原样回传 → tool_calls 往返兼容）。
+    const raw: OpenAiChatMessage = {
+      role: "assistant",
+      content: contentText.length > 0 ? contentText : null,
+      ...(hasToolUse
+        ? { tool_calls: ordered.map((tc) => ({ id: tc.id, type: "function" as const, function: { name: tc.name, arguments: tc.args } })) }
+        : {}),
+    };
+    return {
+      content,
+      stopReason: hasToolUse || finishReason === "tool_calls" ? "tool_use" : "end_turn",
+      usage: { inputTokens: usage?.prompt_tokens ?? 0, outputTokens: usage?.completion_tokens ?? 0 },
+      raw,
+      ...(reasoningText.length > 0 ? { reasoningText } : {}),
     };
   }
 
