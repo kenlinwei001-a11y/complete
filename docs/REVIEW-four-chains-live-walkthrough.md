@@ -31,6 +31,13 @@
 - 直测 Kimi 实证：`kimi-k2.6` 可达（401 鉴权 1.8s）、`max_tokens:40` 时 `content:""`（全在 reasoning_content）、`max_tokens:2000` 才 `content:"你好"`（finish stop）。
 **「绿测试≠能用」判定**：单测 mock LLM → 绿且秒回；真推理模型 → 5min 无反馈。**Path A 不依赖 LLM 故不受影响**。详见施工单 WO-Q1。
 
+> ### ⚠️ 复验更正（dev WO-1 走查中途落地·审核方重建复测）
+> 上述 Path B「~5min」实测于**走查时的旧构建（WO-1 前）**。走查途中 dev 推 `f99ac77 WO-1 LLM 用途接缝根治`（含 `seedDemoLlmProvider` `structuredOutput` false→true，提升 classifier 解析率）。审核方**重建 + 重启 datacore/agentcore 后重测同一问句**：
+> - **同问句「设备检修计划加剧交付风险」现路由到 Path A 工作流**（`maintenance_stagger`·VERIFIED_WORKFLOW）·**26.0s 收敛**·富答案（text+kpi+table）——classifier 修复使其命中工作流、不再落慢速 Agent。**原「5min 挂死」对此问句已被 WO-1 间接消解**。
+> - **真·开放式问句**（"综合评估常州运营韧性·设备/物料/订单三方面三建议"）仍**正确落 Path B Agent**·审核方实测：~30s 出首个 step 反馈（分类期静默）→ 多轮真工具(discover/query_objects/resolve_slice，每轮 Kimi 7–30s)→ t+76.5s `BUDGET_EXCEEDED` → **t+142.0s `answer.final` = 「（探索模式未能产出回答）」**（AGENT_EXPLORATORY·优雅降级占位·**无真答案**，与 dev WO-1 自承 122.5s 一致）。**即：开放式综合分析类问句（"评估X并给3条建议"，AI 最高价值场景）当前产不出富答案、只回占位**——这是 Path B 当前真天花板（dev 已记预算/收敛为另议）。
+> - **SSE 确有 step 级流式**（step.started/completed 实时帧·UI「推演过程 DAG」可呈现），但**前 ~30s 分类期零反馈 + 无终答 token 级流式**仍在。
+> **修正后的 WO-Q1**：核心剩余缺口收窄为 **① 分类期 ~30s 静默（首反馈过慢）② 终答无 token 级流式 ③ 开放式深问句预算/收敛调优（dev 已记为另议）**——**非「永久挂死」**。WO-1 已闭合「接缝裸泄漏 SDK 串 + 错误信封」根因（审核方另核 WO-1）。
+
 ---
 
 ## 链路 3 · 沙盘推演 — ✅ 确定性传导真推进
@@ -59,10 +66,10 @@
 ## 结论与待办
 
 - **可用性**：四链路均**真用户操作走通**。QOS Path A、沙盘确定性推演、Action 全审批流、对象浏览钻取——**眼见为实地能用**。
-- **唯一实质缺口**：QOS **Path B 自由问句 ~5min 无流式反馈**（接缝在 LLM 适配器：非流式 + 推理模型 reasoning_content 丢弃）→ **WO-Q1**（待 dev）。
-- **诚实边界（非缺陷，记备查）**：① 数据接入只验了**合成正门**，真连接器接入臂未验；② 沙盘 **L4 认证门控**（世界完整度 35%·G-9 发育闭环范畴），确定性 tick 不受限。
+- **剩余缺口（经 WO-1 复验收窄）**：QOS **Path B 首反馈过慢 + 无终答 token 级流式**（分类期 ~30s 静默；开放式深问句易预算降级）→ **WO-Q1**（待 dev·P1）。**原「~5min 挂死」已被 dev WO-1 的 classifier 修复间接消解**（同问句改走 26s Path A 工作流）。
+- **诚实边界（非缺陷，记备查）**：① 数据接入只验了**合成正门**，真连接器接入臂未验；② 沙盘 **L4 认证门控**（世界完整度 35%·G-9 发育闭环范畴），确定性 tick 不受限；③ 本走查横跨 dev 主动推 WO-1/A6 两提交，**Flow 2 结论已据新构建更正**（FDE：勿据旧码下结论）。
 
-### 施工单 WO-Q1（待 dev·P1）— QOS Path B 流式 + 推理模型适配
-- **判据（FDE 真值）**：真浏览器自由问句，**≤3s 见首 token、增量流式呈现**；推理模型 `reasoning_content` 不丢（至少思考态可见或折叠）；单 Agent 轮设合理超时 + 超时 graceful 降级（非静默挂起）。
-- **方向**：`openai.ts` agent 路径上 `stream:true` + 解析 `delta.content`/`delta.reasoning_content`；或为 agent loop 选非推理快模型；或拆分「分类用快模型 / 终答用推理模型」。**不改 Path A**。
-- **关联本体**：QOS 链路 Path B（AGENT_EXPLORATORY）· LLM 适配器接缝；「绿测试≠能用」复发点。
+### 施工单 WO-Q1（待 dev·P1）— QOS Path B 流式反馈（WO-1 后收窄）
+- **判据（FDE 真值）**：真浏览器自由问句，**分类期 ≤5s 见首个进度帧**（step DAG 或思考态可见，非纯「仍在执行」静默）；终答**增量流式呈现**（token/段级）；开放式深问句**收敛或显式降级有清晰提示**（非长时间无反馈）。
+- **方向**：① classify 阶段前端即时呈现「分析中」step（后端已有 `query.classified` 事件可前置）；② 终答 `stream:true` + 解析 `delta.content`；③（已部分由 WO-1 缓解）classifier 命中工作流即走快 Path A；④ 开放式 Path B 预算/收敛调优（dev WO-1 已记为另议）。**不改 Path A**。
+- **关联本体**：QOS 链路 Path B（AGENT_EXPLORATORY）· LLM 适配器接缝；与 dev WO-1（用途接缝/错误信封·已闭）**互补不重叠**。
