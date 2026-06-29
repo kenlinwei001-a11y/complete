@@ -24,9 +24,20 @@
 
 真起 datacore(:4201,SEED_DEMO=1,KIMI_API_KEY 真 Kimi)，POST /a/v1/rule-docs 3 条中文业务规则（需求波动>50%人工复核 / 利用率>95%产能预警 / 库存周转<7天补货审批）：
 
-> **【运行中·待回填】** 真打 Kimi 抽取（3 段 × ≤3 调用，kimi-k2.6 reasoning 慢，同步 HTTP 持连 ≤600s）。完成回填：candidateCount（判据①≥3）/ 段状态非 FAILED / 候选 expression+severity+sourceQuote（判据②结构合法可进规则库）。
->
-> 注：首次客户端 2min 超时导致同步抽取 handler 被中断（doc 停 PARSED）——非功能缺陷，是同步长抽取 + 客户端短超时；本轮持连 600s 复跑。后续建议：抽取转异步 job（与 sync 一致），避免长 LLM 抽取阻塞 HTTP（另列·非本单）。
+**结果（真 Kimi·HTTP 202 in 314s·doc_2hp0kjz4qnv1bggq）**：
+```
+candidateCount=4   droppedCandidates=0   status=IN_REVIEW（非 FAILED）
+候选（3/4 含可解析 DSL 表达式·sourceQuote 全过子串校验）：
+  • 需求波动阈值              expr=Order.demandDelta > 0.5            sev=BLOCK
+  • 电芯产线产能超载预警阈值  expr=ProductionLine.cellUtilizationRate > 0.95  sev=WARN
+  • 产能超载调度介入要求      expr=(空·叙述性无法形式化·按规约置空)  sev=WARN
+  • 关键物料低库存周转补货审批 expr=Material.inventoryTurnoverDays < 7  sev=BLOCK
+```
+- **判据① 达标**：candidateCount=4 ≥ 3（修前 =0），段状态 IN_REVIEW 非 FAILED「unparseable」。
+- **判据② 达标**：候选结构合法——3 条带规则 DSL 可解析 expression（`Type.field <op> number`）+ severity + sourceQuote 逐字命中（子串校验 0 dropped）→ 可进规则库被引用；第 4 条叙述性内容按规约 expression 置空（诚实，非塞假）。
+- **判据③ R6/诚实**：retry 是确定性纠错策略（回灌错误·非时钟随机）；解析失败仍 null 不塞假候选（单测证）。
+
+**诚实缺口（真跑暴露·已记 §HANDOFF 边界外）**：抽取为**同步 HTTP**，3 段 × Kimi reasoning（含重试）耗 **314s** → 首次客户端 2min 超时把同步 handler 中断（doc 停 PARSED）。本轮持连 600s 才拿到 202。**根因建议（另列单·非本单范围）**：rule-docs 抽取应转**异步 job**（与连接器 sync 一致·前端轮询），否则长 LLM 抽取阻塞 HTTP、易被任何客户端/网关超时中断。本单只解「解析率 0→4」，不改同步/异步架构。
 
 ## 本体回写
 
