@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, BASE_MANAGER, seedBattery, type TestApp } from "./helpers.js";
+import { batteryObjectTypes } from "../src/synthetic/battery.js";
+import { extendedObjectTypes } from "../src/synthetic/battery-extended.js";
+import { BUSINESS_DOMAIN_KEYS } from "../src/graphmeta.js";
 
 const J = <T>(r: { json: () => unknown }) => r.json() as T;
 
@@ -374,5 +377,37 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
     const r = J<{ refs: { refKind: string; key: string }[]; total: number }>(await get(t, "/a/v1/ontology/references?elementKind=link&key=model_producible_at"));
     expect(r.total).toBeGreaterThan(0);
     expect(r.refs.some((x) => x.refKind === "slice" && x.key === "ref_slice")).toBe(true);
+  });
+});
+
+// 回归门（防 WO-4 归域门 vs demo seed 不一致复发：曾 supply/commercial 非 14 canonical → chainMode
+// publishDraft 崩、绿测试漏过）：demo 合成全部对象类型的 domain 必须是 14 合法业务域之一且非 unassigned，
+// 否则真建模链发布门（modeling.publishDraft）会在 SEED_DEMO 启动时抛 VALIDATION_ERROR 致服务起不来。
+describe("回归门：demo 合成对象类型归域均为 14 合法业务域（chainMode 发布门前置）", () => {
+  it("batteryObjectTypes + extendedObjectTypes 每个 domain ∈ BUSINESS_DOMAIN_KEYS 且非 unassigned", () => {
+    const offenders = [...batteryObjectTypes(), ...extendedObjectTypes()]
+      .map((t) => ({ key: t.key, domain: t.domain }))
+      .filter((t) => !t.domain || t.domain === "unassigned" || !BUSINESS_DOMAIN_KEYS.includes(t.domain));
+    expect(offenders, `非法归域类型（会致 chainMode 发布门崩）：${JSON.stringify(offenders)}`).toEqual([]);
+  });
+
+  // 真启动冒烟门（审核方要求②）：SEED_DEMO 走的正是 viaModelingChain:true（真建模链 derive→publishDraft→
+  // materialize）。seedBattery/helpers 走 A 路(chainMode=false)绕开发布门——故此前 WO-4 归域门收紧只在
+  // 真 SEED_DEMO 启动时崩、单测全绿漏过。此用例直呼 synthetic.runJob({viaModelingChain:true}) 复刻真启动，
+  // 任何归域/字段全建模门漂移都会在此 throw，不再靠"真起服务"才暴露。
+  it("SEED_DEMO 真路径冒烟：synthetic.runJob(viaModelingChain:true) 不抛 + 34 类型经真建模链物化", async () => {
+    const t = await makeApp();
+    const job = await t.services.synthetic.runJob(t.adminCtx, {
+      industry: "battery-manufacturing",
+      scale: "S",
+      seed: 42,
+      viaModelingChain: true,
+    });
+    expect(job.status).toBe("SUCCEEDED");
+    const types = await t.repos.ontologyTypes.list(t.adminCtx.tenantId);
+    expect(types.length).toBeGreaterThanOrEqual(34);
+    // 发布门前置不变量：物化类型无一落 unassigned/非法域（否则 publishDraft 已先抛）。
+    const bad = types.filter((x) => !BUSINESS_DOMAIN_KEYS.includes(x.domain));
+    expect(bad.map((x) => `${x.key}:${x.domain}`)).toEqual([]);
   });
 });

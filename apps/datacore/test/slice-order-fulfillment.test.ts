@@ -19,8 +19,8 @@ const TYPE_DOMAIN: Record<string, string> = {
   Order: "product", Model: "product", Segment: "product",
   Base: "factory", Line: "factory", Certification: "factory", EnergyMeter: "factory", ChangeoverMatrix: "factory",
   Process: "process", Equipment: "equip", MaintPlan: "equip",
-  Material: "supply", MaterialBatch: "supply", PurchaseOrder: "supply", CarbonFactor: "supply",
-  Customer: "commercial", ARInvoice: "commercial",
+  Material: "material", MaterialBatch: "material", PurchaseOrder: "material", CarbonFactor: "material",
+  Customer: "sales", ARInvoice: "sales",
   Shipment: "capacity", DataSourceHealth: "quality",
   AnnualScenario: "plan", PlanTarget: "plan", CapexProject: "plan", ScenarioTrigger: "plan",
   FinanceAccount: "finance", FinanceMetric: "finance",
@@ -113,7 +113,7 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
     await seedBattery(t);
     const out = (await resolveKey(t, "order_to_cash_720", { so: "SO-3391" })).json() as SliceResult;
     const doms = domainsOf(out);
-    for (const want of ["product", "factory", "process", "equip", "supply", "commercial", "capacity", "quality", "finance", "plan"]) {
+    for (const want of ["product", "factory", "process", "equip", "material", "sales", "capacity", "quality", "finance", "plan"]) {
       expect(doms.has(want), `缺域 ${want}`).toBe(true);
     }
     expect(doms.size).toBeGreaterThanOrEqual(10);
@@ -147,13 +147,13 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
     }
   });
 
-  it("SL8: supply/commercial 域已注册 + 新跨域边经切片可遍历（scenario→plan 边落库）", async () => {
+  it("SL8: material/sales 域已注册 + 新跨域边经切片可遍历（scenario→plan 边落库）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     // 域注册
     const domains = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/domains", headers: ADMIN })).json() as { domainKey: string }[];
     const dkeys = new Set((Array.isArray(domains) ? domains : []).map((d) => d.domainKey));
-    expect(dkeys.has("supply") && dkeys.has("commercial"), "supply/commercial 域已注册").toBe(true);
+    expect(dkeys.has("material") && dkeys.has("sales"), "material/sales 域已注册").toBe(true);
     // enterprise_360 边覆盖新增链路键
     const ent = (await resolveKey(t, "enterprise_360", { so: "SO-3391" })).json() as SliceResult;
     const lk = new Set(ent.edges.map((e) => e.linkKey));

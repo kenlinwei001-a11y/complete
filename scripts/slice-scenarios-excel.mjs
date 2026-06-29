@@ -167,7 +167,7 @@ try {
   console.log(`  ✓ 体检评分 ${au.score ?? "?"}/100 · 结论 ${au.verdict ?? "?"} · 代表订单 ${reps.length} → 切片并集 ${s2nodes.size} 节点`);
 
   // ---- 组装 Excel --------------------------------------------------------
-  const domOrder = ["product", "factory", "process", "equip", "supply", "commercial"];
+  const domOrder = ["product", "factory", "process", "equip", "material", "sales"];
   const sortNodes = (m) => [...m.values()].sort((x, y) => {
     const dx = domOrder.indexOf(typeMeta[x.typeKey]?.domain ?? "z"), dy = domOrder.indexOf(typeMeta[y.typeKey]?.domain ?? "z");
     return (dx - dy) || (x.typeKey < y.typeKey ? -1 : x.typeKey > y.typeKey ? 1 : (x.objectKey < y.objectKey ? -1 : 1));

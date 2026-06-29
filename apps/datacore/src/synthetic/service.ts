@@ -555,9 +555,10 @@ export class SyntheticService {
       { domainKey: "people", displayName: "人员", color: "#db2777", ownerUserId: "usr_demo_admin" },
       { domainKey: "plan", displayName: "计划", color: "#ca8a04", ownerUserId: "usr_demo_planner" },
       { domainKey: "finance", displayName: "财务", color: "#059669", ownerUserId: "usr_demo_admin" },
-      // 跨域切片增量：扩展对象类型已使用 supply/commercial 两域，补注册（治理域开关/分组/检索切面才生效）。
-      { domainKey: "supply", displayName: "供给", color: "#0d9488", ownerUserId: "usr_demo_planner" },
-      { domainKey: "commercial", displayName: "商务", color: "#be185d", ownerUserId: "usr_demo_admin" },
+      // 跨域切片增量：物料/供应 + 销售/订单 两业务域（canonical 14 之二；扩展对象类型 Material/PurchaseOrder/
+      // Customer/ARInvoice 归此，治理域开关/分组/检索切面才生效）。原 supply/commercial 已并入 material/sales。
+      { domainKey: "material", displayName: "物料/供应", color: "#0d9488", ownerUserId: "usr_demo_planner" },
+      { domainKey: "sales", displayName: "销售/订单", color: "#be185d", ownerUserId: "usr_demo_admin" },
       { domainKey: "external", displayName: "外部信号", color: "#475569", ownerUserId: "usr_demo_admin" },
       // cockpit P2：决策应用域（驾驶舱 KPI / 规划决策推演 / 根因归因链的归域）。
       { domainKey: "decision", displayName: "决策应用", color: "#7c3aed", ownerUserId: "usr_demo_admin" },
