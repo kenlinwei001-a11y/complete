@@ -104,6 +104,12 @@ export class RuleDocService {
     // T1#1：多实例安全——抽取经 execLock 跨进程互斥（同 doc 不双跑·死实例租约过期可续跑）。
     // 可选：未注入则单实例直跑（向后兼容；内存测试默认不注入亦可，注入则走锁路径）。
     private execLocks?: import("./execlock.js").ExecutionLockService,
+    /**
+     * WO-T5-LEASE-HEARTBEAT · 单实例假设（默认 true，向后兼容单实例 docker）。
+     * - true：resume 续跑走 steal 即时夺锁（安全因单实例）。
+     * - false（多实例）：禁 steal，续跑靠**短租约自然过期 + 常态 acquire** 重夺（杜绝双跑）。
+     */
+    private executionSingleton: boolean = true,
   ) {}
 
   /** T1：在途后台抽取（fire-and-forget）的句柄集——测试可 await 收敛，生产仅用于优雅停机/可观测。 */
@@ -212,8 +218,12 @@ export class RuleDocService {
 
   /**
    * T1 续跑（restart-safe）：进程重启会中断在途 fire-and-forget 抽取，doc 永久卡 EXTRACTING。
-   * 启动时跨租户扫描 EXTRACTING 的 doc → 重新触发抽取（runExtraction 幂等清旧候选再跑）。
-   * 单实例 docker 部署的重启续跑根因解（非分布式队列·多实例需真 job 队列另立单）。返回续跑数。
+   * 启动时跨租户扫描 EXTRACTING 的 doc → 重新触发抽取（runExtraction 幂等清旧候选再跑）。返回续跑数。
+   *
+   * WO-T5-LEASE-HEARTBEAT（短租约模型）：续跑不再天然需要 steal——
+   * - 单实例（executionSingleton=true，默认）：在抽取中的锁必属已死进程，走 steal 即时夺锁续跑（体验最优）。
+   * - 多实例（executionSingleton=false）：禁 steal，靠短租约（~120s）自然过期 + 常态 acquire 重夺
+   *   → 永不绕过未过期租约 → 活实例不被误夺、双跑不可能（崩溃 doc 最坏等 ~TTL 被另一实例捡起，非 60min）。
    */
   async resumeInflightExtractions(): Promise<number> {
     const tenants = await this.repos.tenants.listAll().catch(() => []);
@@ -223,9 +233,8 @@ export class RuleDocService {
       for (const doc of stuck) {
         if (!doc.extractJobId) continue;
         const ctx: AuthCtx = { tenantId: t.id, userId: "system", roles: ["admin"], attributes: {} };
-        // WO-T5-RESUME-LEASE：steal 夺锁——崩溃进程留下的未过期 60min 租约否则会挡住续跑、doc 卡 EXTRACTING
-        // 最长 60min；新进程启动时该锁必属已死进程，安全夺取（fence+1·fencing 防僵尸写）。
-        this.fireExtraction(ctx, doc.id, doc.extractJobId, { steal: true });
+        // steal 仅在显式单实例假设下使用；多实例靠短租约过期重夺（withLock 常态 acquire 自带 WHERE lease_until<now）。
+        this.fireExtraction(ctx, doc.id, doc.extractJobId, { steal: this.executionSingleton });
         resumed++;
       }
     }

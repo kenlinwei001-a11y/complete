@@ -14,17 +14,36 @@ import { newId } from "./ids.js";
  *   变更触发类（派生）改置"待重跑"标志，由当前持有者收尾连跑（合并风暴：连续变更只多跑一轮）；
  * - Fencing：写入路径校验 fence ≥ 锁表当前 fence，否则 STALE_EXECUTOR；
  * - 心跳续租：执行中按 1/3 租约续租。
+ *
+ * WO-T5-LEASE-HEARTBEAT（短租约 + 心跳保鲜模型 · 根因解）
+ * ------------------------------------------------------------------
+ * 旧模型：租约定为「任务预估时长×2」(最长 60min) → 持锁进程崩 → 租约要等 60min 才过期
+ * → 续跑/竞争者被挡 60min（"长租约死锁"）→ 被迫加无条件 `steal` 创可贴（多实例下会双跑）。
+ *
+ * 新模型（分布式锁标准 lease + fencing 范式）：
+ *   1. **短租约 TTL**（量级 ~120s·见 SHORT_LEASE_MS）：acquire 时 lease_until = now + ttl。
+ *   2. **心跳保鲜**：withLock 持锁期间每 ttl/3 心跳续租（活着就续约）→ 活持锁者租约恒新鲜
+ *      → 他实例常态 acquire 命中 lease_until>now 必 SKIP → **跨实例互斥真成立**；长任务不被误夺。
+ *   3. **死锁过期重夺**：进程崩 → 心跳停 → 租约 ~ttl 后自然过期 → 另一实例**常态 acquire**
+ *      （WHERE lease_until<now）即可重夺（fence+1 防僵尸写）；不再需要无条件 steal。
+ *   4. steal 退化为 **EXECUTION_SINGLETON** 守护的可选优化（单实例 docker 即时续跑·见 ruledocs）。
+ * 死活判定从"我猜你死了（steal）"变为"租约新鲜度（心跳）自证"——多实例正确、续跑不卡 60min。
  */
 
-/** 默认租约 = 任务预估时长×2（§1）。 */
+/**
+ * 短租约模型默认 TTL：取「最坏单步同步停顿的安全上界」而非「任务总时长」——
+ * 长任务由心跳（ttl/3 续租）保鲜，不靠长 ttl 撑。所有 kind 均为异步 I/O（LLM/网络/IO 不阻塞事件循环），
+ * 唯一同步风险是巨型 zod parse（秒级），120s >> 任何可信停顿。崩溃后最坏等 ttl(~120s) 即可重夺（vs 旧 60min）。
+ */
+const SHORT_LEASE_MS = 120_000; // 120s · 心跳间隔随之 = ttl/3 ≈ 40s
 const DEFAULT_LEASE_MS: Record<ExecutionResourceKind, number> = {
-  derivation_spec: 5 * 60_000 * 2,
-  connection_sync: 30 * 60_000 * 2,
-  forge_generate: 15 * 60_000 * 2,
-  materialize: 10 * 60_000 * 2,
-  replay: 30 * 60_000 * 2,
-  bundle_import: 30 * 60_000 * 2,
-  rule_extraction: 30 * 60_000 * 2, // 抽取真打 LLM 可达数百秒·多段重试 → 宽租约，心跳 1/3 续租
+  derivation_spec: SHORT_LEASE_MS,
+  connection_sync: SHORT_LEASE_MS,
+  forge_generate: SHORT_LEASE_MS,
+  materialize: SHORT_LEASE_MS,
+  replay: SHORT_LEASE_MS,
+  bundle_import: SHORT_LEASE_MS,
+  rule_extraction: SHORT_LEASE_MS, // 抽取真打 LLM 可达数百秒·多段重试 → 心跳 ttl/3 续租保鲜（非靠长租约）
 };
 
 export class StaleExecutorError extends Error {

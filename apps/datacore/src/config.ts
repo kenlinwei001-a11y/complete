@@ -56,6 +56,17 @@ export const ConfigSchema = z.object({
   AGENTCORE_BASE_URL: z.string().optional(),
   /** 回放编排器 §3-⑥ 隔离逃生阀：=1 时允许在非 SYNTHETIC 租户挂虚拟操作（默认关）。 */
   FORGE_ALLOW_PROD: z.string().optional(),
+  /**
+   * WO-T5-LEASE-HEARTBEAT · 执行单实例假设（默认 true=单实例 docker 部署）。
+   * - true：重启续跑（resumeInflightExtractions）走 `steal` 即时夺锁（安全因单实例：在抽取中的锁必属已死进程）。
+   * - false（多实例部署）：禁用 steal，续跑改靠**短租约自然过期 + 常态 acquire** 重夺
+   *   → 永不绕过未过期租约 → 杜绝两活实例互夺双跑（跨实例互斥真成立）。
+   * 把"持锁者必已死"的假设从隐式（藏在注释）变显式（配置），杜绝多实例误开 steal。
+   */
+  EXECUTION_SINGLETON: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? true : !(v === "0" || v.toLowerCase() === "false"))),
   LOG_LEVEL: z.string().default("info"),
 });
 

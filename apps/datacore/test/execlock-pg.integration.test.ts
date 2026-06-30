@@ -172,4 +172,107 @@ describe.skipIf(!DB)("WO-P0-LOCK · execution_locks 真 PG live-fire", () => {
     const after = await svc.acquire(tenant, "rule_extraction", key, "next");
     expect(after.ok).toBe(true);
   });
+
+  // =====================================================================
+  // WO-T5-LEASE-HEARTBEAT · 短租约 + 心跳保鲜 + 死锁过期重夺 + 多实例互斥（真 PG live-fire）
+  // ---------------------------------------------------------------------
+  // 模型：两个 ExecutionLockService（svcA/svcB）共享同一 PG execution_locks 表 =
+  // 模拟两 app 实例，PG 行级原子 INSERT…ON CONFLICT WHERE lease_until<now() 是跨实例唯一裁决者。
+  // 用极短 TTL（leaseOverrides）+ 受控 sleep 验 TTL 语义，断言确定（R6：不依赖墙钟随机，只依赖 TTL 已过/未过）。
+  // =====================================================================
+  describe("WO-T5-LEASE-HEARTBEAT · 短租约+心跳", () => {
+    // PG tryAcquire 以秒为粒度（Math.round(leaseMs/1000)）→ 取整秒 TTL 避免取整意外。
+    const TTL = 2000; // 2s 短租约（生产 ~120s 同语义，测试取小以可控验 TTL）
+    const EXPIRE_WAIT = TTL + 1200; // 过期等待 = TTL + 余量（覆盖秒粒度 + 调度抖动）
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    // 两"实例"——各自独立 service 对象，但共享同一 repos（= 同一 PG 表）。
+    let svcA: ExecutionLockService;
+    let svcB: ExecutionLockService;
+    beforeAll(() => {
+      svcA = new ExecutionLockService(repos, undefined, { rule_extraction: TTL });
+      svcB = new ExecutionLockService(repos, undefined, { rule_extraction: TTL });
+    });
+
+    it("T5-1) 短租约下不心跳 → 过 TTL → 另一实例可重夺（死锁过期重夺·常态 acquire 非 steal）", async () => {
+      const key = `lh1_${Date.now()}`;
+      // 实例A 夺锁后"崩溃"（不再心跳）
+      const a = await svcA.acquire(tenant, "rule_extraction", key, "instA");
+      expect(a.ok).toBe(true);
+      if (!a.ok) return;
+      // TTL 内：实例B 常态 acquire 被挡（租约未过期·跨实例互斥）
+      const blocked = await svcB.acquire(tenant, "rule_extraction", key, "instB");
+      expect(blocked.ok).toBe(false);
+      // 等过 TTL（无心跳 → 租约自然过期）
+      await sleep(EXPIRE_WAIT);
+      // 实例B 常态 acquire（非 steal）即可重夺 · fence 单调递增（防僵尸写）
+      const reclaim = await svcB.acquire(tenant, "rule_extraction", key, "instB");
+      expect(reclaim.ok).toBe(true);
+      if (reclaim.ok) expect(reclaim.fence).toBeGreaterThan(a.fence);
+    }, 15_000); // 含受控 sleep(EXPIRE_WAIT) 跨 TTL 边界，超默认 5s testTimeout
+
+    it("T5-2) 持锁方持续心跳 → 租约保鲜 → 另一实例过 TTL 后仍拿不到（活锁心跳有效·长任务不被误夺）", async () => {
+      const key = `lh2_${Date.now()}`;
+      const a = await svcA.acquire(tenant, "rule_extraction", key, "liveHolder");
+      expect(a.ok).toBe(true);
+      if (!a.ok) return;
+      // 实例A 持续心跳（每 TTL/3 续租），模拟 withLock 自动保鲜
+      const hbTimer = setInterval(() => {
+        void svcA.heartbeat(tenant, "rule_extraction", key, "liveHolder", a.fence);
+      }, Math.floor(TTL / 3));
+      try {
+        // 等到「若无心跳早该过期」的 2 倍 TTL 之后
+        await sleep(TTL * 2 + 200);
+        // 实例B 仍拿不到（活持锁者心跳让租约恒新鲜 → 跨实例互斥未被时间击穿）
+        const stillBlocked = await svcB.acquire(tenant, "rule_extraction", key, "instB");
+        expect(stillBlocked.ok).toBe(false);
+      } finally {
+        clearInterval(hbTimer);
+      }
+      // 停心跳后过 TTL → 才放行（证拿不到确因心跳保鲜而非锁坏）
+      await sleep(EXPIRE_WAIT);
+      const afterDeath = await svcB.acquire(tenant, "rule_extraction", key, "instB");
+      expect(afterDeath.ok).toBe(true);
+    }, 15_000); // 心跳 2×TTL + 停心跳过 TTL，总耗时 >5s 默认 testTimeout
+
+    it("T5-3) 两实例并发 acquire 同 key → 恰一个成功（多实例互斥·PG 行级原子裁决）", async () => {
+      const key = `lh3_${Date.now()}`;
+      // 同一时刻两实例抢同 key（Promise.all 真并发打 PG）
+      const [ra, rb] = await Promise.all([
+        svcA.acquire(tenant, "rule_extraction", key, "raceA"),
+        svcB.acquire(tenant, "rule_extraction", key, "raceB"),
+      ]);
+      const winners = [ra, rb].filter((r) => r.ok);
+      expect(winners.length).toBe(1); // 恰一个赢
+      const losers = [ra, rb].filter((r) => !r.ok);
+      expect(losers.length).toBe(1); // 另一个 SKIPPED
+      // 输方拿到的 holder 应指向赢方（携当前持有者）
+      const loser = losers[0];
+      if (!loser.ok) expect(["raceA", "raceB"]).toContain(loser.holderId);
+    });
+
+    it("T5-4) 重夺后 fence 递增 → 旧持有者写被 fencing 拒（无僵尸写）", async () => {
+      const key = `lh4_${Date.now()}`;
+      // 旧持有者A 夺锁拿到 oldFence，随后"卡死"（不心跳）
+      const a = await svcA.acquire(tenant, "rule_extraction", key, "zombieHolder");
+      expect(a.ok).toBe(true);
+      if (!a.ok) return;
+      const oldFence = a.fence;
+      // 旧持有者持 oldFence 的写在被重夺前是合法的
+      await expect(svcA.assertFence(tenant, "rule_extraction", key, oldFence)).resolves.toBeUndefined();
+      // 等过 TTL → 实例B 常态重夺，fence 递增
+      await sleep(EXPIRE_WAIT);
+      const reclaim = await svcB.acquire(tenant, "rule_extraction", key, "freshHolder");
+      expect(reclaim.ok).toBe(true);
+      if (!reclaim.ok) return;
+      expect(reclaim.fence).toBeGreaterThan(oldFence);
+      // 旧持有者"复活"想写 → 持过期 oldFence → fencing 必拒（StaleExecutorError）→ 无僵尸写
+      await expect(
+        svcA.assertFence(tenant, "rule_extraction", key, oldFence),
+      ).rejects.toThrow(/stale executor/);
+      // 新持有者持新 fence 写合法
+      await expect(
+        svcB.assertFence(tenant, "rule_extraction", key, reclaim.fence),
+      ).resolves.toBeUndefined();
+    }, 15_000); // 含受控 sleep(EXPIRE_WAIT) 跨 TTL 边界，超默认 5s testTimeout
+  });
 });
