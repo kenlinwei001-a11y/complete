@@ -10,6 +10,9 @@ import {
   type SliceResolveResult,
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+// WO-GRAPH-3：试切子图改用统一本体图谱引擎渲染（模式=切片·复用 GRAPH-2 引擎，数据为 resolve 真子图）。
+import { SubgraphPanel, type SubgraphEdge, type SubgraphNode } from "@/components/Graph";
+import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
 
 /**
  * 本体切片清单 + 编辑器（C7 · addendum §6.3 / AC8 步1）。
@@ -83,6 +86,19 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
   const [plan, setPlan] = useState<SlicePlanResult | null>(null);
   const [preview, setPreview] = useState<SliceResolveResult | null>(null);
   const [previewArgs, setPreviewArgs] = useState("{}");
+  // WO-GRAPH-3：试切子图节点下钻（统一 DagNodeDrawer·R13）。
+  const [drawer, setDrawer] = useState<DagDetail | null>(null);
+
+  // resolve 真子图（{id,type} 节点 / {from,to,linkKey} 边）→ 引擎泛型节点（按 type 分组着色·R14 域配色复用）。
+  const sliceGraph = useMemo(() => {
+    if (!preview) return { nodes: [] as SubgraphNode[], edges: [] as SubgraphEdge[] };
+    const nodes: SubgraphNode[] = preview.data.nodes.map((n) => ({ id: n.id, label: n.id, group: n.type, kind: "object" }));
+    const present = new Set(nodes.map((n) => n.id));
+    const edges: SubgraphEdge[] = preview.data.edges
+      .filter((e) => present.has(e.from) && present.has(e.to))
+      .map((e, i) => ({ id: `${e.from}->${e.to}#${i}`, from: e.from, to: e.to, kind: e.linkKey, label: e.linkKey }));
+    return { nodes, edges };
+  }, [preview]);
 
   const planMut = useMutation({
     mutationFn: () => planSlice(rootType, targets),
@@ -216,8 +232,28 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
           <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
             类型分布：{[...new Set(preview.data.nodes.map((n) => n.type))].join(" · ") || "（空，调整 root selector / 试切参数）"}
           </div>
+          {/* WO-GRAPH-3：试切子图用统一本体图谱引擎渲染（点节点 → DagNodeDrawer 看出处·R13）。 */}
+          {sliceGraph.nodes.length > 0 && (
+            <div style={{ marginTop: 8 }} data-testid="slice-preview-graph">
+              <SubgraphPanel
+                testId="slice-graph"
+                nodes={sliceGraph.nodes}
+                edges={sliceGraph.edges}
+                height={360}
+                legendTitle="对象类型"
+                onSelect={(n) =>
+                  setDrawer({
+                    title: `${n.label}（${n.group}）`,
+                    src: "切片 resolve 子图（A6 逐跳过滤）",
+                    note: `对象类型 ${n.group} · 实例 ${n.id}`,
+                  })
+                }
+              />
+            </div>
+          )}
         </div>
       )}
+      {drawer && <DagNodeDrawer detail={drawer} onClose={() => setDrawer(null)} />}
     </div>
   );
 }

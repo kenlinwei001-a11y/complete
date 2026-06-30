@@ -1,0 +1,92 @@
+/* WO-GRAPH-3/4 · 融合子图面板（切片/血缘/影响图 共用·复用本体图谱引擎视觉语义）。 */
+.wrap {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  display: block;
+}
+
+.edge {
+  stroke: rgba(226, 235, 245, 0.18);
+  stroke-width: 1.2px;
+}
+
+.node {
+  cursor: pointer;
+}
+
+.nodeSelected circle,
+.nodeSelected path,
+.nodeSelected polygon {
+  stroke-width: 3px;
+  stroke: #fff;
+}
+
+.nodeLabel {
+  font-size: 11px;
+  fill: var(--txt);
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
+.edgeLabel {
+  font-size: 9.5px;
+  fill: var(--muted2);
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
+.dim {
+  opacity: 0.14;
+  transition: opacity 0.4s;
+}
+
+.legend {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  background: linear-gradient(165deg, rgba(30, 38, 49, 0.88), rgba(14, 19, 26, 0.85));
+  border: 1px solid var(--line2);
+  border-radius: 11px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  backdrop-filter: blur(14px);
+  max-height: 60%;
+  overflow-y: auto;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.sw {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex: none;
+}

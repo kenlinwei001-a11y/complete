@@ -1,5 +1,9 @@
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchBoundaryImpact, fetchBoundaryVersion } from "@/api/endpoints";
+// WO-GRAPH-4：边界册「改 X 影响什么」改用统一本体图谱引擎渲染影响图（册→消费端→下游·复用 GRAPH-2 引擎）。
+import { SubgraphPanel, type SubgraphEdge, type SubgraphNode } from "@/components/Graph";
+import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
 import zh from "@/locales/zh";
 
 /**
@@ -10,6 +14,32 @@ import zh from "@/locales/zh";
 export default function BoundaryPage() {
   const { data: ver } = useQuery({ queryKey: ["a", "boundary-version"], queryFn: fetchBoundaryVersion });
   const { data: imp, isLoading } = useQuery({ queryKey: ["a", "boundary-impact"], queryFn: fetchBoundaryImpact });
+  const [drawer, setDrawer] = useState<DagDetail | null>(null);
+
+  // WO-GRAPH-4 · 边界影响图：册节点 →（强制派生）消费端文件节点 →（grep 核实）下游受影响节点。
+  // 分组键=registry，每册一色（R14 配色复用·缺省走 14 域表兜底 muted）；点节点经统一 DagNodeDrawer 下钻。
+  const impactGraph = useMemo(() => {
+    const rows = imp?.impact ?? [];
+    const nodes: SubgraphNode[] = [];
+    const edges: SubgraphEdge[] = [];
+    const seen = new Set<string>();
+    const add = (n: SubgraphNode) => { if (!seen.has(n.id)) { seen.add(n.id); nodes.push(n); } };
+    for (const b of rows) {
+      const regId = `reg:${b.registry}`;
+      add({ id: regId, label: `${b.registry}（${b.members}）`, group: b.registry, kind: "solver", center: true });
+      b.consumers.forEach((c, ci) => {
+        const cid = `con:${b.registry}:${c.file}#${ci}`;
+        add({ id: cid, label: c.file.split("/").pop() ?? c.file, group: b.registry, kind: "object" });
+        edges.push({ id: `e-con:${cid}`, from: regId, to: cid, kind: "consumer", label: c.binding });
+      });
+      b.downstream.forEach((d, di) => {
+        const did = `dn:${b.registry}:${di}`;
+        add({ id: did, label: d.length > 16 ? `${d.slice(0, 15)}…` : d, group: b.registry, kind: "agent" });
+        edges.push({ id: `e-dn:${did}`, from: regId, to: did, kind: "downstream", label: "下游" });
+      });
+    }
+    return { nodes, edges };
+  }, [imp]);
 
   if (isLoading || !imp) return <div className="empty-state" data-testid="boundary-loading">{zh.common.loading}</div>;
 
@@ -29,6 +59,27 @@ export default function BoundaryPage() {
               <span key={r.registry} className="badge" data-testid={`boundary-ver-${r.registry}`}>{r.registry}·{r.members}条 <b className="mono">{r.digest}</b></span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* WO-GRAPH-4：边界影响图（统一本体图谱引擎·册◇→消费端○→下游⬡·点节点下钻 R13）。 */}
+      {impactGraph.nodes.length > 0 && (
+        <div className="panel" data-testid="boundary-impact-graph" style={{ marginBottom: 14 }}>
+          <div className="section-title">影响图谱（改某册波及谁 · 册 → 消费端 → 下游）</div>
+          <SubgraphPanel
+            testId="boundary-impact"
+            nodes={impactGraph.nodes}
+            edges={impactGraph.edges}
+            height={460}
+            legendTitle="边界册"
+            onSelect={(n) =>
+              setDrawer({
+                title: n.label,
+                src: n.center ? "边界册（@platform/contracts 单一来源）" : n.id.startsWith("con:") ? "门强制派生的消费端" : "grep 核实的下游受影响面",
+                note: `所属册 ${n.group}`,
+              })
+            }
+          />
         </div>
       )}
 
@@ -56,6 +107,7 @@ export default function BoundaryPage() {
           </div>
         </div>
       ))}
+      {drawer && <DagNodeDrawer detail={drawer} onClose={() => setDrawer(null)} />}
     </div>
   );
 }

@@ -5,6 +5,9 @@
  */
 export { OntologyGraphEngine } from "./OntologyGraphEngine";
 export type { GraphEngineNode, GraphEngineEdge, OntologyGraphEngineProps } from "./OntologyGraphEngine";
+// WO-GRAPH-3/4：融合子图面板（切片/血缘/影响图 共用·薄封装引擎）。
+export { SubgraphPanel } from "./SubgraphPanel";
+export type { SubgraphNode, SubgraphEdge, SubgraphPanelProps } from "./SubgraphPanel";
 export { NodeShape } from "./NodeShape";
 export type { GraphNodeKind } from "./NodeShape";
 export {

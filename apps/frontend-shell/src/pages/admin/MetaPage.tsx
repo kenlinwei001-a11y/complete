@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { syncMeta, fetchMetaOntology, fetchMetaImpact, fetchMetaAccessPolicy, setMetaAccessPolicy, type MetaImpact } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+// WO-GRAPH-4：元本体影响分析改用统一本体图谱引擎渲染（"改 X 影响什么"= ego 影响子图·复用 GRAPH-2 引擎）。
+import { SubgraphPanel, type SubgraphEdge, type SubgraphNode } from "@/components/Graph";
+import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
 
 /**
  * Dogfooding（#12/#13）· 系统自我：把系统本体当平台里的对象查询。
@@ -15,6 +18,25 @@ export default function MetaPage() {
   const policyQ = useQuery({ queryKey: ["a", "meta-access-policy"], queryFn: fetchMetaAccessPolicy, retry: false });
   const [node, setNode] = useState("R14");
   const [impact, setImpact] = useState<MetaImpact | null>(null);
+  const [drawer, setDrawer] = useState<DagDetail | null>(null);
+
+  // WO-GRAPH-4 · 影响 ego 子图：中心=被改节点，邻接=受影响节点，边=via（影响关系）。
+  // 分组键取节点 id 的种类前缀（`SystemObjectType:Solver`→SystemObjectType；`R14`/`G-5`→via 关系类）。
+  const impactGraph = useMemo(() => {
+    if (!impact) return { nodes: [] as SubgraphNode[], edges: [] as SubgraphEdge[] };
+    const kindOf = (id: string, via: string) => (id.includes(":") ? id.split(":")[0]! : via || "影响");
+    const nodes: SubgraphNode[] = [{ id: impact.node, label: impact.node, group: "中心", kind: "object", center: true }];
+    const edges: SubgraphEdge[] = [];
+    const seen = new Set([impact.node]);
+    for (const a of impact.affected) {
+      if (!seen.has(a.id)) {
+        seen.add(a.id);
+        nodes.push({ id: a.id, label: a.id, group: kindOf(a.id, a.via), kind: "object" });
+      }
+      edges.push({ id: `${impact.node}->${a.id}`, from: impact.node, to: a.id, kind: a.via, label: a.via });
+    }
+    return { nodes, edges };
+  }, [impact]);
 
   const syncM = useMutation({
     mutationFn: syncMeta,
@@ -68,6 +90,26 @@ export default function MetaPage() {
             <ul style={{ margin: "4px 0 0", maxHeight: 180, overflow: "auto" }}>
               {impact.affected.slice(0, 40).map((a, i) => <li key={i}><span className="mono">{a.id}</span> <span style={{ color: "var(--muted)" }}>（{a.via}）</span></li>)}
             </ul>
+            {/* WO-GRAPH-4：影响子图（统一本体图谱引擎·点节点看影响路径·R13）。 */}
+            {impactGraph.nodes.length > 1 && (
+              <div style={{ marginTop: 10 }} data-testid="meta-impact-graph">
+                <SubgraphPanel
+                  testId="meta-impact"
+                  nodes={impactGraph.nodes}
+                  edges={impactGraph.edges}
+                  height={380}
+                  legendTitle="节点种类"
+                  labelTable={{ 中心: "改动起点" }}
+                  onSelect={(n) =>
+                    setDrawer({
+                      title: n.label,
+                      src: n.center ? "影响分析起点（铁律0「改 X 影响什么」）" : "受影响节点",
+                      note: n.center ? "把系统本体投影为对象后的图查询" : `种类 ${n.group}`,
+                    })
+                  }
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -90,6 +132,7 @@ export default function MetaPage() {
         </div>
         <button className="btn primary sm" data-testid="meta-policy-save" disabled={policyM.isPending} onClick={() => policyM.mutate()}>保存白名单</button>
       </div>
+      {drawer && <DagNodeDrawer detail={drawer} onClose={() => setDrawer(null)} />}
     </div>
   );
 }
