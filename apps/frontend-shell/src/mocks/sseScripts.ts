@@ -31,7 +31,7 @@ export function scriptForQuery(taskId: string, query: string, context: SessionCo
   if (query.includes("逐字流")) {
     return {
       path: "AGENT",
-      intentKey: null,
+      intentKey: undefined,
       finalAnswer: ANSWER_B1,
       segments: [
         [
