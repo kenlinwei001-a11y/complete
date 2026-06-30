@@ -420,6 +420,9 @@ export function auditTimeline(c: SolverContext, args: Record<string, unknown>): 
     kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold,
     events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
     affectedOrders: orders,
+    // A0 诚实位：逐日传导曲线/峰值/越线日由 kind 名哈希确定性派生（无实测）；events/affectedOrders 由真引擎算。
+    // 真假混合 → PARTIAL（前端标"曲线确定性派生·无实测，波及订单真算"）；无真订单可关联时退化 MOCK。
+    dataMode: orders.length > 0 ? "PARTIAL" : "MOCK",
   };
 }
 

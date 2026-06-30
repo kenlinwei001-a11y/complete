@@ -5,6 +5,15 @@ import { z } from "zod";
 // 数值常数一律来自场景包 solverParams 配置，代码不得写死。
 // ---------------------------------------------------------------------------
 
+/**
+ * A0（空洞数据冰山结构性根因修）· 求解器输出诚实位 = 单一来源。
+ * LIVE=结论由真对象数据派生；MOCK=无真数据源、纯哈希/魔数/硬编码启发；PARTIAL=真假混合
+ * （如曲线确定性派生但波及订单真算，或真对象 + 魔数兜底）。前端据此标徽章，禁哈希冒充真算。
+ * 把 risk_timeline/capacity_forecast 已有的诚实位范式推广到 audit_timeline + extended 全族。
+ */
+export const SolverDataModeSchema = z.enum(["LIVE", "MOCK", "PARTIAL"]);
+export type SolverDataMode = z.infer<typeof SolverDataModeSchema>;
+
 /** S1.2 capacity_forecast 输出 */
 export const PerBaseRowSchema = z.object({
   base: z.string(),

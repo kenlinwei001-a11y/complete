@@ -13,6 +13,7 @@ import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useAdoptToDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
+import { DataModeBadge } from "@/components/DataModeBadge";
 import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
 import { KsfGraph } from "@/components/KsfGraph";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
@@ -323,7 +324,7 @@ function RiskPropagation({ itemId, kind }: { itemId: string; kind?: string }) {
     queryKey: ["b", "solver", "audit_timeline", kind ?? "struct"],
     queryFn: async () => {
       const res = await runSolver("audit_timeline", { kind: kind ?? "struct" });
-      return res.data as { kind: string; series: number[]; threshold: number; crossDay: number | null; peak: number; events?: unknown[]; affectedOrders?: unknown[] };
+      return res.data as { kind: string; series: number[]; threshold: number; crossDay: number | null; peak: number; events?: unknown[]; affectedOrders?: unknown[]; dataMode?: string };
     },
   });
   // ② 4 节点传导链 stepper + 受影响订单弹窗：复用 risk_timeline（全局唯一 PropagationTimeline 实现）。
@@ -337,8 +338,14 @@ function RiskPropagation({ itemId, kind }: { itemId: string; kind?: string }) {
   const vm = rt ? buildPropagation(rt) : null;
   return (
     <div className={styles.tlBox} data-testid={`audit-risk-timeline-${itemId}`}>
-      <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>
-        {zh.sim.audit.timelineHint}{kind ? ` · 口径：${kind}` : ""}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>
+        <span>{zh.sim.audit.timelineHint}{kind ? ` · 口径：${kind}` : ""}</span>
+        {/* A0 诚实位：audit_timeline 曲线由 kind 名哈希确定性派生（无实测）、波及订单真算 → 标 PARTIAL/MOCK，禁哈希冒充真算 */}
+        <DataModeBadge
+          mode={dot.data?.dataMode}
+          note="逐日传导曲线/峰值/越线日为确定性派生（kind 名哈希·无实测）；波及订单由产能传导引擎真算"
+          testId={`audit-timeline-datamode-${itemId}`}
+        />
       </div>
       {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
       {/* PRD §2②：逐日圆点轴消费按 kind 派生的 audit_timeline series（每项独立曲线） */}

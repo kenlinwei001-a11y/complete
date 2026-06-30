@@ -22,7 +22,7 @@ import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from ".
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
-import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
+import { EXTENDED_SOLVERS, deriveExtendedArgs, extendedDataMode } from "./extended.js";
 
 /**
  * WO-2：读出型求解器——其输出即 Base/Line/Process/Equipment 拓扑聚合本身（非以订单为主结果）。
@@ -1546,7 +1546,11 @@ export class SolverService {
       default: {
         // 20 场景目录 §2 新增 13 求解器：缺 args 时从对象数据推导（E6b），再确定性求解
         const ext = EXTENDED_SOLVERS[solverKey];
-        if (ext) return ext(deriveExtendedArgs(c, solverKey, args));
+        if (ext) {
+          // A0 诚实位：据真对象 vs 魔数/硬编码兜底置 LIVE/MOCK/PARTIAL（前端标徽章·禁哈希冒充真算）
+          const out = ext(deriveExtendedArgs(c, solverKey, args));
+          return { dataMode: extendedDataMode(c, solverKey, args), ...out };
+        }
         throw notFound(`solver ${solverKey}`);
       }
     }

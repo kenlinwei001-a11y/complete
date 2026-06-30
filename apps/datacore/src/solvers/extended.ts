@@ -407,6 +407,60 @@ export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) =>
 };
 
 /**
+ * A0（空洞数据冰山结构性根因修）· 13 extended 求解器诚实位。
+ * 据「用了真对象数据 vs 回落硬编码/魔数」确定性判 LIVE/MOCK/PARTIAL（与 deriveExtendedArgs 的真假回落口径一致）：
+ * - 调用方显式传齐关键 args → LIVE（真实显式输入）；
+ * - 否则有对应真对象集（非空）派生 → LIVE；含魔数常数兜底（quote/credit/maintenance/combo）→ PARTIAL；
+ * - 无真数据源、纯硬编码/默认（yield_diagnosis 写死良率序列·quarterly_gap 默认 options）→ MOCK。
+ * 前端据此标徽章；与产能/风险已有 dataMode 范式同口径。
+ */
+export function extendedDataMode(
+  c: SolverContext,
+  solverKey: string,
+  args: Record<string, unknown>,
+): "LIVE" | "MOCK" | "PARTIAL" {
+  const has = (k: string) => args[k] !== undefined;
+  const ne = (arr?: unknown[]) => Array.isArray(arr) && arr.length > 0;
+  const mats = c.materials ?? [];
+  switch (solverKey) {
+    // 纯硬编码/默认兜底（A2/A4）——无真数据源
+    case "yield_diagnosis":
+      return has("series") ? "LIVE" : "MOCK"; // 默认 series 写死 0.95/0.85（A2）
+    case "quarterly_gap":
+      return has("gap") || has("options") ? "LIVE" : "MOCK"; // 默认纯参数/默认 options
+    // 真对象 + 魔数常数混合（A3/A4）
+    case "quote_margin":
+      return has("bom") ? "LIVE" : ne(mats) ? "PARTIAL" : "MOCK"; // bom 真、price/mfgRate/logistics/floor 魔数
+    case "credit_exposure":
+      return has("creditLimit") ? "LIVE" : ne(c.customers) ? "PARTIAL" : "MOCK"; // creditLimit 可兜底 5000
+    case "maintenance_stagger":
+      return has("bases") ? "LIVE" : ne(c.bases) ? "PARTIAL" : "MOCK"; // bases 真、loadByWeek 写死（A4）
+    case "countermeasure_combo":
+      return has("levers") ? "LIVE" : "PARTIAL"; // 默认 levers 启发系数
+    case "carbon_footprint":
+      if (has("materials")) return "LIVE";
+      return ne(mats) ? (ne(c.energyMeters) ? "LIVE" : "PARTIAL") : "MOCK";
+    // 全真对象派生——对象非空即 LIVE，否则无源 MOCK
+    case "cert_schedule":
+      return has("items") || ne(c.certifications) ? "LIVE" : "MOCK";
+    case "kit_readiness":
+      return has("orders") || (ne(c.orders) && ne(mats)) ? "LIVE" : "MOCK";
+    case "lta_gap":
+      return has("monthDemand") || ne(mats) ? "LIVE" : "MOCK";
+    case "inventory_optimize":
+      return has("materials") || ne(mats) ? "LIVE" : "MOCK";
+    case "changeover_sequence":
+      return has("orders") || (ne(c.orders) && ne(c.changeoverMatrix)) ? "LIVE" : "MOCK";
+    case "outsourcing_split":
+      return has("gap") || ne(c.orders) ? "LIVE" : "MOCK";
+    case "mitigation_select":
+      return c.params?.risk?.mitigations ? "LIVE" : "MOCK"; // canonical 方案库（真）
+    default:
+      return "MOCK";
+  }
+}
+
+/**
  * E6b：当场景仅给 presetContext 槽位、未显式传齐 args 时，从对象数据（SolverContext §7 扩展）
  * 推导各求解器的输入 args（已传的 args 优先保留）。让 20 场景从 presetContext 端到端出结果。
  */

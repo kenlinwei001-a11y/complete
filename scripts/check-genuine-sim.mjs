@@ -92,6 +92,28 @@ if (!/ORDER_CHAIN_ECON|econ:\s*ORDER_CHAIN_ECON/.test(svc)) {
   fail("service.ts order-chain view-config 未下发 econ 系数（config 化未落·假3 复审）");
 }
 
+// ⑦ A0（空洞数据冰山结构性根因）：dataMode 诚实位推广到 audit_timeline + extended 全族——防"哈希/魔数静默冒充真算"回潮。
+// audit_timeline 逐日曲线 kind 名哈希派生 → 必透 dataMode；extended 13 求解器据真对象 vs 魔数兜底置 LIVE/MOCK/PARTIAL。
+if (!/dataMode:\s*orders\.length/.test(risk)) {
+  fail("risk.ts auditTimeline 未透 dataMode（审计逐日曲线 kind 哈希派生·无诚实位·A1 回潮）");
+}
+const ext = read("apps/datacore/src/solvers/extended.ts");
+if (!/export function extendedDataMode/.test(ext)) {
+  fail("extended.ts 缺 extendedDataMode（13 求解器无诚实位分类·A2-A4 哈希/魔数静默回潮）");
+}
+const svcSolver = read("apps/datacore/src/solvers/service.ts");
+if (!/extendedDataMode\(c,\s*solverKey/.test(svcSolver)) {
+  fail("service.ts 扩展求解器分发未附 extendedDataMode（dataMode 未随输出下发·UI 无从标）");
+}
+// 共用诚实位徽章组件 + 单一来源枚举。
+if (!/SolverDataModeSchema/.test(solvers)) {
+  fail("contracts/solvers.ts 缺 SolverDataModeSchema（诚实位枚举单一来源·A0 契约层根因）");
+}
+const auditView = read("apps/frontend-shell/src/views/sim/PlanAuditView.tsx");
+if (!/DataModeBadge/.test(auditView) || !/dataMode/.test(auditView)) {
+  fail("PlanAuditView 未用 DataModeBadge 消费 audit_timeline dataMode（审计曲线裸渲染回潮·A1）");
+}
+
 if (red) {
   console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 前端消费显估算/实测（抄 capex_scenario 缺数抛错 / LedgerView 逐格 Provenance）。");
   process.exit(1);
