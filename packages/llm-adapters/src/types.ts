@@ -87,7 +87,7 @@ export interface LlmCapabilities {
 
 /** 既有 AgentCore 操作面（行为不变；测试 scripted mock 实现的就是这一层）。 */
 export interface AgentLlmClient {
-  classify(req: { model: string; system: string; user: string; tenantId?: string }): Promise<RawClassification>;
+  classify(req: { model: string; system: string; user: string; tenantId?: string; disableThinking?: boolean }): Promise<RawClassification>;
   agent(req: LlmAgentRequest): Promise<LlmAgentResponse>;
   compose(req: { model: string; instruction: string; inputs: unknown[]; tenantId?: string }): Promise<string>;
   /** 增量 §1.1（optional）：能力声明；缺省视为 { countTokens:false, compaction:false }。 */

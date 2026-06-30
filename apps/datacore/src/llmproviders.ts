@@ -71,7 +71,15 @@ export const LlmProviderUpdateSchema = z.object({
 });
 
 const BindingsPutSchema = z.object({
-  bindings: z.array(z.object({ purpose: LlmPurposeSchema, providerId: z.string(), modelId: z.string() })),
+  bindings: z.array(
+    z.object({
+      purpose: LlmPurposeSchema,
+      providerId: z.string(),
+      modelId: z.string(),
+      // 关思考开关（Moonshot kimi-k2.5/k2.6）：true → 该用途调用注入 thinking:{type:"disabled"}（秒级直出）
+      disableThinking: z.boolean().optional(),
+    }),
+  ),
 });
 
 const RefReportSchema = z.object({
@@ -246,7 +254,12 @@ export class LlmProviderService {
 
   async bindings(tenantId: string): Promise<PurposeBinding[]> {
     const recs = await this.repos.llmPurposeBindings.list(tenantId);
-    return recs.map((r) => ({ purpose: r.purpose as LlmPurpose, providerId: r.providerId, modelId: r.modelId }));
+    return recs.map((r) => ({
+      purpose: r.purpose as LlmPurpose,
+      providerId: r.providerId,
+      modelId: r.modelId,
+      ...(r.disableThinking ? { disableThinking: true } : {}),
+    }));
   }
 
   /**
@@ -256,7 +269,7 @@ export class LlmProviderService {
    */
   async putBindings(
     ctx: AuthCtx,
-    bindings: { purpose: LlmPurpose; providerId: string; modelId: string }[],
+    bindings: { purpose: LlmPurpose; providerId: string; modelId: string; disableThinking?: boolean }[],
   ): Promise<{ bindings: PurposeBinding[]; warnings: { purpose: string; message: string }[] }> {
     const warnings: { purpose: string; message: string }[] = [];
     for (const b of bindings) {
@@ -290,6 +303,7 @@ export class LlmProviderService {
         purpose: b.purpose,
         providerId: b.providerId,
         modelId: b.modelId,
+        ...(b.disableThinking ? { disableThinking: true } : {}),
         updatedAt: new Date().toISOString(),
       };
       await this.repos.llmPurposeBindings.put(rec);

@@ -56,7 +56,7 @@ export class ScriptedLlmClient implements LlmClient {
     return this;
   }
 
-  async classify(req: { model: string; system: string; user: string }): Promise<RawClassification> {
+  async classify(req: { model: string; system: string; user: string; tenantId?: string; disableThinking?: boolean }): Promise<RawClassification> {
     this.classifyRequests.push(req);
     const next = this.classifications.shift();
     if (!next) throw new Error("ScriptedLlmClient: no classification queued");

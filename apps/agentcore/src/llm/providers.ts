@@ -340,7 +340,7 @@ class ProviderRoutedClient implements LlmClient {
     }
   }
 
-  async classify(req: { model: string; system: string; user: string; tenantId?: string }): Promise<RawClassification> {
+  async classify(req: { model: string; system: string; user: string; tenantId?: string; disableThinking?: boolean }): Promise<RawClassification> {
     return this.withFallback(async (t) => {
       const r = { ...req, model: t.modelId };
       if (!this.structuredOutputSupported(t)) {
@@ -384,7 +384,7 @@ class ProviderRoutedClient implements LlmClient {
 export class RoutingLlmClient implements LlmClient {
   constructor(private readonly registry: LlmProviderRegistry) {}
 
-  async classify(req: { model: string; system: string; user: string; tenantId?: string }): Promise<RawClassification> {
+  async classify(req: { model: string; system: string; user: string; tenantId?: string; disableThinking?: boolean }): Promise<RawClassification> {
     const r = await this.registry.resolve(req.model, req.tenantId);
     return r.client.classify({ ...req, model: r.model });
   }
@@ -448,5 +448,16 @@ export class LlmSettings {
       }
     }
     return role === "classifier" ? this.config.QOS_CLASSIFIER_MODEL : this.config.QOS_AGENT_MODEL;
+  }
+
+  /**
+   * 该用途是否关思考（Moonshot kimi-k2.5/k2.6 思考模型）。仅租户级用途绑定可设；
+   * 命中 → 该用途调用注入 thinking:{type:"disabled"}（跳过思维链，秒级直出）。
+   * A 不可达/未绑定/未设 → false（保持默认带思考行为，向后兼容）。
+   */
+  async roleDisableThinking(tenantId: string | undefined, role: LlmRole): Promise<boolean> {
+    if (!tenantId || !this.directory) return false;
+    const bound = await this.directory.bindingFor(tenantId, role);
+    return bound?.disableThinking === true;
   }
 }

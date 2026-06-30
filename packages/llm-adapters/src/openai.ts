@@ -146,7 +146,7 @@ export class OpenAiLlmClient implements FullLlmClient {
     this.metrics?.llmTokens.inc({ model, direction: "output", ...provider }, usage.completion_tokens ?? 0);
   }
 
-  async classify(req: { model: string; system: string; user: string }): Promise<RawClassification> {
+  async classify(req: { model: string; system: string; user: string; disableThinking?: boolean }): Promise<RawClassification> {
     // 思维型/温度强制模型（如 kimi-k2.5）偶发返回空/不可解析的结构化输出 → 重试（实测 ~1/4 概率，重试即稳）。
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -160,13 +160,15 @@ export class OpenAiLlmClient implements FullLlmClient {
     throw lastErr instanceof Error ? lastErr : new ClassifierParseError();
   }
 
-  private async classifyOnce(req: { model: string; system: string; user: string }): Promise<RawClassification> {
+  private async classifyOnce(req: { model: string; system: string; user: string; disableThinking?: boolean }): Promise<RawClassification> {
     const resp = await this.client.chat.completions.create({
       model: req.model,
       messages: [
         { role: "system", content: req.system },
         { role: "user", content: req.user },
       ],
+      // 关思考（Moonshot kimi-k2.5/2.6）：跳过思维链直出结构化分类，10–90s → 秒级。非该系列模型忽略此键无害。
+      ...(req.disableThinking ? { thinking: { type: "disabled" } } : {}),
       response_format: {
         // strict:false 兼容国产/兼容端点（实测 Moonshot/Kimi 在 strict:true 下返空/不可解析，且会加 reason 等额外字段）；
         // 形状由 OpenAiClassificationSchema 兜底校验（zod 默认剔除未知键）。

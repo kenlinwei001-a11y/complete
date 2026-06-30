@@ -1139,6 +1139,8 @@ export interface LlmPurposeBindingRecord {
   purpose: string; // classifier|agent|extraction|modeling|template_gen|compose
   providerId: string;
   modelId: string;
+  /** 关思考开关（Moonshot kimi-k2.5/k2.6）：true → 该用途调用注入 thinking:{type:"disabled"}（秒级直出）。 */
+  disableThinking?: boolean;
   updatedAt: string;
 }
 

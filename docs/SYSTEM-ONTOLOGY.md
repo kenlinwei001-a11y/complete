@@ -240,7 +240,7 @@ BuildPlan --gap(幂等)--> 复用已有/标缺  --rawin--> Connector/KB  --trans
 ```
 Tenant --隔离--> 一切读写/事件/缓存键    FeatureConfig --门控(先于authz)--> 端点/视图/求解器
 Policy(A6) --行级过滤--> {query_objects, executeSlice, solver 读出}
-LlmPurposeBinding --路由--> { classifier:QOS分类 · agent:路径B · extraction:规则抽取/构建 · modeling:建模建议 · template_gen:行业模板 · compose:llm_compose }   ⚠ 用途枚举写死、不可扩展；model 下拉依赖先选 provider
+LlmPurposeBinding --路由--> { classifier:QOS分类 · agent:路径B · extraction:规则抽取/构建 · modeling:建模建议 · template_gen:行业模板 · compose:llm_compose }   ⚠ 用途枚举写死、不可扩展；model 下拉依赖先选 provider。每绑定可选 `disableThinking`（Moonshot kimi-k2.5/2.6 思考模型）→ 该用途调用注入 `thinking:{type:"disabled"}` 跳过思维链；classifier 默认开（真跑实证 12.7s→3.6s，~3.5×），agent 留思考。
 OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 ```
 

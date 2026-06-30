@@ -222,6 +222,9 @@ export const PurposeBindingSchema = z.object({
   purpose: LlmPurposeSchema,
   providerId: z.string(),
   modelId: z.string(),
+  // 关思考开关（Moonshot kimi-k2.5/k2.6 思考模型）：true → 该用途调用注入 thinking:{type:"disabled"}，
+  // 跳过思维链直出结构化结果（classifier 这类低延迟任务用之，从 10–90s 降到秒级；agent 留思考不开）。
+  disableThinking: z.boolean().optional(),
 });
 export type PurposeBinding = z.infer<typeof PurposeBindingSchema>;
 

@@ -399,16 +399,18 @@ function ProviderEditor({
 function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "llm-bindings"], queryFn: fetchLlmBindings });
-  const [draft, setDraft] = useState<Record<string, { providerId: string; modelId: string }>>({});
+  const [draft, setDraft] = useState<Record<string, { providerId: string; modelId: string; disableThinking?: boolean }>>({});
 
-  const current = (purpose: LlmPurpose): { providerId: string; modelId: string } =>
+  const current = (purpose: LlmPurpose): { providerId: string; modelId: string; disableThinking?: boolean } =>
     draft[purpose] ?? data?.bindings.find((b) => b.purpose === purpose) ?? { providerId: "", modelId: "" };
 
   const saveMut = useMutation({
     mutationFn: () => {
       const bindings: PurposeBinding[] = LLM_PURPOSES.map((purpose) => {
         const v = current(purpose);
-        return v.providerId && v.modelId ? { purpose, providerId: v.providerId, modelId: v.modelId } : null;
+        return v.providerId && v.modelId
+          ? { purpose, providerId: v.providerId, modelId: v.modelId, ...(v.disableThinking ? { disableThinking: true } : {}) }
+          : null;
       }).filter((b): b is PurposeBinding => b !== null);
       return putLlmBindings(bindings);
     },
@@ -430,6 +432,7 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
             <th>能力要求</th>
             <th>provider</th>
             <th>model</th>
+            <th>关思考<br /><span style={{ fontSize: 10, fontWeight: 400, color: "var(--muted)" }}>kimi-k2.5/2.6</span></th>
           </tr>
         </thead>
         <tbody>
@@ -452,7 +455,7 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                     value={v.providerId}
                     aria-label={`${purpose}-provider`}
                     data-testid={`binding-provider-${purpose}`}
-                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: e.target.value, modelId: "" } }))}
+                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: e.target.value, modelId: "", disableThinking: v.disableThinking } }))}
                   >
                     <option value="">（未绑定 → 系统默认）</option>
                     {providers
@@ -469,7 +472,7 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                     value={v.modelId}
                     aria-label={`${purpose}-model`}
                     data-testid={`binding-model-${purpose}`}
-                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: v.providerId, modelId: e.target.value } }))}
+                    onChange={(e) => setDraft((d) => ({ ...d, [purpose]: { providerId: v.providerId, modelId: e.target.value, disableThinking: v.disableThinking } }))}
                   >
                     <option value="">（选择模型）</option>
                     {/* G-7：已绑 model 不在当前 provider 目录时仍可见可选，避免静默显示空白（像"绑定丢了"） */}
@@ -489,6 +492,22 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                       );
                     })}
                   </select>
+                </td>
+                <td style={{ textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    aria-label={`${purpose}-disable-thinking`}
+                    data-testid={`binding-disable-thinking-${purpose}`}
+                    checked={v.disableThinking === true}
+                    disabled={!v.providerId || !v.modelId}
+                    title="开启 → 该用途调用 kimi-k2.5/2.6 时注入 thinking:disabled，跳过思维链秒级直出（classifier 等低延迟任务推荐；agent 留思考）"
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        [purpose]: { providerId: v.providerId, modelId: v.modelId, disableThinking: e.target.checked },
+                      }))
+                    }
+                  />
                 </td>
               </tr>
             );

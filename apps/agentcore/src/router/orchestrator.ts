@@ -385,6 +385,8 @@ export class Orchestrator {
   ): Promise<ClassificationResult | undefined> {
     // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
     const model = await this.deps.llmSettings.roleModel(task.tenantId, "classifier", pkg.classifierModel);
+    // 关思考开关（用途绑定级）：classifier 绑思考模型(kimi-k2.6)时可关思维链，分类从 10–90s 降到秒级
+    const disableThinking = await this.deps.llmSettings.roleDisableThinking(task.tenantId, "classifier");
     const catalog = candidates
       .map((i) => {
         const slotDesc = i.slots.map((s) => `${s.name}(${s.type}${s.required ? ",必填" : ""}): ${s.description}`).join("; ");
@@ -402,7 +404,7 @@ export class Orchestrator {
     for (let attempt = 0; attempt < 3; attempt++) {
       const t0 = Date.now();
       try {
-        const raw = await this.deps.engine.deps.llm.classify({ model, system, user, tenantId: task.tenantId });
+        const raw = await this.deps.engine.deps.llm.classify({ model, system, user, tenantId: task.tenantId, disableThinking });
         const latencyMs = Date.now() - t0;
         this.deps.metrics.classifierLatency.observe(latencyMs);
         // LLM Provider 增量 §1.3：每次调用的审计记录补 {providerId, modelId}

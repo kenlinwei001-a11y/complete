@@ -40,12 +40,25 @@ export async function seedDemoLlmProvider(
   // extraction=A2 规则抽取 · template_gen=未知行业合成 · modeling=A3 AI 建议 · comprehend=A2 故事解析。
   // compose 运行期回落 agent 绑定（roleModel），无需单列。
   const want = ["classifier", "agent", "comprehend", "modeling", "extraction", "template_gen"] as const;
+  // classifier 默认关思考（kimi-k2.6 是思考模型，分类一次 10–90s；关思考后秒级直出，QOS 分类不再静默卡）。
+  // agent 等留思考（工具循环需要推理）。运营可在用途矩阵改回。
+  const disableFor = (purpose: string): boolean => purpose === "classifier";
   const missing = want.filter((p) => !cur.some((b) => b.purpose === p));
-  if (missing.length > 0) {
-    await llm.putBindings(ctx, [
-      ...cur,
-      ...missing.map((purpose) => ({ purpose, providerId: provider.id, modelId: cfg.model })),
-    ]);
+  // classifier 已绑但未关思考 → 也需回写补开关（重启/旧 seed 升级路径）。
+  const classifierNeedsFlag = cur.some((b) => b.purpose === "classifier" && b.disableThinking !== true);
+  if (missing.length > 0 || classifierNeedsFlag) {
+    const merged = [
+      ...cur
+        .filter((b) => !missing.includes(b.purpose as (typeof want)[number]))
+        .map((b) => ({ ...b, ...(disableFor(b.purpose) ? { disableThinking: true } : {}) })),
+      ...missing.map((purpose) => ({
+        purpose,
+        providerId: provider.id,
+        modelId: cfg.model,
+        ...(disableFor(purpose) ? { disableThinking: true } : {}),
+      })),
+    ];
+    await llm.putBindings(ctx, merged);
   }
 }
 
