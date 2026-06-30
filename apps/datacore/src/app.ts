@@ -22,6 +22,7 @@ import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
 import { AuthzService } from "./authz.js";
 import { OutboxService } from "./outbox.js";
+import { AuditService } from "./audit.js";
 import { ExecutionLockService } from "./execlock.js";
 import { QuarantineService } from "./quarantine.js";
 import { MetaOntologyService } from "./meta/service.js";
@@ -293,6 +294,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   await auth.init();
   const authz = new AuthzService(repos);
   const outbox = new OutboxService(repos, logger, deps.fetchImpl, metrics);
+  const audit = new AuditService(repos, outbox); // WO-AUDIT-OBS：统一 append-only 审计写入器
   const execLocks = new ExecutionLockService(repos, metrics);
   const quarantine = new QuarantineService(repos);
   const metaOntology = new MetaOntologyService(repos, outbox);
@@ -311,7 +313,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     solvers.setOptimizer(new HttpOptimizerClient(process.env.OPTIMIZER_BASE_URL));
   }
   const timeseries = new TimeseriesService(repos, authz, outbox);
-  const features = new FeatureService(repos);
+  const features = new FeatureService(repos, audit);
   const configBundle = new ConfigBundleService(repos, features);
   const catalog = new CatalogService(repos, features);
   const governance = new OntologyGovernanceService(repos, authz, ontology, ontologyCore, features, metrics, outbox);
@@ -666,7 +668,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const httpLogger = logger.child({ component: "http" }) as unknown as FastifyBaseLogger;
   const app: FastifyInstance = Fastify({
     loggerInstance: httpLogger,
-    genReqId: () => newId("req"),
+    // WO-AUDIT-OBS：跨服务追踪——优先复用入站 `x-request-id`（AgentCore 出站透传），无则生成。
+    // 使同一 requestId 贯穿 AgentCore 日志 → DataCore 日志 → 错误信封，一线可追。
+    genReqId: (req) => {
+      const inbound = req.headers["x-request-id"];
+      const v = Array.isArray(inbound) ? inbound[0] : inbound;
+      return typeof v === "string" && v.length > 0 && v.length <= 200 ? v : newId("req");
+    },
     bodyLimit: 100 * 1024 * 1024,
   });
   await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
@@ -748,6 +756,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   const ctx = (req: FastifyRequest): AuthCtx => {
     if (!req.authCtx) throw unauthorized();
+    // WO-AUDIT-OBS：把贯穿两系统的 requestId 挂上 ctx，供审计写入器/服务层落库与日志同源。
+    if (req.authCtx.requestId === undefined) req.authCtx.requestId = req.id as string;
     return req.authCtx;
   };
 
@@ -3852,7 +3862,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   registerLlmProviderRoutes(app, { repos, service: llmProviders, outbox, ctx, fetchImpl: deps.fetchImpl ?? fetch });
 
   // ---- 管理平台增量：§2 租户/用户 + §3 场景包/视图配置 ------------------------------------------
-  registerAdminPlatformRoutes(app, { repos, outbox, features, ctx });
+  registerAdminPlatformRoutes(app, { repos, outbox, audit, features, ctx });
 
   // PATCH connection (schedule changes re-register/unregister CONNECTOR_SYNC jobs)
   app.patch("/a/v1/connections/:id", async (req) => {

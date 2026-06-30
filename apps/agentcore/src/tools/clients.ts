@@ -8,6 +8,8 @@ export interface ToolAuthCtx extends AuthCtx {
   tokenExpiresAt?: number;
   /** 开发期 X-Debug-User 原值：无 bearer token 时透传给 DataCore（仅非生产）。 */
   debugUser?: string;
+  /** WO-AUDIT-OBS：跨服务 requestId——出站调 DataCore 透传 `x-request-id`，两系统日志/错误信封同源。 */
+  requestId?: string;
 }
 
 export interface OntologyClient {

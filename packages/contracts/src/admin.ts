@@ -47,7 +47,37 @@ export const BUILT_IN_ROLES = [
   "approver",
   "planner",
   "viewer",
+  // WO-AUDIT-OBS：新增审计员只读角色——可读 /a/v1/audit-log（不破 A6 行级，不授予任何写权限）。
+  "auditor",
 ] as const;
+
+// ---- WO-AUDIT-OBS 统一审计日志（append-only · R13 · R-AUDIT） ------------------
+
+/**
+ * 统一审计日志条目：每条 admin/写路径变更落一条（只插不改不删）。
+ * before/after 取关键字段（非全 doc，避免膨胀）；requestId 跨两系统贯穿便于排障。
+ */
+export const AuditLogEntrySchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  /** 操作者用户 id（= ctx.userId；服务间调用为 svc:caller） */
+  actorId: z.string(),
+  /** 动作语义码（与历史 outbox 事件名同口径，如 features.updated / view_config.created） */
+  action: z.string(),
+  /** 目标对象类型（如 feature_config / view_config / tenant / user） */
+  targetKind: z.string(),
+  /** 目标对象标识 */
+  targetId: z.string(),
+  /** 变更前关键字段（创建无） */
+  before: z.record(z.string(), z.unknown()).optional(),
+  /** 变更后关键字段（删除无） */
+  after: z.record(z.string(), z.unknown()).optional(),
+  /** ISO 时间戳 */
+  at: z.string(),
+  /** 跨服务 requestId（错误信封/两系统日志同源） */
+  requestId: z.string().optional(),
+});
+export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
 
 export const RolesResponseSchema = z.object({
   builtIn: z.array(z.string()),

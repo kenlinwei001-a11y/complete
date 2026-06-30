@@ -1,6 +1,7 @@
 import type { FeatureDef } from "@platform/contracts";
 import type { AuthCtx, FeatureAuditRecord, FeatureConfigRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
+import type { AuditService } from "./audit.js";
 import { AppError, validationError } from "./errors.js";
 
 /**
@@ -134,7 +135,8 @@ const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
 export const featureNotFound = () => new AppError("FEATURE_NOT_FOUND", "feature not found", 404);
 
 export class FeatureService {
-  constructor(private repos: Repos) {}
+  /** WO-AUDIT-OBS：可选审计写入器；构造时注入 → feature 变更也落统一 audit_log。 */
+  constructor(private repos: Repos, private auditSvc?: AuditService) {}
 
   registry(): FeatureDef[] {
     return FEATURE_REGISTRY;
@@ -349,6 +351,17 @@ export class FeatureService {
       updatedBy: ctx.userId,
       updatedAt: rec.updatedAt,
     });
+    // WO-AUDIT-OBS：feature 变更经统一 append-only 审计日志（actor=ctx.userId·R-AUDIT）+ outbox。
+    if (this.auditSvc) {
+      await this.auditSvc.record(ctx, {
+        action: "features.updated",
+        targetKind: "feature_config",
+        targetId: id,
+        before: { overrides: before },
+        after: { overrides, configVersion: rec.configVersion, role: role ?? null },
+        outboxPayload: { configVersion: rec.configVersion, role: role ?? null, diff },
+      }, tenantId);
+    }
     return rec;
   }
 

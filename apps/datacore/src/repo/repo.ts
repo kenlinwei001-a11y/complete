@@ -2,6 +2,7 @@ import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision,
 import type {
   ActionDraft,
   ActionTypeRecord,
+  AuditLogRecord,
   CalibrationForecastRecord,
   CalibrationHistoryRecord,
   CalibrationPairRecord,
@@ -268,6 +269,8 @@ export interface Repos {
   // Feature entitlement
   featureConfigs: Store<FeatureConfigRecord>;
   featureAudit: Store<FeatureAuditRecord>;
+  /** WO-AUDIT-OBS：统一 append-only 审计日志（audit_log，migration029；只插不改不删·R13）。 */
+  auditLog: Store<AuditLogRecord>;
   /** OC3 配置迁移 Saga 状态机持久化（import_jobs，migration017）。 */
   importJobs: Store<import("@platform/contracts").ImportJob>;
   /** OC6 提示词配置化（prompt_templates，migration018）。 */

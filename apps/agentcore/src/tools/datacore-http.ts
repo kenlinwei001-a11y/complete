@@ -28,6 +28,8 @@ async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: 
       method,
       headers: {
         "content-type": "application/json",
+        // WO-AUDIT-OBS：跨服务追踪——透传 requestId（无则生成），DataCore 优先取入站 x-request-id。
+        "x-request-id": ctx.requestId ?? `req_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
         ...(ctx.token
           ? { authorization: `Bearer ${ctx.token}` }
           : ctx.debugUser
@@ -259,6 +261,8 @@ class HttpIamClient implements IamClient {
         method: "POST",
         headers: {
           "content-type": "application/json",
+          // WO-AUDIT-OBS：跨服务追踪 requestId 透传（同 call()）。
+          "x-request-id": ctx.requestId ?? `req_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
           ...(ctx.token
           ? { authorization: `Bearer ${ctx.token}` }
           : ctx.debugUser

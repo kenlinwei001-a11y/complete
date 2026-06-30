@@ -96,6 +96,13 @@ function deriveTraceGap(task: QueryTask): TraceGapInput | undefined {
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: deps.config.LOG_LEVEL },
+    // WO-AUDIT-OBS：跨服务追踪——优先复用入站 `x-request-id`（网关/前端可注入），无则生成。
+    // 出站调 DataCore 时透传同一 requestId（见 tools/datacore-http.ts），两系统日志/错误信封一线可追。
+    genReqId: (req) => {
+      const inbound = req.headers["x-request-id"];
+      const v = Array.isArray(inbound) ? inbound[0] : inbound;
+      return typeof v === "string" && v.length > 0 && v.length <= 200 ? v : newId("req");
+    },
     // 前端 PRD §3/§6.2 真连别名：QOS 端点在 QOS-PRD 中挂 /api/v1，前端契约写 {B}/b/v1。
     // /b/v1 下原生路由（agents/workflows/…）不受影响，只把 QOS 子集重写到 /api/v1。
     rewriteUrl(req) {
@@ -126,17 +133,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
   });
 
-  const auth = (req: FastifyRequest): Promise<RequestAuth> => {
+  const auth = async (req: FastifyRequest): Promise<RequestAuth> => {
     const headers = { ...(req.headers as Record<string, string | string[] | undefined>) };
     // 前端 PRD §4.3 契约补充项：EventSource 无法携带自定义头，SSE 的 token 经 ?access_token= 传递
     const q = req.query as Record<string, unknown> | undefined;
     if (!headers["authorization"] && typeof q?.["access_token"] === "string") {
       headers["authorization"] = `Bearer ${q["access_token"] as string}`;
     }
-    return resolveAuth(headers, {
+    const a = await resolveAuth(headers, {
       dataCoreBaseUrl: deps.config.DATACORE_BASE_URL,
     });
+    // WO-AUDIT-OBS：把贯穿两系统的 requestId 挂上 ctx → 出站调 DataCore 透传 x-request-id。
+    a.requestId = req.id as string;
+    return a;
   };
+
+  // WO-AUDIT-OBS：每请求完成打 requestId（= 入站 x-request-id 或本服务生成），与 DataCore 日志同源可追。
+  app.addHook("onResponse", async (req) => {
+    req.log.info({ requestId: req.id, method: req.method, url: req.url, statusCode: req.raw.statusCode ?? "?" }, "request completed");
+  });
 
   /** D-29 实时环 E-c：B 侧发布类领域事件落库（经 /b/v1/outbox 馈源供前端 F1 全局轮询传播）。 */
   const emitDomainEvent = (tenantId: string, event: string, payload: Record<string, unknown> = {}): Promise<void> =>

@@ -89,6 +89,25 @@ export interface AuthCtx {
   userId: string;
   roles: string[];
   attributes: Record<string, unknown>;
+  /** WO-AUDIT-OBS：贯穿两系统的 requestId（优先入站 x-request-id，回退 req.id）；审计日志/日志同源。 */
+  requestId?: string;
+}
+
+/**
+ * WO-AUDIT-OBS：统一 append-only 审计日志记录（只插不改不删·R13）。
+ * 每条 admin/写路径变更落一条；与历史 outbox 事件向后兼容并行。
+ */
+export interface AuditLogRecord {
+  id: string;
+  tenantId: string;
+  actorId: string;
+  action: string;
+  targetKind: string;
+  targetId: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  at: string;
+  requestId?: string;
 }
 
 // ---------------------------------------------------------------------------

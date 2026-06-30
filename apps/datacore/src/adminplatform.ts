@@ -13,8 +13,9 @@ import { AuthService } from "./auth.js";
 import { newId } from "./ids.js";
 import type { Repos } from "./repo/repo.js";
 import type { OutboxService } from "./outbox.js";
+import type { AuditService } from "./audit.js";
 import { VIEW_FEATURE_MAP, type FeatureService } from "./features.js";
-import type { AuthCtx, ScenarioPackageRecord, Tenant, User, ViewConfig } from "./domain.js";
+import type { AuthCtx, AuditLogRecord, ScenarioPackageRecord, Tenant, User, ViewConfig } from "./domain.js";
 
 /**
  * 管理平台增量（PRD-addendum-admin-platform）：
@@ -25,6 +26,8 @@ import type { AuthCtx, ScenarioPackageRecord, Tenant, User, ViewConfig } from ".
 interface AdminDeps {
   repos: Repos;
   outbox: OutboxService;
+  /** WO-AUDIT-OBS：统一 append-only 审计写入器（每 admin 变更经此·R-AUDIT）。 */
+  audit: AuditService;
   features: FeatureService;
   ctx: (req: FastifyRequest) => AuthCtx;
 }
@@ -126,10 +129,18 @@ const ViewConfigBodySchema = AdminViewConfigSchema.omit({ featureKey: true, feat
 });
 
 export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDeps): void {
-  const { repos, outbox, features, ctx } = deps;
+  const { repos, audit: auditSvc, features, ctx } = deps;
 
-  const audit = (tenantId: string, event: string, payload: Record<string, unknown>) =>
-    outbox.emit(tenantId, event, payload);
+  /**
+   * WO-AUDIT-OBS：所有 admin 变更路径统一经此 → append-only audit_log（actor=c.userId·R-AUDIT）+ outbox。
+   * tenantOverride 用于 platform_admin 跨租户操作（如建租户/建首个 tenant_admin），审计落目标租户。
+   */
+  const audit = (
+    c: AuthCtx,
+    action: string,
+    target: { targetKind: string; targetId: string; before?: Record<string, unknown>; after?: Record<string, unknown>; outboxPayload?: Record<string, unknown> },
+    tenantOverride?: string,
+  ) => auditSvc.record(c, { action, ...target }, tenantOverride);
 
   // =========================================================================
   // §2 租户管理（platform_admin —— 唯一跨租户角色）
@@ -158,7 +169,10 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
       createdAt: new Date().toISOString(),
     };
     await repos.tenants.put(tenant);
-    await audit(body.key, "iam.tenant.created", { tenantId: body.key, by: c.userId });
+    await audit(c, "iam.tenant.created", {
+      targetKind: "tenant", targetId: body.key,
+      after: { key: body.key, name: body.name, industry: body.industry ?? null },
+    }, body.key);
     return reply.status(201).send(tenantVM(tenant));
   });
 
@@ -196,7 +210,10 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
       status: "ACTIVE",
     };
     await repos.users.put(user);
-    await audit(id, "iam.user.created", { userId: user.id, email: body.email, roles: body.roles, by: c.userId });
+    await audit(c, "iam.user.created", {
+      targetKind: "user", targetId: user.id,
+      after: { email: body.email, roles: body.roles, displayName: user.displayName },
+    }, id);
     // TODO(邮件)：本期直接返回初始密码；后续改为一次性邀请链接邮件下发。
     return reply.status(201).send({ ...userVM(user), initialPassword: body.password ? undefined : password });
   });
@@ -238,11 +255,11 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
       status: body.status ?? user.status ?? "ACTIVE",
     };
     await repos.users.put(updated);
-    await audit(id, "iam.user.updated", {
-      userId: user.id,
-      by: c.userId,
-      patch: { roles: body.roles, status: body.status, attributes: body.attributes ? Object.keys(body.attributes) : undefined },
-    });
+    await audit(c, "iam.user.updated", {
+      targetKind: "user", targetId: user.id,
+      before: { roles: user.roles, status: user.status ?? "ACTIVE", displayName: user.displayName },
+      after: { roles: updated.roles, status: updated.status, displayName: updated.displayName },
+    }, id);
     return userVM(updated);
   });
 
@@ -256,7 +273,7 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
     if (!user) throw notFound("user");
     const password = genPassword();
     await repos.users.put({ ...user, passwordHash: await AuthService.hashPassword(password) });
-    await audit(tenantId, "iam.user.password_reset", { userId: user.id, by: c.userId });
+    await audit(c, "iam.user.password_reset", { targetKind: "user", targetId: user.id }, tenantId);
     // TODO(邮件)：本期直接返回新密码；后续改为一次性重置链接邮件下发。
     return { password, note: "TODO: 邮件下发一次性重置链接（本期直接返回新密码，请提示用户立即修改）" };
   });
@@ -327,7 +344,10 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
       updatedAt: now,
     };
     await repos.scenarioPackages.put(pkg);
-    await audit(c.tenantId, "scenario_package.created", { packageId: pkg.id, fromTemplate: body.fromTemplate, by: c.userId });
+    await audit(c, "scenario_package.created", {
+      targetKind: "scenario_package", targetId: pkg.id,
+      after: { name: pkg.name, fromTemplate: body.fromTemplate ?? null, views: pkg.views },
+    });
     return reply.status(201).send(pkg);
   });
 
@@ -340,7 +360,11 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
     const body = parseBody(ScenarioPackagePatchSchema, req.body);
     const updated: ScenarioPackageRecord = { ...pkg, ...body, id: pkg.id, updatedAt: new Date().toISOString() };
     await repos.scenarioPackages.put(updated);
-    await audit(c.tenantId, "scenario_package.updated", { packageId: pkg.id, by: c.userId });
+    await audit(c, "scenario_package.updated", {
+      targetKind: "scenario_package", targetId: pkg.id,
+      before: { name: pkg.name, views: pkg.views, toolWhitelist: pkg.toolWhitelist },
+      after: { name: updated.name, views: updated.views, toolWhitelist: updated.toolWhitelist },
+    });
     return updated;
   });
 
@@ -443,7 +467,11 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
     }
     // 联动（强制）：创建 ViewConfig → 自动注册 view.{viewKey}（默认开）+ configVersion+1。
     const featureKey = await features.registerViewFeature(c, body.viewKey, body.title);
-    await audit(c.tenantId, "view_config.created", { viewKey: body.viewKey, featureKey, by: c.userId });
+    await audit(c, "view_config.created", {
+      targetKind: "view_config", targetId: body.viewKey,
+      after: { title: body.title, renderer: body.renderer, roles: body.roles, featureKey },
+      outboxPayload: { featureKey },
+    });
     const created = (await listAdminViews(c.tenantId)).find((v) => v.viewKey === body.viewKey);
     const resolved = await features.resolve(c.tenantId);
     return reply.status(201).send({ ...created, featureKey, configVersion: resolved.configVersion });
@@ -500,7 +528,11 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
     const dyn = await features.dynamicKeys(c.tenantId);
     const featureKey = VIEW_FEATURE_MAP[viewKey] ?? (dyn.has(`view.${viewKey}`) ? `view.${viewKey}` : undefined);
     if (featureKey) await features.mergeTenantOverride(c, c.tenantId, { [featureKey]: true });
-    await audit(c.tenantId, "view_config.updated", { viewKey, by: c.userId });
+    await audit(c, "view_config.updated", {
+      targetKind: "view_config", targetId: viewKey,
+      before: { title: sample.title, renderer: sample.renderer, roles: containing.map((d) => d.role) },
+      after: { title: body.title ?? sample.title, renderer: body.renderer ?? sample.renderer, roles: targetRoles },
+    });
     const updated = (await listAdminViews(c.tenantId)).find((v) => v.viewKey === viewKey);
     const resolved = await features.resolve(c.tenantId);
     return { ...updated, configVersion: resolved.configVersion };
@@ -532,7 +564,38 @@ export function registerAdminPlatformRoutes(app: FastifyInstance, deps: AdminDep
       await repos.viewConfigs.put(doc);
     }
     await features.unregisterViewFeature(c, viewKey);
-    await audit(c.tenantId, "view_config.deleted", { viewKey, by: c.userId });
+    await audit(c, "view_config.deleted", {
+      targetKind: "view_config", targetId: viewKey,
+      before: { featureKey: featureKey ?? null, roles: containing.map((d) => d.role) },
+      outboxPayload: { references },
+    });
     return { deleted: true, references };
+  });
+
+  // =========================================================================
+  // WO-AUDIT-OBS §③ 统一审计日志只读查询（append-only · platform_admin / auditor 只读角色）
+  //   - 只读：无 PUT/DELETE 路由 → append-only 在 API 面结构性成立。
+  //   - R2：仅本租户（不破 A6 行级——审计日志按租户隔离，审计员只看本租户）。
+  // =========================================================================
+  const requireAuditReader = (c: AuthCtx): void => {
+    if (!c.roles.some((r) => ["platform_admin", "auditor", "admin"].includes(r.split(":")[0] as string))) {
+      throw forbidden("audit log requires platform_admin or auditor role");
+    }
+  };
+  app.get("/a/v1/audit-log", async (req) => {
+    const c = ctx(req);
+    requireAuditReader(c);
+    const q = req.query as { since?: string; actor?: string; target?: string; limit?: string };
+    const limit = Math.min(Math.max(Number(q.limit) || 200, 1), 1000);
+    const all = await repos.auditLog.list(c.tenantId, (e: AuditLogRecord) => {
+      if (q.since && e.at < q.since) return false;
+      if (q.actor && e.actorId !== q.actor) return false;
+      // target 既匹配 targetId 也匹配 targetKind（便于按"哪种对象/哪个对象"过滤）
+      if (q.target && e.targetId !== q.target && e.targetKind !== q.target) return false;
+      return true;
+    });
+    // 最新在前（append-only，按 at 倒序）。
+    all.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    return { items: all.slice(0, limit), total: all.length };
   });
 }
