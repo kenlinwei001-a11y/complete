@@ -178,6 +178,24 @@ for (const k of Object.keys(SOLVER_OUTPUT_SHAPES)) {
   if (!SOLVER_OUTPUT_SHAPES[k]!.includes("dataMode")) SOLVER_OUTPUT_SHAPES[k] = [...SOLVER_OUTPUT_SHAPES[k]!, "dataMode"];
 }
 
+/**
+ * WO-DM-tail（审核 F-DM-KS-1 修）：invoke wrapper 的 LIVE 默认白名单——仅**经核实纯真对象读出/真优化求解、
+ * 零业务魔数/哈希**的求解器默认 LIVE；其余（含 order_fullchain bases×700、affected_orders 哈希抖动、
+ * capex_scenario/counterfactual_timeline/plan_rootcause 含启发或 mock 回落）默认 PARTIAL，诚实不过宣称。
+ * 自置 dataMode 的求解器（capacity_forecast/bottleneck_matrix/risk_timeline/audit_timeline/13 extended）
+ * 不经本默认（已据真数据来源各自置 LIVE/MOCK/PARTIAL）。
+ */
+const LIVE_DEFAULT_SOLVERS = new Set<string>([
+  // 纯真对象读出/汇总（读已物化对象图·无业务魔数/哈希）
+  "capacity_rollup", "mrp_netting", "finance_pnl", "metric_rollup", "cockpit_kpi", "ksf_graph",
+  "margin_attribution", "concentration_risk", "generic_inference", "shared_bottleneck",
+  // 真优化求解（CP-SAT/确定性求解器作用于真/显式入参）
+  "facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction",
+  "selection_optimize", "assignment_optimize", "sequencing_optimize", "packing_optimize", "optimize_whatif",
+  // 代入真规划/财务输入确定性裁决 / 经营目标基线确定性收敛
+  "plan_audit", "plan_generate",
+]);
+
 const DAY_MS = 86400000;
 
 /**
@@ -1579,8 +1597,9 @@ export class SolverService {
 
   /**
    * WO-DM（no-silent-mock）：所有求解器入口统一保证输出带 `dataMode` 诚实位。
-   * hollow 求解器（audit_timeline/extended）已自置 MOCK/PARTIAL；其余读真对象/config 派生 → 默认 LIVE；
-   * PROVISIONAL 沙箱临时求解器 → PARTIAL（未审核）。前端据此标徽章，禁哈希/魔数静默冒充真算。
+   * hollow 求解器（audit_timeline/extended）已自置 MOCK/PARTIAL；PROVISIONAL 沙箱临时求解器 → PARTIAL。
+   * 其余：**审核 F-DM-KS-1 修**——默认 PARTIAL（诚实优先·不过宣称），仅经核实纯真对象/真优化、零业务魔数/哈希
+   * 的求解器进 LIVE 白名单；混合真+魔数者落 PARTIAL，不被 default-LIVE 洗白成"实测"。
    */
   async invoke(
     ctx: AuthCtx,
@@ -1590,7 +1609,7 @@ export class SolverService {
   ): Promise<Record<string, unknown>> {
     const out = await this.invokeRaw(ctx, solverKey, args, visibleOrders);
     if (out && typeof out === "object" && (out as Record<string, unknown>).dataMode === undefined) {
-      (out as Record<string, unknown>).dataMode = "LIVE";
+      (out as Record<string, unknown>).dataMode = LIVE_DEFAULT_SOLVERS.has(solverKey) ? "LIVE" : "PARTIAL";
     }
     return out;
   }
