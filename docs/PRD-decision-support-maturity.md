@@ -28,6 +28,7 @@
 3. **D3 场景决策对话**：每个人机对话入口=配置完整的场景接地 agent（本页数据+规则+skill+MCP+求解器+本体切片）。
 4. **D4 生产韧性**：多实例锁/重启续跑稳定；本地构建门=CI 口径；可观测。
 5. **D5 自进化闭环**：校准（越用越准）+ 沙盘活体 + 自成长 成日常。
+6. **D6–D8 决策闭环完整性（完整性复审补·§3.7）**：D6 主动决策推送（监控→告警→处置建议→待办，替纯 PULL）·D7 决策执行闭环（出站 actuation 到 ERP/MES·替"停在建议层"）·D8 企业级（协同/延迟 SLA/可观测/治理/决策记录/真实连接器）。**D6/D7 是"决策支撑 vs 问答看板"的命门。**
 
 **非目标**
 - 不重定义平台总纲/QOS（本 PRD 是增量）。
@@ -102,6 +103,28 @@
 - **图谱融合**：本体图(类型A)收敛为一个图引擎+主入口（实时派生自 建模+切片）；过程DAG(类型B)语义分散但共用渲染（WO-GRAPH-1/2/3-4·别一次性大重构）。
 
 ---
+
+### 3.7 D6–D8 · 决策闭环完整性（完整性复审补 · 原 PRD 遗漏）
+> 自我对抗复审发现：原 D0–D5 偏"**数据进来 + 算得对 + 问得到**"，漏了"**主动推 + 真执行 + 协同/治理**"——决策支撑系统区别于问答看板的命门。下列均**真读源**：多数有原语、缺完整闭环。
+
+- **D6 · 主动决策推送（监控→告警→处置建议→待办）◐**
+  - 现状：`RuleScanService`(`scheduler.ts:181`) 扫 SUSTAIN 规则→`RuleAlert`→发 `rule.alert` outbox + `NotificationService` 在——**但只原语**：窄（仅 SUSTAIN）、未接成完整 push 闭环。
+  - 缺口：全决策阈值监控规则 + Scheduler 定时扫 + **告警→自动调求解器出处置建议→推用户待办/通知**。当前是 PULL（问才答）；缺 PUSH（系统主动盯+提）。
+  - 设计（复用）：扩 `RuleScanService` 覆盖关键决策规则（C 系列阈值）→ 命中 → 联 `mitigation_select`/`adopt_mitigation` 产处置建议草稿 → `NotificationService` push + 驾驶舱"待处置"。工单 **WO-ALERT**(P1)。
+- **D7 · 决策执行闭环 / 出站执行（actuation）◐**
+  - 现状：`writeback-echoes`(`app.ts:940-953`) reconcile 原语在（回写记录 + ECHO_SUPPRESSED + `writeback.divergence`）——但 Action 执行(`actions.ts:349 EXECUTED`)写**内部 props**(Phase9B)，**无"批准 Action→push 回 ERP/MES 连接器"出站执行**（连接器全只读 ingest）。
+  - 缺口：**写回适配器**（连接器加 outbound：approved Action→外部系统建单/改排程）+ 经 `writeback-echoes` 防回环 + 失败补偿。**决策不真正执行=系统停在"建议"层。**
+  - 设计：连接器 `SourceAdapter` 加可选 `writeBack(op)`；`adopt_mitigation` EXECUTED 后经 outbound adapter push + echo 登记 + 散度对账。工单 **WO-ACTUATE**(P1·真实连接器后置)。
+- **D8 · 企业级成熟度（多项·中后期）**
+  | 维 | 现状 | 缺口 |
+  |---|---|---|
+  | 协同决策/待办/委派 | Action 审批+角色+通知 ◐ | 决策协同台（待我审批/处置/委派/超时升级） |
+  | 决策延迟 SLA | classifier 关思考 12.7→3.6s · 10⁴ 规模 ◐ | 答复 P50/P95 SLA + 缓存 + 性能回归门 |
+  | 平台可观测/SLO | `dc_*` metrics·FDE 图·growth 台 ◐ | 运维态可观测（平台健康/SLO/告警·非业务） |
+  | 数据治理/合规/PII/留存 | 租户隔离+entitlement+R5 加密 ❌ | 数据分级/PII/留存策略/合规审计 |
+  | 决策记录/复盘 | 运营回顾+ValidationTrace+M11 realizedMape ◐ | 一等 `Decision` 记录（上下文/备选/否决理由/预测 vs 实现） |
+  | 真实连接器深度 | 框架+file/rest/jdbc+mock_erp/crm/external ❌ | 真 ERP/MES/SCADA/CRM 适配器（无则全合成·D0 已标） |
+  - 工单：**WO-DECISION-RECORD**(P2·一等 Decision 记录)·**WO-OBSERVABILITY**(P2·平台 SLO)·其余按企业落地分期。
 
 ## 4. 契约 / 端点 / 数据模型（contracts-only-shared · 双仓储四处同改）
 
