@@ -26,7 +26,7 @@
 
 | # | 你的要求（L#·原话摘） | 真目标（=用户动作） | 状态 | 证据类型 | 我要防的代理陷阱 | 下一步 |
 |---|---|---|---|---|---|---|
-| R1 | 真实数据走真管道（L2436/7134/9241/11077） | 用户上传真实 Excel → 端到端出真答案 | 🟠 真验中 | **真**：上传臂+确定性建模已实跑(optA-evidence.log) | "把合成标得更诚实(dataMode)"/"同步机制(PIPE-INCR)"冒充 | option A 续到 solver（最深裁决） |
+| R1 | 真实数据走真管道（L2436/7134/9241/11077） | 用户上传真实 Excel → 端到端出真答案 | 🟠 真验·**钉死最深断点** | **真**：全链真跑到 materialize(18对象真落)·solver 拒(B3·optA-evidence.log) | "把合成标得更诚实(dataMode)"/"同步机制(PIPE-INCR)"冒充 | **修 B3 映射层**才能🟢（真物化≠真答案·缺接缝） |
 | R2 | agent/wf 真能配 规则/MCP/求解器（L6229/6295/6316） | 用户在配置页**真把规则绑进去且生效** | 🟡 代理·未真闭 | 无（你：UI 壳·未关联规则库） | "前端有下拉" = 有 | 我**真操作前端**核实 → 缺则 WO |
 | R3 | 推演红/黄非假（L1681/3963/7881/8438"冰山"） | 任何红/黄都**有真数据真算** | 🟡 治表+门·该类未根治 | 代理（genuine-sim 门） | "修单卡可见红" = 修该类 | **真走查全类**红黄卡 |
 | R4 | 用户真能从数据建模（L4925/4947/6190） | 用户在 UI 上**从数据字段真建出本体** | 🟠 真验中 | **真**：`/modeling/derive` 确定性建模实跑出草稿 | "建模链在/ModelingPage 已建" = 用户能用 | 闭 B1(无LLM降级)/B2(归域引导) UX |
@@ -44,7 +44,7 @@
 |---|---|---|---|
 | ⚫ B1 | `/modeling/suggest` LLM-gated(`LLM_PURPOSE_UNBOUND`)·`/derive` 确定性已在但前端不自动降级 | R4 | WO：无 LLM 自动降级到 derive（对 L5049） |
 | ⚫ B2 | fresh 租户上传后 publish 卡：0 注册域 + 必须人工归域 | R1·R4 | WO：上传→引导注册域+归域+一键建模 onboarding |
-| ❓ B3(未达) | uploaded 类型能否喂 canonical 求解器（假设需映射）——**option A 续到此才知** | R1 | 续跑 option A 验 |
+| 🔴 B3(**已确认·最深·命门**) | canonical 求解器硬编码认 Order/Base/Line(`service.ts:1721 probeTypes`)·上传产 Orders/Bases → 求解器拒"**需先合成 Order**"·**缺"上传类型→求解器 schema"映射层** | R1 | **高优 WO**：求解器 schema 由本体绑定驱动(仿 opt-binding) / 或 上传→canonical 映射层（见 `REVIEW-optionA-real-upload-fullflow-verdict.md`） |
 
 ## §3 设计交付物（MEANS·我欠的施工单·🔵≠真闭）
 | 单 | 状态 | 链接 |
