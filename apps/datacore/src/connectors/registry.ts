@@ -11,6 +11,8 @@ export interface SourceAdapter {
   fetchBatch(
     dataset: string,
     cursor?: string,
+    // WO-PIPE-INCR ①：增量水位下推（CDC 能力源据此只回更新行；不支持的源忽略·由服务层按 watermarkField 兜底过滤）。
+    since?: string,
   ): Promise<{ rows: Record<string, unknown>[]; nextCursor?: string }>;
   listDatasets(): Promise<string[]>;
 }
@@ -76,7 +78,8 @@ export const CONNECTOR_TYPES: ConnectorType[] = [
         apiKey: { type: "string", format: "credential" },
       },
     },
-    capabilities: { batch: true, incremental: false, schemaDiscovery: true },
+    // WO-PIPE-INCR ①：REST API 是合法 CDC 源（?since=<updated_at> 上游只回更新行），声明 incremental 能力。
+    capabilities: { batch: true, incremental: true, schemaDiscovery: true },
   },
   {
     key: "knowledge_base",
@@ -225,12 +228,29 @@ export class RestApiAdapter extends RowsAdapter {
     super();
   }
 
-  protected async loadAll(): Promise<Record<string, Record<string, unknown>[]>> {
-    const res = await this.fetchImpl(this.config.url);
+  private async fetchUrl(url: string): Promise<Record<string, unknown>[]> {
+    const res = await this.fetchImpl(url);
     if (!res.ok) throw new Error(`rest_api fetch failed: HTTP ${res.status}`);
     const body = (await res.json()) as unknown;
-    const rows = Array.isArray(body) ? (body as Record<string, unknown>[]) : parseEmbedded(body);
-    return { [this.config.datasetName ?? "api_dataset"]: rows };
+    return Array.isArray(body) ? (body as Record<string, unknown>[]) : parseEmbedded(body);
+  }
+
+  protected async loadAll(): Promise<Record<string, Record<string, unknown>[]>> {
+    return { [this.config.datasetName ?? "api_dataset"]: await this.fetchUrl(this.config.url) };
+  }
+
+  // WO-PIPE-INCR ①：since 下推为查询参数（?since= / &since=）——CDC 源据此只回更新行；缺省全量（向后兼容）。
+  override async fetchBatch(
+    dataset: string,
+    _cursor?: string,
+    since?: string,
+  ): Promise<{ rows: Record<string, unknown>[] }> {
+    if (since === undefined) {
+      const all = await this.loadAll();
+      return { rows: all[dataset] ?? [] };
+    }
+    const sep = this.config.url.includes("?") ? "&" : "?";
+    return { rows: await this.fetchUrl(`${this.config.url}${sep}since=${encodeURIComponent(since)}`) };
   }
 }
 

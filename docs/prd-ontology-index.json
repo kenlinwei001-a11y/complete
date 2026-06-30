@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-28",
+  "generatedAt": "2026-06-30",
   "ontology": {
     "invariants": [
       "R1",
@@ -594,6 +594,28 @@
       ],
       "artifacts": [
         "packages/contracts/src/workspace.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-decision-support-maturity.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-11",
+        "G-5",
+        "G-9"
+      ],
+      "artifacts": [
+        "packages/contracts/src/solvers.ts"
       ],
       "brokenArtifacts": []
     },
@@ -1442,6 +1464,7 @@
       "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-data-closure-spec.md",
       "PRD-de-battery-multitenant-config.md",
+      "PRD-decision-support-maturity.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-generation-boundary-grounding.md",
@@ -1455,20 +1478,23 @@
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
-    "G-12": [
-      "PRD-opensource-fusion-lastmile.md"
-    ],
     "G-10": [
+      "PRD-decision-support-maturity.md",
       "PRD-rules-as-references.md",
       "PRD-simulation-sandbox.md"
     ],
     "G-11": [
+      "PRD-decision-support-maturity.md",
       "PRD-sandbox-ontogenesis-buildplan.md",
       "PRD-simulation-sandbox.md"
     ],
     "G-9": [
+      "PRD-decision-support-maturity.md",
       "PRD-scenario-ontogenesis.md",
       "PRD-simulation-sandbox.md"
+    ],
+    "G-12": [
+      "PRD-opensource-fusion-lastmile.md"
     ]
   },
   "orphanBreakpoints": [],
@@ -1603,6 +1629,7 @@
     ],
     "packages/contracts/src/solvers.ts": [
       "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-decision-support-maturity.md",
       "PRD-plan-audit-1to1.md",
       "PRD-plan-generate-1to1.md"
     ],

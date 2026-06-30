@@ -222,4 +222,83 @@ describe("A1 connectors", () => {
     expect((await test("mock_erp")).ok).toBe(true);
     expect((await test("mock_crm")).ok).toBe(true);
   });
+
+  // WO-PIPE-INCR ①：rest_api 真增量同步（CDC）—— ?since= 只灌新增/变更行（delta merge by pkField），
+  // 未变行保留、水位推进；非全量重灌。这是"绿测试≠能用"的反面证据：真走 sync 路径 + 真读落库行。
+  it("WO-PIPE-INCR: rest_api 增量同步 — 二次 sync?since= 仅灌 delta、按 pk 合并、watermark 推进", async () => {
+    // 上游 CDC 源 stub：无 since → 基线全量；带 since → 仅回 updatedAt>since 的更新行（合法 ?since= 语义）。
+    const baseline = [
+      { id: "A", name: "甲", updatedAt: "2026-01-01" },
+      { id: "B", name: "乙", updatedAt: "2026-01-02" },
+      { id: "C", name: "丙", updatedAt: "2026-01-03" },
+    ];
+    const cdcUpdates = [
+      { id: "B", name: "乙-改", updatedAt: "2026-01-05" }, // 变更（同 pk）
+      { id: "D", name: "丁", updatedAt: "2026-01-06" }, // 新增
+    ];
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      const since = new URL(url).searchParams.get("since");
+      const rows = since ? cdcUpdates.filter((r) => r.updatedAt > since) : baseline;
+      return new Response(JSON.stringify(rows), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+
+    const t = await makeApp({ fetchImpl });
+    const create = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/connections",
+      headers: ADMIN,
+      payload: {
+        connectorTypeKey: "rest_api",
+        name: "orders-api",
+        config: {
+          url: "https://example.test/api/orders",
+          datasetName: "orders",
+          // 真增量配置：pkField=合并主键，watermarkField=水位列。
+          datasets: { orders: { pkField: "id", watermarkField: "updatedAt" } },
+        },
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const connId = (create.json() as { id: string }).id;
+
+    // ① 首次全量 sync（无 since）：3 行 + 水位 = 最大 updatedAt。
+    const sync1 = await t.app.inject({ method: "POST", url: `/a/v1/connections/${connId}/sync`, headers: ADMIN });
+    expect(sync1.statusCode).toBe(202);
+    const r1 = sync1.json() as { rowCounts: Record<string, number>; watermarks: Record<string, string> };
+    expect(r1.rowCounts.orders).toBe(3);
+    expect(r1.watermarks.orders).toBe("2026-01-03");
+    const dsId = (
+      (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${connId}`, headers: ADMIN })).json() as {
+        id: string;
+        name: string;
+        rowCount: number;
+      }[]
+    ).find((d) => d.name === "orders")!.id;
+
+    // ② 增量 sync(?since=2026-01-03)：上游只回 B(改)+D(新)；服务按 pk 合并 → 4 行，rowCounts 报 delta=2，水位推进。
+    const sync2 = await t.app.inject({
+      method: "POST",
+      url: `/a/v1/connections/${connId}/sync?since=2026-01-03`,
+      headers: ADMIN,
+    });
+    expect(sync2.statusCode).toBe(202);
+    const r2 = sync2.json() as { rowCounts: Record<string, number>; watermarks: Record<string, string> };
+    expect(r2.rowCounts.orders).toBe(2); // 只灌 delta（非全量重灌的反面证据）
+    expect(r2.watermarks.orders).toBe("2026-01-06"); // 水位推进
+
+    // 真读落库行：A/C 未变保留、B 被覆盖为新值、D 新增 —— upsert 合并而非整表替换。
+    const rows = (
+      (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets/${dsId}/rows`, headers: ADMIN })).json() as {
+        dataset: { rowCount: number };
+        rows: Record<string, string>[];
+      }
+    );
+    expect(rows.dataset.rowCount).toBe(4);
+    const byId = Object.fromEntries(rows.rows.map((r) => [r.id, r]));
+    expect(byId.A!.name).toBe("甲"); // 未变保留
+    expect(byId.C!.name).toBe("丙"); // 未变保留
+    expect(byId.B!.name).toBe("乙-改"); // 同 pk 覆盖为新值
+    expect(byId.D!.name).toBe("丁"); // 新增
+  });
 });

@@ -2785,8 +2785,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/connections/:id/sync", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const job = await connectors.sync(ctx(req), id);
-    return reply.status(202).send({ syncJobId: job.id, status: job.status });
+    // WO-PIPE-INCR ①：?since=<watermark> → 增量同步（连接器具 incremental 能力时只灌新增/变更行）；缺省全量。
+    const since = (req.query as { since?: string }).since;
+    const c = ctx(req);
+    const job = await connectors.sync(c, id, since !== undefined ? { since } : {});
+    // 回执带各数据集新 watermark（下次 sync?since= 据此只取更新行）。
+    const watermarks = Object.fromEntries(
+      (await repos.rawDatasets.list(c.tenantId, (d) => d.sourceConnId === id))
+        .filter((d) => d.watermark)
+        .map((d) => [d.name, d.watermark]),
+    );
+    return reply.status(202).send({ syncJobId: job.id, status: job.status, rowCounts: job.rowCounts, watermarks });
   });
   app.get("/a/v1/connections/:id/schema", async (req) => {
     const { id } = req.params as { id: string };

@@ -132,6 +132,8 @@ export interface RawDataset {
   syncedAt: string;
   /** A11 溯源继承：产出该数据集的连接 category（便于数据浏览按来源类筛）。 */
   sourceCategory?: string;
+  /** WO-PIPE-INCR ①：增量同步水位（watermarkField 最大值）。下次 sync?since=watermark 只取更新行（CDC·非全量重灌）。 */
+  watermark?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -19,6 +19,9 @@ interface DatasetConfig {
   entityRefField?: string;
   timeField?: string;
   measureFields?: string[];
+  // WO-PIPE-INCR ①：真增量同步配置（二者齐备 + 连接器 incremental 能力 + 传 since → 走 delta 合并而非全量重灌）。
+  pkField?: string; // 业务主键列（按此 upsert 合并，幂等）
+  watermarkField?: string; // 水位列（同步后取本数据集该列最大值作新 watermark·下次 since 据此只取更新行）
 }
 
 /** A1 connector framework: connections, schema discovery, sync → RawDataset | ts writer. */
@@ -189,8 +192,10 @@ export class ConnectorService {
   }
 
   /** POST /a/v1/connections/:id/sync — lands rows in RawDataset; repeat sync is idempotent. */
-  async sync(ctx: AuthCtx, connId: string): Promise<SyncJob> {
+  async sync(ctx: AuthCtx, connId: string, opts: { since?: string } = {}): Promise<SyncJob> {
     const conn = await this.getConnection(ctx, connId);
+    // WO-PIPE-INCR ①：增量同步 = 连接器声明 incremental 能力 + 调用方传 since（端点 ?since=）。否则全量（向后兼容）。
+    const connIncremental = !!getConnectorType(conn.connectorTypeKey)?.capabilities.incremental && opts.since !== undefined;
     const job: SyncJob = {
       id: newId("sync"),
       tenantId: ctx.tenantId,
@@ -207,7 +212,8 @@ export class ConnectorService {
         const rows: Record<string, unknown>[] = [];
         let cursor: string | undefined;
         do {
-          const batch = await adapter.fetchBatch(name, cursor);
+          // 增量水位下推（CDC 源据此只回更新行；不支持的源忽略·服务层再按 watermarkField 兜底过滤）。
+          const batch = await adapter.fetchBatch(name, cursor, connIncremental ? opts.since : undefined);
           rows.push(...batch.rows);
           cursor = batch.nextCursor;
         } while (cursor);
@@ -238,20 +244,40 @@ export class ConnectorService {
             (d) => d.sourceConnId === connId && d.name === name,
           )
         )[0];
+        // WO-PIPE-INCR ①：增量 delta 合并（按 pkField upsert·只灌新增/变更行·非全量重灌），需 incremental+since+既有数据集+pk/wm 配齐。
+        const wmField = dsCfg?.watermarkField;
+        const pkField = dsCfg?.pkField;
+        const incremental = connIncremental && existing && !!pkField && !!wmField;
+        let finalRows = rows;
+        let deltaCount = rows.length;
+        if (incremental) {
+          // 兜底过滤：取水位之后的更新行（适配器已下推 since 则此处为幂等再筛）。
+          const delta = rows.filter((r) => String(r[wmField!] ?? "") > (opts.since ?? ""));
+          const prior = await this.repos.rawRows.list(ctx.tenantId, existing!.id);
+          const byPk = new Map(prior.map((r) => [String(r[pkField!]), r]));
+          for (const d of delta) byPk.set(String(d[pkField!]), d); // upsert：新增/变更覆盖·未变行保留
+          finalRows = [...byPk.values()];
+          deltaCount = delta.length;
+        }
+        // 新水位 = 本数据集 watermarkField 最大值（无则沿用既有·向后兼容）。
+        const watermark = wmField
+          ? finalRows.reduce((mx, r) => { const v = String(r[wmField] ?? ""); return v > mx ? v : mx; }, existing?.watermark ?? "")
+          : existing?.watermark;
         const ds: RawDataset = {
           id: existing?.id ?? newId("rds"),
           tenantId: ctx.tenantId,
           sourceConnId: connId,
           name,
-          fields: profileRows(rows),
-          rowCount: rows.length,
+          fields: profileRows(finalRows),
+          rowCount: finalRows.length,
           syncedAt: new Date().toISOString(),
           sourceCategory: conn.category, // A11 溯源继承
-
+          ...(watermark ? { watermark } : {}),
         };
         await this.repos.rawDatasets.put(ds);
-        await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
-        job.rowCounts[name] = rows.length;
+        await this.repos.rawRows.replace(ctx.tenantId, ds.id, finalRows);
+        // 判据「只灌新增/变更行」：增量报 delta 行数；全量报总行数。
+        job.rowCounts[name] = incremental ? deltaCount : finalRows.length;
       }
       job.status = "SUCCEEDED";
       job.finishedAt = new Date().toISOString();
