@@ -1,9 +1,14 @@
+import { ProcessDag, type ProcessDagEdge } from "./ProcessDag";
+import { nodeFillAlpha } from "./dagStyles";
 import styles from "./LayeredDag.module.css";
 
 /**
  * 通用分层 DAG SVG（增量 PRD §0-3 / §7.16 / §7.19）：
  * 节点按 layer 分纵向泳道（layer 0 在最左），同层节点纵向堆叠；
  * edges 显式给出（跨层连线）。颜色按节点 kind 由调用方着色。
+ *
+ * WO-GRAPH-1：渲染层（坐标系/连线/缩放）下沉到共享 <ProcessDag>；本组件保留分层布局算法、
+ * 节点 DOM 与 onNodeClick 交互（语义/数据/DOM 契约严格不变）。
  */
 export interface DagNodeDef {
   id: string;
@@ -50,6 +55,7 @@ export function LayeredDag({
   const width = layerCount * COL_W + PAD * 2;
   const height = titleH + maxRows * (NODE_H + V_GAP) + PAD * 2;
 
+  const defById = new Map(nodes.map((n) => [n.id, n]));
   const pos = new Map<string, { x: number; y: number }>();
   for (const [layer, list] of byLayer) {
     const totalH = list.length * NODE_H + (list.length - 1) * V_GAP;
@@ -62,70 +68,60 @@ export function LayeredDag({
   const stateColor = (n: DagNodeDef): string =>
     n.state === "fail" ? "var(--danger)" : n.state === "warn" ? "var(--amber)" : (n.color ?? "var(--accent)");
 
+  const pgNodes = nodes.map((n) => {
+    const p = pos.get(n.id)!;
+    return { id: n.id, x: p.x, y: p.y, w: NODE_W, h: NODE_H };
+  });
+  // 分层 DAG 单一边色经 CSS 模块 .edge（与原渲染一致），不走 EDGE_STYLE 语义色。
+  const pgEdges: ProcessDagEdge[] = edges.map((e) => ({ from: e.from, to: e.to, className: styles.edge }));
+
   return (
-    <div className={styles.wrap} data-testid={testId} data-layers={layerCount}>
-      <svg width={width} height={height} role="img">
-        {layerTitles?.map((t, i) => (
-          <text key={i} x={PAD + i * COL_W + NODE_W / 2} y={14} className={styles.layerTitle}>
-            {t}
-          </text>
-        ))}
-        {edges.map((e, i) => {
-          const a = pos.get(e.from);
-          const b = pos.get(e.to);
-          if (!a || !b) return null;
-          const x1 = a.x + NODE_W;
-          const y1 = a.y + NODE_H / 2;
-          const x2 = b.x;
-          const y2 = b.y + NODE_H / 2;
-          const mx = (x1 + x2) / 2;
-          return (
-            <path
-              key={i}
-              className={styles.edge}
-              d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
-              fill="none"
-            />
-          );
-        })}
-        {nodes.map((n) => {
-          const p = pos.get(n.id)!;
-          const c = stateColor(n);
-          return (
-            <g
-              key={n.id}
-              transform={`translate(${p.x},${p.y})`}
-              className={`${styles.node} ${n.state === "dim" ? styles.dim : ""}`}
-              data-testid={`${testId}-node-${n.id}`}
-              data-layer={n.layer}
-              data-state={n.state ?? "normal"}
-              role={onNodeClick ? "button" : undefined}
-              tabIndex={onNodeClick ? 0 : undefined}
-              onClick={() => onNodeClick?.(n)}
-              onKeyDown={(e) => e.key === "Enter" && onNodeClick?.(n)}
-            >
-              <rect width={NODE_W} height={NODE_H} rx={9} fill={`${cssColorAlpha(c)}`} stroke={c} strokeWidth={1.4} />
-              <text x={10} y={n.sub ? 18 : 26} className={styles.label} fill="var(--txt)">
-                {clip(n.label, 13)}
+    <ProcessDag
+      nodes={pgNodes}
+      edges={pgEdges}
+      width={width}
+      height={height}
+      showArrow={false}
+      testId={testId}
+      containerClassName={styles.wrap}
+      dataAttrs={{ "data-layers": layerCount }}
+      svgExtras={layerTitles?.map((t, i) => (
+        <text key={i} x={PAD + i * COL_W + NODE_W / 2} y={14} className={styles.layerTitle}>
+          {t}
+        </text>
+      ))}
+      renderNode={(pn) => {
+        const n = defById.get(pn.id)!;
+        const c = stateColor(n);
+        return (
+          <g
+            key={n.id}
+            transform={`translate(${pn.x},${pn.y})`}
+            className={`${styles.node} ${n.state === "dim" ? styles.dim : ""}`}
+            data-testid={`${testId}-node-${n.id}`}
+            data-layer={n.layer}
+            data-state={n.state ?? "normal"}
+            role={onNodeClick ? "button" : undefined}
+            tabIndex={onNodeClick ? 0 : undefined}
+            onClick={() => onNodeClick?.(n)}
+            onKeyDown={(e) => e.key === "Enter" && onNodeClick?.(n)}
+          >
+            <rect width={NODE_W} height={NODE_H} rx={9} fill={nodeFillAlpha()} stroke={c} strokeWidth={1.4} />
+            <text x={10} y={n.sub ? 18 : 26} className={styles.label} fill="var(--txt)">
+              {clip(n.label, 13)}
+            </text>
+            {n.sub && (
+              <text x={10} y={34} className={styles.sub}>
+                {clip(n.sub, 16)}
               </text>
-              {n.sub && (
-                <text x={10} y={34} className={styles.sub}>
-                  {clip(n.sub, 16)}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+            )}
+          </g>
+        );
+      }}
+    />
   );
 }
 
 function clip(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
-}
-
-/** CSS 变量无法直接做透明度混合 → 用透明面板底色，边框承载语义色 */
-function cssColorAlpha(_c: string): string {
-  return "rgba(226,235,245,0.04)";
 }

@@ -1,0 +1,20 @@
+/* WO-GRAPH-1 · 共享过程 DAG 图例样式（边类型色块 + 标签）。节点/连线视觉由各调用方 CSS 承载。 */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 10.5px;
+  color: var(--muted2);
+  margin-bottom: 4px;
+}
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.legendItem i {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}

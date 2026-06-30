@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
 import { RuleRef } from "@/components/RuleRef";
+import { GAP_COLOR } from "@/components/Dag/dagStyles";
 import zh from "@/locales/zh";
 
 /**
@@ -42,7 +43,8 @@ export interface DagData {
   edges: DagEdge[];
 }
 
-const STATUS_COLOR: Record<string, string> = { RED: "#DD7E9E", AMBER: "#D2B04C", GREEN: "#62BE77" };
+// WO-GRAPH-1：越线/缺口红走共享过程 DAG 视觉语言单一来源（GAP_COLOR === #DD7E9E，零视觉变化）。
+const STATUS_COLOR: Record<string, string> = { RED: GAP_COLOR, AMBER: "#D2B04C", GREEN: "#62BE77" };
 const fmtPct = (w?: number) => (typeof w === "number" ? `${Math.round(w * 100)}%` : "");
 
 export function ProvenanceDag({ data }: { data: DagData | undefined }) {

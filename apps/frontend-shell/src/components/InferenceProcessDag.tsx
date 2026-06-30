@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { TaskStreamState } from "@/sse/taskStreamReducer";
 import zh from "@/locales/zh";
+import { ProcessDag, type ProcessDagEdge } from "@/components/Dag/ProcessDag";
+import { type EdgeType } from "@/components/Dag/dagStyles";
 import styles from "./InferenceProcessDag.module.css";
 
 /**
@@ -10,8 +12,10 @@ import styles from "./InferenceProcessDag.module.css";
  *
  * R13/R14：拓扑=编排定义（结构 config，非业务常数，同 PmDag 层定义/NAV_GROUPS）；节点状态由**真实**
  * 任务轨迹（routing.path/step 事件/answer/gap/error）派生，前端零写死步骤结论、无运行则标"未跑"。
+ *
+ * WO-GRAPH-1：SVG 渲染层（坐标系/类型化连线 par/conv/seq/aux/fb/箭头/缩放/图例）下沉到共享 <ProcessDag>；
+ * 本组件保留 10 节点编排骨架、状态派生、节点 DOM 与点开 IPO 抽屉交互（语义/数据/DOM 契约不变）。
  */
-type EdgeType = "par" | "conv" | "seq" | "aux" | "fb";
 interface SkelNode { id: number; label: string; x: number; y: number; ipo: { in: string; proc: string; out: string }; kind: string }
 
 // 编排骨架（10 节点，口径同 HTML STORY_SHORT/STORY_POS/STORY_EDGES）。结构 config，非业务数据。
@@ -35,13 +39,9 @@ const EDGES: { from: number; to: number; t: EdgeType }[] = [
   { from: 6, to: 4, t: "aux" }, // 情景推演旁路校正聚合
   { from: 10, to: 2, t: "fb" }, { from: 10, to: 4, t: "fb" }, // 跨周期反馈
 ];
-const EDGE_STYLE: Record<EdgeType, { color: string; dash?: string; label: string }> = {
-  par: { color: "#54B5C4", label: "并行分叉" },
-  conv: { color: "#7CC4A0", label: "汇聚" },
-  seq: { color: "#6B7886", label: "序列" },
-  aux: { color: "#E8B54A", dash: "4 3", label: "历史校正旁路" },
-  fb: { color: "#C470B8", dash: "6 4", label: "跨周期反馈" },
-};
+
+// 节点框尺寸（渲染用全宽 112×36）。连线锚点用半宽 56 → 起点在节点水平中心（与原渲染逐像素一致）。
+const RENDER_W = 112, RENDER_H = 36, EDGE_ANCHOR_W = 56;
 
 /** 由真实任务流派生每节点状态（done/running/pending/gap）——非写死。 */
 type NodeStatus = "done" | "running" | "pending" | "gap";
@@ -115,54 +115,40 @@ export function InferenceProcessDag({
   const selNode = sel != null ? byId(sel) : null;
   const W = 1240, H = 280;
 
-  return (
-    <div className={styles.box} data-testid={testId}>
-      <div className={styles.legend} data-testid="inference-legend">
-        {(Object.keys(EDGE_STYLE) as EdgeType[]).map((t) => (
-          <span key={t} className={styles.legendItem}>
-            <i style={{ background: EDGE_STYLE[t].color }} />
-            {EDGE_STYLE[t].label}
-          </span>
-        ))}
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className={styles.svg} role="img" aria-label="推演过程编排 DAG">
-        <defs>
-          <marker id="ip-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-            <path d="M0,0 L7,3.5 L0,7 Z" fill="#6B7886" />
-          </marker>
-        </defs>
-        {EDGES.map((e, i) => {
-          const a = byId(e.from), b = byId(e.to);
-          const st = EDGE_STYLE[e.t];
-          const x1 = a.x + 56, y1 = a.y + 18, x2 = b.x, y2 = b.y + 18;
-          const mx = (x1 + x2) / 2;
-          return (
-            <path
-              key={i}
-              d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
-              fill="none"
-              stroke={st.color}
-              strokeWidth={1.6}
-              strokeDasharray={st.dash}
-              markerEnd="url(#ip-arrow)"
-              opacity={0.8}
-              data-testid={`inference-edge-${e.from}-${e.to}-${e.t}`}
-            />
-          );
-        })}
-        {NODES.map((n) => {
-          const s = statusOf(n.id);
-          return (
-            <g key={n.id} transform={`translate(${n.x},${n.y})`} onClick={() => setSel(sel === n.id ? null : n.id)} style={{ cursor: "pointer" }} data-testid={`inference-node-${n.id}`} data-status={s}>
-              <rect width={112} height={36} rx={7} className={`${styles.node} ${styles[s]} ${sel === n.id ? styles.sel : ""}`} />
-              <text x={56} y={16} textAnchor="middle" className={styles.nodeLabel}>{n.id}. {n.label}</text>
-              <text x={56} y={28} textAnchor="middle" className={styles.nodeKind}>{n.kind}</text>
-            </g>
-          );
-        })}
-      </svg>
+  // 共享 ProcessDag：节点 w 用半宽 56 → 连线起点 x+56=节点水平中心、y+h/2=y+18（与原渲染逐像素一致）。
+  const pgNodes = NODES.map((n) => ({ id: String(n.id), x: n.x, y: n.y, w: EDGE_ANCHOR_W, h: RENDER_H }));
+  const pgEdges: ProcessDagEdge[] = EDGES.map((e) => ({
+    from: String(e.from),
+    to: String(e.to),
+    type: e.t,
+    testId: `inference-edge-${e.from}-${e.to}-${e.t}`,
+  }));
 
-      {selNode && (
+  return (
+    <ProcessDag
+      nodes={pgNodes}
+      edges={pgEdges}
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      showLegend
+      legendTestId="inference-legend"
+      ariaLabel="推演过程编排 DAG"
+      testId={testId}
+      containerClassName={styles.box}
+      svgClassName={styles.svg}
+      renderNode={(pn) => {
+        const n = byId(Number(pn.id));
+        const s = statusOf(n.id);
+        return (
+          <g key={n.id} transform={`translate(${n.x},${n.y})`} onClick={() => setSel(sel === n.id ? null : n.id)} style={{ cursor: "pointer" }} data-testid={`inference-node-${n.id}`} data-status={s}>
+            <rect width={RENDER_W} height={RENDER_H} rx={7} className={`${styles.node} ${styles[s]} ${sel === n.id ? styles.sel : ""}`} />
+            <text x={56} y={16} textAnchor="middle" className={styles.nodeLabel}>{n.id}. {n.label}</text>
+            <text x={56} y={28} textAnchor="middle" className={styles.nodeKind}>{n.kind}</text>
+          </g>
+        );
+      }}
+      footer={selNode && (
         <div className={styles.ipo} data-testid={`inference-ipo-${selNode.id}`}>
           <b>{selNode.id}. {selNode.label}</b>
           {statusOf(selNode.id) === "gap" && <span className="badge red" style={{ marginLeft: 8 }} data-testid="inference-ipo-gap">{zh.sim.inference.gap}</span>}
@@ -172,6 +158,6 @@ export function InferenceProcessDag({
           <div className={styles.ipoRow}><span>{zh.sim.inference.out}</span>{selNode.ipo.out}</div>
         </div>
       )}
-    </div>
+    />
   );
 }
