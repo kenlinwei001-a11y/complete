@@ -26,6 +26,9 @@
 | 15 | **WO-GRAPH-1** | P2·先做 | 抽统一「过程 DAG」渲染组件（InferenceProcess/Provenance/FDE/Layered 共用·语义不动） | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
 | 16 | **WO-GRAPH-2** | P2 | 抽统一「本体图谱引擎」（OntologyGraphView forceLayout 复用·实时派生） | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
 | 17 | **WO-GRAPH-3/4** | P3·依赖16 | 融合主入口（切片/血缘/KSF 接引擎·建模=编辑态）+ 沙盘/元本体/边界/图查询接同引擎 | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) · [`ANALYSIS-graph…md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/ANALYSIS-graph-modules-consolidation.md) |
+| 18 | **WO-PIPE-INCR** | **P1·地基** | 数据管线真增量同步(CDC/watermark·非全量重灌) + 运营态持续刷新(Scheduler+dataset.synced 事件→增量派生重算) | [`PRD-decision-support-maturity.md` §3.0①②](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/PRD-decision-support-maturity.md) |
+| 19 | **WO-BUILDER-ROLE** | **P1·改造** | 数据构建发动机职责收敛：建域(onboarding) vs 运营态数据流分清；运营走 WO-PIPE-INCR；前端呈现两态 | [`PRD-decision-support-maturity.md` §3.0③](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/PRD-decision-support-maturity.md) |
+| 20 | **WO-FRESHNESS** | P2·并入DM | 新鲜度→置信度贯通：扩 capacity C09 的 dataHealth.lagHours 为跨求解器新鲜度维·并入 dataMode(STALE)·UI 标"基于 N 小时前数据" | [`PRD-decision-support-maturity.md` §3.0④](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/PRD-decision-support-maturity.md) |
 
 > **③类·需审核方先行后再派**（不在上表直派）：**轨O 主题/配色开关**（`HANDOFF-theme-switch-…md`·先由审核方真浏览器核"真缺到哪步"再交 dev，grep 可能漏报）· **WO-10② 真分核查**（`REVIEW-WO11-WO10b-verdict.md`·dev 复核分类器真分证据）。
 > **审核方自留·非派发**（dev 修完后由审核方真跑）：P0-LOCK 修复复验 + T5 续跑真 PG 实拍 + d8498ae（§3③ 证据）复验。
@@ -40,6 +43,21 @@
 **WO-T5-RESUME-LEASE（P1）**
 ```
 你是开发 agent。实现 WO-T5-RESUME-LEASE：修 rule-doc 抽取重启续跑被死锁租约阻断。规格见 REVIEW-WO-P0-LOCK-closure-and-resume-finding.md §2。根因：进程崩在抽取中途，其 execution_locks 租约(rule_extraction=60min)未过期→重启时 resumeInflightExtractions→fireExtraction→withLock→acquire 命中未过期租约→SKIPPED→doc 卡 EXTRACTING 最长 60min。修向①(根因解)：resumeInflightExtractions 对每个遗留 EXTRACTING doc 先强制过期/夺取其锁再 fireExtraction（新进程启动时"在抽取中"doc 的锁必属已死进程·fencing 已防僵尸写），或给 withLock 续跑路径传 steal/force 选项。完成判据(真 PG)：杀 datacore 抽取中→立即重启→doc ≤一个抽取周期续到 IN_REVIEW（无需手动过期租约）·候选幂等不重复·fence 递增。红线：pnpm -r build+test 全绿+真 PG 续跑自验贴证(绿测试≠能用)；只推 claude/vigilant-knuth-b1nmxn；续跑须 steal 陈旧锁回写 SYSTEM-ONTOLOGY.md 执行语义；模型标识不入提交物。
+```
+
+**WO-PIPE-INCR（P1·地基）**
+```
+你是开发 agent。实现 WO-PIPE-INCR：数据管线真增量同步 + 运营态持续刷新。规格见 PRD-decision-support-maturity.md §3.0①②。① 把 connectors/registry.ts 声明的 incremental 能力落地：adapter 带 since/watermark，connectors/service.ts:192 sync 由 rawRows.replace(全量)改 delta upsert/合并(按 PK 只灌新增/变更行)；端点 POST /a/v1/connections/:id/sync?since=<watermark> 回执带新 watermark；无 incremental 能力的源回退全量(向后兼容)。② 连接器接既有 SchedulerService(cron·app.ts:334)定时增量同步→发 dataset.synced 事件(outbox)→触发受影响切片/派生增量重算(复用 recompute 非全量重建)。完成判据(真 PG/内存)：二次 sync?since= 只灌新增/变更行(watermark 前移·非全量)；定时增量同步真触发派生刷新。红线：pnpm -r build+test 全绿+真跑自验；双仓储四处同改;只推 claude/vigilant-knuth-b1nmxn；回写 SYSTEM-ONTOLOGY.md 数据流/事件章节(dataset.synced)；模型标识不入提交物。
+```
+
+**WO-BUILDER-ROLE（P1·发动机改造）**
+```
+你是开发 agent。实现 WO-BUILDER-ROLE：数据构建发动机职责收敛(改造非重写)。规格见 PRD-decision-support-maturity.md §3.0③。把 databuilder 七阶段(intake→comprehend→gap→rawin→transform→closure→publish)定位明确为冷启动/onboarding 建域引擎(保留全部能力含 BuildWorkflowRun/scaffold/growth)；运营态数据流走 WO-PIPE-INCR(增量同步+事件刷新)，发动机不背运营态持续职责；前端"数据构建发动机"页(DataBuilderPage)同步呈现两态：建域(onboarding)/运营管线(持续同步看板：各源 last sync/新鲜度/增量量/隔离行数)。完成判据：发动机职责文档+UI 两态清晰；运营态刷新不再误经一次性建域引擎；既有建域链回归不破。红线：pnpm -r build+test 全绿+真浏览器自验；只推 claude/vigilant-knuth-b1nmxn；回写 SYSTEM-ONTOLOGY.md §2.A 数据构建发动机职责；模型标识不入提交物。
+```
+
+**WO-FRESHNESS（P2·并入 WO-DM）**
+```
+你是开发 agent。实现 WO-FRESHNESS：数据新鲜度→置信度贯通。规格见 PRD-decision-support-maturity.md §3.0④。把 capacity.ts:189 C09(关键源 dataHealth.lagHours 滞后→P90 降级)的新鲜度维升为跨求解器：并入 dataMode(LIVE 但滞后→PARTIAL/STALE)；risk_timeline/态势/驾驶舱消费；UI 标「此决策基于 N 小时前的数据(源 X 滞后)」；立 pipeline-freshness:check 门(关键源 dataHealth 接进决策置信度·缺即红)。完成判据：关键源人为滞后→决策标 STALE+UI 显新鲜度；门红能挡未接新鲜度的关键源。红线：pnpm -r build+test 全绿+真跑自验；与 WO-DM(dataMode)协同；只推 claude/vigilant-knuth-b1nmxn；模型标识不入提交物。
 ```
 
 **WO-SCENE-A（P1·速胜）**

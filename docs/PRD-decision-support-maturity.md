@@ -21,7 +21,8 @@
 
 **北极星**：用户在任一业务页问任意决策问句，得到**基于本页真实多源数据**（订单+销售预测+外部信号+产能）、**带置信度与溯源**、**可一键转审批行动**的答复；推演曲线随真数据变、生产环境多实例稳定可信。
 
-**目标（本期 5 维）**
+**目标（本期 6 维 · D0 为地基）**
+0. **D0 数据管线（地基）**：真增量同步（CDC/watermark·非全量重灌）+ 运营态持续刷新（定时增量→事件→派生重算）+ **数据构建发动机职责收敛**（onboarding 建域 vs 运营态数据流分清）+ 数据新鲜度贯通置信度。决策质量被管线质量封顶（garbage in → garbage out）。
 1. **D1 多源态势**：时序推演由「真需求(销售预测)−产能」派生，替哈希；接 `DemandSegment`/`SopVersion`/`ExternalSignal` 多源。
 2. **D2 置信度诚实**：全求解器输出带 `dataMode` 诚实位；点击落点不裸空、可溯源（信任命门）。
 3. **D3 场景决策对话**：每个人机对话入口=配置完整的场景接地 agent（本页数据+规则+skill+MCP+求解器+本体切片）。
@@ -40,6 +41,7 @@
 
 | 维 | 现状（file:line） | 缺口 |
 |---|---|---|
+| **D0 数据管线** | 同步**全量重灌**（`connectors/service.ts:253 rawRows.replace`·`:210 cursor` 仅分页非 CDC·`registry.ts` incremental 是声明能力未真实现）；**数据构建发动机七阶段是 build-time**（`databuilder/service.ts:53` intake→…→publish·无 continuous/refresh）；`SchedulerService`(cron)在但未接连接器增量同步；生产源走 mock_erp/crm/external；新鲜度**部分**接决策（`capacity.ts:189 C09` 关键源滞后→P90 降级·**仅 capacity·risk/态势未接·未呈现给用户**） | 真增量同步(CDC) + 运营态持续刷新管线 + 发动机职责收敛(onboarding vs operational) + 真实源 + 新鲜度贯通全决策&UI |
 | **D1 多源态势** | `risk.ts:28/189` 紧张度恒 `mockTightness`(charCode 哈希)；`capacity.ts` 产能 P50/P90 由订单批次算 + what-if delta——**均不读销售预测**。`DemandSegment`(forecast)/`SopVersion`/`AnnualScenario` 真值在 DataCore、规划与平衡组可见、**但推演不消费** | 推演单维（只订单+哈希）→ 接销售预测真源、时序由真需求-产能派生 |
 | **D2 置信度** | ✅dev 已提交待复验：`plan.ts:286 shareDelta`(同闸门源·删 -17 魔数)·`RiskBoardView:466` 死路诚实文案·`extended.ts` dataMode(3f0d30c)。◐ 余：audit_timeline/SopBalance 兜底等接真源或标 PARTIAL | dataMode 贯通全求解器 + `no-silent-mock` 门 |
 | **D3 场景对话** | `seed.ts:512 scn_plan_audit mode:"WORKFLOW_ONLY"`(全表唯一)→开放式问句 `orchestrator.ts:864` 拒答；SceneEntry 均无 `defaultAgentId`→回落通用 agent 不接本页 | 每入口 SceneAgentSpec（mode+agent+本页数据+规则+skill+MCP+切片）+ `scene-agent-config` 门 |
@@ -51,6 +53,16 @@
 ---
 
 ## 3. 设计（复用现有接缝优先 · 标 复用/绿地/门禁）
+
+### 3.0 D0 · 数据管线成熟化（地基·含数据构建发动机改造）
+> 决策质量的封顶层。当前管线是"批量全量重灌 + build-time 建域"，撑 demo 够、撑运营态决策不够。改造分四：
+
+- **① 真增量同步（CDC·绿地小增）**：把 `registry.ts` 声明的 `incremental` 能力落地——adapter 带 `since`/watermark，`connectors/service.ts:192 sync` 由 `rawRows.replace`（全量）改 **delta upsert/合并**（按 PK·只灌新增/变更行）；端点 `POST /a/v1/connections/:id/sync?since=<watermark>`，回执带新 watermark。无 incremental 能力的源回退全量（向后兼容）。
+- **② 运营态持续刷新（复用 Scheduler+事件）**：连接器接既有 `SchedulerService`(cron·`app.ts:334`)定时增量同步 → 发 `dataset.synced` 事件（outbox·§4 失效流）→ 触发**受影响切片/派生/对象增量重算**（复用 `recompute`，不全量重建）→ 决策层数据自动新鲜。**这把"一次性建域"补成"持续数据流"。**
+- **③ 数据构建发动机职责收敛（改造核心·非重写）**：把 `databuilder` 七阶段定位明确为 **冷启动/onboarding 建域引擎**（故事→建域→closure→publish·保留全部能力，含 BuildWorkflowRun/scaffold/growth）；**运营态数据流走 ①②**（增量同步+事件刷新），发动机**不背运营态持续职责**。前端"数据构建发动机"页同步呈现两态：建域（onboarding）/ 运营管线（持续同步看板：各源 last sync/新鲜度/增量量/隔离行数）。**避免用 build-time 引擎冒充 operational 管线**（当前隐患）。
+- **④ 新鲜度→置信度贯通（扩 capacity C09·与 D2 合流）**：把 `capacity.ts:189 C09`（关键源滞后→P90 降级）的 `dataHealth.lagHours` 升为**跨求解器的新鲜度维**——并入 `dataMode`（LIVE 但滞后 → `PARTIAL/STALE`）；risk_timeline/态势/驾驶舱消费；UI 标「此决策基于 N 小时前的数据（源 X 滞后）」。**新鲜度是置信度的一个维度，不是隐含假设。**
+- **门禁新增**：`pipeline-freshness:check`（关键源 dataHealth 接进决策置信度·缺即红）；真实数据源/隔离区真值演示（WO-QUARANTINE 合流）。
+- 工单：**WO-PIPE-INCR（①②·P1）· WO-BUILDER-ROLE（③·P1·发动机改造）· WO-FRESHNESS（④·P2·并入 WO-DM）**（新增·见 §8）。
 
 ### 3.1 D1 · 多源态势感知（核心·复用为主）
 - **复用**：`SolverContext.loadContext` 注入 `DemandSegment`/`SopVersion`/`ExternalSignal`（对象库已有，`/a/v1/objects?type=`、`/a/v1/sop/versions`、`/a/v1/external-signals` 已可取）。
@@ -126,6 +138,7 @@
 
 ## 7. 验收（DoD·全自动化 + 审核方真跑 FDE）
 
+0. **D0**：连接器二次 `sync?since=` **只灌新增/变更行**（非全量重灌·watermark 前移）；定时增量同步真发 `dataset.synced` → 受影响派生**增量重算**（非全量重建）；关键源滞后 → 决策置信度标 `STALE`、UI 显「基于 N 小时前数据」；脏行落隔离区（真值演示）；数据构建发动机页同时呈现 建域/运营管线 两态。
 1. **D1**：真 datacore 改 `DemandSegment`/`SopVersion` 真值→预判看板紧张度曲线随之变（非哈希·可溯源）；洛阳 D+13 红点开真订单或诚实文案、绝不裸空；缺口=预测需求−产能逐日可溯。
 2. **D2**：audit/generate/extended 各卡带 dataMode 徽章；兜底数标 PARTIAL；`no-silent-mock:check` 漏 dataMode 即红；`PlanGenerate` 份额显示值=闸门所用值。
 3. **D3**：真浏览器规划体检问开放式管理问句→接地结构化答复（调 plan_audit+评估 C15/C18+引本页真值+三条管理事项），非拒答/非泛答；`scene-agent-config:check` 半截配置即红；抽样≥3 入口同款。
@@ -140,7 +153,8 @@
 | 波 | 工单 | 跨过的台阶 |
 |---|---|---|
 | **W0 已落/在途** | P0-LOCK✅ · WO-SHARE17/AStar/DM(dev 提交·待复验) · classifier 关思考 | 信任裂缝起步收口 + 生产 P0 拆除 |
-| **W1 信任+态势地基** | WO-DM 复验闭 + **WO-FORECAST-SIM**(核心) + WO-DM-tail | 决策由**真多源数据**驱动、带置信度（D1+D2） |
+| **W1 数据管线地基** | **WO-PIPE-INCR**(真增量+运营刷新) + **WO-BUILDER-ROLE**(发动机职责收敛) | 管线从"批量建域"→"持续数据流·新鲜可信"（D0·**D1 的前提**） |
+| **W1.5 信任+态势** | WO-DM 复验闭 + **WO-FORECAST-SIM**(核心) + WO-DM-tail + WO-FRESHNESS | 决策由**真多源·新鲜**数据驱动、带置信度（D1+D2·依赖 D0） |
 | **W2 决策对话** | WO-SCENE-A(速胜)→WO-SCENE-B(试点)→C/D(铺开+门) | 任一入口**就本页接地决策对话**（D3） |
 | **W3 生产韧性** | WO-T5-RESUME-LEASE + GATE-B + WO-CSS（与 W1 并行） | 多实例**生产扛得住**（D4） |
 | **W4 IA/图谱** | WO-NAV-* + WO-QUARANTINE + WO-GRAPH-1/2(→3/4) | 信息架构成熟 + 图谱收敛 |
