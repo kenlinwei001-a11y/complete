@@ -61,8 +61,12 @@
 - **② 运营态持续刷新（复用 Scheduler+事件）**：连接器接既有 `SchedulerService`(cron·`app.ts:334`)定时增量同步 → 发 `dataset.synced` 事件（outbox·§4 失效流）→ 触发**受影响切片/派生/对象增量重算**（复用 `recompute`，不全量重建）→ 决策层数据自动新鲜。**这把"一次性建域"补成"持续数据流"。**
 - **③ 数据构建发动机职责收敛（改造核心·非重写）**：把 `databuilder` 七阶段定位明确为 **冷启动/onboarding 建域引擎**（故事→建域→closure→publish·保留全部能力，含 BuildWorkflowRun/scaffold/growth）；**运营态数据流走 ①②**（增量同步+事件刷新），发动机**不背运营态持续职责**。前端"数据构建发动机"页同步呈现两态：建域（onboarding）/ 运营管线（持续同步看板：各源 last sync/新鲜度/增量量/隔离行数）。**避免用 build-time 引擎冒充 operational 管线**（当前隐患）。
 - **④ 新鲜度→置信度贯通（扩 capacity C09·与 D2 合流）**：把 `capacity.ts:189 C09`（关键源滞后→P90 降级）的 `dataHealth.lagHours` 升为**跨求解器的新鲜度维**——并入 `dataMode`（LIVE 但滞后 → `PARTIAL/STALE`）；risk_timeline/态势/驾驶舱消费；UI 标「此决策基于 N 小时前的数据（源 X 滞后）」。**新鲜度是置信度的一个维度，不是隐含假设。**
+- **⑤ 合成数据模块同步改造（定位收敛 + 诚实标注贯通·非重写）**：
+  - **现状**：`origin=SYNTHETIC` 标注**已存在**（`synthetic/service.ts:174/217/290` 对象/链/规则/时序皆标·幂等清理）；合成↔真实**边界已存在**（provision-world `TENANT_NOT_EMPTY` 守卫·`app.ts:1093` 不 clobber 真数据 + HARD/SOFT 闭包 `:1339` + DF.8/9 接地：真业务实体走真人正门、generic 走 SOFT 合成）。**但 `origin=SYNTHETIC` 不贯通到决策置信度**——求解器在合成对象上算结论却不标"基于合成数据"，用户分不清合成 vs 真实。
+  - **定位收敛（并入 WO-BUILDER-ROLE）**：合成 = **冷启动/onboarding（provision-world）+ 演示 + 测试确定性 + 有界 generic gap-fill** 源；**不做运营态真实数据替身**。运营管线看板标各源 synthetic / real-sourced。A6 拟真值域（`value-domains.ts` 业务区间+越线植入）保留——是"让合成够真以测推演/VLE"的质量特性、非真实数据。
+  - **诚实标注贯通（并入 WO-DM/WO-FRESHNESS·关键修）**：把 `origin=SYNTHETIC` 织进决策 `dataMode`——合成对象算的结论 → `dataMode: SYNTHETIC/PROVISIONAL`（与既有 `domainTrustLevel=UNVERIFIED` 同源）；置信度成**三维**：`真实↔合成 × 新鲜↔陈旧 × 实测↔估算`；UI 标「此决策基于**合成数据**（非真实接入）」。**= 把 demo 全合成的现状对用户诚实化**（与 hollow-data 同纲：不让合成冒充真实接入）。
 - **门禁新增**：`pipeline-freshness:check`（关键源 dataHealth 接进决策置信度·缺即红）；真实数据源/隔离区真值演示（WO-QUARANTINE 合流）。
-- 工单：**WO-PIPE-INCR（①②·P1）· WO-BUILDER-ROLE（③·P1·发动机改造）· WO-FRESHNESS（④·P2·并入 WO-DM）**（新增·见 §8）。
+- 工单：**WO-PIPE-INCR（①②·P1）· WO-BUILDER-ROLE（③⑤定位·P1·发动机+合成定位改造）· WO-FRESHNESS（④⑤诚实·P2·并入 WO-DM·dataMode 加 SYNTHETIC 维）**（新增·见 §8）。
 
 ### 3.1 D1 · 多源态势感知（核心·复用为主）
 - **复用**：`SolverContext.loadContext` 注入 `DemandSegment`/`SopVersion`/`ExternalSignal`（对象库已有，`/a/v1/objects?type=`、`/a/v1/sop/versions`、`/a/v1/external-signals` 已可取）。
