@@ -3,6 +3,8 @@
 > **来源**：审核方（独立真跑复验）对 lastmile / 四链路走查 / WO-1 / A6 的复核结论。每项均**审核方亲手真跑发现/定位**，含 FDE 真值判据；dev 实装 + 自验贴证后，审核方按判据**独立真跑复验**核发闭合。
 > **红线（全项通用）**：禁 mock 冒充 / 禁 skip-by-default / 禁门空过 / 禁造假过判据；解析失败/降级**诚实报不静默**；只推 `claude/vigilant-knuth-b1nmxn`；密钥仅 env 不入 git（R5）。
 
+> **🆕 设计落地施工单（item 1/2/3·dev 可直接照做）→ `docs/WO-design-landing-items-1-2-3.md`**：把 hollow-data / 对比度 / 场景入口 agent 三项落成 WO 级 spec（改哪些文件:行 + 具体改动 + FDE 判据），含建议施工顺序（速胜单先行）。下表 H/A/B/S3/UI-C 各行的细单即出于此。
+>
 > **🆕 本轮重新入队（用户「都找出来·重新入队」）→ 详见 `docs/REVIEW-hollow-data-iceberg-and-requeue.md`**：空洞数据冰山（哈希/魔数冒充真算）+ 死路 + 已登记未做，全部 📖读源逐行坐实。下表 H/A/B 段即其 §F 优先级总表落地。
 
 | # | 工单 | 优先级 | 状态 | 详细单 |
