@@ -57,7 +57,7 @@
 }
 .nodeLabel {
   font-size: 10px;
-  fill: var(--text);
+  fill: var(--txt);
   font-weight: 600;
 }
 .nodeKind {

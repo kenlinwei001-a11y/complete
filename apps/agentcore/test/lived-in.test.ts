@@ -18,11 +18,14 @@ describe("运营态出厂配置 §2/§3（场景入口 / analyst / 经验记忆�
 
   it("§2 七场景入口零配置：模式/绑定/建议问题/历史问答全在种子内", () => {
     const byView = new Map(seedSceneEntries().map((s) => [s.viewKey, s]));
-    // explore = AGENT_FIRST 绑定出厂 analyst；audit = WORKFLOW_ONLY；其余 WORKFLOW_FIRST
+    // explore = AGENT_FIRST 绑定出厂 analyst；其余（含 plan-audit）WORKFLOW_FIRST
+    // WO-SCENE-A：plan-audit 从 WORKFLOW_ONLY（开放问句拒答「请换个问法」）改 WORKFLOW_FIRST（命不中回落 agent）。
     expect(byView.get("graph")?.mode).toBe("AGENT_FIRST");
     expect(byView.get("graph")?.defaultAgentId).toBe("agt_seed_analyst");
-    expect(byView.get("plan-audit")?.mode).toBe("WORKFLOW_ONLY");
+    expect(byView.get("plan-audit")?.mode).toBe("WORKFLOW_FIRST");
     expect(byView.get("review")?.mode).toBe("WORKFLOW_FIRST");
+    // 全表不再有 WORKFLOW_ONLY 入口（开放式为常态的对话入口不应拒答）。
+    expect(seedSceneEntries().every((s) => s.mode !== "WORKFLOW_ONLY")).toBe(true);
     for (const v of ["dash", "risk", "project-sim", "plan-audit", "plan-generate", "graph", "review"]) {
       const s = byView.get(v);
       expect(s, `场景入口 ${v}`).toBeDefined();

@@ -509,7 +509,10 @@ export function seedSceneEntries(): SceneEntryConfig[] {
       ...history("graph"),
     },
     {
-      id: "scn_plan_audit", tenantId: SEED_TENANT, viewKey: "plan-audit", mode: "WORKFLOW_ONLY",
+      // WO-SCENE-A：开放式为常态的对话入口不应 WORKFLOW_ONLY（拒答「请换个问法」）。改 WORKFLOW_FIRST：
+      // 命中预设意图走 Path A，命不中回落 agent（无 defaultAgentId → 通用 agent，富答案由 WO-SCENE-B 配场景 agent）。
+      // 全表此前仅此一处 WORKFLOW_ONLY（dash/risk/order/plan-generate/sop-balance 皆 WORKFLOW_FIRST·catalog 默认亦 FIRST）。
+      id: "scn_plan_audit", tenantId: SEED_TENANT, viewKey: "plan-audit", mode: "WORKFLOW_FIRST",
       uiHints: { placeholder: "规划体检（基线 = 最近定稿 S&OP 版本）", suggestedQuestions: ["最近定稿版本体检结果如何？"] },
       ...history("plan-audit"),
     },
