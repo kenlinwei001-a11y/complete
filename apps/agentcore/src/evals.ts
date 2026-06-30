@@ -5,6 +5,21 @@ import type { RequestAuth } from "./auth.js";
 import { newId } from "./ids.js";
 import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
 
+/** 有界并发 map（保序回填）：用例独立 → 并行跑，避免 REAL 真打 N×单例时延串行。 */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length) as R[];
+  let next = 0;
+  const workers = Array.from({ length: Math.min(Math.max(1, limit), items.length || 1) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i] as T, i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 /** A14：把失败信息归类为 parity 失因（首要项；意图>工具序列>答案>其它）。 */
 export function classifyFailKind(failures: string[]): EvalFailKind {
   if (failures.some((f) => f.startsWith("intent"))) return "INTENT";
@@ -133,8 +148,14 @@ export class EvalService {
   ): Promise<EvalRunReport> {
     const cases = await this.deps.repos.evalCases.listByTenant(auth.tenantId, suite);
     const startedAt = new Date().toISOString();
-    const results: EvalCaseResult[] = [];
-    for (const c of cases) results.push(await this.runCase(auth, c, opts.timeoutMs ?? 8000));
+    // E 自查根因解：REAL 真打推理模型（kimi 思考型）单例 10–90s（先生成思维链再出结构化结果），
+    // 默认 8s 系统性超时 → waitForTask 未完成 → observedIntent=null → 误判 intent-fail（实测 12/20 超时·
+    // 压低 passRate/intentAccuracy，与"真分"无关）。改为按模式分档：REAL 90s（覆盖思考上界）、MOCK 8s（本地桩足够）。
+    const perCaseTimeout = opts.timeoutMs ?? (opts.llmMode === "REAL" ? 90_000 : 8_000);
+    // 用例相互独立（各自 submitQuery→独立 task）→ 有界并发跑，避免 REAL 下 20×90s 串行(~30min)被网关/客户端二次超时；
+    // 并发上限护真 LLM 限流。结果按原序回填（mapLimit 保序）→ 指标/落库确定性不受影响。
+    const concurrency = opts.llmMode === "REAL" ? 4 : 8;
+    const results = await mapLimit(cases, concurrency, (c) => this.runCase(auth, c, perCaseTimeout));
 
     const passed = results.filter((r) => r.pass).length;
     const total = results.length;
