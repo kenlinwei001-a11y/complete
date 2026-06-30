@@ -620,6 +620,27 @@ export class ModelingService {
         if (!byType.has(a.targetType)) byType.set(a.targetType, []);
         byType.get(a.targetType)!.push({ column: a.column, targetField: a.targetField });
       }
+      // 根因修（真实业务数据真走真实管道）：reconcileIntake 是**列级**判歧义——常见业务列名
+      // （qty/status/unitPrice）在多个对象类型都有同名字段 → exact>1 → 判为歧义 → 落 candidates →
+      // 物化时被丢，导致上传订单的对象沦为空壳（qty/价/态缺失、value=0、求解器算不出真值）。
+      // 但本数据集已被**无歧义列**唯一指认了主类型（如 5/8 列均 →Order）。故做**数据集级消歧**：
+      // 取 autoMapped 最多列的主类型（≥2 列方confident），把"列名精确命中该主类型字段(score=1)"的
+      // 歧义列归入主类型。纯确定性·不调 LLM·不猜——歧义仅靠"该数据集是什么表"这一既有事实化解。
+      let dominantType: string | undefined;
+      let maxCols = 0;
+      for (const [t, cols] of byType) if (cols.length > maxCols) { maxCols = cols.length; dominantType = t; }
+      if (dominantType && maxCols >= 2) {
+        const domCols = byType.get(dominantType)!;
+        const claimed = new Set(domCols.map((c) => c.targetField));
+        for (const cand of recon.candidates) {
+          if (cand.datasetName !== ds.name) continue;
+          const hit = cand.candidates.find((x) => x.targetType === dominantType && x.score === 1);
+          if (hit && !claimed.has(hit.targetField)) {
+            domCols.push({ column: cand.prototypeColumn, targetField: hit.targetField });
+            claimed.add(hit.targetField);
+          }
+        }
+      }
       for (const [targetKey, cols] of byType) {
         // 幂等：清掉本表+本类型上一次物化。
         await this.repos.objects.removeWhere(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, ADMIN, b64, MODELS_CSV, ORDERS_CSV, type TestApp } from "./helpers.js";
+import { makeApp, ADMIN, b64, MODELS_CSV, ORDERS_CSV, seedBattery, type TestApp } from "./helpers.js";
 import { computeFieldCoverage, detectFkCandidates, deriveModelingSuggestion } from "../src/modeling.js";
 import type { FieldCoverageReport, ModelingSuggestion } from "@platform/contracts";
 
@@ -326,6 +326,38 @@ describe("A3 modeling", () => {
     expect(cov.coverage).toBe(1);
     expect(cov.totalFields).toBe(9); // orders 6 + models 3
     expect(cov.datasets.every((ds) => ds.unmodeled.length === 0)).toBe(true);
+  });
+
+  it("OM4b: objectify 数据集级消歧 — 歧义业务列(qty/status·多类型同名)按主类型归入，对象不沦为空壳（真实数据真走管道）", async () => {
+    // 由来（铁律0·真目标验证）：亲手跑"上传真实订单→objectify"发现 qty/status/unitPrice 这类
+    // 在多个对象类型都有同名字段的列被 reconcileIntake 判歧义→丢，导致对象只剩 so/cust/model/due
+    // → 派生 value=0、求解器算不出真值（"count++ 假绿"掩盖空壳）。修：数据集已被无歧义列唯一指认
+    // 主类型(Order)→歧义列若精确命中主类型字段则归入。本测钉死该列不再丢失、防回潮。
+    const t = await makeApp();
+    await seedBattery(t); // 合成电池全集 → 富本体（MaterialBatch/PurchaseOrder… 与 Order 共享 qty/status 同名字段 = 真歧义）
+    const up = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/uploads",
+      headers: ADMIN,
+      payload: { filename: "orders.csv", contentBase64: b64(ORDERS_CSV) },
+    });
+    expect(up.statusCode).toBe(201);
+    const connId = (up.json() as { connection: { id: string } }).connection.id;
+    // 前置：本体须存在多类型同名歧义（qty 落 ≥2 类型），否则本回归无意义。
+    const types = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types", headers: ADMIN })).json() as { key: string; properties: { propKey: string }[] }[];
+    const owners = (prop: string) => types.filter((ty) => ty.properties.some((p) => p.propKey === prop)).map((ty) => ty.key);
+    expect(owners("qty").length).toBeGreaterThanOrEqual(2); // qty 确实歧义（Order + MaterialBatch/PurchaseOrder…）
+    expect(owners("so")).toEqual(["Order"]); // so 唯一指认 Order（主类型锚）
+
+    const obj = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake/objectify", headers: ADMIN, payload: { connId } });
+    expect(obj.statusCode).toBe(200);
+    expect((obj.json() as { materialized: { type: string; count: number }[] }).materialized.some((m) => m.type === "Order" && m.count === 6)).toBe(true);
+
+    // 真读落库对象：歧义列 qty/status 真带上（修前会缺）；派生 value 真算（修前=0）。
+    const o1 = (await t.app.inject({ method: "GET", url: "/a/v1/objects/Order/obj_order_SO-00001", headers: ADMIN })).json() as { data: { props: Record<string, unknown> } };
+    expect(o1.data.props.qty).toBe(1200); // 歧义列真归入（非丢）
+    expect(o1.data.props.status).toBe("OPEN"); // 歧义列真归入
+    expect(o1.data.props.so).toBe("SO-00001");
   });
 
   it("OM5: 字段全建模门 — requireFullCoverage 下未建模字段阻断发布；移除门则放行", async () => {
