@@ -202,6 +202,7 @@ DemandSegment(forecast·p50/p90/tgt) + SopVersionRow(plan·demand/supply) --需�
 capacity_rollup(基地周产能 weeklyWan) --供给侧--> risk_timeline   ·  `solvers/risk.ts demandCapacityTightness`（负载比=真需求÷真产能·量纲无关·R6 确定性·无 Math.random/Date.now）
   └ 需求驱动因素（瓶颈工序/人力工时/物料齐套）基线张力由此派生 → `dataMode=LIVE` + `demandGap{gapWan,source}`（缺口=预测需求−产能·可溯 R13）；无真预测回落 mockTightness → MOCK（诚实不冒充）。改 DemandSegment.p50/SopVersionRow.demand 真值 → 张力曲线随之变（非哈希恒定，门 solvers.test V5d 守）。`loadContext` 注入 DemandSegment/SopVersionRow（types.ts SolverContext）。
 SolverParam <--adjusts-- Calibration       Action(EXECUTED) --writeback--> ObjectInstance(props,二次派生)
+Rule(PUBLISHED 决策阈值) --RULE_SCAN 命中越线--> RuleAlert --mitigation_select--> 处置建议 --decision.alert(NOTIFY)+notifyRole(planner)--> 待办(PUSH)   ✅ WO-ALERT（D6 §3.7 主动决策推送·替纯 PULL；`scheduler.ts pushDecisionAlerts`；采纳经既有 adopt_mitigation Action 审批 R4）
 Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）
 Connector(EXTERNAL/mock_external) --sync--> RawDataset(external_signals) --materialize--> ExternalSignal(domain=external)   ✅ EXT_SIG P1（一等对象+连接器+GET /a/v1/external-signals）
 ExternalSignal --敏感性(elasticity)--> 规划指标(毛利/需求/出口营收/成本)   ✅ P2（POST /a/v1/external-signals/sensitivity：Δ指标pp=Δ信号%×elasticity 按 impact 聚合，确定性无副作用）
@@ -332,6 +333,7 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 | L17 | `metric.snapshot_recorded` | SPINE.2 指标快照回采（`POST /a/v1/metrics/snapshot`：`metric_rollup` 实算 actual → 执行回采更新口径，派生投影非新真值 R13）→ 失效驾驶舱/各视图 KPI | IN_SESSION | metrics, dashboard, scenario-data | — |
 | L17 | `metric.breached` | SPINE.2 指标越线（actual<floorVal → 触发 `plan_rootcause`/`risk_timeline` 推演、派 `Principal` 行动）→ 通知 + 失效风险页 | NOTIFY | metrics, dashboard, risk, notifications | — |
 | L16 | `entity.out_of_domain` | 感知层·槽位解析裸串实体在本租户任何已发布类型都解析不到（`router/slots.ts fillSlots`）→ orchestrator 发任务事件 + `perception-metrics.ts` 记误触发率（域外/尝试）+ 取最近邻候选供澄清 | NOTIFY | perception-metrics | — |
+| L18 | `decision.alert` | **WO-ALERT (D6 §3.7 主动决策推送·替纯 PULL)**：复用 RULE_SCAN 调度（`scheduler.ts RuleScanService.scan` → `pushDecisionAlerts`）——决策阈值规则越线命中（`DECISION_RULE_FACTORS` 登记 C01/C02/C03/C05/C06/C08/C11/C16/C29/C30/C31）→ 联 `mitigation_select` 出处置建议（注入 canonical 方案库 `params.risk.mitigations`，LIVE 真案，R6）→ 发本事件（载 ruleKey/factor/baseName/recommended/recommendedName/urgency/draftPayload）+ `NotificationService.notifyRole(planner)` push 待办。按 (ruleKey,baseName) 去重（R6 确定性），不直写真值（R4·用户经既有 `adopt_mitigation` Action 审批后才落草稿），租户隔离 R2 | NOTIFY | notifications, approval-inbox, risk, dashboard | — |
 | L-sim | `sim.session_created` | 推演沙盘 init 建会话（增量 1，设计待落）→ 失效沙盘会话列表 | IN_SESSION | sim-sessions | — |
 | L-sim | `sim.tick_completed` | 沙盘推进 1+ tick（`propagateTick` 传导落 SimTickState，增量 1/3）→ 失效沙盘态/轨迹可视化 | IN_SESSION | sim-session-view, propagation-timeline | — |
 | L-sim | `sim.checkpoint_saved` | 沙盘命名存档（增量 1）→ 失效检查点列表/分支基点 | IN_SESSION | sim-checkpoints | — |

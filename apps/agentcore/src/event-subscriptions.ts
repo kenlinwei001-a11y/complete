@@ -97,6 +97,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   // L17 SPINE 经营目标-指标-责任骨架：指标快照回采（actual 更新）/ 指标越线（触发推演）→ 失效驾驶舱/各视图 KPI/风险页
   { event: "metric.snapshot_recorded", producer: "SPINE·指标快照回采（metric_rollup 实算 actual → 执行回采更新口径，SPINE.2）", tier: "IN_SESSION", invalidates: ["metrics", "dashboard", "scenario-data"] },
   { event: "metric.breached", producer: "SPINE·指标越线（actual<floor → 触发 plan_rootcause/risk_timeline 推演，SPINE.2）", tier: "NOTIFY", invalidates: ["metrics", "dashboard", "risk", "notifications"] },
+  // L18 WO-ALERT (D6 §3.7 主动决策推送)：RULE_SCAN 决策阈值命中越线 → 联 mitigation_select 出处置建议 → push 待办（PUSH 替纯 PULL）
+  { event: "decision.alert", producer: "RuleScan·决策阈值越线（DECISION_RULE_FACTORS → mitigation_select 处置建议 → notifyRole 待办，WO-ALERT D6）", tier: "NOTIFY", invalidates: ["notifications", "approval-inbox", "risk", "dashboard"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

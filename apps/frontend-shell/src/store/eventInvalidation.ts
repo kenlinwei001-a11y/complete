@@ -29,6 +29,9 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   "story-runs": [["a", "story-runs"], ["a", "build-jobs"]],
   "growth-ledger": [["b", "growth-ledger"]],
   "growth-tickets": [["b", "growth-tickets"]],
+  // WO-ALERT (D6)：主动决策推送的待办消费端——通知中心铃铛 + 审批/处置收件箱。
+  notifications: [["a", "notifications"]],
+  "approval-inbox": [["a", "action-drafts"], ["a", "notifications"]],
 };
 
 /**
@@ -56,6 +59,8 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   "growth.fill_proposed": ["growth-ledger"],
   "growth.ticket_opened": ["growth-tickets", "growth-ledger"],
   "growth.converged": ["growth-ledger", "growth-tickets"],
+  // WO-ALERT (D6 §3.7)：决策阈值越线告警（带处置建议）→ 失效通知中心 + 处置收件箱（被动页主动点亮）。
+  "decision.alert": ["notifications", "approval-inbox"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */

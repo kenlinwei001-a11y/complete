@@ -176,11 +176,49 @@ export interface RuleAlert {
   entityId: string;
   severity: string;
   message: string;
+  /** Object props of the violating instance (plain rules) — lets the push loop ground a mitigation. */
+  props?: Record<string, unknown>;
+}
+
+/**
+ * WO-ALERT (D6 · §3.7) 主动决策推送：决策阈值规则 key → 处置方案因素（mitigation_select 的 7 因素之一）。
+ * 把"等用户来查(PULL)"变成"系统命中越线→自动出处置建议→push 待办(PUSH)"。配置驱动 R14、确定性 R6。
+ * 仅登记**决策阈值类**规则（产能/外协/齐套/良率/换型/排产冻结…）；信用/现金等纯财务规则不强配生产处置因素，
+ * 仍发告警事件但不联 mitigation（factor 为空 → 跳过处置建议，诚实不编造不相干方案）。
+ */
+export const DECISION_RULE_FACTORS: Record<string, string> = {
+  C03: "瓶颈工序", // 产能上限约束
+  C08: "瓶颈工序", // 外协比例红线
+  C05: "设备OEE", // 产线利用率持续越线
+  C06: "物料齐套", // 物料齐套缺口(MRP)
+  C16: "物料齐套", // 齐套缺口预警
+  C11: "瓶颈工序", // 检修窗口错峰
+  C29: "换型损失", // 排产冻结期
+  C30: "良率波动", // 良率连降停线评审
+  C31: "良率波动", // 外协质量门
+  C01: "瓶颈工序", // 产线设计产能上限
+  C02: "瓶颈工序", // 化成/老化产能口径
+};
+
+/** push 处置建议入参：解析 mitigation 的最小依赖（确定性，无 IO 副作用进入扫描结论）。 */
+export interface DecisionPushHooks {
+  /** 调 mitigation_select 求解器出推荐案（注入 canonical 方案库；同输入同输出 R6）。 */
+  mitigate: (
+    tenantId: string,
+    input: { factor: string; baseName: string },
+  ) => Promise<{ recommended?: string; recommendedName?: string; urgency?: number; draftPayload?: Record<string, unknown> } | null>;
+  /** push 待办给责任角色（NotificationService.notifyRole 包装；NOTIFY 层 R2 租户隔离）。 */
+  notify: (
+    tenantId: string,
+    input: { role: string; title: string; body: string; refType?: string; refId?: string },
+  ) => Promise<void>;
 }
 
 export class RuleScanService {
   /** §7.21: C12 命中 → 校准提案生成（calibration.required 同路径挂钩）。 */
   private calibrationHook: ((tenantId: string, entityId: string) => Promise<unknown>) | null = null;
+  /** WO-ALERT: 决策告警 → mitigation 处置建议 → push 待办（缺省关闭：单测/无依赖时只发 rule.alert，向后兼容）。 */
+  private push: DecisionPushHooks | null = null;
 
   constructor(
     private repos: Repos,
@@ -190,6 +228,11 @@ export class RuleScanService {
 
   setCalibrationHook(hook: (tenantId: string, entityId: string) => Promise<unknown>): void {
     this.calibrationHook = hook;
+  }
+
+  /** WO-ALERT: 注入 mitigation/notify 钩子，开启主动决策推送闭环（PUSH 替纯 PULL）。 */
+  setDecisionPushHooks(hooks: DecisionPushHooks): void {
+    this.push = hooks;
   }
 
   private async scanSustainRule(tenantId: string, rule: Rule, ast: Extract<AstNode, { kind: "sustain" }>): Promise<RuleAlert[]> {
@@ -241,6 +284,7 @@ export class RuleScanService {
                 entityId: String(o.props[Object.keys(o.props)[0] as string] ?? o.id),
                 severity: rule.severity,
                 message: `${rule.key} ${rule.name}: 违反约束（${rule.expression}）`,
+                props: o.props,
               });
             }
           } catch {
@@ -256,6 +300,64 @@ export class RuleScanService {
         await this.calibrationHook(tenantId, a.entityId);
       }
     }
+    // WO-ALERT (D6): 决策阈值命中 → 主动 PUSH 闭环（告警→处置建议→待办），替纯 PULL。
+    if (this.push) await this.pushDecisionAlerts(tenantId, alerts);
     return alerts;
+  }
+
+  /**
+   * WO-ALERT 主动决策推送闭环：对**决策阈值类**告警（DECISION_RULE_FACTORS）联 `mitigation_select`
+   * 出处置建议，发 `decision.alert`（NOTIFY 层）+ push 待办给责任角色（planner）。
+   *
+   * 确定性 R6：按 (ruleKey,baseName) 字典序去重聚合（一基地一规则只推一条待办，不随对象遍历数量抖动），
+   * 顺序由已 sort 的 alerts 决定；mitigation_select 同输入同输出。租户隔离 R2：tenantId 全程透传。
+   * 不直写真值（R4）：只 push 建议待办；用户经既有 `adopt_mitigation` Action 审批后才落 Action 草稿。
+   */
+  private async pushDecisionAlerts(tenantId: string, alerts: RuleAlert[]): Promise<void> {
+    const push = this.push;
+    if (!push) return;
+    const seen = new Set<string>();
+    for (const a of alerts) {
+      const factor = DECISION_RULE_FACTORS[a.ruleKey];
+      if (!factor) continue; // 非决策处置类（信用/现金等）只发 rule.alert，不编造生产处置方案
+      const baseName = this.resolveBaseName(a.props);
+      const dedupeKey = `${a.ruleKey}::${baseName}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      const mitigation = await push.mitigate(tenantId, { factor, baseName });
+      const recName = mitigation?.recommendedName ?? mitigation?.recommended;
+      // 决策告警事件（NOTIFY 层）：携处置建议，进 outbox 可见 + 下游订阅。
+      await this.outbox.emit(tenantId, "decision.alert", {
+        ruleKey: a.ruleKey,
+        severity: a.severity,
+        factor,
+        baseName,
+        entityId: a.entityId,
+        message: a.message,
+        recommended: mitigation?.recommended ?? null,
+        recommendedName: recName ?? null,
+        urgency: mitigation?.urgency ?? null,
+        draftPayload: mitigation?.draftPayload ?? null,
+      });
+      // push 待办：让责任角色不必来查就看到「越线 + 处置建议」。
+      const body = recName
+        ? `${a.message}。建议处置：${recName}（因素：${factor}${baseName ? ` · ${baseName}` : ""}）。可一键采纳生成审批工单。`
+        : `${a.message}。请评估处置（因素：${factor}）。`;
+      await push.notify(tenantId, {
+        role: "planner",
+        title: `决策告警 ${a.ruleKey}`,
+        body,
+        refType: "decision_alert",
+        refId: `${a.ruleKey}:${baseName || a.entityId}`,
+      });
+    }
+  }
+
+  /** 从越线对象 props 确定性解析基地名（Order.bases[0] / base / baseName），无则空串（mitigation 仍可按 factor 出案）。 */
+  private resolveBaseName(props?: Record<string, unknown>): string {
+    if (!props) return "";
+    const bases = props.bases;
+    if (Array.isArray(bases) && bases.length > 0) return String(bases[0]);
+    return String(props.baseName ?? props.base ?? "");
   }
 }

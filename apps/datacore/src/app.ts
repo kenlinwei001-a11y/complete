@@ -362,6 +362,35 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   simclock.setResetRunner(async (c, spec) => synthetic.runJob(c, spec));
   // §7.21: C12 → calibration.required → 提案生成（与降级/告警共用同一扫描路径）
   ruleScan.setCalibrationHook(async (tenantId, entityId) => calibration.onCalibrationRequired(tenantId, entityId));
+  // ── WO-ALERT (D6 §3.7 主动决策推送) ────────────────────────────────────────────
+  // 复用既有 RULE_SCAN 调度 + outbox + NotificationService：决策阈值命中越线 → 联 mitigation_select
+  // 出处置建议 → 发 decision.alert（NOTIFY 层）+ push 待办（PUSH 替纯 PULL）。不直写真值（R4）。
+  ruleScan.setDecisionPushHooks({
+    mitigate: async (tenantId, { factor, baseName }) => {
+      // 系统态 ctx（与 calibration system ctx 同款）；mitigation_select 经 deriveExtendedArgs 自动注入
+      // canonical 方案库（params.risk.mitigations）→ LIVE 真案；确定性 R6、租户隔离 R2。
+      const sysCtx = { tenantId, userId: "system:rule-scan", roles: ["admin"], attributes: {} };
+      try {
+        const out = await solvers.invoke(sysCtx, "mitigation_select", { factor, baseName });
+        const recommended = typeof out.recommended === "string" ? out.recommended : undefined;
+        const plans = Array.isArray(out.plans) ? (out.plans as { key?: string; name?: string }[]) : [];
+        const recommendedName = plans.find((p) => p.key === recommended)?.name;
+        return {
+          recommended,
+          recommendedName,
+          urgency: typeof out.urgency === "number" ? out.urgency : undefined,
+          draftPayload: (out.draftPayload as Record<string, unknown> | undefined) ?? undefined,
+        };
+      } catch {
+        return null; // 求解失败诚实降级：仍发告警 + 待办（不带建议），不阻断扫描
+      }
+    },
+    notify: async (tenantId, { role, title, body, refType, refId }) => {
+      // notifyRole 扇出给该角色全部 ACTIVE 用户（系统发起，无 excludeUserId）。
+      await notifications.notifyRole(tenantId, role, undefined, { kind: "decision_alert", title, body, refType, refId });
+    },
+  });
+  // ──────────────────────────────────────────────────────────────────────────────
   // M11 §1: tick 聚合后配对 + 元闭环（在 RULE_SCAN 之前 —— C12 命中即有新配对可消费）
   simclock.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
   // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
