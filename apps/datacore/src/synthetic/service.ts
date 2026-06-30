@@ -251,6 +251,8 @@ export class SyntheticService {
         await this.scheduler.register(ctx.tenantId, "TS_AGGREGATE", "tenant", "30 * * * *");
         // M11 §3 兜底定时：每周一全量校准（温和漂移周期性收口）
         await this.scheduler.register(ctx.tenantId, "CALIBRATION_RUN", "tenant", "0 3 * * 1");
+        // WO-RETENTION（⑤）：每日清理过期+已处理的无界增长行（outbox/ts/scheduler_runs）。
+        await this.scheduler.register(ctx.tenantId, "RETENTION_SWEEP", "tenant", "0 4 * * *");
       }
 
       // ⑥ validation report.

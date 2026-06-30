@@ -42,6 +42,7 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
+import { RetentionTableSchema, RETENTION_DEFAULTS } from "@platform/contracts"; // WO-RETENTION（⑤·数据留存/TTL）
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
@@ -77,6 +78,7 @@ import { OPT_MODEL_TEMPLATES } from "./solvers/opt-templates.js";
 import { assertBindingGrounded, type BindingOntologyView } from "./solvers/opt-binding.js"; // 增量E：落库前 DF.8 接地校验
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
+import { RetentionService } from "./retention.js";
 import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
 import { DecisionService } from "./decisions.js";
 import { SopService } from "./sop.js";
@@ -143,6 +145,7 @@ export interface BuiltApp {
     solvers: SolverService;
     timeseries: TimeseriesService;
     scheduler: SchedulerService;
+    retention: RetentionService;
     ruleScan: RuleScanService;
     actions: ActionService;
     databuilder: DataBuilderService;
@@ -336,6 +339,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const actions = new ActionService(repos, rules, outbox, notifications);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
+  // WO-RETENTION（⑤·数据留存/TTL）：留存策略解析 + RETENTION_SWEEP 清理。
+  const retention = new RetentionService(repos, logger.child({ component: "retention" }) as Logger, metrics);
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings);
   const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
@@ -644,6 +649,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // M11 §3 兜底定时：每周全量校准（即使未触发 C12，温和漂移也被周期性收口）
     .on("CALIBRATION_RUN", async (tenantId) => {
       await calibration.runAll(tenantId, "CALIBRATION_RUN");
+    })
+    // WO-RETENTION（⑤）：每日清理过期+已处理的无界增长行（outbox/ts/scheduler_runs·R2 限本租户）。
+    .on("RETENTION_SWEEP", async (tenantId) => {
+      await retention.sweep(tenantId);
     });
 
   /** Entitlement middleware helper: bound feature off → 404 FEATURE_NOT_FOUND (before authz). */
@@ -3805,7 +3814,38 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const all = await repos.outboxEvents.list(ctx(req).tenantId);
     const sorted = all.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
     const filtered = since ? sorted.filter((e) => e.createdAt >= since) : sorted;
-    return filtered.slice(-200).map((e) => ({ eventId: e.eventId, event: e.event, createdAt: e.createdAt }));
+    // status 为 additive 字段（WO-RETENTION 可核对清理后 PENDING 保留 / DISPATCHED 已删）。
+    return filtered.slice(-200).map((e) => ({ eventId: e.eventId, event: e.event, status: e.status, createdAt: e.createdAt }));
+  });
+
+  // ---- WO-RETENTION（⑤·数据留存/TTL）：留存策略读写 + 手动清理（admin·R2 限本租户）---------------
+  app.get("/a/v1/retention-policies", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return { policies: await retention.listPolicies(c.tenantId), defaults: RETENTION_DEFAULTS };
+  });
+  app.put("/a/v1/retention-policies", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(
+      z.object({
+        table: RetentionTableSchema,
+        keepDays: z.number().int().min(0),
+        status: z.enum(["ACTIVE", "PAUSED"]).optional(),
+      }),
+      req.body,
+    );
+    return retention.setPolicy(c.tenantId, body.table, {
+      keepDays: body.keepDays,
+      status: body.status,
+      updatedBy: c.userId,
+    });
+  });
+  // 手动触发清理（运维/排障/FDE 真跑·R2 限本租户）——常态由 RETENTION_SWEEP 每日 cron 跑。
+  app.post("/a/v1/retention-policies/sweep", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return retention.sweep(c.tenantId);
   });
 
   // ---- LLM Provider 配置体系增量 §1 + 引用上报（§2.3） -------------------------------------------
@@ -3896,6 +3936,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       solvers,
       timeseries,
       scheduler,
+      retention,
       ruleScan,
       actions,
       databuilder,

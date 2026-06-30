@@ -707,6 +707,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     tsAggSpecs: new PgStore(pool, "ts_agg_specs"),
     tsAggRuns: new PgStore(pool, "ts_agg_runs"),
     retentionPolicies: new PgStore(pool, "retention_policies"),
+    tableRetentionPolicies: new PgStore(pool, "table_retention_policies"),
     simulationClocks: new PgStore(pool, "simulation_clocks"),
     clockTickReports: new PgStore(pool, "clock_tick_reports"),
     forecastSnapshots: new PgStore(pool, "forecast_snapshots"),

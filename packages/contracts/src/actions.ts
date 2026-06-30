@@ -93,8 +93,42 @@ export const ScheduledJobKindSchema = z.enum([
   "SOP_AUTO_OPEN",
   // 回放编排器 §6.1 B 类：审批催办 → 超时升级
   "APPROVAL_REMINDER",
+  // WO-RETENTION（⑤·数据留存/TTL）：每日清理过期+已处理的无界增长行（outbox/ts/scheduler_runs）。
+  "RETENTION_SWEEP",
 ]);
 export type ScheduledJobKind = z.infer<typeof ScheduledJobKindSchema>;
+
+// ---------------------------------------------------------------------------
+// WO-RETENTION（⑤·P2·数据留存/TTL）：留存策略 = 平台默认 + 租户覆盖（R2）。
+// 杜绝 outbox_events/ts_points/scheduler_runs 等无界增长表长跑爆库 + 满足合规留存上限。
+// ---------------------------------------------------------------------------
+
+/** 受留存治理的无界增长表（DataCore 侧）。table 是稳定逻辑名，与仓储 store 解耦。 */
+export const RetentionTableSchema = z.enum([
+  "outbox_events", // 仅删已 DISPATCHED（DELIVERED/DEAD）行；PENDING 永不删（防丢未投递事件）
+  "ts_points", // 按事件时间 ts 删旧点（保留近 keepDays）
+  "scheduler_runs", // 调度执行历史（终态行按 scheduledAt 删旧）
+]);
+export type RetentionTable = z.infer<typeof RetentionTableSchema>;
+
+export const RetentionPolicySchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  table: RetentionTableSchema,
+  /** 保留天数：删 createdAt(或对应时间字段) < now − keepDays 的行。0 = 全删过期口径（now 之前皆过期）。 */
+  keepDays: z.number().int().min(0),
+  status: z.enum(["ACTIVE", "PAUSED"]),
+  updatedAt: z.string().optional(),
+  updatedBy: z.string().optional(),
+});
+export type RetentionPolicy = z.infer<typeof RetentionPolicySchema>;
+
+/** 平台默认留存上限（租户未覆盖时生效）。改这里 = 改全平台默认。 */
+export const RETENTION_DEFAULTS: Record<RetentionTable, number> = {
+  outbox_events: 30,
+  ts_points: 365,
+  scheduler_runs: 90,
+};
 
 export const ScheduledJobSchema = z.object({
   id: z.string(),

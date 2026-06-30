@@ -260,6 +260,8 @@ export interface Repos {
   tsAggSpecs: Store<TsAggSpecRecord>;
   tsAggRuns: Store<TsAggRunRecord>;
   retentionPolicies: Store<RetentionPolicyRecord>;
+  /** WO-RETENTION（⑤·数据留存/TTL）：每表留存策略（平台默认 + 租户覆盖·R2）。 */
+  tableRetentionPolicies: Store<import("@platform/contracts").RetentionPolicy>;
   simulationClocks: Store<SimulationClockRecord>;
   clockTickReports: Store<ClockTickReport>;
   forecastSnapshots: Store<ForecastSnapshotRecord>;
