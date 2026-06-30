@@ -186,12 +186,14 @@ export class RuleDocService {
    * 另一实例（含本实例 resume 重复触发）命中锁即 skip 不双跑；持锁实例死亡→租约过期，下次
    * resume 可重夺续跑。未注入 execLocks 时退化为单实例直跑（向后兼容）。
    */
-  private fireExtraction(ctx: AuthCtx, docId: string, jobId: string): void {
+  private fireExtraction(ctx: AuthCtx, docId: string, jobId: string, opts: { steal?: boolean } = {}): void {
     const exec = async (): Promise<void> => {
       if (!this.execLocks) return void (await this.runExtraction(ctx, docId, jobId));
+      // WO-T5-RESUME-LEASE：重启续跑传 steal——崩溃进程留下的 60min 租约必属已死进程，安全夺锁续跑
+      // （fencing 防僵尸写）；常态触发不 steal，保持同 doc 跨实例互斥（skip 不双跑）。
       const r = await this.execLocks.withLock(ctx.tenantId, "rule_extraction", docId, async () => {
         await this.runExtraction(ctx, docId, jobId);
-      });
+      }, { steal: opts.steal });
       if (r.skipped) this.metrics.inc("dc_rule_extract_segments_total", { status: "skipped_locked" });
     };
     const p = exec()
@@ -221,7 +223,9 @@ export class RuleDocService {
       for (const doc of stuck) {
         if (!doc.extractJobId) continue;
         const ctx: AuthCtx = { tenantId: t.id, userId: "system", roles: ["admin"], attributes: {} };
-        this.fireExtraction(ctx, doc.id, doc.extractJobId);
+        // WO-T5-RESUME-LEASE：steal 夺锁——崩溃进程留下的未过期 60min 租约否则会挡住续跑、doc 卡 EXTRACTING
+        // 最长 60min；新进程启动时该锁必属已死进程，安全夺取（fence+1·fencing 防僵尸写）。
+        this.fireExtraction(ctx, doc.id, doc.extractJobId, { steal: true });
         resumed++;
       }
     }

@@ -101,6 +101,12 @@ export interface ExecutionLockStore extends Store<ExecutionLockRecord> {
     holderId: string;
     leaseMs: number;
     now?: number;
+    /**
+     * WO-T5-RESUME-LEASE：无条件夺锁（绕过"未过期租约"判定），fence 仍单调 +1。
+     * 仅重启续跑用——新进程启动时任何"在抽取中"doc 的锁必属已死进程，陈旧 60min 租约可安全 steal
+     * （fencing 防僵尸写）。常态抢占不传，保持 lease_until<now() 互斥语义。
+     */
+    steal?: boolean;
   }): Promise<ExecutionLockRecord | undefined>;
 }
 

@@ -62,6 +62,7 @@ export class ExecutionLockService {
     kind: ExecutionResourceKind,
     key: string,
     holderId: string = newId("exec"),
+    opts: { steal?: boolean } = {},
   ): Promise<AcquireResult> {
     const lock = await this.repos.executionLocks.tryAcquire({
       tenantId,
@@ -69,6 +70,7 @@ export class ExecutionLockService {
       resourceKey: key,
       holderId,
       leaseMs: this.leaseMs(kind),
+      steal: opts.steal,
     });
     if (!lock) {
       const current = await this.current(tenantId, kind, key);
@@ -164,10 +166,11 @@ export class ExecutionLockService {
     kind: ExecutionResourceKind,
     key: string,
     fn: (ctx: { fence: number; holderId: string }) => Promise<T>,
-    opts: { onSkipped?: "rerun" } = {},
+    opts: { onSkipped?: "rerun"; steal?: boolean } = {},
   ): Promise<{ skipped: true; holderId: string } | { skipped: false; result: T }> {
     const holderId = newId("exec");
-    const acq = await this.acquire(tenantId, kind, key, holderId);
+    // WO-T5-RESUME-LEASE：steal 仅供重启续跑——绕过崩溃进程遗留的未过期租约（fencing 防僵尸写）。
+    const acq = await this.acquire(tenantId, kind, key, holderId, { steal: opts.steal });
     if (!acq.ok) {
       if (opts.onSkipped === "rerun") await this.requestRerun(tenantId, kind, key);
       return { skipped: true, holderId: acq.holderId };

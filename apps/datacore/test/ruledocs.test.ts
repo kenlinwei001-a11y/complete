@@ -240,7 +240,7 @@ describe("A2 rule-doc parsing", () => {
     expect(cands2.length).toBe(cands.length); // 无重复堆积
   });
 
-  it("T1#1 多实例互斥：同 doc 已被一实例持锁抽取中 → 另一实例 resume 跳过不双跑", async () => {
+  it("T1#1+WO-T5 续跑 steal 陈旧锁 + 常态 acquire 仍互斥", async () => {
     const t = await makeApp();
     t.llm.onRequest(scriptedExtraction);
     await t.repos.ruleDocs.put({
@@ -248,24 +248,21 @@ describe("A2 rule-doc parsing", () => {
       status: "EXTRACTING", droppedCandidates: 0, createdAt: new Date().toISOString(),
       segments: segmentText(FIXTURE_MD), extractJobId: "xjob_lock",
     } as never);
-    // 模拟实例A 正在抽取中（持 rule_extraction|doc_lock 锁·不释放）
+    // 模拟崩溃实例 A 留下未过期 60min 租约（单实例 docker 重启：A 已死、锁陈旧）。
     const acq = await t.services.execLocks.acquire("demo", "rule_extraction", "doc_lock", "instanceA");
     expect(acq.ok).toBe(true);
-    // 实例B resume 同 doc → withLock 命中已持锁 → 跳过（不双跑）
-    await t.services.ruleDocs.resumeInflightExtractions();
-    await t.services.ruleDocs.flushExtractions();
-    // B 未真跑：无候选、状态仍 EXTRACTING（A 仍持锁会收尾）、skip 计量
-    const cands = await t.repos.ruleCandidates.list("demo", (c) => c.docId === "doc_lock");
-    expect(cands.length).toBe(0);
-    expect((await t.repos.ruleDocs.get("demo", "doc_lock"))!.status).toBe("EXTRACTING");
-    expect(t.services.metrics.get("dc_rule_extract_candidates_total", { disposition: "accepted" })).toBe(0);
-    expect(t.services.metrics.get("dc_rule_extract_segments_total", { status: "skipped_locked" })).toBe(1);
-    // A 释放后，B 再 resume → 这次真跑出候选（租约可重夺·死实例续跑同理）
-    await t.services.execLocks.release("demo", "rule_extraction", "doc_lock", "instanceA");
+    if (!acq.ok) return;
+    // #1 锁原语仍互斥：常态（非续跑）acquire 命中未过期租约 → SKIPPED（活并发双提交不双跑）。
+    const normal = await t.services.execLocks.acquire("demo", "rule_extraction", "doc_lock", "instanceB");
+    expect(normal.ok).toBe(false);
+    // WO-T5：重启续跑 steal 陈旧锁（绕未过期租约·fence+1·fencing+幂等清写防双写）→ 立即续上、不卡 60min。
     await t.services.ruleDocs.resumeInflightExtractions();
     await t.services.ruleDocs.flushExtractions();
     expect((await t.repos.ruleCandidates.list("demo", (c) => c.docId === "doc_lock")).length).toBeGreaterThanOrEqual(3);
     expect((await t.repos.ruleDocs.get("demo", "doc_lock"))!.status).toBe("IN_REVIEW");
+    // fence 递增证真夺锁（对照母单"fence 恒=1 卡死"）。
+    const lock = await t.repos.executionLocks.get("demo", "rule_extraction|doc_lock");
+    expect(lock!.fence).toBeGreaterThan(acq.fence);
   });
 
   it("nameSimilarity behaves sensibly", () => {

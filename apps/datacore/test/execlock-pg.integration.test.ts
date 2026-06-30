@@ -103,6 +103,26 @@ describe.skipIf(!DB)("WO-P0-LOCK · execution_locks 真 PG live-fire", () => {
     expect(r.ok).toBe(true);
   });
 
+  it("8) WO-T5-RESUME-LEASE：steal 无条件夺未过期租约（重启续跑）·fence 单调 +1", async () => {
+    const key = `k8_${Date.now()}`;
+    // 模拟"崩溃进程"持有未过期长租约（60min）
+    const a1 = await svc.acquire(tenant, "rule_extraction", key, "dead_holder");
+    expect(a1.ok).toBe(true);
+    if (!a1.ok) return;
+    const col = await columnLeaseUntil(`rule_extraction|${key}`);
+    expect(new Date(col).getTime()).toBeGreaterThan(Date.now()); // 租约未过期
+    // 常态抢占（不 steal）应 SKIPPED（未过期）
+    const blocked = await svc.acquire(tenant, "rule_extraction", key, "normal");
+    expect(blocked.ok).toBe(false);
+    // 续跑 steal 应夺锁成功（绕未过期租约）·fence 递增（证真夺锁，对照母单"fence 恒=1 卡死"）
+    const stolen = await repos.executionLocks.tryAcquire({
+      tenantId: tenant, resourceKind: "rule_extraction", resourceKey: key, holderId: "resume", leaseMs: 60_000, steal: true,
+    });
+    expect(stolen).toBeDefined();
+    expect(stolen!.holderId).toBe("resume");
+    expect(stolen!.fence).toBeGreaterThan(a1.fence);
+  });
+
   it("7) 同类潜伏修：merge_candidates/object_merges（data 列·无 doc）真 PG put→get→list 不崩", async () => {
     // 修前这两表用裸 PgStore（写不存在的 doc 列）→ 实体合并特性在 PG 整体崩。
     const ts = Date.now();

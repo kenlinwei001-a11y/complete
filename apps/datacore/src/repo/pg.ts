@@ -229,9 +229,12 @@ class PgExecutionLockStore extends PgStore<ExecutionLockRecord> implements Execu
     holderId: string;
     leaseMs: number;
     now?: number;
+    steal?: boolean;
   }): Promise<ExecutionLockRecord | undefined> {
     const id = `${input.resourceKind}|${input.resourceKey}`;
     const leaseSec = Math.max(1, Math.round(input.leaseMs / 1000));
+    // WO-T5-RESUME-LEASE：steal 时去掉 `WHERE lease_until < now()`（无条件夺锁·fence 仍 +1，fencing 防僵尸写）。
+    const conflictWhere = input.steal ? "" : "WHERE execution_locks.lease_until < now()";
     const r = await this.pool.query(
       `INSERT INTO execution_locks
          (id, tenant_id, resource_kind, resource_key, holder_id, acquired_at, lease_until, fence, rerun_requested, doc)
@@ -242,7 +245,7 @@ class PgExecutionLockStore extends PgStore<ExecutionLockRecord> implements Execu
              lease_until = now() + ($6 || ' seconds')::interval,
              fence = execution_locks.fence + 1,
              rerun_requested = false
-         WHERE execution_locks.lease_until < now()
+         ${conflictWhere}
        RETURNING id, tenant_id, resource_kind, resource_key, holder_id, acquired_at, lease_until, fence, rerun_requested`,
       [id, input.tenantId, input.resourceKind, input.resourceKey, input.holderId, String(leaseSec)],
     );
