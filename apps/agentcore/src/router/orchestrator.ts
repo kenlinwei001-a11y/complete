@@ -686,6 +686,18 @@ export class Orchestrator {
       return;
     }
 
+    // WO-SCENE-B：WORKFLOW_FIRST 命不中预设意图 → 若本入口配了**场景级 agent**（scene.defaultAgentId 且已发布），
+    // 回落到该配置完整的场景 agent（本页数据上下文 + 规则/求解器子集 + 接地）而非通用 path-B agent
+    // ——使"规划体检"等入口的开放问句得到接地结构化答复（非泛答）。无场景 agent 则照旧通用 path-B。
+    const scene = await this.deps.repos.sceneEntries.byView(task.tenantId, task.context.view);
+    if (scene?.defaultAgentId) {
+      const agent = await this.deps.repos.agents.get(scene.defaultAgentId);
+      if (agent && agent.status === "PUBLISHED") {
+        await this.runSceneAgent(task, auth, scene);
+        return;
+      }
+    }
+
     await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
     this.deps.metrics.recordRouting(false);
     await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
