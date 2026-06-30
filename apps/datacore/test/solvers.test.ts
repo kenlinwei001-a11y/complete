@@ -515,4 +515,66 @@ describe("S1 solvers", () => {
     expect(b.equipment[0]!.formula).toContain("3600");
     expect((b.equipment[0]!.inputs as unknown[]).length).toBeGreaterThan(0);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WO-FRESHNESS（置信度三维贯通：新鲜度 STALE + 真实/合成 SYNTHETIC + 实测/估算）
+  // ─────────────────────────────────────────────────────────────────────────
+  it("WO-FRESHNESS①：纯合成租户 → 决策 dataMode=SYNTHETIC + confidence.synthetic=true（跨求解器）", async () => {
+    const t = await makeApp();
+    await seedBattery(t); // demo 全合成（origin=SYNTHETIC）
+    for (const key of ["capacity_forecast", "risk_timeline"]) {
+      const args = key === "capacity_forecast" ? { modelId: "4680-NCM", qty: 40, weeks: 6 } : { base: "常州", factor: "物料齐套", horizon: 30 };
+      const data = (await invokeSolver(t, key, args).then((r) => r.json())).data as {
+        dataMode: string;
+        confidence: { synthetic: boolean; stale: boolean; measurement: string; note?: string };
+      };
+      expect(data.confidence.synthetic).toBe(true); // 真实↔合成维
+      expect(data.confidence.measurement).toBe("LIVE"); // 实测↔估算维（底层求解器读真对象）
+      expect(data.dataMode).toBe("SYNTHETIC"); // 头条取最审慎（合成优先）
+      expect(String(data.confidence.note)).toContain("合成数据");
+    }
+  });
+
+  it("WO-FRESHNESS②：关键源人为滞后 → 决策 dataMode=STALE + confidence.stale + lagHours（C09 跨求解器化）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 先把全部决策对象翻成真实接入，隔离出"新鲜度维"（否则合成头条会盖过 STALE）。
+    for (const ty of ["Base", "Line", "Order", "Model"]) {
+      for (const o of await t.repos.objects.listByType("demo", ty)) {
+        o.origin = { type: "MATERIALIZED", datasetId: "ds_real", jobId: "real" };
+        await t.repos.objects.put(o);
+      }
+    }
+    t.services.solvers.invalidateConfidenceCache("demo");
+
+    const fresh = (await invokeSolver(t, "capacity_forecast", { modelId: "4680-NCM", qty: 40, weeks: 6 }).then((r) => r.json())).data as {
+      dataMode: string;
+      confidence: { synthetic: boolean; stale: boolean };
+    };
+    expect(fresh.confidence.synthetic).toBe(false); // 已是真实接入
+    expect(fresh.confidence.stale).toBe(false);
+    expect(fresh.dataMode).toBe("LIVE"); // 真实 + 新鲜 + 实测 → 头条 LIVE
+
+    // 人为滞后关键源（C09）
+    await t.services.solvers.markSourceStale("demo", "iot-scada", 4.2);
+    const stale = (await invokeSolver(t, "capacity_forecast", { modelId: "4680-NCM", qty: 40, weeks: 6 }).then((r) => r.json())).data as {
+      dataMode: string;
+      confidence: { synthetic: boolean; stale: boolean; lagHours?: number; staleSources?: string[]; note?: string };
+    };
+    expect(stale.confidence.stale).toBe(true); // 新鲜↔陈旧维
+    expect(stale.confidence.lagHours).toBe(4.2);
+    expect(stale.dataMode).toBe("STALE"); // LIVE 但滞后 → STALE
+    expect(String(stale.confidence.note)).toContain("小时前");
+  });
+
+  it("WO-FRESHNESS③：MOCK 求解器不被横切维洗白（bottleneck_matrix 无 LIVE arg → 仍 MOCK）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const data = (await invokeSolver(t, "bottleneck_matrix", {}).then((r) => r.json())).data as {
+      dataMode: string;
+      confidence: { measurement: string };
+    };
+    expect(data.dataMode).toBe("MOCK"); // 纯估算最审慎，不被 SYNTHETIC/STALE 覆盖
+    expect(data.confidence.measurement).toBe("MOCK");
+  });
 });

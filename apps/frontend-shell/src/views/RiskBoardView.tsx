@@ -11,6 +11,7 @@ import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { DataModeBadge } from "@/components/DataModeBadge";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
 
@@ -40,6 +41,16 @@ export default function RiskBoardView(_props: ViewRendererProps) {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: "#E8B54A", borderRadius: 2 }} />{zh.risk.legendMid}</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: "#43B7D7", borderRadius: 2 }} />{zh.risk.legendLow}</span>
       </div>
+      {/* WO-FRESHNESS：置信度三维（真实↔合成 × 新鲜↔陈旧 × 实测↔估算）——决策级诚实标，悬浮见三维分解。 */}
+      {data.dataMode && (
+        <div data-testid="risk-confidence-banner" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>本推演置信度</span>
+          <DataModeBadge mode={data.dataMode} confidence={data.confidence} testId="risk-confidence-datamode" />
+          {data.confidence?.note && (
+            <span style={{ fontSize: 11, color: "var(--muted2)" }}>{data.confidence.note}</span>
+          )}
+        </div>
+      )}
       <div className={styles.grid}>
         {data.cards.map((card) => {
           const selected = selectedObjects.some((o) => o.label === card.base);

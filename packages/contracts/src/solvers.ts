@@ -10,9 +10,37 @@ import { z } from "zod";
  * LIVE=结论由真对象数据派生；MOCK=无真数据源、纯哈希/魔数/硬编码启发；PARTIAL=真假混合
  * （如曲线确定性派生但波及订单真算，或真对象 + 魔数兜底）。前端据此标徽章，禁哈希冒充真算。
  * 把 risk_timeline/capacity_forecast 已有的诚实位范式推广到 audit_timeline + extended 全族。
+ *
+ * WO-FRESHNESS（置信度三维贯通·追加枚举·不破既有 LIVE/MOCK/PARTIAL 消费）：
+ * - STALE  = 结论由真对象派生，但其关键数据源（dataHealth.critical）新鲜度滞后（lagHours>staleHours）
+ *            → 决策"基于 N 小时前的数据"，置信度下调（新鲜度维，C09 跨求解器化）。
+ * - SYNTHETIC = 结论建立在合成对象（origin=SYNTHETIC）之上 → "基于合成数据（非真实接入）"
+ *            （真实↔合成维，与 domainTrustLevel=UNVERIFIED 同源）。
+ * 置信度三维：真实↔合成 × 新鲜↔陈旧 × 实测↔估算（实测/估算维由 LIVE/MOCK/PARTIAL 承载）。
+ * 单字段 dataMode 取最审慎头条；完整三维见 SolverConfidenceSchema（structured，前端可同时显三维）。
  */
-export const SolverDataModeSchema = z.enum(["LIVE", "MOCK", "PARTIAL"]);
+export const SolverDataModeSchema = z.enum(["LIVE", "MOCK", "PARTIAL", "STALE", "SYNTHETIC"]);
 export type SolverDataMode = z.infer<typeof SolverDataModeSchema>;
+
+/**
+ * WO-FRESHNESS · 置信度三维（structured·与 dataMode 头条并存，前端可同时呈现三维）。
+ * 每维独立诚实位 + 证据，dataMode 仅取最审慎头条（MOCK>SYNTHETIC>STALE>PARTIAL>LIVE）。
+ */
+export const SolverConfidenceSchema = z.object({
+  /** 真实↔合成：true=结论基于合成对象（origin=SYNTHETIC）。 */
+  synthetic: z.boolean(),
+  /** 新鲜↔陈旧：true=关键数据源新鲜度滞后（lagHours>staleHours·C09）。 */
+  stale: z.boolean(),
+  /** 实测↔估算：底层求解器诚实位（LIVE/MOCK/PARTIAL，未叠加新鲜度/合成维）。 */
+  measurement: z.enum(["LIVE", "MOCK", "PARTIAL"]),
+  /** 滞后小时（worst critical source·stale=true 时有值）。 */
+  lagHours: z.number().optional(),
+  /** 滞后的关键源名（stale=true 时有值）。 */
+  staleSources: z.array(z.string()).optional(),
+  /** 人话提示：「此决策基于 N 小时前的数据 / 合成数据（非真实接入）」。 */
+  note: z.string().optional(),
+});
+export type SolverConfidence = z.infer<typeof SolverConfidenceSchema>;
 
 /** S1.2 capacity_forecast 输出 */
 export const PerBaseRowSchema = z.object({
@@ -33,7 +61,10 @@ export const CapacityForecastOutputSchema = z
     p50: z.number(),
     p90: z.number(),
     // 轨M 增量1（假2 真推演红线）：紧张度/主瓶颈数据模式（LIVE=真 OEE/利用率/良率；MOCK=全回落 → 前端显"估算"）。
-    dataMode: z.enum(["LIVE", "MOCK"]).optional(),
+    // WO-FRESHNESS：扩到 SolverDataModeSchema（追加 STALE/SYNTHETIC），新鲜度/合成维由 invoke 统一叠加。
+    dataMode: SolverDataModeSchema.optional(),
+    // WO-FRESHNESS：置信度三维（真实↔合成 × 新鲜↔陈旧 × 实测↔估算）structured，前端同时显三维。
+    confidence: SolverConfidenceSchema.optional(),
     healthFactor: z.number(), // 默认 0.93；数据源延迟>2h 降 0.90（C09）
     gap: z.number(),
     ok: z.boolean(),
@@ -69,7 +100,8 @@ export type CapacityForecastOutput = z.infer<typeof CapacityForecastOutputSchema
 
 /** S1.3 bottleneck_matrix 输出 */
 export const BottleneckMatrixOutputSchema = z.object({
-  dataMode: z.enum(["LIVE", "MOCK"]),
+  dataMode: SolverDataModeSchema, // WO-FRESHNESS：扩 STALE/SYNTHETIC（invoke 统一叠加新鲜度/合成维）
+  confidence: SolverConfidenceSchema.optional(),
   factors: z.array(z.string()), // 7 因素固定枚举
   rows: z.array(
     z.object({
@@ -97,7 +129,8 @@ export const RiskCardSchema = z.object({
   base: z.string(),
   factor: z.string(),
   // 轨M 增量1（真推演红线）：LIVE=该因素有实测当前张力（真 OEE/利用率/良率）；MOCK=无真数据源 → 前端必显"估算"。
-  dataMode: z.enum(["LIVE", "MOCK"]).optional(),
+  // WO-FRESHNESS：扩 SolverDataModeSchema（逐卡新鲜度/合成维不在卡级叠加，仅顶层 + confidence 承载）。
+  dataMode: SolverDataModeSchema.optional(),
   // 实测当前张力（liveTightness）：value=当前值，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值（有真数据→真算可溯）。
   currentTightness: z.object({ value: z.number(), live: z.boolean() }).optional(),
   // WO-FORECAST-SIM：需求驱动因素的真缺口溯源——gapWan=预测需求−产能（万套·基地分摊），source 标真源口径（R13 可溯）。
@@ -127,7 +160,10 @@ export const RiskTimelineOutputSchema = z.object({
   horizon: z.number().int(),
   threshold: z.number(), // 默认 85
   // 轨M 增量1：顶层 dataMode（LIVE/MOCK/PARTIAL）——前端据此提示"部分估算"，红/黄状态不再裸渲染当真值。
-  dataMode: z.enum(["LIVE", "MOCK", "PARTIAL"]).optional(),
+  // WO-FRESHNESS：扩 SolverDataModeSchema（追加 STALE/SYNTHETIC，invoke 统一叠加新鲜度/合成维）。
+  dataMode: SolverDataModeSchema.optional(),
+  // WO-FRESHNESS：置信度三维 structured（真实↔合成 × 新鲜↔陈旧 × 实测↔估算）。
+  confidence: SolverConfidenceSchema.optional(),
   cards: z.array(RiskCardSchema).max(8),
   // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP）。
   planRows: z.array(RiskPlanRowSchema).optional(),

@@ -174,8 +174,11 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
 // WO-DM（keystone·no-silent-mock）：每求解器输出形状都带诚实位 `dataMode`——契约层强制声明，
 // 杜绝"哈希/魔数静默冒充真算"。配套 `check-no-silent-mock` 门校验本表每项含 dataMode；
 // 运行期由 invoke wrapper 保证每次输出真带 dataMode（hollow 求解器自置 MOCK/PARTIAL·其余默认 LIVE）。
+// WO-FRESHNESS：invoke wrapper 末统一叠加置信度三维 `confidence`（新鲜度/真实↔合成）→ 每求解器输出
+// 顶层都可能带 confidence，同 dataMode 一并声明进形状表（G-8 字段级漂移门据此核对，否则 shape-drift 红）。
 for (const k of Object.keys(SOLVER_OUTPUT_SHAPES)) {
   if (!SOLVER_OUTPUT_SHAPES[k]!.includes("dataMode")) SOLVER_OUTPUT_SHAPES[k] = [...SOLVER_OUTPUT_SHAPES[k]!, "dataMode"];
+  if (!SOLVER_OUTPUT_SHAPES[k]!.includes("confidence")) SOLVER_OUTPUT_SHAPES[k] = [...SOLVER_OUTPUT_SHAPES[k]!, "confidence"];
 }
 
 /**
@@ -1627,7 +1630,113 @@ export class SolverService {
       const metric = (out as Record<string, unknown>)[decision.experiment.metricKey];
       await this.recordExperimentOutcome(ctx.tenantId, decision.experiment.id, decision.arm, typeof metric === "number" ? metric : undefined);
     }
+    // WO-FRESHNESS：置信度三维贯通（跨求解器）——把 C09 新鲜度维 + origin=SYNTHETIC 真实/合成维
+    // 统一织进 dataMode 头条 + structured confidence（实测/估算维由底层 dataMode 承载）。
+    await this.applyConfidenceDimensions(ctx, solverKey, out);
     return out;
+  }
+
+  /**
+   * WO-FRESHNESS · 置信度三维统一叠加（跨求解器·确定性·R6）。
+   * 把求解器自报的 dataMode（实测↔估算维：LIVE/MOCK/PARTIAL）与两条横切诚实位合流：
+   *  ① 新鲜度维（C09 跨求解器化）：关键源 dataHealth.critical 新鲜度 lagHours>staleHours → STALE。
+   *  ② 真实↔合成维：决策所依对象全为 origin=SYNTHETIC（无真实接入对象） → SYNTHETIC（与 UNVERIFIED 同源）。
+   * dataMode 头条取最审慎（MOCK>SYNTHETIC>STALE>PARTIAL>LIVE）；完整三维落 out.confidence。
+   * 仅对读真对象/真决策的求解器生效（measurement∈LIVE/STALE/PARTIAL 且非 MOCK 纯估算时叠加横切维）。
+   */
+  private async applyConfidenceDimensions(
+    ctx: AuthCtx,
+    solverKey: string,
+    out: Record<string, unknown>,
+  ): Promise<void> {
+    if (!out || typeof out !== "object") return;
+    const baseMode = out.dataMode;
+    // 仅在已知 measurement 维（求解器声明诚实位）时叠加；未声明的非求解器响应跳过。
+    if (baseMode !== "LIVE" && baseMode !== "MOCK" && baseMode !== "PARTIAL") return;
+    const measurement = baseMode as "LIVE" | "MOCK" | "PARTIAL";
+
+    const params = await this.getParams(ctx.tenantId);
+    const staleHours = params.health?.staleHours ?? 2;
+
+    // ① 新鲜度维：关键源滞后。
+    const health = await this.repos.objects.listByType(ctx.tenantId, "DataSourceHealth");
+    const staleObjs = health
+      .filter((h) => h.props.critical === true && num(h.props.lagHours) > staleHours)
+      .sort((a, b) => num(b.props.lagHours) - num(a.props.lagHours));
+    const stale = staleObjs.length > 0;
+    const lagHours = stale ? num(staleObjs[0]!.props.lagHours) : undefined;
+    const staleSources = stale
+      ? staleObjs.map((s) => str(s.props.name, str(s.props.sourceId)))
+      : undefined;
+
+    // ② 真实↔合成维：决策所依对象是否全为合成（无任何真实接入对象 → 纯合成结论）。
+    const synthetic = await this.isSyntheticDecision(ctx.tenantId);
+
+    const confidence: Record<string, unknown> = { synthetic, stale, measurement };
+    const notes: string[] = [];
+    if (synthetic) notes.push("此决策基于合成数据（非真实接入）");
+    if (stale) {
+      confidence.lagHours = lagHours;
+      confidence.staleSources = staleSources;
+      notes.push(`此决策基于约 ${lagHours} 小时前的数据（关键源 ${(staleSources ?? []).join("、")} 滞后）`);
+    }
+    if (notes.length > 0) confidence.note = notes.join("；");
+    out.confidence = confidence;
+
+    // 头条 dataMode 取最审慎：MOCK > SYNTHETIC > STALE > PARTIAL > LIVE。
+    // MOCK（纯估算/无真源）已是最审慎，不被横切维覆盖；合成优先于陈旧（合成 = 整体非真实接入更根本）。
+    if (measurement === "MOCK") return;
+    if (synthetic) out.dataMode = "SYNTHETIC";
+    else if (stale) out.dataMode = "STALE";
+  }
+
+  /**
+   * WO-FRESHNESS · 决策是否建立在纯合成对象上（确定性·R6）。
+   * 判据：本租户决策核心对象类型存在且**全部 provenance 为合成**（无任何真实接入对象）。
+   * 合成 provenance = origin.type===SYNTHETIC（A 路直注），**或** origin.type===MATERIALIZED 且其
+   * 数据集源连接器标 `config.synthetic===true`（B 路建模链：合成数据源→RawDataset→物化，provenance
+   * 因果真实但底仍是合成源·与 demo viaModelingChain 现状一致）。混入真实接入对象 → false（不冒充全合成）。
+   * 用 `config.synthetic` 通用标识判别（非按连接名/业务常数 R14）。缓存于 syntheticByTenant，
+   * 失效由合成/物化写路径经 invalidateConfidenceCache 清，跨调用稳定。
+   */
+  private syntheticByTenant = new Map<string, boolean>();
+  private async isSyntheticDecision(tenantId: string): Promise<boolean> {
+    const cached = this.syntheticByTenant.get(tenantId);
+    if (cached !== undefined) return cached;
+    // 合成源连接集（config.synthetic===true）→ 其物化数据集集（MATERIALIZED.datasetId ∈ 此集 = 合成 provenance）。
+    const synthConnIds = new Set(
+      (await this.repos.connections.list(tenantId, (c) => (c.config as Record<string, unknown> | undefined)?.synthetic === true)).map((c) => c.id),
+    );
+    const synthDatasetIds = new Set(
+      synthConnIds.size > 0
+        ? (await this.repos.rawDatasets.list(tenantId, (d) => synthConnIds.has(d.sourceConnId))).map((d) => d.id)
+        : [],
+    );
+    const isSynthProvenance = (o: ObjectInstance): boolean => {
+      const og = o.origin; // 防御：部分测试/历史对象 origin 缺省 → 视为非合成（不冒充全合成）。
+      if (!og || typeof og !== "object") return false;
+      return og.type === "SYNTHETIC" || (og.type === "MATERIALIZED" && synthDatasetIds.has(og.datasetId));
+    };
+    // 决策核心对象类型（capacity/risk/cockpit 等决策读出的主体）。
+    const probeTypes = ["Base", "Line", "Order", "Model"];
+    let total = 0;
+    let real = 0;
+    for (const t of probeTypes) {
+      const objs = await this.repos.objects.listByType(tenantId, t);
+      for (const o of objs) {
+        total++;
+        if (!isSynthProvenance(o)) real++;
+      }
+    }
+    const synthetic = total > 0 && real === 0;
+    this.syntheticByTenant.set(tenantId, synthetic);
+    return synthetic;
+  }
+
+  /** WO-FRESHNESS：合成/物化写路径变更后清除合成判定缓存（保证标注随真实接入对象到位而翻转）。 */
+  invalidateConfidenceCache(tenantId?: string): void {
+    if (tenantId) this.syntheticByTenant.delete(tenantId);
+    else this.syntheticByTenant.clear();
   }
 
   // ===== WO-EXPERIMENT（④·决策 A/B·冠军-挑战者）=====================================
