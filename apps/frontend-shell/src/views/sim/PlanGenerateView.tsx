@@ -9,6 +9,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useActionDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
+import { DataModeBadge } from "@/components/DataModeBadge";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
 import { KsfGraph } from "@/components/KsfGraph";
@@ -184,6 +185,8 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
               推荐 = 无硬约束冲突方案中综合分最高（路径 <b className="mono">{gen.data.recommend || "—"}</b>）
             </span>
             <SnapshotBadge snapshotVersion={gen.snapshotVersion ?? undefined} tool="plan_generate" />
+            {/* WO-DM 诚实位：方案由经营目标基线 config + 路径骨架确定性收敛（LIVE·非哈希/魔数） */}
+            <DataModeBadge mode={gen.data.dataMode} note="方案由经营目标基线与路径骨架确定性收敛（非哈希/魔数）" testId="gen-datamode" />
           </div>
           {gen.data.schemes.map((s) => (
             <SchemeCard

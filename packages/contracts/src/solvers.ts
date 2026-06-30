@@ -171,6 +171,8 @@ export const PlanAuditOutputSchema = z.object({
   // PRD-IND-audit §3.1：verdict 4 态状态机（按 H/M 计数，非分数阈值）。
   // 「可定稿·关注风险」为规范枚举值，前端展示时插入 M 计数「可定稿 · 关注 N 项风险」。
   verdict: z.enum(["站不住", "可定稿但有重要风险", "可定稿·关注风险", "全部通过·可直接定稿"]),
+  // WO-DM：诚实位（体检结论由代入的真规划/财务/物料输入确定性裁决 → LIVE）。
+  dataMode: SolverDataModeSchema.optional(),
 });
 export type PlanAuditOutput = z.infer<typeof PlanAuditOutputSchema>;
 
@@ -224,6 +226,8 @@ export const GenSchemeSchema = z.object({
 export const PlanGenerateOutputSchema = z.object({
   schemes: z.array(GenSchemeSchema).length(3), // 稳健/均衡/进取
   recommend: z.string(), // hardViol 为空者中 total 最高
+  // WO-DM：诚实位（方案由租户经营目标基线 config + 路径骨架确定性收敛·非哈希/魔数 → LIVE）。
+  dataMode: SolverDataModeSchema.optional(),
 });
 export type PlanGenerateOutput = z.infer<typeof PlanGenerateOutputSchema>;
 

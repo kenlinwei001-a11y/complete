@@ -171,6 +171,13 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   ksf_graph: ["problems", "ksfNodes", "finNodes", "edges", "summary"],
 };
 
+// WO-DM（keystone·no-silent-mock）：每求解器输出形状都带诚实位 `dataMode`——契约层强制声明，
+// 杜绝"哈希/魔数静默冒充真算"。配套 `check-no-silent-mock` 门校验本表每项含 dataMode；
+// 运行期由 invoke wrapper 保证每次输出真带 dataMode（hollow 求解器自置 MOCK/PARTIAL·其余默认 LIVE）。
+for (const k of Object.keys(SOLVER_OUTPUT_SHAPES)) {
+  if (!SOLVER_OUTPUT_SHAPES[k]!.includes("dataMode")) SOLVER_OUTPUT_SHAPES[k] = [...SOLVER_OUTPUT_SHAPES[k]!, "dataMode"];
+}
+
 const DAY_MS = 86400000;
 
 /**
@@ -410,7 +417,8 @@ export class SolverService {
     if (!r.ok) throw validationError(`临时求解器 ${art.key} 沙箱执行失败：${r.error ?? "未知"}`);
     const out = (r.output && typeof r.output === "object" ? r.output : { result: r.output }) as Record<string, unknown>;
     // 强标未审核（R13）：每个临时求解器结果都带 origin/status/trustLevel，绝不冒充正式。
-    return { ...out, __provisional: { origin: art.origin, status: art.status, trustLevel: art.trustLevel, solverKey: art.key, version: art.version } };
+    // WO-DM：PROVISIONAL 临时求解器 dataMode=PARTIAL（未审核·不冒充真算 LIVE）。
+    return { dataMode: "PARTIAL", ...out, __provisional: { origin: art.origin, status: art.status, trustLevel: art.trustLevel, solverKey: art.key, version: art.version } };
   }
 
   /**
@@ -1569,7 +1577,25 @@ export class SolverService {
     return this.compute({ ...c, params }, solverKey, args);
   }
 
+  /**
+   * WO-DM（no-silent-mock）：所有求解器入口统一保证输出带 `dataMode` 诚实位。
+   * hollow 求解器（audit_timeline/extended）已自置 MOCK/PARTIAL；其余读真对象/config 派生 → 默认 LIVE；
+   * PROVISIONAL 沙箱临时求解器 → PARTIAL（未审核）。前端据此标徽章，禁哈希/魔数静默冒充真算。
+   */
   async invoke(
+    ctx: AuthCtx,
+    solverKey: string,
+    args: Record<string, unknown>,
+    visibleOrders?: ObjectInstance[],
+  ): Promise<Record<string, unknown>> {
+    const out = await this.invokeRaw(ctx, solverKey, args, visibleOrders);
+    if (out && typeof out === "object" && (out as Record<string, unknown>).dataMode === undefined) {
+      (out as Record<string, unknown>).dataMode = "LIVE";
+    }
+    return out;
+  }
+
+  private async invokeRaw(
     ctx: AuthCtx,
     solverKey: string,
     args: Record<string, unknown>,
