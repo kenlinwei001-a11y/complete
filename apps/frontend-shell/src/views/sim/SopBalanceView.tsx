@@ -9,6 +9,7 @@ import { toast, toastError } from "@/store/toastStore";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
 import { Provenance } from "@/components/Provenance";
+import { DataModeBadge } from "@/components/DataModeBadge";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -439,6 +440,8 @@ function Step2({
   const qc = useQueryClient();
   // 去电池锁死（R14）：需求三段初值取自 WorkspaceConfig（缓存同步读），DEFAULT_SEGMENTS 仅兜底
   const [rows, setRows] = useState(() => qc.getQueryData<Workspace>(workspaceQueryKey)?.sopConfig?.segments ?? DEFAULT_SEGMENTS);
+  // WO-DM-tail（B-MED 诚实位）：sopConfig.segments 未配置时三线为电池行业示例兜底（非本租户实测）——诚实标，禁凭空业务数喂 C21。
+  const usingDefaultSegments = !qc.getQueryData<Workspace>(workspaceQueryKey)?.sopConfig?.segments;
   const s2 = v.steps.s2 as
     | { rows?: { key: string; name: string; target: number; rolling: number; lastActual: number; dv: number; flagged: boolean }[]; total?: { target: number; rolling: number; dv: number } }
     | undefined;
@@ -448,6 +451,11 @@ function Step2({
   const p90Total = [...p90ByName.values()].reduce((a, b) => a + b, 0);
   return (
     <div data-testid="sop-step2">
+      {usingDefaultSegments && (
+        <div style={{ marginBottom: 6 }}>
+          <DataModeBadge mode="PARTIAL" note="需求三线为电池行业示例兜底（未配置 sopConfig.segments）——请按本租户实际编辑后运行，勿直接当真值喂 C21" testId="sop-seg-datamode" />
+        </div>
+      )}
       {!locked && (
         <>
           <table className="cmp">
@@ -626,6 +634,10 @@ function Step4({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
     <div data-testid="sop-step4">
       {!locked && (
         <>
+          {/* WO-DM-tail（B-MED 诚实位）：④ 财务为示例占位（非当前计划版实测）——编辑为本期真值后运行，勿直接喂 C15/C18 */}
+          <div style={{ marginBottom: 6 }}>
+            <DataModeBadge mode="PARTIAL" note="财务为示例占位（预填非当前计划版实测）——请按本期真值编辑后运行，勿直接当真值喂 C15/C18 裁决" testId="sop-s4-datamode" />
+          </div>
           {fields.map((f) => (
             <div className={styles.formRow} key={f.key} style={{ maxWidth: 360 }}>
               <span>
