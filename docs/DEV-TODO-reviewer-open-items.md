@@ -3,13 +3,15 @@
 > **来源**：审核方（独立真跑复验）对 lastmile / 四链路走查 / WO-1 / A6 的复核结论。每项均**审核方亲手真跑发现/定位**，含 FDE 真值判据；dev 实装 + 自验贴证后，审核方按判据**独立真跑复验**核发闭合。
 > **红线（全项通用）**：禁 mock 冒充 / 禁 skip-by-default / 禁门空过 / 禁造假过判据；解析失败/降级**诚实报不静默**；只推 `claude/vigilant-knuth-b1nmxn`；密钥仅 env 不入 git（R5）。
 
+> **📋 派发总表（链接 + 复制即用提示词）→ `docs/DISPATCH-dev-agent-worklist.md`**：所有待派开发 agent 的工单一张表，含 GitHub 链接 + 逐单提示词 + 建议施工顺序。**派活从这里取。**
+>
 > **🆕 设计落地施工单（item 1/2/3·dev 可直接照做）→ `docs/WO-design-landing-items-1-2-3.md`**：把 hollow-data / 对比度 / 场景入口 agent 三项落成 WO 级 spec（改哪些文件:行 + 具体改动 + FDE 判据），含建议施工顺序（速胜单先行）。下表 H/A/B/S3/UI-C 各行的细单即出于此。
 >
 > **🆕 本轮重新入队（用户「都找出来·重新入队」）→ 详见 `docs/REVIEW-hollow-data-iceberg-and-requeue.md`**：空洞数据冰山（哈希/魔数冒充真算）+ 死路 + 已登记未做，全部 📖读源逐行坐实。下表 H/A/B 段即其 §F 优先级总表落地。
 
 | # | 工单 | 优先级 | 状态 | 详细单 |
 |---|---|---|---|---|
-| **P0-LOCK** | **PG 模式 rule-doc 抽取 100% 崩**：`PgExecutionLockStore` 继承通用 `put` 未传 `extraColumns`→`tryAcquire:213 this.put(rec)` 写 `(id,tenant_id,doc)` 漏 NOT NULL `resource_kind`/`resource_key`→PG 抛→抽取瞬崩 PARTIAL·0 候选（Kimi 没调到）。99e7538 锁首次引爆潜伏 P0；内存 Map.set 无约束故单测全绿 | **P0** | 🆕 待开工 | `REVIEW-T5-pg-execlock-P0-verdict.md`（真 PG 16 复现+逐行根因+经验证伪+修向） |
+| **P0-LOCK** | **PG 模式 rule-doc 抽取 100% 崩**：`PgExecutionLockStore` 继承通用 `put` 未传 `extraColumns`→`tryAcquire:213 this.put(rec)` 写 `(id,tenant_id,doc)` 漏 NOT NULL `resource_kind`/`resource_key`→PG 抛→抽取瞬崩 PARTIAL·0 候选（Kimi 没调到）。99e7538 锁首次引爆潜伏 P0；内存 Map.set 无约束故单测全绿 | **P0** | 🆕 待开工 | **施工单 `WO-P0-lock-pg-fix.md`**（修向 extraColumns 全列+真 PG 回归）· 根因 `REVIEW-T5-pg-execlock-P0-verdict.md` |
 | **GATE-B** | **本地 `pnpm gates` 只构建 contracts+datacore（2/4 包）**→前端/agentcore tsc-red 本地门照绿（sseScripts:34 即此漏）。CI `gates.yml` 跑全 `pnpm -r build` 是真后盾。修：本地 gates 改跑全 `pnpm -r build`；「完成」判据=CI 绿非本地 test；可加 `css-vars:check` | P2 | 🆕 待开工 | 见 §GATE-B |
 | **H** | **B-HIGH** 方案「份额 +Npct」-17 魔数错算·与求解器自己的 ✓/✗ 闸门差 1pct·自相矛盾（`PlanGenerateView.tsx:240` vs `plan.ts:297`/`battery.ts:297` base.share=18） | **P1** | 🆕 待开工 | `REVIEW-hollow-data-iceberg-and-requeue.md` §B-HIGH |
 | **A0** | **契约层 dataMode 推广**：`audit_timeline`+13×extended 全族补诚实位（抄 `risk_timeline` 范式·`solvers.ts`+求解器+UI） | **P1** | 🆕 待开工 | 同上 §A0 |
