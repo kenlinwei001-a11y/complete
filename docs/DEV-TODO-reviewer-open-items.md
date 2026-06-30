@@ -7,6 +7,8 @@
 
 | # | 工单 | 优先级 | 状态 | 详细单 |
 |---|---|---|---|---|
+| **P0-LOCK** | **PG 模式 rule-doc 抽取 100% 崩**：`PgExecutionLockStore` 继承通用 `put` 未传 `extraColumns`→`tryAcquire:213 this.put(rec)` 写 `(id,tenant_id,doc)` 漏 NOT NULL `resource_kind`/`resource_key`→PG 抛→抽取瞬崩 PARTIAL·0 候选（Kimi 没调到）。99e7538 锁首次引爆潜伏 P0；内存 Map.set 无约束故单测全绿 | **P0** | 🆕 待开工 | `REVIEW-T5-pg-execlock-P0-verdict.md`（真 PG 16 复现+逐行根因+经验证伪+修向） |
+| **GATE-B** | **本地 `pnpm gates` 只构建 contracts+datacore（2/4 包）**→前端/agentcore tsc-red 本地门照绿（sseScripts:34 即此漏）。CI `gates.yml` 跑全 `pnpm -r build` 是真后盾。修：本地 gates 改跑全 `pnpm -r build`；「完成」判据=CI 绿非本地 test；可加 `css-vars:check` | P2 | 🆕 待开工 | 见 §GATE-B |
 | **H** | **B-HIGH** 方案「份额 +Npct」-17 魔数错算·与求解器自己的 ✓/✗ 闸门差 1pct·自相矛盾（`PlanGenerateView.tsx:240` vs `plan.ts:297`/`battery.ts:297` base.share=18） | **P1** | 🆕 待开工 | `REVIEW-hollow-data-iceberg-and-requeue.md` §B-HIGH |
 | **A0** | **契约层 dataMode 推广**：`audit_timeline`+13×extended 全族补诚实位（抄 `risk_timeline` 范式·`solvers.ts`+求解器+UI） | **P1** | 🆕 待开工 | 同上 §A0 |
 | **A★** | **洛阳红色死路**：点红→裸「暂无数据」（红=kind 哈希非真订单·`risk.ts:28/64`→`RiskBoardView:491`） | **P1** | 🆕 待开工 | 同上 §A-旗舰 |
@@ -39,6 +41,15 @@
 - **最小修**：`var(--text)`→`var(--txt)`（单字符·零歧义）。**仅此一处** typo（全仓 `var(--text)` 唯一命中）。
 - **系统性（用户要"都调"）**：补全站对比度审计——① 加门禁禁 CSS 引用未定义变量（catch typo）② 扫硬编码深色十六进制作文本/SVG fill 的低对比处 ③ 最低对比度断言（WCAG AA）。建议立 `css-vars:check`（未定义 var 即红）。
 - **FDE 判据**：真浏览器 DAG 节点标签浅色清晰可读（与深底对比 ≥AA）；门红能挡未定义 var。
+
+---
+
+## §GATE-B · 构建底线门漏洞（P2·tsc-red 当绿出的根因解）
+
+- **根因（审核方读源）**：本地 `pnpm gates`（package.json）只 `pnpm --filter @platform/contracts build` + `pnpm --filter datacore build`——**只构建 4 包中的 2 包**，前端/agentcore 的 `tsc --noEmit` 红在本地门照过（sseScripts:34 即此漏：vitest 走 esbuild 不类型检查，289 测绿但前端构建红）。
+- **真后盾在 CI**：`.github/workflows/gates.yml:26` 跑 `pnpm -r build`（全 4 包）+ `:28 pnpm -r test` + `:32 pnpm gates`，每 push 触发——**CI 会红**。缺口=声明「全绿」时未等 CI / 未本地跑全 `pnpm -r build`。
+- **修向**：① 本地 `pnpm gates` 把两处 `--filter ... build` 换成 `pnpm -r build`（本地门=CI 口径，消除假信心）；② 纪律：「完成」判据 = CI gates.yml 绿，非本地 test/部分门；③ 开分支保护勾 gates 必过（gates.yml 注释已指引）；④ 可加 `css-vars:check`（引用未定义 CSS 变量即红·见 §UI-C）。
+- **FDE 判据**：本地 `pnpm gates` 能复现前端 tsc-red（不再 2/4 漏过）；CI 红时 PR 不可合。
 
 ---
 
