@@ -59,7 +59,7 @@ if (!fails.some((f) => f.includes("append-only：发现写路由"))) ok.push("�
 
 // ---- ③ R9 双仓储四处：audit_log -----------------------------------------------------------
 const r9 = [
-  ["migration", "apps/datacore/migrations/029_audit_log.sql", /CREATE TABLE IF NOT EXISTS audit_log/],
+  ["migration", "apps/datacore/migrations/032_audit_log.sql", /CREATE TABLE IF NOT EXISTS audit_log/],
   ["repo.ts 接口", "apps/datacore/src/repo/repo.ts", /auditLog:\s*Store<AuditLogRecord>/],
   ["memory.ts", "apps/datacore/src/repo/memory.ts", /auditLog:\s*new MemStore\(\)/],
   ["pg.ts", "apps/datacore/src/repo/pg.ts", /auditLog:\s*new PgStore\(pool,\s*["']audit_log["']\)/],
