@@ -470,7 +470,8 @@ function AffectedOrdersModal({ card, day, onClose }: { card: RiskCard; day: numb
   const isMock = card.dataMode === "MOCK";
   const baselineN = card.currentTightness ? Math.round(card.currentTightness.value) : null;
   // WO-FORECAST-SIM：需求驱动因素的真缺口溯源（gapWan=预测需求−产能·真源 DemandSegment/SopVersion），LIVE 诚实位。
-  const demandGap = (card as { demandGap?: { gapWan: number; source: string } }).demandGap;
+  // demandGap 已是 RiskCardSchema 一等字段（contracts solvers.ts），直接读·无需内联类型断言。
+  const demandGap = card.demandGap;
   return (
     <Modal title={`${zh.risk.affectedOrders} · ${card.base} · ${card.factor}`} onClose={onClose} width={680}>
       {/* LIVE 诚实位：需求驱动因素的张力由真需求-产能缺口派生（非哈希）；缺口=预测需求−产能可溯 */}
