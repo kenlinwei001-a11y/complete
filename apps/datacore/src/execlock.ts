@@ -24,6 +24,7 @@ const DEFAULT_LEASE_MS: Record<ExecutionResourceKind, number> = {
   materialize: 10 * 60_000 * 2,
   replay: 30 * 60_000 * 2,
   bundle_import: 30 * 60_000 * 2,
+  rule_extraction: 30 * 60_000 * 2, // 抽取真打 LLM 可达数百秒·多段重试 → 宽租约，心跳 1/3 续租
 };
 
 export class StaleExecutorError extends Error {

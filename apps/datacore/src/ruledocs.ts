@@ -101,6 +101,9 @@ export class RuleDocService {
     private metrics: Metrics,
     private model: string,
     private embeddings?: import("./embeddings.js").EmbeddingProvider,
+    // T1#1：多实例安全——抽取经 execLock 跨进程互斥（同 doc 不双跑·死实例租约过期可续跑）。
+    // 可选：未注入则单实例直跑（向后兼容；内存测试默认不注入亦可，注入则走锁路径）。
+    private execLocks?: import("./execlock.js").ExecutionLockService,
   ) {}
 
   /** T1：在途后台抽取（fire-and-forget）的句柄集——测试可 await 收敛，生产仅用于优雅停机/可观测。 */
@@ -177,9 +180,21 @@ export class RuleDocService {
     return { doc, jobId };
   }
 
-  /** fire-and-forget 后台抽取：错误兜底落 doc 状态 + 审计（绝不静默吞）；句柄入集供测试收敛/续跑。 */
+  /**
+   * fire-and-forget 后台抽取：错误兜底落 doc 状态 + 审计（绝不静默吞）；句柄入集供测试收敛/续跑。
+   * T1#1 多实例安全：经 execLock(rule_extraction|docId) 跨进程互斥——同 doc 只一个实例真跑；
+   * 另一实例（含本实例 resume 重复触发）命中锁即 skip 不双跑；持锁实例死亡→租约过期，下次
+   * resume 可重夺续跑。未注入 execLocks 时退化为单实例直跑（向后兼容）。
+   */
   private fireExtraction(ctx: AuthCtx, docId: string, jobId: string): void {
-    const p = this.runExtraction(ctx, docId, jobId)
+    const exec = async (): Promise<void> => {
+      if (!this.execLocks) return void (await this.runExtraction(ctx, docId, jobId));
+      const r = await this.execLocks.withLock(ctx.tenantId, "rule_extraction", docId, async () => {
+        await this.runExtraction(ctx, docId, jobId);
+      });
+      if (r.skipped) this.metrics.inc("dc_rule_extract_segments_total", { status: "skipped_locked" });
+    };
+    const p = exec()
       .catch(async (err) => {
         this.metrics.inc("dc_rule_extract_segments_total", { status: "failed" });
         const d = await this.repos.ruleDocs.get(ctx.tenantId, docId);

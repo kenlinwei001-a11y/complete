@@ -25,7 +25,8 @@ answer=「我将系统性地收集电池业务相关数据、知识库、经验�
 
 - `resumeInflightExtractions()`：启动跨租户扫 EXTRACTING 文档重跑（幂等清旧候选）；server.ts outbox 后 fire-and-forget。
 - 单测 `ruledocs.test` T1 续跑用例：遗留 EXTRACTING doc → resume → flush → IN_REVIEW + 候选 ≥3 + 再续跑无重复堆积 ✓。seed-demo-smoke 启动门 ✓。
-- **边界**：单实例 docker 重启续跑根因解；**多实例需真分布式 job 队列**（另立单·非本单）。
+- **边界**：单实例 docker 重启续跑根因解。
+- **多实例安全（#1·已落，原"另立单"已收口）**：抽取经 `ExecutionLockService.withLock(rule_extraction|docId)` 跨进程互斥——复用 §1 执行锁/租约/fence（`INSERT…ON CONFLICT WHERE lease_until<now()` 原子抢占），同 doc 只一实例真跑、他实例 skip 不双跑（`skipped_locked` 计量）、持锁实例死亡→租约过期下次 resume 重夺续跑。单测 `ruledocs.test` T1#1：持锁→另实例 resume skip(0 候选·EXTRACTING 不变)→释放后 resume 真跑出候选(IN_REVIEW)。**未新建 job 表/worker**——锁即队列语义（仓储原子点 = pg `ON CONFLICT`），右尺寸根因解。
 
 ## 待办#2（审核方独立复验）说明
 按角色边界（fde-delivery 铁律0.5），「审核方独立复验」是**审核方**对 dev 交付的独立再验证步骤——**dev 自己执行会使其失去独立性**，故非 dev 可代办项；此处仅备注：以上各项均附 dev 自验 + 真跑证据，待审核方按各 FDE 判据独立复验核发。

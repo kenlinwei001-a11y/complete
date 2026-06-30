@@ -240,6 +240,34 @@ describe("A2 rule-doc parsing", () => {
     expect(cands2.length).toBe(cands.length); // 无重复堆积
   });
 
+  it("T1#1 多实例互斥：同 doc 已被一实例持锁抽取中 → 另一实例 resume 跳过不双跑", async () => {
+    const t = await makeApp();
+    t.llm.onRequest(scriptedExtraction);
+    await t.repos.ruleDocs.put({
+      id: "doc_lock", tenantId: "demo", filename: "lock.md", blobKey: "k",
+      status: "EXTRACTING", droppedCandidates: 0, createdAt: new Date().toISOString(),
+      segments: segmentText(FIXTURE_MD), extractJobId: "xjob_lock",
+    } as never);
+    // 模拟实例A 正在抽取中（持 rule_extraction|doc_lock 锁·不释放）
+    const acq = await t.services.execLocks.acquire("demo", "rule_extraction", "doc_lock", "instanceA");
+    expect(acq.ok).toBe(true);
+    // 实例B resume 同 doc → withLock 命中已持锁 → 跳过（不双跑）
+    await t.services.ruleDocs.resumeInflightExtractions();
+    await t.services.ruleDocs.flushExtractions();
+    // B 未真跑：无候选、状态仍 EXTRACTING（A 仍持锁会收尾）、skip 计量
+    const cands = await t.repos.ruleCandidates.list("demo", (c) => c.docId === "doc_lock");
+    expect(cands.length).toBe(0);
+    expect((await t.repos.ruleDocs.get("demo", "doc_lock"))!.status).toBe("EXTRACTING");
+    expect(t.services.metrics.get("dc_rule_extract_candidates_total", { disposition: "accepted" })).toBe(0);
+    expect(t.services.metrics.get("dc_rule_extract_segments_total", { status: "skipped_locked" })).toBe(1);
+    // A 释放后，B 再 resume → 这次真跑出候选（租约可重夺·死实例续跑同理）
+    await t.services.execLocks.release("demo", "rule_extraction", "doc_lock", "instanceA");
+    await t.services.ruleDocs.resumeInflightExtractions();
+    await t.services.ruleDocs.flushExtractions();
+    expect((await t.repos.ruleCandidates.list("demo", (c) => c.docId === "doc_lock")).length).toBeGreaterThanOrEqual(3);
+    expect((await t.repos.ruleDocs.get("demo", "doc_lock"))!.status).toBe("IN_REVIEW");
+  });
+
   it("nameSimilarity behaves sensibly", () => {
     expect(nameSimilarity("外协比例上限", "外协比例上限")).toBe(1);
     expect(nameSimilarity("外协比例上限", "外协比例红线")).toBeGreaterThan(0.5);

@@ -18,6 +18,7 @@ export const ExecutionResourceKindSchema = z.enum([
   "materialize",
   "replay",
   "bundle_import",
+  "rule_extraction", // T1#1：规则文档异步抽取——多实例跨进程互斥（同 doc 不双跑·死实例租约过期可续跑）
 ]);
 export type ExecutionResourceKind = z.infer<typeof ExecutionResourceKindSchema>;
 
