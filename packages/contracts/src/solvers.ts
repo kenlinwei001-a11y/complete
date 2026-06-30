@@ -100,6 +100,8 @@ export const RiskCardSchema = z.object({
   dataMode: z.enum(["LIVE", "MOCK"]).optional(),
   // 实测当前张力（liveTightness）：value=当前值，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值（有真数据→真算可溯）。
   currentTightness: z.object({ value: z.number(), live: z.boolean() }).optional(),
+  // WO-FORECAST-SIM：需求驱动因素的真缺口溯源——gapWan=预测需求−产能（万套·基地分摊），source 标真源口径（R13 可溯）。
+  demandGap: z.object({ gapWan: z.number(), source: z.string() }).optional(),
   peak: z.number(),
   crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）
   series: z.array(z.number()), // 逐日 tension

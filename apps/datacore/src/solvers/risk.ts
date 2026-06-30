@@ -2,6 +2,7 @@ import { round, hashString } from "../prng.js";
 import { SEG_REGISTRY } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
+import { computeRollup } from "./capacity.js";
 
 // ---------------------------------------------------------------------------
 // S1.3 bottleneck_matrix — LIVE vs MOCK dual mode
@@ -37,6 +38,99 @@ export function mockTightness(c: SolverContext, baseId: string, factor: string):
   return Math.min(m.secondaryCap, m.secondaryBase + seed + (util > m.utilHigh ? m.utilHighAdd : m.utilLowAdd));
 }
 
+// ---------------------------------------------------------------------------
+// WO-FORECAST-SIM：紧张度 = 真需求 − 产能 缺口（替代 mockTightness 哈希）。
+// 需求侧：DemandSegment(forecast 域 p50/p90) + SopVersionRow.demand（最终版/最新版）+ 订单近期实需；
+// 供给侧：computeRollup 真产能曲线（基地周产能 weeklyWan）。紧张度 = 缺口/产能 over horizon → 0..100。
+// **确定性 R6**（无 Math.random/Date.now/new Date；同对象库 + 同参数 → 同输出）。
+// 需求/产能均为网络级（DemandSegment 按细分、SopVersion 按网络），按基地真产能份额确定性分摊到基地。
+// 仅当真预测数据存在（DemandSegment 或 SopVersionRow）才置 live=true（诚实位）；否则不视作真源。
+// ---------------------------------------------------------------------------
+
+/** 网络周产能（万套/周）：Σ 基地 weeklyWan（computeRollup 真算）。 */
+function networkWeeklyCapacityWan(c: SolverContext): { total: number; byBase: Map<string, number> } {
+  const rollup = computeRollup(c);
+  const byBase = new Map<string, number>();
+  let total = 0;
+  for (const b of rollup.bases) {
+    const w = Math.max(0, num(b.weeklyWan));
+    byBase.set(b.baseId, w);
+    total += w;
+  }
+  return { total: round(total, 6), byBase };
+}
+
+/**
+ * 网络需求-产能平衡（**量纲无关的负载比**，确定性 R6）——避免"期内总量 ÷ 周产能"量纲错配（会恒饱和）：
+ *  · 产销负载比 sopLoad = SopVersion(最终版/最新版).demand ÷ supply（同期同单位的真"需求÷产能"，这是 WO 要的核心信号）；
+ *  · 预测压力比 fcLoad = Σ DemandSegment.p50 ÷ Σ tgt（预测需求相对目标产能基线的承压度）；
+ *  · 预测上行比 upside = Σ(p90−p50) ÷ Σ p50（预测离散度，抬升张力）。
+ * networkLoad = max(sopLoad, fcLoad) × (1 + 0.5×upside)；hasForecast=有①②任一真预测。
+ * 负载比 ~1.0（供需平衡）→ 张力中性；>1 产能不足→张力升；<1 富余→张力降。**改 p50/demand 真值 → 负载比变 → 张力变**。
+ */
+function networkDemandSupplyLoad(c: SolverContext): { load: number; gap: number; hasForecast: boolean } {
+  const dsegs = c.demandSegments ?? [];
+  const sops = c.sopVersions ?? [];
+  // ① SopVersion 真"需求÷产能"（同期同单位）：最终版优先，否则日期最新（确定性 tie-break）。
+  let sopLoad = 0;
+  let sopGap = 0;
+  if (sops.length > 0) {
+    const sorted = [...sops].sort((a, b) => {
+      const fa = a.props.isFinal === true ? 1 : 0;
+      const fb = b.props.isFinal === true ? 1 : 0;
+      if (fa !== fb) return fb - fa;
+      const da = str(a.props.date);
+      const db = str(b.props.date);
+      if (da !== db) return da < db ? 1 : -1;
+      return str(a.props.verId) < str(b.props.verId) ? 1 : -1;
+    });
+    const demand = Math.max(0, num(sorted[0]!.props.demand));
+    const supply = Math.max(0, num(sorted[0]!.props.supply));
+    if (supply > 0) {
+      sopLoad = demand / supply;
+      sopGap = round(Math.max(0, demand - supply), 4); // 真缺口（万套，可溯：需求−产能）
+    }
+  }
+  // ② DemandSegment 预测承压比（Σp50 ÷ Σtgt）+ 预测上行比（Σ(p90−p50) ÷ Σp50）。
+  let segP50 = 0;
+  let segP90 = 0;
+  let segTgt = 0;
+  for (const d of dsegs) {
+    segP50 += Math.max(0, num(d.props.p50));
+    segP90 += Math.max(0, num(d.props.p90, num(d.props.p50)));
+    segTgt += Math.max(0, num(d.props.tgt));
+  }
+  const fcLoad = segTgt > 0 ? segP50 / segTgt : 0;
+  const upside = segP50 > 0 ? Math.max(0, segP90 - segP50) / segP50 : 0;
+  const baseLoad = Math.max(sopLoad, fcLoad);
+  const load = baseLoad > 0 ? baseLoad * (1 + 0.5 * upside) : 0;
+  return { load: round(load, 6), gap: sopGap, hasForecast: dsegs.length > 0 || sops.length > 0 };
+}
+
+/**
+ * 基地需求-产能紧张度（0..100，确定性 R6）：网络负载比（真需求÷真产能·量纲无关）→ 张力，
+ * 再以基地真产能份额（高产能基地承接更多需求压力）+ 基地占用 util（本体真值）调制到基地。
+ * live=true 仅当有真预测（DemandSegment/SopVersion）且基地有真产能；否则回落（不视作真源·诚实 MOCK）。
+ * 映射：load=1（供需平衡）→ 基线 62；load 每偏 1.0 → ±70 张力；高产能份额 + 高占用基地承压更大。
+ * gap（万套·真缺口=需求−产能）随基地份额分摊回报，前端可溯"缺口=预测需求−产能"。
+ */
+export function demandCapacityTightness(c: SolverContext, baseId: string): { value: number; live: boolean; gap: number } {
+  const cap = networkWeeklyCapacityWan(c);
+  const baseCap = cap.byBase.get(baseId) ?? 0;
+  const dsl = networkDemandSupplyLoad(c);
+  if (!dsl.hasForecast || baseCap <= 0 || cap.total <= 0) return { value: 0, live: false, gap: 0 };
+  const share = baseCap / cap.total; // 基地真产能份额（0..1，确定性）
+  const base = c.bases.find((b) => b.props.baseId === baseId);
+  const util = num(base?.props.util, 0); // 本体真值占用（0..1）
+  // 基地承压系数：网络负载比偏离平衡 × 基地份额权重（高产能基地承接更多需求压力）+ 基地占用偏移。
+  // tension = 62 + (load−1)×70×(0.6 + 0.8×share) + (util−0.8)×40，clamp[0,98]。
+  // —— 62 为供需平衡基线（< threshold 85）；load>1 推高、util 高推高；改 p50/demand 真值即整体平移（R6 可溯）。
+  const shareWeight = 0.6 + 0.8 * share;
+  const tension = 62 + (dsl.load - 1) * 70 * shareWeight + (util - 0.8) * 40;
+  const gap = round(dsl.gap * share, 4); // 基地分摊真缺口（万套，需求−产能）
+  return { value: clamp(Math.round(tension), 0, 98), live: true, gap };
+}
+
 /** LIVE 口径: normalize real snapshot metrics (falls back to MOCK per factor when absent). */
 export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number; live: boolean } {
   const lp = c.params.bottleneck.live;
@@ -61,8 +155,18 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
       return { value: clamp(Math.round(lp.yieldBase + (1 - avg) * lp.yieldK), 0, 100), live: true };
     }
   }
+  // WO-FORECAST-SIM：需求驱动因素（瓶颈工序/人力工时/物料齐套——随需求-产能缺口共振）无逐设备实测源时，
+  // 优先用**真需求-产能缺口**派生的基地紧张度（DemandSegment/SopVersion 真预测存在即 LIVE，可溯·R6），
+  // 而非 mockTightness 哈希。其余纯设备/物流因素（设备OEE 已上方处理 / 物流时长 / 换型损失）无真源回落 MOCK。
+  if (DEMAND_DRIVEN_FACTORS.has(factor)) {
+    const dc = demandCapacityTightness(c, baseId);
+    if (dc.live) return { value: dc.value, live: true };
+  }
   return { value: mockTightness(c, baseId, factor), live: false };
 }
+
+/** 需求驱动型瓶颈因素：紧张度随真需求-产能缺口共振（无逐设备实测源 → 用 demandCapacityTightness）。 */
+const DEMAND_DRIVEN_FACTORS = new Set(["瓶颈工序", "人力工时", "物料齐套"]);
 
 export function bottleneckMatrix(
   c: SolverContext,
@@ -235,7 +339,9 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       const primary = primaryFactor(c, b);
       for (const f of c.params.bottleneck.factors) {
         if (f === primary) continue;
-        if (mockTightness(c, b, f) >= p.threshold) continue;
+        // WO-FORECAST-SIM：候选筛选用真张力（liveTightness：真预测+真产能缺口优先，无真源回落 mock）——
+        // 与下方 series 基线同源，确保"需求升→候选/曲线一致变"（非哈希恒定）。
+        if (liveTightness(c, b, f).value >= p.threshold) continue;
         pairs.push({ baseId: b, factor: f, forced: false });
       }
     }
@@ -249,15 +355,21 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // 真 OEE/利用率/良率)则 dataMode=LIVE 且 currentTightness 亮真值；无真数据源(MOCK: 人力工时/物料齐套/
     // 物流时长/换型损失)则 dataMode=MOCK → 前端显"估算（无实测）"，红/黄不再裸渲染当真值。
     const lt = liveTightness(c, pair.baseId, pair.factor);
-    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events);
+    // WO-FORECAST-SIM：series 基线 = 真张力（lt.live 时为真需求-产能缺口派生 / 真 OEE-利用率-良率；
+    // 否则 mockTightness 回落）。改 DemandSegment/SopVersion 真值 → lt 变 → 曲线随之变（非哈希恒定·R6 可溯）。
+    const baseline = lt.live ? lt.value : undefined;
+    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, undefined, baseline);
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
+    // WO-FORECAST-SIM：需求驱动因素附"真缺口=预测需求−产能"溯源（万套·基地分摊·R13），前端可解释"红色由何而来"。
+    const dc = DEMAND_DRIVEN_FACTORS.has(pair.factor) ? demandCapacityTightness(c, pair.baseId) : null;
     const card: Record<string, unknown> = {
       base: baseName(c, pair.baseId),
       baseId: pair.baseId,
       factor: pair.factor,
       dataMode: lt.live ? "LIVE" : "MOCK",
       currentTightness: { value: lt.value, live: lt.live },
+      ...(dc && dc.live ? { demandGap: { gapWan: dc.gap, source: "DemandSegment(p50/p90)+SopVersionRow.demand−产能" } } : {}),
       peak: Math.max(...series),
       crossDay,
       series,
@@ -274,7 +386,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       const plans = p.mitigations[pair.factor] ?? [];
       const plan = plans.find((pl) => pl.key === mit.planKey || pl.name === mit.planKey);
       if (!plan) throw validationError(`unknown mitigation plan '${mit.planKey}' for factor ${pair.factor}`);
-      const mitSeries = tensionSeries(c, pair.baseId, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn });
+      const mitSeries = tensionSeries(c, pair.baseId, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn }, baseline);
       card.mitigated = {
         series: mitSeries,
         appliedPlan: plan.name,
@@ -627,7 +739,9 @@ export function affectedOrdersAggregate(
   for (const baseId of baseIds) {
     const single = affectedOrders(c, { baseId, toDay: 180 });
     const factor = primaryFactor(c, baseId);
-    const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon));
+    // WO-FORECAST-SIM：order-chain 风险参考的 series 基线同样用真张力（与 risk_timeline 同源·需求驱动可溯）。
+    const ltAgg = liveTightness(c, baseId, factor);
+    const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon), undefined, ltAgg.live ? ltAgg.value : undefined);
     const ref: AggRiskRef = { base: baseName(c, baseId), factor, peak: Math.max(0, ...series), crossDay: crossDayOf(series, threshold), threshold };
     for (const a of single.affected) {
       const so = str(a.so);

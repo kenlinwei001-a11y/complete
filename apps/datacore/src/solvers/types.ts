@@ -224,6 +224,11 @@ export interface SolverContext {
   dataHealth: ObjectInstance[];
   /** modelId → baseId → 量产 | 认证中 (from model_certified_on edge props). */
   certByModel: Map<string, Map<string, string>>;
+  // WO-FORECAST-SIM：推演接需求-产能真源——需求侧预测对象（forecast 域细分预测 DemandSegment + plan 域
+  // S&OP 版本 SopVersionRow）。risk_timeline 紧张度由 demandCapacityTightness 派生（替 mockTightness 哈希），
+  // 缺口 = 真预测需求 − 真产能 over horizon。optional 缺省视为空（向后兼容 R6·测试直构 ctx 不破）。
+  demandSegments?: ObjectInstance[];
+  sopVersions?: ObjectInstance[];
   // 20 场景目录 §7 扩展数据（E6b）：13 新求解器的对象数据源（optional，缺省视为空）。
   materials?: ObjectInstance[];
   materialBatches?: ObjectInstance[];

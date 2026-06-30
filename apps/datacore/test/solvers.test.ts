@@ -226,11 +226,11 @@ describe("S1 solvers", () => {
     const series = card.series as number[];
     expect(series).toHaveLength(H);
 
-    // independent recompute (S1.4 formulas)
-    const bases = await t.repos.objects.listByType("demo", "Base");
-    const util = bases.find((b) => b.props.baseId === "changzhou")!.props.util as number;
-    const seed = ("常".charCodeAt(0) + "物".charCodeAt(0) * 7) % 9;
-    const cur = Math.min(83, 55 + seed + (util > 0.82 ? 6 : 2)); // 物料齐套 is not 常州's primary
+    // WO-FORECAST-SIM：物料齐套 是需求驱动因素 → 基线张力由真需求-产能缺口派生（demandCapacityTightness），
+    // 而非 mockTightness 哈希。dataMode=LIVE 且 series 基线 = card.currentTightness.value（真张力·可溯·R6）。
+    expect(card.dataMode).toBe("LIVE");
+    const cur = (card.currentTightness as { value: number; live: boolean }).value;
+    expect((card.currentTightness as { live: boolean }).live).toBe(true);
     const lift = (("常".charCodeAt(0) + "物".charCodeAt(0)) % P.risk.targetLift.mod) + P.risk.targetLift.base;
     const tgt = Math.min(96, cur + lift);
     // arrival-gap events every 14 days are the only 物料齐套 pulses with the seeded ontology
@@ -276,6 +276,50 @@ describe("S1 solvers", () => {
     if (mcard.crossDay !== null) {
       expect(m.crossDay === null || (m.crossDay as number) > (mcard.crossDay as number)).toBe(true);
     }
+  });
+
+  // WO-FORECAST-SIM：推演接需求-产能真源——改 DemandSegment 真预测 → 紧张度曲线随之变（非哈希恒定），
+  // 缺口 = 真预测需求 − 真产能（可溯）；R6 同输入同输出（无 Math.random/Date.now）。
+  it("V5d: risk_timeline 紧张度由真需求-产能缺口派生 — 改 DemandSegment p50 → 曲线上抬（非哈希恒定）+ R6 确定性", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const factor = "物料齐套"; // 需求驱动因素 → 走 demandCapacityTightness
+    const base = "常州";
+    const run = async () =>
+      (await invokeSolver(t, "risk_timeline", { base, factor, horizon: 30 })).json() as {
+        data: { dataMode: string; cards: { base: string; factor: string; dataMode?: string; currentTightness?: { value: number; live: boolean }; series: number[] }[] };
+      };
+
+    const before = await run();
+    const cardBefore = before.data.cards.find((c) => c.base === base && c.factor === factor)!;
+    expect(cardBefore).toBeDefined();
+    // 接真源 → LIVE（非哈希 MOCK）
+    expect(cardBefore.dataMode).toBe("LIVE");
+    expect(cardBefore.currentTightness?.live).toBe(true);
+    const tightBefore = cardBefore.currentTightness!.value;
+
+    // R6：同输入字节一致（不依赖随机/时钟）
+    expect(JSON.stringify(await run())).toBe(JSON.stringify(before));
+
+    // 改 DemandSegment 真预测 p50（需求翻倍）→ 缺口扩大 → 紧张度/曲线上抬。
+    const dsegs = await t.repos.objects.listByType("demo", "DemandSegment");
+    expect(dsegs.length).toBeGreaterThan(0);
+    for (const d of dsegs) {
+      d.props.p50 = (d.props.p50 as number) * 2;
+      d.props.p90 = (d.props.p90 as number) * 2;
+      await t.repos.objects.put(d);
+    }
+
+    const after = await run();
+    const cardAfter = after.data.cards.find((c) => c.base === base && c.factor === factor)!;
+    const tightAfter = cardAfter.currentTightness!.value;
+    // 需求升 → 紧张度严格上升（证明"红色非哈希·随需求变"）
+    expect(tightAfter).toBeGreaterThan(tightBefore);
+    // 逐日曲线整体上抬（首日基线随真张力上抬）
+    expect(cardAfter.series[0]!).toBeGreaterThan(cardBefore.series[0]!);
+    // 仍 LIVE 且 R6 确定性（改后再跑一致）
+    expect(cardAfter.dataMode).toBe("LIVE");
+    expect(JSON.stringify(await run())).toBe(JSON.stringify(after));
   });
 
   it("V5b: risk_timeline planRows — 每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP（§2.4）", async () => {

@@ -469,8 +469,21 @@ function AffectedOrdersModal({ card, day, onClose }: { card: RiskCard; day: numb
   const orders = (card.affectedOrders ?? []) as Record<string, unknown>[];
   const isMock = card.dataMode === "MOCK";
   const baselineN = card.currentTightness ? Math.round(card.currentTightness.value) : null;
+  // WO-FORECAST-SIM：需求驱动因素的真缺口溯源（gapWan=预测需求−产能·真源 DemandSegment/SopVersion），LIVE 诚实位。
+  const demandGap = (card as { demandGap?: { gapWan: number; source: string } }).demandGap;
   return (
     <Modal title={`${zh.risk.affectedOrders} · ${card.base} · ${card.factor}`} onClose={onClose} width={680}>
+      {/* LIVE 诚实位：需求驱动因素的张力由真需求-产能缺口派生（非哈希）；缺口=预测需求−产能可溯 */}
+      {!isMock && demandGap && (
+        <div
+          data-testid="affected-orders-demand-gap"
+          style={{ background: "rgba(98,190,119,.12)", border: "1px solid var(--ok,#62be77)", borderRadius: 6, padding: "8px 10px", fontSize: 11.5, color: "var(--muted)", marginBottom: 10 }}
+        >
+          ✓ 该因素（{card.factor}）紧张度由<b>真需求-产能缺口</b>派生（基线 {baselineN ?? "—"}·<b>非哈希</b>·确定性可溯）。
+          缺口 = <b>预测需求 − 产能</b> ≈ <b className="mono">{demandGap.gapWan} 万套</b>（来源：{demandGap.source}）。
+          下表受影响订单由产能传导引擎按越线日 {card.crossDay != null ? `D+${card.crossDay}` : "推演终点"} 真算。
+        </div>
+      )}
       {/* 诚实位：MOCK 卡张力曲线为启发估算（非实测）；受影响订单由产能传导引擎按越线日真算 */}
       {isMock && (
         <div

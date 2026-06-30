@@ -1441,7 +1441,7 @@ export class SolverService {
     // 内部系统计算（sop/calibration/simclock）不传 ctx → 全量（向后兼容）。
     ctx?: AuthCtx,
   ): Promise<SolverContext> {
-    const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth] =
+    const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth, demandSegments, sopVersions] =
       await Promise.all([
         this.repos.objects.listByType(tenantId, "Base").then((l) => this.a6(ctx, "Base", l)),
         this.repos.objects.listByType(tenantId, "Line").then((l) => this.a6(ctx, "Line", l)),
@@ -1453,6 +1453,10 @@ export class SolverService {
         this.repos.objects.listByType(tenantId, "Shipment").then((l) => this.a6(ctx, "Shipment", l)),
         this.repos.objects.listByType(tenantId, "Segment").then((l) => this.a6(ctx, "Segment", l)),
         this.repos.objects.listByType(tenantId, "DataSourceHealth"),
+        // WO-FORECAST-SIM：需求侧预测真源（forecast 域 DemandSegment + plan 域 SopVersionRow），喂 risk_timeline
+        // 的 demandCapacityTightness（替 mockTightness 哈希）。网络级预测对象，非基地范围 → 不套 A6（与 Segment 同范式）。
+        this.repos.objects.listByType(tenantId, "DemandSegment"),
+        this.repos.objects.listByType(tenantId, "SopVersionRow"),
       ]);
     const certByModel = new Map<string, Map<string, string>>();
     const certLinks = await this.repos.links.list(tenantId, (l) => l.type === "model_certified_on");
@@ -1508,6 +1512,8 @@ export class SolverService {
       shipments: sortById(shipments),
       segments: sortById(segments),
       dataHealth: sortById(dataHealth),
+      demandSegments: sortById(demandSegments),
+      sopVersions: sortById(sopVersions),
       certByModel,
       materials: sortById(materials),
       materialBatches: sortById(materialBatches),
