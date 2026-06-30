@@ -8,7 +8,8 @@
 
 | # | WO | 优先级 | 一句话 | 详细单（链接） |
 |---|---|---|---|---|
-| 1 | **WO-P0-LOCK** | **P0** | PG 模式 execution_locks 写入崩→rule-doc 抽取全失效（1C+T1+T5 生产挂） | [`docs/WO-P0-lock-pg-fix.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-P0-lock-pg-fix.md) |
+| ~~1~~ | ~~**WO-P0-LOCK**~~ | ✅闭 | PG execution_locks 写入崩——**审核方真 PG 复验核发闭合** | [`REVIEW-WO-P0-LOCK-closure…md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/REVIEW-WO-P0-LOCK-closure-and-resume-finding.md) |
+| 1b | **WO-T5-RESUME-LEASE** | **P1** | 重启续跑被死锁 60min 租约阻断→doc 卡 EXTRACTING（续跑机制本身对·被陈旧租约挡）。修：续跑前 steal 陈旧锁 | [`REVIEW-WO-P0-LOCK-closure…md` §2](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/REVIEW-WO-P0-LOCK-closure-and-resume-finding.md) |
 | 2 | **WO-SCENE-A** | P1·速胜 | 规划体检对话入口 `WORKFLOW_ONLY`→`WORKFLOW_FIRST`（1 行解拒答） | [`docs/WO-design-landing-items-1-2-3.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-items-1-2-3.md) |
 | 3 | **WO-SHARE17** | P1·小 | 方案份额/收入魔数(-17/-100)→求解器下发 shareDelta/revGrowthPct（消自相矛盾） | [`docs/WO-design-landing-items-1-2-3.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-items-1-2-3.md) |
 | 4 | **WO-CSS** | P2 | DAG 深字 typo `--text`→`--txt` + `css-vars:check` 门 + 全站对比度审计 | [`docs/WO-design-landing-items-1-2-3.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-items-1-2-3.md) |
@@ -27,6 +28,11 @@
 **WO-P0-LOCK（P0）**
 ```
 你是开发 agent。实现 WO-P0-LOCK：修 PG 模式 execution_locks 写入崩（resource_kind NOT NULL）导致 rule-doc 抽取全失效。规格见 docs/WO-P0-lock-pg-fix.md（自包含·含根因/改 apps/datacore/src/repo/pg.ts 的 PgExecutionLockStore super() 补 extraColumns:{resource_kind,resource_key,holder_id,lease_until}/真 PG 回归测试/FDE 判据）。完成判据：真 PG 起 datacore，POST /a/v1/rule-docs(3 规则)→IN_REVIEW·candidateCount≥3 不再 PARTIAL；心跳真更新 lease_until 列；新增真 PG live-fire 回归并入 CI。红线：pnpm -r build(全4包)+pnpm -r test 全绿+真 PG 判据自验贴证；只推 claude/vigilant-knuth-b1nmxn；密钥仅 env；改锁语义回写 SYSTEM-ONTOLOGY.md；模型标识不入提交物。
+```
+
+**WO-T5-RESUME-LEASE（P1）**
+```
+你是开发 agent。实现 WO-T5-RESUME-LEASE：修 rule-doc 抽取重启续跑被死锁租约阻断。规格见 REVIEW-WO-P0-LOCK-closure-and-resume-finding.md §2。根因：进程崩在抽取中途，其 execution_locks 租约(rule_extraction=60min)未过期→重启时 resumeInflightExtractions→fireExtraction→withLock→acquire 命中未过期租约→SKIPPED→doc 卡 EXTRACTING 最长 60min。修向①(根因解)：resumeInflightExtractions 对每个遗留 EXTRACTING doc 先强制过期/夺取其锁再 fireExtraction（新进程启动时"在抽取中"doc 的锁必属已死进程·fencing 已防僵尸写），或给 withLock 续跑路径传 steal/force 选项。完成判据(真 PG)：杀 datacore 抽取中→立即重启→doc ≤一个抽取周期续到 IN_REVIEW（无需手动过期租约）·候选幂等不重复·fence 递增。红线：pnpm -r build+test 全绿+真 PG 续跑自验贴证(绿测试≠能用)；只推 claude/vigilant-knuth-b1nmxn；续跑须 steal 陈旧锁回写 SYSTEM-ONTOLOGY.md 执行语义；模型标识不入提交物。
 ```
 
 **WO-SCENE-A（P1·速胜）**

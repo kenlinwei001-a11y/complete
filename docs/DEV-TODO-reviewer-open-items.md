@@ -11,7 +11,8 @@
 
 | # | 工单 | 优先级 | 状态 | 详细单 |
 |---|---|---|---|---|
-| **P0-LOCK** | **PG 模式 rule-doc 抽取 100% 崩**：`PgExecutionLockStore` 继承通用 `put` 未传 `extraColumns`→`tryAcquire:213 this.put(rec)` 写 `(id,tenant_id,doc)` 漏 NOT NULL `resource_kind`/`resource_key`→PG 抛→抽取瞬崩 PARTIAL·0 候选（Kimi 没调到）。99e7538 锁首次引爆潜伏 P0；内存 Map.set 无约束故单测全绿 | **P0** | 🆕 待开工 | **施工单 `WO-P0-lock-pg-fix.md`**（修向 extraColumns 全列+真 PG 回归）· 根因 `REVIEW-T5-pg-execlock-P0-verdict.md` |
+| ~~**P0-LOCK**~~ | ✅ **审核方核发闭合**（真 PG 16 独立复验：集成测 7/7 + 对抗还原 6/7 红·门咬合 + 端到端 IN_REVIEW·3 候选 + 同类 merge 扫除 + repo-pg-notnull 门）。dev 做得扎实 | ~~P0~~ 闭 | `REVIEW-WO-P0-LOCK-closure-and-resume-finding.md` |
+| **T5-RESUME-LEASE** | 🆕 **续跑被死锁租约阻断**（P0 修好后实拍撞出）：进程崩在抽取中途→锁 60min 租约未过期→重启续跑 `acquire` SKIPPED（fence 不变）→doc 卡 EXTRACTING 最长 60min。续跑机制本身对（手动过期租约→fence 1→2→IN_REVIEW），唯被陈旧租约挡。修：续跑前 steal 陈旧锁（新进程下"在抽取中"doc 的锁必属死进程） | **P1** | 🆕 待开工 | `REVIEW-WO-P0-LOCK-closure-and-resume-finding.md` §2 |
 | **GATE-B** | **本地 `pnpm gates` 只构建 contracts+datacore（2/4 包）**→前端/agentcore tsc-red 本地门照绿（sseScripts:34 即此漏）。CI `gates.yml` 跑全 `pnpm -r build` 是真后盾。修：本地 gates 改跑全 `pnpm -r build`；「完成」判据=CI 绿非本地 test；可加 `css-vars:check` | P2 | 🆕 待开工 | 见 §GATE-B |
 | **H** | **B-HIGH** 方案「份额 +Npct」-17 魔数错算·与求解器自己的 ✓/✗ 闸门差 1pct·自相矛盾（`PlanGenerateView.tsx:240` vs `plan.ts:297`/`battery.ts:297` base.share=18） | **P1** | 🆕 待开工 | `REVIEW-hollow-data-iceberg-and-requeue.md` §B-HIGH |
 | **A0** | **契约层 dataMode 推广**：`audit_timeline`+13×extended 全族补诚实位（抄 `risk_timeline` 范式·`solvers.ts`+求解器+UI） | **P1** | 🆕 待开工 | 同上 §A0 |
