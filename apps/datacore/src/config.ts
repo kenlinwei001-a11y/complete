@@ -68,6 +68,15 @@ export const ConfigSchema = z.object({
     .optional()
     .transform((v) => (v === undefined || v === "" ? true : !(v === "0" || v.toLowerCase() === "false"))),
   LOG_LEVEL: z.string().default("info"),
+  /**
+   * WO-ACTUATE（决策出站写回适配器）：写回目标选择。
+   * - `mock`（默认）：确定性 mock 适配器（自动落 writeback-echo→reconcile 闭环·非真 ERP·R13 诚实标）。
+   * - `erp_rest`：真 ERP REST 协议 stub——未配 `WRITEBACK_ERP_BASE_URL` 则 EXECUTED 诚实降级
+   *   `WRITEBACK_NOT_CONFIGURED`（不假装写成功）。
+   */
+  WRITEBACK_TARGET: z.enum(["mock", "erp_rest"]).default("mock"),
+  /** 真 ERP 写回端点 base URL（仅 WRITEBACK_TARGET=erp_rest 时用）；未配=诚实 WRITEBACK_NOT_CONFIGURED。 */
+  WRITEBACK_ERP_BASE_URL: z.string().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

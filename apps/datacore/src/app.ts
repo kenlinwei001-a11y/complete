@@ -80,7 +80,8 @@ import { assertBindingGrounded, type BindingOntologyView } from "./solvers/opt-b
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { RetentionService } from "./retention.js";
-import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
+import { ActionService, type ActionExecutor } from "./actions.js";
+import { buildWritebackAdapter } from "./writeback.js";
 import { DecisionService } from "./decisions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
@@ -404,9 +405,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // ──────────────────────────────────────────────────────────────────────────────
   // M11 §1: tick 聚合后配对 + 元闭环（在 RULE_SCAN 之前 —— C12 命中即有新配对可消费）
   simclock.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
-  // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
-  const mockExecutor = new MockActionExecutor();
+  // S2 写回适配器（WO-ACTUATE）：领域 Action（AOP情景拍板 / 校准参数变更 / S&OP / 对象数据变更）
+  // 真实落库；其余决策走 config 选择的出站写回适配器（默认 mock·自动 echo 闭环；erp_rest=真 ERP stub）。
+  const outboundAdapter: ActionExecutor = buildWritebackAdapter(
+    config.WRITEBACK_TARGET,
+    repos,
+    config.WRITEBACK_ERP_BASE_URL,
+  );
   const domainExecutor: ActionExecutor = {
+    kind: outboundAdapter.kind,
     async execute(draft) {
       if (draft.actionTypeKey === "AOP情景拍板") {
         const r = await plan.applyFinalize(draft.tenantId, draft);
@@ -437,7 +444,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations(sysCtx);
         return { ok: true, targetRef: `OBJ-${objectId}` };
       }
-      return mockExecutor.execute(draft);
+      return outboundAdapter.execute(draft);
     },
   };
   actions.setExecutor(domainExecutor);
@@ -1015,6 +1022,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
 
   // OC5 写回回声抑制 + 不一致告警。admin only。
+  // WO-ACTUATE：列出当前 pending 写回回声（mock 适配器 EXECUTED 后自动落，供对账/可视）。R2 租户隔离。
+  app.get("/a/v1/writeback-echoes", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const { ref, actionId } = req.query as { ref?: string; actionId?: string };
+    const items = (await repos.writebackEchoes.list(c.tenantId, (e) =>
+      (ref ? e.ref === ref : true) && (actionId ? e.actionId === actionId : true),
+    )).sort((a, b) => (a.writtenAt < b.writtenAt ? 1 : -1));
+    return { items };
+  });
   app.post("/a/v1/writeback-echoes", async (req) => {
     const c = ctx(req); mustAdmin(c);
     const b = req.body as { ref: string; writtenValue: unknown; actionId: string };

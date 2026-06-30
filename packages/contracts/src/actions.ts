@@ -32,6 +32,13 @@ export type ApprovalStep = z.infer<typeof ApprovalStepSchema>;
 export const SelfApprovePolicySchema = z.enum(["STRICT", "ALLOW_ADMIN", "ALLOW_ALL"]);
 export type SelfApprovePolicy = z.infer<typeof SelfApprovePolicySchema>;
 
+/**
+ * WO-ACTUATE（决策出站写回适配器）：写回目标种类。
+ * MOCK = 确定性 mock 适配器（现期·自动 echo 闭环·非真 ERP）；ERP_REST = 真 ERP REST 协议（stub·未配端点诚实降级）。
+ */
+export const WritebackTargetSchema = z.enum(["MOCK", "ERP_REST"]);
+export type WritebackTarget = z.infer<typeof WritebackTargetSchema>;
+
 export const ActionDraftSchema = z.object({
   id: z.string(), // act_
   tenantId: z.string(),
@@ -44,12 +51,20 @@ export const ActionDraftSchema = z.object({
   }),
   status: ActionStatusSchema,
   approvalSteps: z.array(ApprovalStepSchema),
+  /**
+   * WO-ACTUATE（出站写回适配器）：本 Action 经哪个写回目标出站（R13 诚实标，不冒充真 ERP）。
+   * MOCK = 确定性 mock 适配器（自动落 writeback-echo→reconcile 闭环，非真 ERP）；
+   * ERP_REST = 真 ERP REST 协议（未配端点诚实降级 WRITEBACK_NOT_CONFIGURED）。undefined=历史 Action 向后兼容。
+   */
+  writebackTarget: WritebackTargetSchema.optional(),
   executionResult: z
     .object({
       ok: z.boolean(),
       targetRef: z.string().optional(),
       error: z.string().optional(),
       attempts: z.number().int(),
+      /** WO-ACTUATE：适配器回写目标元信息（kind=MOCK/ERP_REST·system=具体系统名·向后兼容可选）。 */
+      target: z.object({ kind: WritebackTargetSchema, system: z.string().optional() }).optional(),
     })
     .optional(),
   createdAt: z.string(),

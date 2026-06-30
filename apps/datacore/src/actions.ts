@@ -6,14 +6,37 @@ import { newId } from "./ids.js";
 import { AppError, notFound, validationError } from "./errors.js";
 import { hashString } from "./prng.js";
 
-/** Write-back adapter interface (S2): this period ships the Mock implementation. */
+import type { WritebackTarget } from "@platform/contracts";
+
+/**
+ * WO-ACTUATE · 写回适配器接口（S2 出站写回适配器；保留 `ActionExecutor` 历史名）。
+ *
+ * 决策经 R4 审批 EXECUTED 后经本适配器出站。一等实现见 `writeback.ts`：
+ *   - `MockWritebackAdapter`（kind=MOCK·确定性 echo 闭环·非真 ERP）
+ *   - `ErpRestWritebackAdapter`（kind=ERP_REST·真 ERP REST 协议 stub·未配端点诚实降级）
+ *
+ * `kind`/`target` 为可选元信息（向后兼容：历史 executor 未声明 kind 时按 MOCK 记账）。
+ */
 export interface ActionExecutor {
-  execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef?: string; error?: string }>;
+  /** 适配器种类（诚实标 R13；未声明按 MOCK 兜底向后兼容）。 */
+  readonly kind?: WritebackTarget;
+  execute(draft: ActionDraft): Promise<{
+    ok: boolean;
+    targetRef?: string;
+    error?: string;
+    /** 写回目标元信息（kind=MOCK/ERP_REST·system 具体系统名·向后兼容可选）。 */
+    target?: { kind: WritebackTarget; system?: string };
+  }>;
 }
 
+/**
+ * 历史 Mock 执行器（向后兼容保留；不落 echo）。新代码请用 `writeback.ts` 的
+ * `MockWritebackAdapter`（自动落 writeback-echo 闭环）。targetRef 确定性 R6。
+ */
 export class MockActionExecutor implements ActionExecutor {
-  async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef: string }> {
-    return { ok: true, targetRef: `MO-2026-${String(1000 + (hashString(draft.id) % 9000))}` };
+  readonly kind = "MOCK" as const;
+  async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef: string; target: { kind: "MOCK" } }> {
+    return { ok: true, targetRef: `MO-2026-${String(1000 + (hashString(draft.id) % 9000))}`, target: { kind: "MOCK" } };
   }
 }
 
@@ -341,18 +364,25 @@ export class ActionService {
     await this.repos.actionDrafts.put(draft);
     let attempts = 0;
     let lastError: string | undefined;
+    let lastTarget: { kind: WritebackTarget; system?: string } | undefined;
     while (attempts < this.retryDelaysMs.length) {
       attempts++;
       try {
         const result = await this.executor.execute(draft);
+        // WO-ACTUATE：记本 Action 的写回目标（R13 诚实标）——优先取适配器返回的 target.kind，
+        // 否则取适配器声明的 kind，再兜底 MOCK（历史 executor 向后兼容）。
+        const targetKind: WritebackTarget = result.target?.kind ?? this.executor.kind ?? "MOCK";
+        draft.writebackTarget = targetKind;
+        lastTarget = result.target ?? { kind: targetKind };
         if (result.ok) {
           draft.status = "EXECUTED";
-          draft.executionResult = { ok: true, targetRef: result.targetRef, attempts };
+          draft.executionResult = { ok: true, targetRef: result.targetRef, attempts, target: result.target };
           draft.updatedAt = new Date().toISOString();
           await this.repos.actionDrafts.put(draft);
           await this.outbox.emit(tenantId, "action.executed", {
             draftId: draft.id,
             targetRef: result.targetRef,
+            writebackTarget: targetKind,
             attempts,
           });
           return draft;
@@ -364,10 +394,15 @@ export class ActionService {
       if (attempts < this.retryDelaysMs.length) await this.sleep(this.retryDelaysMs[attempts - 1] as number);
     }
     draft.status = "EXECUTION_FAILED";
-    draft.executionResult = { ok: false, error: lastError, attempts };
+    draft.executionResult = { ok: false, error: lastError, attempts, target: lastTarget };
     draft.updatedAt = new Date().toISOString();
     await this.repos.actionDrafts.put(draft);
-    await this.outbox.emit(tenantId, "action.execution_failed", { draftId: draft.id, error: lastError, attempts });
+    await this.outbox.emit(tenantId, "action.execution_failed", {
+      draftId: draft.id,
+      error: lastError,
+      writebackTarget: draft.writebackTarget,
+      attempts,
+    });
     return draft;
   }
 

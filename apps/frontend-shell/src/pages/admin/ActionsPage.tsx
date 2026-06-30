@@ -65,6 +65,35 @@ export default function ActionsPage() {
   );
 }
 
+/**
+ * WO-ACTUATE · 写回目标徽标（R13 诚实标·复用 DataModeBadge 警示范式）。
+ * MOCK = 确定性 mock 适配器（自动 echo 闭环·非真 ERP）；ERP_REST = 真 ERP REST 协议。
+ * 用户一眼看得出本决策是否真写了 ERP（不冒充）。
+ */
+function WritebackTargetBadge({ target }: { target?: ActionDraft["writebackTarget"] }) {
+  if (!target) return null;
+  const isMock = target === "MOCK";
+  return (
+    <span
+      className="badge"
+      data-testid={`writeback-target-${target}`}
+      title={
+        isMock
+          ? "写到 MOCK 适配器：确定性 echo 闭环，非真实 ERP/MES——不可当真实写回采信"
+          : "写到真实 ERP（REST 协议）"
+      }
+      style={{
+        fontSize: 10,
+        ...(isMock
+          ? { background: "var(--warn, #caa23a)", color: "#1a1400" }
+          : { background: "var(--ok, #2f9e6e)", color: "#04140a" }),
+      }}
+    >
+      写回目标：{isMock ? "MOCK（确定性·非真 ERP）" : "ERP_REST"}
+    </span>
+  );
+}
+
 function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () => void }) {
   const queryClient = useQueryClient();
   const { data: workspace } = useWorkspace();
@@ -90,11 +119,27 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
 
   return (
     <div className="panel" data-testid="draft-detail">
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
         <strong className="mono">{draft.id}</strong>
         <span className="badge">{draft.actionTypeKey}</span>
         <span className={`badge ${draft.status === "PENDING_APPROVAL" ? "amber" : "green"}`}>{draft.status}</span>
+        <WritebackTargetBadge target={draft.writebackTarget} />
       </div>
+
+      {draft.executionResult && (
+        <div style={{ fontSize: 12, marginBottom: 8 }}>
+          <span className="section-title" style={{ display: "inline" }}>执行结果：</span>
+          {draft.executionResult.ok ? (
+            <span className="mono">
+              成功{draft.executionResult.targetRef ? ` · ${draft.executionResult.targetRef}` : ""}
+            </span>
+          ) : (
+            <span className="badge red" data-testid="exec-error">
+              {draft.executionResult.error ?? "执行失败"}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="section-title">{t.payload}</div>
       <pre className="mono" style={{ fontSize: 11, background: "var(--bg2)", borderRadius: 8, padding: 10, overflow: "auto" }}>

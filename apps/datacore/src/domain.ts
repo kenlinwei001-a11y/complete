@@ -512,7 +512,15 @@ export interface ActionDraft {
   origin: { taskId?: string; agentId?: string; userId: string };
   status: ActionStatus;
   approvalSteps: ApprovalStep[];
-  executionResult?: { ok: boolean; targetRef?: string; error?: string; attempts: number };
+  /** WO-ACTUATE：本 Action 的出站写回目标（R13 诚实标·非真 ERP 即 MOCK）。 */
+  writebackTarget?: import("@platform/contracts").WritebackTarget;
+  executionResult?: {
+    ok: boolean;
+    targetRef?: string;
+    error?: string;
+    attempts: number;
+    target?: { kind: import("@platform/contracts").WritebackTarget; system?: string };
+  };
   createdAt: string;
   updatedAt: string;
 }
