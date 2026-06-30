@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, ExperimentArm, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverExperiment, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -300,6 +300,9 @@ export interface Repos {
   buildJobs: Store<BuildJob>;
   // A18.2 LLM 临时求解器件（冻结代码 + 状态机；只有 GOVERNED 能写真值）
   solverArtifacts: Store<SolverArtifact>;
+  // WO-EXPERIMENT 决策 A/B·冠军-挑战者：实验定义 + 两臂累加器（R2 租户列·确定性分流记录）
+  solverExperiments: Store<SolverExperiment>;
+  experimentArms: Store<ExperimentArm & { id: string; tenantId: string }>;
   // prototype-intake P2：schema 对账人确认候选（HITL 队列；类比 MergeCandidate）
   reconcileCandidates: Store<SchemaReconcileCandidate & { id: string; tenantId: string }>;
   // g8 故事驱动全栈倒推 · P1：构建期历史推演记录（与 GrowthLedgerEntry 经 runId 归一）

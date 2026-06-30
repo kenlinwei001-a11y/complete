@@ -17,7 +17,7 @@ import type { LlmClient } from "../llm.js";
 import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-gen.js";
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
-import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
+import type { SolverArtifact, SolverGenDraft, SolverExperiment, ExperimentArm, ExperimentArmKind, ExperimentReport } from "@platform/contracts";
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
@@ -1440,6 +1440,8 @@ export class SolverService {
     // WO-2：传入 ctx 即对读出对象套 A6 行级过滤（求解器读出层与 query_objects 同一套策略）。
     // 内部系统计算（sop/calibration/simclock）不传 ctx → 全量（向后兼容）。
     ctx?: AuthCtx,
+    // WO-EXPERIMENT：冠军-挑战者实验命中挑战者臂时注入该版本参数（否则取当前版本，零影响既有）。
+    paramsOverride?: SolverParamsShape,
   ): Promise<SolverContext> {
     const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth, demandSegments, sopVersions] =
       await Promise.all([
@@ -1473,7 +1475,7 @@ export class SolverService {
       }
       m.set(baseId, str(link.props?.status, "量产"));
     }
-    const params = await this.getParams(tenantId);
+    const params = paramsOverride ?? (await this.getParams(tenantId));
     // 规则即引用：注入本租户已发布规则快照 + 规则集版本指纹（R6 确定性，按 key 排序后 FNV-1a）。
     const publishedRules = (await this.repos.rules.list(tenantId, (r) => r.status === "PUBLISHED")).sort((a, b) => (a.key < b.key ? -1 : 1));
     const rules: NonNullable<SolverContext["rules"]> = {};
@@ -1613,11 +1615,166 @@ export class SolverService {
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
   ): Promise<Record<string, unknown>> {
-    const out = await this.invokeRaw(ctx, solverKey, args, visibleOrders);
+    // WO-EXPERIMENT：取该 solverKey 的 RUNNING 实验 → 确定性分流选臂 → 命中挑战者取其参数版本。
+    const decision = await this.routeExperiment(ctx.tenantId, solverKey, args);
+    const out = await this.invokeRaw(ctx, solverKey, args, visibleOrders, decision?.paramsOverride);
     if (out && typeof out === "object" && (out as Record<string, unknown>).dataMode === undefined) {
       (out as Record<string, unknown>).dataMode = LIVE_DEFAULT_SOLVERS.has(solverKey) ? "LIVE" : "PARTIAL";
     }
+    // 命中实验：附诚实标 __experiment{id,arm}（不污染主结果·R13）+ 按 metricKey 记录该臂结果（R6 确定性）。
+    if (decision && out && typeof out === "object") {
+      (out as Record<string, unknown>).__experiment = { id: decision.experiment.id, arm: decision.arm };
+      const metric = (out as Record<string, unknown>)[decision.experiment.metricKey];
+      await this.recordExperimentOutcome(ctx.tenantId, decision.experiment.id, decision.arm, typeof metric === "number" ? metric : undefined);
+    }
     return out;
+  }
+
+  // ===== WO-EXPERIMENT（④·决策 A/B·冠军-挑战者）=====================================
+  // 求解器参数已按租户版本化（paramsAt）。冠军-挑战者实验：把一部分 invoke 按确定性 hash 分流到
+  // 挑战者参数版本、记录两臂结果、可比较胜负。分流确定性（hash·非随机·R6）：同请求键恒同臂。
+
+  private expId(tenantId: string, id: string): string { return `exp_${tenantId}_${id}`; }
+  private armId(experimentId: string, arm: ExperimentArmKind): string { return `arm_${experimentId}_${arm}`; }
+
+  /** 确定性分流：hash(tenantId+'|'+solverKey+'|'+canonicalJson(args)) % 100 < splitPct → 挑战者臂。
+   *  请求键 = 规范化 args（同输入恒同臂·R6，无随机/时钟）。 */
+  private chooseArm(tenantId: string, exp: SolverExperiment, args: Record<string, unknown>): ExperimentArmKind {
+    const requestKey = canonicalJson(args ?? {});
+    const bucket = hashString(`${tenantId}|${exp.solverKey}|${requestKey}`) % 100;
+    return bucket < exp.splitPct ? "CHALLENGER" : "CHAMPION";
+  }
+
+  /** 取该 solverKey 的 RUNNING 实验（确定性取 id 最小者，避免多实验歧义）→ 选臂 → 命中挑战者备其参数版本。 */
+  private async routeExperiment(
+    tenantId: string,
+    solverKey: string,
+    args: Record<string, unknown>,
+  ): Promise<{ experiment: SolverExperiment; arm: ExperimentArmKind; paramsOverride?: SolverParamsShape } | undefined> {
+    const running = (await this.repos.solverExperiments.list(tenantId, (e) => e.solverKey === solverKey && e.status === "RUNNING"))
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    const exp = running[0];
+    if (!exp) return undefined; // 无 RUNNING 实验 → 恒走 champion 当前版本（零影响既有）。
+    const arm = this.chooseArm(tenantId, exp, args);
+    // 挑战者臂 → 取挑战者参数版本；冠军臂 → 不覆盖（走当前版本，等同关实验路径）。
+    const paramsOverride = arm === "CHALLENGER" ? await this.paramsAt(tenantId, exp.challengerVersion) : undefined;
+    return { experiment: exp, arm, paramsOverride };
+  }
+
+  /** 创建实验（DRAFT）。两臂累加器一并初始化（CHAMPION=championVersion·CHALLENGER=challengerVersion）。 */
+  async createExperiment(
+    tenantId: string,
+    input: { solverKey: string; championVersion: number; challengerVersion: number; splitPct: number; metricKey: string },
+  ): Promise<SolverExperiment> {
+    if (!(SOLVER_KEYS as readonly string[]).includes(input.solverKey)) throw validationError(`未知求解器 ${input.solverKey}`);
+    if (!Number.isInteger(input.splitPct) || input.splitPct < 0 || input.splitPct > 100) throw validationError("splitPct 须 0-100 整数");
+    if (!input.metricKey?.trim()) throw validationError("metricKey 必填");
+    const id = `e${Date.now().toString(36)}${Math.abs(hashString(`${tenantId}|${input.solverKey}|${input.metricKey}|${input.challengerVersion}`)).toString(36)}`;
+    const exp: SolverExperiment = {
+      id: this.expId(tenantId, id),
+      tenantId,
+      solverKey: input.solverKey,
+      championVersion: input.championVersion,
+      challengerVersion: input.challengerVersion,
+      splitPct: input.splitPct,
+      metricKey: input.metricKey,
+      status: "DRAFT",
+      winner: null,
+      createdAt: new Date().toISOString(),
+    };
+    await this.repos.solverExperiments.put(exp);
+    for (const arm of ["CHAMPION", "CHALLENGER"] as const) {
+      await this.repos.experimentArms.put({
+        id: this.armId(exp.id, arm),
+        tenantId,
+        experimentId: exp.id,
+        arm,
+        paramsVersion: arm === "CHAMPION" ? input.championVersion : input.challengerVersion,
+        invokeCount: 0,
+        metricSum: 0,
+      });
+    }
+    return exp;
+  }
+
+  async getExperiment(tenantId: string, id: string): Promise<SolverExperiment | undefined> {
+    return this.repos.solverExperiments.get(tenantId, id);
+  }
+
+  /** DRAFT → RUNNING（开始分流）。 */
+  async startExperiment(tenantId: string, id: string): Promise<SolverExperiment> {
+    const exp = await this.repos.solverExperiments.get(tenantId, id);
+    if (!exp) throw notFound("experiment");
+    if (exp.status === "CONCLUDED") throw validationError("实验已结束，不可再启动");
+    const next: SolverExperiment = { ...exp, status: "RUNNING", startedAt: exp.startedAt ?? new Date().toISOString() };
+    await this.repos.solverExperiments.put(next);
+    return next;
+  }
+
+  /** RUNNING/DRAFT → CONCLUDED：按两臂 metric 均值落胜方（均值高者胜·并列/无数据 null），停止分流。 */
+  async concludeExperiment(tenantId: string, id: string): Promise<ExperimentReport> {
+    const exp = await this.repos.solverExperiments.get(tenantId, id);
+    if (!exp) throw notFound("experiment");
+    const winner = await this.computeWinner(tenantId, exp);
+    const next: SolverExperiment = { ...exp, status: "CONCLUDED", winner, concludedAt: new Date().toISOString() };
+    await this.repos.solverExperiments.put(next);
+    await this.outbox?.emit(tenantId, "experiment.concluded", {
+      experimentId: exp.id, solverKey: exp.solverKey, winner,
+      championVersion: exp.championVersion, challengerVersion: exp.challengerVersion,
+    });
+    return this.experimentReport(tenantId, exp.id);
+  }
+
+  /** metric 取该求解器输出的 metricKey 字段值（确定性 R6），累加到对应臂（invokeCount++、metricSum+=）。 */
+  async recordExperimentOutcome(tenantId: string, experimentId: string, arm: ExperimentArmKind, metricValue?: number): Promise<void> {
+    const id = this.armId(experimentId, arm);
+    const rec = await this.repos.experimentArms.get(tenantId, id);
+    if (!rec) return; // 实验臂不存在（被删/异常）→ 静默不抛，不阻断主求解。
+    await this.repos.experimentArms.put({
+      ...rec,
+      invokeCount: rec.invokeCount + 1,
+      metricSum: rec.metricSum + (typeof metricValue === "number" && Number.isFinite(metricValue) ? metricValue : 0),
+    });
+  }
+
+  private async armOf(tenantId: string, experimentId: string, arm: ExperimentArmKind): Promise<(ExperimentArm & { id: string; tenantId: string }) | undefined> {
+    return this.repos.experimentArms.get(tenantId, this.armId(experimentId, arm));
+  }
+
+  private mean(rec?: ExperimentArm): number | null {
+    if (!rec || rec.invokeCount <= 0) return null;
+    return round(rec.metricSum / rec.invokeCount, 6);
+  }
+
+  private async computeWinner(tenantId: string, exp: SolverExperiment): Promise<ExperimentArmKind | null> {
+    const champ = this.mean(await this.armOf(tenantId, exp.id, "CHAMPION"));
+    const chall = this.mean(await this.armOf(tenantId, exp.id, "CHALLENGER"));
+    if (champ === null && chall === null) return null;
+    if (chall === null) return "CHAMPION";
+    if (champ === null) return "CHALLENGER";
+    if (chall > champ) return "CHALLENGER";
+    if (champ > chall) return "CHAMPION";
+    return null; // 并列：无胜方（诚实）。
+  }
+
+  /** GET /a/v1/experiments/:id 回执：两臂 invokeCount/均值 + 胜负（CONCLUDED 用落定值，否则实时算）。 */
+  async experimentReport(tenantId: string, id: string): Promise<ExperimentReport> {
+    const exp = await this.repos.solverExperiments.get(tenantId, id);
+    if (!exp) throw notFound("experiment");
+    const arms = [] as ExperimentReport["arms"];
+    for (const arm of ["CHAMPION", "CHALLENGER"] as const) {
+      const rec = await this.armOf(tenantId, exp.id, arm);
+      arms.push({
+        experimentId: exp.id,
+        arm,
+        paramsVersion: rec?.paramsVersion ?? (arm === "CHAMPION" ? exp.championVersion : exp.challengerVersion),
+        invokeCount: rec?.invokeCount ?? 0,
+        metricSum: rec?.metricSum ?? 0,
+        metricMean: this.mean(rec ?? undefined),
+      });
+    }
+    const winner = exp.status === "CONCLUDED" ? (exp.winner ?? null) : await this.computeWinner(tenantId, exp);
+    return { experiment: exp, arms, winner };
   }
 
   private async invokeRaw(
@@ -1625,6 +1782,8 @@ export class SolverService {
     solverKey: string,
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
+    // WO-EXPERIMENT：命中挑战者臂时注入该参数版本（仅作用于走 loadContext 的 context 求解器）。
+    paramsOverride?: SolverParamsShape,
   ): Promise<Record<string, unknown>> {
     // A18.2：内置求解器优先；非内置 key 若有已注册 SolverArtifact（PROVISIONAL+），走锁死沙箱执行（强标未验证）。
     if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) {
@@ -1660,7 +1819,7 @@ export class SolverService {
     // WO-2：仅对**读出型**求解器（输出即 Base/Line/Process/Equipment 拓扑本身）传 ctx → A6 行级过滤读出层。
     // 其余求解器（如 affected_orders 以 baseId 入参跨基地推演、A6 经 visibleOrders 作用于订单结果）不传 ctx，
     // 避免过滤其拓扑入参改变计算语义（外基地查询应受订单结果约束，而非读不到外基地拓扑）。
-    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] }, A6_READOUT_SOLVERS.has(solverKey) ? ctx : undefined);
+    const c = await this.loadContext(ctx.tenantId, visibleOrders, { withExtended: !!EXTENDED_SOLVERS[solverKey] }, A6_READOUT_SOLVERS.has(solverKey) ? ctx : undefined, paramsOverride);
     const out = this.compute(c, solverKey, args);
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.

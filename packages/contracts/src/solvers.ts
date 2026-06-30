@@ -330,3 +330,65 @@ export const SolverGenDraftSchema = z.object({
   rationale: z.string().default(""),
 });
 export type SolverGenDraft = z.infer<typeof SolverGenDraftSchema>;
+
+// ---------------------------------------------------------------------------
+// WO-EXPERIMENT（④·决策 A/B·冠军-挑战者）
+// 求解器参数已按租户版本化（solvers/service.ts paramsAt）。冠军-挑战者实验：把一部分
+// invoke 按**确定性 hash(tenantId+solverKey+请求键) % 100 < splitPct** 路由到挑战者参数版本，
+// 记录两臂结果（metricKey 字段累加），可比较胜负。分流确定性（hash·非随机·R6）：同请求键恒同臂。
+// 不污染主结果——输出仅附 `__experiment{id,arm}` 诚实标（R13），与求解器真值正交。
+// ---------------------------------------------------------------------------
+
+export const ExperimentStatusSchema = z.enum(["DRAFT", "RUNNING", "CONCLUDED"]);
+export type ExperimentStatus = z.infer<typeof ExperimentStatusSchema>;
+
+export const ExperimentArmKindSchema = z.enum(["CHAMPION", "CHALLENGER"]);
+export type ExperimentArmKind = z.infer<typeof ExperimentArmKindSchema>;
+
+/** 冠军-挑战者实验：同求解器、同输入、不同参数版本的受控对照（R2 租户隔离）。 */
+export const SolverExperimentSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  /** 被实验的求解器 key。 */
+  solverKey: z.string(),
+  /** 冠军臂参数版本（基线；缺省路由恒走此版本——关实验=零影响既有）。 */
+  championVersion: z.number().int().nonnegative(),
+  /** 挑战者臂参数版本（命中分流时经 paramsAt 取此版本参数）。 */
+  challengerVersion: z.number().int().nonnegative(),
+  /** 分流比 0-100：确定性 hash%100<splitPct → 挑战者臂；否则冠军臂。 */
+  splitPct: z.number().int().min(0).max(100),
+  /** 指标键：从求解器**确定性输出字段**取数累加到对应臂（R6，非真业务回采）。 */
+  metricKey: z.string(),
+  status: ExperimentStatusSchema.default("DRAFT"),
+  startedAt: z.string().optional(),
+  concludedAt: z.string().optional(),
+  /** conclude 落定的胜方臂（均值高者胜；并列/无数据为 null）。 */
+  winner: ExperimentArmKindSchema.nullable().optional(),
+  createdAt: z.string(),
+});
+export type SolverExperiment = z.infer<typeof SolverExperimentSchema>;
+
+/** 实验臂累加器：每实验两臂（CHAMPION/CHALLENGER），记 invoke 次数 + metric 累加和。 */
+export const ExperimentArmSchema = z.object({
+  experimentId: z.string(),
+  arm: ExperimentArmKindSchema,
+  /** 该臂取参的版本（CHAMPION=championVersion·CHALLENGER=challengerVersion）。 */
+  paramsVersion: z.number().int().nonnegative(),
+  invokeCount: z.number().int().nonnegative().default(0),
+  metricSum: z.number().default(0),
+});
+export type ExperimentArm = z.infer<typeof ExperimentArmSchema>;
+
+/** GET /a/v1/experiments/:id 回执——两臂 invokeCount/均值 + 胜负。 */
+export const ExperimentReportArmSchema = ExperimentArmSchema.extend({
+  /** metricSum / invokeCount（invokeCount=0 时为 null，诚实不除零）。 */
+  metricMean: z.number().nullable(),
+});
+export type ExperimentReportArm = z.infer<typeof ExperimentReportArmSchema>;
+
+export const ExperimentReportSchema = z.object({
+  experiment: SolverExperimentSchema,
+  arms: z.array(ExperimentReportArmSchema),
+  winner: ExperimentArmKindSchema.nullable(),
+});
+export type ExperimentReport = z.infer<typeof ExperimentReportSchema>;

@@ -2429,6 +2429,37 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(202).send(run);
   });
 
+  // ---- WO-EXPERIMENT（④·决策 A/B·冠军-挑战者）-------------------------------------------
+  // 求解器参数版本受控实验：建实验(champion/challenger 版本+split)→start→真 invoke 确定性分流到两臂
+  // →GET 回执两臂 invokeCount/均值/胜负→conclude 落胜方。关实验(无 RUNNING)恒走 champion 当前版本·零影响既有。
+  app.post("/a/v1/experiments", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const b = parseBody(z.object({
+      solverKey: z.string().min(1),
+      championVersion: z.number().int().nonnegative(),
+      challengerVersion: z.number().int().nonnegative(),
+      splitPct: z.number().int().min(0).max(100),
+      metricKey: z.string().min(1),
+    }), req.body);
+    return solvers.createExperiment(c.tenantId, b);
+  });
+  app.get("/a/v1/experiments/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return solvers.experimentReport(c.tenantId, (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/experiments/:id/start", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return solvers.startExperiment(c.tenantId, (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/experiments/:id/conclude", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return solvers.concludeExperiment(c.tenantId, (req.params as { id: string }).id);
+  });
+
   // ---- 轨B·增量1 优化融合域 /a/v1/opt/*（G-12 · 抽象模板池 · entitlement apiTag "opt"→opt.solver-pool）----
   // R3 暗发：opt.* defaultOn:false，关 = 404 FEATURE_NOT_FOUND（先于 authz）。CLI/curl 先于 UI（R15）。
   // 5 CP-SAT 核心走 optimizer-client sidecar（OPTIMIZER_BASE_URL）；未配 → 求解器报"未接入"不兜底。
