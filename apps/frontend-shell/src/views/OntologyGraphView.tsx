@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { GraphOptionsSchema, type GraphOptions } from "@platform/contracts";
@@ -7,64 +7,11 @@ import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import type { GraphEdgeVM, GraphNodeVM } from "@/api/types";
 import type { ViewRendererProps } from "./registry";
-import { ForceSimulation } from "./graph/forceLayout";
+// WO-GRAPH-2：渲染骨架（力导/缩放/拖拽/形状/14 域配色 R14）抽至统一本体图谱引擎；本视图只注入数据 + 语义回调。
+import { OntologyGraphEngine, NodeShape, DOMAIN_COLORS, DOMAIN_LABELS, SOURCE_COLORS, NON_SOURCE } from "@/components/Graph";
 import { MappingOverlay } from "./graph/MappingOverlay";
 import zh from "@/locales/zh";
 import styles from "./OntologyGraphView.module.css";
-
-/** 领域 → 设计 token（§5） */
-const DOMAIN_COLORS: Record<string, string> = {
-  factory: "var(--c-factory)",
-  product: "var(--c-product)",
-  process: "var(--c-process)",
-  equip: "var(--c-equip)",
-  people: "var(--c-people)",
-  quality: "var(--c-quality)",
-  capacity: "var(--c-capacity)",
-  forecast: "var(--c-forecast)",
-  // PRD-IND-map 缺口①：补 6 业务域配色（与 GRAPH_DOMAIN 14 域对齐，配置驱动 R14）。
-  sales: "#7E8BEE",
-  material: "#BC9A63",
-  finance: "#DF747E",
-  plan: "#B07FD8",
-  external: "#D08A66",
-  decision: "#54B5C4",
-  solver: "var(--c-solver)",
-  agent: "var(--c-agent)",
-};
-
-const DOMAIN_LABELS: Record<string, string> = {
-  factory: "工厂",
-  product: "产品",
-  process: "工艺",
-  equip: "设备",
-  people: "人员",
-  quality: "质量",
-  capacity: "产能",
-  forecast: "预测",
-  // PRD-IND-map 缺口①：6 业务域中文名。
-  sales: "销售",
-  material: "物料",
-  finance: "财务",
-  plan: "计划",
-  external: "外部",
-  decision: "决策应用",
-  solver: "求解器",
-  agent: "Agent",
-};
-
-/** 数据来源视角（§7.18 colorBy=source）：源系统着色；派生/求解/智能体不是源数据 → 淡出 */
-const SOURCE_COLORS: Record<string, string> = {
-  ERP: "#5E8FE8",
-  MES: "#DD9551",
-  IoT: "#43B7D7",
-  CRM: "#DD7E9E",
-  PLM: "#36BFA5",
-  QMS: "#62BE77",
-  HR: "#9D8BF0",
-  WMS: "#D2B04C",
-};
-const NON_SOURCE = new Set(["派生", "求解", "智能体"]);
 
 const DEFAULT_OPTIONS: GraphOptions = { colorBy: "domain" };
 
@@ -180,17 +127,42 @@ export default function OntologyGraphView({ view }: ViewRendererProps) {
       <div className={styles.layout}>
         <div className={styles.canvasWrap}>
           {degraded && <div className="badge amber" style={{ position: "absolute", top: 10, left: 10, zIndex: 5 }}>{zh.graph.tooManyNodes}</div>}
-          <GraphCanvas
+          <OntologyGraphEngine<GraphNodeVM>
             key={`${packageId}:${view.key}:${nodes.length}:${graphOptions.layoutSeed ?? 42}`}
             nodes={nodes}
             edges={edges}
             degraded={degraded}
             seed={graphOptions.layoutSeed ?? 42}
-            mvpOverlay={Boolean(graphOptions.mvpOverlay)}
-            inSubset={inSubset}
-            nodeColor={nodeColor}
-            nodeDim={nodeDim}
             selectedId={selected?.id ?? null}
+            svgClassName={styles.svg}
+            // 边淡出：两端任一节点淡出即淡出（与改前 GraphCanvas 一致）。
+            edgeDim={(_e, from, to) => Boolean((from && nodeDim(from)) || (to && nodeDim(to)))}
+            edgeClassName={(_e, dim) => `${styles.edge} ${dim ? styles.dim : ""}`}
+            nodeClassName={(n) => `${styles.node} ${nodeDim(n) ? styles.dim : ""} ${selected?.id === n.id ? styles.nodeSelected : ""}`}
+            nodeTestId={(n) => `graph-node-${n.id}`}
+            nodeDataAttrs={(n) => {
+              const gap = Boolean(graphOptions.mvpOverlay) && n.mvpGap;
+              const core = Boolean(graphOptions.mvpOverlay) && inSubset(n);
+              return { "data-domain": n.domain, "data-source": n.sourceSystem, "data-mvp": gap ? "gap" : core ? "core" : undefined };
+            }}
+            // 节点形状/缺口 ⊕/标签子元素由本视图注入（语义不变）；testid/class/data-* 由引擎挂同一承载 <g>。
+            renderNode={(n) => {
+              const color = nodeColor(n);
+              const gap = Boolean(graphOptions.mvpOverlay) && n.mvpGap;
+              return (
+                <>
+                  <NodeShape kind={n.kind} color={color} dashed={Boolean(gap)} />
+                  {gap && (
+                    <text y={5} className={styles.gapMark} data-testid={`mvp-gap-${n.id}`}>
+                      ⊕
+                    </text>
+                  )}
+                  <text y={26} className={styles.nodeLabel}>
+                    {n.label}
+                  </text>
+                </>
+              );
+            }}
             onSelect={(n) => {
               setSelected(n);
               // 点击节点写入共享 store（上下文随问句提交的来源）
@@ -250,217 +222,6 @@ export default function OntologyGraphView({ view }: ViewRendererProps) {
       {mappingOpen && <MappingOverlay packageId={packageId} onClose={() => setMappingOpen(false)} onLocate={locate} />}
     </div>
   );
-}
-
-function GraphCanvas({
-  nodes,
-  edges,
-  degraded,
-  seed,
-  mvpOverlay,
-  inSubset,
-  nodeColor,
-  nodeDim,
-  selectedId,
-  onSelect,
-}: {
-  nodes: GraphNodeVM[];
-  edges: GraphEdgeVM[];
-  degraded: boolean;
-  seed: number;
-  mvpOverlay: boolean;
-  inSubset: (n: GraphNodeVM) => boolean;
-  nodeColor: (n: GraphNodeVM) => string;
-  nodeDim: (n: GraphNodeVM) => boolean;
-  selectedId: string | null;
-  onSelect: (n: GraphNodeVM) => void;
-}) {
-  const W = 1200;
-  const H = 760;
-  const sim = useMemo(() => {
-    const s = new ForceSimulation(W, H);
-    // layoutSeed：力导向初始可复现（同 seed 同初始布局）
-    s.setGraph(
-      nodes.map((n) => n.id),
-      edges.map((e) => ({ from: e.from, to: e.to })),
-      seed,
-    );
-    if (degraded) {
-      // 降级：跑固定步数静态布局
-      for (let i = 0; i < 150 && s.tick(); i++) {
-        /* settle */
-      }
-    }
-    return s;
-  }, [nodes, edges, degraded, seed]);
-
-  const [, setFrame] = useState(0);
-  const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
-  const dragRef = useRef<{ nodeId: string | null; panStart?: { x: number; y: number; tx: number; ty: number } }>({ nodeId: null });
-  const svgRef = useRef<SVGSVGElement>(null);
-  const rafRef = useRef<number>(0);
-  const lastRender = useRef(0);
-
-  // 模拟循环：>16ms 帧任务节流渲染
-  useEffect(() => {
-    if (degraded) return;
-    let alive = true;
-    const loop = () => {
-      if (!alive) return;
-      const active = sim.tick();
-      const now = performance.now();
-      if (now - lastRender.current >= 16) {
-        lastRender.current = now;
-        setFrame((f) => f + 1);
-      }
-      if (active || dragRef.current.nodeId) {
-        rafRef.current = requestAnimationFrame(loop);
-      }
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => {
-      alive = false;
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, [sim, degraded]);
-
-  const toSim = (clientX: number, clientY: number) => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    const px = ((clientX - rect.left) / rect.width) * W;
-    const py = ((clientY - rect.top) / rect.height) * H;
-    return { x: (px - transform.x) / transform.k, y: (py - transform.y) / transform.k };
-  };
-
-  const restartLoop = () => {
-    sim.reheat(0.3);
-    cancelAnimationFrame(rafRef.current);
-    const loop = () => {
-      const active = sim.tick();
-      const now = performance.now();
-      if (now - lastRender.current >= 16) {
-        lastRender.current = now;
-        setFrame((f) => f + 1);
-      }
-      if (active || dragRef.current.nodeId) rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-  };
-
-  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
-
-  return (
-    <svg
-      ref={svgRef}
-      viewBox={`0 0 ${W} ${H}`}
-      className={styles.svg}
-      data-testid="ontology-svg"
-      onWheel={(e) => {
-        const factor = e.deltaY < 0 ? 1.12 : 0.89;
-        setTransform((t) => ({ ...t, k: Math.min(Math.max(t.k * factor, 0.3), 3) }));
-      }}
-      onPointerDown={(e) => {
-        if ((e.target as Element).closest?.("[data-node-id]")) return;
-        dragRef.current.panStart = { x: e.clientX, y: e.clientY, tx: transform.x, ty: transform.y };
-      }}
-      onPointerMove={(e) => {
-        const drag = dragRef.current;
-        if (drag.nodeId) {
-          const p = toSim(e.clientX, e.clientY);
-          sim.pin(drag.nodeId, p.x, p.y);
-          setFrame((f) => f + 1);
-        } else if (drag.panStart) {
-          const { x, y, tx, ty } = drag.panStart;
-          setTransform((t) => ({ ...t, x: tx + (e.clientX - x), y: ty + (e.clientY - y) }));
-        }
-      }}
-      onPointerUp={() => {
-        if (dragRef.current.nodeId) {
-          sim.release(dragRef.current.nodeId);
-          restartLoop();
-        }
-        dragRef.current = { nodeId: null };
-      }}
-    >
-      <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
-        {edges.map((e) => {
-          const a = sim.get(e.from);
-          const b = sim.get(e.to);
-          if (!a || !b) return null;
-          const fromNode = nodeById.get(e.from);
-          const toNode = nodeById.get(e.to);
-          const dim = (fromNode && nodeDim(fromNode)) || (toNode && nodeDim(toNode));
-          return (
-            <line
-              key={e.id}
-              x1={a.x}
-              y1={a.y}
-              x2={b.x}
-              y2={b.y}
-              data-kind={e.kind}
-              className={`${styles.edge} ${dim ? styles.dim : ""}`}
-            />
-          );
-        })}
-        {nodes.map((n) => {
-          const p = sim.get(n.id);
-          if (!p) return null;
-          const color = nodeColor(n);
-          const dim = nodeDim(n);
-          const gap = mvpOverlay && n.mvpGap;
-          const core = mvpOverlay && inSubset(n);
-          return (
-            <g
-              key={n.id}
-              data-node-id={n.id}
-              data-testid={`graph-node-${n.id}`}
-              data-domain={n.domain}
-              data-source={n.sourceSystem}
-              data-mvp={gap ? "gap" : core ? "core" : undefined}
-              transform={`translate(${p.x},${p.y})`}
-              className={`${styles.node} ${dim ? styles.dim : ""} ${selectedId === n.id ? styles.nodeSelected : ""}`}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                dragRef.current = { nodeId: n.id };
-                sim.reheat(0.15);
-                restartLoop();
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(n);
-              }}
-            >
-              <NodeShape kind={n.kind} color={color} dashed={Boolean(gap)} />
-              {gap && (
-                <text y={5} className={styles.gapMark} data-testid={`mvp-gap-${n.id}`}>
-                  ⊕
-                </text>
-              )}
-              <text y={26} className={styles.nodeLabel}>
-                {n.label}
-              </text>
-            </g>
-          );
-        })}
-      </g>
-    </svg>
-  );
-}
-
-/** 形状编码：求解器菱形 / agent 六边形 / 对象圆形（MVP 缺口节点虚线描边） */
-function NodeShape({ kind, color, dashed }: { kind: GraphNodeVM["kind"]; color: string; dashed?: boolean }) {
-  const dash = dashed ? { strokeDasharray: "3 3", fillOpacity: 0.18 } : { fillOpacity: 0.85 };
-  if (kind === "solver") {
-    return <path d="M0,-13 L13,0 L0,13 L-13,0 Z" fill={color} stroke={color} data-shape="diamond" {...dash} />;
-  }
-  if (kind === "agent") {
-    const pts = Array.from({ length: 6 }, (_, i) => {
-      const a = (Math.PI / 3) * i - Math.PI / 6;
-      return `${(Math.cos(a) * 13).toFixed(2)},${(Math.sin(a) * 13).toFixed(2)}`;
-    }).join(" ");
-    return <polygon points={pts} fill={color} stroke={color} data-shape="hexagon" {...dash} />;
-  }
-  return <circle r={11} fill={color} stroke={color} data-shape="circle" {...dash} />;
 }
 
 /** 右侧检查器面板：属性 / 源系统 / 适用规则（点击看 expression）/ 派生公式 */
