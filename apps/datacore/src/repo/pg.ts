@@ -162,9 +162,59 @@ class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
   }
 }
 
+/**
+ * P0-LOCK 同类潜伏 bug 修：merge_candidates / object_merges（实体合并 A 特性）建表为
+ * `(id, tenant_id, data JSONB NOT NULL)`——既无 `doc` 列也无 `updated_at` 列，与通用
+ * PgStore（读写 `doc` + `updated_at = now()`）形状不符 → PG 下该特性整体崩。此专用 store
+ * 读写 `data` 列、不触 updated_at，使实体合并在 PG 真可用（内存仓储本就正确，仅 PG 漏）。
+ */
+class PgDataColStore<T extends { id: string; tenantId: string }> implements Store<T> {
+  constructor(
+    private pool: pg.Pool,
+    private table: string,
+  ) {}
+
+  async get(tenantId: string, id: string): Promise<T | undefined> {
+    const r = await this.pool.query(
+      `SELECT data FROM ${this.table} WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    return r.rows[0]?.data as T | undefined;
+  }
+
+  async put(item: T): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ${this.table} (id, tenant_id, data) VALUES ($1,$2,$3)
+       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data`,
+      [item.id, item.tenantId, JSON.stringify(item)],
+    );
+  }
+
+  async remove(tenantId: string, id: string): Promise<void> {
+    await this.pool.query(`DELETE FROM ${this.table} WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+  }
+
+  async list(tenantId: string, pred?: (t: T) => boolean): Promise<T[]> {
+    const r = await this.pool.query(`SELECT data FROM ${this.table} WHERE tenant_id = $1`, [tenantId]);
+    const items = r.rows.map((row) => row.data as T);
+    return pred ? items.filter(pred) : items;
+  }
+}
+
 class PgExecutionLockStore extends PgStore<ExecutionLockRecord> implements ExecutionLockStore {
   constructor(pool: pg.Pool) {
-    super(pool, "execution_locks");
+    // P0-LOCK 修：把全部 NOT-NULL-无默认列纳入通用 put 的列集。漏 extraColumns 时通用 put 的
+    // INSERT 元组缺 resource_kind/resource_key/holder_id/lease_until → PG NOT NULL 违例直抛
+    // （heartbeat/release/requestRerun/consumeRerun 经 put 全崩 → withLock 崩 → 抽取 PARTIAL·0 候选）。
+    // lease_until 必须纳入：tryAcquire 抢锁的 `ON CONFLICT … WHERE lease_until < now()` 读的是列，
+    // 不纳入则心跳只改 doc 不改列 → 续租对抢占无效（锁可能抽取中途被误抢）。一并修两个潜伏 bug。
+    // acquired_at/fence/rerun_requested/doc/updated_at 有 DEFAULT 或经 doc 读回，无需纳入。
+    super(pool, "execution_locks", (l) => ({
+      resource_kind: l.resourceKind,
+      resource_key: l.resourceKey,
+      holder_id: l.holderId,
+      lease_until: l.leaseUntil, // ISO string → TIMESTAMPTZ（PG 隐式 coerce）
+    }));
   }
 
   /**
@@ -636,8 +686,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     replayProgress: new PgStore(pool, "replay_progress"),
     extractSegments: new PgStore(pool, "extract_segments"),
     quarantineRows: new PgStore(pool, "quarantine_rows"),
-    mergeCandidates: new PgStore(pool, "merge_candidates"),
-    objectMerges: new PgStore(pool, "object_merges"),
+    mergeCandidates: new PgDataColStore(pool, "merge_candidates"),
+    objectMerges: new PgDataColStore(pool, "object_merges"),
     notifications: new PgStore(pool, "notifications"),
     validationRuns: new PgStore(pool, "validation_runs"),
     webhooks: new PgStore(pool, "webhooks"),
