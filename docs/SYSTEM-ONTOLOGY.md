@@ -299,7 +299,7 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 | L7 | `intent.promoted` | 兜底孵化 | IN_SESSION | intent-catalog, fallback-stats | DL6 |
 | L8 | `synthetic.tick_completed` | 模拟时钟 tick | IN_SESSION | dashboard, risk, scenario-data, calibration-report | DL7 |
 | L8 | `dataset.regenerated` | 合成生成 | IN_SESSION | dashboard, risk, scenario-data, ontology-graph, rule-library | — |
-| L8 | `connection.sync_completed` | 连接器同步 | IN_SESSION | dashboard, scenario-data, object-queries | DL9 |
+| L8 | `connection.sync_completed` | 连接器同步（**WO-PIPE-INCR ② 已真产出**：此前声明+订阅却从不发出·DL9 断链；现 `ConnectorService.onSyncCompleted` 钩子→`outbox.emit`，payload 带 connId/datasets/rowCounts/watermarks/incremental/changedRows，且 `changedRows>0` 触发 `ontology.runDerivations` 使同步数据自动流入派生） | IN_SESSION | dashboard, scenario-data, object-queries | DL9 ✅闭 |
 | L8 | `connection.created` | 连接器创建（A11 带 category） | IN_SESSION | connectors, data-categories | — |
 | L1 | `slice.planned` | 切片规划器（A3.4 规划/复用；E6 近似问句命中时 payload 附 `reuseMatch:QUESTION/score`） | IN_SESSION | slice-library, slice-index | — |
 | L9 | `kb.indexed` | 知识库索引 | IN_SESSION | kb-search, search-test | DL10 |

@@ -569,9 +569,31 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     });
 
   const systemCtx = (tenantId: string): AuthCtx => ({ tenantId, userId: "system", roles: ["admin"], attributes: {} });
+  // WO-PIPE-INCR ②：连接器同步完成 → 发 connection.sync_completed 事件（闭 DL9 断链：此前该事件被前端订阅却从不产出）
+  // + 真实变更（changedRows>0）触发派生重算，使同步进来的新数据自动流入对象/派生（数据→本体链自动化）。
+  connectors.wire({
+    onSyncCompleted: async (tenantId, info) => {
+      await outbox.emit(tenantId, "connection.sync_completed", {
+        connId: info.connId,
+        datasets: info.datasets,
+        rowCounts: info.rowCounts,
+        watermarks: info.watermarks,
+        incremental: info.incremental,
+        changedRows: info.changedRows,
+      });
+      if (info.changedRows > 0) {
+        try {
+          await ontology.runDerivations(systemCtx(tenantId));
+        } catch (err) {
+          logger.warn({ err, connId: info.connId, tenantId }, "sync→派生重算失败（非致命：同步已成功）");
+        }
+      }
+    },
+  });
   scheduler
     .on("CONNECTOR_SYNC", async (tenantId, refId) => {
-      await connectors.sync(systemCtx(tenantId), refId);
+      // WO-PIPE-INCR ②：调度自动续传——每数据集用自身已存 watermark 作 since，增量同步而非每次全量重灌。
+      await connectors.sync(systemCtx(tenantId), refId, { auto: true });
     })
     .on("DERIVATION_FULL", async (tenantId) => {
       await ontology.runDerivations(systemCtx(tenantId));

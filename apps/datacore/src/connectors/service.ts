@@ -24,10 +24,22 @@ interface DatasetConfig {
   watermarkField?: string; // 水位列（同步后取本数据集该列最大值作新 watermark·下次 since 据此只取更新行）
 }
 
+/** WO-PIPE-INCR ②：同步完成回调 payload（app 侧据此发 connection.sync_completed 事件 + 触发派生重算）。 */
+export interface SyncCompletedInfo {
+  connId: string;
+  datasets: string[];
+  rowCounts: Record<string, number>;
+  watermarks: Record<string, string>;
+  incremental: boolean; // 本次是否至少一个数据集走了增量 delta 合并
+  changedRows: number; // 本次实际灌入/变更的行数（增量报 delta·全量报总行）；0 = 无变更可跳过下游重算
+}
+
 /** A1 connector framework: connections, schema discovery, sync → RawDataset | ts writer. */
 export class ConnectorService {
   private ts: TimeseriesService | null = null;
   private scheduler: SchedulerService | null = null;
+  // WO-PIPE-INCR ②：同步完成钩子（解耦——ConnectorService 不直接 import Outbox/Ontology，R1）。
+  private onSyncCompleted: ((tenantId: string, info: SyncCompletedInfo) => Promise<void>) | null = null;
 
   constructor(
     private repos: Repos,
@@ -37,9 +49,14 @@ export class ConnectorService {
     private fetchImpl: typeof fetch = fetch,
   ) {}
 
-  wire(deps: { ts?: TimeseriesService; scheduler?: SchedulerService }): void {
+  wire(deps: {
+    ts?: TimeseriesService;
+    scheduler?: SchedulerService;
+    onSyncCompleted?: (tenantId: string, info: SyncCompletedInfo) => Promise<void>;
+  }): void {
     this.ts = deps.ts ?? this.ts;
     this.scheduler = deps.scheduler ?? this.scheduler;
+    this.onSyncCompleted = deps.onSyncCompleted ?? this.onSyncCompleted;
   }
 
   private datasetConfig(conn: Connection, dataset: string): DatasetConfig | undefined {
@@ -191,11 +208,15 @@ export class ConnectorService {
     return schema;
   }
 
-  /** POST /a/v1/connections/:id/sync — lands rows in RawDataset; repeat sync is idempotent. */
-  async sync(ctx: AuthCtx, connId: string, opts: { since?: string } = {}): Promise<SyncJob> {
+  /**
+   * POST /a/v1/connections/:id/sync — lands rows in RawDataset; repeat sync is idempotent.
+   * WO-PIPE-INCR ①：`opts.since`（端点 ?since=）→ 连接器级增量（所有数据集同一 since）。
+   * WO-PIPE-INCR ②：`opts.auto`（调度器自动续传）→ **每数据集用自身已存 watermark 作 since**，无须调用方传。
+   */
+  async sync(ctx: AuthCtx, connId: string, opts: { since?: string; auto?: boolean } = {}): Promise<SyncJob> {
     const conn = await this.getConnection(ctx, connId);
-    // WO-PIPE-INCR ①：增量同步 = 连接器声明 incremental 能力 + 调用方传 since（端点 ?since=）。否则全量（向后兼容）。
-    const connIncremental = !!getConnectorType(conn.connectorTypeKey)?.capabilities.incremental && opts.since !== undefined;
+    // 连接器是否具增量能力（CDC·rest_api 等）；具体某数据集是否走增量另需 since（显式或 auto 续传）+ pk/wm 配齐。
+    const connHasIncremental = !!getConnectorType(conn.connectorTypeKey)?.capabilities.incremental;
     const job: SyncJob = {
       id: newId("sync"),
       tenantId: ctx.tenantId,
@@ -205,20 +226,33 @@ export class ConnectorService {
       rowCounts: {},
     };
     await this.repos.syncJobs.put(job);
+    const watermarks: Record<string, string> = {};
+    let anyIncremental = false;
+    let changedRows = 0;
     try {
       const adapter = createAdapter(conn.connectorTypeKey, this.decryptedConfig(conn), this.blob, this.fetchImpl);
       const datasets = await adapter.listDatasets();
       for (const name of datasets) {
+        const dsCfg = this.datasetConfig(conn, name);
+        // 既有数据集（取其 watermark 供 ② auto 续传 + ① delta 合并先验行）。
+        const existing = (
+          await this.repos.rawDatasets.list(
+            ctx.tenantId,
+            (d) => d.sourceConnId === connId && d.name === name,
+          )
+        )[0];
+        // 每数据集 since：显式 opts.since 优先（① 连接器级）；否则 auto 用该数据集自身 watermark（② 自动续传）；都无则全量。
+        const dsSince = opts.since !== undefined ? opts.since : opts.auto ? existing?.watermark : undefined;
+        const dsIncremental = connHasIncremental && dsSince !== undefined;
         const rows: Record<string, unknown>[] = [];
         let cursor: string | undefined;
         do {
           // 增量水位下推（CDC 源据此只回更新行；不支持的源忽略·服务层再按 watermarkField 兜底过滤）。
-          const batch = await adapter.fetchBatch(name, cursor, connIncremental ? opts.since : undefined);
+          const batch = await adapter.fetchBatch(name, cursor, dsIncremental ? dsSince : undefined);
           rows.push(...batch.rows);
           cursor = batch.nextCursor;
         } while (cursor);
         // A8.1: TIMESERIES datasets bypass raw_datasets/materialize and land via the ts writer.
-        const dsCfg = this.datasetConfig(conn, name);
         if (dsCfg?.kind === "TIMESERIES" && this.ts) {
           const numericFields =
             dsCfg.measureFields ??
@@ -235,29 +269,24 @@ export class ConnectorService {
             origin: "CONNECTOR",
           }, rows);
           job.rowCounts[name] = r.written + r.late;
+          changedRows += r.written + r.late;
           continue;
         }
-        // Idempotent: replace dataset rows (one RawDataset per conn+dataset name).
-        const existing = (
-          await this.repos.rawDatasets.list(
-            ctx.tenantId,
-            (d) => d.sourceConnId === connId && d.name === name,
-          )
-        )[0];
         // WO-PIPE-INCR ①：增量 delta 合并（按 pkField upsert·只灌新增/变更行·非全量重灌），需 incremental+since+既有数据集+pk/wm 配齐。
         const wmField = dsCfg?.watermarkField;
         const pkField = dsCfg?.pkField;
-        const incremental = connIncremental && existing && !!pkField && !!wmField;
+        const incremental = dsIncremental && existing && !!pkField && !!wmField;
         let finalRows = rows;
         let deltaCount = rows.length;
         if (incremental) {
           // 兜底过滤：取水位之后的更新行（适配器已下推 since 则此处为幂等再筛）。
-          const delta = rows.filter((r) => String(r[wmField!] ?? "") > (opts.since ?? ""));
+          const delta = rows.filter((r) => String(r[wmField!] ?? "") > (dsSince ?? ""));
           const prior = await this.repos.rawRows.list(ctx.tenantId, existing!.id);
           const byPk = new Map(prior.map((r) => [String(r[pkField!]), r]));
           for (const d of delta) byPk.set(String(d[pkField!]), d); // upsert：新增/变更覆盖·未变行保留
           finalRows = [...byPk.values()];
           deltaCount = delta.length;
+          anyIncremental = true;
         }
         // 新水位 = 本数据集 watermarkField 最大值（无则沿用既有·向后兼容）。
         const watermark = wmField
@@ -277,13 +306,25 @@ export class ConnectorService {
         await this.repos.rawDatasets.put(ds);
         await this.repos.rawRows.replace(ctx.tenantId, ds.id, finalRows);
         // 判据「只灌新增/变更行」：增量报 delta 行数；全量报总行数。
-        job.rowCounts[name] = incremental ? deltaCount : finalRows.length;
+        const counted = incremental ? deltaCount : finalRows.length;
+        job.rowCounts[name] = counted;
+        changedRows += counted;
+        if (watermark) watermarks[name] = watermark;
       }
       job.status = "SUCCEEDED";
       job.finishedAt = new Date().toISOString();
       await this.repos.syncJobs.put(job);
       await this.repos.connections.put({ ...conn, lastSyncAt: job.finishedAt, status: "ACTIVE" });
       this.metrics.inc("dc_connector_sync_total", { type: conn.connectorTypeKey, outcome: "success" });
+      // WO-PIPE-INCR ②：同步完成 → 通知钩子（app 侧发 connection.sync_completed 事件[闭 DL9 断链] + changedRows>0 触发派生重算）。
+      if (this.onSyncCompleted) {
+        try {
+          await this.onSyncCompleted(ctx.tenantId, { connId, datasets, rowCounts: job.rowCounts, watermarks, incremental: anyIncremental, changedRows });
+        } catch {
+          // 非致命：同步本身已成功；下游事件/重算尽力而为，失败计数（不静默吞）。
+          this.metrics.inc("dc_connector_sync_hook_total", { outcome: "failure" });
+        }
+      }
       return job;
     } catch (err) {
       job.status = "FAILED";
