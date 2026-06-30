@@ -19,6 +19,13 @@
 | 8 | **WO-DM-tail** | P2 | A1-A4/B-MED 各求解器接真源或标 PARTIAL（audit_timeline 哈希/yield/credit/loadByWeek/SopBalance） | [`REVIEW-hollow-data…md` §A1-A4/§B-MED](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/REVIEW-hollow-data-iceberg-and-requeue.md) |
 | 9 | **GATE-B** | P2 | 本地 `pnpm gates` 只构建 2/4 包→改全 `pnpm -r build`（tsc-red 当绿出的根因解） | [`DEV-TODO…md` §GATE-B](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/DEV-TODO-reviewer-open-items.md) |
 | 10 | **WO-SCENE-C/D** | P2/P3 | 场景 agent 铺到 20+ 入口 + `scene-agent-config:check` 门 | [`docs/WO-design-landing-items-1-2-3.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-items-1-2-3.md) |
+| 11 | **WO-FORECAST-SIM** | P1·中 | 推演接销售预测真源（紧张度由真需求-产能派生·替 mockTightness 哈希）+ 合并 A★ 洛阳死路 | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
+| 12 | **WO-NAV-DATA** | P2·小 | 导航「数据接入」→「数据」，收编 订单台账/数据构建发动机/外部数据 | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
+| 13 | **WO-NAV-SANDBOX** | P2·小 | 推演沙盘/沙盘初始化并入「推演」组（保留 entitlement 门控） | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
+| 14 | **WO-QUARANTINE** | P3·小 | 隔离区空态诚实文案 + 真值演示（真接线·空因合成洁净·勿删） | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
+| 15 | **WO-GRAPH-1** | P2·先做 | 抽统一「过程 DAG」渲染组件（InferenceProcess/Provenance/FDE/Layered 共用·语义不动） | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
+| 16 | **WO-GRAPH-2** | P2 | 抽统一「本体图谱引擎」（OntologyGraphView forceLayout 复用·实时派生） | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) |
+| 17 | **WO-GRAPH-3/4** | P3·依赖16 | 融合主入口（切片/血缘/KSF 接引擎·建模=编辑态）+ 沙盘/元本体/边界/图查询接同引擎 | [`docs/WO-design-landing-batch2.md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/WO-design-landing-batch2.md) · [`ANALYSIS-graph…md`](https://github.com/kenlinwei001-a11y/complete/blob/claude/vigilant-knuth-b1nmxn/docs/ANALYSIS-graph-modules-consolidation.md) |
 
 > **③类·需审核方先行后再派**（不在上表直派）：**轨O 主题/配色开关**（`HANDOFF-theme-switch-…md`·先由审核方真浏览器核"真缺到哪步"再交 dev，grep 可能漏报）· **WO-10② 真分核查**（`REVIEW-WO11-WO10b-verdict.md`·dev 复核分类器真分证据）。
 > **审核方自留·非派发**（dev 修完后由审核方真跑）：P0-LOCK 修复复验 + T5 续跑真 PG 实拍 + d8498ae（§3③ 证据）复验。
@@ -78,6 +85,41 @@
 **WO-SCENE-C/D（P2/P3）**
 ```
 你是开发 agent。实现 WO-SCENE-C/D：以 WO-SCENE-B 为模板把场景 agent 铺到 dash/risk/order/sop-balance… 各入口（各自数据上下文/规则/求解器子集），并立 scene-agent-config:check 门（每 PUBLISHED 视图对话入口须 mode≠WORKFLOW_ONLY 或显式只读+defaultAgentId 已发布+rules⊆已发布+solverMcpAllow⊆注册表+sliceTargets 可达，否则红），纳入场景 maturity=GOVERNED。规格见 docs/WO-design-landing-items-1-2-3.md 的 item3·WO-SCENE-C/D。完成判据：抽样≥3 入口接本页数据真答；半截配置入口→门红。红线：pnpm -r build+test 全绿+真浏览器抽验；只推 claude/vigilant-knuth-b1nmxn；回写 SYSTEM-ONTOLOGY.md G-3/G-9；模型标识不入提交物。
+```
+
+**WO-FORECAST-SIM（P1·合并 A★）**
+```
+你是开发 agent。实现 WO-FORECAST-SIM：推演接销售预测真源 + 合并 A★ 洛阳死路。规格见 docs/WO-design-landing-batch2.md 的 WO-FORECAST-SIM。① 求解器 apps/datacore/src/solvers/risk.ts 的 mockTightness(:28)/tensionSeries(:189 baseline) 紧张度改由真需求-产能缺口派生：需求侧 DemandSegment(forecast 域 p50/p90)+SopVersion.demand+订单近期实需，供给侧 capacity_forecast 产能曲线，紧张度=缺口/产能 over horizon（确定性 R6）；loadContext 注入 DemandSegment/SopVersion；RiskTimelineOutputSchema 已有 dataMode→接真源置 LIVE/无真预测 PARTIAL。② 前端 A★：RiskBoardView.tsx AffectedOrdersModal(:462-491) 点红→真订单非空 OR 诚实「mock 基线无真订单」面板，禁裸 zh.common.none(:491)。完成判据：改 DemandSegment/SopVersion→预判看板曲线变(非哈希)；洛阳 D+13 红点开真订单或诚实文案非裸空；缺口=预测需求−产能可溯。红线：pnpm -r build+test 全绿+真浏览器实拍；只推 claude/vigilant-knuth-b1nmxn；回写 SYSTEM-ONTOLOGY.md §3 数据→推演链(DemandSegment→risk_timeline)；模型标识不入提交物。
+```
+
+**WO-NAV-DATA（P2·小）**
+```
+你是开发 agent。实现 WO-NAV-DATA：导航「数据接入」→「数据」并收编源数据模块。规格见 docs/WO-design-landing-batch2.md 的 WO-NAV-DATA。改 apps/frontend-shell/src/pages/ShellLayout.tsx NAV_GROUPS：组名「数据接入」→「数据」(:38)，移入 order(从台账与地图:37)、data-builder(从构建与成长:53)；zh.ts external-signals label「外部信号」→「外部数据」；test/f61.admin-nav-groups.test.tsx 同步。完成判据：真浏览器「数据」组含 连接器/外部数据/规则文档/合成数据/数据构建发动机/订单台账/隔离区；空组隐藏正常。红线：pnpm -r build+test 全绿+真浏览器自验；只推 claude/vigilant-knuth-b1nmxn；模型标识不入提交物。
+```
+
+**WO-NAV-SANDBOX（P2·小）**
+```
+你是开发 agent。实现 WO-NAV-SANDBOX：推演沙盘并入「推演」组。规格见 docs/WO-design-landing-batch2.md 的 WO-NAV-SANDBOX。改 ShellLayout.tsx：把游离的 sim-sandbox/sim-init 特殊 nav 项并入「推演」组(NAV_GROUPS 推演组 :36)，保留 sim.sandbox entitlement 门控显隐(SimSandboxGuard 不动)。完成判据：真浏览器「推演」组=项目沙盘/预判看板/订单全链/交互沙盘/沙盘初始化；关 sim.sandbox→沙盘项消失(R3 不破)。红线：pnpm -r build+test 全绿+真浏览器自验；只推 claude/vigilant-knuth-b1nmxn；模型标识不入提交物。
+```
+
+**WO-QUARANTINE（P3·小）**
+```
+你是开发 agent。实现 WO-QUARANTINE：隔离区空态诚实文案 + 真值演示。规格见 docs/WO-design-landing-batch2.md 的 WO-QUARANTINE。背景：隔离区真接线(modeling.ts:537-557 坏行真路由)、空因合成数据洁净(R6)、勿删。① QuarantinePage 空态文案改「无异常行（合成数据洁净；真实上传的坏行将在此排队修复）」；② 可选真值演示：传含重复+缺主键行的 CSV→connectors.upload→materialize→坏行落隔离区→reprocess 修好，或 seed 2-3 条 demo 隔离行(诚实标示例)。完成判据：空态文案诚实；真值演示则坏行真落隔离区(GET /a/v1/quarantine 非空)可 reprocess。红线：pnpm -r build+test 全绿+真浏览器自验；只推 claude/vigilant-knuth-b1nmxn；模型标识不入提交物。
+```
+
+**WO-GRAPH-1（P2·先做·低风险）**
+```
+你是开发 agent。实现 WO-GRAPH-1：抽统一「过程 DAG」渲染组件。规格见 docs/WO-design-landing-batch2.md 的图谱融合·WO-GRAPH-1（母单 ANALYSIS-graph-modules-consolidation.md 类型B）。把 components/InferenceProcessDag.tsx / ProvenanceDag.tsx / DataBuilderPage FdeGraph / components/Dag/LayeredDag.tsx 的 SVG 渲染抽成一个共享组件（统一 par/conv/seq/aux/fb 边样式+节点 IPO 抽屉 DagNodeDrawer+缺口红标+缩放），四处入口/数据/语义不动、只换渲染层。完成判据：四处 DAG 同组件渲染、视觉/交互一致(截图对比)、各自入口/数据不变；InferenceProcessDag 对比度修(WO-CSS)随迁不回潮。红线：pnpm -r build+test 全绿+真浏览器截图对比；只推 claude/vigilant-knuth-b1nmxn；模型标识不入提交物。
+```
+
+**WO-GRAPH-2（P2）**
+```
+你是开发 agent。实现 WO-GRAPH-2：抽统一「本体图谱引擎」。规格见 docs/WO-design-landing-batch2.md 的 WO-GRAPH-2。把 views/OntologyGraphView.tsx 的 forceLayout 抽成可复用图引擎（节点/边/力导布局/DagNodeDrawer/域配色[14域 R14 配置驱动]/缩放/框选），数据实时派生自本体发布(fetchOntologyGraph)；OntologyGraphView 改用新引擎。完成判据：OntologyGraphView 用新引擎渲染、实时取已发布本体不变；引擎可被 WO-GRAPH-3 复用。红线：pnpm -r build+test 全绿+真浏览器自验；只推 claude/vigilant-knuth-b1nmxn；模型标识不入提交物。
+```
+
+**WO-GRAPH-3/4（P3·依赖 WO-GRAPH-2）**
+```
+你是开发 agent。实现 WO-GRAPH-3/4：融合本体图谱主入口 + 沙盘/元本体/边界/图查询接同引擎。规格见 docs/WO-design-landing-batch2.md 的 WO-GRAPH-3/4 + ANALYSIS-graph-modules-consolidation.md §6。依赖 WO-GRAPH-2 图引擎先落。SlicesPage/Object360 血缘/KsfGraph 接入图引擎(模式切换 结构/切片/血缘/域)，ModelingPage 改为图编辑态；PmDag 沙盘传导=引擎+state 叠加；MetaPage 元本体/BoundaryPage 边界=同引擎换数据源；图查询 U12(PlatformConsole)=图上查询模式(后端建好后)。完成判据：本体图谱主入口模式切换覆盖结构/切片/血缘、各入口渲染一致数据各自真实。红线：中等重构·先 GRAPH-1/2 验证可行再做(START-HERE §3 不盲建)；pnpm -r build+test 全绿+真浏览器自验；只推 claude/vigilant-knuth-b1nmxn；回写 SYSTEM-ONTOLOGY.md §2.B/§10.3；模型标识不入提交物。
 ```
 
 ---
