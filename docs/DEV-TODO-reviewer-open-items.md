@@ -13,6 +13,8 @@
 | **A1** | **audit_timeline 哈希曲线**：整条 90 天曲线+越线日 = kind 名哈希·无徽章（`risk.ts:392-424`） | P2 | 🆕 待开工 | 同上 §A1 |
 | **A2-4** | **extended 魔数**：yield 0.95/0.85·creditLimit 5000·loadByWeek 写死·兜底无诚实位（`extended.ts:457/463/472/477`） | P2 | 🆕 待开工 | 同上 §A2-A4 |
 | **B-M** | **SopBalance 兜底簇**：`sopConfig` 永不填→默认租户恒走魔数兜底喂 C15/C18 verdict（`SopBalanceView.tsx:26/288/615`）+ 收入增 100 魔数（`PlanGenerateView:238/275`） | P2 | 🆕 待开工 | 同上 §B-MED |
+| **S3** | **人机对话入口=配置完整的场景入口**（场景级 Agent 接地：本页数据上下文+规则/意图/skill/MCP/求解器/本体检索）——规划体检问开放式管理问句被「请换个问法」拒答 = 入口未完成预设配置·系统性冰山 | **P1** | 🆕 待开工 | `HANDOFF-scene-entry-agent-config.md`（含本体引用与影响·分阶段·FDE判据） |
+| **UI-C** | **深色字对比度**：DAG 节点「2. 检索切片」深色字落深色底（`InferenceProcessDag.module.css:60` `fill:var(--text)` 是**未定义变量 typo**·应 `--txt`；`--text` 全仓零定义→SVG fill 回落黑）+ 全站对比度审计（用户："界面词深色的都调浅色"） | P2 | 🆕 待开工 | 本文件 §UI-C |
 | **C-O** | **轨O 主题/配色开关**（U8）——**先真浏览器核「真缺到哪步」再交 dev**（grep 可能漏报） | P3 | 待核 | `HANDOFF-theme-switch-…md` |
 | E | **核查·WO-10② 真分** dev 称 0.90·审核方干净 run 仅 0.20·未复现→dev 复核证据/分类器真分 | P3 | 待核 | `REVIEW-WO11-WO10b-verdict.md` |
 
@@ -24,6 +26,21 @@
 
 > **已闭（审核方核发）**：WO-1/2/3/**4(+FIX)**/5/**6(活体)**/**8**/**11**/**20** + lastmile + A6尾巴① + 四链路走查 + 结构化接入臂。
 > **⚠️ 另需核查**：前端 3 测试（f43.admin-cluster + vle-segment-matrix·15s 超时）dev 称既存——建议另开单独立确认。
+
+## §S3 · 人机对话入口=配置完整的场景入口（P1·系统性·见独立 HANDOFF）
+
+- **完整规格**：`docs/HANDOFF-scene-entry-agent-config.md`（自包含·含《本体引用与影响》G-3/G-9/G-10 + 根因 R1-R4 + SceneAgentSpec 设计 + Phase A-D + FDE 判据）。
+- **一句话**：对话入口 mode 落 `WORKFLOW_ONLY`（拒答）/ 回落是通用 agent（未按场景配本页数据+规则+skill/MCP/求解器+本体切片）→ 用户开放式管理问句被「请换个问法」拒。Scenario 一等对象槽位齐但未填满。
+- **先做**：Phase A（mode 收口）+ Phase B 试点「规划体检」一个场景做模板。
+
+## §UI-C · 深色字对比度（P2·用户实测"界面词深色的都调浅色"）
+
+- **铁证（审核方📖读源坐实）**：`apps/frontend-shell/src/components/InferenceProcessDag.module.css:60` `.nodeLabel { fill: var(--text); }` —— **`--text` 全仓零定义**（真 token 是 `tokens.css:8 --txt:#e9eef5`），SVG `fill` 回落默认黑 → DAG 节点「2. 检索切片」深色字落深色底（用户实测）。
+- **最小修**：`var(--text)`→`var(--txt)`（单字符·零歧义）。**仅此一处** typo（全仓 `var(--text)` 唯一命中）。
+- **系统性（用户要"都调"）**：补全站对比度审计——① 加门禁禁 CSS 引用未定义变量（catch typo）② 扫硬编码深色十六进制作文本/SVG fill 的低对比处 ③ 最低对比度断言（WCAG AA）。建议立 `css-vars:check`（未定义 var 即红）。
+- **FDE 判据**：真浏览器 DAG 节点标签浅色清晰可读（与深底对比 ≥AA）；门红能挡未定义 var。
+
+---
 
 ## §0 · WO-4-FIX — 归域门 14 域枚举 vs 合成种子域不一致（P0·回归·阻断 demo）
 
