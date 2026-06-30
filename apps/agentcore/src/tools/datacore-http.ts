@@ -16,17 +16,21 @@ import {
   type TimeseriesClient,
   type ToolAuthCtx,
 } from "./clients.js";
+import { injectTraceContext, withSpan } from "../tracing.js";
 
 /**
  * HTTP DataCore client: forwards every call to DataCore's REST API with the user's
  * JWT passed through (OBO). Connection errors → DATACORE_UNAVAILABLE.
  */
 async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: string, body?: unknown): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers: {
+  // WO-OBSERVABILITY (OBS-2)：OBO 跨服务调用自定义 span（root→datacore 的接缝）。
+  // attr 带 tenantId（R2 隔离）；禁带凭据明文（token/debugUser 不进 attr·no-secrets-echo R5）。
+  return withSpan(
+    "obo.datacore",
+    { "http.method": method, "http.route": path, "peer.service": "datacore", "app.tenant_id": ctx.tenantId, "app.request_id": ctx.requestId },
+    async () => {
+      // 双轨：x-request-id（人读关联键·AUDIT-OBS 不破）+ traceparent（机器读分布式 trace context）。
+      const headers: Record<string, string> = {
         "content-type": "application/json",
         // WO-AUDIT-OBS：跨服务追踪——透传 requestId（无则生成），DataCore 优先取入站 x-request-id。
         "x-request-id": ctx.requestId ?? `req_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
@@ -35,12 +39,25 @@ async function call<T>(baseUrl: string, ctx: ToolAuthCtx, method: string, path: 
           : ctx.debugUser
             ? { "x-debug-user": encodeURIComponent(ctx.debugUser) }
             : {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch {
-    throw new DataCoreUnavailableError();
-  }
+      };
+      // WO-OBSERVABILITY：注入 W3C traceparent → DataCore 续同一 trace（与 x-request-id 双轨并存）。
+      injectTraceContext(headers);
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl}${path}`, {
+          method,
+          headers,
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+      } catch {
+        throw new DataCoreUnavailableError();
+      }
+      return handleResponse<T>(res, method, path);
+    },
+  );
+}
+
+async function handleResponse<T>(res: Response, method: string, path: string): Promise<T> {
   if (!res.ok) {
     let detail = "";
     try {
@@ -257,18 +274,21 @@ class HttpIamClient implements IamClient {
   async check(ctx: ToolAuthCtx, toolName: string, args: unknown): Promise<{ allowed: boolean; reason?: string }> {
     if (this.checkSupported === false) return { allowed: true };
     try {
+      const authzHeaders: Record<string, string> = {
+        "content-type": "application/json",
+        // WO-AUDIT-OBS：跨服务追踪 requestId 透传（同 call()）。
+        "x-request-id": ctx.requestId ?? `req_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
+        ...(ctx.token
+        ? { authorization: `Bearer ${ctx.token}` }
+        : ctx.debugUser
+          ? { "x-debug-user": encodeURIComponent(ctx.debugUser) }
+          : {}),
+      };
+      // WO-OBSERVABILITY：traceparent 双轨注入（同 call()）。
+      injectTraceContext(authzHeaders);
       const res = await fetch(`${this.baseUrl}/a/v1/authz/check`, {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          // WO-AUDIT-OBS：跨服务追踪 requestId 透传（同 call()）。
-          "x-request-id": ctx.requestId ?? `req_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
-          ...(ctx.token
-          ? { authorization: `Bearer ${ctx.token}` }
-          : ctx.debugUser
-            ? { "x-debug-user": encodeURIComponent(ctx.debugUser) }
-            : {}),
-        },
+        headers: authzHeaders,
         body: JSON.stringify({ toolName, args }),
       });
       if (res.status === 404) {

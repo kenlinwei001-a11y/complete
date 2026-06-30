@@ -1,3 +1,6 @@
+// WO-OBSERVABILITY (OBS-2)：必须是第一个 import——起 OTel SDK + auto-instrument http/fastify/pg
+// 必须先于这些模块被 require（见 tracing.ts）。未配 OTLP → no-op 不导出（诚实降级）。
+import { shutdownTracing } from "./tracing.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pino } from "pino";
@@ -130,6 +133,7 @@ async function main(): Promise<void> {
     void app
       .close()
       .then(() => repos.close())
+      .then(() => shutdownTracing())
       .then(() => {
         clearTimeout(timeout);
         process.exit(0);

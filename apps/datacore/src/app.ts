@@ -18,6 +18,7 @@ import type { LlmClient } from "./llm.js";
 import { Metrics } from "./metrics.js";
 import { AppError, forbidden, notFound, unauthorized, validationError } from "./errors.js";
 import { newId } from "./ids.js";
+import { annotateRequestId } from "./tracing.js";
 import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
 import { AuthzService } from "./authz.js";
@@ -730,6 +731,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     "/a/v1/readyz",
     "/a/v1/.well-known/jwks.json",
   ]);
+
+  // WO-OBSERVABILITY (OBS-2)：传播桥接——把人读 requestId 挂到 HTTP root span 的 attr `app.request_id`，
+  // 使日志里的 requestId 可在 trace 后端定位到 trace（traceId↔requestId 关联）。入站若带 W3C traceparent，
+  // OTel HTTP instrumentation 已自动续 trace；这里只补关联键，不替换 requestId spine。
+  app.addHook("onRequest", async (req: FastifyRequest) => {
+    annotateRequestId(req.id as string);
+  });
 
   app.addHook("onRequest", async (req: FastifyRequest, _reply: FastifyReply) => {
     if (req.method === "OPTIONS") return; // CORS preflight

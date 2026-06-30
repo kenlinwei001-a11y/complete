@@ -3,6 +3,7 @@ import { newId } from "./ids.js";
 import type { OutboxEvent } from "./domain.js";
 import type { Metrics } from "./metrics.js";
 import type { Repos } from "./repo/repo.js";
+import { withSpan } from "./tracing.js";
 
 export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number }>;
 
@@ -42,26 +43,34 @@ export class OutboxService {
     payload: Record<string, unknown>,
     aggregateKey?: string,
   ): Promise<OutboxEvent> {
-    const id = newId("evt");
-    const aggKey = aggregateKey ?? id;
-    // seq = next position within this aggregate (per-aggregate monotonic)
-    const siblings = await this.repos.outboxEvents.list(tenantId, (e) => e.aggregateKey === aggKey);
-    const seq = siblings.reduce((m, e) => Math.max(m, e.seq + 1), 0);
-    const evt: OutboxEvent = {
-      id,
-      tenantId,
-      eventId: id,
-      event,
-      aggregateKey: aggKey,
-      seq,
-      payload,
-      status: "PENDING",
-      attempts: 0,
-      nextAttemptAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    };
-    await this.repos.outboxEvents.put(evt);
-    return evt;
+    // WO-OBSERVABILITY (OBS-2)：领域事件落库自定义 span（链路末端 outbox 节点）。
+    // attr 带 event 名（领域事件名·非凭据）+ tenantId（R2 隔离）；payload 不进 attr（可能含敏感字段）。
+    return withSpan(
+      "outbox.emit",
+      { "messaging.destination": event, "app.tenant_id": tenantId },
+      async () => {
+        const id = newId("evt");
+        const aggKey = aggregateKey ?? id;
+        // seq = next position within this aggregate (per-aggregate monotonic)
+        const siblings = await this.repos.outboxEvents.list(tenantId, (e) => e.aggregateKey === aggKey);
+        const seq = siblings.reduce((m, e) => Math.max(m, e.seq + 1), 0);
+        const evt: OutboxEvent = {
+          id,
+          tenantId,
+          eventId: id,
+          event,
+          aggregateKey: aggKey,
+          seq,
+          payload,
+          status: "PENDING",
+          attempts: 0,
+          nextAttemptAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+        await this.repos.outboxEvents.put(evt);
+        return evt;
+      },
+    );
   }
 
   /** Single delivery pass over due PENDING events (also used directly by tests). */

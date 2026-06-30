@@ -45,6 +45,7 @@ import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, r
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
+import { annotateRequestId } from "./tracing.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { HttpError } from "./router/orchestrator.js";
 import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
@@ -151,6 +152,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // WO-AUDIT-OBS：每请求完成打 requestId（= 入站 x-request-id 或本服务生成），与 DataCore 日志同源可追。
   app.addHook("onResponse", async (req) => {
     req.log.info({ requestId: req.id, method: req.method, url: req.url, statusCode: req.raw.statusCode ?? "?" }, "request completed");
+  });
+
+  // WO-OBSERVABILITY (OBS-2)：传播桥接——把人读 requestId 挂到 HTTP root span 的 attr `app.request_id`，
+  // 使日志里的 requestId 可在 trace 后端定位到 trace。入站若带 traceparent，OTel 已自动续 trace。
+  app.addHook("onRequest", async (req) => {
+    annotateRequestId(req.id as string);
   });
 
   /** D-29 实时环 E-c：B 侧发布类领域事件落库（经 /b/v1/outbox 馈源供前端 F1 全局轮询传播）。 */

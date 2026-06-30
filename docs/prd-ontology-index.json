@@ -25,6 +25,7 @@
       "G-10",
       "G-11",
       "G-12",
+      "G-15",
       "G-2",
       "G-3",
       "G-4",
@@ -1497,7 +1498,9 @@
       "PRD-opensource-fusion-lastmile.md"
     ]
   },
-  "orphanBreakpoints": [],
+  "orphanBreakpoints": [
+    "G-15"
+  ],
   "byArtifact": {
     "apps/agentcore/src/router/orchestrator.ts": [
       "PRD-A15-cli-universal-operation-shell.md",

@@ -1,0 +1,24 @@
+# WO-OBSERVABILITY (OBS-2) · OTel Collector 配置（profile-gated·本地看 span 树用）。
+# 收 datacore/agentcore 经 OTLP/HTTP(4318) 导出的 traces → 转发 Jaeger(OTLP/gRPC 4317)。
+# 仅 traces 信号（metrics/logs 不在本单范围·边界）。
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]

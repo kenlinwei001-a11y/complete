@@ -90,6 +90,10 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       # PRD-fde §8d 组合最优化：自托管 CP-SAT sidecar（内部网络发现；未配则 selection_optimize 报"未接入"）
       OPTIMIZER_BASE_URL: ${OPTIMIZER_BASE_URL:-http://optimizer:4003}
+      # WO-OBSERVABILITY (OBS-2)：OTel traces 导出端点。默认空 → no-op 不导出（诚实降级）。
+      # 启用 observability profile 看 trace：OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 docker compose --profile observability up
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_TRACES_SAMPLER_RATIO: ${OTEL_TRACES_SAMPLER_RATIO:-1}
     volumes:
       - blob-data:/data/blobs
     ports:
@@ -121,6 +125,9 @@ services:
       QOS_AGENT_MODEL: ${QOS_AGENT_MODEL:-claude-opus-4-8}
       QOS_TAU_HIGH: "0.85"
       QOS_TAU_LOW: "0.55"
+      # WO-OBSERVABILITY (OBS-2)：OTel traces 导出端点（默认空 → no-op 不导出·诚实降级）。
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_TRACES_SAMPLER_RATIO: ${OTEL_TRACES_SAMPLER_RATIO:-1}
     ports:
       - "4002:4002"                          # 直连调试入口（前端走 gateway 同源）
     depends_on:
@@ -133,6 +140,31 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  # WO-OBSERVABILITY (OBS-2)：全链 OTel span 树后端（profile-gated·不影响默认 `up`）。
+  #   启用：docker compose --profile observability up
+  #   看 trace：http://localhost:16686（Jaeger UI）。未启用此 profile 时两服务 OTEL_*_ENDPOINT 为空 → no-op 不导出（诚实降级）。
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    profiles: ["observability"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    expose:
+      - "4318"                                 # OTLP/HTTP（datacore/agentcore 导出端口）
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    profiles: ["observability"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"                          # Jaeger UI（看 span 树）
+    expose:
+      - "4317"
 
   frontend:
     build:

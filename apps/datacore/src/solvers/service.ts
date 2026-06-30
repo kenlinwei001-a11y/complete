@@ -13,6 +13,7 @@ import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
+import { withSpan } from "../tracing.js";
 import type { LlmClient } from "../llm.js";
 import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-gen.js";
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
@@ -1618,22 +1619,33 @@ export class SolverService {
     args: Record<string, unknown>,
     visibleOrders?: ObjectInstance[],
   ): Promise<Record<string, unknown>> {
-    // WO-EXPERIMENT：取该 solverKey 的 RUNNING 实验 → 确定性分流选臂 → 命中挑战者取其参数版本。
-    const decision = await this.routeExperiment(ctx.tenantId, solverKey, args);
-    const out = await this.invokeRaw(ctx, solverKey, args, visibleOrders, decision?.paramsOverride);
-    if (out && typeof out === "object" && (out as Record<string, unknown>).dataMode === undefined) {
-      (out as Record<string, unknown>).dataMode = LIVE_DEFAULT_SOLVERS.has(solverKey) ? "LIVE" : "PARTIAL";
-    }
-    // 命中实验：附诚实标 __experiment{id,arm}（不污染主结果·R13）+ 按 metricKey 记录该臂结果（R6 确定性）。
-    if (decision && out && typeof out === "object") {
-      (out as Record<string, unknown>).__experiment = { id: decision.experiment.id, arm: decision.arm };
-      const metric = (out as Record<string, unknown>)[decision.experiment.metricKey];
-      await this.recordExperimentOutcome(ctx.tenantId, decision.experiment.id, decision.arm, typeof metric === "number" ? metric : undefined);
-    }
-    // WO-FRESHNESS：置信度三维贯通（跨求解器）——把 C09 新鲜度维 + origin=SYNTHETIC 真实/合成维
-    // 统一织进 dataMode 头条 + structured confidence（实测/估算维由底层 dataMode 承载）。
-    await this.applyConfidenceDimensions(ctx, solverKey, out);
-    return out;
+    // WO-OBSERVABILITY (OBS-2)：求解器执行自定义 span（链路核心业务节点）。
+    // attr 带 solverKey + tenantId（R2 隔离）+ 求解末态 dataMode；禁带凭据明文（no-secrets-echo R5）。
+    return withSpan(
+      "solver.invoke",
+      { "solver.key": solverKey, "app.tenant_id": ctx.tenantId },
+      async (span) => {
+        // WO-EXPERIMENT：取该 solverKey 的 RUNNING 实验 → 确定性分流选臂 → 命中挑战者取其参数版本。
+        const decision = await this.routeExperiment(ctx.tenantId, solverKey, args);
+        const out = await this.invokeRaw(ctx, solverKey, args, visibleOrders, decision?.paramsOverride);
+        if (out && typeof out === "object" && (out as Record<string, unknown>).dataMode === undefined) {
+          (out as Record<string, unknown>).dataMode = LIVE_DEFAULT_SOLVERS.has(solverKey) ? "LIVE" : "PARTIAL";
+        }
+        // 命中实验：附诚实标 __experiment{id,arm}（不污染主结果·R13）+ 按 metricKey 记录该臂结果（R6 确定性）。
+        if (decision && out && typeof out === "object") {
+          (out as Record<string, unknown>).__experiment = { id: decision.experiment.id, arm: decision.arm };
+          const metric = (out as Record<string, unknown>)[decision.experiment.metricKey];
+          await this.recordExperimentOutcome(ctx.tenantId, decision.experiment.id, decision.arm, typeof metric === "number" ? metric : undefined);
+        }
+        // WO-FRESHNESS：置信度三维贯通（跨求解器）——把 C09 新鲜度维 + origin=SYNTHETIC 真实/合成维
+        // 统一织进 dataMode 头条 + structured confidence（实测/估算维由底层 dataMode 承载）。
+        await this.applyConfidenceDimensions(ctx, solverKey, out);
+        // dataMode 末态进 span attr（诚实位可观测；纯标量·非凭据）。
+        const dm = (out as Record<string, unknown>)?.dataMode;
+        if (typeof dm === "string") span.setAttribute("solver.data_mode", dm);
+        return out;
+      },
+    );
   }
 
   /**
