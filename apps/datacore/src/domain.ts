@@ -199,6 +199,8 @@ export interface Rule {
   expression: string;
   scopeObjectTypes: string[];
   severity: "BLOCK" | "WARN" | "INFO";
+  /** WO-18：规则类型（评估规则 evaluation / 约束条件 constraint）。缺省视为 evaluation（向后兼容）。 */
+  ruleType?: "evaluation" | "constraint";
   /** 规则即引用：命名阈值（求解器读 rule.params 去硬编码；改 param 即改推演）。 */
   params?: Record<string, number>;
   origin: RuleOrigin;

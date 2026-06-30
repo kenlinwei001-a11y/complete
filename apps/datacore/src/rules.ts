@@ -38,6 +38,7 @@ export class RulesService {
       expression: string;
       scopeObjectTypes: string[];
       severity: "BLOCK" | "WARN" | "INFO";
+      ruleType?: "evaluation" | "constraint"; // WO-18：规则类型（缺省 evaluation）
       params?: Record<string, number>;
       origin?: RuleOrigin;
       status?: "DRAFT" | "PUBLISHED";
@@ -65,6 +66,7 @@ export class RulesService {
       expression: input.expression,
       scopeObjectTypes: input.scopeObjectTypes,
       severity: input.severity,
+      ruleType: input.ruleType ?? "evaluation",
       params: input.params ?? {},
       origin: input.origin ?? { type: "MANUAL" },
       version,
@@ -171,7 +173,7 @@ export class RulesService {
   async update(
     ctx: AuthCtx,
     id: string,
-    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "params">>,
+    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "ruleType" | "params">>,
   ): Promise<Rule> {
     const rule = await this.get(ctx, id);
     if (rule.status !== "DRAFT") {

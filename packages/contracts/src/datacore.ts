@@ -100,6 +100,15 @@ export const RuleOriginSchema = z.discriminatedUnion("type", [
 export type RuleOrigin = z.infer<typeof RuleOriginSchema>;
 
 /** A5 规则库条目 */
+/**
+ * WO-18（规则库纳入「约束条件」类型 · G-10 规则一等）：规则的一种类型。
+ * evaluation=评估规则（既有·闸门/校验语义，severity BLOCK/WARN/INFO）；
+ * constraint=约束条件（类型化约束声明 GEO_WITHIN 等·接原 C3 RESERVED）。两者同库管理、同被引用。
+ * 可选向后兼容——旧规则/未标视为 evaluation。
+ */
+export const RuleTypeSchema = z.enum(["evaluation", "constraint"]);
+export type RuleType = z.infer<typeof RuleTypeSchema>;
+
 export const RuleEntrySchema = z.object({
   id: z.string(),
   key: z.string(), // 如 C03
@@ -107,6 +116,8 @@ export const RuleEntrySchema = z.object({
   expression: z.string(),
   scopeObjectTypes: z.array(z.string()),
   severity: z.enum(["BLOCK", "WARN", "INFO"]),
+  // WO-18：规则类型（评估规则 / 约束条件）。约束条件就是规则的一种（评估/闸门语义·非求解器输入），统一管理、统一引用。
+  ruleType: RuleTypeSchema.optional(),
   // 规则即引用（PRD-rules-as-references §2.2/§4）：命名阈值（求解器读 rule.params 而非硬编码）。
   // 改 param 即改推演（P2 求解器接入后，全 7 入口随之变）。可编辑、随规则版本（R6）。可选（旧规则无）。
   params: z.record(z.string(), z.number()).optional(),

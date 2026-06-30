@@ -19,6 +19,8 @@ export default function RulesPage() {
   const { data: rules } = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules });
   const [open, setOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<RuleEntry | "new" | null>(null);
+  // WO-18：按规则类型筛（全部 / 评估规则 / 约束条件）。缺 ruleType 的旧规则视为 evaluation。
+  const [typeFilter, setTypeFilter] = useState<"all" | "evaluation" | "constraint">("all");
   // 引用模式增量 §2.3：发布确认页（影响面清单 + 二次确认）
   const [confirming, setConfirming] = useState<{
     rule: RuleEntry;
@@ -59,8 +61,21 @@ export default function RulesPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 14, gap: 10 }}>
         <h2 style={{ fontSize: 16 }}>{t.title}</h2>
+        {/* WO-18：规则 / 约束条件 子页（按类型筛，同库管理） */}
+        <div style={{ display: "flex", gap: 4 }} data-testid="rule-type-tabs">
+          {([["all", "全部"], ["evaluation", "评估规则"], ["constraint", "约束条件"]] as const).map(([k, label]) => (
+            <button
+              key={k}
+              className={`btn sm ${typeFilter === k ? "primary" : ""}`}
+              data-testid={`rule-type-tab-${k}`}
+              onClick={() => setTypeFilter(k)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button className="btn primary sm" style={{ marginLeft: "auto" }} onClick={() => setEditing("new")} data-testid="rule-create">
           {t.create}
         </button>
@@ -71,6 +86,7 @@ export default function RulesPage() {
             <tr>
               <th>key</th>
               <th>名称</th>
+              <th>类型</th>
               <th>severity</th>
               <th>作用域</th>
               <th>来源</th>
@@ -80,13 +96,20 @@ export default function RulesPage() {
             </tr>
           </thead>
           <tbody>
-            {(rules ?? []).map((r) => (
+            {(rules ?? [])
+              .filter((r) => typeFilter === "all" || (r.ruleType ?? "evaluation") === typeFilter)
+              .map((r) => (
               <Fragment key={r.id}>
                 <tr style={{ cursor: "pointer" }} onClick={() => setOpen(open === r.id ? null : r.id)} data-testid={`rule-${r.key}`}>
                   <td>
                     <span className="badge blue">{r.key}</span>
                   </td>
                   <td className="zh">{r.name}</td>
+                  <td>
+                    <span className={`badge ${(r.ruleType ?? "evaluation") === "constraint" ? "amber" : ""}`} data-testid={`rule-type-${r.key}`}>
+                      {(r.ruleType ?? "evaluation") === "constraint" ? "约束条件" : "评估规则"}
+                    </span>
+                  </td>
                   <td>
                     <span className={`badge ${r.severity === "BLOCK" ? "red" : r.severity === "WARN" ? "amber" : ""}`}>{r.severity}</span>
                   </td>
@@ -120,7 +143,7 @@ export default function RulesPage() {
                 </tr>
                 {open === r.id && (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="mono" style={{ fontSize: 11.5, padding: "6px 8px", background: "var(--bg2)", borderRadius: 6 }}>
                         {r.expression}
                       </div>
@@ -211,6 +234,8 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
   const [expression, setExpression] = useState(rule?.expression ?? "");
   const [scope, setScope] = useState((rule?.scopeObjectTypes ?? []).join(","));
   const [severity, setSeverity] = useState<RuleEntry["severity"]>(rule?.severity ?? "WARN");
+  // WO-18：规则类型（评估规则 / 约束条件）。约束条件就是规则的一种（同库同引用），缺省评估规则。
+  const [ruleType, setRuleType] = useState<NonNullable<RuleEntry["ruleType"]>>(rule?.ruleType ?? "evaluation");
   // 规则即引用 §2.2/§4：命名阈值（key→value）可增/删/改。用有序数组承载编辑态（保留次序、允许编辑空 key）。
   const [paramRows, setParamRows] = useState<{ k: string; v: string }[]>(() =>
     Object.entries(rule?.params ?? {}).map(([k, v]) => ({ k, v: String(v) })),
@@ -264,6 +289,7 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
         expression,
         scopeObjectTypes: scope.split(",").map((s) => s.trim()).filter(Boolean),
         severity,
+        ruleType,
         params: paramsObject(),
       };
       return rule ? updateRule(rule.id, body) : createRule({ key, ...body });
@@ -287,6 +313,13 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
         <label style={{ fontSize: 12, color: "var(--muted)", flex: 1 }}>
           名称
           <input style={{ width: "100%" }} value={name} aria-label="规则名称" onChange={(e) => setName(e.target.value)} data-testid="rule-name-input" />
+        </label>
+        <label style={{ fontSize: 12, color: "var(--muted)" }}>
+          类型
+          <select value={ruleType} aria-label="规则类型" data-testid="rule-type-input" onChange={(e) => setRuleType(e.target.value as NonNullable<RuleEntry["ruleType"]>)}>
+            <option value="evaluation">评估规则</option>
+            <option value="constraint">约束条件</option>
+          </select>
         </label>
         <label style={{ fontSize: 12, color: "var(--muted)" }}>
           severity
