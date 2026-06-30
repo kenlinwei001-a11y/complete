@@ -137,7 +137,9 @@ export interface SyncJob {
   status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
   startedAt: string;
   finishedAt?: string;
-  rowCounts: Record<string, number>; // dataset -> rows
+  rowCounts: Record<string, number>; // dataset -> rows（增量报 delta 行数·全量报总行数）
+  // WO-PIPE-INCR ③：删除墓碑——本次按 pk 移除的行数（dataset -> deleted）；JSONB doc 内，无需迁移。仅增量删除时出现。
+  deletedCounts?: Record<string, number>;
   error?: string;
 }
 

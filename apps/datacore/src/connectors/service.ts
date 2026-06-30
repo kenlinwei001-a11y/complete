@@ -1,4 +1,4 @@
-import type { SourceSchema } from "@platform/contracts";
+import type { DatasetConfig, SourceSchema } from "@platform/contracts";
 import type { AuthCtx, Connection, RawDataset, SyncJob } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { BlobStore } from "../blob.js";
@@ -11,17 +11,18 @@ import { AppError, notFound, validationError } from "../errors.js";
 import { createAdapter, CREDENTIAL_FIELDS, getConnectorType } from "./registry.js";
 import { profileRows, suggestDatasetKind } from "./profiler.js";
 
-/** Per-dataset config on the connection (A8.1: TIMESERIES marking, also for CSV uploads). */
-interface DatasetConfig {
-  kind?: "ENTITY" | "TIMESERIES";
-  seriesKey?: string;
-  entityType?: string;
-  entityRefField?: string;
-  timeField?: string;
-  measureFields?: string[];
-  // WO-PIPE-INCR ①：真增量同步配置（二者齐备 + 连接器 incremental 能力 + 传 since → 走 delta 合并而非全量重灌）。
-  pkField?: string; // 业务主键列（按此 upsert 合并，幂等）
-  watermarkField?: string; // 水位列（同步后取本数据集该列最大值作新 watermark·下次 since 据此只取更新行）
+// WO-PIPE-INCR ③：DatasetConfig 已契约化于 @platform/contracts（含 ③ deleteField/deleteValue 删除墓碑），
+// 服务层直接复用契约类型（contracts-only-shared），不再内联重定义。
+
+/** WO-PIPE-INCR ③：判定一条 delta 行是否为"删除墓碑"（CDC 源标记该 pk 已删）。
+ * 约定：deleteField/deleteValue 均未配 → 缺省看 `_deleted === true`；仅配 deleteField → 看该列为真值；
+ * 同配 deleteField+deleteValue → 严格相等命中。确定性纯函数（无时钟/随机·守 R6）。 */
+function isTombstone(row: Record<string, unknown>, cfg: DatasetConfig | undefined): boolean {
+  const field = cfg?.deleteField ?? "_deleted";
+  if (!(field in row)) return false;
+  const v = row[field];
+  if (cfg?.deleteValue !== undefined) return v === cfg.deleteValue;
+  return v === true;
 }
 
 /** WO-PIPE-INCR ②：同步完成回调 payload（app 侧据此发 connection.sync_completed 事件 + 触发派生重算）。 */
@@ -32,6 +33,9 @@ export interface SyncCompletedInfo {
   watermarks: Record<string, string>;
   incremental: boolean; // 本次是否至少一个数据集走了增量 delta 合并
   changedRows: number; // 本次实际灌入/变更的行数（增量报 delta·全量报总行）；0 = 无变更可跳过下游重算
+  // WO-PIPE-INCR ③：删除墓碑——本次按 pk 移除的行数（仅增量删除时出现），下游可据此知"有删除"也需重算。
+  deletedRows: number;
+  deletedCounts: Record<string, number>; // dataset -> deleted（仅有删除的数据集出现）
 }
 
 /** A1 connector framework: connections, schema discovery, sync → RawDataset | ts writer. */
@@ -227,8 +231,10 @@ export class ConnectorService {
     };
     await this.repos.syncJobs.put(job);
     const watermarks: Record<string, string> = {};
+    const deletedCounts: Record<string, number> = {};
     let anyIncremental = false;
     let changedRows = 0;
+    let deletedRows = 0;
     try {
       const adapter = createAdapter(conn.connectorTypeKey, this.decryptedConfig(conn), this.blob, this.fetchImpl);
       const datasets = await adapter.listDatasets();
@@ -278,19 +284,34 @@ export class ConnectorService {
         const incremental = dsIncremental && existing && !!pkField && !!wmField;
         let finalRows = rows;
         let deltaCount = rows.length;
+        let deletedCount = 0;
         if (incremental) {
           // 兜底过滤：取水位之后的更新行（适配器已下推 since 则此处为幂等再筛）。
+          // 注意：删除墓碑行的 watermark 也应参与过滤/推进，故按 wmField 统一筛（删除标记列正交于水位列）。
           const delta = rows.filter((r) => String(r[wmField!] ?? "") > (dsSince ?? ""));
           const prior = await this.repos.rawRows.list(ctx.tenantId, existing!.id);
           const byPk = new Map(prior.map((r) => [String(r[pkField!]), r]));
-          for (const d of delta) byPk.set(String(d[pkField!]), d); // upsert：新增/变更覆盖·未变行保留
+          for (const d of delta) {
+            const key = String(d[pkField!]);
+            // WO-PIPE-INCR ③：删除墓碑——delta 行命中删除标记 → 从既有按 pk 移除（漏删修复），普通行仍 upsert。
+            if (isTombstone(d, dsCfg)) {
+              if (byPk.delete(key)) deletedCount++; // 仅在确实存在该 pk 时计删（幂等：删不存在的 pk 不计）
+            } else {
+              byPk.set(key, d); // upsert：新增/变更覆盖·未变行保留
+            }
+          }
           finalRows = [...byPk.values()];
           deltaCount = delta.length;
           anyIncremental = true;
         }
         // 新水位 = 本数据集 watermarkField 最大值（无则沿用既有·向后兼容）。
+        // WO-PIPE-INCR ③：删除墓碑行已从 finalRows 移除，但其 watermark 也须参与推进（否则纯删除 delta 水位卡住·下次重取）；
+        // 故对增量分支并入 rows（含墓碑）的 watermark，再与既有取最大。
         const watermark = wmField
-          ? finalRows.reduce((mx, r) => { const v = String(r[wmField] ?? ""); return v > mx ? v : mx; }, existing?.watermark ?? "")
+          ? [...finalRows, ...(incremental ? rows : [])].reduce(
+              (mx, r) => { const v = String(r[wmField] ?? ""); return v > mx ? v : mx; },
+              existing?.watermark ?? "",
+            )
           : existing?.watermark;
         const ds: RawDataset = {
           id: existing?.id ?? newId("rds"),
@@ -309,6 +330,12 @@ export class ConnectorService {
         const counted = incremental ? deltaCount : finalRows.length;
         job.rowCounts[name] = counted;
         changedRows += counted;
+        // WO-PIPE-INCR ③：删除墓碑计数落 job + 钩子（仅有删除时出现）。
+        if (deletedCount > 0) {
+          deletedCounts[name] = deletedCount;
+          deletedRows += deletedCount;
+          (job.deletedCounts ??= {})[name] = deletedCount;
+        }
         if (watermark) watermarks[name] = watermark;
       }
       job.status = "SUCCEEDED";
@@ -319,7 +346,7 @@ export class ConnectorService {
       // WO-PIPE-INCR ②：同步完成 → 通知钩子（app 侧发 connection.sync_completed 事件[闭 DL9 断链] + changedRows>0 触发派生重算）。
       if (this.onSyncCompleted) {
         try {
-          await this.onSyncCompleted(ctx.tenantId, { connId, datasets, rowCounts: job.rowCounts, watermarks, incremental: anyIncremental, changedRows });
+          await this.onSyncCompleted(ctx.tenantId, { connId, datasets, rowCounts: job.rowCounts, watermarks, incremental: anyIncremental, changedRows, deletedRows, deletedCounts });
         } catch {
           // 非致命：同步本身已成功；下游事件/重算尽力而为，失败计数（不静默吞）。
           this.metrics.inc("dc_connector_sync_hook_total", { outcome: "failure" });

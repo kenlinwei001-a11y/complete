@@ -79,6 +79,91 @@ describe("WO-PIPE-INCR ② 调度自动增量 + sync 完成钩子", () => {
     expect((await svc.listRawDatasets(ctx, conn.id)).find((d) => d.name === "orders")!.rowCount).toBe(3);
   });
 
+  it("WO-PIPE-INCR ③ 删除墓碑：delta 行带删除标记 → 该 pk 本地真被移除·其余保留·watermark 推进·deleted 计数", async () => {
+    const repos = createMemoryRepos();
+    const blobDir = await mkdtemp(join(tmpdir(), "dc-inc-del-"));
+    // 上游：无 since → 全量 3 行；带 since → 回 1 条带 _deleted 标记的 delta（删 B），watermark 在删除行后推进。
+    const full = [
+      { id: "A", name: "甲", updatedAt: "2026-01-01" },
+      { id: "B", name: "乙", updatedAt: "2026-01-02" },
+      { id: "C", name: "丙", updatedAt: "2026-01-03" },
+    ];
+    const delDelta = [{ id: "B", _deleted: true, updatedAt: "2026-01-09" }];
+    const delFetch = (async (input: unknown) => {
+      const since = new URL(String(input)).searchParams.get("since");
+      const rows = since ? delDelta.filter((r) => r.updatedAt > since) : full;
+      return new Response(JSON.stringify(rows), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    const svc = new ConnectorService(repos, new LocalFsBlobStore(blobDir), new CredentialCipher("k".repeat(64)), new Metrics(), delFetch);
+    const hookCalls: SyncCompletedInfo[] = [];
+    svc.wire({ onSyncCompleted: async (_t, info) => { hookCalls.push(info); } });
+
+    const conn = await svc.createConnection(ctx, {
+      connectorTypeKey: "rest_api",
+      name: "orders-api",
+      config: {
+        url: "https://x.test/orders",
+        datasetName: "orders",
+        // 缺省删除约定：deleteField/deleteValue 均不配 → 看 _deleted === true。
+        datasets: { orders: { pkField: "id", watermarkField: "updatedAt" } },
+      },
+    });
+
+    // ① 全量基线 3 行（A/B/C），watermark=2026-01-03。
+    const j1 = await svc.sync(ctx, conn.id, { auto: true });
+    expect(j1.rowCounts.orders).toBe(3);
+    expect(j1.deletedCounts).toBeUndefined(); // 全量无墓碑计数
+    expect(hookCalls.at(-1)!.watermarks.orders).toBe("2026-01-03");
+
+    // ② 二次 auto（用存的 watermark 续传）→ 上游回墓碑 delta（删 B）。
+    const j2 = await svc.sync(ctx, conn.id, { auto: true });
+    expect(j2.rowCounts.orders).toBe(1); // delta=1（那条墓碑行）
+    expect(j2.deletedCounts!.orders).toBe(1); // 真按 pk 移除 1 行
+    expect(hookCalls.at(-1)!.deletedRows).toBe(1);
+    expect(hookCalls.at(-1)!.incremental).toBe(true);
+    expect(hookCalls.at(-1)!.watermarks.orders).toBe("2026-01-09"); // 删除行的 wm 也推进水位
+
+    // 落库：B 真被移除，A/C 保留 = 2 行（墓碑生效·非 upsert 保留）。
+    const ds = (await svc.listRawDatasets(ctx, conn.id)).find((d) => d.name === "orders")!;
+    expect(ds.rowCount).toBe(2);
+    const rows = await repos.rawRows.list(ctx.tenantId, ds.id);
+    const ids = rows.map((r) => r.id as string).sort();
+    expect(ids).toEqual(["A", "C"]);
+    expect(rows.find((r) => r.id === "B")).toBeUndefined(); // 该 pk 不在
+  });
+
+  it("WO-PIPE-INCR ③ 自定义 deleteField/deleteValue：CDC op=D 标记命中即移除", async () => {
+    const repos = createMemoryRepos();
+    const blobDir = await mkdtemp(join(tmpdir(), "dc-inc-del2-"));
+    const full = [
+      { id: "A", name: "甲", updatedAt: "2026-01-01", op: "I" },
+      { id: "B", name: "乙", updatedAt: "2026-01-02", op: "I" },
+    ];
+    const delDelta = [{ id: "A", updatedAt: "2026-01-05", op: "D" }]; // op=D → 删 A
+    const delFetch = (async (input: unknown) => {
+      const since = new URL(String(input)).searchParams.get("since");
+      const rows = since ? delDelta.filter((r) => r.updatedAt > since) : full;
+      return new Response(JSON.stringify(rows), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    const svc = new ConnectorService(repos, new LocalFsBlobStore(blobDir), new CredentialCipher("k".repeat(64)), new Metrics(), delFetch);
+    svc.wire({ onSyncCompleted: async () => {} });
+    const conn = await svc.createConnection(ctx, {
+      connectorTypeKey: "rest_api",
+      name: "cdc",
+      config: {
+        url: "https://x.test/cdc",
+        datasetName: "rows",
+        datasets: { rows: { pkField: "id", watermarkField: "updatedAt", deleteField: "op", deleteValue: "D" } },
+      },
+    });
+    await svc.sync(ctx, conn.id, { auto: true }); // 全量 2 行
+    const j2 = await svc.sync(ctx, conn.id, { auto: true }); // op=D 删 A
+    expect(j2.deletedCounts!.rows).toBe(1);
+    const ds = (await svc.listRawDatasets(ctx, conn.id)).find((d) => d.name === "rows")!;
+    const rows = await repos.rawRows.list(ctx.tenantId, ds.id);
+    expect(rows.map((r) => r.id)).toEqual(["B"]); // A 被删·B 留
+  });
+
   it("无 incremental 能力的连接器（mock_erp）即便 auto 也走全量 replace（向后兼容）", async () => {
     const { svc, hookCalls } = await makeSvc();
     const conn = await svc.createConnection(ctx, { connectorTypeKey: "mock_erp", name: "erp", config: {} });

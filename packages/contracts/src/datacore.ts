@@ -57,6 +57,28 @@ export const ConnectionInstanceSchema = z.object({
 });
 export type ConnectionInstance = z.infer<typeof ConnectionInstanceSchema>;
 
+/**
+ * A8.1 + WO-PIPE-INCR：每数据集配置（落在 `Connection.config.datasets[name]`，config 本身是自由 record）。
+ * 此前仅以内联 interface 存于 `connectors/service.ts`；本契约化以便跨层共享、单一来源（contracts-only-shared）。
+ */
+export const DatasetConfigSchema = z.object({
+  /** A8.1：ENTITY（缺省）| TIMESERIES——时序数据集不落 raw_datasets、不参与 materialize */
+  kind: z.enum(["ENTITY", "TIMESERIES"]).optional(),
+  seriesKey: z.string().optional(),
+  entityType: z.string().optional(),
+  entityRefField: z.string().optional(),
+  timeField: z.string().optional(),
+  measureFields: z.array(z.string()).optional(),
+  // WO-PIPE-INCR ①：真增量同步配置（pk + 水位列，二者齐备 + 连接器 incremental 能力 + since → delta 合并）。
+  pkField: z.string().optional(), // 业务主键列（按此 upsert 合并，幂等）
+  watermarkField: z.string().optional(), // 水位列（同步后取本数据集该列最大值作新 watermark）
+  // WO-PIPE-INCR ③：删除墓碑（CDC 删除传播）。delta 行命中删除标记 → 从既有按 pk 移除该行（而非 upsert）。
+  // 缺省约定：`_deleted === true` 即视为删除标记（deleteField/deleteValue 均不配时生效）。
+  deleteField: z.string().optional(), // 标记"该 pk 已删"的列名（缺省 "_deleted"）
+  deleteValue: z.unknown().optional(), // 命中该值即视为删除（缺省 true）
+});
+export type DatasetConfig = z.infer<typeof DatasetConfigSchema>;
+
 export const FieldProfileSchema = z.object({
   name: z.string(),
   inferredType: z.enum(["string", "number", "boolean", "date", "json"]),

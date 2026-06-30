@@ -620,8 +620,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         watermarks: info.watermarks,
         incremental: info.incremental,
         changedRows: info.changedRows,
+        // WO-PIPE-INCR ③：删除墓碑——上游删的行已按 pk 移除；事件带删除计数供下游知"有删除"也须刷新/重算。
+        deletedRows: info.deletedRows,
+        deletedCounts: info.deletedCounts,
       });
-      if (info.changedRows > 0) {
+      // changedRows>0（含删除墓碑：deltaCount 计入墓碑行）或确有删除 → 触发派生重算，使删除传播到对象/派生。
+      if (info.changedRows > 0 || info.deletedRows > 0) {
         try {
           await ontology.runDerivations(systemCtx(tenantId));
         } catch (err) {
