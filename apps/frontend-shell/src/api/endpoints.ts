@@ -437,6 +437,8 @@ export interface RawDatasetVM {
   sourceCategory?: string;
   /** 新鲜度：该数据集最后一次同步/上传时间（后端 RawDataset.syncedAt）。 */
   syncedAt?: string;
+  /** WO-PIPE-INCR ①：增量同步水位（watermarkField 最大值）；存在=该源走真增量 CDC（非全量重灌）。运营管线看板据此标"增量量"。 */
+  watermark?: string;
 }
 export const fetchRawDatasets = (connId?: string) =>
   api.a<RawDatasetVM[]>(`/a/v1/raw-datasets${connId ? `?connId=${encodeURIComponent(connId)}` : ""}`);

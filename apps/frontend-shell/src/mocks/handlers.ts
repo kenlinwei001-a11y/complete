@@ -1542,9 +1542,12 @@ export const handlers = [
   // syncedAt/sourceCategory/rowCount 供新鲜度与来源类标签（值确定性、非业务常数）。
   http.get("*/a/v1/raw-datasets", () =>
     HttpResponse.json([
+      // conn-synth/conn-erp = mock_erp（synthetic）；conn-crm/conn-iot = rest_api（real-sourced·CDC watermark）。
+      { id: "rds-synth", name: "battery_objects", sourceConnId: "conn-synth", rowCount: 469, syncedAt: "2026-06-12T02:00:00Z", sourceCategory: "ERP" },
       { id: "rds-orders", name: "orders.csv", sourceConnId: "conn-erp", rowCount: 1280, syncedAt: "2026-06-11T22:00:00Z", sourceCategory: "ERP" },
       { id: "rds-plants", name: "plants.csv", sourceConnId: "conn-erp", rowCount: 6, syncedAt: "2026-06-11T22:00:00Z", sourceCategory: "ERP" },
-      { id: "rds-oee", name: "oee_points", sourceConnId: "conn-iot", rowCount: 9600, syncedAt: "2026-06-12T01:00:00Z", sourceCategory: "EXTERNAL" },
+      { id: "rds-crm", name: "crm_orders", sourceConnId: "conn-crm", rowCount: 312, syncedAt: "2026-06-10T22:00:00Z", sourceCategory: "CRM", watermark: "2026-06-10T21:58:00Z" },
+      { id: "rds-oee", name: "oee_points", sourceConnId: "conn-iot", rowCount: 9600, syncedAt: "2026-06-12T01:00:00Z", sourceCategory: "EXTERNAL", watermark: "2026-06-12T00:59:00Z" },
     ]),
   ),
   // 数据源节点行数据 + 在线编辑（A7 增量）

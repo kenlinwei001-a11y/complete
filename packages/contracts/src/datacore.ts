@@ -18,6 +18,28 @@ export const ConnectorTypeSchema = z.object({
 });
 export type ConnectorType = z.infer<typeof ConnectorTypeSchema>;
 
+// ---------------------------------------------------------------------------
+// WO-BUILDER-ROLE：合成 vs 真实接入 来源诚实分类（单一来源·确定性·R13/R14）
+// ---------------------------------------------------------------------------
+/**
+ * 数据源来源诚实位（运营管线看板 + 决策 dataMode 贯通用）：
+ * - `synthetic`：合成/bootstrap 源——冷启动 provision-world / 演示 / 测试确定性 / 有界 generic gap-fill。
+ *   **不是运营态真实数据替身**（PRD-decision-support-maturity §3.0⑤）。判据：`mock_*` 连接器 或 `config.synthetic===true`。
+ * - `real-sourced`：真实接入源——经真连接器（rest_api/generic_jdbc/file_upload/prototype_html/external_feed/KB/真 ERP/CRM…）同步进来的数据。
+ *
+ * 单一来源（跨 datacore 服务端 + 前端运营看板共用此规则），确定性、零写死业务常数（R14）。
+ */
+export type SourceOrigin = "synthetic" | "real-sourced";
+const SYNTHETIC_CONNECTOR_TYPES = new Set(["mock_erp", "mock_crm", "mock_external"]);
+export function classifySourceOrigin(
+  connectorTypeKey: string | undefined,
+  config?: Record<string, unknown>,
+): SourceOrigin {
+  if (config && config.synthetic === true) return "synthetic";
+  if (connectorTypeKey && SYNTHETIC_CONNECTOR_TYPES.has(connectorTypeKey)) return "synthetic";
+  return "real-sourced";
+}
+
 export const ConnectionInstanceSchema = z.object({
   id: z.string(), // conn_
   tenantId: z.string(),

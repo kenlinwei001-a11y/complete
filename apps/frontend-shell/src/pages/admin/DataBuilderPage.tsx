@@ -1,10 +1,11 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
+import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, ConnectionInstance, DataBuilderAgent, GapAnalysis, ProducedArtifact, QuarantineRowView, ScaffoldManifestRecord, SourceOrigin, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
-import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph, verifyStoryRun, promoteStoryDomain } from "@/api/endpoints";
+import { buildModuleSyncMatrix, classifySourceOrigin } from "@platform/contracts";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph, verifyStoryRun, promoteStoryDomain, fetchConnections, fetchRawDatasets, fetchQuarantine, triggerSync } from "@/api/endpoints";
+import type { RawDatasetVM } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -488,6 +489,164 @@ function GrowthConsolePanel() {
   );
 }
 
+/**
+ * WO-BUILDER-ROLE · 运营管线看板（两态之"运营态"）：
+ * 数据构建发动机 = 冷启动/onboarding 建域引擎；运营态数据流走 WO-PIPE-INCR（真增量同步 + 调度自增量 +
+ * connection.sync_completed → 派生重算）。本看板**消费 PIPE-INCR 既有产物**（连接器 lastSyncAt / RawDataset
+ * watermark·syncedAt·rowCount / 隔离区），逐源呈现 last sync / 新鲜度（小时） / 增量量（CDC watermark） /
+ * 隔离行数，并诚实标 synthetic vs real-sourced（classifySourceOrigin 单一来源·R13）。
+ * 不重跑建域（避免用 build-time 引擎冒充 operational 管线）——本看板只观测 + 触发增量同步。
+ */
+const FRESHNESS_STALE_HOURS = 24; // 超过即标"陈旧"（与 capacity C09 同纲：新鲜度是置信度的一个维度）
+function hoursSince(iso?: string): number | undefined {
+  if (!iso) return undefined;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return undefined;
+  return Math.max(0, (Date.now() - t) / 3_600_000);
+}
+function fmtHours(h?: number): string {
+  if (h === undefined) return "—";
+  if (h < 1) return `${Math.round(h * 60)} 分钟前`;
+  if (h < 48) return `${Math.round(h)} 小时前`;
+  return `${Math.round(h / 24)} 天前`;
+}
+
+interface PipelineSourceRow {
+  connId: string;
+  name: string;
+  connectorTypeKey: string;
+  origin: SourceOrigin;
+  status: ConnectionInstance["status"];
+  lastError?: string;
+  lastSyncAt?: string;
+  freshnessHours?: number;
+  datasetCount: number;
+  rowCount: number;
+  incrementalCount: number; // 带 watermark 的数据集数（走真增量 CDC）
+  quarantineCount: number;
+}
+
+const ORIGIN_META: Record<SourceOrigin, { label: string; color: string; title: string }> = {
+  synthetic: { label: "synthetic（合成·bootstrap）", color: "var(--amber, #DD9551)", title: "合成/bootstrap 源：冷启动 provision-world / 演示 / 测试确定性 / 有界 gap-fill。非真实数据替身。" },
+  "real-sourced": { label: "real-sourced（真实接入）", color: "var(--c-capacity, #36BFA5)", title: "真实接入源：经真连接器同步进来的数据（运营态数据流走 WO-PIPE-INCR 真增量同步）。" },
+};
+
+function OperationalPipelineBoard() {
+  const qc = useQueryClient();
+  const connsQ = useQuery<ConnectionInstance[]>({ queryKey: ["a", "connections"], queryFn: fetchConnections });
+  const dsQ = useQuery<RawDatasetVM[]>({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
+  const qQ = useQuery<QuarantineRowView[]>({ queryKey: ["a", "quarantine"], queryFn: fetchQuarantine });
+
+  const syncM = useMutation({
+    mutationFn: (connId: string) => triggerSync(connId),
+    onSuccess: () => {
+      toast("已触发增量同步（WO-PIPE-INCR：CDC watermark → 派生重算）", "success");
+      void qc.invalidateQueries({ queryKey: ["a", "connections"] });
+      void qc.invalidateQueries({ queryKey: ["a", "raw-datasets"] });
+    },
+    onError: toastError,
+  });
+
+  const conns = connsQ.data ?? [];
+  const datasets = dsQ.data ?? [];
+  const quarantine = qQ.data ?? [];
+
+  const rows: PipelineSourceRow[] = conns.map((c) => {
+    const ds = datasets.filter((d) => d.sourceConnId === c.id);
+    const qrows = quarantine.filter((q) => q.connId === c.id);
+    return {
+      connId: c.id,
+      name: c.name,
+      connectorTypeKey: c.connectorTypeKey,
+      origin: classifySourceOrigin(c.connectorTypeKey, c.config as Record<string, unknown> | undefined),
+      status: c.status,
+      lastError: c.lastError,
+      lastSyncAt: c.lastSyncAt,
+      freshnessHours: hoursSince(c.lastSyncAt),
+      datasetCount: ds.length,
+      rowCount: ds.reduce((a, d) => a + (d.rowCount ?? 0), 0),
+      incrementalCount: ds.filter((d) => !!d.watermark).length,
+      quarantineCount: qrows.length,
+    };
+  });
+  const syntheticN = rows.filter((r) => r.origin === "synthetic").length;
+  const realN = rows.filter((r) => r.origin === "real-sourced").length;
+
+  return (
+    <div data-testid="db-operational-board">
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <div className="section-title">运营管线 · 各源持续同步看板</div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.6 }}>
+          运营态数据流走 <b>WO-PIPE-INCR</b>（真增量同步 CDC + 调度自增量 + <code>connection.sync_completed</code> → 派生重算）。
+          数据构建发动机<b>不背运营态持续职责</b>——本看板只观测既有产物（连接器 last sync / RawDataset 水位·新鲜度 / 隔离区）并可手动触发增量同步。
+          <br />各源诚实标 <span style={{ color: ORIGIN_META.synthetic.color }}>synthetic（合成 {syntheticN}）</span> vs{" "}
+          <span style={{ color: ORIGIN_META["real-sourced"].color }}>real-sourced（真实 {realN}）</span>——合成是 bootstrap 源，不冒充真实接入。
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <div className="section-title">
+          数据源管线（{rows.length} 源 · {datasets.length} 数据集）{" "}
+          {(connsQ.isLoading || dsQ.isLoading) && <span className="muted" style={{ fontSize: 11 }}>加载中…</span>}
+        </div>
+        {rows.length === 0 ? (
+          <div className="empty-state" style={{ fontSize: 12 }} data-testid="db-operational-empty">
+            暂无数据源——先在「数据接入」连接器页接入源，或在建域态用发动机冷启动 provision 一套。
+          </div>
+        ) : (
+          <table className="cmp" data-testid="db-pipeline-table" style={{ fontSize: 11.5 }}>
+            <thead>
+              <tr>
+                <th>数据源</th><th>来源</th><th>状态</th><th>last sync</th><th>新鲜度</th><th>数据集</th><th>行数</th><th>增量(CDC)</th><th>隔离</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const om = ORIGIN_META[r.origin];
+                const stale = r.freshnessHours !== undefined && r.freshnessHours > FRESHNESS_STALE_HOURS;
+                const statusColor = r.status === "ACTIVE" ? "var(--c-capacity,#36BFA5)" : r.status === "ERROR" ? "var(--danger,#E5484D)" : "var(--muted)";
+                return (
+                  <tr key={r.connId} data-testid={`db-pipeline-row-${r.connId}`}>
+                    <td title={r.connectorTypeKey}>{r.name}</td>
+                    <td>
+                      <span className="badge" data-testid={`db-origin-${r.connId}`} data-origin={r.origin} title={om.title} style={{ color: om.color, borderColor: om.color }}>
+                        {r.origin === "synthetic" ? "synthetic" : "real"}
+                      </span>
+                    </td>
+                    <td><span style={{ color: statusColor }} title={r.lastError}>{r.status}</span></td>
+                    <td className="mono" style={{ fontSize: 10.5 }}>{r.lastSyncAt ? r.lastSyncAt.slice(0, 16).replace("T", " ") : "—"}</td>
+                    <td data-testid={`db-freshness-${r.connId}`} style={{ color: stale ? "var(--danger,#E5484D)" : "var(--muted)" }} title={stale ? `超过 ${FRESHNESS_STALE_HOURS}h 未同步（陈旧，决策置信度应标 STALE）` : "新鲜"}>
+                      {fmtHours(r.freshnessHours)}{stale ? " ⚠" : ""}
+                    </td>
+                    <td>{r.datasetCount}</td>
+                    <td>{r.rowCount.toLocaleString()}</td>
+                    <td data-testid={`db-incremental-${r.connId}`} title={r.incrementalCount > 0 ? "走真增量同步（CDC watermark·非全量重灌）" : "无水位（全量重灌或未同步）"}>
+                      {r.incrementalCount > 0 ? <span style={{ color: "var(--c-capacity,#36BFA5)" }}>{r.incrementalCount} 增量</span> : <span className="muted">全量</span>}
+                    </td>
+                    <td data-testid={`db-quarantine-${r.connId}`} style={{ color: r.quarantineCount > 0 ? "var(--danger,#E5484D)" : "var(--muted)" }}>
+                      {r.quarantineCount > 0 ? `${r.quarantineCount} 行` : "0"}
+                    </td>
+                    <td>
+                      <button className="btn sm" data-testid={`db-sync-${r.connId}`} disabled={syncM.isPending} onClick={() => syncM.mutate(r.connId)} title="手动触发增量同步（运营态常态由调度自动跑·WO-PIPE-INCR）">
+                        {syncM.isPending ? "…" : "↻ 同步"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>
+          隔离区共 <b style={{ color: quarantine.length ? "var(--danger,#E5484D)" : "inherit" }}>{quarantine.length}</b> 行待处理 ·{" "}
+          <Link to="/admin/connections" data-testid="db-pipeline-connections-link">→ 连接器页</Link> ·{" "}
+          <Link to="/admin/quarantine" data-testid="db-pipeline-quarantine-link">→ 隔离区</Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PHASE_LABEL: Record<BuildPhase["name"], string> = {
   intake: "① 收稿",
   comprehend: "② 理解·计划",
@@ -804,6 +963,8 @@ export default function DataBuilderPage() {
   const [seed, setSeed] = useState(42);
   const [dryRun, setDryRun] = useState(false);
   const [provisional, setProvisional] = useState(false); // A18 未审核预览模式（PROVISIONAL：隔离物化、不写真值）
+  // WO-BUILDER-ROLE 两态：建域(onboarding·冷启动) / 运营管线(operational·WO-PIPE-INCR 既有产物看板)
+  const [mode, setMode] = useState<"onboarding" | "operational">("onboarding");
   const [job, setJob] = useState<(BuildJob & { jobId?: string }) | null>(null);
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
   const [backfillReport, setBackfillReport] = useState<BackfillReport | null>(null);
@@ -879,11 +1040,48 @@ export default function DataBuilderPage() {
   return (
     <div data-testid="data-builder-page">
       <InPlaceApprovalPanel />
+      {/* WO-BUILDER-ROLE 两态切换：建域(onboarding·冷启动建域引擎) / 运营管线(operational·WO-PIPE-INCR 数据流看板) */}
+      <div className="panel" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }} data-testid="db-mode-switch">
+        <div className="seg" role="tablist" style={{ display: "inline-flex", gap: 4 }}>
+          <button
+            role="tab"
+            data-testid="db-mode-onboarding"
+            aria-selected={mode === "onboarding"}
+            className={`btn sm ${mode === "onboarding" ? "primary" : ""}`}
+            onClick={() => setMode("onboarding")}
+            title="冷启动/onboarding 建域：故事→建域→闭包→publish（保留 BuildWorkflowRun/scaffold/growth 全部能力）"
+          >
+            建域 · 冷启动 onboarding
+          </button>
+          <button
+            role="tab"
+            data-testid="db-mode-operational"
+            aria-selected={mode === "operational"}
+            className={`btn sm ${mode === "operational" ? "primary" : ""}`}
+            onClick={() => setMode("operational")}
+            title="运营态数据流走 WO-PIPE-INCR（真增量同步 + 调度自增量 + sync_completed→派生重算）；本看板观测各源新鲜度/增量量/隔离"
+          >
+            运营管线 · 持续同步看板
+          </button>
+        </div>
+        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
+          {mode === "onboarding"
+            ? "发动机定位：冷启动/onboarding 建域引擎——把故事/原型/模板变成一套可用的本体域。运营态数据流不在此（见「运营管线」）。"
+            : "运营态数据流走 WO-PIPE-INCR 真增量同步；本看板只观测既有产物 + 标各源 synthetic/real，发动机不背运营持续职责。"}
+        </span>
+      </div>
+
+      {mode === "operational" ? (
+        <OperationalPipelineBoard />
+      ) : (
+      <>
       <div className="panel" style={{ marginBottom: 14 }}>
-        <h2 style={{ margin: "0 0 4px" }}>数据构建发动机 · Foundry-Grade Data Builder</h2>
+        <h2 style={{ margin: "0 0 4px" }}>数据构建发动机 · 冷启动建域引擎（onboarding）</h2>
         <div style={{ fontSize: 12, color: "var(--muted)" }}>
           输入场景脚本 → agent 自动「意图分析→计划→分解」→ 把原料灌进连接器/知识库等上游节点 → 触发本体建模/规则等加工 →
           双向闭包门禁（对象必入本体切片·硬；data 孤儿放行·软；正向依赖缺失·硬）。确定性可重放。
+          <br /><b>职责边界</b>：发动机做<b>冷启动/onboarding 建域</b>（保留 BuildWorkflowRun/scaffold/growth 全部能力）；
+          运营态持续数据流（增量同步/新鲜度刷新）走 <b>WO-PIPE-INCR</b>，见上方「运营管线」态。
         </div>
         {preset && (
           <div data-testid="db-preset" style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
@@ -1131,6 +1329,8 @@ export default function DataBuilderPage() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }
