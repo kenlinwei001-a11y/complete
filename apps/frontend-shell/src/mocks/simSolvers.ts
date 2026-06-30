@@ -279,22 +279,29 @@ export function mockPlanGenerate(args: {
   const sc = GEN.scores;
 
   const evals = Object.entries(GEN.paths).map(([pathKey, eff]) => {
+    const rev = round(base.rev * eff.rev, 4);
+    const share = round(base.share + eff.share, 4);
+    // B-HIGH 修：与后端 plan.ts 同源——达成增量随 outcome 下发（前端删 -100/-17 魔数）。
+    const revGrowth = round((rev / Math.max(0.0001, base.rev) - 1) * 100, 4);
+    const shareDelta = round(share - base.share, 4);
     const outcome = {
-      rev: round(base.rev * eff.rev, 4),
+      rev,
       gm: round(base.gm + eff.gm, 4),
-      share: round(base.share + eff.share, 4),
+      share,
       turns: round(base.turns + eff.turns, 4),
       cash: round(base.cash + eff.cash, 4),
       capex: eff.capex,
+      revGrowth,
+      shareDelta,
     };
     const hardViol: string[] = [];
     if (hard.gm && outcome.gm < targets.gmFloor) hardViol.push("C15");
     if (hard.cash && outcome.cash < targets.cashFloor) hardViol.push("C18");
     if (hard.capex && outcome.capex > targets.capexCap) hardViol.push("CAPEX");
     const meets = {
-      meetRevenue: round((outcome.rev / Math.max(0.0001, base.rev) - 1) * 100, 4) >= targets.revGrowthPct,
+      meetRevenue: revGrowth >= targets.revGrowthPct,
       meetGm: outcome.gm >= targets.gmFloor,
-      meetShare: round(outcome.share - base.share, 4) >= targets.sharePts,
+      meetShare: shareDelta >= targets.sharePts,
       meetCapex: outcome.capex <= targets.capexCap,
       meetCash: outcome.cash >= targets.cashFloor,
       meetTurns: outcome.turns >= targets.turnsFloor,

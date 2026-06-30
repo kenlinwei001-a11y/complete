@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema } from "@platform/contracts";
 import type { HistoryRiskCase } from "@platform/contracts";
-import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg, searchObjects } from "@/api/endpoints";
+import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
@@ -27,7 +27,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   });
   const selectedObjects = useSessionStore((s) => s.selectedObjects);
   const [detail, setDetail] = useState<RiskCard | null>(null);
-  const [ordersDay, setOrdersDay] = useState<{ base: string; day: number } | null>(null);
+  const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
@@ -137,7 +137,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 title={`D+${day} · ${v.toFixed(0)}`}
                 data-testid={`risk-day-${day}`}
                 style={{ background: heatColor(v, data.threshold) }}
-                onClick={() => setOrdersDay({ base: detail.base, day })}
+                onClick={() => setOrdersDay({ card: detail, day })}
               />
             ))}
           </div>
@@ -160,7 +160,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
         </Modal>
       )}
 
-      {ordersDay && <AffectedOrdersModal base={ordersDay.base} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
+      {ordersDay && <AffectedOrdersModal card={ordersDay.card} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
 
       {/* PRD-IND-risk §2.4：处置行动计划表（按越线日前置 7 天排启动 · 峰值≥90 配备份方案 · 14 天内反提 S&OP） */}
       {(data.planRows?.length ?? 0) > 0 && (
@@ -458,14 +458,29 @@ function MiniStrip({ series, threshold }: { series: number[]; threshold: number 
   );
 }
 
-/** 时点点击 → 受影响订单弹窗（GET {A} 对象查询） */
-function AffectedOrdersModal({ base, day, onClose }: { base: string; day: number; onClose: () => void }) {
-  const { data } = useQuery({
-    queryKey: ["a", "objects", { type: "Order", base, day }],
-    queryFn: () => searchObjects("Order", "", { base, day: String(day) }),
-  });
+/**
+ * A★（旗舰·空洞数据冰山修）时点点击 → 受影响订单弹窗。
+ * 根因修：原版 `searchObjects("Order",{base,day})` 用 mock 标签「洛阳」+ 非订单维度 day 查询 → 恒命中 0 →
+ * 裸「暂无数据」死路（用户旗舰投诉「红色点开却暂无数据」）。改为渲染 **风险卡已带的真受影响订单**
+ * `card.affectedOrders`——由产能传导引擎按越线日 D+crossDay 真算（订单 props.bases 含该基地·交期落窗口），
+ * 非哈希标签查询。MOCK 卡诚实声明「张力曲线为 mock 基线启发（非实测）」；空列表给诚实解释，**绝不裸空**。
+ */
+function AffectedOrdersModal({ card, day, onClose }: { card: RiskCard; day: number; onClose: () => void }) {
+  const orders = (card.affectedOrders ?? []) as Record<string, unknown>[];
+  const isMock = card.dataMode === "MOCK";
+  const baselineN = card.currentTightness ? Math.round(card.currentTightness.value) : null;
   return (
-    <Modal title={`${zh.risk.affectedOrders} · ${base} · D+${day}`} onClose={onClose} width={640}>
+    <Modal title={`${zh.risk.affectedOrders} · ${card.base} · ${card.factor}`} onClose={onClose} width={680}>
+      {/* 诚实位：MOCK 卡张力曲线为启发估算（非实测）；受影响订单由产能传导引擎按越线日真算 */}
+      {isMock && (
+        <div
+          data-testid="affected-orders-mock-note"
+          style={{ background: "rgba(202,162,58,.12)", border: "1px solid var(--warn,#caa23a)", borderRadius: 6, padding: "8px 10px", fontSize: 11.5, color: "var(--muted)", marginBottom: 10 }}
+        >
+          ⚠ 该因素（{card.factor}）<b>无真数据源</b>，张力曲线为 mock 基线启发估算（基线 {baselineN ?? "—"}·确定性派生·<b>非实测</b>）。
+          下表受影响订单由<b>产能传导引擎</b>按越线日 {card.crossDay != null ? `D+${card.crossDay}` : "推演终点"} 真算（订单经该基地生产、交期落传导窗口），<b>非由该 mock 红色直接产生</b>。
+        </div>
+      )}
       <table className="cmp" data-testid="affected-orders-table">
         <thead>
           <tr>
@@ -474,21 +489,32 @@ function AffectedOrdersModal({ base, day, onClose }: { base: string; day: number
             <th>型号</th>
             <th>数量</th>
             <th>交期</th>
+            <th>预计延误</th>
+            <th>营收敞口</th>
           </tr>
         </thead>
         <tbody>
-          {(data?.items ?? []).map((o) => (
-            <tr key={o.id}>
-              <td>{String(o.props.so ?? o.id)}</td>
-              <td className="zh">{String(o.props.cust ?? "—")}</td>
-              <td>{String(o.props.model ?? "—")}</td>
-              <td>{String(o.props.qty ?? "—")}</td>
-              <td>{String(o.props.due ?? "—")}</td>
+          {orders.map((o, i) => (
+            <tr key={String(o.so ?? i)}>
+              <td>{String(o.so ?? "—")}</td>
+              <td className="zh">{String(o.cust ?? "—")}</td>
+              <td>{String(o.model ?? "—")}</td>
+              <td className="mono">{String(o.qty ?? "—")}</td>
+              <td className="mono">{String(o.due ?? "—")}</td>
+              <td className="mono">{o.delay != null ? `+${o.delay}天` : "—"}</td>
+              <td className="mono">{o.revenueWan != null ? `${o.revenueWan} 万` : "—"}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {data && data.items.length === 0 && <div className="empty-state">{zh.common.none}</div>}
+      {/* 禁裸「暂无数据」死路：空列表给诚实解释（该越线日传导窗口内无在产订单），非裸 none */}
+      {orders.length === 0 && (
+        <div className="empty-state" data-testid="affected-orders-empty" style={{ fontSize: 12, lineHeight: 1.6 }}>
+          该基地在越线日 {card.crossDay != null ? `D+${card.crossDay}` : "（无越线）"} 的产能传导窗口内<b>无在产订单</b>关联
+          （订单需经 <b>{card.base}</b> 生产且交期落窗口）。
+          {isMock ? "此红色为 mock 基线启发值，本就不由真实订单产生。" : ""}
+        </div>
+      )}
     </Modal>
   );
 }

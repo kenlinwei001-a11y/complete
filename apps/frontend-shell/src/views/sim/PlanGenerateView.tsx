@@ -235,9 +235,10 @@ function SchemeCard({
     meetTurns: "≥基线",
   };
   const meetValue: Record<(typeof MEET_KEYS)[number], string> = {
-    meetRevenue: `${(o.rev - 100).toFixed(0)}%`,
+    // B-HIGH 修：达成增量直接读求解器下发的 revGrowth/shareDelta（与 ✓/✗ 闸门同源），删 -100/-17 魔数
+    meetRevenue: `${o.revGrowth.toFixed(0)}%`,
     meetGm: `${(o.gm * 100).toFixed(1)}%`,
-    meetShare: `+${(o.share - 17).toFixed(0)}pct`,
+    meetShare: `+${o.shareDelta.toFixed(0)}pct`,
     meetCapex: `${o.capex} 亿`,
     meetCash: `${o.cash.toFixed(0)} 亿`,
     meetTurns: `${o.turns.toFixed(1)} 次`,
@@ -272,7 +273,7 @@ function SchemeCard({
         {/* 轨N 跟进2·KPI 裸数字接 Provenance：方案产出五指标逐个悬浮出 来源/公式/输入（接 plan_generate 真算）。 */}
         <div className={`${styles.outcomeRow} mono`}>
           <span>
-            收入增<Provenance testId={`gen-out-rev-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="收入增 = 方案收入 − 基线 100" inputs={["路径骨架", "经营目标"]}><b>{(o.rev - 100).toFixed(0)}%</b></Provenance>
+            收入增<Provenance testId={`gen-out-rev-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="收入增 = (方案收入 / 基线收入 − 1) × 100（求解器下发 revGrowth）" inputs={["路径骨架", "经营目标"]}><b>{o.revGrowth.toFixed(0)}%</b></Provenance>
           </span>
           <span>
             毛利率<Provenance testId={`gen-out-gm-${s.no}`} src="plan_generate 求解器（方案收敛）" formula="结构毛利率（按需求结构加权）" inputs={["各细分需求", "各细分毛利率"]} rule="C15"><b>{(o.gm * 100).toFixed(1)}%</b></Provenance>

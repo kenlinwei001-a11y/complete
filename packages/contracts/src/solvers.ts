@@ -177,6 +177,12 @@ export const GenSchemeSchema = z.object({
     turns: z.number(),
     cash: z.number(),
     capex: z.number(),
+    /**
+     * B-HIGH 修：达成增量随求解器下发，与 meets 闸门同源——前端不再用 `-100`/`-17` 魔数自算。
+     * `revGrowth` = (rev/base.rev − 1)×100（meetRevenue 闸门所用值）；`shareDelta` = share − base.share（meetShare 闸门所用值）。
+     */
+    revGrowth: z.number(),
+    shareDelta: z.number(),
   }),
   scores: z.object({
     profit: z.number(),
