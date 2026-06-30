@@ -217,6 +217,29 @@ describe("A2 rule-doc parsing", () => {
     expect(cands.find((c) => c.candidate.name === "库存周转约束")!.diff).toBe("新增");
   });
 
+  it("T1 续跑：重启遗留 EXTRACTING 文档启动时重跑 → IN_REVIEW + 候选产出（幂等清旧）", async () => {
+    const t = await makeApp();
+    t.llm.onRequest(scriptedExtraction);
+    // 模拟进程重启遗留：直接落一个卡 EXTRACTING 的 doc（已分段·无候选·有 jobId）
+    await t.repos.ruleDocs.put({
+      id: "doc_stuck", tenantId: "demo", filename: "stuck.md", blobKey: "k",
+      status: "EXTRACTING", droppedCandidates: 0, createdAt: new Date().toISOString(),
+      segments: segmentText(FIXTURE_MD), extractJobId: "xjob_stuck",
+    } as never);
+    const n = await t.services.ruleDocs.resumeInflightExtractions();
+    expect(n).toBeGreaterThanOrEqual(1); // 扫到并重新触发
+    await t.services.ruleDocs.flushExtractions();
+    const got = await t.repos.ruleDocs.get("demo", "doc_stuck");
+    expect(got!.status).toBe("IN_REVIEW"); // 不再永久卡 EXTRACTING
+    const cands = await t.repos.ruleCandidates.list("demo", (c) => c.docId === "doc_stuck");
+    expect(cands.length).toBeGreaterThanOrEqual(3); // 候选真产出
+    // 幂等：再续跑一次不重复堆积候选（清旧再跑）
+    await t.services.ruleDocs.resumeInflightExtractions().catch(() => 0); // doc 已 IN_REVIEW → 不再扫到
+    await t.services.ruleDocs.flushExtractions();
+    const cands2 = await t.repos.ruleCandidates.list("demo", (c) => c.docId === "doc_stuck");
+    expect(cands2.length).toBe(cands.length); // 无重复堆积
+  });
+
   it("nameSimilarity behaves sensibly", () => {
     expect(nameSimilarity("外协比例上限", "外协比例上限")).toBe(1);
     expect(nameSimilarity("外协比例上限", "外协比例红线")).toBeGreaterThan(0.5);

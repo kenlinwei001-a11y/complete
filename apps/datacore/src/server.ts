@@ -107,6 +107,13 @@ async function main(): Promise<void> {
     return [...ids];
   });
 
+  // T1 续跑（restart-safe）：重启会中断在途后台抽取 → doc 卡 EXTRACTING；启动时跨租户重跑（幂等）。
+  // fire-and-forget·不阻塞监听；失败隔离记日志。
+  void services.ruleDocs
+    .resumeInflightExtractions()
+    .then((n) => { if (n > 0) logger.info({ resumed: n }, "rule-doc 抽取续跑：重启遗留 EXTRACTING 文档已重新触发"); })
+    .catch((e) => logger.warn({ err: (e as Error).message }, "rule-doc 抽取续跑跳过"));
+
   await app.listen({ port: config.PORT, host: config.HOST });
   logger.info({ port: config.PORT }, "datacore listening");
 

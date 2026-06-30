@@ -173,11 +173,16 @@ export class RuleDocService {
     content: Buffer,
   ): Promise<{ doc: RuleDoc; jobId: string }> {
     const { doc, jobId } = await this.prepareDoc(ctx, filename, content);
-    // fire-and-forget：后台抽取，错误兜底落 doc 状态 + 审计（绝不静默吞）；句柄入集供测试收敛。
-    const p = this.runExtraction(ctx, doc.id, jobId)
+    this.fireExtraction(ctx, doc.id, jobId);
+    return { doc, jobId };
+  }
+
+  /** fire-and-forget 后台抽取：错误兜底落 doc 状态 + 审计（绝不静默吞）；句柄入集供测试收敛/续跑。 */
+  private fireExtraction(ctx: AuthCtx, docId: string, jobId: string): void {
+    const p = this.runExtraction(ctx, docId, jobId)
       .catch(async (err) => {
         this.metrics.inc("dc_rule_extract_segments_total", { status: "failed" });
-        const d = await this.repos.ruleDocs.get(ctx.tenantId, doc.id);
+        const d = await this.repos.ruleDocs.get(ctx.tenantId, docId);
         if (d && d.status === "EXTRACTING") {
           d.status = "PARTIAL";
           d.extractError = err instanceof Error ? err.message : String(err);
@@ -186,7 +191,26 @@ export class RuleDocService {
       })
       .finally(() => this.pendingExtractions.delete(p));
     this.pendingExtractions.add(p);
-    return { doc, jobId };
+  }
+
+  /**
+   * T1 续跑（restart-safe）：进程重启会中断在途 fire-and-forget 抽取，doc 永久卡 EXTRACTING。
+   * 启动时跨租户扫描 EXTRACTING 的 doc → 重新触发抽取（runExtraction 幂等清旧候选再跑）。
+   * 单实例 docker 部署的重启续跑根因解（非分布式队列·多实例需真 job 队列另立单）。返回续跑数。
+   */
+  async resumeInflightExtractions(): Promise<number> {
+    const tenants = await this.repos.tenants.listAll().catch(() => []);
+    let resumed = 0;
+    for (const t of tenants) {
+      const stuck = await this.repos.ruleDocs.list(t.id, (d) => d.status === "EXTRACTING");
+      for (const doc of stuck) {
+        if (!doc.extractJobId) continue;
+        const ctx: AuthCtx = { tenantId: t.id, userId: "system", roles: ["admin"], attributes: {} };
+        this.fireExtraction(ctx, doc.id, doc.extractJobId);
+        resumed++;
+      }
+    }
+    return resumed;
   }
 
   /** 准备阶段（确定性·快）：落 blob → 解析文本 → 分段 → 分配 extractJobId → 进 EXTRACTING。 */
@@ -218,6 +242,12 @@ export class RuleDocService {
   private async runExtraction(ctx: AuthCtx, docId: string, extractJobId: string): Promise<RuleCandidate[]> {
     const doc = await this.repos.ruleDocs.get(ctx.tenantId, docId);
     if (!doc) return [];
+    // 幂等：重跑（续跑/重试）先清本 doc 既有候选 + 计数复位，避免重复堆积/双计（首跑无候选→无操作）。
+    for (const old of await this.repos.ruleCandidates.list(ctx.tenantId, (c) => c.docId === docId)) {
+      await this.repos.ruleCandidates.remove(ctx.tenantId, old.id);
+    }
+    doc.droppedCandidates = 0;
+    doc.extractError = undefined;
     const candidates: RuleCandidate[] = [];
     let failedSegments = 0;
     for (const segment of doc.segments ?? []) {
