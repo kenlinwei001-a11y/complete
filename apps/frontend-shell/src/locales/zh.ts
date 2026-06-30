@@ -80,7 +80,7 @@ export const zh = {
     users: "用户管理",
     views: "视图配置",
     llmProviders: "LLM Provider",
-    externalSignals: "外部信号",
+    externalSignals: "外部数据",
     validation: "闭环验证(VLE)",
     quarantine: "隔离区",
     notifications: "通知中心",

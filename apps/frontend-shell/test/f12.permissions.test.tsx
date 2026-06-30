@@ -7,7 +7,9 @@ describe("F12 · 权限 UI 与 feature 守卫", () => {
     loginAs("base_manager");
     renderApp("/admin/permissions");
     expect(await screen.findByTestId("page-403")).toBeInTheDocument();
-    expect(screen.queryByTestId("nav-group-数据接入")).not.toBeInTheDocument(); // N1 统一域分组：无管理页→空组隐藏
+    // N1 统一域分组：base_manager 无管理页→纯 admin 组隐藏。WO-NAV-DATA 后「数据」组含 order 视图（业务台账）
+    // 故不再恒空；改验纯 admin 的「建模与图谱」组隐藏以保原意。
+    expect(screen.queryByTestId("nav-group-建模与图谱")).not.toBeInTheDocument();
   });
 
   it("base_manager：feature 关闭的视图直访 → 404（404 优先于 403）", async () => {
@@ -27,6 +29,6 @@ describe("F12 · 权限 UI 与 feature 守卫", () => {
     loginAs("planner");
     renderApp("/admin/permissions");
     expect(await screen.findByTestId("authz-explain")).toBeInTheDocument();
-    expect(screen.getByTestId("nav-group-数据接入")).toBeInTheDocument(); // N1 统一域分组：admin 角色见管理类域分组
+    expect(screen.getByTestId("nav-group-数据")).toBeInTheDocument(); // N1 统一域分组：admin 角色见管理类域分组（WO-NAV-DATA 改名「数据」）
   });
 });

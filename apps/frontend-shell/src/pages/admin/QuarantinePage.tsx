@@ -53,7 +53,14 @@ export default function QuarantinePage() {
           ))}
         </tbody>
       </table>
-      {rows.length === 0 && <div className="empty-state" data-testid="q-empty">隔离区为空 ✓</div>}
+      {/* WO-QUARANTINE：诚实空态——隔离区是真接线（materialize 坏行真路由 SCHEMA_MISMATCH/DUP_KEY），
+          空是因为合成数据洁净（R6 无脏行），不是坏了。把"空"说成诚实的好消息，而非"像坏了"。 */}
+      {rows.length === 0 && (
+        <div className="empty-state" data-testid="q-empty">
+          无异常行 ✓<br />
+          <span className="muted" style={{ fontSize: 11.5 }}>合成数据洁净；真实上传的坏行（结构不符 / 主键重复等）将在此排队修复。</span>
+        </div>
+      )}
     </div>
   );
 }

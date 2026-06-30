@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
+import { server } from "./setup";
 
 /**
  * F43 · 七管理页整簇（admin-console-closure §6，后端已就绪补前端）：
@@ -27,6 +29,22 @@ describe("F43 · 管理页整簇", () => {
     expect(screen.queryByTestId("q-row-qr_2")).toBeNull(); // DISCARDED 不列
     await user.click(screen.getByTestId("q-reprocess-qr_1"));
     await screen.findByText("已重入正门");
+  });
+
+  it("WO-QUARANTINE：空态文案诚实（合成数据洁净，非『像坏了』）", async () => {
+    // 无异常行（demo 合成数据洁净 R6）→ 隔离区是真接线但当前空
+    server.use(
+      http.get("*/a/v1/quarantine", () => HttpResponse.json({ items: [], byReason: {}, total: 0 })),
+    );
+    loginAs("planner");
+    renderApp("/admin/quarantine");
+    await screen.findByTestId("quarantine-page");
+    const empty = await screen.findByTestId("q-empty");
+    expect(empty).toHaveTextContent("无异常行");
+    expect(empty).toHaveTextContent("合成数据洁净");
+    expect(empty).toHaveTextContent("真实上传的坏行");
+    // 不再用「隔离区为空」这种像坏了的旧文案
+    expect(empty).not.toHaveTextContent("隔离区为空");
   });
 
   it("通知中心：未读角标 + 跳转引用对象", async () => {

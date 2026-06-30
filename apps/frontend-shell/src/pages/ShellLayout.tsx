@@ -30,12 +30,23 @@ const CONFIG_VERSION_TTL_MS = 5 * 60_000;
 // 每项 kind=view（查 workspace.navigation，/v/:key）或 admin（查 visibleAdminPages，/admin/:path）；
 // 逐项可见性仍按角色 + entitlement 过滤；空组自动隐藏；折叠记忆复用 NavGroup。图谱(view)并入「建模与图谱」与本体/建模同组（闭"图谱与本体拆两区"）；meta 补回「平台与系统」。
 type NavItemRef = { kind: "view" | "admin"; key: string };
-const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
+// WO-NAV-SANDBOX：游离的 sim-sandbox/sim-init 特殊 nav 项并入「推演」组（不再单列于 nav 末尾）；
+// 仍受 sim.sandbox entitlement 门控显隐（R3 不破，SimSandboxGuard 路由守卫不动）。extra 渲染槽承载它们。
+const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[]; extra?: "sim-sandbox" }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
-  { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })) },
-  { title: "台账与地图", items: ["order", "geo-map"].map((key) => ({ kind: "view" as const, key })) },
-  { title: "数据接入", items: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"].map((key) => ({ kind: "admin" as const, key })) },
+  { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })), extra: "sim-sandbox" },
+  { title: "台账与地图", items: ["geo-map"].map((key) => ({ kind: "view" as const, key })) },
+  // WO-NAV-DATA：「数据接入」→「数据」；移入 order（订单台账，从台账与地图）+ data-builder（数据构建发动机，从构建与成长）。
+  { title: "数据", items: [
+    { kind: "admin" as const, key: "connections" },
+    { kind: "admin" as const, key: "rule-docs" },
+    { kind: "admin" as const, key: "synthetic" },
+    { kind: "admin" as const, key: "external-signals" },
+    { kind: "admin" as const, key: "data-builder" },
+    { kind: "view" as const, key: "order" },
+    { kind: "admin" as const, key: "quarantine" },
+  ] },
   {
     title: "建模与图谱",
     items: [
@@ -50,7 +61,8 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
     items: ["graph-all", "graph-backbone", "graph-flow", "graph-source", "graph-solver", "graph-mvp", "graph-agent", "graph-loop"].map((key) => ({ kind: "view" as const, key })),
   },
   { title: "规则与校准", items: ["rules", "calibration"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "构建与成长", items: ["data-builder", "growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
+  // WO-NAV-DATA：data-builder（数据构建发动机）已移入「数据」组。
+  { title: "构建与成长", items: ["growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"].map((key) => ({ kind: "admin" as const, key })) },
@@ -63,7 +75,7 @@ type AdminPage = { path: string; label: string };
  * 统一域分组导航（N1）：视图项 + 管理页合一套域分组渲染。view 项查 workspace.navigation（命中且可见）、
  * admin 项查 visibleAdminPages（角色命中）；空组隐藏；NAV_GROUPS 未覆盖的项落「其它」组不丢；复用 NavGroup 折叠记忆。
  */
-function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: AdminPage[] }) {
+function UnifiedNav({ views, adminPages, simSandboxOn }: { views: NavItemVM[]; adminPages: AdminPage[]; simSandboxOn: boolean }) {
   const viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]));
   const adminByPath = new Map(adminPages.map((p) => [p.path, p]));
   const usedViews = new Set<string>();
@@ -84,6 +96,11 @@ function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: Adm
         return <AdminItemLink key={`a:${ref.key}`} page={p} />;
       })
       .filter((x): x is JSX.Element => !!x);
+    // WO-NAV-SANDBOX：推演组的 extra 渲染槽——sim.sandbox entitlement 开通时把沙盘/初始化项并入本组。
+    // 关 entitlement → 不渲染（R3 不破，与原游离项同门控）。
+    if (g.extra === "sim-sandbox" && simSandboxOn) {
+      links.push(...simSandboxLinks());
+    }
     return { title: g.title, collapsed: g.collapsed, links };
   }).filter((g) => g.links.length > 0);
 
@@ -107,6 +124,34 @@ function UnifiedNav({ views, adminPages }: { views: NavItemVM[]; adminPages: Adm
       )}
     </>
   );
+}
+
+/**
+ * WO-NAV-SANDBOX：推演沙盘 / 推演初始化向导特殊项（暗发）。原为 nav 末尾游离项，现并入「推演」组。
+ * 仅 sim.sandbox entitlement 开通时由 UnifiedNav 渲染；关 entitlement → 不出现（R3，瞬时回退）。
+ * 路由仍由 SimSandboxGuard/SimInitGuard 守卫（App.tsx），本处仅入口归位。
+ */
+function simSandboxLinks(): JSX.Element[] {
+  return [
+    <NavLink
+      key="sim-sandbox"
+      to="/v/sim-sandbox"
+      data-testid="nav-sim-sandbox"
+      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
+    >
+      <span className={styles.dot} />
+      推演沙盘
+    </NavLink>,
+    <NavLink
+      key="sim-init"
+      to="/v/sim-init"
+      data-testid="nav-sim-init"
+      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
+    >
+      <span className={styles.dot} />
+      推演初始化向导
+    </NavLink>,
+  ];
 }
 
 function NavItemLink({ item }: { item: NavItemVM }) {
@@ -247,32 +292,12 @@ export default function ShellLayout() {
         </NavLink>
         {/* N1 统一域分组：视图 + 管理页合一套域分组（配置驱动 R14）；逐项按角色/entitlement 过滤；空组隐藏；折叠记忆。 */}
         <nav className={styles.group} data-testid="nav-business">
+          {/* WO-NAV-SANDBOX：sim-sandbox/sim-init 不再游离于此——经 simSandboxOn 并入「推演」组（仍 sim.sandbox 门控）。 */}
           <UnifiedNav
             views={workspace.navigation.filter((item) => item.group !== "admin")}
             adminPages={adminPages}
+            simSandboxOn={featureOn(workspace, "sim.sandbox")}
           />
-          {/* 推演沙盘入口（增量 4 · 暗发）：仅 sim.sandbox entitlement 开通时出现；关 → 入口消失（瞬时回退）。 */}
-          {featureOn(workspace, "sim.sandbox") && (
-            <NavLink
-              to="/v/sim-sandbox"
-              data-testid="nav-sim-sandbox"
-              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-            >
-              <span className={styles.dot} />
-              推演沙盘
-            </NavLink>
-          )}
-          {/* 推演初始化向导入口（增量 4 渐进项 · 暗发）：同 sim.sandbox entitlement 守门；关 → 入口消失。 */}
-          {featureOn(workspace, "sim.sandbox") && (
-            <NavLink
-              to="/v/sim-init"
-              data-testid="nav-sim-init"
-              className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-            >
-              <span className={styles.dot} />
-              推演初始化向导
-            </NavLink>
-          )}
         </nav>
       </aside>
 
