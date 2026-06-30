@@ -86,6 +86,7 @@
 
 ### D. 行动/权限域（DataCore）
 - **ActionType / ActionDraft**：动作类型 + 草稿（审批后 EXECUTED 才写真值；Phase9B 对象级变更）· `actions.ts`,`app.ts:290`。
+- **Decision（WO-DECISION-RECORD · PRD 决策支撑成熟化 §3.7 D8 · 一等对象·问责+组织学习）**：把"决策上下文/触发 · 备选方案(options) · 所选(chosen) · 否决理由(rejectedRationale) · 决策人(decidedBy) · 预测(predictedOutcome) · 实现(realizedOutcome·后填)"沉淀为一等记录（R2 租户隔离）· 契约 `contracts/decision.ts DecisionSchema` · 服务 `decisions.ts DecisionService` · 仓储 `repos.decisions`(migration029 通用 PgStore + memory/pg/repo.ts 四处) · 端点 `POST /a/v1/decisions`（创建·校验 chosen∈options→否则 400 CHOSEN_NOT_IN_OPTIONS）· `GET /a/v1/decisions{,?status=}` · `GET /a/v1/decisions/:id`（跨租户 404）· `POST /a/v1/decisions/:id/outcome`（补录 realizedOutcome→status OUTCOME_RECORDED，支撑"预测 vs 实现"对比复盘）。**轻接（不强耦合）**：Decision.links 可挂 ACTION_DRAFT/PLAN_VERSION/RISK_CASE/SCENARIO（Action 审批通过 或 plan 定稿 时前端可发起记录，数据模型层关联、链路不耦合）。发 `decision.recorded`/`decision.outcome_recorded` 事件（§4）。
 - **Policy（A6）**：行级过滤策略（贯穿 query/slice/solver 读出）· `policies`,`authz`。**WO-2 真闭 solver 读出**：此前仅 query/Order(visibleOrders) 实闭、求解器读出层（capacity_rollup/bottleneck_matrix 读 Base/Line/Process/Equipment）声明覆盖但实测全量不过滤；现 `SolverService.loadContext(ctx)` 对**读出型求解器**（`A6_READOUT_SOLVERS`）经同一策略引擎（`authz.decide`+`rowAllowed`）过滤 Base/Line/Order（复用 query_objects 同一套·杜绝平行漏过滤）。FDE：base_manager:常州 调 capacity_rollup/bottleneck_matrix → bases/rows 只含常州(len1)，admin 见全12。其余求解器（affected_orders 等以 baseId 跨基地推演）A6 仍经 visibleOrders 作用于订单结果（不过滤其拓扑入参以保计算语义）。
 
 ### E. 求解/推演域（DataCore）
@@ -299,6 +300,8 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 | L5 | `action.pending_approval` | Action 提交 | NOTIFY | notifications, approval-inbox | — |
 | L5 | `action.executed` | Action 写回 | IN_SESSION | dashboard, object-queries | DL4 |
 | L5 | `writeback.divergence` | 回声对账 | NOTIFY | notifications, dashboard | DL4 |
+| L5 | `decision.recorded` | 一等 Decision 记录创建（WO-DECISION-RECORD·§3.7 D8·问责+组织学习；`DecisionService.create`→`POST /a/v1/decisions`，payload 带 decisionId/title/chosen/decidedBy） | IN_SESSION | decisions | — |
+| L5 | `decision.outcome_recorded` | Decision 补录实现结果（`DecisionService.recordOutcome`→`POST /a/v1/decisions/:id/outcome`，realizedOutcome 后填→预测 vs 实现可对比复盘） | IN_SESSION | decisions | — |
 | L6 | `calibration.applied` | 校准批准 | IN_SESSION | calibration-report, solver-params | DL5 |
 | L7 | `intent.promoted` | 兜底孵化 | IN_SESSION | intent-catalog, fallback-stats | DL6 |
 | L8 | `synthetic.tick_completed` | 模拟时钟 tick | IN_SESSION | dashboard, risk, scenario-data, calibration-report | DL7 |

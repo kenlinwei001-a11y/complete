@@ -741,6 +741,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     metaAccessPolicies: new PgStore(pool, "meta_access_policies"),
     sim: new PgSimRepo(pool),
     optBindings: new PgStore(pool, "opt_bindings"),
+    decisions: new PgStore(pool, "decisions"),
     async ping() {
       await pool.query("SELECT 1");
     },

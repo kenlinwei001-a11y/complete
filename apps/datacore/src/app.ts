@@ -43,6 +43,7 @@ import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./d
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
+import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
@@ -77,6 +78,7 @@ import { assertBindingGrounded, type BindingOntologyView } from "./solvers/opt-b
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
+import { DecisionService } from "./decisions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
@@ -340,6 +342,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);
+  // WO-DECISION-RECORD（PRD §3.7 D8）：一等 Decision 记录服务（上下文/备选/否决/决策人/预测 vs 实现）
+  const decisions = new DecisionService(repos, outbox);
   // 运营态出厂配置增量 §1：回放引擎（生成+回放，复用真实 A8 管线 + M11 配对）
   const livedInEngine = new LivedInEngine(repos, timeseries, ontology, ruleScan, rules);
   livedInEngine.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
@@ -2740,6 +2744,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       req.body,
     );
     return reply.status(201).send(await actions.registerType(c, body));
+  });
+
+  // ---- WO-DECISION-RECORD（PRD §3.7 D8 · 一等 Decision 记录·问责+组织学习）-------------
+  // 独立路由区块（便于与并行 agent rebase 合并）。R2 租户隔离经仓储 tenantId 过滤。
+  app.post("/a/v1/decisions", async (req, reply) => {
+    const body = parseBody(CreateDecisionSchema, req.body);
+    const decision = await decisions.create(ctx(req), body);
+    return reply.status(201).send({ decisionId: decision.id, status: decision.status, decision });
+  });
+  app.get("/a/v1/decisions", async (req) => {
+    const { status } = req.query as { status?: string };
+    return { decisions: await decisions.list(ctx(req), { status }) };
+  });
+  app.get("/a/v1/decisions/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    return decisions.get(ctx(req), id);
+  });
+  // 补录 realizedOutcome（预测 vs 实现对比）→ decision.outcome_recorded 事件
+  app.post("/a/v1/decisions/:id/outcome", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(RecordOutcomeSchema, req.body);
+    return decisions.recordOutcome(ctx(req), id, body);
   });
 
   // ---- A5 rules -----------------------------------------------------------------------

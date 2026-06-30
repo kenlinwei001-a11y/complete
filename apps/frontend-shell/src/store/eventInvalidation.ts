@@ -32,6 +32,8 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   // WO-ALERT (D6)：主动决策推送的待办消费端——通知中心铃铛 + 审批/处置收件箱。
   notifications: [["a", "notifications"]],
   "approval-inbox": [["a", "action-drafts"], ["a", "notifications"]],
+  // WO-DECISION-RECORD（§3.7 D8）：决策记录列表查询键
+  decisions: [["a", "decisions"]],
 };
 
 /**
@@ -55,6 +57,9 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   "calibration.rolled_back": ["solver-params"],
   "objects.merged": ["object-queries", "scenario-data"],
   "storybuild.run_recorded": ["story-runs"],
+  // WO-DECISION-RECORD（§3.7 D8）：决策记录创建/补录实现 → 被动页/跨会话刷新决策列表
+  "decision.recorded": ["decisions"],
+  "decision.outcome_recorded": ["decisions"],
   "growth.gap_detected": ["growth-ledger"],
   "growth.fill_proposed": ["growth-ledger"],
   "growth.ticket_opened": ["growth-tickets", "growth-ledger"],

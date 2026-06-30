@@ -1,5 +1,8 @@
 import type {
   ActionDraft,
+  Decision,
+  CreateDecision,
+  RecordOutcome,
   AdminTenant,
   AdminUser,
   AdminViewConfig,
@@ -664,6 +667,15 @@ export const fetchActionDrafts = (status?: string) =>
 export const fetchActionDraft = (id: string) => api.a<ActionDraft>(`/a/v1/action-drafts/${id}`);
 export const decideActionDraft = (id: string, decision: "APPROVE" | "REJECT", comment: string) =>
   api.a<ActionDraft>(`/a/v1/action-drafts/${id}/decision`, { body: { decision, comment } });
+
+// ---------------- WO-DECISION-RECORD（PRD §3.7 D8 · 一等 Decision 记录）----------------
+export const fetchDecisions = (status?: string) =>
+  api.a<{ decisions: Decision[] }>(`/a/v1/decisions${status ? `?status=${status}` : ""}`).then((r) => r.decisions);
+export const fetchDecision = (id: string) => api.a<Decision>(`/a/v1/decisions/${id}`);
+export const createDecision = (body: CreateDecision) =>
+  api.a<{ decisionId: string; status: string; decision: Decision }>(`/a/v1/decisions`, { body });
+export const recordDecisionOutcome = (id: string, body: RecordOutcome) =>
+  api.a<Decision>(`/a/v1/decisions/${id}/outcome`, { body });
 
 // ---------------- B · AgentCore ----------------
 
