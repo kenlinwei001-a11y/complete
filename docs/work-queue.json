@@ -631,8 +631,8 @@
       "title": "规则文档抽取解析率+异步化",
       "doc": "docs/WO-1C-PARSE-ASYNC.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "R19",
       "acceptance": {
