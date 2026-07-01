@@ -39,7 +39,7 @@
 | R13 | demo Kimi端到端+独立复验(10033) | ✅ | 真Kimi SCENE-B 验过(前序核发) |
 | R14 | 开源框架借鉴全交付(G-5/G-12)(6037/6078) | ◐ | G-12优化融合last-mile闭·G-5非电池视图部分(同R10) |
 | **R15** | **统一资源模型:规则库含约束·求解器是MCP一种·wf/agent/skill真引用规则与MCP(6103-6337)** | 🟢 **前端收口闭** | RESOURCE-REF(`eee4cd6`·审核核发)：AgentsPage 规则绑定自由文本 bug→**库 picker**(RuleRefSelect)·SkillsPage 加规则引用+MCP 引用两区·MCP 页内置求解器(46 工具 mcp__solvers__*)。**闭环真跑**：agent+skill 勾 K01+发布→`rules/{K01}/references` 列二者为引用方(count=2·via reported)——前端勾的码真进后端引用图(非装饰)·你原话"看着有实际没关联"闭。C4 引用图 curl + C5/C6 真浏览器像素级(截图 rr-c5/c6)。closure `REVIEW-RESOURCE-REF-closure.md` |
-| **R16** | **agent资产广度+每个需LLM入口预设场景配置(6229)** | ◐ | SCENE-C铺5场景agent(landed)·但"资产广度"质疑+全入口预配体系未闭 |
+| **R16** | **agent资产广度+每个需LLM入口预设场景配置(6229)** | ✅ **已核发** | AGENT-BREADTH(`8545cb6`+C3C7`5f75c7e`)：13对话入口全配defaultAgentId(6/9→13/13·门绿)·skill5/wf3广度·场景agent异skills。C3/C7 scripted-LLM驱动真orchestrator实证(真求解器数字+规则裁决+⟦ref⟧真溯源·非mock冒充)。全套859·0-failed。closure REVIEW-3WO-finalize-DR-MULTI-AGENT.md |
 | R17 | 二级页普遍缺回退(1650/6229/6337) | 🟢 **闭** | GLOBAL-BACK(`ec0b033`·审核核发)：统一 DrillBack 组件替手搓回退·死路页普查补齐(o360/task/risk-focus/schema…)。**真浏览器四场景实拍**：搜索→o360→back 返源(idx>0·navigate(-1))·直链 o360/task→back→兜底(/scenarios·/·idx==0 不退站)·risk-back focus 门控。C1-C7 逐条过·frontend 309 绿。closure REVIEW-GLOBAL-BACK-closure.md |
 | R18 | 逐源真对象数归因+真连接器接入臂(7066/7134) | ◐ | BUILDER-ROLE逐源归因(landed PASS)·真接入臂=合成单源(option A证真上传臂在但demo不走) |
 | R19 | 1C规则文档抽取解析率+异步化(7134/7939) | 🟢 **闭** | 1C-PARSE(`ab61e2a`·审核核发)：强约束抽取 prompt 提解析率 + `extractProgress` 进度可视(前端进度条真浏览器像素级实拍 3/4+失败1·`rd-c7-progress.png`) + Anthropic 路有界纠错重试(anthropic.test.ts 3 测)。C1-C5 确定性单测+grep 验·C7 进度条实拍·C6 零新增回归。诚实：LLM 活取端到端受环境无 LLM 限制·抽取逻辑由 ScriptedLlm 单测(ruledocs.test.ts 真路由)覆盖。closure `REVIEW-1C-PARSE-closure.md` |
@@ -50,7 +50,7 @@
 | **R24** | **图谱多模块融合/分散(基于本体建模+切片实时图谱)(8847)** | ◐ | GRAPH-1/2/3/4 landed·但**GRAPH-3/4有CONCERN(见§3)** |
 | **R25** | **导航重组+销售预测多维时序+沙盘归并+隔离区价值(8880)** | ✅ 大部 | 导航重组✅+沙盘并入推演✅+隔离区诚实空态✅(NAV/QUARANTINE landed)·销售预测✅(=R同FORECAST) |
 | R26 | 对标Maven差距+成熟PRD含pipeline/合成改造(9133/9241) | ◐ | Maven分析docs在·PRD是否显含data pipeline+合成改造未确认 |
-| **R27** | **运营/合规/商业化:灾备/A/B实验/外部审计融合单(10341/10393)** | ◐ | A/B实验=EXPERIMENT landed·**灾备备份/外部审计对接未建** |
+| **R27** | **运营/合规/商业化:灾备/A/B实验/外部审计融合单(10341/10393)** | ✅ **已核发** | A/B实验=EXPERIMENT·**灾备DR-AUDIT(`cb36895`)：pg_dump/restore runbook+SIEM audit-sink(NDJSON旁路·secret加密不回显·旁路吞不阻主写)**·audit-sink.test 6/6绿(**审核方更正:先前误判门红系我stale contracts dist·致歉**)·全套859·0-failed。closure REVIEW-3WO-finalize-DR-MULTI-AGENT.md |
 | R28 | 复刻Maven先设计:模拟独有问题虚拟跑全链(10831/10978) | ✅ | 5批Maven问题+CEO10问+接线图(本会话+前序) |
 | R29 | CEO 10问数据管线接线全图(11032) | ✅ | DESIGN-CEO-10q-data-pipeline-wiring(本会话) |
 | **R30** | **连接器改上传+源数据入库前端可见+求解器/规则预部署+本体基于源数据+模拟真实业务全流程(11077)** | 🟢 **B3+透明双闭** | ①**源数据前端可见**：SOURCE-TRANSPARENCY(`cd90287`·审核核发)——连接器页 35 数据集逐张预览+真下载 .xlsx 见真业务数据(源库有+前端可见·SYNTHETIC 诚实不冒充)+no-orphan 门治本。真浏览器实拍 `st-c6-connectors.png`。②**上传真实数据→出真答案**：SOLVER-BINDING(`8bffa3a`·审核核发·B3命门闭)——上传→建模→归域→物化→配绑定→**真答案「提价4%接」**(HTTP 全链)。option A 的 solver 拒(B3)已解。closure `REVIEW-SOURCE-TRANSPARENCY-closure.md`+`REVIEW-SOLVER-BINDING-closure.md` |
