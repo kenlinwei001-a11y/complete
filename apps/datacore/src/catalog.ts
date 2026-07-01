@@ -103,6 +103,8 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "independent_set", name: "最大独立集", description: "通用最大权独立集（CP-SAT 可证最优）：在冲突图上选互不相邻的最大权点集。", argHints: { nodes: "节点(权重)", edges: "冲突边" }, domain: "generic" },
   { key: "combinatorial_auction", name: "组合拍卖", description: "通用组合拍卖赢家裁定（CP-SAT 可证最优）：在物品不重复分配约束下最大化中标价值。", argHints: { items: "拍卖物品", bids: "投标(物品组合/出价)" }, domain: "generic" },
   { key: "optimize_whatif", name: "优化 what-if", description: "对已绑定的优化模板做结构化扰动（改参/加约束/松约束/换目标权重）→ sidecar 重解 → Δ目标值/可行性/冲突约束。", argHints: { templateKey: "模板键", perturbation: "结构化扰动" }, domain: "generic" },
+  // N1 多源融合（WO-MULTISRC-FUSION）：跨来源按 PK 归并 FusedObject + A5 冲突仲裁 + 测谎 SUSPECT + AUDIT 留痕（建在 SolverBinding 之上）。
+  { key: "multisource_fusion", name: "多源融合", description: "对同一对象类型的多个数据源按主键归并为 FusedObject：字段级冲突按 A5 仲裁策略裁定，越界/矛盾值标 SUSPECT（测谎），全程留 AUDIT。回答『多个来源打架时以谁为准、哪些值可疑』。", argHints: { role: "对象角色(经 SolverBinding 解真实类型)", sources: "≥2 个来源数据集", fields: "≥1 个参与融合的字段" }, domain: "generic" },
 ];
 
 /** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */
