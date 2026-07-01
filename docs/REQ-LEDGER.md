@@ -40,7 +40,7 @@
 | R14 | 开源框架借鉴全交付(G-5/G-12)(6037/6078) | ◐ | G-12优化融合last-mile闭·G-5非电池视图部分(同R10) |
 | **R15** | **统一资源模型:规则库含约束·求解器是MCP一种·wf/agent/skill真引用规则与MCP(6103-6337)** | 🟢 **前端收口闭** | RESOURCE-REF(`eee4cd6`·审核核发)：AgentsPage 规则绑定自由文本 bug→**库 picker**(RuleRefSelect)·SkillsPage 加规则引用+MCP 引用两区·MCP 页内置求解器(46 工具 mcp__solvers__*)。**闭环真跑**：agent+skill 勾 K01+发布→`rules/{K01}/references` 列二者为引用方(count=2·via reported)——前端勾的码真进后端引用图(非装饰)·你原话"看着有实际没关联"闭。C4 引用图 curl + C5/C6 真浏览器像素级(截图 rr-c5/c6)。closure `REVIEW-RESOURCE-REF-closure.md` |
 | **R16** | **agent资产广度+每个需LLM入口预设场景配置(6229)** | ◐ | SCENE-C铺5场景agent(landed)·但"资产广度"质疑+全入口预配体系未闭 |
-| R17 | 二级页普遍缺回退(1650/6229/6337) | 🟡 | 普查已做·统一 `DrillBack` 组件替代手搓·死路页已补清单：对象360(o360-back)/任务详情(task-back)/风险看板(focus态)/地理地图(focus态)/季度滚动(focus态)/本体图谱(focus态)/来源系统总览/发育驾驶舱/字段核对(换硬编码Link)·OrderChain迁DrillBack·门(typecheck/build)+测试绿(green→red→green自证)·**待用户亲手走一遍真闭** |
+| R17 | 二级页普遍缺回退(1650/6229/6337) | 🟢 **闭** | GLOBAL-BACK(`ec0b033`·审核核发)：统一 DrillBack 组件替手搓回退·死路页普查补齐(o360/task/risk-focus/schema…)。**真浏览器四场景实拍**：搜索→o360→back 返源(idx>0·navigate(-1))·直链 o360/task→back→兜底(/scenarios·/·idx==0 不退站)·risk-back focus 门控。C1-C7 逐条过·frontend 309 绿。closure REVIEW-GLOBAL-BACK-closure.md |
 | R18 | 逐源真对象数归因+真连接器接入臂(7066/7134) | ◐ | BUILDER-ROLE逐源归因(landed PASS)·真接入臂=合成单源(option A证真上传臂在但demo不走) |
 | R19 | 1C规则文档抽取解析率+异步化(7134/7939) | 🟢 **闭** | 1C-PARSE(`ab61e2a`·审核核发)：强约束抽取 prompt 提解析率 + `extractProgress` 进度可视(前端进度条真浏览器像素级实拍 3/4+失败1·`rd-c7-progress.png`) + Anthropic 路有界纠错重试(anthropic.test.ts 3 测)。C1-C5 确定性单测+grep 验·C7 进度条实拍·C6 零新增回归。诚实：LLM 活取端到端受环境无 LLM 限制·抽取逻辑由 ScriptedLlm 单测(ruledocs.test.ts 真路由)覆盖。closure `REVIEW-1C-PARSE-closure.md` |
 | R20 | QOS Path B终答流式+逐字流实拍(7634/8215) | ✅ | WO-Q1增量2/3 真Kimi验(前序) |
