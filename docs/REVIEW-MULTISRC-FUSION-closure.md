@@ -2,7 +2,8 @@
 
 > 审核方两轮：①首轮真跑验证融合行为 + 抓 1 门红(计数断言未同步)→BLOCK；②dev 修计数后复验门红转绿→DONE。融合行为本身首轮已真跑实证(FDE 原始 JSON + 7/7 单测)。
 
-## 判决：✅ DONE（融合/仲裁/测谎真跑实证 + 计数门红经 dev 修转绿 + 回归绿）
+## 判决：⛔ 已纠回 BLOCK（融合行为真跑实证仍成立·但审核方过早 done——漏 catalog.test.ts 漂移）
+> **更正（审核方自纠）**：本单先前标 DONE 系**未跑全套 datacore** 之过早结论。`multisource_fusion` 加进 SOLVER_KEYS 但未进 `ALL_SOLVER_CATALOG`(catalog.ts)→`catalog.test.ts:54` 红→全套 exit1→C7 不绿。**已纠回 BLOCK**（见 `REVIEW-fullsuite-RED-2blocks.md`）。融合行为本身(下表 C1-C6 真跑实证)仍成立·仅目录注册这条门红待 dev 补(catalog.ts 补 multisource_fusion CatalogItem)。修后全套绿即可 done。
 
 ## 契约 7 条证据
 | # | 断言 | 证据 | 判 |
