@@ -65,8 +65,8 @@
 | commit | WO | 判 |
 |---|---|---|
 | de151ea DECISION-RECORD·27dd224 T5-LEASE·baba605 EXPERIMENT·431053b BUILDER-ROLE·565a748 RETENTION·399e6ca AUDIT-OBS·6918b28 PIPE-INCR③ | 7 单 | ✅ **PASS**(代码符·诚实·R2/R4/R6/本体回写齐) |
-| **cc3b152 GRAPH-3/4** | R24 | ⛔ **CONCERN·门红不核发**：`Object360Page` 血缘图下钻死交互——引入 DagNodeDrawer+setDrawer 但 JSX 从未渲染 `<DagNodeDrawer>`(其他3页都有)·测试漏点击断言(绿测试≠能用)。修:补 `{drawer && <DagNodeDrawer.../>}` |
-| **6cc1f97 FRESHNESS** | R8 | ⛔ **CONCERN·门红不核发**：`invalidateConfidenceCache` 零生产调用方·`syntheticByTenant` 缓存永不失效→长跑下接真实数据后仍误标 SYNTHETIC(诚实位失真)·测试靠手动失效掩盖。修:在合成/materialize/publish 写路径调失效(或去缓存每次实算) |
+| **cc3b152 GRAPH-3/4** → 修 `82b168a` | R24 | ✅ **已复验核发**(FIX-2CONCERN·FIX-1)：`Object360Page.tsx:148` 补 `{drawer && <DagNodeDrawer.../>}`。**真浏览器像素级实拍**(真后端·非mock)：登录 demo/admin → 深链 `/o/Base/obj_base_changzhou`(常州) → 点血缘节点 → 抽屉弹出(before=false→after=true)·Escape 关·重开·前后端 18 节点/7 组同值。证据 `docs/evidence/optV-02/03.png` + `REVIEW-FIX-2CONCERN-closure.md`。 |
+| **6cc1f97 FRESHNESS** → 修 `82b168a` | R8/R13 | ✅ **已复验核发**(FIX-2CONCERN·FIX-2)：`ontology.ts:688` runDerivations 写路径收口调 `invalidateConfidenceCache`。**运行中真服务 E2E**：合成→`{synthetic:true,SYNTHETIC}`→上传 real-orders.csv+objectify(2 真 Order·零手动失效)→`{synthetic:false,LIVE}` 诚实位自动翻转。契约 C1-C5 逐条过(单测①b·门 pipeline-freshness exit0·全套 830 passed 0 failed)。 |
 
 ## §4 landed 对账（workflow landed-status agent）
 - ✅ LANDED：WO-SCENE-C(`8cbd5fa`)·WO-NAV(`f969638`)·WO-QUARANTINE(`f969638`)——均有 evidence+真浏览器实拍。

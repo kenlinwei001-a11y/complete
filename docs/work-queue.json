@@ -87,7 +87,7 @@
       "title": "GRAPH-3/4 Object360死交互 + FRESHNESS缓存失效",
       "doc": "docs/WO-FIX-2concern-graph-freshness.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "deps": [],
       "note": "2门红·绿测试≠能用",
