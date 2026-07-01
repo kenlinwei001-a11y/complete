@@ -59,7 +59,7 @@
 ## §2 option A 真跑断点（真响应实证）
 - **B1**◐：`/modeling/suggest` LLM-gated·`/derive`确定性已在·前端不自动降级(对R12-old/L5049)。
 - **B2**🔴：fresh租户publish卡(0注册域+手动归域)·已实测可过但摩擦大。
-- **B3**🔴**最深命门**：canonical求解器硬编码认Order/Base(`service.ts:1721`)·上传产Orders/Bases→拒"需先合成Order"·**缺映射层**→真物化≠真答案。修法见 DECISION-LOG D1(WO-SOLVER-ONTOLOGY-BINDING)。
+- **B3**✅**最深命门已闭**(SOLVER-BINDING·`8bffa3a`·审核核发)：canonical求解器经 `resolveSolverType(idx,solverKey,role)` 按 role 取租户真实类型/字段(无绑定回退 canonical·demo 零回归)。**HTTP 全链真跑实证**：realco 注册域→建4非canonical类型+发布→上传CSV+objectify真物化→配 SolverBinding+**激活**→invoke order_fullchain **出真答案** `{RO-2001,提价4%接,qty500读上传,毛利8%<底线12%经fieldMap读出,缺口30吨}`(求解器代码零改)。契约 C1-C7 逐条过(未绑定拒✅/真答案✅/demo回退✅/DF.8接地400不落库✅/确定性门exit0✅/回归838passed✅/R14两行业✅)·本体回写齐(SolverBinding类型+事件L20+门+G-17断点标闭)。closure `REVIEW-SOLVER-BINDING-closure.md`。
 
 ## §3 dev 批次核发（workflow 5-agent 代码评审·7 PASS / 2 CONCERN）
 | commit | WO | 判 |

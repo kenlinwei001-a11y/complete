@@ -6,7 +6,7 @@
       "title": "求解器schema由本体绑定驱动(解B3命门)",
       "doc": "docs/WO-SOLVER-ONTOLOGY-BINDING.md",
       "priority": "P0",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "真实数据出真答案的前提",
