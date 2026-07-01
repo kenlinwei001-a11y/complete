@@ -880,7 +880,7 @@
       "title": "灾备备份+外部审计对接",
       "doc": "docs/WO-ENTERPRISE-DR-AUDIT.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
       "note": "R27",
@@ -954,7 +954,7 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "自身单测audit-sink.test.ts 4/6红:PUT /a/v1/audit-sinks返500(test:52·audit-sink.ts:66 cipher.encrypt在标准test环境抛·makeApp未设CREDENTIAL_KEY)→sink未落库→secret/flush/游标3测body[0]undefined级联→pnpm -r test红C7不过。修:makeApp补CREDENTIAL_KEY或PUT优雅降级+确认credentialRef脱敏cred:configured(R5)。见REVIEW-DR-AUDIT-block.md"
     },
     {
       "id": "ACTUATE",
