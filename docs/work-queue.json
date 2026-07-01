@@ -231,7 +231,7 @@
       "title": "N1多源融合+冲突仲裁+测谎",
       "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "SOLVER-BINDING"
@@ -307,7 +307,7 @@
           }
         ]
       },
-      "blockReason": "审核方自纠·过早done:catalog.test.ts:54红·multisource_fusion在SOLVER_KEYS(service.ts:126)但未进ALL_SOLVER_CATALOG(catalog.ts·grep=0)→漂移·全套datacore exit1。我先前done只跑ontology-core未跑全套→漏此。修:catalog.ts补multisource_fusion CatalogItem。融合行为本身已验(FDE+7测)仅目录注册待补。见REVIEW-fullsuite-RED-2blocks.md"
+      "blockReason": ""
     },
     {
       "id": "E1-E2",
@@ -881,7 +881,7 @@
       "title": "灾备备份+外部审计对接",
       "doc": "docs/WO-ENTERPRISE-DR-AUDIT.md",
       "priority": "P2",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R27",
@@ -955,7 +955,7 @@
           }
         ]
       },
-      "blockReason": "dev争议(8f68d7f称6/6绿)不成立:8f68d7f只改docs+队列未改码·全套datacore真跑audit-sink.test.ts仍4/6红(隔离+全套均红·非隔离伪影)·PUT /a/v1/audit-sinks返500(test:52)。全套exit1(5红)。诚实纠我方归因:非CREDENTIAL_KEY(设了仍红)·500真因需dev亮app错误日志。见REVIEW-fullsuite-RED-2blocks.md"
+      "blockReason": ""
     },
     {
       "id": "ACTUATE",
