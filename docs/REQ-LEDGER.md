@@ -38,7 +38,7 @@
 | R12-old | retire BaseFdeTest+无LLM降级UX(5049/5170) | ◐ | BaseFdeTest运行态·无LLM有/derive确定性(B1前端不自动降级) |
 | R13 | demo Kimi端到端+独立复验(10033) | ✅ | 真Kimi SCENE-B 验过(前序核发) |
 | R14 | 开源框架借鉴全交付(G-5/G-12)(6037/6078) | ◐ | G-12优化融合last-mile闭·G-5非电池视图部分(同R10) |
-| **R15** | **统一资源模型:规则库含约束·求解器是MCP一种·wf/agent/skill真引用规则与MCP(6103-6337)** | **🔴 部分·真bug** | 你原话"前端看起来有实际没和规则库关联"·系统性可配置性重构·多以WO在未核发 |
+| **R15** | **统一资源模型:规则库含约束·求解器是MCP一种·wf/agent/skill真引用规则与MCP(6103-6337)** | 🟢 **前端收口闭** | RESOURCE-REF(`eee4cd6`·审核核发)：AgentsPage 规则绑定自由文本 bug→**库 picker**(RuleRefSelect)·SkillsPage 加规则引用+MCP 引用两区·MCP 页内置求解器(46 工具 mcp__solvers__*)。**闭环真跑**：agent+skill 勾 K01+发布→`rules/{K01}/references` 列二者为引用方(count=2·via reported)——前端勾的码真进后端引用图(非装饰)·你原话"看着有实际没关联"闭。C4 引用图 curl + C5/C6 真浏览器像素级(截图 rr-c5/c6)。closure `REVIEW-RESOURCE-REF-closure.md` |
 | **R16** | **agent资产广度+每个需LLM入口预设场景配置(6229)** | ◐ | SCENE-C铺5场景agent(landed)·但"资产广度"质疑+全入口预配体系未闭 |
 | R17 | 二级页普遍缺回退(1650/6229/6337) | ◐ | OrderChain有回退(R7 U3)·**全局其他二级页未普查** |
 | R18 | 逐源真对象数归因+真连接器接入臂(7066/7134) | ◐ | BUILDER-ROLE逐源归因(landed PASS)·真接入臂=合成单源(option A证真上传臂在但demo不走) |

@@ -395,7 +395,7 @@
       "title": "统一资源引用模型(规则/求解器MCP真接线·修AgentsPage自由文本bug)",
       "doc": "docs/WO-RESOURCE-REF-MODEL.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "R15·你说前端看着有实际没关联",
