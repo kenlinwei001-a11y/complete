@@ -1433,6 +1433,424 @@
           }
         ]
       }
+    },
+    {
+      "id": "SIM-PRESET-INJECT",
+      "title": "推演I层:场景presetContext注入推演视图求解器入参(问句与视图对口)",
+      "doc": "docs/WO-IPO-WAVE2.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO第2波·B簇·P/O层已真接·断在I层·关联G-3·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "用户从场景启动器点「4680-NCM 加 20% 六周能不能接」这类卡，落到推演视图(project-sim/plan-audit/plan-generate/sop-balance)后，【视图内就针对他问的型号/增量/现金垫出对口推演】——而不是像现在这样 presetContext 只进了 QOS 查询 Dock、视图自己用 models[0]×40万整单/基线现金垫另算一套，问句与视图脱节。P(求解器真接)/O(采纳→Action)两层经核查已真接后端，本单只补 I 层注入接缝。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "project-sim 对口:从场景启动器点带 slotPresets{modelId:4680-NCM,demandDelta:0.2,weeks:6} 的卡→落 /v/project→视图型号选择器=4680-NCM(非 models[0])、体现+20%增量语义(非固定40万整单)、推演结果对应该型号该增量。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "plan-audit 对口:点带 slotPresets{cashCushion:4.5e9} 的场景卡→落 /v/audit→体检表单现金垫字段=45亿(覆盖基线值)、裁决基于45亿跑(非基线)。"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "后端支持证据+等值:capacity_forecast 带 demandDelta 入参 curl 返对应结果(capacity.ts:176 支持)，其关键数字==前端 project-sim 所见(前端真把 demandDelta 发进求解器·非前端另算)。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "单一通道落地:ViewRendererProps(registry.ts)+sessionStore 新增 presetContext(含 slotPresets)字段;grep 确认 4 视图初始化读取该通道(非各自硬编码初值)。"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "sop 软阻断:sop-balance 步②/④未改示例占位值时点「运行」→软阻断/强确认(避免示例数悄悄喂 C21/C15/C18 裁决)，改真值后可正常运行。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "P/O 层不回归:四包 pnpm -r build && pnpm -r test 退出码 0;推演视图仍真调 solvers/run(useLiveSolver)、adopt 仍发 action-drafts(既有断言不改小)。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "VITE_MOCK=1 或真后端起 frontend·登录 demo/admin→场景启动器点 S01→落 /v/project→断言型号=4680-NCM、增量20%。截图 docs/evidence/SIM-PRESET-C1.png。"
+          },
+          {
+            "for": "C2",
+            "run": "同上点 S04→落 /v/audit→断言现金垫字段=4500000000。截图 SIM-PRESET-C2.png。"
+          },
+          {
+            "for": "C3",
+            "run": "起内存态双服务·curl -s -XPOST :4002/b/v1/solvers/capacity_forecast/run -H'X-Debug-User:demo:admin:admin' -d '{\"args\":{\"modelId\":\"4680-NCM\",\"demandDelta\":0.2,\"weeks\":6}}' | jq 关键字段·与前端 network 面板同请求响应比对相等。"
+          },
+          {
+            "for": "C4",
+            "run": "rg -n 'presetContext|slotPresets' apps/frontend-shell/src/views/registry.ts apps/frontend-shell/src/store/sessionStore.ts apps/frontend-shell/src/views/sim/*.tsx → 期望通道字段+4视图读取命中。"
+          },
+          {
+            "for": "C5",
+            "run": "真浏览器 sop-balance 步②不改示例点运行→断言软阻断提示。截图 SIM-PRESET-C5.png。"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "SOLVER-BINDING-UI",
+      "title": "G-17命门前端:SolverBinding绑定可见+DRAFT草案激活UI(补DONE后端前端缺口)",
+      "doc": "docs/WO-IPO-WAVE2.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "SOLVER-BINDING"
+      ],
+      "note": "IPO第2波·D1簇·G-17命门·DONE的SOLVER-BINDING验收全curl/gate无browser→前端漏·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "租户上传自有类型并发布本体后，系统自动产出 SolverBinding DRAFT 草案(role→类型绑定)，用户能在 SolversPage【看到这个草案并点「激活」使它 ACTIVE】，之后该求解器就认得其数据出真答案——而不是像现在这样后端 CRUD+自动草案+activate 端点齐备、前端 solver-binding 零命中、SolversPage 只显 argHints 文本、激活那一步 UI 上永远走不到('上传自有类型→求解器认得→真答案'链前端物理走不通)。补 DONE 的 SOLVER-BINDING 后端之前端缺口(该 WO 验收全 curl/gate 无 browser)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "绑定可见:SolversPage 每个求解器行展开显该求解器 roleBindings(role→typeKey/fieldMap)+DRAFT/ACTIVE 状态徽章;非仅 argHints 文本。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "草案激活闭环:realco 上传自有类型+发布本体(触发自动 DRAFT 草案)→SolversPage 展开该求解器看到 DRAFT 绑定草案→点「激活」→状态变 ACTIVE(前端全程可达)。"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "前端激活真落库:C2 激活后 curl GET /a/v1/solvers/:key/bindings 返回该绑定 status==ACTIVE(前端点的按钮真调 activate 端点·非 UI 装饰)。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "激活后出真答案:C2 激活绑定后前端 invoke 该求解器→出基于上传数据的真答案(非'需先合成/未绑定'拒答)——命门在前端闭环。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "前端 API 层补 solver-binding 端点:endpoints.ts 含 fetchSolverBindings/activateSolverBinding/suggestBinding,类型 import 自 @platform/contracts(未重定义)。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，frontend 新增 SolversPage 绑定测计入、datacore SOLVER-BINDING 既有测不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "VITE_MOCK=0 真后端起 frontend·登录→/admin/solvers→展开某求解器→断言显 roleBindings 表+DRAFT/ACTIVE 徽章。截图 SOLVER-BIND-UI-C1.png。"
+          },
+          {
+            "for": "C2",
+            "run": "realco 上传 orders.csv+建类型+发布本体→/admin/solvers 展开 order_fullchain→断言见 DRAFT 草案→点激活→变 ACTIVE。截图 SOLVER-BIND-UI-C2.png。"
+          },
+          {
+            "for": "C3",
+            "run": "curl -s :4001/a/v1/solvers/order_fullchain/bindings -H'X-Debug-User:realco:ceo:admin' | jq '.[]|select(.status==\"ACTIVE\")' → 期望 C2 激活的绑定在列。"
+          },
+          {
+            "for": "C4",
+            "run": "curl -s -XPOST :4001/a/v1/solvers/order_fullchain/invoke -H'X-Debug-User:realco:ceo:admin' -d '{\"args\":{}}' | jq '.verdict!=null or .deliveryJudge!=null' → 期望 true。"
+          },
+          {
+            "for": "C5",
+            "run": "rg -n 'solver.*binding|activateSolverBinding|bindings/suggest' apps/frontend-shell/src/api/endpoints.ts → 期望命中。"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "BIZVIEW-DOWNSTREAM",
+      "title": "业务视图下游导航+权威值接线(台账下游/订单全链marginLedger/geo focus死路)",
+      "doc": "docs/WO-IPO-WAVE2.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO第2波·A+C簇·后端权威值前端旁路自算/导航死路·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "①用户在台账(LedgerView)看到一张越期订单，能就地「开 what-if/看风险/起 action 草案」下钻——不再是选中进 store 却无任何出口的死路。②订单全链(OrderChainView)的综合毛利率显示的是求解器已产出的权威可勾稽 marginLedger(带 reconciled✓)，而非前端旁路 Σgp/Σsales 自算的黑箱数(与驾驶舱口径不一致)。③地图点基地「在图谱查看」能真聚焦到该 Base 节点，不再因 focus=n-base 大小写不匹配落到不选中任何节点的软死路。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "台账下游导航:LedgerView 行/展开区出现「开 what-if/看风险/起 action 草案」深链，点击后 location 变到对应页(sim session/risk/actions)，非仅 toggleSelectedObject。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "订单全链权威值:OrderChainView 显示的综合毛利率 == affected_orders 求解器 marginLedger.gmRatePct(curl 得同值)，且前端读 out.marginLedger(非 Σgp/Σsales 自算);marginLedger 带 reconciled 闭合位。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "geo focus 死路修复:GeoMapView 点基地「在图谱查看」→跳 /v/graph?focus=n-Base(大写·或大小写不敏感)→图谱页真聚焦/选中该 Base 节点(非空跳不选中)。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "mock/test 对齐真后端键:geo/graph 相关 mock fixtures 与前端测试的节点 id 与真后端 n-${t.key} 口径一致(不再用小写 n-base 掩盖真后端不匹配)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，frontend 新增相关测计入、其余不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "真浏览器登录→台账页→展开越期订单→断言有下游深链按钮并可跳。截图 BIZVIEW-C1.png。"
+          },
+          {
+            "for": "C2",
+            "run": "curl -s -XPOST :4002/b/v1/solvers/affected_orders/run -H'X-Debug-User:demo:admin:admin' -d '{\"args\":{}}' | jq '.marginLedger.gmRatePct' → 记 X;前端订单全链页综合毛利率断言==X;rg 'marginLedger' apps/frontend-shell/src/views/plan/OrderChainView.tsx → 期望命中(接了权威值)。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器 geo-map 点基地「在图谱查看」→断言图谱聚焦该 Base 节点(data-testid/选中态)。截图 BIZVIEW-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "rg -n 'n-base|n-Base|focus=' apps/frontend-shell/src → 期望真后端口径一致;pnpm --filter frontend-shell test 相关用例绿。"
+          },
+          {
+            "for": "C5",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "RESOURCE-REF-NAV",
+      "title": "资源反向引用图+导航透出(被谁引用/场景行/ruledocs↔rules/mcp picker+健康)",
+      "doc": "docs/WO-IPO-WAVE2.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "RESOURCE-REF"
+      ],
+      "note": "IPO第2波·D1簇·后端computeReferences全实现前端仅rules消费·补DONE的RESOURCE-REF未覆盖·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "管理员改一个 agent/workflow/skill/mcp/求解器前，能在其页面看到「被谁引用(n)」(哪些场景/工作流/计划引用了我)并点击跳到引用方——后端 computeReferences 反查全实现(含被场景引用)、前端此前仅 rules 消费。同时补齐资源页导航接缝:场景行显 agent、抽取候选↔规则双向可溯、workflow 的 MCP 步骤用 picker、MCP ERROR 态列表可见。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "反向引用图可见可导航:打开某 agent/workflow/skill/mcp/solver 编辑器出现「被引用(n)」只读区，列 kind/name/via，点某引用方跳转到它(如场景→/admin/scenes)。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "引用图真值等值:C1 某资源的「被引用」区条目 == curl GET /b/v1/{kind}/:id/references 返回集合(前端所见=后端 computeReferences 真值·含被场景引用)。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "ScenesPage 导航:场景行内显 defaultAgentId(可跳 /admin/agents)、intentKey/targetView 做成链接、已发布场景加「在启动器打开→」跳 /scenarios。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "ruledocs↔rules 双向溯源:RuleDocs 批准候选后卡片加「→查看规则」链接跳该规则(补 publishedRuleId);RulesPage DOCUMENT 来源规则加「源文档」链接跳 RuleDocsPage。"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "workflow mcp picker + mcp 健康:WorkflowsPage invoke_mcp_tool 的 mcpConfigId 由裸文本改 ReferenceSelect(数据源=用户 MCP∪内置 solvers);McpPage 列表徽章按 status 三态着色(ERROR→红)+已配凭据徽章。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "回归四包全绿+契约不重定义:pnpm -r build && pnpm -r test 退出码 0，endpoints.ts 补各 references 端点、引用/绑定类型 import 自 @platform/contracts。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "真浏览器:某场景引用 agentX→打开 agentX 编辑器→断言「被引用」区列该场景可点跳。截图 RES-REF-C1.png。"
+          },
+          {
+            "for": "C2",
+            "run": "curl -s :4002/b/v1/agents/<id>/references -H'X-Debug-User:demo:admin:admin' | jq → 与前端「被引用」区比对同集。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器 /admin/scenes→断言行显 agent+intent/view 链接+发布态启动器入口。截图 RES-REF-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器 /admin/rule-docs 批准候选→断言「查看规则」链接;/admin/rules DOCUMENT 行→断言「源文档」链接。截图 RES-REF-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "真浏览器 /admin/workflows 加 invoke_mcp_tool 步→断言 mcpConfigId 是下拉 picker;/admin/mcp 造 ERROR 态→断言列表徽章红。截图 RES-REF-C5.png。"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0;rg 'references' apps/frontend-shell/src/api/endpoints.ts → 期望多资源 references 端点。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "OPS-GOV-VISIBILITY",
+      "title": "运营/治理三盲区透出(调度执行状态/LLM预算配额/决策溯源链)",
+      "doc": "docs/WO-IPO-WAVE2.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO第2波·D2簇·配了就跑跑了看不见成败/预算烧了不知道/决策溯源空壳·R13·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "①运营管理员配了定时作业(定期产能预测/S&OP自动开启/审批催办)后，能在调度页看到作业【真跑过没、成/败/漏跑、失败原因、下次运行时间】——而不是配置保存成功就以为在跑(SCHEDULED_FORECAST 失败=校准断供却毫不知情)。②租户 admin 能看到本月 LLM token 烧了多少、是否触发降级(而非 usage 死列+整个预算子系统零前端)。③决策的关联制品(→Action/计划/风险/场景)可点击溯源导航，且创建决策时真捕获这些 link(而非纯文本+数据层恒空的溯源空壳·R13)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "调度执行状态有真值(baseline):注册定时作业并跑一轮后 GET /a/v1/scheduler/jobs 返作业含 nextRunAt/lastRunAt/lastError，GET /a/v1/scheduler/jobs/:id/runs 返 run 含 status∈{SUCCEEDED,FAILED,MISSED}+error。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "调度状态前端可见:OpsSchedulePage 每作业显「状态+最近运行」面板(nextRunAt/lastRunAt/lastError)+展开 runs 红绿表+pause/resume;curl 的 run 成败==前端所见。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "LLM 预算可见:LlmProvidersPage 显「本月配额」横幅(used/soft/hard tokens+降级徽标·消费 GET /a/v1/llm-budgets);usage7dTokens 死列被移除或真接(无数据源不留假列)。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "决策溯源导航+捕获:DecisionsPage 关联制品 links 按 kind 渲染深链(ACTION_DRAFT→/admin/actions 等)可点跳;CreateDecisionForm 或 mitigation 采纳流真捕获 links(做一条带 link 的决策→详情可点跳目标·非恒空)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "前端 API 层补端点:endpoints.ts 含 scheduler(jobs/runs/pause/resume)+llm-budgets 端点,类型 import 自 @platform/contracts。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，frontend 新增相关测计入、其余不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态 datacore·注册作业(OpsSchedule 配置或直调 scheduler.register)→触发一轮→curl -s :4001/a/v1/scheduler/jobs -H'X-Debug-User:demo:admin:admin' | jq;curl .../jobs/<id>/runs | jq '.[].status'。"
+          },
+          {
+            "for": "C2",
+            "run": "真浏览器 /admin/ops-schedule→断言作业状态面板+runs 红绿表+pause/resume。截图 OPS-GOV-C2.png。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器 /admin/llm-providers→断言本月配额横幅显 used/soft/hard;确认无 usage7dTokens 死列(—)。截图 OPS-GOV-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器 /admin/decisions 做一条带 link 的决策→断言 links 可点跳 /admin/actions 等;rg 'links' apps/frontend-shell/src/pages/admin/DecisionsPage.tsx → 期望渲染为深链+表单捕获。截图 OPS-GOV-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "rg -n 'scheduler|llm-budget' apps/frontend-shell/src/api/endpoints.ts → 期望命中。"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "VIS-SIGNALS-2",
+      "title": "透出批2(review空态/季度dem溯源/年度窗口导航/订单财务值/solver晋升/规则params/simclock/信号源)",
+      "doc": "docs/WO-IPO-WAVE2.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO第2波·全簇P2汇总·透出/导航锦上添花·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "把第2波发现的 8 项 P2「后端有值/有下游、前端透出或导航缺一角」补齐:运营回顾空态给深链、季度需求给上游溯源、年度缺口窗口可下钻、订单财务判关键值并列、求解器晋升后可追下游、规则展开显命名阈值、tick 告警可跳、外部信号源可跳。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "ReviewView 空态深链跳合成/DataBuilder;QuarterlyRolling 需求条加 Provenance 或「看年度分解」链接跳 annual-scenario。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "AnnualScenario 缺口/过剩窗口 badge 加下钻链接(跳 quarterly-rolling/订单全链);OrderChain 财务判补 creditUsedRatio/priceUpPct 并列展示。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "SolverReview 晋升后加「查看目录中此求解器→」跳 /admin/solvers;RulesPage 规则展开区补 params 命名阈值小表(key=value)。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "SimClockConsole tick 的 newAlerts.ruleKey→/admin/rules 深链、changedProps.object→对象浏览器深链;ExternalSignals source 列加连接器深链。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，其余不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "真浏览器逐条:ReviewView 空态/QuarterlyRolling 需求条→断言深链/溯源。截图 VIS2-C1.png。"
+          },
+          {
+            "for": "C2",
+            "run": "真浏览器:AnnualScenario 窗口 badge 可点/OrderChain 财务判值并列。截图 VIS2-C2.png。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器:SolverReview 晋升后链接/RulesPage 展开 params 表。截图 VIS2-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器:SimClock tick 告警可跳/ExternalSignals 源可跳。截图 VIS2-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
     }
   ]
 }
