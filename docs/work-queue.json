@@ -476,7 +476,7 @@
       "title": "agent资产广度+全入口场景预配",
       "doc": "docs/WO-AGENT-ASSET-BREADTH.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R16",
@@ -549,7 +549,8 @@
             "run": "docker compose up --build（或 VITE_MOCK=1 前端 mock），浏览器登录 demo/admin（demo1234）→ 打开 /v/plan-generate → 对话框输入\"保毛利和保规模到底怎么选，给我管理动作\"→ 回车 → 等答复渲染。断言：答复块含求解器数字 + C08/C15/C18 中至少一条规则裁决 + 至少一个 ⟦ref:N⟧；不出现\"进入探索模式\"/\"请换个问法\"。证据=截图存 docs/evidence/AGENT-BREADTH-plan-generate.png。"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "GLOBAL-BACK",
