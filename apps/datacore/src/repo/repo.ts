@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, ExperimentArm, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverBinding, SolverExperiment, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, ExperimentArm, FusedObjectSnapshot, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverBinding, SolverExperiment, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -326,6 +326,9 @@ export interface Repos {
   // WO-SOLVER-ONTOLOGY-BINDING（B3·G-17·migration033）：canonical 业务求解器 role→租户真实类型/字段
   // 绑定（/a/v1/solvers/:key/bindings）。无绑定回退 canonical 默认（向后兼容）；DF.8 接地校验在 service/app 层。
   solverBindings: Store<SolverBinding>;
+  // WO-MULTISRC-FUSION-DOMAIN（N1·migration034）：多源融合对象快照（append-only·SUSPECT/冲突对象落库供复盘，
+  // 与 audit_log 互补——审计记动作、此记融合态全貌：取哪源/为何/测谎命中什么/逐字段置信）。R2 隔离·R13 溯源。
+  fusedObjects: Store<FusedObjectSnapshot>;
   // WO-DECISION-RECORD（PRD §3.7 D8·migration029）：一等 Decision 记录（上下文/备选/否决/决策人/预测 vs 实现，R2）
   decisions: Store<Decision>;
   /** Liveness for /readyz. */

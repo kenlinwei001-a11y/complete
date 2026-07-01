@@ -39,6 +39,10 @@ import {
   resolveField as resolveBoundField,
   type SolverBindingIndex,
 } from "./solver-binding.js";
+import { fuseMultiSource, type ArbitrationRuleAst, type LoadedFusionSource } from "./fusion.js";
+import { MultiSourceFusionArgsSchema, type ArbitrationStrategy, type FusedObjectSnapshot } from "@platform/contracts";
+import type { AuditService } from "../audit.js";
+import { newId } from "../ids.js";
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -116,6 +120,10 @@ export const SOLVER_KEYS = [
   "combinatorial_auction",
   // 轨B·增量3 优化目标级 what-if：结构化扰动→DF.8 接地→sidecar 重解→Δ目标/可行性/冲突约束（FUS1 不进 A18 沙箱）。
   "optimize_whatif",
+  // WO-MULTISRC-FUSION-DOMAIN（N1·建在 SolverBinding 之上）：ERP/MES/SRM 对同一事实各执一词 → 按 pk 归并
+  // 多源实例 + A5 规则驱动冲突仲裁（权威/新鲜/多数）+ 测谎（跨源数值不一致超阈值 → SUSPECT + 置信降级·
+  // 不照单全收 R13）+ 带置信溯源答案（dataMode 反映跨源一致性）+ AUDIT 留痕。读任意本体（经 sources 字段映射）。
+  "multisource_fusion",
 ] as const;
 
 /**
@@ -151,6 +159,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   combinatorial_auction: ["status", "optimal", "winners", "objective", "bidType", "itemCount", "bidCount", "summary"],
   // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary）。
   optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "feasible", "conflictConstraints", "explanation", "summary"],
+  // WO-MULTISRC-FUSION-DOMAIN（N1）：多源融合输出（融合对象 + 冲突/测谎计数 + 头条诚实位 + 仲裁策略）。
+  multisource_fusion: ["role", "fused", "suspectCount", "conflictCount", "dataMode", "strategies", "summary"],
   affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
   capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
   mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
@@ -244,6 +254,12 @@ export class SolverService {
   private ontologyCore?: OntologyCoreService;
   setOntologyCore(oc: OntologyCoreService): void {
     this.ontologyCore = oc;
+  }
+
+  /** WO-MULTISRC-FUSION：多源融合仲裁/测谎留痕经统一审计（WO-AUDIT-OBS）。app.ts 构造后注入。 */
+  private audit?: AuditService;
+  setAudit(a: AuditService): void {
+    this.audit = a;
   }
 
   /** WO-2：A6 行级过滤（求解器读出层）。app.ts 构造后注入 authz；loadContext 带 ctx 时按本租户策略过滤对象。 */
@@ -553,6 +569,105 @@ export class SolverService {
       downgraded,
       summary: `${bottlenecks.length} 个共享瓶颈,${contention.reduce((a, c) => a + (c.sharers as string[]).length, 0)} 张单争用,${downgraded.length} 张被降级`,
     };
+  }
+
+  /**
+   * WO-MULTISRC-FUSION-DOMAIN（N1·建在 SolverBinding 之上·确定性 R6·R2 租户隔离）。
+   *
+   * ERP/MES/SRM 对同一事实各执一词 → 按业务主键 (pk) 归并多源实例（每源经 SolverBinding 已归一到同一
+   * canonical role）→ **冲突仲裁**（规则驱动·A5 DSL·G-10 可编辑）→ **测谎**（跨源同字段数值不一致超阈值 →
+   * SUSPECT + 置信降级·**不照单全收 R13**）→ **带置信溯源答案**（dataMode 反映跨源一致性）→ **AUDIT 留痕**。
+   *
+   * 复用 ①（SolverBinding role 归一：各 source 声明真实类型/字段映射即经既有范式喂进来）、A5 规则 DSL
+   * （arbitration 规则表达式经 parseExpression/evaluateAst 判定字段级策略覆盖）、既有 audit（AuditService）。
+   * 不新造并行引擎。args 见 MultiSourceFusionArgsSchema。
+   */
+  private async multiSourceFusion(ctx: AuthCtx, rawArgs: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const parsed = MultiSourceFusionArgsSchema.safeParse(rawArgs);
+    if (!parsed.success) throw validationError(`multisource_fusion 入参非法：${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("；")}（需 sources≥2 + fields≥1）`);
+    const args = parsed.data;
+    const role = args.role ?? "object";
+    // 测谎阈值：显式 args > 本租户规则 params(fusion.suspectThreshold) > 缺省 0.15。改 param 即改测谎灵敏度（规则即引用）。
+    const params = await this.getParams(ctx.tenantId);
+    const threshold =
+      args.suspectThreshold ??
+      (params as unknown as { fusion?: { suspectThreshold?: number } }).fusion?.suspectThreshold ??
+      0.15;
+    const defaultStrategy: ArbitrationStrategy = args.defaultStrategy ?? "AUTHORITY";
+
+    // 逐源加载对象（A6 行级过滤·R2 仅本租户）；pk 从 spec.pkField 或类型 primaryKey 抽取。
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId);
+    const typeByKey = new Map(types.map((t) => [t.key, t]));
+    const loaded: LoadedFusionSource[] = [];
+    for (const src of args.sources) {
+      const objs = await this.a6(ctx, src.typeKey, await this.repos.objects.listByType(ctx.tenantId, src.typeKey));
+      const pkField = src.pkField ?? typeByKey.get(src.typeKey)?.properties.find((p) => p.isPrimaryKey)?.propKey;
+      const rows = objs.map((o) => ({
+        pk: String((pkField ? o.props[pkField] : undefined) ?? o.objectKey ?? o.id),
+        props: o.props,
+      }));
+      loaded.push({ spec: src, rows });
+    }
+
+    // A5 规则驱动的字段级仲裁策略（G-10 可编辑）：取本租户已发布规则中 ruleType=constraint 且 key 以
+    // "fusion_arb" 起（约定：融合仲裁规则）；表达式经 A5 DSL 解析。params.strategy 指策略，params.field 可限字段。
+    const arbRules: ArbitrationRuleAst[] = [];
+    const published = (await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED" && r.key.startsWith("fusion_arb"))).sort(
+      (a, b) => (a.key < b.key ? -1 : 1),
+    );
+    for (const r of published) {
+      const strategyName = str((r.params as Record<string, unknown> | undefined)?.strategy);
+      const strategy = (["AUTHORITY", "FRESHNESS", "MAJORITY", "CONSERVATIVE"] as const).includes(strategyName as ArbitrationStrategy)
+        ? (strategyName as ArbitrationStrategy)
+        : "AUTHORITY";
+      try {
+        arbRules.push({ key: r.key, name: r.name, field: str((r.params as Record<string, unknown> | undefined)?.field) || undefined, when: parseExpression(r.expression), strategy });
+      } catch {
+        // 规则表达式非法 → 诚实跳过该规则（不静默改动其它仲裁；R6 稳定）。
+      }
+    }
+
+    const { output, objects } = fuseMultiSource({
+      role,
+      sources: loaded,
+      fields: args.fields,
+      suspectThreshold: threshold,
+      defaultStrategy,
+      rules: arbRules,
+    });
+
+    // AUDIT 留痕（WO-AUDIT-OBS·append-only·R13 问责）：对每个 SUSPECT / 有冲突对象记一条审计
+    // （谁触发/哪源/为何采纳/置信几分/测谎命中什么），并把融合态快照 append 落 fused_objects（可复盘查）。
+    const at = new Date().toISOString();
+    for (const fo of objects) {
+      const hasConflict = fo.fields.some((f) => f.conflict);
+      if (fo.verdict !== "SUSPECT" && !hasConflict) continue; // 全一致对象无需留痕（省膨胀）。
+      const suspectFields = fo.fields.filter((f) => f.suspect).map((f) => ({ field: f.field, ...f.suspectEvidence }));
+      const arbitration = fo.fields
+        .filter((f) => f.conflict || f.suspect)
+        .map((f) => ({ field: f.field, chosenSource: f.chosenSource, strategy: f.strategy, reason: f.reason, confidence: f.confidence }));
+      if (this.audit) {
+        await this.audit.record(ctx, {
+          action: fo.verdict === "SUSPECT" ? "fusion.suspect_detected" : "fusion.conflict_arbitrated",
+          targetKind: "FusedObject",
+          targetId: `${role}:${fo.pk}`,
+          after: { verdict: fo.verdict, confidence: fo.confidence, suspectFields, arbitration, sources: fo.contributingSources },
+        });
+      }
+      const snap: FusedObjectSnapshot = {
+        id: newId("fused"),
+        tenantId: ctx.tenantId,
+        role,
+        pk: fo.pk,
+        verdict: fo.verdict,
+        fused: fo,
+        ...(ctx.requestId !== undefined ? { requestId: ctx.requestId } : {}),
+        at,
+      };
+      await this.repos.fusedObjects.put(snap);
+    }
+
+    return output as unknown as Record<string, unknown>;
   }
 
   /**
@@ -1962,6 +2077,8 @@ export class SolverService {
     if (solverKey === "generic_inference") return this.genericInference(ctx, args);
     // shared_bottleneck 通用求解器（读任意对象图,非电池 context）,同样先拦截。
     if (solverKey === "shared_bottleneck") return this.sharedBottleneck(ctx, args);
+    // WO-MULTISRC-FUSION-DOMAIN（N1·建在 SolverBinding 之上）：多源归并 + 冲突仲裁 + 测谎（读任意对象图）。
+    if (solverKey === "multisource_fusion") return this.multiSourceFusion(ctx, args);
     if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
     if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
     if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);

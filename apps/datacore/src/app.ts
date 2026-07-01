@@ -314,6 +314,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   solvers.setAuthz(authz); // WO-2：A6 行级过滤求解器读出层（与 query_objects 同一套策略引擎）
   solvers.setLlm(llm); // A18.2 LLM 临时求解器生成
   solvers.setOutbox(outbox); // A18.2 solver.provisional_generated 事件
+  solvers.setAudit(audit); // WO-MULTISRC-FUSION：多源融合仲裁/测谎经统一 append-only 审计留痕（WO-AUDIT-OBS）
   if (process.env.OPTIMIZER_BASE_URL) {
     // selection_optimize 走自托管 CP-SAT sidecar（OR-Tools, Apache-2.0）；数据不出边界。未配置则该求解器报"未接入"。
     solvers.setOptimizer(new HttpOptimizerClient(process.env.OPTIMIZER_BASE_URL));
@@ -2506,6 +2507,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const drafts = suggestSolverBindings(c.tenantId, types, existing, (sk) => newId(`solvbnd_${sk}`));
     for (const d of drafts) await repos.solverBindings.put(d);
     return { suggested: drafts.length, drafts };
+  });
+  // ---- WO-MULTISRC-FUSION-DOMAIN（N1·多源融合）: 融合对象快照只读查询（AUDIT 复盘·R2 隔离）----
+  // multisource_fusion 求解器把 SUSPECT/冲突对象的融合态全貌 append 落 fused_objects（取哪源/为何/测谎命中
+  // 什么/逐字段置信）。此端点只读消费——与 GET /a/v1/audit-log 互补（审计记动作、此记融合态）。?verdict=SUSPECT 过滤。
+  app.get("/a/v1/fused-objects", async (req) => {
+    const c = ctx(req);
+    const { verdict, role } = req.query as { verdict?: string; role?: string };
+    const items = (await repos.fusedObjects.list(c.tenantId))
+      .filter((f) => (verdict ? f.verdict === verdict : true) && (role ? f.role === role : true))
+      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.id.localeCompare(b.id)));
+    return { items };
   });
   app.post("/a/v1/solvers/:solverKey/invoke", async (req) => {
     const { solverKey } = req.params as { solverKey: string };
