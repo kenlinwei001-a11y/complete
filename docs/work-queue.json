@@ -976,6 +976,83 @@
       "owner": "dev",
       "deps": [],
       "note": "22443b2·审核核发(代码级)"
+    },
+    {
+      "id": "KILL-MOCK-RED",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "title": "反假推演总攻:无真数据→诚实空态·绝不伪造决策级红/裁决",
+      "doc": "docs/WO-KILL-MOCK-RED.md",
+      "note": "用户抓洛阳·设备OEE假红·3路审计确认系统性(披露≠排除)·治本非贴标签",
+      "acceptance": {
+        "goal": "用户点预判推演看板任何无真实数据源的基地×因子(如洛阳·设备OEE)→不再是哈希造的假红越线·而是诚实无数据空态(灰·引导接入)；红越线只在有真数据时出；门永久挡MOCK值上线为决策级红的回潮。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "无真设备OEE的基地×设备OEE invoke risk_timeline → 该卡 dataMode=MOCK 且 crossDay=null 且不在越线cards/planRows(不再吐≥88哈希红·非SYNTHETIC也照红)"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "orderFullchain交期裁决不来自硬编码基地数×700·读真computeRollup产能·无真产能→交期标无数据不吐假P90"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "genuine-sim:check v2语义门:零真数据context真调求解器·断言dataMode∈{MOCK,SYNTHETIC}时决策级字段空/中性·注释治本行门变红(牙齿自证)"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "grep生产求解器路径(apps/datacore/src/solvers排除test)零mockTightness调用(仅定义/mocks可留)"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "真浏览器像素级:登录demo/admin→预判推演看板→点洛阳·设备OEE→D+6不再红(计算色非rgb(224,98,108)danger)·显无真实数据不参与越线判定·请接入·页内无假红越线"
+          },
+          {
+            "id": "C6",
+            "type": "browser",
+            "assert": "对照:有真数据基地×因子(真Equipment.oee_current/真订单)→红越线照常出(真数据出真红·证明非无脑灭红)"
+          },
+          {
+            "id": "C7",
+            "type": "gate",
+            "assert": "展示层门:凡渲染danger/越线/✗裁决决策组件·数据路径必有dataMode分支守卫·改掉守卫门红"
+          },
+          {
+            "id": "C8",
+            "type": "gate",
+            "assert": "pnpm -r build && test四包全绿·ontology:check+meta:sync exit0·§8含G-DM-1·R13检测点升级genuine-sim v2"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起真datacore SEED_DEMO·curl :4001/a/v1/solvers/risk_timeline/invoke -d args:{base:洛阳,factor:设备OEE,horizon:30}|jq crossDay/peak/dataMode→期望crossDay=null·peak不≥threshold"
+          },
+          {
+            "for": "C3",
+            "run": "pnpm genuine-sim:check exit0·脚本含运行时零数据断言·注释risk.ts治本行重跑exit≠0"
+          },
+          {
+            "for": "C4",
+            "run": "grep -rn mockTightness apps/datacore/src/solvers|grep -v test→期望0调用"
+          },
+          {
+            "for": "C5",
+            "run": "Playwright真起前后端·登录demo/admin/demo1234·点洛阳·设备OEE·截图·getComputedStyle断言峰值色非rgb(224,98,108)·文案含无真实数据/待接入"
+          },
+          {
+            "for": "C8",
+            "run": "pnpm -r build && pnpm -r test;pnpm ontology:check && pnpm meta:sync;grep G-DM-1 docs/SYSTEM-ONTOLOGY.md"
+          }
+        ]
+      }
     }
   ]
 }
