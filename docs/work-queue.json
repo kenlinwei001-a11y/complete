@@ -799,7 +799,7 @@
       "title": "深色字→浅色对比度",
       "doc": "docs/WO-CONTRAST-FIX.md",
       "priority": "P3",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "R22·CSS",
