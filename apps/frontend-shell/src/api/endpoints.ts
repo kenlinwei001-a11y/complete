@@ -856,6 +856,14 @@ export const saveMcpConfig = (id: string | null, body: Record<string, unknown>) 
 export const testMcpConnection = (id: string) =>
   api.b<{ ok: boolean; tools: { name: string; description: string }[] }>(`/b/v1/mcp-configs/${id}/test`, { body: {} });
 
+/** WO-RESOURCE-REF §2.4：内置求解器 MCP server（平台内置·READ）。endpoint 已在 server.ts:846。 */
+export interface SolverMcpServerResponse {
+  server: { name: string; displayName: string; builtin: boolean; sideEffect: string };
+  tools: { name: string; description: string }[];
+  count: number;
+}
+export const fetchSolverMcpServer = () => api.b<SolverMcpServerResponse>("/b/v1/mcp/servers/solvers");
+
 
 // ---------------- LLM Provider 配置体系（增量 §1，落位 DataCore） ----------------
 

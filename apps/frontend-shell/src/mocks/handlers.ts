@@ -2373,6 +2373,18 @@ export const handlers = [
   }),
 
   http.get("*/b/v1/mcp-configs", () => HttpResponse.json(db.mcpConfigs)),
+  // WO-RESOURCE-REF §2.4：内置求解器 MCP server（平台内置·READ）。mock 列若干 mcp__solvers__* 工具。
+  http.get("*/b/v1/mcp/servers/solvers", () =>
+    HttpResponse.json({
+      server: { name: "solvers", displayName: "求解器（平台内置）", builtin: true, sideEffect: "READ" },
+      tools: [
+        { name: "mcp__solvers__capacity_forecast", description: "产能预测（P50/P90）" },
+        { name: "mcp__solvers__plan_audit", description: "计划审计（规则闸门）" },
+        { name: "mcp__solvers__outsourcing_split", description: "外协拆分" },
+      ],
+      count: 3,
+    }),
+  ),
   http.post("*/b/v1/mcp-configs/:id/test", () =>
     HttpResponse.json({
       ok: true,

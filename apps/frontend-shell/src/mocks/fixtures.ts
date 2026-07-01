@@ -862,8 +862,8 @@ export const WORKFLOWS: WorkflowDefinition[] = [
 ];
 
 export const SKILLS: SkillDefinition[] = [
-  { id: "skl-capacity", tenantId: TENANT_ID, key: "capacity_analysis", version: 3, name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。", body: "# 产能分析\n\n1. 先看认证状态…", resources: [{ name: "口径表.xlsx", blobKey: "blob-1" }], status: "PUBLISHED" },
-  { id: "skl-draft", tenantId: TENANT_ID, key: "sop_meeting", version: 1, name: "S&OP 会议纪要技能（草稿）", summary: "纪要结构化要点。", body: "# 纪要", resources: [], status: "DRAFT" },
+  { id: "skl-capacity", tenantId: TENANT_ID, key: "capacity_analysis", version: 3, name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。", body: "# 产能分析\n\n1. 先看认证状态…", resources: [{ name: "口径表.xlsx", blobKey: "blob-1" }], mcpServers: [], status: "PUBLISHED" },
+  { id: "skl-draft", tenantId: TENANT_ID, key: "sop_meeting", version: 1, name: "S&OP 会议纪要技能（草稿）", summary: "纪要结构化要点。", body: "# 纪要", resources: [], mcpServers: [], status: "DRAFT" },
 ];
 
 export const MCP_CONFIGS: McpServerConfig[] = [

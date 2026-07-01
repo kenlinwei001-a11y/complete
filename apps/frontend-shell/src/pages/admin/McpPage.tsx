@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { McpServerConfig } from "@platform/contracts";
-import { fetchMcpConfigs, saveMcpConfig, testMcpConnection } from "@/api/endpoints";
+import { fetchMcpConfigs, fetchSolverMcpServer, saveMcpConfig, testMcpConnection, type SolverMcpServerResponse } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -11,8 +11,11 @@ const t = zh.admin.mcp;
 export default function McpPage() {
   const queryClient = useQueryClient();
   const { data: configs } = useQuery({ queryKey: ["b", "mcp-configs", {}], queryFn: fetchMcpConfigs });
+  // WO-RESOURCE-REF §2.4：内置求解器 MCP server（平台内置·只读，非用户自建）。
+  const { data: solverServer } = useQuery({ queryKey: ["b", "mcp-solvers-server"], queryFn: fetchSolverMcpServer });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [showBuiltin, setShowBuiltin] = useState(false);
   const selected = configs?.find((c) => c.id === selectedId) ?? null;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "mcp-configs"] });
 
@@ -27,13 +30,33 @@ export default function McpPage() {
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           {(configs ?? []).map((c) => (
-            <button key={c.id} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedId === c.id ? "var(--accent)" : undefined }} onClick={() => { setSelectedId(c.id); setCreating(false); }}>
+            <button key={c.id} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedId === c.id ? "var(--accent)" : undefined }} onClick={() => { setSelectedId(c.id); setCreating(false); setShowBuiltin(false); }}>
               <span className={`badge ${c.status === "ACTIVE" ? "green" : ""}`}>{c.status}</span>
               <span className="zh">{c.name}</span>
             </button>
           ))}
+          {/* WO-RESOURCE-REF §2.4：用户自建 MCP 之下增「内置服务」分区（求解器·平台内置·READ，只读展示）。 */}
+          {solverServer && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dotted var(--line, #333)" }} data-testid="mcp-builtin-section">
+              <div className="section-title" style={{ fontSize: 12 }}>内置服务</div>
+              <button
+                className="btn"
+                style={{ width: "100%", justifyContent: "flex-start", borderColor: showBuiltin ? "var(--accent)" : undefined }}
+                data-testid="mcp-builtin-solvers"
+                onClick={() => { setShowBuiltin(true); setSelectedId(null); setCreating(false); }}
+              >
+                <span className="badge">内置·READ</span>
+                <span className="zh">{solverServer.server.displayName}</span>
+                <span className="mono" style={{ marginLeft: "auto", fontSize: 10 }}>{solverServer.count}</span>
+              </button>
+            </div>
+          )}
         </div>
-        {(selected || creating) && <McpEditor key={selected?.id ?? "new"} config={selected} onChanged={invalidate} />}
+        {showBuiltin && solverServer ? (
+          <BuiltinSolverServer server={solverServer} />
+        ) : (
+          (selected || creating) && <McpEditor key={selected?.id ?? "new"} config={selected} onChanged={invalidate} />
+        )}
       </div>
     </div>
   );
@@ -127,6 +150,31 @@ function McpEditor({ config, onChanged }: { config: McpServerConfig | null; onCh
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** WO-RESOURCE-REF §2.4：内置求解器 MCP server 只读视图——列 mcp__solvers__* 工具（不给编辑/删除，内置）。 */
+function BuiltinSolverServer({ server }: { server: SolverMcpServerResponse }) {
+  return (
+    <div className="panel" data-testid="mcp-builtin-detail">
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        <span className="badge">内置·READ</span>
+        <strong className="zh">{server.server.displayName}</strong>
+        <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>{server.server.name}</span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
+        平台内置服务，只读（求解器目录经 entitlement 过滤自动派生；关求解器功能 → 工具消失）。求解器即 MCP 的一种，被 agent/skill/workflow 引用。
+      </div>
+      <div className="section-title">工具（mcp__solvers__*）· {server.count}</div>
+      <div data-testid="mcp-builtin-tools">
+        {server.tools.map((tool) => (
+          <div key={tool.name} style={{ fontSize: 12, padding: "3px 0" }}>
+            <span className="mono">{tool.name}</span>
+            <span style={{ color: "var(--muted)", marginLeft: 8 }}>{tool.description}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

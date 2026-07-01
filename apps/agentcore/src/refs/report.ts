@@ -1,4 +1,4 @@
-import type { AgentDefinition, ExecutionPlan, Ref, WorkflowDefinition } from "@platform/contracts";
+import type { AgentDefinition, ExecutionPlan, Ref, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
 
 /**
@@ -11,7 +11,7 @@ import type { AppConfig } from "../config.js";
  */
 
 export interface RefReport {
-  source: { kind: "agent" | "workflow" | "plan" | "intent"; key: string; name?: string };
+  source: { kind: "agent" | "workflow" | "plan" | "intent" | "skill"; key: string; name?: string };
   refs: Ref[];
 }
 
@@ -48,6 +48,13 @@ const ruleRef = (key: string): Ref => ({ kind: "rule", key, version: "latest" })
 export function agentRuleRefs(agent: AgentDefinition): Ref[] {
   if (agent.ruleBindings.ruleKeys === "ALL_APPLICABLE") return [];
   return agent.ruleBindings.ruleKeys.map(ruleRef);
+}
+
+/** WO-RESOURCE-REF §2.3：skill 出向规则引用（声明态，ALL_APPLICABLE 或缺省 → 无具体码上报）。 */
+export function skillRuleRefs(skill: SkillDefinition): Ref[] {
+  const keys = skill.ruleBindings?.ruleKeys;
+  if (!keys || keys === "ALL_APPLICABLE") return [];
+  return keys.map(ruleRef);
 }
 
 export function planStepRuleRefs(steps: (ExecutionPlan | WorkflowDefinition)["steps"]): Ref[] {

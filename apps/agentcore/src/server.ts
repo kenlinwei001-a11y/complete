@@ -52,7 +52,7 @@ import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
 import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
-import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
+import { agentRuleRefs, planStepRuleRefs, skillRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap, FILL } from "./growth/probe.js";
@@ -1199,6 +1199,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     const published = { ...skill, status: "PUBLISHED" as const };
     await deps.repos.skills.update(published);
+    // WO-RESOURCE-REF §2.3：skill 出向规则引用上报 A（进被引用图，规则发布确认页/references 把该 skill 列为引用方）。
+    const skRuleRefs = skillRuleRefs(published);
+    if (deps.reportRefs && skRuleRefs.length > 0) {
+      void deps.reportRefs(a.tenantId, { source: { kind: "skill", key: published.key, name: published.name }, refs: skRuleRefs });
+    }
     // 引用模式增量 §2.3：影响面（引用同 key 任一版本的 agent；latest 下次加载即新内容 — L8）
     const siblingIds = new Set(
       (await deps.repos.skills.listByTenant(a.tenantId)).filter((x) => x.key === skill.key).map((x) => x.id),
@@ -1952,7 +1957,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       await deps.repos.skills.insert({
         id: newId("skl"), tenantId: m.tenantId, key: sk.skillKey, version: 1,
         name: sk.skillKey, summary: `能力 ${sk.capability}（g8 scaffold）`, body: "g8 故事倒推 scaffold（DRAFT，待补全）",
-        resources: [], status: "DRAFT",
+        resources: [], mcpServers: [], status: "DRAFT",
       });
       items.push({ kind: "skill", key: sk.skillKey, status: "SCAFFOLDED" });
     }

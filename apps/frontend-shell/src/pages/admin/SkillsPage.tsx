@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SkillDefinition } from "@platform/contracts";
+import type { RuleBindings, SkillDefinition } from "@platform/contracts";
 import { fetchSkills, publishSkill, saveSkill } from "@/api/endpoints";
+import { McpRefSelect, RuleRefSelect } from "@/components/resource-refs/ResourceRefSelect";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -48,10 +49,15 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
   const [name, setName] = useState(skill.name);
   const [summary, setSummary] = useState(skill.summary);
   const [body, setBody] = useState(skill.body);
+  // WO-RESOURCE-REF §2.3：skill 引用规则（含约束条件）+ MCP（含内置求解器）——声明+落库+进被引用图（诚实边界见 WO §4）。
+  const [ruleBindings, setRuleBindings] = useState<RuleBindings>(
+    skill.ruleBindings ?? { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
+  );
+  const [mcpServers, setMcpServers] = useState<{ mcpConfigId: string }[]>(skill.mcpServers ?? []);
   const editable = skill.status === "DRAFT";
 
   const saveMut = useMutation({
-    mutationFn: () => saveSkill(skill.id, { name, summary, body }),
+    mutationFn: () => saveSkill(skill.id, { name, summary, body, ruleBindings, mcpServers }),
     onSuccess: () => {
       toast("已保存", "success");
       onChanged();
@@ -79,6 +85,40 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
       <textarea style={{ width: "100%", minHeight: 50, marginBottom: 10 }} maxLength={400} value={summary} disabled={!editable} aria-label="summary" onChange={(e) => setSummary(e.target.value)} />
       <label style={{ fontSize: 12, color: "var(--muted)" }}>body（markdown 全文）</label>
       <textarea className="mono" style={{ width: "100%", minHeight: 220, fontSize: 12 }} value={body} disabled={!editable} aria-label="body" onChange={(e) => setBody(e.target.value)} />
+
+      {/* WO-RESOURCE-REF §2.3：规则引用 + MCP 引用（复用共享控件；声明落库 + 进被引用图，诚实不扩执行语义）。 */}
+      <div style={{ marginTop: 12 }} data-testid="skill-rule-refs">
+        <div className="section-title">规则引用</div>
+        <RuleRefSelect
+          value={ruleBindings.ruleKeys}
+          disabled={!editable}
+          label=""
+          allHint="ALL_APPLICABLE（本技能声明适用的全部已发布规则）"
+          testid="skill-rulebindings-select"
+          onChange={(v) => setRuleBindings({ ...ruleBindings, ruleKeys: v })}
+        />
+        <div style={{ marginTop: 6 }}>
+          <label style={{ fontSize: 11, color: "var(--muted)" }}>
+            mode
+            <select
+              value={ruleBindings.mode}
+              disabled={!editable}
+              aria-label="规则模式"
+              style={{ display: "block" }}
+              onChange={(e) => setRuleBindings({ ...ruleBindings, mode: e.target.value as RuleBindings["mode"] })}
+            >
+              {["PRE_CHECK", "POST_CHECK", "BOTH"].map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+      <div style={{ marginTop: 12 }} data-testid="skill-mcp-refs">
+        <div className="section-title">MCP 引用</div>
+        <McpRefSelect value={mcpServers} disabled={!editable} testid="skill-mcpservers-select" onChange={setMcpServers} />
+      </div>
+
       {skill.resources.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div className="section-title">资源</div>

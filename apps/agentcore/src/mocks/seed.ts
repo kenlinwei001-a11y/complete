@@ -579,7 +579,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       id: "skl_seed_capacity", tenantId: SEED_TENANT, key: "capacity_analysis", version: 1,
       name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。",
       body: "# 产能分析\n\n1. 先看型号认证状态（量产/认证中）。\n2. P50 看均衡产线，P90 看保守口径。\n3. 缺口为负时优先评估外协与排程平移。",
-      resources: [], status: "PUBLISHED",
+      resources: [], mcpServers: [], status: "PUBLISHED",
     },
   ];
   const agents: AgentDefinition[] = [

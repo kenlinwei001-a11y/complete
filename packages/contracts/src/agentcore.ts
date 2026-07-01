@@ -21,6 +21,17 @@ export const AgentToolRefSchema = z.discriminatedUnion("kind", [
 ]);
 export type AgentToolRef = z.infer<typeof AgentToolRefSchema>;
 
+/** WO-RESOURCE-REF §2.1/§2.3：统一「规则绑定」子契约（agent/skill 同形，contracts 单一来源）。 */
+export const RuleBindingsSchema = z.object({
+  ruleKeys: z.union([z.array(z.string()), z.literal("ALL_APPLICABLE")]),
+  mode: z.enum(["PRE_CHECK", "POST_CHECK", "BOTH"]),
+});
+export type RuleBindings = z.infer<typeof RuleBindingsSchema>;
+
+/** WO-RESOURCE-REF：统一「MCP 引用」子契约（agent/skill 同形；mcpConfigId 为用户自建配置 id 或内置 solvers server 名）。 */
+export const McpServerRefSchema = z.object({ mcpConfigId: z.string() });
+export type McpServerRef = z.infer<typeof McpServerRefSchema>;
+
 export const AgentDefinitionSchema = z.object({
   id: z.string(), // agt_
   tenantId: z.string(),
@@ -31,17 +42,14 @@ export const AgentDefinitionSchema = z.object({
   model: z.string().default("claude-opus-4-8"),
   systemPrompt: z.string(),
   tools: z.array(AgentToolRefSchema),
-  ruleBindings: z.object({
-    ruleKeys: z.union([z.array(z.string()), z.literal("ALL_APPLICABLE")]),
-    mode: z.enum(["PRE_CHECK", "POST_CHECK", "BOTH"]),
-  }),
+  ruleBindings: RuleBindingsSchema,
   skills: z.array(
     z.object({
       skillId: z.string(),
       version: z.union([z.number().int(), z.literal("latest")]),
     }),
   ),
-  mcpServers: z.array(z.object({ mcpConfigId: z.string() })),
+  mcpServers: z.array(McpServerRefSchema),
   scopeDeclaration: z.object({
     objectTypes: z.array(z.string()),
     toolNames: z.array(z.string()),
@@ -151,6 +159,12 @@ export const SkillDefinitionSchema = z.object({
       description: z.string().optional(),
     }),
   ).default([]), // WO-12-1 根因修：缺省空数组——创建技能未传 resources 不再 400（CLI/任意客户端同享）
+  /** WO-RESOURCE-REF §2.3（additive）：skill 声明引用的规则（含约束条件）——与 AgentDefinition 同形。
+      诚实边界：本单让 skill *声明* 引用并落库 + 进被引用图；skill 被 agent 加载时是否二次评估其规则
+      属上游执行语义，本单不扩（详 WO §4）。 */
+  ruleBindings: RuleBindingsSchema.optional(),
+  /** WO-RESOURCE-REF §2.3（additive）：skill 声明引用的 MCP（含内置求解器 server）。 */
+  mcpServers: z.array(McpServerRefSchema).default([]),
   /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
 });

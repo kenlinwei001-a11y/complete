@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentDefinition, AgentToolRef } from "@platform/contracts";
 import { fetchAgents, fetchLlmProviders, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
+import { RuleRefSelect } from "@/components/resource-refs/ResourceRefSelect";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -288,20 +289,20 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
       )}
       {editable && (workflows?.length ?? 0) === 0 && <RefEmptyLink to="/admin/workflows" label="工作流" testid="agent-workflow-empty" />}
 
+      {/* WO-RESOURCE-REF §2.2（修真 bug）：规则绑定从自由文本 input → 规则库 picker（G-10 一等引用）。
+          从已发布规则勾选（含约束条件，本体 §86），后端 ruleBindings.ruleKeys=真规则码；保留右侧 mode select。 */}
       <div className="section-title">规则绑定</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
-        <input
-          style={{ flex: 1 }}
-          disabled={!editable}
-          aria-label="规则 keys"
-          value={form.ruleBindings.ruleKeys === "ALL_APPLICABLE" ? "ALL_APPLICABLE" : form.ruleBindings.ruleKeys.join(",")}
-          onChange={(e) =>
-            set("ruleBindings", {
-              ...form.ruleBindings,
-              ruleKeys: e.target.value === "ALL_APPLICABLE" ? "ALL_APPLICABLE" : e.target.value.split(",").filter(Boolean),
-            })
-          }
-        />
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <RuleRefSelect
+            value={form.ruleBindings.ruleKeys}
+            disabled={!editable}
+            label=""
+            allHint="ALL_APPLICABLE（本 agent 适用的全部已发布规则）"
+            testid="agent-rulebindings-select"
+            onChange={(v) => set("ruleBindings", { ...form.ruleBindings, ruleKeys: v })}
+          />
+        </div>
         <select value={form.ruleBindings.mode} disabled={!editable} aria-label="规则模式" onChange={(e) => set("ruleBindings", { ...form.ruleBindings, mode: e.target.value as "PRE_CHECK" | "POST_CHECK" | "BOTH" })}>
           {["PRE_CHECK", "POST_CHECK", "BOTH"].map((m) => (
             <option key={m}>{m}</option>
