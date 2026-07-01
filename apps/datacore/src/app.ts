@@ -43,6 +43,8 @@ import { planSlice } from "./ontology/slice-planner.js";
 import { resolveFieldRoles } from "./solvers/field-roles.js";
 import { parsePrototypeHtml, reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema } from "@platform/contracts";
+import { classifySourceOrigin } from "@platform/contracts";
+import xlsx from "node-xlsx";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { RetentionTableSchema, RETENTION_DEFAULTS } from "@platform/contracts"; // WO-RETENTION（⑤·数据留存/TTL）
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
@@ -3039,6 +3041,64 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const ds = await repos.rawDatasets.get(c.tenantId, id);
     if (!ds) throw notFound("raw dataset");
     return { dataset: ds, rows: await repos.rawRows.list(c.tenantId, id) };
+  });
+  // WO-SOURCE-TRANSPARENCY · 数据集实际数据 Excel/CSV 导出（消灭"走捷径"·让每一行业务数据从"数据连接器"页可下载可审计）。
+  //  - format=xlsx（默认）：node-xlsx 生成真 .xlsx（首行表头 + 各行值）。format=csv：RFC4180 转义。
+  //  - R2 租户隔离：经 ctx(req) + rawDatasets.get 只取本租户数据集；行级 A6 口径同既有 /rows 端点（同源 rawRows.list）。
+  //  - R13 诚实：来源为合成（mock_* / config.synthetic）→ 文件名带 `.synthetic` 段，导出物自带"这是合成数据"标识，绝不冒充真实上传。
+  //  - R6 确定性：行序稳定（rawRows.list 原序）、列序 = 字段画像 fields 序，无 Date.now/随机 → 同数据集同字节。
+  app.get("/a/v1/raw-datasets/:id/export", async (req, reply) => {
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    const format = ((req.query as { format?: string }).format ?? "xlsx").toLowerCase();
+    if (format !== "xlsx" && format !== "csv") throw validationError("format must be xlsx or csv");
+    const ds = await repos.rawDatasets.get(c.tenantId, id);
+    if (!ds) throw notFound("raw dataset");
+    const rows = await repos.rawRows.list(c.tenantId, id);
+    // 列序：优先字段画像顺序（稳定），补上行内出现但未画像的键（诚实全列）。
+    const cols: string[] = [];
+    const seen = new Set<string>();
+    for (const f of ds.fields ?? []) if (f?.name && !seen.has(f.name)) { seen.add(f.name); cols.push(f.name); }
+    for (const r of rows) for (const k of Object.keys(r)) if (k !== "_editedAt" && !seen.has(k)) { seen.add(k); cols.push(k); }
+    // R13 诚实：判定来源是否合成 → 文件名标 `.synthetic`（导出物自带来源诚实位，不冒充真实）。
+    const conn = ds.sourceConnId ? await repos.connections.get(c.tenantId, ds.sourceConnId) : undefined;
+    const isSynthetic = conn ? classifySourceOrigin(conn.connectorTypeKey, conn.config) === "synthetic" : false;
+    // 文件名段：HTTP 头值须 latin1，故非 ASCII（含 CJK 连接名）折成 `_`（避免 header 抛错）。
+    // 数据集名多为 ASCII 类型键（Order/Base…）故信息保真；连接名若纯 CJK 则回退占位。
+    const safe = (s: string) => {
+      const cleaned = (s || "").replace(/[^\x20-\x7E]/g, "_").replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
+      return cleaned || "source";
+    };
+    const base = `${safe(conn?.name ?? "source")}__${safe(ds.name)}${isSynthetic ? ".synthetic" : ""}`;
+    const cell = (v: unknown): string | number | boolean => {
+      if (v == null) return "";
+      if (typeof v === "number" || typeof v === "boolean") return v;
+      if (typeof v === "string") return v;
+      return JSON.stringify(v);
+    };
+    if (format === "csv") {
+      const esc = (v: unknown) => {
+        const s = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const lines = [cols.map(esc).join(",")];
+      for (const r of rows) lines.push(cols.map((k) => esc(r[k])).join(","));
+      return reply
+        .header("content-type", "text/csv; charset=utf-8")
+        .header("content-disposition", `attachment; filename="${base}.csv"`)
+        // 跨源下载（前端 :5173 → datacore :4001）须显式暴露 content-disposition，浏览器才读得到文件名（.synthetic 诚实位）。
+        .header("access-control-expose-headers", "content-disposition")
+        .send("﻿" + lines.join("\r\n"));
+    }
+    // xlsx：node-xlsx build([{name, data:[header,...rows]}])。工作表名去非法字符、限 31 字符（xlsx 规范）。
+    const sheetName = safe(ds.name).slice(0, 31) || "data";
+    const data: (string | number | boolean)[][] = [cols, ...rows.map((r) => cols.map((k) => cell(r[k])))];
+    const buf = xlsx.build([{ name: sheetName, data, options: {} }]);
+    return reply
+      .header("content-type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .header("content-disposition", `attachment; filename="${base}.xlsx"`)
+      .header("access-control-expose-headers", "content-disposition")
+      .send(buf);
   });
   // 数据源节点在线编辑（A7 增量）：行内修改上传数据并留痕（_editedAt）。
   app.patch("/a/v1/raw-datasets/:id/rows/:idx", async (req) => {

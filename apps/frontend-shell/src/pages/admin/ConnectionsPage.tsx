@@ -2,17 +2,22 @@ import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ConnectorType } from "@platform/contracts";
+import { classifySourceOrigin } from "@platform/contracts";
 import {
   createConnection,
+  downloadRawDataset,
   fetchConnections,
   fetchConnectorCategories,
   fetchConnectorTypes,
   fetchDataHealth,
+  fetchRawDatasetRows,
+  fetchRawDatasets,
   fetchSyncJob,
   testConnection,
   triggerSync,
   uploadFile,
 } from "@/api/endpoints";
+import { DataModeBadge } from "@/components/DataModeBadge";
 import { DataCategoriesPanel } from "./DataCategoriesPanel";
 import { healthStatusLabel, HEALTH_POLL_MS } from "@/components/Health/HealthBadge";
 import { JsonSchemaForm } from "@/components/JsonSchemaForm/JsonSchemaForm";
@@ -179,6 +184,11 @@ export default function ConnectionsPage() {
         )}
       </div>
 
+      {/* WO-SOURCE-TRANSPARENCY：每个连接的全部源数据集 —— 逐张预览行 + 一键下载 Excel/CSV（合成源亦透明可审计） */}
+      {(connections ?? []).filter((c) => !catFilter || c.category === catFilter).map((c) => (
+        <ConnectionDatasetsPanel key={c.id} connId={c.id} connName={c.name} connectorTypeKey={c.connectorTypeKey} config={c.config} />
+      ))}
+
       {wizardOpen && (
         <ConnectionWizard
           onClose={() => setWizardOpen(false)}
@@ -278,6 +288,135 @@ function ConnectionWizard({ onClose, onCreated }: { onClose: () => void; onCreat
         </div>
       )}
     </Modal>
+  );
+}
+
+/**
+ * WO-SOURCE-TRANSPARENCY · 连接的数据集面板：露该连接**全部** RawDataset（不再只首个），
+ * 每张显 行数/字段数 + 「预览」（前 50 行真数据）+「下载 Excel」「下载 CSV」（命中后端导出端点）。
+ * 合成源常驻 SYNTHETIC 徽标 + 诚实文案（透明 ≠ 冒充真实）。
+ */
+function ConnectionDatasetsPanel({
+  connId,
+  connName,
+  connectorTypeKey,
+  config,
+}: {
+  connId: string;
+  connName: string;
+  connectorTypeKey: string;
+  config: Record<string, unknown>;
+}) {
+  const { data: datasets } = useQuery({
+    queryKey: ["a", "raw-datasets", { connId }],
+    queryFn: () => fetchRawDatasets(connId),
+  });
+  const isSynthetic = classifySourceOrigin(connectorTypeKey, config) === "synthetic";
+  const list = datasets ?? [];
+  return (
+    <div className="panel" style={{ marginTop: 14 }} data-testid={`conn-datasets-${connId}`}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <div className="section-title" style={{ margin: 0 }}>
+          <span className="zh">{connName}</span> · {t.datasetsTitle}
+        </div>
+        {isSynthetic && <DataModeBadge mode="SYNTHETIC" testId={`conn-synthetic-${connId}`} />}
+        <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>{list.length} 张</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
+        {t.datasetsHint}
+        {isSynthetic && <span style={{ color: "var(--warn, #caa23a)", marginLeft: 4 }}>（{t.syntheticNote}）</span>}
+      </div>
+      {list.length === 0 && <div className="empty-state" data-testid={`conn-datasets-empty-${connId}`}>{t.noDatasets}</div>}
+      {list.map((ds) => (
+        <RawDatasetRow key={ds.id} dsId={ds.id} name={ds.name} rowCount={ds.rowCount} fieldCount={ds.fields?.length} synthetic={isSynthetic} />
+      ))}
+    </div>
+  );
+}
+
+/** 单张数据集：概要行 + 可展开的行预览表 + 下载按钮。 */
+function RawDatasetRow({
+  dsId,
+  name,
+  rowCount,
+  fieldCount,
+  synthetic,
+}: {
+  dsId: string;
+  name: string;
+  rowCount?: number;
+  fieldCount?: number;
+  synthetic: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ borderTop: "1px solid var(--line)", padding: "6px 2px" }} data-testid={`ds-item-${dsId}`}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <strong className="mono" style={{ fontSize: 12 }}>{name}</strong>
+        {typeof rowCount === "number" && <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{t.rows(rowCount)}</span>}
+        {typeof fieldCount === "number" && <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{t.fieldsCount(fieldCount)}</span>}
+        <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+          <button className="btn sm" data-testid={`ds-preview-${dsId}`} onClick={() => setOpen((v) => !v)}>
+            {open ? t.hidePreview : t.preview}
+          </button>
+          <button
+            className="btn sm"
+            data-testid={`ds-download-xlsx-${dsId}`}
+            onClick={() => void downloadRawDataset(dsId, "xlsx").catch(toastError)}
+          >
+            {t.downloadXlsx}
+          </button>
+          <button
+            className="btn sm"
+            data-testid={`ds-download-csv-${dsId}`}
+            onClick={() => void downloadRawDataset(dsId, "csv").catch(toastError)}
+          >
+            {t.downloadCsv}
+          </button>
+        </div>
+      </div>
+      {open && <RawDatasetRowsTable dsId={dsId} synthetic={synthetic} />}
+    </div>
+  );
+}
+
+/** 行预览表（前 50 行真数据）。合成源在表上方常驻 SYNTHETIC 徽标（透明 ≠ 冒充）。 */
+function RawDatasetRowsTable({ dsId, synthetic }: { dsId: string; synthetic: boolean }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["a", "raw-rows", dsId],
+    queryFn: () => fetchRawDatasetRows(dsId),
+  });
+  if (isLoading) return <div className="empty-state" style={{ fontSize: 11 }}>{zh.common.loading}</div>;
+  const rows = (data?.rows ?? []).slice(0, 50);
+  if (rows.length === 0) return <div className="empty-state" style={{ fontSize: 11 }} data-testid={`ds-rows-empty-${dsId}`}>{t.noDatasets}</div>;
+  const cols = Object.keys(rows[0]!).filter((k) => k !== "_editedAt");
+  return (
+    <div style={{ marginTop: 6, overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        {synthetic && <DataModeBadge mode="SYNTHETIC" testId={`ds-synthetic-${dsId}`} />}
+        <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{t.previewRows(rows.length)}</span>
+      </div>
+      <table className="cmp" data-testid={`ds-preview-table-${dsId}`}>
+        <thead>
+          <tr>
+            <th>#</th>
+            {cols.map((col) => <th key={col}>{col}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} data-testid={`ds-preview-row-${dsId}-${i}`}>
+              <td>{i}</td>
+              {cols.map((col) => (
+                <td key={col} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {row[col] == null ? "" : typeof row[col] === "object" ? JSON.stringify(row[col]) : String(row[col])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

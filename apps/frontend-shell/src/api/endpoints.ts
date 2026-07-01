@@ -50,6 +50,7 @@ import type {
   PropagationRule,
 } from "@platform/contracts";
 import { api } from "./apiClient";
+import { tokenStore } from "./tokenStore";
 import type {
   FallbackClusterVM,
   ObjectsPage,
@@ -451,6 +452,31 @@ export const editRawDatasetRow = (id: string, idx: number, patch: Record<string,
     method: "PATCH",
     body: patch,
   });
+/**
+ * WO-SOURCE-TRANSPARENCY · 数据集实际数据下载（Excel / CSV）。
+ * 带 Authorization 拉 blob（导出端点回 attachment 二进制），再触发浏览器下载。
+ * 文件名以后端 content-disposition 为准（合成源带 `.synthetic` 段，诚实不冒充真实）。
+ */
+export async function downloadRawDataset(id: string, format: "xlsx" | "csv"): Promise<void> {
+  const token = tokenStore.get();
+  const res = await fetch(`${api.baseUrl("a")}/a/v1/raw-datasets/${id}/export?format=${format}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`导出失败（HTTP ${res.status}）`);
+  const disp = res.headers.get("content-disposition") ?? "";
+  const m = /filename="?([^"]+)"?/.exec(disp);
+  const filename = m?.[1] ?? `${id}.${format}`;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 /**
  * 活数据可溯（PRD-live-traceable-data §3.2）：对象 → 原始行 → RawDataset → 连接器 + 派生口径。
  * 推演结论里的数据"悬浮溯源"用它："这个数从哪来"。
