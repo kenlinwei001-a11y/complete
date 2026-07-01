@@ -798,7 +798,7 @@
       "title": "深色字→浅色对比度",
       "doc": "docs/WO-CONTRAST-FIX.md",
       "priority": "P3",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R22·CSS",
@@ -871,7 +871,8 @@
             "run": "cd /home/user/complete && VITE_MOCK=1 pnpm --filter frontend-shell dev → 浏览器打开 http://localhost:5173 登录 demo/admin/demo1234 → 侧栏进「规划体检」(PlanAuditView) → 点结论旁「▸ 推演过程（编排 DAG）」折叠面板展开 → 定位节点「2. 检索切片」→ 截图存 docs/evidence/：确认副行「SliceSpec」及底部图例文字明显变亮可读，主行「检索切片」与缺口红/蓝/半透明状态视觉不变"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "DR-AUDIT",

@@ -10,7 +10,7 @@
   flex-wrap: wrap;
   gap: 12px;
   font-size: 10.5px;
-  color: var(--muted2);
+  color: var(--muted);
   margin-bottom: 4px;
 }
 .legendItem {
@@ -62,7 +62,7 @@
 }
 .nodeKind {
   font-size: 8px;
-  fill: var(--muted2);
+  fill: var(--muted);
   font-family: var(--font-mono);
 }
 .ipo {
@@ -79,6 +79,6 @@
   margin-top: 3px;
 }
 .ipoRow > span {
-  color: var(--muted2);
+  color: var(--muted);
   font-size: 10.5px;
 }

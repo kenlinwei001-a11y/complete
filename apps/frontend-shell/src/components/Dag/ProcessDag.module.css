@@ -4,7 +4,7 @@
   flex-wrap: wrap;
   gap: 12px;
   font-size: 10.5px;
-  color: var(--muted2);
+  color: var(--muted);
   margin-bottom: 4px;
 }
 .legendItem {
