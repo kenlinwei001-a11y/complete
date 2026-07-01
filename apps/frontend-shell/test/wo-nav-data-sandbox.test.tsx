@@ -28,20 +28,11 @@ describe("WO-NAV-DATA / WO-NAV-SANDBOX · 导航 IA 重组", () => {
     expect(ledgerInLandmap).not.toBeInTheDocument();
   });
 
-  it("WO-NAV-SANDBOX：sim.sandbox 关 → 推演组无沙盘/初始化项（R3 门控）", async () => {
-    // 显式建立"entitlement 关"前置：过滤掉 sim.sandbox（WO-E2 起 planner mock 默认暗发 sim.sandbox
-    // 以支撑决策入口「开 what-if」进沙盘，故本门控用例须自控 entitlement 而非依赖 fixture 默认）。
-    server.use(
-      http.get("*/a/v1/me/workspace", ({ request }) => {
-        const account = accountFromAuth(request.headers.get("authorization")) ?? ACCOUNTS[0]!;
-        const ws = workspaceForAccount(account, {}, 1);
-        return HttpResponse.json({ ...ws, features: (ws.features ?? []).filter((f) => f !== "sim.sandbox") });
-      }),
-    );
+  it("WO-NAV-SANDBOX：sim.sandbox 关 → 推演组无沙盘/初始化项（R3 门控，默认态）", async () => {
     loginAs("planner");
     renderApp("/v/dash");
     const nav = await screen.findByTestId("nav-business");
-    // 无 sim.sandbox entitlement → 沙盘项不出现
+    // mock 默认无 sim.sandbox entitlement（暗发·默认关）→ 沙盘项不出现
     expect(within(nav).queryByTestId("nav-sim-sandbox")).not.toBeInTheDocument();
     expect(within(nav).queryByTestId("nav-sim-init")).not.toBeInTheDocument();
   });

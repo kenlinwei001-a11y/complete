@@ -462,8 +462,9 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     if (f === "view.dash") return [f, "view.dash"];
     return [f];
   });
-  // WO-E2：推演沙盘暗发 entitlement（`sim.sandbox`）在 mock 下对 planner 开——使决策入口「开 what-if」可进沙盘。
-  if (account.username === "planner") routeFeatures.push("sim.sandbox", "sim.certification", "sim.propagation");
+  // WO-E2 修正（R3 暗发不破）：sim.sandbox 是暗发 entitlement，**默认关**——不在 mock 里对任何角色全局打开
+  // （曾对 planner 全局开导致 R3 门控失效：sim.sandbox 关时沙盘 nav 仍渲染）。决策入口「开 what-if」按钮由
+  // useFeature("sim.sandbox") 门控（关→按钮不现，不落沙盘 404 死路）；需演示时按租户/角色真开通 entitlement 即亮。
 
   return {
     tenant: { id: TENANT_ID, name: "星辰电池制造", industry: "battery-manufacturing" },

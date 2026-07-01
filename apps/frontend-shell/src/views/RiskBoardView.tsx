@@ -10,6 +10,7 @@ import { EChart } from "@/components/ui/EChart";
 import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
 import { useOpenWhatIf } from "./sim/whatif";
+import { useFeature } from "@/workspace/featureGate";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { DataModeBadge } from "@/components/DataModeBadge";
@@ -32,6 +33,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
   // WO-E2（沙盘 what-if 进决策日常）：风险红点一键「开 what-if」→ 带该风险上下文进沙盘（复用既有沙盘链）。
   const openWhatIf = useOpenWhatIf();
+  // R3 修正：沙盘暗发·默认关——仅 sim.sandbox entitlement 开通时才现「开 what-if」按钮，否则关（避免落沙盘 404 死路）。
+  const canWhatIf = useFeature("sim.sandbox");
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
@@ -122,23 +125,26 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
       {detail && (
         <Modal title={`${detail.base} · ${detail.factor}`} onClose={() => setDetail(null)} width={720}>
-          {/* WO-E2：就此风险一键「开 what-if」→ 带上下文（基地/因素）进推演沙盘，对比基线、决策完即弃/采纳（R3 隔离）。 */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-            <button
-              className="btn sm primary"
-              data-testid="risk-open-whatif"
-              onClick={() =>
-                openWhatIf({
-                  source: "risk-board",
-                  subject: detail.base,
-                  factor: detail.factor,
-                  label: `${detail.base} · ${detail.factor}`,
-                })
-              }
-            >
-              就此问题开 what-if 推演 →
-            </button>
-          </div>
+          {/* WO-E2：就此风险一键「开 what-if」→ 带上下文（基地/因素）进推演沙盘，对比基线、决策完即弃/采纳（R3 隔离）。
+              R3 门控：仅 sim.sandbox entitlement 开通才现（关→不现，避免落沙盘 404 死路）。 */}
+          {canWhatIf && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+              <button
+                className="btn sm primary"
+                data-testid="risk-open-whatif"
+                onClick={() =>
+                  openWhatIf({
+                    source: "risk-board",
+                    subject: detail.base,
+                    factor: detail.factor,
+                    label: `${detail.base} · ${detail.factor}`,
+                  })
+                }
+              >
+                就此问题开 what-if 推演 →
+              </button>
+            </div>
+          )}
           <div className="section-title">{zh.risk.dailyStrip}</div>
           <EChart
             height={140}
