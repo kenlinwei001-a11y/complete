@@ -718,8 +718,8 @@
       "title": "本体文件优化+§0.5快查索引",
       "doc": "docs/WO-ONTOLOGY-FILE-OPT.md",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "R21·文档工程",
       "acceptance": {
