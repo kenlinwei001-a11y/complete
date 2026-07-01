@@ -474,8 +474,8 @@
       "title": "agent资产广度+全入口场景预配",
       "doc": "docs/WO-AGENT-ASSET-BREADTH.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "R16",
       "acceptance": {
