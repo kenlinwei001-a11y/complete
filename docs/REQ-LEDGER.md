@@ -70,7 +70,7 @@
 
 ## §4 landed 对账（workflow landed-status agent）
 - ✅ LANDED：WO-SCENE-C(`8cbd5fa`)·WO-NAV(`f969638`)·WO-QUARANTINE(`f969638`)——均有 evidence+真浏览器实拍。
-- 🔴 **NOT-LANDED**：WO-E1(校准活体常态化)·WO-E2(沙盘what-if)——**仅设计施工单`8d021d0`·零代码**(scheduler 有 RETENTION_SWEEP 无 CALIBRATION_SWEEP·无 openWhatIf)。
+- ✅ **E1-E2 已核发**(`a8cbdf6`+R3修`511120b`·审核核发)：从 NOT-LANDED 零代码 → **真落地闭环**。E1 校准活体(CALIBRATION_SWEEP cron→runAll·convergence mapeAfter 25→13.64 越用越准·real-HTTP 测)·E2 一键 what-if(RiskBoard 红点→带上下文洛阳·设备OEE 进沙盘·**真浏览器像素级** `e2-c7-sandbox-whatif.png`·R3隔离)。首轮 R3 门控回归红→我 BLOCK→dev 修(sim.sandbox 默认关+openWhatIf entitlement 门控)→复验转绿。契约 C1-C7 逐条过。closure `REVIEW-E1-E2-closure.md`。
 
 ## §5 设计交付物（MEANS·🔵≠真闭·待 dev 建+我复验）
 SOURCE-TRANSPARENCY · ACTUATE · OBSERVABILITY · **WO-SOLVER-ONTOLOGY-BINDING(B3命门·待写)** · WO-MULTISRC-FUSION-DOMAIN(N1·待写) · DISPATCH-MANIFEST(待出)。

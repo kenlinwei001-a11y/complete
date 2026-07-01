@@ -314,7 +314,7 @@
       "title": "校准活体常态化 + 沙盘what-if进决策",
       "doc": "docs/WO-design-E-calibration-sandbox-live-loop.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "仅设计零代码·NOT-LANDED",
