@@ -6,7 +6,7 @@
       "title": "求解器schema由本体绑定驱动(解B3命门)",
       "doc": "docs/WO-SOLVER-ONTOLOGY-BINDING.md",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "真实数据出真答案的前提",
@@ -79,7 +79,8 @@
             "run": "# 定位新增行业无关单测（应在 apps/datacore/src/solvers/*.test.ts 或 __tests__）\nrg -n 'SolverBinding|order_fullchain' apps/datacore/src --glob '*.test.ts' -l\npnpm --filter datacore test -t 'order_fullchain'  # 期望含 A绑Order/B绑自定义类型 两臂各出非拒答案的用例·全绿"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "FIX-2CONCERN",
