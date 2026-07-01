@@ -42,7 +42,7 @@
 | **R16** | **agent资产广度+每个需LLM入口预设场景配置(6229)** | ◐ | SCENE-C铺5场景agent(landed)·但"资产广度"质疑+全入口预配体系未闭 |
 | R17 | 二级页普遍缺回退(1650/6229/6337) | ◐ | OrderChain有回退(R7 U3)·**全局其他二级页未普查** |
 | R18 | 逐源真对象数归因+真连接器接入臂(7066/7134) | ◐ | BUILDER-ROLE逐源归因(landed PASS)·真接入臂=合成单源(option A证真上传臂在但demo不走) |
-| R19 | 1C规则文档抽取解析率+异步化(7134/7939) | ❓🔴 | 你标"1C诚实未闭·需独立单"·未核当前状态 |
+| R19 | 1C规则文档抽取解析率+异步化(7134/7939) | 🟢 **闭** | 1C-PARSE(`ab61e2a`·审核核发)：强约束抽取 prompt 提解析率 + `extractProgress` 进度可视(前端进度条真浏览器像素级实拍 3/4+失败1·`rd-c7-progress.png`) + Anthropic 路有界纠错重试(anthropic.test.ts 3 测)。C1-C5 确定性单测+grep 验·C7 进度条实拍·C6 零新增回归。诚实：LLM 活取端到端受环境无 LLM 限制·抽取逻辑由 ScriptedLlm 单测(ruledocs.test.ts 真路由)覆盖。closure `REVIEW-1C-PARSE-closure.md` |
 | R20 | QOS Path B终答流式+逐字流实拍(7634/8215) | ✅ | WO-Q1增量2/3 真Kimi验(前序) |
 | **R21** | **ontology文件过大优化(markdown非YAML)(4406)** | ❓ | 未核是否加§0.5快查索引 |
 | **R22** | **深色字→浅色对比度(8438②)** | ❓ | CSS-vars门在·该具体对比度bug未核 |

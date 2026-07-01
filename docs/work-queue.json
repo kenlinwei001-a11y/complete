@@ -476,7 +476,7 @@
       "title": "agent资产广度+全入口场景预配",
       "doc": "docs/WO-AGENT-ASSET-BREADTH.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
       "note": "R16",
@@ -550,7 +550,7 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "C1/C4/C5/C6 config真跑已验(门绿·scene-entries=13·skill5/wf3)·但C3/C7 runtime grounded-answer需活LLM QOS·本环境无LLM provider·前端grounded answer未实拍·不凭config绿done。待有LLM环境复验补C3/C7实拍。见REVIEW-AGENT-BREADTH-note.md"
     },
     {
       "id": "GLOBAL-BACK",
@@ -637,7 +637,7 @@
       "title": "规则文档抽取解析率+异步化",
       "doc": "docs/WO-1C-PARSE-ASYNC.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "R19",
