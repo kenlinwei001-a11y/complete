@@ -231,7 +231,7 @@
       "title": "N1多源融合+冲突仲裁+测谎",
       "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [
         "SOLVER-BINDING"
@@ -307,14 +307,14 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "回归红:ontology-core.test.ts:490 SOLVER_KEYS.length=47(加multisource_fusion)但断言仍46→pnpm -r test红。修:计数46→47。融合行为本身7/7测+FDE真跑已验证"
     },
     {
       "id": "E1-E2",
       "title": "校准活体常态化 + 沙盘what-if进决策",
       "doc": "docs/WO-design-E-calibration-sandbox-live-loop.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
       "note": "仅设计零代码·NOT-LANDED",
@@ -388,7 +388,7 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "回归红:wo-nav-data-sandbox.test.tsx:37 sim.sandbox关时nav-sim-sandbox仍渲染(R3门控失效·openWhatIf沙盘入口未判entitlement)→pnpm -r test红。修:沙盘nav按features.includes(sim.sandbox)门控"
     },
     {
       "id": "RESOURCE-REF",
