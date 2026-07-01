@@ -168,7 +168,7 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
     if (dc.live) return { value: dc.value, live: true };
   }
   // 治本：无任何真实数据源（无逐设备 OEE/利用率/良率·无真需求-产能预测）→ 不伪造决策级紧张度。
-  // （旧行 `return { value: mockTightness(...), live:false }` 是洛阳·设备OEE 假红的根源，已删。）
+  // （旧回落经 mockTightness 哈希造恒红越线，是洛阳·设备OEE 假红的根源 G-DM-1，已删。）
   return { value: null, live: false };
 }
 

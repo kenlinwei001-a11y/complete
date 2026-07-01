@@ -33,9 +33,24 @@ for (const [schema, label] of [
 }
 
 // ② risk_timeline 求解器逐卡透 dataMode + 实测当前张力（liveTightness），不裸用 mockTightness 当真值。
+//    WO-KILL-MOCK-RED v2：无真源不伪造——liveTightness 返回 value:null/live:false（删 mockTightness 决策级回落），
+//    无真源卡出 hasData:false + noDataReason + crossDay/peak 空；决策级越线/planRows 只来自 live===true。
 const risk = read("apps/datacore/src/solvers/risk.ts");
-if (!/dataMode:\s*lt\.live/.test(risk) || !/currentTightness/.test(risk)) {
-  fail("risk.ts riskTimeline 未逐卡透 dataMode/currentTightness（liveTightness 实测当前张力）");
+if (!/currentTightness/.test(risk)) {
+  fail("risk.ts riskTimeline 未逐卡透 currentTightness（liveTightness 实测当前张力）");
+}
+if (!/return\s*\{\s*value:\s*null,\s*live:\s*false\s*\}/.test(risk)) {
+  fail("risk.ts liveTightness 无真源未返回 {value:null,live:false}（治本删 mockTightness 决策级回落·G-DM-1 回潮）");
+}
+if (!/hasData:\s*false/.test(risk) || !/noDataReason/.test(risk)) {
+  fail("risk.ts riskTimeline 无真源卡缺 hasData:false + noDataReason（无真源诚实空态未落·假红回潮）");
+}
+if (/return\s*\{\s*value:\s*mockTightness\(/.test(risk)) {
+  fail("risk.ts 仍有 `return { value: mockTightness(...) }` 决策级回落（G-DM-1 假红根断点回潮）");
+}
+// buildRiskPlanRows / 卡循环：hasData===false 的卡不进决策级 planRows / 不产越线。
+if (!/card\.hasData === false/.test(risk) && !/hasData: false/.test(risk)) {
+  fail("risk.ts buildRiskPlanRows 未跳过 hasData===false 卡（无真源卡进处置工单·伪造可行动结论）");
 }
 
 // ③ capacity_forecast 紧张度改用 liveTightness（真 OEE/利用率/良率），不再裸 import mockTightness 绕真数据。
@@ -114,8 +129,36 @@ if (!/DataModeBadge/.test(auditView) || !/dataMode/.test(auditView)) {
   fail("PlanAuditView 未用 DataModeBadge 消费 audit_timeline dataMode（审计曲线裸渲染回潮·A1）");
 }
 
+// ⑧ WO-KILL-MOCK-RED v2 语义门（治本·牙齿自证）：从「存在性」升级为「行为」——导入 dist，构造**零真数据**
+//    SolverContext（一个基地对象但无 Equipment/Line/Process/DemandSegment/SopVersion·无真源），真调
+//    riskTimeline，断言无真源因子决策级字段为空/中性（crossDay===null·peak===null·hasData===false·planRows===[]）。
+//    把 risk.ts 治本行（liveTightness 返 null）改回 mockTightness → 该因子会出红 crossDay → 本门必红（牙齿）。
+try {
+  const { riskTimeline } = await import("../apps/datacore/dist/solvers/risk.js");
+  const { BATTERY_SOLVER_PARAMS } = await import("../apps/datacore/dist/synthetic/battery.js");
+  const zeroCtx = {
+    tenantId: "gate-zero", params: BATTERY_SOLVER_PARAMS,
+    bases: [{ props: { baseId: "zbase", name: "零数据基地", util: 0 } }],
+    lines: [], processes: [], equipment: [], maintPlans: [], models: [], orders: [],
+    shipments: [], segments: [], dataHealth: [], certByModel: new Map(),
+    demandSegments: [], sopVersions: [], materials: [], materialBatches: [],
+    customers: [], arInvoices: [], certifications: [],
+  };
+  // 无真源因子（非设备OEE/瓶颈工序/良率·非需求驱动·无真产能）→ 必须诚实空态（不伪造决策级红）。
+  for (const factor of ["物流时长", "换型损失"]) {
+    const out = riskTimeline(zeroCtx, { base: "零数据基地", factor, horizon: 30 });
+    const card = (out.cards || [])[0] || {};
+    if (card.hasData !== false) fail(`v2 语义门：零数据 riskTimeline(${factor}) 卡 hasData!==false（无真源仍伪造数据·G-DM-1）`);
+    if (card.crossDay !== null && card.crossDay !== undefined) fail(`v2 语义门：零数据 riskTimeline(${factor}) crossDay=${card.crossDay}!==null（无真源伪造越线红·G-DM-1 回潮）`);
+    if (card.peak !== null && card.peak !== undefined) fail(`v2 语义门：零数据 riskTimeline(${factor}) peak=${card.peak}!==null（无真源伪造峰值·G-DM-1）`);
+    if ((out.planRows || []).length !== 0) fail(`v2 语义门：零数据 riskTimeline(${factor}) planRows.length=${(out.planRows||[]).length}!==0（无真源伪造处置工单·可行动结论）`);
+  }
+} catch (e) {
+  fail(`v2 语义门：无法导入 dist 真调 riskTimeline（先 pnpm --filter datacore build）：${e.message}`);
+}
+
 if (red) {
-  console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 前端消费显估算/实测（抄 capex_scenario 缺数抛错 / LedgerView 逐格 Provenance）。");
+  console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 无真源不伪造决策红（risk.ts liveTightness 返 null·卡 hasData:false·planRows 只 live）+ 前端消费显估算/实测/空态。");
   process.exit(1);
 }
 console.log("· genuine-sim：risk_timeline/capacity_forecast/bottleneck_matrix 输出带 dataMode；前端 RiskBoardView/ProjectSimView 消费 dataMode/live 显估算/实测；bottleneck 前端传 LIVE。");
