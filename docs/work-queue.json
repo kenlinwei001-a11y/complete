@@ -1053,6 +1053,386 @@
           }
         ]
       }
+    },
+    {
+      "id": "INTAKE-VISIBILITY",
+      "title": "上传→建模→物化一条龙可见+引导(对应用户两问:看不到导入数据)",
+      "doc": "docs/WO-VISIBILITY-CHAIN.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO断层·上传后弹走看不到行·objectify skip列无处确认·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "用户在分类/连接页上传一个含新字段的文件后，【当页就看到导入的行】(不被无条件弹到 /schema 页)；对 fresh 租户 objectify 时列名没精确命中的列，被写进「待确认」队列并在【新的 SchemaReconcile 页】可逐列确认(USE/RENAME/NEW/MERGE/DISCARD)→resolve→重跑物化→对象浏览器里见到实例；且对象浏览器/切片库的空态给出「你有 N 张已导入未建模→去建模」深链回接，不再是空态死路。后端 raw-datasets/rows/reconcile 的真值 = 前端所见同值。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "上传就地可见:真浏览器登录 demo/admin/demo1234 在数据分类/连接页上传含新字段 CSV → 页面【不跳走】(location.pathname 不变为 /schema)，同页连接数据集面板自动展开并滚动到该连接、默认打开新数据集预览，表格显 ≥2 行真实业务行且列名与上传文件表头一致(DataCategoriesPanel.tsx:58 的无条件 navigate 已改为就地 invalidate raw-datasets+展开)。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "skip列入待确认队列:fresh 租户上传后 POST /a/v1/databuilder/intake/objectify → 列名未精确命中的列不再静默 skip 丢弃，而是 GET /a/v1/databuilder/reconcile-candidates?connId=<id>(新端点)返回 length>0，每项含 {column, sampleValues, suggestedAction}。改动前该端点不存在/返回空(命门:skip列不入队列·前端零 API)。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "SchemaReconcile 页真存在且挂「建模与图谱」组:从 C4 空态深链或直链进入 SchemaReconcile 页(pages/admin/ 下新文件)→ 列出候选列 + 每列 USE/RENAME/NEW/MERGE/DISCARD 选择 + resolve 提交按钮;提交后触发重跑物化。改动前 SchemaReconcile 页在 pages/admin/ 无文件、fetchReconcileCandidates 不存在。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "空态深链回接:fresh 租户(0 已建模类型)对象浏览器 ObjectTypesBrowserPage / 切片库 SlicesPage 空态显【N 张已导入未建模→去建模】可点链接(带 ?datasets= 深链)，点它落建模页且预填该数据集集合;非死空态。"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "字段核对多表可选:FieldProfilePage 不再硬取 fields[0] 只编第一张表，出现数据集选择器可切换编辑第 2+ 张表的字段画像(FieldProfilePage.tsx:88 的 [0] 已改)。"
+          },
+          {
+            "id": "C6",
+            "type": "curl",
+            "assert": "IPO 端到端闭环 curl 可证:上传→GET /a/v1/raw-datasets/{id}/rows 得真行 R →objectify→reconcile-candidates→逐列 resolve(全 USE/NEW)→重跑物化→GET 对象实例列表见实例，采样某实例的某属性值严格等于上传行 R 中该字段值(前端所见=后端真值·非装饰)。"
+          },
+          {
+            "id": "C7",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，datacore≥69/agentcore≥66/frontend≥25 不回退，且新增(reconcile-candidates 端点测·SchemaReconcile 页测·DataCategoriesPanel 就地展开测)计入。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "VITE_MOCK=0 前端连本地 4001(SEED_DEMO=1)→登录 demo/admin/demo1234→数据分类页上传 newfields.csv(含 baseId,name,util,gwh,newcol_carbon,newcol_shift)→断言 location.pathname 不含 /schema、同页出现新连接数据集面板已展开且预览表格 ≥2 行、表头含 newcol_carbon/newcol_shift。截图入 docs/evidence/INTAKE-VIS-C1.png。"
+          },
+          {
+            "for": "C2",
+            "run": "起内存态 datacore(PORT=4001 SEED_DEMO=1 …)。CONN=$(curl -s -XPOST :4001/a/v1/uploads -H'X-Debug-User:freshco:admin:admin' -H'Content-Type:application/json' -d '{\"filename\":\"newfields.csv\",\"contentBase64\":\"<b64>\"}' | jq -r .connection.id); curl -s -XPOST :4001/a/v1/databuilder/intake/objectify -H'X-Debug-User:freshco:admin:admin' -H'Content-Type:application/json' -d \"{\\\"connId\\\":\\\"$CONN\\\"}\"; curl -s \":4001/a/v1/databuilder/reconcile-candidates?connId=$CONN\" -H'X-Debug-User:freshco:admin:admin' | jq 'length>0 and (.[0]|has(\"column\") and has(\"suggestedAction\"))' → 期望 true。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器:从对象浏览器空态深链或直链进 SchemaReconcile 页→断言列出候选列表+每行有 USE/RENAME/NEW/MERGE/DISCARD 控件+resolve 按钮;选择动作后点 resolve→网络面板见 resolve 请求 2xx。截图入 docs/evidence/INTAKE-VIS-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器 fresh 租户(经 X-Debug-User 或新注册)→/admin 对象浏览器 & 切片库→断言空态含可点「N 张已导入未建模→去建模」链接;点击→落建模页 URL 含 ?datasets=。截图入 docs/evidence/INTAKE-VIS-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "真浏览器:上传含 ≥2 张表的源(或多次上传)→FieldProfilePage→断言存在数据集/表选择器且切到第 2 张能编辑其字段画像(非永远 [0])。截图入 docs/evidence/INTAKE-VIS-C5.png。"
+          },
+          {
+            "for": "C6",
+            "run": "脚本 scratchpad/intake-e2e.mjs:上传→rows 得 R→objectify→reconcile-candidates→resolve(全 USE/NEW)→物化→GET 对象实例→jq 断言某实例属性值==R 对应字段值。stdout 打印 before/after 与 C6-PASS。"
+          },
+          {
+            "for": "C7",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0;核对 frontend 新增 SchemaReconcile/DataCategoriesPanel 测、datacore 新增 reconcile-candidates 端点测。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "KB-UI",
+      "title": "知识库S4前端落地(后端kb.ts+3路由齐备·前端零页零绑定)",
+      "doc": "docs/WO-VISIBILITY-CHAIN.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO断层·建了知识库灌了文档完全看不到·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "用户建一个 knowledge_base 连接并灌入文档后，能在前端【知识库页】看到这些文档并搜索命中——而不是像现在这样后端 kb.ts + 3 条活路由(/kb/search、/kb/:connId/docs、sync)齐备、knowledge_base 连接器也在，前端 endpoints.ts/adminRegistry 却零 kb 引用、ConnectionsPage 无 knowledge_base 分支，灌进去的文档完全看不到。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "后端文档列表路由可用:建 knowledge_base 连接并 ingest M 篇文档后，GET /a/v1/kb/:connId/docs(现仅 ingest/sync/search，须补列表路由)返回 length==M，每项含 {docId, title或name, chunks或size}。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "搜索真命中:POST /a/v1/kb/search(body 含 q=<灌入文档里的关键词>)返回 hits length>0，命中项指向已灌文档(docId 属于 C1 集合)。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "前端知识库页存在+注册:新增 /admin/knowledge 页(pages/admin/ 下新文件)且 adminRegistry 注册于 S4/知识库组，登录 demo/admin 导航可达，页面显知识库(连接)列表+选中后文档表。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "前端显同 M 文档+可搜:知识库页文档表行数 == C1 的 M，标题与灌入一致;页内搜索框输入 C2 关键词→前端展示 /kb/search 命中结果(前端所见=后端真值)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "前端 API 层补 kb 绑定:endpoints.ts 不再零 kb 引用(含 fetchKbDocs/searchKb 等函数)，且前端不重定义契约(kb 类型 import 自 @platform/contracts·contracts-only-shared)。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，datacore(新增 /kb/:connId/docs 路由测)/agentcore/frontend(新增知识库页测)/contracts 不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态 datacore。建 knowledge_base 连接(POST /a/v1/connections 或 uploads 走 kb 连接器)→ ingest M 篇(POST /a/v1/kb/:connId/... 灌文档)→ curl -s :4001/a/v1/kb/$CONN/docs -H'X-Debug-User:demo:admin:admin' | jq 'length' → 期望 ==M;jq '.[0]|has(\"docId\")' → true。若列表路由不存在(404)=未落地=BLOCK。"
+          },
+          {
+            "for": "C2",
+            "run": "curl -s -XPOST :4001/a/v1/kb/search -H'X-Debug-User:demo:admin:admin' -H'Content-Type:application/json' -d '{\"connId\":\"'$CONN'\",\"q\":\"<关键词>\"}' | jq '.hits|length>0' → 期望 true。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器登录 demo/admin/demo1234→左导航找到「知识库」入口(S4 组)→点进 /admin/knowledge→断言页面渲染知识库列表。截图入 docs/evidence/KB-UI-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器:知识库页选中 C1 的连接→断言文档表行数==M、标题一致;搜索框输入关键词→断言前端显命中结果。截图入 docs/evidence/KB-UI-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "rg -n 'kb|knowledge' apps/frontend-shell/src/api/endpoints.ts → 期望含 kb 端点函数;rg 'z.object' apps/frontend-shell/src 确认未本地重定义 kb 契约。"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "AUDIT-LOG-UI",
+      "title": "合规审计日志前端落地(后端GET /a/v1/audit-log有真值·前端零入口)",
+      "doc": "docs/WO-VISIBILITY-CHAIN.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO断层·产品内看不到谁何时改了什么·R13可溯源·G-SIEM-1邻域·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "管理员做过一次管理变更(改规则/配 audit-sink/改权限等)后，能在前端【审计日志页】看到「谁(actorId)何时(at)对什么(targetKind)做了什么(action)、改前改后(before/after)」——而不是像现在这样后端 GET /a/v1/audit-log 返真条目、前端 audit-log 零命中(无页无路由无 endpoint)，产品内根本看不到审计轨迹。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "后端审计有真值(baseline):做一次管理变更后 GET /a/v1/audit-log 返 length>0，条目含 {at, actorId, action, targetKind, before, after}(before/after 反映真实变更前后值)。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "前端审计页存在+路由+注册:新增 AuditLogPage(pages/admin/ 下)、App.tsx 加路由、adminRegistry 注册于平台治理组(admin/auditor 角色可见)，登录后导航可达。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "前端显同条:做一次变更后前端审计页表格出现该条，actor/action/targetKind 与 C1 curl 同值，且展开见 before→after diff(前端所见=后端真值)。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "筛选可用:按 action 或 actorId 或 targetKind 筛选后，表格只留匹配条(交互真生效非装饰)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "前端 API 层补 fetchAuditLog:endpoints.ts 含 fetchAuditLog，类型 import 自 @platform/contracts(未重定义)。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，frontend 新增审计页测计入、其余不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态 datacore。做变更(如 PUT /a/v1/audit-sinks 或改规则发布)→ curl -s :4001/a/v1/audit-log -H'X-Debug-User:demo:admin:admin' | jq 'length>0 and (.[0]|has(\"actorId\") and has(\"action\") and has(\"before\") and has(\"after\"))' → 期望 true。"
+          },
+          {
+            "for": "C2",
+            "run": "真浏览器登录 demo/admin/demo1234→左导航「平台治理/审计日志」→点进→断言 AuditLogPage 渲染。截图入 docs/evidence/AUDIT-LOG-C2.png。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器:先做一次可审计变更→刷新审计页→断言表首行是该变更，actor/action/targetKind 与 C1 curl 一致、展开见 before/after。截图入 docs/evidence/AUDIT-LOG-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器:审计页选 action 筛选值→断言表格只剩该 action 条目。截图入 docs/evidence/AUDIT-LOG-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "rg -n 'audit-log|fetchAuditLog|AuditLog' apps/frontend-shell/src/api/endpoints.ts apps/frontend-shell/src/App.tsx → 期望命中 endpoint+路由。"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "CALIB-CONVERGENCE-UI",
+      "title": "「越用越准」证据看板前端落地(后端convergence+sweep有真值·前端缺面板)",
+      "doc": "docs/WO-VISIBILITY-CHAIN.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "E1-E2"
+      ],
+      "note": "IPO断层·后端逐轮收敛真值前端画不出·越用越准看不见·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "用户跑一次收敛清扫(sweep)后，能在前端【校准收敛史面板】看到 MAPE 随轮下降的折线(越用越准可见)+收敛徽章——而不是像现在这样后端 GET /a/v1/calibration/convergence 返逐轮 mapeBefore/After/converging、sweep 端点也在，前端 CalibrationPage 只调 report/proposals/history(逐提案·非逐轮收敛)、收敛看板与 sweep 按钮都没有。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "后端收敛序列有真值(baseline·E1-E2 已落):GET /a/v1/calibration/convergence 返 length>=2，每轮含 {round, mapeBefore, mapeAfter, converging}，且末轮 mapeAfter < 首轮 mapeAfter(单调改善)。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "前端收敛史面板存在:CalibrationPage 新增「收敛史」面板，逐轮 mapeAfter 折线图 + converging/improvedPct 徽章，数据消费 GET /calibration/convergence。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "前端 sweep 按钮可用:CalibrationPage 有「跑收敛清扫(sweep)」按钮→点击 POST /a/v1/calibration/sweep→成功后收敛面板刷新新增一轮(折线点数 +1)。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "前端曲线=后端真值:收敛折线点数 == C1 curl 返回逐轮数，末点 mapeAfter < 首点 mapeAfter(越用越准在前端可见·前端所见=后端真值)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "前端 API 层补 fetchConvergence+runSweep:endpoints.ts 含二者，类型 import 自 @platform/contracts。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，frontend 新增收敛面板测计入、其余不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态 datacore(SEED_DEMO=1)。跑 sweep 若干轮(POST /a/v1/calibration/sweep ×N 或喂观测触发)→ curl -s :4001/a/v1/calibration/convergence -H'X-Debug-User:demo:admin:admin' | jq 'length>=2 and (.[-1].mapeAfter < .[0].mapeAfter) and (.[0]|has(\"round\") and has(\"mapeBefore\") and has(\"mapeAfter\"))' → 期望 true。"
+          },
+          {
+            "for": "C2",
+            "run": "真浏览器登录 demo/admin/demo1234→校准页→断言出现「收敛史」面板+折线图+converging 徽章。截图入 docs/evidence/CALIB-CONV-C2.png。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器:校准页点「跑收敛清扫」→网络面板见 POST /calibration/sweep 2xx→断言收敛折线点数增加。截图入 docs/evidence/CALIB-CONV-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器:对比前端折线点数与 C1 curl length 相等、末点<首点。截图入 docs/evidence/CALIB-CONV-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "rg -n 'convergence|sweep' apps/frontend-shell/src/api/endpoints.ts → 期望命中 fetchConvergence+runSweep。"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "VIS-SIGNALS",
+      "title": "状态/空态/导航透出批(未开通空态·通知铃·写回对账·实例数徽章·导航归组)",
+      "doc": "docs/WO-VISIBILITY-CHAIN.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "IPO断层批·7项P1/P2信号无处可见·G-VIS-1",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "把一批「后端有状态/真值、前端整块无处可见」的信号透出来:功能未开通时显专用『未开通』空态(区别于『无卡』)、顶栏有通知铃显未读数、写回落地对账(echo/reconcile)在 ActionsPage 可见、图谱/分类页显已物化实例数、推演历史导航归对组、兜底统计页有空态——让用户看得见系统状态而非盯着空白猜。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "未开通专用空态:某 launcherEnabled===false 的功能，前端显专用『该功能未开通』空态(带开通指引)，与『已开通但无数据』的空卡在文案/图标上可区分(endpoints.ts:738 死数据已改为区分二态)。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "顶栏通知铃+未读角标:ShellLayout 顶栏出现通知铃图标，角标显 fetchNotifications().unread 未读数(>0 时可见)，点击展开通知列表;非仅页内 unread。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "写回对账面板:ActionsPage 新增「写回对账」区，消费 GET /a/v1/writeback-echoes + reconcile 判定，显每笔写回的 echo(同值抑制/异值背离 verdict)，非只显 targetRef 主信号。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "实例数徽章:图谱 Inspector 加「已物化 N 实例→」徽章(点击深链对象浏览器)，分类面板每类型加「已导入/已物化 N」徽章(DataCategoriesPanel:129 只显 schema 已补实例数)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "推演历史导航归组:ShellLayout NAV_GROUPS 加 query-history(ShellLayout.tsx:66)，推演历史不再落『其它』组;grep 确认 query-history 在编排/分析组。"
+          },
+          {
+            "id": "C6",
+            "type": "browser",
+            "assert": "兜底统计页空态:OpsFallbackPage 无数据时显友好空态(非空白/报错)。"
+          },
+          {
+            "id": "C7",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test 退出码 0，frontend 新增相关测计入、其余不回退。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "真浏览器:构造某功能 launcherEnabled=false(entitlement 关)→断言前端显专用『未开通』空态、与开通无数据态文案不同。截图入 docs/evidence/VIS-SIG-C1.png。"
+          },
+          {
+            "for": "C2",
+            "run": "真浏览器:制造未读通知→断言顶栏铃角标显 unread 数、点击展开列表。截图入 docs/evidence/VIS-SIG-C2.png。"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器:执行一笔写回 Action 至 EXECUTED→ActionsPage 写回对账区断言显该 echo 的 verdict(同值抑制/异值背离)。截图入 docs/evidence/VIS-SIG-C3.png。"
+          },
+          {
+            "for": "C4",
+            "run": "真浏览器:物化若干实例→图谱 Inspector 断言显『已物化 N 实例』徽章、分类面板断言显『已导入/已物化 N』;点徽章深链对象浏览器。截图入 docs/evidence/VIS-SIG-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "rg -n 'query-history|NAV_GROUPS' apps/frontend-shell/src/components/ShellLayout.tsx → 期望 query-history 在编排/分析组而非『其它』。"
+          },
+          {
+            "for": "C6",
+            "run": "真浏览器:进 OpsFallbackPage 无数据态→断言友好空态。截图入 docs/evidence/VIS-SIG-C6.png。"
+          },
+          {
+            "for": "C7",
+            "run": "pnpm -r build && pnpm -r test; echo exit=$? → 期望 0。"
+          }
+        ]
+      }
     }
   ]
 }

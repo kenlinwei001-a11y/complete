@@ -27,7 +27,7 @@
 | R1 | 100%零遗漏闭环+反遗漏机制(312/388/4046/9277) | 🟠 本台账即应对 | 本ledger+穷尽227 是这条的执行 |
 | R2 | 单一收口入口+提示词+链接派单(357/862/5939) | ◐ | START-HERE 在·待并入新 WO；DISPATCH-MANIFEST 待出 |
 | R3 | 未完成项独立 HANDOFF(367/1527) | ❓ | 多份 HANDOFF 在·未逐一对账 |
-| R4 | ModelingPage 本体从源数据长出·根因非补丁(1396/2128) | 🟠 | option A 实证 derive→publish→materialize 真通(18对象)·但 solver 卡 B3 |
+| R4 | ModelingPage 本体从源数据长出·根因非补丁(1396/2128) | 🟠→**可见性残口WO立P0** | option A 实证 derive→publish→materialize 真通(18对象)·solver B3 已闭(SOLVER-BINDING)。**IPO 审计新残口**：链路真通但**前端接缝断**——上传后被无条件弹到 /schema 看不到导入行(DataCategoriesPanel:58)·objectify skip 列不入队列且无 SchemaReconcile 页确认(app.ts:3528)·0类型空态无回接深链。→ **WO-INTAKE-VISIBILITY(P0·TODO)** 治接缝。见 R32。 |
 | R5 | 三板块对齐HTML母版像素级+主题开关(1556/3317) | ◐ | 母版三板块外壳大部·像素打折(chrome缺·竞品原图不在仓库) |
 | R6 | 设计与已有后端融合非只前端(1642/9241) | ❓ | 原则·未单独核 |
 | **R7** | **可信溯源4件套 U3-U6(1650/4294)** | **✅ 大部建(轨N `8567ca0`/`6412476`)** | **U3下钻回退`OrderChainView:142`/U4规则悬停谁设定`RuleRef:54-65`/U6风险详情`RiskPopover`=BUILT；U5数据溯源◐(order-chain仅annotation非live lineage)。L4294说"0提交"后被轨N接了** |
@@ -53,8 +53,9 @@
 | **R27** | **运营/合规/商业化:灾备/A/B实验/外部审计融合单(10341/10393)** | ✅ **已核发** | A/B实验=EXPERIMENT·**灾备DR-AUDIT(`cb36895`)：pg_dump/restore runbook+SIEM audit-sink(NDJSON旁路·secret加密不回显·旁路吞不阻主写)**·audit-sink.test 6/6绿(**审核方更正:先前误判门红系我stale contracts dist·致歉**)·全套859·0-failed。closure REVIEW-3WO-finalize-DR-MULTI-AGENT.md |
 | R28 | 复刻Maven先设计:模拟独有问题虚拟跑全链(10831/10978) | ✅ | 5批Maven问题+CEO10问+接线图(本会话+前序) |
 | R29 | CEO 10问数据管线接线全图(11032) | ✅ | DESIGN-CEO-10q-data-pipeline-wiring(本会话) |
-| **R30** | **连接器改上传+源数据入库前端可见+求解器/规则预部署+本体基于源数据+模拟真实业务全流程(11077)** | 🟢 **B3+透明双闭** | ①**源数据前端可见**：SOURCE-TRANSPARENCY(`cd90287`·审核核发)——连接器页 35 数据集逐张预览+真下载 .xlsx 见真业务数据(源库有+前端可见·SYNTHETIC 诚实不冒充)+no-orphan 门治本。真浏览器实拍 `st-c6-connectors.png`。②**上传真实数据→出真答案**：SOLVER-BINDING(`8bffa3a`·审核核发·B3命门闭)——上传→建模→归域→物化→配绑定→**真答案「提价4%接」**(HTTP 全链)。option A 的 solver 拒(B3)已解。closure `REVIEW-SOURCE-TRANSPARENCY-closure.md`+`REVIEW-SOLVER-BINDING-closure.md` |
+| **R30** | **连接器改上传+源数据入库前端可见+求解器/规则预部署+本体基于源数据+模拟真实业务全流程(11077)** | 🟢 **B3+透明双闭** | ①**源数据前端可见**：SOURCE-TRANSPARENCY(`cd90287`·审核核发)——连接器页 35 数据集逐张预览+真下载 .xlsx 见真业务数据(源库有+前端可见·SYNTHETIC 诚实不冒充)+no-orphan 门治本。真浏览器实拍 `st-c6-connectors.png`。②**上传真实数据→出真答案**：SOLVER-BINDING(`8bffa3a`·审核核发·B3命门闭)——上传→建模→归域→物化→配绑定→**真答案「提价4%接」**(HTTP 全链)。option A 的 solver 拒(B3)已解。closure `REVIEW-SOURCE-TRANSPARENCY-closure.md`+`REVIEW-SOLVER-BINDING-closure.md`。**⚠️IPO 复审残口(用户抓)**：合成源可见≠上传源可见——用户上传后「为何没在数据接入控制台看到导入数据」实测非后端 bug(行真存 raw-datasets/rows)而是**前端接缝**(上传弹走·就地不显)。→ WO-INTAKE-VISIBILITY(P0)·见 R32。 |
 | **R31** | **WO-ACTUATE出站writeBack+WO-OBSERVABILITY OTel span树(11238)** | ✅ **已核发(dev建·代码级)** | dev `e5c41cc`(ACTUATE)/`22443b2`(OBS)照设计建·审核方**独立核实**:代码符设计+**datacore 829回归绿**+诚实(MockWriteback R6 hash/ErpRest NOT_CONFIGURED/tracing no-op/禁明文凭据)+本体G-14回写。**诚实边界**:用户动作走查(curl写回/起OTel collector)取dev FDE证据·审核方未独立起服务实拍(代码级核发) |
+| **R32** | **数据流可见性 IPO 逐页审计:后端有真值·前端整块无处可见/导航走/藏别处(用户 IPO 方法抓)** | 🔴 **17断层WO化入loop** | 用户教的 **IPO 方法**(看每个展示数据的 I上游页/P处理过程/O下游页·逐页问上下游在不在过程全不全)抓出审核方漏的接缝断层——审核方此前用「模块/规格」镜头继承每张 WO 的范围盲区(合成谬误·验了模块没验接缝·本体明写"断点常在接缝")。**3路自动审计合并=17断层(5 P0·7 P1·5 P2)**·均「后端 curl 得 X·前端无处可看」。拆 **5 WO 入 dev loop**(`docs/WO-VISIBILITY-CHAIN.md`)：**INTAKE-VISIBILITY**(P0·上传就地可见+SchemaReconcile+空态回接)·**KB-UI**(P0·知识库 S4 前端零页·后端 kb.ts+3路由齐)·**AUDIT-LOG-UI**(P0·审计日志前端零入口·后端 GET /audit-log 有真值)·**CALIB-CONVERGENCE-UI**(P0·越用越准看板前端缺·后端 convergence 有真值)·**VIS-SIGNALS**(P1·未开通空态/通知铃/写回对账/实例数徽章/导航归组)。本体新增断点 **G-VIS-1**「后端产物真存·前端无处可见/导航走/藏别处」。IPO 逐页遍历 74 页为持续机制·发现即立 WO 入队。 |
 
 ## §2 option A 真跑断点（真响应实证）
 - **B1**◐：`/modeling/suggest` LLM-gated·`/derive`确定性已在·前端不自动降级(对R12-old/L5049)。
