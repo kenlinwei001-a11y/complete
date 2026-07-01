@@ -608,6 +608,9 @@ export const RISK_TIMELINE: RiskTimelineOutput = {
     { base: "眉山", factor: "分容柜瓶颈", peak: 76, crossDay: null, series: riskSeries(4, 11, 76), events: [] },
     { base: "成都", factor: "卷绕机稼动", peak: 71, crossDay: null, series: riskSeries(5, 3, 71), events: [] },
     { base: "武汉", factor: "注液机产能", peak: 64, crossDay: null, series: riskSeries(6, 7, 64), events: [] },
+    // WO-KILL-MOCK-RED 阶段②：洛阳·设备OEE = 无真数据源诚实空态卡（用户原案）——不伪造峰值/越线，
+    // 前端渲染门显 noDataReason·不染红（治本：dataMode=MOCK·hasData=false·peak=null·series=[]）。
+    { base: "洛阳", factor: "设备OEE", dataMode: "MOCK", hasData: false, noDataReason: "该基地×因子无真实数据源，不参与越线判定——请接入真实设备/订单数据（连接器与上传）", peak: null, crossDay: null, series: [], events: [] },
   ],
   // PRD-IND-risk §2.4：处置行动计划表（主因素首选 + 峰值≥90 备份 + 14 天内反提 S&OP，按启动排序）
   planRows: [

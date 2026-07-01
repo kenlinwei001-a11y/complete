@@ -345,14 +345,18 @@ function KnowledgeActivation({ cert, curTick }: { cert: SimCertification; curTic
  * MOCK 因素无真数据源 → 基线张力是 mockTightness 启发估算（非实测），诚实标"估算·无实测"，绝不当真红；
  * LIVE 因素标"实测"。峰值取真求解器 peak·TOP3 按 peak 排序。
  */
-interface RiskCard { base: string; factor: string; dataMode: "MOCK" | "LIVE"; peak: number; currentTightness?: { value: number } }
+// WO-KILL-MOCK-RED 阶段②：peak/currentTightness 可空（无真源）+ dataMode 顶层/卡级用于渲染门。
+interface RiskCard { base: string; factor: string; dataMode?: string; hasData?: boolean; peak: number | null; currentTightness?: { value: number | null } }
 function RiskTop3({ enabled }: { enabled: boolean }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["a", "risk_timeline", "sandbox-top3"],
-    queryFn: async () => (await invokeSolver("risk_timeline", {})).data as { cards?: RiskCard[] },
+    queryFn: async () => (await invokeSolver("risk_timeline", {})).data as { dataMode?: string; cards?: RiskCard[] },
     retry: false, enabled,
   });
   if (isError) return null;
+  // 向后兼容：仅显式非 LIVE 才抑制（未标 dataMode 的旧 fixture/真 LIVE 保持既有行为）。
+  const notLive = (dm?: string | null) => dm != null && dm !== "LIVE";
+  const topLive = !notLive(data?.dataMode);
   const cards = [...(data?.cards ?? [])].sort((a, b) => (b.peak ?? 0) - (a.peak ?? 0)).slice(0, 3);
   return (
     <div className="panel" data-testid="sandbox-risk-top3" style={{ padding: 12, marginTop: 12 }}>
@@ -364,21 +368,24 @@ function RiskTop3({ enabled }: { enabled: boolean }) {
       ) : (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {cards.map((c, i) => {
-            const col = c.peak >= 80 ? "#E0626C" : c.peak >= 50 ? "#E8B54A" : "#62BE77";
+            // WO-KILL-MOCK-RED 治本：仅顶层+该卡 LIVE 且 hasData 才出决策红；否则中性灰（不把哈希/合成峰值染红）。
+            const cLive = topLive && !notLive(c.dataMode) && c.hasData !== false;
+            const col = cLive && c.peak != null ? (c.peak >= 80 ? "#E0626C" : c.peak >= 50 ? "#E8B54A" : "#62BE77") : "var(--muted)";
+            const baseline = c.currentTightness?.value;
             return (
-              <div key={`${c.base}:${c.factor}`} data-testid={`sandbox-risk-${i}`} style={{ flex: "1 1 180px", border: "1px solid var(--border,#2a2a2a)", borderRadius: 8, padding: "8px 10px" }}>
+              <div key={`${c.base}:${c.factor}`} data-testid={`sandbox-risk-${i}`} data-decision-mode={cLive ? "LIVE" : "MUTED"} style={{ flex: "1 1 180px", border: "1px solid var(--border,#2a2a2a)", borderRadius: 8, padding: "8px 10px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <b style={{ fontSize: 13 }}>{c.base} · {c.factor}</b>
-                  <b className="mono" style={{ color: col, fontSize: 16 }}>{c.peak}</b>
+                  <b className="mono" style={{ color: col, fontSize: 16 }}>{c.peak != null ? c.peak : "—"}</b>
                 </div>
                 <div style={{ marginTop: 4 }}>
-                  {c.dataMode === "MOCK" ? (
-                    <span className="badge" data-testid={`sandbox-risk-datamode-${i}`} title="该因素无真数据源·基线张力为 mockTightness 启发估算(非实测)·峰值含真事件脉冲">
-                      估算·无实测{c.currentTightness ? `（mock 基线 ${Math.round(c.currentTightness.value)}）` : ""}
+                  {!cLive ? (
+                    <span className="badge" data-testid={`sandbox-risk-datamode-${i}`} title="该因素无真数据源（或合成/顶层非实测）·基线张力为启发/合成估算(非实测)·不作决策红">
+                      估算·无实测{baseline != null ? `（基线 ${Math.round(baseline)}）` : ""}
                     </span>
                   ) : (
                     <span className="badge green" data-testid={`sandbox-risk-datamode-${i}`} title="真数据源·实测张力">
-                      实测{c.currentTightness ? `（基线 ${Math.round(c.currentTightness.value)}）` : ""}
+                      实测{baseline != null ? `（基线 ${Math.round(baseline)}）` : ""}
                     </span>
                   )}
                 </div>

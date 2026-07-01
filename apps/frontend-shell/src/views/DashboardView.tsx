@@ -11,6 +11,7 @@ import { ProvenanceDag, type DagData } from "@/components/ProvenanceDag";
 import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
 import type { ViewRendererProps } from "./registry";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
+import { isLiveDecision } from "@/components/DecisionValue";
 import zh from "@/locales/zh";
 import styles from "./DashboardView.module.css";
 import { downloadCsv } from "./exportCsv";
@@ -651,33 +652,50 @@ function Widget({ def }: { def: DashboardWidgetDef }) {
   );
 }
 
-/** SPINE.4 经营指标条：metric_rollup 产出的 Metric（目标 vs 实际 + delta + 越线红），各视图 KPI 单一出处 R-一致。 */
-type MetricRow = { metricId: string; name: string; unit?: string; target: number; actual: number; delta: number; miss: boolean };
+/** SPINE.4 经营指标条：metric_rollup 产出的 Metric（目标 vs 实际 + delta + 越线红），各视图 KPI 单一出处 R-一致。
+ *  WO-KILL-MOCK-RED 阶段②：MetricRow 补 `dataMode`——非 LIVE（后端标估算/合成）时 miss 越线红降级为中性灰，不作决策红。 */
+type MetricRow = { metricId: string; name: string; unit?: string; target: number; actual: number; delta: number; miss: boolean; dataMode?: import("@platform/contracts").SolverDataMode | string | null };
 function MetricStrip({ metrics }: { metrics: MetricRow[] | undefined }) {
   const rows = metrics ?? [];
   if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
   return (
     <div data-testid="metric-strip" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-      {rows.map((m) => (
-        <div key={m.metricId} data-testid={`metric-${m.metricId}`} className="panel" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${m.miss ? "#DD7E9E" : "#62BE77"}` }}>
-          <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.name}</div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>
-            {m.actual}<small style={{ fontSize: 11 }}>{m.unit}</small>
+      {rows.map((m) => {
+        // 治本：仅当 dataMode 明确非 LIVE 时抑制红（后端未标 dataMode 的真 metric_rollup 保持既有行为·不误灰真裁决）。
+        const miss = m.miss && (m.dataMode == null || isLiveDecision(m.dataMode));
+        return (
+          <div key={m.metricId} data-testid={`metric-${m.metricId}`} data-decision-mode={miss ? "MISS" : "OK"} className="panel" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${miss ? "#DD7E9E" : "#62BE77"}` }}>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>{m.name}</div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>
+              {m.actual}<small style={{ fontSize: 11 }}>{m.unit}</small>
+            </div>
+            <div style={{ fontSize: 10.5, color: miss ? "#DD7E9E" : "var(--muted2)" }}>
+              目标 {m.target}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{m.delta}{miss ? " · 越线" : m.dataMode != null && !isLiveDecision(m.dataMode) ? " · 估算·不作越线裁决" : ""}
+            </div>
           </div>
-          <div style={{ fontSize: 10.5, color: m.miss ? "#DD7E9E" : "var(--muted2)" }}>
-            目标 {m.target}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{m.delta}{m.miss ? " · 越线" : ""}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-/** cockpit P5 反事实双轨推演：counterfactual_timeline → do-nothing baseline ‖ 处置后 双曲线 + 差值（前端零写死）。 */
-type CounterfactualData = { baselineSeries: number[]; mitigatedSeries: number[]; threshold: number; base: string; factor: string; mitigation: string; delta: { peakCut: number; crossDelayDays: number; ordersSaved: number } };
+/** cockpit P5 反事实双轨推演：counterfactual_timeline → do-nothing baseline ‖ 处置后 双曲线 + 差值（前端零写死）。
+ *  WO-KILL-MOCK-RED 阶段②：补 `dataMode`——非 LIVE 时峰值削减/推迟等 delta 是估算·不作决策结论，降级为诚实空态。 */
+type CounterfactualData = { baselineSeries: number[]; mitigatedSeries: number[]; threshold: number; base: string; factor: string; mitigation: string; delta: { peakCut: number; crossDelayDays: number; ordersSaved: number }; dataMode?: import("@platform/contracts").SolverDataMode | string | null };
 function CounterfactualWidget({ data }: { data: CounterfactualData | undefined }) {
   if (!data) return <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>;
   const days = data.baselineSeries.map((_, i) => `D+${i}`);
+  // 治本：仅当 dataMode 明确非 LIVE 时抑制 delta 决策结论（后端未标 dataMode 的真反事实保持既有行为）。
+  const suppress = data.dataMode != null && !isLiveDecision(data.dataMode);
+  if (suppress) {
+    return (
+      <div data-testid="cf-widget">
+        <div className="empty-state" data-testid="cf-nodata" style={{ fontSize: 11.5, lineHeight: 1.6, color: "var(--muted)" }}>
+          {data.base}·{data.factor}：无真实数据·反事实差值为估算·不可作决策依据（请接入真实设备/订单数据）。
+        </div>
+      </div>
+    );
+  }
   return (
     <div data-testid="cf-widget">
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>

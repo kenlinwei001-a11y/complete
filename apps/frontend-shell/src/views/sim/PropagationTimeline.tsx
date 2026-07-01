@@ -47,7 +47,13 @@ export function buildPropagation(out: RiskTimelineOutput, cardIndex = 0): Propag
   if (!card) return null;
   const events = card.events ?? [];
   const firstEventDay = events.length > 0 ? Math.min(...events.map((e) => e.day)) : null;
-  const crossed = card.crossDay != null;
+  // WO-KILL-MOCK-RED 治本：仅顶层+该卡皆非「显式非 LIVE」且 hasData 才判「越线/财务击穿」决策级严重度；
+  // 显式非真数据（合成/无真源/hasData=false）⇒ crossed=false·sev 降级（哈希越线不作决策结论）。
+  // 向后兼容：未标 dataMode 的旧 fixture/真 LIVE 保持既有行为。
+  const notLive = (dm?: string | null) => dm != null && dm !== "LIVE";
+  const live = !notLive(out.dataMode) && !notLive(card.dataMode) && card.hasData !== false;
+  const crossed = live && card.crossDay != null;
+  const peakTxt = card.peak != null ? fmt(card.peak, 0) : "—";
   const orders = ((card.affectedOrders ?? []) as Record<string, unknown>[]).map((o) => ({
     so: String(o.so ?? ""),
     cust: String(o.cust ?? "—"),
@@ -83,9 +89,11 @@ export function buildPropagation(out: RiskTimelineOutput, cardIndex = 0): Propag
       key: "cross",
       title: "约束越线",
       window: crossed ? `D+${card.crossDay}` : "—",
-      meta: crossed
-        ? `${card.base}·${card.factor} 张力峰值 ${fmt(card.peak, 0)} ≥ 阈值 ${fmt(out.threshold, 0)}`
-        : `峰值 ${fmt(card.peak, 0)} 未越线（阈值 ${fmt(out.threshold, 0)}）`,
+      meta: !live
+        ? `${card.base}·${card.factor} 无真实数据·不参与越线判定（估算·不可作决策依据）`
+        : crossed
+          ? `${card.base}·${card.factor} 张力峰值 ${peakTxt} ≥ 阈值 ${fmt(out.threshold, 0)}`
+          : `峰值 ${peakTxt} 未越线（阈值 ${fmt(out.threshold, 0)}）`,
       sev: crossed ? 2 : 0,
     },
     {

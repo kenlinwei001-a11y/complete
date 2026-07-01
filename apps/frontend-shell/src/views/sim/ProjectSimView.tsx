@@ -19,6 +19,7 @@ import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { decisionColor, decisionHeat } from "@/components/DecisionValue";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -513,12 +514,17 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                           <b>{r.base}</b>
                         </td>
                         {bnMatrix.data!.factors.map((f) => {
-                          const t = r.tightness[f] ?? 0;
+                          // WO-KILL-MOCK-RED 治本：决策级红色只在真数据出——非 LIVE（MOCK/合成）或无真源格 → 中性灰，不染红。
+                          // ◉ 主瓶颈是结构标记（哪个工序是瓶颈）非决策红，保留；仅「红/黄决策色」受 dataMode 门控。
+                          const raw = r.tightness[f];
+                          const dmNotLive = bnMatrix.data!.dataMode != null && bnMatrix.data!.dataMode !== "LIVE";
+                          const cellLive = !dmNotLive && raw != null;
+                          const t = raw ?? 0;
                           return (
                             <td key={f}>
-                              <span className={styles.bnCell} style={{ background: bnColor(t) }} data-testid={`bn-cell-${r.base}-${f}`}>
+                              <span className={styles.bnCell} style={{ background: cellLive ? bnColor(t) : "rgba(154,168,182,.28)" }} data-testid={`bn-cell-${r.base}-${f}`}>
                                 {r.primary === f ? "◉" : ""}
-                                {t}
+                                {raw != null ? t : "—"}
                               </span>
                             </td>
                           );
@@ -818,16 +824,17 @@ function StepBody({
                 </td>
                 <td className="zh">{r.bottleneck}</td>
                 <td>
+                  {/* WO-KILL-MOCK-RED 治本：无真源紧张度 = null（不伪造哈希红）；仅 r.live 真数据才染红。 */}
                   <span className={styles.tightBar}>
                     <i
                       style={{
-                        width: `${Math.min(100, r.tightness)}%`,
-                        background: r.tightness >= 85 ? "var(--danger)" : r.tightness >= 70 ? "var(--amber)" : "var(--c-capacity)",
+                        width: `${Math.min(100, r.tightness ?? 0)}%`,
+                        background: decisionHeat(r.tightness, 85, r.live ? "LIVE" : "MOCK"),
                       }}
                     />
                   </span>
-                  <span className="mono" style={{ color: r.tightness >= 85 ? "var(--danger)" : undefined }}>
-                    {r.tightness}
+                  <span className="mono" style={{ color: decisionColor(r.tightness, 85, r.live ? "LIVE" : "MOCK") }}>
+                    {r.tightness != null ? r.tightness : "—"}
                   </span>
                   {/* 轨M 增量1（假2）：紧张度色块不再裸渲染当真值——逐基地诚实标实测/估算（LIVE=真 OEE/利用率/良率）。 */}
                   <span data-testid={`pm-tight-mode-${r.base}`} style={{ marginLeft: 6, fontSize: 10, opacity: 0.75 }}>

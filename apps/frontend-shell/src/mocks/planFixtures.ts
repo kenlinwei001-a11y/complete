@@ -16,7 +16,7 @@ import {
   type DataHealthResponse,
   type OrderProblemGroup,
 } from "@platform/contracts";
-import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
+import type { AffectedOrderRowVM, AffectedOrdersOutputVM, OrderRiskRefVM } from "@/api/types";
 import { RISK_TIMELINE } from "./fixtures";
 
 // ---------------------------------------------------------------------------
@@ -250,9 +250,10 @@ export const DATA_HEALTH: DataHealthResponse = DataHealthResponseSchema.parse({
 // §7.16 affected_orders 扩展输出（rows + summary + problems[]）
 // ---------------------------------------------------------------------------
 
-const riskRef = (base: string, factor?: string) => {
+const riskRef = (base: string, factor?: string): OrderRiskRefVM => {
   const card = RISK_TIMELINE.cards.find((c) => c.base === base && (!factor || c.factor === factor)) ?? RISK_TIMELINE.cards[0]!;
-  return { base: card.base, factor: card.factor, crossDay: card.crossDay, peak: card.peak, series: card.series, threshold: RISK_TIMELINE.threshold };
+  // WO-KILL-MOCK-RED 阶段②：透传 dataMode（缺省 → RiskPopover 保守走灰·不出假红越线）。
+  return { base: card.base, factor: card.factor, crossDay: card.crossDay, peak: card.peak, series: card.series, threshold: RISK_TIMELINE.threshold, dataMode: card.dataMode ?? RISK_TIMELINE.dataMode };
 };
 
 export const AFFECTED_ROWS: AffectedOrderRowVM[] = [

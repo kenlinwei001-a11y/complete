@@ -8,7 +8,8 @@ import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg } from "@/api/endp
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
-import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
+import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
+import { decisionColor, decisionHeat, NO_DATA_HINT } from "@/components/DecisionValue";
 import { useActionDraft } from "./sim/shared";
 import { useOpenWhatIf } from "./sim/whatif";
 import { useFeature } from "@/workspace/featureGate";
@@ -44,7 +45,18 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
-  const maxPeak = Math.max(0, ...data.cards.map((c) => c.peak));
+  // WO-KILL-MOCK-RED 阶段②（治本·渲染门）：决策级红/越线/峰值/planRows 只在真数据时渲染。
+  // 判据（向后兼容·仅显式非 LIVE 才抑制，未标 dataMode 的旧 fixture/真 LIVE 保持既有行为）：
+  //   顶层 dataMode 未标或 ===LIVE  ⊕  该卡 dataMode 未标或 ===LIVE  ⊕  hasData!==false。
+  //   任一为「显式非 LIVE」(MOCK/SYNTHETIC/…) 或 hasData===false ⇒ MUTED（灰/空态·不出红）。
+  //   洛阳·设备OEE（后端合成租户返 SYNTHETIC 或该因子 MOCK/hasData=false）⇒ 命中 MUTED。
+  const notLive = (dm?: string | null): boolean => dm != null && dm !== "LIVE";
+  const topLive = !notLive(data.dataMode);
+  const cardDecisionMode = (c: RiskCard): "LIVE" | "MUTED" =>
+    topLive && !notLive(c.dataMode) && c.hasData !== false ? "LIVE" : "MUTED";
+  // 首要风险仅在真数据卡间取（避免合成/mock 峰值抢「首要」红标）。
+  const livePeaks = data.cards.filter((c) => cardDecisionMode(c) === "LIVE").map((c) => c.peak ?? 0);
+  const maxPeak = livePeaks.length ? Math.max(0, ...livePeaks) : 0;
   return (
     <div>
       {drilledIn && <DrillBack testId="risk-back" trail={[{ label: "风险看板" }]} />}
@@ -67,14 +79,21 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       <div className={styles.grid}>
         {data.cards.map((card) => {
           const selected = selectedObjects.some((o) => o.label === card.base);
-          const isPrimary = maxPeak > 0 && card.peak === maxPeak;
+          const mode = cardDecisionMode(card);
+          const live = mode === "LIVE";
+          const isPrimary = live && maxPeak > 0 && card.peak === maxPeak;
+          // hasData=false（无真源诚实空态卡·洛阳原案）：整卡灰、显 noDataReason、移出越线判定。
+          const noData = card.hasData === false;
+          const currentVal = card.currentTightness?.value;
           return (
             <div
               key={`${card.base}:${card.factor}`}
               className={`${styles.card} ${selected ? styles.cardSelected : ""}`}
               data-testid={`risk-card-${card.base}`}
+              data-decision-mode={mode}
               role="button"
               tabIndex={0}
+              style={live ? undefined : { opacity: 0.72 }}
               onClick={() => {
                 // 选中实体写入共享 store（上下文随问句提交）
                 useSessionStore.getState().toggleSelectedObject({
@@ -89,42 +108,52 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               <div className={styles.cardHead}>
                 <strong>{card.base}</strong>
                 {isPrimary && <span className="badge" data-testid={`risk-primary-${card.base}`} style={{ background: "var(--danger)", color: "#fff", fontSize: 10 }}>{zh.risk.primaryTag}</span>}
-                {/* §7.3 风险弹窗（与 order-chain 风险点 chip 共用 RiskPopover 组件） */}
+                {/* §7.3 风险弹窗（与 order-chain 风险点 chip 共用 RiskPopover 组件）·透传 dataMode（非 LIVE→灰） */}
                 <RiskHoverTrigger
-                  data={{ base: card.base, factor: card.factor, peak: card.peak, crossDay: card.crossDay, series: card.series, threshold: data.threshold }}
+                  data={{ base: card.base, factor: card.factor, peak: card.peak, crossDay: card.crossDay, series: card.series, threshold: data.threshold, dataMode: live ? "LIVE" : (card.dataMode ?? "MOCK") }}
                   testId={`risk-factor-${card.base}`}
                 >
                   <span className="badge">{card.factor}</span>
                 </RiskHoverTrigger>
               </div>
-              {/* 轨M 增量1（真推演红线·复审修文案）：红/黄峰值诚实标 dataMode。
-                  MOCK 卡该因素无真数据源 → 基线张力是 mockTightness 启发值（非实测），**绝不叫"实测"**；
-                  LIVE 卡基线来自真 OEE/利用率/良率 → 标"实测当前 N"。 */}
-              {card.dataMode === "MOCK" && (
-                <div className="badge" data-testid={`risk-datamode-${card.base}`} title="该因素无真数据源，基线张力为 mockTightness 启发估算（非实测）；峰值含真事件脉冲"
-                  style={{ background: "var(--warn, #caa23a)", color: "#1a1400", fontSize: 10, alignSelf: "flex-start" }}>
-                  估算·无实测{card.currentTightness ? `（mock 基线 ${Math.round(card.currentTightness.value)}）` : ""}
+              {/* WO-KILL-MOCK-RED 治本：无真源诚实空态卡（hasData=false·含洛阳·设备OEE）——
+                  不渲染峰值/越线/日条红，只出 noDataReason 引导接入真实数据。 */}
+              {noData ? (
+                <div className="empty-state" data-testid={`risk-nodata-${card.base}`}
+                  style={{ fontSize: 11.5, lineHeight: 1.6, color: "var(--muted)", marginTop: 4 }}>
+                  {card.noDataReason ?? NO_DATA_HINT}
                 </div>
+              ) : (
+                <>
+                  {/* 诚实标 dataMode：MOCK/合成/无真源 → "估算·无实测"；仅真数据卡标"实测当前 N"。 */}
+                  {!live && (
+                    <div className="badge" data-testid={`risk-datamode-${card.base}`} title="该因素无真数据源（或合成/顶层非实测），基线张力为启发/合成估算（非实测）——不作决策红"
+                      style={{ background: "var(--warn, #caa23a)", color: "#1a1400", fontSize: 10, alignSelf: "flex-start" }}>
+                      估算·无实测{currentVal != null ? `（基线 ${Math.round(currentVal)}）` : ""}
+                    </div>
+                  )}
+                  {live && currentVal != null && (
+                    <div className="badge" data-testid={`risk-datamode-${card.base}`}
+                      style={{ fontSize: 10, alignSelf: "flex-start", opacity: 0.8 }}>
+                      实测当前 {Math.round(currentVal)}
+                    </div>
+                  )}
+                  <div className={styles.metrics}>
+                    <span>
+                      {zh.risk.peak}
+                      <b className="mono" style={{ color: decisionColor(card.peak, data.threshold, live ? "LIVE" : "MOCK") }}>
+                        {card.peak != null ? card.peak.toFixed(0) : "—"}
+                      </b>
+                    </span>
+                    <span>
+                      {zh.risk.crossDay}
+                      {/* 治本：非 LIVE 不出越线日（哈希/合成越线不作决策结论）。 */}
+                      <b className="mono">{live && card.crossDay != null ? `D+${card.crossDay}` : zh.risk.noCross}</b>
+                    </span>
+                  </div>
+                  <MiniStrip series={card.series} threshold={data.threshold} dataMode={live ? "LIVE" : "MOCK"} />
+                </>
               )}
-              {card.dataMode === "LIVE" && card.currentTightness && (
-                <div className="badge" data-testid={`risk-datamode-${card.base}`}
-                  style={{ fontSize: 10, alignSelf: "flex-start", opacity: 0.8 }}>
-                  实测当前 {Math.round(card.currentTightness.value)}
-                </div>
-              )}
-              <div className={styles.metrics}>
-                <span>
-                  {zh.risk.peak}
-                  <b className="mono" style={{ color: card.peak >= data.threshold ? "var(--danger)" : "var(--txt)" }}>
-                    {card.peak.toFixed(0)}
-                  </b>
-                </span>
-                <span>
-                  {zh.risk.crossDay}
-                  <b className="mono">{card.crossDay != null ? `D+${card.crossDay}` : zh.risk.noCross}</b>
-                </span>
-              </div>
-              <MiniStrip series={card.series} threshold={data.threshold} />
             </div>
           );
         })}
@@ -152,39 +181,54 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               </button>
             </div>
           )}
-          <div className="section-title">{zh.risk.dailyStrip}</div>
-          <EChart
-            height={140}
-            testId="risk-heat-strip"
-            option={{
-              grid: { top: 10, bottom: 30, left: 36, right: 12 },
-              tooltip: {},
-              xAxis: { type: "category", data: detail.series.map((_, i) => `D+${i}`) },
-              yAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
-              series: [
-                {
-                  type: "bar",
-                  data: detail.series.map((v) => ({
-                    value: v,
-                    itemStyle: { color: v >= data.threshold ? "#E0626C" : v >= data.threshold - 15 ? "#E8B54A" : "#43B7D7" },
-                  })),
-                },
-              ],
-            }}
-          />
-          {/* 时点点击（图表 + 可键盘到达的日条） */}
-          <div className={styles.dayRow}>
-            {detail.series.map((v, day) => (
-              <button
-                key={day}
-                className={styles.dayCell}
-                title={`D+${day} · ${v.toFixed(0)}`}
-                data-testid={`risk-day-${day}`}
-                style={{ background: heatColor(v, data.threshold) }}
-                onClick={() => setOrdersDay({ card: detail, day })}
-              />
-            ))}
-          </div>
+          {(() => {
+            // 治本：详情弹窗同顶层门——detail 非真数据卡（合成/无真源/hasData=false）不渲染红越线曲线/日条，出诚实空态。
+            const detailLive = cardDecisionMode(detail) === "LIVE";
+            if (!detailLive || detail.series.length === 0) {
+              return (
+                <div className="empty-state" data-testid="risk-detail-nodata" style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
+                  {detail.noDataReason ?? NO_DATA_HINT}
+                </div>
+              );
+            }
+            return (
+              <>
+                <div className="section-title">{zh.risk.dailyStrip}</div>
+                <EChart
+                  height={140}
+                  testId="risk-heat-strip"
+                  option={{
+                    grid: { top: 10, bottom: 30, left: 36, right: 12 },
+                    tooltip: {},
+                    xAxis: { type: "category", data: detail.series.map((_, i) => `D+${i}`) },
+                    yAxis: { type: "value", max: 100, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+                    series: [
+                      {
+                        type: "bar",
+                        data: detail.series.map((v) => ({
+                          value: v,
+                          itemStyle: { color: v >= data.threshold ? "#E0626C" : v >= data.threshold - 15 ? "#E8B54A" : "#43B7D7" },
+                        })),
+                      },
+                    ],
+                  }}
+                />
+                {/* 时点点击（图表 + 可键盘到达的日条·仅真数据卡染色，decisionHeat 门） */}
+                <div className={styles.dayRow}>
+                  {detail.series.map((v, day) => (
+                    <button
+                      key={day}
+                      className={styles.dayCell}
+                      title={`D+${day} · ${v.toFixed(0)}`}
+                      data-testid={`risk-day-${day}`}
+                      style={{ background: decisionHeat(v, data.threshold, "LIVE") }}
+                      onClick={() => setOrdersDay({ card: detail, day })}
+                    />
+                  ))}
+                </div>
+              </>
+            );
+          })()}
           {/* PRD-IND-risk §4.6 逐日事件可解释：标签 + 量化文案 + 来源系统（替代裸 type·amp） */}
           <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--muted)" }} data-testid="risk-events">
             {detail.events.map((e, i) => (
@@ -199,15 +243,17 @@ export default function RiskBoardView(_props: ViewRendererProps) {
           </div>
           {/* 轨N 增量3·风险点详情：该基地瓶颈因素逐项（接现成 bottleneck_matrix·LIVE/MOCK 诚实标，不新建风险引擎）。 */}
           <BottleneckDetailPanel base={detail.base} threshold={data.threshold} />
-          {/* cockpit P3 对症方案 → 工单（mitigation_select 优选 → 采纳经 adopt_mitigation Action 审批，R4 不直改） */}
-          <MitigationPanel base={detail.base} factor={detail.factor} tightness={detail.peak} />
+          {/* cockpit P3 对症方案 → 工单（mitigation_select 优选 → 采纳经 adopt_mitigation Action 审批，R4 不直改）。
+              无真峰值（合成/无真源卡）→ tightness 传 0，后端按方案性价比排序（不据假紧迫度推荐）。 */}
+          <MitigationPanel base={detail.base} factor={detail.factor} tightness={detail.peak ?? 0} />
         </Modal>
       )}
 
       {ordersDay && <AffectedOrdersModal card={ordersDay.card} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
 
-      {/* PRD-IND-risk §2.4：处置行动计划表（按越线日前置 7 天排启动 · 峰值≥90 配备份方案 · 14 天内反提 S&OP） */}
-      {(data.planRows?.length ?? 0) > 0 && (
+      {/* PRD-IND-risk §2.4：处置行动计划表（按越线日前置 7 天排启动 · 峰值≥90 配备份方案 · 14 天内反提 S&OP）。
+          治本：顶层非 LIVE（合成/无真源）⇒ 决策级处置工单不渲染（哈希/合成越线不产处置结论）。 */}
+      {topLive && (data.planRows?.length ?? 0) > 0 && (
         <div className="panel" style={{ marginTop: 18 }} data-testid="risk-plan-panel">
           <div className="section-title">{zh.risk.planTitle}</div>
           <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.risk.planSub(data.planRows!.length)}</div>
@@ -408,8 +454,13 @@ function BottleneckDetailPanel({ base, threshold }: { base: string; threshold: n
           <thead><tr><th>瓶颈因素</th><th>张力</th><th>状态</th></tr></thead>
           <tbody>
             {data!.factors.map((f) => {
-              const v = row.tightness[f] ?? 0;
-              const isPrimary = row.primary === f;
+              // WO-KILL-MOCK-RED 治本：无真源格子 = null（不伪造）——该格走灰、状态"无实测"，不染红/不判越线。
+              // 向后兼容：仅显式非 LIVE（或 null 格）才灰化；未标 dataMode 的旧 fixture/真 LIVE 保持既有行为。
+              const raw = row.tightness[f];
+              const dmNotLive = data!.dataMode != null && data!.dataMode !== "LIVE";
+              const cellLive = !dmNotLive && raw != null;
+              const v = raw ?? 0;
+              const isPrimary = cellLive && row.primary === f;
               return (
                 <tr key={f} data-testid={`bottleneck-factor-${f}`}>
                   <td className="zh">
@@ -418,12 +469,12 @@ function BottleneckDetailPanel({ base, threshold }: { base: string; threshold: n
                   </td>
                   <td className="mono">
                     <span style={{ display: "inline-block", width: 120, height: 8, borderRadius: 4, background: "var(--bg2)", position: "relative", verticalAlign: "middle", marginRight: 6 }}>
-                      <span style={{ position: "absolute", left: 0, top: 0, height: 8, borderRadius: 4, width: `${Math.min(100, v)}%`, background: heatColor(v, threshold) }} />
+                      <span style={{ position: "absolute", left: 0, top: 0, height: 8, borderRadius: 4, width: `${Math.min(100, v)}%`, background: decisionHeat(raw, threshold, cellLive ? "LIVE" : "MOCK") }} />
                     </span>
-                    {Math.round(v)}
+                    {raw != null ? Math.round(v) : "—"}
                   </td>
-                  <td className="zh" style={{ color: v >= threshold ? "var(--danger)" : v >= threshold - 15 ? "#D2B04C" : "var(--muted)" }}>
-                    {v >= threshold ? "越线" : v >= threshold - 15 ? "关注" : "正常"}
+                  <td className="zh" style={{ color: decisionColor(raw, threshold, cellLive ? "LIVE" : "MOCK", { calm: "var(--muted)" }) }}>
+                    {!cellLive ? "无实测" : v >= threshold ? "越线" : v >= threshold - 15 ? "关注" : "正常"}
                   </td>
                 </tr>
               );
@@ -492,11 +543,11 @@ function MitigationPanel({ base, factor, tightness }: { base: string; factor: st
   );
 }
 
-function MiniStrip({ series, threshold }: { series: number[]; threshold: number }) {
+function MiniStrip({ series, threshold, dataMode }: { series: number[]; threshold: number; dataMode?: string | null }) {
   return (
     <div className={styles.miniStrip}>
       {series.map((v, i) => (
-        <span key={i} style={{ background: heatColor(v, threshold) }} />
+        <span key={i} style={{ background: decisionHeat(v, threshold, dataMode) }} />
       ))}
     </div>
   );
@@ -509,10 +560,10 @@ function MiniStrip({ series, threshold }: { series: number[]; threshold: number 
  * `card.affectedOrders`——由产能传导引擎按越线日 D+crossDay 真算（订单 props.bases 含该基地·交期落窗口），
  * 非哈希标签查询。MOCK 卡诚实声明「张力曲线为 mock 基线启发（非实测）」；空列表给诚实解释，**绝不裸空**。
  */
-function AffectedOrdersModal({ card, day, onClose }: { card: RiskCard; day: number; onClose: () => void }) {
+function AffectedOrdersModal({ card, day: _day, onClose }: { card: RiskCard; day: number; onClose: () => void }) {
   const orders = (card.affectedOrders ?? []) as Record<string, unknown>[];
   const isMock = card.dataMode === "MOCK";
-  const baselineN = card.currentTightness ? Math.round(card.currentTightness.value) : null;
+  const baselineN = card.currentTightness?.value != null ? Math.round(card.currentTightness.value) : null;
   // WO-FORECAST-SIM：需求驱动因素的真缺口溯源（gapWan=预测需求−产能·真源 DemandSegment/SopVersion），LIVE 诚实位。
   // demandGap 已是 RiskCardSchema 一等字段（contracts solvers.ts），直接读·无需内联类型断言。
   const demandGap = card.demandGap;

@@ -6,6 +6,7 @@ import { SEG_REGISTRY } from "@platform/contracts";
 import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
+import { decisionColor, isLiveDecision } from "@/components/DecisionValue";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
 import { RuleRef } from "@/components/RuleRef";
 import { useActionDraft } from "../sim/shared";
@@ -343,9 +344,10 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                           data={k}
                           className={styles.chip}
                           testId={`oc-risk-chip-${r.so}-${k.base}`}
-                          style={{ color: k.peak >= (k.threshold ?? 85) ? "var(--danger)" : "var(--amber)", borderColor: "currentcolor", cursor: "default" }}
+                          // WO-KILL-MOCK-RED 治本：非 LIVE / 无真峰值 → 灰（不出红越线 chip）；仅真数据出决策色。
+                          style={{ color: decisionColor(k.peak, k.threshold ?? 85, k.dataMode, { calm: "var(--amber)", warn: "var(--amber)" }), borderColor: "currentcolor", cursor: "default" }}
                         >
-                          {k.base}·{k.factor} {k.crossDay != null ? `D+${k.crossDay}` : "未越线"}
+                          {k.base}·{k.factor} {isLiveDecision(k.dataMode) && k.crossDay != null ? `D+${k.crossDay}` : "未越线"}
                         </RiskHoverTrigger>
                       ))}
                       {more > 0 && (

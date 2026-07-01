@@ -256,14 +256,16 @@ export interface SyncJobVM {
 
 import type { OrderProblemGroup } from "@platform/contracts";
 
-/** 受影响订单行上的风险点引用（与 risk-board RiskPopover 共用数据形态） */
+/** 受影响订单行上的风险点引用（与 risk-board RiskPopover 共用数据形态）。
+ *  WO-KILL-MOCK-RED 阶段②：peak 可空（无真源=null）+ 透传 dataMode（非 LIVE→RiskPopover 走灰·不出红越线）。 */
 export interface OrderRiskRefVM {
   base: string;
   factor: string;
   crossDay: number | null;
-  peak: number;
+  peak: number | null;
   series?: number[];
   threshold?: number;
+  dataMode?: import("@platform/contracts").SolverDataMode | string | null;
 }
 
 export interface AffectedOrderRowVM {

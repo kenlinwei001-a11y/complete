@@ -41,6 +41,8 @@ export interface DagEdge {
 export interface DagData {
   nodes: DagNode[];
   edges: DagEdge[];
+  // WO-KILL-MOCK-RED 阶段②：补 `dataMode`——非 LIVE（估算/合成/无真源）时 KPI 越线 RED 降级为中性灰（不作决策红）。
+  dataMode?: import("@platform/contracts").SolverDataMode | string | null;
 }
 
 // WO-GRAPH-1：越线/缺口红走共享过程 DAG 视觉语言单一来源（GAP_COLOR === #DD7E9E，零视觉变化）。
@@ -54,6 +56,10 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
   const nodes = data?.nodes ?? [];
   const edges = data?.edges ?? [];
   if (nodes.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  // 治本：仅当 dataMode 明确非 LIVE 时抑制 RED 决策色（后端未标 dataMode 的真根因保持既有行为）。
+  const suppressRed = data?.dataMode != null && data.dataMode !== "LIVE";
+  const statusColor = (status?: string): string | undefined =>
+    suppressRed && status === "RED" ? "var(--muted)" : STATUS_COLOR[status ?? ""];
 
   // 节点 → 溯源抽屉六要素（来源/公式/输入/规则/备注），数字全取自求解器产出的节点字段（R13 可溯·零写死）。
   const nodeToDetail = (n: DagNode, weight?: number): DagDetail => {
@@ -156,10 +162,10 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
   return (
     <div data-testid="provenance-dag" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {roots.map((kpi) => (
-        <div key={kpi.id} className="panel" data-testid={`dag-node-${kpi.id}`} data-kind="kpi" style={{ padding: 10, borderLeft: `3px solid ${STATUS_COLOR[kpi.status ?? ""] ?? "var(--muted2)"}` }}>
+        <div key={kpi.id} className="panel" data-testid={`dag-node-${kpi.id}`} data-kind="kpi" style={{ padding: 10, borderLeft: `3px solid ${statusColor(kpi.status) ?? "var(--muted2)"}` }}>
           {/* 第一层：KPI 越线根（实际 vs 目标 + 缺口）——点穿溯源 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }} title="点穿溯源" onClick={openDetail(kpi)}>
-            <span className="badge" style={{ background: STATUS_COLOR[kpi.status ?? ""] ?? undefined, color: "#fff" }}>{kpi.status}</span>
+            <span className="badge" style={{ background: statusColor(kpi.status) ?? undefined, color: "#fff" }}>{kpi.status}</span>
             <b>{kpi.label}</b>
             <span style={{ fontSize: 11, color: "var(--muted)" }}>
               实际 {kpi.actual}{kpi.unit} · 目标 {kpi.target}{kpi.unit} · 缺口 {kpi.value}{kpi.unit} 🔍

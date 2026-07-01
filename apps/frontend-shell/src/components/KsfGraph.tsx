@@ -16,6 +16,8 @@ interface KsfGraphData {
   finNodes: { id: string; name: string; actual: number; target: number; unit: string; status: string }[];
   edges: { from: string; to: string; kind: "threat" | "support" }[];
   summary: string;
+  // WO-KILL-MOCK-RED 阶段②：补 `dataMode`——非 LIVE 时问题严重度红降级为中性（不作决策红）。
+  dataMode?: import("@platform/contracts").SolverDataMode | string | null;
 }
 
 export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
@@ -36,7 +38,9 @@ export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
     for (const e of data.edges) if (e.kind === "threat" && e.from === sel) litKsf.add(e.to);
     for (const e of data.edges) if (e.kind === "support" && litKsf.has(e.from)) litFin.add(e.to);
   }
-  const sevCls = (s: string) => (s === "H" ? "red" : s === "M" ? "amber" : "");
+  // 治本：仅当 dataMode 明确非 LIVE 时抑制"红"严重度（后端未标 dataMode 的真 audit 保持既有行为）。
+  const suppressRed = data.dataMode != null && data.dataMode !== "LIVE";
+  const sevCls = (s: string) => (suppressRed ? "" : s === "H" ? "red" : s === "M" ? "amber" : "");
 
   return (
     <div className="panel" data-testid={testId}>
@@ -91,7 +95,7 @@ function ProblemTimeline({ problem }: { problem: { id: string; name: string; ksf
   const { data, isLoading } = useQuery({
     queryKey: ["b", "audit_timeline", problem.id],
     queryFn: async () => (await runSolver("audit_timeline", { kind: problem.ksfRef || problem.name })).data as {
-      series: number[]; threshold: number; crossDay: number | null; peak: number; stages?: { label: string }[];
+      series: number[]; threshold: number; crossDay: number | null; peak: number; stages?: { label: string }[]; dataMode?: string;
     },
   });
   return (
@@ -106,6 +110,8 @@ function ProblemTimeline({ problem }: { problem: { id: string; name: string; ksf
           peak={data.peak}
           affectedOrders={[] as DotOrder[]}
           testId={`ksf-dda-${problem.id}`}
+          // 治本：dataMode 明确非 LIVE ⇒ DailyDotAxis 走灰不画红越线；未标（真 audit）默认 LIVE 保持既有行为。
+          dataMode={data.dataMode ?? "LIVE"}
         />
       )}
     </div>

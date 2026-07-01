@@ -1,19 +1,27 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import type { SolverDataMode } from "@platform/contracts";
+import { decisionColor, decisionHeat, NO_DATA_HINT } from "@/components/DecisionValue";
 import zh from "@/locales/zh";
 import styles from "./RiskPopover.module.css";
 
 /**
  * §7.3 风险弹窗 —— risk-board 与 order-chain（§7.16 关联风险点 chip）共用组件。
  * 悬停触发，展示 基地·风险因素·峰值·越线日 + 逐日张力 mini strip。
+ *
+ * WO-KILL-MOCK-RED 阶段②（治本）：加 `dataMode`——非 LIVE（MOCK/SYNTHETIC/无真源）时
+ * 峰值/日条一律走中性灰（decisionColor/decisionHeat 门），越线日降级为"无真实数据·不参与越线判定"，
+ * peak 可空。绝不把哈希/合成值渲染成红越线可行动结论。
  */
 export interface RiskPopoverData {
   base: string;
   factor: string;
-  peak: number;
+  peak: number | null;
   crossDay: number | null;
   series?: number[];
   threshold?: number;
+  /** 显式非 LIVE ⇒ 峰值/越线/日条排除决策着色（灰）；缺省（未传）向后兼容按 LIVE 着色。 */
+  dataMode?: SolverDataMode | string | null;
 }
 
 export function heatColor(v: number, threshold: number): string {
@@ -24,6 +32,9 @@ export function heatColor(v: number, threshold: number): string {
 
 export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: { top: number; left: number; bottom: number } }) {
   const threshold = data.threshold ?? 85;
+  // 向后兼容：仅显式非 LIVE 才灰化排除（未标 dataMode 的旧 fixture/真 LIVE 保持既有行为）。
+  const live = data.dataMode == null || data.dataMode === "LIVE";
+  const effMode = live ? "LIVE" : data.dataMode;
   const top = Math.min(anchor.bottom + 6, (typeof window !== "undefined" ? window.innerHeight : 800) - 180);
   const left = Math.min(anchor.left, (typeof window !== "undefined" ? window.innerWidth : 1200) - 280);
   return createPortal(
@@ -35,20 +46,25 @@ export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: {
       <div className={styles.metrics}>
         <span>
           {zh.risk.peak}
-          <b className="mono" style={{ color: data.peak >= threshold ? "var(--danger)" : "var(--txt)" }}>
-            {data.peak.toFixed(0)}
+          <b className="mono" style={{ color: decisionColor(data.peak, threshold, effMode) }}>
+            {data.peak != null ? data.peak.toFixed(0) : "—"}
           </b>
         </span>
         <span>
           {zh.risk.crossDay}
-          <b className="mono">{data.crossDay != null ? `D+${data.crossDay}` : zh.risk.noCross}</b>
+          {/* 治本：非 LIVE 不显越线日（哈希越线不作决策结论），显中性"未参与判定"。 */}
+          <b className="mono">{live && data.crossDay != null ? `D+${data.crossDay}` : zh.risk.noCross}</b>
         </span>
       </div>
-      {data.series && data.series.length > 0 && (
+      {live && data.series && data.series.length > 0 ? (
         <div className={styles.strip} data-testid="risk-popover-strip">
           {data.series.map((v, i) => (
-            <span key={i} title={`D+${i} · ${v.toFixed(0)}`} style={{ background: heatColor(v, threshold) }} />
+            <span key={i} title={`D+${i} · ${v.toFixed(0)}`} style={{ background: decisionHeat(v, threshold, effMode) }} />
           ))}
+        </div>
+      ) : (
+        <div data-testid="risk-popover-nodata" style={{ fontSize: 10.5, color: "var(--muted2)", marginTop: 4 }}>
+          {NO_DATA_HINT}
         </div>
       )}
     </div>,
