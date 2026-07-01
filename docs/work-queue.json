@@ -879,7 +879,7 @@
       "title": "灾备备份+外部审计对接",
       "doc": "docs/WO-ENTERPRISE-DR-AUDIT.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R27",
@@ -952,7 +952,8 @@
             "run": "H='X-Debug-User: demo:admin:admin|platform_admin'; curl -s -XPUT :4001/a/v1/tenants/demo/features -H \"$H\" -H 'content-type: application/json' -d '{\"key\":\"audit-sink\",\"enabled\":false}'; curl -s -w '\\n%{http_code}\\n' -XPUT :4001/a/v1/audit-sinks -H \"$H\" -H 'content-type: application/json' -d '{\"kind\":\"webhook_ndjson\",\"endpoint\":\"http://x\"}' — 期望:末行 404 且 body error.code==FEATURE_NOT_FOUND;再跑 pnpm -r build && pnpm -r test && pnpm audit-actor:check && pnpm retention-coverage:check && pnpm gates — 期望:全绿、datacore 用例数 ≥69"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "ACTUATE",
