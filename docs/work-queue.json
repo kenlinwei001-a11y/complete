@@ -557,8 +557,8 @@
       "title": "全局二级页回退普查+统一组件",
       "doc": "docs/WO-GLOBAL-BACK-NAV.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "R17",
       "acceptance": {
