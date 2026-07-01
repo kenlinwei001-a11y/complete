@@ -150,7 +150,7 @@
       "title": "消灭走捷径·源数据连接器页可见Excel+无凭空门",
       "doc": "docs/WO-SOURCE-TRANSPARENCY-no-shortcut.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "透明≠洗成真实",
@@ -223,7 +223,8 @@
             "run": "pnpm -r build && pnpm -r test → 期望 4 包全绿(datacore>=既有数含新 export+门测、agentcore、frontend、contracts 无红)。产出=各包 vitest 通过计数 + 退出码 0。"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "MULTISRC-FUSION",
