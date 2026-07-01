@@ -100,7 +100,7 @@
 - **SolverParam / SolverParamsHistory**：求解器参数（版本化，校准可改）· `solverParams`。
 - **通用图求解器地板语义确定化（A13）**：`solvers/field-roles.ts resolveFieldRoles` 把"哪个类型/字段是 root/sink/resource/priority(地板)/leaf"的角色解析做成**纯函数 + 结构信号(扇入/扇出/PK/数值) + 配置词库(`field-role-lexicon.ts` R14) + 固定 tie-break**，**去掉 LLM 消歧（R6 字节一致）**；真歧义返回**确定性排序候选 + 置信度 + ambiguous 标**（取 top1 默认 / 喂 A5 比差 / A4 让人选，**绝不调 Kimi**）。覆盖 shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius（后者断供根=被 ref 的终端汇点，结构确定，rootId 运行期标量仍留空）· `SOLVER_FIELD_ROLES` · 契约 `FieldRoleResolutionSchema` · `GET /a/v1/solvers/:key/field-roles` · 门 `floor-semantics:check`。
 - **ForecastSnapshot / RiskCase / SopVersion**：预测快照 / 风险案 / S&OP 月度平衡台 · `sop.ts`。
-- **Calibration{Pairs,Proposals,History,Forecasts}**：M11 校准引擎（EMA/重放归因/分位）· `calibration/`。
+- **Calibration{Pairs,Proposals,History,Forecasts,Convergence}**：M11 校准引擎（EMA/重放归因/分位）· `calibration/`。**校准活体常态化（WO-E1·「越用越准」成日常）**：`ScheduledJobKind` 新增 **`CALIBRATION_SWEEP`**（boot 注册每日 cron `0 5 * * *`·与既有兜底 `CALIBRATION_RUN` 每周并列）→ `CalibrationService.sweep()` 周期跑 `runAll`（回采→配对→提案·EMA 小步长自动应用/其余走 R4 审批）**并逐轮落收敛度** `CalibrationConvergenceRecord`（round 单调·mapeBefore→mapeAfter·提案/自动应用数·paramsVersion；R9 四处：`repo.ts`+`memory.ts`+`pg.ts`+migration034 `calibration_convergence`）。`GET /a/v1/calibration/convergence`（收敛史逐轮 + `converging`/`improvedPct` 判据·R2）= 「越用越准」证据看板（逐轮 mapeAfter 下降）；`POST /a/v1/calibration/sweep`（手动·catalog_admin）。事件 `calibration.swept`（每轮一条·§4）。**确定性 R6**：mape 均从 `report()` 派生（无随机/时钟随机性·同种子重跑收敛史字节一致）。**边界 R13**：收敛真下降依赖 A8 时序/writeback 真回采（demo 内存态无 live 配对 → MAPE 静止·诚实标·真值证在确定性测试驱动真配对 25→13.64→5.26）；R4 不破（校准仍确定性提案+人工审批·非无人值守自改）。
 
 ### F. 时序/运营域（DataCore）
 - **TsAggSpec / TsAggRun / TsLateArrival**：时序聚合 · `timeseries.ts`。
@@ -269,11 +269,15 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 
 **推演沙盘链路（增量 0 立 · 设计待落，详 `docs/SPEC-sandbox-propagation-and-session.md` / `docs/SPEC-sandbox-readiness-certification.md`）**
 ```
-本体世界态(合成/连接器/切片物化,走正门 R16/R4) --init--> SimSession
+决策视图(风险卡/规划体检…) --openWhatIf(presetContext,WO-E2)--> /v/sim-sandbox?whatif=1&… ┐
+本体世界态(合成/连接器/切片物化,走正门 R16/R4) --init(scope=presetContext)--> SimSession  ┘
   --propagateTick(系数×延迟,沿 viaLink 复用 recompute 导航 + risk.ts 衰减,纯函数 R6)--> SimTickState
   --checkpoint--> SimCheckpoint --branch(以 cp 态为 base)--> SimSession'
   --compare(复用 counterfactual_timeline 双序列形状)--> KPI 对比
 沙盘 act(模拟态,不写真值) --采纳--> ActionDraft(走正门 R4)         ⚠ 禁直写绕审批(RL4)
+what-if 进决策日常(WO-E2): 决策入口一键「开 what-if」→ useOpenWhatIf 编 URL query(source/subject/factor/label,确定性 R6)
+  → SandboxView parseWhatIfPreset 注入 SimSession.scope.presetContext + 展示 what-if 上下文条 → 复用既有沙盘链(不新建引擎)
+  决策完即弃(新会话)或采纳(R4 正门)；R3 隔离主世界不被污染。前端 whatif.ts + RiskBoardView「就此问题开 what-if 推演」按钮
 closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(propagateTick/recompute 空跑1tick)
   --deriveCertification(纯投影,零新校验 RL3·增量2 已落)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」
 propagateTick(增量3 已落): rules.coefficient/coefficientRef→rule.params × 源态 ×(decay) 沿 viaLink → next 态 + 延迟队列(arriveTick>t) + trace；无 PUBLISHED 规则=恒等 tick(opt-in 可回退)
@@ -321,6 +325,7 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
 | L5 | `decision.recorded` | 一等 Decision 记录创建（WO-DECISION-RECORD·§3.7 D8·问责+组织学习；`DecisionService.create`→`POST /a/v1/decisions`，payload 带 decisionId/title/chosen/decidedBy） | IN_SESSION | decisions | — |
 | L5 | `decision.outcome_recorded` | Decision 补录实现结果（`DecisionService.recordOutcome`→`POST /a/v1/decisions/:id/outcome`，realizedOutcome 后填→预测 vs 实现可对比复盘） | IN_SESSION | decisions | — |
 | L6 | `calibration.applied` | 校准批准 | IN_SESSION | calibration-report, solver-params | DL5 |
+| L6b | `calibration.swept` | 校准活体清扫每轮（WO-E1·CALIBRATION_SWEEP → runAll + 落收敛度 mapeBefore→mapeAfter） | IN_SESSION | calibration-convergence(GET /a/v1/calibration/convergence) | DL5 |
 | L7 | `intent.promoted` | 兜底孵化 | IN_SESSION | intent-catalog, fallback-stats | DL6 |
 | L8 | `synthetic.tick_completed` | 模拟时钟 tick | IN_SESSION | dashboard, risk, scenario-data, calibration-report | DL7 |
 | L8 | `dataset.regenerated` | 合成生成 | IN_SESSION | dashboard, risk, scenario-data, ontology-graph, rule-library | — |

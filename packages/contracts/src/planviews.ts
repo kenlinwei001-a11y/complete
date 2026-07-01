@@ -219,6 +219,35 @@ export const CalibrationRunResultSchema = z.object({
 });
 export type CalibrationRunResult = z.infer<typeof CalibrationRunResultSchema>;
 
+/**
+ * WO-E1（校准活体常态化）：每轮 CALIBRATION_SWEEP 收敛度落库一条。
+ * 收敛史 = 「越用越准」的证据看板——逐轮 mapeAfter 应单调下降（自动应用 + 审批采纳生效 → 参数版本推进 → 预测更准）。
+ * 确定性 R6：mape 均从 report 派生（无随机/时钟随机性）；round 单调自增。
+ */
+export const CalibrationConvergencePointSchema = z.object({
+  round: z.number().int(), // 第几轮清扫（1 起，单调自增）
+  at: z.string(), // ISO 时刻（落库时钟；仅展示，不参与判定）
+  trigger: z.string(), // "CALIBRATION_SWEEP" | "手动" 等
+  mapeBefore: z.number(), // 本轮清扫前当前 MAPE（report 末点）
+  mapeAfter: z.number(), // 本轮清扫后当前 MAPE（应用/采纳生效后重算 report 末点）
+  slicesEvaluated: z.number().int(),
+  proposalsCreated: z.number().int(), // 本轮新增 PENDING 提案
+  autoApplied: z.number().int(), // 本轮自动应用数（EMA 小步长）
+  paramsVersion: z.number().int().optional(), // 清扫后 solver_params 版本（参数演进可溯）
+});
+export type CalibrationConvergencePoint = z.infer<typeof CalibrationConvergencePointSchema>;
+
+/** GET /a/v1/calibration/convergence 响应（收敛史逐轮序列 + 是否收敛判据）。 */
+export const CalibrationConvergenceSchema = z.object({
+  points: z.array(CalibrationConvergencePointSchema), // 按 round 升序
+  rounds: z.number().int(),
+  /** 首轮 mapeAfter − 末轮 mapeAfter（>0 = 越用越准）。无轮次则 0。 */
+  improvedPct: z.number(),
+  /** 末轮 mapeAfter 是否 ≤ 首轮（单调下降/持平 = 收敛良好）。 */
+  converging: z.boolean(),
+});
+export type CalibrationConvergence = z.infer<typeof CalibrationConvergenceSchema>;
+
 /** §7.22 数据健康度 */
 export const DataHealthSourceSchema = z.object({
   connId: z.string(),

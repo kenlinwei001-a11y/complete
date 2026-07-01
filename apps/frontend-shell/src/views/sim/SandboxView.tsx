@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { parseWhatIfPreset, type WhatIfPreset } from "./whatif";
 import type { PropagationRule, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
   createSimSession,
@@ -523,9 +525,14 @@ function LineageChain({ vm }: { vm: ObjectLineageVM }) {
 /** 测试可注入 config（绕过网络，喂两套 mock config 证 R14）；生产留空走 view-config 端点。 */
 export interface SandboxViewProps {
   injectedConfig?: SandboxViewConfig;
+  /** WO-E2 测试注入：绕过 URL 直接喂 what-if presetContext（生产走 useSearchParams）。 */
+  injectedPreset?: WhatIfPreset | null;
 }
 
-export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
+export default function SandboxView({ injectedConfig, injectedPreset }: SandboxViewProps = {}) {
+  // WO-E2（沙盘 what-if 进决策日常）：决策入口一键「开 what-if」→ URL 带 presetContext → 注入 SimSession.scope。
+  const [searchParams] = useSearchParams();
+  const whatIf = injectedPreset !== undefined ? injectedPreset : parseWhatIfPreset(searchParams);
   const cfgQuery = useQuery({
     queryKey: ["a", "sim", "view-config"],
     queryFn: fetchSimViewConfig,
@@ -574,7 +581,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const init = useCallback(async (c: SandboxViewConfig) => {
     try {
       const base = deriveBaseSnapshot(c);
-      const s = await createSimSession({ baseSnapshot: base, scope: {} });
+      // WO-E2：what-if 上下文（决策入口带入）注入 SimSession.scope —— 沙盘据此聚焦推演、决策完即弃/采纳（R2/R3 隔离）。
+      const scope = whatIf ? { presetContext: whatIf as unknown as Record<string, unknown> } : {};
+      const s = await createSimSession({ baseSnapshot: base, scope });
       setSessionId(s.id);
       setWorld(base);
       setCurTick(0);
@@ -589,7 +598,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     } catch (e) {
       toastError(e);
     }
-  }, [certScope]);
+  }, [certScope, whatIf]);
 
   useEffect(() => {
     if (cfg && !sessionId) void init(cfg);
@@ -781,6 +790,22 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           本体派生：{cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 · {cfg.propagationCount} 传导规则
         </div>
       </div>
+
+      {/* WO-E2（沙盘 what-if 进决策日常）：决策入口一键「开 what-if」带入的上下文条——推演聚焦此问题，决策完即弃/采纳（R3 隔离主世界）。 */}
+      {whatIf && (
+        <div
+          className="panel"
+          data-testid="sandbox-whatif-context"
+          style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginTop: 8, borderLeft: "3px solid #43B7D7" }}
+        >
+          <span className="badge blue" data-testid="sandbox-whatif-badge">what-if</span>
+          <span className={styles.sub} data-testid="sandbox-whatif-source">来自决策入口：{whatIf.source}</span>
+          {whatIf.label && <b data-testid="sandbox-whatif-label">{whatIf.label}</b>}
+          {whatIf.subject && <span className="badge" data-testid="sandbox-whatif-subject">{whatIf.subject}</span>}
+          {whatIf.factor && <span className="badge" data-testid="sandbox-whatif-factor">{whatIf.factor}</span>}
+          <span className={styles.sub} style={{ marginLeft: "auto" }}>就此问题推演对比基线 · 决策完即弃或采纳为 Action（R4）</span>
+        </div>
+      )}
 
       {/* KPI 行：全局态 + 逐 stateVar（全从配置 stateVars 渲染） */}
       <div className={styles.threeKpiRow} data-testid="sandbox-kpis">

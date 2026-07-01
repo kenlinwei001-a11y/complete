@@ -729,6 +729,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     calibrationHistory: new PgStore(pool, "calibration_history"),
     calibrationForecasts: new PgStore(pool, "calibration_forecasts"),
     calibrationPairs: new PgStore(pool, "calibration_pairs"),
+    calibrationConvergence: new PgStore(pool, "calibration_convergence"),
     riskCases: new PgStore(pool, "risk_cases"),
     livedInStates: new PgStore(pool, "lived_in_states"),
     opsSchedules: new PgStore(pool, "ops_schedules"),

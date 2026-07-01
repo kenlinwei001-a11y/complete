@@ -952,6 +952,24 @@ export interface CalibrationProposalRecord {
   appliedSnapshot?: Record<string, number>;
 }
 
+/**
+ * WO-E1（校准活体常态化）：每轮 CALIBRATION_SWEEP 落一条收敛度记录（越用越准的证据）。
+ * 确定性 R6：mape 均从 report 派生；round 单调自增（= 已有记录数 + 1）。
+ */
+export interface CalibrationConvergenceRecord {
+  id: string; // calc_{tenantId}_{round}
+  tenantId: string;
+  round: number;
+  at: string;
+  trigger: string;
+  mapeBefore: number;
+  mapeAfter: number;
+  slicesEvaluated: number;
+  proposalsCreated: number;
+  autoApplied: number;
+  paramsVersion?: number;
+}
+
 export interface CalibrationHistoryRecord {
   id: string; // calh_
   tenantId: string;

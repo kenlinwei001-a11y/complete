@@ -668,6 +668,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     .on("CALIBRATION_RUN", async (tenantId) => {
       await calibration.runAll(tenantId, "CALIBRATION_RUN");
     })
+    // WO-E1（校准活体常态化）：更频繁的活体清扫——每轮 runAll + 逐轮收敛度落库（越用越准可见·R2）。
+    .on("CALIBRATION_SWEEP", async (tenantId) => {
+      await calibration.sweep(tenantId, "CALIBRATION_SWEEP");
+    })
     // WO-RETENTION（⑤）：每日清理过期+已处理的无界增长行（outbox/ts/scheduler_runs·R2 限本租户）。
     .on("RETENTION_SWEEP", async (tenantId) => {
       await retention.sweep(tenantId);
@@ -3809,6 +3813,38 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.get("/a/v1/calibration/proposals", async (req) => calibration.listProposals(ctx(req).tenantId));
   app.get("/a/v1/calibration/history", async (req) => calibration.history(ctx(req).tenantId));
+  // WO-E1（校准活体常态化）：收敛史回执（逐轮 mapeAfter 下降 = 越用越准的证据·R2）。
+  app.get("/a/v1/calibration/convergence", async (req) => {
+    const c = ctx(req);
+    const points = await calibration.convergenceHistory(c.tenantId);
+    const first = points[0];
+    const last = points[points.length - 1];
+    const improvedPct = first && last ? Number((first.mapeAfter - last.mapeAfter).toFixed(2)) : 0;
+    return {
+      points: points.map((p) => ({
+        round: p.round,
+        at: p.at,
+        trigger: p.trigger,
+        mapeBefore: p.mapeBefore,
+        mapeAfter: p.mapeAfter,
+        slicesEvaluated: p.slicesEvaluated,
+        proposalsCreated: p.proposalsCreated,
+        autoApplied: p.autoApplied,
+        ...(p.paramsVersion !== undefined ? { paramsVersion: p.paramsVersion } : {}),
+      })),
+      rounds: points.length,
+      improvedPct,
+      converging: !last || !first ? true : last.mapeAfter <= first.mapeAfter,
+    };
+  });
+  // WO-E1：手动触发一轮活体清扫（运维/演示/FDE 真跑·catalog_admin；常态由 CALIBRATION_SWEEP cron 跑）。
+  app.post("/a/v1/calibration/sweep", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => ["admin", "catalog_admin"].includes(r.split(":")[0] as string))) {
+      throw forbidden("catalog_admin only");
+    }
+    return calibration.sweep(c.tenantId, "手动");
+  });
   // 批准/回滚不直改参数：创建 `校准参数变更` Action（§S2 审批链），EXECUTED 后才落 solver_params。
   const calibrationAction = async (req: FastifyRequest, mode: "approve" | "rollback") => {
     const c = ctx(req);

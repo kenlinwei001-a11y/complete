@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
 import { heatColor, RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { useActionDraft } from "./sim/shared";
+import { useOpenWhatIf } from "./sim/whatif";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { DataModeBadge } from "@/components/DataModeBadge";
@@ -29,6 +30,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const selectedObjects = useSessionStore((s) => s.selectedObjects);
   const [detail, setDetail] = useState<RiskCard | null>(null);
   const [ordersDay, setOrdersDay] = useState<{ card: RiskCard; day: number } | null>(null);
+  // WO-E2（沙盘 what-if 进决策日常）：风险红点一键「开 what-if」→ 带该风险上下文进沙盘（复用既有沙盘链）。
+  const openWhatIf = useOpenWhatIf();
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
@@ -119,6 +122,23 @@ export default function RiskBoardView(_props: ViewRendererProps) {
 
       {detail && (
         <Modal title={`${detail.base} · ${detail.factor}`} onClose={() => setDetail(null)} width={720}>
+          {/* WO-E2：就此风险一键「开 what-if」→ 带上下文（基地/因素）进推演沙盘，对比基线、决策完即弃/采纳（R3 隔离）。 */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <button
+              className="btn sm primary"
+              data-testid="risk-open-whatif"
+              onClick={() =>
+                openWhatIf({
+                  source: "risk-board",
+                  subject: detail.base,
+                  factor: detail.factor,
+                  label: `${detail.base} · ${detail.factor}`,
+                })
+              }
+            >
+              就此问题开 what-if 推演 →
+            </button>
+          </div>
           <div className="section-title">{zh.risk.dailyStrip}</div>
           <EChart
             height={140}

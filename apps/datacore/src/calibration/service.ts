@@ -1,6 +1,7 @@
 import type { CalibrationReport, CalibrationRunResult } from "@platform/contracts";
 import type {
   ActionDraft,
+  CalibrationConvergenceRecord,
   CalibrationHistoryRecord,
   CalibrationMethodKind,
   CalibrationPairRecord,
@@ -114,6 +115,44 @@ export class CalibrationService {
       dropped,
       insufficient,
     };
+  }
+
+  // -- WO-E1 校准活体常态化（CALIBRATION_SWEEP：周期跑 runAll + 逐轮收敛度落库·越用越准可见） ----
+
+  /**
+   * S3 CALIBRATION_SWEEP 调度作业入口：跑一轮 `runAll`（回采→配对→提案·自动应用小步长），
+   * 并把本轮收敛度落库（mapeBefore→mapeAfter + 提案/自动应用数 + 参数版本）——「越用越准」的证据。
+   *
+   * 确定性 R6：mapeBefore/mapeAfter 均从 `report()` 派生（无随机/时钟随机性）；round = 已有记录数 + 1（单调）。
+   * 自动应用（EMA 小步长）在 runAll 内生效 → 刷新预测快照 → mapeAfter 应 ≤ mapeBefore（收敛）。
+   */
+  async sweep(tenantId: string, trigger = "CALIBRATION_SWEEP"): Promise<CalibrationRunResult & { round: number }> {
+    const mapeBefore = await this.latestMape(tenantId);
+    const run = await this.runAll(tenantId, trigger);
+    const mapeAfter = await this.latestMape(tenantId);
+    const paramsVersion = await this.solvers.paramsVersion(tenantId);
+    const existing = await this.repos.calibrationConvergence.list(tenantId);
+    const round = existing.length + 1;
+    await this.repos.calibrationConvergence.put({
+      id: `calc_${tenantId}_${round}`,
+      tenantId,
+      round,
+      at: new Date().toISOString(),
+      trigger,
+      mapeBefore,
+      mapeAfter,
+      slicesEvaluated: run.slicesEvaluated,
+      proposalsCreated: run.created,
+      autoApplied: run.autoApplied,
+      ...(typeof paramsVersion === "number" ? { paramsVersion } : {}),
+    });
+    await this.outbox.emit(tenantId, "calibration.swept", { round, mapeBefore, mapeAfter, created: run.created, autoApplied: run.autoApplied });
+    return { ...run, round };
+  }
+
+  /** GET /a/v1/calibration/convergence：逐轮收敛史（round 升序）+ 首末改善判据（越用越准可证·R2 限本租户）。 */
+  async convergenceHistory(tenantId: string): Promise<CalibrationConvergenceRecord[]> {
+    return (await this.repos.calibrationConvergence.list(tenantId)).sort((a, b) => a.round - b.round);
   }
 
   // -- §7.21 报告（pairs/切片 → 7/30d 双口径 + 阈值 + 触发标记；无配对时确定性基线兜底） ----

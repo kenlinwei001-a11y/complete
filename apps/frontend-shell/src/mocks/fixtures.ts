@@ -462,6 +462,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     if (f === "view.dash") return [f, "view.dash"];
     return [f];
   });
+  // WO-E2：推演沙盘暗发 entitlement（`sim.sandbox`）在 mock 下对 planner 开——使决策入口「开 what-if」可进沙盘。
+  if (account.username === "planner") routeFeatures.push("sim.sandbox", "sim.certification", "sim.propagation");
 
   return {
     tenant: { id: TENANT_ID, name: "星辰电池制造", industry: "battery-manufacturing" },

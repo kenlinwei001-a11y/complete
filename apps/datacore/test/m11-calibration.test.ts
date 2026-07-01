@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  CalibrationConvergenceSchema,
   CalibrationProposalSchema,
   CalibrationReportSchema,
   CalibrationRunResultSchema,
@@ -566,5 +567,70 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     expect(yieldHolds.length).toBeGreaterThanOrEqual(0); // HOLD 仅当候选再次过闸（不强约束）
     const planner403 = await t.app.inject({ method: "POST", url: "/a/v1/calibration/run", headers: PLANNER, payload: {} });
     expect(planner403.statusCode).toBe(403); // catalog_admin only
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WO-E1（校准活体常态化）：CALIBRATION_SWEEP + 收敛史 + GET /a/v1/calibration/convergence。
+// 越用越准的证据 = 逐轮 mapeAfter 单调下降；确定性 R6（无随机/时钟随机性，两次重跑字节一致）。
+// ---------------------------------------------------------------------------
+
+/**
+ * 逐轮真实 pairing 驱动 sweep：每轮先清旧配对、注入「偏差随轮缩小」的新配对（= 校准后新参数下预测更准
+ * 的真实语义），再 sweep。actualOf 用 (1 - biasFrac) 缩放实际值 → APE ≈ biasFrac → 逐轮 MAPE 真下降。
+ * 确定性 R6：biasFrac 由 round 派生（无随机/时钟随机性）。
+ */
+const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
+async function sweepWithBias(t: TestApp, _round: number, biasFrac: number): Promise<number> {
+  // 清上一轮配对（模拟"新窗口新一批预测"，不与旧轮混样）。
+  for (const p of await t.repos.calibrationPairs.list("demo")) await t.repos.calibrationPairs.remove("demo", p.id);
+  const c = await t.services.solvers.loadContext("demo");
+  await seedPairs(t, syntheticPairs(c, { days: 12, weekOf: () => 5, actualOf: (p) => round6(p * (1 - biasFrac)) }));
+  const s = await t.services.calibration.sweep("demo", "CALIBRATION_SWEEP");
+  return s.round;
+}
+
+describe("WO-E1 校准活体常态化（CALIBRATION_SWEEP + 收敛史）", () => {
+  it("E1a: sweep 逐轮落收敛度；mapeAfter 随轮下降（越用越准可见）+ 契约回执", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 6 });
+
+    // 三轮活体清扫，注入偏差随轮缩小（0.20→0.12→0.05）——= 校准后新参数下预测更准的真实语义。
+    const rounds = [0.2, 0.12, 0.05];
+    for (let i = 0; i < rounds.length; i++) expect(await sweepWithBias(t, i + 1, rounds[i]!)).toBe(i + 1);
+
+    const store = await t.services.calibration.convergenceHistory("demo");
+    expect(store.map((p) => p.round)).toEqual([1, 2, 3]); // round 单调自增
+    // 越用越准：逐轮 mapeAfter 严格下降（偏差随轮缩小 → 报告末点 MAPE 逐轮更低）。
+    expect(store[1]!.mapeAfter).toBeLessThan(store[0]!.mapeAfter);
+    expect(store[2]!.mapeAfter).toBeLessThan(store[1]!.mapeAfter);
+
+    // GET /a/v1/calibration/convergence 契约回执（越用越准判据）。
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/calibration/convergence", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const conv = CalibrationConvergenceSchema.parse(res.json());
+    expect(conv.rounds).toBe(3);
+    expect(conv.points.map((p) => p.round)).toEqual([1, 2, 3]);
+    expect(conv.converging).toBe(true); // 末轮 mapeAfter ≤ 首轮
+    expect(conv.improvedPct).toBeGreaterThan(0); // 首末真改善（越用越准）
+    // 出箱事件真发（每轮一条 calibration.swept）。
+    const swept = await t.repos.outboxEvents.list("demo", (e) => e.event === "calibration.swept");
+    expect(swept.length).toBe(3);
+  });
+
+  it("E1b: 确定性 R6 —— 同种子两租户重跑，收敛史字节一致（无随机/时钟随机性）", async () => {
+    const runOnce = async (): Promise<unknown> => {
+      const t = await makeApp();
+      await seedBattery(t);
+      await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 6 });
+      for (const [i, b] of [0.2, 0.12, 0.05].entries()) await sweepWithBias(t, i + 1, b);
+      const store = await t.services.calibration.convergenceHistory("demo");
+      // 剥离 at（落库时钟，仅展示不参与判定）后比对——收敛判据字段必须字节一致。
+      return store.map(({ at: _at, id: _id, ...rest }) => rest);
+    };
+    const a = await runOnce();
+    const b = await runOnce();
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });

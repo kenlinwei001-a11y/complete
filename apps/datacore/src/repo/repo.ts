@@ -5,6 +5,7 @@ import type {
   AuditLogRecord,
   CalibrationForecastRecord,
   CalibrationHistoryRecord,
+  CalibrationConvergenceRecord,
   CalibrationPairRecord,
   CalibrationProposalRecord,
   ClockTickReport,
@@ -293,6 +294,8 @@ export interface Repos {
   calibrationHistory: Store<CalibrationHistoryRecord>;
   calibrationForecasts: Store<CalibrationForecastRecord>;
   calibrationPairs: Store<CalibrationPairRecord>;
+  // WO-E1（校准活体常态化）：每轮 CALIBRATION_SWEEP 收敛度落库（越用越准证据）
+  calibrationConvergence: Store<CalibrationConvergenceRecord>;
   // 运营态出厂配置增量（lived-in）
   riskCases: Store<RiskCaseRecord>;
   livedInStates: Store<LivedInStateRecord>;

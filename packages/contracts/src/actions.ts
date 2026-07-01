@@ -102,6 +102,8 @@ export const ScheduledJobKindSchema = z.enum([
   "TS_AGGREGATE",
   // M11 §3 兜底定时：每周全量校准
   "CALIBRATION_RUN",
+  // WO-E1（校准活体常态化）：更频繁的活体清扫——每轮跑 runAll 并落收敛度（越用越准可见）。
+  "CALIBRATION_SWEEP",
   // 回放编排器 §6.1 A 类：真实租户定期产能预测（ServiceAccount 身份，M11 校准配对正式来源）
   "SCHEDULED_FORECAST",
   // 回放编排器 §6.1 B 类：S&OP 月度自动开启 + ①–④ 计算 + 议程（⑤ 仍人做）
