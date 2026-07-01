@@ -718,7 +718,7 @@
       "title": "本体文件优化+§0.5快查索引",
       "doc": "docs/WO-ONTOLOGY-FILE-OPT.md",
       "priority": "P3",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R21·文档工程",
@@ -791,7 +791,8 @@
             "run": "cd /home/user/complete && git --no-pager diff --stat docs/SYSTEM-ONTOLOGY.md && git --no-pager diff docs/SYSTEM-ONTOLOGY.md | grep -c '^-[^-]' && git --no-pager diff --name-only  → 期望 diff --stat 仅 SYSTEM-ONTOLOGY.md、删除行计数=0、name-only 只列 docs/SYSTEM-ONTOLOGY.md(无 parse.ts/check-*.mjs/*.test.ts)"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "CONTRAST-FIX",
