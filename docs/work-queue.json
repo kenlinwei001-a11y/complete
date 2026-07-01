@@ -1,19 +1,148 @@
 {
   "_schema": "协同工作队列·单一机器可读来源。status: TODO(可开工)|WIP(dev建中)|BUILT(dev交付待复验)|DONE(审核核发)|BLOCKED(门红待修). 用 scripts/collab-queue.mjs 读写(勿手改·避免格式漂移). 每次改一行·fetch/rebase/push.",
   "items": [
-    { "id": "SOLVER-BINDING", "title": "求解器schema由本体绑定驱动(解B3命门)", "doc": "docs/WO-SOLVER-ONTOLOGY-BINDING.md", "priority": "P0", "status": "TODO", "owner": "", "deps": [], "note": "真实数据出真答案的前提" },
-    { "id": "FIX-2CONCERN", "title": "GRAPH-3/4 Object360死交互 + FRESHNESS缓存失效", "doc": "docs/WO-FIX-2concern-graph-freshness.md", "priority": "P1", "status": "TODO", "owner": "", "deps": [], "note": "2门红·绿测试≠能用" },
-    { "id": "SOURCE-TRANSPARENCY", "title": "消灭走捷径·源数据连接器页可见Excel+无凭空门", "doc": "docs/WO-SOURCE-TRANSPARENCY-no-shortcut.md", "priority": "P1", "status": "TODO", "owner": "", "deps": [], "note": "透明≠洗成真实" },
-    { "id": "MULTISRC-FUSION", "title": "N1多源融合+冲突仲裁+测谎", "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md", "priority": "P1", "status": "TODO", "owner": "", "deps": ["SOLVER-BINDING"], "note": "建在绑定层之上" },
-    { "id": "E1-E2", "title": "校准活体常态化 + 沙盘what-if进决策", "doc": "docs/WO-design-E-calibration-sandbox-live-loop.md", "priority": "P1", "status": "TODO", "owner": "", "deps": [], "note": "仅设计零代码·NOT-LANDED" },
-    { "id": "RESOURCE-REF", "title": "统一资源引用模型(规则/求解器MCP真接线·修AgentsPage自由文本bug)", "doc": "docs/WO-RESOURCE-REF-MODEL.md", "priority": "P1", "status": "TODO", "owner": "", "deps": [], "note": "R15·你说前端看着有实际没关联" },
-    { "id": "AGENT-BREADTH", "title": "agent资产广度+全入口场景预配", "doc": "docs/WO-AGENT-ASSET-BREADTH.md", "priority": "P2", "status": "TODO", "owner": "", "deps": [], "note": "R16" },
-    { "id": "GLOBAL-BACK", "title": "全局二级页回退普查+统一组件", "doc": "docs/WO-GLOBAL-BACK-NAV.md", "priority": "P2", "status": "TODO", "owner": "", "deps": [], "note": "R17" },
-    { "id": "1C-PARSE", "title": "规则文档抽取解析率+异步化", "doc": "docs/WO-1C-PARSE-ASYNC.md", "priority": "P2", "status": "TODO", "owner": "", "deps": [], "note": "R19" },
-    { "id": "ONTOLOGY-OPT", "title": "本体文件优化+§0.5快查索引", "doc": "docs/WO-ONTOLOGY-FILE-OPT.md", "priority": "P3", "status": "TODO", "owner": "", "deps": [], "note": "R21·文档工程" },
-    { "id": "CONTRAST-FIX", "title": "深色字→浅色对比度", "doc": "docs/WO-CONTRAST-FIX.md", "priority": "P3", "status": "TODO", "owner": "", "deps": [], "note": "R22·CSS" },
-    { "id": "DR-AUDIT", "title": "灾备备份+外部审计对接", "doc": "docs/WO-ENTERPRISE-DR-AUDIT.md", "priority": "P2", "status": "TODO", "owner": "", "deps": [], "note": "R27" },
-    { "id": "ACTUATE", "title": "决策出站writeback适配器", "doc": "docs/WO-ACTUATE-writeback-adapter.md", "priority": "P2", "status": "DONE", "owner": "dev", "deps": [], "note": "e5c41cc·审核核发(代码级)" },
-    { "id": "OBSERVABILITY", "title": "全链OTel span树", "doc": "docs/WO-OBSERVABILITY-otel-span-tree.md", "priority": "P2", "status": "DONE", "owner": "dev", "deps": [], "note": "22443b2·审核核发(代码级)" }
+    {
+      "id": "SOLVER-BINDING",
+      "title": "求解器schema由本体绑定驱动(解B3命门)",
+      "doc": "docs/WO-SOLVER-ONTOLOGY-BINDING.md",
+      "priority": "P0",
+      "status": "WIP",
+      "owner": "dev",
+      "deps": [],
+      "note": "真实数据出真答案的前提"
+    },
+    {
+      "id": "FIX-2CONCERN",
+      "title": "GRAPH-3/4 Object360死交互 + FRESHNESS缓存失效",
+      "doc": "docs/WO-FIX-2concern-graph-freshness.md",
+      "priority": "P1",
+      "status": "BUILT",
+      "owner": "",
+      "deps": [],
+      "note": "2门红·绿测试≠能用",
+      "blockReason": ""
+    },
+    {
+      "id": "SOURCE-TRANSPARENCY",
+      "title": "消灭走捷径·源数据连接器页可见Excel+无凭空门",
+      "doc": "docs/WO-SOURCE-TRANSPARENCY-no-shortcut.md",
+      "priority": "P1",
+      "status": "WIP",
+      "owner": "dev",
+      "deps": [],
+      "note": "透明≠洗成真实"
+    },
+    {
+      "id": "MULTISRC-FUSION",
+      "title": "N1多源融合+冲突仲裁+测谎",
+      "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "SOLVER-BINDING"
+      ],
+      "note": "建在绑定层之上"
+    },
+    {
+      "id": "E1-E2",
+      "title": "校准活体常态化 + 沙盘what-if进决策",
+      "doc": "docs/WO-design-E-calibration-sandbox-live-loop.md",
+      "priority": "P1",
+      "status": "WIP",
+      "owner": "dev",
+      "deps": [],
+      "note": "仅设计零代码·NOT-LANDED"
+    },
+    {
+      "id": "RESOURCE-REF",
+      "title": "统一资源引用模型(规则/求解器MCP真接线·修AgentsPage自由文本bug)",
+      "doc": "docs/WO-RESOURCE-REF-MODEL.md",
+      "priority": "P1",
+      "status": "WIP",
+      "owner": "dev",
+      "deps": [],
+      "note": "R15·你说前端看着有实际没关联"
+    },
+    {
+      "id": "AGENT-BREADTH",
+      "title": "agent资产广度+全入口场景预配",
+      "doc": "docs/WO-AGENT-ASSET-BREADTH.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "R16"
+    },
+    {
+      "id": "GLOBAL-BACK",
+      "title": "全局二级页回退普查+统一组件",
+      "doc": "docs/WO-GLOBAL-BACK-NAV.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "R17"
+    },
+    {
+      "id": "1C-PARSE",
+      "title": "规则文档抽取解析率+异步化",
+      "doc": "docs/WO-1C-PARSE-ASYNC.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "R19"
+    },
+    {
+      "id": "ONTOLOGY-OPT",
+      "title": "本体文件优化+§0.5快查索引",
+      "doc": "docs/WO-ONTOLOGY-FILE-OPT.md",
+      "priority": "P3",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "R21·文档工程"
+    },
+    {
+      "id": "CONTRAST-FIX",
+      "title": "深色字→浅色对比度",
+      "doc": "docs/WO-CONTRAST-FIX.md",
+      "priority": "P3",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "R22·CSS"
+    },
+    {
+      "id": "DR-AUDIT",
+      "title": "灾备备份+外部审计对接",
+      "doc": "docs/WO-ENTERPRISE-DR-AUDIT.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "R27"
+    },
+    {
+      "id": "ACTUATE",
+      "title": "决策出站writeback适配器",
+      "doc": "docs/WO-ACTUATE-writeback-adapter.md",
+      "priority": "P2",
+      "status": "DONE",
+      "owner": "dev",
+      "deps": [],
+      "note": "e5c41cc·审核核发(代码级)"
+    },
+    {
+      "id": "OBSERVABILITY",
+      "title": "全链OTel span树",
+      "doc": "docs/WO-OBSERVABILITY-otel-span-tree.md",
+      "priority": "P2",
+      "status": "DONE",
+      "owner": "dev",
+      "deps": [],
+      "note": "22443b2·审核核发(代码级)"
+    }
   ]
 }
