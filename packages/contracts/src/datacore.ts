@@ -131,6 +131,19 @@ export const RuleDocStatusSchema = z.enum([
   "PARTIAL", // 执行语义 §6：分段部分失败（契约此前漏登，补齐）
 ]);
 
+/**
+ * WO-1C-PARSE（G-progress·异步抽取进度可视）：EXTRACTING 中逐段推进的真值进度。
+ * additive 可选·向后兼容；`total` = 段落总数，`done`/`failed` 逐段递增（done+failed 为已处理段数）。
+ * `updatedAt` 属可观测元数据（非字节 oracle，R6 不受影响）。前端渲染进度条 (done+failed)/total + failed 徽章。
+ */
+export const ExtractProgressSchema = z.object({
+  total: z.number(),
+  done: z.number(),
+  failed: z.number(),
+  updatedAt: z.string(),
+});
+export type ExtractProgress = z.infer<typeof ExtractProgressSchema>;
+
 export const RuleOriginSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("DOCUMENT"),

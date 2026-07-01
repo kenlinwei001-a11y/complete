@@ -14,11 +14,41 @@ const require_ = createRequire(import.meta.url);
 
 const ExtractionSchema = z.object({ candidates: z.array(CandidateRuleSchema) });
 
+// WO-1C-PARSE（G-prompt·提升首跳解析率）：在 1C 输出纪律基础上追加 schema 字段级契约回显 +
+// few-shot 正例/空例 + sourceQuote 逐字子串强约束（纯静态文本·确定性·不引随机）。与 G-retry 正交：
+// prompt 减少首跳格式漂移发生，retry 兜住偶发失败。mock 不读 system → 现有测试行为不变。
 const EXTRACTION_SYSTEM = `你是企业规则抽取器。只抽取可执行的约束/阈值/审批要求，不抽取叙述性内容。
-对每个文本段落输出 0..n 条候选规则。sourceQuote 必须逐字摘录输入文本的子串（服务端会做子串校验，不通过的候选会被丢弃）。
-expression 使用规则 DSL（如 Order.demandDelta > 0.5，支持 AND/OR/NOT、>,>=,<,<=,==,!=、SUM/MIN/MAX/COUNT/AVG），无法形式化时置空字符串。
-1C 输出纪律：严格只输出符合 schema 的 JSON 对象，不要任何解释文字、不要 Markdown 代码围栏。
-即使段落只含一条规则，也要放进 candidates 数组；段落确无可执行规则时返回 {"candidates": []}（空数组，不要省略字段）。`;
+对每个文本段落输出 0..n 条候选规则。
+
+【输出 schema（严格遵守，每条候选必含以下全部字段）】
+{
+  "candidates": [
+    {
+      "name": string,                 // 规则短名（一个短语，勿整句）
+      "description": string,          // 一句话说明该规则约束什么
+      "expression": string,           // 规则 DSL（下述），无法形式化时为空字符串 ""
+      "expressionConfidence": number, // 0..1，对 expression 形式化准确度的自评（无法形式化时给 0）
+      "scopeObjectTypes": string[],   // 作用对象类型（如 ["Order"]），不确定时给空数组 []
+      "severity": "BLOCK" | "WARN" | "INFO",  // 只允许这三个枚举值之一，不得臆造其他值
+      "sourceQuote": string           // 逐字子串（见下强约束）
+    }
+  ]
+}
+
+【expression DSL】形如 Order.demandDelta > 0.5；支持 AND/OR/NOT、>,>=,<,<=,==,!=、SUM/MIN/MAX/COUNT/AVG。无法形式化时置空字符串 ""（不要臆造字段名或算子）。
+
+【sourceQuote 强约束（服务端会逐字子串校验，不通过的候选被丢弃）】
+必须是该输入段落的**连续逐字子串**——原文照抄，不得改写、合并、增删标点或字词、不得跨段拼接。取能覆盖该约束的最短连续原文片段。
+
+【severity 取值】只允许 BLOCK / WARN / INFO 三者之一；"必须/不得/禁止/阻断" → BLOCK，"应/告警/超出时提示" → WARN，纯提示性 → INFO。
+
+【few-shot】
+输入段落：第一条 需求增量超过 50% 时必须阻断排产并上报审批。
+合法输出：{"candidates":[{"name":"需求增量阻断阈值","description":"需求增量超过 50% 时阻断排产并上报审批","expression":"Order.demandDelta > 0.5","expressionConfidence":0.8,"scopeObjectTypes":["Order"],"severity":"BLOCK","sourceQuote":"需求增量超过 50% 时必须阻断排产并上报审批"}]}
+输入段落：本制度自发布之日起施行，解释权归生产管理部。
+合法输出（无可执行规则）：{"candidates":[]}
+
+【1C 输出纪律】严格只输出符合上述 schema 的 JSON 对象，不要任何解释文字、不要 Markdown 代码围栏。即使段落只含一条规则也要放进 candidates 数组；段落确无可执行规则时返回 {"candidates": []}（空数组，不要省略字段）。`;
 
 /** Extract plain text from pdf/docx/md/txt buffers. */
 export async function extractText(filename: string, buf: Buffer): Promise<string> {
@@ -251,6 +281,7 @@ export class RuleDocService {
     await this.blob.put(blobKey, content);
     const extractJobId = newId("xjob");
     const text = await extractText(filename, content);
+    const segments = segmentText(text);
     const doc: RuleDoc = {
       id: newId("doc"),
       tenantId: ctx.tenantId,
@@ -259,8 +290,10 @@ export class RuleDocService {
       status: "EXTRACTING",
       droppedCandidates: 0,
       createdAt: new Date().toISOString(),
-      segments: segmentText(text),
+      segments,
       extractJobId,
+      // WO-1C-PARSE（G-progress）：初始化进度（total=段落数·done/failed 归 0），前端进入 EXTRACTING 即有分母。
+      extractProgress: { total: segments.length, done: 0, failed: 0, updatedAt: new Date().toISOString() },
     };
     await this.repos.ruleDocs.put(doc);
     return { doc, jobId: extractJobId };
@@ -276,13 +309,19 @@ export class RuleDocService {
     }
     doc.droppedCandidates = 0;
     doc.extractError = undefined;
+    // WO-1C-PARSE（G-progress）：进度复位（含续跑首段前 done/failed 归 0，与幂等清旧候选一致），
+    // total 以当前段落数重算。逐段推进后 put(doc)，EXTRACTING 中前端轮询即见跳动。
+    const segs = doc.segments ?? [];
+    doc.extractProgress = { total: segs.length, done: 0, failed: 0, updatedAt: new Date().toISOString() };
+    await this.repos.ruleDocs.put(doc);
     const candidates: RuleCandidate[] = [];
     let failedSegments = 0;
-    for (const segment of doc.segments ?? []) {
+    for (const segment of segs) {
       try {
         const segCands = await this.extractSegment(ctx, doc, segment, extractJobId);
         candidates.push(...segCands);
         await this.recordSegment(ctx.tenantId, doc.id, segment.idx, "OK");
+        if (doc.extractProgress) doc.extractProgress.done++;
       } catch (err) {
         failedSegments++;
         await this.recordSegment(
@@ -293,7 +332,11 @@ export class RuleDocService {
           err instanceof Error ? err.message : String(err),
         );
         this.metrics.inc("dc_rule_extract_segments_total", { status: "failed" });
+        if (doc.extractProgress) doc.extractProgress.failed++;
       }
+      // 逐段落库：EXTRACTING 中即可读到 done/failed 推进（前端轮询 GET /a/v1/rule-docs/:id 见跳动）。
+      if (doc.extractProgress) doc.extractProgress.updatedAt = new Date().toISOString();
+      await this.repos.ruleDocs.put(doc);
     }
     await this.markDiffs(ctx, doc, candidates);
     await this.markNearDuplicates(ctx, candidates);

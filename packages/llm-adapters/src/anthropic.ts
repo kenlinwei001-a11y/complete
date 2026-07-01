@@ -220,19 +220,53 @@ export class AnthropicLlmClient implements FullLlmClient {
     };
   }
 
-  /** 结构化输出：messages.parse + output_config.format（不可解析 → null）。 */
+  /**
+   * 结构化输出：messages.parse + output_config.format。
+   * WO-1C-PARSE（修 🔴 默认 Anthropic 原生结构化路零重试）：此前单跳——`parsed_output==null`
+   * 即返回 null，规则文档抽取默认部署首跳格式漂移即 0 候选死在第一跳（openai.ts / degrade.ts 两路
+   * 已有 ≤2 纠错重试，唯此路缺）。改为**有界纠错重试 ≤2**（首次 + 2 纠错重试），范式与
+   * `openai.ts parse()` 对齐：`messages.parse` 失败态为 `parsed_output==null`（非 throw），把上次
+   * 原始文本输出回灌为 assistant + 一条 user 纠错要求，令模型严格按 schema 重出（确定性策略·不依赖
+   * 时钟随机）；末次仍失败才 `null`（保诚实降级——绝不塞假数据）。传输层错误（鉴权/网络）原样抛出，
+   * 不计入解析重试（保 llmproviders 的 LLM_PURPOSE_UNBOUND 归一语义）。每次尝试都计量（与 openai 一致）。
+   */
   async parse<T>(req: ParseReq<T>): Promise<T | null> {
-    const resp = await this.client.messages.parse({
-      model: req.model,
-      max_tokens: req.maxTokens ?? 4096,
-      system: req.system,
-      messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
-      output_config: { format: zodOutputFormat(req.schema as never) },
-    });
-    requireUsage(resp, req.model);
-    this.track(req.model, "input", resp.usage.input_tokens);
-    this.track(req.model, "output", resp.usage.output_tokens);
-    return (resp.parsed_output as T | null | undefined) ?? null;
+    const messages: { role: "user" | "assistant"; content: string }[] = req.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    const MAX_ATTEMPTS = 3; // 首次 + 2 纠错重试（与 openai.ts / degrade.ts 齐）
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const last = attempt === MAX_ATTEMPTS - 1;
+      const resp = await this.client.messages.parse({
+        model: req.model,
+        max_tokens: req.maxTokens ?? 4096,
+        system: req.system,
+        messages,
+        output_config: { format: zodOutputFormat(req.schema as never) },
+      });
+      requireUsage(resp, req.model);
+      this.track(req.model, "input", resp.usage.input_tokens);
+      this.track(req.model, "output", resp.usage.output_tokens);
+      const parsed = (resp.parsed_output as T | null | undefined) ?? null;
+      if (parsed != null) return parsed;
+      if (last) return null;
+      // 纠错重提：回灌上次原始文本输出 + 严格按 schema 重出要求（parse 失败无 zod issues 列表可取，
+      // 唯原始文本可回灌）。
+      const rawText = Array.isArray(resp.content)
+        ? resp.content
+            .map((b) => ((b as { type?: string; text?: string }).type === "text" ? ((b as { text?: string }).text ?? "") : ""))
+            .join("\n")
+        : "";
+      messages.push({ role: "assistant", content: rawText });
+      messages.push({
+        role: "user",
+        content:
+          "上次输出不符合所需 JSON schema（无法解析为结构化对象）。请严格按 schema 重新输出完整结果，" +
+          "只输出 JSON、不要解释、不要 Markdown 代码围栏。",
+      });
+    }
+    return null;
   }
 
   toolLoop(req: ToolLoopReq): AsyncIterable<ToolLoopEvent> {

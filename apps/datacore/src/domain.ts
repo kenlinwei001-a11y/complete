@@ -3,6 +3,7 @@ import type {
   ApprovalStep,
   ActionType,
   CandidateRule,
+  ExtractProgress,
   PermissionPolicy,
   RuleOrigin,
   IndustryTemplate,
@@ -191,6 +192,9 @@ export interface RuleDoc {
   segments?: DocSegment[];
   droppedCandidates: number; // failed sourceQuote substring validation
   extractError?: string; // T1：后台异步抽取整体失败时的兜底原因（doc 落 PARTIAL）
+  // WO-1C-PARSE（G-progress·异步抽取进度可视）：EXTRACTING 中逐段落库，前端轮询可见跳动。
+  // additive 可选·向后兼容；updatedAt 属可观测元数据不进 R6 字节 oracle。
+  extractProgress?: ExtractProgress;
   createdAt: string;
 }
 

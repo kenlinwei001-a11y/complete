@@ -113,6 +113,34 @@ function DocReview({ doc }: { doc: RuleDocVM }) {
             <span className="spinner-sm" aria-hidden /> {t.extracting}
           </span>
         )}
+        {/* WO-1C-PARSE（G-progress）：抽取进度条 (done+failed)/total + failed 徽章。docs 列表在 EXTRACTING 时
+            已 2s 轮询 GET /a/v1/rule-docs → doc.extractProgress 随后台推进跳动。 */}
+        {extracting && doc.extractProgress && doc.extractProgress.total > 0 && (
+          <span
+            data-testid="ruledoc-progress"
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)" }}
+          >
+            <span style={{ width: 90, height: 5, background: "var(--bg2)", borderRadius: 3, overflow: "hidden", display: "inline-block" }}>
+              <span
+                style={{
+                  display: "block",
+                  width: `${((doc.extractProgress.done + doc.extractProgress.failed) / doc.extractProgress.total) * 100}%`,
+                  height: "100%",
+                  background: "var(--amber)",
+                  transition: "width 0.3s",
+                }}
+              />
+            </span>
+            <span className="mono" style={{ fontSize: 11 }} data-testid="ruledoc-progress-count">
+              {doc.extractProgress.done + doc.extractProgress.failed}/{doc.extractProgress.total}
+            </span>
+            {doc.extractProgress.failed > 0 && (
+              <span className="badge red" data-testid="ruledoc-progress-failed">
+                失败 {doc.extractProgress.failed}
+              </span>
+            )}
+          </span>
+        )}
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "var(--muted)" }}>
           <input type="checkbox" checked={diffMode} onChange={(e) => setDiffMode(e.target.checked)} />
           diff 模式

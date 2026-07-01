@@ -302,6 +302,8 @@ export interface RuleDocVM {
   filename: string;
   status: string;
   segments: { idx: number; heading?: string; text: string; spanStart: number; spanEnd: number }[];
+  // WO-1C-PARSE（G-progress）：异步抽取进度（EXTRACTING 中前端渲染进度条·契约类型 additive 可选）。
+  extractProgress?: import("@platform/contracts").ExtractProgress;
   createdAt: string;
 }
 export interface RuleCandidateVM {

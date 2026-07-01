@@ -87,9 +87,18 @@ describe("A2 rule-doc parsing", () => {
     expect(status).toBe("EXTRACTING"); // T1：异步——202 立返，候选随后台抽取产出
     // 等后台抽取收敛（生产为前端轮询；测试 mock LLM 即时，flush 即收敛）
     await t.services.ruleDocs.flushExtractions();
-    const doc = (await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}`, headers: ADMIN })).json() as { status: string; droppedCandidates: number };
+    const doc = (await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}`, headers: ADMIN })).json() as {
+      status: string;
+      droppedCandidates: number;
+      extractProgress?: { total: number; done: number; failed: number };
+    };
     expect(doc.status).toBe("IN_REVIEW");
     expect(doc.droppedCandidates).toBe(0);
+    // WO-1C-PARSE（G-progress）：终态进度定稿——3 段全成功（done=total=3, failed=0）。
+    expect(doc.extractProgress).toBeDefined();
+    expect(doc.extractProgress!.total).toBe(3);
+    expect(doc.extractProgress!.done).toBe(3);
+    expect(doc.extractProgress!.failed).toBe(0);
 
     const cands = (
       await t.app.inject({ method: "GET", url: `/a/v1/rule-docs/${docId}/candidates?status=PENDING`, headers: ADMIN })

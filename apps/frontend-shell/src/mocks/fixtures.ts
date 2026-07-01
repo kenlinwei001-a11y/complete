@@ -738,6 +738,21 @@ export const RULE_DOC: RuleDocVM = {
   ],
 };
 
+// WO-1C-PARSE（G-progress）：mock 模式下的抽取中样例，审核台可见进度条（(done+failed)/total + failed 徽章）。
+export const RULE_DOC_EXTRACTING: RuleDocVM = {
+  id: "doc-extracting",
+  filename: "新采购制度（抽取中）.md",
+  status: "EXTRACTING",
+  createdAt: now,
+  segments: [
+    { idx: 0, heading: "一、审批", text: "单笔采购金额超过 100 万元时必须经采购委员会审批。", spanStart: 0, spanEnd: 26 },
+    { idx: 1, heading: "二、供应商", text: "单一供应商采购占比不得超过 40%，超出时需备案说明。", spanStart: 27, spanEnd: 54 },
+    { idx: 2, heading: "三、库存", text: "安全库存低于 15 天用量时应触发补货预警。", spanStart: 55, spanEnd: 78 },
+    { idx: 3, heading: "四、账期", text: "供应商账期原则上不超过 90 天。", spanStart: 79, spanEnd: 98 },
+  ],
+  extractProgress: { total: 4, done: 2, failed: 1, updatedAt: now },
+};
+
 export const RULE_CANDIDATES: RuleCandidateVM[] = [
   {
     id: "cand-1", docId: "doc-policy", segmentIdx: 0, span: { start: 12, end: 48 },
