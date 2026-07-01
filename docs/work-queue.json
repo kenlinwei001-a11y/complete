@@ -636,7 +636,7 @@
       "title": "规则文档抽取解析率+异步化",
       "doc": "docs/WO-1C-PARSE-ASYNC.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R19",
@@ -709,7 +709,8 @@
             "run": "docker compose up --build（或连真后端启前端）→ 浏览器登 demo/admin(demo1234) → 侧栏进规则文档审核台 → 上传 cap.md 或真实制度 PDF → EXTRACTING 态观察 data-testid=ruledoc-progress 进度条(done+failed/total) 随 2s 轮询数值跳动非静止，截图存 docs/evidence/ ；终态后点候选见 mark[data-testid=source-quote-highlight] 逐字高亮 → 采纳一条后进 A5 规则库确认 origin=DOCUMENT 溯源；再临时绑不合规模型/真 Kimi 制造首跳失败，观察不再 0 候选卡死、重试后出候选"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "ONTOLOGY-OPT",
