@@ -9,7 +9,77 @@
       "status": "WIP",
       "owner": "dev",
       "deps": [],
-      "note": "真实数据出真答案的前提"
+      "note": "真实数据出真答案的前提",
+      "acceptance": {
+        "goal": "realco 租户上传产 Orders/Bases 后，配好 SolverBinding（order→Orders、base→Bases、字段 qty→qtyGwh）就能问\"订单全链风险\"并拿到基于自己上传数据的真答案（裁决/结论非空），而不再被拒\"order_fullchain 需先合成 Order\"。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "未配 SolverBinding 时，realco 租户（仅有上传产的 Orders/Bases、无 canonical Order 实例）invoke order_fullchain → HTTP 400 且错误 message 含 '需先合成 Order'（复现命门 B3，证明改动前确被拒）"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "realco 配 SolverBinding(solverKey=order_fullchain, roleBindings: order→objectType:Orders、base→objectType:Bases, fieldMap qty→qtyGwh) 后再 invoke order_fullchain → HTTP 200 且响应体裁决字段非空：jq '.verdict!=null or .deliveryJudge!=null or .conclusion!=null' 为 true，且响应不再含 '需先合成 Order'"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "demo 租户（canonical Order 种子）零 SolverBinding invoke order_fullchain → HTTP 200 且 deliveryJudge.ruleRefs 含 'C02'（回退默认 listByType(t,\"Order\") 仍工作·向后兼容不回归）"
+          },
+          {
+            "id": "C4",
+            "type": "curl",
+            "assert": "DF.8 接地：POST /a/v1/solvers/order_fullchain/bindings 绑不存在类型（order→objectType:NotAType）→ HTTP 400 且 message 含 '接地失败'/'本体外'，随后 GET .../bindings 该绑定不存在（不落库·不造实体）"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "确定性+接地门 pnpm --filter datacore run solver-binding-determinism:check 存在且 exit 0（同租户同绑定同参数重跑 invoke 结果字节一致 + 绑外部实体报错）"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "回归四包全绿：pnpm -r build && pnpm -r test exit 0，datacore≥69 / agentcore≥66 / frontend≥25 且新增 SolverBinding 单测（确定性/接地/回退/字段映射）计入 datacore 数"
+          },
+          {
+            "id": "C7",
+            "type": "unit",
+            "assert": "R14 行业无关：新增单测断言同一 order_fullchain 求解器，A租户绑 Order-类型、B租户绑物流自定义类型（如 Shipment），各出非空答案且求解器源码零改（仅绑定不同）——测试文件存在且该 case 断言两臂答案均非拒绝错误"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "# 起内存态 datacore（realco 上传产 Orders/Bases，无 canonical Order）\nPORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs CREDENTIAL_KEY=$(openssl rand -hex 32) node apps/datacore/dist/server.js &\n# realco 上传 orders.xlsx/csv 产 Orders 类型（file_upload 连接器）\ncurl -s -XPOST :4001/a/v1/uploads -H 'X-Debug-User:realco:ceo:admin' -F file=@orders.csv | jq '.connection.connectorTypeKey'  # 期望 \"file_upload\"\n# 未绑定 invoke → 期望被拒\ncurl -s -o /tmp/c1.json -w '%{http_code}\\n' -XPOST :4001/a/v1/solvers/order_fullchain/invoke -H 'X-Debug-User:realco:ceo:admin' -H 'Content-Type: application/json' -d '{\"args\":{}}'  # 期望 400\njq -r '.error.message' /tmp/c1.json | grep -q '需先合成 Order' && echo C1-PASS  # 期望命中"
+          },
+          {
+            "for": "C2",
+            "run": "# 先建/发布 realco 本体使 Orders(含 qtyGwh 字段)/Bases 为 ACTIVE，再配 SolverBinding\ncurl -s -XPOST :4001/a/v1/solvers/order_fullchain/bindings -H 'X-Debug-User:realco:ceo:admin' -H 'Content-Type: application/json' -d '{\"solverKey\":\"order_fullchain\",\"roleBindings\":[{\"role\":\"order\",\"bind\":{\"kind\":\"objectType\",\"ref\":\"Orders\"}},{\"role\":\"base\",\"bind\":{\"kind\":\"objectType\",\"ref\":\"Bases\"}}],\"fieldMap\":{\"qty\":\"qtyGwh\"}}' | jq '.id!=null'  # 期望 true\n# 再 invoke → 期望真答案\ncurl -s -o /tmp/c2.json -w '%{http_code}\\n' -XPOST :4001/a/v1/solvers/order_fullchain/invoke -H 'X-Debug-User:realco:ceo:admin' -H 'Content-Type: application/json' -d '{\"args\":{}}'  # 期望 200\njq -e '(.verdict!=null) or (.deliveryJudge!=null) or (.conclusion!=null)' /tmp/c2.json  # 期望 true\ngrep -q '需先合成 Order' /tmp/c2.json && echo C2-FAIL || echo C2-PASS  # 期望不含拒绝语"
+          },
+          {
+            "for": "C3",
+            "run": "# demo 租户零绑定回退（另起带 SEED_DEMO=1 或复用同实例的 demo 租户种子）\nPORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=$(openssl rand -hex 32) node apps/datacore/dist/server.js &\ncurl -s -o /tmp/c3.json -w '%{http_code}\\n' -XPOST :4001/a/v1/solvers/order_fullchain/invoke -H 'X-Debug-User:demo:admin:admin' -H 'Content-Type: application/json' -d '{\"args\":{}}'  # 期望 200\njq -e '.deliveryJudge.ruleRefs | index(\"C02\") != null' /tmp/c3.json && echo C3-PASS  # 期望 true（默认 Order 路径仍工作）"
+          },
+          {
+            "for": "C4",
+            "run": "curl -s -o /tmp/c4.json -w '%{http_code}\\n' -XPOST :4001/a/v1/solvers/order_fullchain/bindings -H 'X-Debug-User:realco:ceo:admin' -H 'Content-Type: application/json' -d '{\"solverKey\":\"order_fullchain\",\"roleBindings\":[{\"role\":\"order\",\"bind\":{\"kind\":\"objectType\",\"ref\":\"NotAType\"}}]}'  # 期望 400\njq -r '.error.message' /tmp/c4.json | grep -Eq '接地失败|本体外' && echo C4-msg-PASS\n# 确认未落库\ncurl -s :4001/a/v1/solvers/order_fullchain/bindings -H 'X-Debug-User:realco:ceo:admin' | jq -e '[.[]? | select(.roleBindings[]?.bind.ref==\"NotAType\")] | length == 0' && echo C4-nocreate-PASS"
+          },
+          {
+            "for": "C5",
+            "run": "pnpm --filter datacore run solver-binding-determinism:check; echo \"exit=$?\"  # 期望脚本存在且 exit 0（package.json 须含该 script；缺 script=未落地=BLOCK）"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test; echo \"exit=$?\"  # 期望 0；核对输出：datacore ≥69、agentcore ≥66、frontend ≥25，且 datacore 数因新增 SolverBinding 测上升"
+          },
+          {
+            "for": "C7",
+            "run": "# 定位新增行业无关单测（应在 apps/datacore/src/solvers/*.test.ts 或 __tests__）\nrg -n 'SolverBinding|order_fullchain' apps/datacore/src --glob '*.test.ts' -l\npnpm --filter datacore test -t 'order_fullchain'  # 期望含 A绑Order/B绑自定义类型 两臂各出非拒答案的用例·全绿"
+          }
+        ]
+      }
     },
     {
       "id": "FIX-2CONCERN",
@@ -20,7 +90,59 @@
       "owner": "",
       "deps": [],
       "note": "2门红·绿测试≠能用",
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "在长跑进程里，决策者先看到\"此决策基于合成数据（非真实接入）\"的诚实标注；当他接入真实数据（连接器 sync / 上传→objectify）后，同一决策不再谎报 SYNTHETIC，而是据实翻为真实接入——无需任何人手动清缓存或重启。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "对运行中的 datacore：纯合成种子后首算 risk_timeline 返回 confidence.synthetic=true 且 dataMode=\"SYNTHETIC\"；随后经真实写路径(上传 real-orders.csv→objectify，全程零手动 invalidate)接入真实 Order 后再算，同一 solver 返回 confidence.synthetic=false 且 dataMode!=\"SYNTHETIC\"。(缓存若未随写路径自动失效则 after 仍为 SYNTHETIC → 失败)"
+          },
+          {
+            "id": "C2",
+            "type": "unit",
+            "assert": "回潮测 solvers.test.ts:538 「WO-FRESHNESS①b …真实对象落库后诚实位据实翻转」单条通过；且该 it 块正文出现 invalidateConfidenceCache 的次数=0(测试不得靠手动失效掩盖)。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "apps/datacore/src 下(排除 /test/)对 solvers.invalidateConfidenceCache(...) 的真实生产调用方数量>=1，且位于改对象 provenance 的写路径(ontology.ts runDerivations / synthetic / materialize 收口点)——非仅定义+注释。期望值：调用方文件计数>=1(现为 ontology.ts:688)。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "pnpm pipeline-freshness:check 退出码=0，且脚本 scripts/check-pipeline-freshness.mjs 新增对「缓存失效接线」的检查(引用 invalidateConfidenceCache 并校验其被写路径调用)——不再仅 presence 哨兵；把该调用行注释掉后重跑该门必须变红(exit!=0)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "pnpm --filter datacore test 全绿(既有约 69 测全过·含 WO-FRESHNESS②③ 与所有 solver 既有断言)，证明修复向后兼容、未破坏 STALE/MOCK 维与既有求解器行为。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起服务：PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs CREDENTIAL_KEY=$(openssl rand -hex 32) node apps/datacore/dist/server.js & 待就绪后跑 `bash /tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad/c1-freshness-e2e.sh`。核心断言等价手工：①`curl -s -XPOST :4001/a/v1/synthetic/jobs -H'X-Debug-User:demo:admin:admin' -H'Content-Type:application/json' -d'{\"industry\":\"battery-manufacturing\",\"scale\":\"S\",\"seed\":42}'`；②`curl -s -XPOST :4001/a/v1/solvers/risk_timeline/invoke -H'X-Debug-User:demo:admin:admin' -H'Content-Type:application/json' -d'{\"args\":{\"base\":\"常州\",\"factor\":\"物料齐套\",\"horizon\":30}}' | jq '{s:.data.confidence.synthetic,m:.data.dataMode}'`→期望 {s:true,m:\"SYNTHETIC\"}；③上传+objectify：`CONN=$(curl -s -XPOST :4001/a/v1/uploads -H'X-Debug-User:demo:admin:admin' -H'Content-Type:application/json' -d\"{\\\"filename\\\":\\\"real-orders.csv\\\",\\\"contentBase64\\\":\\\"$(printf 'so,cust,model,qty,due,status\\nSO-1,星辰,4680-NCM,1200,2026-07-15,OPEN' | base64 -w0)\\\"}\" | jq -r .connection.id); curl -s -XPOST :4001/a/v1/databuilder/intake/objectify -H'X-Debug-User:demo:admin:admin' -H'Content-Type:application/json' -d\"{\\\"connId\\\":\\\"$CONN\\\"}\"`；④重跑②的 invoke | jq→期望 {s:false,m 非 \"SYNTHETIC\"}。stdout 的 before/after 两行 + C1 PASS 即证据。"
+          },
+          {
+            "for": "C2",
+            "run": "跑单条：`pnpm --filter datacore exec vitest run test/solvers.test.ts -t 'WO-FRESHNESS①b'`→期望 1 passed。反手动失效校验：`awk 'NR>=538 && NR<=567' apps/datacore/test/solvers.test.ts | grep -c invalidateConfidenceCache`→期望 0(该 it 块内零次手动调用；对照 ②③ 块 line 578 允许手动，仅 ①b 禁)。"
+          },
+          {
+            "for": "C3",
+            "run": "`grep -rln 'solvers?\\?\\.invalidateConfidenceCache' apps/datacore/src | grep -v '/test/'`→期望至少列出 apps/datacore/src/ontology.ts(计数>=1)；`grep -n 'invalidateConfidenceCache' apps/datacore/src/ontology.ts`→应命中 runDerivations 成功分支内的实调用行(现 :688 `this.solvers?.invalidateConfidenceCache(ctx.tenantId)`)，而非仅注释。"
+          },
+          {
+            "for": "C4",
+            "run": "`pnpm pipeline-freshness:check; echo exit=$?`→期望 exit=0；`grep -n 'invalidateConfidenceCache' scripts/check-pipeline-freshness.mjs`→期望命中(门已扩查失效接线·非仅 presence)。牙齿验证(可选)：临时注释 ontology.ts:688 该调用行→重跑 `pnpm pipeline-freshness:check; echo exit=$?` 应 exit!=0(证明门真会挡未接失效的回潮)，随后还原。"
+          },
+          {
+            "for": "C5",
+            "run": "`pnpm --filter datacore test 2>&1 | tail -5`→期望汇总行 0 failed(约 69 passed)，含 test/solvers.test.ts 内 WO-FRESHNESS②(STALE) 与既有 capacity/risk/affected 等断言全过；证明去缓存/接失效钩子未回归既有行为。"
+          }
+        ]
+      }
     },
     {
       "id": "SOURCE-TRANSPARENCY",
@@ -30,7 +152,77 @@
       "status": "WIP",
       "owner": "dev",
       "deps": [],
-      "note": "透明≠洗成真实"
+      "note": "透明≠洗成真实",
+      "acceptance": {
+        "goal": "用户登录后打开\"数据连接器\"页 → 点开「合成数据源（确定性生成）· SYNTHETIC」→ 看到全部 N 张数据集(Order/Base/Line/Process/…)、逐张预览真实业务行 → 点「下载 Excel」得到能用 Excel 打开的 .xlsx(真实非空业务数据·文件名带 .synthetic 不冒充真实上传)；且系统里不存在任何\"无可见源\"的对象(结构门守)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "assert": "GET /a/v1/connections 含 name=\"合成数据源（确定性生成）\"、connectorTypeKey=\"mock_erp\"、config.synthetic=true 的连接(诚实标·不洗成真实上传)",
+            "type": "curl"
+          },
+          {
+            "id": "C2",
+            "assert": "GET /a/v1/raw-datasets?connId=<合成连接id> 返回 >=8 张 RawDataset(覆盖 Order/Base/Line/Process/Equipment 等·非仅首个)，每张 rowCount>0",
+            "type": "curl"
+          },
+          {
+            "id": "C3",
+            "assert": "GET /a/v1/raw-datasets/:id/export?format=xlsx → HTTP 200，content-type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet、content-disposition filename 含 \".synthetic.xlsx\"，响应体是可 unzip 的真 .xlsx(PK 魔数)且解出行数据非空(非模版列名)",
+            "type": "curl"
+          },
+          {
+            "id": "C4",
+            "assert": "确定性 R6：对同一 RawDataset 连续两次 export?format=xlsx，两次响应体字节完全一致(sha256 相同·无 Date.now/行序漂移)",
+            "type": "curl"
+          },
+          {
+            "id": "C5",
+            "assert": "结构门 no-orphan-source:check 在正常 SEED_DEMO 下 exit 0(绿)；植入一个 origin.type=SYNTHETIC 但缺 origin.rawDatasetId 的对象后同门 exit!=0(红) —— green->red 自证挡\"凭空对象\"",
+            "type": "gate"
+          },
+          {
+            "id": "C6",
+            "assert": "真浏览器：数据连接器页点开合成源 → 展开全部 N 数据集 → 预览见真实行 → 点「下载 Excel」浏览器落 .xlsx → Excel 打开见真业务数据 → SYNTHETIC 徽标常驻可见",
+            "type": "browser"
+          },
+          {
+            "id": "C7",
+            "assert": "回归：pnpm -r build && pnpm -r test 四包全绿(datacore 含新 export 端点测+门测；agentcore/frontend/contracts 不回退)",
+            "type": "gate"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存服务: PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=$(openssl rand -hex 32) node apps/datacore/dist/server.js & 待起。curl -s :4001/a/v1/connections -H 'X-Debug-User: demo:admin:admin' | jq '[.[]|select(.name==\"合成数据源（确定性生成）\")]|.[0]|{name,connectorTypeKey,synthetic:.config.synthetic}' → 期望 {\"name\":\"合成数据源（确定性生成）\",\"connectorTypeKey\":\"mock_erp\",\"synthetic\":true}。记其 .id 为 $CID。产出=JSON 响应。"
+          },
+          {
+            "for": "C2",
+            "run": "curl -s \":4001/a/v1/raw-datasets?connId=$CID\" -H 'X-Debug-User: demo:admin:admin' | jq 'length' → 期望 >=8；再 jq '[.[]|select((.rowCount//0)>0)]|length==(.|length)' → 期望 true。记任一 .id 为 $DSID。产出=数量+布尔。"
+          },
+          {
+            "for": "C3",
+            "run": "curl -s -D - \":4001/a/v1/raw-datasets/$DSID/export?format=xlsx\" -H 'X-Debug-User: demo:admin:admin' -o /tmp/ds.xlsx | grep -iE 'content-(type|disposition)' → 期望含 spreadsheetml.sheet 且 filename 含 .synthetic.xlsx；file /tmp/ds.xlsx → 期望 'Microsoft Excel'/'Zip'；unzip -l /tmp/ds.xlsx | grep xl/worksheets → 期望有 sheet；node -e \"const x=require('node-xlsx').parse(require('fs').readFileSync('/tmp/ds.xlsx'));console.log(x[0].data.length)\" → 期望 >1(表头+真实行)。产出=响应头+解包行数。"
+          },
+          {
+            "for": "C4",
+            "run": "curl -s \":4001/a/v1/raw-datasets/$DSID/export?format=xlsx\" -H 'X-Debug-User: demo:admin:admin' | sha256sum > /tmp/h1; curl -s \":4001/a/v1/raw-datasets/$DSID/export?format=xlsx\" -H 'X-Debug-User: demo:admin:admin' | sha256sum > /tmp/h2; diff /tmp/h1 /tmp/h2 && echo IDENTICAL → 期望 diff 无输出+打印 IDENTICAL。产出=两 sha256 相等。"
+          },
+          {
+            "for": "C5",
+            "run": "node scripts/check-no-orphan-source.mjs; echo \"exit=$?\" → 期望 exit=0。再临时改夹具/seed 塞一个 {origin:{type:'SYNTHETIC'}} 缺 rawDatasetId 的对象后 node scripts/check-no-orphan-source.mjs; echo \"exit=$?\" → 期望 exit!=0 并打印指名该 orphan 对象(green->red)；恢复夹具。并确认已并入 `pnpm gates`。产出=两次 exit code。"
+          },
+          {
+            "for": "C6",
+            "run": "VITE_MOCK=0 前端连本地 4001/4002(或 docker compose up)→ 浏览器登录 demo/admin/demo1234 → 打开\"数据连接器\"页 → 点「合成数据源（确定性生成）」→ 断言展开出 >=8 个数据集且每个显 rowCount → 点任一「预览」见非空表格行 → 点「下载 Excel」→ 浏览器下载 .xlsx → 本机 Excel/WPS 打开见真业务数据(非空/非模版) → 页面 SYNTHETIC 徽标可见。截图录证入 docs/evidence/。产出=截图序列。"
+          },
+          {
+            "for": "C7",
+            "run": "pnpm -r build && pnpm -r test → 期望 4 包全绿(datacore>=既有数含新 export+门测、agentcore、frontend、contracts 无红)。产出=各包 vitest 通过计数 + 退出码 0。"
+          }
+        ]
+      }
     },
     {
       "id": "MULTISRC-FUSION",
@@ -42,7 +234,77 @@
       "deps": [
         "SOLVER-BINDING"
       ],
-      "note": "建在绑定层之上"
+      "note": "建在绑定层之上",
+      "acceptance": {
+        "goal": "CEO 就\"同一 Order 的交期风险\"提问时，ERP 报交期 T1、MES 因产能不足报实际 T2 各执一词 → 用户得到一个融合答案：带两源溯源 + 仲裁结论(采纳哪源/为何) + 置信；且当某基地虚报产能(明显高于他源)时，答案把该源标为 SUSPECT 并降置信(不照单全收)，而非直接采信好看的数字。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "同一 Order 注入 ERP 交期 T1 与 MES(产能不足)交期 T2 两源后，POST /a/v1/solvers/source_conflict/invoke 返回的融合对象 fields 里对应字段 sources 数组长度 == 2（ERP+MES 都在），且每个 source 元素含 {source,value,confidence} 三键——非只留一源丢证据"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "同一融合答案含非空 verdict/仲裁结论：verdict != null 且带被采纳源与理由字段（如 verdict.chosenSource 属于 {ERP,MES} 且 verdict.reason 为非空字符串）——留痕采纳哪源/为何(§2B·E)"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "融合答案顶层 dataMode 反映多源不一致：两源冲突时 dataMode == \"PARTIAL\"（非 \"LIVE\"）；作为对照，同源单值无冲突时同一求解器返回 dataMode == \"LIVE\"——诚实位随一致性变化(§2D)"
+          },
+          {
+            "id": "C4",
+            "type": "curl",
+            "assert": "测谎：注入某源产能数值明显高于他源(超阈值)→ 该字段/源被标 SUSPECT（响应中存在 status==\"SUSPECT\" 或 suspect==true 的标记）且其 confidence 严格低于未标源的 confidence——不照单全收(§2C·R13·MU13)"
+          },
+          {
+            "id": "C5",
+            "type": "curl",
+            "assert": "R6 确定性：同一 tenant、同一多源输入(同 pk/同源值/同 seed) 连调 invoke 两次，两次响应体 JSON 字节级一致（jq -S 后 diff 为空）——融合/仲裁/测谎确定(§2A·§3.3)"
+          },
+          {
+            "id": "C6",
+            "type": "curl",
+            "assert": "R2 隔离：以 tenantB 身份 invoke 引用 tenantA 的多源融合资源(带 tenantA 的 pk) → HTTP 403 或 404，且响应体不泄漏 tenantA 的源值(T1/T2)(§3.3·R2)"
+          },
+          {
+            "id": "C7",
+            "type": "gate",
+            "assert": "回归四包全绿 + 新增融合/仲裁/测谎测：pnpm -r build && pnpm -r test 退出码==0，且 datacore 测试数 >= 既有基线(69) 并至少一条断言 SUSPECT/仲裁 verdict 的用例(§3.4)"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态 datacore（PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js）。按 SolverBinding(role=order) 注入同一 Order 的 ERP 源(交期 T1)与 MES 源(产能不足→交期 T2)后：curl -s -XPOST 127.0.0.1:4001/a/v1/solvers/source_conflict/invoke -H 'X-Debug-User:demo:admin:admin+planner+catalog_admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<orderPk>\"}}' | jq '.fields.dueDate.sources | length' → 期望 2；再 jq '.fields.dueDate.sources[0] | has(\"source\") and has(\"value\") and has(\"confidence\")' → 期望 true"
+          },
+          {
+            "for": "C2",
+            "run": "同 C1 响应：curl ... /solvers/source_conflict/invoke ... | jq '.verdict != null and (.verdict.chosenSource==\"ERP\" or .verdict.chosenSource==\"MES\") and (.verdict.reason|type==\"string\" and length>0)' → 期望 true（偷懒失败态对照：verdict==null 或 reason 空）"
+          },
+          {
+            "for": "C3",
+            "run": "冲突态：curl ... source_conflict/invoke（C1 双源入参）| jq -r '.dataMode' → 期望 PARTIAL。对照无冲突态：仅注入单源(或两源同值)后同命令 | jq -r '.dataMode' → 期望 LIVE。两次 dataMode 不同即证诚实位随一致性变化"
+          },
+          {
+            "for": "C4",
+            "run": "注入 MES 产能数值明显高于 ERP/SRM 他源(超阈值·MU13 虚报)后：curl ... source_conflict/invoke ... | jq '[.fields.capacity.sources[] | select(.source==\"MES\")][0] | .status==\"SUSPECT\" or .suspect==true' → 期望 true；并 jq '([.fields.capacity.sources[]|select(.source==\"MES\")][0].confidence) < ([.fields.capacity.sources[]|select(.source!=\"MES\")][0].confidence)' → 期望 true"
+          },
+          {
+            "for": "C5",
+            "run": "A=$(curl -s -XPOST 127.0.0.1:4001/a/v1/solvers/source_conflict/invoke -H 'X-Debug-User:demo:admin:admin+planner+catalog_admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<orderPk>\",\"seed\":42}}'); B=$(curl -s -XPOST ... 同一命令 同 seed); diff <(echo \"$A\"|jq -S .) <(echo \"$B\"|jq -S .) → 期望空输出(退出码 0)"
+          },
+          {
+            "for": "C6",
+            "run": "curl -s -o /dev/null -w '%{http_code}' -XPOST 127.0.0.1:4001/a/v1/solvers/source_conflict/invoke -H 'X-Debug-User:tenantB:evil:admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<tenantA-orderPk>\"}}' → 期望 403 或 404；并 curl 同请求(不加 -o) | grep -c 'T1\\|T2' → 期望 0(不泄漏跨租户源值)"
+          },
+          {
+            "for": "C7",
+            "run": "cd /home/user/complete && pnpm -r build && pnpm -r test；echo $? → 期望 0。核对 datacore 测试统计行 tests >= 69 且新增 fusion/arbitration/lie-detection 用例：pnpm --filter datacore test 2>&1 | grep -Ei 'SUSPECT|仲裁|verdict|fus' → 期望非空(有断言 SUSPECT/仲裁的用例)"
+          }
+        ]
+      }
     },
     {
       "id": "E1-E2",
@@ -52,7 +314,77 @@
       "status": "WIP",
       "owner": "dev",
       "deps": [],
-      "note": "仅设计零代码·NOT-LANDED"
+      "note": "仅设计零代码·NOT-LANDED",
+      "acceptance": {
+        "goal": "用户在决策系统里日常用着，不必手动点\"立即校准\"——系统自动越用越准(校准看板能看到 MAPE 随轮下降的趋势)，并且在风险/规划/订单看到问题时能一键\"就此开 what-if 推演\"、对比基线、采纳或弃，全程不污染主世界。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "scheduler 存在 ScheduledJobKind \"CALIBRATION_SWEEP\" 且其 handler 周期调用 calibration.run/runAll(回采→配对→提案)——非手动 POST /calibration/run;契约 sim.ts/scheduler 类型含该枚举,pnpm -r build 通过"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "喂两批真 observed(A8 ts_agg + writeback-echoes/reconcile 回写)后触发 CALIBRATION_SWEEP,GET /a/v1/calibration/proposals 返回 status=pending 的提案 length>0,且提案 trigger 非\"手动\"(证明自动生成非手动 run)"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "writeback-echoes/reconcile 的真执行 observed 已进入配对来源:GET /a/v1/calibration/report 的配对样本 nPairs/samples>0 且含来源标记非仅 A8(补真 Action 回采这一路),即 reconcile 前 samples=N、reconcile 后 samples>N"
+          },
+          {
+            "id": "C4",
+            "type": "curl",
+            "assert": "GET /a/v1/calibration/convergence 返回逐轮序列(数组 length≥2),字段含每轮 mape/proposals/approved,且 mape 序列单调下降(末轮 mape < 首轮 mape)——越用越准可证"
+          },
+          {
+            "id": "C5",
+            "type": "curl",
+            "assert": "approve 提案并使「校准参数变更」Action 走到 EXECUTED 后:求解器 paramsVersion 相对 approve 前 +1,且 outbox 落 calibration.applied 事件(payload 含 proposalId+paramsVersion);随后同输入求解器输出因新参而改变(确定性:同输入新参新输出)"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "rollback 提案 Action EXECUTED 后 param 退回 appliedFrom(旧值),既有 M11 与 sim 回归全绿:pnpm -r build && pnpm -r test 4 包全绿(datacore m11-calibration.test.ts + sim-session.test.ts 不红),证 R4/R6 不破"
+          },
+          {
+            "id": "C7",
+            "type": "browser",
+            "assert": "真浏览器从 RiskBoardView 风险红点点「开 what-if」→真起 sim session(baseSnapshot=该红点上下文)→tick 传导后 SimComparePanel 显示 world vs 基线 diff 非空;checkpoint 后 rollback 主世界对象不变(R3 隔离);「采纳为 Action 提案」落一条待审 Action(R4)"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "grep -n 'CALIBRATION_SWEEP' packages/contracts/src/*.ts apps/datacore/src/scheduler.ts apps/datacore/src/app.ts → 期望命中枚举定义+handler 注册且 handler 体内调用 calibration.run/runAll;pnpm -r build → exit 0"
+          },
+          {
+            "for": "C2",
+            "run": "起内存态 datacore(PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js);先喂 A8 观测再 curl -s -XPOST :4001/a/v1/writeback-echoes/reconcile -H'X-Debug-User:demo:admin:admin' ...;触发 sweep(定时或测试内直调 handler);curl -s :4001/a/v1/calibration/proposals -H'X-Debug-User:demo:admin:admin' | jq '[.[]|select(.status==\"pending\")]|length' → 期望 >0;jq '[.[]|select(.trigger!=\"手动\")]|length>0' → true"
+          },
+          {
+            "for": "C3",
+            "run": "reconcile 前 curl -s ':4001/a/v1/calibration/report' -H'X-Debug-User:demo:admin:admin' | jq '.pairs|length // .samples' 记为 N;POST writeback-echoes/reconcile 回写真 observed;再取 report samples → 期望 > N,且样本项含来源=writeback(非仅 ts_agg)"
+          },
+          {
+            "for": "C4",
+            "run": "curl -s :4001/a/v1/calibration/convergence -H'X-Debug-User:demo:admin:admin' | jq 'length>=2 and (.[-1].mape < .[0].mape)' → 期望 true;jq '.[0]|has(\"mape\") and has(\"proposals\") and has(\"approved\")' → true"
+          },
+          {
+            "for": "C5",
+            "run": "取 approve 前 paramsVersion(GET /a/v1/solvers/<key> 或 report.paramsVersion)记 V;curl -XPOST :4001/a/v1/calibration/proposals/<id>/approve -H PLANNER → 202;推进「校准参数变更」Action 至 EXECUTED;再取 paramsVersion → 期望 V+1;查 outbox/事件流含 calibration.applied 且 .paramsVersion==V+1;对同一输入重复 invoke 求解器,approve 前后输出不同"
+          },
+          {
+            "for": "C6",
+            "run": "对已 approve 提案走 rollback→Action EXECUTED,GET report/solver param → 期望等于 appliedFrom 旧值;pnpm -r build && pnpm -r test → 期望 datacore/agentcore/frontend/contracts 全绿,m11-calibration.test.ts 与 sim-session.test.ts 通过"
+          },
+          {
+            "for": "C7",
+            "run": "VITE_MOCK=1 或接真后端起 frontend-shell dev;浏览器进 RiskBoardView→点某风险红点的「开 what-if」→网络面板见 POST /a/v1/sim/sessions 201(payload baseSnapshot=该上下文);点 tick 后 SimComparePanel 出现基线 vs world diff 行(截图,diff 非空);点 checkpoint 再 rollback,校验主世界该对象值未变;点「采纳为 Action 提案」→ GET /a/v1/actions 见新增 status=DRAFT/PENDING 的 Action;截图入 docs/evidence/"
+          }
+        ]
+      }
     },
     {
       "id": "RESOURCE-REF",
@@ -62,7 +394,77 @@
       "status": "WIP",
       "owner": "dev",
       "deps": [],
-      "note": "R15·你说前端看着有实际没关联"
+      "note": "R15·你说前端看着有实际没关联",
+      "acceptance": {
+        "goal": "以 demo/admin/demo1234 登录，管理员在 /admin/agents、/admin/skills、/admin/mcp 三处能像工作流一样\"从规则库勾选规则、从 MCP 目录勾选(含平台内置求解器)\"——保存刷新后勾选态保留、后端落库为真规则码/MCP码，且规则库改阈值发布后能在被引用图里看到这些 agent/skill 作为引用方(即前端勾的码真进了后端引用图，非 UI 装饰)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "assert": "内置求解器 MCP server 存在且可枚举:GET /b/v1/mcp/servers/solvers 返回 .server.builtin===true 且 .count>=1 且 tools 名均以 mcp__solvers__ 前缀(.tools|map(.name)|all(startswith(\"mcp__solvers__\")) 为 true)",
+            "type": "curl"
+          },
+          {
+            "id": "C2",
+            "assert": "Agent 规则绑定落库为真规则码(非自由文本壳):经 UI 从规则库勾选发布规则 K01 保存后,GET /b/v1/agents 中该 agent 的 .ruleBindings.ruleKeys 数组包含 K01 的真 ruleKey(而非空/占位/ALL_APPLICABLE 默认)",
+            "type": "curl"
+          },
+          {
+            "id": "C3",
+            "assert": "Skill 契约与持久化新增引用字段:GET /b/v1/skills 中经 UI 勾选保存的 skill 返回对象同时含 .ruleBindings.ruleKeys(含 K01)与 .mcpServers(至少 1 个 {mcpConfigId}) 两字段且非空——证明 SkillDefinitionSchema additive 字段已落库透传",
+            "type": "curl"
+          },
+          {
+            "id": "C4",
+            "assert": "闭环引用图真接线:GET /a/v1/rules/{K01_id}/references 的响应里把 C2 的 agent 与 C3 的 skill 都列为引用方(引用方 key/id 命中),证明前端勾选的码真进后端引用图而非装饰",
+            "type": "curl"
+          },
+          {
+            "id": "C5",
+            "assert": "Agent 规则绑定 UI 由自由文本框升级为规则库勾选控件:/admin/agents 编辑 agent 时「规则绑定」区不再是手敲逗号分隔码的 <input aria-label=\"规则 keys\">(AgentsPage.tsx:293),而是从库(fetchRules 过滤 status==PUBLISHED)勾选的多选控件,勾中 K01 保存后刷新页面勾选态仍在",
+            "type": "browser"
+          },
+          {
+            "id": "C6",
+            "assert": "MCP 页显内置求解器且 Skill 出现两引用区:/admin/mcp 用户自建 MCP 之外多出「求解器(平台内置)」条(标签含内置,点开列 mcp__solvers__* 工具);/admin/skills 编辑 skill 出现「规则引用」+「MCP 引用」两区,各勾选保存刷新后保留",
+            "type": "browser"
+          },
+          {
+            "id": "C7",
+            "assert": "四包门全绿且契约不重定义:pnpm -r build && pnpm -r test 4 包全绿(datacore 69/agentcore 66/frontend 25+)、pnpm -r typecheck 通过;skill 新字段仅加在 packages/contracts,前端不重定义(contracts-only-shared)",
+            "type": "gate"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "启动双服务内存态(PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js & PORT=4002 DATACORE_BASE_URL=http://127.0.0.1:4001 node apps/agentcore/dist/main.js &)后:curl -s -H 'X-Debug-User: demo:u_admin:admin' 127.0.0.1:4002/b/v1/mcp/servers/solvers | jq '{builtin:.server.builtin, count:.count, allPrefixed:(.tools|map(.name)|all(startswith(\"mcp__solvers__\")))}' → 期望 {\"builtin\":true,\"count\":>=1,\"allPrefixed\":true}"
+          },
+          {
+            "for": "C2",
+            "run": "真浏览器:/admin/rules→约束条件 tab→新建 ruleType=constraint 规则记其 ruleKey=K01→发布;/admin/agents→编辑某 DRAFT agent→规则绑定勾 K01→保存。再 curl -s -H 'X-Debug-User: demo:u_admin:admin' 127.0.0.1:4002/b/v1/agents | jq '.[]|select(.ruleBindings.ruleKeys|type==\"array\")|.ruleBindings.ruleKeys' → 期望某 agent 数组含 \"K01\"(非 ALL_APPLICABLE 默认字符串)"
+          },
+          {
+            "for": "C3",
+            "run": "真浏览器:/admin/skills→编辑某 DRAFT skill→「规则引用」勾 K01+「MCP 引用」勾 1 项→保存。再 curl -s -H 'X-Debug-User: demo:u_admin:admin' 127.0.0.1:4002/b/v1/skills | jq '.[]|{key, ruleKeys:.ruleBindings.ruleKeys, mcp:.mcpServers}' → 期望某 skill 的 ruleKeys 含 \"K01\" 且 mcp 数组长度>=1(元素含 mcpConfigId)"
+          },
+          {
+            "for": "C4",
+            "run": "取 K01 的 rule id(curl -s -H 'X-Debug-User: demo:u_admin:admin' 127.0.0.1:4001/a/v1/rules | jq -r '.[]|select(.ruleKey==\"K01\").id' 或从发布响应取);curl -s -H 'X-Debug-User: demo:u_admin:admin' 127.0.0.1:4001/a/v1/rules/$K01_ID/references | jq → 期望响应引用方集合同时命中 C2 的 agent 与 C3 的 skill(按 key/id 匹配存在)"
+          },
+          {
+            "for": "C5",
+            "run": "真浏览器登录 demo/admin/demo1234→/admin/agents→打开一个 DRAFT agent 编辑器→定位「规则绑定」区:确认不存在手敲逗号分隔的 <input aria-label=\"规则 keys\">,而是可下拉/勾选来自规则库(PUBLISHED)的多选控件→勾中 K01→保存→浏览器刷新(F5)重开该 agent→截图确认 K01 仍处勾选态。截图存 docs/evidence/"
+          },
+          {
+            "for": "C6",
+            "run": "真浏览器:/admin/mcp→截图确认用户自建 MCP 之外有「求解器(平台内置)」分区(标签含'内置')→点开展开列出 mcp__solvers__* 工具;/admin/skills→编辑 skill→截图确认「规则引用」与「MCP 引用」两区均存在,各勾一项→保存→刷新重开→截图确认两区勾选态保留。截图存 docs/evidence/"
+          },
+          {
+            "for": "C7",
+            "run": "pnpm -r build && pnpm -r test → 期望 4 包全绿(datacore 69/agentcore 66/frontend 25+ 且新增用例不减基线);pnpm -r typecheck → 期望 exit 0;grep 确认 SkillDefinition 的 ruleBindings/mcpServers 仅定义于 packages/contracts/src/agentcore.ts、前端 import 自 @platform/contracts 未重定义(rg 'ruleBindings|mcpServers' apps/frontend-shell/src 无本地 z.object 重声明)"
+          }
+        ]
+      }
     },
     {
       "id": "AGENT-BREADTH",
@@ -72,7 +474,77 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "R16"
+      "note": "R16",
+      "acceptance": {
+        "goal": "用户用 demo/admin 登录，在方案生成/项目沙盘/运营回顾/订单全链/年度情景/季度滚动/基地地理任一页对话框问一句\"预设意图外的开放问题\"（如\"保毛利和保规模到底怎么选，给我管理动作\"），得到的是回落到该页专属场景 agent 的接地结构化答复（引求解器真值+规则裁决+⟦ref:N⟧溯源），而不是通用\"探索模式\"泛答或\"请换个问法\"。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "scene-agent-config 门通过：13 个对话入口配置一致（无 WORKFLOW_ONLY · 每个 defaultAgentId 均指向已发布 agent · BUILTIN 工具∈注册表 · ruleBindings 形态合法）。期望进程 exit code=0 且 stdout 含成功标记（✓/一致）；退出非 0 或标红即 BLOCK。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "pnpm -r test 四包全绿，agentcore 用例数 ≥66 不回退（lived-in.test.ts 的 scene-entry 断言不改小）。期望四包各 exit 0；agentcore 通过用例 ≥66。"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "对 plan-generate 发预设意图外开放问句后，该 taskId 的 SSE routing.completed 事件 note 以「场景入口模式」开头（path=AGENT，回落 agt_plan_generate），而非「进入探索模式」。期望 note 前缀=\"场景入口模式\"、note!=\"进入探索模式\"（对比基线 orchestrator.ts:703）。"
+          },
+          {
+            "id": "C4",
+            "type": "curl",
+            "assert": "GET /b/v1/scene-entries（demo 租户）返回 13 个入口，且全部 defaultAgentId 非空（覆盖从 6/9 补到 13/13）。期望 length==13 且 [.[]|.defaultAgentId] 无 null/空串。"
+          },
+          {
+            "id": "C5",
+            "type": "curl",
+            "assert": "注册表资产广度达标：已发布 skill ≥5 且已发布 workflow ≥3（各 status==\"PUBLISHED\"）。期望 skills 计数 ≥5、workflows 计数 ≥3。"
+          },
+          {
+            "id": "C6",
+            "type": "unit",
+            "assert": "场景 agent 的 skills[] 不再全指向 skl_seed_capacity：风险类 agent 挂 skl_risk_diagnosis、S&OP 类挂 skl_sop_balance、订单/看板类挂 skl_order_margin、方案类挂 skl_plan_scheme（仅 agt_project_sim 保留 skl_seed_capacity）。期望种子内被 agent 引用的不同 skillId 种类 ≥5，且上述对口映射逐条成立。"
+          },
+          {
+            "id": "C7",
+            "type": "browser",
+            "assert": "demo/admin 登录后进入 /v/plan-generate，对话框问\"保毛利和保规模到底怎么选，给我管理动作\"，返回是接地结构化答复：含 plan_generate 求解器数字 + 至少一条 C08/C15/C18 规则裁决 + 至少一个 ⟦ref:N⟧ 溯源标记；不含\"进入探索模式\"泛答、不含\"请换个问法\"拒答。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "pnpm --filter agentcore build && node scripts/check-scene-agent-config.mjs; echo \"exit=$?\" —— 证据：门 stdout（应列 13 入口一致）+ exit=0。任一入口报 WORKFLOW_ONLY / defaultAgentId 缺失或非 PUBLISHED / 工具不在注册表 → 非 0 即 BLOCK。"
+          },
+          {
+            "for": "C2",
+            "run": "pnpm -r build && pnpm -r test 2>&1 | tee /tmp/wo-agent-breadth-test.log; grep -E 'agentcore|Tests|passed|failed' /tmp/wo-agent-breadth-test.log —— 证据：四包 test 段全 pass，agentcore 通过数打印 ≥66，无 failed。"
+          },
+          {
+            "for": "C3",
+            "run": "起内存态双服务（PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js & ; PORT=4002 DATACORE_BASE_URL=http://127.0.0.1:4001 node apps/agentcore/dist/main.js &）。TID=$(curl -s -X POST http://127.0.0.1:4002/api/v1/queries -H 'X-Debug-User: demo:admin:admin|planner' -H 'content-type: application/json' -d '{\"packageId\":\"pkg_battery_manufacturing\",\"query\":\"保毛利和保规模到底怎么选，给我管理动作\",\"context\":{\"view\":\"plan-generate\",\"selectedObjects\":[],\"filters\":{},\"presetSlots\":{}}}' | jq -r .taskId); curl -sN http://127.0.0.1:4002/api/v1/queries/$TID/events -H 'X-Debug-User: demo:admin:admin|planner' | grep -m1 -A2 'routing.completed' —— 断言：data 行 jq '.note|startswith(\"场景入口模式\")'==true 且 '.note!=\"进入探索模式\"'==true。证据=该 SSE 帧原文。"
+          },
+          {
+            "for": "C4",
+            "run": "curl -s http://127.0.0.1:4002/b/v1/scene-entries -H 'X-Debug-User: demo:admin:admin|planner' | jq '{n:length, missing:[.[]|select((.defaultAgentId//\"\")==\"\")|.viewKey]}' —— 断言 n==13 且 missing==[]。证据=该 JSON。"
+          },
+          {
+            "for": "C5",
+            "run": "（注册表）curl -s http://127.0.0.1:4002/b/v1/skills -H 'X-Debug-User: demo:admin:admin|planner' | jq '[.[]|select(.status==\"PUBLISHED\")]|length'（期望 ≥5）；curl -s http://127.0.0.1:4002/b/v1/workflows -H 'X-Debug-User: demo:admin:admin|planner' | jq '[.[]|select(.status==\"PUBLISHED\")]|length'（期望 ≥3）。若无对应 GET 路由，回退门证据：grep -oE 'id: \"skl_[a-z_]+\"' apps/agentcore/src/mocks/seed.ts | sort -u | wc -l（≥5）与 'id: \"wf_[a-z_]+\"'（≥3）。证据=计数输出。"
+          },
+          {
+            "for": "C6",
+            "run": "grep -oE 'skillId: \"skl_[a-z_]+\"' apps/agentcore/src/mocks/seed.ts | sort | uniq -c —— 断言不同 skillId 种类 ≥5（基线仅 1×skl_seed_capacity×4）。再逐点核对映射：grep -n -E 'agt_risk|agt_order_chain|agt_sop_balance|agt_quarterly|agt_order|agt_dash|agt_plan_generate|agt_plan_audit|agt_annual|agt_project_sim' 附近 skillId 与 §2.3 表一致。证据=uniq 计数 + 映射片段。"
+          },
+          {
+            "for": "C7",
+            "run": "docker compose up --build（或 VITE_MOCK=1 前端 mock），浏览器登录 demo/admin（demo1234）→ 打开 /v/plan-generate → 对话框输入\"保毛利和保规模到底怎么选，给我管理动作\"→ 回车 → 等答复渲染。断言：答复块含求解器数字 + C08/C15/C18 中至少一条规则裁决 + 至少一个 ⟦ref:N⟧；不出现\"进入探索模式\"/\"请换个问法\"。证据=截图存 docs/evidence/AGENT-BREADTH-plan-generate.png。"
+          }
+        ]
+      }
     },
     {
       "id": "GLOBAL-BACK",
@@ -82,7 +554,77 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "R17"
+      "note": "R17",
+      "acceptance": {
+        "goal": "用户从任意「整页下钻」落地页（对象360 /o/:type/:key、任务详情 /tasks/:id、下钻态风险看板 /v/risk?focus=、字段核对 /:connId/schema 等）都能看到左上「‹ 返回」并点它回到来源页；直链/刷新进入这些页时点返回不会退出站点而是落到兜底页——即「进得去也回得来，不再走死路」。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "新建组件文件 apps/frontend-shell/src/components/DrillBack.tsx 存在且导出 DrillBack；`pnpm --filter frontend-shell typecheck` exit code=0（引用它的各页无类型错）"
+          },
+          {
+            "id": "C2",
+            "type": "unit",
+            "assert": "DrillBack 单测：window.history.state.idx>0 时点「‹ 返回」调用 navigate(-1)（不调用 navigate(fallbackTo))；idx=0（直链落地）时不调 navigate(-1) 而调 navigate(fallbackTo)。两分支断言 vitest 全绿(exit 0)"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "`pnpm --filter frontend-shell test` exit code=0 且测试文件数（test/*.test.ts(x)）≥ 改前基线 N0、无一条既有用例回归失败（改行为不改既有断言）"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "顶栏全局搜索选中一命中 → 落地 /o/:typeKey/:objectKey，页内 [data-testid=\"o360-back\"] count=1；点它后 location.pathname 退回搜索前路径（不以 /o/ 开头）"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "地图点 [data-testid=\"geo-goto-risk\"] → 落地 /v/risk?focus=… 时 [data-testid=\"risk-back\"] count=1；而直接访问 /v/risk（无 ?focus）时 [data-testid=\"risk-back\"] count=0"
+          },
+          {
+            "id": "C6",
+            "type": "browser",
+            "assert": "直链粘贴 /o/<type>/<key> 到地址栏加载（window.history.state.idx==0）→ 点 [data-testid=\"o360-back\"] 后 location.pathname==\"/scenarios\"（fallbackTo 兜底），且 window.location.origin 不变、未跳出本 SPA（非浏览器空白页）"
+          },
+          {
+            "id": "C7",
+            "type": "browser",
+            "assert": "顶栏 🕐 历史面板点某条 → 落地 /tasks/:taskId，[data-testid=\"task-back\"] count=1；点它后 location.pathname 不再以 /tasks/ 开头，且与浏览器物理后退键结果一致"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "`pnpm --filter frontend-shell build`（内含 tsc）。断言：`test -f apps/frontend-shell/src/components/DrillBack.tsx && grep -q 'export function DrillBack' apps/frontend-shell/src/components/DrillBack.tsx && echo OK`→期望 OK；再 `pnpm --filter frontend-shell typecheck; echo exit=$?`→期望 exit=0。"
+          },
+          {
+            "for": "C2",
+            "run": "运行专测：`pnpm --filter frontend-shell test -- DrillBack`（新增 test/drill-back.test.tsx）。断言：输出含该文件用例全 pass、`echo exit=$?`→期望 exit=0；用例需 mock window.history.state={idx:2}→spy 断 navigate 参数为 -1，另 mock {idx:0}→断 navigate 参数为传入的 fallbackTo。"
+          },
+          {
+            "for": "C3",
+            "run": "先记基线：`ls apps/frontend-shell/test/*.test.ts* | wc -l`（N0）。再：`pnpm --filter frontend-shell test 2>&1 | tail -5; echo exit=$?`→期望 exit=0；`ls apps/frontend-shell/test/*.test.ts* | wc -l`→期望 ≥ N0。任一既有用例 FAIL 即 BLOCK。"
+          },
+          {
+            "for": "C4",
+            "run": "`VITE_MOCK=1 pnpm --filter frontend-shell dev`，浏览器登 demo/admin/demo1234。顶栏 input[data-testid=global-search-input] 输入对象名→点 button[data-testid^=gs-hit-]→URL 变 /o/…。DevTools Console：`document.querySelectorAll('[data-testid=\"o360-back\"]').length`→期望 1；记 `location.pathname`（含 /o/），点该 back，再取 `location.pathname`→期望不以 /o/ 开头。截图 docs/evidence/GLOBAL-BACK-C4.png。"
+          },
+          {
+            "for": "C5",
+            "run": "同会话进 /v/geo-map，点 button[data-testid=geo-goto-risk]→URL 含 /v/risk?focus=。Console `document.querySelectorAll('[data-testid=\"risk-back\"]').length`→期望 1。再地址栏访 /v/risk（无 query），同句→期望 0。截图 docs/evidence/GLOBAL-BACK-C5-focus.png 与 -nofocus.png。"
+          },
+          {
+            "for": "C6",
+            "run": "新标签直接粘贴 http://<host>/o/<typeKey>/<objectKey> 回车（首帧落地）。Console 先验 `window.history.state?.idx`→期望 0；点 [data-testid=o360-back]，取 `location.pathname`→期望 \"/scenarios\"，且 `location.origin` 不变、[data-testid=object-360] 或壳 DOM 在（非空白/未离站）。截图 docs/evidence/GLOBAL-BACK-C6.png。"
+          },
+          {
+            "for": "C7",
+            "run": "同会话点顶栏 🕐 开历史面板→点一条→URL 变 /tasks/<id>。Console `document.querySelectorAll('[data-testid=\"task-back\"]').length`→期望 1；记 pathname，点 task-back，取 `location.pathname`→期望不以 /tasks/ 开头。对照：改按浏览器后退键，pathname 与上一致。截图 docs/evidence/GLOBAL-BACK-C7.png。"
+          }
+        ]
+      }
     },
     {
       "id": "1C-PARSE",
@@ -92,7 +634,77 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "R19"
+      "note": "R19",
+      "acceptance": {
+        "goal": "用户用 demo/admin 登录规则文档审核台，上传一份含约束的规则文档后：上传立即返回不卡死、页面能看到逐段抽取进度真跳动（x/y 段 + failed 数）、抽取完成后候选列表出现且每条 sourceQuote 逐字高亮；即便默认 Anthropic 路首跳吐不合 schema 的输出也能靠自动纠错重试拿到候选而非静默 0 候选。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "POST /a/v1/rule-docs 上传规则文档 → 立即返回 HTTP 200 且 body 含 docId(以 doc_ 开头) 与 status=\"EXTRACTING\"（异步入口不同步阻塞）"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "GET /a/v1/rule-docs/:id 返回体含 extractProgress 对象且 extractProgress.total 等于该 doc 段数(>=1)、done+failed 单调推进至 total（进度是可读真值非静止）；终态 status 落 IN_REVIEW（全段成功）或 PARTIAL（有段失败）"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "抽取终态后 GET /a/v1/rule-docs/:id/candidates?status=PENDING 返回候选数组 length>=3，且每条 sourceQuote 均为非空字串（服务端 ruledocs.ts:327 已做 segment.text.includes(sourceQuote) 逐字子串校验，不过即丢，故返回的均为逐字子串）"
+          },
+          {
+            "id": "C4",
+            "type": "unit",
+            "assert": "packages/llm-adapters/src/anthropic.test.ts 当前不存在(净新增)，dev 新增后含用例：scripted client 首跳 parsed_output=null、二跳返回合法对象 → parse() 最终返回该对象且 messages.parse 被调用恰 2 次（证真重试）；对照连续 3 跳失败 → 返回 null；pnpm --filter @platform/llm-adapters test 含此用例且全绿"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "anthropic.ts parse() 内含 MAX_ATTEMPTS=3 的 for/attempt 循环（与 openai.ts:399 范式一致），且传输层错误(鉴权/网络)不进解析重试而原样抛（保 LLM_PURPOSE_UNBOUND 归一）；三条结构化路(anthropic 原生/openai 原生/jsonMode 降级)重试上限统一 ≤2"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "pnpm -r build && pnpm -r test 四包全绿(datacore ruledocs 用例数不降 + llm-adapters 含新增 anthropic 用例)，pnpm -r typecheck exit 0 无类型错（向后兼容不回归）"
+          },
+          {
+            "id": "C7",
+            "type": "browser",
+            "assert": "demo/admin 登录进规则文档审核台上传 md/PDF → EXTRACTING 态页面渲染进度条(done+failed / total，data-testid=ruledoc-progress)且数值随 2s 轮询真跳动(非静止转圈)、failed>0 时显失败徽章；终态候选列表出现、点候选见 mark[data-testid=source-quote-highlight] 逐字高亮、采纳后去 A5 规则库见该规则 origin=DOCUMENT 溯源回文档"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起服务: PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=$(openssl rand -hex 32) node apps/datacore/dist/server.js & ; DBG='X-Debug-User: demo:admin:admin|planner|catalog_admin'; DOC=$(printf '# 产能管理制度\\n\\n第一条 需求增量超过 50%% 时必须阻断排产并上报审批。\\n\\n第二条 外协比例不得超过 30%%，超出时告警。\\n\\n第三条 库存周转天数低于 15 天时冻结新采购。\\n' | base64 -w0); RESP=$(curl -s -XPOST localhost:4001/a/v1/rule-docs -H \"$DBG\" -H 'content-type: application/json' -d \"{\\\"filename\\\":\\\"cap.md\\\",\\\"contentBase64\\\":\\\"$DOC\\\"}\"); echo \"$RESP\" | jq '{docId, status}'  → 期望 status==\"EXTRACTING\" 且 docId 以 \"doc_\" 开头。保存 ID=$(echo \"$RESP\" | jq -r .docId) 供后续步骤"
+          },
+          {
+            "for": "C2",
+            "run": "轮询至终态并断言: for i in $(seq 1 20); do P=$(curl -s localhost:4001/a/v1/rule-docs/$ID -H \"$DBG\"); S=$(echo \"$P\" | jq -r .status); echo \"$P\" | jq -c '.extractProgress'; [ \"$S\" != EXTRACTING ] && break; sleep 1; done; echo \"$P\" | jq '.extractProgress.total>=1 and (.extractProgress.done + .extractProgress.failed)==.extractProgress.total'  → 期望 true；echo \"$P\" | jq -r .status  → 期望 IN_REVIEW 或 PARTIAL。旁证段级: curl -s localhost:4001/a/v1/rule-docs/$ID/segments -H \"$DBG\" | jq '[.[].status]' 见 OK/FAILED"
+          },
+          {
+            "for": "C3",
+            "run": "C=$(curl -s \"localhost:4001/a/v1/rule-docs/$ID/candidates?status=PENDING\" -H \"$DBG\"); echo \"$C\" | jq 'length>=3'  → 期望 true；非空校验: echo \"$C\" | jq -e 'all(.[]; .sourceQuote|length>0)'  → 期望 true(exit 0)；dropped 旁证: curl -s localhost:4001/a/v1/rule-docs/$ID -H \"$DBG\" | jq .droppedCandidates"
+          },
+          {
+            "for": "C4",
+            "run": "test -f packages/llm-adapters/src/anthropic.test.ts && echo EXISTS || echo MISSING  → dev 交付后期望 EXISTS(本单前为 MISSING)；pnpm --filter @platform/llm-adapters test 2>&1 | tail -30  → 期望含 anthropic 首跳 parsed_output=null→二跳成功用例名且全绿；用例内断言 scripted mock 的 messages.parse 调用次数 === 2（首跳失败→重试成功）、且连续 3 跳失败用例断言 parse() === null"
+          },
+          {
+            "for": "C5",
+            "run": "grep -n 'MAX_ATTEMPTS\\|for (let attempt' packages/llm-adapters/src/anthropic.ts  → 期望出现 MAX_ATTEMPTS=3 与 for(let attempt...) 循环（对照 grep -n MAX_ATTEMPTS packages/llm-adapters/src/openai.ts 的 :399）；grep -n 'JSON_MODE_MAX_RETRIES' packages/llm-adapters/src/degrade.ts  → 确认 =2；人工阅 anthropic parse() 确认 catch 块对传输层错误(非 schema 失败)原样 throw 不计入重试"
+          },
+          {
+            "for": "C6",
+            "run": "pnpm -r build && pnpm -r test  → 期望 4 包全绿(datacore 用例数不降、llm-adapters 含新增 anthropic 用例)；pnpm -r typecheck  → 期望 exit 0 无类型错"
+          },
+          {
+            "for": "C7",
+            "run": "docker compose up --build（或连真后端启前端）→ 浏览器登 demo/admin(demo1234) → 侧栏进规则文档审核台 → 上传 cap.md 或真实制度 PDF → EXTRACTING 态观察 data-testid=ruledoc-progress 进度条(done+failed/total) 随 2s 轮询数值跳动非静止，截图存 docs/evidence/ ；终态后点候选见 mark[data-testid=source-quote-highlight] 逐字高亮 → 采纳一条后进 A5 规则库确认 origin=DOCUMENT 溯源；再临时绑不合规模型/真 Kimi 制造首跳失败，观察不再 0 候选卡死、重试后出候选"
+          }
+        ]
+      }
     },
     {
       "id": "ONTOLOGY-OPT",
@@ -102,7 +714,77 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "R21·文档工程"
+      "note": "R21·文档工程",
+      "acceptance": {
+        "goal": "读者带着真实问题(如\"改求解器输出形状先看哪\")打开 docs/SYSTEM-ONTOLOGY.md,在 §0 与 §1 之间新增的 §0.5 快查索引里一眼定位到目标节(§2.E·§3(G-2)·§5 R6·G-2)并跳过去内容对得上,不必通读全文 —— 且这层纯导航不污染机器投影(三门+计数全绿不变)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "docs/SYSTEM-ONTOLOGY.md 在 §0(第~15行 `## 0.`)之后、§1(`## 1. 顶层地图`)之前新增标题 `## 0.5 快查索引`,且 §0.5 出现的行号 > §0 标题行号且 < §1 标题行号(位置正确·唯一新增块)"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "parse.ts 四类正则命中量与施工前基线**逐一相等**:events=86 · slices=15 · domains=11 · objTypes=32(§0.5 未引入任何可被 parse.ts 捕获的模式=纯导航层未污染投影)"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "`pnpm ontology:check`(check-system-ontology.mjs:事件/求解器/文件锚点漂移门)退出码=0,输出含 `✓ 系统本体与代码一致`(§0.5 未引入伪文件锚点/伪事件)"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "`pnpm meta:sync`(check-meta-sync.mjs:markdown 结构可投影门)退出码=0,输出含 `断点 14 · 不变量 17`(§0.5 未破坏结构可投影性,R/G 计数不漂)"
+          },
+          {
+            "id": "C5",
+            "type": "unit",
+            "assert": "`pnpm --filter datacore test -- meta-ontology` 全绿:meta-ontology.test.ts:26-27 断言 SystemInvariant 节点数=prdIndex.invariants.length=17 且 SystemBreakpoint 节点数=prdIndex.breakpoints.length=14(§0.5 未撑破 R6 确定性计数硬门)"
+          },
+          {
+            "id": "C6",
+            "type": "browser",
+            "assert": "在编辑器/GitHub 预览打开文件,§0.5 主表中\"改求解器/求解推演域\"一行的跳转目标节号(§2.E 求解推演域 / §3 / §5 R6 / §8 G-2)在文档中**真实存在**;随机再验另 3 个跳转目标节号(如 §2.A 数据接入域 §49 / §10.2 §502 / §10.4 §543)均可跳到且内容对题"
+          },
+          {
+            "id": "C7",
+            "type": "gate",
+            "assert": "`git diff docs/SYSTEM-ONTOLOGY.md` 显示改动**仅为新增**(无 - 删除行/无既有 §0–§10 正文改动),且被改文件集合={docs/SYSTEM-ONTOLOGY.md}(不触碰 parse.ts/check-*.mjs/meta-ontology.test.ts 及任何代码)"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "awk '/^## 0\\.5 /{h=NR} /^## 0\\. /{z=NR} /^## 1\\. /{o=NR} END{print \"h05=\"h\" h0=\"z\" h1=\"o}' /home/user/complete/docs/SYSTEM-ONTOLOGY.md  → 期望 h05 非空 且 h0<h05<h1(§0.5 落在 §0 与 §1 之间)"
+          },
+          {
+            "for": "C2",
+            "run": "cd /home/user/complete && node -e 'const fs=require(\"fs\"),md=fs.readFileSync(\"docs/SYSTEM-ONTOLOGY.md\",\"utf8\"),X=/\\.(ts|tsx|js|mjs|cjs|json|md|sql|csv|txt|html|yaml|yml|sh|conf)$/;console.log(\"events\",[...new Set([...md.matchAll(/`([a-z0-9_]+\\.[a-z0-9_]+)`/g)].map(m=>m[1]))].filter(e=>!X.test(e)).length,\"slices\",[...new Set([...md.matchAll(/`(sys\\.[a-z_]+\\.[a-z_]+)`/g)].map(m=>m[1]))].length,\"domains\",[...new Set([...md.matchAll(/\\*\\*(D\\d+)\\s+([^*（(]+?)\\*\\*/g)].map(m=>m[1]))].length,\"objTypes\",[...new Set([...md.matchAll(/^- \\*\\*([A-Z][A-Za-z0-9 \\/]+?)\\*\\*/gm)].map(m=>m[1].split(\"/\")[0].trim()))].filter(k=>k.length>=2&&k.length<=40).length)'  → 期望精确输出 `events 86 slices 15 domains 11 objTypes 32`(任一变大即污染)"
+          },
+          {
+            "for": "C3",
+            "run": "cd /home/user/complete && pnpm ontology:check; echo EXIT=$?  → 期望 EXIT=0 且末尾行含 `✓ 系统本体与代码一致（事件 / 求解器 / 文件锚点）`"
+          },
+          {
+            "for": "C4",
+            "run": "cd /home/user/complete && pnpm meta:sync; echo EXIT=$?  → 期望 EXIT=0 且输出含 `· 断点 14 · 不变量 17` 与 `✓ meta:sync`"
+          },
+          {
+            "for": "C5",
+            "run": "cd /home/user/complete && pnpm --filter datacore test -- meta-ontology 2>&1 | tail -20; echo EXIT=$?  → 期望 EXIT=0 且 meta-ontology.test.ts 全部用例 pass(计数断言 17/14 不红)"
+          },
+          {
+            "for": "C6",
+            "run": "人读:grep -nE '求解推演|^### A\\.|^### 10\\.[24]' /home/user/complete/docs/SYSTEM-ONTOLOGY.md 确认目标节真实存在(§2.E 求解推演域 / §2.A §49 / §10.2 §502 / §10.4 §543);再在 GitHub/编辑器预览打开,点 §0.5 主表 4 行跳转目标各跳一次,截图存 docs/evidence/ontology-opt-nav-*.png,核对落点节标题与表述一致"
+          },
+          {
+            "for": "C7",
+            "run": "cd /home/user/complete && git --no-pager diff --stat docs/SYSTEM-ONTOLOGY.md && git --no-pager diff docs/SYSTEM-ONTOLOGY.md | grep -c '^-[^-]' && git --no-pager diff --name-only  → 期望 diff --stat 仅 SYSTEM-ONTOLOGY.md、删除行计数=0、name-only 只列 docs/SYSTEM-ONTOLOGY.md(无 parse.ts/check-*.mjs/*.test.ts)"
+          }
+        ]
+      }
     },
     {
       "id": "CONTRAST-FIX",
@@ -112,7 +794,77 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "R22·CSS"
+      "note": "R22·CSS",
+      "acceptance": {
+        "goal": "用户登录 demo/admin 进「规划体检」展开「▸ 推演过程（编排 DAG）」后，肉眼能一眼读清节点「2. 检索切片」副行「SliceSpec」及各节点 kind 与底部图例文字（不再灰暗糊字），且主标签与缺口红/running 蓝/pending 半透明状态视觉不变。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "unit",
+            "assert": "InferenceProcessDag.module.css 的 .nodeKind 副行字色改为 fill: var(--muted)（#9aa8b6），不再是 var(--muted2)（#67737f）——即当前 L65 的 var(--muted2) 被替换。"
+          },
+          {
+            "id": "C2",
+            "type": "unit",
+            "assert": "两处图例 .legend 均改为 var(--muted)：InferenceProcessDag.module.css 的 .legend（当前 L13 var(--muted2)）与 Dag/ProcessDag.module.css 的 .legend（当前 L7 var(--muted2)）都不再引用 --muted2。"
+          },
+          {
+            "id": "C3",
+            "type": "unit",
+            "assert": "主行 .nodeLabel 保持 fill: var(--txt)（InferenceProcessDag.module.css L60）原样未动——grep 该行仍为 var(--txt)，命中数=1。"
+          },
+          {
+            "id": "C4",
+            "type": "unit",
+            "assert": "改后 InferenceProcessDag.module.css 中 kind/legend 已不再出现 var(--muted2)，且全文件无 var(--text)（防历史 typo 回潮）——两模式 grep 命中数均=0。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "node scripts/check-css-vars.mjs 退出码=0 且打印「✓ css-vars:check 通过」（--muted/--muted2 仍定义于 tokens.css，改值天然过门，无未定义裸 var）。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "pnpm --filter frontend-shell build && pnpm --filter frontend-shell test 全绿（退出码=0，测试数 25+），证明改样式未破坏前端构建/测试。"
+          },
+          {
+            "id": "C7",
+            "type": "browser",
+            "assert": "登录 demo/admin/demo1234→规划体检→展开「▸ 推演过程（编排 DAG）」，节点「2. 检索切片」副行「SliceSpec」及底部图例文字明显变亮可读（#9aa8b6 对 --bg#0d1117 ≈6.3:1 达 WCAG AA），主行「检索切片」与缺口红/蓝/半透明状态视觉不变。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "grep -nE '\\.nodeKind' -A3 /home/user/complete/apps/frontend-shell/src/components/InferenceProcessDag.module.css → 断言 .nodeKind 块内 fill 行为 'fill: var(--muted);'（期望含 var(--muted)、不含 var(--muted2)）"
+          },
+          {
+            "for": "C2",
+            "run": "grep -n 'var(--muted2)' /home/user/complete/apps/frontend-shell/src/components/InferenceProcessDag.module.css /home/user/complete/apps/frontend-shell/src/components/Dag/ProcessDag.module.css → 断言两文件 .legend 行不再出现 var(--muted2)（期望：ProcessDag.module.css 该 grep 0 命中；InferenceProcessDag.module.css 中 .legend/.nodeKind 行 0 命中）"
+          },
+          {
+            "for": "C3",
+            "run": "grep -nc 'fill: var(--txt)' /home/user/complete/apps/frontend-shell/src/components/InferenceProcessDag.module.css → 期望 1（.nodeLabel 主行 var(--txt) 原样保留）"
+          },
+          {
+            "for": "C4",
+            "run": "grep -ncE 'var\\(--text\\)' /home/user/complete/apps/frontend-shell/src/components/InferenceProcessDag.module.css → 期望 0（无 --text typo）；grep -nE 'var\\(--muted2\\)' 同文件 → .nodeKind/.legend 不再命中（.ipoRow 等非本单文字可保留原样，但 kind/legend 必为 0）"
+          },
+          {
+            "for": "C5",
+            "run": "node /home/user/complete/scripts/check-css-vars.mjs; echo \"exit=$?\" → 期望 stdout 含「✓ css-vars:check 通过」且 exit=0"
+          },
+          {
+            "for": "C6",
+            "run": "cd /home/user/complete && pnpm --filter frontend-shell build && pnpm --filter frontend-shell test; echo \"exit=$?\" → 期望 exit=0，test 汇总 ≥25 passed"
+          },
+          {
+            "for": "C7",
+            "run": "cd /home/user/complete && VITE_MOCK=1 pnpm --filter frontend-shell dev → 浏览器打开 http://localhost:5173 登录 demo/admin/demo1234 → 侧栏进「规划体检」(PlanAuditView) → 点结论旁「▸ 推演过程（编排 DAG）」折叠面板展开 → 定位节点「2. 检索切片」→ 截图存 docs/evidence/：确认副行「SliceSpec」及底部图例文字明显变亮可读，主行「检索切片」与缺口红/蓝/半透明状态视觉不变"
+          }
+        ]
+      }
     },
     {
       "id": "DR-AUDIT",
@@ -122,7 +874,77 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "R27"
+      "note": "R27",
+      "acceptance": {
+        "goal": "运维/合规官/审计员亲手走一遍:跑备份脚本→在宿主机拿到两个非空 .sql.gz 逻辑备份并能 restore 回 scratch 库(行数与源一致);admin 调 tenant-export→拿到本租户全量业务数据 JSON(无任何密文明文泄漏、跨租户 403);admin 配一个 SIEM webhook_ndjson sink(secret 加密不回显)→触发一次管理变更→在外部收集器端看到该审计事件以 NDJSON(actor/target/before/after/requestId 齐全)推达,且 endpoint 不可达时 flush 不报 5xx、本地 audit-log 仍全量。",
+        "criteria": [
+          {
+            "id": "C1",
+            "assert": "docker compose up -d 后 bash scripts/backup-pg.sh --out ./backups 退出码 0,./backups 下同时出现 datacore-*.sql.gz 与 agentcore-*.sql.gz 两个文件,均非空(size>0)且 gzip 魔数正确(file 报 gzip compressed)",
+            "type": "gate"
+          },
+          {
+            "id": "C2",
+            "assert": "bash scripts/restore-pg.sh ./backups/datacore-*.sql.gz 退出码 0,打印 scratch 库 audit_log 与 outbox_events 行数,两者均 >0(导得回、非空壳)",
+            "type": "gate"
+          },
+          {
+            "id": "C3",
+            "assert": "POST /a/v1/tenant-export(本租户 admin)返回 200 且 body 为 JSON bundle:jq '.tables|keys|length' >1(多表);jq '..|strings|select(startswith(\"enc:v1:\"))' 输出为空(无密文/明文泄漏·R5);同端点用 X-Debug-User: other:u:admin 跨租户调 → HTTP 403",
+            "type": "curl"
+          },
+          {
+            "id": "C4",
+            "assert": "PUT /a/v1/audit-sinks 配 webhook_ndjson(带 secret)后 GET /a/v1/audit-sinks:jq '.[0].credentialRef' 非空,且 jq '.[0]' 整体不含 endpoint secret 明文(grep 传入的 secret 值零命中·R5)",
+            "type": "curl"
+          },
+          {
+            "id": "C5",
+            "assert": "配好 sink→触发一次落审计的管理变更(如 PUT /a/v1/tenants/demo/features 改开关)→POST /a/v1/audit-sinks/flush 返回 2xx→本地 ndjson 收集器收到该条审计:每行是合法 JSON 且含 actorId/targetKind/targetId/before/after/requestId 全字段",
+            "type": "curl"
+          },
+          {
+            "id": "C6",
+            "assert": "把 sink endpoint 改成不可达地址→POST /a/v1/audit-sinks/flush 不返回 5xx(旁路吞·主写不受拖累);随后 GET /a/v1/audit-log 仍返回本地全量审计(本地 append-only 不因 SIEM 失败缺条)",
+            "type": "curl"
+          },
+          {
+            "id": "C7",
+            "assert": "关闭 audit-sink feature 后 PUT /a/v1/audit-sinks 返回 HTTP 404 且 body error.code==\"FEATURE_NOT_FOUND\"(关=不存在·R3);pnpm -r build && pnpm -r test 全绿(datacore ≥69 基线 + 新增 tenant-export.test.ts/audit-sink.test.ts),pnpm audit-actor:check + retention-coverage:check + gates 绿",
+            "type": "gate"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "docker compose up -d postgres-a postgres-b && bash scripts/backup-pg.sh --out ./backups; echo exit=$?; ls -l ./backups/datacore-*.sql.gz ./backups/agentcore-*.sql.gz; for f in ./backups/datacore-*.sql.gz ./backups/agentcore-*.sql.gz; do test -s \"$f\" && file \"$f\" | grep -q 'gzip compressed' && echo \"OK $f\" || echo \"FAIL $f\"; done — 期望:exit=0、两文件均在、两行均 OK"
+          },
+          {
+            "for": "C2",
+            "run": "bash scripts/restore-pg.sh $(ls ./backups/datacore-*.sql.gz | head -1); echo exit=$? — 期望:exit=0,输出含 audit_log 与 outbox_events 的行数且均 >0(脚本末尾 count 打印);人工核对 scratch 行数 == 源库(docker compose exec -T postgres-a psql -U datacore -tAc 'select count(*) from audit_log')"
+          },
+          {
+            "for": "C3",
+            "run": "H='X-Debug-User: demo:admin:admin|platform_admin'; curl -s -o export.json -w '%{http_code}\\n' -XPOST :4001/a/v1/tenant-export -H \"$H\"; jq '.tables|keys|length' export.json; jq -r '..|strings|select(startswith(\"enc:v1:\"))' export.json | wc -l; curl -s -o /dev/null -w '%{http_code}\\n' -XPOST :4001/a/v1/tenant-export -H 'X-Debug-User: other:u:admin' — 期望:首行 200、keys 长度 >1、密文行数 0、跨租户码 403"
+          },
+          {
+            "for": "C4",
+            "run": "H='X-Debug-User: demo:admin:admin|platform_admin'; SECRET='s3cr3t-siem-key'; curl -s -XPUT :4001/a/v1/audit-sinks -H \"$H\" -H 'content-type: application/json' -d '{\"kind\":\"webhook_ndjson\",\"endpoint\":\"http://127.0.0.1:9099/ingest\",\"secret\":\"'$SECRET'\"}'; curl -s :4001/a/v1/audit-sinks -H \"$H\" | tee sinks.json | jq '.[0].credentialRef'; jq '.[0]' sinks.json | grep -c \"$SECRET\" — 期望:credentialRef 非 null、grep 计数 0"
+          },
+          {
+            "for": "C5",
+            "run": "( node -e 'require(\"http\").createServer((q,r)=>{let b=\"\";q.on(\"data\",d=>b+=d);q.on(\"end\",()=>{require(\"fs\").appendFileSync(\"/tmp/siem.ndjson\",b);r.end(\"ok\")})}).listen(9099)' & ); H='X-Debug-User: demo:admin:admin|platform_admin'; curl -s -XPUT :4001/a/v1/tenants/demo/features -H \"$H\" -H 'content-type: application/json' -d '{\"key\":\"audit-sink\",\"enabled\":true}'; curl -s -o /dev/null -w 'flush=%{http_code}\\n' -XPOST :4001/a/v1/audit-sinks/flush -H \"$H\"; tail -1 /tmp/siem.ndjson | jq -e '.actorId and .targetKind and .targetId and (has(\"before\")) and (has(\"after\")) and .requestId' — 期望:flush 2xx、最后一行 jq -e 退出 0(全字段在)"
+          },
+          {
+            "for": "C6",
+            "run": "H='X-Debug-User: demo:admin:admin|platform_admin'; curl -s -XPUT :4001/a/v1/audit-sinks -H \"$H\" -H 'content-type: application/json' -d '{\"kind\":\"webhook_ndjson\",\"endpoint\":\"http://127.0.0.1:1/dead\"}'; curl -s -o /dev/null -w 'flush=%{http_code}\\n' -XPOST :4001/a/v1/audit-sinks/flush -H \"$H\"; curl -s :4001/a/v1/audit-log -H \"$H\" | jq '.items|length' — 期望:flush 非 5xx(2xx/旁路)、audit-log items 长度 >0(本地全量在)"
+          },
+          {
+            "for": "C7",
+            "run": "H='X-Debug-User: demo:admin:admin|platform_admin'; curl -s -XPUT :4001/a/v1/tenants/demo/features -H \"$H\" -H 'content-type: application/json' -d '{\"key\":\"audit-sink\",\"enabled\":false}'; curl -s -w '\\n%{http_code}\\n' -XPUT :4001/a/v1/audit-sinks -H \"$H\" -H 'content-type: application/json' -d '{\"kind\":\"webhook_ndjson\",\"endpoint\":\"http://x\"}' — 期望:末行 404 且 body error.code==FEATURE_NOT_FOUND;再跑 pnpm -r build && pnpm -r test && pnpm audit-actor:check && pnpm retention-coverage:check && pnpm gates — 期望:全绿、datacore 用例数 ≥69"
+          }
+        ]
+      }
     },
     {
       "id": "ACTUATE",
