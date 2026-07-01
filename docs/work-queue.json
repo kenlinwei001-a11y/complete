@@ -231,7 +231,7 @@
       "title": "N1多源融合+冲突仲裁+测谎",
       "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "SOLVER-BINDING"
@@ -306,7 +306,8 @@
             "run": "cd /home/user/complete && pnpm -r build && pnpm -r test；echo $? → 期望 0。核对 datacore 测试统计行 tests >= 69 且新增 fusion/arbitration/lie-detection 用例：pnpm --filter datacore test 2>&1 | grep -Ei 'SUSPECT|仲裁|verdict|fus' → 期望非空(有断言 SUSPECT/仲裁的用例)"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "E1-E2",
