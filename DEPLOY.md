@@ -170,6 +170,7 @@ SEED_DEMO=1 SEED_OPT_INDUSTRY=1 OPTIMIZER_BASE_URL=http://127.0.0.1:4003 ... nod
 | 登录 401 | 确认租户填 `demo`；改过库后想重置：`docker compose down -v` 清卷重来 |
 | 查询对话报模型错误 | 未配置 `ANTHROPIC_API_KEY`（见 §6）；其余模块不受影响 |
 | 改了代码不生效 | `docker compose up --build` 强制重建镜像 |
+| 恢复失败（restore-pg.sh 报错） | ① scratch 端口占用 → 换 `SCRATCH_PORT=5435`（或清残留：`docker ps -a --filter name=dr-restore-scratch -q \| xargs -r docker rm -f`）；② 恢复到生产库需 `--target datacore\|agentcore` 并输入 `YES` 二次确认；③ 备份系另一 pg 主版本 → 用同版本 `SCRATCH_IMAGE=postgres:16` 恢复 |
 
 ## 8. 数据持久化与重置
 
@@ -178,6 +179,85 @@ SEED_DEMO=1 SEED_OPT_INDUSTRY=1 OPTIMIZER_BASE_URL=http://127.0.0.1:4003 ... nod
 ```bash
 docker compose down -v && docker compose up --build
 ```
+
+> §8 是**卷级**重置（清空全部数据）。§8 的命名卷是"活数据"，不是备份——真正的灾备（可回滚到某个时间点、可换机重建）见 §9。
+
+## 9. 灾备与备份（WO-ENTERPRISE-DR-AUDIT）
+
+平台两库（`postgres-a`=datacore / `postgres-b`=agentcore）的应用级逻辑备份 + 恢复演练 + 外部审计对接。脚本纯 bash，无新依赖。
+
+### 9.1 定时逻辑备份
+
+对两库各跑一次 `pg_dump | gzip`，产出宿主机 `<name>-<ts>.sql.gz`：
+
+```bash
+bash scripts/backup-pg.sh --out ./backups --keep 14
+#   --out DIR   备份目录（默认 ./backups）
+#   --keep N    每库保留最近 N 份，删更旧（默认 0=不删）
+# 产出：backups/datacore-<ts>.sql.gz + backups/agentcore-<ts>.sql.gz（可 ls 见·gzip 头正确）
+```
+
+生产建议 cron（每日 02:30，保留 14 份）：
+```cron
+30 2 * * *  cd /opt/platform && bash scripts/backup-pg.sh --out /backup/pg --keep 14 >> /var/log/pg-backup.log 2>&1
+```
+把 `/backup/pg` 同步到异地对象存储（rsync/rclone）以防单机损毁。**逻辑备份 = 时间点快照·非连续 PITR**（连续恢复见 §9.3）。
+
+### 9.2 恢复演练（导得回·行数核对）
+
+把某份备份导入一个**一次性 scratch pg 容器**（默认·不碰生产），导入后打印核对表行数供人核对"导得回"：
+
+```bash
+bash scripts/restore-pg.sh ./backups/datacore-<ts>.sql.gz            # 默认 --target scratch
+#   打印 scratch 库 audit_log / outbox_events 行数 → 应与源库同表 count 一致
+#   scratch 容器 --rm 自动销毁；SCRATCH_PORT 默认 5433（占用则 SCRATCH_PORT=5435 …）
+```
+
+恢复到生产库（**危险·覆盖现有数据·需输入 YES 二次确认**）：
+```bash
+bash scripts/restore-pg.sh ./backups/datacore-<ts>.sql.gz --target datacore
+bash scripts/restore-pg.sh ./backups/agentcore-<ts>.sql.gz --target agentcore
+```
+**恢复演练是灾备有效性的唯一凭证**——只备份不演练 = 未知能否恢复。建议每月跑一次 scratch 恢复 + 行数核对。
+
+### 9.3 PITR 升级路径（当前 compose **未配**·诚实标注·R13）
+
+§9.1 逻辑备份只能恢复到"上次 dump 的时间点"。要连续时间点恢复（PITR·丢数窗口趋近 0），需开启 pg **WAL 归档**——**当前 `docker-compose.yml` 未启用**，需运维按下述样例开启方得连续恢复（本单不改默认 `up`，避免影响开箱体验）：
+
+```yaml
+# docker-compose.yml · postgres-a（datacore）示例增量（postgres-b 同理）
+  postgres-a:
+    image: pgvector/pgvector:pg15
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f   # 归档到独立卷
+    volumes:
+      - pgdata-a:/var/lib/postgresql/data
+      - wal-archive-a:/wal-archive                                            # 独立 WAL 归档卷
+# volumes: 追加 wal-archive-a: / wal-archive-b:
+```
+配套需：① 定期 `pg_basebackup` 取基准备份；② 归档卷异地同步；③ 恢复时 `restore_command` + `recovery_target_time`。开启后 §9.1 逻辑备份仍保留（两者互补：逻辑备份便携·WAL 归档连续）。
+
+### 9.4 外部审计对接（SIEM sink·审计证据外流）
+
+审计日志（append-only `audit_log`·统一 `AuditService.record` 单一写路径）既留本地、又可外送到外部 SIEM/审计系统。功能暗发（feature `audit-sink` 默认关·关=404 `FEATURE_NOT_FOUND`）；secret **AES-GCM 加密落库·响应仅回 credentialRef·绝不回显明文**。
+
+```bash
+# 开功能（tenant admin）
+curl -XPUT :4001/a/v1/tenants/<t>/features -H "$AUTH" -d '{"overrides":{"audit-sink":true}}'
+# 配 webhook_ndjson sink（endpoint + 可选出站 secret，作 Authorization: Bearer）
+curl -XPUT :4001/a/v1/audit-sinks -H "$AUTH" \
+  -d '{"kind":"webhook_ndjson","endpoint":"https://siem.example/ingest","secret":"<token>"}'
+# 手动触发一次增量推送（常态由调度 AUDIT_SINK_FLUSH 每 5 分钟自动跑）
+curl -XPOST :4001/a/v1/audit-sinks/flush -H "$AUTH"    # → {"delivered":N,"ok":true}
+```
+
+行为：以游标 `sinceAt` 从 `audit_log` 取增量 → 组 NDJSON（每行一条审计条目·actor+target+before/after+requestId 齐）→ POST endpoint → 成功前推游标。**投递失败旁路吞·不阻断主写路径**（本地 append-only 不受影响·下次续投·至少一次外送）。SIEM 端可按 `x-request-id` 与两系统日志对账。
 
 ## 本地 dev 模式的目录可移植性（v0.7）
 

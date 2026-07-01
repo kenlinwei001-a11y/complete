@@ -112,6 +112,8 @@ export const ScheduledJobKindSchema = z.enum([
   "APPROVAL_REMINDER",
   // WO-RETENTION（⑤·数据留存/TTL）：每日清理过期+已处理的无界增长行（outbox/ts/scheduler_runs）。
   "RETENTION_SWEEP",
+  // WO-ENTERPRISE-DR-AUDIT（sub-B·外部审计对接）：定时把 append-only audit_log 增量以 NDJSON 旁路推送到外部 SIEM sink。
+  "AUDIT_SINK_FLUSH",
 ]);
 export type ScheduledJobKind = z.infer<typeof ScheduledJobKindSchema>;
 

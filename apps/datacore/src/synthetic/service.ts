@@ -255,6 +255,8 @@ export class SyntheticService {
         await this.scheduler.register(ctx.tenantId, "CALIBRATION_SWEEP", "tenant", "0 5 * * *");
         // WO-RETENTION（⑤）：每日清理过期+已处理的无界增长行（outbox/ts/scheduler_runs）。
         await this.scheduler.register(ctx.tenantId, "RETENTION_SWEEP", "tenant", "0 4 * * *");
+        // WO-ENTERPRISE-DR-AUDIT（sub-B）：每 5 分钟把 append-only audit_log 增量旁路推送到外部 SIEM sink（无 sink 时空跑）。
+        await this.scheduler.register(ctx.tenantId, "AUDIT_SINK_FLUSH", "tenant", "*/5 * * * *");
       }
 
       // ⑥ validation report.

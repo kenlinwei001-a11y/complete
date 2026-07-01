@@ -47,6 +47,7 @@ import { classifySourceOrigin } from "@platform/contracts";
 import xlsx from "node-xlsx";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { RetentionTableSchema, RETENTION_DEFAULTS } from "@platform/contracts"; // WO-RETENTION（⑤·数据留存/TTL）
+import { AuditSinkInputSchema, type AuditSink } from "@platform/contracts"; // WO-ENTERPRISE-DR-AUDIT（sub-B·外部审计 SIEM sink）
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
@@ -85,6 +86,7 @@ import { assertSolverBindingGrounded, suggestSolverBindings } from "./solvers/so
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { RetentionService } from "./retention.js";
+import { AuditSinkService } from "./audit-sink.js"; // WO-ENTERPRISE-DR-AUDIT（sub-B·外部审计 SIEM sink）
 import { ActionService, type ActionExecutor } from "./actions.js";
 import { buildWritebackAdapter } from "./writeback.js";
 import { DecisionService } from "./decisions.js";
@@ -350,6 +352,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
   // WO-RETENTION（⑤·数据留存/TTL）：留存策略解析 + RETENTION_SWEEP 清理。
   const retention = new RetentionService(repos, logger.child({ component: "retention" }) as Logger, metrics);
+  // WO-ENTERPRISE-DR-AUDIT（sub-B）：外部审计 SIEM sink（复用 append-only audit_log 馈源·secret 加密·旁路推 NDJSON）。
+  const auditSink = new AuditSinkService(
+    repos,
+    cipher,
+    logger.child({ component: "audit-sink" }) as Logger,
+    metrics,
+    deps.fetchImpl ?? fetch,
+  );
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings);
   const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
@@ -676,6 +686,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // WO-RETENTION（⑤）：每日清理过期+已处理的无界增长行（outbox/ts/scheduler_runs·R2 限本租户）。
     .on("RETENTION_SWEEP", async (tenantId) => {
       await retention.sweep(tenantId);
+    })
+    // WO-ENTERPRISE-DR-AUDIT（sub-B）：增量把 append-only audit_log 以 NDJSON 旁路推送到外部 SIEM sink。
+    // flush 内部吞投递失败（不抛）→ 旁路不阻断主写/主 sweep·下次按 sinceAt 续投。
+    .on("AUDIT_SINK_FLUSH", async (tenantId) => {
+      await auditSink.flush(tenantId);
     });
 
   /** Entitlement middleware helper: bound feature off → 404 FEATURE_NOT_FOUND (before authz). */
@@ -4040,6 +4055,51 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     requireAdmin(c);
     return retention.sweep(c.tenantId);
+  });
+
+  // ---- WO-ENTERPRISE-DR-AUDIT（sub-B·外部审计对接·SIEM sink）--------------------------------------
+  //   - 复用 append-only audit_log 作馈源 + 游标 sinceAt 增量 NDJSON 旁路推送到外部 SIEM。
+  //   - R3 Entitlement 先于 authz：`audit-sink` feature 关 → 404 FEATURE_NOT_FOUND（先于 requireAdmin）。
+  //   - R5 no-secrets-echo：secret 加密落库·响应**仅回 credentialRef 存在标记**，绝不回显明文/密文。
+  //   - 旁路不阻主写：flush 内部吞投递失败（不返 5xx），本地 audit_log 不受影响。
+  const sanitizeSink = (s: AuditSink) => ({
+    id: s.id,
+    tenantId: s.tenantId,
+    kind: s.kind,
+    endpoint: s.endpoint,
+    status: s.status,
+    // 仅回"是否已配 secret"——绝不回显密文/明文（R5）。
+    credentialRef: s.credentialRef ? "cred:configured" : undefined,
+    sinceAt: s.sinceAt,
+    lastFlushAt: s.lastFlushAt,
+    lastError: s.lastError,
+    updatedAt: s.updatedAt,
+    updatedBy: s.updatedBy,
+  });
+  app.get("/a/v1/audit-sinks", async (req) => {
+    await requireFeatureTag(req, "apiTags", "audit-sink"); // R3：关=404，先于 authz
+    const c = ctx(req);
+    // 读者门：admin / platform_admin / auditor（含配置的目标 endpoint，非敏感·secret 已脱敏）。
+    if (!c.roles.some((r) => ["admin", "platform_admin", "auditor"].includes(r.split(":")[0] as string))) {
+      requireAdmin(c);
+    }
+    const sinks = await auditSink.listSinks(c.tenantId);
+    return sinks.map(sanitizeSink);
+  });
+  app.put("/a/v1/audit-sinks", async (req) => {
+    await requireFeatureTag(req, "apiTags", "audit-sink"); // R3：关=404，先于 authz
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(AuditSinkInputSchema, req.body);
+    const sink = await auditSink.setSink(c, body);
+    return sanitizeSink(sink);
+  });
+  app.post("/a/v1/audit-sinks/flush", async (req) => {
+    await requireFeatureTag(req, "apiTags", "audit-sink"); // R3：关=404，先于 authz
+    const c = ctx(req);
+    requireAdmin(c);
+    // 旁路：flush 内部吞投递失败（不抛）→ 恒 200，回执含 delivered/ok（主写不受影响）。
+    return auditSink.flush(c.tenantId);
   });
 
   // ---- LLM Provider 配置体系增量 §1 + 引用上报（§2.3） -------------------------------------------

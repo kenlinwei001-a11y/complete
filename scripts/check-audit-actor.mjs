@@ -71,6 +71,22 @@ for (const [label, file, re] of r9) {
   else ok.push(`R9 audit_log ${label} 在位`);
 }
 
+// ---- ⑤ WO-ENTERPRISE-DR-AUDIT：SIEM sink 只读消费 audit_log，不新增绕过 AuditService 的审计写路径 ----
+// 保护 append-only 单一来源不被 sink 破坏：audit-sink.ts 只允许 auditLog.list（读馈源），
+// 绝不 auditLog.put/remove（那会绕过 AuditService.record 唯一审计写路径·破 R-AUDIT append-only）。
+try {
+  const sink = read("apps/datacore/src/audit-sink.ts");
+  if (/auditLog\.(put|remove)\s*\(/.test(sink)) {
+    fails.push("audit-sink.ts 不得 auditLog.put/remove（SIEM sink 须只读消费 audit_log·绕过 AuditService 会破 append-only 单一来源）");
+  } else if (!/auditLog\.list\s*\(/.test(sink)) {
+    fails.push("audit-sink.ts 须经 auditLog.list 消费既有 append-only 馈源（不新建审计写路径）");
+  } else {
+    ok.push("audit-sink.ts 只读消费 audit_log（不绕过 AuditService·不破 append-only）");
+  }
+} catch {
+  // 文件不存在（sub-B 未落）时不强制——本项仅在 audit-sink.ts 存在时守。
+}
+
 // ---- ④ 跨服务 requestId 透传 ---------------------------------------------------------------
 const dchttp = read("apps/agentcore/src/tools/datacore-http.ts");
 if (!/"x-request-id":\s*ctx\.requestId/.test(dchttp)) {

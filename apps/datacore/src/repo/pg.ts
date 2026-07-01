@@ -720,6 +720,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     writebackEchoes: new PgStore(pool, "writeback_echoes"),
     featureAudit: new PgStore(pool, "feature_audit"),
     auditLog: new PgStore(pool, "audit_log"),
+    auditSinks: new PgStore(pool, "audit_sinks"),
     scenarioPackages: new PgStore(pool, "scenario_packages"),
     dynamicFeatures: new PgStore(pool, "dynamic_features"),
     llmProviders: new PgStore(pool, "llm_providers"),

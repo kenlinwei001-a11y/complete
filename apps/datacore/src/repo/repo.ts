@@ -272,6 +272,8 @@ export interface Repos {
   featureAudit: Store<FeatureAuditRecord>;
   /** WO-AUDIT-OBS：统一 append-only 审计日志（audit_log，migration029；只插不改不删·R13）。 */
   auditLog: Store<AuditLogRecord>;
+  /** WO-ENTERPRISE-DR-AUDIT：外部审计 sink 配置（audit_sinks，migration034；secret 加密·仅 credentialRef·R5）。 */
+  auditSinks: Store<import("@platform/contracts").AuditSink>;
   /** OC3 配置迁移 Saga 状态机持久化（import_jobs，migration017）。 */
   importJobs: Store<import("@platform/contracts").ImportJob>;
   /** OC6 提示词配置化（prompt_templates，migration018）。 */

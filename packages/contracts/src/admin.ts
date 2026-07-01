@@ -79,6 +79,45 @@ export const AuditLogEntrySchema = z.object({
 });
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
 
+// ---- WO-ENTERPRISE-DR-AUDIT 外部审计对接（SIEM sink · R5 secret 加密不回显） ------------------
+
+/**
+ * 审计 sink（外部审计/SIEM 对接目标）。复用 append-only `audit_log` 作馈源，经游标 `sinceAt`
+ * 增量把审计事件以 NDJSON 旁路推送到外部 endpoint。
+ *
+ * R5（no-secrets-echo）：secret **绝不入 schema 明文**——加密落库、响应仅回 `credentialRef`。
+ * R2：tenantId 全程限定。投递失败旁路吞（不阻断主写路径），下次 sweep 按 sinceAt 续投。
+ */
+export const AuditSinkSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  /** 目标类型：webhook_ndjson = POST NDJSON body 到 endpoint（每行一条 AuditLogEntry）。 */
+  kind: z.literal("webhook_ndjson"),
+  /** 推送目标 URL（外部 SIEM 摄取端点）。 */
+  endpoint: z.string(),
+  status: z.enum(["ACTIVE", "PAUSED"]),
+  /** 凭据引用占位（= 密文存在标记）；**绝不回显 secret 明文/密文**（R5）。 */
+  credentialRef: z.string().optional(),
+  /** 增量游标：已成功外送到此 `at` 之前（含）的审计条目；下次从此之后续投。 */
+  sinceAt: z.string().optional(),
+  /** 最近一次投递结果（可观测·不含 secret）。 */
+  lastFlushAt: z.string().optional(),
+  lastError: z.string().optional(),
+  updatedAt: z.string().optional(),
+  updatedBy: z.string().optional(),
+});
+export type AuditSink = z.infer<typeof AuditSinkSchema>;
+
+/** 设置 sink 的入参（secret 明文仅在入站请求体·加密后即弃·永不回读）。 */
+export const AuditSinkInputSchema = z.object({
+  kind: z.literal("webhook_ndjson").default("webhook_ndjson"),
+  endpoint: z.string().url(),
+  /** 出站鉴权 secret（Authorization: Bearer <secret>）；加密落库·不回显（R5）。可空（无鉴权端点）。 */
+  secret: z.string().optional(),
+  status: z.enum(["ACTIVE", "PAUSED"]).optional(),
+});
+export type AuditSinkInput = z.infer<typeof AuditSinkInputSchema>;
+
 export const RolesResponseSchema = z.object({
   builtIn: z.array(z.string()),
   /** 参数化角色约定说明 + 本租户在用示例（下拉的「带参角色」分组） */
