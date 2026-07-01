@@ -53,7 +53,7 @@
 | **R27** | **运营/合规/商业化:灾备/A/B实验/外部审计融合单(10341/10393)** | ◐ | A/B实验=EXPERIMENT landed·**灾备备份/外部审计对接未建** |
 | R28 | 复刻Maven先设计:模拟独有问题虚拟跑全链(10831/10978) | ✅ | 5批Maven问题+CEO10问+接线图(本会话+前序) |
 | R29 | CEO 10问数据管线接线全图(11032) | ✅ | DESIGN-CEO-10q-data-pipeline-wiring(本会话) |
-| **R30** | **连接器改上传+源数据入库前端可见+求解器/规则预部署+本体基于源数据+模拟真实业务全流程(11077)** | 🟠 **钉死B3** | option A真跑:上传✅→建模✅→归域✅→物化✅(18对象)→**solver拒(B3·缺映射层)**·见 REVIEW-optionA-…verdict。dev b65aac7补空壳字段。SOURCE-TRANSPARENCY设计在 |
+| **R30** | **连接器改上传+源数据入库前端可见+求解器/规则预部署+本体基于源数据+模拟真实业务全流程(11077)** | 🟢 **B3+透明双闭** | ①**源数据前端可见**：SOURCE-TRANSPARENCY(`cd90287`·审核核发)——连接器页 35 数据集逐张预览+真下载 .xlsx 见真业务数据(源库有+前端可见·SYNTHETIC 诚实不冒充)+no-orphan 门治本。真浏览器实拍 `st-c6-connectors.png`。②**上传真实数据→出真答案**：SOLVER-BINDING(`8bffa3a`·审核核发·B3命门闭)——上传→建模→归域→物化→配绑定→**真答案「提价4%接」**(HTTP 全链)。option A 的 solver 拒(B3)已解。closure `REVIEW-SOURCE-TRANSPARENCY-closure.md`+`REVIEW-SOLVER-BINDING-closure.md` |
 | **R31** | **WO-ACTUATE出站writeBack+WO-OBSERVABILITY OTel span树(11238)** | ✅ **已核发(dev建·代码级)** | dev `e5c41cc`(ACTUATE)/`22443b2`(OBS)照设计建·审核方**独立核实**:代码符设计+**datacore 829回归绿**+诚实(MockWriteback R6 hash/ErpRest NOT_CONFIGURED/tracing no-op/禁明文凭据)+本体G-14回写。**诚实边界**:用户动作走查(curl写回/起OTel collector)取dev FDE证据·审核方未独立起服务实拍(代码级核发) |
 
 ## §2 option A 真跑断点（真响应实证）

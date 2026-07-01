@@ -150,7 +150,7 @@
       "title": "消灭走捷径·源数据连接器页可见Excel+无凭空门",
       "doc": "docs/WO-SOURCE-TRANSPARENCY-no-shortcut.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "透明≠洗成真实",
