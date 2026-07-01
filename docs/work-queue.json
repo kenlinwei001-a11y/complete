@@ -314,7 +314,7 @@
       "title": "校准活体常态化 + 沙盘what-if进决策",
       "doc": "docs/WO-design-E-calibration-sandbox-live-loop.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "仅设计零代码·NOT-LANDED",
@@ -387,7 +387,8 @@
             "run": "VITE_MOCK=1 或接真后端起 frontend-shell dev;浏览器进 RiskBoardView→点某风险红点的「开 what-if」→网络面板见 POST /a/v1/sim/sessions 201(payload baseSnapshot=该上下文);点 tick 后 SimComparePanel 出现基线 vs world diff 行(截图,diff 非空);点 checkpoint 再 rollback,校验主世界该对象值未变;点「采纳为 Action 提案」→ GET /a/v1/actions 见新增 status=DRAFT/PENDING 的 Action;截图入 docs/evidence/"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "RESOURCE-REF",
