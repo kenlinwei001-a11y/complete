@@ -237,9 +237,10 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     // S1.3 tightness for the per-base bottleneck column + global mainBn —— LIVE 优先（真数据），无真数据源回落 MOCK。
     const bn = primaryFactor(c, baseId);
     const lt = liveTightness(c, baseId, bn);
+    // WO-KILL-MOCK-RED：无真源 → tight=null（不伪造）；仅真值参与全局 mainBn/mainTightness（不被假红拉高）。
     const tight = lt.value;
     anyLive = anyLive || lt.live;
-    if (tight > mainTightness) {
+    if (tight !== null && tight > mainTightness) {
       mainTightness = tight;
       mainBn = bn;
     }

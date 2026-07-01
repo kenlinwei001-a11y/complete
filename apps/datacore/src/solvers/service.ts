@@ -1125,12 +1125,20 @@ export class SolverService {
     const marginPct = num(dseg?.props[F("demandSegment", "marginPct")]);
     const floorPct = num(dseg?.props[F("demandSegment", "floorPct")]);
 
-    // ① 交期判（C02/C03）：可产基地数 × 周产能基线 → P50/P90 vs 周需求（qty 视为单周需求，确定性代理）。
-    const weeklyBase = Math.max(1, bases.length) * 700;
-    const p50 = round(weeklyBase, 0);
-    const p90 = round(weeklyBase * 0.9, 0);
-    const deliveryOk = p90 >= qty;
-    const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
+    // ① 交期判（C02/C03）：WO-KILL-MOCK-RED（治本）——读**真** computeRollup 周产能（capacity.ts·基地 weeklyWan），
+    // 只累加该型号可产基地的真产能，**删硬编码 `基地数×700`**（前端 Provenance 本就写"真产能×OEE×良率"，此前后端却假算）。
+    // 无真产能（producibleWeekly=0：无真设备/产线数据）→ 交期维标"无数据·不裁决"，绝不吐假 P90 结论（C2）。
+    const solverCtx = await this.loadContext(ctx.tenantId, undefined, undefined, ctx);
+    const rollup = computeRollup(solverCtx);
+    const capByBase = new Map(rollup.bases.map((b) => [str(b.baseId), Math.max(0, num(b.weeklyWan))]));
+    const producibleWeekly = round(bases.reduce((s, bid) => s + (capByBase.get(bid) ?? 0), 0), 4);
+    const hasCap = producibleWeekly > 0;
+    const p50 = hasCap ? producibleWeekly : null;
+    const p90 = hasCap ? round(producibleWeekly * 0.9, 4) : null; // P90 = 保守下界（P90/P50≈0.9 建模假设·非产能本身伪造）
+    const deliveryOk = hasCap ? (p90 as number) >= qty : null; // 无真产能 → null（不裁决）
+    const deliveryJudge = hasCap
+      ? { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", capacitySource: "computeRollup(真基地周产能 weeklyWan·Σ可产基地)", ruleRefs: ["C02", "C03"] }
+      : { p50: null, p90: null, demand: qty, verdict: "无数据·不裁决", noData: "无真实产能数据源（可产基地无真设备/产线产能）——请接入真实产线数据后再判交期", ruleRefs: ["C02", "C03"] };
 
     // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
     const mbals = await this.repos.objects.listByType(ctx.tenantId, T("materialBalance"));
@@ -1154,7 +1162,7 @@ export class SolverService {
     if (!creditOk) { verdict = "不建议接"; vc = "#DD7E9E"; conds.push("信用占用超限（C13），需先收款/降额"); }
     else if (!marginOk) { verdict = `提价${priceUpPct}%接`; vc = "#E8B54A"; conds.push(`毛利率 ${marginPct}% < 细分底线 ${floorPct}%（C15），提价 ${priceUpPct}% 达线`); }
     else { verdict = "可接"; vc = "#62BE77"; }
-    if (!deliveryOk) conds.push(`周供给 P90 ${p90} < 需求 ${qty}（C02），需夜班/外协对冲`);
+    if (deliveryOk === false) conds.push(`周供给 P90 ${p90} < 需求 ${qty}（C02），需夜班/外协对冲`);
     if (!kitOk) conds.push(`${kitJudge.material} 缺口 ${kitGap} 吨（C06），最早齐套 ${kitJudge.eta}`);
 
     // 业务建模链 DAG：so → {net 可产网络 · bom BOM · eco 单价细分 · cred 信用} → {jcap · jkit · jfin} → vrd。

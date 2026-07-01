@@ -1,6 +1,7 @@
 import type { ObjectInstance } from "../domain.js";
 import { round } from "../prng.js";
 import { num, str, type SolverContext } from "./types.js";
+import { liveTightness } from "./risk.js";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -53,7 +54,9 @@ const MITIGATION_LIB: Record<string, { key: string; name: string; eff: number; t
 export function mitigationSelect(args: Record<string, unknown>) {
   const factor = str(args.factor);
   const baseName = str(args.baseName);
-  const tightness = num(args.tightness, 85);
+  // WO-KILL-MOCK-RED（治本）：无真紧迫度（args.tightness 缺）→ 不伪造 85；urgency=null，按方案性价比排序并诚实标。
+  const hasTight = args.tightness !== undefined && args.tightness !== null;
+  const tightness = hasTight ? num(args.tightness) : null;
   // 优先用注入的 canonical 方案库（params.risk.mitigations，全因子名 + risk 字段，R14 单一来源）；
   // 直接单测无 context 时回落内置 MITIGATION_LIB（消除"风险卡全因子名 vs 方案库短名"接缝 G）。
   const injected = args.mitigations as Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk?: string }[]> | undefined;
@@ -62,15 +65,22 @@ export function mitigationSelect(args: Record<string, unknown>) {
     const factors = [...new Set([...Object.keys(injected ?? {}), ...Object.keys(MITIGATION_LIB)])];
     return { error: `unknown factor: ${factor}`, factors };
   }
-  const urgency = Math.max(0, (tightness - 70) / 30);
+  const urgency = tightness === null ? null : Math.max(0, (tightness - 70) / 30);
+  // 无真紧迫度：按方案性价比（eff/(cost×tn)）排序，不含紧迫度加权（不伪造紧迫度）；有真值则乘 urgency 权重。
   const scored = lib
-    .map((p) => ({ ...p, costRank: COST_RANK[p.cost] ?? 2, score: round((p.eff * urgency) / ((COST_RANK[p.cost] ?? 2) * p.tn), 4) }))
+    .map((p) => {
+      const roi = round(p.eff / ((COST_RANK[p.cost] ?? 2) * p.tn), 4);
+      return { ...p, costRank: COST_RANK[p.cost] ?? 2, score: urgency === null ? roi : round((p.eff * urgency) / ((COST_RANK[p.cost] ?? 2) * p.tn), 4) };
+    })
     .sort((a, b) => b.score - a.score);
   const top = scored[0]!;
   return {
     factor,
     baseName,
-    urgency: round(urgency, 4),
+    urgency: urgency === null ? null : round(urgency, 4),
+    ...(urgency === null
+      ? { urgencyDataMode: "MOCK", noData: "无实测紧迫度数据（真风险张力缺失·未接真设备/需求数据）——按方案性价比排序，不含紧迫度加权，不作决策级紧迫度结论" }
+      : {}),
     plans: scored,
     recommended: top.key,
     draftPayload: { base: baseName, factor, planKey: top.key },
@@ -537,9 +547,17 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
       return { gap: num(args.gap, Math.round(totalDemand * 0.15)), ...args };
     }
-    case "mitigation_select":
-      // 注入 canonical 方案库（params.risk.mitigations）→ mitigation_select 对全部 7 个风险因子可用。
-      return { tightness: 85, mitigations: c.params?.risk?.mitigations, ...args };
+    case "mitigation_select": {
+      // WO-KILL-MOCK-RED（治本）：紧迫度从**真**风险张力（liveTightness：真 OEE/利用率/良率 或真需求-产能缺口）取，
+      // 无真源则**不注入**（不再硬编码 85）——mitigationSelect 无真紧迫度时按方案性价比排序并诚实标"无紧迫度数据"。
+      const factor = str(args.factor);
+      const bName = str(args.baseName);
+      const base = (c.bases ?? []).find((b) => str(b.props.name) === bName || str(b.props.baseId) === bName);
+      const rt = base ? liveTightness(c, str(base.props.baseId), factor) : null;
+      const tightInj = rt && rt.live && rt.value !== null ? { tightness: rt.value } : {};
+      // canonical 方案库（params.risk.mitigations）→ 对全部 7 个风险因子可用；args 最后 spread（调用方显式紧迫度仍优先）。
+      return { ...tightInj, mitigations: c.params?.risk?.mitigations, ...args };
+    }
     default:
       return args;
   }

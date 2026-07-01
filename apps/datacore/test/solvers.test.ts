@@ -195,22 +195,42 @@ describe("S1 solvers", () => {
     expect(wr.ruleRef).toBe("C08");
   });
 
-  it("bottleneck_matrix MOCK formula is exact and primary comes from BN_PRIMARY config", async () => {
+  it("WO-KILL-MOCK-RED：bottleneck_matrix 非 LIVE 请求 → 格子全 null（治本·不再 mockTightness 哈希染红）+ primary 来自 config", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    // 未请求 LIVE（{}）：诚实 MOCK 态——不伪造任何估算红，格子全 null（前端灰）。dataMode=MOCK。
     const res = await invokeSolver(t, "bottleneck_matrix", {});
-    const data = (res.json() as { data: { dataMode: string; factors: string[]; rows: { base: string; tightness: Record<string, number>; primary: string }[] } }).data;
+    const data = (res.json() as { data: { dataMode: string; factors: string[]; rows: { base: string; tightness: Record<string, number | null>; primary: string }[] } }).data;
     expect(data.dataMode).toBe("MOCK");
     expect(data.factors).toHaveLength(7);
     const row = data.rows.find((r) => r.base === "常州")!;
     expect(row.primary).toBe(P.bottleneck.primary["常州"]);
-    const bases = await t.repos.objects.listByType("demo", "Base");
-    const util = bases.find((b) => b.props.baseId === "changzhou")!.props.util as number;
+    // 治本核心：每个格子都是 null（不再是 base名+因子名 charCodeAt 哈希造的红）。
     for (const f of data.factors) {
+      expect(row.tightness[f]).toBeNull();
+    }
+  });
+
+  it("WO-KILL-MOCK-RED：bottleneck_matrix LIVE 请求 → 有真数据因素出真值(C6 真数据出真红)·无真源因素 null", async () => {
+    const t = await makeApp();
+    await seedBattery(t); // 种真 Equipment.oee_current / Line.utilization / Process.yield_baseline
+    const res = await invokeSolver(t, "bottleneck_matrix", { dataMode: "LIVE" });
+    const data = (res.json() as { data: { dataMode: string; rows: { base: string; tightness: Record<string, number | null>; primary: string }[] } }).data;
+    // 有真设备/产线/良率数据 → 真算（非 MOCK 哈希）。顶层 dataMode 经 applyConfidenceDimensions 叠加合成维
+    // 后为 SYNTHETIC（合成租户诚实位·数据确来自合成源）——关键是**非 MOCK**（真数据走真算·非无脑灭红·C6）。
+    expect(data.dataMode === "LIVE" || data.dataMode === "SYNTHETIC").toBe(true);
+    expect(data.dataMode).not.toBe("MOCK");
+    const row = data.rows.find((r) => r.base === "常州")!;
+    // 设备OEE：有真 oee_current → 真值（0–100·非 null·非哈希）。
+    const oee = row.tightness["设备OEE"];
+    expect(oee !== null && typeof oee === "number" && oee >= 0 && oee <= 100).toBe(true);
+    // 每个非 null 格子都是真实 liveTightness 值，绝不等于旧哈希公式（防回潮）。
+    for (const [f, v] of Object.entries(row.tightness)) {
+      if (v === null) continue;
       const seed = ("常".charCodeAt(0) + f.charCodeAt(0) * 7) % 9;
-      const expected =
-        f === row.primary ? Math.min(97, 88 + (seed % 9)) : Math.min(83, 55 + seed + (util > 0.82 ? 6 : 2));
-      expect(row.tightness[f]).toBe(expected);
+      const oldHash = f === row.primary ? Math.min(97, 88 + (seed % 9)) : Math.min(83, 55 + seed + 6);
+      const oldHash2 = Math.min(83, 55 + seed + 2);
+      expect(v === oldHash || v === oldHash2).toBe(false);
     }
   });
 

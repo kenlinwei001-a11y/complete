@@ -131,8 +131,13 @@ export function demandCapacityTightness(c: SolverContext, baseId: string): { val
   return { value: clamp(Math.round(tension), 0, 98), live: true, gap };
 }
 
-/** LIVE 口径: normalize real snapshot metrics (falls back to MOCK per factor when absent). */
-export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number; live: boolean } {
+/**
+ * LIVE 口径：读真实快照指标（设备OEE/瓶颈工序利用率/良率）或真需求-产能缺口。
+ * WO-KILL-MOCK-RED（治本·非贴标签）：**无真实数据源 → 不伪造**，返回 `{value:null, live:false}`（hasData=false 语义）。
+ * 此前回落 `mockTightness`（基地名+因子名哈希 → 恒红越线）是"MOCK 值上线为决策级红"的根断点（G-DM-1）。
+ * 决策级红/越线只能来自 live===true（真数据出真红·C6：有真数据仍照常出红，非无脑灭红）。
+ */
+export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number | null; live: boolean } {
   const lp = c.params.bottleneck.live;
   if (factor === "设备OEE") {
     const eq = c.equipment.filter((e) => e.props.baseId === baseId && typeof e.props.oee_current === "number");
@@ -162,7 +167,9 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
     const dc = demandCapacityTightness(c, baseId);
     if (dc.live) return { value: dc.value, live: true };
   }
-  return { value: mockTightness(c, baseId, factor), live: false };
+  // 治本：无任何真实数据源（无逐设备 OEE/利用率/良率·无真需求-产能预测）→ 不伪造决策级紧张度。
+  // （旧行 `return { value: mockTightness(...), live:false }` 是洛阳·设备OEE 假红的根源，已删。）
+  return { value: null, live: false };
 }
 
 /** 需求驱动型瓶颈因素：紧张度随真需求-产能缺口共振（无逐设备实测源 → 用 demandCapacityTightness）。 */
@@ -171,23 +178,24 @@ const DEMAND_DRIVEN_FACTORS = new Set(["瓶颈工序", "人力工时", "物料�
 export function bottleneckMatrix(
   c: SolverContext,
   args: { dataMode?: string; baseIds?: string[] },
-): { dataMode: "LIVE" | "MOCK"; factors: string[]; rows: { base: string; tightness: Record<string, number>; primary: string }[] } {
+): { dataMode: "LIVE" | "MOCK"; factors: string[]; rows: { base: string; tightness: Record<string, number | null>; primary: string }[] } {
   const factors = c.params.bottleneck.factors;
   const wantLive = args.dataMode === "LIVE";
   let anyLive = false;
   const baseIds = args.baseIds ?? c.bases.map((b) => str(b.props.baseId));
+  // WO-KILL-MOCK-RED（治本·非贴标签）：格子紧张度只从真值来。
+  //  - LIVE 请求（生产两处消费方 RiskBoardView/ProjectSimView 均传 dataMode:LIVE）：读 liveTightness（真 OEE/
+  //    利用率/良率 或真需求-产能缺口）；无真源格子 → null（前端灰·不染红），**不再逐格 mockTightness 哈希染红**。
+  //  - 非 LIVE（未请求实测）：诚实 MOCK 态——所有格 null（不伪造任何估算红），dataMode=MOCK。
   const rows = baseIds
     .sort()
     .map((baseId) => {
-      const tightness: Record<string, number> = {};
+      const tightness: Record<string, number | null> = {};
       for (const f of factors) {
-        if (wantLive) {
-          const r = liveTightness(c, baseId, f);
-          tightness[f] = r.value;
-          anyLive = anyLive || r.live;
-        } else {
-          tightness[f] = mockTightness(c, baseId, f);
-        }
+        if (!wantLive) { tightness[f] = null; continue; }
+        const r = liveTightness(c, baseId, f);
+        tightness[f] = r.live ? r.value : null;
+        anyLive = anyLive || r.live;
       }
       return { base: baseName(c, baseId), tightness, primary: primaryFactor(c, baseId) };
     });
@@ -284,13 +292,13 @@ export function tensionSeries(
   factor: string,
   horizon: number,
   events: RiskEvent[],
-  mitigation?: { eff: number; tn: number },
-  // 轨M 增量1（真推演红线）：基线张力优先用真数据（liveTightness 读 OEE/利用率/良率），
-  // 无真数据源的因素（人力工时/物料齐套/物流时长/换型损失）回落 mock。调用方传入以保 series 与 dataMode 同源。
-  baseline?: number,
+  mitigation: { eff: number; tn: number } | undefined,
+  // WO-KILL-MOCK-RED（治本）：基线张力**必须**来自真数据（liveTightness 读 OEE/利用率/良率 或真需求-产能缺口）。
+  // 此前 `baseline ?? mockTightness(...)` 会在无真源时哈希造红——已删；调用方须在 lt.live 时才调用（传真值）。
+  baseline: number,
 ): number[] {
   const p = c.params.risk;
-  const cur = baseline ?? mockTightness(c, baseId, factor);
+  const cur = baseline;
   const tgt = riskTarget(c, baseId, factor, cur);
   const series: number[] = [];
   for (let d = 1; d <= horizon; d++) {
@@ -339,9 +347,10 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       const primary = primaryFactor(c, b);
       for (const f of c.params.bottleneck.factors) {
         if (f === primary) continue;
-        // WO-FORECAST-SIM：候选筛选用真张力（liveTightness：真预测+真产能缺口优先，无真源回落 mock）——
-        // 与下方 series 基线同源，确保"需求升→候选/曲线一致变"（非哈希恒定）。
-        if (liveTightness(c, b, f).value >= p.threshold) continue;
+        // WO-FORECAST-SIM：候选筛选用真张力（liveTightness：真预测+真产能缺口优先）——与下方 series 基线同源。
+        // 无真源（value===null）不在此跳过（留待卡循环按 !lt.live 处理：自动扫描跳过·显式点选出诚实空态）。
+        const ltv = liveTightness(c, b, f).value;
+        if (ltv !== null && ltv >= p.threshold) continue;
         pairs.push({ baseId: b, factor: f, forced: false });
       }
     }
@@ -349,15 +358,35 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
 
   const cards: Record<string, unknown>[] = [];
   for (const pair of pairs) {
-    const events = riskEvents(c, pair.baseId, horizon);
-    // 轨M 增量1（真推演红线）：series 是确定性 forward 推演（基线 climb + 真事件脉冲）。
     // 诚实披露：liveTightness 给该因素的"实测当前张力"——有真数据(LIVE: 设备OEE/瓶颈工序/良率波动 读
-    // 真 OEE/利用率/良率)则 dataMode=LIVE 且 currentTightness 亮真值；无真数据源(MOCK: 人力工时/物料齐套/
-    // 物流时长/换型损失)则 dataMode=MOCK → 前端显"估算（无实测）"，红/黄不再裸渲染当真值。
+    // 真 OEE/利用率/良率·或真需求-产能缺口)则 dataMode=LIVE 亮真值；无真数据源 → lt.live=false（value=null）。
     const lt = liveTightness(c, pair.baseId, pair.factor);
-    // WO-FORECAST-SIM：series 基线 = 真张力（lt.live 时为真需求-产能缺口派生 / 真 OEE-利用率-良率；
-    // 否则 mockTightness 回落）。改 DemandSegment/SopVersion 真值 → lt 变 → 曲线随之变（非哈希恒定·R6 可溯）。
-    const baseline = lt.live ? lt.value : undefined;
+    // WO-KILL-MOCK-RED（治本·非贴标签）：无真数据源（!lt.live）绝不伪造决策级红/越线。
+    //  - 自动扫描的无数据因素：直接跳过（不是红候选）。
+    //  - 用户显式点选（forced，如洛阳·设备OEE 原案）：返回诚实空态卡（crossDay=null·peak=null·series=[]·
+    //    hasData=false），前端据此显"无真实数据源·不参与越线判定·请接入实测数据"，**不出红**。
+    if (!lt.live || lt.value === null) {
+      if (!pair.forced) continue;
+      cards.push({
+        base: baseName(c, pair.baseId),
+        baseId: pair.baseId,
+        factor: pair.factor,
+        dataMode: "MOCK",
+        hasData: false,
+        currentTightness: { value: null, live: false },
+        noDataReason: "该基地×因子无真实数据源（无逐设备 OEE / 利用率 / 良率实测·无真需求-产能预测），不参与越线判定——请接入真实设备/订单数据（连接器与上传）。",
+        peak: null,
+        crossDay: null,
+        series: [],
+        events: [],
+        affectedOrders: [],
+      });
+      continue;
+    }
+    const events = riskEvents(c, pair.baseId, horizon);
+    // series 基线 = 真张力（lt.live·真需求-产能缺口派生 / 真 OEE-利用率-良率）。
+    // 改 DemandSegment/SopVersion 真值 → lt 变 → 曲线随之变（非哈希恒定·R6 可溯·C6：真数据出真红）。
+    const baseline = lt.value;
     const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, undefined, baseline);
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
@@ -367,8 +396,9 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       base: baseName(c, pair.baseId),
       baseId: pair.baseId,
       factor: pair.factor,
-      dataMode: lt.live ? "LIVE" : "MOCK",
-      currentTightness: { value: lt.value, live: lt.live },
+      dataMode: "LIVE",
+      hasData: true,
+      currentTightness: { value: lt.value, live: true },
       ...(dc && dc.live ? { demandGap: { gapWan: dc.gap, source: "DemandSegment(p50/p90)+SopVersionRow.demand−产能" } } : {}),
       peak: Math.max(...series),
       crossDay,
@@ -447,6 +477,9 @@ function buildRiskPlanRows(
   const seen = new Set<string>();
   const early: string[] = [];
   for (const card of cards) {
+    // WO-KILL-MOCK-RED（治本）：处置工单是决策级输出——只从有真数据（hasData!==false 且有越线）的卡生成。
+    // 无真源诚实空态卡（hasData:false·crossDay:null）绝不进处置计划表（不伪造"越线前7天启动"这类可行动结论）。
+    if (card.hasData === false || card.crossDay === null || card.crossDay === undefined) continue;
     const base = str(card.base);
     const factor = str(card.factor);
     const peak = Math.round(num(card.peak));
@@ -704,8 +737,10 @@ interface AggRiskRef {
   base: string;
   factor: string;
   crossDay: number | null;
-  peak: number;
+  // WO-KILL-MOCK-RED：无真源时 peak=null（不伪造峰值）；hasData=false 让前端不据此染红。
+  peak: number | null;
   threshold: number;
+  hasData: boolean;
 }
 // DF.3b（PRD order §4.5-C）：营收口径统一到原型 SEG_REGISTRY 万元/套（2.2/1.4/1.8），
 // 取代旧 {0.6/0.55/0.5} 不一致口径 → affectedOrders summary.revenue 与 order econTable 同源一致。
@@ -739,10 +774,15 @@ export function affectedOrdersAggregate(
   for (const baseId of baseIds) {
     const single = affectedOrders(c, { baseId, toDay: 180 });
     const factor = primaryFactor(c, baseId);
-    // WO-FORECAST-SIM：order-chain 风险参考的 series 基线同样用真张力（与 risk_timeline 同源·需求驱动可溯）。
+    // WO-KILL-MOCK-RED（治本）：order-chain 风险参考只在真张力存在时建（与 risk_timeline 同源·需求驱动可溯）。
+    // 无真源（!ltAgg.live）→ 不伪造 series/峰值/越线；ref 标 hasData=false（peak/crossDay=null），前端不据此染红。
     const ltAgg = liveTightness(c, baseId, factor);
-    const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon), undefined, ltAgg.live ? ltAgg.value : undefined);
-    const ref: AggRiskRef = { base: baseName(c, baseId), factor, peak: Math.max(0, ...series), crossDay: crossDayOf(series, threshold), threshold };
+    const ref: AggRiskRef = ltAgg.live && ltAgg.value !== null
+      ? (() => {
+          const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon), undefined, ltAgg.value as number);
+          return { base: baseName(c, baseId), factor, peak: Math.max(0, ...series), crossDay: crossDayOf(series, threshold), threshold, hasData: true };
+        })()
+      : { base: baseName(c, baseId), factor, peak: null, crossDay: null, threshold, hasData: false };
     for (const a of single.affected) {
       const so = str(a.so);
       let e = byOrder.get(so);

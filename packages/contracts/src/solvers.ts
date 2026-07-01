@@ -49,7 +49,8 @@ export const PerBaseRowSchema = z.object({
   certFactor: z.number(), // 认证中 0.6 / 量产 1.0
   maintWeek: z.number().int().nullable(),
   bottleneck: z.string(),
-  tightness: z.number(),
+  // WO-KILL-MOCK-RED（治本）：无真源紧张度 = null（不伪造哈希红）；仅 live=true 时为真值·前端据此染红/否则灰。
+  tightness: z.number().nullable(),
   // 轨M 增量1（假2）：该基地主瓶颈紧张度是否来自真数据（liveTightness）→ 前端红/橙显"实测/估算"。
   live: z.boolean().optional(),
   cumTotal: z.number(),
@@ -106,7 +107,8 @@ export const BottleneckMatrixOutputSchema = z.object({
   rows: z.array(
     z.object({
       base: z.string(),
-      tightness: z.record(z.string(), z.number()), // 因素 → 0–100
+      // WO-KILL-MOCK-RED（治本）：无真源格子 = null（前端灰·不染红）；仅真值 0–100。
+      tightness: z.record(z.string(), z.number().nullable()), // 因素 → 0–100 | null(无真源)
       primary: z.string(),
     }),
   ),
@@ -131,13 +133,17 @@ export const RiskCardSchema = z.object({
   // 轨M 增量1（真推演红线）：LIVE=该因素有实测当前张力（真 OEE/利用率/良率）；MOCK=无真数据源 → 前端必显"估算"。
   // WO-FRESHNESS：扩 SolverDataModeSchema（逐卡新鲜度/合成维不在卡级叠加，仅顶层 + confidence 承载）。
   dataMode: SolverDataModeSchema.optional(),
-  // 实测当前张力（liveTightness）：value=当前值，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值（有真数据→真算可溯）。
-  currentTightness: z.object({ value: z.number(), live: z.boolean() }).optional(),
+  // WO-KILL-MOCK-RED（治本）：hasData=false ⇒ 该卡无真实数据源（诚实空态）——前端显 noDataReason·不染红/不进决策。
+  hasData: z.boolean().optional(),
+  noDataReason: z.string().optional(),
+  // 实测当前张力（liveTightness）：value=当前值(无真源=null)，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值。
+  currentTightness: z.object({ value: z.number().nullable(), live: z.boolean() }).optional(),
   // WO-FORECAST-SIM：需求驱动因素的真缺口溯源——gapWan=预测需求−产能（万套·基地分摊），source 标真源口径（R13 可溯）。
   demandGap: z.object({ gapWan: z.number(), source: z.string() }).optional(),
-  peak: z.number(),
-  crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）
-  series: z.array(z.number()), // 逐日 tension
+  // WO-KILL-MOCK-RED：无真源诚实空态卡 peak=null（不伪造峰值）；有真数据才为真峰值。
+  peak: z.number().nullable(),
+  crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）·无真源=null
+  series: z.array(z.number()), // 逐日 tension（无真源=[]）
   events: z.array(RiskEventSchema),
   affectedOrders: z.array(z.record(z.string(), z.unknown())).optional(),
   mitigated: z
