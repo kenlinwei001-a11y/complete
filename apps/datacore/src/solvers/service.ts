@@ -33,6 +33,12 @@ const A6_READOUT_SOLVERS = new Set<string>(["capacity_rollup", "bottleneck_matri
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
+import {
+  indexSolverBindings,
+  resolveSolverType,
+  resolveField as resolveBoundField,
+  type SolverBindingIndex,
+} from "./solver-binding.js";
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
@@ -213,6 +219,26 @@ const DAY_MS = 86400000;
  */
 export class SolverService {
   constructor(private repos: Repos) {}
+
+  /**
+   * SolverBinding 索引缓存（解 B3·G-17）：per-tenant「solverKey→role→绑定」。首用惰性加载，
+   * 仅纳入 ACTIVE 绑定（DRAFT 草案须人工确认后方生效·RL4）。绑定写路径经 invalidateBindingCache 清。
+   * 无绑定的租户（如 demo）→ 空索引 → resolveSolverType 全回退 canonical 默认（向后兼容·零回归）。
+   */
+  private bindingIdxByTenant = new Map<string, SolverBindingIndex>();
+  private async bindingIndex(tenantId: string): Promise<SolverBindingIndex> {
+    const cached = this.bindingIdxByTenant.get(tenantId);
+    if (cached) return cached;
+    const bindings = await this.repos.solverBindings.list(tenantId);
+    const idx = indexSolverBindings(bindings);
+    this.bindingIdxByTenant.set(tenantId, idx);
+    return idx;
+  }
+  /** 绑定创建/激活写路径变更后清缓存（保证 resolveSolverType 随绑定到位翻转·R6 稳定）。 */
+  invalidateBindingCache(tenantId?: string): void {
+    if (tenantId) this.bindingIdxByTenant.delete(tenantId);
+    else this.bindingIdxByTenant.clear();
+  }
 
   /** generic_inference 需读对象图 + 前向重算（recompute 在 OntologyCore）；app.ts 构造后注入。 */
   private ontologyCore?: OntologyCoreService;
@@ -958,23 +984,31 @@ export class SolverService {
    * args: { so }（缺省取首单）。前端零写死：ORDERS/价格/BOM/底线均为合成种子，三判由本求解器实算（R14）。
    */
   private async orderFullchain(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // B3·G-17：读对象类型/字段经 SolverBinding（role→租户真实类型/字段）；无绑定回退 canonical 默认。
+    const idx = await this.bindingIndex(ctx.tenantId);
+    const K = "order_fullchain";
+    const T = (role: string) => resolveSolverType(idx, K, role);
+    const F = (role: string, field: string) => resolveBoundField(idx, K, role, field);
     const so = str(args.so);
-    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
-    if (orders.length === 0) throw validationError("order_fullchain 需先合成 Order");
-    const order = (so ? orders.find((o) => str(o.props.so) === so) : orders.sort((a, b) => str(a.props.so).localeCompare(str(b.props.so)))[0]);
+    const orders = await this.repos.objects.listByType(ctx.tenantId, T("order"));
+    if (orders.length === 0) throw validationError(`order_fullchain 需先有 ${T("order")}（配 SolverBinding role=order 指向租户真实订单类型，或合成 Order）`);
+    const fSo = F("order", "so");
+    const order = (so ? orders.find((o) => str(o.props[fSo]) === so) : orders.sort((a, b) => str(a.props[fSo]).localeCompare(str(b.props[fSo])))[0]);
     if (!order) throw notFound(`order ${so}`);
     const op = order.props;
-    const modelId = str(op.model);
-    const qty = num(op.qty);
-    const models = await this.repos.objects.listByType(ctx.tenantId, "Model");
-    const model = models.find((m) => str(m.props.modelId) === modelId);
-    const bases = Array.isArray(model?.props.bases) ? (model!.props.bases as string[]) : [];
+    const modelId = str(op[F("order", "model")]);
+    const qty = num(op[F("order", "qty")]);
+    const models = await this.repos.objects.listByType(ctx.tenantId, T("model"));
+    const fModelId = F("model", "modelId");
+    const model = models.find((m) => str(m.props[fModelId]) === modelId);
+    const bases = Array.isArray(model?.props[F("model", "bases")]) ? (model!.props[F("model", "bases")] as string[]) : [];
     // 细分映射（确定性化学体系）：S192→储能 · L148→商用车 · 其余→乘用车。
     const seg = modelId.includes("S192") ? "储能" : modelId.includes("L148") ? "商用车" : "乘用车";
-    const dsegs = await this.repos.objects.listByType(ctx.tenantId, "DemandSegment");
-    const dseg = dsegs.find((d) => str(d.props.segment) === seg);
-    const marginPct = num(dseg?.props.marginPct);
-    const floorPct = num(dseg?.props.floorPct);
+    const dsegs = await this.repos.objects.listByType(ctx.tenantId, T("demandSegment"));
+    const fSegment = F("demandSegment", "segment");
+    const dseg = dsegs.find((d) => str(d.props[fSegment]) === seg);
+    const marginPct = num(dseg?.props[F("demandSegment", "marginPct")]);
+    const floorPct = num(dseg?.props[F("demandSegment", "floorPct")]);
 
     // ① 交期判（C02/C03）：可产基地数 × 周产能基线 → P50/P90 vs 周需求（qty 视为单周需求，确定性代理）。
     const weeklyBase = Math.max(1, bases.length) * 700;
@@ -984,16 +1018,17 @@ export class SolverService {
     const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
 
     // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
-    const mbals = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
-    const worstMat = [...mbals].sort((a, b) => num(b.props.gapTon) - num(a.props.gapTon))[0];
-    const kitGap = worstMat ? num(worstMat.props.gapTon) : 0;
+    const mbals = await this.repos.objects.listByType(ctx.tenantId, T("materialBalance"));
+    const fGapTon = F("materialBalance", "gapTon");
+    const worstMat = [...mbals].sort((a, b) => num(b.props[fGapTon]) - num(a.props[fGapTon]))[0];
+    const kitGap = worstMat ? num(worstMat.props[fGapTon]) : 0;
     const kitOk = kitGap <= 0;
-    const kitJudge = { material: str(worstMat?.props.material), gapTon: kitGap, eta: str(worstMat?.props.etaDate), verdict: kitOk ? "齐套" : "缺料", ruleRefs: ["C06", "C16"] };
+    const kitJudge = { material: str(worstMat?.props[F("materialBalance", "material")]), gapTon: kitGap, eta: str(worstMat?.props[F("materialBalance", "etaDate")]), verdict: kitOk ? "齐套" : "缺料", ruleRefs: ["C06", "C16"] };
 
     // ③ 财务判三闸：毛利率 vs 底线（C15）→ 信用占用（C13）→ 现金（C18，订单无现金数据→按信用代理）。
     const marginOk = marginPct >= floorPct;
     const priceUpPct = marginOk ? 0 : Math.ceil(floorPct - marginPct);
-    const creditUsedRatio = num(op.creditUsedRatio);
+    const creditUsedRatio = num(op[F("order", "creditUsedRatio")]);
     const creditOk = creditUsedRatio <= 1;
     const financeJudge = { marginPct, floorPct, marginOk, priceUpPct, creditUsedRatio, creditOk, verdict: !creditOk ? "信用阻断" : marginOk ? "通过" : `需提价${priceUpPct}%`, ruleRefs: ["C15", "C13", "C18"] };
 
@@ -1008,9 +1043,10 @@ export class SolverService {
     if (!kitOk) conds.push(`${kitJudge.material} 缺口 ${kitGap} 吨（C06），最早齐套 ${kitJudge.eta}`);
 
     // 业务建模链 DAG：so → {net 可产网络 · bom BOM · eco 单价细分 · cred 信用} → {jcap · jkit · jfin} → vrd。
+    const soVal = str(op[fSo]);
     const N = (id: string, kind: string, label: string, extra: Record<string, unknown> = {}) => ({ id, kind, label, ...extra });
     const nodes = [
-      N(`order:${str(op.so)}`, "order", `订单 ${str(op.so)}`, { qty, model: modelId, due: str(op.due), cust: str(op.cust) }),
+      N(`order:${soVal}`, "order", `订单 ${soVal}`, { qty, model: modelId, due: str(op[F("order", "due")]), cust: str(op[F("order", "cust")]) }),
       N("net", "network", "可产网络", { bases }),
       N("bom", "bom", "BOM 展开", { material: kitJudge.material }),
       N("eco", "economics", "单价与细分", { segment: seg, marginPct, floorPct }),
@@ -1021,21 +1057,21 @@ export class SolverService {
       N("vrd", "verdict", verdict, { vc }),
     ];
     const edges = [
-      { from: `order:${str(op.so)}`, to: "net" }, { from: `order:${str(op.so)}`, to: "bom" },
-      { from: `order:${str(op.so)}`, to: "eco" }, { from: `order:${str(op.so)}`, to: "cred" },
+      { from: `order:${soVal}`, to: "net" }, { from: `order:${soVal}`, to: "bom" },
+      { from: `order:${soVal}`, to: "eco" }, { from: `order:${soVal}`, to: "cred" },
       { from: "net", to: "jcap" }, { from: "bom", to: "jkit" }, { from: "eco", to: "jfin" }, { from: "cred", to: "jfin" },
       { from: "jcap", to: "vrd" }, { from: "jkit", to: "vrd" }, { from: "jfin", to: "vrd" },
     ];
 
     return {
-      so: str(op.so),
+      so: soVal,
       verdict,
       vc,
       kpis: { qty, segment: seg, marginPct, floorPct, deliveryP90: p90, kitGap },
       judges: { cap: deliveryJudge, kit: kitJudge, fin: financeJudge },
       conds,
       dag: { nodes, edges },
-      summary: `订单 ${str(op.so)}（${modelId}·${qty}）结论：${verdict}${conds.length ? "；" + conds.join("；") : ""}`,
+      summary: `订单 ${soVal}（${modelId}·${qty}）结论：${verdict}${conds.length ? "；" + conds.join("；") : ""}`,
     };
   }
 
@@ -1447,22 +1483,26 @@ export class SolverService {
     // WO-EXPERIMENT：冠军-挑战者实验命中挑战者臂时注入该版本参数（否则取当前版本，零影响既有）。
     paramsOverride?: SolverParamsShape,
   ): Promise<SolverContext> {
+    // B3·G-17：loadContext 拓扑类型经 SolverBinding role→租户真实类型解析（context 求解器共用），
+    // 无绑定回退 canonical 默认（demo 零回归）。A6 行级过滤仍以 canonical 类型名为策略键（对齐 query_objects）。
+    const idx = await this.bindingIndex(tenantId);
+    const CT = (role: string, canonical: string) => resolveSolverType(idx, "context", role, canonical);
     const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth, demandSegments, sopVersions] =
       await Promise.all([
-        this.repos.objects.listByType(tenantId, "Base").then((l) => this.a6(ctx, "Base", l)),
-        this.repos.objects.listByType(tenantId, "Line").then((l) => this.a6(ctx, "Line", l)),
-        this.repos.objects.listByType(tenantId, "Process").then((l) => this.a6(ctx, "Process", l)),
-        this.repos.objects.listByType(tenantId, "Equipment").then((l) => this.a6(ctx, "Equipment", l)),
-        this.repos.objects.listByType(tenantId, "MaintPlan").then((l) => this.a6(ctx, "MaintPlan", l)),
-        this.repos.objects.listByType(tenantId, "Model").then((l) => this.a6(ctx, "Model", l)),
-        (visibleOrders ? Promise.resolve(visibleOrders) : this.repos.objects.listByType(tenantId, "Order")).then((l) => this.a6(ctx, "Order", l)),
-        this.repos.objects.listByType(tenantId, "Shipment").then((l) => this.a6(ctx, "Shipment", l)),
-        this.repos.objects.listByType(tenantId, "Segment").then((l) => this.a6(ctx, "Segment", l)),
+        this.repos.objects.listByType(tenantId, CT("base", "Base")).then((l) => this.a6(ctx, "Base", l)),
+        this.repos.objects.listByType(tenantId, CT("line", "Line")).then((l) => this.a6(ctx, "Line", l)),
+        this.repos.objects.listByType(tenantId, CT("process", "Process")).then((l) => this.a6(ctx, "Process", l)),
+        this.repos.objects.listByType(tenantId, CT("equipment", "Equipment")).then((l) => this.a6(ctx, "Equipment", l)),
+        this.repos.objects.listByType(tenantId, CT("maintPlan", "MaintPlan")).then((l) => this.a6(ctx, "MaintPlan", l)),
+        this.repos.objects.listByType(tenantId, CT("model", "Model")).then((l) => this.a6(ctx, "Model", l)),
+        (visibleOrders ? Promise.resolve(visibleOrders) : this.repos.objects.listByType(tenantId, CT("order", "Order"))).then((l) => this.a6(ctx, "Order", l)),
+        this.repos.objects.listByType(tenantId, CT("shipment", "Shipment")).then((l) => this.a6(ctx, "Shipment", l)),
+        this.repos.objects.listByType(tenantId, CT("segment", "Segment")).then((l) => this.a6(ctx, "Segment", l)),
         this.repos.objects.listByType(tenantId, "DataSourceHealth"),
         // WO-FORECAST-SIM：需求侧预测真源（forecast 域 DemandSegment + plan 域 SopVersionRow），喂 risk_timeline
         // 的 demandCapacityTightness（替 mockTightness 哈希）。网络级预测对象，非基地范围 → 不套 A6（与 Segment 同范式）。
-        this.repos.objects.listByType(tenantId, "DemandSegment"),
-        this.repos.objects.listByType(tenantId, "SopVersionRow"),
+        this.repos.objects.listByType(tenantId, CT("demandSegment", "DemandSegment")),
+        this.repos.objects.listByType(tenantId, CT("sopVersion", "SopVersionRow")),
       ]);
     const certByModel = new Map<string, Map<string, string>>();
     const certLinks = await this.repos.links.list(tenantId, (l) => l.type === "model_certified_on");
@@ -1729,8 +1769,15 @@ export class SolverService {
       if (!og || typeof og !== "object") return false;
       return og.type === "SYNTHETIC" || (og.type === "MATERIALIZED" && synthDatasetIds.has(og.datasetId));
     };
-    // 决策核心对象类型（capacity/risk/cockpit 等决策读出的主体）。
-    const probeTypes = ["Base", "Line", "Order", "Model"];
+    // 决策核心对象类型（capacity/risk/cockpit 等决策读出的主体）。B3·G-17：经 SolverBinding 解析
+    // 到租户真实类型（无绑定回退 canonical 默认），使 realco 上传类型也被 provenance 探测覆盖。
+    const idx = await this.bindingIndex(tenantId);
+    const probeTypes = [
+      resolveSolverType(idx, "context", "base", "Base"),
+      resolveSolverType(idx, "context", "line", "Line"),
+      resolveSolverType(idx, "context", "order", "Order"),
+      resolveSolverType(idx, "context", "model", "Model"),
+    ];
     let total = 0;
     let real = 0;
     for (const t of probeTypes) {

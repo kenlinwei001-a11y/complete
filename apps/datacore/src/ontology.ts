@@ -12,6 +12,7 @@ import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
 import type { SolverService } from "./solvers/service.js";
 import { newId } from "./ids.js";
+import { suggestSolverBindings } from "./solvers/solver-binding.js"; // B3·G-17：建模发布后自动建议绑定草案（RL4）
 import { notFound, validationError } from "./errors.js";
 import { round } from "./prng.js";
 import type { OutboxService } from "./outbox.js";
@@ -208,6 +209,18 @@ export class OntologyService {
     };
     await this.repos.ontologyVersions.put(rec);
     await this.outbox.emit(ctx.tenantId, "ontology.published", { version });
+    // B3·G-17（RL4·不自动生效）：发布后自动建议 SolverBinding 草案——当 canonical 求解器默认类型不在本
+    // 租户本体内（如 realco 上传 Orders/Bases 而非 canonical Order/Base），按确定性词表挑最贴切类型产 DRAFT
+    // 草案落库（不覆盖已有绑定、不激活）。人工经 /a/v1/solvers/:key/bindings/:id/activate 确认后方生效。
+    try {
+      const published = snapshot.objectTypes;
+      const existing = await this.repos.solverBindings.list(ctx.tenantId);
+      const drafts = suggestSolverBindings(ctx.tenantId, published, existing, (sk) => newId(`solvbnd_${sk}`));
+      for (const d of drafts) await this.repos.solverBindings.put(d);
+      if (drafts.length > 0) await this.outbox.emit(ctx.tenantId, "solver.binding_suggested", { count: drafts.length, solvers: drafts.map((d) => d.solverKey) });
+    } catch {
+      // 建议是增益能力，失败不阻塞发布（向后兼容·R6 无副作用于既有链路）。
+    }
     return rec;
   }
 

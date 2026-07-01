@@ -46,6 +46,7 @@ import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestS
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 import { RetentionTableSchema, RETENTION_DEFAULTS } from "@platform/contracts"; // WO-RETENTION（⑤·数据留存/TTL）
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
+import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
@@ -78,6 +79,7 @@ import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/serv
 import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
 import { OPT_MODEL_TEMPLATES } from "./solvers/opt-templates.js";
 import { assertBindingGrounded, type BindingOntologyView } from "./solvers/opt-binding.js"; // 增量E：落库前 DF.8 接地校验
+import { assertSolverBindingGrounded, suggestSolverBindings } from "./solvers/solver-binding.js"; // B3·G-17：SolverBinding 落库接地 + 自动建议草案
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import { RetentionService } from "./retention.js";
@@ -2452,6 +2454,52 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType, isPrimaryKey: p.isPrimaryKey, refToTypeKey: p.refToTypeKey ?? null })),
     }));
     return resolveFieldRoles(types, solverKey);
+  });
+  // ---- WO-SOLVER-ONTOLOGY-BINDING（B3 命门 · G-17）: canonical 求解器 role→租户真实类型/字段绑定 ----
+  // 上传/合成的任意类型经 SolverBinding 喂 canonical 业务求解器出真答案；无绑定回退 canonical 默认
+  // （向后兼容·demo 零回归）。DF.8 接地：绑定引用须在本租户已发布本体内，否则 400 不落库（绝不造实体）。
+  // R2 仅本租户；RL4：建模发布自动建议 DRAFT 草案，须显式 activate 才生效（resolveSolverType 只认 ACTIVE）。
+  app.post("/a/v1/solvers/:solverKey/bindings", async (req) => {
+    const c = ctx(req);
+    const { solverKey } = req.params as { solverKey: string };
+    if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) throw validationError(`未知求解器 ${solverKey}`);
+    const body = parseBody(SolverBindingSchema.partial({ id: true, tenantId: true, solverKey: true }), req.body);
+    const binding = { ...body, id: body.id || newId("solvbnd"), tenantId: c.tenantId, solverKey };
+    // DF.8 接地：引用类型/字段须在本租户已发布本体内（ACTIVE）。失败 → validationError 400，不落库。
+    const types = await ontology.listTypes(c);
+    assertSolverBindingGrounded(binding, types);
+    await repos.solverBindings.put(binding);
+    solvers.invalidateBindingCache(c.tenantId); // 缓存失效（绑定即时生效于 resolveSolverType，若 ACTIVE）
+    return binding;
+  });
+  app.get("/a/v1/solvers/:solverKey/bindings", async (req) => {
+    const c = ctx(req);
+    const { solverKey } = req.params as { solverKey: string };
+    const items = (await repos.solverBindings.list(c.tenantId)).filter((b) => b.solverKey === solverKey);
+    return { items };
+  });
+  // 激活草案（RL4 人工确认）：DRAFT → ACTIVE（生效于 resolveSolverType）。
+  app.post("/a/v1/solvers/:solverKey/bindings/:id/activate", async (req) => {
+    const c = ctx(req);
+    const { id } = req.params as { solverKey: string; id: string };
+    const b = await repos.solverBindings.get(c.tenantId, id);
+    if (!b) throw notFound("solver binding");
+    const types = await ontology.listTypes(c);
+    assertSolverBindingGrounded(b, types); // 激活时再接地一次（本体可能已变）
+    const activated = { ...b, status: "ACTIVE" as const };
+    await repos.solverBindings.put(activated);
+    solvers.invalidateBindingCache(c.tenantId);
+    return activated;
+  });
+  // 自动建议绑定草案（RL4·不自动生效）：按 canonical 求解器 role 用确定性词表在本租户已发布本体挑最贴切类型
+  // → 产 DRAFT 草案落库（不覆盖已有绑定）。人工经 activate 确认后方生效。
+  app.post("/a/v1/solvers/bindings/suggest", async (req) => {
+    const c = ctx(req);
+    const types = await ontology.listTypes(c);
+    const existing = await repos.solverBindings.list(c.tenantId);
+    const drafts = suggestSolverBindings(c.tenantId, types, existing, (sk) => newId(`solvbnd_${sk}`));
+    for (const d of drafts) await repos.solverBindings.put(d);
+    return { suggested: drafts.length, drafts };
   });
   app.post("/a/v1/solvers/:solverKey/invoke", async (req) => {
     const { solverKey } = req.params as { solverKey: string };

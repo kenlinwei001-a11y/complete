@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, ExperimentArm, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverExperiment, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, ExperimentArm, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverBinding, SolverExperiment, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -320,6 +320,9 @@ export interface Repos {
   sim: SimRepo;
   // G-12 收口（增量E·U5）：OntologyBinding 落库（/a/v1/opt/bindings·migration027；R14 每租户绑不同本体）
   optBindings: Store<OntologyBinding>;
+  // WO-SOLVER-ONTOLOGY-BINDING（B3·G-17·migration033）：canonical 业务求解器 role→租户真实类型/字段
+  // 绑定（/a/v1/solvers/:key/bindings）。无绑定回退 canonical 默认（向后兼容）；DF.8 接地校验在 service/app 层。
+  solverBindings: Store<SolverBinding>;
   // WO-DECISION-RECORD（PRD §3.7 D8·migration029）：一等 Decision 记录（上下文/备选/否决/决策人/预测 vs 实现，R2）
   decisions: Store<Decision>;
   /** Liveness for /readyz. */
