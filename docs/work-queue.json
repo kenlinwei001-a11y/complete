@@ -557,7 +557,7 @@
       "title": "全局二级页回退普查+统一组件",
       "doc": "docs/WO-GLOBAL-BACK-NAV.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R17",
@@ -630,7 +630,8 @@
             "run": "同会话点顶栏 🕐 开历史面板→点一条→URL 变 /tasks/<id>。Console `document.querySelectorAll('[data-testid=\"task-back\"]').length`→期望 1；记 pathname，点 task-back，取 `location.pathname`→期望不以 /tasks/ 开头。对照：改按浏览器后退键，pathname 与上一致。截图 docs/evidence/GLOBAL-BACK-C7.png。"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "1C-PARSE",
