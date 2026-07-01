@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { searchObjects } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
+import { DrillBack } from "@/components/DrillBack";
 import outline from "@/assets/china-outline.json";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
@@ -80,6 +81,9 @@ export default function GeoMapView({ view }: ViewRendererProps) {
   });
   const [selected, setSelected] = useState<BaseProps | null>(null);
   const navigate = useNavigate();
+  // R17 下钻回退：仅当带 ?focus=（作为下钻目标被别页跳入）才显返回；纯左导航顶层入口不显。
+  const [searchParams] = useSearchParams();
+  const drilledIn = !!searchParams.get("focus");
 
   const bases = useMemo(
     () =>
@@ -116,6 +120,7 @@ export default function GeoMapView({ view }: ViewRendererProps) {
 
   return (
     <div data-testid="geo-map-view">
+      {drilledIn && <DrillBack testId="geo-back" trail={[{ label: zh.geo.title }]} />}
       <div className={simStyles.head}>
         <div>
           <h3>{zh.geo.title}</h3>

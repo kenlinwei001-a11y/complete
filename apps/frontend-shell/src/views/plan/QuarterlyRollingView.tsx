@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchQuarterly, fetchRules } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
 import { Provenance } from "@/components/Provenance";
+import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
@@ -31,6 +32,9 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
   const { data: rules } = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules });
   const [openRule, setOpenRule] = useState<string | null>(null);
   const navigate = useNavigate();
+  // R17 下钻回退：仅当带 ?focus=（作为下钻目标被别页跳入）才显返回；纯左导航顶层入口不显。
+  const [searchParams] = useSearchParams();
+  const drilledIn = !!searchParams.get("focus");
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
@@ -44,6 +48,7 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
 
   return (
     <div data-testid="quarterly-rolling-view">
+      {drilledIn && <DrillBack testId="quarterly-back" trail={[{ label: zh.quarter.title }]} />}
       <div className={simStyles.head}>
         <div>
           <h3>

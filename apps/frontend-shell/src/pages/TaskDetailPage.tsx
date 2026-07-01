@@ -8,6 +8,7 @@ import { AnswerCard } from "@/components/Answer/AnswerCard";
 import { LayeredDag } from "@/components/Dag/LayeredDag";
 import { buildTaskDag } from "@/components/Dag/taskDag";
 import { Feature } from "@/workspace/featureGate";
+import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 
 /** 查询任务详情页（PRD §6.6 + §7.19 编排 DAG）：分类 → DAG → 步骤 → 回答 → 事件回放 */
@@ -37,6 +38,8 @@ export default function TaskDetailPage() {
 
   return (
     <div style={{ maxWidth: 920 }}>
+      {/* R17 下钻回退：任务详情从历史面板/查询历史跳入，直链落地兜底回首页。 */}
+      <DrillBack fallbackTo="/" testId="task-back" trail={[{ label: zh.task.title }]} />
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>{zh.task.title}</h2>
       <div className="mono" style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 14 }}>
         {taskId}

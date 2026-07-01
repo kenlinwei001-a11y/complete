@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GrowthRunReport } from "@platform/contracts";
 import { runGrowth, fetchGrowthLedger, fetchGrowthTickets, claimGrowthTicket } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
+import { DrillBack } from "@/components/DrillBack";
 
 /**
  * 自成长发动机驾驶舱（PRD §16 / 主线 P6）：把"客户问题"当燃料跑一轮 LOOP（探针→补齐→重跑→收敛），
@@ -46,6 +47,8 @@ export default function GrowthCockpitPage() {
 
   return (
     <div data-testid="growth-cockpit-page">
+      {/* R17 下钻回退：发育驾驶舱是二级下钻页（从别页/徽章跳入），兜底回目录。 */}
+      <DrillBack fallbackTo="/admin/catalog" testId="growth-back" />
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>自成长发动机驾驶舱</h2>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
         把"客户明确问题"当燃料：真跑一遍 QOS 诊断缺口 → 能自动补的补(数据真人正门) → 缺功能出工单 → 循环重跑直到收敛。

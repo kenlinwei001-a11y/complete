@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ValidationPolicy } from "@platform/contracts";
 import { editRawDatasetRow, fetchConnectionSchema, fetchRawDatasetRows, fetchRawDatasets, fetchConnections, setConnectionValidationPolicy } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 
 const t = zh.admin.connections;
@@ -168,9 +169,9 @@ export default function FieldProfilePage() {
 
   return (
     <div>
-      <div style={{ marginBottom: 12 }}>
-        <Link to="/admin/connections">← {zh.common.back}</Link>
-      </div>
+      {/* R17 下钻回退：字段核对从连接器列表下钻进；优先真历史回退，兜底回 connections（原硬编码父级）。 */}
+      <DrillBack fallbackTo="/admin/connections" testId="fieldprofile-back" />
+
       <h2 style={{ fontSize: 16, marginBottom: 14 }}>{t.fieldProfile}</h2>
       <DataSourceRowsEditor connId={connId} />
       <ValidationPolicyEditor connId={connId} sourceFields={[...new Set(data.datasets.flatMap((ds) => ds.fields.map((f) => f.name)))]} />

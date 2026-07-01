@@ -5,6 +5,7 @@ import { fetchDomains, fetchNeighbors, fetchObjectByKey, fetchObjectTypes } from
 // WO-GRAPH-3：实例血缘改用统一本体图谱引擎渲染（模式=血缘·复用 GRAPH-2 引擎，数据=邻接真子图）。
 import { SubgraphPanel, type SubgraphEdge, type SubgraphNode } from "@/components/Graph";
 import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
+import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 
 /**
@@ -65,6 +66,8 @@ export default function Object360Page() {
 
   return (
     <div data-testid="object-360">
+      {/* R17 下钻回退：对象 360 是溯源链终点（顶栏搜索/血缘节点跳入），直链落地兜底回场景启动器。 */}
+      <DrillBack fallbackTo="/scenarios" testId="o360-back" trail={[{ label: display }]} />
       <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>{display}</h2>
         {domain && (

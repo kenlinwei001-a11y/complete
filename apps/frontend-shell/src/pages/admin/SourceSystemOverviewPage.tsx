@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchDataHealth, fetchOntologyGraph } from "@/api/endpoints";
 import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
+import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 
 /**
@@ -33,6 +34,8 @@ export default function SourceSystemOverviewPage() {
 
   return (
     <div data-testid="source-overview-page">
+      {/* R17 下钻回退：来源系统总览是二级下钻页（域徽章/健康链跳入），兜底回目录。 */}
+      <DrillBack fallbackTo="/admin/catalog" testId="source-overview-back" />
       <h3>{zh.nav.sourceOverview}</h3>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         每对象/求解器/智能体的源系统 + 新鲜度（接 data-health + 本体 lineage·R13 可溯·源系统降级 C09 一屏可见）。

@@ -10,6 +10,7 @@ import type { ViewRendererProps } from "./registry";
 // WO-GRAPH-2：渲染骨架（力导/缩放/拖拽/形状/14 域配色 R14）抽至统一本体图谱引擎；本视图只注入数据 + 语义回调。
 import { OntologyGraphEngine, NodeShape, DOMAIN_COLORS, DOMAIN_LABELS, SOURCE_COLORS, NON_SOURCE } from "@/components/Graph";
 import { MappingOverlay } from "./graph/MappingOverlay";
+import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 import styles from "./OntologyGraphView.module.css";
 
@@ -107,6 +108,8 @@ export default function OntologyGraphView({ view }: ViewRendererProps) {
 
   return (
     <div>
+      {/* R17 下钻回退：仅当带 ?focus=（从地图「查看图谱」下钻进）才显返回；纯左导航顶层入口不显。 */}
+      {focusId && <DrillBack testId="graph-back" trail={[{ label: "本体图谱" }]} />}
       {/* 工具栏：视角描述卡（§7.18）+ 映射表入口（§7.20） */}
       <div className={styles.toolbar}>
         {desc && (

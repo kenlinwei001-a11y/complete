@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema } from "@platform/contracts";
@@ -14,6 +15,7 @@ import { useFeature } from "@/workspace/featureGate";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { DataModeBadge } from "@/components/DataModeBadge";
+import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
 import styles from "./RiskBoardView.module.css";
 
@@ -35,12 +37,17 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const openWhatIf = useOpenWhatIf();
   // R3 修正：沙盘暗发·默认关——仅 sim.sandbox entitlement 开通时才现「开 what-if」按钮，否则关（避免落沙盘 404 死路）。
   const canWhatIf = useFeature("sim.sandbox");
+  // R17 下钻回退：仅当带 ?focus=（从地图/季度滚动「查看风险」下钻进）才显返回；
+  // 无 focus = 从左导航直达的顶层视图，不显（避免污染顶层入口）。
+  const [searchParams] = useSearchParams();
+  const drilledIn = !!searchParams.get("focus");
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
 
   const maxPeak = Math.max(0, ...data.cards.map((c) => c.peak));
   return (
     <div>
+      {drilledIn && <DrillBack testId="risk-back" trail={[{ label: "风险看板" }]} />}
       {/* §2.2-a 三档图例文案（红/黄/蓝档与 heat strip/MiniStrip 同色阈值口径）+ 首要风险（peak 最高）标注 */}
       <div data-testid="risk-legend" style={{ display: "flex", gap: 14, fontSize: 12, marginBottom: 8, alignItems: "center", color: "var(--muted)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: "#E0626C", borderRadius: 2 }} />{zh.risk.legendHigh}</span>
