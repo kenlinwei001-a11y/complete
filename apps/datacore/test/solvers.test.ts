@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, seedBattery, invokeSolver, type TestApp } from "./helpers.js";
+import { makeApp, seedBattery, invokeSolver, ORDERS_CSV, b64, ADMIN, type TestApp } from "./helpers.js";
 import { BATTERY_SOLVER_PARAMS } from "../src/synthetic/battery.js";
 import { round } from "../src/prng.js";
 
@@ -533,6 +533,36 @@ describe("S1 solvers", () => {
       expect(data.dataMode).toBe("SYNTHETIC"); // 头条取最审慎（合成优先）
       expect(String(data.confidence.note)).toContain("合成数据");
     }
+  });
+
+  it("WO-FRESHNESS①b（P0·CONCERN 6cc1f97 修）：真实对象落库后诚实位据实翻转 SYNTHETIC→非 SYNTHETIC（**禁手动失效**·走真实写路径）", async () => {
+    // 由来：syntheticByTenant 缓存 + invalidateConfidenceCache 零调用方 → 缓存永不失效 → 接真实数据后仍误标
+    // SYNTHETIC（诚实位失真）。修：runDerivations（所有对象写路径收口点）清缓存。本测**绝不手动调 invalidate**，
+    // 靠真实写路径（upload→objectify→runDerivations）触发翻转——proxy 造不了假：不接钩子则步③仍 SYNTHETIC 必红。
+    const t = await makeApp();
+    await seedBattery(t); // 全合成
+    const invoke = async () =>
+      (await invokeSolver(t, "risk_timeline", { base: "常州", factor: "物料齐套", horizon: 30 }).then((r) => r.json())).data as {
+        dataMode: string;
+        confidence: { synthetic: boolean };
+      };
+    // ① 首调：纯合成 → SYNTHETIC（同时填充 syntheticByTenant 缓存）。
+    const before = await invoke();
+    expect(before.confidence.synthetic).toBe(true);
+    expect(before.dataMode).toBe("SYNTHETIC");
+
+    // ② 真实业务对象走真实写路径落库（upload→objectify→materializeFromReconcile→runDerivations）。**不手动失效缓存。**
+    const up = await t.app.inject({ method: "POST", url: "/a/v1/uploads", headers: ADMIN, payload: { filename: "real-orders.csv", contentBase64: b64(ORDERS_CSV) } });
+    expect(up.statusCode).toBe(201);
+    const connId = (up.json() as { connection: { id: string } }).connection.id;
+    const obj = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/intake/objectify", headers: ADMIN, payload: { connId } });
+    expect(obj.statusCode).toBe(200);
+    expect((obj.json() as { materialized: { type: string; count: number }[] }).materialized.some((m) => m.type === "Order" && m.count > 0)).toBe(true);
+
+    // ③ 再调：真实对象已在库 → 诚实位据实翻转（synthetic=false）。修前缓存陈旧 → 仍 true（红）。
+    const after = await invoke();
+    expect(after.confidence.synthetic).toBe(false); // ★ 真实数据到位 → 诚实位不再谎报 SYNTHETIC
+    expect(after.dataMode).not.toBe("SYNTHETIC");
   });
 
   it("WO-FRESHNESS②：关键源人为滞后 → 决策 dataMode=STALE + confidence.stale + lagHours（C09 跨求解器化）", async () => {

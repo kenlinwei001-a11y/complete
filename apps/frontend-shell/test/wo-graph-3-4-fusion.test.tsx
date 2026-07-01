@@ -53,6 +53,13 @@ describe("WO-GRAPH-3/4 · 融合图谱主入口（同引擎换数据源）", () 
     expect(nodes.length).toBeGreaterThan(1);
     // 图例（按对象类型分组着色·14 域配置复用）
     expect(within(graph).getByTestId("o360-lineage-legend")).toBeTruthy();
+
+    // P0 修（CONCERN cc3b152）：点血缘节点 → **抽屉真弹出**（此前 setDrawer 有调用但 JSX 从未渲染
+    // <DagNodeDrawer> → 死交互；旧测试漏此断言）。断言渲染出的抽屉 DOM（dag-node-drawer + 内部 dag-node-src），
+    // **不查 drawer state 变量**——proxy 造不了假：修前抽屉不渲染，此断言必红。
+    await user.click(within(graph).getByTestId("o360-lineage-node-base-常州"));
+    expect(await screen.findByTestId("dag-node-drawer")).toBeTruthy();
+    expect(screen.getByTestId("dag-node-src")).toBeTruthy();
   });
 
   it("GRAPH-4 元本体影响：分析 → 影响 ego 子图用统一引擎渲染 + 节点下钻", async () => {

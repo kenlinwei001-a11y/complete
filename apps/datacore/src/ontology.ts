@@ -682,6 +682,10 @@ export class OntologyService {
         status: "SUCCEEDED",
       };
       await this.repos.derivationRuns.put(run);
+      // WO-FRESHNESS 修（P0·CONCERN 6cc1f97）：派生运行 = 所有对象写路径（materialize/objectify/合成/
+      // publish/连接器 sync）的收口点。此处清求解器"合成判定"缓存 → 真实对象一旦落库，下次求解器 dataMode
+      // 的 SYNTHETIC 诚实位据实翻转（此前 invalidateConfidenceCache 零调用方 → 缓存永不失效 → 诚实位失真）。
+      this.solvers?.invalidateConfidenceCache(ctx.tenantId);
       return run;
     } catch (err) {
       const run: DerivationRun = {

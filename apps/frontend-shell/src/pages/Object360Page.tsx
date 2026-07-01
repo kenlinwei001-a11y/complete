@@ -142,6 +142,10 @@ export default function Object360Page() {
           </details>
         ))}
       </section>
+
+      {/* WO-GRAPH-3/4 修（P0·CONCERN cc3b152）：血缘节点下钻抽屉——此前 setDrawer 有调用但 JSX 从未渲染
+          <DagNodeDrawer>（另 3 个图页都有）→ 点节点死交互。补渲染，与 Slices/Meta/Boundary 一致（R13 统一抽屉）。 */}
+      {drawer && <DagNodeDrawer detail={drawer} onClose={() => setDrawer(null)} />}
     </div>
   );
 }
