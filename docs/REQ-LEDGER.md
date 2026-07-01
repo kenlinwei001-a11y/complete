@@ -44,7 +44,7 @@
 | R18 | 逐源真对象数归因+真连接器接入臂(7066/7134) | ◐ | BUILDER-ROLE逐源归因(landed PASS)·真接入臂=合成单源(option A证真上传臂在但demo不走) |
 | R19 | 1C规则文档抽取解析率+异步化(7134/7939) | 🟢 **闭** | 1C-PARSE(`ab61e2a`·审核核发)：强约束抽取 prompt 提解析率 + `extractProgress` 进度可视(前端进度条真浏览器像素级实拍 3/4+失败1·`rd-c7-progress.png`) + Anthropic 路有界纠错重试(anthropic.test.ts 3 测)。C1-C5 确定性单测+grep 验·C7 进度条实拍·C6 零新增回归。诚实：LLM 活取端到端受环境无 LLM 限制·抽取逻辑由 ScriptedLlm 单测(ruledocs.test.ts 真路由)覆盖。closure `REVIEW-1C-PARSE-closure.md` |
 | R20 | QOS Path B终答流式+逐字流实拍(7634/8215) | ✅ | WO-Q1增量2/3 真Kimi验(前序) |
-| **R21** | **ontology文件过大优化(markdown非YAML)(4406)** | ❓ | 未核是否加§0.5快查索引 |
+| **R21** | **ontology文件过大优化(markdown非YAML)(4406)** | 🟢 **闭** | ONTOLOGY-OPT(`f2a0bbd`·审核核发)：SYSTEM-ONTOLOGY §0.5 快查索引(read-first 导航「我要找X→去哪」)·纯增量零污染机器投影(三门+meta-ontology测全绿·parse==canonical)·跳转目标节真实存在。closure REVIEW-ONTOLOGY-OPT-closure.md |
 | **R22** | **深色字→浅色对比度(8438②)** | 🟢 **闭** | CONTRAST-FIX(`49bbdcc`·审核核发)：DAG `.nodeKind`副行+两处`.legend` var(--muted2)#67737f(暗)→var(--muted)#9aa8b6(亮·WCAG AA≈6.3:1)。C7 真浏览器计算色实拍 `.nodeKind fill=rgb(154,168,182)`=var(--muted)(非旧暗色)·主标签/状态色未动·门绿。closure `REVIEW-CONTRAST-FIX-closure.md` |
 | R23 | 场景入口预设配置(规划体检为例)(8438③/8763) | ✅ | SCENE-A/B/C/D landed+门(前序核发) |
 | **R24** | **图谱多模块融合/分散(基于本体建模+切片实时图谱)(8847)** | ◐ | GRAPH-1/2/3/4 landed·但**GRAPH-3/4有CONCERN(见§3)** |
