@@ -980,8 +980,8 @@
     {
       "id": "KILL-MOCK-RED",
       "priority": "P0",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "title": "反假推演总攻:无真数据→诚实空态·绝不伪造决策级红/裁决",
       "doc": "docs/WO-KILL-MOCK-RED.md",
