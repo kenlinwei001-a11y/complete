@@ -81,6 +81,17 @@ if (!/confidence/.test(riskBoard) || !/DataModeBadge/.test(riskBoard)) {
   fail("RiskBoardView 未消费 confidence/DataModeBadge 显置信度三维（决策视图裸渲染回潮）");
 }
 
+// ④ P0·CONCERN 6cc1f97 修（防回潮）：合成判定缓存 syntheticByTenant 必须被真实写路径失效——否则接真实数据后
+// 仍误标 SYNTHETIC（诚实位失真·长跑越久越假）。守 invalidateConfidenceCache 有生产调用方（对象写路径收口点
+// ontology.runDerivations）。此前该方法零调用方 = 缓存永不失效 = 诚实位谎报，正是本门要挡死的整类。
+if (!/invalidateConfidenceCache/.test(svc)) {
+  fail("service.ts 缺 invalidateConfidenceCache（合成判定缓存无失效口）");
+}
+const ontologySrc = read("apps/datacore/src/ontology.ts");
+if (!/invalidateConfidenceCache\(/.test(ontologySrc)) {
+  fail("ontology.ts runDerivations 未调 solvers.invalidateConfidenceCache（合成判定缓存零失效 → 接真实数据后仍误标 SYNTHETIC·诚实位失真·CONCERN 6cc1f97 回潮）");
+}
+
 if (red) {
   console.error("\n✗ pipeline-freshness:check 未过：新鲜度/真实↔合成维未接进决策置信度（关键源滞后/合成数据冒充真实接入回潮）。修法：契约追加 STALE/SYNTHETIC + SolverConfidenceSchema；service.ts invoke 叠加 applyConfidenceDimensions（关键源 dataHealth + origin=SYNTHETIC）；前端 DataModeBadge/决策视图消费三维。");
   process.exit(1);
