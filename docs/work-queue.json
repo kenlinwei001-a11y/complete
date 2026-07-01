@@ -393,7 +393,7 @@
       "title": "统一资源引用模型(规则/求解器MCP真接线·修AgentsPage自由文本bug)",
       "doc": "docs/WO-RESOURCE-REF-MODEL.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "R15·你说前端看着有实际没关联",
@@ -466,7 +466,8 @@
             "run": "pnpm -r build && pnpm -r test → 期望 4 包全绿(datacore 69/agentcore 66/frontend 25+ 且新增用例不减基线);pnpm -r typecheck → 期望 exit 0;grep 确认 SkillDefinition 的 ruleBindings/mcpServers 仅定义于 packages/contracts/src/agentcore.ts、前端 import 自 @platform/contracts 未重定义(rg 'ruleBindings|mcpServers' apps/frontend-shell/src 无本地 z.object 重声明)"
           }
         ]
-      }
+      },
+      "blockReason": ""
     },
     {
       "id": "AGENT-BREADTH",
