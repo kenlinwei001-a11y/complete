@@ -48,3 +48,18 @@ C1（洛阳诚实空态）/C4（零 mockTightness 调用）/后端 dataMode 透�
 - 不变量：R13/R8/R30——后端已闭·前端驾驶舱侧未闭（ProblemPanel SYNTHETIC 红）。
 - 断点：G-DM-1「MOCK/无真源值上线为决策级红」——后端转 ✅·**前端消费门在驾驶舱决策组件仍半开**（本 BLOCK 促其全闭）。
 - 门禁：genuine-sim v2 需扩覆盖驾驶舱决策组件（现保守哨兵漏 ProblemPanel）。
+
+---
+
+## 复验二轮（退回窄修 053d705+046402e）→ ✅ DONE
+
+审核方逐层真验（非信 dev 自报）：
+1. **代码守卫**：5 决策点全补 `notLive = data?.dataMode!=null && !isLiveDecision(...)`（DashboardView ProblemPanel/OrderLedger/PlanDrill + SopBalance MrpTable/PnlTable），复用 DecisionValue 范式，仅显式非 LIVE 抑制 → 未标 dataMode 的真值保持红（C6 不误灭）。
+2. **后端接缝 curl 硬证**：affected_orders / plan_rootcause / mrp_netting / finance_pnl 四 solver 均在 `data.dataMode` 顶层返 `"SYNTHETIC"`（与前端读取路径逐字对齐）；`invokeSolver` 直连 `/a/v1/solvers/{key}/invoke`（endpoints.ts:204，无中间层吞字段）。
+3. **C5 真浏览器**（Playwright + 真双后端 + vite 真后端模式，登录 demo/admin）：`/v/dash` ProblemPanel `data-decision-mode=MUTED`，8 张 SYNTHETIC 决策卡边框全为 `rgb(103,115,127)`(--muted2)、零 `rgb(224,98,108)`(--danger)，诚实文案「合成/估算数据·不作决策依据」已渲染。截图 dash-c5.png（会话交付）。
+4. **门禁全绿**：`pnpm -r test` exit 0 · `pnpm gates` exit 0（34 门含 genuine-sim v2）。
+5. **牙齿自证**：手动还原 ProblemPanel 硬编码 danger → `genuine-sim:check` exit 1（⑨ 齿两条精确报错）→ 复原 → exit 0。改守卫即门红，回潮被锁死。
+
+诚实边界（登记非隐瞒）：
+- SopBalance mrp/pnl 守卫已入码（diff 复核）但⑨齿只锁 DashboardView 三组件——SopBalance 守卫未齿锁，属可接受小债（后续扩齿可并入任一 sim 相关 WO）。
+- dev 披露 render-proof jsdom harness 超时不稳 → 以门扩齿承接；审核方以真浏览器渲染取证补强（强于 jsdom）。
