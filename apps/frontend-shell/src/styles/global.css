@@ -75,10 +75,10 @@ a {
   align-items: center;
   gap: 6px;
   padding: 7px 14px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--line2);
-  background: rgba(226, 235, 245, 0.05);
-  color: var(--txt);
+  background: transparent;
+  color: var(--muted);
   font-size: 12.5px;
   transition: 0.15s;
 }
@@ -90,9 +90,14 @@ a {
   cursor: not-allowed;
 }
 .btn.primary {
-  background: linear-gradient(135deg, rgba(76, 144, 240, 0.85), rgba(76, 144, 240, 0.6));
-  border-color: rgba(76, 144, 240, 0.6);
+  background: var(--accent);
+  border: 0;
+  border-radius: 10px;
   color: #fff;
+  font-weight: 600;
+}
+.btn.primary:hover {
+  filter: brightness(1.08);
 }
 .btn.danger {
   border-color: rgba(224, 98, 108, 0.5);
@@ -108,11 +113,12 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  font-size: 10.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
   font-family: var(--font-mono);
-  border: 1px solid var(--line2);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
   white-space: nowrap;
 }
@@ -133,22 +139,26 @@ a {
 }
 .badge.blue {
   color: var(--accent);
-  border-color: rgba(76, 144, 240, 0.45);
-  background: rgba(76, 144, 240, 0.1);
+  border-color: rgba(74, 120, 246, 0.45);
+  background: rgba(74, 120, 246, 0.1);
 }
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 16px;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.02) inset,
+    0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
 .section-title {
-  /* nav-reorg N3：区头字号上调（10.5→12px），与组头/叶项层级更协调（不再过小到难读）。 */
-  font-size: 12px;
-  letter-spacing: 1.4px;
-  color: var(--muted);
+  /* 主题重设计：小型全大写·字距拉开的区块标签（[VALUATION CALCULATOR] 品味）。
+     uppercase 对中文为空操作（仅作用于拉丁/数字标签）；.08em 较原 1.4px 更收敛，不伤中文可读。 */
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted2);
   text-transform: uppercase;
   font-family: var(--font-mono);
   margin-bottom: 8px;

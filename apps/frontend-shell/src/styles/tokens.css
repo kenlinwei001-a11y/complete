@@ -1,14 +1,14 @@
 :root {
-  --bg: #0d1117;
-  --bg2: #11161d;
-  --panel: #161c24;
-  --panel2: #10151c;
-  --line: rgba(226, 235, 245, 0.07);
-  --line2: rgba(226, 235, 245, 0.13);
-  --txt: #e9eef5;
-  --muted: #9aa8b6;
-  --muted2: #67737f;
-  --accent: #4c90f0;
+  --bg: #0A0D14;
+  --bg2: #0E121A;
+  --panel: #141924;
+  --panel2: #10141C;
+  --line: rgba(233, 238, 247, 0.06);
+  --line2: rgba(233, 238, 247, 0.12);
+  --txt: #EDF1F8;
+  --muted: #8C96A6;
+  --muted2: #59636F;
+  --accent: #4A78F6;
   /* 领域色（图谱/图例/标签复用） */
   --c-factory: #5e8fe8;
   --c-product: #36bfa5;
