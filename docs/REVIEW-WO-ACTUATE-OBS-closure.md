@@ -33,3 +33,14 @@
 
 ---
 *审核方核发（design+review·独立核实代码+829回归+诚实·用户动作走查取dev FDE·代码级非真起服务实拍）· 仅推 `claude/vigilant-knuth-b1nmxn` · 模型标识不入任何提交物*
+
+---
+
+## 追加轮（审核方历史审计·2.3）：ACTUATE 真服务 curl 闭环（原代码级 → 🟢）
+
+上文诚实边界「审核方未独立起服务实拍」本轮补齐（真 datacore:4001）：
+- create `采纳经营方案`（payload schema **真校验**·缺 schemeNo/scheme/targets 逐个 400 VALIDATION_ERROR）→ `PENDING_APPROVAL`。
+- approver persona `approve` → **status=EXECUTED**。
+- **MockWritebackAdapter 自动落 writeback-echo**：`GET /a/v1/writeback-echoes` count 0→1·ref=`MO-2026-3925`（确定性 hashString(draft.id)%9000）·writtenValue=payload。
+链路 `决策→ActionDraft→approve→EXECUTED→MockWritebackAdapter→writeback-echo→reconcile`（G-14）真服务级转起。ACTUATE 达 🟢。
+OBS：无 OTEL 端点→服务正常（no-op 不假导出=honest 降级活态）+ tracing.test no-op 绿·真 span 树需起 collector（低风险边界·观测非决策面）。详见 `docs/REVIEW-HISTORICAL-AUDIT-unverified.md §2.3`。

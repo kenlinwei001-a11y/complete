@@ -56,3 +56,14 @@ curl 版脚本 `scratchpad/intake-e2e.mjs` 亦真跑通后端闭环（objectify#
 - **C1/C3/C4/C5 以 jsdom 集成渲染 + curl 证**（本仓 admin 页范式），**非真浏览器截图**（headless 未起全栈拍图）；C6 对象可见性用 datacore 集成测试直证（demo 合成快照会遮蔽新物化对象的 query 可见性——属快照刷新语义·非本 WO 范围·集成测试在干净发布租户中直证闭环）。
 - resolve 目标类型定夺优先归入该表 autoMapped 主类型（避免误落同名字段旁类型）；NEW（新建字段/类型）在 fresh-零类型租户需类型创建流·当前落 reconcile 记录意图（诚实边界）。
 - G-VIS-1 尚余 2 P0（KB-UI / SOLVER-BINDING-UI）+ P1/P2 在 loop 队列。
+
+---
+
+## 追加轮（审核方历史审计·2.2）：C3/C5 真浏览器补齐（原 jsdom → 🟢）
+
+用户令「历史未复验都逐一检查」发现本单 C3/C4/C5 原仅 jsdom（上文诚实边界自曝）。审核方真浏览器（chromium + 真 vite:5200 直连真 datacore:4001）补齐：
+- 前置真 curl：上传 newfields.csv → objectify → **4 候选**（baseId/name→USE·newcol_carbon/newcol_shift→NEW）+ 物化 2 Base。
+- **C3**：`/admin/schema-reconcile?connId=` 真浏览器渲染 4 候选 + **USE/RENAME/NEW/MERGE/DISCARD 全 5 选项**（真读 select.options）+ 样本值(cz1/常州基地/12.5) + 确认 + 重跑物化按钮。截图 `.intake-c3.png`。
+- **C5**：`/admin/connections/<合成conn·35datasets>/schema` → `ds-table-select` present·**35 option**（datasets>1 真触发多表选择器）。截图 `.intake-c5.png`。
+- **C4**：demo 非空（49 类型）→ 空态深链不触发（状态边界·真 0 类型需 fresh 租户·jsdom 测已覆盖渲染）。
+判决：C3/C5 真浏览器闭合·C4 边界文档化 → INTAKE-VISIBILITY 达 🟢 金标准。详见 `docs/REVIEW-HISTORICAL-AUDIT-unverified.md §2.2`。
