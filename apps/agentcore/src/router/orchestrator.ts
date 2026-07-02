@@ -126,6 +126,36 @@ export function normalizeQuery(q: string): string {
     .trim();
 }
 
+/**
+ * WO-QOS-DIAG · 确定性分类回退（"确定性是地板"）：LLM 不可用/classify 失败时的**无 LLM 兜底路由**。
+ * 纯函数（R6·同输入同输出·无时钟/随机）：把归一问句拆字符 bigram，与意图 name/description/examples 的
+ * bigram 求「问句被覆盖率」containment = |q∩t|/|q|，取各文本最大值——preset 类问句（≈意图 examples）得高分。
+ * 只用于 LLM 缺失时的兜底，绝不冒充 LLM 分类；弱匹配返 0 → 上层诚实降级（不硬塞、不误路由）。
+ */
+function charBigrams(s: string): Set<string> {
+  const n = normalizeQuery(s);
+  const grams = new Set<string>();
+  if (n.length === 1) grams.add(n);
+  for (let i = 0; i + 1 < n.length; i++) grams.add(n.slice(i, i + 2));
+  return grams;
+}
+
+export function deterministicMatchScore(query: string, intent: IntentDefinition): number {
+  const q = charBigrams(query);
+  if (q.size === 0) return 0;
+  const texts = [intent.name, intent.description, ...intent.examples];
+  let best = 0;
+  for (const t of texts) {
+    const tb = charBigrams(t);
+    if (tb.size === 0) continue;
+    let overlap = 0;
+    for (const g of q) if (tb.has(g)) overlap++;
+    const containment = overlap / q.size; // 问句 bigram 被该文本覆盖的比例
+    if (containment > best) best = containment;
+  }
+  return best;
+}
+
 export class Orchestrator {
   private readonly pending = new Map<string, PendingClarification>();
   private readonly cancelled = new Set<string>();
@@ -283,15 +313,21 @@ export class Orchestrator {
     // 让首进度帧在 accept 后毫秒级出现（不改 §8.2 事件集·不改前端·不动 Path A）。
     await this.deps.events.emit(taskId, "step.started", { stepId: "classify", type: "classify" });
     const classifyT0 = Date.now();
-    const classification = await this.classify(task, pkg, candidates);
+    // WO-QOS-DIAG · 无 LLM 兜底路由（"确定性是地板"）：LLM classify 失败/不可用（无 provider·全链此前 100% FAILED）
+    // 时，用确定性 example 匹配兜底——preset 类问句仍确定性路由到 path A（无 LLM 也能答），弱匹配返 undefined
+    // → 照旧诚实降级。仅在 LLM classify 未产出时触发，LLM 可用时零行为变化（不冒充 LLM 分类·model 标 deterministic:*）。
+    const llmClassification = await this.classify(task, pkg, candidates);
+    // LLM classifier 失败（不可用/超时/限流·3 次重试后无产出）计数——**不论**确定性兜底是否随后救回
+    // （指标语义 = "LLM 分类失败率"，与路由结果解耦；WO-QOS-DIAG 前该 inc 与 path-B 分支耦合，兜底救回会漏计）。
+    if (!llmClassification) this.deps.metrics.classifierErrors.inc();
+    const classification = llmClassification ?? this.deterministicClassify(task, candidates);
     await this.deps.events.emit(taskId, "step.completed", {
       stepId: "classify",
       type: "classify",
-      outcome: classification ? "matched" : "fallback",
+      outcome: classification ? (llmClassification ? "matched" : "deterministic-fallback") : "fallback",
       durationMs: Date.now() - classifyT0,
     });
     if (!classification) {
-      this.deps.metrics.classifierErrors.inc();
       if (mode === "WORKFLOW_ONLY") {
         await this.completeWorkflowOnlyMiss(task, candidates);
         return;
@@ -415,6 +451,32 @@ export class Orchestrator {
       }
     }
     return undefined;
+  }
+
+  /**
+   * WO-QOS-DIAG · 确定性分类兜底（无 LLM 时的路由地板）。纯确定性（R6）：
+   * 对每个候选意图算 `deterministicMatchScore`（问句 bigram 被 name/description/examples 覆盖率），
+   * - 唯一强匹配（top≥STRONG 且领先第二≥MARGIN，或仅 1 候选且 top≥STRONG）→ confidence 1.0 → 直进 path A（确定性工作流·无 LLM）；
+   * - 多个接近的中等匹配（top≥WEAK）→ 置信度落 (τ_low, τ_high) → 触发 INTENT_CHOICE 澄清（用户确定性选，仍无 LLM）；
+   * - 全部弱（top<WEAK）→ undefined → 上层照旧诚实降级（path B / 需配置 LLM），**绝不硬塞/误路由/冒充真答**。
+   * model 标 `deterministic:example-match`（审计诚实位·非 LLM）。
+   */
+  private deterministicClassify(task: QueryTask, candidates: IntentDefinition[]): ClassificationResult | undefined {
+    const STRONG = 0.5, MARGIN = 0.15, WEAK = 0.34;
+    const scored = candidates
+      .map((c) => ({ key: c.key, score: deterministicMatchScore(task.query, c) }))
+      .sort((a, b) => b.score - a.score);
+    const top = scored[0];
+    if (!top || top.score < WEAK) return undefined; // 无足够确定性证据 → 不硬塞，交上层诚实降级
+    const second = scored[1]?.score ?? 0;
+    const base = { outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "deterministic:example-match" };
+    // 唯一强匹配 → 高置信 → path A
+    if (top.score >= STRONG && (scored.length === 1 || top.score - second >= MARGIN)) {
+      return { candidates: [{ intentKey: top.key, confidence: 1 }], ...base };
+    }
+    // 多候选接近 → 中置信 → INTENT_CHOICE 确定性澄清（落 τ_low..τ_high 之间的固定 0.7）
+    const near = scored.filter((s) => s.score >= WEAK).slice(0, 3).map((s) => ({ intentKey: s.key, confidence: 0.7 }));
+    return { candidates: near, ...base };
   }
 
   /** 最近 6 轮会话摘要（增量 §1.4：与 agent 前情摘要共用 prompts.ts 的同一构建器） */

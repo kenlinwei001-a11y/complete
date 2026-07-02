@@ -2011,7 +2011,7 @@
       "blockReason": "",
       "id": "QOS-DIAG",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "title": "QOS查询全FAILED诊断修(人机问答单管线命门)",
       "doc": "docs/REVIEW-scan-findings.md",
       "note": "/b/v1/queries全FAILED·路径B QOS编排断·牵agent/workflow·下游场景/意图/产能问答全依赖",

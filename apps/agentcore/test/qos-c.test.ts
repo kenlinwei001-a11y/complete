@@ -74,17 +74,20 @@ describe("Clarification & classifier degradation (§12 C1–C2)", () => {
     expect(task.path).toBe("AGENT");
   });
 
-  it("C2: classifier RateLimitError ×3 → path B + qos_classifier_errors_total", async () => {
+  it("C2: classifier RateLimitError ×3 + 开放问句（无确定性匹配）→ path B + qos_classifier_errors_total", async () => {
+    // WO-QOS-DIAG：确定性兜底仅救回词面近 examples 的问句；此处用**开放/无预设匹配**问句，
+    // 确保仍走 path-B 降级分支（classifier 错误 → 无 LLM 且无确定性命中 → agent 探索）。
+    // preset 近似问句（如"影响哪些订单？"）现由确定性兜底路由 path A —— 见 router-deterministic-classify.test.ts。
     t.llm.queueClassification(new FakeRateLimitError(), new FakeRateLimitError(), new FakeRateLimitError());
     t.llm.queueAgentTurn({
       content: [
         toolUse("final_answer", { blocks: [{ type: "text", markdown: "分类不可用，已直接探索。" }], provenance: [] }),
       ],
     });
-    const { taskId } = await submitQuery(t, PLANNER, "影响哪些订单？", { view: "risk", selectedObjects: [CZ] });
+    const { taskId } = await submitQuery(t, PLANNER, "随便帮我看看最近整体怎么样吧", { view: "risk", selectedObjects: [CZ] });
     const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
     expect(task.path).toBe("AGENT");
-    expect(t.metrics.classifierErrors.get()).toBe(1);
+    expect(t.metrics.classifierErrors.get()).toBe(1); // LLM 分类失败仍计数（与兜底救回解耦）
     expect(t.llm.classifyRequests.length).toBe(3); // initial + 2 retries
   });
 });
