@@ -93,3 +93,20 @@ M1=W0+W1（本体+数据接入+去电池化）· M2=W2（爬坡+齐套）· M3=W
 
 ## 6. 红线速查
 去电池化绝对（引擎零电池·锂电仅绑定）· R14 目标函数可配 · R6 蒙特卡洛种子化 · R13 DecisionOutcome 溯源 · R11 编排闭包 · 两行业验收硬证 · 不重写现有净室通用 solver（shared_bottleneck/min_cost_flow 复用）· 每波真跑复验非绿测试冒充。
+
+## 7. CEO-Demo 配套包并入（`scratchpad/PRD-CEO-Demo.md` · 强补充 · 带 4 纠偏）
+
+另一 agent 出的《锂电产能预测推演系统·CEO 场景 Demo 与多智能体路由配套包》是本 HANDOFF 的**具象输入**（本体字段/模拟数据/10 意图/10 CEO 脚本/溯源结构），并入各波，但**必须带 4 处纠偏，照搬会违铁律**。
+
+### 并入映射
+- **W1（对象/数据/锂电 seed）**：采纳该包 §2 本体字段——比原 HANDOFF 更细，直接补：新增 `Customer` 对象（tier STRATEGIC/KEY/NORMAL + margin_rate）、`Store.allocated`（已分配量）、`Supplier.volatility/is_sole_source`、`Base.shift_plan/power_tariff`、`Process.hold_time`（化成 8h+分容 12h+老化 24h≈44h 静置）、`Lane.freq_per_week`。该包 §3 模拟数据集（4 基地/7 线/BOM/库存/Lane/订单/客户/供应商 + §3.10 派生基准 29.83 vs 31.2 电芯供需）= **锂电租户 seed 蓝本**（走正门·dataMode=SYNTHETIC）。
+- **W3（决策/代价层 + 溯源信封）**：该包 §8/§10 溯源元数据 `{conclusion, source_data[], constraints_applied[], solver_trace[], binding_constraint}` = `DecisionOutcome` 契约字段的具体形状。§4 约束库 C-CAP…C-MOQ 逐条落可编辑规则。
+- **W4（意图目录 + 验收脚本）**：该包 §7 的 10 意图（`INTENT_DELIVERY_GAP`…`INTENT_ORDER_TRADEOFF`·带触发词/slots/求解器编排 S1→S2→S3 等）= 意图目录直接蓝本；§9 的 10 CEO Demo 脚本（含预期数值 W3 缺口≈1400 套/折损 27%/达成率 P50≈92%）= **验收 oracle**（真跑求解器链对照·非塞死数值）。
+
+### 4 纠偏（钉死·dev 违即打回）
+1. **10 Agent 框架 → QOS 单编排（确定性求解器·非 10 个 LLM Agent）**：该包把 S1–S5 叫 `AG-RAMP/AG-KIT/…`，但现系统铁律=求解器是**确定性纯函数（R6·禁 random/时钟）**，LLM 只在边缘分类/叙述。落法：LLM 层=`AG-ROUTER`(QOS classify)/`AG-NER`(slot 抽取)/`AG-NARRATE`(answer 叙述)；**确定性层=5 个 `invoke_solver` 步**（ExecutionPlan 编排）；`AG-LINEAGE`=确定性 DecisionOutcome 装配。**即 1 条 QOS 编排（LLM 分类/叙述 + 确定性求解器链），不是 10 个 LLM agent**。dev 若建 LLM agent 算产能=幻觉造数=违"推演基于真实数据"红线，打回。
+2. **全套 demo 数据落锂电租户绑定 seed·非通用引擎**：该包数据全电芯/Pack/化成——落 W0/W1 锂电租户 binding+seed，通用引擎 `Store/Lane/Routing/Customer/Supplier` 字段零电池（`debattery:check` 兜底）。
+3. **`R-GATE` 质量门禁 = 复用现有 GapReport/dataMode 诚实位·别新建**：该包 §8 "数据质量门禁→返数据缺口清单"= 系统已有 `GapReport`(7 码·growth/probe.ts)+`dataMode`+DF.9 真人正门。所有 **【模拟】** 值落系统必须映射 `dataMode=SYNTHETIC`（否则合成充真·同 KILL-MOCK-RED）。
+4. **§9 预期数值 = 验收 oracle·非塞死 UI**：脚本里"缺口≈1400 套/折损 27%/P50≈92%"是人工自洽演示值——**必须求解器真算出**，禁前端写死当结论（否则=CALIB 手绘曲线同类）。用法：真跑求解器链→输出落合理区间 + 溯源信封逐档可下钻，才算过。
+
+> 定稿状态：设计已含 CEO-Demo 全部增值 + 4 纠偏。**入队时机**：W0/W1 可在数据诚实(Phase0)后并行入队；W4 硬依赖 QOS-DIAG（Phase1）——QOS 修好前不派 W4。W0–W5 逐波 acceptance 见 §3。
