@@ -40,6 +40,55 @@ function ruleReferences(ruleKey: string): { kind: string; key: string; name?: st
   }
   return out;
 }
+
+/**
+ * RESOURCE-REF-NAV：统一资源被引用反查（mock 镜像 apps/agentcore/src/resources.ts computeReferences，
+ * 同一份 kind/id/name/via 真值形态，前端「被引用」面板逐值对照的就是这里）。
+ */
+interface MockResourceReference {
+  kind: "agent" | "workflow" | "scene-entry";
+  id: string;
+  name: string;
+  via: string;
+}
+function resourceReferences(kind: "agent" | "workflow" | "skill" | "mcp-config", id: string): MockResourceReference[] {
+  const refs: MockResourceReference[] = [];
+  if (kind === "agent") {
+    for (const s of db.scenes) {
+      if (s.defaultAgentId === id) refs.push({ kind: "scene-entry", id: s.id, name: s.viewKey, via: "defaultAgentId" });
+    }
+    for (const w of db.workflows) {
+      if (w.steps.some((st) => st.type === "invoke_agent" && (st.params as Record<string, unknown>).agentId === id)) {
+        refs.push({ kind: "workflow", id: w.id, name: w.name, via: "steps.invoke_agent" });
+      }
+    }
+  }
+  if (kind === "workflow") {
+    for (const a of db.agents) {
+      if (a.tools.some((t) => t.kind === "WORKFLOW" && t.workflowId === id)) {
+        refs.push({ kind: "agent", id: a.id, name: a.name, via: "tools[kind=WORKFLOW]" });
+      }
+    }
+  }
+  if (kind === "skill") {
+    for (const a of db.agents) {
+      if (a.skills.some((s) => s.skillId === id)) refs.push({ kind: "agent", id: a.id, name: a.name, via: "skills" });
+    }
+  }
+  if (kind === "mcp-config") {
+    for (const a of db.agents) {
+      if (a.mcpServers.some((m) => m.mcpConfigId === id) || a.tools.some((t) => t.kind === "MCP" && t.mcpConfigId === id)) {
+        refs.push({ kind: "agent", id: a.id, name: a.name, via: "mcpServers/tools[kind=MCP]" });
+      }
+    }
+    for (const w of db.workflows) {
+      if (w.steps.some((st) => st.type === "invoke_mcp_tool" && (st.params as Record<string, unknown>).mcpConfigId === id)) {
+        refs.push({ kind: "workflow", id: w.id, name: w.name, via: "steps.invoke_mcp_tool" });
+      }
+    }
+  }
+  return refs;
+}
 import { registerTaskScript, releaseNextSegment } from "./mockEventSource";
 import { scriptForQuery } from "./sseScripts";
 import {
@@ -1347,8 +1396,30 @@ export const handlers = [
     const body = (await request.json()) as { action: string; patch?: Record<string, unknown> };
     const cand = db.candidates.find((c) => c.id === params.id);
     if (!cand) return err(404, "NOT_FOUND", "候选不存在");
-    cand.status = body.action === "REJECT" ? "REJECTED" : "APPROVED";
+    if (body.action === "REJECT") {
+      cand.status = "REJECTED";
+      return HttpResponse.json(cand);
+    }
     if (body.action === "EDIT_APPROVE" && body.patch) Object.assign(cand.candidate, body.patch);
+    cand.status = "APPROVED";
+    // RESOURCE-REF-NAV item③：approve 发布进 A5 规则库并回填 publishedRuleId（镜像 datacore ruledocs.ts review()）
+    const c = cand.candidate;
+    const ruleId = `rule-from-${cand.id}`;
+    const published = {
+      id: ruleId,
+      key: `C_${cand.id}`,
+      name: c.name,
+      expression: c.expression,
+      scopeObjectTypes: c.scopeObjectTypes,
+      severity: c.severity,
+      origin: { type: "DOCUMENT" as const, docId: cand.docId, span: cand.span, extractJobId: "job-mock-review" },
+      version: 1,
+      status: "PUBLISHED" as const,
+    };
+    const existingIdx = db.rules.findIndex((r) => r.id === ruleId);
+    if (existingIdx >= 0) db.rules[existingIdx] = published;
+    else db.rules.push(published);
+    cand.publishedRuleId = ruleId;
     return HttpResponse.json(cand);
   }),
 
@@ -2382,6 +2453,25 @@ export const handlers = [
   }),
 
   // ---- agents / workflows / skills / mcp ----
+  // RESOURCE-REF-NAV：镜像后端 apps/agentcore/src/resources.ts computeReferences 真值形态
+  // { references: {kind,id,name,via}[], count }，前端「被引用」面板对照的正是这份真值。
+  http.get("*/b/v1/agents/:id/references", ({ params }) => {
+    const references = resourceReferences("agent", String(params.id));
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  http.get("*/b/v1/workflows/:id/references", ({ params }) => {
+    const references = resourceReferences("workflow", String(params.id));
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  http.get("*/b/v1/skills/:id/references", ({ params }) => {
+    const references = resourceReferences("skill", String(params.id));
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  http.get("*/b/v1/mcp-configs/:id/references", ({ params }) => {
+    const references = resourceReferences("mcp-config", String(params.id));
+    return HttpResponse.json({ references, count: references.length });
+  }),
+
   http.get("*/b/v1/agents", () => HttpResponse.json(db.agents)),
   http.put("*/b/v1/agents/:id", async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>;

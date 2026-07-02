@@ -69,8 +69,9 @@ export default function ViewsPage() {
               </tr>
             </thead>
             <tbody>
+              {/* RESOURCE-REF-NAV：行 id 供 ScenesPage「view 链接」锚点跳转（#view-{viewKey}） */}
               {items.map((v) => (
-                <tr key={v.viewKey} data-testid={`view-${v.viewKey}`}>
+                <tr key={v.viewKey} id={`view-${v.viewKey}`} data-testid={`view-${v.viewKey}`}>
                   <td className="mono">{v.viewKey}</td>
                   <td className="zh">{v.title}</td>
                   <td>

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RuleBindings, SkillDefinition } from "@platform/contracts";
-import { fetchSkills, publishSkill, saveSkill } from "@/api/endpoints";
+import { fetchSkillReferences, fetchSkills, publishSkill, saveSkill } from "@/api/endpoints";
 import { McpRefSelect, RuleRefSelect } from "@/components/resource-refs/ResourceRefSelect";
+import { ReferencesPanel } from "@/components/ReferencesPanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -10,7 +12,9 @@ import zh from "@/locales/zh";
 export default function SkillsPage() {
   const queryClient = useQueryClient();
   const { data: skills } = useQuery({ queryKey: ["b", "skills", {}], queryFn: fetchSkills });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // RESOURCE-REF-NAV：?id= 深链
+  const [params] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(params.get("id"));
   const selected = skills?.find((s) => s.id === selectedId) ?? null;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "skills"] });
   // G-4：自助创建技能（消"无创建入口"死路）
@@ -55,6 +59,11 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
   );
   const [mcpServers, setMcpServers] = useState<{ mcpConfigId: string }[]>(skill.mcpServers ?? []);
   const editable = skill.status === "DRAFT";
+  // RESOURCE-REF-NAV：被引用只读区（哪些 agent 挂载了本 skill）
+  const refsQuery = useQuery({
+    queryKey: ["b", "skill-references", skill.id],
+    queryFn: () => fetchSkillReferences(skill.id),
+  });
 
   const saveMut = useMutation({
     mutationFn: () => saveSkill(skill.id, { name, summary, body, ruleBindings, mcpServers }),
@@ -129,6 +138,7 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
           ))}
         </div>
       )}
+      <ReferencesPanel testId="skill-references" loading={refsQuery.isLoading} references={refsQuery.data?.references} />
     </div>
   );
 }

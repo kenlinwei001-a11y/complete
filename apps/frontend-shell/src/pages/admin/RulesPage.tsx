@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RuleDryRunResult, RuleEntry } from "@platform/contracts";
 import { createRule, dryRunRule, fetchObjectTypes, fetchRuleReferences, fetchRules, publishRule, retireRule, updateRule } from "@/api/endpoints";
@@ -17,7 +18,9 @@ const originBadge = (origin: RuleEntry["origin"]) =>
 export default function RulesPage() {
   const queryClient = useQueryClient();
   const { data: rules } = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules });
-  const [open, setOpen] = useState<string | null>(null);
+  // RESOURCE-REF-NAV：?ruleId= 深链（RuleDocsPage「→查看规则」落点）→ 展开对应行
+  const [params] = useSearchParams();
+  const [open, setOpen] = useState<string | null>(params.get("ruleId"));
   const [editing, setEditing] = useState<RuleEntry | "new" | null>(null);
   // WO-18：按规则类型筛（全部 / 评估规则 / 约束条件）。缺 ruleType 的旧规则视为 evaluation。
   const [typeFilter, setTypeFilter] = useState<"all" | "evaluation" | "constraint">("all");
@@ -118,6 +121,17 @@ export default function RulesPage() {
                     <span className={`badge ${originBadge(r.origin)}`} data-testid={`rule-origin-${r.key}`}>
                       {r.origin.type}
                     </span>
+                    {/* RESOURCE-REF-NAV item③：DOCUMENT 来源 → 「源文档」链接回跳规则文档审核台对应文档 */}
+                    {r.origin.type === "DOCUMENT" && (
+                      <Link
+                        to={`/admin/rule-docs?docId=${encodeURIComponent(r.origin.docId)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ marginLeft: 6, fontSize: 11 }}
+                        data-testid={`rule-source-doc-${r.key}`}
+                      >
+                        源文档
+                      </Link>
+                    )}
                   </td>
                   <td>
                     <span className={`badge ${r.status === "PUBLISHED" ? "green" : ""}`}>{r.status}</span>

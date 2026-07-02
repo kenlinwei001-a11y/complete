@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentDefinition, AgentToolRef } from "@platform/contracts";
-import { fetchAgents, fetchLlmProviders, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
+import { fetchAgentReferences, fetchAgents, fetchLlmProviders, fetchMcpConfigs, fetchSkills, fetchWorkflows, publishAgent, saveAgent } from "@/api/endpoints";
 import { RuleRefSelect } from "@/components/resource-refs/ResourceRefSelect";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ReferencesPanel } from "@/components/ReferencesPanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -53,8 +54,24 @@ const AGENT_TEMPLATE = {
 export default function AgentsPage() {
   const queryClient = useQueryClient();
   const { data: agents } = useQuery({ queryKey: ["b", "agents", {}], queryFn: fetchAgents });
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [version, setVersion] = useState<number | null>(null);
+  // RESOURCE-REF-NAV：?id= 深链（被引用面板「点跳」落点，例如从 workflow/mcp 编辑器跳回引用它的 agent）
+  const [params] = useSearchParams();
+  const linkedId = params.get("id");
+  const [selectedKey, setSelectedKey] = useState<string | null>(
+    linkedId ? (agents ?? []).find((a) => a.id === linkedId)?.key ?? null : null,
+  );
+  const [version, setVersion] = useState<number | null>(
+    linkedId ? (agents ?? []).find((a) => a.id === linkedId)?.version ?? null : null,
+  );
+
+  useEffect(() => {
+    if (!linkedId || selectedKey !== null || !agents) return;
+    const hit = agents.find((a) => a.id === linkedId);
+    if (hit) {
+      setSelectedKey(hit.key);
+      setVersion(hit.version);
+    }
+  }, [linkedId, selectedKey, agents]);
 
   const keys = [...new Set((agents ?? []).map((a) => a.key))];
   const versions = (agents ?? []).filter((a) => a.key === selectedKey).sort((a, b) => b.version - a.version);
@@ -125,6 +142,11 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
   // 模型下拉与用途绑定矩阵同源（同一批 LLM Provider + model）；选项用 dcp:providerId:modelId 路由格式。
   const { data: providers } = useQuery({ queryKey: ["a", "llm-providers"], queryFn: fetchLlmProviders });
   const modelOptions = (providers ?? []).flatMap((p) => p.models.map((m) => ({ value: `dcp:${p.id}:${m.modelId}`, label: `${p.name} / ${m.displayName}` })));
+  // RESOURCE-REF-NAV：被引用只读区（哪些 scene-entry/workflow 引用了本 agent）
+  const refsQuery = useQuery({
+    queryKey: ["b", "agent-references", agent.id],
+    queryFn: () => fetchAgentReferences(agent.id),
+  });
 
   const editable = agent.status === "DRAFT";
   const [form, setForm] = useState({
@@ -368,6 +390,8 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
           </label>
         ))}
       </div>
+
+      <ReferencesPanel testId="agent-references" loading={refsQuery.isLoading} references={refsQuery.data?.references} />
     </div>
   );
 }

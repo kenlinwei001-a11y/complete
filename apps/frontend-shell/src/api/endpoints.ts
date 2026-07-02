@@ -346,6 +346,8 @@ export interface RuleCandidateVM {
   status: "PENDING" | "APPROVED" | "REJECTED";
   diff?: "新增" | "变更" | "疑似删除";
   duplicateOf?: string;
+  /** RESOURCE-REF-NAV：APPROVE/EDIT_APPROVE 后回填的已发布规则 id（A5 规则库反链，见 datacore ruledocs.ts review()）。 */
+  publishedRuleId?: string;
 }
 export const fetchRuleDocs = () => api.a<RuleDocVM[]>("/a/v1/rule-docs");
 /** 上传规则文档（multipart）→ 202 抽取作业；候选列表经 fetchRuleCandidates 轮询/刷新 */
@@ -875,7 +877,18 @@ export const fetchFallbackStats = (packageId: string) =>
 export const promoteFallback = (traceId: string) =>
   api.b<{ intentId: string }>(`/b/v1/ops/fallback/${traceId}/promote`, { body: {} });
 
+/** RESOURCE-REF-NAV：统一「被引用」反查形态（B 统一资源模式，与 A 侧规则 references 同构）。 */
+export interface ResourceReferenceVM {
+  kind: string;
+  id: string;
+  name: string;
+  via: string;
+}
+export type ResourceReferencesResponse = { references: ResourceReferenceVM[]; count: number };
+
 export const fetchAgents = () => api.b<AgentDefinition[]>("/b/v1/agents");
+export const fetchAgentReferences = (id: string) =>
+  api.b<ResourceReferencesResponse>(`/b/v1/agents/${encodeURIComponent(id)}/references`);
 export const fetchAgent = (id: string) => api.b<AgentDefinition>(`/b/v1/agents/${id}`);
 export const saveAgent = (id: string | null, body: Partial<AgentDefinition>) =>
   id ? api.b<AgentDefinition>(`/b/v1/agents/${id}`, { method: "PUT", body }) : api.b<AgentDefinition>("/b/v1/agents", { body });
@@ -883,6 +896,8 @@ export const publishAgent = (id: string) =>
   api.b<{ ok: boolean; errors?: { field: string; message: string }[] }>(`/b/v1/agents/${id}/publish`, { body: {} });
 
 export const fetchWorkflows = () => api.b<WorkflowDefinition[]>("/b/v1/workflows");
+export const fetchWorkflowReferences = (id: string) =>
+  api.b<ResourceReferencesResponse>(`/b/v1/workflows/${encodeURIComponent(id)}/references`);
 export const fetchWorkflow = (id: string) => api.b<WorkflowDefinition>(`/b/v1/workflows/${id}`);
 export const saveWorkflow = (id: string | null, body: Partial<WorkflowDefinition>) =>
   id
@@ -910,11 +925,15 @@ export const runWorkflow = (id: string, inputs: Record<string, unknown>) =>
   api.b<WorkflowRunResult>(`/b/v1/workflows/${id}/run`, { body: { inputs } });
 
 export const fetchSkills = () => api.b<SkillDefinition[]>("/b/v1/skills");
+export const fetchSkillReferences = (id: string) =>
+  api.b<ResourceReferencesResponse>(`/b/v1/skills/${encodeURIComponent(id)}/references`);
 export const saveSkill = (id: string | null, body: Partial<SkillDefinition>) =>
   id ? api.b<SkillDefinition>(`/b/v1/skills/${id}`, { method: "PUT", body }) : api.b<SkillDefinition>("/b/v1/skills", { body });
 export const publishSkill = (id: string) => api.b<SkillDefinition>(`/b/v1/skills/${id}/publish`, { body: {} });
 
 export const fetchMcpConfigs = () => api.b<McpServerConfig[]>("/b/v1/mcp-configs");
+export const fetchMcpConfigReferences = (id: string) =>
+  api.b<ResourceReferencesResponse>(`/b/v1/mcp-configs/${encodeURIComponent(id)}/references`);
 export const saveMcpConfig = (id: string | null, body: Record<string, unknown>) =>
   id ? api.b<McpServerConfig>(`/b/v1/mcp-configs/${id}`, { method: "PUT", body }) : api.b<McpServerConfig>("/b/v1/mcp-configs", { body });
 export const testMcpConnection = (id: string) =>

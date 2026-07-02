@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchRuleCandidates,
@@ -23,7 +24,9 @@ export default function RuleDocsPage() {
     queryFn: fetchRuleDocs,
     refetchInterval: (q) => (q.state.data?.some((d) => d.status === "EXTRACTING") ? 2000 : false),
   });
-  const [docId, setDocId] = useState<string | null>(null);
+  // RESOURCE-REF-NAV：?docId= 深链（RulesPage「源文档」链接落点）
+  const [params] = useSearchParams();
+  const [docId, setDocId] = useState<string | null>(params.get("docId"));
   const doc = docs?.find((d) => d.id === docId) ?? docs?.[0];
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -257,6 +260,12 @@ function CandidateCard({
         {cand.diff && <span className={`badge ${cand.diff === "疑似删除" ? "red" : cand.diff === "变更" ? "amber" : "green"}`}>{cand.diff}</span>}
         {cand.duplicateOf && <span className="badge amber" data-testid="dup-badge">{t.dupBadge}</span>}
         <span className={`badge ${cand.status === "APPROVED" ? "green" : cand.status === "REJECTED" ? "red" : ""}`}>{cand.status}</span>
+        {/* RESOURCE-REF-NAV item③：APPROVED 且已回填 publishedRuleId → 跳规则库对应行 */}
+        {cand.status === "APPROVED" && cand.publishedRuleId && (
+          <Link to={`/admin/rules?ruleId=${encodeURIComponent(cand.publishedRuleId)}`} data-testid={`candidate-view-rule-${cand.id}`} onClick={(e) => e.stopPropagation()}>
+            →查看规则
+          </Link>
+        )}
       </div>
       <p style={{ fontSize: 12, color: "var(--muted)", margin: "6px 0" }}>{cand.candidate.description}</p>
       <textarea

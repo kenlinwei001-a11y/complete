@@ -1,11 +1,17 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { McpServerConfig } from "@platform/contracts";
-import { fetchMcpConfigs, fetchSolverMcpServer, saveMcpConfig, testMcpConnection, type SolverMcpServerResponse } from "@/api/endpoints";
+import { fetchMcpConfigReferences, fetchMcpConfigs, fetchSolverMcpServer, saveMcpConfig, testMcpConnection, type SolverMcpServerResponse } from "@/api/endpoints";
+import { ReferencesPanel } from "@/components/ReferencesPanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
 const t = zh.admin.mcp;
+
+/** RESOURCE-REF-NAV item⑤：status 三态着色（ACTIVE 绿 / DISABLED 中性 / ERROR 红）。 */
+const mcpStatusBadge = (status: McpServerConfig["status"]) =>
+  status === "ACTIVE" ? "green" : status === "ERROR" ? "red" : "";
 
 /** MCP 服务器（B3）：CRUD + 凭据 secret 处理 + 连接测试（tools/list 发现结果） */
 export default function McpPage() {
@@ -13,7 +19,9 @@ export default function McpPage() {
   const { data: configs } = useQuery({ queryKey: ["b", "mcp-configs", {}], queryFn: fetchMcpConfigs });
   // WO-RESOURCE-REF §2.4：内置求解器 MCP server（平台内置·只读，非用户自建）。
   const { data: solverServer } = useQuery({ queryKey: ["b", "mcp-solvers-server"], queryFn: fetchSolverMcpServer });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // RESOURCE-REF-NAV：?id= 深链
+  const [params] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(params.get("id"));
   const [creating, setCreating] = useState(false);
   const [showBuiltin, setShowBuiltin] = useState(false);
   const selected = configs?.find((c) => c.id === selectedId) ?? null;
@@ -31,7 +39,14 @@ export default function McpPage() {
         <div className="panel">
           {(configs ?? []).map((c) => (
             <button key={c.id} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedId === c.id ? "var(--accent)" : undefined }} onClick={() => { setSelectedId(c.id); setCreating(false); setShowBuiltin(false); }}>
-              <span className={`badge ${c.status === "ACTIVE" ? "green" : ""}`}>{c.status}</span>
+              <span className={`badge ${mcpStatusBadge(c.status)}`} data-testid={`mcp-status-${c.id}`}>
+                {c.status}
+              </span>
+              {c.credentialRef != null && (
+                <span className="badge blue" data-testid={`mcp-cred-${c.id}`}>
+                  已配凭据
+                </span>
+              )}
               <span className="zh">{c.name}</span>
             </button>
           ))}
@@ -92,6 +107,13 @@ function McpEditor({ config, onChanged }: { config: McpServerConfig | null; onCh
     onError: toastError,
   });
 
+  // RESOURCE-REF-NAV：被引用只读区（哪些 agent/workflow 用了本 MCP 服务器）
+  const refsQuery = useQuery({
+    queryKey: ["b", "mcp-references", config?.id],
+    queryFn: () => fetchMcpConfigReferences(config!.id),
+    enabled: config != null,
+  });
+
   return (
     <div className="panel">
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -150,6 +172,7 @@ function McpEditor({ config, onChanged }: { config: McpServerConfig | null; onCh
             ))}
           </div>
         )}
+        {config && <ReferencesPanel testId="mcp-references" loading={refsQuery.isLoading} references={refsQuery.data?.references} />}
       </div>
     </div>
   );

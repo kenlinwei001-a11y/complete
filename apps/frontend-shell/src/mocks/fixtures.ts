@@ -889,6 +889,8 @@ export const SKILLS: SkillDefinition[] = [
 
 export const MCP_CONFIGS: McpServerConfig[] = [
   { id: "mcp-demo", tenantId: TENANT_ID, name: "示例 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.example.com" }, credentialRef: "cred-1", status: "ACTIVE" },
+  // RESOURCE-REF-NAV item⑤：ERROR 态样本（连续失败 5 次未恢复；无 credentialRef → 未配凭据徽章不出现）
+  { id: "mcp-broken", tenantId: TENANT_ID, name: "失联 MCP 服务器", transport: { type: "streamable_http", url: "https://mcp.broken.example.com" }, status: "ERROR" },
 ];
 
 /** 运营态出厂配置增量 §2/§4.4：每场景预载历史问答（事实源 = contracts LIVED_IN_SCENE_HISTORY，与 A 侧 taskHistory 同一常量） */
