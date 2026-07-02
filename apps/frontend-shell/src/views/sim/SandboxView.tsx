@@ -25,6 +25,7 @@ import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxRunHistory } from "./SandboxRunHistory";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
 import styles from "./SimViews.module.css";
 
 /**
@@ -929,9 +930,11 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
         </div>
       </div>
 
-      {/* 健康6维 + 信任4维 双雷达（轨A P1·AUDIT §1 母版口径）：数据全 DERIVE 自就绪认证（R14/R13），缺数据诚实标 */}
-      <div className="panel" data-testid="sandbox-dual-radar" style={{ padding: 12, marginTop: 12 }}>
-        <div className={styles.secHead}>运行雷达 · 健康度 6 维 + 信任度 4 维（派生自就绪认证，缺数据诚实标 *）</div>
+      {/* 健康6维 + 信任4维 双雷达（轨A P1·AUDIT §1 母版口径）：数据全 DERIVE 自就绪认证（R14/R13），缺数据诚实标。
+          WO-SANDBOX-LAYOUT-REWORK §5：收为折叠卡（默认折叠·降一屏密度·内容保留在 DOM 功能仍可达）。 */}
+      <div style={{ marginTop: 12 }}>
+      <CollapsibleCard testId="sandbox-dual-radar-card" title="运行雷达 · 健康度 6 维 + 信任度 4 维" summary={cert ? `双雷达 · tick ${curTick}` : "需就绪认证数据"} defaultOpen={false}>
+      <div data-testid="sandbox-dual-radar">
         {cert ? (
           <>
             <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
@@ -946,6 +949,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
             双雷达需就绪认证数据（sim.certification 未开通或会话未就绪）——不写死占位值（RL5）。
           </div>
         )}
+      </div>
+      </CollapsibleCard>
       </div>
 
       {/* 轨Q 增量4（竞品状态卡条 风险 TOP3·接 risk_timeline 真求解器·MOCK 因素诚实标估算·守轨M 真推演红线）。 */}
@@ -990,8 +995,13 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       )}
 
       {/* WO-SANDBOX-RUN-HISTORY（G-VIS-1）：历史推演记录（后端 sim_session 真留痕·前端此前 0 面板）。
-          refreshKey 随 sessionId/curTick 变 → 推进/分支后列表自动重取（C4 事件失效·R17 同页留痕）。 */}
-      <SandboxRunHistory refreshKey={`${sessionId ?? ""}:${curTick}`} />
+          refreshKey 随 sessionId/curTick 变 → 推进/分支后列表自动重取（C4 事件失效·R17 同页留痕）。
+          WO-SANDBOX-LAYOUT-REWORK §5：收为折叠卡（默认折叠·§5 明列「历史推演记录卡·默认折叠」）。 */}
+      <div style={{ marginTop: 12 }}>
+        <CollapsibleCard testId="sandbox-run-history-card" title="历史推演记录" summary={`会话轨迹 · tick ${curTick}`} defaultOpen={false}>
+          <SandboxRunHistory refreshKey={`${sessionId ?? ""}:${curTick}`} />
+        </CollapsibleCard>
+      </div>
 
       {/* R13 溯源悬浮（点拓扑节点触发）：沿本体链路 数据源→原始表→建模派生→对象，不裸渲染。点空白关闭。 */}
       {lineage && (
