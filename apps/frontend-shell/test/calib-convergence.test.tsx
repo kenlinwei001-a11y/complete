@@ -1,0 +1,50 @@
+import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { loginAs, renderApp } from "./utils";
+import { server } from "./setup";
+
+/**
+ * WO-CALIB-CONVERGENCE-UI（G-VIS-1 · 「越用越准」证据看板前端落地）。
+ * 断言 IPO 断层已闭合：后端 GET /a/v1/calibration/convergence 返逐轮 mapeBefore/After（E1-E2 真值），
+ * 前端【收敛史】面板画 mapeAfter 随轮下降折线 + converging/improvedPct 徽章；跑 sweep → 折线 +1 轮。
+ * 注：jsdom 仅证前端消费逻辑；C2/C3/C4 真浏览器由 FDE 手跑把关。
+ */
+describe("WO-CALIB-CONVERGENCE-UI · 收敛史前端消费", () => {
+  it("C2 · 收敛史面板存在 + 折线图 + converging/improvedPct 徽章（消费 /calibration/convergence）", async () => {
+    loginAs("planner"); // planner 含 admin 角色 → 校准页可见
+    renderApp("/admin/calibration");
+
+    const panel = await screen.findByTestId("calib-convergence-panel");
+    expect(await screen.findByTestId("calib-convergence-chart")).toBeTruthy();
+    // 收敛徽章：末轮(6.1) ≤ 首轮(8.6) → 收敛良好
+    expect(within(panel).getByTestId("calib-converging-badge").textContent).toContain("收敛良好");
+    // 改善 = 首轮 8.6 − 末轮 6.1 = 2.5 个百分点
+    expect(within(panel).getByTestId("calib-improved-badge").textContent).toContain("2.5");
+    // 共 3 轮
+    expect(within(panel).getByTestId("calib-convergence-rounds").textContent).toContain("3 轮");
+  });
+
+  it("C3 · 跑收敛清扫(sweep) → POST /calibration/sweep → 收敛面板刷新新增一轮（3→4 轮·越用越准可见）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/calibration");
+
+    const panel = await screen.findByTestId("calib-convergence-panel");
+    await screen.findByTestId("calib-convergence-chart"); // 等收敛数据加载
+    expect(within(panel).getByTestId("calib-convergence-rounds").textContent).toContain("3 轮");
+
+    await user.click(within(panel).getByTestId("calib-sweep-btn"));
+    // sweep 后 invalidate → convergence 重取 → 轮数 +1
+    await waitFor(() => expect(screen.getByTestId("calib-convergence-rounds").textContent).toContain("4 轮"));
+  });
+
+  it("空态：后端零收敛记录 → 诚实空态引导（跑 sweep 或等每日 cron），不伪造曲线", async () => {
+    server.use(http.get("*/a/v1/calibration/convergence", () => HttpResponse.json({ points: [], rounds: 0, improvedPct: 0, converging: true })));
+    loginAs("planner");
+    renderApp("/admin/calibration");
+    expect(await screen.findByTestId("calib-convergence-empty")).toBeTruthy();
+    expect(screen.queryByTestId("calib-convergence-chart")).toBeNull();
+  });
+});

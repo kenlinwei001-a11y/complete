@@ -58,6 +58,7 @@ import {
   affectedOrdersOutput,
   AOP_RESPONSE,
   CALIBRATION_HISTORY,
+  CALIBRATION_CONVERGENCE,
   CALIBRATION_PROPOSALS,
   calibrationReportFor,
   DATA_HEALTH,
@@ -930,6 +931,28 @@ export const handlers = [
   }),
   http.get("*/a/v1/calibration/proposals", () => HttpResponse.json(CALIBRATION_PROPOSALS)),
   http.get("*/a/v1/calibration/history", () => HttpResponse.json(CALIBRATION_HISTORY)),
+  // WO-CALIB-CONVERGENCE-UI（G-VIS-1）：收敛史（逐轮 mapeAfter 单调下降·越用越准）+ sweep 追加一轮（真后端同形）。
+  http.get("*/a/v1/calibration/convergence", () => {
+    const pts = CALIBRATION_CONVERGENCE;
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    return HttpResponse.json({
+      points: pts,
+      rounds: pts.length,
+      improvedPct: first && last ? Number((first.mapeAfter - last.mapeAfter).toFixed(2)) : 0,
+      converging: !last || !first ? true : last.mapeAfter <= first.mapeAfter,
+    });
+  }),
+  http.post("*/a/v1/calibration/sweep", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const prev = CALIBRATION_CONVERGENCE[CALIBRATION_CONVERGENCE.length - 1];
+    const round = (prev?.round ?? 0) + 1;
+    const mapeBefore = prev ? prev.mapeAfter : 9.0;
+    const mapeAfter = Number(Math.max(1.5, mapeBefore - 0.4).toFixed(2)); // 单调下降（越用越准）
+    CALIBRATION_CONVERGENCE.push({ round, at: `2026-07-0${Math.min(round, 9)}T02:00:00Z`, trigger: "手动", mapeBefore, mapeAfter, slicesEvaluated: 12, proposalsCreated: 1, autoApplied: 2, paramsVersion: 3 + round });
+    return HttpResponse.json({ paired: 12, deferred: 0, staleDeferred: false, slicesEvaluated: 12, created: 1, autoApplied: 2, held: 0, dropped: 1, insufficient: 0, round });
+  }),
   // 批准/回滚不直改参数：生成「校准参数变更」Action 草稿走 §S2 审批流
   http.post("*/a/v1/calibration/proposals/:id/:decision", ({ params, request }) => {
     const account = auth(request);

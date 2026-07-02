@@ -621,6 +621,8 @@ import {
   CalibrationReportSchema,
   CalibrationRunResultSchema,
   type CalibrationRunResult,
+  CalibrationConvergenceSchema,
+  type CalibrationConvergence,
   DataHealthResponseSchema,
   HistoryBundleSchema,
   HistoryWatermarkSchema,
@@ -665,6 +667,17 @@ export const decideCalibrationProposal = (id: string, decision: "approve" | "rol
 /** M11 §3 手动「立即校准」（catalog_admin）：配对 → 元闭环 → 全切片提案生成 */
 export const runCalibration = async (): Promise<CalibrationRunResult> =>
   CalibrationRunResultSchema.parse(await api.a<unknown>("/a/v1/calibration/run", { body: {} }));
+
+/**
+ * WO-CALIB-CONVERGENCE-UI（G-VIS-1）：「越用越准」收敛史——逐轮 CALIBRATION_SWEEP 落库的 mapeBefore/After 序列
+ * （GET /a/v1/calibration/convergence·E1-E2 已落后端真值），前端此前无面板消费 → 收敛证据看不见。
+ */
+export const fetchCalibrationConvergence = async (): Promise<CalibrationConvergence> =>
+  CalibrationConvergenceSchema.parse(await api.a<unknown>("/a/v1/calibration/convergence"));
+
+/** WO-E1 手动触发一轮活体清扫（catalog_admin）：跑一轮 sweep → 收敛史 +1 轮（常态由 CALIBRATION_SWEEP cron 跑） */
+export const runCalibrationSweep = async (): Promise<CalibrationRunResult> =>
+  CalibrationRunResultSchema.parse(await api.a<unknown>("/a/v1/calibration/sweep", { body: {} }));
 
 export const fetchDataHealth = async (): Promise<DataHealthResponse> =>
   DataHealthResponseSchema.parse(await api.a<unknown>("/a/v1/data-health"));

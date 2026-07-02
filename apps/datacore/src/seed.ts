@@ -1,7 +1,7 @@
 import type { PropagationRule } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
-import type { AuthCtx } from "./domain.js";
+import type { AuthCtx, CalibrationConvergenceRecord } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import type { SopService } from "./sop.js";
 import type { SolverService } from "./solvers/service.js";
@@ -332,5 +332,24 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
 export async function seedDemoPropagationRules(repos: Repos): Promise<void> {
   for (const r of DEMO_PROPAGATION_RULES) {
     await repos.sim.putPropagationRule({ ...r, tenantId: DEMO_TENANT });
+  }
+}
+
+/**
+ * WO-CALIB-CONVERGENCE-UI（G-VIS-1）：给 demo 租户播「越用越准」收敛史（demo 的历次 CALIBRATION_SWEEP 轨迹）。
+ * 无此种子，全新 demo 租户从零轮起步、收敛面板空态——「越用越准」看不见。这些是 demo 的确定性合成轨迹
+ * （R6：固定 round/mape，同 SEED_DEMO 重跑字节一致），逐轮 mapeAfter 单调下降（参数版本推进→预测更准的证据）。
+ * 边界：demo 演示数据（合成走正门·非真实观测配对）；真实租户的收敛史由真 CALIBRATION_SWEEP 逐轮累积。
+ */
+const DEMO_CALIBRATION_CONVERGENCE: Omit<CalibrationConvergenceRecord, "tenantId">[] = [
+  { id: "calc_demo_1", round: 1, at: "2026-05-04T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 9.4, mapeAfter: 8.6, slicesEvaluated: 12, proposalsCreated: 3, autoApplied: 1, paramsVersion: 4 },
+  { id: "calc_demo_2", round: 2, at: "2026-05-18T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 8.6, mapeAfter: 7.3, slicesEvaluated: 12, proposalsCreated: 2, autoApplied: 2, paramsVersion: 5 },
+  { id: "calc_demo_3", round: 3, at: "2026-06-01T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 7.3, mapeAfter: 6.7, slicesEvaluated: 12, proposalsCreated: 2, autoApplied: 1, paramsVersion: 6 },
+  { id: "calc_demo_4", round: 4, at: "2026-06-15T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 6.7, mapeAfter: 6.1, slicesEvaluated: 12, proposalsCreated: 1, autoApplied: 2, paramsVersion: 7 },
+];
+
+export async function seedDemoCalibrationConvergence(repos: Repos): Promise<void> {
+  for (const r of DEMO_CALIBRATION_CONVERGENCE) {
+    await repos.calibrationConvergence.put({ ...r, tenantId: DEMO_TENANT });
   }
 }

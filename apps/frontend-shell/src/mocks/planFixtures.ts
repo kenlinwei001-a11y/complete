@@ -5,6 +5,8 @@ import {
   CalibrationReportSchema,
   CalibrationProposalSchema,
   CalibrationHistoryEntrySchema,
+  CalibrationConvergencePointSchema,
+  type CalibrationConvergencePoint,
   DataHealthResponseSchema,
   OrderProblemGroupSchema,
   type AopResponse,
@@ -225,6 +227,16 @@ export const CALIBRATION_PROPOSALS: CalibrationProposal[] = CalibrationProposalS
 export const CALIBRATION_HISTORY: CalibrationHistoryEntry[] = CalibrationHistoryEntrySchema.array().parse([
   { at: "2026-04-18T08:00:00Z", trigger: "C12", changedParams: ["化成节拍", "良率基线"], mapeBefore: 9.4, mapeAfter: 6.4, proposalId: "prop-2", method: "EMA", simulatedMapeAfter: 6.4, realizedMape: 6.9 },
   { at: "2026-02-09T08:00:00Z", trigger: "手动", changedParams: ["OEE 基线"], mapeBefore: 8.8, mapeAfter: 7.1, proposalId: "prop-3", method: "EMA", simulatedMapeAfter: 7.1 },
+]);
+
+/**
+ * WO-CALIB-CONVERGENCE-UI（G-VIS-1）：「越用越准」收敛史（逐轮 CALIBRATION_SWEEP mapeAfter 单调下降）。
+ * 可变数组——sweep handler 追加一轮（点数 +1·折线延伸）；同真后端 convergenceHistory 形状。
+ */
+export const CALIBRATION_CONVERGENCE: CalibrationConvergencePoint[] = CalibrationConvergencePointSchema.array().parse([
+  { round: 1, at: "2026-05-01T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 9.4, mapeAfter: 8.6, slicesEvaluated: 12, proposalsCreated: 3, autoApplied: 1, paramsVersion: 4 },
+  { round: 2, at: "2026-05-08T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 8.6, mapeAfter: 7.3, slicesEvaluated: 12, proposalsCreated: 2, autoApplied: 2, paramsVersion: 5 },
+  { round: 3, at: "2026-05-15T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 7.3, mapeAfter: 6.1, slicesEvaluated: 12, proposalsCreated: 1, autoApplied: 2, paramsVersion: 6 },
 ]);
 
 /** §7.22 数据健康度（IoT 延迟 4.2h → DELAYED，命中 C09 降级：与 capacity_forecast mock 同口径） */

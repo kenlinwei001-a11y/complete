@@ -11,7 +11,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedA6ReferenceTemplate, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoCalibrationConvergence, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedA6ReferenceTemplate, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -76,6 +76,10 @@ async function main(): Promise<void> {
     // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
     await seedDemoPropagationRules(repos);
     logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
+    // WO-CALIB-CONVERGENCE-UI（G-VIS-1）：播 demo 收敛史（历次 CALIBRATION_SWEEP 轨迹·mapeAfter 单调降）→
+    // 校准页「收敛史」面板非空，「越用越准」在前端可见（确定性 R6·合成走正门）。
+    await seedDemoCalibrationConvergence(repos);
+    logger.info("SEED_DEMO=1: seeded demo calibration convergence history (越用越准 non-empty)");
     // G-12 收口（增量A·U1）：demo 出厂开 opt.solver-pool+opt.whatif 暗发（L3 override，出厂默认可覆盖）→
     // /a/v1/opt/* 可见，CP-SAT 这一公里在活系统可发生（接 OPTIMIZER_BASE_URL sidecar 后真求最优）。
     try {

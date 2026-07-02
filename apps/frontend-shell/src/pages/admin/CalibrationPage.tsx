@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CalibrationMethod, CalibrationProposal } from "@platform/contracts";
 import {
   decideCalibrationProposal,
+  fetchCalibrationConvergence,
   fetchCalibrationHistory,
   fetchCalibrationProposals,
   fetchCalibrationReport,
   runCalibration,
+  runCalibrationSweep,
   searchObjects,
 } from "@/api/endpoints";
 import { EChart } from "@/components/ui/EChart";
@@ -53,6 +55,8 @@ export default function CalibrationPage() {
   });
   const { data: proposals } = useQuery({ queryKey: ["a", "calibration-proposals", {}], queryFn: fetchCalibrationProposals });
   const { data: history } = useQuery({ queryKey: ["a", "calibration-history", {}], queryFn: fetchCalibrationHistory });
+  // WO-CALIB-CONVERGENCE-UI（G-VIS-1）：「越用越准」收敛史（逐轮 mapeAfter 序列·后端 E1-E2 真值）
+  const { data: convergence } = useQuery({ queryKey: ["a", "calibration-convergence", {}], queryFn: fetchCalibrationConvergence });
   // 去电池锁死（R14）：基地筛选项来自 Base 对象（全量、按租户），不再写死 4/12 个
   const { data: basesData } = useQuery({ queryKey: ["a", "objects", { type: "Base", view: "calib" }], queryFn: () => searchObjects("Base", "") });
   const baseIds = basesData && basesData.items.length > 0 ? basesData.items.map((o) => String(o.props.name ?? o.id)) : BASE_IDS;
@@ -72,6 +76,17 @@ export default function CalibrationPage() {
     onSuccess: (r) => {
       toast(`校准完成：配对 ${r.paired} · 切片 ${r.slicesEvaluated} · 新提案 ${r.created} · HOLD ${r.held} · 无改善 ${r.dropped}`, "success");
       void qc.invalidateQueries({ queryKey: ["a", "calibration-report"] });
+      void qc.invalidateQueries({ queryKey: ["a", "calibration-proposals"] });
+      void qc.invalidateQueries({ queryKey: ["a", "calibration-history"] });
+    },
+    onError: toastError,
+  });
+  // WO-E1 收敛清扫（sweep）：跑一轮 → 收敛史 +1 轮（折线点数 +1·「越用越准」在前端可见）
+  const sweep = useMutation({
+    mutationFn: runCalibrationSweep,
+    onSuccess: (r) => {
+      toast(`收敛清扫完成：切片 ${r.slicesEvaluated} · 自动应用 ${r.autoApplied} · 新提案 ${r.created}`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "calibration-convergence"] });
       void qc.invalidateQueries({ queryKey: ["a", "calibration-proposals"] });
       void qc.invalidateQueries({ queryKey: ["a", "calibration-history"] });
     },
@@ -182,6 +197,63 @@ export default function CalibrationPage() {
               ))}
             </div>
           </>
+        )}
+      </div>
+
+      {/* WO-CALIB-CONVERGENCE-UI（G-VIS-1）：「越用越准」收敛史——逐轮 mapeAfter 折线（后端逐轮真值·前端此前画不出）+ sweep 触发 */}
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="calib-convergence-panel">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div className="section-title" style={{ marginBottom: 0 }}>收敛史 · 越用越准</div>
+          <button className="btn sm" data-testid="calib-sweep-btn" disabled={sweep.isPending} onClick={() => sweep.mutate()}>
+            {sweep.isPending ? "清扫中…" : "跑收敛清扫(sweep)"}
+          </button>
+        </div>
+        {convergence && convergence.points.length > 0 ? (
+          <>
+            <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap", fontSize: 12 }}>
+              <span className={`badge ${convergence.converging ? "green" : "red"}`} data-testid="calib-converging-badge">
+                {convergence.converging ? "收敛良好（末轮 ≤ 首轮）" : "未收敛（末轮 > 首轮）"}
+              </span>
+              <span className="badge" data-testid="calib-improved-badge">
+                {convergence.improvedPct >= 0 ? "↓" : "↑"} MAPE 改善 {convergence.improvedPct} 个百分点（{convergence.rounds} 轮）
+              </span>
+            </div>
+            <EChart
+              height={200}
+              testId="calib-convergence-chart"
+              option={{
+                grid: { top: 16, bottom: 28, left: 40, right: 16 },
+                tooltip: {},
+                xAxis: { type: "category", data: convergence.points.map((p) => `第${p.round}轮`) },
+                yAxis: { type: "value", axisLabel: { formatter: "{value}%" }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+                series: [
+                  {
+                    type: "line",
+                    name: "清扫后 MAPE",
+                    data: convergence.points.map((p) => p.mapeAfter),
+                    smooth: true,
+                    lineStyle: { color: "#5FC88F" },
+                    itemStyle: { color: "#5FC88F" },
+                  },
+                  {
+                    type: "line",
+                    name: "清扫前 MAPE",
+                    data: convergence.points.map((p) => p.mapeBefore),
+                    smooth: true,
+                    lineStyle: { color: "#8E7CC3", type: "dotted" },
+                    itemStyle: { color: "#8E7CC3" },
+                  },
+                ],
+              }}
+            />
+            <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 6 }} data-testid="calib-convergence-rounds">
+              共 {convergence.rounds} 轮清扫（逐轮 mapeAfter 应单调下降 = 参数版本推进后预测更准）
+            </div>
+          </>
+        ) : (
+          <div className="empty-state" data-testid="calib-convergence-empty">
+            暂无收敛记录——点「跑收敛清扫(sweep)」跑一轮，或等每日 CALIBRATION_SWEEP，此处画 MAPE 随轮下降曲线（越用越准的证据）。
+          </div>
         )}
       </div>
 
