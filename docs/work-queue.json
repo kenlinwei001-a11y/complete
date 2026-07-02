@@ -2178,12 +2178,12 @@
       "id": "THEME-CONTRAST-FIX",
       "priority": "P1",
       "status": "DONE",
-      "owner": "dev",
+      "owner": "reviewer",
       "deps": [],
       "blockReason": "",
       "doc": "docs/PRD-frontend-visual-redesign.md",
       "title": "暗色主题整体换肤到参考图(背景+字体+框体协同·非只补对比度)",
-      "note": "换肤到参考图·遵R-QUANT(色号锁定见PRD§1·15token全WCAG达标·--muted2 2.88→5.20)+含右侧2决策卡设计(§2摘要卡/§3计算器卡)。整页量化PRD见 docs/PRD-frontend-visual-redesign.md·验收getComputedStyle逐值(§6)。",
+      "note": "【dev 同步·避免撞车】审核方因用户多次催、已直落 palette 部分并 DONE(commit 0497a5c 改 tokens.css/global.css)。若你本地有 THEME worktree 未推的 tokens.css/global.css 改动 → 请 `git checkout -- apps/frontend-shell/src/styles/tokens.css apps/frontend-shell/src/styles/global.css` 弃掉、勿 push(否则撞审核方 0497a5c)。改领下一单。PRD-frontend-visual-redesign 的决策卡组件(§2/§3)+SANDBOX-LAYOUT-REWORK 仍在队列可领。 | 原:换肤到参考图·遵R-QUANT(色号锁定见PRD§1·15token全WCAG达标·--muted2 2.88→5.20)+含右侧2决策卡设计(§2摘要卡/§3计算器卡)。整页量化PRD见 docs/PRD-frontend-visual-redesign.md·验收getComputedStyle逐值(§6)。",
       "acceptance": {
         "goal": "暗色主题背景/字体/框体三者协同重设计到参考图质感·深蓝调有生命力(非纯黑)·所有文字达WCAG AA·卡片发丝边+大圆角+皇家蓝CTA·真浏览器截图对齐参考图",
         "criteria": [

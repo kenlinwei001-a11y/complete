@@ -12,6 +12,7 @@
 3. 读 `PRD-A-series-roadmap.md`（依赖 DAG + 4 波次 + 全局裁决）。
 4. 读你被分配的那份 PRD 全文，尤其 **§0《本体引用与影响》**（它列出你将触及的对象/链路/事件/不变量/断点/门禁）。
 5. 认领基线分支（实现前由负责人定准 `wizardly-gauss` 或 `vigilant-knuth`；**不可在两分支并行写同一文件**）。
+6. **避免与审核方撞车（reviewer 偶尔会因用户紧急催、直落某单）**：每轮开工/提交前 `git pull` 后**查你在做的 WO 在 work-queue.json 里是否已被标 DONE**（owner 变 `reviewer` 或 note 含「审核方直落」）。若是 → **弃掉你该 worktree 对相关文件的未推改动**（`git checkout -- <那些文件>`，勿 push，否则撞审核方 commit），按 note 指引改领下一单或做其后续（如决策卡组件 / SANDBOX-LAYOUT-REWORK）。**push 前务必先 `git pull --no-rebase` 合并、有冲突先解再推。**
 
 ## 1. 开工顺序（按依赖，不可乱序）
 - 严格按 `PRD-A-series-roadmap.md` 的**波次**：Wave1 基座 → Wave2 引擎 → Wave3 编排 → Wave4 验证 →（Wave5 CLI/intake）。
