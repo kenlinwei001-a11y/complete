@@ -23,6 +23,7 @@ import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { decisionColor, decisionHeat, decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
 import { DecisionModeBanner } from "@/components/DecisionModeBanner";
 import { parseWhatIfPreset, type WhatIfPreset } from "./whatif";
+import { useScenarioPreset, presetNum, presetStr } from "./useScenarioPreset";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -31,6 +32,8 @@ import styles from "./SimViews.module.css";
  * 改由 WorkspaceConfig（`workspace.scenarioPackages[0].simConfig`，按租户/行业下发）提供。
  * 下方 DEFAULT_* 仅作 config 缺失时的优雅兜底（P2 接 debattery:check 后将进一步收口）。
  */
+const DEFAULT_QTY = 40; // 单一模式需求量默认（万套）——场景 demandDelta 相对增量以此为基
+const DEFAULT_WEEKS = 6; // 交期默认（周）
 const DEFAULT_MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"]; // debattery-allow：config(simConfig.models)/Model 对象缺失时的电池行业兜底
 const DEFAULT_LOGISTICS: Record<string, number> = { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }; // debattery-allow：simConfig.logistics 缺失兜底
 
@@ -189,10 +192,40 @@ export function resolveSimPreset(preset: WhatIfPreset | null, models: string[]):
   return { ...(modelId ? { modelId } : {}), ...(qty != null ? { qty } : {}), ...(weeks != null ? { weeks } : {}) };
 }
 
+/**
+ * WO-SIM-PRESET-INJECT（命门通道映射）：场景启动器 slotPresets（`{modelId, demandDelta(相对), weeks}`·S01）→ WhatIfPreset。
+ * 参数名对齐（modelId→model·治「名不同映射不上」）；demandDelta 相对增量 → 绝对 demand（以 DEFAULT_QTY 为基·治「相对 vs 绝对语义」）；
+ * demand 绝对优先于 demandDelta。返回 null 当无任何可注入 slot（消费方走默认·诚实不硬塞）。demandDeltaPct 供上下文条显性化。
+ */
+export function scenarioSlotsToPreset(
+  slots: Record<string, unknown>,
+  label?: string,
+): (WhatIfPreset & { demandDeltaPct?: number }) | null {
+  const model = presetStr(slots, "modelId") ?? presetStr(slots, "model");
+  const demandAbs = presetNum(slots, "demand");
+  const demandDelta = presetNum(slots, "demandDelta");
+  const weeks = presetNum(slots, "weeks");
+  const demand = demandAbs ?? (demandDelta != null ? Math.max(0.1, Math.round(DEFAULT_QTY * (1 + demandDelta))) : undefined);
+  if (model == null && demand == null && weeks == null) return null;
+  return {
+    source: "launcher",
+    ...(label ? { label } : {}),
+    ...(model ? { model } : {}),
+    ...(demand != null ? { demand } : {}),
+    ...(weeks != null ? { weeks } : {}),
+    ...(demandDelta != null && demandAbs == null ? { demandDeltaPct: Math.round(demandDelta * 100) } : {}),
+  };
+}
+
 export default function ProjectSimView({ view }: ViewRendererProps) {
-  // WO-SIM-PRESET-INJECT：从 URL query 解 presetContext（场景卡/决策入口带入·复用 WO-E2 whatif 通道），注入求解器入参初值。
+  // WO-SIM-PRESET-INJECT（命门·C4 单一通道）：优先场景启动器带入的 scenarioPreset（sessionStore·真启动器点卡路径），
+  // 其次 URL whatif 深链（deep-link 兼容）。scenarioSlotsToPreset 对齐参数名（modelId→model·demandDelta→绝对 demand）。
   const [searchParams] = useSearchParams();
-  const preset = useMemo(() => parseWhatIfPreset(searchParams), [searchParams]);
+  const scPreset = useScenarioPreset("project-sim");
+  const preset = useMemo<(WhatIfPreset & { demandDeltaPct?: number }) | null>(
+    () => (scPreset ? scenarioSlotsToPreset(scPreset.slots, scPreset.label) : parseWhatIfPreset(searchParams)),
+    [scPreset, searchParams],
+  );
   // R14：型号/地址/物流来自 WorkspaceConfig（按租户/行业），缺失则 DEFAULT_* 兜底
   const { data: workspace } = useWorkspace();
   // 8a：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明（去硬编码电池因子）
@@ -210,8 +243,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
   const [mode, setMode] = useState<"single" | "batch">("single");
   const [modelId, setModelId] = useState(injected.modelId ?? models[0] ?? "");
-  const [qty, setQty] = useState(injected.qty ?? 40);
-  const [weeks, setWeeks] = useState(injected.weeks ?? 6);
+  const [qty, setQty] = useState(injected.qty ?? DEFAULT_QTY);
+  const [weeks, setWeeks] = useState(injected.weeks ?? DEFAULT_WEEKS);
   const [batches, setBatches] = useState<BatchRowInput[]>([
     { qty: 18, dueDate: "2026-07-13", address: "上海" },
     { qty: 22, dueDate: "2026-08-10", address: "海外" },
@@ -337,7 +370,11 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
           {preset.label && <b data-testid="sim-preset-label">{preset.label}</b>}
           <span className={styles.sub} data-testid="sim-preset-source">来源：{preset.source}</span>
           {injected.modelId && <span className="badge" data-testid="sim-preset-model">型号 {injected.modelId}</span>}
-          {injected.qty != null && <span className="badge" data-testid="sim-preset-qty">需求 {injected.qty} 万套</span>}
+          {injected.qty != null && (
+            <span className="badge" data-testid="sim-preset-qty">
+              需求 {injected.qty} 万套{preset.demandDeltaPct != null ? `（${preset.demandDeltaPct >= 0 ? "+" : ""}${preset.demandDeltaPct}%）` : ""}
+            </span>
+          )}
           {injected.weeks != null && <span className="badge" data-testid="sim-preset-weeks">{injected.weeks} 周</span>}
           <span className={styles.sub} style={{ marginLeft: "auto" }}>已注入求解器入参·改任意值即重演</span>
         </div>

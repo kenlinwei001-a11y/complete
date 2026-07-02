@@ -3,6 +3,7 @@ import { submitQuery, type ScenarioCardVM } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
+import { normalizeViewKey } from "@/views/registry";
 
 /**
  * 场景启动（PRD-scenario-launcher §3.5）：点一张场景卡 → 注入 presetContext
@@ -28,14 +29,23 @@ export function useQuickLaunch(): (input: {
   const packageId = firstPackageId(workspace);
   return async ({ query, targetView, selectedObjects = [], slotPresets = {}, scenarioIntentKey, scenarioKey }) => {
     if (!packageId) return;
+    // 命门修复（BLOCK 根因③）：落点导航用规范视图键（短键 project→project-sim），否则 ViewPage 在 workspace.views
+    // 按短键找不到视图 → ForbiddenPage（真启动器点卡落 /v/project 空白·视图不渲染）。scenarioPreset 保留原 targetView（读侧归一）。
+    const canonicalView = normalizeViewKey(targetView) ?? targetView;
     const store = useSessionStore.getState();
-    store.setView(targetView);
+    store.setView(canonicalView);
     store.setSelectedObjects(selectedObjects);
+    // WO-SIM-PRESET-INJECT（命门·C4 单一通道）：slotPresets 除了随 submitQuery 进 QOS 对话坞，
+    // 同时落 scenarioPreset → 落点推演视图 useScenarioPreset 读之注入求解器入参初值（问句与视图对口·R17·治 G-3）。
+    // nonce 保证每次点卡只消费一次（导航后视图 useEffect 按 nonce 去重·不重复注入）。
+    store.setScenarioPreset(
+      Object.keys(slotPresets).length > 0 ? { targetView, slotPresets, label: query, nonce: crypto.randomUUID() } : null,
+    );
     const localId = crypto.randomUUID();
     // 每张场景卡启动 = 一段独立对话线程（清上一卡、重置 conversationId），不与别的卡混合。
     store.startConversation({ localId, query });
     store.setDockExpanded(true);
-    navigate(`/v/${targetView}`);
+    navigate(`/v/${canonicalView}`);
     try {
       const res = await submitQuery(
         { packageId, query, context: { view: targetView, selectedObjects, filters: {}, presetSlots: slotPresets, ...(scenarioIntentKey ? { scenarioIntentKey } : {}), ...(scenarioKey ? { scenarioKey } : {}) } },

@@ -1,5 +1,7 @@
 # WO-SIM-PRESET-INJECT · FDE 真实交付证据（G-3 / G-VIS-1）
 
+> **v2（BLOCK 复修）**：审核方首轮 BLOCK——视图侧 URL 注入真实但**接错通道**（真启动器点卡走 sessionStore.slotPresets 且落 `/v/project` bare·未注入）+ 参数名不对齐（modelId/demandDelta vs model/demand）+ targetView 短键落点不渲染 + 仅 1/4 视图。本轮**接命门单一通道 + 对齐参数 + 修落点键 + 扩 4 视图 + C5 软阻断**，真启动器点卡 e2e 已通（见 §3-命门）。
+
 **WO**：推演 I 层入参对口 — 场景卡/决策入口带 `presetContext`（型号/需求/时窗）进**项目推演视图**（`/v/project-sim`），
 把型号/需求/时窗**注入 capacity_forecast 求解器入参初值**（问句与视图对口）。此前 `modelId/qty/weeks` 硬编码、
 丢弃 preset → I 层不对口（P/O 层已真接，断在 I 层）。
@@ -58,6 +60,39 @@
 - 🔭 **下一环**：`resolveSimPreset` 目前只消费 whatif URL 通道；后续场景卡/风险板一键跳转到项目推演（而非仅沙盘）时，
   发起侧需传 model/demand/weeks（发起侧编码已具备 `whatIfQuery`，接线到具体决策入口按钮属后续 WO）。
 
-## 5. 门（本轮）
+## 3-命门（v2·BLOCK 复修）· 真启动器点卡 e2e（单一通道 · 4 视图 · C1-C5）
 
-`pnpm -r build` 4 包绿 · `pnpm -r test` 全绿（新增 sim-preset-inject 4 用例）· `pnpm gates` 绿。
+**根因修（3 重断链·narrow）**：
+1. **接命门（C4 单一通道）**：`useQuickLaunch` 除把 slotPresets 送 QOS 对话坞外，**同时**落 `sessionStore.scenarioPreset{targetView,slotPresets,label,nonce}`；落点视图经 `useScenarioPreset(viewKey)` 读之（`normalizeViewKey` 两侧归一·nonce 只消费一次）。此前 slotPresets 只进 Dock → 视图用 models[0]×40万（G-3 未治）。
+2. **对齐参数（治「名不同/相对vs绝对」）**：`scenarioSlotsToPreset` 把卡的 `modelId→model`、`demandDelta`(相对)→绝对 `demand`（以 DEFAULT_QTY=40 为基·`0.2→48`）、`weeks` 直传。
+3. **修落点键（治「/v/project 不渲染」）**：`useQuickLaunch` 导航用 `normalizeViewKey(targetView)`（`project→project-sim`）——ViewPage 按 `workspace.views` 的**规范键**查视图，短键 `/v/project` 查不到 → ForbiddenPage（真启动器点卡落空白·视图不渲染）。
+
+**真启动器点卡 e2e（真浏览器·datacore4101+agentcore4102+前端真构建4105·planner 登录）**：
+`/scenarios` → 点 **S01 卡「4680-NCM 加 20% 六周能不能接？」**（后端真卡·`slotPresets={modelId:4680-NCM,demandDelta:0.2,weeks:6}`·targetView=project）：
+
+| 断言 | 结果 |
+|---|---|
+| 落点 URL | `/v/project-sim`（规范键·非 bare `/v/project`）✓ |
+| ProjectSimView 渲染 | present ✓（此前 ForbiddenPage） |
+| sim-preset-context 上下文条 | 出「4680-NCM 加 20% 六周能不能接？」✓ |
+| 型号注入 | select=**4680-NCM** ✓ |
+| 需求注入（demandDelta 0.2→绝对） | 需求(万套) input=**48**（=40×1.2·非默认 40）· 上下文条「需求 48 万套（+20%）」✓ |
+| 时窗注入 | 交期(周) input=**6** ✓ |
+| 求解器真用注入值 | qty=48 → 后端 oracle p50=5.18/p90=4.82/gap=43.18·dataMode SYNTHETIC（前端 input 48 == 求解器入参）✓ |
+
+证据 `docs/evidence/screens/SIM-PRESET-INJECT-launcher-click.png`。
+
+**C2（plan-audit·cashCushion）**：牙齿 e2e——scenarioPreset(targetView=audit·cashCushion=4.5e9 元)→ `/v/plan-audit` 现金安全垫输入注入=**45 亿**（元→亿转换）+ `audit-preset-context` 条。
+**C4（4 视图单一通道·不串台）**：project-sim/plan-audit/plan-generate/sop-balance 各经 `useScenarioPreset` 读通道；牙齿证 targetView=project 的 preset **不落到** plan-audit（归一比对·不污染）。
+**C5（sop-balance 软阻断）**：需求三线仍是示例占位值（=DEFAULT_SEGMENTS·电池兜底）→ 运行前 `sop-run-2-softblock` 强确认（防把示例值当真值喂 C21·改任一值即解闸）。
+
+牙齿：`sim-preset-inject.test.tsx` 8 用例（原 4 URL 深链 + 新 4：scenarioSlotsToPreset 映射·命门 e2e qty=48·C2 cashCushion·C4 不串台）。
+
+## 4-2. 边界（诚实·v2）
+- ✅ 命门 C1 真启动器点卡 e2e 通（型号/+20%/6周注入·前端 input==求解器入参）· C2/C4/C5 达 · C3 逐值对上后端。
+- ⚠ plan-generate 的 demo 卡（S05/S14/S17）slot 不含 GoalsState 数值目标键 → 通道已接（`useScenarioPreset`+goal-key override）但 demo 卡无可注入目标 slot 时不显条（诚实·非硬塞）；携带目标 slot 的卡即注入。
+- 🔭 URL 深链通道保留（deep-link 兼容·原 4 用例仍绿），与 sessionStore 命门通道并存（launcher 走 sessionStore·分享链接走 URL）。
+
+## 5. 门（本轮·v2）
+
+`pnpm -r build` 4 包绿 · `pnpm -r test` 全绿（sim-preset-inject 8 用例 + 全前端 364） · `pnpm gates` 绿。

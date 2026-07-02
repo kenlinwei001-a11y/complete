@@ -443,6 +443,10 @@ function Step2({
   const [rows, setRows] = useState(() => qc.getQueryData<Workspace>(workspaceQueryKey)?.sopConfig?.segments ?? DEFAULT_SEGMENTS);
   // WO-DM-tail（B-MED 诚实位）：sopConfig.segments 未配置时三线为电池行业示例兜底（非本租户实测）——诚实标，禁凭空业务数喂 C21。
   const usingDefaultSegments = !qc.getQueryData<Workspace>(workspaceQueryKey)?.sopConfig?.segments;
+  // WO-SIM-PRESET-INJECT（C5·运行前软阻断）：示例占位值未改（仍等于电池兜底 DEFAULT_SEGMENTS）→ 运行前强确认，
+  // 防止把「示例占位值」当真值喂 C21 裁决（诚实徽标是地板·此处补运行闸）。改过任一值即解闸。
+  const [confirmRun, setConfirmRun] = useState(false);
+  const rowsUnchanged = usingDefaultSegments && JSON.stringify(rows) === JSON.stringify(DEFAULT_SEGMENTS);
   const s2 = v.steps.s2 as
     | { rows?: { key: string; name: string; target: number; rolling: number; lastActual: number; dv: number; flagged: boolean }[]; total?: { target: number; rolling: number; dv: number } }
     | undefined;
@@ -490,9 +494,24 @@ function Step2({
               ))}
             </tbody>
           </table>
-          <button className="btn primary" style={{ marginTop: 8 }} onClick={() => run({ segments: rows })} data-testid="sop-run-2">
+          <button
+            className="btn primary"
+            style={{ marginTop: 8 }}
+            onClick={() => (rowsUnchanged && !confirmRun ? setConfirmRun(true) : run({ segments: rows }))}
+            data-testid="sop-run-2"
+          >
             {zh.sim.sop.runStep("②")}（三线对照 · |dv|&gt;10% 触发 C21）
           </button>
+          {/* WO-SIM-PRESET-INJECT（C5·软阻断）：示例占位值未改直接运行 → 强确认，防污染 C21 裁决（改任一值即解闸）。 */}
+          {rowsUnchanged && confirmRun && (
+            <div className={styles.noteRed} data-testid="sop-run-2-softblock" style={{ marginTop: 8 }}>
+              ⚠ 需求三线仍是<b>示例占位值</b>（电池行业兜底·未按本租户实测编辑）。直接运行会把示例值当真值喂入 C21 裁决 → 结论不可信。
+              <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+                <button className="btn sm" data-testid="sop-run-2-confirm" onClick={() => run({ segments: rows })}>仍用示例值运行（我知道是示例）</button>
+                <button className="btn sm" data-testid="sop-run-2-cancel" onClick={() => setConfirmRun(false)}>先去编辑真值</button>
+              </div>
+            </div>
+          )}
         </>
       )}
       {s2?.rows && (

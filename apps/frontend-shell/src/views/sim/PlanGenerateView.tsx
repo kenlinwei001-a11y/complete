@@ -9,6 +9,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useActionDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
+import { useScenarioPreset, presetNum } from "./useScenarioPreset";
 import { DataModeBadge } from "@/components/DataModeBadge";
 import { DecisionModeBanner } from "@/components/DecisionModeBanner";
 import { decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
@@ -71,8 +72,16 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：目标字段结构由 ViewConfig.layout.goalFields 声明，GOAL_FIELDS 仅兜底
   const goalFields = (view.layout?.goalFields as typeof GOAL_FIELDS | undefined) ?? GOAL_FIELDS;
   const qc = useQueryClient();
-  // 去电池锁死（R14）：经营目标初值取自 WorkspaceConfig（缓存同步读），DEFAULT_GOALS 仅兜底
-  const [goals, setGoals] = useState<GoalsState>(() => ({ ...DEFAULT_GOALS, ...(qc.getQueryData<Workspace>(workspaceQueryKey)?.planGoals ?? {}) }));
+  // WO-SIM-PRESET-INJECT（C4·命门通道）：场景启动器带入的目标 slot（键∈GoalsState 数值目标）→ 覆盖初值（问句与视图对口）。
+  const sc = useScenarioPreset("plan-generate");
+  const presetGoals = (() => {
+    const keys = ["revGrowthPct", "gmFloorPct", "sharePts", "capexCap", "cashFloor", "invTurns"] as const;
+    const over: Record<string, number> = {};
+    for (const k of keys) { const n = presetNum(sc?.slots, k); if (n != null) over[k] = n; }
+    return over as Partial<GoalsState>;
+  })();
+  // 去电池锁死（R14）：经营目标初值取自 WorkspaceConfig（缓存同步读），DEFAULT_GOALS 仅兜底；叠加场景 preset 覆盖。
+  const [goals, setGoals] = useState<GoalsState>(() => ({ ...DEFAULT_GOALS, ...(qc.getQueryData<Workspace>(workspaceQueryKey)?.planGoals ?? {}), ...presetGoals }));
   const [openKey, setOpenKey] = useState<string | null>(null);
   const canAdopt = useFeature("act.adopt-to-draft");
   const action = useActionDraft();
@@ -146,6 +155,18 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
         </div>
         {gen.isFetching && <span style={{ fontSize: 11, color: "var(--muted2)" }}>重算中…</span>}
       </div>
+
+      {/* WO-SIM-PRESET-INJECT（C4）：场景启动器带入的目标 preset 条（问句与视图对口·honest·仅当带了可注入目标 slot 时出）。 */}
+      {sc && Object.keys(presetGoals).length > 0 && (
+        <div className="panel" data-testid="gen-preset-context" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginBottom: 8, borderLeft: "3px solid #43B7D7" }}>
+          <span className="badge blue">场景带入</span>
+          {sc.label && <b data-testid="gen-preset-label">{sc.label}</b>}
+          {Object.entries(presetGoals).map(([k, v]) => (
+            <span key={k} className="badge" data-testid={`gen-preset-${k}`}>{k}={String(v)}</span>
+          ))}
+          <span style={{ fontSize: 11.5, color: "var(--muted2)", marginLeft: "auto" }}>已注入目标·改任意值即重算</span>
+        </div>
+      )}
 
       {/* 目标面板（顶部横条，§7.11） */}
       <div className="panel" style={{ marginBottom: 12 }} data-testid="gen-goals">

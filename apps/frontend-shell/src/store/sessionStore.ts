@@ -8,6 +8,19 @@ export interface ConversationEntry {
   submitError?: string;
 }
 
+/**
+ * WO-SIM-PRESET-INJECT（命门·G-3 视图侧注入单一通道·C4）：场景启动器点卡 → useQuickLaunch 除了把
+ * slotPresets 送进 QOS query context（对话坞），**同时**落此 scenarioPreset → 落点推演视图经 `useScenarioPreset`
+ * 读之，把型号/需求/时窗/现金垫等 slot 注入求解器入参初值（问句与视图对口·R17）。单一通道（非 URL·跨 4 视图统一），
+ * nonce 保证每次点卡只消费一次（导航后不重复注入）。此前 slotPresets 只进 Dock → 视图用 models[0]×40万 → G-3 未治。
+ */
+export interface ScenarioPreset {
+  targetView: string;
+  slotPresets: Record<string, unknown>;
+  label?: string;
+  nonce: string;
+}
+
 interface SessionState {
   view: string;
   selectedObjects: ObjectRef[];
@@ -17,6 +30,8 @@ interface SessionState {
   // 查询 Dock UI 态
   dockExpanded: boolean;
   conversation: ConversationEntry[];
+  // WO-SIM-PRESET-INJECT：场景启动器带入的推演视图入参预设（单一通道·C4）。
+  scenarioPreset: ScenarioPreset | null;
 
   setView: (view: string) => void;
   setSelectedObjects: (objs: ObjectRef[]) => void;
@@ -25,6 +40,8 @@ interface SessionState {
   setTimeWindow: (tw?: { from: string; to: string }) => void;
   setConversationId: (id: string) => void;
   setDockExpanded: (v: boolean) => void;
+  /** 场景启动器落 scenarioPreset（供落点视图 useScenarioPreset 读入参初值·C4 单一通道）。 */
+  setScenarioPreset: (p: ScenarioPreset | null) => void;
   /** 开一段全新对话线程（场景卡启动用）：清空上一卡的对话 + 重置 conversationId，保证每张卡独立不混合。 */
   startConversation: (e: ConversationEntry) => void;
   appendConversation: (e: ConversationEntry) => void;
@@ -41,6 +58,7 @@ const initial = {
   conversationId: undefined as string | undefined,
   dockExpanded: false,
   conversation: [] as ConversationEntry[],
+  scenarioPreset: null as ScenarioPreset | null,
 };
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -62,6 +80,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setTimeWindow: (timeWindow) => set({ timeWindow }),
   setConversationId: (conversationId) => set({ conversationId }),
   setDockExpanded: (dockExpanded) => set({ dockExpanded }),
+  setScenarioPreset: (scenarioPreset) => set({ scenarioPreset }),
   startConversation: (e) => set({ conversation: [e], conversationId: undefined }),
   appendConversation: (e) => set((s) => ({ conversation: [...s.conversation, e] })),
   updateConversation: (localId, patch) =>

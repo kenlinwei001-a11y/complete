@@ -37,6 +37,13 @@ export function getRenderer(key: string | undefined): LazyExoticComponent<Compon
   return registry.get(VIEW_ALIAS[key] ?? key);
 }
 
+/** 视图键规范化（短键 project/audit/… → 规范键 project-sim/plan-audit/…）。
+ *  WO-SIM-PRESET-INJECT：场景卡 targetView 用短键，落点视图用规范键，注入通道两侧须归一后比对（治「project≠project-sim 不注入」）。 */
+export function normalizeViewKey(key: string | undefined): string | undefined {
+  if (!key) return undefined;
+  return VIEW_ALIAS[key] ?? key;
+}
+
 registerRenderer("dashboard", () => import("./DashboardView"));
 registerRenderer("ontology-graph", () => import("./OntologyGraphView"));
 registerRenderer("risk-board", () => import("./RiskBoardView"));

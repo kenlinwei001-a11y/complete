@@ -317,10 +317,11 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 what-if 进决策日常(WO-E2): 决策入口一键「开 what-if」→ useOpenWhatIf 编 URL query(source/subject/factor/label,确定性 R6)
   → SandboxView parseWhatIfPreset 注入 SimSession.scope.presetContext + 展示 what-if 上下文条 → 复用既有沙盘链(不新建引擎)
   决策完即弃(新会话)或采纳(R4 正门)；R3 隔离主世界不被污染。前端 whatif.ts + RiskBoardView「就此问题开 what-if 推演」按钮
-WO-SIM-PRESET-INJECT(推演 I 层入参对口·G-3/G-VIS-1·additive)：whatif 通道扩 model/demand/weeks(WhatIfPreset·向后兼容)，
-  项目推演视图 /v/project-sim 读之 → resolveSimPreset(型号命中当前 models 白名单才注入·R14·需求下限/时窗[1,52]裁剪·非法忽略 R6)
-  → 注入 capacity_forecast 求解器入参初值(此前 modelId/qty/weeks 硬编码丢 preset·I 层不对口) + sim-preset-context 上下文条(问句与视图对口·honest)。
-  FDE 逐值对上后端(qty=55 注入·非默认 40·p50/p90/gap==oracle·SYNTHETIC 裁决降级灰 KILL-MOCK-RED)：docs/evidence/SIM-PRESET-INJECT-fde.md
+WO-SIM-PRESET-INJECT(命门·治 G-3 launcher→view 接缝·G-VIS-1·additive)：**真启动器点卡 → 落点推演视图入参对口**（此前 slotPresets 只进 QOS 对话坞·视图用 models[0]×40万·G-3 未治）。
+  **单一通道(C4)**：`useQuickLaunch` 点卡时落 `sessionStore.scenarioPreset{targetView,slotPresets,label,nonce}`；落点视图经 `useScenarioPreset(viewKey)` 读之(`normalizeViewKey` 两侧归一·nonce 只消费一次)。
+  **落点键修**：`useQuickLaunch` 导航用 `normalizeViewKey(targetView)`(project→project-sim)——ViewPage 按 workspace.views 规范键查视图,短键 /v/project 查不到→ForbiddenPage(真点卡落空白)。
+  **参数对齐**：`scenarioSlotsToPreset` modelId→model·demandDelta(相对)→绝对 demand(以 DEFAULT_QTY=40 为基·0.2→48)·weeks 直传(治「名不同/相对vs绝对」)。**4 视图读通道**：project-sim(型号/需求/时窗→capacity_forecast)·plan-audit(cashCushion 元→亿→现金垫)·plan-generate(目标键 override)·sop-balance(C5 示例占位值未改→运行前软阻断防喂 C21)。URL 深链通道保留(deep-link 兼容·分享链接走 URL·launcher 走 sessionStore)。
+  牙齿 `resolveSimPreset`/`scenarioSlotsToPreset` R14 型号白名单+R6 裁剪。真启动器点卡 e2e(真浏览器·点 S01 卡「4680-NCM 加 20% 六周」→落 /v/project-sim→型号 4680-NCM·需求 input=48(=40×1.2·非默认 40)·6周·前端 input==求解器入参·oracle qty=48)：docs/evidence/SIM-PRESET-INJECT-fde.md(v2·BLOCK 复修)
 closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(propagateTick/recompute 空跑1tick)
   --deriveCertification(纯投影,零新校验 RL3·增量2 已落)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」
 propagateTick(增量3 已落): rules.coefficient/coefficientRef→rule.params × 源态 ×(decay) 沿 viaLink → next 态 + 延迟队列(arriveTick>t) + trace；无 PUBLISHED 规则=恒等 tick(opt-in 可回退)

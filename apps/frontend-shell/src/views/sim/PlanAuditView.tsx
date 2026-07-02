@@ -12,6 +12,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useAdoptToDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
+import { useScenarioPreset, presetNum } from "./useScenarioPreset";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
 import { DataModeBadge } from "@/components/DataModeBadge";
 import { DecisionModeBanner } from "@/components/DecisionModeBanner";
@@ -76,11 +77,24 @@ export default function PlanAuditView({ view }: ViewRendererProps) {
   const canApplyFix = useFeature("act.plan-audit.apply-fix");
   const canAdopt = useFeature("act.adopt-to-draft");
   const adopt = useAdoptToDraft();
+  // WO-SIM-PRESET-INJECT（C2/C4·命门通道）：场景启动器带入的现金垫等 slot → 覆盖体检输入初值（问句与视图对口）。
+  // 现金垫单位对齐：slot 若为元（≥1e6）→ 转亿（/1e8·卡 45亿=4.5e9 元）；已是亿则原样。
+  const sc = useScenarioPreset("plan-audit");
+  const presetCashYi = (() => {
+    const raw = presetNum(sc?.slots, "cashCushion");
+    if (raw == null) return undefined;
+    return raw >= 1e6 ? Math.round((raw / 1e8) * 100) / 100 : raw;
+  })();
 
-  // 基线到达 → 预填输入面板 + 选中对象写入共享 store（查询 Dock 随问句携带）
+  // 基线到达 → 预填输入面板（叠加场景 preset 覆盖）+ 选中对象写入共享 store（查询 Dock 随问句携带）
   useEffect(() => {
     if (!baseline.data || form !== null) return;
-    setForm(baseline.data.input);
+    // 命门：场景 preset 覆盖对应字段初值（现金垫…）→ 打开即按问句对口，改任意字段即重检。
+    const prefilled: PlanAuditInput = {
+      ...baseline.data.input,
+      ...(presetCashYi != null ? { cashCushion: presetCashYi } : {}),
+    };
+    setForm(prefilled);
     useSessionStore.getState().setSelectedObjects([
       {
         objectType: "PlanVersion",
@@ -88,7 +102,7 @@ export default function PlanAuditView({ view }: ViewRendererProps) {
         label: `月度计划基线（${baseline.data.versionLabel}）`,
       },
     ]);
-  }, [baseline.data, form]);
+  }, [baseline.data, form, presetCashYi]);
 
   const audit = useLiveSolver(
     "plan_audit",
@@ -129,6 +143,16 @@ export default function PlanAuditView({ view }: ViewRendererProps) {
         <span className="badge blue">{baseline.data ? zh.sim.audit.baseline(baseline.data.versionLabel) : zh.common.loading}</span>
         {audit.isFetching && <span style={{ color: "var(--muted2)" }}>重检中…</span>}
       </div>
+
+      {/* WO-SIM-PRESET-INJECT（C2/C4）：场景启动器带入的入参预设条（问句与视图对口·honest 可见·哪个问句改了哪个字段）。 */}
+      {sc && presetCashYi != null && (
+        <div className="panel" data-testid="audit-preset-context" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginBottom: 8, borderLeft: "3px solid #43B7D7" }}>
+          <span className="badge blue">场景带入</span>
+          {sc.label && <b data-testid="audit-preset-label">{sc.label}</b>}
+          <span className="badge" data-testid="audit-preset-cash">现金垫 {presetCashYi} 亿</span>
+          <span style={{ fontSize: 11.5, color: "var(--muted2)", marginLeft: "auto" }}>已注入体检输入·改任意字段即重检</span>
+        </div>
+      )}
 
       <div className={styles.twoCol}>
         <div className="panel">

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { loginAs, renderApp } from "./utils";
-import { resolveSimPreset } from "@/views/sim/ProjectSimView";
+import { resolveSimPreset, scenarioSlotsToPreset } from "@/views/sim/ProjectSimView";
 import { parseWhatIfPreset, whatIfQuery } from "@/views/sim/whatif";
+import { useSessionStore } from "@/store/sessionStore";
 
 /**
  * WO-SIM-PRESET-INJECT（推演 I 层入参对口·G-3/G-VIS-1）：场景卡/决策入口带 presetContext 进项目推演视图，
@@ -51,8 +52,71 @@ describe("WO-SIM-PRESET-INJECT · presetContext 注入项目推演求解器入�
 
   it("牙齿·无 preset：/v/project-sim 无 query → 无上下文条 + 走默认入参（不硬塞）", async () => {
     loginAs("planner");
+    useSessionStore.getState().setScenarioPreset(null);
     renderApp("/v/project-sim");
     await screen.findByTestId("project-sim-view");
     expect(screen.queryByTestId("sim-preset-context")).toBeNull();
+  });
+});
+
+/**
+ * 命门修复（BLOCK 复验）：真启动器点卡走 sessionStore.scenarioPreset 单一通道（非 URL），落点视图注入。
+ * 参数名对齐（modelId→model·demandDelta 相对→绝对 demand）·targetView 短键归一（project→project-sim）。
+ */
+describe("WO-SIM-PRESET-INJECT · 命门通道（scenarioPreset 单一通道·4 视图对口）", () => {
+  it("纯函数 scenarioSlotsToPreset：modelId→model · demandDelta 相对→绝对 demand(以 40 为基) · weeks 直传（对齐名/语义）", () => {
+    // demandDelta 0.2 → 40×1.2=48（绝对）；demandDeltaPct=20 供上下文条
+    expect(scenarioSlotsToPreset({ modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 })).toMatchObject({
+      model: "4680-NCM", demand: 48, weeks: 6, demandDeltaPct: 20,
+    });
+    // demand 绝对优先于 demandDelta（不双算）
+    expect(scenarioSlotsToPreset({ demand: 55, demandDelta: 0.5 })).toMatchObject({ demand: 55 });
+    // 无可注入 slot → null（诚实不硬塞）
+    expect(scenarioSlotsToPreset({ foo: 1 })).toBeNull();
+  });
+
+  it("命门 e2e：设 scenarioPreset(targetView=project·modelId/demandDelta/weeks) → /v/project-sim 上下文条出 + 需求=48(注入·非默认40)", async () => {
+    loginAs("planner");
+    // 模拟真启动器点卡：useQuickLaunch 落 scenarioPreset（短键 project·relative demandDelta）
+    useSessionStore.getState().setScenarioPreset({
+      targetView: "project",
+      slotPresets: { modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 },
+      label: "4680-NCM 加 20% 六周能不能接？",
+      nonce: "nonce-1",
+    });
+    renderApp("/v/project-sim");
+    const ctx = await screen.findByTestId("sim-preset-context");
+    expect(ctx).toHaveTextContent("4680-NCM 加 20% 六周能不能接？");
+    expect(screen.getByTestId("sim-preset-model")).toHaveTextContent("4680-NCM");
+    // demandDelta 0.2 → 需求 48 万套（+20%）·非默认 40 → 证真启动器通道注入生效
+    expect(screen.getByTestId("sim-preset-qty")).toHaveTextContent("48");
+    expect(screen.getByTestId("sim-preset-qty")).toHaveTextContent("+20%");
+    await waitFor(() => expect(screen.getByLabelText("需求(万套)")).toHaveValue(48));
+  });
+
+  it("命门 C2：scenarioPreset(targetView=audit·cashCushion=45亿) → /v/plan-audit 现金垫输入注入=45 + 上下文条", async () => {
+    loginAs("planner");
+    useSessionStore.getState().setScenarioPreset({
+      targetView: "audit",
+      slotPresets: { cashCushion: 4_500_000_000 }, // 元 → 视图侧转 45 亿
+      label: "现金垫 45 亿过得了体检吗？",
+      nonce: "nonce-audit",
+    });
+    renderApp("/v/plan-audit");
+    const ctx = await screen.findByTestId("audit-preset-context");
+    expect(ctx).toHaveTextContent("现金垫 45 亿");
+    // 现金垫输入初值被注入为 45（亿）·非基线默认值
+    await waitFor(() => expect(screen.getByLabelText("现金安全垫(13周最低点)")).toHaveValue(45));
+  });
+
+  it("命门 C4·跨视图归一：scenarioPreset(targetView=project) 不落到 plan-audit（targetView 归一比对·不串台）", async () => {
+    loginAs("planner");
+    useSessionStore.getState().setScenarioPreset({
+      targetView: "project", slotPresets: { modelId: "4680-NCM" }, nonce: "nonce-2",
+    });
+    renderApp("/v/plan-audit");
+    await screen.findByTestId("plan-audit-view");
+    // project 的 preset 不应污染 plan-audit（无 audit-preset-context）
+    expect(screen.queryByTestId("audit-preset-context")).toBeNull();
   });
 });
