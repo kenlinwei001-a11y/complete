@@ -39,5 +39,6 @@ db-seed/*.sql
 /.recon-*.mjs
 /.probe-*.mjs
 /.fde-*.mjs
+/.theme-*.mjs
 # dev/agent 瞬态 FDE 验证脚本工作区（curl e2e helper；权威证据落 test/*.test.ts，非交付物）
 /scratchpad/
