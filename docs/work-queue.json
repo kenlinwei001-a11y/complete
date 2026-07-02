@@ -980,7 +980,7 @@
     {
       "id": "KILL-MOCK-RED",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "title": "反假推演总攻:无真数据→诚实空态·绝不伪造决策级红/裁决",
@@ -1053,7 +1053,7 @@
           }
         ]
       },
-      "blockReason": "阶段②前端消费门不均匀·C7实质未达:ProblemPanel(DashboardView:163硬编码var(--danger)·curl证affected_orders→dataMode:SYNTHETIC+8财务问题·/b(server.ts:1684)透传dataMode·前端不读→8张SYNTHETIC硬红决策卡·名列阶段②scope)/PlanDrill/OrderLedger/SopBalanceView(0守卫)未守dataMode。dev前提'后端未下发dataMode'经curl证伪。核心洛阳案C1/C4真治本已达·测试860+327绿。修:逐决策视图danger点补dataMode守卫(复用isLiveDecision范式)+genuine-sim扩齿覆盖。见docs/REVIEW-KILL-MOCK-RED-verify.md"
+      "blockReason": ""
     },
     {
       "id": "INTAKE-VISIBILITY",

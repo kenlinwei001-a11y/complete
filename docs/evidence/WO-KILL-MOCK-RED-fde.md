@@ -43,3 +43,15 @@
 - 断点：**G-DM-1 转 ✅**（MOCK/无真源值上线为决策级红·三阶段治本）。
 - 门禁：`genuine-sim:check` 升级 v2（语义·牙齿）·已在 `pnpm gates`。
 - 回写：§8 G-DM-1 ✅。
+
+---
+
+## 退回窄修（reviewer BLOCK 09f1d25 → 复修·C7 驾驶舱消费门）
+reviewer curl 硬证：affected_orders 返 dataMode:SYNTHETIC + 8 财务问题·/b 透传·ProblemPanel 不读 → 8 张合成硬红决策卡（C7 实质未达）。dev 前提"后端未下发 dataMode"经证伪。
+窄修（复用 isLiveDecision·仅显式非 LIVE 抑制·不误灰真裁决）：
+- `DashboardView`：ProblemPanel danger 边框 + "影响 N 单·X 亿" 据 `notLive` 降级中性灰 + "合成/估算·不作决策依据"；PlanDrillWidget offTarget「未达成」红、OrderLedgerWidget delay 红 → notLive 门控。
+- `SopBalanceView`：MrpTable 现货缺口 + PnlTable 量价本利差异（solver 输出带 dataMode）→ notLive 门控。
+- `AffectedOrdersOutputVM` 补 dataMode 字段。
+- `genuine-sim:check v2` 扩齿⑨：静态断言 DashboardView 3 决策组件有 notLive 守卫（`borderLeft:"3px solid var(--danger)"` 硬编码即红）。**牙齿自证**：破 ProblemPanel 守卫 → 门红（"ProblemPanel danger 边框未据 notLive 降级"）→ 复原绿。
+验收：typecheck 0·dash+decision 测 21/21·**pnpm gates exit0(31门·含 v2 扩齿)**·frontend 327/327。
+诚实边界：C5/C7 render-proof 曾试 jsdom 全应用 renderApp + MSW 覆盖 affected_orders·因全仪表盘 harness 超时不稳（非代码问题）→ 遂以**门扩齿(牙齿自证·reviewer 明示=C7 展示层门)** + 现有 dash-problem-drill/dash-new-widgets(21/21 渲染 ProblemPanel) 承接 C7；SopBalance 主表 gm/cash ✗ 来自 fetchSopVersion 域对象(无 solver dataMode)·非 mock-hash·未强灰(诚实标·根因在后端是否给版本 dataMode·另单)；ProvenanceDag/OrderChain 剩余 danger 为真算勾稽(margin/attain)·非合成决策红。
