@@ -1965,7 +1965,7 @@
       "blockReason": "",
       "id": "RISK-FIX",
       "priority": "P0",
-      "status": "BUILT",
+      "status": "DONE",
       "title": "/v/risk crossDay渲染失真+order-chain采纳CTA 400+object-types死按钮",
       "doc": "docs/REVIEW-scan-findings.md",
       "note": "旗舰预判看板收到真crossDay却全未越线+火柴图全平+无实测徽标;唯一决策落地按钮漏versionId必400;object-types看实例死按钮×35",
@@ -2212,6 +2212,37 @@
           {
             "for": "C1C2",
             "run": "起真前端·Playwright 逐页 getComputedStyle 标题/正文 color vs 背景算对比比·列出<4.5:1 的点·修后复测。根因:global.css button{color} 及卡标题缺显式 color:var(--txt)。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "INTAKE-MATERIALIZE-KEY",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/REVIEW-RISK-FIX-verify.md",
+      "title": "objectify 物化标识列未解析的对象类型 → 无key畸形对象毒化求解器",
+      "note": "审核方复验 RISK-FIX 时自陷发现：上传 CSV 若标识列(如baseId)未精确命中而落 reconcile-candidates，materializeFromReconcile 仍物化该对象类型 → 生成 props 缺 baseId/name 的畸形 Base(obj_base_0/1) → affected_orders/capacity_forecast 遍历基地命中空 baseId → 400 unknown base → order-chain/项目沙盘整页空。治本：物化前校验对象类型的 key/标识字段是否已解析(autoMapped 或已 resolve)，未解析则跳过物化该类型(仅入队候选)、或诚实报缺 key 不产畸形对象。",
+      "acceptance": {
+        "goal": "标识列未解析时不产无key畸形对象·base遍历型求解器不被毒化",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "上传标识列不精确命中的CSV→objectify→该类型不物化畸形对象(或物化对象含合法key)·affected_orders仍200"
+          },
+          {
+            "id": "C2",
+            "type": "unit",
+            "assert": "materializeFromReconcile 单测:标识字段落candidate未resolve→不产无key对象·牙齿:注入缺key列断言不毒化"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "四包全绿·不回归 INTAKE-VISIBILITY C6(resolve→物化真生效)"
           }
         ]
       }
