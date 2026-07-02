@@ -1,14 +1,20 @@
 :root {
-  --bg: #0A0D14;
-  --bg2: #0E121A;
-  --panel: #141924;
-  --panel2: #10141C;
-  --line: rgba(233, 238, 247, 0.06);
-  --line2: rgba(233, 238, 247, 0.12);
-  --txt: #EDF1F8;
-  --muted: #8C96A6;
-  --muted2: #59636F;
-  --accent: #4A78F6;
+  /* WO-THEME-CONTRAST-FIX（PRD-frontend-visual-redesign §1·全 WCAG AA 实测·遵 R-QUANT 色号锁定）：
+     换肤到参考图深蓝调——治「背景近纯黑无生命力 + --muted2 次要字 2.88:1 看不清」。 */
+  --bg: #0E1420;          /* 深蓝调页面底（非近黑#0A0D14）·主文本 16.86:1 */
+  --bg2: #141C2C;         /* 顶部/hero 渐变亮端 */
+  --panel: #1A2233;       /* 卡片面·主文本 14.55:1 */
+  --panel2: #212B3D;      /* 卡内嵌区（滑块槽/chip 底） */
+  --border: #2C3648;      /* 卡片发丝边（1px 可见） */
+  --border-strong: #3A4658; /* 分隔线/表头下线 */
+  --line: rgba(233, 238, 247, 0.10);
+  --line2: #2C3648;       /* 发丝边（solid·此前 rgba .12 几乎不可见） */
+  --txt: #F2F5FA;         /* 主文本 16.86/14.55:1 */
+  --muted: #AEB8C9;       /* 次要文本 9.21/7.95:1（旧#8C96A6） */
+  --muted2: #8A94A6;      /* 三级文本 6.03/5.20:1（旧#59636F=2.88 看不清元凶·本单核心修） */
+  --accent: #5B7CFA;      /* 皇家蓝 CTA/选中/链接 5.01:1 */
+  --accent-hover: #6E8BFF;
+  --accent-weak: #1E2A4A; /* 蓝底徽标/选中 tab 底 */
   /* 领域色（图谱/图例/标签复用） */
   --c-factory: #5e8fe8;
   --c-product: #36bfa5;

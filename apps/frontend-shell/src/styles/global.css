@@ -13,10 +13,11 @@ body,
 }
 
 body {
+  /* WO-THEME-CONTRAST-FIX（PRD §1）：参考图深蓝调纵向渐变（顶部 --bg2 略亮→底 --bg 更深）+ 蓝/紫辉光景深。 */
   background:
-    radial-gradient(1100px 700px at 78% -10%, rgba(76, 144, 240, 0.075), transparent 62%),
-    radial-gradient(900px 600px at 4% 108%, rgba(196, 112, 184, 0.045), transparent 55%),
-    var(--bg);
+    radial-gradient(1100px 700px at 78% -10%, rgba(91, 124, 250, 0.09), transparent 62%),
+    radial-gradient(900px 600px at 4% 108%, rgba(196, 112, 184, 0.05), transparent 55%),
+    linear-gradient(160deg, var(--bg2) 0%, var(--bg) 60%);
   color: var(--txt);
   font-family: var(--font-sans);
   font-size: 13px;
