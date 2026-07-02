@@ -1916,10 +1916,10 @@
     {
       "owner": "dev",
       "deps": [],
-      "blockReason": "",
+      "blockReason": "窄BLOCK:主扫齐达标(banner全present+metric-strip/物料保障率/verdict/评分/DAG徽标全muted+genuine-sim绿+gates绿+真FDE)·但2类decision级danger红在合成页未守(违WO自身扫齐/凡decision组件必守):①毛利率勾稽对缺口贡献(pp)负值cell DashboardView.tsx:234 gapContributionPp<0?var(--danger)无notLive守卫(dash+plan-generate+plan-audit聚合勾稽表);②order-chain问题归并卡.probCard(oc-problem-*×8)danger红无dataMode守卫。补这2类即真扫齐。排除误报:hard-chip=配置切换非裁决/DAG RED徽标已muted/rule-ref=链接。见REVIEW-DATAMODE-SWEEP-verify.md",
       "id": "DATAMODE-SWEEP",
       "priority": "P0",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "title": "全站dataMode消费扫齐(合成充真成片·KILL-MOCK-RED漏网)",
       "doc": "docs/REVIEW-scan-findings.md",
       "note": "扫描坐实:metric-strip物料保障率/根因DAG/规划体检65分/方案生成C18红/project-sim缺口/order-chain不建议接 合成显决策红·后端已发dataMode前端未消费",
