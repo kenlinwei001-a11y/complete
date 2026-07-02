@@ -18,6 +18,28 @@ export function isLiveDecision(dataMode?: SolverDataMode | string | null): boole
 }
 
 /**
+ * 显式非 LIVE（MOCK/SYNTHETIC/STALE/PARTIAL）→ true（抑制决策红）；
+ * 未标 dataMode（undefined/null）→ false（向后兼容：旧 fixture / 真 LIVE 未回传时不误灰）。
+ * 与 RiskBoardView 既有 `dm != null && dm !== "LIVE"` 判据同源，供全站分类型裁决门统一复用。
+ */
+export function notLiveDecision(dataMode?: SolverDataMode | string | null): boolean {
+  return dataMode != null && dataMode !== "LIVE";
+}
+
+/**
+ * 分类型裁决色门（站不住 / 不建议接 / ⛔硬约束违反 / ✗缺口 等**非阈值型**裁决色）：
+ * 显式非 LIVE ⇒ 中性灰（合成/估算不出决策红）；LIVE 或未标 ⇒ 保持传入的 liveColor。
+ * 与 decisionColor（阈值型数值）互补，同守 KILL-MOCK-RED 红线——决策级红只在真数据出。
+ */
+export function decisionVerdictColor(
+  liveColor: string,
+  dataMode?: SolverDataMode | string | null,
+  muted = "var(--muted)",
+): string {
+  return notLiveDecision(dataMode) ? muted : liveColor;
+}
+
+/**
  * 决策级色门：值越阈 → danger 红，仅当 `dataMode==="LIVE"`（真数据）。
  * 非 LIVE（MOCK/SYNTHETIC/STALE/PARTIAL/无真源）或 value 为 null → 返回中性灰 `var(--muted)`，**绝不返 danger 红**。
  * 替换裸 `v>=threshold?var(--danger):...` 与 heatColor 决策用法。

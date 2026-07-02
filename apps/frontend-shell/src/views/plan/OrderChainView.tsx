@@ -6,7 +6,8 @@ import { SEG_REGISTRY } from "@platform/contracts";
 import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
-import { decisionColor, isLiveDecision } from "@/components/DecisionValue";
+import { decisionColor, isLiveDecision, decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
+import { DecisionModeBanner } from "@/components/DecisionModeBanner";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
 import { RuleRef } from "@/components/RuleRef";
 import { useActionDraft } from "../sim/shared";
@@ -100,6 +101,8 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
   const { out, snapshotVersion } = data;
+  // WO-DATAMODE-SWEEP（KILL-MOCK-RED 漏网点）：affected_orders 显式非 LIVE（合成/估算）时，待解决问题卡红标 + 延误红降级为中性灰。
+  const ocNotLive = notLiveDecision(out.dataMode);
 
   // 经营数据看板：逐订单 econ 派生 → 按应用细分 / 风险基地聚合（前端纯派生，零写死值来自 econCfg）。
   const empty = (): EconAgg => ({ cap: 0, fg: 0, wip: 0, rm: 0, sales: 0, gp: 0 });
@@ -155,6 +158,9 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           </div>
         </div>
       </div>
+
+      {/* WO-DATAMODE-SWEEP：affected_orders 合成/估算披露横幅——非 LIVE 时问题卡红标/延误红降级为中性灰 + 顶部诚实标。 */}
+      <DecisionModeBanner dataMode={out.dataMode} testId="oc-datamode-banner" note="受影响订单/待解决问题裁决由合成订单基线推演，接入真实订单数据后转真实裁决" />
 
       {/* ORD：订单全链推演（订单中心，order_fullchain 三判 + 统一结论 + 11 节点 DAG）。问题归并作超集保留在下方。 */}
       <OrderFullchainPanel />
@@ -357,7 +363,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                       )}
                     </div>
                   </td>
-                  <td style={{ color: "var(--danger)", fontWeight: 700 }}>{zh.orderChain.delayDays(r.delay)}</td>
+                  <td style={{ color: decisionVerdictColor("var(--danger)", out.dataMode), fontWeight: 700 }}>{zh.orderChain.delayDays(r.delay)}</td>
                 </tr>
               );
             })}
@@ -376,7 +382,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           {out.problems.map((p) => (
             <button key={p.category} className={styles.probCard} data-testid={`oc-problem-${p.category}`} onClick={() => setOpenProblem(p)}>
               <div className={styles.probTitle}>
-                <span className="badge red" style={{ marginRight: 6 }}>
+                <span className={ocNotLive ? "badge" : "badge red"} style={{ marginRight: 6, ...(ocNotLive ? { color: "var(--muted)" } : {}) }}>
                   {categoryLabels[p.category] ?? p.category}
                 </span>
                 {p.title}
@@ -410,6 +416,7 @@ type OFC = {
   kpis: { qty: number; segment: string; marginPct: number; floorPct: number; deliveryP90: number; kitGap: number };
   judges: { cap: { verdict: string; p50: number; p90: number; demand: number; ruleRefs: string[] }; kit: { verdict: string; material: string; gapTon: number; eta: string; ruleRefs: string[] }; fin: { verdict: string; marginPct: number; floorPct: number; creditUsedRatio: number; priceUpPct: number; ruleRefs: string[] } };
   conds: string[]; dag: { nodes: { id: string; kind: string; label: string }[]; edges: { from: string; to: string }[] }; summary: string;
+  dataMode?: string | null;
 };
 const OFC_LAYER: Record<string, number> = { order: 0, network: 1, bom: 1, economics: 1, credit: 1, judge: 2, verdict: 3 };
 const OFC_LAYER_TITLES = ["订单", "建模链", "三关联判", "结论"];
@@ -426,9 +433,11 @@ function OrderFullchainPanel() {
     queryFn: async () => (await runSolver("order_fullchain", so ? { so } : {})).data as OFC,
   });
 
+  // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）时统一结论（不建议接/信用阻断）裁决色降级为中性灰。
+  const ofcVerdictColor = decisionVerdictColor(data?.vc ?? "var(--txt)", data?.dataMode, "var(--muted)");
   const nodes: DagNodeDef[] = (data?.dag.nodes ?? []).map((n) => ({
     id: n.id, layer: OFC_LAYER[n.kind] ?? 1, label: n.label,
-    color: n.kind === "verdict" ? data!.vc : n.kind === "judge" ? "#E8B54A" : n.kind === "order" ? "#7E8BEE" : "#5E8FE8",
+    color: n.kind === "verdict" ? ofcVerdictColor : n.kind === "judge" ? "#E8B54A" : n.kind === "order" ? "#7E8BEE" : "#5E8FE8",
   }));
   const edges: DagEdgeDef[] = (data?.dag.edges ?? []).map((e) => ({ from: e.from, to: e.to }));
 
@@ -445,6 +454,8 @@ function OrderFullchainPanel() {
         <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
       ) : (
         <>
+          {/* WO-DATAMODE-SWEEP：合成/估算披露横幅——非 LIVE 时统一结论裁决色降级为中性灰 + 诚实标。 */}
+          <DecisionModeBanner dataMode={data.dataMode} testId="ofc-datamode-banner" note="订单三关联判（交期/齐套/财务）由合成订单基线推演，接入真实订单/信用数据后转真实裁决" />
           {/* 6 KPI + 统一结论（轨N 跟进2·KPI 裸数字接 Provenance：逐卡悬浮出 来源/公式/输入/规则，接 order_fullchain 真值）。 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0" }}>
             {([
@@ -461,9 +472,9 @@ function OrderFullchainPanel() {
                 </Provenance>
               </div>
             ))}
-            <div className="panel" data-testid="ofc-verdict" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${data.vc}` }}>
+            <div className="panel" data-testid="ofc-verdict" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${ofcVerdictColor}` }}>
               <div style={{ fontSize: 10.5, color: "var(--muted)" }}>统一结论</div>
-              <b style={{ color: data.vc }}>{data.verdict}</b>
+              <b style={{ color: ofcVerdictColor }}>{data.verdict}</b>
             </div>
           </div>
           {data.conds.length > 0 && (

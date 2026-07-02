@@ -10,6 +10,8 @@ import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useActionDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { DataModeBadge } from "@/components/DataModeBadge";
+import { DecisionModeBanner } from "@/components/DecisionModeBanner";
+import { decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
 import { KsfGraph } from "@/components/KsfGraph";
@@ -180,6 +182,8 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
       {!gen.data && <div className="empty-state">{zh.common.loading}</div>}
       {gen.data && (
         <div data-testid="gen-result">
+          {/* WO-DATAMODE-SWEEP：合成/估算披露横幅——非 LIVE 时 ⛔硬约束违反/综合分/达标裁决降级为中性灰 + 顶部诚实标。 */}
+          <DecisionModeBanner dataMode={gen.data.dataMode} testId="gen-datamode-banner" note="方案综合分与硬约束（现金垫 C18/毛利/CAPEX）裁决由合成经营基线推演，接入真实财务数据后转真实裁决" />
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>
               推荐 = 无硬约束冲突方案中综合分最高（路径 <b className="mono">{gen.data.recommend || "—"}</b>）
@@ -199,6 +203,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
               onAdopt={() => adoptScheme(s)}
               goals={goals}
               propagation={propagation}
+              dataMode={gen.data!.dataMode}
             />
           ))}
         </div>
@@ -216,6 +221,7 @@ function SchemeCard({
   onAdopt,
   goals,
   propagation,
+  dataMode,
 }: {
   scheme: Scheme;
   recommended: boolean;
@@ -225,9 +231,13 @@ function SchemeCard({
   onAdopt: () => void;
   goals: GoalsState;
   propagation: PropagationVM | null;
+  dataMode?: string | null;
 }) {
   const color = SCHEME_COLORS[s.no] ?? "var(--accent)";
+  // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）时 ⛔硬约束违反/达标✗ 不出决策红（降级中性灰），LIVE/未标 → 原红。
+  const notLive = notLiveDecision(dataMode);
   const viol = s.hardViol.length > 0;
+  const violColor = decisionVerdictColor("var(--danger)", dataMode);
   const o = s.outcome;
   const meetTargetLabel: Record<(typeof MEET_KEYS)[number], string> = {
     meetRevenue: `≥${goals.revGrowthPct}%`,
@@ -263,11 +273,11 @@ function SchemeCard({
             <span>基于路径 {s.pathKey}</span>
           </span>
           {viol && (
-            <span className="badge red" data-testid={`hardviol-badge-${s.no}`}>
+            <span className={notLive ? "badge" : "badge red"} data-testid={`hardviol-badge-${s.no}`} style={notLive ? { color: "var(--muted)" } : undefined}>
               ⛔ {zh.sim.gen.hardViol}：{s.hardViol.join("、")}
             </span>
           )}
-          <span className={styles.genScore} style={{ color: viol ? "var(--danger)" : color }} data-testid={`scheme-score-${s.no}`}>
+          <span className={styles.genScore} style={{ color: viol ? violColor : color }} data-testid={`scheme-score-${s.no}`}>
             {viol ? "⛔" : s.scores.total}
           </span>
           <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{open ? "▼ 收起" : "▸ 展开"}</span>
@@ -304,7 +314,7 @@ function SchemeCard({
                       <span>{zh.sim.gen.meetLabels[k]}</span>
                       <span className="mono">{meetValue[k]}</span>
                       <i>{meetTargetLabel[k]}</i>
-                      <b style={{ color: ok ? "var(--ok)" : "var(--danger)" }}>{ok ? "✓" : "✗"}</b>
+                      <b style={{ color: ok ? "var(--ok)" : violColor }}>{ok ? "✓" : "✗"}</b>
                     </div>
                   );
                 })}
@@ -372,7 +382,7 @@ function SchemeCard({
                   return (
                     <div className={styles.problem} key={`p-${i}`} data-testid={`problem-${s.no}-${i}`}>
                       <b>必须解决「{fp.n}」</b>
-                      {fp.rule && <span className="badge red" style={{ marginLeft: 6 }}>{fp.rule}</span>}
+                      {fp.rule && <span className={notLive ? "badge" : "badge red"} style={{ marginLeft: 6, ...(notLive ? { color: "var(--muted)" } : {}) }}>{fp.rule}</span>}
                       <div style={{ marginTop: 3, fontSize: 10.5, color: "var(--muted)" }}>{zh.sim.gen.whyPrefix}{fp.why}</div>
                       {(fp.chain?.length ?? 0) > 0 && (
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 6 }} data-testid={`prob-chain-${s.no}-${i}`}>

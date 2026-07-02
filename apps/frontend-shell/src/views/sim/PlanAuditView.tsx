@@ -14,6 +14,8 @@ import { SnapshotBadge, useAdoptToDraft, MarginLedgerTable } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
 import { DataModeBadge } from "@/components/DataModeBadge";
+import { DecisionModeBanner } from "@/components/DecisionModeBanner";
+import { decisionVerdictColor } from "@/components/DecisionValue";
 import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
 import { KsfGraph } from "@/components/KsfGraph";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
@@ -205,11 +207,13 @@ function AuditResult({
   onApplyFix: (item: AuditItem) => void;
   onAdopt: (item: AuditItem) => void;
 }) {
-  const color = VERDICT_COLOR[out.verdict];
+  // WO-DATAMODE-SWEEP（KILL-MOCK-RED 漏网点）：合成/估算（dataMode 显式非 LIVE）时决策级裁决色降级为中性灰
+  // （不让"站不住/可定稿 65 分"看起来像真裁决），并在结论区顶部披露横幅；LIVE/未标 → 原裁决色。
+  const color = decisionVerdictColor(VERDICT_COLOR[out.verdict], out.dataMode);
   const section = (title: string, cls: string, items: AuditItem[], withActions: boolean) =>
     items.length > 0 && (
       <>
-        <div className={styles.secHead} style={{ color: cls === "hard" ? "var(--danger)" : cls === "med" ? "var(--amber)" : "var(--ok)" }}>
+        <div className={styles.secHead} style={{ color: decisionVerdictColor(cls === "hard" ? "var(--danger)" : cls === "med" ? "var(--amber)" : "var(--ok)", out.dataMode) }}>
           {title}（{items.length}）
         </div>
         {items.map((item) => (
@@ -228,6 +232,8 @@ function AuditResult({
 
   return (
     <div className="panel" data-testid="audit-result">
+      {/* WO-DATAMODE-SWEEP：合成/估算披露横幅（移植风险看板范式）——非 LIVE 时诚实标"不作真实决策依据"。 */}
+      <DecisionModeBanner dataMode={out.dataMode} testId="audit-datamode-banner" note="体检评分与硬矛盾/软风险裁决由合成计划基线推演，接入真实 S&OP 后转真实裁决" />
       <div className={styles.verdict} style={{ borderColor: color, background: "transparent" }} data-testid="audit-verdict">
         <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score, out.M.length)}</b>
         <SnapshotBadge snapshotVersion={snapshotVersion} tool="plan_audit" />

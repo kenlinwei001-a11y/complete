@@ -19,7 +19,8 @@ import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
-import { decisionColor, decisionHeat } from "@/components/DecisionValue";
+import { decisionColor, decisionHeat, decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
+import { DecisionModeBanner } from "@/components/DecisionModeBanner";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -122,6 +123,7 @@ interface OrderFullchain {
   so: string; verdict: string; vc?: string; summary?: string;
   judges?: { cap?: OrderJudge; kit?: OrderJudge; fin?: OrderJudge };
   conds?: string[];
+  dataMode?: string | null;
 }
 function OrderVerdictPanel({ orderNo }: { orderNo: string }) {
   const q = useQuery({
@@ -148,7 +150,9 @@ function OrderVerdictPanel({ orderNo }: { orderNo: string }) {
         <div className={styles.sub} data-testid="proj-order-verdict-loading">{q.isLoading ? "推演订单全链（order_fullchain）…" : q.isError ? "求解器不可达——诚实降级" : "加载…"}</div>
       ) : (
         <>
-          <div className={styles.okBar} data-testid="proj-order-verdict-bar" style={{ borderColor: d.vc ?? "var(--line2)", color: d.vc ?? "var(--txt)", marginBottom: 10 }}>
+          {/* WO-DATAMODE-SWEEP：合成/估算（非 LIVE）时「不建议接/信用阻断」裁决色降级为中性灰 + 披露横幅（后端裁决色 d.vc 不直用）。 */}
+          <DecisionModeBanner dataMode={d.dataMode} testId="proj-order-datamode-banner" note="订单交期/齐套/财务三关联判由合成订单基线推演，接入真实订单/信用数据后转真实裁决" />
+          <div className={styles.okBar} data-testid="proj-order-verdict-bar" style={{ borderColor: decisionVerdictColor(d.vc ?? "var(--line2)", d.dataMode, "var(--line2)"), color: decisionVerdictColor(d.vc ?? "var(--txt)", d.dataMode, "var(--muted)"), marginBottom: 10 }}>
             裁决：<b>{d.verdict}</b>{d.summary ? <span style={{ fontWeight: 400, color: "var(--muted2)" }}> · {d.summary}</span> : null}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
@@ -444,6 +448,9 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
           {!out && <div className="empty-state">{zh.common.loading}</div>}
           {out && (
+            <>
+            {/* WO-DATAMODE-SWEEP：合成/估算披露横幅——非 LIVE 时「✗ 缺口」产能裁决降级为中性灰 + 顶部诚实标。 */}
+            <DecisionModeBanner dataMode={out.dataMode} testId="proj-datamode-banner" note="产能达成/缺口裁决由合成产能基线推演，接入真实 IoT/MES 产能数据后转真实裁决" />
             <div className={styles.pmGrid}>
               {/* 六步 stepper（§7.13） */}
               <div className="panel" data-testid="pm-stepper">
@@ -488,6 +495,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                 <div className={styles.noteInfo}>点击任一节点 → 看该步的判定逻辑 / 推导公式 / 输入数据(含来源·新鲜度) / 关联规则。</div>
               </div>
             </div>
+            </>
           )}
         </div>
       </div>
@@ -615,7 +623,7 @@ function StepBody({
                 </td>
                 <td>{fmt(b.cumDemand)}</td>
                 <td>{fmt(b.cumP90)}</td>
-                <td style={{ color: b.ok ? "var(--ok)" : "var(--danger)", fontWeight: 700 }} data-testid={`batch-ok-${i}`}>
+                <td style={{ color: b.ok ? "var(--ok)" : decisionVerdictColor("var(--danger)", out.dataMode), fontWeight: 700 }} data-testid={`batch-ok-${i}`}>
                   {b.ok ? "✓ 按期" : `✗ 缺 ${fmt(b.cumDemand - b.cumP90)}`}
                 </td>
               </tr>
@@ -856,7 +864,9 @@ function StepBody({
   }
 
   // ⑥ 结论与对策 + what-if 三滑杆（拖动即重算）
-  const okColor = out.ok ? "var(--ok)" : "var(--danger)";
+  // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）时「✗ 缺口」裁决不出决策红（降级中性灰），LIVE/未标 → 原红。
+  const okColor = out.ok ? "var(--ok)" : decisionVerdictColor("var(--danger)", out.dataMode);
+  const gapColor = decisionVerdictColor("var(--danger)", out.dataMode);
   const effGap = wi && !wi.rejected && wi.gap != null ? wi.gap : out.gap;
   return (
     <div data-testid="pm-step6">
@@ -973,7 +983,7 @@ function StepBody({
             </div>
           )}
 
-          <div className={styles.okBar} style={{ borderColor: effGap <= 0 ? "var(--ok)" : "var(--danger)", color: effGap <= 0 ? "var(--ok)" : "var(--danger)" }} data-testid="whatif-gap">
+          <div className={styles.okBar} style={{ borderColor: effGap <= 0 ? "var(--ok)" : gapColor, color: effGap <= 0 ? "var(--ok)" : gapColor }} data-testid="whatif-gap">
             {effGap <= 0 ? zh.sim.proj.gapZero(fmt(-effGap)) : zh.sim.proj.gapLeft(fmt(effGap))}
           </div>
           {wi && !wi.rejected && (
@@ -1063,7 +1073,8 @@ function buildDag(
         id: "fc",
         label: `产能预测 ${out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`}`,
         sub: `P50 ${fmt(out.p50)} · P90 ${fmt(out.p90)}（×${out.healthFactor}）vs 需求 ${fmt(totalQty)}`,
-        color: out.ok ? "#62BE77" : "#DD7E9E",
+        // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）缺口结论节点不染决策红（降级中性灰）。
+        color: out.ok ? "#62BE77" : notLiveDecision(out.dataMode) ? "#9AA8B6" : "#DD7E9E",
         st: 6,
       },
     ],
