@@ -144,23 +144,30 @@ function ProblemPanel() {
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ["b", "affected-orders", { dash: true }],
-    queryFn: async () => (await invokeSolver("affected_orders", {})).data as { rows?: unknown[]; problems?: { category: string; title: string; orderCount: number; financeImpact: number }[] },
+    queryFn: async () => (await invokeSolver("affected_orders", {})).data as { rows?: unknown[]; dataMode?: import("@platform/contracts").SolverDataMode | string | null; problems?: { category: string; title: string; orderCount: number; financeImpact: number }[] },
     retry: false,
   });
   const problems = data?.problems ?? [];
   if (problems.length === 0) return null;
   const orderCount = data?.rows?.length ?? problems.reduce((s, p) => s + p.orderCount, 0);
+  // WO-KILL-MOCK-RED 阶段②（退回窄修·C7）：affected_orders 后端下发 dataMode（真 curl 证 SYNTHETIC）——
+  // 非 LIVE（合成/估算/无真源）时决策级"影响 N 单·X 亿"硬红降级为中性灰 + 诚实标·不作可行动决策卡（治本·非贴标签）。
+  // 仅显式非 LIVE 才抑制（后端未标 dataMode 的真值保持既有红·不误灰真裁决）。
+  const notLive = data?.dataMode != null && !isLiveDecision(data.dataMode);
   return (
-    <div className="panel" style={{ marginTop: 16 }} data-testid="dash-problems">
+    <div className="panel" style={{ marginTop: 16 }} data-testid="dash-problems" data-decision-mode={notLive ? "MUTED" : "LIVE"}>
       <div className="section-title">{zh.dash.problemsTitle(problems.length)}</div>
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.dash.problemsSub(orderCount, problems.length)}</div>
+      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>
+        {zh.dash.problemsSub(orderCount, problems.length)}
+        {notLive && <span style={{ marginLeft: 6, color: "var(--warn,#caa23a)" }} data-testid="dash-problems-nodata">· 合成/估算数据·不作决策依据（接入真实订单数据后转真红）</span>}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
         {problems.map((p) => (
           // 点击下钻订单全链聚合并自动展开该问题的逐单根因 DAG（PRD-cockpit §2.3 问题归并→台账逐单根因）。
           <button
             key={p.category}
             className={styles.card}
-            style={{ borderLeft: "3px solid var(--danger)", cursor: "pointer", textAlign: "left" }}
+            style={{ borderLeft: `3px solid ${notLive ? "var(--muted2)" : "var(--danger)"}`, cursor: "pointer", textAlign: "left", ...(notLive ? { opacity: 0.72 } : {}) }}
             data-testid={`dash-problem-${p.category}`}
             title={zh.dash.problemDrill}
             onClick={() => navigate(`/v/order-chain?problem=${encodeURIComponent(p.category)}`)}
@@ -193,6 +200,8 @@ function OrderLedgerWidget() {
   if (isLoading) return <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>;
   const rows = data?.rows ?? [];
   if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  // WO-KILL-MOCK-RED 阶段②（退回窄修·C7）：非 LIVE（合成/估算）时 delay 决策红降级为中性（仅显式非 LIVE 才抑制）。
+  const notLive = data?.dataMode != null && !isLiveDecision(data.dataMode);
   const segs = [...new Set(rows.map((r) => r.seg))];
   const filtered = seg ? rows.filter((r) => r.seg === seg) : rows;
   // 轨M 增量2a：综合毛利率 = 后端 marginLedger 逐细分贡献勾稽（真算·闭合·可溯），取代前端 Σgp/Σsales。
@@ -242,7 +251,7 @@ function OrderLedgerWidget() {
             <tr key={r.so} data-testid={`ledger-row-${r.so}`} style={{ cursor: "pointer" }} title={zh.dash.ledgerDrill} onClick={() => navigate("/v/order-chain")}>
               <td>{r.so}</td><td>{r.cust}</td><td>{r.seg}</td><td>{r.model}</td>
               <td className="mono">{r.qty}</td><td>{r.due}</td>
-              <td className="mono" style={{ color: r.delay > 0 ? "var(--danger)" : "var(--muted2)" }}>{r.delay > 0 ? `+${r.delay}d` : "—"}</td>
+              <td className="mono" style={{ color: r.delay > 0 && !notLive ? "var(--danger)" : "var(--muted2)" }}>{r.delay > 0 ? `+${r.delay}d${notLive ? "·估算" : ""}` : "—"}</td>
               <td style={{ fontSize: 11 }}>{[...new Set(r.risks.map((k) => k.factor))].join("/") || "—"}</td>
             </tr>
           ))}
@@ -259,10 +268,12 @@ function PlanDrillWidget() {
   const [level, setLevel] = useState<string>("op");
   const { data, isLoading } = useQuery({
     queryKey: ["a", "plan-rootcause", { level }],
-    queryFn: async () => (await invokeSolver("plan_rootcause", level === "op" ? {} : { level })).data as { kpis?: DrillKpi[]; dag?: DagData },
+    queryFn: async () => (await invokeSolver("plan_rootcause", level === "op" ? {} : { level })).data as { kpis?: DrillKpi[]; dag?: DagData; dataMode?: import("@platform/contracts").SolverDataMode | string | null },
     retry: false,
   });
   const kpis = data?.kpis ?? [];
+  // WO-KILL-MOCK-RED 阶段②（退回窄修·C7）：非 LIVE（合成/估算）时 offTarget「未达成」决策红降级为中性（仅显式非 LIVE 才抑制）。
+  const notLive = data?.dataMode != null && !isLiveDecision(data.dataMode);
   const [openKpi, setOpenKpi] = useState<string | null>(null);
   return (
     <div data-testid="dash-plan-drill">
@@ -288,12 +299,12 @@ function PlanDrillWidget() {
               key={k.kpiId}
               data-testid={`drill-kpi-${k.kpiId}`}
               className="panel"
-              style={{ padding: 8, minWidth: 130, textAlign: "left", cursor: "pointer", borderLeft: `3px solid ${k.offTarget ? "#DD7E9E" : k.status === "AMBER" ? "#E8B54A" : "#62BE77"}` }}
+              style={{ padding: 8, minWidth: 130, textAlign: "left", cursor: "pointer", borderLeft: `3px solid ${k.offTarget && !notLive ? "#DD7E9E" : k.offTarget && notLive ? "var(--muted2)" : k.status === "AMBER" && !notLive ? "#E8B54A" : "#62BE77"}` }}
               onClick={() => setOpenKpi(openKpi === k.kpiId ? null : k.kpiId)}
             >
               <div style={{ fontSize: 11, color: "var(--muted)" }}>{k.name}</div>
               <div style={{ fontSize: 16, fontWeight: 600 }}>{k.actual}<small style={{ fontSize: 10 }}>{k.unit}</small></div>
-              <div style={{ fontSize: 10, color: k.offTarget ? "#DD7E9E" : "var(--muted2)" }}>目标 {k.target}{k.unit}{k.offTarget ? " · 未达成" : ""}</div>
+              <div style={{ fontSize: 10, color: k.offTarget && !notLive ? "#DD7E9E" : "var(--muted2)" }}>目标 {k.target}{k.unit}{k.offTarget ? (notLive ? " · 未达成·估算不作裁决" : " · 未达成") : ""}</div>
             </button>
           ))}
         </div>

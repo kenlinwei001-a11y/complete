@@ -283,6 +283,8 @@ export interface AffectedOrdersOutputVM {
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
   rows: AffectedOrderRowVM[];
   problems: OrderProblemGroup[];
+  // WO-KILL-MOCK-RED 阶段②（退回窄修）：后端下发 dataMode（真 curl 证 SYNTHETIC）——非 LIVE 时决策级 delay 红降级为灰。
+  dataMode?: import("@platform/contracts").SolverDataMode | string | null;
   // 轨M 增量2a：综合毛利率逐细分贡献勾稽（Σ贡献=综合毛利率·闭合；Σ缺口贡献=缺口·负+正闭合）。
   marginLedger?: {
     gmRatePct: number; targetPct: number; gapPp: number; reconciled: boolean;

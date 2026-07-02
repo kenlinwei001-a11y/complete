@@ -129,6 +129,29 @@ if (!/DataModeBadge/.test(auditView) || !/dataMode/.test(auditView)) {
   fail("PlanAuditView 未用 DataModeBadge 消费 audit_timeline dataMode（审计曲线裸渲染回潮·A1）");
 }
 
+// ⑨ WO-KILL-MOCK-RED 退回窄修（C7 扩齿·覆盖驾驶舱决策面）：DashboardView 决策组件（ProblemPanel/PlanDrill/
+//    OrderLedger）渲染 danger 红前必有 dataMode 守卫——审核方 curl 硬证 affected_orders 返 dataMode:SYNTHETIC，
+//    ProblemPanel 曾无守卫 → 8 张合成硬红决策卡。破守卫→门红（保守哨兵漏此洞的教训）。
+const dash = read("apps/frontend-shell/src/views/DashboardView.tsx");
+// ProblemPanel：affected_orders dataMode → notLive 守卫，danger 边框据此降级。
+if (!/const notLive = data\?\.dataMode != null && !isLiveDecision\(data\.dataMode\)/.test(dash)) {
+  fail("DashboardView 决策组件缺 `notLive = data?.dataMode!=null && !isLiveDecision(...)` 守卫（ProblemPanel/PlanDrill/OrderLedger 合成硬红回潮·C7）");
+}
+// ProblemPanel danger 边框必被 notLive 门控（非无脑 var(--danger)）。
+if (/borderLeft: "3px solid var\(--danger\)"/.test(dash)) {
+  fail("DashboardView ProblemPanel 仍硬编码 `borderLeft:\"3px solid var(--danger)\"`（未据 dataMode 降级·SYNTHETIC 硬红决策卡回潮·C7）");
+}
+if (!/notLive \? "var\(--muted2\)" : "var\(--danger\)"/.test(dash)) {
+  fail("DashboardView ProblemPanel danger 边框未据 notLive 降级为中性灰（C7 治本）");
+}
+// PlanDrill offTarget 红 + OrderLedger delay 红须被 notLive 门控。
+if (!/k\.offTarget && !notLive \? "#DD7E9E"/.test(dash)) {
+  fail("DashboardView PlanDrillWidget offTarget「未达成」红未据 notLive 门控（C7）");
+}
+if (!/r\.delay > 0 && !notLive \? "var\(--danger\)"/.test(dash)) {
+  fail("DashboardView OrderLedgerWidget delay 红未据 notLive 门控（C7）");
+}
+
 // ⑧ WO-KILL-MOCK-RED v2 语义门（治本·牙齿自证）：从「存在性」升级为「行为」——导入 dist，构造**零真数据**
 //    SolverContext（一个基地对象但无 Equipment/Line/Process/DemandSegment/SopVersion·无真源），真调
 //    riskTimeline，断言无真源因子决策级字段为空/中性（crossDay===null·peak===null·hasData===false·planRows===[]）。

@@ -10,6 +10,7 @@ import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
 import { Provenance } from "@/components/Provenance";
 import { DataModeBadge } from "@/components/DataModeBadge";
+import { isLiveDecision } from "@/components/DecisionValue";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -779,9 +780,11 @@ function Step5({
 function MrpTable() {
   const { data } = useQuery({
     queryKey: ["b", "mrp_netting"],
-    queryFn: async () => (await runSolver("mrp_netting", {})).data as { materials: { material: string; netDemand: number; ltaCoverPct: number; gap: number; earliestComplete: string }[]; shortageCount: number },
+    queryFn: async () => (await runSolver("mrp_netting", {})).data as { materials: { material: string; netDemand: number; ltaCoverPct: number; gap: number; earliestComplete: string }[]; shortageCount: number; dataMode?: import("@platform/contracts").SolverDataMode | string | null },
   });
   const mats = data?.materials ?? [];
+  // WO-KILL-MOCK-RED 阶段②（退回窄修·C7）：非 LIVE（合成/估算）时现货缺口决策红降级为中性（仅显式非 LIVE 才抑制）。
+  const notLive = data?.dataMode != null && !isLiveDecision(data.dataMode);
   return (
     <div style={{ marginTop: 10 }} data-testid="sop-mrp">
       <div className="section-title">物料线 · MRP 净需求（净需求 = Σ需求×BOM − 库存 − 在途，C06）</div>
@@ -793,7 +796,7 @@ function MrpTable() {
               <td className="zh"><b>{m.material}</b></td>
               <td className="mono">{fmt(m.netDemand)}</td>
               <td className="mono">{m.ltaCoverPct}%</td>
-              <td className="mono" style={{ color: m.gap > 0 ? "var(--danger)" : "var(--ok)" }}>{m.gap > 0 ? m.gap : "—"}</td>
+              <td className="mono" style={{ color: m.gap > 0 && !notLive ? "var(--danger)" : m.gap > 0 ? "var(--muted2)" : "var(--ok)" }}>{m.gap > 0 ? `${m.gap}${notLive ? "·估算" : ""}` : "—"}</td>
               <td className="mono">{m.gap > 0 ? m.earliestComplete : "—"}</td>
             </tr>
           ))}
@@ -808,9 +811,11 @@ function MrpTable() {
 function PnlTable() {
   const { data } = useQuery({
     queryKey: ["b", "finance_pnl"],
-    queryFn: async () => (await runSolver("finance_pnl", {})).data as { pnl: { subject: string; budget: number; rolling: number; diff: number }[]; gmRow: { budgetPct: number; rollPct: number; diffPp: number }; attribution: string },
+    queryFn: async () => (await runSolver("finance_pnl", {})).data as { pnl: { subject: string; budget: number; rolling: number; diff: number }[]; gmRow: { budgetPct: number; rollPct: number; diffPp: number }; attribution: string; dataMode?: import("@platform/contracts").SolverDataMode | string | null },
   });
   if (!data) return null;
+  // WO-KILL-MOCK-RED 阶段②（退回窄修·C7）：非 LIVE（合成/估算）时量价本利差异决策红降级为中性（仅显式非 LIVE 才抑制）。
+  const notLive = data.dataMode != null && !isLiveDecision(data.dataMode);
   return (
     <div style={{ marginTop: 10 }} data-testid="sop-pnl">
       <div className="section-title">量·价·本·利 科目表（预算 vs 滚动 vs 差异）</div>
@@ -822,14 +827,14 @@ function PnlTable() {
               <td className="zh"><b>{p.subject}</b></td>
               <td className="mono">{fmt(p.budget)}</td>
               <td className="mono">{fmt(p.rolling)}</td>
-              <td className="mono" style={{ color: p.diff < 0 ? "var(--danger)" : "var(--ok)" }}>{p.diff > 0 ? "+" : ""}{fmt(p.diff)}</td>
+              <td className="mono" style={{ color: p.diff < 0 && !notLive ? "var(--danger)" : p.diff < 0 ? "var(--muted2)" : "var(--ok)" }}>{p.diff > 0 ? "+" : ""}{fmt(p.diff)}</td>
             </tr>
           ))}
           <tr data-testid="sop-pnl-gm">
             <td className="zh"><b>毛利率</b></td>
             <td className="mono">{data.gmRow.budgetPct}%</td>
             <td className="mono">{data.gmRow.rollPct}%</td>
-            <td className="mono" style={{ color: data.gmRow.diffPp < 0 ? "var(--danger)" : "var(--ok)" }}>{data.gmRow.diffPp > 0 ? "+" : ""}{data.gmRow.diffPp}pp</td>
+            <td className="mono" style={{ color: data.gmRow.diffPp < 0 && !notLive ? "var(--danger)" : data.gmRow.diffPp < 0 ? "var(--muted2)" : "var(--ok)" }}>{data.gmRow.diffPp > 0 ? "+" : ""}{data.gmRow.diffPp}pp</td>
           </tr>
         </tbody>
       </table>
