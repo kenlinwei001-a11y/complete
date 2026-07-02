@@ -2182,36 +2182,30 @@
       "deps": [],
       "blockReason": "",
       "doc": "docs/REVIEW-scan-findings.md",
-      "title": "暗色主题文本对比度回归(场景启动器卡片标题等 button 默认色变 --muted 致低对比·着陆页首屏)",
-      "note": "用户3次抓:暗色主题次要文字看不清·与背景反差小。审核方WCAG量化根因:--muted2 #59636F 在 --bg(#0A0D14)=3.18:1 / --panel(#141924)=2.88:1，均<AA正文线4.5→就是看不清的元凶。根因是次要文字色太灰(非背景太深:--txt主文本17.16:1很够)→勿动--bg，提亮--muted2或把次要文字改用--muted。候选达标值 #848D9E(bg=5.82/panel=5.26)。重灾:场景启动器引导文案(用户红框)、各页副标题/说明/徽标次要字。",
+      "title": "暗色主题整体换肤到参考图(背景+字体+框体协同·非只补对比度)",
+      "note": "用户澄清:要的不是--muted2补丁,是改背景色本身+对应字体色+框体色,整体对齐用户2026-07-02参考图(房产App:深蓝调背景非纯黑·近白大标题·可读浅灰次要字·柔和发丝边卡片大圆角·皇家蓝CTA·胶囊chip)。8040049原意对但执行砸(背景太黑太死无蓝调·对比塌)。根因量化:--muted2 3.18/2.88<4.5。目标palette(审核方从参考图估·dev可微调):--bg深蓝调#0F1626(非近黑#0A0D14)·--panel#1B2333·--border发丝#2A3547·--txt#F0F3F8·次要#A8B2C4(≥7:1)·--accent皇家蓝#5B7CFA。",
       "acceptance": {
-        "goal": "暗色主题下所有次要文字对背景对比度达 WCAG AA(≥4.5:1)·用户抓的场景启动器等页面文字清晰可读·不靠改背景而靠修文字色",
+        "goal": "暗色主题背景/字体/框体三者协同重设计到参考图质感·深蓝调有生命力(非纯黑)·所有文字达WCAG AA·卡片发丝边+大圆角+皇家蓝CTA·真浏览器截图对齐参考图",
         "criteria": [
           {
             "id": "C1",
             "type": "gate",
-            "assert": "tokens.css --muted2 提亮至 bg+panel 双双实测≥4.5:1(当前3.18/2.88 fail)·候选#848D9E·或次要文字改用--muted；--bg/--txt不动"
+            "assert": "tokens.css --bg改深蓝调(非近黑)·--panel/--border/--txt/--muted/--muted2/--accent协同改·所有文字色在各自背景上实测≥4.5:1(次要目标≥7)"
           },
           {
             "id": "C2",
             "type": "browser",
-            "assert": "场景启动器页(用户红框原案)真浏览器 getComputedStyle:引导文案/副标题实测对比度≥4.5·截图前后对比"
+            "assert": "场景启动器(用户红框原案)+着陆页 真浏览器截图:背景呈参考图深蓝调·标题近白·次要字清晰可读·CTA皇家蓝·getComputedStyle实测对比度全达标"
           },
           {
             "id": "C3",
             "type": "browser",
-            "assert": "抽查3决策页(驾驶舱/风险/沙盘)次要文字(实测徽标说明/副标题)对比度≥4.5·不回归主文本/决策色"
+            "assert": "抽查驾驶舱/风险/沙盘/规划4页:卡片发丝边可见+大圆角·chip胶囊态·决策色(danger/ok)在新背景上仍醒目不失真·前后对比截图"
           },
           {
             "id": "C4",
             "type": "gate",
-            "assert": "四包build+test退0·gates绿·主题快照测不回归(若有)"
-          }
-        ],
-        "method": [
-          {
-            "for": "C1C2",
-            "run": "起真前端·Playwright 逐页 getComputedStyle 标题/正文 color vs 背景算对比比·列出<4.5:1 的点·修后复测。根因:global.css button{color} 及卡标题缺显式 color:var(--txt)。"
+            "assert": "四包build+test退0·gates绿·决策色token(--danger/--ok/--muted决策语义)不破坏KILL-MOCK-RED/DATAMODE语义"
           }
         ]
       }
@@ -2243,6 +2237,44 @@
             "id": "C3",
             "type": "gate",
             "assert": "四包全绿·不回归 INTAKE-VISIBILITY C6(resolve→物化真生效)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "SANDBOX-LAYOUT-REWORK",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "THEME-CONTRAST-FIX"
+      ],
+      "blockReason": "",
+      "doc": "docs/AUDIT-sandbox-ui-design-alignment.md",
+      "title": "推演沙盘一页布局重构(Option A·治拥挤·主体+干净卡片栈+渐进披露·对齐参考图信息层级)",
+      "note": "用户亲选Option A(保持R17一页但重构布局)·此需求被漏(只做了SANDBOX-RUN-HISTORY加面板反更挤)。现状:十几面板(全局态/AI指挥台/推进tick/评估清单/就绪认证/三元组/TrialTick/世界完整度/健康雷达/信任雷达/状态变量列表/历史记录)平铺堆一屏=拥挤非工业级。目标(参考图信息层级):一个主体焦点(全局态+tick时间轴+DAG占主视觉)+右侧干净卡片栈(评估/雷达/就绪 折叠渐进披露非全展开)+AI指挥台收为命令条+历史记录收为可折叠段·大量留白·清晰层级(主指标大·次要小但可读)。不删功能只重组视觉权重与密度。",
+      "acceptance": {
+        "goal": "推演沙盘一页布局从平铺拥挤重构为主体+渐进披露卡片栈·信息层级清晰·留白充足·工业级观感对齐参考图·不删任何现有功能",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "沙盘页真浏览器:主视觉区(全局态/tick/DAG)占主导·次要面板(雷达/就绪/三元组)折叠或次级排布非全平铺·截图对比现状证密度下降"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "所有现有功能仍可达(推进tick/存档/分支对比/就绪认证/AI指挥台/历史记录点开详情)·无功能回退·逐项点验"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "信息层级:主指标视觉权重>次要·留白充足非贴挤·折叠面板可展开·对齐参考图观感"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "四包build+test退0·gates绿·ui-smoke:sandbox不回退·SANDBOX-RUN-HISTORY面板并入新布局"
           }
         ]
       }
