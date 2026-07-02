@@ -2177,7 +2177,7 @@
     {
       "id": "THEME-CONTRAST-FIX",
       "priority": "P1",
-      "status": "WIP",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
