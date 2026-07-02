@@ -31,3 +31,11 @@ db-seed/*.sql
 
 # reviewer-side cron (durable) — must NOT leak to dev session
 .claude/scheduled_tasks.json
+
+# reviewer/agent transient browser-scan & FDE verify scripts
+# (must sit at repo root for playwright-core ESM resolution; created→run→deleted)
+/.scan-*.mjs
+/.verify-*.mjs
+/.recon-*.mjs
+/.probe-*.mjs
+/.fde-*.mjs
