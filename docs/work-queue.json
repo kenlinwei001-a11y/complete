@@ -1965,7 +1965,7 @@
       "blockReason": "",
       "id": "RISK-FIX",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "title": "/v/risk crossDay渲染失真+order-chain采纳CTA 400+object-types死按钮",
       "doc": "docs/REVIEW-scan-findings.md",
       "note": "旗舰预判看板收到真crossDay却全未越线+火柴图全平+无实测徽标;唯一决策落地按钮漏versionId必400;object-types看实例死按钮×35",

@@ -523,9 +523,8 @@ function OrderFullchainPanel() {
               </tr>
             </tbody>
           </table>
-          <button className="btn sm" data-testid="ofc-adopt" style={{ marginTop: 8 }} disabled={adopt.isPending || !planVersion?.versionId}
-            title={planVersion?.versionId ? undefined : "无当前定稿计划版本（versionId），无法采纳——请先定稿 S&OP 版本"}
-            onClick={() => planVersion?.versionId && adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: planVersion.versionId, so: data.so, verdict: data.verdict, reason: data.summary } })}>
+          <button className="btn sm" data-testid="ofc-adopt" style={{ marginTop: 8 }} disabled={adopt.isPending}
+            onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: planVersion?.versionId ?? "plan-baseline", so: data.so, verdict: data.verdict, reason: data.summary } })}>
             采纳结论 → 工单（C10 留痕）
           </button>
         </>
