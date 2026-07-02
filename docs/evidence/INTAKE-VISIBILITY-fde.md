@@ -63,7 +63,7 @@ curl 版脚本 `scratchpad/intake-e2e.mjs` 亦真跑通后端闭环（objectify#
 
 用户令「历史未复验都逐一检查」发现本单 C3/C4/C5 原仅 jsdom（上文诚实边界自曝）。审核方真浏览器（chromium + 真 vite:5200 直连真 datacore:4001）补齐：
 - 前置真 curl：上传 newfields.csv → objectify → **4 候选**（baseId/name→USE·newcol_carbon/newcol_shift→NEW）+ 物化 2 Base。
-- **C3**：`/admin/schema-reconcile?connId=` 真浏览器渲染 4 候选 + **USE/RENAME/NEW/MERGE/DISCARD 全 5 选项**（真读 select.options）+ 样本值(cz1/常州基地/12.5) + 确认 + 重跑物化按钮。截图 `.intake-c3.png`。
-- **C5**：`/admin/connections/<合成conn·35datasets>/schema` → `ds-table-select` present·**35 option**（datasets>1 真触发多表选择器）。截图 `.intake-c5.png`。
+- **C3**：`/admin/schema-reconcile?connId=` 真浏览器渲染 4 候选 + **USE/RENAME/NEW/MERGE/DISCARD 全 5 选项**（真读 select.options）+ 样本值(cz1/常州基地/12.5) + 确认 + 重跑物化按钮。截图 `docs/evidence/screens/intake-c3-schema-reconcile.png`。
+- **C5**：`/admin/connections/<合成conn·35datasets>/schema` → `ds-table-select` present·**35 option**（datasets>1 真触发多表选择器）。截图 `docs/evidence/screens/intake-c5-multitable-fieldprofile.png`。
 - **C4**：demo 非空（49 类型）→ 空态深链不触发（状态边界·真 0 类型需 fresh 租户·jsdom 测已覆盖渲染）。
 判决：C3/C5 真浏览器闭合·C4 边界文档化 → INTAKE-VISIBILITY 达 🟢 金标准。详见 `docs/REVIEW-HISTORICAL-AUDIT-unverified.md §2.2`。
