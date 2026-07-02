@@ -1912,6 +1912,267 @@
           }
         ]
       }
+    },
+    {
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "id": "DATAMODE-SWEEP",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "全站dataMode消费扫齐(合成充真成片·KILL-MOCK-RED漏网)",
+      "doc": "docs/REVIEW-scan-findings.md",
+      "note": "扫描坐实:metric-strip物料保障率/根因DAG/规划体检65分/方案生成C18红/project-sim缺口/order-chain不建议接 合成显决策红·后端已发dataMode前端未消费",
+      "acceptance": {
+        "goal": "凡渲染danger/越线/✗裁决的决策组件·数据路径dataMode!=LIVE(合成/估算)则降级中性+诚实披露·绝不合成充真;真数据(LIVE)照常出红。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "metric_rollup/plan_rootcause/affected_orders/capacity_forecast/plan_audit/plan_generate 返dataMode顶层"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "dash metric-strip物料保障率/根因DAG RED/plan-audit 65分/plan-generate C18红/project-sim缺口/order-chain不建议接 合成时不显决策红·有诚实披露徽标或降级"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "genuine-sim扩齿覆盖这些点·破守卫即门红"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "对照:有真数据LIVE基地×因子照常出红(非无脑灭红)"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "前后端一致:curl dataMode==前端渲染态(截图对照)"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "pnpm -r build&&test&&gates绿"
+          }
+        ]
+      }
+    },
+    {
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "id": "RISK-FIX",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "/v/risk crossDay渲染失真+order-chain采纳CTA 400+object-types死按钮",
+      "doc": "docs/REVIEW-scan-findings.md",
+      "note": "旗舰预判看板收到真crossDay却全未越线+火柴图全平+无实测徽标;唯一决策落地按钮漏versionId必400;object-types看实例死按钮×35",
+      "acceptance": {
+        "goal": "预判看板真实反映后端crossDay/series;采纳CTA成功落库;看实例可达object-360。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "risk_timeline返crossDay(3~19非null)+series上升+dataMode=LIVE"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "/v/risk crossDay有值的卡显真越线日(非全未越线)+火柴图真升(非全平)+徽标与dataMode一致"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "order-chain采纳结论→工单 传versionId→201成功(非VALIDATION_ERROR 400)"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "object-types看实例→点击跳object-360/实例列表(非no-op)"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "前后端一致截图对照"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "gates绿;先自查KILL-MOCK-RED抑制是否对LIVE过度生效·若是一并修守卫"
+          }
+        ]
+      }
+    },
+    {
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "id": "QOS-DIAG",
+      "priority": "P0",
+      "status": "TODO",
+      "title": "QOS查询全FAILED诊断修(人机问答单管线命门)",
+      "doc": "docs/REVIEW-scan-findings.md",
+      "note": "/b/v1/queries全FAILED·路径B QOS编排断·牵agent/workflow·下游场景/意图/产能问答全依赖",
+      "acceptance": {
+        "goal": "自然语言问句经QOS真出答案(非FAILED)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "POST /b/v1/queries 真问句→status非FAILED·出answer.final"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "QueryDock问句→出结构化答案(非报错)"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "诊断根因(classify/plan/solver哪断)写review + 修"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "前后端一致"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "gates绿"
+          }
+        ]
+      }
+    },
+    {
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "id": "DEMO-DATA",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "demo数据补全:livedIn合成+触发运行+meta sync(依赖型空页开箱)",
+      "doc": "docs/REVIEW-scan-findings.md",
+      "note": "依赖型空页共根·OEE趋势/运营回顾/history404/rule-docs/llm-providers/decisions/evals/quarantine空",
+      "acceptance": {
+        "goal": "依赖型空页开箱有数据(合成走正门·dataMode=SYNTHETIC诚实标)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "跑livedIn:true合成作业→GET /a/v1/history/bundle非404"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "运营回顾/OEE14日趋势/decisions/evals/quarantine 非空态"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "meta sync→/a/v1/meta/ontology total>0"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "前后端一致·合成数据显SYNTHETIC诚实标不冒充真实"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "gates绿"
+          }
+        ]
+      }
+    },
+    {
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "id": "PROVENANCE-SWEEP",
+      "priority": "P1",
+      "status": "TODO",
+      "title": "求解器补provenance+前端悬浮溯源(规划6页决策数字缺溯源)",
+      "doc": "docs/REVIEW-scan-findings.md",
+      "note": "4求解器provenance字段=0·前端决策数字无悬浮·ⓘ死交互",
+      "acceptance": {
+        "goal": "决策数字可下钻溯源(来源/新鲜度/公式/因子/规则)·R13。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "plan_generate/plan_audit/ksf_graph/affected_orders 输出含provenance字段"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "决策数字(现金垫/毛利/缺口/评分)悬浮出溯源六要素"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "ⓘ图标hover/click真出tooltip(非死交互)"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "前后端一致:悬浮值==后端provenance"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "gates绿"
+          }
+        ]
+      }
+    },
+    {
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "id": "UI-POLISH",
+      "priority": "P2",
+      "status": "TODO",
+      "title": "UI-polish批:布局小瑕疵(层级/叠字/空态/裸浮点)",
+      "doc": "docs/REVIEW-scan-findings.md",
+      "note": "dash 3.72屏无层级/sim-init挤右上/geo-map叠字/裸表头无空态/P90裸浮点",
+      "acceptance": {
+        "goal": "观感工业级·非功能阻断类瑕疵收口。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "dash分区层级(tab/折叠·首屏交互元素降)"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "sim-init向导居中(非挤右上90%空白)"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "geo-map气泡+标签不叠字碰撞"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "兜底统计/llm-providers空态提示(非裸表头)"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "order-chain P90取整"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "gates绿"
+          }
+        ]
+      }
     }
   ]
 }
