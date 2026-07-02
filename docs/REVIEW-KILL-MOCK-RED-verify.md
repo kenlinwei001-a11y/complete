@@ -63,3 +63,10 @@ C1（洛阳诚实空态）/C4（零 mockTightness 调用）/后端 dataMode 透�
 诚实边界（登记非隐瞒）：
 - SopBalance mrp/pnl 守卫已入码（diff 复核）但⑨齿只锁 DashboardView 三组件——SopBalance 守卫未齿锁，属可接受小债（后续扩齿可并入任一 sim 相关 WO）。
 - dev 披露 render-proof jsdom harness 超时不稳 → 以门扩齿承接；审核方以真浏览器渲染取证补强（强于 jsdom）。
+
+---
+## AUDIT-LOG-UI 复验（bf1a4ba）→ ✅ DONE
+- C1 curl：两次 PATCH usr_demo_planner → audit-log 1→3；顶条 iam.user.updated·actor=admin·before.displayName=复验C1→after=复验C1b（前后值忠实）。
+- C2/C3/C4 真浏览器 8/8：/admin/audit-log 渲染·平台治理组入口 3 处·顶条同 curl 值·展开 before→after diff 忠实·action 客户端筛(3→1)·actor 服务端筛(不存在→诚实空态)。截图 audit-c3.png。
+- C5：fetchAuditLog 存在·AuditLogEntry import 自 contracts 未重定义。
+- C6：pnpm -r build && test && gates 全 ALL_GREEN。本体 §8 G-VIS-1 首单回写。
