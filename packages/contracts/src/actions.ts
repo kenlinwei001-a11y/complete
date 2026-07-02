@@ -162,3 +162,16 @@ export const ScheduledJobSchema = z.object({
   lastError: z.string().optional(),
 });
 export type ScheduledJob = z.infer<typeof ScheduledJobSchema>;
+
+/** `GET /a/v1/scheduler/jobs/:id/runs`（WO-OPS-GOV-VISIBILITY §① 红绿表）。 */
+export const SchedulerRunSchema = z.object({
+  id: z.string(), // `${jobId}@${scheduledAt}`
+  tenantId: z.string(),
+  jobId: z.string(),
+  scheduledAt: z.string(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  status: z.enum(["RUNNING", "SUCCEEDED", "FAILED", "MISSED"]),
+  error: z.string().optional(),
+});
+export type SchedulerRun = z.infer<typeof SchedulerRunSchema>;

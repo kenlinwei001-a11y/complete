@@ -1,4 +1,4 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, Scenario, ScheduledJob, SchedulerRun, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -24,6 +24,8 @@ import {
   PLANS,
   SCENES,
   SCENARIOS,
+  SCHEDULED_JOBS,
+  SCHEDULER_RUNS,
   SKILLS,
   TENANT_ID,
   WORKFLOWS,
@@ -68,13 +70,16 @@ interface MockDb {
   // 管理平台增量
   rules: RuleEntry[];
   // LLM Provider 增量 §1
-  llmProviders: (LlmProvider & { usage7dTokens?: number })[];
+  llmProviders: LlmProvider[];
   llmBindings: PurposeBinding[];
   tenants: AdminTenant[];
   adminUsers: AdminUser[];
   adminViews: AdminViewConfig[];
   // 回放编排器 §6：运营自动化配置（租户级，缺省空）
   opsSchedule: { forecasts: unknown[]; tenantId: string; updatedAt: string; updatedBy: string } | null;
+  // S3 调度器（WO-OPS-GOV-VISIBILITY §①）
+  scheduledJobs: ScheduledJob[];
+  schedulerRuns: SchedulerRun[];
 }
 
 function freshDb(): MockDb {
@@ -117,6 +122,8 @@ function freshDb(): MockDb {
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),
     opsSchedule: null,
+    scheduledJobs: structuredClone(SCHEDULED_JOBS),
+    schedulerRuns: structuredClone(SCHEDULER_RUNS),
   };
 }
 

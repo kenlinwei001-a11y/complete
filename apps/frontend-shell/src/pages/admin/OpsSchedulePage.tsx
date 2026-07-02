@@ -1,7 +1,14 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { OpsSchedule } from "@platform/contracts";
-import { fetchOpsSchedule, saveOpsSchedule } from "@/api/endpoints";
+import {
+  fetchOpsSchedule,
+  fetchSchedulerJobRuns,
+  fetchSchedulerJobs,
+  pauseSchedulerJob,
+  resumeSchedulerJob,
+  saveOpsSchedule,
+} from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import { SimClockConsole } from "./SimClockConsole";
 
@@ -49,6 +56,8 @@ export default function OpsSchedulePage() {
   return (
     <div data-testid="ops-schedule-page">
       <h2 style={{ fontSize: 16, marginBottom: 14 }}>运营自动化（OpsSchedule）</h2>
+
+      <SchedulerJobsPanel />
 
       {/* A 全自动：定期产能预测 */}
       <section className="panel" style={{ marginBottom: 16 }}>
@@ -252,5 +261,150 @@ export default function OpsSchedulePage() {
         <SimClockConsole />
       </section>
     </div>
+  );
+}
+
+const RUN_STATUS_BADGE: Record<string, string> = {
+  SUCCEEDED: "green",
+  FAILED: "red",
+  MISSED: "amber",
+  RUNNING: "",
+};
+
+/**
+ * WO-OPS-GOV-VISIBILITY §①：每个 S3 调度作业加「状态 + 最近运行」面板 ——
+ * `GET /a/v1/scheduler/jobs` 显 nextRunAt/lastRunAt/lastError，展开
+ * `GET /a/v1/scheduler/jobs/:id/runs` 出红绿运行历史表，附 pause/resume。
+ */
+function SchedulerJobsPanel() {
+  const qc = useQueryClient();
+  const { data: jobs } = useQuery({ queryKey: ["a", "scheduler-jobs"], queryFn: () => fetchSchedulerJobs() });
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const runsQuery = useQuery({
+    queryKey: ["a", "scheduler-job-runs", expanded],
+    queryFn: () => fetchSchedulerJobRuns(expanded as string),
+    enabled: expanded != null,
+  });
+
+  const invalidate = () => void qc.invalidateQueries({ queryKey: ["a", "scheduler-jobs"] });
+  const pauseMut = useMutation({ mutationFn: pauseSchedulerJob, onSuccess: invalidate, onError: toastError });
+  const resumeMut = useMutation({ mutationFn: resumeSchedulerJob, onSuccess: invalidate, onError: toastError });
+
+  return (
+    <section className="panel" style={{ marginBottom: 16 }} data-testid="scheduler-jobs-panel">
+      <h3 style={{ fontSize: 13 }}>调度作业状态（S3，GET /a/v1/scheduler/jobs）</h3>
+      <table className="cmp">
+        <thead>
+          <tr>
+            <th>job</th>
+            <th>kind</th>
+            <th>状态</th>
+            <th>下次运行</th>
+            <th>最近运行</th>
+            <th>最近错误</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {(jobs ?? []).map((j) => (
+            <Fragment key={j.id}>
+              <tr data-testid={`scheduler-job-${j.id}`}>
+                <td className="mono" style={{ fontSize: 11 }}>{j.refId}</td>
+                <td className="mono" style={{ fontSize: 11 }}>{j.kind}</td>
+                <td>
+                  <span className={`badge ${j.status === "ACTIVE" ? "green" : ""}`} data-testid={`job-status-${j.id}`}>
+                    {j.status}
+                  </span>
+                </td>
+                <td className="mono" style={{ fontSize: 11 }} data-testid={`job-next-run-${j.id}`}>
+                  {j.nextRunAt}
+                </td>
+                <td className="mono" style={{ fontSize: 11 }} data-testid={`job-last-run-${j.id}`}>
+                  {j.lastRunAt ?? "—"}
+                </td>
+                <td style={{ fontSize: 11, color: j.lastError ? "var(--c-risk, #c33)" : "var(--muted)" }} data-testid={`job-last-error-${j.id}`}>
+                  {j.lastError ?? "—"}
+                </td>
+                <td style={{ display: "flex", gap: 4 }}>
+                  <button
+                    className="btn sm"
+                    data-testid={`job-expand-${j.id}`}
+                    onClick={() => setExpanded((cur) => (cur === j.id ? null : j.id))}
+                  >
+                    {expanded === j.id ? "收起" : "运行历史"}
+                  </button>
+                  {j.status === "ACTIVE" ? (
+                    <button
+                      className="btn sm"
+                      data-testid={`job-pause-${j.id}`}
+                      disabled={pauseMut.isPending}
+                      onClick={() => pauseMut.mutate(j.id)}
+                    >
+                      暂停
+                    </button>
+                  ) : (
+                    <button
+                      className="btn sm"
+                      data-testid={`job-resume-${j.id}`}
+                      disabled={resumeMut.isPending}
+                      onClick={() => resumeMut.mutate(j.id)}
+                    >
+                      恢复
+                    </button>
+                  )}
+                </td>
+              </tr>
+              {expanded === j.id && (
+                <tr>
+                  <td colSpan={7} style={{ padding: "6px 12px", background: "var(--panel2, rgba(127,127,127,.06))" }}>
+                    <table className="cmp" data-testid={`job-runs-${j.id}`}>
+                      <thead>
+                        <tr>
+                          <th>scheduledAt</th>
+                          <th>状态</th>
+                          <th>开始</th>
+                          <th>结束</th>
+                          <th>error</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(runsQuery.data ?? []).map((r) => (
+                          <tr key={r.id} data-testid={`run-row-${r.id}`}>
+                            <td className="mono" style={{ fontSize: 11 }}>{r.scheduledAt}</td>
+                            <td>
+                              <span className={`badge ${RUN_STATUS_BADGE[r.status] ?? ""}`} data-testid={`run-status-${r.id}`}>
+                                {r.status}
+                              </span>
+                            </td>
+                            <td className="mono" style={{ fontSize: 11 }}>{r.startedAt ?? "—"}</td>
+                            <td className="mono" style={{ fontSize: 11 }}>{r.finishedAt ?? "—"}</td>
+                            <td style={{ fontSize: 11, color: r.error ? "var(--c-risk, #c33)" : "var(--muted)" }}>{r.error ?? "—"}</td>
+                          </tr>
+                        ))}
+                        {runsQuery.isSuccess && (runsQuery.data ?? []).length === 0 && (
+                          <tr>
+                            <td colSpan={5} style={{ fontSize: 11, color: "var(--muted)" }}>
+                              尚无运行记录
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+          {jobs && jobs.length === 0 && (
+            <tr>
+              <td colSpan={7} style={{ fontSize: 11, color: "var(--muted)" }}>
+                暂无调度作业
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </section>
   );
 }

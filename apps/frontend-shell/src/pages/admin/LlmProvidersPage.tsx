@@ -40,9 +40,16 @@ const PURPOSE_LABEL: Record<LlmPurpose, string> = {
 
 /**
  * /admin/llm-providers（LLM Provider 增量 §1.4，tenant_admin）：
- * Tab1 Provider 列表（kind 徽章/状态/模型数/token 用量）+ 编辑器（write-only 密钥、
+ * Tab1 Provider 列表（kind 徽章/状态/模型数）+ 编辑器（write-only 密钥、
  * 模型清单 + 能力勾选、连接测试、降级目标）；Tab2 用途绑定矩阵（6 用途 ×
  * provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
+ *
+ * WO-OPS-GOV-VISIBILITY §②：规格要求「本月配额」横幅（GET /llm-budgets used/soft/
+ * hard/降级徽标）—— 摸底 apps/datacore/src、apps/agentcore/src 后确认后端不存在
+ * /a/v1/llm-budgets 端点，也无任何 per-tenant token 预算/用量的可查询来源（仅有
+ * Prometheus 计数器 dc_llm_calls_total，非租户可读 REST）。诚实跳过该子项，不造假
+ * 端点/假数据；「近 7 日 token 用量」死列（usage7dTokens，真后端从不返回）已按同一
+ * 子项要求移除。
  */
 export default function LlmProvidersPage() {
   const queryClient = useQueryClient();
@@ -79,7 +86,6 @@ export default function LlmProvidersPage() {
                 <th>kind</th>
                 <th>状态</th>
                 <th>模型数</th>
-                <th>近 7 日 token 用量</th>
                 <th>密钥</th>
                 <th>降级目标</th>
                 <th />
@@ -98,7 +104,6 @@ export default function LlmProvidersPage() {
                     <span className={`badge ${p.status === "ACTIVE" ? "green" : "red"}`}>{p.status}</span>
                   </td>
                   <td>{p.models.length}</td>
-                  <td className="mono">{p.usage7dTokens != null ? p.usage7dTokens.toLocaleString() : "—"}</td>
                   <td className="mono" data-testid={`provider-key-${p.id}`}>
                     {p.hasApiKey ? "••• 已配置" : "未配置"}
                   </td>

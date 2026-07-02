@@ -2356,6 +2356,31 @@ export const handlers = [
     return HttpResponse.json({ schedule: db.opsSchedule });
   }),
 
+  // ---- S3 调度器（WO-OPS-GOV-VISIBILITY §①：状态 + 最近运行红绿表 + pause/resume） ----
+  http.get("*/a/v1/scheduler/jobs", ({ request }) => {
+    const kind = new URL(request.url).searchParams.get("kind");
+    const jobs = kind ? db.scheduledJobs.filter((j) => j.kind === kind) : db.scheduledJobs;
+    return HttpResponse.json(jobs);
+  }),
+  http.post("*/a/v1/scheduler/jobs/:id/pause", ({ params }) => {
+    const job = db.scheduledJobs.find((j) => j.id === params.id);
+    if (!job) return err(404, "NOT_FOUND", "scheduled job 不存在");
+    job.status = "PAUSED";
+    return HttpResponse.json(job);
+  }),
+  http.post("*/a/v1/scheduler/jobs/:id/resume", ({ params }) => {
+    const job = db.scheduledJobs.find((j) => j.id === params.id);
+    if (!job) return err(404, "NOT_FOUND", "scheduled job 不存在");
+    job.status = "ACTIVE";
+    return HttpResponse.json(job);
+  }),
+  http.get("*/a/v1/scheduler/jobs/:id/runs", ({ params }) => {
+    const runs = db.schedulerRuns
+      .filter((r) => r.jobId === params.id)
+      .sort((a, b) => (a.scheduledAt > b.scheduledAt ? -1 : 1));
+    return HttpResponse.json(runs);
+  }),
+
   // ---- agents / workflows / skills / mcp ----
   http.get("*/b/v1/agents", () => HttpResponse.json(db.agents)),
   http.put("*/b/v1/agents/:id", async ({ params, request }) => {

@@ -1171,7 +1171,6 @@ export const LLM_PROVIDERS = [
     ],
     status: "ACTIVE" as const,
     hasApiKey: true,
-    usage7dTokens: 1284530,
   },
   {
     id: "llmp-vllm-qwen",
@@ -1185,11 +1184,91 @@ export const LLM_PROVIDERS = [
     status: "ACTIVE" as const,
     fallbackProviderId: "llmp-anthropic",
     hasApiKey: false,
-    usage7dTokens: 90210,
   },
 ];
 
 export const LLM_BINDINGS = [
   { purpose: "classifier" as const, providerId: "llmp-anthropic", modelId: "claude-haiku-4-5" },
   { purpose: "agent" as const, providerId: "llmp-anthropic", modelId: "claude-opus-4-8" },
+];
+
+// ---------------------------------------------------------------------------
+// S3 调度器（契约形态：ScheduledJob / SchedulerRun，WO-OPS-GOV-VISIBILITY §①）
+// ---------------------------------------------------------------------------
+
+export const SCHEDULED_JOBS = [
+  {
+    id: "sjob_demo_TS_AGGREGATE_ts-agg-daily",
+    tenantId: TENANT_ID,
+    kind: "TS_AGGREGATE" as const,
+    refId: "ts-agg-daily",
+    cron: "0 1 * * *",
+    timezone: "UTC",
+    nextRunAt: "2026-07-03T01:00:00Z",
+    lastRunAt: "2026-07-02T01:00:00Z",
+    status: "ACTIVE" as const,
+  },
+  {
+    id: "sjob_demo_RULE_SCAN_rule-scan-hourly",
+    tenantId: TENANT_ID,
+    kind: "RULE_SCAN" as const,
+    refId: "rule-scan-hourly",
+    cron: "0 * * * *",
+    timezone: "UTC",
+    nextRunAt: "2026-07-02T13:00:00Z",
+    lastRunAt: "2026-07-02T12:00:00Z",
+    status: "ACTIVE" as const,
+    lastError: "连接器 conn-crm 超时：401 unauthorized",
+  },
+  {
+    id: "sjob_demo_CONNECTOR_SYNC_conn-erp",
+    tenantId: TENANT_ID,
+    kind: "CONNECTOR_SYNC" as const,
+    refId: "conn-erp",
+    cron: "*/30 * * * *",
+    timezone: "UTC",
+    nextRunAt: "2026-07-02T12:30:00Z",
+    lastRunAt: "2026-07-02T12:00:00Z",
+    status: "PAUSED" as const,
+  },
+];
+
+export const SCHEDULER_RUNS = [
+  {
+    id: "sjob_demo_TS_AGGREGATE_ts-agg-daily@2026-07-02T01:00:00Z",
+    tenantId: TENANT_ID,
+    jobId: "sjob_demo_TS_AGGREGATE_ts-agg-daily",
+    scheduledAt: "2026-07-02T01:00:00Z",
+    startedAt: "2026-07-02T01:00:00Z",
+    finishedAt: "2026-07-02T01:00:42Z",
+    status: "SUCCEEDED" as const,
+  },
+  {
+    id: "sjob_demo_TS_AGGREGATE_ts-agg-daily@2026-07-01T01:00:00Z",
+    tenantId: TENANT_ID,
+    jobId: "sjob_demo_TS_AGGREGATE_ts-agg-daily",
+    scheduledAt: "2026-07-01T01:00:00Z",
+    startedAt: "2026-07-01T01:00:00Z",
+    finishedAt: "2026-07-01T01:00:39Z",
+    status: "SUCCEEDED" as const,
+  },
+  {
+    id: "sjob_demo_RULE_SCAN_rule-scan-hourly@2026-07-02T12:00:00Z",
+    tenantId: TENANT_ID,
+    jobId: "sjob_demo_RULE_SCAN_rule-scan-hourly",
+    scheduledAt: "2026-07-02T12:00:00Z",
+    startedAt: "2026-07-02T12:00:00Z",
+    finishedAt: "2026-07-02T12:00:05Z",
+    status: "FAILED" as const,
+    error: "连接器 conn-crm 超时：401 unauthorized",
+  },
+  {
+    id: "sjob_demo_RULE_SCAN_rule-scan-hourly@2026-07-02T11:00:00Z",
+    tenantId: TENANT_ID,
+    jobId: "sjob_demo_RULE_SCAN_rule-scan-hourly",
+    scheduledAt: "2026-07-02T11:00:00Z",
+    startedAt: "2026-07-02T11:00:00Z",
+    finishedAt: "2026-07-02T11:00:03Z",
+    status: "SUCCEEDED" as const,
+  },
 ];

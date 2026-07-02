@@ -53,6 +53,8 @@ import type {
   PropagationRule,
   AuditLogEntry,
   SolverBinding,
+  ScheduledJob,
+  SchedulerRun,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import { tokenStore } from "./tokenStore";
@@ -858,6 +860,16 @@ export const fetchOpsSchedule = () =>
 export const saveOpsSchedule = (schedule: OpsSchedule) =>
   api.a<{ schedule: OpsScheduleRecord }>("/a/v1/ops/schedule", { method: "PUT", body: schedule });
 
+// S3 调度器（WO-OPS-GOV-VISIBILITY §①：每作业状态 + 最近运行红绿表 + pause/resume）
+export const fetchSchedulerJobs = (kind?: string) =>
+  api.a<ScheduledJob[]>(`/a/v1/scheduler/jobs${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`);
+export const fetchSchedulerJobRuns = (jobId: string) =>
+  api.a<SchedulerRun[]>(`/a/v1/scheduler/jobs/${jobId}/runs`);
+export const pauseSchedulerJob = (jobId: string) =>
+  api.a<ScheduledJob>(`/a/v1/scheduler/jobs/${jobId}/pause`, { body: {} });
+export const resumeSchedulerJob = (jobId: string) =>
+  api.a<ScheduledJob>(`/a/v1/scheduler/jobs/${jobId}/resume`, { body: {} });
+
 export const fetchFallbackStats = (packageId: string) =>
   api.b<{ items: FallbackClusterVM[] }>(`/b/v1/ops/fallback-stats?packageId=${packageId}`);
 export const promoteFallback = (traceId: string) =>
@@ -919,10 +931,10 @@ export const fetchSolverMcpServer = () => api.b<SolverMcpServerResponse>("/b/v1/
 
 // ---------------- LLM Provider 配置体系（增量 §1，落位 DataCore） ----------------
 
-export interface LlmProviderVM extends LlmProvider {
-  /** mock/审计可用时的近 7 日 token 用量（真后端暂不提供 → 列显示 —） */
-  usage7dTokens?: number;
-}
+// LlmProviderVM = LlmProvider（WO-OPS-GOV-VISIBILITY §②：usage7dTokens 无真后端来源
+// 的死列已移除 —— 后端既无 llm-budgets/用量端点，也未在 provider 响应中回填该字段，
+// 保留只会显示恒为 "—" 的假列，违反"前端所见=后端真值"）。
+export type LlmProviderVM = LlmProvider;
 
 export const fetchLlmProviders = () => api.a<LlmProviderVM[]>("/a/v1/llm-providers");
 
