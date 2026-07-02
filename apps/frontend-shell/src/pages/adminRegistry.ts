@@ -24,6 +24,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "actions", label: zh.nav.actions, roles: ["admin", "approver"] },
   // WO-DECISION-RECORD（PRD §3.7 D8）：一等 Decision 记录（问责+组织学习·预测 vs 实现）
   { path: "decisions", label: "决策记录", roles: ["admin", "approver", "planner"] },
+  // WO-AUDIT-LOG-UI（G-VIS-1）：合规审计日志（append-only·admin/auditor·平台治理组）
+  { path: "audit-log", label: "审计日志", roles: ["admin", "auditor", "platform_admin"] },
   { path: "catalog", label: zh.nav.catalog, roles: ["admin", "catalog_admin"] },
   { path: "agents", label: zh.nav.agents, roles: ["admin", "catalog_admin"] },
   { path: "workflows", label: zh.nav.workflows, roles: ["admin", "catalog_admin"] },
@@ -98,7 +100,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "query-history", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "decisions", "ops-schedule", "notifications", "validation"] },
-  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration"] },
+  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "audit-log", "features", "llm-providers", "config-migration"] },
 ];
 
 /** 把（已按角色过滤的）管理页归入分组；空组剔除；未配置页落「其它」组（不丢）。确定性顺序。 */

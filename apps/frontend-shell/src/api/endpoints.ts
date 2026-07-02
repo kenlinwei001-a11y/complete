@@ -48,6 +48,7 @@ import type {
   SimCheckpoint,
   TickState,
   PropagationRule,
+  AuditLogEntry,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import { tokenStore } from "./tokenStore";
@@ -704,6 +705,18 @@ export const fetchDecisions = (status?: string) =>
 export const fetchDecision = (id: string) => api.a<Decision>(`/a/v1/decisions/${id}`);
 export const createDecision = (body: CreateDecision) =>
   api.a<{ decisionId: string; status: string; decision: Decision }>(`/a/v1/decisions`, { body });
+// ---------------- WO-AUDIT-LOG-UI（G-VIS-1 · 合规审计日志前端落地）----------------
+// 后端 append-only audit_log 只读消费（adminplatform.ts GET /a/v1/audit-log·admin/auditor/platform_admin 可读）。
+// 类型 AuditLogEntry 来自 @platform/contracts（未重定义·contracts-only-shared）。
+export const fetchAuditLog = (filters?: { action?: string; actor?: string; target?: string; limit?: number }) => {
+  const p = new URLSearchParams();
+  if (filters?.actor) p.set("actor", filters.actor);
+  if (filters?.target) p.set("target", filters.target);
+  if (filters?.limit) p.set("limit", String(filters.limit));
+  const qs = p.toString();
+  return api.a<{ items: AuditLogEntry[]; total: number }>(`/a/v1/audit-log${qs ? `?${qs}` : ""}`);
+};
+
 export const recordDecisionOutcome = (id: string, body: RecordOutcome) =>
   api.a<Decision>(`/a/v1/decisions/${id}/outcome`, { body });
 

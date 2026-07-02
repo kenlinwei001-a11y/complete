@@ -664,6 +664,19 @@ export const handlers = [
   http.post("*/a/v1/quarantine/:id/reprocess", () => HttpResponse.json({ ok: true })),
   http.post("*/a/v1/quarantine/discard", () => HttpResponse.json({ discarded: 1 })),
 
+  // WO-AUDIT-LOG-UI（G-VIS-1）：合规审计日志（append-only·真后端 GET /a/v1/audit-log 同形）。actor/target 过滤同后端。
+  http.get("*/a/v1/audit-log", ({ request }) => {
+    const url = new URL(request.url);
+    const actor = url.searchParams.get("actor");
+    const target = url.searchParams.get("target");
+    const all = [
+      { id: "aud_1", tenantId: "demo", actorId: "usr_demo_admin", action: "features.updated", targetKind: "feature_config", targetId: "sim.sandbox", before: { defaultOn: false }, after: { defaultOn: true }, at: "2026-07-02T09:12:03Z", requestId: "req_a1" },
+      { id: "aud_2", tenantId: "demo", actorId: "usr_demo_admin", action: "audit_sink.updated", targetKind: "audit_sink", targetId: "sink_demo", before: { status: "PAUSED" }, after: { status: "ACTIVE", credentialRef: "cred:configured" }, at: "2026-07-02T08:40:11Z", requestId: "req_a2" },
+      { id: "aud_3", tenantId: "demo", actorId: "usr_demo_planner", action: "rule.published", targetKind: "rule", targetId: "C15", before: { version: 2 }, after: { version: 3 }, at: "2026-07-01T17:05:00Z", requestId: "req_a3" },
+    ];
+    const items = all.filter((e) => (!actor || e.actorId === actor) && (!target || e.targetId === target || e.targetKind === target));
+    return HttpResponse.json({ items, total: items.length });
+  }),
   http.get("*/a/v1/notifications", () =>
     HttpResponse.json({
       unread: 1,

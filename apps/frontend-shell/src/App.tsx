@@ -37,6 +37,7 @@ const SyntheticPage = lazy(() => import("@/pages/admin/SyntheticPage"));
 const DataBuilderPage = lazy(() => import("@/pages/admin/DataBuilderPage"));
 const ActionsPage = lazy(() => import("@/pages/admin/ActionsPage"));
 const DecisionsPage = lazy(() => import("@/pages/admin/DecisionsPage")); // WO-DECISION-RECORD（§3.7 D8）
+const AuditLogPage = lazy(() => import("@/pages/admin/AuditLogPage")); // WO-AUDIT-LOG-UI（G-VIS-1）
 const CatalogPage = lazy(() => import("@/pages/admin/CatalogPage"));
 const AgentsPage = lazy(() => import("@/pages/admin/AgentsPage"));
 const WorkflowsPage = lazy(() => import("@/pages/admin/WorkflowsPage"));
@@ -142,6 +143,7 @@ export const routes: RouteObject[] = [
       admin("data-builder", <DataBuilderPage />),
       admin("actions", <ActionsPage />),
       admin("decisions", <DecisionsPage />),
+      admin("audit-log", <AuditLogPage />),
       admin("catalog", <CatalogPage />),
       admin("agents", <AgentsPage />),
       admin("workflows", <WorkflowsPage />),
