@@ -52,8 +52,16 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   //   洛阳·设备OEE（后端合成租户返 SYNTHETIC 或该因子 MOCK/hasData=false）⇒ 命中 MUTED。
   const notLive = (dm?: string | null): boolean => dm != null && dm !== "LIVE";
   const topLive = !notLive(data.dataMode);
-  const cardDecisionMode = (c: RiskCard): "LIVE" | "MUTED" =>
-    topLive && !notLive(c.dataMode) && c.hasData !== false ? "LIVE" : "MUTED";
+  // WO-RISK-FIX bug①（旗舰预判失真·修 KILL-MOCK-RED 顶层门对 LIVE 卡过度抑制的回归）：
+  //   卡**自报 dataMode==="LIVE"**（后端由真实测 OEE liveTightness 算出·hasData!==false）⇒ LIVE
+  //   —— 即便顶层 dataMode=SYNTHETIC（demo 对象合成），真实测卡的越线/峰值/series 仍照常出（真数据非顶层能抹）。
+  //   卡未标 dataMode（旧 fixture）⇒ 随顶层 topLive（向后兼容）；卡显式非 LIVE（MOCK/SYNTHETIC）或 hasData=false ⇒ MUTED。
+  const cardDecisionMode = (c: RiskCard): "LIVE" | "MUTED" => {
+    if (c.hasData === false) return "MUTED";
+    if (c.dataMode === "LIVE") return "LIVE"; // 自报实测 → 出红（不被顶层合成过度抑制·非伪造：真 OEE 派生）
+    if (c.dataMode == null) return topLive ? "LIVE" : "MUTED"; // 未标 → 随顶层（兼容旧 fixture/真 LIVE 顶层）
+    return "MUTED"; // 显式 MOCK/SYNTHETIC/其它非 LIVE → 中性
+  };
   // 首要风险仅在真数据卡间取（避免合成/mock 峰值抢「首要」红标）。
   const livePeaks = data.cards.filter((c) => cardDecisionMode(c) === "LIVE").map((c) => c.peak ?? 0);
   const maxPeak = livePeaks.length ? Math.max(0, ...livePeaks) : 0;

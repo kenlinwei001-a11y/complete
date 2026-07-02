@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup } from "@platform/contracts";
 import { SEG_REGISTRY } from "@platform/contracts";
-import { runSolver, queryObjectsPaged } from "@/api/endpoints";
+import { runSolver, queryObjectsPaged, fetchPlanVersionCurrent } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { decisionColor, isLiveDecision, decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
@@ -434,6 +434,9 @@ function OrderFullchainPanel() {
     queryKey: ["b", "order_fullchain", so],
     queryFn: async () => (await runSolver("order_fullchain", so ? { so } : {})).data as OFC,
   });
+  // WO-RISK-FIX bug②：采纳结论→工单（plan_change）此前漏必填 versionId → VALIDATION_ERROR 必 400·不落库。
+  // 取当前定稿计划版本 versionId 携入 payload（同页 /a/v1/plan-versions/current 可取）。
+  const { data: planVersion } = useQuery({ queryKey: ["a", "plan-version-current"], queryFn: fetchPlanVersionCurrent });
 
   // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）时统一结论（不建议接/信用阻断）裁决色降级为中性灰。
   const ofcVerdictColor = decisionVerdictColor(data?.vc ?? "var(--txt)", data?.dataMode, "var(--muted)");
@@ -520,8 +523,9 @@ function OrderFullchainPanel() {
               </tr>
             </tbody>
           </table>
-          <button className="btn sm" data-testid="ofc-adopt" style={{ marginTop: 8 }} disabled={adopt.isPending}
-            onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { so: data.so, verdict: data.verdict, reason: data.summary } })}>
+          <button className="btn sm" data-testid="ofc-adopt" style={{ marginTop: 8 }} disabled={adopt.isPending || !planVersion?.versionId}
+            title={planVersion?.versionId ? undefined : "无当前定稿计划版本（versionId），无法采纳——请先定稿 S&OP 版本"}
+            onClick={() => planVersion?.versionId && adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: planVersion.versionId, so: data.so, verdict: data.verdict, reason: data.summary } })}>
             采纳结论 → 工单（C10 留痕）
           </button>
         </>
