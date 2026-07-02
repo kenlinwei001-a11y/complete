@@ -1440,11 +1440,11 @@
       "title": "推演I层:场景presetContext注入推演视图求解器入参(问句与视图对口)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P0",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
       "note": "IPO第2波·B簇·P/O层已真接·断在I层·关联G-3·G-VIS-1",
-      "blockReason": "",
+      "blockReason": "命门e2e断:真启动器点卡不注入视图(useQuickLaunch navigate bare /v/${targetView}无whatif参数+slotPresets只进QOS query·ProjectSimView只读URL searchParams→真点卡落/v/project型号空preset条null·G-3未治)。三重不对齐:卡modelId/demandDelta/targetView=project vs 通道model/demand/renderer=project-sim。C2plan-audit cashCushion未注入·C4统一通道仅1/4视图·C5 sop软阻断未做。credit:project-sim视图侧URL注入真实(手搓URL C1+C3 front=back逐值gap48.50==后端+control+牙齿4/4)但接错通道只1/4视图。修:useQuickLaunch slotPresets编码进落点URL或sessionStore.presetContext+对齐参数名/targetView+扩4视图+sop soft-block。详docs/REVIEW-SIM-PRESET-INJECT-block.md",
       "acceptance": {
         "goal": "用户从场景启动器点「4680-NCM 加 20% 六周能不能接」这类卡，落到推演视图(project-sim/plan-audit/plan-generate/sop-balance)后，【视图内就针对他问的型号/增量/现金垫出对口推演】——而不是像现在这样 presetContext 只进了 QOS 查询 Dock、视图自己用 models[0]×40万整单/基线现金垫另算一套，问句与视图脱节。P(求解器真接)/O(采纳→Action)两层经核查已真接后端，本单只补 I 层注入接缝。",
         "criteria": [
