@@ -1852,6 +1852,66 @@
           }
         ]
       }
+    },
+    {
+      "id": "SANDBOX-RUN-HISTORY",
+      "title": "推演沙盘历史推演记录(点击查看详情·后端sim_session有真值·前端无历史面板)",
+      "doc": "docs/WO-SANDBOX-RUN-HISTORY.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "用户亲点·审核方真跑5个锂电产销场景在后端留8条session·前端0历史面板·G-VIS-1·R13留痕·零新后端复用sessions/compare/world/cert",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "用户在推演沙盘做过若干次推演后，页面有「历史推演记录」列出每次会话(时间/推进步数/是否分支/场景标签/终态)，点任一条→详情(逐tick全局态轨迹+scope+就绪+终值)；前端所见=后端sim_session真值，不伪造不写死。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "推若干tick后 GET /a/v1/sim/sessions 返 length≥N 含{id,status,curTick,createdAt}；GET /a/v1/sim/compare?a=<id> 返非空tick序列(详情数据源已在)。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "沙盘页出现「历史推演记录」面板，记录数与C1 curl一致；每行显时间/status/推进步数/分支标记(真渲染非装饰)。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "点一条记录→详情展开显该session全局态逐tick轨迹+scope+终值，数值与compare后端真值一致(前端所见=后端真值)。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "页面新推进一次tick→历史面板对应会话curTick/终态实时更新或新会话出现(sim.tick_completed/session_created事件失效真生效·D-29)。"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "无匹配会话→诚实空态引导(推进一次后此处留痕)，不伪造记录。"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "endpoints.ts含fetchSimSessions/fetchSimSessionDetail类型import自@platform/contracts；pnpm -r build && test 退0；pnpm gates绿(ui-smoke:sandbox不回退)；复用SimComparePanel/HeatStrip不新建引擎。"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态datacore·POST /sim/sessions + 多次POST /sim/sessions/:id/tick → curl /a/v1/sim/sessions|jq length≥N + /sim/compare?a=<id> 非空。"
+          },
+          {
+            "for": "C2C3",
+            "run": "Playwright真起前后端登录demo/admin→/v/sim-sandbox→历史面板列N条→点一条→详情曲线/终值对齐compare。"
+          },
+          {
+            "for": "C6",
+            "run": "grep fetchSimSessions endpoints.ts + pnpm -r build && pnpm -r test && pnpm gates。"
+          }
+        ]
+      }
     }
   ]
 }
