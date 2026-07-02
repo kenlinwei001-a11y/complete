@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `3cde84cd8dcfe1b7`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `05eb0ea1470127bb`。
 
 ---
 
@@ -122,6 +122,10 @@ OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 what-if 进决策日常(WO-E2): 决策入口一键「开 what-if」→ useOpenWhatIf 编 URL query(source/subject/factor/label,确定性 R6)
   → SandboxView parseWhatIfPreset 注入 SimSession.scope.presetContext + 展示 what-if 上下文条 → 复用既有沙盘链(不新建引擎)
   决策完即弃(新会话)或采纳(R4 正门)；R3 隔离主世界不被污染。前端 whatif.ts + RiskBoardView「就此问题开 what-if 推演」按钮
+WO-SIM-PRESET-INJECT(推演 I 层入参对口·G-3/G-VIS-1·additive)：whatif 通道扩 model/demand/weeks(WhatIfPreset·向后兼容)，
+  项目推演视图 /v/project-sim 读之 → resolveSimPreset(型号命中当前 models 白名单才注入·R14·需求下限/时窗[1,52]裁剪·非法忽略 R6)
+  → 注入 capacity_forecast 求解器入参初值(此前 modelId/qty/weeks 硬编码丢 preset·I 层不对口) + sim-preset-context 上下文条(问句与视图对口·honest)。
+  FDE 逐值对上后端(qty=55 注入·非默认 40·p50/p90/gap==oracle·SYNTHETIC 裁决降级灰 KILL-MOCK-RED)：docs/evidence/SIM-PRESET-INJECT-fde.md
 closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(propagateTick/recompute 空跑1tick)
   --deriveCertification(纯投影,零新校验 RL3·增量2 已落)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」
 propagateTick(增量3 已落): rules.coefficient/coefficientRef→rule.params × 源态 ×(decay) 沿 viaLink → next 态 + 延迟队列(arriveTick>t) + trace；无 PUBLISHED 规则=恒等 tick(opt-in 可回退)

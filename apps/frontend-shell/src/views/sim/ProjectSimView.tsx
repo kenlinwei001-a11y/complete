@@ -1,4 +1,5 @@
 import { useMemo, useState, type ChangeEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   BottleneckMatrixOutputSchema,
@@ -21,6 +22,7 @@ import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { decisionColor, decisionHeat, decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
 import { DecisionModeBanner } from "@/components/DecisionModeBanner";
+import { parseWhatIfPreset, type WhatIfPreset } from "./whatif";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -174,7 +176,23 @@ function OrderVerdictPanel({ orderNo }: { orderNo: string }) {
   );
 }
 
+/**
+ * WO-SIM-PRESET-INJECT（推演 I 层入参对口·R6 纯函数·R14 守）：presetContext（型号/需求/时窗）→ 项目推演求解器入参初值。
+ * 型号须命中当前 models 白名单（不注入未知型号·不硬编码）；需求/时窗数值裁剪；缺省/非法→undefined（消费方默认·诚实不硬塞）。
+ */
+export function resolveSimPreset(preset: WhatIfPreset | null, models: string[]): { modelId?: string; qty?: number; weeks?: number } {
+  if (!preset) return {};
+  const cand = preset.model ?? preset.subject;
+  const modelId = cand && models.includes(cand) ? cand : undefined;
+  const qty = preset.demand != null && Number.isFinite(preset.demand) ? Math.max(0.1, preset.demand) : undefined;
+  const weeks = preset.weeks != null && Number.isFinite(preset.weeks) ? Math.min(52, Math.max(1, Math.round(preset.weeks))) : undefined;
+  return { ...(modelId ? { modelId } : {}), ...(qty != null ? { qty } : {}), ...(weeks != null ? { weeks } : {}) };
+}
+
 export default function ProjectSimView({ view }: ViewRendererProps) {
+  // WO-SIM-PRESET-INJECT：从 URL query 解 presetContext（场景卡/决策入口带入·复用 WO-E2 whatif 通道），注入求解器入参初值。
+  const [searchParams] = useSearchParams();
+  const preset = useMemo(() => parseWhatIfPreset(searchParams), [searchParams]);
   // R14：型号/地址/物流来自 WorkspaceConfig（按租户/行业），缺失则 DEFAULT_* 兜底
   const { data: workspace } = useWorkspace();
   // 8a：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明（去硬编码电池因子）
@@ -187,11 +205,13 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const models = simCfg?.models ?? (modelsFromObjects.length > 0 ? modelsFromObjects : DEFAULT_MODELS);
   const logistics = simCfg?.logistics ?? DEFAULT_LOGISTICS;
   const addresses = simCfg?.addresses ?? Object.keys(logistics);
+  // preset 注入初值（型号命中 models 白名单才生效·需求/时窗裁剪）——问句与视图对口，无 preset 走默认。
+  const injected = useMemo(() => resolveSimPreset(preset, models), [preset, models]);
 
   const [mode, setMode] = useState<"single" | "batch">("single");
-  const [modelId, setModelId] = useState(models[0] ?? "");
-  const [qty, setQty] = useState(40);
-  const [weeks, setWeeks] = useState(6);
+  const [modelId, setModelId] = useState(injected.modelId ?? models[0] ?? "");
+  const [qty, setQty] = useState(injected.qty ?? 40);
+  const [weeks, setWeeks] = useState(injected.weeks ?? 6);
   const [batches, setBatches] = useState<BatchRowInput[]>([
     { qty: 18, dueDate: "2026-07-13", address: "上海" },
     { qty: 22, dueDate: "2026-08-10", address: "海外" },
@@ -309,6 +329,19 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
         </div>
         {forecast.isFetching && <span style={{ fontSize: 11, color: "var(--muted2)" }}>重算中…</span>}
       </div>
+
+      {/* WO-SIM-PRESET-INJECT：presetContext 上下文条——问句与视图对口（哪个问句带入了哪些推演入参·honest 可见）。 */}
+      {preset && (Object.keys(injected).length > 0 || preset.label) && (
+        <div className="panel" data-testid="sim-preset-context" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginTop: 8, borderLeft: "3px solid #43B7D7" }}>
+          <span className="badge blue" data-testid="sim-preset-badge">场景带入</span>
+          {preset.label && <b data-testid="sim-preset-label">{preset.label}</b>}
+          <span className={styles.sub} data-testid="sim-preset-source">来源：{preset.source}</span>
+          {injected.modelId && <span className="badge" data-testid="sim-preset-model">型号 {injected.modelId}</span>}
+          {injected.qty != null && <span className="badge" data-testid="sim-preset-qty">需求 {injected.qty} 万套</span>}
+          {injected.weeks != null && <span className="badge" data-testid="sim-preset-weeks">{injected.weeks} 周</span>}
+          <span className={styles.sub} style={{ marginLeft: "auto" }}>已注入求解器入参·改任意值即重演</span>
+        </div>
+      )}
 
       <div className={styles.projGrid}>
         <div className="panel">

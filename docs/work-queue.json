@@ -1440,7 +1440,7 @@
       "title": "推演I层:场景presetContext注入推演视图求解器入参(问句与视图对口)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "IPO第2波·B簇·P/O层已真接·断在I层·关联G-3·G-VIS-1",

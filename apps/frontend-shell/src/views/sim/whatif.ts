@@ -19,6 +19,11 @@ export interface WhatIfPreset {
   factor?: string;
   /** 人读标题（如「常州 · 物料齐套」），沙盘上下文条直接展示。 */
   label?: string;
+  /** WO-SIM-PRESET-INJECT（推演 I 层入参对口·additive·向后兼容）：型号/需求(万套)/交付周数——
+   * 决策入口/场景卡带入 → 项目推演视图注入为求解器入参初值（问句与视图对口·R14 由消费方按白名单/裁剪守）。 */
+  model?: string;
+  demand?: number;
+  weeks?: number;
 }
 
 /** 决策上下文 → 沙盘 URL query（确定性编码；沙盘侧 parseWhatIfPreset 逆解）。 */
@@ -27,6 +32,9 @@ export function whatIfQuery(preset: WhatIfPreset): string {
   if (preset.subject) q.set("subject", preset.subject);
   if (preset.factor) q.set("factor", preset.factor);
   if (preset.label) q.set("label", preset.label);
+  if (preset.model) q.set("model", preset.model);
+  if (preset.demand != null && Number.isFinite(preset.demand)) q.set("demand", String(preset.demand));
+  if (preset.weeks != null && Number.isFinite(preset.weeks)) q.set("weeks", String(preset.weeks));
   return q.toString();
 }
 
@@ -34,11 +42,21 @@ export function whatIfQuery(preset: WhatIfPreset): string {
 export function parseWhatIfPreset(params: URLSearchParams): WhatIfPreset | null {
   if (params.get("whatif") !== "1") return null;
   const source = params.get("source") ?? "decision";
+  const num = (k: string): number | undefined => {
+    const v = params.get(k);
+    if (v == null || v === "") return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined; // R6 确定性·非法→忽略（不注入·消费方默认）
+  };
+  const demand = num("demand"), weeks = num("weeks");
   return {
     source,
     ...(params.get("subject") ? { subject: params.get("subject") as string } : {}),
     ...(params.get("factor") ? { factor: params.get("factor") as string } : {}),
     ...(params.get("label") ? { label: params.get("label") as string } : {}),
+    ...(params.get("model") ? { model: params.get("model") as string } : {}),
+    ...(demand != null ? { demand } : {}),
+    ...(weeks != null ? { weeks } : {}),
   };
 }
 
