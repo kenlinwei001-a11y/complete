@@ -19,3 +19,12 @@
 ## 验收其余
 - C1 curl：convergence 返 ≥2 轮·末<首 → 技术达（但值是种子·见上）。
 - C6 gate（四包）：未在本轮单独重跑（栈资源让位）；dev 声称绿，回归留 done 前复核。
+
+---
+## 复验二轮（退回窄修 76a6a8f）→ ✅ DONE
+dev 采纳我 block 的根因解（改种子为真引擎产物）。运行时真验：
+- **真引擎产物**：seed 播真校准配对(biases 0.20/0.12/0.05)→真 CalibrationService.sweep 算出 mapeAfter=ape/(1-ape)=**25→13.64→5.26**(§2.E 真值·非手绘 9.4→6.1)。curl convergence 坐实。
+- **不自曝**：保留末轮配对→真 sweep(POST /calibration/sweep·paired>0)重算得 5.26→5.26 静止，与末轮一致，**不再跳 6.53**。curl 坐实。
+- **真测试**：test/calib-convergence-seed.test.ts 2 绿(真 app.inject·收敛值+自曝检验)；frontend calib-convergence.test.tsx 3 绿。
+- **前后端一致**：面板显「MAPE 改善 19.74pp」==后端 25−5.26=19.74(截图 calib-refix.png)；折线图渲染真引擎值。
+- 诚实边界：pairs 是 demo 确定性合成观测(走正门·非 live 回采)·真实租户由真 CALIBRATION_SWEEP 累积——面板未过度声明真实观测·可接受(真引擎产物·非合成冒充真实)。
