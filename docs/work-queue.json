@@ -2183,29 +2183,29 @@
       "blockReason": "",
       "doc": "docs/REVIEW-scan-findings.md",
       "title": "暗色主题文本对比度回归(场景启动器卡片标题等 button 默认色变 --muted 致低对比·着陆页首屏)",
-      "note": "用户2次抓·主题重设计(8040049)未经审核方复验落地·global.css button color var(--txt)→var(--muted)→凡靠默认色的 button 文本(含 HomePage 场景卡标题 fontWeight600 无显式color)渲染 muted 灰 on dark panel(#141924) 低对比看不清。首屏着陆页·工业级门面。",
+      "note": "用户3次抓:暗色主题次要文字看不清·与背景反差小。审核方WCAG量化根因:--muted2 #59636F 在 --bg(#0A0D14)=3.18:1 / --panel(#141924)=2.88:1，均<AA正文线4.5→就是看不清的元凶。根因是次要文字色太灰(非背景太深:--txt主文本17.16:1很够)→勿动--bg，提亮--muted2或把次要文字改用--muted。候选达标值 #848D9E(bg=5.82/panel=5.26)。重灾:场景启动器引导文案(用户红框)、各页副标题/说明/徽标次要字。",
       "acceptance": {
-        "goal": "暗色主题下所有 primary/标题文本清晰可读(达 WCAG AA 或明显高对比)·只有真次要文本用 muted·主题回归点全扫全修·语义域色 theme-invariant 不破。",
+        "goal": "暗色主题下所有次要文字对背景对比度达 WCAG AA(≥4.5:1)·用户抓的场景启动器等页面文字清晰可读·不靠改背景而靠修文字色",
         "criteria": [
           {
             "id": "C1",
-            "type": "browser",
-            "assert": "场景启动器(HomePage 高频场景卡 + ScenarioLauncherPage)卡片标题 getComputedStyle color 非 muted 灰·与卡背景对比≥4.5:1(或明显可读)·真浏览器截图肉眼清晰。"
+            "type": "gate",
+            "assert": "tokens.css --muted2 提亮至 bg+panel 双双实测≥4.5:1(当前3.18/2.88 fail)·候选#848D9E·或次要文字改用--muted；--bg/--txt不动"
           },
           {
             "id": "C2",
             "type": "browser",
-            "assert": "全站对比度审计:凡 primary/标题/决策数字用 --txt(或高对比)·仅真次要说明文本用 --muted/--muted2;扫出主题重设计致低对比的所有点(button 默认色/卡标题/表头/徽标)逐一修·非只修场景卡一处。"
+            "assert": "场景启动器页(用户红框原案)真浏览器 getComputedStyle:引导文案/副标题实测对比度≥4.5·截图前后对比"
           },
           {
             "id": "C3",
-            "type": "gate",
-            "assert": "语义域色(danger/ok/amber)、租户覆盖 theme-invariant 不破;css-vars:check 绿;pnpm gates 绿。"
+            "type": "browser",
+            "assert": "抽查3决策页(驾驶舱/风险/沙盘)次要文字(实测徽标说明/副标题)对比度≥4.5·不回归主文本/决策色"
           },
           {
             "id": "C4",
-            "type": "browser",
-            "assert": "before/after 真浏览器截图对照(改前低对比→改后清晰)·多页(着陆页/驾驶舱/规划/推演)抽查。"
+            "type": "gate",
+            "assert": "四包build+test退0·gates绿·主题快照测不回归(若有)"
           }
         ],
         "method": [
