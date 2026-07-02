@@ -52,6 +52,7 @@ import type {
   TickState,
   PropagationRule,
   AuditLogEntry,
+  SolverBinding,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import { tokenStore } from "./tokenStore";
@@ -219,6 +220,16 @@ export interface SolverCatalogItem {
 }
 export const fetchSolverRegistry = (query?: string) =>
   api.a<{ solvers: SolverCatalogItem[] }>(`/a/v1/solvers/registry${query ? `?query=${encodeURIComponent(query)}` : ""}`);
+
+/** WO-SOLVER-BINDING-UI（G-17 命门前端）：SolverBinding role→租户真实类型/字段 绑定层的读/激活/建议端点。
+ *  后端 `apps/datacore/src/app.ts`：GET/POST bindings·POST bindings/:id/activate·POST bindings/suggest。
+ *  前端把"上传/合成自有类型→自动 DRAFT 草案→人工 activate 生效"闭环显性化（此前只能 curl·G-VIS-1）。 */
+export const fetchSolverBindings = (solverKey: string) =>
+  api.a<{ items: SolverBinding[] }>(`/a/v1/solvers/${encodeURIComponent(solverKey)}/bindings`);
+export const activateSolverBinding = (solverKey: string, id: string) =>
+  api.a<SolverBinding>(`/a/v1/solvers/${encodeURIComponent(solverKey)}/bindings/${encodeURIComponent(id)}/activate`, { body: {} });
+export const suggestSolverBindings = () =>
+  api.a<{ suggested: number; drafts: SolverBinding[] }>(`/a/v1/solvers/bindings/suggest`, { body: {} });
 
 /** 推演类视图统一走 B 侧（entitlement 先行：feature 关 → 404 FEATURE_NOT_FOUND，再 OBO 透传 DataCore）。
  *  signal：改参即重算的竞态控制（AbortController 最后发出者胜，增量 §0-3）。 */

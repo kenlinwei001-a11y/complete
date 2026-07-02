@@ -769,6 +769,19 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-frontend-visual-redesign.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/styles/tokens.css"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-frontend.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1663,6 +1676,9 @@
     ],
     "apps/datacore/src/databuilder/comprehend.ts": [
       "PRD-fde-fullstack-build-workflow.md"
+    ],
+    "apps/frontend-shell/src/styles/tokens.css": [
+      "PRD-frontend-visual-redesign.md"
     ],
     "apps/agentcore/src/growth/probe.ts": [
       "PRD-fullstack-story-build-g8.md",

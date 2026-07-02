@@ -1512,7 +1512,7 @@
       "title": "G-17命门前端:SolverBinding绑定可见+DRAFT草案激活UI(补DONE后端前端缺口)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "SOLVER-BINDING"
