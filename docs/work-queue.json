@@ -2181,9 +2181,9 @@
       "owner": "dev",
       "deps": [],
       "blockReason": "",
-      "doc": "docs/REVIEW-scan-findings.md",
+      "doc": "docs/PRD-frontend-visual-redesign.md",
       "title": "暗色主题整体换肤到参考图(背景+字体+框体协同·非只补对比度)",
-      "note": "用户澄清:要的不是--muted2补丁,是改背景色本身+对应字体色+框体色,整体对齐用户2026-07-02参考图(房产App:深蓝调背景非纯黑·近白大标题·可读浅灰次要字·柔和发丝边卡片大圆角·皇家蓝CTA·胶囊chip)。8040049原意对但执行砸(背景太黑太死无蓝调·对比塌)。根因量化:--muted2 3.18/2.88<4.5。目标palette(审核方从参考图估·dev可微调):--bg深蓝调#0F1626(非近黑#0A0D14)·--panel#1B2333·--border发丝#2A3547·--txt#F0F3F8·次要#A8B2C4(≥7:1)·--accent皇家蓝#5B7CFA。",
+      "note": "换肤到参考图·遵R-QUANT(色号锁定见PRD§1·15token全WCAG达标·--muted2 2.88→5.20)+含右侧2决策卡设计(§2摘要卡/§3计算器卡)。整页量化PRD见 docs/PRD-frontend-visual-redesign.md·验收getComputedStyle逐值(§6)。",
       "acceptance": {
         "goal": "暗色主题背景/字体/框体三者协同重设计到参考图质感·深蓝调有生命力(非纯黑)·所有文字达WCAG AA·卡片发丝边+大圆角+皇家蓝CTA·真浏览器截图对齐参考图",
         "criteria": [
@@ -2250,9 +2250,9 @@
         "THEME-CONTRAST-FIX"
       ],
       "blockReason": "",
-      "doc": "docs/AUDIT-sandbox-ui-design-alignment.md",
+      "doc": "docs/PRD-frontend-visual-redesign.md",
       "title": "推演沙盘一页布局重构(Option A·治拥挤·主体+干净卡片栈+渐进披露·对齐参考图信息层级)",
-      "note": "用户亲选Option A(保持R17一页但重构布局)·此需求被漏(只做了SANDBOX-RUN-HISTORY加面板反更挤)。现状:十几面板(全局态/AI指挥台/推进tick/评估清单/就绪认证/三元组/TrialTick/世界完整度/健康雷达/信任雷达/状态变量列表/历史记录)平铺堆一屏=拥挤非工业级。目标(参考图信息层级):一个主体焦点(全局态+tick时间轴+DAG占主视觉)+右侧干净卡片栈(评估/雷达/就绪 折叠渐进披露非全展开)+AI指挥台收为命令条+历史记录收为可折叠段·大量留白·清晰层级(主指标大·次要小但可读)。不删功能只重组视觉权重与密度。",
+      "note": "沙盘一页布局重构·遵R-PRD整页逐元素见 docs/PRD-frontend-visual-redesign.md §5(栅格7fr/5fr·右栏折叠卡片栈渐进披露·治12面板平铺拥挤·不删功能)。依赖THEME先落用新palette。",
       "acceptance": {
         "goal": "推演沙盘一页布局从平铺拥挤重构为主体+渐进披露卡片栈·信息层级清晰·留白充足·工业级观感对齐参考图·不删任何现有功能",
         "criteria": [
