@@ -508,4 +508,136 @@ describe("A3 modeling", () => {
     const after2 = await t.repos.sliceSpecs.list("demo");
     expect(after2.filter((s) => s.sliceKey.startsWith("coverage_")).length).toBe(sliceCount);
   });
+
+  // WO-INTAKE-MATERIALIZE-KEY（并行 worktree agent 交付·集成）：主键未精确映射→跳过物化防畸形对象。
+  it("INTAKE-MATERIALIZE-KEY: MAP_TO_EXISTING draft whose local properties omit the real PK " +
+    "(key not precisely mapped) is skipped at materialize — zero malformed objects, rows queued in quarantine", async () => {
+    const t = await makeApp();
+    const ordersDs = await uploadCsv(t, "orders.csv", ORDERS_CSV);
+    const modelsDs = await uploadCsv(t, "models.csv", MODELS_CSV);
+
+    // First draft publishes SalesOrder (PK "so") + BatteryModel (PK "modelId") — same as OM1/OM2.
+    t.llm.enqueue(SUGGESTION_V1);
+    const s1 = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/modeling/suggest",
+      headers: ADMIN,
+      payload: { rawDatasetIds: [ordersDs, modelsDs] },
+    });
+    const draft1 = (s1.json() as { draftId: string }).draftId;
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draft1}/publish`, headers: ADMIN });
+
+    // Second source (mock CRM sales orders): MAP_TO_EXISTING into SalesOrder, but the LLM suggestion's
+    // local properties never re-declare the "so" primary key (only maps qty/amount) — i.e. the identifier
+    // column "未精确命中" (not precisely resolved) for this dataset's mapping.
+    const crm = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/connections",
+      headers: ADMIN,
+      payload: { connectorTypeKey: "mock_crm", name: "crm", config: {} },
+    });
+    const crmId = (crm.json() as { id: string }).id;
+    await t.app.inject({ method: "POST", url: `/a/v1/connections/${crmId}/sync`, headers: ADMIN });
+    const crmDatasets = (
+      await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${crmId}`, headers: ADMIN })
+    ).json() as { id: string; name: string }[];
+    const salesOrders = crmDatasets.find((d) => d.name === "sales_orders")!;
+
+    t.llm.enqueue({
+      objectTypes: [
+        {
+          action: "MAP_TO_EXISTING",
+          existingTypeKey: "SalesOrder",
+          typeKey: "SalesOrder",
+          displayName: "销售订单",
+          domain: "product",
+          sourceDataset: "sales_orders",
+          properties: [
+            // No propKey==="so" entry here — the real PK is unresolved for this mapping.
+            { propKey: "qty", sourceField: "qty", dataType: "number", isPrimaryKey: false, refToTypeKey: null },
+            { propKey: "amount", sourceField: "amount", dataType: "number", isPrimaryKey: false, refToTypeKey: null },
+          ],
+          confidence: 0.93,
+        },
+      ],
+      linkTypes: [],
+    } satisfies ModelingSuggestion);
+    const s2 = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/modeling/suggest",
+      headers: ADMIN,
+      payload: { rawDatasetIds: [salesOrders.id] },
+    });
+    const draft2 = (s2.json() as { draftId: string }).draftId;
+    const publish2 = await t.app.inject({
+      method: "POST",
+      url: `/a/v1/modeling/drafts/${draft2}/publish`,
+      headers: ADMIN,
+    });
+    expect(publish2.statusCode).toBe(200);
+    expect((publish2.json() as { ok: boolean }).ok).toBe(true);
+
+    const beforeCount = (
+      await t.app.inject({
+        method: "POST",
+        url: "/a/v1/objects/query",
+        headers: ADMIN,
+        payload: { objectType: "SalesOrder", filter: {}, limit: 100 },
+      })
+    ).json() as { data: unknown[] };
+    const beforeLen = beforeCount.data.length;
+
+    const mat2 = await t.app.inject({
+      method: "POST",
+      url: `/a/v1/modeling/drafts/${draft2}/materialize`,
+      headers: ADMIN,
+    });
+    expect(mat2.statusCode).toBe(202);
+    const result2 = mat2.json() as {
+      created: number;
+      quarantined: number;
+      skipped: { typeKey: string; targetKey: string; dataset: string; reason: string }[];
+    };
+    // Root fix: unresolved key → skip materializing this type entirely, honestly reported, zero created.
+    expect(result2.created).toBe(0);
+    expect(result2.skipped).toHaveLength(1);
+    expect(result2.skipped[0]).toMatchObject({ typeKey: "SalesOrder", targetKey: "SalesOrder", dataset: "sales_orders" });
+    expect(result2.skipped[0]!.reason).toContain("so");
+    // Rows are honestly queued as reconcile candidates in the quarantine zone, not silently dropped.
+    expect(result2.quarantined).toBeGreaterThan(0);
+    const quarantineList = (
+      await t.app.inject({ method: "GET", url: "/a/v1/quarantine?status=PENDING", headers: ADMIN })
+    ).json() as { items: { dataset: string; reason: string }[]; total: number };
+    expect(quarantineList.items.some((q) => q.dataset === "sales_orders" && q.reason === "SCHEMA_MISMATCH")).toBe(true);
+
+    // No malformed SalesOrder objects were created (object count unchanged; none missing "so").
+    const afterCount = (
+      await t.app.inject({
+        method: "POST",
+        url: "/a/v1/objects/query",
+        headers: ADMIN,
+        payload: { objectType: "SalesOrder", filter: {}, limit: 100 },
+      })
+    ).json() as { data: { props: Record<string, unknown> }[] };
+    expect(afterCount.data.length).toBe(beforeLen);
+    expect(afterCount.data.every((o) => o.props["so"] != null && o.props["so"] !== "")).toBe(true);
+
+    // Red/green self-proof note: reverting the type-level key-resolution guard in
+    // ModelingService.materialize (apps/datacore/src/modeling.ts) — i.e. going back to computing
+    // `pk` only from the draft-local `t.properties` — makes this test fail: draft2's local
+    // properties have no isPrimaryKey entry, so the old per-row guard (`if (pk && ...)`) is a no-op,
+    // and materialize happily creates malformed SalesOrder objects (id falls back to row index,
+    // props missing "so") instead of skipping the type.
+
+    // ---- Control case: draft1 (PK properly resolved) still materializes normally. ----
+    const mat1 = await t.app.inject({
+      method: "POST",
+      url: `/a/v1/modeling/drafts/${draft1}/materialize`,
+      headers: ADMIN,
+    });
+    expect(mat1.statusCode).toBe(202);
+    const result1 = mat1.json() as { created: number; skipped: unknown[] };
+    expect(result1.created).toBe(6 + 3);
+    expect(result1.skipped).toHaveLength(0);
+  });
 });

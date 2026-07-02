@@ -150,6 +150,17 @@ export function computeFieldCoverage(
   return { datasets: rows, totalFields, modeledFields, coverage: totalFields ? modeledFields / totalFields : 1, fullyCovered: modeledFields === totalFields };
 }
 
+/**
+ * INTAKE-MATERIALIZE-KEY：主键未精确映射到数据源列而被跳过物化的对象类型（结构化诚实标记，
+ * 前端/运维可据此定位需人工补映射的类型；对应行已入隔离区候选队列，见 quarantine.ts）。
+ */
+export interface MaterializeSkipped {
+  typeKey: string;
+  targetKey: string;
+  dataset: string;
+  reason: string;
+}
+
 /** A3 semi-automatic modeling: suggest → draft → human PATCH → validate → publish → materialize. */
 export class ModelingService {
   constructor(
@@ -502,7 +513,10 @@ export class ModelingService {
   }
 
   /** Materialize: RawDataset rows → object instances, then run derivations. */
-  async materialize(ctx: AuthCtx, draftId: string): Promise<{ jobId: string; created: number; quarantined: number }> {
+  async materialize(
+    ctx: AuthCtx,
+    draftId: string,
+  ): Promise<{ jobId: string; created: number; quarantined: number; skipped: MaterializeSkipped[] }> {
     const draft = await this.getDraft(ctx, draftId);
     if (draft.status !== "PUBLISHED") throw invalidState("draft must be published before materialize");
     const jobId = newId("job");
@@ -510,19 +524,57 @@ export class ModelingService {
     const rowCounts: Record<string, number> = {};
     let created = 0;
     let quarantined = 0;
+    const skipped: MaterializeSkipped[] = [];
+    // INTAKE-MATERIALIZE-KEY（治本）：物化前校验对象类型的「真实主键」是否已精确映射到数据源列。
+    // 真实主键取自已发布本体类型（ontology.listTypes），不取草稿本地 t.properties——后者对
+    // MAP_TO_EXISTING（合并入既有类型）场景常常不重复声明 isPrimaryKey（PK 已在既有类型上定义），
+    // 若此时仍按"draft-local pk 未找到→不做行级校验"物化，会产出 props 缺主键的畸形对象
+    // （如缺 baseId 的 Base，id 退化为行号 obj_base_0/1），下游遍历命中空 key → 400 unknown ...。
+    const publishedTypes = await this.ontology.listTypes(ctx);
     for (const t of draft.suggestion.objectTypes) {
       const targetKey = t.action === "MAP_TO_EXISTING" && t.existingTypeKey ? t.existingTypeKey : t.typeKey;
       const ds = (
         await this.repos.rawDatasets.list(ctx.tenantId, (d) => d.name === t.sourceDataset)
       )[0];
       if (!ds) continue;
+
+      const publishedType = publishedTypes.find((x) => x.key === targetKey);
+      const realPk = publishedType?.properties.find((p) => p.isPrimaryKey)?.propKey;
+      const pkMapping = realPk ? t.properties.find((p) => p.propKey === realPk) : undefined;
+      const datasetFieldNames = new Set(ds.fields.map((f) => f.name));
+      const keyResolved = !!realPk && !!pkMapping?.sourceField && datasetFieldNames.has(pkMapping.sourceField);
+
+      if (!keyResolved) {
+        // 未解析：诚实报「缺 key，不产畸形对象」——跳过物化该类型，行入隔离区候选队列（可编辑映射后重投）。
+        const reason = !realPk
+          ? `目标类型 '${targetKey}' 未找到已发布主键字段`
+          : `主键 '${realPk}' 未精确命中数据源列（映射 sourceField='${pkMapping?.sourceField ?? "(未映射)"}' 不在 '${ds.name}' 字段中）`;
+        skipped.push({ typeKey: t.typeKey, targetKey, dataset: ds.name, reason });
+        if (this.quarantine) {
+          const rows = await this.repos.rawRows.list(ctx.tenantId, ds.id);
+          const mapping = t.properties.map((p) => ({ propKey: p.propKey, sourceField: p.sourceField }));
+          for (const row of rows) {
+            await this.quarantine.record(ctx.tenantId, {
+              connId: ds.id,
+              dataset: ds.name,
+              raw: row as Record<string, unknown>,
+              reason: "SCHEMA_MISMATCH",
+              detail: reason,
+              reprocess: { targetKey, mapping, pk: realPk },
+            });
+            quarantined++;
+          }
+        }
+        continue;
+      }
+
       const rows = await this.repos.rawRows.list(ctx.tenantId, ds.id);
       // Idempotent per dataset: clear previous materialization of this dataset+type.
       await this.repos.objects.removeWhere(
         ctx.tenantId,
         (o) => o.type === targetKey && o.origin.type === "MATERIALIZED" && o.origin.datasetId === ds.id,
       );
-      const pk = t.properties.find((p) => p.isPrimaryKey)?.propKey;
+      const pk = realPk;
       const mapping = t.properties.map((p) => ({ propKey: p.propKey, sourceField: p.sourceField }));
       // stage3①：来源连接器若配了本体校验策略,导入时按策略校验值域/类型/枚举（适配不同源；按租户）。
       const conn = await this.repos.connections.get(ctx.tenantId, ds.sourceConnId);
@@ -585,7 +637,7 @@ export class ModelingService {
       finishedAt: new Date().toISOString(),
       rowCounts,
     });
-    return { jobId, created, quarantined };
+    return { jobId, created, quarantined, skipped };
   }
 
   /**
