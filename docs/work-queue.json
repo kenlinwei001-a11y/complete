@@ -1285,13 +1285,13 @@
       "title": "「越用越准」证据看板前端落地(后端convergence+sweep有真值·前端缺面板)",
       "doc": "docs/WO-VISIBILITY-CHAIN.md",
       "priority": "P0",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "E1-E2"
       ],
       "note": "IPO断层·后端逐轮收敛真值前端画不出·越用越准看不见·G-VIS-1",
-      "blockReason": "运行时坐实合成冒充真值(窄BLOCK·核心已建):①前端收敛面板零合成披露·把seed.ts手绘曲线9.4→6.1当越用越准真值直渲染②真sweep自曝:POST sweep返paired:0/slices:0(demo无live配对)→真第5轮mapeAfter=6.53静止且高于种子6.1·漂亮下降是假曲线一点即露③违合成≠真实红线(KILL-MOCK-RED同源)。修:改种子为真引擎确定性输出(本体§2.E 25→13.64→5.26)·或收敛面板加诚实披露徽标+区分seeded轮vs真sweep轮·真sweep静止显demo无live配对。见docs/REVIEW-CALIB-CONVERGENCE-verify.md",
+      "blockReason": "",
       "acceptance": {
         "goal": "用户跑一次收敛清扫(sweep)后，能在前端【校准收敛史面板】看到 MAPE 随轮下降的折线(越用越准可见)+收敛徽章——而不是像现在这样后端 GET /a/v1/calibration/convergence 返逐轮 mapeBefore/After/converging、sweep 端点也在，前端 CalibrationPage 只调 report/proposals/history(逐提案·非逐轮收敛)、收敛看板与 sweep 按钮都没有。",
         "criteria": [

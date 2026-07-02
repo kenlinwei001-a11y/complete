@@ -230,13 +230,14 @@ export const CALIBRATION_HISTORY: CalibrationHistoryEntry[] = CalibrationHistory
 ]);
 
 /**
- * WO-CALIB-CONVERGENCE-UI（G-VIS-1）：「越用越准」收敛史（逐轮 CALIBRATION_SWEEP mapeAfter 单调下降）。
- * 可变数组——sweep handler 追加一轮（点数 +1·折线延伸）；同真后端 convergenceHistory 形状。
+ * WO-CALIB-CONVERGENCE-UI（G-VIS-1·退回窄修）：「越用越准」收敛史——mock 值对齐**真后端引擎产物** 25→13.64→5.26
+ * （seed 真校准配对 actual=predicted×(1-bias)·bias 0.20/0.12/0.05 → ape=bias/(1-bias) → mapePct·§2.E）。
+ * 前端所见(mock) = 后端真值(真引擎)·非手绘（reviewer 抓的手绘 8.6→6.1 已废）。可变数组——sweep handler 追加一致轮。
  */
 export const CALIBRATION_CONVERGENCE: CalibrationConvergencePoint[] = CalibrationConvergencePointSchema.array().parse([
-  { round: 1, at: "2026-05-01T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 9.4, mapeAfter: 8.6, slicesEvaluated: 12, proposalsCreated: 3, autoApplied: 1, paramsVersion: 4 },
-  { round: 2, at: "2026-05-08T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 8.6, mapeAfter: 7.3, slicesEvaluated: 12, proposalsCreated: 2, autoApplied: 2, paramsVersion: 5 },
-  { round: 3, at: "2026-05-15T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 7.3, mapeAfter: 6.1, slicesEvaluated: 12, proposalsCreated: 1, autoApplied: 2, paramsVersion: 6 },
+  { round: 1, at: "2026-06-20T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 30, mapeAfter: 25, slicesEvaluated: 12, proposalsCreated: 3, autoApplied: 1, paramsVersion: 4 },
+  { round: 2, at: "2026-06-27T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 25, mapeAfter: 13.64, slicesEvaluated: 12, proposalsCreated: 2, autoApplied: 2, paramsVersion: 5 },
+  { round: 3, at: "2026-07-01T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 13.64, mapeAfter: 5.26, slicesEvaluated: 12, proposalsCreated: 1, autoApplied: 2, paramsVersion: 6 },
 ]);
 
 /** §7.22 数据健康度（IoT 延迟 4.2h → DELAYED，命中 C09 降级：与 capacity_forecast mock 同口径） */

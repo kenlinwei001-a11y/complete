@@ -1,7 +1,12 @@
 import type { PropagationRule } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
-import type { AuthCtx, CalibrationConvergenceRecord } from "./domain.js";
+import type { AuthCtx } from "./domain.js";
+import type { CalibrationService } from "./calibration/service.js";
+import { buildReplayModel, replayPredictedDaily } from "./calibration/index.js";
+import { datePlus } from "./calibration/config.js";
+import { simNow } from "./calibration/pairing.js";
+import { round } from "./prng.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import type { SopService } from "./sop.js";
 import type { SolverService } from "./solvers/service.js";
@@ -336,20 +341,68 @@ export async function seedDemoPropagationRules(repos: Repos): Promise<void> {
 }
 
 /**
- * WO-CALIB-CONVERGENCE-UI（G-VIS-1）：给 demo 租户播「越用越准」收敛史（demo 的历次 CALIBRATION_SWEEP 轨迹）。
- * 无此种子，全新 demo 租户从零轮起步、收敛面板空态——「越用越准」看不见。这些是 demo 的确定性合成轨迹
- * （R6：固定 round/mape，同 SEED_DEMO 重跑字节一致），逐轮 mapeAfter 单调下降（参数版本推进→预测更准的证据）。
- * 边界：demo 演示数据（合成走正门·非真实观测配对）；真实租户的收敛史由真 CALIBRATION_SWEEP 逐轮累积。
+ * WO-CALIB-CONVERGENCE-UI（G-VIS-1·退回窄修·根因治本）：给 demo 播「越用越准」收敛史——**真引擎产物·非手绘**。
+ * 退回根因（reviewer·KILL-MOCK-RED 同源·违铁律0.4 不作假）：曾直接写死收敛记录 9.4→6.1 冒充真值，真 sweep 一跑
+ * （demo 无 live 配对）返 paired:0/静止 6.53 自曝假曲线。治本：改播**真校准配对**（predicted/actual 观测·逐轮偏差
+ * 缩小=校准后预测更准的真实语义），让**真 CalibrationService.sweep 逐轮算出** mapeAfter（同 m11 测试驱动·§2.E 记：
+ * actual=predicted×(1-bias)、bias 0.20/0.12/0.05 → ape=bias/(1-bias) → mapePct **25→13.64→5.26**·R6 确定）。
+ * 收敛记录 = 真引擎从真配对派生·非另编；**保留末轮配对** → 用户后续真 sweep 再跑得一致值（不再自曝）。
+ * 边界：pairs 是 demo 确定性合成观测（走正门·非 A8 live 回采）；真实租户由真 CALIBRATION_SWEEP 逐轮累积真观测。
  */
-const DEMO_CALIBRATION_CONVERGENCE: Omit<CalibrationConvergenceRecord, "tenantId">[] = [
-  { id: "calc_demo_1", round: 1, at: "2026-05-04T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 9.4, mapeAfter: 8.6, slicesEvaluated: 12, proposalsCreated: 3, autoApplied: 1, paramsVersion: 4 },
-  { id: "calc_demo_2", round: 2, at: "2026-05-18T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 8.6, mapeAfter: 7.3, slicesEvaluated: 12, proposalsCreated: 2, autoApplied: 2, paramsVersion: 5 },
-  { id: "calc_demo_3", round: 3, at: "2026-06-01T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 7.3, mapeAfter: 6.7, slicesEvaluated: 12, proposalsCreated: 2, autoApplied: 1, paramsVersion: 6 },
-  { id: "calc_demo_4", round: 4, at: "2026-06-15T02:00:00.000Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 6.7, mapeAfter: 6.1, slicesEvaluated: 12, proposalsCreated: 1, autoApplied: 2, paramsVersion: 7 },
-];
+const DEMO_CALIB_BIASES = [0.2, 0.12, 0.05]; // 逐轮偏差缩小 → 真引擎算出 mapeAfter 25→13.64→5.26（§2.E）
 
-export async function seedDemoCalibrationConvergence(repos: Repos): Promise<void> {
-  for (const r of DEMO_CALIBRATION_CONVERGENCE) {
-    await repos.calibrationConvergence.put({ ...r, tenantId: DEMO_TENANT });
+export async function seedDemoCalibrationConvergence(
+  repos: Repos,
+  solvers: SolverService,
+  calibration: CalibrationService,
+): Promise<void> {
+  const c = await solvers.loadContext(DEMO_TENANT);
+  const model = buildReplayModel(c);
+  const modelId = [...c.certByModel.keys()][0];
+  if (!modelId) return; // demo 本体未物化型号 → 跳过（诚实空态·非编造）
+  const baseIds = [...(c.certByModel.get(modelId) ?? new Map<string, string>()).keys()].sort();
+  if (baseIds.length === 0) return;
+  const version = await solvers.paramsVersion(DEMO_TENANT);
+  const week = 5;
+  // 配对日期锚在引擎"今天"（simNow：sim 时钟或真实钟）前 12 天内 → 恒落 30 天评估窗口内（不因时钟漂移失效）。
+  const { date: nowDate } = await simNow(repos, DEMO_TENANT);
+  // 播一条真配对：predicted 来自真 replay 引擎·actual=predicted×(1-bias)（偏差随轮缩小=校准后预测更准的真语义）。
+  const putPair = async (date: string, baseId: string | undefined, bias: number): Promise<void> => {
+    const predicted = replayPredictedDaily(c, model, modelId, baseId, week);
+    if (predicted <= 0) return;
+    const actual = round(predicted * (1 - bias), 6);
+    const error = round(predicted - actual, 6);
+    await repos.calibrationPairs.put({
+      id: `calpair_demo_${modelId}_${baseId ?? "all"}_${date}`,
+      tenantId: DEMO_TENANT,
+      solverKey: "capacity_forecast",
+      entityRef: baseId ? `Model:${modelId}@Base:${baseId}` : `Model:${modelId}`,
+      modelId,
+      ...(baseId ? { baseId } : {}),
+      windowFrom: date,
+      windowTo: date,
+      predicted,
+      predictedP90: round(predicted * model.healthFactor, 6),
+      actual,
+      error,
+      ape: round(Math.abs(error) / Math.max(actual, 1e-6), 6),
+      paramsVersion: version,
+      staleParams: false,
+      sliceKey: `capacity_forecast|${baseId ?? "all"}|${modelId}`,
+      weekOfWindow: week,
+      pairedAt: `${nowDate}T00:00:00.000Z`,
+    });
+  };
+  for (const bias of DEMO_CALIB_BIASES) {
+    // 清上一轮配对（模拟"新窗口新一批观测"·不与旧轮混样）。
+    for (const p of await repos.calibrationPairs.list(DEMO_TENANT)) await repos.calibrationPairs.remove(DEMO_TENANT, p.id);
+    for (let d = 0; d < 12; d++) {
+      const date = datePlus(nowDate, d - 12); // 落评估窗口内（now 前 12 天）
+      await putPair(date, undefined, bias); // 聚合配对（report 趋势 / runAll basePairs 用无 baseId 的这条）
+      for (const baseId of baseIds) await putPair(date, baseId, bias); // 逐基地配对（切片评估用）
+    }
+    // 真引擎清扫 → 逐轮落真收敛度（mapeBefore→mapeAfter 由 report() 从真配对派生·非另编）。
+    await calibration.sweep(DEMO_TENANT, "CALIBRATION_SWEEP");
   }
+  // 保留末轮（bias=0.05）配对：用户后续真 sweep 再跑得一致值（≈5.26 静止·"本轮无新观测"诚实语义），不自曝跳变。
 }

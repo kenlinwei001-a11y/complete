@@ -964,10 +964,11 @@ export const handlers = [
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
     const prev = CALIBRATION_CONVERGENCE[CALIBRATION_CONVERGENCE.length - 1];
     const round = (prev?.round ?? 0) + 1;
-    const mapeBefore = prev ? prev.mapeAfter : 9.0;
-    const mapeAfter = Number(Math.max(1.5, mapeBefore - 0.4).toFixed(2)); // 单调下降（越用越准）
-    CALIBRATION_CONVERGENCE.push({ round, at: `2026-07-0${Math.min(round, 9)}T02:00:00Z`, trigger: "手动", mapeBefore, mapeAfter, slicesEvaluated: 12, proposalsCreated: 1, autoApplied: 2, paramsVersion: 3 + round });
-    return HttpResponse.json({ paired: 12, deferred: 0, staleDeferred: false, slicesEvaluated: 12, created: 1, autoApplied: 2, held: 0, dropped: 1, insufficient: 0, round });
+    const mapeBefore = prev ? prev.mapeAfter : 5.26;
+    // 对齐真后端：末轮配对仍在库·无新观测 → 再 sweep 值**一致(静止)**，不再伪造逐点下降（reviewer 抓的假曲线已废）。
+    const mapeAfter = mapeBefore;
+    CALIBRATION_CONVERGENCE.push({ round, at: `2026-07-0${Math.min(round, 9)}T02:00:00Z`, trigger: "手动", mapeBefore, mapeAfter, slicesEvaluated: 12, proposalsCreated: 0, autoApplied: 0, paramsVersion: 3 + round });
+    return HttpResponse.json({ paired: 12, deferred: 0, staleDeferred: false, slicesEvaluated: 12, created: 0, autoApplied: 0, held: 0, dropped: 0, insufficient: 0, round });
   }),
   // 批准/回滚不直改参数：生成「校准参数变更」Action 草稿走 §S2 审批流
   http.post("*/a/v1/calibration/proposals/:id/:decision", ({ params, request }) => {

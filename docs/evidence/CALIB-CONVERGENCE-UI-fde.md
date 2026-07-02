@@ -1,5 +1,20 @@
 # WO-CALIB-CONVERGENCE-UI · FDE 亲手真跑证据（G-VIS-1 · 「越用越准」证据看板前端落地）
 
+## ⭐ 退回窄修（reviewer BLOCK：手绘曲线冒充真值·真sweep自曝）· 根因治本
+
+**根因**（reviewer·KILL-MOCK-RED 同源·违铁律0.4 不作假）：原 seed 直接写死收敛记录 9.4→6.1 冒充真值，真 sweep 一跑（demo 无 live 配对）返 paired:0/静止 6.53 自曝假曲线。
+**治本**（reviewer 选项A·真引擎产物）：改 `seedDemoCalibrationConvergence(repos, solvers, calibration)` 播**真校准配对**（predicted 来自真 replay 引擎·actual=predicted×(1-bias)·bias 0.20/0.12/0.05·聚合+逐基地配对·日期锚 simNow 前12天落评估窗），逐轮调**真 CalibrationService.sweep** 算收敛度；保留末轮配对 → 用户真 sweep 一致不自曝。
+
+**真实测试（铁律0.4·非冒烟）**：
+- 集成测 `apps/datacore/test/calib-convergence-seed.test.ts`（2 用例·真 app.inject·全绿）：① 收敛 mapeAfter=[25,13.64,5.26]（§2.E 真值·真引擎从真配对派生·严格下降·improvedPct>15）② 自曝检验：seed 后真 sweep → 第4轮 mapeAfter≈5.26 一致(<6)·不跳变。
+- **真 HTTP curl**（真起 datacore :4079·SEED_DEMO=1·亲手跑）：`GET /a/v1/calibration/convergence` → `rounds=3·mapeAfter=[25,13.64,5.26]·improvedPct=19.74·converging=true`；`POST /a/v1/calibration/sweep`（核心动作）→ `round=4·slicesEvaluated=1·mapeAfter=5.26`（与收敛末值一致·**reviewer 抓的 6.53 自曝已消除**）。
+- 前端对照后端（铁律0.4）：`mocks/planFixtures.ts CALIBRATION_CONVERGENCE` 值改为真后端 25→13.64→5.26（前端所见=后端真值·废手绘 8.6→6.1）；sweep handler 改为**再跑值一致(静止)**（对齐真后端·废伪造逐点下降）；`test/calib-convergence.test.tsx` 断言 improvedPct 19.74·3 用例绿。
+
+**边界**：demo 校准配对是确定性合成观测（走正门·非 A8 live 回采）——但收敛曲线是**真引擎从这些配对算出**（非手绘），真 sweep 值一致（可复验不自曝）。真实租户由真 CALIBRATION_SWEEP 逐轮累积真观测。
+
+---
+
+
 > 目标（用户视角）：用户跑一次收敛清扫(sweep)后，能在前端【校准·收敛史面板】看到 MAPE 随轮下降的折线（越用越准可见）+ converging/improvedPct 徽章——而非此前后端 `GET /a/v1/calibration/convergence` 返逐轮 mapeBefore/After、sweep 端点也在，前端 CalibrationPage 只调 report/proposals/history（逐提案·非逐轮收敛）、收敛看板与 sweep 按钮都没有。
 
 ## 根因判定（铁律0：根因解 > 省事）

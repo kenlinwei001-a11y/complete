@@ -18,10 +18,10 @@ describe("WO-CALIB-CONVERGENCE-UI · 收敛史前端消费", () => {
 
     const panel = await screen.findByTestId("calib-convergence-panel");
     expect(await screen.findByTestId("calib-convergence-chart")).toBeTruthy();
-    // 收敛徽章：末轮(6.1) ≤ 首轮(8.6) → 收敛良好
+    // 收敛徽章：末轮(5.26·真引擎产物) ≤ 首轮(25) → 收敛良好
     expect(within(panel).getByTestId("calib-converging-badge").textContent).toContain("收敛良好");
-    // 改善 = 首轮 8.6 − 末轮 6.1 = 2.5 个百分点
-    expect(within(panel).getByTestId("calib-improved-badge").textContent).toContain("2.5");
+    // 改善 = 首轮 25 − 末轮 5.26 = 19.74 个百分点（对齐真后端引擎值·非手绘）
+    expect(within(panel).getByTestId("calib-improved-badge").textContent).toContain("19.74");
     // 共 3 轮
     expect(within(panel).getByTestId("calib-convergence-rounds").textContent).toContain("3 轮");
   });
