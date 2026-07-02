@@ -61,6 +61,7 @@ vi.mock("@/api/endpoints", () => ({
   simCheckpoint: vi.fn(async () => ({ id: "cp_branch", sessionId: "sims_main", tenantId: "t", tick: 1, label: "branch@tick1", createdAt: "x" })),
   simBranch: simBranchFn,
   fetchSimCompare: fetchSimCompareFn,
+  fetchSimSessions: vi.fn(async () => []), // WO-SANDBOX-RUN-HISTORY：历史面板消费（空→诚实空态·不干扰既有断言）
   fetchSimCertification: fetchCertFn,
   createActionDraft: createActionDraftFn,
   // 轨Q 增量2/3/4：评估清单/Schema规则/风险榜/控制台所需端点桩（benign 空数据）。

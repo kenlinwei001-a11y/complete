@@ -22,6 +22,7 @@ vi.mock("@/api/endpoints", () => ({
   fetchSimPropagationRules: vi.fn(async () => ({ items: [] })),
   createSimSession: (body: { baseSnapshot: Tick; scope?: Record<string, unknown> }) => createSimSessionSpy(body),
   simTick: vi.fn(async () => ({ curTick: 1, state: {} })),
+  fetchSimSessions: vi.fn(async () => []),
   simWorld: vi.fn(),
   simCheckpoint: vi.fn(),
   simBranch: vi.fn(),

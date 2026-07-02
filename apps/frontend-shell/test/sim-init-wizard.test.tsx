@@ -20,6 +20,7 @@ vi.mock("@/api/endpoints", () => ({
     id: "sims_test", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
     curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",
   } satisfies SimSession)),
+  fetchSimSessions: vi.fn(async () => []), // WO-SANDBOX-RUN-HISTORY：历史面板消费（空→诚实空态·不干扰）
   fetchSimScopePrecheck: vi.fn(async (sessionId: string, scope: "GLOBAL" | "LOCAL") => {
     precheckFn(sessionId, scope);
     return {

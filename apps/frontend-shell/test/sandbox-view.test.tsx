@@ -31,6 +31,7 @@ vi.mock("@/api/endpoints", () => ({
   simCheckpoint: vi.fn(async () => ({ id: "cp1", sessionId: "sims_test", tenantId: "t", tick: 1, label: "tick1", createdAt: "x" })),
   simBranch: vi.fn(async () => ({ id: "sims_child", tenantId: "t", baseSnapshot: {}, scope: {}, status: "READY", curTick: 0, parentCheckpointId: "cp1", createdAt: "x" })),
   fetchSimCompare: vi.fn(async () => ({ a: [], b: [] })),
+  fetchSimSessions: vi.fn(async () => []), // WO-SANDBOX-RUN-HISTORY：历史面板消费（空→诚实空态·不干扰既有断言）
   createActionDraft: vi.fn(async () => ({ draftId: "ad1", status: "PENDING" })),
   fetchObjectLineage: vi.fn(async (objectType: string, objectId: string) => ({
     object: { id: objectId, type: objectType, origin: { kind: "MATERIALIZED" } },

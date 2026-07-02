@@ -604,6 +604,10 @@ export const fetchSimScopePrecheck = (sessionId: string, scope: "GLOBAL" | "LOCA
 export const simBranch = (sessionId: string, checkpointId: string) =>
   api.a<SimSession>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/branch`, { body: { checkpointId } });
 
+/** WO-SANDBOX-RUN-HISTORY：历史推演记录列表（本租户 SimSession·R2 隔离·后端现成 GET /sim/sessions·零新后端）。 */
+export const fetchSimSessions = async (): Promise<SimSession[]> =>
+  (await api.a<{ items: SimSession[] }>("/a/v1/sim/sessions")).items;
+
 /** 多场景 KPI 对比（北极星）：返回 A/B 两会话逐 tick 态序列，前端并排/求差。 */
 export type SimCompareSeries = { tick: number; state: TickState }[];
 export const fetchSimCompare = (a: string, b: string) =>

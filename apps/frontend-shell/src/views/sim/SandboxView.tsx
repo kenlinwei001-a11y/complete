@@ -24,6 +24,7 @@ import { PlatformConsole } from "@/components/PlatformConsole/PlatformConsole";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
+import { SandboxRunHistory } from "./SandboxRunHistory";
 import styles from "./SimViews.module.css";
 
 /**
@@ -987,6 +988,10 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           <SimComparePanel a={compare.a} b={compare.b} />
         </div>
       )}
+
+      {/* WO-SANDBOX-RUN-HISTORY（G-VIS-1）：历史推演记录（后端 sim_session 真留痕·前端此前 0 面板）。
+          refreshKey 随 sessionId/curTick 变 → 推进/分支后列表自动重取（C4 事件失效·R17 同页留痕）。 */}
+      <SandboxRunHistory refreshKey={`${sessionId ?? ""}:${curTick}`} />
 
       {/* R13 溯源悬浮（点拓扑节点触发）：沿本体链路 数据源→原始表→建模派生→对象，不裸渲染。点空白关闭。 */}
       {lineage && (
