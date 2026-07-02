@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createActionDraft, runSolver } from "@/api/endpoints";
 import type { AffectedOrdersOutputVM } from "@/api/types";
 import { Provenance } from "@/components/Provenance";
+import { notLiveDecision } from "@/components/DecisionValue";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -68,11 +69,16 @@ export function MarginLedgerTable({ testId = "margin-ledger" }: { testId?: strin
     queryKey: ["b", "solver", "affected_orders", "margin-ledger"],
     queryFn: async () => {
       const res = await runSolver("affected_orders", {});
-      return (res.data as AffectedOrdersOutputVM).marginLedger;
+      const vm = res.data as AffectedOrdersOutputVM;
+      // WO-DATAMODE-SWEEP（FIX·补漏）：透传顶层 dataMode → 合成/估算时缺口贡献 danger 红降级中性。
+      return vm.marginLedger ? { ...vm.marginLedger, dataMode: vm.dataMode } : undefined;
     },
   });
   if (isLoading) return <div className="panel" data-testid={testId}><div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div></div>;
   if (!data || data.bySegment.length === 0) return null; // 无聚合数据 → 不渲染（向后兼容，不画空表）
+  // 合成/估算（显式非 LIVE）→ 缺口贡献/闭合等 decision 级 danger 降级中性（凡 danger 决策组件必守 dataMode）。
+  const mlNotLive = notLiveDecision(data.dataMode);
+  const gapColor = (v: number) => (mlNotLive ? "var(--muted2)" : v < 0 ? "var(--danger)" : "var(--ok)");
 
   return (
     <div className="panel" data-testid={testId} style={{ marginTop: 12 }}>
@@ -109,7 +115,7 @@ export function MarginLedgerTable({ testId = "margin-ledger" }: { testId?: strin
               <td style={{ textAlign: "right" }}>{(s.revShare * 100).toFixed(1)}%</td>
               <td style={{ textAlign: "right" }}>{s.marginPct.toFixed(1)}%</td>
               <td style={{ textAlign: "right" }}>{s.contributionPp.toFixed(2)}</td>
-              <td style={{ textAlign: "right", color: s.gapContributionPp < 0 ? "var(--danger)" : "var(--ok)" }}>
+              <td style={{ textAlign: "right", color: gapColor(s.gapContributionPp) }}>
                 {s.gapContributionPp >= 0 ? "+" : ""}{s.gapContributionPp.toFixed(2)}
               </td>
               <td style={{ textAlign: "right" }}>{s.orderCount}</td>
@@ -123,7 +129,7 @@ export function MarginLedgerTable({ testId = "margin-ledger" }: { testId?: strin
             <td style={{ textAlign: "right" }}>100%</td>
             <td style={{ textAlign: "right" }}>—</td>
             <td style={{ textAlign: "right" }}>Σ {data.gmRatePct.toFixed(2)} = 综合毛利率</td>
-            <td style={{ textAlign: "right", color: data.gapPp < 0 ? "var(--danger)" : "var(--ok)" }}>
+            <td style={{ textAlign: "right", color: gapColor(data.gapPp) }}>
               Σ {data.gapPp >= 0 ? "+" : ""}{data.gapPp.toFixed(2)}
             </td>
             <td style={{ textAlign: "right" }}>—</td>
@@ -132,8 +138,8 @@ export function MarginLedgerTable({ testId = "margin-ledger" }: { testId?: strin
       </table>
       <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>
         综合毛利率 <b className="mono">{data.gmRatePct.toFixed(2)}%</b> vs 目标 <b className="mono">{data.targetPct.toFixed(1)}%</b> · 缺口{" "}
-        <b className="mono" style={{ color: data.gapPp < 0 ? "var(--danger)" : "var(--ok)" }}>{data.gapPp >= 0 ? "+" : ""}{data.gapPp.toFixed(2)}pp</b>{" "}
-        <span className="badge" style={{ background: data.reconciled ? "rgba(98,190,119,.18)" : "rgba(224,98,108,.18)", color: data.reconciled ? "var(--ok)" : "var(--danger)" }} data-testid={`${testId}-reconciled`}>
+        <b className="mono" style={{ color: gapColor(data.gapPp) }}>{data.gapPp >= 0 ? "+" : ""}{data.gapPp.toFixed(2)}pp{mlNotLive ? "·估算" : ""}</b>{" "}
+        <span className="badge" style={{ background: mlNotLive ? "rgba(154,168,182,.18)" : data.reconciled ? "rgba(98,190,119,.18)" : "rgba(224,98,108,.18)", color: mlNotLive ? "var(--muted2)" : data.reconciled ? "var(--ok)" : "var(--danger)" }} data-testid={`${testId}-reconciled`}>
           {data.reconciled ? "已闭合 ✓" : "未闭合"}
         </span>
       </div>

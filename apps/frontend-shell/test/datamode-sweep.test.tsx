@@ -32,7 +32,15 @@ function overrideSolvers(mode: "SYNTHETIC" | "LIVE") {
       }
       if (key === "affected_orders") {
         const base = typeof args.base === "string" && args.base !== "" ? args.base : undefined;
-        return wrap(affectedOrdersOutput(base) as unknown as Record<string, unknown>);
+        // 注入 marginLedger（含负缺口贡献 seg）→ MarginLedgerTable 渲染 → 验缺口 danger 红受 dataMode 守卫。
+        const ml = {
+          bySegment: [
+            { seg: "乘用车", revenue: 1200, revShare: 0.6, marginPct: 14, contributionPp: 8.4, gapContributionPp: -0.97, orderCount: 4 },
+            { seg: "储能", revenue: 800, revShare: 0.4, marginPct: 12, contributionPp: 4.8, gapContributionPp: 0.31, orderCount: 2 },
+          ],
+          gmRatePct: 13.2, targetPct: 15, gapPp: -1.8, reconciled: true,
+        };
+        return wrap({ ...(affectedOrdersOutput(base) as unknown as Record<string, unknown>), marginLedger: ml });
       }
       if (key === "risk_timeline") return HttpResponse.json({ data: { horizon: 14, threshold: 85, dataMode: mode, cards: [], planRows: [] }, snapshotVersion: "ov-dm" });
       if (key === "order_fullchain") {
@@ -93,6 +101,10 @@ describe("WO-DATAMODE-SWEEP · 决策页 dataMode 消费门（合成不出决策
     for (const s of scores) {
       if ((s.textContent ?? "").includes("⛔")) expect(s.getAttribute("style") ?? "").not.toContain("var(--danger)");
     }
+    // FIX 补漏①：项目级聚合毛利勾稽表（MarginLedgerTable·affected_orders SYNTHETIC）缺口贡献 cell 不出 danger 红。
+    const mlTables = await screen.findAllByTestId("margin-ledger-generate-table");
+    for (const mlTable of mlTables) expect(mlTable.querySelectorAll('[style*="var(--danger)"]').length).toBe(0);
+    for (const recon of screen.getAllByTestId("margin-ledger-generate-reconciled")) expect(recon.getAttribute("style") ?? "").not.toContain("var(--danger)");
   });
 
   it("方案生成 plan-generate：LIVE 对照 → 无横幅", async () => {
@@ -131,6 +143,10 @@ describe("WO-DATAMODE-SWEEP · 决策页 dataMode 消费门（合成不出决策
     // 待解决问题卡分类徽章不再是 badge red（改 badge + 中性灰）
     const probs = await screen.findByTestId("oc-problems");
     expect(probs.querySelectorAll("span.badge.red").length).toBe(0);
+    // FIX 补漏②：问题卡决策红左边框（.probCard border-left danger）降级中性（合成不出决策红）。
+    const cards = probs.querySelectorAll('[data-testid^="oc-problem-"]');
+    expect(cards.length).toBeGreaterThan(0);
+    cards.forEach((c) => expect((c as HTMLElement).style.borderLeftColor).toContain("muted"));
   });
 
   it("订单全链 order-chain：LIVE 对照 → 无横幅 + 问题卡红标照常", async () => {

@@ -380,7 +380,9 @@ export default function OrderChainView({ view }: ViewRendererProps) {
         <div className="section-title">{zh.orderChain.problemSection}</div>
         <div className={styles.probGrid} data-testid="oc-problems">
           {out.problems.map((p) => (
-            <button key={p.category} className={styles.probCard} data-testid={`oc-problem-${p.category}`} onClick={() => setOpenProblem(p)}>
+            <button key={p.category} className={styles.probCard} data-testid={`oc-problem-${p.category}`} onClick={() => setOpenProblem(p)}
+              /* WO-DATAMODE-SWEEP（FIX·补漏）：合成/估算（非 LIVE）时问题卡决策红左边框降级中性——8 张「N单受影响·财务X亿」红卡在合成数据上=合成充真。 */
+              style={ocNotLive ? { borderLeftColor: "var(--muted2)" } : undefined}>
               <div className={styles.probTitle}>
                 <span className={ocNotLive ? "badge" : "badge red"} style={{ marginRight: 6, ...(ocNotLive ? { color: "var(--muted)" } : {}) }}>
                   {categoryLabels[p.category] ?? p.category}

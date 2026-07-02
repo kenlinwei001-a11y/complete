@@ -63,3 +63,22 @@ order_fullchain   -> dataMode=SYNTHETIC   verdict=不建议接
 - 已覆盖扫描坐实的 4 自身型面（plan-audit/plan-generate/project-sim/order-chain）+ 顺带 order_fullchain 裁决；驾驶舱 metric-strip/根因DAG 由前一 WIP commit（valuePath dataMode 透传）修。
 - LIVE 对照为 jsdom 注入（demo 租户无真实 LIVE 数据源）；真浏览器覆盖的是 demo=SYNTHETIC 的**真实缺陷态**（即用户会看到的态）。真 LIVE 红需接入真实数据源租户方能真浏览器实拍。
 - 门 helper 为全站共享，后续新增决策页应直接复用 `decisionVerdictColor`/`DecisionModeBanner`（防再漏网）。
+
+---
+
+## FIX 轮（窄 BLOCK 补漏·审核方 1572b8c 复验后 2 类残余）
+
+审核方真浏览器 getComputedStyle 复验确认主扫齐达标，另抓 2 类 decision 级 danger 红在合成页未守（违 WO 自身"凡 danger 决策组件必守 dataMode"）：
+
+1. **毛利率勾稽「对缺口贡献(pp)」负值 cell** 裸 `var(--danger)` 无 notLive 守卫——两处：
+   - `DashboardView.tsx` `dash-order-ledger`（summary gapPp + 逐 seg gapContributionPp cell）：加 `notLive`（既在 §204 算）守卫 → 合成→`var(--muted2)`+「·估算」。
+   - `shared.tsx MarginLedgerTable`（plan-audit/plan-generate 共用·testId margin-ledger-*）：此前 queryFn 只取 `.marginLedger` 丢顶层 dataMode → 改透传 `{...marginLedger, dataMode: vm.dataMode}` + `mlNotLive=notLiveDecision(data.dataMode)` + `gapColor(v)` 门（4 处 danger：逐 seg/Σ/文末缺口/reconciled 徽章）。
+2. **order-chain 问题归并卡 `.probCard`** CSS `border-left: 3px solid var(--danger)`（oc-problem-*×8）无守卫——用页级已算 `ocNotLive`（OrderChainView:105）内联 `style={ocNotLive?{borderLeftColor:"var(--muted2)"}:undefined}` 覆盖 CSS 红边。
+
+**牙齿（datamode-sweep.test.tsx 扩·8 用例仍全绿）**：
+- plan-generate SYNTHETIC 用例注入含负缺口贡献 seg 的 marginLedger → 断言 `margin-ledger-generate-table` 内 `[style*="var(--danger)"]` 数=0 + reconciled 徽章非 danger（摘 gapColor 守卫 → 转红失败）。
+- order-chain SYNTHETIC 用例断言每张 `oc-problem-*` 的 `style.borderLeftColor` 含 `muted`（合成不出决策红左边框）。
+
+排除（审核方确认非缺陷·未动）：plan-generate hard-chip=硬约束/软偏好配置切换（非裁决输出）· 根因DAG「RED」徽标已 muted · 规则号 C13/C15=RuleRef 链接色。
+
+**前后端一致性（FIX 补充）**：这 2 类均为**合成数据（dataMode=SYNTHETIC）不得渲染 decision 红**的一致性——后端 affected_orders/plan_* 顶层 SYNTHETIC（C1 已 curl 证），前端这 2 面此前漏消费 → 现按同一 notLive 门降级中性。真浏览器复验由审核方按 getComputedStyle 范式再跑（本轮 dev 侧 jsdom getComputedStyle-等价 style 断言 + 既有 6 面真浏览器基线覆盖）。

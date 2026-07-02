@@ -220,7 +220,7 @@ function OrderLedgerWidget() {
       {ml && (
         <details data-testid="ledger-margin-reconcile" style={{ marginBottom: 8, fontSize: 11.5, background: "var(--panel2,rgba(255,255,255,.03))", borderRadius: 6, padding: "6px 8px" }}>
           <summary style={{ cursor: "pointer" }}>
-            综合毛利率勾稽：<b className="mono">{ml.gmRatePct.toFixed(2)}%</b> vs 目标 {ml.targetPct.toFixed(1)}% · 缺口 <b className="mono" style={{ color: ml.gapPp < 0 ? "var(--danger)" : "var(--ok,#62BE77)" }}>{ml.gapPp >= 0 ? "+" : ""}{ml.gapPp.toFixed(2)}pp</b> {ml.reconciled ? "· 已闭合 ✓" : "· 未闭合 ✗"}
+            综合毛利率勾稽：<b className="mono">{ml.gmRatePct.toFixed(2)}%</b> vs 目标 {ml.targetPct.toFixed(1)}% · 缺口 <b className="mono" style={{ color: notLive ? "var(--muted2)" : ml.gapPp < 0 ? "var(--danger)" : "var(--ok,#62BE77)" }}>{ml.gapPp >= 0 ? "+" : ""}{ml.gapPp.toFixed(2)}pp{notLive ? "·估算" : ""}</b> {ml.reconciled ? "· 已闭合 ✓" : "· 未闭合 ✗"}
           </summary>
           <table className="cmp" style={{ width: "100%", marginTop: 6, fontSize: 11 }}>
             <thead><tr><th>细分</th><th>营收占比</th><th>毛利率</th><th>贡献(pp)</th><th>缺口贡献(pp)</th><th>单</th></tr></thead>
@@ -231,7 +231,7 @@ function OrderLedgerWidget() {
                   <td className="mono">{(b.revShare * 100).toFixed(1)}%</td>
                   <td className="mono">{b.marginPct}%</td>
                   <td className="mono">{b.contributionPp.toFixed(2)}</td>
-                  <td className="mono" style={{ color: b.gapContributionPp < 0 ? "var(--danger)" : "var(--ok,#62BE77)" }}>{b.gapContributionPp >= 0 ? "+" : ""}{b.gapContributionPp.toFixed(2)}</td>
+                  <td className="mono" style={{ color: notLive ? "var(--muted2)" : b.gapContributionPp < 0 ? "var(--danger)" : "var(--ok,#62BE77)" }}>{b.gapContributionPp >= 0 ? "+" : ""}{b.gapContributionPp.toFixed(2)}</td>
                   <td className="mono">{b.orderCount}</td>
                 </tr>
               ))}
