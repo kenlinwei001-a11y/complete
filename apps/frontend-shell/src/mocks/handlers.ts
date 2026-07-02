@@ -87,6 +87,12 @@ const newId = (prefix: string) => `${prefix}-${++idSeq}`;
 const mockCategoryMode: Record<string, "SYSTEM_INTEGRATION" | "FILE_UPLOAD"> = {};
 const mockCategoryTpl: Record<string, string[] | null> = {};
 
+// WO-KB-UI（G-VIS-1·S4）：知识库 conn-kb 灌入的文档（列表 + 检索 chunk 文本·同真后端 KbDocRecord/KbHit 形）。
+const KB_DOCS = [
+  { docId: "kbdoc_coating", connId: "conn-kb", filename: "涂布换型.txt", chunkCount: 1, createdAt: "2026-06-12T03:00:00Z", text: "涂布工序换型损失分析：4680-NCM 电池化成节拍受温度影响，换型时间约 45 分钟。" },
+  { docId: "kbdoc_oee", connId: "conn-kb", filename: "OEE提升.txt", chunkCount: 1, createdAt: "2026-06-12T03:01:00Z", text: "常州基地设备 OEE 提升：通过优化排程与预测性维护，将稼动率从 78 提升至 85。" },
+];
+
 // ---- A7 Foundry-Grade Data Builder mock ----
 const DATA_BUILDER_PRESET = {
   id: "dba-preset",
@@ -1231,6 +1237,23 @@ export const handlers = [
   // ---- 连接器 ----
   http.get("*/a/v1/connector-types", () => HttpResponse.json(CONNECTOR_TYPES)),
   http.get("*/a/v1/connections", () => HttpResponse.json(db.connections)),
+  // WO-KB-UI（G-VIS-1·S4）：知识库文档列表 + 语义搜索（同真后端 kb.ts 同形·前端所见=后端真值）。
+  http.get("*/a/v1/kb/:connId/docs", ({ params }) => {
+    const connId = String(params.connId);
+    const docs = KB_DOCS.filter((d) => d.connId === connId);
+    return HttpResponse.json(docs);
+  }),
+  http.post("*/a/v1/kb/search", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { connId?: string; query?: string };
+    const q = (body.query ?? "").trim();
+    const pool = KB_DOCS.filter((d) => !body.connId || d.connId === body.connId);
+    // 确定性 mock 检索：命中 text 含关键词的文档 chunk（真后端是向量相似度·此处词面匹配够前端消费验证）。
+    const hits = pool
+      .filter((d) => q && d.text.includes(q))
+      .map((d, i) => ({ text: d.text, score: Number((0.6 - i * 0.05).toFixed(4)), docId: d.docId, span: { start: 0, end: d.text.length }, source: "KB_CHUNK" as const, connId: d.connId }));
+    return HttpResponse.json({ hits });
+  }),
+  http.post("*/a/v1/kb/:connId/sync", ({ params }) => HttpResponse.json({ docs: KB_DOCS.filter((d) => d.connId === String(params.connId)).length, chunks: 2 }, { status: 202 })),
   http.put("*/a/v1/connections/:id/validation-policy", async ({ request, params }) => {
     const body = (await request.json()) as { policy?: unknown };
     const conn = db.connections.find((c) => c.id === (params as { id: string }).id);

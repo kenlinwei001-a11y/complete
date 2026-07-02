@@ -1141,7 +1141,7 @@
       "title": "知识库S4前端落地(后端kb.ts+3路由齐备·前端零页零绑定)",
       "doc": "docs/WO-VISIBILITY-CHAIN.md",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "IPO断层·建了知识库灌了文档完全看不到·G-VIS-1",

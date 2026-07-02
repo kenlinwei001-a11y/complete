@@ -14,6 +14,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "users", label: zh.nav.users, roles: ["admin", "tenant_admin"] },
   { path: "connections", label: zh.nav.connections, roles: ["admin", "data_admin"] },
   { path: "rule-docs", label: zh.nav.ruleDocs, roles: ["admin", "data_admin", "rule_admin"] },
+  // WO-KB-UI（G-VIS-1·S4）：知识库（knowledge_base 连接文档 + 语义搜索·数据接入组）
+  { path: "knowledge", label: "知识库", roles: ["admin", "data_admin"] },
   { path: "modeling", label: zh.nav.modeling, roles: ["admin", "data_admin"] },
   // WO-INTAKE-VISIBILITY（G-VIS-1）：字段对账工作台（objectify 未命中列逐列确认→重跑物化）
   { path: "schema-reconcile", label: "字段对账", roles: ["admin", "data_admin"] },
@@ -96,7 +98,7 @@ export interface AdminNavGroup {
 }
 
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
-  { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
+  { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "knowledge", "synthetic", "external-signals", "quarantine"] },
   { key: "modeling", title: "建模与图谱", paths: ["modeling", "schema-reconcile", "object-types", "source-overview", "domains", "slices", "merge", "meta", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },

@@ -3947,6 +3947,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { connId } = req.params as { connId: string };
     return reply.status(202).send(await kb.sync(ctx(req), connId));
   });
+  // WO-KB-UI（G-VIS-1）：列出某 kb 连接已灌文档（前端知识库页文档表·补断层：此前无列表路由）。
+  app.get("/a/v1/kb/:connId/docs", async (req) => {
+    const { connId } = req.params as { connId: string };
+    return kb.listDocs(ctx(req), connId);
+  });
 
   // ---- A8 timeseries ------------------------------------------------------------------------------
   app.post("/a/v1/timeseries/agg-query", async (req) => {

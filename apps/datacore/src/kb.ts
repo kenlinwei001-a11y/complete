@@ -79,6 +79,19 @@ export class KbService {
     return { doc, chunkCount: records.length };
   }
 
+  /**
+   * WO-KB-UI（G-VIS-1）：列出某 kb 连接已灌文档（前端知识库页文档表消费·前端所见=后端真值）。
+   * 补断层：此前仅 ingest/sync/search，无列表路由 → 灌进去的文档前端看不到。
+   */
+  async listDocs(ctx: AuthCtx, connId: string): Promise<{ docId: string; connId: string; filename: string; chunkCount: number; createdAt: string }[]> {
+    await this.kbConnection(ctx, connId);
+    await this.authz.require(ctx, "CONNECTION", connId, "READ");
+    const docs = await this.repos.kbDocs.list(ctx.tenantId, (d) => d.connId === connId);
+    return docs
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)) // 新→旧
+      .map((d) => ({ docId: d.id, connId: d.connId, filename: d.filename, chunkCount: d.chunkCount, createdAt: d.createdAt }));
+  }
+
   /** Re-embed all stored docs of a connection (knowledge_base "sync"). */
   async sync(ctx: AuthCtx, connId: string): Promise<{ docs: number; chunks: number }> {
     await this.kbConnection(ctx, connId);

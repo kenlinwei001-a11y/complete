@@ -454,3 +454,28 @@ export const DataCategorySettingSchema = z.object({
   updatedAt: IsoTime,
 });
 export type DataCategorySetting = z.infer<typeof DataCategorySettingSchema>;
+
+// ---- S4 知识库（WO-KB-UI·G-VIS-1：后端 kb.ts 有真值·前端消费契约·contracts-only-shared） ----
+/** GET /a/v1/kb/:connId/docs 列表项（已灌文档·前端知识库页文档表消费）。 */
+export const KbDocVMSchema = z.object({
+  docId: z.string(),
+  connId: z.string(),
+  filename: z.string(),
+  chunkCount: z.number().int(),
+  createdAt: IsoTime,
+});
+export type KbDocVM = z.infer<typeof KbDocVMSchema>;
+
+/** POST /a/v1/kb/search 命中项（指向已灌文档 chunk·前端搜索结果消费）。 */
+export const KbHitSchema = z.object({
+  text: z.string(),
+  score: z.number(),
+  docId: z.string(),
+  span: z.object({ start: z.number(), end: z.number() }),
+  source: z.literal("KB_CHUNK"),
+  connId: z.string(),
+});
+export type KbHit = z.infer<typeof KbHitSchema>;
+
+export const KbSearchResponseSchema = z.object({ hits: z.array(KbHitSchema) });
+export type KbSearchResponse = z.infer<typeof KbSearchResponseSchema>;

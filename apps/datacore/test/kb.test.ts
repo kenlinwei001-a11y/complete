@@ -124,4 +124,27 @@ describe("S4 knowledge base (V11) + rule near-duplicates (V12)", () => {
     const fresh = cands.find((c) => c.candidate.name === "新供应商准入评分")!;
     expect(fresh.suspectedDuplicateOf).toBeUndefined();
   });
+
+  // WO-KB-UI（G-VIS-1）：补 GET /a/v1/kb/:connId/docs 列表路由（此前仅 ingest/sync/search·文档前端看不到）。
+  it("KB-UI · GET /kb/:connId/docs 列已灌文档（docId/filename/chunkCount·按 connId 隔离）", async () => {
+    const t = await makeApp();
+    const connA = await kbConn(t, "kb-list-a");
+    const connB = await kbConn(t, "kb-list-b");
+    const d1 = await addDoc(t, connA, "涂布换型.txt", "涂布工序换型损失分析：换型时间约 45 分钟。");
+    const d2 = await addDoc(t, connA, "OEE提升.txt", "常州基地设备 OEE 提升：稼动率从 78 提升至 85。");
+    await addDoc(t, connB, "别的库.txt", "不属于 A 库的文档。");
+
+    const res = await t.app.inject({ method: "GET", url: `/a/v1/kb/${connA}/docs`, headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const docs = res.json() as { docId: string; connId: string; filename: string; chunkCount: number; createdAt: string }[];
+    // 只回 connA 的 2 篇（connB 隔离）；每项 docId/filename/chunkCount 齐。
+    expect(docs.length).toBe(2);
+    expect(new Set(docs.map((x) => x.docId))).toEqual(new Set([d1.docId, d2.docId]));
+    expect(docs.every((x) => x.connId === connA && typeof x.filename === "string" && x.chunkCount >= 1)).toBe(true);
+    // 搜索命中的 docId ∈ 列表集合（C2↔C1 勾稽）。
+    const s = await t.app.inject({ method: "POST", url: "/a/v1/kb/search", headers: ADMIN, payload: { connId: connA, query: "换型损失" } });
+    const hits = (s.json() as { hits: { docId: string }[] }).hits;
+    expect(hits.length).toBeGreaterThan(0);
+    expect(docs.map((x) => x.docId)).toContain(hits[0]!.docId);
+  });
 });

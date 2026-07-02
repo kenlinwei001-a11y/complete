@@ -17,6 +17,8 @@ import type {
   BackfillReport,
   DataBuilderAgent,
   ConnectionInstance,
+  KbDocVM,
+  KbSearchResponse,
   ValidationPolicy,
   ConnectorType,
   FeatureDef,
@@ -290,6 +292,12 @@ export const triggerSync = (connId: string) =>
   api.a<{ syncJobId: string }>(`/a/v1/connections/${connId}/sync`, { body: {} });
 export const fetchSyncJob = (jobId: string) => api.a<SyncJobVM>(`/a/v1/sync-jobs/${jobId}`);
 export const fetchConnectionSchema = (connId: string) => api.a<SourceSchema>(`/a/v1/connections/${connId}/schema`);
+
+// WO-KB-UI（G-VIS-1·S4 知识库）：后端 kb.ts 有真值·前端消费。类型自 @platform/contracts（未重定义）。
+export const fetchKbDocs = (connId: string) => api.a<KbDocVM[]>(`/a/v1/kb/${connId}/docs`);
+export const searchKb = (connId: string, query: string, topK = 5) =>
+  api.a<KbSearchResponse>("/a/v1/kb/search", { body: { connId, query, topK } });
+export const syncKb = (connId: string) => api.a<{ docs: number; chunks: number }>(`/a/v1/kb/${connId}/sync`, { body: {} });
 // 约束执行层 stage2：连接器级本体校验策略 + 字段映射（按租户持久化）
 export const setConnectionValidationPolicy = (connId: string, policy: ValidationPolicy) =>
   api.a<ConnectionInstance>(`/a/v1/connections/${connId}/validation-policy`, { method: "PUT", body: { policy } });

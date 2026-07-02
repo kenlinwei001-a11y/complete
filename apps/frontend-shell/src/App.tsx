@@ -39,6 +39,7 @@ const ActionsPage = lazy(() => import("@/pages/admin/ActionsPage"));
 const DecisionsPage = lazy(() => import("@/pages/admin/DecisionsPage")); // WO-DECISION-RECORD（§3.7 D8）
 const AuditLogPage = lazy(() => import("@/pages/admin/AuditLogPage")); // WO-AUDIT-LOG-UI（G-VIS-1）
 const SchemaReconcilePage = lazy(() => import("@/pages/admin/SchemaReconcilePage")); // WO-INTAKE-VISIBILITY（G-VIS-1）
+const KnowledgePage = lazy(() => import("@/pages/admin/KnowledgePage")); // WO-KB-UI（G-VIS-1·S4）
 const CatalogPage = lazy(() => import("@/pages/admin/CatalogPage"));
 const AgentsPage = lazy(() => import("@/pages/admin/AgentsPage"));
 const WorkflowsPage = lazy(() => import("@/pages/admin/WorkflowsPage"));
@@ -146,6 +147,7 @@ export const routes: RouteObject[] = [
       admin("decisions", <DecisionsPage />),
       admin("audit-log", <AuditLogPage />),
       admin("schema-reconcile", <SchemaReconcilePage />),
+      admin("knowledge", <KnowledgePage />),
       admin("catalog", <CatalogPage />),
       admin("agents", <AgentsPage />),
       admin("workflows", <WorkflowsPage />),
