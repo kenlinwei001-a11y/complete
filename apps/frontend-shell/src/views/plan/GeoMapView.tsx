@@ -232,7 +232,16 @@ export default function GeoMapView({ view }: ViewRendererProps) {
               <button className="btn sm" data-testid="geo-goto-risk" onClick={() => navigate(`/v/risk?focus=${encodeURIComponent(selected.name)}`)}>
                 {zh.geo.gotoRisk}
               </button>
-              <button className="btn sm" data-testid="geo-goto-graph" onClick={() => navigate(`/v/graph?focus=n-base`)}>
+              {/* WO-BIZVIEW-DOWNSTREAM ③：焦点用真后端节点键 n-Base（此前 n-base 小写与 {id:"n-Base"} 不匹配→图谱空跳死路）。
+                  选中对象也写入 selectedObjects（图谱可据此高亮该基地实例）。 */}
+              <button
+                className="btn sm"
+                data-testid="geo-goto-graph"
+                onClick={() => {
+                  useSessionStore.getState().setSelectedObjects([{ objectType: "Base", objectId: selected.id, label: selected.name }]);
+                  navigate(`/v/graph?focus=n-Base`);
+                }}
+              >
                 {zh.geo.gotoGraph}
               </button>
             </div>

@@ -40,9 +40,11 @@ export default function OntologyGraphView({ view }: ViewRendererProps) {
   const focusId = searchParams.get("focus");
 
   // 定位节点（geo-map「图谱中查看」/ 映射表行点击）
+  // WO-BIZVIEW-DOWNSTREAM ③：大小写不敏感匹配（焦点键 n-base/n-Base 与节点 id/key 归一比对，防大小写不齐→空跳死路·R17）。
   useEffect(() => {
     if (!graph || !focusId) return;
-    const node = graph.nodes.find((n) => n.id === focusId || n.key === focusId);
+    const f = focusId.toLowerCase();
+    const node = graph.nodes.find((n) => n.id.toLowerCase() === f || n.key.toLowerCase() === f);
     if (node) setSelected(node);
   }, [graph, focusId]);
 

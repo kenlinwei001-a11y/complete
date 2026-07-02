@@ -1586,7 +1586,7 @@
       "title": "业务视图下游导航+权威值接线(台账下游/订单全链marginLedger/geo focus死路)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "IPO第2波·A+C簇·后端权威值前端旁路自算/导航死路·G-VIS-1",

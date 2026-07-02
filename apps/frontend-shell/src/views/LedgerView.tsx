@@ -1,8 +1,11 @@
 import { Fragment, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { queryObjectsPaged } from "@/api/endpoints";
 import { Provenance } from "@/components/Provenance";
 import { useSessionStore } from "@/store/sessionStore";
+import { useOpenWhatIf } from "./sim/whatif";
+import { useActionDraft } from "./sim/shared";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 import styles from "./LedgerView.module.css";
@@ -25,6 +28,10 @@ export default function LedgerView({ view }: ViewRendererProps) {
   const setFilters = useSessionStore((s) => s.setFilters);
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // WO-BIZVIEW-DOWNSTREAM ①：台账对象下游导航（去死路）——就此对象开 what-if / 看订单全链 / 起 Action 草案。
+  const navigate = useNavigate();
+  const openWhatIf = useOpenWhatIf();
+  const action = useActionDraft();
 
   const { data, isLoading } = useQuery({
     queryKey: ["a", "objects", { type: objectType, page, filters }],
@@ -111,6 +118,42 @@ export default function LedgerView({ view }: ViewRendererProps) {
                           </div>
                         ))}
                       </div>
+                      {/* WO-BIZVIEW-DOWNSTREAM ①：下游导航去死路——就此对象开 what-if / 看订单全链 / 起 Action 草案（复用现成通道）。 */}
+                      {objectType === "Order" && (
+                        <div data-testid={`ledger-actions-${row.id}`} style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                          <button
+                            className="btn sm"
+                            data-testid={`ledger-whatif-${row.id}`}
+                            onClick={() => openWhatIf({ source: "ledger", subject: String(row.props.so ?? row.id), label: `订单 ${row.props.so ?? row.id} · what-if 推演` })}
+                          >
+                            ▶ 就此订单开 what-if 推演
+                          </button>
+                          <button
+                            className="btn sm"
+                            data-testid={`ledger-orderchain-${row.id}`}
+                            onClick={() => {
+                              useSessionStore.getState().setSelectedObjects([{ objectType: "Order", objectId: row.id, label: String(row.props.so ?? row.id) }]);
+                              navigate(`/v/order-chain?focus=${encodeURIComponent(String(row.props.so ?? row.id))}`);
+                            }}
+                          >
+                            → 看订单全链
+                          </button>
+                          <button
+                            className="btn sm"
+                            data-testid={`ledger-action-${row.id}`}
+                            disabled={action.isPending}
+                            onClick={() =>
+                              action.mutate({
+                                actionTypeKey: "订单跟进",
+                                payload: { objectType: "Order", objectId: row.id, so: String(row.props.so ?? row.id), reason: "台账下游跟进（就此订单起草跟进 Action）" },
+                              })
+                            }
+                          >
+                            ✎ 起 Action 草案
+                          </button>
+                          {action.isSuccess && <span className="badge green" data-testid={`ledger-action-ok-${row.id}`}>已起草待审批</span>}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}

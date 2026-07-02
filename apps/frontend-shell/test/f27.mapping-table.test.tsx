@@ -67,7 +67,7 @@ describe("F27 · 业务建模映射表（§7.20 图谱内功能）", () => {
     await waitFor(() => expect(screen.queryByTestId("mapping-overlay")).not.toBeInTheDocument());
     expect(await screen.findByTestId("graph-inspector")).toHaveTextContent("基地");
     expect(useSessionStore.getState().selectedObjects).toEqual([
-      expect.objectContaining({ objectId: "n-base", label: "基地" }),
+      expect.objectContaining({ objectId: "n-Base", label: "基地" }),
     ]);
   });
 

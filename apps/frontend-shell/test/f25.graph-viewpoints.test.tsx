@@ -35,7 +35,7 @@ describe("F25 · 图谱八视角配置化（§7.18 零新代码视角）", () =>
     expect(dimClass(screen.getByTestId("graph-node-n-agent"))).toBe(true);
     expect(dimClass(screen.getByTestId("graph-node-产能预测"))).toBe(true);
     // 源数据节点保持明亮且按源系统着色
-    const base = screen.getByTestId("graph-node-n-base");
+    const base = screen.getByTestId("graph-node-n-Base");
     expect(dimClass(base)).toBe(false);
     expect(base.querySelector("circle")).toHaveAttribute("fill", "#5E8FE8"); // ERP 蓝
   });

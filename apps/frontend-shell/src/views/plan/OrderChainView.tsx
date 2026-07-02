@@ -15,7 +15,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
 import type { AffectedOrdersOutputVM } from "@/api/types";
 import type { ViewRendererProps } from "../registry";
-import { fmt, SnapshotBadge } from "../sim/shared";
+import { fmt, SnapshotBadge, MarginLedgerTable } from "../sim/shared";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { DrillBack } from "@/components/DrillBack";
 import zh from "@/locales/zh";
@@ -228,6 +228,10 @@ export default function OrderChainView({ view }: ViewRendererProps) {
         </div>
       </div>
 
+      {/* WO-BIZVIEW-DOWNSTREAM ②：综合毛利率/毛利合计接权威 out.marginLedger（与驾驶舱同一求解器 affected_orders·reconciled✓·
+          非前端旁路自算）。econTable 的 gmRate 是「营收×行业占比」估算口径（诚实标），与此权威勾稽并列不混淆。 */}
+      <MarginLedgerTable testId="oc-margin-ledger" />
+
       {/* 经营数据看板 econTable（PRD-IND-order-aggregate §4.5-A）：产能/库存/在制/原料/营收/毛利按细分聚合 */}
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -290,7 +294,9 @@ export default function OrderChainView({ view }: ViewRendererProps) {
               <td>{fmt(econTotal.rm, 1)}</td>
               <td>{fmt(econTotal.sales, 1)}</td>
               <td>{fmt(econTotal.gp, 1)}</td>
-              <td>{fmt(econGmRate, 1)}%</td>
+              <td data-testid="oc-econ-gmrate">
+                {fmt(econGmRate, 1)}%<sup style={{ color: "var(--warn,#caa23a)", fontSize: 9 }} title="估算口径（营收×行业占比 segMargin）·权威综合毛利率见上「综合毛利勾稽」marginLedger"> 估算</sup>
+              </td>
             </tr>
           </tbody>
         </table>

@@ -14,7 +14,7 @@ describe("F7 · 本体图谱", () => {
     expect(svg).toBeInTheDocument();
 
     // domain 着色
-    const baseNode = screen.getByTestId("graph-node-n-base");
+    const baseNode = screen.getByTestId("graph-node-n-Base");
     expect(baseNode).toHaveAttribute("data-domain", "factory");
     expect(baseNode.querySelector("circle")).toHaveAttribute("fill", "var(--c-factory)");
     // 形状编码：solver 菱形 / agent 六边形
@@ -29,7 +29,7 @@ describe("F7 · 本体图谱", () => {
     expect(inspector).toHaveTextContent("派生公式");
     await waitFor(() =>
       expect(useSessionStore.getState().selectedObjects).toEqual([
-        expect.objectContaining({ objectType: "Base", objectId: "n-base", label: "基地" }),
+        expect.objectContaining({ objectType: "Base", objectId: "n-Base", label: "基地" }),
       ]),
     );
 
@@ -45,7 +45,7 @@ describe("F7 · 本体图谱", () => {
 
     await screen.findByTestId("ontology-svg");
     // 基地节点：3 字段全映射自数据源 → 全建模徽章
-    await user.click(await screen.findByTestId("graph-node-n-base"));
+    await user.click(await screen.findByTestId("graph-node-n-Base"));
     const inspector = await screen.findByTestId("graph-inspector");
     expect(within(inspector).getByTestId("graph-coverage-badge")).toHaveTextContent("字段全建模");
     // 每字段可溯到源字段（util ← utilization）

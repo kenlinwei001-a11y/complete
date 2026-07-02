@@ -281,6 +281,8 @@ export const AFFECTED_ROWS: AffectedOrderRowVM[] = [
 ];
 
 const SEG_PRICE: Record<string, number> = { 乘用车: 0.9, 商用车: 0.85, 储能: 0.45 };
+// WO-BIZVIEW-DOWNSTREAM ②：mock 对齐真后端 marginLedger（细分毛利率·真后端亦下发此字段）——逐细分毛利率。
+const SEG_MARGIN: Record<string, number> = { 乘用车: 18, 商用车: 15, 储能: 13 };
 
 const chain = (orderId: string, judgement: string, rootCause: string, remedy: string) => ({
   orderId,
@@ -340,6 +342,31 @@ export function affectedOrdersOutput(base?: string): AffectedOrdersOutputVM {
   }
   const totalQty = rows.reduce((s, r) => s + r.qty, 0);
   const revenue = rows.reduce((s, r) => s + r.qty * (SEG_PRICE[r.seg] ?? 0.6), 0);
+  // WO-BIZVIEW-DOWNSTREAM ②：综合毛利率逐细分贡献勾稽（Σ贡献=综合毛利率·闭合）——mock 对齐真后端 marginLedger 字段。
+  const targetPct = 16;
+  const segMap = new Map<string, { revenue: number; orderCount: number }>();
+  for (const r of rows) {
+    const rev = r.qty * (SEG_PRICE[r.seg] ?? 0.6);
+    const g = segMap.get(r.seg) ?? { revenue: 0, orderCount: 0 };
+    g.revenue += rev; g.orderCount += 1;
+    segMap.set(r.seg, g);
+  }
+  const totalRev = [...segMap.values()].reduce((s, g) => s + g.revenue, 0) || 1;
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  const bySegment = [...segMap.entries()].map(([seg, g]) => {
+    const revShare = g.revenue / totalRev;
+    const marginPct = SEG_MARGIN[seg] ?? 15;
+    return {
+      seg,
+      revenue: Math.round(g.revenue * 10) / 10,
+      revShare: round(revShare),
+      marginPct,
+      contributionPp: round(marginPct * revShare),
+      gapContributionPp: round((marginPct - targetPct) * revShare),
+      orderCount: g.orderCount,
+    };
+  });
+  const gmRatePct = Math.round(bySegment.reduce((s, b) => s + b.contributionPp, 0) * 100) / 100;
   return {
     summary: {
       orderCount: rows.length,
@@ -349,6 +376,13 @@ export function affectedOrdersOutput(base?: string): AffectedOrdersOutputVM {
     },
     rows,
     problems: ORDER_PROBLEMS,
+    marginLedger: {
+      gmRatePct,
+      targetPct,
+      gapPp: Math.round((gmRatePct - targetPct) * 100) / 100,
+      reconciled: true,
+      bySegment,
+    },
   };
 }
 
