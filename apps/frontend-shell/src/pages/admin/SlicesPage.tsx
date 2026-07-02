@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchObjectTypes,
+  fetchRawDatasets,
   fetchSlices,
   planSlice,
   resolveSlice,
@@ -77,6 +79,8 @@ export default function SlicesPage() {
 /** root + targets 可视化构建器 → 规划器求路径 → 入库 → 试切预览（C7 核心）。 */
 function SliceBuilder({ onSaved }: { onSaved: () => void }) {
   const { data: types } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  // WO-INTAKE-VISIBILITY（G-VIS-1·C4）：0 类型空态给「N 张已导入未建模→去建模」深链（非死路）。
+  const { data: rawDs } = useQuery({ queryKey: ["a", "raw-datasets", { all: true }], queryFn: () => fetchRawDatasets() });
   const typeOptions = useMemo(() => (types ?? []).map((t) => ({ value: t.key, label: `${t.displayName}（${t.key}）` })), [types]);
 
   const [sliceKey, setSliceKey] = useState("");
@@ -163,7 +167,16 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
       <div>
         <div style={{ fontSize: 12, marginBottom: 4 }}>目标类型（targets，可多选 → 规划器自动求 root→target 最短路径）</div>
         {typeOptions.length === 0 ? (
-          <div className="badge amber" data-testid="slice-targets-empty">尚无已发布对象类型，先去建模页发布本体 →</div>
+          <div className="empty-state" data-testid="slice-targets-empty">
+            尚无已发布对象类型。
+            {(rawDs?.length ?? 0) > 0 ? (
+              <> 你已导入 <b>{rawDs!.length}</b> 张数据表尚未建模——
+                <Link to={`/admin/modeling?datasets=${rawDs!.map((d) => d.id).join(",")}`} data-testid="slice-empty-tomodeling">去建模（预填这些表）→</Link>
+              </>
+            ) : (
+              <> 先去 <Link to="/admin/modeling">建模页</Link>发布本体 →</>
+            )}
+          </div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }} data-testid="slice-targets">
             {typeOptions

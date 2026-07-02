@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchObjectTypeStats, fetchBusinessDomains, queryObjectsPaged, type ObjectTypeStat } from "@/api/endpoints";
+import { fetchObjectTypeStats, fetchBusinessDomains, queryObjectsPaged, fetchRawDatasets, type ObjectTypeStat } from "@/api/endpoints";
 
 /**
  * A4 · 对象/类型浏览器（消费 A3 14 域 + 物化计数 + 实例下钻）。闭合用户实测"找不到已发布对象类型在哪看"。
@@ -82,6 +82,8 @@ function InstancePanel({ typeKey, pk, onClose }: { typeKey: string; pk: string |
 export default function ObjectTypesBrowserPage() {
   const statsQ = useQuery({ queryKey: ["a", "object-type-stats"], queryFn: fetchObjectTypeStats });
   const domQ = useQuery({ queryKey: ["a", "business-domains"], queryFn: fetchBusinessDomains });
+  // WO-INTAKE-VISIBILITY（G-VIS-1·C4）：0 类型空态不再死路——若有已导入未建模的数据集，给「N 张→去建模」深链。
+  const rawDsQ = useQuery({ queryKey: ["a", "raw-datasets", { all: true }], queryFn: () => fetchRawDatasets() });
   const [domainFilter, setDomainFilter] = useState("");
   const [kw, setKw] = useState("");
   const [onlyMaterialized, setOnlyMaterialized] = useState(false);
@@ -128,7 +130,18 @@ export default function ObjectTypesBrowserPage() {
         <span className="muted" data-testid="ot-count">{filtered.length} / {stats.length} 类型</span>
       </div>
 
-      {stats.length === 0 && <div className="muted" style={{ fontSize: 13 }} data-testid="ot-empty">尚无已发布对象类型。先经数据构建发动机/合成建域。</div>}
+      {stats.length === 0 && (
+        <div className="empty-state" data-testid="ot-empty">
+          尚无已发布对象类型。
+          {(rawDsQ.data?.length ?? 0) > 0 ? (
+            <> 你已导入 <b>{rawDsQ.data!.length}</b> 张数据表尚未建模——
+              <Link to={`/admin/modeling?datasets=${rawDsQ.data!.map((d) => d.id).join(",")}`} data-testid="ot-empty-tomodeling">去建模（预填这些表）→</Link>
+            </>
+          ) : (
+            " 先经数据构建发动机/合成建域，或去数据接入上传数据表。"
+          )}
+        </div>
+      )}
 
       {[...byDomain.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([dom, rows]) => {
         // 域内平均就绪%（估算类型不计入分母，避免拉低误导）。

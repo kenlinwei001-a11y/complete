@@ -398,13 +398,29 @@ export const handlers = [
   ),
 
   // P3 闭环末步（mock）：按对账把导入表物化为既有对象类型 ObjectInstance。
+  // WO-INTAKE-VISIBILITY：objectify 未命中列 → candidates 计数 + 落 reconcile 队列（下方 GET 返）。
   http.post("*/a/v1/databuilder/intake/objectify", () =>
     HttpResponse.json({
       jobId: "job_proto_mock",
       materialized: [{ dataset: "ORDER_DATA", type: "Order", count: 1 }],
       skipped: [{ dataset: "BASE_DATA", reason: "多义/未命中，待人确认（不猜）" }],
+      candidates: 2,
     }),
   ),
+  // WO-INTAKE-VISIBILITY（G-VIS-1·C3）：schema 对账候选队列（objectify 未命中列·HITL 待确认）。
+  http.get("*/a/v1/databuilder/reconcile-candidates", ({ request }) => {
+    const status = new URL(request.url).searchParams.get("status");
+    const all = [
+      { id: "rcc_1", tenantId: "demo", datasetName: "BASE_DATA", prototypeColumn: "carbon_ratio", column: "carbon_ratio", connId: "conn_proto_mock", sampleValues: [0.12, 0.09], candidates: [{ targetType: "Base", targetField: "carbonRatio", score: 0.5 }], suggestedAction: "USE", status: "PENDING" },
+      { id: "rcc_2", tenantId: "demo", datasetName: "BASE_DATA", prototypeColumn: "shift_code", column: "shift_code", connId: "conn_proto_mock", sampleValues: ["A", "B"], candidates: [], suggestedAction: "NEW", status: "PENDING" },
+    ];
+    const items = status ? all.filter((c) => c.status === status) : all;
+    return HttpResponse.json({ items });
+  }),
+  http.post("*/a/v1/databuilder/reconcile-candidates/:id/resolve", async ({ params, request }) => {
+    const body = (await request.json().catch(() => ({}))) as { action?: string; target?: string };
+    return HttpResponse.json({ id: params.id, tenantId: "demo", datasetName: "BASE_DATA", prototypeColumn: "carbon_ratio", candidates: [], suggestedAction: "USE", status: "RESOLVED", resolvedAction: body.action ?? "USE", resolvedTarget: body.target, resolvedAt: "2026-07-02T10:00:00Z" });
+  }),
 
   // ---- Entitlement ----
   http.get("*/a/v1/features/registry", () => HttpResponse.json(FEATURE_REGISTRY)),

@@ -12,6 +12,7 @@ import type {
   BuildRunBody,
   BuildWorkflowRun,
   StoryBuildRun,
+  SchemaReconcileCandidate,
   FdeNode,
   BackfillReport,
   DataBuilderAgent,
@@ -953,6 +954,19 @@ export const verifyStoryRun = (id: string) =>
 // A18.4 整域晋升编排：审核通过 PROVISIONAL 未审核域 → 隔离数据迁入真租户 + 逐制品晋升求解器 + 翻转域信任级
 export const promoteStoryDomain = (id: string) =>
   api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/promote`, { method: "POST" });
+// WO-INTAKE-VISIBILITY（G-VIS-1·C3）：schema 对账候选队列——objectify 未精确命中的列（HITL 待人确认）。
+// 类型 SchemaReconcileCandidate 来自 @platform/contracts（未重定义·contracts-only-shared）。
+export const fetchReconcileCandidates = (filters?: { connId?: string; status?: string }) => {
+  const p = new URLSearchParams();
+  if (filters?.connId) p.set("connId", filters.connId);
+  if (filters?.status) p.set("status", filters.status);
+  const qs = p.toString();
+  return api.a<{ items: SchemaReconcileCandidate[] }>(`/a/v1/databuilder/reconcile-candidates${qs ? `?${qs}` : ""}`);
+};
+export const resolveReconcileCandidate = (id: string, action: string, target?: string) =>
+  api.a<SchemaReconcileCandidate>(`/a/v1/databuilder/reconcile-candidates/${id}/resolve`, { method: "POST", body: { action, ...(target ? { target } : {}) } });
+// objectifyIntake（重跑物化）定义见下方 IntakeObjectifyResult（已含 candidates 计数）。
+
 // 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）
 export const fetchWorkflowRuns = () => api.a<BuildWorkflowRun[]>("/a/v1/databuilder/workflow-runs");
 export const fetchWorkflowRun = (id: string) => api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}`);
@@ -1124,6 +1138,8 @@ export interface IntakeObjectifyResult {
   jobId: string;
   materialized: { dataset: string; type: string; count: number }[];
   skipped: { dataset: string; reason: string }[];
+  /** WO-INTAKE-VISIBILITY（G-VIS-1）：未精确命中 → 落 reconcile 队列的列数（前端提示去字段对账）。 */
+  candidates?: number;
 }
 export const objectifyIntake = (connId: string) =>
   api.a<IntakeObjectifyResult>("/a/v1/databuilder/intake/objectify", { method: "POST", body: { connId } });

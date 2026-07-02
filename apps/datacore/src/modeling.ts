@@ -1,4 +1,4 @@
-import { ModelingSuggestionSchema, type FieldCoverageReport, type FieldProfile, type ModelingSuggestion } from "@platform/contracts";
+import { ModelingSuggestionSchema, type FieldCoverageReport, type FieldProfile, type ModelingSuggestion, type SchemaReconcileCandidate } from "@platform/contracts";
 import type { AuthCtx, DraftOperation, FkCandidate, OntologyDraft, RawDataset } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { LlmClient } from "./llm.js";
@@ -597,7 +597,7 @@ export class ModelingService {
   async materializeFromReconcile(
     ctx: AuthCtx,
     rawDatasetIds: string[],
-  ): Promise<{ jobId: string; materialized: { dataset: string; type: string; count: number }[]; skipped: { dataset: string; reason: string }[] }> {
+  ): Promise<{ jobId: string; materialized: { dataset: string; type: string; count: number }[]; skipped: { dataset: string; reason: string }[]; reconcileCandidates: SchemaReconcileCandidate[] }> {
     const jobId = newId("job");
     const startedAt = new Date().toISOString();
     const types = await this.ontology.listTypes(ctx);
@@ -605,20 +605,64 @@ export class ModelingService {
     const pkByType = new Map(types.map((t) => [t.key, t.properties.find((p) => p.isPrimaryKey)?.propKey]));
     const materialized: { dataset: string; type: string; count: number }[] = [];
     const skipped: { dataset: string; reason: string }[] = [];
+    // WO-INTAKE-VISIBILITY（G-VIS-1）：列名未精确命中的列不再静默丢——收集成 HITL 待确认候选（带样本值）返回，
+    // 由调用方落 reconcile-candidates 队列，前端 SchemaReconcile 页逐列确认（治本：skip 列可见可处置，非空态死路）。
+    const reconcileCandidates: SchemaReconcileCandidate[] = [];
     const rowCounts: Record<string, number> = {};
+    // 采样某列前 ≤3 个非空值（供前端确认时看上下文·纯确定性取前几行）。
+    const sampleOf = (rows: Record<string, unknown>[], column: string): unknown[] => {
+      const out: unknown[] = [];
+      for (const r of rows) { const v = r[column]; if (v != null && v !== "" && !out.includes(v)) { out.push(v); if (out.length >= 3) break; } }
+      return out;
+    };
+    // WO-INTAKE-VISIBILITY（G-VIS-1·C6 闭环）：人在 SchemaReconcile 页确认过的候选（USE/RENAME→目标字段）
+    // 喂回物化——之前"跳过"的列，resolve 后重跑 objectify 即真物化进对象（前端确认真生效·非装饰）。
+    // 目标类型延后到数据集循环内定夺（优先归入该表已被 autoMapped 指认的主类型，避免误落同名字段的旁类型）。
+    const resolvedByDataset = new Map<string, { column: string; targetField: string; candidateTypes: string[] }[]>();
+    for (const rc of await this.repos.reconcileCandidates.list(ctx.tenantId)) {
+      if (rc.status !== "RESOLVED" || !rc.resolvedAction || rc.resolvedAction === "DISCARD" || rc.resolvedAction === "NEW") continue;
+      const target = rc.resolvedTarget;
+      if (!target) continue;
+      const candidateTypes = rc.candidates.filter((x) => x.targetField === target).map((x) => x.targetType);
+      const list = resolvedByDataset.get(rc.datasetName) ?? [];
+      list.push({ column: rc.column ?? rc.prototypeColumn, targetField: target, candidateTypes });
+      resolvedByDataset.set(rc.datasetName, list);
+    }
 
     for (const dsId of rawDatasetIds) {
       const ds = await this.repos.rawDatasets.get(ctx.tenantId, dsId);
       if (!ds) { skipped.push({ dataset: dsId, reason: "原始表不存在" }); continue; }
-      const rows = await this.repos.rawRows.list(ctx.tenantId, ds.id);
+      const rows = await this.repos.rawRows.list(ctx.tenantId, ds.id) as Record<string, unknown>[];
       // 确定性对账：列 → 既有 type.field（仅 autoMapped 精确命中入物化，候选/未命中交人，诚实不猜）。
       const recon = reconcileIntake([{ name: ds.name, columns: ds.fields.map((f) => f.name), rowCount: ds.rowCount, sampleRows: [] }], existing);
-      if (recon.autoMapped.length === 0) { skipped.push({ dataset: ds.name, reason: "无可确定映射的列（全部待人确认/未命中）" }); continue; }
-      // 按目标类型分组该表的 autoMapped 列。
+      const resolvedCols = resolvedByDataset.get(ds.name) ?? [];
+      if (recon.autoMapped.length === 0 && resolvedCols.length === 0) {
+        skipped.push({ dataset: ds.name, reason: "无可确定映射的列（全部待人确认/未命中）" });
+        // 全表未命中且无人确认：把每列作为候选交人（否则 fresh 租户上传后无处确认→空态死路）。
+        for (const cand of recon.candidates) {
+          if (cand.datasetName !== ds.name) continue;
+          reconcileCandidates.push({ ...cand, column: cand.prototypeColumn, sampleValues: sampleOf(rows, cand.prototypeColumn) });
+        }
+        continue;
+      }
+      // 按目标类型分组该表的 autoMapped 列 + 人已确认(RESOLVED USE/RENAME)的列（C6 闭环：确认后真物化）。
       const byType = new Map<string, { column: string; targetField: string }[]>();
+      const resolvedColSet = new Set(resolvedCols.map((r) => r.column));
       for (const a of recon.autoMapped) {
         if (!byType.has(a.targetType)) byType.set(a.targetType, []);
         byType.get(a.targetType)!.push({ column: a.column, targetField: a.targetField });
+      }
+      // 主类型：该表 autoMapped 列最多的类型（人确认列优先归入它，避免误落同名字段的旁类型）。
+      let resolvedDominant: string | undefined;
+      let resolvedMax = 0;
+      for (const [tt, cc] of byType) if (cc.length > resolvedMax) { resolvedMax = cc.length; resolvedDominant = tt; }
+      for (const r of resolvedCols) {
+        // 目标类型：优先主类型（若它在候选类型里或该表已确定主类型）；否则取第一个候选类型。
+        const targetType = (resolvedDominant && (r.candidateTypes.length === 0 || r.candidateTypes.includes(resolvedDominant))) ? resolvedDominant : r.candidateTypes[0];
+        if (!targetType) continue;
+        if (!byType.has(targetType)) byType.set(targetType, []);
+        const arr = byType.get(targetType)!;
+        if (!arr.some((c) => c.targetField === r.targetField)) arr.push({ column: r.column, targetField: r.targetField });
       }
       // 根因修（真实业务数据真走真实管道）：reconcileIntake 是**列级**判歧义——常见业务列名
       // （qty/status/unitPrice）在多个对象类型都有同名字段 → exact>1 → 判为歧义 → 落 candidates →
@@ -629,6 +673,7 @@ export class ModelingService {
       let dominantType: string | undefined;
       let maxCols = 0;
       for (const [t, cols] of byType) if (cols.length > maxCols) { maxCols = cols.length; dominantType = t; }
+      const consumedCols = new Set<string>(); // 被数据集级消歧吸收的列（不再作为待确认候选）。
       if (dominantType && maxCols >= 2) {
         const domCols = byType.get(dominantType)!;
         const claimed = new Set(domCols.map((c) => c.targetField));
@@ -638,8 +683,14 @@ export class ModelingService {
           if (hit && !claimed.has(hit.targetField)) {
             domCols.push({ column: cand.prototypeColumn, targetField: hit.targetField });
             claimed.add(hit.targetField);
+            consumedCols.add(cand.prototypeColumn);
           }
         }
+      }
+      // 未被自动映射、未被消歧吸收、也未被人确认的列 → 真·待人确认候选（带样本值·逐列 USE/RENAME/NEW/MERGE/DISCARD）。
+      for (const cand of recon.candidates) {
+        if (cand.datasetName !== ds.name || consumedCols.has(cand.prototypeColumn) || resolvedColSet.has(cand.prototypeColumn)) continue;
+        reconcileCandidates.push({ ...cand, column: cand.prototypeColumn, sampleValues: sampleOf(rows, cand.prototypeColumn) });
       }
       for (const [targetKey, cols] of byType) {
         // 幂等：清掉本表+本类型上一次物化。
@@ -688,6 +739,6 @@ export class ModelingService {
       finishedAt: new Date().toISOString(),
       rowCounts,
     });
-    return { jobId, materialized, skipped };
+    return { jobId, materialized, skipped, reconcileCandidates };
   }
 }

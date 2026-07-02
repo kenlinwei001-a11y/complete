@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchDataCategories, setDataCategoryMode, setDataCategoryTemplate, uploadFile, type DataCategoryView } from "@/api/endpoints";
+import { fetchDataCategories, fetchRawDatasets, fetchRawDatasetRows, setDataCategoryMode, setDataCategoryTemplate, uploadFile, type DataCategoryView } from "@/api/endpoints";
 import { downloadBlob } from "@/views/graph/mappingExport";
 import { toast, toastError } from "@/store/toastStore";
 
@@ -36,7 +36,8 @@ async function readCsvHeader(file: File): Promise<string[]> {
  */
 export function DataCategoriesPanel() {
   const qc = useQueryClient();
-  const navigate = useNavigate();
+  // WO-INTAKE-VISIBILITY（G-VIS-1·C1）：上传后不再无条件跳走 /schema——就地展开导入行预览（用户看到导入的数据）。
+  const [uploadedConnId, setUploadedConnId] = useState<string | null>(null);
   const { data } = useQuery({ queryKey: ["a", "data-categories", {}], queryFn: fetchDataCategories });
   const [openKey, setOpenKey] = useState<string | null>(null);
   const uploadInputs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -52,10 +53,14 @@ export function DataCategoriesPanel() {
     onSuccess: () => { void invalidate(); toast("已替换模版"); },
     onError: (e) => toastError(e),
   });
-  // 上传数据文件（走与连接器页同一上传门）→ 跳字段映射页。
+  // 上传数据文件（走与连接器页同一上传门）→ 就地展开该连接导入行（不弹走·C1），并失效 raw-datasets 缓存。
   const uploadData = useMutation({
     mutationFn: (file: File) => uploadFile(file),
-    onSuccess: (res) => { toast("已上传，进入字段核对"); navigate(`/admin/connections/${res.connId}/schema`); },
+    onSuccess: (res) => {
+      toast("已上传，下方查看导入的行");
+      void qc.invalidateQueries({ queryKey: ["a", "raw-datasets"] });
+      setUploadedConnId(res.connId);
+    },
     onError: (e) => toastError(e),
   });
   const cats = data?.items ?? [];
@@ -139,6 +144,46 @@ export function DataCategoriesPanel() {
           );
         })}
       </div>
+      {uploadedConnId && <UploadedPreview connId={uploadedConnId} />}
     </section>
+  );
+}
+
+/**
+ * WO-INTAKE-VISIBILITY（C1）：上传后就地预览导入的行（不弹走 /schema）——用户当页就看到导入的数据，
+ * 前端所见 = 后端 raw-datasets/rows 真值。附「去字段核对/建模 →」软链（非强制跳转）。
+ */
+function UploadedPreview({ connId }: { connId: string }) {
+  const { data: datasets } = useQuery({ queryKey: ["a", "raw-datasets", { connId }], queryFn: () => fetchRawDatasets(connId) });
+  const first = datasets?.[0];
+  const { data: rowsData } = useQuery({
+    queryKey: ["a", "raw-dataset-rows", first?.id],
+    queryFn: () => fetchRawDatasetRows(first!.id),
+    enabled: !!first,
+  });
+  const rows = rowsData?.rows ?? [];
+  const cols = rows.length > 0 ? Object.keys(rows[0]!) : (first?.fields?.map((f) => f.name) ?? []);
+  return (
+    <div className="panel" style={{ marginTop: 12 }} data-testid="dc-upload-preview">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <strong style={{ fontSize: 13 }}>已导入：{first?.name ?? "（加载中）"}</strong>
+        <span className="chip" style={{ fontSize: 11 }}>{rows.length} 行 · {cols.length} 列</span>
+        <Link to={`/admin/connections/${connId}/schema`} style={{ marginLeft: "auto", fontSize: 12 }} data-testid="dc-upload-goto-schema">去字段核对/建模 →</Link>
+      </div>
+      {rows.length > 0 ? (
+        <div style={{ overflowX: "auto" }}>
+          <table className="cmp" data-testid="dc-upload-preview-table">
+            <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+            <tbody>
+              {rows.slice(0, 10).map((r, i) => (
+                <tr key={i} data-testid={`dc-upload-row-${i}`}>{cols.map((c) => <td key={c}>{String(r[c] ?? "")}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="dc-upload-preview-empty">导入完成——加载行中或该表无行。</div>
+      )}
+    </div>
   );
 }

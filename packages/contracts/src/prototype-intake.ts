@@ -54,6 +54,10 @@ export const SchemaReconcileCandidateSchema = z.object({
   /** P2 持久化字段（preview 态可空；落库后填）。 */
   id: z.string().optional(),
   tenantId: z.string().optional(),
+  /** WO-INTAKE-VISIBILITY（G-VIS-1）：CSV/上传 objectify 路径落库时带来源连接 + 列名 + 样本值（前端逐列确认可见上下文）。 */
+  connId: z.string().optional(),
+  column: z.string().optional(),
+  sampleValues: z.array(z.unknown()).optional(),
   /** 人确认的动作（RESOLVED 时）。 */
   resolvedAction: ReconcileActionSchema.optional(),
   /** RENAME/USE 时人选的目标字段；NEW 时新建字段名。 */

@@ -3521,14 +3521,30 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const datasets = await connectors.listRawDatasets(c, body.connId);
     if (datasets.length === 0) throw notFound("connection raw datasets");
     const result = await modeling.materializeFromReconcile(c, datasets.map((d) => d.id));
-    await outbox.emit(c.tenantId, "prototype.objectified", { connId: body.connId, materialized: result.materialized.length, objects: result.materialized.reduce((a, m) => a + m.count, 0) });
-    return result;
+    // WO-INTAKE-VISIBILITY（G-VIS-1）：列名未精确命中的列不再静默丢——落 reconcile-candidates 队列（带 connId+样本值），
+    // 前端 SchemaReconcile 页逐列确认。确定性 id（tenantId+connId+dataset+column）→ 再 objectify 幂等不重复。
+    const persistedCandidates = await Promise.all(
+      result.reconcileCandidates.map(async (cand) => {
+        const id = `rcc_${c.tenantId}_${body.connId}_${cand.datasetName}_${cand.prototypeColumn}`.replace(/[^\p{L}\p{N}_-]/gu, "_");
+        const existing = await repos.reconcileCandidates.get(c.tenantId, id);
+        // 已被人确认（RESOLVED）的不覆盖；否则落/刷新 PENDING 候选。
+        if (existing?.status === "RESOLVED") return existing;
+        const rec = { ...cand, id, tenantId: c.tenantId, connId: body.connId };
+        await repos.reconcileCandidates.put(rec);
+        return rec;
+      }),
+    );
+    await outbox.emit(c.tenantId, "prototype.objectified", { connId: body.connId, materialized: result.materialized.length, objects: result.materialized.reduce((a, m) => a + m.count, 0), candidates: persistedCandidates.length });
+    return { ...result, candidates: persistedCandidates.length };
   });
-  // prototype-intake P2：对账候选队列（HITL）。
+  // prototype-intake P2 / WO-INTAKE-VISIBILITY：对账候选队列（HITL）。支持 status + connId 过滤。
   app.get("/a/v1/databuilder/reconcile-candidates", async (req) => {
     const c = ctx(req);
     requireAdmin(c);
-    const items = (await repos.reconcileCandidates.list(c.tenantId)).filter((x) => (req.query as { status?: string }).status ? x.status === (req.query as { status?: string }).status : true);
+    const q = req.query as { status?: string; connId?: string };
+    const items = (await repos.reconcileCandidates.list(c.tenantId)).filter(
+      (x) => (q.status ? x.status === q.status : true) && (q.connId ? x.connId === q.connId : true),
+    );
     return { items };
   });
   // prototype-intake P2：人确认某候选（USE/RENAME/NEW/MERGE/DISCARD + 目标字段）→ RESOLVED + 事件。

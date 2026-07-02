@@ -85,7 +85,10 @@ const TYPE_BADGES: Record<string, string> = {
  */
 function DataSourceRowsEditor({ connId }: { connId: string }) {
   const dsQ = useQuery({ queryKey: ["a", "raw-datasets", { connId }], queryFn: () => fetchRawDatasets(connId), enabled: connId !== "" });
-  const datasetId = dsQ.data?.[0]?.id;
+  const datasets = dsQ.data ?? [];
+  // WO-INTAKE-VISIBILITY（G-VIS-1·C5）：不再硬取 [0]——多表可选，切换编辑第 2+ 张表的字段画像。
+  const [selectedDsId, setSelectedDsId] = useState<string | null>(null);
+  const datasetId = selectedDsId ?? datasets[0]?.id;
   const rowsQ = useQuery({
     queryKey: ["a", "raw-rows", datasetId],
     queryFn: () => fetchRawDatasetRows(datasetId!),
@@ -109,7 +112,14 @@ function DataSourceRowsEditor({ connId }: { connId: string }) {
 
   return (
     <div className="panel" style={{ marginBottom: 14 }} data-testid="ds-rows-editor">
-      <div className="section-title">数据源在线编辑（点击单元格修改）</div>
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        数据源在线编辑（点击单元格修改）
+        {datasets.length > 1 && (
+          <select value={datasetId} aria-label="选择数据表" data-testid="ds-table-select" style={{ marginLeft: "auto" }} onChange={(e) => setSelectedDsId(e.target.value)}>
+            {datasets.map((d) => <option key={d.id} value={d.id}>{d.name}（{d.rowCount} 行）</option>)}
+          </select>
+        )}
+      </div>
       <table className="cmp" data-testid="ds-rows-table">
         <thead>
           <tr>
