@@ -19,3 +19,22 @@
 - 排除（非缺陷·勿动）：plan-generate hard-chip=硬约束/软偏好配置切换（非裁决输出）· 根因DAG「RED」徽标已 muted · 规则号 C13/C15 等=RuleRef 链接色。
 
 补齐这 2 类 → 真「扫齐」→ DONE。
+
+---
+
+## FIX 轮复验 → ✅ DONE（真浏览器 getComputedStyle·前后端 SYNTHETIC 逐值一致）
+
+dev `0de4752` 照本 block 补齐 2 类残余。审核方独立真浏览器复跑（chromium + 真 vite:5200 直连真 datacore:4001·非 mock·非 jsdom），`.fde-dm-fix.mjs`：
+
+**后端真值前置（curl affected_orders·demo 租户）**：`dataMode=SYNTHETIC`·`marginLedger.bySegment`：乘用车 +1.183 / **储能 −0.967** / **商用车 −0.086**（2 负值·无守卫必渲染 `var(--danger)`）；`problems=8`（credit/lta/ramp/push/crm/cost/frame/maint）。
+
+| 点 | 真浏览器 getComputedStyle | 判 |
+|---|---|---|
+| P1 DashboardView dash-order-ledger 对缺口贡献 cell | `-0.97`→`rgb(89,99,111)`(--muted2) · `-0.09`→`rgb(89,99,111)` · **red=0** | ✅ 后端 −0.967/−0.086 ↔ 前端 −0.97/−0.09·muted 非红 |
+| P2 MarginLedgerTable(margin-ledger-generate) gap cell | `+1.18/-0.97/-0.09` 全 inline `var(--muted2)`=`rgb(89,99,111)` · **red=0** · 中性列(营收%/毛利%)照常 --txt | ✅ |
+| P3 order-chain probCard ×8(oc-problem-*) | borderLeftColor 全 `rgb(89,99,111)` · badge 无 `red` 类 · **borderRed=0·badgeRed=0** | ✅ |
+| P3b order-chain 披露横幅 | banner count=2（present） | ✅ |
+
+**承重性（牙齿）**：后端下发的是**真负值**（−0.967/−0.086），代码路径 `notLive ? muted : (v<0 ? danger : ok)`——若 `notLive=false` 则 −0.967 必命中 `var(--danger)`。守卫真承重（非无脑灭红：LIVE 负值仍红，见 dev datamode-sweep.test.tsx C4 对照）。
+
+**判决：✅ DONE。** 2 类残余全补·真浏览器逐值对上后端 SYNTHETIC·合成不出决策红 + 披露横幅在·前后端一致。VERDICT: ALL PASS (4/4)。
