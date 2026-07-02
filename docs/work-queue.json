@@ -2047,12 +2047,12 @@
       }
     },
     {
-      "owner": "",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "id": "DEMO-DATA",
       "priority": "P1",
-      "status": "TODO",
+      "status": "BUILT",
       "title": "demo数据补全:livedIn合成+触发运行+meta sync(依赖型空页开箱)",
       "doc": "docs/REVIEW-scan-findings.md",
       "note": "依赖型空页共根·OEE趋势/运营回顾/history404/rule-docs/llm-providers/decisions/evals/quarantine空",
