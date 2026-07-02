@@ -1914,12 +1914,12 @@
       }
     },
     {
-      "owner": "",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "id": "DATAMODE-SWEEP",
       "priority": "P0",
-      "status": "TODO",
+      "status": "WIP",
       "title": "全站dataMode消费扫齐(合成充真成片·KILL-MOCK-RED漏网)",
       "doc": "docs/REVIEW-scan-findings.md",
       "note": "扫描坐实:metric-strip物料保障率/根因DAG/规划体检65分/方案生成C18红/project-sim缺口/order-chain不建议接 合成显决策红·后端已发dataMode前端未消费",
