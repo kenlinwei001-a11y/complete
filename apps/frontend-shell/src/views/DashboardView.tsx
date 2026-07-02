@@ -311,7 +311,8 @@ function PlanDrillWidget() {
       )}
       {openKpi && data?.dag && (
         <div style={{ marginTop: 10 }} data-testid="drill-dag">
-          <ProvenanceDag data={data.dag} />
+          {/* DATAMODE-SWEEP：把顶层 dataMode 传入 dag（ProvenanceDag 据此把合成 RED 降级中性·非无脑灭红）。 */}
+          <ProvenanceDag data={data.dag.dataMode == null && data.dataMode != null ? { ...data.dag, dataMode: data.dataMode } : data.dag} />
         </div>
       )}
     </div>
@@ -342,7 +343,18 @@ function useWidgetData(q: WidgetQueryDef) {
         case "solver": {
           const res = await invokeSolver(q.solverKey, q.args);
           if (!q.valuePath) return res.data;
-          return q.valuePath.split(".").reduce<unknown>((acc, k) => (acc as Record<string, unknown> | undefined)?.[k], res.data);
+          const extracted = q.valuePath.split(".").reduce<unknown>((acc, k) => (acc as Record<string, unknown> | undefined)?.[k], res.data);
+          // DATAMODE-SWEEP（G-VIS-1·KILL-MOCK-RED 同源·不作假）：valuePath 抽子值会剥掉求解器**顶层 dataMode**
+          // → 下游 renderer（MetricStrip/ProvenanceDag…）读不到诚实位、合成数据渲染成决策级红。
+          // 修：把顶层 dataMode 传播到抽取结果（数组→逐元素·对象→本身），renderer 据此降级中性（LIVE 照常出红）。
+          const topMode = (res.data as { dataMode?: unknown } | undefined)?.dataMode;
+          if (topMode != null && extracted != null && typeof extracted === "object") {
+            if (Array.isArray(extracted)) {
+              return extracted.map((el) => (el != null && typeof el === "object" && !Array.isArray(el) && (el as Record<string, unknown>).dataMode == null ? { ...(el as Record<string, unknown>), dataMode: topMode } : el));
+            }
+            if ((extracted as Record<string, unknown>).dataMode == null) return { ...(extracted as Record<string, unknown>), dataMode: topMode };
+          }
+          return extracted;
         }
         // 运营态出厂配置增量 §4.1：12 个月趋势 / 准交率 / 年度已执行工单 / 已交付台账
         case "history": {
