@@ -1,0 +1,143 @@
+# 本体切片 §3 · 关系图谱（链路 = 模块间关系）
+
+<!-- 自动生成·勿手改 -->
+> ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `3cde84cd8dcfe1b7`。
+
+---
+
+## 3. 关系图谱（链路 = 模块间关系）
+
+> `A --关系--> B`。**⚠ = 已知断/弱链（见 §8）**。
+
+**编排链（问句→答案）**
+```
+Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | SliceSpec | Rule | ActionType | render }
+                       │                                              │
+                       └─(路径B回退)──> Agent --uses--> Skill          ├ invoke_solver --OBO HTTP--> DataCore Solver
+                                              │                        ├ query_objects --> ObjectInstance(A6过滤)
+                                              ├ ruleBindings--> Rule    └ evaluate_rules --> Rule(BLOCK 短路)
+                                              └ tools--> Solver/MCP
+ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
+                       ├─**B→A 存在性探针（引用闭合·发布门）**：workflow 步骤 solverKey/ruleIds + agent scopeDeclaration.objectTypes
+                       │  发布前经 DataCore 校验真实存在（probeMissingRefs，fail-open；不存在=死路拒发布）
+                       └─**B→A 交叉验证（推演验证痕迹·运行时）**：用到 resolve_slice 的推演完成时，把结论对象断言
+                          --OBO HTTP /a/v1/ontology/cross-validate--> DataCore 对照知识图谱已有事实核对（fail-open），
+                          连同一致性检查组装为 Answer.validationTrace（前端 ValidationTracePanel 展示，让用户信任）
+```
+**求解器 MCP 暴露链（A1）**
+```
+DataCore SolverRegistry(全集 32 = 业务场景 22 + 净室通用 9 + 决策驾驶舱 1，feature 过滤) --GET /a/v1/solvers/registry-->
+  AgentCore `solvers` MCP server(mcp/solvers-catalog.ts buildSolverMcpTools，确定性按名排序) --GET /b/v1/mcp/servers/solvers-->
+    工具 mcp__solvers__{key}(治理页可见/mcp-router 可选) --Agent 调用--> executor A1 shim(零重写归一回 invoke_solver)
+      --OBO HTTP /a/v1/solvers/{key}/invoke--> DataCore Solver
+  · 收敛纪律：「无 LLM 描述不允许发布」→ 注册表每条带描述（catalog.test 守无漂移：注册表键集 === SOLVER_KEYS）
+  · feature 过滤先于 authz（关 view.plan-audit → plan_audit 工具消失，R3）；与 QOS 场景 discover(22) 分列、互不影响
+  · WO-RESOURCE-REF：MCP 页（McpPage）用户自建 MCP **之下**增「求解器（平台内置）·内置·READ」分区（fetchSolverMcpServer → GET /b/v1/mcp/servers/solvers），点开列 mcp__solvers__* 只读；agent/skill 的 MCP 引用（McpRefSelect）值域 = 用户自建 ∪ 内置 solvers server（mcpConfigId="solvers"）。「求解器即 MCP 的一种」前端接通。
+```
+**场景/入口链**
+```
+ScenarioCard --view--> View(规划与平衡/推演与风险/…)
+ScenarioCard --intentKey--> Intent          ✅ 20/20 接通（种子从目录派生意图+计划，G-1 已修）
+ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --POST /b/v1/scenarios/:key/launch--> Query
+                                  ✅ P1 已接通（presetSlots 注入通道 + fillSlots 消费 + launch 端点；20/20 零反问门 scenarios-wiring）；前端启动器待 P3
+Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）
+SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent   （降为投影）
+```
+**数据→本体→推演链**
+```
+Connector --produces--> RawDataset --suggest/modeling--> OntologyDraft --publish--> OntologyType/Link/Version
+RawDataset --materialize(幂等)--> ObjectInstance --runDerivations--> DerivedProperty
+RawDataset --export(.xlsx/.csv)--> 下载文件(合成源标 .synthetic·真业务行·R6 字节稳)   ✅ WO-SOURCE-TRANSPARENCY（GET /a/v1/raw-datasets/:id/export·数据连接器页「下载 Excel」·消灭走捷径）
+SyntheticJob --gen(seed)--> Connection(合成源)+RawDataset/RawRow --materialize--> ObjectInstance(origin 溯回 rawDatasetId/rowIdx·**R-NO-ORPHAN-SOURCE 门守无凭空**)/Link   ✅ 活数据可溯 P1（synthetic/service.ts；不再凭空落对象）        IndustryTemplate --驱动--> SyntheticJob
+ObjectType <--reads-- Solver(入参字段)     ObjectType <--scopes-- Rule     ObjectType --domain--> SliceSpec
+DemandSegment(forecast·p50/p90/tgt) + SopVersionRow(plan·demand/supply) --需求侧--> risk_timeline(紧张度 tension)   ✅ WO-FORECAST-SIM（紧张度 = 真需求−产能 缺口·替 mockTightness 哈希）
+capacity_rollup(基地周产能 weeklyWan) --供给侧--> risk_timeline   ·  `solvers/risk.ts demandCapacityTightness`（负载比=真需求÷真产能·量纲无关·R6 确定性·无 Math.random/Date.now）
+  └ 需求驱动因素（瓶颈工序/人力工时/物料齐套）基线张力由此派生 → `dataMode=LIVE` + `demandGap{gapWan,source}`（缺口=预测需求−产能·可溯 R13）；无真预测回落 mockTightness → MOCK（诚实不冒充）。改 DemandSegment.p50/SopVersionRow.demand 真值 → 张力曲线随之变（非哈希恒定，门 solvers.test V5d 守）。`loadContext` 注入 DemandSegment/SopVersionRow（types.ts SolverContext）。
+SolverParam <--adjusts-- Calibration       Action(EXECUTED) --writeback--> ObjectInstance(props,二次派生)
+Action(APPROVED) --execute--> WritebackAdapter{MockWritebackAdapter | ErpRestWritebackAdapter} --出站--> 目标系统   ✅ WO-ACTUATE（决策出站写回适配器·G-14）
+  └ **可插拔出站写回适配器**（`actions.ts ActionExecutor`=适配器接口[readonly kind:"MOCK"|"ERP_REST"+返回 target{kind,system?}]·`writeback.ts` 两实现·config `WRITEBACK_TARGET=mock|erp_rest` 默认 mock 经 `app.ts buildWritebackAdapter`→setExecutor）：
+    ① **MockWritebackAdapter**（kind=MOCK·现期）：execute 成功**自动 `repos.writebackEchoes.put`** 落写回值（ref=targetRef·writtenValue=payload 快照）→ 闭 OC5 reconcile 半手动残口（不再靠手动 POST /a/v1/writeback-echoes）；targetRef/ref 由 draft.id hash 定（确定性 R6）·echo 带 tenantId（R2）。
+    ② **ErpRestWritebackAdapter**（kind=ERP_REST·真 ERP 协议 stub）：未配 `WRITEBACK_ERP_BASE_URL`→`{ok:false,error:"WRITEBACK_NOT_CONFIGURED"}` 诚实降级（仿 optimizer-client 未配范式·绝不假装写成功 R13）；body 实现留 TODO（REST 契约 `POST {baseUrl}/writeback {actionId,tenantId,actionTypeKey,payload}` 定义清楚·待真 ERP 接入·凭据经 credentialRef AES-GCM 解密 no-secrets-echo R5）。
+    Action 记 `writebackTarget`+`executionResult.target` → 前端 Action 详情「写回目标：MOCK（确定性·非真 ERP）」徽标（R13 诚实标·不冒充真写 ERP，复用 DataModeBadge 范式）。`GET /a/v1/writeback-echoes` 列 pending echo。沙盘采纳→Action 走正门 R4/RL4（模拟态不直写）经本适配器出站。
+Rule(PUBLISHED 决策阈值) --RULE_SCAN 命中越线--> RuleAlert --mitigation_select--> 处置建议 --decision.alert(NOTIFY)+notifyRole(planner)--> 待办(PUSH)   ✅ WO-ALERT（D6 §3.7 主动决策推送·替纯 PULL；`scheduler.ts pushDecisionAlerts`；采纳经既有 adopt_mitigation Action 审批 R4）
+SolverExperiment(RUNNING·冠军-挑战者) --实验分流(确定性 hash(tenantId+solverKey+请求键)%100<splitPct)--> Solver.invoke   ✅ WO-EXPERIMENT（④·决策 A/B）
+  └ 命中挑战者臂 → `paramsAt(tenantId, challengerVersion)` 取该参数版本（否则 champion 当前版本·关实验=零影响既有）；
+    输出附 `__experiment{id,arm}`（不污染主结果·R13 诚实标）；按 metricKey 输出字段值累加到对应 ExperimentArm（R6 确定性）；
+    conclude 按两臂均值落胜方 → `experiment.concluded`（§4 L19）。`solvers/service.ts invoke/routeExperiment/chooseArm`。
+    分流确定性（hash·非随机·R6）：同 (tenantId,solverKey,请求键) 必落同臂（门 `experiment-determinism:check` §7 守不回潮）。
+Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模版定义"；合成已并入连接器（产 Connection+RawDataset，活数据可溯 P1）
+Connector(EXTERNAL/mock_external) --sync--> RawDataset(external_signals) --materialize--> ExternalSignal(domain=external)   ✅ EXT_SIG P1（一等对象+连接器+GET /a/v1/external-signals）
+ExternalSignal --敏感性(elasticity)--> 规划指标(毛利/需求/出口营收/成本)   ✅ P2（POST /a/v1/external-signals/sensitivity：Δ指标pp=Δ信号%×elasticity 按 impact 聚合，确定性无副作用）
+ObjectInstance --lineage 反查--> RawRow→RawDataset→Connection + 派生口径   ✅ P2 端点（GET /a/v1/lineage/object/:type/:id）+ P3 前端悬浮溯源（LedgerView `<Provenance>` 组件，数据源原始表经 FieldProfilePage 可见）；结果→求解器入参对象 lineage 待后续
+```
+**数据构建发动机链（需求拉动）**
+```
+StoryScript --comprehend(LLM)--> BuildPlan{dataSources,objectTypes,rules,solverNeeds(+args 倒推),kbDocs}
+  └ **自造求解器名确定性收敛**（`comprehend.ts SOLVER_ALIASES/normalizeSolverKey`，R6）：思维型 LLM 即便给了已注册
+    目录(`comprehendSystemWithSolvers`)，仍会按问句语义自造 capacity_feasibility/schedule_impact 等名 →
+    闭包 SOLVER_NOT_FOUND、链路 BLOCKED。装配 `assemblePlanBody(...,SOLVER_KEYS)` 时把已知同义名硬收敛到
+    平台真实 key（capacity_feasibility→capacity_forecast、schedule_impact→affected_orders、displacement→
+    shared_bottleneck、profit_loss→margin_attribution…），使链路闭合不依赖 LLM 措辞；未命中者原样保留→仍作自成长工单浮现。
+  └ **FDE 求解器参数自动倒推**（`databuilder/solver-args.ts deriveSolverArgs`，确定性 R6）：从对象类型字段/ref 结构推出
+    多跳求解器路径/字段映射（shared_bottleneck/concentration_risk/margin_attribution），写入 `solverNeeds.args`→`planNeeds.args`
+    →scaffold `ExecutionPlan invoke_solver step.params.args`→启动器跑此计划即真调求解器**出答案（非空答）**；
+    需运行期标量(rootId/budget)的求解器诚实留空（不编造）。闭合 G-3"场景→答案"的求解器入参一环。
+BuildPlan --validateClosure--> ClosureReport{反向-对象, 反向-data, 正向-求解器入参}  ⚠ 闭包不含 AgentCore 栈/全链
+BuildPlan --gap(幂等)--> 复用已有/标缺  --rawin--> Connector/KB  --transform--> 本体/规则/派生  --publish(Action)--> 真值
+  └ **工业级工作流运行时**（`workflow-engine.ts BuildWorkflowEngine`）：上述 HARD 门以**持久化步骤状态机**承载——
+    StoryScript→[dry_build→cross_scaffold→publish_build→validation→inference→record] 每步落库检查点 →
+    崩溃可 resume（已成功步跳过、context 复用）；瞬时失败有界退避重试；致命失败止于该步保留现场。
+    `runStory` 与 `POST /a/v1/databuilder/workflow-runs` 共用同一组步骤（单一执行路径）。**不再是内存 try-块**。
+  └ **比对现状 gap_analysis（一等步 · ModuleProvisioner 注册表）**：cross_scaffold 后插入——倒推 BuildPlan
+    vs 系统现状 → 跨模块统一 diff（需要/复用/新建/缺）。这是"倒序"管线 query→倒推→**比对现状**→创建 的接缝。
+    13 个 provisioner 覆盖 BuildPlan 全部 need 数组，覆盖门强制新模块纳入（`provisioners.ts analyzeGap`）。
+  └ **B 栈 scaffold 单机可见（A7，可见/在线解耦）**：cross_scaffold 步**无条件**把倒推 B 栈需求落
+    `StoryBuildRun.scaffoldManifest`（PENDING_BSTACK）→ 单机/未配 B 也看得到生成的 agent/plan/scene 定义；
+    B 上线 `reconcile-scaffold` 幂等下发升 SCAFFOLDED/REUSED（`scaffold.manifest_recorded`/`reconciled`）。诚实 SOFT/HARD。
+  └ **终态闭环验证（A10）**：publish（R4 EXECUTED 落真值）后 → workflow `onComplete` 自动把主问句经 QOS
+    重跑（`verifyBuild`）→ `StoryBuildRun.verification` VERIFIED/NOT_VERIFIED/BUILD_STATIC + `build.verified`；
+    亲手跑通 `POST /runs/:id/verify`。闭合"建域→答案"终态一环（绿测试≠能用），与 growth LOOP CONVERGED 归一。
+  └ **FDE 编排节点化（A5，观测层）**：上述执行步**确定性投影**为 8 个 FDE 语义节点
+    `意图→倒推→查能力→比差→各模块生成→闭包→publish→进启动器`（`fde-graph.ts projectFdeNodes`）→
+    引擎 onAdvance 每步迁移发 `fde.node_advanced` 实时点亮 + 落 `StoryBuildRun.nodes` → 前端 `<FdeGraph>`
+    一眼看建域走到哪/断在哪（FAILED 节点红 + 缺口码）。不改建域真值，仅把既有阶段表达成可观测节点图。
+```
+**平台横切**
+```
+Tenant --隔离--> 一切读写/事件/缓存键    FeatureConfig --门控(先于authz)--> 端点/视图/求解器
+Policy(A6) --行级过滤--> {query_objects, executeSlice, solver 读出}
+LlmPurposeBinding --路由--> { classifier:QOS分类 · agent:路径B · extraction:规则抽取/构建 · modeling:建模建议 · template_gen:行业模板 · compose:llm_compose }   ⚠ 用途枚举写死、不可扩展；model 下拉依赖先选 provider。每绑定可选 `disableThinking`（Moonshot kimi-k2.5/2.6 思考模型）→ 该用途调用注入 `thinking:{type:"disabled"}` 跳过思维链；classifier 默认开（真跑实证 12.7s→3.6s，~3.5×），agent 留思考。
+OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
+```
+
+**推演沙盘链路（增量 0 立 · 设计待落，详 `docs/SPEC-sandbox-propagation-and-session.md` / `docs/SPEC-sandbox-readiness-certification.md`）**
+```
+决策视图(风险卡/规划体检…) --openWhatIf(presetContext,WO-E2)--> /v/sim-sandbox?whatif=1&… ┐
+本体世界态(合成/连接器/切片物化,走正门 R16/R4) --init(scope=presetContext)--> SimSession  ┘
+  --propagateTick(系数×延迟,沿 viaLink 复用 recompute 导航 + risk.ts 衰减,纯函数 R6)--> SimTickState
+  --checkpoint--> SimCheckpoint --branch(以 cp 态为 base)--> SimSession'
+  --compare(复用 counterfactual_timeline 双序列形状)--> KPI 对比
+沙盘 act(模拟态,不写真值) --采纳--> ActionDraft(走正门 R4)         ⚠ 禁直写绕审批(RL4)
+what-if 进决策日常(WO-E2): 决策入口一键「开 what-if」→ useOpenWhatIf 编 URL query(source/subject/factor/label,确定性 R6)
+  → SandboxView parseWhatIfPreset 注入 SimSession.scope.presetContext + 展示 what-if 上下文条 → 复用既有沙盘链(不新建引擎)
+  决策完即弃(新会话)或采纳(R4 正门)；R3 隔离主世界不被污染。前端 whatif.ts + RiskBoardView「就此问题开 what-if 推演」按钮
+closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(propagateTick/recompute 空跑1tick)
+  --deriveCertification(纯投影,零新校验 RL3·增量2 已落)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」
+propagateTick(增量3 已落): rules.coefficient/coefficientRef→rule.params × 源态 ×(decay) 沿 viaLink → next 态 + 延迟队列(arriveTick>t) + trace；无 PUBLISHED 规则=恒等 tick(opt-in 可回退)
+PropagationRule.coefficient/delayTicks --引用--> rule.params(G-10 P1 可编辑) ⚠ 改规则即改推演,禁内联常数(RL5)
+```
+
+**优化融合链路（G-12 · 增量 0 立契约/本体/许可证 · 设计待落，详 `docs/SPEC-optimization-template-pool.md`）**
+```
+OptModelTemplate(抽象 9 核心,零业务常数) --OntologyBinding(A13 角色+slice 范围+DF.8 接地,每租户绑同模板到自己本体)--> 可解模型
+  --optimizer-client sidecar 求最优(CP-SAT,R6 seed+单线程)--> 最优解(目标值/决策变量)        ⚠ 未配 OPTIMIZER_BASE_URL 显式"未接入"不兜底
+NL --comprehend ⊕ embedding 复用检索(advisory,不入确定性路径 R6 地板,FUS2)--> 复用现有模板/补缺信号
+optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> optimizer-client sidecar 重解(不进 A18 沙箱 FUS1,复用 recompute(dryRun) 不落真值)
+  --> OptWhatifResult{Δ目标,可行性,冲突约束 IIS} --R13--> 解释 --R4--> 采纳(ActionDraft 走正门)   ⚠ 模拟态禁写真值(RL4)
+行业模型 --派生(CDLA Results,不转发上游 .py LIC4)--> 行业租户(synthetic 合成→runStory 建本体→OntologyBinding→求解器注册→沙盘可推演,R14 两行业证)
+系数 --OntologyBinding 类型化字段,可选 coeffSource=rule_params 引--> rule.params(G-10) ⚠ 规则是 gate 非系数源(FUS4)
+```
+> 许可证红线：MIT 署名 / CDLA 取派生 Results / **Gurobi 不碰** / **不训练**（喂上游内容进训练管线=禁），门 `solver-license:check`（§7）。
+
+---
