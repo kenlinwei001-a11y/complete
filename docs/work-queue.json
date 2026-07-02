@@ -1285,8 +1285,8 @@
       "title": "「越用越准」证据看板前端落地(后端convergence+sweep有真值·前端缺面板)",
       "doc": "docs/WO-VISIBILITY-CHAIN.md",
       "priority": "P0",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [
         "E1-E2"
       ],
