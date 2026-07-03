@@ -2624,8 +2624,8 @@
     {
       "id": "INTENT-MATERIALIZE-BINDING-COMPLETE",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/PRD-intent-materialize-binding-complete.md",
