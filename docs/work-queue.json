@@ -1649,8 +1649,8 @@
       "title": "资源反向引用图+导航透出(被谁引用/场景行/ruledocs↔rules/mcp picker+健康)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [
         "RESOURCE-REF"
       ],
@@ -1723,8 +1723,8 @@
       "title": "运营/治理三盲区透出(调度执行状态/LLM预算配额/决策溯源链)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [],
       "note": "IPO第2波·D2簇·配了就跑跑了看不见成败/预算烧了不知道/决策溯源空壳·R13·G-VIS-1",
       "blockReason": "",
@@ -2213,8 +2213,8 @@
     {
       "id": "INTAKE-MATERIALIZE-KEY",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/REVIEW-RISK-FIX-verify.md",
