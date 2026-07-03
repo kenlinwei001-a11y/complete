@@ -2881,7 +2881,7 @@
     {
       "id": "DATADEP-MANIFEST-READINESS",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",

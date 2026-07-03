@@ -17,6 +17,7 @@ export * from "./ontology-governance.js";
 export * from "./execution.js";
 export * from "./databuilder.js";
 export * from "./growth.js";
+export * from "./datadep.js";
 export * from "./storybuildrun.js";
 export * from "./config-bundle.js";
 export * from "./prompt-template.js";

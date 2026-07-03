@@ -41,6 +41,8 @@ import {
 } from "./solver-binding.js";
 import { fuseMultiSource, type ArbitrationRuleAst, type LoadedFusionSource } from "./fusion.js";
 import { MultiSourceFusionArgsSchema, type ArbitrationStrategy, type FusedObjectSnapshot } from "@platform/contracts";
+import { SOLVER_DATADEP, type DataDependency, type EntryReadiness, type GapFinding, type ReadinessRoleStatus } from "@platform/contracts";
+import { contextRolesToLoad, ROLE_CANONICAL } from "./datadep-context.js";
 import type { AuditService } from "../audit.js";
 import { newId } from "../ids.js";
 
@@ -1610,23 +1612,24 @@ export class SolverService {
     // 无绑定回退 canonical 默认（demo 零回归）。A6 行级过滤仍以 canonical 类型名为策略键（对齐 query_objects）。
     const idx = await this.bindingIndex(tenantId);
     const CT = (role: string, canonical: string) => resolveSolverType(idx, "context", role, canonical);
-    const [bases, lines, processes, equipment, maintPlans, models, orders, shipments, segments, dataHealth, demandSegments, sopVersions] =
-      await Promise.all([
-        this.repos.objects.listByType(tenantId, CT("base", "Base")).then((l) => this.a6(ctx, "Base", l)),
-        this.repos.objects.listByType(tenantId, CT("line", "Line")).then((l) => this.a6(ctx, "Line", l)),
-        this.repos.objects.listByType(tenantId, CT("process", "Process")).then((l) => this.a6(ctx, "Process", l)),
-        this.repos.objects.listByType(tenantId, CT("equipment", "Equipment")).then((l) => this.a6(ctx, "Equipment", l)),
-        this.repos.objects.listByType(tenantId, CT("maintPlan", "MaintPlan")).then((l) => this.a6(ctx, "MaintPlan", l)),
-        this.repos.objects.listByType(tenantId, CT("model", "Model")).then((l) => this.a6(ctx, "Model", l)),
-        (visibleOrders ? Promise.resolve(visibleOrders) : this.repos.objects.listByType(tenantId, CT("order", "Order"))).then((l) => this.a6(ctx, "Order", l)),
-        this.repos.objects.listByType(tenantId, CT("shipment", "Shipment")).then((l) => this.a6(ctx, "Shipment", l)),
-        this.repos.objects.listByType(tenantId, CT("segment", "Segment")).then((l) => this.a6(ctx, "Segment", l)),
-        this.repos.objects.listByType(tenantId, "DataSourceHealth"),
-        // WO-FORECAST-SIM：需求侧预测真源（forecast 域 DemandSegment + plan 域 SopVersionRow），喂 risk_timeline
-        // 的 demandCapacityTightness（替 mockTightness 哈希）。网络级预测对象，非基地范围 → 不套 A6（与 Segment 同范式）。
-        this.repos.objects.listByType(tenantId, CT("demandSegment", "DemandSegment")),
-        this.repos.objects.listByType(tenantId, CT("sopVersion", "SopVersionRow")),
-      ]);
+    // DATADEP 站②治本（杀 Hα/Hγ 硬编码 22 类）：不再内联写死 22 个 listByType，改**迭代
+    // CONTEXT_ROLES ∩ ⋃(SOLVER_DATADEP 各求解器清单.requires.roleType)** 决定加载什么 —— loadContext
+    // 现在**读声明式清单并集**。因每个上下文角色都被某清单覆盖（门 `datadep-manifest:check` 守·
+    // uncoveredContextRoles()==[]），并集==全 22 角色 → 与旧行为字节一致（R6）。加需已有角色的求解器
+    // 只声明清单即可（loadContext 零改）；删掉某角色的唯一清单覆盖 → 门红（自证治本非再加一层写死）。
+    const withExtended = !!opts?.withExtended;
+    const empty: ObjectInstance[] = [];
+    const loaded: Record<string, ObjectInstance[]> = {};
+    await Promise.all(
+      contextRolesToLoad(withExtended).map(async (cr) => {
+        const typeKey = cr.ctResolve ? CT(cr.role, cr.canonical) : cr.canonical;
+        // order 角色支持 visibleOrders 覆盖（app.ts 构造后注入）；DataSourceHealth/预测/扩展对象不套 A6。
+        const raw = cr.visibleOverride && visibleOrders ? visibleOrders : await this.repos.objects.listByType(tenantId, typeKey);
+        loaded[cr.field] = cr.a6 ? await this.a6(ctx, cr.canonical, raw) : raw;
+      }),
+    );
+    const lines = loaded.lines ?? empty;
+    const models = loaded.models ?? empty;
     const certByModel = new Map<string, Map<string, string>>();
     const certLinks = await this.repos.links.list(tenantId, (l) => l.type === "model_certified_on");
     const lineBase = new Map(lines.map((l) => [l.id, str(l.props.baseId)]));
@@ -1650,53 +1653,108 @@ export class SolverService {
       rules[r.key] = { key: r.key, name: r.name, expression: r.expression, severity: r.severity, params: r.params };
     }
     const ruleSetVersion = `rsv_${hashString(canonicalJson(publishedRules.map((r) => ({ k: r.key, v: r.version, e: r.expression, s: r.severity, p: r.params ?? {} })))).toString(16)}`;
-    // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
-    // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
-    const empty: ObjectInstance[] = [];
-    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors] =
-      opts?.withExtended
-        ? await Promise.all([
-            this.repos.objects.listByType(tenantId, "Material"),
-            this.repos.objects.listByType(tenantId, "MaterialBatch"),
-            this.repos.objects.listByType(tenantId, "Customer"),
-            this.repos.objects.listByType(tenantId, "ARInvoice"),
-            this.repos.objects.listByType(tenantId, "Certification"),
-            this.repos.objects.listByType(tenantId, "EnergyMeter"),
-            this.repos.objects.listByType(tenantId, "ChangeoverMatrix"),
-            this.repos.objects.listByType(tenantId, "CapexProject"),
-            this.repos.objects.listByType(tenantId, "PurchaseOrder"),
-            this.repos.objects.listByType(tenantId, "CarbonFactor"),
-          ])
-        : [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty];
+    // #4 性能：扩展数据（E6b 10 类·extended 角色）仅 13 新求解器需要 —— contextRolesToLoad 已按
+    // withExtended 门控（默认不加载·省全表扫描），未加载的角色在下方 `loaded.field ?? empty` 归空。
     return {
       tenantId,
       params,
-      bases: sortById(bases),
-      lines: sortById(lines),
-      processes: sortById(processes),
-      equipment: sortById(equipment),
-      maintPlans: sortById(maintPlans),
-      models: sortById(models),
-      orders: sortById(orders),
-      shipments: sortById(shipments),
-      segments: sortById(segments),
-      dataHealth: sortById(dataHealth),
-      demandSegments: sortById(demandSegments),
-      sopVersions: sortById(sopVersions),
+      bases: sortById(loaded.bases ?? empty),
+      lines: sortById(loaded.lines ?? empty),
+      processes: sortById(loaded.processes ?? empty),
+      equipment: sortById(loaded.equipment ?? empty),
+      maintPlans: sortById(loaded.maintPlans ?? empty),
+      models: sortById(loaded.models ?? empty),
+      orders: sortById(loaded.orders ?? empty),
+      shipments: sortById(loaded.shipments ?? empty),
+      segments: sortById(loaded.segments ?? empty),
+      dataHealth: sortById(loaded.dataHealth ?? empty),
+      demandSegments: sortById(loaded.demandSegments ?? empty),
+      sopVersions: sortById(loaded.sopVersions ?? empty),
       certByModel,
-      materials: sortById(materials),
-      materialBatches: sortById(materialBatches),
-      customers: sortById(customers),
-      arInvoices: sortById(arInvoices),
-      certifications: sortById(certifications),
-      energyMeters: sortById(energyMeters),
-      changeoverMatrix: sortById(changeoverMatrix),
-      capexProjects: sortById(capexProjects),
-      purchaseOrders: sortById(purchaseOrders),
-      carbonFactors: sortById(carbonFactors),
+      materials: sortById(loaded.materials ?? empty),
+      materialBatches: sortById(loaded.materialBatches ?? empty),
+      customers: sortById(loaded.customers ?? empty),
+      arInvoices: sortById(loaded.arInvoices ?? empty),
+      certifications: sortById(loaded.certifications ?? empty),
+      energyMeters: sortById(loaded.energyMeters ?? empty),
+      changeoverMatrix: sortById(loaded.changeoverMatrix ?? empty),
+      capexProjects: sortById(loaded.capexProjects ?? empty),
+      purchaseOrders: sortById(loaded.purchaseOrders ?? empty),
+      carbonFactors: sortById(loaded.carbonFactors ?? empty),
       rules,
       ruleSetVersion,
     };
+  }
+
+  /**
+   * DATADEP-MANIFEST-READINESS 站③ 通用就绪探测（precondition-first·泛化沙盘 certification 到所有入口）.
+   *
+   * 读入口清单（SOLVER_DATADEP[solverKey] 或显式传入）→ 对每个 required 角色 resolveSolverType 后
+   * `objects.listByType` 计数 vs `minRows`（present-vs-needed，镜像沙盘 worldCompleteness）→ 产
+   * `EntryReadiness{ready, roles[], gaps[]}`。缺口复用 growth `GapFinding`（CL.3：区分「空 vs 不存在」——
+   * present=0→EMPTY_DATA，present<minRows→EMPTY_DATA 但非空），喂 GROWTH-WORKLIST 看板（④·人工闸）。
+   *
+   * 纯计数·确定性·runtime 不调 LLM（R6）；R2 仅本租户；R14 角色经 SolverBinding 解析真实类型（无绑定回退 canonical）。
+   */
+  async checkReadiness(
+    tenantId: string,
+    entryRef: string,
+    dep: DataDependency,
+  ): Promise<EntryReadiness> {
+    const idx = await this.bindingIndex(tenantId);
+    const roles: ReadinessRoleStatus[] = [];
+    const gaps: GapFinding[] = [];
+    for (const req of dep.requires) {
+      const canonical = ROLE_CANONICAL[req.roleType] ?? req.roleType;
+      const resolvedType = resolveSolverType(idx, "context", req.roleType, canonical);
+      const list = await this.repos.objects.listByType(tenantId, resolvedType);
+      // props 完备判定（可选）：声明了必需属性 → 实例须全部具备该属性方计入 present（诚实空态）。
+      const present = req.props && req.props.length > 0
+        ? list.filter((o) => req.props!.every((p) => o.props[p] !== undefined && o.props[p] !== null)).length
+        : list.length;
+      const ok = present >= req.minRows;
+      roles.push({ roleType: req.roleType, resolvedType, present, needed: req.minRows, ok });
+      if (!ok) {
+        gaps.push({
+          gapCode: "EMPTY_DATA",
+          atStep: `readiness:${req.roleType}`,
+          evidence: `角色「${req.roleType}」→ 类型 ${resolvedType} 现有 ${present} 行 < 需 ${req.minRows} 行${req.props ? `（必需属性 ${req.props.join("/")}）` : ""}`,
+          suggestedFill: `补 ${resolvedType} 数据（SOFT 走 synthetic.runJob 确定性合成 / HARD 涉真实业务实体走真人正门）`,
+          blocking: true,
+        });
+      }
+    }
+    // 参数存在性（可选）：清单声明了必需 SolverParam 键 → 当前参数集缺则记缺参（非阻塞角色缺口，但影响 ready）。
+    const missingParams: string[] = [];
+    if (dep.params && dep.params.length > 0) {
+      const params = (await this.getParams(tenantId)) as unknown as Record<string, unknown>;
+      for (const key of dep.params) {
+        if (getByPath(params, key) === undefined) missingParams.push(key);
+      }
+    }
+    for (const mp of missingParams) {
+      gaps.push({
+        gapCode: "OTHER",
+        atStep: `readiness:param:${mp}`,
+        evidence: `必需 SolverParam「${mp}」在本租户参数集缺失`,
+        suggestedFill: `补参数版本（solver_params）或经场景包基线派生`,
+        blocking: true,
+      });
+    }
+    return {
+      entryRef,
+      ready: gaps.length === 0,
+      roles,
+      missingParams,
+      gaps,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /** 站③ 便捷：按求解器 key 从出厂清单 registry 探测就绪。未声明清单 → 视为无前置要求（ready·空 roles）。 */
+  async checkSolverReadiness(tenantId: string, solverKey: string): Promise<EntryReadiness> {
+    const dep: DataDependency = SOLVER_DATADEP[solverKey] ?? { requires: [] };
+    return this.checkReadiness(tenantId, `solver:${solverKey}`, dep);
   }
 
   /** §6.2 test hook + iot_delay scenario: mark a critical source stale (C09 → P90 0.93→0.90). */

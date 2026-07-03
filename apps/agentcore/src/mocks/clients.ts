@@ -1,4 +1,4 @@
-import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
@@ -318,6 +318,10 @@ export class MockSolverClient implements SolverClient {
     // 返回代表性确定性载荷，使路径A 工作流的 invoke_solver 步骤完成而不抛 unknown solver；
     // 真实数值由 DataCore 求解器产出（见跨服务联调）。种子计划用静态 text 渲染，不解引用此处特定键。
     return { data: { solverKey, ok: true, args }, snapshotVersion: SNAPSHOT };
+  }
+  // 站③ mock 就绪探测：mock 世界视 seed 数据齐备（ready·空 gaps）——真就绪由跨服务真后端 checkReadiness 产。
+  async checkReadiness(_ctx: ToolAuthCtx, solverKey: string): Promise<EntryReadiness> {
+    return { entryRef: `solver:${solverKey}`, ready: true, roles: [], missingParams: [], gaps: [], generatedAt: new Date(0).toISOString() };
   }
 }
 

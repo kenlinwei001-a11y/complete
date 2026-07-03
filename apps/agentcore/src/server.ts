@@ -45,6 +45,7 @@ import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, r
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
+import { decideDataGap, groundingVocab } from "./growth/data-boundary.js";
 import { annotateRequestId } from "./tracing.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { HttpError } from "./router/orchestrator.js";
@@ -108,7 +109,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // /b/v1 下原生路由（agents/workflows/…）不受影响，只把 QOS 子集重写到 /api/v1。
     rewriteUrl(req) {
       const url = req.url ?? "/";
-      for (const seg of ["/b/v1/queries", "/b/v1/catalog", "/b/v1/ops", "/b/v1/growth"]) {
+      for (const seg of ["/b/v1/queries", "/b/v1/catalog", "/b/v1/ops", "/b/v1/growth", "/b/v1/entries"]) {
         if (url.startsWith(seg)) return "/api/v1" + url.slice("/b/v1".length);
       }
       return url;
@@ -473,6 +474,86 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     await deps.repos.growthWorklist.upsert(updated);
     await emitDomainEvent(a.tenantId, "growth.fill_triggered", { worklistItemId: id, owner: a.userId, gapCode: w.gapCode, action: plan.action });
     return reply.status(200).send(updated);
+  });
+
+  // ---- DATADEP-MANIFEST-READINESS 站③→④（通用就绪探测 → GROWTH-WORKLIST 看板·人工闸）------------
+  // POST /b/v1/entries/:ref/readiness（ref=solver:<key>）：precondition-first 探测入口就绪——
+  // 透传 DataCore checkReadiness（读声明式清单·present-vs-needed·非 run-first）→ 每 blocking gap 经
+  // data-boundary decideDataGap 分 HARD/SOFT → **登记 WorklistItem(DATA_GAP·OPEN)**（不自动补·G-9 人工闸）：
+  //   SOFT → fillPlan{action:fillData·R6 seed 确定性合成}；HARD（涉真实业务实体）→ fillPlan{action:importData·真人正门深链}。
+  // 幂等：同入口同角色缺口只登记一条 OPEN（避免看板刷屏）。缺口喂看板后经 claim→fill 走既有 ⑤ 合成/导入。
+  app.post("/api/v1/entries/:ref/readiness", async (req) => {
+    const a = await auth(req);
+    const { ref } = req.params as { ref: string };
+    const decoded = decodeURIComponent(ref);
+    const [kind, ...rest] = decoded.split(":");
+    const key = rest.join(":");
+    if (kind !== "solver" || !key) {
+      throw new HttpError(400, "UNSUPPORTED_ENTRY_REF", `暂仅支持 solver:<key> 入口引用，收到「${decoded}」`);
+    }
+    const readiness = await deps.dataCore.solver.checkReadiness(a, key);
+    const registered: import("@platform/contracts").WorklistItem[] = [];
+    if (!readiness.ready) {
+      const existing = await deps.repos.growthWorklist.listByTenant(a.tenantId);
+      const vocab = groundingVocab();
+      const openDataGap = (dedupeKey: string) =>
+        existing.find((w) => w.kind === "DATA_GAP" && w.status !== "DONE" && (w.evidence.includes(`[${dedupeKey}]`) || w.fromQuestion === dedupeKey));
+      const register = async (
+        dedupeKey: string,
+        gapCode: import("@platform/contracts").GapCode,
+        evidence: string,
+        fillPlan: import("@platform/contracts").WorklistFillPlan,
+        deeplink?: string,
+      ) => {
+        const dup = openDataGap(dedupeKey);
+        if (dup) {
+          registered.push(dup);
+          return;
+        }
+        const now = new Date().toISOString();
+        const item: import("@platform/contracts").WorklistItem = {
+          id: newId("wli"), tenantId: a.tenantId, fromQuestion: dedupeKey, gapCode, kind: "DATA_GAP", status: "OPEN",
+          evidence: `[${dedupeKey}] ${evidence}`, fillPlan, deeplink, createdAt: now, updatedAt: now,
+        };
+        await deps.repos.growthWorklist.upsert(item);
+        existing.push(item);
+        await emitDomainEvent(a.tenantId, "growth.fill_claimed", { worklistItemId: item.id, gapCode, entryRef: readiness.entryRef, mode: fillPlan.mode });
+        registered.push(item);
+      };
+      // ⑤ 统一合成（PRD §91）：**空世界**（所有 context 角色 present=0·无真实业务实体）→ **单条 provisionWorld**
+      // （走 synthetic.runJob·真物化一致世界·origin=SYNTHETIC·R6 seed=42）——非通用正则 fill-data（值不接地·不物化对象）。
+      const contextGaps = readiness.gaps.filter((g) => g.blocking && (g.atStep ?? "").startsWith("readiness:") && readiness.roles.some((r) => r.roleType === (g.atStep ?? "").slice("readiness:".length)));
+      const worldEmpty = readiness.roles.length > 0 && readiness.roles.every((r) => r.present === 0);
+      if (worldEmpty && contextGaps.length > 0) {
+        await register(
+          `${readiness.entryRef}|world-empty`,
+          "EMPTY_DATA",
+          `空世界（${readiness.roles.length} 个角色全 0 行）→ 合成确定性起步世界`,
+          { mode: "SOFT", action: "provisionWorld", scale: "S", seed: 42 },
+        );
+      }
+      for (const g of readiness.gaps) {
+        if (!g.blocking) continue;
+        const roleType = (g.atStep ?? "").startsWith("readiness:") ? g.atStep!.slice("readiness:".length) : "";
+        const roleStat = readiness.roles.find((r) => r.roleType === roleType);
+        // 空世界的 context 缺口已由上面单条 provisionWorld 统一覆盖（避免逐角色刷屏）。
+        if (worldEmpty && roleStat) continue;
+        const typeKey = roleStat?.resolvedType ?? roleType ?? "Object";
+        const decision = decideDataGap(readiness.entryRef, `${typeKey} ${g.evidence}`, vocab, { typeKey });
+        const dedupeKey = `${readiness.entryRef}|${g.atStep ?? g.gapCode}`;
+        // 部分世界·单类型缺口：SOFT 经 synthetic 单类型物化（fillData·per-type）；HARD 真人正门导入。
+        await register(
+          dedupeKey,
+          g.gapCode,
+          g.evidence,
+          decision.mode === "SOFT"
+            ? { mode: "SOFT", action: "fillData", typeKey, fields: ["id", "name", "value"], rows: roleStat?.needed ?? 6, seed: 42 }
+            : { mode: "HARD", action: "importData", typeKey },
+          decision.mode === "HARD" ? "/connections" : undefined,
+        );
+      }
+    }
+    return { readiness, registered };
   });
 
   // A5 感知层埋点：实体解析"误触发率"（域外/尝试）+ 最近域外明细（带最近邻候选）。

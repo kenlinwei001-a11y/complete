@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §10` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §10，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2664cc597c219234`。
+> **改接线改母体 §10，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `fcc9a38196c19958`。
 
 ---
 
@@ -41,7 +41,7 @@
 | `sys.ingest.build_closure` | D1 | StoryScript→BuildPlan→ClosureReport→{ObjectType,Rule,Solver需求} |
 | `sys.ontology.type_lineage` | D2 | ObjectType→PropertyDef→DerivationSpec→SliceSpec |
 | `sys.rules.scope_binding` | D3 | Rule→ObjectType(scope) + Rule→agent/workflow.ruleBindings |
-| `sys.solving.invoke` | D4 | Solver→ObjectType(读)→SolverParam（同输入同输出） |
+| `sys.solving.invoke` | D4 | Solver→ObjectType(读)→SolverParam（同输入同输出）。**入口输入契约段（DATADEP-MANIFEST-READINESS·脊）**：每 Solver 声明 `DataDependency` 清单（`SOLVER_DATADEP`·抽象角色·经 SolverBinding 解析真类型）= 输入侧覆盖门（与 `SOLVER_OUTPUT_SHAPES` 输出契约对偶）；`loadContext` **读清单并集**加载 ObjectType（迭代 `CONTEXT_ROLES ∩ ⋃(清单角色)`·治本杀写死 22 类·R6 字节一致）；invoke 前经 `checkReadiness` present-vs-needed 就绪探测（precondition-first·`POST /a/v1/solvers/:key/readiness`），未就绪产诚实 gap 喂 GROWTH-WORKLIST（不静默 run-first）。 |
 | `sys.solving.calibration` | D4 | Calibration→SolverParam(版本化)→重放 |
 | `sys.action.writeback` | D5 | ActionType→ActionDraft→approval→ObjectInstance(props)→Derivation(二次) |
 | `sys.access.row_filter` | D6 | User→Role→Policy(A6)→ObjectInstance(过滤) |

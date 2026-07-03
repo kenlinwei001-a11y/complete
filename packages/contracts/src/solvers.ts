@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DataDependencySchema } from "./datadep.js";
 
 // ---------------------------------------------------------------------------
 // 求解器增量 PRD §S1：真实算法的 IO 契约（前端逐基地下钻表等直接消费）
@@ -368,6 +369,12 @@ export const SolverArtifactSchema = z.object({
   createdAt: z.string(),
   /** 注册失败原因（status=UNREGISTERED 时）。 */
   rejectReason: z.string().optional(),
+  /**
+   * DATADEP-MANIFEST-READINESS 站②：LLM 临时求解器的**声明式数据依赖清单**（输入侧覆盖门·与
+   * `outputShape` 输出侧对偶）。design-time comprehend 倒推填此（DRAFT→R4），runtime 就绪探测读之。
+   * 出厂求解器的清单在 `SOLVER_DATADEP` registry；本字段承载 LLM 生成求解器的入口清单。
+   */
+  requires: DataDependencySchema.optional(),
 });
 export type SolverArtifact = z.infer<typeof SolverArtifactSchema>;
 

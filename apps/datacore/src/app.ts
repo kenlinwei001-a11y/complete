@@ -2566,6 +2566,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     return ontology.invokeSolver(ctx(req), solverKey, args);
   });
+  // ---- DATADEP-MANIFEST-READINESS 站③（precondition-first·通用就绪探测）------------------------
+  // 读入口声明式数据依赖清单（SOLVER_DATADEP）→ present-vs-needed 计数 → EntryReadiness{ready,roles,gaps}。
+  // Entitlement 先于 authz（关闭=404 FEATURE_NOT_FOUND，同 invoke）；纯计数确定性、runtime 不调 LLM（R6）。
+  // gaps 喂 GROWTH-WORKLIST 看板（④·人工闸）——agentcore /b/v1/entries/:ref/readiness 透传消费。
+  app.post("/a/v1/solvers/:solverKey/readiness", async (req) => {
+    const { solverKey } = req.params as { solverKey: string };
+    if (!(SOLVER_KEYS as readonly string[]).includes(solverKey)) throw validationError(`未知求解器 ${solverKey}`);
+    await requireFeatureTag(req, "solverKeys", solverKey);
+    return solvers.checkSolverReadiness(ctx(req).tenantId, solverKey);
+  });
   app.post("/a/v1/derivations/run", async (req, reply) => {
     const run = await ontology.runDerivations(ctx(req));
     return reply.status(202).send(run);

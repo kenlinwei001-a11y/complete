@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -48,6 +48,12 @@ export interface OntologyClient {
 
 export interface SolverClient {
   invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload>;
+  /**
+   * DATADEP-MANIFEST-READINESS 站③：通用就绪探测（precondition-first）——读求解器入口数据依赖清单，
+   * present-vs-needed 计数产 EntryReadiness{ready,roles,gaps}。gaps 喂 GROWTH-WORKLIST 看板（④·人工闸）。
+   * OBO 透传 → DataCore POST /a/v1/solvers/:key/readiness。
+   */
+  checkReadiness(ctx: ToolAuthCtx, solverKey: string): Promise<EntryReadiness>;
 }
 
 export interface RuleEngineClient {

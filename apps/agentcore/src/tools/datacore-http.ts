@@ -1,4 +1,4 @@
-import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -144,6 +144,9 @@ class HttpSolverClient implements SolverClient {
   constructor(private readonly baseUrl: string) {}
   invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
     return call(this.baseUrl, ctx, "POST", `/a/v1/solvers/${encodeURIComponent(solverKey)}/invoke`, { args });
+  }
+  checkReadiness(ctx: ToolAuthCtx, solverKey: string): Promise<EntryReadiness> {
+    return call(this.baseUrl, ctx, "POST", `/a/v1/solvers/${encodeURIComponent(solverKey)}/readiness`, {});
   }
 }
 
