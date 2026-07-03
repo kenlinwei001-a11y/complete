@@ -2308,7 +2308,7 @@
     {
       "id": "METHOD-MC-STOCHASTIC",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "WIP",
       "owner": "dev",
       "deps": [],
       "blockReason": "A1-A6真绿实证(核心根因真解):curl method=monte_carlo·ratio随model变0.936/0.936/0.920≠固定0.93·p90<p50<p10·R6字节一致·method-mc13测(quantile/cv=0退化/dispersion×3→0.94→0.83)·debattery绿·method-determinism门exit0有牙齿·ontology-slices绿·§J回写方法库。P90确是真种子化MC经验分位非p50×0.93。★但A7四包回归红:datacore vle-reference-dualcompute.test.ts:37 expect(act.p90).toBe(exp.p90) 失败——act.p90=5.9691(MC真分位数)vs exp.p90=结构串'<P50且|Δ|≤10%P50(anchor5.9171)'。根因:vle-oracle.ts:191参照oracle仍算旧p50×healthFactor与MC背离·dev把参照P90改成描述串但line37仍strict toBe(数vs串)→红。dev FDE称'datacore全绿'不实(实测1 failed|878 passed·dev未真跑全套)。★另A8残留(审计簇A/PRD§6.2b):sop.ts:150(×0.936·S&OP P90用户可见)+vle-oracle.ts:191(本divergence元凶)+seed.ts:385仍伪分位。治(荐①治本):①fix vle-oracle.ts:191也走MC(参照与被测同口径→line37自然过+闭审计簇A7)+顺手sop.ts:150;或②line37改结构校验。核心MC引擎/门/回写无需返工。",
