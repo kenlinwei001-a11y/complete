@@ -2620,6 +2620,47 @@
           }
         ]
       }
+    },
+    {
+      "id": "INTENT-MATERIALIZE-BINDING-COMPLETE",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/PRD-intent-materialize-binding-complete.md",
+      "title": "意图层物化(20一等Intent含mode)+每LLM功能全绑定链(agent/wf+切片+规则+skill+solver+约束)+自动补齐",
+      "note": "用户亲定:需补intent这一层;所有需LLM参与的功能都要有对应预设agent或workflow+对应本体切片/规则/skill/求解器/约束·没有的自动补齐;每意图mode(workflow/agent-first)由审核方(智能体专家)分析定。实证:GET /b/v1/intents=0(20 intentKey未物化一等对象)·workflow仅3/20·agt_review/agt_geo_map规则=0。治:①物化20一等PUBLISHED Intent(含slots+mode+bindings{solver,ruleKeys,constraintKeys,skillId,ontologySliceKey,agentId|workflowId})·CatalogPage可看可编;②全绑定链完整(每Intent齐6项);③自动补齐POST /b/v1/intents/reconcile(缺项scaffold DRAFT·R4·复用self-growth);④门scene-agent-config扩为全绑定链门。mode逐意图:workflow-first(13:capacity_feasibility/affected_orders/plan_audit_q/adopt_mitigation/cert_scheduling/kit_analysis/lta_gap_q/inventory_opt/changeover_opt/quote_margin_q/credit_check/sop_status/carbon_q)·agent-first(7:risk_root_cause/plan_recommend/yield_diag/maint_stagger/outsourcing_q/capex_review/quarterly_gap_q)。判据:问是多少/过不过/有哪些→workflow-first;问为什么/哪个好/怎么选→agent-first。全-first(数字红线防造假·保兜底)。整页PRD见 docs/PRD-intent-materialize-binding-complete.md。回写§2 Intent一等/§3 mode分派+补齐链/§7门扩/§8 G-3。",
+      "acceptance": {
+        "goal": "20意图物化成可看可编的一等Intent(含workflow/agent-first mode+全绑定);每个LLM功能都齐{agent|workflow}+本体切片+规则+约束+skill+求解器·缺的自动scaffold补齐(DRAFT待审);门守全绑定链不回潮。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "GET /b/v1/intents(demo)返20 PUBLISHED·每个含mode(∈§1表)+slots+bindings{solverKey,ruleKeys,constraintKeys,skillId,ontologySliceKey,(agentId|workflowId)};CatalogPage可看可编该意图。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "全绑定链完整:scene-agent-config:check(扩)exit 0——20 Intent每个6项齐(mode合法·{agent|workflow}按mode存在PUBLISHED·ontologySlice存在·≥1 eval规则·solver∈注册·skill存在);agt_review/agt_geo_map规则非0。"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "自动补齐:删某Intent一项绑定→POST /b/v1/intents/reconcile→该项scaffold回DRAFT+补齐报告列该项;门重跑绿或诚实标待审。"
+          },
+          {
+            "id": "C4",
+            "type": "curl",
+            "assert": "mode生效:agent-first意图(risk_root_cause)即使有可用workflow也走path B agent;workflow-first(capacity_feasibility)有workflow走path A(SSE routing.path佐证)。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "回写§2/§3/§7/§8+ontology:slices绿;四包build/test绿;新增intent物化+补齐+mode路由单测(R6同输入同补齐·R4产DRAFT·R14 mode数据驱动)。"
+          }
+        ]
+      }
     }
   ]
 }
