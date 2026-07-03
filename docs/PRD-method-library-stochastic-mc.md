@@ -184,12 +184,21 @@ return sorted[lo] + frac * (sorted[lo+1] - sorted[lo])   // lo+1 越界时取 so
 
 ---
 
-## 6. `capacity_forecast` 改造点（root-cause 收口）
+## 6. 改造点（root-cause 收口 · **全 `× healthFactor` 伪分位处·一处不漏**）
 
+> ⚠ 审计补正（2026-07-03·审核方自查）：`× healthFactor` 伪分位**不止 capacity.ts 一处**——同款 fake 还落在 **calibration 预测记录写入路径**，会把伪 P90 喂进「越用越准」的配对/MAPE。本单**必须一并收口**，否则「根因解」名不副实。
+
+**6.1 求解器输出路径（`solvers/capacity.ts`）**
 - `capacity.ts:259-260`：删 `p90 = round(p50 * healthFactor, 4)`；p50/p90 由 `monteCarloCapacity(...)` 的真分位替代（p50 取 MC 中位数，与旧 p50 点估计对齐在 cv→0 时相等）。
-- `capacity.ts:275` 批次 `cumP90`、`:311` what-if `adjP90`：同改为对相应场景样本取分位（或对总分布按比例——PRD §6.2 给精确口径，避免再引入常数）。
+- `capacity.ts:275` 批次 `cumP90`、`:311` what-if `adjP90`：同改为对相应场景样本取分位（PRD §6.3 给精确口径，避免再引入常数）。
 - 结果对象加 `method/iterations/seed/dispersionSource/percentiles`（R13）；`degradeNote` 改述为「陈旧→cv×1.6→分布变宽」。
-- **降级路径**：租户未配 `MethodBinding`（如 demo 出厂）→ 用内置 `capacity_mc` 默认模板 + 默认 SolverParam（向后兼容，不 400）；显式关 entitlement `method.stochastic` → 回落旧点估计并**诚实标 `method:"point_estimate"`**（不静默冒充分位）。
+
+**6.2 校准记录写入路径（`solvers/service.ts` · recordCalibrationForecasts）——同款 fake·同批收口**
+- `service.ts:2336` `predictedP90: round(daily * healthFactor, 6)` 与 `service.ts:2350` `predictedP90: round(total * healthFactor, 6)`：这两处把伪 P90 写进 `ForecastRecord`，供 `CALIBRATION` 配对观测算 MAPE——**伪分位在此污染「越用越准」的度量本身**。改为写 MC 真分位（对该 base/该日的场景样本取 type-7 分位），口径与 §6.1 一致（同 seed 派生·R6）。
+- `service.ts:2314` `healthFactor = num(out.healthFactor, ...)`：不再作为伪分位乘子传递；保留作「陈旧→cv 放大」的建模输入（§4 `mc.staleDispersionMult`）。
+
+**6.3 降级路径**
+- 租户未配 `MethodBinding`（如 demo 出厂）→ 用内置 `capacity_mc` 默认模板 + 默认 SolverParam（向后兼容，不 400）；显式关 entitlement `method.stochastic` → 回落旧点估计并**诚实标 `method:"point_estimate"`**（不静默冒充分位）。
 
 ---
 

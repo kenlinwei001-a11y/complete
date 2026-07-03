@@ -2314,7 +2314,7 @@
       "blockReason": "",
       "doc": "docs/PRD-method-library-stochastic-mc.md",
       "title": "方法库·随机模拟族:种子化蒙特卡洛换掉P90启发式(p50×0.93冒充分位数)",
-      "note": "根因单(用户钉:如果解决根因则做·不作假)。capacity.ts:260 p90=round(p50*healthFactor,4)·healthFactor=battery.ts:99 的0.93/0.90固定haircut→冒充90分位·零采样方差·还是电池魔数(R14味)。治本:把§J优化融合域泛化为『方法库』·加随机模拟族一等对象 StochasticMethodTemplate(抽象·零业务常数)·复用OntologyBinding(MethodBinding·DF.8接地)·离散度入SolverParam(可被CALIBRATION校准·替代0.93)·seeded mulberry32逐迭代采样→type-7真经验分位。整页量化PRD见 docs/PRD-method-library-stochastic-mc.md(契约/SolverParam默认值/MC算法/分布族闭式/方向约定/《本体引用与影响》)。回写§J+新门method-determinism:check+pnpm ontology:slices重生成切片。",
+      "note": "根因单(用户钉:如果解决根因则做·不作假)。capacity.ts:260 p90=round(p50*healthFactor,4)·healthFactor=battery.ts:99 的0.93/0.90固定haircut→冒充90分位·零采样方差·还是电池魔数(R14味)。治本:把§J优化融合域泛化为『方法库』·加随机模拟族一等对象 StochasticMethodTemplate(抽象·零业务常数)·复用OntologyBinding(MethodBinding·DF.8接地)·离散度入SolverParam(可被CALIBRATION校准·替代0.93)·seeded mulberry32逐迭代采样→type-7真经验分位。整页量化PRD见 docs/PRD-method-library-stochastic-mc.md(契约/SolverParam默认值/MC算法/分布族闭式/方向约定/《本体引用与影响》)。回写§J+新门method-determinism:check+pnpm ontology:slices重生成切片。⚠scope含两处同款fake一处不漏:capacity.ts(260/275/311)+service.ts recordCalibrationForecasts(2336/2350 predictedP90·伪分位污染越用越准MAPE)——见PRD§6。",
       "acceptance": {
         "goal": "决策者拿到的P90是真实分位(种子化蒙特卡洛对yield/OEE/可用率/出勤/利用率采样的经验90分位·带N/seed/离散度源溯源)·而非p50×0.93固定haircut;同模板换绑定跨行业各出真分位(求解器零改·R14);同输入同seed字节一致(R6);离散度可校准(越用越准也调方差模型)。",
         "criteria": [
@@ -2356,7 +2356,7 @@
           {
             "id": "A8",
             "type": "gate",
-            "assert": "不作假收口:rg 'p50 \\* healthFactor' 在capacity.ts的p90生成处零命中;结果对象含 method:'monte_carlo' 与 dispersionSource 非空(R13溯源)·前端决策数字悬浮出『真实分位(蒙特卡洛 N·seed·离散度源)』。"
+            "assert": "不作假收口(全×healthFactor伪分位处一处不漏):rg '\\* healthFactor' 在 capacity.ts 的 p90/cumP90/adjP90 生成处 + service.ts recordCalibrationForecasts 的 predictedP90(2336/2350)处 均零命中(healthFactor 仅可留作陈旧→cv放大的建模输入);结果对象与 ForecastRecord.predictedP90 均来自MC真分位;capacity_forecast 响应含 method:'monte_carlo' 与 dispersionSource 非空(R13);前端决策数字悬浮出『真实分位(蒙特卡洛 N·seed·离散度源)』。"
           }
         ],
         "method": [
@@ -2382,7 +2382,7 @@
           },
           {
             "for": "A8",
-            "run": "rg -n 'p50 \\* healthFactor' apps/datacore/src/solvers/capacity.ts → p90 生成处应零命中。"
+            "run": "rg -n '\\* healthFactor' apps/datacore/src/solvers/capacity.ts apps/datacore/src/solvers/service.ts → capacity.ts 的 p90/cumP90/adjP90 处 + service.ts 的 predictedP90(2336/2350) 处均应零命中(healthFactor 仅可留作陈旧→cv 放大输入)。"
           }
         ]
       }
