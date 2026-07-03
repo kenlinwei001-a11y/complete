@@ -2278,6 +2278,32 @@
           }
         ]
       }
+    },
+    {
+      "id": "META-SYNC-CWD-FIX",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/REVIEW-DEMO-DATA-verify.md",
+      "title": "meta/sync 路径基于cwd脆性→仓根跑500(应基于__dirname/import.meta.url)",
+      "note": "审核方复验DEMO-DATA发现:meta/service.ts:33 docsDir=join(process.cwd(),..,..,docs)假设cwd=apps/datacore·从仓根跑(CLAUDE.md文档命令 node apps/datacore/dist/server.js)→docsDir=/home/docs→ENOENT 500·meta页空。部署WORKDIR /repo/apps/datacore对故遮蔽。治:docsDir基于import.meta.url解析到repo/docs不依赖cwd·或DOCS_DIR env兜底。",
+      "acceptance": {
+        "goal": "meta/sync从任意cwd都能读docs/SYSTEM-ONTOLOGY.md·200·total>0",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "从仓根 node apps/datacore/dist/server.js 起→POST /a/v1/meta/sync 200·total>0(不再/home/docs ENOENT)"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "docsDir基于import.meta.url或DOCS_DIR env·不依赖process.cwd()·四包build/test退0"
+          }
+        ]
+      }
     }
   ]
 }
