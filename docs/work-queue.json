@@ -1723,7 +1723,7 @@
       "title": "运营/治理三盲区透出(调度执行状态/LLM预算配额/决策溯源链)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "IPO第2波·D2簇·配了就跑跑了看不见成败/预算烧了不知道/决策溯源空壳·R13·G-VIS-1",
@@ -2583,7 +2583,9 @@
       "priority": "P1",
       "status": "TODO",
       "owner": "",
-      "deps": ["GROWTH-WORKLIST-HUMAN-FILL"],
+      "deps": [
+        "GROWTH-WORKLIST-HUMAN-FILL"
+      ],
       "blockReason": "",
       "doc": "docs/PRD-launcher-grounded-questions.md",
       "title": "场景启动器问题接地化(基于真实数据/本体切片/意图·相对时间解析·删抽象)+空结果→认领补数据",
