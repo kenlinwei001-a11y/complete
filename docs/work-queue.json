@@ -2841,6 +2841,42 @@
           }
         ]
       }
+    },
+    {
+      "id": "ORDERCHAIN-DAG-DRILL",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/WO-orderchain-dag-drill.md",
+      "title": "逐单根因链/全链推演 DAG 节点下钻接线(死交互治本·用户亲报)",
+      "note": "用户亲报(截图):『排产推动/瓶颈紧张·逐单根因链(订单→判定→根因→对策)』弹窗点每个 block 无法下钻。定位:非坏是从未接线——ProblemDag(OrderChainView.tsx:556)与 OrderFullchainPanel 的 ofc-dag(:498)都调 LayeredDag 却未传 onNodeClick;LayeredDag 仅在收到该回调时才给节点 role=button/tabIndex/onClick(LayeredDag.tsx:104-107)否则纯静态 SVG<g>(空操作·不可聚焦)。同组件 PmDag(沙盘/项目推演)已接下钻→『接了一半』遗漏非只读。交互普查 Phase-1 漏抓(SVG<g>非<button>·死按钮枚举扫不到)。治(用户定每层各自专属目标·治本不靠文案解析):后端每节点补 typed ref{kind:object|judge|risk|action,key,extra}(risk.ts buildRootChains :900-950 完全确定性 R6)→前端 ProblemDag/ofc LayeredDag 传 onNodeClick 分层路由:order→订单360(/o/order/{id});judgement→该订单全链推演三判(cap/kit/fin);rootCause→风险看板对应瓶颈类(/v/risk?category);remedy→行动审批(采纳plan_change)。契约 OrderRootChainSchema.layers[]+ofc dag.nodes[] 加 optional ref(向后兼容·旧响应回退只 order 可点)。整页设计见 docs/WO-orderchain-dag-drill.md(含《本体引用与影响》)。回写§8 G-death-interaction(同 GRAPH-3/4 Object360死交互家族)+§3 根因链节点可导航+ontology:slices。",
+      "acceptance": {
+        "goal": "逐单根因链 problem-dag + 全链推演 ofc-dag 每个节点可下钻到各自一等对象(order→360/judgement→全链三判/rootCause→风险类/remedy→行动审批);后端派 typed ref 驱动·前端分层路由;缺 ref 回退只读不新增死点;闭合『看得到→点得动→下钻到真对象』。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "真登录 demo→OrderChainView→点待解决问题卡开弹窗→逐块点击:order 块→URL 变 /o/order/SO-xxxx 且订单360加载真值;judgement 块→定位该订单全链推演三判;rootCause 块→风险看板过滤该瓶颈类;remedy 块→行动/审批触发。ofc-dag 同验。每块 getComputedStyle 有 cursor:pointer + role=button + 键盘 Enter 可达。"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "齿检 test/orderchain-dag-drill.test.tsx:渲染 ProblemDag→各层节点 role=button+tabIndex=0+点击调 navigate/adopt(mock)+ref 路由分派正确。牙齿:还原去掉 onNodeClick→节点失 role=button(转红)。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "后端 ref 完全确定性(risk.ts 从订单属性+规则口径推导·零随机·R6):同订单同参数重跑 ref 字节一致。契约 layers[].ref/dag.nodes[].ref optional 向后兼容(旧响应 parse 不红)。四包 pnpm -r build && pnpm -r test 绿。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "(可选加固)交互完整性门补 SVG DAG 节点判据:渲染 LayeredDag/ProcessDag 节点若语义应可下钻却无 onNodeClick→列基线 ratchet 收窄·防再退回死交互。回写 docs/SYSTEM-ONTOLOGY.md §8 G-death-interaction 状态。"
+          }
+        ]
+      }
     }
   ]
 }
