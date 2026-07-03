@@ -295,15 +295,9 @@ export class VleService {
     const dP50 = Math.abs(aP50 - ref.p50);
     const dP90 = Math.abs(aP90 - ref.p90);
     const tol = VleService.REF_TOLERANCE;
-    // METHOD-MC-STOCHASTIC：P50 仍逐位独立双算（点估计·第二套代码比对）；P90 由种子化蒙特卡洛真实分位产出
-    // （被测 method="monte_carlo"），非固定 P50×0.93，故不做逐位比对——改**结构性**校验：P90 为保守下限
-    // （0<P90<P50）且落在参照点估计 haircut 带内（|P90−ref.p90| ≤ 10%×P50·防远偏）。P90 精确值的字节级验证
-    // 由 method-mc 单测（A1–A3·R6 逐字节）+ method-determinism 门守，比重复预言机更强。
-    const isMc = actual.method === "monte_carlo";
-    const p90Structural = isMc
-      ? Number.isFinite(aP90) && aP90 > 0 && aP90 < aP50 && Math.abs(aP90 - ref.p90) <= 0.1 * aP50
-      : dP90 <= tol; // point_estimate 降级路径仍逐位比对
-    const pass = Number.isFinite(aP50) && Number.isFinite(aP90) && dP50 <= tol && p90Structural;
+    // METHOD-MC-STOCHASTIC：P50 从零独立推导双算；P90 参照走同口径种子化蒙特卡洛（vle-oracle 复现同种子流）
+    // → 被测/参照 P90 逐位一致（真分位数·非 P50×0.93 伪分位）。仍逐位比对（容差 1e-6 吸收累加序差异）。
+    const pass = Number.isFinite(aP50) && Number.isFinite(aP90) && dP50 <= tol && dP90 <= tol;
     // diff 下钻：找首个 cumTotal 与被测 perBaseRows 偏离的基地（若被测透出 perBaseRows）。
     let firstDivergentBase: string | undefined;
     const aRows = Array.isArray(actual.perBaseRows) ? (actual.perBaseRows as Record<string, unknown>[]) : [];
@@ -318,14 +312,14 @@ export class VleService {
     }
     return {
       segment: "⑤求解器执行",
-      point: `参照实现双算 capacity_forecast(${modelId}) P50 逐位 + P90 蒙特卡洛真实分位结构性校验`,
+      point: `参照实现双算 capacity_forecast(${modelId}) P50/P90（第二套独立代码比对·P90 同口径蒙特卡洛真实分位）`,
       oracle: "reference",
       pass,
-      expected: { p50: ref.p50, p90: `<P50 且 |Δ|≤10%P50（MC 保守分位·anchor ${ref.p90}）` },
-      actual: { p50: aP50, p90: aP90, method: actual.method ?? "?" },
+      expected: { p50: ref.p50, p90: ref.p90 },
+      actual: { p50: aP50, p90: aP90 },
       diff: pass
         ? undefined
-        : `P50 期望 ${ref.p50} 实际 ${aP50}（Δ${Number(dP50.toFixed(6))}）· P90 蒙特卡洛真实分位 ${aP90}（应 <P50=${aP50} 且距 anchor ${ref.p90} ≤10%P50；method=${actual.method ?? "?"}）${firstDivergentBase ? ` · 首个偏离基地 ${firstDivergentBase}` : ""}`,
+        : `P50 期望 ${ref.p50} 实际 ${aP50}（Δ${Number(dP50.toFixed(6))}）· P90 期望 ${ref.p90} 实际 ${aP90}（Δ${Number(dP90.toFixed(6))}）${firstDivergentBase ? ` · 首个偏离基地 ${firstDivergentBase}` : ""}`,
     };
   }
 

@@ -3,6 +3,7 @@ import type { Repos } from "./repo/repo.js";
 import type { OutboxService } from "./outbox.js";
 import type { SolverService } from "./solvers/service.js";
 import { curveMult, computeRollup } from "./solvers/capacity.js";
+import { mcP90Single } from "./solvers/method-mc.js";
 import { maintWeekOf, num, str } from "./solvers/types.js";
 import { newId } from "./ids.js";
 import { AppError, invalidState, notFound, validationError } from "./errors.js";
@@ -146,8 +147,9 @@ export class SopService {
       const target = num(s.target);
       const rolling = num(s.rolling);
       const dv = target === 0 ? 0 : round((rolling - target) / target, 4);
-      // PRD-IND-sop §4.3：三线对照新增「滚动 P90」列（需求预测下分位，payload 透传或缺省派生）。
-      const p90 = s.p90 != null ? num(s.p90) : round(rolling * 0.936, 2);
+      // PRD-IND-sop §4.3：三线对照「滚动 P90」列（需求预测下分位）。METHOD-MC-STOCHASTIC：缺省派生由
+      // 「rolling × 0.936 固定 haircut 伪分位」→ 种子化蒙特卡洛真实保守分位（<rolling·R6·非电池魔数）。
+      const p90 = s.p90 != null ? num(s.p90) : round(mcP90Single(rolling, { solver: "sop_rolling_p90", tenantId: v.tenantId, month: v.month, seg: str(s.key), rolling }), 2);
       return { key: str(s.key), name: str(s.name, str(s.key)), target, rolling, p90, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > threshold };
     });
     const totalTarget = rows.reduce((a, r) => a + r.target, 0);

@@ -2,6 +2,7 @@ import type { CalibrationPairRecord, ObjectInstance } from "../domain.js";
 import { round } from "../prng.js";
 import { setByPath } from "../paths.js";
 import { computeRollup, curveMult } from "../solvers/capacity.js";
+import { mcP90Single } from "../solvers/method-mc.js";
 import { num, str, type SolverContext, type SolverParamsShape } from "../solvers/types.js";
 import { EPS } from "./config.js";
 
@@ -117,7 +118,8 @@ export function replayPairs(c: SolverContext, pairs: CalibrationPairRecord[]): S
   for (const p of pairs) {
     const pred = replayPredictedDaily(c, model, p.modelId, p.baseId, p.weekOfWindow);
     apeSum += Math.abs(pred - p.actual) / Math.max(p.actual, EPS);
-    if (p.actual >= round(pred * model.healthFactor, 6)) covered++;
+    // METHOD-MC-STOCHASTIC：覆盖率判据 P90 由伪分位（pred×healthFactor）→ 种子化蒙特卡洛真实保守分位。
+    if (p.actual >= round(mcP90Single(pred, { solver: "replay_cov_p90", modelId: p.modelId, baseId: p.baseId ?? "all", week: p.weekOfWindow, pred }), 6)) covered++;
   }
   return {
     simulatedMapeAfter: round((apeSum / pairs.length) * 100, 2),

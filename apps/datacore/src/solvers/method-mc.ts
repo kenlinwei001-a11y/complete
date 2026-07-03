@@ -1,4 +1,5 @@
 import type { DistributionFamily, StochasticMethodTemplate } from "@platform/contracts";
+import { rngFromInput } from "../prng.js";
 
 /**
  * 内置随机模拟族模板 `capacity_mc`（平台内置·只读·R14 抽象角色零业务实体名）。
@@ -201,4 +202,18 @@ export function monteCarlo(units: McUnit[], cfg: McConfig, rng: () => number): M
     p10: quantileType7(samples, 0.9), // 乐观上限
     samplesSorted: samples,
   };
+}
+
+/**
+ * 单点 P90 便捷式（METHOD-MC-STOCHASTIC·收口散落伪分位）——把一个点估计经种子化蒙特卡洛化为
+ * 真实保守分位（升序 0.10·<point），替代散落的 `point × 常数(0.93/0.936)` 伪分位式（S&OP P90 / 校准
+ * predictedP90 / replay 覆盖）。默认离散度（内置 capacity_mc·mc.dispersion.*），seedInput 保 R6 确定性。
+ * point<=0 原样返回（诚实空态）。
+ */
+export function mcP90Single(point: number, seedInput: unknown, mc: Partial<McParams> = MC_PARAM_DEFAULTS, stale = false): number {
+  if (!(point > 0)) return point;
+  const params = resolveMcParams(mc);
+  const rng = rngFromInput(seedInput);
+  const res = monteCarlo([{ point, stale }], mcConfigFor(BUILTIN_CAPACITY_MC, params), rng);
+  return res.p90;
 }

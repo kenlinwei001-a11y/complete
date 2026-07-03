@@ -55,3 +55,17 @@ POST /a/v1/solvers/capacity_forecast/invoke  {args:{modelId:"4680-NCM",qty:10000
 - ✅ 根因收口：P90 全路径（主/批次/what-if/校准 predictedP90）由伪分位 → 真实经验分位；两处同款 fake 一处不漏。
 - ◐ MethodBinding REST 端点/前端绑定 UI 未做（demo 走内置 `capacity_mc` 默认模板 + 默认 SolverParam·向后兼容）；本 WO 聚焦根因收口 + 引擎/门/回写，绑定 UI 属后续。
 - ◐ 其余分布族（triangular/beta/uniform）已实现 + 单测均值≈1，但内置 capacity_mc 仅用 normal/beta；其余族待有租户模板消费。
+
+## 复验修正（审核方打回·A7 回归 + A8 残留收口）
+
+审核方复验确认 A1–A6 核心根因真解，但抓出两处 dev 漏项（诚实记此·感谢复验）：
+- **A7 回归（真）**：`vle-reference-dualcompute.test.ts:37` `expect(act.p90).toBe(exp.p90)` 红——参照 oracle
+  仍算 `p50×healthFactor` 与被测 MC 背离。**治本①（审核方荐）**：`vle-oracle.ts referenceCapacityForecast`
+  P90 改走**同口径种子化 MC**（复现被测 seed 流·`method-mc` 纯引擎非被测求解器·V9 门不禁）→ 被测/参照 P90
+  逐位一致；vle.ts V10 恢复严格逐位比对。P50 仍从零独立推导（双算真独立）。
+- **A8 残留（审计簇·顺手收口·一处不漏）**：`sop.ts:150`（S&OP 滚动 P90·×0.936 用户可见）+ `seed.ts:385`
+  （校准 seed predictedP90·×healthFactor）+ `calibration/replay.ts:120`（覆盖率判据 P90·×healthFactor）
+  三处伪分位 → 复用新增 `method-mc.mcP90Single(point, seedInput)`（单点种子化 MC 真实保守分位·R6）收口。
+- **教训（记此防复发）**：前一轮 dev 报「datacore 全绿」不实（实为 1 failed | 878 passed·未真跑全套）。
+  本轮复验**真跑全套并核最终计数**：`pnpm --filter datacore test` → **161 files / 879 passed | 15 skipped·exit 0**；
+  `pnpm gates` **exit 0**（含 validation V10 双算严格逐位 + method-determinism 有牙齿 + ontology-slices 不漂）。

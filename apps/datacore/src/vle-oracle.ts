@@ -1,5 +1,9 @@
 import type { Repos } from "./repo/repo.js";
 import { BATTERY_SOLVER_PARAMS } from "./synthetic/battery.js";
+import { rngFromInput } from "./prng.js";
+// METHOD-MC-STOCHASTIC：参照与被测同口径——P90 由种子化蒙特卡洛真实经验分位（method-mc 纯引擎，
+// 非被测求解器 solvers/service·solvers/capacity·ruledsl，V9 门不禁）。P50 仍从零独立推导（双算真独立）。
+import { BUILTIN_CAPACITY_MC, mcConfigFor, monteCarlo, resolveMcParams, type McUnit } from "./solvers/method-mc.js";
 
 /**
  * VLE 参照实现预言机（PRD-addendum-validation-loop §2「参照实现」类）。
@@ -128,6 +132,9 @@ export async function referenceCapacityForecast(
   tenantId: string,
   modelId: string,
   weeks: number,
+  // 被测整单口径缺省 args：qty=0（num(args.qty,0)）·seed=42（num(args.seed,42)）——参照复现同种子流以逐位双算 P90。
+  qty = 0,
+  seed = 42,
 ): Promise<ReferenceForecast> {
   const params = await loadParams(repos, tenantId);
   const packCellCount = n(params.packCellCount, 96);
@@ -188,6 +195,12 @@ export async function referenceCapacityForecast(
     perBase.push({ baseId, weeklyWan: weekly, certFactor, maintWeek, cumTotal: r4(cumTotal) });
   }
   p50 = r4(p50);
-  const p90 = r4(p50 * healthFactor);
+  // METHOD-MC-STOCHASTIC：P90 = 种子化蒙特卡洛真实经验分位（与被测 capacity.ts 同口径·同种子流 → 逐位双算）。
+  // 单元=各基地累计 P50 贡献；陈旧关键源 → cv 放大（method-mc 内部按 stale 处理）。
+  const mcParams = resolveMcParams(params.mc as Partial<Parameters<typeof resolveMcParams>[0]>);
+  const mcUnits: McUnit[] = perBase.map((pb) => ({ point: pb.cumTotal, stale }));
+  const mcRng = rngFromInput({ solver: "capacity_forecast", tenantId, modelId, qty, weeks, batches: null, whatIf: null, seed, mc: mcParams });
+  const mcRes = mcUnits.length > 0 ? monteCarlo(mcUnits, mcConfigFor(BUILTIN_CAPACITY_MC, mcParams), mcRng) : { p10: p50, p50, p90: p50, samplesSorted: [p50] };
+  const p90 = r4(mcRes.p90);
   return { modelId, weeks, p50, p90, healthFactor, perBase };
 }

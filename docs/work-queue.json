@@ -2308,10 +2308,10 @@
     {
       "id": "METHOD-MC-STOCHASTIC",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
-      "blockReason": "A1-A6真绿实证(核心根因真解):curl method=monte_carlo·ratio随model变0.936/0.936/0.920≠固定0.93·p90<p50<p10·R6字节一致·method-mc13测(quantile/cv=0退化/dispersion×3→0.94→0.83)·debattery绿·method-determinism门exit0有牙齿·ontology-slices绿·§J回写方法库。P90确是真种子化MC经验分位非p50×0.93。★但A7四包回归红:datacore vle-reference-dualcompute.test.ts:37 expect(act.p90).toBe(exp.p90) 失败——act.p90=5.9691(MC真分位数)vs exp.p90=结构串'<P50且|Δ|≤10%P50(anchor5.9171)'。根因:vle-oracle.ts:191参照oracle仍算旧p50×healthFactor与MC背离·dev把参照P90改成描述串但line37仍strict toBe(数vs串)→红。dev FDE称'datacore全绿'不实(实测1 failed|878 passed·dev未真跑全套)。★另A8残留(审计簇A/PRD§6.2b):sop.ts:150(×0.936·S&OP P90用户可见)+vle-oracle.ts:191(本divergence元凶)+seed.ts:385仍伪分位。治(荐①治本):①fix vle-oracle.ts:191也走MC(参照与被测同口径→line37自然过+闭审计簇A7)+顺手sop.ts:150;或②line37改结构校验。核心MC引擎/门/回写无需返工。",
+      "blockReason": "",
       "doc": "docs/PRD-method-library-stochastic-mc.md",
       "title": "方法库·随机模拟族:种子化蒙特卡洛换掉P90启发式(p50×0.93冒充分位数)",
       "note": "根因单(用户钉:如果解决根因则做·不作假)。capacity.ts:260 p90=round(p50*healthFactor,4)·healthFactor=battery.ts:99 的0.93/0.90固定haircut→冒充90分位·零采样方差·还是电池魔数(R14味)。治本:把§J优化融合域泛化为『方法库』·加随机模拟族一等对象 StochasticMethodTemplate(抽象·零业务常数)·复用OntologyBinding(MethodBinding·DF.8接地)·离散度入SolverParam(可被CALIBRATION校准·替代0.93)·seeded mulberry32逐迭代采样→type-7真经验分位。整页量化PRD见 docs/PRD-method-library-stochastic-mc.md(契约/SolverParam默认值/MC算法/分布族闭式/方向约定/《本体引用与影响》)。回写§J+新门method-determinism:check+pnpm ontology:slices重生成切片。⚠scope含两处同款fake一处不漏:capacity.ts(260/275/311)+service.ts recordCalibrationForecasts(2336/2350 predictedP90·伪分位污染越用越准MAPE)——见PRD§6。",

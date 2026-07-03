@@ -7,6 +7,7 @@ import { buildReplayModel, replayPredictedDaily } from "./calibration/index.js";
 import { datePlus } from "./calibration/config.js";
 import { simNow } from "./calibration/pairing.js";
 import { round } from "./prng.js";
+import { mcP90Single } from "./solvers/method-mc.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import type { SopService } from "./sop.js";
 import type { SolverService } from "./solvers/service.js";
@@ -382,7 +383,7 @@ export async function seedDemoCalibrationConvergence(
       windowFrom: date,
       windowTo: date,
       predicted,
-      predictedP90: round(predicted * model.healthFactor, 6),
+      predictedP90: round(mcP90Single(predicted, { solver: "cal_seed_p90", modelId, baseId: baseId ?? "all", date, predicted }), 6),
       actual,
       error,
       ape: round(Math.abs(error) / Math.max(actual, 1e-6), 6),
