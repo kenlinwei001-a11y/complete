@@ -2541,6 +2541,42 @@
           }
         ]
       }
+    },
+    {
+      "id": "GROWTH-WORKLIST-HUMAN-FILL",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/PRD-growth-worklist-human-fill.md",
+      "title": "自成长发动机:按状态/认领人筛的在办看板 + 人工点击触发补数据缺口(去自动补)",
+      "note": "用户亲定:『需要一个按状态/认领人筛的在办看板·人点击后再触发补数据缺口·而不是自动补』。现状 growth/scenario-grow.ts:54 fill() 在 runGrowth LOOP 内自动跑 SOFT fillData(:96-97)+空租户 provisionWorld → 改为登记在办项(WorklistItem·status=OPEN·kind=DATA_GAP)·终态 NEEDS_HUMAN;人在看板认领→点『补数据缺口』→才真跑 fillData/provisionWorld(seed确定性R6)→DONE→可继续推演重跑。HARD DataRequest/scaffold DRAFT审批/缺功能工单本就人工闸·纳入同一看板统一呈现+筛(状态/认领人/类型)。整页量化PRD见 docs/PRD-growth-worklist-human-fill.md(§2看板逐元素+§3端点+《本体引用与影响》)。回写§J/G-9发育闭环(自动补→人工闸控补)+§4新事件growth.fill_claimed/fill_triggered+ontology:slices。",
+      "acceptance": {
+        "goal": "跑发育诊断后·可补的数据缺口不再自动合成·而是进一张按状态/认领人/类型可筛的在办看板;人认领→点『补数据缺口』才真触发确定性合成(R4人工闸·R6确定性)·补成后可继续推演。缺功能工单/HARD导入本就人工·统一看板呈现。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "去自动补:对SOFT缺数据问句 runGrowth后 GET /b/v1/growth/worklist 出 status=OPEN·kind=DATA_GAP 项·该轮report终态含NEEDS_HUMAN(非自动advanced补掉);对照改前会自动fillData。datacore该typeKey实例数在触发前不增。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "人工触发闭环+R4/R6:POST worklist/:id/claim(owner=admin)→CLAIMED;POST :id/fill→真跑fillData(同seed两次结果R6一致)→DONE+datacore该typeKey实例数增;非owner身份直接POST fill→403。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "在办看板真浏览器:筛 状态=CLAIMED & 认领人=我 → 只显匹配行(逐值对 curl worklist?status=CLAIMED&owner);点『补数据缺口』→ 状态 blue→green DONE·datacore真增对象(前端所见对照后端curl)。截图。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "回写§J/G-9/§4事件+pnpm ontology:slices绿;四包build/test绿;新增worklist单测(人工闸·R6补确定性·R2隔离·非owner403)。契约WorklistItem仅定义于packages/contracts(R1)+仓储双实现四处同改(R9)。"
+          }
+        ]
+      }
     }
   ]
 }
