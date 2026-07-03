@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentBudgetSchema, ObjectRefSchema, PlanStepSchema } from "./qos.js";
+import { AgentBudgetSchema, ObjectRefSchema, PlanStepSchema, SlotDefSchema } from "./qos.js";
 import { JsonSchemaObject } from "./common.js";
 
 // ---------------------------------------------------------------------------
@@ -290,6 +290,93 @@ export const ScenarioSchema = z.object({
   sliceTargets: z.array(z.object({ rootType: z.string(), targets: z.array(z.string()).default([]) })).optional(),
 });
 export type Scenario = z.infer<typeof ScenarioSchema>;
+
+// ---------------------------------------------------------------------------
+// WO-INTENT-MATERIALIZE-BINDING-COMPLETE：意图升一等对象（D7 编排域）。
+// 每个 LLM 功能（场景卡/意图）都物化为一等 Intent，携 mode（workflow-first / agent-first，
+// 由审核方逐意图钉死）+ 全绑定链 6 项：{agent|workflow}·本体切片·evaluation 规则·constraint 约束·
+// skill·求解器。SCENARIO_CATALOG 仍是派生单一来源（R14 配置驱动·骨架零业务实体名）；缺项经
+// POST /b/v1/intents/reconcile 自动 scaffold DRAFT（R4 不自动上真值）。
+// ---------------------------------------------------------------------------
+
+/** mode 逐意图定：价值在输出=workflow-first（走 Path A 工作流）·价值在推理=agent-first（走 Path B Agent）。
+ *  全 -first（保兜底）；数字红线（求解器真值）防 LLM 编数。 */
+export const IntentModeSchema = z.enum(["WORKFLOW_FIRST", "AGENT_FIRST"]);
+export type IntentMode = z.infer<typeof IntentModeSchema>;
+
+/** 全绑定链 6 项（每个 LLM 功能必齐）。ruleKeys=evaluation（评估）·constraintKeys=constraint（约束）。
+ *  按 mode：workflow-first 必有 workflowId（PUBLISHED 计划）·agent-first 必有 agentId（PUBLISHED agent）。 */
+export const IntentBindingsSchema = z.object({
+  /** 求解器 key（scenario.solver 派生·∈ 求解器注册表）。 */
+  solverKey: z.string(),
+  /** evaluation 规则（scenario.rules 中 ruleType=evaluation；至少 1 条）。 */
+  ruleKeys: z.array(z.string()).default([]),
+  /** constraint 约束（scenario.rules 中 ruleType=constraint）。 */
+  constraintKeys: z.array(z.string()).default([]),
+  /** 对口方法论 skill（复用 skl_*）。 */
+  skillId: z.string(),
+  /** 本体切片 key（数据源范围·root→hops·由 solver 读的对象类型派生）。 */
+  ontologySliceKey: z.string(),
+  /** agent-first 绑定的 agent（scene-entry defaultAgent 派生）。 */
+  agentId: z.string().optional(),
+  /** workflow-first 绑定的执行计划（QOS ExecutionPlan id）。 */
+  workflowId: z.string().optional(),
+});
+export type IntentBindings = z.infer<typeof IntentBindingsSchema>;
+
+export const MaterializedIntentSchema = z.object({
+  id: z.string(), // mint_
+  tenantId: z.string(),
+  /** 意图键（= scenario.intentKey；租户内唯一）。 */
+  key: z.string(),
+  name: z.string(),
+  description: z.string(),
+  examples: z.array(z.string()).default([]),
+  slots: z.array(SlotDefSchema).default([]),
+  mode: IntentModeSchema,
+  bindings: IntentBindingsSchema,
+  status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+  version: z.number().int().default(1),
+  /** reconcile 补齐留痕（R4 诚实边界）：本轮 scaffold 了哪些项 → 状态回落 DRAFT 待审核发布。 */
+  reconcile: z
+    .object({
+      ranAt: z.string(),
+      scaffolded: z.array(z.object({ binding: z.string(), detail: z.string(), draftRef: z.string().optional() })).default([]),
+    })
+    .optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+export type MaterializedIntent = z.infer<typeof MaterializedIntentSchema>;
+
+/** 本体切片规格（一等 SliceSpec 绑定·agentcore 侧本地注册表，供 Intent 绑定与全绑定链门静态校验）。
+ *  root→hops；industry-agnostic（rootType 为本体对象类型 key，非实例名）。 */
+export const IntentSliceSpecSchema = z.object({
+  sliceKey: z.string(),
+  tenantId: z.string(),
+  rootType: z.string(),
+  hops: z.array(z.object({ linkKey: z.string(), direction: z.enum(["out", "in"]), toType: z.string() })).default([]),
+  description: z.string().optional(),
+  status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).default("PUBLISHED"),
+});
+export type IntentSliceSpec = z.infer<typeof IntentSliceSpecSchema>;
+
+/** reconcile 补齐报告（每 Intent 每项 ✓/✗/已 scaffold）。 */
+export const IntentReconcileReportSchema = z.object({
+  ranAt: z.string(),
+  total: z.number().int(),
+  intents: z.array(
+    z.object({
+      key: z.string(),
+      mode: IntentModeSchema,
+      status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+      bindings: z.record(z.string(), z.enum(["OK", "SCAFFOLDED", "MISSING"])),
+      scaffolded: z.array(z.object({ binding: z.string(), detail: z.string(), draftRef: z.string().optional() })).default([]),
+    }),
+  ),
+  scaffoldedCount: z.number().int(),
+});
+export type IntentReconcileReport = z.infer<typeof IntentReconcileReportSchema>;
 
 // ---------------------------------------------------------------------------
 // AIP Evals（运营完备性增量 §2 / 成熟度 E4）：agent 质量可量化评测

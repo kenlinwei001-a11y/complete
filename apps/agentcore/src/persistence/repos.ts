@@ -8,7 +8,9 @@ import type {
   ExecutionPlan,
   FallbackTrace,
   IntentDefinition,
+  IntentSliceSpec,
   LlmProviderConfig,
+  MaterializedIntent,
   McpServerConfig,
   ModelBinding,
   QueryTask,
@@ -201,6 +203,20 @@ export interface Repos {
     get(id: string): Promise<Scenario | undefined>;
     byKey(tenantId: string, scenarioKey: string): Promise<Scenario | undefined>;
     listByTenant(tenantId: string): Promise<Scenario[]>;
+  };
+  /** WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链），(tenantId, key) 唯一。 */
+  materializedIntents: {
+    upsert(i: MaterializedIntent): Promise<void>;
+    remove(id: string): Promise<void>;
+    get(id: string): Promise<MaterializedIntent | undefined>;
+    byKey(tenantId: string, key: string): Promise<MaterializedIntent | undefined>;
+    listByTenant(tenantId: string): Promise<MaterializedIntent[]>;
+  };
+  /** WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等本体切片（Intent 绑定的数据源范围），(tenantId, sliceKey) 唯一。 */
+  intentSlices: {
+    upsert(s: IntentSliceSpec): Promise<void>;
+    byKey(tenantId: string, sliceKey: string): Promise<IntentSliceSpec | undefined>;
+    listByTenant(tenantId: string): Promise<IntentSliceSpec[]>;
   };
   credentials: {
     insert(c: CredentialRow): Promise<void>;

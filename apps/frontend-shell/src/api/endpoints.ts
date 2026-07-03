@@ -24,6 +24,8 @@ import type {
   FeatureDef,
   IntentClassifyPreviewResult,
   IntentDefinition,
+  MaterializedIntent,
+  IntentReconcileReport,
   McpServerConfig,
   PermissionPolicy,
   QueryTask,
@@ -853,6 +855,17 @@ export const retireIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/retire`, { body: {} });
 export const fetchPlans = (packageId: string) =>
   api.b<{ id: string; key: string; version: number; status: string }[]>(`/b/v1/catalog/packages/${packageId}/plans`);
+
+// WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链 6 项）·可看可编 + 自动补齐。
+export const fetchMaterializedIntents = (params?: { status?: string; mode?: string }) => {
+  const sp = new URLSearchParams(params as Record<string, string>);
+  const qs = sp.toString();
+  return api.b<MaterializedIntent[]>(`/b/v1/intents${qs ? `?${qs}` : ""}`);
+};
+export const updateMaterializedIntent = (key: string, body: Partial<MaterializedIntent>) =>
+  api.b<MaterializedIntent>(`/b/v1/intents/${encodeURIComponent(key)}`, { method: "PUT", body });
+export const reconcileMaterializedIntents = () =>
+  api.b<IntentReconcileReport>(`/b/v1/intents/reconcile`, { body: {} });
 /** G-4：消裁决#27 死路 —— 前端自助创建可绑定的执行计划（后端 createPlan 端点本就存在）。 */
 export const createPlan = (packageId: string, body: { key: string; name?: string; steps: Record<string, unknown>[] }) =>
   api.b<{ id: string; key: string; version: number; status: string }>(`/b/v1/catalog/packages/${packageId}/plans`, { body });

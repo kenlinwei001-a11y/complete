@@ -65,6 +65,30 @@ import { lintSkill } from "./skill-lint.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
+import { ensureMaterializedIntents, reconcileIntents } from "./intents/reconcile.js";
+import { MaterializedIntentSchema, SlotDefSchema } from "@platform/contracts";
+
+/** PUT /b/v1/intents/:key 可编字段（mode 钉死不可改·bindings 可部分改）。
+ *  注意：绑定 patch 字段全 optional 且**无 default**——避免 .partial() 保留 .default([]) 把未传的
+ *  ruleKeys/constraintKeys 清空覆盖既有值（浅合并语义：只改传入的键）。 */
+const IntentEditBodySchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  examples: z.array(z.string()).optional(),
+  slots: z.array(SlotDefSchema).optional(),
+  bindings: z
+    .object({
+      solverKey: z.string().optional(),
+      ruleKeys: z.array(z.string()).optional(),
+      constraintKeys: z.array(z.string()).optional(),
+      skillId: z.string().optional(),
+      ontologySliceKey: z.string().optional(),
+      agentId: z.string().optional(),
+      workflowId: z.string().optional(),
+    })
+    .optional(),
+  status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
+});
 
 /** PRD-IND-story §4.3：从 task.error/path 确定性派生缺口（本 base 用 task.error 归类断点 → projectTrace 标 gap 节点）。 */
 function deriveTraceGap(task: QueryTask): TraceGapInput | undefined {
@@ -1903,6 +1927,69 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { input } = OperationClassifyRequestSchema.parse(req.body);
     return classifyOperation(input);
   });
+  // ---- WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链 6 项）----
+  // ①② 物化 20 一等 PUBLISHED Intent（CatalogPage 可看可编）·③ reconcile 自动补齐（R4 DRAFT）。
+  // GET /b/v1/intents：列本租户 20 一等 Intent（?status= / ?mode= 过滤）。
+  app.get("/b/v1/intents", async (req) => {
+    const a = await auth(req);
+    await ensureMaterializedIntents(deps.repos, a.tenantId);
+    const { status, mode } = req.query as { status?: string; mode?: string };
+    let list = await deps.repos.materializedIntents.listByTenant(a.tenantId);
+    if (status) list = list.filter((i) => i.status === status);
+    if (mode) list = list.filter((i) => i.mode === mode);
+    return list.sort((x, y) => (x.key < y.key ? -1 : 1));
+  });
+
+  // GET /b/v1/intent-slices：一等本体切片注册表（Intent 绑定的数据源范围·前端/门可见）。
+  app.get("/b/v1/intent-slices", async (req) => {
+    const a = await auth(req);
+    await ensureMaterializedIntents(deps.repos, a.tenantId);
+    return (await deps.repos.intentSlices.listByTenant(a.tenantId)).sort((x, y) => (x.sliceKey < y.sliceKey ? -1 : 1));
+  });
+
+  // GET /b/v1/intents/:key：单个一等 Intent（含全绑定链）。
+  app.get("/b/v1/intents/:key", async (req) => {
+    const a = await auth(req);
+    await ensureMaterializedIntents(deps.repos, a.tenantId);
+    const { key } = req.params as { key: string };
+    const intent = await deps.repos.materializedIntents.byKey(a.tenantId, key);
+    if (!intent) throw new HttpError(404, "INTENT_NOT_FOUND", `intent not found: ${key}`);
+    return intent;
+  });
+
+  // PUT /b/v1/intents/:key：编辑一等 Intent（CatalogPage 可编·catalog_admin）。mode 由审核方钉死不可改；
+  // 可编 name/description/examples/slots/bindings。乐观锁经 version（updatedAt 留痕）。
+  app.put("/b/v1/intents/:key", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    await ensureMaterializedIntents(deps.repos, a.tenantId);
+    const { key } = req.params as { key: string };
+    const intent = await deps.repos.materializedIntents.byKey(a.tenantId, key);
+    if (!intent) throw new HttpError(404, "INTENT_NOT_FOUND", `intent not found: ${key}`);
+    const patch = IntentEditBodySchema.parse(req.body);
+    // R14：mode 逐意图钉死（审核方定）——不可经编辑改派。
+    const merged = {
+      ...intent,
+      ...patch,
+      bindings: patch.bindings ? { ...intent.bindings, ...patch.bindings } : intent.bindings,
+      mode: intent.mode,
+      updatedAt: new Date().toISOString(),
+    };
+    const validated = MaterializedIntentSchema.parse(merged);
+    await deps.repos.materializedIntents.upsert(validated);
+    await emitDomainEvent(a.tenantId, "intent.updated", { key });
+    return validated;
+  });
+
+  // POST /b/v1/intents/reconcile：自动补齐（治本 ③·R4）——检测缺失绑定→scaffold DRAFT/复用既有→补齐报告。
+  app.post("/b/v1/intents/reconcile", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const report = await reconcileIntents({ repos: deps.repos, catalog: deps.catalog }, a.tenantId);
+    if (report.scaffoldedCount > 0) await emitDomainEvent(a.tenantId, "intent.reconciled", { scaffoldedCount: report.scaffoldedCount });
+    return report;
+  });
+
   // C10 试分类（catalog_admin 内联测试意图分类）：确定性词法打分（R6，无 LLM、非 SSE 异步），
   // 对该 package 已发布意图集(name/description/examples)打分返 top-N，让 CatalogPage「试分类」即时显命中/未命中。
   app.post("/b/v1/intents/classify-preview", async (req) => {

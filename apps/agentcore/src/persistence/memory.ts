@@ -3,7 +3,9 @@ import type {
   AgentRunRecord,
   ExecutionPlan,
   IntentDefinition,
+  IntentSliceSpec,
   LlmProviderConfig,
+  MaterializedIntent,
   McpServerConfig,
   ModelBinding,
   QueryTask,
@@ -47,6 +49,8 @@ export function createMemoryRepos(): Repos {
   const mcpConfigs = new Map<string, McpServerConfig>();
   const sceneEntries = new Map<string, SceneEntryConfig>();
   const scenarios = new Map<string, Scenario>();
+  const materializedIntents = new Map<string, MaterializedIntent>();
+  const intentSlices = new Map<string, IntentSliceSpec>();
   const credentials = new Map<string, CredentialRow>();
   const idempotency = new Map<string, IdempotencyRow>();
   const llmProviders = new Map<string, LlmProviderConfig>();
@@ -323,6 +327,41 @@ export function createMemoryRepos(): Repos {
       },
       async listByTenant(tenantId) {
         return [...scenarios.values()].filter((s) => s.tenantId === tenantId).map(clone);
+      },
+    },
+    materializedIntents: {
+      async upsert(i) {
+        // (tenantId, key) unique
+        for (const [id, e] of materializedIntents) {
+          if (e.tenantId === i.tenantId && e.key === i.key && id !== i.id) materializedIntents.delete(id);
+        }
+        materializedIntents.set(i.id, clone(i));
+      },
+      async remove(id) {
+        materializedIntents.delete(id);
+      },
+      async get(id) {
+        return clone(materializedIntents.get(id));
+      },
+      async byKey(tenantId, key) {
+        return clone([...materializedIntents.values()].find((i) => i.tenantId === tenantId && i.key === key));
+      },
+      async listByTenant(tenantId) {
+        return [...materializedIntents.values()].filter((i) => i.tenantId === tenantId).map(clone);
+      },
+    },
+    intentSlices: {
+      async upsert(s) {
+        for (const [id, e] of intentSlices) {
+          if (e.tenantId === s.tenantId && e.sliceKey === s.sliceKey && id !== s.sliceKey) intentSlices.delete(id);
+        }
+        intentSlices.set(`${s.tenantId}::${s.sliceKey}`, clone(s));
+      },
+      async byKey(tenantId, sliceKey) {
+        return clone(intentSlices.get(`${tenantId}::${sliceKey}`));
+      },
+      async listByTenant(tenantId) {
+        return [...intentSlices.values()].filter((s) => s.tenantId === tenantId).map(clone);
       },
     },
     experience: {

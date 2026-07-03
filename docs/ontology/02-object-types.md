@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §2` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §2，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `5f70fcbcc9bd6517`。
+> **改接线改母体 §2，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2548c9e5d0bfc6b7`。
 
 ---
 
@@ -89,6 +89,7 @@
 ### H. 交互/编排域（AgentCore）
 - **ScenarioPackage**：场景包（`pkg_battery_manufacturing`，目前写死电池）· `mocks/seed.ts:19`。
 - **Intent**：意图（触发问句/示例→分类；slots；**planRef→执行计划**；riskLevel）· `contracts/agentcore.ts`。
+- **MaterializedIntent（一等 Intent·全绑定链）**（WO-INTENT-MATERIALIZE-BINDING-COMPLETE·`contracts/agentcore.ts MaterializedIntentSchema` · `intents/materialize.ts` · `materializedIntents`/`intentSlices` 仓储双实现 + `migrations/010` + `GET/PUT /b/v1/intents`·`/reconcile`·`/b/v1/intent-slices`）：每个 LLM 功能（20 场景 intentKey）物化为一等 **PUBLISHED** Intent，携 **mode**（workflow-first 13 / agent-first 7·审核方逐意图钉死 `INTENT_MODE`·R14 数据驱动非硬编码分派）+ **全绑定链 6 项** `bindings{solverKey, ruleKeys(eval), constraintKeys(constraint), skillId, ontologySliceKey, agentId|workflowId}`。SCENARIO_CATALOG 单一来源派生（R6 确定性物化·骨架零业务实体名·行业绑定经 solver）；缺项经 `POST /b/v1/intents/reconcile` 自动 scaffold **DRAFT**（R4 不自动上真值·复用 self-growth scaffold）·补齐即回落 DRAFT 留痕待人工发布。前端 `CatalogPage` 一等 Intent 面板可看可编（逐值对后端）。**IntentSliceSpec**：Intent 绑定的一等本体切片（root→hops·数据源范围声明）。
 - **ExecutionPlan / Workflow**：执行计划（kind=PLAN）/ 编排（kind=ORCHESTRATION，含 invoke_agent/mcp）；步骤 query_objects/invoke_solver/evaluate_rules/render · `workflow/executor.ts`。
 - **Skill / Agent**：技能（解读能力句）/ 智能体（systemPrompt+tools+skills+ruleBindings）· `agent/loop.ts`。
 - **CLI 通用操作外壳 + OperationIntent（A15）**（`scripts/platform-cli.mjs` + `contracts/operation-intent.ts`）：把"只能 ask 问句"的 CLI 升级为**通用操作外壳**——`platform do "<NL>"` 万能入口经 `POST /b/v1/operations/classify`（**确定性关键词打分** `classifyOperation`，R6 无 LLM；低置信/多候选→列 candidates 不瞎猜）判 **QUERY**（走 QOS ask）或 **OPERATION**（路由模块：import/model/rule/solve/synth/build/approve…）。`OPERATION_CATALOG`（配置 R14，17 条覆盖矩阵）每条带关键词/端点/必填槽/是否 R4/`cliCommand`/（不宜内联→`uiDeepLink` 跳 GUI，§3.6 求解器上传）。CLI 与 GUI **平行同源**（同一 REST + R3/R4/R8 + 事件，一端操作另一端可见），不绕审批/不本地直写。**R15 CLI 对等**（§5 新不变量 + `cli-parity:check` §7 门）：新增对外能力必须注册 cliCommand 或 uiDeepLink，否则功能洼地返工。

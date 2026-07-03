@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { IntentClassifyPreviewResult, IntentDefinition, SlotDef } from "@platform/contracts";
-import { classifyIntentPreview, createIntent, createPlan, fetchIntents, fetchObjectTypes, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
+import type { IntentClassifyPreviewResult, IntentDefinition, MaterializedIntent, SlotDef } from "@platform/contracts";
+import { classifyIntentPreview, createIntent, createPlan, fetchIntents, fetchMaterializedIntents, fetchObjectTypes, fetchPlans, publishIntent, reconcileMaterializedIntents, retireIntent, updateIntent, updateMaterializedIntent } from "@/api/endpoints";
 import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
@@ -89,6 +89,101 @@ export default function CatalogPage() {
         </div>
         {selected && <IntentEditor key={selected.id} intent={selected} packageId={packageId} />}
       </div>
+      <MaterializedIntentPanel />
+    </div>
+  );
+}
+
+/**
+ * WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链 6 项）——可看可编 + 自动补齐。
+ * 从 GET /b/v1/intents 拉 20 个一等 Intent，逐意图展示 mode/6 项绑定/状态；catalog_admin 可改名/描述、
+ * 触发 reconcile（缺项自动 scaffold DRAFT·R4）。
+ */
+function MaterializedIntentPanel() {
+  const queryClient = useQueryClient();
+  const { data: intents } = useQuery({ queryKey: ["b", "materialized-intents"], queryFn: () => fetchMaterializedIntents() });
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["b", "materialized-intents"] });
+  const reconcileMut = useMutation({
+    mutationFn: reconcileMaterializedIntents,
+    onSuccess: (r) => {
+      toast(`自动补齐完成：${r.scaffoldedCount} 项已 scaffold DRAFT（待审核发布）`, "success");
+      invalidate();
+    },
+    onError: toastError,
+  });
+  const list = intents ?? [];
+  const wf = list.filter((i) => i.mode === "WORKFLOW_FIRST").length;
+  const ag = list.filter((i) => i.mode === "AGENT_FIRST").length;
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }} data-testid="materialized-intents">
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+        <h3 style={{ fontSize: 15 }}>一等 Intent · 全绑定链</h3>
+        <span className="badge" data-testid="mint-count">{list.length} 个（workflow-first {wf} · agent-first {ag}）</span>
+        <button className="btn sm" style={{ marginLeft: "auto" }} disabled={reconcileMut.isPending} onClick={() => reconcileMut.mutate()} data-testid="mint-reconcile">
+          {reconcileMut.isPending ? "补齐中…" : "自动补齐（reconcile）"}
+        </button>
+      </div>
+      <table className="cmp" style={{ width: "100%" }}>
+        <thead>
+          <tr>
+            <th>意图键</th><th>名称</th><th>mode</th><th>求解器</th><th>规则(eval)</th><th>约束</th><th>skill</th><th>切片</th><th>agent/workflow</th><th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((i) => (
+            <tr key={i.key} data-testid={`mint-row-${i.key}`} style={{ cursor: "pointer" }} onClick={() => setOpenKey(openKey === i.key ? null : i.key)}>
+              <td className="mono" style={{ fontSize: 11 }}>{i.key}</td>
+              <td className="zh">{i.name}</td>
+              <td><span className={`badge ${i.mode === "AGENT_FIRST" ? "amber" : "green"}`}>{i.mode === "AGENT_FIRST" ? "agent-first" : "workflow-first"}</span></td>
+              <td className="mono" style={{ fontSize: 10 }}>{i.bindings.solverKey}</td>
+              <td className="mono" style={{ fontSize: 10 }} data-testid={`mint-${i.key}-rules`}>{i.bindings.ruleKeys.join(",") || "—"}</td>
+              <td className="mono" style={{ fontSize: 10 }}>{i.bindings.constraintKeys.join(",") || "—"}</td>
+              <td className="mono" style={{ fontSize: 10 }}>{i.bindings.skillId}</td>
+              <td className="mono" style={{ fontSize: 10 }}>{i.bindings.ontologySliceKey}</td>
+              <td className="mono" style={{ fontSize: 10 }}>{i.bindings.agentId ?? i.bindings.workflowId ?? "—"}</td>
+              <td><span className={`badge ${i.status === "PUBLISHED" ? "green" : i.status === "DRAFT" ? "amber" : ""}`}>{i.status}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {openKey && (() => {
+        const it = list.find((x) => x.key === openKey);
+        return it ? <MaterializedIntentEditor key={it.key} intent={it} onSaved={invalidate} /> : null;
+      })()}
+    </div>
+  );
+}
+
+function MaterializedIntentEditor({ intent, onSaved }: { intent: MaterializedIntent; onSaved: () => void }) {
+  const [name, setName] = useState(intent.name);
+  const [description, setDescription] = useState(intent.description);
+  const saveMut = useMutation({
+    mutationFn: () => updateMaterializedIntent(intent.key, { name, description }),
+    onSuccess: () => {
+      toast("已保存一等 Intent", "success");
+      onSaved();
+    },
+    onError: toastError,
+  });
+  return (
+    <div className="panel" style={{ marginTop: 10, padding: 10 }} data-testid={`mint-editor-${intent.key}`}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <input value={name} aria-label="意图名称" onChange={(e) => setName(e.target.value)} style={{ fontWeight: 600 }} data-testid="mint-name" />
+        <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>{intent.key} · mode={intent.mode}（钉死不可改）</span>
+        <button className="btn sm primary" style={{ marginLeft: "auto" }} disabled={saveMut.isPending} onClick={() => saveMut.mutate()} data-testid="mint-save">
+          {zh.common.save}
+        </button>
+      </div>
+      <label style={{ fontSize: 12, color: "var(--muted)" }}>描述</label>
+      <textarea style={{ width: "100%", minHeight: 44, marginBottom: 8 }} value={description} aria-label="描述" onChange={(e) => setDescription(e.target.value)} />
+      <div style={{ fontSize: 12, color: "var(--muted)" }}>
+        全绑定链：求解器 <b>{intent.bindings.solverKey}</b> · 规则 <b>{intent.bindings.ruleKeys.join("、") || "—"}</b> · 约束 <b>{intent.bindings.constraintKeys.join("、") || "—"}</b> · skill <b>{intent.bindings.skillId}</b> · 切片 <b>{intent.bindings.ontologySliceKey}</b> · {intent.mode === "AGENT_FIRST" ? <>agent <b>{intent.bindings.agentId}</b></> : <>workflow <b>{intent.bindings.workflowId}</b></>}
+      </div>
+      {intent.reconcile && (
+        <div className="badge amber" style={{ marginTop: 6 }}>本意图经 reconcile 补齐 {intent.reconcile.scaffolded.length} 项（DRAFT 待审核发布·R4）</div>
+      )}
     </div>
   );
 }

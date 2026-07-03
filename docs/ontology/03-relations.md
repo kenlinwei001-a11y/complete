@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `5f70fcbcc9bd6517`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2548c9e5d0bfc6b7`。
 
 ---
 
@@ -42,6 +42,7 @@ ScenarioCard --intentKey--> Intent          ✅ 20/20 接通（种子从目录�
 ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --POST /b/v1/scenarios/:key/launch--> Query
                                   ✅ P1 已接通（presetSlots 注入通道 + fillSlots 消费 + launch 端点；20/20 零反问门 scenarios-wiring）；前端启动器待 P3
 Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）
+MaterializedIntent --mode--> { workflow-first→Path A 工作流 | agent-first→Path B Agent } · --bindings--> { Solver·Rule(eval)·Constraint·Skill·SliceSpec·(Agent|Workflow) }   ✅ WO-INTENT-MATERIALIZE-BINDING-COMPLETE：20 场景 intentKey 全物化为一等 PUBLISHED Intent（mode 由审核方钉死·全绑定链 6 项齐）；**补齐链** `MaterializedIntent →(reconcile 缺项检测)→ scaffold DRAFT →审核发布`（接 sys.meta.change_loop·R4 不自动上真值·复用 self-growth scaffold）；全绑定链门 `scene-agent-config:check`（扩）守回潮
 SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent   （降为投影）
 ```
 **数据→本体→推演链**

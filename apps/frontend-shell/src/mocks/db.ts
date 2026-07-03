@@ -1,4 +1,4 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, Scenario, ScheduledJob, SchedulerRun, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, IntentSliceSpec, LlmProvider, MaterializedIntent, McpServerConfig, PurposeBinding, RuleEntry, Scenario, ScheduledJob, SchedulerRun, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -13,6 +13,8 @@ import {
   AGENTS,
   initialClock,
   INTENTS,
+  MATERIALIZED_INTENTS,
+  INTENT_SLICES,
   LLM_BINDINGS,
   LLM_PROVIDERS,
   MCP_CONFIGS,
@@ -65,6 +67,9 @@ interface MockDb {
   mcpConfigs: McpServerConfig[];
   scenes: SceneEntryConfig[];
   scenarios: Scenario[];
+  // WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链 6 项）+ 一等本体切片。
+  materializedIntents: MaterializedIntent[];
+  intentSlices: IntentSliceSpec[];
   actionDrafts: ActionDraft[];
   sopVersions: SopVersionVM[];
   // 管理平台增量
@@ -115,6 +120,8 @@ function freshDb(): MockDb {
     mcpConfigs: structuredClone(MCP_CONFIGS),
     scenes: structuredClone(SCENES),
     scenarios: structuredClone(SCENARIOS),
+    materializedIntents: structuredClone(MATERIALIZED_INTENTS),
+    intentSlices: structuredClone(INTENT_SLICES),
     actionDrafts: structuredClone(ACTION_DRAFTS),
     sopVersions: seedSopVersions(),
     rules: structuredClone(RULES),

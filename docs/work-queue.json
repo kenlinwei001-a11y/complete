@@ -2624,7 +2624,7 @@
     {
       "id": "INTENT-MATERIALIZE-BINDING-COMPLETE",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",

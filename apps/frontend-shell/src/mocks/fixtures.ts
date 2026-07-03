@@ -9,6 +9,8 @@ import type {
   ConnectorType,
   FeatureDef,
   IntentDefinition,
+  MaterializedIntent,
+  IntentSliceSpec,
   McpServerConfig,
   PermissionPolicy,
   RuleEntry,
@@ -940,6 +942,33 @@ export const SCENARIOS: Scenario[] = [
     { targetView: "graph", selectedObjects: [], slotPresets: {} },
     { domain: "经营与财务", defaultAgentId: "agt-explore", summary: "探索型场景（路径B agent 主导）" }),
 ];
+
+// WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链 6 项）mock 子集（覆盖两 mode·
+// 展示可看可编 + 自动补齐；真后端从 SCENARIO_CATALOG 物化 20 个，此处 mock 代表性 6 个即可渲染面板）。
+function mint(
+  key: string, name: string, mode: MaterializedIntent["mode"], solverKey: string, ruleKeys: string[],
+  skillId: string, agentOrWf: { agentId?: string; workflowId?: string },
+): MaterializedIntent {
+  return {
+    id: `mint_demo_${key}`, tenantId: TENANT_ID, key, name, description: `${name}（一等 Intent）`,
+    examples: [name], slots: [], mode,
+    bindings: { solverKey, ruleKeys, constraintKeys: [], skillId, ontologySliceKey: `slice_${key}`, ...agentOrWf },
+    status: "PUBLISHED", version: 1,
+  };
+}
+export const MATERIALIZED_INTENTS: MaterializedIntent[] = [
+  mint("capacity_feasibility", "订单可承接性评审", "WORKFLOW_FIRST", "capacity_forecast", ["C01", "C02", "C03", "C09"], "skl_seed_capacity", { workflowId: "plan_capacity_feasibility_v1" }),
+  mint("affected_orders", "交期风险与受影响订单", "WORKFLOW_FIRST", "affected_orders", ["C05"], "skl_risk_diagnosis", { workflowId: "plan_affected_orders_v1" }),
+  mint("risk_root_cause", "风险越线根因", "AGENT_FIRST", "risk_timeline", ["C06", "C11"], "skl_risk_diagnosis", { agentId: "agt_risk" }),
+  mint("plan_recommend", "经营方案比选", "AGENT_FIRST", "plan_generate", ["C08", "C15", "C18"], "skl_plan_scheme", { agentId: "agt_plan_generate" }),
+  mint("quote_margin_q", "接单毛利评审", "WORKFLOW_FIRST", "quote_margin", ["C15", "C24"], "skl_order_margin", { workflowId: "plan_quote_margin_q_v1" }),
+  mint("quarterly_gap_q", "季度缺口对策", "AGENT_FIRST", "quarterly_gap", ["C08", "C29"], "skl_sop_balance", { agentId: "agt_quarterly" }),
+];
+export const INTENT_SLICES: IntentSliceSpec[] = MATERIALIZED_INTENTS.map((i) => ({
+  sliceKey: i.bindings.ontologySliceKey, tenantId: TENANT_ID,
+  rootType: i.bindings.solverKey.includes("capacity") ? "Model" : "Base", hops: [],
+  description: `${i.name} 数据源范围`, status: "PUBLISHED",
+}));
 
 export const FALLBACK_CLUSTERS: FallbackClusterVM[] = [
   { traceId: "fbt-1", querySample: "对比一下储能基地和动力基地的平均利用率", count: 17, lastSeen: now, outcomeBreakdown: { ANSWERED: 14, FAILED: 3 }, topToolSketch: ["query_objects", "query_objects"], trend: [1, 2, 2, 4, 3, 5] },

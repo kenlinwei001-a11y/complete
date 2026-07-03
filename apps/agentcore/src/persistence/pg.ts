@@ -7,7 +7,9 @@ import type {
   AgentRunRecord,
   ExecutionPlan,
   IntentDefinition,
+  IntentSliceSpec,
   LlmProviderConfig,
+  MaterializedIntent,
   McpServerConfig,
   ModelBinding,
   QueryTask,
@@ -380,6 +382,47 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       async listByTenant(tenantId) {
         const r = await q(`SELECT config FROM scenarios WHERE tenant_id = $1`, [tenantId]);
         return r.rows.map((x) => x.config as Scenario);
+      },
+    },
+    materializedIntents: {
+      async upsert(i: MaterializedIntent) {
+        await q(
+          `INSERT INTO materialized_intents(id, tenant_id, key, config) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (tenant_id, key) DO UPDATE SET id = $1, config = $4`,
+          [i.id, i.tenantId, i.key, JSON.stringify(i)],
+        );
+      },
+      async remove(id) {
+        await q(`DELETE FROM materialized_intents WHERE id = $1`, [id]);
+      },
+      async get(id) {
+        const r = await q(`SELECT config FROM materialized_intents WHERE id = $1`, [id]);
+        return r.rows[0]?.config as MaterializedIntent | undefined;
+      },
+      async byKey(tenantId, key) {
+        const r = await q(`SELECT config FROM materialized_intents WHERE tenant_id = $1 AND key = $2`, [tenantId, key]);
+        return r.rows[0]?.config as MaterializedIntent | undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT config FROM materialized_intents WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map((x) => x.config as MaterializedIntent);
+      },
+    },
+    intentSlices: {
+      async upsert(s: IntentSliceSpec) {
+        await q(
+          `INSERT INTO intent_slices(tenant_id, slice_key, config) VALUES ($1,$2,$3)
+           ON CONFLICT (tenant_id, slice_key) DO UPDATE SET config = $3`,
+          [s.tenantId, s.sliceKey, JSON.stringify(s)],
+        );
+      },
+      async byKey(tenantId, sliceKey) {
+        const r = await q(`SELECT config FROM intent_slices WHERE tenant_id = $1 AND slice_key = $2`, [tenantId, sliceKey]);
+        return r.rows[0]?.config as IntentSliceSpec | undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT config FROM intent_slices WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map((x) => x.config as IntentSliceSpec);
       },
     },
     experience: {

@@ -11,6 +11,7 @@ import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
 import { distillExperienceCases, ensureScenarioPackageSeed, SEED_TENANT, seedRegistry, seedSceneEntries } from "./mocks/seed.js";
 import { seedScenarios } from "./scenarios-catalog.js";
+import { ensureMaterializedIntents } from "./intents/reconcile.js";
 import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
 import { buildServer } from "./server.js";
@@ -38,6 +39,8 @@ async function main(): Promise<void> {
   for (const sc of seedScenarios()) {
     if (!(await repos.scenarios.byKey(sc.tenantId, sc.scenarioKey))) await repos.scenarios.upsert(sc);
   }
+  // WO-INTENT-MATERIALIZE-BINDING-COMPLETE ①②：物化 20 一等 Intent（mode + 全绑定链）+ 一等本体切片（幂等）。
+  await ensureMaterializedIntents(repos, SEED_TENANT);
   // 运营态出厂配置增量 §3：经验记忆库 50 案例（缺失才播种，幂等；search_experience 检索）
   if ((await repos.experience.listByTenant("demo")).length === 0) {
     for (const c of distillExperienceCases()) await repos.experience.upsert(c);

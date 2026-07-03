@@ -2448,6 +2448,34 @@ export const handlers = [
     const top = scored[0] && scored[0].score > 0 ? scored[0].intentKey : null;
     return HttpResponse.json({ matched: scored, top, outOfCatalog: top === null });
   }),
+  // WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链 6 项）·可看可编 + 自动补齐。
+  http.get("*/b/v1/intents", ({ request }) => {
+    const url = new URL(request.url);
+    const mode = url.searchParams.get("mode");
+    const status = url.searchParams.get("status");
+    let list = db.materializedIntents;
+    if (mode) list = list.filter((i) => i.mode === mode);
+    if (status) list = list.filter((i) => i.status === status);
+    return HttpResponse.json(list);
+  }),
+  http.get("*/b/v1/intent-slices", () => HttpResponse.json(db.intentSlices)),
+  http.put("*/b/v1/intents/:key", async ({ params, request }) => {
+    const body = (await request.json().catch(() => ({}))) as { name?: string; description?: string; bindings?: Record<string, unknown> };
+    const it = db.materializedIntents.find((i) => i.key === params.key);
+    if (!it) return err(404, "INTENT_NOT_FOUND", "意图不存在");
+    if (body.name !== undefined) it.name = body.name;
+    if (body.description !== undefined) it.description = body.description;
+    if (body.bindings) it.bindings = { ...it.bindings, ...body.bindings }; // mode 钉死不可改
+    return HttpResponse.json(it);
+  }),
+  http.post("*/b/v1/intents/reconcile", () =>
+    HttpResponse.json({
+      ranAt: new Date().toISOString(),
+      total: db.materializedIntents.length,
+      intents: db.materializedIntents.map((i) => ({ key: i.key, mode: i.mode, status: i.status, bindings: { solver: "OK", ruleKeys: "OK", constraintKeys: "OK", skill: "OK", slice: "OK", [i.mode === "AGENT_FIRST" ? "agent" : "workflow"]: "OK" }, scaffolded: [] })),
+      scaffoldedCount: 0,
+    }),
+  ),
   http.post("*/b/v1/catalog/intents/:intentId/publish", ({ params }) => {
     const intent = db.intents.find((i) => i.id === params.intentId);
     if (!intent) return err(404, "NOT_FOUND", "意图不存在");
