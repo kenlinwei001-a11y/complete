@@ -41,28 +41,38 @@ export interface SolverParamsShape {
   risk: {
     threshold: number;
     cap: number;
-    rampDen: number;
     pulseWindow: number;
     pulseDecayDen: number;
     psFloor: number;
     psStart: number;
     psDen: number;
     maxCards: number;
-    targetLift: { base: number; mod: number };
     eventAmps: { maint_window: number; delivery_peak: number; arrival_gap: number };
     arrivalCycleDays: number;
+    /**
+     * RISK-TRAJECTORY-DEFAKE（B8·可校准·非内联魔数）：cockpit 历史案例 severity 判据阈值。
+     * score = util + (主瓶颈因子 ? primaryBonus : 0)；≥highScore→HIGH、≥medScore→MEDIUM、否则 LOW。
+     */
+    caseSeverity: { highScore: number; medScore: number; primaryBonus: number };
+    /**
+     * RISK-TRAJECTORY-DEFAKE（B9·可校准·非内联魔数）：需求-产能负载比→基地紧张度映射系数。
+     * tension = base + (load−1)×loadGain×(shareBase + shareGain×share) + (util−utilPivot)×utilGain。
+     */
+    demandTension: { base: number; loadGain: number; shareBase: number; shareGain: number; utilPivot: number; utilGain: number };
+    /**
+     * RISK-TRAJECTORY-DEFAKE（B6·可校准·非内联魔数）：交付高峰额外工时估算系数（人·班/万套）。
+     * 估算值 = round(订单真 qty × deliveryLaborPerWan)，desc 明标「估算」（非实测工时）。
+     */
+    deliveryLaborPerWan: number;
     mitigations: Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk: string }[]>;
   };
   affected: {
     windowBefore: number;
     windowAfter: number;
     delayDiv: number;
-    jitterMod: number;
     fallbackMax: number;
     /** §S1.5 修订: problems[] 4 类归并阈值 */
     problems: {
-      creditBase: number;
-      creditMod: number;
       gmFloor: number;
       essModels: string[];
       comModels: string[];

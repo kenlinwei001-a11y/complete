@@ -14,15 +14,27 @@ export function primaryFactor(c: SolverContext, baseId: string): string {
 }
 
 /**
+ * RISK-TRAJECTORY-DEFAKE（B8·治本）：severity 判据阈值单一真相源（SolverParam `risk.caseSeverity` 默认即此常量）。
+ * 此前 92/78/加成 12 内联于函数体、注释诡称"域参数"（实为不可校准的魔数）；现入 params.risk.caseSeverity，
+ * 函数默认参数引用同一命名常量（battery 该 param 默认亦引用它）——可校准·非内联魔数·单源可溯（R14）。
+ */
+export const CASE_SEVERITY_DEFAULT = { highScore: 92, medScore: 78, primaryBonus: 12 } as const;
+
+/**
  * cockpit P4 真闭环（PRD §2.3「riskCases 由实时算而非写死」）：历史处置案例严重度由**基地真实数据**
  * 确定性派生——基地利用率压力 + 该因子是否为基地主瓶颈（加成）+ 是否结构性危机事件。
  * 替代 CASE_SPECS 手写 severity 字面量（R13 可溯源：severity 来自 util/primaryFactor/crisis；R6 同输入同判）。
- * 阈值 92/78 + 主瓶颈加成 12（业务区间，后端求解器域参数；高利用率基地的主瓶颈因子=高危）。
+ * 阈值来自 params.risk.caseSeverity（B8·可校准），默认取 CASE_SEVERITY_DEFAULT——非内联魔数。
  */
-export function caseSeverityFromData(util: number, isPrimaryFactor: boolean, crisis: boolean): "LOW" | "MEDIUM" | "HIGH" {
+export function caseSeverityFromData(
+  util: number,
+  isPrimaryFactor: boolean,
+  crisis: boolean,
+  sev: { highScore: number; medScore: number; primaryBonus: number } = CASE_SEVERITY_DEFAULT,
+): "LOW" | "MEDIUM" | "HIGH" {
   if (crisis) return "HIGH"; // 结构性危机（到货断供）恒高危
-  const score = util + (isPrimaryFactor ? 12 : 0);
-  return score >= 92 ? "HIGH" : score >= 78 ? "MEDIUM" : "LOW";
+  const score = util + (isPrimaryFactor ? sev.primaryBonus : 0);
+  return score >= sev.highScore ? "HIGH" : score >= sev.medScore ? "MEDIUM" : "LOW";
 }
 
 /** MOCK 口径 (exact prototype formula): seed=(base首字符码+因素首字符码×7) mod 9. */
@@ -123,10 +135,11 @@ export function demandCapacityTightness(c: SolverContext, baseId: string): { val
   const base = c.bases.find((b) => b.props.baseId === baseId);
   const util = num(base?.props.util, 0); // 本体真值占用（0..1）
   // 基地承压系数：网络负载比偏离平衡 × 基地份额权重（高产能基地承接更多需求压力）+ 基地占用偏移。
-  // tension = 62 + (load−1)×70×(0.6 + 0.8×share) + (util−0.8)×40，clamp[0,98]。
-  // —— 62 为供需平衡基线（< threshold 85）；load>1 推高、util 高推高；改 p50/demand 真值即整体平移（R6 可溯）。
-  const shareWeight = 0.6 + 0.8 * share;
-  const tension = 62 + (dsl.load - 1) * 70 * shareWeight + (util - 0.8) * 40;
+  // RISK-TRAJECTORY-DEFAKE（B9·治本）：映射系数全部入 params.risk.demandTension（可校准·非内联魔数 R14）；
+  // 数值仍由真 load/share/util 驱动（改 p50/demand 真值即整体平移·R6 可溯），仅把内联常数搬进参数存储。
+  const dt = c.params.risk.demandTension;
+  const shareWeight = dt.shareBase + dt.shareGain * share;
+  const tension = dt.base + (dsl.load - 1) * dt.loadGain * shareWeight + (util - dt.utilPivot) * dt.utilGain;
   const gap = round(dsl.gap * share, 4); // 基地分摊真缺口（万套，需求−产能）
   return { value: clamp(Math.round(tension), 0, 98), live: true, gap };
 }
@@ -223,11 +236,11 @@ const EVENT_FACTORS: Record<RiskEvent["type"], string[]> = {
   arrival_gap: ["物料齐套", "物流时长"],
 };
 
-/** Events are first-class objects from the ontology (maint plans / order due days / arrival cycle / delayed shipments). */
-// PRD-IND-risk §4.6 来源系统（③种子，SRC_META 逐字）：检修=EAM/CMMS · 交付=S&OP/ERP · 到货=WMS/ERP。
-const EVENT_SRC = { maint: "EAM/CMMS 检修计划", delivery: "S&OP/ERP 订单交期", arrival: "WMS/ERP 采购与在途" } as const;
-/** §4.6 量化经 hashN 派生（确定性 R6）：同 (key) 同值。 */
-const hn = (key: string, mod: number): number => hashString(key) % mod;
+// RISK-TRAJECTORY-DEFAKE（B2/B3/B4·治本·删假源归因）：事件的**存在与发生日**来自真本体（检修计划周 /
+// 订单交期日 / 到货周期 / 延误在途批），但此前每个事件的**具体量化值**（停机天/OEE 下调 pt/齐套率%/覆盖天/
+// 负载 pt/在途批数）皆由 `hn()=hashString%mod` 编造，且整簇标 `src=EAM/CMMS·S&OP/ERP·WMS/ERP` **假源归因**
+// （谎称来自真系统·比无披露更坏）。→ 删 EVENT_SRC + hn；desc 只叙**真锚点**（第几周检修 / 哪个订单 qty /
+// 哪批在途·真 coverageDays），无实测量化的一律**明标"需接入实测·当前无实测值"或"估算"**，不再编具体数字、不标真源。
 
 export function riskEvents(c: SolverContext, baseId: string, horizon: number): RiskEvent[] {
   const p = c.params.risk;
@@ -237,11 +250,9 @@ export function riskEvents(c: SolverContext, baseId: string, horizon: number): R
   if (mw !== null) {
     const day = mw * 7 - 3;
     if (day >= 1 && day <= horizon) {
-      // §4.6 检修窗口：年度检修（第w周）：计划停机 d 天，设备OEE 下调 o 个百分点。
-      const days = 3 + hn(`${baseId}:maint:days`, 4);
-      const oee = 4 + hn(`${baseId}:maint:oee`, 5);
+      // 检修窗口：真锚点=检修计划第 mw 周（MaintPlan.week 真本体）。停机天/OEE 下调 pt 本体无实测字段 → 不编造。
       events.push({ type: "maint_window", day, amp: p.eventAmps.maint_window, factors: EVENT_FACTORS.maint_window,
-        tag: "检修窗", obj: bn, desc: `年度检修（第${mw}周）：计划停机 ${days} 天，设备OEE 由基线下调 ${oee} 个百分点`, src: EVENT_SRC.maint });
+        tag: "检修窗", obj: bn, desc: `年度检修窗口（第${mw}周）：设备检修占用产能，抬升设备OEE/瓶颈工序张力（计划停机天数与 OEE 影响需接入 EAM/CMMS 实测，当前无实测值）` });
     }
   }
   for (const o of c.orders) {
@@ -249,46 +260,49 @@ export function riskEvents(c: SolverContext, baseId: string, horizon: number): R
     if (!bases.includes(baseId)) continue;
     const dueDay = dayFrom(c.params.forecastStart, str(o.props.due));
     if (dueDay >= 1 && dueDay <= horizon) {
-      // §4.6 交付高峰：{so}·{cust} 交付 {qty} 万套到期：当周排产负载 +{load} 个百分点，需额外工时约 {qty×1.6} 人·班。
+      // 交付高峰：真锚点=订单 so/cust/qty/交期（Order 真本体）。qty 为真；额外工时=qty×系数(param) 明标「估算」；
+      // 旧「排产负载 +{load}pt」为 hash 编造 → 删（无实测排产负载源）。
       const so = str(o.props.so); const cust = str(o.props.cust); const qty = num(o.props.qty);
-      const load = 6 + hn(`${so}:load`, 8);
+      const laborShifts = Math.round(qty * p.deliveryLaborPerWan);
       events.push({ type: "delivery_peak", day: dueDay, amp: p.eventAmps.delivery_peak, factors: EVENT_FACTORS.delivery_peak,
-        tag: "交付高峰", obj: so, desc: `${so}·${cust} 交付 ${qty} 万套到期：当周产线排产负载 +${load} 个百分点，需额外工时约 ${Math.round(qty * 1.6)} 人·班`, src: EVENT_SRC.delivery });
+        tag: "交付高峰", obj: so, desc: `${so}·${cust} 交付 ${qty} 万套到期（交期 D+${dueDay}）：交付高峰抬升当周排产负载，预计额外工时约 ${laborShifts} 人·班（按 ${p.deliveryLaborPerWan} 人·班/万套估算·非实测）` });
     }
   }
   for (let d = p.arrivalCycleDays; d <= horizon; d += p.arrivalCycleDays) {
-    // §4.6 到货间隙（物料）：关键正极安全库存覆盖降至 {cover} 天（阈值 5），物料齐套率 {kit}%（阈值 80）。
-    const cover = 3 + hn(`${baseId}:cover:${d}`, 3);
-    const kit = 70 + hn(`${baseId}:kit:${d}`, 12);
+    // 到货周期节点：合成周期锚点（非绑定单一真对象）。覆盖天/齐套率无实测库存源 → 不编造（旧 cover/kit 为 hash）。
     events.push({ type: "arrival_gap", day: d, amp: p.eventAmps.arrival_gap, factors: EVENT_FACTORS.arrival_gap,
-      tag: "到货间隙", obj: bn, desc: `关键正极安全库存覆盖降至 ${cover} 天（阈值 5 天），物料齐套率 ${kit}%（阈值 80%）`, src: EVENT_SRC.arrival });
+      tag: "到货间隙", obj: bn, desc: `关键物料到货周期节点（每 ${p.arrivalCycleDays} 天·第 ${d} 天）：到货间隙期需关注物料齐套与物流时效（安全库存覆盖天数与齐套率需接入 WMS/ERP 实测，当前无实测值）` });
   }
   // Delayed in-transit shipments (scenario shipment_delay) add an extra arrival-gap pulse at the new ETA.
+  // 真锚点=延误在途批（Shipment 真本体：shipId/etaDay/coverageDays 真字段）。coverageDays 为真则如实展示；
+  // 在途批数=本基地在途/延误批真计数（非 hash）。旧「延迟 {lead} 天」无原始 ETA 基线源 → 删。
+  const inTransitCount = c.shipments.filter(
+    (x) => x.props.baseId === baseId && (x.props.status === "IN_TRANSIT" || x.props.status === "DELAYED"),
+  ).length;
   for (const s of c.shipments) {
     if (s.props.baseId !== baseId || s.props.status !== "DELAYED") continue;
     const day = num(s.props.etaDay);
     if (day >= 1 && day <= horizon) {
-      // §4.6 到货间隙（物流）：在途到货延迟 {lead} 天，待检在途 {n} 批。
-      const lead = 2 + hn(`${baseId}:lead:${day}`, 5);
-      const nb = 1 + hn(`${baseId}:ntransit:${day}`, 3);
+      const shipId = str(s.props.shipId);
+      const coverageDays = num(s.props.coverageDays);
+      const coverTxt = coverageDays > 0 ? `：安全库存覆盖约 ${coverageDays} 天` : "";
       events.push({ type: "arrival_gap", day, amp: p.eventAmps.arrival_gap, factors: EVENT_FACTORS.arrival_gap,
-        tag: "到货间隙", obj: bn, desc: `在途到货延迟 ${lead} 天，待检在途 ${nb} 批`, src: EVENT_SRC.arrival });
+        tag: "到货间隙", obj: bn, desc: `在途批次 ${shipId} 到货延迟（ETA D+${day}）${coverTxt}；当前基地在途 ${inTransitCount} 批` });
     }
   }
   return events.sort((a, b) => a.day - b.day || (a.type < b.type ? -1 : 1));
 }
 
-/** Mock 口径 target位 (riskTarget hash analogue, coefficients from solverParams). */
-export function riskTarget(c: SolverContext, baseId: string, factor: string, cur: number): number {
-  const t = c.params.risk.targetLift;
-  const lift = (((baseName(c, baseId).charCodeAt(0) || 0) + (factor.charCodeAt(0) || 0)) % t.mod) + t.base;
-  return Math.min(96, cur + lift);
-}
-
-/** tension(b,f,d) per S1.4 — returns the daily series for d=1..H. */
+/**
+ * tension(f,d) per S1.4 — returns the daily series for d=1..H.
+ * RISK-TRAJECTORY-DEFAKE（B1·治本·crossDay 不能编）：基线 = 真张力 `baseline`（liveTightness：真 OEE/利用率/良率
+ * 或真需求-产能缺口），**保持水平**——此前 `vb = cur + (tgt−cur)×ramp` 让曲线爬向 `riskTarget`（=名首码+因子首码 hash
+ * 编的目标位），穿越日 crossDay 由这个假目标决定（编的）。现删 riskTarget/爬坡：轨迹只由**真基线 + 真事件脉冲**
+ * （事件发生日来自真本体：检修周/订单交期/到货周期/延误在途）决定；真基线够高或真事件把张力顶过阈值才越线，
+ * 否则诚实不越（crossDay=null）。红仍来自真数据（KILL-MOCK-RED 基线不破），但不再由 hash 目标制造穿越日。
+ */
 export function tensionSeries(
   c: SolverContext,
-  baseId: string,
   factor: string,
   horizon: number,
   events: RiskEvent[],
@@ -298,11 +312,9 @@ export function tensionSeries(
   baseline: number,
 ): number[] {
   const p = c.params.risk;
-  const cur = baseline;
-  const tgt = riskTarget(c, baseId, factor, cur);
+  const vb = baseline; // 真基线水平（无 hash 爬坡目标·B1）
   const series: number[] = [];
   for (let d = 1; d <= horizon; d++) {
-    const vb = cur + (tgt - cur) * Math.min(1, d / (p.rampDen * horizon));
     let pulse = 0;
     for (const e of events) {
       if (!e.factors.includes(factor)) continue;
@@ -387,7 +399,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // series 基线 = 真张力（lt.live·真需求-产能缺口派生 / 真 OEE-利用率-良率）。
     // 改 DemandSegment/SopVersion 真值 → lt 变 → 曲线随之变（非哈希恒定·R6 可溯·C6：真数据出真红）。
     const baseline = lt.value;
-    const series = tensionSeries(c, pair.baseId, pair.factor, horizon, events, undefined, baseline);
+    const series = tensionSeries(c, pair.factor, horizon, events, undefined, baseline);
     const crossDay = crossDayOf(series, p.threshold);
     if (!pair.forced && crossDay === null) continue;
     // WO-FORECAST-SIM：需求驱动因素附"真缺口=预测需求−产能"溯源（万套·基地分摊·R13），前端可解释"红色由何而来"。
@@ -416,7 +428,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
       const plans = p.mitigations[pair.factor] ?? [];
       const plan = plans.find((pl) => pl.key === mit.planKey || pl.name === mit.planKey);
       if (!plan) throw validationError(`unknown mitigation plan '${mit.planKey}' for factor ${pair.factor}`);
-      const mitSeries = tensionSeries(c, pair.baseId, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn }, baseline);
+      const mitSeries = tensionSeries(c, pair.factor, horizon, events, { eff: plan.eff, tn: plan.tn }, baseline);
       card.mitigated = {
         series: mitSeries,
         appliedPlan: plan.name,
@@ -583,8 +595,26 @@ export function counterfactualTimeline(c: SolverContext, args: Record<string, un
   let factor = args.factor ? str(args.factor) : "";
   if (!base || !factor) {
     const probe = riskTimeline(c, { horizon }) as { cards: { base: string; factor: string; peak: number }[] };
-    const worst = [...probe.cards].sort((a, b) => b.peak - a.peak || (a.base < b.base ? -1 : 1))[0];
-    if (!worst) throw validationError("counterfactual_timeline 无可推演风险卡（指定 base+factor）");
+    let worst = [...probe.cards].sort((a, b) => b.peak - a.peak || (a.base < b.base ? -1 : 1))[0] as
+      | { base: string; factor: string }
+      | undefined;
+    if (!worst) {
+      // RISK-TRAJECTORY-DEFAKE（B1 副产）：flat 基线下若窗内无越线卡（真张力均未及阈值·诚实），反事实"如不解决
+      // 会怎样"仍应能看**最坏潜伏风险**——取真张力（liveTightness）最高的 base×主因子（真数据·非编造），
+      // 供 do-nothing 双轨。真的无任何真源（全 null）→ 诚实抛错（不伪造可推演卡）。
+      let bestVal = -1;
+      for (const b of c.bases.map((x) => str(x.props.baseId)).sort()) {
+        for (const f of c.params.bottleneck.factors) {
+          if ((c.params.risk.mitigations[f] ?? []).length === 0) continue; // 需有对症方案才可推演
+          const lt = liveTightness(c, b, f);
+          if (lt.live && lt.value !== null && lt.value > bestVal) {
+            bestVal = lt.value;
+            worst = { base: baseName(c, b), factor: f };
+          }
+        }
+      }
+    }
+    if (!worst) throw validationError("counterfactual_timeline 无可推演风险卡（无真数据源·请指定 base+factor 或接入实测）");
     base = base || worst.base;
     factor = factor || worst.factor;
   }
@@ -695,11 +725,12 @@ export function affectedOrders(
   }
 
   const affected = selected.map(({ o, dueDay }) => {
-    const jit = hashString(str(o.props.so)) % p.affected.jitterMod;
-    const delay = Math.max(1, Math.round((peak - p.risk.threshold) / p.affected.delayDiv) + jit);
+    // RISK-TRAJECTORY-DEFAKE（B7·治本）：延误天数 = 真峰值超阈幅度 ÷ delayDiv（可溯·随真张力变）。
+    // 此前叠加 `hash(so)%jitterMod` 抖动=编造的每单差异（伪造"各单延误不同"的精度）→ 删。
+    const delay = Math.max(1, Math.round((peak - p.risk.threshold) / p.affected.delayDiv));
     // 轨M 增量1（假4 真推演红线）：逐单真营收（qty × 真细分单价 SEG_PRICE 万/套，与 order econTable 同源），
     // 取代前端 PropagationTimeline 写死 0.6 万/套——财务击穿敞口由真单价真算（R13 可溯，非现编系数）。
-    const revenueWan = round(num(o.props.qty) * (SEG_PRICE[segmentOf(c, str(o.props.cust)).key] ?? 0), 2);
+    const revenueWan = round(num(o.props.qty) * segPriceWan(segmentOf(c, str(o.props.cust)).key), 2);
     return {
       so: o.props.so,
       cust: o.props.cust,
@@ -745,6 +776,14 @@ interface AggRiskRef {
 // DF.3b（PRD order §4.5-C）：营收口径统一到原型 SEG_REGISTRY 万元/套（2.2/1.4/1.8），
 // 取代旧 {0.6/0.55/0.5} 不一致口径 → affectedOrders summary.revenue 与 order econTable 同源一致。
 const SEG_PRICE: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.priceWan]));
+// RISK-TRAJECTORY-DEFAKE（G1·治本）：细分单价单一真相源=SEG_REGISTRY。segOfCust 只返回 pas/ess/com（三者
+// SEG_REGISTRY 恒全命中），故 `?? 0.6` 兜底单价（注释诡称已消除·实为不可达的假单价）永不触发——今删之，
+// 改为不可命中时**失败响亮**（抛错·而非静默用编造 0.6 万/套污染财务敞口）。
+function segPriceWan(key: string): number {
+  const price = SEG_PRICE[key];
+  if (price === undefined) throw validationError(`unknown segment key for pricing: ${key}`);
+  return price;
+}
 
 export function affectedOrdersAggregate(
   c: SolverContext,
@@ -779,7 +818,7 @@ export function affectedOrdersAggregate(
     const ltAgg = liveTightness(c, baseId, factor);
     const ref: AggRiskRef = ltAgg.live && ltAgg.value !== null
       ? (() => {
-          const series = tensionSeries(c, baseId, factor, horizon, riskEvents(c, baseId, horizon), undefined, ltAgg.value as number);
+          const series = tensionSeries(c, factor, horizon, riskEvents(c, baseId, horizon), undefined, ltAgg.value as number);
           return { base: baseName(c, baseId), factor, peak: Math.max(0, ...series), crossDay: crossDayOf(series, threshold), threshold, hasData: true };
         })()
       : { base: baseName(c, baseId), factor, peak: null, crossDay: null, threshold, hasData: false };
@@ -807,7 +846,7 @@ export function affectedOrdersAggregate(
   // PRD-IND-order-aggregate §4.5-D：明细按交期升序（最早到期最先看），交期相同按订单号。
   const rows = [...byOrder.values()].sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.so < b.so ? -1 : 1));
   const totalQty = round(rows.reduce((s, r) => s + r.qty, 0), 2);
-  const revenue = round(rows.reduce((s, r) => s + r.qty * (SEG_PRICE[segmentOf(c, r.cust).key] ?? 0.6), 0), 2);
+  const revenue = round(rows.reduce((s, r) => s + r.qty * segPriceWan(segmentOf(c, r.cust).key), 0), 2);
   const summary = { orderCount: rows.length, totalQty, custCount: new Set(rows.map((r) => r.cust)).size, revenue };
 
   // 轨M 增量2a（母版 §1.A/§1.B 综合毛利率逐单贡献勾稽闭合）：综合毛利率 = Σ_细分(营收占比×细分毛利率)，
@@ -817,7 +856,7 @@ export function affectedOrdersAggregate(
   const segAgg = new Map<string, { seg: string; key: string; revenue: number; marginPct: number; orders: { so: string; revenue: number }[] }>();
   for (const r of rows) {
     const sm = segmentOf(c, r.cust);
-    const oRev = round(r.qty * (SEG_PRICE[sm.key] ?? 0.6), 4);
+    const oRev = round(r.qty * segPriceWan(sm.key), 4);
     const e = segAgg.get(sm.name) ?? { seg: sm.name, key: sm.key, revenue: 0, marginPct: num((c.params.audit.segMargins as Record<string, number>)[sm.key], sm.gm), orders: [] };
     e.revenue = round(e.revenue + oRev, 4);
     e.orders.push({ so: r.so, revenue: oRev });
@@ -869,17 +908,19 @@ function segmentOf(c: SolverContext, cust: string): { key: string; name: string;
 }
 
 /**
- * PRD-IND-dash ORDER_OVR：逐单越线注入的纯应用函数（确定性 R6）——
- * `credit:true` 把信用占用比强制越限（≥1.05 → 触发 CREDIT 判定）；`mAdj` 直接下调细分毛利（→ 可能触发 MARGIN）。
- * 无 override 时原样返回（hash 派生口径不变）。
+ * PRD-IND-dash ORDER_OVR：逐单越线注入的纯应用函数（确定性 R6）。
+ * RISK-TRAJECTORY-DEFAKE（B5·治本）：`baseCredit` 现为**真实客户信用占用比**（(应收+在制未开票)÷信用额度，
+ * 来自 Customer 真本体）或 `null`（本租户/本链路无真信用数据·风险链路不加载 Customer）。
+ * `credit:true` 覆盖=**已知真实越限**（其 why 载真实敞口叙述）→ 越限标记（有真比取真比与 1.05 取大，无真比记 1.05 越限标记）；
+ * 无 override 时原样返回（真比或 null——**绝不 hash 编造**信用占用比来触发信用阻断裁决）。
  */
 export function applyOrderOverride(
-  baseCredit: number,
+  baseCredit: number | null,
   baseGm: number,
   ov?: { credit?: boolean; mAdj?: number; why?: string },
-): { creditRatio: number; gm: number } {
+): { creditRatio: number | null; gm: number } {
   return {
-    creditRatio: ov?.credit ? Math.max(baseCredit, 1.05) : baseCredit,
+    creditRatio: ov?.credit ? Math.max(baseCredit ?? 1.05, 1.05) : baseCredit,
     gm: ov?.mAdj ? round(baseGm + ov.mAdj, 1) : baseGm,
   };
 }
@@ -923,18 +964,25 @@ function buildOrderProblems(
     const cust = str(row.cust);
     const dueDay = num(row.dueDay);
     const delay = num(row.delay);
-    // PRD-IND-dash ORDER_OVR：逐单越线注入——override 信用超限 / 毛利下调（含 why / root），否则 hash 派生（R6）。
+    // PRD-IND-dash ORDER_OVR：逐单越线注入——override 信用超限 / 毛利下调（含 why / root）。
+    // RISK-TRAJECTORY-DEFAKE（B5·治本）：信用占用比取**真实客户数据**（Customer.receivables+wipUnbilled ÷ creditLimit）
+    // 或 null（无真信用数据）——此前 `creditBase + hash(cust|so)%creditMod/100` 编造占用比、直接驱动信用阻断裁决（假红）。
     const ov = cfg.overrides?.[so];
-    const baseCredit = round(cfg.creditBase + (hashString(`${cust}|${so}`) % cfg.creditMod) / 100, 2);
+    const custObj = (c.customers ?? []).find((x) => str(x.props.custName) === cust);
+    const creditLimit = num(custObj?.props.creditLimit);
+    const realCredit = custObj && creditLimit > 0
+      ? round((num(custObj.props.receivables) + num(custObj.props.wipUnbilled)) / creditLimit, 2)
+      : null;
+    const hasRealCredit = realCredit !== null;
     const seg = segmentOf(c, cust);
-    const { creditRatio, gm: segGm } = applyOrderOverride(baseCredit, seg.gm, ov);
+    const { creditRatio, gm: segGm } = applyOrderOverride(realCredit, seg.gm, ov);
     const etaDay = num(shipment?.props.etaDay);
     const kitGapDays = shipment && (shipment.props.status === "DELAYED" || etaDay > dueDay) ? Math.max(1, etaDay - dueDay) : 0;
     // 母版 ROOT_LIB 8 根源分类：override.root **种子真相**优先（frame/crm/lta/ramp/maint 等业务实况·与 why 同源），
     // 否则**真算信号**派生（信用占用比>1→credit · 细分毛利<底线→cost · 齐套间隙>0→maint · 越线窗口兜底→push）。
     const root = ov?.root
       ? ov.root
-      : creditRatio > 1 ? "credit"
+      : creditRatio !== null && creditRatio > 1 ? "credit"
         : segGm < cfg.gmFloor ? "cost"
           : kitGapDays > 0 ? "maint"
             : "push";
@@ -946,7 +994,10 @@ function buildOrderProblems(
       : `对策：${rc?.remedy ?? `${bottleneck}专项消解`}`;
     // 判定文案逐类·投影真算值（信用比/细分毛利/齐套天数/交期日/延误），规则号溯源。
     const judgement =
-      root === "credit" ? `信用判定：客户 ${cust} 信用占用比 ${creditRatio} 超过额度上限 1.0（规则 ${rr}）`
+      root === "credit"
+        ? hasRealCredit
+          ? `信用判定：客户 ${cust} 信用占用比 ${creditRatio}（=(应收+在制未开票)÷信用额度·真实客户数据）超过额度上限 1.0（规则 ${rr}）`
+          : `信用判定：客户 ${cust} 信用敞口超过额度上限（${ov?.why ?? "见根因"}；规则 ${rr}）`
         : root === "cost" ? `成本判定：${seg.name}细分毛利 ${segGm}% 低于底线 ${cfg.gmFloor}%，成本上行侵蚀（规则 ${rr}）`
           : root === "frame" ? `框架判定：${cust} 框架协议低价条款执行，细分毛利 ${segGm}%（规则 ${rr}）`
             : root === "crm" ? `合同判定：${cust} 合同/需求变更，交期 D+${dueDay}、预计延误 ${delay} 天（规则 ${rr}）`

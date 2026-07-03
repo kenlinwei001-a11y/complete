@@ -35,20 +35,20 @@
 
 > **A5/A6 是 NEW（不在原 MC 单 scope）·A7–A10 是同根下游消费者。** METHOD-MC-STOCHASTIC 需从"改 capacity+service 两处"扩为"P90 伪分位家族一次清剿"（真分位替代所有 `×常数` P90，下游 replay/metrics/seed 随真分位自动变真）。
 
-### 簇 B · `risk.ts` 轨迹+事件具体值哈希造假（F4·带**假源归因**·LIVE 卡上仍造）——**洛阳假红的残留层**
-| # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO |
-|---|---|---|---|---|---|---|
-| B1 | `solvers/risk.ts:284` | `riskTarget lift = (名首码+因子首码)%mod+base` | 轨迹 TARGET→`crossDay` 穿越日 | 读码✓ | P0 | RISK-TRAJECTORY-DEFAKE |
-| B2 | `solvers/risk.ts:262` | `kit = 70 + hash(baseId:kit)%12` → "物料齐套率 {kit}%" 标 src=WMS/ERP | 事件卡 | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE |
-| B3 | `solvers/risk.ts:242` | `oee = 4 + hash(baseId:oee)%5` → "OEE 下调 {oee}pt" 标 src=EAM/CMMS | 事件卡 | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE |
-| B4 | `solvers/risk.ts:241/254/261/272-273` | 整簇 `hn()`：停机天/负载/覆盖天/在途批 全 hash·全标真源 | 事件卡具体值 | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE |
-| B5 | `solvers/risk.ts:928` | `baseCredit = base + hash(cust\|so)%mod/100` → "信用占用比 X 超额度 1.0" | 信用阻断根因裁决 | 代理·待运行复验 | P1 | RISK-TRAJECTORY-DEFAKE |
-| B6 | `solvers/risk.ts:256` | 工时 `qty * 1.6` 内联系数 | 事件描述 | 读码✓ | P2 | RISK-TRAJECTORY-DEFAKE |
-| B7 | `solvers/risk.ts:698` | per-order `delay` 带 `hash(so)%jitterMod` | 受影响订单延误天 | 代理·待运行复验 | P2 | RISK-TRAJECTORY-DEFAKE |
-| B8 | `solvers/risk.ts:22` | severity 阈 92/78 + 加成 12 内联·注释诡称"域参数" | HIGH/MED/LOW | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE |
-| B9 | `solvers/risk.ts:129` | tension 常数 62/70/0.6/0.8/40 内联·兄弟 liveTightness 从 params 读·emit live=true | 过阈 85 | 代理·待运行复验 | P2 | RISK-TRAJECTORY-DEFAKE |
+### 簇 B · `risk.ts` 轨迹+事件具体值哈希造假（F4·带**假源归因**·LIVE 卡上仍造）——**洛阳假红的残留层** ✅ 已闭（WO-RISK-TRAJECTORY-DEFAKE）
+| # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO | 治本 |
+|---|---|---|---|---|---|---|---|
+| B1 | `solvers/risk.ts:284` | `riskTarget lift = (名首码+因子首码)%mod+base` | 轨迹 TARGET→`crossDay` 穿越日 | 读码✓ | P0 | RISK-TRAJECTORY-DEFAKE | ✅ 删 `riskTarget`/`targetLift`/`rampDen`·`tensionSeries` 基线改**水平**（真张力）·crossDay 只由真基线+真事件脉冲（真检修周/交期/到货/在途）决定·不越则诚实 null |
+| B2 | `solvers/risk.ts:262` | `kit = 70 + hash(baseId:kit)%12` → "物料齐套率 {kit}%" 标 src=WMS/ERP | 事件卡 | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE | ✅ 删 hash·desc 改「齐套率需接入 WMS/ERP 实测·当前无实测值」·删 src |
+| B3 | `solvers/risk.ts:242` | `oee = 4 + hash(baseId:oee)%5` → "OEE 下调 {oee}pt" 标 src=EAM/CMMS | 事件卡 | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE | ✅ 删 hash·desc 改「OEE 影响需接入 EAM/CMMS 实测·当前无实测值」·删 src |
+| B4 | `solvers/risk.ts:241/254/261/272-273` | 整簇 `hn()`：停机天/负载/覆盖天/在途批 全 hash·全标真源 | 事件卡具体值 | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE | ✅ 删 `hn()`+`EVENT_SRC`·延误在途批用真 `Shipment.coverageDays`+真在途批计数·其余标估算/无实测 |
+| B5 | `solvers/risk.ts:928` | `baseCredit = base + hash(cust\|so)%mod/100` → "信用占用比 X 超额度 1.0" | 信用阻断根因裁决 | 读码✓·真跑复验 | P1 | RISK-TRAJECTORY-DEFAKE | ✅ 删 hash·取真 Customer `(应收+在制未开票)÷信用额度` 或 null·override 越限用真敞口叙述(`why`)·无真信用数据不分类 credit |
+| B6 | `solvers/risk.ts:256` | 工时 `qty * 1.6` 内联系数 | 事件描述 | 读码✓ | P2 | RISK-TRAJECTORY-DEFAKE | ✅ `params.risk.deliveryLaborPerWan`·desc 明标「估算·非实测」 |
+| B7 | `solvers/risk.ts:698` | per-order `delay` 带 `hash(so)%jitterMod` | 受影响订单延误天 | 读码✓·真跑复验 | P2 | RISK-TRAJECTORY-DEFAKE | ✅ 删 jitter·延误=真峰值超阈幅度÷delayDiv（删 `jitterMod` param） |
+| B8 | `solvers/risk.ts:22` | severity 阈 92/78 + 加成 12 内联·注释诡称"域参数" | HIGH/MED/LOW | 读码✓ | P1 | RISK-TRAJECTORY-DEFAKE | ✅ `params.risk.caseSeverity`（默认=`CASE_SEVERITY_DEFAULT` 命名常量·可校准） |
+| B9 | `solvers/risk.ts:129` | tension 常数 62/70/0.6/0.8/40 内联·兄弟 liveTightness 从 params 读·emit live=true | 过阈 85 | 读码✓·真跑复验 | P2 | RISK-TRAJECTORY-DEFAKE | ✅ `params.risk.demandTension`（数值仍由真 load/share/util 驱动） |
 
-> **B 簇要害**：KILL-MOCK-RED 修了**基线**（红/不红只在真数据 live=true），但**轨迹目标(B1)+事件具体值(B2-B4)**在 LIVE 卡上仍 hash 造，且 `EVENT_SRC` 主动标"WMS/ERP/EAM"=**假源归因**（比无披露更坏——它谎称来自真系统）。crossDay/齐套率/OEE 下调全是编的。
+> **B 簇要害**：KILL-MOCK-RED 修了**基线**（红/不红只在真数据 live=true），但**轨迹目标(B1)+事件具体值(B2-B4)**在 LIVE 卡上仍 hash 造，且 `EVENT_SRC` 主动标"WMS/ERP/EAM"=**假源归因**（比无披露更坏——它谎称来自真系统）。crossDay/齐套率/OEE 下调全是编的。**✅ 治本（WO-RISK-TRAJECTORY-DEFAKE）**：真数据算或诚实空·删 `EVENT_SRC` 假源归因·crossDay 由真基线+真事件脉冲决定（不能编）·阈值/系数入 `params.risk.*`（可校准）。FDE 真起 SEED_DEMO=1 逐值对照（`docs/evidence/RISK-TRAJECTORY-DEFAKE.md`）：h=90 自扫 4 张真 LIVE 卡越线绑真检修周·41 事件 src 全空·CREDIT 用真敞口叙述·洛阳无真源诚实空态不出红·真数据仍出真红（基线不破）。牙齿 `test/risk-trajectory-defake.test.ts` + `solvers.test.ts` V5/V5b/V5c。
 
 ### 簇 C · 校准「越用越准」曲线造假回退（F3/F4·真引擎+假回退·UI 无 SYNTHETIC 标）— ✅ 已闭（WO-CALIB-HONEST-EMPTY）
 | # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO | 治本 |
@@ -96,19 +96,19 @@
 
 > **F 簇 ✅ 已闭**（WO-AGENTCORE-TRACE-LINEAGE）：`/queries/:taskId/trace` 可解释性图在真 lineage 缺失时，~~把骨架电池常数当"本节点真实用到的数据/求解器/agent"发给用户~~ → 治本后**节点显空数组（前端"本次未记录来源"），只发真 trace（task/plan/toolCalls）派生血缘**，真血缘存在则保留（R13/R6·任意租户/行业 R14）。FDE：真起 datacore+agentcore·真提交 4680 PACK 订单查询→ AGENT 路径 FAILED·`GET /trace` 10 节点血缘全空·零骨架常数。牙齿 `test/project-trace.test.ts`「血缘诚实簇」（回退改回 skel 即红）。
 
-### 簇 G · 潜伏（今不可达但会造假）
-| # | file:line | 造假 | 验证 | 严重 | WO |
-|---|---|---|---|---|---|
-| G1 | `solvers/risk.ts:810/820` | fallback 单价 `?? 0.6` 万/套·注释诡称已消除·今 SEG_REGISTRY 全命中不可达 | 读码✓ | P2 | RISK-TRAJECTORY-DEFAKE |
-| G2 | `solvers/extended.ts:517/548` | 缺省 gap = `totalDemand * 0.15` 无 dataMode 标 | 代理·待运行复验 | P2 | RISK-TRAJECTORY-DEFAKE |
-| G3 | `solvers/extended.ts:541` | yield_diagnosis 喂手植 0.95→0.85 step·断点 day33 标 source:MES·求解器"检测"出植入断点 | 代理·待运行复验 | P2 | RISK-TRAJECTORY-DEFAKE |
+### 簇 G · 潜伏（今不可达但会造假）✅ 已闭（WO-RISK-TRAJECTORY-DEFAKE）
+| # | file:line | 造假 | 验证 | 严重 | WO | 治本 |
+|---|---|---|---|---|---|---|
+| G1 | `solvers/risk.ts:810/820` | fallback 单价 `?? 0.6` 万/套·注释诡称已消除·今 SEG_REGISTRY 全命中不可达 | 读码✓ | P2 | RISK-TRAJECTORY-DEFAKE | ✅ 删 `?? 0.6`·`segPriceWan()` 从 SEG_REGISTRY 取·不可命中则**抛错**（失败响亮·非静默假值） |
+| G2 | `solvers/extended.ts:517/548` | 缺省 gap = `totalDemand * 0.15` 无 dataMode 标 | 读码✓·真跑复验 | P2 | RISK-TRAJECTORY-DEFAKE | ✅ 命名 `DEFAULT_GAP_FRACTION`·`outsourcing_split` 无显式 gap 由 LIVE 降 **PARTIAL**（诚实标估算） |
+| G3 | `solvers/extended.ts:541` | yield_diagnosis 喂手植 0.95→0.85 step·断点 day33 标 source:MES·求解器"检测"出植入断点 | 读码✓·真跑复验 | P2 | RISK-TRAJECTORY-DEFAKE | ✅ 断点 `source:"MES"`（假源）→ `source:"SYNTHETIC"`+`synthetic:true`（mode 已 MOCK）·命名 `SYNTHETIC_YIELD` |
 
 ## 3. WO 派发（1 扩 + 5 新）
 
 | WO | 覆盖簇 | 根因治本 |
 |---|---|---|
 | **METHOD-MC-STOCHASTIC（扩 scope）** | A1–A10 | 种子化 MC 真分位替代**所有** `×常数` P90；下游 replay/metrics/seed 随真分位自动变真。原单 §6 只列 A1–A4，须扩 A5(service:1137 order_fullchain)/A6(sop:150)/A7-A10(vle/replay/metrics/seed)。 |
-| **RISK-TRAJECTORY-DEFAKE（新·P1）** | B1–B9,G1–G3 | risk_timeline 轨迹目标+事件具体值：真数据算或诚实空；**删 EVENT_SRC 假源归因**（无真值不标真源）；阈值/系数入 params。 |
+| **RISK-TRAJECTORY-DEFAKE（新·P1）✅ 已闭** | B1–B9,G1–G3 | risk_timeline 轨迹目标+事件具体值：真数据算或诚实空；**删 EVENT_SRC 假源归因**（无真值不标真源）；阈值/系数入 params。**落实**：B1 删 riskTarget+tensionSeries 水平基线（crossDay 由真基线+真事件脉冲·不能编）·B2-B4 删 EVENT_SRC+hn·真锚点/真 coverageDays/无实测标「需接入…实测」·B5 真 Customer 占用比或 null·override 真敞口叙述·B6/B8/B9 系数入 params.risk.{deliveryLaborPerWan,caseSeverity,demandTension}·B7 删 jitter·G1 segPriceWan 抛错·G2 DEFAULT_GAP_FRACTION+PARTIAL·G3 source SYNTHETIC。FDE `docs/evidence/RISK-TRAJECTORY-DEFAKE.md`（h=90 真越线绑真检修周·41 事件 src 全空·CREDIT 真敞口·洛阳诚实空态）。牙齿 test/risk-trajectory-defake.test.ts + solvers.test.ts V5/V5b/V5c。 |
 | **CALIB-HONEST-EMPTY（新·P1）✅ 已闭** | C1–C6 | 无真 pair→诚实空/静止(非造下降线)；demo/部署 mapeSeries+evidence 上 SYNTHETIC 标；realizedMape 从真未来 pair 算。**落实**：C1 静态基线常数+report.baselineOnly·C2 bundle.synthetic·C3 realizedMape=mapeAt(week+2)·C4/C5 proposal.synthetic+evidence.synthetic·C6 走正门码注披露。前端徽章：ReviewView"合成演示·非真实学习"+CalibrationPage"静态基线·无真实配对"/SYNTHETIC。牙齿 test/calib-honest-empty.test.tsx。 |
 | **SIM-REAL-SNAPSHOT（新·P1）✅ 已闭** | D1–D3 | baseSnapshot 取后端真对象属性态(非 hash(oid))；热度阈入 sim 认证/config。**落实**：契约 `SandboxViewConfig += nodeObjectState/heatThreshold`·view-config 从 `obj.props` 采数值型 stateVar(缺省诚实空)·两处 `deriveBaseSnapshot` 逐值取真属性态无真值退 0·阈 70 归口 `DEFAULT_SANDBOX_HEAT_THRESHOLD`。FDE 双证(真浏览器逐值 62/48… + 真后端 curl demo `nodeObjectState:{}` 诚实空)·牙齿 sandbox-view.test.tsx。 |
 | **FRONTEND-VALUE-AUTHORITY（新·P1）✅ 已闭** | E1–E7 | 消费后端权威字段(revAttainPct/gmRate/gap)；缺失→诚实空态非内联常数重算；清 `debattery-allow` 白名单常数入后端 layout/rule。**落实**：E1 marginLedger 缺→「估算」标·E2 后端 sop.s4.revAttainPct(params.sop.revBudget)前端消费·缺则 workspace 预算·再缺 null(去内联240)·E3 后端 ltaDeviation.breach(C27 阈5%)前端消费·E4 消费 k.threshold 缺→灰(去?? 85;coef 已 view.layout 权威+估算标)·E5 消费 s4.gmOk(去内联0.5pp)·E6 消费 r.gap(去自算col0−col1)。E7 坐标表=Base.props.lon/lat 兜底·非决策·诚实披露(P3 保留)。牙齿 test/frontend-value-authority.test.tsx。 |

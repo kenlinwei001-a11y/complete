@@ -130,16 +130,18 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   risk: {
     threshold: 85,
     cap: 98,
-    rampDen: 0.72,
     pulseWindow: 3,
     pulseDecayDen: 4,
     psFloor: 0.25,
     psStart: 68,
     psDen: 45,
     maxCards: 8,
-    targetLift: { base: 8, mod: 13 },
     eventAmps: { maint_window: 14, delivery_peak: 9, arrival_gap: 10 },
     arrivalCycleDays: 14,
+    // RISK-TRAJECTORY-DEFAKE（B8/B9/B6·可校准·非内联魔数）：severity 判据 / 需求张力映射 / 工时估算系数入参。
+    caseSeverity: { highScore: 92, medScore: 78, primaryBonus: 12 },
+    demandTension: { base: 62, loadGain: 70, shareBase: 0.6, shareGain: 0.8, utilPivot: 0.8, utilGain: 40 },
+    deliveryLaborPerWan: 1.6,
     mitigations: {
       物料齐套: [
         { key: "early_stock", name: "提前备料", eff: 12, tn: 2, cost: "中", risk: "低" },
@@ -182,12 +184,9 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     windowBefore: 7,
     windowAfter: 14,
     delayDiv: 8,
-    jitterMod: 3,
     fallbackMax: 5,
     // §S1.5 修订: problems[] 4 类归并阈值（交期/毛利/齐套/信用）
     problems: {
-      creditBase: 0.7,
-      creditMod: 60,
       gmFloor: 13.5,
       essModels: ["S192-LFP"],
       comModels: ["L148-LFP"],

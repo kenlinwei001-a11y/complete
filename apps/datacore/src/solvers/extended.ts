@@ -462,13 +462,23 @@ export function extendedDataMode(
     case "changeover_sequence":
       return has("orders") || (ne(c.orders) && ne(c.changeoverMatrix)) ? "LIVE" : "MOCK";
     case "outsourcing_split":
-      return has("gap") || ne(c.orders) ? "LIVE" : "MOCK";
+      // RISK-TRAJECTORY-DEFAKE（G2·治本）：显式传 gap=LIVE；仅有真订单但 gap 由默认分数估算=PARTIAL（诚实标估算·
+      // 非 LIVE 冒充真缺口）；无订单=MOCK。
+      return has("gap") ? "LIVE" : ne(c.orders) ? "PARTIAL" : "MOCK";
     case "mitigation_select":
       return c.params?.risk?.mitigations ? "LIVE" : "MOCK"; // canonical 方案库（真）
     default:
       return "MOCK";
   }
 }
+
+/**
+ * RISK-TRAJECTORY-DEFAKE（G2/G3·治本·命名而非匿名内联）：以下为**合成默认输入**的命名常量。
+ * 仅当调用方未显式传 args 时用于兜底演示；对应 extendedDataMode 分别标 PARTIAL（估算缺口）/ MOCK（合成良率序列），
+ * **不冒充真源**。此前 `totalDemand*0.15` 匿名内联、良率断点标 `source:"MES"` 谎称来自制造执行系统（假源归因）。
+ */
+const DEFAULT_GAP_FRACTION = 0.15; // 合成默认缺口 = 需求总量 × 该分数（PARTIAL·明标估算·非真实缺口测量）
+const SYNTHETIC_YIELD = { len: 40, before: 0.95, after: 0.85, stepDay: 33 } as const; // 合成良率演示序列（MOCK）
 
 /**
  * E6b：当场景仅给 presetContext 槽位、未显式传齐 args 时，从对象数据（SolverContext §7 扩展）
@@ -514,7 +524,8 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
     }
     case "outsourcing_split": {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
-      return { gap: num(args.gap, Math.round(totalDemand * 0.15)), totalDemand, ...args };
+      // G2：gap 未显式传 → 按 DEFAULT_GAP_FRACTION 估算（dataMode=PARTIAL·诚实标估算，非真实缺口测量）。
+      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), totalDemand, ...args };
     }
     case "quote_margin": {
       if (has("bom")) return args;
@@ -538,14 +549,18 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
     }
     case "yield_diagnosis": {
       if (has("series")) return args;
-      const series = Array.from({ length: 40 }, (_, d) => ({ day: d + 1, yield: d < 33 ? 0.95 : 0.85 }));
-      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), ...args, series, events: [{ day: 33, kind: "换批", source: "MES" }] };
+      // G3（治本·删假源归因）：无真实良率序列 → 合成演示序列（extendedDataMode=MOCK·前端合成徽章）。断点事件
+      // 此前标 `source:"MES"` 谎称来自制造执行系统实测（假源）→ 改标 `source:"SYNTHETIC"` + synthetic:true（诚实合成）。
+      const sy = SYNTHETIC_YIELD;
+      const series = Array.from({ length: sy.len }, (_, d) => ({ day: d + 1, yield: d < sy.stepDay ? sy.before : sy.after }));
+      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), ...args, series, synthetic: true, events: [{ day: sy.stepDay, kind: "换批", source: "SYNTHETIC", synthetic: true }] };
     }
     case "quarterly_gap":
       return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args };
     case "countermeasure_combo": {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
-      return { gap: num(args.gap, Math.round(totalDemand * 0.15)), ...args };
+      // G2：默认 gap 同口径估算（dataModeFor countermeasure_combo 无 levers 时已标 PARTIAL）。
+      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), ...args };
     }
     case "mitigation_select": {
       // WO-KILL-MOCK-RED（治本）：紧迫度从**真**风险张力（liveTightness：真 OEE/利用率/良率 或真需求-产能缺口）取，

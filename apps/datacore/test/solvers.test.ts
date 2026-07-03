@@ -13,7 +13,6 @@ const P = BATTERY_SOLVER_PARAMS as {
   bottleneck: { primary: Record<string, string>; mock: Record<string, number> };
   risk: {
     threshold: number;
-    targetLift: { base: number; mod: number };
     eventAmps: Record<string, number>;
     arrivalCycleDays: number;
   };
@@ -240,7 +239,7 @@ describe("S1 solvers", () => {
     }
   });
 
-  it("V5: risk_timeline 常州·物料齐套 H=30 — daily curve matches the formula, 14d arrival pulses, crossDay, mitigation −12", async () => {
+  it("V5: risk_timeline 常州·物料齐套 H=30 — 真基线水平 + 14d arrival 脉冲 + crossDay（B1 治本·无 hash 爬坡目标）+ 处置 −12", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const H = 30;
@@ -257,32 +256,35 @@ describe("S1 solvers", () => {
     expect(card.dataMode).toBe("LIVE");
     const cur = (card.currentTightness as { value: number; live: boolean }).value;
     expect((card.currentTightness as { live: boolean }).live).toBe(true);
-    const lift = (("常".charCodeAt(0) + "物".charCodeAt(0)) % P.risk.targetLift.mod) + P.risk.targetLift.base;
-    const tgt = Math.min(96, cur + lift);
+    // RISK-TRAJECTORY-DEFAKE（B1·治本）：基线**保持水平** = 真张力 cur（旧码爬向 riskTarget=名首码+因子首码 hash
+    // 编的目标·制造假 crossDay → 已删）。轨迹只由真基线 + 真事件脉冲决定。
     // arrival-gap events every 14 days are the only 物料齐套 pulses with the seeded ontology
     const eventDays = [14, 28];
     const cardEvents = (card.events as { type: string; day: number; factors: string[] }[]).filter((e) =>
       e.factors.includes("物料齐套"),
     );
     expect(cardEvents.map((e) => e.day)).toEqual(eventDays);
-    expect(cardEvents.every((e) => e.amp === undefined || true)).toBe(true);
-    const expected: number[] = [];
-    for (let d = 1; d <= H; d++) {
-      const vb = cur + (tgt - cur) * Math.min(1, d / (0.72 * H));
-      let pulse = 0;
-      for (const ed of eventDays) {
-        const dist = Math.abs(d - ed);
-        if (dist > 3) continue;
-        const ps = Math.max(0.25, 1 - (vb - 68) / 45);
-        pulse += P.risk.eventAmps.arrival_gap! * ps * (1 - dist / 4);
+    const curve = (baseline: number): number[] => {
+      const out: number[] = [];
+      for (let d = 1; d <= H; d++) {
+        const vb = baseline; // 水平基线（无爬坡）
+        let pulse = 0;
+        for (const ed of eventDays) {
+          const dist = Math.abs(d - ed);
+          if (dist > 3) continue;
+          const ps = Math.max(0.25, 1 - (vb - 68) / 45);
+          pulse += P.risk.eventAmps.arrival_gap! * ps * (1 - dist / 4);
+        }
+        out.push(Math.min(98, Math.round(vb + pulse)));
       }
-      expected.push(Math.min(98, Math.round(vb + pulse)));
-    }
+      return out;
+    };
+    const expected = curve(cur);
     expect(series).toEqual(expected);
     const expectedCross = expected.findIndex((v) => v >= 85);
     expect(card.crossDay).toBe(expectedCross === -1 ? null : expectedCross + 1);
 
-    // mitigation 提前备料: eff 12 from T+2 — peak −12, crossing cleared/postponed
+    // mitigation 提前备料: eff 12 from T+2（对水平基线曲线逐日 −12，d≥2）
     const mit = await invokeSolver(t, "risk_timeline", {
       base: "常州",
       factor: "物料齐套",
@@ -295,10 +297,9 @@ describe("S1 solvers", () => {
     const m = mcard.mitigated as { series: number[]; appliedPlan: string; effectiveFrom: number; peak: number; crossDay: number | null };
     expect(m.appliedPlan).toBe("提前备料");
     expect(m.effectiveFrom).toBe(2);
-    for (let d = 1; d <= H; d++) {
-      expect(m.series[d - 1]).toBe(d >= 2 ? Math.max(0, expected[d - 1]! - 12) : expected[d - 1]);
-    }
-    expect(m.peak).toBe((mcard.peak as number) - 12);
+    const mexp = expected.map((v, i) => (i + 1 >= 2 ? Math.max(0, v - 12) : v));
+    expect(m.series).toEqual(mexp);
+    expect(m.peak).toBe(Math.max(...mexp));
     if (mcard.crossDay !== null) {
       expect(m.crossDay === null || (m.crossDay as number) > (mcard.crossDay as number)).toBe(true);
     }
@@ -351,7 +352,9 @@ describe("S1 solvers", () => {
   it("V5b: risk_timeline planRows — 每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP（§2.4）", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const out = (await invokeSolver(t, "risk_timeline", { horizon: 30 })).json() as {
+    // RISK-TRAJECTORY-DEFAKE（B1）：越线由**真基线 + 真检修事件**决定（无 hash 爬坡）。真检修周（week5-8→day32+）
+    // 落在 90 天窗内才推真张力过阈 → 用 horizon 90 观测真越线（30 天窗内无排定检修·真张力未及 85=诚实不越）。
+    const out = (await invokeSolver(t, "risk_timeline", { horizon: 90 })).json() as {
       data: { cards: { base: string; peak: number; crossDay: number | null }[]; planRows: { act: string; det: string; owner: string; start: string; done: string; eff: string; rule: string }[] };
     };
     const { cards, planRows } = out.data;
@@ -376,22 +379,26 @@ describe("S1 solvers", () => {
     expect([...starts].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))).toEqual(starts);
   });
 
-  // PRD-IND-risk §4.6：逐日 tip 事件可解释——每事件带 tag/obj/desc/src（量化 hashN 确定性 R6）。
-  it("V5c: risk_timeline 事件带 tag/desc/src 可解释文案（§4.6）+ R6 同输入字节一致", async () => {
+  // RISK-TRAJECTORY-DEFAKE（B2/B3/B4·治本·牙齿）：逐日 tip 事件可解释——每事件带 tag/obj/desc，
+  // 但**不得**带假源归因 `src`（旧码整簇标 EAM/CMMS·S&OP/ERP·WMS/ERP 谎称来自真系统），且无实测量化的
+  // desc 不得谎称有真实系统源（一律「需接入…实测·当前无实测值」或明标「估算」）。回退到 src 即红。
+  it("V5c: risk_timeline 事件 tag/desc 可解释 + 无假源归因（删 EVENT_SRC）+ R6 同输入字节一致", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const run = async () => (await invokeSolver(t, "risk_timeline", { horizon: 30 })).json() as { data: { cards: { events: { type: string; tag?: string; desc?: string; src?: string }[] }[] } };
+    const run = async () => (await invokeSolver(t, "risk_timeline", { horizon: 90 })).json() as { data: { cards: { events: { type: string; tag?: string; desc?: string; src?: string }[] }[] } };
     const out = await run();
     const allEvents = out.data.cards.flatMap((c) => c.events);
     expect(allEvents.length).toBeGreaterThan(0);
     for (const e of allEvents) {
       expect(e.tag).toBeTruthy();
       expect(e.desc).toBeTruthy();
-      expect(e.src).toBeTruthy();
+      // 删假源归因：事件不得携带 src 真源标签
+      expect(e.src).toBeUndefined();
+      // desc 提及真实系统名时必须是「需接入…实测」的诚实披露（无实测），不得谎称数据来自该系统
+      if (/EAM|CMMS|WMS|ERP/.test(e.desc ?? "")) {
+        expect(e.desc).toMatch(/需接入.*实测/);
+      }
     }
-    // 来源系统三选一（SRC_META 逐字）
-    const srcs = new Set(allEvents.map((e) => e.src));
-    for (const s of srcs) expect(["EAM/CMMS 检修计划", "S&OP/ERP 订单交期", "WMS/ERP 采购与在途"]).toContain(s);
     // R6：同输入同输出
     expect(JSON.stringify(await run())).toBe(JSON.stringify(out));
   });
