@@ -39,11 +39,14 @@ else {
 }
 
 // --- 2) 求解器注册表 -------------------------------------------------------
-const slvSrc = read(SOLVERS_SRC);
-if (!slvSrc) fail.push(`缺少 ${SOLVERS_SRC}`);
-else {
-  const block = slvSrc.match(/SOLVER_KEYS\s*=\s*\[([\s\S]*?)\]/);
-  const keys = block ? [...block[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]) : [];
+// HARDCODE-DISPATCH-REGISTRY：SOLVER_KEYS 现由 `solvers/solver-registry.ts SOLVER_REGISTRY` 派生（非源码字面数组）——
+// 从编译产物读运行期真值（gates 链 `pnpm -r build` 在前·同 no-silent-mock/datadep-manifest 门范式）。
+const svcMod = await import("../apps/datacore/dist/solvers/service.js").catch((e) => {
+  fail.push(`导入 datacore dist 读 SOLVER_KEYS 失败（先 pnpm --filter datacore build）：${e.message}`);
+  return null;
+});
+if (svcMod) {
+  const keys = [...svcMod.SOLVER_KEYS];
   const missing = keys.filter((k) => !onto.includes(k) && !["capacity_rollup"].includes(k));
   if (missing.length) fail.push(`求解器已注册、未在本体出现：${missing.join(", ")}`);
   console.log(`· 求解器：SOLVER_KEYS ${keys.length} 个，本体覆盖 ${keys.filter((k) => onto.includes(k)).length} 个`);

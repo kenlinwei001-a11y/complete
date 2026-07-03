@@ -71,8 +71,10 @@ const cards = [...catText.matchAll(
 if (cards.length === 0) fail.push(`§6 静态断言：未能从 ${CATALOG} 解析出任何场景卡（解析器与目录格式漂移）`);
 
 // SOLVER_OUTPUT_SHAPES 顶层 key 全集（datacore 求解器输出形状权威来源）。
-const shapeBlock = (svcText.match(/SOLVER_OUTPUT_SHAPES[^=]*=\s*\{([\s\S]*?)\n\};/) ?? [])[1] ?? "";
-const shapeKeys = new Set([...shapeBlock.matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]));
+// HARDCODE-DISPATCH-REGISTRY：SOLVER_OUTPUT_SHAPES 现由 `solvers/solver-registry.ts SOLVER_REGISTRY` 派生（非字面对象）——
+// 从编译产物读运行期真值（gates 链 `pnpm -r build` 在前·同 no-silent-mock/datadep-manifest 门范式）。
+const ontoSvcMod = await import("../apps/datacore/dist/solvers/service.js").catch(() => null);
+const shapeKeys = new Set(Object.keys(ontoSvcMod?.SOLVER_OUTPUT_SHAPES ?? {}));
 
 // 已发布规则集（B→A 探针 listRuleKeys 返回的出厂规则库 key 全集）。
 const ruleBlock = (ruleText.match(/listRuleKeys\(\)[\s\S]*?return\s*\[([^\]]+)\]/) ?? [])[1] ?? "";

@@ -169,6 +169,10 @@ export class SyntheticService {
     };
     try {
       const template = await this.resolveTemplate(ctx, input.industry);
+      // HARDCODE-DISPATCH-REGISTRY（审计 γ3·结构先行）：把散落 runJob 的 6 处 `input.industry === "battery-manufacturing"`
+      // 平行判定收口为**一处命名事实**（是否走内置电池 bespoke 管线 vs 通用模板管线）。语义零变（同 (industry,scale,seed) 字节一致）。
+      // full IndustryTemplate-record 驱动（消除电池特例·换行业不改码）属 HARDCODE-BIZ-ENTITY 后续（届时 battery 亦走 instantiateGeneric+模板数据）。
+      const usesBatteryPipeline = input.industry === "battery-manufacturing";
       // Deterministic origin marker → same (industry, scale, seed) reruns are byte-identical.
       const originJobId = `synthetic-${input.industry}-${input.scale}-${seed}`;
       const origin = { type: "SYNTHETIC", jobId: originJobId } as const;
@@ -181,7 +185,7 @@ export class SyntheticService {
       await this.clearSyntheticTimeseries(ctx);
 
       // ②③ ontology from template + source-object generation (topo order).
-      if (input.industry === "battery-manufacturing") {
+      if (usesBatteryPipeline) {
         await this.instantiateBattery(ctx, seed, input.scale, origin, input.viaModelingChain === true);
       } else {
         await this.instantiateGeneric(ctx, template, seed, input.scale, origin);
@@ -190,7 +194,7 @@ export class SyntheticService {
       // ③b A8.6: 90-day deterministic ts history → full TS_AGGREGATE → derivation.
       // 运营态增量 §1.1：livedIn 时跳过 90 天标准历史（避免迟到容差拒收回填），
       // 365 天历史与聚合由回放引擎（月批次 × 真实管线）负责。
-      if (input.industry === "battery-manufacturing" && this.ts) {
+      if (usesBatteryPipeline && this.ts) {
         await this.seedBatteryParamsAndSpecs(ctx, seed, input.scale);
         if (!input.livedIn) {
           await this.generateHistory(ctx, seed);
@@ -208,7 +212,7 @@ export class SyntheticService {
           name: r.name,
           expression: r.expression,
           scopeObjectTypes:
-            input.industry === "battery-manufacturing" ? (BATTERY_RULE_SCOPES[r.key] ?? ["Order"]) : ["Order"],
+            usesBatteryPipeline ? (BATTERY_RULE_SCOPES[r.key] ?? ["Order"]) : ["Order"],
           severity: (["BLOCK", "WARN", "INFO"].includes(r.severity) ? r.severity : "WARN") as
             | "BLOCK"
             | "WARN"
@@ -226,7 +230,7 @@ export class SyntheticService {
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
       // 增量视图（§7.14–7.17 + 图谱八视角 + 运营回顾）：不进 report.views（保持验收快照稳定），但进 view_configs。
       const extraViews =
-        input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
+        usesBatteryPipeline ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
       await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn });
       // 管理平台增量 §3：场景包记录（admin/views 与场景包管理页的事实源；幂等 upsert）。
       const pkgId = "pkg_battery_manufacturing";
@@ -234,7 +238,7 @@ export class SyntheticService {
       await this.repos.scenarioPackages.put({
         id: pkgId,
         tenantId: ctx.tenantId,
-        name: input.industry === "battery-manufacturing" ? "电池制造场景包" : `${input.industry} 场景包`,
+        name: usesBatteryPipeline ? "电池制造场景包" : `${input.industry} 场景包`,
         fromTemplate: input.industry,
         views: [...views, ...extraViews],
         toolWhitelist: existingPkg?.toolWhitelist ?? [],
@@ -263,7 +267,7 @@ export class SyntheticService {
       job.report = await this.buildReport(ctx, template, views, accounts, seed);
 
       // ⑦ 运营态出厂配置增量 §1：livedIn → 标准合成后回放一年（T−365d → T0）。
-      if (input.livedIn && this.livedInRunner && input.industry === "battery-manufacturing") {
+      if (input.livedIn && this.livedInRunner && usesBatteryPipeline) {
         const replayT0 = Date.now();
         const r = await this.livedInRunner(ctx, { industry: input.industry, scale: input.scale, seed, jobId: originJobId });
         job.livedIn = { ...r.replay, durationMs: Date.now() - replayT0 };

@@ -2665,8 +2665,8 @@
     {
       "id": "HARDCODE-DISPATCH-REGISTRY",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-hardcode-remnants.md",

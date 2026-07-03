@@ -7,7 +7,7 @@ import { notFound, validationError } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS } from "../synthetic/battery.js";
-import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema } from "@platform/contracts";
+import { SOLVER_BY_KEY, REGISTRY_SOLVER_KEYS, GRAPH_SOLVER_KEYS, registryOutputShapes, LIVE_DEFAULT_KEYS, A6_READOUT_KEYS } from "./solver-registry.js";
 import { num, str, type SolverContext, type SolverParamsShape } from "./types.js";
 import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, resolveField } from "../ruledsl.js";
@@ -29,7 +29,8 @@ import { EXTENDED_SOLVERS, deriveExtendedArgs, extendedDataMode } from "./extend
  * WO-2：读出型求解器——其输出即 Base/Line/Process/Equipment 拓扑聚合本身（非以订单为主结果）。
  * 这些经 loadContext 套 A6 行级过滤（base_manager 只见本基地）；其余求解器 A6 经 visibleOrders 作用于订单结果。
  */
-const A6_READOUT_SOLVERS = new Set<string>(["capacity_rollup", "bottleneck_matrix"]);
+// HARDCODE-DISPATCH-REGISTRY：改为**派生自** SOLVER_REGISTRY 的 a6Readout flag（单一来源·防漂移）。
+const A6_READOUT_SOLVERS = A6_READOUT_KEYS;
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
@@ -46,149 +47,24 @@ import { contextRolesToLoad, ROLE_CANONICAL } from "./datadep-context.js";
 import type { AuditService } from "../audit.js";
 import { newId } from "../ids.js";
 
-export const SOLVER_KEYS = [
-  "capacity_rollup",
-  "capacity_forecast",
-  "bottleneck_matrix",
-  "risk_timeline",
-  "affected_orders",
-  "plan_audit",
-  "plan_generate",
-  "capex_scenario",
-  // 20 场景目录 §2 新增 13（成熟度 E6a）
-  "mitigation_select",
-  "cert_schedule",
-  "kit_readiness",
-  "lta_gap",
-  "inventory_optimize",
-  "changeover_sequence",
-  "yield_diagnosis",
-  "maintenance_stagger",
-  "outsourcing_split",
-  "quote_margin",
-  "credit_exposure",
-  "quarterly_gap",
-  "carbon_footprint",
-  // Phase6B 跨求解器编排器（meta-solver）
-  "countermeasure_combo",
-  // cockpit P2 规划决策推演 · 根因归因 DAG：经营 KPI 越线沿 RootCauseChain 归因模板逐层取证，
-  // DAG 结构与每条边的贡献均从 Metric/RootCauseChain/活数据算出（确定性 R6，「结构=算、模板=配成对象」）。
-  "plan_rootcause",
-  // SPINE 经营目标-指标-责任骨架：从对象库聚合 actual + 对齐 PlanTarget target → 算 delta/miss，
-  // 输出指标数组（各视图 KPI 单一出处 R-一致，派生投影非新真值 R13，确定性 R6）。
-  "metric_rollup",
-  // DS.2 经营驾驶舱富 KPI（可供给V7/收入达成/利用率瓶颈/AOP基准/现金垫）：从 SopVersionRow/FinancePlan/
-  // Base/AnnualScenario 对象确定性派生（R13 溯源对象 / R6），一个 solver 出 5 标量、各 kpi widget valuePath 取。
-  "cockpit_kpi",
-  // cockpit P4 反事实双轨推演（"如不解决 XX，未来 30 天会怎样"）：编排 risk_timeline(do-nothing baseline)
-  // 与处置后曲线(mitigation eff/tn 衰减) → 双序列 + 差值(峰值削减/越线日推迟/少越线日)，确定性 R6。
-  "counterfactual_timeline",
-  // cockpit P4 / order 视图 订单全链推演：逐单三关联判（交期/齐套/财务三闸 C15→C13→C18）+ 统一结论
-  // (可接/提价X%接/不建议接) + 业务建模链 DAG，读对象图（Order×Model×MaterialBalance×DemandSegment），确定性 R6。
-  "order_fullchain",
-  // sop 视图 物料线 MRP 净需求（读 MaterialBalance → 净需求/长协覆盖/缺口/最早齐套表，C06/C16，确定性 R6）。
-  "mrp_netting",
-  // sop 视图 / cockpit P5 量·价·本·利科目表（读 FinancePlan+DemandSegment → 收入/成本/毛利 预算vs滚动vs差异 + 毛利率归因，确定性 R6）。
-  "finance_pnl",
-  // audit / generate 视图 每审计项独立时序（按 kind 出 90 天逐日 series + 4 阶段，与产能推演同款逐日交互，确定性 R6）。
-  "audit_timeline",
-  // audit.3 / generate 视图 财务 KSF 图：3 层有向图（待解决问题=越线 Metric → 关键成功要素 KSF 5 → 财务指标 Metric），
-  // 读 Metric(ksfRef)+KSF 一等对象投影（问题→KSF 威胁边、KSF→财务 支撑边），确定性 R6；audit/generate 共用。
-  "ksf_graph",
-  // 通用 what-if 求解器（generic-inference P2，G-5）：包装本体派生引擎 recompute(dryRun+apply)，
-  // 对任意已发布本体做"假设值前向重算"，非电池专用；growth 缺求解器 B 兜底路由到此。
-  "generic_inference",
-  // PRD-fde §8d/Q4 通用共享瓶颈求解器（净室,零依赖,声明式组合）：读对象图,按 viaField 把上游对象
-  // 分组到共享资源,需求和>产能 = 瓶颈;按优先级判哪张单降级。非电池专用,任意本体经 args 字段映射即用。
-  "shared_bottleneck",
-  // PRD-fde §8c/Q5 隐性集中度（净室通用）：多跳反向聚合找暗线单点。
-  "concentration_risk",
-  // PRD-fde §8 Q3 毛利倒挂根因归因（净室通用）：成本项拆解 + 倒挂群主驱动聚合。
-  "margin_attribution",
-  // PRD-fde §8 Q2 单一供应商断供影响半径（净室通用）：反向多跳逐层扇出算扩散半径与叶层敞口。
-  "supplier_disruption_radius",
-  // PRD-fde §8d 组合最优化（CP-SAT sidecar 代理）：通用 0/1 选择最优化,贪心给不出的可证最优。
-  "selection_optimize",
-  // A8.1/8.2/8.3 CP-SAT 可证最优族：指派(订单→基地)/排序(换型)/装箱(产能填充)
-  "assignment_optimize",
-  "sequencing_optimize",
-  "packing_optimize",
-  // 轨B·增量1 抽象优化模板池 5 CP-SAT 核心（OptModelTemplate 引擎侧；零业务常数 R14，行业靠 OntologyBinding 绑进来）。
-  // 走 optimizer-client sidecar 可证最优；args 给抽象 role→本体类型/字段（增量2 OntologyBinding 统一预处理）。
-  "facility_location",
-  "min_cost_flow",
-  "set_cover",
-  "independent_set",
-  "combinatorial_auction",
-  // 轨B·增量3 优化目标级 what-if：结构化扰动→DF.8 接地→sidecar 重解→Δ目标/可行性/冲突约束（FUS1 不进 A18 沙箱）。
-  "optimize_whatif",
-  // WO-MULTISRC-FUSION-DOMAIN（N1·建在 SolverBinding 之上）：ERP/MES/SRM 对同一事实各执一词 → 按 pk 归并
-  // 多源实例 + A5 规则驱动冲突仲裁（权威/新鲜/多数）+ 测谎（跨源数值不一致超阈值 → SUSPECT + 置信降级·
-  // 不照单全收 R13）+ 带置信溯源答案（dataMode 反映跨源一致性）+ AUDIT 留痕。读任意本体（经 sources 字段映射）。
-  "multisource_fusion",
-] as const;
+/**
+ * 求解器键全集——HARDCODE-DISPATCH-REGISTRY 治本：**派生自** SOLVER_REGISTRY（单一来源；顺序即登记顺序）。
+ * 此前为并行硬编码字面数组，与 SOLVER_OUTPUT_SHAPES / LIVE_DEFAULT_SOLVERS / A6_READOUT_SOLVERS 同键 co-edit 易漂移；
+ * 各求解器职责说明见 solver-registry.ts 与各实现文件。语义零变（R6）：REGISTRY_SOLVER_KEYS 与原字面数组逐项一致（solver-registry 测守）。
+ */
+export const SOLVER_KEYS: readonly string[] = REGISTRY_SOLVER_KEYS;
 
 /**
  * R11-SHAPE 求解器输出形状注册（顶层输出 key 全集，权威来源=契约输出 schema 的 `.shape`）。
  * validateClosure 据此校验 BuildPlan.solverNeeds[].renderBindings ⊆ 输出形状 —— 把跨服务
  * 形状断点(G-2)挡在建图期。未声明形状的求解器 → SHAPE 跳过（不阻塞，渐进补齐）。
  */
-const shapeKeys = (schema: { shape: Record<string, unknown> }): string[] => Object.keys(schema.shape);
-export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
-  // 契约 schema 权威（声明输出契约）
-  capacity_forecast: shapeKeys(CapacityForecastOutputSchema),
-  bottleneck_matrix: shapeKeys(BottleneckMatrixOutputSchema),
-  risk_timeline: shapeKeys(RiskTimelineOutputSchema),
-  plan_audit: shapeKeys(PlanAuditOutputSchema),
-  plan_generate: shapeKeys(PlanGenerateOutputSchema),
-  // 其余 17 求解器输出形状（取自实现的成功路径返回对象顶层 key；权威=求解器实现）
-  capacity_rollup: ["bases", "ruleRefs"],
-  // 通用 what-if（recompute dryRun 包装）：顶层渲染键 = 派生 before/after deltas + 受影响计数。
-  generic_inference: ["deltas", "rows", "affectedObjects", "count", "rootTypes"],
-  shared_bottleneck: ["bottlenecks", "contention", "downgraded", "summary"],
-  concentration_risk: ["concentrations", "topExposure", "summary"],
-  margin_attribution: ["inverted", "rootDrivers", "invertedCount", "summary"],
-  supplier_disruption_radius: ["rootType", "rootId", "layers", "radius", "totalAffected", "leafType", "leafCount", "summary"],
-  selection_optimize: ["status", "optimal", "selected", "totalValue", "totalWeight", "itemType", "budget", "candidateCount", "summary"],
-  assignment_optimize: ["status", "optimal", "assignments", "objective", "itemType", "binType", "itemCount", "binCount", "summary"],
-  sequencing_optimize: ["status", "optimal", "sequence", "changeovers", "objective", "jobType", "jobCount", "summary"],
-  packing_optimize: ["status", "optimal", "bins", "binCount", "objective", "itemType", "itemCount", "binCapacity", "summary"],
-  // 轨B·增量1 抽象优化模板池 5 核心输出形状（权威=求解器实现成功路径顶层 key）。
-  facility_location: ["status", "optimal", "openFacilities", "assignments", "objective", "facilityType", "clientType", "facilityCount", "clientCount", "summary"],
-  min_cost_flow: ["status", "optimal", "flows", "objective", "nodeType", "arcCount", "nodeCount", "summary"],
-  set_cover: ["status", "optimal", "chosen", "objective", "setType", "universeSize", "setCount", "summary"],
-  independent_set: ["status", "optimal", "chosen", "objective", "nodeType", "edgeCount", "nodeCount", "summary"],
-  combinatorial_auction: ["status", "optimal", "winners", "objective", "bidType", "itemCount", "bidCount", "summary"],
-  // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary）。
-  optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "feasible", "conflictConstraints", "explanation", "summary"],
-  // WO-MULTISRC-FUSION-DOMAIN（N1）：多源融合输出（融合对象 + 冲突/测谎计数 + 头条诚实位 + 仲裁策略）。
-  multisource_fusion: ["role", "fused", "suspectCount", "conflictCount", "dataMode", "strategies", "summary"],
-  affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
-  capex_scenario: ["scenarioKey", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23"],
-  mitigation_select: ["factor", "baseName", "urgency", "plans", "recommended", "draftPayload", "options", "factors", "error"],
-  cert_schedule: ["schedule", "engineerGroups", "ruleRefs"],
-  kit_readiness: ["rows", "shortageCount", "ruleRefs"],
-  lta_gap: ["material", "month", "netDemand", "coverage", "gap", "po", "ruleRefs"],
-  inventory_optimize: ["over", "under", "idle", "releasableCash", "ruleRefs"],
-  changeover_sequence: ["lineId", "sequence", "totalChangeoverMin", "savedVsDueMin", "infeasible", "ruleRefs"],
-  yield_diagnosis: ["breakpoint", "candidates", "ruleRefs"],
-  maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
-  outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
-  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
-  credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "ruleRefs"],
-  quarterly_gap: ["quarter", "combo", "residualGap", "ruleRefs"],
-  carbon_footprint: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"],
-  countermeasure_combo: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"],
-  plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs", "excludedFactors"],
-  metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
-  cockpit_kpi: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"],
-  counterfactual_timeline: ["baselineSeries", "mitigatedSeries", "threshold", "factor", "base", "mitigation", "delta", "events", "summary"],
-  order_fullchain: ["so", "verdict", "vc", "kpis", "judges", "conds", "dag", "summary"],
-  mrp_netting: ["materials", "shortageCount", "summary"],
-  finance_pnl: ["pnl", "gmRow", "attribution", "summary"],
-  audit_timeline: ["kind", "series", "stages", "peak", "crossDay", "threshold", "events", "affectedOrders"],
-  ksf_graph: ["problems", "ksfNodes", "finNodes", "edges", "summary"],
-};
+/**
+ * R11-SHAPE 求解器输出形状注册（顶层输出 key 全集）——HARDCODE-DISPATCH-REGISTRY 治本：**派生自** SOLVER_REGISTRY
+ * 的 outputShape（单一来源；契约 5 求解器取契约 schema .shape，其余取实现顶层 key）。validateClosure 据此校验
+ * BuildPlan.solverNeeds[].renderBindings ⊆ 输出形状（把跨服务形状断点 G-2 挡在建图期）。下方 append 循环追加 dataMode/confidence 横切位。
+ */
+export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = registryOutputShapes();
 
 // WO-DM（keystone·no-silent-mock）：每求解器输出形状都带诚实位 `dataMode`——契约层强制声明，
 // 杜绝"哈希/魔数静默冒充真算"。配套 `check-no-silent-mock` 门校验本表每项含 dataMode；
@@ -207,16 +83,9 @@ for (const k of Object.keys(SOLVER_OUTPUT_SHAPES)) {
  * 自置 dataMode 的求解器（capacity_forecast/bottleneck_matrix/risk_timeline/audit_timeline/13 extended）
  * 不经本默认（已据真数据来源各自置 LIVE/MOCK/PARTIAL）。
  */
-const LIVE_DEFAULT_SOLVERS = new Set<string>([
-  // 纯真对象读出/汇总（读已物化对象图·无业务魔数/哈希）
-  "capacity_rollup", "mrp_netting", "finance_pnl", "metric_rollup", "cockpit_kpi", "ksf_graph",
-  "margin_attribution", "concentration_risk", "generic_inference", "shared_bottleneck",
-  // 真优化求解（CP-SAT/确定性求解器作用于真/显式入参）
-  "facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction",
-  "selection_optimize", "assignment_optimize", "sequencing_optimize", "packing_optimize", "optimize_whatif",
-  // 代入真规划/财务输入确定性裁决 / 经营目标基线确定性收敛
-  "plan_audit", "plan_generate",
-]);
+// HARDCODE-DISPATCH-REGISTRY：改为**派生自** SOLVER_REGISTRY 的 liveDefault flag（单一来源·防漂移；
+// 语义与原 LIVE_DEFAULT_SOLVERS 白名单逐 key 一致·solver-registry 测守）。
+const LIVE_DEFAULT_SOLVERS = LIVE_DEFAULT_KEYS;
 
 const DAY_MS = 86400000;
 
@@ -230,7 +99,47 @@ const DAY_MS = 86400000;
  * 支持 runWithParams(指定版本/参数集) —— 校准引擎重放归因与回测的执行体。
  */
 export class SolverService {
-  constructor(private repos: Repos) {}
+  /**
+   * HARDCODE-DISPATCH-REGISTRY 治本：graph 路由求解器 key→私有实现 的**唯一**绑定表（原 invokeRaw 23 臂 if 链收口于此）。
+   * 运行期派发路由由 `SOLVER_REGISTRY`（route==="graph"）驱动；本表仅承载「哪个 key 调哪个方法」这一不可再抽象的事实
+   * （方法读 this.repos/ontologyCore/optimizer，故须绑定实例）。构造期断言 keys === GRAPH_SOLVER_KEYS（增/删须同步注册表
+   * 与本表，否则 fail-fast·防漂移·本 WO teeth）。语义零变：逐 key 命中同一实现，与重构前 if 链完全一致。
+   */
+  private readonly graphHandlers: Record<string, (ctx: AuthCtx, args: Record<string, unknown>) => Promise<Record<string, unknown>>> = {
+    generic_inference: (ctx, args) => this.genericInference(ctx, args),
+    shared_bottleneck: (ctx, args) => this.sharedBottleneck(ctx, args),
+    multisource_fusion: (ctx, args) => this.multiSourceFusion(ctx, args),
+    concentration_risk: (ctx, args) => this.concentrationRisk(ctx, args),
+    margin_attribution: (ctx, args) => this.marginAttribution(ctx, args),
+    plan_rootcause: (ctx, args) => this.planRootcause(ctx, args),
+    metric_rollup: (ctx, args) => this.metricRollup(ctx, args),
+    cockpit_kpi: (ctx) => this.cockpitKpi(ctx),
+    ksf_graph: (ctx) => this.ksfGraph(ctx),
+    order_fullchain: (ctx, args) => this.orderFullchain(ctx, args),
+    mrp_netting: (ctx) => this.mrpNetting(ctx),
+    finance_pnl: (ctx) => this.financePnl(ctx),
+    supplier_disruption_radius: (ctx, args) => this.supplierDisruptionRadius(ctx, args),
+    selection_optimize: (ctx, args) => this.selectionOptimize(ctx, args),
+    assignment_optimize: (ctx, args) => this.assignmentOptimize(ctx, args),
+    sequencing_optimize: (ctx, args) => this.sequencingOptimize(ctx, args),
+    packing_optimize: (ctx, args) => this.packingOptimize(ctx, args),
+    facility_location: (ctx, args) => this.facilityLocation(ctx, args),
+    min_cost_flow: (ctx, args) => this.minCostFlow(ctx, args),
+    set_cover: (ctx, args) => this.setCover(ctx, args),
+    independent_set: (ctx, args) => this.independentSet(ctx, args),
+    combinatorial_auction: (ctx, args) => this.combinatorialAuction(ctx, args),
+    optimize_whatif: (ctx, args) => this.optimizeWhatif(ctx, args),
+  };
+
+  constructor(private repos: Repos) {
+    // HARDCODE-DISPATCH-REGISTRY teeth：graph 派发表与注册表 route==="graph" 必须**逐 key 一致**——把「派发路由（注册表）」
+    // 与「key→实现绑定（graphHandlers）」钉死为单一真相的两个投影；只改一处即 fail-fast（还原两张平行表 → 本 WO 修的漂移复现）。
+    const handlerKeys = Object.keys(this.graphHandlers).sort();
+    const registryGraph = [...GRAPH_SOLVER_KEYS].sort();
+    if (handlerKeys.length !== registryGraph.length || handlerKeys.some((k, i) => k !== registryGraph[i])) {
+      throw new Error(`SolverService graphHandlers 与 SOLVER_REGISTRY(route=graph) 漂移：handlers=[${handlerKeys}] registry=[${registryGraph}]`);
+    }
+  }
 
   /**
    * SolverBinding 索引缓存（解 B3·G-17）：per-tenant「solverKey→role→绑定」。首用惰性加载，
@@ -2139,34 +2048,15 @@ export class SolverService {
       const art = await this.activeArtifact(ctx.tenantId, solverKey);
       if (art) return this.invokeArtifact(ctx, art, args);
     }
-    // generic_inference 走本体派生引擎（非纯 compute；需对象图 + recompute），先于 loadContext 拦截。
-    if (solverKey === "generic_inference") return this.genericInference(ctx, args);
-    // shared_bottleneck 通用求解器（读任意对象图,非电池 context）,同样先拦截。
-    if (solverKey === "shared_bottleneck") return this.sharedBottleneck(ctx, args);
-    // WO-MULTISRC-FUSION-DOMAIN（N1·建在 SolverBinding 之上）：多源归并 + 冲突仲裁 + 测谎（读任意对象图）。
-    if (solverKey === "multisource_fusion") return this.multiSourceFusion(ctx, args);
-    if (solverKey === "concentration_risk") return this.concentrationRisk(ctx, args);
-    if (solverKey === "margin_attribution") return this.marginAttribution(ctx, args);
-    if (solverKey === "plan_rootcause") return this.planRootcause(ctx, args);
-    if (solverKey === "metric_rollup") return this.metricRollup(ctx, args);
-    if (solverKey === "cockpit_kpi") return this.cockpitKpi(ctx);
-    if (solverKey === "ksf_graph") return this.ksfGraph(ctx);
-    if (solverKey === "order_fullchain") return this.orderFullchain(ctx, args);
-    if (solverKey === "mrp_netting") return this.mrpNetting(ctx);
-    if (solverKey === "finance_pnl") return this.financePnl(ctx);
-    if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
-    if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
-    if (solverKey === "assignment_optimize") return this.assignmentOptimize(ctx, args);
-    if (solverKey === "sequencing_optimize") return this.sequencingOptimize(ctx, args);
-    if (solverKey === "packing_optimize") return this.packingOptimize(ctx, args);
-    // 轨B·增量1 抽象优化模板池 5 CP-SAT 核心（sidecar 重解，先于 loadContext 拦截，同既有 *_optimize）。
-    if (solverKey === "facility_location") return this.facilityLocation(ctx, args);
-    if (solverKey === "min_cost_flow") return this.minCostFlow(ctx, args);
-    if (solverKey === "set_cover") return this.setCover(ctx, args);
-    if (solverKey === "independent_set") return this.independentSet(ctx, args);
-    if (solverKey === "combinatorial_auction") return this.combinatorialAuction(ctx, args);
-    // 轨B·增量3 optimize_whatif：扰动重解（先于 loadContext 拦截，复用 5 核心求解，FUS1 走 sidecar）。
-    if (solverKey === "optimize_whatif") return this.optimizeWhatif(ctx, args);
+    // HARDCODE-DISPATCH-REGISTRY 治本：graph 路由求解器（读任意对象图的净室/优化 sidecar 求解器，**先于** loadContext
+    // 拦截·非电池 context）——由 SOLVER_REGISTRY route==="graph" 驱动派发（迭代注册表·替代原 23 臂 `if(solverKey===)` if 链）。
+    // key→私有实现的唯一绑定见 graphHandlers（构造期断言其键集 == 注册表 graph 集·防漂移）。语义零变：逐 key 命中同一实现，
+    // 相对顺序无关（各 key 互斥），且全部在 loadContext 前返回，同重构前。含 generic_inference（本体派生引擎 recompute）、
+    // shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius（净室通用）、multisource_fusion
+    // （N1 多源归并+仲裁+测谎）、5 CP-SAT 核心 + *_optimize + optimize_whatif（sidecar 可证最优/扰动重解）等。
+    if (SOLVER_BY_KEY.get(solverKey)?.route === "graph") {
+      return this.graphHandlers[solverKey]!(ctx, args);
+    }
     // WO-2：仅对**读出型**求解器（输出即 Base/Line/Process/Equipment 拓扑本身）传 ctx → A6 行级过滤读出层。
     // 其余求解器（如 affected_orders 以 baseId 入参跨基地推演、A6 经 visibleOrders 作用于订单结果）不传 ctx，
     // 避免过滤其拓扑入参改变计算语义（外基地查询应受订单结果约束，而非读不到外基地拓扑）。

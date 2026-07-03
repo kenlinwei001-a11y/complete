@@ -398,173 +398,43 @@ export function carbonFootprint(args: Record<string, unknown>) {
   };
 }
 
-/** 13 新增求解器分发（service.compute 的扩展分支）。 */
-export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) => Record<string, unknown>> = {
-  mitigation_select: mitigationSelect,
-  cert_schedule: certSchedule,
-  kit_readiness: kitReadiness,
-  lta_gap: ltaGap,
-  inventory_optimize: inventoryOptimize,
-  changeover_sequence: changeoverSequence,
-  yield_diagnosis: yieldDiagnosis,
-  maintenance_stagger: maintenanceStagger,
-  outsourcing_split: outsourcingSplit,
-  quote_margin: quoteMargin,
-  credit_exposure: creditExposure,
-  quarterly_gap: quarterlyGap,
-  carbon_footprint: carbonFootprint,
-  countermeasure_combo: countermeasureCombo,
-};
-
 /**
- * A0（空洞数据冰山结构性根因修）· 13 extended 求解器诚实位。
- * 据「用了真对象数据 vs 回落硬编码/魔数」确定性判 LIVE/MOCK/PARTIAL（与 deriveExtendedArgs 的真假回落口径一致）：
- * - 调用方显式传齐关键 args → LIVE（真实显式输入）；
- * - 否则有对应真对象集（非空）派生 → LIVE；含魔数常数兜底（quote/credit/maintenance/combo）→ PARTIAL；
- * - 无真数据源、纯硬编码/默认（yield_diagnosis 写死良率序列·quarterly_gap 默认 options）→ MOCK。
- * 前端据此标徽章；与产能/风险已有 dataMode 范式同口径。
- */
-export function extendedDataMode(
-  c: SolverContext,
-  solverKey: string,
-  args: Record<string, unknown>,
-): "LIVE" | "MOCK" | "PARTIAL" {
-  const has = (k: string) => args[k] !== undefined;
-  const ne = (arr?: unknown[]) => Array.isArray(arr) && arr.length > 0;
-  const mats = c.materials ?? [];
-  switch (solverKey) {
-    // 纯硬编码/默认兜底（A2/A4）——无真数据源
-    case "yield_diagnosis":
-      return has("series") ? "LIVE" : "MOCK"; // 默认 series 写死 0.95/0.85（A2）
-    case "quarterly_gap":
-      return has("gap") || has("options") ? "LIVE" : "MOCK"; // 默认纯参数/默认 options
-    // 真对象 + 魔数常数混合（A3/A4）
-    case "quote_margin":
-      return has("bom") ? "LIVE" : ne(mats) ? "PARTIAL" : "MOCK"; // bom 真、price/mfgRate/logistics/floor 魔数
-    case "credit_exposure":
-      return has("creditLimit") ? "LIVE" : ne(c.customers) ? "PARTIAL" : "MOCK"; // creditLimit 可兜底 5000
-    case "maintenance_stagger":
-      return has("bases") ? "LIVE" : ne(c.bases) ? "PARTIAL" : "MOCK"; // bases 真、loadByWeek 写死（A4）
-    case "countermeasure_combo":
-      return has("levers") ? "LIVE" : "PARTIAL"; // 默认 levers 启发系数
-    case "carbon_footprint":
-      if (has("materials")) return "LIVE";
-      return ne(mats) ? (ne(c.energyMeters) ? "LIVE" : "PARTIAL") : "MOCK";
-    // 全真对象派生——对象非空即 LIVE，否则无源 MOCK
-    case "cert_schedule":
-      return has("items") || ne(c.certifications) ? "LIVE" : "MOCK";
-    case "kit_readiness":
-      return has("orders") || (ne(c.orders) && ne(mats)) ? "LIVE" : "MOCK";
-    case "lta_gap":
-      return has("monthDemand") || ne(mats) ? "LIVE" : "MOCK";
-    case "inventory_optimize":
-      return has("materials") || ne(mats) ? "LIVE" : "MOCK";
-    case "changeover_sequence":
-      return has("orders") || (ne(c.orders) && ne(c.changeoverMatrix)) ? "LIVE" : "MOCK";
-    case "outsourcing_split":
-      // RISK-TRAJECTORY-DEFAKE（G2·治本）：显式传 gap=LIVE；仅有真订单但 gap 由默认分数估算=PARTIAL（诚实标估算·
-      // 非 LIVE 冒充真缺口）；无订单=MOCK。
-      return has("gap") ? "LIVE" : ne(c.orders) ? "PARTIAL" : "MOCK";
-    case "mitigation_select":
-      return c.params?.risk?.mitigations ? "LIVE" : "MOCK"; // canonical 方案库（真）
-    default:
-      return "MOCK";
-  }
-}
-
-/**
- * RISK-TRAJECTORY-DEFAKE（G2/G3·治本·命名而非匿名内联）：以下为**合成默认输入**的命名常量。
- * 仅当调用方未显式传 args 时用于兜底演示；对应 extendedDataMode 分别标 PARTIAL（估算缺口）/ MOCK（合成良率序列），
+ * RISK-TRAJECTORY-DEFAKE（G2/G3·治本·命名而非匿名内联）：**合成默认输入**的命名常量。
+ * 仅当调用方未显式传 args 时用于兜底演示；对应 dataMode 分别标 PARTIAL（估算缺口）/ MOCK（合成良率序列），
  * **不冒充真源**。此前 `totalDemand*0.15` 匿名内联、良率断点标 `source:"MES"` 谎称来自制造执行系统（假源归因）。
  */
 const DEFAULT_GAP_FRACTION = 0.15; // 合成默认缺口 = 需求总量 × 该分数（PARTIAL·明标估算·非真实缺口测量）
 const SYNTHETIC_YIELD = { len: 40, before: 0.95, after: 0.85, stepDay: 33 } as const; // 合成良率演示序列（MOCK）
 
+/** descriptor 内公用小工具（消除原三 switch 各自重复的 has/ne/props 局部）。 */
+const props = (o: ObjectInstance) => o.props as Record<string, unknown>;
+const argHas = (args: Record<string, unknown>, k: string) => args[k] !== undefined;
+const nonEmpty = (arr?: unknown[]) => Array.isArray(arr) && arr.length > 0;
+
 /**
- * E6b：当场景仅给 presetContext 槽位、未显式传齐 args 时，从对象数据（SolverContext §7 扩展）
- * 推导各求解器的输入 args（已传的 args 优先保留）。让 20 场景从 presetContext 端到端出结果。
+ * HARDCODE-DISPATCH-REGISTRY 治本（审计 γ2）· 扩展求解器**单一登记**（每 solver 一条 {fn, dataMode, deriveArgs}）。
+ *
+ * 此前 13+1 扩展求解器由**三张同键平行结构**驱动（`EXTENDED_SOLVERS` 分派 map + `extendedDataMode` switch +
+ * `deriveExtendedArgs` switch）——加一个扩展求解器要同改三处、易漂移。改为 registry-of-descriptors 后，
+ * 三个导出（`EXTENDED_SOLVERS`/`extendedDataMode`/`deriveExtendedArgs`）**从本登记派生**（迭代而非查平行表）。
+ * 语义零变（R6）：每条 dataMode/deriveArgs 即原 switch 对应 case 的逐字迁移；drift 由 solvers-extended 测 + solver-registry 测守。
+ *
+ *  - `fn`：确定性求解体（args→输出，见上方 S06–S20 各函数）。
+ *  - `dataMode`：诚实位判定（据「真对象 vs 魔数/硬编码兜底」置 LIVE/MOCK/PARTIAL；未登记 key → MOCK）。
+ *  - `deriveArgs`：E6b 从对象数据补全 args（presetContext 端到端；已传 args 优先；未登记 key → 原样 args）。
  */
-export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Record<string, unknown>): Record<string, unknown> {
-  const props = (o: ObjectInstance) => o.props as Record<string, unknown>;
-  const mats = (c.materials ?? []).map(props);
-  const has = (k: string) => args[k] !== undefined;
-  switch (solverKey) {
-    case "cert_schedule":
-      if (has("items")) return args;
-      return { engineerGroups: 3, ...args, items: (c.certifications ?? []).map(props).map((x) => ({ model: str(x.modelId), line: str(x.lineId), status: str(x.status), certHours: num(x.certHours, 80), gapContribution: num(x.gapContribution) })) };
-    case "kit_readiness": {
-      if (has("orders")) return args;
-      const orders = (c.orders ?? []).slice(0, 8).map((o, i) => ({
-        orderId: str(props(o).so, `O${i}`),
-        qty: num(props(o).qty, 100),
-        startDay: 7,
-        materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), onHand: num(m.onHand), inTransit: [{ qty: num(m.inTransit), etaDay: num(m.leadTime, 10) }], bomUnit: num(m.bomUnit, 1) })),
-      }));
-      return { fromDay: 1, toDay: 14, ...args, orders };
-    }
-    case "lta_gap": {
-      if (has("monthDemand")) return args;
-      const m = mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0] ?? {};
-      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, 30), ...args };
-    }
-    case "inventory_optimize": {
-      if (has("materials")) return args;
-      const idleByMat = new Map<string, number>();
-      for (const b of (c.materialBatches ?? []).map(props)) idleByMat.set(str(b.matId), Math.max(idleByMat.get(str(b.matId)) ?? 0, num(b.idleDays)));
-      return { ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
-    }
-    case "changeover_sequence": {
-      if (has("orders")) return args;
-      const matrix: Record<string, Record<string, number>> = {};
-      for (const e of (c.changeoverMatrix ?? []).map(props)) {
-        (matrix[str(e.fromModel)] ??= {})[str(e.toModel)] = num(e.minutes);
-      }
-      const orders = (c.orders ?? []).slice(0, 6).map((o, i) => ({ orderId: str(props(o).so, `o${i}`), modelId: str(props(o).model), dueDay: num(props(o).dueDay, i) }));
-      return { lineId: str(args.lineId, "L1"), ...args, orders, matrix, current: orders[0]?.modelId };
-    }
-    case "outsourcing_split": {
-      const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
-      // G2：gap 未显式传 → 按 DEFAULT_GAP_FRACTION 估算（dataMode=PARTIAL·诚实标估算，非真实缺口测量）。
-      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), totalDemand, ...args };
-    }
-    case "quote_margin": {
-      if (has("bom")) return args;
-      return { price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
-    }
-    case "credit_exposure": {
-      if (has("creditLimit")) return args;
-      const cust = (c.customers ?? []).map(props).find((x) => str(x.custName) === str(args.custName)) ?? (c.customers ?? []).map(props)[0] ?? {};
-      const overdue = (c.arInvoices ?? []).map(props).filter((iv) => str(iv.custName) === str(cust.custName) && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
-      return { custName: str(cust.custName, str(args.custName)), creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue, ...args };
-    }
-    case "carbon_footprint": {
-      if (has("materials")) return args;
-      const em = (c.energyMeters ?? []).map(props)[0];
-      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
-    }
-    case "maintenance_stagger": {
-      if (has("bases")) return args;
-      const bases = (c.bases ?? []).map((b, i) => ({ base: str(props(b).name, `B${i}`), group: "g1", maintWeek: 10 + (i % 3), loadByWeek: { "6": 20, "7": 5, "10": 80, "11": 8, "12": 12 } }));
-      return { peakWeeks: [10, 11, 12], ...args, bases };
-    }
-    case "yield_diagnosis": {
-      if (has("series")) return args;
-      // G3（治本·删假源归因）：无真实良率序列 → 合成演示序列（extendedDataMode=MOCK·前端合成徽章）。断点事件
-      // 此前标 `source:"MES"` 谎称来自制造执行系统实测（假源）→ 改标 `source:"SYNTHETIC"` + synthetic:true（诚实合成）。
-      const sy = SYNTHETIC_YIELD;
-      const series = Array.from({ length: sy.len }, (_, d) => ({ day: d + 1, yield: d < sy.stepDay ? sy.before : sy.after }));
-      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), ...args, series, synthetic: true, events: [{ day: sy.stepDay, kind: "换批", source: "SYNTHETIC", synthetic: true }] };
-    }
-    case "quarterly_gap":
-      return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args };
-    case "countermeasure_combo": {
-      const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
-      // G2：默认 gap 同口径估算（dataModeFor countermeasure_combo 无 levers 时已标 PARTIAL）。
-      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), ...args };
-    }
-    case "mitigation_select": {
-      // WO-KILL-MOCK-RED（治本）：紧迫度从**真**风险张力（liveTightness：真 OEE/利用率/良率 或真需求-产能缺口）取，
-      // 无真源则**不注入**（不再硬编码 85）——mitigationSelect 无真紧迫度时按方案性价比排序并诚实标"无紧迫度数据"。
+export interface ExtendedSolverDescriptor {
+  readonly fn: (args: Record<string, unknown>) => Record<string, unknown>;
+  readonly dataMode: (c: SolverContext, args: Record<string, unknown>) => "LIVE" | "MOCK" | "PARTIAL";
+  readonly deriveArgs: (c: SolverContext, args: Record<string, unknown>) => Record<string, unknown>;
+}
+
+export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
+  mitigation_select: {
+    fn: mitigationSelect,
+    dataMode: (c) => (c.params?.risk?.mitigations ? "LIVE" : "MOCK"), // canonical 方案库（真）
+    deriveArgs: (c, args) => {
+      // WO-KILL-MOCK-RED（治本）：紧迫度从**真**风险张力（liveTightness）取，无真源则**不注入**（不再硬编码 85）。
       const factor = str(args.factor);
       const bName = str(args.baseName);
       const base = (c.bases ?? []).find((b) => str(b.props.name) === bName || str(b.props.baseId) === bName);
@@ -572,8 +442,167 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       const tightInj = rt && rt.live && rt.value !== null ? { tightness: rt.value } : {};
       // canonical 方案库（params.risk.mitigations）→ 对全部 7 个风险因子可用；args 最后 spread（调用方显式紧迫度仍优先）。
       return { ...tightInj, mitigations: c.params?.risk?.mitigations, ...args };
-    }
-    default:
-      return args;
-  }
+    },
+  },
+  cert_schedule: {
+    fn: certSchedule,
+    dataMode: (c, args) => (argHas(args, "items") || nonEmpty(c.certifications) ? "LIVE" : "MOCK"),
+    deriveArgs: (c, args) => {
+      if (argHas(args, "items")) return args;
+      return { engineerGroups: 3, ...args, items: (c.certifications ?? []).map(props).map((x) => ({ model: str(x.modelId), line: str(x.lineId), status: str(x.status), certHours: num(x.certHours, 80), gapContribution: num(x.gapContribution) })) };
+    },
+  },
+  kit_readiness: {
+    fn: kitReadiness,
+    dataMode: (c, args) => (argHas(args, "orders") || (nonEmpty(c.orders) && nonEmpty(c.materials)) ? "LIVE" : "MOCK"),
+    deriveArgs: (c, args) => {
+      if (argHas(args, "orders")) return args;
+      const mats = (c.materials ?? []).map(props);
+      const orders = (c.orders ?? []).slice(0, 8).map((o, i) => ({
+        orderId: str(props(o).so, `O${i}`),
+        qty: num(props(o).qty, 100),
+        startDay: 7,
+        materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), onHand: num(m.onHand), inTransit: [{ qty: num(m.inTransit), etaDay: num(m.leadTime, 10) }], bomUnit: num(m.bomUnit, 1) })),
+      }));
+      return { fromDay: 1, toDay: 14, ...args, orders };
+    },
+  },
+  lta_gap: {
+    fn: ltaGap,
+    dataMode: (c, args) => (argHas(args, "monthDemand") || nonEmpty(c.materials) ? "LIVE" : "MOCK"),
+    deriveArgs: (c, args) => {
+      if (argHas(args, "monthDemand")) return args;
+      const mats = (c.materials ?? []).map(props);
+      const m = mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0] ?? {};
+      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, 30), ...args };
+    },
+  },
+  inventory_optimize: {
+    fn: inventoryOptimize,
+    dataMode: (c, args) => (argHas(args, "materials") || nonEmpty(c.materials) ? "LIVE" : "MOCK"),
+    deriveArgs: (c, args) => {
+      if (argHas(args, "materials")) return args;
+      const mats = (c.materials ?? []).map(props);
+      const idleByMat = new Map<string, number>();
+      for (const b of (c.materialBatches ?? []).map(props)) idleByMat.set(str(b.matId), Math.max(idleByMat.get(str(b.matId)) ?? 0, num(b.idleDays)));
+      return { ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
+    },
+  },
+  changeover_sequence: {
+    fn: changeoverSequence,
+    dataMode: (c, args) => (argHas(args, "orders") || (nonEmpty(c.orders) && nonEmpty(c.changeoverMatrix)) ? "LIVE" : "MOCK"),
+    deriveArgs: (c, args) => {
+      if (argHas(args, "orders")) return args;
+      const matrix: Record<string, Record<string, number>> = {};
+      for (const e of (c.changeoverMatrix ?? []).map(props)) {
+        (matrix[str(e.fromModel)] ??= {})[str(e.toModel)] = num(e.minutes);
+      }
+      const orders = (c.orders ?? []).slice(0, 6).map((o, i) => ({ orderId: str(props(o).so, `o${i}`), modelId: str(props(o).model), dueDay: num(props(o).dueDay, i) }));
+      return { lineId: str(args.lineId, "L1"), ...args, orders, matrix, current: orders[0]?.modelId };
+    },
+  },
+  yield_diagnosis: {
+    fn: yieldDiagnosis,
+    dataMode: (c, args) => (argHas(args, "series") ? "LIVE" : "MOCK"), // 默认 series 写死 0.95/0.85（A2）
+    deriveArgs: (c, args) => {
+      if (argHas(args, "series")) return args;
+      // G3（治本·删假源归因）：无真实良率序列 → 合成演示序列（dataMode=MOCK·前端合成徽章）。断点事件此前标
+      // `source:"MES"` 谎称来自制造执行系统实测（假源）→ 改标 `source:"SYNTHETIC"` + synthetic:true（诚实合成）。
+      const sy = SYNTHETIC_YIELD;
+      const series = Array.from({ length: sy.len }, (_, d) => ({ day: d + 1, yield: d < sy.stepDay ? sy.before : sy.after }));
+      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), ...args, series, synthetic: true, events: [{ day: sy.stepDay, kind: "换批", source: "SYNTHETIC", synthetic: true }] };
+    },
+  },
+  maintenance_stagger: {
+    fn: maintenanceStagger,
+    dataMode: (c, args) => (argHas(args, "bases") ? "LIVE" : nonEmpty(c.bases) ? "PARTIAL" : "MOCK"), // bases 真、loadByWeek 写死（A4）
+    deriveArgs: (c, args) => {
+      if (argHas(args, "bases")) return args;
+      const bases = (c.bases ?? []).map((b, i) => ({ base: str(props(b).name, `B${i}`), group: "g1", maintWeek: 10 + (i % 3), loadByWeek: { "6": 20, "7": 5, "10": 80, "11": 8, "12": 12 } }));
+      return { peakWeeks: [10, 11, 12], ...args, bases };
+    },
+  },
+  outsourcing_split: {
+    fn: outsourcingSplit,
+    // RISK-TRAJECTORY-DEFAKE（G2·治本）：显式传 gap=LIVE；仅有真订单但 gap 由默认分数估算=PARTIAL（诚实标估算·
+    // 非 LIVE 冒充真缺口）；无订单=MOCK。
+    dataMode: (c, args) => (argHas(args, "gap") ? "LIVE" : nonEmpty(c.orders) ? "PARTIAL" : "MOCK"),
+    deriveArgs: (c, args) => {
+      const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
+      // G2：gap 未显式传 → 按 DEFAULT_GAP_FRACTION 估算（dataMode=PARTIAL·诚实标估算，非真实缺口测量）。
+      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), totalDemand, ...args };
+    },
+  },
+  quote_margin: {
+    fn: quoteMargin,
+    dataMode: (c, args) => (argHas(args, "bom") ? "LIVE" : nonEmpty(c.materials) ? "PARTIAL" : "MOCK"), // bom 真、price/mfgRate/logistics/floor 魔数
+    deriveArgs: (c, args) => {
+      if (argHas(args, "bom")) return args;
+      const mats = (c.materials ?? []).map(props);
+      return { price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
+    },
+  },
+  credit_exposure: {
+    fn: creditExposure,
+    dataMode: (c, args) => (argHas(args, "creditLimit") ? "LIVE" : nonEmpty(c.customers) ? "PARTIAL" : "MOCK"), // creditLimit 可兜底 5000
+    deriveArgs: (c, args) => {
+      if (argHas(args, "creditLimit")) return args;
+      const cust = (c.customers ?? []).map(props).find((x) => str(x.custName) === str(args.custName)) ?? (c.customers ?? []).map(props)[0] ?? {};
+      const overdue = (c.arInvoices ?? []).map(props).filter((iv) => str(iv.custName) === str(cust.custName) && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
+      return { custName: str(cust.custName, str(args.custName)), creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue, ...args };
+    },
+  },
+  quarterly_gap: {
+    fn: quarterlyGap,
+    dataMode: (c, args) => (argHas(args, "gap") || argHas(args, "options") ? "LIVE" : "MOCK"), // 默认纯参数/默认 options
+    deriveArgs: (c, args) => ({ quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args }),
+  },
+  carbon_footprint: {
+    fn: carbonFootprint,
+    dataMode: (c, args) => {
+      if (argHas(args, "materials")) return "LIVE";
+      return nonEmpty(c.materials) ? (nonEmpty(c.energyMeters) ? "LIVE" : "PARTIAL") : "MOCK";
+    },
+    deriveArgs: (c, args) => {
+      if (argHas(args, "materials")) return args;
+      const mats = (c.materials ?? []).map(props);
+      const em = (c.energyMeters ?? []).map(props)[0];
+      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
+    },
+  },
+  countermeasure_combo: {
+    fn: countermeasureCombo,
+    dataMode: (c, args) => (argHas(args, "levers") ? "LIVE" : "PARTIAL"), // 默认 levers 启发系数
+    deriveArgs: (c, args) => {
+      const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
+      // G2：默认 gap 同口径估算（dataMode 无 levers 时已标 PARTIAL）。
+      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), ...args };
+    },
+  },
+};
+
+/** 13+1 新增求解器分派 map（service.compute 扩展分支）——从 EXTENDED_REGISTRY 派生（单一来源·防漂移）。 */
+export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) => Record<string, unknown>> =
+  Object.fromEntries(Object.entries(EXTENDED_REGISTRY).map(([k, d]) => [k, d.fn]));
+
+/**
+ * A0（空洞数据冰山结构性根因修）· 扩展求解器诚实位——**派生自** `EXTENDED_REGISTRY[key].dataMode`
+ * （原 switch 各 case 已逐字迁入各 descriptor）。据「真对象 vs 魔数/硬编码兜底」确定性判 LIVE/MOCK/PARTIAL；
+ * 未登记 key → MOCK（诚实兜底）。前端据此标徽章；与产能/风险已有 dataMode 范式同口径。
+ */
+export function extendedDataMode(
+  c: SolverContext,
+  solverKey: string,
+  args: Record<string, unknown>,
+): "LIVE" | "MOCK" | "PARTIAL" {
+  return EXTENDED_REGISTRY[solverKey]?.dataMode(c, args) ?? "MOCK";
+}
+
+/**
+ * E6b：当场景仅给 presetContext 槽位、未显式传齐 args 时，从对象数据（SolverContext §7 扩展）推导各求解器
+ * 输入 args（已传 args 优先保留）。**派生自** `EXTENDED_REGISTRY[key].deriveArgs`（原 switch 各 case 已逐字迁入）；
+ * 未登记 key → 原样返回 args。让 20 场景从 presetContext 端到端出结果。
+ */
+export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Record<string, unknown>): Record<string, unknown> {
+  return EXTENDED_REGISTRY[solverKey]?.deriveArgs(c, args) ?? args;
 }

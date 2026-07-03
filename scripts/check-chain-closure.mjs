@@ -19,10 +19,14 @@ const WORKFLOW_SOLVERS = new Set(["sop_balance"]); // 工作流非注册求解�
 const read = (p) => (existsSync(p) ? readFileSync(p, "utf8") : null);
 const fail = [];
 
-const slv = read(SOLVERS_SRC);
-if (!slv) { console.error(`✗ 缺少 ${SOLVERS_SRC}`); process.exit(1); }
-const block = slv.match(/SOLVER_KEYS\s*=\s*\[([\s\S]*?)\]/);
-const SOLVER_KEYS = new Set(block ? [...block[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]) : []);
+// HARDCODE-DISPATCH-REGISTRY：SOLVER_KEYS / SOLVER_OUTPUT_SHAPES 现由 `solvers/solver-registry.ts SOLVER_REGISTRY`
+// 派生（不再是 service.ts 源码字面数组）——从编译产物读运行期真值（gates 链 `pnpm -r build` 在前·同
+// `no-silent-mock:check` / `datadep-manifest:check` 门范式，避免静态正则耦合字面表格式）。
+const mod = await import("../apps/datacore/dist/solvers/service.js").catch((e) => {
+  console.error(`✗ chain:check 导入 datacore dist 失败（先 pnpm --filter datacore build）：${e.message}`);
+  process.exit(1);
+});
+const SOLVER_KEYS = new Set(mod.SOLVER_KEYS);
 
 const cat = read(CATALOG_SRC);
 if (!cat) { console.error(`✗ 缺少 ${CATALOG_SRC}`); process.exit(1); }
@@ -44,8 +48,7 @@ console.log(`· 场景卡：${cards.length} 张；其中工作流求解器 ${car
 console.log(`· 场景↔求解器接通：${cards.filter((c) => WORKFLOW_SOLVERS.has(c.solver) || SOLVER_KEYS.has(c.solver)).length}/${cards.length}`);
 
 // R11-SHAPE 覆盖门：每个注册求解器必须声明输出形状（BuildPlan.renderBindings 据此挡 G-2 跨服务形状断）。
-const shapeBlock = slv.match(/SOLVER_OUTPUT_SHAPES[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
-const shapeKeys = new Set(shapeBlock ? [...shapeBlock[1].matchAll(/^\s*([a-z_]+):/gm)].map((m) => m[1]) : []);
+const shapeKeys = new Set(Object.keys(mod.SOLVER_OUTPUT_SHAPES ?? {}));
 const missingShape = [...SOLVER_KEYS].filter((k) => !shapeKeys.has(k));
 for (const k of missingShape) fail.push(`求解器 "${k}" 已注册但未声明输出形状（SOLVER_OUTPUT_SHAPES）→ 渲染契约无从校验(SHAPE 盲区)`);
 console.log(`· R11-SHAPE 输出形状已声明：${shapeKeys.size}/${SOLVER_KEYS.size} 注册求解器`);

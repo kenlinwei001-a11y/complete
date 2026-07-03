@@ -10,7 +10,10 @@
 
 ## 2. 五簇（confirmed·代理读码 + 审核方复核锚点）
 
-### 簇 Hγ · 派发/路由硬编码（**架构根因**·"换行业就得改码"）——13 处
+### 簇 Hγ · 派发/路由硬编码（**架构根因**·"换行业就得改码"）——13 处 → 求解器派发簇 ✅ 已闭（HARDCODE-DISPATCH-REGISTRY）
+
+> **✅ 闭环（HARDCODE-DISPATCH-REGISTRY·求解器派发/registry 簇 γ1/γ2/γ4 + γ3 结构先行）**：求解器派发的 **~7 张平行硬编码表**（γ1 `invokeRaw` 23 臂 `if(solverKey===)` 链 + `compute` switch · γ2 extended.ts 三联 `EXTENDED_SOLVERS` map+`extendedDataMode` switch+`deriveExtendedArgs` switch · γ4 `SOLVER_KEYS`+`SOLVER_OUTPUT_SHAPES`+`LIVE_DEFAULT_SOLVERS`+`A6_READOUT_SOLVERS`）→ 收口为**单一 registry-of-descriptors**：新增 `solvers/solver-registry.ts`（`SOLVER_REGISTRY` 每求解器一条 `{key,route,outputShape,a6Readout?,liveDefault?}`·参照 `datadep-context.ts CONTEXT_ROLES` 纯声明式范式·R14 零业务常数）；`SOLVER_KEYS`/`SOLVER_OUTPUT_SHAPES`/`LIVE_DEFAULT_SOLVERS`/`A6_READOUT_SOLVERS` 全部**从 registry 派生**（不再平行字面表）；`invokeRaw` 由 `route==="graph"` 驱动派发（迭代 registry·替代 23 臂 if 链），graph 求解器 key→私有实现的唯一绑定收口于 `graphHandlers`（**构造期断言其键集 == registry graph 集**·增删须同步两处否则 fail-fast·防漂移 teeth）；extended.ts 三联收口为 `EXTENDED_REGISTRY` 每 solver 一条 `{fn,dataMode,deriveArgs}`，三个导出从其派生。**语义零变（R6）**：全量 datacore 测试**断言不改**通过（字节一致证）；teeth `test/solver-registry.test.ts`（冻结 47 键顺序/route/flag 基线 + 派生一致性 + 三处 extended 键集不漂移）。**γ3（industry→template·结构先行）**：runJob 散落 6 处 `input.industry==="battery-manufacturing"` 平行判定收口为**一处命名事实** `usesBatteryPipeline`（语义零变）；full IndustryTemplate-record 驱动（消除电池 bespoke 特例·换行业不改码）属 **HARDCODE-BIZ-ENTITY** 后续（R14 禁「battery-manufacturing」字面进跨行业 registry 骨架·届时 battery 亦走 `instantiateGeneric`+模板数据）。**未闭（本 WO 范围外·其它文件/P2-P3）**：γ5 `ruleEvalPayload` 投影（service.ts·可后续入 descriptor.projection）· γ6 risk liveTightness · γ7 agentcore FEATURE_REGISTRY · γ8 frontend VIEW_ALIAS · γ9 graphmeta SOLVER_GRAPH（可后续从 registry descriptor 派生）· γ10 SCENARIO_CATALOG · γ11 industry→entitlement。
+
 | # | file:line | 硬编码 | 应由 | 严重 |
 |---|---|---|---|---|
 | γ1 | `datacore/solvers/service.ts:2085` | 求解器分派 ~25臂 `if(solverKey===)`链(invokeRaw)+并行`switch`(compute) | registry(solverKey→handler 表驱动) | **P1** |
@@ -78,7 +81,7 @@
 ## 3. WO 派发（5 grouped·按簇根因治本）
 | WO | 覆盖簇 | 根因治本 |
 |---|---|---|
-| **HARDCODE-DISPATCH-REGISTRY（新·P1·架构根因）** | Hγ | 求解器/扩展solver/industry→template 由 ~7 并行硬编码表 → **registry descriptor 驱动**(solverKey→{fn,shape,dataMode,argDeriv,ruleFieldMap,target,ruleRefs}一处)+IndustryTemplate record 选管线。加门 `dispatch-registry:check`(禁 solverKey switch 增长)。 |
+| **HARDCODE-DISPATCH-REGISTRY（新·P1·架构根因）✅ 求解器派发簇已闭** | Hγ | ✅ 求解器/扩展solver 的 ~7 并行硬编码表 → **单一 `SOLVER_REGISTRY` descriptor 驱动**（`solvers/solver-registry.ts`·每 solver 一条 `{key,route,outputShape,a6Readout,liveDefault}`）；`SOLVER_KEYS`/`SOLVER_OUTPUT_SHAPES`/`LIVE_DEFAULT`/`A6_READOUT` 派生·`invokeRaw` 迭代 registry 派发（graphHandlers 构造期断言键集==registry graph 集·防漂移 teeth）·extended.ts 收口 `EXTENDED_REGISTRY{fn,dataMode,deriveArgs}`。语义零变（测试断言不改·`solver-registry.test`）。**γ3 industry→template 结构先行**（6 处判定→`usesBatteryPipeline` 一处），full IndustryTemplate-record 归 HARDCODE-BIZ-ENTITY。后续可继续把 γ5 ruleEvalPayload projection / γ9 SOLVER_GRAPH 收进 descriptor（门 `dispatch-registry:check` 待补）。 |
 | **HARDCODE-VIEW-LAYOUT（新·P1·8a收口）** | Hβ | 9视图 KPI/列/step/DAG 结构 → ViewConfig.layout 驱动(SandboxView 金标准)。4 P1(SopBalance/OrderChain×2/ProjectSim DAG)先行。 |
 | **HARDCODE-SOLVER-PARAMS（新·P1）** | Hε | extended.ts 13 solver + risk/plan 阈值 → SolverParam/rule(C-系列)·前端阈值消费后端权威不重写。加门 `solver-no-inline-threshold:check`。 |
 | **HARDCODE-CLOCK-DERIVE（新·P2·并入LAUNCHER-GROUNDED）** | Hδ | 全"当前"月/季/日由 sim-clock 派生·非硬编码;livedin 叙事日期改 t0 偏移。δ1/δ2 已在 LAUNCHER-GROUNDED。 |
