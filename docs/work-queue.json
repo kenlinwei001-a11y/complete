@@ -2956,6 +2956,44 @@
           }
         ]
       }
+    },
+    {
+      "id": "AGENT-UNIVERSAL-FALLBACK",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "INTENT-MATERIALIZE-BINDING-COMPLETE"
+      ],
+      "blockReason": "",
+      "doc": "docs/PRD-agent-universal-fallback.md",
+      "title": "全域探索智能体 agt_universal(对话入口超级兜底·一等可配置·全工具面含MCP)",
+      "note": "用户定:每个人机对话入口配超级智能体——命中预设走预设workflow/agent;未命中则该agent强悍调用所有MCP/数据源(基于账号权限)/本体切片自主推演;判断『系统缺乏这个超级agent』。审核方核实:骨架九成已有——分派树在(preset→路径A;scene.defaultAgentId→13场景agent;再命不中→通用path-B)·agent契约已支持全工具面(AgentToolRef=BUILTIN|MCP{mcpConfigId,toolFilter}|WORKFLOW·contracts/agentcore.ts:9)且运行时已兑现MCP(engine.ts:102/115展开→agent/loop.ts:413/tools/executor.ts:198真调mcp.callTool·credentialRef)·BUILTIN 27工具已广(resolve_slice本体切片/query_objects/invoke_solver/evaluate_rules/search_knowledge/query_system_ontology/sim_*/fill_data等)·账号权限已内建(全工具OBO用户JWT→A6行级+Entitlement)·无LLM诚实降级(FDE实证)。真缺:D1兜底终点是代码写死白名单 whitelist∩{READ,COMPUTE}+create_action_draft(orchestrator.ts:772)非一等可配置agent;D2该白名单不含MCP/WORKFLOW-as-tool→『调用所有MCP』到不了兜底;D3无场景agent的入口落弱兜底。治:①出厂幂等播种 agt_universal(PUBLISHED·R14):tools=全BUILTIN+每已发布MCP配置一条{kind:MCP}(reconcile随MCP增删同步)+已发布workflow各一条+全skill可load;scopeDeclaration全域;systemPrompt全域探索方法论(先discover/resolve_slice接地再查数再推演·数字只引工具真值);②runPathB终点重接:preset→A;scene agent保留(专属>通用);否则→agt_universal(替写死白名单);qos.agent-fallback门控不变;③护栏随行:fill三工具受FILL-BOUNDARY三闸·写仅create_action_draft(R4)·maxToolCalls/llm-budgets限额·OBO/审计不变·无LLM仍诚实降级(确定性地板在前);④Agents页可见可编。整页PRD docs/PRD-agent-universal-fallback.md含《本体引用与影响》。道A(orchestrator/seed与INTENT-MATERIALIZE同文件→dep串行)。回写母体sys.orch.query_to_answer兜底终段+§8 G-3+ontology:slices。",
+      "acceptance": {
+        "goal": "人机对话兜底终点从代码写死白名单升级为一等可配置全工具面agent:命中预设走预设;未命中走agt_universal(全BUILTIN+全已发布MCP+workflow-as-tool+全skill·OBO账号权限·护栏随行);Agents页可见可编;无LLM诚实降级不变。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "scene-agent-config:check扩:兜底终点agt_universal存在且PUBLISHED·tools含全BUILTIN+全已发布MCP配置引用·MCP配置增删→reconcile后门仍绿;green→red自证(退回写死白名单→红)。"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "命不中预设且无场景agent→decision-trace记agentId=agt_universal;MCP工具经agent loop真调(mock MCP server断言callTool);OBO:低权账号→工具返回A6行级过滤后数据;fill工具仍受FILL-BOUNDARY闸(未过闸拒)。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "env-gated真LLM:对话坞novel问题→agt_universal多步自主轨迹(discover→resolve_slice→query_objects→invoke_solver→final_answer)在推演过程DAG逐节点可见·答案数字==工具真值逐值;无LLM环境→诚实降级渲染不变(对照dock-q-novel.png)。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "四包build/test绿;回写母体sys.orch.query_to_answer兜底终段+§8 G-3;pnpm ontology:slices重生成check绿。"
+          }
+        ]
+      }
     }
   ]
 }
