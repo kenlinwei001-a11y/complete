@@ -2282,7 +2282,7 @@
     {
       "id": "META-SYNC-CWD-FIX",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -2519,7 +2519,7 @@
     {
       "id": "AGENTCORE-TRACE-LINEAGE",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",

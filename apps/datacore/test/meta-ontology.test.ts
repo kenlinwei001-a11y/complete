@@ -7,7 +7,8 @@ import { parseMetaOntology } from "../src/meta/parse.js";
 import { resolveDocsDir } from "../src/meta/service.js";
 import { makeApp, ADMIN, debugUser } from "./helpers.js";
 
-const DOCS = join(process.cwd(), "..", "..", "docs");
+// cwd 无关：与产品同源 resolveDocsDir()（META-SYNC-CWD-FIX 同病同治·从仓根 --root 跑不再 ENOENT 假红）
+const DOCS = resolveDocsDir();
 async function sources() {
   return {
     ontologyMd: await readFile(join(DOCS, "SYSTEM-ONTOLOGY.md"), "utf8"),
