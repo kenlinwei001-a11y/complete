@@ -54,6 +54,27 @@ export type GapReport = z.infer<typeof GapReportSchema>;
 export const ScaffoldDraftSchema = z.object({ kind: z.string(), key: z.string() });
 export type ScaffoldDraft = z.infer<typeof ScaffoldDraftSchema>;
 
+/**
+ * DF.9 精确补数请求（真人正门）。FILL-BOUNDARY-GUARDRAIL · B3 扩描述字段：
+ * 词表外**新实体/新类型**越界 → HARD 化拒自动合成，要求人工输入「数据描述」（字段/值域/样例）→
+ * R4 审批后物化为**值域模板**（可追溯声明·非黑箱放行）→ 才允许 SOFT 合成。
+ */
+export const DataRequestSchema = z.object({
+  typeKey: z.string(),
+  columns: z.array(z.string()),
+  entities: z.array(z.string()),
+  reason: z.string(),
+  /** B3：本请求涉词表外新实体（自动合成将发明不存在的业务实体）。 */
+  newEntity: z.boolean().optional(),
+  /** B3：须人工输入数据描述后经 R4 审批才可放行（非黑箱）。 */
+  descriptionRequired: z.boolean().optional(),
+  /** B3：要人工填写的描述项（字段清单/值域/样例）。 */
+  descriptionSchema: z.array(z.object({ field: z.string(), hint: z.string() })).optional(),
+  /** B3：人工填写的数据描述（R4 审批物化为值域模板的原料）。 */
+  description: z.string().optional(),
+});
+export type DataRequest = z.infer<typeof DataRequestSchema>;
+
 export const GrowthFillResultSchema = z.object({
   gapCode: GapCodeSchema,
   /** 补法（fill-data 真人正门 / scaffold 切片·规则·意图 / generic-inference 兜底 / ticket 需开发）。 */
@@ -66,21 +87,13 @@ export const GrowthFillResultSchema = z.object({
   scaffolded: z.array(ScaffoldDraftSchema).optional(),
   /** DF.9 真人正门 HARD/SOFT 分流：HARD 缺数据（涉真实业务实体，合成会造业务事实）→ 不静默合成、出精确 DataRequest 经真人正门补。 */
   fillMode: z.enum(["HARD", "SOFT"]).optional(),
-  dataRequest: z
-    .object({
-      typeKey: z.string(),
-      columns: z.array(z.string()),
-      entities: z.array(z.string()),
-      reason: z.string(),
-    })
-    .optional(),
+  dataRequest: DataRequestSchema.optional(),
   /** GROWTH-WORKLIST-HUMAN-FILL：该轮把「可补项」登记为在办项(WorklistItem)、**不自动补**——待人工在看板认领后点触发。 */
   needsHuman: z.boolean().optional(),
   /** 登记出的在办项 id（DATA_GAP 类）。 */
   worklistItemId: z.string().optional(),
 });
 export type GrowthFillResult = z.infer<typeof GrowthFillResultSchema>;
-export type DataRequest = NonNullable<GrowthFillResult["dataRequest"]>;
 
 export const GrowthRoundSchema = z.object({
   round: z.number().int(),

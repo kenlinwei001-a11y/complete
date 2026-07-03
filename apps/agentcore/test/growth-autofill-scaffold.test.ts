@@ -63,7 +63,7 @@ describe("A3 · POST /api/v1/growth/run 真补（NO_PLAN → DRAFT 骨架 + 工�
     const res = await t.app.inject({
       method: "POST", url: "/api/v1/growth/run",
       headers: { "x-debug-user": PLANNER, "content-type": "application/json" },
-      payload: { packageId: PKG, query: "独角兽产能能不能扛住双十一", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 3 },
+      payload: { packageId: PKG, query: "独角兽产能能不能扛住双十一", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 3, confirmed: true },
     });
     expect(res.statusCode).toBe(200);
     const report = res.json() as { terminalState: string; rounds: { fillApplied?: { gapCode: string; advanced: boolean; scaffolded?: { kind: string; key: string }[] } }[]; openTickets: { gapCode: string }[] };
@@ -96,7 +96,7 @@ describe("A3 · POST /api/v1/growth/run 真补（NO_PLAN → DRAFT 骨架 + 工�
     await t.app.inject({
       method: "POST", url: "/api/v1/growth/run",
       headers: { "x-debug-user": PLANNER, "content-type": "application/json" },
-      payload: { packageId: PKG, query: "讲个笑话", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 2 },
+      payload: { packageId: PKG, query: "讲个笑话", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 2, confirmed: true },
     });
     // 没有任何 plan_growth_* 被建（NO_INTENT 不在 SCAFFOLDABLE 集）
     const plans = await t.repos.plans.listByPackage(PKG);

@@ -16,7 +16,7 @@ describe("P5 · 成长工单施工闭环", () => {
     // ① 缺功能问句跑一轮 → 落 OPEN 工单
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn({ content: [text("探索"), toolUse("final_answer", { blocks: [{ type: "text", markdown: "探索" }], provenance: [] })] });
-    const run = await t.app.inject({ method: "POST", url: "/api/v1/growth/run", headers: H, payload: { packageId: "pkg_battery_manufacturing", query: "4680-NCM 能接吗？", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 1 } });
+    const run = await t.app.inject({ method: "POST", url: "/api/v1/growth/run", headers: H, payload: { packageId: "pkg_battery_manufacturing", query: "4680-NCM 能接吗？", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 1, confirmed: true } });
     expect(run.statusCode).toBe(200);
     const tickets = (await t.app.inject({ method: "GET", url: "/api/v1/growth/tickets", headers: H }).then((r) => r.json())) as { items: { id: string; status: string }[] };
     expect(tickets.items.length).toBeGreaterThan(0);
@@ -45,7 +45,7 @@ describe("P5 · 成长工单施工闭环", () => {
   it("verify 未通过（仍缺）→ 停 IN_REVIEW 回带新缺口", async () => {
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn({ content: [text("探索"), toolUse("final_answer", { blocks: [{ type: "text", markdown: "探索" }], provenance: [] })] });
-    await t.app.inject({ method: "POST", url: "/api/v1/growth/run", headers: H, payload: { packageId: "pkg_battery_manufacturing", query: "未知能力问句", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 1 } });
+    await t.app.inject({ method: "POST", url: "/api/v1/growth/run", headers: H, payload: { packageId: "pkg_battery_manufacturing", query: "未知能力问句", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 1, confirmed: true } });
     const id = ((await t.app.inject({ method: "GET", url: "/api/v1/growth/tickets", headers: H }).then((r) => r.json())) as { items: { id: string }[] }).items[0]!.id;
     // 验证时仍 out-of-catalog（施工没真生效）→ 不 VERIFIED
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });

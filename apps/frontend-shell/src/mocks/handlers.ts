@@ -1,6 +1,6 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import type { PlanStep, Scenario } from "@platform/contracts";
-import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion, BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import {
   ACCOUNTS,
   BASES,
@@ -810,7 +810,41 @@ export const handlers = [
   http.post("*/a/v1/objects/merges/:id/unmerge", () => HttpResponse.json({ ok: true })),
 
   http.post("*/b/v1/growth/run", async ({ request }) => {
-    const b = (await request.json()) as { query: string; maxRounds?: number };
+    const b = (await request.json()) as { query: string; maxRounds?: number; slotValues?: Record<string, unknown>; confirmed?: boolean; dataRequestDescription?: string };
+    // FILL-BOUNDARY-GUARDRAIL 镜像后端三闸（B1/B2/B3）：未 confirmed → 回边界判定不合成。
+    const bases = BASE_REGISTRY.map((x) => x.name);
+    const segs = SEG_REGISTRY.map((x) => x.seg);
+    const models = [...new Set(BASE_REGISTRY.map((x) => x.mainProduct))];
+    const slots = (b.slotValues ?? {}) as Record<string, unknown>;
+    const sv = (k: string) => (slots[k] == null || slots[k] === "" ? undefined : String(slots[k]));
+    // B3：provided 有界枚举值越界（不在注册表）→ HARD_BLOCK。
+    const boundedCheck: [string, string[]][] = [["base", bases], ["segment", segs], ["model", models]];
+    for (const [slot, allowed] of boundedCheck) {
+      const v = sv(slot);
+      if (v && !allowed.includes(v)) {
+        const dataRequest = { typeKey: "Object", columns: ["（待人工描述字段/值域/样例）"], entities: [v], reason: `「${v}」不在注册表既有${slot}枚举内——疑为词表外新实体；须人工输入数据描述 → R4 审批物化值域模板后才允许 SOFT 合成`, newEntity: true, descriptionRequired: true, descriptionSchema: [{ field: "fields", hint: "字段列表" }, { field: "valueDomain", hint: "值域/量纲" }, { field: "samples", hint: "样例行" }] };
+        if (b.dataRequestDescription) {
+          return HttpResponse.json({ boundaryGate: { outcome: "HARD_BLOCK", dataRequest: { ...dataRequest, description: b.dataRequestDescription }, reason: dataRequest.reason }, worklistItem: { id: "wli_b3", tenantId: "demo", fromQuestion: b.query, gapCode: "EMPTY_DATA", kind: "DATA_GAP", status: "OPEN", evidence: `[B3] ${dataRequest.reason}`, createdAt: "2026-07-03T00:00:00Z", updatedAt: "2026-07-03T00:00:00Z" } });
+        }
+        return HttpResponse.json({ boundaryGate: { outcome: "HARD_BLOCK", dataRequest, reason: dataRequest.reason } });
+      }
+    }
+    // B1：至少一个定位维度被 pin（provided 或问句命中枚举）→ 已接地；否则 CLARIFY。
+    const hit = (arr: string[]) => arr.some((v) => b.query.includes(v));
+    const grounded = !!(sv("base") || sv("segment") || sv("model")) || hit(bases) || hit(segs) || hit(models);
+    if (b.confirmed !== true) {
+      if (!grounded) {
+        return HttpResponse.json({ boundaryGate: { outcome: "CLARIFY", round: 1, maxRounds: 2, resolvedSlots: slots, reason: "问句未解析必需槽位（对象域/实体/时间窗）——先确定性澄清再补（第 1/2 次确认）", missingSlots: [
+          { name: "base", type: "enum", required: true, enumValues: bases, clarifyPrompt: "请指定基地（对象域）", description: "补数据的目标基地" },
+          { name: "segment", type: "enum", required: true, enumValues: segs, clarifyPrompt: "请指定应用细分", description: "补数据的应用细分" },
+          { name: "model", type: "enum", required: true, enumValues: models, clarifyPrompt: "请指定型号", description: "补数据的型号" },
+          { name: "timeWindow", type: "timeWindow", required: false, clarifyPrompt: "请指定时间窗（月份/区间）", description: "补数据的时间范围" },
+        ] } });
+      }
+      // B2：生成计划预览（人确认才跑）。
+      const boundedEnums = boundedCheck.filter(([slot]) => sv(slot)).map(([slot]) => ({ field: slot, values: [sv(slot)!] }));
+      return HttpResponse.json({ boundaryGate: { outcome: "PREVIEW", resolvedSlots: slots, reason: "必需槽位已解析、目标类型在已发布 schema 内——出生成计划预览，人确认才跑", plan: { typeKey: "Object", fields: ["id", "name", "value"], rows: 6, valueDomainSource: "注册表既有值域（BASE/SEG_REGISTRY）+ 已发布 ObjectType schema（IndustryPack·R14）", boundedEnums, origin: "SYNTHETIC", provisional: true } } });
+    }
     // CL.7：可补齐的缺口（EMPTY_DATA 类，含"达成率"标记）→ CONVERGED（续推可出答案）；其余 → BOUNDARY（诚实工单）。
     if (b.query.includes("达成率")) {
       return HttpResponse.json({

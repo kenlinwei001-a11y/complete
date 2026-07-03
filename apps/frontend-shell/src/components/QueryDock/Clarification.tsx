@@ -59,6 +59,55 @@ function IntentChoice({
   );
 }
 
+/**
+ * FILL-BOUNDARY-GUARDRAIL · B1 复用：缺口卡触发前「先澄清」也用同一套 SLOT_FILLING 表单
+ * （复用 SlotControl + 「第 n/2 次确认」轮次标）。接受契约 SlotDef[]（refType→objectType 归一）。
+ */
+export function SlotFillingForm({
+  slots,
+  round,
+  onSubmit,
+  submitLabel,
+  testid = "boundary-clarify",
+}: {
+  slots: { name: string; type: SlotDefVM["type"]; enumValues?: string[]; clarifyPrompt?: string; description?: string; refType?: string; objectType?: string }[];
+  round?: number;
+  onSubmit: (values: Record<string, unknown>) => void;
+  submitLabel?: string;
+  testid?: string;
+}) {
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const set = (name: string, v: unknown) => setValues((s) => ({ ...s, [name]: v }));
+  return (
+    <form
+      className={styles.slotForm}
+      data-testid={testid}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(values);
+      }}
+    >
+      {round != null && (
+        <div className={styles.roundLabel} data-testid="boundary-clarify-round">
+          {zh.dock.clarifyRound(round)}
+        </div>
+      )}
+      {slots.map((slot) => {
+        const vm: SlotDefVM = { name: slot.name, type: slot.type, enumValues: slot.enumValues, clarifyPrompt: slot.clarifyPrompt, description: slot.description ?? "", objectType: slot.refType ?? slot.objectType };
+        return (
+          <div key={slot.name} className={styles.slotRow}>
+            <label htmlFor={`slot-${slot.name}`}>{slot.clarifyPrompt ?? `请提供${slot.name}`}</label>
+            <SlotControl slot={vm} value={values[slot.name]} onChange={(v) => set(slot.name, v)} />
+          </div>
+        );
+      })}
+      <button type="submit" className="btn primary sm">
+        {submitLabel ?? zh.common.submit}
+      </button>
+    </form>
+  );
+}
+
 function SlotFilling({ payload, onSubmit }: { payload: ClarificationPayload; onSubmit: (values: Record<string, unknown>) => void }) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const set = (name: string, v: unknown) => setValues((s) => ({ ...s, [name]: v }));

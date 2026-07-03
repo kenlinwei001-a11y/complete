@@ -70,7 +70,7 @@ describe("POST /api/v1/growth/run · 真实 orchestrator", () => {
     const res = await t.app.inject({
       method: "POST", url: "/api/v1/growth/run",
       headers: { "x-debug-user": PLANNER, "content-type": "application/json" },
-      payload: { packageId: "pkg_battery_manufacturing", query: "讲个笑话", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 2 },
+      payload: { packageId: "pkg_battery_manufacturing", query: "讲个笑话", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 2, confirmed: true },
     });
     expect(res.statusCode).toBe(200);
     const report = res.json() as { terminalState: string; maxRounds: number; rounds: unknown[]; openTickets: { gapCode: string }[] };

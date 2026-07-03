@@ -28,6 +28,7 @@ describe("G · 自成长自动补：骨架工单富契约 + B 兜底 + growth.* 
         query: "4680-NCM 在常州的碳足迹分摊是多少？",
         context: { view: "risk", selectedObjects: [{ objectType: "Base", objectId: "B1" }], filters: { region: "east", quarter: "Q3" } },
         maxRounds: 2,
+        confirmed: true,
       },
     });
     expect(run.statusCode).toBe(200);
@@ -49,7 +50,7 @@ describe("G · 自成长自动补：骨架工单富契约 + B 兜底 + growth.* 
     const since = new Date(Date.now() - 1000).toISOString();
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn({ content: [text("探索"), toolUse("final_answer", { blocks: [{ type: "text", markdown: "探索" }], provenance: [] })] });
-    await t.app.inject({ method: "POST", url: "/api/v1/growth/run", headers: H, payload: { packageId: "pkg_battery_manufacturing", query: "未知能力问句", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 1 } });
+    await t.app.inject({ method: "POST", url: "/api/v1/growth/run", headers: H, payload: { packageId: "pkg_battery_manufacturing", query: "未知能力问句", context: { view: "dash", selectedObjects: [], filters: {} }, maxRounds: 1, confirmed: true } });
 
     const evts = (await t.app.inject({ method: "GET", url: `/b/v1/outbox?since=${encodeURIComponent(since)}`, headers: H }).then((r) => r.json())) as { event: string }[];
     const names = new Set(evts.map((e) => e.event));

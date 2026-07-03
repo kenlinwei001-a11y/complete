@@ -11,6 +11,8 @@ import { loginAs } from "./utils";
  * CL.7 · 对话坞缺口卡（in-dialog gap-fill）。答案命中缺口 → 可点缺口卡（非干叙述）：
  * 可补码 → ▶触发生成（复用 growth/run LOOP）→ CONVERGED → 继续推演重跑；
  * 需开发码 → 诚实"不可达：断在 <码>" + 工单深链（绿测试≠能用，不假装成功）。
+ *
+ * FILL-BOUNDARY-GUARDRAIL：触发不再直接跑——先经三闸（B1 CLARIFY 先澄清 / B2 PREVIEW 生成计划预览人确认 / B3 越界人工正门）。
  */
 function gapAnswer(gapCode: string, question: string, blocking = true): Answer {
   return {
@@ -43,19 +45,40 @@ function renderCard(answer: Answer, onRetry?: () => void) {
 }
 
 describe("CL.7 · 对话坞缺口卡", () => {
-  it("可补缺口（EMPTY_DATA）→ 触发生成 → CONVERGED → 继续推演重跑原问句", async () => {
+  it("B1 · 泛问题（无对象域/实体）→ 触发不直接跑·先出澄清卡（CLARIFY·非直接触发）[teeth]", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     const onRetry = vi.fn();
-    // 问句含"达成率" → mock growth/run 返 CONVERGED
-    renderCard(gapAnswer("EMPTY_DATA", "本月达成率为何未达成"), onRetry);
+    // 泛问题「本月库存水位是否可以降低」（无基地/型号/细分）→ 触发后先澄清，绝不直接 CONVERGED。
+    renderCard(gapAnswer("OTHER", "本月库存水位是否可以降低"), onRetry);
+
+    const card = await screen.findByTestId("gap-card");
+    await user.click(within(card).getByTestId("gap-trigger"));
+    // 先澄清（复用 Clarification 槽位表单）——非直接触发、无「继续推演」。
+    await within(card).findByTestId("gap-clarify");
+    expect(within(card).queryByTestId("gap-continue")).toBeNull();
+    expect(within(card).queryByTestId("gap-preview")).toBeNull();
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("B1/B2 · 已接地问句 → 触发→生成计划预览（PREVIEW）→ 人确认才跑 → CONVERGED → 继续推演", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    const onRetry = vi.fn();
+    // 问句含注册表实体「常州」（已接地）+「达成率」（mock 返 CONVERGED）→ 触发后出生成计划预览。
+    renderCard(gapAnswer("EMPTY_DATA", "常州本月达成率为何未达成"), onRetry);
 
     const card = await screen.findByTestId("gap-card");
     expect(card).toHaveAttribute("data-gapcode", "EMPTY_DATA");
-    expect(within(card).getByTestId("gap-code")).toHaveTextContent("EMPTY_DATA");
-
     await user.click(within(card).getByTestId("gap-trigger"));
-    // 补齐 → 续推按钮
+
+    // B2 生成计划预览（人确认才跑）——不盲补。
+    const preview = await within(card).findByTestId("gap-preview");
+    expect(preview).toHaveTextContent("生成计划预览");
+    expect(within(card).queryByTestId("gap-continue")).toBeNull();
+
+    // 人确认 → 真跑 LOOP → CONVERGED → 续推。
+    await user.click(within(card).getByTestId("gap-preview-confirm"));
     const cont = await within(card).findByTestId("gap-continue");
     expect(cont).toHaveTextContent("继续推演");
     await user.click(cont);

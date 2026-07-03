@@ -1164,9 +1164,39 @@ export const fetchObjectMerges = () => api.a<{ items: ObjectMerge[] }>("/a/v1/ob
 export const unmergeObjects = (id: string) => api.a<{ ok: boolean }>(`/a/v1/objects/merges/${id}/unmerge`, { method: "POST" });
 
 // ---- 自成长发动机驾驶舱（P6）：运行 LOOP / 成长账本 / 工单看板 ----
-import type { GrowthRunReport, GrowthLedgerEntry, GrowthTicket, WorklistItem } from "@platform/contracts";
+import type { GrowthRunReport, GrowthLedgerEntry, GrowthTicket, WorklistItem, TriggerBoundaryDecision } from "@platform/contracts";
+// 驾驶舱 LOOP（admin 显式运行·confirmed=true 跳过内容闸；SOFT/空租户仍登记在办看板人工闸）。
 export const runGrowth = (query: string, maxRounds = 4, packageId = "pkg_battery_manufacturing", view = "dash") =>
-  api.b<GrowthRunReport>("/b/v1/growth/run", { method: "POST", body: { packageId, query, context: { view, selectedObjects: [], filters: {} }, maxRounds } });
+  api.b<GrowthRunReport>("/b/v1/growth/run", { method: "POST", body: { packageId, query, context: { view, selectedObjects: [], filters: {} }, maxRounds, confirmed: true } });
+
+/**
+ * FILL-BOUNDARY-GUARDRAIL：对话坞缺口卡「触发补数据」的**带边界**触发。
+ * 未 confirmed → 后端回三闸判定（CLARIFY 先澄清 / PREVIEW 生成计划预览 / HARD_BLOCK 越界人工正门），不合成；
+ * 用户澄清补槽 + 确认生成计划后再带 confirmed=true 真跑 LOOP。
+ */
+export type GrowthTriggerResponse =
+  | { boundaryGate: TriggerBoundaryDecision; worklistItem?: WorklistItem }
+  | GrowthRunReport;
+export const growthTrigger = (args: {
+  query: string;
+  slotValues?: Record<string, unknown>;
+  confirmed?: boolean;
+  dataRequestDescription?: string;
+  maxRounds?: number;
+  view?: string;
+}) =>
+  api.b<GrowthTriggerResponse>("/b/v1/growth/run", {
+    method: "POST",
+    body: {
+      packageId: "pkg_battery_manufacturing",
+      query: args.query,
+      context: { view: args.view ?? "dash", selectedObjects: [], filters: {} },
+      maxRounds: args.maxRounds ?? 4,
+      slotValues: args.slotValues ?? {},
+      confirmed: args.confirmed ?? false,
+      ...(args.dataRequestDescription ? { dataRequestDescription: args.dataRequestDescription } : {}),
+    },
+  });
 export const fetchGrowthLedger = () => api.b<{ items: GrowthLedgerEntry[] }>("/b/v1/growth/ledger");
 export const fetchGrowthTickets = () => api.b<{ items: GrowthTicket[] }>("/b/v1/growth/tickets");
 export const claimGrowthTicket = (id: string) => api.b<GrowthTicket>(`/b/v1/growth/tickets/${id}/claim`, { method: "POST", body: { assignee: "cli-agent" } });

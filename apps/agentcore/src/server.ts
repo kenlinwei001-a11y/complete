@@ -45,7 +45,7 @@ import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, r
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
-import { decideDataGap, groundingVocab } from "./growth/data-boundary.js";
+import { decideDataGap, groundingVocab, decideTriggerBoundary, triggerDimensions } from "./growth/data-boundary.js";
 import { annotateRequestId } from "./tracing.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { HttpError } from "./router/orchestrator.js";
@@ -296,13 +296,61 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/api/v1/growth/run", async (req, reply) => {
     const a = await auth(req);
     const body = SubmitQueryBodySchema.parse(req.body);
-    const maxRounds = Number((req.body as { maxRounds?: number })?.maxRounds ?? 8); // K 前端可配
+    const raw = (req.body ?? {}) as { maxRounds?: number; confirmed?: boolean; slotValues?: Record<string, unknown>; dataRequestDescription?: string };
+    const maxRounds = Number(raw.maxRounds ?? 8); // K 前端可配
+
+    // FILL-BOUNDARY-GUARDRAIL（用户钉「触发补须有边界·否则任意问题自由补数据=数据混乱」）：
+    // 触发补数据前置三闸——B1 槽位完备（未接地先澄清）/ B2 模式封闭（只在已发布 schema+注册表值域内）/ B3 越界（词表外新实体→人工正门）。
+    // 与 GROWTH-WORKLIST 过程闸（认领）正交组合。未 confirmed → 只返回边界判定，**不合成**；HARD_BLOCK 恒拒（confirmed 也不放行·新实体不得自动合成）。
+    const slotValues = raw.slotValues ?? {};
+    const contextText = [
+      ...(body.context.selectedObjects ?? []).map((o) => o.objectId),
+      ...Object.values(body.context.filters ?? {}).map((v) => String(v)),
+    ].join(" ");
+    const explicitType = body.context.selectedObjects?.[0]?.objectType;
+    const targetTypeKey = explicitType || body.context.view || "Object";
+    const publishedTypes = (await deps.dataCore.ontology.listObjectTypes(a).catch(() => [] as { key: string }[])).map((t) => t.key).filter((k): k is string => !!k);
+    const decision = decideTriggerBoundary({
+      question: body.query, contextText, providedSlots: slotValues, dimensions: triggerDimensions(),
+      publishedTypes, targetTypeKey, targetIsExplicitType: !!explicitType,
+    });
+    if (decision.outcome === "HARD_BLOCK") {
+      // B3 越界新实体：拒自动合成。若人工已填数据描述 → 登记 HARD 在办项（importData·带描述·待 R4 正门），否则回判定让前端收集描述。
+      let worklistItem: import("@platform/contracts").WorklistItem | undefined;
+      if (raw.dataRequestDescription && decision.dataRequest) {
+        const nowIso = new Date().toISOString();
+        worklistItem = {
+          id: newId("wli"), tenantId: a.tenantId, fromQuestion: body.query, gapCode: "EMPTY_DATA",
+          kind: "DATA_GAP", status: "OPEN",
+          fillPlan: { mode: "HARD", action: "importData", typeKey: decision.dataRequest.typeKey },
+          evidence: `[B3 越界新实体] ${decision.reason}｜数据描述: ${raw.dataRequestDescription}`,
+          deeplink: "/connections", createdAt: nowIso, updatedAt: nowIso,
+        };
+        await deps.repos.growthWorklist.upsert(worklistItem);
+        await emitDomainEvent(a.tenantId, "growth.fill_claimed", { worklistItemId: worklistItem.id, gapCode: "EMPTY_DATA", mode: "HARD", newEntity: true });
+      }
+      return reply.status(200).send({ boundaryGate: { ...decision, dataRequest: raw.dataRequestDescription && decision.dataRequest ? { ...decision.dataRequest, description: raw.dataRequestDescription } : decision.dataRequest }, ...(worklistItem ? { worklistItem } : {}) });
+    }
+    if (raw.confirmed !== true) {
+      // 未确认：B1 缺槽位（CLARIFY·先澄清）或 B2 待人确认（PREVIEW·生成计划预览）→ 只回判定，不合成。
+      return reply.status(200).send({ boundaryGate: decision });
+    }
+    // confirmed=true 且边界过（PREVIEW）→ 合并已解析槽位进 context.filters（供后续 probe/fill 接地）→ 跑 LOOP。
+    const slotFilters: Record<string, string> = {};
+    for (const [k, v] of Object.entries(slotValues)) {
+      if (v == null || v === "") continue;
+      slotFilters[k] = typeof v === "string" ? v : JSON.stringify(v);
+    }
+    const mergedBody = Object.keys(slotFilters).length > 0
+      ? { ...body, context: { ...body.context, filters: { ...(body.context.filters ?? {}), ...slotFilters } } }
+      : body;
+
     // probe/fill 单源（RL3/RL10）：抽到 growth/scenario-grow.ts，与 growScenario(O9) 共用同一套补法引擎，不分叉。
     // 补法分派：① 缺数据→真人正门补(P2 真实)；② 缺执行计划/缺求解器(in-catalog)→A3 自动 scaffold DRAFT（不发布 R4）；③ 其余→骨架工单收敛到边界。
     // 每次 fill 发 growth.fill_proposed（经 E-c domain_events → F1 全局通道反映到驾驶舱）。
     // GROWTH-WORKLIST-HUMAN-FILL：驾驶舱 LOOP 传 registerWorklist → SOFT fillData / 空租户 provisionWorld 不自动跑，
     // 改登记在办项(WorklistItem·OPEN·DATA_GAP)，该轮终态 NEEDS_HUMAN；人在看板认领后点触发才真跑（G-9 自动补→人工闸控补）。
-    const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, body, emitDomainEvent, { registerWorklist: true });
+    const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, mergedBody, emitDomainEvent, { registerWorklist: true });
     const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
     // P4：成长账本(demand-indexed) + 缺功能→成长工单（厂商中立施工契约，带真实 I/O 契约 + 本体引用骨架）
     const now = new Date().toISOString();
