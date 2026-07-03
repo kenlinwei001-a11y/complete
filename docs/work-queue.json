@@ -2877,6 +2877,42 @@
           }
         ]
       }
+    },
+    {
+      "id": "DATADEP-MANIFEST-READINESS",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/PRD-datadep-manifest-readiness.md",
+      "title": "推演入口数据依赖清单+通用就绪探测(数据补齐拱心石·大面积一脊)",
+      "note": "用户问:如何大面积根据前端推演入口补齐数据·仿真前端可见·后端存储·不硬编码/不写前端。审核方定位:补数据器官平台已全有(synthetic.runJob值域库R6落库origin=SYNTHETIC·provision-world·data-boundary HARD/SOFT·probe.classifyGap缺口·GapCard触发生成→继续推演·certification沙盘就绪·bootstrap冷启动·MODULE_PROVISIONERS)——缺唯一拱心石:每个推演入口无声明式数据依赖清单。求解器数据需求是 loadContext 写死22类(solvers/service.ts:1613-1628)·输出侧有DF.6覆盖门输入侧一无;场景卡假设特定seed id存在(scenarios-catalog:61)·探测run-first(除沙盘)。治(六站一脊·同一闭环覆盖所有入口):①声明 DataDependency 清单(contracts/datadep.ts新·roleType/minRows/params/slices·本体绑定零业务常数·入IndustryPack R14→换行业0码;扩SolverArtifact.requires;loadContext改读清单并集治本杀Hα/Hγ硬编码)②通用就绪探测 checkReadiness(泛化沙盘certification present-vs-needed到所有入口·复用GapFinding/CL.3)③HARD/SOFT复用data-boundary④gaps喂GROWTH-WORKLIST看板人工闸⑤SOFT填统一走synthetic.runJob替通用正则fill-data⑥继续推演→FRONTEND-VALUE-AUTHORITY消费权威。门 datadep-manifest:check(每入口必声明清单·镜像DF.6到输入侧·green→red)。整页量化PRD见 docs/PRD-datadep-manifest-readiness.md(六站图+现状锚点+《本体引用与影响》)。脊先合·GROWTH-WORKLIST/LAUNCHER/INTENT-MATERIALIZE rebase消费(文件树不相交可并行但逻辑消费脊输出)。回写§2.E DataDependency+§3 sys.solving.invoke输入契约段+§7新门+§8 G-8(闭包扩入口→数据全链)/G-9状态+ontology:slices。",
+      "acceptance": {
+        "goal": "每个推演入口(solver/intent/scenario/view/sandbox)声明 DataDependency 清单→通用探测器读清单预检就绪→缺口经HARD/SOFT分流进人工闸看板→认领后统一合成物化(后端R6 origin=SYNTHETIC)→继续推演前端消费权威渲染。同一闭环大面积覆盖所有入口·新增入口只声明清单0逐面代码·清单入IndustryPack换行业0码·全程不硬编码不前端造值。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "datadep-manifest:check 新门:每已注册求解器+出厂场景入口必声明 DataDependency 清单(无声明→红)·roleType∈已发布本体类型或SolverBinding角色·minRows≥1·镜像DF.6输出覆盖到输入侧。green→red自证(删一清单红)。loadContext 改读清单并集后四包build/test绿·R6字节一致。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "真浏览器空租户闭环:新建空租户→开某推演视图/场景卡→就绪探测出诚实缺口清单(非静默空非假值)→缺口进看板→人点认领→点补数据缺口→synthetic.runJob物化(origin=SYNTHETIC落repos.objects/links)→继续推演→前端渲染真结果逐值对照后端(consume authority非客户端重算)。"
+          },
+          {
+            "id": "C3",
+            "type": "test",
+            "assert": "大面积:抽≥5不同入口(capacity/affected_orders/sop/order_fullchain/一场景卡)各声明清单→同一 checkReadiness 对各自产正确 EntryReadiness{ready,gaps}(不逐面写代码)。齿检:某入口缺minRows→gaps含EMPTY_DATA·补足→ready。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "R14:清单声明在IndustryPack数据·立第三非电池行业→清单随pack·git diff仅pack数据文件0个apps/**/src/**.ts改(挂INDUSTRY-PACK C2)。统一合成:SOFT填走synthetic.runJob值域接地(非app.ts:1193通用正则)·synthetic:true标。"
+          }
+        ]
+      }
     }
   ]
 }
