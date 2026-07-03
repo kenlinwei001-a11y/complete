@@ -2457,8 +2457,8 @@
     {
       "id": "SIM-REAL-SNAPSHOT",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-fake-value-remnants.md",

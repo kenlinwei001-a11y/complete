@@ -2867,6 +2867,11 @@ export const handlers = [
     HttpResponse.json({
       tenantId: "demo",
       nodeTypes: ["TypeA", "TypeB", "TypeC"],
+      // SIM-REAL-SNAPSHOT（簇D 治本·mock 侧真态样例）：真物化对象 id + 每对象**真实属性态**（模拟后端 obj.props）。
+      // baseSnapshot 由此播——沙盘 KPI/节点态逐值可对照此处真值（非 hash(oid)）。TypeC 空世界（无对象）。
+      nodeObjectIds: { TypeA: ["obj_a1", "obj_a2"], TypeB: ["obj_b1"], TypeC: [] },
+      nodeObjectState: { obj_a1: { s1: 62, s2: 48 }, obj_a2: { s1: 30, s2: 71 }, obj_b1: { s1: 15 } },
+      heatThreshold: 70,
       linkTypes: ["linkAB"],
       stateVars: ["s1", "s2"],
       radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { SimCompareSeries } from "@/api/endpoints";
-import { HeatStrip } from "./shared";
+import { HeatStrip, DEFAULT_HEAT_THRESHOLD } from "./shared";
 import styles from "./SimViews.module.css";
 
 /**
@@ -40,11 +40,14 @@ export function SimComparePanel({
   b,
   labelA = "A 主线",
   labelB = "B 分支",
+  // SIM-REAL-SNAPSHOT（簇D3）：热度红带阈由父层从 view-config.heatThreshold 透传（权威 sim 配置），未传退单一兜底常数。
+  heatThreshold = DEFAULT_HEAT_THRESHOLD,
 }: {
   a: SimCompareSeries;
   b: SimCompareSeries;
   labelA?: string;
   labelB?: string;
+  heatThreshold?: number;
 }) {
   const seriesA = useMemo(() => meanSeries(a), [a]);
   const seriesB = useMemo(() => meanSeries(b), [b]);
@@ -79,13 +82,13 @@ export function SimComparePanel({
         <div>
           <div className={styles.sub} data-testid="sim-compare-label-a">{labelA}（逐 tick 全局态）</div>
           <div data-testid="sim-compare-heat-a">
-            <HeatStrip series={seriesA.map((r) => r.mean)} threshold={70} />
+            <HeatStrip series={seriesA.map((r) => r.mean)} threshold={heatThreshold} />
           </div>
         </div>
         <div>
           <div className={styles.sub} data-testid="sim-compare-label-b">{labelB}（逐 tick 全局态）</div>
           <div data-testid="sim-compare-heat-b">
-            <HeatStrip series={seriesB.map((r) => r.mean)} threshold={70} />
+            <HeatStrip series={seriesB.map((r) => r.mean)} threshold={heatThreshold} />
           </div>
         </div>
       </div>

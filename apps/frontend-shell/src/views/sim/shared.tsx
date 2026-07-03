@@ -21,8 +21,14 @@ export function SnapshotBadge({ snapshotVersion, tool }: { snapshotVersion?: str
   );
 }
 
+/**
+ * SIM-REAL-SNAPSHOT（簇D3）：沙盘热度红带阈的**前端单一兜底真源**——仅当 view-config 未下发 heatThreshold
+ * 时使用（权威值来自后端 DEFAULT_SANDBOX_HEAT_THRESHOLD·随 view-config 下发）。取代此前散落各视图内联的 70。
+ */
+export const DEFAULT_HEAT_THRESHOLD = 70;
+
 /** 逐日张力 heat strip（与推演看板 MiniStrip 同视觉语言；risk-board 未导出 → 此处独立实现） */
-export function HeatStrip({ series, threshold }: { series: number[]; threshold: number }) {
+export function HeatStrip({ series, threshold = DEFAULT_HEAT_THRESHOLD }: { series: number[]; threshold?: number }) {
   return (
     <div className={styles.heatStrip} data-testid="sim-heat-strip">
       {series.map((v, i) => (

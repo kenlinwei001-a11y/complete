@@ -64,14 +64,15 @@
 
 > **C 簇要害**：校准**引擎是真的**（有真 pair 时 210-212 真算 MAPE），但**无真 pair 时回退造一条漂亮下降线**（C1 线性 / C2 指数 / C4 手填 evidence），**UI 无 SYNTHETIC 标**→ 看 demo「越用越准」的人分不清"真学会了"还是"脚本画的"。与我此前判 CALIB-CONVERGENCE-UI DONE 不矛盾（当时有 demo seed 真 pair），但回退/部署 demo 路径造假需诚实标。
 
-### 簇 D · 前端沙盘 hash 造 baseSnapshot（F4·推演从伪状态起）
-| # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO |
-|---|---|---|---|---|---|---|
-| D1 | `views/sim/SandboxView.tsx:62` | `row[v] = hash01(oid\|v)*100` → tick0 世界态 POST 为 baseSnapshot(592) | 节点热度红≥70·全下游 tick | 代理·待运行复验 | P1 | SIM-REAL-SNAPSHOT |
-| D2 | `views/sim/SimInitWizard.tsx:46` | 同款 hash 造 baseSnapshot(141) | 世界完整度环·precheck | 代理·待运行复验 | P1 | SIM-REAL-SNAPSHOT |
-| D3 | `views/sim/SimComparePanel.tsx:82/88`·`SandboxView:889` | 热度阈 70 内联 + 输入本身 hash 派生 | 多情景对比红 | 代理·待运行复验 | P2 | SIM-REAL-SNAPSHOT |
+### 簇 D · 前端沙盘 hash 造 baseSnapshot（F4·推演从伪状态起）— ✅ 已闭（WO-SIM-REAL-SNAPSHOT）
+| # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO | 治本 |
+|---|---|---|---|---|---|---|---|
+| D1 | `views/sim/SandboxView.tsx:62` | `row[v] = hash01(oid\|v)*100` → tick0 世界态 POST 为 baseSnapshot(592) | 节点热度红≥70·全下游 tick | 读码✓+真跑双证 | P1 | SIM-REAL-SNAPSHOT | ✅ `deriveBaseSnapshot` 取 view-config `nodeObjectState`(=后端 `obj.props` 命中 stateVar 的数值)·无真值诚实退 0(不 hash) |
+| D2 | `views/sim/SimInitWizard.tsx:46` | 同款 hash 造 baseSnapshot(141) | 世界完整度环·precheck | 读码✓+真跑双证 | P1 | SIM-REAL-SNAPSHOT | ✅ 同 D1（两处 deriveBaseSnapshot 同构改真属性态） |
+| D3 | `views/sim/SimComparePanel.tsx:82/88`·`SandboxView:889` | 热度阈 70 内联 + 输入本身 hash 派生 | 多情景对比红 | 读码✓+真跑双证 | P2 | SIM-REAL-SNAPSHOT | ✅ 阈 70 归口权威 `DEFAULT_SANDBOX_HEAT_THRESHOLD`(sim/certification.ts)→view-config `heatThreshold` 下发·前端消费(兜底 `DEFAULT_HEAT_THRESHOLD`)；输入 hash 随 D1 消除 |
 
 > **D 簇要害**：推演沙盘的**初始世界态**是"对象 id 取 hash → 0-100"，不是后端真实对象属性；整个 what-if 从伪状态起跑。治本：baseSnapshot 取后端真对象当前属性态。
+> **✅ 治本落实（WO-SIM-REAL-SNAPSHOT）**：契约 `SandboxViewConfig += nodeObjectState/heatThreshold`；datacore view-config 从真 `obj.props` 采数值型 stateVar 属性(缺省=诚实空)；两处 `deriveBaseSnapshot` 逐值取真属性态、无真值退 0。**FDE 双证**(`docs/evidence/SIM-REAL-SNAPSHOT-fde.md`)：真浏览器 mock baseSnapshot 逐值=nodeObjectState(obj_a1.s1=62≠hash 77)+UI KPI 逐值对账；真后端 curl demo `nodeObjectState:{}` 诚实空(493 真对象 id·旧码全 hash 成伪世界→新码诚实空态零造假)。牙齿 sandbox-view.test.tsx(回退 hash 即红)。
 
 ### 簇 E · 前端客户端重算绕后端权威 + 内联常数（F2/F4·`debattery-allow` 白名单漏网）
 | # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO |
@@ -109,7 +110,7 @@
 | **METHOD-MC-STOCHASTIC（扩 scope）** | A1–A10 | 种子化 MC 真分位替代**所有** `×常数` P90；下游 replay/metrics/seed 随真分位自动变真。原单 §6 只列 A1–A4，须扩 A5(service:1137 order_fullchain)/A6(sop:150)/A7-A10(vle/replay/metrics/seed)。 |
 | **RISK-TRAJECTORY-DEFAKE（新·P1）** | B1–B9,G1–G3 | risk_timeline 轨迹目标+事件具体值：真数据算或诚实空；**删 EVENT_SRC 假源归因**（无真值不标真源）；阈值/系数入 params。 |
 | **CALIB-HONEST-EMPTY（新·P1）✅ 已闭** | C1–C6 | 无真 pair→诚实空/静止(非造下降线)；demo/部署 mapeSeries+evidence 上 SYNTHETIC 标；realizedMape 从真未来 pair 算。**落实**：C1 静态基线常数+report.baselineOnly·C2 bundle.synthetic·C3 realizedMape=mapeAt(week+2)·C4/C5 proposal.synthetic+evidence.synthetic·C6 走正门码注披露。前端徽章：ReviewView"合成演示·非真实学习"+CalibrationPage"静态基线·无真实配对"/SYNTHETIC。牙齿 test/calib-honest-empty.test.tsx。 |
-| **SIM-REAL-SNAPSHOT（新·P1）** | D1–D3 | baseSnapshot 取后端真对象属性态(非 hash(oid))；热度阈入 sim 认证/config。 |
+| **SIM-REAL-SNAPSHOT（新·P1）✅ 已闭** | D1–D3 | baseSnapshot 取后端真对象属性态(非 hash(oid))；热度阈入 sim 认证/config。**落实**：契约 `SandboxViewConfig += nodeObjectState/heatThreshold`·view-config 从 `obj.props` 采数值型 stateVar(缺省诚实空)·两处 `deriveBaseSnapshot` 逐值取真属性态无真值退 0·阈 70 归口 `DEFAULT_SANDBOX_HEAT_THRESHOLD`。FDE 双证(真浏览器逐值 62/48… + 真后端 curl demo `nodeObjectState:{}` 诚实空)·牙齿 sandbox-view.test.tsx。 |
 | **FRONTEND-VALUE-AUTHORITY（新·P1）✅ 已闭** | E1–E7 | 消费后端权威字段(revAttainPct/gmRate/gap)；缺失→诚实空态非内联常数重算；清 `debattery-allow` 白名单常数入后端 layout/rule。**落实**：E1 marginLedger 缺→「估算」标·E2 后端 sop.s4.revAttainPct(params.sop.revBudget)前端消费·缺则 workspace 预算·再缺 null(去内联240)·E3 后端 ltaDeviation.breach(C27 阈5%)前端消费·E4 消费 k.threshold 缺→灰(去?? 85;coef 已 view.layout 权威+估算标)·E5 消费 s4.gmOk(去内联0.5pp)·E6 消费 r.gap(去自算col0−col1)。E7 坐标表=Base.props.lon/lat 兜底·非决策·诚实披露(P3 保留)。牙齿 test/frontend-value-authority.test.tsx。 |
 | **AGENTCORE-TRACE-LINEAGE（新·P2）✅ 已闭** | F1–F3 | trace 节点真 lineage 缺失→空/"本次未记录来源"，勿发骨架电池常数。**落实**：F1 删 `SkeletonNode.data/solvers/agents` + 10 节点内联常数（in/proc/out IPO 保留）·F2 agents 改真血缘派生（invoke_agent.agentId / AGENT 真 toolName）缺→空·F3 data/solvers 删 skel 回退真 trace 派生缺→空数组。真血缘存在则保留（R13/R6/R14）。FDE 真起双服务 curl trace 证 10 节点血缘全空零骨架常数。牙齿 `test/project-trace.test.ts` 血缘诚实簇（回退改回 skel 即红）。 |
 

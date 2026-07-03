@@ -54,7 +54,7 @@ import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts";
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
-import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
+import { deriveCertification, DEFAULT_CERT_CONFIG, DEFAULT_SANDBOX_HEAT_THRESHOLD, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
@@ -1434,17 +1434,31 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const rules = await repos.sim.listPropagationRules(c.tenantId, true);
     const stateVars = [...new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
     // P0 修：每 nodeType → 真物化对象 id（= tick 引擎 idsByType 同源：repos.objects.listByType 非 mergedInto，稳定排序）。
+    // SIM-REAL-SNAPSHOT（簇D 治本）：同一遍历顺带取每对象**真实当前属性态**（obj.props 命中 stateVar 名的数值属性），
+    // baseSnapshot 由此播——推演从后端真世界态起跑（不再 hash(oid)）。无真值的对象/变量此处缺省（诚实空态，绝不合成）。
     const nodeObjectIds: Record<string, string[]> = {};
+    const nodeObjectState: Record<string, Record<string, number>> = {};
     for (const t of types) {
-      nodeObjectIds[t.key] = (await repos.objects.listByType(c.tenantId, t.key))
+      const objs = (await repos.objects.listByType(c.tenantId, t.key))
         .filter((o) => !o.mergedInto)
-        .map((o) => o.id)
-        .sort((a, b) => a.localeCompare(b));
+        .sort((a, b) => a.id.localeCompare(b.id));
+      nodeObjectIds[t.key] = objs.map((o) => o.id);
+      for (const o of objs) {
+        const row: Record<string, number> = {};
+        for (const v of stateVars) {
+          const raw = (o.props as Record<string, unknown>)[v];
+          // 仅采纳**真实数值**属性；非数值/缺失 → 不写（诚实缺省，前端遇缺退 0 静止，不哈希造伪）。
+          if (typeof raw === "number" && Number.isFinite(raw)) row[v] = raw;
+        }
+        if (Object.keys(row).length > 0) nodeObjectState[o.id] = row;
+      }
     }
     const cfg = {
       tenantId: c.tenantId,
       nodeTypes: types.map((t) => t.key).sort(),
       nodeObjectIds,
+      nodeObjectState,
+      heatThreshold: DEFAULT_SANDBOX_HEAT_THRESHOLD,
       linkTypes: links.map((l) => l.key).sort(),
       stateVars,
       radarDims: [

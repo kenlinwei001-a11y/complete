@@ -278,3 +278,47 @@ describe("轨A P1 · R13 节点溯源悬浮（复用 fetchObjectLineage，沿本
     expect(screen.getByTestId("sandbox-lineage-object").textContent).toContain("obj_supplier_s1");
   });
 });
+
+// ── SIM-REAL-SNAPSHOT（审计簇D 治本·牙齿测试）：baseSnapshot 取后端真对象属性态，非 hash(oid)。 ──
+import { deriveBaseSnapshot } from "@/views/sim/SandboxView";
+
+describe("SIM-REAL-SNAPSHOT · deriveBaseSnapshot 取后端真属性态（非 hash·簇D 红线）", () => {
+  const cfg: SandboxViewConfig = {
+    ...CONFIG_A,
+    stateVars: ["s1", "s2"],
+    nodeObjectIds: { Supplier: ["obj_a1", "obj_a2"], Factory: ["obj_b1"], Order: [] },
+    // 后端真实对象当前属性态（= obj.props 命中 stateVar 数值）。obj_b1 仅有 s1（s2 后端无真值）。
+    nodeObjectState: { obj_a1: { s1: 62, s2: 48 }, obj_a2: { s1: 30, s2: 71 }, obj_b1: { s1: 15 } },
+  };
+
+  it("baseSnapshot 逐值 = view-config.nodeObjectState 真值（非 hash 派生）", () => {
+    const snap = deriveBaseSnapshot(cfg);
+    // 真对象 id 为键 + 值逐一命中后端真属性态。
+    expect(snap["obj_a1"]).toEqual({ s1: 62, s2: 48 });
+    expect(snap["obj_a2"]).toEqual({ s1: 30, s2: 71 });
+    // obj_b1 后端仅 s1 有真值 → s2 诚实退 0（静止），绝不 hash/合成冒充。
+    expect(snap["obj_b1"]).toEqual({ s1: 15, s2: 0 });
+    // 空世界类型（Order 无对象）退占位键，全 0（诚实空态）。
+    expect(snap["Order#0"]).toEqual({ s1: 0, s2: 0 });
+  });
+
+  it("牙齿：与旧 hash(oid) 造伪初态语义相斥（真值 ≠ 结构哈希）", () => {
+    const snap = deriveBaseSnapshot(cfg);
+    // 旧实现：row[v] = round(hash01(`${oid}|${v}`)*100)。复现之，证真值与之不同（非哈希产物）。
+    const hash01 = (s: string): number => {
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return ((h >>> 0) % 1000) / 1000;
+    };
+    const hashed = Math.round(hash01("obj_a1|s1") * 100);
+    // 真值 62（来自 nodeObjectState）必须 ≠ 该 id 的哈希产物 —— 若回退 hash 实现，此断言转红。
+    expect(snap["obj_a1"]!.s1).toBe(62);
+    expect(snap["obj_a1"]!.s1).not.toBe(hashed);
+  });
+
+  it("nodeObjectState 缺省（老配置无该字段）→ 全 0 诚实静止，不 hash 兜底", () => {
+    const legacy: SandboxViewConfig = { ...CONFIG_A, stateVars: ["s1"], nodeObjectIds: { Supplier: ["obj_x"], Factory: [], Order: [] } };
+    const snap = deriveBaseSnapshot(legacy);
+    expect(snap["obj_x"]).toEqual({ s1: 0 });
+  });
+});

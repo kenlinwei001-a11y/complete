@@ -24,17 +24,9 @@ import styles from "./SimViews.module.css";
  * 所有可选项/维度均派生自 view-config + scope-precheck，代码里**零行业实体名**（debattery:check 守这条）。
  */
 
-// ── 确定性派生（与 SandboxView 同构）：从配置造 tick0 世界态，无业务常数（纯结构哈希）。 ──
-function hash01(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 1000) / 1000;
-}
-// P0 修（评审打回·UI tick 传导哑）：键 = 真物化对象 id（cfg.nodeObjectIds，= propagateTick 引擎 idsByType 同源）→
-// state[sourceId] 真命中 → tick 真传导。空世界退 `${type}#0` 占位。与 SandboxView.deriveBaseSnapshot 同构。
+// ── tick0 世界态（baseSnapshot）——SIM-REAL-SNAPSHOT（审计簇D 治本）：与 SandboxView.deriveBaseSnapshot 同构。 ──
+// 键 = 真物化对象 id（cfg.nodeObjectIds，= propagateTick 引擎 idsByType 同源）；值 = **后端真实对象属性态**
+// （cfg.nodeObjectState[oid]，= obj.props 命中 stateVar 的数值）。**绝不 hash(oid) 造伪初态**——无真值诚实退 0（静止）。
 function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
   const state: TickState = {};
   const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"];
@@ -42,8 +34,12 @@ function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
     const ids = cfg.nodeObjectIds?.[t] ?? [];
     const keys = ids.length > 0 ? ids : [`${t}#0`];
     for (const oid of keys) {
+      const real = cfg.nodeObjectState?.[oid];
       const row: Record<string, number> = {};
-      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
+      for (const v of vars) {
+        const rv = real?.[v];
+        row[v] = typeof rv === "number" && Number.isFinite(rv) ? rv : 0;
+      }
       state[oid] = row;
     }
   }

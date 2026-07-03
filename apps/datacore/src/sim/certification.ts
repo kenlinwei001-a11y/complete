@@ -88,6 +88,13 @@ export const DEFAULT_CERT_CONFIG: CertConfig = {
   weights: { s: 0.4, k: 0.3, b: 0.3 },
 };
 
+/**
+ * SIM-REAL-SNAPSHOT（审计簇D3 治本）：沙盘节点「热度红带」阈——**权威 sim 配置**（R14：换租户改配置不改码）。
+ * 此前散落前端 SandboxView/SimComparePanel 内联 70（F2 内联常数），归口于此单一真源，随 view-config 下发前端。
+ * 触达决策：节点热度红≥阈 · tick 时间轴 heat · 多情景对比红带。
+ */
+export const DEFAULT_SANDBOX_HEAT_THRESHOLD = 70;
+
 export interface TrialTickInput {
   passed: boolean;
   rulesFired: number;

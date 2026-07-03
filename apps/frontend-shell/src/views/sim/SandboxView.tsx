@@ -21,7 +21,7 @@ import {
 import { toast, toastError } from "@/store/toastStore";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { PlatformConsole } from "@/components/PlatformConsole/PlatformConsole";
-import { HeatStrip, useActionDraft } from "./shared";
+import { HeatStrip, useActionDraft, DEFAULT_HEAT_THRESHOLD } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxRunHistory } from "./SandboxRunHistory";
@@ -38,19 +38,15 @@ import styles from "./SimViews.module.css";
  * 复用：PmDag（拓扑）· HeatStrip（KPI heat）· 自绘就绪雷达（维 = certification.dims）。
  */
 
-// ── 确定性派生（R6/R14）：从配置 + 索引算初值，无任何业务常数（纯结构哈希）。 ────────────
-/** 字符串 → 稳定 [0,1)（用于把抽象 key 映射成可视初值；与行业无关）。 */
-function hash01(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 1000) / 1000;
-}
-
-/** 从配置派生 tick0 世界态。P0 修：键 = **真物化对象 id**（cfg.nodeObjectIds，= propagateTick 引擎 idsByType
- * 同源）→ state[sourceId] 真命中 → tick 真传导。空世界（该类型无对象）退 `${type}#0` 占位（无传导，页面仍可跑）。 */
+/**
+ * tick0 世界态（baseSnapshot）——**SIM-REAL-SNAPSHOT（审计簇D 治本·KILL-MOCK-RED 同源）**。
+ *
+ * 键 = **真物化对象 id**（cfg.nodeObjectIds，= propagateTick 引擎 idsByType 同源）；值 = **后端真实对象属性态**
+ * （cfg.nodeObjectState[oid]，= obj.props 命中 stateVar 的数值）。推演从后端真世界态起跑。
+ *
+ * 铁律 0.4 红线：**绝不 hash(oid) 造伪初态**。某对象/变量后端无真值 → 诚实退 0（静止），不合成/不哈希冒充。
+ * 空世界（该类型无对象）退 `${type}#0` 占位键（全 0，无传导，页面仍可跑）——诚实空态，非造数。
+ */
 export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
   const state: TickState = {};
   const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
@@ -58,8 +54,13 @@ export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
     const ids = cfg.nodeObjectIds?.[t] ?? [];
     const keys = ids.length > 0 ? ids : [`${t}#0`]; // 有真对象用真 id；空世界退占位键
     for (const oid of keys) {
+      const real = cfg.nodeObjectState?.[oid];
       const row: Record<string, number> = {};
-      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
+      // 真实属性态优先；后端未下发该 (对象,变量) 真值 → 诚实 0（静止，绝不造伪初态）。
+      for (const v of vars) {
+        const rv = real?.[v];
+        row[v] = typeof rv === "number" && Number.isFinite(rv) ? rv : 0;
+      }
       state[oid] = row;
     }
   }
@@ -74,22 +75,23 @@ function aggregate(row: Record<string, number> | undefined): number {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-/** 聚合值 → 着色（高=暖红 警示 / 中=琥珀 / 低=青）。纯函数，无业务语义。 */
-function heatColor(v: number): string {
-  if (v >= 70) return "#E0626C";
-  if (v >= 45) return "#E8B54A";
+/** 聚合值 → 着色（高=暖红 警示 / 中=琥珀 / 低=青）。红带阈 = 权威 sim 配置（view-config.heatThreshold，非内联 70）；
+ * 中带 = 红带下 25pt 的可视渐变分界（非决策值）。纯函数，无业务语义。 */
+function heatColor(v: number, threshold: number): string {
+  if (v >= threshold) return "#E0626C";
+  if (v >= threshold - 25) return "#E8B54A";
   return "#43B7D7";
 }
 
 /** 配置 → PmDag 单层节点（节点=nodeTypes，着色 = 该类型**所有真物化对象**当前态均值）。
  * P0 修：world 现按真对象 id 键 → 聚合 cfg.nodeObjectIds[t] 各对象态（空世界退 `${t}#0` 占位）。 */
-function buildNodes(cfg: SandboxViewConfig, world: TickState): PmDagNode[] {
+function buildNodes(cfg: SandboxViewConfig, world: TickState, threshold: number): PmDagNode[] {
   return cfg.nodeTypes.map((t) => {
     const ids = cfg.nodeObjectIds?.[t] ?? [];
     const keys = ids.length > 0 ? ids : [`${t}#0`];
     const vals = keys.map((k) => aggregate(world[k]));
     const v = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-    return { id: t, label: t, sub: `Σ ${v.toFixed(0)}`, color: heatColor(v), st: 0 };
+    return { id: t, label: t, sub: `Σ ${v.toFixed(0)}`, color: heatColor(v, threshold), st: 0 };
   });
 }
 
@@ -776,7 +778,9 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
     return <div className="empty-state" data-testid="sandbox-loading">加载沙盘配置…</div>;
   }
 
-  const nodes = buildNodes(cfg, world);
+  // 热度红带阈：权威取 view-config.heatThreshold（后端 DEFAULT_SANDBOX_HEAT_THRESHOLD），未下发退前端单一兜底常数。
+  const heatThreshold = cfg.heatThreshold ?? DEFAULT_HEAT_THRESHOLD;
+  const nodes = buildNodes(cfg, world, heatThreshold);
   const { list: edges, labels: edgeLabels } = buildEdges(cfg, propRules);
   const radarValues: Record<string, number> = cert
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
@@ -820,7 +824,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       <div className={styles.threeKpiRow} data-testid="sandbox-kpis">
         <div className={styles.kpi} data-testid="sandbox-kpi-global">
           <span>全局态（tick {curTick}）</span>
-          <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
+          <b style={{ color: heatColor(globalKpi, heatThreshold) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
         </div>
         {cfg.stateVars.map((v) => {
           const objs = Object.keys(world);
@@ -886,7 +890,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
         </button>
         <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
           <div className={styles.sub} style={{ marginBottom: 2 }}>tick 时间轴（全局态轨迹）</div>
-          <HeatStrip series={history} threshold={70} />
+          <HeatStrip series={history} threshold={heatThreshold} />
         </div>
       </div>
 
@@ -990,7 +994,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
               刷新对比
             </button>
           </div>
-          <SimComparePanel a={compare.a} b={compare.b} />
+          <SimComparePanel a={compare.a} b={compare.b} heatThreshold={heatThreshold} />
         </div>
       )}
 

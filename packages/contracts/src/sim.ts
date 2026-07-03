@@ -158,5 +158,12 @@ export const SandboxViewConfigSchema = z.object({
   // repos.objects.listByType 非 mergedInto，稳定排序）。UI 据此把 tick0 快照键 = 真对象 id（不再 ${type}#0），
   // 使 state[sourceId] 真命中 → tick 真传导 → 节点真变色。空世界时该类型列表为空（页面退占位仍可跑）。
   nodeObjectIds: z.record(z.string(), z.array(z.string())).optional(),
+  // SIM-REAL-SNAPSHOT（审计簇D 治本·KILL-MOCK-RED 同源）：每对象 id → **真实当前属性态**（= obj.props 中
+  // 命中 stateVar 名的**数值型**属性，其余略）。baseSnapshot 由此播——推演从后端真世界态起跑，**不再 hash(oid) 造伪初态**。
+  // 无真值的对象/变量在此缺省（诚实空态）；前端遇缺退 0（诚实静止），绝不合成/哈希冒充真值。
+  nodeObjectState: z.record(z.string(), z.record(z.string(), z.number())).optional(),
+  // SIM-REAL-SNAPSHOT（簇D3）：沙盘节点「热度红带」阈——权威 sim 配置（= 后端 DEFAULT_SANDBOX_HEAT_THRESHOLD），
+  // 前端不再于 SandboxView/SimComparePanel 内联 70。触达「节点热度红≥阈」决策 + tick 时间轴 heat 门。
+  heatThreshold: z.number().optional(),
 });
 export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
