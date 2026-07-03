@@ -27,6 +27,9 @@ export interface OntologyClient {
   getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload>;
   /** 治理增量 §3.6：聚合下推（避免 agent 拉全量行）。 */
   aggregateObjects(ctx: ToolAuthCtx, req: AggregateRequest): Promise<ToolPayload>;
+  /** LAUNCHER-GROUNDED-QUESTIONS：读租户模拟时钟当前日（t0+tick），供场景卡相对时间接地（R6 确定性·D10）。
+   *  OBO → DataCore GET /a/v1/synthetic/clock。失败/无时钟 → 返回 undefined（不编造 wall clock）。 */
+  getSimClock(ctx: ToolAuthCtx): Promise<{ simDate: string; t0: string; currentTick: number } | undefined>;
   /** B→A 存在性探针（引用闭合）：本租户已发布对象类型 key 全集（agent scope / intent slot 校验）。 */
   listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]>;
   /** CL.3 discover 真实类型名：本租户已发布对象类型 {key,label(中文),domain,instanceCount}（agent 照真名查不再猜）。 */

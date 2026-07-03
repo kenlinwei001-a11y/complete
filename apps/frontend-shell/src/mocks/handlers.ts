@@ -2301,6 +2301,8 @@ export const handlers = [
         sNo: s.scenarioKey, name: s.name, view: s.targetView, domain: s.domain, intentKey: s.intentKey,
         triggerQuestion: s.triggerQuestion, solver: s.solver, riskLevel: s.riskLevel, summary: s.summary,
         willProduceDraft: s.riskLevel === "ACTION_DRAFT", inactive: false, presetContext: s.presetContext,
+        // LAUNCHER-GROUNDED-QUESTIONS：mock 场景均已接地可推演（needsData=false）；真实接地在服务端下发。
+        needsData: false,
       }));
     const shown = includeInactive ? items : items.filter((c) => !c.inactive);
     return HttpResponse.json({ launcherEnabled: true, total: shown.length, items: shown });

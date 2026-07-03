@@ -104,7 +104,13 @@ export function seedScenarioPackage(tenantId = SEED_TENANT, now = new Date().toI
 }
 
 /** Published intents ×4 with plans (QOS-PRD §7.6). 按租户参数化（demo 保持原 id；其它租户 packageId/id 后缀 __<tenant>）。 */
-export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toISOString()): {
+export function seedIntentsAndPlans(
+  tenantId = SEED_TENANT,
+  now = new Date().toISOString(),
+  // LAUNCHER-GROUNDED-QUESTIONS（Part A·R14）：按 intentKey 提供接地后的 slotPresets（死对象→真实例·补槽），
+  // 使派生计划的 invoke_solver 入参也用租户真值（否则计划烘焙出厂死 lineId → 答案回显死对象与卡面不一致）。
+  groundedSlots?: Map<string, Record<string, unknown>>,
+): {
   intents: IntentDefinition[];
   plans: ExecutionPlan[];
 } {
@@ -412,7 +418,8 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     // 无入参、读 MaterialBalance 出 materials/shortageCount/summary 真表，见 datacore SOLVER_OUTPUT_SHAPES）
     // → solver_summary 投影出本月平衡/缺口真数据，grow S18 → GOVERNED（不再纯跳转）。其余卡走目录声明 solver。
     const effectiveSolver = card.solver === "sop_balance" ? "mrp_netting" : card.solver;
-    const solverArgs = (ARG_OVERRIDE[effectiveSolver] ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
+    // 接地优先：ARG_OVERRIDE（求解器专用入参覆盖）> groundedSlots（租户真值接地）> 出厂 slotPresets。
+    const solverArgs = (ARG_OVERRIDE[effectiveSolver] ?? groundedSlots?.get(card.intentKey) ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
     const steps: ExecutionPlan["steps"] = [
       { id: "s1", type: "invoke_solver", params: { solverKey: effectiveSolver, args: solverArgs } },
       // 闭 G-1：渲染**投影求解器真实输出**（solver_summary 通用投影，不写死业务数字/文案）→
@@ -448,7 +455,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
 /** 仓储子集（解耦 main.ts/server.ts，避免循环依赖）。 */
 interface ScenarioSeedRepos {
   packages: { get(id: string): Promise<unknown>; insert(p: ScenarioPackage): Promise<void> };
-  plans: { get(id: string): Promise<unknown>; insert(p: ExecutionPlan): Promise<void> };
+  plans: { get(id: string): Promise<unknown>; insert(p: ExecutionPlan): Promise<void>; update?(p: ExecutionPlan): Promise<void> };
   intents: { get(id: string): Promise<unknown>; insert(i: IntentDefinition): Promise<void> };
 }
 
@@ -459,11 +466,21 @@ interface ScenarioSeedRepos {
  * 并覆盖任意租户（不只 demo）：包 id/意图/计划 id 按租户唯一（demo 保持原 id 向后兼容）。
  * main.ts（boot 时 demo）与 server.ts ensureScenarios（任意租户懒触发）共用此函数。
  */
-export async function ensureScenarioPackageSeed(repos: ScenarioSeedRepos, tenantId = SEED_TENANT): Promise<void> {
+export async function ensureScenarioPackageSeed(
+  repos: ScenarioSeedRepos,
+  tenantId = SEED_TENANT,
+  groundedSlots?: Map<string, Record<string, unknown>>,
+): Promise<void> {
   const pkg = seedScenarioPackage(tenantId);
   if (!(await repos.packages.get(pkg.id))) await repos.packages.insert(pkg);
-  const { intents, plans } = seedIntentsAndPlans(tenantId);
-  for (const p of plans) if (!(await repos.plans.get(p.id))) await repos.plans.insert(p);
+  const { intents, plans } = seedIntentsAndPlans(tenantId, undefined, groundedSlots);
+  for (const p of plans) {
+    const exists = await repos.plans.get(p.id);
+    if (!exists) await repos.plans.insert(p);
+    // LAUNCHER-GROUNDED-QUESTIONS：接地入参可用时，覆写出厂计划的 invoke_solver 死入参（boot 曾无接地播种），
+    // 使答案回显与卡面接地值一致（R14·R6 幂等：同租户同 clock 同结果）。仅在提供 groundedSlots 时覆写。
+    else if (groundedSlots && repos.plans.update) await repos.plans.update(p);
+  }
   for (const i of intents) if (!(await repos.intents.get(i.id))) await repos.intents.insert(i);
 }
 

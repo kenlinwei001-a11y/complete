@@ -64,6 +64,7 @@ import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
+import { groundScenario, type GroundingContext, type GroundObject } from "./scenario-grounding.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
 import { ensureMaterializedIntents, reconcileIntents } from "./intents/reconcile.js";
 import { MaterializedIntentSchema, SlotDefSchema } from "@platform/contracts";
@@ -2131,10 +2132,21 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   // 场景启动器 P2：Scenario 升一等持久化对象（repo 单一来源；出厂 SCENARIO_CATALOG 懒播种）。
   // 首次访问某租户若仓储为空 → 幂等播种出厂 20 场景，保证目录始终完整（含自助新增场景）。
-  const ensureScenarios = async (tenantId: string): Promise<Scenario[]> => {
+  const ensureScenarios = async (tenantId: string, a?: RequestAuth): Promise<Scenario[]> => {
     // 多租户：任意租户首次访问场景即懒补齐「场景包 + 意图 + 计划」（per-id 幂等，与卡解耦的根因修复）
     // —— 没有这步，非 demo 租户有卡但无意图 → classify 候选空 → OUT_OF_CATALOG。
-    await ensureScenarioPackageSeed(deps.repos, tenantId);
+    // LAUNCHER-GROUNDED-QUESTIONS（Part A·R14）：有 auth → 按租户真数据 + sim-clock 接地各卡 slotPresets
+    // 并覆写派生计划的 invoke_solver 死入参（boot 曾无接地烘焙死 lineId）→ 求解器答案回显真对象、与卡面一致。
+    let groundedSlots: Map<string, Record<string, unknown>> | undefined;
+    if (a) {
+      const gctx = await buildGroundingContext(a);
+      groundedSlots = new Map();
+      for (const sc of seedScenarios(tenantId)) {
+        const g = groundScenario({ triggerQuestion: sc.triggerQuestion, presetContext: sc.presetContext }, gctx);
+        groundedSlots.set(sc.intentKey, g.slotPresets);
+      }
+    }
+    await ensureScenarioPackageSeed(deps.repos, tenantId, groundedSlots);
     const existing = await deps.repos.scenarios.listByTenant(tenantId);
     const keys = new Set(existing.map((s) => s.scenarioKey));
     let added = false;
@@ -2146,6 +2158,41 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       }
     }
     return added ? deps.repos.scenarios.listByTenant(tenantId) : existing;
+  };
+
+  // LAUNCHER-GROUNDED-QUESTIONS（Part A·根因 R14）：为场景卡接地组装「(对象库 ∩ sim-clock) 现状」上下文。
+  // 从租户真实数据（对象实例 + 模拟时钟）派生，零硬编码死对象/死月份；短 TTL 缓存（B→A 60s 口径）避免每卡往返。
+  const GROUND_TYPES = ["Line", "Base", "Model", "Customer"] as const;
+  const groundingCache = new Map<string, { at: number; ctx: GroundingContext }>();
+  const buildGroundingContext = async (a: RequestAuth): Promise<GroundingContext> => {
+    const cached = groundingCache.get(a.tenantId);
+    if (cached && Date.now() - cached.at < 60_000) return cached.ctx;
+    const objectsByType: Record<string, GroundObject[]> = {};
+    for (const type of GROUND_TYPES) {
+      try {
+        const payload = await deps.dataCore.ontology.queryObjects(a, type, {}, 500);
+        // 归一化响应体：HTTP DataCore 返回 { data: [...] }（data 即数组）；mock 返回 { data: { items: [...] } }。
+        const dd = payload?.data as unknown;
+        const raw = (Array.isArray(dd) ? dd : ((dd as { items?: unknown[] })?.items ?? [])) as Record<string, unknown>[];
+        // 归一化两种形态：HTTP {id,props:{...}} / mock 扁平 {baseId,name,...}。业务主键 prop 按类型取。
+        const keyProp = ({ Line: "lineId", Base: "baseId", Model: "modelId", Customer: "custName" } as Record<string, string>)[type] ?? "id";
+        const objs: GroundObject[] = raw.map((item) => {
+          const props = (item.props && typeof item.props === "object" ? item.props : item) as Record<string, unknown>;
+          const key = String(props[keyProp] ?? item[keyProp] ?? item.id ?? item.objectId ?? "");
+          const id = String(item.id ?? item.objectId ?? key);
+          const label = String(props.name ?? props.custName ?? key);
+          return { id, key, label };
+        }).filter((o) => o.key);
+        objs.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)); // 确定性首选（R6）
+        objectsByType[type] = objs;
+      } catch {
+        // 未探测该类型（DataCore 不可达/无权限）→ 不写键（groundScenario 尽力不接地不 gap，诚实）。
+      }
+    }
+    const clock = await deps.dataCore.ontology.getSimClock(a).catch(() => undefined);
+    const ctx: GroundingContext = { simDate: clock?.simDate, objectsByType };
+    groundingCache.set(a.tenantId, { at: Date.now(), ctx });
+    return ctx;
   };
 
   // 场景闭包/就绪（PRD §3.6 上架门 + 引用闭合「无死路」）：场景调用的链路必须全配置好——
@@ -2321,29 +2368,38 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { includeInactive, includeDraft } = req.query as { includeInactive?: string; includeDraft?: string };
     const enabled = await deps.features.enabledSet(a.tenantId, a.token);
     const launcherOn = viewAllowed(enabled, "scenarios");
-    const all = await ensureScenarios(a.tenantId);
+    const all = await ensureScenarios(a.tenantId, a);
+    // LAUNCHER-GROUNDED-QUESTIONS（Part A）：下发前按租户真数据 + sim-clock 接地每卡
+    // （死对象→真实例·相对时间→具体值·补必填槽·不可答标 needsData 入待补区）。零硬编码（R14）。
+    const gctx = await buildGroundingContext(a);
     const cards = all
       .filter((s) => s.status !== "RETIRED")
       .filter((s) => includeDraft === "true" || s.status === "PUBLISHED")
-      .map((s) => ({
-        // 兼容旧字段（前端启动器/评测沿用 sNo/view/name）：投影出 ScenarioCard 形态 + 一等字段。
-        sNo: s.scenarioKey,
-        name: s.name,
-        view: s.targetView,
-        domain: s.domain,
-        intentKey: s.intentKey,
-        triggerQuestion: s.triggerQuestion,
-        solver: s.solver,
-        rules: s.rules,
-        riskLevel: s.riskLevel,
-        summary: s.summary,
-        mode: s.mode,
-        defaultAgentId: s.defaultAgentId,
-        presetContext: s.presetContext,
-        status: s.status,
-        willProduceDraft: s.riskLevel === "ACTION_DRAFT",
-        inactive: !viewAllowed(enabled, s.targetView),
-      }))
+      .map((s) => {
+        const g = groundScenario({ triggerQuestion: s.triggerQuestion, presetContext: s.presetContext }, gctx);
+        return {
+          // 兼容旧字段（前端启动器/评测沿用 sNo/view/name）：投影出 ScenarioCard 形态 + 一等字段。
+          sNo: s.scenarioKey,
+          name: s.name,
+          view: s.targetView,
+          domain: s.domain,
+          intentKey: s.intentKey,
+          triggerQuestion: g.triggerQuestion, // 接地后具象问句（相对时间已解析）
+          solver: s.solver,
+          rules: s.rules,
+          riskLevel: s.riskLevel,
+          summary: s.summary,
+          mode: s.mode,
+          defaultAgentId: s.defaultAgentId,
+          presetContext: { targetView: s.presetContext.targetView, selectedObjects: g.selectedObjects, slotPresets: g.slotPresets },
+          status: s.status,
+          willProduceDraft: s.riskLevel === "ACTION_DRAFT",
+          inactive: !viewAllowed(enabled, s.targetView),
+          // 接地结果：needsData=接地后仍不可答（引用类型零实例）→ 前端归入"待补数据"区。
+          needsData: g.needsData,
+          groundingGap: g.groundingGap,
+        };
+      })
       .sort((a, b) => (a.sNo < b.sNo ? -1 : 1));
     const items = includeInactive === "true" ? cards : cards.filter((c) => !c.inactive);
     return { launcherEnabled: launcherOn, total: items.length, items };
@@ -2355,7 +2411,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/scenarios/:key/launch", async (req, reply) => {
     const a = await auth(req);
     const { key } = req.params as { key: string };
-    await ensureScenarios(a.tenantId);
+    await ensureScenarios(a.tenantId, a);
     const all = await deps.repos.scenarios.listByTenant(a.tenantId);
     const sc = all.find((c) => c.scenarioKey === key || c.intentKey === key);
     if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
@@ -2365,14 +2421,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!viewAllowed(enabled, sc.targetView)) throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
     if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no scenario package for tenant");
+    // LAUNCHER-GROUNDED-QUESTIONS（Part A）：启动同样接地（死对象→真实例·相对时间→具体值），
+    // 使 QOS 收到的问句/预设/选中对象均为租户真值；并注入 sim-clock 锚点 timeWindow → fillSlots
+    // 的既有相对时间归结（BP-6 resolveRelativeDate）可解析任何 date 槽（R14 数据驱动·R6 确定性）。
+    const gctx = await buildGroundingContext(a);
+    const g = groundScenario({ triggerQuestion: sc.triggerQuestion, presetContext: sc.presetContext }, gctx);
     const body = SubmitQueryBodySchema.parse({
       packageId: pkg.id,
-      query: sc.triggerQuestion,
+      query: g.triggerQuestion,
       context: {
         view: sc.presetContext.targetView,
-        selectedObjects: sc.presetContext.selectedObjects,
+        selectedObjects: g.selectedObjects,
         filters: {},
-        presetSlots: sc.presetContext.slotPresets,
+        presetSlots: g.slotPresets,
+        ...(gctx.simDate ? { timeWindow: { from: gctx.simDate, to: gctx.simDate } } : {}),
         // §2.4 确定性绑定：卡声明的意图键随上下文进编排器 → GOVERNED 卡直接绑定意图（跳过 classify）。
         scenarioIntentKey: sc.intentKey,
         scenarioKey: sc.scenarioKey,
@@ -2570,7 +2632,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/scenarios/:key/grow", async (req, reply) => {
     const a = await auth(req);
     const { key } = req.params as { key: string };
-    await ensureScenarios(a.tenantId);
+    await ensureScenarios(a.tenantId, a);
     const sc = (await deps.repos.scenarios.listByTenant(a.tenantId)).find((c) => c.scenarioKey === key || c.intentKey === key);
     if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
     const run = await growScenario(a, sc);
@@ -2584,7 +2646,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // 列表（管理态：含 DRAFT/RETIRED；前端场景编辑器消费——每个用 workflow/agent 的场景都在此完整可配）
   app.get("/b/v1/scenarios/manage", async (req) => {
     const a = await auth(req);
-    await ensureScenarios(a.tenantId);
+    await ensureScenarios(a.tenantId, a);
     const enabled = await deps.features.enabledSet(a.tenantId, a.token);
     const all = await deps.repos.scenarios.listByTenant(a.tenantId);
     // 每个场景附引用闭包就绪（intent→plan→agent 全配置好 = 无死路），前端显示就绪/断链。
@@ -2596,14 +2658,14 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // 单场景闭包（编辑器实时校验）。
   app.get("/b/v1/scenarios/:key/closure", async (req) => {
     const a = await auth(req);
-    await ensureScenarios(a.tenantId);
+    await ensureScenarios(a.tenantId, a);
     const sc = await deps.repos.scenarios.byKey(a.tenantId, (req.params as { key: string }).key);
     if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
     return scenarioClosure(a.tenantId, sc);
   });
   app.get("/b/v1/scenarios/:key", async (req) => {
     const a = await auth(req);
-    await ensureScenarios(a.tenantId);
+    await ensureScenarios(a.tenantId, a);
     const sc = await deps.repos.scenarios.byKey(a.tenantId, (req.params as { key: string }).key);
     if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
     return sc;

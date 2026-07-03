@@ -35,6 +35,7 @@ import { SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { reconcileUniversalAgent, SEED_UNIVERSAL_AGENT_ID } from "../agents/universal.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
+import { appendDataGapBlock } from "../scenario-grounding.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
@@ -719,13 +720,18 @@ export class Orchestrator {
       return;
     }
 
+    // LAUNCHER-GROUNDED-QUESTIONS（Part B）：工作流跑通但**结果为数据未接齐空壳**（BP-7 显性化文案，
+    // 无 KPI/表数据）→ 追加 `gap` 块（携真问句 + taskId）。答案坞据此渲染既有 GapCard 的「认领并补数据」
+    // （复用 GROWTH-WORKLIST human-gated fill·非自动补），登记 WorklistItem → 跳补数据页 → 补后继续推演。
+    // 仅命中"数据未接齐/无输出"（真缺数据·补数据有用）；"真无解"（约束不可行·补数据无用）不追加，诚实区分。
+    const answer = appendDataGapBlock(result.answer, task.query, taskId);
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
-      answer: result.answer,
+      answer,
       resolvedRefs: dedupeRefs(resolvedRefs),
       completedAt: new Date().toISOString(),
     });
-    await this.deps.events.emit(taskId, "answer.final", result.answer);
+    await this.deps.events.emit(taskId, "answer.final", answer);
     this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
   }
 

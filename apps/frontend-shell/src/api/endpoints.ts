@@ -791,6 +791,9 @@ export interface ScenarioCardVM {
   willProduceDraft: boolean;
   inactive?: boolean;
   presetContext: { targetView: string; selectedObjects: { objectType: string; objectId: string; label?: string }[]; slotPresets: Record<string, unknown> };
+  /** LAUNCHER-GROUNDED-QUESTIONS：接地后仍不可答（引用对象类型在租户零实例）→ 归入"待补数据"区、不作可推演卡。 */
+  needsData?: boolean;
+  groundingGap?: { gapCode: string; missingType: string; detail: string };
 }
 export const fetchScenarioCards = (includeInactive = false) =>
   api.b<{ launcherEnabled: boolean; total: number; items: ScenarioCardVM[] }>(`/b/v1/scenarios${includeInactive ? "?includeInactive=true" : ""}`);

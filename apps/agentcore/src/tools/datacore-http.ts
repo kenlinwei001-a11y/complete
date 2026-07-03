@@ -107,6 +107,18 @@ class HttpOntologyClient implements OntologyClient {
     const data = await call<unknown>(this.baseUrl, ctx, "POST", `/a/v1/objects/aggregate`, req);
     return { data } as ToolPayload;
   }
+  async getSimClock(ctx: ToolAuthCtx): Promise<{ simDate: string; t0: string; currentTick: number } | undefined> {
+    try {
+      const c = await call<{ simulatedDate?: string; simDate?: string; t0?: string; currentTick?: number }>(
+        this.baseUrl, ctx, "GET", `/a/v1/synthetic/clock`,
+      );
+      const simDate = c?.simulatedDate ?? c?.simDate;
+      if (!simDate || !c?.t0) return undefined;
+      return { simDate, t0: c.t0, currentTick: c.currentTick ?? 0 };
+    } catch {
+      return undefined; // 无时钟/未合成 → 诚实留空，相对时间不接地（不编造 wall clock）
+    }
+  }
   async listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]> {
     const types = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types`);
     return (types ?? []).map((t) => t.key);

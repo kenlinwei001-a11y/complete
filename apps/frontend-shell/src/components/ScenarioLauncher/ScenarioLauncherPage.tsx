@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { fetchScenarioCards, type ScenarioCardVM } from "@/api/endpoints";
 import { useScenarioLaunch } from "./useScenarioLaunch";
 import zh from "@/locales/zh";
@@ -11,14 +12,20 @@ import zh from "@/locales/zh";
 export default function ScenarioLauncherPage() {
   const { data, isLoading } = useQuery({ queryKey: ["b", "scenarios", "cards"], queryFn: () => fetchScenarioCards() });
   const launch = useScenarioLaunch();
+  const navigate = useNavigate();
 
-  const byDomain = useMemo(() => {
+  // LAUNCHER-GROUNDED-QUESTIONS：接地后 needsData 卡（引用类型零实例·不可推演）单列"待补数据"区，
+  // 不混入可推演墙（诚实·PRD §1.4）。可推演卡按域分组。
+  const { byDomain, needsDataCards } = useMemo(() => {
+    const answerable: ScenarioCardVM[] = [];
+    const needs: ScenarioCardVM[] = [];
+    for (const c of data?.items ?? []) (c.needsData ? needs : answerable).push(c);
     const m = new Map<string, ScenarioCardVM[]>();
-    for (const c of data?.items ?? []) {
+    for (const c of answerable) {
       const d = c.domain ?? c.view;
       (m.get(d) ?? m.set(d, []).get(d)!).push(c);
     }
-    return [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    return { byDomain: [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)), needsDataCards: needs };
   }, [data]);
 
   return (
@@ -64,6 +71,31 @@ export default function ScenarioLauncherPage() {
           </div>
         </div>
       ))}
+      {/* LAUNCHER-GROUNDED-QUESTIONS · 待补数据区：接地后引用类型零实例、不可推演 → 出「认领并补数据」，
+          复用 GROWTH-WORKLIST（人工闸·非自动补）跳补数据看板，补齐后回启动器推演。 */}
+      {needsDataCards.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div className="section-title" data-testid="launcher-needsdata">
+            待补数据 · {needsDataCards.length}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+            {needsDataCards.map((c) => (
+              <div key={c.sNo} className="panel" data-testid={`needsdata-card-${c.sNo}`} style={{ display: "flex", flexDirection: "column", gap: 6, opacity: 0.9 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <b className="mono">{c.sNo}</b>
+                  <span style={{ fontWeight: 600 }}>{c.name}</span>
+                  <span className="badge amber" title="接地后仍缺数据，不可推演">待补</span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>{c.triggerQuestion}</div>
+                <div style={{ fontSize: 10.5, color: "var(--muted2)" }}>{c.groundingGap?.detail ?? "引用的对象类型在本租户零实例，需先补数据。"}</div>
+                <button className="btn sm" style={{ alignSelf: "flex-start", marginTop: 2 }} data-testid={`needsdata-claim-${c.sNo}`} onClick={() => navigate("/admin/growth")}>
+                  认领并补数据 →
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

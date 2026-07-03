@@ -62,7 +62,9 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S02", "交期风险与受影响订单", "risk", "affected_orders", "常州基地影响哪些订单？", "affected_orders", ["C05"], "COMPUTE", "解读交期风险扫描结果", [B("changzhou", "常州")], { baseId: "changzhou" }),
   card("S03", "风险越线根因", "risk", "risk_root_cause", "常州物料齐套为什么这天越线？", "risk_timeline", ["C06", "C11"], "COMPUTE", "解释风险越线的根因与时序", [B("changzhou", "常州")], { baseId: "changzhou", factor: "物料齐套" }),
   card("S04", "月度规划体检", "audit", "plan_audit_q", "现金垫 45 亿过得了体检吗？", "plan_audit", ["C15", "C16", "C18", "C21", "C23"], "COMPUTE", "解读规划体检结论", [], { cashCushion: 4_500_000_000 }),
-  card("S05", "经营方案比选", "generate", "plan_recommend", "推荐哪个经营方案？", "plan_generate", ["C08", "C15", "C18"], "COMPUTE", "解读三方案比选", [], {}),
+  // LAUNCHER-GROUNDED-QUESTIONS（Part A·PRD §3 S05 处置）：抽象问句「推荐哪个经营方案？」无具象锚点、用户点名——
+  // 改具象决策问（保毛利 vs 保规模 + 管理动作），使卡面即"确实可答的具象决策"。
+  card("S05", "经营方案比选", "generate", "plan_recommend", "保毛利还是保规模？给 3 个经营方案比选 + 各自的管理动作", "plan_generate", ["C08", "C15", "C18"], "COMPUTE", "解读三方案比选", [], {}),
   card("S06", "处置方案采纳", "risk", "adopt_mitigation", "采纳常州的三班制方案", "mitigation_select", ["C08", "C10"], "ACTION_DRAFT", "协助采纳风险处置方案", [B("changzhou", "常州")], { baseName: "常州", factor: "物料齐套", solutionName: "三班制" }),
   card("S07", "产线认证排期", "project", "cert_scheduling", "待认证的型号怎么排认证顺序？", "cert_schedule", ["C04", "C26"], "COMPUTE", "解读认证排期建议", [], { horizonWeeks: 12 }),
   card("S08", "物料齐套分析", "risk", "kit_analysis", "下周哪些订单缺料开不了工？", "kit_readiness", ["C06", "C16"], "COMPUTE", "解读齐套分析", [], { fromDay: 1, toDay: 14 }),

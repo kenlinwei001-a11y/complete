@@ -1,0 +1,9 @@
+total 20 | needsData cards: none
+S02 {"q":"常州基地影响哪些订单？","slots":{"baseId":"changzhou"},"sel":["changzhou"],"needsData":false}
+S03 {"q":"常州物料齐套为什么2026-06-10越线？","slots":{"baseId":"changzhou","factor":"物料齐套","day":"2026-06-10"},"sel":["changzhou"],"needsData":false}
+S05 {"q":"保毛利还是保规模？给 3 个经营方案比选 + 各自的管理动作","slots":{},"sel":[],"needsData":false}
+S08 {"q":"下周（2026-06-15~2026-06-21）哪些订单缺料开不了工？","slots":{"fromDay":1,"toDay":14,"weekStart":"2026-06-15","weekEnd":"2026-06-21"},"sel":[],"needsData":false}
+S11 {"q":"下周（2026-06-15~2026-06-21）订单怎么排能少换型？","slots":{"lineId":"LINE-changzhou","week":1,"weekStart":"2026-06-15","weekEnd":"2026-06-21"},"sel":[],"needsData":false}
+S15 {"q":"电网公司 F 这单毛利过线吗？","slots":{"custName":"电网公司F"},"sel":[],"needsData":false}
+S18 {"q":"2026-06产销平衡到哪一步了？","slots":{"month":"2026-06"},"sel":[],"needsData":false}
+S19 {"q":"2026Q2 缺口用什么组合补？","slots":{"quarter":"2026Q2"},"sel":[],"needsData":false}

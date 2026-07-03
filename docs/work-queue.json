@@ -2581,7 +2581,7 @@
     {
       "id": "LAUNCHER-GROUNDED-QUESTIONS",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "GROWTH-WORKLIST-HUMAN-FILL"

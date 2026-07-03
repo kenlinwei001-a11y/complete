@@ -148,6 +148,11 @@ export class MockOntologyClient implements OntologyClient {
     return { data: found, snapshotVersion: SNAPSHOT };
   }
 
+  /** LAUNCHER-GROUNDED-QUESTIONS：mock 无模拟时钟 → 诚实返回 undefined（相对时间不接地，不编造 wall clock）。 */
+  async getSimClock(): Promise<{ simDate: string; t0: string; currentTick: number } | undefined> {
+    return undefined;
+  }
+
   /** 治理增量 §3.6：聚合下推 mock —— 返回分组行集（绝不返回全量原始行），供 G8 审计断言。 */
   async aggregateObjects(
     ctx: ToolAuthCtx,
