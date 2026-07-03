@@ -181,6 +181,7 @@ export class HistoryService {
         createdAt: p.createdAt,
         ...(p.appliedAt ? { appliedAt: p.appliedAt } : {}),
         ...(p.realizedMape !== undefined ? { realizedMape: p.realizedMape } : {}),
+        ...(p.synthetic ? { synthetic: p.synthetic } : {}),
         ...(p.evidence ? { evidence: p.evidence } : {}),
       }));
     const calHistory = (await this.repos.calibrationHistory.list(tid, (h) => h.id.startsWith("calh_lh_")))
@@ -212,6 +213,9 @@ export class HistoryService {
       }));
 
     return {
+      // C2 治本：整个 livedIn 回放包（mapeSeries 手画指数收敛 + 校准叙事）为合成演示，
+      // 非真实"越用越准"学习 → 前端"收敛"面板据此标 SYNTHETIC，看者可分辨脚本画 vs 真学会。
+      synthetic: true,
       generatedFrom: {
         ...state.generatedFrom,
         liveMonths: state.liveMonths,

@@ -368,7 +368,7 @@ export class SyntheticService {
         sliceKey: "capacity_forecast|all|4680-NCM",
         paramRef: { scope: "SOLVER_PARAMS" as const, path: "ramp.base" },
         method: "REPLAY_ATTRIBUTION" as const,
-        evidence: { windowFrom: "2026-06-17", windowTo: "2026-06-30", nPairs: 168, mapeBefore: 11.2, simulatedMapeAfter: 8.9, bias: 0.061, flags: ["ATTRIBUTION_SHARE:0.82"] },
+        evidence: { windowFrom: "2026-06-17", windowTo: "2026-06-30", nPairs: 168, mapeBefore: 11.2, simulatedMapeAfter: 8.9, bias: 0.061, flags: ["ATTRIBUTION_SHARE:0.82"], synthetic: true },
       },
       {
         id: `calp_${ctx.tenantId}_seed_maint`,
@@ -382,7 +382,7 @@ export class SyntheticService {
         sliceKey: "capacity_forecast|all|圆柱-LFP",
         paramRef: { scope: "SOLVER_PARAMS" as const, path: "maintMult" },
         method: "EMA" as const,
-        evidence: { windowFrom: "2026-06-10", windowTo: "2026-06-30", nPairs: 96, mapeBefore: 9.8, simulatedMapeAfter: 8.1, bias: -0.034, flags: [] },
+        evidence: { windowFrom: "2026-06-10", windowTo: "2026-06-30", nPairs: 96, mapeBefore: 9.8, simulatedMapeAfter: 8.1, bias: -0.034, flags: [], synthetic: true },
       },
     ];
     for (const p of proposalSeeds) {
@@ -391,6 +391,8 @@ export class SyntheticService {
         tenantId: ctx.tenantId,
         status: "PENDING",
         createdAt: `${t0}T00:00:00.000Z`,
+        // C4：demo 冷启动 seed 提案·证据手填(非真实校准配对回测)→ UI 标 SYNTHETIC，与真 sweep 产出区分。
+        synthetic: true,
       });
     }
     await this.repos.calibrationHistory.put({

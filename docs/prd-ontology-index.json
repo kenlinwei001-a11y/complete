@@ -884,6 +884,20 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-growth-worklist-human-fill.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-9"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-implementation-handbook.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1526,6 +1540,7 @@
     ],
     "G-9": [
       "PRD-decision-support-maturity.md",
+      "PRD-growth-worklist-human-fill.md",
       "PRD-scenario-ontogenesis.md",
       "PRD-simulation-sandbox.md"
     ],

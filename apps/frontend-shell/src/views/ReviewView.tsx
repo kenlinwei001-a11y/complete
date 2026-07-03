@@ -26,11 +26,20 @@ export default function ReviewView(_props: ViewRendererProps) {
 
   return (
     <div data-testid="review-view" style={{ display: "grid", gap: 18 }}>
-      <header style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+      <header style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>运营回顾 · 已运行 12 个月</h2>
         <span className="badge" title={`回放 ${data.generatedFrom.replayFrom} ~ ${data.generatedFrom.replayTo} · seed ${data.generatedFrom.seed}`}>
           {data.generatedFrom.replayFrom} ~ {data.generatedFrom.replayTo}
         </span>
+        {data.synthetic && (
+          <span
+            className="badge amber"
+            data-testid="review-synthetic-badge"
+            title="本页「越用越准」收敛曲线与校准提案来自确定性合成回放（seed 脚本化），非真实运营中学习到的精度提升。真实租户的收敛只由真 CALIBRATION_SWEEP 逐轮累积真观测产生。"
+          >
+            合成演示 · 非真实学习
+          </span>
+        )}
       </header>
 
       <MapeSection bundle={data} />
@@ -49,7 +58,14 @@ function MapeSection({ bundle }: { bundle: HistoryBundle }) {
   const events = series.filter((w) => w.event);
   return (
     <section>
-      <div className="section-title">预测精度（MAPE）收敛曲线 · 52 周</div>
+      <div className="section-title">
+        预测精度（MAPE）收敛曲线 · 52 周
+        {bundle.synthetic && (
+          <span data-testid="mape-synthetic-note" className="badge amber" style={{ marginLeft: 8, fontWeight: 400 }}>
+            合成回放
+          </span>
+        )}
+      </div>
       <EChart
         height={220}
         testId="mape-curve"

@@ -174,12 +174,17 @@ export class CalibrationService {
     let points: { date: string; mape: number }[];
     let points30d: { date: string; mape: number }[] | undefined;
     let slices: ReturnType<typeof buildSlices> | undefined;
+    // C1 治本延伸：无真配对且回落到静态基线时，标 baselineOnly=true（UI 显"静态基线·无真实配对"），
+    // 与"真算 MAPE 收敛"区分——看的人分得清真学会 vs 无数据静止。
+    let baselineOnly = false;
     if (trendPairs.length > 0) {
       points = rollingMapeSeries(trendPairs, 7);
       points30d = rollingMapeSeries(trendPairs, 30);
       slices = buildSlices(pairs, cfg.nMin);
     } else {
-      points = await this.legacySeries(tenantId, q);
+      const legacy = await this.legacySeries(tenantId, q);
+      points = legacy.points;
+      baselineOnly = legacy.baselineOnly;
     }
     if (q.from) {
       points = points.filter((p) => p.date >= (q.from as string));
@@ -194,11 +199,15 @@ export class CalibrationService {
       ...(points30d ? { points30d } : {}),
       ...(slices ? { slices } : {}),
       nMin: cfg.nMin,
+      ...(baselineOnly ? { baselineOnly: true } : {}),
     };
   }
 
-  /** 配对前的兼容序列：A8 forecast_dev 聚合；再无数据 → 确定性种子基线（页面不空）。 */
-  private async legacySeries(tenantId: string, q: CalibrationReportQuery): Promise<{ date: string; mape: number }[]> {
+  /** 配对前的兼容序列：A8 forecast_dev 聚合（真值·baselineOnly=false）；再无数据 → 诚实静态基线（baselineOnly=true）。 */
+  private async legacySeries(
+    tenantId: string,
+    q: CalibrationReportQuery,
+  ): Promise<{ points: { date: string; mape: number }[]; baselineOnly: boolean }> {
     let runs = await this.repos.tsAggRuns.list(tenantId, (r) => r.specKey === "forecast_dev_daily");
     if (q.objectType && q.objectType !== "Model") runs = []; // forecast_dev 仅挂 Model
     if (q.solverKey && q.solverKey !== SOLVER_KEY) runs = [];
@@ -209,11 +218,12 @@ export class CalibrationService {
         arr.push(r.value);
         byDate.set(r.windowEnd, arr);
       }
-      return [...byDate.entries()]
+      const points = [...byDate.entries()]
         .sort((a, b) => (a[0] < b[0] ? -1 : 1))
         .map(([date, vals]) => ({ date, mape: round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100, 2) }));
+      return { points, baselineOnly: false };
     }
-    return this.baselineSeries(tenantId, q.baseId);
+    return { points: await this.baselineSeries(tenantId, q.baseId), baselineOnly: true };
   }
 
   /**

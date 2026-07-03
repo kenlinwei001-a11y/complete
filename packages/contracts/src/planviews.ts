@@ -143,6 +143,8 @@ export const CalibrationEvidenceSchema = z.object({
   simulatedMapeAfter: z.number(), // % — 建议参数重放全部配对样本
   bias: z.number(), // Σerror / Σactual
   flags: z.array(z.string()),
+  /** CALIB-HONEST-EMPTY：合成演示证据（demo/部署 seed 手填·非真实校准配对回测）→ UI 标 SYNTHETIC。 */
+  synthetic: z.boolean().optional(),
 });
 export type CalibrationEvidence = z.infer<typeof CalibrationEvidenceSchema>;
 
@@ -170,6 +172,8 @@ export const CalibrationReportSchema = z.object({
   points30d: z.array(z.object({ date: z.string(), mape: z.number() })).optional(),
   slices: z.array(CalibrationSliceSchema).optional(),
   nMin: z.number().int().optional(),
+  /** CALIB-HONEST-EMPTY·C1：无真实校准配对/历史 → points 为诚实静态基线（水平线·非收敛曲线）；UI 标"静态基线·无真实配对"。 */
+  baselineOnly: z.boolean().optional(),
 });
 export type CalibrationReport = z.infer<typeof CalibrationReportSchema>;
 
@@ -186,8 +190,10 @@ export const CalibrationProposalSchema = z.object({
   paramRef: CalibrationParamRefSchema.optional(),
   method: CalibrationMethodSchema.optional(),
   evidence: CalibrationEvidenceSchema.optional(),
-  /** §6 元闭环：APPLIED 14 天后回写的实际 MAPE（预言 vs 实现） */
+  /** §6 元闭环：APPLIED 14 天后回写的实际 MAPE（预言 vs 实现·从真未来配对算，非 simulated 自证） */
   realizedMape: z.number().optional(),
+  /** CALIB-HONEST-EMPTY：合成演示提案（demo/部署 seed·非真实校准配对产出）→ UI 标 SYNTHETIC。 */
+  synthetic: z.boolean().optional(),
 });
 export type CalibrationProposal = z.infer<typeof CalibrationProposalSchema>;
 
