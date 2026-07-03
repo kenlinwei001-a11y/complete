@@ -55,6 +55,7 @@ export function createMemoryRepos(): Repos {
   const domainEvents: DomainEventRow[] = [];
   const growthLedger = new Map<string, import("@platform/contracts").GrowthLedgerEntry>();
   const growthTickets = new Map<string, import("@platform/contracts").GrowthTicket>();
+  const growthWorklist = new Map<string, import("@platform/contracts").WorklistItem>();
   const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
   const evalRuns = new Map<string, import("@platform/contracts").EvalRunReport>();
 
@@ -342,6 +343,11 @@ export function createMemoryRepos(): Repos {
     growthTickets: {
       async upsert(t) { growthTickets.set(t.id, clone(t)); },
       async listByTenant(tenantId) { return [...growthTickets.values()].filter((t) => t.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
+    },
+    growthWorklist: {
+      async upsert(w) { growthWorklist.set(w.id, clone(w)); },
+      async get(tenantId, id) { const w = growthWorklist.get(id); return w && w.tenantId === tenantId ? clone(w) : undefined; },
+      async listByTenant(tenantId) { return [...growthWorklist.values()].filter((w) => w.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
     },
     domainEvents: {
       async append(e) { domainEvents.push(clone(e)); },

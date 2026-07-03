@@ -133,6 +133,20 @@ function filterByScope<T extends { bases?: string; name?: string }>(rows: T[], a
 
 let idSeq = 1000;
 const newId = (prefix: string) => `${prefix}-${++idSeq}`;
+// GROWTH-WORKLIST-HUMAN-FILL：在办看板 mock 态（去自动补·人工触发补数据缺口）——镜像 WorklistItem 后端契约，供 VITE_MOCK 真浏览器演示闭环。
+type MockWorklistItem = {
+  id: string; tenantId: string; fromQuestion: string; gapCode: string;
+  kind: "DATA_GAP" | "PLAN_SCAFFOLD" | "FEATURE";
+  status: "OPEN" | "CLAIMED" | "IN_PROGRESS" | "DONE" | "NEEDS_HUMAN";
+  owner?: string; evidence: string; deeplink?: string; result?: string;
+  fillPlan?: { mode: "SOFT" | "HARD"; action: string; typeKey?: string; rows?: number; seed?: number };
+  createdAt: string; updatedAt: string;
+};
+const mockWorklist: MockWorklistItem[] = [
+  { id: "wli-seed-1", tenantId: "demo", fromQuestion: "常州影响哪些订单？", gapCode: "EMPTY_DATA", kind: "DATA_GAP", status: "OPEN", evidence: "SOFT 缺数据（Order）→ 登记在办项，认领后点补才真跑 fill-data", fillPlan: { mode: "SOFT", action: "fillData", typeKey: "Order", rows: 6, seed: 42 }, createdAt: "2026-06-17T09:00:00.000Z", updatedAt: "2026-06-17T09:00:00.000Z" },
+  { id: "wli-seed-2", tenantId: "demo", fromQuestion: "空租户能长成可答吗？", gapCode: "NO_INTENT", kind: "DATA_GAP", status: "OPEN", evidence: "空租户缺起步世界 → 登记在办项，认领后点补才真跑 provisionWorld", fillPlan: { mode: "SOFT", action: "provisionWorld", seed: 42 }, createdAt: "2026-06-17T08:30:00.000Z", updatedAt: "2026-06-17T08:30:00.000Z" },
+  { id: "gtk-feat-1", tenantId: "demo", fromQuestion: "未知能力问句", gapCode: "NO_CAPABILITY", kind: "FEATURE", status: "OPEN", evidence: "缺功能→需开发工单（本就人工闸）", createdAt: "2026-06-17T07:00:00.000Z", updatedAt: "2026-06-17T07:00:00.000Z" },
+];
 const mockCategoryMode: Record<string, "SYSTEM_INTEGRATION" | "FILE_UPLOAD"> = {};
 const mockCategoryTpl: Record<string, string[] | null> = {};
 
@@ -822,6 +836,53 @@ export const handlers = [
     ] }),
   ),
   http.post("*/b/v1/growth/tickets/:id/claim", () => HttpResponse.json({ id: "gtk_1", status: "IN_PROGRESS", assignee: "cli-agent" })),
+
+  // GROWTH-WORKLIST-HUMAN-FILL：在办看板（按状态/认领人/类型筛 + 认领 + 人工触发补数据缺口）。
+  http.get("*/b/v1/growth/worklist", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const me = `usr-${account.username}`;
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    const kind = url.searchParams.get("kind");
+    const owner = url.searchParams.get("owner");
+    let rows = [...mockWorklist].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    if (status) rows = rows.filter((r) => r.status === status);
+    if (kind) rows = rows.filter((r) => r.kind === kind);
+    if (owner) { const want = owner === "me" ? me : owner; rows = rows.filter((r) => r.owner === want); }
+    return HttpResponse.json({ items: rows });
+  }),
+  http.post("*/b/v1/growth/worklist/:id/claim", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const it = mockWorklist.find((w) => w.id === params.id);
+    if (!it) return err(404, "WORKLIST_ITEM_NOT_FOUND", "在办项不存在");
+    it.status = "CLAIMED"; it.owner = `usr-${account.username}`; it.updatedAt = new Date().toISOString();
+    return HttpResponse.json(it);
+  }),
+  http.post("*/b/v1/growth/worklist/:id/release", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const it = mockWorklist.find((w) => w.id === params.id);
+    if (!it) return err(404, "WORKLIST_ITEM_NOT_FOUND", "在办项不存在");
+    it.status = "OPEN"; it.owner = undefined; it.updatedAt = new Date().toISOString();
+    return HttpResponse.json(it);
+  }),
+  http.post("*/b/v1/growth/worklist/:id/fill", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const me = `usr-${account.username}`;
+    const it = mockWorklist.find((w) => w.id === params.id);
+    if (!it) return err(404, "WORKLIST_ITEM_NOT_FOUND", "在办项不存在");
+    if (it.owner !== me && !account.roles.includes("admin")) return err(403, "NOT_WORKLIST_OWNER", "只有认领人（或 admin）可触发补数据缺口");
+    const plan = it.fillPlan;
+    it.status = "DONE";
+    it.result = plan?.action === "provisionWorld"
+      ? `已 provision 确定性合成起步世界（battery·120 对象·seed=${plan?.seed ?? 42}）`
+      : `已确定性合成 PROVISIONAL（${plan?.typeKey ?? "?"}·${plan?.rows ?? 6} 行·seed=${plan?.seed ?? 42}）`;
+    it.updatedAt = new Date().toISOString();
+    return HttpResponse.json(it);
+  }),
 
   http.get("*/a/v1/ontology/slices", () =>
     HttpResponse.json([

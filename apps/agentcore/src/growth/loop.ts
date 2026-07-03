@@ -43,6 +43,12 @@ export async function runGrowthLoop(deps: GrowthLoopDeps): Promise<GrowthRunRepo
     const fillApplied = await deps.fill(top);
     rounds.push({ round, gapReport, fillApplied });
 
+    // GROWTH-WORKLIST-HUMAN-FILL：可补项已登记在办看板、**不自动补** → 该轮终态 NEEDS_HUMAN（待人工认领点触发），
+    // 非 CONVERGED/BOUNDARY（诚实：系统诊断出可补但把触发权交回人手·G-9 自动补→人工闸控补）。
+    if (fillApplied.needsHuman) {
+      terminalState = "NEEDS_HUMAN";
+      break;
+    }
     // 补法产出工单（当前无法自动补、需开发）→ 已做完能做的，收敛到边界
     if (fillApplied.ticket) {
       openTickets.push(fillApplied.ticket);

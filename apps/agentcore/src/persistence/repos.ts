@@ -237,6 +237,12 @@ export interface Repos {
     upsert(t: import("@platform/contracts").GrowthTicket): Promise<void>;
     listByTenant(tenantId: string): Promise<import("@platform/contracts").GrowthTicket[]>;
   };
+  /** GROWTH-WORKLIST-HUMAN-FILL：在办看板项（DATA_GAP 缺数据可补项·人工闸控补·R2 tenant）。 */
+  growthWorklist: {
+    upsert(w: import("@platform/contracts").WorklistItem): Promise<void>;
+    get(tenantId: string, id: string): Promise<import("@platform/contracts").WorklistItem | undefined>;
+    listByTenant(tenantId: string): Promise<import("@platform/contracts").WorklistItem[]>;
+  };
   /** D-29 实时环 E-c：B 侧领域事件馈源（append + 按 since 游标列出，供 /b/v1/outbox 轮询）。 */
   domainEvents: {
     append(e: DomainEventRow): Promise<void>;

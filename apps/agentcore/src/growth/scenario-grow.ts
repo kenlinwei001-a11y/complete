@@ -5,12 +5,15 @@ import type {
   GrowthFillResult,
   ScaffoldDraft,
   SubmitQueryBody,
+  WorklistItem,
+  WorklistFillPlan,
 } from "@platform/contracts";
 import type { AppDeps } from "../deps.js";
 import type { RequestAuth } from "../auth.js";
 import { classifyGap, FILL } from "./probe.js";
 import { scaffoldDraftPlan, questionSlug } from "./scaffold.js";
 import { decideDataGap, groundingVocab } from "./data-boundary.js";
+import { newId } from "../ids.js";
 
 /**
  * 自成长发动机 P3 · wiring 单源（RL3/RL10：probe/fill 只此一份，`/api/v1/growth/run` 与
@@ -31,14 +34,44 @@ export interface GrowthLoopWiring {
 
 const SCAFFOLDABLE = new Set<GapCode>(["NO_PLAN", "SOLVER_NOT_FOUND"]);
 
+/**
+ * GROWTH-WORKLIST-HUMAN-FILL · registerWorklist：`/api/v1/growth/run` 驾驶舱 LOOP 传 true → SOFT fillData 与
+ * 空租户 provisionWorld **不再自动跑**，改登记为在办项(WorklistItem·OPEN·DATA_GAP)，该轮终态 NEEDS_HUMAN；
+ * 人在看板认领后点「补数据缺口」才真跑（R6 seed 确定性）。growScenario(O9) 不传 → 保持既有自动发育行为（另有诚实门定级）。
+ */
 export function buildGrowthLoopWiring(
   deps: AppDeps,
   a: RequestAuth,
   body: SubmitQueryBody,
   emitDomainEvent: (tenantId: string, event: string, payload?: Record<string, unknown>) => Promise<void>,
+  opts: { registerWorklist?: boolean } = {},
 ): GrowthLoopWiring {
   const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
   const scaffoldedByGap = new Map<GapCode, ScaffoldDraft[]>();
+
+  // 把「可补项」登记为在办看板一行（不自动补）——R2 带 tenantId。返回 needsHuman 结果，LOOP 该轮落 NEEDS_HUMAN。
+  const registerDataGap = async (
+    gap: GapFinding,
+    fillPlan: WorklistFillPlan,
+    action: string,
+  ): Promise<GrowthFillResult> => {
+    const nowIso = new Date().toISOString();
+    const item: WorklistItem = {
+      id: newId("wli"),
+      tenantId: a.tenantId,
+      fromQuestion: body.query,
+      gapCode: gap.gapCode,
+      kind: "DATA_GAP",
+      status: "OPEN",
+      fillPlan,
+      evidence: gap.evidence,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    await deps.repos.growthWorklist.upsert(item);
+    await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: false, needsHuman: true, worklistItemId: item.id, fillMode: fillPlan.mode });
+    return { gapCode: gap.gapCode, action, advanced: false, needsHuman: true, worklistItemId: item.id, fillMode: fillPlan.mode };
+  };
 
   const probe = async (): Promise<GapReport> => {
     const { taskId } = await deps.orchestrator.submitQuery(a, body, undefined, { internal: true });
@@ -63,6 +96,14 @@ export function buildGrowthLoopWiring(
     if (gap.gapCode === "EMPTY_DATA" || gap.gapCode === "NO_INTENT" || gap.gapCode === "OTHER") {
       const types = await deps.dataCore.ontology.listObjectTypes(a).catch(() => [] as { instanceCount: number }[]);
       const worldEmpty = types.length === 0 || types.every((t) => (t.instanceCount ?? 0) === 0);
+      if (worldEmpty && opts.registerWorklist) {
+        // 空租户 provisionWorld **不自动跑** → 登记在办项，待人工认领点触发（R6 seed=42 触发时确定性一致）。
+        return registerDataGap(
+          gap,
+          { mode: "SOFT", action: "provisionWorld", scale: "S", seed: 42 },
+          "空租户缺起步世界 → 登记在办项（认领后点「补数据缺口」才真跑 provisionWorld·确定性合成起步世界）",
+        );
+      }
       if (worldEmpty) {
         const prov: { provisioned: boolean; reason?: string; industry?: string; objectCount?: number } =
           await deps.dataCore.ontology.provisionWorld(a, { scale: "S", seed: 42 }).catch((e) => ({ provisioned: false, reason: (e as Error).message }));
@@ -91,6 +132,13 @@ export function buildGrowthLoopWiring(
           dataRequest: decision.dataRequest!,
           ticket: { gapCode: gap.gapCode, detail: decision.dataRequest!.reason },
         };
+      } else if (opts.registerWorklist) {
+        // SOFT 缺数据 **不自动跑** fillData → 登记在办项，待人工认领点触发（R6 seed=42 触发时确定性合成 PROVISIONAL）。
+        return registerDataGap(
+          gap,
+          { mode: "SOFT", action: "fillData", typeKey, fields: ["id", "name", "value"], rows: 6, seed: 42 },
+          `SOFT 缺数据（${typeKey}）→ 登记在办项（认领后点「补数据缺口」才真跑 fill-data·确定性合成 PROVISIONAL）`,
+        );
       } else {
         try {
           await deps.dataCore.ontology.fillData(a, { typeKey, fields: ["id", "name", "value"], rows: 6, seed: 42 });

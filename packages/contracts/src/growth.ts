@@ -74,6 +74,10 @@ export const GrowthFillResultSchema = z.object({
       reason: z.string(),
     })
     .optional(),
+  /** GROWTH-WORKLIST-HUMAN-FILL：该轮把「可补项」登记为在办项(WorklistItem)、**不自动补**——待人工在看板认领后点触发。 */
+  needsHuman: z.boolean().optional(),
+  /** 登记出的在办项 id（DATA_GAP 类）。 */
+  worklistItemId: z.string().optional(),
 });
 export type GrowthFillResult = z.infer<typeof GrowthFillResultSchema>;
 export type DataRequest = NonNullable<GrowthFillResult["dataRequest"]>;
@@ -89,7 +93,8 @@ export const GrowthRunReportSchema = z.object({
   question: z.string(),
   maxRounds: z.number().int(),
   rounds: z.array(GrowthRoundSchema),
-  terminalState: z.enum(["CONVERGED", "BOUNDARY", "MAX_ROUNDS"]),
+  /** GROWTH-WORKLIST-HUMAN-FILL：NEEDS_HUMAN = 诊断出可补项已登记在办看板、待人工认领点触发（不自动补，G-9 由自动补→人工闸控补）。 */
+  terminalState: z.enum(["CONVERGED", "BOUNDARY", "MAX_ROUNDS", "NEEDS_HUMAN"]),
   openTickets: z.array(z.object({ gapCode: GapCodeSchema, detail: z.string() })),
   generatedAt: IsoTime,
 });
@@ -133,3 +138,52 @@ export const GrowthTicketSchema = z.object({
   createdAt: IsoTime,
 });
 export type GrowthTicket = z.infer<typeof GrowthTicketSchema>;
+
+/**
+ * GROWTH-WORKLIST-HUMAN-FILL · 在办项（WorklistItem）：自成长发动机诊断出的「可补项」登记为在办看板一行，
+ * **不自动补**——人在看板按状态/认领人筛 → 认领 → 点「补数据缺口」→ **才**真跑 fillData/provisionWorld（R6 seed 确定性）。
+ * kind 判据（前端操作列派生）：
+ *  - DATA_GAP     缺数据（SOFT fillData / 空租户 provisionWorld）——真在办项，OPEN→CLAIMED→(fill)→DONE；此前 LOOP 内自动补，现改人工闸控。
+ *  - PLAN_SCAFFOLD 缺执行计划已 scaffold DRAFT——待审批发布（映射自 GrowthTicket，深链 /admin/actions）。
+ *  - FEATURE      缺功能需开发（映射自 GrowthTicket，本就人工闸；看板统一呈现）。
+ */
+export const WorklistKindSchema = z.enum(["DATA_GAP", "PLAN_SCAFFOLD", "FEATURE"]);
+export type WorklistKind = z.infer<typeof WorklistKindSchema>;
+
+/** 在办状态机：OPEN(待认领)→CLAIMED(已认领)→IN_PROGRESS→DONE；NEEDS_HUMAN=终态标（诊断入队、待人工）。 */
+export const WorklistStatusSchema = z.enum(["OPEN", "CLAIMED", "IN_PROGRESS", "DONE", "NEEDS_HUMAN"]);
+export type WorklistStatus = z.infer<typeof WorklistStatusSchema>;
+
+/** 补法计划（人工点触发时据此真跑；R6 seed 确定性）。 */
+export const WorklistFillPlanSchema = z.object({
+  mode: z.enum(["SOFT", "HARD"]),
+  /** provisionWorld=空租户合成起步世界 · fillData=单类型确定性合成 PROVISIONAL · importData=HARD 真人正门导入(深链) · approvePlan=审批发布 DRAFT。 */
+  action: z.enum(["provisionWorld", "fillData", "importData", "approvePlan", "develop"]),
+  typeKey: z.string().optional(),
+  fields: z.array(z.string()).optional(),
+  rows: z.number().int().optional(),
+  scale: z.string().optional(),
+  seed: z.number().int().optional(),
+});
+export type WorklistFillPlan = z.infer<typeof WorklistFillPlanSchema>;
+
+export const WorklistItemSchema = z.object({
+  id: z.string(), // wli_
+  tenantId: z.string(),
+  fromQuestion: z.string(),
+  gapCode: GapCodeSchema,
+  kind: WorklistKindSchema,
+  status: WorklistStatusSchema,
+  /** 认领人 userId（认领后才可触发补数据缺口·或 admin）。 */
+  owner: z.string().optional(),
+  fillPlan: WorklistFillPlanSchema.optional(),
+  /** 诊断证据（缺口 evidence / 补法说明）。 */
+  evidence: z.string(),
+  /** PLAN_SCAFFOLD/FEATURE 的操作深链（去审批 /admin/actions 等）。 */
+  deeplink: z.string().optional(),
+  /** 人工触发补后落的结果摘要（真跑 fillData/provisionWorld 的产出）。 */
+  result: z.string().optional(),
+  createdAt: IsoTime,
+  updatedAt: IsoTime,
+});
+export type WorklistItem = z.infer<typeof WorklistItemSchema>;

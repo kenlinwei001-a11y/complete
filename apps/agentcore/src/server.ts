@@ -275,7 +275,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // probe/fill 单源（RL3/RL10）：抽到 growth/scenario-grow.ts，与 growScenario(O9) 共用同一套补法引擎，不分叉。
     // 补法分派：① 缺数据→真人正门补(P2 真实)；② 缺执行计划/缺求解器(in-catalog)→A3 自动 scaffold DRAFT（不发布 R4）；③ 其余→骨架工单收敛到边界。
     // 每次 fill 发 growth.fill_proposed（经 E-c domain_events → F1 全局通道反映到驾驶舱）。
-    const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, body, emitDomainEvent);
+    // GROWTH-WORKLIST-HUMAN-FILL：驾驶舱 LOOP 传 registerWorklist → SOFT fillData / 空租户 provisionWorld 不自动跑，
+    // 改登记在办项(WorklistItem·OPEN·DATA_GAP)，该轮终态 NEEDS_HUMAN；人在看板认领后点触发才真跑（G-9 自动补→人工闸控补）。
+    const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, body, emitDomainEvent, { registerWorklist: true });
     const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
     // P4：成长账本(demand-indexed) + 缺功能→成长工单（厂商中立施工契约，带真实 I/O 契约 + 本体引用骨架）
     const now = new Date().toISOString();
@@ -370,6 +372,98 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const updated = { ...tk, status: verified ? ("VERIFIED" as const) : ("IN_REVIEW" as const) };
     await deps.repos.growthTickets.upsert(updated);
     return { ticket: updated, verified, gapReport: gap };
+  });
+
+  // ===== GROWTH-WORKLIST-HUMAN-FILL：在办看板（去自动补·人工点触发补数据缺口）=====
+  // 看板 = 真在办项(DATA_GAP·growthWorklist) + 缺功能/缺计划工单(GrowthTicket 映射为 FEATURE/PLAN_SCAFFOLD 只读呈现)，统一按状态/认领人/类型筛。
+  const TICKET_STATUS_TO_WORKLIST: Record<string, import("@platform/contracts").WorklistStatus> = {
+    OPEN: "OPEN", IN_PROGRESS: "IN_PROGRESS", IN_REVIEW: "IN_PROGRESS", MERGED: "DONE", VERIFIED: "DONE",
+  };
+  const ticketToWorklist = (tk: import("@platform/contracts").GrowthTicket): import("@platform/contracts").WorklistItem => {
+    const isPlan = !!(tk.scaffoldedDrafts && tk.scaffoldedDrafts.length > 0);
+    return {
+      id: tk.id, tenantId: tk.tenantId, fromQuestion: tk.fromQuestion, gapCode: tk.gapCode,
+      kind: isPlan ? "PLAN_SCAFFOLD" : "FEATURE",
+      status: TICKET_STATUS_TO_WORKLIST[tk.status] ?? "OPEN",
+      owner: tk.assignee, evidence: tk.acceptance,
+      deeplink: isPlan ? "/admin/actions" : undefined,
+      createdAt: tk.createdAt, updatedAt: tk.createdAt,
+    };
+  };
+  // 合并看板视图（DATA_GAP 真在办项 + 工单映射），按 createdAt 倒序。
+  const listWorklistBoard = async (tenantId: string): Promise<import("@platform/contracts").WorklistItem[]> => {
+    const items = await deps.repos.growthWorklist.listByTenant(tenantId);
+    const tickets = (await deps.repos.growthTickets.listByTenant(tenantId)).map(ticketToWorklist);
+    return [...items, ...tickets].sort((x, y) => (x.createdAt < y.createdAt ? 1 : -1));
+  };
+
+  // 列表 + 筛（状态/认领人/类型）；owner=me → 当前 actor。
+  app.get("/api/v1/growth/worklist", async (req) => {
+    const a = await auth(req);
+    const { status, owner, kind } = req.query as { status?: string; owner?: string; kind?: string };
+    let rows = await listWorklistBoard(a.tenantId);
+    if (status) rows = rows.filter((r) => r.status === status);
+    if (kind) rows = rows.filter((r) => r.kind === kind);
+    if (owner) {
+      const want = owner === "me" ? a.userId : owner;
+      rows = rows.filter((r) => r.owner === want);
+    }
+    return { items: rows };
+  });
+
+  const getWorklistItem = async (tenantId: string, id: string) => {
+    const w = await deps.repos.growthWorklist.get(tenantId, id);
+    if (!w) throw new HttpError(404, "WORKLIST_ITEM_NOT_FOUND", `worklist item not found: ${id}`);
+    return w;
+  };
+
+  // 认领：记 owner=actor，OPEN→CLAIMED，发 growth.fill_claimed。
+  app.post("/api/v1/growth/worklist/:id/claim", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const w = await getWorklistItem(a.tenantId, id);
+    const updated: import("@platform/contracts").WorklistItem = { ...w, status: "CLAIMED", owner: a.userId, updatedAt: new Date().toISOString() };
+    await deps.repos.growthWorklist.upsert(updated);
+    await emitDomainEvent(a.tenantId, "growth.fill_claimed", { worklistItemId: id, owner: a.userId, gapCode: w.gapCode });
+    return updated;
+  });
+
+  // 释放：owner 清空，回 OPEN（认领人反悔/换人）。
+  app.post("/api/v1/growth/worklist/:id/release", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const w = await getWorklistItem(a.tenantId, id);
+    const updated: import("@platform/contracts").WorklistItem = { ...w, status: "OPEN", owner: undefined, updatedAt: new Date().toISOString() };
+    await deps.repos.growthWorklist.upsert(updated);
+    return updated;
+  });
+
+  // 人工触发「补数据缺口」：R4 认领人才可触发（owner==actor 或 admin）；据 fillPlan 真跑 fillData/provisionWorld（R6 seed 确定性）→ DONE。
+  app.post("/api/v1/growth/worklist/:id/fill", async (req, reply) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const w = await getWorklistItem(a.tenantId, id);
+    const isAdmin = a.roles.includes("admin");
+    if (w.owner !== a.userId && !isAdmin) {
+      throw new HttpError(403, "NOT_WORKLIST_OWNER", "只有认领人（或 admin）可触发补数据缺口——请先认领");
+    }
+    const plan = w.fillPlan;
+    if (!plan) throw new HttpError(400, "NO_FILL_PLAN", "该在办项无补法计划，无法触发");
+    let resultText: string;
+    if (plan.action === "provisionWorld") {
+      const prov = await deps.dataCore.ontology.provisionWorld(a, { scale: plan.scale ?? "S", seed: plan.seed ?? 42 });
+      if (!prov.provisioned) throw new HttpError(409, "PROVISION_REFUSED", prov.reason ?? "provisionWorld 未执行（非空租户或被拒）");
+      resultText = `已 provision 确定性合成起步世界（${prov.industry ?? "?"}·${prov.objectCount ?? 0} 对象·seed=${plan.seed ?? 42}）`;
+    } else if (plan.action === "fillData") {
+      const r = await deps.dataCore.ontology.fillData(a, { typeKey: plan.typeKey!, fields: plan.fields ?? ["id", "name", "value"], rows: plan.rows ?? 6, seed: plan.seed ?? 42 });
+      resultText = `已确定性合成 PROVISIONAL（${plan.typeKey}·${r.rowCount} 行·seed=${plan.seed ?? 42}）`;
+    } else {
+      throw new HttpError(400, "FILL_ACTION_NOT_TRIGGERABLE", `补法 ${plan.action} 非自动触发类（HARD 真人正门导入/审批发布/需开发，请走对应深链）`);
+    }
+    const updated: import("@platform/contracts").WorklistItem = { ...w, status: "DONE", result: resultText, updatedAt: new Date().toISOString() };
+    await deps.repos.growthWorklist.upsert(updated);
+    await emitDomainEvent(a.tenantId, "growth.fill_triggered", { worklistItemId: id, owner: a.userId, gapCode: w.gapCode, action: plan.action });
+    return reply.status(200).send(updated);
   });
 
   // A5 感知层埋点：实体解析"误触发率"（域外/尝试）+ 最近域外明细（带最近邻候选）。

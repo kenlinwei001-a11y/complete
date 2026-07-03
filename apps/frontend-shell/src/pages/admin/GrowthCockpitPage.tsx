@@ -1,49 +1,119 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GrowthRunReport } from "@platform/contracts";
-import { runGrowth, fetchGrowthLedger, fetchGrowthTickets, claimGrowthTicket } from "@/api/endpoints";
+import type { GrowthRunReport, WorklistItem, WorklistKind, WorklistStatus } from "@platform/contracts";
+import {
+  runGrowth,
+  fetchGrowthLedger,
+  fetchGrowthWorklist,
+  claimWorklistItem,
+  releaseWorklistItem,
+  fillWorklistItem,
+} from "@/api/endpoints";
+import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError, toast } from "@/store/toastStore";
 import { DrillBack } from "@/components/DrillBack";
 
 /**
- * 自成长发动机驾驶舱（PRD §16 / 主线 P6）：把"客户问题"当燃料跑一轮 LOOP（探针→补齐→重跑→收敛），
- * 看 GapReport 逐轮、收敛终态、成长账本(demand-indexed)、缺功能工单看板。让用户"看着发动机跑"。
+ * 自成长发动机驾驶舱（PRD-growth-worklist-human-fill）：把"客户问题"当燃料跑一轮 LOOP（探针→诊断缺口），
+ * 缺数据**不再自动补**——诊断出的可补项登记为**在办看板**一行（OPEN·DATA_GAP）；人按状态/认领人/类型筛 →
+ * 认领 → 点「补数据缺口」→ 才真跑 fillData/provisionWorld（R6 seed 确定性）→ DONE → 可继续推演重跑。
+ * G-9：自动补 → 人工闸控补（更诚实·人可控）。
  */
 const TERMINAL_BADGE: Record<string, { label: string; cls: string }> = {
   CONVERGED: { label: "已收敛 ✓", cls: "green" },
   BOUNDARY: { label: "边界（仅剩缺功能工单）", cls: "amber" },
   MAX_ROUNDS: { label: "未收敛（达 K 轮）", cls: "red" },
+  NEEDS_HUMAN: { label: "待人工补（已入在办看板）", cls: "amber" },
 };
-const TICKET_BADGE: Record<string, string> = { OPEN: "amber", IN_PROGRESS: "blue", IN_REVIEW: "blue", MERGED: "green", VERIFIED: "green" };
+const WL_STATUS_BADGE: Record<WorklistStatus, string> = {
+  OPEN: "amber", CLAIMED: "blue", IN_PROGRESS: "blue", DONE: "green", NEEDS_HUMAN: "amber",
+};
+const WL_KIND_LABEL: Record<WorklistKind, string> = {
+  DATA_GAP: "缺数据", PLAN_SCAFFOLD: "缺计划", FEATURE: "缺功能",
+};
+const WL_KIND_BADGE: Record<WorklistKind, string> = { DATA_GAP: "amber", PLAN_SCAFFOLD: "blue", FEATURE: "" };
 
 export default function GrowthCockpitPage() {
   const qc = useQueryClient();
+  const { data: workspace } = useWorkspace();
+  const myUserId = workspace?.user?.id;
   const [query, setQuery] = useState("常州影响哪些订单？"); // debattery-allow（输入框示例占位，非业务常数）
   const [maxRounds, setMaxRounds] = useState(4);
   const [report, setReport] = useState<GrowthRunReport | null>(null);
+  // 筛选（状态/认领人/类型）
+  const [fStatus, setFStatus] = useState("");
+  const [fOwner, setFOwner] = useState("");
+  const [fKind, setFKind] = useState("");
+
   const { data: ledger } = useQuery({ queryKey: ["b", "growth-ledger"], queryFn: fetchGrowthLedger });
-  const { data: tickets } = useQuery({ queryKey: ["b", "growth-tickets"], queryFn: fetchGrowthTickets });
+  // 看板拉全量（前端做类型/状态/认领人筛，逐值对照后端；owner=me 收窄经后端）。
+  const { data: worklist } = useQuery({ queryKey: ["b", "growth-worklist"], queryFn: () => fetchGrowthWorklist() });
+
+  const invalidateBoard = () => {
+    void qc.invalidateQueries({ queryKey: ["b", "growth-worklist"] });
+    void qc.invalidateQueries({ queryKey: ["b", "growth-ledger"] });
+  };
 
   const run = useMutation({
     mutationFn: () => runGrowth(query, maxRounds),
-    onSuccess: (r) => {
-      setReport(r);
-      void qc.invalidateQueries({ queryKey: ["b", "growth-ledger"] });
-      void qc.invalidateQueries({ queryKey: ["b", "growth-tickets"] });
-    },
+    onSuccess: (r) => { setReport(r); invalidateBoard(); },
     onError: toastError,
   });
   const claim = useMutation({
-    mutationFn: (id: string) => claimGrowthTicket(id),
-    onSuccess: () => { toast("已认领", "success"); void qc.invalidateQueries({ queryKey: ["b", "growth-tickets"] }); },
+    mutationFn: (id: string) => claimWorklistItem(id),
+    onSuccess: () => { toast("已认领", "success"); invalidateBoard(); },
+    onError: toastError,
+  });
+  const release = useMutation({
+    mutationFn: (id: string) => releaseWorklistItem(id),
+    onSuccess: () => { toast("已释放", "success"); invalidateBoard(); },
+    onError: toastError,
+  });
+  const fill = useMutation({
+    mutationFn: (id: string) => fillWorklistItem(id),
+    onSuccess: (w) => { toast(`补数据缺口完成：${w.result ?? "已补"}`, "success"); invalidateBoard(); },
+    onError: toastError,
+  });
+  const rerun = useMutation({
+    mutationFn: (q: string) => runGrowth(q, maxRounds),
+    onSuccess: (r) => { setReport(r); toast("已继续推演重跑", "success"); invalidateBoard(); },
     onError: toastError,
   });
 
   const runs = ledger?.items ?? [];
-  const tks = tickets?.items ?? [];
-  // 量化：需求可答率 = CONVERGED / 总运行
+  const allItems = worklist?.items ?? [];
+  // 认领人下拉去重（来自 items 的 owner）。
+  const owners = useMemo(() => [...new Set(allItems.map((i) => i.owner).filter((x): x is string => !!x))], [allItems]);
+  // 前端筛（逐值对照后端全量收窄）。
+  const items = allItems.filter((i) =>
+    (!fStatus || i.status === fStatus) &&
+    (!fKind || i.kind === fKind) &&
+    (!fOwner || (fOwner === "me" ? i.owner === myUserId : i.owner === fOwner)),
+  );
+
+  // 量化头条：需求可答率（账本）/ 待认领 / 我的在办 / 补成率。
   const answerable = runs.filter((e) => e.report.terminalState === "CONVERGED").length;
   const answerRate = runs.length ? Math.round((answerable / runs.length) * 100) : 0;
+  const openCount = allItems.filter((i) => i.status === "OPEN").length;
+  const mineCount = allItems.filter((i) => i.owner === myUserId && (i.status === "CLAIMED" || i.status === "IN_PROGRESS")).length;
+  const doneCount = allItems.filter((i) => i.status === "DONE").length;
+  const fillRate = allItems.length ? Math.round((doneCount / allItems.length) * 100) : 0;
+
+  const rowActions = (i: WorklistItem) => {
+    if (i.status === "OPEN") return <button className="btn sm" data-testid={`wl-claim-${i.id}`} onClick={() => claim.mutate(i.id)} disabled={claim.isPending}>认领</button>;
+    if (i.status === "DONE") return <button className="btn sm" data-testid={`wl-rerun-${i.id}`} onClick={() => rerun.mutate(i.fromQuestion)} disabled={rerun.isPending}>继续推演</button>;
+    // CLAIMED / IN_PROGRESS：按类型派生
+    if (i.kind === "DATA_GAP") {
+      return (
+        <span style={{ display: "inline-flex", gap: 6 }}>
+          <button className="btn primary sm" data-testid={`wl-fill-${i.id}`} onClick={() => fill.mutate(i.id)} disabled={fill.isPending}>{fill.isPending ? "补数中…" : "补数据缺口"}</button>
+          <button className="btn sm" data-testid={`wl-release-${i.id}`} onClick={() => release.mutate(i.id)} disabled={release.isPending}>释放</button>
+        </span>
+      );
+    }
+    if (i.kind === "PLAN_SCAFFOLD") return <a className="btn sm" data-testid={`wl-approve-${i.id}`} href={i.deeplink ?? "/admin/actions"}>去审批</a>;
+    return <span className="muted" style={{ fontSize: 11 }} data-testid={`wl-feature-${i.id}`}>需开发</span>;
+  };
 
   return (
     <div data-testid="growth-cockpit-page">
@@ -51,7 +121,7 @@ export default function GrowthCockpitPage() {
       <DrillBack fallbackTo="/admin/catalog" testId="growth-back" />
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>自成长发动机驾驶舱</h2>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
-        把"客户明确问题"当燃料：真跑一遍 QOS 诊断缺口 → 能自动补的补(数据真人正门) → 缺功能出工单 → 循环重跑直到收敛。
+        把"客户明确问题"当燃料：真跑一遍 QOS 诊断缺口 → 缺数据**不自动补**，登记在办看板 → 人认领后点「补数据缺口」才真跑（R6 确定性）→ 缺功能出工单。
       </div>
 
       {/* 运行 */}
@@ -62,10 +132,11 @@ export default function GrowthCockpitPage() {
       </div>
 
       {/* 量化指标 */}
-      <div className="panel" style={{ marginBottom: 12, display: "flex", gap: 24, fontSize: 12 }}>
+      <div className="panel" style={{ marginBottom: 12, display: "flex", gap: 24, fontSize: 12, flexWrap: "wrap" }}>
         <span data-testid="metric-answer-rate">需求可答率 <b style={{ color: "var(--ok)" }}>{answerRate}%</b> <span className="muted">({answerable}/{runs.length})</span></span>
-        <span>开放工单 <b className="amber" data-testid="metric-open-tickets">{tks.filter((t) => t.status === "OPEN").length}</b></span>
-        <span>累计运行 <b>{runs.length}</b></span>
+        <span>待认领 <b className="amber" data-testid="metric-open-tickets">{openCount}</b></span>
+        <span>我的在办 <b data-testid="wl-metric-mine">{mineCount}</b></span>
+        <span>补成率 <b style={{ color: "var(--ok)" }} data-testid="wl-metric-fillrate">{fillRate}%</b> <span className="muted">({doneCount}/{allItems.length})</span></span>
       </div>
 
       {/* 本次运行结果 */}
@@ -85,22 +156,45 @@ export default function GrowthCockpitPage() {
         </div>
       )}
 
-      {/* 工单看板 */}
-      <div className="section-title">成长工单（缺功能·需开发）</div>
-      <table className="cmp" data-testid="growth-tickets" style={{ width: "100%", marginBottom: 14 }}>
-        <thead><tr><th>问题</th><th>缺口</th><th>状态</th><th>操作</th></tr></thead>
+      {/* 在办看板（筛：状态/认领人/类型 + 认领 + 补数据缺口） */}
+      <div className="section-title">在办看板（去自动补·人工触发补数据缺口）</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <select data-testid="wl-filter-status" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+          <option value="">全部状态</option>
+          <option value="OPEN">待认领 OPEN</option>
+          <option value="CLAIMED">已认领 CLAIMED</option>
+          <option value="IN_PROGRESS">IN_PROGRESS</option>
+          <option value="DONE">DONE</option>
+          <option value="NEEDS_HUMAN">NEEDS_HUMAN</option>
+        </select>
+        <select data-testid="wl-filter-owner" value={fOwner} onChange={(e) => setFOwner(e.target.value)}>
+          <option value="">全部认领人</option>
+          <option value="me">我（{myUserId ?? "?"}）</option>
+          {owners.filter((o) => o !== myUserId).map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <select data-testid="wl-filter-kind" value={fKind} onChange={(e) => setFKind(e.target.value)}>
+          <option value="">全部类型</option>
+          <option value="DATA_GAP">缺数据 DATA_GAP</option>
+          <option value="PLAN_SCAFFOLD">缺计划 PLAN_SCAFFOLD</option>
+          <option value="FEATURE">缺功能 FEATURE</option>
+        </select>
+      </div>
+      <table className="cmp" data-testid="growth-worklist" style={{ width: "100%", marginBottom: 14 }}>
+        <thead><tr><th>问题</th><th>缺口码</th><th>类型</th><th>状态</th><th>认领人</th><th>操作</th></tr></thead>
         <tbody>
-          {tks.map((t) => (
-            <tr key={t.id} data-testid={`ticket-${t.id}`}>
-              <td style={{ fontSize: 11.5 }}>{t.fromQuestion}</td>
-              <td className="mono">{t.gapCode}</td>
-              <td><span className={`badge ${TICKET_BADGE[t.status] ?? ""}`}>{t.status}</span></td>
-              <td>{t.status === "OPEN" && <button className="btn sm" data-testid={`claim-${t.id}`} onClick={() => claim.mutate(t.id)}>认领</button>}</td>
+          {items.map((i) => (
+            <tr key={i.id} data-testid={`wl-row-${i.id}`}>
+              <td style={{ fontSize: 11.5 }}>{i.fromQuestion}</td>
+              <td className="mono">{i.gapCode}</td>
+              <td><span className={`badge ${WL_KIND_BADGE[i.kind]}`}>{WL_KIND_LABEL[i.kind]}</span></td>
+              <td><span className={`badge ${WL_STATUS_BADGE[i.status]}`} data-testid={`wl-status-${i.id}`}>{i.status}</span></td>
+              <td style={{ fontSize: 11.5 }} data-testid={`wl-owner-${i.id}`}>{i.owner ?? "—"}</td>
+              <td>{rowActions(i)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {tks.length === 0 && <div className="empty-state">暂无工单</div>}
+      {items.length === 0 && <div className="empty-state" data-testid="wl-empty">{allItems.length === 0 ? "暂无在办项——跑一个问题诊断缺口。" : "无匹配筛选的在办项。"}</div>}
 
       {/* 成长账本 */}
       <div className="section-title">成长账本（demand-indexed）</div>

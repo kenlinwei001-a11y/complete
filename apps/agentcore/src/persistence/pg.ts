@@ -413,6 +413,19 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows.map((x) => x.doc as import("@platform/contracts").GrowthTicket);
       },
     },
+    growthWorklist: {
+      async upsert(w) {
+        await q(`INSERT INTO growth_worklist(id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc = $3`, [w.id, w.tenantId, JSON.stringify(w)]);
+      },
+      async get(tenantId, id) {
+        const r = await q(`SELECT doc FROM growth_worklist WHERE tenant_id = $1 AND id = $2`, [tenantId, id]);
+        return r.rows[0]?.doc as import("@platform/contracts").WorklistItem | undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT doc FROM growth_worklist WHERE tenant_id = $1 ORDER BY (doc->>'createdAt') DESC`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("@platform/contracts").WorklistItem);
+      },
+    },
     evalCases: {
       async upsert(c) {
         await q(

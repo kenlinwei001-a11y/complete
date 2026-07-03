@@ -2545,7 +2545,7 @@
     {
       "id": "GROWTH-WORKLIST-HUMAN-FILL",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",

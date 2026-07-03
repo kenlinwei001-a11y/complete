@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §4` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `ca2948d1cdc5f889`。
+> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `9e0d75ae7cf0e998`。
 
 ---
 
@@ -47,7 +47,9 @@
 | L11 | `policy.updated` | 权限变更 | IN_SESSION | dashboard, search, scenario-data, history | DL11 |
 | L12 | `features.updated` | 功能开通 | IN_SESSION | workspace, navigation, scenarios, intent-catalog | DL12 |
 | L13 | `growth.gap_detected` | 自成长发动机·探针检出缺口（LOOP fill 内发） | IN_SESSION | growth-ledger | — |
-| L13 | `growth.fill_proposed` | 自成长发动机·补法分派（缺数据 DF.9 HARD 真人正门[出 DataRequest 不合成]/SOFT 管线合成 PROVISIONAL，载 `fillMode`；缺求解器 generic_inference B 兜底） | IN_SESSION | growth-ledger | — |
+| L13 | `growth.fill_proposed` | 自成长发动机·补法分派（缺数据 SOFT/空租户 = **登记在办项 WorklistItem·不自动补·待人工**载 `needsHuman/worklistItemId`；DF.9 HARD 真人正门[出 DataRequest]；缺求解器 generic_inference B 兜底） | IN_SESSION | growth-ledger, growth-worklist | — |
+| L13 | `growth.fill_claimed` | 自成长发动机·在办项认领（人在看板认领缺数据缺口·记 owner=actor·`POST /b/v1/growth/worklist/:id/claim`） | IN_SESSION | growth-worklist | — |
+| L13 | `growth.fill_triggered` | 自成长发动机·人工触发补数据缺口（认领人点「补数据缺口」→真跑 fillData/provisionWorld·R6 seed 确定性·`POST /b/v1/growth/worklist/:id/fill`→DONE） | IN_SESSION | growth-worklist, dashboard, risk, scenario-data, object-queries | — |
 | L13 | `growth.ticket_opened` | 自成长发动机·缺功能落工单（带真实 I/O 契约+本体引用骨架；P5 推送触达；拉兜底=`GET /api/v1/growth/tickets`） | NOTIFY | growth-tickets, notifications | — |
 | L13 | `growth.converged` | 自成长发动机·LOOP 收敛（问句现可答） | IN_SESSION | growth-ledger, growth-tickets | — |
 | L14 | `meta.ontology_synced` | Dogfooding·系统本体自反投影重物化完成（`POST /a/v1/meta/sync`）→ 失效 `/a/v1/meta/*` 查询缓存 + meta MCP 工具结果 | INVALIDATE | meta-ontology(`/meta/*` 视图) | — |
