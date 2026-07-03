@@ -1723,11 +1723,11 @@
       "title": "运营/治理三盲区透出(调度执行状态/LLM预算配额/决策溯源链)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
       "note": "IPO第2波·D2簇·配了就跑跑了看不见成败/预算烧了不知道/决策溯源空壳·R13·G-VIS-1",
-      "blockReason": "",
+      "blockReason": "C3/C5未达:dev摸底误判——LlmProvidersPage注释称'摸底后确认后端不存在/a/v1/llm-budgets端点',但该端点真实存在(app.ts:1020 GET/1021 PUT/1028 record·repos.llmBudgets·schema hardLimitTokens/softLimitPct/usedTokens·curl实测200返{used,soft,hard})。故C3『本月配额横幅(消费GET /a/v1/llm-budgets·used/soft/hard+降级徽标)』未落·C5『endpoints.ts含llm-budgets端点』未接(仅scheduler端点已接)。治:endpoints.ts加fetchLlmBudget绑定·LlmProvidersPage加配额横幅(有预算显真used/soft/hard+降级徽标·null时诚实显'本月配额未设置'非删)。§①调度面板已验真(curl:7作业含nextRunAt/lastRunAt/lastError·runs SUCCEEDED)·usage7dTokens删除正确(provider响应确无该字段)——这两点无需返工·仅补llm-budgets。",
       "acceptance": {
         "goal": "①运营管理员配了定时作业(定期产能预测/S&OP自动开启/审批催办)后，能在调度页看到作业【真跑过没、成/败/漏跑、失败原因、下次运行时间】——而不是配置保存成功就以为在跑(SCHEDULED_FORECAST 失败=校准断供却毫不知情)。②租户 admin 能看到本月 LLM token 烧了多少、是否触发降级(而非 usage 死列+整个预算子系统零前端)。③决策的关联制品(→Action/计划/风险/场景)可点击溯源导航，且创建决策时真捕获这些 link(而非纯文本+数据层恒空的溯源空壳·R13)。",
         "criteria": [
