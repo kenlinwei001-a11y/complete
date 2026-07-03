@@ -2282,8 +2282,8 @@
     {
       "id": "META-SYNC-CWD-FIX",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/REVIEW-DEMO-DATA-verify.md",
