@@ -80,7 +80,7 @@ describe("F41 · RESOURCE-REF-NAV 资源反向引用图 + 导航透出", () => {
     await user.selectOptions(screen.getByLabelText("步骤类型"), "invoke_mcp_tool");
     await user.click(screen.getByTestId("wf-add-step"));
 
-    const mcpSelect = await screen.findByRole("combobox", { name: /-mcpConfigId$/ });
+    const mcpSelect = await screen.findByRole("combobox", { name: "mcpConfigId" });
     expect(within(mcpSelect).getByRole("option", { name: "示例 MCP 服务器" })).toBeInTheDocument();
     await user.selectOptions(mcpSelect, "mcp-demo");
     expect(mcpSelect).toHaveValue("mcp-demo");
@@ -142,27 +142,27 @@ describe("F41 · RESOURCE-REF-NAV 资源反向引用图 + 导航透出", () => {
     expect(screen.getByText(/产销协同管理制度/)).toBeInTheDocument();
   });
 
-  it("场景入口：agent 列点跳到 /admin/agents 打开该 agent", async () => {
+  it("场景入口：defaultAgent 反向导航点跳到 /admin/agents 打开该 agent", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp("/admin/scenes");
 
-    // scn-graph：defaultAgentId=agt-explore（fixtures.ts SCENES）
-    const sceneRow = await screen.findByTestId("scene-graph");
-    const agentLink = within(sceneRow).getByTestId("scene-agent-link-graph");
+    // SX-explore（本体自由探索）：targetView=graph，defaultAgentId=agt-explore（fixtures.ts SCENARIOS）
+    const sceneRow = await screen.findByTestId("scenario-row-SX-explore");
+    const agentLink = within(sceneRow).getByTestId("scenario-agent-link-SX-explore");
     expect(agentLink).toHaveTextContent("探索分析 Agent");
     await user.click(agentLink);
     await screen.findByTestId("agent-editor");
     expect(screen.getByDisplayValue("探索分析 Agent")).toBeInTheDocument();
   });
 
-  it("场景入口：发布态场景显示「在启动器打开→」直达真实视图，未开通场景标「功能未开通」而非硬链", async () => {
+  it("场景入口：发布态场景显示「在启动器打开→」直达真实落点视图（未发布/未开通不给死链）", async () => {
     loginAs("planner");
     renderApp("/admin/scenes");
 
-    // scn-graph → view.ontology-graph 默认开通
-    const sceneRow = await screen.findByTestId("scene-graph");
-    const launcherLink = within(sceneRow).getByTestId("scene-launcher-link-graph");
+    // SX-explore 发布态 → targetView=graph → /v/graph
+    const sceneRow = await screen.findByTestId("scenario-row-SX-explore");
+    const launcherLink = within(sceneRow).getByTestId("scenario-launcher-SX-explore");
     expect(launcherLink).toHaveTextContent("在启动器打开→");
     expect(launcherLink.getAttribute("href")).toBe("/v/graph");
   });

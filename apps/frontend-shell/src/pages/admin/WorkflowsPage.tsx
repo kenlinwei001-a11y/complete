@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { PlanStep, WorkflowDefinition } from "@platform/contracts";
 import {
   fetchAgents,
+  fetchMcpConfigs,
   fetchRules,
   fetchSolverRegistry,
+  fetchWorkflowReferences,
   fetchWorkflows,
   publishWorkflow,
   runWorkflow,
@@ -13,6 +15,7 @@ import {
   type WorkflowRunResult,
 } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
+import { ReferencesPanel } from "@/components/ReferencesPanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { filterSuggestions, templateSuggestions } from "./templateSuggest";
@@ -60,7 +63,9 @@ function defaultStep(type: (typeof STEP_TYPES)[number], id: string): PlanStep {
 export default function WorkflowsPage() {
   const queryClient = useQueryClient();
   const { data: workflows } = useQuery({ queryKey: ["b", "workflows", {}], queryFn: fetchWorkflows });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // RESOURCE-REF-NAV：?id= 深链（AgentsPage 被引用区「点跳到该 workflow」落点，对齐 agents/mcp/skills 深链模式）
+  const [params] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(params.get("id"));
   const selected = workflows?.find((w) => w.id === selectedId) ?? workflows?.[0];
 
   // G-4：自助创建工作流（消"无创建入口"死路）。骨架=query_objects→render_answer，DRAFT。
@@ -109,6 +114,7 @@ export interface StepRefData {
   solvers: { value: string; label: string }[];
   agents: { value: string; label: string }[];
   rules: { value: string; label: string }[];
+  mcpConfigs: { value: string; label: string }[];
 }
 
 function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition; onChanged: () => void }) {
@@ -122,13 +128,21 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
   const { data: solverReg } = useQuery({ queryKey: ["a", "solver-registry"], queryFn: () => fetchSolverRegistry() });
   const { data: agents } = useQuery({ queryKey: ["b", "agents"], queryFn: fetchAgents });
   const { data: rules } = useQuery({ queryKey: ["a", "rules"], queryFn: fetchRules });
+  // RESOURCE-REF-NAV：invoke_mcp_tool.mcpConfigId 引用下拉数据源（去裸文本，悬空引用诚实标「未找到」）。
+  const { data: mcpConfigs } = useQuery({ queryKey: ["b", "mcp-configs", {}], queryFn: fetchMcpConfigs });
+  // RESOURCE-REF-NAV：被引用只读区（哪些 agent/scene-entry 引用了本 workflow）——补齐 WO 第四类（agents/skills/mcp 已挂）。
+  const refsQuery = useQuery({
+    queryKey: ["b", "workflow-references", workflow.id],
+    queryFn: () => fetchWorkflowReferences(workflow.id),
+  });
   const refData: StepRefData = useMemo(
     () => ({
       solvers: (solverReg?.solvers ?? []).map((s) => ({ value: s.key, label: `${s.name}（${s.key}）` })),
       agents: (agents ?? []).map((a) => ({ value: a.id, label: `${a.name} v${a.version}` })),
       rules: (rules ?? []).filter((r) => r.status === "PUBLISHED").map((r) => ({ value: r.key, label: `${r.name}（${r.key}）` })),
+      mcpConfigs: (mcpConfigs ?? []).map((m) => ({ value: m.id, label: m.name })),
     }),
-    [solverReg, agents, rules],
+    [solverReg, agents, rules, mcpConfigs],
   );
 
   // C8 试运行（编辑器内所见即所得）：先存当前 steps 再调既有同步 run 端点。
@@ -256,6 +270,8 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
           }}
         />
       )}
+
+      <ReferencesPanel testId="workflow-references" loading={refsQuery.isLoading} references={refsQuery.data?.references} />
     </div>
   );
 }
@@ -361,6 +377,7 @@ function StepParams({
   if (step.type === "invoke_solver") refKeys.add("solverKey");
   if (step.type === "invoke_agent") refKeys.add("agentId");
   if (step.type === "evaluate_rules") refKeys.add("ruleIds"); // C6 评审返工：ruleIds 改引用多选（去裸 JSON）
+  if (step.type === "invoke_mcp_tool") refKeys.add("mcpConfigId"); // RESOURCE-REF-NAV：mcpConfigId 改引用下拉（去裸文本·悬空诚实标）
 
   const fields: { key: string; label: string; template?: boolean; json?: boolean }[] = (() => {
     switch (step.type) {
@@ -441,6 +458,20 @@ function StepParams({
           emptyText="尚无 Agent，点击创建"
           testid={`wf-agent-select-${step.id}`}
           onChange={(v) => setParam("agentId", v)}
+        />
+      )}
+      {/* RESOURCE-REF-NAV：invoke_mcp_tool 的 mcpConfigId 改引用下拉（去裸文本；悬空引用诚实标「未找到」） */}
+      {step.type === "invoke_mcp_tool" && (
+        <ReferenceSelect
+          label="mcpConfigId"
+          value={String(p.mcpConfigId ?? "")}
+          disabled={!editable}
+          options={refData.mcpConfigs}
+          targetPath="admin/mcp"
+          targetLabel="MCP 服务器"
+          emptyText="尚无 MCP 服务器，点击创建"
+          testid={`wf-mcp-select-${step.id}`}
+          onChange={(v) => setParam("mcpConfigId", v)}
         />
       )}
       {/* C6 评审返工：evaluate_rules 的 ruleIds 改规则引用多选（去裸 JSON 框；ALL_APPLICABLE 或勾选具体已发布规则码） */}

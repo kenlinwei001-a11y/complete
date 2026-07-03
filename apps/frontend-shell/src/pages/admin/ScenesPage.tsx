@@ -125,9 +125,25 @@ function ScenarioRow({
         <td>
           <b className="mono">{scenario.scenarioKey}</b> · {scenario.name}
           {scenario.inactive && <span className="badge amber" style={{ marginLeft: 6 }} data-testid="scenario-feature-off">{zh.admin.scenes.featureOff}</span>}
+          {/* RESOURCE-REF-NAV：默认 Agent 反向导航 —— 点跳到 Agent 编辑器（引用透出，去死路） */}
+          {scenario.defaultAgentId && (
+            <div style={{ fontSize: 11, marginTop: 2 }}>
+              <Link to={`/admin/agents?id=${encodeURIComponent(scenario.defaultAgentId)}`} data-testid={`scenario-agent-link-${scenario.scenarioKey}`}>
+                {agents.find((a) => a.id === scenario.defaultAgentId)?.name ?? scenario.defaultAgentId}
+              </Link>
+            </div>
+          )}
         </td>
         <td data-testid={`scenario-mode-${scenario.scenarioKey}`}>{scenario.mode}</td>
-        <td className="mono">{scenario.targetView}</td>
+        <td className="mono">
+          {scenario.targetView}
+          {/* RESOURCE-REF-NAV：发布态直达启动器落点视图（未发布/未开通不给死链） */}
+          {scenario.status === "PUBLISHED" && !scenario.inactive && (
+            <div style={{ fontSize: 11, marginTop: 2 }}>
+              <Link to={`/v/${scenario.targetView}`} data-testid={`scenario-launcher-${scenario.scenarioKey}`}>在启动器打开→</Link>
+            </div>
+          )}
+        </td>
         <td className="mono">{scenario.intentKey}</td>
         <td data-testid={`scenario-preset-${scenario.scenarioKey}`}>{slotCount(scenario)} 项预置{scenario.riskLevel === "ACTION_DRAFT" ? " · 写回" : ""}</td>
         <td data-testid={`scenario-closure-${scenario.scenarioKey}`}>
