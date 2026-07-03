@@ -1552,6 +1552,26 @@ export const handlers = [
     return HttpResponse.json({ bindings, warnings });
   }),
 
+  // WO-OPS-GOV-VISIBILITY §②：本月 token 配额（镜像 datacore app.ts budgetStatus 形态）。
+  // demo 设真配额（hard>0·used 超软线）→ 横幅显真实用量 + 降级徽标；null 时后端返 hard=0（诚实"未设置"）。
+  http.get("*/a/v1/llm-budgets", () => {
+    const b = db.llmBudget;
+    const hard = b?.hardLimitTokens ?? 0;
+    const soft = Math.floor(hard * (b?.softLimitPct ?? 0.8));
+    const used = b?.usedTokens ?? 0;
+    const state = hard > 0 && used >= hard ? "HARD_EXCEEDED" : hard > 0 && used >= soft ? "SOFT_EXCEEDED" : "OK";
+    return HttpResponse.json({ usedTokens: used, hardLimitTokens: hard, softLimitTokens: soft, state, degrade: state !== "OK" });
+  }),
+  http.put("*/a/v1/llm-budgets", async ({ request }) => {
+    const body = (await request.json()) as { hardLimitTokens: number; softLimitPct?: number };
+    db.llmBudget = { hardLimitTokens: body.hardLimitTokens, softLimitPct: body.softLimitPct ?? db.llmBudget?.softLimitPct ?? 0.8, usedTokens: db.llmBudget?.usedTokens ?? 0 };
+    const hard = db.llmBudget.hardLimitTokens;
+    const soft = Math.floor(hard * db.llmBudget.softLimitPct);
+    const used = db.llmBudget.usedTokens;
+    const state = hard > 0 && used >= hard ? "HARD_EXCEEDED" : hard > 0 && used >= soft ? "SOFT_EXCEEDED" : "OK";
+    return HttpResponse.json({ usedTokens: used, hardLimitTokens: hard, softLimitTokens: soft, state, degrade: state !== "OK" });
+  }),
+
   http.post("*/a/v1/rules/:id/retire", ({ params }) => {
     const rule = db.rules.find((r) => r.id === params.id);
     if (!rule) return err(404, "NOT_FOUND", "rule not found");

@@ -72,6 +72,8 @@ interface MockDb {
   // LLM Provider 增量 §1
   llmProviders: LlmProvider[];
   llmBindings: PurposeBinding[];
+  // WO-OPS-GOV-VISIBILITY §②：本月 token 配额（null = 后端返 hard=0「未设置」）。
+  llmBudget: { hardLimitTokens: number; softLimitPct: number; usedTokens: number } | null;
   tenants: AdminTenant[];
   adminUsers: AdminUser[];
   adminViews: AdminViewConfig[];
@@ -118,6 +120,8 @@ function freshDb(): MockDb {
     rules: structuredClone(RULES),
     llmProviders: structuredClone(LLM_PROVIDERS),
     llmBindings: structuredClone(LLM_BINDINGS),
+    // WO-OPS-GOV-VISIBILITY §②：demo 设真配额（used 800k / soft 800k / hard 1M → SOFT_EXCEEDED 降级徽标可见）。
+    llmBudget: { hardLimitTokens: 1_000_000, softLimitPct: 0.8, usedTokens: 800_000 },
     tenants: structuredClone(ADMIN_TENANTS),
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),

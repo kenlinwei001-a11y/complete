@@ -14,13 +14,25 @@ describe("F36 · /admin/llm-providers（LLM Provider 增量 §1.4）", () => {
     expect(within(row2).getByTestId("provider-key-llmp-vllm-qwen")).toHaveTextContent("未配置");
   });
 
-  // WO-OPS-GOV-VISIBILITY §②：后端无 /a/v1/llm-budgets、无 provider 用量字段来源 →
-  // 「近 7 日 token 用量」死列（恒为 "—"）已移除，不再用假列冒充真值。
-  it("「近 7 日 token 用量」死列已移除（无真后端来源，不冒充真值）", async () => {
+  // WO-OPS-GOV-VISIBILITY §②：provider 响应无 usage7dTokens 字段 → 「近 7 日 token 用量」死列（恒 "—"）已移除，不冒充真值。
+  it("「近 7 日 token 用量」死列已移除（provider 响应无该字段，不冒充真值）", async () => {
     loginAs("planner");
     renderApp("/admin/llm-providers");
     await screen.findByTestId("provider-llmp-anthropic");
     expect(screen.queryByText("近 7 日 token 用量")).not.toBeInTheDocument();
+  });
+
+  // WO-OPS-GOV-VISIBILITY §② 配额横幅（复验纠正：GET /a/v1/llm-budgets 端点真实存在·app.ts:1020）：
+  // demo used 800k / soft=floor(1M×0.8)=800k / hard 1M → 逐值显真实用量 + SOFT_EXCEEDED 降级徽标。
+  it("本月 token 配额横幅：真接 /a/v1/llm-budgets 显 used/soft/hard + 超软线降级徽标", async () => {
+    loginAs("planner");
+    renderApp("/admin/llm-providers");
+    const banner = await screen.findByTestId("llm-budget-banner");
+    const usage = within(banner).getByTestId("llm-budget-usage");
+    expect(usage).toHaveTextContent("已用 800,000");
+    expect(usage).toHaveTextContent("软线 800,000");
+    expect(usage).toHaveTextContent("硬线 1,000,000");
+    expect(within(banner).getByTestId("llm-budget-degrade")).toHaveTextContent("超软线");
   });
 
   it("编辑器：密钥显示「••• 已配置」+ 更换按钮；连接测试返回延迟与模型探测", async () => {

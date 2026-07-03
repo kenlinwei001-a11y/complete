@@ -41,6 +41,7 @@ import type {
   QueryTimeseriesAggOutput,
   ModelingSuggestion,
   LlmProvider,
+  LlmBudgetStatus,
   PublishImpact,
   PurposeBinding,
   OpsSchedule,
@@ -950,12 +951,15 @@ export const fetchSolverMcpServer = () => api.b<SolverMcpServerResponse>("/b/v1/
 
 // ---------------- LLM Provider 配置体系（增量 §1，落位 DataCore） ----------------
 
-// LlmProviderVM = LlmProvider（WO-OPS-GOV-VISIBILITY §②：usage7dTokens 无真后端来源
-// 的死列已移除 —— 后端既无 llm-budgets/用量端点，也未在 provider 响应中回填该字段，
-// 保留只会显示恒为 "—" 的假列，违反"前端所见=后端真值"）。
+// LlmProviderVM = LlmProvider（WO-OPS-GOV-VISIBILITY §②：provider 响应无 usage7dTokens 字段，
+// 该死列已移除，正确——恒 "—" 假列违反"前端所见=后端真值"）。
 export type LlmProviderVM = LlmProvider;
 
 export const fetchLlmProviders = () => api.a<LlmProviderVM[]>("/a/v1/llm-providers");
+
+// WO-OPS-GOV-VISIBILITY §② 配额横幅：GET /a/v1/llm-budgets 真实存在（app.ts:1020·repos.llmBudgets），
+// 返 LlmBudgetStatus{usedTokens,hardLimitTokens,softLimitTokens,state,degrade}；hardLimitTokens===0 = 本月配额未设置（诚实空态）。
+export const fetchLlmBudget = () => api.a<LlmBudgetStatus>("/a/v1/llm-budgets");
 
 export interface LlmProviderSaveBody {
   name: string;

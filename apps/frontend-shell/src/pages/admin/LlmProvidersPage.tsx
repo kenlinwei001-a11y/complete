@@ -11,6 +11,7 @@ import {
 import {
   createLlmProvider,
   fetchLlmBindings,
+  fetchLlmBudget,
   fetchLlmProviders,
   putLlmBindings,
   testLlmProvider,
@@ -44,17 +45,18 @@ const PURPOSE_LABEL: Record<LlmPurpose, string> = {
  * 模型清单 + 能力勾选、连接测试、降级目标）；Tab2 用途绑定矩阵（6 用途 ×
  * provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
  *
- * WO-OPS-GOV-VISIBILITY §②：规格要求「本月配额」横幅（GET /llm-budgets used/soft/
- * hard/降级徽标）—— 摸底 apps/datacore/src、apps/agentcore/src 后确认后端不存在
- * /a/v1/llm-budgets 端点，也无任何 per-tenant token 预算/用量的可查询来源（仅有
- * Prometheus 计数器 dc_llm_calls_total，非租户可读 REST）。诚实跳过该子项，不造假
- * 端点/假数据；「近 7 日 token 用量」死列（usage7dTokens，真后端从不返回）已按同一
- * 子项要求移除。
+ * WO-OPS-GOV-VISIBILITY §②「本月配额」横幅（真接后端·复验纠正）：GET /a/v1/llm-budgets
+ * 真实存在（datacore app.ts:1020·repos.llmBudgets·返 LlmBudgetStatus{usedTokens,hardLimitTokens,
+ * softLimitTokens,state,degrade}）——横幅消费真值：hard>0 显 used/soft/hard 进度 + 降级徽标
+ * （SOFT_EXCEEDED 橙 / HARD_EXCEEDED 红）；hardLimitTokens===0 = 本月配额未设置（诚实空态·非删）。
+ * 「近 7 日 token 用量」死列（usage7dTokens·provider 响应确无此字段）移除正确，保留无关。
  */
 export default function LlmProvidersPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<"providers" | "bindings">("providers");
   const { data: providers } = useQuery({ queryKey: ["a", "llm-providers"], queryFn: fetchLlmProviders });
+  // WO-OPS-GOV-VISIBILITY §②：本月 token 配额横幅（真接 GET /a/v1/llm-budgets）。
+  const { data: budget } = useQuery({ queryKey: ["a", "llm-budget"], queryFn: fetchLlmBudget });
   const [editing, setEditing] = useState<LlmProviderVM | "new" | null>(null);
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["a", "llm-providers"] });
 
@@ -76,6 +78,42 @@ export default function LlmProvidersPage() {
           </button>
         )}
       </div>
+
+      {/* WO-OPS-GOV-VISIBILITY §②：本月 token 配额横幅（真接 GET /a/v1/llm-budgets·消费真 used/soft/hard + 降级徽标） */}
+      {tab === "providers" && budget && (
+        <div
+          className="panel"
+          data-testid="llm-budget-banner"
+          style={{ marginBottom: 12, borderLeft: `3px solid ${budget.hardLimitTokens === 0 ? "var(--border-strong)" : budget.state === "HARD_EXCEEDED" ? "var(--danger)" : budget.state === "SOFT_EXCEEDED" ? "var(--warn)" : "var(--ok)"}` }}
+        >
+          {budget.hardLimitTokens === 0 ? (
+            <div data-testid="llm-budget-unset" style={{ fontSize: 12.5, color: "var(--muted2)" }}>
+              本月 token 配额<b>未设置</b>（硬线=0 视为不限）· 经 <span className="mono">PUT /a/v1/llm-budgets</span> 设置 hardLimitTokens 后此处显真实用量与降级。
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <b style={{ fontSize: 13 }}>本月 token 配额</b>
+              <span data-testid="llm-budget-usage" className="mono" style={{ fontSize: 12.5 }}>
+                已用 {budget.usedTokens.toLocaleString()} / 软线 {budget.softLimitTokens.toLocaleString()} / 硬线 {budget.hardLimitTokens.toLocaleString()}
+              </span>
+              <div style={{ flex: 1, minWidth: 120, maxWidth: 320, height: 8, background: "var(--panel2, rgba(255,255,255,.06))", borderRadius: 4, overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${Math.min(100, Math.round((budget.usedTokens / Math.max(1, budget.hardLimitTokens)) * 100))}%`,
+                    height: "100%",
+                    background: budget.state === "HARD_EXCEEDED" ? "var(--danger)" : budget.state === "SOFT_EXCEEDED" ? "var(--warn)" : "var(--ok)",
+                  }}
+                />
+              </div>
+              {budget.degrade && (
+                <span className={`badge ${budget.state === "HARD_EXCEEDED" ? "red" : "amber"}`} data-testid="llm-budget-degrade">
+                  {budget.state === "HARD_EXCEEDED" ? "超硬线 · 拒新 LLM 任务" : "超软线 · 降级（跳过非必要 compose）"}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === "providers" && (
         <div className="panel">
