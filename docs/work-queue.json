@@ -2696,7 +2696,7 @@
     {
       "id": "HARDCODE-VIEW-LAYOUT",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
