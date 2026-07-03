@@ -1,0 +1,35 @@
+{
+  "inventory_optimize": {
+    "default_overMult": 1.5,
+    "default_over": [
+      {
+        "matId": "MAT-A",
+        "overQty": 175,
+        "value": 350
+      }
+    ],
+    "default_releasableCash": 350,
+    "override_overMult": 3,
+    "override_over": [],
+    "override_releasableCash": 0,
+    "param_driven": true
+  },
+  "outsourcing_split": {
+    "default_outsourceCapPct": 0.2,
+    "default_outsource_qty": 20,
+    "default_totalCost": 168,
+    "override_outsourceCapPct": 0.5,
+    "override_outsource_qty": 50,
+    "override_totalCost": 135,
+    "param_driven": true
+  },
+  "credit_exposure": {
+    "default_overdueDays": 30,
+    "default_verdict": "冻结（存在逾期>30天）",
+    "override_overdueDays": 40,
+    "override_verdict": "可接",
+    "param_driven": true
+  }
+}
+
+ALL_PARAM_DRIVEN=true

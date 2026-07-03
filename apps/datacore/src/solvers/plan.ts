@@ -222,10 +222,12 @@ export function planAudit(c: SolverContext, input: PlanAuditInput): Record<strin
 
   const score = clamp(100 - t.scoreH * H.length - t.scoreM * M.length, 0, 100);
   // PRD-IND-audit §3.1：4 态状态机（按 H/M 计数，非分数阈值）。
+  // HARDCODE-SOLVER-PARAMS（ε2）：中风险项计数阈入 params.audit.verdictMedCount（默认 3 == 原内联·R6·可校准）。
+  const verdictMedCount = t.verdictMedCount ?? 3;
   const verdict =
     H.length > 0
       ? "站不住"
-      : M.length >= 3
+      : M.length >= verdictMedCount
         ? "可定稿但有重要风险"
         : M.length > 0
           ? "可定稿·关注风险"

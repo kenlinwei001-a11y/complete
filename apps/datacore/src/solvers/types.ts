@@ -58,7 +58,18 @@ export interface SolverParamsShape {
      * RISK-TRAJECTORY-DEFAKE（B9·可校准·非内联魔数）：需求-产能负载比→基地紧张度映射系数。
      * tension = base + (load−1)×loadGain×(shareBase + shareGain×share) + (util−utilPivot)×utilGain。
      */
-    demandTension: { base: number; loadGain: number; shareBase: number; shareGain: number; utilPivot: number; utilGain: number };
+    demandTension: {
+      base: number;
+      loadGain: number;
+      shareBase: number;
+      shareGain: number;
+      utilPivot: number;
+      utilGain: number;
+      /** HARDCODE-SOLVER-PARAMS（ε1 残留闭合）：预测上行比权重（原 networkDemandSupplyLoad 内联 0.5）。 */
+      upsideGain?: number;
+      /** HARDCODE-SOLVER-PARAMS（ε1 残留闭合）：基地需求张力上限 clamp（原 demandCapacityTightness 内联 98）。 */
+      tensionCap?: number;
+    };
     /**
      * RISK-TRAJECTORY-DEFAKE（B6·可校准·非内联魔数）：交付高峰额外工时估算系数（人·班/万套）。
      * 估算值 = round(订单真 qty × deliveryLaborPerWan)，desc 明标「估算」（非实测工时）。
@@ -147,6 +158,8 @@ export interface SolverParamsShape {
     condScore: number;
     extGmBufferMin: number;
     extDemHigh: number;
+    /** HARDCODE-SOLVER-PARAMS（ε2 闭合）：audit 4 态判据——中风险项计数达该阈 → "可定稿但有重要风险"（原 plan.ts 内联 3）。 */
+    verdictMedCount?: number;
   };
   planGenerate: {
     base: { rev: number; gm: number; share: number; turns: number; cash: number };
@@ -195,6 +208,71 @@ export interface SolverParamsShape {
     gmTarget: number;
     cashCushion: number;
     capex: number;
+  };
+  /**
+   * HARDCODE-SOLVER-PARAMS（ε4 · 20 场景扩展求解器业务阈值/系数）——治 extended.ts「零 c.params·全内联魔数」。
+   * 骨架键**零业务实体名**（R14）；具体默认值（含行业相关值）落 IndustryPack default `synthetic/battery.ts`。
+   * 各求解器体读 `num(args.<key>, 内联默认)`（默认==原内联值→R6 字节一致），由对应 deriveArgs 注入本参数值→
+   * 租户可配·可校准（改 param 改果·非死值）。全部 optional：param 缺省→回落体内内联默认（向后兼容）。
+   */
+  mitigation?: {
+    /** urgency = max(0,(tightness−urgencyPivot)/urgencySpan)（原 70/30）。 */
+    urgencyPivot: number;
+    urgencySpan: number;
+  };
+  cert?: {
+    /** C26 并行认证工程师组数缺省（原 deriveArgs 内联 3）。 */
+    engineerGroups: number;
+    /** 认证工时→周数换算（周 = ceil(certHours/hoursPerWeek)，原内联 40）。 */
+    hoursPerWeek: number;
+  };
+  lta?: {
+    /** 长协年度锁量占日均年需求比（原 deriveArgs 内联 0.8·audit「lock 0.8」）。 */
+    lockRate: number;
+    /** 现货补单最迟下单提前期缺省天（原内联 30）。 */
+    leadDays: number;
+  };
+  inventory?: {
+    /** 目标水位安全天（原 num(args.safetyDays,5)）。 */
+    safetyDays: number;
+    /** 超储阈：onHand > overMult×target（原内联 1.5）。 */
+    overMult: number;
+    /** 欠储阈：onHand < underMult×target（原内联 0.8）。 */
+    underMult: number;
+    /** C28 呆滞阈：idleDays > idleThreshold（原内联 90 天）。 */
+    idleThreshold: number;
+  };
+  maintenance?: {
+    /** C11 错峰检修搜索窗（±window 周·原内联 4）。 */
+    window: number;
+    /** 同基地两次检修最小间隔周（原内联 26）。 */
+    minInterval: number;
+    /** 同组同周检修上限（原内联 3）。 */
+    groupWeekCap: number;
+  };
+  outsourcing?: {
+    /** 三渠道单位成本（自产加班/外协/延期·原内联 1.0/1.4/2.5）。 */
+    overtimeCost: number;
+    outsourceCost: number;
+    delayCost: number;
+    /** 加班上限占缺口比（原内联 0.4）。 */
+    overtimeCapPct: number;
+    /** C08 外协上限占总需求比（原内联 0.2）。 */
+    outsourceCapPct: number;
+  };
+  quote?: {
+    /** C15/C24 细分毛利底线缺省（原 num(args.segmentFloor,0.1)）。 */
+    floorDefault: number;
+    /** 过线判定缓冲带（margin ≥ floor+band → 过线·原内联 0.01）。 */
+    band: number;
+  };
+  credit?: {
+    /** C32 逾期天阈：overdueDays > 此值 → 冻结（原内联 30）。 */
+    overdueDays: number;
+  };
+  carbon?: {
+    /** C33 碳足迹达标阈（原 num(args.euThreshold,70)）。 */
+    euThreshold: number;
   };
   dupSimilarityThreshold: number;
   /**

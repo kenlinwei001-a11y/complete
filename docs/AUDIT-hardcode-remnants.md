@@ -49,10 +49,10 @@
 ### 簇 Hε · 阈值/系数写死（应入 SolverParam/rule/config）——~50 处·最大簇=extended.ts
 | # | file:line | 硬编码 | 应由 | 严重 |
 |---|---|---|---|---|
-| ε1 | `risk.ts:24,128` | severity阈92/78+加成12 · tension常数62/70/0.6/0.8/40/98 | SolverParam risk.{caseSeverity,tension} | **P1** |
-| ε2 | `plan.ts:230` | verdict阈 M.length>=3 翻"可定稿但有重要风险" | SolverParam audit.verdict.medHighCount | **P1** |
+| ε1 | ✅ `risk.ts` | severity阈92/78+加成12 · tension常数62/70/0.6/0.8/40/98 → **已闭**（DEFAKE 迁 caseSeverity/demandTension；HARDCODE-SOLVER-PARAMS 补残留 upsideGain 0.5/tensionCap 98 入 `risk.demandTension`） | SolverParam risk.{caseSeverity,demandTension} | ✅ 已闭 |
+| ε2 | ✅ `plan.ts` | verdict阈 M.length>=3 翻"可定稿但有重要风险" → **已闭**（入 `params.audit.verdictMedCount` 默认 3） | SolverParam audit.verdictMedCount | ✅ 已闭 |
 | ε3 | `frontend QuarterlyRollingView:128` · `SopBalanceView:343` | LTA偏差阈5%(红) · 毛利容差0.5pp(后端已params前端重写) | ViewConfig/workspace.sopConfig | **P1** |
-| ε4 | **`extended.ts` 全13 solver** | **consult NO c.params**·内联全阈值:over/under储1.5/0.8·idle 90·maint间隔26·overdue 30·EU碳70·外协通道1.0/1.4/2.5+40%/20%·urgency 70/30·lock 0.8·quote floor 0.1/band 0.01 | 每solver SolverParam/rule(C08/C11/C15/C16/C28/C32/C33) | P2(整簇) |
+| ε4 | ✅ **`extended.ts` 全13+1 solver** | ~~**NO c.params**·内联全阈值~~ → **已闭**：over/under储1.5/0.8·idle90·maint间隔26·overdue30·EU碳70·外协1.0/1.4/2.5+40%/20%·urgency70/30·lock0.8·quote floor0.1/band0.01·认证40/组3 全迁入 `params.{mitigation,cert,lta,inventory,maintenance,outsourcing,quote,credit,carbon}`（骨架零业务名 R14·默认值入 battery IndustryPack）；solver 体读 `num(args.<key>,内联默认)`、`deriveArgs` 从 `c.params` 注入（真 param 驱动·默认字节一致 R6）。物理常数（1/12·365·除零 0.1）不迁·注释说明 | 每solver SolverParam(C08/C11/C15/C16/C28/C32/C33) | ✅ 已闭 |
 | ε5 | `service.ts:821,987` · `fusion.ts:224` · `capex.ts:14,184` | KPI周期系数month/quarter/year 1.0/0.97/1.04 · KSF sev gap>=2 · 融合置信0.95/0.7/0.35 · ramp[0.5,0.75,0.9,1]·surplus 5% | SolverParam | P2 |
 | ε6 | frontend `SopBalance:885`·`Dashboard:765`·`RiskBoard:218`·`OrderChain:360` | gap红阈2 · warn带 threshold-15 · 瓶颈`?? 85` | ViewConfig(多数后端已params·前端重写) | P2 |
 | ε7 | `capex.ts:13 TAX_RATE 0.25` | 税率(法定但辖区/情景可变) | WorkspaceConfig(debattery-allow已标) | P3 |
@@ -83,7 +83,7 @@
 |---|---|---|
 | **HARDCODE-DISPATCH-REGISTRY（新·P1·架构根因）✅ 求解器派发簇已闭** | Hγ | ✅ 求解器/扩展solver 的 ~7 并行硬编码表 → **单一 `SOLVER_REGISTRY` descriptor 驱动**（`solvers/solver-registry.ts`·每 solver 一条 `{key,route,outputShape,a6Readout,liveDefault}`）；`SOLVER_KEYS`/`SOLVER_OUTPUT_SHAPES`/`LIVE_DEFAULT`/`A6_READOUT` 派生·`invokeRaw` 迭代 registry 派发（graphHandlers 构造期断言键集==registry graph 集·防漂移 teeth）·extended.ts 收口 `EXTENDED_REGISTRY{fn,dataMode,deriveArgs}`。语义零变（测试断言不改·`solver-registry.test`）。**γ3 industry→template 结构先行**（6 处判定→`usesBatteryPipeline` 一处），full IndustryTemplate-record 归 HARDCODE-BIZ-ENTITY。后续可继续把 γ5 ruleEvalPayload projection / γ9 SOLVER_GRAPH 收进 descriptor（门 `dispatch-registry:check` 待补）。 |
 | **HARDCODE-VIEW-LAYOUT（新·P1·8a收口）** | Hβ | 9视图 KPI/列/step/DAG 结构 → ViewConfig.layout 驱动(SandboxView 金标准)。4 P1(SopBalance/OrderChain×2/ProjectSim DAG)先行。 |
-| **HARDCODE-SOLVER-PARAMS（新·P1）** | Hε | extended.ts 13 solver + risk/plan 阈值 → SolverParam/rule(C-系列)·前端阈值消费后端权威不重写。加门 `solver-no-inline-threshold:check`。 |
+| **HARDCODE-SOLVER-PARAMS（新·P1）✅ 求解器阈值簇已闭（ε1/ε2/ε4）** | Hε | ✅ extended.ts 全13+1 solver 内联阈值/系数 + risk.ts 残留(0.5/98) + plan.ts 判据(M≥3) → `SolverParamsShape.{mitigation,cert,lta,inventory,maintenance,outsourcing,quote,credit,carbon}`＋`risk.demandTension.{upsideGain,tensionCap}`/`audit.verdictMedCount`（骨架零业务名 R14·默认值入 battery IndustryPack·物理常数不迁）；solver 体读 `num(args.<key>,内联默认)`、`deriveArgs` 从 `c.params` 注入 → 真 param 驱动·租户可配·可校准（默认==内联→R6 字节一致·现有断言不变）。证：`docs/evidence/hardcode-solver-params-proof.mjs`（覆写 param→输出变）。**残留 ε3/ε5/ε6/ε7 属前端重写/service·fusion·capex/税率，另簇 P2/P3 未纳本 WO**；专用门 `solver-no-inline-threshold:check` 待补。 |
 | **HARDCODE-CLOCK-DERIVE（新·P2·并入LAUNCHER-GROUNDED）** | Hδ | 全"当前"月/季/日由 sim-clock 派生·非硬编码;livedin 叙事日期改 t0 偏移。δ1/δ2 已在 LAUNCHER-GROUNDED。 |
 | **HARDCODE-BIZ-ENTITY（新·P2）** | Hα | segOfCust(P1)→SEG_REGISTRY·scenario/livedin/connectors/opsteam 电池实体→租户对象/行业模板·白名单逐条 genericize 或登记冻结。 |
 

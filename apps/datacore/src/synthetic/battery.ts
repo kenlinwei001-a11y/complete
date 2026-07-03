@@ -140,7 +140,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     arrivalCycleDays: 14,
     // RISK-TRAJECTORY-DEFAKE（B8/B9/B6·可校准·非内联魔数）：severity 判据 / 需求张力映射 / 工时估算系数入参。
     caseSeverity: { highScore: 92, medScore: 78, primaryBonus: 12 },
-    demandTension: { base: 62, loadGain: 70, shareBase: 0.6, shareGain: 0.8, utilPivot: 0.8, utilGain: 40 },
+    demandTension: { base: 62, loadGain: 70, shareBase: 0.6, shareGain: 0.8, utilPivot: 0.8, utilGain: 40, upsideGain: 0.5, tensionCap: 98 },
     deliveryLaborPerWan: 1.6,
     mitigations: {
       物料齐套: [
@@ -297,6 +297,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     // PRD-IND-audit §4.4：外部信号诊断 E01–E03 阈值（环境感知纳入软风险）。
     extGmBufferMin: 1.2, // E01 结构毛利与目标缓冲 < 1.2pp → 碳酸锂上行即击穿
     extDemHigh: 130, // E02 需求 P50 ≥130 → 终端上险不及预期则缺口扩大
+    verdictMedCount: 3, // HARDCODE-SOLVER-PARAMS ε2：中风险项计数达此→"可定稿但有重要风险"（原 plan.ts 内联 3）
   },
   planGenerate: {
     // PRD-IND-plan-generate §4.5 取值对齐 HTML GEN_BASE/GEN_GOALS（rev=100 归一保 growth 评分=revGrowAbs×2.5）。
@@ -362,6 +363,17 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   },
   // PRD-IND-sop §4.5-5：收入预算口径=240（真预算 SOP_FIN[0].bud），滚动确认收入 248 → 达成率 248/240=103%（非 248/248=100%）。
   sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 240 },
+  // HARDCODE-SOLVER-PARAMS（ε4·IndustryPack default）：20 场景扩展求解器业务阈值/系数——默认==原 extended.ts 内联值
+  // （R6 字节一致），骨架键在 types.ts 零业务实体名（R14）。租户/行业可覆写（改 param 改果·非死值）。
+  mitigation: { urgencyPivot: 70, urgencySpan: 30 },
+  cert: { engineerGroups: 3, hoursPerWeek: 40 },
+  lta: { lockRate: 0.8, leadDays: 30 },
+  inventory: { safetyDays: 5, overMult: 1.5, underMult: 0.8, idleThreshold: 90 },
+  maintenance: { window: 4, minInterval: 26, groupWeekCap: 3 },
+  outsourcing: { overtimeCost: 1.0, outsourceCost: 1.4, delayCost: 2.5, overtimeCapPct: 0.4, outsourceCapPct: 0.2 },
+  quote: { floorDefault: 0.1, band: 0.01 },
+  credit: { overdueDays: 30 },
+  carbon: { euThreshold: 70 },
   // M11 校准算法层（PRD-addendum-m11-calibration §4）：可校准参数注册表 + 阈值/开关（场景包配置）。
   calibration: {
     alpha: 0.3, // 方法 A · EMA

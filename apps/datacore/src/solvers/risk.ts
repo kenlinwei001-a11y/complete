@@ -115,7 +115,9 @@ function networkDemandSupplyLoad(c: SolverContext): { load: number; gap: number;
   const fcLoad = segTgt > 0 ? segP50 / segTgt : 0;
   const upside = segP50 > 0 ? Math.max(0, segP90 - segP50) / segP50 : 0;
   const baseLoad = Math.max(sopLoad, fcLoad);
-  const load = baseLoad > 0 ? baseLoad * (1 + 0.5 * upside) : 0;
+  // HARDCODE-SOLVER-PARAMS（ε1 残留闭合）：预测上行比权重入 params.risk.demandTension.upsideGain（默认 0.5 == 原内联·R6）。
+  const upsideGain = c.params.risk.demandTension.upsideGain ?? 0.5;
+  const load = baseLoad > 0 ? baseLoad * (1 + upsideGain * upside) : 0;
   return { load: round(load, 6), gap: sopGap, hasForecast: dsegs.length > 0 || sops.length > 0 };
 }
 
@@ -141,7 +143,9 @@ export function demandCapacityTightness(c: SolverContext, baseId: string): { val
   const shareWeight = dt.shareBase + dt.shareGain * share;
   const tension = dt.base + (dsl.load - 1) * dt.loadGain * shareWeight + (util - dt.utilPivot) * dt.utilGain;
   const gap = round(dsl.gap * share, 4); // 基地分摊真缺口（万套，需求−产能）
-  return { value: clamp(Math.round(tension), 0, 98), live: true, gap };
+  // HARDCODE-SOLVER-PARAMS（ε1 残留闭合）：张力上限 clamp 入 params.risk.demandTension.tensionCap（默认 98 == 原内联·R6）。
+  const tensionCap = dt.tensionCap ?? 98;
+  return { value: clamp(Math.round(tension), 0, tensionCap), live: true, gap };
 }
 
 /**

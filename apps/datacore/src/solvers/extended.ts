@@ -65,7 +65,10 @@ export function mitigationSelect(args: Record<string, unknown>) {
     const factors = [...new Set([...Object.keys(injected ?? {}), ...Object.keys(MITIGATION_LIB)])];
     return { error: `unknown factor: ${factor}`, factors };
   }
-  const urgency = tightness === null ? null : Math.max(0, (tightness - 70) / 30);
+  // HARDCODE-SOLVER-PARAMS（ε4）：urgency 映射系数入 params.mitigation（deriveArgs 注入；默认 70/30 == 原内联·R6）。
+  const urgencyPivot = num(args.urgencyPivot, 70);
+  const urgencySpan = num(args.urgencySpan, 30);
+  const urgency = tightness === null ? null : Math.max(0, (tightness - urgencyPivot) / urgencySpan);
   // 无真紧迫度：按方案性价比（eff/(cost×tn)）排序，不含紧迫度加权（不伪造紧迫度）；有真值则乘 urgency 权重。
   const scored = lib
     .map((p) => {
@@ -91,9 +94,11 @@ export function mitigationSelect(args: Record<string, unknown>) {
 export function certSchedule(args: Record<string, unknown>) {
   const items = (args.items as { model: string; line: string; status: string; certHours: number; gapContribution: number }[]) ?? [];
   const groups = num(args.engineerGroups, 3);
+  // HARDCODE-SOLVER-PARAMS（ε4）：认证工时→周换算系数入 params.cert.hoursPerWeek（默认 40 == 原内联·R6）。
+  const hoursPerWeek = num(args.certHoursPerWeek, 40);
   const pending = items.filter((i) => i.status === "认证中" || i.status === "待认证");
   const ranked = pending
-    .map((i) => ({ ...i, priority: round(i.gapContribution / Math.max(0.1, i.certHours), 4), weeks: Math.max(1, Math.ceil(i.certHours / 40)) }))
+    .map((i) => ({ ...i, priority: round(i.gapContribution / Math.max(0.1, i.certHours), 4), weeks: Math.max(1, Math.ceil(i.certHours / hoursPerWeek)) }))
     .sort((a, b) => b.priority - a.priority);
   // 贪心装箱：每周并行 ≤ groups（C26）
   const weekLoad: number[] = [];
@@ -135,6 +140,8 @@ export function ltaGap(args: Record<string, unknown>) {
   const ltaAvailable = round(num(args.ltaAnnualLock) * num(args.monthQuota, 1 / 12) - num(args.executedThisMonth), 4);
   const gap = round(Math.max(0, netDemand - ltaAvailable), 4);
   const coverage = netDemand <= 0 ? 1 : round(Math.min(1, ltaAvailable / netDemand), 4);
+  // HARDCODE-SOLVER-PARAMS（ε4）：现货补单最迟提前期缺省入 params.lta.leadDays（默认 30 == 原内联·R6）。
+  // monthQuota 1/12 为「月/年」单位换算（物理常数·非业务阈值·丙档诚实项）→ 不迁。
   const leadDays = num(args.leadDays, 30);
   const po = gap > 0
     ? [
@@ -149,20 +156,24 @@ export function ltaGap(args: Record<string, unknown>) {
 export function inventoryOptimize(args: Record<string, unknown>) {
   const materials = (args.materials as { matId: string; dailyUse: number; leadTime: number; onHand: number; unitPrice: number; idleDays: number }[]) ?? [];
   const safety = num(args.safetyDays, 5);
+  // HARDCODE-SOLVER-PARAMS（ε4）：超/欠储乘数 + C28 呆滞天阈入 params.inventory（默认 1.5/0.8/90 == 原内联·R6）。
+  const overMult = num(args.overMult, 1.5);
+  const underMult = num(args.underMult, 0.8);
+  const idleThreshold = num(args.idleThreshold, 90);
   const over: unknown[] = [];
   const under: unknown[] = [];
   const idle: unknown[] = [];
   let releasable = 0;
   for (const m of materials) {
     const target = m.dailyUse * (m.leadTime + safety);
-    const overQty = Math.max(0, m.onHand - 1.5 * target);
-    const underQty = Math.max(0, 0.8 * target - m.onHand);
+    const overQty = Math.max(0, m.onHand - overMult * target);
+    const underQty = Math.max(0, underMult * target - m.onHand);
     if (overQty > 0) {
       over.push({ matId: m.matId, overQty: round(overQty, 4), value: round(overQty * m.unitPrice, 2) });
       releasable += overQty * m.unitPrice;
     }
     if (underQty > 0) under.push({ matId: m.matId, underQty: round(underQty, 4) });
-    if (m.idleDays > 90) idle.push({ matId: m.matId, idleDays: m.idleDays }); // C28
+    if (m.idleDays > idleThreshold) idle.push({ matId: m.matId, idleDays: m.idleDays }); // C28
   }
   return { over, under, idle, releasableCash: round(releasable, 2), ruleRefs: ["C16", "C28"] };
 }
@@ -233,6 +244,10 @@ export function maintenanceStagger(args: Record<string, unknown>) {
   const bases = (args.bases as { base: string; group?: string; maintWeek: number; lastMaintWeek?: number; loadByWeek: Record<string, number> }[]) ?? [];
   const peakWeeks = (args.peakWeeks as number[]) ?? [];
   const peakSet = new Set(peakWeeks);
+  // HARDCODE-SOLVER-PARAMS（ε4）：C11 错峰窗/最小间隔/同组同周上限入 params.maintenance（默认 4/26/3 == 原内联·R6）。
+  const window = num(args.staggerWindow, 4);
+  const minInterval = num(args.minInterval, 26);
+  const groupWeekCap = num(args.groupWeekCap, 3);
   const groupWeekCount: Record<string, number> = {};
   const adjustments: unknown[] = [];
   const unresolved: unknown[] = [];
@@ -240,10 +255,10 @@ export function maintenanceStagger(args: Record<string, unknown>) {
     if (!peakSet.has(b.maintWeek)) continue; // 无冲突
     let best: number | undefined;
     let bestLoad = Infinity;
-    for (let w = b.maintWeek - 4; w <= b.maintWeek + 4; w++) {
+    for (let w = b.maintWeek - window; w <= b.maintWeek + window; w++) {
       if (w < 1 || peakSet.has(w)) continue;
-      if (b.lastMaintWeek !== undefined && w - b.lastMaintWeek < 26) continue; // 间隔约束
-      if ((groupWeekCount[`${b.group}|${w}`] ?? 0) >= 3) continue; // 同组同周≤3
+      if (b.lastMaintWeek !== undefined && w - b.lastMaintWeek < minInterval) continue; // 间隔约束
+      if ((groupWeekCount[`${b.group}|${w}`] ?? 0) >= groupWeekCap) continue; // 同组同周≤cap
       const load = b.loadByWeek[String(w)] ?? 0;
       if (load < bestLoad) {
         bestLoad = load;
@@ -263,10 +278,16 @@ export function maintenanceStagger(args: Record<string, unknown>) {
 export function outsourcingSplit(args: Record<string, unknown>) {
   const gap = num(args.gap);
   const totalDemand = num(args.totalDemand, gap);
+  // HARDCODE-SOLVER-PARAMS（ε4）：三渠道单位成本 + 加班/外协上限比入 params.outsourcing（默认 1.0/1.4/2.5·0.4·0.2 == 原内联·R6）。
+  const overtimeCost = num(args.overtimeCost, 1.0);
+  const outsourceCost = num(args.outsourceCost, 1.4);
+  const delayCost = num(args.delayCost, 2.5);
+  const overtimeCapPct = num(args.overtimeCapPct, 0.4);
+  const outsourceCapPct = num(args.outsourceCapPct, 0.2);
   const channels = [
-    { key: "overtime", name: "自产加班", unitCost: 1.0, cap: gap * 0.4 },
-    { key: "outsource", name: "外协", unitCost: 1.4, cap: totalDemand * 0.2 }, // C08
-    { key: "delay", name: "延期", unitCost: 2.5, cap: Infinity },
+    { key: "overtime", name: "自产加班", unitCost: overtimeCost, cap: gap * overtimeCapPct },
+    { key: "outsource", name: "外协", unitCost: outsourceCost, cap: totalDemand * outsourceCapPct }, // C08
+    { key: "delay", name: "延期", unitCost: delayCost, cap: Infinity },
   ];
   let remaining = gap;
   let totalCost = 0;
@@ -279,7 +300,7 @@ export function outsourcingSplit(args: Record<string, unknown>) {
   return {
     allocation,
     totalCost: round(totalCost, 4),
-    savedVsAllDelay: round(gap * 2.5 - totalCost, 4),
+    savedVsAllDelay: round(gap * delayCost - totalCost, 4),
     outsourceQualityGate: "C31：外协厂良率 ≥ 自产 −0.02",
     ruleRefs: ["C08", "C31"],
   };
@@ -293,12 +314,14 @@ export function quoteMargin(args: Record<string, unknown>) {
   const mfg = num(args.mfgRate) * price;
   const logistics = num(args.logistics);
   const margin = price <= 0 ? 0 : round((price - bomCost - mfg - logistics) / price, 4);
-  const floor = num(args.segmentFloor, 0.1);
+  // HARDCODE-SOLVER-PARAMS（ε4）：C15/C24 毛利底线缺省 + 过线缓冲带入 params.quote（默认 0.1/0.01 == 原内联·R6）。
+  const floor = num(args.segmentFloor, num(args.quoteFloorDefault, 0.1));
+  const band = num(args.quoteBand, 0.01);
   return {
     margin,
     floor,
     diff: round(margin - floor, 4),
-    verdict: margin >= floor + 0.01 ? "过线" : margin >= floor ? "触线" : "低于底线",
+    verdict: margin >= floor + band ? "过线" : margin >= floor ? "触线" : "低于底线",
     breakdown: { bomCost, mfg: round(mfg, 4), logistics, price },
     ruleRefs: ["C15", "C24"],
   };
@@ -312,9 +335,11 @@ export function creditExposure(args: Record<string, unknown>) {
   const exposure = round(receivables + wip, 2);
   const available = round(limit - exposure, 2);
   const overdue = (args.overdue as { invoiceId: string; overdueDays: number; amount: number }[]) ?? [];
-  const hasOverdue = overdue.some((o) => o.overdueDays > 30); // C32
+  // HARDCODE-SOLVER-PARAMS（ε4）：C32 逾期天阈入 params.credit.overdueDays（默认 30 == 原内联·R6）。
+  const overdueDaysThreshold = num(args.overdueDays, 30);
+  const hasOverdue = overdue.some((o) => o.overdueDays > overdueDaysThreshold); // C32
   const newOrder = num(args.newOrderAmount, 0);
-  const verdict = hasOverdue ? "冻结（存在逾期>30天）" : newOrder <= available ? "可接" : "超出可用额度";
+  const verdict = hasOverdue ? `冻结（存在逾期>${overdueDaysThreshold}天）` : newOrder <= available ? "可接" : "超出可用额度";
   return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, ruleRefs: ["C13", "C32"] };
 }
 
@@ -429,6 +454,18 @@ export interface ExtendedSolverDescriptor {
   readonly deriveArgs: (c: SolverContext, args: Record<string, unknown>) => Record<string, unknown>;
 }
 
+/**
+ * HARDCODE-SOLVER-PARAMS（ε4·治本）：把 SolverParams 里的求解器业务阈值/系数注入 args——求解体读
+ * `num(args.<key>, 内联默认)`（默认==原内联值→R6 字节一致）；此处从 `c.params.<domain>` 注入使**真调用路径
+ * param 驱动**（租户可配·可校准·改 param 改果·非死值）。param 缺省（undefined）→ 不注入 → 求解体回落内联默认
+ * （向后兼容·直接单测无 context 时亦字节一致）。注入放在 return 对象最前·`...args` 仍后置（调用方显式值优先）。
+ */
+function injectThresholds(map: Record<string, number | undefined>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(map)) if (v !== undefined) out[k] = v;
+  return out;
+}
+
 export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
   mitigation_select: {
     fn: mitigationSelect,
@@ -440,16 +477,18 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
       const base = (c.bases ?? []).find((b) => str(b.props.name) === bName || str(b.props.baseId) === bName);
       const rt = base ? liveTightness(c, str(base.props.baseId), factor) : null;
       const tightInj = rt && rt.live && rt.value !== null ? { tightness: rt.value } : {};
+      const th = injectThresholds({ urgencyPivot: c.params?.mitigation?.urgencyPivot, urgencySpan: c.params?.mitigation?.urgencySpan });
       // canonical 方案库（params.risk.mitigations）→ 对全部 7 个风险因子可用；args 最后 spread（调用方显式紧迫度仍优先）。
-      return { ...tightInj, mitigations: c.params?.risk?.mitigations, ...args };
+      return { ...th, ...tightInj, mitigations: c.params?.risk?.mitigations, ...args };
     },
   },
   cert_schedule: {
     fn: certSchedule,
     dataMode: (c, args) => (argHas(args, "items") || nonEmpty(c.certifications) ? "LIVE" : "MOCK"),
     deriveArgs: (c, args) => {
-      if (argHas(args, "items")) return args;
-      return { engineerGroups: 3, ...args, items: (c.certifications ?? []).map(props).map((x) => ({ model: str(x.modelId), line: str(x.lineId), status: str(x.status), certHours: num(x.certHours, 80), gapContribution: num(x.gapContribution) })) };
+      const th = injectThresholds({ certHoursPerWeek: c.params?.cert?.hoursPerWeek });
+      if (argHas(args, "items")) return { ...th, ...args };
+      return { engineerGroups: c.params?.cert?.engineerGroups ?? 3, certHoursPerWeek: c.params?.cert?.hoursPerWeek, ...args, items: (c.certifications ?? []).map(props).map((x) => ({ model: str(x.modelId), line: str(x.lineId), status: str(x.status), certHours: num(x.certHours, 80), gapContribution: num(x.gapContribution) })) };
     },
   },
   kit_readiness: {
@@ -471,21 +510,25 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
     fn: ltaGap,
     dataMode: (c, args) => (argHas(args, "monthDemand") || nonEmpty(c.materials) ? "LIVE" : "MOCK"),
     deriveArgs: (c, args) => {
-      if (argHas(args, "monthDemand")) return args;
+      const lockRate = c.params?.lta?.lockRate ?? 0.8; // audit「lock 0.8」→ params.lta.lockRate
+      const leadDaysDefault = c.params?.lta?.leadDays ?? 30;
+      const th = injectThresholds({ leadDays: c.params?.lta?.leadDays });
+      if (argHas(args, "monthDemand")) return { ...th, ...args };
       const mats = (c.materials ?? []).map(props);
       const m = mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0] ?? {};
-      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, 30), ...args };
+      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * lockRate, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, leadDaysDefault), ...args };
     },
   },
   inventory_optimize: {
     fn: inventoryOptimize,
     dataMode: (c, args) => (argHas(args, "materials") || nonEmpty(c.materials) ? "LIVE" : "MOCK"),
     deriveArgs: (c, args) => {
-      if (argHas(args, "materials")) return args;
+      const th = injectThresholds({ safetyDays: c.params?.inventory?.safetyDays, overMult: c.params?.inventory?.overMult, underMult: c.params?.inventory?.underMult, idleThreshold: c.params?.inventory?.idleThreshold });
+      if (argHas(args, "materials")) return { ...th, ...args };
       const mats = (c.materials ?? []).map(props);
       const idleByMat = new Map<string, number>();
       for (const b of (c.materialBatches ?? []).map(props)) idleByMat.set(str(b.matId), Math.max(idleByMat.get(str(b.matId)) ?? 0, num(b.idleDays)));
-      return { ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
+      return { ...th, ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
     },
   },
   changeover_sequence: {
@@ -517,9 +560,10 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
     fn: maintenanceStagger,
     dataMode: (c, args) => (argHas(args, "bases") ? "LIVE" : nonEmpty(c.bases) ? "PARTIAL" : "MOCK"), // bases 真、loadByWeek 写死（A4）
     deriveArgs: (c, args) => {
-      if (argHas(args, "bases")) return args;
+      const th = injectThresholds({ staggerWindow: c.params?.maintenance?.window, minInterval: c.params?.maintenance?.minInterval, groupWeekCap: c.params?.maintenance?.groupWeekCap });
+      if (argHas(args, "bases")) return { ...th, ...args };
       const bases = (c.bases ?? []).map((b, i) => ({ base: str(props(b).name, `B${i}`), group: "g1", maintWeek: 10 + (i % 3), loadByWeek: { "6": 20, "7": 5, "10": 80, "11": 8, "12": 12 } }));
-      return { peakWeeks: [10, 11, 12], ...args, bases };
+      return { ...th, peakWeeks: [10, 11, 12], ...args, bases };
     },
   },
   outsourcing_split: {
@@ -529,27 +573,32 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
     dataMode: (c, args) => (argHas(args, "gap") ? "LIVE" : nonEmpty(c.orders) ? "PARTIAL" : "MOCK"),
     deriveArgs: (c, args) => {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
+      const o = c.params?.outsourcing;
+      const th = injectThresholds({ overtimeCost: o?.overtimeCost, outsourceCost: o?.outsourceCost, delayCost: o?.delayCost, overtimeCapPct: o?.overtimeCapPct, outsourceCapPct: o?.outsourceCapPct });
       // G2：gap 未显式传 → 按 DEFAULT_GAP_FRACTION 估算（dataMode=PARTIAL·诚实标估算，非真实缺口测量）。
-      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), totalDemand, ...args };
+      return { ...th, gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), totalDemand, ...args };
     },
   },
   quote_margin: {
     fn: quoteMargin,
     dataMode: (c, args) => (argHas(args, "bom") ? "LIVE" : nonEmpty(c.materials) ? "PARTIAL" : "MOCK"), // bom 真、price/mfgRate/logistics/floor 魔数
     deriveArgs: (c, args) => {
-      if (argHas(args, "bom")) return args;
+      const th = injectThresholds({ quoteFloorDefault: c.params?.quote?.floorDefault, quoteBand: c.params?.quote?.band });
+      if (argHas(args, "bom")) return { ...th, ...args };
       const mats = (c.materials ?? []).map(props);
-      return { price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
+      return { ...th, price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
     },
   },
   credit_exposure: {
     fn: creditExposure,
     dataMode: (c, args) => (argHas(args, "creditLimit") ? "LIVE" : nonEmpty(c.customers) ? "PARTIAL" : "MOCK"), // creditLimit 可兜底 5000
     deriveArgs: (c, args) => {
-      if (argHas(args, "creditLimit")) return args;
+      const overdueThreshold = c.params?.credit?.overdueDays ?? 30; // C32 逾期天阈 → params.credit.overdueDays
+      const th = injectThresholds({ overdueDays: c.params?.credit?.overdueDays });
+      if (argHas(args, "creditLimit")) return { ...th, ...args };
       const cust = (c.customers ?? []).map(props).find((x) => str(x.custName) === str(args.custName)) ?? (c.customers ?? []).map(props)[0] ?? {};
-      const overdue = (c.arInvoices ?? []).map(props).filter((iv) => str(iv.custName) === str(cust.custName) && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
-      return { custName: str(cust.custName, str(args.custName)), creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue, ...args };
+      const overdue = (c.arInvoices ?? []).map(props).filter((iv) => str(iv.custName) === str(cust.custName) && num(iv.overdueDays) > overdueThreshold).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
+      return { ...th, custName: str(cust.custName, str(args.custName)), creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue, ...args };
     },
   },
   quarterly_gap: {
@@ -564,10 +613,12 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
       return nonEmpty(c.materials) ? (nonEmpty(c.energyMeters) ? "LIVE" : "PARTIAL") : "MOCK";
     },
     deriveArgs: (c, args) => {
-      if (argHas(args, "materials")) return args;
+      const euThreshold = c.params?.carbon?.euThreshold ?? 70; // C33 碳达标阈 → params.carbon.euThreshold
+      const th = injectThresholds({ euThreshold: c.params?.carbon?.euThreshold });
+      if (argHas(args, "materials")) return { ...th, ...args };
       const mats = (c.materials ?? []).map(props);
       const em = (c.energyMeters ?? []).map(props)[0];
-      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
+      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold, ...args, materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
     },
   },
   countermeasure_combo: {

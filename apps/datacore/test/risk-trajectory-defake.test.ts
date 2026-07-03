@@ -27,7 +27,8 @@ describe("RISK-TRAJECTORY-DEFAKE · 治本牙齿", () => {
   // B9/B6：需求张力映射系数 + 工时系数入 params（存在且为命名字段·非匿名内联）。
   it("B9/B6：demandTension / deliveryLaborPerWan 入 SolverParam", () => {
     const r = (BATTERY_SOLVER_PARAMS as { risk: Record<string, unknown> }).risk;
-    expect(r.demandTension).toEqual({ base: 62, loadGain: 70, shareBase: 0.6, shareGain: 0.8, utilPivot: 0.8, utilGain: 40 });
+    // HARDCODE-SOLVER-PARAMS（ε1 残留闭合）：upsideGain(原内联 0.5)/tensionCap(原内联 98) 入同一 demandTension 组（命名字段·非匿名内联）。
+    expect(r.demandTension).toEqual({ base: 62, loadGain: 70, shareBase: 0.6, shareGain: 0.8, utilPivot: 0.8, utilGain: 40, upsideGain: 0.5, tensionCap: 98 });
     expect(r.deliveryLaborPerWan).toBe(1.6);
     // 旧 targetLift / rampDen（hash 爬坡目标）已删——不得再存在于参数
     expect((r as Record<string, unknown>).targetLift).toBeUndefined();
