@@ -2519,8 +2519,8 @@
     {
       "id": "AGENTCORE-TRACE-LINEAGE",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-fake-value-remnants.md",

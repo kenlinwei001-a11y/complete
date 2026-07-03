@@ -162,6 +162,70 @@ describe("projectTrace · ⑦ cmp 抽取", () => {
   });
 });
 
+describe("projectTrace · 血缘诚实（簇F 治本·防骨架电池常数冒充真血缘）", () => {
+  // 骨架曾内联的业务电池常数（型号/工序/求解器/agent 名）——真 lineage 缺失时绝不可出现在节点血缘。
+  const BATTERY = ["工厂", "产线1", "产线2", "电芯", "4680", "化成", "老化", "瓶颈", "OEE指标", "良率", "聚合求解器", "瓶颈求解器", "场景求解器", "精度校准器", "编排Agent", "意图解析Agent", "检索Agent", "建模求解Agent", "瓶颈诊断Agent", "解释校验Agent", "行动Agent", "学习Agent", "经验记忆库", "约束规则"];
+  const lineageBag = (n: { data: string[]; solvers: string[]; agents: string[] }) => [...n.data, ...n.solvers, ...n.agents];
+
+  it("WORKFLOW · 未执行的节点 → data/solvers/agents 空数组，绝不含骨架电池常数", () => {
+    // 只跑 resolve_slice + render_answer：④⑤⑥（求解）⑧（校验）皆未执行。
+    const p = plan([
+      { id: "s1", type: "resolve_slice", params: { sliceKey: "x", args: {} } },
+      { id: "s2", type: "render_answer", params: { blocks: [] } },
+    ]);
+    const trace = projectTrace(task(), p, [ok("resolve_slice"), ok("render_answer")], undefined, undefined);
+    const byId = (id: number) => trace.nodes.find((n) => n.id === id)!;
+    for (const id of [4, 5, 6, 8, 10]) {
+      const n = byId(id);
+      expect(n.status).toBe("pending");
+      expect(n.data).toEqual([]);
+      expect(n.solvers).toEqual([]);
+      expect(n.agents).toEqual([]); // ← agents 曾无条件 = 骨架名，治本后诚实空
+    }
+    // 每个节点的血缘袋均无任何骨架电池常数（任意租户/行业·R14）。
+    for (const n of trace.nodes) {
+      for (const bat of BATTERY) expect(lineageBag(n)).not.toContain(bat);
+    }
+  });
+
+  it("AGENT · 无真 agent 记录的节点 → agents 空（不发骨架 编排Agent/瓶颈诊断Agent）", () => {
+    const t = task({ path: "AGENT", classification: { candidates: [], outOfCatalog: true, extractedSlots: {}, latencyMs: 1, model: "mock" }, matchedIntent: undefined });
+    // 仅一次 search_knowledge（③）；无求解/agent 工具。
+    const trace = projectTrace(t, undefined, [ok("search_knowledge")], undefined, undefined);
+    for (const n of trace.nodes) {
+      // 任何节点都不得携带骨架 agent 名。
+      for (const bat of BATTERY) expect(lineageBag(n)).not.toContain(bat);
+    }
+    // ③ 真实工具入血缘（真值）；⑤⑦ 无真记录 → 空。
+    const byId = (id: number) => trace.nodes.find((n) => n.id === id)!;
+    expect(byId(3).data).toContain("工具:search_knowledge");
+    expect(byId(5).agents).toEqual([]);
+    expect(byId(7).agents).toEqual([]);
+  });
+
+  it("真 agent 血缘存在 → 保留（invoke_agent.agentId 进 ⑦ agents）", () => {
+    const p = plan([
+      { id: "s1", type: "invoke_agent", params: { agentId: "orchestrator_v2", version: "latest", prompt: "x" } },
+      { id: "s2", type: "render_answer", params: { blocks: [] } },
+    ]);
+    const trace = projectTrace(task(), p, [ok("invoke_agent"), ok("render_answer")], undefined, undefined);
+    const n7 = trace.nodes.find((n) => n.id === 7)!;
+    expect(n7.status).toBe("done");
+    expect(n7.agents).toContain("Agent:orchestrator_v2"); // 真血缘保留
+    // 骨架叙述名不混入。
+    expect(n7.agents).not.toContain("编排Agent");
+    expect(n7.agents).not.toContain("解释校验Agent");
+  });
+
+  it("AGENT · 真求解工具 → solvers 真值（非骨架求解器名）", () => {
+    const t = task({ path: "AGENT", classification: { candidates: [], outOfCatalog: true, extractedSlots: {}, latencyMs: 1, model: "mock" }, matchedIntent: undefined });
+    const trace = projectTrace(t, undefined, [ok("invoke_solver_bottleneck_matrix")], undefined, undefined);
+    const n5 = trace.nodes.find((n) => n.id === 5)!;
+    expect(n5.solvers).toContain("invoke_solver_bottleneck_matrix");
+    expect(n5.solvers).not.toContain("瓶颈求解器"); // 骨架名不出现
+  });
+});
+
 describe("projectTrace · 确定性（R6）", () => {
   it("同输入 → 字节级一致", () => {
     const p = plan([

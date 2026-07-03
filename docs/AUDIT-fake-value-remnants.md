@@ -86,14 +86,14 @@
 
 > **E 簇要害**：多处 `// debattery-allow` 把内联业务常数**白名单放行**过了 `debattery:check` 门——门被自己开的后门绕过。且前端在后端权威值缺失/存在时**客户端重算**（gmRate/revAttain/gap），绕开单一真相源。
 
-### 簇 F · agentcore 编排骨架 lineage 常数（F2·可解释性 trace 冒充真血缘）
+### 簇 F · agentcore 编排骨架 lineage 常数（F2·可解释性 trace 冒充真血缘）✅ 已闭
 | # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO |
 |---|---|---|---|---|---|---|
-| F1 | `router/orchestration-skeleton.ts:55` | 内联 base/line/型号/工序/求解器/agent 名(4680/化成/老化/聚合求解器…) | 推演过程 DAG 节点"用到的数据/求解器" | 代理·待运行复验 | P2 | AGENTCORE-TRACE-LINEAGE |
-| F2 | `router/project-trace.ts:237` | `agents: skel.agents` 无条件发骨架名(即使无真 lineage) | trace 节点 | 代理·待运行复验 | P2 | AGENTCORE-TRACE-LINEAGE |
-| F3 | `router/project-trace.ts:235` | AGENT 路径回退 `skel.data`(电池常数) | trace 节点 | 代理·待运行复验 | P2 | AGENTCORE-TRACE-LINEAGE |
+| F1 | `router/orchestration-skeleton.ts:55` | ~~内联 base/line/型号/工序/求解器/agent 名(4680/化成/老化/聚合求解器…)~~ **✅ 已闭**：删 `SkeletonNode.data/solvers/agents` 三字段 + 10 节点内联电池常数（in/proc/out IPO 视图文案保留） | 推演过程 DAG 节点"用到的数据/求解器" | ✅ 真起双服务 curl trace 复验 | P2 | AGENTCORE-TRACE-LINEAGE |
+| F2 | `router/project-trace.ts:237` | ~~`agents: skel.agents` 无条件发骨架名(即使无真 lineage)~~ **✅ 已闭**：agents 改真血缘派生（invoke_agent.agentId / AGENT 路径真 toolName）·缺→空数组 | trace 节点 | ✅ 真跑 + 牙齿 test | P2 | AGENTCORE-TRACE-LINEAGE |
+| F3 | `router/project-trace.ts:235` | ~~AGENT 路径回退 `skel.data`(电池常数)~~ **✅ 已闭**：data/solvers 删 skel 回退·真 trace 派生·缺→空数组「本次未记录来源」 | trace 节点 | ✅ 真跑 + 牙齿 test | P2 | AGENTCORE-TRACE-LINEAGE |
 
-> **F 簇**：`/queries/:taskId/trace` 可解释性图在真 lineage 缺失时，把骨架电池常数当"本节点真实用到的数据/求解器/agent"发给用户（任意租户/行业）。P2（解释层非主决策数字，但仍冒充真血缘）。
+> **F 簇 ✅ 已闭**（WO-AGENTCORE-TRACE-LINEAGE）：`/queries/:taskId/trace` 可解释性图在真 lineage 缺失时，~~把骨架电池常数当"本节点真实用到的数据/求解器/agent"发给用户~~ → 治本后**节点显空数组（前端"本次未记录来源"），只发真 trace（task/plan/toolCalls）派生血缘**，真血缘存在则保留（R13/R6·任意租户/行业 R14）。FDE：真起 datacore+agentcore·真提交 4680 PACK 订单查询→ AGENT 路径 FAILED·`GET /trace` 10 节点血缘全空·零骨架常数。牙齿 `test/project-trace.test.ts`「血缘诚实簇」（回退改回 skel 即红）。
 
 ### 簇 G · 潜伏（今不可达但会造假）
 | # | file:line | 造假 | 验证 | 严重 | WO |
@@ -111,7 +111,7 @@
 | **CALIB-HONEST-EMPTY（新·P1）✅ 已闭** | C1–C6 | 无真 pair→诚实空/静止(非造下降线)；demo/部署 mapeSeries+evidence 上 SYNTHETIC 标；realizedMape 从真未来 pair 算。**落实**：C1 静态基线常数+report.baselineOnly·C2 bundle.synthetic·C3 realizedMape=mapeAt(week+2)·C4/C5 proposal.synthetic+evidence.synthetic·C6 走正门码注披露。前端徽章：ReviewView"合成演示·非真实学习"+CalibrationPage"静态基线·无真实配对"/SYNTHETIC。牙齿 test/calib-honest-empty.test.tsx。 |
 | **SIM-REAL-SNAPSHOT（新·P1）** | D1–D3 | baseSnapshot 取后端真对象属性态(非 hash(oid))；热度阈入 sim 认证/config。 |
 | **FRONTEND-VALUE-AUTHORITY（新·P1）✅ 已闭** | E1–E7 | 消费后端权威字段(revAttainPct/gmRate/gap)；缺失→诚实空态非内联常数重算；清 `debattery-allow` 白名单常数入后端 layout/rule。**落实**：E1 marginLedger 缺→「估算」标·E2 后端 sop.s4.revAttainPct(params.sop.revBudget)前端消费·缺则 workspace 预算·再缺 null(去内联240)·E3 后端 ltaDeviation.breach(C27 阈5%)前端消费·E4 消费 k.threshold 缺→灰(去?? 85;coef 已 view.layout 权威+估算标)·E5 消费 s4.gmOk(去内联0.5pp)·E6 消费 r.gap(去自算col0−col1)。E7 坐标表=Base.props.lon/lat 兜底·非决策·诚实披露(P3 保留)。牙齿 test/frontend-value-authority.test.tsx。 |
-| **AGENTCORE-TRACE-LINEAGE（新·P2）** | F1–F3 | trace 节点真 lineage 缺失→空/"本次未记录来源"，勿发骨架电池常数。 |
+| **AGENTCORE-TRACE-LINEAGE（新·P2）✅ 已闭** | F1–F3 | trace 节点真 lineage 缺失→空/"本次未记录来源"，勿发骨架电池常数。**落实**：F1 删 `SkeletonNode.data/solvers/agents` + 10 节点内联常数（in/proc/out IPO 保留）·F2 agents 改真血缘派生（invoke_agent.agentId / AGENT 真 toolName）缺→空·F3 data/solvers 删 skel 回退真 trace 派生缺→空数组。真血缘存在则保留（R13/R6/R14）。FDE 真起双服务 curl trace 证 10 节点血缘全空零骨架常数。牙齿 `test/project-trace.test.ts` 血缘诚实簇（回退改回 skel 即红）。 |
 
 ## 4. 回写本体 + 建门（防回潮）
 

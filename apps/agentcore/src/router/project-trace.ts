@@ -81,27 +81,28 @@ function nodeForStep(step: PlanStep): number {
   return STEP_TYPE_TO_NODE[step.type];
 }
 
-/** 步骤的引用数据/求解器线索（lineage 候选），用于覆盖骨架默认占位。 */
-function stepData(step: PlanStep): { data: string[]; solvers: string[] } {
+/** 步骤真实引用的数据/求解器/agent（真血缘，来自 plan 步骤入参；无则空）。 */
+function stepData(step: PlanStep): { data: string[]; solvers: string[]; agents: string[] } {
   switch (step.type) {
     case "resolve_slice":
-      return { data: [`切片:${step.params.sliceKey}`], solvers: [] };
+      return { data: [`切片:${step.params.sliceKey}`], solvers: [], agents: [] };
     case "query_objects":
-      return { data: [`对象:${step.params.objectType}`], solvers: [] };
+      return { data: [`对象:${step.params.objectType}`], solvers: [], agents: [] };
     case "invoke_solver":
-      return { data: [], solvers: [step.params.solverKey] };
+      return { data: [], solvers: [step.params.solverKey], agents: [] };
     case "evaluate_rules": {
       const ids = step.params.ruleIds;
-      return { data: ids === "ALL_APPLICABLE" ? ["规则:ALL_APPLICABLE"] : ids.map((r) => `规则:${r}`), solvers: [] };
+      return { data: ids === "ALL_APPLICABLE" ? ["规则:ALL_APPLICABLE"] : ids.map((r) => `规则:${r}`), solvers: [], agents: [] };
     }
     case "create_action_draft":
-      return { data: [`Action:${step.params.actionType}`], solvers: [] };
+      return { data: [`Action:${step.params.actionType}`], solvers: [], agents: [] };
     case "invoke_mcp_tool":
-      return { data: [`MCP:${step.params.toolName}`], solvers: [] };
+      return { data: [`MCP:${step.params.toolName}`], solvers: [], agents: [] };
     case "invoke_agent":
-      return { data: [`Agent:${step.params.agentId}`], solvers: [] };
+      // 真 agent 血缘：该步真实调用的 agentId（非骨架叙述名）。
+      return { data: [], solvers: [], agents: [`Agent:${step.params.agentId}`] };
     default:
-      return { data: [], solvers: [] };
+      return { data: [], solvers: [], agents: [] };
   }
 }
 
@@ -125,6 +126,19 @@ function nodeForToolName(toolName: string): number | undefined {
   return undefined;
 }
 
+/**
+ * AGENT 路径真血缘：把真实调用的 toolName 归入 data/solvers/agents 桶（真值，非骨架叙述名）。
+ * 求解类工具 → solvers；agent 类 → agents；其余 → data。tenant/industry-agnostic（R14）。
+ */
+function toolLineage(toolName: string): { data: string[]; solvers: string[]; agents: string[] } {
+  const t = toolName.toLowerCase();
+  if (/solver|rollup|bottleneck|scenario|forecast|counterfactual|求解|瓶颈|情景/.test(t)) {
+    return { data: [], solvers: [toolName], agents: [] };
+  }
+  if (/agent/.test(t)) return { data: [], solvers: [], agents: [toolName] };
+  return { data: [`工具:${toolName}`], solvers: [], agents: [] };
+}
+
 const isFailOutcome = (o: TraceToolCall["outcome"]): boolean => o === "ERROR" || o === "BUDGET_EXCEEDED";
 
 export function projectTrace(
@@ -137,12 +151,12 @@ export function projectTrace(
   const path = task.path ?? "NONE";
 
   // 每节点累积命中的步骤 id / data / solvers，以及"是否真实执行过"。
-  type Acc = { done: boolean; running: boolean; failed: boolean; stepIds: string[]; data: string[]; solvers: string[] };
+  type Acc = { done: boolean; running: boolean; failed: boolean; stepIds: string[]; data: string[]; solvers: string[]; agents: string[] };
   const acc = new Map<number, Acc>();
   const ensure = (id: number): Acc => {
     let a = acc.get(id);
     if (!a) {
-      a = { done: false, running: false, failed: false, stepIds: [], data: [], solvers: [] };
+      a = { done: false, running: false, failed: false, stepIds: [], data: [], solvers: [], agents: [] };
       acc.set(id, a);
     }
     return a;
@@ -171,6 +185,7 @@ export function projectTrace(
       const sd = stepData(step);
       a.data.push(...sd.data);
       a.solvers.push(...sd.solvers);
+      a.agents.push(...sd.agents);
       // 对齐该 type 的第 i 个 toolCall 看 outcome。
       const idx = cursor.get(step.type) ?? 0;
       cursor.set(step.type, idx + 1);
@@ -190,6 +205,10 @@ export function projectTrace(
       if (nodeId === undefined) continue;
       const a = ensure(nodeId);
       a.stepIds.push(c.toolName);
+      const tl = toolLineage(c.toolName);
+      a.data.push(...tl.data);
+      a.solvers.push(...tl.solvers);
+      a.agents.push(...tl.agents);
       if (isFailOutcome(c.outcome)) a.failed = true;
       else a.done = true;
     }
@@ -231,10 +250,11 @@ export function projectTrace(
       in: skel.in,
       proc: skel.proc,
       out: skel.out,
-      // 真实 trace 值优先；无则回退骨架默认占位（lineage 候选）。
-      data: a && a.data.length ? dedupe(a.data) : skel.data,
-      solvers: a && a.solvers.length ? dedupe(a.solvers) : skel.solvers,
-      agents: skel.agents,
+      // 血缘诚实（R14·簇F 治本）：只发真实 trace 派生的数据/求解器/agent；
+      // 真 lineage 缺失 → 空数组（前端显"本次未记录来源"），绝不回退骨架电池常数冒充真血缘。
+      data: a && a.data.length ? dedupe(a.data) : [],
+      solvers: a && a.solvers.length ? dedupe(a.solvers) : [],
+      agents: a && a.agents.length ? dedupe(a.agents) : [],
       status,
       gapCode: gapHit?.gapCode,
       atStep: gapHit?.atStep,
