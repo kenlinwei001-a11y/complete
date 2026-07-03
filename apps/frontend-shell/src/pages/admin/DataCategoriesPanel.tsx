@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchDataCategories, fetchRawDatasets, fetchRawDatasetRows, setDataCategoryMode, setDataCategoryTemplate, uploadFile, type DataCategoryView } from "@/api/endpoints";
+import { fetchDataCategories, fetchObjectTypeStats, fetchRawDatasets, fetchRawDatasetRows, setDataCategoryMode, setDataCategoryTemplate, uploadFile, type DataCategoryView } from "@/api/endpoints";
 import { downloadBlob } from "@/views/graph/mappingExport";
 import { toast, toastError } from "@/store/toastStore";
 
@@ -39,6 +39,10 @@ export function DataCategoriesPanel() {
   // WO-INTAKE-VISIBILITY（G-VIS-1·C1）：上传后不再无条件跳走 /schema——就地展开导入行预览（用户看到导入的数据）。
   const [uploadedConnId, setUploadedConnId] = useState<string | null>(null);
   const { data } = useQuery({ queryKey: ["a", "data-categories", {}], queryFn: fetchDataCategories });
+  // G-VIS-1 · 每类型已物化实例数（后端 `GET /a/v1/ontology/object-types/stats` 的 count 真值）：
+  // 分类面板此前只显 schema（类/字段），不显该类型实际物化了多少 ObjectInstance——此处按 typeKey 关联真实计数。
+  const { data: statsData } = useQuery({ queryKey: ["a", "object-type-stats"], queryFn: fetchObjectTypeStats, staleTime: 60_000 });
+  const countByType = new Map((statsData?.stats ?? []).map((s) => [s.key, s.count]));
   const [openKey, setOpenKey] = useState<string | null>(null);
   const uploadInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const tplInputs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -73,11 +77,18 @@ export function DataCategoriesPanel() {
         {cats.map((cat) => {
           const expanded = openKey === cat.key;
           const fieldCount = cat.types.reduce((s, t) => s + t.columns.length, 0);
+          // G-VIS-1 · 该分类下各类型已物化实例合计（真值 count 求和）——卡头就可见"有没有数据落地"。
+          const matTotal = cat.types.reduce((s, t) => s + (countByType.get(t.typeKey) ?? 0), 0);
           return (
             <div key={cat.key} data-testid={`dc-${cat.key}`} className="card" style={{ padding: 12, border: "1px solid var(--border, #2a2a2a)", borderRadius: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <strong style={{ fontSize: 14 }}>{cat.displayName}</strong>
-                <span className="chip" style={{ marginLeft: "auto", fontSize: 11 }}>{cat.types.length} 类 · {fieldCount} 字段</span>
+                {statsData && (
+                  <span className={`badge ${matTotal > 0 ? "green" : "amber"}`} data-testid={`dc-mat-total-${cat.key}`} style={{ marginLeft: "auto", fontSize: 10 }} title="该分类已物化对象实例合计（真值）">
+                    {matTotal > 0 ? `已物化 ${matTotal}` : "未物化"}
+                  </span>
+                )}
+                <span className="chip" style={{ marginLeft: statsData ? undefined : "auto", fontSize: 11 }}>{cat.types.length} 类 · {fieldCount} 字段</span>
               </div>
               <div style={{ fontSize: 12, color: "var(--muted, #999)", margin: "4px 0 8px" }}>{cat.description}</div>
 
@@ -131,12 +142,22 @@ export function DataCategoriesPanel() {
                       <div style={{ color: "var(--muted, #999)", wordBreak: "break-all" }}>{cat.customColumns.join(", ")}</div>
                     </div>
                   ) : (
-                    cat.types.map((tp) => (
+                    cat.types.map((tp) => {
+                      // G-VIS-1 · 该类型已物化实例数（真值 count；未建模/无实例 → 诚实标，非造假）。
+                      const mat = countByType.get(tp.typeKey);
+                      return (
                       <div key={tp.typeKey} style={{ marginBottom: 6 }}>
-                        <div style={{ fontWeight: 600 }}>{tp.displayName} <span style={{ color: "var(--muted,#999)" }}>({tp.typeKey})</span>{!tp.present && <span style={{ color: "#c66" }}> · 未建模</span>}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {tp.displayName} <span style={{ color: "var(--muted,#999)" }}>({tp.typeKey})</span>
+                          {!tp.present && <span style={{ color: "#c66" }}> · 未建模</span>}
+                          {tp.present && (mat !== undefined && mat > 0
+                            ? <span className="badge green" data-testid={`dc-mat-${tp.typeKey}`} style={{ marginLeft: 6, fontSize: 10 }}>已物化 {mat}</span>
+                            : <span className="badge amber" data-testid={`dc-mat-${tp.typeKey}`} style={{ marginLeft: 6, fontSize: 10 }} title="已建模但尚无物化实例">未物化</span>)}
+                        </div>
                         <div style={{ color: "var(--muted, #999)", wordBreak: "break-all" }}>{tp.columns.join(", ") || "（无可上传字段）"}</div>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}

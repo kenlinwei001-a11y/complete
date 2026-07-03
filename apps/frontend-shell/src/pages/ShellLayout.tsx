@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tokenStore } from "@/api/tokenStore";
 import { silentRefresh } from "@/api/apiClient";
-import { fetchHistoryWatermark, fetchResolvedFeatures } from "@/api/endpoints";
+import { fetchHistoryWatermark, fetchResolvedFeatures, fetchNotifications } from "@/api/endpoints";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useDomainEventStream } from "@/store/useDomainEventStream";
 import { applyTheme } from "@/workspace/theme";
@@ -63,7 +63,8 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
   { title: "规则与校准", items: ["rules", "calibration"].map((key) => ({ kind: "admin" as const, key })) },
   // WO-NAV-DATA：data-builder（数据构建发动机）已移入「数据」组。
   { title: "构建与成长", items: ["growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
+  // G-VIS-1 · query-history 归入「编排与场景」组（此前缺登记→落「其它」组，与 adminRegistry 的 orchestration 归属一致）。
+  { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "query-history", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"].map((key) => ({ kind: "admin" as const, key })) },
 ];
@@ -278,6 +279,8 @@ export default function ShellLayout() {
         >
           🕐
         </button>
+        {/* G-VIS-1 · 全局通知铃 + 未读角标（fetchNotifications().unread）：此前未读仅通知中心页内可见，顶栏无入口。点击进通知中心。 */}
+        <NotificationBell />
         {/* 运营态增量 §4.5：全局合成水印徽章（hover 显示 generatedFrom 与 seed；随 LIVE 占比消退） */}
         <SyntheticWatermark />
         {/* §7.22 数据健康度小徽章（任一源延迟 → 黄点） */}
@@ -347,6 +350,42 @@ function SyntheticWatermark() {
     >
       合成数据
     </span>
+  );
+}
+
+/**
+ * G-VIS-1 · 全局通知铃（顶栏）：常驻显示未读数（后端 `GET /a/v1/notifications` 的 unread 真值），
+ * 点击进「通知中心」。未读为 0 时铃仍在但不显角标（诚实静止·非造假数字）。轮询随领域事件失效。
+ */
+function NotificationBell() {
+  const navigate = useNavigate();
+  const { data } = useQuery({
+    queryKey: ["a", "notifications"],
+    queryFn: fetchNotifications,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const unread = data?.unread ?? 0;
+  return (
+    <button
+      className="btn sm"
+      aria-label={unread > 0 ? `通知（${unread} 未读）` : "通知"}
+      title={unread > 0 ? `${unread} 条未读通知` : "通知中心"}
+      data-testid="notif-bell"
+      style={{ fontSize: 15, lineHeight: 1, position: "relative" }}
+      onClick={() => navigate("/admin/notifications")}
+    >
+      🔔
+      {unread > 0 && (
+        <span
+          className="badge amber"
+          data-testid="notif-bell-count"
+          style={{ position: "absolute", top: -6, right: -6, fontSize: 9, padding: "0 4px", minWidth: 14, lineHeight: "14px", borderRadius: 8, textAlign: "center" }}
+        >
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
+    </button>
   );
 }
 

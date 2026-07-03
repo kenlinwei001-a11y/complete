@@ -58,6 +58,7 @@ import type {
   SolverBinding,
   ScheduledJob,
   SchedulerRun,
+  WritebackEcho,
 } from "@platform/contracts";
 import { api } from "./apiClient";
 import { tokenStore } from "./tokenStore";
@@ -1087,6 +1088,19 @@ export interface NotificationItem { id: string; kind: string; title: string; bod
 export const fetchNotifications = () => api.a<{ items: NotificationItem[]; unread: number }>("/a/v1/notifications");
 export const readNotification = (id: string) => api.a<{ ok: boolean }>(`/a/v1/notifications/${id}/read`, { method: "POST" });
 export const readAllNotifications = () => api.a<{ ok: boolean }>("/a/v1/notifications/read-all", { method: "POST" });
+
+/**
+ * G-VIS-1 · 写回落地对账（OC5）。后端 `GET /a/v1/writeback-echoes[?actionId=|ref=]`（admin）——
+ * 列出 Action 执行后自动落的待对账写回回声（ref=写回目标、writtenValue=写回值快照）；
+ * 源系统回流同值 → ECHO_SUPPRESSED（记录消失）、异值 → DIVERGENCE 告警。前端在审批详情消费此对账真值。
+ */
+export const fetchWritebackEchoes = (params?: { actionId?: string; ref?: string }) => {
+  const qs = new URLSearchParams();
+  if (params?.actionId) qs.set("actionId", params.actionId);
+  if (params?.ref) qs.set("ref", params.ref);
+  const q = qs.toString();
+  return api.a<{ items: WritebackEcho[] }>(`/a/v1/writeback-echoes${q ? `?${q}` : ""}`);
+};
 
 /** Agent 评测体系（运营完备性 OC2）：用例库 + 跑评测 + 历史报告。 */
 import type { EvalCase, EvalRunReport } from "@platform/contracts";

@@ -65,6 +65,13 @@ export default function OpsFallbackPage() {
             ))}
           </tbody>
         </table>
+        {/* G-VIS-1 · 诚实空态：无兜底聚类（尚无未命中查询或已全部孵化为意图）——不留空表让人以为页面坏了。 */}
+        {data && data.items.length === 0 && (
+          <div className="empty-state" data-testid="fallback-empty">
+            暂无兜底聚类——尚无未命中意图的查询，或已全部孵化为意图。查询被分类器兜底后将在此聚合，可一键孵化为 DRAFT 意图。
+          </div>
+        )}
+        {!data && <div className="empty-state">{zh.common.loading}</div>}
       </div>
     </div>
   );

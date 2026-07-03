@@ -20,6 +20,7 @@ import {
   TENANT_ID,
   tickReport,
   TS_AGG_POINTS,
+  WRITEBACK_ECHOES,
   workspaceForAccount,
   type MockAccount,
 } from "./fixtures";
@@ -2054,6 +2055,17 @@ export const handlers = [
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
     return HttpResponse.json(status ? db.actionDrafts.filter((d) => d.status === status) : db.actionDrafts);
+  }),
+  // G-VIS-1 · 写回落地对账（OC5·admin）：列出待对账写回回声（ref/writtenValue/writtenAt），按 actionId/ref 过滤。
+  http.get("*/a/v1/writeback-echoes", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    if (!account.roles.some((r) => r.split(":")[0] === "admin")) return err(403, "FORBIDDEN", "admin only");
+    const url = new URL(request.url);
+    const actionId = url.searchParams.get("actionId");
+    const ref = url.searchParams.get("ref");
+    const items = WRITEBACK_ECHOES.filter((e) => (actionId ? e.actionId === actionId : true) && (ref ? e.ref === ref : true));
+    return HttpResponse.json({ items });
   }),
   http.post("*/a/v1/action-drafts/:id/decision", async ({ params, request }) => {
     const body = (await request.json()) as { decision: "APPROVE" | "REJECT"; comment: string };

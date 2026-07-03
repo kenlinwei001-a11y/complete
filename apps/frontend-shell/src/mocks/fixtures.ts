@@ -992,6 +992,22 @@ export const ACTION_DRAFTS: ActionDraft[] = [
     approvalSteps: [{ seq: 1, role: "planner", approverId: "usr-planner", decision: "APPROVE", comment: "同意", decidedAt: now }],
     createdAt: "2026-06-08T08:00:00Z", updatedAt: "2026-06-09T08:00:00Z",
   },
+  // G-VIS-1 · 已执行含写回目标的 Action（供「写回对账」面板对照 WRITEBACK_ECHOES）。
+  {
+    id: "act-003", tenantId: TENANT_ID, actionTypeKey: "safety_stock_update",
+    payload: { model: "M-4830", newSafetyStock: 1800 },
+    origin: { userId: "usr-planner" },
+    status: "EXECUTED",
+    writebackTarget: "MOCK",
+    executionResult: { ok: true, attempts: 1, targetRef: "Model:M-4830.safetyStock", target: { kind: "MOCK" } },
+    approvalSteps: [{ seq: 1, role: "admin", approverId: "usr-admin", decision: "APPROVE", comment: "核准", decidedAt: now }],
+    createdAt: "2026-06-05T08:00:00Z", updatedAt: "2026-06-06T08:00:00Z",
+  },
+];
+
+// G-VIS-1 · 写回回声对账（OC5）：act-003 执行写回后自动落的待对账回声（源系统尚未回流）。
+export const WRITEBACK_ECHOES = [
+  { id: "wbe-003", tenantId: TENANT_ID, ref: "Model:M-4830.safetyStock", writtenValue: 1800, writtenAt: "2026-06-06T08:00:00Z", actionId: "act-003" },
 ];
 
 // ---------------------------------------------------------------------------

@@ -30,7 +30,14 @@ export default function ScenarioLauncherPage() {
         </div>
       </div>
       {isLoading && <div className="empty-state">{zh.common.loading}</div>}
-      {data && data.items.length === 0 && <div className="empty-state">{zh.common.none}</div>}
+      {/* G-VIS-1 · 区分"未开通"vs"已开通但无卡"（后端 launcherEnabled 真值）：未开通 → 专用引导空态，不当作空目录。 */}
+      {data && data.launcherEnabled === false ? (
+        <div className="empty-state" data-testid="launcher-not-entitled">
+          场景启动器未开通（scenarios 功能未启用）。请联系管理员在「平台与系统 · 功能开关」开通后可见场景目录墙。
+        </div>
+      ) : (
+        data && data.items.length === 0 && <div className="empty-state" data-testid="launcher-empty">{zh.common.none}</div>
+      )}
       {byDomain.map(([domain, cards]) => (
         <div key={domain} style={{ marginBottom: 18 }}>
           <div className="section-title" data-testid={`launcher-domain-${domain}`}>

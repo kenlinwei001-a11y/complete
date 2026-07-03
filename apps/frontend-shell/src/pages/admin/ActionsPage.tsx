@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft } from "@platform/contracts";
-import { decideActionDraft, fetchActionDrafts } from "@/api/endpoints";
+import { decideActionDraft, fetchActionDrafts, fetchWritebackEchoes } from "@/api/endpoints";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { baseRoles } from "@/pages/adminRegistry";
@@ -94,6 +94,58 @@ function WritebackTargetBadge({ target }: { target?: ActionDraft["writebackTarge
   );
 }
 
+/**
+ * G-VIS-1 · 写回落地对账面板（OC5·后端 `GET /a/v1/writeback-echoes?actionId=`·admin）。
+ * 执行写回后后端自动落回声（ref=写回目标、writtenValue=写回值快照），等待源系统回流对账：
+ * 回流同值→ECHO_SUPPRESSED（记录消失·此处空）、异值→DIVERGENCE 告警。非 admin/未执行→诚实空态（非造假）。
+ */
+function WritebackReconcilePanel({ actionId, isAdmin, status }: { actionId: string; isAdmin: boolean; status: ActionDraft["status"] }) {
+  const enabled = isAdmin && status === "EXECUTED";
+  const { data, isLoading } = useQuery({
+    queryKey: ["a", "writeback-echoes", { actionId }],
+    queryFn: () => fetchWritebackEchoes({ actionId }),
+    enabled,
+    retry: false,
+  });
+  if (!isAdmin) return null;
+  const echoes = data?.items ?? [];
+  return (
+    <div style={{ margin: "10px 0" }} data-testid="writeback-reconcile">
+      <div className="section-title">写回对账</div>
+      {status !== "EXECUTED" ? (
+        <div style={{ fontSize: 11.5, color: "var(--muted2)" }} data-testid="writeback-reconcile-empty">尚未执行——执行写回后此处显示待对账回声。</div>
+      ) : isLoading ? (
+        <div style={{ fontSize: 11.5, color: "var(--muted2)" }}>加载中…</div>
+      ) : echoes.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "var(--muted2)" }} data-testid="writeback-reconcile-empty">
+          无待对账回声——回流同值已识别为回声并抑制（ECHO_SUPPRESSED），或本次执行未写回外部系统。
+        </div>
+      ) : (
+        <table className="cmp" data-testid="writeback-reconcile-table">
+          <thead>
+            <tr>
+              <th>写回目标 (ref)</th>
+              <th>写回值</th>
+              <th>写回时间</th>
+              <th>对账状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {echoes.map((e) => (
+              <tr key={e.id} data-testid={`writeback-echo-${e.id}`}>
+                <td className="mono" style={{ fontSize: 11 }}>{e.ref}</td>
+                <td className="mono" style={{ fontSize: 11 }}>{JSON.stringify(e.writtenValue)}</td>
+                <td style={{ fontSize: 11 }}>{e.writtenAt.slice(0, 16)}</td>
+                <td><span className="badge amber" title="已写回·等待源系统回流对账（同值抑制/异值告警）">待源回流对账</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () => void }) {
   const queryClient = useQueryClient();
   const { data: workspace } = useWorkspace();
@@ -140,6 +192,9 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
           )}
         </div>
       )}
+
+      {/* G-VIS-1 · 写回落地对账（OC5）：写回目标徽标显主信号（写去哪），此处显对账真值（写了什么值·待源回流对账）。 */}
+      <WritebackReconcilePanel actionId={draft.id} isAdmin={myBaseRoles.includes("admin")} status={draft.status} />
 
       <div className="section-title">{t.payload}</div>
       <pre className="mono" style={{ fontSize: 11, background: "var(--bg2)", borderRadius: 8, padding: 10, overflow: "auto" }}>

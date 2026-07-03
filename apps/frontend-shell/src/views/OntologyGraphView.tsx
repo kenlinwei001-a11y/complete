@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { GraphOptionsSchema, type GraphOptions } from "@platform/contracts";
-import { fetchOntologyGraph } from "@/api/endpoints";
+import { fetchOntologyGraph, fetchObjectTypeStats } from "@/api/endpoints";
 import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import type { GraphEdgeVM, GraphNodeVM } from "@/api/types";
@@ -267,6 +267,15 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
   const [openRule, setOpenRule] = useState<string | null>(null);
   const cov = fieldCoverage(node);
   const isObject = node.kind === "object";
+  // G-VIS-1 · 已物化实例数（后端 `GET /a/v1/ontology/object-types/stats` 的 count 真值）：
+  // 图谱此前只显类型不显实例数——此处按 node.key 关联该类型物化了多少 ObjectInstance，并深链去对象浏览器。
+  const { data: statsData } = useQuery({
+    queryKey: ["a", "object-type-stats"],
+    queryFn: fetchObjectTypeStats,
+    staleTime: 60_000,
+    enabled: isObject,
+  });
+  const stat = statsData?.stats.find((s) => s.key === node.key);
   return (
     <aside className={styles.inspector} data-testid="graph-inspector">
       <div className={styles.inspectorHead}>
@@ -278,6 +287,22 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
           ✕
         </button>
       </div>
+
+      {/* G-VIS-1 · 已物化 N 实例徽章 + 去对象浏览器深链（诚实：0 → 未物化空态引导，非造假计数）。 */}
+      {isObject && stat && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "6px 0" }}>
+          {stat.count > 0 ? (
+            <>
+              <span className="badge green" data-testid="graph-instance-count">已物化 {stat.count} 实例</span>
+              <Link to={`/admin/object-types?type=${encodeURIComponent(node.key)}`} data-testid="graph-instance-link" style={{ fontSize: 11.5 }}>
+                查看实例 →
+              </Link>
+            </>
+          ) : (
+            <span className="badge amber" data-testid="graph-instance-count" title="该类型已建模但尚无物化对象实例">未物化（0 实例）</span>
+          )}
+        </div>
+      )}
 
       {/* 字段全建模覆盖徽章（R12 · 借鉴参考原型"每个字段100%本体建模覆盖"） */}
       {isObject && cov.total > 0 && (

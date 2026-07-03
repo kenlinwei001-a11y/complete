@@ -40,9 +40,9 @@
 - 修：CalibrationPage 加「收敛史」面板（逐轮 mapeAfter 折线+converging/improvedPct 徽章·消费新 endpoint `/calibration/convergence`）+「跑收敛清扫(sweep)」按钮→`POST /calibration/sweep`。
 - IPO 验收：跑 sweep→curl `/calibration/convergence` 返逐轮 mapeAfter→前端收敛面板画同曲线（越用越准可见）。
 
-### WO-VIS-SIGNALS（P1·状态/空态/导航透出批）
-- 修：①launcherEnabled===false 专用"未开通"空态②OpsFallbackPage 空态③顶栏通知铃+未读角标（`fetchNotifications().unread`）④`ShellLayout:66` 编排组加 query-history⑤ActionsPage 加「写回对账」面板（echoes/reconcile verdict）⑥图谱 Inspector 加「已物化 N 实例→」徽章⑦分类面板每类型加「已导入/已物化 N」徽章。
-- IPO 验收：逐条真浏览器验（未开通显专用空态·通知铃显未读数·写回对账显 echo·图谱/分类显实例数）。
+### WO-VIS-SIGNALS（P1·状态/空态/导航透出批）✅ 已落地
+- 修：①✅launcherEnabled===false 专用"未开通"空态（`ScenarioLauncherPage`）②✅OpsFallbackPage 诚实空态③✅顶栏通知铃+未读角标（`ShellLayout` NotificationBell·`fetchNotifications().unread`）④✅`ShellLayout` 编排与场景组加 query-history⑤✅ActionsPage 加「写回对账」面板（`WritebackReconcilePanel`·`GET /a/v1/writeback-echoes?actionId=`·echoes ref/writtenValue/writtenAt）⑥✅图谱 Inspector 加「已物化 N 实例→」徽章（`OntologyGraphView`·object-types/stats.count）⑦✅分类面板每类型加「已物化 N」徽章（`DataCategoriesPanel`·同 stats.count）。
+- IPO 验收：✅ 真起 datacore+agentcore curl 证 7 端点真值（Order=24/Base=12·launcherEnabled:true·fallback items:[]·writeback POST→GET 1800）；真浏览器双跑 MOCK 10/10 + 真后端 4/4·逐值对后端·截图 `docs/evidence/VIS-SIGNALS-s{1..7}-*.png`·四包全绿(frontend 402)。详 `docs/evidence/VIS-SIGNALS-fde.md`。
 
 ## §2 IPO 逐页审计（持续机制·喂 loop）
 审核方接管 74 页的 IPO 遍历（每页：展示数据的 I 上游页/P 处理过程/O 下游页是否可见可导航），发现即立 WO 入队。本 WO 集是首批（3 路自动扫）；后续逐页人工 IPO 补漏。
