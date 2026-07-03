@@ -2665,7 +2665,7 @@
     {
       "id": "HARDCODE-DISPATCH-REGISTRY",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -2722,7 +2722,7 @@
     {
       "id": "HARDCODE-SOLVER-PARAMS",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",

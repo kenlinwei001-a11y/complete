@@ -60,7 +60,8 @@ describe("VLE 验收补齐 · VL2/VL4/VL5/VL7", { timeout: 120000 }, () => {
   });
 
   it("VL7 静态独立性：VLE 参照预言机不 import 被测求解器（不可用被测算被测）", () => {
-    const src = readFileSync("src/vle.ts", "utf8");
+    // cwd 无关（同 META-SYNC-CWD-FIX 同病同治·从仓根 --root 跑不再 ENOENT 假红）
+    const src = readFileSync(new URL("../src/vle.ts", import.meta.url), "utf8");
     // 允许直读仓储做断言比对（PRD 明示），但不得 import 被测的求解器计算服务来产生"期望值"
     expect(/from ["'].*solvers\/service/.test(src)).toBe(false);
     expect(/from ["'].*\/ruledsl/.test(src)).toBe(false);
