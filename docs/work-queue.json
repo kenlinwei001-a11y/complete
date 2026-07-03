@@ -2390,7 +2390,7 @@
     {
       "id": "RISK-TRAJECTORY-DEFAKE",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -2457,7 +2457,7 @@
     {
       "id": "SIM-REAL-SNAPSHOT",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -2782,7 +2782,7 @@
       "blockReason": "",
       "doc": "docs/AUDIT-hardcode-remnants.md",
       "title": "业务实体内联→ontology对象/registry(segOfCust P1)+debattery-allow白名单逐条收口",
-      "note": "硬编码彻查簇Hα(审计表§2 Hα·20处+白名单10文件36行)。P1:risk.ts:860 segOfCust `/商用车/储能/电网/`关键词分类任意客户→非EV租户全塌pas。其余:scenarios-catalog/livedin engine(客户名单+越线表+叙事)/connectors mock数据/opsteam personas/capacity formation-aging工序 烤电池实体。debattery-allow白名单36行(GeoMap坐标/ProjectSim models/SopBalance段/Dashboard导航副标/4输入占位)多数可genericize。治:segOfCust→SEG_REGISTRY·实体→租户对象/行业模板·白名单逐条genericize或登记冻结。",
+      "note": "硬编码彻查簇Hα(审计表§2 Hα·20处+白名单10文件36行)。P1:risk.ts:860 segOfCust `/商用车/储能/电网/`关键词分类任意客户→非EV租户全塌pas。其余:scenarios-catalog/livedin engine(客户名单+越线表+叙事)/connectors mock数据/opsteam personas/capacity formation-aging工序 烤电池实体。debattery-allow白名单36行(GeoMap坐标/ProjectSim models/SopBalance段/Dashboard导航副标/4输入占位)多数可genericize。治:segOfCust→SEG_REGISTRY·实体→租户对象/行业模板·白名单逐条genericize或登记冻结。 【RISK-DEFAKE 复验移交·caseSeverity 接线残项】severity阈已入 params.risk.caseSeverity(types.ts:56·battery.ts:142·默认=原92/78/12)但唯一运行时调用方 livedin/engine.ts:281 以3参调用走常量默认→param 实际无读取点(改param不改行为=有形无线)。本单动 risk.ts 时顺手接线:调用处传 c.params.risk.caseSeverity。另 risk.ts:1044 残留 num(...unitPrice,600) 字面量(父提交既有)一并入 param。",
       "acceptance": {
         "goal": "共享runtime逻辑(segOfCust)不硬编码EV关键词分类;电池实体从ontology/registry/行业模板来;debattery-allow白名单不增·逐条附理由或收口。",
         "criteria": [
