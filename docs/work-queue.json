@@ -2881,7 +2881,7 @@
     {
       "id": "DATADEP-MANIFEST-READINESS",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -2991,6 +2991,29 @@
             "id": "C4",
             "type": "gate",
             "assert": "四包build/test绿;回写母体sys.orch.query_to_answer兜底终段+§8 G-3;pnpm ontology:slices重生成check绿。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "DATADEP-C5-COMPREHEND-FILL",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "DATADEP-MANIFEST-READINESS"
+      ],
+      "blockReason": "",
+      "doc": "docs/PRD-datadep-manifest-readiness.md",
+      "title": "站①填充引擎:comprehend倒推产DataDependency清单草案(DRAFT→R4·缺LLM地板R6)",
+      "note": "DATADEP 脊复验 DONE 时的显式拆项(不静默豁免):原验收C5未随脊落地(comprehend.ts未触)。范围=PRD站①填充引擎节:comprehend输入扩本体切片+入口context→输出扩产DataDependency清单草案·diff真实state(analyzeGap)标EXISTS/TO_CREATE/MISSING·自造角色/类型名注册表确定性收敛(未命中→工单)·缺LLM关键词地板兜底R6字节一致·草案DRAFT经R4审批才入SOLVER_DATADEP等registry。价值=未来新入口/新IndustryPack免手写26+清单。齿检:mock LLM同输入同草案+地板R6。",
+      "acceptance": {
+        "goal": "喂功能相关本体切片+入口context→倒推DataDependency清单草案→R4审批入registry;缺LLM地板R6;测试mock。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "mock LLM:同切片输入→同清单草案(字节一致);地板路径(无LLM)R6一致;自造名收敛断言;DRAFT→R4→registry 生效链一条真跑。"
           }
         ]
       }
