@@ -25,7 +25,10 @@
 | γ10 | `agentcore/scenarios-catalog.ts:60` | SCENARIO_CATALOG字面(缓解:seed Scenario对象·但scenarioByIntent字面查) | seed only·运行只读Scenario对象 | P2 |
 | γ11 | `datacore/features.ts:208` · `app.ts:2546` | industry→entitlement if(battery)all · plan_audit required-args特例塞通用route | battery template.features · solver descriptor argHints | P3 |
 
-### 簇 Hβ · 视图结构写死（G-5 8a·文档点名·~9视图）——22 处
+### 簇 Hβ · 视图结构写死（G-5 8a·文档点名·~9视图）——22 处 → ✅ 已闭（HARDCODE-VIEW-LAYOUT）
+
+> **✅ 闭环（HARDCODE-VIEW-LAYOUT）**：4 个 P1（β1 SopBalance 六卡 KPI 条 / β2 OrderChain 全链 KPI 卡 / β3 OrderChain 11 节点 DAG 层拓扑 / β4 ProjectSim 六层 DAG）由**内联 JS 数组**→ `ViewConfig.layout` 驱动（`kpiCards`/`kpis`/`dagLayout{kindLayers,layerTitles}`/`solverNodes`+调色板），渲染器**迭代 config**、前端常量仅 R14 兜底（换租户=换配置·金标准 SandboxView）。契约新增 `packages/contracts/src/viewlayout.ts`（KpiCardDef/DagLayerLayout/DagPalette）。value/裁决色仍按 card.key 绑求解器真值实算（逐值对照后端·不改语义·结构只换来源）。P2 复核：β5 Dashboard(moduleLinks/feedbackChain)·β6 Ledger(columns/objectType)·β7 PlanAudit(fieldGroups)/PlanGenerate(goalFields) **此前批次已 config 驱动**（无需再动）；β8 五步/六步 Step 标签走 `locales/zh` i18n（已外化非内联业务结构）。teeth `apps/frontend-shell/test/hardcode-view-layout.test.tsx`（注入独有 layout→渲染证非内联·3/3 绿）+ 真浏览器逐值对照 `docs/evidence/hardcode-view-layout-{sop,orderchain,projectsim}.png`（DEFAULT 兜底渲染=重构前逐值一致）。
+
 | # | file:line | 硬编码结构 | 应由 | 严重 |
 |---|---|---|---|---|
 | β1 | `SopBalanceView.tsx:301` | 六卡KPI条(demand/supply/gap/revAttain/gm/cash)全内联(含公式/源/规则) | ViewConfig.layout.kpiCards | **P1** |

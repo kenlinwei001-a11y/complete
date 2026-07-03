@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { OrderProblemGroup } from "@platform/contracts";
+import type { OrderProblemGroup, KpiCardDef, DagLayerLayout } from "@platform/contracts";
 import { SEG_REGISTRY } from "@platform/contracts";
 import { runSolver, queryObjectsPaged, fetchPlanVersionCurrent } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
@@ -59,6 +59,9 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：问题分类标签 + 产品段配色由 ViewConfig.layout 声明，常量仅兜底
   const categoryLabels = (view.layout?.categoryLabels as Record<string, string> | undefined) ?? CATEGORY_LABEL;
   const segColors = (view.layout?.segColors as Record<string, string> | undefined) ?? SEG_COLOR;
+  // 8a：全链 KPI 卡结构 + 11 节点 DAG 层拓扑由 ViewConfig.layout 声明，常量仅兜底（R14）。
+  const ofcKpis = (view.layout?.kpis as KpiCardDef[] | undefined) ?? DEFAULT_OFC_KPIS;
+  const ofcDagLayout = (view.layout?.dagLayout as DagLayerLayout | undefined) ?? DEFAULT_OFC_DAG_LAYOUT;
   const [baseFilter, setBaseFilter] = useState<string>("");
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
   const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG
@@ -163,7 +166,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       <DecisionModeBanner dataMode={out.dataMode} testId="oc-datamode-banner" note="受影响订单/待解决问题裁决由合成订单基线推演，接入真实订单数据后转真实裁决" />
 
       {/* ORD：订单全链推演（订单中心，order_fullchain 三判 + 统一结论 + 11 节点 DAG）。问题归并作超集保留在下方。 */}
-      <OrderFullchainPanel />
+      <OrderFullchainPanel kpis={ofcKpis} dagLayout={ofcDagLayout} />
 
       {/* 基地筛选器（下拉 + 清除 chip） */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -427,9 +430,22 @@ type OFC = {
   conds: string[]; dag: { nodes: { id: string; kind: string; label: string }[]; edges: { from: string; to: string }[] }; summary: string;
   dataMode?: string | null;
 };
-const OFC_LAYER: Record<string, number> = { order: 0, network: 1, bom: 1, economics: 1, credit: 1, judge: 2, verdict: 3 };
-const OFC_LAYER_TITLES = ["订单", "建模链", "三关联判", "结论"];
-function OrderFullchainPanel() {
+/** 订单全链 11 节点 DAG 层拓扑默认（G-5 8a · R14）：节点 kind→层序 + 层标题。
+ *  优先由 ViewConfig.layout.dagLayout 下发（换租户=换配置），常量仅兜底。 */
+const DEFAULT_OFC_DAG_LAYOUT: DagLayerLayout = {
+  kindLayers: { order: 0, network: 1, bom: 1, economics: 1, credit: 1, judge: 2, verdict: 3 },
+  layerTitles: ["订单", "建模链", "三关联判", "结论"],
+};
+/** 订单全链 KPI 卡**结构**默认（G-5 8a · R14）：呈现结构由 ViewConfig.layout.kpis 下发·渲染器迭代；
+ *  value 按 key、rule 按 ruleKey 绑定 order_fullchain 求解器真值（逐值对照后端·不改语义）。 */
+const DEFAULT_OFC_KPIS: KpiCardDef[] = [
+  { key: "qty", label: "数量×细分", formula: "订单数量 × 应用细分（按客户名判定）", inputs: ["Order.qty", "客户→细分映射"] },
+  { key: "delivery", label: "交期判", formula: "产能周曲线 P90 vs 需求量 → 可达/不可达", inputs: ["可产基地节拍×OEE×良率", "订单需求量"], ruleKey: "cap" },
+  { key: "kitGap", label: "齐套缺口", formula: "净需求 − 长协覆盖 − 现货", inputs: ["MaterialBalance 净需求", "长协覆盖", "现货库存"], ruleKey: "kit" },
+  { key: "marginPct", label: "毛利率", formula: "细分毛利率（SEG_REGISTRY 单一来源）", inputs: ["应用细分", "SEG 毛利率"], ruleKey: "fin" },
+  { key: "floorPct", label: "毛利底线", formula: "细分毛利底线（财务计划基线）", inputs: ["应用细分", "毛利底线"], ruleKey: "fin" },
+];
+function OrderFullchainPanel({ kpis, dagLayout }: { kpis: KpiCardDef[]; dagLayout: DagLayerLayout }) {
   const adopt = useActionDraft();
   const [so, setSo] = useState<string>("");
   const { data: orders } = useQuery({
@@ -448,7 +464,7 @@ function OrderFullchainPanel() {
   // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）时统一结论（不建议接/信用阻断）裁决色降级为中性灰。
   const ofcVerdictColor = decisionVerdictColor(data?.vc ?? "var(--txt)", data?.dataMode, "var(--muted)");
   const nodes: DagNodeDef[] = (data?.dag.nodes ?? []).map((n) => ({
-    id: n.id, layer: OFC_LAYER[n.kind] ?? 1, label: n.label,
+    id: n.id, layer: dagLayout.kindLayers[n.kind] ?? 1, label: n.label,
     color: n.kind === "verdict" ? ofcVerdictColor : n.kind === "judge" ? "#E8B54A" : n.kind === "order" ? "#7E8BEE" : "#5E8FE8",
   }));
   const edges: DagEdgeDef[] = (data?.dag.edges ?? []).map((e) => ({ from: e.from, to: e.to }));
@@ -468,22 +484,32 @@ function OrderFullchainPanel() {
         <>
           {/* WO-DATAMODE-SWEEP：合成/估算披露横幅——非 LIVE 时统一结论裁决色降级为中性灰 + 诚实标。 */}
           <DecisionModeBanner dataMode={data.dataMode} testId="ofc-datamode-banner" note="订单三关联判（交期/齐套/财务）由合成订单基线推演，接入真实订单/信用数据后转真实裁决" />
-          {/* 6 KPI + 统一结论（轨N 跟进2·KPI 裸数字接 Provenance：逐卡悬浮出 来源/公式/输入/规则，接 order_fullchain 真值）。 */}
+          {/* KPI 卡 + 统一结论（轨N 跟进2·KPI 裸数字接 Provenance：逐卡悬浮出 来源/公式/输入/规则，接 order_fullchain 真值）。
+              G-5 8a：卡片**结构**（kpis prop）来自 ViewConfig.layout.kpis·渲染器迭代（非内联数组）；value 按 key、rule 按 ruleKey 绑定求解器真值。 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0" }}>
-            {([
-              ["数量×细分", `${data.kpis.qty} · ${data.kpis.segment}`, { formula: "订单数量 × 应用细分（按客户名判定）", inputs: ["Order.qty", "客户→细分映射"], rule: undefined }],
-              ["交期判", data.judges.cap.verdict, { formula: "产能周曲线 P90 vs 需求量 → 可达/不可达", inputs: ["可产基地节拍×OEE×良率", "订单需求量"], rule: data.judges.cap.ruleRefs.join("/") }],
-              ["齐套缺口", `${data.kpis.kitGap} 吨`, { formula: "净需求 − 长协覆盖 − 现货", inputs: ["MaterialBalance 净需求", "长协覆盖", "现货库存"], rule: data.judges.kit.ruleRefs.join("/") }],
-              ["毛利率", `${data.kpis.marginPct}%`, { formula: "细分毛利率（SEG_REGISTRY 单一来源）", inputs: ["应用细分", "SEG 毛利率"], rule: data.judges.fin.ruleRefs.join("/") }],
-              ["毛利底线", `${data.kpis.floorPct}%`, { formula: "细分毛利底线（财务计划基线）", inputs: ["应用细分", "毛利底线"], rule: data.judges.fin.ruleRefs.join("/") }],
-            ] as [string, string, { formula: string; inputs: string[]; rule?: string }][]).map(([k, v, prov]) => (
-              <div key={k} className="panel" style={{ padding: 8, minWidth: 96 }}>
-                <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{k}</div>
-                <Provenance testId={`ofc-kpi-${k}`} src="order_fullchain 求解器（订单全链推演）" formula={prov.formula} inputs={prov.inputs} rule={prov.rule}>
-                  <b>{v}</b>
-                </Provenance>
-              </div>
-            ))}
+            {kpis.map((c) => {
+              const valueByKey: Record<string, string> = {
+                qty: `${data.kpis.qty} · ${data.kpis.segment}`,
+                delivery: data.judges.cap.verdict,
+                kitGap: `${data.kpis.kitGap} 吨`,
+                marginPct: `${data.kpis.marginPct}%`,
+                floorPct: `${data.kpis.floorPct}%`,
+              };
+              const ruleByKey: Record<string, string | undefined> = {
+                cap: data.judges.cap.ruleRefs.join("/"),
+                kit: data.judges.kit.ruleRefs.join("/"),
+                fin: data.judges.fin.ruleRefs.join("/"),
+              };
+              const rule = c.rule ?? (c.ruleKey ? ruleByKey[c.ruleKey] : undefined);
+              return (
+                <div key={c.key} className="panel" style={{ padding: 8, minWidth: 96 }}>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{c.label}</div>
+                  <Provenance testId={`ofc-kpi-${c.label}`} src="order_fullchain 求解器（订单全链推演）" formula={c.formula ?? ""} inputs={c.inputs ?? []} rule={rule}>
+                    <b>{valueByKey[c.key] ?? "—"}</b>
+                  </Provenance>
+                </div>
+              );
+            })}
             <div className="panel" data-testid="ofc-verdict" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${ofcVerdictColor}` }}>
               <div style={{ fontSize: 10.5, color: "var(--muted)" }}>统一结论</div>
               <b style={{ color: ofcVerdictColor }}>{data.verdict}</b>
@@ -495,7 +521,7 @@ function OrderFullchainPanel() {
             </ul>
           )}
           {/* 11 节点业务建模链 DAG */}
-          <LayeredDag nodes={nodes} edges={edges} layerTitles={OFC_LAYER_TITLES} testId="ofc-dag" />
+          <LayeredDag nodes={nodes} edges={edges} layerTitles={dagLayout.layerTitles} testId="ofc-dag" />
           {/* 三判明细表 */}
           <table className="cmp" data-testid="ofc-judges" style={{ marginTop: 8 }}>
             <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion, runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
 import type { SopVersionVM, Workspace } from "@/api/types";
+import type { KpiCardDef } from "@platform/contracts";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { toast, toastError } from "@/store/toastStore";
@@ -36,8 +37,67 @@ const DEFAULT_RESOLUTIONS = [
   { name: "江门正极加急 200 吨", delta: 0.5 }, // debattery-allow
 ];
 
+/**
+ * 顶部 KPI 条六卡**结构**默认（G-5 8a 收口 · R14）：呈现结构（次序/标签/公式文案/输入/规则）
+ * 优先由 `view.layout.kpiCards` 下发，此常量仅兜底（换租户=换配置）。value/color 仍按 key
+ * 绑定 SopVersion 求解器真值实算（见 SopKpiBar），逐值对照后端·不改语义。
+ * 公式/输入内文的 {gapRed}/{revBudget}/{cashFloor} 由渲染器以生效阈值（WorkspaceConfig 权威）替换。
+ */
+const DEFAULT_SOP_KPI_CARDS: KpiCardDef[] = [
+  {
+    key: "demand",
+    label: zh.sim.sop.kpi.demand,
+    formula: "需求P50 = ② 三线对照合计.滚动P50（缺省 inputs.demTotal）",
+    source: "S&OP ② 需求评审（PlanTarget 同源勾稽）",
+    inputs: ["三线应用细分滚动P50", "目标(年度分解)", "上月实际"],
+    rule: "C21",
+    note: "任一细分 |滚动 vs 目标| > 10% → C21 差异提报，自动进⑤议程",
+  },
+  {
+    key: "supply",
+    label: zh.sim.sop.kpi.supply,
+    formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量",
+    source: "S&OP ③ 供应评审（S1.2 月聚合） + ⑤ 决议",
+    inputs: ["逐基地月供给", "认证系数", "⑤ 决议增量"],
+    note: "⑤ 决议编辑中即时重算（display 侧）；落库走第⑤步执行",
+  },
+  {
+    key: "gap",
+    label: zh.sim.sop.kpi.gap,
+    formula: "缺口 = 需求P50 − 可供给（> {gapRed} 红）",
+    source: "②/③/⑤ 联动即时重算",
+    inputs: ["需求P50", "可供给"],
+    note: "缺口 > {gapRed} 万套 → 红标，自动进⑤高管决策会议程",
+  },
+  {
+    key: "revAttain",
+    label: zh.sim.sop.kpi.revAttain,
+    formula: "收入预算达成 = ④ 滚动收入合计 ÷ 预算 {revBudget} 亿",
+    source: "S&OP ④ 财务整合",
+    inputs: ["④ 滚动收入合计", "收入预算 {revBudget} 亿"],
+  },
+  {
+    key: "gm",
+    label: zh.sim.sop.kpi.gmVsBudget,
+    formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差以后端 gmTolerance 判定）",
+    source: "S&OP ④ 财务整合（C15 口径）",
+    inputs: ["滚动毛利合计", "滚动收入合计", "预算毛利率"],
+    rule: "C15",
+  },
+  {
+    key: "cash",
+    label: zh.sim.sop.kpi.cash,
+    formula: "C18：现金垫(13周最低点) ≥ {cashFloor} 亿",
+    source: "S&OP ④ 财务整合（C18 校验）",
+    inputs: ["13周现金垫最低点", "现金底线 {cashFloor} 亿"],
+    rule: "C18",
+  },
+];
+
 /** S&OP 月度平衡台（renderer=sop-balance，增量 §7.12）：六卡 KPI 条 + 五步法 + 定稿走 Action + C22 锁定 */
-export default function SopBalanceView(_props: ViewRendererProps) {
+export default function SopBalanceView({ view }: ViewRendererProps) {
+  // 去电池锁死 8a（R14）：KPI 条**结构**由 ViewConfig.layout.kpiCards 声明，常量仅兜底。
+  const kpiCards = (view.layout?.kpiCards as KpiCardDef[] | undefined) ?? DEFAULT_SOP_KPI_CARDS;
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [step, setStep] = useState(1);
@@ -135,14 +195,14 @@ export default function SopBalanceView(_props: ViewRendererProps) {
 
         <div>
           {!v && <div className="empty-state">选择或新建一个月度版本</div>}
-          {v && <VersionDetail key={v.id} v={v} seq={seq} step={step} setStep={setStep} onChanged={invalidate} />}
+          {v && <VersionDetail key={v.id} v={v} seq={seq} step={step} setStep={setStep} onChanged={invalidate} kpiCards={kpiCards} />}
         </div>
       </div>
     </div>
   );
 }
 
-function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; seq: number; step: number; setStep: (n: number) => void; onChanged: () => void }) {
+function VersionDetail({ v, seq, step, setStep, onChanged, kpiCards }: { v: SopVersionVM; seq: number; step: number; setStep: (n: number) => void; onChanged: () => void; kpiCards: KpiCardDef[] }) {
   const locked = v.status === "FINAL";
   // R14：决议默认项来自 WorkspaceConfig（按租户/行业），DEFAULT_RESOLUTIONS 仅兜底。
   const { data: ws } = useWorkspace();
@@ -219,7 +279,7 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
         )}
       </div>
 
-      <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} />
+      <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} cards={kpiCards} />
 
       {(locked || lockedFallback) && (
         <div className={styles.lockBanner} data-testid="sop-locked-banner">
@@ -277,8 +337,9 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
   );
 }
 
-/** 顶部 KPI 条六卡（§7.12）：每卡悬停溯源（公式与来源）；决议编辑中供给/缺口即时重算 */
-function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: { name: string; delta: number }[] | null }) {
+/** 顶部 KPI 条六卡（§7.12）：每卡悬停溯源（公式与来源）；决议编辑中供给/缺口即时重算。
+ *  结构（cards）由 ViewConfig.layout.kpiCards 下发·渲染器迭代（G-5 8a）；value/color 按 card.key 绑定真值实算。 */
+function SopKpiBar({ v, liveResolutions, cards }: { v: SopVersionVM; liveResolutions: { name: string; delta: number }[] | null; cards: KpiCardDef[] }) {
   // 去电池锁死（R14）：KPI 阈值/预算来自 WorkspaceConfig，SOP_KPI_P 仅兜底
   const { data: ws } = useWorkspace();
   const kpi = { gapRed: ws?.sopConfig?.gapRed ?? SOP_KPI_P.gapRed, cashFloor: ws?.sopConfig?.cashFloor ?? SOP_KPI_P.cashFloor, revBudget: ws?.sopConfig?.revBudget ?? SOP_KPI_P.revBudget };
@@ -302,75 +363,38 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
         ? (s4.revSum / ws.sopConfig.revBudget) * 100
         : null;
 
-  // R13/R-一致：六卡统一走共享 <Provenance>（六要素：来源/新鲜度/推导/输入因子/关联规则/备注），
-  // 取代原 2 要素自绘浮层 —— 一个事实一个出处机制。S&OP 三线（需求/供给/缺口）为最高优先（#4 backlog）。
-  type Card = { key: string; label: string; value: string; color?: string; formula: string; source: string; inputs: string[]; rule?: string; note?: string };
-  const cards: Card[] = [
-    {
-      key: "demand",
-      label: zh.sim.sop.kpi.demand,
-      value: demand != null ? fmt(demand) : "—",
-      formula: "需求P50 = ② 三线对照合计.滚动P50（缺省 inputs.demTotal）",
-      source: "S&OP ② 需求评审（PlanTarget 同源勾稽）",
-      inputs: ["三线应用细分滚动P50", "目标(年度分解)", "上月实际"],
-      rule: "C21",
-      note: "任一细分 |滚动 vs 目标| > 10% → C21 差异提报，自动进⑤议程",
-    },
-    {
-      key: "supply",
-      label: zh.sim.sop.kpi.supply,
-      value: supply != null ? fmt(supply) : "—",
-      formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量",
-      source: "S&OP ③ 供应评审（S1.2 月聚合） + ⑤ 决议",
-      inputs: ["逐基地月供给", "认证系数", "⑤ 决议增量"],
-      note: "⑤ 决议编辑中即时重算（display 侧）；落库走第⑤步执行",
-    },
-    {
-      key: "gap",
-      label: zh.sim.sop.kpi.gap,
-      value: gap != null ? fmt(gap) : "—",
-      color: gap != null && gap > kpi.gapRed ? "var(--danger)" : "var(--ok)",
-      formula: `缺口 = 需求P50 − 可供给（> ${kpi.gapRed} 红）`,
-      source: "②/③/⑤ 联动即时重算",
-      inputs: ["需求P50", "可供给"],
-      note: `缺口 > ${kpi.gapRed} 万套 → 红标，自动进⑤高管决策会议程`,
-    },
-    {
-      key: "revAttain",
-      label: zh.sim.sop.kpi.revAttain,
-      value: revAttain != null ? `${revAttain.toFixed(1)}%` : "—",
-      formula: `收入预算达成 = ④ 滚动收入合计 ÷ 预算 ${kpi.revBudget} 亿`,
-      source: "S&OP ④ 财务整合",
-      inputs: ["④ 滚动收入合计", `收入预算 ${kpi.revBudget} 亿`],
-    },
-    {
-      key: "gm",
-      label: zh.sim.sop.kpi.gmVsBudget,
-      value: s4?.gmRoll != null ? `${Number(s4.gmRoll).toFixed(2)}% / ${s4.gmBudget}%` : "—",
-      // E5 治本：毛利红消费后端权威 gmOk（后端用 params.sop.gmTolerance 判定），不再前端内联 0.5pp 自算。
-      color: s4?.gmOk === false ? "var(--danger)" : undefined,
-      formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差以后端 gmTolerance 判定）",
-      source: "S&OP ④ 财务整合（C15 口径）",
-      inputs: ["滚动毛利合计", "滚动收入合计", "预算毛利率"],
-      rule: "C15",
-    },
-    {
-      key: "cash",
-      label: zh.sim.sop.kpi.cash,
-      value: s4?.cashCushion != null ? `${s4.cashCushion} 亿 ${s4.cashOk ? "✓" : "✗"}` : "—",
-      color: s4?.cashOk === false ? "var(--danger)" : "var(--ok)",
-      formula: `C18：现金垫(13周最低点) ≥ ${kpi.cashFloor} 亿`,
-      source: "S&OP ④ 财务整合（C18 校验）",
-      inputs: ["13周现金垫最低点", `现金底线 ${kpi.cashFloor} 亿`],
-      rule: "C18",
-    },
-  ];
+  // R13/R-一致：六卡统一走共享 <Provenance>（六要素：来源/新鲜度/推导/输入因子/关联规则/备注）。
+  // G-5 8a：卡片**结构**（cards prop）来自 ViewConfig.layout.kpiCards（迭代 config·非内联数组）；
+  // value/color 按 card.key 绑定 SopVersion 求解器真值实算（逐值对照后端·不改语义）。
+  // 阈值占位符 {gapRed}/{revBudget}/{cashFloor} 以生效阈值（WorkspaceConfig 权威）替换。
+  const sub = (s: string) => s.replace(/\{gapRed\}/g, String(kpi.gapRed)).replace(/\{revBudget\}/g, String(kpi.revBudget)).replace(/\{cashFloor\}/g, String(kpi.cashFloor));
+  const valueByKey: Record<string, string> = {
+    demand: demand != null ? fmt(demand) : "—",
+    supply: supply != null ? fmt(supply) : "—",
+    gap: gap != null ? fmt(gap) : "—",
+    revAttain: revAttain != null ? `${revAttain.toFixed(1)}%` : "—",
+    gm: s4?.gmRoll != null ? `${Number(s4.gmRoll).toFixed(2)}% / ${s4.gmBudget}%` : "—",
+    cash: s4?.cashCushion != null ? `${s4.cashCushion} 亿 ${s4.cashOk ? "✓" : "✗"}` : "—",
+  };
+  const colorByKey: Record<string, string | undefined> = {
+    gap: gap != null && gap > kpi.gapRed ? "var(--danger)" : "var(--ok)",
+    // E5 治本：毛利红消费后端权威 gmOk（后端用 params.sop.gmTolerance 判定），不再前端内联自算。
+    gm: s4?.gmOk === false ? "var(--danger)" : undefined,
+    cash: s4?.cashOk === false ? "var(--danger)" : "var(--ok)",
+  };
   return (
     <div className={styles.sopKpiBar} data-testid="sop-kpi-bar">
       {cards.map((c) => (
         <div className={styles.sopKpi} key={c.key} tabIndex={0} data-testid={`sop-kpi-${c.key}`}>
-          <Provenance testId={`sopkpi-${c.key}`} src={c.source} formula={c.formula} inputs={c.inputs} rule={c.rule} note={c.note}>
-            <b style={{ color: c.color }}>{c.value}</b>
+          <Provenance
+            testId={`sopkpi-${c.key}`}
+            src={c.source ?? ""}
+            formula={c.formula ? sub(c.formula) : ""}
+            inputs={(c.inputs ?? []).map(sub)}
+            rule={c.rule}
+            note={c.note ? sub(c.note) : undefined}
+          >
+            <b style={{ color: colorByKey[c.key] }}>{valueByKey[c.key] ?? "—"}</b>
           </Provenance>
           <span>{c.label}</span>
         </div>

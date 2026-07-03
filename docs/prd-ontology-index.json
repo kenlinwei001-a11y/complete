@@ -583,6 +583,20 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-datadep-manifest-readiness.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-8",
+        "G-9"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-de-battery-multitenant-config.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1454,6 +1468,7 @@
       "PRD-build-workflow-runtime.md",
       "PRD-catalog-battery-20-scenarios.md",
       "PRD-data-closure-spec.md",
+      "PRD-datadep-manifest-readiness.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-dogfooding-self-ontology.md",
       "PRD-fde-fullstack-build-workflow.md",
@@ -1559,6 +1574,13 @@
       "PRD-system-ontogenesis-spec.md",
       "PRD-unified-build-engine.md"
     ],
+    "G-9": [
+      "PRD-datadep-manifest-readiness.md",
+      "PRD-decision-support-maturity.md",
+      "PRD-growth-worklist-human-fill.md",
+      "PRD-scenario-ontogenesis.md",
+      "PRD-simulation-sandbox.md"
+    ],
     "G-10": [
       "PRD-decision-support-maturity.md",
       "PRD-rules-as-references.md",
@@ -1567,12 +1589,6 @@
     "G-11": [
       "PRD-decision-support-maturity.md",
       "PRD-sandbox-ontogenesis-buildplan.md",
-      "PRD-simulation-sandbox.md"
-    ],
-    "G-9": [
-      "PRD-decision-support-maturity.md",
-      "PRD-growth-worklist-human-fill.md",
-      "PRD-scenario-ontogenesis.md",
       "PRD-simulation-sandbox.md"
     ],
     "G-12": [

@@ -5,6 +5,7 @@ import {
   BottleneckMatrixOutputSchema,
   CapacityForecastOutputSchema,
   type CapacityForecastOutput,
+  type DagPalette,
 } from "@platform/contracts";
 import { runSolver, searchObjects } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
@@ -230,6 +231,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const { data: workspace } = useWorkspace();
   // 8a：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明（去硬编码电池因子）
   const driverFactors = view.layout?.driverFactors as { id: string; label: string; sub: string }[] | undefined;
+  // 8a：DAG 六层调色板 + 固定求解器节点标签由 ViewConfig.layout.dagLayout 声明，常量仅兜底（R14）。
+  const dagPalette = view.layout?.dagLayout as DagPalette | undefined;
   const simCfg: SimConfig | undefined = workspace?.simConfig;
   // 型号列表优先级（R14）：WorkspaceConfig > 真实 Model 对象（按租户合成/接入）> DEFAULT_MODELS 兜底。
   // 真连模式下走 Model 对象 → 下拉与实际数据一致（消除前端写死列表与合成型号对不齐）。
@@ -561,7 +564,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
               {/* 常显 DAG 面板（§7.13）：六层固定，随步骤点亮 */}
               <div className="panel" data-testid="pm-dag-panel">
                 <div className="section-title">{zh.sim.proj.dagTitle}</div>
-                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches, driverFactors)} step={step} onNodeClick={setDagNode} />
+                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches, driverFactors, dagPalette)} step={step} onNodeClick={setDagNode} />
                 <div className={styles.noteInfo}>点击任一节点 → 看该步的判定逻辑 / 推导公式 / 输入数据(含来源·新鲜度) / 关联规则。</div>
               </div>
             </div>
@@ -1095,7 +1098,18 @@ function StepBody({
   );
 }
 
-// ---------------- DAG 装配（六层固定，§7.13） ----------------
+// ---------------- DAG 装配（六层，§7.13） ----------------
+
+/** DAG 六层调色板 + 固定求解器节点标签默认（G-5 8a · R14）：结构骨架优先由 ViewConfig.layout.dagLayout
+ *  下发（换租户=换配置），常量仅兜底。节点动态 sub / 拓扑边由渲染器接求解器真值填充（逐值对照后端·不改语义）。 */
+const DEFAULT_DAG_COLORS = { demand: "#7E8BEE", model: "#D2B04C", base: "#54B5C4", factor: "#9D8BF0", solver: "#C470B8", forecastOk: "#62BE77", forecastNotLive: "#9AA8B6", forecastGap: "#DD7E9E" } as const;
+const DEFAULT_PROJ_DAG_PALETTE: DagPalette = {
+  colors: { ...DEFAULT_DAG_COLORS },
+  solverNodes: [
+    { id: "agg", label: "聚合求解器" },
+    { id: "bn", label: "瓶颈求解器" },
+  ],
+};
 
 function buildDag(
   out: CapacityForecastOutput,
@@ -1105,6 +1119,7 @@ function buildDag(
   modelId: string,
   batches: BatchRowInput[],
   driverFactors?: { id: string; label: string; sub: string }[],
+  dagPalette?: DagPalette,
 ): { layers: PmDagNode[][]; edges: [string, string][] } {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
   const baseRows = out.perBaseRows.slice(0, 6);
@@ -1116,35 +1131,51 @@ function buildDag(
     { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
     { id: "f3", label: "认证系数 + 蒙特卡洛分位", sub: `PLM 认证 · P90 蒙特卡洛真实分位（离散度 cv 采样）` },
   ];
+  // 8a：六层调色板 + 固定求解器节点静态标签由 dagLayout 声明（迭代 config·非内联色/标）；动态 sub 接真值。
+  // 逐 key 兜底：config 可只覆盖子集，缺项回退默认（换租户=换配置·R14）。
+  const pc = dagPalette?.colors ?? {};
+  const c = {
+    demand: pc.demand ?? DEFAULT_DAG_COLORS.demand,
+    model: pc.model ?? DEFAULT_DAG_COLORS.model,
+    base: pc.base ?? DEFAULT_DAG_COLORS.base,
+    factor: pc.factor ?? DEFAULT_DAG_COLORS.factor,
+    solver: pc.solver ?? DEFAULT_DAG_COLORS.solver,
+    forecastOk: pc.forecastOk ?? DEFAULT_DAG_COLORS.forecastOk,
+    forecastNotLive: pc.forecastNotLive ?? DEFAULT_DAG_COLORS.forecastNotLive,
+    forecastGap: pc.forecastGap ?? DEFAULT_DAG_COLORS.forecastGap,
+  };
+  const solverNodes = dagPalette?.solverNodes ?? DEFAULT_PROJ_DAG_PALETTE.solverNodes;
+  const solverSub: Record<string, string> = {
+    agg: `Σ基地 Σ周 → P50 ${fmt(out.p50)} 万套`,
+    bn: `主瓶颈：${out.mainBn || "—"}`,
+  };
+  const solverSt: Record<string, number> = { agg: 4, bn: 5 };
 
   const layers: PmDagNode[][] = [
     [
       mode === "batch"
-        ? { id: "dem", label: `分批交货 ${out.batchRows?.length ?? batches.length} 批 · Σ${fmt(totalQty)} 万套`, sub: `最紧批净窗口 ${minWk} 周（已扣物流）`, color: "#7E8BEE", st: 1 }
-        : { id: "dem", label: `需求 ${fmt(totalQty)} 万套 · ${weeks} 周`, sub: "结构化预测场景", color: "#7E8BEE", st: 1 },
+        ? { id: "dem", label: `分批交货 ${out.batchRows?.length ?? batches.length} 批 · Σ${fmt(totalQty)} 万套`, sub: `最紧批净窗口 ${minWk} 周（已扣物流）`, color: c.demand, st: 1 }
+        : { id: "dem", label: `需求 ${fmt(totalQty)} 万套 · ${weeks} 周`, sub: "结构化预测场景", color: c.demand, st: 1 },
     ],
-    [{ id: "mdl", label: modelId, sub: "型号对象（产品域 · PLM）", color: "#D2B04C", st: 1 }],
+    [{ id: "mdl", label: modelId, sub: "型号对象（产品域 · PLM）", color: c.model, st: 1 }],
     baseRows
       .map<PmDagNode>((r, i) => ({
         id: `b${i}`,
         label: r.base,
         sub: `周产能 ${fmt(r.weeklyCap, 2)} 万套${r.certFactor < 1 ? " · 认证中" : ""}`,
-        color: "#54B5C4",
+        color: c.base,
         st: 2,
       }))
-      .concat(folded > 0 ? [{ id: "bm", label: `+${folded} 基地`, sub: "见步骤②", color: "#54B5C4", st: 2 }] : []),
-    factors.map<PmDagNode>((f) => ({ id: f.id, label: f.label, sub: f.sub, color: "#9D8BF0", st: 3 })),
-    [
-      { id: "agg", label: "聚合求解器", sub: `Σ基地 Σ周 → P50 ${fmt(out.p50)} 万套`, color: "#C470B8", st: 4 },
-      { id: "bn", label: "瓶颈求解器", sub: `主瓶颈：${out.mainBn || "—"}`, color: "#C470B8", st: 5 },
-    ],
+      .concat(folded > 0 ? [{ id: "bm", label: `+${folded} 基地`, sub: "见步骤②", color: c.base, st: 2 }] : []),
+    factors.map<PmDagNode>((f) => ({ id: f.id, label: f.label, sub: f.sub, color: c.factor, st: 3 })),
+    solverNodes.map<PmDagNode>((n) => ({ id: n.id, label: n.label, sub: solverSub[n.id] ?? "", color: c.solver, st: solverSt[n.id] ?? 4 })),
     [
       {
         id: "fc",
         label: `产能预测 ${out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`}`,
         sub: `P50 ${fmt(out.p50)} · P90 ${fmt(out.p90)}（蒙特卡洛真实分位）vs 需求 ${fmt(totalQty)}`,
         // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）缺口结论节点不染决策红（降级中性灰）。
-        color: out.ok ? "#62BE77" : notLiveDecision(out.dataMode) ? "#9AA8B6" : "#DD7E9E",
+        color: out.ok ? c.forecastOk : notLiveDecision(out.dataMode) ? c.forecastNotLive : c.forecastGap,
         st: 6,
       },
     ],
