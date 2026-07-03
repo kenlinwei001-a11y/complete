@@ -2577,6 +2577,47 @@
           }
         ]
       }
+    },
+    {
+      "id": "LAUNCHER-GROUNDED-QUESTIONS",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": ["GROWTH-WORKLIST-HUMAN-FILL"],
+      "blockReason": "",
+      "doc": "docs/PRD-launcher-grounded-questions.md",
+      "title": "场景启动器问题接地化(基于真实数据/本体切片/意图·相对时间解析·删抽象)+空结果→认领补数据",
+      "note": "用户亲遇+亲定。实证(真curl scenarios-catalog.ts 20卡):S11换型排序预设lineId='常州·动力线-A'不存在(真线LINE-changzhou类)→changeover_sequence infeasible空;S18 S&OP slotPresets:{}无month(真月份2026-07..2025-10存在·clock t0=2026-06-10)→sop_balance ERR:NOT_FOUND;S05'推荐哪个经营方案'抽象点名删/改;S03这天/S08下周/S19 Q2相对时间未解析。根因:presetContext/triggerQuestion出厂硬编码·未对当前租户真实数据(对象实例+sim-clock+本体切片+intent槽位)校验接地→引用死对象/缺参→启动即空/无解无补救。治(两部):A接地化(下发GET /b/v1/scenarios时按租户真数据resolve对象+解析相对时间+补必填槽+具象抽象问句+不可答入待补区);B空/infeasible/NOT_FOUND→答案坞出『认领并补数据』按钮(非自动补·复用GROWTH-WORKLIST human-gated fill)→登记WorklistItem跳补数据页→继续推演重跑。整页PRD+逐卡处置表见 docs/PRD-launcher-grounded-questions.md。回写§8场景域/G-3+§3 sys.scenario.launch接地校验+ontology:slices。",
+      "acceptance": {
+        "goal": "启动器只展示对当前(数据库∩本体切片∩意图预设)现状确实可答的具象问题卡;点启动不再因预设死对象(S11)或缺参(S18)返空/报错;真缺数据时出『认领并补数据』按钮(人工触发非自动)跳对应补数据页·补后继续推演。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "接地:GET /b/v1/scenarios(demo) 每卡presetContext.selectedObjects[].objectId均resolve到真实例(对objects库0悬空);S11 lineId为真线(LINE-changzhou类非'常州·动力线-A');S18 slotPresets.month非空=clock当前月(2026-06)。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "空结果不死:用下发后接地预设启动S11/S18→不再infeasible空/NOT_FOUND出真答案;若真缺数据→返gap结构(gapCode+detail指名缺失实体)非裸空/500。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "认领闭环:真浏览器启动一个数据缺的卡→答案坞出『认领并补数据』按钮→点→登记WorklistItem+跳对应补数据页(带回跳)→补后『继续推演』重跑出真答案。截图。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "问句具象:启动器无抽象问句(S05已改具象决策问)、无未解析相对时间(S18显具体月2026-06非'本月'·S03具体越线日·S08 week区间)。逐卡问句含具象锚点。"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "回写§8/G-3/§3+ontology:slices绿;四包build/test绿;新增卡接地校验单测(死对象/缺月→接地或标gap·R6同clock同结果·R14零硬编码死对象/死月份)。"
+          }
+        ]
+      }
     }
   ]
 }
