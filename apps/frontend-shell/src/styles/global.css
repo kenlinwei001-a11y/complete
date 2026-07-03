@@ -32,6 +32,10 @@ body {
 button {
   font-family: inherit;
   cursor: pointer;
+  /* WO-BTN-TEXT-CONTRAST（治本·R-QUANT）：原生 <button> 默认 color=ButtonText(≈#000)，不继承页面文本色。
+     暗色主题下任何无显式 color 的按钮（如 .panel 场景卡）其文字渲染为纯黑 → 与 --panel #1A2233 对比 1.32:1 不可读。
+     置 color:inherit → 继承 body var(--txt) #F2F5FA（对 --panel 14.55:1 达标）；.btn/.btn.primary 等显式 color 类不受影响（类特指度更高）。 */
+  color: inherit;
 }
 
 input,
