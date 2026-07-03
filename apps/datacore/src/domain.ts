@@ -923,6 +923,8 @@ export interface CalibrationEvidenceRecord {
   simulatedMapeAfter: number; // % — 建议参数对窗口内全部配对样本重放
   bias: number; // Σerror / Σactual
   flags: string[]; // STRUCTURAL_SHIFT | NO_IMPROVEMENT | FREQUENCY_LIMIT | CASCADE_HOLD | AUTO_APPLIED | …
+  /** CALIB-HONEST-EMPTY·C4/C5：合成演示证据（seed 手填/回放·非真实校准配对回测）→ UI 标 SYNTHETIC。 */
+  synthetic?: boolean;
 }
 
 export interface CalibrationProposalRecord {
@@ -946,6 +948,8 @@ export interface CalibrationProposalRecord {
   paramRef?: { scope: "SOLVER_PARAMS" | "ONTOLOGY_PROPERTY"; path: string };
   method?: CalibrationMethodKind;
   evidence?: CalibrationEvidenceRecord;
+  /** CALIB-HONEST-EMPTY·C4/C5：合成演示提案（demo seed/回放·非真实 sweep 产出）→ UI 标 SYNTHETIC。 */
+  synthetic?: boolean;
   /** §6 元闭环：APPLIED 14 天后回写（预言 vs 实现） */
   realizedMape?: number;
   /** 应用后的 solver_params 版本（回滚 = 恢复上一版本） */

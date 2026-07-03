@@ -771,6 +771,10 @@ export class LivedInEngine {
       const mapeBefore = mapeAt(s.week);
       const simulatedAfter = round(mapeBefore - s.improvement, 2);
       const applied = s.status === "APPLIED";
+      // C3 治本：realizedMape 不再 `simulatedAfter + 0.3` 自证，而是取合成回放序列在生效 2 周后的真实点
+      //（元环"预测 vs 实现"必须对真序列，即使序列本身是合成的；自证 = 假闭环）。
+      const realizedWeek = Math.min(s.week + 2, 52);
+      const realizedMape = mapeAt(realizedWeek);
       await this.repos.calibrationProposals.put({
         id: `cal_lh_${tid}_${s.k}`,
         tenantId: tid,
@@ -795,8 +799,10 @@ export class LivedInEngine {
           simulatedMapeAfter: simulatedAfter,
           bias: round((s.k % 2 === 0 ? -1 : 1) * 0.02 * (1 + s.k / 10), 4),
           flags: s.flags,
+          synthetic: true, // C4/C5：合成演示证据（回放 seed·非真实校准配对回测）
         },
-        ...(applied ? { realizedMape: round(simulatedAfter + 0.3, 2) } : {}),
+        synthetic: true, // C5：整条 livedIn"越用越准"叙事为合成回放，非真实学习
+        ...(applied ? { realizedMape } : {}),
       });
       if (applied) {
         await this.repos.calibrationHistory.put({
@@ -810,7 +816,7 @@ export class LivedInEngine {
           proposalId: `cal_lh_${tid}_${s.k}`,
           method: s.method,
           simulatedMapeAfter: simulatedAfter,
-          realizedMape: round(simulatedAfter + 0.3, 2),
+          realizedMape,
         });
       }
     }

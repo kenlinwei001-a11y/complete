@@ -183,6 +183,8 @@ export const HistoryCalibrationProposalSchema = z.object({
   createdAt: z.string(),
   appliedAt: z.string().optional(),
   realizedMape: z.number().optional(),
+  /** CALIB-HONEST-EMPTY·C5：合成演示提案（回放 seed·非真实校准配对产出）→ UI 标 SYNTHETIC。 */
+  synthetic: z.boolean().optional(),
   evidence: z
     .object({
       windowFrom: z.string(),
@@ -192,6 +194,8 @@ export const HistoryCalibrationProposalSchema = z.object({
       simulatedMapeAfter: z.number(),
       bias: z.number(),
       flags: z.array(z.string()),
+      /** C4/C5：证据为合成回测·非真实校准配对。 */
+      synthetic: z.boolean().optional(),
     })
     .optional(),
 });
@@ -209,6 +213,10 @@ export const HistoryBundleSchema = z.object({
     liveRatio: z.number(),
   }),
   crisisWindow: z.object({ from: z.string(), to: z.string() }),
+  /** CALIB-HONEST-EMPTY：部署态回放 bundle 为**合成演示**（365 天合成数据重放·非真实运营历史）——
+   * mapeSeries「越用越准」曲线 + calibrations 提案/证据/realizedMape 皆脚本化 demo，UI 须标 SYNTHETIC，
+   * 看的人才分得清"真学会了"还是"脚本画的"。 */
+  synthetic: z.boolean().default(true),
   trend: z.array(HistoryTrendPointSchema),
   /** 三线偏差（驾驶舱 #5 复合图）：逐月 需求/供给/缺口（gap=demand−supply）。 */
   deviation: z.array(z.object({ month: z.string(), demand: z.number(), supply: z.number(), gap: z.number() })).optional(),

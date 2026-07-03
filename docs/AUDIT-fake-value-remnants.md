@@ -50,15 +50,17 @@
 
 > **B 簇要害**：KILL-MOCK-RED 修了**基线**（红/不红只在真数据 live=true），但**轨迹目标(B1)+事件具体值(B2-B4)**在 LIVE 卡上仍 hash 造，且 `EVENT_SRC` 主动标"WMS/ERP/EAM"=**假源归因**（比无披露更坏——它谎称来自真系统）。crossDay/齐套率/OEE 下调全是编的。
 
-### 簇 C · 校准「越用越准」曲线造假回退（F3/F4·真引擎+假回退·UI 无 SYNTHETIC 标）
-| # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO |
-|---|---|---|---|---|---|---|
-| C1 | `calibration/service.ts:226` | 无历史回退 `mape = 11.2 - i*0.32 + 噪声` 线性下降 | 收敛看板"越用越准" | 读码✓ | P1 | CALIB-HONEST-EMPTY |
-| C2 | `livedin/engine.ts:150` | 部署态 `mape = 7 + 5*exp(-(w-1)/16) + rebound` 手画 52 周 | bundle.mapeSeries | 代理·待运行复验 | P1 | CALIB-HONEST-EMPTY |
-| C3 | `livedin/engine.ts:799` | `realizedMape = simulatedAfter + 0.3` 自证 | 元环"预测 vs 实现"真值 | 代理·待运行复验 | P1 | CALIB-HONEST-EMPTY |
-| C4 | `synthetic/service.ts:371/385` | PENDING 提案 evidence `nPairs:168,mapeBefore:11.2,after:8.9,bias` 手填 | 校准审批 UI 决策证据 | 代理·待运行复验 | P1 | CALIB-HONEST-EMPTY |
-| C5 | `livedin/engine.ts:772/796` | `simulatedAfter = before - 手填improvement` / `bias = 交替确定值` | 提案 evidence | 代理·待运行复验 | P2 | CALIB-HONEST-EMPTY |
-| C6 | `seed.ts:373` | demo 收敛 `actual = predicted*(1-bias)` 反解(手填 BIASES) | 收敛线 25→13.6→5.3 | 代理(码注披露·UI无标) | P2 | CALIB-HONEST-EMPTY |
+### 簇 C · 校准「越用越准」曲线造假回退（F3/F4·真引擎+假回退·UI 无 SYNTHETIC 标）— ✅ 已闭（WO-CALIB-HONEST-EMPTY）
+| # | file:line | 造假 | 触达决策 | 验证 | 严重 | WO | 治本 |
+|---|---|---|---|---|---|---|---|
+| C1 | `calibration/service.ts:226` | 无历史回退 `mape = 11.2 - i*0.32 + 噪声` 线性下降 | 收敛看板"越用越准" | 读码✓ | P1 | CALIB-HONEST-EMPTY | ✅ 静态基线常数 `BASELINE_STATIC_MAPE=11.2`（水平线·无 i 衰减/噪声）+ 报告 `baselineOnly` 标 |
+| C2 | `livedin/engine.ts:150` | 部署态 `mape = 7 + 5*exp(-(w-1)/16) + rebound` 手画 52 周 | bundle.mapeSeries | 读码✓ | P1 | CALIB-HONEST-EMPTY | ✅ 曲线保留（确定性合成回放走正门）但 `bundle.synthetic=true`·前端"合成演示·非真实学习"徽章 |
+| C3 | `livedin/engine.ts:799` | `realizedMape = simulatedAfter + 0.3` 自证 | 元环"预测 vs 实现"真值 | 读码✓ | P1 | CALIB-HONEST-EMPTY | ✅ 改取合成序列生效 2 周后真实点 `mapeAt(week+2)`（对真序列·非自证 +0.3） |
+| C4 | `synthetic/service.ts:371/385` | PENDING 提案 evidence `nPairs:168,mapeBefore:11.2,after:8.9,bias` 手填 | 校准审批 UI 决策证据 | 读码✓ | P1 | CALIB-HONEST-EMPTY | ✅ 证据保留但 `proposal.synthetic=true`+`evidence.synthetic=true`·前端 SYNTHETIC 徽章 |
+| C5 | `livedin/engine.ts:772/796` | `simulatedAfter = before - 手填improvement` / `bias = 交替确定值` | 提案 evidence | 读码✓ | P2 | CALIB-HONEST-EMPTY | ✅ 同 C4：seeded 提案 `synthetic=true`（叙事内自洽·标合成边界） |
+| C6 | `seed.ts:373` | demo 收敛 `actual = predicted*(1-bias)` 反解(手填 BIASES) | 收敛线 25→13.6→5.3 | 读码✓ | P2 | CALIB-HONEST-EMPTY | ✅ 走正门（确定性合成观测→真引擎算 MAPE·非绕引擎手画）·码注披露 demo 边界·UI 标由全局 synthetic watermark 覆盖 demo 租户 |
+
+> **簇 C 治本口径**：校准引擎真（有真 pair→真算 MAPE）·**无真 pair 不造下降线**（C1 静止 + baselineOnly）·**demo/部署合成回放走正门但标 SYNTHETIC**（C2 bundle.synthetic / C4-C5 proposal.synthetic+evidence.synthetic）·**realizedMape 对真序列非自证**（C3 mapeAt(week+2)）。看 demo「越用越准」的人现在分得清"真学会"（LIVE·真 pair）vs"脚本画"（SYNTHETIC 徽章）。前端牙齿 `test/calib-honest-empty.test.tsx`（review-synthetic-badge / calib-baseline-only / calib-synthetic-*·摘条件即红）。
 
 > **C 簇要害**：校准**引擎是真的**（有真 pair 时 210-212 真算 MAPE），但**无真 pair 时回退造一条漂亮下降线**（C1 线性 / C2 指数 / C4 手填 evidence），**UI 无 SYNTHETIC 标**→ 看 demo「越用越准」的人分不清"真学会了"还是"脚本画的"。与我此前判 CALIB-CONVERGENCE-UI DONE 不矛盾（当时有 demo seed 真 pair），但回退/部署 demo 路径造假需诚实标。
 
@@ -106,7 +108,7 @@
 |---|---|---|
 | **METHOD-MC-STOCHASTIC（扩 scope）** | A1–A10 | 种子化 MC 真分位替代**所有** `×常数` P90；下游 replay/metrics/seed 随真分位自动变真。原单 §6 只列 A1–A4，须扩 A5(service:1137 order_fullchain)/A6(sop:150)/A7-A10(vle/replay/metrics/seed)。 |
 | **RISK-TRAJECTORY-DEFAKE（新·P1）** | B1–B9,G1–G3 | risk_timeline 轨迹目标+事件具体值：真数据算或诚实空；**删 EVENT_SRC 假源归因**（无真值不标真源）；阈值/系数入 params。 |
-| **CALIB-HONEST-EMPTY（新·P1）** | C1–C6 | 无真 pair→诚实空/静止(非造下降线)；demo/部署 mapeSeries+evidence 上 SYNTHETIC 标；realizedMape 从真未来 pair 算。 |
+| **CALIB-HONEST-EMPTY（新·P1）✅ 已闭** | C1–C6 | 无真 pair→诚实空/静止(非造下降线)；demo/部署 mapeSeries+evidence 上 SYNTHETIC 标；realizedMape 从真未来 pair 算。**落实**：C1 静态基线常数+report.baselineOnly·C2 bundle.synthetic·C3 realizedMape=mapeAt(week+2)·C4/C5 proposal.synthetic+evidence.synthetic·C6 走正门码注披露。前端徽章：ReviewView"合成演示·非真实学习"+CalibrationPage"静态基线·无真实配对"/SYNTHETIC。牙齿 test/calib-honest-empty.test.tsx。 |
 | **SIM-REAL-SNAPSHOT（新·P1）** | D1–D3 | baseSnapshot 取后端真对象属性态(非 hash(oid))；热度阈入 sim 认证/config。 |
 | **FRONTEND-VALUE-AUTHORITY（新·P1）** | E1–E7 | 消费后端权威字段(revAttainPct/gmRate/gap)；缺失→诚实空态非内联常数重算；清 `debattery-allow` 白名单常数入后端 layout/rule。 |
 | **AGENTCORE-TRACE-LINEAGE（新·P2）** | F1–F3 | trace 节点真 lineage 缺失→空/"本次未记录来源"，勿发骨架电池常数。 |

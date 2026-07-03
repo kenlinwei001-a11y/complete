@@ -192,10 +192,12 @@ export const CALIBRATION_REPORT_BASE: CalibrationReport = CalibrationReportSchem
 /** M11：方法（EMA/重放归因/分位数）+ 回测证据 + HOLD/REJECTED 状态 + 元闭环 realizedMape */
 export const CALIBRATION_PROPOSALS: CalibrationProposal[] = CalibrationProposalSchema.array().parse([
   {
+    // CALIB-HONEST-EMPTY·C4：demo 冷启动 seed 提案·证据手填(非真实校准配对回测)→ UI 标 SYNTHETIC。
     id: "prop-1", parameter: "化成节拍", objectRef: "工序-化成", currentValue: 5.2, proposedValue: 5.6,
     basis: { windowFrom: "2026-04-01", windowTo: "2026-05-31", samples: 1840 }, status: "PENDING",
     sliceKey: "capacity_forecast|all|4680-NCM", paramRef: { scope: "SOLVER_PARAMS", path: "ct.formation" }, method: "REPLAY_ATTRIBUTION",
-    evidence: { windowFrom: "2026-04-01", windowTo: "2026-05-31", nPairs: 1840, mapeBefore: 9.4, simulatedMapeAfter: 6.8, bias: 0.062, flags: ["ATTRIBUTION_SHARE:0.82"] },
+    evidence: { windowFrom: "2026-04-01", windowTo: "2026-05-31", nPairs: 1840, mapeBefore: 9.4, simulatedMapeAfter: 6.8, bias: 0.062, flags: ["ATTRIBUTION_SHARE:0.82"], synthetic: true },
+    synthetic: true,
   },
   {
     id: "prop-2", parameter: "良率基线", objectRef: "工序-化成", currentValue: 0.975, proposedValue: 0.968,

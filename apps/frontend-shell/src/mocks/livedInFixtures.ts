@@ -216,6 +216,8 @@ export function historyBundleFor(baseScope: string[] | null, page: number, pageS
   });
 
   return {
+    // CALIB-HONEST-EMPTY·C2：合成回放包（越用越准曲线脚本化）→ UI 标 SYNTHETIC。
+    synthetic: true,
     generatedFrom: {
       industry: "battery-manufacturing", scale: "S", seed: 42, jobId: "synthetic-battery-manufacturing-S-42",
       replayFrom: "2025-07-01", replayTo: "2026-07-01", replayDays: 365, liveMonths: [], liveRatio: 0,

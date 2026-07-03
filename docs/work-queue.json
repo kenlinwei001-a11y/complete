@@ -2426,7 +2426,7 @@
     {
       "id": "CALIB-HONEST-EMPTY",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -2488,8 +2488,8 @@
     {
       "id": "FRONTEND-VALUE-AUTHORITY",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-fake-value-remnants.md",
@@ -2675,9 +2675,21 @@
       "acceptance": {
         "goal": "新增/改求解器或新行业不再需要跨~7张并行表co-edit——由registry descriptor单处驱动;industry→pipeline由IndustryTemplate record选(非if battery)。",
         "criteria": [
-          { "id": "C1", "type": "gate", "assert": "求解器分派registry化:service.ts不再有~25臂solverKey if链/switch·由solverKey→descriptor表分派;新增一个测试solver只加1条registry entry(不改dispatch/SHAPES/LIVE_DEFAULT等)即可invoke+chain:check绿。" },
-          { "id": "C2", "type": "gate", "assert": "industry→template registry化:synthetic runJob/resolveTemplate不再if(industry===battery)特例·由IndustryTemplate record(template/rule scopes/views/history)驱动;logi非电池租户经同路径立世界(现有last-mile不回归)。" },
-          { "id": "C3", "type": "gate", "assert": "新门dispatch-registry:check:禁solverKey switch/if链增长(超基线红);四包build/test绿·chain:check/opt-determinism不回归。" }
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "求解器分派registry化:service.ts不再有~25臂solverKey if链/switch·由solverKey→descriptor表分派;新增一个测试solver只加1条registry entry(不改dispatch/SHAPES/LIVE_DEFAULT等)即可invoke+chain:check绿。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "industry→template registry化:synthetic runJob/resolveTemplate不再if(industry===battery)特例·由IndustryTemplate record(template/rule scopes/views/history)驱动;logi非电池租户经同路径立世界(现有last-mile不回归)。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "新门dispatch-registry:check:禁solverKey switch/if链增长(超基线红);四包build/test绿·chain:check/opt-determinism不回归。"
+          }
         ]
       }
     },
@@ -2694,8 +2706,16 @@
       "acceptance": {
         "goal": "视图的KPI集/列/步骤/DAG拓扑由后端ViewConfig.layout驱动·换行业/租户改config不改视图码;4 P1视图先行。",
         "criteria": [
-          { "id": "C1", "type": "browser", "assert": "4 P1视图(SopBalance六卡/OrderChain KPI+DAG/ProjectSim DAG)结构由ViewConfig.layout驱动:改config的kpiCards/dagLayout→前端结构随之变(真浏览器验)·非内联数组。" },
-          { "id": "C2", "type": "gate", "assert": "新门view-layout-config:check:核心决策视图无内联KPI/列/step/DAG结构数组(超基线红);四包build/test绿·前端既有测不回归。" }
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "4 P1视图(SopBalance六卡/OrderChain KPI+DAG/ProjectSim DAG)结构由ViewConfig.layout驱动:改config的kpiCards/dagLayout→前端结构随之变(真浏览器验)·非内联数组。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "新门view-layout-config:check:核心决策视图无内联KPI/列/step/DAG结构数组(超基线红);四包build/test绿·前端既有测不回归。"
+          }
         ]
       }
     },
@@ -2712,8 +2732,16 @@
       "acceptance": {
         "goal": "决策阈值/系数可调(SolverParam版本化/rule表达式)非内联字面;extended 13 solver读c.params;前端阈值消费后端权威不重写。",
         "criteria": [
-          { "id": "C1", "type": "curl", "assert": "extended 13 solver阈值改由c.params/rule读:改某SolverParam(如外协上限/EU碳阈)→对应solver输出/裁决随之变(curl验)·非内联。" },
-          { "id": "C2", "type": "gate", "assert": "前端不重写后端阈值:QuarterlyRolling LTA偏差阈/SopBalance毛利容差 从ViewConfig/后端字段读(非5%/0.5pp内联);新门solver-no-inline-threshold:check(solver体决策阈值非裸字面·超基线红);四包绿。" }
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "extended 13 solver阈值改由c.params/rule读:改某SolverParam(如外协上限/EU碳阈)→对应solver输出/裁决随之变(curl验)·非内联。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "前端不重写后端阈值:QuarterlyRolling LTA偏差阈/SopBalance毛利容差 从ViewConfig/后端字段读(非5%/0.5pp内联);新门solver-no-inline-threshold:check(solver体决策阈值非裸字面·超基线红);四包绿。"
+          }
         ]
       }
     },
@@ -2722,7 +2750,9 @@
       "priority": "P2",
       "status": "TODO",
       "owner": "",
-      "deps": ["LAUNCHER-GROUNDED-QUESTIONS"],
+      "deps": [
+        "LAUNCHER-GROUNDED-QUESTIONS"
+      ],
       "blockReason": "",
       "doc": "docs/AUDIT-hardcode-remnants.md",
       "title": "全站'当前'月/季/日由sim-clock派生(非硬编码2026-07/2026Q2/2026-Q3)+livedin叙事日期改t0偏移",
@@ -2730,8 +2760,16 @@
       "acceptance": {
         "goal": "无硬编码'当前'月/季/日·全由sim-clock派生;clock前进后所有'本月/本季'读数随之移·livedin叙事日期落在生成窗口内。",
         "criteria": [
-          { "id": "C1", "type": "curl", "assert": "solver默认时间clock派生:lta_gap/quarterly_gap无month/quarter入参→默认=clock当前月/季(YYYY-Qn一致格式)非'2026-07'/'2026Q2';seed SOP月=clock当前月(消S18错位)。" },
-          { "id": "C2", "type": "gate", "assert": "前端QuarterlyRolling不硬编码起始季(省from让后端clock派生);livedin叙事日期由t0偏移生成(clock移不dangle);四包绿·R6同clock同结果。" }
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "solver默认时间clock派生:lta_gap/quarterly_gap无month/quarter入参→默认=clock当前月/季(YYYY-Qn一致格式)非'2026-07'/'2026Q2';seed SOP月=clock当前月(消S18错位)。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "前端QuarterlyRolling不硬编码起始季(省from让后端clock派生);livedin叙事日期由t0偏移生成(clock移不dangle);四包绿·R6同clock同结果。"
+          }
         ]
       }
     },
@@ -2748,8 +2786,16 @@
       "acceptance": {
         "goal": "共享runtime逻辑(segOfCust)不硬编码EV关键词分类;电池实体从ontology/registry/行业模板来;debattery-allow白名单不增·逐条附理由或收口。",
         "criteria": [
-          { "id": "C1", "type": "curl", "assert": "segOfCust由SEG_REGISTRY关键词/Customer.segment驱动:非EV租户客户不全塌pas(curl异行业租户验分类非退化)。" },
-          { "id": "C2", "type": "gate", "assert": "debattery-allow收口:rg 'debattery-allow' 每处或迁除或登记理由+到期·白名单数不增;livedin/connectors/opsteam电池实体从对象/模板来;debattery:check绿·四包绿。" }
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "segOfCust由SEG_REGISTRY关键词/Customer.segment驱动:非EV租户客户不全塌pas(curl异行业租户验分类非退化)。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "debattery-allow收口:rg 'debattery-allow' 每处或迁除或登记理由+到期·白名单数不增;livedin/connectors/opsteam电池实体从对象/模板来;debattery:check绿·四包绿。"
+          }
         ]
       }
     }

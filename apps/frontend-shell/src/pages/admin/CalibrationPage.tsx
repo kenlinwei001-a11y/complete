@@ -136,6 +136,18 @@ export default function CalibrationPage() {
       {/* MAPE 折线（7d + 30d 双口径）+ C12 阈值线 + 触发标记 */}
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">{t.trendSection}</div>
+        {report?.baselineOnly && (
+          <div
+            className="empty-hint"
+            data-testid="calib-baseline-only"
+            style={{ marginBottom: 8, padding: "8px 10px", borderRadius: 6, background: "rgba(224,158,63,.10)", color: "var(--muted)", fontSize: 13 }}
+          >
+            <span className="badge amber" style={{ marginRight: 8 }}>
+              静态基线 · 无真实配对
+            </span>
+            当前尚无真实预测/实绩配对，下方为诚实静态基线（水平线），<b>非</b>真实收敛。跑一轮真实预测积累配对后，曲线才会反映真实精度变化。
+          </div>
+        )}
         {report && (
           <>
             <EChart
@@ -322,6 +334,16 @@ function ProposalRow({ proposal: p, onDecide, pending }: { proposal: Calibration
     <tr data-testid={`calib-proposal-${p.id}`}>
       <td className="zh">
         <b>{p.parameter}</b>
+        {p.synthetic && (
+          <span
+            className="badge amber"
+            data-testid={`calib-synthetic-${p.id}`}
+            style={{ marginLeft: 6, fontSize: 10 }}
+            title="合成演示提案：证据来自 demo 冷启动 seed / 回放脚本，非真实校准配对回测。真实提案由 CALIBRATION_SWEEP 从真观测产出。"
+          >
+            SYNTHETIC
+          </span>
+        )}
         {p.objectRef && (
           <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6, fontSize: 10.5 }}>
             {p.objectRef}
