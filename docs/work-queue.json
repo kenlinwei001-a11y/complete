@@ -2881,8 +2881,8 @@
     {
       "id": "DATADEP-MANIFEST-READINESS",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/PRD-datadep-manifest-readiness.md",
