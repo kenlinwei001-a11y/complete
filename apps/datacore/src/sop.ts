@@ -300,6 +300,10 @@ export class SopService {
     const gmOk = gmRoll >= gmBudget - params.sop.gmTolerance;
     const cashOk = cashCushion >= params.sop.cashFloor;
     const pass = gmOk && cashOk;
+    // FRONTEND-VALUE-AUTHORITY·E2：收入预算达成率在后端用权威预算 params.sop.revBudget 算，
+    // 前端不再 revSum/内联240 自算（缺预算参数→不发·前端诚实空态，不伪造）。
+    const revBudget = params.sop.revBudget;
+    const revAttainPct = revBudget != null && revBudget > 0 ? round((revSum / revBudget) * 100, 2) : undefined;
     const violations: string[] = [];
     if (!gmOk) violations.push(`毛利率_roll ${gmRoll}% 低于预算 ${gmBudget}%（容差 ${params.sop.gmTolerance}pp）`);
     if (!cashOk) violations.push(`现金垫 ${cashCushion} 亿低于 C18 底线 ${params.sop.cashFloor} 亿`);
@@ -310,6 +314,7 @@ export class SopService {
     }
     v.steps.s4 = {
       revSum: round(revSum, 4),
+      ...(revAttainPct != null ? { revAttainPct } : {}),
       gmSum,
       gmBudget,
       cashCushion,

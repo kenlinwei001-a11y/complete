@@ -948,6 +948,35 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-intent-materialize-binding-complete.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-launcher-grounded-questions.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-live-traceable-data.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1394,6 +1423,8 @@
       "PRD-fullstack-story-build-g8.md",
       "PRD-in-dialog-gap-fill-loop.md",
       "PRD-inference-process-enhancement.md",
+      "PRD-intent-materialize-binding-complete.md",
+      "PRD-launcher-grounded-questions.md",
       "PRD-llm-agent-empty-response-guard.md",
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",

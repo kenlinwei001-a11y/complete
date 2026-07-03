@@ -137,9 +137,9 @@ export const QUARTERLY_RESPONSE: QuarterlyResponse = QuarterlyResponseSchema.par
     { q: "2027-Q4", dem: 452, sup: 448, gap: 4, events: [{ label: "枣庄满产 · 江门线视触发条件" }] },
   ],
   ltaDeviation: [
-    { material: "三元正极", planned: 2800, actual: 2576, deviationPct: -8.0, note: "到货延迟 · 触发到货间隙事件", baseId: "合肥" },
-    { material: "隔膜", planned: 820, actual: 828, deviationPct: 1.0, note: "正常" },
-    { material: "电解液", planned: 1900, actual: 1862, deviationPct: -2.0, note: "正常" },
+    { material: "三元正极", planned: 2800, actual: 2576, deviationPct: -8.0, breach: true, note: "到货延迟 · 触发到货间隙事件", baseId: "合肥" },
+    { material: "隔膜", planned: 820, actual: 828, deviationPct: 1.0, breach: false, note: "正常" },
+    { material: "电解液", planned: 1900, actual: 1862, deviationPct: -2.0, breach: false, note: "正常" },
   ],
 });
 

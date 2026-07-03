@@ -357,7 +357,8 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                           className={styles.chip}
                           testId={`oc-risk-chip-${r.so}-${k.base}`}
                           // WO-KILL-MOCK-RED 治本：非 LIVE / 无真峰值 → 灰（不出红越线 chip）；仅真数据出决策色。
-                          style={{ color: decisionColor(k.peak, k.threshold ?? 85, k.dataMode, { calm: "var(--amber)", warn: "var(--amber)" }), borderColor: "currentcolor", cursor: "default" }}
+                          // E4 治本：瓶颈阈取后端权威 k.threshold（risk 求解器 params.risk.threshold），缺阈值→灰（不再内联 ?? 85 伪造阈）。
+                          style={{ color: k.threshold != null ? decisionColor(k.peak, k.threshold, k.dataMode, { calm: "var(--amber)", warn: "var(--amber)" }) : "var(--muted)", borderColor: "currentcolor", cursor: "default" }}
                         >
                           {k.base}·{k.factor} {isLiveDecision(k.dataMode) && k.crossDay != null ? `D+${k.crossDay}` : "未越线"}
                         </RiskHoverTrigger>

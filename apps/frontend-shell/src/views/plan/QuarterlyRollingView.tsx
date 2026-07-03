@@ -125,7 +125,8 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
           </thead>
           <tbody>
             {data.ltaDeviation.map((r) => {
-              const breach = Math.abs(r.deviationPct) > 5;
+              // E3 治本：越线判定消费后端权威 breach（C27 长协阈 5% 在后端判）；后端未发时才回退前端算（兼容旧响应）。
+              const breach = r.breach ?? Math.abs(r.deviationPct) > 5;
               return (
                 <tr key={r.material} data-testid={`lta-${r.material}`} data-breach={breach}>
                   <td className="zh">

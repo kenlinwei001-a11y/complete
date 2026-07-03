@@ -2488,7 +2488,7 @@
     {
       "id": "FRONTEND-VALUE-AUTHORITY",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -2804,7 +2804,14 @@
       "priority": "P1",
       "status": "TODO",
       "owner": "",
-      "deps": ["HARDCODE-DISPATCH-REGISTRY", "HARDCODE-VIEW-LAYOUT", "HARDCODE-SOLVER-PARAMS", "HARDCODE-CLOCK-DERIVE", "HARDCODE-BIZ-ENTITY", "INTENT-MATERIALIZE-BINDING-COMPLETE"],
+      "deps": [
+        "HARDCODE-DISPATCH-REGISTRY",
+        "HARDCODE-VIEW-LAYOUT",
+        "HARDCODE-SOLVER-PARAMS",
+        "HARDCODE-CLOCK-DERIVE",
+        "HARDCODE-BIZ-ENTITY",
+        "INTENT-MATERIALIZE-BINDING-COMPLETE"
+      ],
       "blockReason": "",
       "doc": "docs/AUDIT-hardcode-remnants.md",
       "title": "行业包收敛(北极星):换行业=加1个IndustryPack数据包·0码改·5硬编码WO的capstone+活体证",
@@ -2812,10 +2819,26 @@
       "acceptance": {
         "goal": "存在单一 IndustryPack 声明式契约统一所有行业专属config;新增一个非电池行业只需授权/导入1个pack数据·git diff 只含该pack数据文件(0码文件改)·且该行业完整app可用(视图真渲染+求解器真派发+场景真答·真浏览器)。",
         "criteria": [
-          { "id": "C1", "type": "gate", "assert": "IndustryPack契约(packages/contracts)统一{ontologySlices,solverDescriptors,viewLayouts,solverParams,clockConfig,registries,scenarios,intents(mode),rules}·加载器按pack实例化;battery/logistics 两pack各自声明·引擎零if(industry===)。" },
-          { "id": "C2", "type": "gate", "assert": "换行业0码改:立第三个非电池行业(如 pack 数据)→ git diff --name-only 仅含该pack数据文件(0个 apps/**/src/**.ts 改);四包build/test绿。" },
-          { "id": "C3", "type": "browser", "assert": "该非电池行业完整app活体:真登录该租户→视图由其pack viewLayouts渲染(非电池KPI/列/DAG)·求解器由其descriptors派发出真答·场景卡由其pack scenarios可答。真浏览器逐值。" },
-          { "id": "C4", "type": "gate", "assert": "R14派生层门族全绿+baseline已ratchet到位:debattery/dispatch-registry/view-layout-config/solver-no-inline-threshold/clock-derive/scene-agent-config 各exit 0且基线随5 WO降;回写§J/§10 IndustryPack + 新不变量R-PACK'换行业=加pack·0码改';ontology:slices绿。" }
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "IndustryPack契约(packages/contracts)统一{ontologySlices,solverDescriptors,viewLayouts,solverParams,clockConfig,registries,scenarios,intents(mode),rules}·加载器按pack实例化;battery/logistics 两pack各自声明·引擎零if(industry===)。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "换行业0码改:立第三个非电池行业(如 pack 数据)→ git diff --name-only 仅含该pack数据文件(0个 apps/**/src/**.ts 改);四包build/test绿。"
+          },
+          {
+            "id": "C3",
+            "type": "browser",
+            "assert": "该非电池行业完整app活体:真登录该租户→视图由其pack viewLayouts渲染(非电池KPI/列/DAG)·求解器由其descriptors派发出真答·场景卡由其pack scenarios可答。真浏览器逐值。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "R14派生层门族全绿+baseline已ratchet到位:debattery/dispatch-registry/view-layout-config/solver-no-inline-threshold/clock-derive/scene-agent-config 各exit 0且基线随5 WO降;回写§J/§10 IndustryPack + 新不变量R-PACK'换行业=加pack·0码改';ontology:slices绿。"
+          }
         ]
       }
     }

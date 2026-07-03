@@ -110,7 +110,7 @@
 | **RISK-TRAJECTORY-DEFAKE（新·P1）** | B1–B9,G1–G3 | risk_timeline 轨迹目标+事件具体值：真数据算或诚实空；**删 EVENT_SRC 假源归因**（无真值不标真源）；阈值/系数入 params。 |
 | **CALIB-HONEST-EMPTY（新·P1）✅ 已闭** | C1–C6 | 无真 pair→诚实空/静止(非造下降线)；demo/部署 mapeSeries+evidence 上 SYNTHETIC 标；realizedMape 从真未来 pair 算。**落实**：C1 静态基线常数+report.baselineOnly·C2 bundle.synthetic·C3 realizedMape=mapeAt(week+2)·C4/C5 proposal.synthetic+evidence.synthetic·C6 走正门码注披露。前端徽章：ReviewView"合成演示·非真实学习"+CalibrationPage"静态基线·无真实配对"/SYNTHETIC。牙齿 test/calib-honest-empty.test.tsx。 |
 | **SIM-REAL-SNAPSHOT（新·P1）** | D1–D3 | baseSnapshot 取后端真对象属性态(非 hash(oid))；热度阈入 sim 认证/config。 |
-| **FRONTEND-VALUE-AUTHORITY（新·P1）** | E1–E7 | 消费后端权威字段(revAttainPct/gmRate/gap)；缺失→诚实空态非内联常数重算；清 `debattery-allow` 白名单常数入后端 layout/rule。 |
+| **FRONTEND-VALUE-AUTHORITY（新·P1）✅ 已闭** | E1–E7 | 消费后端权威字段(revAttainPct/gmRate/gap)；缺失→诚实空态非内联常数重算；清 `debattery-allow` 白名单常数入后端 layout/rule。**落实**：E1 marginLedger 缺→「估算」标·E2 后端 sop.s4.revAttainPct(params.sop.revBudget)前端消费·缺则 workspace 预算·再缺 null(去内联240)·E3 后端 ltaDeviation.breach(C27 阈5%)前端消费·E4 消费 k.threshold 缺→灰(去?? 85;coef 已 view.layout 权威+估算标)·E5 消费 s4.gmOk(去内联0.5pp)·E6 消费 r.gap(去自算col0−col1)。E7 坐标表=Base.props.lon/lat 兜底·非决策·诚实披露(P3 保留)。牙齿 test/frontend-value-authority.test.tsx。 |
 | **AGENTCORE-TRACE-LINEAGE（新·P2）** | F1–F3 | trace 节点真 lineage 缺失→空/"本次未记录来源"，勿发骨架电池常数。 |
 
 ## 4. 回写本体 + 建门（防回潮）

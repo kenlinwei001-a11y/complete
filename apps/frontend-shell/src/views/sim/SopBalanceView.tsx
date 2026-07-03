@@ -284,7 +284,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
   const kpi = { gapRed: ws?.sopConfig?.gapRed ?? SOP_KPI_P.gapRed, cashFloor: ws?.sopConfig?.cashFloor ?? SOP_KPI_P.cashFloor, revBudget: ws?.sopConfig?.revBudget ?? SOP_KPI_P.revBudget };
   const s2 = v.steps.s2 as { total?: { rolling?: number } } | undefined;
   const s3 = v.steps.s3 as { sup?: number; dem?: number } | undefined;
-  const s4 = v.steps.s4 as { revSum?: number; gmRoll?: number; gmBudget?: number; cashCushion?: number; cashOk?: boolean } | undefined;
+  const s4 = v.steps.s4 as { revSum?: number; revAttainPct?: number; gmRoll?: number; gmBudget?: number; gmOk?: boolean; cashCushion?: number; cashOk?: boolean } | undefined;
   const s5 = v.steps.s5 as { supFinal?: number } | undefined;
 
   const demand = s2?.total?.rolling ?? (typeof v.inputs.demTotal === "number" ? v.inputs.demTotal : null);
@@ -293,7 +293,14 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
   const liveDelta = liveResolutions && s3?.sup != null && s5?.supFinal == null ? liveResolutions.reduce((a, r) => a + r.delta, 0) : 0;
   const supply = baseSup != null ? Math.round((baseSup + liveDelta) * 10000) / 10000 : null;
   const gap = demand != null && supply != null ? Math.round((demand - supply) * 10000) / 10000 : null;
-  const revAttain = s4?.revSum != null ? (s4.revSum / kpi.revBudget) * 100 : null;
+  // E2 治本：优先消费后端权威 revAttainPct（用 params.sop.revBudget 算）；后端未发时退回 workspace.sopConfig 权威预算，
+  // 二者皆缺 → null（诚实空态），不再用内联 SOP_KPI_P.revBudget=240 自算冒充权威。
+  const revAttain =
+    s4?.revAttainPct != null
+      ? s4.revAttainPct
+      : s4?.revSum != null && ws?.sopConfig?.revBudget != null
+        ? (s4.revSum / ws.sopConfig.revBudget) * 100
+        : null;
 
   // R13/R-一致：六卡统一走共享 <Provenance>（六要素：来源/新鲜度/推导/输入因子/关联规则/备注），
   // 取代原 2 要素自绘浮层 —— 一个事实一个出处机制。S&OP 三线（需求/供给/缺口）为最高优先（#4 backlog）。
@@ -340,8 +347,9 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       key: "gm",
       label: zh.sim.sop.kpi.gmVsBudget,
       value: s4?.gmRoll != null ? `${Number(s4.gmRoll).toFixed(2)}% / ${s4.gmBudget}%` : "—",
-      color: s4?.gmRoll != null && s4.gmBudget != null && s4.gmRoll < s4.gmBudget - 0.5 ? "var(--danger)" : undefined,
-      formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差 0.5pp）",
+      // E5 治本：毛利红消费后端权威 gmOk（后端用 params.sop.gmTolerance 判定），不再前端内联 0.5pp 自算。
+      color: s4?.gmOk === false ? "var(--danger)" : undefined,
+      formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差以后端 gmTolerance 判定）",
       source: "S&OP ④ 财务整合（C15 口径）",
       inputs: ["滚动毛利合计", "滚动收入合计", "预算毛利率"],
       rule: "C15",

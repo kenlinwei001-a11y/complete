@@ -362,6 +362,8 @@ export class PlanService {
         planned,
         actual,
         deviationPct: devPct,
+        // FRONTEND-VALUE-AUTHORITY·E3：越线判定在后端（C27 长协·阈 5%），前端消费 breach 不再自算 |dev|>5。
+        breach: over,
         note: over ? "到货延迟 · 触发到货间隙事件（升级供应风险，与风险看板同源）" : "正常",
         baseId: str(s.props.baseId),
       };

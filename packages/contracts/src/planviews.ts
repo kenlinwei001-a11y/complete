@@ -90,6 +90,8 @@ export const QuarterlyResponseSchema = z.object({
       planned: z.number(),
       actual: z.number(),
       deviationPct: z.number(), // |>5%| → 红 + 升级供应风险
+      /** FRONTEND-VALUE-AUTHORITY·E3：后端权威越线标（C27 长协阈 5%）——前端消费此位驱动红/提报，不客户端自算。 */
+      breach: z.boolean().optional(),
       note: z.string().optional(),
       baseId: z.string().optional(), // 行尾跳 risk-board 对应基地
     }),

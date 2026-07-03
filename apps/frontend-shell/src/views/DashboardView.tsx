@@ -214,7 +214,8 @@ function OrderLedgerWidget() {
         {segs.map((s) => (
           <button key={s} className="badge" data-testid={`ledger-seg-${s}`} style={{ cursor: "pointer", opacity: seg === s ? 1 : 0.55 }} onClick={() => setSeg(s)}>{s}</button>
         ))}
-        <span style={{ marginLeft: "auto", fontSize: 12 }}>{zh.dash.ledgerGm} <b className="mono" data-testid="ledger-gmrate">{gmRate.toFixed(1)}%</b> · {filtered.length} 单</span>
+        {/* E1 治本：综合毛利率优先取后端权威 marginLedger.gmRatePct；后端缺该字段时前端 Σgp/Σsales 自算标「估算」（不冒充权威）。 */}
+        <span style={{ marginLeft: "auto", fontSize: 12 }}>{zh.dash.ledgerGm} <b className="mono" data-testid="ledger-gmrate">{gmRate.toFixed(1)}%</b>{!ml && <sup data-testid="ledger-gmrate-est" style={{ color: "var(--warn,#caa23a)", fontSize: 9 }} title="后端综合毛利勾稽(marginLedger)缺失·前端按细分价/利估算·非权威值"> 估算</sup>} · {filtered.length} 单</span>
       </div>
       {/* 轨M 增量2a 综合毛利率逐细分贡献勾稽（母版 §1.A/§1.B）：Σ贡献=综合毛利率（闭合）·Σ缺口贡献=缺口（负+正闭合），逐细分可溯。 */}
       {ml && (
@@ -796,8 +797,15 @@ function ChartWidget({ data, kind, series }: { data: unknown; kind: "line" | "ba
     const lineSeries = cols.map((c) => ({
       name: c.name, type: "line" as const, smooth: true, data: rows.map((r) => Number(r[c.key] ?? 0)), itemStyle: { color: c.color },
     }));
-    // 偏差柱：首系列 − 次系列（无 gap 字段时由复合图自算偏差，凸显"绿测试≠能用"的缺口）
-    const dev = rows.map((r) => Math.round((Number(r[cols[0]!.key] ?? 0) - Number(r[cols[1]!.key] ?? 0)) * 100) / 100);
+    // E6 治本：偏差柱优先取后端权威 gap 字段（cols[2]=缺口，后端 bundle.deviation.gap/sopVersion.gap 已算），
+    // 仅当后端确实无 gap 字段时才前端自算首系列−次系列（不绕后端单一真相源）。
+    const gapKey = cols[2]?.key;
+    const dev = rows.map((r) => {
+      const authoritative = gapKey != null ? r[gapKey] : undefined;
+      return authoritative != null
+        ? Math.round(Number(authoritative) * 100) / 100
+        : Math.round((Number(r[cols[0]!.key] ?? 0) - Number(r[cols[1]!.key] ?? 0)) * 100) / 100;
+    });
     return (
       <EChart
         height={200}

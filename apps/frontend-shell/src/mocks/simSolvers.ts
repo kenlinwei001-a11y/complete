@@ -740,7 +740,7 @@ export const PLAN_VERSION_CURRENT = {
 // S1.8 sop_balance 五步法（移植 datacore/sop.ts；常数 sop: gapRed 2 / dv 10% / cashFloor 50 / gmTolerance 0.5）
 // ---------------------------------------------------------------------------
 
-const SOP_P = { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, gmTolerance: 0.5 };
+const SOP_P = { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, gmTolerance: 0.5, revBudget: 240 };
 
 /** ③ 供应评审产能线（决议前基线 129.5 万套，对齐原型 V5） */
 const SOP_PER_BASE = [
@@ -846,7 +846,8 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
     for (const viol of violations) {
       if (!v.agenda.some((a) => a.source === "C18/财务" && a.title === viol)) v.agenda.push({ source: "C18/财务", title: viol });
     }
-    v.steps.s4 = { revSum, gmSum, gmBudget, cashCushion, gmRoll, gmOk, cashOk, pass, violations };
+    const revAttainPct = SOP_P.revBudget > 0 ? round((revSum / SOP_P.revBudget) * 100, 2) : undefined;
+    v.steps.s4 = { revSum, ...(revAttainPct != null ? { revAttainPct } : {}), gmSum, gmBudget, cashCushion, gmRoll, gmOk, cashOk, pass, violations };
     touch();
     return v;
   }
@@ -889,7 +890,7 @@ export function seedSopVersions(): SopVersionVM[] {
           total: { target: 127.6, rolling: 132, dv: 0.0345 },
         },
         s3: { perBase: SOP_PER_BASE, increments: [], sup: 129.5, dem: 132, gap: 2.5, flagged: true },
-        s4: { revSum: 248, gmSum: 39.7, gmBudget: 16.4, cashCushion: 58, gmRoll: 16.0081, gmOk: true, cashOk: true, pass: true, violations: [] },
+        s4: { revSum: 248, revAttainPct: 103.33, gmSum: 39.7, gmBudget: 16.4, cashCushion: 58, gmRoll: 16.0081, gmOk: true, cashOk: true, pass: true, violations: [] },
         s5: {
           resolutions: [
             { name: "常州化成夜班×1", delta: 1.2 },
