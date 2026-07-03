@@ -2661,6 +2661,97 @@
           }
         ]
       }
+    },
+    {
+      "id": "HARDCODE-DISPATCH-REGISTRY",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-hardcode-remnants.md",
+      "title": "求解器/扩展solver/industry→template派发由~7并行硬编码表→registry descriptor驱动(硬编码架构根因)",
+      "note": "硬编码彻查簇Hγ(审计表 docs/AUDIT-hardcode-remnants.md §2 Hγ)。架构根因'换行业就得改码':service.ts:2085求解器分派~25臂if(solverKey===)链+并行switch·extended.ts:402 13扩展solver经3并行结构·synthetic/service.ts:124 industry→template if(battery)≥6处·service.ts:47 SOLVER_KEYS/SHAPES/LIVE_DEFAULT/A6_READOUT并行表·:2174 ruleEvalPayload·graphmeta:52 SOLVER_GRAPH·features/registry镜像。debattery:check查不到(它查业务常数字面非dispatch switch)。治:每solver一registry descriptor{fn,shape,dataMode,argDeriv,ruleFieldMap,target,ruleRefs}一处·IndustryTemplate record选管线。",
+      "acceptance": {
+        "goal": "新增/改求解器或新行业不再需要跨~7张并行表co-edit——由registry descriptor单处驱动;industry→pipeline由IndustryTemplate record选(非if battery)。",
+        "criteria": [
+          { "id": "C1", "type": "gate", "assert": "求解器分派registry化:service.ts不再有~25臂solverKey if链/switch·由solverKey→descriptor表分派;新增一个测试solver只加1条registry entry(不改dispatch/SHAPES/LIVE_DEFAULT等)即可invoke+chain:check绿。" },
+          { "id": "C2", "type": "gate", "assert": "industry→template registry化:synthetic runJob/resolveTemplate不再if(industry===battery)特例·由IndustryTemplate record(template/rule scopes/views/history)驱动;logi非电池租户经同路径立世界(现有last-mile不回归)。" },
+          { "id": "C3", "type": "gate", "assert": "新门dispatch-registry:check:禁solverKey switch/if链增长(超基线红);四包build/test绿·chain:check/opt-determinism不回归。" }
+        ]
+      }
+    },
+    {
+      "id": "HARDCODE-VIEW-LAYOUT",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-hardcode-remnants.md",
+      "title": "9视图KPI/列/step/DAG结构写死→ViewConfig.layout驱动(G-5 8a收口·SandboxView金标准)",
+      "note": "硬编码彻查簇Hβ(审计表§2 Hβ·文档点名的8a未修大头)。4 P1:SopBalanceView:301六卡KPI条·OrderChainView:472 KPI条+:429 11节点DAG层拓扑·ProjectSimView:1120六层固定DAG。+P2:Dashboard模块直达/回采链·Ledger列·PlanAudit/PlanGenerate字段组·五步/六步Step。金标准=OntologyGraphView/SandboxView全ViewConfig派生。治:结构入ViewConfig.layout(kpiCards/columns/steps/dagLayout)·渲染器迭代config·非内联JS数组。",
+      "acceptance": {
+        "goal": "视图的KPI集/列/步骤/DAG拓扑由后端ViewConfig.layout驱动·换行业/租户改config不改视图码;4 P1视图先行。",
+        "criteria": [
+          { "id": "C1", "type": "browser", "assert": "4 P1视图(SopBalance六卡/OrderChain KPI+DAG/ProjectSim DAG)结构由ViewConfig.layout驱动:改config的kpiCards/dagLayout→前端结构随之变(真浏览器验)·非内联数组。" },
+          { "id": "C2", "type": "gate", "assert": "新门view-layout-config:check:核心决策视图无内联KPI/列/step/DAG结构数组(超基线红);四包build/test绿·前端既有测不回归。" }
+        ]
+      }
+    },
+    {
+      "id": "HARDCODE-SOLVER-PARAMS",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-hardcode-remnants.md",
+      "title": "solver阈值/系数内联(extended.ts全13 solver零c.params+risk/plan)→SolverParam/rule驱动",
+      "note": "硬编码彻查簇Hε(审计表§2 Hε·~50处最大簇)。extended.ts全13 solver consult NO c.params·内联全阈值(over/under储1.5/0.8·idle90·maint26·overdue30·EU碳70·外协1.0/1.4/2.5+40%/20%·urgency70/30·lock0.8·quote floor0.1/band0.01)。risk.ts:24 severity92/78·:128 tension常数·plan.ts:230 verdict阈。前端QuarterlyRolling LTA5%/SopBalance毛利0.5pp后端已params却重写。治:阈值入SolverParam/rule(C08/C11/C15/C16/C28/C32/C33)·前端消费后端权威不重写。",
+      "acceptance": {
+        "goal": "决策阈值/系数可调(SolverParam版本化/rule表达式)非内联字面;extended 13 solver读c.params;前端阈值消费后端权威不重写。",
+        "criteria": [
+          { "id": "C1", "type": "curl", "assert": "extended 13 solver阈值改由c.params/rule读:改某SolverParam(如外协上限/EU碳阈)→对应solver输出/裁决随之变(curl验)·非内联。" },
+          { "id": "C2", "type": "gate", "assert": "前端不重写后端阈值:QuarterlyRolling LTA偏差阈/SopBalance毛利容差 从ViewConfig/后端字段读(非5%/0.5pp内联);新门solver-no-inline-threshold:check(solver体决策阈值非裸字面·超基线红);四包绿。" }
+        ]
+      }
+    },
+    {
+      "id": "HARDCODE-CLOCK-DERIVE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": ["LAUNCHER-GROUNDED-QUESTIONS"],
+      "blockReason": "",
+      "doc": "docs/AUDIT-hardcode-remnants.md",
+      "title": "全站'当前'月/季/日由sim-clock派生(非硬编码2026-07/2026Q2/2026-Q3)+livedin叙事日期改t0偏移",
+      "note": "硬编码彻查簇Hδ(审计表§2 Hδ)。sim-clock t0权威但处处重硬编码'当前':extended lta_gap默认month'2026-07'/quarterly_gap'2026Q2'(格式不符YYYY-Qn)·seed SOP月'2026-07'(与clock t0 2026-06错位·加剧S18)·QuarterlyRollingView:30 fetchQuarterly('2026-Q3')覆盖后端clock派生·livedin/engine ~40绝对叙事日期·calibration/SopBalance/ProjectSim/connectors硬日期。δ1/δ2(S11死line/S18缺月)已在LAUNCHER-GROUNDED。治:全'当前'由sim-clock派生·livedin叙事日期改t0偏移(如tick引擎)。",
+      "acceptance": {
+        "goal": "无硬编码'当前'月/季/日·全由sim-clock派生;clock前进后所有'本月/本季'读数随之移·livedin叙事日期落在生成窗口内。",
+        "criteria": [
+          { "id": "C1", "type": "curl", "assert": "solver默认时间clock派生:lta_gap/quarterly_gap无month/quarter入参→默认=clock当前月/季(YYYY-Qn一致格式)非'2026-07'/'2026Q2';seed SOP月=clock当前月(消S18错位)。" },
+          { "id": "C2", "type": "gate", "assert": "前端QuarterlyRolling不硬编码起始季(省from让后端clock派生);livedin叙事日期由t0偏移生成(clock移不dangle);四包绿·R6同clock同结果。" }
+        ]
+      }
+    },
+    {
+      "id": "HARDCODE-BIZ-ENTITY",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-hardcode-remnants.md",
+      "title": "业务实体内联→ontology对象/registry(segOfCust P1)+debattery-allow白名单逐条收口",
+      "note": "硬编码彻查簇Hα(审计表§2 Hα·20处+白名单10文件36行)。P1:risk.ts:860 segOfCust `/商用车/储能/电网/`关键词分类任意客户→非EV租户全塌pas。其余:scenarios-catalog/livedin engine(客户名单+越线表+叙事)/connectors mock数据/opsteam personas/capacity formation-aging工序 烤电池实体。debattery-allow白名单36行(GeoMap坐标/ProjectSim models/SopBalance段/Dashboard导航副标/4输入占位)多数可genericize。治:segOfCust→SEG_REGISTRY·实体→租户对象/行业模板·白名单逐条genericize或登记冻结。",
+      "acceptance": {
+        "goal": "共享runtime逻辑(segOfCust)不硬编码EV关键词分类;电池实体从ontology/registry/行业模板来;debattery-allow白名单不增·逐条附理由或收口。",
+        "criteria": [
+          { "id": "C1", "type": "curl", "assert": "segOfCust由SEG_REGISTRY关键词/Customer.segment驱动:非EV租户客户不全塌pas(curl异行业租户验分类非退化)。" },
+          { "id": "C2", "type": "gate", "assert": "debattery-allow收口:rg 'debattery-allow' 每处或迁除或登记理由+到期·白名单数不增;livedin/connectors/opsteam电池实体从对象/模板来;debattery:check绿·四包绿。" }
+        ]
+      }
     }
   ]
 }
