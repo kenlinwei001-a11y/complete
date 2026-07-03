@@ -24,6 +24,11 @@ describe("F45 · 自成长发动机在办看板（人工触发补数据缺口）
     expect(within(dataRow).getByTestId("wl-status-wli-seed-1")).toHaveTextContent("OPEN");
     expect(screen.getByTestId("wl-row-gtk-feat-1")).toHaveTextContent("NO_CAPABILITY");
 
+    // FIX（复验 BLOCK）：FEATURE 工单只读映射行**不出认领按钮**（其 id=工单 id·非 worklist 项·认领→后端 404 静默）；出「需开发（工单）」。
+    const featRow = screen.getByTestId("wl-row-gtk-feat-1");
+    expect(within(featRow).queryByTestId("wl-claim-gtk-feat-1")).toBeNull();
+    expect(within(featRow).getByTestId("wl-feature-gtk-feat-1")).toHaveTextContent("需开发");
+
     // 类型筛=缺功能 FEATURE → 只剩 FEATURE 行（DATA_GAP 收窄掉）。
     await user.selectOptions(screen.getByTestId("wl-filter-kind"), "FEATURE");
     expect(screen.queryByTestId("wl-row-wli-seed-1")).toBeNull();

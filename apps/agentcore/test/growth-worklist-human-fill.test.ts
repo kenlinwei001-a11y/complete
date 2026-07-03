@@ -91,4 +91,23 @@ describe("GROWTH-WORKLIST-HUMAN-FILL · 去自动补·人工闸控补", () => {
     const other = await t.app.inject({ method: "GET", url: "/b/v1/growth/worklist", headers: H("other-tenant:user-x:planner") });
     expect((other.json() as { items: WorklistItem[] }).items.find((i) => i.id === "wli_iso")).toBeUndefined();
   });
+
+  it("T4 治本齿（复验 BLOCK）：认领 FEATURE/PLAN_SCAFFOLD 只读工单映射 id → 明确 409 READONLY（非 404 静默）", async () => {
+    const t: TestApp = await createTestApp();
+    const now = new Date().toISOString();
+    // 缺功能工单（映射为看板 FEATURE 只读行·id=工单 id·非 growthWorklist 项）。
+    await t.repos.growthTickets.upsert({
+      id: "gtk_feat_ro", tenantId: TENANT, fromQuestion: "能不能加个碳排看板", gapCode: "NO_CAPABILITY",
+      ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] },
+      acceptance: "碳排看板可答", status: "OPEN", createdAt: now,
+    });
+    // 认领工单 id → 不是含糊 404「not found 静默」，而是明确 409 指明走各自工单流程。
+    const claim = await t.app.inject({ method: "POST", url: "/api/v1/growth/worklist/gtk_feat_ro/claim", headers: H(PLANNER) });
+    expect(claim.statusCode).toBe(409);
+    expect(claim.json().error.code).toBe("WORKLIST_ITEM_READONLY");
+    // 真不存在的 id → 仍 404（保留原语义）。
+    const missing = await t.app.inject({ method: "POST", url: "/api/v1/growth/worklist/nope_xyz/claim", headers: H(PLANNER) });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().error.code).toBe("WORKLIST_ITEM_NOT_FOUND");
+  });
 });

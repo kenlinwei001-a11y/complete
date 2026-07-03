@@ -413,7 +413,16 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   const getWorklistItem = async (tenantId: string, id: string) => {
     const w = await deps.repos.growthWorklist.get(tenantId, id);
-    if (!w) throw new HttpError(404, "WORKLIST_ITEM_NOT_FOUND", `worklist item not found: ${id}`);
+    if (!w) {
+      // FIX（复验 BLOCK）：FEATURE/PLAN_SCAFFOLD 是 GrowthTicket 只读映射·非可认领在办项——
+      // 若误传工单 id（旧客户端），给**明确 409** 而非含糊 404（消除"认领 404 静默"），指明走各自工单流程。
+      const tk = (await deps.repos.growthTickets.listByTenant(tenantId)).find((t) => t.id === id);
+      if (tk) {
+        const tkKind = tk.scaffoldedDrafts && tk.scaffoldedDrafts.length > 0 ? "PLAN_SCAFFOLD" : "FEATURE";
+        throw new HttpError(409, "WORKLIST_ITEM_READONLY", `工单只读映射（${tkKind}）请走各自工单流程（审批/开发），不可在看板认领/补数据: ${id}`);
+      }
+      throw new HttpError(404, "WORKLIST_ITEM_NOT_FOUND", `worklist item not found: ${id}`);
+    }
     return w;
   };
 

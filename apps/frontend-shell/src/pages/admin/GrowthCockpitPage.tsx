@@ -100,19 +100,21 @@ export default function GrowthCockpitPage() {
   const fillRate = allItems.length ? Math.round((doneCount / allItems.length) * 100) : 0;
 
   const rowActions = (i: WorklistItem) => {
+    // FIX（复验 BLOCK）：FEATURE/PLAN_SCAFFOLD 是 GrowthTicket 只读映射（id=工单 id·非 growthWorklist 项）——
+    // 其生命周期走各自工单流程（审批/开发），绝不走 worklist claim/fill（否则认领→后端按 worklist id 查不到→404 静默）。
+    // 故按类型**先**分流：仅 DATA_GAP 真在办项才有认领→补→继续推演的完整闸控生命周期。
+    if (i.kind === "PLAN_SCAFFOLD") return <a className="btn sm" data-testid={`wl-approve-${i.id}`} href={i.deeplink ?? "/admin/actions"}>去审批</a>;
+    if (i.kind === "FEATURE") return <span className="muted" style={{ fontSize: 11 }} data-testid={`wl-feature-${i.id}`}>需开发（工单）</span>;
+    // DATA_GAP：真在办项·完整人工闸生命周期。
     if (i.status === "OPEN") return <button className="btn sm" data-testid={`wl-claim-${i.id}`} onClick={() => claim.mutate(i.id)} disabled={claim.isPending}>认领</button>;
     if (i.status === "DONE") return <button className="btn sm" data-testid={`wl-rerun-${i.id}`} onClick={() => rerun.mutate(i.fromQuestion)} disabled={rerun.isPending}>继续推演</button>;
-    // CLAIMED / IN_PROGRESS：按类型派生
-    if (i.kind === "DATA_GAP") {
-      return (
-        <span style={{ display: "inline-flex", gap: 6 }}>
-          <button className="btn primary sm" data-testid={`wl-fill-${i.id}`} onClick={() => fill.mutate(i.id)} disabled={fill.isPending}>{fill.isPending ? "补数中…" : "补数据缺口"}</button>
-          <button className="btn sm" data-testid={`wl-release-${i.id}`} onClick={() => release.mutate(i.id)} disabled={release.isPending}>释放</button>
-        </span>
-      );
-    }
-    if (i.kind === "PLAN_SCAFFOLD") return <a className="btn sm" data-testid={`wl-approve-${i.id}`} href={i.deeplink ?? "/admin/actions"}>去审批</a>;
-    return <span className="muted" style={{ fontSize: 11 }} data-testid={`wl-feature-${i.id}`}>需开发</span>;
+    // CLAIMED / IN_PROGRESS
+    return (
+      <span style={{ display: "inline-flex", gap: 6 }}>
+        <button className="btn primary sm" data-testid={`wl-fill-${i.id}`} onClick={() => fill.mutate(i.id)} disabled={fill.isPending}>{fill.isPending ? "补数中…" : "补数据缺口"}</button>
+        <button className="btn sm" data-testid={`wl-release-${i.id}`} onClick={() => release.mutate(i.id)} disabled={release.isPending}>释放</button>
+      </span>
+    );
   };
 
   return (

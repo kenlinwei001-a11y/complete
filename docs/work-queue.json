@@ -2545,10 +2545,10 @@
     {
       "id": "GROWTH-WORKLIST-HUMAN-FILL",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
-      "blockReason": "复验BLOCK(仅前端统一看板一处·后端闭环已验好): DATA_GAP人工闸全链真验通过(wl1空租户: run不自动补→WorklistItem OPEN→claim CLAIMED owner=admin→人工fill→provisionWorld seed42→35类型物化Base12→item DONE·齿检3/3·事件growth.fill_claimed/fill_triggered都在)。缺陷=统一看板FEATURE行(gtk_前缀·tickets存储)的认领按钮POST到/b/v1/growth/worklist/gtk_xxx/claim→404 WORKLIST_ITEM_NOT_FOUND且UI静默吞错(真浏览器net捕获)。修法二选一: 前端按kind路由FEATURE行到/growth/tickets/:id/claim(GrowthCockpitPage认领mutation) 或 后端worklist claim按id前缀委派tickets store;并补错误toast(不静默)+齿检覆盖FEATURE行认领。",
+      "blockReason": "",
       "doc": "docs/PRD-growth-worklist-human-fill.md",
       "title": "自成长发动机:按状态/认领人筛的在办看板 + 人工点击触发补数据缺口(去自动补)",
       "note": "用户亲定:『需要一个按状态/认领人筛的在办看板·人点击后再触发补数据缺口·而不是自动补』。现状 growth/scenario-grow.ts:54 fill() 在 runGrowth LOOP 内自动跑 SOFT fillData(:96-97)+空租户 provisionWorld → 改为登记在办项(WorklistItem·status=OPEN·kind=DATA_GAP)·终态 NEEDS_HUMAN;人在看板认领→点『补数据缺口』→才真跑 fillData/provisionWorld(seed确定性R6)→DONE→可继续推演重跑。HARD DataRequest/scaffold DRAFT审批/缺功能工单本就人工闸·纳入同一看板统一呈现+筛(状态/认领人/类型)。整页量化PRD见 docs/PRD-growth-worklist-human-fill.md(§2看板逐元素+§3端点+《本体引用与影响》)。回写§J/G-9发育闭环(自动补→人工闸控补)+§4新事件growth.fill_claimed/fill_triggered+ontology:slices。",
