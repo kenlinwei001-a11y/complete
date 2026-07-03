@@ -2308,8 +2308,8 @@
     {
       "id": "METHOD-MC-STOCHASTIC",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/PRD-method-library-stochastic-mc.md",
