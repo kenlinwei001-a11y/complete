@@ -299,7 +299,16 @@ function SchemeCard({
             </span>
           )}
           <span className={styles.genScore} style={{ color: viol ? violColor : color }} data-testid={`scheme-score-${s.no}`}>
-            {viol ? "⛔" : s.scores.total}
+            {/* PROVENANCE-SWEEP（R13）：综合分决策数字接六要素溯源（真公式来自 plan_generate 求解器·非编）。 */}
+            <Provenance
+              testId={`gen-score-prov-${s.no}`}
+              src="plan_generate 求解器（方案收敛）"
+              formula="综合分 = round((盈利+规模+现金+增长+稳健)/5) − 硬违规惩罚 × 违规数"
+              inputs={["盈利/规模/现金/增长/稳健 五维分", "硬约束违规数 hardViol"]}
+              note={dataMode && dataMode !== "LIVE" ? `诚实位：${dataMode}·合成经营基线推演（非真实决策依据）` : "由经营目标基线与路径骨架确定性收敛"}
+            >
+              {viol ? "⛔" : s.scores.total}
+            </Provenance>
           </span>
           <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{open ? "▼ 收起" : "▸ 展开"}</span>
         </div>

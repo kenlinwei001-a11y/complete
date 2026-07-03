@@ -25,8 +25,9 @@
 共根：demo 缺 `livedIn:true` 合成作业 + 一批页需触发一次运行。前端多已诚实空态(非 bug)：
 - OEE14日趋势空(oee:equip 止 06-09·14天窗0点)；运营回顾整页空(`/a/v1/history/bundle` 404·"先运行 livedIn 合成")；rule-docs/llm-providers/decisions/evals/quarantine 后端`[]`；meta 落库共0需手动 sync。
 
-### T5 Provenance 溯源薄（→ PROVENANCE-SWEEP · P1）
+### T5 Provenance 溯源薄（→ PROVENANCE-SWEEP · P1）✅ 已治
 - 规划6页(quarterly/annual/plan-audit/plan-generate)决策数字(现金垫/毛利/缺口/评分)多缺溯源悬浮。**4 求解器 provenance 字段=0**(后端契约缺·前端无米下锅)+前端已有 ruleRef/src 未做成悬浮。ⓘ图标死交互(plan-generate×3/plan-audit×1 hover/click 无 tooltip)。**混合型**。
+- **处置（PROVENANCE-SWEEP）**：复核发现"后端字段=0/无米下锅"部分已过期——已落范式为**前端 `<Provenance>` 字面真派生**（8+ 已接点：lta-dev/gmStruct/IRR/plan-generate 五 KPI/MarginLedgerTable ⓘ 均活弹），求解器真值+真公式为静态已知，前端有米。故按此范式补齐**剩余裸奔决策数字**（7 视图 12 处）：plan-audit 体检评分、plan-generate 综合分、project-sim 产能裁决/缺口、order-chain 统一裁决、annual 情景需求+营收/CAPEX/IRR、quarterly 季度缺口、sop-balance ③缺口/④毛利·现金垫/⑤最终缺口——每处六要素 src/formula/inputs/rule 真派生（curl 逐值核对：audit score=29 由 22/7 系数、quarterly gap=需求−供给、order 真规则 C02/C03·C06/C16·C15/C18；**修正了两处 stale/编的 rule 与系数**）。ⓘ 死交互复核为**已闭合**（无裸 `<span>ⓘ</span>`，既有 ⓘ 均包 `<Provenance>` 活弹）。真浏览器 planner 登录 in-app nav 逐页 hover 实拍六要素弹（`docs/evidence/prov-*.png` 6 张·6/7 live，project-sim 需先跑 sim·同组件同范式）。traceability:check 绿·四包全绿·gates exit 0。**决策：不新增后端 provenance 契约字段**（复用已落前端字面范式·避免与 8+ 已接点不一致的 gold-plating）。
 
 ### T6 布局小瑕疵（→ UI-POLISH · P2 · 自身型）
 - dash 3.72屏仅3分区标题无 tab/折叠；sim-init 向导挤右上90%空白；geo-map 气泡+标签叠字碰撞；兜底统计/llm-providers 裸表头无空态；order-chain P90 `1.1615` 裸浮点。

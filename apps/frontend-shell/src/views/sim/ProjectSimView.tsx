@@ -944,7 +944,16 @@ function StepBody({
   return (
     <div data-testid="pm-step6">
       <div className={styles.okBar} style={{ borderColor: okColor, color: okColor }} data-testid="proj-verdict-bar">
-        {mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`}
+        {/* PROVENANCE-SWEEP（R13）：产能裁决/缺口决策数字接六要素溯源（真公式来自 capacity_forecast·非编）。 */}
+        <Provenance
+          testId="proj-verdict-prov"
+          src="capacity_forecast 求解器（蒙特卡洛产能预测）"
+          formula="缺口 = 累计需求 − P90 可产能力；ok = 缺口 ≤ 0（P90 为种子化蒙特卡洛经验分位）"
+          inputs={["各基地周产能 × 认证系数", "维护窗口", "需求批次/交期"]}
+          note={out.dataMode && out.dataMode !== "LIVE" ? `诚实位：${out.dataMode}·紧张度无真源时为估算（非真实决策依据）` : "紧张度/瓶颈来自真 OEE/利用率/良率"}
+        >
+          {mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`}
+        </Provenance>
       </div>
       {/* 规则即引用 P2：求解器真评估的规则闸门（PASS/WARN/BLOCK），改规则即改此处结论 */}
       <EvaluatedRules rules={out.evaluatedRules} ruleSetVersion={out.ruleSetVersion} />

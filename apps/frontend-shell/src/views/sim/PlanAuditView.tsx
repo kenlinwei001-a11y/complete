@@ -259,7 +259,16 @@ function AuditResult({
       {/* WO-DATAMODE-SWEEP：合成/估算披露横幅（移植风险看板范式）——非 LIVE 时诚实标"不作真实决策依据"。 */}
       <DecisionModeBanner dataMode={out.dataMode} testId="audit-datamode-banner" note="体检评分与硬矛盾/软风险裁决由合成计划基线推演，接入真实 S&OP 后转真实裁决" />
       <div className={styles.verdict} style={{ borderColor: color, background: "transparent" }} data-testid="audit-verdict">
-        <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score, out.M.length)}</b>
+        {/* PROVENANCE-SWEEP（R13）：体检评分/裁决决策数字接六要素溯源（真公式来自 plan_audit 求解器·非编）。 */}
+        <Provenance
+          testId="audit-score-prov"
+          src="plan_audit 求解器（四平衡全量扫描）"
+          formula="体检评分 = clamp(100 − scoreH×硬矛盾数 − scoreM×软风险数, 0, 100)；裁决 = 按 H/M 计数状态机"
+          inputs={["硬矛盾 H 数", "软风险 M 数", "扣分系数 scoreH/scoreM（场景包 solverParams 配置）"]}
+          note={out.dataMode && out.dataMode !== "LIVE" ? `诚实位：${out.dataMode}·基于合成/估算计划基线（非真实决策依据）` : "由代入的真实规划/财务/物料输入确定性裁决"}
+        >
+          <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score, out.M.length)}</b>
+        </Provenance>
         <SnapshotBadge snapshotVersion={snapshotVersion} tool="plan_audit" />
         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 5 }}>
           <span data-testid="audit-counts" className="mono">

@@ -593,7 +593,10 @@ function OrderFullchainPanel({ kpis, dagLayout, so, onSoChange, focus }: {
             })}
             <div className="panel" data-testid="ofc-verdict" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${ofcVerdictColor}` }}>
               <div style={{ fontSize: 10.5, color: "var(--muted)" }}>统一结论</div>
-              <b style={{ color: ofcVerdictColor }}>{data.verdict}</b>
+              {/* PROVENANCE-SWEEP（R13）：全链统一裁决决策数字接六要素溯源（真派生·非编）。 */}
+              <Provenance testId="ofc-verdict-prov" src="order_fullchain 求解器（订单全链推演）" formula="统一结论 = 产能/齐套/财务 三判裁决聚合（任一 BLOCK → 不建议接）" inputs={["产能 P90 vs 需求（C02/C03）", "物料缺口 gapTon（C06/C16）", "毛利% vs 底线% · 信用（C15/C13/C18）"]} rule="C02/C03·C06/C16·C15/C18">
+                <b style={{ color: ofcVerdictColor }}>{data.verdict}</b>
+              </Provenance>
             </div>
           </div>
           {data.conds.length > 0 && (

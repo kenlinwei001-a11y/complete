@@ -74,7 +74,10 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
                 <div className={styles.qbarLbl}>
                   <b className="mono">{r.q}</b>
                   <span className="badge" style={{ color: TIER_COLOR[tier], borderColor: "currentcolor" }} data-testid={`qgap-${r.q}`} data-tier={tier}>
-                    {r.gap > 0 ? zh.quarter.gap(r.gap) : zh.quarter.surplus(-r.gap)}
+                    {/* PROVENANCE-SWEEP（R13）：季度缺口/过剩决策数字接六要素溯源（真派生·非编）。 */}
+                    <Provenance testId={`qgap-prov-${r.q}`} src="quarterly 求解器（季度滚动平衡）" formula="缺口 = 季度需求 − 季度可供给（产能爬坡 + LTA 长协覆盖）；>0 缺口 / <0 过剩" inputs={["季度需求", "季度产能爬坡", "LTA 长协覆盖"]} rule="C03/C27">
+                      {r.gap > 0 ? zh.quarter.gap(r.gap) : zh.quarter.surplus(-r.gap)}
+                    </Provenance>
                   </span>
                 </div>
                 <div className={styles.qbarTr}>

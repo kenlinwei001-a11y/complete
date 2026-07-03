@@ -661,7 +661,10 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
           </table>
           <div className={s3.flagged ? styles.noteRed : styles.noteInfo} data-testid="sop-gap">
             需求 <b className="mono">{fmt(s3.dem ?? 0)}</b> − 供给 <b className="mono">{fmt(s3.sup ?? 0)}</b> = 缺口{" "}
-            <b className="mono">{fmt(s3.gap ?? 0)}</b> 万套{s3.flagged ? `（${zh.sim.sop.gapRed} → 红标，自动进⑤议程）` : ""}
+            {/* PROVENANCE-SWEEP（R13）：③产销缺口决策数字接六要素溯源（真派生·非编）。 */}
+            <Provenance testId="sop-gap-prov" src="sop_balance 求解器（S&OP 五步·③产销平衡）" formula="缺口 = 月度需求 − 可供给" inputs={["月度需求 dem", "可供给 sup"]} rule="C21">
+              <b className="mono">{fmt(s3.gap ?? 0)}</b>
+            </Provenance> 万套{s3.flagged ? `（${zh.sim.sop.gapRed} → 红标，自动进⑤议程）` : ""}
           </div>
         </>
       )}
@@ -711,14 +714,20 @@ function Step4({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
               <tr>
                 <td>毛利率_roll</td>
                 <td>
-                  <b>{Number(s4.gmRoll ?? 0).toFixed(2)}%</b>（预算 {s4.gmBudget}%·容差 0.5pp）
+                  {/* PROVENANCE-SWEEP（R13）：④滚动毛利率决策数字接六要素溯源（真派生·非编）。 */}
+                  <Provenance testId="sop-gmroll-prov" src="sop_balance 求解器（④财务校核）" formula="滚动结构毛利率 = Σ(细分销量 × 细分毛利率) ÷ Σ销量" inputs={["细分需求结构", "细分毛利率"]} rule="C15">
+                    <b>{Number(s4.gmRoll ?? 0).toFixed(2)}%</b>
+                  </Provenance>（预算 {s4.gmBudget}%·容差 0.5pp）
                 </td>
                 <td style={{ color: s4.gmOk ? "var(--ok)" : "var(--danger)" }}>{s4.gmOk ? "✓" : "✗"}</td>
               </tr>
               <tr>
                 <td>现金垫 C18</td>
                 <td>
-                  <b>{s4.cashCushion} 亿</b>（底线 50 亿）
+                  {/* PROVENANCE-SWEEP（R13）：④现金垫决策数字接六要素溯源（真派生·非编）。 */}
+                  <Provenance testId="sop-cash-prov" src="sop_balance 求解器（④财务校核）" formula="现金安全垫 = 13 周现金流最低点（C18 底线 50 亿）" inputs={["逐周回款", "逐周支出/CAPEX"]} rule="C18">
+                    <b>{s4.cashCushion} 亿</b>
+                  </Provenance>（底线 50 亿）
                 </td>
                 <td style={{ color: s4.cashOk ? "var(--ok)" : "var(--danger)" }}>{s4.cashOk ? "✓" : "✗"}</td>
               </tr>
@@ -807,7 +816,11 @@ function Step5({
 
       {s5 && (
         <div className={styles.noteInfo} style={{ marginTop: 10 }} data-testid="sop-s5-result">
-          决议后供给 <b className="mono">{fmt(s5.supFinal ?? 0)}</b> 万套 · 最终缺口 <b className="mono">{fmt(s5.gapFinal ?? 0)}</b> 万套
+          决议后供给 <b className="mono">{fmt(s5.supFinal ?? 0)}</b> 万套 · 最终缺口{" "}
+          {/* PROVENANCE-SWEEP（R13）：⑤决议后最终缺口决策数字接六要素溯源（真派生·非编）。 */}
+          <Provenance testId="sop-gapfinal-prov" src="sop_balance 求解器（⑤执委会决议）" formula="最终缺口 = 需求 − 决议后供给（决议增补外协/加班/CAPEX 后）" inputs={["需求", "决议后供给 supFinal"]} rule="C21">
+            <b className="mono">{fmt(s5.gapFinal ?? 0)}</b>
+          </Provenance> 万套
         </div>
       )}
 

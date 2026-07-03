@@ -146,7 +146,11 @@ function ScenarioCard({ scenario: s }: { scenario: AnnualScenario }) {
         )}
       </div>
       <div className={styles.scenBig}>
-        {s.demand.toLocaleString("zh-CN")} <small>{zh.aop.demandUnit}</small>
+        {/* PROVENANCE-SWEEP（R13）：情景需求大数字接六要素溯源（真派生·非编）。 */}
+        <Provenance testId={`scen-demand-prov-${s.key}`} src="AnnualScenario 情景（年度经营情景）" formula="情景需求 = 基线年需求 × 情景增长系数（保守/基准/进取）" inputs={["基线年需求", "情景增长假设"]}>
+          <b>{s.demand.toLocaleString("zh-CN")}</b>
+        </Provenance>{" "}
+        <small>{zh.aop.demandUnit}</small>
       </div>
       {s.note && (
         <div className={styles.scenNote} data-testid={`scen-note-${s.key}`}>
@@ -163,7 +167,12 @@ function ScenarioCard({ scenario: s }: { scenario: AnnualScenario }) {
       </div>
       <div className={styles.scenRow}>
         <span>{zh.aop.finance}</span>
-        <div className="mono">{zh.aop.financeText(s.finance.revenue, s.finance.capex, s.finance.irr)}</div>
+        {/* PROVENANCE-SWEEP（R13）：营收/CAPEX/IRR 财务决策数字接六要素溯源（真派生·非编）。 */}
+        <div className="mono">
+          <Provenance testId={`scen-finance-prov-${s.key}`} src="capex_scenario 求解器（年度情景测算）" formula="营收 = 情景需求 × 单位售价；CAPEX = 产能项目投资集；IRR = 产能投资现金流内部收益率" inputs={["情景需求", "单位毛利/售价", "产能项目投资/产出"]} rule="C23">
+            {zh.aop.financeText(s.finance.revenue, s.finance.capex, s.finance.irr)}
+          </Provenance>
+        </div>
       </div>
       {s.capexScenario && s.capexScenario.projects.length > 0 && (
         <div className={styles.scenRow}>
