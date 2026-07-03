@@ -28,7 +28,7 @@ const reg = await import(`${base}/tools/registry.js`);
 const mat = await import(`${base}/intents/materialize.js`);
 
 const scenes = seed.seedSceneEntries();
-const { agents, skills } = seed.seedRegistry();
+const { agents, skills, workflows } = seed.seedRegistry();
 const agentById = new Map(agents.map((a) => [a.id, a]));
 const builtinNames = new Set(reg.BUILTIN_TOOLS.map((t) => t.name));
 
@@ -110,8 +110,33 @@ for (const it of intents) {
   }
 }
 
+// ---- C. AGENT-UNIVERSAL-FALLBACK：兜底终点 = 一等全域探索智能体（非写死白名单）·防退回 ----
+//  ⑪ 出厂注册表含 agt_universal 且 status=PUBLISHED（兜底终点是可配置一等对象·D1）；
+//  ⑫ tools 含全部 BUILTIN（全工具面，退回「只 READ/COMPUTE 白名单」即缺 sim_*/build_domain 等→红·green→red 自证）；
+//  ⑬ tools 含全部出厂已发布 workflow 一条 {kind:WORKFLOW}（WORKFLOW-as-tool 触达兜底·D2）；
+//  ⑭ scopeDeclaration=全域（"*"）（触达动态 MCP 全名·非静态白名单可穷举）。
+//  注：MCP 一条/已绑定配置由运行期 reconcileUniversalAgent 随增删同步（跨系统·运行期·留 FDE/单测），本门守静态出厂骨架。
+const UNIVERSAL_ID = "agt_universal";
+const uni = agentById.get(UNIVERSAL_ID);
+if (!uni) {
+  fail(`兜底终点缺失：出厂注册表无 ${UNIVERSAL_ID}（全域探索智能体）——兜底终点必须是一等可配置 agent，非代码写死白名单（D1）。`);
+} else {
+  if (uni.status !== "PUBLISHED") fail(`${UNIVERSAL_ID} status=${uni.status}（兜底终点须 PUBLISHED）`);
+  const uniBuiltin = new Set((uni.tools ?? []).filter((t) => t.kind === "BUILTIN").map((t) => t.name));
+  const missingBuiltin = [...builtinNames].filter((n) => !uniBuiltin.has(n));
+  if (missingBuiltin.length > 0) {
+    fail(`${UNIVERSAL_ID} 工具面不全（缺 BUILTIN：${missingBuiltin.join(",")}）——「超级兜底 agent」须全工具面，退回 READ/COMPUTE 白名单即红。`);
+  }
+  const uniWorkflowIds = new Set((uni.tools ?? []).filter((t) => t.kind === "WORKFLOW").map((t) => t.workflowId));
+  const publishedWorkflowIds = workflows.filter((w) => w.status === "PUBLISHED").map((w) => w.id);
+  const missingWf = publishedWorkflowIds.filter((id2) => !uniWorkflowIds.has(id2));
+  if (missingWf.length > 0) fail(`${UNIVERSAL_ID} 缺已发布 workflow-as-tool：${missingWf.join(",")}（D2·WORKFLOW 须触达兜底）`);
+  const st = uni.scopeDeclaration?.toolNames ?? [];
+  if (!st.includes("*")) fail(`${UNIVERSAL_ID} scopeDeclaration.toolNames 非全域（"*"）——兜底须触达动态 MCP 全工具面，静态白名单穷举不了。`);
+}
+
 if (red) {
-  console.error("\n✗ scene-agent-config:check 未过：上述对话入口/一等 Intent 全绑定链不完整/半截。修法：mode≠WORKFLOW_ONLY；AGENT_FIRST 配 defaultAgentId；每 Intent 6 项绑定齐（mode 钉死·{agent|workflow}按 mode PUBLISHED·slice 存在·≥1 eval 规则·solver∈注册·skill 存在）——缺项跑 POST /b/v1/intents/reconcile 自动 scaffold DRAFT。");
+  console.error("\n✗ scene-agent-config:check 未过：上述对话入口/一等 Intent 全绑定链/兜底终点不完整/半截。修法：mode≠WORKFLOW_ONLY；AGENT_FIRST 配 defaultAgentId；每 Intent 6 项绑定齐；兜底终点须一等 PUBLISHED agt_universal（全 BUILTIN + 已发布 workflow + scope 全域，非写死白名单）。");
   process.exit(1);
 }
-console.log(`✓ scene-agent-config:check 通过（${scenes.length} 个对话入口配置一致 + ${intents.length} 个一等 Intent 全绑定链 6 项齐：mode 钉死 · {agent|workflow} PUBLISHED · slice/skill/solver/eval 规则齐）。`);
+console.log(`✓ scene-agent-config:check 通过（${scenes.length} 个对话入口配置一致 + ${intents.length} 个一等 Intent 全绑定链 6 项齐 + 兜底终点 ${UNIVERSAL_ID} 全工具面 PUBLISHED·scope 全域）。`);

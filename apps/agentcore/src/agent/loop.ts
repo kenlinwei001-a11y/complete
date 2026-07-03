@@ -341,7 +341,8 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
 
     if (spec && spec.binding.kind === "WORKFLOW") {
       // workflow exposed as a tool — nested invocation, shares the top budget
-      if (opts.scopeToolNames && !opts.scopeToolNames.includes(block.name)) {
+      // AGENT-UNIVERSAL-FALLBACK：scopeToolNames=["*"]（全域探索智能体）通配放行 workflow-as-tool。
+      if (opts.scopeToolNames && !opts.scopeToolNames.includes("*") && !opts.scopeToolNames.includes(block.name)) {
         const tcId = newId("tc");
         await opts.repos.toolCalls.insert({
           id: tcId,

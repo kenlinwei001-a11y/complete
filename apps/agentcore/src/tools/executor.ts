@@ -107,7 +107,11 @@ export class GuardedToolExecutor {
     const binding = options?.binding ?? { kind: "BUILTIN" as const };
 
     // 0) agent scopeDeclaration gate (platform PRD §6.3 Q2 — independent of user perms)
-    if (this.opts.scopeToolNames && !this.opts.scopeToolNames.includes(toolName)) {
+    // AGENT-UNIVERSAL-FALLBACK：全域探索智能体（agt_universal）scopeDeclaration.toolNames=["*"] 表「全域」——
+    // 兜底终点必须触达全工具面（含动态 MCP 全名 mcp__server__tool），非静态白名单可穷举。工具可见性由暴露的
+    // tool 列表（含 entitlement 过滤·R3）权威决定，故 "*" 通配放行；sim 等 entitlement 关的工具根本不在暴露
+    // 列表里（暗发·R3），即便模型幻觉出名字亦在下游端点二次门控（双保险）。
+    if (this.opts.scopeToolNames && !this.opts.scopeToolNames.includes("*") && !this.opts.scopeToolNames.includes(toolName)) {
       return this.finish(toolName, input, { error: ErrorCodes.AGENT_SCOPE_VIOLATION }, "DENIED", started, false);
     }
 

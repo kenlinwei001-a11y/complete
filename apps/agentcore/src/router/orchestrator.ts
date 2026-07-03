@@ -20,9 +20,7 @@ import {
   buildClassifierSystem,
   buildClassifierUser,
   classifierConversationSummary,
-  AGENT_SYSTEM_CORE,
 } from "../agent/prompts.js";
-import { runAgentLoop, type AgentToolSpec } from "../agent/loop.js";
 import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
 import { TaskEvents } from "../events.js";
@@ -33,7 +31,8 @@ import type { LlmSettings } from "../llm/providers.js";
 import type { Metrics } from "../metrics.js";
 import type { Repos } from "../persistence/repos.js";
 import { BudgetTracker } from "../tools/budget.js";
-import { BUILTIN_TOOLS, SIM_COMMANDER_TOOLS } from "../tools/registry.js";
+import { SIM_COMMANDER_TOOLS } from "../tools/registry.js";
+import { reconcileUniversalAgent, SEED_UNIVERSAL_AGENT_ID } from "../agents/universal.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import { clarifyPromptFor, fillSlots } from "./slots.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
@@ -736,8 +735,8 @@ export class Orchestrator {
   private async runPathB(taskId: string, auth: RequestAuth, classification?: ClassificationResult): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
-    const pkg = await this.deps.repos.packages.get(task.packageId);
-    if (!pkg) return;
+    // package 必须存在（分类阈值/意图册来源）；兜底工具面已不再取自 package 白名单（改由 agt_universal 一等配置）。
+    if (!(await this.deps.repos.packages.get(task.packageId))) return;
 
     // entitlement PRD §5: qos.agent-fallback off → every would-be path-B branch
     // returns the WORKFLOW_ONLY behavior (请换个问法 + available intents), no agent run.
@@ -760,97 +759,102 @@ export class Orchestrator {
       }
     }
 
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_AGENT", path: "AGENT" });
+    // AGENT-UNIVERSAL-FALLBACK：兜底终点重接——命不中预设、且本入口无场景专属 agent → 委派一等全域探索智能体
+    // agt_universal（替代旧「写死白名单 ∩ {READ,COMPUTE} + create_action_draft + discover」）。全工具面
+    // （全 BUILTIN + 已发布 workflow + 已绑定 MCP）由 reconcileUniversalAgent 随行同步（D1/D2/D3）；
+    // sim 工具 entitlement 暗发（R3）经 toolVisibilityFilter 剔除；护栏（写仅 create_action_draft·限额·OBO·审计）不变。
+    await this.runUniversalAgent(task, auth, enabledFeatures, classification);
+  }
+
+  /**
+   * AGENT-UNIVERSAL-FALLBACK：全域探索智能体兜底路由（人机对话入口命门）。
+   * 命不中预设意图、且本入口未配场景专属 agent 时的终点——委派一等可配置的 PUBLISHED agent `agt_universal`
+   * （engine.runRegisteredAgent，与 runSceneAgent 同机制：MCP 展开 + scope 门 + skills + 规则 POST_CHECK）。
+   * 护栏：① sim 工具仅 sim.commander 开通时可见（R3 暗发，toolVisibilityFilter 剔除）；② 写仅 create_action_draft
+   * （R4·工具层内建）；③ 预算限额（agent.budget）；④ OBO 透传 / 租户隔离 / 审计 decision-trace（agentRuns 记 agentId）不变；
+   * ⑤ 无 LLM 仍诚实降级（runAgentLoop 内建 LLM_PURPOSE_UNBOUND·不泄漏 SDK 串）。落 fallbackTrace 供 /ops/fallback-stats。
+   */
+  private async runUniversalAgent(
+    task: QueryTask,
+    auth: RequestAuth,
+    enabledFeatures: FeatureSet,
+    classification?: ClassificationResult,
+  ): Promise<void> {
+    // 兜底前懒 reconcile：把 agt_universal 的 tools 面与「已发布 workflow + 已绑定 MCP 配置」对齐（幂等·R6），
+    // 并对非 demo 租户/首次落兜底懒播种——保证「调用所有 MCP」始终触达兜底（D2）。
+    await reconcileUniversalAgent(this.deps.repos, task.tenantId);
+
+    await this.deps.repos.tasks.patch(task.id, { status: "EXECUTING_AGENT", path: "AGENT" });
     this.deps.metrics.recordRouting(false);
-    await this.deps.events.emit(taskId, "routing.completed", { path: "AGENT", note: "进入探索模式" });
+    await this.deps.events.emit(task.id, "routing.completed", { path: "AGENT", note: "进入全域探索模式" });
 
-    // 增量4 §5：AI 推演指挥台 —— sim 工具仅在租户开通 sim.commander(+sim.sandbox) 时对 agent 可见/可用
-    // （关→工具不存在，R3 暗发）。entitlement 先于 authz；DataCore 侧每端点仍各自门控（双保险）。
-    // 注意 enabledFeatures="ALL"（mock 默认/降级）→ 全开；显式 Set 时要求两键齐备。
+    // 增量4 §5：sim 工具仅在租户开通 sim.commander(+sim.sandbox) 时可见（关→不存在·R3 暗发）。
+    // enabledFeatures="ALL"（mock 默认/降级）→ 全开；显式 Set 时要求两键齐备。
     const simCommanderOn = simCommanderEnabled(enabledFeatures);
-
-    // 工具集：whitelist ∩ {READ, COMPUTE} + create_action_draft（写降级出口）；final_answer 由循环追加。
-    // 增量4 §5：sim 工具的可见性由 entitlement 权威决定（关→不存在，R3 暗发）——即便 package 白名单含它，
-    // entitlement 关也必须剔除；故先把 sim 工具从通用白名单分支排除，仅经 simCommanderOn 分支放行。
     const simNames = SIM_COMMANDER_TOOLS as readonly string[];
-    const tools: AgentToolSpec[] = BUILTIN_TOOLS.filter(
-      (t) =>
-        (!simNames.includes(t.name) && pkg.toolWhitelist.includes(t.name) && (t.sideEffect === "READ" || t.sideEffect === "COMPUTE")) ||
-        t.name === "create_action_draft" ||
-        // 能力发现 §1：discover 是元工具，始终可用（不受 package 白名单约束）
-        t.name === "discover" ||
-        // 增量4 §5：sim 指挥台工具——entitlement 开则可用（关则不存在），权威门，先于 package 白名单
-        (simCommanderOn && simNames.includes(t.name)),
-    ).map((t) => ({
-      name: t.name,
-      description: t.descriptionForLLM,
-      inputSchema: t.inputSchema,
-      binding: { kind: "BUILTIN" as const },
-    }));
-
     const budget = new BudgetTracker();
-    const executor = this.deps.engine.makeExecutor(taskId, auth, budget);
-    // resolution order (amends QOS-PRD §6): package field → tenant ModelBinding → env default
-    const model = await this.deps.llmSettings.roleModel(task.tenantId, "agent", pkg.agentModel);
-
-    // 增量 §1.4：同 conversationId 后续任务不复用上一任务原始 messages —— 注入前情摘要块
     const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
-    const result = await runAgentLoop({
-      taskId,
-      model,
-      tenantId: task.tenantId,
-      system: AGENT_SYSTEM_CORE,
-      userContent: buildAgentUser(task, priorSummary || undefined),
-      tools,
-      llm: this.deps.engine.deps.llm,
-      executor,
-      budget,
-      repos: this.deps.repos,
-      metrics: this.deps.metrics,
-      emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
-      isCancelled: () => this.cancelled.has(taskId),
-    });
+    const resolvedRefs: ResolvedRef[] = [];
 
-    await this.deps.repos.agentRuns.insert(result.run);
-    await this.deps.repos.fallbackTraces.insert({
-      id: newId("fbt"),
-      taskId,
-      tenantId: task.tenantId,
-      packageId: task.packageId,
-      query: task.query,
-      view: task.context.view,
-      executedPlanSketch: result.sketch,
-      outcome: result.outcome === "FAILED" ? "FAILED" : result.outcome,
-      createdAt: new Date().toISOString(),
-      normalizedQuery: normalizeQuery(task.query),
-      // S4.2: deterministic pseudo-embedding for /ops/fallback-stats vector-neighbor clustering
-      embedding: pseudoEmbed(normalizeQuery(task.query)),
-    });
+    try {
+      const result = await this.deps.engine.runRegisteredAgent({
+        taskId: task.id,
+        agentId: SEED_UNIVERSAL_AGENT_ID,
+        version: "latest",
+        prompt: buildAgentUser(task, priorSummary || undefined),
+        ctx: auth,
+        nesting: { callChain: [], budget },
+        emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
+        isCancelled: () => this.cancelled.has(task.id),
+        onResolvedRef: (r) => resolvedRefs.push(r),
+        // R3 暗发：sim 工具关 entitlement → 从暴露列表剔除（模型看不到=不存在）；其余全工具面放行。
+        toolVisibilityFilter: (name) => simCommanderOn || !simNames.includes(name),
+      });
 
-    if (this.cancelled.has(taskId)) {
-      await this.deps.repos.tasks.patch(taskId, { status: "CANCELLED", completedAt: new Date().toISOString() });
-      await this.deps.events.emit(taskId, "task.cancelled", { reason: "user cancelled" });
-      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "CANCELLED" });
-      return;
-    }
+      await this.deps.repos.agentRuns.insert(result.run);
+      await this.deps.repos.fallbackTraces.insert({
+        id: newId("fbt"),
+        taskId: task.id,
+        tenantId: task.tenantId,
+        packageId: task.packageId,
+        query: task.query,
+        view: task.context.view,
+        executedPlanSketch: result.sketch,
+        outcome: result.outcome === "FAILED" ? "FAILED" : result.outcome,
+        createdAt: new Date().toISOString(),
+        normalizedQuery: normalizeQuery(task.query),
+        // S4.2: deterministic pseudo-embedding for /ops/fallback-stats vector-neighbor clustering
+        embedding: pseudoEmbed(normalizeQuery(task.query)),
+      });
 
-    await this.deps.repos.tasks.patch(taskId, {
-      status: "COMPLETED",
-      answer: result.answer,
-      classification,
-      completedAt: new Date().toISOString(),
-    });
-    for (const block of result.answer.blocks) {
-      if (block.type === "action_draft") {
-        await this.deps.events.emit(taskId, "action_draft.created", {
-          draftId: block.draftId,
-          actionType: block.actionType,
-        });
+      if (this.cancelled.has(task.id)) {
+        await this.deps.repos.tasks.patch(task.id, { status: "CANCELLED", completedAt: new Date().toISOString() });
+        await this.deps.events.emit(task.id, "task.cancelled", { reason: "user cancelled" });
+        this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "CANCELLED" });
+        return;
       }
+
+      await this.deps.repos.tasks.patch(task.id, {
+        status: "COMPLETED",
+        answer: result.answer,
+        classification,
+        resolvedRefs: dedupeRefs(resolvedRefs),
+        completedAt: new Date().toISOString(),
+      });
+      for (const block of result.answer.blocks) {
+        if (block.type === "action_draft") {
+          await this.deps.events.emit(task.id, "action_draft.created", {
+            draftId: block.draftId,
+            actionType: block.actionType,
+          });
+        }
+      }
+      await this.deps.events.emit(task.id, "answer.final", result.answer);
+      this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
+      await this.recordExperience(task.id);
+    } catch (err) {
+      await this.failFromError(task.id, err, "AGENT_ERROR");
     }
-    await this.deps.events.emit(taskId, "answer.final", result.answer);
-    this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
-    await this.recordExperience(taskId);
   }
 
   /**

@@ -2960,7 +2960,7 @@
     {
       "id": "AGENT-UNIVERSAL-FALLBACK",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "INTENT-MATERIALIZE-BINDING-COMPLETE"

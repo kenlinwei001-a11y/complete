@@ -10,6 +10,7 @@ import { McpRuntime } from "./mcp/runtime.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
 import { distillExperienceCases, ensureScenarioPackageSeed, SEED_TENANT, seedRegistry, seedSceneEntries } from "./mocks/seed.js";
+import { reconcileUniversalAgent } from "./agents/universal.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureMaterializedIntents } from "./intents/reconcile.js";
 import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
@@ -35,6 +36,9 @@ async function main(): Promise<void> {
   for (const scn of seedSceneEntries()) {
     if (!(await repos.sceneEntries.byView(scn.tenantId, scn.viewKey))) await repos.sceneEntries.upsert(scn);
   }
+  // AGENT-UNIVERSAL-FALLBACK：兜底终点 agt_universal 的 tools 面与「已发布 workflow + 已绑定 MCP 配置」对齐
+  // （幂等·R6）——boot 时同步一次；MCP 增删后由兜底路由前的懒 reconcile 兜底（≤ 单次兜底查询延迟）。
+  await reconcileUniversalAgent(repos, SEED_TENANT);
   // 场景启动器 P2：出厂 20 场景 upsert 为一等 PUBLISHED Scenario（幂等；SCENARIO_CATALOG 单一来源）。
   for (const sc of seedScenarios()) {
     if (!(await repos.scenarios.byKey(sc.tenantId, sc.scenarioKey))) await repos.scenarios.upsert(sc);

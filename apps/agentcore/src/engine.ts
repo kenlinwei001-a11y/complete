@@ -43,6 +43,12 @@ export interface RunRegisteredAgentOpts {
   isCancelled?: () => boolean;
   /** 引用模式增量 §2.2：执行时解析到的实际版本留痕回调（agent/skill/rule/workflow）。 */
   onResolvedRef?: (ref: ResolvedRef) => void;
+  /**
+   * AGENT-UNIVERSAL-FALLBACK：暴露给模型的工具「可见性」过滤（在 expandAgentTools 之后、路由之前生效）。
+   * 用于 entitlement 暗发（R3）——如全域探索智能体 agt_universal 的 sim 工具仅在 sim.commander 开通时可见。
+   * 返回 false 的工具从暴露列表剔除（模型看不到 = 不存在），与既有 path-B 白名单剔除同语义。缺省=全放行。
+   */
+  toolVisibilityFilter?: (toolName: string) => boolean;
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
@@ -154,7 +160,11 @@ export class ExecutionEngine {
   async runRegisteredAgent(opts: RunRegisteredAgentOpts): Promise<AgentLoopResult> {
     const agent = await this.resolveAgent(opts.agentId, opts.version);
     const model = await this.deps.llmSettings.roleModel(agent.tenantId, "agent", agent.model || undefined);
-    const expanded = await this.expandAgentTools(agent);
+    const expandedAll = await this.expandAgentTools(agent);
+    // AGENT-UNIVERSAL-FALLBACK：entitlement 暗发（R3）——剔除对本租户不可见的工具（如 sim 未开通）。
+    const expanded = opts.toolVisibilityFilter
+      ? expandedAll.filter((t) => opts.toolVisibilityFilter!(t.name))
+      : expandedAll;
     const mcpSpecs = expanded.filter((t) => t.binding.kind === "MCP");
     // §2.2 留痕：实际执行的 agent 版本
     opts.onResolvedRef?.({ kind: "agent", key: agent.key, version: agent.version });

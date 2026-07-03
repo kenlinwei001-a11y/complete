@@ -10,6 +10,7 @@ import {
   type WorkflowDefinition,
 } from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
+import { buildUniversalAgent, buildUniversalAgentTools, seedSkillIds } from "../agents/universal.js";
 import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import type { ExperienceCaseRow } from "../persistence/repos.js";
@@ -1089,6 +1090,23 @@ export function seedRegistry(now = new Date().toISOString()): {
       ruleKeys: [], // 地理总览无专属裁决规则
       objectTypes: ["Base", "Line", "Process", "Model", "Order"],
       skillId: "skl_seed_capacity", // WO-SCENE-D：跨基地产能总览，挂产能分析方法论
+    }),
+  );
+
+  // AGENT-UNIVERSAL-FALLBACK：出厂幂等播种全域探索智能体 agt_universal（PUBLISHED·R14 零业务常数）。
+  // 兜底终点（orchestrator runPathB 命不中预设且无场景 agent）从代码写死白名单升级为本一等可配置 agent。
+  // tools = 全部 BUILTIN + 3 个已发布 seed workflow（{kind:WORKFLOW}）；MCP 配置一条 {kind:MCP} 由 boot/兜底
+  // 前的 reconcileUniversalAgent 随「已绑定 MCP 配置」动态同步（seed 时 demo 无 MCP 配置 → 静态仅 BUILTIN+workflow）。
+  // scope=全域（"*"）→ 触达全工具面（含动态 MCP 全名）。skills 绑 5 个 seed 方法论（其余经 load_skill 按需取）。
+  agents.push(
+    buildUniversalAgent({
+      tenantId: SEED_TENANT,
+      tools: buildUniversalAgentTools({
+        workflowIds: workflows.filter((w) => w.status === "PUBLISHED").map((w) => w.id),
+        mcpConfigIds: [], // demo 出厂无 MCP 配置；reconcileUniversalAgent 随增删同步（D2）
+      }),
+      skillIds: seedSkillIds,
+      model: agents[0]!.model, // 复用既有 agent 的 model 字段（不写 model-id 字面量·R14）
     }),
   );
 

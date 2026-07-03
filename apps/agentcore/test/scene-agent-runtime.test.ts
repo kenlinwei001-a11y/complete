@@ -189,9 +189,10 @@ describe("C7 · 接地答复实质：确定性求解器数字 + 规则裁决 + �
   });
 });
 
-describe("C3/C7 对照 · 无场景 agent 的视图走通用「进入探索模式」（证两分支真区分）", () => {
-  it("无 defaultAgentId 的视图上开放问句回落通用 path-B → note=「进入探索模式」", async () => {
-    // 该视图无 scene entry（byView 返回 undefined）→ runPathB 走通用 agent 分支（orchestrator.ts:703）。
+describe("C3/C7 对照 · 无场景 agent 的视图走全域探索智能体 agt_universal（证两分支真区分）", () => {
+  it("无 defaultAgentId 的视图上开放问句回落兜底 → agt_universal · note=「进入全域探索模式」", async () => {
+    // AGENT-UNIVERSAL-FALLBACK：该视图无 scene entry（byView 返回 undefined）→ runPathB 命不中且无场景 agent
+    // → 委派一等全域探索智能体 agt_universal（runUniversalAgent），note=「进入全域探索模式」（非场景入口模式）。
     t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
     t.llm.queueAgentTurn({
       content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "通用探索作答。" }], provenance: [] })],
@@ -201,8 +202,10 @@ describe("C3/C7 对照 · 无场景 agent 的视图走通用「进入探索模�
     expect(task.path).toBe("AGENT");
     const events = await t.repos.events.listAfter(taskId, 0);
     const note = (events.find((e) => e.event === "routing.completed")?.payload as { note: string }).note;
-    expect(note).toBe("进入探索模式"); // 对照组：通用兜底 note，不含「场景入口模式」
+    expect(note).toBe("进入全域探索模式"); // 兜底终点 = agt_universal（非写死白名单）
     expect(note).not.toContain("场景入口模式");
+    // decision-trace：兜底真跑的是一等 agt_universal（resolvedRefs 留痕 kind:agent key:universal_explorer）——证兜底终点重接
+    expect((task.resolvedRefs ?? []).some((r) => r.kind === "agent" && r.key === "universal_explorer")).toBe(true);
   });
 });
 
