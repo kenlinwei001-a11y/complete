@@ -197,6 +197,13 @@ return sorted[lo] + frac * (sorted[lo+1] - sorted[lo])   // lo+1 越界时取 so
 - `service.ts:2336` `predictedP90: round(daily * healthFactor, 6)` 与 `service.ts:2350` `predictedP90: round(total * healthFactor, 6)`：这两处把伪 P90 写进 `ForecastRecord`，供 `CALIBRATION` 配对观测算 MAPE——**伪分位在此污染「越用越准」的度量本身**。改为写 MC 真分位（对该 base/该日的场景样本取 type-7 分位），口径与 §6.1 一致（同 seed 派生·R6）。
 - `service.ts:2314` `healthFactor = num(out.healthFactor, ...)`：不再作为伪分位乘子传递；保留作「陈旧→cv 放大」的建模输入（§4 `mc.staleDispersionMult`）。
 
+**6.2b 全 P90 伪分位家族（审计 sweep 追加·`docs/AUDIT-fake-value-remnants.md` 簇 A）——一次清剿·勿再漏**
+同款 `value × 常数` 冒充 P90 的**其余 site**（真分位替代后，下游度量随之变真）：
+- `solvers/service.ts:1137` order_fullchain `p90 = round(producibleWeekly * 0.9, 4)`（**P0**·驱动"可达/紧张"交期裁决·连 param 都不是）→ 走 MC 真分位（capacity 源已是真 computeRollup，只差分位）。
+- `sop.ts:150` 需求滚动 `p90 = round(rolling * 0.936, 2)` → 需求侧 MC/预测区间或缺列时省略。
+- `vle-oracle.ts:191` 参考 oracle `p90 = p50 * healthFactor`（双算自证伪 P90）→ 随主口径改真分位。
+- `calibration/replay.ts:120` coverage 阈用 `pred * healthFactor` 当 P90、`calibration/metrics.ts:23` `coverageOf` over `predictedP90`、`seed.ts:385` demo `predictedP90 = predicted*healthFactor` → 这些是**下游消费者**：一旦 `predictedP90` 由 §6.2 变真分位，coverage/QUANTILE 提案自动变真（改上游即可，逐处加断言防回潮）。
+
 **6.3 降级路径**
 - 租户未配 `MethodBinding`（如 demo 出厂）→ 用内置 `capacity_mc` 默认模板 + 默认 SolverParam（向后兼容，不 400）；显式关 entitlement `method.stochastic` → 回落旧点估计并**诚实标 `method:"point_estimate"`**（不静默冒充分位）。
 

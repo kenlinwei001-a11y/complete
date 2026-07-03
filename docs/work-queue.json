@@ -2386,6 +2386,161 @@
           }
         ]
       }
+    },
+    {
+      "id": "RISK-TRAJECTORY-DEFAKE",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-fake-value-remnants.md",
+      "title": "risk_timeline 轨迹目标+事件具体值哈希造假(带假源归因·LIVE卡上仍造)——洛阳假红残留层",
+      "note": "假值sweep簇B+G(审计表见 docs/AUDIT-fake-value-remnants.md §2簇B)。KILL-MOCK-RED修了基线红/不红(live=true只在真数据)·但轨迹TARGET(riskTarget:284名字char-code hash→驱动crossDay穿越日)+事件具体值(riskEvents hn():齐套率kit=70+hash%12/OEE下调/停机天/覆盖天/在途批)在LIVE卡上仍hash造·且EVENT_SRC主动标'WMS/ERP采购'/'EAM/CMMS检修'=假源归因(比无披露更坏·谎称来自真系统)。另risk.ts:928信用占用比=hash(cust|so)驱动信用阻断裁决·:22 severity阈92/78+加成12内联(注释诡称域参数)·:129 tension常数内联·:698 delay带hash jitter·:810 fallback单价0.6潜伏·extended.ts:517 gap=demand*0.15·:541 yield手植0.95→0.85断点标source:MES求解器'检测'出植入断点。",
+      "acceptance": {
+        "goal": "risk_timeline/order_affected 的轨迹穿越日、事件具体值(齐套率/OEE/停机天/延误天)、信用占用比、severity 裁决——要么来自真数据确定性派生(R13可溯真源)、要么诚实空/不标具体值;绝不 hash 造数再贴 WMS/ERP/EAM 真源标签。阈值/系数入 c.params(R14)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "无 hash 冒充测量:rg 'hashString|charCodeAt' apps/datacore/src/solvers/risk.ts → riskTarget(284)/riskEvents 的 hn() 具体值(kit/oee/days/cover/lead/nb/load)/baseCredit(928)/delay jitter(698) 处均不再用名字hash派生决策显示值(可留作纯排序tie-break但不得进 desc/裁决数字)。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "无假源归因:risk_timeline invoke 返回的 events[].desc 若含具体数字(齐套率X%/OEE下调Y),则其 src 必为该数字的真实来源(读真 MaterialBalance/OEE 对象);无真值时 desc 不含编造具体数或 src 不标真系统名。对 dataMode:LIVE 卡逐值对照后端真对象。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "内联常数入params:risk.ts:22 severity阈(92/78/12)、:129 tension常数、:256 工时系数1.6、:810 fallback价 均从 c.params.risk 读(非内联字面量);debattery:check 绿。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "回归四包全绿 pnpm -r build && pnpm -r test exit 0;risk/affected 既有单测不回退;新增断言'无真源时不吐具体齐套率/OEE数字'。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "CALIB-HONEST-EMPTY",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-fake-value-remnants.md",
+      "title": "校准『越用越准』曲线造假回退(真引擎+假回退·UI无SYNTHETIC标)",
+      "note": "假值sweep簇C(审计表见 docs/AUDIT-fake-value-remnants.md §2簇C)。校准引擎真(有真pair时210-212真算MAPE)·但无真pair回退造漂亮下降线:calibration/service.ts:226 baselineSeries mape=11.2-i*0.32+噪声线性下降·livedin/engine.ts:150 部署态mape=7+5*exp(-(w-1)/16)+rebound手画52周·:799 realizedMape=simulatedAfter+0.3自证·:772 simulatedAfter=before-手填improvement·synthetic/service.ts:371/385 PENDING提案evidence(nPairs168/mapeBefore11.2/after8.9/bias手填)进审批UI当真决策证据·seed.ts:373 actual=predicted*(1-bias)反解。UI无SYNTHETIC标→看demo越用越准的人分不清真学会还是脚本画。",
+      "acceptance": {
+        "goal": "无真配对样本时收敛看板/mapeSeries诚实空或静止(非造下降线);demo/部署态的合成收敛线+提案evidence上'SYNTHETIC/演示'徽标(前端可见);realizedMape从真未来pair算(非simulatedAfter+常数)。真pair存在时照旧真算(不回退)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "无真pair诚实空:清租户校准pair后 GET /a/v1/calibration/convergence → 返回诚实空态/静止(非11.2→线性下降的编造曲线);有真pair后再取→真降。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "demo/部署态『越用越准』看板:合成收敛线与提案evidence旁常驻可见 SYNTHETIC/演示 徽标(真浏览器截图);planner不会把手填evidence误当真校准证据审批。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "realizedMape/simulatedMapeAfter 来源:livedin/engine.ts:799/772 不再 =simulatedAfter+0.3 / before-手填;从真replay pair算或明标未实现;四包build/test绿。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "SIM-REAL-SNAPSHOT",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-fake-value-remnants.md",
+      "title": "推演沙盘baseSnapshot取后端真对象态(非hash(oid)造伪初始世界)",
+      "note": "假值sweep簇D(审计表见 docs/AUDIT-fake-value-remnants.md §2簇D)。SandboxView.tsx:62 + SimInitWizard.tsx:46 `row[v]=Math.round(hash01(oid|v)*100)` 把对象id取hash当0-100初始态·POST为createSimSession baseSnapshot(592/141)·0-100值驱动节点热度红≥70+全下游tick·整个what-if从伪状态起跑。热度阈70内联(SimComparePanel:82/88·SandboxView:889)。治本:baseSnapshot取后端真对象当前属性态。",
+      "acceptance": {
+        "goal": "推演沙盘初始世界态=后端真实对象当前属性(经真读对象/快照API),非对象id的hash;无真属性→诚实空态/标未接入,不用hash伪造0-100驱动红热度。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "无hash造态:rg 'hash01|hashString' apps/frontend-shell/src/views/sim/ → SandboxView/SimInitWizard 不再hash(oid)造 baseSnapshot 行(0-100态)。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "真浏览器:开沙盘→网络面板 POST /a/v1/sim/sessions 的 baseSnapshot 逐值=后端该对象真属性(对照 GET object 真值);节点热度由真态定色非hash。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "热度阈70从sim config/认证读非内联;四包build/test绿·sim既有测不回退。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "FRONTEND-VALUE-AUTHORITY",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-fake-value-remnants.md",
+      "title": "前端消费后端权威值·清debattery-allow白名单常数·缺失诚实空态(非客户端重算)",
+      "note": "假值sweep簇E(审计表见 docs/AUDIT-fake-value-remnants.md §2簇E)。前端在后端权威缺失/存在时客户端重算绕单一真相源:DashboardView:209/217 marginLedger缺→内联{price:0.6,margin:13}重算gmRate无估算标;SopBalanceView:296/25 revAttain=revSum/内联revBudget240自算(后端已有revAttainPct);QuarterlyRolling:128 LTA偏差阈5%内联驱动红+提报;OrderChain:34/360 库存系数coef+瓶颈阈?? 85内联;DashboardView:800 缺口=需求-供给自算绕后端gap。多处//debattery-allow把内联常数白名单放行过门=门被自己后门绕过。",
+      "acceptance": {
+        "goal": "前端决策KPI(综合毛利率/收入达成率/LTA偏差/瓶颈色/缺口)一律消费后端权威字段;后端缺该值→诚实空态'暂无/未接入'(非内联常数客户端重算);debattery-allow白名单常数迁回后端layout/rule或登记冻结。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "gmRate/revAttain 逐值对照后端:DashboardView综合毛利率==后端marginLedger.gmRatePct·SopBalance收入达成率==后端revAttainPct(非客户端/revBudget240自算);后端缺→显'暂无'非编造数。真浏览器getComputedStyle+对照后端curl。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "debattery-allow收口:rg 'debattery-allow' apps/frontend-shell/src → 每处或迁除、或登记理由+到期;剩余白名单数不增;debattery:check绿。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "阈值入后端:LTA偏差阈(QuarterlyRolling:128)/瓶颈阈(OrderChain:360 ?? 85)/毛利容差(SopBalance:343 0.5pp)从后端view.layout/rule读或有override非裸字面量;四包build/test绿·前端不重定义契约类型。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "AGENTCORE-TRACE-LINEAGE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-fake-value-remnants.md",
+      "title": "agentcore推演过程trace真lineage缺失时勿发骨架电池常数冒充真血缘",
+      "note": "假值sweep簇F(审计表见 docs/AUDIT-fake-value-remnants.md §2簇F)。orchestration-skeleton.ts:55 内联base/line/型号/工序/求解器/agent名(4680/化成/老化/聚合求解器/瓶颈诊断Agent)·经project-trace.ts:235/237在真lineage缺失时(尤其AGENT路径·agents字段无条件)当'本节点真实用到的数据/求解器/agent'发给用户(任意租户/行业)·/queries/:taskId/trace可解释性DAG。P2(解释层非主决策数字但仍冒充真血缘)。",
+      "acceptance": {
+        "goal": "推演过程DAG节点的'用到的数据/求解器/agent'来自真实任务轨迹(task/toolCalls);无真lineage→节点显空/'本次未记录数据来源'·勿发骨架电池常数(任意行业)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "GET /b/v1/queries/:taskId/trace 的节点 data/solvers/agents:有真toolCalls时=真调用派生·无真lineage时为空/'未记录'(非4680/化成/聚合求解器骨架常数);AGENT路径done节点不发skel.agents。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "四包build/test绿;agentcore既有trace测不回退;新增断言无真lineage时trace节点不含硬编码电池lineage。"
+          }
+        ]
+      }
     }
   ]
 }
