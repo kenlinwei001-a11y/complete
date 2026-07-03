@@ -286,13 +286,17 @@ const SEG_PRICE: Record<string, number> = { 乘用车: 0.9, 商用车: 0.85, 储
 // WO-BIZVIEW-DOWNSTREAM ②：mock 对齐真后端 marginLedger（细分毛利率·真后端亦下发此字段）——逐细分毛利率。
 const SEG_MARGIN: Record<string, number> = { 乘用车: 18, 商用车: 15, 储能: 13 };
 
-const chain = (orderId: string, judgement: string, rootCause: string, remedy: string) => ({
+// WO-ORDERCHAIN-DAG-DRILL：mock 对齐真后端——每层带 typed ref（order→360 · judge→三判 · risk→风险看板 · action→审批）。
+const chain = (
+  orderId: string, judgement: string, rootCause: string, remedy: string,
+  opts?: { judge?: "cap" | "kit" | "fin"; category?: string; base?: string },
+) => ({
   orderId,
   layers: [
-    { kind: "order" as const, label: orderId },
-    { kind: "judgement" as const, label: judgement },
-    { kind: "rootCause" as const, label: rootCause },
-    { kind: "remedy" as const, label: remedy },
+    { kind: "order" as const, label: orderId, ref: { kind: "object" as const, key: orderId } },
+    { kind: "judgement" as const, label: judgement, ref: { kind: "judge" as const, key: orderId, extra: { judge: opts?.judge ?? "cap" } } },
+    { kind: "rootCause" as const, label: rootCause, ref: { kind: "risk" as const, key: opts?.category ?? "push", extra: { base: opts?.base ?? "常州基地" } } },
+    { kind: "remedy" as const, label: remedy, ref: { kind: "action" as const, key: "plan_change", extra: { so: orderId } } },
   ],
 });
 
@@ -304,8 +308,8 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     financeImpact: 4.2,
     rootCauseSummary: "化成柜张力 D+5 越线 + 交付高峰叠加，P90 口径周供给不足",
     rootChains: [
-      chain("SO-10001", "交期判：P90 周供给 < 周需求", "常州化成柜张力 D+5 越线", "化成夜班 + 预留 1 周缓冲"),
-      chain("SO-10004", "交期判：多基地风险叠加", "合肥到货间隙 → 可产网络收敛", "加急 200 吨正极对冲"),
+      chain("SO-10001", "交期判：P90 周供给 < 周需求", "常州化成柜张力 D+5 越线", "化成夜班 + 预留 1 周缓冲", { judge: "cap", category: "push", base: "常州基地" }),
+      chain("SO-10004", "交期判：多基地风险叠加", "合肥到货间隙 → 可产网络收敛", "加急 200 吨正极对冲", { judge: "cap", category: "ramp", base: "合肥基地" }),
     ],
   },
   {
@@ -314,7 +318,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     orderCount: 2,
     financeImpact: 1.6,
     rootCauseSummary: "框架价压价至接单毛利线（C15）以下",
-    rootChains: [chain("SO-10008", "毛利判：测算 9.8% < 商用车线 11%", "框架协议低价 + 议价偏移", "建议提价 2.2% 接单")],
+    rootChains: [chain("SO-10008", "毛利判：测算 9.8% < 商用车线 11%", "框架协议低价 + 议价偏移", "建议提价 2.2% 接单", { judge: "fin", category: "cost", base: "常州基地" })],
   },
   {
     category: "KIT",
@@ -322,7 +326,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     orderCount: 2,
     financeImpact: 1.1,
     rootCauseSummary: "三元正极长协执行偏差 −8% → 库存+在途覆盖不足",
-    rootChains: [chain("SO-10011", "齐套判：正极缺口 86 吨", "长协到货延迟（到货间隙事件）", "加急采购 · 最早齐套 06-29")],
+    rootChains: [chain("SO-10011", "齐套判：正极缺口 86 吨", "长协到货延迟（到货间隙事件）", "加急采购 · 最早齐套 06-29", { judge: "kit", category: "maint", base: "常州基地" })],
   },
   {
     category: "CREDIT",
@@ -330,7 +334,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     orderCount: 1,
     financeImpact: 1.3,
     rootCauseSummary: "在手应收 + 新单金额 > 授信额度（C13）",
-    rootChains: [chain("SO-10019", "信用判：超限 1.4 亿", "在手应收 9.8 亿叠加新单", "预付款 ≥40% 或追加担保")],
+    rootChains: [chain("SO-10019", "信用判：超限 1.4 亿", "在手应收 9.8 亿叠加新单", "预付款 ≥40% 或追加担保", { judge: "fin", category: "credit", base: "常州基地" })],
   },
 ]);
 

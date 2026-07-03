@@ -179,6 +179,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-agent-universal-fallback.md": {
+      "acceptanceIds": [
+        "A6"
+      ],
+      "covered": [
+        "A6"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-build-workflow-runtime.md": {
       "acceptanceIds": [
         "F55"

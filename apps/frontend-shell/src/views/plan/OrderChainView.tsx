@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { OrderProblemGroup, KpiCardDef, DagLayerLayout } from "@platform/contracts";
+import type { OrderProblemGroup, KpiCardDef, DagLayerLayout, OrderChainNodeRef } from "@platform/contracts";
 import { SEG_REGISTRY } from "@platform/contracts";
 import { runSolver, queryObjectsPaged, fetchPlanVersionCurrent } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
@@ -50,6 +50,13 @@ const CATEGORY_LABEL: Partial<Record<OrderProblemGroup["category"], string>> = {
   DELIVERY: "交期", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用",
 };
 
+/** 安全滚动（jsdom 无 scrollIntoView 实现·测试环境不炸）：WO-ORDERCHAIN-DAG-DRILL 下钻滚动定位复用。 */
+function safeScrollIntoView(el: Element | null | undefined) {
+  try {
+    (el as HTMLElement | null)?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  } catch { /* 测试/无 DOM 环境静默 */ }
+}
+
 /** 根因链四层着色：订单 → 判定 → 根因 → 对策 */
 const CHAIN_COLORS = ["#7E8BEE", "#E8B54A", "#DD7E9E", "#62BE77"];
 const CHAIN_TITLES = ["订单", "判定", "根因", "对策"];
@@ -65,6 +72,38 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   const [baseFilter, setBaseFilter] = useState<string>("");
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
   const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG
+  // WO-ORDERCHAIN-DAG-DRILL：根因链节点分层下钻路由（order→360 · judge→本页全链三判 · risk→风险看板 · action→行动审批）。
+  const navigate = useNavigate();
+  const chainAdopt = useActionDraft();
+  const { data: ocPlanVersion } = useQuery({ queryKey: ["a", "plan-version-current"], queryFn: fetchPlanVersionCurrent });
+  const [ofcSo, setOfcSo] = useState<string>(""); // 提升 OrderFullchainPanel 订单选择（judge 下钻 → 设该单）
+  const [ofcFocus, setOfcFocus] = useState<{ judge?: string; seq: number } | null>(null); // judge 下钻滚动/高亮信号
+  const routeChainRef = (ref?: OrderChainNodeRef) => {
+    if (!ref) return; // 缺 ref（旧响应非 order 层）→ 静默回退只读，不报错。
+    switch (ref.kind) {
+      case "object": // 订单 360（Order 主键 so；R17 统一 DrillBack 可回）
+        navigate(`/o/Order/${encodeURIComponent(ref.key)}`);
+        break;
+      case "judge": { // 该订单「全链推演」三判明细（关弹窗 → 设 OFC 订单 + 滚动/高亮对应判 cap/kit/fin）
+        setOpenProblem(null);
+        setOfcSo(ref.key);
+        setOfcFocus({ judge: String(ref.extra?.judge ?? ""), seq: Date.now() });
+        break;
+      }
+      case "risk": { // 风险看板对应瓶颈类（focus=基地 触发下钻返回 + category 携带瓶颈类目）
+        const qs = new URLSearchParams({ category: ref.key });
+        if (ref.extra?.base) qs.set("focus", String(ref.extra.base));
+        navigate(`/v/risk?${qs.toString()}`);
+        break;
+      }
+      case "action": // 行动/审批：采纳对策 → plan_change 草稿（C10 留痕）
+        chainAdopt.mutate({
+          actionTypeKey: "plan_change",
+          payload: { versionId: ocPlanVersion?.versionId ?? "plan-baseline", so: String(ref.extra?.so ?? ref.key), reason: "根因链·采纳对策（plan_change）" },
+        });
+        break;
+    }
+  };
   const [segMode, setSegMode] = useState<"app" | "base">("app"); // econ 看板分组：应用细分 / 风险基地
   // 轨M 增量1（假3 复审修·RL5）：库存占营收系数从后端 view.layout.econ 下发（换租户=换配置），
   // 不再用前端写死的 ECON_DEFAULT.coef；segPrice/segMargin 仍取 SEG_REGISTRY 契约单一来源（真价/利）。
@@ -166,7 +205,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       <DecisionModeBanner dataMode={out.dataMode} testId="oc-datamode-banner" note="受影响订单/待解决问题裁决由合成订单基线推演，接入真实订单数据后转真实裁决" />
 
       {/* ORD：订单全链推演（订单中心，order_fullchain 三判 + 统一结论 + 11 节点 DAG）。问题归并作超集保留在下方。 */}
-      <OrderFullchainPanel kpis={ofcKpis} dagLayout={ofcDagLayout} />
+      <OrderFullchainPanel kpis={ofcKpis} dagLayout={ofcDagLayout} so={ofcSo} onSoChange={setOfcSo} focus={ofcFocus} />
 
       {/* 基地筛选器（下拉 + 清除 chip） */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -410,7 +449,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 
       {openProblem && (
         <Modal title={`${openProblem.title} · ${zh.orderChain.dagTitle}`} onClose={() => setOpenProblem(null)} width={860}>
-          <ProblemDag group={openProblem} />
+          <ProblemDag group={openProblem} onRef={routeChainRef} />
         </Modal>
       )}
       {/* inference-process 横切：订单全链推演的编排过程 DAG */}
@@ -445,9 +484,15 @@ const DEFAULT_OFC_KPIS: KpiCardDef[] = [
   { key: "marginPct", label: "毛利率", formula: "细分毛利率（SEG_REGISTRY 单一来源）", inputs: ["应用细分", "SEG 毛利率"], ruleKey: "fin" },
   { key: "floorPct", label: "毛利底线", formula: "细分毛利底线（财务计划基线）", inputs: ["应用细分", "毛利底线"], ruleKey: "fin" },
 ];
-function OrderFullchainPanel({ kpis, dagLayout }: { kpis: KpiCardDef[]; dagLayout: DagLayerLayout }) {
+function OrderFullchainPanel({ kpis, dagLayout, so, onSoChange, focus }: {
+  kpis: KpiCardDef[]; dagLayout: DagLayerLayout;
+  // WO-ORDERCHAIN-DAG-DRILL：订单选择提升至父层（根因链 judge 下钻 → 设该单）+ 滚动/高亮聚焦信号。
+  so: string; onSoChange: (v: string) => void; focus: { judge?: string; seq: number } | null;
+}) {
   const adopt = useActionDraft();
-  const [so, setSo] = useState<string>("");
+  const navigate = useNavigate();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [highlightJudge, setHighlightJudge] = useState<string>(""); // judge 下钻高亮 cap|kit|fin
   const { data: orders } = useQuery({
     queryKey: ["a", "objects", "Order", "ofc-selector"],
     queryFn: () => queryObjectsPaged("Order", 1, 100, {}),
@@ -461,19 +506,55 @@ function OrderFullchainPanel({ kpis, dagLayout }: { kpis: KpiCardDef[]; dagLayou
   // 取当前定稿计划版本 versionId 携入 payload（同页 /a/v1/plan-versions/current 可取）。
   const { data: planVersion } = useQuery({ queryKey: ["a", "plan-version-current"], queryFn: fetchPlanVersionCurrent });
 
+  // WO-ORDERCHAIN-DAG-DRILL：judge 下钻 → 滚动定位本面板 + 高亮对应关联判（cap/kit/fin）。
+  useEffect(() => {
+    if (!focus) return;
+    safeScrollIntoView(panelRef.current);
+    if (!focus.judge) return;
+    setHighlightJudge(focus.judge);
+    const t = setTimeout(() => setHighlightJudge(""), 2600);
+    return () => clearTimeout(t);
+  }, [focus?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）时统一结论（不建议接/信用阻断）裁决色降级为中性灰。
   const ofcVerdictColor = decisionVerdictColor(data?.vc ?? "var(--txt)", data?.dataMode, "var(--muted)");
-  const nodes: DagNodeDef[] = (data?.dag.nodes ?? []).map((n) => ({
-    id: n.id, layer: dagLayout.kindLayers[n.kind] ?? 1, label: n.label,
-    color: n.kind === "verdict" ? ofcVerdictColor : n.kind === "judge" ? "#E8B54A" : n.kind === "order" ? "#7E8BEE" : "#5E8FE8",
-  }));
+  // ofc-dag 节点 typed ref（前端按既有 kind + data.so 派生·无需改后端 service.ts）：
+  //   order/建模facet(network/bom/economics/credit)→订单360 · judge(jcap/jkit/jfin)→本面板三判高亮 · verdict→采纳工单。
+  const JUDGE_NODE: Record<string, string> = { jcap: "cap", jkit: "kit", jfin: "fin" };
+  const nodes: DagNodeDef[] = (data?.dag.nodes ?? []).map((n) => {
+    const ref: DagNodeDef["ref"] =
+      n.kind === "verdict" ? { kind: "action", key: "plan_change", extra: { so: data?.so ?? "" } }
+        : n.kind === "judge" ? { kind: "judge", key: data?.so ?? "", extra: { judge: JUDGE_NODE[n.id] ?? "" } }
+          : { kind: "object", key: data?.so ?? "" };
+    return {
+      id: n.id, layer: dagLayout.kindLayers[n.kind] ?? 1, label: n.label, ref,
+      color: n.kind === "verdict" ? ofcVerdictColor : n.kind === "judge" ? "#E8B54A" : n.kind === "order" ? "#7E8BEE" : "#5E8FE8",
+    };
+  });
   const edges: DagEdgeDef[] = (data?.dag.edges ?? []).map((e) => ({ from: e.from, to: e.to }));
+  // ofc-dag 节点下钻（本面板内路由·治死交互）。
+  const onOfcNode = (n: DagNodeDef) => {
+    const ref = n.ref as OrderChainNodeRef | undefined;
+    if (!ref) return;
+    if (ref.kind === "object") { navigate(`/o/Order/${encodeURIComponent(ref.key)}`); return; }
+    if (ref.kind === "judge") {
+      const j = String(ref.extra?.judge ?? "");
+      setHighlightJudge(j);
+      safeScrollIntoView(document.querySelector('[data-testid="ofc-judges"]'));
+      setTimeout(() => setHighlightJudge(""), 2600);
+      return;
+    }
+    if (ref.kind === "action") {
+      safeScrollIntoView(document.querySelector('[data-testid="ofc-adopt"]'));
+      if (data) adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: planVersion?.versionId ?? "plan-baseline", so: data.so, verdict: data.verdict, reason: data.summary } });
+    }
+  };
 
   return (
-    <div className="panel" style={{ marginBottom: 14 }} data-testid="ofc-panel">
+    <div className="panel" ref={panelRef} style={{ marginBottom: 14 }} data-testid="ofc-panel">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
         订单全链推演（三关联判 → 统一结论）
-        <select data-testid="ofc-so-select" value={so} onChange={(e) => setSo(e.target.value)} style={{ fontSize: 12 }}>
+        <select data-testid="ofc-so-select" value={so} onChange={(e) => onSoChange(e.target.value)} style={{ fontSize: 12 }}>
           <option value="">{soList[0] ? `首单 ${soList[0]}` : "首单"}</option>
           {soList.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -520,14 +601,14 @@ function OrderFullchainPanel({ kpis, dagLayout }: { kpis: KpiCardDef[]; dagLayou
               {data.conds.map((c, i) => <li key={i}>{c}</li>)}
             </ul>
           )}
-          {/* 11 节点业务建模链 DAG */}
-          <LayeredDag nodes={nodes} edges={edges} layerTitles={dagLayout.layerTitles} testId="ofc-dag" />
+          {/* 11 节点业务建模链 DAG（WO-ORDERCHAIN-DAG-DRILL：节点可下钻——order/facet→360 · judge→三判高亮 · verdict→采纳） */}
+          <LayeredDag nodes={nodes} edges={edges} layerTitles={dagLayout.layerTitles} testId="ofc-dag" onNodeClick={onOfcNode} />
           {/* 三判明细表 */}
           <table className="cmp" data-testid="ofc-judges" style={{ marginTop: 8 }}>
             <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>
             <tbody>
               {/* 轨N 增量1·N-R1：规则号接 RuleRef（悬浮出定义/阈值/作用域/版本）·N-N1：关键值接 Provenance（接 order_fullchain 真值）。 */}
-              <tr>
+              <tr data-testid="ofc-judge-row-cap" style={highlightJudge === "cap" ? { outline: "2px solid var(--c-capacity)", background: "rgba(94,143,232,0.14)" } : undefined}>
                 <td>①交期·产能</td><td>{data.judges.cap.verdict}</td>
                 <td className="mono">
                   <Provenance testId="ofc-judge-cap" src="order_fullchain 求解器 · 交期产能判（Order×Model 可产基地周曲线）" formula="P90 = 产能周曲线 90 分位累计；vs 需求量" inputs={["可产基地节拍×OEE×良率", "爬坡曲线+检修窗", "订单需求量"]} rule={data.judges.cap.ruleRefs.join("/")}>
@@ -536,7 +617,7 @@ function OrderFullchainPanel({ kpis, dagLayout }: { kpis: KpiCardDef[]; dagLayou
                 </td>
                 <td className="mono">{data.judges.cap.ruleRefs.length > 0 ? <RuleRef code={data.judges.cap.ruleRefs.join("/")} /> : "—"}</td>
               </tr>
-              <tr>
+              <tr data-testid="ofc-judge-row-kit" style={highlightJudge === "kit" ? { outline: "2px solid var(--c-capacity)", background: "rgba(94,143,232,0.14)" } : undefined}>
                 <td>②齐套·MRP</td><td>{data.judges.kit.verdict}</td>
                 <td className="mono">
                   <Provenance testId="ofc-judge-kit" src="order_fullchain 求解器 · 齐套 MRP 判（MaterialBalance 净需求）" formula="缺口吨 = 净需求 − 长协覆盖 − 现货" inputs={["关键物料净需求", "长协覆盖", "现货库存", "在途 ETA"]} rule={data.judges.kit.ruleRefs.join("/")}>
@@ -545,7 +626,7 @@ function OrderFullchainPanel({ kpis, dagLayout }: { kpis: KpiCardDef[]; dagLayou
                 </td>
                 <td className="mono">{data.judges.kit.ruleRefs.length > 0 ? <RuleRef code={data.judges.kit.ruleRefs.join("/")} /> : "—"}</td>
               </tr>
-              <tr>
+              <tr data-testid="ofc-judge-row-fin" style={highlightJudge === "fin" ? { outline: "2px solid var(--c-capacity)", background: "rgba(94,143,232,0.14)" } : undefined}>
                 <td>③财务·经营</td><td>{data.judges.fin.verdict}</td>
                 <td className="mono">
                   <Provenance testId="ofc-judge-fin" src="order_fullchain 求解器 · 财务三闸（毛利/信用/价）" formula="细分毛利率 vs 底线；信用占用比；提价% = 达底线所需" inputs={["细分毛利率（SEG_REGISTRY）", "毛利底线", "客户信用占用比"]} rule={data.judges.fin.ruleRefs.join("/")}>
@@ -566,18 +647,21 @@ function OrderFullchainPanel({ kpis, dagLayout }: { kpis: KpiCardDef[]; dagLayou
   );
 }
 
-/** 逐单根因 DAG（LayeredDag 四层：订单 → 判定 → 根因 → 对策） */
-function ProblemDag({ group }: { group: OrderProblemGroup }) {
+/** 逐单根因 DAG（LayeredDag 四层：订单 → 判定 → 根因 → 对策）
+ *  WO-ORDERCHAIN-DAG-DRILL：每节点透传后端 typed ref → onNodeClick 分层路由下钻（死交互治本）。 */
+function ProblemDag({ group, onRef }: { group: OrderProblemGroup; onRef: (ref?: OrderChainNodeRef) => void }) {
   const nodes: DagNodeDef[] = [];
   const edges: DagEdgeDef[] = [];
   group.rootChains.forEach((chain, ci) => {
     let prev: string | null = null;
     chain.layers.forEach((layer, li) => {
       const id = `${ci}-${layer.kind}`;
-      nodes.push({ id, layer: li, label: layer.label, sub: li > 0 ? chain.orderId : undefined, color: CHAIN_COLORS[li] });
+      // 向后兼容：缺 ref 的旧响应仍让 order 层可点（凭 orderId 直达 360）；其余无 ref → 只读不新增死点。
+      const ref: OrderChainNodeRef | undefined = layer.ref ?? (layer.kind === "order" ? { kind: "object", key: chain.orderId } : undefined);
+      nodes.push({ id, layer: li, label: layer.label, sub: li > 0 ? chain.orderId : undefined, color: CHAIN_COLORS[li], ref, interactive: ref != null });
       if (prev) edges.push({ from: prev, to: id });
       prev = id;
     });
   });
-  return <LayeredDag nodes={nodes} edges={edges} layerTitles={CHAIN_TITLES} testId="problem-dag" />;
+  return <LayeredDag nodes={nodes} edges={edges} layerTitles={CHAIN_TITLES} testId="problem-dag" onNodeClick={(n) => onRef(n.ref as OrderChainNodeRef | undefined)} />;
 }

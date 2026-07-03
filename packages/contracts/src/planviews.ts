@@ -318,12 +318,25 @@ export const OrderProblemCategorySchema = z.enum([
   "credit", "cost", "frame", "crm", "lta", "maint", "ramp", "push",
   "DELIVERY", "MARGIN", "KIT", "CREDIT",
 ]);
+/**
+ * WO-ORDERCHAIN-DAG-DRILL：根因链节点 typed ref（后端每层派专属下钻目标·R6 确定性·从真链数据派生）。
+ * 分层路由：object→订单360 · judge→该订单全链三判(cap/kit/fin) · risk→风险看板对应瓶颈类 · action→行动审批(plan_change)。
+ * optional 向后兼容——旧响应无 ref → 前端回退仅 order 层可点（不新增死点）。
+ */
+export const OrderChainNodeRefSchema = z.object({
+  kind: z.enum(["object", "judge", "risk", "action"]),
+  key: z.string(),
+  extra: z.record(z.string(), z.unknown()).optional(),
+});
+export type OrderChainNodeRef = z.infer<typeof OrderChainNodeRefSchema>;
+
 export const OrderRootChainSchema = z.object({
   orderId: z.string(),
   layers: z.array(
     z.object({
       kind: z.enum(["order", "judgement", "rootCause", "remedy"]),
       label: z.string(),
+      ref: OrderChainNodeRefSchema.optional(),
     }),
   ),
 });

@@ -18,6 +18,10 @@ export interface DagNodeDef {
   color?: string;
   /** fail=红（失败步）/ warn=橙（被拒/超预算）/ dim=淡出 */
   state?: "fail" | "warn" | "dim";
+  /** WO-ORDERCHAIN-DAG-DRILL：typed 下钻 ref（透传·不改渲染契约·由 onNodeClick 消费分层路由）。 */
+  ref?: { kind: string; key: string; extra?: Record<string, unknown> };
+  /** onNodeClick 存在时此节点是否可交互（默认 true）。用于按数据可用性逐节点降级为只读（缺 ref 的旧响应回退）。 */
+  interactive?: boolean;
 }
 
 export interface DagEdgeDef {
@@ -93,18 +97,20 @@ export function LayeredDag({
       renderNode={(pn) => {
         const n = defById.get(pn.id)!;
         const c = stateColor(n);
+        // 逐节点可交互（WO-ORDERCHAIN-DAG-DRILL）：仅当传入 onNodeClick 且该节点未显式声明 interactive=false。
+        const clickable = !!onNodeClick && n.interactive !== false;
         return (
           <g
             key={n.id}
             transform={`translate(${pn.x},${pn.y})`}
-            className={`${styles.node} ${n.state === "dim" ? styles.dim : ""}`}
+            className={`${styles.node} ${n.state === "dim" ? styles.dim : ""} ${clickable ? "" : styles.static}`}
             data-testid={`${testId}-node-${n.id}`}
             data-layer={n.layer}
             data-state={n.state ?? "normal"}
-            role={onNodeClick ? "button" : undefined}
-            tabIndex={onNodeClick ? 0 : undefined}
-            onClick={() => onNodeClick?.(n)}
-            onKeyDown={(e) => e.key === "Enter" && onNodeClick?.(n)}
+            role={clickable ? "button" : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onNodeClick!(n) : undefined}
+            onKeyDown={clickable ? (e) => e.key === "Enter" && onNodeClick!(n) : undefined}
           >
             <rect width={NODE_W} height={NODE_H} rx={9} fill={nodeFillAlpha()} stroke={c} strokeWidth={1.4} />
             <text x={10} y={n.sub ? 18 : 26} className={styles.label} fill="var(--txt)">

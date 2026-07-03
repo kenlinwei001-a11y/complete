@@ -2845,8 +2845,8 @@
     {
       "id": "ORDERCHAIN-DAG-DRILL",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/WO-orderchain-dag-drill.md",

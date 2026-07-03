@@ -674,8 +674,26 @@ export interface OrderProblemGroupOut {
   /** 该根源类的规则号（溯源·RuleRef）。 */
   ruleRefs?: string;
   rootCauseSummary: string;
-  rootChains: { orderId: string; layers: { kind: "order" | "judgement" | "rootCause" | "remedy"; label: string }[] }[];
+  rootChains: {
+    orderId: string;
+    layers: {
+      kind: "order" | "judgement" | "rootCause" | "remedy";
+      label: string;
+      // WO-ORDERCHAIN-DAG-DRILL：逐层 typed ref（下钻分层路由·R6 确定性从真链数据派生·可选向后兼容）。
+      ref?: { kind: "object" | "judge" | "risk" | "action"; key: string; extra?: Record<string, unknown> };
+    }[];
+  }[];
 }
+
+/**
+ * WO-ORDERCHAIN-DAG-DRILL：根源类 → 全链三判归属（cap 交期产能 / kit 齐套 / fin 财务经营）。
+ * 判定层下钻定位到该订单「全链推演」对应关联判——确定性映射（非文案解析）。
+ */
+const JUDGE_OF_ROOT: Record<string, "cap" | "kit" | "fin"> = {
+  credit: "fin", cost: "fin", frame: "fin", lta: "fin", // 信用/成本/框架/长协 → 财务经营判
+  maint: "kit", // 齐套/维护 → 齐套 MRP 判
+  crm: "cap", ramp: "cap", push: "cap", // 合同交期/爬坡/排产 → 交期产能判
+};
 
 export function affectedOrders(
   c: SolverContext,
@@ -946,13 +964,18 @@ function buildOrderProblems(
       buckets.set(cat, b);
     }
     b.rows.push(row);
+    const so = str(row.so);
+    // WO-ORDERCHAIN-DAG-DRILL：逐层 typed ref（确定性 R6·全部从真链数据 so/cat/bName 派生·零随机）。
+    //   order → 订单 360（Order 主键 so）；judgement → 该订单全链三判（cat→cap|kit|fin 归属）；
+    //   rootCause → 风险看板对应瓶颈类（category=根源类·extra.base 定位基地）；remedy → 行动审批（plan_change·携 so）。
+    const judge = JUDGE_OF_ROOT[cat] ?? "cap";
     b.chains.push({
-      orderId: str(row.so),
+      orderId: so,
       layers: [
-        { kind: "order", label: `订单 ${str(row.so)} · ${str(row.cust)} · ${num(row.qty)} 套（交期 ${str(row.due)}）` },
-        { kind: "judgement", label: judgement },
-        { kind: "rootCause", label: rootCause },
-        { kind: "remedy", label: remedy },
+        { kind: "order", label: `订单 ${so} · ${str(row.cust)} · ${num(row.qty)} 套（交期 ${str(row.due)}）`, ref: { kind: "object", key: so } },
+        { kind: "judgement", label: judgement, ref: { kind: "judge", key: so, extra: { judge } } },
+        { kind: "rootCause", label: rootCause, ref: { kind: "risk", key: cat, extra: { base: bName } } },
+        { kind: "remedy", label: remedy, ref: { kind: "action", key: "plan_change", extra: { so } } },
       ],
     });
   };

@@ -417,6 +417,20 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-agent-universal-fallback.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1430,6 +1444,7 @@
     "G-3": [
       "PRD-A15-cli-universal-operation-shell.md",
       "PRD-agent-data-generation-tools.md",
+      "PRD-agent-universal-fallback.md",
       "PRD-attribution-routing-plan-audit.md",
       "PRD-discover-real-type-names.md",
       "PRD-empty-tenant-bootstrap.md",

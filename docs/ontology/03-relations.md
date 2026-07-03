@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `639f1e0eea6eef93`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2664cc597c219234`。
 
 ---
 
@@ -153,5 +153,17 @@ capacity_forecast: p50/p90 由「点估计×0.93 常数(伪分位)」→ 上链�
   ⚠ MC 作用域禁 Math.random/Date.now/new Date(RL·method-determinism:check 守)；cv→0 塌回点估计(=旧 p50)
 ```
 > 许可证红线：MIT 署名 / CDLA 取派生 Results / **Gurobi 不碰** / **不训练**（喂上游内容进训练管线=禁），门 `solver-license:check`（§7）。
+
+**逐单根因链节点可导航（前端下钻链·WO-ORDERCHAIN-DAG-DRILL·闭 G-death-interaction）**
+```
+affected_orders.problems[].rootChains[].layers[] --后端 typed ref(R6 确定·so/cat/base 派生)--> {
+  order.ref{object,so}       --onNodeClick--> /o/Order/{so}（订单 360·R17 DrillBack 可回）
+  judgement.ref{judge,so,judge:cap|kit|fin} --> order_fullchain 三关联判（关弹窗+设 OFC so+滚动高亮对应判）
+  rootCause.ref{risk,cat,base} --> /v/risk?category={cat}&focus={base}（风险看板对应瓶颈类）
+  remedy.ref{action,plan_change,so} --> adopt.mutate(plan_change)（行动审批·C10 留痕·R4 走草稿不直改）
+}
+order_fullchain.dag.nodes[] --前端按 kind+so 派生 ref--> { order/建模facet→订单360 · judge→三判高亮 · verdict→采纳工单 }
+  ⚠ 曾断：LayeredDag 节点条件式交互，problem-dag/ofc-dag 未传 onNodeClick → 静态 <g> 空操作（死交互·已闭）
+```
 
 ---
