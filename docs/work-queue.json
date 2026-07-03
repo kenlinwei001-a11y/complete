@@ -2304,6 +2304,88 @@
           }
         ]
       }
+    },
+    {
+      "id": "METHOD-MC-STOCHASTIC",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/PRD-method-library-stochastic-mc.md",
+      "title": "方法库·随机模拟族:种子化蒙特卡洛换掉P90启发式(p50×0.93冒充分位数)",
+      "note": "根因单(用户钉:如果解决根因则做·不作假)。capacity.ts:260 p90=round(p50*healthFactor,4)·healthFactor=battery.ts:99 的0.93/0.90固定haircut→冒充90分位·零采样方差·还是电池魔数(R14味)。治本:把§J优化融合域泛化为『方法库』·加随机模拟族一等对象 StochasticMethodTemplate(抽象·零业务常数)·复用OntologyBinding(MethodBinding·DF.8接地)·离散度入SolverParam(可被CALIBRATION校准·替代0.93)·seeded mulberry32逐迭代采样→type-7真经验分位。整页量化PRD见 docs/PRD-method-library-stochastic-mc.md(契约/SolverParam默认值/MC算法/分布族闭式/方向约定/《本体引用与影响》)。回写§J+新门method-determinism:check+pnpm ontology:slices重生成切片。",
+      "acceptance": {
+        "goal": "决策者拿到的P90是真实分位(种子化蒙特卡洛对yield/OEE/可用率/出勤/利用率采样的经验90分位·带N/seed/离散度源溯源)·而非p50×0.93固定haircut;同模板换绑定跨行业各出真分位(求解器零改·R14);同输入同seed字节一致(R6);离散度可校准(越用越准也调方差模型)。",
+        "criteria": [
+          {
+            "id": "A1",
+            "type": "curl",
+            "assert": "根因证否:新鲜数据(旧口径给p90=p50×0.93)下MC结果 p90严格<p50 且 p90/p50≠0.93;把 mc.dispersion.* 整体调大重跑→p90/p50比值随之变化(证真分布非固定haircut·旧码两次都0.93)。响应 method=='monte_carlo'。"
+          },
+          {
+            "id": "A2",
+            "type": "curl",
+            "assert": "R6确定性:同(tenant,modelId,args,seed,paramsVersion)连调capacity_forecast/invoke两次→jq -S 后 diff 空(p10/p50/p90逐字节一致)。"
+          },
+          {
+            "id": "A3",
+            "type": "unit",
+            "assert": "分位正确性:quantileType7对已知样本数组返回精确type-7线性插值值;cv=0退化 mc.dispersion.*全0→p10=p50=p90 且=旧点估计p50(无方差塌回点估计)。"
+          },
+          {
+            "id": "A4",
+            "type": "curl",
+            "assert": "R14行业无关:同一StochasticMethodTemplate·A租户绑Process.yield/B租户(异行业异属性)绑各自属性→各出真分位·求解器源码零改(仅MethodBinding不同);debattery:check绿(P90路径不再含0.93电池魔数)。"
+          },
+          {
+            "id": "A5",
+            "type": "gate",
+            "assert": "新门 method-determinism:check exit 0 且有牙齿:MC作用域用rngFromInput/mulberry32·无Math.random/Date.now/new Date·样本.sort后取分位;把seed行改Math.random()重跑该门→变红。并入 pnpm gates。"
+          },
+          {
+            "id": "A6",
+            "type": "gate",
+            "assert": "回写+切片:SYSTEM-ONTOLOGY.md §J已泛化为方法库含StochasticMethodTemplate+随机模拟链路+§7门+§8 G-12注记;pnpm ontology:slices重生成docs/ontology/后 ontology-slices:check exit 0(母体↔切片不漂)。"
+          },
+          {
+            "id": "A7",
+            "type": "gate",
+            "assert": "回归四包全绿:pnpm -r build && pnpm -r test exit 0(datacore新增MC/quantile/binding单测计入不减基线·agentcore/frontend/contracts不回退);m11-calibration.test.ts绿(离散度可校准未破R4/R6);opt-determinism/opt-template/solver-license不回退。"
+          },
+          {
+            "id": "A8",
+            "type": "gate",
+            "assert": "不作假收口:rg 'p50 \\* healthFactor' 在capacity.ts的p90生成处零命中;结果对象含 method:'monte_carlo' 与 dispersionSource 非空(R13溯源)·前端决策数字悬浮出『真实分位(蒙特卡洛 N·seed·离散度源)』。"
+          }
+        ],
+        "method": [
+          {
+            "for": "A1",
+            "run": "cd apps/datacore && PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=$(openssl rand -hex 32) SERVICE_TOKEN=svc node dist/server.js & 待起。取一个有认证产线的 modelId。curl -s -XPOST :4001/a/v1/solvers/capacity_forecast/invoke -H 'X-Debug-User:demo:admin:admin' -H 'Content-Type: application/json' -d '{\"args\":{\"modelId\":\"<modelId>\",\"qty\":100000,\"weeks\":6,\"seed\":42}}' | jq '{p50:.data.p50,p90:.data.p90,ratio:(.data.p90/.data.p50),method:.data.method}' → 期望 method==monte_carlo·ratio!=0.93·p90<p50。经 SolverParam 调大 mc.dispersion.* 重跑→ratio 应变化。"
+          },
+          {
+            "for": "A2",
+            "run": "上式连调两次·各 | jq -S .data → diff <(a) <(b) 空(退0)。"
+          },
+          {
+            "for": "A5",
+            "run": "node scripts/check-method-determinism.mjs; echo exit=$? → 0。牙齿:临时把 method-mc.ts 里 rngFromInput 那行换 Math.random()→重跑应 exit!=0·还原。"
+          },
+          {
+            "for": "A6",
+            "run": "pnpm ontology:slices && node scripts/build-ontology-slices.mjs --check; echo exit=$? → 0。"
+          },
+          {
+            "for": "A7",
+            "run": "cd /home/user/complete && pnpm -r build && pnpm -r test; echo exit=$? → 0。"
+          },
+          {
+            "for": "A8",
+            "run": "rg -n 'p50 \\* healthFactor' apps/datacore/src/solvers/capacity.ts → p90 生成处应零命中。"
+          }
+        ]
+      }
     }
   ]
 }
