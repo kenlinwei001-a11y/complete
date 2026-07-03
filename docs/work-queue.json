@@ -2887,7 +2887,7 @@
       "blockReason": "",
       "doc": "docs/PRD-datadep-manifest-readiness.md",
       "title": "推演入口数据依赖清单+通用就绪探测(数据补齐拱心石·大面积一脊)",
-      "note": "用户问:如何大面积根据前端推演入口补齐数据·仿真前端可见·后端存储·不硬编码/不写前端。审核方定位:补数据器官平台已全有(synthetic.runJob值域库R6落库origin=SYNTHETIC·provision-world·data-boundary HARD/SOFT·probe.classifyGap缺口·GapCard触发生成→继续推演·certification沙盘就绪·bootstrap冷启动·MODULE_PROVISIONERS)——缺唯一拱心石:每个推演入口无声明式数据依赖清单。求解器数据需求是 loadContext 写死22类(solvers/service.ts:1613-1628)·输出侧有DF.6覆盖门输入侧一无;场景卡假设特定seed id存在(scenarios-catalog:61)·探测run-first(除沙盘)。治(六站一脊·同一闭环覆盖所有入口):①声明 DataDependency 清单(contracts/datadep.ts新·roleType/minRows/params/slices·本体绑定零业务常数·入IndustryPack R14→换行业0码;扩SolverArtifact.requires;loadContext改读清单并集治本杀Hα/Hγ硬编码)②通用就绪探测 checkReadiness(泛化沙盘certification present-vs-needed到所有入口·复用GapFinding/CL.3)③HARD/SOFT复用data-boundary④gaps喂GROWTH-WORKLIST看板人工闸⑤SOFT填统一走synthetic.runJob替通用正则fill-data⑥继续推演→FRONTEND-VALUE-AUTHORITY消费权威。门 datadep-manifest:check(每入口必声明清单·镜像DF.6到输入侧·green→red)。整页量化PRD见 docs/PRD-datadep-manifest-readiness.md(六站图+现状锚点+《本体引用与影响》)。脊先合·GROWTH-WORKLIST/LAUNCHER/INTENT-MATERIALIZE rebase消费(文件树不相交可并行但逻辑消费脊输出)。回写§2.E DataDependency+§3 sys.solving.invoke输入契约段+§7新门+§8 G-8(闭包扩入口→数据全链)/G-9状态+ontology:slices。",
+      "note": "用户问:如何大面积根据前端推演入口补齐数据·仿真前端可见·后端存储·不硬编码/不写前端。审核方定位:补数据器官平台已全有(synthetic.runJob值域库R6落库origin=SYNTHETIC·provision-world·data-boundary HARD/SOFT·probe.classifyGap缺口·GapCard触发生成→继续推演·certification沙盘就绪·bootstrap冷启动·MODULE_PROVISIONERS)——缺唯一拱心石:每个推演入口无声明式数据依赖清单。求解器数据需求是 loadContext 写死22类(solvers/service.ts:1613-1628)·输出侧有DF.6覆盖门输入侧一无;场景卡假设特定seed id存在(scenarios-catalog:61)·探测run-first(除沙盘)。治(六站一脊·同一闭环覆盖所有入口):①声明 DataDependency 清单(contracts/datadep.ts新·roleType/minRows/params/slices·本体绑定零业务常数·入IndustryPack R14→换行业0码;扩SolverArtifact.requires;loadContext改读清单并集治本杀Hα/Hγ硬编码)②通用就绪探测 checkReadiness(泛化沙盘certification present-vs-needed到所有入口·复用GapFinding/CL.3)③HARD/SOFT复用data-boundary④gaps喂GROWTH-WORKLIST看板人工闸⑤SOFT填统一走synthetic.runJob替通用正则fill-data⑥继续推演→FRONTEND-VALUE-AUTHORITY消费权威。门 datadep-manifest:check(每入口必声明清单·镜像DF.6到输入侧·green→red)。整页量化PRD见 docs/PRD-datadep-manifest-readiness.md(六站图+现状锚点+《本体引用与影响》)。脊先合·GROWTH-WORKLIST/LAUNCHER/INTENT-MATERIALIZE rebase消费(文件树不相交可并行但逻辑消费脊输出)。回写§2.E DataDependency+§3 sys.solving.invoke输入契约段+§7新门+§8 G-8(闭包扩入口→数据全链)/G-9状态+ontology:slices。 【站①填充引擎·用户提议已核实】倒推引擎已落=databuilder/comprehend.ts(LLM只产对象类型/规则/求解器需求·机械B栈倒推由确定性assemblePlanBody·缺LLM关键词地板兜底R6·自造名注册表确定性收敛·comprehend.ts:24-26,154-157);升级3处:①输入从story扩到功能相关本体切片(resolve_slice子图)+入口intent+租户state快照②输出扩产DataDependency清单填durable契约③喂DATADEP/INTENT reconcile/GROWTH同一引擎。护栏:LLM只design-time只产需求结构不产数值·DRAFT→R4才durable·runtime恒确定性不per-request调LLM·输出diff真实state(analyzeGap)·测试mock。分工:清单=WHAT(durable/R6/门/进runtime)·comprehend倒推=HOW填充(design-time/不进runtime)。",
       "acceptance": {
         "goal": "每个推演入口(solver/intent/scenario/view/sandbox)声明 DataDependency 清单→通用探测器读清单预检就绪→缺口经HARD/SOFT分流进人工闸看板→认领后统一合成物化(后端R6 origin=SYNTHETIC)→继续推演前端消费权威渲染。同一闭环大面积覆盖所有入口·新增入口只声明清单0逐面代码·清单入IndustryPack换行业0码·全程不硬编码不前端造值。",
         "criteria": [
@@ -2910,6 +2910,11 @@
             "id": "C4",
             "type": "gate",
             "assert": "R14:清单声明在IndustryPack数据·立第三非电池行业→清单随pack·git diff仅pack数据文件0个apps/**/src/**.ts改(挂INDUSTRY-PACK C2)。统一合成:SOFT填走synthetic.runJob值域接地(非app.ts:1193通用正则)·synthetic:true标。"
+          },
+          {
+            "id": "C5",
+            "type": "test",
+            "assert": "站①填充引擎(复用comprehend升级):喂功能相关本体切片+入口context→倒推产DataDependency清单草案(DRAFT)·diff真实state标EXISTS/TO_CREATE/MISSING·缺LLM关键词地板兜底R6字节一致·自造类型/solver名注册表确定性收敛(未命中→工单)。经R4审批才成durable声明。齿检:mock LLM同输入同草案·地板路径R6一致。"
           }
         ]
       }

@@ -65,6 +65,14 @@ DataDependencySchema = z.object({
 - **落点**：扩 `SolverArtifact`（`contracts/solvers.ts:347`）加 `requires: DataDependency`；场景卡从其 solver 的清单 + `presetContext` 派生；**清单声明在 IndustryPack 数据里（R14）→ 换行业=换 pack·0 码改**（挂 INDUSTRY-PACK-CONVERGE）。
 - **治本副产**：`loadContext` 从写死 22 类改为**读各求解器清单的并集**——杀掉 Hα/Hγ 硬编码；每求解器只加载自己声明的子集（更快·更清晰）。
 
+### 站①的填充引擎：LLM 倒推（复用 `comprehend`·升级输入到本体切片·design-time·DRAFT→R4）
+> 用户提议：把功能相关本体切片喂 Claude，倒推需补的数据/workflow/agent/rule/slice。**审核方核实：此引擎已落**——不必新建，只需升级输入/输出。
+
+- **已有**：`databuilder/comprehend.ts` 就是"LLM 倒推"——LLM 只产**难的语义部分**（对象类型/规则/求解器需求），**机械 B 栈倒推**（切片/意图/计划/场景/工作流/技能/Agent）由确定性 `assemblePlanBody` 完成，**缺 LLM/失败→关键词地板兜底（R6 字节一致，`comprehend.ts:24-26,157`）**；LLM 自造 solverKey→注册表**确定性别名收敛**（不依赖 LLM 措辞，未命中→自成长工单，`:154-157`）；产物 diff 真实现状 `analyzeGap`→EXISTS/TO_CREATE/MISSING；本体已投影为可查平台对象（`meta/service.ts:159` impact BFS，§10.5.4 北极星"用平台分析平台自身"）。
+- **升级 3 处小接线**：① **输入换基底**——comprehend 的 system context 从"一句 story/query"扩到**功能相关切片**（`resolve_slice` 取子图：对象类型+链路+不变量+该功能绑定要求）+ 该入口 intent/scenario + 租户 system-state 快照；② **输出扩形状**——除现有 BuildPlan 13-need，产出 **DataDependency 清单**（站① 形状）填 durable 契约；③ **喂三消费方**——DATADEP(填清单)、INTENT reconcile(补 workflow/agent/rule/skill 绑定)、GROWTH(该 scaffold 什么) 同一倒推引擎。
+- **铁律护栏（已内建·必须保持）**：LLM 只 design/reconcile 时跑、**只产需求结构不产数值**（真数据仍确定性合成/真人导入）；缺 LLM→关键词地板兜底 R6；**runtime 恒确定性**（不 per-request 调 LLM 判就绪——违 R6 + "确定性是地板"）；输出 diff 真实 state + 自造名确定性收敛 + 未命中→工单浮现（诚实不静默）；产 **DRAFT→R4 审批**才成 durable 声明式清单；测试 mock LLM；命名用平台术语禁外部产品名。
+- **分工**：**DATADEP 清单 = WHAT（durable·R6·门守·进 runtime）；comprehend 倒推 = HOW-to-populate（design-time·LLM·不进 runtime）**。叠加：倒推填清单（免手写 30+），清单守运行（LLM 不进热路径）。不能只有 LLM 无清单（runtime 不确定），也不必只手写（不 scale）。
+
 ### 站②通用就绪探测（本 PRD 新增）
 纯函数 `checkReadiness(entry, tenantCtx): EntryReadiness`：读清单 → `objects.listByType` 计数 vs `minRows`、参数存在性、切片可解析 → 产 `EntryReadiness{ready:boolean, gaps:GapFinding[]}`。**把沙盘 `certification.ts` 的 present-vs-needed 预检泛化到所有入口**；复用 `GapFinding`/`GapCode`（`contracts/growth.ts`）与 CL.3（空 vs 不存在）。端点 `POST /b/v1/entries/{ref}/readiness`（或求解器 invoke 前置）。
 
