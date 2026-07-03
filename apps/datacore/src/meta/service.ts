@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AuthCtx, LinkInstance, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { OutboxService } from "../outbox.js";
@@ -25,12 +26,25 @@ export interface MetaImpactResult {
  * 元租户 __platform__ 的 ObjectInstance + Link。markdown 单一来源,对象只读派生（R4 豁免）。
  * 复用 objects/links 仓储（不新建表,R9 已双实现）。
  */
+/**
+ * 本体源目录解析（cwd 无关·治本 G-DM）：以本模块 URL 为锚 → repo/docs，避免依赖 process.cwd()。
+ * 本文件构建后位于 apps/datacore/dist/meta/service.js（src 同深度 apps/datacore/src/meta），
+ * 上溯 4 级到仓库根再取 docs/。可用 env `DOCS_DIR` 显式覆盖（容器/非标准布局兜底）。
+ * 旧实现 join(process.cwd(),"..","..","docs") 假设 cwd=apps/datacore，从仓库根启动即得 /home/docs → ENOENT 500。
+ */
+export function resolveDocsDir(): string {
+  const override = process.env.DOCS_DIR?.trim();
+  if (override) return override;
+  const here = dirname(fileURLToPath(import.meta.url)); // apps/datacore/{dist|src}/meta
+  return join(here, "..", "..", "..", "..", "docs");
+}
+
 export class MetaOntologyService {
   constructor(
     private repos: Repos,
     private outbox: OutboxService,
-    /** 本体源目录（运行时需可读;默认 repo docs/。部署须随容器带 docs/）。 */
-    private docsDir: string = join(process.cwd(), "..", "..", "docs"),
+    /** 本体源目录（运行时需可读;默认经 import.meta.url 锚定 repo docs/,cwd 无关。部署须随容器带 docs/;env DOCS_DIR 可覆盖）。 */
+    private docsDir: string = resolveDocsDir(),
   ) {}
 
   private objId(n: MetaNode): string {

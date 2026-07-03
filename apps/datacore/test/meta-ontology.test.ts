@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { parseMetaOntology } from "../src/meta/parse.js";
+import { resolveDocsDir } from "../src/meta/service.js";
 import { makeApp, ADMIN, debugUser } from "./helpers.js";
 
 const DOCS = join(process.cwd(), "..", "..", "docs");
@@ -11,6 +14,37 @@ async function sources() {
     prdIndex: JSON.parse(await readFile(join(DOCS, "prd-ontology-index.json"), "utf8")),
   };
 }
+
+describe("META-SYNC-CWD-FIX · docsDir cwd 无关（治本 G-DM）", () => {
+  it("resolveDocsDir 经 import.meta.url 锚定,任意 cwd 下都解析到含 SYSTEM-ONTOLOGY.md 的真实 docs/", () => {
+    const orig = process.cwd();
+    try {
+      // 模拟从仓库根启动（CLAUDE.md 命令 node apps/datacore/dist/server.js）→ 旧实现会得 <root>/../../docs
+      process.chdir(tmpdir());
+      const dir = resolveDocsDir();
+      expect(isAbsolute(dir)).toBe(true);
+      // 真值必须真实存在（不作假）：docsDir 下确有本体母体与 prd-index
+      expect(existsSync(join(dir, "SYSTEM-ONTOLOGY.md"))).toBe(true);
+      expect(existsSync(join(dir, "prd-ontology-index.json"))).toBe(true);
+      // 断定 cwd 无关：即便 cwd 变了两次,结果一致
+      process.chdir("/");
+      expect(resolveDocsDir()).toBe(dir);
+    } finally {
+      process.chdir(orig);
+    }
+  });
+
+  it("DOCS_DIR env 覆盖优先（容器/非标准布局兜底）", () => {
+    const prev = process.env.DOCS_DIR;
+    try {
+      process.env.DOCS_DIR = "/custom/docs/override";
+      expect(resolveDocsDir()).toBe("/custom/docs/override");
+    } finally {
+      if (prev === undefined) delete process.env.DOCS_DIR;
+      else process.env.DOCS_DIR = prev;
+    }
+  });
+});
 
 describe("Dogfooding P1 · 系统本体自反落库", () => {
   it("parse 确定性（R6）：同 markdown+index 两次解析字节级一致 + 八类齐全", async () => {

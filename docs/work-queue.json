@@ -2282,7 +2282,7 @@
     {
       "id": "META-SYNC-CWD-FIX",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
