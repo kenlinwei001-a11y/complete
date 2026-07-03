@@ -2088,12 +2088,12 @@
       }
     },
     {
-      "owner": "",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "id": "PROVENANCE-SWEEP",
       "priority": "P1",
-      "status": "TODO",
+      "status": "WIP",
       "title": "求解器补provenance+前端悬浮溯源(规划6页决策数字缺溯源)",
       "doc": "docs/REVIEW-scan-findings.md",
       "note": "4求解器provenance字段=0·前端决策数字无悬浮·ⓘ死交互",
