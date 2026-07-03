@@ -12,7 +12,7 @@ import type { OutboxService } from "../outbox.js";
 import type { SolverService } from "../solvers/service.js";
 import type { CalibratableParamDef, CalibrationConfigShape, SolverContext } from "../solvers/types.js";
 import { num, str } from "../solvers/types.js";
-import { mulberry32, hashString, round } from "../prng.js";
+import { round } from "../prng.js";
 import { invalidState, notFound } from "../errors.js";
 import { getByPath } from "../paths.js";
 import { calibrationConfig, datePlus, daysBetween, DAY_MS, EVAL_WINDOW_DAYS, sliceKeyOf } from "./config.js";
@@ -30,6 +30,8 @@ import { meanProp, patchContext, replayPairs, sliceObjectsFor } from "./replay.j
 import { runPairing, simNow, type PairingResult } from "./pairing.js";
 
 const BASELINE_DAYS = 14;
+// CALIB-HONEST-EMPTY·C1：无真实校准配对时的**静态诚实基线常数**（水平线·不造"越用越准"下降趋势）。
+const BASELINE_STATIC_MAPE = 11.2;
 const DEFAULT_THRESHOLD_PCT = 8;
 const SOLVER_KEY = "capacity_forecast";
 
@@ -214,17 +216,20 @@ export class CalibrationService {
     return this.baselineSeries(tenantId, q.baseId);
   }
 
-  /** 无任何历史时的确定性基线（seed 派生；缓慢收敛 —— 演示线 T9 的静态起点）。 */
-  private async baselineSeries(tenantId: string, baseId?: string): Promise<{ date: string; mape: number }[]> {
+  /**
+   * 无任何真实校准配对/历史时的**诚实静态基线**（CALIB-HONEST-EMPTY·C1 收口·不作假红线）。
+   * 旧版造 `mape = 11.2 - i*0.32 + 噪声` 线性下降线冒充「越用越准」——无真 pair 却画漂亮收敛曲线，
+   * 看 demo 的人分不清真学会还是脚本画。治本：**静止（flat）·不造下降趋势**——无真配对如实显水平线
+   * （=诚实"未测得改进"），绝不伪造 learning。收敛真值只来自真配对（legacySeries 上游真算 MAPE）。
+   */
+  private async baselineSeries(tenantId: string, _baseId?: string): Promise<{ date: string; mape: number }[]> {
     const clock = await this.repos.simulationClocks.get(tenantId, tenantId);
     const t0 = Date.parse(`${(clock?.t0 ?? "2026-07-01").slice(0, 10)}T00:00:00Z`);
-    const seed = (clock?.seed ?? 42) ^ hashString(`calibration-baseline:${baseId ?? "all"}`);
-    const rng = mulberry32(seed);
     const out: { date: string; mape: number }[] = [];
     for (let i = 0; i < BASELINE_DAYS; i++) {
       const date = new Date(t0 - (BASELINE_DAYS - i) * DAY_MS).toISOString().slice(0, 10);
-      const mape = round(11.2 - i * 0.32 + (rng() - 0.5) * 1.2, 2);
-      out.push({ date, mape: Math.max(3, mape) });
+      // 静态基线常数（诚实起点·无 i 衰减·无随机趋势）——无真配对不伪造收敛。
+      out.push({ date, mape: BASELINE_STATIC_MAPE });
     }
     return out;
   }
