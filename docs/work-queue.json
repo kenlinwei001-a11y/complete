@@ -1649,7 +1649,7 @@
       "title": "资源反向引用图+导航透出(被谁引用/场景行/ruledocs↔rules/mcp picker+健康)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "RESOURCE-REF"
