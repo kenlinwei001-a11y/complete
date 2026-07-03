@@ -1,7 +1,8 @@
-import { round } from "../prng.js";
+import { round, rngFromInput } from "../prng.js";
 import { validationError } from "../errors.js";
 import { baseName, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 import { liveTightness, primaryFactor } from "./risk.js";
+import { BUILTIN_CAPACITY_MC, mcConfigFor, monteCarlo, resolveMcParams, type McUnit } from "./method-mc.js";
 
 // ---------------------------------------------------------------------------
 // S1.1 capacity_rollup — equipment → process → line → base, with per-level
@@ -174,6 +175,8 @@ export interface ForecastArgs {
   whatIf?: { nightShifts?: number; extraChannels?: number; outsourceRatio?: number };
   // legacy alias (AgentCore QOS seed plans)
   demandDelta?: number;
+  // METHOD-MC-STOCHASTIC：蒙特卡洛种子（缺省 42·R6 同 seed 同分位）。
+  seed?: number;
 }
 
 export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<string, unknown> {
@@ -193,7 +196,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   const healthFactor = staleSources.length > 0 ? p.health.degraded : p.health.normal;
   const degradeNote =
     staleSources.length > 0
-      ? `C09 数据健康度降级：关键数据源 ${staleSources.map((s) => str(s.props.name, str(s.props.sourceId))).join("、")} 新鲜度延迟 ${staleSources.map((s) => num(s.props.lagHours)).join("/")}h（>${p.health.staleHours}h），P90 系数 ${p.health.normal} → ${p.health.degraded}`
+      ? `C09 数据健康度降级：关键数据源 ${staleSources.map((s) => str(s.props.name, str(s.props.sourceId))).join("、")} 新鲜度延迟 ${staleSources.map((s) => num(s.props.lagHours)).join("/")}h（>${p.health.staleHours}h），蒙特卡洛离散度 cv 放大（分布变宽 → P90 保守下探·C09 诚实建模）`
       : undefined;
 
   const batches = Array.isArray(args.batches) && args.batches.length > 0 ? [...args.batches] : undefined;
@@ -257,7 +260,25 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     });
   }
   p50 = round(p50, 4);
-  const p90 = round(p50 * healthFactor, 4);
+  // METHOD-MC-STOCHASTIC：P90 由「点估计 × 常数(0.93)」→「种子化蒙特卡洛真实经验分位」（根因解·不作假）。
+  // 单元=各基地累计 P50 贡献；不确定因子（yield/oee/… 抽象角色·cv 取自 SolverParam mc.dispersion.*）逐迭代采样
+  // （seeded mulberry32·R6）→ 经验分布 → type-7 分位。陈旧关键源 → cv×staleDispersionMult（分布变宽 → p90 下探·C09 诚实）。
+  const mcParams = resolveMcParams(p.mc);
+  const mcUnits: McUnit[] = perBaseRows.map((r) => ({ point: num(r.cumTotal), stale: staleSources.length > 0 }));
+  const seed = num(args.seed, 42);
+  const mcRng = rngFromInput({ solver: "capacity_forecast", tenantId: c.tenantId, modelId, qty, weeks, batches: batches ?? null, whatIf: args.whatIf ?? null, seed, mc: mcParams });
+  const mcRes = mcUnits.length > 0 ? monteCarlo(mcUnits, mcConfigFor(BUILTIN_CAPACITY_MC, mcParams), mcRng) : { p10: p50, p50, p90: p50, samplesSorted: [p50] };
+  const p90 = round(mcRes.p90, 4);
+  const p10 = round(mcRes.p10, 4);
+  // 离散度比值（真实 MC 派生·非固定 haircut）——供批次/what-if/校准记录复用相对分位口径（乘法误差模型近似尺度不变）。
+  const dispRatio = p50 > 0 ? mcRes.p90 / p50 : 1;
+  const mcMeta = {
+    method: "monte_carlo" as const,
+    iterations: mcParams.iterations,
+    seed,
+    dispersionSource: `SolverParam(mc.dispersion.*)·staleMult=${mcParams.staleDispersionMult}${staleSources.length > 0 ? "（关键源陈旧·cv 已放大）" : ""}`,
+    percentiles: { p10, p50, p90 },
+  };
 
   // Whole-order vs batch verdict.
   let gap: number;
@@ -272,7 +293,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       const dueDay = dayFrom(p.forecastStart, b.dueDate);
       const wkEff = Math.max(1, Math.floor((dueDay - logisticsDays(p, b.address)) / 7));
       cumDemand += num(b.qty);
-      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * healthFactor, 4);
+      // METHOD-MC-STOCHASTIC：批次累计 P90 用 MC 派生离散度比值（真实分位口径·非固定 0.93·乘法误差模型近似尺度不变）。
+      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * dispRatio, 4);
       const rowOk = cumDemand <= cumP90;
       if (!rowOk) worst = Math.max(worst, cumDemand - cumP90);
       batchRows.push({ qty: num(b.qty), dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumP90, ok: rowOk });
@@ -308,7 +330,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
         capped = true;
       }
       adjusted = round(adjusted, 4);
-      const adjP90 = round(adjusted * healthFactor, 4);
+      // METHOD-MC-STOCHASTIC：what-if 调整后 P90 同走 MC 离散度比值（非固定 haircut）。
+      const adjP90 = round(adjusted * dispRatio, 4);
       whatIf = {
         rejected: false,
         nightShifts: n,
@@ -346,6 +369,11 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   return {
     p50,
     p90,
+    p10,
+    // METHOD-MC-STOCHASTIC（R13）：P90/P10 为种子化蒙特卡洛真实经验分位（非 p50×0.93 伪分位）——前端悬浮出方法/迭代/seed/离散度源。
+    ...mcMeta,
+    // dispRatio：MC 派生离散度比值（供 QOS/校准复用；非固定常数，随 cv/租户变化）。
+    mcDispRatio: round(dispRatio, 6),
     healthFactor,
     gap,
     ok,

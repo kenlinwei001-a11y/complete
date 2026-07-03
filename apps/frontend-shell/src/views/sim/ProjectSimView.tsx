@@ -836,7 +836,7 @@ function StepBody({
           </tbody>
         </table>
         <div className={styles.noteInfo}>
-          数据健康度（C09）：P90 系数 <b className="mono">{out.healthFactor}</b>（IoT/MES/QMS 驱动因子新鲜度联动）
+          数据健康度（C09）：P90 = 种子化蒙特卡洛真实分位（不确定因子 cv 采样·陈旧源 cv 放大→P90 下探·IoT/MES/QMS 新鲜度联动）
         </div>
       </div>
     );
@@ -868,8 +868,8 @@ function StepBody({
                 <b>合计</b>
               </td>
               <td colSpan={2} data-testid="pm-step4-total">
-                P50 <b className="mono">{fmt(out.p50)}</b> 万套 · P90 = P50 × <b className="mono">{out.healthFactor}</b> ={" "}
-                <b className="mono">{fmt(out.p90)}</b> 万套
+                P50 <b className="mono">{fmt(out.p50)}</b> 万套 · P90 <b className="mono">{fmt(out.p90)}</b> 万套
+                <span style={{ color: "var(--muted2)", fontSize: 11 }}>（蒙特卡洛真实分位 N={out.iterations ?? 2000}）</span>
               </td>
             </tr>
           </tbody>
@@ -981,15 +981,15 @@ function StepBody({
         <div className={styles.kpi} data-testid="kpi-p90">
           <Provenance
             testId="p90"
-            src="IoT/SCADA 数据健康度"
-            formula={`P90 = P50 × 健康度系数 ${out.healthFactor}`}
-            inputs={["P50", "数据新鲜度→健康度系数"]}
+            src="capacity_forecast · 蒙特卡洛"
+            formula={out.method === "monte_carlo" ? `P90 = 种子化蒙特卡洛真实经验分位（升序 0.10 分位·保守下限）` : `P90 = 点估计`}
+            inputs={["各基地累计 P50 贡献", "不确定因子 cv（SolverParam mc.dispersion.*）", "seed（R6）"]}
             rule="C09"
-            note="IoT 延迟时健康度系数自动下调，置信度随之削弱"
+            note={out.method === "monte_carlo" ? `蒙特卡洛 N=${out.iterations ?? 2000}·seed=${out.seed ?? 42}·离散度源 ${out.dispersionSource ?? "SolverParam(mc.dispersion.*)"}；陈旧关键源→cv 放大→分布变宽→P90 下探（C09 诚实真分位·非 0.93 固定系数）` : "点估计降级"}
           >
             <b style={{ color: "var(--c-forecast)" }}>{fmt(out.p90)}</b>
           </Provenance>
-          <span>P90（× 健康度 {out.healthFactor}）</span>
+          <span>P90（{out.method === "monte_carlo" ? `蒙特卡洛真实分位` : "点估计"}）</span>
         </div>
         <div className={styles.kpi} data-testid="kpi-demand">
           <b>{fmt(totalQty)}</b>
@@ -1114,7 +1114,7 @@ function buildDag(
   const factors = driverFactors ?? [
     { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
     { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
-    { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${out.healthFactor}` },
+    { id: "f3", label: "认证系数 + 蒙特卡洛分位", sub: `PLM 认证 · P90 蒙特卡洛真实分位（离散度 cv 采样）` },
   ];
 
   const layers: PmDagNode[][] = [
@@ -1142,7 +1142,7 @@ function buildDag(
       {
         id: "fc",
         label: `产能预测 ${out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`}`,
-        sub: `P50 ${fmt(out.p50)} · P90 ${fmt(out.p90)}（×${out.healthFactor}）vs 需求 ${fmt(totalQty)}`,
+        sub: `P50 ${fmt(out.p50)} · P90 ${fmt(out.p90)}（蒙特卡洛真实分位）vs 需求 ${fmt(totalQty)}`,
         // WO-DATAMODE-SWEEP：合成/估算（非 LIVE）缺口结论节点不染决策红（降级中性灰）。
         color: out.ok ? "#62BE77" : notLiveDecision(out.dataMode) ? "#9AA8B6" : "#DD7E9E",
         st: 6,
@@ -1164,7 +1164,7 @@ function defaultDagFactors(healthFactor: number): { id: string; label: string; s
   return [
     { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
     { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
-    { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${healthFactor}` },
+    { id: "f3", label: "认证系数 + 蒙特卡洛分位", sub: `PLM 认证 · P90 蒙特卡洛真实分位（离散度 cv 采样）` },
   ];
 }
 
@@ -1203,7 +1203,7 @@ function dagNodeDetail(
       inputs: [f.label],
       rule: isHealth ? "C09" : undefined,
       note: isHealth
-        ? `数据健康度系数 ${out.healthFactor}：IoT/MES/QMS 新鲜度联动，源延迟即下调 P90`
+        ? `P90 = 种子化蒙特卡洛真实分位：IoT/MES/QMS 新鲜度联动，源延迟→不确定因子 cv 放大→分布变宽→P90 下探（诚实真分位·非固定系数）`
         : "驱动因子层由 ViewConfig.layout.driverFactors 声明（去硬编码 · R14）",
     };
   }
@@ -1257,8 +1257,8 @@ function dagNodeDetail(
         title: "产能预测结论",
         verdict: out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`,
         src: "聚合 + 数据健康度（C09）",
-        formula: `P90 = P50 ${fmt(out.p50)} × 健康度 ${out.healthFactor} = ${fmt(out.p90)}；缺口 = 需求 ${fmt(totalQty)} − P90`,
-        inputs: ["P50", `健康度系数 ${out.healthFactor}`, "需求"],
+        formula: `P90 ${fmt(out.p90)} = 种子化蒙特卡洛真实经验分位（保守下限·非 P50×0.93）；缺口 = 需求 ${fmt(totalQty)} − P90`,
+        inputs: ["各基地累计 P50 贡献", `不确定因子 cv（mc.dispersion.*·N=${out.iterations ?? 2000}）`, "需求"],
         rule: "C09",
         note: out.degradeNote ?? "结论可采纳为 Action（参数组合 + 推演快照写回）",
       };

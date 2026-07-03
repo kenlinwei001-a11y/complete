@@ -61,6 +61,13 @@ export const CapacityForecastOutputSchema = z
   .object({
     p50: z.number(),
     p90: z.number(),
+    // METHOD-MC-STOCHASTIC：P90/P10 为种子化蒙特卡洛真实经验分位（非 p50×0.93 伪分位）；R13 前端悬浮出方法/迭代/seed/离散度源。
+    p10: z.number().optional(),
+    method: z.enum(["monte_carlo", "point_estimate"]).optional(),
+    iterations: z.number().int().optional(),
+    seed: z.number().int().optional(),
+    dispersionSource: z.string().optional(),
+    mcDispRatio: z.number().optional(),
     // 轨M 增量1（假2 真推演红线）：紧张度/主瓶颈数据模式（LIVE=真 OEE/利用率/良率；MOCK=全回落 → 前端显"估算"）。
     // WO-FRESHNESS：扩到 SolverDataModeSchema（追加 STALE/SYNTHETIC），新鲜度/合成维由 invoke 统一叠加。
     dataMode: SolverDataModeSchema.optional(),

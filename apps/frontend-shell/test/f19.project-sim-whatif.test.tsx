@@ -14,21 +14,21 @@ describe("F19 · 项目推演 what-if 三滑杆 + 采纳产能保障方案", () 
     loginAs("planner");
     renderApp("/v/project-sim");
 
-    // ⑥ 结论与对策：P50 42.0 / P90 39.0（×0.93）/ 需求 40 → 初始缺口 1.0
+    // ⑥ 结论与对策：P50 42.0 / P90 = 种子化蒙特卡洛真实分位（≈39.2·保守下限<P50·非 P50×0.93 伪分位）/ 需求 40 → 初始缺口≈0.8
     await screen.findByTestId("pm-stepper");
     await user.click(screen.getByTestId("pm-step-chip-6"));
     expect(await screen.findByTestId("kpi-p50")).toHaveTextContent("42.0");
-    expect(screen.getByTestId("kpi-p90")).toHaveTextContent("39.0");
+    expect(screen.getByTestId("kpi-p90")).toHaveTextContent(/39\.\d/); // MC 真实分位（保守下限·<42）
     expect(screen.getByTestId("proj-verdict-bar")).toHaveTextContent("✗ 缺口");
-    expect(screen.getByTestId("whatif-gap")).toHaveTextContent("缺口 1.0 万套");
+    expect(screen.getByTestId("whatif-gap")).toHaveTextContent(/缺口 0\.\d 万套/); // 需求 40 − MC P90 ≈ 0.8
 
-    // 夜班 +2（×(1+0.06×2)）→ 拖动即重算 → 缺口归零·富余 3.7
+    // 夜班 +2（×(1+0.06×2)）→ 拖动即重算 → 缺口归零·富余≈4.0（adjP90 走 MC 离散度比值·非 ×0.93）
     fireEvent.change(screen.getByTestId("whatif-night"), { target: { value: "2" } });
-    await waitFor(() => expect(screen.getByTestId("whatif-gap")).toHaveTextContent("缺口归零 · 富余 3.7 万套"));
+    await waitFor(() => expect(screen.getByTestId("whatif-gap")).toHaveTextContent(/缺口归零 · 富余 4\.\d 万套/));
 
-    // 通道 +4（×(1+0.12+0.20)=1.32 → 触及物理上限 52.2 封顶）→ 富余 8.5
+    // 通道 +4（×(1+0.12+0.20)=1.32 → 触及物理上限 52.2 封顶）→ 富余≈8.8
     fireEvent.change(screen.getByTestId("whatif-channels"), { target: { value: "4" } });
-    await waitFor(() => expect(screen.getByTestId("whatif-gap")).toHaveTextContent("缺口归零 · 富余 8.5 万套"));
+    await waitFor(() => expect(screen.getByTestId("whatif-gap")).toHaveTextContent(/缺口归零 · 富余 8\.\d 万套/));
     const cmp = screen.getByTestId("whatif-compare");
     expect(within(cmp).getByTestId("whatif-before")).toHaveTextContent("42.0");
     expect(within(cmp).getByTestId("whatif-after")).toHaveTextContent("52.2"); // C03 物理上限封顶

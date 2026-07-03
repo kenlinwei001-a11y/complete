@@ -97,6 +97,13 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
   maintMult: 0.72,
   health: { normal: 0.93, degraded: 0.9, staleHours: 2 },
+  // METHOD-MC-STOCHASTIC：随机模拟族离散度默认（R14 抽象角色 · 精确值见 PRD §4 · CALIBRATION 可调）。
+  // 替代 health.normal=0.93 在 P90 路径的伪分位用途——P90 改由种子化 MC 真实经验分位产出。
+  mc: {
+    iterations: 2000,
+    dispersion: { yield: 0.03, oee: 0.05, availability: 0.04, attendance: 0.02, utilization: 0.04 },
+    staleDispersionMult: 1.6,
+  },
   whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: 0.2 },
   logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }, defaultDays: 7 },
   bottleneck: {

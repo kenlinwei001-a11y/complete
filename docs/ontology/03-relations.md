@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `223d33ced06d3ca2`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `61aee4333ce5d038`。
 
 ---
 
@@ -142,6 +142,15 @@ optimize_whatif: OptPerturbation(结构化扰动,非裸代码) --DF.8 接地--> 
   --> OptWhatifResult{Δ目标,可行性,冲突约束 IIS} --R13--> 解释 --R4--> 采纳(ActionDraft 走正门)   ⚠ 模拟态禁写真值(RL4)
 行业模型 --派生(CDLA Results,不转发上游 .py LIC4)--> 行业租户(synthetic 合成→runStory 建本体→OntologyBinding→求解器注册→沙盘可推演,R14 两行业证)
 系数 --OntologyBinding 类型化字段,可选 coeffSource=rule_params 引--> rule.params(G-10) ⚠ 规则是 gate 非系数源(FUS4)
+```
+
+**随机模拟链路（G-12 · METHOD-MC-STOCHASTIC · 已落·R6 确定性/R13 可溯源/R14 零业务常数）**
+```
+StochasticMethodTemplate(抽象·零业务常数) --MethodBinding(角色→本体属性,DF.8 接地)--> 逐迭代采样(seeded mulberry32·rngFromInput)
+  --∏不确定因子相对乘子(cv=SolverParam mc.dispersion.*,陈旧×staleDispersionMult)--> 聚合 --经验分布 samples.sort--> type-7 分位
+  --> {P90=升序0.10分位(保守下限),P50=0.50,P10=0.90(乐观上限)}+{method,iterations,seed,dispersionSource} --R13--> 前端诚实标「真实分位(蒙特卡洛 N·seed·离散度源)」
+capacity_forecast: p50/p90 由「点估计×0.93 常数(伪分位)」→ 上链真分位；批次/what-if/校准 predictedP90 用 MC 派生 mcDispRatio(真实分位口径,非固定 haircut)
+  ⚠ MC 作用域禁 Math.random/Date.now/new Date(RL·method-determinism:check 守)；cv→0 塌回点估计(=旧 p50)
 ```
 > 许可证红线：MIT 署名 / CDLA 取派生 Results / **Gurobi 不碰** / **不训练**（喂上游内容进训练管线=禁），门 `solver-license:check`（§7）。
 

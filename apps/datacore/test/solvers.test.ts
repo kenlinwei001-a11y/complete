@@ -61,7 +61,7 @@ async function forecast(t: TestApp, args: Record<string, unknown>) {
 }
 
 describe("S1 solvers", () => {
-  it("V1: capacity_forecast P50 matches the independent S1.2 formula (0.6 cert + 0.72 maint), P90 = P50×0.93", async () => {
+  it("V1: capacity_forecast P50 matches the independent S1.2 formula (0.6 cert + 0.72 maint), P90 = 种子化蒙特卡洛真实分位", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const weeks = 10; // all maint weeks (3–10) fall inside the window
@@ -80,8 +80,13 @@ describe("S1 solvers", () => {
       for (let w = 1; w <= weeks; w++) cum += r.weeklyCap * r.certFactor * indepCurve(w, r.maintWeek);
       expect(r.cumTotal).toBe(round(cum, 4));
     }
-    expect(out.healthFactor).toBe(P.health.normal);
-    expect(out.p90).toBe(round((out.p50 as number) * P.health.normal, 4));
+    // METHOD-MC-STOCHASTIC：P90 由种子化蒙特卡洛真实经验分位产出（保守下限 · 非 p50×0.93 伪分位）。
+    expect(out.method).toBe("monte_carlo");
+    expect(out.p90 as number).toBeLessThan(out.p50 as number); // 保守下限
+    expect(out.p10 as number).toBeGreaterThan(out.p50 as number); // 乐观上限
+    expect(Math.abs((out.p90 as number) / (out.p50 as number) - 0.93)).toBeGreaterThan(0.001); // ≠ 固定 0.93 haircut
+    expect(typeof out.dispersionSource).toBe("string");
+    expect((out.dispersionSource as string).length).toBeGreaterThan(0);
     expect(out.pendingCertList as string[]).not.toHaveLength(0);
     // aliases kept for AgentCore seed plans
     expect(out.mainBottleneck).toBe(out.mainBn);
@@ -136,9 +141,10 @@ describe("S1 solvers", () => {
     // §6.2 test hook: mark the critical source stale
     await t.services.solvers.markSourceStale("demo", "iot-scada", 4.2);
     const after = await forecast(t, { modelId: "4680-NCM", qty: 40, weeks: 6 });
-    expect(after.p50).toBe(before.p50); // same input → same P50
+    expect(after.p50).toBe(before.p50); // same input → same P50（点估计不受陈旧影响）
     expect(after.healthFactor).toBe(0.9);
-    expect(after.p90).toBe(round((after.p50 as number) * 0.9, 4));
+    // METHOD-MC-STOCHASTIC §6.2：陈旧关键源 → MC 离散度 cv 放大 → 分布变宽 → p90 保守下探（C09 行为保留·但诚实真分位）。
+    expect(after.p90 as number).toBeLessThan(before.p90 as number);
     expect(String(after.degradeNote)).toContain("4.2");
     expect(String(after.degradeNote)).toContain("C09");
   });

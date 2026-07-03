@@ -8,6 +8,17 @@ export interface SolverParamsShape {
   ramp: { base: number; step: number; fullWeek: number };
   maintMult: number;
   health: { normal: number; degraded: number; staleHours: number };
+  /**
+   * 方法库·随机模拟族离散度（METHOD-MC-STOCHASTIC · R14 零业务常数 · 可被 CALIBRATION_SWEEP 校准）。
+   * 替代旧 `health.normal=0.93` 伪分位系数：P90 由「点估计×常数」→「种子化 MC 真实经验分位」。
+   * dispersion=各角色变异系数 cv(σ/μ)；staleDispersionMult=关键源陈旧时对相关因子 cv 的放大倍数
+   * （C09 诚实建模：陈旧→方差变宽→p90 下探，理由真实）。
+   */
+  mc?: {
+    iterations: number;
+    dispersion: Record<string, number>;
+    staleDispersionMult: number;
+  };
   whatIf: { nightShiftCoef: number; channelCoef: number; outsourceMax: number };
   logistics: { byAddress: Record<string, number>; defaultDays: number };
   bottleneck: {

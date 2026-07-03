@@ -14,6 +14,55 @@ const round = (v: number, precision: number): number => {
 };
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
+// METHOD-MC-STOCHASTIC（mock 同源）：与 datacore solvers/method-mc.ts 同口径的紧凑蒙特卡洛——
+// P90 由「点估计×0.93 伪分位」→ 种子化 MC 真实经验分位（mulberry32·type-7），mock 亦不作假。
+const mcMul = (seed: number): (() => number) => {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+const mcQuantile = (sorted: number[], q: number): number => {
+  const n = sorted.length;
+  if (n === 0) return 0;
+  if (n === 1) return sorted[0] as number;
+  const h = (n - 1) * q;
+  const lo = Math.floor(h);
+  const a = sorted[lo] as number;
+  const b = lo + 1 < n ? (sorted[lo + 1] as number) : a;
+  return a + (h - lo) * (b - a);
+};
+const MC_DISPERSION = { yield: 0.03, oee: 0.05, availability: 0.04, attendance: 0.02, utilization: 0.04 };
+const MC_STALE_MULT = 1.6;
+const MC_ITERS = 2000;
+/** 逐单元 ∏(相对乘子·Box–Muller normal·mean=1) → 聚合 → type-7 分位（P90=升序 0.10 保守下限）。 */
+const monteCarloMock = (units: { point: number; stale?: boolean }[], seed: number, stale: boolean): { p90: number; p10: number } => {
+  const rng = mcMul(seed);
+  const cvs = Object.values(MC_DISPERSION);
+  const samples: number[] = new Array(MC_ITERS);
+  for (let i = 0; i < MC_ITERS; i++) {
+    let total = 0;
+    for (const u of units) {
+      let mult = 1;
+      for (const cv0 of cvs) {
+        const cv = (u.stale ?? stale) ? cv0 * MC_STALE_MULT : cv0;
+        const u1 = Math.max(rng(), 1e-12);
+        const u2 = rng();
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        mult *= Math.max(0, 1 + cv * z);
+      }
+      total += u.point * mult;
+    }
+    samples[i] = total;
+  }
+  samples.sort((a, b) => a - b);
+  return { p90: mcQuantile(samples, 0.1), p10: mcQuantile(samples, 0.9) };
+};
+
 // ---------------------------------------------------------------------------
 // S1.6 plan_audit（battery audit 默认参数）
 // ---------------------------------------------------------------------------
@@ -448,6 +497,7 @@ export interface MockForecastArgs {
   weeks?: number;
   batches?: { qty: number; dueDate: string; address?: string }[];
   whatIf?: { nightShifts?: number; extraChannels?: number; outsourceRatio?: number };
+  seed?: number; // METHOD-MC-STOCHASTIC：蒙特卡洛种子（缺省 42·R6）
 }
 
 export function mockCapacityForecast(args: MockForecastArgs): Record<string, unknown> | { error: string } {
@@ -507,7 +557,13 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     });
   }
   p50 = round(p50, 4);
-  const p90 = round(p50 * healthFactor, 4);
+  // METHOD-MC-STOCHASTIC：P90/P10 由种子化蒙特卡洛真实经验分位产出（非 p50×0.93 伪分位·mock 同源不作假）。
+  const mcSeed = (args.seed ?? 42) >>> 0;
+  const mcUnits = perBaseRows.map((r) => ({ point: Number(r.cumTotal) || 0, stale: degraded }));
+  const mcRes = mcUnits.length > 0 ? monteCarloMock(mcUnits, mcSeed, degraded) : { p90: p50, p10: p50 };
+  const p90 = round(mcRes.p90, 4);
+  const p10 = round(mcRes.p10, 4);
+  const dispRatio = p50 > 0 ? mcRes.p90 / p50 : 1;
 
   let gap: number;
   let ok: boolean;
@@ -521,7 +577,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       const dueDay = dayFrom(CAP_P.forecastStart, b.dueDate);
       const wkEff = Math.max(1, Math.floor((dueDay - logisticsDays(b.address)) / 7));
       cumDemand += b.qty || 0;
-      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * healthFactor, 4);
+      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * dispRatio, 4);
       const rowOk = cumDemand <= cumP90;
       if (!rowOk) worst = Math.max(worst, cumDemand - cumP90);
       batchRows.push({ qty: b.qty, dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumP90, ok: rowOk });
@@ -555,7 +611,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
         capped = true;
       }
       adjusted = round(adjusted, 4);
-      const adjP90 = round(adjusted * healthFactor, 4);
+      const adjP90 = round(adjusted * dispRatio, 4);
       whatIf = {
         rejected: false,
         nightShifts: n,
@@ -591,6 +647,13 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
   return {
     p50,
     p90,
+    p10,
+    // METHOD-MC-STOCHASTIC（mock 同源·R13）：P90/P10 蒙特卡洛真实经验分位 + 方法/迭代/seed/离散度源。
+    method: "monte_carlo" as const,
+    iterations: MC_ITERS,
+    seed: mcSeed,
+    dispersionSource: `SolverParam(mc.dispersion.*)·staleMult=${MC_STALE_MULT}${degraded ? "（关键源陈旧·cv 已放大）" : ""}`,
+    mcDispRatio: round(dispRatio, 6),
     healthFactor,
     gap,
     ok,

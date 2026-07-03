@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-02",
+  "generatedAt": "2026-07-03",
   "ontology": {
     "invariants": [
       "R1",
@@ -976,6 +976,26 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-method-library-stochastic-mc.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-12"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/method-mc.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "packages/contracts/src/opt-template.ts",
+        "scripts/check-method-determinism.mjs"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-nav-ia-reorg.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1510,6 +1530,7 @@
       "PRD-simulation-sandbox.md"
     ],
     "G-12": [
+      "PRD-method-library-stochastic-mc.md",
       "PRD-opensource-fusion-lastmile.md"
     ]
   },
@@ -1575,6 +1596,7 @@
       "PRD-aop-annual-scenario-1to1.md",
       "PRD-empty-tenant-bootstrap.md",
       "PRD-goal-metric-owner-spine.md",
+      "PRD-method-library-stochastic-mc.md",
       "PRD-quarter-rolling-1to1.md"
     ],
     "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": [
@@ -1708,6 +1730,18 @@
     "apps/frontend-shell/src/views/sim/PmDag.tsx": [
       "PRD-inference-process-enhancement.md",
       "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/datacore/src/solvers/capacity.ts": [
+      "PRD-method-library-stochastic-mc.md"
+    ],
+    "apps/datacore/src/solvers/method-mc.ts": [
+      "PRD-method-library-stochastic-mc.md"
+    ],
+    "packages/contracts/src/opt-template.ts": [
+      "PRD-method-library-stochastic-mc.md"
+    ],
+    "scripts/check-method-determinism.mjs": [
+      "PRD-method-library-stochastic-mc.md"
     ],
     "apps/frontend-shell/src/pages/ShellLayout.tsx": [
       "PRD-nav-ia-reorg.md"

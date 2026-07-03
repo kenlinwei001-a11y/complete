@@ -158,6 +158,8 @@ describe("剩余视图增量 · 校准（§7.21）与数据健康度（§7.22）
       data: { healthFactor: number; degradeNote?: string };
     };
     expect(out.data.healthFactor).toBe(0.9);
-    expect(String(out.data.degradeNote)).toContain("0.93 → 0.9");
+    // METHOD-MC-STOCHASTIC：degradeNote 改述为「陈旧→蒙特卡洛离散度 cv 放大→分布变宽→P90 下探」（诚实真分位·非 0.93 伪系数）。
+    expect(String(out.data.degradeNote)).toContain("蒙特卡洛离散度");
+    expect(String(out.data.degradeNote)).toContain("C09");
   });
 });

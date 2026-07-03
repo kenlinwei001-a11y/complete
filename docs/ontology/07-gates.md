@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §7` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `223d33ced06d3ca2`。
+> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `61aee4333ce5d038`。
 
 ---
 
@@ -50,6 +50,7 @@
   - **`solver-license:check`（增量 0 已建·并入 `pnpm gates`）**——静态守 `THIRD-PARTY-NOTICES.md` 四红线：LIC1 不训练（优化作用域文件无 `import torch`/`tensorflow`/`from sklearn`/`.fit(`/`finetune` 训练管线调用）、LIC2 Gurobi 不碰（代码库无 `gurobipy`/`GRB.`/`grb.Model` 指纹）、LIC3 MIT 署名（NOTICES 含 MIT License 段）、LIC4 CDLA 取派生（OptModelTemplate 字面量须带 `provenance.license`）· `scripts/check-solver-license.mjs`，`pnpm solver-license:check`。已并入 `pnpm gates`。
   - **`opt-template:check`（增量 1-5 已建·并入 `pnpm gates`）**——静态守模板池/绑定层零行业实体名（5 核心抽象引擎）+ 5 核心 requiredRoles 齐 + LIC4 派生留痕在 · `scripts/check-opt-template.mjs`，`pnpm opt-template:check`。
   - **`opt-determinism:check`（增量 1-5 已建·并入 `pnpm gates`）**——静态守 CP-SAT seed+单线程（R6 字节一致）+ 绑定层稳定输入序 + embedding advisory 不入确定性求解路径（FUS2 隔离）· `scripts/check-opt-determinism.mjs`，`pnpm opt-determinism:check`。**`pnpm gates` 聚合 17→19**。
+  - **`method-determinism:check`（METHOD-MC-STOCHASTIC 已建·并入 `pnpm gates`）**——平行 `opt-determinism:check`：静态守随机模拟族 MC 作用域「只吃 seeded rng（`method-mc.ts` mulberry32/`rngFromInput`）· 无非确定来源（Math.random/Date.now/new Date）· 样本 `.sort` 后取 type-7 分位」+ **根因收口断言**（`capacity.ts` P90/批次/what-if 处 `p50*healthFactor` 伪分位式零命中 + `service.ts recordCalibrationForecasts predictedP90` 不再 `*healthFactor`）· `scripts/check-method-determinism.mjs`，`pnpm method-determinism:check`（有牙齿：seed 行改 `Math.random()` → 门红）。
 - **`repo-pg-notnull:check` PG 通用仓储 NOT-NULL 覆盖门（WO-P0-LOCK 根因解·并入 `pnpm gates`）**：根除一整类 P0——建表加 NOT-NULL-无默认列却让通用仓储（`PgStore` 写 `{id,tenant_id,doc}∪extraColumns`／`PgDataColStore` 写 `{id,tenant_id,data}`）去写它 → PG INSERT NOT NULL 违例直抛（内存仓储无约束故单测漏），正是 `execution_locks`（漏 extraColumns）+ `merge_candidates`/`object_merges`（用错列）翻车根因。纯静态：扫 migrations 取每表 NOT-NULL-无默认列，扫 `pg.ts` 取经通用写入的表及覆盖列集，`required ⊄ covered` 即红（自带 INSERT SQL 的自定义 store 不在范围）· `scripts/check-repo-pg-notnull.mjs`，`pnpm repo-pg-notnull:check`。
 - **`css-vars:check` CSS 变量引用闭合门（WO-CSS·并入 `pnpm gates`）**：防"引用未定义 CSS 变量 → 静默回落空值/黑字"复发（由来：`InferenceProcessDag.module.css` 写 `fill:var(--text)`[全仓零定义·正确 `--txt`]→ 解析空 → 回落浏览器默认黑字 → 深底 DAG 标签不可读·typo 编译/测试期都不报只肉眼可见）。扫所有 `.css` 的**无 fallback** `var(--X)`，X 必须 ∈ 全仓自定义属性定义集（tokens.css + 各组件局部并集）；带 fallback 的 `var(--X, …)` 放行（语义明确）· `scripts/check-css-vars.mjs`，`pnpm css-vars:check`。
 - **`scene-agent-config:check` 场景 agent 配置完整性门（WO-SCENE-C/D Phase D·防半截上架·G-3/G-9）**：让"人机对话入口配置完整"结构性可保证（详 §8 G-3）——对每个出厂 SceneEntry 校验 ① mode≠WORKFLOW_ONLY（防 WO-SCENE-A 收口回潮）② AGENT_FIRST/AGENT_ONLY 必有 defaultAgentId ③ 设了 defaultAgentId → agent 须存在且 PUBLISHED ④ agent BUILTIN 工具∈注册表 + ruleBindings 合法形态；半截配置（指向缺失/草稿 agent、绑不存在工具）门红（导入 agentcore 编译产物，gates 链 `pnpm -r build` 在前）· `scripts/check-scene-agent-config.mjs`，`pnpm scene-agent-config:check`。

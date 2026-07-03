@@ -2311,7 +2311,9 @@ export class SolverService {
     out: Record<string, unknown>,
   ): Promise<void> {
     const weeks = num(out.weeks, 6);
-    const healthFactor = num(out.healthFactor, params.health.normal);
+    // METHOD-MC-STOCHASTIC §6.2：predictedP90 改用 MC 派生离散度比值（真实分位口径），
+    // 不再用 healthFactor 伪分位系数——否则伪 P90 会污染「越用越准」的配对/MAPE 度量本身。
+    const dispRatio = num(out.mcDispRatio, num(out.healthFactor, params.health.normal));
     const rows = (out.perBaseRows ?? []) as { baseId: string; weeklyCap: number; certFactor: number; maintWeek: number | null }[];
     if (!Array.isArray(rows) || rows.length === 0) return;
     const version = await this.paramsVersion(tenantId);
@@ -2333,7 +2335,7 @@ export class SolverService {
           windowFrom: date,
           windowTo: date,
           predicted: daily,
-          predictedP90: round(daily * healthFactor, 6),
+          predictedP90: round(daily * dispRatio, 6),
           paramsVersion: version,
           weekOfWindow: week,
           createdAt: now,
@@ -2347,7 +2349,7 @@ export class SolverService {
         windowFrom: date,
         windowTo: date,
         predicted: round(total, 6),
-        predictedP90: round(total * healthFactor, 6),
+        predictedP90: round(total * dispRatio, 6),
         paramsVersion: version,
         weekOfWindow: week,
         createdAt: now,

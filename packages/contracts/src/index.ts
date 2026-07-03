@@ -35,6 +35,7 @@ export * from "./bootstrap.js";
 export * from "./base-registry.js";
 export * from "./sim.js";
 export * from "./opt-template.js";
+export * from "./method-template.js";
 export * from "./solver-binding.js";
 export * from "./fusion.js";
 export * from "./decision.js";

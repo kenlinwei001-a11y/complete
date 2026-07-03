@@ -38,11 +38,11 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(screen.getByTestId("batch-ok-0")).toHaveTextContent("✓ 按期");
     expect(screen.getByTestId("batch-ok-1")).toHaveTextContent("✗ 缺");
 
-    // ④ 逐级聚合：合计行展示 P50 与 P90 = P50 × healthFactor（0.93）
+    // ④ 逐级聚合：合计行展示 P50 与 P90（METHOD-MC-STOCHASTIC：种子化蒙特卡洛真实分位·非 P50×0.93 伪分位）
     await user.click(screen.getByTestId("pm-step-chip-4"));
     const total = await screen.findByTestId("pm-step4-total");
-    expect(total).toHaveTextContent("P90 = P50 ×");
-    expect(total).toHaveTextContent("0.93");
+    expect(total).toHaveTextContent("P50");
+    expect(total).toHaveTextContent("蒙特卡洛真实分位");
 
     // DAG 随步骤点亮：step4 →「本步」在聚合求解器；瓶颈求解器（st=5）未点亮（透明度 0.28）
     expect(screen.getByTestId("pm-dag-current-agg")).toBeInTheDocument();
