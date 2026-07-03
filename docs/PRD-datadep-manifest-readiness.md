@@ -76,6 +76,15 @@ DataDependencySchema = z.object({
 ### 站②通用就绪探测（本 PRD 新增）
 纯函数 `checkReadiness(entry, tenantCtx): EntryReadiness`：读清单 → `objects.listByType` 计数 vs `minRows`、参数存在性、切片可解析 → 产 `EntryReadiness{ready:boolean, gaps:GapFinding[]}`。**把沙盘 `certification.ts` 的 present-vs-needed 预检泛化到所有入口**；复用 `GapFinding`/`GapCode`（`contracts/growth.ts`）与 CL.3（空 vs 不存在）。端点 `POST /b/v1/entries/{ref}/readiness`（或求解器 invoke 前置）。
 
+### 站③⁺ 触发补的内容边界（用户钉·防数据混乱·FDE 已坐实缺口）
+> 用户定：**「触发补」必须有边界，否则任意问题自由补数据=数据混乱。** 真浏览器实证（2026-07-03·`dock-q-vague.png`）：泛问题「本月库存水位是否可以降低？」（无月份/型号/仓类/物料）→ 探索模式缺口卡 OTHER **直接出「▶触发生成缺失数据」按钮，未先澄清**——现状只有词表 HARD/SOFT 一道闸，缺「槽位完备」与「模式封闭」两道。
+
+三道内容闸（与 GROWTH-WORKLIST 的**过程闸**（认领）正交组合）：
+- **B1 槽位完备闸（先澄清后补）**：触发按钮的前置条件=该问句的必需槽位已解析（时间窗/对象域/实体/仓类等）。不完备 → 先走**确定性澄清**（复用既有 Clarification「第 n/2 次确认·请提供 base」UI·FDE 已证工作正常），澄清完才可触发。触发前必出**生成计划预览**（将建哪些类型/多少行/值域来源），人确认才跑——不盲补。
+- **B2 模式封闭闸（schema closure=「宽表每表一域」的平台等价物）**：补数据只允许写**已发布 ObjectType schema（每域类型+typed props）+ IndustryPack 值域**内的类型/字段；**枚举有界字段（型号/基地/细分/仓类/物料名）只能取自注册表既有值，绝不发明新实体名**。DataDependency 清单（站①）即边界的机器可读声明。
+- **B3 越界→人工正门+人工描述**：问句/生成计划涉词表外新实体（新型号/新仓/新材料名）→ HARD 化拒自动合成，出 `DataRequest` **并要求人工输入「数据描述」**（该类型的字段/值域/样例说明）→ 经 **R4 审批**后描述物化为值域模板（可追溯声明·非黑箱放行）→ 才允许 SOFT 合成。
+- 不变式：产出一律 PROVISIONAL/`origin=SYNTHETIC`·进看板可见可撤。
+
 ### 站③④⑤⑥ = 复用既有 + 一处统一
 - ③ `data-boundary.decideDataGap` 原样复用。
 - ④ **GROWTH-WORKLIST-HUMAN-FILL**（已设计待落）：所有入口的 gap 统一登记 `WorklistItem`·后端存·筛·人工闸；本 PRD 只需让 readiness 的 gaps 喂进同一看板。

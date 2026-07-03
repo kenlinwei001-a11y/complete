@@ -2918,6 +2918,44 @@
           }
         ]
       }
+    },
+    {
+      "id": "FILL-BOUNDARY-GUARDRAIL",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "GROWTH-WORKLIST-HUMAN-FILL"
+      ],
+      "blockReason": "",
+      "doc": "docs/PRD-datadep-manifest-readiness.md",
+      "title": "触发补数据的内容边界三闸(槽位完备+模式封闭+越界人工描述·防数据混乱·用户钉)",
+      "note": "用户钉:触发补必须有边界否则任意问题自由补数据=数据混乱。FDE真浏览器坐实(2026-07-03 dock-q-vague.png):泛问题『本月库存水位是否可以降低?』(无月份/型号/仓类/物料)→探索模式gap卡OTHER直接出『▶触发生成缺失数据』未先澄清——现状仅词表HARD/SOFT一道闸(data-boundary.ts)。treat(PRD站③⁺·与GROWTH-WORKLIST过程闸(认领)正交组合):B1槽位完备闸=触发按钮前置条件为必需槽位已解析(时间窗/对象域/实体/仓类),不完备先走确定性澄清(复用Clarification『第n/2次确认』UI·FDE证其正常),触发前必出生成计划预览(将建类型/行数/值域来源)人确认才跑;B2模式封闭闸=补数据只写已发布ObjectType schema+IndustryPack值域内类型/字段(『宽表每表一域』平台等价物=每域类型+typed props+值域),枚举有界字段(型号/基地/细分/仓类/物料)只取注册表既有值绝不发明新实体名,DataDependency清单即边界机器可读声明;B3越界闸=涉词表外新实体→HARD化拒自动合成出DataRequest并要求人工输入『数据描述』(字段/值域/样例)→R4审批物化为值域模板(可追溯非黑箱)→才允许SOFT合成。产出一律PROVISIONAL/origin=SYNTHETIC进看板。改动面:agentcore growth/{data-boundary,scenario-grow,probe}+GapCard触发流+Clarification复用+契约DataRequest扩描述字段——道A(与GROWTH-WORKLIST同文件域故dep串行)。",
+      "acceptance": {
+        "goal": "触发补数据受三道内容闸:槽位不完备先澄清·只在schema+值域封闭域内生成·词表外新实体必经人工描述+R4才可合成;与看板认领过程闸正交组合;泛问题不再一键盲补。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "真浏览器问『本月库存水位是否可以降低?』→不再直接出触发按钮:先确定性澄清(月份/仓类/物料槽)→补齐槽位后仍缺数据才出触发按钮且带生成计划预览(类型/行数/值域来源)→人确认→跑。截图对照dock-q-vague.png前后。"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "齿检:①槽位不完备时gap卡触发按钮不可用/替换为澄清引导(去前置=红)②fill请求含注册表外新实体名→拒+DataRequest含『需人工数据描述』字段③人工描述经R4审批→物化值域模板→同请求才放行SOFT合成④枚举有界字段生成值∈注册表(抽查断言)。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "模式封闭:fillData/synthetic.runJob写入的typeKey/props全部∈已发布ObjectType schema+值域声明(越界写入→结构化拒非静默);产出origin=SYNTHETIC/PROVISIONAL不变;R6同输入同产出。四包build/test绿。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "回写母体:§3 sys.orch.query_to_answer 缺口处置总表补三闸行+§8 G-3/CL.7侧记边界闸落地;pnpm ontology:slices重生成·ontology-slices:check绿。"
+          }
+        ]
+      }
     }
   ]
 }
