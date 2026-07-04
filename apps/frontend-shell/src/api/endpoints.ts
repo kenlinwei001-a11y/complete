@@ -674,8 +674,11 @@ import {
 export const fetchAop = async (year: number): Promise<AopResponse> =>
   AopResponseSchema.parse(await api.a<unknown>(`/a/v1/plan/aop?year=${year}`));
 
-export const fetchQuarterly = async (from: string, n = 6): Promise<QuarterlyResponse> =>
-  QuarterlyResponseSchema.parse(await api.a<unknown>(`/a/v1/plan/quarterly?from=${encodeURIComponent(from)}&n=${n}`));
+// HARDCODE-CLOCK-DERIVE：from 可选。省略时后端按模拟时钟 forecastStart 派生起始季（不在前端钉当前季）。
+export const fetchQuarterly = async (from: string | undefined, n = 6): Promise<QuarterlyResponse> => {
+  const qs = `n=${n}${from ? `&from=${encodeURIComponent(from)}` : ""}`;
+  return QuarterlyResponseSchema.parse(await api.a<unknown>(`/a/v1/plan/quarterly?${qs}`));
+};
 
 export const fetchOntologyMapping = (packageId: string) =>
   api.a<MappingRow[]>(`/a/v1/ontology/mapping?packageId=${encodeURIComponent(packageId)}`);

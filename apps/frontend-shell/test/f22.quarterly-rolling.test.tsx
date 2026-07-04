@@ -1,10 +1,33 @@
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
+import { server } from "./setup";
 import { useSessionStore } from "@/store/sessionStore";
 
 describe("F22 · 季度滚动看板（quarterly-rolling）", () => {
+  it("HARDCODE-CLOCK-DERIVE：请求不再钉当前季 2026-Q3（省略 from → 后端按模拟时钟派生起始季）", async () => {
+    // teeth：拦截真实季度请求，捕获 URL；断言 query 不含硬编码起始季 from=2026-Q3（也不含任意 from）。
+    let captured: URL | null = null;
+    server.use(
+      http.get("*/a/v1/plan/quarterly", ({ request }) => {
+        captured = new URL(request.url);
+        // 返回最小合法响应（rows 空 + ltaDeviation 空），本用例只关心请求形态。
+        return HttpResponse.json({ rows: [], ltaDeviation: [] });
+      }),
+    );
+    loginAs("planner");
+    renderApp("/v/quarterly-rolling");
+
+    await waitFor(() => expect(captured).not.toBeNull());
+    const url = captured! as URL;
+    // 起始季不得由前端钉死为当前季。
+    expect(url.searchParams.get("from")).toBeNull();
+    expect(url.search).not.toContain("2026-Q3");
+    expect(url.search).not.toMatch(/from=/);
+  });
+
   it("缺口徽章三档色：>4 红 / >0 黄 / ≤0 绿", async () => {
     loginAs("planner");
     renderApp("/v/quarterly-rolling");

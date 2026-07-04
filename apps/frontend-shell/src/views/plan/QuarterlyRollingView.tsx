@@ -25,9 +25,10 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：缺口档位阈值由 ViewConfig.layout.gapTiers 声明（后端 VIEW_DEFS 已下发），常量仅兜底
   const gapTiers = (view.layout?.gapTiers as { red?: number; yellow?: number } | undefined) ?? { red: 4, yellow: 0 };
   const tierOf = (gap: number): "red" | "amber" | "green" => (gap > (gapTiers.red ?? 4) ? "red" : gap > (gapTiers.yellow ?? 0) ? "amber" : "green");
+  // HARDCODE-CLOCK-DERIVE：不在前端钉当前起始季；省略 from → 后端按模拟时钟 forecastStart 派生起始季。
   const { data, isLoading } = useQuery({
-    queryKey: ["a", "plan-quarterly", { from: "2026-Q3", n: 6 }],
-    queryFn: () => fetchQuarterly("2026-Q3", 6),
+    queryKey: ["a", "plan-quarterly", { n: 6 }],
+    queryFn: () => fetchQuarterly(undefined, 6),
   });
   const { data: rules } = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules });
   const [openRule, setOpenRule] = useState<string | null>(null);
