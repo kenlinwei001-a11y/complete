@@ -527,10 +527,10 @@ class MockCatalogClient implements CatalogClient {
   }
   /** A1 求解器全集注册表（mock：场景 2 + 通用 1，含 A8 CP-SAT 代表 assignment_optimize 供 MCP 工具构建）。 */
   async solverRegistry(_ctx: ToolAuthCtx, query?: string) {
-    const all: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] = [
-      { key: "capacity_forecast", name: "产能推演", description: "推演产能满足度 P50/P90/缺口", argHints: { modelId: "型号 ID", qty: "需求量" }, domain: "plan" },
-      { key: "affected_orders", name: "受影响订单", description: "扰动→受影响订单清单", argHints: { baseId: "基地 ID" }, domain: "plan" },
-      { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）", argHints: { items: "待指派项", bins: "容器" }, domain: "generic" },
+    const all: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; outputShape?: string[] }[] = [
+      { key: "capacity_forecast", name: "产能推演", description: "推演产能满足度 P50/P90/缺口", argHints: { modelId: "型号 ID", qty: "需求量" }, domain: "plan", outputShape: ["p50", "p90", "gap", "mainBn", "perBaseRows"] },
+      { key: "affected_orders", name: "受影响订单", description: "扰动→受影响订单清单", argHints: { baseId: "基地 ID" }, domain: "plan", outputShape: ["baseId", "count", "columns", "rows", "problems"] },
+      { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）", argHints: { items: "待指派项", bins: "容器" }, domain: "generic", outputShape: ["assignment", "objective", "optimal"] },
     ];
     const items = all.filter((it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query));
     return { items };

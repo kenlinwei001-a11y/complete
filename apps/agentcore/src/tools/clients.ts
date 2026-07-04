@@ -107,11 +107,13 @@ export interface CatalogClient {
     kind: "slices" | "solvers",
     query?: string,
   ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }>;
-  /** A1：求解器全集注册表（31，feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。 */
+  /** A1：求解器全集注册表（feature 过滤）——`solvers` MCP server 工具的供给侧，含净室通用族 + A8 CP-SAT。
+   * WO-A：`outputShape` 一并透出（DataCore `/a/v1/solvers/registry` 已附 SOLVER_OUTPUT_SHAPES），
+   * 供对外 MCP server 表面（platform__solver__{key}）派生工具输出结构说明。 */
   solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }>;
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; outputShape?: string[] }[] }>;
 }
 
 /** Aggregate DataCore client surface — HTTP impl (OBO passthrough) or in-memory mock. */

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `79113eb7c805070c`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2504574ea00cf745`。
 
 ---
 
@@ -34,6 +34,18 @@ DataCore SolverRegistry(全集 32 = 业务场景 22 + 净室通用 9 + 决策驾
   · 收敛纪律：「无 LLM 描述不允许发布」→ 注册表每条带描述（catalog.test 守无漂移：注册表键集 === SOLVER_KEYS）
   · feature 过滤先于 authz（关 view.plan-audit → plan_audit 工具消失，R3）；与 QOS 场景 discover(22) 分列、互不影响
   · WO-RESOURCE-REF：MCP 页（McpPage）用户自建 MCP **之下**增「求解器（平台内置）·内置·READ」分区（fetchSolverMcpServer → GET /b/v1/mcp/servers/solvers），点开列 mcp__solvers__* 只读；agent/skill 的 MCP 引用（McpRefSelect）值域 = 用户自建 ∪ 内置 solvers server（mcpConfigId="solvers"）。「求解器即 MCP 的一种」前端接通。
+```
+**平台自身作为对外 MCP/A2A 服务端表面（WO-A · PLATFORM-AGENT-SURFACE·纯投影层·零新执行逻辑）**
+```
+外部 agent --GET /b/v1/mcp-server (+/api/v1 别名)--> AgentCore MCP server 表面(mcp-server/routes.ts + projection.ts)
+  · tools/list = deriveSolverTools(SOLVER_REGISTRY 经 /a/v1/solvers/registry·OBO+entitlement 过滤) ∪ deriveOperationTools(OPERATION_CATALOG r4=false 只读项)
+      工具名 platform__solver__{key}（可执行）/ platform__op__{op}（只读描述性路由·executable=false）；inputSchema 从 argHints 派生·outputShape 投影自 SOLVER_OUTPUT_SHAPES
+  · tools/call platform__solver__{key} --归一到既有 REST--> deps.dataCore.solver.invoke = POST /a/v1/solvers/{key}/invoke（OBO·零新业务逻辑·逐值==REST invoke）
+  · A2A：GET /b/v1/a2a/agent-card（技能=求解器工具·descriptor 派生）；POST /b/v1/a2a/tasks（task≈QueryTask）--映射既有--> orchestrator.submitQuery = POST /api/v1/queries；GET /b/v1/a2a/tasks/:id 映射 GET queries/:taskId
+  · R14：新 solver / 新行业 pack 求解器进注册表 → 工具/技能自动现，无逐工具代码（buildSolverMcpTools 姊妹·对外方向）
+  · 无匿名面：所有方法先 auth（Bearer JWKS 验签 / X-Debug-User）→ 401；OBO 透传用户身份，行级过滤/entitlement 由 DataCore 单一执行点权威裁决（R2/R3·不新增第二套 authz）；跨租户 task 查询 404
+  · 与 A1 内部 `solvers` MCP server（mcp__solvers__{key}·平台作为消费方/客户端·B3）区分：本表面=平台作为被调用方/服务端，前缀 platform__，契约 contracts/agent-surface.ts
+  · 齿检 test/platform-agent-surface.test.ts（12）· FDE 真起证据 docs/evidence/platform-agent-surface-fde.md（47 工具==注册表·逐值==invoke·401/404 门）
 ```
 **场景/入口链**
 ```

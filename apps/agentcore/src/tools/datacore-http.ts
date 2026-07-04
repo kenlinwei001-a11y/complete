@@ -266,15 +266,15 @@ class HttpCatalogClient implements CatalogClient {
   async solverRegistry(
     ctx: ToolAuthCtx,
     query?: string,
-  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] }> {
+  ): Promise<{ items: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string; outputShape?: string[] }[] }> {
     const qs = query ? `?query=${encodeURIComponent(query)}` : "";
-    const res = await call<{ solvers: { key: string; name: string; description: string; argHints?: Record<string, string>; domain?: string }[] }>(
+    const res = await call<{ solvers: { key: string; name: string; description: string; argHints?: Record<string, string>; domain?: string; outputShape?: string[] }[] }>(
       this.baseUrl,
       ctx,
       "GET",
       `/a/v1/solvers/registry${qs}`,
     );
-    return { items: (res.solvers ?? []).map((s) => ({ key: s.key, name: s.name, description: s.description, argHints: s.argHints ?? {}, domain: s.domain })) };
+    return { items: (res.solvers ?? []).map((s) => ({ key: s.key, name: s.name, description: s.description, argHints: s.argHints ?? {}, domain: s.domain, outputShape: s.outputShape ?? [] })) };
   }
 }
 

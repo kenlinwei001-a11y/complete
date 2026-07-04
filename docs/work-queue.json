@@ -3021,7 +3021,7 @@
     {
       "id": "PLATFORM-AGENT-SURFACE",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "INDUSTRY-PACK-CONVERGE"

@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { buildSolverMcpTools, SOLVERS_MCP_SERVER_INFO } from "./mcp/solvers-catalog.js";
+import { registerAgentSurface } from "./mcp-server/routes.js";
 import cors from "@fastify/cors";
 import { z, ZodError } from "zod";
 import {
@@ -185,6 +186,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.addHook("onRequest", async (req) => {
     annotateRequestId(req.id as string);
   });
+
+  // WO-A · PLATFORM-AGENT-SURFACE：平台自身作为对外 MCP/A2A 服务端（投影层·零新执行逻辑）——
+  // 求解器/运维能力经 descriptor 自动派生工具（R14），执行归一到既有 REST invoke / QueryTask 路径。
+  registerAgentSurface(app, deps, auth);
 
   /** D-29 实时环 E-c：B 侧发布类领域事件落库（经 /b/v1/outbox 馈源供前端 F1 全局轮询传播）。 */
   const emitDomainEvent = (tenantId: string, event: string, payload: Record<string, unknown> = {}): Promise<void> =>
