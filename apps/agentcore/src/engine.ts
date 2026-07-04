@@ -208,6 +208,9 @@ export class ExecutionEngine {
 
     const result = await runAgentLoop({
       taskId: opts.taskId,
+      // AGENT-UNIVERSAL-FALLBACK 审计归属：记实际运行的注册 agent id（agt_universal 兜底 / agt_dash… 场景）
+      // → 落 AgentRunRecord.agentId（agentRuns 物证），使每一次 LLM-agent 运行可从持久化回溯归属。
+      agentId: agent.id,
       model,
       tenantId: agent.tenantId,
       system,

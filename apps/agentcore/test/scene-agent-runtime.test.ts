@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createTestApp, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse, text } from "../src/llm/mock.js";
 import { seedRegistry, seedSceneEntries } from "../src/mocks/seed.js";
+import { SEED_UNIVERSAL_AGENT_ID } from "../src/agents/universal.js";
 
 /**
  * WO-AGENT-BREADTH（R16）· C3/C7 runtime 实证：scripted-LLM 驱动真 orchestrator。
@@ -206,6 +207,47 @@ describe("C3/C7 对照 · 无场景 agent 的视图走全域探索智能体 agt_
     expect(note).not.toContain("场景入口模式");
     // decision-trace：兜底真跑的是一等 agt_universal（resolvedRefs 留痕 kind:agent key:universal_explorer）——证兜底终点重接
     expect((task.resolvedRefs ?? []).some((r) => r.kind === "agent" && r.key === "universal_explorer")).toBe(true);
+  });
+});
+
+describe("C2 · agentRun 归属可审计：agentId 真持久化（物证回溯哪个 LLM-agent 跑的·非仅内存）", () => {
+  // 窄口治本：resolvedRefs 只记 agent.key（universal_explorer），无法从物证认出兜底跑的是 agt_universal
+  // 这一「具体 agent 实例」。此处断言持久化的 AgentRunRecord.agentId 精确到 id——scene 与 universal 两路都记，
+  // 每一次 LLM-agent 运行皆可审计归属（engine.runRegisteredAgent 透传 agent.id → loop.finishRun → agentRuns 落库）。
+  it("场景 agent 路径：持久 agentRun.agentId=agt_plan_generate（scene 分支 attributable）", async () => {
+    const { taskId } = await runOpenQuestionOnPlanGenerate();
+    await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+    // getByTask 读的是 insert(result.run) 落库的真物证（memory clone / pg JSON record），非内存瞬态。
+    const run = await t.repos.agentRuns.getByTask(taskId);
+    expect(run, "scene agent 运行必须落 agentRun 物证").toBeDefined();
+    expect(run?.agentId).toBe("agt_plan_generate");
+  });
+
+  it("全域探索兜底路径：持久 agentRun.agentId=agt_universal（universal 分支 attributable）", async () => {
+    // 无场景 agent 视图 → runUniversalAgent 委派 agt_universal（mock LLM·纯持久化断言·无需真 Kimi）。
+    t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
+    t.llm.queueAgentTurn({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "通用探索作答。" }], provenance: [] })],
+    });
+    const { taskId } = await submitQuery(t, PLANNER, "随便问个开放问题（审计归属）", { view: "graph-unconfigured", selectedObjects: [] });
+    await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+    const run = await t.repos.agentRuns.getByTask(taskId);
+    expect(run, "universal 兜底运行必须落 agentRun 物证").toBeDefined();
+    expect(run?.agentId).toBe(SEED_UNIVERSAL_AGENT_ID); // = "agt_universal"
+  });
+
+  // green→red→green 自证：若把 finishRun 里 agentId 摘掉（revert），下面精确断言即红——证物证真载 id 而非恒真。
+  it("[自证·预期红] agentId 缺失或错记 scene<->universal 混淆则失败", async () => {
+    t.llm.queueClassification({ candidates: [], outOfCatalog: true, extractedSlots: {} });
+    t.llm.queueAgentTurn({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "x" }], provenance: [] })],
+    });
+    const { taskId } = await submitQuery(t, PLANNER, "另一个开放问题", { view: "graph-unconfigured", selectedObjects: [] });
+    await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+    const run = await t.repos.agentRuns.getByTask(taskId);
+    // 反向：universal 兜底的 agentId 绝不能是场景 agent，也不能缺失（缺 agentId→undefined→红）。
+    expect(run?.agentId).not.toBe("agt_plan_generate");
+    expect(run?.agentId).toBe(SEED_UNIVERSAL_AGENT_ID);
   });
 });
 

@@ -49,6 +49,11 @@ export interface AgentToolSpec {
 export interface AgentLoopOpts {
   taskId: string;
   model: string;
+  /**
+   * AGENT-UNIVERSAL-FALLBACK 审计归属：运行中的注册 agent id（agt_universal / agt_dash…）。
+   * 透传到 AgentRunRecord.agentId 使 agentRun 物证可回溯「哪个 LLM-agent 跑的」。
+   */
+  agentId?: string;
   /** Tenant scope for multi-provider model resolution (RoutingLlmClient). */
   tenantId?: string;
   system: string;
@@ -230,6 +235,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const finishRun = (budgetExhausted: boolean): AgentRunRecord => ({
     id: newId("run"),
     taskId: opts.taskId,
+    ...(opts.agentId ? { agentId: opts.agentId } : {}),
     model: opts.model,
     iterations,
     budget: opts.budget.budget,

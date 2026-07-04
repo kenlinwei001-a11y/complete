@@ -600,6 +600,12 @@ export type ContextOp = z.infer<typeof ContextOpSchema>;
 export const AgentRunRecordSchema = z.object({
   id: z.string(), // run_
   taskId: z.string(),
+  /**
+   * AGENT-UNIVERSAL-FALLBACK 审计归属（additive）：持久化实际运行的注册 agent 的 id
+   * （场景 agent=agt_dash… / 全域探索兜底=agt_universal），使 decision-trace/agentRun 物证可回溯
+   * 「哪个 LLM-agent 跑的这条」——审计/回溯不变量。缺省（历史记录/非注册 agent 直跑）省略。
+   */
+  agentId: z.string().optional(),
   model: z.string(),
   iterations: z.array(AgentIterationSchema),
   budget: AgentBudgetSchema,
