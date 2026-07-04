@@ -2802,7 +2802,7 @@
     {
       "id": "INDUSTRY-PACK-CONVERGE",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "WIP",
       "owner": "dev",
       "deps": [
         "HARDCODE-DISPATCH-REGISTRY",
