@@ -1522,7 +1522,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       rules: allRules.filter((r) => r.scopeObjectTypes.some((k) => typeKeys.has(k))).map((r) => ({
         key: r.key, name: r.name, expression: r.expression, scopeObjectTypes: r.scopeObjectTypes, severity: r.severity,
       })),
-      solverNeeds: [], kbDocs: [],
+      solverNeeds: [], kbDocs: [], dataDependencies: {},
       sliceNeeds: [], intentNeeds: [], planNeeds: [], workflowNeeds: [], skillNeeds: [], agentNeeds: [], mcpNeeds: [], sceneNeeds: [],
     };
     const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");

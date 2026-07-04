@@ -7,6 +7,9 @@ import type {
 import { deriveSolverArgs } from "./solver-args.js";
 import { DOMAIN_ROOT_REQUIREMENTS } from "./domain-invariants.js";
 import { SOLVER_OUTPUT_SHAPES } from "../solvers/service.js";
+import { deriveDataDependencies, withRequires } from "./datadep-derive.js";
+// 站①派生核（纯函数·无 service 依赖）对外再导出，向后兼容既有 import 口径。
+export { typeKeyToRole, deriveDataDependency, deriveDataDependencies, deriveDataDependencyFromTypes, withRequires } from "./datadep-derive.js";
 
 /**
  * G-8 优化：BuildPlan 渲染契约自动生成。此前 planNeeds.renderBindings 出厂为 `[]`（空），靠后续手工填——
@@ -18,6 +21,40 @@ import { SOLVER_OUTPUT_SHAPES } from "../solvers/service.js";
 const RENDER_ENVELOPE_EXCLUDE = new Set(["error", "evaluatedRules", "ruleSetVersion"]);
 export function defaultRenderBindings(solverKey: string): string[] {
   return (SOLVER_OUTPUT_SHAPES[solverKey] ?? []).filter((k) => !RENDER_ENVELOPE_EXCLUDE.has(k));
+}
+
+/**
+ * 站①「输入换基底」：comprehend 的 design-time system context 从"一句 story"扩到**功能相关本体切片子图**
+ * （对象类型 / 链路 / 不变量）+ 该入口 intent + 租户 system-state 快照（present 计数）。让 LLM 在**真实系统现状**
+ * 之上倒推该补什么（而非凭空）。纯拼串·确定性；缺省字段省略（向后兼容·关键词地板不需要它）。
+ */
+export interface ComprehendContext {
+  /** resolve_slice 子图：功能相关对象类型键（rootType + hops 落域的类型）。 */
+  sliceTypes?: string[];
+  /** 子图链路键（对象间关系·空态 viaLinks 判定的上游）。 */
+  sliceLinks?: string[];
+  /** 相关不变量编号（R1–R12 / G-1…G-8）——让倒推尊重铁律。 */
+  invariants?: string[];
+  /** 入口 intent（该 story 服务的推演入口 solver:/scenario: 键）。 */
+  intent?: string;
+  /** 租户 system-state 快照：typeKey→present 行数（倒推 diff 真实 state·非凭空补）。 */
+  stateSnapshot?: Record<string, number>;
+}
+
+/** 把 ComprehendContext 拼成 LLM system 提示尾段（design-time 输入基底；关键词地板忽略此串·R6 不依赖）。 */
+export function renderComprehendContext(cx: ComprehendContext | undefined): string {
+  if (!cx) return "";
+  const lines: string[] = [];
+  if (cx.intent) lines.push(`入口 intent：${cx.intent}（倒推须服务此推演入口的就绪）`);
+  if (cx.sliceTypes && cx.sliceTypes.length > 0) lines.push(`功能相关本体切片·对象类型：${[...cx.sliceTypes].sort().join("、")}`);
+  if (cx.sliceLinks && cx.sliceLinks.length > 0) lines.push(`切片链路（对象间关系）：${[...cx.sliceLinks].sort().join("、")}`);
+  if (cx.invariants && cx.invariants.length > 0) lines.push(`须尊重的不变量/断点：${[...cx.invariants].sort().join("、")}`);
+  if (cx.stateSnapshot && Object.keys(cx.stateSnapshot).length > 0) {
+    const snap = Object.entries(cx.stateSnapshot).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => `${k}=${v}`).join("、");
+    lines.push(`租户 system-state 快照（现有对象行数·倒推缺口 diff 之）：${snap}`);
+  }
+  if (lines.length === 0) return "";
+  return "\n\n【功能相关本体切片 + 入口 + 现状（design-time 倒推基底）】\n" + lines.join("\n");
 }
 
 /**
@@ -194,13 +231,18 @@ export function normalizeSolverKey(key: string, registeredKeys?: readonly string
   return key;
 }
 
-/** 把已注册求解器目录拼进 comprehend 系统提示——LLM 的 solverKey 必须优先从中选语义最贴近的一个。 */
-export function comprehendSystemWithSolvers(registeredKeys: readonly string[]): string {
+/**
+ * 把已注册求解器目录拼进 comprehend 系统提示——LLM 的 solverKey 必须优先从中选语义最贴近的一个。
+ * 站①「输入换基底」：可选 `context`（功能相关本体切片子图 + 入口 intent + 租户 state 快照）拼进尾段，
+ * 让 design-time 倒推在**真实系统现状**之上进行（非凭空）。关键词地板不读此串（R6 不依赖·纯 design-time 增强）。
+ */
+export function comprehendSystemWithSolvers(registeredKeys: readonly string[], context?: ComprehendContext): string {
   const catalog = registeredKeys.map((k) => `- ${k}${SOLVER_HINTS[k] ? "：" + SOLVER_HINTS[k] : ""}`).join("\n");
   return (
     COMPREHEND_SYSTEM +
     "\n\n【已注册求解器目录】solverNeeds[].solverKey **必须优先从下表选语义最贴近的现有 key**（如'能否满足产能'→capacity_forecast、'挤占哪些项目'→shared_bottleneck、'影响哪些客户/订单'→affected_orders、'利润损失'→margin_attribution）；只有确实没有任何贴近项时才用新 key（新 key 将作为自成长工单，不要轻易新造）：\n" +
-    catalog
+    catalog +
+    renderComprehendContext(context)
   );
 }
 
@@ -224,13 +266,17 @@ export function assemblePlanBody(
     properties: e.fields.map((f) => ({ propKey: f.name, sourceField: f.name, dataType: f.dataType, isPrimaryKey: f.isPrimaryKey ?? false, refToTypeKey: f.refToTypeKey ?? null })),
   }));
   const rules: PlanRule[] = core.rules.filter((r) => r.scopeObjectTypes.every((t) => typeKeys.has(t)));
-  const solverNeeds: PlanSolverNeed[] = core.solverNeeds
-    .filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)))
-    // 自造求解器名 → 已注册 key 的确定性收敛（修 SOLVER_NOT_FOUND，使链路闭合不依赖 LLM 措辞）。
-    .map((s) => ({ ...s, solverKey: normalizeSolverKey(s.solverKey, registeredSolverKeys) }))
-    // FDE 自动倒推求解器参数（多跳路径/字段映射）→ 贯通到启动器使"点一下出答案"成立。
-    .map((s) => ({ ...s, args: deriveSolverArgs(s.solverKey, objectTypes) }));
-  return { dataSources, objectTypes, rules, solverNeeds, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology };
+  const solverNeeds: PlanSolverNeed[] = withRequires(
+    core.solverNeeds
+      .filter((s) => s.inputFields.every((f) => typeKeys.has(f.typeKey)))
+      // 自造求解器名 → 已注册 key 的确定性收敛（修 SOLVER_NOT_FOUND，使链路闭合不依赖 LLM 措辞）。
+      .map((s) => ({ ...s, solverKey: normalizeSolverKey(s.solverKey, registeredSolverKeys) }))
+      // FDE 自动倒推求解器参数（多跳路径/字段映射）→ 贯通到启动器使"点一下出答案"成立。
+      .map((s) => ({ ...s, args: deriveSolverArgs(s.solverKey, objectTypes) })),
+  );
+  // 站①②：倒推产 DataDependency 清单（design-time·DRAFT）→ 填 durable 契约（keystone DataDependencySchema）。
+  const dataDependencies = deriveDataDependencies(solverNeeds);
+  return { dataSources, objectTypes, rules, solverNeeds, dataDependencies, ...deriveBStack(objectTypes, solverNeeds, script), scenarioTopology: core.scenarioTopology };
 }
 
 /** B 栈倒推（确定性）：对象→切片；求解器→计划/意图/场景/工作流/技能/Agent。LLM 与关键词地板共用。 */
@@ -546,7 +592,7 @@ export function comprehendScript(
   seed: number,
 ): Pick<
   BuildPlan,
-  | "dataSources" | "objectTypes" | "rules" | "solverNeeds" | "kbDocs"
+  | "dataSources" | "objectTypes" | "rules" | "solverNeeds" | "kbDocs" | "dataDependencies"
   | "sliceNeeds" | "intentNeeds" | "planNeeds" | "workflowNeeds" | "skillNeeds" | "agentNeeds" | "mcpNeeds" | "sceneNeeds"
 > {
   // 命中实体；无命中则兜底 Order + Base 最小集（保证 pipeline 永远可跑）。
@@ -590,10 +636,12 @@ export function comprehendScript(
     (r) => matches(script, r.keywords) && r.scopeObjectTypes.every((t) => typeKeys.has(t)),
   ).map((r) => ({ key: r.key, name: r.name, expression: r.expression, scopeObjectTypes: r.scopeObjectTypes, severity: r.severity }));
 
-  // 求解器：命中关键词且其依赖类型已在 plan 中。
-  const solverNeeds: PlanSolverNeed[] = SOLVERS.filter(
-    (s) => matches(script, s.keywords) && s.inputFields.every((f) => typeKeys.has(f.typeKey)),
-  ).map((s) => ({ solverKey: s.solverKey, inputFields: s.inputFields, args: deriveSolverArgs(s.solverKey, objectTypes) }));
+  // 求解器：命中关键词且其依赖类型已在 plan 中。站①：地板同样倒推 DataDependency 清单（R6·与 LLM 派生同口径·缺 LLM 兜底）。
+  const solverNeeds: PlanSolverNeed[] = withRequires(
+    SOLVERS.filter(
+      (s) => matches(script, s.keywords) && s.inputFields.every((f) => typeKeys.has(f.typeKey)),
+    ).map((s) => ({ solverKey: s.solverKey, inputFields: s.inputFields, args: deriveSolverArgs(s.solverKey, objectTypes) })),
+  );
 
   // 知识库：把脚本原文作为一篇知识文档灌入（可溯源）。
   const kbDocs = [{ title: "场景脚本", content: script.slice(0, 4000) }];
@@ -646,6 +694,7 @@ export function comprehendScript(
 
   return {
     dataSources, objectTypes, rules, solverNeeds, kbDocs,
+    dataDependencies: deriveDataDependencies(solverNeeds),
     sliceNeeds, intentNeeds, planNeeds, sceneNeeds,
     workflowNeeds, skillNeeds, agentNeeds, mcpNeeds: [],
   };

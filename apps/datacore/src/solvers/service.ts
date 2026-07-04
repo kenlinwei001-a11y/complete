@@ -44,6 +44,7 @@ import { fuseMultiSource, type ArbitrationRuleAst, type LoadedFusionSource } fro
 import { MultiSourceFusionArgsSchema, type ArbitrationStrategy, type FusedObjectSnapshot } from "@platform/contracts";
 import { SOLVER_DATADEP, type DataDependency, type EntryReadiness, type GapFinding, type ReadinessRoleStatus } from "@platform/contracts";
 import { contextRolesToLoad, ROLE_CANONICAL } from "./datadep-context.js";
+import { deriveDataDependencyFromTypes } from "../databuilder/datadep-derive.js";
 import type { AuditService } from "../audit.js";
 import { newId } from "../ids.js";
 
@@ -226,7 +227,10 @@ export class SolverService {
     // DF.8 接地：业务词表注入生成 + 注册前越界校验，使生成不造业务事实。DF.11：词表自本体自成长。
     const vocab = await this.deriveGroundingVocab(ctx);
     const draft = await this.generateDraftWithSchema(ctx, { ...spec, vocab });
-    return this.registerProvisionalSolver(ctx, spec.key, draft, { vocab });
+    // DATADEP-C5 站①③（DATADEP 消费方）：design-time 从该临时求解器**读取的对象类型集**倒推 DataDependency 清单
+    // 填 SolverArtifact.requires（DRAFT·随 PROVISIONAL·晋升 R4 才 durable）；就绪探测 runtime 读之（无 LLM·R6）。
+    const requires = spec.objectTypes.length > 0 ? deriveDataDependencyFromTypes(spec.objectTypes.map((t) => t.typeKey)) : undefined;
+    return this.registerProvisionalSolver(ctx, spec.key, draft, { vocab, requires });
   }
 
   /** DF.8 静态业务词表（基地名 + 细分名，单一来源册），自成长兜底基底。 */
@@ -275,7 +279,7 @@ export class SolverService {
   }
 
   /** 冻结 + 接地校验 + 沙箱跑通自检 + 注册（纯逻辑，确定性；draft 已由 LLM 产出/或测试直供）。 */
-  async registerProvisionalSolver(ctx: AuthCtx, key: string, draft: SolverGenDraft, opts: { vocab?: string[] } = {}): Promise<SolverArtifact> {
+  async registerProvisionalSolver(ctx: AuthCtx, key: string, draft: SolverGenDraft, opts: { vocab?: string[]; requires?: DataDependency } = {}): Promise<SolverArtifact> {
     const hash = createHash("sha256").update(draft.computeSource).digest("hex").slice(0, 16);
     const prior = (await this.repos.solverArtifacts.list(ctx.tenantId, (a) => a.key === key)).sort((a, b) => b.version - a.version)[0];
     const version = prior ? prior.version + 1 : 1;
@@ -292,6 +296,9 @@ export class SolverService {
       version,
       createdBy: ctx.userId,
       createdAt: new Date().toISOString(),
+      // DATADEP-C5 站①：design-time comprehend 倒推填的数据依赖清单（DRAFT·随此 PROVISIONAL 版本落库·非 durable
+      // 声明直到 promoteSolver R4 晋升 GOVERNED）。缺省 undefined（向后兼容·无倒推来源时不硬造）。
+      ...(opts.requires ? { requires: opts.requires } : {}),
     };
     // DF.8 接地校验（沙箱前）：computeSource 引用了边界外业务实体（编造的基地/型号名）→ 直接 UNREGISTERED。
     const groundingViolations = opts.vocab ? checkGrounding(draft.computeSource, opts.vocab) : [];
@@ -1660,10 +1667,20 @@ export class SolverService {
     };
   }
 
-  /** 站③ 便捷：按求解器 key 从出厂清单 registry 探测就绪。未声明清单 → 视为无前置要求（ready·空 roles）。 */
+  /**
+   * 站③ 便捷：按求解器 key 探测就绪。清单来源优先级（**纯读·runtime 不调 LLM·R6**）：
+   *  ① factory `SOLVER_DATADEP` registry（出厂求解器·门 datadep-manifest:check 守）；
+   *  ② DATADEP-C5 站①：LLM 临时求解器的 `SolverArtifact.requires`（design-time comprehend 倒推填·晋升 R4 后 durable）；
+   *  ③ 皆无 → 无前置要求（ready·空 roles·向后兼容）。
+   * 就绪探测是**确定性计数**（checkReadiness），绝不 per-request 调 LLM（design-time/runtime 边界·R6 地板）。
+   */
   async checkSolverReadiness(tenantId: string, solverKey: string): Promise<EntryReadiness> {
-    const dep: DataDependency = SOLVER_DATADEP[solverKey] ?? { requires: [] };
-    return this.checkReadiness(tenantId, `solver:${solverKey}`, dep);
+    let dep: DataDependency | undefined = SOLVER_DATADEP[solverKey];
+    if (!dep) {
+      const art = await this.activeArtifact(tenantId, solverKey);
+      dep = art?.requires;
+    }
+    return this.checkReadiness(tenantId, `solver:${solverKey}`, dep ?? { requires: [] });
   }
 
   /** §6.2 test hook + iot_delay scenario: mark a critical source stale (C09 → P90 0.93→0.90). */

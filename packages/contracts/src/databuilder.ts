@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DataDependencySchema } from "./datadep.js";
 
 // ---------------------------------------------------------------------------
 // A7 Foundry-Grade Data Builder（agent 驱动的 data pipeline 发动机）
@@ -136,6 +137,14 @@ export const PlanSolverNeedSchema = z.object({
    * 断点挡在建图期（BuildPlan 扩 AgentCore 渲染栈）。缺省=不声明渲染绑定（跳过 SHAPE）。
    */
   renderBindings: z.array(z.string()).optional(),
+  /**
+   * DATADEP 站①（COMPREHEND-FILL·填充引擎）：design-time comprehend 倒推**从本求解器输入字段派生的
+   * 声明式数据依赖清单**（DataDependency·WHAT/durable·与 `SOLVER_DATADEP` registry 同形态）。
+   * 由确定性 `deriveDataDependency(inputFields)` 产（LLM 产 inputFields=难点、机械派生=确定性·R6·floor 兜底），
+   * 只声明**需求结构不产数值**；喂 SolverArtifact.requires（DRAFT→R4 才 durable）+ 就绪探测（runtime 无 LLM）。
+   * 缺省=不声明（向后兼容）。
+   */
+  requires: DataDependencySchema.optional(),
 });
 export type PlanSolverNeed = z.infer<typeof PlanSolverNeedSchema>;
 
@@ -210,6 +219,13 @@ export const BuildPlanSchema = z.object({
   rules: z.array(PlanRuleSchema),
   solverNeeds: z.array(PlanSolverNeedSchema),
   kbDocs: z.array(PlanKbDocSchema),
+  /**
+   * DATADEP 站①（COMPREHEND-FILL）：本次倒推产出的**每求解器数据依赖清单**（solverKey→DataDependency）——
+   * 「填充引擎」的 durable 产物（WHAT），与 keystone `SOLVER_DATADEP` registry / `SolverArtifact.requires` 同形态。
+   * design-time 填（LLM/floor）·DRAFT（随 BuildPlan·未晋升即非 durable 声明）·runtime 就绪探测读之（无 LLM·R6）。
+   * 缺省空（向后兼容）。
+   */
+  dataDependencies: z.record(z.string(), DataDependencySchema).default({}),
   // g8-P3 B 栈需求（向后兼容，缺省空）
   sliceNeeds: z.array(PlanSliceNeedSchema).default([]),
   intentNeeds: z.array(PlanIntentNeedSchema).default([]),

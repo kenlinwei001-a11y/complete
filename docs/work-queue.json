@@ -2998,7 +2998,7 @@
     {
       "id": "DATADEP-C5-COMPREHEND-FILL",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "DATADEP-MANIFEST-READINESS"

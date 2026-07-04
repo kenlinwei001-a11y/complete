@@ -29,7 +29,7 @@ import type { SolverService } from "../solvers/service.js";
 import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers } from "./comprehend.js";
+import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers, type ComprehendContext } from "./comprehend.js";
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import type { LlmClient } from "../llm.js";
 import { deriveProducedArtifacts } from "./artifacts.js";
@@ -78,16 +78,21 @@ export class DataBuilderService {
    * §2 comprehend：LLM 优先（purpose=comprehend，绑定 Kimi 即听懂任意业务语言）→ assemblePlanBody；
    * 缺绑定 / 无 key / 解析失败 → 确定性关键词地板 comprehendScript（R6 字节级一致）。
    * 诚实：LLM 倒推出的求解器若系统未注册，后续闭包/自检会照常暴露为缺口（不静默假装能答）。
+   *
+   * DATADEP-C5 站①「输入换基底」：design-time 把**功能相关本体切片子图**（已发布对象类型 + 链路）+ 入口 intent
+   * + 租户 system-state 快照（每类型 present 行数）拼进 LLM system context → 倒推在真实现状之上（非凭空）。
+   * 关键词地板不读此 context（R6 不依赖·纯 design-time 增强）。
    */
-  private async comprehendPlanBody(ctx: AuthCtx, script: string, seed: number): Promise<ReturnType<typeof assemblePlanBody>> {
+  private async comprehendPlanBody(ctx: AuthCtx, script: string, seed: number, entryIntent?: string): Promise<ReturnType<typeof assemblePlanBody>> {
     if (this.llm) {
       try {
+        const context = await this.buildComprehendContext(ctx, entryIntent);
         const core = await this.llm.parseStructured({
           // E13：model 为「无绑定时 env 默认」的 model id；有租户绑定则被 TenantRoutedLlmClient 解析出的真实
           // modelId 覆盖（purpose=comprehend → provider/model 绑定）。tenantId+purpose 共同驱动路由。
           model: this.defaultModel, maxTokens: 8000, tenantId: ctx.tenantId, purpose: "comprehend",
-          // 把已注册求解器目录拼进提示 → LLM 优先映射到真实存在的 solverKey（减少自造名导致的 SOLVER_NOT_FOUND）。
-          system: comprehendSystemWithSolvers(SOLVER_KEYS), messages: [{ role: "user", content: script }], schema: LlmComprehendSchema,
+          // 把已注册求解器目录 + 功能切片/入口/现状（站①输入基底）拼进提示 → LLM 在真实现状之上倒推。
+          system: comprehendSystemWithSolvers(SOLVER_KEYS, context), messages: [{ role: "user", content: script }], schema: LlmComprehendSchema,
         });
         if (core.objectTypes.length > 0) return assemblePlanBody(core, script, seed, SOLVER_KEYS);
       } catch {
@@ -95,6 +100,27 @@ export class DataBuilderService {
       }
     }
     return comprehendScript(script, seed);
+  }
+
+  /**
+   * 站①输入基底：从本租户**已发布本体切片子图**（ACTIVE 对象类型 + 链路）+ 入口 intent + system-state 快照
+   * （每类型现有对象行数）装配 `ComprehendContext`。design-time 读侧派生·R2 仅本租户·确定性排序。
+   * 空本体 → 空 context（向后兼容·地板不受影响）。
+   */
+  private async buildComprehendContext(ctx: AuthCtx, entryIntent?: string): Promise<ComprehendContext> {
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE");
+    const links = await this.repos.ontologyLinks.list(ctx.tenantId);
+    const stateSnapshot: Record<string, number> = {};
+    for (const t of types) {
+      stateSnapshot[t.key] = (await this.repos.objects.listByType(ctx.tenantId, t.key)).filter((o) => !o.mergedInto).length;
+    }
+    return {
+      sliceTypes: types.map((t) => t.key),
+      sliceLinks: links.map((l) => l.key),
+      invariants: ["R6", "R14", "G-8"],
+      ...(entryIntent ? { intent: entryIntent } : {}),
+      ...(Object.keys(stateSnapshot).length > 0 ? { stateSnapshot } : {}),
+    };
   }
 
   // ---- builder-agent 资源（统一资源模式 DRAFT/PUBLISHED/RETIRED）-----------
