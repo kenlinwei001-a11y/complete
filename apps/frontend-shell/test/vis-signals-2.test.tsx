@@ -52,7 +52,7 @@ describe("WO-VIS-SIGNALS-2 · 透出批2 齿检", () => {
       renderApp("/v/quarterly-rolling");
       // 前端所见「需 137」== 后端 rows[0].dem
       expect(await screen.findByTestId("qdem-2026-Q4")).toHaveTextContent("需 137");
-      expect(captured!.rows[0].dem).toBe(137);
+      expect(captured!.rows[0]!.dem).toBe(137);
     });
 
     it("「看年度分解 →」跳 /v/annual-scenario", async () => {

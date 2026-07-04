@@ -56,9 +56,9 @@
 - 修：①OpsSchedulePage 每作业加"状态+最近运行"面板（`GET /scheduler/jobs` 显 nextRunAt/lastRunAt/lastError + 展开 `/jobs/:id/runs` 红绿表 + pause/resume）②LlmProvidersPage 加"本月配额"横幅（`GET /llm-budgets` used/soft/hard/降级徽标）+ 移除或真接 usage7dTokens 死列③DecisionsPage links 按 kind 渲染深链（ACTION_DRAFT→/admin/actions 等）+ CreateDecision/mitigation 采纳流补 links 捕获·`endpoints.ts` 补 scheduler/llm-budgets 端点。
 - IPO 验收：①注册定期作业→跑一轮→调度页显该 run 成/败（curl `/jobs/:id/runs` 得同条·失败显 error）②记 token 用量→配额横幅显 used/soft/hard（curl `/llm-budgets` 同值）③做决策带 link→详情 links 可点跳目标页。
 
-### WO-VIS-SIGNALS-2（P2·透出批）
-- 修：①ReviewView 空态深链跳合成/DataBuilder②QuarterlyRolling 需求条加 Provenance/跳年度分解③AnnualScenario 缺口窗口 badge 加下钻链接④OrderChain 财务判补 creditUsedRatio/priceUpPct 并列⑤SolverReview 晋升后加"查看目录中此求解器→"⑥RulesPage 展开补 params 小表⑦SimClock tick 告警/变更加深链⑧ExternalSignals source 加连接器深链。
-- IPO 验收：逐条真浏览器验（空态有深链·窗口可下钻·财务值并列·params 可见·信号源可跳）。
+### WO-VIS-SIGNALS-2（P2·透出批）✅ 已落地（①-⑦·⑧ ExternalSignals 见下移交）
+- 修：①ReviewView 空态深链跳合成/DataBuilder ✅②QuarterlyRolling 需求条加 Provenance/跳年度分解 ✅③AnnualScenario 缺口窗口 badge 加下钻链接 ✅④OrderChain 财务判补 creditUsedRatio/priceUpPct 并列 ✅⑤SolverReview 晋升后加"查看目录中此求解器→" ✅⑥RulesPage 展开补 params 小表 ✅⑦SimClock tick 告警/变更加深链 ✅⑧ExternalSignals source 加连接器深链 ⏸移交（不在本单 reviewer 簇 7 信号内·ExternalSignalsPage 独立·未触·后续单接）。
+- IPO 验收：逐条真浏览器验（空态有深链·窗口可下钻·财务值并列·params 可见·信号源可跳）。**牙齿** `apps/frontend-shell/test/vis-signals-2.test.tsx` 12 真断言全绿·本体回写 §8 G-VIS-1 ✅ VIS-SIGNALS-2 条·证据 `docs/evidence/VIS-SIGNALS-2-*.png`。
 
 ## §2 本体引用与影响
 - **链路**：场景启动器→presetContext→推演视图求解器入参（补 G-3 视图侧注入接缝）·SolverBinding activate（G-17 命门前端）·computeReferences 反向引用图（§3:238）·scheduler_runs/llm_budgets/decision.links→前端消费·RawDataset→marginLedger 权威勾稽。
