@@ -2137,7 +2137,7 @@
       "status": "TODO",
       "title": "UI-polish批:布局小瑕疵(层级/叠字/空态/裸浮点)",
       "doc": "docs/REVIEW-scan-findings.md",
-      "note": "dash 3.72屏无层级/sim-init挤右上/geo-map叠字/裸表头无空态/P90裸浮点",
+      "note": "dash 3.72屏无层级/sim-init挤右上/geo-map叠字/裸表头无空态/P90裸浮点 【LAUNCHER复验移交·渲染疵】solver_summary 对空数组子字段的显性化文案『**结果为空（真无解）**…「infeasible」为空』出现在**非空**答案内(S11·6行结果表并存·executor.ts:441+)→误导用户以为整体无解。修法:仅当答案整体无数据块时才出『真无解』级标签;子字段空降为轻量『infeasible: 无』一行。",
       "acceptance": {
         "goal": "观感工业级·非功能阻断类瑕疵收口。",
         "criteria": [
@@ -2581,7 +2581,7 @@
     {
       "id": "LAUNCHER-GROUNDED-QUESTIONS",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "GROWTH-WORKLIST-HUMAN-FILL"
