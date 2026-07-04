@@ -2802,8 +2802,8 @@
     {
       "id": "INDUSTRY-PACK-CONVERGE",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [
         "HARDCODE-DISPATCH-REGISTRY",
         "HARDCODE-VIEW-LAYOUT",
