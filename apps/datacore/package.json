@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')\"",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')\" && node -e \"const fs=require('fs'),p='src/synthetic/packs',d='dist/synthetic/packs';if(fs.existsSync(p)){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(p))if(f.endsWith('.pack.json'))fs.copyFileSync(p+'/'+f,d+'/'+f)}\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test",
     "test": "vitest run",

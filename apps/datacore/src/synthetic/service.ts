@@ -1,4 +1,4 @@
-import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+import { IndustryTemplateSchema, type GenSpec, type IndustryPack, type IndustryScenario, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
 import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
@@ -236,7 +236,10 @@ export class SyntheticService {
       // 增量视图（§7.14–7.17 + 图谱八视角 + 运营回顾）：不进 report.views（保持验收快照稳定），但进 view_configs。
       const extraViews =
         usesBatteryPipeline ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
-      await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn });
+      // INDUSTRY-PACK-CONVERGE（C3 活体）：行业包自带 viewLayouts + 决策场景卡 → 加载器物化为该租户视图/场景
+      // （非电池行业驱动其**自有**非电池视图·config-driven·前端零改）。pack 未登记（LLM 未知行业）时为 undefined。
+      const pack = loadIndustryPack(input.industry);
+      await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn, pack });
       // 管理平台增量 §3：场景包记录（admin/views 与场景包管理页的事实源；幂等 upsert）。
       const pkgId = "pkg_battery_manufacturing";
       const existingPkg = await this.repos.scenarioPackages.get(ctx.tenantId, pkgId);
@@ -1130,7 +1133,7 @@ export class SyntheticService {
     ctx: AuthCtx,
     views: string[],
     extraViews: string[] = [],
-    opts?: { livedIn?: boolean },
+    opts?: { livedIn?: boolean; pack?: IndustryPack },
   ): Promise<void> {
     // 前端 PRD §7：每个视图声明 renderer（前端按注册表分发）+ 声明式 layout（dashboard widget / ledger 列）。
     const DASH_LAYOUT: Record<string, unknown> = {
@@ -1355,6 +1358,38 @@ export class SyntheticService {
         { descriptionLink: "/admin/calibration", description: "查看精度趋势与校准历史" },
       ),
     };
+    // INDUSTRY-PACK-CONVERGE（C3 活体·pack 驱动非电池视图/场景）：把 pack.views 合入 VIEW_DEFS + 把 pack.scenarios
+    // 物化为「决策场景」视图（renderer=dashboard·config-driven）。**非覆盖合入**（既有 builtin 键胜出）+ 去重（已在
+    // views/extraViews 的键不重复）→ 电池：pack.views 键（plan-audit/…）皆已在 builtin 且已在 views∪extraViews →
+    // 合入无覆盖·去重后 packViewKeys=[]·电池视图集**字节不变**（byte-identical R6）。非电池（物流）：其 pack 键不撞
+    // builtin → 合入 + 追加进导航 → 该行业渲染其**自有**非电池视图/场景（引擎零 if(industry===)·换 pack 即随之变）。
+    const packViewKeys: string[] = [];
+    const pack = opts?.pack;
+    if (pack) {
+      // .ts/.js pack 以 raw 实例入册（保 identity·byte-identical R6，不经 zod default 克隆）→ 消费点补默认。
+      const packViews = pack.views ?? {};
+      const packScenarios = pack.scenarios ?? [];
+      for (const [key, def] of Object.entries(packViews)) {
+        if (!VIEW_DEFS[key]) VIEW_DEFS[key] = def; // 非覆盖：electric builtin 胜出→电池不变
+        if (!views.includes(key) && !extraViews.includes(key)) packViewKeys.push(key);
+      }
+      // 决策场景卡 → 声明式 dashboard 视图（每卡=一问 + 声明式答案 query·前端零写死·浏览器可答）。
+      if (packScenarios.length > 0 && !VIEW_DEFS["decision-scenarios"]) {
+        const scenarioWidget = (s: IndustryScenario): Record<string, unknown> => {
+          const a = s.answer;
+          const prov = { toolName: a.kind === "solver" ? "invoke_solver" : "query_objects", outputPath: "$", label: s.title, sourceSystem: a.objectType ? `本体对象库·${a.objectType}` : (a.solverKey ?? "") };
+          if (a.kind === "objects") return { key: `sc-${s.key}`, type: "table", title: s.question, span: 2, query: { kind: "objects", objectType: a.objectType, columns: a.columns, limit: a.limit ?? 20 }, provenance: prov };
+          if (a.kind === "solver") return { key: `sc-${s.key}`, type: "kpi", title: s.question, unit: a.unit, query: { kind: "solver", solverKey: a.solverKey, args: a.args ?? {}, ...(a.prop ? { valuePath: a.prop } : {}) }, provenance: prov };
+          return { key: `sc-${s.key}`, type: "kpi", title: s.question, unit: a.unit, query: { kind: "objects-aggregate", objectType: a.objectType, agg: a.agg, prop: a.prop }, provenance: prov };
+        };
+        VIEW_DEFS["decision-scenarios"] = {
+          title: "决策场景",
+          renderer: "dashboard",
+          layout: { moduleLinks: [], feedbackChain: [], widgets: packScenarios.map(scenarioWidget) },
+        };
+        packViewKeys.push("decision-scenarios");
+      }
+    }
     const ADMIN_NAV: { key: string; label: string }[] = [
       { key: "connections", label: "数据接入" },
       { key: "rule-docs", label: "规则文档审核" },
@@ -1378,11 +1413,13 @@ export class SyntheticService {
     // 不同账号不同前端：admin 全量（含 admin 导航组），planner 业务视图，base_manager 子集 + 不同主题强调色。
     const baseManagerExtras = extraViews.filter((v) => v === "order-chain" || v === "review");
     const roleViews: Record<string, string[]> = {
-      admin: [...views, ...extraViews],
-      planner: [...views, ...extraViews],
+      // packViewKeys 追加：非电池行业其自有 viewLayouts/场景（电池 packViewKeys=[]·集合不变·byte-identical R6）。
+      admin: [...views, ...extraViews, ...packViewKeys],
+      planner: [...views, ...extraViews, ...packViewKeys],
       base_manager: [
         ...views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate"].includes(v)),
         ...baseManagerExtras,
+        ...packViewKeys,
       ],
     };
     const themes: Record<string, Record<string, string>> = {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { makeApp } from "./helpers.js";
 import type { AuthCtx, ViewConfig } from "../src/domain.js";
 import { IndustryPackSchema, SEG_REGISTRY } from "@platform/contracts";
@@ -12,6 +14,9 @@ import {
   loadIndustryPack,
   packSolverDescriptors,
   BATTERY_VIEW_FRAGMENTS,
+  scanPackFiles,
+  keyFromFile,
+  PACKS_DIR,
 } from "../src/synthetic/industry-pack.js";
 
 /**
@@ -118,5 +123,95 @@ describe("INDUSTRY-PACK-CONVERGE · 单一声明式行业包 + 加载器", () =>
     expect(bases.length).toBe(0);
     // 该行业无应用细分（entities.segments=[]）——pack 声明即栈行为。
     expect(logisticsPack.entities.segments).toEqual([]);
+  });
+});
+
+/**
+ * C2『换行业 0 码改』teeth：PACK_REGISTRY 由目录扫描派生（非手工数组）·新增行业 = 加 packs/** 一个文件即被发现。
+ */
+describe("INDUSTRY-PACK-CONVERGE · C2 目录约定 + auto-discover（真 0 码改）", () => {
+  it("C2a PACK_REGISTRY 键集 === packs/ 目录扫描键集（目录派生·非手工登记数组）", () => {
+    const dirKeys = scanPackFiles().map(keyFromFile).sort();
+    const regKeys = PACK_REGISTRY.map((p) => p.industryKey).sort();
+    expect(regKeys).toEqual(dirKeys);
+    // 目录约定：文件名（去 .pack.<ext>）=== 该 pack.industryKey（键即路由·无手工映射漂移）。
+    for (const name of scanPackFiles()) {
+      const p = loadIndustryPack(keyFromFile(name));
+      expect(p, `packs/${name} 应被扫描登记`).toBeDefined();
+      expect(p!.industryKey).toBe(keyFromFile(name));
+    }
+    // 两内置行业均在（battery byte-identical + logistics 非电池）。
+    expect(dirKeys).toContain("battery-manufacturing");
+    expect(dirKeys).toContain("logistics-warehouse");
+  });
+
+  it("C2b 加一个 packs/*.pack.json 即被同一扫描发现（0 码改·新增行业=1 文件·非纸面）", () => {
+    const probeKey = "_probe-zzz-testonly";
+    const probeFile = join(PACKS_DIR, `${probeKey}.pack.json`);
+    const before = scanPackFiles();
+    expect(before.map(keyFromFile)).not.toContain(probeKey);
+    try {
+      // 仅落一个数据文件（零代码改动）→ 同一 scanPackFiles 立即发现（=registry 构建所依据的目录扫描）。
+      writeFileSync(probeFile, JSON.stringify({ industryKey: probeKey }));
+      const after = scanPackFiles();
+      expect(after.map(keyFromFile)).toContain(probeKey);
+      // 且文件名派生键与约定一致。
+      expect(keyFromFile(`${probeKey}.pack.json`)).toBe(probeKey);
+    } finally {
+      rmSync(probeFile, { force: true });
+    }
+    // 复位后不再出现（无残留·确定性）。
+    expect(scanPackFiles().map(keyFromFile)).not.toContain(probeKey);
+  });
+});
+
+/**
+ * C3『非电池行业完整 app 活体』teeth：logisticsPack 自带非电池 viewLayouts + 决策场景卡，
+ * runJob 后该租户 ViewConfig 由 pack 驱动渲染非电池视图（非电池 KPI·零 Base/乘用车），场景卡答案 query 声明式可答。
+ */
+describe("INDUSTRY-PACK-CONVERGE · C3 非电池行业自有视图/场景（pack 驱动·活体）", () => {
+  it("C3a logisticsPack 自带非电池 viewLayouts + 决策场景（浏览器可答·答案声明式 query）", () => {
+    // 视图：配送网络看板（dashboard·KPI 全来自 Warehouse/Store 聚合·非电池 KPI）。
+    const net = logisticsPack.views["logi-network"];
+    expect(net?.renderer).toBe("dashboard");
+    const widgets = (net!.layout as { widgets: { query: { objectType?: string } }[] }).widgets;
+    const objTypes = new Set(widgets.map((w) => w.query.objectType).filter(Boolean));
+    expect(objTypes).toContain("Warehouse");
+    expect(objTypes).toContain("Store");
+    // 零电池实体泄露（非电池 KPI·无 Base/DemandSegment）。
+    expect(objTypes.has("Base")).toBe(false);
+    expect(objTypes.has("DemandSegment")).toBe(false);
+    // 场景卡：≥1，答案为声明式 query（objects-aggregate/objects/solver）。
+    expect(logisticsPack.scenarios.length).toBeGreaterThanOrEqual(1);
+    for (const s of logisticsPack.scenarios) {
+      expect(["objects-aggregate", "objects", "solver"]).toContain(s.answer.kind);
+      expect(s.question.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("C3b runJob(logistics) 后 admin ViewConfig 由 pack 渲染非电池视图 + 决策场景（引擎零 if(industry===)）", async () => {
+    const t = await makeApp({ seed: false });
+    const ctx: AuthCtx = { tenantId: "logi-c3", userId: "u", roles: ["admin"], attributes: {} };
+    await t.services.synthetic.runJob(ctx, { industry: "logistics-warehouse", scale: "S", seed: 42 });
+    const vcs = await t.repos.viewConfigs.list("logi-c3", (v: ViewConfig) => v.role === "admin");
+    const views = vcs[0]!.views;
+    const keys = views.map((v) => v.key);
+    // pack.views + 场景视图入该租户导航（非电池行业其**自有**视图·config-driven）。
+    expect(keys).toContain("logi-network");
+    expect(keys).toContain("decision-scenarios");
+    // 电池推演视图不泄露到物流租户（plan-audit/order-chain 不在）。
+    expect(keys).not.toContain("plan-audit");
+    expect(keys).not.toContain("order-chain");
+    // 场景视图 widgets = pack.scenarios 物化（问句为卡标题·答案声明式 query）。
+    const sc = views.find((v) => v.key === "decision-scenarios");
+    expect(sc?.renderer).toBe("dashboard");
+    const scWidgets = (sc!.layout as { widgets: { title: string }[] }).widgets;
+    expect(scWidgets.length).toBe(logisticsPack.scenarios.length);
+    expect(scWidgets.map((w) => w.title)).toEqual(logisticsPack.scenarios.map((s) => s.question));
+    // 配送网络看板真渲染非电池 KPI（objectType Warehouse/Store·真数据经聚合·前端 config-driven）。
+    const net = views.find((v) => v.key === "logi-network");
+    const netW = (net!.layout as { widgets: { query: { objectType?: string } }[] }).widgets;
+    expect(netW.some((w) => w.query.objectType === "Warehouse")).toBe(true);
+    expect(netW.some((w) => w.query.objectType === "Store")).toBe(true);
   });
 });

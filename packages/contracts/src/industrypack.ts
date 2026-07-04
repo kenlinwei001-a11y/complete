@@ -58,6 +58,33 @@ export const IndustryViewDefSchema = z.object({
 export type IndustryViewDef = z.infer<typeof IndustryViewDefSchema>;
 
 /**
+ * 决策场景卡（C3 活体·非电池行业「完整 app 场景可答」）：一张卡 = 一个决策问题 + 声明式答案 query。
+ * 答案由既有 dashboard 声明式 query 求解（objects-aggregate / objects / solver）——前端零写死，config-driven
+ * （同 DashboardWidget query 通道；换行业换 pack.scenarios 即场景随之变，引擎零改 R14）。
+ * `answer.kind==="solver"` 走求解器派发（descriptor 平台共享·pack 只按 key 绑定）——真 CP-SAT 需 OR-Tools sidecar；
+ * 无 sidecar 环境用 objects-aggregate/objects 直答（确定性·真数据·浏览器可见）。
+ */
+export const IndustryScenarioSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  /** 决策问题（场景卡问句）。 */
+  question: z.string(),
+  /** 答案声明式 query（复用 dashboard widget 语义·前端零写死 R14）。 */
+  answer: z.object({
+    kind: z.enum(["objects-aggregate", "objects", "solver"]),
+    objectType: z.string().optional(),
+    agg: z.enum(["sum", "avg", "count", "min", "max"]).optional(),
+    prop: z.string().optional(),
+    columns: z.array(z.string()).optional(),
+    limit: z.number().optional(),
+    solverKey: z.string().optional(),
+    args: z.record(z.string(), z.unknown()).optional(),
+    unit: z.string().optional(),
+  }),
+});
+export type IndustryScenario = z.infer<typeof IndustryScenarioSchema>;
+
+/**
  * 单一声明式行业包：作者写一份 = 加载器装配全栈（R14·零跨文件电池硬编码）。
  *
  * 层映射（WO 北极星形态 → 本契约字段·单源不漂）：
@@ -82,6 +109,12 @@ export const IndustryPackSchema = z.object({
   solverKeys: z.array(z.string()).optional(),
   /** 结构层：viewKey → 视图定义（ViewConfig.layout 承载 KPI/列/字段组/DAG 结构）。 */
   views: z.record(z.string(), IndustryViewDefSchema).default({}),
+  /**
+   * 决策场景层（C3 活体）：本行业 app 可答的决策场景卡（问题 + 声明式答案 query）。
+   * 加载器把 pack.scenarios 物化为「决策场景」视图（renderer=dashboard·config-driven）——换行业换 pack.scenarios。
+   * 省略/空 = 无专属场景（电池走既有推演视图·此字段默认 `[]` 保持 batteryPack 不变）。
+   */
+  scenarios: z.array(IndustryScenarioSchema).default([]),
   /** 实体层：应用细分/关键词/值域（SEG）。换行业换册=换分类语义（classifySegment 逻辑零改）。 */
   entities: z
     .object({
