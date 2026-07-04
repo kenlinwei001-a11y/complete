@@ -2960,7 +2960,7 @@
     {
       "id": "AGENT-UNIVERSAL-FALLBACK",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "WIP",
       "owner": "dev",
       "deps": [
         "INTENT-MATERIALIZE-BINDING-COMPLETE"
