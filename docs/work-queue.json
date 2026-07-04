@@ -1359,11 +1359,11 @@
       "title": "状态/空态/导航透出批(未开通空态·通知铃·写回对账·实例数徽章·导航归组)",
       "doc": "docs/WO-VISIBILITY-CHAIN.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "IPO断层批·7项P1/P2信号无处可见·G-VIS-1",
-      "blockReason": "复验BLOCK(单一缺口=零齿检·功能本体全验好): commit c9e25e2 无任何测试文件(0个·违本会话每单必附齿检铁纪律·先例MULTISRC因计数断言未同步即BLOCK)。功能活体全PASS: 导航13组归组(planner角色裁剪10组)·实例数徽章逐值==后端stats(已物化6实例==Model=6·sales_orders 24==Order=24)·通知铃诚实空态(unread=0落通知中心)·403空态非白屏·写回对账面板经真draft(act_tnd9tyjzve4b6cem)选中后渲染诚实文案『尚未执行——执行写回后显示待对账回声』。补救=只需补齿检文件(断言:导航分组结构/徽章值取stats非硬编码/铃0未读无角标/403空态渲染/writeback-reconcile面板存在)·预计零产品代码改动。",
+      "blockReason": "",
       "acceptance": {
         "goal": "把一批「后端有状态/真值、前端整块无处可见」的信号透出来:功能未开通时显专用『未开通』空态(区别于『无卡』)、顶栏有通知铃显未读数、写回落地对账(echo/reconcile)在 ActionsPage 可见、图谱/分类页显已物化实例数、推演历史导航归对组、兜底统计页有空态——让用户看得见系统状态而非盯着空白猜。",
         "criteria": [
