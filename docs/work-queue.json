@@ -2776,8 +2776,8 @@
     {
       "id": "HARDCODE-BIZ-ENTITY",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-hardcode-remnants.md",
