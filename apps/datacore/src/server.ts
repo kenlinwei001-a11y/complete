@@ -92,10 +92,10 @@ async function main(): Promise<void> {
     } catch (e) {
       logger.warn({ err: (e as Error).message }, "SEED_DEMO=1: seed opt entitlement skipped");
     }
-    // UI缺口 M3：种月度 S&OP 版本（2026-07·五步法评审态），使 /v/sop-balance 非空壳（best-effort，不阻断启动）。
+    // UI缺口 M3：种月度 S&OP 版本（sim-clock t0 当前月·五步法评审态），使 /v/sop-balance 非空壳（best-effort，不阻断启动）。
     try {
       await seedDemoSopVersion(services.sop, services.solvers, adminCtx);
-      logger.info("SEED_DEMO=1: seeded demo S&OP version 2026-07 (sop-balance non-empty)");
+      logger.info("SEED_DEMO=1: seeded demo S&OP version (t0 current month, sop-balance non-empty)");
     } catch (e) {
       logger.warn({ err: (e as Error).message }, "SEED_DEMO=1: seed S&OP version skipped");
     }

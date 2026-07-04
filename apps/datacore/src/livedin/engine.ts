@@ -40,6 +40,12 @@ const DAY_MS = 86400000;
 const REPLAY_DAYS = 365;
 const CUSTS = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源", "晨风车业", "沧浪电网"];
 
+// HARDCODE-CLOCK-DERIVE（审计 Hδ·δ5）：lived-in 叙事日期全为 sim-clock t0 偏移（相对 t0 的 -N 天），
+// 非写死绝对日。t0 = IndustryPack.forecastStart（§A8 权威）；改 t0 → 整条一年运营史随之平移（R6：
+// t0=2026-06-10 时 t0Minus(N) 逐条复现原绝对字面·字节一致，livedin.test Y4 断言不变即证）。
+const NARRATIVE_T0 = BATTERY_SOLVER_PARAMS.forecastStart as string;
+const t0Minus = (days: number): string => addDays(NARRATIVE_T0, -days);
+
 const REJECT_COMMENTS = [
   "外协贴近 C08 红线，改用夜班方案",
   "现金垫低于 C18 底线，本月不批增产投入",
@@ -63,16 +69,16 @@ interface CaseSpec {
 /** 10 例告警-处置闭环案例骨架（CASE-007 = Q4 到货危机，与场景预置问答互引）。 */
 // 案例骨架 = 事件事实（哪个基地/哪个因子/何时越线/是否结构性危机）；severity 由 caseSeverityFromData 真闭环派生。
 const CASE_SPECS: CaseSpec[] = [
-  { n: 1, baseId: "hefei", factor: "设备OEE", crossed: "2025-08-12" },
-  { n: 2, baseId: "xiamen", factor: "人力工时", crossed: "2025-09-09" },
-  { n: 3, baseId: "jiangmen", factor: "物料齐套", crossed: "2025-09-24" },
-  { n: 4, baseId: "meishan", factor: "换型损失", crossed: "2025-10-14" },
-  { n: 5, baseId: "handan", factor: "物流时长", crossed: "2025-10-28" },
-  { n: 6, baseId: "wuhan", factor: "良率波动", crossed: "2025-11-04" },
-  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: "2025-10-28", crisis: true },
-  { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: "2026-01-20" },
-  { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: "2026-03-10" },
-  { n: 10, baseId: "luoyang", factor: "物流时长", crossed: "2026-04-21" },
+  { n: 1, baseId: "hefei", factor: "设备OEE", crossed: t0Minus(302) },
+  { n: 2, baseId: "xiamen", factor: "人力工时", crossed: t0Minus(274) },
+  { n: 3, baseId: "jiangmen", factor: "物料齐套", crossed: t0Minus(259) },
+  { n: 4, baseId: "meishan", factor: "换型损失", crossed: t0Minus(239) },
+  { n: 5, baseId: "handan", factor: "物流时长", crossed: t0Minus(225) },
+  { n: 6, baseId: "wuhan", factor: "良率波动", crossed: t0Minus(218) },
+  { n: 7, baseId: "changzhou", factor: "物料齐套", crossed: t0Minus(225), crisis: true },
+  { n: 8, baseId: "chengdu", factor: "设备OEE", crossed: t0Minus(141) },
+  { n: 9, baseId: "zaozhuang", factor: "瓶颈工序", crossed: t0Minus(92) },
+  { n: 10, baseId: "luoyang", factor: "物流时长", crossed: t0Minus(50) },
 ];
 
 /**
@@ -98,17 +104,17 @@ export function deriveCaseSeverities(
 /** 延期挽回链（Y5）：9 单曾延期，7 单经案例处置挽回至 ≤2 天。 */
 const DELAY_OVERRIDES: { idx: number; due: string; caseN?: number; delay: number; origDelay?: number }[] = [
   // CASE-007 到货危机受影响 4 单（3 挽回 + 1 未挽回）
-  { idx: 25, due: "2025-11-26", caseN: 7, delay: 2, origDelay: 7 },
-  { idx: 26, due: "2025-11-29", caseN: 7, delay: 1, origDelay: 6 },
-  { idx: 27, due: "2025-12-03", caseN: 7, delay: 2, origDelay: 7 },
-  { idx: 28, due: "2025-12-06", caseN: 7, delay: 6 }, // 未挽回（危机外溢）
+  { idx: 25, due: t0Minus(196), caseN: 7, delay: 2, origDelay: 7 },
+  { idx: 26, due: t0Minus(193), caseN: 7, delay: 1, origDelay: 6 },
+  { idx: 27, due: t0Minus(189), caseN: 7, delay: 2, origDelay: 7 },
+  { idx: 28, due: t0Minus(186), caseN: 7, delay: 6 }, // 未挽回（危机外溢）
   // 其余 4 单分别由 4 例案例挽回
-  { idx: 10, due: "2025-09-15", caseN: 2, delay: 1, origDelay: 5 },
-  { idx: 17, due: "2025-10-20", caseN: 4, delay: 2, origDelay: 6 },
-  { idx: 40, due: "2026-01-28", caseN: 8, delay: 1, origDelay: 4 },
-  { idx: 47, due: "2026-03-18", caseN: 9, delay: 2, origDelay: 8 },
+  { idx: 10, due: t0Minus(268), caseN: 2, delay: 1, origDelay: 5 },
+  { idx: 17, due: t0Minus(233), caseN: 4, delay: 2, origDelay: 6 },
+  { idx: 40, due: t0Minus(133), caseN: 8, delay: 1, origDelay: 4 },
+  { idx: 47, due: t0Minus(84), caseN: 9, delay: 2, origDelay: 8 },
   // 1 单普通延期（无处置）
-  { idx: 34, due: "2026-02-10", delay: 9 },
+  { idx: 34, due: t0Minus(120), delay: 9 },
 ];
 
 export interface LivedCase extends RiskCaseRecord {
@@ -246,7 +252,8 @@ export class LivedInEngine {
         replayTo,
         replayDays: REPLAY_DAYS,
       },
-      crisisWindow: { from: "2025-10-28", to: "2025-11-10" },
+      crisisWindow: { from: t0Minus(225), to: t0Minus(212) }, // = CASE-007 越线日(n7) → +13d
+
       mapeSeries: mapeSeriesFor(replayFrom),
       taskHistory: Object.entries(LIVED_IN_SCENE_HISTORY).flatMap(([scene, entries]) =>
         entries.map((e) => ({ scene, ...e })),
@@ -476,7 +483,7 @@ export class LivedInEngine {
       { key: "plan_change", summary: (i, base) => `${base} 周排产计划微调（B${100 + i}）` },
       { key: "采纳产能保障方案", summary: (_i, base) => `${base} 产能保障：夜班 + 渠道扩容组合` },
       { key: "adopt_mitigation", summary: (_i, base) => `${base} 处置方案执行` },
-      { key: "定稿月度计划版本", summary: (i) => `${monthOf(addDays("2025-07-01", ((i - 11) * 364) / 189))} 月度计划定稿` },
+      { key: "定稿月度计划版本", summary: (i) => `${monthOf(addDays(t0Minus(344), ((i - 11) * 364) / 189))} 月度计划定稿` },
       { key: "校准参数变更", summary: () => "校准提案参数落库" },
       { key: "计划版本变更", summary: () => "定稿版本字段变更（审批通道）" },
     ];
@@ -737,18 +744,18 @@ export class LivedInEngine {
       tags: string[],
     ) => ({ key, name: key === "C16" ? "齐套覆盖天数下限" : "外协比例红线", version, label, expression, reason, changedAt, status, tags });
     return [
-      row("C08", 1, "v1.0", "Order.outsourceRatio > 0.3", "场景包出厂基线（上限 30%）", "2025-07-01", "RETIRED", []),
-      row("C08", 2, "v1.1", "Order.outsourceRatio > 0.25", "Q1 外协质量事件复盘：上限 30%→25%", "2025-09-12", "RETIRED", []),
-      row("C08", 3, "v1.2", "Order.outsourceRatio > 0.22", "连续两月外协毛利侵蚀复盘：25%→22%", "2026-01-09", "RETIRED", []),
-      row("C08", 4, "v1.3", "Order.outsourceRatio > 0.2", "年度复盘：外协质量+毛利双重约束，收紧至 20%", "2026-04-03", "PUBLISHED", []),
-      row("C16", 1, "v1.0", "Shipment.coverageDays < 3", "出厂基线：关键材料齐套覆盖 ≥3 天", "2025-07-01", "RETIRED", []),
+      row("C08", 1, "v1.0", "Order.outsourceRatio > 0.3", "场景包出厂基线（上限 30%）", t0Minus(344), "RETIRED", []),
+      row("C08", 2, "v1.1", "Order.outsourceRatio > 0.25", "Q1 外协质量事件复盘：上限 30%→25%", t0Minus(271), "RETIRED", []),
+      row("C08", 3, "v1.2", "Order.outsourceRatio > 0.22", "连续两月外协毛利侵蚀复盘：25%→22%", t0Minus(152), "RETIRED", []),
+      row("C08", 4, "v1.3", "Order.outsourceRatio > 0.2", "年度复盘：外协质量+毛利双重约束，收紧至 20%", t0Minus(68), "PUBLISHED", []),
+      row("C16", 1, "v1.0", "Shipment.coverageDays < 3", "出厂基线：关键材料齐套覆盖 ≥3 天", t0Minus(344), "RETIRED", []),
       row(
         "C16",
         2,
         "v2.0",
         "Shipment.coverageDays < 5",
-        "到货危机复盘（2025-10-28~2025-11-10）：正极到货延迟导致齐套断档，覆盖天数 3→5 天",
-        "2025-12-03",
+        `到货危机复盘（${t0Minus(225)}~${t0Minus(212)}）：正极到货延迟导致齐套断档，覆盖天数 3→5 天`,
+        t0Minus(189),
         "PUBLISHED",
         ["到货危机复盘"],
       ),
@@ -777,16 +784,16 @@ export class LivedInEngine {
       trigger: string;
     };
     const specs: P[] = [
-      { k: 1, createdAt: "2025-07-26", week: 4, method: "EMA", parameter: "工序良率基线（化成）", scope: "ONTOLOGY_PROPERTY", path: "Process.yield", cur: 0.952, prop: 0.958, status: "APPLIED", improvement: 2.1, flags: [], trigger: "C12" },
-      { k: 2, createdAt: "2025-08-30", week: 9, method: "REPLAY_ATTRIBUTION", parameter: "产能预测·爬坡系数基线", scope: "SOLVER_PARAMS", path: "ramp.base", cur: 0.88, prop: 0.9, status: "APPLIED", improvement: 1.8, flags: ["ATTRIBUTION_SHARE:0.79"], trigger: "C12" },
-      { k: 3, createdAt: "2025-10-04", week: 14, method: "QUANTILE", parameter: "P90 健康度系数", scope: "SOLVER_PARAMS", path: "health.normal", cur: 0.93, prop: 0.94, status: "APPLIED", improvement: 1.2, flags: [], trigger: "CALIBRATION_RUN" },
+      { k: 1, createdAt: t0Minus(319), week: 4, method: "EMA", parameter: "工序良率基线（化成）", scope: "ONTOLOGY_PROPERTY", path: "Process.yield", cur: 0.952, prop: 0.958, status: "APPLIED", improvement: 2.1, flags: [], trigger: "C12" },
+      { k: 2, createdAt: t0Minus(284), week: 9, method: "REPLAY_ATTRIBUTION", parameter: "产能预测·爬坡系数基线", scope: "SOLVER_PARAMS", path: "ramp.base", cur: 0.88, prop: 0.9, status: "APPLIED", improvement: 1.8, flags: ["ATTRIBUTION_SHARE:0.79"], trigger: "C12" },
+      { k: 3, createdAt: t0Minus(249), week: 14, method: "QUANTILE", parameter: "P90 健康度系数", scope: "SOLVER_PARAMS", path: "health.normal", cur: 0.93, prop: 0.94, status: "APPLIED", improvement: 1.2, flags: [], trigger: "CALIBRATION_RUN" },
       // 到货危机窗口内观测漂移 31% > 20% → 结构性漂移闸门，不出 EMA 提案（M11 §4）
-      { k: 4, createdAt: "2025-11-29", week: 22, method: "EMA", parameter: "检修产能系数（OEE 基线）", scope: "SOLVER_PARAMS", path: "maintMult", cur: 0.72, prop: 0.55, status: "REJECTED", improvement: 0, flags: ["STRUCTURAL_SHIFT"], trigger: "C12" },
-      { k: 5, createdAt: "2026-01-17", week: 29, method: "REPLAY_ATTRIBUTION", parameter: "产能预测·爬坡系数基线", scope: "SOLVER_PARAMS", path: "ramp.base", cur: 0.9, prop: 0.92, status: "APPLIED", improvement: 1.6, flags: ["ATTRIBUTION_SHARE:0.84"], trigger: "CALIBRATION_RUN" },
+      { k: 4, createdAt: t0Minus(193), week: 22, method: "EMA", parameter: "检修产能系数（OEE 基线）", scope: "SOLVER_PARAMS", path: "maintMult", cur: 0.72, prop: 0.55, status: "REJECTED", improvement: 0, flags: ["STRUCTURAL_SHIFT"], trigger: "C12" },
+      { k: 5, createdAt: t0Minus(144), week: 29, method: "REPLAY_ATTRIBUTION", parameter: "产能预测·爬坡系数基线", scope: "SOLVER_PARAMS", path: "ramp.base", cur: 0.9, prop: 0.92, status: "APPLIED", improvement: 1.6, flags: ["ATTRIBUTION_SHARE:0.84"], trigger: "CALIBRATION_RUN" },
       // 回测改善 0.6pct < 1pct 门槛 → NO_IMPROVEMENT 拒绝（M11 §5）
-      { k: 6, createdAt: "2026-02-21", week: 34, method: "EMA", parameter: "工序良率基线（卷绕）", scope: "ONTOLOGY_PROPERTY", path: "Process.yield", cur: 0.957, prop: 0.958, status: "REJECTED", improvement: 0.6, flags: ["NO_IMPROVEMENT"], trigger: "CALIBRATION_RUN" },
-      { k: 7, createdAt: "2026-04-11", week: 41, method: "QUANTILE", parameter: "P90 健康度系数", scope: "SOLVER_PARAMS", path: "health.normal", cur: 0.94, prop: 0.95, status: "APPLIED", improvement: 1.1, flags: [], trigger: "CALIBRATION_RUN" },
-      { k: 8, createdAt: "2026-06-06", week: 49, method: "EMA", parameter: "工序良率基线（涂布）", scope: "ONTOLOGY_PROPERTY", path: "Process.yield", cur: 0.96, prop: 0.963, status: "APPLIED", improvement: 1.3, flags: [], trigger: "C12" },
+      { k: 6, createdAt: t0Minus(109), week: 34, method: "EMA", parameter: "工序良率基线（卷绕）", scope: "ONTOLOGY_PROPERTY", path: "Process.yield", cur: 0.957, prop: 0.958, status: "REJECTED", improvement: 0.6, flags: ["NO_IMPROVEMENT"], trigger: "CALIBRATION_RUN" },
+      { k: 7, createdAt: t0Minus(60), week: 41, method: "QUANTILE", parameter: "P90 健康度系数", scope: "SOLVER_PARAMS", path: "health.normal", cur: 0.94, prop: 0.95, status: "APPLIED", improvement: 1.1, flags: [], trigger: "CALIBRATION_RUN" },
+      { k: 8, createdAt: t0Minus(4), week: 49, method: "EMA", parameter: "工序良率基线（涂布）", scope: "ONTOLOGY_PROPERTY", path: "Process.yield", cur: 0.96, prop: 0.963, status: "APPLIED", improvement: 1.3, flags: [], trigger: "C12" },
     ];
     for (const s of specs) {
       const windowFrom = addDays(s.createdAt, -14);

@@ -2748,7 +2748,7 @@
     {
       "id": "HARDCODE-CLOCK-DERIVE",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "LAUNCHER-GROUNDED-QUESTIONS"

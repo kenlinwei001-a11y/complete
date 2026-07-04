@@ -16,6 +16,7 @@ import { round } from "../prng.js";
 import { invalidState, notFound } from "../errors.js";
 import { getByPath } from "../paths.js";
 import { calibrationConfig, datePlus, daysBetween, DAY_MS, EVAL_WINDOW_DAYS, sliceKeyOf } from "./config.js";
+import { DEFAULT_SIM_T0 } from "../clockderive.js";
 import { biasOf, buildSlices, coverageOf, mapePct, rollingMapeSeries } from "./metrics.js";
 import {
   coverageBandDistance,
@@ -234,7 +235,8 @@ export class CalibrationService {
    */
   private async baselineSeries(tenantId: string, _baseId?: string): Promise<{ date: string; mape: number }[]> {
     const clock = await this.repos.simulationClocks.get(tenantId, tenantId);
-    const t0 = Date.parse(`${(clock?.t0 ?? "2026-07-01").slice(0, 10)}T00:00:00Z`);
+    // 无 clock 落库 → 诚实兜底至 §A8 demo t0（旧字面 2026-07-01 与真 t0 2026-06-10 错位·真 bug 修正）。
+    const t0 = Date.parse(`${(clock?.t0 ?? DEFAULT_SIM_T0).slice(0, 10)}T00:00:00Z`);
     const out: { date: string; mape: number }[] = [];
     for (let i = 0; i < BASELINE_DAYS; i++) {
       const date = new Date(t0 - (BASELINE_DAYS - i) * DAY_MS).toISOString().slice(0, 10);

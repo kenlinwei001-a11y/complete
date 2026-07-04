@@ -2,6 +2,7 @@ import type { ObjectInstance } from "../domain.js";
 import { round } from "../prng.js";
 import { num, str, type SolverContext } from "./types.js";
 import { liveTightness } from "./risk.js";
+import { currentMonth, currentQuarter } from "../clockderive.js";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -516,7 +517,7 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
       if (argHas(args, "monthDemand")) return { ...th, ...args };
       const mats = (c.materials ?? []).map(props);
       const m = mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0] ?? {};
-      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * lockRate, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, leadDaysDefault), ...args };
+      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, currentMonth(c.params.forecastStart)), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * lockRate, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, leadDaysDefault), ...args };
     },
   },
   inventory_optimize: {
@@ -604,7 +605,7 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
   quarterly_gap: {
     fn: quarterlyGap,
     dataMode: (c, args) => (argHas(args, "gap") || argHas(args, "options") ? "LIVE" : "MOCK"), // 默认纯参数/默认 options
-    deriveArgs: (c, args) => ({ quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args }),
+    deriveArgs: (c, args) => ({ quarter: str(args.quarter, currentQuarter(c.params.forecastStart)), gap: num(args.gap, 50), ...args }),
   },
   carbon_footprint: {
     fn: carbonFootprint,

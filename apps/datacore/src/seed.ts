@@ -13,6 +13,7 @@ import type { SopService } from "./sop.js";
 import type { SolverService } from "./solvers/service.js";
 import type { LlmProviderService } from "./llmproviders.js";
 import type { FeatureService } from "./features.js";
+import { currentMonth } from "./clockderive.js";
 
 export const DEMO_TENANT = "demo";
 
@@ -69,16 +70,18 @@ export async function seedDemoLlmProvider(
 }
 
 /**
- * UI缺口 M3：demo 种一个月度 S&OP 版本（2026-07）并五步法推进到评审态，使 /v/sop-balance 直接出
+ * UI缺口 M3：demo 种一个月度 S&OP 版本（sim-clock t0 当前月）并五步法推进到评审态，使 /v/sop-balance 直接出
  * 三线对照表（目标/滚动P50/滚动P90/上月实际），非"暂无数据"空壳。复用 CL.4 bootstrap ⑤ 同一编排
  * （sop.create + advance 1..5·步④财务取参数基线种子），幂等（已有该月版本则跳过）。不 FINAL（留评审态）。
+ * HARDCODE-CLOCK-DERIVE：月份改由 t0 派生（currentMonth(forecastStart)），非硬编码 "2026-07"
+ * （旧字面 2026-07 与 t0 2026-06 错位·真 bug 修正）。
  */
 export async function seedDemoSopVersion(sop: SopService, solvers: SolverService, ctx: AuthCtx): Promise<void> {
-  const month = "2026-07";
+  const params = await solvers.getParams(ctx.tenantId);
+  const month = currentMonth(params.forecastStart);
   const existing = (await sop.list(ctx)).filter((v) => v.month === month);
   if (existing.length > 0) return; // 幂等
   let version = await sop.create(ctx, { month });
-  const params = await solvers.getParams(ctx.tenantId);
   const baseline = (params.planBaseline as { gmTarget?: number; cashCushion?: number } | undefined) ?? { gmTarget: 16, cashCushion: 58 };
   const cashFloor = Number((params.sop as { cashFloor?: number } | undefined)?.cashFloor ?? 50);
   const gmBudget = Number(baseline.gmTarget ?? 16);

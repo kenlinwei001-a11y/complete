@@ -57,15 +57,18 @@
 | ε6 | frontend `SopBalance:885`·`Dashboard:765`·`RiskBoard:218`·`OrderChain:360` | gap红阈2 · warn带 threshold-15 · 瓶颈`?? 85` | ViewConfig(多数后端已params·前端重写) | P2 |
 | ε7 | `capex.ts:13 TAX_RATE 0.25` | 税率(法定但辖区/情景可变) | WorkspaceConfig(debattery-allow已标) | P3 |
 
-### 簇 Hδ · 时间/preset 写死（sim-clock权威但处处重硬编码"当前"）——14 处
+### 簇 Hδ · 时间/preset 写死（sim-clock权威但处处重硬编码"当前"）——14 处 → **◑ datacore「当前」派生已闭（HARDCODE-CLOCK-DERIVE·δ3/δ5/δ6-calibration）**
+
+> **◑ 收口（HARDCODE-CLOCK-DERIVE·datacore「当前」→ sim-clock t0 派生）**：新增 `apps/datacore/src/clockderive.ts`（纯函数 `currentDay/currentMonth/currentQuarter(t0)` + `DEFAULT_SIM_T0`·§A8 demo t0=2026-06-10 权威）。**δ3（datacore 部分）✅**：`extended.ts` lta_gap 默认 month `"2026-07"` → `currentMonth(c.params.forecastStart)`（=2026-06·**真 bug 修正**：旧字面与 t0 错位）· quarterly_gap 默认 quarter `"2026Q2"` → `currentQuarter(...)`（=2026-Q2·**格式修正** YYYY-Qn）· `seed.ts` demo SOP 月 `"2026-07"` → `currentMonth(forecastStart)`（=2026-06·server.ts 日志同步）。**δ6-calibration ✅**：`calibration/service.ts:237` baselineSeries 兜底 `?? "2026-07-01"` → `?? DEFAULT_SIM_T0`（无 clock 时诚实兜底至真 t0·旧字面错位真 bug）。**δ5 ✅**：`livedin/engine.ts` 35 处绝对叙事日期（CASE_SPECS 越线日/DELAY_OVERRIDES 交期/crisisWindow/规则史 changedAt/校准提案 createdAt/月度定稿锚点）→ **t0 偏移** `t0Minus(N)=addDays(NARRATIVE_T0,-N)`（`NARRATIVE_T0=forecastStart`）·改 t0 → 整条一年运营史随之平移。**R6 字节一致**：t0=2026-06-10 时 `t0Minus(N)` 逐条复现原绝对字面 → 全量 datacore 测试断言不改通过（**915 passed**=911+新 teeth 4·`livedin.test` Y4 断言 crisisWindow/CASE-007/C16 reason/MAPE 周 21 exact 值不变即证）。teeth `test/clock-derive.test.ts`（改 t0→派生月/季/日变 + extended derive 默认月/季经 `deriveExtendedArgs` 由 forecastStart 驱动·**退回硬编码 "2026-07" 即红**·已实证 `expected '2026-07' to be '2026-06'`）+ 真服务证：curl `/a/v1/solvers/lta_gap` 默认 month=2026-06 · `quarterly_gap` quarter=2026-Q2 · `/a/v1/sop/versions` 月=2026-06 · `/a/v1/synthetic/clock` t0=2026-06-10。**未闭（本 WO 范围外）**：δ1/δ2（agentcore `scenarios-catalog.ts`·LAUNCHER-GROUNDED 域）· δ4（frontend `QuarterlyRollingView`·SANDBOX 域）· δ6 前端项（`SopBalanceView`/ProjectSim·SANDBOX）· δ3 catalog S09/S19 preset（agentcore）。**保留为锚点（非「当前」·诚实边界）**：`battery.ts` 订单交期/规则出厂基线 definedAt/物料 eta（IndustryPack 需求/治理 fixture）· `synthetic/service.ts` 校准回测窗口（历史 backtest fixture）· `connectors mock` asOf（mock fixture·审计 §2 排除项）。
+
 | # | file:line | 硬编码 | 应由 | 严重 |
 |---|---|---|---|---|
 | δ1 | `scenarios-catalog.ts:71` | S11 preset lineId"常州·动力线-A"死对象(真LINE-changzhou) | ontology resolve(已在LAUNCHER-GROUNDED单) | **P1** |
 | δ2 | `scenarios-catalog.ts:78` | S18 slotPresets:{}无month→sop NOT_FOUND | clock注入(已在LAUNCHER-GROUNDED单) | **P1** |
-| δ3 | `extended.ts:498,545` · catalog S09/S19 · `seed.ts:77` | lta_gap默认month"2026-07"·quarterly_gap"2026Q2"(格式不符YYYY-Qn)·S09/S19 preset硬月/季·demo SOP月"2026-07"(与clock t0 2026-06错位) | sim-clock派生 | P2 |
-| δ4 | `QuarterlyRollingView.tsx:30` | 前端硬编码fetchQuarterly("2026-Q3")覆盖后端clock派生 | 省略from让后端派生 | P2 |
-| δ5 | `livedin/engine.ts:66` | ~40绝对叙事日期(risk case/规则史/校准提案) | t0偏移(如tick引擎) | P2 |
-| δ6 | (P3) `calibration:227` fallback"2026-07-01" · `SopBalanceView:44` newMonth · ProjectSim批次日期 · connectors asOf硬日期 | clock派生 | P3 |
+| δ3 | ✅(datacore) `extended.ts` lta_gap month·quarterly_gap quarter · `seed.ts` demo SOP月 → **currentMonth/currentQuarter(t0) 派生**（格式修正+t0对齐真bug修）；catalog S09/S19(agentcore)未纳 | sim-clock派生 | P2 |
+| δ4 | `QuarterlyRollingView.tsx:30` | 前端硬编码fetchQuarterly("2026-Q3")覆盖后端clock派生（SANDBOX域·未纳） | 省略from让后端派生 | P2 |
+| δ5 | ✅ `livedin/engine.ts` 35绝对叙事日期(risk case/DELAY/crisisWindow/规则史/校准提案) → **t0Minus(N) 偏移**（改t0整史平移·R6字节一致 livedin.test Y4证） | t0偏移(如tick引擎) | P2 |
+| δ6 | ✅(datacore) `calibration:237` fallback"2026-07-01" → **DEFAULT_SIM_T0**（真t0兜底·bug修）；前端项 `SopBalanceView`/ProjectSim(SANDBOX域·未纳)·connectors asOf(mock fixture·锚点保留) | clock派生 | P3 |
 
 ### 簇 Hα · 业务实体内联（应从ontology对象/registry）——20处 + debattery-allow白名单10处/36行 → **◐ P1 收口（HARDCODE-BIZ-ENTITY·datacore）**
 
@@ -87,7 +90,7 @@
 | **HARDCODE-DISPATCH-REGISTRY（新·P1·架构根因）✅ 求解器派发簇已闭** | Hγ | ✅ 求解器/扩展solver 的 ~7 并行硬编码表 → **单一 `SOLVER_REGISTRY` descriptor 驱动**（`solvers/solver-registry.ts`·每 solver 一条 `{key,route,outputShape,a6Readout,liveDefault}`）；`SOLVER_KEYS`/`SOLVER_OUTPUT_SHAPES`/`LIVE_DEFAULT`/`A6_READOUT` 派生·`invokeRaw` 迭代 registry 派发（graphHandlers 构造期断言键集==registry graph 集·防漂移 teeth）·extended.ts 收口 `EXTENDED_REGISTRY{fn,dataMode,deriveArgs}`。语义零变（测试断言不改·`solver-registry.test`）。**γ3 industry→template 结构先行**（6 处判定→`usesBatteryPipeline` 一处），full IndustryTemplate-record 归 HARDCODE-BIZ-ENTITY。后续可继续把 γ5 ruleEvalPayload projection / γ9 SOLVER_GRAPH 收进 descriptor（门 `dispatch-registry:check` 待补）。 |
 | **HARDCODE-VIEW-LAYOUT（新·P1·8a收口）** | Hβ | 9视图 KPI/列/step/DAG 结构 → ViewConfig.layout 驱动(SandboxView 金标准)。4 P1(SopBalance/OrderChain×2/ProjectSim DAG)先行。 |
 | **HARDCODE-SOLVER-PARAMS（新·P1）✅ 求解器阈值簇已闭（ε1/ε2/ε4）** | Hε | ✅ extended.ts 全13+1 solver 内联阈值/系数 + risk.ts 残留(0.5/98) + plan.ts 判据(M≥3) → `SolverParamsShape.{mitigation,cert,lta,inventory,maintenance,outsourcing,quote,credit,carbon}`＋`risk.demandTension.{upsideGain,tensionCap}`/`audit.verdictMedCount`（骨架零业务名 R14·默认值入 battery IndustryPack·物理常数不迁）；solver 体读 `num(args.<key>,内联默认)`、`deriveArgs` 从 `c.params` 注入 → 真 param 驱动·租户可配·可校准（默认==内联→R6 字节一致·现有断言不变）。证：`docs/evidence/hardcode-solver-params-proof.mjs`（覆写 param→输出变）。**残留 ε3/ε5/ε6/ε7 属前端重写/service·fusion·capex/税率，另簇 P2/P3 未纳本 WO**；专用门 `solver-no-inline-threshold:check` 待补。 |
-| **HARDCODE-CLOCK-DERIVE（新·P2·并入LAUNCHER-GROUNDED）** | Hδ | 全"当前"月/季/日由 sim-clock 派生·非硬编码;livedin 叙事日期改 t0 偏移。δ1/δ2 已在 LAUNCHER-GROUNDED。 |
+| **HARDCODE-CLOCK-DERIVE（新·P2）◑ datacore 已闭** | Hδ | ✅ datacore「当前」月/季/日由 sim-clock t0 派生（`clockderive.ts` helper·§A8 权威）：δ3 extended lta/quarterly 默认 + seed SOP 月 + δ6 calibration 兜底 → `currentMonth/Quarter(t0)`/`DEFAULT_SIM_T0`（含 2 真 bug 修正：旧 "2026-07" 与 t0 2026-06 错位、"2026Q2" 格式）；δ5 livedin 35 叙事日期 → `t0Minus(N)` 偏移（改 t0 整史平移）。R6 字节一致（915 passed·断言不改）·teeth `clock-derive.test`（退回硬编码即红·已实证）·真服务证。未闭：δ1/δ2/δ4/δ6前端项属 agentcore(LAUNCHER-GROUNDED)/frontend(SANDBOX)。 |
 | **HARDCODE-BIZ-ENTITY（新·P2）◐ P1 收口（datacore）** | Hα | ✅ **α1 segOfCust（唯一 datacore 共享 runtime 分类逻辑）→ `classifySegment`+`SEG_REGISTRY.keywords`**（R14 换行业只改册·R6 字节一致·teeth+真服务证）；α5 capacity formation/aging **诚实保留**（过程物理·kind 已本体驱动）；α3/α4 `synthetic/livedin/connectors mock` **诚实保留为 battery IndustryPack 行业模板 fixture**（审计明列排除项）；α2/α6 属 agentcore/其它簇；**debattery-allow 白名单全在前端**（`debattery:check` 只扫前端·前端 owner 收口·非 datacore 范围）。 |
 
 ## 4. 诚实边界
