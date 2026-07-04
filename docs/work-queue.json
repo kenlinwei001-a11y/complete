@@ -2802,7 +2802,7 @@
     {
       "id": "INDUSTRY-PACK-CONVERGE",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "HARDCODE-DISPATCH-REGISTRY",
@@ -2812,7 +2812,7 @@
         "HARDCODE-BIZ-ENTITY",
         "INTENT-MATERIALIZE-BINDING-COMPLETE"
       ],
-      "blockReason": "复验BLOCK(capstone按验收原文严判·主体结构已立): 已验优=C1契约+加载器+单一装配点(5层收敛·batteryPack identity引用byte-identical R6·齿9/9)·物流世界经pack真物化(我亲手logi9租户 synthetic/jobs→Warehouse=6/Store=10·零跨文件电池硬编码)。BLOCK两口: ①C2『换行业0码改』字面未达——logisticsPack是industry-pack.ts内声明块,新增第三行业仍需编辑该.ts(PACK_REGISTRY)。修=packs按目录约定外置数据文件(如packs/*.pack.{json,ts数据}·加载器auto-discover)+门断言『新增行业diff仅packs/**』;或在验收里显式改判『单文件声明块=可接受口径』并说明理由(需审核方对齐,勿静默)。②C3『非电池完整app活体』零证据未声明——logisticsPack无自有viewLayouts/scenarios,无logi租户真登录浏览器证据(视图渲非电池KPI/场景卡可答)。修=logistics最小viewLayouts+1-2场景卡入pack+真浏览器登录logi逐值截图;若判定完整app属后续单需在commit显式声明拆出。纪律同BIZ-ENTITY: 验收条款要么达成要么显式声明。",
+      "blockReason": "",
       "doc": "docs/AUDIT-hardcode-remnants.md",
       "title": "行业包收敛(北极星):换行业=加1个IndustryPack数据包·0码改·5硬编码WO的capstone+活体证",
       "note": "架构师北极星(答用户'如何换行业不改~15文件')。5个HARDCODE WO各把一层(派发/结构/阈值/时间/实体)从电池硬编码转为pack可消费descriptor·本单收敛为单一声明式 IndustryPack 契约+加载器:{ontology切片, solverDescriptors(registry), viewLayouts(ViewConfig), solverParams, clockConfig, registries(base/seg/factor/vocab), scenarios, intents(含mode), rules/constraints}。引擎全通用·消费pack。换行业=授权/导入1个pack(数据)·改0个代码文件。北极星验:延用已有 logistics-warehouse last-mile·把非电池行业立成完整可用app(视图渲染+求解器派发+场景可答)仅靠pack。R14派生层门族(debattery+dispatch-registry+view-layout-config+solver-no-inline-threshold+clock-derive+scene-agent-config)baseline+ratchet守回潮。",
