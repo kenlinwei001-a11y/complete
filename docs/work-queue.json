@@ -3017,6 +3017,90 @@
           }
         ]
       }
+    },
+    {
+      "id": "PLATFORM-AGENT-SURFACE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "INDUSTRY-PACK-CONVERGE"
+      ],
+      "blockReason": "",
+      "doc": "docs/PRD-agent-native-absorb.md",
+      "title": "平台自身作为MCP/A2A服务端(registry投影层·外部agent可调平台求解器/行动)",
+      "note": "Agent-Native评估裁决『不换框架·吸收模式』之一(docs/PRD-agent-native-absorb.md WO-A)。不引defineAction——SOLVER_REGISTRY/OPERATION_CATALOG descriptor已在,只加投影层:MCP server表面自动派生platform__solver__{key}工具(argHints/outputShape/DataDependency.requires入inputSchema)·执行=既有REST路径零新逻辑;A2A最小面(agent card+task≈QueryTask映射POST /b/v1/queries);鉴权=平台token OBO行级·无匿名面·R4/凭据/审计原样。",
+      "acceptance": {
+        "goal": "外部agent经MCP/A2A调用平台求解器/行动,同一descriptor单一来源自动派生表面,权限/审计/R4与内部一致。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "最小MCP客户端list_tools=47求解器工具·调platform__solver__capacity_forecast返回==REST invoke逐值·低权账号A6行级过滤断言。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "工具集随registry增删自动同步(加PROVISIONAL求解器→工具现·门断言);齿检+四包绿。"
+          },
+          {
+            "id": "C3",
+            "type": "test",
+            "assert": "A2A task提交→终态==对话坞同问句终态;回写§2.H/§3新表面链路+G-14侧记+ontology:slices。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "AGENT-OBSERVATIONAL-MEMORY",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "INDUSTRY-PACK-CONVERGE"
+      ],
+      "blockReason": "",
+      "doc": "docs/PRD-agent-native-absorb.md",
+      "title": "agent跨会话观察记忆(任务轨迹蒸馏→经验库写侧·OBSERVED标注不冒充真值)",
+      "note": "吸收模式之二(PRD WO-B)。复验实证agt_universal无跨会话记忆(search_experience只有读侧)。终态钩子把decision-trace经确定性模板蒸馏(LLM可选QOS_MEMORY_LLM=1)写经验条目{intentKey,toolPath,keyFindings,provenance:taskId}·origin:OBSERVED·返回带『仅供路径参考·业务事实以工具结果为准』·R2隔离·留存走G-RET;agent systemPrompt加先查经验库一步。",
+      "acceptance": {
+        "goal": "同域问题二次运行免重复摸索;记忆恒OBSERVED标注不进业务数字溯源;蒸馏R6确定性。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "同租户同意图两连跑:第二次toolCalls下降或首步search_experience命中。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "无LLM模式同trace同条目字节一致R6;经验条目不出现在任何业务数字溯源(KILL-MOCK-RED断言);齿检+回写§2.H/§4事件experience.distilled。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "AGENT-HANDOFF-OBJECT",
+      "priority": "P3",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "INDUSTRY-PACK-CONVERGE"
+      ],
+      "blockReason": "",
+      "doc": "docs/PRD-agent-native-absorb.md",
+      "title": "agent交接一等对象Handoff(谁交给谁/带什么槽位证据/可审计·trace/DAG可见)",
+      "note": "吸收模式之三(PRD WO-C)。现场景agent→universal为代码内委派无交接记录。Handoff{fromAgentId,toAgentId,taskId,reason,carriedSlots,carriedEvidence,at}一等对象repo双实现;runPathB委派点落记录;trace/推演DAG渲染交接节点;与AGENT-UNIVERSAL agentId归属审计同坐标系。",
+      "acceptance": {
+        "goal": "每次agent间委派产生可审计Handoff记录并在轨迹/DAG可见。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "场景agent回落universal真跑产生Handoff记录·trace可见·R2隔离·齿检;回写§2.H/§6+ontology:slices。"
+          }
+        ]
+      }
     }
   ]
 }
