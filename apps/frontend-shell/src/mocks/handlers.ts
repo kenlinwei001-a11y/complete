@@ -418,6 +418,15 @@ export const handlers = [
   http.get("*/a/v1/history/bundle", ({ request }) => {
     const account = auth(request);
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    // 浏览器证据/演示钩子（mock-only·window 标志·生产从不置位）：置 __REVIEW_EMPTY__ → 返空历史，
+    // 用于真浏览器演示 ReviewView 诚实空态深链（WO-VIS-SIGNALS-2 ①·非伪造·空即空）。
+    if ((globalThis as { __REVIEW_EMPTY__?: boolean }).__REVIEW_EMPTY__ === true) {
+      return HttpResponse.json({
+        mapeSeries: [], calibrations: { proposals: [] }, sopVersions: [],
+        actionHistory: { items: [], total: 0 }, actionStats: { executed: 0, rejected: 0, cancelled: 0, failed: 0 },
+        ruleVersions: [], incubated: [], generatedFrom: { replayFrom: "", replayTo: "", seed: 0 }, synthetic: false,
+      });
+    }
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("pageSize") ?? 20)));
