@@ -230,6 +230,24 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-databuilder-page-unified-spec.md": {
+      "acceptanceIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "covered": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-decision-support-maturity.md": {
       "acceptanceIds": [
         "D0",
@@ -363,6 +381,24 @@
         "F7",
         "F8",
         "F9"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-fullstack-story-build-g8.md": {
+      "acceptanceIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "covered": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5"
       ],
       "uncovered": [],
       "coverage": 1
