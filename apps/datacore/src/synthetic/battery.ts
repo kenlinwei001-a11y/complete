@@ -142,6 +142,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     caseSeverity: { highScore: 92, medScore: 78, primaryBonus: 12 },
     demandTension: { base: 62, loadGain: 70, shareBase: 0.6, shareGain: 0.8, utilPivot: 0.8, utilGain: 40, upsideGain: 0.5, tensionCap: 98 },
     deliveryLaborPerWan: 1.6,
+    fallbackUnitPrice: 600,
     mitigations: {
       物料齐套: [
         { key: "early_stock", name: "提前备料", eff: 12, tn: 2, cost: "中", risk: "低" },

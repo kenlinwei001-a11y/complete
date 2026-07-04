@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { invokeSolver, makeApp, seedBattery } from "./helpers.js";
-import { applyOrderOverride, caseSeverityFromData, CASE_SEVERITY_DEFAULT } from "../src/solvers/risk.js";
+import { applyOrderOverride, caseSeverityFromData, CASE_SEVERITY_DEFAULT, orderFinanceImpactWan } from "../src/solvers/risk.js";
+import { deriveCaseSeverities } from "../src/livedin/engine.js";
 import { deriveExtendedArgs, extendedDataMode } from "../src/solvers/extended.js";
 import { BATTERY_SOLVER_PARAMS } from "../src/synthetic/battery.js";
 import type { SolverContext } from "../src/solvers/types.js";
@@ -22,6 +23,38 @@ describe("RISK-TRAJECTORY-DEFAKE · 治本牙齿", () => {
     expect(caseSeverityFromData(80, true, false, strict)).toBe("MEDIUM");
     // primaryBonus 归零 → 无主瓶颈加成
     expect(caseSeverityFromData(80, true, false, { highScore: 92, medScore: 78, primaryBonus: 0 })).toBe("MEDIUM");
+  });
+
+  // HARDCODE-BIZ-ENTITY 残项①（通电·牙齿）：livedin 引擎 case severity 由 params.risk.caseSeverity 真闭环驱动。
+  // 此前 engine.ts 只 3 参调用 → 参数无运行时读取点（改参不改果）；现 deriveCaseSeverities 传第 4 参。
+  // 改 param → 判据随之变；回退（引擎不透传参数/helper 忽略入参）→ strict 全 LOW 断言红。
+  it("残项①：deriveCaseSeverities 由 params.risk.caseSeverity 驱动（默认字节一致·改 param 改判据）", () => {
+    const def = deriveCaseSeverities(CASE_SEVERITY_DEFAULT);
+    // 默认阈值下真数据派生出非 LOW 判据（xiamen 85 等）——证明默认参数真驱动引擎案例 severity。
+    const nonCrisis = [1, 2, 3, 4, 5, 6, 8, 9, 10];
+    expect(nonCrisis.some((n) => def.get(n) !== "LOW")).toBe(true);
+    // 危机案例 CASE-007（n=7）恒 HIGH（结构性到货断供·crisis 短路，与阈值无关）。
+    expect(def.get(7)).toBe("HIGH");
+    // 抬到不可达阈值（校准）→ 非危机案例全 LOW（危机仍 HIGH）；参数真移动判据（回退即红）。
+    const strict = deriveCaseSeverities({ highScore: 999, medScore: 999, primaryBonus: 0 });
+    expect(nonCrisis.every((n) => strict.get(n) === "LOW")).toBe(true);
+    expect(strict.get(7)).toBe("HIGH");
+  });
+
+  // HARDCODE-BIZ-ENTITY 残项②（通电·牙齿）：problems[] financeImpact 兜底单价入 params.risk.fallbackUnitPrice。
+  // 此前 risk.ts 内联字面量 600；现 orderFinanceImpactWan 读参。默认 600 字节一致·改 param 改果·回退即红。
+  it("残项②：orderFinanceImpactWan 缺 unitPrice 兜底取 params.risk.fallbackUnitPrice（默认 600·改 param 改果）", () => {
+    // battery 默认兜底单价 = 600（R6 字节一致·非内联魔数）。
+    expect((BATTERY_SOLVER_PARAMS as { risk: { fallbackUnitPrice: number } }).risk.fallbackUnitPrice).toBe(600);
+    const rows = [{ so: "SO-A", qty: 1 }]; // 1 万套
+    const withPrice = [{ props: { so: "SO-A", unitPrice: 800 } }];
+    const noPrice = [{ props: { so: "SO-A" } }];
+    // 订单有真单价 → 用真值 800（1×10000×800÷1e8 = 0.08）·与兜底无关。
+    expect(orderFinanceImpactWan(rows, withPrice, 600)).toBe(0.08);
+    // 缺单价 → 默认兜底 600（=0.06）。
+    expect(orderFinanceImpactWan(rows, noPrice, 600)).toBe(0.06);
+    // 改兜底 param → 结果随之变（1200 → 0.12）；回退到内联字面量 600 则此断言红。
+    expect(orderFinanceImpactWan(rows, noPrice, 1200)).toBe(0.12);
   });
 
   // B9/B6：需求张力映射系数 + 工时系数入 params（存在且为命名字段·非匿名内联）。

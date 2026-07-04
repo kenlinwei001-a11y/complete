@@ -75,6 +75,11 @@ export interface SolverParamsShape {
      * 估算值 = round(订单真 qty × deliveryLaborPerWan)，desc 明标「估算」（非实测工时）。
      */
     deliveryLaborPerWan: number;
+    /**
+     * HARDCODE-BIZ-ENTITY（残项②·可校准·非内联魔数）：订单缺 unitPrice 时的兜底单价（元/套），
+     * 用于 problems[] financeImpact 估算。默认 600（R6 字节一致）；订单有真 unitPrice 则以真值为准。
+     */
+    fallbackUnitPrice: number;
     mitigations: Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk: string }[]>;
   };
   affected: {

@@ -75,6 +75,26 @@ const CASE_SPECS: CaseSpec[] = [
   { n: 10, baseId: "luoyang", factor: "物流时长", crossed: "2026-04-21" },
 ];
 
+/**
+ * HARDCODE-BIZ-ENTITY（残项①·通电）：10 例告警案例 severity 由 params.risk.caseSeverity 真闭环驱动。
+ * 纯函数·确定性·可单测的运行时读取点——阈值判据取自入参（buildCases 传 BATTERY_SOLVER_PARAMS.risk.caseSeverity），
+ * 改 param → 判据随之变；默认即 CASE_SEVERITY_DEFAULT（R6 字节一致）。返回 CaseSpec.n → severity。
+ */
+export function deriveCaseSeverities(
+  sev: { highScore: number; medScore: number; primaryBonus: number },
+): Map<number, "LOW" | "MEDIUM" | "HIGH"> {
+  const baseNames = new Map(BASES.map((b) => [b.baseId, b.name]));
+  const baseUtil = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.util]));
+  const bn = BATTERY_SOLVER_PARAMS.bottleneck as { primary: Record<string, string>; defaultPrimary: string };
+  const out = new Map<number, "LOW" | "MEDIUM" | "HIGH">();
+  for (const s of CASE_SPECS) {
+    const baseName = baseNames.get(s.baseId) ?? s.baseId;
+    const isPrimary = s.factor === (bn.primary[baseName] ?? bn.defaultPrimary);
+    out.set(s.n, caseSeverityFromData(baseUtil.get(s.baseId) ?? 0, isPrimary, s.crisis ?? false, sev));
+  }
+  return out;
+}
+
 /** 延期挽回链（Y5）：9 单曾延期，7 单经案例处置挽回至 ≤2 天。 */
 const DELAY_OVERRIDES: { idx: number; due: string; caseN?: number; delay: number; origDelay?: number }[] = [
   // CASE-007 到货危机受影响 4 单（3 挽回 + 1 未挽回）
@@ -267,18 +287,20 @@ export class LivedInEngine {
 
   private buildCases(tenantId: string, replayFrom: string): LivedCase[] {
     const baseNames = new Map(BASES.map((b) => [b.baseId, b.name]));
-    const baseUtil = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.util]));
-    const bn = BATTERY_SOLVER_PARAMS.bottleneck as { primary: Record<string, string>; defaultPrimary: string };
-    const mitigations = (BATTERY_SOLVER_PARAMS.risk as { mitigations: Record<string, { key: string; name: string }[]> })
-      .mitigations;
+    const riskParams = BATTERY_SOLVER_PARAMS.risk as {
+      mitigations: Record<string, { key: string; name: string }[]>;
+      caseSeverity: { highScore: number; medScore: number; primaryBonus: number };
+    };
+    const mitigations = riskParams.mitigations;
+    // B8·可校准：severity 判据阈值由 params.risk.caseSeverity 真闭环驱动（非内联默认），改 param 改判据。
+    const severityByCase = deriveCaseSeverities(riskParams.caseSeverity);
     void replayFrom;
     return CASE_SPECS.map((s) => {
       const adopted = addDays(s.crossed, 3);
       const resolved = addDays(s.crossed, 13);
       const baseName = baseNames.get(s.baseId) ?? s.baseId;
       // P4 真闭环：severity 由基地真实利用率 + 是否主瓶颈因子 + 危机派生（替代写死，R13 可溯源 R6 确定）。
-      const isPrimary = s.factor === (bn.primary[baseName] ?? bn.defaultPrimary);
-      const severity = caseSeverityFromData(baseUtil.get(s.baseId) ?? 0, isPrimary, s.crisis ?? false);
+      const severity = severityByCase.get(s.n)!;
       const mit = (mitigations[s.factor] ?? [])[0] ?? { key: "early_stock", name: "提前备料" };
       const actionId = `act_lh_${tenantId}_${String(s.n).padStart(3, "0")}`;
       const tags = s.crisis ? ["到货危机"] : [];

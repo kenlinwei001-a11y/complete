@@ -37,6 +37,19 @@ export function caseSeverityFromData(
   return score >= sev.highScore ? "HIGH" : score >= sev.medScore ? "MEDIUM" : "LOW";
 }
 
+/**
+ * HARDCODE-BIZ-ENTITY（残项②·通电）：problems[] 财务影响（亿元）真闭环读取点。
+ * = Σ 订单 qty × 套(×10000) × 单价 ÷ 1e8；单价取订单真 unitPrice，缺失时兜底 fallbackUnitPrice
+ * （params.risk.fallbackUnitPrice·可校准·非内联魔数，默认 600·R6 字节一致）。改 param → 兜底随之变。
+ */
+export function orderFinanceImpactWan(
+  rows: Record<string, unknown>[],
+  orders: readonly { props: Record<string, unknown> }[],
+  fallbackUnitPrice: number,
+): number {
+  return round(rows.reduce((a, r) => a + num(r.qty) * 10000 * num(orders.find((o) => o.props.so === r.so)?.props.unitPrice, fallbackUnitPrice), 0) / 1e8, 4);
+}
+
 /** MOCK 口径 (exact prototype formula): seed=(base首字符码+因素首字符码×7) mod 9. */
 export function mockTightness(c: SolverContext, baseId: string, factor: string): number {
   const m = c.params.bottleneck.mock;
@@ -1041,7 +1054,7 @@ function buildOrderProblems(
   for (const root of Object.keys(rootCfg)) {
     const b = buckets.get(root);
     if (!b || b.rows.length === 0) continue;
-    const finance = round(b.rows.reduce((a, r) => a + num(r.qty) * 10000 * num(c.orders.find((o) => o.props.so === r.so)?.props.unitPrice, 600), 0) / 1e8, 4);
+    const finance = orderFinanceImpactWan(b.rows, c.orders, c.params.risk.fallbackUnitPrice);
     out.push({
       category: root,
       title: rootCfg[root]!.title,
