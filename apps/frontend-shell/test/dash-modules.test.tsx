@@ -35,4 +35,16 @@ describe("dash · 回采校准链 + 模块直达", () => {
     await user.click(screen.getByTestId("dash-mod-risk"));
     await waitFor(() => expect(router.state.location.pathname).toBe("/v/risk"));
   });
+
+  // UI-POLISH（视觉层级）：回采链 + 模块直达归入次级导航区（分隔 + 组标题），与监控主区拉开层级。
+  it("次级导航区分组：dash-nav-zone 含组标题，且回采链/模块直达归入其内（非平铺等权）", async () => {
+    loginAs("planner");
+    renderApp("/v/dash");
+    await screen.findByTestId("dashboard-grid");
+    const zone = await screen.findByTestId("dash-nav-zone");
+    expect(zone).toHaveTextContent("导航与回采校准"); // 组标题
+    // 回采链与模块直达都在该次级区内（被归组，非各自平铺）
+    expect(zone.querySelector('[data-testid="dash-feedback-chain"]')).toBeTruthy();
+    expect(zone.querySelector('[data-testid="dash-modules"]')).toBeTruthy();
+  });
 });

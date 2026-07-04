@@ -69,6 +69,40 @@ describe("F24 · 地理视图（geo-map）", () => {
     expect(await screen.findByTestId("risk-card-常州")).toBeInTheDocument();
   });
 
+  it("UI-POLISH 叠字避让：全部基地标签渲染且两两不重叠（含川渝密集群）+ 气泡 hover tooltip 兜底全名", async () => {
+    cleanup();
+    loginAs("planner");
+    renderApp("/v/geo-map");
+    await screen.findByTestId("geo-bubble-常州");
+
+    // 每个国内基地都有独立标签（避让后不丢标签）
+    const labels = document.querySelectorAll<SVGTextElement>('[data-testid^="geo-label-"]');
+    expect(labels.length).toBeGreaterThanOrEqual(12);
+
+    // 用与组件一致的几何常数重建标签框，断言两两不重叠（叠字修的核心不变量）
+    const CHAR_W = 11;
+    const H = 14;
+    const boxes = Array.from(labels).map((t) => {
+      const x = Number(t.getAttribute("x"));
+      const y = Number(t.getAttribute("y"));
+      const anchor = t.getAttribute("data-anchor");
+      const w = Math.max(1, (t.textContent ?? "").length) * CHAR_W;
+      const left = anchor === "middle" ? x - w / 2 : anchor === "start" ? x : x - w;
+      return { name: t.textContent, x1: left, y1: y - H, x2: left + w, y2: y + 2 };
+    });
+    const overlap = (a: (typeof boxes)[number], b: (typeof boxes)[number]) =>
+      !(a.x2 <= b.x1 || a.x1 >= b.x2 || a.y2 <= b.y1 || a.y1 >= b.y2);
+    const collisions: string[] = [];
+    for (let i = 0; i < boxes.length; i++)
+      for (let j = i + 1; j < boxes.length; j++)
+        if (overlap(boxes[i]!, boxes[j]!)) collisions.push(`${boxes[i]!.name}×${boxes[j]!.name}`);
+    expect(collisions).toEqual([]);
+
+    // 气泡原生 <title> tooltip 兜底：hover 见全名（避让/截断后仍可取全信息）
+    const bubble = screen.getByTestId("geo-bubble-常州");
+    expect(bubble.querySelector("title")?.textContent).toContain("常州");
+  });
+
   it("「图谱中查看」→ /v/graph 定位节点（检查器直接打开 Base）", async () => {
     const user = userEvent.setup();
     cleanup();

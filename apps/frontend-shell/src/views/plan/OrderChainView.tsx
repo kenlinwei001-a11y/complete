@@ -458,6 +458,10 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   );
 }
 
+/** UI-POLISH：P90/需求等求解器真值常为长裸浮点（如 1.1615）；展示时定 1 位小数、整数不带尾零/千分位，
+ *  仅格式化不改值（逐值对照后端仍是同一真值·四舍五入到 0.1）。 */
+export const fmtQty = (v: number): string => (Number.isFinite(v) ? Number(v.toFixed(1)).toLocaleString("zh-CN") : "—");
+
 /**
  * ORD 订单全链推演面板（order_fullchain）：订单选择器 → 6 KPI + 统一结论（三色）+ 三判明细 + 11 节点
  * 业务建模链 DAG + 采纳→Action（C10 留痕）。三判由求解器实算，前端零写死（R14）。
@@ -615,7 +619,7 @@ function OrderFullchainPanel({ kpis, dagLayout, so, onSoChange, focus }: {
                 <td>①交期·产能</td><td>{data.judges.cap.verdict}</td>
                 <td className="mono">
                   <Provenance testId="ofc-judge-cap" src="order_fullchain 求解器 · 交期产能判（Order×Model 可产基地周曲线）" formula="P90 = 产能周曲线 90 分位累计；vs 需求量" inputs={["可产基地节拍×OEE×良率", "爬坡曲线+检修窗", "订单需求量"]} rule={data.judges.cap.ruleRefs.join("/")}>
-                    P90 {data.judges.cap.p90} vs 需求 {data.judges.cap.demand}
+                    P90 {fmtQty(data.judges.cap.p90)} vs 需求 {fmtQty(data.judges.cap.demand)}
                   </Provenance>
                 </td>
                 <td className="mono">{data.judges.cap.ruleRefs.length > 0 ? <RuleRef code={data.judges.cap.ruleRefs.join("/")} /> : "—"}</td>

@@ -130,6 +130,14 @@ export default function LlmProvidersPage() {
               </tr>
             </thead>
             <tbody>
+              {/* UI-POLISH 诚实空态：无 Provider 时给一行占位（非裸表头），指引新建。 */}
+              {(providers ?? []).length === 0 && (
+                <tr data-testid="providers-empty">
+                  <td colSpan={7} className="empty-state" style={{ textAlign: "center", color: "var(--muted2)", padding: "18px 8px" }}>
+                    暂无 LLM Provider——点右上「新建 Provider」接入 Anthropic / OpenAI 兼容 / 自定义端点。
+                  </td>
+                </tr>
+              )}
               {(providers ?? []).map((p) => (
                 <tr key={p.id} data-testid={`provider-${p.id}`}>
                   <td className="zh">{p.name}</td>

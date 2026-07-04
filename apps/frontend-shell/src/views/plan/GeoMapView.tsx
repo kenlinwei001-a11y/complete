@@ -113,6 +113,47 @@ export default function GeoMapView({ view }: ViewRendererProps) {
   // 大小 = GWh 线性映射 8–28px
   const radius = (gwh: number): number => (maxG === minG ? 18 : 8 + ((gwh - minG) / (maxG - minG)) * 20);
 
+  // UI-POLISH（叠字避让）：川渝/苏皖等相邻基地标签在默认「气泡下方」位会互相碰撞。
+  //   贪心择位——按 gwh 降序（大基地优先占默认位），每个标签依次尝试 下→上→右→左，取首个不与
+  //   已放置标签框重叠的位；四位皆冲突则退默认下方。每个气泡另附 <title> 原生 hover 兜底全名（tooltip）。
+  const LBL_CHAR_W = 11; // 单字近似宽（viewBox px）
+  const LBL_H = 14;
+  const placedBoxes: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  const rectsOverlap = (
+    a: { x1: number; y1: number; x2: number; y2: number },
+    b: { x1: number; y1: number; x2: number; y2: number },
+  ): boolean => !(a.x2 <= b.x1 || a.x1 >= b.x2 || a.y2 <= b.y1 || a.y1 >= b.y2);
+  const labelLayout = [...domestic]
+    .sort((a, b) => b.gwh - a.gwh)
+    .map((b) => {
+      const [lon, lat] = coordOf(b)!;
+      const p = project(lon, lat);
+      const r = radius(b.gwh);
+      const w = Math.max(1, b.name.length) * LBL_CHAR_W;
+      const cands: { lx: number; ly: number; anchor: "middle" | "start" | "end" }[] = [
+        { lx: p.x, ly: p.y + r + 13, anchor: "middle" }, // 下（默认）
+        { lx: p.x, ly: p.y - r - 4, anchor: "middle" }, // 上
+        { lx: p.x + r + 5, ly: p.y + 4, anchor: "start" }, // 右
+        { lx: p.x - r - 5, ly: p.y + 4, anchor: "end" }, // 左
+      ];
+      const boxOf = (c: (typeof cands)[number]) => {
+        const left = c.anchor === "middle" ? c.lx - w / 2 : c.anchor === "start" ? c.lx : c.lx - w;
+        return { x1: left, y1: c.ly - LBL_H, x2: left + w, y2: c.ly + 2 };
+      };
+      let chosen = cands[0]!;
+      let chosenBox = boxOf(cands[0]!);
+      for (const c of cands) {
+        const box = boxOf(c);
+        if (!placedBoxes.some((pb) => rectsOverlap(pb, box))) {
+          chosen = c;
+          chosenBox = box;
+          break;
+        }
+      }
+      placedBoxes.push(chosenBox);
+      return { id: b.id, name: b.name, lx: chosen.lx, ly: chosen.ly, anchor: chosen.anchor };
+    });
+
   const pick = (b: BaseProps) => {
     setSelected(b);
     useSessionStore.getState().toggleSelectedObject({ objectType: "Base", objectId: b.id, label: b.name });
@@ -160,13 +201,27 @@ export default function GeoMapView({ view }: ViewRendererProps) {
                     tabIndex={0}
                     onClick={() => pick(b)}
                     onKeyDown={(e) => e.key === "Enter" && pick(b)}
-                  />
-                  <text y={r + 13} className={styles.geoLabel}>
-                    {b.name}
-                  </text>
+                  >
+                    {/* UI-POLISH：原生 hover tooltip 兜底——标签避让后仍可 hover 气泡看全名+GWh。 */}
+                    <title>{`${b.name} · ${b.gwh}GWh · ${b.position}`}</title>
+                  </circle>
                 </g>
               );
             })}
+            {/* UI-POLISH（叠字避让层）：标签统一在气泡层之上，按 labelLayout 择位渲染，避免与相邻标签碰撞。 */}
+            {labelLayout.map((l) => (
+              <text
+                key={l.id}
+                x={l.lx.toFixed(1)}
+                y={l.ly.toFixed(1)}
+                className={styles.geoLabel}
+                style={{ textAnchor: l.anchor }}
+                data-testid={`geo-label-${l.name}`}
+                data-anchor={l.anchor}
+              >
+                {l.name}
+              </text>
+            ))}
           </svg>
           <div className={styles.geoLegend} data-testid="geo-legend">
             <div className="section-title" style={{ marginBottom: 2 }}>

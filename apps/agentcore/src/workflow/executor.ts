@@ -446,11 +446,19 @@ export function summarizeSolverOutput(payload: unknown, provId: string): AnswerB
   //      → 求解器确认在当前约束下没有可行项（非数据缺失）。建议放宽约束/加杠杆/扩窗口。
   //   ·【数据未接齐】连关键标量也缺（输出近乎空壳）→ 上游切片/口径未接齐，求解器无料可算。
   //      建议先接入/补齐数据再重跑（触发合成≠伪造，走管线读回真实值）。
-  // ⚠ 不以 `!table` 为门：求解器常同时含**无关的非空数组**（如 evaluatedRules）投成表，
-  //   但用户问的**主结果数组**（combo/rows）仍为空 —— 那张表不能掩盖空结果，否则又退回静默吞空。
+  // 渲染条件修（LAUNCHER 复验移交·S11 疵）：『结果为空（真无解/数据未接齐）』是**整体级**判决，
+  //   只应在**答案整体无结果数据块**（未投出任何结果表）时升格出现。若已有结果表（求解器确给出结果行），
+  //   某些**无关子字段**恰为空数组，只应降为**轻量一行**『infeasible：无』——不得让无关空子字段误报整体无解、
+  //   盖过并存的真实结果（S11 6 行换型序列结果表并存却显"真无解"，误导用户以为整体无解）。
   if (emptyArrayKeys.length > 0) {
     const empties = emptyArrayKeys.join("、");
-    if (scalarCount > 0) {
+    if (table) {
+      // 已有结果数据块 → 空子字段轻量披露（仍点名，不静默吞），不升格为整体无解
+      out.push({
+        type: "text",
+        markdown: `子字段「${empties}」：infeasible（无）——该字段在当前结果下无内容，不影响上表结果。`,
+      });
+    } else if (scalarCount > 0) {
       out.push({
         type: "text",
         markdown:

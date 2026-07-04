@@ -104,35 +104,41 @@ export default function DashboardView({ view }: ViewRendererProps) {
       {/* 待解决的问题（自下而上：受影响订单逐单归因 → 问题清单） */}
       <ProblemPanel />
 
-      {/* 回采校准链（实际 → 月度 → 季度 → 年度 · C12 反向调参） */}
-      <div className="panel" style={{ marginTop: 16 }} data-testid="dash-feedback-chain">
-        <div className="section-title">{zh.dash.feedbackTitle}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, fontSize: 12 }}>
-          {feedbackChain.map((n, i) => (
-            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span className="badge" data-testid={`dash-fb-${i}`}>{n}</span>
-              {i < feedbackChain.length - 1 && <span style={{ color: "var(--muted2)" }}>→</span>}
-            </span>
-          ))}
-        </div>
-      </div>
+      {/* UI-POLISH（视觉层级）：把「回采校准链 + 模块直达」归入一个次级导航区——分隔线 + 组标题 + 降权底色，
+          与上方监控主区（看板 + 待解决问题）拉开层级，缓解 3.72 屏平铺等权无层级。 */}
+      <div className={styles.navZone} data-testid="dash-nav-zone">
+        <div className={styles.zoneTitle}>{zh.dash.navZoneTitle}</div>
 
-      {/* 模块直达（点击进入对应视图） */}
-      <div className="panel" style={{ marginTop: 14 }} data-testid="dash-modules">
-        <div className="section-title">{zh.dash.modulesTitle}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
-          {modLinks.map((m) => (
-            <button
-              key={m.key}
-              className={styles.card}
-              style={{ borderLeft: `3px solid ${m.color}`, cursor: "pointer", textAlign: "left" }}
-              data-testid={`dash-mod-${m.key}`}
-              onClick={() => navigate(m.route)}
-            >
-              <b style={{ color: m.color }}>{m.title}</b>
-              <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4 }}>{m.sub}</div>
-            </button>
-          ))}
+        {/* 回采校准链（实际 → 月度 → 季度 → 年度 · C12 反向调参） */}
+        <div className="panel" data-testid="dash-feedback-chain">
+          <div className="section-title">{zh.dash.feedbackTitle}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, fontSize: 12 }}>
+            {feedbackChain.map((n, i) => (
+              <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span className="badge" data-testid={`dash-fb-${i}`}>{n}</span>
+                {i < feedbackChain.length - 1 && <span style={{ color: "var(--muted2)" }}>→</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* 模块直达（点击进入对应视图） */}
+        <div className="panel" style={{ marginTop: 14 }} data-testid="dash-modules">
+          <div className="section-title">{zh.dash.modulesTitle}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+            {modLinks.map((m) => (
+              <button
+                key={m.key}
+                className={styles.card}
+                style={{ borderLeft: `3px solid ${m.color}`, cursor: "pointer", textAlign: "left" }}
+                data-testid={`dash-mod-${m.key}`}
+                onClick={() => navigate(m.route)}
+              >
+                <b style={{ color: m.color }}>{m.title}</b>
+                <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4 }}>{m.sub}</div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </>
@@ -871,13 +877,22 @@ function TableWidget({ data, columns }: { data: unknown; columns?: string[] }) {
         </tr>
       </thead>
       <tbody>
-        {items.slice(0, 8).map((it) => (
-          <tr key={it.id}>
-            {cols.map((c) => (
-              <td key={c}>{String(it.props[c] ?? "—")}</td>
-            ))}
+        {/* UI-POLISH 诚实空态：空数据不留裸表头，给一行占位。 */}
+        {items.length === 0 ? (
+          <tr data-testid="widget-table-empty">
+            <td colSpan={Math.max(1, cols.length)} className="empty-state" style={{ textAlign: "center", color: "var(--muted2)", padding: "14px 8px" }}>
+              {zh.common.none}
+            </td>
           </tr>
-        ))}
+        ) : (
+          items.slice(0, 8).map((it) => (
+            <tr key={it.id}>
+              {cols.map((c) => (
+                <td key={c}>{String(it.props[c] ?? "—")}</td>
+              ))}
+            </tr>
+          ))
+        )}
       </tbody>
     </table>
   );

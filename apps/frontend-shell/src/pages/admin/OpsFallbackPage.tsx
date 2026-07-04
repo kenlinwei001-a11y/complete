@@ -31,6 +31,8 @@ export default function OpsFallbackPage() {
     <div>
       <h2 style={{ fontSize: 16, marginBottom: 14 }}>{t.title}</h2>
       <div className="panel">
+        {/* UI-POLISH 诚实空态：无聚类时不渲染裸表头，仅显下方空态说明（非空表头 + 空 body）。 */}
+        {data && data.items.length > 0 && (
         <table className="cmp">
           <thead>
             <tr>
@@ -65,6 +67,7 @@ export default function OpsFallbackPage() {
             ))}
           </tbody>
         </table>
+        )}
         {/* G-VIS-1 · 诚实空态：无兜底聚类（尚无未命中查询或已全部孵化为意图）——不留空表让人以为页面坏了。 */}
         {data && data.items.length === 0 && (
           <div className="empty-state" data-testid="fallback-empty">

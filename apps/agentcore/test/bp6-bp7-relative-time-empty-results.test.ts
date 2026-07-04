@@ -138,17 +138,45 @@ describe("BP-7 · summarizeSolverOutput 空结果显性化（D7，不静默吞�
     expect(text).toContain("over");
   });
 
-  it("空 combo + 非空 evaluatedRules（真后端 S19 实形态）→ 仍显性化空 combo，不被无关表掩盖", () => {
-    // 真后端 quarterly_gap 输出：combo:[] 但 evaluatedRules:[...] 非空 → 旧逻辑会用 evaluatedRules 投表
-    // 而静默吞掉空 combo。BP-7 修复后：仍出"真无解"文案点名 combo。
+  it("空 combo + 非空 evaluatedRules → 有结果表在，空子字段降为轻量 infeasible 一行（不误报整体真无解·LAUNCHER 复验移交）", () => {
+    // 渲染条件修：答案已含结果表（evaluatedRules 投表）时，空 combo 只降为轻量『infeasible（无）』一行，
+    // 仍点名 combo 不静默吞，但不升格为『结果为空（真无解）』整体判决——避免与并存结果表冲突误导用户。
     const blocks = summarizeSolverOutput(
       { data: { quarter: "2026Q2", combo: [], residualGap: 50, ruleRefs: ["C08", "C29"], evaluatedRules: [{ key: "C08", outcome: "NOT_APPLICABLE" }, { key: "C29", outcome: "NOT_APPLICABLE" }] } },
       PROV,
     );
     const text = blocks.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown).join("\n");
-    expect(text).toContain("真无解");
-    expect(text).toContain("combo");
+    expect(text).not.toContain("真无解"); // 有结果表并存 → 不得升格为整体无解
+    expect(text).toContain("infeasible"); // 降为轻量披露
+    expect(text).toContain("combo"); // 仍点名空子字段，不静默吞
     expect(blocks.some((b) => b.type === "table")).toBe(true); // evaluatedRules 仍投表（不丢信息）
+  });
+
+  it("S11 疵回归：6 行换型序列结果表 + 空子字段 over → 不误报『真无解』，只降为轻量 infeasible 行", () => {
+    // 真后端 changeover_sequence 实形态：sequence 有 6 行结果，over 恰为空数组 → 旧逻辑误显『结果为空（真无解）』。
+    const blocks = summarizeSolverOutput(
+      {
+        data: {
+          sequence: [
+            { lineId: "LINE-A", from: "M1", to: "M2", loss: 12 },
+            { lineId: "LINE-A", from: "M2", to: "M3", loss: 8 },
+            { lineId: "LINE-A", from: "M3", to: "M4", loss: 15 },
+            { lineId: "LINE-A", from: "M4", to: "M5", loss: 6 },
+            { lineId: "LINE-A", from: "M5", to: "M6", loss: 9 },
+            { lineId: "LINE-A", from: "M6", to: "M1", loss: 11 },
+          ],
+          totalLoss: 61,
+          over: [],
+        },
+      },
+      PROV,
+    );
+    const text = blocks.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown).join("\n");
+    expect(text).not.toContain("真无解"); // 核心：结果表并存时绝不误报整体无解
+    expect(text).not.toContain("数据未接齐");
+    expect(text).toContain("infeasible"); // over 空 → 轻量披露
+    expect(text).toContain("over");
+    expect(blocks.some((b) => b.type === "table")).toBe(true); // 6 行结果表在
   });
 
   it("有数据：非空数组照常投表，不触发空结果文案", () => {

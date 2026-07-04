@@ -32,3 +32,23 @@
   margin-left: 5px;
   font-weight: 400;
 }
+
+/* UI-POLISH（视觉层级）：3.72 屏平铺、各分区等权无层级。把「监控主区」与「导航/回采校准次区」
+   用分隔线 + 轻量组标题分组，拉开区间距、降低次区权重，建立 主→次 的阅读层级。 */
+.zoneTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted2);
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+.navZone {
+  margin-top: 30px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+/* 次区面板整体降权（更淡的底/边），与主区看板卡拉开对比 */
+.navZone :global(.panel) {
+  background: var(--panel2, rgba(255, 255, 255, 0.02));
+}
