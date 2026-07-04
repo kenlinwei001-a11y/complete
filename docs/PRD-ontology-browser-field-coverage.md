@@ -31,6 +31,7 @@
 2. **字段全建模门（你的硬要求）**：导入数据源的**每个 column 必须被本体建模覆盖**——映射到某 `PropertyDef` 或被显式 `waive`（带理由）。未覆盖即拦发布、入隔离区提示。可视化为节点级"覆盖徽章"。
 3. **本体浏览器（参考原型 UI 策展）**：按域分组的本体图谱 → 点节点右侧检视器出【数据源系统 + 字段 schema(名/类型/示例/单位) + 样例行 + 派生公式 + 规则/约束 + 被谁操作（solver/agent 反向引用）】＋**每节点"下载 CSV 导入模板"**。
 4. **出处与新鲜度（小增量）**：字段/KPI 悬浮出处（来源系统+公式+输入+规则）；源系统数据新鲜度徽章。
+5. **统一本体工作台（工业级 · 五合一，§3.6）**：把 浏览 / 编辑 / 分域 / 文档建模 / 同步矩阵深链 收口为**一个工作台页**——分域图谱**从只读升为可编辑**（节点增改删、拖拽连边、改归域，走草案+Action R4），并接住数据发动机"本体 +N"深链。换租户=换本体配置，不改代码（R14）。
 
 **非目标**
 - 不引入 Neo4j/ChromaDB 等外部存储（参考产品技术栈，不照搬）；图谱前端用成熟库（Cytoscape/d3），不手写力导向。
@@ -79,6 +80,39 @@
 - 字段/KPI 悬浮出处：复用 `resolvedRefs`/lineage（来源系统+公式+输入+规则引用）。
 - 源系统新鲜度徽章：绑 `connection.sync_completed`（§4 DL9）+ 数据流 SLO，●正常 / ⚠延迟Nh。
 
+### 3.5 「基于文档建模」入口（用户需求 2026-06-18）【绿地前端 + 解析器扩展】
+> 现状：建模工作台只能从**已上传的 `rawDatasetIds`** 出发（`suggest`/`derive`，`app.ts:1750/1756`）；且 `parseXlsx` **只取第一个 sheet**（`parsers.ts:10`），**YAML 完全无支持**（grep 0）。本节加一个**一步式「基于文档建模」入口**：在 ModelingPage 上传**多个 Excel/YAML 文件** → 直接出本体草稿。
+
+- **入口**：ModelingPage 新建草案旁加「基于文档建模」按钮 → 多文件拖拽上传（`.xlsx/.csv/.json` ⊕ `.yaml/.yml`）。
+- **两类文档、两种语义**：
+  - **Excel/CSV = 数据文档（data-first）**：**同时支持 ① 多个 Excel 文件；② 单个 Excel 含多个 sheet；③ 二者组合（M 文件 × N sheet，共 M×N 张表）**。实现：扩 `parseXlsx` **遍历全部 sheet**（现仅取 `sheets[0]`，`parsers.ts:10`），每 sheet = 一张表 → 各落一个 `RawDataset`（命名 `文件名#sheet名`）→ 复用 `deterministicSuggest`/`derive`（dataset→ObjectType、column→Property、PK=唯一率最高、FK/值重叠→Link，100% 覆盖、无 LLM、R6）+ **跨文件/跨表 FK 推断**（如 `orders.xlsx#Order.modelId` ↔ `master.xlsx#Model.id` → Link）。
+  - **YAML = 结构/规格文档（schema-first）**：新增 `parseYamlOntologySpec`（依赖 `js-yaml`）——YAML 声明式给出 `types[]{key,domain,properties[]{propKey,dataType,isPrimaryKey,refToTypeKey}}`、`links[]{from,to,cardinality}`、可选 `rules[]`，**直接解析为对象类型/链路**（无需数据行），合并进同一草稿。用于"我已有一份本体/数据字典定义，直接导入建模"。
+- **多文档协调**：跨文件**同名类型归并**（Excel 推断的 + YAML 声明的同 key → 合并属性，YAML 显式声明优先、Excel 补字段画像）；冲突（同属性不同类型）标注待人裁。
+- **产物**：统一为 **`OntologyDraft`** → 人 PATCH 微调 → 经字段全建模门（§3.2）→ **publish 经 Action/domainExecutor（R4）**。**完全复用现有草稿→发布管线，不另起真值路径。**
+- **与数据发动机的关系**：这是"**文档直接建模**"（工作台内、确定性优先）；与数据发动机"**故事→倒推建模**"（LLM comprehend）互补——两者都产 `OntologyDraft`，下游同一发布门。模块同步矩阵的"本体 +N"深链亦可回到此入口续编辑。
+
+### 3.6 统一本体工作台：浏览 / 编辑 / 分域 / 文档建模 / 同步矩阵深链「五合一」（工业级收口）【绿地前端 + 复用后端】
+> 把前述分散能力收口为**一个工作台页**（升级自 `OntologyGraphView` 只读视图），消除"图谱只读 / 建模在 ModelingPage / 分域在 DomainsPage / 文档建模无入口"的割裂。**所有写操作仍走"草案 → 字段全建模门 → Action 审批（R4）"，绝不绕过真值纪律。**
+
+**五合一面板（同一页五个协同区）**
+| # | 能力 | 现状 | 本节目标 |
+|---|---|---|---|
+| ① **浏览** | 分域图谱 + 节点检视器 + 字段覆盖徽章 + 出处（§3.3/§3.4） | ✅ 已有（只读） | 复用，作为工作台底座 |
+| ② **编辑（图谱即编辑面）** | `OntologyGraphView` 纯只读（无任何 mutation） | ❌ 缺 | **节点上直接 新增/改名/删除类型 · 增删属性 · 拖拽连边建/改 Link · 改基数**；每次编辑 = 改当前 `OntologyDraft`（乐观更新+回滚），发布经 Action |
+| ③ **分域** | colorBy=domain 着色/域图例/隐藏域/按域取子图（已有）；`DomainsPage` 管域 | ◐ 看得见、管在别页 | **在图谱上直接改节点归域**（拖到域泳道/改 domain 下拉）+ 域 CRUD 内嵌；域 owner 会签发布（治理） |
+| ④ **文档建模** | §3.5「基于文档建模」多文件 Excel/YAML | ⬜ 立项 | 作为工作台「+新建」的一种来源（数据建模 / 文档建模 / 故事建模 三入口并列），统一产草稿 |
+| ⑤ **同步矩阵深链** | 数据发动机区5"本体 +N" | ⬜ 立项 | 深链直达本工作台**并定位到本次新增/变更的节点**（高亮 diff），续编辑 |
+
+**工业级特性（区别于玩具图谱）**
+- **草稿/版本治理**：编辑落 `OntologyDraft`（DRAFT→PUBLISHED→RETIRED，`OntologyVersion` 快照）；工作台显示"草稿 vs 已发布"**diff**（新增/改/删节点高亮），发布经 `domainExecutor`（R4）+ 域 owner 会签。
+- **影响分析（改前先看波及）**：选中节点 →"改它影响什么"——沿引用图反查受影响的 切片/规则/求解器/agent/workflow/场景（复用 `refs.ts` + dogfooding `/meta/impact`）；删除/改基数前**强制弹影响面**，挡断链。
+- **字段全建模门内联**：节点覆盖徽章实时反映 R12（MAPPED/WAIVED/UNMAPPED），未覆盖即标红、拦发布。
+- **准备度评分**：节点/子图成熟度（schema 完整度 + 覆盖率 + 被引用度），引导"先补哪个"。
+- **大图可用性**：按域泳道布局 + 搜索/过滤 + 折叠/展开 + 拖拽缩放（复用项目推演 DAG 的直接操纵），撑得起数百类型的工业本体。
+- **多租户/R14**：泳道/着色/标签/域名全来自配置与本体，无内联业务常数；换租户=换本体，`debattery:check` 守。
+
+**端点**：编辑复用 `POST /a/v1/ontology/types`(upsert)、`/deprecate`、`/retire`、`/ontology/domains`、`/ontology/publish`（经 Action）；新增 `GET /a/v1/ontology/types/:key/impact`（影响面，或复用 dogfooding `/meta/impact`）。**后端基本齐备，本节主要是前端把只读图谱升为工作台。**
+
 ## 4. 契约 / 端点 / 数据模型（双仓储四处同改；contracts-only-shared）
 
 **契约（`packages/contracts`）**
@@ -91,6 +125,7 @@
 - `POST /a/v1/modeling/coverage`（新，评估字段覆盖）· `POST .../coverage/waive`（豁免某列+理由，经 Action）。
 - `GET /a/v1/ontology/types/:typeKey/template.csv`（新，CSV 模板下载）。
 - `GET /a/v1/ontology/browser`（新，按域分组的 types+links+schema+引用，供浏览器渲染）。
+- **`POST /a/v1/modeling/from-documents`（新，§3.5）**：multipart 多文件（Excel/CSV/YAML）→ 解析（Excel 全 sheet→RawDataset+`deterministicSuggest`；YAML→`parseYamlOntologySpec`）→ 跨文件归并 → 出 `OntologyDraft`。依赖：扩 `parseXlsx` 全 sheet + 新增 `js-yaml`/`parseYamlOntologySpec`。
 
 **数据模型（R9 四处同改）**：`migrations/*.sql` + `pg.ts` + `memory.ts` + `repo` 接口新增 `fieldCoverageReports`；列级映射存于 modeling draft/version。
 
@@ -120,6 +155,7 @@
 - `pnpm -r build && test` 全绿；新测试净增（确定性管线 / 覆盖门 / 模板 CSV / 浏览器渲染）。
 - **`coverage:check`**（新 CI 门）：构造一份含未映射列的样例 → 闭包 fieldCoverage HARD 必红；全映射 → 绿。故障注入可验。
 - 确定性：同一组 RawDataset 重跑 `deterministicSuggest` 字节级一致（不依赖 LLM）。
+- **基于文档建模（§3.5）**：上传 2 个 Excel（各含多 sheet）+ 1 个 YAML 规格 → 出单一 `OntologyDraft`：Excel 多 sheet 各成类型、跨文件 FK 成 Link；YAML 声明的类型/链路直接入草稿并与 Excel 同名类型归并；同输入重跑字节级一致（R6）；草稿经字段全建模门 + Action 发布（R4）。`parseXlsx` 全 sheet + YAML 解析各有单测。
 - 本体浏览器：点节点出 schema+数据源+样例+公式+规则+被谁操作；CSV 模板下载列与 schema 一致、样例确定性一致。
 - `ontology:check` 绿（`field_coverage.evaluated` 登记进 §4 与 `event-subscriptions.ts` 一致）。
 - 本体 §2/§3/§4/§5(R12)/§7/§8/§10.3 已回写。
@@ -130,3 +166,5 @@
 - **P3**：CSV 模板端点 + FK/值重叠 link 推断 + 基数。
 - **P4**：本体浏览器前端（域分组图谱 + 节点检视器 + 覆盖徽章 + CSV 下载按钮）。
 - **P5**：出处悬浮 + 新鲜度徽章（小增量）；与 G-6 rawin 三路对齐收口。
+- **P6（基于文档建模，§3.5）**：扩 `parseXlsx` 全 sheet + 新增 `parseYamlOntologySpec`（js-yaml）+ `POST /a/v1/modeling/from-documents` + ModelingPage「基于文档建模」多文件上传入口 + 跨文件归并；复用草稿→字段全建模门→Action 发布。
+- **P7（统一本体工作台 · 五合一，§3.6）**：`OntologyGraphView` 只读 → 工作台——② 图谱即编辑面（节点增改删/连边/草稿+Action）+ ③ 图上改归域+域内嵌 CRUD + ④ 三建模入口并列 + ⑤ 同步矩阵深链定位 + 工业级（草稿 diff/影响分析/准备度/泳道大图）。后端复用，主要前端。验收：在图谱上新增一个类型+连边+改归域 → 草稿 diff 可见 → 影响面弹出 → Action 发布生效；R14 `debattery:check` 绿。
