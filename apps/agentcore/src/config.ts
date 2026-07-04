@@ -24,6 +24,9 @@ const ConfigSchema = z.object({
   BLOB_DIR: z.string().optional(),
   /** Phase8：=1 时用 LLM(compose) 做消息级滚动摘要；缺省确定性拼接（CI 不变） */
   QOS_ROLLING_SUMMARY_LLM: z.string().optional(),
+  /** WO-B AGENT-OBSERVATIONAL-MEMORY：=1 时用 LLM(compose) 蒸馏观察记忆 keyFindings；
+   *  缺省（默认 OFF）走确定性模板蒸馏（R6 同 trace 同条目字节一致·CI 不变）。 */
+  QOS_MEMORY_LLM: z.string().optional(),
   /** Phase8：skill/MCP 路由用真 embedding provider（OpenAI 兼容 /embeddings）；缺省 pseudoEmbed */
   QOS_EMBEDDING_BASE_URL: z.string().optional(),
   QOS_EMBEDDING_MODEL: z.string().optional(),

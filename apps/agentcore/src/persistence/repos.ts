@@ -70,7 +70,27 @@ export interface ExperienceCaseRow {
   outcome: string; // 结果
   date: string; // 回放年内日期（确定性）
   embedding: number[]; // pseudoEmbed(question + approach)
+  // ── WO-B AGENT-OBSERVATIONAL-MEMORY · 观察记忆诚实边界（既有 schema 扩字段·非重定义·出厂种子向后兼容）──
+  /** 来源标注：'OBSERVED' = 任务终态经 decision-trace 确定性蒸馏出的**路径提示**（非业务真值源）；
+   *  缺省 / 出厂 50 例种子视为 'SEED'。OBSERVED 条目经 search_experience 返回时**必带免责声明**
+   *  『仅供路径参考·业务事实以工具结果为准』，永不冒充已核验业务数字（KILL-MOCK-RED 红线）。 */
+  origin?: "SEED" | "OBSERVED";
+  /** OBSERVED 条目溯源任务 id（provenance:taskId）——可回溯到 decision-trace / tool_calls 审计。 */
+  provenance?: string;
+  /** 命中意图键 / view（intentKey）——路径提示的定位维度。 */
+  intentKey?: string;
+  /** 确定性工具序列（toolPath·decision-trace 蒸馏）——approach 的结构化投影。 */
+  toolPath?: string;
+  /** 关键中间结论蒸馏（keyFindings·确定性模板默认·QOS_MEMORY_LLM=1 时可 LLM 蒸馏·R6）。 */
+  keyFindings?: string;
 }
+
+/**
+ * WO-B AGENT-OBSERVATIONAL-MEMORY · 诚实边界免责声明（单一来源）。
+ * OBSERVED 观察记忆只作**路径参考**，绝不冒充已核验业务真值——search_experience 每次返回随行此声明，
+ * agent systemPrompt「先查经验库」一步亦复述之（KILL-MOCK-RED：蒸馏路径提示 ≠ 业务数字来源）。
+ */
+export const OBSERVED_DISCLAIMER = "仅供路径参考·业务事实以工具结果为准";
 
 /** D-29 实时环 E-c：B 侧领域事件持久化行（发布类事件落库，经 /b/v1/outbox 馈源供 F1 轮询）。 */
 export interface DomainEventRow {

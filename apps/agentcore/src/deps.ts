@@ -3,6 +3,7 @@ import { ExecutionEngine } from "./engine.js";
 import { TaskEvents } from "./events.js";
 import { FeatureGate } from "./features/gate.js";
 import { LlmSettings } from "./llm/providers.js";
+import { llmMemoryDistiller } from "./agent/production-cognition.js";
 import type { DataCoreProviderDirectory } from "./llm/datacore-directory.js";
 import type { LlmClient } from "./llm/types.js";
 import type { McpClientPort } from "./mcp/types.js";
@@ -63,6 +64,11 @@ export function wireDeps(base: {
     llmSettings,
     skillResources: base.skillResources,
   });
+  // WO-B AGENT-OBSERVATIONAL-MEMORY：gated LLM 蒸馏器仅在 QOS_MEMORY_LLM=1 装配（默认 undefined → 确定性模板·R6）。
+  const memoryDistiller =
+    base.config.QOS_MEMORY_LLM === "1"
+      ? llmMemoryDistiller(base.llm, (tid: string) => llmSettings.roleModel(tid, "compose"))
+      : undefined;
   const orchestrator = new Orchestrator({
     repos: base.repos,
     metrics,
@@ -71,6 +77,7 @@ export function wireDeps(base: {
     events,
     features,
     llmSettings,
+    memoryDistiller,
   });
   const reportRefs = makeRefReporter(base.config);
   const catalog = new CatalogService(base.repos, reportRefs);

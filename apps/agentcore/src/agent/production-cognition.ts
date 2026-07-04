@@ -29,6 +29,35 @@ export function llmRollingSummarizer(llm: LlmClient, model: string, tenantId?: s
   };
 }
 
+/**
+ * WO-B AGENT-OBSERVATIONAL-MEMORY · 观察记忆 keyFindings 的 **gated LLM 蒸馏器**（QOS_MEMORY_LLM=1 才装配）。
+ * 用 compose() 把「问句 + 工具路径 + 结论线索」蒸馏成一段简短的**路径提示**（不是业务真值）。
+ * 与滚动摘要同纪律：失败/空 → 回退传入的确定性 fallback（默认路径恒确定性·R6·CI 不受影响·永不冒充真值）。
+ * resolveModel 为按租户解析 compose 模型（复用 LlmSettings.roleModel）。
+ */
+export function llmMemoryDistiller(
+  llm: LlmClient,
+  resolveModel: (tenantId: string) => Promise<string>,
+): (args: { tenantId: string; query: string; toolPath: string; fallback: string }) => Promise<string> {
+  return async ({ tenantId, query, toolPath, fallback }) => {
+    try {
+      const model = await resolveModel(tenantId);
+      const out = await llm.compose({
+        model,
+        instruction:
+          "你是任务轨迹蒸馏器。基于问句与工具路径，用不超过 80 字的中文提炼「关键发现·路径提示」，" +
+          "只保留方法论线索（走了哪些工具/求解器、命中什么维度），**不要复述或编造任何业务数字**——这是路径提示不是真值。",
+        inputs: [`问句:${query}`, `工具路径:${toolPath}`, `结论线索:${fallback}`],
+        tenantId,
+      });
+      const s = (out ?? "").trim();
+      return s.length > 0 ? s : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+}
+
 export interface EmbeddingProviderConfig {
   baseUrl: string; // OpenAI 兼容 /embeddings 端点前缀（不含 /embeddings）
   model: string;

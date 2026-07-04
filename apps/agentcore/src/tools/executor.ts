@@ -2,7 +2,7 @@ import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMc
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
-import type { Repos, ToolCallRow } from "../persistence/repos.js";
+import { OBSERVED_DISCLAIMER, type Repos, type ToolCallRow } from "../persistence/repos.js";
 import { byteLength, digest, redact } from "../util/redact.js";
 import { cosine, pseudoEmbed } from "../util/embedding.js";
 import { BudgetTracker } from "./budget.js";
@@ -434,12 +434,16 @@ export class GuardedToolExecutor {
   }
 
   /**
-   * 运营态增量 §3：经验记忆库检索 —— 确定性伪向量（pseudoEmbed）余弦排序，
-   * READ 级、经统一审计（tool_calls）。命中是「参考解法」而非事实源：数字红线
-   * 仍由 provenance 机制约束（回答中的业务数字必须来自可溯源工具结果）。
+   * 运营态增量 §3 + WO-B AGENT-OBSERVATIONAL-MEMORY：经验记忆库检索 —— 确定性伪向量（pseudoEmbed）余弦排序，
+   * READ 级、经统一审计（tool_calls）。命中是「路径提示」而非事实源。
+   *
+   * 诚实边界（KILL-MOCK-RED 红线）：每条命中随行 `origin`（SEED/OBSERVED）+ `provenance`（溯源 taskId）+
+   * **免责声明 `disclaimer='仅供路径参考·业务事实以工具结果为准'`**；顶层亦返回一份声明。OBSERVED（终态蒸馏的
+   * 观察记忆）里的任何数字**永不可被引用为已核验业务数字** —— 数字红线仍由 provenance 机制约束（回答中的业务
+   * 数字必须来自本次可溯源工具结果）。R2：仅按当前租户列出（listByTenant tenantId）。
    */
   private async searchExperience(query: string, topK: number): Promise<unknown> {
-    if (!query.trim()) return { hits: [] };
+    if (!query.trim()) return { hits: [], disclaimer: OBSERVED_DISCLAIMER };
     const cases = await this.deps.repos.experience.listByTenant(this.opts.ctx.tenantId);
     const qv = pseudoEmbed(query);
     const hits = cases
@@ -449,11 +453,18 @@ export class GuardedToolExecutor {
         outcome: c.outcome,
         scene: c.scene,
         date: c.date,
+        origin: c.origin ?? "SEED",
+        provenance: c.provenance,
+        intentKey: c.intentKey ?? c.scene,
+        toolPath: c.toolPath ?? c.approach,
+        keyFindings: c.keyFindings ?? c.outcome,
+        // 每条命中都带诚实边界声明：路径提示 ≠ 业务真值（KILL-MOCK-RED）。
+        disclaimer: OBSERVED_DISCLAIMER,
         score: Math.round(cosine(qv, c.embedding) * 1000) / 1000,
       }))
       .sort((a, b) => b.score - a.score || (a.question < b.question ? -1 : 1))
       .slice(0, topK);
-    return { hits, total: cases.length };
+    return { hits, total: cases.length, disclaimer: OBSERVED_DISCLAIMER };
   }
 
   /** Audit + metrics + result shaping (4) 写审计. */

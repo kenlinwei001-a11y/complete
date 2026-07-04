@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §4` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `322a16b4c5e6af97`。
+> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `76750e0f0be84892`。
 
 ---
 
@@ -79,6 +79,7 @@
 | L-sim | `sim.tick_completed` | 沙盘推进 1+ tick（`propagateTick` 传导落 SimTickState，增量 1/3）→ 失效沙盘态/轨迹可视化 | IN_SESSION | sim-session-view, propagation-timeline | — |
 | L-sim | `sim.checkpoint_saved` | 沙盘命名存档（增量 1）→ 失效检查点列表/分支基点 | IN_SESSION | sim-checkpoints | — |
 | L-sim | `sim.branched` | 以检查点态开新分支会话（增量 1）→ 失效会话树/对比视图 | IN_SESSION | sim-sessions, sim-compare | — |
+| L-mem | `experience.distilled` | **WO-B AGENT-OBSERVATIONAL-MEMORY·观察记忆写侧**：path B / 场景 agent 任务达终态（COMPLETED+answer）时 `orchestrator.recordExperience` 把 decision-trace 确定性蒸馏为 `origin:OBSERVED` 经验条目落库后发（载 id/origin/provenance=taskId/intentKey/toolPath·**不含业务数字**）→ 供后续 `search_experience` 检索（带免责·OBSERVED 永不冒充真值 KILL-MOCK-RED）。R2 tenant 随身·R6 确定性蒸馏·留存走 G-RET 增长表哲学 | IN_SESSION | experience(`search_experience`) | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。
 >

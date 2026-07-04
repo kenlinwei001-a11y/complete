@@ -104,6 +104,8 @@ export interface OrchestratorDeps {
   features: FeatureGate;
   /** Multi-provider model resolution (amends QOS-PRD §6). */
   llmSettings: LlmSettings;
+  /** WO-B AGENT-OBSERVATIONAL-MEMORY：gated LLM keyFindings 蒸馏器（QOS_MEMORY_LLM=1 才装配·默认 undefined=确定性模板·R6）。 */
+  memoryDistiller?: (args: { tenantId: string; query: string; toolPath: string; fallback: string }) => Promise<string>;
 }
 
 /** §2.2：留痕去重（同 kind+key+version 只记一次，保持首次出现顺序）。 */
@@ -895,16 +897,25 @@ export class Orchestrator {
   }
 
   /**
-   * Phase6A 语义压缩回写管线：path B 任务完成后，把本轮推演蒸馏为经验案例落入经验记忆库，
-   * 供后续 search_experience 检索。approach = 工具/求解器调用轨迹的结构化蒸馏（即被折叠/丢弃
-   * 上下文的留存），outcome = 结论首段。确定性 pseudoEmbed；回写失败不影响主流程。
+   * WO-B AGENT-OBSERVATIONAL-MEMORY · 观察记忆写侧（Phase6A 回写管线的诚实边界加固）：
+   * path B / 场景 agent 任务**达终态**（COMPLETED 且有 answer）时，把本轮 decision-trace（工具序列 +
+   * 求解器 + 结论首段）经**确定性模板蒸馏**为一条经验条目落入经验记忆库，供后续 search_experience 检索。
+   *
+   * 诚实边界（KILL-MOCK-RED 红线）：条目标 `origin:OBSERVED` + `provenance:taskId` —— 它是**路径提示**
+   * 而非业务真值源；search_experience 返回时随行免责声明『仅供路径参考·业务事实以工具结果为准』，
+   * OBSERVED 的任何数字永不被引用为已核验业务数字。
+   *
+   * 确定性（R6）：id / toolPath / keyFindings(默认) / date / embedding 均为 trace 的纯函数 —— 同 trace 同条目
+   * 字节一致。LLM 蒸馏仅在 `QOS_MEMORY_LLM=1` 装配 memoryDistiller 时接管 keyFindings（失败回退确定性）。
+   * R2：tenantId 随条目；留存走 G-RET 增长表哲学（upsert-by-taskId 天然去重·不做逐任务累积）。
+   * 回写失败不影响主流程。
    */
   private async recordExperience(taskId: string): Promise<void> {
     try {
       const task = await this.deps.repos.tasks.get(taskId);
       if (!task?.answer) return;
       const calls = await this.deps.repos.toolCalls.listByTask(taskId);
-      const tools = [...new Set(calls.map((c) => c.toolName))];
+      const tools = [...new Set(calls.map((c) => c.toolName))]; // 首次出现序（决定性）
       const solvers = [
         ...new Set(
           calls
@@ -913,13 +924,22 @@ export class Orchestrator {
             .filter((s): s is string => !!s),
         ),
       ];
+      // toolPath = decision-trace 的工具序列（结构化路径提示的核心维度）。
+      const toolPath = `${tools.join(" → ") || "—"}${solvers.length ? ` ⟨求解器:${solvers.join("/")}⟩` : ""}`;
       const approach = `工具:${tools.join("/") || "—"}${solvers.length ? ` · 求解器:${solvers.join("/")}` : ""} · ${calls.length} 次调用`;
       const firstText = task.answer.blocks.find((b) => b.type === "text");
       const outcome = firstText && firstText.type === "text" ? firstText.markdown.slice(0, 240) : "(无文本结论)";
       const scene = String((task.context as { view?: string } | undefined)?.view ?? "agent");
+      const intentKey = (task.matchedIntent as { intentKey?: string } | undefined)?.intentKey ?? scene;
       const date = (task.completedAt ?? task.createdAt ?? new Date().toISOString()).slice(0, 10);
+      // keyFindings：确定性默认 = 结论首段；gated LLM（QOS_MEMORY_LLM=1）时由 memoryDistiller 蒸馏（失败回退确定性·R6 地板）。
+      let keyFindings = outcome;
+      if (this.deps.config.QOS_MEMORY_LLM === "1" && this.deps.memoryDistiller) {
+        keyFindings = await this.deps.memoryDistiller({ tenantId: task.tenantId, query: task.query, toolPath, fallback: outcome });
+      }
+      const id = `exp_auto_${taskId}`.replace(/[^\w-]/g, "_");
       await this.deps.repos.experience.upsert({
-        id: `exp_auto_${taskId}`.replace(/[^\w-]/g, "_"),
+        id,
         tenantId: task.tenantId,
         scene,
         question: task.query,
@@ -927,7 +947,15 @@ export class Orchestrator {
         outcome,
         date,
         embedding: pseudoEmbed(`${task.query} ${approach}`),
+        // WO-B 诚实边界字段：
+        origin: "OBSERVED",
+        provenance: taskId,
+        intentKey,
+        toolPath,
+        keyFindings,
       });
+      // §4 事件：experience.distilled（观察记忆写侧留痕·可审计·不含业务数字）。
+      await this.deps.events.emit(task.id, "experience.distilled", { id, origin: "OBSERVED", provenance: taskId, intentKey, toolPath });
     } catch {
       /* 回写失败不影响主流程 */
     }
