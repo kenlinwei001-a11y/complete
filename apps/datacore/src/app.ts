@@ -917,6 +917,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       id: p,
       name: SCENARIO_PACKAGE_NAMES[p] ?? p,
     }));
+    // R-PACK/R14：前端 ViewPage 以 `view.<key>` 严格门控（缺则 404）；后端 `viewAllowed` 对**无显式 feature**
+    // 的视图宽松放行（返回进 views）。二者需对齐——**凡服务端已下发进 workspace.views 的视图即视为已授权**，
+    // 故把其 `view.<key>` 并入下发 features（换行业 pack 驱动的自有视图无需在 FEATURE_REGISTRY 逐个登记·0 码改）。
+    // 关闭某视图 → viewAllowed=false → 不进 views → 其 view.<key> 也不并入 → 前端仍 404（entitlement 语义不破）。
+    const seededViewFeatureKeys = views.map((v) => `view.${v.key}`);
     const theme = Object.fromEntries(
       Object.entries(configs[0]?.theme ?? {}).map(([k, v]) => [k, String(v)]),
     );
@@ -932,7 +937,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       views,
       theme,
       navigation,
-      features: withRouteFeatureAliases(resolved.features),
+      features: withRouteFeatureAliases([...new Set([...resolved.features, ...seededViewFeatureKeys])]),
       configVersion: resolved.configVersion,
     };
   });
