@@ -42,3 +42,4 @@ export * from "./solver-binding.js";
 export * from "./fusion.js";
 export * from "./decision.js";
 export * from "./viewlayout.js";
+export * from "./industrypack.js";

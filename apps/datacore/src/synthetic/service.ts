@@ -34,6 +34,7 @@ import {
 } from "./battery.js";
 import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./builtin-templates.js";
+import { loadIndustryPack, BATTERY_VIEW_FRAGMENTS } from "./industry-pack.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
 import { genPoint, maintWindowsFor, windowFor, ATTAIN_COMPONENT_FIELDS, attainEventFlag, rollupLineAttainment, type TsGenSpec } from "./tsgen.js";
@@ -121,8 +122,12 @@ export class SyntheticService {
   }
 
   private async resolveTemplate(ctx: AuthCtx, industry: string): Promise<IndustryTemplate> {
-    if (industry === "battery-manufacturing") return BATTERY_TEMPLATE;
-    // 内置非电池行业模板优先（确定性 R6·非 LLM）：G-12 收口让 ≥1 非电池行业可无 LLM 真立世界。
+    // INDUSTRY-PACK-CONVERGE（P1 北极星·单一装配点 R14）：行业栈从 IndustryPack 装配——
+    // 加载器是 template 解析单源（batteryPack.template===BATTERY_TEMPLATE·byte-identical R6）。
+    // 收编原「industry==='battery-manufacturing' 直返 + BUILTIN 查表」两处硬编码为一处 pack 路由。
+    const pack = loadIndustryPack(industry);
+    if (pack) return pack.template;
+    // 兜底（pack 未登记时保留原 BUILTIN 表·向后兼容）：
     const builtin = BUILTIN_INDUSTRY_TEMPLATES.find((t) => t.industryKey === industry);
     if (builtin) return builtin;
     const stored = (
@@ -320,11 +325,14 @@ export class SyntheticService {
 
   private async seedBatteryParamsAndSpecs(ctx: AuthCtx, seed: number, scale: "S" | "M" | "L" | "XL"): Promise<void> {
     // §S1 通用约定: all solver constants live in per-tenant solver_params storage.
+    // INDUSTRY-PACK-CONVERGE：阈值层（SolverParam 默认值）由 IndustryPack 装配单源消费——
+    // batteryPack.template.solverParams === BATTERY_SOLVER_PARAMS（byte-identical R6）·loader 驱动解析（teeth）。
+    const packParams = loadIndustryPack("battery-manufacturing")?.template.solverParams ?? BATTERY_SOLVER_PARAMS;
     const existing = await this.repos.solverParams.get(ctx.tenantId, `spar_${ctx.tenantId}`);
     await this.repos.solverParams.put({
       id: `spar_${ctx.tenantId}`,
       tenantId: ctx.tenantId,
-      params: BATTERY_SOLVER_PARAMS,
+      params: packParams,
       version: (existing?.version ?? 0) + 1,
       updatedAt: new Date().toISOString(),
     });
@@ -1287,48 +1295,16 @@ export class SyntheticService {
     });
     // 去电池锁死 8a（R14）：把推演视图的结构（字段组/目标字段/DAG 驱动因子/问题分类）真下发到 ViewConfig.layout，
     // 使前端不再走写死兜底而是后端配置驱动（换租户/行业改这里即可，界面跟着变）。
-    const PLAN_AUDIT_FIELD_GROUPS = [
-      { title: "需求侧（万套）", fields: [
-        { key: "dem", label: "月度需求总量", unit: "万套", step: 0.1 },
-        { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 },
-        { key: "seg_ess", label: "储能", unit: "万套", step: 0.1 },
-        { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 },
-      ] },
-      { title: "供给侧", fields: [
-        { key: "sup", label: "月度可供给", unit: "万套", step: 0.1 },
-        { key: "ltaCov", label: "长协覆盖率", unit: "%", step: 1 },
-        { key: "kitGap", label: "正极物料缺口", unit: "吨", step: 10 },
-      ] },
-      { title: "财务侧", fields: [
-        { key: "gmTarget", label: "毛利率目标", unit: "%", step: 0.5 },
-        { key: "cashCushion", label: "现金安全垫(13周最低点)", unit: "亿", step: 0.5 },
-        { key: "capex", label: "CAPEX 本月", unit: "亿", step: 0.5 },
-      ] },
-    ];
-    const PLAN_GENERATE_GOAL_FIELDS = [
-      { key: "revGrowthPct", label: "收入增长", unit: "%", step: 1 },
-      { key: "gmFloorPct", label: "毛利底线", unit: "%", step: 0.1, hardKey: "hardGm" },
-      { key: "sharePts", label: "份额增", unit: "pct", step: 1 },
-      { key: "capexCap", label: "CAPEX 上限", unit: "亿", step: 1, hardKey: "hardCapex" },
-      { key: "cashFloor", label: "现金底线", unit: "亿", step: 1, hardKey: "hardCash" },
-      // PRD-IND-plan-generate §4.1/§8.4：库存周转目标（求解器 turnsFloor/meetTurns 已支持，补面板暴露）。
-      { key: "invTurns", label: "库存周转", unit: "次", step: 0.5 },
-    ];
-    const PROJECT_SIM_DRIVER_FACTORS = [
-      { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
-      { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
-      { id: "f3", label: "认证系数 + 数据健康度", sub: "PLM 认证 · P90 系数" },
-    ];
-    const ORDER_CHAIN_LABELS = { DELIVERY: "交期", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用" };
-    const SEG_COLORS = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" };
-    // 轨M 增量1（假3 复审修·RL5 系数 config 化）：经营数据看板 成品库存/在制/原料 占营收系数——
-    // demo 无实测库存数据，是**固定行业占比假设**（非真算）。从后端 view-config 下发（换租户=换配置，
-    // 不再前端写死 0.22）+ assumed/note 让前端明标"估算（固定假设）"，绝不冒充真算。
-    const ORDER_CHAIN_ECON = {
-      assumed: true,
-      note: "成品库存/在制/原料 = 营收 × 行业占比固定假设（无实测库存数据）",
-      coef: { fg: [0.22, 0] as [number, number], wip: [0.3, 0] as [number, number], rm: [0.18, 0] as [number, number] },
-    };
+    // INDUSTRY-PACK-CONVERGE（结构层收编·G-5 8a）：这些电池视图结构数据不再本地内联，而是从 IndustryPack 消费——
+    // batteryPack.views 承载同一 fragments（byte-identical R6）·换行业换 pack.views 即结构随之变（teeth：退回内联即漂移）。
+    const {
+      planAuditFieldGroups: PLAN_AUDIT_FIELD_GROUPS,
+      planGenerateGoalFields: PLAN_GENERATE_GOAL_FIELDS,
+      projectSimDriverFactors: PROJECT_SIM_DRIVER_FACTORS,
+      orderChainLabels: ORDER_CHAIN_LABELS,
+      segColors: SEG_COLORS,
+      orderChainEcon: ORDER_CHAIN_ECON,
+    } = BATTERY_VIEW_FRAGMENTS;
     const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
       dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
       graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
