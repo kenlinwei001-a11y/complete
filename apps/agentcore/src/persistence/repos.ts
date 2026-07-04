@@ -7,6 +7,7 @@ import type {
   EvalSuite,
   ExecutionPlan,
   FallbackTrace,
+  Handoff,
   IntentDefinition,
   IntentSliceSpec,
   LlmProviderConfig,
@@ -141,6 +142,14 @@ export interface Repos {
   agentRuns: {
     insert(r: AgentRunRecord): Promise<void>;
     getByTask(taskId: string): Promise<AgentRunRecord | undefined>;
+  };
+  /**
+   * WO-C AGENT-HANDOFF-OBJECT：agent 交接一等对象（可审计）。R2：所有读带 tenantId，跨租户不可见。
+   */
+  handoffs: {
+    insert(h: Handoff): Promise<void>;
+    get(tenantId: string, id: string): Promise<Handoff | undefined>;
+    listByTask(tenantId: string, taskId: string): Promise<Handoff[]>;
   };
   evalCases: {
     upsert(c: EvalCase): Promise<void>;

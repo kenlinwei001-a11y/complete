@@ -757,19 +757,23 @@ export class Orchestrator {
     // 回落到该配置完整的场景 agent（本页数据上下文 + 规则/求解器子集 + 接地）而非通用 path-B agent
     // ——使"规划体检"等入口的开放问句得到接地结构化答复（非泛答）。无场景 agent 则照旧通用 path-B。
     const scene = await this.deps.repos.sceneEntries.byView(task.tenantId, task.context.view);
+    let handoffFromAgentId: string | undefined;
     if (scene?.defaultAgentId) {
       const agent = await this.deps.repos.agents.get(scene.defaultAgentId);
       if (agent && agent.status === "PUBLISHED") {
         await this.runSceneAgent(task, auth, scene);
         return;
       }
+      // WO-C AGENT-HANDOFF-OBJECT：本入口配了场景 agent 但不可用（未发布/缺失）→ 真实发生 scene→universal
+      // 回落委派。fromAgentId = 该配置的真持久场景 agent id；兜底运行后落一等 Handoff 记录（可审计·谁→谁）。
+      handoffFromAgentId = scene.defaultAgentId;
     }
 
     // AGENT-UNIVERSAL-FALLBACK：兜底终点重接——命不中预设、且本入口无场景专属 agent → 委派一等全域探索智能体
     // agt_universal（替代旧「写死白名单 ∩ {READ,COMPUTE} + create_action_draft + discover」）。全工具面
     // （全 BUILTIN + 已发布 workflow + 已绑定 MCP）由 reconcileUniversalAgent 随行同步（D1/D2/D3）；
     // sim 工具 entitlement 暗发（R3）经 toolVisibilityFilter 剔除；护栏（写仅 create_action_draft·限额·OBO·审计）不变。
-    await this.runUniversalAgent(task, auth, enabledFeatures, classification);
+    await this.runUniversalAgent(task, auth, enabledFeatures, classification, handoffFromAgentId);
   }
 
   /**
@@ -785,10 +789,36 @@ export class Orchestrator {
     auth: RequestAuth,
     enabledFeatures: FeatureSet,
     classification?: ClassificationResult,
+    /** WO-C：若本次是 scene→universal 回落委派，则为交出方（场景）agent 的真持久 id；否则 undefined（非交接）。 */
+    handoffFromAgentId?: string,
   ): Promise<void> {
     // 兜底前懒 reconcile：把 agt_universal 的 tools 面与「已发布 workflow + 已绑定 MCP 配置」对齐（幂等·R6），
     // 并对非 demo 租户/首次落兜底懒播种——保证「调用所有 MCP」始终触达兜底（D2）。
     await reconcileUniversalAgent(this.deps.repos, task.tenantId);
+
+    // WO-C AGENT-HANDOFF-OBJECT：scene→universal 回落委派 → 在**委派决策点**（真跑前）落一等 Handoff 记录。
+    // 记录时机=交接真实发生之时（早于下游 agent 运行），故即便下游 LLM 失败/无凭据也留痕（可审计不丢）。
+    // fromAgentId=配置但不可用的场景 agent 真持久 id；toAgentId=agt_universal 真持久 id（reconcile 已确保存在，
+    // 与 AGENT-UNIVERSAL C2 agentRun.agentId 同坐标系）。carriedSlots/carriedEvidence 为真值（非合成）。
+    if (handoffFromAgentId) {
+      const carriedSlots: Record<string, unknown> = {
+        ...(task.context.presetSlots ?? {}),
+        ...(classification?.extractedSlots ?? {}),
+      };
+      const carriedEvidence = (task.context.selectedObjects ?? []).map((o) => `obj:${o.objectType}:${o.objectId}`);
+      await this.deps.repos.handoffs.insert({
+        id: newId("hof"),
+        tenantId: task.tenantId,
+        taskId: task.id,
+        fromAgentId: handoffFromAgentId,
+        toAgentId: SEED_UNIVERSAL_AGENT_ID,
+        reason: "场景 agent 未发布/缺失 → 全域探索兜底（scene→universal 回落）",
+        carriedSlots,
+        carriedEvidence,
+        at: new Date().toISOString(),
+      });
+      await this.deps.events.emit(task.id, "agent.handoff", { fromAgentId: handoffFromAgentId, toAgentId: SEED_UNIVERSAL_AGENT_ID });
+    }
 
     await this.deps.repos.tasks.patch(task.id, { status: "EXECUTING_AGENT", path: "AGENT" });
     this.deps.metrics.recordRouting(false);
@@ -818,6 +848,7 @@ export class Orchestrator {
       });
 
       await this.deps.repos.agentRuns.insert(result.run);
+
       await this.deps.repos.fallbackTraces.insert({
         id: newId("fbt"),
         taskId: task.id,

@@ -1,6 +1,7 @@
 import type {
   Answer,
   ExecutionPlan,
+  Handoff,
   InferenceCmpRow,
   InferenceNode,
   InferenceTrace,
@@ -147,6 +148,7 @@ export function projectTrace(
   toolCalls: TraceToolCall[],
   gap: TraceGapInput | undefined,
   answer: Answer | undefined,
+  handoffs: Handoff[] = [],
 ): InferenceTrace {
   const path = task.path ?? "NONE";
 
@@ -167,6 +169,14 @@ export function projectTrace(
     const a = ensure(1);
     a.done = true;
     if (task.matchedIntent?.intentKey) a.data.push(`意图:${task.matchedIntent.intentKey}`);
+  }
+
+  // WO-C AGENT-HANDOFF-OBJECT：本次真实发生的 agent 交接（scene→universal 回落等）→ 在①解析/路由节点
+  // 标注交接血缘（谁→谁·真持久 agent id），使推演 DAG 该节点显式显示"交接"（诚实：无交接则不标）。
+  for (const h of handoffs) {
+    const a = ensure(1);
+    a.done = true;
+    a.agents.push(`交接:${h.fromAgentId}→${h.toAgentId}`);
   }
 
   if (path === "WORKFLOW" && plan) {
@@ -270,6 +280,8 @@ export function projectTrace(
     verdict: gap?.verdict,
     nodes,
     edges: SKELETON_EDGES.map((e) => ({ ...e })),
+    // WO-C：一等交接记录随 DAG 投影透出，前端渲染交接节点（谁→谁·带什么槽位/证据·为何）。诚实：无交接 → []。
+    handoffs: handoffs.map((h) => ({ ...h })),
   };
 }
 

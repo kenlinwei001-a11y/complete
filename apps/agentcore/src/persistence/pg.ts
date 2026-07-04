@@ -6,6 +6,7 @@ import type {
   AgentDefinition,
   AgentRunRecord,
   ExecutionPlan,
+  Handoff,
   IntentDefinition,
   IntentSliceSpec,
   LlmProviderConfig,
@@ -262,6 +263,27 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       async getByTask(taskId) {
         const r = await q(`SELECT record FROM agent_runs WHERE task_id = $1`, [taskId]);
         return r.rows[0]?.record as AgentRunRecord | undefined;
+      },
+    },
+    handoffs: {
+      async insert(h: Handoff) {
+        await q(
+          `INSERT INTO handoffs(id, tenant_id, task_id, from_agent_id, to_agent_id, record)
+           VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET record = $6`,
+          [h.id, h.tenantId, h.taskId, h.fromAgentId, h.toAgentId, JSON.stringify(h)],
+        );
+      },
+      async get(tenantId, id) {
+        // R2：tenant_id 谓词随身，跨租户返回空。
+        const r = await q(`SELECT record FROM handoffs WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+        return r.rows[0]?.record as Handoff | undefined;
+      },
+      async listByTask(tenantId, taskId) {
+        const r = await q(
+          `SELECT record FROM handoffs WHERE tenant_id = $1 AND task_id = $2 ORDER BY (record->>'at') ASC`,
+          [tenantId, taskId],
+        );
+        return r.rows.map((x) => x.record as Handoff);
       },
     },
     fallbackTraces: {

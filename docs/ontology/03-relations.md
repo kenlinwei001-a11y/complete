@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2504574ea00cf745`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `322a16b4c5e6af97`。
 
 ---
 
@@ -21,6 +21,11 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
                        ├─**B→A 存在性探针（引用闭合·发布门）**：workflow 步骤 solverKey/ruleIds + agent scopeDeclaration.objectTypes
                        │  发布前经 DataCore 校验真实存在（probeMissingRefs，fail-open；不存在=死路拒发布）
+                       ├─**agent→agent 交接落 Handoff（WO-C·可审计）**：`runPathB` 委派点——本入口配了场景 agent 但**不可用**
+                       │  （未发布/缺失）→ 回落 `agt_universal` 时，`runUniversalAgent` 于 engine 运行**前**落一等 `Handoff`
+                       │  { fromAgentId=场景 agent 真持久 id → toAgentId=agt_universal · carriedSlots/carriedEvidence 真值 · reason }
+                       │  （AGENT-UNIVERSAL C2 `agentRun.agentId` 同坐标系）。事件 `agent.handoff`；decision-trace/推演 DAG 渲染交接节点。
+                       │  记录早于下游运行 → 即便无 LLM/下游 FAILED 交接仍留痕（闭合"委派不可审计"缺口·§8 G-3 邻域）。
                        └─**B→A 交叉验证（推演验证痕迹·运行时）**：用到 resolve_slice 的推演完成时，把结论对象断言
                           --OBO HTTP /a/v1/ontology/cross-validate--> DataCore 对照知识图谱已有事实核对（fail-open），
                           连同一致性检查组装为 Answer.validationTrace（前端 ValidationTracePanel 展示，让用户信任）

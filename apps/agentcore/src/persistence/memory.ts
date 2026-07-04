@@ -2,6 +2,7 @@ import type {
   AgentDefinition,
   AgentRunRecord,
   ExecutionPlan,
+  Handoff,
   IntentDefinition,
   IntentSliceSpec,
   LlmProviderConfig,
@@ -42,6 +43,7 @@ export function createMemoryRepos(): Repos {
   const events = new Map<string, QueryEventRow[]>();
   const toolCalls = new Map<string, ToolCallRow>();
   const agentRuns = new Map<string, AgentRunRecord>();
+  const handoffs = new Map<string, Handoff>();
   const fallbacks = new Map<string, FallbackTraceRow>();
   const agents = new Map<string, AgentDefinition>();
   const workflows = new Map<string, WorkflowDefinition>();
@@ -177,6 +179,22 @@ export function createMemoryRepos(): Repos {
       },
       async getByTask(taskId) {
         return clone(agentRuns.get(taskId));
+      },
+    },
+    handoffs: {
+      async insert(h) {
+        handoffs.set(h.id, clone(h));
+      },
+      async get(tenantId, id) {
+        const h = handoffs.get(id);
+        // R2：跨租户不可见（返回 undefined，等价 404）。
+        return h && h.tenantId === tenantId ? clone(h) : undefined;
+      },
+      async listByTask(tenantId, taskId) {
+        return [...handoffs.values()]
+          .filter((h) => h.tenantId === tenantId && h.taskId === taskId)
+          .sort((a, b) => a.at.localeCompare(b.at))
+          .map(clone);
       },
     },
     fallbackTraces: {

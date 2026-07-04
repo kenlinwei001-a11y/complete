@@ -3082,7 +3082,7 @@
     {
       "id": "AGENT-HANDOFF-OBJECT",
       "priority": "P3",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "INDUSTRY-PACK-CONVERGE"

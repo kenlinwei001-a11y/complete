@@ -725,6 +725,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       : verdict === "ALL_CONSISTENT" ? "ALL_PASS" : verdict === "CONFLICT" ? "CONFLICT" : verdict === "PARTIAL" ? "PARTIAL" : "NO_EVIDENCE";
     const humanReviewRequired =
       task.answer?.trustLevel === "AGENT_EXPLORATORY" || !!task.answer?.unverifiedNumerics || ontologyValidation === "CONFLICT";
+    // WO-C AGENT-HANDOFF-OBJECT：决策痕迹带上真实发生的 agent 交接（可审计·R2 带 tenantId 隔离）。
+    const handoffs = await deps.repos.handoffs.listByTask(a.tenantId, taskId);
     return DecisionTraceSchema.parse({
       decisionId: task.id,
       tenantId: task.tenantId,
@@ -740,6 +742,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       ontologyValidation,
       humanReviewRequired,
       toolCalls: toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs, at: tc.createdAt })),
+      handoffs,
       createdAt: task.createdAt,
       completedAt: task.completedAt,
     });
@@ -758,12 +761,15 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       if (intent) plan = (await resolvePlanForIntent(deps.repos, intent))?.plan;
     }
     const gap = deriveTraceGap(task);
+    // WO-C AGENT-HANDOFF-OBJECT：推演 DAG 投影带上真实交接记录（渲染交接节点·R2 带 tenantId 隔离）。
+    const handoffs = await deps.repos.handoffs.listByTask(a.tenantId, taskId);
     const trace = projectTrace(
       task,
       plan,
       toolCalls.map((tc) => ({ toolName: tc.toolName, input: tc.input, outcome: tc.outcome })),
       gap,
       task.answer,
+      handoffs,
     );
     return InferenceTraceSchema.parse(trace);
   });

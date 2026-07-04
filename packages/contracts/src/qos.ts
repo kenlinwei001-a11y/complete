@@ -425,6 +425,34 @@ export const QueryTaskSchema = z.object({
 export type QueryTask = z.infer<typeof QueryTaskSchema>;
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// WO-C · AGENT-HANDOFF-OBJECT：agent 交接一等对象（可审计）
+// ---------------------------------------------------------------------------
+/**
+ * Handoff——一次 agent→agent 交接的一等持久记录（Agent-Native 吸收 WO-C·不换框架·借模式）。
+ * 此前场景 agent→全域探索 universal 是**代码内委派**、无留痕；形式化为一等对象后：
+ * 谁交给谁（fromAgentId/toAgentId=真持久 agent id，与 AGENT-UNIVERSAL C2 agentRun.agentId 同坐标系）、
+ * 带什么（carriedSlots 真槽位 + carriedEvidence 真版本钉证据）、为何（reason）、何时（at）皆可从物证回溯。
+ * decision-trace / 推演 DAG 渲染交接节点，闭合"委派不可审计"缺口。R2：tenantId 随身；跨租户不可见。
+ */
+export const HandoffSchema = z.object({
+  id: z.string(), // hof_
+  tenantId: z.string(),
+  taskId: z.string(),
+  /** 交出方 agent 的真持久 id（如场景 agent agt_dash…；与 agentRun.agentId 同坐标系）。 */
+  fromAgentId: z.string(),
+  /** 接手方 agent 的真持久 id（如全域探索兜底 agt_universal；= 实际运行 agentRun.agentId）。 */
+  toAgentId: z.string(),
+  /** 交接原因（如"场景 agent 未发布/缺失 → 全域探索兜底"）。 */
+  reason: z.string(),
+  /** 随交接携带的槽位（真值：classification.extractedSlots + context.presetSlots）。 */
+  carriedSlots: z.record(z.string(), z.unknown()).default({}),
+  /** 随交接携带的证据引用（真版本钉 ResolvedRef 摘要 "kind:key@version"）。 */
+  carriedEvidence: z.array(z.string()).default([]),
+  at: IsoTime,
+});
+export type Handoff = z.infer<typeof HandoffSchema>;
+
 // 编排推演 DAG（InferenceTrace）—— PRD-IND-story §4.3/§4.5.A。
 // 把一次真实 QueryTask 运行投影为 HTML 同构的 10 节点非线性编排 DAG（par/conv/aux/fb 边）。
 // 10 节点骨架 + 边拓扑 + IPO 模板 = 视图定义级常量（i18n/ViewDef，不违反 R14）；
@@ -517,6 +545,12 @@ export const InferenceTraceSchema = z.object({
   verdict: z.enum(["ANSWERABLE", "BLOCKED", "BOUNDARY"]).optional(),
   nodes: z.array(InferenceNodeSchema),
   edges: z.array(InferenceEdgeSchema),
+  /**
+   * WO-C AGENT-HANDOFF-OBJECT：本次任务真实发生的 agent 交接（scene→universal 回落等）。
+   * 从持久 Handoff 记录确定性投影（R6·纯派生·不新增真值）；DAG 渲染为交接节点（谁→谁·带什么·为何）。
+   * 无交接 → 空数组（诚实：绝不伪造）。
+   */
+  handoffs: z.array(HandoffSchema).default([]),
 });
 export type InferenceTrace = z.infer<typeof InferenceTraceSchema>;
 
@@ -543,6 +577,11 @@ export const DecisionTraceSchema = z.object({
   /** 显式人工复核标志：AGENT_EXPLORATORY / 未验证数字 / 交叉验证冲突 → true。 */
   humanReviewRequired: z.boolean(),
   toolCalls: z.array(z.object({ tool: z.string(), outcome: z.string(), durationMs: z.number().optional(), at: z.string().optional() })).default([]),
+  /**
+   * WO-C AGENT-HANDOFF-OBJECT：本次决策链中真实发生的 agent 交接（可审计：谁→谁·带什么·为何·何时）。
+   * 从持久 Handoff 记录读取；监管一站出示决策痕迹时可见委派留痕。无交接 → 空数组。
+   */
+  handoffs: z.array(HandoffSchema).default([]),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });
