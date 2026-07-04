@@ -2748,8 +2748,8 @@
     {
       "id": "HARDCODE-CLOCK-DERIVE",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [
         "LAUNCHER-GROUNDED-QUESTIONS"
       ],
