@@ -2776,7 +2776,7 @@
     {
       "id": "HARDCODE-BIZ-ENTITY",
       "priority": "P2",
-      "status": "BLOCKED",
+      "status": "WIP",
       "owner": "dev",
       "deps": [],
       "blockReason": "复验BLOCK(主体优·唯二移交残项静默漏做): 主体segOfCust→classifySegment册驱动全验好(SEG_REGISTRY.keywords单一来源·teeth改册即变/退内联即红·R6字节一致909测·evidence curl逐值+registry-override证非EV脱pas兜底)——此半径DONE级。但队列note显式移交的两残项零处理且commit未声明豁免: ①caseSeverity接线: livedin/engine.ts:281 仍 caseSeverityFromData(util,isPrimary,crisis) 3参走CASE_SEVERITY_DEFAULT常量·c.params.risk.caseSeverity(types.ts:56/battery.ts:142已备形)仍无任何运行时读取点=改param不改行为(有形无线) → 调用链把租户params穿入第4参(或函数内读params)·加一行teeth(改caseSeverity param→severity判定变)。②risk.ts:1044 num(...unitPrice,600) 字面量仍在 → 入params(如 risk.fallbackUnitPriceWan 或订单域param·默认600保R6)+teeth。两处合计约10行+2断言。纪律依据: 移交项要么做要么在commit显式声明缓豁并说明(先例DATADEP-C5显式拆单)——静默漏做即BLOCK。",
