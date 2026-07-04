@@ -701,7 +701,9 @@ export function seedRegistry(now = new Date().toISOString()): {
       // （数字红线 / 写降级 / 能力边界 / 注入防护）+ scopeDeclaration + 预算，出厂即发布。
       id: "agt_seed_analyst", tenantId: SEED_TENANT, key: "analyst", version: 1,
       name: "分析师 Agent", description: "目录外问题的出厂默认分析 agent（路径 B；自由探索入口绑定）",
-      model: "claude-opus-4-8",
+      // 出厂 model 置空 = 继承租户用途矩阵 agent 绑定（roleModel 回落·server.ts:954）。
+      // 钉死字面量会被 roleModel(explicit) 旁路用途绑定→解析未绑内置→LLM_PURPOSE_UNBOUND·path-B 全死。
+      model: "",
       systemPrompt: [
         "你是全域数字化智能决策支撑系统的分析师 agent，服务电池制造场景的经营/产能决策。",
         "",
@@ -746,7 +748,7 @@ export function seedRegistry(now = new Date().toISOString()): {
     {
       id: "agt_seed_explore", tenantId: SEED_TENANT, key: "explore_agent", version: 1,
       name: "探索分析 Agent", description: "目录外问题兜底分析（路径 B）",
-      model: "claude-opus-4-8",
+      model: "", // 出厂置空=继承 agent 用途绑定（见 agt_seed_analyst 注）。
       systemPrompt: "你是企业决策系统的分析助手。所有业务数字必须来自工具结果并以 ⟦ref:N⟧ 标注；无法溯源的数字需声明 unverified。",
       tools: [
         { kind: "BUILTIN", name: "query_objects" },

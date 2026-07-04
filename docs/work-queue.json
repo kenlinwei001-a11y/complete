@@ -2960,12 +2960,12 @@
     {
       "id": "AGENT-UNIVERSAL-FALLBACK",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "INTENT-MATERIALIZE-BINDING-COMPLETE"
       ],
-      "blockReason": "复验BLOCK(真运行缺陷·绿测试≠能用活标本): 结构全对(agt_universal PUBLISHED·tools 28=25 BUILTIN+3 WORKFLOW·MCP 0条与reconcile规则一致(本租户无MCP配置)·门扩绿含兜底校验·齿检3/3+5/5)。但真环境 path-B 全死: engine.ts:162 roleModel(tenantId,'agent', agent.model||undefined) 中出厂 model='claude-opus-4-8'(15个出厂agent全钉此字面量)非空即旁路用途绑定→解析内置anthropic无凭据→providers.ts:247 抛 LLM_PURPOSE_UNBOUND→任务3秒FAILED·toolCalls=[]·无agentId(两次复现 task_01KWNT1V/1KWNT7Y·kimi classify本身成功3060ms证purpose绑定在)。mock测试全绿掩盖之。修法(治本二选一): ①出厂agent model字段置空→继承purpose绑定(推荐·顺带消model字面量) ②roleModel解析顺序改『agent.model经provider绑定可解析才用·否则回落purpose绑定』绝不硬死到未绑内置。复验收口=C3真Kimi多步轨迹(decision-trace agentId=agt_universal+真toolCalls序列+DAG节点)。",
+      "blockReason": "",
       "doc": "docs/PRD-agent-universal-fallback.md",
       "title": "全域探索智能体 agt_universal(对话入口超级兜底·一等可配置·全工具面含MCP)",
       "note": "用户定:每个人机对话入口配超级智能体——命中预设走预设workflow/agent;未命中则该agent强悍调用所有MCP/数据源(基于账号权限)/本体切片自主推演;判断『系统缺乏这个超级agent』。审核方核实:骨架九成已有——分派树在(preset→路径A;scene.defaultAgentId→13场景agent;再命不中→通用path-B)·agent契约已支持全工具面(AgentToolRef=BUILTIN|MCP{mcpConfigId,toolFilter}|WORKFLOW·contracts/agentcore.ts:9)且运行时已兑现MCP(engine.ts:102/115展开→agent/loop.ts:413/tools/executor.ts:198真调mcp.callTool·credentialRef)·BUILTIN 27工具已广(resolve_slice本体切片/query_objects/invoke_solver/evaluate_rules/search_knowledge/query_system_ontology/sim_*/fill_data等)·账号权限已内建(全工具OBO用户JWT→A6行级+Entitlement)·无LLM诚实降级(FDE实证)。真缺:D1兜底终点是代码写死白名单 whitelist∩{READ,COMPUTE}+create_action_draft(orchestrator.ts:772)非一等可配置agent;D2该白名单不含MCP/WORKFLOW-as-tool→『调用所有MCP』到不了兜底;D3无场景agent的入口落弱兜底。治:①出厂幂等播种 agt_universal(PUBLISHED·R14):tools=全BUILTIN+每已发布MCP配置一条{kind:MCP}(reconcile随MCP增删同步)+已发布workflow各一条+全skill可load;scopeDeclaration全域;systemPrompt全域探索方法论(先discover/resolve_slice接地再查数再推演·数字只引工具真值);②runPathB终点重接:preset→A;scene agent保留(专属>通用);否则→agt_universal(替写死白名单);qos.agent-fallback门控不变;③护栏随行:fill三工具受FILL-BOUNDARY三闸·写仅create_action_draft(R4)·maxToolCalls/llm-budgets限额·OBO/审计不变·无LLM仍诚实降级(确定性地板在前);④Agents页可见可编。整页PRD docs/PRD-agent-universal-fallback.md含《本体引用与影响》。道A(orchestrator/seed与INTENT-MATERIALIZE同文件→dep串行)。回写母体sys.orch.query_to_answer兜底终段+§8 G-3+ontology:slices。",

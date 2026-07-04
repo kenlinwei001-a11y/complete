@@ -45,7 +45,7 @@ function scaffoldDraftAgent(tenantId: string, intent: MaterializedIntent, templa
     version: 1,
     name: `${intent.name}（自动补齐草稿 agent）`,
     description: `reconcile 为 agent-first 意图 ${intent.key} 自动 scaffold 的 DRAFT agent（待人工补全/发布·R4）。`,
-    model: template?.model ?? "claude-opus-4-8",
+    model: template?.model ?? "", // 空=继承 agent 用途绑定（不钉字面量·防 roleModel 旁路 LLM_PURPOSE_UNBOUND）
     systemPrompt:
       template?.systemPrompt ??
       "你是自动补齐生成的草稿 agent。回答中每个业务数字必须来自本次工具调用结果并以 ⟦ref:N⟧ 溯源，绝不凭记忆编造。",

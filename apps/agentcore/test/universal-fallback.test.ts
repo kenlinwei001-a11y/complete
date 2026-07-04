@@ -88,6 +88,31 @@ describe("AGENT-UNIVERSAL-FALLBACK · reconcile 随 MCP 增删同步（D2·幂�
   });
 });
 
+describe("AGENT-UNIVERSAL-FALLBACK · model 置空继承用途绑定（复验 BLOCK 治本·防 roleModel 旁路 LLM_PURPOSE_UNBOUND）", () => {
+  // 根因：engine.ts roleModel(tid,'agent',agent.model||undefined) 中 agent.model 非空即被 `if(explicit)return explicit`
+  // 原样返回 → 出厂 'claude-opus-4-8' 字面量非绑定 provider ref → 解析未绑内置 anthropic 无凭据 → LLM_PURPOSE_UNBOUND
+  // → 兜底 path-B 3s FAILED。治本：出厂 path-B agent + agt_universal model 恒置空 = roleModel 回落租户 agent 用途绑定。
+  it("出厂 path-B agent（analyst/explore）+ agt_universal model 均置空（非钉 claude-opus-4-8）", () => {
+    const { agents } = seedRegistry();
+    const ids = ["agt_seed_analyst", "agt_seed_explore", SEED_UNIVERSAL_AGENT_ID];
+    const pathB = agents.filter((a) => ids.includes(a.id));
+    expect(pathB.map((a) => a.id).sort()).toEqual([...ids].sort());
+    for (const a of pathB) expect(a.model ?? "").toBe(""); // 置空→roleModel 回落用途绑定·不旁路
+  });
+
+  it("懒播种 agt_universal 恒 model=''：即便租户已有钉字面量的 agent 也不借用（治 anyAgent?.model 旁路）", async () => {
+    const t = await createTestApp();
+    // 模拟旧污染：租户内先有一个钉死 model 字面量的 agent（曾被 anyAgent?.model 借去→兜底全死）
+    const { agents } = seedRegistry();
+    const analyst = { ...agents.find((a) => a.id === "agt_seed_analyst")!, id: "agt_dirty", tenantId: TENANT, model: "claude-opus-4-8" };
+    await t.repos.agents.insert(analyst);
+    // 懒播种（agt_universal 不存在）借 anyAgent?.model 会借到 agt_dirty 的字面量——修后恒空。
+    const seeded = await reconcileUniversalAgent(t.repos, TENANT);
+    expect(seeded.id).toBe(SEED_UNIVERSAL_AGENT_ID);
+    expect(seeded.model ?? "").toBe(""); // 不借 agt_dirty 的 'claude-opus-4-8' → 恒空→回落 agent 用途绑定
+  });
+});
+
 describe("AGENT-UNIVERSAL-FALLBACK · 兜底真跑（命不中→agt_universal→真调 MCP）", () => {
   it("无场景 agent 的视图上开放问句 → agt_universal 循环真调其绑定的 mock MCP server", async () => {
     const lookupTool = {

@@ -118,9 +118,10 @@ export async function reconcileUniversalAgent(repos: Repos, tenantId: string): P
 
   const existing = await repos.agents.get(SEED_UNIVERSAL_AGENT_ID);
   if (!existing || existing.tenantId !== tenantId) {
-    // 懒播种：非 demo 租户或首次——用既有 agent 的默认 model（若有）保持不写字面量。
-    const anyAgent = (await repos.agents.listByTenant(tenantId))[0];
-    const seeded = buildUniversalAgent({ tenantId, tools: desiredTools, skillIds: seedSkillIds, model: anyAgent?.model });
+    // 懒播种：model 恒置空 = 继承租户用途矩阵 agent 绑定（roleModel 回落）。
+    // 绝不借用其它 agent 的 model（曾 anyAgent?.model 借到出厂 'claude-opus-4-8' 字面量→
+    // roleModel(explicit) 旁路用途绑定→未绑内置→LLM_PURPOSE_UNBOUND·兜底 path-B 全死）。
+    const seeded = buildUniversalAgent({ tenantId, tools: desiredTools, skillIds: seedSkillIds });
     await repos.agents.insert(seeded);
     return seeded;
   }
