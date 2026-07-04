@@ -1359,11 +1359,11 @@
       "title": "状态/空态/导航透出批(未开通空态·通知铃·写回对账·实例数徽章·导航归组)",
       "doc": "docs/WO-VISIBILITY-CHAIN.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
       "note": "IPO断层批·7项P1/P2信号无处可见·G-VIS-1",
-      "blockReason": "",
+      "blockReason": "复验BLOCK(单一缺口=零齿检·功能本体全验好): commit c9e25e2 无任何测试文件(0个·违本会话每单必附齿检铁纪律·先例MULTISRC因计数断言未同步即BLOCK)。功能活体全PASS: 导航13组归组(planner角色裁剪10组)·实例数徽章逐值==后端stats(已物化6实例==Model=6·sales_orders 24==Order=24)·通知铃诚实空态(unread=0落通知中心)·403空态非白屏·写回对账面板经真draft(act_tnd9tyjzve4b6cem)选中后渲染诚实文案『尚未执行——执行写回后显示待对账回声』。补救=只需补齿检文件(断言:导航分组结构/徽章值取stats非硬编码/铃0未读无角标/403空态渲染/writeback-reconcile面板存在)·预计零产品代码改动。",
       "acceptance": {
         "goal": "把一批「后端有状态/真值、前端整块无处可见」的信号透出来:功能未开通时显专用『未开通』空态(区别于『无卡』)、顶栏有通知铃显未读数、写回落地对账(echo/reconcile)在 ActionsPage 可见、图谱/分类页显已物化实例数、推演历史导航归对组、兜底统计页有空态——让用户看得见系统状态而非盯着空白猜。",
         "criteria": [
@@ -2960,12 +2960,12 @@
     {
       "id": "AGENT-UNIVERSAL-FALLBACK",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [
         "INTENT-MATERIALIZE-BINDING-COMPLETE"
       ],
-      "blockReason": "",
+      "blockReason": "复验BLOCK(真运行缺陷·绿测试≠能用活标本): 结构全对(agt_universal PUBLISHED·tools 28=25 BUILTIN+3 WORKFLOW·MCP 0条与reconcile规则一致(本租户无MCP配置)·门扩绿含兜底校验·齿检3/3+5/5)。但真环境 path-B 全死: engine.ts:162 roleModel(tenantId,'agent', agent.model||undefined) 中出厂 model='claude-opus-4-8'(15个出厂agent全钉此字面量)非空即旁路用途绑定→解析内置anthropic无凭据→providers.ts:247 抛 LLM_PURPOSE_UNBOUND→任务3秒FAILED·toolCalls=[]·无agentId(两次复现 task_01KWNT1V/1KWNT7Y·kimi classify本身成功3060ms证purpose绑定在)。mock测试全绿掩盖之。修法(治本二选一): ①出厂agent model字段置空→继承purpose绑定(推荐·顺带消model字面量) ②roleModel解析顺序改『agent.model经provider绑定可解析才用·否则回落purpose绑定』绝不硬死到未绑内置。复验收口=C3真Kimi多步轨迹(decision-trace agentId=agt_universal+真toolCalls序列+DAG节点)。",
       "doc": "docs/PRD-agent-universal-fallback.md",
       "title": "全域探索智能体 agt_universal(对话入口超级兜底·一等可配置·全工具面含MCP)",
       "note": "用户定:每个人机对话入口配超级智能体——命中预设走预设workflow/agent;未命中则该agent强悍调用所有MCP/数据源(基于账号权限)/本体切片自主推演;判断『系统缺乏这个超级agent』。审核方核实:骨架九成已有——分派树在(preset→路径A;scene.defaultAgentId→13场景agent;再命不中→通用path-B)·agent契约已支持全工具面(AgentToolRef=BUILTIN|MCP{mcpConfigId,toolFilter}|WORKFLOW·contracts/agentcore.ts:9)且运行时已兑现MCP(engine.ts:102/115展开→agent/loop.ts:413/tools/executor.ts:198真调mcp.callTool·credentialRef)·BUILTIN 27工具已广(resolve_slice本体切片/query_objects/invoke_solver/evaluate_rules/search_knowledge/query_system_ontology/sim_*/fill_data等)·账号权限已内建(全工具OBO用户JWT→A6行级+Entitlement)·无LLM诚实降级(FDE实证)。真缺:D1兜底终点是代码写死白名单 whitelist∩{READ,COMPUTE}+create_action_draft(orchestrator.ts:772)非一等可配置agent;D2该白名单不含MCP/WORKFLOW-as-tool→『调用所有MCP』到不了兜底;D3无场景agent的入口落弱兜底。治:①出厂幂等播种 agt_universal(PUBLISHED·R14):tools=全BUILTIN+每已发布MCP配置一条{kind:MCP}(reconcile随MCP增删同步)+已发布workflow各一条+全skill可load;scopeDeclaration全域;systemPrompt全域探索方法论(先discover/resolve_slice接地再查数再推演·数字只引工具真值);②runPathB终点重接:preset→A;scene agent保留(专属>通用);否则→agt_universal(替写死白名单);qos.agent-fallback门控不变;③护栏随行:fill三工具受FILL-BOUNDARY三闸·写仅create_action_draft(R4)·maxToolCalls/llm-budgets限额·OBO/审计不变·无LLM仍诚实降级(确定性地板在前);④Agents页可见可编。整页PRD docs/PRD-agent-universal-fallback.md含《本体引用与影响》。道A(orchestrator/seed与INTENT-MATERIALIZE同文件→dep串行)。回写母体sys.orch.query_to_answer兜底终段+§8 G-3+ontology:slices。",
