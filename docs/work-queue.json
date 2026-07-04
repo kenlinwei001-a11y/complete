@@ -3054,8 +3054,8 @@
     {
       "id": "AGENT-OBSERVATIONAL-MEMORY",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [
         "INDUSTRY-PACK-CONVERGE"
       ],
