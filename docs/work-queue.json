@@ -1795,7 +1795,7 @@
       "title": "透出批2(review空态/季度dem溯源/年度窗口导航/订单财务值/solver晋升/规则params/simclock/信号源)",
       "doc": "docs/WO-IPO-WAVE2.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "IPO第2波·全簇P2汇总·透出/导航锦上添花·G-VIS-1",
