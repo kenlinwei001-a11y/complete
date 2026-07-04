@@ -67,16 +67,19 @@
 | δ5 | `livedin/engine.ts:66` | ~40绝对叙事日期(risk case/规则史/校准提案) | t0偏移(如tick引擎) | P2 |
 | δ6 | (P3) `calibration:227` fallback"2026-07-01" · `SopBalanceView:44` newMonth · ProjectSim批次日期 · connectors asOf硬日期 | clock派生 | P3 |
 
-### 簇 Hα · 业务实体内联（应从ontology对象/registry）——20处 + debattery-allow白名单10处/36行
-| # | file:line | 硬编码 | 应由 | 严重 |
-|---|---|---|---|---|
-| α1 | `risk.ts:860` | segOfCust `/商用车/储能/电网/`→com/ess/pas 关键词分类任意客户·非EV租户全塌pas | SEG_REGISTRY关键词/Customer.segment | **P1** |
-| α2 | `scenarios-catalog.ts:61-80` | 20场景catalog烤入bases/models/processes/materials/customers/lineId | 租户ontology-authored Scenario对象 | P2 |
-| α3 | `livedin/engine.ts:41,66,635` | 客户名单CUSTS · 10行风险越线pinyin baseId表 · S&OP叙事串 | Customer对象/BASE_REGISTRY/事件派生 | P2 |
-| α4 | `opsteam/defaults.ts+pools.ts` · `connectors/registry.ts:265` | personas/playbook base视角+modelPool · MOCK_ERP/CRM样本数据(models/pinyin baseId/materials/customers) | 租户对象/行业模板fixture | P2 |
-| α5 | `capacity.ts:58` | formation/aging电池工序特例+中文标签化成/老化 | ProcessType ontology metadata | P2 |
-| α6 | (P3·~10处) | extended fallback"三元正极"/"涂布" · orchestration-skeleton 4680/电芯 · risk RISK_FACTOR_OBJ/正极串 · comprehend化成/卷绕关键词 · mapping/catalog/simclock/adminplatform/seed 各嵌常州/4680/base_manager:常州 | ontology词表/BASE_REGISTRY[0]/中性占位 | P3 |
-| **白名单** | **10 文件/36行 `debattery-allow`** | GeoMap 12基地坐标·ProjectSim DEFAULT_MODELS/物流/地址·SopBalance SOP_KPI_P/段/决议·OrderChain SEG_ORDER/coef·PlanAudit字段·Dashboard 6导航副标·Calibration/Permissions/DataBuilder/Growth 4输入占位 | 多数=fallback可genericize(Base.lon/lat·simConfig·sopConfig·SEG_REGISTRY);占位类=纯UI低价值 | P2/P3 |
+### 簇 Hα · 业务实体内联（应从ontology对象/registry）——20处 + debattery-allow白名单10处/36行 → **◐ P1 收口（HARDCODE-BIZ-ENTITY·datacore）**
+
+> **◐ 收口（HARDCODE-BIZ-ENTITY·datacore biz-entity 逐条）**：**α1 segOfCust（P1·唯一 datacore 共享 runtime 分类逻辑）✅ 已闭**——`risk.ts segOfCust` 内联 EV 关键词判定（`/商用车/`→com·`/储能|电网/`→ess·else pas·非 EV 租户全塌 pas）→ **委派 `@platform/contracts classifySegment`**，关键词迁入 `SEG_REGISTRY[].keywords`（空 keywords=兜底 seg）单一来源，`segOfCust` 逻辑零业务名·换行业只改册不改码（R14）。默认==旧内联序列 → **R6 字节一致**（全量 datacore 测试断言不变·909 passed=905+新 teeth 4）；门牙 `test/seg-classify.test.ts`（改册 keywords→输出变·退回内联即红）+ 真服务证 `docs/evidence/hardcode-biz-entity-segofcust.md`（curl `affected_orders` bySegment 逐值一致 + registry-override 证非 EV 客户脱离 pas 兜底）。**α5 `capacity.ts` formation/aging ✅ 诚实保留**（非误迁）：`proc.props.kind` 已本体驱动，公式差异是**过程物理**（化成=通道吞吐 · 老化=库位停留），公式-as-data 化属独立大改（R6 风险）非本 WO；中文标签 化成/老化 是公式展示串。**α3/α4 `synthetic/livedin/connectors mock` ✅ 诚实保留为行业模板**：审计 §2「排除」项明列 `synthetic/**` 行业模板——CUSTOMERS/MOCK_ERP/CRM/opsteam 是 **battery IndustryPack 之正身**，R14 下业务实体正应驻此、由通用逻辑消费（换行业=换模板文件），非「共享 runtime 硬编码」。**α2 `scenarios-catalog.ts`（agentcore）** 与 LAUNCHER-GROUNDED/INTENT-MATERIALIZE 重叠，非 datacore 范围。**α6 P3 词表尾巴**：多为 fallback 占位/comprehend 关键词（agentcore），随各簇渐进。**debattery-allow 白名单（10 文件/36 行）全在 `apps/frontend-shell`**——`debattery:check` 仅扫前端 `views`/`pages/admin`（datacore/contracts 不在扫描面），由前端 owner（SANDBOX 域）逐条收口，**非 datacore biz-entity 范围**（本 WO 未触前端·门计数不变仍绿）。
+
+| # | file:line | 硬编码 | 应由 | 严重 | 处置 |
+|---|---|---|---|---|---|
+| α1 | `risk.ts:921` | segOfCust `/商用车/储能/电网/`→com/ess/pas 关键词分类任意客户·非EV租户全塌pas | SEG_REGISTRY关键词/Customer.segment | **P1** | ✅ 迁 `classifySegment`+`SEG_REGISTRY.keywords`（R6 字节一致·teeth·真服务证） |
+| α2 | `scenarios-catalog.ts:61-80` | 20场景catalog烤入bases/models/processes/materials/customers/lineId | 租户ontology-authored Scenario对象 | P2 | agentcore·LAUNCHER-GROUNDED 域（非 datacore biz-entity） |
+| α3 | `livedin/engine.ts:41,66,635` | 客户名单CUSTS · 10行风险越线pinyin baseId表 · S&OP叙事串 | Customer对象/BASE_REGISTRY/事件派生 | P2 | 诚实保留：`synthetic/**` 行业模板 fixture（审计排除项·battery IndustryPack 正身） |
+| α4 | `opsteam/defaults.ts+pools.ts` · `connectors/registry.ts:265` | personas/playbook base视角+modelPool · MOCK_ERP/CRM样本数据(models/pinyin baseId/materials/customers) | 租户对象/行业模板fixture | P2 | 诚实保留：行业模板/mock fixture（同上） |
+| α5 | `capacity.ts:58` | formation/aging电池工序特例+中文标签化成/老化 | ProcessType ontology metadata | P2 | ✅ 诚实保留：过程物理（kind 已本体驱动·公式非可换业务常数） |
+| α6 | (P3·~10处) | extended fallback"三元正极"/"涂布" · orchestration-skeleton 4680/电芯 · risk RISK_FACTOR_OBJ/正极串 · comprehend化成/卷绕关键词 · mapping/catalog/simclock/adminplatform/seed 各嵌常州/4680/base_manager:常州 | ontology词表/BASE_REGISTRY[0]/中性占位 | P3 | 尾巴（多 agentcore/fallback 占位）·随各簇渐进 |
+| **白名单** | **10 文件/36行 `debattery-allow`** | GeoMap 12基地坐标·ProjectSim DEFAULT_MODELS/物流/地址·SopBalance SOP_KPI_P/段/决议·OrderChain SEG_ORDER/coef·PlanAudit字段·Dashboard 6导航副标·Calibration/Permissions/DataBuilder/Growth 4输入占位 | 多数=fallback可genericize(Base.lon/lat·simConfig·sopConfig·SEG_REGISTRY);占位类=纯UI低价值 | P2/P3 | 全在 `apps/frontend-shell`（前端 owner 收口·非 datacore 范围·`debattery:check` 只扫前端） |
 
 ## 3. WO 派发（5 grouped·按簇根因治本）
 | WO | 覆盖簇 | 根因治本 |
@@ -85,7 +88,7 @@
 | **HARDCODE-VIEW-LAYOUT（新·P1·8a收口）** | Hβ | 9视图 KPI/列/step/DAG 结构 → ViewConfig.layout 驱动(SandboxView 金标准)。4 P1(SopBalance/OrderChain×2/ProjectSim DAG)先行。 |
 | **HARDCODE-SOLVER-PARAMS（新·P1）✅ 求解器阈值簇已闭（ε1/ε2/ε4）** | Hε | ✅ extended.ts 全13+1 solver 内联阈值/系数 + risk.ts 残留(0.5/98) + plan.ts 判据(M≥3) → `SolverParamsShape.{mitigation,cert,lta,inventory,maintenance,outsourcing,quote,credit,carbon}`＋`risk.demandTension.{upsideGain,tensionCap}`/`audit.verdictMedCount`（骨架零业务名 R14·默认值入 battery IndustryPack·物理常数不迁）；solver 体读 `num(args.<key>,内联默认)`、`deriveArgs` 从 `c.params` 注入 → 真 param 驱动·租户可配·可校准（默认==内联→R6 字节一致·现有断言不变）。证：`docs/evidence/hardcode-solver-params-proof.mjs`（覆写 param→输出变）。**残留 ε3/ε5/ε6/ε7 属前端重写/service·fusion·capex/税率，另簇 P2/P3 未纳本 WO**；专用门 `solver-no-inline-threshold:check` 待补。 |
 | **HARDCODE-CLOCK-DERIVE（新·P2·并入LAUNCHER-GROUNDED）** | Hδ | 全"当前"月/季/日由 sim-clock 派生·非硬编码;livedin 叙事日期改 t0 偏移。δ1/δ2 已在 LAUNCHER-GROUNDED。 |
-| **HARDCODE-BIZ-ENTITY（新·P2）** | Hα | segOfCust(P1)→SEG_REGISTRY·scenario/livedin/connectors/opsteam 电池实体→租户对象/行业模板·白名单逐条 genericize 或登记冻结。 |
+| **HARDCODE-BIZ-ENTITY（新·P2）◐ P1 收口（datacore）** | Hα | ✅ **α1 segOfCust（唯一 datacore 共享 runtime 分类逻辑）→ `classifySegment`+`SEG_REGISTRY.keywords`**（R14 换行业只改册·R6 字节一致·teeth+真服务证）；α5 capacity formation/aging **诚实保留**（过程物理·kind 已本体驱动）；α3/α4 `synthetic/livedin/connectors mock` **诚实保留为 battery IndustryPack 行业模板 fixture**（审计明列排除项）；α2/α6 属 agentcore/其它簇；**debattery-allow 白名单全在前端**（`debattery:check` 只扫前端·前端 owner 收口·非 datacore 范围）。 |
 
 ## 4. 诚实边界
 - Hγ γ10(SCENARIO_CATALOG)/Hα α2 与 LAUNCHER-GROUNDED、INTENT-MATERIALIZE 部分重叠——接地/物化会消化一部分。

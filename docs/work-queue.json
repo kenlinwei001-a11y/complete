@@ -2776,7 +2776,7 @@
     {
       "id": "HARDCODE-BIZ-ENTITY",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",

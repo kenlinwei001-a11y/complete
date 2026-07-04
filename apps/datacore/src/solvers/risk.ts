@@ -1,5 +1,5 @@
 import { round, hashString } from "../prng.js";
-import { SEG_REGISTRY } from "@platform/contracts";
+import { SEG_REGISTRY, classifySegment } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
 import { computeRollup } from "./capacity.js";
@@ -916,12 +916,12 @@ export function affectedOrdersAggregate(
 // ---------------------------------------------------------------------------
 
 
-// PRD-IND-order-aggregate §4.5-B：应用细分**按客户名**判定（原型口径，单一真相源）——
-// 含「商用车」→商用车(com) · 含「储能」或「电网」→储能(ess) · 否则乘用车(pas)。
+// PRD-IND-order-aggregate §4.5-B：应用细分**按客户名**判定（原型口径，单一真相源）。
+// HARDCODE-BIZ-ENTITY（Hα α1·R14·治本）：EV 关键词（商用车/储能/电网→乘用车兜底）此前内联于此，
+// 非 EV 租户客户会全塌 pas。今收口到 `SEG_REGISTRY.keywords`（contracts 单一来源），本函数只做**通用**分类委派——
+// 换行业只改册 keywords，逻辑零业务名。默认值逐值不变（册 keywords==旧内联序列，R6 字节复现）。
 export function segOfCust(cust: string): "pas" | "ess" | "com" {
-  if (/商用车/.test(cust)) return "com";
-  if (/储能|电网/.test(cust)) return "ess";
-  return "pas";
+  return classifySegment(cust).key;
 }
 function segmentOf(c: SolverContext, cust: string): { key: string; name: string; gm: number } {
   const key = segOfCust(cust);

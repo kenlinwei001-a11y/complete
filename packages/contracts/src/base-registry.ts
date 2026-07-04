@@ -39,13 +39,34 @@ export interface CanonicalSeg {
   marginPct: number; // 毛利率 %
   floorPct: number; // 毛利底线 %
   color: string; // 配色
+  /**
+   * 客户名→细分归类的关键词（命中即归入本 seg）。`[]` = 兜底 default（无关键词命中时的落桶，原 pas「否则乘用车」语义）。
+   * DF.3c（HARDCODE-BIZ-ENTITY·R14）：把 risk.ts segOfCust 内联的 EV 关键词（/商用车/、/储能|电网/）收口到册——
+   * 换行业只需换册 keywords，classifySegment 逻辑本身零业务名（共享 runtime 不再硬编码 EV 分类）。
+   */
+  keywords: string[];
 }
 
 export const SEG_REGISTRY: CanonicalSeg[] = [
-  { seg: "乘用车", key: "pas", priceWan: 2.2, marginPct: 18, floorPct: 12, color: "#5E8FE8" },
-  { seg: "储能", key: "ess", priceWan: 1.4, marginPct: 13, floorPct: 11, color: "#36BFA5" },
-  { seg: "商用车", key: "com", priceWan: 1.8, marginPct: 15, floorPct: 11, color: "#DD9551" },
+  { seg: "乘用车", key: "pas", priceWan: 2.2, marginPct: 18, floorPct: 12, color: "#5E8FE8", keywords: [] },
+  { seg: "储能", key: "ess", priceWan: 1.4, marginPct: 13, floorPct: 11, color: "#36BFA5", keywords: ["储能", "电网"] },
+  { seg: "商用车", key: "com", priceWan: 1.8, marginPct: 15, floorPct: 11, color: "#DD9551", keywords: ["商用车"] },
 ];
+
+/**
+ * DF.3c 应用细分分类器（单一来源·R14 换行业零改码）：客户名/文本 → CanonicalSeg。
+ * 收口 risk.ts 内联 `if(/商用车/)…if(/储能|电网/)…else pas` 的电池 EV 关键词判定：
+ *  - 命中优先 = 册内声明序（首个 keywords 命中的非兜底 seg 胜）；
+ *  - 无命中 → 兜底 seg（keywords 为 `[]` 者；册无兜底则取册首）。
+ * 播种的 8 客户名互斥无关键词重叠（整车厂/海外车企→pas · 商用车集团→com · 储能集成商/电网公司→ess），
+ * 故与旧内联序列判定逐值一致（R6 字节复现）。逻辑通用零业务名——换行业只改 SEG_REGISTRY.keywords。
+ */
+export function classifySegment(text: string): CanonicalSeg {
+  for (const seg of SEG_REGISTRY) {
+    if (seg.keywords.length > 0 && seg.keywords.some((k) => text.includes(k))) return seg;
+  }
+  return SEG_REGISTRY.find((s) => s.keywords.length === 0) ?? SEG_REGISTRY[0]!;
+}
 
 export const BASE_REGISTRY: CanonicalBase[] = [
   { baseId: "changzhou", name: "常州", kind: "动力+储能", position: "混合", lon: 119.95, lat: 31.78, util: 88, gwh: 35, bottleneck: "化成柜", lines: 8, prodYear: 2015, mainProduct: "4680-NCM" },
