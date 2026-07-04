@@ -64,7 +64,14 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
       </div>
 
       <div className="panel" style={{ marginBottom: 14 }}>
-        <div className="section-title">产能爬坡 vs 需求（万套/季）</div>
+        <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span>产能爬坡 vs 需求（万套/季）</span>
+          {/* WO-VIS-SIGNALS-2 ②：季度需求条加上游溯源 → 跳年度情景规划的目标分解流（季度需求由年度基准需求逐层分解而来）。
+              此前季度需求只有 bar+tooltip，看不到"这个季度需求是从哪年度目标拆下来的"。 */}
+          <button className="badge" data-testid="quarter-goto-annual" style={{ marginLeft: "auto", cursor: "pointer" }} title="看年度分解：季度需求的上游（年→季→月目标分解）" onClick={() => navigate("/v/annual-scenario")}>
+            看年度分解 →
+          </button>
+        </div>
         {/* PRD-quarter-rolling §3-①：段头副标注（产能增量项目同年度基准情景，溯源同源） */}
         <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }} data-testid="quarter-ramp-note">{zh.quarter.rampNote}</div>
         <div className={styles.qbars} data-testid="qbars">
@@ -83,6 +90,10 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
                 </div>
                 <div className={styles.qbarTr}>
                   <i style={{ width: `${(r.dem / maxV) * 100}%`, background: DEM_COLOR }} title={`${zh.quarter.demand} ${r.dem}`} />
+                  {/* WO-VIS-SIGNALS-2 ②：季度需求值接六要素溯源（真派生自年度基准需求逐季分解·非编）。 */}
+                  <Provenance testId={`qdem-prov-${r.q}`} src="quarterly 求解器（季度滚动平衡）· 上游年度目标分解" formula="季度需求 = 年度基准需求 × 季度分解权重（AOP 目标分解流 年→季）" inputs={["年度基准情景需求", "季度分解权重"]} rule="C27">
+                    <span className="mono" style={{ fontSize: 10, color: "var(--muted)", marginLeft: 6 }} data-testid={`qdem-${r.q}`}>需 {r.dem}</span>
+                  </Provenance>
                 </div>
                 <div className={styles.qbarTr}>
                   <i style={{ width: `${(r.sup / maxV) * 100}%`, background: SUP_COLOR }} title={`${zh.quarter.supply} ${r.sup}`} />

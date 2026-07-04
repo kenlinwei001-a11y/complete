@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchSolverRegistry,
@@ -21,10 +22,21 @@ import type { SolverBinding } from "@platform/contracts";
  */
 export default function SolversPage() {
   const [q, setQ] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // WO-VIS-SIGNALS-2 ⑤：?solver= 深链（SolverReview「查看目录中此求解器→」落点）→ 自动展开该求解器绑定层。
+  const [params] = useSearchParams();
+  const [expanded, setExpanded] = useState<string | null>(params.get("solver"));
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "solver-registry"], queryFn: () => fetchSolverRegistry() });
   const solvers = data?.solvers ?? [];
+
+  // 落点求解器就绪后滚动定位（真后端注册表含该 key 时聚焦；不在目录内则保持顶部·诚实无聚焦）。
+  const focusSolver = params.get("solver");
+  useEffect(() => {
+    if (!focusSolver || solvers.length === 0) return;
+    setExpanded(focusSolver);
+    const el = document.querySelector(`[data-testid="solver-row-${focusSolver}"]`);
+    try { (el as HTMLElement | null)?.scrollIntoView?.({ block: "center" }); } catch { /* jsdom 无 scrollIntoView */ }
+  }, [focusSolver, solvers.length]);
 
   const suggest = useMutation({
     mutationFn: () => suggestSolverBindings(),

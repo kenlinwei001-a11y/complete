@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchSimClock, fetchTickReports, resetSimClock, tickSimClock } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
@@ -98,16 +99,35 @@ export function SimClockConsole() {
                 <span className="badge amber">偏差 {(r.forecastDeviation * 100).toFixed(1)}%</span>
               )}
             </div>
-            {r.changedProps.slice(0, 5).map((c, i) => (
-              <div key={i} className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
-                {c.object}.{c.prop}: {c.from} → {c.to}
-              </div>
-            ))}
+            {/* WO-VIS-SIGNALS-2 ⑦：属性变更可跳对象 360（object=`${type}-${id}` → /o/type/id·首个连字符切分）。
+                此前 tick 报告变更/告警纯文本，看到"某对象某属性变了/触发某规则"却无处下钻。 */}
+            {r.changedProps.slice(0, 5).map((c, i) => {
+              const dash = c.object.indexOf("-");
+              const typeKey = dash > 0 ? c.object.slice(0, dash) : "";
+              const objKey = dash > 0 ? c.object.slice(dash + 1) : "";
+              return (
+                <div key={i} className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {typeKey && objKey ? (
+                    <Link to={`/o/${encodeURIComponent(typeKey)}/${encodeURIComponent(objKey)}`} data-testid={`tick-change-link-${r.tick}-${i}`}>
+                      {c.object}
+                    </Link>
+                  ) : (
+                    c.object
+                  )}
+                  .{c.prop}: {c.from} → {c.to}
+                </div>
+              );
+            })}
             {r.newAlerts.length > 0 && (
               <div style={{ marginTop: 4 }}>
+                {/* 告警 ruleKey 跳规则库（?ruleKey= 落该规则展开·看命中阈值/表达式）。 */}
                 {r.newAlerts.map((a, i) => (
                   <span key={i} className="badge red" style={{ marginRight: 6 }}>
-                    {t.clock.newAlerts}: {a.ruleKey} · {a.message}
+                    {t.clock.newAlerts}:{" "}
+                    <Link to={`/admin/rules?ruleKey=${encodeURIComponent(a.ruleKey)}`} data-testid={`tick-alert-rule-${r.tick}-${a.ruleKey}`} style={{ color: "inherit", textDecoration: "underline" }}>
+                      {a.ruleKey}
+                    </Link>{" "}
+                    · {a.message}
                   </span>
                 ))}
               </div>

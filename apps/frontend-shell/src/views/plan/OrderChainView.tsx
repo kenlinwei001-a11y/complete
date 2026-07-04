@@ -639,6 +639,13 @@ function OrderFullchainPanel({ kpis, dagLayout, so, onSoChange, focus }: {
                   <Provenance testId="ofc-judge-fin" src="order_fullchain 求解器 · 财务三闸（毛利/信用/价）" formula="细分毛利率 vs 底线；信用占用比；提价% = 达底线所需" inputs={["细分毛利率（SEG_REGISTRY）", "毛利底线", "客户信用占用比"]} rule={data.judges.fin.ruleRefs.join("/")}>
                     毛利 {data.judges.fin.marginPct}% vs 底线 {data.judges.fin.floorPct}%
                   </Provenance>
+                  {/* WO-VIS-SIGNALS-2 ④：财务判补 creditUsedRatio/priceUpPct 并列（order_fullchain financeJudge 已产真值·此前仅显毛利/底线·信用与提价关键值不可见）。 */}
+                  <span style={{ marginLeft: 8, color: data.judges.fin.creditUsedRatio > 1 ? "var(--danger)" : "var(--muted)" }} data-testid="ofc-fin-credit">
+                    信用占用 {(data.judges.fin.creditUsedRatio * 100).toFixed(0)}%{data.judges.fin.creditUsedRatio > 1 ? "（超限 C13）" : ""}
+                  </span>
+                  <span style={{ marginLeft: 8, color: data.judges.fin.priceUpPct > 0 ? "var(--amber)" : "var(--ok)" }} data-testid="ofc-fin-priceup">
+                    {data.judges.fin.priceUpPct > 0 ? `需提价 ${data.judges.fin.priceUpPct}%（C15）` : "毛利达线·无需提价"}
+                  </span>
                 </td>
                 <td className="mono">{data.judges.fin.ruleRefs.length > 0 ? <RuleRef code={data.judges.fin.ruleRefs.join("/")} /> : "—"}</td>
               </tr>

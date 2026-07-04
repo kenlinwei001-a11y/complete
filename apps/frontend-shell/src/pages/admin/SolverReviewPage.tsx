@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SolverArtifact } from "@platform/contracts";
 import { fetchSolverArtifacts, promoteSolverArtifact } from "@/api/endpoints";
@@ -92,6 +93,13 @@ export default function SolverReviewPage() {
                       >
                         晋升 GOVERNED
                       </button>
+                    )}
+                    {/* WO-VIS-SIGNALS-2 ⑤：晋升 GOVERNED 后下游去向可导航——跳求解器目录并聚焦此求解器（此前晋升即断，
+                        看不到它进了目录、绑定了什么类型）。链接接 /admin/solvers?solver=<key>（目录页自动展开该行）。 */}
+                    {a.status === "GOVERNED" && (
+                      <Link className="btn-sm" data-testid={`solver-catalog-link-${a.key}`} to={`/admin/solvers?solver=${encodeURIComponent(a.key)}`}>
+                        查看目录中此求解器 →
+                      </Link>
                     )}
                   </td>
                 </tr>

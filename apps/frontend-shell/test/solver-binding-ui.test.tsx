@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import type { SolverBinding } from "@platform/contracts";
 
 /**
@@ -36,10 +37,13 @@ const DRAFT: SolverBinding = {
 };
 
 function wrap() {
+  // SolversPage 现用 useSearchParams（?solver= 深链落点·WO-VIS-SIGNALS-2 ⑤）→ 需 Router 上下文。
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <SolversPage />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SolversPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 

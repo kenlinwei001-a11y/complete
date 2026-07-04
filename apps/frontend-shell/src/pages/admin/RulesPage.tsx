@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RuleDryRunResult, RuleEntry } from "@platform/contracts";
@@ -19,6 +19,7 @@ export default function RulesPage() {
   const queryClient = useQueryClient();
   const { data: rules } = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules });
   // RESOURCE-REF-NAV：?ruleId= 深链（RuleDocsPage「→查看规则」落点）→ 展开对应行
+  // WO-VIS-SIGNALS-2 ⑦：?ruleKey= 深链（SimClock tick 告警 ruleKey 如 C16 落点·告警用 key 非 id）→ 解析为 id 后展开。
   const [params] = useSearchParams();
   const [open, setOpen] = useState<string | null>(params.get("ruleId"));
   const [editing, setEditing] = useState<RuleEntry | "new" | null>(null);
@@ -30,6 +31,14 @@ export default function RulesPage() {
     references: { kind: string; key: string; name?: string; via: string }[];
   } | null>(null);
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["a", "rules"] });
+
+  // WO-VIS-SIGNALS-2 ⑦：?ruleKey= 落点（SimClock 告警按 key 跳）→ rules 就绪后解析为 rule.id 展开对应行。
+  const ruleKeyParam = params.get("ruleKey");
+  useEffect(() => {
+    if (!ruleKeyParam || !rules) return;
+    const hit = rules.find((r) => r.key === ruleKeyParam);
+    if (hit) setOpen(hit.id);
+  }, [ruleKeyParam, rules]);
 
   const publishMut = useMutation({
     mutationFn: (id: string) => publishRule(id),
@@ -161,6 +170,30 @@ export default function RulesPage() {
                       <div className="mono" style={{ fontSize: 11.5, padding: "6px 8px", background: "var(--bg2)", borderRadius: 6 }}>
                         {r.expression}
                       </div>
+                      {/* WO-VIS-SIGNALS-2 ⑥：展开区补 params 命名阈值小表（此前只显 expression·表达式里的裸标识符如 maxQty 是什么值不可见）。
+                          真值来自 RuleEntry.params（后端规则库·编辑器可增删改），诚实空态：无阈值时明示。 */}
+                      {(() => {
+                        const params = Object.entries(r.params ?? {});
+                        return params.length === 0 ? (
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }} data-testid={`rule-params-empty-${r.key}`}>
+                            无命名阈值（表达式为纯字段/常量比较）
+                          </div>
+                        ) : (
+                          <table className="cmp" style={{ width: "auto", marginTop: 8 }} data-testid={`rule-params-table-${r.key}`}>
+                            <thead>
+                              <tr><th style={{ width: 160 }}>命名阈值</th><th>值</th></tr>
+                            </thead>
+                            <tbody>
+                              {params.map(([k, v]) => (
+                                <tr key={k} data-testid={`rule-param-${r.key}-${k}`}>
+                                  <td className="mono" style={{ fontSize: 11 }}>{k}</td>
+                                  <td className="mono" style={{ fontSize: 11 }}>{String(v)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        );
+                      })()}
                     </td>
                   </tr>
                 )}

@@ -1,10 +1,31 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { HistoryBundle } from "@platform/contracts";
 import { fetchHistoryBundle } from "@/api/endpoints";
 import { EChart } from "@/components/ui/EChart";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
+
+/**
+ * WO-VIS-SIGNALS-2 ①：运营回顾空态诚实深链——无历史时不是死路，给出可点的下一步入口
+ * （合成数据 / 数据构建器）。真值来源诚实指明：收敛证据链只由真运营 tick/校准逐轮累积，
+ * 无历史即无"越用越准"可展示，先去运行 livedIn 合成或接入真数据。
+ */
+function ReviewEmpty({ reason }: { reason: string }) {
+  return (
+    <div className="empty-state" data-testid="review-empty" style={{ display: "grid", gap: 10, justifyItems: "start" }}>
+      <div>{reason}</div>
+      <div style={{ fontSize: 12, color: "var(--muted)" }}>
+        「越用越准」的收敛曲线/校准史/S&OP 版本史只由真实运营时序（模拟时钟 tick + 校准扫描）逐轮累积产生。当前无历史 → 先运行运营态合成或接入真数据。
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Link className="btn sm primary" to="/admin/synthetic" data-testid="review-empty-synthetic">运行 livedIn 合成 →</Link>
+        <Link className="btn sm" to="/admin/data-builder" data-testid="review-empty-databuilder">数据构建器 →</Link>
+      </div>
+    </div>
+  );
+}
 
 /**
  * 运营回顾（renderer=review，运营态出厂配置增量 §4.2）——「越用越准」的证据链页面。
@@ -22,7 +43,10 @@ export default function ReviewView(_props: ViewRendererProps) {
   });
 
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
-  if (isError || !data) return <div className="empty-state">暂无运营态历史（先运行 livedIn 合成）</div>;
+  if (isError || !data) return <ReviewEmpty reason="暂无运营态历史" />;
+  // data 存在但全空（新租户零 tick）→ 同一诚实空态 + 深链（避免渲染一堆空表当"有内容"）。
+  const hasHistory = data.mapeSeries.length > 0 || data.actionHistory.total > 0 || data.calibrations.proposals.length > 0 || data.sopVersions.length > 0;
+  if (!hasHistory) return <ReviewEmpty reason="运营态历史为空（尚无 tick/校准累积）" />;
 
   return (
     <div data-testid="review-view" style={{ display: "grid", gap: 18 }}>

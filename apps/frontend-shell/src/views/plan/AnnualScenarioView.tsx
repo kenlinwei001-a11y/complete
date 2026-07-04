@@ -1,4 +1,5 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { AnnualScenario, AopResponse } from "@platform/contracts";
 import { createActionDraft, fetchAop } from "@/api/endpoints";
@@ -65,6 +66,7 @@ export default function AnnualScenarioView(_props: ViewRendererProps) {
 
 /** 缺口/过剩窗口曲线（消费 capex_scenario 已产 demand/supply/gap/windows）：季度需求 vs 供给双线 + 缺口柱 + 窗口标段。 */
 function CapexWindowCurve({ scenario: s }: { scenario: AnnualScenario }) {
+  const navigate = useNavigate();
   const cs = s.capexScenario;
   if (!cs || cs.quarters.length === 0) return null;
   const markAreas = cs.windows.map((w) => [
@@ -89,10 +91,19 @@ function CapexWindowCurve({ scenario: s }: { scenario: AnnualScenario }) {
       <div className="section-title">{zh.aop.windowSection}</div>
       <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }}>
         {zh.aop.windowHint(s.name)}
+        {/* WO-VIS-SIGNALS-2 ③：缺口/过剩窗口 badge 加下钻链接 → 跳季度滚动看板并聚焦该窗口起始季（?focus=<fromQ>·触发 DrillBack）。
+            此前窗口 badge 是死标——看到"2026-Q2~Q3 缺口窗口"却没法下钻到那几个季度看逐季平衡。 */}
         {cs.windows.map((w) => (
-          <span key={`${w.kind}-${w.fromQ}`} className={`badge ${w.kind === "gap" ? "amber" : "green"}`} data-testid={`aop-window-${w.kind}-${w.fromQ}`} style={{ marginLeft: 6 }}>
-            {w.kind === "gap" ? zh.aop.wcGapWin(w.fromQ, w.toQ) : zh.aop.wcSurplusWin(w.fromQ, w.toQ)}
-          </span>
+          <button
+            key={`${w.kind}-${w.fromQ}`}
+            className={`badge ${w.kind === "gap" ? "amber" : "green"}`}
+            data-testid={`aop-window-${w.kind}-${w.fromQ}`}
+            style={{ marginLeft: 6, cursor: "pointer" }}
+            title={`下钻季度滚动看板 · 聚焦 ${w.fromQ}`}
+            onClick={() => navigate(`/v/quarterly-rolling?focus=${encodeURIComponent(w.fromQ)}`)}
+          >
+            {w.kind === "gap" ? zh.aop.wcGapWin(w.fromQ, w.toQ) : zh.aop.wcSurplusWin(w.fromQ, w.toQ)} →
+          </button>
         ))}
       </div>
       <EChart option={option} height={240} testId="aop-window-chart" />
