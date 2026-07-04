@@ -2776,10 +2776,10 @@
     {
       "id": "HARDCODE-BIZ-ENTITY",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
-      "blockReason": "",
+      "blockReason": "复验BLOCK(主体优·唯二移交残项静默漏做): 主体segOfCust→classifySegment册驱动全验好(SEG_REGISTRY.keywords单一来源·teeth改册即变/退内联即红·R6字节一致909测·evidence curl逐值+registry-override证非EV脱pas兜底)——此半径DONE级。但队列note显式移交的两残项零处理且commit未声明豁免: ①caseSeverity接线: livedin/engine.ts:281 仍 caseSeverityFromData(util,isPrimary,crisis) 3参走CASE_SEVERITY_DEFAULT常量·c.params.risk.caseSeverity(types.ts:56/battery.ts:142已备形)仍无任何运行时读取点=改param不改行为(有形无线) → 调用链把租户params穿入第4参(或函数内读params)·加一行teeth(改caseSeverity param→severity判定变)。②risk.ts:1044 num(...unitPrice,600) 字面量仍在 → 入params(如 risk.fallbackUnitPriceWan 或订单域param·默认600保R6)+teeth。两处合计约10行+2断言。纪律依据: 移交项要么做要么在commit显式声明缓豁并说明(先例DATADEP-C5显式拆单)——静默漏做即BLOCK。",
       "doc": "docs/AUDIT-hardcode-remnants.md",
       "title": "业务实体内联→ontology对象/registry(segOfCust P1)+debattery-allow白名单逐条收口",
       "note": "硬编码彻查簇Hα(审计表§2 Hα·20处+白名单10文件36行)。P1:risk.ts:860 segOfCust `/商用车/储能/电网/`关键词分类任意客户→非EV租户全塌pas。其余:scenarios-catalog/livedin engine(客户名单+越线表+叙事)/connectors mock数据/opsteam personas/capacity formation-aging工序 烤电池实体。debattery-allow白名单36行(GeoMap坐标/ProjectSim models/SopBalance段/Dashboard导航副标/4输入占位)多数可genericize。治:segOfCust→SEG_REGISTRY·实体→租户对象/行业模板·白名单逐条genericize或登记冻结。 【RISK-DEFAKE 复验移交·caseSeverity 接线残项】severity阈已入 params.risk.caseSeverity(types.ts:56·battery.ts:142·默认=原92/78/12)但唯一运行时调用方 livedin/engine.ts:281 以3参调用走常量默认→param 实际无读取点(改param不改行为=有形无线)。本单动 risk.ts 时顺手接线:调用处传 c.params.risk.caseSeverity。另 risk.ts:1044 残留 num(...unitPrice,600) 字面量(父提交既有)一并入 param。",
