@@ -3536,11 +3536,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
-        "todo": "2026-07-05T09:18:30.471Z"
+        "todo": "2026-07-05T09:18:30.471Z",
+        "wip": "2026-07-05T10:28:24.959Z"
       },
       "id": "PANORAMA-FIELD-INTAKE",
       "priority": "P1",
@@ -3581,9 +3582,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "GRAPH-PANORAMA-ONLY",
-      "at": "2026-07-05T10:21:41.185Z"
+      "cmd": "WIP",
+      "id": "PANORAMA-FIELD-INTAKE",
+      "at": "2026-07-05T10:28:24.959Z"
     }
   }
 }
