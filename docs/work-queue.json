@@ -3313,8 +3313,8 @@
     {
       "id": "SANDBOX-DAG-NODE-LAYOUT",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/PRD-frontend-visual-redesign.md",
@@ -3329,6 +3329,9 @@
             "assert": "demo沙盘DAG节点标签两两不叠(真不变量断言·同geo-map齿检口径)或>N节点自动聚合视图。"
           }
         ]
+      },
+      "at": {
+        "wip": "2026-07-05T04:16:25.063Z"
       }
     }
   ],
@@ -3336,8 +3339,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "WIP",
-      "id": "LAUNCHER-SLOT-TRUTH",
-      "at": "2026-07-05T04:06:13.184Z"
+      "id": "SANDBOX-DAG-NODE-LAYOUT",
+      "at": "2026-07-05T04:16:25.063Z"
     }
   }
 }
