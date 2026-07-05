@@ -80,6 +80,102 @@ export function normalizeExtractedSlots(
   return flat;
 }
 
+/** 对象载荷的 props：真 datacore 形状 `{id,type,props}`；mock/旧形状为扁平行（props 即行本身）。 */
+function propsOf(data: Record<string, unknown>): Record<string, unknown> {
+  return (data.props && typeof data.props === "object" && !Array.isArray(data.props)
+    ? data.props
+    : data) as Record<string, unknown>;
+}
+
+/**
+ * LAUNCHER-SLOT-TRUTH FIX-①（词表接缝·G-3）：objectRef 规范化把**求解器词表键（props 主键）**存进
+ * `objectId`，而非 datacore 的长存储 id。
+ *
+ * 断点（live 复验实证）：回填/选候选后规范化取 `data.objectId=obj_base_hefei`（datacore 序列化不一致：
+ * Base 载荷带 objectId、Model 不带）→ 模板 `{{slots.base.objectId}}` 把长 id 压进求解器入参 →
+ * `affected_orders` 词表只认 `props.baseId=hefei` → 400 unknown base → FAILED。
+ *
+ * 取值优先级（两种载荷形态都对·确定性纯函数 R6）：
+ *   ① 约定主键 `<lcFirst(type)>Id`（Base→props.baseId、Model→props.modelId、Line→lineId…）；
+ *   ② 长存储 id `obj_<type小写>_<pk>` 剥前缀，且后缀必须真是某 prop 值（覆盖非约定主键如 Order.so /
+ *      Equipment.equipId；后缀不在 props 里 → 不猜，防 sanitize 变形误剥）；
+ *   ③ 兜底 = 旧行为（data.objectId ?? data.id ?? 查询键）——mock 扁平行/无主键载荷零回归。
+ */
+export function solverVocabObjectId(data: Record<string, unknown>, objectType: string, fallback: string): string {
+  const props = propsOf(data);
+  // ① 约定主键键名
+  const pkKey = objectType.charAt(0).toLowerCase() + objectType.slice(1) + "Id";
+  const pk = props[pkKey];
+  if (typeof pk === "string" && pk) return pk;
+  if (typeof pk === "number" && Number.isFinite(pk)) return String(pk);
+  // ② 长存储 id 剥前缀（后缀须命中某 prop 值才可信）
+  const longId =
+    typeof data.objectId === "string" && data.objectId
+      ? data.objectId
+      : typeof data.id === "string" && data.id
+        ? data.id
+        : "";
+  const prefix = `obj_${objectType.toLowerCase()}_`;
+  if (longId.startsWith(prefix)) {
+    const suffix = longId.slice(prefix.length);
+    if (suffix && Object.values(props).some((v) => v === suffix || (typeof v === "number" && String(v) === suffix))) {
+      return suffix;
+    }
+  }
+  // ③ 兜底（= 修复前行为·零回归）
+  if (longId) return longId;
+  return fallback;
+}
+
+/** 对象载荷的人话标签（props.name 优先——真 datacore 形状 name 在 props 里，旧扁平行在顶层）。 */
+function labelOf(data: Record<string, unknown>): string | undefined {
+  const props = propsOf(data);
+  if (typeof props.name === "string" && props.name) return props.name;
+  if (typeof data.name === "string" && data.name) return data.name;
+  return undefined;
+}
+
+/**
+ * LAUNCHER-SLOT-TRUTH FIX-②（CJK 标签无键解析·G-3）：裸串实体在所有类型 getObject 都失败后
+ * （datacore getObject 只认存储 id / 主键值；CJK 名如「合肥」只在 props.name，二级键 hefei）→
+ * 跨已发布类型做 **name 精确匹配**（objects/query 服务端过滤 `{name: key}`）。
+ * **全局唯一**命中才自动绑定（唯一 score-1 候选免澄清）；多命中/零命中 → undefined（仍走域外澄清，不猜）。
+ * 确定性：类型按 listObjectTypeKeys 顺序遍历；仅失败路径调用（不加热路径开销）。
+ */
+async function resolveUniqueByName(
+  key: string,
+  objectTypes: string[],
+  ontology: OntologyClient,
+  ctx: ToolAuthCtx,
+): Promise<ObjectRef | undefined> {
+  const matches: { objectType: string; data: Record<string, unknown> }[] = [];
+  for (const objectType of objectTypes) {
+    let rows: Record<string, unknown>[];
+    try {
+      const payload = await ontology.queryObjects(ctx, objectType, { name: key }, 2);
+      const d = payload.data as { rows?: unknown[]; items?: unknown[] } | unknown[];
+      const arr = Array.isArray(d) ? d : (d?.rows ?? d?.items ?? []);
+      if (!Array.isArray(arr)) continue;
+      rows = arr as Record<string, unknown>[];
+    } catch {
+      continue;
+    }
+    for (const r of rows) {
+      // 服务端已过滤，此处复核精确相等（mock 扁平行 / 真 props 形状都对）。
+      if (String(propsOf(r).name ?? "") !== key) continue;
+      matches.push({ objectType, data: r });
+      if (matches.length > 1) return undefined; // 非唯一 → 不自动绑·仍澄清（红线：多候选不猜）
+    }
+  }
+  if (matches.length !== 1) return undefined;
+  const { objectType, data } = matches[0]!;
+  return {
+    objectType,
+    objectId: solverVocabObjectId(data, objectType, key),
+    label: labelOf(data) ?? key,
+  };
+}
+
 /** 归一化编辑距离相似度（含子串包含加权）；CJK/拉丁通用，确定性纯函数。 */
 export function entitySimilarity(a: string, b: string): number {
   if (!a || !b) return 0;
@@ -302,13 +398,22 @@ export async function validateSlotValue(
             const v = data[k] ?? props[k];
             return typeof v === "string" && v ? v : undefined;
           };
-          const businessId = pick("objectId") ?? pick("baseId") ?? pick("modelId") ?? pick("so") ?? pick("signalKey");
-          const label = pick("name") ?? ref.label;
+          // 两单合流（rebase keep-both·CLARIFY-CHAIN 断④b ∪ LAUNCHER-SLOT-TRUTH FIX-①）：
+          // 主 = solverVocabObjectId —— **props 主键先于顶层 objectId**（live 复验实证：Base 载荷带
+          // data.objectId=obj_base_hefei 长存储 id，先取它会 400 unknown base·词表接缝 G-3；
+          // 约定主键 → 长 id 剥前缀 → 兜底旧行为，mock 扁平形 objectId 命中兜底·行为不变）；
+          // 承接 = CLARIFY-CHAIN 非约定业务键链（so/signalKey）——词表键未能从 props 解出
+          // （落到长 id/原引用兜底）时补位（PK 序与 executor sliceObjects 同源）。
+          const vocabId = solverVocabObjectId(data, ref.objectType, ref.objectId);
+          const fromProps =
+            vocabId !== ref.objectId && vocabId !== (data.objectId as string | undefined) && vocabId !== (data.id as string | undefined);
+          const businessId = fromProps ? vocabId : (pick("so") ?? pick("signalKey") ?? vocabId);
+          const label = pick("name") ?? labelOf(data) ?? ref.label;
           return {
             ok: true,
             value: {
               objectType: ref.objectType,
-              objectId: businessId ?? ref.objectId,
+              objectId: businessId,
               ...(label !== undefined ? { label } : {}),
             } satisfies ObjectRef,
           };
@@ -334,14 +439,20 @@ export async function validateSlotValue(
             ok: true,
             value: {
               objectType,
-              objectId: (data.objectId as string) ?? key,
-              label: (data.name as string) ?? key,
+              // FIX-①：同上——规范化即存求解器词表键（props 主键），两种载荷形态（Base 带 objectId /
+              // Model 不带）都压对；mock 扁平行走兜底零回归。
+              objectId: solverVocabObjectId(data, objectType, key),
+              label: labelOf(data) ?? key,
             } satisfies ObjectRef,
           };
         } catch {
           /* try next type */
         }
       }
+      // FIX-②（CJK 标签无键解析）：getObject 全类型都失败（只认存储 id/主键值；「合肥」只在 props.name）
+      // → 跨类型 name 精确匹配；**全局唯一**命中才自动绑定（免澄清）。多命中/零命中 → 仍走域外澄清（不猜）。
+      const exact = await resolveUniqueByName(key, objectTypes, ontology, ctx);
+      if (exact) return { ok: true, value: exact };
       // 域外：裸串实体在本租户任何已发布对象类型中都解析不到 → 不命中（→ 澄清/降级，感知层显式信号）。
       //   A5：标记 outOfDomain，让 fillSlots 取最近邻候选 + orchestrator 发独立事件/埋点。
       return { ok: false, outOfDomain: typeof value === "string" };
