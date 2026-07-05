@@ -83,6 +83,40 @@ export function ProvenanceProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** 浮层估高（用于「下方是否放得下」判定；上翻时按 bottom 锚定，与真实高度无关，故估高仅作阈值）。 */
+export const POPOVER_EST_HEIGHT = 320;
+
+export type PopoverPlacement = {
+  placement: "below" | "above";
+  style: { left: number; top?: number; bottom?: number };
+};
+
+/**
+ * 溯源浮层落位（治理批次小注①·叙事 sup 角标 hover 真栈复验根因）。
+ *
+ * 旧实现 `top = min(rect.bottom+8, innerHeight-320)`：当触发角标处于视口下部（rect.top > innerHeight-320）
+ * 时，`top` 被上钳到 `innerHeight-320`，浮层**盖住触发角标本体**。悬停态浮层非钉住 → 鼠标此刻落在浮层上
+ * → 角标收到 mouseleave → cancelScheduled 关掉浮层 → 鼠标又回到角标 → mouseenter → 150ms 定时器复起 …
+ * 形成 ~160ms 周期的 enter/leave 抖动，驻留定时器**永远等不到 150ms**（叙事小角标 11px 全被遮盖尤甚；
+ * KPI/表头角标位置靠上、浮层落其下方不遮，故不受影响——这正是"KPI 能 hover、叙事 sup 不能"的真因）。
+ *
+ * 修：下方放不下且上方更宽裕 → **上翻**，用 `bottom` 锚定到触发点上沿（bottom = innerHeight - rect.top + 8），
+ * 浮层落在角标**上方**、绝不遮盖触发点 → 悬停稳定、驻留定时器得以走完。
+ */
+export function computePopoverPlacement(
+  rect: { top: number; bottom: number; left: number },
+  viewport: { w: number; h: number },
+  estHeight: number = POPOVER_EST_HEIGHT,
+): PopoverPlacement {
+  const left = Math.min(rect.left, viewport.w - 380);
+  const roomBelow = viewport.h - (rect.bottom + 8);
+  const roomAbove = rect.top - 8;
+  if (roomBelow < estHeight && roomAbove > roomBelow) {
+    return { placement: "above", style: { bottom: viewport.h - rect.top + 8, left } };
+  }
+  return { placement: "below", style: { top: Math.min(rect.bottom + 8, viewport.h - estHeight), left } };
+}
+
 function PopoverPanel({ state, onClose }: { state: OpenState; onClose: () => void }) {
   const { data: task } = useQuery({
     queryKey: ["b", "task", state.taskId],
@@ -106,11 +140,10 @@ function PopoverPanel({ state, onClose }: { state: OpenState; onClose: () => voi
     };
   }, [state.pinned, onClose]);
 
-  const top = Math.min(state.rect.bottom + 8, window.innerHeight - 320);
-  const left = Math.min(state.rect.left, window.innerWidth - 380);
+  const place = computePopoverPlacement(state.rect, { w: window.innerWidth, h: window.innerHeight });
 
   return createPortal(
-    <div className={styles.pop} style={{ top, left }} role="tooltip" data-testid="prov-popover">
+    <div className={styles.pop} style={place.style} data-placement={place.placement} role="tooltip" data-testid="prov-popover">
       <div className={styles.head}>
         <span className="badge blue">{state.provId}</span>
         {state.pinned && (
