@@ -2802,7 +2802,7 @@
     {
       "id": "INDUSTRY-PACK-CONVERGE",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "HARDCODE-DISPATCH-REGISTRY",
@@ -3098,6 +3098,27 @@
             "id": "C1",
             "type": "test",
             "assert": "场景agent回落universal真跑产生Handoff记录·trace可见·R2隔离·齿检;回写§2.H/§6+ontology:slices。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "SCENARIO-PACK-SCOPE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/PRD-agent-native-absorb.md",
+      "title": "场景启动器目录按行业pack作用域(治lazy-seed跨行业泄漏:logi租户被种20张电池卡)",
+      "note": "INDUSTRY-PACK复验DONE时发现的相邻缝(非pack机制缺陷·agentcore既有lazy-seed遗产): ensureScenarios 对任意租户播种电池 SCENARIO_CATALOG→logi租户 GET /b/v1/scenarios 返20张电池卡(审核方API实测)·启动器表面破坏非电池行业纯度。治: 场景目录来源接 IndustryPack.scenarios(pack scenarioSeed 已有形态)·lazy-seed 按租户行业选pack·无pack行业诚实空目录+引导;齿检: logi租户scenarios=物流卡0电池卡·demo不回退。",
+      "acceptance": {
+        "goal": "场景启动器目录按租户行业pack作用域·跨行业零泄漏。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "logi租户 /b/v1/scenarios 全部来自logisticsPack·0电池卡;demo 20卡不回退;无pack行业诚实空+引导。齿检两租户断言。"
           }
         ]
       }
