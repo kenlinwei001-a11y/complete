@@ -3105,7 +3105,7 @@
     {
       "id": "SCENARIO-PACK-SCOPE",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
