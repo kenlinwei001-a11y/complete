@@ -1132,6 +1132,14 @@ export const createEvalCase = (body: {
 export interface SliceSummary { sliceKey: string; version: number; rootType: string; hops: number; linkKeys: string[]; maxNodes?: number; fixtures: number }
 export const fetchSlices = () => api.a<SliceSummary[]>("/a/v1/ontology/slices");
 
+/**
+ * 切片资源目录（发现纪律：description/argHints）。切片×图谱融合页用 argHints 构造试切示例入参。
+ * 经 /a/v1/catalog?kind=slices（entitlement 先于 authz·未开通切片不出现·R3）。
+ */
+export interface SliceCatalogItem { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }
+export const fetchSliceCatalog = () =>
+  api.a<{ items: SliceCatalogItem[] }>("/a/v1/catalog?kind=slices").then((r) => r.items);
+
 /** C7 切片编辑器：root+targets 经规划器自动求最短路径（root→hops），复用既有 planSlice（A3.3，确定性图算法）。 */
 export interface SlicePlanResult {
   ok: boolean;

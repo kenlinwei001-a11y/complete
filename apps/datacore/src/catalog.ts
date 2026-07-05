@@ -20,7 +20,13 @@ export interface CatalogItem {
   featureKey?: string;
 }
 
-/** 内置切片目录（与 ontology.resolveSlice 的内置分支一一对应）。 */
+/**
+ * 内置切片目录（发现纪律：description/argHints 必填，「没有给 LLM 看的描述就不允许发布」）。
+ * model_capacity_network / base_risk_profile 对应 ontology.resolveSlice 内置分支；
+ * PANORAMA-SLICE-BACKFILL 五域切片（panorama.* + enterprise_360）为声明式 SliceSpec（合成即落库，
+ * 经 /a/v1/slices/:key/resolve fall-through 到 executeSlice 真值 resolve），列此目录供切片×图谱融合页
+ * 与 QOS discover 可发现（argHints 供融合页构造示例入参）。feature 过滤先于 authz（R3）。
+ */
 export const BUILTIN_SLICE_CATALOG: CatalogItem[] = [
   {
     key: "model_capacity_network",
@@ -35,6 +41,42 @@ export const BUILTIN_SLICE_CATALOG: CatalogItem[] = [
     description: "给定基地，返回该基地的风险画像子图（关联订单/瓶颈/风险项）。回答『某基地当前风险状况』类问题。",
     argHints: { baseId: "基地 ID，如 changzhou" },
     domain: "plan",
+  },
+  // PANORAMA-SLICE-BACKFILL 五域切片：七视角域知识以切片形态存续（多跳·resolve 走真值）。
+  {
+    key: "panorama.backbone",
+    name: "推演主干链",
+    description: "产能/风险推演主干：Order→Model→Base→Line→Process→Equipment，旁挂 Model→Material。回答『一张订单要经哪条产线/工序/设备、用哪些物料』。",
+    argHints: { so: "订单号，如 SO-3391" },
+    domain: "product",
+  },
+  {
+    key: "panorama.dataflow",
+    name: "数据流/来源域",
+    description: "物料数据溯源链：Order→Model→Material→MaterialBatch→LabTest（批次→LIMS 检测），旁挂 Material→采购单 与 Base→数据源健康。回答『这单的物料数据从哪来、经哪些实验室检测、数据源可信度如何』。",
+    argHints: { so: "订单号，如 SO-3391" },
+    domain: "material",
+  },
+  {
+    key: "panorama.solver_binding",
+    name: "求解器绑定域",
+    description: "产能/风险求解器输入子图：以基地为根展开 Base→Line→Process→Equipment（可产能力）+ 在途/检修/数据源健康。回答『产能推演/风险时间线求解器为这个基地读了哪些对象』。",
+    argHints: { baseId: "基地 ID，如 changzhou" },
+    domain: "factory",
+  },
+  {
+    key: "panorama.orchestration",
+    name: "编排/决策域",
+    description: "年度决策编排链：AnnualScenario→PlanTarget→责任人（目标下达闭环）+ 投资项目 + 财务指标。回答『这个年度情景把哪些目标下达给谁、配了哪些投资与财务指标』。",
+    argHints: { key: "情景 key，如 baseline" },
+    domain: "plan",
+  },
+  {
+    key: "enterprise_360",
+    name: "企业 360 全景",
+    description: "最大广度履约全景：以订单为根跨产品/工厂/工艺/设备/供给/商务/产能/质量八域展开（认证/能耗/换型/细分/检修/碳因子）。回答『这单牵动全企业哪些环节』。",
+    argHints: { so: "订单号，如 SO-3391" },
+    domain: "product",
   },
 ];
 

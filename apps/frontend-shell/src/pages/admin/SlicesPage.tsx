@@ -1,45 +1,93 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchObjectTypes,
   fetchRawDatasets,
   fetchSlices,
+  fetchSliceCatalog,
   planSlice,
   resolveSlice,
   saveSlice,
   type SlicePlanResult,
   type SliceResolveResult,
+  type SliceCatalogItem,
 } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
-// WO-GRAPH-3：试切子图改用统一本体图谱引擎渲染（模式=切片·复用 GRAPH-2 引擎，数据为 resolve 真子图）。
+// WO-GRAPH-3：试切子图用统一本体图谱引擎渲染（模式=切片·复用 GRAPH-2 引擎，数据为 resolve 真子图）。
 import { SubgraphPanel, type SubgraphEdge, type SubgraphNode } from "@/components/Graph";
 import { DagNodeDrawer, type DagDetail } from "@/components/DagNodeDrawer";
+// PANORAMA-SLICE-BACKFILL：融合页页顶全景复用「全景渲染件」OntologyGraphView（GRAPH-PANORAMA-ONLY 遗留件）。
+import OntologyGraphView from "@/views/OntologyGraphView";
+import { useFeature } from "@/workspace/featureGate";
+import type { ViewConfigVM } from "@/api/types";
 
 /**
- * 本体切片清单 + 编辑器（C7 · addendum §6.3 / AC8 步1）。
- * 切片 = 可追溯子图 root→hops（A6 逐跳剪枝）。本页：
- *  - 列出已注册切片（rootType / 跳数 / 链路 / 契约 fixtures）。
- *  - ＋新建切片：root + targets → 规划器自动求最短路径（planSlice，A3.3 确定性图算法）→ 入库（PUT）。
- *  - 试切预览：resolveSlice → 子图 nodes/edges（所见即所得，复用 executeSlice）。
+ * 切片 × 图谱 融合页（PANORAMA-SLICE-BACKFILL·全景→字段→切片 链条第三环）。
+ * 七视角（GRAPH-PANORAMA-ONLY 已删）域知识以「切片形态」存续 —— 五域各配一张声明式多跳切片。
+ *  - **页顶全景图（默认视图）**：复用 OntologyGraphView 渲染整本体类型图（无独立图谱导航，全景归此页）。
+ *  - **切片列表 → 选中 → 页内渲染该切片 resolve 真值子图**（复用 executeSlice/SubgraphPanel；
+ *    入参用 argHints 示例值自动构造，可编辑；resolve 空 → 诚实空态，不造节点）。
+ *  - ＋新建切片：root + targets → 规划器求最短路径（planSlice·A3.3 确定性图算法）→ 入库。
+ * R3：全景经 view.ontology-graph entitlement 门；切片目录 discover 亦 feature 过滤（先于 authz）。
  */
+
+/** 页顶全景合成视图（复用 OntologyGraphView 全景渲染件；options 空 = 全景 domain 着色）。 */
+const PANORAMA_VIEW = { key: "graph", title: "图谱全景", renderer: "ontology-graph", options: {} } as unknown as ViewConfigVM;
+
+/** 从 argHints 描述抽示例入参值（"订单号，如 SO-3391" → SO-3391）。确定性纯函数（R6·无网络）。 */
+export function exampleArgsFrom(argHints: Record<string, string> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, hint] of Object.entries(argHints ?? {})) {
+    const m = /如[\s：:]*([^\s，,。；;]+)/.exec(hint);
+    out[k] = m ? m[1]! : "";
+  }
+  return out;
+}
+
 export default function SlicesPage() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "ontology-slices"], queryFn: fetchSlices });
+  const { data: catalog } = useQuery({ queryKey: ["a", "slice-catalog"], queryFn: fetchSliceCatalog });
   const slices = data ?? [];
+  const catItems = catalog ?? [];
   const [editing, setEditing] = useState(false);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [panoramaOpen, setPanoramaOpen] = useState(true);
+  const panoramaEntitled = useFeature("view.ontology-graph");
 
   return (
     <div data-testid="slices-page">
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <h2 style={{ fontSize: 16 }}>本体切片</h2>
+        <h2 style={{ fontSize: 16 }}>切片 × 图谱</h2>
         <button className="btn primary sm" data-testid="slice-create" style={{ marginLeft: "auto" }} onClick={() => setEditing((v) => !v)}>
           {editing ? "收起" : "＋新建切片"}
         </button>
       </div>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
-        切片是可追溯子图（root 对象 → 逐跳沿链路展开），求解器/推演按切片取数，A6 行级过滤逐跳生效。
+        全景图为整本体类型图（页顶默认视图）；切片是可追溯子图（root → 逐跳沿链路展开·A6 逐跳过滤），选中切片即在页内渲染其 resolve 真值子图。
       </div>
+
+      {/* —— 页顶全景（默认视图·复用 OntologyGraphView 全景渲染件）·R3 entitlement 门 —— */}
+      <section className="panel" data-testid="panorama-section" style={{ marginBottom: 14, padding: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: panoramaOpen ? 8 : 0 }}>
+          <span className="section-title" style={{ margin: 0 }}>本体图谱全景</span>
+          <span className="badge" style={{ fontSize: 10.5 }}>整本体类型图</span>
+          <button className="btn sm" style={{ marginLeft: "auto" }} data-testid="panorama-toggle" onClick={() => setPanoramaOpen((v) => !v)}>
+            {panoramaOpen ? "收起全景" : "展开全景"}
+          </button>
+        </div>
+        {panoramaOpen &&
+          (panoramaEntitled ? (
+            <div data-testid="panorama-graph">
+              <OntologyGraphView view={PANORAMA_VIEW} />
+            </div>
+          ) : (
+            <div className="empty-state" data-testid="panorama-locked">
+              图谱全景功能未开通（view.ontology-graph）。请在功能开通页启用后查看。
+            </div>
+          ))}
+      </section>
 
       {editing && (
         <SliceBuilder
@@ -49,29 +97,139 @@ export default function SlicesPage() {
         />
       )}
 
+      <div className="section-title">切片清单</div>
       <table className="cmp" data-testid="slices-table" style={{ width: "100%" }}>
         <thead>
           <tr><th>切片键</th><th>版本</th><th>根类型</th><th>跳数</th><th>链路</th><th>maxNodes</th><th>契约 fixtures</th></tr>
         </thead>
         <tbody>
-          {slices.map((s) => (
-            <tr key={s.sliceKey} data-testid={`slice-${s.sliceKey}`}>
-              <td className="mono">{s.sliceKey}</td>
-              <td className="mono">v{s.version}</td>
-              <td><span className="badge">{s.rootType}</span></td>
-              <td className="mono">{s.hops}</td>
-              <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.linkKeys.join(" · ") || "—"}</td>
-              <td className="mono">{s.maxNodes ?? "—"}</td>
-              <td>
-                {s.fixtures > 0
-                  ? <span className="badge green" data-testid={`slice-fixtures-${s.sliceKey}`}>{s.fixtures} ✓</span>
-                  : <span className="badge amber">无契约</span>}
-              </td>
-            </tr>
-          ))}
+          {slices.map((s) => {
+            const active = s.sliceKey === selectedKey;
+            return (
+              <tr
+                key={s.sliceKey}
+                data-testid={`slice-${s.sliceKey}`}
+                onClick={() => setSelectedKey(active ? null : s.sliceKey)}
+                style={{ cursor: "pointer", background: active ? "var(--accent-bg,rgba(80,120,255,0.12))" : undefined }}
+                aria-selected={active}
+              >
+                <td className="mono">{s.sliceKey}</td>
+                <td className="mono">v{s.version}</td>
+                <td><span className="badge">{s.rootType}</span></td>
+                <td className="mono">{s.hops}</td>
+                <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.linkKeys.join(" · ") || "—"}</td>
+                <td className="mono">{s.maxNodes ?? "—"}</td>
+                <td>
+                  {s.fixtures > 0
+                    ? <span className="badge green" data-testid={`slice-fixtures-${s.sliceKey}`}>{s.fixtures} ✓</span>
+                    : <span className="badge amber">无契约</span>}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {slices.length === 0 && <div className="empty-state">暂无注册切片，点击右上＋新建切片</div>}
+
+      {/* —— 选中切片 → 页内渲染该切片 resolve 真值子图（复用全景渲染件 SubgraphPanel）—— */}
+      {selectedKey && <SliceSubgraph key={selectedKey} sliceKey={selectedKey} catalog={catItems} />}
+    </div>
+  );
+}
+
+/** 选中切片的 resolve 真值子图（入参用 argHints 示例值自动构造·可编辑；空 → 诚实空态）。 */
+function SliceSubgraph({ sliceKey, catalog }: { sliceKey: string; catalog: SliceCatalogItem[] }) {
+  const cat = catalog.find((c) => c.key === sliceKey);
+  const defaultArgs = useMemo(() => JSON.stringify(exampleArgsFrom(cat?.argHints)), [cat]);
+  const [argsText, setArgsText] = useState(defaultArgs);
+  const [committedArgs, setCommittedArgs] = useState(defaultArgs);
+  const [drawer, setDrawer] = useState<DagDetail | null>(null);
+
+  // 切片/示例入参变化 → 重置输入 + 自动试切（选中即见子图）。
+  useEffect(() => {
+    setArgsText(defaultArgs);
+    setCommittedArgs(defaultArgs);
+  }, [defaultArgs]);
+
+  const { data: preview, isFetching } = useQuery({
+    queryKey: ["a", "slice-resolve", sliceKey, committedArgs],
+    queryFn: () => {
+      let a: Record<string, unknown>;
+      try { a = JSON.parse(committedArgs) as Record<string, unknown>; } catch { a = {}; }
+      return resolveSlice(sliceKey, a);
+    },
+  });
+
+  const sliceGraph = useMemo(() => {
+    if (!preview) return { nodes: [] as SubgraphNode[], edges: [] as SubgraphEdge[] };
+    const nodes: SubgraphNode[] = preview.data.nodes.map((n) => ({ id: n.id, label: n.id, group: n.type, kind: "object" }));
+    const present = new Set(nodes.map((n) => n.id));
+    const edges: SubgraphEdge[] = preview.data.edges
+      .filter((e) => present.has(e.from) && present.has(e.to))
+      .map((e, i) => ({ id: `${e.from}->${e.to}#${i}`, from: e.from, to: e.to, kind: e.linkKey, label: e.linkKey }));
+    return { nodes, edges };
+  }, [preview]);
+
+  const nodeCount = preview?.data.nodes.length ?? 0;
+  const types = preview ? [...new Set(preview.data.nodes.map((n) => n.type))] : [];
+
+  return (
+    <div className="panel" data-testid="slice-fusion" style={{ marginTop: 14, padding: 10, display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span className="section-title" style={{ margin: 0 }}>切片子图 · <span className="mono">{sliceKey}</span></span>
+        {cat && <span className="muted" style={{ fontSize: 11 }}>{cat.name}</span>}
+      </div>
+      {cat?.description && <div className="muted" style={{ fontSize: 11 }}>{cat.description}</div>}
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 11 }}>试切入参（JSON·示例值取自 argHints）</label>
+        <input
+          data-testid="slice-fusion-args"
+          value={argsText}
+          onChange={(e) => setArgsText(e.target.value)}
+          style={{ width: 260, fontSize: 11 }}
+        />
+        <button className="btn sm" data-testid="slice-fusion-run" onClick={() => setCommittedArgs(argsText)}>
+          {isFetching ? "试切中…" : "试切子图（resolve）"}
+        </button>
+      </div>
+
+      <div style={{ fontSize: 12 }}>
+        节点 <b data-testid="slice-fusion-nodes">{nodeCount}</b> · 边 <b data-testid="slice-fusion-edges">{preview?.data.edges.length ?? 0}</b>
+        {preview?.data.truncated && <span className="badge amber" style={{ marginLeft: 6 }}>已截断</span>}
+        {preview && <span className="muted" style={{ marginLeft: 8, fontSize: 11 }}>快照 {preview.snapshotVersion}</span>}
+      </div>
+      {types.length > 0 && (
+        <div className="muted" style={{ fontSize: 11 }} data-testid="slice-fusion-types">类型：{types.join(" · ")}</div>
+      )}
+
+      {sliceGraph.nodes.length > 0 ? (
+        <div data-testid="slice-fusion-graph">
+          <SubgraphPanel
+            testId="slice-fusion-subgraph"
+            nodes={sliceGraph.nodes}
+            edges={sliceGraph.edges}
+            height={380}
+            legendTitle="对象类型"
+            onSelect={(n) =>
+              setDrawer({
+                title: `${n.label}（${n.group}）`,
+                src: "切片 resolve 子图（A6 逐跳过滤·真值）",
+                note: `对象类型 ${n.group} · 实例 ${n.id}`,
+              })
+            }
+          />
+        </div>
+      ) : (
+        // 诚实空态：resolve 空 → 不造节点，指明为何空 + 去补数据/改入参。
+        <div className="empty-state" data-testid="slice-fusion-empty">
+          {isFetching ? "试切中…" : (
+            <>该切片以当前入参 resolve 为空（无可达真值子图）。请核对入参（如订单号/基地/情景是否存在），或去
+              <Link to="/admin/modeling"> 建模/补数据</Link> 后重试 —— 空态诚实，不造占位节点。</>
+          )}
+        </div>
+      )}
+      {drawer && <DagNodeDrawer detail={drawer} onClose={() => setDrawer(null)} />}
     </div>
   );
 }

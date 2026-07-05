@@ -1035,10 +1035,29 @@ export const handlers = [
 
   http.get("*/a/v1/ontology/slices", () =>
     HttpResponse.json([
+      { sliceKey: "panorama.backbone", version: 1, rootType: "Order", hops: 5, linkKeys: ["order_for_model", "model_producible_at", "line_belongs_to_base", "line_has_process", "equip_used_in", "model_uses_material"], maxNodes: 400, fixtures: 1 },
+      { sliceKey: "panorama.dataflow", version: 1, rootType: "Order", hops: 4, linkKeys: ["order_for_model", "model_uses_material", "material_has_batch", "batch_lab_test"], maxNodes: 500, fixtures: 1 },
+      { sliceKey: "panorama.solver_binding", version: 1, rootType: "Base", hops: 3, linkKeys: ["line_belongs_to_base", "line_has_process", "equip_used_in"], maxNodes: 400, fixtures: 1 },
+      { sliceKey: "panorama.orchestration", version: 1, rootType: "AnnualScenario", hops: 2, linkKeys: ["scenario_to_target", "plantarget_ownedby"], maxNodes: 300, fixtures: 1 },
+      { sliceKey: "enterprise_360", version: 1, rootType: "Order", hops: 5, linkKeys: ["order_for_model", "model_producible_at"], maxNodes: 1000, fixtures: 1 },
       { sliceKey: "model_capacity_network", version: 1, rootType: "Model", hops: 2, linkKeys: ["PRODUCIBLE_AT"], maxNodes: 100, fixtures: 1 },
       { sliceKey: "base_risk_profile", version: 1, rootType: "Base", hops: 1, linkKeys: ["HAS_ORDER"], maxNodes: 200, fixtures: 0 },
     ]),
   ),
+  // 切片资源目录（发现纪律 description/argHints；融合页用 argHints 构造试切示例入参）。
+  http.get("*/a/v1/catalog", ({ request }) => {
+    const kind = new URL(request.url).searchParams.get("kind");
+    if (kind !== "slices") return HttpResponse.json({ items: [] });
+    return HttpResponse.json({
+      items: [
+        { key: "panorama.backbone", name: "推演主干链", description: "产能/风险推演主干：Order→Model→Base→Line→Process→Equipment，旁挂 Model→Material。", argHints: { so: "订单号，如 SO-3391" }, domain: "product" },
+        { key: "panorama.dataflow", name: "数据流/来源域", description: "物料数据溯源链：Order→Model→Material→MaterialBatch→LabTest。", argHints: { so: "订单号，如 SO-3391" }, domain: "material" },
+        { key: "panorama.solver_binding", name: "求解器绑定域", description: "产能/风险求解器输入子图：Base→Line→Process→Equipment。", argHints: { baseId: "基地 ID，如 changzhou" }, domain: "factory" },
+        { key: "panorama.orchestration", name: "编排/决策域", description: "年度决策编排链：AnnualScenario→PlanTarget→责任人 + 投资 + 财务。", argHints: { key: "情景 key，如 baseline" }, domain: "plan" },
+        { key: "enterprise_360", name: "企业 360 全景", description: "最大广度履约全景，跨八域展开。", argHints: { so: "订单号，如 SO-3391" }, domain: "product" },
+      ],
+    });
+  }),
   // C7 切片编辑器：规划器求路径 + 入库 + 试切预览。真后端 planSlice/PUT slices/resolveSlice；mock 给确定性结果。
   http.post("*/a/v1/slices/plan", async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as { rootType?: string; targets?: string[] };

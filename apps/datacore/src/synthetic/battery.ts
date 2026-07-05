@@ -968,6 +968,155 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
         ],
       },
     },
+    // ---------------------------------------------------------------------
+    // PANORAMA-SLICE-BACKFILL：七视角（GRAPH-PANORAMA-ONLY 已删）域知识以「切片形态」存续。
+    // 五域各配一张声明式多跳切片（spannedTypes≥3·resolve 走真值·全景×图谱融合页页内渲染）。
+    // 全用现有类型/链路，不纳入 QUERY30 新类型。确定性 R6（同 seed 字节稳）；A6 逐跳过滤 R3/行级。
+    // ---------------------------------------------------------------------
+    {
+      // 域① 推演主干链（原 graph-backbone 视角）：Order→Model→Base→Line→Process→Equipment，旁挂 Model→Material。
+      // 产能/风险推演求解器沿此主干取数——「一张订单要经哪条产线/工序/设备、用哪些物料」。
+      sliceKey: "panorama.backbone",
+      version: 1,
+      spec: {
+        root: { typeKey: "Order", selector: { byKey: "{{args.so}}" } },
+        paths: [
+          [
+            { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
+            { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind", "util", "bottleneck"] },
+            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "name"] },
+            { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield"] },
+            { linkKey: "equip_used_in", direction: "in", project: ["equipId", "oeeA", "oeeP", "oeeQ"] },
+          ],
+          [
+            { linkKey: "order_for_model", direction: "out" },
+            { linkKey: "model_uses_material", direction: "out", project: ["matId", "name", "onHand", "leadTime"] },
+          ],
+        ],
+        maxNodes: 400,
+        contractFixtures: [
+          {
+            name: "推演主干链首单可达 产品→工厂→工艺→设备 + 物料",
+            args: { so: "SO-3391" },
+            expect: {
+              rootType: "Order",
+              minNodes: 6,
+              // 多跳锚点：Equipment 仅经 5 跳主干可达 → 降单跳即失（守「多跳非单跳」）。
+              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_belongs_to_base", "line_has_process", "equip_used_in", "model_uses_material"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      // 域② 数据流/来源域（原 graph-flow + graph-source 视角）：物料数据溯源链
+      // Order→Model→Material→MaterialBatch→LabTest（批次→LIMS 检测），旁挂 Material→采购单 与 Base→数据源健康。
+      // 回答「这单的物料数据从哪来、批次经哪些实验室检测、采购与数据源可信度如何」。
+      sliceKey: "panorama.dataflow",
+      version: 1,
+      spec: {
+        root: { typeKey: "Order", selector: { byKey: "{{args.so}}" } },
+        paths: [
+          [
+            { linkKey: "order_for_model", direction: "out", project: ["modelId", "name"] },
+            { linkKey: "model_uses_material", direction: "out", project: ["matId", "name", "onHand", "leadTime"] },
+            { linkKey: "material_has_batch", direction: "out", limitPerNode: 12, project: ["batchId", "qty", "ageDays", "idleDays"] },
+            { linkKey: "batch_lab_test", direction: "out", limitPerNode: 8, project: ["testId", "result", "sampledAt"] },
+          ],
+          [
+            { linkKey: "order_for_model", direction: "out" },
+            { linkKey: "model_uses_material", direction: "out" },
+            { linkKey: "material_supplied_by_po", direction: "out", limitPerNode: 12, project: ["poId", "qty", "etaDay", "delayed"] },
+          ],
+          [
+            { linkKey: "order_for_model", direction: "out" },
+            { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name"] },
+            { linkKey: "base_data_health", direction: "out", project: ["sourceId", "name", "critical", "lagHours"] },
+          ],
+        ],
+        maxNodes: 500,
+        contractFixtures: [
+          {
+            name: "数据流域首单可达 物料→批次→检测 + 采购 + 数据源",
+            args: { so: "SO-3391" },
+            expect: {
+              rootType: "Order",
+              minNodes: 6,
+              // 多跳锚点：MaterialBatch 仅经 3 跳可达 → 降单跳即失。
+              mustIncludeTypes: ["Order", "Model", "Material", "MaterialBatch", "PurchaseOrder", "Base", "DataSourceHealth"],
+              mustIncludeLinkKeys: ["order_for_model", "model_uses_material", "material_has_batch", "material_supplied_by_po", "base_data_health"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      // 域③ 求解器绑定域（原 graph-solver 视角）：产能/风险求解器的输入子图——
+      // 以基地为根展开 Base→Line→Process→Equipment（可产能力）+ Base→在途 + Base→检修 + Base→数据源健康。
+      // 回答「产能推演/风险时间线求解器为这个基地读了哪些对象」。
+      sliceKey: "panorama.solver_binding",
+      version: 1,
+      spec: {
+        root: { typeKey: "Base", selector: { byKey: "{{args.baseId}}" } },
+        paths: [
+          [
+            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "name"] },
+            { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield"] },
+            { linkKey: "equip_used_in", direction: "in", project: ["equipId", "oeeA", "oeeP", "oeeQ"] },
+          ],
+          [{ linkKey: "base_has_shipment", direction: "out", project: ["shipId", "etaDay", "qtyTons", "status"] }],
+          [{ linkKey: "base_maint_plan", direction: "out", project: ["planId", "week"] }],
+          [{ linkKey: "base_data_health", direction: "out", project: ["sourceId", "name", "critical", "lagHours"] }],
+        ],
+        maxNodes: 400,
+        contractFixtures: [
+          {
+            name: "求解器绑定域以基地为根可达 产线→工序→设备 + 在途/检修/数据源",
+            args: { baseId: "changzhou" },
+            expect: {
+              rootType: "Base",
+              minNodes: 4,
+              // 多跳锚点：Equipment 仅经 3 跳（基地→产线→工序→设备）可达 → 降单跳即失。
+              mustIncludeTypes: ["Base", "Line", "Process", "Equipment"],
+              mustIncludeLinkKeys: ["line_belongs_to_base", "line_has_process", "equip_used_in"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      // 域④ 编排/决策域（原 graph-agent + graph-loop 视角）：年度决策编排链——
+      // AnnualScenario→PlanTarget→责任人（目标下达闭环）+ →投资项目 + →财务指标。
+      // 回答「这个年度情景把哪些目标下达给谁、配了哪些投资与财务指标」。
+      sliceKey: "panorama.orchestration",
+      version: 1,
+      spec: {
+        root: { typeKey: "AnnualScenario", selector: { filter: { key: "{{args.key}}" } } },
+        paths: [
+          [
+            { linkKey: "scenario_to_target", direction: "out", limitPerNode: 40, project: ["tgtId", "period", "level", "value"] },
+            { linkKey: "plantarget_ownedby", direction: "out", project: ["name", "role"] },
+          ],
+          [{ linkKey: "scenario_to_capex", direction: "out", project: ["projectId", "name", "irr", "util24"] }],
+          [{ linkKey: "scenario_to_finance", direction: "out", project: ["metricId", "cashCushion", "irr", "netMargin"] }],
+        ],
+        maxNodes: 300,
+        contractFixtures: [
+          {
+            name: "编排域以情景为根可达 目标→责任人 + 投资 + 财务",
+            args: { key: "baseline" },
+            expect: {
+              rootType: "AnnualScenario",
+              minNodes: 4,
+              // 多跳锚点：Principal 仅经 2 跳（情景→目标→责任人）可达 → 降单跳即失。
+              mustIncludeTypes: ["AnnualScenario", "PlanTarget", "Principal", "CapexProject", "FinanceMetric"],
+              mustIncludeLinkKeys: ["scenario_to_target", "plantarget_ownedby", "scenario_to_capex", "scenario_to_finance"],
+            },
+          },
+        ],
+      },
+    },
   ];
 }
 
