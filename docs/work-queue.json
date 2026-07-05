@@ -3516,7 +3516,7 @@
       "id": "GRAPH-PANORAMA-ONLY",
       "priority": "P1",
       "title": "图谱只留全景: 删七视角(主干/流/源/求解器/MVP/智能体/学习闭环)·撤『图谱体系』导航组(用户亲定)",
-      "note": "用户亲定(2026-07-05): 保留一个『图谱全景』·删除主干分级/图谱数据来源/图谱求解器/图谱MVP/图谱智能体网络/图谱学习闭环。注: 用户清单未列『图谱·流』·按“保留一个”语义默认一并删(审核方推定·若用户改口留流视角则豁免)。做: ①ShellLayout撤「图谱体系」组(line59); ②graph-backbone/flow/source/solver/mvp/agent/loop 七个view: 路由下线(或302→全景)·features registry七键退役(requires链view.ontology-graph不动·退役须registry声明防幽灵entitlement)·renderer注册与专属组件删除(确无他消费方后·grep断言); ③graph-all『图谱·全景』保留·归位「建模与图谱」组(该组既有graph项与all若同质则合一·label『图谱全景』); ④workspace views/mocks fixtures同步(view.graph-*七键)。齿: 导航断言(无图谱体系组·全景在建模组)+features registry退役声明齿+路由302或404一致性。本体回写: §7(features变更)+G-5/G-VIS-1相关行+8a视图清单。FDE: 真浏览器导航栏截图对版+七路由直链行为+全景页真渲染。"
+      "note": "用户亲定(2026-07-05): 保留一个『图谱全景』·删除主干分级/图谱数据来源/图谱求解器/图谱MVP/图谱智能体网络/图谱学习闭环。注: 『图谱·流』经用户确认(2026-07-05)一并删除——七视角全删·仅存全景·无豁免。做: ①ShellLayout撤「图谱体系」组(line59); ②graph-backbone/flow/source/solver/mvp/agent/loop 七个view: 路由下线(或302→全景)·features registry七键退役(requires链view.ontology-graph不动·退役须registry声明防幽灵entitlement)·renderer注册与专属组件删除(确无他消费方后·grep断言); ③graph-all『图谱·全景』保留·归位「建模与图谱」组(该组既有graph项与all若同质则合一·label『图谱全景』); ④workspace views/mocks fixtures同步(view.graph-*七键)。齿: 导航断言(无图谱体系组·全景在建模组)+features registry退役声明齿+路由302或404一致性。本体回写: §7(features变更)+G-5/G-VIS-1相关行+8a视图清单。FDE: 真浏览器导航栏截图对版+七路由直链行为+全景页真渲染。"
     },
     {
       "status": "TODO",
@@ -3552,9 +3552,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "QUEUE",
-      "id": "PANORAMA×3(重构)",
-      "at": "2026-07-05T09:18:30.471Z"
+      "cmd": "NOTE",
+      "id": "GRAPH-PANORAMA-ONLY",
+      "at": "2026-07-05T09:19:11.652Z"
     }
   }
 }
