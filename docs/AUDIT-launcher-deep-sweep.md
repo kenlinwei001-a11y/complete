@@ -45,3 +45,24 @@ dataMode 在 SYNTHETIC/MOCK 间漂移无解释；confidence.measurement LIVE/MOC
 | S20 | 武汉2170碳足迹 | 0 | WF·1s | 回显4680/成都(双实体吞)·verdict与规则表互斥 |
 
 （S01-S10 待补）
+
+## S01-S10 补齐（含精确 file:line 根因）
+
+### 簇①升级 · 参数吞噬的两条精确根
+- **根A 形状错配（S01-S03 类·LLM抽对了也丢）**：`classification.extractedSlots` 按意图键嵌套 `{affected_orders:{base:"合肥基地"}}`，`orchestrator.ts:395` 原样传 `fillSlots`，`slots.ts:294` 按扁平名取值 → 全 miss → objectRef 落 `defaultFrom=selectedObjects[0]`（点卡注入的旧实体 chip）→ **问合肥答常州·问武汉答常州·问2170答4680**，绿标零提示。分类 prompt 未钉形状（`agent/prompts.ts:100-111`）·适配器 zod `z.record(unknown)` 照单全收（`llm-adapters/anthropic.ts:36`）。
+- **根B 无槽可绑（S04-S10/S11-S20 类）**：目录派生意图 `slots:[]`（`seed.ts:443`）+ 入参种子期烘焙（`seed.ts:407-445`）→ 60亿/8周/石墨负极/2026-08 结构性不可能生效。
+- 加重项：每次点卡清空对话并写入卡的 selectedObjects → 旧实体常驻顶掉改写实体（S06 中 LLM 层即被 chip 带偏：成都→常州）。
+
+### 簇⑨ 澄清链三断（S01/S06 实测）
+①服务端 payload 只发 `{name,type,prompt}`（`orchestrator.ts:556-558`）而前端读 `clarifyPrompt`（`Clarification.tsx:126`）→ **配了中文也永远裸 key**；②enum 不带 `enumValues`（契约本有·`contracts/qos.ts:24-35`）→ 下拉零选项**不可作答**；③第 2 轮澄清 UI 不渲染（`Clarification.tsx:11-22 submitted 常驻`+`taskStreamReducer.ts:98` 只在 completed 清）→ **死屏挂起 >92s**（S06 唯一超时）。
+
+### 簇⑩ 死角标（S01/S02/S07-S10）
+模板 `⟦ref:0⟧` 数字索引（`seed.ts:152,199`）vs 运行时 ULID provId → 前端 provIndex 永远找不到 → 渲染 [0] 且悬停恒"0 加载中…"。
+
+### 簇③补 · 投影层精确根
+`executor.ts:372 summarizeSolverOutput label:k` 原始字段键直当 label；绿标与琥珀"未溯源"同屏 6 卡（`executor.ts:380` 注释自认"属实现 bug——仍只打标"）。
+
+### S01-S10 逐卡（要点）
+S01 澄清1轮裸key·三值与预填轮全同(2170/八周被吞)·「主要瓶颈为瓶颈工序」(battery.ts:126 defaultPrimary直灌)·[0][0][0]死角标 ｜ S02 问合肥答常州·正文[0]永"加载中" ｜ S03 内部对象id当KPI值·JSON整段塞单元格·半句挂空 ｜ S04 问60亿答45亿·ruleSetVersion/整句note当KPI·绿琥珀同屏 ｜ S05 问2个方案给3行·结论与管理动作缺失 ｜ S06 enum零选项+二轮不渲染→127s死路 ｜ S07 8周被吞(仍12)·浮层"无命中规则"vs叙事"依据C26"矛盾 ｜ S08 时间窗被吞·shortageCount=0裸零vs问"哪些缺料" ｜ S09 问石墨负极/08月答三元正极/07月(KPI直接矛盾) ｜ S10 releasableCash=0裸零vs表格5行欠储·「子字段over: infeasible(无)」直出
+
+## 汇总：20/20 卡改写参数无一真正生效；治理 WO 见 work-queue（LAUNCHER-SLOT-TRUTH 等 6 张）

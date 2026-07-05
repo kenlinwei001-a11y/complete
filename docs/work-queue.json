@@ -3132,7 +3132,7 @@
       "blockReason": "",
       "doc": "docs/PRD-launcher-grounded-questions.md",
       "title": "槽位澄清人话化(裸内部key『请提供demandDelta』→人话+单位+示例)+改写问句继承卡preset",
-      "note": "用户亲报: 场景启动器点卡后自己输入问题→澄清弹『请提供demandDelta』裸英文内部参数名·不知何物。根因两层: ①slots.ts:354 fallback=`请提供${slot.name}`·而该槽 description(seed.ts:324『需求增量比例(0.2表示+20%)』)已有人话但澄清路径不用·也无单位/示例/取值说明; ②用户改写问句走自由路径时卡片 presetSlots(S01 demandDelta:0.2)未继承为默认→本不该问的槽被问。治: ①澄清提示优先级 clarifyPrompt??description??name·全部必填槽补 clarifyPrompt(人话+单位+示例+取值域·如『请提供需求增量比例: 0.2=+20%·可为负·仅数字』)·数字槽UI给占位示例; ②卡启动带自定义问句时 presetSlots 仍作默认注入(改写≠弃preset·仅用户显式给出的槽覆盖); ③齿检+门: 遍历全部 PUBLISHED intent 必填槽·无 clarifyPrompt 且无 description→红(防新增槽回潮裸key); 真浏览器: S01卡改写问句→不再被问demandDelta(preset继承)或被问时文案为人话含示例。",
+      "note": "用户亲报: 场景启动器点卡后自己输入问题→澄清弹『请提供demandDelta』裸英文内部参数名·不知何物。根因两层: ①slots.ts:354 fallback=`请提供${slot.name}`·而该槽 description(seed.ts:324『需求增量比例(0.2表示+20%)』)已有人话但澄清路径不用·也无单位/示例/取值说明; ②用户改写问句走自由路径时卡片 presetSlots(S01 demandDelta:0.2)未继承为默认→本不该问的槽被问。治: ①澄清提示优先级 clarifyPrompt??description??name·全部必填槽补 clarifyPrompt(人话+单位+示例+取值域·如『请提供需求增量比例: 0.2=+20%·可为负·仅数字』)·数字槽UI给占位示例; ②卡启动带自定义问句时 presetSlots 仍作默认注入(改写≠弃preset·仅用户显式给出的槽覆盖); ③齿检+门: 遍历全部 PUBLISHED intent 必填槽·无 clarifyPrompt 且无 description→红(防新增槽回潮裸key); 真浏览器: S01卡改写问句→不再被问demandDelta(preset继承)或被问时文案为人话含示例。 【20卡审计双断精化】裸key不止fallback问题: 服务端payload只发{name,type,prompt}(orchestrator.ts:556-558)而前端读clarifyPrompt(Clarification.tsx:126)→配了中文也裸key——传输断点归 CLARIFY-CHAIN-FIX·本张聚焦全槽人话文案+preset继承。",
       "acceptance": {
         "goal": "任何澄清反问都是人话(含单位/示例/取值域)·点卡改写问句不丢卡片默认槽。",
         "criteria": [
@@ -3145,6 +3145,154 @@
             "id": "C2",
             "type": "gate",
             "assert": "门/齿: 遍历PUBLISHED intents必填槽断言有clarifyPrompt或description(缺→红); slots提示优先级单测; 四包绿。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "LAUNCHER-SLOT-TRUTH",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "改写问句参数静默吞噬治本(20/20卡不生效·问合肥答常州绿标照发·最恶性静默错答)",
+      "note": "20卡穿透审计簇①·两条精确根: 根A形状错配=classification.extractedSlots按意图键嵌套{affected_orders:{base:合肥}}·orchestrator.ts:395原样传·slots.ts:294按扁平名取→全miss→defaultFrom=selectedObjects[0]旧chip顶掉(问合肥答常州/问武汉答常州/问2170答4680·Kimi抽对了也丢·绿标已验证零提示);prompts.ts:100未钉schema·llm-adapters/anthropic.ts:36 zod record(unknown)照单全收。根B无槽可绑=派生意图slots:[](seed.ts:443)+入参种子期烘焙(seed.ts:407-445)→60亿/8周/石墨负极/2026-08结构性不可能生效。加重: 点卡写入selectedObjects旧实体常驻(S06 LLM层即被chip带偏)。治: ①extractedSlots形状钉死(prompt schema+adapter zod收紧+orchestrator扁平化归一)②派生意图slots从求解器argHints/DataDependency生成(数字/时间/实体槽可绑)③槽解析优先级=本轮显式>上一轮chip>preset④答案必回显所用关键实体/参数(base/model/月份/金额)⑤无法映射→诚实横幅『按预置参数回答:X』或人话澄清·绝不静默换题。",
+      "acceptance": {
+        "goal": "用户改写的实体/数字/时间要么真进求解器要么被明确告知未采用;答案回显所用参数;静默换题零容忍。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "复审计原句: S02改写合肥→答案含合肥数据或明示未采用;S20武汉2170→KPI回显2170/武汉;S04 60亿→算60或明示;8卡改写轮KPI不得与预填轮逐值全同(除非横幅明示按预置)。"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "齿: extractedSlots嵌套/扁平两形状归一单测;派生意图slots非空且键==argHints;chip优先级(本轮显式胜);回显断言。四包绿。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "CLARIFY-CHAIN-FIX",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "SLOT-CLARIFY-HUMANIZE"
+      ],
+      "blockReason": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "澄清链三断修复(服务端不发clarifyPrompt/enumValues·enum零选项不可答·第2轮UI死屏92s+)",
+      "note": "簇⑨·S01/S06实测: ①orchestrator.ts:556-558 payload只发{name,type,prompt}而前端Clarification.tsx:126读clarifyPrompt→配了中文也裸key(与SLOT-CLARIFY-HUMANIZE互补:那张补人话文案·本张修传输断点)②enum不带enumValues(契约qos.ts:24-35本有字段)→S06下拉零选项人无法作答③二轮澄清不渲染(Clarification.tsx:11-22 submitted常驻+taskStreamReducer.ts:98仅completed清)→死屏挂起至10分钟超时(orchestrator.ts:517)。治: payload带齐clarifyPrompt/enumValues/objectType·前端读齐·submitted按轮重置·澄清中态可见(spinner/轮次)。",
+      "acceptance": {
+        "goal": "任何澄清可读(人话)可答(选项齐)可续(多轮渲染)·无死屏。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "S06重放: enum澄清出全部选项可选·答后二轮正常渲染·全链<30s无死屏。S01澄清文案=意图配置的中文clarifyPrompt非裸key。"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "齿: payload含enumValues/objectType断言·二轮渲染组件测·submitted重置。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ANSWER-PROJECTION-HUMANIZE",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "solver_summary投影人话化(裸英文key当label·元数据当KPI·无单位·无结论句·绿琥珀互斥同屏)",
+      "note": "簇③⑤·全卡: executor.ts:372 label:k原始字段键直当KPI label(极端例S/G/s0·base.id=obj_内部id当值·ruleSetVersion/dataMode/confidence.note整句当KPI)·数值无单位·问『为什么/怎么排/值得吗』无一句结论叙事·S13字段错位(unresolved写成infeasible)·『子字段over:infeasible(无)』内部术语直出·S03 JSON整段塞单元格·绿标已验证与琥珀未溯源同屏6卡(executor.ts:380注释自认bug)。治: ①label/单位人话映射层(消费SOLVER_REGISTRY outputShape元数据·补中文label+unit注册)②dataMode/ruleSetVersion/confidence.*移出KPI区→统一脚注条③判断类问句必出一句结论(verdict句·可模板从输出判定字段生成)④内部状态词(infeasible/子字段)人话化⑤绿琥珀互斥治本(有未溯源数字→不发绿标·或分级标)⑥单元格禁裸JSON。",
+      "acceptance": {
+        "goal": "KPI区只有业务指标(人话label+单位)·每答有结论句·信任标不自相矛盾。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "复审计: S17不再出现S/G/s0裸label·S04无ruleSetVersion当KPI·S05有比选结论句·绿琥珀不同屏·S10无『子字段over:infeasible』。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "门: 遍历registry求解器输出字段须有中文label+unit注册(缺→红·基线ratchet);齿: 投影单测label映射/元数据分区/互斥标。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "PROV-REF-INTEGRITY",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "溯源引用完整性(⟦ref:n⟧死角标[0]恒加载中·全KPI共用1个provId·规则段与叙事矛盾·hover滚动区失效)",
+      "note": "簇⑥⑩·全卡: ①模板数字索引⟦ref:0⟧(seed.ts:152,199)vs运行时ULID provId→provIndex永miss→[0]死角标悬停恒『0 加载中…』(S01[0][0][0]三连)②solver_summary全KPI+表共用单一provId→计算段恒$.data无字段级路径·testid撞车(kpi-{provId}同值多元素)③浮层规则段恒『无命中规则』而叙事写『依据C26/C06/C16』(evaluate_rules结果未挂KPI溯源)④滚动区下半KPI hover不触发须点击(10卡复现)。治: 模板ref改provId对齐(渲染期映射或产出期ULID引用)·逐KPI provId(字段级outputPath)·规则命中挂进KPI溯源·hover修·testid去重·死角标零容忍。",
+      "acceptance": {
+        "goal": "每个角标可解析出内容·每KPI独立溯源(字段级路径+真命中规则)·hover处处可用。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "复审计: 全20卡无[0]死角标/无恒加载中·任一KPI浮层计算段=字段级路径非$.data·规则段与叙事一致·滚动区hover可用。"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "齿: ref解析单测(数字索引→红)·逐KPI provId唯一·evaluate_rules挂载断言。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "LAUNCH-VIEW-KEY-ALIGN",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "卡落点视图断链修(5/10卡404/403: dash卡→/v/dashboard不存在·risk卡→/v/risk-board无权)",
+      "note": "簇②: workspace.views短键(dash/risk)与useScenarioLaunch的VIEW_ALIAS规范化口径打架→S15/16/20落/v/dashboard=404·S12/13落/v/risk-board=403;真视图/v/dash与/v/risk均正常。治: 单一键口径(launch用workspace真键·或alias表双向补齐)+齿检20卡落点全部200且=卡声明view。",
+      "acceptance": {
+        "goal": "20卡启动落点全通(200·渲染正确视图)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "逐20卡点启动→落点无404/403·URL=workspace真键;齿检: 卡view→路由解析单测。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "MODE-DISPATCH-HONOR",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "分派尊重意图mode(5张AGENT_FIRST被场景mode=WORKFLOW_FIRST架空·裁定13/7未落地)",
+      "note": "簇⑦: intents/materialize标yield_diag/maint_stagger/outsourcing_q/capex_review/quarterly_gap_q为AGENT_FIRST·但scenarios-catalog.ts:114场景实体一律WORKFLOW_FIRST且orchestrator.ts:242只看场景mode→实测10/10走PathA·真Kimi只classify。治: 场景mode缺省继承意图mode(显式覆盖须一致性校验)·scene-agent-config门加断言(场景mode≠意图mode→红或需声明)。",
+      "acceptance": {
+        "goal": "审核方裁定的13 workflow-first/7 agent-first在启动器入口真实生效。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "S12(yield_diag)类改写问句走AGENT_FIRST(trace path=AGENT·agentRun落库);门: 场景vs意图mode冲突→红。"
           }
         ]
       }
