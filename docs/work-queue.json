@@ -3649,15 +3649,17 @@
     {
       "id": "SANDBOX-RENAME-BASECARDS",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-frontend-visual-redesign.md",
       "title": "『预判推演看板』(/v/risk)改名『产能推演』+沙盘基地卡默认可见(转录证据纠偏)",
       "note": "⚠目标纠偏(2026-07-05彻查·转录#227原文): 改名对象=**预判推演看板(/v/risk)**·非沙盘——驾驶舱磁贴早已叫『产能推演』(DashboardView.tsx:60·66766b5)但点进去页面标题仍是『预判推演看板』(datacore synthetic/service.ts:1304+mocks/fixtures.ts:373)=名实不符正是用户两次追问处。做①: /v/risk 视图标题+nav标签→『产能推演』(ViewDef title两处+workspace nav+mock同步·若用户要沙盘也改名则另令)。做②(原单保留): 推演沙盘基地/对象状态卡默认可见——SANDBOX-LAYOUT-REWORK把runstate卡默认折叠致首屏零基地名(实证docs/evidence/sandbox-current-state.png)·修: runstate卡默认展开或基地卡回主区·折叠记忆保留。齿: /v/risk标题断言『产能推演』+沙盘首屏innerText含基地名(不点击)+nav断言。FDE: 真浏览器双页截图。",
       "at": {
         "todo": "2026-07-05T11:22:12.756Z",
-        "wip": "2026-07-05T11:56:54.037Z"
-      }
+        "wip": "2026-07-05T11:56:54.037Z",
+        "built": "2026-07-05T13:28:58.564Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "CAPACITY-W-RECONCILE",
@@ -3675,9 +3677,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "PANORAMA-SLICE-BACKFILL",
-      "at": "2026-07-05T12:44:11.190Z"
+      "cmd": "BUILT",
+      "id": "SANDBOX-RENAME-BASECARDS",
+      "at": "2026-07-05T13:28:58.580Z"
     }
   }
 }
