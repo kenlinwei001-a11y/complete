@@ -3506,14 +3506,15 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
         "wip": "2026-07-05T11:43:31.030Z",
         "built": "2026-07-05T12:44:06.939Z",
-        "blocked": "2026-07-05T09:53:08.108Z"
+        "blocked": "2026-07-05T09:53:08.108Z",
+        "done": "2026-07-05T15:58:10.936Z"
       },
       "id": "POLISH-P3-BUNDLE",
       "priority": "P3",
@@ -3604,7 +3605,7 @@
     {
       "id": "INTAKE-XLSX-EXPORT",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/SYSTEM-ONTOLOGY.md",
       "title": "数据连接器&上传页一键导出全源数据多sheet Excel(闭G-13①·用户亲定)",
@@ -3612,7 +3613,8 @@
       "at": {
         "todo": "2026-07-05T11:06:45.306Z",
         "wip": "2026-07-05T14:14:35.527Z",
-        "built": "2026-07-05T14:43:42.778Z"
+        "built": "2026-07-05T14:43:42.778Z",
+        "done": "2026-07-05T15:58:10.990Z"
       },
       "blockReason": ""
     },
@@ -3703,8 +3705,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "PANORAMA-SLICE-BACKFILL",
-      "at": "2026-07-05T15:56:23.349Z"
+      "id": "INTAKE-XLSX-EXPORT",
+      "at": "2026-07-05T15:58:10.990Z"
     }
   }
 }
