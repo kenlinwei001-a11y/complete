@@ -3466,12 +3466,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
-        "wip": "2026-07-05T11:56:53.956Z"
+        "wip": "2026-07-05T11:56:53.956Z",
+        "built": "2026-07-05T13:45:52.010Z"
       },
       "id": "ONTO-SCEN-GROWTH-LOOP",
       "priority": "P2",
@@ -3479,7 +3480,8 @@
         "ONTO-SCEN-LAUNCH-DET"
       ],
       "title": "自动生长回路+相位: GapReport AUTO_DERIVE→runGrowthLoop倒序补齐重验·PROVISIONAL→GOVERNED升相·启动器诚实分层",
-      "note": "PRD §2.5/2.6: AUTO_DERIVE缺口触发runGrowthLoop生长(意图/计划/切片/求解器/数据)→自动重验→升GOVERNED; 正序点卡GapReport持续喂倒序(越用越大)。启动器仅GOVERNED默认可用·PROVISIONAL诚实标发育中/未审核(R3相位呈现)。DoD: 人为挖缺→点卡→自动生长→重验→升相全环FDE真跑; 二分处置齿(AUTO_DERIVE|NEEDS_HUMAN+ticketId·静默残缺=红)。"
+      "note": "PRD §2.5/2.6: AUTO_DERIVE缺口触发runGrowthLoop生长(意图/计划/切片/求解器/数据)→自动重验→升GOVERNED; 正序点卡GapReport持续喂倒序(越用越大)。启动器仅GOVERNED默认可用·PROVISIONAL诚实标发育中/未审核(R3相位呈现)。DoD: 人为挖缺→点卡→自动生长→重验→升相全环FDE真跑; 二分处置齿(AUTO_DERIVE|NEEDS_HUMAN+ticketId·静默残缺=红)。",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -3563,12 +3565,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
         "todo": "2026-07-05T09:18:30.471Z",
-        "wip": "2026-07-05T12:44:11.190Z"
+        "wip": "2026-07-05T12:44:11.190Z",
+        "built": "2026-07-05T13:45:52.087Z"
       },
       "id": "PANORAMA-SLICE-BACKFILL",
       "priority": "P1",
@@ -3576,7 +3579,8 @@
         "PANORAMA-FIELD-INTAKE"
       ],
       "title": "全景驱动切片补齐+切片×图谱同页: 多跳SliceSpec覆盖全景域·每切片页内渲染其子图·无独立图谱导航(用户亲定链条第三环)",
-      "note": "用户亲定链条第三环『补本体切片』+此前裁定『图谱都与本体切片在一个页面·每个切片配套图谱』。做: ①以全景图为基准补声明式SliceSpec(多跳·spannedTypes≥3): 推演主干链(Order→Model→Base→Line→Material)·数据流域(RawDataset→ObjectType→Slice→Solver)·求解器绑定域·编排域(Intent→Plan→Agent/Workflow)·企业360(enterprise_360补齐)——七视角删除后其域知识以切片形态存续(可检索可推演·非视图); ②全部注册目录(发现纪律description/argHints)+slice-index; ③/admin/slices升级「切片×图谱」融合页: 切片列表·选中→页内渲染该切片resolve真值子图(复用全景渲染件·args用argHints示例或实体选择器·空态诚实)·全景图为页顶默认视图; ④R6确定性·R3(entitlement门融合页)。齿: 逐域配套切片存在+多跳断言(单跳回潮红)+resolve非空+融合页渲染齿。FDE: 真浏览器选3切片见子图(节点数==后端resolve)+全景默认视图+截图。本体回写: §2切片清单+§3检索链。"
+      "note": "用户亲定链条第三环『补本体切片』+此前裁定『图谱都与本体切片在一个页面·每个切片配套图谱』。做: ①以全景图为基准补声明式SliceSpec(多跳·spannedTypes≥3): 推演主干链(Order→Model→Base→Line→Material)·数据流域(RawDataset→ObjectType→Slice→Solver)·求解器绑定域·编排域(Intent→Plan→Agent/Workflow)·企业360(enterprise_360补齐)——七视角删除后其域知识以切片形态存续(可检索可推演·非视图); ②全部注册目录(发现纪律description/argHints)+slice-index; ③/admin/slices升级「切片×图谱」融合页: 切片列表·选中→页内渲染该切片resolve真值子图(复用全景渲染件·args用argHints示例或实体选择器·空态诚实)·全景图为页顶默认视图; ④R6确定性·R3(entitlement门融合页)。齿: 逐域配套切片存在+多跳断言(单跳回潮红)+resolve非空+融合页渲染齿。FDE: 真浏览器选3切片见子图(节点数==后端resolve)+全景默认视图+截图。本体回写: §2切片清单+§3检索链。",
+      "blockReason": ""
     },
     {
       "id": "SKILL-LIBRARY-EVERYWHERE",
@@ -3680,8 +3684,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "QUERY30-ONTOLOGY-EXT",
-      "at": "2026-07-05T13:44:49.057Z"
+      "id": "PANORAMA-SLICE-BACKFILL",
+      "at": "2026-07-05T13:45:52.087Z"
     }
   }
 }
