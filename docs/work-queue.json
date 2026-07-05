@@ -3307,7 +3307,7 @@
     {
       "id": "MODE-DISPATCH-HONOR",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -3326,7 +3326,8 @@
       },
       "at": {
         "wip": "2026-07-05T05:05:20.375Z",
-        "built": "2026-07-05T06:05:25.508Z"
+        "built": "2026-07-05T06:05:25.508Z",
+        "done": "2026-07-05T06:22:23.544Z"
       }
     },
     {
@@ -3371,9 +3372,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "QUEUE",
-      "id": "CLARIFY-COMBOBOX-DISMISS",
-      "at": "2026-07-05T06:17:15.289Z"
+      "cmd": "DONE",
+      "id": "MODE-DISPATCH-HONOR",
+      "at": "2026-07-05T06:22:23.545Z"
     }
   }
 }
