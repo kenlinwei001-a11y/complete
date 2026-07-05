@@ -3558,14 +3558,26 @@
       ],
       "title": "全景驱动切片补齐+切片×图谱同页: 多跳SliceSpec覆盖全景域·每切片页内渲染其子图·无独立图谱导航(用户亲定链条第三环)",
       "note": "用户亲定链条第三环『补本体切片』+此前裁定『图谱都与本体切片在一个页面·每个切片配套图谱』。做: ①以全景图为基准补声明式SliceSpec(多跳·spannedTypes≥3): 推演主干链(Order→Model→Base→Line→Material)·数据流域(RawDataset→ObjectType→Slice→Solver)·求解器绑定域·编排域(Intent→Plan→Agent/Workflow)·企业360(enterprise_360补齐)——七视角删除后其域知识以切片形态存续(可检索可推演·非视图); ②全部注册目录(发现纪律description/argHints)+slice-index; ③/admin/slices升级「切片×图谱」融合页: 切片列表·选中→页内渲染该切片resolve真值子图(复用全景渲染件·args用argHints示例或实体选择器·空态诚实)·全景图为页顶默认视图; ④R6确定性·R3(entitlement门融合页)。齿: 逐域配套切片存在+多跳断言(单跳回潮红)+resolve非空+融合页渲染齿。FDE: 真浏览器选3切片见子图(节点数==后端resolve)+全景默认视图+截图。本体回写: §2切片清单+§3检索链。"
+    },
+    {
+      "id": "SKILL-LIBRARY-EVERYWHERE",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-scenario-ontogenesis.md",
+      "title": "独立Skill库+agent/workflow双侧skill配置+全预设(用户亲定)",
+      "note": "用户亲定(2026-07-05): 『需要有单独的skill库，在agent,workflow里面需要有单独的配置skill功能。所有都需要被预设配置好。』现状实测: skills registry(B4)+/admin/skills页存在·agent真挂skill(skl_seed_capacity产能法/skl_plan_scheme方案比选法·注入系统提示生效)·**workflow零skill机制**(无步型无绑定)·且skill库存量仅2-3条方法论。建: ①Skill库页升级为一等管理面(列表/详情/版本/新建/编辑/引用计数=哪些agent/workflow在用·发现纪律description必填); ②agent编辑面板加skill配置区(多选绑定·已有repo字段·补UI); ③workflow侧skill机制设计+落地: 确定性工作流不跑LLM自由发挥→skill在workflow=**组装口方法论绑定**(render_answer/结论叙事步消费skill的结构模板与判定口径·R6确定性·非LLM注入)·plan级skillRefs字段(contracts additive)+执行期把skill方法论体现在结论句/叙事模板选择; ④全预设: 20卡的7个agent与13条workflow逐一配好合适skill(产能法/根因法/方案比选法/齐套法/碳合规法…缺的方法论skill补种子·各带description)·发布态; ⑤齿: skill引用完整性门(agent/workflow引用的skillId必存在且PUBLISHED·孤儿引用红)+20卡skill配置覆盖断言。FDE: /admin/skills真浏览器管理面走查+抽1 agent卡验skill方法论体现在答案+1 workflow卡验结论叙事随skill模板。诚实边界: workflow-skill为确定性消费(模板/口径)非agent式提示注入·PRD语义在单内钉死防跑偏。",
+      "at": {
+        "todo": "2026-07-05T09:55:29.963Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "BLOCKED",
-      "id": "POLISH-P3-BUNDLE",
-      "at": "2026-07-05T09:53:08.108Z"
+      "cmd": "QUEUE",
+      "id": "SKILL-LIBRARY-EVERYWHERE",
+      "at": "2026-07-05T09:55:29.963Z"
     }
   }
 }
