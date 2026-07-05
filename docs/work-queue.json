@@ -3632,13 +3632,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-05T11:18:19.882Z",
         "wip": "2026-07-05T13:46:30.172Z",
-        "built": "2026-07-05T14:11:02.311Z"
+        "built": "2026-07-05T14:11:02.311Z",
+        "blocked": "2026-07-05T15:53:16.073Z"
       },
       "id": "QUERY30-RULES",
       "priority": "P1",
@@ -3647,7 +3648,7 @@
       "deps": [
         "QUERY30-ONTOLOGY-EXT"
       ],
-      "blockReason": ""
+      "blockReason": "真跑复验门红(dev自称'4包绿·gates exit0'为假·实测datacore有1红测试): test/planviews.test.ts F27/§7.20 断言 order.rules===['C03','C08','C13','C15','C22','C29','C33'](7条)·但QUERY30-RULES(提交8495cc1)加的C34/C35/C36/C37/C44/C49六条订单相关规则真流入Order作用域→实际13条→toEqual红。归因确证: C34那批由8495cc1加·planviews.test.ts期望行上次改动是另一更早提交(715a8cc·未被本单同步)·本单提交8495cc1零碰planviews测试。同类第3例(承MULTISRC 46→47·计数/列表断言未随新增同步)。修法: 更新planviews.test.ts:228期望数组补入C34,C35,C36,C37,C44,C49(共13条·按端点真实返回顺序)·重跑datacore测试转绿。诚实边界: 我运行实例fieldCount显示20(上传物化多映射字段)·但干净seedBattery环境报错停在order.rules行=证fieldCount仍6·故QUERY30-ONTOLOGY-EXT(我已判DONE)不受累·仅本规则单红。agentcore548/frontend492绿·gates码0(gates不含此单测→暴露gates覆盖盲区·可选债)。"
     },
     {
       "status": "TODO",
@@ -3698,10 +3699,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "CAPACITY-W-RECONCILE",
-      "at": "2026-07-05T14:53:13.992Z"
+      "role": "review",
+      "cmd": "BLOCKED",
+      "id": "QUERY30-RULES",
+      "at": "2026-07-05T15:53:16.073Z"
     }
   }
 }
