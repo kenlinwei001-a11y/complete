@@ -796,8 +796,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   };
 
   return (
-    <div data-testid="sandbox-view" className={styles.head}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+    <div data-testid="sandbox-view" className={styles.page}>
+      <div className={styles.head} style={{ marginBottom: 0, display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
         <h3>推演沙盘 · 一页看全（数据 → 推演 → 溯源 → 动作 → AI）</h3>
         <div className={styles.sub} data-testid="sandbox-config-summary">
           本体派生：{cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 · {cfg.propagationCount} 传导规则
@@ -820,191 +820,208 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
         </div>
       )}
 
-      {/* KPI 行：全局态 + 逐 stateVar（全从配置 stateVars 渲染） */}
-      <div className={styles.threeKpiRow} data-testid="sandbox-kpis">
-        <div className={styles.kpi} data-testid="sandbox-kpi-global">
-          <span>全局态（tick {curTick}）</span>
-          <b style={{ color: heatColor(globalKpi, heatThreshold) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
-        </div>
-        {cfg.stateVars.map((v) => {
-          const objs = Object.keys(world);
-          const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
-          return (
-            <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
-              <span>{v}</span>
-              <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+      {/* WO-SANDBOX-LAYOUT-REWORK（PRD-frontend-visual-redesign §5·Option A·治拥挤）：
+          整页栅格 主 7fr（hero 主视觉焦点）/ 右 5fr（折叠卡片栈·渐进披露）·大留白。
+          左主区 = 顶栏命令条 + 主视觉 DAG（占主体）+ AI 指挥台底栏；右栏 = 折叠卡栈（默认仅就绪卡展开·其余折叠）。
+          不删任何功能——次要面板收为折叠卡（内容保留 DOM·点标题展开·功能仍可达）。 */}
+      <div className={styles.heroGrid} data-testid="sandbox-hero-grid">
+        {/* ── 左主区 7fr：hero 主视觉焦点 ─────────────────────────────────── */}
+        <div className={styles.heroMain} data-testid="sandbox-main-zone">
+          {/* 顶栏 · 全局态大数（主指标视觉权重最高·30px/700）+ 次级 stateVar KPI 小号排布 */}
+          <div className={styles.heroState} data-testid="sandbox-kpis">
+            <div className={styles.kpiHero} data-testid="sandbox-kpi-global">
+              <span>全局态（tick {curTick}）</span>
+              <b style={{ color: heatColor(globalKpi, heatThreshold) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
             </div>
-          );
-        })}
-      </div>
-
-      {/* AI 指挥台（NL 驱动沙盘 · 确定性意图解析 R6）：自然语言→现有沙盘动作（tick/存档/分支/查询）。
-          LLM 不可用即默认确定性解析（无 Date.now/random），未识别意图诚实降级显支持指令集。 */}
-      <form
-        className="panel"
-        data-testid="sandbox-ai-console"
-        style={{ padding: 12, marginTop: 12 }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (nlText.trim()) void onIntent(nlText);
-        }}
-      >
-        <div className={styles.secHead}>AI 指挥台 · 自然语言驱动沙盘（确定性解析，无 LLM 依赖）</div>
-        <div className={styles.inputBar} style={{ marginTop: 8 }}>
-          <input
-            data-testid="sandbox-ai-input"
-            style={{ flex: 1, minWidth: 220 }}
-            placeholder="例：推进 5 个 tick / 存档检查点 / 分支对比 / 查询就绪状态"
-            value={nlText}
-            onChange={(e) => setNlText(e.target.value)}
-            disabled={!sessionId || ticking}
-          />
-          <button className="btn sm primary" type="submit" data-testid="sandbox-ai-run" disabled={!sessionId || ticking || !nlText.trim()}>
-            执行
-          </button>
-        </div>
-        {nlEcho && (
-          <div
-            className={styles.sub}
-            data-testid="sandbox-ai-echo"
-            style={{ marginTop: 6, color: nlEcho.ok ? "#43B7D7" : "#E0626C" }}
-          >
-            {nlEcho.msg}
-          </div>
-        )}
-      </form>
-
-      {/* 控制条：推进 tick / 存档 / tick 时间轴 heat */}
-      <div className="panel" data-testid="sandbox-controls" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 12 }}>
-        <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
-          {ticking ? "推进中…" : "推进 tick"}
-        </button>
-        <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
-          存档检查点
-        </button>
-        <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
-          {branching ? "分支中…" : "分支（多场景对比）"}
-        </button>
-        <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
-          {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
-        </button>
-        <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
-          <div className={styles.sub} style={{ marginBottom: 2 }}>tick 时间轴（全局态轨迹）</div>
-          <HeatStrip series={history} threshold={heatThreshold} />
-        </div>
-      </div>
-
-      <div className={styles.twoCol} style={{ marginTop: 12 }}>
-        {/* 就绪面板（左）：6 项砌齐 —— L0-L4 stepper / L4 三元组 / Trial Tick / scope 切换 / 完整度 gauge / entering 清单 */}
-        <div className="panel" data-testid="sandbox-readiness" style={{ padding: 12 }}>
-          {/* 轨Q 增量3（竞品 image1 ①）：4 行评估清单 State/Action/Writeback/Query（真派生自 cert）。 */}
-          {cert && <EvalChecklist cert={cert} cfg={cfg} />}
-          {cert ? (
-            <SimReadinessPanel
-              cert={cert}
-              scope={certScope}
-              onScopeChange={(s) => void reloadCert(s)}
-              radar={<ReadinessRadar dims={cfg.radarDims} values={radarValues} />}
-            />
-          ) : (
-            <>
-              <div className={styles.secHead}>就绪认证</div>
-              <div className={styles.sub} data-testid="sandbox-cert-na">就绪认证未开通（sim.certification 关）</div>
-            </>
-          )}
-        </div>
-
-        {/* 拓扑（右）：PmDag 单层，节点=nodeTypes，着色随 world 态；点节点→R13 溯源悬浮 */}
-        <div className="panel" data-testid="sandbox-topology" style={{ padding: 12 }}>
-          <div className={styles.secHead}>本体拓扑（节点态随 tick 变色 · 边标 ×系数·Δ延迟 · 点节点看 R13 上游链路）</div>
-          {nodes.length > 0 ? (
-            <div onMouseMove={(e) => { pointerRef.current = { x: e.clientX, y: e.clientY }; }}>
-              <PmDag
-                layers={[nodes]}
-                edges={edges}
-                step={0}
-                testId="sandbox-dag"
-                onNodeClick={onNodeClick}
-                edgeLabel={(from, to) => edgeLabels.get(edgeKey(from, to)) ?? null}
-              />
+            <div className={styles.threeKpiRow}>
+              {cfg.stateVars.map((v) => {
+                const objs = Object.keys(world);
+                const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
+                return (
+                  <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
+                    <span>{v}</span>
+                    <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+                  </div>
+                );
+              })}
             </div>
-          ) : (
-            <div className={styles.sub} data-testid="sandbox-topology-empty">本体暂无已发布对象类型——先在建模页发布对象。</div>
-          )}
-        </div>
-      </div>
-
-      {/* 健康6维 + 信任4维 双雷达（轨A P1·AUDIT §1 母版口径）：数据全 DERIVE 自就绪认证（R14/R13），缺数据诚实标。
-          WO-SANDBOX-LAYOUT-REWORK §5：收为折叠卡（默认折叠·降一屏密度·内容保留在 DOM 功能仍可达）。 */}
-      <div style={{ marginTop: 12 }}>
-      <CollapsibleCard testId="sandbox-dual-radar-card" title="运行雷达 · 健康度 6 维 + 信任度 4 维" summary={cert ? `双雷达 · tick ${curTick}` : "需就绪认证数据"} defaultOpen={false}>
-      <div data-testid="sandbox-dual-radar">
-        {cert ? (
-          <>
-            <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
-              <HealthTrustRadar title="健康度" dims={healthDims} color="#43B7D7" />
-              <HealthTrustRadar title="信任度" dims={trustDims} color="#7BD389" />
-            </div>
-            {/* 轨Q 增量3（竞品 image1 ④）：知识激活·静态可达传播链 N/N + DORMANT/ACTIVE（真 cert + curTick）。 */}
-            <KnowledgeActivation cert={cert} curTick={curTick} />
-          </>
-        ) : (
-          <div className={styles.sub} data-testid="sandbox-dual-radar-na">
-            双雷达需就绪认证数据（sim.certification 未开通或会话未就绪）——不写死占位值（RL5）。
           </div>
-        )}
-      </div>
-      </CollapsibleCard>
-      </div>
 
-      {/* 轨Q 增量4（竞品状态卡条 风险 TOP3·接 risk_timeline 真求解器·MOCK 因素诚实标估算·守轨M 真推演红线）。 */}
-      <RiskTop3 enabled={!!sessionId} />
-
-      {/* 轨Q 增量2（竞品 image8 状态卡条·运行台状态：Step / 诞生规则 / 可执行行动·全真 cert + curTick）。 */}
-      {cert && (
-        <div className="panel" data-testid="sandbox-runstate" style={{ display: "flex", gap: 14, flexWrap: "wrap", padding: "10px 12px", marginTop: 12, fontSize: 12.5 }}>
-          <span data-testid="sandbox-runstate-step">Step <b className="mono" style={{ color: "#43B7D7" }}>+{curTick}</b></span>
-          <span data-testid="sandbox-runstate-rules">诞生规则 <b className="mono" style={{ color: "var(--ok)" }}>{cert.trialTick.rulesFired}</b> ✓</span>
-          <span data-testid="sandbox-runstate-actions">可执行行动 <b className="mono">{cert.worldCompleteness.actions.present}/{cert.worldCompleteness.actions.needed}</b></span>
-          <span data-testid="sandbox-runstate-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)" }}>{cert.canEnterSimulation ? "运行中" : "未就绪"}</span>
-        </div>
-      )}
-
-      {/* 轨Q 增量2（竞品 image8 右栏 Schema Derive Rules·真 derivedProperties + 传导规则·[RUNTIME/INGEST] RESERVED）。 */}
-      {cert && <SchemaDeriveRules cert={cert} />}
-
-      {/* 轨Q 增量4b（竞品中栏 6 子 tab + Agent 指挥台接 QOS）：复用平台标准 PlatformConsole（不新建并行）。
-          基本信息=沙盘本体派生摘要；Skills/MCP/日志=接现成真后端；图查询=③类 RESERVED；Agent 点真场景卡→QOS 真出答案。 */}
-      <PlatformConsole
-        testId="sandbox-console"
-        basicInfo={
-          <div style={{ fontSize: 12.5, color: "var(--muted2)", lineHeight: 1.8 }} data-testid="sandbox-console-basic">
-            本体派生：{cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 · {cfg.propagationCount} 传导规则。
-            当前 tick {curTick} · 全局态 {globalKpi.toFixed(1)}{cert ? ` · 就绪 ${cert.level}` : ""}。
-          </div>
-        }
-      />
-
-      {/* 多场景 KPI 对比面板（北极星）：分支后出现，A 主线 vs B 分支逐 tick 差异 */}
-      {compare && (
-        <div className="panel" data-testid="sandbox-compare" style={{ padding: 12, marginTop: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <span className={styles.sub}>分支后各自推进 tick，再刷新对比看 A/B 差异</span>
-            <button className="btn sm ghost" data-testid="sandbox-compare-refresh-btn" disabled={!branchId} onClick={onRefreshCompare}>
-              刷新对比
+          {/* 命令条：推进 tick / 存档 / 分支 / 采纳 + tick 时间轴 heat（收为一条命令条） */}
+          <div className="panel" data-testid="sandbox-controls" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px" }}>
+            <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
+              {ticking ? "推进中…" : "推进 tick"}
             </button>
+            <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
+              存档检查点
+            </button>
+            <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
+              {branching ? "分支中…" : "分支（多场景对比）"}
+            </button>
+            <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
+              {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
+            </button>
+            <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
+              <div className={styles.sub} style={{ marginBottom: 2 }}>tick 时间轴（全局态轨迹）</div>
+              <HeatStrip series={history} threshold={heatThreshold} />
+            </div>
           </div>
-          <SimComparePanel a={compare.a} b={compare.b} heatThreshold={heatThreshold} />
-        </div>
-      )}
 
-      {/* WO-SANDBOX-RUN-HISTORY（G-VIS-1）：历史推演记录（后端 sim_session 真留痕·前端此前 0 面板）。
-          refreshKey 随 sessionId/curTick 变 → 推进/分支后列表自动重取（C4 事件失效·R17 同页留痕）。
-          WO-SANDBOX-LAYOUT-REWORK §5：收为折叠卡（默认折叠·§5 明列「历史推演记录卡·默认折叠」）。 */}
-      <div style={{ marginTop: 12 }}>
-        <CollapsibleCard testId="sandbox-run-history-card" title="历史推演记录" summary={`会话轨迹 · tick ${curTick}`} defaultOpen={false}>
-          <SandboxRunHistory refreshKey={`${sessionId ?? ""}:${curTick}`} />
-        </CollapsibleCard>
+          {/* 主视觉 · 业务建模链 DAG（占左主区主体·min-height 420px·节点色随 tick 变·点节点→R13 溯源悬浮） */}
+          <div className={`panel ${styles.heroDag}`} data-testid="sandbox-topology" style={{ padding: 14 }}>
+            <div className={styles.secHead}>本体拓扑（节点态随 tick 变色 · 边标 ×系数·Δ延迟 · 点节点看 R13 上游链路）</div>
+            {nodes.length > 0 ? (
+              <div onMouseMove={(e) => { pointerRef.current = { x: e.clientX, y: e.clientY }; }}>
+                <PmDag
+                  layers={[nodes]}
+                  edges={edges}
+                  step={0}
+                  testId="sandbox-dag"
+                  onNodeClick={onNodeClick}
+                  edgeLabel={(from, to) => edgeLabels.get(edgeKey(from, to)) ?? null}
+                />
+              </div>
+            ) : (
+              <div className={styles.sub} data-testid="sandbox-topology-empty">本体暂无已发布对象类型——先在建模页发布对象。</div>
+            )}
+          </div>
+
+          {/* AI 指挥台（NL 驱动沙盘 · 确定性意图解析 R6）：自然语言→现有沙盘动作（tick/存档/分支/查询）·收为底栏。
+              LLM 不可用即默认确定性解析（无 Date.now/random），未识别意图诚实降级显支持指令集。 */}
+          <form
+            className="panel"
+            data-testid="sandbox-ai-console"
+            style={{ padding: "10px 14px" }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (nlText.trim()) void onIntent(nlText);
+            }}
+          >
+            <div className={styles.secHead} style={{ margin: "0 0 6px" }}>AI 指挥台 · 自然语言驱动沙盘（确定性解析，无 LLM 依赖）</div>
+            <div className={styles.inputBar} style={{ marginBottom: 0 }}>
+              <input
+                data-testid="sandbox-ai-input"
+                style={{ flex: 1, minWidth: 220 }}
+                placeholder="例：推进 5 个 tick / 存档检查点 / 分支对比 / 查询就绪状态"
+                value={nlText}
+                onChange={(e) => setNlText(e.target.value)}
+                disabled={!sessionId || ticking}
+              />
+              <button className="btn sm primary" type="submit" data-testid="sandbox-ai-run" disabled={!sessionId || ticking || !nlText.trim()}>
+                执行
+              </button>
+            </div>
+            {nlEcho && (
+              <div
+                className={styles.sub}
+                data-testid="sandbox-ai-echo"
+                style={{ marginTop: 6, color: nlEcho.ok ? "#43B7D7" : "#E0626C" }}
+              >
+                {nlEcho.msg}
+              </div>
+            )}
+          </form>
+        </div>
+
+        {/* ── 右栏 5fr：折叠卡片栈·渐进披露（默认仅就绪卡展开·其余折叠·降密度核心） ────── */}
+        <div className={styles.heroSide} data-testid="sandbox-side-stack">
+          {/* 就绪认证卡（默认展开·§5 明列「就绪认证卡·默认展开」）：L0–L4 stepper / L4 三元组 / Trial Tick / scope / 完整度 gauge / entering 清单 */}
+          <CollapsibleCard testId="sandbox-readiness-card" title="就绪认证 · L0–L4 + 世界完整度" summary={cert ? `${cert.level} · ${cert.canEnterSimulation ? "可进入" : "未就绪"}` : "就绪认证未开通"} defaultOpen={true}>
+            <div data-testid="sandbox-readiness">
+              {/* 轨Q 增量3（竞品 image1 ①）：4 行评估清单 State/Action/Writeback/Query（真派生自 cert）。 */}
+              {cert && <EvalChecklist cert={cert} cfg={cfg} />}
+              {cert ? (
+                <SimReadinessPanel
+                  cert={cert}
+                  scope={certScope}
+                  onScopeChange={(s) => void reloadCert(s)}
+                  radar={<ReadinessRadar dims={cfg.radarDims} values={radarValues} />}
+                />
+              ) : (
+                <>
+                  <div className={styles.secHead}>就绪认证</div>
+                  <div className={styles.sub} data-testid="sandbox-cert-na">就绪认证未开通（sim.certification 关）</div>
+                </>
+              )}
+            </div>
+          </CollapsibleCard>
+
+          {/* 健康6维 + 信任4维 双雷达（轨A P1·AUDIT §1 母版口径）：数据全 DERIVE 自就绪认证（R14/R13），缺数据诚实标。
+              §5：默认折叠·点标题展开·内容保留 DOM 功能仍可达。 */}
+          <CollapsibleCard testId="sandbox-dual-radar-card" title="运行雷达 · 健康度 6 维 + 信任度 4 维" summary={cert ? `双雷达 · tick ${curTick}` : "需就绪认证数据"} defaultOpen={false}>
+            <div data-testid="sandbox-dual-radar">
+              {cert ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+                    <HealthTrustRadar title="健康度" dims={healthDims} color="#43B7D7" />
+                    <HealthTrustRadar title="信任度" dims={trustDims} color="#7BD389" />
+                  </div>
+                  {/* 轨Q 增量3（竞品 image1 ④）：知识激活·静态可达传播链 N/N + DORMANT/ACTIVE（真 cert + curTick）。 */}
+                  <KnowledgeActivation cert={cert} curTick={curTick} />
+                </>
+              ) : (
+                <div className={styles.sub} data-testid="sandbox-dual-radar-na">
+                  双雷达需就绪认证数据（sim.certification 未开通或会话未就绪）——不写死占位值（RL5）。
+                </div>
+              )}
+            </div>
+          </CollapsibleCard>
+
+          {/* 运行态 + 风险 TOP3（轨Q 增量2/4·竞品状态卡条）·§5：默认折叠。 */}
+          <CollapsibleCard testId="sandbox-runstate-card" title="运行态 · 风险 TOP3" summary={cert ? `Step +${curTick} · ${cert.canEnterSimulation ? "运行中" : "未就绪"}` : "需会话就绪"} defaultOpen={false}>
+            {cert && (
+              <div data-testid="sandbox-runstate" style={{ display: "flex", gap: 14, flexWrap: "wrap", padding: "6px 0 10px", fontSize: 12.5 }}>
+                <span data-testid="sandbox-runstate-step">Step <b className="mono" style={{ color: "#43B7D7" }}>+{curTick}</b></span>
+                <span data-testid="sandbox-runstate-rules">诞生规则 <b className="mono" style={{ color: "var(--ok)" }}>{cert.trialTick.rulesFired}</b> ✓</span>
+                <span data-testid="sandbox-runstate-actions">可执行行动 <b className="mono">{cert.worldCompleteness.actions.present}/{cert.worldCompleteness.actions.needed}</b></span>
+                <span data-testid="sandbox-runstate-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)" }}>{cert.canEnterSimulation ? "运行中" : "未就绪"}</span>
+              </div>
+            )}
+            {/* 风险 TOP3·接 risk_timeline 真求解器·MOCK 因素诚实标估算·守轨M 真推演红线。 */}
+            <RiskTop3 enabled={!!sessionId} />
+          </CollapsibleCard>
+
+          {/* Schema 派生规则（轨Q 增量2·真 derivedProperties + 传导规则·[RUNTIME/INGEST] RESERVED）·§5：默认折叠。 */}
+          {cert && (
+            <CollapsibleCard testId="sandbox-schema-card" title="Schema 派生规则" summary="derivedProperties + 传导规则" defaultOpen={false}>
+              <SchemaDeriveRules cert={cert} />
+            </CollapsibleCard>
+          )}
+
+          {/* 运行台 · Agent 指挥/技能/MCP/日志（复用平台标准 PlatformConsole·不新建并行）·§5：默认折叠。 */}
+          <CollapsibleCard testId="sandbox-console-card" title="运行台 · Agent 指挥 / Skills / MCP / 日志" summary={`tick ${curTick} · 全局态 ${globalKpi.toFixed(1)}`} defaultOpen={false}>
+            <PlatformConsole
+              testId="sandbox-console"
+              basicInfo={
+                <div style={{ fontSize: 12.5, color: "var(--muted2)", lineHeight: 1.8 }} data-testid="sandbox-console-basic">
+                  本体派生：{cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 · {cfg.propagationCount} 传导规则。
+                  当前 tick {curTick} · 全局态 {globalKpi.toFixed(1)}{cert ? ` · 就绪 ${cert.level}` : ""}。
+                </div>
+              }
+            />
+          </CollapsibleCard>
+
+          {/* 多场景 KPI 对比（北极星·分支后出现）·出现即默认展开（活动结果·非常驻噪声）。 */}
+          {compare && (
+            <CollapsibleCard testId="sandbox-compare-card" title="多场景 KPI 对比 · A 主线 vs B 分支" summary="逐 tick 差异" defaultOpen={true}>
+              <div data-testid="sandbox-compare" style={{ padding: "4px 0 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span className={styles.sub}>分支后各自推进 tick，再刷新对比看 A/B 差异</span>
+                  <button className="btn sm ghost" data-testid="sandbox-compare-refresh-btn" disabled={!branchId} onClick={onRefreshCompare}>
+                    刷新对比
+                  </button>
+                </div>
+                <SimComparePanel a={compare.a} b={compare.b} heatThreshold={heatThreshold} />
+              </div>
+            </CollapsibleCard>
+          )}
+
+          {/* WO-SANDBOX-RUN-HISTORY（G-VIS-1）：历史推演记录（后端 sim_session 真留痕）·§5：默认折叠。
+              refreshKey 随 sessionId/curTick 变 → 推进/分支后列表自动重取（C4 事件失效·R17 同页留痕）。 */}
+          <CollapsibleCard testId="sandbox-run-history-card" title="历史推演记录" summary={`会话轨迹 · tick ${curTick}`} defaultOpen={false}>
+            <SandboxRunHistory refreshKey={`${sessionId ?? ""}:${curTick}`} />
+          </CollapsibleCard>
+        </div>
       </div>
 
       {/* R13 溯源悬浮（点拓扑节点触发）：沿本体链路 数据源→原始表→建模派生→对象，不裸渲染。点空白关闭。 */}

@@ -2244,7 +2244,7 @@
     {
       "id": "SANDBOX-LAYOUT-REWORK",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "THEME-CONTRAST-FIX"

@@ -745,3 +745,81 @@
   color: #0c1118;
   font-weight: 700;
 }
+
+/* ── WO-SANDBOX-LAYOUT-REWORK（PRD-frontend-visual-redesign §5·治拥挤 Option A）──────────────
+   整页栅格：主 7fr（hero 主视觉焦点）/ 右 5fr（折叠卡片栈·渐进披露）·gap 20px·大留白。
+   一屏密度从「12 面板平铺等权」降为「1 主体 DAG + 右栏折叠卡栈」。窄屏纵向堆叠不破功能。 */
+.heroGrid {
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: 20px;
+  align-items: start;
+  margin-top: 12px;
+}
+@media (max-width: 1080px) {
+  .heroGrid {
+    grid-template-columns: 1fr;
+  }
+}
+/* 左主区（7fr）：顶栏命令条 → 主视觉 DAG（占主体）→ AI 指挥台底栏，纵向 gap 16px。 */
+.heroMain {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+/* 右栏（5fr）：折叠卡片栈·默认仅就绪卡展开·其余折叠（渐进披露·降密度核心）。 */
+.heroSide {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+/* 顶栏全局态：主指标视觉权重最高（30px/700）·次要 stateVar KPI 小号次级排布。 */
+.heroState {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.kpiHero {
+  background: var(--panel);
+  border: 1px solid var(--border, var(--line));
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
+}
+.kpiHero span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.kpiHero b {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.heroState .threeKpiRow {
+  flex: 1;
+  margin-bottom: 0;
+}
+/* 主视觉 DAG：占左主区主体·min-height 420px·参考图 3D-render 地位。 */
+.heroDag {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+.heroDag > :global(.pm-dag),
+.heroDag > div {
+  flex: 1;
+}
+
+/* 沙盘页根容器（block 全宽·让 heroGrid 占满内容区·非 .head 的 flex-row 挤压）。 */
+.page {
+  display: block;
+  width: 100%;
+}

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §7` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `f7c55a48ac66f635`。
+> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `d36de05264bd9cfd`。
 
 ---
 
@@ -44,6 +44,7 @@
   - **`sim-readiness:check`（增量 2 已建·并入 `pnpm gates`）**——就绪认证 = 投影既有 closure（RL3 单源）：静态扫 `deriveCertification` 不 import closure 以外校验器 + L4 三子项全真才 CERTIFIED + `canEnterSimulation` 含 trialTick.passed∧L4∧gatePassed + 缺件入 `gaps[]` 诚实 + 全局/局部同一函数 · `scripts/check-sim-readiness.mjs`，运行时见 `apps/datacore/test/sim-certification.test.ts`（详 `docs/SPEC-sandbox-readiness-certification.md §9`）。
   - **`ui-smoke:sandbox`（增量 4 已建·门B 真后端真浏览器，聚合外独立门同 `ui-smoke`）**——起真 datacore+vite + chromium，开通 sim.sandbox → 导航 `/v/sim-sandbox` → init 会话 → 点「推进 tick」→ 断言拓扑节点数=view-config nodeTypes + curTick 推进 + 就绪面板 L0-L4/诚实 gaps；无 chromium→SKIP(exit0) · `scripts/ui-smoke-sandbox.mjs`，`pnpm ui-smoke:sandbox`。
   - `decision-page:check`（R17 配套·增量 4 建）——决策页一页看全 数据→推演→溯源→动作→AI。
+  - **沙盘一页布局重构（WO-SANDBOX-LAYOUT-REWORK·Option A·治拥挤·遵 R-PRD `docs/PRD-frontend-visual-redesign.md §5`·纯前端视觉重组零链路/事件/对象改动）**：`SandboxView` 从「~12 面板等权平铺贴挤」重构为 **主体 + 渐进披露卡片栈**——整页栅格 `heroGrid` 主 7fr（hero 焦点：全局态大数 30px/700 顶栏 + 命令条[推进/存档/分支/采纳+tick heat] + 主视觉 DAG `min-height 420px` + AI 指挥台底栏）/ 右 5fr（`CollapsibleCard` 折叠卡栈：就绪认证默认展开·双雷达/运行态·风险TOP3/Schema派生/运行台Console/历史推演记录默认折叠·分支对比出现即展开）。**不删任何功能**——次要面板收进折叠卡（折叠态 `hidden` 保留 DOM·点标题真展开·所有既有入口仍可达）。密度从「12 面板」降为「1 主体 DAG + 1 展开卡 + 5 折叠标题」·信息层级清晰·留白充足（卡内 16–20 · 卡间 16 · 主右栏间 20）。牙齿 `apps/frontend-shell/test/sandbox-layout.test.tsx`（栅格 7fr/5fr + DAG 落左主区 + 渐进披露默认态 1 展开 5 折叠 + 折叠交互真展开 + 功能入口全在 DOM）· 真浏览器像素取证 `docs/evidence/SANDBOX-LAYOUT-REWORK-fde.md`（C1 密度下降/C2 功能逐项点验/C3 层级+折叠展开）。复用 f88189c 已落 CollapsibleCard/DecisionSummaryCard/WhatIfCalculatorCard（决策卡视觉规范 §2/§3·R17 锚点），不重做。
   - **单源门复用现存 `boundary-singlesource:check`**（沙盘 BASE/SEG/系数单一来源），**不新造 `ia-single-source:check`**（GROUNDING-MAP §A.2 裁决：重叠即违 RL3/RL10）。
   - **零业务常数**：沙盘 `sim/` 目录纳入 `debattery:check` 扫描（出现行业实体名即红，两行业验收 R14）。
 - **优化融合门（G-12 · 增量 0 登记 · 许可证/不训练）**：
