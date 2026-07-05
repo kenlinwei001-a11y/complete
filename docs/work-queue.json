@@ -3507,11 +3507,12 @@
       }
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
-        "todo": "2026-07-05T09:18:30.470Z"
+        "todo": "2026-07-05T09:18:30.470Z",
+        "wip": "2026-07-05T09:31:54.686Z"
       },
       "id": "GRAPH-PANORAMA-ONLY",
       "priority": "P1",
@@ -3551,10 +3552,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "NOTE",
+      "role": "dev",
+      "cmd": "WIP",
       "id": "GRAPH-PANORAMA-ONLY",
-      "at": "2026-07-05T09:19:11.652Z"
+      "at": "2026-07-05T09:31:54.686Z"
     }
   }
 }
