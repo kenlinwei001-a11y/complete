@@ -2244,7 +2244,7 @@
     {
       "id": "SANDBOX-LAYOUT-REWORK",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "THEME-CONTRAST-FIX"
@@ -2277,6 +2277,9 @@
             "assert": "四包build+test退0·gates绿·ui-smoke:sandbox不回退·SANDBOX-RUN-HISTORY面板并入新布局"
           }
         ]
+      },
+      "at": {
+        "done": "2026-07-05T04:00:06.291Z"
       }
     },
     {
@@ -3300,6 +3303,27 @@
             "id": "C1",
             "type": "test",
             "assert": "S12(yield_diag)类改写问句走AGENT_FIRST(trace path=AGENT·agentRun落库);门: 场景vs意图mode冲突→红。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "SANDBOX-DAG-NODE-LAYOUT",
+      "priority": "P3",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/PRD-frontend-visual-redesign.md",
+      "title": "沙盘本体拓扑DAG节点排布(35节点标签单行互叠不可读·非布局重构范畴的渲染器级疵)",
+      "note": "SANDBOX-LAYOUT-REWORK复验时新见: 页面布局已达标·但主视觉DAG内部35对象节点排成单行·标签互叠成墨条(截图/tmp/sandbox-rework.png)。渲染器级: 分层/网格布局或标签避让(参geo-map贪心避让先例)+超密时聚合/缩略。",
+      "acceptance": {
+        "goal": "35节点拓扑可读(标签不叠·或密度自适应聚合)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "demo沙盘DAG节点标签两两不叠(真不变量断言·同geo-map齿检口径)或>N节点自动聚合视图。"
           }
         ]
       }
