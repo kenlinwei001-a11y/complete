@@ -133,8 +133,11 @@ describe("C7 · 接地答复实质：确定性求解器数字 + 规则裁决 + �
     const textBlock = answer?.blocks.find((b) => b.type === "text");
     expect(textBlock?.type).toBe("text");
     if (textBlock?.type === "text") {
-      expect(textBlock.markdown).toContain("⟦ref:0⟧");
-      expect(textBlock.markdown).toContain("⟦ref:1⟧");
+      // PROV-REF-INTEGRITY：模型标注的 ⟦ref:0⟧/⟦ref:1⟧（provenance 下标）在 acceptFinalAnswer
+      // 解析成真实 provId——前端悬停按 id 查条目（数字索引=死角标）。
+      expect(textBlock.markdown).toContain(`⟦ref:${answer?.provenance[0]?.id}⟧`);
+      expect(textBlock.markdown).toContain(`⟦ref:${answer?.provenance[1]?.id}⟧`);
+      expect(textBlock.markdown).not.toMatch(/⟦ref:\d+⟧/u); // 齿：数字索引残留=红
       // 不是通用探索兜底话术
       expect(textBlock.markdown).not.toContain("探索模式");
     }

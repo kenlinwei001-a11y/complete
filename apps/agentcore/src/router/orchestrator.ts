@@ -38,6 +38,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { reconcileUniversalAgent, SEED_UNIVERSAL_AGENT_ID } from "../agents/universal.js";
 import { pseudoEmbed } from "../util/embedding.js";
+import { stripRefMarks } from "../util/prov-refs.js";
 import { fillSlots, normalizeExtractedSlots, toClarificationSlot, type SlotSource, type SlotSubstitution } from "./slots.js";
 import { appendDataGapBlock } from "../scenario-grounding.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
@@ -1131,7 +1132,9 @@ export class Orchestrator {
       const toolPath = `${tools.join(" → ") || "—"}${solvers.length ? ` ⟨求解器:${solvers.join("/")}⟩` : ""}`;
       const approach = `工具:${tools.join("/") || "—"}${solvers.length ? ` · 求解器:${solvers.join("/")}` : ""} · ${calls.length} 次调用`;
       const firstText = task.answer.blocks.find((b) => b.type === "text");
-      const outcome = firstText && firstText.type === "text" ? firstText.markdown.slice(0, 240) : "(无文本结论)";
+      // PROV-REF-INTEGRITY：⟦ref:provId⟧ 是答案实例级标识（每次运行新铸 ULID）——经验条目里既悬停
+      // 不可解析、又破坏 R6 同 trace 字节一致蒸馏 → 摘除后再截断。
+      const outcome = firstText && firstText.type === "text" ? stripRefMarks(firstText.markdown).slice(0, 240) : "(无文本结论)";
       const scene = String((task.context as { view?: string } | undefined)?.view ?? "agent");
       const intentKey = (task.matchedIntent as { intentKey?: string } | undefined)?.intentKey ?? scene;
       const date = (task.completedAt ?? task.createdAt ?? new Date().toISOString()).slice(0, 10);

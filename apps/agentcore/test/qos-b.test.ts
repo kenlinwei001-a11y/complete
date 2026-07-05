@@ -44,7 +44,11 @@ describe("Path B (QOS-PRD §12 B1–B5)", () => {
     expect(task.answer?.trustLevel).toBe("AGENT_EXPLORATORY");
     expect(task.answer?.unverifiedNumerics).toBe(false);
     const textBlock = task.answer?.blocks[0];
-    expect(textBlock?.type === "text" && textBlock.markdown.includes("⟦ref:0⟧")).toBe(true);
+    // PROV-REF-INTEGRITY：模型产出的 ⟦ref:0⟧（provenance 下标）在答案组装口解析成真实 provId——
+    // 前端悬停按 id 查条目，数字索引=死角标恒『加载中…』。
+    const prov0 = task.answer?.provenance[0];
+    expect(textBlock?.type === "text" && textBlock.markdown.includes(`⟦ref:${prov0?.id}⟧`)).toBe(true);
+    expect(textBlock?.type === "text" && /⟦ref:\d+⟧/u.test(textBlock.markdown)).toBe(false); // 齿：数字索引残留=红
     expect(task.answer?.provenance.length).toBe(1);
     expect(task.answer?.provenance[0]?.toolCallId).toMatch(/^tc_/);
     expect(task.answer?.provenance[0]?.toolName).toBe("query_objects");

@@ -197,6 +197,9 @@ export function seedIntentsAndPlans(
                 fromStep: "s1",
               },
               {
+                // ⟦ref:0⟧ 数字索引=作者位约定「本答案 provenance 数组第 0 条」（此处=上表 fromStep:s1 的条目）。
+                // 渲染期由 renderAnswer→resolveNumericRefs 统一解析成真实 provId（PROV-REF-INTEGRITY·簇⑩：
+                // 前端只按 id 查悬停内容，数字索引直出即 [0] 死角标恒『加载中…』）。
                 type: "text",
                 markdown: "受影响订单共 {{steps.s1.output.data.count}} 张，明细见上表 ⟦ref:0⟧。",
               },
@@ -243,6 +246,8 @@ export function seedIntentsAndPlans(
               { type: "kpi", label: "P90 产能", value: "{{steps.s2.output.data.p90}}", unit: "GWh", fromStep: "s2" },
               { type: "kpi", label: "缺口比例", value: "{{steps.s2.output.data.gapPct}}", unit: "%", fromStep: "s2" },
               {
+                // ⟦ref:0..2⟧ 数字索引=provenance 下标（上方三 KPI 各一条）——渲染期 resolveNumericRefs
+                // 解析成真实 provId（S01 [0][0][0] 三连死角标的根·PROV-REF-INTEGRITY）。
                 type: "text",
                 markdown:
                   "主要瓶颈为{{steps.s2.output.data.mainBottleneck}}，P50/P90 与缺口见上方指标 ⟦ref:0⟧⟦ref:1⟧⟦ref:2⟧。",

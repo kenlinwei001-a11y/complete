@@ -7,6 +7,7 @@ import { enterNesting, NestingError, type NestingCtx } from "../runtime.js";
 import type { GuardedToolExecutor } from "../tools/executor.js";
 import { enrichProvenance, type ProvenanceEnrichment } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
+import { resolveNumericRefs } from "../util/prov-refs.js";
 import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "../util/template.js";
 import { deriveConclusion, humanizeField, isInternalIdValue, META_FIELDS, metaLabel } from "./solver-field-labels.js";
 
@@ -216,7 +217,8 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
               type: "text",
               markdown: `本次请求被业务规则拦截（${blocking.map((v) => v.ruleId).join("、")}），详见上方违规说明 ⟦ref:0⟧。`,
             });
-            return completed({ trustLevel, blocks, provenance, unverifiedNumerics: false });
+            // PROV-REF-INTEGRITY（簇⑩）：数字索引 ⟦ref:n⟧ → provenance[n].id（前端只按 id 查悬停内容）。
+            return completed({ trustLevel, blocks: resolveNumericRefs(blocks, provenance), provenance, unverifiedNumerics: false });
           }
         }
 
@@ -298,6 +300,9 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
           stepAudits,
           trustLevel,
           deps.metrics,
+          // 原始（未解析）模板：显式 kpi/table 块的 value/rows 若是纯 {{steps.<s>.output.<path>}} 绑定，
+          // 从中推导字段级 outputPath（PROV-REF-INTEGRITY ②——值从哪个字段来，悬停就指哪个字段）。
+          step.params.blocks as Record<string, unknown>[] | undefined,
         );
         await emitDone("OK");
         return completed(answer);
@@ -314,33 +319,54 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   });
 }
 
+/**
+ * 显式 kpi/table 模板块的字段级路径推导（PROV-REF-INTEGRITY ②）：value/rows 为**纯**模板绑定
+ * `{{steps.<s>.output.<path>}}` 时，值的真实出处就是该字段 → outputPath=`$.<path>`（如 `$.data.p50`）。
+ * 混排文案（如 "共 {{…}} 张"）不可归一字段 → 回落块级 `$.data`。
+ */
+const TPL_FIELD_RE = /^\{\{steps\.[\w-]+\.output\.([\w.[\]-]+)\}\}$/u;
+function fieldPathOfBinding(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const m = TPL_FIELD_RE.exec(raw.trim());
+  return m ? `$.${m[1]}` : undefined;
+}
+
 /** render_answer: AnswerBlockTemplate → AnswerBlock[], each fromStep → generated ProvenanceRef. */
 function renderAnswer(
   blockTemplates: Record<string, unknown>[],
   stepAudits: Record<string, StepAudit>,
   trustLevel: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY",
   metrics: Metrics,
+  /** 未解析的原始模板（与 blockTemplates 同序）——用于推导显式块的字段级 outputPath。 */
+  rawTemplates?: Record<string, unknown>[],
 ): Answer {
   const provenance: ProvenanceRef[] = [];
   const blocks: AnswerBlock[] = [];
 
-  for (const tpl of blockTemplates) {
+  for (const [ti, tpl] of blockTemplates.entries()) {
     const { fromStep, ...rest } = tpl as { fromStep?: string } & Record<string, unknown>;
-    let provId: string | undefined;
-    if (fromStep) {
-      const audit = stepAudits[fromStep];
-      provId = newId("prov");
-      // fromStep on a ts-agg / kb step picks the right source + meta (A8.3/S4.1)
+    const type = rest.type as string;
+    const audit = fromStep ? stepAudits[fromStep] : undefined;
+    // 铸一条真实 provenance 条目 → 返回其 provId。fromStep on a ts-agg / kb step picks the right
+    // source + meta (A8.3/S4.1)。solver_summary 不在此处铸块级条目，而是把 minter 传给投影逐字段铸
+    // 字段级条目（PROV-REF-INTEGRITY ②·簇⑥：全 KPI 共用单一 provId + 恒 $.data → 悬停同一泛化 blob）。
+    const mintProv = (outputPath: string): string => {
+      const id = newId("prov");
       provenance.push({
-        id: provId,
+        id,
         toolCallId: audit?.toolCallId ?? "unknown",
         toolName: audit?.toolName ?? "unknown",
-        outputPath: "$.data",
+        outputPath,
         ...(audit?.snapshotVersion ? { snapshotVersion: audit.snapshotVersion } : {}),
         ...(audit?.enrichment ?? { source: "TOOL_RESULT" }),
       });
+      return id;
+    };
+    let provId: string | undefined;
+    if (fromStep && type !== "solver_summary") {
+      const raw = rawTemplates?.[ti];
+      provId = mintProv(fieldPathOfBinding(type === "kpi" ? raw?.value : type === "table" ? raw?.rows : undefined) ?? "$.data");
     }
-    const type = rest.type as string;
     if (type === "text") {
       blocks.push({ type: "text", markdown: String(rest.markdown ?? "") });
     } else if (type === "table") {
@@ -379,17 +405,20 @@ function renderAnswer(
       // 通用投影：把求解器真实输出（{{steps.<s>.output}} 经模板解析注入 `output`）投成
       // KPI/表/规则依据块——不写死任何业务数字/文案，前端见的即求解器算出的真值（闭 G-1）。
       // solverKey（来自 fromStep 审计）透给投影做同名字段消歧人话化（WO-ANSWER-PROJECTION-HUMANIZE）。
-      const srcSolver = fromStep ? stepAudits[fromStep]?.solverKey : undefined;
-      blocks.push(...summarizeSolverOutput(rest.output, provId ?? newId("prov"), srcSolver));
+      // PROV-REF-INTEGRITY ②：传 minter → 逐 KPI/表/叙事铸独立 provId + 字段级 outputPath（$.data.<field>）。
+      blocks.push(...summarizeSolverOutput(rest.output, mintProv, audit?.solverKey));
     }
   }
 
-  const unverified = scanBlocks(blocks);
+  // PROV-REF-INTEGRITY ①（簇⑩死角标）：模板作者位数字索引 ⟦ref:n⟧ → 本答案 provenance[n].id。
+  // 前端 provIndex/悬停浮层只按 id 查找——数字索引直出即 [0] 死角标恒『加载中…』。
+  const resolved = resolveNumericRefs(blocks, provenance);
+  const unverified = scanBlocks(resolved);
   if (unverified) {
     // Path A出现该情况属实现 bug —— 仍只打标，不阻断（§5.5）
     metrics.unverifiedNumerics.inc({ path: trustLevel === "VERIFIED_WORKFLOW" ? "WORKFLOW" : "AGENT" });
   }
-  return { trustLevel, blocks, provenance, unverifiedNumerics: unverified };
+  return { trustLevel, blocks: resolved, provenance, unverifiedNumerics: unverified };
 }
 
 /** 确定性数值格式（R6）：整数原样，小数定 4 位去尾零。 */
@@ -453,11 +482,13 @@ function kpiBlock(field: string, value: string, provId: string, solverKey?: stri
 /** 长字符串（整句 note/explanation）不当 KPI 值直出——转叙事段。 */
 const LONG_STRING = 40;
 /**
- * 叙事段（summary/结论）里的数字**全部来自求解器工具真值**（该 solver_summary 块携 provId）——非编造。
- * §5.5 数字溯源扫描按 ⟦ref⟧ 标跳过：给每个含数字句段补溯源标（与本函数 ruleRefs 行同款约定），
- * 使 Path A 叙事数字不被误判"未溯源"。ref 索引对齐由 PROV-REF-INTEGRITY 收口，此处沿用既有 index 0。
+ * 叙事段（summary/结论）里的数字**全部来自求解器工具真值**——非编造。
+ * §5.5 数字溯源扫描按 ⟦ref⟧ 标跳过：给每个含数字句段补溯源标，使 Path A 叙事数字不被误判"未溯源"。
+ * PROV-REF-INTEGRITY 收口（承接 ANSWER-PROJECTION 移交）：直接嵌**真实 provId**（该叙事对应字段的
+ * 溯源条目），不再用数字索引 0——前端悬停按 id 查条目，数字索引即死角标。
  */
-function verifiedNarrative(md: string): string {
+function verifiedNarrative(md: string, provId: string): string {
+  const mark = `⟦ref:${provId}⟧`;
   return md
     .split(/(?<=[。．！？!?；;\n])/u)
     .map((seg) => {
@@ -465,10 +496,13 @@ function verifiedNarrative(md: string): string {
       if (!trimmed || trimmed.includes("⟦ref:")) return seg;
       const tail = seg.slice(trimmed.length);
       const term = /[。．！？!?；;]$/u.test(trimmed);
-      return term ? `${trimmed.slice(0, -1)} ⟦ref:0⟧${trimmed.slice(-1)}${tail}` : `${trimmed} ⟦ref:0⟧${tail}`;
+      return term ? `${trimmed.slice(0, -1)} ${mark}${trimmed.slice(-1)}${tail}` : `${trimmed} ${mark}${tail}`;
     })
     .join("");
 }
+
+/** 字段级溯源铸造器：给定 outputPath（如 `$.data.p50`）→ 登记 provenance 条目并返回其 provId。 */
+export type ProvMint = (outputPath: string) => string;
 
 /**
  * 通用求解器输出投影（PRD-scenario-ontogenesis P2 / 闭 G-1·治 G-3 答案投影人话化 WO-ANSWER-PROJECTION-HUMANIZE）：
@@ -479,19 +513,23 @@ function verifiedNarrative(md: string): string {
  *  ③ 判断类问句必出一句**结论叙事**（`deriveConclusion` 确定性模板·只引输出已有判定/可行/推荐字段，不编造）；
  *  ④ 内部状态词（infeasible）人话化 + 内部对象 id 不当 KPI 值直出。
  * 标量→KPI、对象→展开一层 KPI、首个对象数组→表、ruleRefs→规则依据文本、summary→叙事段。确定性按 Object.keys 顺序。
+ * 字段级溯源（PROV-REF-INTEGRITY ②·簇⑥）：`prov` 传 minter 时逐 KPI/表/叙事铸**独立 provenance 条目**，
+ * outputPath=`$.data.<field>` 字段级路径（悬停出该字段真路径而非恒 $.data 泛化 blob；前端 kpi-{provId}
+ * testid 随之唯一）。传字符串=全块共用单 provId（仅存量单测便捷形态，运行链路一律走 minter）。
  */
-export function summarizeSolverOutput(payload: unknown, provId: string, solverKey?: string): AnswerBlock[] {
-  const data =
-    payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)
-      ? (payload as Record<string, unknown>).data
-      : payload;
+export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint, solverKey?: string): AnswerBlock[] {
+  const hasData = payload !== null && typeof payload === "object" && "data" in (payload as Record<string, unknown>);
+  const data = hasData ? (payload as Record<string, unknown>).data : payload;
   if (!data || typeof data !== "object") return [{ type: "text", markdown: "求解器无结构化输出。" }];
+  const base = hasData ? "$.data" : "$";
+  const mint: ProvMint = typeof prov === "function" ? prov : () => prov;
   const record = data as Record<string, unknown>;
-  const kpis: AnswerBlock[] = [];
+  // KPI 延迟物化（path 收集 → 输出截断后才 mint）：不给被 slice 截掉的块铸孤儿 provenance 条目。
+  const kpis: { path: string; value: string; field?: string; label?: string; unit?: string }[] = [];
   let table: AnswerBlock | null = null;
   const ruleRefs: string[] = [];
   const moreArrays: string[] = [];
-  const narratives: string[] = []; // summary / 长句 → 叙事段（非 KPI）
+  const narratives: { text: string; path: string }[] = []; // summary / 长句 → 叙事段（非 KPI）
   const metaNotes: string[] = []; // ② 元字段收拢脚注（dataMode/ruleSetVersion/confidence.*）
   // BP-7 空结果显性化（diagnostic ledger D7，闭 G-1 沉默空数组面）：记录值为**空数组**的字段
   // （combo/rows/over… 全空）与已产出的**有意义标量数**，据此区分"真无解"vs"数据未接齐"，不静默吞空数组。
@@ -516,44 +554,48 @@ export function summarizeSolverOutput(payload: unknown, provId: string, solverKe
     if (k === "snapshotVersion") continue;
     if (META_FIELDS.has(k)) { pushMeta(k, v); continue; } // ② 元字段不进 KPI 区
     if (k === "ruleRefs" && Array.isArray(v)) { ruleRefs.push(...v.map(String)); continue; }
-    if (k === "summary" && typeof v === "string" && v.trim()) { narratives.push(v.trim()); scalarCount++; continue; }
-    if (typeof v === "number") { kpis.push(kpiBlock(k, fmtNum(v), provId, solverKey)); scalarCount++; }
-    else if (typeof v === "boolean") { kpis.push(kpiBlock(k, v ? "是" : "否", provId, solverKey)); scalarCount++; }
+    if (k === "summary" && typeof v === "string" && v.trim()) { narratives.push({ text: v.trim(), path: `${base}.${k}` }); scalarCount++; continue; }
+    if (typeof v === "number") { kpis.push({ path: `${base}.${k}`, field: k, value: fmtNum(v) }); scalarCount++; }
+    else if (typeof v === "boolean") { kpis.push({ path: `${base}.${k}`, field: k, value: v ? "是" : "否" }); scalarCount++; }
     else if (typeof v === "string") {
       if (!v || isInternalIdValue(v)) continue; // ④ 空串/内部对象 id 不当 KPI 值直出
-      if (v.length > LONG_STRING) { narratives.push(v.trim()); scalarCount++; }
-      else { kpis.push(kpiBlock(k, v, provId, solverKey)); scalarCount++; }
+      if (v.length > LONG_STRING) { narratives.push({ text: v.trim(), path: `${base}.${k}` }); scalarCount++; }
+      else { kpis.push({ path: `${base}.${k}`, field: k, value: v }); scalarCount++; }
     }
     else if (Array.isArray(v) && v.length === 0) { emptyArrayKeys.push(k); }
     else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === "object") {
       if (!table) {
         const cols = Object.keys(v[0] as Record<string, unknown>);
-        table = { type: "table", columns: cols, rows: v.slice(0, 12).map((r) => cols.map((c) => cellOf((r as Record<string, unknown>)[c]))), provId };
+        table = { type: "table", columns: cols, rows: v.slice(0, 12).map((r) => cols.map((c) => cellOf((r as Record<string, unknown>)[c]))), provId: mint(`${base}.${k}`) };
       } else moreArrays.push(`${humanizeField(k, solverKey).label}（${v.length} 项）`);
     } else if (Array.isArray(v) && v.length > 0) {
-      kpis.push(kpiBlock(k, v.map(String).slice(0, 8).join("、"), provId, solverKey));
+      kpis.push({ path: `${base}.${k}`, field: k, value: v.map(String).slice(0, 8).join("、") });
     } else if (v && typeof v === "object") {
       for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
         if (META_FIELDS.has(k2)) { pushMeta(k2, v2); continue; }
         if (isInternalIdValue(v2)) continue; // ④ base.id=obj_ 内部 id 不当值
         const child = humanizeField(k2, solverKey);
         const sub = `${humanizeField(k, solverKey).label}·${child.label}`;
-        if (typeof v2 === "number") { kpis.push({ type: "kpi", label: sub, value: fmtNum(v2), provId, ...(child.unit ? { unit: child.unit } : {}) }); scalarCount++; }
-        else if (typeof v2 === "string" && v2 && v2.length <= LONG_STRING) { kpis.push({ type: "kpi", label: sub, value: v2, provId }); scalarCount++; }
+        if (typeof v2 === "number") { kpis.push({ path: `${base}.${k}.${k2}`, label: sub, value: fmtNum(v2), ...(child.unit ? { unit: child.unit } : {}) }); scalarCount++; }
+        else if (typeof v2 === "string" && v2 && v2.length <= LONG_STRING) { kpis.push({ path: `${base}.${k}.${k2}`, label: sub, value: v2 }); scalarCount++; }
       }
     }
   }
 
   // ③ 判断类问句结论叙事（确定性模板·只引输出真值·数字红线不编造）——置于叙事段首。
+  // 结论由多字段推导 → 溯源锚整个输出（base 路径）；summary/长句叙事锚各自字段路径。
   const conclusion = deriveConclusion(record);
   const out: AnswerBlock[] = [];
-  if (conclusion) out.push({ type: "text", markdown: verifiedNarrative(conclusion) });
-  for (const n of narratives.slice(0, 2)) out.push({ type: "text", markdown: verifiedNarrative(n) });
-  out.push(...kpis.slice(0, 8));
+  if (conclusion) out.push({ type: "text", markdown: verifiedNarrative(conclusion, mint(base)) });
+  for (const n of narratives.slice(0, 2)) out.push({ type: "text", markdown: verifiedNarrative(n.text, mint(n.path)) });
+  for (const p of kpis.slice(0, 8)) {
+    if (p.label !== undefined) out.push({ type: "kpi", label: p.label, value: p.value, provId: mint(p.path), ...(p.unit ? { unit: p.unit } : {}) });
+    else out.push(kpiBlock(p.field ?? "", p.value, mint(p.path), solverKey));
+  }
   if (table) out.push(table);
-  if (ruleRefs.length > 0) out.push({ type: "text", markdown: `依据规则：${ruleRefs.join("、")} ⟦ref:0⟧` });
+  if (ruleRefs.length > 0) out.push({ type: "text", markdown: `依据规则：${ruleRefs.join("、")} ⟦ref:${mint(`${base}.ruleRefs`)}⟧` });
   // moreArrays 计数（N 项）源自求解器真实数组长度（tool 真值）→ 补溯源标，不被 §5.5 误判未溯源。
-  if (moreArrays.length > 0) out.push({ type: "text", markdown: verifiedNarrative(`另有明细：${moreArrays.join("、")}（详见步骤溯源）。`) });
+  if (moreArrays.length > 0) out.push({ type: "text", markdown: verifiedNarrative(`另有明细：${moreArrays.join("、")}（详见步骤溯源）。`, mint(base)) });
   // BP-7：求解器产出空数组字段（combo/rows/over… 全空）→ 显性化"为何为空 + 下一步建议"，
   // 区分两类（不静默吞空数组）：
   //   ·【真无解】关键标量在（求解器跑了且有上下文，如 residualGap/quarter），仅结果数组为空

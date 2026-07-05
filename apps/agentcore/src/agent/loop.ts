@@ -17,6 +17,7 @@ import type { GuardedToolExecutor, ToolBinding } from "../tools/executor.js";
 import { builtinTool } from "../tools/registry.js";
 import { enrichProvenance } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
+import { resolveNumericRefs } from "../util/prov-refs.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import {
   CONTEXT_FULL_REMINDER,
@@ -282,7 +283,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
       restated ||
       (reasoning ? `（探索推理·未结构化收尾，仅供参考）\n\n${reasoning}` : "") ||
       "（探索模式未能产出回答）";
-    const blocks: AnswerBlock[] = [{ type: "text", markdown }];
+    // 降级路径 provenance 恒空 → 文本里的 ⟦ref:N⟧ 数字索引无对应条目，诚实摘除（数字转「未溯源」示警，
+    // 不渲染点不出内容的死角标）。
+    const blocks: AnswerBlock[] = resolveNumericRefs([{ type: "text", markdown }], []);
     const unverified = scanBlocks(blocks);
     if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
     if (outcome === "BUDGET_EXHAUSTED") opts.metrics.agentBudgetExhausted.inc();
@@ -718,7 +721,10 @@ async function acceptFinalAnswer(
       ...enriched,
     });
   }
-  const blocks: AnswerBlock[] = parsed.data.blocks;
+  // PROV-REF-INTEGRITY（簇⑩）：模型按 prompt 约定用 provenance 下标标注 ⟦ref:N⟧ ——出答案前统一解析成
+  // 真实 provId（前端悬停按 id 查条目，数字索引=永 miss 死角标『加载中…』）；越界索引诚实摘除，
+  // 该句数字随之被 §5.5 打「未溯源」琥珀条（不留假角标）。解析先于扫描。
+  const blocks: AnswerBlock[] = resolveNumericRefs(parsed.data.blocks, provenance);
   const unverified = scanBlocks(blocks);
   if (unverified) opts.metrics.unverifiedNumerics.inc({ path: "AGENT" });
   return {
