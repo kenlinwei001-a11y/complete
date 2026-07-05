@@ -8,6 +8,7 @@ import type { GuardedToolExecutor } from "../tools/executor.js";
 import { enrichProvenance, type ProvenanceEnrichment } from "../tools/provenance.js";
 import { scanBlocks } from "../util/numerics.js";
 import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "../util/template.js";
+import { deriveConclusion, humanizeField, isInternalIdValue, META_FIELDS, metaLabel } from "./solver-field-labels.js";
 
 /**
  * Additive step types (A8.4 query_timeseries_agg / S4.1 search_knowledge).
@@ -72,6 +73,8 @@ interface StepAudit {
   snapshotVersion?: string;
   /** A8.3/S4.1: source + tsAgg/kb meta derived from the step output. */
   enrichment?: ProvenanceEnrichment;
+  /** invoke_solver 的求解器键——供 solver_summary 投影做同名字段消歧人话化（WO-ANSWER-PROJECTION-HUMANIZE）。 */
+  solverKey?: string;
 }
 
 /** Path A workflow executor (QOS-PRD §5.3) + platform §8.2 invoke_agent / invoke_mcp_tool steps. */
@@ -171,6 +174,9 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
               ? ((r.payload as Record<string, unknown>).snapshotVersion as string | undefined)
               : undefined,
           enrichment: enrichProvenance(step.type, r.payload),
+          ...(step.type === "invoke_solver" && typeof resolvedParams.solverKey === "string"
+            ? { solverKey: resolvedParams.solverKey }
+            : {}),
         };
         await emitDone("OK");
 
@@ -372,7 +378,9 @@ function renderAnswer(
     } else if (type === "solver_summary") {
       // 通用投影：把求解器真实输出（{{steps.<s>.output}} 经模板解析注入 `output`）投成
       // KPI/表/规则依据块——不写死任何业务数字/文案，前端见的即求解器算出的真值（闭 G-1）。
-      blocks.push(...summarizeSolverOutput(rest.output, provId ?? newId("prov")));
+      // solverKey（来自 fromStep 审计）透给投影做同名字段消歧人话化（WO-ANSWER-PROJECTION-HUMANIZE）。
+      const srcSolver = fromStep ? stepAudits[fromStep]?.solverKey : undefined;
+      blocks.push(...summarizeSolverOutput(rest.output, provId ?? newId("prov"), srcSolver));
     }
   }
 
@@ -396,50 +404,115 @@ function cellOf(v: unknown): string | number | null {
   return JSON.stringify(v);
 }
 
+/** KPI label + 单位人话化（登记未命中 → camelCase 拆词回落）。 */
+function kpiBlock(field: string, value: string, provId: string, solverKey?: string): AnswerBlock {
+  const { label, unit } = humanizeField(field, solverKey);
+  return { type: "kpi", label, value, provId, ...(unit ? { unit } : {}) };
+}
+/** 长字符串（整句 note/explanation）不当 KPI 值直出——转叙事段。 */
+const LONG_STRING = 40;
 /**
- * 通用求解器输出投影（PRD-scenario-ontogenesis P2 / 闭 G-1）：把求解器**真实输出对象**投成答案块，
- * 不手写任何业务数字或文案——前端看到的每个数都是求解器算出的真值，字段名即来源（R13 派生投影）。
- * 标量→KPI、对象→展开一层 KPI、首个对象数组→表、ruleRefs→规则依据文本。确定性按 Object.keys 顺序。
+ * 叙事段（summary/结论）里的数字**全部来自求解器工具真值**（该 solver_summary 块携 provId）——非编造。
+ * §5.5 数字溯源扫描按 ⟦ref⟧ 标跳过：给每个含数字句段补溯源标（与本函数 ruleRefs 行同款约定），
+ * 使 Path A 叙事数字不被误判"未溯源"。ref 索引对齐由 PROV-REF-INTEGRITY 收口，此处沿用既有 index 0。
  */
-export function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] {
+function verifiedNarrative(md: string): string {
+  return md
+    .split(/(?<=[。．！？!?；;\n])/u)
+    .map((seg) => {
+      const trimmed = seg.replace(/\s+$/u, "");
+      if (!trimmed || trimmed.includes("⟦ref:")) return seg;
+      const tail = seg.slice(trimmed.length);
+      const term = /[。．！？!?；;]$/u.test(trimmed);
+      return term ? `${trimmed.slice(0, -1)} ⟦ref:0⟧${trimmed.slice(-1)}${tail}` : `${trimmed} ⟦ref:0⟧${tail}`;
+    })
+    .join("");
+}
+
+/**
+ * 通用求解器输出投影（PRD-scenario-ontogenesis P2 / 闭 G-1·治 G-3 答案投影人话化 WO-ANSWER-PROJECTION-HUMANIZE）：
+ * 把求解器**真实输出对象**投成答案块，不手写任何业务数字或文案——前端看到的每个数都是求解器算出的真值。
+ * 人话化四治（审计簇③⑤）：
+ *  ① 字段键→人话 label+单位（`humanizeField` 消费 `solver-field-labels` 登记·同名字段按 solverKey 消歧，R14 通用零业务常数）；
+ *  ② 元字段（dataMode/ruleSetVersion/confidence.*）**移出 KPI 区**→统一脚注条（它们不是业务指标）；
+ *  ③ 判断类问句必出一句**结论叙事**（`deriveConclusion` 确定性模板·只引输出已有判定/可行/推荐字段，不编造）；
+ *  ④ 内部状态词（infeasible）人话化 + 内部对象 id 不当 KPI 值直出。
+ * 标量→KPI、对象→展开一层 KPI、首个对象数组→表、ruleRefs→规则依据文本、summary→叙事段。确定性按 Object.keys 顺序。
+ */
+export function summarizeSolverOutput(payload: unknown, provId: string, solverKey?: string): AnswerBlock[] {
   const data =
     payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)
       ? (payload as Record<string, unknown>).data
       : payload;
   if (!data || typeof data !== "object") return [{ type: "text", markdown: "求解器无结构化输出。" }];
+  const record = data as Record<string, unknown>;
   const kpis: AnswerBlock[] = [];
   let table: AnswerBlock | null = null;
   const ruleRefs: string[] = [];
   const moreArrays: string[] = [];
+  const narratives: string[] = []; // summary / 长句 → 叙事段（非 KPI）
+  const metaNotes: string[] = []; // ② 元字段收拢脚注（dataMode/ruleSetVersion/confidence.*）
   // BP-7 空结果显性化（diagnostic ledger D7，闭 G-1 沉默空数组面）：记录值为**空数组**的字段
   // （combo/rows/over… 全空）与已产出的**有意义标量数**，据此区分"真无解"vs"数据未接齐"，不静默吞空数组。
   const emptyArrayKeys: string[] = [];
   let scalarCount = 0; // 有意义标量（number/boolean/非空 string/对象内标量），= 求解器确实算出了上下文
-  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+
+  const pushMeta = (field: string, v: unknown): void => {
+    if (v === null || v === undefined) return;
+    if (field === "confidence" && typeof v === "object") {
+      const c = v as Record<string, unknown>;
+      const bits: string[] = [];
+      if (typeof c.measurement === "string") bits.push(c.measurement);
+      if (typeof c.note === "string" && c.note.trim()) bits.push(c.note.trim());
+      if (bits.length) metaNotes.push(`${metaLabel(field)}：${bits.join("·")}`);
+      return;
+    }
+    const val = typeof v === "object" ? JSON.stringify(v) : String(v);
+    if (val.trim()) metaNotes.push(`${metaLabel(field)}：${val}`);
+  };
+
+  for (const [k, v] of Object.entries(record)) {
     if (k === "snapshotVersion") continue;
+    if (META_FIELDS.has(k)) { pushMeta(k, v); continue; } // ② 元字段不进 KPI 区
     if (k === "ruleRefs" && Array.isArray(v)) { ruleRefs.push(...v.map(String)); continue; }
-    if (typeof v === "number") { kpis.push({ type: "kpi", label: k, value: fmtNum(v), provId }); scalarCount++; }
-    else if (typeof v === "boolean") { kpis.push({ type: "kpi", label: k, value: v ? "是" : "否", provId }); scalarCount++; }
-    else if (typeof v === "string") { if (v) { kpis.push({ type: "kpi", label: k, value: v, provId }); scalarCount++; } }
+    if (k === "summary" && typeof v === "string" && v.trim()) { narratives.push(v.trim()); scalarCount++; continue; }
+    if (typeof v === "number") { kpis.push(kpiBlock(k, fmtNum(v), provId, solverKey)); scalarCount++; }
+    else if (typeof v === "boolean") { kpis.push(kpiBlock(k, v ? "是" : "否", provId, solverKey)); scalarCount++; }
+    else if (typeof v === "string") {
+      if (!v || isInternalIdValue(v)) continue; // ④ 空串/内部对象 id 不当 KPI 值直出
+      if (v.length > LONG_STRING) { narratives.push(v.trim()); scalarCount++; }
+      else { kpis.push(kpiBlock(k, v, provId, solverKey)); scalarCount++; }
+    }
     else if (Array.isArray(v) && v.length === 0) { emptyArrayKeys.push(k); }
     else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === "object") {
       if (!table) {
         const cols = Object.keys(v[0] as Record<string, unknown>);
         table = { type: "table", columns: cols, rows: v.slice(0, 12).map((r) => cols.map((c) => cellOf((r as Record<string, unknown>)[c]))), provId };
-      } else moreArrays.push(`${k}（${v.length} 项）`);
+      } else moreArrays.push(`${humanizeField(k, solverKey).label}（${v.length} 项）`);
     } else if (Array.isArray(v) && v.length > 0) {
-      kpis.push({ type: "kpi", label: k, value: v.map(String).slice(0, 8).join("、"), provId });
+      kpis.push(kpiBlock(k, v.map(String).slice(0, 8).join("、"), provId, solverKey));
     } else if (v && typeof v === "object") {
       for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
-        if (typeof v2 === "number") { kpis.push({ type: "kpi", label: `${k}.${k2}`, value: fmtNum(v2), provId }); scalarCount++; }
-        else if (typeof v2 === "string" && v2) { kpis.push({ type: "kpi", label: `${k}.${k2}`, value: v2, provId }); scalarCount++; }
+        if (META_FIELDS.has(k2)) { pushMeta(k2, v2); continue; }
+        if (isInternalIdValue(v2)) continue; // ④ base.id=obj_ 内部 id 不当值
+        const child = humanizeField(k2, solverKey);
+        const sub = `${humanizeField(k, solverKey).label}·${child.label}`;
+        if (typeof v2 === "number") { kpis.push({ type: "kpi", label: sub, value: fmtNum(v2), provId, ...(child.unit ? { unit: child.unit } : {}) }); scalarCount++; }
+        else if (typeof v2 === "string" && v2 && v2.length <= LONG_STRING) { kpis.push({ type: "kpi", label: sub, value: v2, provId }); scalarCount++; }
       }
     }
   }
-  const out: AnswerBlock[] = [...kpis.slice(0, 8)];
+
+  // ③ 判断类问句结论叙事（确定性模板·只引输出真值·数字红线不编造）——置于叙事段首。
+  const conclusion = deriveConclusion(record);
+  const out: AnswerBlock[] = [];
+  if (conclusion) out.push({ type: "text", markdown: verifiedNarrative(conclusion) });
+  for (const n of narratives.slice(0, 2)) out.push({ type: "text", markdown: verifiedNarrative(n) });
+  out.push(...kpis.slice(0, 8));
   if (table) out.push(table);
   if (ruleRefs.length > 0) out.push({ type: "text", markdown: `依据规则：${ruleRefs.join("、")} ⟦ref:0⟧` });
-  if (moreArrays.length > 0) out.push({ type: "text", markdown: `另有明细：${moreArrays.join("、")}（详见步骤溯源）。` });
+  // moreArrays 计数（N 项）源自求解器真实数组长度（tool 真值）→ 补溯源标，不被 §5.5 误判未溯源。
+  if (moreArrays.length > 0) out.push({ type: "text", markdown: verifiedNarrative(`另有明细：${moreArrays.join("、")}（详见步骤溯源）。`) });
   // BP-7：求解器产出空数组字段（combo/rows/over… 全空）→ 显性化"为何为空 + 下一步建议"，
   // 区分两类（不静默吞空数组）：
   //   ·【真无解】关键标量在（求解器跑了且有上下文，如 residualGap/quarter），仅结果数组为空
@@ -448,15 +521,18 @@ export function summarizeSolverOutput(payload: unknown, provId: string): AnswerB
   //      建议先接入/补齐数据再重跑（触发合成≠伪造，走管线读回真实值）。
   // 渲染条件修（LAUNCHER 复验移交·S11 疵）：『结果为空（真无解/数据未接齐）』是**整体级**判决，
   //   只应在**答案整体无结果数据块**（未投出任何结果表）时升格出现。若已有结果表（求解器确给出结果行），
-  //   某些**无关子字段**恰为空数组，只应降为**轻量一行**『infeasible：无』——不得让无关空子字段误报整体无解、
+  //   某些**无关子字段**恰为空数组，只应降为**轻量一行『无』**——不得让无关空子字段误报整体无解、
   //   盖过并存的真实结果（S11 6 行换型序列结果表并存却显"真无解"，误导用户以为整体无解）。
+  // ④ S13/S10 修：空子字段用**人话 label**点名（如 unresolved→待处理项、over→超储项），
+  //   不再直出内部术语「infeasible」（用户看不懂 unresolved 被写成 infeasible 的错位）。
+  const emptyHuman = emptyArrayKeys.map((k) => humanizeField(k, solverKey).label);
   if (emptyArrayKeys.length > 0) {
-    const empties = emptyArrayKeys.join("、");
+    const empties = emptyHuman.join("、");
     if (table) {
       // 已有结果数据块 → 空子字段轻量披露（仍点名，不静默吞），不升格为整体无解
       out.push({
         type: "text",
-        markdown: `子字段「${empties}」：infeasible（无）——该字段在当前结果下无内容，不影响上表结果。`,
+        markdown: `子字段「${empties}」：无——该项在当前结果下无内容，不影响上表结果。`,
       });
     } else if (scalarCount > 0) {
       out.push({
@@ -476,6 +552,8 @@ export function summarizeSolverOutput(payload: unknown, provId: string): AnswerB
       });
     }
   }
+  // ② 元字段脚注条（口径/版本/置信度）——统一收拢在答案末尾，不与业务 KPI 混排。
+  if (metaNotes.length > 0) out.push({ type: "text", markdown: `口径与来源：${metaNotes.join("；")}。` });
   if (out.length === 0) out.push({ type: "text", markdown: "求解器本次无输出数据（可能输入为空或全部满足约束）。" });
   return out;
 }

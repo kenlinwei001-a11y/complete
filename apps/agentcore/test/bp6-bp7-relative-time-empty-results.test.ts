@@ -123,19 +123,21 @@ describe("BP-7 · summarizeSolverOutput 空结果显性化（D7，不静默吞�
     const blocks = summarizeSolverOutput({ data: { quarter: "2026Q2", combo: [], residualGap: 50, ruleRefs: ["C08", "C29"] } }, PROV);
     const text = blocks.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown).join("\n");
     expect(text).toContain("真无解");
-    expect(text).toContain("combo");
-    // 仍保留真实标量 KPI（quarter/residualGap），非纯空白
+    expect(text).toContain("对策组合"); // ④ 人话化：combo→对策组合（不再直出裸 key）
+    expect(text).not.toContain("combo"); // 齿：内部裸 key 不再泄漏到文案
+    // 仍保留真实标量 KPI（quarter/residualGap 人话化为 季度/残余缺口），非纯空白
     const kpiLabels = blocks.filter((b) => b.type === "kpi").map((b) => (b as { label: string }).label);
-    expect(kpiLabels).toContain("residualGap");
-    expect(kpiLabels).toContain("quarter");
+    expect(kpiLabels).toContain("残余缺口"); // 原裸 key residualGap → 人话
+    expect(kpiLabels).toContain("季度"); // 原裸 key quarter → 人话
+    expect(kpiLabels).not.toContain("residualGap"); // 齿：裸 key 不得再出现
   });
 
   it("数据未接齐：仅空数组、无关键标量 → 渲染「数据未接齐 + 先接入数据」文案", () => {
     const blocks = summarizeSolverOutput({ data: { rows: [], over: [] } }, PROV);
     const text = blocks.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown).join("\n");
     expect(text).toContain("数据未接齐");
-    expect(text).toContain("rows");
-    expect(text).toContain("over");
+    expect(text).toContain("明细行"); // rows→明细行（人话点名·不静默吞）
+    expect(text).toContain("超储项"); // over→超储项
   });
 
   it("空 combo + 非空 evaluatedRules → 有结果表在，空子字段降为轻量 infeasible 一行（不误报整体真无解·LAUNCHER 复验移交）", () => {
@@ -147,8 +149,9 @@ describe("BP-7 · summarizeSolverOutput 空结果显性化（D7，不静默吞�
     );
     const text = blocks.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown).join("\n");
     expect(text).not.toContain("真无解"); // 有结果表并存 → 不得升格为整体无解
-    expect(text).toContain("infeasible"); // 降为轻量披露
-    expect(text).toContain("combo"); // 仍点名空子字段，不静默吞
+    expect(text).not.toContain("infeasible"); // ④ 内部术语人话化：不再直出 infeasible
+    expect(text).toContain("对策组合"); // 仍点名空子字段（人话），不静默吞
+    expect(text).toMatch(/子字段.*：无/); // 轻量披露改人话『无』
     expect(blocks.some((b) => b.type === "table")).toBe(true); // evaluatedRules 仍投表（不丢信息）
   });
 
@@ -174,8 +177,9 @@ describe("BP-7 · summarizeSolverOutput 空结果显性化（D7，不静默吞�
     const text = blocks.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown).join("\n");
     expect(text).not.toContain("真无解"); // 核心：结果表并存时绝不误报整体无解
     expect(text).not.toContain("数据未接齐");
-    expect(text).toContain("infeasible"); // over 空 → 轻量披露
-    expect(text).toContain("over");
+    expect(text).not.toContain("infeasible"); // ④ 内部术语人话化
+    expect(text).toContain("超储项"); // over→超储项（人话点名）
+    expect(text).toMatch(/子字段.*：无/);
     expect(blocks.some((b) => b.type === "table")).toBe(true); // 6 行结果表在
   });
 
