@@ -3393,11 +3393,12 @@
       }
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
-        "todo": "2026-07-05T08:29:30.454Z"
+        "todo": "2026-07-05T08:29:30.454Z",
+        "wip": "2026-07-05T08:39:32.626Z"
       },
       "id": "ONTO-SCEN-CONTRACT",
       "priority": "P1",
