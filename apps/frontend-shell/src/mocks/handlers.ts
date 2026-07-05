@@ -142,14 +142,36 @@ type MockWorklistItem = {
   kind: "DATA_GAP" | "PLAN_SCAFFOLD" | "FEATURE";
   status: "OPEN" | "CLAIMED" | "IN_PROGRESS" | "DONE" | "NEEDS_HUMAN";
   owner?: string; evidence: string; deeplink?: string; result?: string;
-  fillPlan?: { mode: "SOFT" | "HARD"; action: string; typeKey?: string; rows?: number; seed?: number };
+  fillPlan?: { mode: "SOFT" | "HARD"; action: string; typeKey?: string; fields?: string[]; rows?: number; seed?: number };
+  // TICKET-CENTER-UNIFIED：详情抽屉补充内容清单的真源字段（与后端 WorklistItem.dataRequest / GrowthTicket 同形）。
+  dataRequest?: { typeKey: string; columns: string[]; entities: string[]; reason: string; newEntity?: boolean; descriptionRequired?: boolean; descriptionSchema?: { field: string; hint: string }[]; description?: string };
+  ioContract?: { inputs: string[]; outputShape: string[] };
+  ontologyRefs?: { objectTypes: string[]; slices: string[]; rules: string[] };
+  acceptance?: string;
+  scaffoldedDrafts?: { kind: string; key: string }[];
   createdAt: string; updatedAt: string;
 };
 const mockWorklist: MockWorklistItem[] = [
-  { id: "wli-seed-1", tenantId: "demo", fromQuestion: "常州影响哪些订单？", gapCode: "EMPTY_DATA", kind: "DATA_GAP", status: "OPEN", evidence: "SOFT 缺数据（Order）→ 登记在办项，认领后点补才真跑 fill-data", fillPlan: { mode: "SOFT", action: "fillData", typeKey: "Order", rows: 6, seed: 42 }, createdAt: "2026-06-17T09:00:00.000Z", updatedAt: "2026-06-17T09:00:00.000Z" },
+  { id: "wli-seed-1", tenantId: "demo", fromQuestion: "常州影响哪些订单？", gapCode: "EMPTY_DATA", kind: "DATA_GAP", status: "OPEN", evidence: "SOFT 缺数据（Order）→ 登记在办项，认领后点补才真跑 fill-data", fillPlan: { mode: "SOFT", action: "fillData", typeKey: "Order", fields: ["id", "name", "value"], rows: 6, seed: 42 }, createdAt: "2026-06-17T09:00:00.000Z", updatedAt: "2026-06-17T09:00:00.000Z" },
   { id: "wli-seed-2", tenantId: "demo", fromQuestion: "空租户能长成可答吗？", gapCode: "NO_INTENT", kind: "DATA_GAP", status: "OPEN", evidence: "空租户缺起步世界 → 登记在办项，认领后点补才真跑 provisionWorld", fillPlan: { mode: "SOFT", action: "provisionWorld", seed: 42 }, createdAt: "2026-06-17T08:30:00.000Z", updatedAt: "2026-06-17T08:30:00.000Z" },
-  { id: "gtk-feat-1", tenantId: "demo", fromQuestion: "未知能力问句", gapCode: "NO_CAPABILITY", kind: "FEATURE", status: "OPEN", evidence: "缺功能→需开发工单（本就人工闸）", createdAt: "2026-06-17T07:00:00.000Z", updatedAt: "2026-06-17T07:00:00.000Z" },
+  // TICKET-CENTER-UNIFIED：B3 HARD_BLOCK 人工描述单（DATA_REQUEST 标·真人正门导入）。
+  { id: "wli-hard-1", tenantId: "demo", fromQuestion: "新供应商甲的物料交付怎么样？", gapCode: "EMPTY_DATA", kind: "DATA_GAP", status: "OPEN", evidence: "[B3 越界新实体] 词表外新实体（供应商甲）→ HARD_BLOCK 拒自动合成｜数据描述: 供应商主数据（编码/名称/区域/物料品类）", fillPlan: { mode: "HARD", action: "importData", typeKey: "Supplier" }, dataRequest: { typeKey: "Supplier", columns: ["supplier_id", "name", "region"], entities: ["供应商甲"], reason: "词表外新实体——自动合成将发明不存在的业务实体", newEntity: true, descriptionRequired: true, descriptionSchema: [{ field: "字段清单", hint: "每列名称与业务含义" }, { field: "值域", hint: "每列取值范围/枚举来源" }, { field: "样例行", hint: "1-3 行真实样例" }], description: "供应商主数据（编码/名称/区域/物料品类）" }, deeplink: "/connections", createdAt: "2026-06-17T08:00:00.000Z", updatedAt: "2026-06-17T08:00:00.000Z" },
+  { id: "gtk-feat-1", tenantId: "demo", fromQuestion: "未知能力问句", gapCode: "NO_CAPABILITY", kind: "FEATURE", status: "OPEN", evidence: "缺功能→需开发工单（本就人工闸）", ioContract: { inputs: ["view:dash"], outputShape: ["answer", "provenance"] }, ontologyRefs: { objectTypes: ["dash"], slices: [], rules: [] }, acceptance: "问句「未知能力问句」应能答出可验证答案并过门禁。", createdAt: "2026-06-17T07:00:00.000Z", updatedAt: "2026-06-17T07:00:00.000Z" },
+  // TICKET-CENTER-UNIFIED：缺计划已 scaffold DRAFT（只读·深链去审批）。
+  { id: "gtk-plan-1", tenantId: "demo", fromQuestion: "产能爬坡影响哪些基地？", gapCode: "NO_PLAN", kind: "PLAN_SCAFFOLD", status: "OPEN", evidence: "已 scaffold DRAFT 计划骨架（plan_capacity_ramp），施工 = 审批发布/补全参数。", ioContract: { inputs: ["Base"], outputShape: ["steps", "rows"] }, ontologyRefs: { objectTypes: ["Base"], slices: [], rules: [] }, acceptance: "问句「产能爬坡影响哪些基地？」应能答出可验证答案并过门禁。已 scaffold DRAFT 骨架（plan_capacity_ramp）。", scaffoldedDrafts: [{ kind: "plan", key: "plan_capacity_ramp" }, { kind: "intent", key: "intent_capacity_ramp" }], deeplink: "/admin/actions", createdAt: "2026-06-17T06:30:00.000Z", updatedAt: "2026-06-17T06:30:00.000Z" },
 ];
+
+// TICKET-CENTER-UNIFIED：统一 kind 标（镜像后端 boardRowFromWorklist/boardRowFromTicket 派生·开放扩展位）。
+const mockBoardRow = (w: MockWorklistItem) => {
+  const isTicket = w.id.startsWith("gtk");
+  return {
+    id: w.id, tenantId: w.tenantId,
+    source: isTicket ? "GROWTH_TICKET" : "WORKLIST",
+    kind: !isTicket && w.kind === "DATA_GAP" && (w.dataRequest || (w.fillPlan?.mode === "HARD" && w.fillPlan.action === "importData")) ? "DATA_REQUEST" : w.kind,
+    fromQuestion: w.fromQuestion, gapCode: w.gapCode, status: w.status, owner: w.owner,
+    claimable: !isTicket, deeplink: w.deeplink, evidence: w.evidence, createdAt: w.createdAt, updatedAt: w.updatedAt,
+  };
+};
 const mockCategoryMode: Record<string, "SYSTEM_INTEGRATION" | "FILE_UPLOAD"> = {};
 const mockCategoryTpl: Record<string, string[] | null> = {};
 
@@ -928,6 +950,38 @@ export const handlers = [
       : `已确定性合成 PROVISIONAL（${plan?.typeKey ?? "?"}·${plan?.rows ?? 6} 行·seed=${plan?.seed ?? 42}）`;
     it.updatedAt = new Date().toISOString();
     return HttpResponse.json(it);
+  }),
+
+  // TICKET-CENTER-UNIFIED：统一工单中心——聚合看板（统一 kind 标）+ 详情聚合端点（补充内容清单）。
+  http.get("*/b/v1/growth/board", ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const rows = [...mockWorklist].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(mockBoardRow);
+    return HttpResponse.json({ items: rows });
+  }),
+  http.get("*/b/v1/growth/tickets/:id/detail", ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const w = mockWorklist.find((x) => x.id === params.id);
+    if (!w) return err(404, "TICKET_NOT_FOUND", "工单不存在");
+    const row = mockBoardRow(w);
+    const isTicket = w.id.startsWith("gtk");
+    const supply: Record<string, unknown> = isTicket
+      ? { ioContract: w.ioContract, ontologyRefs: w.ontologyRefs, acceptance: w.acceptance, scaffoldedDrafts: w.scaffoldedDrafts, deeplink: w.deeplink }
+      : {
+          fillPlan: w.fillPlan,
+          deeplink: w.deeplink,
+          ...(w.dataRequest
+            ? { boundary: { gate: "B3 越界闸", conclusion: "HARD_BLOCK：涉词表外新实体/新类型，拒自动合成——人工填写数据描述经 R4 审批物化为值域模板后，走真人正门（连接器/Excel 导入）放行。" }, dataRequest: w.dataRequest }
+            : w.fillPlan?.mode === "SOFT"
+              ? { boundary: { gate: "B2 模式封闭闸", conclusion: `SOFT：只在已发布 ObjectType schema + 注册表值域内确定性合成（PROVISIONAL·origin=SYNTHETIC·seed=${w.fillPlan.seed ?? 42}）。` } }
+              : {}),
+        };
+    const timeline = [
+      { at: w.createdAt, label: isTicket ? "开单（OPEN）" : "登记（OPEN）" },
+      ...(w.updatedAt !== w.createdAt ? [{ at: w.updatedAt, label: `最近流转（${w.status}${w.owner ? `·${w.owner}` : ""}）` }] : []),
+    ];
+    return HttpResponse.json({ row, timeline, ...(isTicket ? {} : { worklistItem: w }), supply });
   }),
 
   http.get("*/a/v1/ontology/slices", () =>

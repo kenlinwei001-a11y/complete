@@ -196,7 +196,96 @@ export const WorklistItemSchema = z.object({
   deeplink: z.string().optional(),
   /** 人工触发补后落的结果摘要（真跑 fillData/provisionWorld 的产出）。 */
   result: z.string().optional(),
+  /**
+   * TICKET-CENTER-UNIFIED：B3 HARD_BLOCK 登记在办项时把精确补数请求**结构化留痕**（此前只揉进 evidence 字符串）——
+   * 工单中心详情抽屉据此列举 descriptionSchema 人工描述字段清单（R13 真源投影，非解析字符串）。
+   */
+  dataRequest: DataRequestSchema.optional(),
   createdAt: IsoTime,
   updatedAt: IsoTime,
 });
 export type WorklistItem = z.infer<typeof WorklistItemSchema>;
+
+/**
+ * TICKET-CENTER-UNIFIED（用户亲定 2026-07-05）：统一工单中心 `/admin/tickets` ——
+ * 「所有类似需要补数据/补求解器/补…，认领之后都集中在一个页面，点击每个工单，都可以看到详情，列举补充的内容」。
+ * 看板行 = 三源真值只读投影（R13·零造行）：WorklistItem(DATA_GAP·含 B3 HARD 人工描述单) + GrowthTicket(FEATURE/PLAN_SCAFFOLD/SOLVER 缺)。
+ */
+
+/** 行来源（哪个真值仓储）：WORKLIST=growthWorklist 真在办项（可认领）· GROWTH_TICKET=GrowthTicket 映射（只读/深链，409 guard 守认领误用）。 */
+export const TicketCenterSourceSchema = z.enum(["WORKLIST", "GROWTH_TICKET"]);
+export type TicketCenterSource = z.infer<typeof TicketCenterSourceSchema>;
+
+/**
+ * 统一 kind 标（**开放扩展位**：z.string() 非闭合枚举——ONTO-SCEN 批次 NEEDS_HUMAN 发育工单（GrowthTicket 同源）等
+ * 新 kind 直接流经聚合面不需改契约/不硬耦合）。已知值：
+ *  - DATA_GAP      缺数据（SOFT fillData / 空租户 provisionWorld·可认领·认领后点触发真跑）
+ *  - DATA_REQUEST  边界 B3 HARD_BLOCK 人工描述单（DataRequest·可认领·走真人正门导入深链）
+ *  - PLAN_SCAFFOLD 缺执行计划已 scaffold DRAFT（只读·深链去审批）
+ *  - SOLVER_GAP    缺求解器（GrowthTicket gapCode=SOLVER_NOT_FOUND·只读·施工工单）
+ *  - FEATURE       缺功能需开发（只读·施工工单）
+ */
+export const TICKET_CENTER_KNOWN_KINDS = ["DATA_GAP", "DATA_REQUEST", "PLAN_SCAFFOLD", "SOLVER_GAP", "FEATURE"] as const;
+
+export const TicketBoardRowSchema = z.object({
+  id: z.string(), // wli_ | gtk_（统一 id 空间，detail 端点按前缀分源查）
+  tenantId: z.string(),
+  source: TicketCenterSourceSchema,
+  kind: z.string(),
+  fromQuestion: z.string(),
+  gapCode: GapCodeSchema,
+  status: WorklistStatusSchema,
+  owner: z.string().optional(),
+  /** kind-first 权限语义：仅 WORKLIST 真在办项可认领；GrowthTicket 映射行恒 false（认领误传工单 id → 后端 409 WORKLIST_ITEM_READONLY 不绕）。 */
+  claimable: z.boolean(),
+  deeplink: z.string().optional(),
+  evidence: z.string(),
+  createdAt: IsoTime,
+  updatedAt: IsoTime,
+});
+export type TicketBoardRow = z.infer<typeof TicketBoardRowSchema>;
+
+/** DATA_GAP 详情：DataDependency requires 逐条（solver 入口 manifest 实测 present-vs-needed 投影）。 */
+export const TicketSupplyRequireSchema = z.object({
+  roleType: z.string(),
+  resolvedType: z.string().optional(),
+  needed: z.number().int(),
+  present: z.number().int(),
+  ok: z.boolean(),
+});
+export type TicketSupplyRequire = z.infer<typeof TicketSupplyRequireSchema>;
+
+/** 补充内容清单段（核心·按类型列举 what needs to be supplied）——全部为真源字段只读投影（R13·零造行）。 */
+export const TicketSupplySchema = z.object({
+  /** DATA_GAP/DATA_REQUEST：补法计划（typeKey/字段/行数/seed/mode——认领后触发真跑的确定性参数）。 */
+  fillPlan: WorklistFillPlanSchema.optional(),
+  /** DATA_GAP：solver 入口 DataDependency requires 逐条（fromQuestion 携 entryRef 时经 checkReadiness 实测；探测失败诚实缺省）。 */
+  requires: z.array(TicketSupplyRequireSchema).optional(),
+  /** 值域来源 + 边界闸（B1/B2/B3）结论——由 fillPlan.mode/action + evidence 真字段派生的说明投影。 */
+  boundary: z.object({ gate: z.string(), conclusion: z.string() }).optional(),
+  /** DATA_REQUEST：精确补数请求（typeKey/columns/entities/descriptionSchema 人工描述字段清单/已填 description）。 */
+  dataRequest: DataRequestSchema.optional(),
+  /** FEATURE/SOLVER_GAP：I/O 契约线索（inputs/outputShape 逐条）。 */
+  ioContract: z.object({ inputs: z.array(z.string()), outputShape: z.array(z.string()) }).optional(),
+  /** FEATURE/SOLVER_GAP：本体引用（objectTypes/slices/rules）。 */
+  ontologyRefs: z.object({ objectTypes: z.array(z.string()), slices: z.array(z.string()), rules: z.array(z.string()) }).optional(),
+  /** FEATURE/SOLVER_GAP：验收线索。 */
+  acceptance: z.string().optional(),
+  /** PLAN_SCAFFOLD/FEATURE：已 scaffold 的 DRAFT 制品步序（审批发布即施工·非从零开发）。 */
+  scaffoldedDrafts: z.array(ScaffoldDraftSchema).optional(),
+  /** 操作深链（去审批 /admin/actions · 去导入 /connections 等）。 */
+  deeplink: z.string().optional(),
+});
+export type TicketSupply = z.infer<typeof TicketSupplySchema>;
+
+/** 工单详情（点行 → 侧滑抽屉）：通用段 + 真源对象 + 补充内容清单段。 */
+export const TicketDetailSchema = z.object({
+  row: TicketBoardRowSchema,
+  /** 状态时间线（真时间戳投影：登记/最近流转——不造中间态）。 */
+  timeline: z.array(z.object({ at: IsoTime, label: z.string() })),
+  /** 真源对象（按 source 恰一个在场·R13 只读投影不造新真值）。 */
+  worklistItem: WorklistItemSchema.optional(),
+  ticket: GrowthTicketSchema.optional(),
+  supply: TicketSupplySchema,
+});
+export type TicketDetail = z.infer<typeof TicketDetailSchema>;

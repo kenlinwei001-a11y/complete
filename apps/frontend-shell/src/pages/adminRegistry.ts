@@ -57,6 +57,8 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "slices", label: zh.nav.slices, roles: ["admin", "data_admin"] },
   { path: "merge", label: zh.nav.merge, roles: ["admin", "data_admin"] },
   { path: "growth", label: zh.nav.growth, roles: ["admin", "data_admin"] },
+  // TICKET-CENTER-UNIFIED（用户亲定 2026-07-05）：统一工单中心——全类型补 X 工单一页集中·点单看详情列举补充内容。
+  { path: "tickets", label: "工单中心", roles: ["admin", "catalog_admin"] },
   // A18.4 求解器审核台：审 PROVISIONAL 临时求解器 → 晋升 GOVERNED（解锁写真值，R4）
   { path: "solver-review", label: zh.nav.solverReview, roles: ["admin"] },
   // C5 求解器目录（只读发现）：workflow invoke_solver 的 solverKey 引用目标（catalog_admin 配工作流需可见）
@@ -101,7 +103,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "knowledge", "synthetic", "external-signals", "quarantine"] },
   { key: "modeling", title: "建模与图谱", paths: ["modeling", "schema-reconcile", "object-types", "source-overview", "domains", "slices", "merge", "meta", "boundary", "prototype-intake"] },
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
-  { key: "build", title: "构建与成长", paths: ["data-builder", "growth", "evals", "solvers", "solver-review"] },
+  { key: "build", title: "构建与成长", paths: ["tickets", "data-builder", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "query-history", "ops/fallback", "views"] },
   { key: "ops", title: "运营与审批", paths: ["actions", "decisions", "ops-schedule", "notifications", "validation"] },
   { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "audit-log", "features", "llm-providers", "config-migration"] },

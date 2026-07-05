@@ -59,7 +59,8 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
   },
   { title: "规则与校准", items: ["rules", "calibration"].map((key) => ({ kind: "admin" as const, key })) },
   // WO-NAV-DATA：data-builder（数据构建发动机）已移入「数据」组。
-  { title: "构建与成长", items: ["growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
+  // TICKET-CENTER-UNIFIED：工单中心（全类型补 X 工单聚合）领衔本组。
+  { title: "构建与成长", items: ["tickets", "growth", "evals", "solvers", "solver-review"].map((key) => ({ kind: "admin" as const, key })) },
   // G-VIS-1 · query-history 归入「编排与场景」组（此前缺登记→落「其它」组，与 adminRegistry 的 orchestration 归属一致）。
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "query-history", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },

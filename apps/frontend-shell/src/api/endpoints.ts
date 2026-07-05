@@ -1220,6 +1220,11 @@ export const claimWorklistItem = (id: string) => api.b<WorklistItem>(`/b/v1/grow
 export const releaseWorklistItem = (id: string) => api.b<WorklistItem>(`/b/v1/growth/worklist/${id}/release`, { method: "POST" });
 export const fillWorklistItem = (id: string) => api.b<WorklistItem>(`/b/v1/growth/worklist/${id}/fill`, { method: "POST" });
 
+// TICKET-CENTER-UNIFIED：统一工单中心（三源聚合看板 + 点行详情抽屉）。
+import type { TicketBoardRow, TicketDetail } from "@platform/contracts";
+export const fetchTicketBoard = () => api.b<{ items: TicketBoardRow[] }>("/b/v1/growth/board");
+export const fetchTicketDetail = (id: string) => api.b<TicketDetail>(`/b/v1/growth/tickets/${id}/detail`);
+
 // Dogfooding P2：系统本体活查询面（meta）。MetaAccessPolicy 角色白名单门控（默认 admin）。
 export interface MetaImpact { node: string; affected: { id: string; via: string }[] }
 export const syncMeta = () => api.a<{ objects: number; links: number; byKind: Record<string, number> }>("/a/v1/meta/sync", { method: "POST" });

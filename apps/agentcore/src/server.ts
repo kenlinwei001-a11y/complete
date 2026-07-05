@@ -330,6 +330,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
           kind: "DATA_GAP", status: "OPEN",
           fillPlan: { mode: "HARD", action: "importData", typeKey: decision.dataRequest.typeKey },
           evidence: `[B3 越界新实体] ${decision.reason}｜数据描述: ${raw.dataRequestDescription}`,
+          // TICKET-CENTER-UNIFIED：DataRequest 结构化留痕（descriptionSchema 字段清单）→ 工单中心详情可逐条列举（R13 真源投影，非解析字符串）。
+          dataRequest: { ...decision.dataRequest, description: raw.dataRequestDescription },
           deeplink: "/connections", createdAt: nowIso, updatedAt: nowIso,
         };
         await deps.repos.growthWorklist.upsert(worklistItem);
@@ -552,6 +554,96 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     await deps.repos.growthWorklist.upsert(updated);
     await emitDomainEvent(a.tenantId, "growth.fill_triggered", { worklistItemId: id, owner: a.userId, gapCode: w.gapCode, action: plan.action });
     return reply.status(200).send(updated);
+  });
+
+  // ===== TICKET-CENTER-UNIFIED（用户亲定 2026-07-05）：统一工单中心 =====
+  // 「所有类似需要补数据/补求解器/补…，认领之后都集中在一个页面，点击每个工单，都可以看到详情，列举补充的内容」。
+  // 看板 = 三源真值只读投影（R13·零造行）：growthWorklist（DATA_GAP 真在办项 + B3 HARD DataRequest 人工描述单）
+  // ⊕ growthTickets（FEATURE/PLAN_SCAFFOLD/SOLVER 缺·gtk_ 只读施工工单）。统一 kind 标为**开放扩展位**
+  // （z.string()）：ONTO-SCEN 批次 NEEDS_HUMAN 发育工单同源落 growthTickets → 自动进聚合面，零硬耦合。
+  // kind-first 权限语义不破：仅 WORKLIST 源可认领（claimable），GrowthTicket 映射行只读/深链——认领误传
+  // 工单 id 仍触发既有 409 WORKLIST_ITEM_READONLY guard（getWorklistItem），聚合面不绕闸。
+  const boardRowFromWorklist = (w: import("@platform/contracts").WorklistItem): import("@platform/contracts").TicketBoardRow => ({
+    id: w.id, tenantId: w.tenantId, source: "WORKLIST",
+    // B3 HARD_BLOCK 人工描述单（真人正门导入）与普通 SOFT/世界缺数据分标——同一真在办项生命周期（claim/release），仅 kind 标细分。
+    kind: w.kind === "DATA_GAP" && (w.dataRequest || (w.fillPlan?.mode === "HARD" && w.fillPlan.action === "importData")) ? "DATA_REQUEST" : w.kind,
+    fromQuestion: w.fromQuestion, gapCode: w.gapCode, status: w.status, owner: w.owner,
+    claimable: true, deeplink: w.deeplink, evidence: w.evidence, createdAt: w.createdAt, updatedAt: w.updatedAt,
+  });
+  const boardRowFromTicket = (tk: import("@platform/contracts").GrowthTicket): import("@platform/contracts").TicketBoardRow => {
+    const isPlan = !!(tk.scaffoldedDrafts && tk.scaffoldedDrafts.length > 0);
+    return {
+      id: tk.id, tenantId: tk.tenantId, source: "GROWTH_TICKET",
+      kind: isPlan ? "PLAN_SCAFFOLD" : tk.gapCode === "SOLVER_NOT_FOUND" ? "SOLVER_GAP" : "FEATURE",
+      fromQuestion: tk.fromQuestion, gapCode: tk.gapCode,
+      status: TICKET_STATUS_TO_WORKLIST[tk.status] ?? "OPEN", owner: tk.assignee,
+      claimable: false, deeplink: isPlan ? "/admin/actions" : undefined, evidence: tk.acceptance,
+      createdAt: tk.createdAt, updatedAt: tk.createdAt,
+    };
+  };
+
+  // 列表端点（统一 kind 标）：GET /api/v1/growth/board?status=&owner=&kind=（owner=me → 当前 actor）。
+  app.get("/api/v1/growth/board", async (req) => {
+    const a = await auth(req);
+    const { status, owner, kind } = req.query as { status?: string; owner?: string; kind?: string };
+    const wl = (await deps.repos.growthWorklist.listByTenant(a.tenantId)).map(boardRowFromWorklist);
+    const tks = (await deps.repos.growthTickets.listByTenant(a.tenantId)).map(boardRowFromTicket);
+    let rows = [...wl, ...tks].sort((x, y) => (x.createdAt < y.createdAt ? 1 : -1));
+    if (status) rows = rows.filter((r) => r.status === status);
+    if (kind) rows = rows.filter((r) => r.kind === kind);
+    if (owner) {
+      const want = owner === "me" ? a.userId : owner;
+      rows = rows.filter((r) => r.owner === want);
+    }
+    return { items: rows };
+  });
+
+  // 详情聚合端点：GET /api/v1/growth/tickets/:id/detail（统一 id 空间 wli_/gtk_·union 双源 + manifest requires + 边界结论·R13 只读投影不造新真值）。
+  app.get("/api/v1/growth/tickets/:id/detail", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const w = await deps.repos.growthWorklist.get(a.tenantId, id);
+    if (w) {
+      const row = boardRowFromWorklist(w);
+      const supply: import("@platform/contracts").TicketSupply = { fillPlan: w.fillPlan, deeplink: w.deeplink };
+      // 边界闸（B1/B2/B3）结论：由真字段（dataRequest 在场/fillPlan.mode/action）派生的说明投影——不发明状态。
+      if (w.dataRequest || w.evidence.startsWith("[B3")) {
+        supply.boundary = { gate: "B3 越界闸", conclusion: "HARD_BLOCK：涉词表外新实体/新类型，拒自动合成——人工填写数据描述经 R4 审批物化为值域模板后，走真人正门（连接器/Excel 导入）放行。" };
+        supply.dataRequest = w.dataRequest;
+      } else if (w.fillPlan?.mode === "SOFT") {
+        supply.boundary = { gate: "B2 模式封闭闸", conclusion: `SOFT：只在已发布 ObjectType schema + 注册表值域内确定性合成（PROVISIONAL·origin=SYNTHETIC·seed=${w.fillPlan.seed ?? 42}）。` };
+      } else if (w.fillPlan?.mode === "HARD") {
+        supply.boundary = { gate: "HARD 真人正门", conclusion: "涉真实业务实体——自动合成即造业务事实，须经连接器/Excel 导入 + R4 审批补齐。" };
+      }
+      // DataDependency requires 逐条：fromQuestion 携 solver 入口 entryRef（readiness 登记项）时经 checkReadiness 实测
+      // present-vs-needed（真 manifest 投影）；探测失败诚实缺省（不造行）。
+      if (w.fromQuestion.startsWith("solver:")) {
+        const solverKey = w.fromQuestion.slice("solver:".length).split("|")[0];
+        if (solverKey) {
+          try {
+            const readiness = await deps.dataCore.solver.checkReadiness(a, solverKey);
+            supply.requires = readiness.roles.map((r) => ({ roleType: r.roleType, resolvedType: r.resolvedType, needed: r.needed, present: r.present, ok: r.ok }));
+          } catch { /* 就绪探测不可达 → 诚实省略 requires（详情仍有 fillPlan/boundary 真值） */ }
+        }
+      }
+      const timeline = [
+        { at: w.createdAt, label: "登记（OPEN）" },
+        ...(w.updatedAt !== w.createdAt ? [{ at: w.updatedAt, label: `最近流转（${w.status}${w.owner ? `·${w.owner}` : ""}）` }] : []),
+      ];
+      return { row, timeline, worklistItem: w, supply } satisfies import("@platform/contracts").TicketDetail;
+    }
+    const tk = (await deps.repos.growthTickets.listByTenant(a.tenantId)).find((t) => t.id === id);
+    if (!tk) throw new HttpError(404, "TICKET_NOT_FOUND", `工单不存在: ${id}`);
+    const row = boardRowFromTicket(tk);
+    const supply: import("@platform/contracts").TicketSupply = {
+      ioContract: tk.ioContract, ontologyRefs: tk.ontologyRefs, acceptance: tk.acceptance,
+      scaffoldedDrafts: tk.scaffoldedDrafts, deeplink: row.deeplink,
+    };
+    const timeline = [
+      { at: tk.createdAt, label: "开单（OPEN）" },
+      ...(tk.status !== "OPEN" ? [{ at: tk.createdAt, label: `当前状态 ${tk.status}${tk.assignee ? `·${tk.assignee}` : ""}（工单流转不落独立时间戳·诚实以开单时间呈现）` }] : []),
+    ];
+    return { row, timeline, ticket: tk, supply } satisfies import("@platform/contracts").TicketDetail;
   });
 
   // ---- DATADEP-MANIFEST-READINESS 站③→④（通用就绪探测 → GROWTH-WORKLIST 看板·人工闸）------------

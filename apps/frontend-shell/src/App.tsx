@@ -59,6 +59,7 @@ const EvalsPage = lazy(() => import("@/pages/admin/EvalsPage"));
 const SlicesPage = lazy(() => import("@/pages/admin/SlicesPage"));
 const MergePage = lazy(() => import("@/pages/admin/MergePage"));
 const GrowthCockpitPage = lazy(() => import("@/pages/admin/GrowthCockpitPage"));
+const TicketCenterPage = lazy(() => import("@/pages/admin/TicketCenterPage")); // TICKET-CENTER-UNIFIED（用户亲定 2026-07-05）
 const SolverReviewPage = lazy(() => import("@/pages/admin/SolverReviewPage"));
 const SolversPage = lazy(() => import("@/pages/admin/SolversPage"));
 const ConfigMigrationPage = lazy(() => import("@/pages/admin/ConfigMigrationPage"));
@@ -187,6 +188,7 @@ export const routes: RouteObject[] = [
       admin("slices", <SlicesPage />),
       admin("merge", <MergePage />),
       admin("growth", <GrowthCockpitPage />),
+      admin("tickets", <TicketCenterPage />),
       admin("solver-review", <SolverReviewPage />),
       admin("solvers", <SolversPage />),
       admin("config-migration", <ConfigMigrationPage />),

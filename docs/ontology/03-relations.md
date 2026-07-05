@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `4a716f9ebf014aa8`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `336c102da2ff00c6`。
 
 ---
 
@@ -205,6 +205,20 @@ affected_orders.problems[].rootChains[].layers[] --后端 typed ref(R6 确定·s
 }
 order_fullchain.dag.nodes[] --前端按 kind+so 派生 ref--> { order/建模facet→订单360 · judge→三判高亮 · verdict→采纳工单 }
   ⚠ 曾断：LayeredDag 节点条件式交互，problem-dag/ofc-dag 未传 onNodeClick → 静态 <g> 空操作（死交互·已闭）
+```
+
+**工单中心聚合链（TICKET-CENTER-UNIFIED·G-9 邻域·2026-07-05）**：
+
+```
+{ growthWorklist:WorklistItem(DATA_GAP·含 B3 HARD dataRequest 描述单) ⊕ growthTickets:GrowthTicket(FEATURE/PLAN_SCAFFOLD/SOLVER_GAP·gtk_) }
+  --统一 kind 标只读投影(R13 零造行·kind 开放扩展位)--> TicketBoardRow --GET /b/v1/growth/board--> /admin/tickets 工单中心
+  --Tab 全部|待认领|我的在办(认领后默认落此)|已完成 · 点行--> TicketDetail(GET /b/v1/growth/tickets/:id/detail)
+      通用段{fromQuestion/gapCode/kind/状态时间线/认领人} + 补充内容清单段{
+        DATA_GAP→fillPlan(typeKey/字段/行数/seed R6)+requires(fromQuestion 携 solver: entryRef 时经 checkReadiness manifest 实测 present-vs-needed)+B2 结论
+        DATA_REQUEST→dataRequest(columns/entities/descriptionSchema 字段清单/人工描述)+B3 结论+去导入正门 /connections
+        SOLVER_GAP|FEATURE→ioContract.inputs/outputShape+ontologyRefs+acceptance · PLAN_SCAFFOLD→scaffoldedDrafts 步序+去审批 /admin/actions }
+  --行内操作 kind-first 分流--> { source=WORKLIST(claimable)→既有 claim/release/fill 闸(R4/R6 零改) | source=GROWTH_TICKET→只读/深链(误认领 409 WORKLIST_ITEM_READONLY 不绕) }
+  ⚠ 接缝语义：聚合面是**投影不是新真值仓**——生命周期仍归各真源(worklist 闸/工单流程)；/admin/growth 驾驶舱保留为诊断运行视图(操作列保留+跳转)
 ```
 
 ---

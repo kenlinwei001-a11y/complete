@@ -158,8 +158,13 @@ export default function GrowthCockpitPage() {
         </div>
       )}
 
-      {/* 在办看板（筛：状态/认领人/类型 + 认领 + 补数据缺口） */}
-      <div className="section-title">在办看板（去自动补·人工触发补数据缺口）</div>
+      {/* 在办看板（筛：状态/认领人/类型 + 认领 + 补数据缺口）。
+          TICKET-CENTER-UNIFIED：本页保留为诊断运行视图（操作列保留·dev 定夺声明：驾驶舱是"跑诊断→就地补"工作流，
+          收敛操作会打断该闭环）；跨类型聚合 + 详情抽屉在工单中心。 */}
+      <div className="section-title">
+        在办看板（去自动补·人工触发补数据缺口）
+        <a href="/admin/tickets" className="btn sm" style={{ marginLeft: 8 }} data-testid="growth-to-ticket-center">→ 工单中心（全类型聚合·详情清单）</a>
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
         <select data-testid="wl-filter-status" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option value="">全部状态</option>

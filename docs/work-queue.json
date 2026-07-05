@@ -3510,15 +3510,17 @@
     {
       "id": "TICKET-CENTER-UNIFIED",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "title": "统一工单中心: 全类型补X工单一页集中·认领后我的在办聚合·点单出详情列举补充内容清单(用户亲定)",
       "note": "用户亲定(2026-07-05): 『所有类似需要补数据/补求解器/补…，认领之后都集中在一个页面，点击每个工单，都可以看到详情，列举补充的内容』。现状: DATA_GAP在/admin/growth行内·PLAN_SCAFFOLD深链/admin/actions·FEATURE只读·无详情展开(复验实锤)。建: ①新路由/admin/tickets「工单中心」(导航入册·admin+catalog_admin)聚合全类型: WorklistItem(DATA_GAP)+GrowthTicket(FEATURE/PLAN_SCAFFOLD/SOLVER缺·gtk_)+DataRequest(边界HARD_BLOCK人工描述单)+**前瞻**ONTO-SCEN批次NEEDS_HUMAN卡发育工单(GrowthTicket同源·留kind扩展位); ②Tab/筛选: 全部|待认领|我的在办(认领后默认落此·跨类型聚合)|已完成; ③点行→详情抽屉(侧滑): 通用段=fromQuestion/gapCode/类型/状态时间线/认领人; **补充内容清单段(核心)**按类型列举: DATA_GAP→缺哪些对象类型/字段(props)/最少行数(DataDependency requires逐条)+值域来源+边界闸(B1/B2/B3)结论+dataRequestDescription; SOLVER→ioContract.inputs/outputShape逐条+ontologyRefs(objectTypes/slices/rules)+acceptance验收线索; PLAN_SCAFFOLD→scaffold的计划步序+待审批项深链; FEATURE→缺口描述+ioContract+验收; ④行内操作随态: 认领/释放/补数据缺口/继续推演/去审批(既有闸控生命周期零改·FEATURE仍只读施工中); ⑤后端: GET /api/v1/growth/tickets/:id/detail聚合端点(union三源+manifest requires+边界结论·R13只读投影不造新真值)+列表端点统一kind标。既有/admin/growth驾驶舱保留为诊断运行视图·看板区加『→工单中心』跳转(不重复维护两份操作面·growth页操作列可保留或收敛为跳转·dev定夺但须声明)。DoD: FDE真浏览器=跑诊断出DATA_GAP+FEATURE两类→中心页两行→认领DATA_GAP→我的在办聚合可见→点行详情抽屉逐段可见补充清单(截图逐值对照后端detail端点)+齿(聚合端点三源union·详情清单字段完整性·认领跨类型分流不误闸[FEATURE不可认领])·四包绿gates绿。",
       "at": {
         "todo": "2026-07-05T08:53:50.737Z",
-        "wip": "2026-07-05T09:46:55.405Z"
-      }
+        "wip": "2026-07-05T09:46:55.405Z",
+        "built": "2026-07-05T10:50:44.158Z"
+      },
+      "blockReason": ""
     },
     {
       "status": "BUILT",
@@ -3582,9 +3584,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "PANORAMA-FIELD-INTAKE",
-      "at": "2026-07-05T10:28:24.959Z"
+      "cmd": "BUILT",
+      "id": "TICKET-CENTER-UNIFIED",
+      "at": "2026-07-05T10:50:44.158Z"
     }
   }
 }
