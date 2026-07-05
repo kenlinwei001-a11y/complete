@@ -3509,37 +3509,52 @@
     {
       "status": "TODO",
       "owner": "",
-      "at": {
-        "todo": "2026-07-05T09:14:44.282Z"
-      },
-      "id": "SLICE-GRAPH-PARITY",
-      "priority": "P1",
       "doc": "docs/PRD-nav-ia-reorg.md",
-      "title": "切片补齐至图谱同权: 八视角图谱逐一配套多跳SliceSpec(用户亲定·先于页面融合)",
-      "note": "用户亲定(2026-07-05): 『目前的本体切片都是单跳为主，首先基于目前的图谱把切片都先补齐』。现状实测: 切片仅4个(内置model_capacity_network/base_risk_profile均单跳·声明式order_fulfillment_360/order_to_cash_720多跳)·而图谱八视角(graph-all全景/backbone推演主干/flow数据流/source源/solver求解器/mvp/agent/loop编排)无一有配套切片。建: 每个图谱视角配套≥1个声明式SliceSpec(走executeSlice引擎·非内置分支): backbone→推演主干多跳链(Order→Model→Base→Line→Material类·跳深≥3)·flow→数据流域(RawDataset→ObjectType→Slice→Solver)·source→源→对象归属·solver→求解器绑定域(Solver→Slice→ObjectType→Rule)·agent/loop→编排域(Intent→Plan→Agent/Workflow)·mvp/all→企业360(enterprise_360补齐或复用)。注册进BUILTIN_SLICE_CATALOG同权目录(发现纪律: description/argHints齐全否则不上目录)+slice-index建索引(spannedTypes正确)。R6确定性(BFS引擎既有)。齿: 逐视角配套切片存在断言+多跳深度断言(spannedTypes.length≥3·单跳回潮红)+resolve真跑非空(seed数据下nodes/edges>0)。FDE: curl逐切片resolve对照图谱API同域节点集(切片⊆图谱同视角·抽3验)。"
+      "at": {
+        "todo": "2026-07-05T09:18:30.470Z"
+      },
+      "id": "GRAPH-PANORAMA-ONLY",
+      "priority": "P1",
+      "title": "图谱只留全景: 删七视角(主干/流/源/求解器/MVP/智能体/学习闭环)·撤『图谱体系』导航组(用户亲定)",
+      "note": "用户亲定(2026-07-05): 保留一个『图谱全景』·删除主干分级/图谱数据来源/图谱求解器/图谱MVP/图谱智能体网络/图谱学习闭环。注: 用户清单未列『图谱·流』·按“保留一个”语义默认一并删(审核方推定·若用户改口留流视角则豁免)。做: ①ShellLayout撤「图谱体系」组(line59); ②graph-backbone/flow/source/solver/mvp/agent/loop 七个view: 路由下线(或302→全景)·features registry七键退役(requires链view.ontology-graph不动·退役须registry声明防幽灵entitlement)·renderer注册与专属组件删除(确无他消费方后·grep断言); ③graph-all『图谱·全景』保留·归位「建模与图谱」组(该组既有graph项与all若同质则合一·label『图谱全景』); ④workspace views/mocks fixtures同步(view.graph-*七键)。齿: 导航断言(无图谱体系组·全景在建模组)+features registry退役声明齿+路由302或404一致性。本体回写: §7(features变更)+G-5/G-VIS-1相关行+8a视图清单。FDE: 真浏览器导航栏截图对版+七路由直链行为+全景页真渲染。"
     },
     {
       "status": "TODO",
       "owner": "",
+      "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
-        "todo": "2026-07-05T09:14:44.290Z"
+        "todo": "2026-07-05T09:18:30.471Z"
       },
-      "id": "GRAPH-SLICE-UNIFY",
+      "id": "PANORAMA-FIELD-INTAKE",
       "priority": "P1",
       "deps": [
-        "SLICE-GRAPH-PARITY"
+        "GRAPH-PANORAMA-ONLY"
       ],
+      "title": "全景驱动数据字段补齐: 全景图每类型/边的字段在数据连接器与上传前后端页面可供给(闭G-6邻域)",
+      "note": "用户亲定链条第二环: 『图谱全景-补对应的数据字段(数据连接器与上传的前后端页面)』。做: 以全景图(ontology graph全类型+边)为完备性基准——①后端: 逐对象类型盘点props字段vs连接器/上传路径可供给字段(objectify映射域+上传模板列)·缺口清单化(字段级·非模糊); ②上传模板补齐: 每全景类型有可下载数据模板(列=该类型全props+FK列·闭G-6『数据模版/FK驱动待落』)·上传→objectify→reconcile全字段可映射(不再静默丢列·INTAKE-VISIBILITY机件复用); ③连接器侧: 字段映射UI暴露全景字段全集(缺源字段→诚实标未映射·非隐藏); ④前端: 数据连接器与上传页逐类型显示字段覆盖度(已可供给N/M字段·缺口徽章→深链reconcile或模板下载)。齿: 全景类型×字段覆盖矩阵断言(每类型模板列⊇props·违红)+上传往返齿(模板下载→填样→上传→物化→字段逐值)。FDE: 真浏览器下载1模板→真上传→对象浏览器逐字段对照。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
       "doc": "docs/PRD-nav-ia-reorg.md",
-      "title": "图谱×切片同页融合: 每切片行内嵌其子图渲染·撤独立『图谱体系』导航组(用户亲定·闭nav-ia遗漏)",
-      "note": "用户亲定: 『图谱都与本体切片在一个页面，每个本体切片都需要配套一个图谱，无需单独有图谱的导航栏』。历史对账: PRD-nav-ia-reorg§2『图谱归位入建模与图谱』只落了单graph视图·八视角组(ShellLayout.tsx:59图谱体系collapsed组)系后续增量未随纪律归位=部分遗漏坐实。建: ①/admin/slices切片页升级为「切片×图谱」融合页: 切片列表(目录+SliceSpec全量)·选中切片→右侧/下方内嵌该切片resolve真值子图渲染(复用OntologyGraphView渲染件·args用argHints示例值或实体选择器·空态诚实)·八视角作为融合页顶部视角tab(点tab=载入该视角配套切片(SLICE-GRAPH-PARITY产物)并渲染); ②ShellLayout撤「图谱体系」独立组·八个view键的路由保留但从导航移除(直链兼容·或302到融合页对应tab·dev择一须声明); ③entitlement语义保持: view.graph-*feature键与融合页tab门对齐(R3·关=tab不现)·若退役键须features registry声明+本体回写; ④「建模与图谱」组内graph项保留为融合页入口(或改label『图谱与切片』)。齿: 导航组断言(无图谱体系组·八视角tab在融合页)+每切片图谱渲染非空(seed下)+entitlement关tab隐。FDE: 真浏览器=融合页选3切片逐个见子图(节点数对照后端resolve)+八视角tab切换渲染+导航栏无图谱体系组截图。本体回写: §7导航IA变更+G-VIS-1相关行。"
+      "at": {
+        "todo": "2026-07-05T09:18:30.471Z"
+      },
+      "id": "PANORAMA-SLICE-BACKFILL",
+      "priority": "P1",
+      "deps": [
+        "PANORAMA-FIELD-INTAKE"
+      ],
+      "title": "全景驱动切片补齐+切片×图谱同页: 多跳SliceSpec覆盖全景域·每切片页内渲染其子图·无独立图谱导航(用户亲定链条第三环)",
+      "note": "用户亲定链条第三环『补本体切片』+此前裁定『图谱都与本体切片在一个页面·每个切片配套图谱』。做: ①以全景图为基准补声明式SliceSpec(多跳·spannedTypes≥3): 推演主干链(Order→Model→Base→Line→Material)·数据流域(RawDataset→ObjectType→Slice→Solver)·求解器绑定域·编排域(Intent→Plan→Agent/Workflow)·企业360(enterprise_360补齐)——七视角删除后其域知识以切片形态存续(可检索可推演·非视图); ②全部注册目录(发现纪律description/argHints)+slice-index; ③/admin/slices升级「切片×图谱」融合页: 切片列表·选中→页内渲染该切片resolve真值子图(复用全景渲染件·args用argHints示例或实体选择器·空态诚实)·全景图为页顶默认视图; ④R6确定性·R3(entitlement门融合页)。齿: 逐域配套切片存在+多跳断言(单跳回潮红)+resolve非空+融合页渲染齿。FDE: 真浏览器选3切片见子图(节点数==后端resolve)+全景默认视图+截图。本体回写: §2切片清单+§3检索链。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
       "cmd": "QUEUE",
-      "id": "SLICE-GRAPH-PARITY+GRAPH-SLICE-UNIFY",
-      "at": "2026-07-05T09:14:44.290Z"
+      "id": "PANORAMA×3(重构)",
+      "at": "2026-07-05T09:18:30.471Z"
     }
   }
 }
