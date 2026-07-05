@@ -144,6 +144,8 @@ function slotsForCard(card: (typeof SCENARIO_CATALOG)[number]): SlotDef[] {
       type: "objectRef",
       required: true,
       defaultFrom: "$.selectedObjects[0]",
+      // 铁律 0.4：面向用户的人话反问（含示例锚点），绝不甩裸对象类型 key。
+      clarifyPrompt: `请指明要分析的${primary.label ?? primary.objectType}（如 ${primary.label ?? primary.objectId}；也可在页面选中对象自动带入）`,
       description: `${primary.objectType} 对象引用`,
       refType: primary.objectType,
     });

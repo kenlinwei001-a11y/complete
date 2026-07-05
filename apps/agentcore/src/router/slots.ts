@@ -350,6 +350,22 @@ export async function fillSlots(
   return { slots, missing, outOfDomain };
 }
 
+/**
+ * 面向用户的澄清反问文案（铁律 0.4：零裸内部 key 面向用户）。
+ * 优先级 clarifyPrompt（人话 + 单位 + 示例 + 取值域）> description（人话）> 兜底裸名。
+ * 兜底裸名 `请提供${slot.name}` 会把 `demandDelta` 这类内部参数名直接甩给用户——**只应在
+ * 既无 clarifyPrompt 又无 description 时出现**，且已被门禁 `scripts/check-clarify-humanized.mjs`
+ * 挡在发布前（防新增槽回潮裸 key）。此前该函数无视 description、直接跳兜底裸名——本单根因①。
+ */
 export function clarifyPromptFor(slot: SlotDef): string {
-  return slot.clarifyPrompt ?? `请提供${slot.name}`;
+  const clarify = slot.clarifyPrompt?.trim();
+  if (clarify) return clarify;
+  const desc = slot.description?.trim();
+  if (desc) return desc;
+  return `请提供${slot.name}`;
+}
+
+/** 裸内部 key 兜底文案形态（`请提供${name}`）——门禁/齿检用来判定某槽是否会向用户泄漏裸参数名。 */
+export function isRawKeyClarifyPrompt(slot: SlotDef): boolean {
+  return clarifyPromptFor(slot) === `请提供${slot.name}`;
 }

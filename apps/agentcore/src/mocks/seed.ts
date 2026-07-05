@@ -293,7 +293,7 @@ export function seedIntentsAndPlans(
           type: "objectRef",
           required: true,
           defaultFrom: "$.selectedObjects[0]",
-          clarifyPrompt: "请提供基地",
+          clarifyPrompt: "请指明要查的基地（如 常州 / 合肥 / 宜宾；也可在页面选中基地自动带入）",
           description: "受影响的基地（Base 对象引用）",
         },
         {
@@ -320,8 +320,8 @@ export function seedIntentsAndPlans(
       examples: ["4680-NCM 加 20% 六周能不能接？", "M3P 增加 10% 产能够吗", "需求上调后能不能交付"],
       enabledViews: "*",
       slots: [
-        { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", description: "型号（Model 对象引用）" },
-        { name: "demandDelta", type: "number", required: true, description: "需求增量比例（0.2 表示 +20%）" },
+        { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", clarifyPrompt: "请指明要评估的型号（如 4680-NCM / M3P-标准；也可在页面选中型号自动带入）", description: "型号（Model 对象引用）" },
+        { name: "demandDelta", type: "number", required: true, clarifyPrompt: "请提供需求增量比例（0~1 的小数，如 0.2 表示 +20%；可为负数表示下调，只填数字不带百分号）", description: "需求增量比例（0.2 表示 +20%）" },
         { name: "weeks", type: "number", required: false, description: "周数，缺省 6" },
       ],
       planId: `plan_capacity_feasibility_v1${sfx}`,
@@ -346,6 +346,7 @@ export function seedIntentsAndPlans(
           type: "objectRef",
           required: true,
           defaultFrom: "$.selectedObjects[0]",
+          clarifyPrompt: "请指明要分析风险根因的基地（如 常州 / 宜宾；也可在页面选中基地自动带入）",
           description: "基地对象引用",
         },
         { name: "day", type: "date", required: false, description: "日期（可选）" },
@@ -372,6 +373,7 @@ export function seedIntentsAndPlans(
           type: "objectRef",
           required: true,
           defaultFrom: "$.selectedObjects[0]",
+          clarifyPrompt: "请指明要采纳处置方案的基地（如 常州；也可在页面选中基地自动带入）",
           description: "基地对象引用",
         },
         {
@@ -379,6 +381,7 @@ export function seedIntentsAndPlans(
           type: "enum",
           required: true,
           enumValues: ["三班制", "外协", "调拨"],
+          clarifyPrompt: "请选择要采纳的处置方案（可选值：三班制 / 外协 / 调拨）",
           description: "处置方案名",
         },
         {

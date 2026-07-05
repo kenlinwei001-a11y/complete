@@ -7,6 +7,7 @@ import type {
   ResolvedRef,
   ScenarioPackage,
   SceneEntryConfig,
+  SessionContext,
   SlotDef,
   SubmitQueryBody,
 } from "@platform/contracts";
@@ -201,6 +202,18 @@ export class Orchestrator {
       }
     }
 
+    // ② 场景卡改写问句（自由路径）继承卡 presetSlots（本单根因②·治 G-3 launcher→自由问句接缝）：
+    // 用户点场景卡（注入 presetSlots，如 S01 demandDelta:0.2）后，在对话坞改写成自己的问句 → 该次
+    // 提交走前端 buildContext（PRD §6.2 固定，不带 presetSlots），仅 conversationId 指向卡的父任务。
+    // 若不继承，卡的 presetSlots 全丢 → 本不该问的槽（demandDelta）被反问裸 key。此处按会话血缘从父
+    // 任务继承 presetSlots 作**默认**（用户本次显式抽取的槽优先级更高，见 fillSlots ① > ①.5）。
+    const inheritedPresets = await this.inheritScenarioPresets(auth.tenantId, body.context);
+    const mergedContext: SessionContext = {
+      ...body.context,
+      conversationId: body.context.conversationId ?? undefined,
+      ...(Object.keys(inheritedPresets).length > 0 ? { presetSlots: inheritedPresets } : {}),
+    };
+
     const task: QueryTask = {
       id: taskId,
       tenantId: auth.tenantId,
@@ -208,7 +221,7 @@ export class Orchestrator {
       packageId: body.packageId,
       conversationId: body.context.conversationId ?? newId("conv"),
       query: body.query,
-      context: { ...body.context, conversationId: body.context.conversationId ?? undefined },
+      context: mergedContext,
       status: "ROUTING",
       clarificationRounds: 0,
       createdAt: new Date().toISOString(),
@@ -490,6 +503,36 @@ export class Orchestrator {
   private async previousConversationTasks(task: QueryTask): Promise<QueryTask[]> {
     const history = await this.deps.repos.tasks.listByConversation(task.tenantId, task.conversationId);
     return history.filter((t) => t.id !== task.id);
+  }
+
+  /**
+   * ② 场景卡改写问句时的 presetSlots 继承（治 G-3 launcher→自由问句接缝）。
+   * 会话血缘：前端点卡后 `store.setConversationId(res.taskId)`（PRD §6.2 buildContext 固定不带 presetSlots），
+   * 后续对话坞改写的问句以卡的**父任务 id** 作 context.conversationId 提交 → 这里据此取回父任务，把其
+   * presetSlots 继承为本轮**默认**（用户本轮显式给的槽在 fillSlots 里优先级更高、会覆盖）。
+   * 父任务定位两条兜底：① 直接 `tasks.get(conversationId)`（前端约定 conversationId=父 taskId）；
+   * ② 同会话 `listByConversation`。取最近的、带非空 presetSlots 的祖先。用户本轮显式 presetSlots 优先合并在上。
+   * 无父/无预置 → 返回本轮原样 presetSlots（可能为空），零行为变化。确定性、纯读、tenant 隔离（R6/租户铁律）。
+   */
+  private async inheritScenarioPresets(
+    tenantId: string,
+    context: SessionContext,
+  ): Promise<Record<string, unknown>> {
+    const own = context.presetSlots ?? {};
+    const convId = context.conversationId;
+    if (!convId) return own;
+    const ancestors: QueryTask[] = [];
+    const direct = await this.deps.repos.tasks.get(convId);
+    if (direct && direct.tenantId === tenantId) ancestors.push(direct);
+    const siblings = await this.deps.repos.tasks.listByConversation(tenantId, convId);
+    ancestors.push(...siblings);
+    // 取最近创建的、带非空 presetSlots 的祖先（确定性：createdAt 降序，同刻按 id）。
+    const withPreset = ancestors
+      .filter((t) => t.context?.presetSlots && Object.keys(t.context.presetSlots).length > 0)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))[0];
+    if (!withPreset) return own;
+    // 父默认在下、用户本轮显式在上（改写≠弃 preset·仅用户显式给出的槽覆盖）。
+    return { ...withPreset.context.presetSlots, ...own };
   }
 
   // -------------------------------------------------------------------------
