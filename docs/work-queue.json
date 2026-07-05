@@ -3430,13 +3430,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
         "wip": "2026-07-05T10:05:37.616Z",
-        "built": "2026-07-05T11:41:00.119Z"
+        "built": "2026-07-05T11:41:00.119Z",
+        "done": "2026-07-05T14:24:49.714Z"
       },
       "id": "ONTO-SCEN-LAUNCH-DET",
       "priority": "P1",
@@ -3448,13 +3449,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
         "wip": "2026-07-05T10:06:16.563Z",
-        "built": "2026-07-05T12:14:01.499Z"
+        "built": "2026-07-05T12:14:01.499Z",
+        "done": "2026-07-05T14:24:49.660Z"
       },
       "id": "ONTO-SCEN-RENDER-PROJ",
       "priority": "P2",
@@ -3466,13 +3468,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
         "wip": "2026-07-05T11:56:53.956Z",
-        "built": "2026-07-05T13:45:52.010Z"
+        "built": "2026-07-05T13:45:52.010Z",
+        "done": "2026-07-05T14:24:49.603Z"
       },
       "id": "ONTO-SCEN-GROWTH-LOOP",
       "priority": "P2",
@@ -3611,13 +3614,14 @@
       }
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-05T11:18:19.874Z",
         "wip": "2026-07-05T11:56:54.123Z",
-        "built": "2026-07-05T13:44:49.057Z"
+        "built": "2026-07-05T13:44:49.057Z",
+        "done": "2026-07-05T14:24:49.546Z"
       },
       "id": "QUERY30-ONTOLOGY-EXT",
       "priority": "P1",
@@ -3689,10 +3693,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "INTAKE-XLSX-EXPORT",
-      "at": "2026-07-05T14:14:35.528Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "ONTO-SCEN-LAUNCH-DET",
+      "at": "2026-07-05T14:24:49.714Z"
     }
   }
 }
