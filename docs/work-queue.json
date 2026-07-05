@@ -3160,7 +3160,7 @@
     {
       "id": "LAUNCHER-SLOT-TRUTH",
       "priority": "P0",
-      "status": "BLOCKED",
+      "status": "WIP",
       "owner": "dev",
       "deps": [],
       "blockReason": "真Kimi链上复验(审核方有live key·dev沙箱无): S01链全通(2170-NCM/0.35/8周三显式值真进求解器+回显块④·COMPLETED)·16齿+归一+优先级+横幅代码级已验真好·静默吞噬已死(零静默换题)。但旗舰句S02断在词表接缝(预存断点·本单治好上游后才可达): 合肥→(a)CJK标签无键解析(合肥仅props.name·二级键hefei·score1候选不自动绑)→澄清; (b)回填/选候选后objectRef规范化取data.objectId=obj_base_hefei(datacore序列化不一致:Base载荷带objectId·Model不带)→模板{{slots.base.objectId}}压长id→affected_orders只认props.baseId=hefei→400 unknown base→FAILED。问合肥现=澄清→选合肥→报错,验收句'答合肥或明示未采用'未达。修向(小刀): ①压标量/规范化优先solver词表键=PK表(executor.ts:492 baseId/modelId先于objectId·或规范化时存props主键) ②实体解析CJK名先objects/query name精确匹配·唯一score1自动绑定免澄清 ③齿加'合肥端到端COMPLETED且答案含合肥'(真getObject载荷含objectId形态)。证据: sse-s02c TOOL_ERROR 400·GET Base/hefei与obj_base_hefei均200且data.objectId均=obj_base_hefei·GET Model/2170-NCM无objectId字段",
@@ -3183,7 +3183,7 @@
         ]
       },
       "at": {
-        "wip": "2026-07-05T04:06:13.184Z",
+        "wip": "2026-07-05T05:26:15.571Z",
         "built": "2026-07-05T04:48:11.681Z",
         "blocked": "2026-07-05T05:18:13.015Z"
       }
@@ -3354,10 +3354,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "BLOCKED",
+      "role": "dev",
+      "cmd": "WIP",
       "id": "LAUNCHER-SLOT-TRUTH",
-      "at": "2026-07-05T05:18:13.015Z"
+      "at": "2026-07-05T05:26:15.571Z"
     }
   }
 }
