@@ -3408,11 +3408,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
-        "todo": "2026-07-05T08:29:30.462Z"
+        "todo": "2026-07-05T08:29:30.462Z",
+        "wip": "2026-07-05T09:35:44.623Z"
       },
       "id": "ONTO-SCEN-GROW",
       "priority": "P0",
@@ -3555,9 +3556,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "ONTO-SCEN-CONTRACT",
-      "at": "2026-07-05T09:32:41.434Z"
+      "cmd": "WIP",
+      "id": "ONTO-SCEN-GROW",
+      "at": "2026-07-05T09:35:44.623Z"
     }
   }
 }
