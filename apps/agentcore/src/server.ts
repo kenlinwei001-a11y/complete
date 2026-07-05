@@ -2576,7 +2576,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
           context: { view: sc.presetContext.targetView, selectedObjects: sc.presetContext.selectedObjects, filters: {}, presetSlots: sc.presetContext.slotPresets, scenarioIntentKey: sc.intentKey, scenarioKey: sc.scenarioKey },
         });
         const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, loopBody, emitDomainEvent);
+        // 双通道（WO ONTO-SCEN-GROW·§5 事件入 outbox）：SSE 场景通道（当页实时）⊕ 域事件 outbox
+        // （L4，经 /b/v1/outbox → F1 全局轮询失效 scenarios/growth-*，下游驾驶舱/收件箱订阅）。
         await deps.events.emit(sc.scenarioKey, "scenario.growth_triggered", { scenarioKey: sc.scenarioKey, runId, gapCode: v.gapCode });
+        await emitDomainEvent(a.tenantId, "scenario.growth_triggered", { scenarioKey: sc.scenarioKey, runId, gapCode: v.gapCode });
         const report = await runGrowthLoop({ question: sc.triggerQuestion, maxRounds: 6, probe, fill });
         growth = { triggered: true, terminalState: report.terminalState, rounds: report.rounds.length };
         await deps.repos.growthLedger.insert({ id: newId("glr"), tenantId: a.tenantId, report, createdAt: new Date().toISOString() });
@@ -2663,7 +2666,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // PRD-scenario-ontogenesis §4：发育运行一等落库（R2 tenant 随身）；卡挂 lastOntogenesisRunId（内嵌留痕 additive 并存）。
     await deps.repos.ontogenesisRuns.insert(run);
     await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, lastOntogenesisRunId: runId, updatedAt: new Date().toISOString() });
-    await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });
+    // 双通道（WO ONTO-SCEN-GROW·§5 事件入 outbox）：matured/gap_detected 同 growth_triggered——
+    // SSE 场景通道（当页实时）⊕ 域事件 outbox（L4，供前端缓存失效 + 收件箱/驾驶舱订阅，不静默）。
+    const terminalEvent = maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected";
+    await deps.events.emit(sc.scenarioKey, terminalEvent, { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });
+    await emitDomainEvent(a.tenantId, terminalEvent, { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });
     return run;
   };
 

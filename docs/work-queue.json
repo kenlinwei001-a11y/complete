@@ -3411,12 +3411,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
-        "wip": "2026-07-05T09:35:44.623Z"
+        "wip": "2026-07-05T09:35:44.623Z",
+        "built": "2026-07-05T10:02:21.037Z"
       },
       "id": "ONTO-SCEN-GROW",
       "priority": "P0",
@@ -3424,7 +3425,8 @@
         "ONTO-SCEN-CONTRACT"
       ],
       "title": "倒序发育核心: growScenario+POST /b/v1/scenarios/:key/grow + A10验证上架门(查存在→查跑通)",
-      "note": "PRD §2.2/2.3+§0根因表: 复用ModuleProvisioner(databuilder/provisioners.ts 13-need)/runStory/slice-planner(A3.3)/A18——不重写。逐项provision: 意图upsert+PUBLISH·计划scaffold·规则声明必插evaluate_rules步·切片planSlice·缺求解器A18临时(PROVISIONAL)或开单·缺数据DF.9正门。末步A10 verifyBuild: triggerQuestion经QOS正序实跑→真answer(非空非占位非探索兜底)才GOVERNED·否则PROVISIONAL+gapCode。落ScenarioOntogenesisRun+事件scenario.matured/gap_detected/growth_triggered(入outbox/L15)。**根治§0种子守卫bug**: main.ts:22-29守卫从包存在改为意图存在级(或grow自愈)——PRD验收#2 PG复现修复=在包存在但意图空的库上grow→意图自动补齐→点S01出KPI。DoD: 内存+PG各grow一张卡到GOVERNED·验证门齿(答案空/占位→不GOVERNED·revert门→红)·事件齿。"
+      "note": "PRD §2.2/2.3+§0根因表: 复用ModuleProvisioner(databuilder/provisioners.ts 13-need)/runStory/slice-planner(A3.3)/A18——不重写。逐项provision: 意图upsert+PUBLISH·计划scaffold·规则声明必插evaluate_rules步·切片planSlice·缺求解器A18临时(PROVISIONAL)或开单·缺数据DF.9正门。末步A10 verifyBuild: triggerQuestion经QOS正序实跑→真answer(非空非占位非探索兜底)才GOVERNED·否则PROVISIONAL+gapCode。落ScenarioOntogenesisRun+事件scenario.matured/gap_detected/growth_triggered(入outbox/L15)。**根治§0种子守卫bug**: main.ts:22-29守卫从包存在改为意图存在级(或grow自愈)——PRD验收#2 PG复现修复=在包存在但意图空的库上grow→意图自动补齐→点S01出KPI。DoD: 内存+PG各grow一张卡到GOVERNED·验证门齿(答案空/占位→不GOVERNED·revert门→红)·事件齿。",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -3574,10 +3576,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "QUEUE",
-      "id": "SKILL-LIBRARY-EVERYWHERE",
-      "at": "2026-07-05T09:55:29.963Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "ONTO-SCEN-GROW",
+      "at": "2026-07-05T10:02:21.037Z"
     }
   }
 }

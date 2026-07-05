@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `1b043eb11ad0bcf7`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `a5682b36634518e9`。
 
 ---
 
@@ -73,6 +73,16 @@ ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --P
 Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）
 MaterializedIntent --mode--> { workflow-first→Path A 工作流 | agent-first→Path B Agent } · --bindings--> { Solver·Rule(eval)·Constraint·Skill·SliceSpec·(Agent|Workflow) }   ✅ WO-INTENT-MATERIALIZE-BINDING-COMPLETE：20 场景 intentKey 全物化为一等 PUBLISHED Intent（mode 由审核方钉死·全绑定链 6 项齐）；**补齐链** `MaterializedIntent →(reconcile 缺项检测)→ scaffold DRAFT →审核发布`（接 sys.meta.change_loop·R4 不自动上真值·复用 self-growth scaffold）；全绑定链门 `scene-agent-config:check`（扩）守回潮。**MODE-DISPATCH-HONOR（审计簇⑦·mode 钉死表被场景实体架空·分发已尊重·2026-07-05）**：此前一等 Scenario 投影一揽子 `mode:"WORKFLOW_FIRST"`（`scenarios-catalog.ts scenarioFromCard`）且 orchestrator 只看 `scene.mode` → yield_diag/maint_stagger/outsourcing_q/capex_review/quarterly_gap_q（7 agent-first 之五·审计实测）分类命中后仍被压回 Path A 工作流表格，「为什么/哪个好/怎么选」永不触发 agent 推理——钉死表被架空。治（不重定 modes·只让派发尊重既有表）：① 钉死表移 `intents/intent-mode.ts` 为**唯一真相源**（materialize.ts re-export 兼容·scenarios-catalog `scenarioFromCard` 的 mode 改按 `intentModeFor(intentKey)` 派生 → 一等 Scenario 投影不再对 13/7 撒谎）；② **意图已解析的唯一分发点** `orchestrator.proceedWithIntent` 先查一等权威 `repos.materializedIntents.byKey(tenantId, intentKey)`（R14 数据驱动·读可编辑一等对象非硬编码表）——PUBLISHED 且 mode=AGENT_FIRST 且绑定 agent 已发布 → 委派 `runConfiguredAgent`（与 runSceneAgent 共用单一机制·routing.completed note=`意图权威模式 AGENT_FIRST（一等 Intent {key}）`·agentRun.agentId 持久化=绑定 agent·AGENT-UNIVERSAL C2 同坐标系可审计）；查无一等 Intent/绑定 agent 不可用 → 回落既有链（Path A·全 -first 保兜底）。workflow-first 13 意图零回归（仍 Path A）；scene.mode 链（runPipeline 入口级 AGENT_FIRST/WORKFLOW_ONLY）不变。齿 `mode-dispatch-honor.test.ts`（9 例·revert 分发/revert 场景一揽子→red 已自证）
 SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent   （降为投影）
+**卡发育链（G-9·PRD-scenario-ontogenesis·WO ONTO-SCEN-GROW 收口）**
+Scenario(卡=胚胎) --POST /b/v1/scenarios/:key/grow--> growScenario(server.ts·倒序发育，复用不重写：
+    意图/计划=ensureScenarioPackageSeed per-id 幂等自愈(种子守卫根治·包存在意图空也重种) · 规则=injectScenarioRuleStep 自动插 evaluate_rules(O10)
+    · 切片=OBO planSlice(A3.3 slice-planner·O11) · 缺件=buildGrowthLoopWiring 单源 probe/fill(与 /api/v1/growth/run 共用 RL3)
+    · 缺数据=DF.9 正门(fill-data 经 connectors.upload / provision-world 经 synthetic.runJob·空租户安全门) · 缺求解器/计划=scaffold DRAFT(R4 不自动发布)或开 GrowthTicket)
+  --A10 verifyScenario(triggerQuestion 经 QOS 正序实跑到终态·真答案=非空/非 gap/非探索兜底/dataBearing 承载数据)--> maturity{GOVERNED|ADVISORY|PROVISIONAL+gapCode}
+  --留痕--> ScenarioOntogenesisRun(一等仓储 ontogenesisRuns·内存+PG migration 012·卡挂 lastOntogenesisRunId)
+  --事件--> scenario.{growth_triggered|matured|gap_detected}(SSE 场景通道 ⊕ 域事件 outbox 双通道·§4 L4)
+  --正序--> launch 确定性绑定(GOVERNED 卡 scenarioIntentKey → 跳过 LLM classify·deterministic:scenario-bind) --> answer(KPI/表投影)
+  真 PG live-fire：包存在意图空的 PG 库 grow → ensureScenarios 懒自愈意图 → GOVERNED → 点卡出 KPI（test/scenario-grow-pg.integration.test.ts·env-gated DATABASE_URL_TEST）
 ```
 **数据→本体→推演链**
 ```

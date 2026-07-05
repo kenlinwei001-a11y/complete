@@ -43,6 +43,8 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "scenario.published", producer: "场景发布（升一等对象）", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },
   { event: "scenario.retired", producer: "场景退役", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },
   { event: "scenario.growth_triggered", producer: "场景发育闭环·缺件 grow 触发 runGrowthLoop（O9）", tier: "IN_SESSION", invalidates: ["scenarios", "growth-ledger", "growth-tickets"] },
+  { event: "scenario.matured", producer: "场景发育闭环·grow A10 验证真出答案（非空/非占位/非探索兜底）→ GOVERNED 上架", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },
+  { event: "scenario.gap_detected", producer: "场景发育闭环·grow 验证未过 → PROVISIONAL/ADVISORY + gapCode（诚实缺口不静默）", tier: "NOTIFY", invalidates: ["scenarios", "growth-tickets", "notifications"] },
   // L5 行动环 / DL4
   { event: "action.pending_approval", producer: "Action 草稿提交", tier: "NOTIFY", invalidates: ["notifications", "approval-inbox"] },
   { event: "action.executed", producer: "Action 写回执行", tier: "IN_SESSION", invalidates: ["dashboard", "object-queries"], dl: "DL4" },
