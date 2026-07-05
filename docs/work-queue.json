@@ -3505,14 +3505,41 @@
       "at": {
         "todo": "2026-07-05T08:53:50.737Z"
       }
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "todo": "2026-07-05T09:14:44.282Z"
+      },
+      "id": "SLICE-GRAPH-PARITY",
+      "priority": "P1",
+      "doc": "docs/PRD-nav-ia-reorg.md",
+      "title": "切片补齐至图谱同权: 八视角图谱逐一配套多跳SliceSpec(用户亲定·先于页面融合)",
+      "note": "用户亲定(2026-07-05): 『目前的本体切片都是单跳为主，首先基于目前的图谱把切片都先补齐』。现状实测: 切片仅4个(内置model_capacity_network/base_risk_profile均单跳·声明式order_fulfillment_360/order_to_cash_720多跳)·而图谱八视角(graph-all全景/backbone推演主干/flow数据流/source源/solver求解器/mvp/agent/loop编排)无一有配套切片。建: 每个图谱视角配套≥1个声明式SliceSpec(走executeSlice引擎·非内置分支): backbone→推演主干多跳链(Order→Model→Base→Line→Material类·跳深≥3)·flow→数据流域(RawDataset→ObjectType→Slice→Solver)·source→源→对象归属·solver→求解器绑定域(Solver→Slice→ObjectType→Rule)·agent/loop→编排域(Intent→Plan→Agent/Workflow)·mvp/all→企业360(enterprise_360补齐或复用)。注册进BUILTIN_SLICE_CATALOG同权目录(发现纪律: description/argHints齐全否则不上目录)+slice-index建索引(spannedTypes正确)。R6确定性(BFS引擎既有)。齿: 逐视角配套切片存在断言+多跳深度断言(spannedTypes.length≥3·单跳回潮红)+resolve真跑非空(seed数据下nodes/edges>0)。FDE: curl逐切片resolve对照图谱API同域节点集(切片⊆图谱同视角·抽3验)。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "todo": "2026-07-05T09:14:44.290Z"
+      },
+      "id": "GRAPH-SLICE-UNIFY",
+      "priority": "P1",
+      "deps": [
+        "SLICE-GRAPH-PARITY"
+      ],
+      "doc": "docs/PRD-nav-ia-reorg.md",
+      "title": "图谱×切片同页融合: 每切片行内嵌其子图渲染·撤独立『图谱体系』导航组(用户亲定·闭nav-ia遗漏)",
+      "note": "用户亲定: 『图谱都与本体切片在一个页面，每个本体切片都需要配套一个图谱，无需单独有图谱的导航栏』。历史对账: PRD-nav-ia-reorg§2『图谱归位入建模与图谱』只落了单graph视图·八视角组(ShellLayout.tsx:59图谱体系collapsed组)系后续增量未随纪律归位=部分遗漏坐实。建: ①/admin/slices切片页升级为「切片×图谱」融合页: 切片列表(目录+SliceSpec全量)·选中切片→右侧/下方内嵌该切片resolve真值子图渲染(复用OntologyGraphView渲染件·args用argHints示例值或实体选择器·空态诚实)·八视角作为融合页顶部视角tab(点tab=载入该视角配套切片(SLICE-GRAPH-PARITY产物)并渲染); ②ShellLayout撤「图谱体系」独立组·八个view键的路由保留但从导航移除(直链兼容·或302到融合页对应tab·dev择一须声明); ③entitlement语义保持: view.graph-*feature键与融合页tab门对齐(R3·关=tab不现)·若退役键须features registry声明+本体回写; ④「建模与图谱」组内graph项保留为融合页入口(或改label『图谱与切片』)。齿: 导航组断言(无图谱体系组·八视角tab在融合页)+每切片图谱渲染非空(seed下)+entitlement关tab隐。FDE: 真浏览器=融合页选3切片逐个见子图(节点数对照后端resolve)+八视角tab切换渲染+导航栏无图谱体系组截图。本体回写: §7导航IA变更+G-VIS-1相关行。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
       "cmd": "QUEUE",
-      "id": "TICKET-CENTER-UNIFIED",
-      "at": "2026-07-05T08:53:50.738Z"
+      "id": "SLICE-GRAPH-PARITY+GRAPH-SLICE-UNIFY",
+      "at": "2026-07-05T09:14:44.290Z"
     }
   }
 }
