@@ -3021,7 +3021,7 @@
     {
       "id": "PLATFORM-AGENT-SURFACE",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "INDUSTRY-PACK-CONVERGE"
@@ -3054,7 +3054,7 @@
     {
       "id": "AGENT-OBSERVATIONAL-MEMORY",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "INDUSTRY-PACK-CONVERGE"
@@ -3082,7 +3082,7 @@
     {
       "id": "AGENT-HANDOFF-OBJECT",
       "priority": "P3",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "INDUSTRY-PACK-CONVERGE"
