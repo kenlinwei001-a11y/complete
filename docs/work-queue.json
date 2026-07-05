@@ -3603,17 +3603,19 @@
       }
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-05T11:18:19.874Z",
-        "wip": "2026-07-05T11:56:54.123Z"
+        "wip": "2026-07-05T11:56:54.123Z",
+        "built": "2026-07-05T13:44:49.057Z"
       },
       "id": "QUERY30-ONTOLOGY-EXT",
       "priority": "P1",
       "title": "QUERY30缺口①: 新5类型(Supplier/BomLine/LtaContract/LaborShift/CarbonPassport)+6边+18类型字段批(Line三字段大缺口先行)",
-      "note": "设计源docs/DESIGN-query30-multihop-gaps.md §2.1/2.2(30问倒推·字段逐一有问句锚)。做: ①新5类型入本体(schema+合成种子确定性生成R6+数据模板G-6+分类面板)②6新边(Order-ALLOCATED_ON→Line/Order-DISPLACES→Order/Material-SUPPLIED_BY→Supplier/MaterialBatch-RESERVED_FOR→Order/Model-BOM→BomLine→Material/DataSourceHealth-FEEDS→ObjectType)③字段批按§2.1表(Line.capacityDaily/certifiedModels最优先——Line现仅3字段线级推演全空·Order挤占五件套次之)④Process.yield时序化入ts_points(连降类问句的数据基础)。齿: 新类型往返+种子确定性+边解引用+字段在数据模板可下载。FDE: 上传含新字段模板→物化→对象360逐值。本体回写§2/§3必须。"
+      "note": "设计源docs/DESIGN-query30-multihop-gaps.md §2.1/2.2(30问倒推·字段逐一有问句锚)。做: ①新5类型入本体(schema+合成种子确定性生成R6+数据模板G-6+分类面板)②6新边(Order-ALLOCATED_ON→Line/Order-DISPLACES→Order/Material-SUPPLIED_BY→Supplier/MaterialBatch-RESERVED_FOR→Order/Model-BOM→BomLine→Material/DataSourceHealth-FEEDS→ObjectType)③字段批按§2.1表(Line.capacityDaily/certifiedModels最优先——Line现仅3字段线级推演全空·Order挤占五件套次之)④Process.yield时序化入ts_points(连降类问句的数据基础)。齿: 新类型往返+种子确定性+边解引用+字段在数据模板可下载。FDE: 上传含新字段模板→物化→对象360逐值。本体回写§2/§3必须。",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -3678,8 +3680,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "SANDBOX-RENAME-BASECARDS",
-      "at": "2026-07-05T13:28:58.580Z"
+      "id": "QUERY30-ONTOLOGY-EXT",
+      "at": "2026-07-05T13:44:49.057Z"
     }
   }
 }
