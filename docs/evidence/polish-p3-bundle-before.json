@@ -1,0 +1,27 @@
+{
+  "mode": "before",
+  "at": "2026-07-05T09:28:44.422Z",
+  "front": "http://127.0.0.1:5301",
+  "login": "http://127.0.0.1:5301/",
+  "taskId": "task-1001",
+  "hoverToPopoverMs": 847,
+  "hoverAttempts": 1,
+  "hitAreaBelow4px": false,
+  "sandbox": {
+    "dagMode": "full",
+    "labelTotal": 21,
+    "visible": 21,
+    "dense": 0,
+    "intersections": 8,
+    "pairs": [
+      "sandbox-dag-edge-label-Maintenance-Line × sandbox-dag-edge-label-Risk-Yield",
+      "sandbox-dag-edge-label-Downtime-Line × sandbox-dag-edge-label-Shift-Cost",
+      "sandbox-dag-edge-label-Downtime-Line × sandbox-dag-edge-label-Quality-Yield",
+      "sandbox-dag-edge-label-Shift-Workforce × sandbox-dag-edge-label-Maintenance-Yield",
+      "sandbox-dag-edge-label-Shift-Workforce × sandbox-dag-edge-label-Downtime-Cost",
+      "sandbox-dag-edge-label-Shift-Cost × sandbox-dag-edge-label-Quality-Yield",
+      "sandbox-dag-edge-label-Energy-Cost × sandbox-dag-edge-label-Downtime-Yield",
+      "sandbox-dag-edge-label-Maintenance-Yield × sandbox-dag-edge-label-Downtime-Cost"
+    ]
+  }
+}

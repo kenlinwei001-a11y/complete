@@ -44,6 +44,75 @@ export interface PmDagNode {
   st: number;
 }
 
+// ── SANDBOX-EDGE-LABEL-AVOID：边标注避让（治「汇聚边处 ×系数·Δ延迟 标注互叠/交叉」·只动边标不动节点布局） ──
+
+/** 渲染边贝塞尔（`M ax,ay0 C ax,my bx,my bx,by3`）上参数 t 处的点——与 path 同几何（同源）。纯函数（R6）。 */
+export function edgeBezierPoint(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  t: number,
+): { x: number; y: number } {
+  const y0 = a.y + NH / 2;
+  const y3 = b.y - NH / 2;
+  const my = (a.y + b.y) / 2;
+  const u = 1 - t;
+  return {
+    x: a.x * (u * u * u + 3 * u * u * t) + b.x * (3 * u * t * t + t * t * t),
+    y: u * u * u * y0 + 3 * u * u * t * my + 3 * u * t * t * my + t * t * t * y3,
+  };
+}
+
+export interface EdgeLabelPlacement {
+  /** 标注框中心 */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** 所有候选位皆撞（密集区）→ 默认隐藏，hover 该边即显（齿检不变量只约束可见标注）。 */
+  hidden: boolean;
+}
+
+const EDGE_LABEL_FONT = 10;
+/** 候选位（优先级序）：先边中点，再沿边上/下游滑（t），再中点垂直微移（dy）。贪心取首个不与已放标注相撞者。 */
+const EDGE_LABEL_CANDIDATES: ReadonlyArray<readonly [number, number]> = [
+  [0.5, 0], [0.38, 0], [0.62, 0], [0.28, 0], [0.72, 0],
+  [0.5, -15], [0.5, 15], [0.38, -15], [0.62, 15], [0.2, 0], [0.8, 0],
+];
+
+/**
+ * 贪心边标注避让（复用 geo-map/fitLabel 避让先例的矩形碰撞口径）：按入参序放置，每条边在候选位中
+ * 取首个不与已放标注框相撞的位置；全撞 → hidden（密集隐标·hover 显）。只算边标注框，节点布局零改动
+ * （SANDBOX-DAG-NODE-LAYOUT 已落的主标签 0 叠不受影响）。纯函数（R6·确定性）。
+ */
+export function layoutEdgeLabels(
+  items: ReadonlyArray<{ from: string; to: string; label: string; a: { x: number; y: number }; b: { x: number; y: number } }>,
+): Map<string, EdgeLabelPlacement> {
+  const out = new Map<string, EdgeLabelPlacement>();
+  const placed: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (const it of items) {
+    // 框宽/高留余量（halo 描边 + estimateTextWidth 与真实字形的近似差），宁散勿叠。
+    const w = estimateTextWidth(it.label, EDGE_LABEL_FONT) + 10;
+    const h = EDGE_LABEL_FONT + 5;
+    let chosen: EdgeLabelPlacement | null = null;
+    for (const [t, dy] of EDGE_LABEL_CANDIDATES) {
+      const p = edgeBezierPoint(it.a, it.b, t);
+      const cy = p.y + dy;
+      const r = { x1: p.x - w / 2, y1: cy - h / 2, x2: p.x + w / 2, y2: cy + h / 2 };
+      if (!placed.some((q) => r.x1 < q.x2 && r.x2 > q.x1 && r.y1 < q.y2 && r.y2 > q.y1)) {
+        placed.push(r);
+        chosen = { x: p.x, y: cy, w, h, hidden: false };
+        break;
+      }
+    }
+    if (!chosen) {
+      const p = edgeBezierPoint(it.a, it.b, 0.5);
+      chosen = { x: p.x, y: p.y, w, h, hidden: true };
+    }
+    out.set(`${it.from}->${it.to}`, chosen);
+  }
+  return out;
+}
+
 // 借鉴 HTML 项目推演：给 DAG 足够画布（全宽、更高、节点更大可读）。
 const W = 1280;
 const NH = 56;
@@ -83,6 +152,21 @@ export function PmDag({
     });
   });
   const H = TOP + layers.length * LH + 6;
+
+  // 边标注避让（SANDBOX-EDGE-LABEL-AVOID）：先收集有标注的边 → 贪心放置（可见标注两两不叠·
+  // 放不下=密集隐标 hover 显）。edgeLabel 未传 → null（既有调用方零影响）。
+  const labelPlacements = (() => {
+    if (!edgeLabel) return null;
+    const items: { from: string; to: string; label: string; a: { x: number; y: number }; b: { x: number; y: number } }[] = [];
+    for (const [from, to] of edges) {
+      const a = pos.get(from);
+      const b = pos.get(to);
+      if (!a || !b) continue;
+      const label = edgeLabel(from, to);
+      if (label) items.push({ from, to, label, a, b });
+    }
+    return layoutEdgeLabels(items);
+  })();
 
   // 直接操纵：viewBox 变换 {x,y,k}（k=缩放，viewBox 宽高=W/k,H/k）。
   const [vb, setVb] = useState({ x: 0, y: 0, k: 1 });
@@ -167,6 +251,8 @@ export function PmDag({
           <path d="M0,0 L6,3 L0,6 Z" fill="#7C8896" />
         </marker>
       </defs>
+      {/* 密集隐标 hover 显（边标注避让兜底）：默认隐、悬停该边组即显。 */}
+      <style>{".pm-el-dense .pm-el-t{opacity:0;pointer-events:none}.pm-el-dense:hover .pm-el-t{opacity:1}"}</style>
       {edges.map(([from, to], i) => {
         const a = pos.get(from);
         const b = pos.get(to);
@@ -175,30 +261,38 @@ export function PmDag({
         if (!a || !b || !ma || !mb) return null;
         const lit = step >= ma.st && step >= mb.st;
         const my = (a.y + b.y) / 2;
-        // 边中点（贝塞尔 t=0.5 近似：两端点与控制点的平均）—— 标注锚点。
-        const lx = (a.x + b.x) / 2;
-        const ly = my;
+        const d = `M ${a.x} ${a.y + NH / 2} C ${a.x} ${my}, ${b.x} ${my}, ${b.x} ${b.y - NH / 2}`;
         const label = edgeLabel?.(from, to);
+        // 避让后的标注位（含密集隐标标记）；旧中点方案在汇聚边处互叠（治理批次小注②·复原即红见齿检）。
+        const pl = label ? labelPlacements?.get(`${from}->${to}`) : undefined;
         return (
-          <g key={i}>
+          <g key={i} className={pl?.hidden ? "pm-el-dense" : undefined}>
             <path
-              d={`M ${a.x} ${a.y + NH / 2} C ${a.x} ${my}, ${b.x} ${my}, ${b.x} ${b.y - NH / 2}`}
+              d={d}
               fill="none"
               stroke={lit ? "#7C8896" : "var(--line2)"}
               strokeWidth={lit ? 1.5 : 1}
               opacity={lit ? 0.8 : 0.3}
               markerEnd="url(#pm-arrow)"
             />
-            {label ? (
+            {/* 隐标边的 hover 命中区（透明加粗描边，仅密集边挂载） */}
+            {pl?.hidden ? <path d={d} fill="none" stroke="transparent" strokeWidth={12} pointerEvents="stroke" /> : null}
+            {label && pl ? (
               <text
-                x={lx}
-                y={ly + 3}
+                x={pl.x}
+                y={pl.y + 3}
                 textAnchor="middle"
-                fontSize={10}
+                fontSize={EDGE_LABEL_FONT}
                 fontWeight={600}
                 fill="#9AA8B6"
                 opacity={lit ? 1 : 0.5}
+                className={pl.hidden ? "pm-el-t" : undefined}
                 data-testid={`${testId}-edge-label-${from}-${to}`}
+                data-dense={pl.hidden ? "1" : "0"}
+                data-el-x={pl.x.toFixed(1)}
+                data-el-y={pl.y.toFixed(1)}
+                data-el-w={pl.w.toFixed(1)}
+                data-el-h={pl.h.toFixed(1)}
               >
                 <tspan paintOrder="stroke" stroke="var(--panel,#0e141b)" strokeWidth={3}>
                   {label}

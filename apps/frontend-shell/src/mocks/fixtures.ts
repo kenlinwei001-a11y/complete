@@ -130,6 +130,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "act.plan-audit.apply-fix", name: "体检一键修正", level: "ACTION", defaultOn: true, requires: ["view.plan-audit"] },
   { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true, requires: ["view.risk-board"], bindings: { intents: ["adopt_mitigation"] } },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
+  // 推演沙盘（暗发 entitlement·R3）：mock 注册表补 key 但 **defaultOn:false 默认关**（WO-E2 纪律不破：
+  // 不对任何角色全局打开）。演示/取证走正门：PUT /a/v1/tenants/:id/features 开租户 override 即亮
+  // （与 ui-smoke-sandbox.mjs 真后端同一开通路径；SANDBOX-EDGE-LABEL-AVOID 真浏览器取证用）。
+  { key: "sim.sandbox", name: "推演沙盘", level: "VIEW", defaultOn: false },
+  { key: "sim.propagation", name: "沙盘传导", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
 ];
 
 /** 账号 → 生效功能集（base_manager 关闭 view.plan-audit 与 act.adopt-to-draft，演示 404 与 E2） */
@@ -1318,4 +1323,67 @@ export const SCHEDULER_RUNS = [
     finishedAt: "2026-07-02T11:00:03Z",
     status: "SUCCEEDED" as const,
   },
+];
+
+// ── SANDBOX-DAG：mock 沙盘视图对象类型（镜像真部署密度 ~35 类·view-config handler 与齿检单源） ──
+export const SIM_VIEW_NODE_TYPES = [
+  "TypeA", "TypeB", "TypeC",
+  "Demand", "Model", "Base", "Line", "Order", "Plan", "PlanTarget",
+  "Supplier", "Material", "Inventory", "Shipment", "Route", "Carrier",
+  "Capacity", "Bottleneck", "Driver", "Solver", "Scenario", "Forecast",
+  "Finance", "Cost", "Revenue", "Risk", "Quality", "Yield",
+  "Workforce", "Shift", "Maintenance", "Downtime", "Energy", "Emission", "Contract",
+];
+
+// ── SANDBOX-EDGE-LABEL-AVOID：mock 传导规则（镜像真部署密度·汇聚边形态） ─────────────────
+// 为什么：mock 模式此前无 /a/v1/sim/propagation-rules handler → 沙盘边零标注，真浏览器无法复现
+// 治理批次小注②「边标 ×系数·Δ延迟 在汇聚边处交叉」。这里沿 mock view-config 的对象类型播一组
+// PUBLISHED 规则（同 datacore seed 语义：Order→Model ×0.8 / Model→Base ×0.6 / Line→Base ×0.5·Δ1，
+// 再补汇聚密度），令 mock 拓扑如实复现「多源汇聚 → 边标注拥挤」。标注值即规则字段（同源非造值）。
+const simPropRule = (
+  id: string,
+  src: string,
+  via: string,
+  tgt: string,
+  coefficient: number,
+  delayTicks: number,
+): import("@platform/contracts").PropagationRule => ({
+  id: `simpr_mock_${id}`,
+  tenantId: "demo",
+  key: `mock_${id}`,
+  sourceTypeKey: src,
+  sourceStateVar: "pressure",
+  viaLinkKey: via,
+  targetTypeKey: tgt,
+  targetStateVar: "loadIndex",
+  coefficient,
+  delayTicks,
+  combine: "sum",
+  decay: null,
+  clamp: null,
+  coefficientRef: null,
+  status: "PUBLISHED",
+});
+export const SIM_PROPAGATION_RULES: import("@platform/contracts").PropagationRule[] = [
+  simPropRule("order_demand", "Order", "order_for_model", "Model", 0.8, 0),
+  simPropRule("demand_model", "Demand", "demand_of_model", "Model", 0.7, 0),
+  simPropRule("model_to_base", "Model", "model_producible_at", "Base", 0.6, 0),
+  simPropRule("line_to_base", "Line", "line_belongs_to_base", "Base", 0.5, 1),
+  simPropRule("workforce_base", "Workforce", "workforce_at_base", "Base", 0.3, 0),
+  simPropRule("maint_line", "Maintenance", "maintenance_on_line", "Line", 0.4, 1),
+  simPropRule("downtime_line", "Downtime", "downtime_on_line", "Line", 0.5, 1),
+  simPropRule("supplier_material", "Supplier", "supplies_material", "Material", 0.5, 0),
+  simPropRule("material_inventory", "Material", "material_stocked", "Inventory", 0.6, 0),
+  simPropRule("inventory_base", "Inventory", "inventory_feeds_base", "Base", 0.2, 1),
+  simPropRule("base_capacity", "Base", "base_provides_capacity", "Capacity", 0.9, 0),
+  simPropRule("plan_capacity", "Plan", "plan_allocates_capacity", "Capacity", 0.3, 0),
+  simPropRule("shift_workforce", "Shift", "shift_of_workforce", "Workforce", 0.6, 0),
+  simPropRule("shift_cost", "Shift", "shift_labor_cost", "Cost", 0.5, 0),
+  simPropRule("energy_cost", "Energy", "energy_billed_as_cost", "Cost", 0.4, 0),
+  simPropRule("quality_yield", "Quality", "quality_drives_yield", "Yield", 0.7, 0),
+  simPropRule("risk_yield", "Risk", "risk_impacts_yield", "Yield", 0.3, 0),
+  simPropRule("maint_yield", "Maintenance", "maintenance_sustains_yield", "Yield", 0.3, 1),
+  simPropRule("downtime_cost", "Downtime", "downtime_incurs_cost", "Cost", 0.4, 1),
+  simPropRule("downtime_yield", "Downtime", "downtime_hits_yield", "Yield", 0.2, 0),
+  simPropRule("yield_capacity", "Yield", "yield_scales_capacity", "Capacity", 0.5, 1),
 ];

@@ -36,7 +36,8 @@ interface OpenState {
 
 interface ProvCtx {
   open: (s: Omit<OpenState, "pinned">, pinned: boolean) => void;
-  scheduleOpen: (s: Omit<OpenState, "pinned">) => void;
+  /** 悬停驻留后打开；delayMs 缺省 300（PRD §6.5 整卡/区域），sup 小角标传更短驻留（治理批次小注①）。 */
+  scheduleOpen: (s: Omit<OpenState, "pinned">, delayMs?: number) => void;
   cancelScheduled: () => void;
   close: () => void;
 }
@@ -60,9 +61,9 @@ export function ProvenanceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const scheduleOpen = useCallback(
-    (s: Omit<OpenState, "pinned">) => {
+    (s: Omit<OpenState, "pinned">, delayMs: number = 300) => {
       if (hoverTimer.current) clearTimeout(hoverTimer.current);
-      hoverTimer.current = setTimeout(() => setState({ ...s, pinned: false }), 300);
+      hoverTimer.current = setTimeout(() => setState({ ...s, pinned: false }), delayMs);
     },
     [],
   );

@@ -1,10 +1,18 @@
 .mark {
+  position: relative;
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: 9.5px;
   cursor: pointer;
   margin-left: 1px;
   user-select: none;
+}
+/* 热区扩大（治理批次小注①·小靶难命中）：伪元素向四周外扩 ~6px 命中区，
+   absolute 不占版面（行高/邻字不受影响）；伪元素属元素命中区 → hover/click 同享。 */
+.mark::after {
+  content: "";
+  position: absolute;
+  inset: -6px -5px;
 }
 .mark:hover {
   text-decoration: underline;

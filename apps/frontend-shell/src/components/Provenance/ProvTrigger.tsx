@@ -7,6 +7,13 @@ function rectOf(el: HTMLElement) {
   return { top: r.top, left: r.left, bottom: r.bottom, right: r.right };
 }
 
+/**
+ * sup 角标悬停驻留（治理批次小注①）：角标是小靶，300ms 驻留 + 小命中区难触发 →
+ * 缩短至 150ms（配合 .mark::after 热区外扩）；整卡/区域（ProvHoverArea）仍走默认 300ms（PRD §6.5）。
+ * click 钉住不变（设计内交互）。
+ */
+export const PROV_MARK_HOVER_DELAY_MS = 150;
+
 /** 上标引用角标（text block ⟦ref:provId⟧ → ⟦n⟧） */
 export function ProvMark({
   provId,
@@ -30,7 +37,7 @@ export function ProvMark({
       tabIndex={0}
       role="button"
       aria-label={`溯源 ${provId}`}
-      onMouseEnter={(e) => prov.scheduleOpen(payload(e.currentTarget))}
+      onMouseEnter={(e) => prov.scheduleOpen(payload(e.currentTarget), PROV_MARK_HOVER_DELAY_MS)}
       onMouseLeave={() => prov.cancelScheduled()}
       onClick={(e) => prov.open(payload(e.currentTarget), true)}
       onKeyDown={(e) => e.key === "Enter" && prov.open(payload(e.currentTarget), true)}

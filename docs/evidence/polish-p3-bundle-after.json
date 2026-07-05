@@ -1,0 +1,19 @@
+{
+  "mode": "after",
+  "at": "2026-07-05T09:27:51.299Z",
+  "front": "http://127.0.0.1:5301",
+  "login": "http://127.0.0.1:5301/",
+  "taskId": "task-1001",
+  "hoverToPopoverMs": 240,
+  "hoverAttempts": 1,
+  "hitAreaBelow4px": true,
+  "popoverText": "prov-a2-3\n值与口径\n-1.2 GWh\n产能缺口\n来源\ninvoke_solver:capacity_forecast · snapshot ov-12",
+  "sandbox": {
+    "dagMode": "full",
+    "labelTotal": 21,
+    "visible": 21,
+    "dense": 0,
+    "intersections": 0,
+    "pairs": []
+  }
+}

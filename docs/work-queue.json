@@ -3485,17 +3485,19 @@
       "note": "PRD §6六断言(逐卡VERIFIED·renderBindings⊆shapes·ruleIds全进evaluate_rules·sliceTargets覆盖·无静默残缺·目录注册表派生)并入pnpm gates。scenarioClosure(server.ts:1791)从查存在升级为查跑通(ready⟺亲手跑到VERIFIED)。**PRD验收#1**: 20张卡逐张grow→VERIFIED→点卡真决策视图(FDE逐卡证据)。本体回写§2(OntogenesisRun)/§3(卡发育链)/§4(三事件)/§5(R16)/§7(门)/§8(G-1闭·G-9修)+ontology:slices重生成。DoD: gates exit0·北极星距离表(还差哪几环+哪些合成/happy-path·fde-delivery)。"
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
-        "wip": "2026-07-05T08:39:25.078Z"
+        "wip": "2026-07-05T08:39:25.078Z",
+        "built": "2026-07-05T09:42:59.822Z"
       },
       "id": "POLISH-P3-BUNDLE",
       "priority": "P3",
       "title": "随行polish捆绑: 叙事sup角标hover驻留优化 + 沙盘DAG边标交叉避让",
-      "note": "治理批次验收小注捆绑(均非阻断·真浏览器复现在案): ①叙事⟦ref⟧sup角标hover 300ms计时+小靶难命中·点按可用——加hover热区扩大(padding/伪元素)或缩短计时·齿: 组件测hover 400ms出浮层; ②沙盘DAG边标(×0.5·Δ1)在汇聚边处交叉(全展开态8处相交·主标签0叠不受影响)——边标避让或密集处隐标hover显。"
+      "note": "治理批次验收小注捆绑(均非阻断·真浏览器复现在案): ①叙事⟦ref⟧sup角标hover 300ms计时+小靶难命中·点按可用——加hover热区扩大(padding/伪元素)或缩短计时·齿: 组件测hover 400ms出浮层; ②沙盘DAG边标(×0.5·Δ1)在汇聚边处交叉(全展开态8处相交·主标签0叠不受影响)——边标避让或密集处隐标hover显。",
+      "blockReason": ""
     },
     {
       "id": "TICKET-CENTER-UNIFIED",
@@ -3556,9 +3558,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "ONTO-SCEN-GROW",
-      "at": "2026-07-05T09:35:44.623Z"
+      "cmd": "BUILT",
+      "id": "POLISH-P3-BUNDLE",
+      "at": "2026-07-05T09:42:59.822Z"
     }
   }
 }

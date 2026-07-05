@@ -17,6 +17,8 @@ import {
   ROLES_RESPONSE,
   SYNTHETIC_PHASES,
   SYNTHETIC_REPORT,
+  SIM_PROPAGATION_RULES,
+  SIM_VIEW_NODE_TYPES,
   TENANT_ID,
   tickReport,
   TS_AGG_POINTS,
@@ -3010,17 +3012,11 @@ export const handlers = [
   // ---- 推演沙盘 · 初始化向导（增量 4 渐进项 · Agent G）：view-config / session / scope-precheck ----
   // 最小 mock：让 mock 模式下 /v/sim-init 三步向导可走通；配置驱动·零行业实体名（演示用占位 key）。
   http.get("*/a/v1/sim/view-config", () => {
-    // SANDBOX-DAG-NODE-LAYOUT：mock 视图镜像真部署密度（~35 对象类型），令真浏览器如实复现「超密拓扑」→
-    // 验证分层/网格布局 + 标签避让 + 聚合缩略。类型 key 用平台自有占位术语（禁外部产品名）。占位保真：
-    // 首 3 类带真态样例 obj，其余诚实空世界（无对象 → 退占位键·静止 0，非造数 RL5）。
-    const denseTypes = [
-      "TypeA", "TypeB", "TypeC",
-      "Demand", "Model", "Base", "Line", "Order", "Plan", "PlanTarget",
-      "Supplier", "Material", "Inventory", "Shipment", "Route", "Carrier",
-      "Capacity", "Bottleneck", "Driver", "Solver", "Scenario", "Forecast",
-      "Finance", "Cost", "Revenue", "Risk", "Quality", "Yield",
-      "Workforce", "Shift", "Maintenance", "Downtime", "Energy", "Emission", "Contract",
-    ];
+    // SANDBOX-DAG-NODE-LAYOUT：mock 视图镜像真部署密度（~35 对象类型，SIM_VIEW_NODE_TYPES 单源），
+    // 令真浏览器如实复现「超密拓扑」→ 验证分层/网格布局 + 标签避让 + 聚合缩略。类型 key 用平台自有
+    // 占位术语（禁外部产品名）。占位保真：首 3 类带真态样例 obj，其余诚实空世界（无对象 → 退占位键·
+    // 静止 0，非造数 RL5）。
+    const denseTypes = SIM_VIEW_NODE_TYPES;
     return HttpResponse.json({
       tenantId: "demo",
       nodeTypes: denseTypes,
@@ -3033,9 +3029,12 @@ export const handlers = [
       stateVars: ["s1", "s2"],
       radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
       screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
-      propagationCount: 1,
+      propagationCount: SIM_PROPAGATION_RULES.length, // 同源：与 propagation-rules handler 一致（非写死）
     });
   }),
+  // SANDBOX-EDGE-LABEL-AVOID：传导规则（真边+系数/延迟标注来源）。此前 mock 缺该 handler →
+  // 沙盘退相邻兜底边（零标注），真浏览器无法复现「汇聚边标注交叉」；补齐令 mock 镜像真部署形态。
+  http.get("*/a/v1/sim/propagation-rules", () => HttpResponse.json({ items: SIM_PROPAGATION_RULES })),
   http.post("*/a/v1/sim/sessions", async ({ request }) => {
     const body = (await request.json()) as { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> };
     return HttpResponse.json(
