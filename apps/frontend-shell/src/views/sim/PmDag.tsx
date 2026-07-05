@@ -9,6 +9,32 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
  */
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/**
+ * 估算 SVG 文本渲染宽（px）——标签避让/截断几何用（测试同源，jsdom 无 getBBox 时的确定性口径）。
+ * CJK 全角 ≈ fontSize；ASCII/半角 ≈ fontSize*0.6。纯函数（R6）。
+ */
+export function estimateTextWidth(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of text) w += /[　-〿㐀-鿿＀-￯]/.test(ch) ? fontSize : fontSize * 0.6;
+  return w;
+}
+
+/**
+ * 截断标签使渲染宽 ≤ maxWidth（超出末尾加「…」）——SANDBOX-DAG 标签避让核心：
+ * 保证标签框 ⊆ 节点框（横向），配合网格布局（节点框两两不叠）→ 标签框两两不叠（齿检不变量）。
+ * 全名经节点 `<title>` hover 兜底（复用 geo-map 气泡 hover 先例）。纯函数（R6）。
+ */
+export function fitLabelToWidth(label: string, maxWidth: number, fontSize: number): string {
+  if (maxWidth <= 0) return "";
+  if (estimateTextWidth(label, fontSize) <= maxWidth) return label;
+  let out = "";
+  for (const ch of label) {
+    if (estimateTextWidth(out + ch + "…", fontSize) > maxWidth) break;
+    out += ch;
+  }
+  return out.length ? out + "…" : label.slice(0, 1) + "…";
+}
+
 export interface PmDagNode {
   id: string;
   label: string;
@@ -31,6 +57,7 @@ export function PmDag({
   testId = "pm-dag",
   onNodeClick,
   edgeLabel,
+  fitLabel = false,
 }: {
   layers: PmDagNode[][];
   edges: [string, string][];
@@ -40,6 +67,11 @@ export function PmDag({
   onNodeClick?: (id: string) => void;
   /** 可选边标注（沙盘传导边 G-11：`×系数 ·Δ延迟`）。返回 null/空 = 不标（向后兼容，其它调用方不传即无影响）。 */
   edgeLabel?: (from: string, to: string) => string | null | undefined;
+  /**
+   * 标签避让开关（SANDBOX-DAG-NODE-LAYOUT）：opt-in，默认 false（不影响 ProjectSim / InferenceDag 既有渲染）。
+   * 开 → 主标签截断至节点框宽内（不溢出/不叠邻）+ `<title>` hover 兜底全名（geo-map 先例）。
+   */
+  fitLabel?: boolean;
 }) {
   const pos = new Map<string, { x: number; y: number; w: number }>();
   const meta = new Map<string, PmDagNode>();
@@ -179,6 +211,9 @@ export function PmDag({
       {[...meta.values()].map((n) => {
         const p = pos.get(n.id)!;
         const lit = step >= n.st;
+        // 标签避让（fitLabel）：主标签截断至节点框宽内（12px 左右内边距）→ 标签框 ⊆ 节点框 → 网格布局下两两不叠。
+        const labelText = fitLabel ? fitLabelToWidth(n.label, p.w - 12, 13) : n.label;
+        const truncated = fitLabel && labelText !== n.label;
         return (
           <g
             key={n.id}
@@ -186,6 +221,9 @@ export function PmDag({
             data-testid={`${testId}-node-${n.id}`}
             data-lit={lit ? "1" : "0"}
             data-st={n.st}
+            data-x={p.x.toFixed(1)}
+            data-y={p.y.toFixed(1)}
+            data-w={p.w.toFixed(1)}
             style={{ cursor: onNodeClick ? "pointer" : "default" }}
             onClick={() => { if (!movedRef.current) onNodeClick?.(n.id); }}
           >
@@ -199,8 +237,19 @@ export function PmDag({
               stroke={n.color}
               strokeWidth={lit ? 1.6 : 1}
             />
-            <text x={p.x} y={p.y - 6} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--txt)">
-              {n.label}
+            <text
+              x={p.x}
+              y={p.y - 6}
+              textAnchor="middle"
+              fontSize={13}
+              fontWeight={700}
+              fill="var(--txt)"
+              data-testid={`${testId}-label-${n.id}`}
+              data-full={n.label}
+            >
+              {/* 截断后 hover 兜底全名（复用 geo-map 气泡 <title> 先例）。 */}
+              {truncated ? <title>{n.label}</title> : null}
+              {labelText}
             </text>
             <text x={p.x} y={p.y + 12} textAnchor="middle" fontSize={10.5} fill="var(--muted)">
               {n.sub}

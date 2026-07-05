@@ -135,6 +135,91 @@ function buildEdges(cfg: SandboxViewConfig, rules: PropagationRule[]): SandboxEd
   return { list, labels };
 }
 
+// ── SANDBOX-DAG-NODE-LAYOUT：分层/网格布局（治「35 节点单行·标签互叠成墨条」）─────────────────
+// 复现根因：旧 `layers={[nodes]}` 把全部对象类型节点塞进单行 → 节点框收窄 ~21px、标签溢出互叠不可读。
+// 治：按拓扑 rank 分层（longest-path·环安全）；宽层网格换行（每行 ≤ maxPerRow）；退化（链式→单列/全独点）
+// 时回退纯网格（按 rank 序 chunk）。任一路径都保证每行节点数有上限 → 节点框有充裕间距 → 配合 fitLabel 标签不叠。
+export const SANDBOX_MAX_PER_ROW = 6;
+
+/** 对象类型拓扑 rank 分层 + 网格换行 → PmDag 多层入参（非单行）。纯函数（R6·确定性·无随机/时钟）。 */
+export function layoutTopology(
+  nodes: PmDagNode[],
+  edges: [string, string][],
+  maxPerRow: number = SANDBOX_MAX_PER_ROW,
+): PmDagNode[][] {
+  if (nodes.length === 0) return [];
+  if (nodes.length === 1) return [nodes];
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const adj = new Map<string, string[]>();
+  const indeg = new Map<string, number>();
+  for (const n of nodes) {
+    adj.set(n.id, []);
+    indeg.set(n.id, 0);
+  }
+  for (const [f, t] of edges) {
+    if (!byId.has(f) || !byId.has(t) || f === t) continue;
+    adj.get(f)!.push(t);
+    indeg.set(t, (indeg.get(t) ?? 0) + 1);
+  }
+  // Kahn 拓扑序上跑 longest-path rank（环残留节点留 rank 0，确定性不死循环）。
+  const rank = new Map<string, number>(nodes.map((n) => [n.id, 0] as const));
+  const deg = new Map(indeg);
+  const queue = nodes.filter((n) => (deg.get(n.id) ?? 0) === 0).map((n) => n.id);
+  const seen = new Set<string>();
+  while (queue.length) {
+    const u = queue.shift()!;
+    if (seen.has(u)) continue;
+    seen.add(u);
+    for (const v of adj.get(u) ?? []) {
+      rank.set(v, Math.max(rank.get(v) ?? 0, (rank.get(u) ?? 0) + 1));
+      deg.set(v, (deg.get(v) ?? 0) - 1);
+      if ((deg.get(v) ?? 0) <= 0) queue.push(v);
+    }
+  }
+  const maxRank = Math.max(...[...rank.values()]);
+  const groups: PmDagNode[][] = [];
+  for (let r = 0; r <= maxRank; r++) {
+    const g = nodes.filter((n) => (rank.get(n.id) ?? 0) === r);
+    if (g.length) groups.push(g);
+  }
+  const widest = Math.max(...groups.map((g) => g.length));
+  // 退化：拓扑塌成长链（全独点）或层数过多 → 纯网格（按 rank 序 chunk，横铺不再单列过高）。
+  if (widest <= 1 || groups.length > 8) {
+    const flat = groups.flat();
+    const rows: PmDagNode[][] = [];
+    for (let i = 0; i < flat.length; i += maxPerRow) rows.push(flat.slice(i, i + maxPerRow));
+    return rows;
+  }
+  // 正常：保留拓扑层，宽层网格换行（每行 ≤ maxPerRow）。
+  const layers: PmDagNode[][] = [];
+  for (const g of groups) {
+    if (g.length <= maxPerRow) {
+      layers.push(g);
+      continue;
+    }
+    for (let i = 0; i < g.length; i += maxPerRow) layers.push(g.slice(i, i + maxPerRow));
+  }
+  return layers;
+}
+
+/** 超密聚合（thumbnail·聚类）：把分层结果折叠为「每层一个聚类节点」（`层N · k类对象`）→ 节点数骤降、必可读。
+ *  边 = 相邻聚类层顺接。诚实聚合（真按拓扑层归并·标注成员数），非造数（RL5）。纯函数（R6）。 */
+export function aggregateLayers(layers: PmDagNode[][]): { layers: PmDagNode[][]; edges: [string, string][] } {
+  const clusters: PmDagNode[] = layers.map((layer, i) => ({
+    id: `__layer_${i}`,
+    label: `层 ${i + 1}`,
+    sub: `${layer.length} 类对象`,
+    color: "#43B7D7",
+    st: 0,
+  }));
+  const edges: [string, string][] = [];
+  for (let i = 0; i + 1 < clusters.length; i++) edges.push([clusters[i]!.id, clusters[i + 1]!.id]);
+  return { layers: clusters.map((c) => [c]), edges };
+}
+
+/** 超密阈：对象类型数 > 此值即在 DAG 面板提供「聚合分层/展开全部」切换（默认展开·网格已可读）。 */
+export const SANDBOX_DENSE_THRESHOLD = 18;
+
 // ── 就绪雷达（自绘·维数动态 = certification.dims，不复用固定 5 维 RadarChart）─────────────
 function ReadinessRadar({
   dims,
@@ -573,6 +658,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
   const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
 
+  // SANDBOX-DAG-NODE-LAYOUT：DAG 视图模式（full=分层/网格全展开·aggregate=超密聚合缩略）。默认全展开（网格已可读）。
+  const [dagMode, setDagMode] = useState<"full" | "aggregate">("full");
   // AI 指挥台（NL 驱动沙盘 · 确定性意图解析 R6）：输入条 + 末次回执。
   const [nlText, setNlText] = useState("");
   const [nlEcho, setNlEcho] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -782,6 +869,12 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   const heatThreshold = cfg.heatThreshold ?? DEFAULT_HEAT_THRESHOLD;
   const nodes = buildNodes(cfg, world, heatThreshold);
   const { list: edges, labels: edgeLabels } = buildEdges(cfg, propRules);
+  // SANDBOX-DAG-NODE-LAYOUT：分层/网格布局（非单行）；超密时可切聚合缩略。
+  const fullLayers = layoutTopology(nodes, edges);
+  const isDense = nodes.length > SANDBOX_DENSE_THRESHOLD;
+  const aggregated = aggregateLayers(fullLayers);
+  const dagLayers = dagMode === "aggregate" ? aggregated.layers : fullLayers;
+  const dagEdges = dagMode === "aggregate" ? aggregated.edges : edges;
   const radarValues: Record<string, number> = cert
     ? { structure: cert.dims.structure, knowledge: cert.dims.knowledge, behavior: cert.dims.behavior }
     : {};
@@ -869,16 +962,41 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
 
           {/* 主视觉 · 业务建模链 DAG（占左主区主体·min-height 420px·节点色随 tick 变·点节点→R13 溯源悬浮） */}
           <div className={`panel ${styles.heroDag}`} data-testid="sandbox-topology" style={{ padding: 14 }}>
-            <div className={styles.secHead}>本体拓扑（节点态随 tick 变色 · 边标 ×系数·Δ延迟 · 点节点看 R13 上游链路）</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <div className={styles.secHead}>本体拓扑（分层/网格布局 · 节点态随 tick 变色 · 边标 ×系数·Δ延迟 · 点节点看 R13 上游链路）</div>
+              {/* SANDBOX-DAG-NODE-LAYOUT 超密处理：类型数 > 阈值时给「聚合分层 / 展开全部」切换（聚合=每层一聚类节点缩略）。 */}
+              {isDense && (
+                <div data-testid="sandbox-dag-density" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span className={styles.sub} data-testid="sandbox-dag-density-note">{nodes.length} 类对象 · {fullLayers.length} 层</span>
+                  <button
+                    className={`btn sm ${dagMode === "full" ? "primary" : ""}`}
+                    data-testid="sandbox-dag-mode-full"
+                    aria-pressed={dagMode === "full"}
+                    onClick={() => setDagMode("full")}
+                  >
+                    展开全部
+                  </button>
+                  <button
+                    className={`btn sm ${dagMode === "aggregate" ? "primary" : ""}`}
+                    data-testid="sandbox-dag-mode-aggregate"
+                    aria-pressed={dagMode === "aggregate"}
+                    onClick={() => setDagMode("aggregate")}
+                  >
+                    聚合分层
+                  </button>
+                </div>
+              )}
+            </div>
             {nodes.length > 0 ? (
-              <div onMouseMove={(e) => { pointerRef.current = { x: e.clientX, y: e.clientY }; }}>
+              <div onMouseMove={(e) => { pointerRef.current = { x: e.clientX, y: e.clientY }; }} data-testid="sandbox-dag-wrap" data-dag-mode={dagMode} data-layer-count={dagLayers.length}>
                 <PmDag
-                  layers={[nodes]}
-                  edges={edges}
+                  layers={dagLayers}
+                  edges={dagEdges}
                   step={0}
                   testId="sandbox-dag"
-                  onNodeClick={onNodeClick}
+                  onNodeClick={dagMode === "aggregate" ? undefined : onNodeClick}
                   edgeLabel={(from, to) => edgeLabels.get(edgeKey(from, to)) ?? null}
+                  fitLabel
                 />
               </div>
             ) : (

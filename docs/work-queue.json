@@ -3316,7 +3316,7 @@
     {
       "id": "SANDBOX-DAG-NODE-LAYOUT",
       "priority": "P3",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -3334,16 +3334,17 @@
         ]
       },
       "at": {
-        "wip": "2026-07-05T04:16:25.063Z"
+        "wip": "2026-07-05T04:16:25.063Z",
+        "built": "2026-07-05T04:58:39.655Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "LAUNCH-VIEW-KEY-ALIGN",
-      "at": "2026-07-05T04:27:21.171Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "SANDBOX-DAG-NODE-LAYOUT",
+      "at": "2026-07-05T04:58:39.655Z"
     }
   }
 }

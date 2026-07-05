@@ -3009,12 +3009,23 @@ export const handlers = [
 
   // ---- 推演沙盘 · 初始化向导（增量 4 渐进项 · Agent G）：view-config / session / scope-precheck ----
   // 最小 mock：让 mock 模式下 /v/sim-init 三步向导可走通；配置驱动·零行业实体名（演示用占位 key）。
-  http.get("*/a/v1/sim/view-config", () =>
-    HttpResponse.json({
+  http.get("*/a/v1/sim/view-config", () => {
+    // SANDBOX-DAG-NODE-LAYOUT：mock 视图镜像真部署密度（~35 对象类型），令真浏览器如实复现「超密拓扑」→
+    // 验证分层/网格布局 + 标签避让 + 聚合缩略。类型 key 用平台自有占位术语（禁外部产品名）。占位保真：
+    // 首 3 类带真态样例 obj，其余诚实空世界（无对象 → 退占位键·静止 0，非造数 RL5）。
+    const denseTypes = [
+      "TypeA", "TypeB", "TypeC",
+      "Demand", "Model", "Base", "Line", "Order", "Plan", "PlanTarget",
+      "Supplier", "Material", "Inventory", "Shipment", "Route", "Carrier",
+      "Capacity", "Bottleneck", "Driver", "Solver", "Scenario", "Forecast",
+      "Finance", "Cost", "Revenue", "Risk", "Quality", "Yield",
+      "Workforce", "Shift", "Maintenance", "Downtime", "Energy", "Emission", "Contract",
+    ];
+    return HttpResponse.json({
       tenantId: "demo",
-      nodeTypes: ["TypeA", "TypeB", "TypeC"],
+      nodeTypes: denseTypes,
       // SIM-REAL-SNAPSHOT（簇D 治本·mock 侧真态样例）：真物化对象 id + 每对象**真实属性态**（模拟后端 obj.props）。
-      // baseSnapshot 由此播——沙盘 KPI/节点态逐值可对照此处真值（非 hash(oid)）。TypeC 空世界（无对象）。
+      // baseSnapshot 由此播——沙盘 KPI/节点态逐值可对照此处真值（非 hash(oid)）。其余类型空世界（无对象）。
       nodeObjectIds: { TypeA: ["obj_a1", "obj_a2"], TypeB: ["obj_b1"], TypeC: [] },
       nodeObjectState: { obj_a1: { s1: 62, s2: 48 }, obj_a2: { s1: 30, s2: 71 }, obj_b1: { s1: 15 } },
       heatThreshold: 70,
@@ -3023,8 +3034,8 @@ export const handlers = [
       radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
       screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
       propagationCount: 1,
-    }),
-  ),
+    });
+  }),
   http.post("*/a/v1/sim/sessions", async ({ request }) => {
     const body = (await request.json()) as { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> };
     return HttpResponse.json(
