@@ -370,7 +370,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
       key: "graph", title: "图谱全景", renderer: "ontology-graph", layout: {},
       options: { graphOptions: { colorBy: "domain", layoutSeed: 7 }, desc: "计划+执行一体化运营本体全景：圆形为业务对象，◆ 品红为求解器，⬡ 青为 Agent，颜色按数据域区分。" },
     },
-    { key: "risk", title: "预判推演看板", renderer: "risk-board", layout: {} },
+    { key: "risk", title: "产能推演", renderer: "risk-board", layout: {} },
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },

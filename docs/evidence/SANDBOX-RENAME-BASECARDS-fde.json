@@ -1,0 +1,86 @@
+{
+  "at": "2026-07-05T13:21:52.259Z",
+  "front": "http://127.0.0.1:5301",
+  "api": "http://127.0.0.1:4001",
+  "login": "http://127.0.0.1:5301/",
+  "risk": {
+    "navHasCapacity": true,
+    "navHasOldName": false,
+    "bodyHasOldName": false,
+    "dashboardTileHasCapacity": true
+  },
+  "sandbox": {
+    "total": 12,
+    "firstScreenHits": [
+      {
+        "name": "常州",
+        "visible": true
+      },
+      {
+        "name": "成都",
+        "visible": true
+      },
+      {
+        "name": "邯郸",
+        "visible": true
+      },
+      {
+        "name": "合肥",
+        "visible": true
+      },
+      {
+        "name": "江门",
+        "visible": true
+      },
+      {
+        "name": "洛阳",
+        "visible": true
+      },
+      {
+        "name": "眉山",
+        "visible": true
+      },
+      {
+        "name": "武汉",
+        "visible": true
+      },
+      {
+        "name": "厦门",
+        "visible": true
+      },
+      {
+        "name": "信阳",
+        "visible": true
+      },
+      {
+        "name": "枣庄",
+        "visible": true
+      },
+      {
+        "name": "自贡",
+        "visible": true
+      }
+    ],
+    "mismatch": [],
+    "changzhou": {
+      "backend": {
+        "util": 0.83,
+        "oee": 0.76429,
+        "bn": "模组",
+        "gwh": 36.7
+      },
+      "cardText": "常州\n360→\n利用率 83%\nOEE 76%\n瓶颈 模组\nGWh 36.7",
+      "uiUtilOk": true,
+      "uiOeeOk": true,
+      "uiBnOk": true,
+      "href360": "/o/Base/changzhou",
+      "href360Ok": true
+    },
+    "runstateOpen": "0",
+    "baseCardsInMain": {
+      "inMain": true,
+      "inSide": false
+    },
+    "namesVisibleCount": "12/12"
+  }
+}

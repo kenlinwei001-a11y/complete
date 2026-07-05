@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { parseWhatIfPreset, type WhatIfPreset } from "./whatif";
 import type { PropagationRule, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
@@ -12,6 +12,7 @@ import {
   fetchSimPropagationRules,
   fetchSimViewConfig,
   invokeSolver,
+  searchObjects,
   simBranch,
   simCheckpoint,
   simTick,
@@ -618,6 +619,75 @@ function LineageChain({ vm }: { vm: ObjectLineageVM }) {
   );
 }
 
+/**
+ * SANDBOX-RENAME-BASECARDS ②（闭用户亲报「各基地卡片都没有了」·发现性回归）：各基地状态卡回主区·**默认可见**。
+ * 根因：SANDBOX-LAYOUT-REWORK(§5) 把状态卡收进右栏折叠卡栈（默认折叠）→ 首屏 body.innerText 零基地名。
+ * 修：基地卡走**主区独立渠道**（非右栏折叠卡·不进 side-stack）→ 首屏不点任何折叠即见基地名；右栏运行态/风险 TOP3 折叠记忆不动（§5 密度不破）。
+ * 数据源 searchObjects("Base","")（与 GeoMapView 同源·真 Base 对象·util/OEE/瓶颈/GWh 真值·非合成 RL5）；
+ * util/oeeIndex 为分数（值域 0.62–0.97）→ ×100 显百分。空世界（无 Base 对象）→ 诚实空态不造数。「360→」进对象 360（/o/Base/{baseId}）。
+ */
+function BaseStatusCards() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["a", "objects", { type: "Base", view: "sandbox-basecards" }],
+    queryFn: () => searchObjects("Base", ""),
+    retry: false,
+  });
+  const bases = (data?.items ?? []).map((o) => ({
+    baseId: String(o.props.baseId ?? o.id),
+    name: String(o.props.name ?? ""),
+    util: o.props.util != null ? Number(o.props.util) : null,
+    oee: o.props.oeeIndex != null ? Number(o.props.oeeIndex) : null,
+    bottleneck: o.props.bottleneck != null ? String(o.props.bottleneck) : null,
+    gwh: o.props.gwh != null ? Number(o.props.gwh) : null,
+  }));
+  // 归一化显示：真后端 util/oeeIndex 为分数（值域 0.62–0.97）→ ×100；若已是百分数（>1，如 MSW mock 的 88）则原样。
+  // 非造数——只统一「分数/百分数」两种真实表示口径，缺值诚实标 —（RL5）。
+  const pct = (v: number | null) =>
+    v != null && Number.isFinite(v) ? `${Math.round(v <= 1 ? v * 100 : v)}%` : "—";
+  return (
+    <div className={`panel ${styles.heroDag}`} data-testid="sandbox-base-cards-panel" style={{ padding: 14, minHeight: "auto" }}>
+      <div className={styles.secHead} style={{ marginBottom: 8 }}>
+        各基地状态 · 真 Base 对象（利用率/OEE/瓶颈/GWh · 点 360→ 看对象全景）
+      </div>
+      {isLoading ? (
+        <div className={styles.sub} data-testid="sandbox-base-cards-loading">读取基地对象…</div>
+      ) : isError ? (
+        <div className={styles.sub} data-testid="sandbox-base-cards-error">基地对象读取失败（对象服务未就绪或该功能未开通）。</div>
+      ) : bases.length === 0 ? (
+        <div className={styles.sub} data-testid="sandbox-base-cards-empty">本租户暂无 Base 对象——诚实空态（无真值不造数 RL5）。</div>
+      ) : (
+        <div data-testid="sandbox-base-cards" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {bases.map((b) => (
+            <div
+              key={b.baseId}
+              data-testid={`sandbox-base-card-${b.baseId}`}
+              style={{ flex: "1 1 150px", minWidth: 150, border: "1px solid var(--line2,#2a2a2a)", borderRadius: 8, padding: "8px 10px" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                <b style={{ fontSize: 13 }}>{b.name}</b>
+                <Link
+                  to={`/o/Base/${b.baseId}`}
+                  data-testid={`sandbox-base-360-${b.baseId}`}
+                  className={styles.sub}
+                  style={{ fontSize: 11, whiteSpace: "nowrap" }}
+                >
+                  360→
+                </Link>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", marginTop: 4, fontSize: 12, color: "var(--muted2)" }}>
+                <span data-testid={`sandbox-base-util-${b.baseId}`}>利用率 <b className="mono" style={{ color: "var(--txt)" }}>{pct(b.util)}</b></span>
+                <span>OEE <b className="mono">{pct(b.oee)}</b></span>
+                <span>瓶颈 <b>{b.bottleneck ?? "—"}</b></span>
+                <span>GWh <b className="mono">{b.gwh != null && Number.isFinite(b.gwh) ? b.gwh : "—"}</b></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 测试可注入 config（绕过网络，喂两套 mock config 证 R14）；生产留空走 view-config 端点。 */
 export interface SandboxViewProps {
   injectedConfig?: SandboxViewConfig;
@@ -1003,6 +1073,9 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
               <div className={styles.sub} data-testid="sandbox-topology-empty">本体暂无已发布对象类型——先在建模页发布对象。</div>
             )}
           </div>
+
+          {/* SANDBOX-RENAME-BASECARDS ②：各基地状态卡回主区·默认可见（首屏零基地名回归修复）·非右栏折叠卡。 */}
+          <BaseStatusCards />
 
           {/* AI 指挥台（NL 驱动沙盘 · 确定性意图解析 R6）：自然语言→现有沙盘动作（tick/存档/分支/查询）·收为底栏。
               LLM 不可用即默认确定性解析（无 Date.now/random），未识别意图诚实降级显支持指令集。 */}
