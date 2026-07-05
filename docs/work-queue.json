@@ -3299,8 +3299,8 @@
     {
       "id": "MODE-DISPATCH-HONOR",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
@@ -3315,6 +3315,9 @@
             "assert": "S12(yield_diag)类改写问句走AGENT_FIRST(trace path=AGENT·agentRun落库);门: 场景vs意图mode冲突→红。"
           }
         ]
+      },
+      "at": {
+        "wip": "2026-07-05T05:05:20.375Z"
       }
     },
     {
@@ -3347,8 +3350,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "WIP",
-      "id": "CLARIFY-CHAIN-FIX",
-      "at": "2026-07-05T05:04:44.315Z"
+      "id": "MODE-DISPATCH-HONOR",
+      "at": "2026-07-05T05:05:20.375Z"
     }
   }
 }
