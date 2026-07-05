@@ -3484,12 +3484,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
-        "wip": "2026-07-05T13:46:30.253Z"
+        "wip": "2026-07-05T13:46:30.253Z",
+        "built": "2026-07-05T14:14:01.176Z"
       },
       "id": "ONTO-SCEN-GATE-WRITEBACK",
       "priority": "P2",
@@ -3498,7 +3499,8 @@
         "ONTO-SCEN-RENDER-PROJ"
       ],
       "title": "门禁扩展+20卡全验+本体回写: ontogenesis:check逐卡6断言·scenarioClosure升A10门·G-1闭/G-9修·§2-8回写",
-      "note": "PRD §6六断言(逐卡VERIFIED·renderBindings⊆shapes·ruleIds全进evaluate_rules·sliceTargets覆盖·无静默残缺·目录注册表派生)并入pnpm gates。scenarioClosure(server.ts:1791)从查存在升级为查跑通(ready⟺亲手跑到VERIFIED)。**PRD验收#1**: 20张卡逐张grow→VERIFIED→点卡真决策视图(FDE逐卡证据)。本体回写§2(OntogenesisRun)/§3(卡发育链)/§4(三事件)/§5(R16)/§7(门)/§8(G-1闭·G-9修)+ontology:slices重生成。DoD: gates exit0·北极星距离表(还差哪几环+哪些合成/happy-path·fde-delivery)。"
+      "note": "PRD §6六断言(逐卡VERIFIED·renderBindings⊆shapes·ruleIds全进evaluate_rules·sliceTargets覆盖·无静默残缺·目录注册表派生)并入pnpm gates。scenarioClosure(server.ts:1791)从查存在升级为查跑通(ready⟺亲手跑到VERIFIED)。**PRD验收#1**: 20张卡逐张grow→VERIFIED→点卡真决策视图(FDE逐卡证据)。本体回写§2(OntogenesisRun)/§3(卡发育链)/§4(三事件)/§5(R16)/§7(门)/§8(G-1闭·G-9修)+ontology:slices重生成。DoD: gates exit0·北极星距离表(还差哪几环+哪些合成/happy-path·fde-delivery)。",
+      "blockReason": ""
     },
     {
       "status": "BUILT",
@@ -3688,8 +3690,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "QUERY30-RULES",
-      "at": "2026-07-05T14:11:02.312Z"
+      "id": "ONTO-SCEN-GATE-WRITEBACK",
+      "at": "2026-07-05T14:14:01.176Z"
     }
   }
 }
