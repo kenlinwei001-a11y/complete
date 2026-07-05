@@ -3393,17 +3393,19 @@
       }
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.454Z",
-        "wip": "2026-07-05T08:39:32.626Z"
+        "wip": "2026-07-05T08:39:32.626Z",
+        "built": "2026-07-05T09:32:41.434Z"
       },
       "id": "ONTO-SCEN-CONTRACT",
       "priority": "P1",
       "title": "发育契约+仓储: ScenarioMaturity/Genome/OntogenesisRun 三schema + Scenario增维 + 双仓储",
-      "note": "PRD §4 契约单一来源: ScenarioMaturitySchema{PROVISIONAL,ADVISORY,GOVERNED}·ScenarioGenomeSchema(planSteps+renderBindings+ruleIds+sliceTargets+solverKey+dataNeeds)·ScenarioOntogenesisRunSchema(rings三环+verification+gaps+maturity)·Scenario增maturity/genome/lastOntogenesisRunId。仓储双实现(memory+pg+migrations)存OntogenesisRun。DoD: contracts build+四包typecheck+schema齿(圆整往返)+repo齿。铁律: contracts-only-shared·additive不破既有Scenario消费方。"
+      "note": "PRD §4 契约单一来源: ScenarioMaturitySchema{PROVISIONAL,ADVISORY,GOVERNED}·ScenarioGenomeSchema(planSteps+renderBindings+ruleIds+sliceTargets+solverKey+dataNeeds)·ScenarioOntogenesisRunSchema(rings三环+verification+gaps+maturity)·Scenario增maturity/genome/lastOntogenesisRunId。仓储双实现(memory+pg+migrations)存OntogenesisRun。DoD: contracts build+四包typecheck+schema齿(圆整往返)+repo齿。铁律: contracts-only-shared·additive不破既有Scenario消费方。",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -3553,9 +3555,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "GRAPH-PANORAMA-ONLY",
-      "at": "2026-07-05T09:31:54.686Z"
+      "cmd": "BUILT",
+      "id": "ONTO-SCEN-CONTRACT",
+      "at": "2026-07-05T09:32:41.434Z"
     }
   }
 }

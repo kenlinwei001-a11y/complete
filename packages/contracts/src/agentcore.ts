@@ -233,22 +233,58 @@ export type ScenarioPresetContext = z.infer<typeof ScenarioPresetContextSchema>;
 export const ScenarioMaturitySchema = z.enum(["PROVISIONAL", "ADVISORY", "GOVERNED"]);
 export type ScenarioMaturity = z.infer<typeof ScenarioMaturitySchema>;
 
-/** 一张卡的发育验证运行（留痕：三环 + A10 验证结论 + 缺口）。前端可见 → "知道数据从哪来、发育到哪一步"。 */
+/**
+ * PRD-scenario-ontogenesis §2.1/§4：基因组 = 卡声明的目标闭包（"要长成什么"的单一来源）。
+ * 意图、计划步骤序（含渲染投影目标 = 求解器输出字段→block，闭 G-2）、要评估的规则、
+ * 要覆盖的切片目标类型、求解器输出形状、数据需求。growScenario 按此倒序发育（§2.2），
+ * `ontogenesis:check` 逐卡按此声明性校验（§6：renderBindings ⊆ SOLVER_OUTPUT_SHAPES ·
+ * ruleIds 全接 evaluate_rules · sliceTargets 被 resolve_slice 覆盖）。
+ */
+export const ScenarioGenomeSchema = z.object({
+  intentKey: z.string(),
+  // 计划步骤序（含渲染投影目标）
+  planSteps: z.array(
+    z.object({
+      type: z.enum(["resolve_slice", "invoke_solver", "evaluate_rules", "create_action_draft", "render_answer"]),
+      params: z.record(z.string(), z.unknown()),
+    }),
+  ),
+  // 投影：求解器字段→block（闭 G-2）
+  renderBindings: z.array(z.object({ block: z.string(), fromSolverField: z.string() })),
+  ruleIds: z.array(z.string()).default([]), // 必接进 evaluate_rules
+  sliceTargets: z.array(z.string()).default([]), // 要覆盖的目标类型
+  solverKey: z.string().optional(),
+  dataNeeds: z.array(z.string()).default([]),
+});
+export type ScenarioGenome = z.infer<typeof ScenarioGenomeSchema>;
+
+/** 一张卡的发育验证运行（留痕：三环 + A10 验证结论 + 缺口）。前端可见 → "知道数据从哪来、发育到哪一步"。
+ *  §4：⊕ StoryBuildRun by runId（R16 两相同体）；一等持久化（repos.ontogenesisRuns，R2 tenant-scoped）。 */
 export const ScenarioOntogenesisRunSchema = z.object({
   runId: z.string(),
+  // §4/R2：一等落库租户随身。additive：历史留痕（卡上内嵌 lastOntogenesisRun）无此字段仍可解析；
+  // 新写入（repos.ontogenesisRuns）一律必填（仓储接口签名强制）。
+  tenantId: z.string().optional(),
   scenarioKey: z.string(),
   ranAt: z.string(),
   // 三环（R16）：data=triggerQuestion 经 QOS 真跑出非空非兜底答案 · ontology=意图/计划已落库 · capability=意图发布且可绑定计划。
   rings: z.object({ data: z.boolean(), ontology: z.boolean(), capability: z.boolean() }),
   verification: z.object({
-    status: z.enum(["VERIFIED", "NOT_VERIFIED", "NOT_RUN"]),
+    // §4：PROVISIONAL_ANSWER=发育闭环推出非空非兜底答案但未达 GOVERNED 数据承载标尺（对应 ADVISORY 中间态）；
+    // NOT_RUN=能力环未闭无从起跑（既有值，additive 保留）。
+    status: z.enum(["VERIFIED", "NOT_VERIFIED", "PROVISIONAL_ANSWER", "NOT_RUN"]),
     path: z.enum(["WORKFLOW", "AGENT", "NONE"]).default("NONE"),
     gapCode: z.string().nullable().default(null),
     answerPreview: z.string().nullable().default(null), // 验证产出的答案预览（前端可见来源）
     taskId: z.string().nullable().default(null),         // 可点进任务详情看完整溯源链
   }),
-  // §2.5：缺口诚实开单（NEEDS_HUMAN）或自动补（AUTO_DERIVE）。
-  gaps: z.array(z.object({ gapCode: z.string(), disposition: z.enum(["AUTO_DERIVE", "NEEDS_HUMAN"]), detail: z.string() })).default([]),
+  // §2.5：缺口诚实开单（NEEDS_HUMAN → ticketId 关联 GrowthTicket）或自动补（AUTO_DERIVE）。
+  gaps: z.array(z.object({
+    gapCode: z.string(),
+    disposition: z.enum(["AUTO_DERIVE", "NEEDS_HUMAN"]),
+    detail: z.string().default(""),
+    ticketId: z.string().nullable().default(null),
+  })).default([]),
   // G-9 招牌：发育闭环自动补齐留痕——是否触发 runGrowthLoop / 终态 / 轮次 / 是否经合成正门 provision 起步世界（对象数）。
   // 前端「一键长出此卡」据此展示"空→自动 provision N 对象世界→已长出"的真实发育故事。
   growth: z.object({
@@ -285,6 +321,10 @@ export const ScenarioSchema = z.object({
   // 设定（GOVERNED=验证真出答案 / PROVISIONAL=发育中有缺口）；lastOntogenesisRun 留痕（前端可见，知道来源）。
   maturity: ScenarioMaturitySchema.optional(),
   lastOntogenesisRun: ScenarioOntogenesisRunSchema.optional(),
+  // PRD-scenario-ontogenesis §4：卡=胚胎携基因组（声明目标闭包，growScenario 的发育输入）。
+  genome: ScenarioGenomeSchema.optional(),
+  // §4：最近一次发育运行 id → 一等留痕（repos.ontogenesisRuns）；内嵌 lastOntogenesisRun 为既有留痕面（additive 并存）。
+  lastOntogenesisRunId: z.string().optional(),
   // PRD-scenario-ontogenesis P3 O11：卡声明要自动长出的切片（rootType + 目标覆盖类型，形同
   // PlanSliceRequest）；growScenario 缺切片时据此自动调 planSlice（OBO /a/v1/slices/plan），不再手装。
   sliceTargets: z.array(z.object({ rootType: z.string(), targets: z.array(z.string()).default([]) })).optional(),

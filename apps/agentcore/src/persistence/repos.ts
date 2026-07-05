@@ -18,9 +18,16 @@ import type {
   ScenarioPackage,
   SceneEntryConfig,
   Scenario,
+  ScenarioOntogenesisRun,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
+
+/**
+ * PRD-scenario-ontogenesis §4：发育运行一等落库行（R2 tenant everywhere）。
+ * 契约层 tenantId 为向后兼容 optional（历史内嵌留痕无此字段）；仓储写入强制必填。
+ */
+export type ScenarioOntogenesisRunRow = ScenarioOntogenesisRun & { tenantId: string };
 
 /**
  * Stored fallback trace (S4.2): normalized query for string clustering plus a
@@ -232,6 +239,17 @@ export interface Repos {
     get(id: string): Promise<Scenario | undefined>;
     byKey(tenantId: string, scenarioKey: string): Promise<Scenario | undefined>;
     listByTenant(tenantId: string): Promise<Scenario[]>;
+  };
+  /**
+   * PRD-scenario-ontogenesis §4：ScenarioOntogenesisRun 一等留痕（⊕ StoryBuildRun by runId，R16）。
+   * 发育闭环批次地基：grow 落一行、卡挂 lastOntogenesisRunId、门禁/前端按卡/租户回看发育史。
+   * R2：所有读带 tenantId，跨租户不可见。list 按 ranAt 倒序（最近发育在前，runId 决胜保确定性）。
+   */
+  ontogenesisRuns: {
+    insert(r: ScenarioOntogenesisRunRow): Promise<void>;
+    get(tenantId: string, runId: string): Promise<ScenarioOntogenesisRunRow | undefined>;
+    listByScenario(tenantId: string, scenarioKey: string): Promise<ScenarioOntogenesisRunRow[]>;
+    listByTenant(tenantId: string): Promise<ScenarioOntogenesisRunRow[]>;
   };
   /** WO-INTENT-MATERIALIZE-BINDING-COMPLETE：一等 Intent（mode + 全绑定链），(tenantId, key) 唯一。 */
   materializedIntents: {

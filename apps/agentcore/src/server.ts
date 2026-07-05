@@ -2606,7 +2606,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // O11（P3 wiring）：卡声明 sliceTargets → 自动调 planSlice（OBO → DataCore /a/v1/slices/plan）把切片纳入发育闭环。
     // 复用既有 OBO 客户端模式（OntologyClient.planSlice，透传用户 JWT/X-Debug-User，与 invoke_solver/resolveSlice 同面）。
     // 规划器纯确定性图算法（R6）+ 命中索引即复用既有已发布切片（A3.4）。诚实门：NO_PATH（maxHops 内不可达）→ 出 NO_SLICE 缺口，不静默跳过。
-    const sliceGaps: { gapCode: string; disposition: "AUTO_DERIVE" | "NEEDS_HUMAN"; detail: string }[] = [];
+    const sliceGaps: { gapCode: string; disposition: "AUTO_DERIVE" | "NEEDS_HUMAN"; detail: string; ticketId: string | null }[] = [];
     const plannedSlices: string[] = [];
     for (const st of sc.sliceTargets ?? []) {
       if (!st.targets || st.targets.length === 0) continue;
@@ -2617,11 +2617,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
           // slice.planned 由 DataCore /a/v1/slices/plan 内部发（§4 单源）；此处不重复发，避免双源。
         } else {
           // 诚实：maxHops 内不可达 → NO_SLICE 缺口（需补本体链路/真人正门），不假装已长出。
-          sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划失败（${st.rootType}）：${res.reason.unreachable.join("、")} 在 maxHops=6 内不可达——需补本体链路` });
+          sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划失败（${st.rootType}）：${res.reason.unreachable.join("、")} 在 maxHops=6 内不可达——需补本体链路`, ticketId: null });
         }
       } catch (e) {
         // DataCore 无 planSlice 路径/不可达 → 诚实标 NO_SLICE，不静默（守诚实门）。
-        sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划调用失败（${st.rootType}）：${(e as Error).message.slice(0, 120)}` });
+        sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划调用失败（${st.rootType}）：${(e as Error).message.slice(0, 120)}`, ticketId: null });
       }
     }
 
@@ -2637,6 +2637,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         // 缺意图/计划=可自动补（grow/scaffold）；运行缺数据/求解器=需人工（真人正门/审批）。
         disposition: (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" ? "AUTO_DERIVE" : "NEEDS_HUMAN") as "AUTO_DERIVE" | "NEEDS_HUMAN",
         detail: v.closureIssues.join("；") || (v.answerPreview ?? "触发问句未跑出真实答案") + (growth.triggered ? `（已触发自动补齐：${growth.terminalState}，${growth.rounds} 轮${growth.ticketId ? "，已开工单 " + growth.ticketId : ""}）` : ""),
+        // §2.5：NEEDS_HUMAN 缺口关联已开 GrowthTicket（诚实可深链）；无票即 null。
+        ticketId: growth.ticketId ?? null,
       }]),
       ...sliceGaps,
     ];
@@ -2651,14 +2653,16 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       const after = await deps.dataCore.ontology.listObjectTypes(a).catch(() => [] as { instanceCount: number }[]);
       provisionedObjects = after.reduce((s, t) => s + (t.instanceCount ?? 0), 0);
     }
-    const run: ScenarioOntogenesisRun = {
-      runId, scenarioKey: sc.scenarioKey, ranAt,
+    const run: ScenarioOntogenesisRun & { tenantId: string } = {
+      runId, tenantId: a.tenantId, scenarioKey: sc.scenarioKey, ranAt,
       rings: { data: v.dataOk, ontology: v.ontologyOk, capability: v.capabilityOk },
       verification: { status: v.vstatus, path: v.vpath, gapCode: v.gapCode, answerPreview: v.answerPreview, taskId: v.taskId },
       gaps, maturity,
       growth: { triggered: growth.triggered, terminalState: growth.terminalState ?? null, rounds: growth.rounds ?? 0, provisionedObjects },
     };
-    await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, updatedAt: new Date().toISOString() });
+    // PRD-scenario-ontogenesis §4：发育运行一等落库（R2 tenant 随身）；卡挂 lastOntogenesisRunId（内嵌留痕 additive 并存）。
+    await deps.repos.ontogenesisRuns.insert(run);
+    await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, lastOntogenesisRunId: runId, updatedAt: new Date().toISOString() });
     await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });
     return run;
   };

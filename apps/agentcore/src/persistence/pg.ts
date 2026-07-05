@@ -21,7 +21,7 @@ import type {
   WorkflowDefinition,
 } from "@platform/contracts";
 
-import type { CredentialRow, FallbackTraceRow, QueryEventRow, Repos, TaskPatch, ToolCallRow } from "./repos.js";
+import type { CredentialRow, FallbackTraceRow, QueryEventRow, Repos, ScenarioOntogenesisRunRow, TaskPatch, ToolCallRow } from "./repos.js";
 
 const ACTIVE = ["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"];
 
@@ -404,6 +404,34 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       async listByTenant(tenantId) {
         const r = await q(`SELECT config FROM scenarios WHERE tenant_id = $1`, [tenantId]);
         return r.rows.map((x) => x.config as Scenario);
+      },
+    },
+    // PRD-scenario-ontogenesis §4：发育运行一等留痕（migration 012）。R2：读一律带 tenant_id 谓词。
+    ontogenesisRuns: {
+      async insert(r: ScenarioOntogenesisRunRow) {
+        await q(
+          `INSERT INTO scenario_ontogenesis_runs(run_id, tenant_id, scenario_key, ran_at, record)
+           VALUES ($1,$2,$3,$4,$5) ON CONFLICT (run_id) DO UPDATE SET record = $5`,
+          [r.runId, r.tenantId, r.scenarioKey, r.ranAt, JSON.stringify(r)],
+        );
+      },
+      async get(tenantId, runId) {
+        const r = await q(`SELECT record FROM scenario_ontogenesis_runs WHERE run_id = $1 AND tenant_id = $2`, [runId, tenantId]);
+        return r.rows[0]?.record as ScenarioOntogenesisRunRow | undefined;
+      },
+      async listByScenario(tenantId, scenarioKey) {
+        const r = await q(
+          `SELECT record FROM scenario_ontogenesis_runs WHERE tenant_id = $1 AND scenario_key = $2 ORDER BY ran_at DESC, run_id DESC`,
+          [tenantId, scenarioKey],
+        );
+        return r.rows.map((x) => x.record as ScenarioOntogenesisRunRow);
+      },
+      async listByTenant(tenantId) {
+        const r = await q(
+          `SELECT record FROM scenario_ontogenesis_runs WHERE tenant_id = $1 ORDER BY ran_at DESC, run_id DESC`,
+          [tenantId],
+        );
+        return r.rows.map((x) => x.record as ScenarioOntogenesisRunRow);
       },
     },
     materializedIntents: {

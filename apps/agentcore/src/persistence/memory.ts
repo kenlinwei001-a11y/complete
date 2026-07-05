@@ -24,6 +24,7 @@ import type {
   IdempotencyRow,
   QueryEventRow,
   Repos,
+  ScenarioOntogenesisRunRow,
   TaskPatch,
   ToolCallRow,
 } from "./repos.js";
@@ -51,6 +52,7 @@ export function createMemoryRepos(): Repos {
   const mcpConfigs = new Map<string, McpServerConfig>();
   const sceneEntries = new Map<string, SceneEntryConfig>();
   const scenarios = new Map<string, Scenario>();
+  const ontogenesisRuns = new Map<string, ScenarioOntogenesisRunRow>();
   const materializedIntents = new Map<string, MaterializedIntent>();
   const intentSlices = new Map<string, IntentSliceSpec>();
   const credentials = new Map<string, CredentialRow>();
@@ -345,6 +347,28 @@ export function createMemoryRepos(): Repos {
       },
       async listByTenant(tenantId) {
         return [...scenarios.values()].filter((s) => s.tenantId === tenantId).map(clone);
+      },
+    },
+    ontogenesisRuns: {
+      async insert(r) {
+        ontogenesisRuns.set(r.runId, clone(r));
+      },
+      async get(tenantId, runId) {
+        const r = ontogenesisRuns.get(runId);
+        // R2：跨租户不可见（返回 undefined，等价 404）。
+        return r && r.tenantId === tenantId ? clone(r) : undefined;
+      },
+      async listByScenario(tenantId, scenarioKey) {
+        return [...ontogenesisRuns.values()]
+          .filter((r) => r.tenantId === tenantId && r.scenarioKey === scenarioKey)
+          .sort((a, b) => b.ranAt.localeCompare(a.ranAt) || b.runId.localeCompare(a.runId))
+          .map(clone);
+      },
+      async listByTenant(tenantId) {
+        return [...ontogenesisRuns.values()]
+          .filter((r) => r.tenantId === tenantId)
+          .sort((a, b) => b.ranAt.localeCompare(a.ranAt) || b.runId.localeCompare(a.runId))
+          .map(clone);
       },
     },
     materializedIntents: {
