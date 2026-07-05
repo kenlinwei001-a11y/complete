@@ -3563,11 +3563,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
-        "todo": "2026-07-05T09:18:30.471Z"
+        "todo": "2026-07-05T09:18:30.471Z",
+        "wip": "2026-07-05T12:44:11.190Z"
       },
       "id": "PANORAMA-SLICE-BACKFILL",
       "priority": "P1",
@@ -3674,9 +3675,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "ONTO-SCEN-RENDER-PROJ",
-      "at": "2026-07-05T12:14:01.499Z"
+      "cmd": "WIP",
+      "id": "PANORAMA-SLICE-BACKFILL",
+      "at": "2026-07-05T12:44:11.190Z"
     }
   }
 }
