@@ -3488,19 +3488,20 @@
       "note": "PRD §6六断言(逐卡VERIFIED·renderBindings⊆shapes·ruleIds全进evaluate_rules·sliceTargets覆盖·无静默残缺·目录注册表派生)并入pnpm gates。scenarioClosure(server.ts:1791)从查存在升级为查跑通(ready⟺亲手跑到VERIFIED)。**PRD验收#1**: 20张卡逐张grow→VERIFIED→点卡真决策视图(FDE逐卡证据)。本体回写§2(OntogenesisRun)/§3(卡发育链)/§4(三事件)/§5(R16)/§7(门)/§8(G-1闭·G-9修)+ontology:slices重生成。DoD: gates exit0·北极星距离表(还差哪几环+哪些合成/happy-path·fde-delivery)。"
     },
     {
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
         "wip": "2026-07-05T08:39:25.078Z",
-        "built": "2026-07-05T09:42:59.822Z"
+        "built": "2026-07-05T09:42:59.822Z",
+        "blocked": "2026-07-05T09:53:08.108Z"
       },
       "id": "POLISH-P3-BUNDLE",
       "priority": "P3",
       "title": "随行polish捆绑: 叙事sup角标hover驻留优化 + 沙盘DAG边标交叉避让",
       "note": "治理批次验收小注捆绑(均非阻断·真浏览器复现在案): ①叙事⟦ref⟧sup角标hover 300ms计时+小靶难命中·点按可用——加hover热区扩大(padding/伪元素)或缩短计时·齿: 组件测hover 400ms出浮层; ②沙盘DAG边标(×0.5·Δ1)在汇聚边处交叉(全展开态8处相交·主标签0叠不受影响)——边标避让或密集处隐标hover显。",
-      "blockReason": ""
+      "blockReason": "①sup角标hover真栈复验三向量全败·②边标避让已验真好(边标专属口径0互叠·dev口径8→0成立·负对照齿在)。①铁证(真后端栈vite dev 5273·非VITE_MOCK): 角标滚至视口中部(1108,670)·elementFromPoint命中SUP本体isMarkOrChild=true零遮挡·真鼠标move中心悬停700ms(>150ms驻留)→prov-popover不在DOM; 同页同刻KPI hover对照✓出浮层(浮层系统与探针手法双证无恙)。程序化mouseenter派发亦不出(React合成事件经mouseover实现·此探针仅参考)。疑根: 真答案markdown→sup渲染路径与mock块组件路径不同源——真路径sup可能未挂ProvTrigger的onMouseEnter(click可用或走委托)·dev的jsdom齿(fireEvent组件级)与VITE_MOCK取证都测不到真栈渲染分叉。修向: ①在真栈(真datacore+agentcore+真答案)复现·对齐真答案文本块的⟦ref⟧→sup渲染路径与ProvTrigger挂接(单一渲染源)·②补真栈FDE证据(非VITE_MOCK)·③齿升级: 真答案形状(prov_ULID标记)进渲染测试。②边标部分零改动带过二轮。旁注(非阻断): 全文本剩余5对互叠均为节点内主标签×『本步』副文案贴边·两单范围外微疵·随手可顺"
     },
     {
       "id": "TICKET-CENTER-UNIFIED",
@@ -3561,10 +3562,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "TICKET-CENTER-UNIFIED",
-      "at": "2026-07-05T09:46:55.405Z"
+      "role": "review",
+      "cmd": "BLOCKED",
+      "id": "POLISH-P3-BUNDLE",
+      "at": "2026-07-05T09:53:08.108Z"
     }
   }
 }
