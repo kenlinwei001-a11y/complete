@@ -3222,10 +3222,10 @@
     {
       "id": "ANSWER-PROJECTION-HUMANIZE",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
-      "blockReason": "",
+      "blockReason": "S03(⑥点名卡)真跑还原两处存活·均在已修函数内: (1)⑥未做未声明: cellOf(executor.ts:400-405)对象仍JSON.stringify→S03切片表cols=[id,type,props]的props列6格裸JSON整段('{\"so\":\"SO-3391\",\"cust\":\"整车厂A\"...')·审计原句原样在; (2)④半漏: INTERNAL_ID_RE(solver-field-labels.ts:305)尾段[0-9a-zA-Z]+禁下划线/连字符→真实id obj_base_changzhou/obj_model_4680-NCM漏网→'Base·Id = obj_base_changzhou'KPI照出(审计base.id原案)。旁证: dev实证仅挑S20/S17/S13纯solver卡·⑥点名的S03未测。已验真好(记功): S13链②脚注条/④待处理项人话(unresolved错位已修)/③结论句(S20超标判定)/①47solver304字段门+11齿/⑤经全溯源实现(ref索引对齐已在码内声明移交PROV-REF-INTEGRITY·合规拆分)。修向: cellOf对象值→紧凑人话(PK/name优先或k=v串·绝不裸JSON·可复用executor.ts:492 PK表); INTERNAL_ID_RE尾段放宽[\\w-]+; 补S03形状齿(切片payload过solver_summary→零JSON格+零obj_值)",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "title": "solver_summary投影人话化(裸英文key当label·元数据当KPI·无单位·无结论句·绿琥珀互斥同屏)",
       "note": "簇③⑤·全卡: executor.ts:372 label:k原始字段键直当KPI label(极端例S/G/s0·base.id=obj_内部id当值·ruleSetVersion/dataMode/confidence.note整句当KPI)·数值无单位·问『为什么/怎么排/值得吗』无一句结论叙事·S13字段错位(unresolved写成infeasible)·『子字段over:infeasible(无)』内部术语直出·S03 JSON整段塞单元格·绿标已验证与琥珀未溯源同屏6卡(executor.ts:380注释自认bug)。治: ①label/单位人话映射层(消费SOLVER_REGISTRY outputShape元数据·补中文label+unit注册)②dataMode/ruleSetVersion/confidence.*移出KPI区→统一脚注条③判断类问句必出一句结论(verdict句·可模板从输出判定字段生成)④内部状态词(infeasible/子字段)人话化⑤绿琥珀互斥治本(有未溯源数字→不发绿标·或分级标)⑥单元格禁裸JSON。",
@@ -3246,7 +3246,8 @@
       },
       "at": {
         "wip": "2026-07-05T04:15:53.202Z",
-        "built": "2026-07-05T05:18:05.928Z"
+        "built": "2026-07-05T05:18:05.928Z",
+        "blocked": "2026-07-05T05:30:46.287Z"
       }
     },
     {
@@ -3354,10 +3355,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "LAUNCHER-SLOT-TRUTH",
-      "at": "2026-07-05T05:26:15.571Z"
+      "role": "review",
+      "cmd": "BLOCKED",
+      "id": "ANSWER-PROJECTION-HUMANIZE",
+      "at": "2026-07-05T05:30:46.287Z"
     }
   }
 }
