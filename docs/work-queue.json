@@ -3390,14 +3390,114 @@
       "at": {
         "todo": "2026-07-05T08:27:17.419Z"
       }
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-scenario-ontogenesis.md",
+      "at": {
+        "todo": "2026-07-05T08:29:30.454Z"
+      },
+      "id": "ONTO-SCEN-CONTRACT",
+      "priority": "P1",
+      "title": "发育契约+仓储: ScenarioMaturity/Genome/OntogenesisRun 三schema + Scenario增维 + 双仓储",
+      "note": "PRD §4 契约单一来源: ScenarioMaturitySchema{PROVISIONAL,ADVISORY,GOVERNED}·ScenarioGenomeSchema(planSteps+renderBindings+ruleIds+sliceTargets+solverKey+dataNeeds)·ScenarioOntogenesisRunSchema(rings三环+verification+gaps+maturity)·Scenario增maturity/genome/lastOntogenesisRunId。仓储双实现(memory+pg+migrations)存OntogenesisRun。DoD: contracts build+四包typecheck+schema齿(圆整往返)+repo齿。铁律: contracts-only-shared·additive不破既有Scenario消费方。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-scenario-ontogenesis.md",
+      "at": {
+        "todo": "2026-07-05T08:29:30.462Z"
+      },
+      "id": "ONTO-SCEN-GROW",
+      "priority": "P0",
+      "deps": [
+        "ONTO-SCEN-CONTRACT"
+      ],
+      "title": "倒序发育核心: growScenario+POST /b/v1/scenarios/:key/grow + A10验证上架门(查存在→查跑通)",
+      "note": "PRD §2.2/2.3+§0根因表: 复用ModuleProvisioner(databuilder/provisioners.ts 13-need)/runStory/slice-planner(A3.3)/A18——不重写。逐项provision: 意图upsert+PUBLISH·计划scaffold·规则声明必插evaluate_rules步·切片planSlice·缺求解器A18临时(PROVISIONAL)或开单·缺数据DF.9正门。末步A10 verifyBuild: triggerQuestion经QOS正序实跑→真answer(非空非占位非探索兜底)才GOVERNED·否则PROVISIONAL+gapCode。落ScenarioOntogenesisRun+事件scenario.matured/gap_detected/growth_triggered(入outbox/L15)。**根治§0种子守卫bug**: main.ts:22-29守卫从包存在改为意图存在级(或grow自愈)——PRD验收#2 PG复现修复=在包存在但意图空的库上grow→意图自动补齐→点S01出KPI。DoD: 内存+PG各grow一张卡到GOVERNED·验证门齿(答案空/占位→不GOVERNED·revert门→红)·事件齿。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-scenario-ontogenesis.md",
+      "at": {
+        "todo": "2026-07-05T08:29:30.462Z"
+      },
+      "id": "ONTO-SCEN-LAUNCH-DET",
+      "priority": "P1",
+      "deps": [
+        "ONTO-SCEN-GROW"
+      ],
+      "title": "正序确定性绑定+诚实缺口: GOVERNED卡launch跳过classify·不可答→GapReport+工单深链·灭『未能产出回答』",
+      "note": "PRD §2.4/2.5: launch时卡GOVERNED且intentKey已发布→确定性绑定意图→计划(classify只服务自由问句·D8是发育自然结果)。不可答→classifyGap(7码)→GapReport: NEEDS_HUMAN→GrowthTicket+通知+收件箱+深链·前端诚实卡片『此卡发育中: 缺X·已建工单#N』**替换agent/loop.ts:215兜底串**。DoD=PRD验收#3+#4: 解绑classifier LLM→点GOVERNED卡仍Path A出答案(FDE真验); 人为删求解器→卡降PROVISIONAL+前端显缺口工单·全站零『未能产出回答』(grep级断言+真浏览器截图)。前端GapCard复用。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-scenario-ontogenesis.md",
+      "at": {
+        "todo": "2026-07-05T08:29:30.462Z"
+      },
+      "id": "ONTO-SCEN-RENDER-PROJ",
+      "priority": "P2",
+      "deps": [
+        "ONTO-SCEN-GROW"
+      ],
+      "title": "投影渲染+接线: genome renderBindings→render步投影求解器真实字段(灭16卡静态占位·闭G-1/G-2)+规则/切片自动接",
+      "note": "PRD §2.2计划项+§9 P2: render步绑定SOLVER_OUTPUT_SHAPES校验的真实输出字段(seed.ts:389-400十六卡invoke_solver→静态文本的占位根除)·卡rules[]自动接evaluate_rules(灭规则只挂卡面)·sliceTargets经slice-planner自动生成+索引复用(A3.4)。DoD: 16张占位卡全渲真投影(FDE抽3卡逐值对照solver invoke)·规则真执行进答案依据·齿: renderBindings⊆SOLVER_OUTPUT_SHAPES违反红·占位文本回潮红。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-scenario-ontogenesis.md",
+      "at": {
+        "todo": "2026-07-05T08:29:30.462Z"
+      },
+      "id": "ONTO-SCEN-GROWTH-LOOP",
+      "priority": "P2",
+      "deps": [
+        "ONTO-SCEN-LAUNCH-DET"
+      ],
+      "title": "自动生长回路+相位: GapReport AUTO_DERIVE→runGrowthLoop倒序补齐重验·PROVISIONAL→GOVERNED升相·启动器诚实分层",
+      "note": "PRD §2.5/2.6: AUTO_DERIVE缺口触发runGrowthLoop生长(意图/计划/切片/求解器/数据)→自动重验→升GOVERNED; 正序点卡GapReport持续喂倒序(越用越大)。启动器仅GOVERNED默认可用·PROVISIONAL诚实标发育中/未审核(R3相位呈现)。DoD: 人为挖缺→点卡→自动生长→重验→升相全环FDE真跑; 二分处置齿(AUTO_DERIVE|NEEDS_HUMAN+ticketId·静默残缺=红)。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-scenario-ontogenesis.md",
+      "at": {
+        "todo": "2026-07-05T08:29:30.462Z"
+      },
+      "id": "ONTO-SCEN-GATE-WRITEBACK",
+      "priority": "P2",
+      "deps": [
+        "ONTO-SCEN-GROWTH-LOOP",
+        "ONTO-SCEN-RENDER-PROJ"
+      ],
+      "title": "门禁扩展+20卡全验+本体回写: ontogenesis:check逐卡6断言·scenarioClosure升A10门·G-1闭/G-9修·§2-8回写",
+      "note": "PRD §6六断言(逐卡VERIFIED·renderBindings⊆shapes·ruleIds全进evaluate_rules·sliceTargets覆盖·无静默残缺·目录注册表派生)并入pnpm gates。scenarioClosure(server.ts:1791)从查存在升级为查跑通(ready⟺亲手跑到VERIFIED)。**PRD验收#1**: 20张卡逐张grow→VERIFIED→点卡真决策视图(FDE逐卡证据)。本体回写§2(OntogenesisRun)/§3(卡发育链)/§4(三事件)/§5(R16)/§7(门)/§8(G-1闭·G-9修)+ontology:slices重生成。DoD: gates exit0·北极星距离表(还差哪几环+哪些合成/happy-path·fde-delivery)。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "at": {
+        "todo": "2026-07-05T08:29:30.462Z"
+      },
+      "id": "POLISH-P3-BUNDLE",
+      "priority": "P3",
+      "title": "随行polish捆绑: 叙事sup角标hover驻留优化 + 沙盘DAG边标交叉避让",
+      "note": "治理批次验收小注捆绑(均非阻断·真浏览器复现在案): ①叙事⟦ref⟧sup角标hover 300ms计时+小靶难命中·点按可用——加hover热区扩大(padding/伪元素)或缩短计时·齿: 组件测hover 400ms出浮层; ②沙盘DAG边标(×0.5·Δ1)在汇聚边处交叉(全展开态8处相交·主标签0叠不受影响)——边标避让或密集处隐标hover显。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
       "cmd": "QUEUE",
-      "id": "ADOPT-MITIGATION-FREEPATH",
-      "at": "2026-07-05T08:27:17.419Z"
+      "id": "ONTO-SCEN×6+POLISH",
+      "at": "2026-07-05T08:29:30.462Z"
     }
   }
 }
