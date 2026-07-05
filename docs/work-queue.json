@@ -3258,8 +3258,8 @@
     {
       "id": "LAUNCH-VIEW-KEY-ALIGN",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
@@ -3274,6 +3274,9 @@
             "assert": "逐20卡点启动→落点无404/403·URL=workspace真键;齿检: 卡view→路由解析单测。"
           }
         ]
+      },
+      "at": {
+        "wip": "2026-07-05T03:58:45.774Z"
       }
     },
     {
@@ -3297,5 +3300,13 @@
         ]
       }
     }
-  ]
+  ],
+  "meta": {
+    "lastActivity": {
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "LAUNCH-VIEW-KEY-ALIGN",
+      "at": "2026-07-05T03:58:45.774Z"
+    }
+  }
 }
