@@ -3257,7 +3257,7 @@
     {
       "id": "PROV-REF-INTEGRITY",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -3281,7 +3281,8 @@
       },
       "at": {
         "wip": "2026-07-05T06:39:16.027Z",
-        "built": "2026-07-05T07:30:08.500Z"
+        "built": "2026-07-05T07:30:08.500Z",
+        "done": "2026-07-05T07:41:08.801Z"
       }
     },
     {
@@ -3381,10 +3382,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
+      "role": "review",
+      "cmd": "DONE",
       "id": "PROV-REF-INTEGRITY",
-      "at": "2026-07-05T07:30:08.501Z"
+      "at": "2026-07-05T07:41:08.802Z"
     }
   }
 }
