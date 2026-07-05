@@ -3623,12 +3623,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-05T11:18:19.882Z",
-        "wip": "2026-07-05T13:46:30.172Z"
+        "wip": "2026-07-05T13:46:30.172Z",
+        "built": "2026-07-05T14:11:02.311Z"
       },
       "id": "QUERY30-RULES",
       "priority": "P1",
@@ -3636,7 +3637,8 @@
       "note": "设计源§2.3。C34挤占优先级/C35≥2方案门/C36锁价现金敞口/C37违约金权衡/C38供应商集中度/C39连败隔离/C40检修逾期禁排/C41加班上限/C42信用上调审批/C43认证外包等效/C44谷段不破交期/C45自动对策仅草稿/C46 SOP final锁定/C47跨期联检/C48观察期重停/C49断料口径/C50降级双签。全部params参数化(RulesPage可见可改)·expression真接求解器/workflow evaluate_rules(灭卡面挂名)·C45/C42/C50接S2审批链。齿: 逐条触发/不触发用例对+params改值生效齿。",
       "deps": [
         "QUERY30-ONTOLOGY-EXT"
-      ]
+      ],
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -3685,9 +3687,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "ONTO-SCEN-GATE-WRITEBACK",
-      "at": "2026-07-05T13:46:30.253Z"
+      "cmd": "BUILT",
+      "id": "QUERY30-RULES",
+      "at": "2026-07-05T14:11:02.312Z"
     }
   }
 }
