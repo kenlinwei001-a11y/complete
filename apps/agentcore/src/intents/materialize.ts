@@ -6,37 +6,18 @@
  * 分派）；绑定确定性（R6：同 catalog 同物化）；骨架零业务实体名（R14：rootType/绑定为本体对象类型 key，
  * 行业绑定经 solver/IndustryPack）。
  */
-import type { MaterializedIntent, IntentMode, IntentSliceSpec, SlotDef } from "@platform/contracts";
+import type { MaterializedIntent, IntentSliceSpec, SlotDef } from "@platform/contracts";
 import { SCENARIO_CATALOG, scenarioByIntent } from "../scenarios-catalog.js";
+import { INTENT_MODE } from "./intent-mode.js";
 
 export const SEED_TENANT = "demo";
 
 /**
- * mode 逐意图（审核方定·钉死·勿改）：workflow-first(13)=价值在输出「是多少/过不过/有哪些」；
- * agent-first(7)=价值在推理「为什么/哪个好/怎么选」。全 -first 保兜底（数字红线防造假）。
+ * WO MODE-DISPATCH-HONOR：mode 钉死表（审核方定·13 workflow-first / 7 agent-first）移入
+ * `./intent-mode.ts`（唯一真相源·scenarios-catalog 派生一等 Scenario 的 mode 亦读同一张表）。
+ * 此处 re-export 保持既有消费点（reconcile / 门 scene-agent-config:check）零变更。
  */
-export const INTENT_MODE: Record<string, IntentMode> = {
-  capacity_feasibility: "WORKFLOW_FIRST",
-  affected_orders: "WORKFLOW_FIRST",
-  plan_audit_q: "WORKFLOW_FIRST",
-  adopt_mitigation: "WORKFLOW_FIRST",
-  cert_scheduling: "WORKFLOW_FIRST",
-  kit_analysis: "WORKFLOW_FIRST",
-  lta_gap_q: "WORKFLOW_FIRST",
-  inventory_opt: "WORKFLOW_FIRST",
-  changeover_opt: "WORKFLOW_FIRST",
-  quote_margin_q: "WORKFLOW_FIRST",
-  credit_check: "WORKFLOW_FIRST",
-  sop_status: "WORKFLOW_FIRST",
-  carbon_q: "WORKFLOW_FIRST",
-  risk_root_cause: "AGENT_FIRST",
-  plan_recommend: "AGENT_FIRST",
-  yield_diag: "AGENT_FIRST",
-  maint_stagger: "AGENT_FIRST",
-  outsourcing_q: "AGENT_FIRST",
-  capex_review: "AGENT_FIRST",
-  quarterly_gap_q: "AGENT_FIRST",
-};
+export { INTENT_MODE, intentModeFor } from "./intent-mode.js";
 
 /** 对口方法论 skill（复用出厂 skl_*·B4 Skill 库）。 */
 const INTENT_SKILL: Record<string, string> = {

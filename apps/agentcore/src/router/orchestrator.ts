@@ -768,6 +768,24 @@ export class Orchestrator {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
 
+    // WO MODE-DISPATCH-HONOR（审计簇⑦·mode 钉死表被场景实体架空）：意图已解析的**唯一分发点**上，
+    // 尊重一等权威 mode 链——MaterializedIntent.mode（审核方逐意图钉死 13 workflow-first / 7 agent-first·
+    // R14 数据驱动非硬编码分派）**先于**场景实体的一揽子 WORKFLOW_FIRST 默认。此前只看 scene.mode →
+    // yield_diag 等 agent-first 意图（为什么/哪个好/怎么选）被压回 Path A 工作流表格、真推理永不触发。
+    // AGENT_FIRST → 委派该意图绑定的 PUBLISHED agent（agentRun.agentId 持久化·AGENT-UNIVERSAL C2 同坐标系
+    // 可审计）；查无一等 Intent / 绑定 agent 不可用 → 回落既有链（Path A·全 -first 保兜底·诚实不硬塞）。
+    const authoritative = await this.deps.repos.materializedIntents.byKey(task.tenantId, intent.key);
+    if (authoritative?.status === "PUBLISHED" && authoritative.mode === "AGENT_FIRST" && authoritative.bindings.agentId) {
+      const boundAgent = await this.deps.repos.agents.get(authoritative.bindings.agentId);
+      if (boundAgent && boundAgent.status === "PUBLISHED" && boundAgent.tenantId === task.tenantId) {
+        await this.deps.repos.tasks.patch(taskId, {
+          matchedIntent: { intentId: intent.id, intentKey: intent.key, version: intent.version },
+        });
+        await this.runConfiguredAgent(task, auth, boundAgent.id, `意图权威模式 AGENT_FIRST（一等 Intent ${intent.key}）`, intent.key);
+        return;
+      }
+    }
+
     // LAUNCHER-SLOT-TRUTH ① 形状归一（单一真相源）：分类器 extractedSlots 可能按意图键嵌套
     // `{affected_orders:{base:"合肥"}}`——压扁成本意图的扁平 {slotName:value} 后再填槽，否则本轮显式值被
     // 静默丢弃、落 chip 旧实体（问合肥答常州）。continueSlotFilling 传来的 slotValues 已是扁平槽名，归一为幂等。
@@ -1148,9 +1166,18 @@ export class Orchestrator {
 
   /** AGENT_FIRST / AGENT_ONLY scene-entry modes — skip classification, run the configured agent. */
   private async runSceneAgent(task: QueryTask, auth: RequestAuth, scene: SceneEntryConfig): Promise<void> {
+    await this.runConfiguredAgent(task, auth, scene.defaultAgentId as string, `场景入口模式 ${scene.mode}`);
+  }
+
+  /**
+   * 配置化 agent 运行（单一机制·勿两处各写一套）：场景入口 agent（runSceneAgent）与
+   * WO MODE-DISPATCH-HONOR 的意图权威 AGENT_FIRST 委派共用——patch 执行态 → routing.completed（note
+   * 标明委派来源）→ engine.runRegisteredAgent → agentRun 持久化（C2·agentId 可审计）→ 终态 + 经验回写。
+   */
+  private async runConfiguredAgent(task: QueryTask, auth: RequestAuth, agentId: string, note: string, intentKey?: string): Promise<void> {
     await this.deps.repos.tasks.patch(task.id, { status: "EXECUTING_AGENT", path: "AGENT" });
     this.deps.metrics.recordRouting(false);
-    await this.deps.events.emit(task.id, "routing.completed", { path: "AGENT", note: `场景入口模式 ${scene.mode}` });
+    await this.deps.events.emit(task.id, "routing.completed", { path: "AGENT", ...(intentKey ? { intentKey } : {}), note });
 
     const budget = new BudgetTracker();
     try {
@@ -1159,7 +1186,7 @@ export class Orchestrator {
       const resolvedRefs: ResolvedRef[] = [];
       const result = await this.deps.engine.runRegisteredAgent({
         taskId: task.id,
-        agentId: scene.defaultAgentId as string,
+        agentId,
         version: "latest",
         prompt: buildAgentUser(task, priorSummary || undefined),
         ctx: auth,

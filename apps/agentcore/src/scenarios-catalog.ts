@@ -5,6 +5,8 @@
  * 经 GET /b/v1/scenarios 下发本表（非前端硬编码）；每卡带 presetContext 保证"一键可推演"。
  */
 
+import { intentModeFor } from "./intents/intent-mode.js";
+
 export type RiskLevel = "COMPUTE" | "ACTION_DRAFT";
 
 export interface ScenarioCard {
@@ -95,7 +97,11 @@ const VIEW_DOMAIN: Record<string, string> = {
 
 /**
  * 出厂场景目录 → 一等 Scenario（PUBLISHED）。SCENARIO_CATALOG 仍是出厂单一来源；
- * 启动期幂等 upsert（PRD §3.2）。mode 默认 WORKFLOW_FIRST（§3.2 语义收敛）。
+ * 启动期幂等 upsert（PRD §3.2）。
+ *
+ * WO MODE-DISPATCH-HONOR（审计簇⑦）：mode 不再一揽子 WORKFLOW_FIRST——从审核方钉死表
+ * `intents/intent-mode.ts INTENT_MODE`（=MaterializedIntent.mode 的同一单一来源）按 intentKey 派生，
+ * 使一等 Scenario 投影不再对 13/7 分派撒谎（yield_diag 等 7 个 agent-first 卡如实标 AGENT_FIRST）。
  */
 export function scenarioFromCard(card: ScenarioCard, tenantId = SEED_TENANT): import("@platform/contracts").Scenario {
   return {
@@ -111,7 +117,7 @@ export function scenarioFromCard(card: ScenarioCard, tenantId = SEED_TENANT): im
     rules: card.rules,
     riskLevel: card.riskLevel,
     summary: card.summary,
-    mode: "WORKFLOW_FIRST",
+    mode: intentModeFor(card.intentKey),
     presetContext: {
       targetView: card.presetContext.targetView,
       selectedObjects: card.presetContext.selectedObjects,
