@@ -3378,14 +3378,26 @@
         "done": "2026-07-05T07:05:07.744Z"
       },
       "blockReason": ""
+    },
+    {
+      "id": "ADOPT-MITIGATION-FREEPATH",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "adopt_mitigation自由路径factor=null→action-drafts 400(G-2类计划↔端点缝)",
+      "note": "CLARIFY-CHAIN-FIX提交内dev亲自声明的残留(『另单』)但未入队·审核方对账补队。复现: 自由问句命中adopt_mitigation·factor槽null→评估规则C13载荷factor=null→POST /a/v1/action-drafts 400。修向: factor必填槽人话澄清兜底或计划模板容null·端到端齿(自由句采纳→草稿创建成功或诚实澄清)。",
+      "at": {
+        "todo": "2026-07-05T08:27:17.419Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "PROV-REF-INTEGRITY",
-      "at": "2026-07-05T07:41:08.802Z"
+      "cmd": "QUEUE",
+      "id": "ADOPT-MITIGATION-FREEPATH",
+      "at": "2026-07-05T08:27:17.419Z"
     }
   }
 }
