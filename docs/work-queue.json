@@ -3646,19 +3646,31 @@
       "status": "TODO",
       "owner": "",
       "doc": "docs/PRD-frontend-visual-redesign.md",
-      "title": "推演沙盘改名『产能推演』+基地卡片回到默认可见(用户亲报·闭发现性回归)",
-      "note": "用户亲报(2026-07-05): ①『预判推演沙盘为何没有调整为产能推演』——考古: 该改名指令台账零记录(REQ-LEDGER/queue均无)=记录环节遗漏·现补录。改名目标=推演沙盘(/v/sim-sandbox)nav标签与页标题→『产能推演』(审核方推定·若用户实指/v/risk预判推演看板则改它)。注意联动: graph-flow『图谱·产能推演网络』在GRAPH-PANORAMA-ONLY删除清单内·沙盘承名正好延续该概念。②『各基地卡片都没有了』——真浏览器实证: SANDBOX-LAYOUT-REWORK把基地/对象状态卡收进右栏折叠卡栈(runstate-card默认collapsed·整页body.innerText零基地名·展开18次点击后才见常州/武汉)=功能在但发现性回归(用户找不到=事实丢失)。修: runstate卡(对象状态/基地卡)默认展开·或基地卡回主区hero下方一行(带state vars真值+点开对象360)·折叠记忆保留。齿: 首屏render断言基地名可见(不点击即在innerText)+nav标签断言。FDE: 真浏览器首屏截图对版。",
+      "title": "『预判推演看板』(/v/risk)改名『产能推演』+沙盘基地卡默认可见(转录证据纠偏)",
+      "note": "⚠目标纠偏(2026-07-05彻查·转录#227原文): 改名对象=**预判推演看板(/v/risk)**·非沙盘——驾驶舱磁贴早已叫『产能推演』(DashboardView.tsx:60·66766b5)但点进去页面标题仍是『预判推演看板』(datacore synthetic/service.ts:1304+mocks/fixtures.ts:373)=名实不符正是用户两次追问处。做①: /v/risk 视图标题+nav标签→『产能推演』(ViewDef title两处+workspace nav+mock同步·若用户要沙盘也改名则另令)。做②(原单保留): 推演沙盘基地/对象状态卡默认可见——SANDBOX-LAYOUT-REWORK把runstate卡默认折叠致首屏零基地名(实证docs/evidence/sandbox-current-state.png)·修: runstate卡默认展开或基地卡回主区·折叠记忆保留。齿: /v/risk标题断言『产能推演』+沙盘首屏innerText含基地名(不点击)+nav断言。FDE: 真浏览器双页截图。",
       "at": {
         "todo": "2026-07-05T11:22:12.756Z"
+      }
+    },
+    {
+      "id": "CAPACITY-W-RECONCILE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/HANDOFF-capacity-simulation-multitenant.md",
+      "title": "产能推演HANDOFF W0-W5对账收编: 逐波标注已吸收/并入QUERY30/仍缺·补登G-CAP-1(彻查发现的第2例失载)",
+      "note": "2026-07-05彻查发现: HANDOFF-capacity-simulation-multitenant.md(700e943)自标『草稿·未入队』·work-queue零引用·其自设断点G-CAP-1从未登记SYSTEM-ONTOLOGY——与沙盘改名同类的记录失载第2例。做: ①逐波对账表: W0去电池化→已被HARDCODE族/INDUSTRY-PACK-CONVERGE/METHOD-MC-STOCHASTIC吸收(标DONE单号)·W-MC同·W1通用对象(Routing/Store/Lane/Labor)→LaborShift与QUERY30-ONTOLOGY-EXT重叠部分标注并入·插单挤占→QUERY30 what_if_displacement/DISPLACES边并入·多基地最优分配/CAPEX反推/多目标取舍→仍缺则逐项开TODO或声明弃置(用户裁决)；②G-CAP-1补登本体§8或声明作废；③顺手回写陈旧台账标记: DEBT A1(已被PLATFORM-AGENT-SURFACE覆盖)/A17(TESTING-STANDARD已存在)/REQ-LEDGER R32头标(11WO全DONE)三处✅。DoD: 对账表入HANDOFF文档头部+本体回写+台账三处纠。",
+      "at": {
+        "todo": "2026-07-05T11:51:47.608Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "PANORAMA-FIELD-INTAKE",
-      "at": "2026-07-05T11:44:57.385Z"
+      "role": "review",
+      "cmd": "QUEUE",
+      "id": "彻查纠偏×2",
+      "at": "2026-07-05T11:51:47.608Z"
     }
   }
 }
