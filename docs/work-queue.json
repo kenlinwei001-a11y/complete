@@ -3382,7 +3382,7 @@
     {
       "id": "ADOPT-MITIGATION-FREEPATH",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "title": "adopt_mitigation自由路径factor=null→action-drafts 400(G-2类计划↔端点缝)",
@@ -3390,7 +3390,8 @@
       "at": {
         "todo": "2026-07-05T08:27:17.419Z",
         "wip": "2026-07-05T08:39:33.179Z",
-        "built": "2026-07-05T09:44:19.567Z"
+        "built": "2026-07-05T09:44:19.567Z",
+        "done": "2026-07-05T16:01:17.177Z"
       },
       "blockReason": ""
     },
@@ -3487,13 +3488,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
         "wip": "2026-07-05T13:46:30.253Z",
-        "built": "2026-07-05T14:14:01.176Z"
+        "built": "2026-07-05T14:14:01.176Z",
+        "done": "2026-07-05T16:01:17.234Z"
       },
       "id": "ONTO-SCEN-GATE-WRITEBACK",
       "priority": "P2",
@@ -3525,7 +3527,7 @@
     {
       "id": "TICKET-CENTER-UNIFIED",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "title": "统一工单中心: 全类型补X工单一页集中·认领后我的在办聚合·点单出详情列举补充内容清单(用户亲定)",
@@ -3533,7 +3535,8 @@
       "at": {
         "todo": "2026-07-05T08:53:50.737Z",
         "wip": "2026-07-05T09:46:55.405Z",
-        "built": "2026-07-05T10:50:44.158Z"
+        "built": "2026-07-05T10:50:44.158Z",
+        "done": "2026-07-05T16:01:17.288Z"
       },
       "blockReason": ""
     },
@@ -3554,13 +3557,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
         "todo": "2026-07-05T09:18:30.471Z",
         "wip": "2026-07-05T10:28:24.959Z",
-        "built": "2026-07-05T11:44:57.384Z"
+        "built": "2026-07-05T11:44:57.384Z",
+        "done": "2026-07-05T16:01:17.344Z"
       },
       "id": "PANORAMA-FIELD-INTAKE",
       "priority": "P1",
@@ -3688,7 +3692,7 @@
     {
       "id": "CAPACITY-W-RECONCILE",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/HANDOFF-capacity-simulation-multitenant.md",
       "title": "产能推演HANDOFF W0-W5对账收编: 逐波标注已吸收/并入QUERY30/仍缺·补登G-CAP-1(彻查发现的第2例失载)",
@@ -3696,7 +3700,8 @@
       "at": {
         "todo": "2026-07-05T11:51:47.608Z",
         "wip": "2026-07-05T14:47:38.019Z",
-        "built": "2026-07-05T14:53:13.992Z"
+        "built": "2026-07-05T14:53:13.992Z",
+        "done": "2026-07-05T16:01:17.402Z"
       },
       "blockReason": ""
     }
@@ -3705,8 +3710,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "INTAKE-XLSX-EXPORT",
-      "at": "2026-07-05T15:58:10.990Z"
+      "id": "CAPACITY-W-RECONCILE",
+      "at": "2026-07-05T16:01:17.402Z"
     }
   }
 }
