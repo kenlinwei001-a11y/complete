@@ -3579,14 +3579,26 @@
       "at": {
         "todo": "2026-07-05T09:55:29.963Z"
       }
+    },
+    {
+      "id": "INTAKE-XLSX-EXPORT",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/SYSTEM-ONTOLOGY.md",
+      "title": "数据连接器&上传页一键导出全源数据多sheet Excel(闭G-13①·用户亲定)",
+      "note": "用户亲定(2026-07-05): 『把数据连接器&上传里面所有的源数据输出一张可下载的excel，可以包含多个sheet』——审核方已手工从活系统导出交付(36sheet/35数据集/493行·概览sheet含数据集ID/行列数/列清单/来源连接)·现把能力产品化闭G-13①(源数据无Excel导出·仅CSV模板)。建: ①后端 GET /a/v1/raw-datasets/export.xlsx——全数据集(或?connId=过滤)流式产多sheet xlsx(sheet1=概览: 数据集ID/名/行数/列数/列清单/来源连接/摄入时间·后续每数据集一sheet·sheet名31char去重·空数据集诚实标注)·READ授权+R2租户隔离·xlsx依赖已在库(sheetjs 0.20.2·node-xlsx 0.24亦在); ②前端 数据连接器&上传页(DataCategoriesPanel/连接详情)加「导出全部源数据(Excel)」按钮→浏览器下载(Content-Disposition attachment·文件名含日期)·连接级按钮带?connId=; ③大表护栏: 行数上限(如每sheet 5万行截断+概览标truncated)防内存爆·xlsx生成走stream或分块; ④齿: 端点齿(导出→回读sheet数==数据集数+1·概览行数==真rows数·抽1 sheet逐值==GET rows·R2跨租户404)+前端下载按钮存在与href齿。FDE: 真浏览器点按钮下载→本地回读对账。本体回写: G-13①标✅+§4数据流出口补该端点。",
+      "at": {
+        "todo": "2026-07-05T11:06:45.306Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "TICKET-CENTER-UNIFIED",
-      "at": "2026-07-05T10:50:44.158Z"
+      "role": "review",
+      "cmd": "QUEUE",
+      "id": "INTAKE-XLSX-EXPORT",
+      "at": "2026-07-05T11:06:45.306Z"
     }
   }
 }
