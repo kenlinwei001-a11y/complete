@@ -3591,14 +3591,57 @@
       "at": {
         "todo": "2026-07-05T11:06:45.306Z"
       }
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/DESIGN-query30-multihop-gaps.md",
+      "at": {
+        "todo": "2026-07-05T11:18:19.874Z"
+      },
+      "id": "QUERY30-ONTOLOGY-EXT",
+      "priority": "P1",
+      "title": "QUERY30缺口①: 新5类型(Supplier/BomLine/LtaContract/LaborShift/CarbonPassport)+6边+18类型字段批(Line三字段大缺口先行)",
+      "note": "设计源docs/DESIGN-query30-multihop-gaps.md §2.1/2.2(30问倒推·字段逐一有问句锚)。做: ①新5类型入本体(schema+合成种子确定性生成R6+数据模板G-6+分类面板)②6新边(Order-ALLOCATED_ON→Line/Order-DISPLACES→Order/Material-SUPPLIED_BY→Supplier/MaterialBatch-RESERVED_FOR→Order/Model-BOM→BomLine→Material/DataSourceHealth-FEEDS→ObjectType)③字段批按§2.1表(Line.capacityDaily/certifiedModels最优先——Line现仅3字段线级推演全空·Order挤占五件套次之)④Process.yield时序化入ts_points(连降类问句的数据基础)。齿: 新类型往返+种子确定性+边解引用+字段在数据模板可下载。FDE: 上传含新字段模板→物化→对象360逐值。本体回写§2/§3必须。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/DESIGN-query30-multihop-gaps.md",
+      "at": {
+        "todo": "2026-07-05T11:18:19.882Z"
+      },
+      "id": "QUERY30-RULES",
+      "priority": "P1",
+      "title": "QUERY30缺口②: C34–C50十七条规则入库(参数化可编辑·接G-10一等引用)",
+      "note": "设计源§2.3。C34挤占优先级/C35≥2方案门/C36锁价现金敞口/C37违约金权衡/C38供应商集中度/C39连败隔离/C40检修逾期禁排/C41加班上限/C42信用上调审批/C43认证外包等效/C44谷段不破交期/C45自动对策仅草稿/C46 SOP final锁定/C47跨期联检/C48观察期重停/C49断料口径/C50降级双签。全部params参数化(RulesPage可见可改)·expression真接求解器/workflow evaluate_rules(灭卡面挂名)·C45/C42/C50接S2审批链。齿: 逐条触发/不触发用例对+params改值生效齿。",
+      "deps": [
+        "QUERY30-ONTOLOGY-EXT"
+      ]
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/DESIGN-query30-multihop-gaps.md",
+      "at": {
+        "todo": "2026-07-05T11:18:19.882Z"
+      },
+      "id": "QUERY30-ORCH",
+      "priority": "P1",
+      "title": "QUERY30缺口③: 10新求解器+countermeasure跨期增强+7workflow+2agent+5skill+30intent入目录(经ONTO-SCEN发育管道·非seed手装)",
+      "note": "设计源§2.5/2.6。求解器: what_if_displacement(Q01核心·方案四型确定性枚举+挤占级联+逐单再方案)/multi_plan_compare(五维比较矩阵)/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives+countermeasure_combo跨期增强·全部registry注册(description/argHints/outputShape·R3过滤)。workflow 7条链(§2.5表·接单全链推演为Q01样板)。agent: 接单参谋+供应链风控(绑工具+skill+POST_CHECK)。skill 5方法论(接SKILL-LIBRARY-EVERYWHERE)。30问入intent目录→经ONTO-SCEN管道长成场景卡(PROVISIONAL起·闭G-9·非seed.ts手装)。分期铁律: 先Q01全链打穿样板再横铺(设计§3)。齿: 求解器R6确定性+比较矩阵字段完整+intent目录30条+发育run留痕。",
+      "deps": [
+        "QUERY30-ONTOLOGY-EXT",
+        "QUERY30-RULES"
+      ]
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
       "cmd": "QUEUE",
-      "id": "INTAKE-XLSX-EXPORT",
-      "at": "2026-07-05T11:06:45.306Z"
+      "id": "QUERY30×3",
+      "at": "2026-07-05T11:18:19.882Z"
     }
   }
 }
