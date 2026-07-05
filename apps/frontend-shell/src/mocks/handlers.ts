@@ -595,6 +595,55 @@ export const handlers = [
         { key: "material_inventory", displayName: "物料与库存", description: "物料/BOM 与批次库存。", mode: mockCategoryMode.material_inventory ?? "SYSTEM_INTEGRATION", modes: ["SYSTEM_INTEGRATION", "FILE_UPLOAD"], connectorTypeKeys: ["sap_erp", "file_upload"], customColumns: mockCategoryTpl.material_inventory ?? null, types: [{ typeKey: "Material", displayName: "物料", columns: ["matId", "name", "unitPrice", "leadTime"], present: true }] },
       ],
     })),
+  // ---- PANORAMA-FIELD-INTAKE：全景类型×字段供给覆盖度（与真后端 /a/v1/intake-coverage 同形）----
+  http.get("*/a/v1/intake-coverage", () =>
+    HttpResponse.json({
+      items: [
+        {
+          typeKey: "Order", displayName: "销售订单", intakeTotal: 7, derivedCount: 1, suppliable: 7,
+          template: { available: true, columns: ["so", "cust", "model", "qty", "due", "status", "unitPrice"], primaryKey: "so", refColumns: [{ column: "model", refToType: "Model" }], covered: 7, missing: [], downloadPath: "/a/v1/data-templates/Order" },
+          connector: {
+            bindings: [{ connId: "conn-erp", dataset: "erp_sales_orders", mapped: [{ propKey: "so", sourceField: "SO_NO" }, { propKey: "cust", sourceField: "CUSTOMER" }, { propKey: "model", sourceField: "MODEL_ID" }, { propKey: "qty", sourceField: "QTY" }, { propKey: "due", sourceField: "DUE_DATE" }, { propKey: "status", sourceField: "STATUS" }], unmapped: ["unitPrice"] }],
+            mapped: ["so", "cust", "model", "qty", "due", "status"], unmapped: ["unitPrice"],
+          },
+          fields: [
+            { propKey: "so", dataType: "string", isPrimaryKey: true, refToTypeKey: null, template: true, connector: true },
+            { propKey: "cust", dataType: "string", isPrimaryKey: false, refToTypeKey: null, template: true, connector: true },
+            { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model", template: true, connector: true },
+            { propKey: "qty", dataType: "number", isPrimaryKey: false, refToTypeKey: null, template: true, connector: true },
+            { propKey: "due", dataType: "date", isPrimaryKey: false, refToTypeKey: null, template: true, connector: true },
+            { propKey: "status", dataType: "enum", isPrimaryKey: false, refToTypeKey: null, template: true, connector: true },
+            { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, refToTypeKey: null, template: true, connector: false },
+          ],
+          gaps: [], categoryKey: "sales_orders",
+        },
+        {
+          typeKey: "Material", displayName: "物料", intakeTotal: 4, derivedCount: 0, suppliable: 4,
+          template: { available: true, columns: ["matId", "name", "unitPrice", "leadTime"], primaryKey: "matId", refColumns: [], covered: 4, missing: [], downloadPath: "/a/v1/data-templates/Material" },
+          connector: { bindings: [], mapped: [], unmapped: ["matId", "name", "unitPrice", "leadTime"] },
+          fields: [
+            { propKey: "matId", dataType: "string", isPrimaryKey: true, refToTypeKey: null, template: true, connector: false },
+            { propKey: "name", dataType: "string", isPrimaryKey: false, refToTypeKey: null, template: true, connector: false },
+            { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, refToTypeKey: null, template: true, connector: false },
+            { propKey: "leadTime", dataType: "number", isPrimaryKey: false, refToTypeKey: null, template: true, connector: false },
+          ],
+          gaps: [], categoryKey: "material_inventory",
+        },
+        {
+          // 未归类全景类型（诚实透出·非隐藏）——真后端为 A3 新发布类型的常见形态。
+          typeKey: "LabTest", displayName: "实验室检测", intakeTotal: 3, derivedCount: 0, suppliable: 3,
+          template: { available: true, columns: ["testId", "batchId", "result"], primaryKey: "testId", refColumns: [{ column: "batchId", refToType: "MaterialBatch" }], covered: 3, missing: [], downloadPath: "/a/v1/data-templates/LabTest" },
+          connector: { bindings: [], mapped: [], unmapped: ["testId", "batchId", "result"] },
+          fields: [
+            { propKey: "testId", dataType: "string", isPrimaryKey: true, refToTypeKey: null, template: true, connector: false },
+            { propKey: "batchId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "MaterialBatch", template: true, connector: false },
+            { propKey: "result", dataType: "string", isPrimaryKey: false, refToTypeKey: null, template: true, connector: false },
+          ],
+          gaps: [], categoryKey: null,
+        },
+      ],
+      summary: { types: 3, templateComplete: 3, typesWithTemplateGap: [], typesWithConnectorUnmapped: ["Order"], uncategorized: ["LabTest"] },
+    })),
   http.put("*/a/v1/data-categories/:key/mode", async ({ request, params }) => {
     const body = (await request.json()) as { mode: "SYSTEM_INTEGRATION" | "FILE_UPLOAD" };
     mockCategoryMode[params.key as string] = body.mode;

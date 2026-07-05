@@ -292,6 +292,10 @@ export interface DataCategoryView {
   types: { typeKey: string; displayName: string; columns: string[]; present: boolean }[];
 }
 export const fetchDataCategories = () => api.a<{ items: DataCategoryView[] }>("/a/v1/data-categories");
+// PANORAMA-FIELD-INTAKE（G-6 邻域）：全景类型×字段供给覆盖度——模版列∪连接器映射、字段级缺口清单、
+// 诚实未映射/未归类（类型自 @platform/contracts·未重定义）。
+export const fetchIntakeCoverage = () =>
+  api.a<import("@platform/contracts").IntakeCoverageResponse>("/a/v1/intake-coverage");
 export const setDataCategoryMode = (key: string, mode: "SYSTEM_INTEGRATION" | "FILE_UPLOAD") =>
   api.a<{ categoryKey: string; mode: string }>(`/a/v1/data-categories/${key}/mode`, { method: "PUT", body: { mode } });
 /** 用上传 CSV 的列头替换分类模版（columns=[] 复位为派生模版）。 */

@@ -65,6 +65,7 @@ import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
 import { loadIndustryPack } from "./synthetic/industry-pack.js";
 import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
+import { buildIntakeCoverage } from "./intake-coverage.js";
 import { dataCategoriesForIndustry } from "./synthetic/data-categories.js";
 import { computeFieldCoverage, computeCategoryCoverage } from "./databuilder/slice-coverage.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
@@ -1828,6 +1829,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const tpl = buildDataTemplate(types, typeKey, { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 });
     if (!tpl) throw validationError(`未知对象类型 '${typeKey}'（本租户）`);
     return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${typeKey}.template.csv"`).send(tpl.csv);
+  });
+  // PANORAMA-FIELD-INTAKE（G-6 邻域）：全景类型 × 字段供给覆盖矩阵——以图谱全景对象节点全集
+  // （= ACTIVE 已发布类型，与 /a/v1/ontology/graph 同源）为完备性基准，逐类型盘点
+  // 非派生 props vs 上传模版列（G-6 数据模版/FK）∪ 连接器 sourceBindings.fieldMappings；
+  // 缺口字段级清单化（非模糊），连接器缺源字段诚实进 unmapped（非隐藏）。纯派生 R14/R6。
+  app.get("/a/v1/intake-coverage", async (req) => {
+    const c = ctx(req);
+    const types = await ontology.listTypes(c);
+    return buildIntakeCoverage(types, dataCategoriesForIndustry());
   });
   // 数据接入分类（数据接入控制台）：按业务域把"目前的数据"归类（销售订单/物料/设备台账…）；
   // 每类可设 系统对接/文件上传，文件上传走该类对象类型派生的字段模版（可看可下载）。

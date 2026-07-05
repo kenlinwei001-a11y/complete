@@ -10,6 +10,7 @@ import {
   fetchConnectorCategories,
   fetchConnectorTypes,
   fetchDataHealth,
+  fetchIntakeCoverage,
   fetchRawDatasetRows,
   fetchRawDatasets,
   fetchSyncJob,
@@ -186,7 +187,11 @@ export default function ConnectionsPage() {
 
       {/* WO-SOURCE-TRANSPARENCY：每个连接的全部源数据集 —— 逐张预览行 + 一键下载 Excel/CSV（合成源亦透明可审计） */}
       {(connections ?? []).filter((c) => !catFilter || c.category === catFilter).map((c) => (
-        <ConnectionDatasetsPanel key={c.id} connId={c.id} connName={c.name} connectorTypeKey={c.connectorTypeKey} config={c.config} />
+        <div key={c.id}>
+          <ConnectionDatasetsPanel connId={c.id} connName={c.name} connectorTypeKey={c.connectorTypeKey} config={c.config} />
+          {/* PANORAMA-FIELD-INTAKE：该连接绑定的全景字段全集——已映射(propKey←源字段) + 缺源字段诚实标"未映射"（非隐藏） */}
+          <ConnectionFieldMappingPanel connId={c.id} />
+        </div>
       ))}
 
       {wizardOpen && (
@@ -330,6 +335,53 @@ function ConnectionDatasetsPanel({
       {list.map((ds) => (
         <RawDatasetRow key={ds.id} dsId={ds.id} name={ds.name} rowCount={ds.rowCount} fieldCount={ds.fields?.length} synthetic={isSynthetic} />
       ))}
+    </div>
+  );
+}
+
+/**
+ * PANORAMA-FIELD-INTAKE · 连接的字段映射面板：对绑定到本连接的每个全景对象类型，暴露**全景字段全集**
+ * （非派生 props）——已映射显 propKey ← 源字段；缺源字段**诚实标"未映射"**（amber·非隐藏），
+ * 深链字段对账/模版下载补供给。数据 = 后端 `GET /a/v1/intake-coverage` 真值（本体派生·非前端自算）。
+ */
+function ConnectionFieldMappingPanel({ connId }: { connId: string }) {
+  const { data: coverage } = useQuery({ queryKey: ["a", "intake-coverage"], queryFn: fetchIntakeCoverage, staleTime: 60_000 });
+  const bound = (coverage?.items ?? [])
+    .map((i) => ({ item: i, bindings: i.connector.bindings.filter((b) => b.connId === connId) }))
+    .filter((x) => x.bindings.length > 0);
+  if (bound.length === 0) return null; // 本连接无类型绑定 → 无字段映射可展示（诚实不造）。
+  return (
+    <div className="panel" style={{ marginTop: 8 }} data-testid={`conn-fieldmap-${connId}`}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <div className="section-title" style={{ margin: 0 }}>字段映射（全景字段全集 · 缺源诚实标未映射）</div>
+        <Link to="/admin/schema-reconcile" style={{ marginLeft: "auto", fontSize: 11 }}>去字段对账 →</Link>
+      </div>
+      {bound.map(({ item, bindings }) =>
+        bindings.map((b) => (
+          <div key={`${item.typeKey}-${b.dataset}`} style={{ fontSize: 12, marginBottom: 8 }} data-testid={`conn-fieldmap-${connId}-${item.typeKey}`}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>
+              {item.displayName} <span style={{ color: "var(--muted,#999)" }}>({item.typeKey})</span>
+              <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)", marginLeft: 6 }}>← {b.dataset}</span>
+              <span className={`badge ${b.unmapped.length === 0 ? "green" : "amber"}`} style={{ marginLeft: 6, fontSize: 10 }} data-testid={`conn-fieldmap-cov-${connId}-${item.typeKey}`}>
+                已映射 {b.mapped.length}/{item.intakeTotal}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {b.mapped.map((m) => (
+                <span key={m.propKey} className="chip" style={{ fontSize: 10.5 }} title={`源字段 ${m.sourceField}`}>
+                  {m.propKey} <span className="mono" style={{ color: "var(--muted2)" }}>← {m.sourceField}</span>
+                </span>
+              ))}
+              {b.unmapped.map((pk) => (
+                <span key={pk} className="badge amber" style={{ fontSize: 10.5 }} data-testid={`conn-unmapped-${connId}-${item.typeKey}-${pk}`}
+                  title="该字段在本连接无源字段映射（诚实标·非隐藏）——可经上传模版补数或在建模页补映射">
+                  {pk} · 未映射
+                </span>
+              ))}
+            </div>
+          </div>
+        )),
+      )}
     </div>
   );
 }
