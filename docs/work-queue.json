@@ -3160,10 +3160,10 @@
     {
       "id": "LAUNCHER-SLOT-TRUTH",
       "priority": "P0",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
-      "blockReason": "",
+      "blockReason": "真Kimi链上复验(审核方有live key·dev沙箱无): S01链全通(2170-NCM/0.35/8周三显式值真进求解器+回显块④·COMPLETED)·16齿+归一+优先级+横幅代码级已验真好·静默吞噬已死(零静默换题)。但旗舰句S02断在词表接缝(预存断点·本单治好上游后才可达): 合肥→(a)CJK标签无键解析(合肥仅props.name·二级键hefei·score1候选不自动绑)→澄清; (b)回填/选候选后objectRef规范化取data.objectId=obj_base_hefei(datacore序列化不一致:Base载荷带objectId·Model不带)→模板{{slots.base.objectId}}压长id→affected_orders只认props.baseId=hefei→400 unknown base→FAILED。问合肥现=澄清→选合肥→报错,验收句'答合肥或明示未采用'未达。修向(小刀): ①压标量/规范化优先solver词表键=PK表(executor.ts:492 baseId/modelId先于objectId·或规范化时存props主键) ②实体解析CJK名先objects/query name精确匹配·唯一score1自动绑定免澄清 ③齿加'合肥端到端COMPLETED且答案含合肥'(真getObject载荷含objectId形态)。证据: sse-s02c TOOL_ERROR 400·GET Base/hefei与obj_base_hefei均200且data.objectId均=obj_base_hefei·GET Model/2170-NCM无objectId字段",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "title": "改写问句参数静默吞噬治本(20/20卡不生效·问合肥答常州绿标照发·最恶性静默错答)",
       "note": "20卡穿透审计簇①·两条精确根: 根A形状错配=classification.extractedSlots按意图键嵌套{affected_orders:{base:合肥}}·orchestrator.ts:395原样传·slots.ts:294按扁平名取→全miss→defaultFrom=selectedObjects[0]旧chip顶掉(问合肥答常州/问武汉答常州/问2170答4680·Kimi抽对了也丢·绿标已验证零提示);prompts.ts:100未钉schema·llm-adapters/anthropic.ts:36 zod record(unknown)照单全收。根B无槽可绑=派生意图slots:[](seed.ts:443)+入参种子期烘焙(seed.ts:407-445)→60亿/8周/石墨负极/2026-08结构性不可能生效。加重: 点卡写入selectedObjects旧实体常驻(S06 LLM层即被chip带偏)。治: ①extractedSlots形状钉死(prompt schema+adapter zod收紧+orchestrator扁平化归一)②派生意图slots从求解器argHints/DataDependency生成(数字/时间/实体槽可绑)③槽解析优先级=本轮显式>上一轮chip>preset④答案必回显所用关键实体/参数(base/model/月份/金额)⑤无法映射→诚实横幅『按预置参数回答:X』或人话澄清·绝不静默换题。",
@@ -3184,7 +3184,8 @@
       },
       "at": {
         "wip": "2026-07-05T04:06:13.184Z",
-        "built": "2026-07-05T04:48:11.681Z"
+        "built": "2026-07-05T04:48:11.681Z",
+        "blocked": "2026-07-05T05:18:13.015Z"
       }
     },
     {
@@ -3350,9 +3351,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "SANDBOX-DAG-NODE-LAYOUT",
-      "at": "2026-07-05T05:05:51.259Z"
+      "cmd": "BLOCKED",
+      "id": "LAUNCHER-SLOT-TRUTH",
+      "at": "2026-07-05T05:18:13.015Z"
     }
   }
 }
