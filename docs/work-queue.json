@@ -3126,8 +3126,8 @@
     {
       "id": "SLOT-CLARIFY-HUMANIZE",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/PRD-launcher-grounded-questions.md",
@@ -3147,6 +3147,9 @@
             "assert": "门/齿: 遍历PUBLISHED intents必填槽断言有clarifyPrompt或description(缺→红); slots提示优先级单测; 四包绿。"
           }
         ]
+      },
+      "at": {
+        "wip": "2026-07-05T03:19:01.449Z"
       }
     },
     {
