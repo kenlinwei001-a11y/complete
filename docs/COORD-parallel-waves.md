@@ -70,3 +70,9 @@
 - **规则**：WIP 认领超过 **24h 无该单相关提交** → 审核方有权释放（WIP→TODO·清 owner·note 记录半程产物锚点），任何在场 dev 可续做。续做必须**基于已落半程提交继续**（note 会给锚点 commit），禁止重启重写。
 - **首例**：SANDBOX-LAYOUT-REWORK——peer 会话 07-02 15:05 后失联 2.5 天，07-05 03:03 释放（半程锚点 f88189c：§2/§3 决策卡组件+§5 折叠卡）。
 - **根因**：两侧会话均为回合制，认领无心跳；本规则以"最后相关提交时间"为心跳的替代判据。
+
+### §6.1 机制化落地（不再靠自觉·2026-07-05）
+- `node scripts/collab-queue.mjs health` —— LOOP 体检：陈旧 WIP（失联判据=该单最后**施工侧**相关提交>24h·审核方复验/仲裁类提交不算心跳）· 积压 BUILT（>2h 无裁决→提示升级激活审核方）· 最后队列活动。**exit 1=有病灶**，两侧每次激活先跑。
+- `node scripts/collab-queue.mjs sweep` —— 自动释放陈旧 WIP：WIP→TODO·清 owner·note 自动记**半程锚点 commit**（续做基于其上勿重启）。阈值 env 可调（STALE_WIP_H/STALE_BUILT_H·齿检用）。
+- 状态迁移全部盖 `at.{wip,built,done,blocked}` 时间戳 + `meta.lastActivity{role,cmd,id,at}` 心跳（工具层时间戳·非产品 R6 范畴）。
+- 双侧升级协议：dev 激活时 health 见积压 BUILT>2h → 在给用户的答复里点名"审核方需激活"；审核方激活时 health 见 STALE-WIP → 直接 sweep（首例 SANDBOX 已走通）。
