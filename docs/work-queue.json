@@ -3704,14 +3704,38 @@
         "done": "2026-07-05T16:01:17.402Z"
       },
       "blockReason": ""
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "todo": "2026-07-05T16:02:06.680Z"
+      },
+      "id": "CLARIFY-LOOP-CONVERGE",
+      "priority": "P2",
+      "doc": "docs/evidence/KIMI-E2E-验证记录-2026-07-05.md",
+      "title": "低把握自由问句澄清循环不收敛(Kimi真测发现·把握75%反复追问绕圈)",
+      "note": "审核方接Kimi真跑端到端发现(2026-07-05·证据docs/evidence/KIMI-E2E-验证记录): 自由问句把握度低于自动执行线(τ_high默认0.85)时进AWAITING_CLARIFICATION·但INTENT_CHOICE回复后重新分类仍0.75<0.85→再次追问·多轮不收敛(实测武汉产能够不够绕≥2轮无终态)。问具体点(把握0.95如合肥影响哪些订单)直接答·证明主路通·仅低把握分支循环。修向: ①澄清回复(chosenIntentKey)应直接锁定意图跳过重分类(而非重跑classify又落0.75)·②或澄清轮次上限+到限走确定性兜底/诚实降级·③slot澄清与intent澄清分离(现似乎混淆)。齿: 低把握问句→澄清→回复→必达终态(COMPLETED或诚实降级·非无限追问)。属真实交付纪律发现·非造假。"
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "todo": "2026-07-05T16:02:06.687Z"
+      },
+      "id": "AGENT-CARD-DEFAULTAGENT",
+      "priority": "P2",
+      "doc": "docs/PRD-intent-materialize-binding-complete.md",
+      "title": "7张智能体卡缺defaultAgent绑定→接Kimi后仍长不成正式版(发育闭环真跑发现)",
+      "note": "审核方接Kimi真跑发现(2026-07-05): 7张agent-first卡(S03/05/12/13/14/17/19)grow后仍PROVISIONAL·缺口从接Kimi前AGENT模式缺defaultAgent→接后NO_ANSWER(说明Kimi真被调12s但卡无绑定agent定义可跑)。根因: 这7卡mode=agent-first但scene-entry/intent无defaultAgent绑定→发育A10验证无agent可执行→出不了答案→不升GOVERNED。这跟随口提问的agent路是同机制(那个能答是因QOS按intent临时构建agent·但卡发育走的是绑定的defaultAgent)。修向: 为7张agent-first卡补defaultAgent绑定(从模板scaffold挂对口solver/skill/rules·接INTENT-MATERIALIZE的reconcile补齐)·使grow能真跑agent出答案升GOVERNED。齿: 7卡grow→GOVERNED(接Kimi后)·或诚实报缺口清单。关联INTENT-CONFIG-EDITOR(agent绑定配置UI)。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "CAPACITY-W-RECONCILE",
-      "at": "2026-07-05T16:01:17.402Z"
+      "cmd": "QUEUE",
+      "id": "Kimi真测2发现",
+      "at": "2026-07-05T16:02:06.687Z"
     }
   }
 }
