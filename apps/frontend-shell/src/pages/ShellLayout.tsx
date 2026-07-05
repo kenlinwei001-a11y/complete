@@ -48,13 +48,12 @@ const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef
     { kind: "admin" as const, key: "quarantine" },
   ] },
   {
-    // 用户亲报 IA 冗余收口（NAV-GRAPH-MERGE）：原独立折叠组「图谱体系」（八视角直达）并入本组——
-    // 两组名皆带"图谱"无法分辨从属，且八视角在图谱主页内亦可 tab 切换。合为单组：主入口在前、
-    // 八视角直达随后（深链不丢·不漏「其它」组）、建模管理页殿后；整组可经组头折叠（折叠记忆保留）。
+    // 用户亲报 IA 冗余收口（NAV-GRAPH-MERGE → GRAPH-PANORAMA-ONLY 2026-07-05 用户亲定）：
+    // 图谱七视角（主干/流/源/求解器/MVP/智能体/学习闭环）全删仅存全景；graph-all 与主入口同质合一
+    // → 本组仅一个图谱入口 view:graph（label「图谱全景」，后端 ViewConfig 下发），建模管理页随后。
     title: "建模与图谱",
     items: [
       { kind: "view", key: "graph" },
-      ...["graph-all", "graph-backbone", "graph-flow", "graph-source", "graph-solver", "graph-mvp", "graph-agent", "graph-loop"].map((key) => ({ kind: "view" as const, key })),
       ...["modeling", "object-types", "source-overview", "domains", "slices", "merge"].map((key) => ({ kind: "admin" as const, key })),
     ],
   },

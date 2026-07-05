@@ -19,8 +19,8 @@ const REAL_BACKEND_SHAPE = {
   views: [
     // 契约字段 viewKey/name + 后端兼容别名 key/title 双发
     { viewKey: "dash", name: "经营驾驶舱", renderer: "dashboard", layout: {}, options: {}, key: "dash", title: "经营驾驶舱" },
-    // 仅契约字段（无别名）也必须可解析
-    { viewKey: "graph-loop", name: "图谱·学习闭环", renderer: "ontology-graph", options: { graphOptions: { colorBy: "domain" } } },
+    // 仅契约字段（无别名）也必须可解析（GRAPH-PANORAMA-ONLY：样本改用唯一图谱入口「图谱全景」）
+    { viewKey: "graph", name: "图谱全景", renderer: "ontology-graph", options: { graphOptions: { colorBy: "domain" } } },
   ],
   scenarioPackages: [{ id: "pkg_battery_manufacturing", name: "电池制造场景包" }],
   features: ["view.dash", "view.risk-board", "shell.query-dock"],
@@ -33,8 +33,8 @@ describe("workspace VM ↔ 真实后端契约对齐（回归）", () => {
     // scenarioPackages 对象数组 → id 字符串数组（QueryDock/Catalog 等以 [0] 作 packageId）
     expect(ws.scenarioPackages).toEqual(["pkg_battery_manufacturing"]);
     // views：仅契约字段（无 key/title 别名）也归一化出 key/title
-    const loop = ws.views.find((v) => v.key === "graph-loop");
-    expect(loop?.title).toBe("图谱·学习闭环");
+    const graph = ws.views.find((v) => v.key === "graph");
+    expect(graph?.title).toBe("图谱全景");
     expect(ws.views.find((v) => v.key === "dash")?.renderer).toBe("dashboard");
     // navigation 保留 group，业务区可过滤掉 admin 组（ShellLayout 行为）
     expect(ws.navigation.filter((n) => n.group !== "admin").map((n) => n.key)).toEqual(["dash", "risk"]);

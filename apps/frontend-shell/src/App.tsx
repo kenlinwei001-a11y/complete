@@ -93,6 +93,23 @@ const admin = (path: string, node: ReactNode): RouteObject => ({
 });
 
 /**
+ * GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05·registry 声明退役）：图谱七视角（主干/流/源/求解器/
+ * MVP/智能体/学习闭环）全删仅存全景；graph-all 与主入口同质合一（label「图谱全景」）。
+ * 退役视图键的旧深链/书签统一 302→全景（tombstone redirect，非幽灵路由——视图/feature/ViewConfig
+ * 已全量退役，此表仅承接旧链接落回唯一入口）。
+ */
+export const RETIRED_GRAPH_VIEW_KEYS: readonly string[] = [
+  "graph-all",
+  "graph-backbone",
+  "graph-flow",
+  "graph-source",
+  "graph-solver",
+  "graph-mvp",
+  "graph-agent",
+  "graph-loop",
+];
+
+/**
  * 推演沙盘 entitlement 守卫（增量 4 · 暗发）：先查 sim.sandbox feature（关 → 404，FEATURE_NOT_FOUND 语义，
  * 不泄露功能存在性），复用 ViewPage 同款「feature 先于权限」机制。workspace 未下发 features 时向后兼容放行。
  */
@@ -126,6 +143,8 @@ export const routes: RouteObject[] = [
       { path: "v/sim-sandbox", element: <SimSandboxGuard /> },
       // 推演初始化向导专用 route（沙盘兄弟子屏，同 sim.sandbox 守门）。
       { path: "v/sim-init", element: <SimInitGuard /> },
+      // GRAPH-PANORAMA-ONLY：退役图谱视角深链 302→全景（静态段先于 :viewKey 匹配）。
+      ...RETIRED_GRAPH_VIEW_KEYS.map((k): RouteObject => ({ path: `v/${k}`, element: <Navigate to="/v/graph" replace /> })),
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

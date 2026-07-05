@@ -11,8 +11,6 @@ import {
 import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER, type TestApp } from "./helpers.js";
 import { round } from "../src/prng.js";
 
-const LOOP_IDS = ["产能预测", "实际产出", "精度校准器", "学习Agent", "经验记忆库", "良率", "OEE历史", "OEE指标", "聚合求解器", "工序产能"];
-
 async function aop(t: TestApp) {
   const res = await t.app.inject({ method: "GET", url: "/a/v1/plan/aop?year=2026", headers: ADMIN });
   expect(res.statusCode).toBe(200);
@@ -268,7 +266,7 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(reg.actions[0]!.check).toContain("C10");
   });
 
-  it("F25/§7.18: 图谱边带 kind；八视角 ViewConfig 下发；学习闭环 nodeFilter.ids 全部存在", async () => {
+  it("F25/GRAPH-PANORAMA-ONLY: 图谱边带 kind；全景唯一 ViewConfig（七视角+graph-all 零下发·重新加回即红）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const g = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/graph", headers: ADMIN })).json() as {
@@ -284,28 +282,22 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
       views: { viewKey: string; renderer: string; options: Record<string, unknown>; layout: Record<string, unknown> }[];
       navigation: { key: string; label: string }[];
     };
-    const persp = ws.views.filter((v) => v.viewKey.startsWith("graph-"));
-    expect(persp.map((v) => v.viewKey).sort()).toEqual([
-      "graph-agent", "graph-all", "graph-backbone", "graph-flow", "graph-loop", "graph-mvp", "graph-solver", "graph-source",
-    ]);
-    expect(persp.every((v) => v.renderer === "ontology-graph")).toBe(true);
-    for (const v of persp) GraphOptionsSchema.parse((v.options as { graphOptions: unknown }).graphOptions);
-    // 学习闭环视角与增量 §7.18 一字不差
-    const loop = persp.find((v) => v.viewKey === "graph-loop")!;
-    const loopOpts = GraphOptionsSchema.parse((loop.options as { graphOptions: unknown }).graphOptions);
-    expect(loopOpts.nodeFilter?.ids).toEqual(LOOP_IDS);
-    expect(loopOpts.linkKinds).toEqual(["fb", "orch"]);
-    expect(loopOpts.dimOthers).toBe(true);
-    expect(loop.layout).toMatchObject({ descriptionLink: "/admin/calibration" });
-    const nodeIds = new Set(g.nodes.map((n) => n.id));
-    for (const id of LOOP_IDS) expect(nodeIds.has(id), id).toBe(true);
-    // 数据来源视角按源系统着色；导航中视角分组（图谱· 前缀）
-    const source = persp.find((v) => v.viewKey === "graph-source")!;
-    expect(GraphOptionsSchema.parse((source.options as { graphOptions: unknown }).graphOptions).colorBy).toBe("source");
-    expect(ws.navigation.filter((n) => n.label.startsWith("图谱·")).length).toBeGreaterThanOrEqual(8);
+    // 用户亲定（2026-07-05）：七视角全删仅存全景——workspace 不得再下发任何 graph-* 视图。
+    expect(ws.views.filter((v) => v.viewKey.startsWith("graph-")).map((v) => v.viewKey)).toEqual([]);
+    expect(ws.navigation.filter((n) => n.key.startsWith("graph-"))).toEqual([]);
+    // 全景唯一入口：graph（与 graph-all 同质合一·label「图谱全景」·domain 着色全景配置下发）。
+    const graph = ws.views.find((v) => v.viewKey === "graph")!;
+    expect(graph.renderer).toBe("ontology-graph");
+    const opts = GraphOptionsSchema.parse((graph.options as { graphOptions: unknown }).graphOptions);
+    expect(opts.colorBy).toBe("domain");
+    expect(opts.nodeFilter).toBeUndefined(); // 全景 = 无子集过滤
+    expect((graph.options as { desc?: string }).desc).toContain("全景");
+    expect(ws.navigation.find((n) => n.key === "graph")?.label).toBe("图谱全景");
+    // 导航仅此一个图谱业务视图入口（原「图谱·」前缀视角项归零）。
+    expect(ws.navigation.filter((n) => n.label.startsWith("图谱·"))).toEqual([]);
   });
 
-  it("F25/修订点4: 新 feature key 全部可解析；关闭 view.geo-map / 单视角后从 workspace 消失", async () => {
+  it("F25/修订点4: feature key 可解析；view.graph.persp.* 声明退役（解析零残留·override 引用即 400 防幽灵）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const resolved = (await t.app.inject({ method: "GET", url: "/a/v1/tenants/demo/features", headers: ADMIN })).json() as {
@@ -313,17 +305,30 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     };
     for (const k of [
       "view.annual-scenario", "view.quarterly-rolling", "view.order-chain", "view.geo-map", "view.task-dag",
-      "view.graph.persp.all", "view.graph.persp.backbone", "view.graph.persp.flow", "view.graph.persp.source",
-      "view.graph.persp.solver", "view.graph.persp.mvp", "view.graph.persp.agent", "view.graph.persp.loop",
-      "act.aop-finalize",
+      "view.ontology-graph", "act.aop-finalize",
     ]) {
       expect(resolved.features, k).toContain(k);
     }
+    // GRAPH-PANORAMA-ONLY teeth：八个退役键（七视角 + persp.all）解析集零残留——重新注册即红。
+    for (const p of ["all", "backbone", "flow", "source", "solver", "mvp", "agent", "loop"]) {
+      expect(resolved.features, `view.graph.persp.${p}`).not.toContain(`view.graph.persp.${p}`);
+      expect(resolved.features, `view.graph-${p}`).not.toContain(`view.graph-${p}`);
+    }
+    // 防幽灵：写入 override 引用退役键 → 400 VALIDATION_ERROR 显式拒绝（registry 声明退役，非静默未知键）。
+    const ghost = await t.app.inject({
+      method: "PUT",
+      url: "/a/v1/tenants/demo/features",
+      headers: ADMIN,
+      payload: { overrides: { "view.graph.persp.loop": true } },
+    });
+    expect(ghost.statusCode).toBe(400);
+    expect(ghost.json().error.message).toContain("retired");
+    // 常规 entitlement 关断仍工作：关 view.geo-map → workspace 消失。
     await t.app.inject({
       method: "PUT",
       url: "/a/v1/tenants/demo/features",
       headers: ADMIN,
-      payload: { overrides: { "view.geo-map": false, "view.graph.persp.loop": false } },
+      payload: { overrides: { "view.geo-map": false } },
     });
     const ws = (await t.app.inject({ method: "GET", url: "/a/v1/me/workspace", headers: PLANNER })).json() as {
       views: { viewKey: string }[];
@@ -332,9 +337,8 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     };
     const keys = ws.views.map((v) => v.viewKey);
     expect(keys).not.toContain("geo-map");
-    expect(keys).not.toContain("graph-loop");
     expect(keys).toContain("annual-scenario");
-    expect(keys).toContain("graph-flow");
+    expect(keys).toContain("graph"); // 全景仍在（view.ontology-graph 门控不动）
     expect(ws.navigation.map((n) => n.key)).not.toContain("geo-map");
     expect(ws.features).not.toContain("view.geo-map");
   });

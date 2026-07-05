@@ -57,14 +57,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
-  { key: "view.graph.persp.all", name: "图谱·全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.backbone", name: "图谱·主干分级", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.flow", name: "图谱·产能推演网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.source", name: "图谱·数据来源", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.solver", name: "图谱·求解器", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.mvp", name: "图谱·MVP", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  // GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05）：view.graph.persp.* 八键已声明退役
+  // （见下方 RETIRED_FEATURE_KEYS·与 DataCore features.ts 同源）——图谱仅存全景（view.ontology-graph）。
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "路径 B 兜底", level: "BLOCK", defaultOn: true },
@@ -94,6 +88,23 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
 
+/**
+ * GRAPH-PANORAMA-ONLY（registry 声明退役·防幽灵 entitlement·与 DataCore RETIRED_FEATURE_KEYS 同源）：
+ * 图谱七视角全删仅存全景，graph-all 与主入口 graph 合一 → 八个 persp BLOCK 键退役。
+ * 退役键不在注册表 → featureEnabled 视为 ungoverned，但对应视图键已同步退役（VIEW_ALIAS 删除、
+ * 上游 DataCore 不再下发该视图/feature），teeth 断言注册表零残留（重新加回即红）。
+ */
+export const RETIRED_FEATURE_KEYS: readonly string[] = [
+  "view.graph.persp.all",
+  "view.graph.persp.backbone",
+  "view.graph.persp.flow",
+  "view.graph.persp.source",
+  "view.graph.persp.solver",
+  "view.graph.persp.mvp",
+  "view.graph.persp.agent",
+  "view.graph.persp.loop",
+];
+
 /** view key in scene entries / scenario package views → feature key. */
 const VIEW_ALIAS: Record<string, string> = {
   dash: "view.dash",
@@ -110,15 +121,8 @@ const VIEW_ALIAS: Record<string, string> = {
   generate: "view.plan-generate",
   project: "view.project-sim",
   scenarios: "view.scenarios",
-  // 剩余视图增量：图谱视角视图键 graph-{persp} → BLOCK 级 feature
-  "graph-all": "view.graph.persp.all",
-  "graph-backbone": "view.graph.persp.backbone",
-  "graph-flow": "view.graph.persp.flow",
-  "graph-source": "view.graph.persp.source",
-  "graph-solver": "view.graph.persp.solver",
-  "graph-mvp": "view.graph.persp.mvp",
-  "graph-agent": "view.graph.persp.agent",
-  "graph-loop": "view.graph.persp.loop",
+  // GRAPH-PANORAMA-ONLY：graph-{persp} 视图键已退役（别名删除）；图谱唯一入口 graph → 本体图谱 VIEW 键。
+  graph: "view.ontology-graph",
 };
 
 export type FeatureSet = "ALL" | Set<string>;

@@ -50,15 +50,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.dash.widget.counterfactual", name: "驾驶舱·反事实双轨推演", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   // §7.19 任务详情编排 DAG（默认开）
   { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
-  // §7.18 图谱八视角（每个视角可单独开关，BLOCK 级，依赖本体图谱）
-  { key: "view.graph.persp.all", name: "图谱·全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.backbone", name: "图谱·主干分级", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.flow", name: "图谱·产能推演网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.source", name: "图谱·数据来源", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.solver", name: "图谱·求解器", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.mvp", name: "图谱·MVP", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  // GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05）：原 §7.18 图谱八视角 BLOCK 键（view.graph.persp.*）
+  // 已声明退役（见下方 RETIRED_FEATURE_KEYS）——图谱仅存全景一个入口（view.ontology-graph 门控）。
   // Dogfooding（系统本体自反）：/meta 元本体 entitlement（功能关闭=404 FEATURE_NOT_FOUND 先于角色门）。默认开。
   { key: "admin.meta-ontology", name: "系统自我（元本体 Dogfooding）", level: "BLOCK", defaultOn: true },
   // 治理增量 §1.4：域级开关（domain.{key}）——关一个域 = 该域类型在图谱/检索/建模/聚合整体不可见。
@@ -106,6 +99,38 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
 
+/**
+ * GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05·registry 声明退役·防幽灵 entitlement）：
+ * 图谱七视角（主干/流/源/求解器/MVP/智能体/学习闭环）全删仅存全景；graph-all 与主入口 graph
+ * 同质合一（label「图谱全景」，仍由 VIEW 级 view.ontology-graph 门控，requires 链不动）→
+ * 八个 view.graph.persp.* BLOCK 键一并退役。声明式退役而非静默删除：
+ * ① 租户/角色 override 落库残留引用退役键 → 解析时忽略（不复活幽灵 feature）；
+ * ② 新写入 override 引用退役键 → 422 校验拒绝；
+ * ③ 退役视图键（RETIRED_VIEW_KEYS）不得再注册为动态视图功能，workspace 过滤旧库残留 ViewConfig。
+ */
+export const RETIRED_FEATURE_KEYS: ReadonlySet<string> = new Set([
+  "view.graph.persp.all",
+  "view.graph.persp.backbone",
+  "view.graph.persp.flow",
+  "view.graph.persp.source",
+  "view.graph.persp.solver",
+  "view.graph.persp.mvp",
+  "view.graph.persp.agent",
+  "view.graph.persp.loop",
+]);
+
+/** 退役视图键（对应上表·前端路由 302→/v/graph 全景；workspace/动态注册均拒）。 */
+export const RETIRED_VIEW_KEYS: ReadonlySet<string> = new Set([
+  "graph-all",
+  "graph-backbone",
+  "graph-flow",
+  "graph-source",
+  "graph-solver",
+  "graph-mvp",
+  "graph-agent",
+  "graph-loop",
+]);
+
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {
   dash: "view.dash",
@@ -122,15 +147,7 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "order-chain": "view.order-chain",
   "geo-map": "view.geo-map",
   review: "view.review",
-  // §7.18 图谱视角视图（renderer=ontology-graph 的 8 份 ViewConfig）
-  "graph-all": "view.graph.persp.all",
-  "graph-backbone": "view.graph.persp.backbone",
-  "graph-flow": "view.graph.persp.flow",
-  "graph-source": "view.graph.persp.source",
-  "graph-solver": "view.graph.persp.solver",
-  "graph-mvp": "view.graph.persp.mvp",
-  "graph-agent": "view.graph.persp.agent",
-  "graph-loop": "view.graph.persp.loop",
+  // GRAPH-PANORAMA-ONLY：graph-{persp} 八份 ViewConfig 已退役（RETIRED_VIEW_KEYS），此处不再映射。
 };
 
 const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
@@ -163,6 +180,8 @@ export class FeatureService {
 
   /** 创建 ViewConfig → 自动注册 view.{viewKey}（默认开）并 bump configVersion。 */
   async registerViewFeature(ctx: AuthCtx, viewKey: string, name: string): Promise<string> {
+    // GRAPH-PANORAMA-ONLY 防幽灵：退役视图键不得借动态注册复活。
+    if (RETIRED_VIEW_KEYS.has(viewKey)) throw validationError(`view key retired: ${viewKey}`);
     const key = `view.${viewKey}`;
     if (byKey.has(key)) return key; // 静态注册表已有（内置视图）
     await this.repos.dynamicFeatures.put({
@@ -244,6 +263,7 @@ export class FeatureService {
     if (tenantCfg) {
       configVersion = tenantCfg.configVersion;
       for (const [k, v] of Object.entries(tenantCfg.overrides)) {
+        if (RETIRED_FEATURE_KEYS.has(k)) continue; // 防幽灵：落库残留的退役键不参与解析
         if (v) on.add(k);
         else on.delete(k);
       }
@@ -253,7 +273,10 @@ export class FeatureService {
       const roleCfg = await this.repos.featureConfigs.get(tenantId, `fcfg_${tenantId}_${role}`);
       if (roleCfg) {
         configVersion = Math.max(configVersion, roleCfg.configVersion);
-        for (const [k, v] of Object.entries(roleCfg.overrides)) if (!v) on.delete(k);
+        for (const [k, v] of Object.entries(roleCfg.overrides)) {
+          if (RETIRED_FEATURE_KEYS.has(k)) continue; // 防幽灵：同上
+          if (!v) on.delete(k);
+        }
       }
     }
     return { on, configVersion };
@@ -297,6 +320,8 @@ export class FeatureService {
   private async validateKeys(tenantId: string, overrides: Record<string, boolean>): Promise<void> {
     const dyn = await this.dynamicKeys(tenantId);
     for (const k of Object.keys(overrides)) {
+      // GRAPH-PANORAMA-ONLY 防幽灵：退役键显式拒绝（区别于未知键，报因清晰）。
+      if (RETIRED_FEATURE_KEYS.has(k)) throw validationError(`feature key retired: ${k}`);
       if (!byKey.has(k) && !dyn.has(k)) throw validationError(`unknown feature key: ${k}`);
     }
   }

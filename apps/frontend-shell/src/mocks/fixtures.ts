@@ -113,15 +113,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   { key: "view.task-dag", name: "任务编排 DAG", level: "BLOCK", defaultOn: true },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
-  // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
-  { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph-backbone", name: "图谱·推演主干分级", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph-flow", name: "图谱·产能推演网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph-source", name: "图谱·数据来源", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph-solver", name: "图谱·求解器布局", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph-mvp", name: "图谱·MVP 核心与缺口", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph-agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "view.graph-loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  // GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05·与后端 registry 同源退役）：原图谱八视角 BLOCK 键
+  // （view.graph-*）已声明退役——图谱仅存全景（view.ontology-graph 门控），重新加回任一键即违裁定（teeth 守）。
   { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "探索模式兜底", level: "BLOCK", defaultOn: true },
   { key: "view.project-sim.whatif", name: "What-if 推演", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },
@@ -367,63 +360,16 @@ const LEDGER_LAYOUT = {
   ],
 };
 
-/** §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions) */
-const GRAPH_VIEWPOINTS = [
-  {
-    key: "graph-all", title: "图谱·全景",
-    options: { graphOptions: { colorBy: "domain", layoutSeed: 7 }, desc: "计划+执行一体化运营本体全景：圆形为业务对象，◆ 品红为求解器，⬡ 青为 Agent，颜色按数据域区分。" },
-  },
-  {
-    key: "graph-backbone", title: "图谱·主干分级",
-    options: { graphOptions: { nodeFilter: { tiers: [1] }, dimOthers: true, colorBy: "domain", layoutSeed: 11 }, desc: "一级 = 推演主干：工序产能 → 产能金字塔 → 产能预测 ← 基地/产线；二三级明细已淡出。" },
-  },
-  {
-    key: "graph-flow", title: "图谱·产能推演网络",
-    options: {
-      graphOptions: { nodeFilter: { ids: ["OEE历史", "OEE指标", "良率", "工序产能", "n-cap", "产能预测", "n-forecast", "实际产出", "生产工单MO"] }, linkKinds: ["flow", "agg"], dimOthers: true, colorBy: "domain", layoutSeed: 13 },
-      desc: "产能金字塔自下而上派生：节拍×OEE → 工序产能 → min瓶颈 → 产线/工厂产能 → Σ → 产能预测（仅渲染 flow+agg 边）。",
-    },
-  },
-  {
-    key: "graph-source", title: "图谱·数据来源",
-    options: { graphOptions: { colorBy: "source", layoutSeed: 17 }, desc: "按源系统重新着色，回答『每个数据从哪来』：派生对象、求解器、智能体不是源数据，已淡出。" },
-  },
-  {
-    key: "graph-solver", title: "图谱·求解器布局",
-    options: {
-      graphOptions: { nodeFilter: { ids: ["聚合求解器", "精度校准器", "n-solver-cap", "n-solver-risk", "工序产能", "n-cap", "产能预测"] }, linkKinds: ["solve", "fb"], dimOthers: true, colorBy: "domain", layoutSeed: 19 },
-      desc: "求解器以智能辅助决策中台形式注册：读取业务对象、写回派生对象（仅渲染 solve+fb 边）。",
-    },
-  },
-  {
-    key: "graph-mvp", title: "图谱·MVP",
-    options: {
-      graphOptions: { nodeFilter: { ids: ["n-proc", "n-equip", "良率", "工序产能", "n-cap", "n-order", "产能预测", "聚合求解器"] }, mvpOverlay: true, dimOthers: true, colorBy: "domain", layoutSeed: 23 },
-      desc: "最小可验证系统：实色高亮 MVP 必备核心闭环；⊕ 虚线节点是当前缺口（实际产出 / OEE历史 / 生产工单MO），缺它们系统就『算不准、学不会』。",
-    },
-  },
-  {
-    key: "graph-agent", title: "图谱·智能体网络",
-    options: {
-      graphOptions: { nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch", "solve"], dimOthers: true, colorBy: "domain", layoutSeed: 29 },
-      desc: "编排 Agent 指挥专职智能体团队，把求解器与业务建模当工具调用（仅渲染 orch+solve 边）。",
-    },
-  },
-  {
-    key: "graph-loop", title: "图谱·学习闭环",
-    options: {
-      graphOptions: { nodeFilter: { ids: ["产能预测", "实际产出", "精度校准器", "学习Agent", "经验记忆库", "良率", "OEE历史", "OEE指标", "聚合求解器", "工序产能"] }, linkKinds: ["fb", "orch"], dimOthers: true, colorBy: "domain", layoutSeed: 31 },
-      desc: "预测 ↔ 实际偏差 → 精度校准器 → 参数写回 → 越用越准（真实数据 MAPE 趋势见校准报告页，不做假动画）。",
-      descLink: { to: "/admin/calibration", label: "查看精度趋势与校准历史 →" },
-    },
-  },
-];
-
 export function workspaceForAccount(account: MockAccount, tenantOverrides: Record<string, boolean>, configVersion: number): WorkspaceInput {
   const features = featuresForAccount(account, tenantOverrides);
   const allViews = [
     { key: "dash", title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
-    { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {} },
+    // GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05）：图谱唯一入口=全景（原 graph 与 graph-all 同质合一，
+    // 七视角 graph-backbone/flow/source/solver/mvp/agent/loop 全删）。与真后端 VIEW_DEFS.graph 同形。
+    {
+      key: "graph", title: "图谱全景", renderer: "ontology-graph", layout: {},
+      options: { graphOptions: { colorBy: "domain", layoutSeed: 7 }, desc: "计划+执行一体化运营本体全景：圆形为业务对象，◆ 品红为求解器，⬡ 青为 Agent，颜色按数据域区分。" },
+    },
     { key: "risk", title: "预判推演看板", renderer: "risk-board", layout: {} },
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
@@ -447,8 +393,6 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
     // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面）
     { key: "review", title: "运营回顾", renderer: "review", layout: {} },
-    // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
-    ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
     { key: "aop", title: "年度情景规划台（旧）", renderer: "aop", layout: {} },
   ];
@@ -456,8 +400,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     viewKey === "graph" ? "view.ontology-graph" : viewKey === "risk" ? "view.risk-board" : viewKey === "order" ? "view.ledger" : `view.${viewKey}`;
   // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
   const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
-  // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱（含八视角）
-  const navViews = (account.username === "planner" ? views : views.filter((v) => v.key !== "graph" && !v.key.startsWith("graph-"))).filter(
+  // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱（GRAPH-PANORAMA-ONLY：仅存全景一项）
+  const navViews = (account.username === "planner" ? views : views.filter((v) => v.key !== "graph")).filter(
     (v) => v.key !== "aop",
   );
 
@@ -479,7 +423,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     theme: account.username === "planner" ? { "--accent": "#4C90F0" } : { "--accent": "#36BFA5" },
     navigation: navViews.map((v) => ({ key: v.key, label: v.title })),
     // views 含 aop（直链可达，renderer 未注册 → 兜底卡）；navigation 不含
-    views: account.username === "planner" ? views : views.filter((v) => v.key !== "graph" && !v.key.startsWith("graph-")),
+    views: account.username === "planner" ? views : views.filter((v) => v.key !== "graph"),
     // 契约形态（与真实后端同形）；前端 VM 归一化为 id 字符串数组
     scenarioPackages: [{ id: PACKAGE_ID, name: "电池制造场景包" }],
     // 去电池锁死（R14）：推演视图的型号/物流/KPI阈值/三段/目标由 WorkspaceConfig 下发（按租户/行业），非前端写死
@@ -1195,7 +1139,7 @@ export const ADMIN_VIEWS: AdminViewConfig[] = [
     options: {}, nav: { group: "business", order: 0 }, roles: ["planner", "admin"], featureKey: "view.dash", featureOn: true,
   },
   {
-    viewKey: "graph", title: "本体图谱", renderer: "ontology-graph",
+    viewKey: "graph", title: "图谱全景", renderer: "ontology-graph",
     layout: {}, options: { graphOptions: { colorBy: "domain" } },
     nav: { group: "business", order: 1 }, roles: ["planner"], featureKey: "view.ontology-graph", featureOn: true,
   },

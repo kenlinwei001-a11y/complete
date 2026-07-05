@@ -47,35 +47,18 @@ generation（每对象类型的 count{S,M,L} 与 propGenerators）、rules（规
 const DAY_MS = 86400000;
 const HISTORY_DAYS = 90;
 
-/** 增量视图键（§7.14–7.17 四视图 + §7.18 图谱八视角；不进 report.views 快照）。 */
+/**
+ * 增量视图键（§7.14–7.17 四视图；不进 report.views 快照）。
+ * GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05）：原 §7.18 图谱八视角键（graph-all/backbone/flow/
+ * source/solver/mvp/agent/loop）已退役——图谱仅存全景，由主入口 `graph` 承载（features.ts
+ * RETIRED_VIEW_KEYS 声明退役·防幽灵）。
+ */
 const PLANVIEW_EXTRA_KEYS = [
   "review",
   "annual-scenario",
   "quarterly-rolling",
   "order-chain",
   "geo-map",
-  "graph-all",
-  "graph-backbone",
-  "graph-flow",
-  "graph-source",
-  "graph-solver",
-  "graph-mvp",
-  "graph-agent",
-  "graph-loop",
-];
-
-/** §7.18 学习闭环视角 nodeFilter.ids —— 与图谱端点概念节点 id 一字不差。 */
-const LOOP_NODE_IDS = [
-  "产能预测",
-  "实际产出",
-  "精度校准器",
-  "学习Agent",
-  "经验记忆库",
-  "良率",
-  "OEE历史",
-  "OEE指标",
-  "聚合求解器",
-  "工序产能",
 ];
 
 interface TemplateTypeDef {
@@ -233,7 +216,7 @@ export class SyntheticService {
         });
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
-      // 增量视图（§7.14–7.17 + 图谱八视角 + 运营回顾）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      // 增量视图（§7.14–7.17 + 运营回顾；图谱八视角已退役 GRAPH-PANORAMA-ONLY）：不进 report.views（保持验收快照稳定），但进 view_configs。
       const extraViews =
         usesBatteryPipeline ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
       // INDUSTRY-PACK-CONVERGE（C3 活体）：行业包自带 viewLayouts + 决策场景卡 → 加载器物化为该租户视图/场景
@@ -1290,12 +1273,6 @@ export class SyntheticService {
         { key: "status", label: "状态", filterable: true },
       ],
     };
-    const graphView = (title: string, graphOptions: Record<string, unknown>, layout: Record<string, unknown> = {}) => ({
-      title,
-      renderer: "ontology-graph",
-      layout,
-      options: { graphOptions },
-    });
     // 去电池锁死 8a（R14）：把推演视图的结构（字段组/目标字段/DAG 驱动因子/问题分类）真下发到 ViewConfig.layout，
     // 使前端不再走写死兜底而是后端配置驱动（换租户/行业改这里即可，界面跟着变）。
     // INDUSTRY-PACK-CONVERGE（结构层收编·G-5 8a）：这些电池视图结构数据不再本地内联，而是从 IndustryPack 消费——
@@ -1310,7 +1287,18 @@ export class SyntheticService {
     } = BATTERY_VIEW_FRAGMENTS;
     const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
       dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
-      graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
+      // GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05）：图谱唯一入口=全景。原 graph（本体图谱）与
+      // graph-all（图谱·全景）同质（同 renderer=ontology-graph·同全景 domain 着色）→ 合一为本条，
+      // label「图谱全景」；desc/graphOptions 承接自原 graph-all（desc 走 options.desc，前端 descCard 真渲染）。
+      graph: {
+        title: "图谱全景",
+        renderer: "ontology-graph",
+        layout: {},
+        options: {
+          graphOptions: { colorBy: "domain", layoutSeed: 42 },
+          desc: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色。",
+        },
+      },
       // DF.6 拉取靶：每 solver-backed 视图声明它"要拉取的求解器输出字段"（pull target）——
       // 喂 ModuleProvisioner/SHAPE 闭包：拉取靶 ⊄ 求解器输出形状 → 缺该输出字段 → TO_CREATE（G-8/R12 输出侧）。
       risk: { title: "预判推演看板", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14, outputFields: ["cards", "planRows", "horizon", "threshold"] } },
@@ -1342,21 +1330,8 @@ export class SyntheticService {
       },
       // 运营态增量 §4.2：运营回顾（只读历史证据链页面，消费 history/bundle）
       review: { title: "运营回顾", renderer: "review", layout: { apiTag: "history" } },
-      // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）。
-      // PRD-IND-map 缺口④：每视角叙事描述（逐字录自 HTML，ViewDef 配置下发，前端 descCard 渲染，非写死）。
-      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { description: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),
-      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }, { description: "按层级看节点：一级=推演主干（产能预测←工序产能→产线产能→工厂产能→基地）；二级=按业务推演链切片（产能/产销/采购/财务现金）；三级=明细（OEE历史/停机/操作员/不良/供应商/物流）。" }),
-      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }, { description: "产能金字塔自下而上派生：节拍×OEE→设备产能→×良率×人力→工序产能→min瓶颈→产线产能→Σ→工厂产能。工序有串行（按瓶颈 min）与并行（化成/老化多通道）之分；物流时长经物料齐套约束可投产能；最后与预测场景、需求、瓶颈汇入产能预测。" }),
-      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }, { description: "只聚焦真正来自源系统的原始数据节点，按源系统重新着色，回答『每个数据从哪来』：ERP/SAP 物料主数据、MES 工艺与制造执行、EAM/CMMS 设备资产、IoT/SCADA 节拍OEE、QMS/LIMS 质量、HR/排班 人员工时、PLM 产品BOM、WMS 物料齐套。产能域(派生)、求解器、智能体不是源数据，已淡出。" }),
-      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }, { description: "求解器以智能辅助决策中台形式注册，绑定到对应对象类型：聚合求解器（产能金字塔）、瓶颈求解器（工艺链最小割）、场景求解器（假设情景重算）、精度校准器（预测↔实际偏差学习）。读业务对象、写回派生对象，由管线/Agent 触发。" }),
-      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }, { description: "实色高亮的是 MVP 必备的核心闭环：工艺路线(节拍)+设备(OEE)+良率+产能聚合/瓶颈+需求→产能预测。⊕ 虚线节点是当前缺口，需从源系统补采——其中实际产出、OEE历史、生产工单MO 是离散组装制造与自学习闭环最关键的三项，缺它们系统就『算不准、学不会』。" }),
-      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }, { description: "产能预测不是『一个 Agent 跑一个模型』，而是编排Agent 指挥一支专职智能体团队：意图解析/检索/建模求解/瓶颈诊断/解释校验/学习/行动，外加经验记忆库（越用越聪明）与约束规则（安全边界）。每个 Agent 把求解器与业务建模当工具调用——AI 的价值在于可自主规划、可解释、可成长的协同。" }),
-      "graph-loop": graphView(
-        "图谱·学习闭环",
-        { colorBy: "domain", nodeFilter: { ids: LOOP_NODE_IDS }, linkKinds: ["fb", "orch"], dimOthers: true, layoutSeed: 42 },
-        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）
-        { descriptionLink: "/admin/calibration", description: "查看精度趋势与校准历史" },
-      ),
+      // GRAPH-PANORAMA-ONLY：原 §7.18 图谱八视角 ViewDef（graph-all/backbone/flow/source/solver/
+      // mvp/agent/loop）已随用户裁定删除——仅存上方 graph（图谱全景）。
     };
     // INDUSTRY-PACK-CONVERGE（C3 活体·pack 驱动非电池视图/场景）：把 pack.views 合入 VIEW_DEFS + 把 pack.scenarios
     // 物化为「决策场景」视图（renderer=dashboard·config-driven）。**非覆盖合入**（既有 builtin 键胜出）+ 去重（已在

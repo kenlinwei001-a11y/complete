@@ -16,7 +16,8 @@ describe("F1 · workspace 驱动的多账号前端", () => {
 
     await waitFor(() => expect(screen.getByTestId("left-nav")).toBeInTheDocument());
     const nav1 = screen.getByTestId("nav-business");
-    expect(within(nav1).getByText("本体图谱")).toBeInTheDocument();
+    // GRAPH-PANORAMA-ONLY：图谱唯一入口 label「图谱全景」（原「本体图谱」与 graph-all 合一）
+    expect(within(nav1).getByText("图谱全景")).toBeInTheDocument();
     expect(within(nav1).getByText("规划体检")).toBeInTheDocument();
     // N1 统一域分组：admin 角色 → 管理类域分组（WO-NAV-DATA：「数据接入」→「数据」）出现在统一导航内
     expect(within(nav1).getByTestId("nav-group-数据")).toBeInTheDocument();
@@ -37,8 +38,8 @@ describe("F1 · workspace 驱动的多账号前端", () => {
 
     await waitFor(() => expect(screen.getByTestId("left-nav")).toBeInTheDocument());
     const nav2 = screen.getByTestId("nav-business");
-    // base_manager：无本体图谱、无规划体检（feature off）
-    expect(within(nav2).queryByText("本体图谱")).not.toBeInTheDocument();
+    // base_manager：无图谱全景、无规划体检（feature off）
+    expect(within(nav2).queryByText("图谱全景")).not.toBeInTheDocument();
     expect(within(nav2).queryByText("规划体检")).not.toBeInTheDocument();
     // 无纯管理类域分组（base_manager 无管理页 → 空组隐藏）。WO-NAV-DATA 后「数据」组含 order 视图
     // （业务台账，base_manager 可见）故不再恒空；改验纯 admin 的「建模与图谱」组隐藏以保原意。

@@ -151,25 +151,28 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
     }
   });
 
-  it("剩余视图增量: 新 feature key 在 B 侧注册表可解析（含图谱视角 requires 级联）", async () => {
-    const { defaultOnKeys, viewAllowed } = await import("../src/features/registry.js");
+  it("剩余视图增量: 新 feature key 在 B 侧注册表可解析；GRAPH-PANORAMA-ONLY 退役键零残留（防幽灵）", async () => {
+    const { defaultOnKeys, viewAllowed, FEATURE_REGISTRY, RETIRED_FEATURE_KEYS } = await import("../src/features/registry.js");
     const keys = defaultOnKeys();
     for (const k of [
       "view.annual-scenario", "view.quarterly-rolling", "view.order-chain", "view.geo-map", "view.task-dag",
-      "view.graph.persp.loop", "act.aop-finalize",
+      "view.ontology-graph", "act.aop-finalize",
     ]) {
       expect(keys, k).toContain(k);
     }
-    // 单视角关闭
-    const noLoop = new Set(keys.filter((k) => k !== "view.graph.persp.loop"));
-    expect(featureEnabled(noLoop, "view.graph.persp.loop")).toBe(false);
-    expect(featureEnabled(noLoop, "view.graph.persp.flow")).toBe(true);
-    expect(viewAllowed(noLoop, "graph-loop")).toBe(false);
-    expect(viewAllowed(noLoop, "graph-flow")).toBe(true);
-    // 父视图（本体图谱）关闭 → 全部视角级联关闭
+    // GRAPH-PANORAMA-ONLY teeth（用户亲定 2026-07-05）：view.graph.persp.* 八键 registry 声明退役——
+    // 注册表零残留，重新加回任一键即红。
+    expect(RETIRED_FEATURE_KEYS.length).toBe(8);
+    const registered = new Set(FEATURE_REGISTRY.map((f) => f.key));
+    for (const k of RETIRED_FEATURE_KEYS) {
+      expect(k.startsWith("view.graph.persp."), k).toBe(true);
+      expect(registered.has(k), `${k} 应已退役`).toBe(false);
+    }
+    // 图谱唯一入口 graph 受 view.ontology-graph 门控（关父视图 → 场景入口不可用）。
     const noGraph = new Set(keys.filter((k) => k !== "view.ontology-graph"));
-    expect(featureEnabled(noGraph, "view.graph.persp.all")).toBe(false);
-    expect(viewAllowed(noGraph, "graph-source")).toBe(false);
+    expect(featureEnabled(noGraph, "view.ontology-graph")).toBe(false);
+    expect(viewAllowed(noGraph, "graph")).toBe(false);
+    expect(viewAllowed(new Set(keys), "graph")).toBe(true);
     // view.annual-scenario 关闭 → act.aop-finalize 级联关闭
     const noAop = new Set(keys.filter((k) => k !== "view.annual-scenario"));
     expect(featureEnabled(noAop, "act.aop-finalize")).toBe(false);

@@ -102,7 +102,7 @@ import { KbService } from "./kb.js";
 import { DataBuilderService } from "./databuilder/service.js";
 import { SimClockService } from "./simclock.js";
 import { HistoryService } from "./livedin/bundle.js";
-import { FeatureService, VIEW_FEATURE_MAP, featureNotFound } from "./features.js";
+import { FeatureService, VIEW_FEATURE_MAP, RETIRED_VIEW_KEYS, featureNotFound } from "./features.js";
 import { ConfigBundleService } from "./config-bundle.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import { OpsTeamService } from "./opsteam/team.js";
@@ -867,10 +867,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (out.has("view.ontology-graph")) out.add("view.graph");
     if (out.has("view.risk-board")) out.add("view.risk");
     if (out.has("view.ledger")) out.add("view.order");
-    // §7.18 图谱视角视图：功能键 view.graph.persp.{p}，前端路由查 view.graph-{p}，需补别名。
-    for (const p of ["all", "backbone", "flow", "source", "solver", "mvp", "agent", "loop"]) {
-      if (out.has(`view.graph.persp.${p}`)) out.add(`view.graph-${p}`);
-    }
+    // GRAPH-PANORAMA-ONLY：view.graph-{persp} 别名随八视角退役删除（RETIRED_FEATURE_KEYS 防幽灵）。
     return [...out].sort();
   };
   app.get("/a/v1/me/workspace", async (req) => {
@@ -887,6 +884,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 管理平台增量 §3：手建视图的动态功能键 view.{viewKey}（删除视图 → 功能注销 → 导航消失）。
     const dynamicViewFeatures = await features.dynamicKeys(c.tenantId);
     const viewAllowed = (key: string) => {
+      if (RETIRED_VIEW_KEYS.has(key)) return false; // GRAPH-PANORAMA-ONLY 防幽灵：旧库残留 ViewConfig 不下发
       const fk = VIEW_FEATURE_MAP[key] ?? (dynamicViewFeatures.has(`view.${key}`) ? `view.${key}` : undefined);
       return !fk || enabled.has(fk);
     };
@@ -3685,6 +3683,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 前端 PRD（Entitlement 增量）：预览某角色将看到的导航/视图
     const enabled = new Set(resolved.features);
     const allowed = (key: string) => {
+      if (RETIRED_VIEW_KEYS.has(key)) return false; // GRAPH-PANORAMA-ONLY 防幽灵
       const fk = VIEW_FEATURE_MAP[key];
       return !fk || enabled.has(fk);
     };
