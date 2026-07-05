@@ -3634,14 +3634,26 @@
         "QUERY30-ONTOLOGY-EXT",
         "QUERY30-RULES"
       ]
+    },
+    {
+      "id": "SANDBOX-RENAME-BASECARDS",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-frontend-visual-redesign.md",
+      "title": "推演沙盘改名『产能推演』+基地卡片回到默认可见(用户亲报·闭发现性回归)",
+      "note": "用户亲报(2026-07-05): ①『预判推演沙盘为何没有调整为产能推演』——考古: 该改名指令台账零记录(REQ-LEDGER/queue均无)=记录环节遗漏·现补录。改名目标=推演沙盘(/v/sim-sandbox)nav标签与页标题→『产能推演』(审核方推定·若用户实指/v/risk预判推演看板则改它)。注意联动: graph-flow『图谱·产能推演网络』在GRAPH-PANORAMA-ONLY删除清单内·沙盘承名正好延续该概念。②『各基地卡片都没有了』——真浏览器实证: SANDBOX-LAYOUT-REWORK把基地/对象状态卡收进右栏折叠卡栈(runstate-card默认collapsed·整页body.innerText零基地名·展开18次点击后才见常州/武汉)=功能在但发现性回归(用户找不到=事实丢失)。修: runstate卡(对象状态/基地卡)默认展开·或基地卡回主区hero下方一行(带state vars真值+点开对象360)·折叠记忆保留。齿: 首屏render断言基地名可见(不点击即在innerText)+nav标签断言。FDE: 真浏览器首屏截图对版。",
+      "at": {
+        "todo": "2026-07-05T11:22:12.756Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
       "cmd": "QUEUE",
-      "id": "QUERY30×3",
-      "at": "2026-07-05T11:18:19.882Z"
+      "id": "SANDBOX-RENAME-BASECARDS",
+      "at": "2026-07-05T11:22:12.756Z"
     }
   }
 }
