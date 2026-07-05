@@ -18,9 +18,14 @@ export function registerRenderer(key: string, loader: () => Promise<{ default: C
 }
 
 /**
- * 视图键别名（场景目录用短键 sop/quarter/audit/generate/project/risk/dash，渲染器注册用规范键）：
- * 修接缝断点——S18(sop)/S19(quarter) 启动器落点此前 getRenderer 直查不中 → "视图不支持"兜底卡。
- * 与后端 features/registry.ts VIEW_ALIAS 同源口径。
+ * 视图键别名（**单一键口径**·LAUNCH-VIEW-KEY-ALIGN 治簇② 404/403）：
+ * 场景卡 targetView 用短键，须归一到 **workspace.views 真实注册键**（唯一真相源），再拼 `/v/:viewKey` 导航 +
+ * ViewPage 按 `view.${key}` 查 feature/权限。断点根因：dash/risk 的 workspace 真键**就是短键本身**
+ * （datacore synthetic/service.ts + mocks/fixtures.ts：`{key:"dash",renderer:"dashboard"}` / `{key:"risk",renderer:"risk-board"}`），
+ * 曾把 dash→dashboard、risk→risk-board 误当"规范化" → 落 `/v/dashboard`(无 feature=404) / `/v/risk-board`(无 view key=403)。
+ * ∴ 别名表**只登记 workspace 键与卡短键不一致的视图**（sim 类：sop→sop-balance 等）；
+ * dash/risk/graph/order 短键即真键，**不得再别名**（一别名即回归 404/403）。渲染器解析（getRenderer）另走
+ * view.renderer 字段（已是长名 dashboard/risk-board，registry 直命中），不依赖此表补 dash/risk。
  */
 const VIEW_ALIAS: Record<string, string> = {
   sop: "sop-balance",
@@ -28,8 +33,6 @@ const VIEW_ALIAS: Record<string, string> = {
   audit: "plan-audit",
   generate: "plan-generate",
   project: "project-sim",
-  risk: "risk-board",
-  dash: "dashboard",
 };
 
 export function getRenderer(key: string | undefined): LazyExoticComponent<ComponentType<ViewRendererProps>> | undefined {

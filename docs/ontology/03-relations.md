@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `76fa60dce9da6abf`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `3c61e0bee198c7cd`。
 
 ---
 
@@ -145,6 +145,7 @@ WO-SIM-PRESET-INJECT(命门·治 G-3 launcher→view 接缝·G-VIS-1·additive)�
   **落点键修**：`useQuickLaunch` 导航用 `normalizeViewKey(targetView)`(project→project-sim)——ViewPage 按 workspace.views 规范键查视图,短键 /v/project 查不到→ForbiddenPage(真点卡落空白)。
   **参数对齐**：`scenarioSlotsToPreset` modelId→model·demandDelta(相对)→绝对 demand(以 DEFAULT_QTY=40 为基·0.2→48)·weeks 直传(治「名不同/相对vs绝对」)。**4 视图读通道**：project-sim(型号/需求/时窗→capacity_forecast)·plan-audit(cashCushion 元→亿→现金垫)·plan-generate(目标键 override)·sop-balance(C5 示例占位值未改→运行前软阻断防喂 C21)。URL 深链通道保留(deep-link 兼容·分享链接走 URL·launcher 走 sessionStore)。
   牙齿 `resolveSimPreset`/`scenarioSlotsToPreset` R14 型号白名单+R6 裁剪。真启动器点卡 e2e(真浏览器·点 S01 卡「4680-NCM 加 20% 六周」→落 /v/project-sim→型号 4680-NCM·需求 input=48(=40×1.2·非默认 40)·6周·前端 input==求解器入参·oracle qty=48)：docs/evidence/SIM-PRESET-INJECT-fde.md(v2·BLOCK 复修)
+LAUNCH-VIEW-KEY-ALIGN(治 G-3 落点断链·簇② 404/403·单一键口径·additive)：`normalizeViewKey`/`VIEW_ALIAS` 的口径须**唯一对齐 workspace.views 真实注册键**——dash/risk 的真键**就是短键本身**(`{key:"dash",renderer:"dashboard"}`/`{key:"risk",renderer:"risk-board"}`·datacore `synthetic/service.ts`+mocks/fixtures.ts)，曾误把 dash→dashboard、risk→risk-board 当"规范化" → 卡落 `/v/dashboard`(无 `view.dashboard` feature=404·S15/16/20) / `/v/risk-board`(无 `risk-board` view key=403·S12/13)。**修**：`VIEW_ALIAS` 只登记 workspace 键≠卡短键的视图(sim 类 sop→sop-balance/project→project-sim/audit→plan-audit/generate→plan-generate/quarter→quarterly-rolling)；dash/risk/graph/order 短键即真键**不得再别名**(一别名即回归 404/403)。渲染器解析(`getRenderer`)另走 `view.renderer` 长名·不依赖此表补 dash/risk。牙齿 `test/launch-view-key-align.test.ts`(逐卡 targetView→真键=真放行·revert 别名→404/403 复红)。真起 datacore+agentcore·真浏览器逐卡(admin/demo1234·点 S12/13/15/16/20→落 /v/risk·/v/dash 真渲染无 404/403)：docs/evidence/launch-view-key-align-results.json + launch-S{12,13,15,16,20}-{risk,dash}.png
 closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(propagateTick/recompute 空跑1tick)
   --deriveCertification(纯投影,零新校验 RL3·增量2 已落)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」
 propagateTick(增量3 已落): rules.coefficient/coefficientRef→rule.params × 源态 ×(decay) 沿 viaLink → next 态 + 延迟队列(arriveTick>t) + trace；无 PUBLISHED 规则=恒等 tick(opt-in 可回退)
