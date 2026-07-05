@@ -3224,7 +3224,7 @@
     {
       "id": "ANSWER-PROJECTION-HUMANIZE",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -3249,7 +3249,8 @@
       "at": {
         "wip": "2026-07-05T06:06:10.500Z",
         "built": "2026-07-05T06:23:31.511Z",
-        "blocked": "2026-07-05T05:30:46.287Z"
+        "blocked": "2026-07-05T05:30:46.287Z",
+        "done": "2026-07-05T06:28:04.446Z"
       }
     },
     {
@@ -3372,10 +3373,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "CLARIFY-COMBOBOX-DISMISS",
-      "at": "2026-07-05T06:26:45.485Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "ANSWER-PROJECTION-HUMANIZE",
+      "at": "2026-07-05T06:28:04.446Z"
     }
   }
 }
