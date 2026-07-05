@@ -301,8 +301,12 @@ export const STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
   "strategies",
 ]);
 
-/** 内部对象/凭据 id 前缀——这类值是内部标识，禁作为 KPI 值直出（审计 S03：base.id=obj_ 内部 id 当值）。 */
-const INTERNAL_ID_RE = /^(obj|prov|task|tnt|usr|sess|evt|drf|sl|wf|act)_[0-9a-zA-Z]+$/;
+/**
+ * 内部对象/凭据 id 前缀——这类值是内部标识，禁作为 KPI/单元格值直出（审计 S03：base.id=obj_ 内部 id 当值）。
+ * 尾段 `[\w-]+`（复验修·2nd round）：真实 id 形态含下划线/连字符（obj_base_changzhou / obj_model_4680-NCM），
+ * 原 `[0-9a-zA-Z]+` 禁下划线致其漏网当 KPI 值。
+ */
+const INTERNAL_ID_RE = /^(obj|prov|task|tnt|usr|sess|evt|drf|sl|wf|act)_[\w-]+$/;
 export function isInternalIdValue(v: unknown): boolean {
   return typeof v === "string" && INTERNAL_ID_RE.test(v);
 }

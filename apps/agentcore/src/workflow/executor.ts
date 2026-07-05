@@ -397,11 +397,52 @@ function fmtNum(n: number): string {
   if (Number.isInteger(n)) return String(n);
   return String(Number(n.toFixed(4)));
 }
+/**
+ * ⑥ 单元格禁裸 JSON（复验修·审计 S03：切片表 cols=[id,type,props] 的 props 列整段 JSON.stringify 直出）：
+ *  - 对象 → 紧凑人话：PK/name 优先打头（复用切片交叉验证同款 PK 偏好 + name/label/title），其余 `k=v` 串接——绝不 JSON.stringify；
+ *  - 数组 → 逐项紧凑拼接（深层收敛为「N 项」）；
+ *  - 内部 id（obj_/prov_… 真实形态含下划线/连字符）不当单元格值直出（④ 同款红线，isInternalIdValue）。
+ * 确定性：按 Object.entries 顺序 + 固定截断（R6）。
+ */
+const CELL_PK = ["name", "label", "title", "baseId", "modelId", "so", "objectId", "signalKey"];
+const CELL_PAIRS_MAX = 6;
 function cellOf(v: unknown): string | number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "number") return v;
-  if (typeof v === "string") return v;
-  return JSON.stringify(v);
+  if (typeof v === "string") return isInternalIdValue(v) ? null : v;
+  return compactCell(v, 0);
+}
+function compactCell(v: unknown, depth: number): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return fmtNum(v);
+  if (typeof v === "boolean") return v ? "是" : "否";
+  if (typeof v === "string") return isInternalIdValue(v) ? null : v;
+  if (Array.isArray(v)) {
+    if (v.length === 0) return null;
+    if (depth >= 2) return `${v.length} 项`;
+    const parts = v.slice(0, 4).map((x) => compactCell(x, depth + 1)).filter((s): s is string => !!s);
+    if (parts.length === 0) return `${v.length} 项`;
+    return v.length > 4 ? `${parts.join("、")}…共 ${v.length} 项` : parts.join("、");
+  }
+  if (typeof v !== "object") return null;
+  const obj = v as Record<string, unknown>;
+  if (depth >= 2) return `${Object.keys(obj).length} 字段`;
+  // PK/name 优先打头（值须为非内部 id 的非空字符串）
+  const pkKey = CELL_PK.find((k) => typeof obj[k] === "string" && (obj[k] as string) !== "" && !isInternalIdValue(obj[k]));
+  const lead = pkKey ? String(obj[pkKey]) : "";
+  const pairs: string[] = [];
+  let omitted = 0;
+  for (const [k, val] of Object.entries(obj)) {
+    if (k === pkKey) continue;
+    const s = compactCell(val, depth + 1);
+    if (s === null || s === "") continue;
+    if (pairs.length >= CELL_PAIRS_MAX) { omitted++; continue; }
+    pairs.push(`${k}=${s}`);
+  }
+  const body = pairs.join("，") + (omitted > 0 ? `，…等 ${omitted} 项` : "");
+  if (lead && body) return `${lead}（${body}）`;
+  if (lead) return lead;
+  return body || null;
 }
 
 /** KPI label + 单位人话化（登记未命中 → camelCase 拆词回落）。 */

@@ -165,6 +165,79 @@ describe("④ 内部 id / infeasible 内部术语不直出", () => {
   });
 });
 
+describe("⑥ S03 形状齿（复验修·切片 payload 过 solver_summary → 零 JSON 格 + 零 obj_ 值）", () => {
+  /** S03（risk_root_cause·常州物料齐套越线）切片形态：对象数组 {id,type,props}——复验原案 props 列曾整段裸 JSON。 */
+  const S03_SLICE = {
+    data: {
+      baseId: "obj_base_changzhou", // ④ 真实 id 形态（下划线）——复验原案 'Base·Id = obj_base_changzhou' KPI
+      factor: "物料齐套",
+      objects: [
+        { id: "obj_order_3391", type: "Order", props: { so: "SO-3391", cust: "整车厂A", qty: 1200, due: "2026-07-10" } },
+        { id: "obj_order_3392", type: "Order", props: { so: "SO-3392", cust: "整车厂B", qty: 800, kit: false } },
+        { id: "obj_model_4680-NCM", type: "Model", props: { name: "4680-NCM", cap: 1500 } },
+      ],
+    },
+  };
+  const allCells = (bs: ReturnType<typeof summarizeSolverOutput>): (string | number | null)[] =>
+    bs
+      .filter((b) => b.type === "table")
+      .flatMap((b) => (b as { rows: (string | number | null)[][] }).rows.flat());
+  const allStrings = (bs: ReturnType<typeof summarizeSolverOutput>): string[] => [
+    ...allCells(bs).filter((c): c is string => typeof c === "string"),
+    ...bs.filter((b) => b.type === "kpi").map((b) => String((b as { value: string }).value)),
+    ...bs.filter((b) => b.type === "text").map((b) => (b as { markdown: string }).markdown),
+  ];
+
+  it("切片表零裸 JSON 格：props 对象格→紧凑人话（PK 打头 + k=v 串），无 {}/引号 JSON 形状", () => {
+    const blocks = summarizeSolverOutput(S03_SLICE, PROV, "risk_root_cause");
+    const table = blocks.find((b) => b.type === "table") as { columns: string[]; rows: (string | number | null)[][] } | undefined;
+    expect(table).toBeDefined();
+    for (const cell of allCells(blocks)) {
+      if (typeof cell !== "string") continue;
+      expect(cell).not.toMatch(/[{}[\]"]/u); // 零 JSON 形状（原案 '{"so":"SO-3391"...' 整段直出）
+      expect(cell.startsWith("{")).toBe(false);
+    }
+    // props 列人话内容仍在（真值逐项，PK so 优先打头·非 JSON 包裹）
+    const joined = allCells(blocks).filter((c): c is string => typeof c === "string").join("\n");
+    expect(joined).toContain("SO-3391");
+    expect(joined).toContain("cust=整车厂A");
+    expect(joined).toContain("qty=1200");
+    expect(joined).toContain("4680-NCM");
+    expect(joined).toContain("kit=否"); // 布尔人话，非 false 裸 JSON
+  });
+
+  it("零 obj_ 值：真实 id 形态（下划线/连字符）全过滤——表格/KPI/文本任何位置不出现", () => {
+    const blocks = summarizeSolverOutput(S03_SLICE, PROV, "risk_root_cause");
+    for (const s of allStrings(blocks)) {
+      expect(s).not.toMatch(/\bobj_[\w-]+/u);
+    }
+    // KPI 区不再有 'Base Id = obj_base_changzhou'（复验原案）
+    const values = blocks.filter((b) => b.type === "kpi").map((b) => (b as { value: string }).value);
+    expect(values).not.toContain("obj_base_changzhou");
+  });
+
+  it("④ 复验齿：INTERNAL_ID_RE 收下划线/连字符真实 id 形态（原尾段 [0-9a-zA-Z]+ 半漏）", () => {
+    expect(isInternalIdValue("obj_base_changzhou")).toBe(true);
+    expect(isInternalIdValue("obj_model_4680-NCM")).toBe(true);
+    expect(isInternalIdValue("obj_01JABCDEF")).toBe(true); // 原全窄形态仍收
+    expect(isInternalIdValue("SO-3391")).toBe(false); // 业务单号非内部 id
+    expect(isInternalIdValue("4680-NCM")).toBe(false);
+    expect(isInternalIdValue("常州")).toBe(false);
+  });
+
+  it("嵌套对象 KPI 路径同守（base.id=obj_base_changzhou 不当值·name/cap 真值仍在）", () => {
+    const blocks = summarizeSolverOutput(
+      { data: { base: { id: "obj_base_changzhou", name: "常州", cap: 1500 } } },
+      PROV,
+      "capex_scenario",
+    );
+    const values = blocks.filter((b) => b.type === "kpi").map((b) => (b as { value: string }).value);
+    expect(values).not.toContain("obj_base_changzhou");
+    expect(values).toContain("常州");
+    expect(values).toContain("1500");
+  });
+});
+
 describe("META_FIELDS 契约（脚注集合稳定）", () => {
   it("dataMode/ruleSetVersion/confidence 恒在元字段集", () => {
     expect(META_FIELDS.has("dataMode")).toBe(true);
