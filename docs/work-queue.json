@@ -3191,7 +3191,7 @@
     {
       "id": "CLARIFY-CHAIN-FIX",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "SLOT-CLARIFY-HUMANIZE"
@@ -3216,7 +3216,8 @@
         ]
       },
       "at": {
-        "wip": "2026-07-05T05:04:44.315Z"
+        "wip": "2026-07-05T05:04:44.315Z",
+        "built": "2026-07-05T05:55:51.662Z"
       }
     },
     {
@@ -3355,10 +3356,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "BLOCKED",
-      "id": "ANSWER-PROJECTION-HUMANIZE",
-      "at": "2026-07-05T05:30:46.287Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "CLARIFY-CHAIN-FIX",
+      "at": "2026-07-05T05:55:51.662Z"
     }
   }
 }

@@ -8,18 +8,21 @@ import styles from "./Clarification.module.css";
 
 /** 澄清交互（PRD §6.4）：INTENT_CHOICE 选项卡片 / SLOT_FILLING 内联表单 */
 export function ClarificationView({ taskId, payload }: { taskId: string; payload: ClarificationPayload }) {
-  const [submitted, setSubmitted] = useState(false);
+  // CLARIFY-CHAIN-FIX（簇⑨断③·多轮澄清死屏）：此前 submitted 布尔常驻 → 第 1 轮提交后组件
+  // 永远 null，第 2 轮 `clarification.required` 到达也不渲染（S06 实测 >92s 死屏挂起）。
+  // 改按**轮次**记提交：新一轮 payload.round ≠ 已提交轮 → 重新渲染表单。
+  const [submittedRound, setSubmittedRound] = useState<number | null>(null);
 
   const send = async (body: Parameters<typeof replyClarification>[1]) => {
     try {
       await replyClarification(taskId, body);
-      setSubmitted(true);
+      setSubmittedRound(payload.round);
     } catch (e) {
       toastError(e);
     }
   };
 
-  if (submitted) return null;
+  if (submittedRound === payload.round) return null;
 
   return (
     <div className={styles.wrap} data-testid="clarification">
@@ -27,9 +30,10 @@ export function ClarificationView({ taskId, payload }: { taskId: string; payload
         {zh.dock.clarifyRound(payload.round)}
       </div>
       {payload.kind === "INTENT_CHOICE" ? (
-        <IntentChoice payload={payload} onChoose={(key) => void send({ kind: "INTENT_CHOICE", chosenIntentKey: key })} onNone={() => void send({ kind: "INTENT_CHOICE", none: true })} />
+        <IntentChoice key={payload.round} payload={payload} onChoose={(key) => void send({ kind: "INTENT_CHOICE", chosenIntentKey: key })} onNone={() => void send({ kind: "INTENT_CHOICE", none: true })} />
       ) : (
-        <SlotFilling payload={payload} onSubmit={(values) => void send({ kind: "SLOT_FILLING", slotValues: values })} />
+        // key=round：多轮之间重置表单内部值（上一轮残值不粘连到下一轮）。
+        <SlotFilling key={payload.round} payload={payload} onSubmit={(values) => void send({ kind: "SLOT_FILLING", slotValues: values })} />
       )}
     </div>
   );
@@ -46,12 +50,16 @@ function IntentChoice({
 }) {
   return (
     <div className={styles.options}>
-      {(payload.options ?? []).map((opt) => (
-        <button key={opt.intentKey} className={styles.optionCard} onClick={() => onChoose(opt.intentKey)} data-testid={`intent-option-${opt.intentKey}`}>
-          <strong>{opt.name}</strong>
-          <span>{opt.description}</span>
-        </button>
-      ))}
+      {/* 契约 options.intentKey 可为 null（服务端「都不是」哨兵项）——null 项路由到 onNone，
+          且不与下方固定「都不是」按钮重复渲染。 */}
+      {(payload.options ?? [])
+        .filter((opt): opt is { intentKey: string; name: string; description: string } => opt.intentKey != null)
+        .map((opt) => (
+          <button key={opt.intentKey} className={styles.optionCard} onClick={() => onChoose(opt.intentKey)} data-testid={`intent-option-${opt.intentKey}`}>
+            <strong>{opt.name}</strong>
+            <span>{opt.description}</span>
+          </button>
+        ))}
       <button className="btn" onClick={onNone} data-testid="intent-none">
         {zh.dock.clarifyNone}
       </button>
@@ -93,10 +101,13 @@ export function SlotFillingForm({
         </div>
       )}
       {slots.map((slot) => {
-        const vm: SlotDefVM = { name: slot.name, type: slot.type, enumValues: slot.enumValues, clarifyPrompt: slot.clarifyPrompt, description: slot.description ?? "", objectType: slot.refType ?? slot.objectType };
+        // 契约 SlotDef.clarifyPrompt 可缺（B1 边界闸路径直传 SlotDef[]）→ 本地按服务端同优先级
+        // clarifyPrompt ?? description ?? 裸名兜底归一为 ClarificationSlot（人话优先，不甩裸 key）。
+        const label = slot.clarifyPrompt?.trim() || slot.description?.trim() || `请提供${slot.name}`;
+        const vm: SlotDefVM = { name: slot.name, type: slot.type, enumValues: slot.enumValues, clarifyPrompt: label, description: slot.description ?? "", objectType: slot.refType ?? slot.objectType };
         return (
           <div key={slot.name} className={styles.slotRow}>
-            <label htmlFor={`slot-${slot.name}`}>{slot.clarifyPrompt ?? `请提供${slot.name}`}</label>
+            <label htmlFor={`slot-${slot.name}`}>{label}</label>
             <SlotControl slot={vm} value={values[slot.name]} onChange={(v) => set(slot.name, v)} />
           </div>
         );

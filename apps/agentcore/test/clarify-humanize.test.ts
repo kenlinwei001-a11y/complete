@@ -70,14 +70,15 @@ describe("② 场景卡改写问句继承卡 presetSlots（demandDelta 不再被
     expect(task.status).toBe("AWAITING_CLARIFICATION");
     const events = await t.repos.events.listAfter(taskId, 0);
     const clar = events.find((e) => e.event === "clarification.required");
-    const payload = clar?.payload as { kind: string; slots: { name: string; prompt: string }[] };
+    // CLARIFY-CHAIN-FIX：payload 字段名与前端所读一致（clarifyPrompt·非旧 `prompt` 错位名）。
+    const payload = clar?.payload as { kind: string; slots: { name: string; clarifyPrompt: string }[] };
     expect(payload.kind).toBe("SLOT_FILLING");
     const dd = payload.slots.find((s) => s.name === "demandDelta");
     expect(dd).toBeDefined();
     // 红线：绝不甩裸内部 key；须人话 + 示例（含 0.2）+ 取值语义（比例）。
-    expect(dd!.prompt).not.toBe("请提供demandDelta");
-    expect(dd!.prompt).toContain("0.2");
-    expect(dd!.prompt).toContain("比例");
+    expect(dd!.clarifyPrompt).not.toBe("请提供demandDelta");
+    expect(dd!.clarifyPrompt).toContain("0.2");
+    expect(dd!.clarifyPrompt).toContain("比例");
   });
 
   it("实验组：点卡（presetSlots demandDelta:0.2）→ 对话坞改写问句（自由路径·仅带 conversationId）→ demandDelta 继承·不再被问", async () => {

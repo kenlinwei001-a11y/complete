@@ -694,6 +694,38 @@ export const ClarificationReplyBodySchema = z.object({
 });
 export type ClarificationReplyBody = z.infer<typeof ClarificationReplyBodySchema>;
 
+/**
+ * CLARIFY-CHAIN-FIX（审计簇⑨·治 G-3 澄清传输链断点）：`clarification.required` 事件 payload 的
+ * **单一传输契约**。此前服务端只发 `{name,type,prompt}` 而前端读 `clarifyPrompt` → 服务端配了人话
+ * （SLOT-CLARIFY-HUMANIZE）用户也永远看到裸内部 key；enum 槽不带 `enumValues` → 下拉零选项不可作答。
+ * 两端都以本 schema 为准（服务端 `toClarificationSlot` 产出 / 前端 taskStreamReducer 直接引用），禁 fork 形状。
+ */
+export const ClarificationSlotSchema = z.object({
+  name: z.string(),
+  type: SlotDefSchema.shape.type,
+  /** 人话反问文案（服务端 clarifyPromptFor 保证非空：clarifyPrompt ?? description ?? 裸名兜底）——前端 label 直读此字段。 */
+  clarifyPrompt: z.string(),
+  description: z.string().optional(),
+  /** enum 槽合法取值（透传 SlotDef.enumValues·前端下拉真可选）。 */
+  enumValues: z.array(z.string()).optional(),
+  /** objectRef 槽指向的对象类型（SlotDef.refType 归一为前端对象搜索选择器的 objectType）。 */
+  objectType: z.string().optional(),
+});
+export type ClarificationSlot = z.infer<typeof ClarificationSlotSchema>;
+
+export const ClarificationRequiredPayloadSchema = z.object({
+  kind: z.enum(["INTENT_CHOICE", "SLOT_FILLING"]),
+  /** INTENT_CHOICE：候选意图（intentKey=null 为「都不是」哨兵项）。 */
+  options: z
+    .array(z.object({ intentKey: z.string().nullable(), name: z.string(), description: z.string() }))
+    .optional(),
+  /** SLOT_FILLING：缺失槽位（人话 + enum 取值 + objectRef 类型全携带）。 */
+  slots: z.array(ClarificationSlotSchema).optional(),
+  /** 澄清轮次（1..2·多轮澄清前端按轮重置表单）。 */
+  round: z.number().int(),
+});
+export type ClarificationRequiredPayload = z.infer<typeof ClarificationRequiredPayloadSchema>;
+
 /** 工具注册项（QOS-PRD §7.1） */
 export const ToolDefinitionSchema = z.object({
   name: z.string(),

@@ -344,6 +344,7 @@ export function seedIntentsAndPlans(
           defaultFrom: "$.selectedObjects[0]",
           clarifyPrompt: "请指明要查的基地（如 常州 / 合肥 / 宜宾；也可在页面选中基地自动带入）",
           description: "受影响的基地（Base 对象引用）",
+          refType: "Base",
         },
         {
           name: "timeWindow",
@@ -369,7 +370,7 @@ export function seedIntentsAndPlans(
       examples: ["4680-NCM 加 20% 六周能不能接？", "M3P 增加 10% 产能够吗", "需求上调后能不能交付"],
       enabledViews: "*",
       slots: [
-        { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", clarifyPrompt: "请指明要评估的型号（如 4680-NCM / M3P-标准；也可在页面选中型号自动带入）", description: "型号（Model 对象引用）" },
+        { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", clarifyPrompt: "请指明要评估的型号（如 4680-NCM / M3P-标准；也可在页面选中型号自动带入）", description: "型号（Model 对象引用）", refType: "Model" },
         { name: "demandDelta", type: "number", required: true, clarifyPrompt: "请提供需求增量比例（0~1 的小数，如 0.2 表示 +20%；可为负数表示下调，只填数字不带百分号）", description: "需求增量比例（0.2 表示 +20%）" },
         { name: "weeks", type: "number", required: false, description: "周数，缺省 6" },
       ],
@@ -397,6 +398,7 @@ export function seedIntentsAndPlans(
           defaultFrom: "$.selectedObjects[0]",
           clarifyPrompt: "请指明要分析风险根因的基地（如 常州 / 宜宾；也可在页面选中基地自动带入）",
           description: "基地对象引用",
+          refType: "Base",
         },
         { name: "day", type: "date", required: false, description: "日期（可选）" },
       ],
@@ -424,6 +426,7 @@ export function seedIntentsAndPlans(
           defaultFrom: "$.selectedObjects[0]",
           clarifyPrompt: "请指明要采纳处置方案的基地（如 常州；也可在页面选中基地自动带入）",
           description: "基地对象引用",
+          refType: "Base",
         },
         {
           name: "solutionName",

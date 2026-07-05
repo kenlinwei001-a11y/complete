@@ -1,4 +1,4 @@
-import type { Answer } from "@platform/contracts";
+import type { Answer, ClarificationRequiredPayload } from "@platform/contracts";
 
 /** SSE 事件帧（事件名与 QOS-PRD §8.2 一字不差） */
 export interface StreamEvent {
@@ -18,19 +18,12 @@ export interface StreamEvent {
   data: Record<string, unknown>;
 }
 
-export interface ClarificationPayload {
-  kind: "INTENT_CHOICE" | "SLOT_FILLING";
-  options?: { intentKey: string; name: string; description: string }[];
-  slots?: {
-    name: string;
-    type: "string" | "number" | "date" | "timeWindow" | "objectRef" | "enum";
-    clarifyPrompt?: string;
-    enumValues?: string[];
-    objectType?: string;
-    description?: string;
-  }[];
-  round: number;
-}
+/**
+ * CLARIFY-CHAIN-FIX（簇⑨·contracts-only-shared）：澄清 payload 直接引用契约
+ * `ClarificationRequiredPayloadSchema`——此前前端手写形状（读 clarifyPrompt）与服务端实发
+ * （旧 `prompt` 字段）错位 → 人话永远到不了用户。单一契约，禁两端各自 fork。
+ */
+export type ClarificationPayload = ClarificationRequiredPayload;
 
 export type StreamStatus =
   | "idle"

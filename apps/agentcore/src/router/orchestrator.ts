@@ -38,7 +38,7 @@ import { BudgetTracker } from "../tools/budget.js";
 import { SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { reconcileUniversalAgent, SEED_UNIVERSAL_AGENT_ID } from "../agents/universal.js";
 import { pseudoEmbed } from "../util/embedding.js";
-import { clarifyPromptFor, fillSlots, normalizeExtractedSlots, type SlotSource, type SlotSubstitution } from "./slots.js";
+import { fillSlots, normalizeExtractedSlots, toClarificationSlot, type SlotSource, type SlotSubstitution } from "./slots.js";
 import { appendDataGapBlock } from "../scenario-grounding.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
@@ -815,8 +815,10 @@ export class Orchestrator {
         slots: finalSlots,
         missing: stillMissing,
         payload: {
+          // CLARIFY-CHAIN-FIX（簇⑨断①②）：payload 走契约 ClarificationSlot 全量传输——
+          // 人话 clarifyPrompt（前端 label 所读字段·非旧 `prompt` 错位名）+ enum 取值 + objectRef 类型。
           kind: "SLOT_FILLING",
-          slots: stillMissing.map((s) => ({ name: s.name, type: s.type, prompt: clarifyPromptFor(s) })),
+          slots: stillMissing.map((s) => toClarificationSlot(s)),
         },
       });
       return;

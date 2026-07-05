@@ -61,8 +61,60 @@ for (const it of allIntents) {
 
 if (checked === 0) fail("未遍历到任何 PUBLISHED 必填槽——门无效（导入路径/播种漂移？）。");
 
+// ---------------------------------------------------------------------------
+// CLARIFY-CHAIN-FIX（审计簇⑨·治 G-3 澄清**传输链**断点）：人话在服务端存在还不够——
+// 此前 payload 只发 `{name,type,prompt}` 而前端读 `clarifyPrompt` → 配了中文也永远裸 key；
+// enum 槽不带 enumValues → 下拉零选项不可作答。以下守传输链两端逐字段对齐（revert → 红）。
+// ---------------------------------------------------------------------------
+import { readFileSync } from "node:fs";
+
+// ④ 编译产物级：toClarificationSlot 存在，且对 enum/objectRef 槽产出过契约 schema、全量携带。
+const contracts = await import("../packages/contracts/dist/qos.js").catch((e) => {
+  console.error(`✗ clarify-humanized:check 导入 contracts dist 失败（先 pnpm --filter @platform/contracts build）：${e.message}`);
+  process.exit(1);
+});
+if (typeof slots.toClarificationSlot !== "function") {
+  fail("router/slots.toClarificationSlot 缺失——澄清 payload 失去契约单一产出口（簇⑨断①回潮风险）。");
+} else if (!contracts.ClarificationSlotSchema || !contracts.ClarificationRequiredPayloadSchema) {
+  fail("contracts ClarificationSlotSchema / ClarificationRequiredPayloadSchema 缺失——澄清传输失去单一契约。");
+} else {
+  const enumSlot = { name: "solutionName", type: "enum", required: true, enumValues: ["三班制", "外协"], clarifyPrompt: "请选择处置方案", description: "处置方案名" };
+  const refSlot = { name: "base", type: "objectRef", required: true, refType: "Base", clarifyPrompt: "请指明基地", description: "基地对象引用" };
+  for (const s of [enumSlot, refSlot]) {
+    const out = slots.toClarificationSlot(s);
+    const parsed = contracts.ClarificationSlotSchema.safeParse(out);
+    if (!parsed.success) fail(`toClarificationSlot(${s.name}) 产出不过契约 ClarificationSlotSchema：${parsed.error.message}`);
+  }
+  const enumOut = slots.toClarificationSlot(enumSlot);
+  if (!Array.isArray(enumOut.enumValues) || enumOut.enumValues.length !== 2) fail("toClarificationSlot 丢失 enumValues——enum 槽用户又将零选项不可作答（簇⑨断②回潮）。");
+  if (enumOut.clarifyPrompt !== "请选择处置方案") fail("toClarificationSlot 未携带人话 clarifyPrompt——前端将回落裸 key。");
+  const refOut = slots.toClarificationSlot(refSlot);
+  if (refOut.objectType !== "Base") fail("toClarificationSlot 未把 refType 归一为 objectType——objectRef 搜索选择器将盲落默认类型。");
+}
+
+// ⑤ 源码级两端对齐：服务端发的字段 == 前端读的字段（同一契约，禁 fork）。
+const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+const orch = src("apps/agentcore/src/router/orchestrator.ts");
+if (!/slots:\s*stillMissing\.map\(\(s\)\s*=>\s*toClarificationSlot\(s\)\)/.test(orch)) {
+  fail("orchestrator SLOT_FILLING payload 未经 toClarificationSlot 单一产出（自拼形状 = 传输链再断风险）。");
+}
+if (/prompt:\s*clarifyPromptFor\(/.test(orch)) {
+  fail("orchestrator 澄清 payload 回潮旧 `prompt:` 错位字段名——前端读 clarifyPrompt，人话将再次到不了用户（簇⑨断①）。");
+}
+const clarTsx = src("apps/frontend-shell/src/components/QueryDock/Clarification.tsx");
+if (!clarTsx.includes("slot.clarifyPrompt")) {
+  fail("前端 Clarification.tsx 不再读 slot.clarifyPrompt——与服务端实发字段错位（簇⑨断①）。");
+}
+if (!clarTsx.includes("enumValues")) {
+  fail("前端 Clarification.tsx 不再渲染 enumValues——enum 槽零选项不可作答（簇⑨断②）。");
+}
+const reducer = src("apps/frontend-shell/src/sse/taskStreamReducer.ts");
+if (!/ClarificationRequiredPayload/.test(reducer)) {
+  fail("前端 taskStreamReducer 不再引用契约 ClarificationRequiredPayload——payload 形状被 fork（违 contracts-only-shared）。");
+}
+
 if (red) {
-  console.error("\n✗ clarify-humanized:check 未过：存在面向用户泄漏裸内部参数名的澄清反问。修法：为该必填槽补 clarifyPrompt（人话+单位+示例+取值域，如『请提供需求增量比例(0~1 小数·如 0.2=+20%)』），或至少补人话 description。");
+  console.error("\n✗ clarify-humanized:check 未过：存在面向用户泄漏裸内部参数名的澄清反问，或澄清传输链两端字段错位（服务端有的人话必须逐值到达用户）。修法：为该必填槽补 clarifyPrompt（人话+单位+示例+取值域），payload 走 toClarificationSlot + 契约 ClarificationSlotSchema，前端读 clarifyPrompt/渲 enumValues。");
   process.exit(1);
 }
-console.log(`✓ clarify-humanized:check 通过（${allIntents.length} 个 PUBLISHED Intent · ${checked} 个必填槽均有人话澄清·零裸内部 key）。`);
+console.log(`✓ clarify-humanized:check 通过（${allIntents.length} 个 PUBLISHED Intent · ${checked} 个必填槽均有人话澄清·零裸内部 key · 传输链两端 clarifyPrompt/enumValues/objectType 契约对齐）。`);

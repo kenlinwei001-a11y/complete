@@ -1,4 +1,4 @@
-import type { IntentDefinition, ObjectRef, SessionContext, SlotDef } from "@platform/contracts";
+import type { ClarificationSlot, IntentDefinition, ObjectRef, SessionContext, SlotDef } from "@platform/contracts";
 import type { OntologyClient, ToolAuthCtx } from "../tools/clients.js";
 import { resolvePath } from "../util/jsonpath.js";
 
@@ -292,12 +292,24 @@ export async function validateSlotValue(
         try {
           const payload = await ontology.getObject(ctx, ref.objectType, ref.objectId);
           const data = payload.data as Record<string, unknown>;
+          // CLARIFY-CHAIN-FIX（澄清**可作答**收口）：真 DataCore 返回 `{id,type,props:{modelId,name…}}`
+          // （业务主键在 props），而此前只读顶层 data.objectId/name（mock 扁平形）→ 真栈下前端对象
+          // 选择器回填的存储 id（obj_model_4680-NCM）原样进槽 → 下游切片/求解器按业务主键（4680-NCM）
+          // 找不到 → 用户按 UI 正确作答仍 TOOL_ERROR。归一：业务主键优先（PK 序与 executor
+          // sliceObjects 同源 baseId/modelId/so…），mock 扁平形 objectId 命中第一优先，行为不变。
+          const props = ((data.props as Record<string, unknown> | undefined) ?? {}) as Record<string, unknown>;
+          const pick = (k: string): string | undefined => {
+            const v = data[k] ?? props[k];
+            return typeof v === "string" && v ? v : undefined;
+          };
+          const businessId = pick("objectId") ?? pick("baseId") ?? pick("modelId") ?? pick("so") ?? pick("signalKey");
+          const label = pick("name") ?? ref.label;
           return {
             ok: true,
             value: {
               objectType: ref.objectType,
-              objectId: (data.objectId as string) ?? ref.objectId,
-              label: (data.name as string) ?? ref.label,
+              objectId: businessId ?? ref.objectId,
+              ...(label !== undefined ? { label } : {}),
             } satisfies ObjectRef,
           };
         } catch {
@@ -456,4 +468,24 @@ export function clarifyPromptFor(slot: SlotDef): string {
 /** 裸内部 key 兜底文案形态（`请提供${name}`）——门禁/齿检用来判定某槽是否会向用户泄漏裸参数名。 */
 export function isRawKeyClarifyPrompt(slot: SlotDef): boolean {
   return clarifyPromptFor(slot) === `请提供${slot.name}`;
+}
+
+/**
+ * CLARIFY-CHAIN-FIX（审计簇⑨断①②·治 G-3 澄清传输链）：SlotDef → 澄清传输槽（契约
+ * `ClarificationSlot`·两端单一口径）。此前 orchestrator 只发 `{name,type,prompt}`：
+ *  ① 字段名 `prompt` 与前端所读 `clarifyPrompt` 错位 → 服务端配了人话，用户仍看裸 key；
+ *  ② enum 槽不带 `enumValues` → 前端下拉零选项不可作答；
+ *  ③ objectRef 槽不带类型 → 前端搜索选择器只能盲落 "Base"。
+ * 本函数把人话文案（clarifyPromptFor 优先级 clarifyPrompt??description??裸名兜底）、enum 取值、
+ * objectRef 类型（refType→objectType 归一）全量携带——服务端有的 = 用户看到的（逐值）。
+ */
+export function toClarificationSlot(slot: SlotDef): ClarificationSlot {
+  return {
+    name: slot.name,
+    type: slot.type,
+    clarifyPrompt: clarifyPromptFor(slot),
+    ...(slot.description?.trim() ? { description: slot.description } : {}),
+    ...(slot.enumValues && slot.enumValues.length > 0 ? { enumValues: slot.enumValues } : {}),
+    ...(slot.type === "objectRef" && slot.refType ? { objectType: slot.refType } : {}),
+  };
 }
