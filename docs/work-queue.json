@@ -3359,22 +3359,23 @@
     {
       "id": "CLARIFY-COMBOBOX-DISMISS",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "title": "澄清objectRef选择器『暂无数据』弹层不可Esc退·悬停挡提交钮",
       "note": "CLARIFY-CHAIN-FIX复验新见(真浏览器): objectRef combobox输入无匹配串(如火星基地)→『暂无数据』弹层常开·Esc/点panel他处均不退·几何上盖住提交钮(pointer intercept)。自救路径存在: 清空输入即退(故P3非阻断)。修向: Esc/blur/点外关弹层+弹层z序不盖操作钮; 顺手a11y(combobox aria-expanded)。齿: 组件测输入无匹配→Esc→弹层关。",
       "at": {
-        "todo": "2026-07-05T06:17:15.288Z"
+        "todo": "2026-07-05T06:17:15.288Z",
+        "wip": "2026-07-05T06:26:45.485Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "ANSWER-PROJECTION-HUMANIZE",
-      "at": "2026-07-05T06:23:31.511Z"
+      "cmd": "WIP",
+      "id": "CLARIFY-COMBOBOX-DISMISS",
+      "at": "2026-07-05T06:26:45.485Z"
     }
   }
 }
