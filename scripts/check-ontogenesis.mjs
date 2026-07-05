@@ -225,9 +225,9 @@ console.log(`· §2.5 零死答 grep 断言通过：${SRC_ROOTS.length} 个 src 
 console.log("· R16 发育闭环：本体已立（三环自动闭合 + 二分处置 + 透明可视 + 分相位成熟 + 倒序⊕正序两相）");
 console.log(`· §6 逐卡静态断言通过（${cards.length} 卡）：A 计划有 render 步派生器在位 · B solver(含 sop_balance→mrp_netting)∈SOLVER_OUTPUT_SHAPES · C rules⊆已发布规则集 · D intentKey 有意图/计划。`);
 console.log(`· §6.2 渲染投影绑定齿（WO RENDER-PROJ）：契约登记 ${Object.keys(RENDER_BINDINGS).length} 求解器绑定 ⊆ 形状 · 20 计划实际渲染绑定 ⊆ 形状 · 派生循环 bindings 驱动 + 规则烘焙注入 + 静态占位文案死 · 切片目标 datadep 自动派生在位。`);
-console.log("· §6 运行期项诚实跳过（本静态门测不了，绿测试≠能用）：");
-console.log("    - §6.1 每张 GOVERNED 卡有 VERIFIED ScenarioOntogenesisRun（需真 grow 经 QOS 跑通）→ 由 scenario-ontogenesis.test.ts grow 用例 + 门B 真后端证据保证。");
-console.log("    - §6.5 未闭环卡 maturity!=GOVERNED 且有 gaps[].disposition（maturity 由 grow 运行期设定）→ 同上（含 scenario-honest-gate.test.ts 的 RENDER_NOT_PROJECTED 样本）。");
-console.log("    - §6.4 卡 sliceTargets 覆盖：出厂卡由 growScenario 运行期经 datadep→slice-planner 自动派生并回写（scenario-render-projection.test.ts 钉），静态无从断言具体覆盖。");
+console.log("· §6 运行期项本静态门测不了（绿测试≠能用）→ 已由**收口门 `ontogenesis-runtime:check`**（check-scenario-ontogenesis-runtime.mjs·真起 agentcore 逐卡 grow）真跑守住，不再仅靠单测：");
+console.log("    - §6.1 每张 GOVERNED 卡 VERIFIED + rings.data + 承载数据块 → 运行期门真 grow 20 卡逐卡断言（⊕ scenario-ontogenesis.test.ts）。");
+console.log("    - §6.5 未闭环卡 maturity!=GOVERNED 且 gaps[].disposition（NEEDS_HUMAN+ticketId 无静默残缺）→ 运行期门逐卡断言（⊕ scenario-honest-gate.test.ts 的 RENDER_NOT_PROJECTED 样本）。");
+console.log("    - §6.4 卡 sliceTargets 覆盖：growScenario 运行期经 datadep→slice-planner 自动派生并回写（scenario-render-projection.test.ts 钉）。");
 console.log("    - 绑定字段**真在真实输出中**（真值齿）→ datacore render-bindings-real-fields.test.ts（真合成世界真 invoke 逐字段断言）。");
-console.log("✓ ontogenesis:check：发育闭环不变量在本体钉牢 + §6 静态可校验逐卡断言守住（运行期事实由 grow 测试 + 门B 保证）。");
+console.log("✓ ontogenesis:check：发育闭环不变量在本体钉牢 + §6 静态可校验逐卡断言守住（运行期事实由 ontogenesis-runtime:check 真跑 + grow 测试保证）。");

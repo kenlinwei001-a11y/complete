@@ -2328,10 +2328,19 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
   // 场景闭包/就绪（PRD §3.6 上架门 + 引用闭合「无死路」）：场景调用的链路必须全配置好——
   // intentKey→意图存在 · 意图→执行计划存在 · AGENT 模式→defaultAgent 已发布。断链则不可发布。
-  const scenarioClosure = async (tenantId: string, sc: Scenario): Promise<{ ready: boolean; issues: string[] }> => {
+  // ONTO-SCEN-GATE-WRITEBACK（PRD-scenario-ontogenesis §2.3·收口门）：闭包从「查存在」升级为「查跑通」。
+  //   · structural（存在环）：意图存在且能绑定计划 + AGENT 模式有已发布 defaultAgent —— 发布上架的结构地板。
+  //   · runThrough（跑通环）：卡若已被 grow 亲手跑过（有 lastOntogenesisRun 留痕=真实跑的凭据），readiness 必须
+  //     反映**实跑结论**——未 VERIFIED（maturity≠GOVERNED）即诚实 not-ready + 把实跑缺口挂成 issue（不靠结构存在假绿）。
+  //   opts.structuralOnly：内部（verifyScenario 计算新一轮验证 / rings）只取存在环，避免读到上一轮 run 的陈旧缺口自污染。
+  const scenarioClosure = async (
+    tenantId: string,
+    sc: Scenario,
+    opts?: { structuralOnly?: boolean },
+  ): Promise<{ ready: boolean; issues: string[]; structuralOk: boolean; verified: boolean; runThrough: boolean }> => {
     const issues: string[] = [];
     const pkg = (await deps.repos.packages.listByTenant(tenantId))[0];
-    if (!pkg) return { ready: false, issues: ["租户无场景包"] };
+    if (!pkg) return { ready: false, issues: ["租户无场景包"], structuralOk: false, verified: false, runThrough: false };
     const intents = await deps.repos.intents.listByPackage(pkg.id);
     const byKey = new Map<string, (typeof intents)[number]>();
     for (const i of intents) {
@@ -2352,7 +2361,17 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         else if (agent.status !== "PUBLISHED") issues.push(`defaultAgent 未发布：${agent.name}`);
       }
     }
-    return { ready: issues.length === 0, issues };
+    const structuralOk = issues.length === 0;
+    // 查跑通（§2.3）：读卡上留痕的真实发育运行（grow 亲手跑出的凭据），非再跑一遍（R6 幂等·避免每次列表重放 QOS）。
+    const run = sc.lastOntogenesisRun;
+    const verified = !!run && run.verification?.status === "VERIFIED";
+    if (!opts?.structuralOnly && run && !verified) {
+      issues.push(`发育验证未通过（${run.verification?.gapCode ?? "未跑通"}）：triggerQuestion 未亲手跑出真实答案（maturity=${sc.maturity ?? run.maturity}）`);
+      for (const g of run.gaps ?? []) {
+        issues.push(`发育缺口 ${g.gapCode}（${g.disposition}${g.ticketId ? " · 工单 " + g.ticketId : ""}）`);
+      }
+    }
+    return { ready: issues.length === 0, issues, structuralOk, verified, runThrough: !!run };
   };
 
   // ---------------------------------------------------------------------
@@ -2593,7 +2612,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   };
   const verifyScenario = async (a: RequestAuth, sc: Scenario): Promise<VerifyResult> => {
     // 本体环/能力环：意图存在且发布 + 计划可绑定（复用 scenarioClosure 口径）。
-    const closure = await scenarioClosure(a.tenantId, sc);
+    // structuralOnly：本函数正在算**新一轮**验证，只取存在环，不读上一轮 run 的陈旧缺口（避免自污染 closureIssues）。
+    const closure = await scenarioClosure(a.tenantId, sc, { structuralOnly: true });
     const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
     const intents = pkg ? await deps.repos.intents.listByPackage(pkg.id) : [];
     const intent = intents.filter((i) => i.key === sc.intentKey).sort((x, y) => y.version - x.version)[0];
@@ -2927,10 +2947,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (sc.maturity === "GOVERNED" || sc.maturity === "ADVISORY") {
       maturity = "PROVISIONAL";
       const runId = newId("sor");
-      const closure = await scenarioClosure(task.tenantId, sc);
+      // rings.ontology/capability = 结构存在环（structuralOnly）：降相记录的是 data 环断，本体/能力环仍看结构是否配齐。
+      const closure = await scenarioClosure(task.tenantId, sc, { structuralOnly: true });
       const run: ScenarioOntogenesisRun & { tenantId: string } = {
         runId, tenantId: task.tenantId, scenarioKey: sc.scenarioKey, ranAt: now,
-        rings: { data: false, ontology: closure.ready, capability: closure.ready },
+        rings: { data: false, ontology: closure.structuralOk, capability: closure.structuralOk },
         verification: { status: "NOT_VERIFIED", path: report.path, gapCode: primary.gapCode, answerPreview: null, taskId: task.id },
         gaps: [{ gapCode: primary.gapCode, disposition: "NEEDS_HUMAN", detail: primary.evidence.slice(0, 240), ticketId }],
         maturity,

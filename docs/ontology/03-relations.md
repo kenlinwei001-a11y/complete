@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `500284d3da08690f`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `d0513209056eb7a9`。
 
 ---
 
@@ -70,7 +70,7 @@ ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --P
       --buildSlotTruthBlocks(④回显所用实体/参数 + ⑤substitution→诚实横幅『你说的X未能对应·本次按Y作答』)--> Answer
     根A(嵌套 {intentKey:{slot:v}} 原样传→扁平取全 miss→落旧 chip→问合肥答常州绿标) 与 根B(派生意图 slots:[]+入参种子期烘焙) 已治;
     红线: 本轮显式必胜 chip · 答案回显所用实体 · 无法映射诚实横幅非假绿 · 绝不静默换题 (齿 launcher-slot-truth.test·revert→red)
-Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）
+Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）。**WO ONTO-SCEN-GATE-WRITEBACK（收口门·§2.3）：scenarioClosure 从「查存在」升级为「查跑通」**——返回增 `{structuralOk,verified,runThrough}`：卡若已 grow 亲手跑过（有 lastOntogenesisRun 留痕=真实跑的凭据）→ readiness 反映**实跑结论**（未 VERIFIED 即诚实 not-ready + 实跑缺口挂 issue，不靠结构存在假绿）；未 grow 卡仍取结构地板 ready（向后兼容"先发布后发育"）；内部 verifyScenario/降级 rings 用 `structuralOnly`（只取存在环·避上一轮 run 陈旧缺口自污染）。齿 scenario-closure-runthrough.test.ts
 MaterializedIntent --mode--> { workflow-first→Path A 工作流 | agent-first→Path B Agent } · --bindings--> { Solver·Rule(eval)·Constraint·Skill·SliceSpec·(Agent|Workflow) }   ✅ WO-INTENT-MATERIALIZE-BINDING-COMPLETE：20 场景 intentKey 全物化为一等 PUBLISHED Intent（mode 由审核方钉死·全绑定链 6 项齐）；**补齐链** `MaterializedIntent →(reconcile 缺项检测)→ scaffold DRAFT →审核发布`（接 sys.meta.change_loop·R4 不自动上真值·复用 self-growth scaffold）；全绑定链门 `scene-agent-config:check`（扩）守回潮。**MODE-DISPATCH-HONOR（审计簇⑦·mode 钉死表被场景实体架空·分发已尊重·2026-07-05）**：此前一等 Scenario 投影一揽子 `mode:"WORKFLOW_FIRST"`（`scenarios-catalog.ts scenarioFromCard`）且 orchestrator 只看 `scene.mode` → yield_diag/maint_stagger/outsourcing_q/capex_review/quarterly_gap_q（7 agent-first 之五·审计实测）分类命中后仍被压回 Path A 工作流表格，「为什么/哪个好/怎么选」永不触发 agent 推理——钉死表被架空。治（不重定 modes·只让派发尊重既有表）：① 钉死表移 `intents/intent-mode.ts` 为**唯一真相源**（materialize.ts re-export 兼容·scenarios-catalog `scenarioFromCard` 的 mode 改按 `intentModeFor(intentKey)` 派生 → 一等 Scenario 投影不再对 13/7 撒谎）；② **意图已解析的唯一分发点** `orchestrator.proceedWithIntent` 先查一等权威 `repos.materializedIntents.byKey(tenantId, intentKey)`（R14 数据驱动·读可编辑一等对象非硬编码表）——PUBLISHED 且 mode=AGENT_FIRST 且绑定 agent 已发布 → 委派 `runConfiguredAgent`（与 runSceneAgent 共用单一机制·routing.completed note=`意图权威模式 AGENT_FIRST（一等 Intent {key}）`·agentRun.agentId 持久化=绑定 agent·AGENT-UNIVERSAL C2 同坐标系可审计）；查无一等 Intent/绑定 agent 不可用 → 回落既有链（Path A·全 -first 保兜底）。workflow-first 13 意图零回归（仍 Path A）；scene.mode 链（runPipeline 入口级 AGENT_FIRST/WORKFLOW_ONLY）不变。齿 `mode-dispatch-honor.test.ts`（9 例·revert 分发/revert 场景一揽子→red 已自证）
 SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent   （降为投影）
 **卡发育链（G-9·PRD-scenario-ontogenesis·WO ONTO-SCEN-GROW 收口）**
@@ -107,6 +107,14 @@ launch/useScenarioLaunch(context 带 scenarioIntentKey+scenarioKey·前端接缝
       → 答案=gap 块(契约 additive scenario{scenarioKey,name,maturity,ticketId}) → 前端 GapCard 复用渲染诚实发育卡「此卡发育中：缺 X · 已建工单 #N →/admin/tickets?ticket=（统一工单中心直开详情抽屉·additive searchParams）」
   全站零死答：agent/loop.ts degrade 空产出(无文本/无推理)→ 结构化 gap 块(OTHER·question=task.query 可续推)替死答串；grep 门 ontogenesis:check §2.5 守源码零「未能产出回答」回潮即红
   齿 scenario-launch-deterministic.test.ts(5·classifier 物理拔掉/revert 绑定即红/删求解器降级链/工单+通知幂等/internal 不触发) · 真验 docs/evidence/ONTO-SCEN-LAUNCH-DET-fde.md(无 LLM key 双服务+真浏览器三截图)
+**§6 六断言收口门（WO ONTO-SCEN-GATE-WRITEBACK·真跑 vs 查存在）**
+  运行期门 `ontogenesis-runtime:check`（scripts/check-scenario-ontogenesis-runtime.mjs·gates 链唯一**真起 agentcore 逐卡 grow** 的场景门·与 seed-demo-smoke 同范式）：
+    §6.1 每 GOVERNED 卡 verification==VERIFIED + rings.data + 答案含承载数据块(kpi/table/action_draft/⟦ref⟧·投影真值非占位) ·
+    §6.5 非 GOVERNED 卡必带 gaps[]，每条 disposition∈{AUTO_DERIVE,NEEDS_HUMAN}，NEEDS_HUMAN 必带 ticketId(无静默残缺) ·
+    工作流地板：13 张 WORKFLOW_FIRST 卡确定性 GOVERNED(无 LLM 也必过·revert 渲染投影→PROVISIONAL/RENDER_NOT_PROJECTED 即红) ·
+    §2.4 抽样 launch S01 → classification.model==deterministic:scenario-bind + Path A + 承载数据块(点卡真决策视图)
+  §6.2/6.3/6.4/6.6 静态内核仍由 `ontogenesis:check`(check-ontogenesis.mjs) 守(renderBindings⊆SOLVER_OUTPUT_SHAPES·rules⊆已发布·目录派生)；
+  两门互补：静态门守契约不漂 + 运行期门守真跑通。实测分布 20/20 GOVERNED（mock DataCore 合成世界 + 确定性 Path A）·真验 docs/evidence/ONTO-SCEN-GATE-WRITEBACK-fde.md
 ```
 **数据→本体→推演链**
 ```
