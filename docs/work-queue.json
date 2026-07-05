@@ -3323,7 +3323,7 @@
     {
       "id": "SANDBOX-DAG-NODE-LAYOUT",
       "priority": "P3",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -3342,16 +3342,17 @@
       },
       "at": {
         "wip": "2026-07-05T04:16:25.063Z",
-        "built": "2026-07-05T04:58:39.655Z"
+        "built": "2026-07-05T04:58:39.655Z",
+        "done": "2026-07-05T05:05:51.259Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "MODE-DISPATCH-HONOR",
-      "at": "2026-07-05T05:05:20.375Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "SANDBOX-DAG-NODE-LAYOUT",
+      "at": "2026-07-05T05:05:51.259Z"
     }
   }
 }
