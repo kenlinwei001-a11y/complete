@@ -3191,7 +3191,7 @@
     {
       "id": "CLARIFY-CHAIN-FIX",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "SLOT-CLARIFY-HUMANIZE"
@@ -3217,7 +3217,8 @@
       },
       "at": {
         "wip": "2026-07-05T05:04:44.315Z",
-        "built": "2026-07-05T05:55:51.662Z"
+        "built": "2026-07-05T05:55:51.662Z",
+        "done": "2026-07-05T06:17:15.243Z"
       }
     },
     {
@@ -3353,14 +3354,26 @@
         "built": "2026-07-05T04:58:39.655Z",
         "done": "2026-07-05T05:05:51.259Z"
       }
+    },
+    {
+      "id": "CLARIFY-COMBOBOX-DISMISS",
+      "priority": "P3",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/AUDIT-launcher-deep-sweep.md",
+      "title": "澄清objectRef选择器『暂无数据』弹层不可Esc退·悬停挡提交钮",
+      "note": "CLARIFY-CHAIN-FIX复验新见(真浏览器): objectRef combobox输入无匹配串(如火星基地)→『暂无数据』弹层常开·Esc/点panel他处均不退·几何上盖住提交钮(pointer intercept)。自救路径存在: 清空输入即退(故P3非阻断)。修向: Esc/blur/点外关弹层+弹层z序不盖操作钮; 顺手a11y(combobox aria-expanded)。齿: 组件测输入无匹配→Esc→弹层关。",
+      "at": {
+        "todo": "2026-07-05T06:17:15.288Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "ANSWER-PROJECTION-HUMANIZE",
-      "at": "2026-07-05T06:06:10.500Z"
+      "role": "review",
+      "cmd": "QUEUE",
+      "id": "CLARIFY-COMBOBOX-DISMISS",
+      "at": "2026-07-05T06:17:15.289Z"
     }
   }
 }
