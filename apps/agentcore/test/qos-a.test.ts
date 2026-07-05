@@ -94,12 +94,15 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
   });
 
   it("A4: adopt_mitigation → action_draft block, ActionClient called, no direct write", async () => {
+    // ADOPT-MITIGATION-FREEPATH：factor 现为必填槽（真 DataCore paramsSchema 必填 base/factor/planKey）
+    // —— 问句带因子、分类器抽出 factor → 零澄清直达草稿（缺 factor 的自由句走诚实澄清，见
+    // adopt-mitigation-freepath.test.ts）。
     t.llm.queueClassification({
       candidates: [{ intentKey: "adopt_mitigation", confidence: 0.93 }],
       outOfCatalog: false,
-      extractedSlots: { solutionName: "三班制" },
+      extractedSlots: { solutionName: "三班制", factor: "物料齐套" },
     });
-    const { taskId } = await submitQuery(t, PLANNER, "采纳常州的三班制方案", {
+    const { taskId } = await submitQuery(t, PLANNER, "采纳常州物料齐套的三班制方案", {
       view: "risk",
       selectedObjects: [CZ],
     });
@@ -109,6 +112,8 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
     expect(draftBlock).toBeDefined();
     expect(t.dataCore.action.drafts.length).toBe(1);
     expect(t.dataCore.action.drafts[0]?.status).toBe("PENDING_APPROVAL");
+    // 草稿载荷满足真端点契约必填（factor 绝不 null → 真 DataCore 不再 400）。
+    expect((t.dataCore.action.drafts[0]?.payload as { factor?: unknown }).factor).toBe("物料齐套");
     if (draftBlock?.type === "action_draft") {
       expect(draftBlock.draftId).toBe(t.dataCore.action.drafts[0]?.draftId);
     }

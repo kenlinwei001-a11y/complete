@@ -442,12 +442,17 @@ export function seedIntentsAndPlans(
           description: "处置方案名",
         },
         {
-          // 补 factor 槽：create_action_draft 的 adopt_mitigation paramsSchema 必填 base/factor/planKey；
-          // factor 由场景 presetSlots 填（"物料齐套" 等），不写死。可选——自由问句未指明时填 null
-          // （由真后端按契约判，不阻断场景预置路径；presetSlots 有值即真后端接受）。
+          // factor 槽：create_action_draft 的 adopt_mitigation paramsSchema 必填 base/factor/planKey
+          // （真 DataCore BATTERY_ACTION_TYPES 契约）。ADOPT-MITIGATION-FREEPATH：此前 required:false →
+          // 自由问句未指明时槽落 null → s2 payload factor=null → 真后端 400 VALIDATION_ERROR（静默失败）。
+          // factor 是决策必需输入（方案库按因子分域、审批链审的就是"针对哪个风险因子采纳了什么方案"），
+          // 无合理域默认值（服务端兜底=伪造决策内容，违铁律 0.4）→ 必填 + 人话澄清兜底：
+          // 场景卡 presetSlots 有值零反问（S06 不变）；自由问句缺值→诚实澄清（绝不 400）。
           name: "factor",
           type: "string",
-          required: false,
+          required: true,
+          clarifyPrompt:
+            "请指明该处置方案针对的风险因子（如 物料齐套 / 设备OEE / 人力工时 / 瓶颈工序 / 物流时长 / 换型损失 / 良率波动；风险时间线卡片上的因子名即可）",
           description: "风险因子（如 物料齐套）",
         },
       ],
