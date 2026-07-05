@@ -3484,11 +3484,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
-        "todo": "2026-07-05T08:29:30.462Z"
+        "todo": "2026-07-05T08:29:30.462Z",
+        "wip": "2026-07-05T13:46:30.253Z"
       },
       "id": "ONTO-SCEN-GATE-WRITEBACK",
       "priority": "P2",
@@ -3622,11 +3623,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
-        "todo": "2026-07-05T11:18:19.882Z"
+        "todo": "2026-07-05T11:18:19.882Z",
+        "wip": "2026-07-05T13:46:30.172Z"
       },
       "id": "QUERY30-RULES",
       "priority": "P1",
@@ -3683,9 +3685,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "PANORAMA-SLICE-BACKFILL",
-      "at": "2026-07-05T13:45:52.087Z"
+      "cmd": "WIP",
+      "id": "ONTO-SCEN-GATE-WRITEBACK",
+      "at": "2026-07-05T13:46:30.253Z"
     }
   }
 }
