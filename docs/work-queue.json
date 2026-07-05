@@ -3526,13 +3526,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
         "todo": "2026-07-05T09:18:30.470Z",
         "wip": "2026-07-05T09:31:54.686Z",
-        "built": "2026-07-05T10:21:41.185Z"
+        "built": "2026-07-05T10:21:41.185Z",
+        "done": "2026-07-05T11:55:22.498Z"
       },
       "id": "GRAPH-PANORAMA-ONLY",
       "priority": "P1",
@@ -3668,9 +3669,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "QUEUE",
-      "id": "彻查纠偏×2",
-      "at": "2026-07-05T11:51:47.608Z"
+      "cmd": "DONE",
+      "id": "GRAPH-PANORAMA-ONLY",
+      "at": "2026-07-05T11:55:22.499Z"
     }
   }
 }
