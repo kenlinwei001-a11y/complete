@@ -3257,8 +3257,8 @@
     {
       "id": "PROV-REF-INTEGRITY",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
@@ -3278,6 +3278,9 @@
             "assert": "齿: ref解析单测(数字索引→红)·逐KPI provId唯一·evaluate_rules挂载断言。"
           }
         ]
+      },
+      "at": {
+        "wip": "2026-07-05T06:39:16.027Z"
       }
     },
     {
@@ -3374,10 +3377,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "LAUNCHER-SLOT-TRUTH",
-      "at": "2026-07-05T06:34:35.423Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "PROV-REF-INTEGRITY",
+      "at": "2026-07-05T06:39:16.027Z"
     }
   }
 }
