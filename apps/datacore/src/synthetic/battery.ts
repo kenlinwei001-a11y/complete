@@ -1212,6 +1212,27 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
     { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: { maxChangeoverMin: 120 } },
     { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {} },
     { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: { assumeTolerancePct: 0.05 } },
+    // QUERY30 缺口② C34–C50（DESIGN-query30 §2.3 · 17 条跨切片多跳推演约束）：全部 params 参数化（RulesPage 可见可改），
+    // expression 真接求解器 evaluate_rules（SOLVER_RULE_REFS + service.ts ruleEvalPayload：measured 命名空间来自
+    // 调用方真实业务输入或求解器真实产出，threshold 由 rule.params 注入 → 改 param 即改裁决；命名空间不在场 → 诚实 NOT_APPLICABLE，
+    // 不冒充 PASS·红线 RL5）。C42/C45/C50 另接 S2 审批链（BATTERY_ACTION_TYPES.checkRules → submit 预检 BLOCK 短路）。
+    { key: "C34", name: "挤占优先级不变量", expression: "Displace.highPriDisplaceDays > maxDisplaceDays", severity: "BLOCK", params: { maxDisplaceDays: 5 } },
+    { key: "C35", name: "重大变更须≥2方案", expression: "PlanSet.schemeCount < minSchemes", severity: "BLOCK", params: { minSchemes: 2 } },
+    { key: "C36", name: "锁价期现金敞口上限", expression: "LockedPrice.cashExposure > maxLockedExposure", severity: "BLOCK", params: { maxLockedExposure: 200 } },
+    { key: "C37", name: "违约金/毛利权衡线", expression: "Tradeoff.netGain < minNetGain", severity: "BLOCK", params: { minNetGain: 0 } },
+    { key: "C38", name: "供应商集中度红线", expression: "Supplier.concentrationPct > concentrationRedline", severity: "WARN", params: { concentrationRedline: 0.6 } },
+    { key: "C39", name: "连败批次自动隔离", expression: "LabTest.consecutiveFails > maxConsecutiveFails", severity: "BLOCK", params: { maxConsecutiveFails: 2 } },
+    { key: "C40", name: "检修逾期设备禁排产", expression: "Maint.overdueDays > maxOverdueDays", severity: "BLOCK", params: { maxOverdueDays: 0 } },
+    { key: "C41", name: "加班时长合规上限", expression: "Labor.overtimeHours > overtimeCapHours", severity: "WARN", params: { overtimeCapHours: 36 } },
+    { key: "C42", name: "信用上调审批链", expression: "CreditUplift.upliftPct > approvalThresholdPct", severity: "BLOCK", params: { approvalThresholdPct: 0.1 } },
+    { key: "C43", name: "认证外包质量等效门", expression: "CertOutsource.equivalenceScore < minEquivalence", severity: "BLOCK", params: { minEquivalence: 0.9 } },
+    { key: "C44", name: "谷段迁移不破交期", expression: "OffPeak.deliverySlipDays > maxSlipDays", severity: "WARN", params: { maxSlipDays: 0 } },
+    { key: "C45", name: "自动对策仅生成草稿", expression: "AutoAction.autoExecutedCount > maxAutoExecute", severity: "BLOCK", params: { maxAutoExecute: 0 } },
+    { key: "C46", name: "SOP final 版锁定", expression: "Sop.postFinalEdits > maxPostFinalEdits", severity: "BLOCK", params: { maxPostFinalEdits: 0 } },
+    { key: "C47", name: "跨期方案多期联检", expression: "CrossPeriod.nextPeriodDeviationPct > maxCarryDeviation", severity: "WARN", params: { maxCarryDeviation: 0.1 } },
+    { key: "C48", name: "复线观察期重停", expression: "Observe.rebreaks > maxRebreaks", severity: "BLOCK", params: { maxRebreaks: 0 } },
+    { key: "C49", name: "断料停线损失口径统一", expression: "StopLoss.caliberVariancePct > maxCaliberVariance", severity: "WARN", params: { maxCaliberVariance: 0.05 } },
+    { key: "C50", name: "降级期高危动作双签", expression: "Degrade.unsignedHighRiskActions > maxUnsigned", severity: "BLOCK", params: { maxUnsigned: 0 } },
   ],
   scenarioSeed: { views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"], intents: [] },
   features: [...ALL_FEATURE_KEYS],
@@ -1357,6 +1378,45 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
+  // QUERY30 缺口② C42 信用上调审批链（DESIGN-query30 §2.3 Q12）：信用额度上调超阈须经 S2 审批；
+  // submit 预检 C42（upliftPct>approvalThresholdPct）BLOCK 即拒（防越权直改额度）。payload 携 CreditUplift 命名空间真值。
+  {
+    key: "信用额度上调",
+    name: "信用额度上调",
+    paramsSchema: {
+      type: "object",
+      required: ["customerId", "CreditUplift"],
+      properties: { customerId: { type: "string" }, CreditUplift: { type: "object" }, reason: { type: "string" } },
+    },
+    checkRules: ["C42"] as string[],
+    approvalChain: [{ role: "planner" }, { role: "admin" }],
+  },
+  // QUERY30 缺口② C45 自动对策仅生成草稿（DESIGN-query30 §2.3 Q18）：ScenarioTrigger 自动对策必经 S2 审批执行，
+  // submit 预检 C45（autoExecutedCount>maxAutoExecute=0）BLOCK 即拒（防自动化越权直执行）。
+  {
+    key: "执行自动对策",
+    name: "执行自动对策",
+    paramsSchema: {
+      type: "object",
+      required: ["triggerId", "AutoAction"],
+      properties: { triggerId: { type: "string" }, AutoAction: { type: "object" }, comboRef: { type: "string" } },
+    },
+    checkRules: ["C45"] as string[],
+    approvalChain: [{ role: "planner" }, { role: "admin" }],
+  },
+  // QUERY30 缺口② C50 降级期高危动作双签（DESIGN-query30 §2.3 Q30）：关键数据源降级期间高危决策须双签，
+  // submit 预检 C50（unsignedHighRiskActions>maxUnsigned=0）BLOCK 即拒（无双签的高危动作不得执行）。
+  {
+    key: "降级期高危决策",
+    name: "降级期高危决策",
+    paramsSchema: {
+      type: "object",
+      required: ["decisionRef", "Degrade"],
+      properties: { decisionRef: { type: "string" }, Degrade: { type: "object" }, sourceKey: { type: "string" } },
+    },
+    checkRules: ["C50"] as string[],
+    approvalChain: [{ role: "planner" }, { role: "admin" }],
+  },
 ];
 
 /** 模板规则的 scopeObjectTypes（合成种子使用；默认 Order）。 */
@@ -1391,6 +1451,24 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C22: ["Order"],
   C24: ["Quote", "DemandSegment"],
   C25: ["ExternalSignal"],
+  // QUERY30 缺口② C34–C50 作用域（与 expression measured 命名空间一致；含 QUERY30-ONTOLOGY-EXT 新类型 Supplier）。
+  C34: ["Order", "Line"],
+  C35: ["Order"],
+  C36: ["Order", "Customer"],
+  C37: ["Order"],
+  C38: ["Supplier", "Material"],
+  C39: ["LabTest", "MaterialBatch"],
+  C40: ["MaintPlan", "Equipment"],
+  C41: ["LaborShift", "Process"],
+  C42: ["Customer"],
+  C43: ["Certification"],
+  C44: ["EnergyMeter", "Order"],
+  C45: ["ScenarioTrigger", "Action"],
+  C46: ["SopVersionRow"],
+  C47: ["PlanTarget", "AnnualScenario"],
+  C48: ["Process", "Metric"],
+  C49: ["Shipment", "Order"],
+  C50: ["DataSourceHealth", "Action"],
 };
 
 /**

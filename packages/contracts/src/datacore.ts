@@ -198,28 +198,30 @@ export type RuleEntry = z.infer<typeof RuleEntrySchema>;
  * （sop_balance 是工作流非求解器，其规则引用由 sop 工作流声明，不在此表。）
  */
 export const SOLVER_RULE_REFS: Record<string, string[]> = {
-  capacity_forecast: ["C01", "C02", "C03", "C09"],
+  // QUERY30 缺口② C34–C50（DESIGN-query30 §2.3）挂到语义匹配的现有求解器 → 经 evaluateRuleRefs 真评估路径
+  //（measured 命名空间在场即 PASS/WARN/BLOCK，不在场诚实 NOT_APPLICABLE）。灭"卡面挂名"——规则真进求解器结论。
+  capacity_forecast: ["C01", "C02", "C03", "C09", "C50"],
   // 轨N 收尾（G-10 诚实边界闭合）：capacity_rollup 登记 C01/C02 → 经 evaluateRuleRefs 真评估路径。
   // 其产能上限/串并口径字段（Line.designCeilingWan / Process.parallelThroughput）属 forecast 口径、不在 rollup
   // 输出 payload → 诚实落 NOT_APPLICABLE（与 6 个 NA 求解器同范式·RL5 不伪造尺度），杜绝"装饰 ruleRefs 标签不评估"。
   capacity_rollup: ["C01", "C02"],
-  affected_orders: ["C05"],
+  affected_orders: ["C05", "C34", "C37", "C49"],
   risk_timeline: ["C06", "C11"],
-  plan_audit: ["C15", "C16", "C18", "C21", "C23"],
-  plan_generate: ["C08", "C15", "C18"],
-  mitigation_select: ["C08", "C10"],
-  cert_schedule: ["C04", "C26"],
+  plan_audit: ["C15", "C16", "C18", "C21", "C23", "C46"],
+  plan_generate: ["C08", "C15", "C18", "C35"],
+  mitigation_select: ["C08", "C10", "C35", "C45"],
+  cert_schedule: ["C04", "C26", "C43"],
   kit_readiness: ["C06", "C16"],
-  lta_gap: ["C16", "C27"],
+  lta_gap: ["C16", "C27", "C38"],
   inventory_optimize: ["C16", "C28"],
-  changeover_sequence: ["C22", "C29"],
-  yield_diagnosis: ["C30"],
-  maintenance_stagger: ["C11"],
-  outsourcing_split: ["C08", "C31"],
+  changeover_sequence: ["C22", "C29", "C44"],
+  yield_diagnosis: ["C30", "C39", "C48"],
+  maintenance_stagger: ["C11", "C40"],
+  outsourcing_split: ["C08", "C31", "C41"],
   quote_margin: ["C15", "C24"],
-  credit_exposure: ["C13", "C32"],
+  credit_exposure: ["C13", "C32", "C36", "C42"],
   capex_scenario: ["C18", "C23"],
-  quarterly_gap: ["C08", "C29"],
+  quarterly_gap: ["C08", "C29", "C47"],
   carbon_footprint: ["C33"],
 };
 

@@ -238,7 +238,11 @@ export class RulesService {
       let explanation: string;
       try {
         parseExpression(rule.expression);
-        violated = evaluateExpression(rule.expression, { payload });
+        // G-10 规则即引用：把规则命名阈值 params（bare 字段）flat 注入本条规则求值载荷，使
+        // expression 的阈值项可解析（改 param 即改裁决）——与求解器 evaluateRuleRefs 同款 param 齿。
+        // 参数名全域唯一（battery.ts rules[]），per-rule 注入无跨规则冲突；无 params 者零改。
+        const evalPayload = rule.params ? { ...payload, ...rule.params } : payload;
+        violated = evaluateExpression(rule.expression, { payload: evalPayload });
         explanation = violated
           ? `${rule.key} ${rule.name}: 违反约束（${rule.expression}）`
           : `${rule.key} ${rule.name}: 通过`;

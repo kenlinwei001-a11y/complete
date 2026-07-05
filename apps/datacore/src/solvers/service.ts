@@ -26,6 +26,18 @@ import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs, extendedDataMode } from "./extended.js";
 
 /**
+ * QUERY30 缺口② C34–C50（DESIGN-query30 §2.3）：规则码 → expression measured 命名空间。
+ * ruleEvalPayload 据此判定「measured 命名空间是否在场」——在场才注入该规则 params 阈值（改 param 即改裁决），
+ * 不在场保持 NOT_APPLICABLE（诚实·不冒充 PASS·RL5）。
+ */
+const QUERY30_RULE_NS: Record<string, string> = {
+  C34: "Displace", C35: "PlanSet", C36: "LockedPrice", C37: "Tradeoff",
+  C38: "Supplier", C39: "LabTest", C40: "Maint", C41: "Labor", C42: "CreditUplift",
+  C43: "CertOutsource", C44: "OffPeak", C45: "AutoAction", C46: "Sop",
+  C47: "CrossPeriod", C48: "Observe", C49: "StopLoss", C50: "Degrade",
+};
+
+/**
  * WO-2：读出型求解器——其输出即 Base/Line/Process/Equipment 拓扑聚合本身（非以订单为主结果）。
  * 这些经 loadContext 套 A6 行级过滤（base_manager 只见本基地）；其余求解器 A6 经 visibleOrders 作用于订单结果。
  */
@@ -2254,6 +2266,28 @@ export class SolverService {
       base.AnnualScenario = { capex: totalCapex };
       // C18 AnnualScenario.cashCushion<50：现金垫底线 —— capex_scenario 算项目级现金流 IRR/NPV，不产出企业级现金垫 cashCushion
       //   （现金垫是 plan_audit/plan_generate 的年度口径，不在 CAPEX 情景输出）→ NOT_APPLICABLE（诚实）。
+    }
+    // QUERY30 缺口② C34–C50（DESIGN-query30 §2.3）：expression 形如 `NS.measured OP thresholdParam`，
+    // measured 命名空间来自调用方真实业务输入（同 C33 destination 范式·求解器不造 measured）或求解器真实产出（C35 方案数 / C37 净增益，下方派生）；
+    // threshold（bare 字段）由 rule.params 注入 → **改 param 即改裁决**。命名空间不在场 → 不注入 → measured/threshold 皆缺 → 诚实 NOT_APPLICABLE（不冒充 PASS·RL5）。
+    // C35 方案数下限：measured=求解器真实产出的方案数（plan_generate schemes / mitigation_select plans）。
+    if (solverKey === "plan_generate") {
+      const schemes = Array.isArray(out.schemes) ? out.schemes : [];
+      base.PlanSet = { ...(base.PlanSet as Record<string, unknown>), schemeCount: schemes.length };
+    } else if (solverKey === "mitigation_select") {
+      const plans = Array.isArray(out.plans) ? out.plans : [];
+      base.PlanSet = { ...(base.PlanSet as Record<string, unknown>), schemeCount: plans.length };
+    }
+    // C37 净增益（DSL 无算术 → 此处派生）：netGain = 增量毛利 − 违约金合计（args 真实输入）。
+    if (base.Tradeoff && typeof base.Tradeoff === "object" && !Array.isArray(base.Tradeoff)) {
+      const tr = base.Tradeoff as Record<string, unknown>;
+      base.Tradeoff = { ...tr, netGain: num(tr.incrementalMargin) - num(tr.penaltyTotal) };
+    }
+    // measured 命名空间在场 → 注入该规则 params（阈值·bare 字段）；否则跳过（诚实 NOT_APPLICABLE）。
+    for (const key of SOLVER_RULE_REFS[solverKey] ?? []) {
+      const ns = QUERY30_RULE_NS[key];
+      if (!ns || base[ns] === undefined) continue;
+      Object.assign(base, c.rules?.[key]?.params ?? {});
     }
     // 以下 5 求解器：其声明的规则码（SOLVER_RULE_REFS）所需字段在求解器输出口径中全部不存在 → 整体诚实 NOT_APPLICABLE，不伪造尺度凑 PASS（红线 RL5）。
     //  · risk_timeline(C06 物料齐套缺口 / C11 检修缓冲)：张力曲线求解器，输出 cards/series，不计算物料缺口或检修缓冲天数。
