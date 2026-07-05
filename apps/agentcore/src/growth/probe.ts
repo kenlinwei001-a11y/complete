@@ -19,6 +19,40 @@ export const FILL: Record<GapCode, string> = {
   OTHER: "人工核实内部错误",
 };
 
+/**
+ * ONTO-SCEN-GROWTH-LOOP（PRD-scenario-ontogenesis §2.5/§2.6）· 缺口二分处置单一来源（R16 · G-9）。
+ * 每个缺口码**显式**落在 AUTO_DERIVE（系统能自己确定性派生）或 NEEDS_HUMAN（缺真实业务实体/缺功能→真人正门/工单）
+ * 一侧——**没有第三种"静默残缺"**（穷尽 switch，新增缺口码未分类即编译期红，守 R16「绝不静默残缺」）。
+ *
+ *  - AUTO_DERIVE：意图/计划可由卡基因组 + 出厂目录**确定性重建**（re-seed + re-publish + growScenario 重验），
+ *    launch 时触发倒序发育自动补齐→升相；补不上（如幽灵意图无出厂来源）时**回落** NEEDS_HUMAN 开工单（仍不静默）。
+ *  - NEEDS_HUMAN：缺真实业务数据（真人正门）/ 缺规则、切片本体链路、求解器、渲染形状、领域能力（施工工单）/ 需人工核实。
+ */
+export type GapDisposition = "AUTO_DERIVE" | "NEEDS_HUMAN";
+export function gapDisposition(gapCode: GapCode): GapDisposition {
+  switch (gapCode) {
+    // 卡声明闭包可确定性重建：意图/计划（seedIntentsAndPlans 单源 + catalog 重发布，R6 幂等）。
+    case "NO_INTENT":
+    case "NO_PLAN":
+      return "AUTO_DERIVE";
+    // 缺真实业务实体 / 缺功能 / 需人工核实 → 真人正门 / 施工工单（绝不合成冒充）。
+    case "EMPTY_DATA":
+    case "NO_RULE":
+    case "NO_SLICE":
+    case "SOLVER_NOT_FOUND":
+    case "SHAPE_MISMATCH":
+    case "NO_CAPABILITY":
+    case "OTHER":
+    case "ANSWERABLE": // 非缺口（verdict 处理），二分穷尽性占位——落人工侧最保守。
+      return "NEEDS_HUMAN";
+    default: {
+      // 穷尽性哨兵：新增 GapCode 未在此分类 → 编译期 never 违规（= 无静默残缺的类型级保证）。
+      const _exhaustive: never = gapCode;
+      return _exhaustive;
+    }
+  }
+}
+
 /** 错误码/消息 → 缺口码（启发式，按 QOS 实跑产生的真实错误归类）。 */
 function codeFromError(errCode: string, errMsg: string): GapCode {
   const s = `${errCode} ${errMsg}`.toLowerCase();

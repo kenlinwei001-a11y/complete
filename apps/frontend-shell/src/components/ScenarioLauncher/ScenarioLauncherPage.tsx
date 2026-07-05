@@ -51,23 +51,48 @@ export default function ScenarioLauncherPage() {
             {domain} · {cards.length}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-            {cards.map((c) => (
-              <div key={c.sNo} className="panel" data-testid={`launcher-card-${c.sNo}`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {cards.map((c) => {
+              // ONTO-SCEN-GROWTH-LOOP §2.6（R3 诚实分层）：仅 GOVERNED 默认可用；PROVISIONAL/ADVISORY 诚实标
+              // 「发育中·未审核」——默认不可直接推演（按钮 disabled），改出「查看发育」深链（非隐藏·非假可用）。
+              const developing = c.maturity !== undefined && c.maturity !== "GOVERNED";
+              return (
+              <div key={c.sNo} className="panel" data-testid={`launcher-card-${c.sNo}`} data-maturity={c.maturity ?? "PROVISIONAL"} style={{ display: "flex", flexDirection: "column", gap: 6, ...(developing ? { opacity: 0.92 } : {}) }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <b className="mono">{c.sNo}</b>
                   <span style={{ fontWeight: 600 }}>{c.name}</span>
                   {c.willProduceDraft && <span className="badge amber" title="将产生待审批草稿">写回</span>}
+                  <span
+                    className={`badge ${developing ? "amber" : "green"}`}
+                    data-testid={`launcher-maturity-${c.sNo}`}
+                    title={developing ? "此卡尚未亲手跑通验证（发育中·未审核）" : "已亲手跑通验证（GOVERNED）"}
+                    style={{ marginLeft: "auto" }}
+                  >
+                    {developing ? "发育中·未审核" : "已验证"}
+                  </span>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--muted)" }}>{c.triggerQuestion}</div>
                 <div style={{ fontSize: 10.5, color: "var(--muted2)" }}>
                   {c.summary}
                   {c.solver && <span className="mono"> · {c.solver}</span>}
                 </div>
-                <button className="btn sm primary" style={{ alignSelf: "flex-start", marginTop: 2 }} data-testid={`launcher-launch-${c.sNo}`} onClick={() => void launch(c)}>
-                  ▶ 启动
-                </button>
+                {developing && (
+                  <div className="muted" data-testid={`launcher-developing-hint-${c.sNo}`} style={{ fontSize: 10.5 }}>
+                    此卡尚未亲手跑通验证（发育中），默认不可直接推演；发育升相后自动可用。
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
+                  <button className="btn sm primary" style={{ alignSelf: "flex-start" }} data-testid={`launcher-launch-${c.sNo}`} disabled={developing} onClick={() => void launch(c)}>
+                    ▶ 启动
+                  </button>
+                  {developing && (
+                    <button className="btn sm" data-testid={`launcher-developing-${c.sNo}`} onClick={() => navigate(`/admin/scenes?scenario=${encodeURIComponent(c.sNo)}`)}>
+                      查看发育 →
+                    </button>
+                  )}
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}

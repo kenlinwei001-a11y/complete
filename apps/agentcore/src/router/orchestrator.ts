@@ -236,7 +236,12 @@ export interface OrchestratorDeps {
  * 传入的 task 是**终态形状**（status/error 已就位，可能尚未落库）——hook 纯读 task、只写场景侧制品。
  */
 export type ScenarioGapBlock = Extract<AnswerBlock, { type: "gap" }>;
-export type ScenarioGapHook = (task: QueryTask) => Promise<ScenarioGapBlock | null>;
+/**
+ * ONTO-SCEN-GROWTH-LOOP（§2.5/§2.6）：钩收到终态 task **⊕ 提交时的 RequestAuth**——AUTO_DERIVE 支需以真 OBO
+ * 身份就地倒序发育 growScenario（重跑 triggerQuestion 真投影出 KPI，非合成/兜底）。auth 由编排器按 taskId 随任务
+ * 携带（`runAuth`，非内部任务才存·runPipeline 结束即清），缺失（异常路径）时钩降级为纯 NEEDS_HUMAN 开票（不静默）。
+ */
+export type ScenarioGapHook = (task: QueryTask, auth?: RequestAuth) => Promise<ScenarioGapBlock | null>;
 
 /** §2.2：留痕去重（同 kind+key+version 只记一次，保持首次出现顺序）。 */
 export function dedupeRefs(refs: ResolvedRef[]): ResolvedRef[] | undefined {
@@ -293,6 +298,8 @@ export class Orchestrator {
   private readonly cancelled = new Set<string>();
   /** ONTO-SCEN-LAUNCH-DET §2.5：场景缺口处置钩（server.ts 装配；未装配=零行为变化）。 */
   private scenarioGap?: ScenarioGapHook;
+  /** ONTO-SCEN-GROWTH-LOOP §2.5：非内部任务的提交身份（按 taskId），供缺口钩 AUTO_DERIVE 支以真 OBO 身份重验；runPipeline 结束清。 */
+  private readonly runAuth = new Map<string, RequestAuth>();
 
   constructor(private readonly deps: OrchestratorDeps) {}
 
@@ -387,6 +394,17 @@ export class Orchestrator {
   private async runPipeline(taskId: string, auth: RequestAuth): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task || task.status !== "ROUTING") return;
+    // ONTO-SCEN-GROWTH-LOOP §2.5：非内部（真用户点卡）任务携身份供缺口钩 AUTO_DERIVE 支就地倒序发育重验；
+    // 本方法结束即清（缺口处置在 completeScenarioGap/failTask 内联 await 完成，早于此 finally，故读得到）。
+    if (!task.internal) this.runAuth.set(taskId, auth);
+    try {
+      await this.runPipelineInner(taskId, auth, task);
+    } finally {
+      this.runAuth.delete(taskId);
+    }
+  }
+
+  private async runPipelineInner(taskId: string, auth: RequestAuth, task: QueryTask): Promise<void> {
     const pkg = (await this.deps.repos.packages.get(task.packageId)) as ScenarioPackage;
     const scene = await this.deps.repos.sceneEntries.byView(task.tenantId, task.context.view);
     const mode = scene?.mode ?? "WORKFLOW_FIRST";
@@ -1415,7 +1433,8 @@ export class Orchestrator {
     const task = (await this.deps.repos.tasks.get(taskRef.id)) ?? taskRef;
     if (task.answer) return false;
     try {
-      const block = await this.scenarioGap({ ...task, status: "FAILED", error });
+      // ONTO-SCEN-GROWTH-LOOP §2.5：随任务携提交身份 → 缺口钩 AUTO_DERIVE 支以真 OBO 身份重验（缺失则钩降级纯开票）。
+      const block = await this.scenarioGap({ ...task, status: "FAILED", error }, this.runAuth.get(taskRef.id));
       if (!block) return false;
       const answer: Answer = { trustLevel: "AGENT_EXPLORATORY", blocks: [block], provenance: [], unverifiedNumerics: false };
       await this.deps.repos.tasks.patch(task.id, { answer });

@@ -797,6 +797,8 @@ export interface ScenarioCardVM {
   summary: string;
   willProduceDraft: boolean;
   inactive?: boolean;
+  /** ONTO-SCEN-GROWTH-LOOP §2.6（R3 诚实分层）：卡发育相位——仅 GOVERNED 默认可用；PROVISIONAL/ADVISORY 诚实标「发育中」默认不可直接跑。 */
+  maturity?: "GOVERNED" | "ADVISORY" | "PROVISIONAL" | string;
   presetContext: { targetView: string; selectedObjects: { objectType: string; objectId: string; label?: string }[]; slotPresets: Record<string, unknown> };
   /** LAUNCHER-GROUNDED-QUESTIONS：接地后仍不可答（引用对象类型在租户零实例）→ 归入"待补数据"区、不作可推演卡。 */
   needsData?: boolean;

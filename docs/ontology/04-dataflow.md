@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §4` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `fc5bc594510f2208`。
+> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `06ca535834cb5d85`。
 
 ---
 
@@ -26,8 +26,8 @@
 | L4 | `scene_entry.updated` | 场景入口编辑 | IN_SESSION | scenarios, scene-entries | — |
 | L4 | `scenario.published` | 场景发布（升一等对象） | IN_SESSION | scenarios, scene-entries, intent-catalog | — |
 | L4 | `scenario.retired` | 场景退役 | IN_SESSION | scenarios, scene-entries, intent-catalog | — |
-| L4 | `scenario.growth_triggered` | 场景发育闭环·缺件卡 grow 自动触发 runGrowthLoop（O9：探针→补齐→重跑→收敛重验，缺则诚实定级 PROVISIONAL+开工单）。WO ONTO-SCEN-GROW：双通道=SSE 场景通道 ⊕ 域事件 outbox（`emitDomainEvent`→`/b/v1/outbox`） | IN_SESSION | scenarios, growth-ledger, growth-tickets | — |
-| L4 | `scenario.matured` | 场景发育闭环·grow A10 验证 triggerQuestion 经 QOS 正序实跑真出答案（非空/非占位/非探索兜底·dataBearing）→ maturity=GOVERNED 上架（WO ONTO-SCEN-GROW：SSE ⊕ outbox 双通道） | IN_SESSION | scenarios, scene-entries, intent-catalog | — |
+| L4 | `scenario.growth_triggered` | 场景发育闭环·缺件卡 grow 自动触发 runGrowthLoop（O9：探针→补齐→重跑→收敛重验，缺则诚实定级 PROVISIONAL+开工单）。**WO ONTO-SCEN-GROWTH-LOOP（§2.5 AUTO_DERIVE 支）**：launch 正序点卡暴露的 AUTO_DERIVE 缺口（意图/计划可确定性重建）由缺口钩就地触发倒序发育（`deriveScenarioCapability`→`growScenario`），发 `source=launch`（正序喂倒序·越用越大）。WO ONTO-SCEN-GROW：双通道=SSE 场景通道 ⊕ 域事件 outbox（`emitDomainEvent`→`/b/v1/outbox`） | IN_SESSION | scenarios, growth-ledger, growth-tickets | — |
+| L4 | `scenario.matured` | 场景发育闭环·grow A10 验证 triggerQuestion 经 QOS 正序实跑真出答案（非空/非占位/非探索兜底·dataBearing）→ maturity=GOVERNED 上架（WO ONTO-SCEN-GROW：SSE ⊕ outbox 双通道）。**WO ONTO-SCEN-GROWTH-LOOP**：launch AUTO_DERIVE 自动补齐 + 重验后升相 GOVERNED 同发本事件（`growScenario` 单源，launch/grow 两入口共用） | IN_SESSION | scenarios, scene-entries, intent-catalog | — |
 | L4 | `scenario.gap_detected` | 场景发育闭环·grow 验证未过 → PROVISIONAL/ADVISORY + gapCode（诚实缺口不静默，NEEDS_HUMAN 关联 GrowthTicket；WO ONTO-SCEN-GROW：SSE ⊕ outbox 双通道） | NOTIFY | scenarios, growth-tickets, notifications | — |
 | L5 | `action.pending_approval` | Action 提交 | NOTIFY | notifications, approval-inbox | — |
 | L5 | `action.executed` | Action 写回 | IN_SESSION | dashboard, object-queries | DL4 |

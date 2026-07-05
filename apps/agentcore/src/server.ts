@@ -57,14 +57,14 @@ import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 import { agentRuleRefs, planStepRuleRefs, skillRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
-import { classifyGap, FILL } from "./growth/probe.js";
+import { classifyGap, FILL, gapDisposition } from "./growth/probe.js";
 import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { seedScenarios, scenarioFromPackScenario } from "./scenarios-catalog.js";
-import { deriveScenarioGenomes, ensureScenarioPackageSeed } from "./mocks/seed.js";
+import { deriveScenarioGenomes, ensureScenarioPackageSeed, seedIntentsAndPlans } from "./mocks/seed.js";
 import { deriveSliceTargetCandidates } from "@platform/contracts";
 import { groundScenario, type GroundingContext, type GroundObject } from "./scenario-grounding.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
@@ -2524,6 +2524,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
           defaultAgentId: s.defaultAgentId,
           presetContext: { targetView: s.presetContext.targetView, selectedObjects: g.selectedObjects, slotPresets: g.slotPresets },
           status: s.status,
+          // ONTO-SCEN-GROWTH-LOOP §2.6（R3 诚实分层）：下发相位 → 启动器逐相位区分（GOVERNED 默认可用·
+          // PROVISIONAL/ADVISORY 诚实标「发育中·未审核」默认不可直接跑）。缺省 PROVISIONAL（未发育=最保守）。
+          maturity: s.maturity ?? "PROVISIONAL",
           willProduceDraft: s.riskLevel === "ACTION_DRAFT",
           inactive: !viewAllowed(enabled, s.targetView),
           // 接地结果：needsData=接地后仍不可答（引用类型零实例）→ 前端归入"待补数据"区。
@@ -2648,15 +2651,53 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { dataOk, advisoryAnswer, ontologyOk, capabilityOk, vstatus, vpath, gapCode, answerPreview, taskId, closureIssues: closure.issues };
   };
 
-  const growScenario = async (a: RequestAuth, sc: Scenario): Promise<ScenarioOntogenesisRun> => {
+  // ONTO-SCEN-GROWTH-LOOP（§2.5 AUTO_DERIVE 支）：从**出厂目录单一来源**（seedIntentsAndPlans·R6 幂等）确定性重建
+  // 本卡意图/计划到 PUBLISHED——把被退发布/删除/降 DRAFT 的可派生能力恢复原状（区别于缺真实业务实体/求解器=NEEDS_HUMAN）。
+  // 与 ensureScenarioPackageSeed 同源接地（groundScenario 接地槽），使重建计划 invoke_solver 入参与卡面一致（R14）。
+  // 返回 true=已确定性重建；false=幽灵能力（无出厂来源，不可派生）→ 调用方回落 NEEDS_HUMAN（不静默残缺）。
+  const deriveScenarioCapability = async (a: RequestAuth, sc: Scenario): Promise<boolean> => {
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    if (!pkg) return false;
+    let groundedSlots: Map<string, Record<string, unknown>> | undefined;
+    try {
+      const gctx = await buildGroundingContext(a);
+      const g = groundScenario({ triggerQuestion: sc.triggerQuestion, presetContext: sc.presetContext }, gctx);
+      groundedSlots = new Map([[sc.intentKey, g.slotPresets]]);
+    } catch {
+      /* 接地不可用 → 用出厂默认 slotPresets（仍确定性 R6） */
+    }
+    const { intents, plans } = seedIntentsAndPlans(a.tenantId, undefined, groundedSlots);
+    const factoryIntent = intents.find((i) => i.key === sc.intentKey);
+    if (!factoryIntent) return false; // 无出厂来源 → 不可确定性重建
+    const factoryPlan =
+      (factoryIntent.planId && plans.find((p) => p.id === factoryIntent.planId)) ||
+      plans.find((p) => p.key === sc.intentKey);
+    if (factoryPlan) {
+      const existP = await deps.repos.plans.get(factoryPlan.id);
+      if (!existP) await deps.repos.plans.insert({ ...factoryPlan, status: "PUBLISHED" });
+      else if (deps.repos.plans.update) await deps.repos.plans.update({ ...factoryPlan, status: "PUBLISHED" });
+    }
+    const existI = await deps.repos.intents.get(factoryIntent.id);
+    const rebuilt = { ...factoryIntent, status: "PUBLISHED" as const, updatedAt: new Date().toISOString() };
+    if (!existI) await deps.repos.intents.insert(rebuilt);
+    else await deps.repos.intents.update(rebuilt);
+    return true;
+  };
+
+  const growScenario = async (a: RequestAuth, sc: Scenario, opts?: { launchDerived?: boolean }): Promise<ScenarioOntogenesisRun> => {
     const runId = newId("sor");
     const ranAt = new Date().toISOString();
     let v = await verifyScenario(a, sc);
 
+    // ONTO-SCEN-GROWTH-LOOP §2.5：launch 正序点卡暴露的 AUTO_DERIVE 缺口驱动本次发育（正序喂倒序·越用越大）——
+    // 调用方已 deriveScenarioCapability 确定性重建意图/计划，此处标 growth.triggered=true 留痕（发育由点卡触发，非空转）。
+    const launchDerived = opts?.launchDerived === true;
+
     // O9（P3 wiring，G-9 收尾）：首验未通过 + 缺口可自动补（AUTO_DERIVE）→ 触发 runGrowthLoop（探针→补齐→重跑→收敛），
     // 收敛后重验一次；真出可验证答案才标 GOVERNED（RL4 不放水）。诚实门：补不上的卡保持 PROVISIONAL + 开 GrowthTicket，绝不假装 GOVERNED。
     // 复用 §289 同一套 probe/fill 引擎（buildGrowthLoopWiring，RL3/RL10 单源不分叉），被调 runGrowthLoop/fill 零重写（RL3）。
-    let growth: { triggered: boolean; terminalState?: string; rounds?: number; ticketId?: string } = { triggered: false };
+    let growth: { triggered: boolean; terminalState?: string; rounds?: number; ticketId?: string } =
+      launchDerived ? { triggered: true, terminalState: "DERIVED", rounds: 0 } : { triggered: false };
     // G-9 招牌：空租户根因（无对象世界）使卡路由落 path-B、gapCode 落 OTHER/NO_INTENT——本身不在可自动补集，
     // 但"世界全空"是确定可自动补的（经合成正门 provision 起步世界，见 fill）。故首验未过且租户世界全空 → 也触发
     // runGrowthLoop（fill 首轮 provision world → 重跑路由归位 → 收敛）。仅探测计数，零行业常数（R14）。
@@ -2821,7 +2862,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   //  ③ 通知+收件箱（仅新开票时一次）：B→A 服务间 notify-role → NotificationService 角色扇出 → 前端铃铛/通知中心，深链工单；
   //  ④ 返回 gap 块（附 scenario{ticketId,maturity}）→ 前端 GapCard 渲染「此卡发育中：缺 X · 已建工单 #N」
   //     ——替代无信息死答（全站零死答串，ontogenesis:check grep 门守回潮）。
-  deps.orchestrator.setScenarioGap(async (task) => {
+  deps.orchestrator.setScenarioGap(async (task, auth) => {
     const scKey = task.context.scenarioKey;
     if (!scKey) return null;
     const sc = await deps.repos.scenarios.byKey(task.tenantId, scKey);
@@ -2830,6 +2871,27 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const primary = report.findings.find((f) => f.blocking) ?? report.findings[0];
     if (report.verdict === "ANSWERABLE" || !primary) return null;
     const now = new Date().toISOString();
+
+    // ONTO-SCEN-GROWTH-LOOP（§2.5/§2.6）· 缺口**二分处置**（显式无静默残缺·`gapDisposition` 穷尽单源）：
+    //  · AUTO_DERIVE：意图/计划可确定性重建 → 就地倒序发育（deriveScenarioCapability 从出厂目录恢复 PUBLISHED →
+    //    growScenario 重验 A10）→ 升相 GOVERNED，零工单零降相，返回「已自动补齐」发育卡（grown=true·ticketId=null）；
+    //    补不上（幽灵能力/数据缺口）→ growScenario 诚实定级并留痕/开票，或回落下方 NEEDS_HUMAN 支（绝不静默残缺）。
+    //  · NEEDS_HUMAN：缺真实业务实体/能力 → 开 GrowthTicket + 降相 PROVISIONAL + 通知（既有支，下方）。
+    // 正序喂倒序（越用越大）：点卡暴露的缺口记录并驱动后续 growth，非一次性丢弃。auth 缺失（异常路径）→ 降级纯开票。
+    if (gapDisposition(primary.gapCode) === "AUTO_DERIVE" && auth) {
+      await deps.events.emit(sc.scenarioKey, "scenario.growth_triggered", { scenarioKey: sc.scenarioKey, gapCode: primary.gapCode, source: "launch" });
+      await emitDomainEvent(task.tenantId, "scenario.growth_triggered", { scenarioKey: sc.scenarioKey, gapCode: primary.gapCode, source: "launch" });
+      const rebuilt = await deriveScenarioCapability(auth, sc);
+      if (rebuilt) {
+        // growScenario = 留痕/重验/升相/事件（matured 或 gap_detected）+ 补不上时开票 的单一来源（不在此重造）。
+        const run = await growScenario(auth, sc, { launchDerived: true });
+        const grown = run.maturity === "GOVERNED";
+        const derivedTicketId = grown ? null : (run.gaps.find((g) => g.ticketId)?.ticketId ?? null);
+        return { type: "gap", report, scenario: { scenarioKey: sc.scenarioKey, name: sc.name, maturity: run.maturity, ticketId: derivedTicketId, grown } };
+      }
+      // rebuilt=false（幽灵能力·无出厂来源不可派生）→ 穿透到下方 NEEDS_HUMAN 开票支（诚实，不静默）。
+    }
+
     // ① 工单（NEEDS_HUMAN → GrowthTicket；幂等：同卡同码 OPEN 复用，深链 /admin/growth）
     const open = (await deps.repos.growthTickets.listByTenant(task.tenantId)).find(
       (t) => t.status === "OPEN" && t.gapCode === primary.gapCode && t.fromQuestion === sc.triggerQuestion,

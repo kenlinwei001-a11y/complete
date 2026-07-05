@@ -288,6 +288,11 @@ export const AnswerBlockSchema = z.discriminatedUnion("type", [
         maturity: z.string(),
         /** §2.5 NEEDS_HUMAN：已开 GrowthTicket 的 id（深链 /admin/growth）；无票 null。 */
         ticketId: z.string().nullable(),
+        /**
+         * ONTO-SCEN-GROWTH-LOOP（PRD-scenario-ontogenesis §2.5/§2.6，additive）：AUTO_DERIVE 缺口就地倒序发育
+         * 自动补齐 + 重验 → 升相 GOVERNED 时置 true（ticketId=null）——前端渲染「已自动补齐·发育升相」而非工单卡。
+         */
+        grown: z.boolean().optional(),
       })
       .optional(),
   }),
