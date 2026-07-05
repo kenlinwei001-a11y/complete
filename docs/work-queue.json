@@ -3122,6 +3122,32 @@
           }
         ]
       }
+    },
+    {
+      "id": "SLOT-CLARIFY-HUMANIZE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "blockReason": "",
+      "doc": "docs/PRD-launcher-grounded-questions.md",
+      "title": "槽位澄清人话化(裸内部key『请提供demandDelta』→人话+单位+示例)+改写问句继承卡preset",
+      "note": "用户亲报: 场景启动器点卡后自己输入问题→澄清弹『请提供demandDelta』裸英文内部参数名·不知何物。根因两层: ①slots.ts:354 fallback=`请提供${slot.name}`·而该槽 description(seed.ts:324『需求增量比例(0.2表示+20%)』)已有人话但澄清路径不用·也无单位/示例/取值说明; ②用户改写问句走自由路径时卡片 presetSlots(S01 demandDelta:0.2)未继承为默认→本不该问的槽被问。治: ①澄清提示优先级 clarifyPrompt??description??name·全部必填槽补 clarifyPrompt(人话+单位+示例+取值域·如『请提供需求增量比例: 0.2=+20%·可为负·仅数字』)·数字槽UI给占位示例; ②卡启动带自定义问句时 presetSlots 仍作默认注入(改写≠弃preset·仅用户显式给出的槽覆盖); ③齿检+门: 遍历全部 PUBLISHED intent 必填槽·无 clarifyPrompt 且无 description→红(防新增槽回潮裸key); 真浏览器: S01卡改写问句→不再被问demandDelta(preset继承)或被问时文案为人话含示例。",
+      "acceptance": {
+        "goal": "任何澄清反问都是人话(含单位/示例/取值域)·点卡改写问句不丢卡片默认槽。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "browser",
+            "assert": "S01卡输入自定义问句→要么不问demandDelta(preset继承)·要么澄清文案=人话含0.2示例; 全站无『请提供<英文camelCase>』形态澄清。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "门/齿: 遍历PUBLISHED intents必填槽断言有clarifyPrompt或description(缺→红); slots提示优先级单测; 四包绿。"
+          }
+        ]
+      }
     }
   ]
 }
