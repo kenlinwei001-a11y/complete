@@ -3571,13 +3571,14 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-nav-ia-reorg.md",
       "at": {
         "todo": "2026-07-05T09:18:30.471Z",
         "wip": "2026-07-05T12:44:11.190Z",
-        "built": "2026-07-05T13:45:52.087Z"
+        "built": "2026-07-05T13:45:52.087Z",
+        "done": "2026-07-05T15:56:23.349Z"
       },
       "id": "PANORAMA-SLICE-BACKFILL",
       "priority": "P1",
@@ -3669,7 +3670,7 @@
     {
       "id": "SANDBOX-RENAME-BASECARDS",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-frontend-visual-redesign.md",
       "title": "『预判推演看板』(/v/risk)改名『产能推演』+沙盘基地卡默认可见(转录证据纠偏)",
@@ -3677,7 +3678,8 @@
       "at": {
         "todo": "2026-07-05T11:22:12.756Z",
         "wip": "2026-07-05T11:56:54.037Z",
-        "built": "2026-07-05T13:28:58.564Z"
+        "built": "2026-07-05T13:28:58.564Z",
+        "done": "2026-07-05T15:56:23.296Z"
       },
       "blockReason": ""
     },
@@ -3700,9 +3702,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "BLOCKED",
-      "id": "QUERY30-RULES",
-      "at": "2026-07-05T15:53:16.073Z"
+      "cmd": "DONE",
+      "id": "PANORAMA-SLICE-BACKFILL",
+      "at": "2026-07-05T15:56:23.349Z"
     }
   }
 }
