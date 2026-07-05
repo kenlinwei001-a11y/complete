@@ -126,3 +126,36 @@ export function scenarioFromCard(card: ScenarioCard, tenantId = SEED_TENANT): im
 export function seedScenarios(tenantId = SEED_TENANT): import("@platform/contracts").Scenario[] {
   return SCENARIO_CATALOG.map((c) => scenarioFromCard(c, tenantId));
 }
+
+/**
+ * SCENARIO-PACK-SCOPE（治启动器跨行业泄漏 · G-3 邻域）：把**非电池** IndustryPack 自带的决策场景卡
+ * （`IndustryPack.scenarios`·IndustryScenario 形态）映射为一等 Scenario，供启动器目录按 pack 作用域下发。
+ *
+ * SCENARIO_CATALOG（上表 20 张）是**电池行业专属**的启动器来源（消费自 batteryPack 语义，字节不变 R6）；
+ * 换行业则**消费该行业 pack 自带的 scenarios**（不重建）：logistics-warehouse → logisticsPack.scenarios。
+ * 电池 pack `scenarios=[]`（走既有推演视图），故电池租户仍走 SCENARIO_CATALOG（seedScenarios）——零变更。
+ * targetView 落 pack 物化的「决策场景」视图（datacore VIEW_DEFS["decision-scenarios"]·config-driven）。
+ */
+export function scenarioFromPackScenario(
+  s: import("@platform/contracts").IndustryScenario,
+  tenantId: string,
+): import("@platform/contracts").Scenario {
+  return {
+    id: `scn_${tenantId}_${s.key}`,
+    tenantId,
+    scenarioKey: s.key,
+    name: s.title,
+    domain: "决策场景",
+    targetView: "decision-scenarios",
+    intentKey: s.key,
+    triggerQuestion: s.question,
+    solver: s.answer.solverKey ?? "",
+    rules: [],
+    riskLevel: "COMPUTE",
+    summary: s.title,
+    mode: "WORKFLOW_FIRST",
+    presetContext: { targetView: "decision-scenarios", selectedObjects: [], slotPresets: s.answer.args ?? {} },
+    status: "PUBLISHED",
+    version: 1,
+  };
+}

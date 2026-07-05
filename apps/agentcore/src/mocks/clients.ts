@@ -153,6 +153,24 @@ export class MockOntologyClient implements OntologyClient {
     return undefined;
   }
 
+  /**
+   * SCENARIO-PACK-SCOPE 测试替身：据租户解析行业包。真链路（HTTP）由 DataCore loadIndustryPack 解析；
+   * mock 以租户名约定映射行业（`logi*` → 物流仓配·带 2 张决策场景卡；其余 → 电池·scenarios=[]，走 SCENARIO_CATALOG）。
+   * 物流两卡镜像 datacore `packs/logistics-warehouse.pack.ts` 的 logisticsScenarios（测试替身固定夹具·非真值来源）。
+   */
+  async getScenarioPack(ctx: ToolAuthCtx): Promise<{ industryKey: string; scenarios: import("@platform/contracts").IndustryScenario[] }> {
+    if (ctx.tenantId === "logi" || ctx.tenantId.startsWith("logi-")) {
+      return {
+        industryKey: "logistics-warehouse",
+        scenarios: [
+          { key: "network-demand", title: "配送网络覆盖规模", question: "全网需覆盖多少月度配送需求量？（选址覆盖规模输入）", answer: { kind: "objects-aggregate", objectType: "Store", agg: "sum", prop: "demand", unit: "件" } },
+          { key: "site-cost-profile", title: "候选配送仓成本画像", question: "各候选配送仓的开仓成本 / 服务成本 / 日吞吐如何？（选址最优化输入清单）", answer: { kind: "objects", objectType: "Warehouse", columns: ["whId", "region", "openCost", "serveCost", "capacity"], limit: 20 } },
+        ],
+      };
+    }
+    return { industryKey: "battery-manufacturing", scenarios: [] };
+  }
+
   /** 治理增量 §3.6：聚合下推 mock —— 返回分组行集（绝不返回全量原始行），供 G8 审计断言。 */
   async aggregateObjects(
     ctx: ToolAuthCtx,

@@ -63,6 +63,7 @@ import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js"
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
+import { loadIndustryPack } from "./synthetic/industry-pack.js";
 import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
 import { dataCategoriesForIndustry } from "./synthetic/data-categories.js";
 import { computeFieldCoverage, computeCategoryCoverage } from "./databuilder/slice-coverage.js";
@@ -940,6 +941,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       features: withRouteFeatureAliases([...new Set([...resolved.features, ...seededViewFeatureKeys])]),
       configVersion: resolved.configVersion,
     };
+  });
+
+  // SCENARIO-PACK-SCOPE（治启动器跨行业泄漏·G-3 邻域）：下发**本租户所属行业包**及其自带决策场景卡。
+  // 据 tenant.industry 解析 IndustryPack（loadIndustryPack·单一来源；缺配置→平台默认电池，同 provision-world 口径）。
+  // AgentCore 启动器目录据此按 pack 作用域播种：电池 scenarios=[] → 走既有 SCENARIO_CATALOG（byte-unchanged R6）；
+  // 非电池（物流）→ 下发 pack.scenarios → 启动器只显本行业卡，零电池泄漏。OBO 用户 token 即可读（本租户自身配置）。
+  app.get("/a/v1/scenarios/pack", async (req) => {
+    const c = ctx(req);
+    const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
+    const industryKey = (tenant?.industry as string) || "battery-manufacturing";
+    const pack = loadIndustryPack(industryKey);
+    return { industryKey, scenarios: pack?.scenarios ?? [] };
   });
 
   // ---- A6 authz -------------------------------------------------------------------

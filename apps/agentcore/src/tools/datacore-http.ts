@@ -119,6 +119,19 @@ class HttpOntologyClient implements OntologyClient {
       return undefined; // 无时钟/未合成 → 诚实留空，相对时间不接地（不编造 wall clock）
     }
   }
+  async getScenarioPack(ctx: ToolAuthCtx): Promise<{ industryKey: string; scenarios: import("@platform/contracts").IndustryScenario[] }> {
+    // SCENARIO-PACK-SCOPE：读本租户行业包（DataCore 据 tenant.industry 解析 IndustryPack·单一来源）。
+    // DataCore 不可达/无配置 → 诚实降级为电池默认（平台既有默认 industry·app.ts:`|| battery-manufacturing`），
+    // 保持 demo/既有电池租户目录不变（不因探测失败静默清空）。
+    try {
+      const r = await call<{ industryKey?: string; scenarios?: import("@platform/contracts").IndustryScenario[] }>(
+        this.baseUrl, ctx, "GET", `/a/v1/scenarios/pack`,
+      );
+      return { industryKey: r?.industryKey ?? "battery-manufacturing", scenarios: r?.scenarios ?? [] };
+    } catch {
+      return { industryKey: "battery-manufacturing", scenarios: [] };
+    }
+  }
   async listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]> {
     const types = await call<{ key: string }[]>(this.baseUrl, ctx, "GET", `/a/v1/ontology/object-types`);
     return (types ?? []).map((t) => t.key);

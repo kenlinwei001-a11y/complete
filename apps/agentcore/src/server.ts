@@ -63,7 +63,7 @@ import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
-import { seedScenarios } from "./scenarios-catalog.js";
+import { seedScenarios, scenarioFromPackScenario } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { groundScenario, type GroundingContext, type GroundObject } from "./scenario-grounding.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
@@ -2144,25 +2144,49 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // 场景启动器 P2：Scenario 升一等持久化对象（repo 单一来源；出厂 SCENARIO_CATALOG 懒播种）。
   // 首次访问某租户若仓储为空 → 幂等播种出厂 20 场景，保证目录始终完整（含自助新增场景）。
   const ensureScenarios = async (tenantId: string, a?: RequestAuth): Promise<Scenario[]> => {
-    // 多租户：任意租户首次访问场景即懒补齐「场景包 + 意图 + 计划」（per-id 幂等，与卡解耦的根因修复）
-    // —— 没有这步，非 demo 租户有卡但无意图 → classify 候选空 → OUT_OF_CATALOG。
-    // LAUNCHER-GROUNDED-QUESTIONS（Part A·R14）：有 auth → 按租户真数据 + sim-clock 接地各卡 slotPresets
-    // 并覆写派生计划的 invoke_solver 死入参（boot 曾无接地烘焙死 lineId）→ 求解器答案回显真对象、与卡面一致。
-    let groundedSlots: Map<string, Record<string, unknown>> | undefined;
+    // SCENARIO-PACK-SCOPE（治启动器跨行业泄漏·G-3 邻域）：按**本租户行业包**作用域播种启动器目录——
+    // 此前无条件把 SCENARIO_CATALOG（20 张电池卡）懒播给任意租户 → 物流租户被种电池卡（乘用车/储能/规划体检…）
+    // = 跨行业泄漏。改：先经 DataCore 解析本租户 IndustryPack（loadIndustryPack·单一来源·agentcore 零行业常数 R14）：
+    //   · 电池（industryKey=battery-manufacturing·pack.scenarios=[]）→ SCENARIO_CATALOG（seedScenarios·字节不变 R6）。
+    //   · 非电池（物流…）→ 消费该 pack 自带 scenarios（不重建）→ 只显本行业卡，零电池泄漏。
+    //   · 无 auth（内部/启动期）→ 默认电池（demo 口径，与 DataCore `|| battery-manufacturing` 一致）。
+    //   · pack 无自带 scenarios 且非电池 → 诚实空目录（不静默回落电池）。
+    let industryKey = "battery-manufacturing";
+    let packScenarios: import("@platform/contracts").IndustryScenario[] = [];
     if (a) {
-      const gctx = await buildGroundingContext(a);
-      groundedSlots = new Map();
-      for (const sc of seedScenarios(tenantId)) {
-        const g = groundScenario({ triggerQuestion: sc.triggerQuestion, presetContext: sc.presetContext }, gctx);
-        groundedSlots.set(sc.intentKey, g.slotPresets);
+      const pack = await deps.dataCore.ontology.getScenarioPack(a).catch(() => undefined);
+      if (pack) {
+        industryKey = pack.industryKey || industryKey;
+        packScenarios = pack.scenarios ?? [];
       }
     }
-    await ensureScenarioPackageSeed(deps.repos, tenantId, groundedSlots);
+    const isBattery = industryKey === "battery-manufacturing";
+    // 本 pack 的启动器卡集（一等 Scenario）：电池=SCENARIO_CATALOG；非电池=pack.scenarios 映射（诚实空=空目录）。
+    const packCards: Scenario[] = isBattery
+      ? seedScenarios(tenantId)
+      : packScenarios.map((s) => scenarioFromPackScenario(s, tenantId));
+
+    // 电池族才懒补齐「电池场景包 + 意图 + 计划」（classify 候选来源）——非电池不种电池包（泄漏同源）。
+    // LAUNCHER-GROUNDED-QUESTIONS（Part A·R14）：有 auth → 按租户真数据 + sim-clock 接地各卡 slotPresets
+    // 并覆写派生计划的 invoke_solver 死入参（boot 曾无接地烘焙死 lineId）→ 求解器答案回显真对象、与卡面一致。
+    if (isBattery) {
+      let groundedSlots: Map<string, Record<string, unknown>> | undefined;
+      if (a) {
+        const gctx = await buildGroundingContext(a);
+        groundedSlots = new Map();
+        for (const sc of packCards) {
+          const g = groundScenario({ triggerQuestion: sc.triggerQuestion, presetContext: sc.presetContext }, gctx);
+          groundedSlots.set(sc.intentKey, g.slotPresets);
+        }
+      }
+      await ensureScenarioPackageSeed(deps.repos, tenantId, groundedSlots);
+    }
+
     const existing = await deps.repos.scenarios.listByTenant(tenantId);
     const keys = new Set(existing.map((s) => s.scenarioKey));
     let added = false;
-    // 按 key 幂等补齐出厂 20 场景（即便已有自助新增/退役场景也不漏播、不覆盖既有）。
-    for (const sc of seedScenarios(tenantId)) {
+    // 按 key 幂等补齐本 pack 场景卡（即便已有自助新增/退役场景也不漏播、不覆盖既有）。
+    for (const sc of packCards) {
       if (!keys.has(sc.scenarioKey)) {
         await deps.repos.scenarios.upsert(sc);
         added = true;

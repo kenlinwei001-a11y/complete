@@ -30,6 +30,11 @@ export interface OntologyClient {
   /** LAUNCHER-GROUNDED-QUESTIONS：读租户模拟时钟当前日（t0+tick），供场景卡相对时间接地（R6 确定性·D10）。
    *  OBO → DataCore GET /a/v1/synthetic/clock。失败/无时钟 → 返回 undefined（不编造 wall clock）。 */
   getSimClock(ctx: ToolAuthCtx): Promise<{ simDate: string; t0: string; currentTick: number } | undefined>;
+  /** SCENARIO-PACK-SCOPE（治启动器跨行业泄漏·G-3 邻域）：读**本租户所属行业包**及其自带决策场景卡。
+   *  DataCore 据 tenant.industry 解析 IndustryPack（loadIndustryPack·单一来源·agentcore 零行业常数 R14），
+   *  返回 { industryKey, scenarios }。启动器目录据此按 pack 作用域播种（电池=SCENARIO_CATALOG·byte-unchanged；
+   *  非电池=pack.scenarios·零电池泄漏）。OBO → DataCore GET /a/v1/scenarios/pack。 */
+  getScenarioPack(ctx: ToolAuthCtx): Promise<{ industryKey: string; scenarios: import("@platform/contracts").IndustryScenario[] }>;
   /** B→A 存在性探针（引用闭合）：本租户已发布对象类型 key 全集（agent scope / intent slot 校验）。 */
   listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]>;
   /** CL.3 discover 真实类型名：本租户已发布对象类型 {key,label(中文),domain,instanceCount}（agent 照真名查不再猜）。 */
