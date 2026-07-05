@@ -2244,15 +2244,15 @@
     {
       "id": "SANDBOX-LAYOUT-REWORK",
       "priority": "P1",
-      "status": "WIP",
-      "owner": "dev",
+      "status": "TODO",
+      "owner": "",
       "deps": [
         "THEME-CONTRAST-FIX"
       ],
       "blockReason": "",
       "doc": "docs/PRD-frontend-visual-redesign.md",
       "title": "推演沙盘一页布局重构(Option A·治拥挤·主体+干净卡片栈+渐进披露·对齐参考图信息层级)",
-      "note": "沙盘一页布局重构·遵R-PRD整页逐元素见 docs/PRD-frontend-visual-redesign.md §5(栅格7fr/5fr·右栏折叠卡片栈渐进披露·治12面板平铺拥挤·不删功能)。依赖THEME先落用新palette。",
+      "note": "沙盘一页布局重构·遵R-PRD整页逐元素见 docs/PRD-frontend-visual-redesign.md §5(栅格7fr/5fr·右栏折叠卡片栈渐进披露·治12面板平铺拥挤·不删功能)。依赖THEME先落用新palette。 【审核方仲裁·2026-07-05 释放陈旧认领】原持有 peer 会话失联(最后活动见 f88189c·§2/§3 决策卡组件+§5折叠卡已半程落库)·死锁打破:任何在场 dev 可认领续做——基于 f88189c 已落组件继续·勿重启重写。剩余范围=PRD-frontend-visual-redesign.md §5 其余分区(栅格7fr/5fr·右栏折叠卡片栈·渐进披露·不删功能)+R-PRD整页逐元素+真浏览器像素取证+齿检。",
       "acceptance": {
         "goal": "推演沙盘一页布局从平铺拥挤重构为主体+渐进披露卡片栈·信息层级清晰·留白充足·工业级观感对齐参考图·不删任何现有功能",
         "criteria": [
