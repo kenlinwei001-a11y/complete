@@ -1,7 +1,9 @@
 import type {
   Answer,
+  AnswerBlock,
   ClarificationReplyBody,
   ClassificationResult,
+  ExecutionPlan,
   IntentDefinition,
   QueryTask,
   ResolvedRef,
@@ -10,6 +12,7 @@ import type {
   SessionContext,
   SlotDef,
   SubmitQueryBody,
+  TemplateValue,
 } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { resolvePlanForIntent } from "../catalog/service.js";
@@ -35,12 +38,128 @@ import { BudgetTracker } from "../tools/budget.js";
 import { SIM_COMMANDER_TOOLS } from "../tools/registry.js";
 import { reconcileUniversalAgent, SEED_UNIVERSAL_AGENT_ID } from "../agents/universal.js";
 import { pseudoEmbed } from "../util/embedding.js";
-import { clarifyPromptFor, fillSlots } from "./slots.js";
+import { clarifyPromptFor, fillSlots, normalizeExtractedSlots, type SlotSource, type SlotSubstitution } from "./slots.js";
 import { appendDataGapBlock } from "../scenario-grounding.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
+
+// ---------------------------------------------------------------------------
+// LAUNCHER-SLOT-TRUTH 治本辅助（②入参覆盖 · ④回显 · ⑤诚实横幅）
+// ---------------------------------------------------------------------------
+
+/** 把 objectRef 槽值压成标量入参（求解器入参要标量 ID，非 {objectType,objectId,label} 对象）。 */
+function scalarizeSlotValue(v: unknown): unknown {
+  if (v && typeof v === "object" && !Array.isArray(v) && "objectId" in (v as Record<string, unknown>)) {
+    return (v as { objectId: unknown }).objectId;
+  }
+  return v;
+}
+
+/** 面向用户的槽位中文标签（回显/横幅用）。未知键回落 description 首句或键名本身。 */
+function slotLabel(slot: SlotDef | undefined, name: string): string {
+  const KEY_LABEL: Record<string, string> = {
+    base: "基地", baseId: "基地", baseName: "基地",
+    model: "型号", modelId: "型号",
+    custName: "客户", customer: "客户",
+    lineId: "产线", processKey: "工序", material: "物料",
+    month: "月份", quarter: "季度", day: "日期", date: "日期", timeWindow: "时间窗",
+    weeks: "周数", week: "周", horizonWeeks: "周数", fromDay: "起始日", toDay: "截止日",
+    gap: "缺口", qty: "数量", demandDelta: "需求增量", cashCushion: "现金垫",
+    scenario: "情景", solutionName: "方案", factor: "因子", solverKey: "求解器",
+  };
+  if (KEY_LABEL[name]) return KEY_LABEL[name];
+  const desc = slot?.description?.trim();
+  if (desc) return desc.split(/[（(：:，,]/)[0]!.trim() || name;
+  return name;
+}
+
+/** 槽值的可读展示（objectRef → label；标量 → 原样）。 */
+function slotDisplay(v: unknown): string {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const r = v as { label?: unknown; objectId?: unknown };
+    if (typeof r.label === "string") return r.label;
+    if (typeof r.objectId === "string") return r.objectId;
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
+
+/**
+ * ②/根B：把**本轮显式抽取**（source=extracted）的槽位值覆盖进 invoke_solver 步骤的**同名入参键**。
+ * 仅覆盖 args 中已存在的键（不注入未知入参）；仅 extracted 覆盖（chip/preset 保留烘焙值 → 点卡启动零回归）。
+ * 不改动共享 plan 对象（克隆 step/params/args）。纯函数、确定性（R6）。
+ */
+export function applyExtractedArgOverrides(
+  steps: ExecutionPlan["steps"],
+  slots: Record<string, unknown>,
+  sources: Record<string, SlotSource>,
+): ExecutionPlan["steps"] {
+  const overrides: Record<string, unknown> = {};
+  for (const [name, src] of Object.entries(sources)) {
+    if (src === "extracted" && slots[name] !== undefined && slots[name] !== null) {
+      overrides[name] = scalarizeSlotValue(slots[name]);
+    }
+  }
+  if (Object.keys(overrides).length === 0) return steps;
+  return steps.map((step) => {
+    if (step.type !== "invoke_solver") return step;
+    const argObj = step.params.args ?? {};
+    let changed = false;
+    const nextArgs: Record<string, TemplateValue> = { ...argObj };
+    for (const [k, v] of Object.entries(overrides)) {
+      if (k in argObj) {
+        nextArgs[k] = v as TemplateValue;
+        changed = true;
+      }
+    }
+    if (!changed) return step;
+    return { ...step, params: { ...step.params, args: nextArgs } };
+  });
+}
+
+/**
+ * ④回显 + ⑤诚实横幅（治最恶性静默错答）：
+ *   ⑤ substitutions 非空 → 顶部横幅明说"你说的 X 未能对应，本次改用 Y（来源）作答"——绝不静默换题；
+ *   ④ 回显本次实际所用关键实体/参数（基地/型号/月份/金额…），使问答错配可见（非静默绿标）。
+ * 返回 text 块数组（供 prepend 到答案）；无可回显槽（如无槽意图）→ 空数组。
+ */
+export function buildSlotTruthBlocks(
+  intent: IntentDefinition,
+  slots: Record<string, unknown>,
+  slotMeta: { sources: Record<string, SlotSource>; substitutions: SlotSubstitution[] },
+): AnswerBlock[] {
+  const blocks: AnswerBlock[] = [];
+  const slotByName = new Map(intent.slots.map((s) => [s.name, s]));
+
+  // ⑤ 诚实横幅（每条替换一句人话）
+  for (const sub of slotMeta.substitutions) {
+    const label = slotLabel(slotByName.get(sub.slotName), sub.slotName);
+    const srcWord = sub.usedSource === "preset" ? "场景预置" : "页面选中";
+    blocks.push({
+      type: "text",
+      markdown: `⚠ 你提到的「${sub.attempted}」未能对应到系统中的已知${label}，本次按${srcWord}的「${slotDisplay(sub.usedValue)}」作答。若非所需，请改用系统内的名称或重新选择后再问。`,
+    });
+  }
+
+  // ④ 参数回显（本次实际所用的关键实体/参数）
+  const echoed: string[] = [];
+  for (const slot of intent.slots) {
+    const v = slots[slot.name];
+    if (v === undefined || v === null || v === "") continue;
+    if (slot.type === "timeWindow" && typeof v === "object") {
+      const tw = v as { from?: unknown; to?: unknown };
+      echoed.push(`${slotLabel(slot, slot.name)}=${slotDisplay(tw.from)}~${slotDisplay(tw.to)}`);
+    } else {
+      echoed.push(`${slotLabel(slot, slot.name)}=${slotDisplay(v)}`);
+    }
+  }
+  if (echoed.length > 0) {
+    blocks.push({ type: "text", markdown: `本次回答所用参数：${echoed.join("、")}。` });
+  }
+  return blocks;
+}
 
 /**
  * WO-1B 兜底：LLM SDK 鉴权失败的原始串（如 Anthropic "Could not resolve authentication method"）绝不透传给用户。
@@ -649,16 +768,21 @@ export class Orchestrator {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
 
-    const { slots, missing, outOfDomain } = await fillSlots(
+    // LAUNCHER-SLOT-TRUTH ① 形状归一（单一真相源）：分类器 extractedSlots 可能按意图键嵌套
+    // `{affected_orders:{base:"合肥"}}`——压扁成本意图的扁平 {slotName:value} 后再填槽，否则本轮显式值被
+    // 静默丢弃、落 chip 旧实体（问合肥答常州）。continueSlotFilling 传来的 slotValues 已是扁平槽名，归一为幂等。
+    const normalized = normalizeExtractedSlots(extracted, intent);
+
+    const { slots, missing, outOfDomain, sources, substitutions } = await fillSlots(
       intent,
-      extracted,
+      normalized,
       task.context,
       this.deps.engine.deps.dataCore.ontology,
       auth,
     );
     // A5 感知层埋点：objectRef 解析尝试（分母）+ 域外实体（分子）→ 发独立事件 + 记误触发率。
     const objectRefAttempts = intent.slots.filter(
-      (s) => s.type === "objectRef" && extracted[s.name] !== undefined && extracted[s.name] !== null && extracted[s.name] !== "",
+      (s) => s.type === "objectRef" && normalized[s.name] !== undefined && normalized[s.name] !== null && normalized[s.name] !== "",
     ).length;
     recordResolutionAttempts(auth.tenantId, objectRefAttempts, outOfDomain.length);
     for (const ood of outOfDomain) {
@@ -671,8 +795,12 @@ export class Orchestrator {
       });
     }
     const finalSlots = { ...slots };
+    const finalSources: Record<string, SlotSource> = { ...sources };
     for (const [k, v] of Object.entries(presetSlots)) {
-      if (finalSlots[k] === undefined || finalSlots[k] === null) finalSlots[k] = v;
+      if (finalSlots[k] === undefined || finalSlots[k] === null) {
+        finalSlots[k] = v;
+        finalSources[k] = "preset";
+      }
     }
     const stillMissing = missing.filter((m) => finalSlots[m.name] === undefined || finalSlots[m.name] === null);
 
@@ -698,7 +826,7 @@ export class Orchestrator {
       matchedIntent: { intentId: intent.id, intentKey: intent.key, version: intent.version },
       slots: finalSlots,
     });
-    await this.runPathA(taskId, auth, intent, finalSlots);
+    await this.runPathA(taskId, auth, intent, finalSlots, { sources: finalSources, substitutions });
   }
 
   // -------------------------------------------------------------------------
@@ -709,6 +837,7 @@ export class Orchestrator {
     auth: RequestAuth,
     intent: IntentDefinition,
     slots: Record<string, unknown>,
+    slotMeta: { sources: Record<string, SlotSource>; substitutions: SlotSubstitution[] } = { sources: {}, substitutions: [] },
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
@@ -740,6 +869,12 @@ export class Orchestrator {
       if (card?.rules && card.rules.length > 0) steps = injectScenarioRuleStep(steps, card.rules);
     }
 
+    // LAUNCHER-SLOT-TRUTH ②/根B：派生意图的执行计划把求解器入参**种子期烘焙成字面量**（60亿/8周/石墨负极…
+    // 结构性不可能被本轮改写覆盖）。此处把**本轮显式抽取**（source=extracted）的槽位值覆盖进 invoke_solver
+    // 的同名入参键（仅覆盖 args 中已存在的键，避免注入未知入参；仅 extracted 覆盖，preset/chip 保留烘焙值→
+    // 零回归点卡启动）。使"问武汉2170"真进求解器算 2170，而非静默回显烘焙的 4680/成都。
+    steps = applyExtractedArgOverrides(steps, slots, slotMeta.sources);
+
     const budget = new BudgetTracker();
     const result = await this.deps.engine.runWorkflowSteps({
       taskId,
@@ -769,7 +904,12 @@ export class Orchestrator {
     // 无 KPI/表数据）→ 追加 `gap` 块（携真问句 + taskId）。答案坞据此渲染既有 GapCard 的「认领并补数据」
     // （复用 GROWTH-WORKLIST human-gated fill·非自动补），登记 WorklistItem → 跳补数据页 → 补后继续推演。
     // 仅命中"数据未接齐/无输出"（真缺数据·补数据有用）；"真无解"（约束不可行·补数据无用）不追加，诚实区分。
-    const answer = appendDataGapBlock(result.answer, task.query, taskId);
+    const gapAnswer = appendDataGapBlock(result.answer, task.query, taskId);
+    // LAUNCHER-SLOT-TRUTH ④/⑤：在答案顶部注入
+    //   ⑤ 诚实横幅（若本轮显式给了实体/参数却没绑上、改用了 chip/preset → 明说改用了什么，绝不静默换题）；
+    //   ④ 参数回显（本次回答实际所用的关键实体/参数：基地/型号/月份/金额…）→ 错配可见、非静默绿标。
+    const echoBlocks = buildSlotTruthBlocks(intent, slots, slotMeta);
+    const answer = echoBlocks.length > 0 ? { ...gapAnswer, blocks: [...echoBlocks, ...gapAnswer.blocks] } : gapAnswer;
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
       answer,

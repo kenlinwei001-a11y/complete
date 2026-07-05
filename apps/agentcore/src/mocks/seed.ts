@@ -6,12 +6,13 @@ import {
   type ScenarioPackage,
   type SceneEntryConfig,
   type SkillDefinition,
+  type SlotDef,
   type TemplateValue,
   type WorkflowDefinition,
 } from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 import { buildUniversalAgent, buildUniversalAgentTools, seedSkillIds } from "../agents/universal.js";
-import { SCENARIO_CATALOG } from "../scenarios-catalog.js";
+import { SCENARIO_CATALOG, type ScenarioCard } from "../scenarios-catalog.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import type { ExperienceCaseRow } from "../persistence/repos.js";
 
@@ -89,6 +90,54 @@ export const SEED_ORDERS: SeedOrder[] = Array.from({ length: 20 }, (_, i) => {
 /** 场景包 id 按租户唯一（demo 保持原 id 向后兼容；其它租户后缀 __<tenant>）—— packages.get(id) 全局键，故须唯一。 */
 export function scenarioPackageIdFor(tenantId: string): string {
   return tenantId === SEED_TENANT ? SEED_PACKAGE_ID : `${SEED_PACKAGE_ID}__${tenantId}`;
+}
+
+/**
+ * LAUNCHER-SLOT-TRUTH ②/根B：为**目录派生意图**从卡的 slotPresets 键**生成可绑定槽位**（此前 `slots:[]` →
+ * 入参种子期烘焙、改写问句结构性不可能生效）。每个 preset 键 → 一个**可选**槽（optional：点卡零反问·预置作默认；
+ * 用户改写时本轮显式抽取覆盖，见 fillSlots ①，并经 applyExtractedArgOverrides 真进求解器）。类型由预置值形态推断
+ * （number→number，其余→string；实体/月份等按 string 抽取即可直灌求解器标量入参）。确定性纯函数（R6）。
+ */
+const SLOT_KEY_META: Record<string, { label: string; desc: string }> = {
+  baseId: { label: "基地", desc: "生产基地（如 常州 / 合肥 / 宜宾）" },
+  baseName: { label: "基地", desc: "生产基地名称（如 常州 / 合肥 / 成都）" },
+  modelId: { label: "型号", desc: "电池型号（如 4680-NCM / M3P-标准）" },
+  custName: { label: "客户", desc: "客户名称（如 电网公司F / 商用车集团G）" },
+  lineId: { label: "产线", desc: "产线（如 常州·动力线-A）" },
+  processKey: { label: "工序", desc: "工序（如 涂布 / 卷绕 / 化成）" },
+  material: { label: "物料", desc: "物料名称（如 三元正极 / 石墨负极）" },
+  month: { label: "月份", desc: "月份（YYYY-MM，如 2026-07）" },
+  quarter: { label: "季度", desc: "季度（如 2026Q2 / 2026Q3）" },
+  scenario: { label: "情景", desc: "评审情景（如 基准 / 乐观 / 保守）" },
+  solutionName: { label: "方案", desc: "处置方案名（如 三班制 / 外协 / 调拨）" },
+  factor: { label: "因子", desc: "风险因子（如 物料齐套）" },
+  gap: { label: "缺口", desc: "缺口数量（只填数字）" },
+  weeks: { label: "周数", desc: "周数（只填数字）" },
+  week: { label: "周", desc: "第几周（只填数字）" },
+  horizonWeeks: { label: "周数", desc: "排期周数（只填数字）" },
+  fromDay: { label: "起始日", desc: "起始日（第几日，只填数字）" },
+  toDay: { label: "截止日", desc: "截止日（第几日，只填数字）" },
+  cashCushion: { label: "现金垫", desc: "现金垫（单位亿元，只填数字）" },
+  qty: { label: "数量", desc: "数量（只填数字）" },
+  demandDelta: { label: "需求增量", desc: "需求增量比例（0.2 表示 +20%，只填数字）" },
+};
+
+export function deriveSlotsFromCard(card: ScenarioCard): SlotDef[] {
+  const presets = card.presetContext.slotPresets ?? {};
+  const slots: SlotDef[] = [];
+  for (const [key, value] of Object.entries(presets)) {
+    const meta = SLOT_KEY_META[key];
+    const type: SlotDef["type"] = typeof value === "number" ? "number" : "string";
+    const desc = meta?.desc ?? key;
+    slots.push({
+      name: key,
+      type,
+      required: false, // 可选：点卡由 preset 兜底零反问；用户改写则本轮显式覆盖（fillSlots ①）
+      description: desc,
+      clarifyPrompt: desc,
+    });
+  }
+  return slots;
 }
 
 export function seedScenarioPackage(tenantId = SEED_TENANT, now = new Date().toISOString()): ScenarioPackage {
@@ -443,7 +492,8 @@ export function seedIntentsAndPlans(
       description: card.summary,
       examples: [card.triggerQuestion],
       enabledViews: "*",
-      slots: [],
+      // LAUNCHER-SLOT-TRUTH ②：从卡 slotPresets 生成可绑定槽（替代此前 `slots:[]`），使改写问句真进求解器。
+      slots: deriveSlotsFromCard(card),
       planId,
       riskLevel: card.riskLevel === "ACTION_DRAFT" ? "ACTION_DRAFT" : "COMPUTE",
       owner: "seed",

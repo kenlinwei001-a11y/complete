@@ -10,11 +10,74 @@ export interface OutOfDomainSignal {
   candidates: { objectType: string; objectId: string; label: string; score: number }[];
 }
 
+/** 槽位取值来源（LAUNCHER-SLOT-TRUTH ③：本轮显式 > 上一轮 chip > preset）。 */
+export type SlotSource = "extracted" | "chip" | "preset" | "null";
+
+/**
+ * LAUNCHER-SLOT-TRUTH ⑤：本轮用户**显式给了**某槽的值，但该值未能绑定（域外/校验失败）→
+ * 最终改用了 chip / preset。记录之，使 orchestrator 能出**诚实横幅**而非静默换题。
+ */
+export interface SlotSubstitution {
+  slotName: string;
+  /** 用户本轮显式给的原始值（未能绑定者）。 */
+  attempted: string;
+  /** 实际采用的来源（chip=页面选中·preset=场景预置）。 */
+  usedSource: Exclude<SlotSource, "extracted" | "null">;
+  /** 实际采用的值（objectRef 或标量）。 */
+  usedValue: unknown;
+}
+
 export interface SlotFillResult {
   slots: Record<string, unknown>;
   missing: SlotDef[];
   /** A5：被判域外的用户实体（→ orchestrator 发 entity.out_of_domain + 埋点）。 */
   outOfDomain: OutOfDomainSignal[];
+  /** LAUNCHER-SLOT-TRUTH ③/④：每槽最终取值来源（回显 + 优先级审计）。 */
+  sources: Record<string, SlotSource>;
+  /** LAUNCHER-SLOT-TRUTH ⑤：显式给值但未绑定→改用 chip/preset 的替换记录（诚实横幅源）。 */
+  substitutions: SlotSubstitution[];
+}
+
+/**
+ * LAUNCHER-SLOT-TRUTH ① 形状钉死（单一真相源）：把分类器的 `extractedSlots` 归一为**扁平**
+ * `{slotName: value}`（仅保留本意图已声明的槽名）。
+ *
+ * 根因 A：思维型分类器（Kimi 等）常把槽位**按意图键嵌套**回 `{affected_orders:{base:"合肥"}}`；
+ * 此前 orchestrator 原样传、slots.ts 按扁平名取 → 全 miss → 落 defaultFrom(旧 chip) → **问合肥答常州**
+ * 且绿标零提示（最恶性静默错答）。本函数吸收三种形态并统一压扁：
+ *   1) 已扁平 `{base:"合肥"}`（含仅取本意图声明的槽名，丢弃噪声键）；
+ *   2) 按本意图键嵌套 `{<intent.key>:{base:"合肥"}}`（最具体·优先）；
+ *   3) 泛化单层嵌套 `{<其他意图键>:{base:"合肥"}}`（内层键命中槽名即吸收，先到先得·确定性顺序）。
+ * 纯函数、确定性（R6），不引 LLM、不网络。
+ */
+export function normalizeExtractedSlots(
+  raw: Record<string, unknown> | undefined,
+  intent: IntentDefinition,
+): Record<string, unknown> {
+  const slotNames = new Set(intent.slots.map((s) => s.name));
+  const flat: Record<string, unknown> = {};
+  if (!raw || typeof raw !== "object") return flat;
+  // 1) 顶层已扁平的槽名条目（丢弃非槽名噪声键）
+  for (const [k, v] of Object.entries(raw)) {
+    if (slotNames.has(k)) flat[k] = v;
+  }
+  // 2) 按本意图键嵌套：raw[intent.key] = { slotName: value }（最具体 → 覆盖 1）
+  const byIntent = raw[intent.key];
+  if (byIntent && typeof byIntent === "object" && !Array.isArray(byIntent)) {
+    for (const [k, v] of Object.entries(byIntent as Record<string, unknown>)) {
+      if (slotNames.has(k)) flat[k] = v;
+    }
+  }
+  // 3) 泛化单层嵌套（其他意图键下的对象）：内层键命中槽名且尚未填 → 吸收（确定性遍历顺序）
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === intent.key || slotNames.has(k)) continue;
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      for (const [ik, iv] of Object.entries(v as Record<string, unknown>)) {
+        if (slotNames.has(ik) && flat[ik] === undefined) flat[ik] = iv;
+      }
+    }
+  }
+  return flat;
 }
 
 /** 归一化编辑距离相似度（含子串包含加权）；CJK/拉丁通用，确定性纯函数。 */
@@ -288,38 +351,67 @@ export async function fillSlots(
   const slots: Record<string, unknown> = {};
   const missing: SlotDef[] = [];
   const outOfDomain: OutOfDomainSignal[] = [];
+  const sources: Record<string, SlotSource> = {};
+  const substitutions: SlotSubstitution[] = [];
 
   for (const slot of intent.slots) {
-    // ① classifier-extracted value (validated)
-    const fromExtraction = await validateSlotValue(slot, extracted[slot.name], ontology, ctx);
+    // 本轮用户显式给的原始值（用于 ⑤ 替换记录：显式给了却没绑上 → 诚实横幅）。
+    const raw = extracted[slot.name];
+    const attempted =
+      raw !== undefined && raw !== null && raw !== ""
+        ? typeof raw === "object"
+          ? JSON.stringify(raw)
+          : String(raw)
+        : undefined;
+
+    // ① 本轮显式抽取（最高优先级·validated）
+    const fromExtraction = await validateSlotValue(slot, raw, ontology, ctx);
     if (fromExtraction.ok) {
       slots[slot.name] = fromExtraction.value;
+      sources[slot.name] = "extracted";
       continue;
     }
     // ①.b BP-6 相对时间归结兜底：LLM 把"这天/今天/下周/本月"抽进 date 槽但不可解析 →
     // 用视图上下文锚点归结成具体日期（确定性，仅 date 槽，仅在直校验失败时）。修 S03「这天」→ null。
+    // 仍属"本轮显式"来源（用户本轮真给了时间引用）。
     if (slot.type === "date") {
-      const resolved = resolveRelativeDate(extracted[slot.name], context);
+      const resolved = resolveRelativeDate(raw, context);
       if (resolved !== undefined) {
         const revalidated = await validateSlotValue(slot, resolved, ontology, ctx);
         if (revalidated.ok) {
           slots[slot.name] = revalidated.value;
+          sources[slot.name] = "extracted";
           continue;
         }
       }
     }
     // A5：用户给的实体被判域外（objectRef 裸串解析不到）→ 取最近邻候选，记信号。
     if (fromExtraction.outOfDomain && slot.type === "objectRef") {
-      const value = String(extracted[slot.name]);
+      const value = String(raw);
       outOfDomain.push({ slotName: slot.name, value, candidates: await nearestEntities(value, ontology, ctx) });
     }
-    // ①.5 场景启动器 presetSlots（PRD-scenario-launcher §3.1）：按槽位名预置，
-    // 优先级低于用户自由文本抽取、高于 defaultFrom —— 让"点场景启动"零反问直达推演。
+    // ② defaultFrom = 上一轮/页面选中 chip（LAUNCHER-SLOT-TRUTH ③：本轮显式 > 上一轮 chip > preset）。
+    //    本轮显式已在 ① 处理并 continue；到此说明本轮未给或未绑成 → chip 优先于 preset 兜底。
+    if (slot.defaultFrom) {
+      const candidate = resolvePath(context, slot.defaultFrom);
+      const fromDefault = await validateSlotValue(slot, candidate, ontology, ctx);
+      if (fromDefault.ok) {
+        slots[slot.name] = fromDefault.value;
+        sources[slot.name] = "chip";
+        // ⑤：用户本轮显式给了值却没绑上（域外/校验失败）→ 改用了旧 chip → 记替换（诚实横幅源·绝不静默）。
+        if (attempted !== undefined) substitutions.push({ slotName: slot.name, attempted, usedSource: "chip", usedValue: fromDefault.value });
+        continue;
+      }
+    }
+    // ①.5 场景启动器 presetSlots（PRD-scenario-launcher §3.1）：优先级**最低**（低于 chip）——
+    // 点场景启动零反问直达推演；本轮显式与 chip 均缺时才用预置。
     const preset = context.presetSlots?.[slot.name];
     if (preset !== undefined) {
       const fromPreset = await validateSlotValue(slot, preset, ontology, ctx);
       if (fromPreset.ok) {
         slots[slot.name] = fromPreset.value;
+        sources[slot.name] = "preset";
+        if (attempted !== undefined) substitutions.push({ slotName: slot.name, attempted, usedSource: "preset", usedValue: fromPreset.value });
         continue;
       }
       // BP-6：场景卡/预置也可能带相对时间引用（如 day:"这天"）→ 同样确定性归结后再校验。
@@ -329,25 +421,21 @@ export async function fillSlots(
           const reval = await validateSlotValue(slot, resolvedPreset, ontology, ctx);
           if (reval.ok) {
             slots[slot.name] = reval.value;
+            sources[slot.name] = "preset";
+            if (attempted !== undefined) substitutions.push({ slotName: slot.name, attempted, usedSource: "preset", usedValue: reval.value });
             continue;
           }
         }
       }
     }
-    // ② defaultFrom evaluated against the session context
-    if (slot.defaultFrom) {
-      const candidate = resolvePath(context, slot.defaultFrom);
-      const fromDefault = await validateSlotValue(slot, candidate, ontology, ctx);
-      if (fromDefault.ok) {
-        slots[slot.name] = fromDefault.value;
-        continue;
-      }
-    }
     // ③ required & still missing → clarification; optional → null
     if (slot.required) missing.push(slot);
-    else slots[slot.name] = null;
+    else {
+      slots[slot.name] = null;
+      sources[slot.name] = "null";
+    }
   }
-  return { slots, missing, outOfDomain };
+  return { slots, missing, outOfDomain, sources, substitutions };
 }
 
 /**

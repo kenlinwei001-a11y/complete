@@ -22,7 +22,15 @@ import { runToolLoop } from "./toolloop.js";
 /** beta flag for server-side compaction (Agent 运行时增量 §1.3 第 2 刀). */
 export const COMPACTION_BETA = "compact-2026-01-12";
 
-/** Classification structured-output schema (QOS-PRD §6.2 — exact shape). */
+/**
+ * Classification structured-output schema (QOS-PRD §6.2 — exact shape).
+ *
+ * LAUNCHER-SLOT-TRUTH ①：`extractedSlots` 的**契约形状是扁平** `{slotName: value}`（键=最匹配意图的槽位名）。
+ * prompt 已钉死该形状（见 prompts.ts buildClassifierSystem）；此处 zod 保持 `record(unknown)` 以**容错吸收**
+ * 思维型模型偶发的「按意图键嵌套」`{intentKey:{slotName:value}}`——**归一在 orchestrator 的 normalizeExtractedSlots
+ * 单一真相源完成**（收紧到只认扁平会让嵌套输出直接 parse 失败→整轮分类丢弃，反而更糟）。值域 unknown：
+ * 槽位可为字符串/数字/日期/objectRef 裸串，归一后由 fillSlots 按各槽 SlotDef 校验。
+ */
 export const ClassificationSchema = z.object({
   candidates: z
     .array(

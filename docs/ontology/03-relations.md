@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `3c61e0bee198c7cd`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `5e4cb13a8593a900`。
 
 ---
 
@@ -58,6 +58,12 @@ ScenarioCard --view--> View(规划与平衡/推演与风险/…)
 ScenarioCard --intentKey--> Intent          ✅ 20/20 接通（种子从目录派生意图+计划，G-1 已修）
 ScenarioCard --presetContext--> SessionContext{selectedObjects, presetSlots} --POST /b/v1/scenarios/:key/launch--> Query
                                   ✅ P1 已接通（presetSlots 注入通道 + fillSlots 消费 + launch 端点；20/20 零反问门 scenarios-wiring）；前端启动器待 P3
+  槽真相链（LAUNCHER-SLOT-TRUTH·治静默错答）: classification.extractedSlots --normalizeExtractedSlots(钉扁平·吸嵌套)--> 扁平{slotName:value}
+      --fillSlots(优先级 本轮显式 extraction > 上一轮 chip defaultFrom > preset·记 sources/substitutions)--> slots
+      --applyExtractedArgOverrides(仅 extracted 覆盖 invoke_solver 烘焙入参·objectRef压标量)--> 真进求解器
+      --buildSlotTruthBlocks(④回显所用实体/参数 + ⑤substitution→诚实横幅『你说的X未能对应·本次按Y作答』)--> Answer
+    根A(嵌套 {intentKey:{slot:v}} 原样传→扁平取全 miss→落旧 chip→问合肥答常州绿标) 与 根B(派生意图 slots:[]+入参种子期烘焙) 已治;
+    红线: 本轮显式必胜 chip · 答案回显所用实体 · 无法映射诚实横幅非假绿 · 绝不静默换题 (齿 launcher-slot-truth.test·revert→red)
 Scenario --intentKey--> Intent --planRef--> ExecutionPlan · --defaultAgentId--> Agent   ✅ P2 一等对象；**引用闭合「无死路」上架门**（scenarioClosure：意图存在+绑计划+AGENT模式agent已发布，断链拒发布 409）+ computeReferences 反查（Agent/Workflow 页可见"被场景引用"）
 MaterializedIntent --mode--> { workflow-first→Path A 工作流 | agent-first→Path B Agent } · --bindings--> { Solver·Rule(eval)·Constraint·Skill·SliceSpec·(Agent|Workflow) }   ✅ WO-INTENT-MATERIALIZE-BINDING-COMPLETE：20 场景 intentKey 全物化为一等 PUBLISHED Intent（mode 由审核方钉死·全绑定链 6 项齐）；**补齐链** `MaterializedIntent →(reconcile 缺项检测)→ scaffold DRAFT →审核发布`（接 sys.meta.change_loop·R4 不自动上真值·复用 self-growth scaffold）；全绑定链门 `scene-agent-config:check`（扩）守回潮
 SceneEntry --viewKey--> View · --defaultAgentId--> Agent · --intentCatalogFilter--> Intent   （降为投影）
