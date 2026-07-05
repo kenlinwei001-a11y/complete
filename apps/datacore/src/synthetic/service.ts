@@ -33,6 +33,7 @@ import {
   generatePlanDomain,
 } from "./battery.js";
 import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
+import { TYPE_SOURCE_SYSTEM } from "../graphmeta.js";
 import { BUILTIN_INDUSTRY_TEMPLATES } from "./builtin-templates.js";
 import { loadIndustryPack, BATTERY_VIEW_FRAGMENTS } from "./industry-pack.js";
 import { computeRollup } from "../solvers/capacity.js";
@@ -697,7 +698,7 @@ export class SyntheticService {
         if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
       }
     }
-    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] }, scale);
+    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string; baseId?: string }[], orders: g.orders as { so: string }[] }, scale);
     await putAll("Material", ext.materials, "matId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("LabTest", ext.labTests, "testId");
@@ -711,6 +712,12 @@ export class SyntheticService {
     await putAll("CarbonFactor", ext.carbonFactors, "factorId");
     await putAll("FinanceAccount", ext.financeAccounts, "accId");
     await putAll("FinanceMetric", ext.financeMetrics, "metricId");
+    // QUERY30-ONTOLOGY-EXT：5 新类型物化（rawDataset 随身·no-orphan-source 自动满足·R2 tenant everywhere）。
+    await putAll("Supplier", ext.suppliers, "supplierId");
+    await putAll("BomLine", ext.bomLines, "bomId");
+    await putAll("LtaContract", ext.ltaContracts, "ltaId");
+    await putAll("LaborShift", ext.laborShifts, "shiftId");
+    await putAll("CarbonPassport", ext.carbonPassports, "passportId");
     // 外部域（EXT_SIG）：环境信号一等对象化（domain=external；来源/单位/新鲜度可溯 R13）。
     await putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
@@ -826,6 +833,54 @@ export class SyntheticService {
     for (const b of g.bases) for (const dh of g.dataHealth) await putLink(`lnk_bdh_${b.baseId}_${P(dh).sourceId}`, "base_data_health", oid("Base", b.baseId), oid("DataSourceHealth", P(dh).sourceId));
     // finance（Phase5A）: Base → FinanceAccount（fa.baseId）
     for (const fa of ext.financeAccounts) await putLink(`lnk_bfn_${P(fa).accId}`, "base_finance", oid("Base", P(fa).baseId), oid("FinanceAccount", P(fa).accId));
+
+    // ---- QUERY30-ONTOLOGY-EXT：6 新边（由对象 FK 确定性派生·同 seed 字节一致 R6·可解引用真跳）----
+    // 挤占①: Order → Line（allocatedLineIds 明细·占线锚）。
+    for (const o of g.orders) for (const lid of (P(o).allocatedLineIds as string[] | undefined) ?? []) await putLink(`lnk_oal_${P(o).so}_${lid}`, "order_allocated_on", oid("Order", P(o).so), oid("Line", lid));
+    // 挤占②: Order → Order（加单 demandDelta>0.5 挤占同基地低优先级订单·确定性·每加单挤≤2 单）。
+    const ordersByBase = new Map<string, { so: string; pri: unknown }[]>();
+    for (const o of g.orders) for (const bId of ((P(o).bases as string[] | undefined) ?? [])) {
+      if (!ordersByBase.has(bId)) ordersByBase.set(bId, []);
+      ordersByBase.get(bId)!.push({ so: String(P(o).so), pri: P(o).pri });
+    }
+    for (const o of g.orders) {
+      if (Number(P(o).demandDelta) <= 0.5) continue; // 仅加单为挤占源
+      const bId = ((P(o).bases as string[] | undefined) ?? [])[0];
+      const peers = (bId ? ordersByBase.get(bId) ?? [] : []).filter((x) => x.so !== String(P(o).so) && (x.pri === "低" || x.pri === "中")).slice(0, 2);
+      for (const pe of peers) await putLink(`lnk_odp_${P(o).so}_${pe.so}`, "order_displaces", oid("Order", P(o).so), oid("Order", pe.so));
+    }
+    // 供应链: Material → Supplier（一料一主供应商·supplierId=sup_<matId>）。
+    for (const m of ext.materials) await putLink(`lnk_msb_${P(m).matId}`, "material_supplied_by", oid("Material", P(m).matId), oid("Supplier", `sup_${String(P(m).matId)}`));
+    // 库存: MaterialBatch → Order（呆滞批次预留在手订单·确定性 batch i → orders[i % n]·R6）。
+    const orderSos = g.orders.map((o) => String(P(o).so));
+    if (orderSos.length > 0) {
+      for (let i = 0; i < ext.materialBatches.length; i++) {
+        const bt = ext.materialBatches[i]!;
+        const so = orderSos[i % orderSos.length]!;
+        await putLink(`lnk_brf_${P(bt).batchId}`, "batch_reserved_for", oid("MaterialBatch", P(bt).batchId), oid("Order", so));
+      }
+    }
+    // BOM 传导桥: Model → BomLine → Material（两跳·信号→物料→型号→订单传导链）。
+    for (const bl of ext.bomLines) {
+      await putLink(`lnk_mbl_${P(bl).bomId}`, "model_bom_line", oid("Model", P(bl).modelId), oid("BomLine", P(bl).bomId));
+      await putLink(`lnk_blm_${P(bl).bomId}`, "bomline_material", oid("BomLine", P(bl).bomId), oid("Material", P(bl).matId));
+    }
+    // 长协: LtaContract → Supplier（合同挂供应商·复用 material_supplied_by 反向不建·此处补 lta 血缘）。
+    for (const lta of ext.ltaContracts) await putLink(`lnk_lts_${P(lta).ltaId}`, "material_supplied_by", oid("Material", P(lta).matId), oid("Supplier", P(lta).supplierId));
+    // Q30 血缘: DataSourceHealth → ObjectType（源→类型·降级下游定位）。toId = 该源所喂类型的代表对象（真跳·neighbors 解真对象）。
+    const firstObjOfType = new Map<string, string>();
+    for (const [typeKey] of Object.entries(TYPE_SOURCE_SYSTEM)) {
+      const first = (await this.repos.objects.listByType(ctx.tenantId, typeKey)).sort((a, b) => (a.id < b.id ? -1 : 1))[0];
+      if (first) firstObjOfType.set(typeKey, first.id);
+    }
+    for (const dh of g.dataHealth) {
+      const sid = String(P(dh).sourceId);
+      for (const [typeKey, sys] of Object.entries(TYPE_SOURCE_SYSTEM)) {
+        if (sys !== sid) continue;
+        const repId = firstObjOfType.get(typeKey);
+        if (repId) await putLink(`lnk_dsf_${sid}_${typeKey}`, "datasource_feeds_type", oid("DataSourceHealth", sid), repId);
+      }
+    }
 
     // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
     // （weeklyWan × 认证系数）—— 与 S&OP 平衡台/季度滚动同源，确定性（无时钟/随机）。

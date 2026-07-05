@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `06ca535834cb5d85`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `34c5f6d39effade1`。
 
 ---
 
@@ -243,6 +243,17 @@ order_fullchain.dag.nodes[] --前端按 kind+so 派生 ref--> { order/建模face
         SOLVER_GAP|FEATURE→ioContract.inputs/outputShape+ontologyRefs+acceptance · PLAN_SCAFFOLD→scaffoldedDrafts 步序+去审批 /admin/actions }
   --行内操作 kind-first 分流--> { source=WORKLIST(claimable)→既有 claim/release/fill 闸(R4/R6 零改) | source=GROWTH_TICKET→只读/深链(误认领 409 WORKLIST_ITEM_READONLY 不绕) }
   ⚠ 接缝语义：聚合面是**投影不是新真值仓**——生命周期仍归各真源(worklist 闸/工单流程)；/admin/growth 驾驶舱保留为诊断运行视图(操作列保留+跳转)
+```
+
+**QUERY30 多跳对象图边（QUERY30-ONTOLOGY-EXT · §2.K 类型的连边 · `batteryLinkTypes()` + 物化 `synthetic/service.ts`）**
+30 问多跳链缺失接缝的 6 条新边，由对象 FK 确定性派生（同 seed 字节一致 R6），`/a/v1/objects/:id/neighbors` 可解引用真跳：
+```
+Order --order_allocated_on(N:N)--> Line          （占线明细·挤占锚·Q01/Q03 · allocatedLineIds 派生）
+Order --order_displaces(N:N)--> Order             （加单挤占同基地低优先级订单·Q01/Q03 · demandDelta>0.5 派生）
+Material --material_supplied_by(N:N)--> Supplier   （断供半径/集中度锚·Q04 · 一料一主供应商）
+MaterialBatch --batch_reserved_for(N:N)--> Order   （呆滞批次↔订单绑定·Q05）
+Model --model_bom_line(1:N)--> BomLine --bomline_material(N:N)--> Material  （BOM 两跳传导桥·Q11/Q28）
+DataSourceHealth --datasource_feeds_type(N:N)--> ObjectType  （源→类型血缘·降级下游定位·Q30 · 实例边 toId=该源所喂类型代表对象·真跳；schema 级 n-ObjectType 元节点见 /a/v1/ontology/graph）
 ```
 
 ---

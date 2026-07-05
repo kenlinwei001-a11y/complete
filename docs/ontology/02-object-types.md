@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §2` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §2，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `06ca535834cb5d85`。
+> **改接线改母体 §2，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `34c5f6d39effade1`。
 
 ---
 
@@ -137,5 +137,18 @@
 - **求解器 `optimize_whatif`（增量 3 已并入 SOLVER_KEYS/SOLVER_OUTPUT_SHAPES，invoke 拦截）**：what-if over optimization（OptPerturbation 结构化扰动→sidecar 重解→OptWhatifResult，复用 `recompute(dryRun)` 不落真值，FUS1 不进 A18 沙箱）；可作 G-11 沙盘内一类"优化推演"求解器。**增量 1-5 已落（SOLVER_KEYS 40→46）**：5 CP-SAT 核心 `facility_location/min_cost_flow/set_cover/independent_set/combinatorial_auction`（照 `optimizer-client.ts` + `services/optimizer/server.py` 扩，可证最优+R6 seed/单线程）+ `optimize_whatif`，并入 `SOLVER_KEYS`/`SOLVER_OUTPUT_SHAPES`/invoke 拦截（`solvers/service.ts`，chain:check 46/46）。绑定层 `solvers/opt-binding.ts`（role→本体类型/属性，DF.8 接地去电池 FUS3）· whatif `solvers/opt-whatif.ts` · 检索 `solvers/opt-embedding.ts`（advisory FUS2）· 端点 `/a/v1/opt/{solve,templates,whatif,retrieve}` · CLI `platform opt` · 门 `opt-template:check`/`opt-determinism:check`。
 - **embedding 复用检索（advisory · net-new 基建，平台今无 embedding 层）**：目标从上游"多样性"**倒转为复用/补缺**（收敛非增殖）；只做候选排序/听懂，**不进确定性求解路径（R6 地板，FUS2）**，`opt-determinism:check` 守；关 entitlement 退回 comprehend 关键词列表不静默。平台级索引（跨租户共享元资产），租户场景文本进检索守 R2。
 - **entitlement 暗发（呼应 sim.* 分模块）**：`opt.solver-pool`(VIEW) / `opt.whatif`(BLOCK) / `opt.embedding-retrieval`(BLOCK) / `opt.evolve`(BLOCK) 全 `defaultOn:false`（`features.ts`，lite/Pro/旗舰按租户开，关=`/a/v1/opt/*` 404 FEATURE_NOT_FOUND R3）。**last-mile**：demo + 非电池 `logi` 出厂经 **L3 租户 override** 开 `opt.solver-pool/opt.whatif`（`seedDemoOptEntitlement`/`seedLogisticsTenant`·出厂可覆盖·关→404 双向可证 R3），使 CP-SAT 这一公里在活系统真发生。
+
+### K. QUERY30 多跳推演基座（DataCore · QUERY30-ONTOLOGY-EXT · 缺口①基座 · 设计源 `docs/DESIGN-query30-multihop-gaps.md` §2.1/§2.2）
+
+30 问跨 ≥3 切片多跳推演倒推的**本体扩展基座**：新 5 类型 + 6 边 + Line/Order 关键字段批 + Process.yield 时序（已在 `yield:process` tsGenerator，见 §2.F）。全部正门确定性合成（R6 同 seed 字节一致·新类型置于 rng 末尾 frozen 超集只增不改）；`extendedObjectTypes()`/`generateExtended()`（`synthetic/battery-extended.ts`）+ 物化/边 `synthetic/service.ts`。计数 35→40 类型 / demo S 档 493→560 对象。
+
+- **Supplier（供应商·srm 源）** `supplierId(pk)/name/leadDays/qualityScore/concentrationPct`：断供半径/集中度/追溯的锚（此前 Material 无供应商实体）。植入石墨负极单源集中度 68%>60 红线（C38·Q04/Q06/Q29）。`TYPE_SOURCE_SYSTEM=srm`。
+- **BomLine（BOM明细·plm 源）** `bomId(pk)/modelId(ref→Model)/matId(ref→Material)/qtyPerUnit/substituteGroup`：Model→Material 用量明细，信号→物料→型号→订单**传导桥**（此前 `Material.bomUnit` 反挂无法多型号差异化）。镜像 `model_uses_material` 确定性 BOM（6 型号×4 料=24）。`TYPE_SOURCE_SYSTEM=plm`（Q11/Q28）。
+- **LtaContract（长协合同·srm 源）** `ltaId(pk)/matId(ref→Material)/supplierId(ref→Supplier)/committedQty/priceFormula/validFrom/validTo`：合同级推演（违约/重谈）对象（此前仅 `MaterialBalance.ltaPct` 聚合值）。前 5 关键料各一份。`TYPE_SOURCE_SYSTEM=srm`（Q04）。
+- **LaborShift（班组·mes 源）** `shiftId(pk)/baseId(ref→Base)/lineId(ref→Line)/headcount/skillModels/borrowable`："人材物"的**人**（此前仅 `Process.attendance` 一个聚合数）。每线白/夜两班。`TYPE_SOURCE_SYSTEM=mes`（Q09）。
+- **CarbonPassport（电池护照·ems 源）** `passportId(pk)/modelId(ref→Model)/co2PerKwh/recycledPct/dueDiligence/labelStatus/expiry`：C33 引用"碳护照"但此前系统无此对象。每型号一本，植入 1 本缺再生料/待补标签（Q13 补数戏剧点）。`TYPE_SOURCE_SYSTEM=ems`（Q13/Q14）。
+- **字段批（现有类型 §2.1）**：**Line +3**（`capacityDaily` 线级瓶颈日产能[真拓扑 min(化成,老化)派生非 Base 聚合猜值]/`certifiedModels` 线级可产型号/`changeoverGroup` 换型化学族——Line 最大单点缺口·线级推演此前全靠 Base 聚合）；**Order +7**（`promiseDate`/`marginPct`/`allocatedLineIds`[order_allocated_on 边源·真 Line id]/`penaltyClause`/`substitutable`/`priceLockedUntil`/`costBreakdown`——挤占与毛利推演锚·Q01/Q02/Q03/Q11）。均确定性派生（hashString/拓扑·不消费 rng·既有对象字节不变）。
+- **数据接入分类（14 域面板）**：`supply_partners`(供应商与长协=Supplier/LtaContract) 新增第 14 类；BomLine→material_inventory、LaborShift→capacity_base、CarbonPassport→quality_compliance（`synthetic/data-categories.ts`）。字段覆盖铁律经 `coverage_<type>` 切片自动覆盖新类型全字段。
+- **门/齿**：`test/query30-ontology-ext.test.ts`（新类型往返·R6 种子确定性·6 边 neighbors 真跳·模板列⊇props 含 FK）；接缝 `intake-coverage.ts` 以 `ontology.listTypes` 为基准·新类型自动进覆盖矩阵；frozen 超集 `demo-chain-provenance.test`（40 类/560 对象）。
 
 ---

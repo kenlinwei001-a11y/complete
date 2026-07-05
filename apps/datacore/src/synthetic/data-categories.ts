@@ -29,8 +29,8 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["Model", "Segment"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "sap_erp"],
     },
     {
-      key: "capacity_base", displayName: "产能与基地", description: "生产基地、产线与产能投资项目。",
-      typeKeys: ["Base", "Line", "CapexProject"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "capacity_base", displayName: "产能与基地", description: "生产基地、产线、产能投资项目与产线班组（人力）。",
+      typeKeys: ["Base", "Line", "CapexProject", "LaborShift"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "process_routing", displayName: "工艺工序", description: "工序良率/节拍与换型矩阵（瓶颈/换型排序推演）。",
@@ -41,16 +41,20 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["Equipment", "MaintPlan", "EnergyMeter"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["generic_jdbc", "rest_api", "file_upload"],
     },
     {
-      key: "material_inventory", displayName: "物料与库存", description: "物料/BOM 与物料批次库存（断供/集中度推演）。",
-      typeKeys: ["Material", "MaterialBatch", "MaterialBalance"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      key: "material_inventory", displayName: "物料与库存", description: "物料、BOM 明细与物料批次库存（断供/集中度/BOM 传导推演）。",
+      typeKeys: ["Material", "MaterialBatch", "MaterialBalance", "BomLine"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+    },
+    {
+      key: "supply_partners", displayName: "供应商与长协", description: "供应商主数据与长协合同（断供半径/集中度红线/合同级违约重谈推演）。",
+      typeKeys: ["Supplier", "LtaContract"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
       key: "procurement", displayName: "采购与在途", description: "采购订单与在途批次（到货延误/缺料推演）。",
       typeKeys: ["PurchaseOrder", "Shipment"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
-      key: "quality_compliance", displayName: "质量与认证", description: "数据源健康度、产品认证与实验室检测（合规/碳护照前置）。",
-      typeKeys: ["DataSourceHealth", "Certification", "LabTest"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
+      key: "quality_compliance", displayName: "质量与认证", description: "数据源健康度、产品认证、实验室检测与电池护照（合规/碳护照四要素）。",
+      typeKeys: ["DataSourceHealth", "Certification", "LabTest", "CarbonPassport"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
       key: "finance_carbon", displayName: "财务与碳", description: "基地财务账户、情景财务指标、财务预算（收入/成本/毛利）与碳因子。",

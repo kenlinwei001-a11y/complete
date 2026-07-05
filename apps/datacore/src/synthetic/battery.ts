@@ -460,6 +460,14 @@ const orderProps: PropertyDef[] = [
   { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false },
   { propKey: "leadDays", dataType: "number", isPrimaryKey: false },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false }, // 按型号反范式化的单价（value 派生依赖）
+  // QUERY30-ONTOLOGY-EXT（§2.1 Order 挤占五件套 + 锁价/成本快照）——挤占与毛利推演的锚（Q01/Q02/Q03/Q11）。
+  { propKey: "promiseDate", dataType: "date", isPrimaryKey: false }, // 承诺交期（vs due 计划交期）
+  { propKey: "marginPct", dataType: "number", isPrimaryKey: false }, // 单毛利率（现仅 Segment 级 gmRate）
+  { propKey: "allocatedLineIds", dataType: "json", isPrimaryKey: false }, // 占线明细（挤占分析锚·order_allocated_on 边源）
+  { propKey: "penaltyClause", dataType: "number", isPrimaryKey: false }, // 违约金率（Q03）
+  { propKey: "substitutable", dataType: "boolean", isPrimaryKey: false }, // 可外协标记（Q03）
+  { propKey: "priceLockedUntil", dataType: "date", isPrimaryKey: false }, // 锁价期（Q02）
+  { propKey: "costBreakdown", dataType: "json", isPrimaryKey: false }, // BOM 成本快照（归因粒度·Q11）
 ];
 const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
 
@@ -471,6 +479,10 @@ const lineProps: PropertyDef[] = [
   { propKey: "utilization", dataType: "number", isPrimaryKey: false },
   { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false },
   { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false },
+  // QUERY30-ONTOLOGY-EXT（§2.1 Line 三字段·最大单点缺口——线级推演此前全靠 Base 聚合值）。
+  { propKey: "capacityDaily", dataType: "number", isPrimaryKey: false }, // 线级日产能（Q01/Q03）
+  { propKey: "certifiedModels", dataType: "json", isPrimaryKey: false }, // 线级可产型号（Q01/Q15·认证线约束）
+  { propKey: "changeoverGroup", dataType: "string", isPrimaryKey: false }, // 换型组（Q08 换型序列约束）
 ];
 
 const processProps: PropertyDef[] = [
@@ -784,6 +796,14 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "metric_affects_ksf", fromTypeKey: "Metric", toTypeKey: "KSF", cardinality: "N:N" }, // decision
     { key: "metric_ownedby", fromTypeKey: "Metric", toTypeKey: "Principal", cardinality: "N:N" }, // decision→people
     { key: "plantarget_ownedby", fromTypeKey: "PlanTarget", toTypeKey: "Principal", cardinality: "N:N" }, // plan→people（责任闭环）
+    // ---- QUERY30-ONTOLOGY-EXT（§2.2 6 新边·多跳链缺失接缝）----
+    { key: "order_allocated_on", fromTypeKey: "Order", toTypeKey: "Line", cardinality: "N:N" }, // 挤占（占线明细·Q01/Q03）
+    { key: "order_displaces", fromTypeKey: "Order", toTypeKey: "Order", cardinality: "N:N" }, // 挤占推演边（加单挤占被挤单·Q01/Q03）
+    { key: "material_supplied_by", fromTypeKey: "Material", toTypeKey: "Supplier", cardinality: "N:N" }, // 断供半径/集中度锚（Q04）
+    { key: "batch_reserved_for", fromTypeKey: "MaterialBatch", toTypeKey: "Order", cardinality: "N:N" }, // 批次↔订单绑定（Q05）
+    { key: "model_bom_line", fromTypeKey: "Model", toTypeKey: "BomLine", cardinality: "1:N" }, // Model→BomLine（BOM 传导桥·Q11/Q28）
+    { key: "bomline_material", fromTypeKey: "BomLine", toTypeKey: "Material", cardinality: "N:N" }, // BomLine→Material（BOM 传导桥·Q11/Q28）
+    { key: "datasource_feeds_type", fromTypeKey: "DataSourceHealth", toTypeKey: "ObjectType", cardinality: "N:N" }, // 源→类型血缘（降级下游定位·Q30）
   ];
 }
 
@@ -1482,6 +1502,20 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // 替代随机生成 → 订单全链/台账/根因 1:1。可产基地取该 model 的 MODEL_BASE_MAP（确定性）。
   const modelById = new Map(models.map((m) => [m.modelId, m]));
   const t0ms = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+  // QUERY30-ONTOLOGY-EXT：Order 挤占五件套 + 锁价/成本快照（确定性派生·不依赖 rng·不移位既有字段·R6）。
+  const orderExtras = (so: string, i: number, unitPrice: number, dueDay: number, orderBases: string[]) => {
+    const advance = i % 8 === 0 ? 14 : 0; // 加单提前交期（Q01 "提前 20%"）
+    const promiseDay = Math.max(0, dueDay - advance);
+    return {
+      promiseDate: new Date(t0ms + promiseDay * 86400000).toISOString().slice(0, 10),
+      marginPct: round(12 + (hashString(`${so}m`) % 12) - (i % 7 === 0 ? 6 : 0), 1), // 压价行低毛利（越 floor）
+      allocatedLineIds: orderBases.map((b) => `LINE-${b}`), // 占线明细（order_allocated_on 边源·真 Line id）
+      penaltyClause: round((hashString(`${so}p`) % 15) / 100, 2), // 违约金率 0–0.15
+      substitutable: i % 3 === 0, // 可外协标记
+      priceLockedUntil: i % 9 === 0 ? new Date(t0ms + (dueDay + 30) * 86400000).toISOString().slice(0, 10) : "", // 锁价期（部分订单）
+      costBreakdown: { material: round(unitPrice * 0.6, 0), labor: round(unitPrice * 0.15, 0), energy: round(unitPrice * 0.1, 0) },
+    };
+  };
   const orders: Record<string, unknown>[] = HTML_ORDERS.map((o, i) => {
     const model = modelById.get(o.model);
     const producible = model?.bases ?? [];
@@ -1507,6 +1541,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       outsourceRatio: i % 6 === 0 ? 0.35 : round((hashString(`${o.so}o`) % 18) / 100, 2),
       creditUsedRatio: i % 7 === 0 ? 1.15 : round(0.4 + (hashString(`${o.so}c`) % 50) / 100, 2),
       leadDays: dueDay,
+      ...orderExtras(o.so, i, model?.unitPrice ?? 600, dueDay, orderBases),
     };
   });
 
@@ -1529,6 +1564,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),
       creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
       leadDays: dueDay,
+      ...orderExtras(so, i, model.unitPrice, dueDay, orderBases),
     });
   }
 
@@ -1633,6 +1669,20 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         idx === 0 ? "量产" : idx === mb.length - 1 ? "认证中" : rngCert() < 0.7 ? "量产" : "认证中";
       certLinks.push({ modelId: m.modelId, lineId: `LINE-${baseId}`, baseId, status });
     });
+  }
+
+  // QUERY30-ONTOLOGY-EXT：Line 三字段富化（第二遍·确定性派生自 base 产能上限 + certLinks·不消费 rng·R6）。
+  //  capacityDaily = 线级瓶颈日产能（化成/老化上限取小·真拓扑派生·非 Base 聚合猜值）；
+  //  certifiedModels = 该线量产/认证中型号（Q01/Q15 认证线约束锚）；changeoverGroup = 换型化学族（Q08）。
+  const baseById = new Map(bases.map((b) => [b.baseId, b]));
+  for (const l of lines) {
+    const b = baseById.get(String(l.baseId));
+    const cap = b ? Math.min(Number(b.formationCapDaily ?? 0), Number(b.agingCapDaily ?? 0)) : 0;
+    const certed = certLinks.filter((cl) => cl.lineId === l.lineId).map((cl) => cl.modelId);
+    const lfp = certed.filter((mid) => mid.includes("LFP")).length;
+    l.capacityDaily = cap;
+    l.certifiedModels = certed;
+    l.changeoverGroup = certed.length === 0 ? "未定" : lfp * 2 >= certed.length ? "LFP系" : "NCM系";
   }
 
   const segments = [

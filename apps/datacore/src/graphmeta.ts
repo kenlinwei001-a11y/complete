@@ -12,11 +12,15 @@ export const GRAPH_DOMAIN: Record<string, string> = {
   Crew: "people", QualityLot: "quality",
   AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
   ExternalSignal: "external", // A3.1：外部信号归 external 域
+  // QUERY30-ONTOLOGY-EXT 新 5 类型图谱域着色。
+  Supplier: "material", LtaContract: "material", BomLine: "product", LaborShift: "people", CarbonPassport: "external",
 };
 
-/** 数据域分组展示顺序（映射表组头行排序） */
+/** 数据域分组展示顺序（映射表组头行排序）。含全部 14 业务域（此前缺 material/sales/finance/external/decision
+ *  → 落末桶靠 listTypes 顺序偶然连续；补全后按域确定性分组，新类型入桶不破连续性）。 */
 export const DOMAIN_ORDER = [
-  "factory", "product", "capacity", "process", "equip", "people", "quality", "forecast", "plan", "solver", "agent",
+  "factory", "product", "capacity", "process", "equip", "people", "quality", "forecast", "plan",
+  "material", "sales", "finance", "external", "decision", "solver", "agent",
 ];
 
 /**
@@ -102,6 +106,11 @@ export const TYPE_SOURCE_SYSTEM: Record<string, string> = {
   EnergyMeter: "ems", CarbonFactor: "ems",
   // lims（实验室）：电芯实验室检测（WO-7 9/9·正门合成的真实 LIMS 源对象）
   LabTest: "lims",
+  // QUERY30-ONTOLOGY-EXT 新 5 类型归因（既有源系统·不新增源·9/9 维持）：
+  Supplier: "srm", LtaContract: "srm", // 供应商协同
+  BomLine: "plm", // 产品结构（BOM）
+  LaborShift: "mes", // 生产执行（班组）
+  CarbonPassport: "ems", // 能耗/碳（电池护照）
 };
 
 /** 映射表 kind="agent" 行（静态种子清单；AgentCore 侧注册表为运行态来源） */

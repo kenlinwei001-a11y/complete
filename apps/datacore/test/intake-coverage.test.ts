@@ -166,6 +166,9 @@ describe("PANORAMA-FIELD-INTAKE · 上传往返齿（模版下载→填样→上
       so: "SO-RT-1", cust: "往返客户A", model: "4680-NCM", qty: 1234, due: "2026-08-08",
       pri: "高", bases: "常州", status: "OPEN", demandDelta: 7, outsourceRatio: 0.12,
       creditUsedRatio: 0.55, leadDays: 21, unitPrice: 2.5,
+      // QUERY30-ONTOLOGY-EXT Order 新列（无逗号值以走 CSV 正门）。
+      promiseDate: "2026-07-25", marginPct: 15.5, allocatedLineIds: "LINE-常州",
+      penaltyClause: 0.08, substitutable: "true", priceLockedUntil: "2026-09-30", costBreakdown: "料60|工15|能10",
     };
     for (const c of cols) expect(fill[c], `齿检需为模版列 '${c}' 提供样值（模版列变更需同步填样）`).toBeDefined();
     const row = cols.map((c) => String(fill[c]!)).join(",");

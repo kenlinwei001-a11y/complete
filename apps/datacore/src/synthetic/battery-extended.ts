@@ -24,6 +24,8 @@ const p = (propKey: string, dataType: PropertyDef["dataType"] = "number", isPrim
   dataType,
   isPrimaryKey,
 });
+/** ref 属性（FK）：dataType="ref" + refToTypeKey → 进数据模版 refColumns（G-6）·可解引用真跳。 */
+const pRef = (propKey: string, refToTypeKey: string): PropertyDef => ({ propKey, dataType: "ref", isPrimaryKey: false, refToTypeKey });
 
 type TypeDef = Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">;
 const def = (key: string, displayName: string, domain: string, props: PropertyDef[]): TypeDef => ({
@@ -55,6 +57,18 @@ export function extendedObjectTypes(): TypeDef[] {
     def("FinanceMetric", "情景财务指标", "finance", [p("metricId", "string", true), p("scenarioKey", "string"), p("cashCushion"), p("irr"), p("capexSpent"), p("netMargin")]),
     // 外部域（EXT_SIG）：环境/市场信号一等对象（domain=external；规划敏感性输入 P2）。
     def("ExternalSignal", "外部信号", "external", [p("signalKey", "string", true), p("name", "string"), p("category", "string"), p("value"), p("unit", "string"), p("asOf", "string"), p("source", "string"), p("trend", "string"), p("impact", "string"), p("elasticity")]),
+    // ---- QUERY30-ONTOLOGY-EXT（缺口①基座·§2.2 新 5 类型）----
+    // Supplier（供应商·srm 源）：断供半径/集中度/追溯的锚——Material 此前无供应商实体。服务 Q04/Q06/Q29。
+    def("Supplier", "供应商", "material", [p("supplierId", "string", true), p("name", "string"), p("leadDays"), p("qualityScore"), p("concentrationPct")]),
+    // BomLine（BOM 明细·plm 源）：Model→Material 用量明细，信号→物料→型号→订单传导桥。服务 Q11/Q28。
+    // FK：modelId→Model、matId→Material（ref 列进模版 refColumns·G-6·可解引用真跳）。
+    def("BomLine", "BOM明细", "product", [p("bomId", "string", true), pRef("modelId", "Model"), pRef("matId", "Material"), p("qtyPerUnit"), p("substituteGroup", "string")]),
+    // LtaContract（长协合同·srm 源）：承诺量/价格公式/起止——合同级推演（违约/重谈）的对象。服务 Q04。
+    def("LtaContract", "长协合同", "material", [p("ltaId", "string", true), pRef("matId", "Material"), pRef("supplierId", "Supplier"), p("committedQty"), p("priceFormula", "string"), p("validFrom", "string"), p("validTo", "string")]),
+    // LaborShift（班组·mes 源）：技能矩阵/编制/借调——"人材物"的人此前仅 Process.attendance 一个聚合数。服务 Q09。
+    def("LaborShift", "班组", "factory", [p("shiftId", "string", true), pRef("baseId", "Base"), pRef("lineId", "Line"), p("headcount"), p("skillModels", "string"), p("borrowable", "boolean")]),
+    // CarbonPassport（电池护照·ems 源）：四要素状态/签发/有效期——C33 引用"碳护照"但系统此前无此对象。服务 Q13/Q14。
+    def("CarbonPassport", "电池护照", "external", [p("passportId", "string", true), pRef("modelId", "Model"), p("co2PerKwh"), p("recycledPct"), p("dueDiligence", "string"), p("labelStatus", "string"), p("expiry", "string")]),
   ];
 }
 
@@ -85,12 +99,18 @@ export interface ExtendedData {
   financeAccounts: Record<string, unknown>[];
   financeMetrics: Record<string, unknown>[];
   labTests: Record<string, unknown>[];
+  // QUERY30-ONTOLOGY-EXT 新 5 类型。
+  suppliers: Record<string, unknown>[];
+  bomLines: Record<string, unknown>[];
+  ltaContracts: Record<string, unknown>[];
+  laborShifts: Record<string, unknown>[];
+  carbonPassports: Record<string, unknown>[];
 }
 
 /** 确定性生成（基于型号/基地/订单上下文 + seed 派生子流）。scale 控工业级数据量（XL）。 */
 export function generateExtended(
   seed: number,
-  ctx: { models: { modelId: string }[]; bases: { baseId: string; name: string }[]; lines: { lineId: string }[] },
+  ctx: { models: { modelId: string }[]; bases: { baseId: string; name: string }[]; lines: { lineId: string; baseId?: string }[]; orders?: { so: string }[] },
   scale: "S" | "M" | "L" | "XL" = "L",
 ): ExtendedData {
   const rng = mulberry32(seed + 7919); // 独立子流，与主生成不串扰
@@ -267,5 +287,73 @@ export function generateExtended(
     });
   });
 
-  return { materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, labTests };
+  // ---- QUERY30-ONTOLOGY-EXT：5 新类型（置于生成末尾消费 rng → 不移位既有对象·R6 字节不变·frozen 超集只增不改）----
+  // Supplier（供应商·srm）：一料一主供应商（8 家），植入 1 家集中度红线（>60%·C38 预警锚）。
+  const suppliers = MATERIALS.map((m, i) => ({
+    supplierId: `sup_${m.matId}`,
+    name: `${m.name}供应商`,
+    leadDays: 7 + Math.floor(rng() * 21),
+    qualityScore: uniformDomain(rng, 82, 16, 1, "qualityScore"),
+    concentrationPct: m.matId === "neg_graphite" ? 68 : Math.round(uniformDomain(rng, 20, 35, 0, "concentrationPct")), // 石墨负极单源 68%>60 红线
+  }));
+
+  // BomLine（BOM 明细·plm）：镜像 model_uses_material 确定性 BOM（每型号取 4 料·覆盖全 8 料），
+  // 是信号→物料→型号→订单传导桥（Model→BomLine→Material 两跳）。FK：modelId→Model、matId→Material。
+  const matIds = MATERIALS.map((m) => m.matId);
+  const bomLines: Record<string, unknown>[] = [];
+  ctx.models.forEach((m, mi) => {
+    const bom = [...new Set(Array.from({ length: 4 }, (_, k) => matIds[(mi * 2 + k) % matIds.length]!))];
+    bom.forEach((matId, bi) => {
+      bomLines.push({
+        bomId: `bom_${m.modelId}_${matId}`,
+        modelId: m.modelId,
+        matId,
+        qtyPerUnit: uniformDomain(rng, 0.2, 1.6, 3, "qtyPerUnit"),
+        substituteGroup: bi === 0 ? "primary" : "substitutable", // 主料/可替代（C31 外协质量门用）
+      });
+    });
+  });
+
+  // LtaContract（长协合同·srm）：为前 5 种关键料各一份长协（承诺量/价格公式/起止）。FK：matId→Material、supplierId→Supplier。
+  const ltaContracts = MATERIALS.slice(0, 5).map((m) => ({
+    ltaId: `lta_${m.matId}`,
+    matId: m.matId,
+    supplierId: `sup_${m.matId}`,
+    committedQty: Math.round(uniformDomain(rng, 2000, 6000, 0, "committedQty")),
+    priceFormula: "index*0.9+fixed", // 联动公式占位（真值域：锂价指数联动）
+    validFrom: "2026-01-01",
+    validTo: "2026-12-31",
+  }));
+
+  // LaborShift（班组·mes）：每产线两班（白/夜），编制/技能矩阵/借调标记。FK：baseId→Base、lineId→Line。
+  const laborShifts: Record<string, unknown>[] = [];
+  ctx.lines.forEach((l) => {
+    for (let si = 0; si < 2; si++) {
+      laborShifts.push({
+        shiftId: `shift_${l.lineId}_${si}`,
+        baseId: l.baseId ?? "",
+        lineId: l.lineId,
+        headcount: Math.round(uniformDomain(rng, 18, 24, 0, "headcount")),
+        skillModels: ctx.models.slice(0, 3).map((m) => m.modelId).join("|"), // 可产型号技能矩阵（白/夜班）
+        borrowable: si === 0, // 白班可借调
+      });
+    }
+  });
+
+  // CarbonPassport（电池护照·ems）：每型号一本（四要素状态/签发/有效期），植入 1 本缺再生料数据（Q13 补数戏剧点）。
+  const carbonPassports = ctx.models.map((m, i) => ({
+    passportId: `cp_${m.modelId}`,
+    modelId: m.modelId,
+    co2PerKwh: uniformDomain(rng, 45, 40, 1, "co2PerKwh"),
+    recycledPct: i === 1 ? 0 : Math.round(uniformDomain(rng, 8, 22, 0, "recycledPct")), // 第2型号缺再生料数据
+    dueDiligence: i === 1 ? "缺数" : "已核",
+    labelStatus: i === 1 ? "待补" : "已签发",
+    expiry: "2027-06-30",
+  }));
+
+  return {
+    materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix,
+    capexProjects, purchaseOrders, carbonFactors, financeAccounts, financeMetrics, labTests,
+    suppliers, bomLines, ltaContracts, laborShifts, carbonPassports,
+  };
 }

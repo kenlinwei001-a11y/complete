@@ -2348,6 +2348,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       if (!nodeIds.has(xe.from) || !nodeIds.has(xe.to)) return;
       edges.push({ id: `e-x${i}`, from: xe.from, to: xe.to, label: xe.label, kind: xe.kind });
     });
+    // QUERY30-ONTOLOGY-EXT（Q30 血缘）：datasource_feeds_type 边指向"对象类型"元节点——源→类型依赖的
+    // schema 级落点（降级时定位血缘下游），避免悬边。仅当确有该边时才补元节点。
+    if (edges.some((e) => (e.to as string) === "n-ObjectType")) {
+      nodes.push({ id: "n-ObjectType", key: "ObjectType", label: "对象类型（元）", kind: "meta", domain: "quality", properties: [], sourceBindings: [], rules: [], derivations: [] });
+    }
     return { nodes, edges };
   });
 
