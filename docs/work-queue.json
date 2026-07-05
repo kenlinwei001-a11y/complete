@@ -3480,11 +3480,12 @@
       "note": "PRD §6六断言(逐卡VERIFIED·renderBindings⊆shapes·ruleIds全进evaluate_rules·sliceTargets覆盖·无静默残缺·目录注册表派生)并入pnpm gates。scenarioClosure(server.ts:1791)从查存在升级为查跑通(ready⟺亲手跑到VERIFIED)。**PRD验收#1**: 20张卡逐张grow→VERIFIED→点卡真决策视图(FDE逐卡证据)。本体回写§2(OntogenesisRun)/§3(卡发育链)/§4(三事件)/§5(R16)/§7(门)/§8(G-1闭·G-9修)+ontology:slices重生成。DoD: gates exit0·北极星距离表(还差哪几环+哪些合成/happy-path·fde-delivery)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
       "at": {
-        "todo": "2026-07-05T08:29:30.462Z"
+        "todo": "2026-07-05T08:29:30.462Z",
+        "wip": "2026-07-05T08:39:25.078Z"
       },
       "id": "POLISH-P3-BUNDLE",
       "priority": "P3",
@@ -3494,10 +3495,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "QUEUE",
-      "id": "ONTO-SCEN×6+POLISH",
-      "at": "2026-07-05T08:29:30.462Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "POLISH-P3-BUNDLE",
+      "at": "2026-07-05T08:39:25.093Z"
     }
   }
 }
