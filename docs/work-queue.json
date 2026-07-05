@@ -3269,7 +3269,7 @@
     {
       "id": "LAUNCH-VIEW-KEY-ALIGN",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "blockReason": "",
@@ -3288,7 +3288,8 @@
       },
       "at": {
         "wip": "2026-07-05T03:58:45.774Z",
-        "built": "2026-07-05T04:18:43.249Z"
+        "built": "2026-07-05T04:18:43.249Z",
+        "done": "2026-07-05T04:27:21.171Z"
       }
     },
     {
@@ -3341,8 +3342,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "SLOT-CLARIFY-HUMANIZE",
-      "at": "2026-07-05T04:20:11.810Z"
+      "id": "LAUNCH-VIEW-KEY-ALIGN",
+      "at": "2026-07-05T04:27:21.171Z"
     }
   }
 }
