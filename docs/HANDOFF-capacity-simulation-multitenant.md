@@ -1,5 +1,20 @@
 # HANDOFF · 产能推演系统（多租户 · 通用产能预测引擎）
 
+> **⟦对账收编 2026-07-05 · CAPACITY-W-RECONCILE⟧** —— 本 HANDOFF 原自标「草稿·未入队」、work-queue 零引用、自设断点 G-CAP-1 从未登记本体（与「沙盘改名」同类的**记录失载第 2 例**）。现补录：逐波盘点各波是被其它 DONE 单**吸收**、**部分并入**、还是**仍缺**（下表以真实代码/门证据为准·非口号），并把 G-CAP-1 正式登记进 `SYSTEM-ONTOLOGY.md §8`（状态诚实 ◐·非全闭）。**结论：W0/W-MC 已被吸收（经不同机件·非本 HANDOFF 原方案）·W1 部分并入·插单边已落·W3 决策代价层/跨基地/W5 情景与 CAPEX 反推仍缺（大部随 QUERY30-ORCH）。**
+>
+> | 波次 | 目标要旨 | 现状 | 吸收/并入单号（证据） |
+> |---|---|---|---|
+> | **W0** 去电池化 | capacity 求解器行业无关·非电池租户可跑 | ✅ **吸收（异机件）** | `debattery:check` 门绿（gates exit0·capacity 引擎零内联电池常数）；去电池经 **opt-binding**（`solvers/opt-binding.ts` role→本体类型 DF.8 接地·G-12 增量）+ **INDUSTRY-PACK**（`synthetic/logistics.ts` 物流租户零电池 token·debattery 基线 0）+ **METHOD-MC-STOCHASTIC**（`capacity_forecast` P90 由「p50×0.93 电池魔数」翻真实经验分位）达成 W0 之**意图**（多租户+引擎零电池）。**诚实差异**：非按本 HANDOFF 原方案（capacity.ts 全字段走 `resolveField`·实测 resolveField 命中 0）——意图达成、路径不同。 |
+> | **W-MC** 蒙特卡洛种子化 | 禁 Math.random·同 seed 字节一致 R6 | ✅ **吸收** | **METHOD-MC-STOCHASTIC**（`method-mc.ts` seeded mulberry32 type-7·门 `method-determinism:check` 守·伪分位式零命中）。W5 的「种子化 PRNG 工具」基建即此。 |
+> | **W1** 通用对象+数据接入 | Routing/Store/Lane/Labor + 3 维上传 | ◐ **部分并入** | **Store/Lane** 经 INDUSTRY-PACK 物流租户（Warehouse/Store·`logistics.ts`）；**LaborShift** 经 **QUERY30-ONTOLOGY-EXT**（`f425fa3`·并 Supplier/BomLine/LtaContract/CarbonPassport 5 新类型）。**仍缺**：`Routing`（工序 DAG holdTicks）、`Labor` 全 skillMatrix、④⑤⑥ 三维上传模板未按 HANDOFF 全落。 |
+> | **插单/挤占** | DISPLACES 边 + what_if_displacement 求解器 | ◐ **边已落·器仍缺** | **DISPLACES 边**（Order→Order）经 QUERY30-ONTOLOGY-EXT 已落（往返齿证）；`what_if_displacement` **求解器**属 **QUERY30-ORCH**（TODO·设计 §2.5）。 |
+> | **W2** 爬坡+齐套 | 有效产能减换型/爬坡曲线/静置 WIP CP | ❌ **仍缺** | 未见 `Line.rampCurve` 读取 / `Store{WIP}.holdOccupancy` 时间轴 CP 落地。留 TODO 或随产能专项单。 |
+> | **W3** 跨基地供需+瓶颈+决策代价层 | crossbase_balance / DecisionOutcome 溯源信封 | ◐ **原语在·产能装配缺** | CP-SAT 原语（facility_location/min_cost_flow）经 opt-fusion 已立（G-12·U1–U6 活系统通电）；但**产能语义的** `crossbase_balance`/`DecisionOutcome{sacrificed,cost,slackAdvice}` 装配未落——大部随 **QUERY30-ORCH**（cash_projection/multi_plan_compare/capex_alternatives·设计 §2.5）。 |
+> | **W4** 改名+人机问答+入口 wiring | 预判推演看板→产能推演 + QOS 单管线 | ✅ **改名已落·问答复用既有** | 改名经 **SANDBOX-RENAME-BASECARDS**（`310befb`·/v/risk 标题+nav→「产能推演」·名实相符）；产能问句走既有 QOS 单管线（无需专建）。 |
+> | **W5** 情景+敏感性+CAPEX 反推 | 4 类 what-if + 扩产反推 | ❌ **仍缺** | 种子化 MC 基建在（W-MC），但**产能达成率置信区间/4 情景代价对比/CAPEX 反推**未落——随 QUERY30-ORCH（capex_alternatives/countermeasure_combo）或产能专项单。 |
+>
+> **处置**：W0/W-MC/W4 记 ✅ 吸收；W1/插单/W3 记 ◐ 部分并入（余项归 QUERY30-ORCH）；W2/W5 记 ❌ 仍缺，**不新开专项单**（用户裁决前保留于本对账表·待 QUERY30-ORCH 落地后复盘是否仍有净缺口·避免与 ORCH 重复造单）。G-CAP-1 登记 §8 状态 ◐（意图部分达成·非全闭·非作废）。台账三处纠见提交。
+>
 > 施工合同 · 分发：开发 agent。审核方出设计，dev 照建，审核方真跑复验（curl oracle + 真浏览器）。
 > 分支只推 `claude/vigilant-knuth-b1nmxn`。**产能预测是多租户需求——引擎/通用对象/通用场景零电池，锂电仅作一个租户的绑定样例。**
 > 来源 PRD：`scratchpad/PRD-extracted.txt`（锂电通用版）；现状盘点：`scratchpad/capacity-gap-summary.md`（file:line 坐实）。

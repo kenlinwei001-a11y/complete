@@ -11,7 +11,7 @@
 
 | # | 需求（用户明确提过） | 状态 | 实情 |
 |---|---|---|---|
-| A1 | **封装引擎暴露为 MCP 工具**（"封装成 API 就要在 MCP 工具里看到他们,包括 API"） | ⬜ | §8g。OR-Tools sidecar 已封装为平台 API + datacore 求解器,但**未注册成 MCP server**、MCP 页看不到、agent 经 mcp-router 调不到。我曾用 AskUserQuestion 把它排在 FDE 之后,用户选了 FDE，此条留欠。 |
+| A1 | **封装引擎暴露为 MCP 工具**（"封装成 API 就要在 MCP 工具里看到他们,包括 API"） | ◐ | §8g。**大部覆盖（PLATFORM-AGENT-SURFACE·CAPACITY-W-RECONCILE 2026-07-05 纠账）**：平台已开**对外 MCP/A2A 服务端表面**——外部 agent 可反向调用平台求解器 `platform__solver__{key}`（→既有 invoke REST·OBO/R2/R3 门随行·见本体 §8 G-14「对外表面正向补充 WO-A」+ §3）。即引擎**已作为 MCP 工具暴露**（出站方向）。**余（诚实）**：内部 agent 经 mcp-router 反向调本平台求解器的入站闭环、MCP 管理页对这些工具的可见化尚未逐一验证——留 ◐ 不冒充全闭。 |
 | A2 | **comprehend 地板认新求解器** | ✅ | 地板加 Process/Equipment 实体 + Order 扩 procRef/prio/revenue/rawCost + shared_bottleneck/margin_attribution 关键词 + SOLVER_TARGET_VIEW；无 Kimi 时锂电故事即可选中新求解器并经 deriveSolverArgs 自动倒推参数（共享瓶颈→Process/Order/procRef…；毛利倒挂→Order/revenue/rawCost）。测试 llm-comprehend 地板用例 + comprehend-floor-a2(×2)。**余**：concentration_risk/supplier_disruption_radius 的地板语义选择仍依赖 Kimi（多源/标量歧义）。 |
 | A14 | **hand-run agent evals 比对 PRD** | ✅✅ | (1) MOCK 链路：种子 20 场景(=PRD)逐条经真实 QOS，修 4 真断点（并发旁路/slotPresets/mock主键/期望一刀切）→ **20/20 意图命中 + 20/20 真执行产出非空答案**（evals-scenario-suite.test）。(2) **真 Kimi 分类**：实测 20 场景触发问句经真 kimi-k2.5 分类，修 classify 三断点（围栏/strict:false/有界重试）→ **真分 20/20 命中期望意图**。A14 mock+真 双闭环。 |
 | A3 | **14 域参考运营本体 + 域内/跨域两库 + 多跳切片规划器 + 切片索引复用** | ⬜ | §3 用户"最新需求"整块未动。当前切片=单根/全字段覆盖根，**无图路径搜索的多跳切片规划器**，无两库读模型，无切片索引复用。 |
@@ -28,7 +28,7 @@
 | A15 | **新工作流代码的工业级压测**（用户："你做了工业级压测吗？"） | ⬜ | 工作流运行时 / ModuleProvisioner / gap_analysis / 异步执行只有功能性单测+集成(20 条)，**无规模/并发/负载压测**。该仿 `stress-bottleneck`/`scale-baseline`：大 BuildPlan(数百对象/规则/求解器)的 gap_analysis 规模、N 条并发异步运行、resume 风暴、确定性(R6)+性能预算。我曾说"工业级"指架构形态，非压测验证——不该混说。 **更新（2026-06-22）**：本会话新增码（FDE 投影 projectFdeNodes / prototype-intake 解析 / 双模闭包 validateClosure / operation-classify）同样**无规模压测**，一并归此项。 |
 | A16 | **真浏览器 UI E2E 测试套件**（用户："包括前端 UI 的测试？"+"前后端联调是必须的"） | ◐ | **进展（2026-06-21）**：① 成文测试标准 `docs/TESTING-STANDARD.md`（分层 L0–L9 + 必测层矩阵，闭 A17）；② **前后端真联调 E2E 脚本固化** `scripts/e2e-realbackend.mjs`（真 datacore:4001 + 真 agentcore:4002 + 前端真后端模式/非 mock，Playwright 真浏览器），**实跑一次 4/4 通过**：admin/demo1234 真登录 → A4 真物化计数(26 类型/Equipment=72，区别于 mock 写死值) → A11 连接归类 → 工作流 7 步 + 比对现状表 + cross_scaffold 真下发 agentcore。**余**：未进 CI `pnpm test`（需下载 Chromium/起双后端，重）；前端组件测试仍 jsdom+MSW；无 UI 性能/负载。**待用户拍板**：E2E 进 CI 还是本地/夜间。 **更新（2026-06-22 已补实）**：装 playwright-core 1.61 + 扩 `e2e-realbackend.mjs` 到 9 项覆盖 5 新组件 + `run-l4-realbackend.sh` 一键编排 → 真 Chromium↔真后端 **9/9 通过**，5 项回 ✅。**余**：① 未进 CI（`pnpm e2e:realbackend` 本地/夜间，需起 datacore+agentcore+vite 三进程 + chromium 缓存）；② A14 真 Kimi parity 实跑仍 env-gated 未执行（mock 证框架，≠ agent 质量达标）。 |
 | A19 | **§3 测试登记纪律未随 PR 履行**（TESTING-STANDARD §3 要求每 PR 填登记表） | ◐ | 本会话各 PR 提交时**未填 §3 表**，已于 2026-06-22 追溯补齐到 `TESTING-STANDARD §8`（10 项逐层登记 + 诚实边界）。**根治**：把 §3 登记接进 commit/PR 模板，今后随 PR 填（同 R9/R15 注册纪律）。 |
-| A17 | **成文测试标准 `docs/TESTING-STANDARD.md`**（用户："测试标准有吗？"） | ⬜ | **无单一成文标准**。约定散落（CLAUDE.md "4 包全绿底线"数字已过期 69/66/25+ vs 实际 458/265/181；R6 确定性/R2 隔离/no network·clock·LLM-mock；`fde-delivery` skill；VLE 7 段断言+3 覆盖率；`pnpm gates`）。该写：测试分类法 + 每类功能必备测试矩阵 + 性能预算 + 覆盖门 + 修正过期数字 + 接进 gates。 |
+| A17 | **成文测试标准 `docs/TESTING-STANDARD.md`**（用户："测试标准有吗？"） | ✅ | **已成文**（`docs/TESTING-STANDARD.md` 11247 字·分层 L0–L9 + 必测层矩阵·A16 note 已述"闭 A17"）——此前 ⬜ 标为**陈旧失载**（CAPACITY-W-RECONCILE 2026-07-05 纠：文件早已存在且被 A16 引用，标记未同步）。分类法 + 必备测试矩阵 + 覆盖门 + `pnpm gates` 接线俱在；过期数字修正随各 WO 滚动。 |
 
 ## B. 阻塞在用户（我做不了，需你处理）
 
