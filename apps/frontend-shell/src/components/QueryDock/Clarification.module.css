@@ -56,19 +56,19 @@
   color: var(--muted);
 }
 
+/* CLARIFY-COMBOBOX-DISMISS：由 absolute 悬浮改为文档流内展开 ——
+   悬浮层曾几何盖住表单提交钮（pointer intercept·真浏览器实测）；
+   流内展开把下方操作钮推下去而非盖住，弹层永不遮挡任何按钮。 */
 .dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 50;
+  display: block;
   list-style: none;
   background: var(--panel);
   border: 1px solid var(--line2);
   border-radius: 8px;
   max-height: 200px;
   overflow-y: auto;
-  margin-top: 4px;
+  margin: 4px 0 0;
+  padding: 0;
 }
 .dropdown li button {
   display: block;

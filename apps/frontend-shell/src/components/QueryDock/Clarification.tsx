@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { replyClarification, searchObjects } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
@@ -210,19 +210,38 @@ export function ObjectRefSelector({
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement>(null);
   const { data } = useQuery({
     queryKey: ["a", "objects", { type: objectType, q }],
     queryFn: () => searchObjects(objectType, q),
     enabled: open,
   });
 
+  // CLARIFY-COMBOBOX-DISMISS：无匹配『暂无数据』弹层曾常开不可退（Esc/点外均无效）。
+  // 外点即关：open 时挂 document click（capture），落点不在组件内 → 关弹层。
+  // 用 click 而非 pointerdown/blur：弹层是文档流内展开（见 module.css），若在 mousedown
+  // 阶段就收起，下方按钮会在按下与松开之间上移 → 单击被吞（真浏览器实测；jsdom 测不出）。
+  // click 在整次点击完成后触发，点击期间几何稳定 → 点提交钮一次即生效，弹层随后关闭。
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("click", onDocClick, true);
+    return () => document.removeEventListener("click", onDocClick, true);
+  }, [open]);
+
+  const listboxId = `${id}-listbox`;
   return (
-    <span style={{ position: "relative", display: "inline-block", minWidth: 220 }}>
+    <span ref={rootRef} style={{ position: "relative", display: "inline-block", minWidth: 220 }}>
       <input
         id={id}
         type="text"
         role="combobox"
         aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-autocomplete="list"
         placeholder={`搜索 ${objectType}…`}
         value={value?.label ?? q}
         onFocus={() => setOpen(true)}
@@ -231,9 +250,19 @@ export function ObjectRefSelector({
           onChange(undefined);
           setOpen(true);
         }}
+        onKeyDown={(e) => {
+          // Esc 关弹层（仅弹层开着时拦截，不吞上层 Esc 语义）。
+          if (e.key === "Escape" && open) {
+            e.stopPropagation();
+            setOpen(false);
+          }
+          // Tab 移焦（键盘 blur 路径）即关，焦点照常前进；不用 onBlur——
+          // 鼠标按下下方按钮时 blur 先于 mouseup 触发，同样会吞单击（同上注释）。
+          if (e.key === "Tab") setOpen(false);
+        }}
       />
       {open && data && (
-        <ul className={styles.dropdown} role="listbox">
+        <ul id={listboxId} className={styles.dropdown} role="listbox">
           {data.items.map((item) => {
             const label = String(item.props.name ?? item.props.so ?? item.id);
             return (
