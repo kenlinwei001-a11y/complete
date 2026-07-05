@@ -1,0 +1,114 @@
+import { z } from "zod";
+
+/**
+ * PRD-scenario-ontogenesis §2.1/§2.2 P2（WO ONTO-SCEN-RENDER-PROJ ①）：
+ * 场景卡渲染投影绑定单一来源 —— 每求解器声明「把哪些**真实输出字段**投成哪种答案块」。
+ *
+ * 这是 `ScenarioGenome.renderBindings` 的出厂事实源（卡=胚胎声明目标闭包），也是 seed 派生计划
+ * render 步的投影驱动（agentcore `mocks/seed.ts` 派生循环消费）——**消灭静态占位文本**：
+ * 答案的 KPI/表/叙事块全部投影求解器真实输出字段，不再烘焙任何写死文案。
+ *
+ * 设计不变量：
+ *  - **⊆ SOLVER_OUTPUT_SHAPES（闭 G-2/SHAPE）**：每条 `fromSolverField` 必须在该求解器于 datacore
+ *    `SOLVER_OUTPUT_SHAPES`（solver-registry 派生）登记的输出形状内。门 `ontogenesis:check` 读两侧
+ *    编译产物校验，违反即红；datacore 侧另有**真值齿**（真实 invoke 断言每个绑定字段在输出中在场）。
+ *  - **零业务常数（R14）**：只声明字段语义（哪个字段投成什么块），不含任何行业实体名/业务数字；
+ *    字段→人话 label 由 agentcore `solver-field-labels` 正交提供。
+ *  - **确定性（R6）**：绑定序即投影序（KPI 绑定优先进 KPI 区、table 绑定即结果表）。
+ *
+ * 与 `SOLVER_RULE_REFS`（规则即引用）同款范式：契约层登记，两侧消费，门守漂移。
+ */
+export const RenderBindingSchema = z.object({
+  /** 投成哪种答案块：kpi=标量指标（对象值展开一层）· table=结果表（对象数组）· text=叙事段（字符串）。 */
+  block: z.enum(["kpi", "table", "text"]),
+  /** 求解器输出顶层字段名（⊆ 该求解器 SOLVER_OUTPUT_SHAPES 登记形状，门守）。 */
+  fromSolverField: z.string().min(1),
+});
+export type RenderBinding = z.infer<typeof RenderBindingSchema>;
+
+/**
+ * 出厂 16 张派生场景卡（S04/S05/S07…S20）所用求解器的投影绑定登记。
+ * 键=求解器 key（sop_balance 卡经 BP-4 改绑 mrp_netting，登记 mrp_netting）。
+ * 字段选取依据：真实 DataCore invoke 实测输出（docs/evidence 留痕）——每个绑定字段都是
+ * 实现**无条件产出**的真实字段（datacore 真值齿钉死，缺字段即红）。
+ */
+export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBinding[]>> = Object.freeze({
+  plan_audit: [
+    { block: "kpi", fromSolverField: "score" },
+    { block: "kpi", fromSolverField: "verdict" },
+    { block: "table", fromSolverField: "M" },
+  ],
+  plan_generate: [
+    { block: "kpi", fromSolverField: "recommend" },
+    { block: "table", fromSolverField: "schemes" },
+  ],
+  cert_schedule: [
+    { block: "kpi", fromSolverField: "engineerGroups" },
+    { block: "table", fromSolverField: "schedule" },
+  ],
+  kit_readiness: [
+    { block: "kpi", fromSolverField: "shortageCount" },
+    { block: "table", fromSolverField: "rows" },
+  ],
+  lta_gap: [
+    { block: "kpi", fromSolverField: "netDemand" },
+    { block: "kpi", fromSolverField: "coverage" },
+    { block: "kpi", fromSolverField: "gap" },
+    { block: "table", fromSolverField: "po" },
+  ],
+  inventory_optimize: [
+    { block: "kpi", fromSolverField: "releasableCash" },
+    { block: "table", fromSolverField: "under" },
+  ],
+  changeover_sequence: [
+    { block: "kpi", fromSolverField: "totalChangeoverMin" },
+    { block: "kpi", fromSolverField: "savedVsDueMin" },
+    { block: "table", fromSolverField: "sequence" },
+  ],
+  yield_diagnosis: [
+    { block: "kpi", fromSolverField: "breakpoint" },
+    { block: "table", fromSolverField: "candidates" },
+  ],
+  maintenance_stagger: [
+    { block: "table", fromSolverField: "adjustments" },
+  ],
+  outsourcing_split: [
+    { block: "kpi", fromSolverField: "totalCost" },
+    { block: "kpi", fromSolverField: "savedVsAllDelay" },
+    { block: "kpi", fromSolverField: "outsourceQualityGate" },
+    { block: "table", fromSolverField: "allocation" },
+  ],
+  quote_margin: [
+    { block: "kpi", fromSolverField: "margin" },
+    { block: "kpi", fromSolverField: "floor" },
+    { block: "kpi", fromSolverField: "diff" },
+    { block: "kpi", fromSolverField: "verdict" },
+  ],
+  credit_exposure: [
+    { block: "kpi", fromSolverField: "limit" },
+    { block: "kpi", fromSolverField: "exposure" },
+    { block: "kpi", fromSolverField: "available" },
+    { block: "kpi", fromSolverField: "newOrderVerdict" },
+    { block: "table", fromSolverField: "overdue" },
+  ],
+  capex_scenario: [
+    { block: "kpi", fromSolverField: "quarters" },
+    { block: "table", fromSolverField: "projects" },
+  ],
+  mrp_netting: [
+    { block: "text", fromSolverField: "summary" },
+    { block: "kpi", fromSolverField: "shortageCount" },
+    { block: "table", fromSolverField: "materials" },
+  ],
+  quarterly_gap: [
+    { block: "kpi", fromSolverField: "quarter" },
+    { block: "kpi", fromSolverField: "residualGap" },
+    { block: "table", fromSolverField: "combo" },
+  ],
+  carbon_footprint: [
+    { block: "kpi", fromSolverField: "total" },
+    { block: "kpi", fromSolverField: "threshold" },
+    { block: "kpi", fromSolverField: "verdict" },
+    { block: "kpi", fromSolverField: "maxLever" },
+  ],
+});

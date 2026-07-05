@@ -19,6 +19,7 @@ export * from "./databuilder.js";
 export * from "./growth.js";
 export * from "./boundary.js";
 export * from "./datadep.js";
+export * from "./render-bindings.js";
 export * from "./storybuildrun.js";
 export * from "./config-bundle.js";
 export * from "./prompt-template.js";

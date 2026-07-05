@@ -3448,12 +3448,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
-        "wip": "2026-07-05T10:06:16.563Z"
+        "wip": "2026-07-05T10:06:16.563Z",
+        "built": "2026-07-05T12:14:01.499Z"
       },
       "id": "ONTO-SCEN-RENDER-PROJ",
       "priority": "P2",
@@ -3461,7 +3462,8 @@
         "ONTO-SCEN-GROW"
       ],
       "title": "投影渲染+接线: genome renderBindings→render步投影求解器真实字段(灭16卡静态占位·闭G-1/G-2)+规则/切片自动接",
-      "note": "PRD §2.2计划项+§9 P2: render步绑定SOLVER_OUTPUT_SHAPES校验的真实输出字段(seed.ts:389-400十六卡invoke_solver→静态文本的占位根除)·卡rules[]自动接evaluate_rules(灭规则只挂卡面)·sliceTargets经slice-planner自动生成+索引复用(A3.4)。DoD: 16张占位卡全渲真投影(FDE抽3卡逐值对照solver invoke)·规则真执行进答案依据·齿: renderBindings⊆SOLVER_OUTPUT_SHAPES违反红·占位文本回潮红。"
+      "note": "PRD §2.2计划项+§9 P2: render步绑定SOLVER_OUTPUT_SHAPES校验的真实输出字段(seed.ts:389-400十六卡invoke_solver→静态文本的占位根除)·卡rules[]自动接evaluate_rules(灭规则只挂卡面)·sliceTargets经slice-planner自动生成+索引复用(A3.4)。DoD: 16张占位卡全渲真投影(FDE抽3卡逐值对照solver invoke)·规则真执行进答案依据·齿: renderBindings⊆SOLVER_OUTPUT_SHAPES违反红·占位文本回潮红。",
+      "blockReason": ""
     },
     {
       "status": "WIP",
@@ -3672,9 +3674,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "QUERY30-ONTOLOGY-EXT",
-      "at": "2026-07-05T11:56:54.123Z"
+      "cmd": "BUILT",
+      "id": "ONTO-SCEN-RENDER-PROJ",
+      "at": "2026-07-05T12:14:01.499Z"
     }
   }
 }

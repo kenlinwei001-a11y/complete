@@ -1,8 +1,13 @@
 import {
   LIVED_IN_SCENE_HISTORY,
+  SOLVER_DATADEP,
+  SOLVER_RENDER_BINDINGS,
+  deriveSliceTargetCandidates,
   type AgentDefinition,
   type ExecutionPlan,
   type IntentDefinition,
+  type RenderBinding,
+  type ScenarioGenome,
   type ScenarioPackage,
   type SceneEntryConfig,
   type SkillDefinition,
@@ -12,6 +17,7 @@ import {
 } from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 import { buildUniversalAgent, buildUniversalAgentTools, seedSkillIds } from "../agents/universal.js";
+import { injectScenarioRuleStep } from "../router/scenario-rules.js";
 import { SCENARIO_CATALOG, type ScenarioCard } from "../scenarios-catalog.js";
 import { pseudoEmbed } from "../util/embedding.js";
 import type { ExperienceCaseRow } from "../persistence/repos.js";
@@ -485,15 +491,22 @@ export function seedIntentsAndPlans(
     const effectiveSolver = card.solver === "sop_balance" ? "mrp_netting" : card.solver;
     // 接地优先：ARG_OVERRIDE（求解器专用入参覆盖）> groundedSlots（租户真值接地）> 出厂 slotPresets。
     const solverArgs = (ARG_OVERRIDE[effectiveSolver] ?? groundedSlots?.get(card.intentKey) ?? card.presetContext.slotPresets) as Record<string, TemplateValue>;
-    const steps: ExecutionPlan["steps"] = [
+    // WO ONTO-SCEN-RENDER-PROJ ①（闭 G-1 根除·PRD-scenario-ontogenesis §2.2 P2）：render 步绑定
+    // **SOLVER_OUTPUT_SHAPES 校验过的真实输出字段**（contracts SOLVER_RENDER_BINDINGS = genome.renderBindings
+    // 出厂单一来源；门 `ontogenesis:check` 守 ⊆ 形状、datacore 真值齿守字段真在输出中）——答案的 KPI/表/叙事块
+    // 全部投影求解器真值，**静态占位文本死**（此前烘焙的「…推演结果：」文案已根除，回潮即门红）。
+    const renderBindings = SOLVER_RENDER_BINDINGS[effectiveSolver] ?? [];
+    const baseSteps: ExecutionPlan["steps"] = [
       { id: "s1", type: "invoke_solver", params: { solverKey: effectiveSolver, args: solverArgs } },
-      // 闭 G-1：渲染**投影求解器真实输出**（solver_summary 通用投影，不写死业务数字/文案）→
-      // 前端见的每个数都是求解器算出的真值，知道来源（用户铁律：推演数据须留痕且前端可见）。
       { id: "render", type: "render_answer", params: { blocks: [
-        { type: "text", markdown: `${card.name}（求解器 ${effectiveSolver}）推演结果：` },
-        { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
+        { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1", bindings: [...renderBindings] },
       ] } },
     ];
+    // WO ONTO-SCEN-RENDER-PROJ ②（灭「规则只挂卡面」）：卡声明的 rules[] **烘焙进计划本体**——
+    // 复用 injectScenarioRuleStep 单源：未被求解器 SOLVER_RULE_REFS（轨E evaluatedRules 真评估透出）
+    // 覆盖的规则自动插 evaluate_rules 步（payload=求解器输出整对象），使规则裁决在路径 A 真执行进答案依据
+    // （验证痕迹 AXIOM/BLOCK 拦截），且不依赖点卡上下文（自由问句命中同意图同样执行）。
+    const steps = injectScenarioRuleStep(baseSteps, card.rules) as ExecutionPlan["steps"];
     plans.push({ id: planId, packageId: pkgId, key: card.intentKey, version: 1, status: "PUBLISHED", steps });
     intents.push({
       id: `int_${card.intentKey}_v1${sfx}`,
@@ -516,6 +529,85 @@ export function seedIntentsAndPlans(
   }
 
   return { intents, plans };
+}
+
+/**
+ * WO ONTO-SCEN-RENDER-PROJ：从计划步骤**派生**渲染投影绑定（genome.renderBindings 的单一事实=计划本体）。
+ * 两种形态都识别：
+ *  · 显式模板块（kpi/table/text 引 `{{steps.<sid>.output.data.<field>…}}`，sid 须是 invoke_solver 步）→ 取根字段；
+ *  · solver_summary 块携 `bindings`（出厂 SOLVER_RENDER_BINDINGS）→ 原样并入。
+ * 确定性纯函数（R6）：同计划恒同绑定序（模板块按块序，字段按出现序去重）。
+ */
+export function genomeRenderBindingsOfSteps(steps: ExecutionPlan["steps"]): RenderBinding[] {
+  const solverSteps = new Set(steps.filter((s) => s.type === "invoke_solver").map((s) => s.id));
+  const out: RenderBinding[] = [];
+  const seen = new Set<string>();
+  const push = (block: RenderBinding["block"], field: string): void => {
+    const key = `${block}:${field}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ block, fromSolverField: field });
+  };
+  const RE = /\{\{\s*steps\.([\w-]+)\.output\.data\.([\w]+)/g;
+  const fieldsOf = (v: unknown): string[] => {
+    if (typeof v !== "string") return [];
+    const fields: string[] = [];
+    for (const m of v.matchAll(RE)) if (solverSteps.has(m[1] as string)) fields.push(m[2] as string);
+    return fields;
+  };
+  for (const s of steps) {
+    if (s.type !== "render_answer") continue;
+    const blocks = (s.params as { blocks?: unknown }).blocks;
+    if (!Array.isArray(blocks)) continue;
+    for (const bl of blocks) {
+      if (!bl || typeof bl !== "object") continue;
+      const b = bl as { type?: string; fromStep?: string; value?: unknown; rows?: unknown; markdown?: unknown; bindings?: unknown };
+      if (b.type === "kpi") for (const f of fieldsOf(b.value)) push("kpi", f);
+      else if (b.type === "table") for (const f of fieldsOf(b.rows)) push("table", f);
+      else if (b.type === "text") for (const f of fieldsOf(b.markdown)) push("text", f);
+      else if (b.type === "solver_summary" && Array.isArray(b.bindings) && b.fromStep && solverSteps.has(b.fromStep)) {
+        for (const bd of b.bindings as { block?: RenderBinding["block"]; fromSolverField?: string }[]) {
+          if (bd && bd.block && typeof bd.fromSolverField === "string" && bd.fromSolverField) push(bd.block, bd.fromSolverField);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * PRD-scenario-ontogenesis §2.1（WO RENDER-PROJ）：出厂 20 卡的**基因组**派生（卡=胚胎声明目标闭包）。
+ * 单一来源：计划本体（seedIntentsAndPlans 同一派生）+ 卡面声明（rules）+ 数据依赖清单（SOLVER_DATADEP）：
+ *  · renderBindings ← 计划 render 步真实绑定（genomeRenderBindingsOfSteps，⊆ SOLVER_OUTPUT_SHAPES 门守）；
+ *  · ruleIds ← 卡声明 rules[]（②：已烘焙进计划 evaluate_rules / 求解器 evaluatedRules 真执行）；
+ *  · sliceTargets ← 数据依赖清单派生候选类型（③：growScenario 经 slice-planner 自动规划真切片，非手焙）；
+ *  · dataNeeds ← 清单角色键（就绪探测口径）。
+ * 纯派生零手焙（R13 投影非新真值）；确定性（R6）。
+ */
+export function deriveScenarioGenomes(tenantId = SEED_TENANT): Map<string, ScenarioGenome> {
+  const { plans } = seedIntentsAndPlans(tenantId);
+  const planByKey = new Map(plans.map((p) => [p.key, p]));
+  const genomes = new Map<string, ScenarioGenome>();
+  for (const card of SCENARIO_CATALOG) {
+    const plan = planByKey.get(card.intentKey);
+    if (!plan) continue;
+    const effectiveSolver = card.solver === "sop_balance" ? "mrp_netting" : card.solver;
+    const hasSolverStep = plan.steps.some((s) => s.type === "invoke_solver");
+    const cand = deriveSliceTargetCandidates(effectiveSolver, card.presetContext.selectedObjects[0]?.objectType);
+    const GENOME_STEP_TYPES = new Set(["resolve_slice", "invoke_solver", "evaluate_rules", "create_action_draft", "render_answer"]);
+    genomes.set(card.intentKey, {
+      intentKey: card.intentKey,
+      planSteps: plan.steps
+        .filter((s) => GENOME_STEP_TYPES.has(s.type))
+        .map((s) => ({ type: s.type as ScenarioGenome["planSteps"][number]["type"], params: s.params as Record<string, unknown> })),
+      renderBindings: genomeRenderBindingsOfSteps(plan.steps),
+      ruleIds: card.rules,
+      sliceTargets: cand ? [cand.rootType, ...cand.targets] : [],
+      ...(hasSolverStep ? { solverKey: effectiveSolver } : {}),
+      dataNeeds: (SOLVER_DATADEP[effectiveSolver]?.requires ?? []).map((r) => r.roleType),
+    });
+  }
+  return genomes;
 }
 
 /** 仓储子集（解耦 main.ts/server.ts，避免循环依赖）。 */

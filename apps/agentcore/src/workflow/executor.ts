@@ -1,4 +1,4 @@
-import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, OnError, PlanStep, ProvenanceRef, ResolvedRef, RuleVerdict, ValidationTrace } from "@platform/contracts";
+import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, OnError, PlanStep, ProvenanceRef, RenderBinding, ResolvedRef, RuleVerdict, ValidationTrace } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
@@ -406,7 +406,9 @@ function renderAnswer(
       // KPI/表/规则依据块——不写死任何业务数字/文案，前端见的即求解器算出的真值（闭 G-1）。
       // solverKey（来自 fromStep 审计）透给投影做同名字段消歧人话化（WO-ANSWER-PROJECTION-HUMANIZE）。
       // PROV-REF-INTEGRITY ②：传 minter → 逐 KPI/表/叙事铸独立 provId + 字段级 outputPath（$.data.<field>）。
-      blocks.push(...summarizeSolverOutput(rest.output, mintProv, audit?.solverKey));
+      // WO ONTO-SCEN-RENDER-PROJ ①：块可携 `bindings`（genome.renderBindings，⊆ SOLVER_OUTPUT_SHAPES 门守）
+      // → 声明字段优先投影（KPI 绑定先进 KPI 区、table 绑定即结果表）；绑定字段缺失=形状漂移即抛错（诚实红，不占位）。
+      blocks.push(...summarizeSolverOutput(rest.output, mintProv, audit?.solverKey, (rest as { bindings?: RenderBinding[] }).bindings));
     }
   }
 
@@ -517,7 +519,7 @@ export type ProvMint = (outputPath: string) => string;
  * outputPath=`$.data.<field>` 字段级路径（悬停出该字段真路径而非恒 $.data 泛化 blob；前端 kpi-{provId}
  * testid 随之唯一）。传字符串=全块共用单 provId（仅存量单测便捷形态，运行链路一律走 minter）。
  */
-export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint, solverKey?: string): AnswerBlock[] {
+export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint, solverKey?: string, bindings?: readonly RenderBinding[]): AnswerBlock[] {
   const hasData = payload !== null && typeof payload === "object" && "data" in (payload as Record<string, unknown>);
   const data = hasData ? (payload as Record<string, unknown>).data : payload;
   if (!data || typeof data !== "object") return [{ type: "text", markdown: "求解器无结构化输出。" }];
@@ -527,6 +529,9 @@ export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint,
   // KPI 延迟物化（path 收集 → 输出截断后才 mint）：不给被 slice 截掉的块铸孤儿 provenance 条目。
   const kpis: { path: string; value: string; field?: string; label?: string; unit?: string }[] = [];
   let table: AnswerBlock | null = null;
+  // WO ONTO-SCEN-RENDER-PROJ ①：绑定表（binding.block==="table"）——声明的对象数组字段各投一张结果表，
+  // 优先于「首个对象数组」启发式；有绑定表时未绑定数组一律降入 moreArrays（不重复投表）。
+  const boundTables: AnswerBlock[] = [];
   const ruleRefs: string[] = [];
   const moreArrays: string[] = [];
   const narratives: { text: string; path: string }[] = []; // summary / 长句 → 叙事段（非 KPI）
@@ -550,7 +555,69 @@ export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint,
     if (val.trim()) metaNotes.push(`${metaLabel(field)}：${val}`);
   };
 
+  // 对象值展开一层为子字段 KPI（绑定路径与通用路径共用，语义一致）。
+  const expandObjectKpis = (k: string, v: Record<string, unknown>): void => {
+    for (const [k2, v2] of Object.entries(v)) {
+      if (META_FIELDS.has(k2)) { pushMeta(k2, v2); continue; }
+      if (isInternalIdValue(v2)) continue; // ④ base.id=obj_ 内部 id 不当值
+      const child = humanizeField(k2, solverKey);
+      const sub = `${humanizeField(k, solverKey).label}·${child.label}`;
+      if (typeof v2 === "number") { kpis.push({ path: `${base}.${k}.${k2}`, label: sub, value: fmtNum(v2), ...(child.unit ? { unit: child.unit } : {}) }); scalarCount++; }
+      else if (typeof v2 === "string" && v2 && v2.length <= LONG_STRING) { kpis.push({ path: `${base}.${k}.${k2}`, label: sub, value: v2 }); scalarCount++; }
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // WO ONTO-SCEN-RENDER-PROJ ①（PRD-scenario-ontogenesis §2.2 P2·消灭静态占位）：
+  // 渲染投影绑定——render 步声明的 `bindings`（= genome.renderBindings，出厂单一来源
+  // contracts SOLVER_RENDER_BINDINGS，门 `ontogenesis:check` 守 ⊆ SOLVER_OUTPUT_SHAPES）优先投影：
+  //  · kpi 绑定 → 先进 KPI 区（8 条上限内绑定字段恒不被截）；对象值展开一层。
+  //  · table 绑定 → 即结果表（替代「首个对象数组」启发式；空数组走 BP-7 诚实空态，不静默）。
+  //  · text 绑定 → 叙事段（带字段级溯源标）。
+  // 齿（不作假）：绑定字段在输出中**缺席** → 抛错（工作流步失败 → 任务诚实红），绝不静默降级回占位。
+  // ---------------------------------------------------------------------------
+  const consumed = new Set<string>();
+  if (bindings && bindings.length > 0) {
+    for (const b of bindings) {
+      if (!(b.fromSolverField in record)) {
+        throw new Error(
+          `RENDER_BINDING_MISSING: 求解器 ${solverKey ?? "?"} 输出缺少投影绑定字段「${b.fromSolverField}」（渲染契约 ⊄ 实际输出=形状漂移；SHAPE 门/真值齿应先红，不静默占位）`,
+        );
+      }
+    }
+    for (const b of bindings) {
+      const k = b.fromSolverField;
+      if (consumed.has(k) || k === "snapshotVersion") continue;
+      consumed.add(k);
+      const v = record[k];
+      const path = `${base}.${k}`;
+      if (b.block === "text") {
+        const s = typeof v === "string" ? v.trim() : "";
+        if (s) { narratives.push({ text: s, path }); scalarCount++; }
+        continue;
+      }
+      if (b.block === "table") {
+        if (Array.isArray(v) && v.length === 0) { emptyArrayKeys.push(k); continue; }
+        if (Array.isArray(v) && v[0] !== null && typeof v[0] === "object") {
+          const cols = Object.keys(v[0] as Record<string, unknown>);
+          boundTables.push({ type: "table", columns: cols, rows: v.slice(0, 12).map((r) => cols.map((c) => cellOf((r as Record<string, unknown>)[c]))), provId: mint(path) });
+        } else if (Array.isArray(v)) {
+          kpis.push({ path, field: k, value: v.map(String).slice(0, 8).join("、") }); scalarCount++;
+        }
+        continue;
+      }
+      // b.block === "kpi"
+      if (typeof v === "number") { kpis.push({ path, field: k, value: fmtNum(v) }); scalarCount++; }
+      else if (typeof v === "boolean") { kpis.push({ path, field: k, value: v ? "是" : "否" }); scalarCount++; }
+      else if (typeof v === "string") { if (v && !isInternalIdValue(v)) { kpis.push({ path, field: k, value: v }); scalarCount++; } }
+      else if (Array.isArray(v) && v.length > 0 && (typeof v[0] === "number" || typeof v[0] === "string")) { kpis.push({ path, field: k, value: v.map(String).slice(0, 8).join("、") }); scalarCount++; }
+      else if (Array.isArray(v) && v.length === 0) { emptyArrayKeys.push(k); }
+      else if (v && typeof v === "object" && !Array.isArray(v)) { expandObjectKpis(k, v as Record<string, unknown>); }
+    }
+  }
+
   for (const [k, v] of Object.entries(record)) {
+    if (consumed.has(k)) continue; // 绑定字段已按声明投影，不重复
     if (k === "snapshotVersion") continue;
     if (META_FIELDS.has(k)) { pushMeta(k, v); continue; } // ② 元字段不进 KPI 区
     if (k === "ruleRefs" && Array.isArray(v)) { ruleRefs.push(...v.map(String)); continue; }
@@ -564,21 +631,15 @@ export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint,
     }
     else if (Array.isArray(v) && v.length === 0) { emptyArrayKeys.push(k); }
     else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === "object") {
-      if (!table) {
+      // 有绑定表时：未绑定数组一律降入 moreArrays（结果表由绑定声明，不被启发式抢占）。
+      if (!table && boundTables.length === 0) {
         const cols = Object.keys(v[0] as Record<string, unknown>);
         table = { type: "table", columns: cols, rows: v.slice(0, 12).map((r) => cols.map((c) => cellOf((r as Record<string, unknown>)[c]))), provId: mint(`${base}.${k}`) };
       } else moreArrays.push(`${humanizeField(k, solverKey).label}（${v.length} 项）`);
     } else if (Array.isArray(v) && v.length > 0) {
       kpis.push({ path: `${base}.${k}`, field: k, value: v.map(String).slice(0, 8).join("、") });
     } else if (v && typeof v === "object") {
-      for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
-        if (META_FIELDS.has(k2)) { pushMeta(k2, v2); continue; }
-        if (isInternalIdValue(v2)) continue; // ④ base.id=obj_ 内部 id 不当值
-        const child = humanizeField(k2, solverKey);
-        const sub = `${humanizeField(k, solverKey).label}·${child.label}`;
-        if (typeof v2 === "number") { kpis.push({ path: `${base}.${k}.${k2}`, label: sub, value: fmtNum(v2), ...(child.unit ? { unit: child.unit } : {}) }); scalarCount++; }
-        else if (typeof v2 === "string" && v2 && v2.length <= LONG_STRING) { kpis.push({ path: `${base}.${k}.${k2}`, label: sub, value: v2 }); scalarCount++; }
-      }
+      expandObjectKpis(k, v as Record<string, unknown>);
     }
   }
 
@@ -592,6 +653,7 @@ export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint,
     if (p.label !== undefined) out.push({ type: "kpi", label: p.label, value: p.value, provId: mint(p.path), ...(p.unit ? { unit: p.unit } : {}) });
     else out.push(kpiBlock(p.field ?? "", p.value, mint(p.path), solverKey));
   }
+  for (const bt of boundTables) out.push(bt); // ① 绑定表先于启发式表（绑定即结果表）
   if (table) out.push(table);
   if (ruleRefs.length > 0) out.push({ type: "text", markdown: `依据规则：${ruleRefs.join("、")} ⟦ref:${mint(`${base}.ruleRefs`)}⟧` });
   // moreArrays 计数（N 项）源自求解器真实数组长度（tool 真值）→ 补溯源标，不被 §5.5 误判未溯源。
@@ -611,7 +673,7 @@ export function summarizeSolverOutput(payload: unknown, prov: string | ProvMint,
   const emptyHuman = emptyArrayKeys.map((k) => humanizeField(k, solverKey).label);
   if (emptyArrayKeys.length > 0) {
     const empties = emptyHuman.join("、");
-    if (table) {
+    if (table || boundTables.length > 0) {
       // 已有结果数据块 → 空子字段轻量披露（仍点名，不静默吞），不升格为整体无解
       out.push({
         type: "text",

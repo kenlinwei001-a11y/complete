@@ -116,3 +116,59 @@ export const SOLVER_DATADEP: Readonly<Record<string, DataDependency>> = Object.f
 function r(roleType: string): DataDependencyItem {
   return { roleType, minRows: 1 };
 }
+
+/**
+ * WO ONTO-SCEN-RENDER-PROJ ③：角色键 → 本体规范类型（canonical）的契约层投影。
+ * 与 datacore `solvers/datadep-context.ts ROLE_CANONICAL` **逐键一致**（门 `datadep-manifest:check`
+ * 读 datacore 编译产物对账，漂移即红）——放契约层是为让 agentcore 的切片目标派生
+ * （`deriveSliceTargetCandidates`）不跨包 import datacore 源码（contracts-only-shared）。
+ * 零业务常数（R14）：角色/类型键都是结构性本体键，非行业实体名。
+ */
+export const DATADEP_ROLE_CANONICAL: Readonly<Record<string, string>> = Object.freeze({
+  base: "Base",
+  line: "Line",
+  process: "Process",
+  equipment: "Equipment",
+  maintPlan: "MaintPlan",
+  model: "Model",
+  order: "Order",
+  shipment: "Shipment",
+  segment: "Segment",
+  dataHealth: "DataSourceHealth",
+  demandSegment: "DemandSegment",
+  sopVersion: "SopVersionRow",
+  material: "Material",
+  materialBatch: "MaterialBatch",
+  customer: "Customer",
+  arInvoice: "ARInvoice",
+  certification: "Certification",
+  energyMeter: "EnergyMeter",
+  changeoverMatrix: "ChangeoverMatrix",
+  capexProject: "CapexProject",
+  purchaseOrder: "PurchaseOrder",
+  carbonFactor: "CarbonFactor",
+  materialBalance: "MaterialBalance",
+});
+
+/**
+ * PRD-scenario-ontogenesis §2.2 P2（WO ③）：从求解器数据依赖清单**自动派生**切片目标候选
+ * （root + 目标覆盖类型）——场景卡 `sliceTargets` 不再手焙。growScenario（O11）据此调
+ * slice-planner（A3.3 确定性 BFS ⊕ A3.4 索引复用）规划真切片；planner 是可达性唯一裁判
+ * （无本体链路的清单类型≠切片缺口——该类数据经清单就绪探测直读覆盖，规划时以可达子集收敛）。
+ * 确定性（R6）：同 solverKey 同 primaryType 恒同输出（targets 排序）。
+ */
+export function deriveSliceTargetCandidates(
+  solverKey: string,
+  primaryType?: string,
+): { rootType: string; targets: string[] } | null {
+  const dep = SOLVER_DATADEP[solverKey];
+  if (!dep || dep.requires.length === 0) return null;
+  const types: string[] = [];
+  for (const req of dep.requires) {
+    const t = DATADEP_ROLE_CANONICAL[req.roleType] ?? req.roleType;
+    if (!types.includes(t)) types.push(t);
+  }
+  const rootType = primaryType && types.includes(primaryType) ? primaryType : types[0]!;
+  const targets = types.filter((t) => t !== rootType).sort();
+  return { rootType, targets };
+}

@@ -64,6 +64,23 @@ export function deriveRenderBindings(steps: ExtendedPlanStep[]): Record<string, 
     }
   };
   for (const s of steps) if (s.type === "render_answer") scan(s.params);
+  // WO ONTO-SCEN-RENDER-PROJ ①：solver_summary 块的声明式 `bindings`（genome.renderBindings 形态）
+  // 同样是渲染契约——并入派生（与模板引用同源口径，供 SHAPE 校验/门齿消费）。
+  for (const s of steps) {
+    if (s.type !== "render_answer") continue;
+    const blocks = (s.params as { blocks?: unknown }).blocks;
+    if (!Array.isArray(blocks)) continue;
+    for (const bl of blocks) {
+      if (!bl || typeof bl !== "object") continue;
+      const b = bl as { type?: string; fromStep?: string; bindings?: { fromSolverField?: string }[] };
+      if (b.type !== "solver_summary" || !Array.isArray(b.bindings) || !b.fromStep) continue;
+      const solverKey = solverByStep.get(b.fromStep);
+      if (!solverKey) continue;
+      for (const bd of b.bindings) {
+        if (bd && typeof bd.fromSolverField === "string" && bd.fromSolverField) (out[solverKey] ??= new Set()).add(bd.fromSolverField);
+      }
+    }
+  }
   return Object.fromEntries(Object.entries(out).map(([k, set]) => [k, [...set].sort()]));
 }
 

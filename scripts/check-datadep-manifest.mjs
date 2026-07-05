@@ -99,6 +99,17 @@ for (const [k, dep] of Object.entries(SOLVER_DATADEP)) {
   }
 }
 
+// ⑤ WO ONTO-SCEN-RENDER-PROJ ③：契约层角色映射投影（DATADEP_ROLE_CANONICAL，切片目标派生用）
+//    与 datacore ROLE_CANONICAL **逐键一致**——单一真相的两个投影，漂移即红。
+const contractCanon = contracts.DATADEP_ROLE_CANONICAL ?? {};
+const roleKeys = new Set([...Object.keys(ROLE_CANONICAL), ...Object.keys(contractCanon)]);
+for (const role of roleKeys) {
+  if (ROLE_CANONICAL[role] !== contractCanon[role]) {
+    console.error(`✗ 角色映射漂移：role「${role}」datacore=${ROLE_CANONICAL[role] ?? "∅"} vs contracts=${contractCanon[role] ?? "∅"}（DATADEP_ROLE_CANONICAL 须与 ROLE_CANONICAL 逐键一致）`);
+    red = true;
+  }
+}
+
 // ③ loadContext 治本自证：每个上下文角色被某清单覆盖。
 const uncovered = uncoveredContextRoles();
 if (uncovered.length > 0) {

@@ -284,6 +284,173 @@ export class MockOntologyClient implements OntologyClient {
   }
 }
 
+/**
+ * WO ONTO-SCEN-RENDER-PROJ：16 张派生场景卡所用求解器的 mock 输出（与真实 DataCore 输出**同形状**——
+ * 顶层键 ⊆/⊇ 覆盖 SOLVER_OUTPUT_SHAPES 登记字段与全部渲染绑定字段；结构按真实 invoke 实测输出镜像）。
+ * 确定性字面量（R6）；dataMode:"MOCK" 诚实标（mock 世界产物，非真值冒充）。
+ */
+const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
+  plan_audit: {
+    H: [{ id: "X05", title: "现金垫", ruleRef: "C18", why: "现金垫低于底线", kind: "现金" }],
+    M: [
+      { id: "X02", title: "产销缺口", why: "缺口处于关注区间", kind: "产销" },
+      { id: "X07", title: "长协覆盖", why: "覆盖低于阈值", kind: "供给" },
+    ],
+    S: [{ id: "S-X05", title: "现金垫修正", ruleRef: "C18", why: "CAPEX 缩减/推后", kind: "现金" }],
+    score: 50,
+    verdict: "站不住",
+    dataMode: "MOCK",
+  },
+  plan_generate: {
+    schemes: [
+      { no: "壹", name: "稳健方案 · 守盈利", pathKey: "A" },
+      { no: "贰", name: "进取方案 · 扩份额", pathKey: "C" },
+      { no: "叁", name: "平衡方案", pathKey: "D" },
+    ],
+    recommend: "D",
+    dataMode: "MOCK",
+  },
+  cert_schedule: {
+    schedule: [
+      { model: "4680-LFP", line: "LINE-hefei", startWeek: 1, finishWeek: 3, unlockCapacity: 26.5, priority: 0.3 },
+      { model: "CTP-LFP", line: "LINE-yichun", startWeek: 2, finishWeek: 5, unlockCapacity: 18.2, priority: 0.22 },
+    ],
+    engineerGroups: 3,
+    ruleRefs: ["C26"],
+    dataMode: "MOCK",
+  },
+  kit_readiness: {
+    rows: [
+      { orderId: "SO-10001", kitRatio: 48.2, shortItems: [], advice: "齐套" },
+      { orderId: "SO-10002", kitRatio: 22.5, shortItems: ["三元正极"], advice: "缺料" },
+    ],
+    shortageCount: 1,
+    ruleRefs: ["C06", "C16"],
+    dataMode: "MOCK",
+  },
+  lta_gap: {
+    material: "三元正极",
+    month: "2026-07",
+    netDemand: 7617.12,
+    coverage: 0.52,
+    gap: 3667.79,
+    po: [
+      { batch: 1833.9, latestOrderLeadDays: 14 },
+      { batch: 1833.9, latestOrderLeadDays: 28 },
+    ],
+    ruleRefs: ["C16", "C27"],
+    dataMode: "MOCK",
+  },
+  inventory_optimize: {
+    over: [],
+    under: [
+      { matId: "cell_case", underQty: 536.32 },
+      { matId: "cu_foil", underQty: 120.5 },
+    ],
+    idle: [{ matId: "cu_foil", idleDays: 116 }],
+    releasableCash: 0,
+    ruleRefs: ["C16", "C28"],
+    dataMode: "MOCK",
+  },
+  changeover_sequence: {
+    lineId: "LINE-A",
+    sequence: [
+      { orderId: "SO-10001", modelId: "4680-NCM", changeoverMin: 0 },
+      { orderId: "SO-10004", modelId: "4680-NCM", changeoverMin: 12 },
+    ],
+    totalChangeoverMin: 46,
+    savedVsDueMin: 0,
+    infeasible: [],
+    ruleRefs: ["C22", "C29"],
+    dataMode: "MOCK",
+  },
+  yield_diagnosis: {
+    breakpoint: { day: 31, drop: 0.0571 },
+    candidates: [{ day: 33, kind: "换批", source: "SYNTHETIC", synthetic: true, distance: 2 }],
+    ruleRefs: ["C30"],
+    dataMode: "MOCK",
+  },
+  maintenance_stagger: {
+    adjustments: [
+      { base: "常州", fromWeek: 10, toWeek: 8, loadDrop: 80 },
+      { base: "合肥", fromWeek: 9, toWeek: 7, loadDrop: 65 },
+    ],
+    unresolved: [],
+    ruleRefs: ["C11"],
+    dataMode: "MOCK",
+  },
+  outsourcing_split: {
+    allocation: [
+      { channel: "overtime", name: "自产加班", qty: 32000, cost: 32000 },
+      { channel: "outsource", name: "外协", qty: 48000, cost: 119947.2 },
+    ],
+    totalCost: 151947.2,
+    savedVsAllDelay: 48052.8,
+    outsourceQualityGate: "C31：外协厂良率 ≥ 自产 −0.02",
+    ruleRefs: ["C08", "C31"],
+    dataMode: "MOCK",
+  },
+  quote_margin: {
+    margin: 0.2565,
+    floor: 0.12,
+    diff: 0.1365,
+    verdict: "过线",
+    breakdown: { bomCost: 313.75, mfg: 50, logistics: 8, price: 500 },
+    ruleRefs: ["C15", "C24"],
+    dataMode: "MOCK",
+  },
+  credit_exposure: {
+    limit: 5782,
+    exposure: 2075,
+    available: 3707,
+    exposureBreakdown: { receivables: 1920, wipUnbilled: 155 },
+    overdue: [{ invoiceId: "INV-4-0", overdueDays: 38, amount: 1120 }],
+    newOrderVerdict: "冻结（存在逾期>30天）",
+    ruleRefs: ["C13", "C32"],
+    dataMode: "MOCK",
+  },
+  capex_scenario: {
+    scenarioKey: "基准",
+    quarters: 4,
+    demand: [50, 48, 49, 51],
+    s0: [45, 45, 45, 45],
+    S: [45, 46, 47, 49],
+    G: [5, 2, 2, 2],
+    windows: [{ kind: "gap", fromQ: 0, toQ: 3 }],
+    projects: [{ id: "P1", name: "扩产线", q0: 1, cap: 4, irr: 26.35, util24: 1, c23pass: true }],
+    c23: { irrMin: 0.15, util24Min: 0.75 },
+    dataMode: "MOCK",
+  },
+  mrp_netting: {
+    materials: [
+      { material: "三元正极", netDemand: 8180, ltaCoverPct: 92, gap: 654, earliestComplete: "2026-06-28" },
+      { material: "石墨负极", netDemand: 5120, ltaCoverPct: 100, gap: 0, earliestComplete: "2026-06-20" },
+      { material: "电解液", netDemand: 2400, ltaCoverPct: 80, gap: 480, earliestComplete: "2026-07-05" },
+    ],
+    shortageCount: 2,
+    summary: "3 种物料，2 种现货缺口（C06 齐套口径）",
+    dataMode: "MOCK",
+  },
+  quarterly_gap: {
+    quarter: "2026Q2",
+    combo: [],
+    residualGap: 50,
+    ruleRefs: ["C08", "C29"],
+    dataMode: "MOCK",
+  },
+  carbon_footprint: {
+    modelId: "4680-NCM",
+    baseName: "成都",
+    total: 349.62,
+    breakdown: { materialCarbon: 348.31, energyCarbon: 1.3 },
+    threshold: 70,
+    verdict: "超标",
+    maxLever: "物料:al_foil",
+    ruleRefs: ["C33"],
+    dataMode: "MOCK",
+  },
+};
+
 export class MockSolverClient implements SolverClient {
   async invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
     if (solverKey === "capacity_forecast") {
@@ -337,9 +504,14 @@ export class MockSolverClient implements SolverClient {
         snapshotVersion: SNAPSHOT,
       };
     }
-    // G-1：20 场景目录的其余求解器（cert_schedule/kit_readiness/… 见 SOLVER_KEYS）在 mock 侧
-    // 返回代表性确定性载荷，使路径A 工作流的 invoke_solver 步骤完成而不抛 unknown solver；
-    // 真实数值由 DataCore 求解器产出（见跨服务联调）。种子计划用静态 text 渲染，不解引用此处特定键。
+    // WO ONTO-SCEN-RENDER-PROJ ①：16 卡求解器 mock 输出**形状对齐真实 DataCore**（同 SOLVER_OUTPUT_SHAPES
+    // 登记键；值为确定性演示载荷，dataMode:"MOCK" 诚实标）——渲染绑定（SOLVER_RENDER_BINDINGS）逐字段
+    // 可解析，使路径A投影/发育验证在 mock 侧与真后端**同构**（真值以真 DataCore invoke/FDE 联调为准，
+    // 齿：datacore render-bindings 真值测试钉「绑定字段真在真实输出中」）。
+    const shaped = MOCK_SOLVER_OUTPUTS[solverKey];
+    if (shaped) return { data: { ...shaped }, snapshotVersion: SNAPSHOT };
+    // G-1：目录之外的其余求解器在 mock 侧返回代表性确定性载荷，使 invoke_solver 步骤完成而不抛 unknown solver；
+    // 真实数值由 DataCore 求解器产出（见跨服务联调）。
     return { data: { solverKey, ok: true, args }, snapshotVersion: SNAPSHOT };
   }
   // 站③ mock 就绪探测：mock 世界视 seed 数据齐备（ready·空 gaps）——真就绪由跨服务真后端 checkReadiness 产。
@@ -379,6 +551,31 @@ export class MockRuleEngineClient implements RuleEngineClient {
         passed: !(Number(p.outsourceRatio ?? 0) > this.c08Threshold),
         severity: "WARN",
         explanation: `外协比例红线检查（阈值 ${this.c08Threshold}）`,
+      }),
+      // WO ONTO-SCEN-RENDER-PROJ ②：S&OP 口径规则（S18 卡声明 rules[C18,C21,C22]，其求解器 mrp_netting
+      // 不在 SOLVER_RULE_REFS → injectScenarioRuleStep 烘焙 evaluate_rules 步真评估）——mock 侧按
+      // mrp_netting 输出 payload 可判字段求值（缺字段=WARN 不通过口径缺失，真裁决以真 DataCore 规则库为准）。
+      C18: () => ({
+        ruleId: "C18",
+        passed: p.cashCushion === undefined || Number(p.cashCushion) >= 50,
+        severity: "WARN",
+        explanation: "现金垫底线检查（S&OP 口径）",
+      }),
+      C21: () => {
+        const shortage = Number(p.shortageCount ?? 0);
+        const passed = shortage <= 2;
+        return {
+          ruleId: "C21",
+          passed,
+          severity: "WARN",
+          explanation: passed ? `物料缺口项数 ${shortage} 在平衡容忍内` : `物料缺口项数 ${shortage} 超平衡容忍（>2）`,
+        };
+      },
+      C22: () => ({
+        ruleId: "C22",
+        passed: true,
+        severity: "WARN",
+        explanation: "产销平衡节拍检查（月度平衡口径）",
       }),
       C13: () => {
         const passed = p.creditExceeded !== true;

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `66ff3be11e196a05`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `cdfa44b28b817f77`。
 
 ---
 
@@ -83,6 +83,17 @@ Scenario(卡=胚胎) --POST /b/v1/scenarios/:key/grow--> growScenario(server.ts�
   --事件--> scenario.{growth_triggered|matured|gap_detected}(SSE 场景通道 ⊕ 域事件 outbox 双通道·§4 L4)
   --正序--> launch 确定性绑定(GOVERNED 卡 scenarioIntentKey → 跳过 LLM classify·deterministic:scenario-bind) --> answer(KPI/表投影)
   真 PG live-fire：包存在意图空的 PG 库 grow → ensureScenarios 懒自愈意图 → GOVERNED → 点卡出 KPI（test/scenario-grow-pg.integration.test.ts·env-gated DATABASE_URL_TEST）
+  ⊕ WO ONTO-SCEN-RENDER-PROJ（P2 收口·16 卡占位根除·真投影）：
+    ① 渲染投影绑定：contracts `SOLVER_RENDER_BINDINGS`(每求解器声明真实输出字段→kpi/table/text 块·零业务常数 R14)
+       --驱动--> seed 派生循环 render 步(`solver_summary` 携 bindings·静态占位文案死) --> `summarizeSolverOutput(…,bindings)`
+       绑定优先投影(bound-first KPI·绑定表即结果表·绑定字段缺席=抛错诚实红不占位)；genome.renderBindings=计划真实绑定派生
+       (`genomeRenderBindingsOfSteps`·内置卡取模板引用/派生卡取 bindings)·⊆ SOLVER_OUTPUT_SHAPES 由门+真值齿双守(G-2 闭)
+    ② 规则烘焙：injectScenarioRuleStep 从 dispatch 期扩到**种子期烘焙进派生计划本体**(S18 等 SOLVER_RULE_REFS 未覆盖卡
+       得 evaluate_rules 步·自由问句同意图同样执行)·裁决进 answer.validationTrace(AXIOM)/BLOCK 拦截
+    ③ 切片自动生成：卡未声明 sliceTargets → contracts `deriveSliceTargetCandidates`(SOLVER_DATADEP 角色→DATADEP_ROLE_CANONICAL
+       规范类型·确定性 R6·非手焙) → planSlice(A3.3 BFS ⊕ A3.4 索引复用·planner=可达性唯一裁判) → 部分不可达以可达子集
+       重规划收敛(无链路清单类型≠切片缺口·经就绪探测直读覆盖)·全不可达收敛空目标 → planner 校验过的覆盖回写卡+genome
+    卡=胚胎携 genome(ensureScenarios 播种即挂·grow 对存量卡回填·deriveScenarioGenomes 单源派生)
 **launch 确定性链 + 缺口诚实处置链（§2.4/§2.5 收口·WO ONTO-SCEN-LAUNCH-DET）**
 launch/useScenarioLaunch(context 带 scenarioIntentKey+scenarioKey·前端接缝已补齐——此前 UI 点卡缺 scenarioKey 致 O10 规则注入与缺口链失联)
   --runPipeline: GOVERNED 卡(repos.scenarios.byKey 判相位)--> 全程零 classifier：

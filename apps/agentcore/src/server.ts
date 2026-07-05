@@ -64,7 +64,8 @@ import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { seedScenarios, scenarioFromPackScenario } from "./scenarios-catalog.js";
-import { ensureScenarioPackageSeed } from "./mocks/seed.js";
+import { deriveScenarioGenomes, ensureScenarioPackageSeed } from "./mocks/seed.js";
+import { deriveSliceTargetCandidates } from "@platform/contracts";
 import { groundScenario, type GroundingContext, type GroundObject } from "./scenario-grounding.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
 import { ensureMaterializedIntents, reconcileIntents } from "./intents/reconcile.js";
@@ -2254,8 +2255,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     const isBattery = industryKey === "battery-manufacturing";
     // 本 pack 的启动器卡集（一等 Scenario）：电池=SCENARIO_CATALOG；非电池=pack.scenarios 映射（诚实空=空目录）。
+    // PRD-scenario-ontogenesis §2.1（WO RENDER-PROJ）：卡=胚胎携**基因组**（声明目标闭包）——
+    // renderBindings/ruleIds/sliceTargets/dataNeeds 全从计划本体+数据依赖清单派生（零手焙，R13）。
+    const genomes = isBattery ? deriveScenarioGenomes(tenantId) : new Map<string, import("@platform/contracts").ScenarioGenome>();
     const packCards: Scenario[] = isBattery
-      ? seedScenarios(tenantId)
+      ? seedScenarios(tenantId).map((sc) => ({ ...sc, ...(genomes.has(sc.intentKey) ? { genome: genomes.get(sc.intentKey) } : {}) }))
       : packScenarios.map((s) => scenarioFromPackScenario(s, tenantId));
 
     // 电池族才懒补齐「电池场景包 + 意图 + 计划」（classify 候选来源）——非电池不种电池包（泄漏同源）。
@@ -2703,14 +2707,44 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // O11（P3 wiring）：卡声明 sliceTargets → 自动调 planSlice（OBO → DataCore /a/v1/slices/plan）把切片纳入发育闭环。
     // 复用既有 OBO 客户端模式（OntologyClient.planSlice，透传用户 JWT/X-Debug-User，与 invoke_solver/resolveSlice 同面）。
     // 规划器纯确定性图算法（R6）+ 命中索引即复用既有已发布切片（A3.4）。诚实门：NO_PATH（maxHops 内不可达）→ 出 NO_SLICE 缺口，不静默跳过。
+    //
+    // WO ONTO-SCEN-RENDER-PROJ ③（PRD §2.2 P2·A3.4）：切片目标**不再手焙**——卡未声明 sliceTargets 时
+    // 由求解器数据依赖清单（contracts SOLVER_DATADEP → deriveSliceTargetCandidates，确定性 R6）派生候选，
+    // 经 slice-planner 规划真切片并把**planner 校验过的覆盖**回写卡（planner=可达性唯一裁判）。
+    // 部分目标 NO_PATH：以可达子集重规划一次收敛——清单里**无本体链路**的类型（如版本快照表）≠切片缺口
+    // （该数据经清单就绪探测 listByType 直读覆盖，站③），不误开 NO_SLICE 票；全不可达才诚实 NO_SLICE。
     const sliceGaps: { gapCode: string; disposition: "AUTO_DERIVE" | "NEEDS_HUMAN"; detail: string; ticketId: string | null }[] = [];
     const plannedSlices: string[] = [];
-    for (const st of sc.sliceTargets ?? []) {
+    let sliceTargets = sc.sliceTargets;
+    let sliceTargetsDerived = false;
+    if ((!sliceTargets || sliceTargets.length === 0) && sc.solver) {
+      const effSolver = sc.solver === "sop_balance" ? "mrp_netting" : sc.solver;
+      const cand = deriveSliceTargetCandidates(effSolver, sc.presetContext.selectedObjects[0]?.objectType);
+      if (cand) {
+        sliceTargets = [cand];
+        sliceTargetsDerived = true;
+      }
+    }
+    for (const st of sliceTargets ?? []) {
       if (!st.targets || st.targets.length === 0) continue;
       try {
-        const res = await deps.dataCore.ontology.planSlice(a, { rootType: st.rootType, targets: st.targets, maxHops: 6 });
+        let res = await deps.dataCore.ontology.planSlice(a, { rootType: st.rootType, targets: st.targets, maxHops: 6 });
+        let covered = st.targets;
+        if (!res.ok && sliceTargetsDerived) {
+          // 派生候选部分不可达 → 以可达子集重规划一次（无链路清单类型走直读就绪，不属切片缺口）。
+          const unreachable = new Set(res.reason.unreachable);
+          covered = st.targets.filter((t) => !unreachable.has(t));
+          if (covered.length > 0) res = await deps.dataCore.ontology.planSlice(a, { rootType: st.rootType, targets: covered, maxHops: 6 });
+          else {
+            // 派生候选**全部**无本体链路（如纯版本快照表）→ 本卡无可规划子图：收敛为空目标（数据经
+            // 清单就绪探测直读覆盖，站③），不误开 NO_SLICE 人工票（手声明的 sliceTargets 不走此收敛，保持诚实缺口）。
+            st.targets = [];
+            continue;
+          }
+        }
         if (res.ok) {
           plannedSlices.push(res.plan.sliceKey);
+          if (sliceTargetsDerived) st.targets = covered; // 回写 planner 校验过的覆盖（真切片背书，非手焙）
           // slice.planned 由 DataCore /a/v1/slices/plan 内部发（§4 单源）；此处不重复发，避免双源。
         } else {
           // 诚实：maxHops 内不可达 → NO_SLICE 缺口（需补本体链路/真人正门），不假装已长出。
@@ -2759,7 +2793,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     };
     // PRD-scenario-ontogenesis §4：发育运行一等落库（R2 tenant 随身）；卡挂 lastOntogenesisRunId（内嵌留痕 additive 并存）。
     await deps.repos.ontogenesisRuns.insert(run);
-    await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, lastOntogenesisRunId: runId, updatedAt: new Date().toISOString() });
+    // WO RENDER-PROJ：③ planner 校验过的派生 sliceTargets 回写卡（下次 grow/管理面可见，非手焙）；
+    // 存量卡（早于基因组批次播种）补挂 genome（§2.1 卡=胚胎声明目标闭包，与新播种同一派生单源）。
+    const genomeBackfill = sc.genome ?? deriveScenarioGenomes(a.tenantId).get(sc.intentKey);
+    await deps.repos.scenarios.upsert({
+      ...sc,
+      maturity,
+      lastOntogenesisRun: run,
+      lastOntogenesisRunId: runId,
+      ...(sliceTargetsDerived && sliceTargets ? { sliceTargets } : {}),
+      ...(genomeBackfill ? { genome: genomeBackfill } : {}),
+      updatedAt: new Date().toISOString(),
+    });
     // 双通道（WO ONTO-SCEN-GROW·§5 事件入 outbox）：matured/gap_detected 同 growth_triggered——
     // SSE 场景通道（当页实时）⊕ 域事件 outbox（L4，供前端缓存失效 + 收件箱/驾驶舱订阅，不静默）。
     const terminalEvent = maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected";

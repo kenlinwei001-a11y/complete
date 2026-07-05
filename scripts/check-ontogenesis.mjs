@@ -148,6 +148,74 @@ if (deadHits.length > 0) {
   fail.push(`§2.5 零死答断言：源码重新引入「${DEAD_STRING}」死答串（应出结构化缺口块/诚实发育卡）：${deadHits.join(", ")}`);
 }
 
+// ---------------------------------------------------------------------------
+// WO ONTO-SCEN-RENDER-PROJ（PRD §2.2 P2·§6.2 收口）：渲染投影绑定齿。
+//   E. renderBindings ⊆ SOLVER_OUTPUT_SHAPES（契约登记 + 计划实际绑定两路都校验，违反即红·闭 G-2）。
+//   F. 占位文本回潮红：seed 派生循环必须以 bindings 驱动投影 + 烘焙 injectScenarioRuleStep，
+//      且派生 render 不得再有静态 text 占位块（「…推演结果：」死）。
+//   G. sliceTargets 自动派生在位：growScenario 须经 deriveSliceTargetCandidates（datadep 派生·非手焙）。
+// ---------------------------------------------------------------------------
+const contractsMod = await import("../packages/contracts/dist/index.js").catch(() => null);
+const agentSeedMod = await import("../apps/agentcore/dist/mocks/seed.js").catch(() => null);
+const agentValidateMod = await import("../apps/agentcore/dist/workflow/validate.js").catch(() => null);
+
+const RENDER_BINDINGS = contractsMod?.SOLVER_RENDER_BINDINGS ?? {};
+const BUILTIN_INTENTS = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation"]);
+
+// E1. 契约登记绑定 ⊆ 形状 + 16 派生卡求解器全覆盖非空。
+if (shapeKeys.size > 0) {
+  for (const [solverKey, bindings] of Object.entries(RENDER_BINDINGS)) {
+    const shape = new Set(ontoSvcMod?.SOLVER_OUTPUT_SHAPES?.[solverKey] ?? []);
+    if (shape.size === 0) { fail.push(`§6.2/E 绑定齿：SOLVER_RENDER_BINDINGS 登记了未注册形状的求解器「${solverKey}」`); continue; }
+    for (const b of bindings) {
+      if (!shape.has(b.fromSolverField)) fail.push(`§6.2/E 绑定齿：渲染绑定 ${solverKey}.${b.fromSolverField} ⊄ SOLVER_OUTPUT_SHAPES[${solverKey}]（形状漂移/挂名字段，闭 G-2 红）`);
+    }
+  }
+  for (const c of cards) {
+    if (BUILTIN_INTENTS.has(c.intentKey)) continue;
+    const effSolver = c.solver === "sop_balance" ? "mrp_netting" : c.solver;
+    const bindings = RENDER_BINDINGS[effSolver];
+    if (!bindings || bindings.length === 0) fail.push(`§6.2/E 绑定齿：派生卡 ${c.sNo} 的求解器「${effSolver}」无渲染绑定登记（回退泛化投影=占位邻域）`);
+    else if (!bindings.some((b) => b.block === "kpi" || b.block === "table")) fail.push(`§6.2/E 绑定齿：卡 ${c.sNo}（${effSolver}）绑定无 kpi/table 承载数据块（诚实门 dataBearing 无据）`);
+  }
+}
+
+// E2. 计划**实际**渲染绑定（模板引用 ⊕ solver_summary bindings，运行期同一派生函数）⊆ 形状——
+//     覆盖内置 4 卡的显式模板绑定（如 S01 p50/p90/gapPct/mainBottleneck），不止契约登记。
+if (agentSeedMod?.seedIntentsAndPlans && agentValidateMod?.deriveRenderBindings && shapeKeys.size > 0) {
+  const { plans } = agentSeedMod.seedIntentsAndPlans();
+  for (const p of plans) {
+    const bySolver = agentValidateMod.deriveRenderBindings(p.steps);
+    for (const [solverKey, fields] of Object.entries(bySolver)) {
+      const shape = new Set(ontoSvcMod?.SOLVER_OUTPUT_SHAPES?.[solverKey] ?? []);
+      if (shape.size === 0) continue; // 未注册形状（渐进补齐口径与 datacore closure 一致）
+      for (const f of fields) {
+        const root = String(f).split(".")[0].replace(/\[.*$/, "");
+        if (!shape.has(root)) fail.push(`§6.2/E 绑定齿：计划 ${p.key} 渲染引用 ${solverKey}.${root} ⊄ 登记形状（G-2 渲染契约漂移）`);
+      }
+    }
+  }
+} else if (!agentSeedMod || !agentValidateMod) {
+  fail.push("§6.2/E 绑定齿：无法导入 agentcore dist（先 pnpm --filter agentcore build）——计划实际绑定未校验");
+}
+
+// F. 占位回潮红（静态锚）：派生循环以 bindings 驱动 + 烘焙规则注入 + 静态占位文案死。
+if (!/SOLVER_RENDER_BINDINGS\[effectiveSolver\]/.test(seedText)) {
+  fail.push("§6.2/F 占位齿：seed 派生循环未消费 SOLVER_RENDER_BINDINGS（render 步失去字段绑定=退回泛化投影）");
+}
+if (!/injectScenarioRuleStep\(/.test(seedText)) {
+  fail.push("§6.3/F 规则齿：seed 派生循环未烘焙 injectScenarioRuleStep（卡 rules[] 回到只挂卡面）");
+}
+if (/markdown:\s*[`"'][^`"']*推演结果：/.test(seedText)) {
+  fail.push("§6.2/F 占位齿：seed 派生 render 仍烘焙静态占位文案（markdown「…推演结果：」回潮，WO RENDER-PROJ 红线）");
+}
+
+// G. 切片自动派生在位：growScenario 须经 deriveSliceTargetCandidates（datadep 派生候选，非手焙）。
+const serverText = readFileSync("apps/agentcore/src/server.ts", "utf8");
+if (!/deriveSliceTargetCandidates\(/.test(serverText)) {
+  fail.push("§6.4/G 切片齿：growScenario 未经 deriveSliceTargetCandidates 自动派生 sliceTargets（回到手焙/不生成）");
+}
+
 if (fail.length > 0) {
   console.error("✗ ontogenesis:check 失败：");
   for (const f of fail) console.error("  - " + f);
@@ -156,8 +224,10 @@ if (fail.length > 0) {
 console.log(`· §2.5 零死答 grep 断言通过：${SRC_ROOTS.length} 个 src 根零「${DEAD_STRING}」（缺口一律结构化 GapReport/发育卡，回潮即红）。`);
 console.log("· R16 发育闭环：本体已立（三环自动闭合 + 二分处置 + 透明可视 + 分相位成熟 + 倒序⊕正序两相）");
 console.log(`· §6 逐卡静态断言通过（${cards.length} 卡）：A 计划有 render 步派生器在位 · B solver(含 sop_balance→mrp_netting)∈SOLVER_OUTPUT_SHAPES · C rules⊆已发布规则集 · D intentKey 有意图/计划。`);
+console.log(`· §6.2 渲染投影绑定齿（WO RENDER-PROJ）：契约登记 ${Object.keys(RENDER_BINDINGS).length} 求解器绑定 ⊆ 形状 · 20 计划实际渲染绑定 ⊆ 形状 · 派生循环 bindings 驱动 + 规则烘焙注入 + 静态占位文案死 · 切片目标 datadep 自动派生在位。`);
 console.log("· §6 运行期项诚实跳过（本静态门测不了，绿测试≠能用）：");
 console.log("    - §6.1 每张 GOVERNED 卡有 VERIFIED ScenarioOntogenesisRun（需真 grow 经 QOS 跑通）→ 由 scenario-ontogenesis.test.ts grow 用例 + 门B 真后端证据保证。");
 console.log("    - §6.5 未闭环卡 maturity!=GOVERNED 且有 gaps[].disposition（maturity 由 grow 运行期设定）→ 同上（含 scenario-honest-gate.test.ts 的 RENDER_NOT_PROJECTED 样本）。");
-console.log("    - §6.4 卡 sliceTargets 被计划 resolve_slice 覆盖：出厂目录卡未声明 sliceTargets 字段 → N/A。");
+console.log("    - §6.4 卡 sliceTargets 覆盖：出厂卡由 growScenario 运行期经 datadep→slice-planner 自动派生并回写（scenario-render-projection.test.ts 钉），静态无从断言具体覆盖。");
+console.log("    - 绑定字段**真在真实输出中**（真值齿）→ datacore render-bindings-real-fields.test.ts（真合成世界真 invoke 逐字段断言）。");
 console.log("✓ ontogenesis:check：发育闭环不变量在本体钉牢 + §6 静态可校验逐卡断言守住（运行期事实由 grow 测试 + 门B 保证）。");

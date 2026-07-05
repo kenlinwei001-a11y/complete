@@ -96,6 +96,11 @@ export const CapacityForecastOutputSchema = z
       )
       .optional(),
     mainBn: z.string(),
+    // WO ONTO-SCEN-RENDER-PROJ（闭 G-2 形状漂移残）：实现恒产出的 legacy 别名字段补登记进形状
+    // （capacity.ts 每次输出 gapPct/mainBottleneck，QOS 种子计划 S01 渲染绑定它们——此前不在形状表
+    //  = 「绑定字段 ⊄ 登记形状」的真实漂移，genome.renderBindings ⊆ SOLVER_OUTPUT_SHAPES 门要求闭合）。
+    gapPct: z.number().optional(),
+    mainBottleneck: z.string().optional(),
     pendingCertList: z.array(z.string()),
     degradeNote: z.string().optional(), // C09 降级说明
     // 规则即引用 P2：求解器透出真规则评估 + 规则集版本（关联规则显 PASS/WARN/BLOCK，改规则即改此处）。
