@@ -5,6 +5,7 @@ import type { ConnectorType } from "@platform/contracts";
 import { classifySourceOrigin } from "@platform/contracts";
 import {
   createConnection,
+  downloadAllRawDatasets,
   downloadRawDataset,
   fetchConnections,
   fetchConnectorCategories,
@@ -58,9 +59,19 @@ export default function ConnectionsPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
         <h2 style={{ fontSize: 16 }}>{t.title}</h2>
-        <button className="btn primary sm" style={{ marginLeft: "auto" }} onClick={() => setWizardOpen(true)}>
+        {/* INTAKE-XLSX-EXPORT：一键导出全部源数据为一张多 sheet Excel（概览 + 每数据集一 sheet）。 */}
+        <button
+          className="btn sm"
+          style={{ marginLeft: "auto" }}
+          data-testid="export-all-source-xlsx"
+          title={t.exportAllHint}
+          onClick={() => void downloadAllRawDatasets().catch(toastError)}
+        >
+          {t.exportAllXlsx}
+        </button>
+        <button className="btn primary sm" onClick={() => setWizardOpen(true)}>
           {t.newConnection}
         </button>
       </div>
@@ -326,6 +337,17 @@ function ConnectionDatasetsPanel({
         </div>
         {isSynthetic && <DataModeBadge mode="SYNTHETIC" testId={`conn-synthetic-${connId}`} />}
         <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>{list.length} 张</span>
+        {/* INTAKE-XLSX-EXPORT：仅本连接的全部数据集导出一张多 sheet Excel（?connId=）。 */}
+        {list.length > 0 && (
+          <button
+            className="btn sm"
+            data-testid={`conn-export-xlsx-${connId}`}
+            title={t.exportAllHint}
+            onClick={() => void downloadAllRawDatasets(connId).catch(toastError)}
+          >
+            {t.exportConnXlsx}
+          </button>
+        )}
       </div>
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
         {t.datasetsHint}

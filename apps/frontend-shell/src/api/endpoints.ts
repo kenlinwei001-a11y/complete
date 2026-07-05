@@ -513,6 +513,32 @@ export async function downloadRawDataset(id: string, format: "xlsx" | "csv"): Pr
   URL.revokeObjectURL(url);
 }
 /**
+ * INTAKE-XLSX-EXPORT · 全数据集**多 sheet** Excel 下载（数据连接器&上传所有源数据一张 excel）。
+ * `connId` 省略 = 全租户所有源数据；传 `connId` = 仅该连接。带 Authorization 拉 blob 触发浏览器下载，
+ * 文件名以后端 content-disposition 为准（含日期段）。
+ */
+export async function downloadAllRawDatasets(connId?: string): Promise<void> {
+  const token = tokenStore.get();
+  const qs = connId ? `?connId=${encodeURIComponent(connId)}` : "";
+  const res = await fetch(`${api.baseUrl("a")}/a/v1/raw-datasets/export.xlsx${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error(`导出失败（HTTP ${res.status}）`);
+  const disp = res.headers.get("content-disposition") ?? "";
+  const m = /filename="?([^"]+)"?/.exec(disp);
+  const filename = m?.[1] ?? "source-data.xlsx";
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+/**
  * 活数据可溯（PRD-live-traceable-data §3.2）：对象 → 原始行 → RawDataset → 连接器 + 派生口径。
  * 推演结论里的数据"悬浮溯源"用它："这个数从哪来"。
  */

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `d0513209056eb7a9`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `1fdcb08a27d8ce91`。
 
 ---
 
@@ -121,6 +121,7 @@ launch/useScenarioLaunch(context 带 scenarioIntentKey+scenarioKey·前端接缝
 Connector --produces--> RawDataset --suggest/modeling--> OntologyDraft --publish--> OntologyType/Link/Version
 RawDataset --materialize(幂等)--> ObjectInstance --runDerivations--> DerivedProperty
 RawDataset --export(.xlsx/.csv)--> 下载文件(合成源标 .synthetic·真业务行·R6 字节稳)   ✅ WO-SOURCE-TRANSPARENCY（GET /a/v1/raw-datasets/:id/export·数据连接器页「下载 Excel」·消灭走捷径）
+所有 RawDataset --export.xlsx(多 sheet:概览+每集一 sheet)--> 一张下载文件(真业务行·空集诚实标注·>5万行截断标 truncated·R6 内容无时钟·R2 仅本租户)   ✅ INTAKE-XLSX-EXPORT（GET /a/v1/raw-datasets/export.xlsx[?connId=]·数据连接器页「导出全部源数据(Excel)」/连接级「导出本连接源数据(Excel)」·闭 G-13①产品化）
 SyntheticJob --gen(seed)--> Connection(合成源)+RawDataset/RawRow --materialize--> ObjectInstance(origin 溯回 rawDatasetId/rowIdx·**R-NO-ORPHAN-SOURCE 门守无凭空**)/Link   ✅ 活数据可溯 P1（synthetic/service.ts；不再凭空落对象）        IndustryTemplate --驱动--> SyntheticJob
 ObjectType <--reads-- Solver(入参字段)     ObjectType <--scopes-- Rule     ObjectType --domain--> SliceSpec
 DemandSegment(forecast·p50/p90/tgt) + SopVersionRow(plan·demand/supply) --需求侧--> risk_timeline(紧张度 tension)   ✅ WO-FORECAST-SIM（紧张度 = 真需求−产能 缺口·替 mockTightness 哈希）

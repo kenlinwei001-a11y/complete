@@ -3148,6 +3148,74 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { connId } = req.query as { connId?: string };
     return connectors.listRawDatasets(ctx(req), connId);
   });
+  // INTAKE-XLSX-EXPORT · 全数据集**多 sheet** Excel 导出（用户亲定：数据连接器&上传所有源数据一张可下载 excel·闭 G-13①）。
+  //  - sheet1「概览」= 每数据集一行（ID/名/行数/列数/列清单/来源连接/摄入时间/备注[空|truncated]）；后续**每数据集一 sheet**（真业务行）。
+  //  - `?connId=` 过滤单连接；缺省全租户。R2：listRawDatasets(ctx) 只取本租户 → 跨租户列表空（仅概览页·诚实空态·非 500）。
+  //  - 大表护栏：每 sheet 上限 ROW_CAP 行截断（防内存爆），概览「备注」列诚实标 truncated（完整数据引导单集导出）。
+  //  - R6 确定性：行序=rawRows.list 原序·列序=字段画像序，无随机/时钟入内容（文件名日期段仅供人读·不入 workbook 内容）。
+  app.get("/a/v1/raw-datasets/export.xlsx", async (req, reply) => {
+    const c = ctx(req);
+    const { connId } = req.query as { connId?: string };
+    const ROW_CAP = 50000; // 每 sheet 行上限（大表护栏）
+    const datasets = await connectors.listRawDatasets(c, connId); // R2：仅本租户
+    // 工作表名：xlsx 限 31 字符·非法字符 []:*?/\ 折 `_`·大小写不敏感去重（保留 CJK 数据集名信息，仅剔非法字符）。
+    const usedSheet = new Set<string>(["概览"]);
+    const sheetName = (raw: string): string => {
+      const clean = ((raw || "data").replace(/[[\]:*?/\\]/g, "_").slice(0, 31)) || "data";
+      if (!usedSheet.has(clean.toLowerCase())) { usedSheet.add(clean.toLowerCase()); return clean; }
+      for (let i = 2; ; i++) {
+        const suf = `_${i}`;
+        const cand = clean.slice(0, 31 - suf.length) + suf;
+        if (!usedSheet.has(cand.toLowerCase())) { usedSheet.add(cand.toLowerCase()); return cand; }
+      }
+    };
+    const cell = (v: unknown): string | number | boolean => {
+      if (v == null) return "";
+      if (typeof v === "number" || typeof v === "boolean" || typeof v === "string") return v;
+      return JSON.stringify(v);
+    };
+    // 来源连接名缓存（避免逐数据集重复取连接）。
+    const connCache = new Map<string, string>();
+    const connName = async (id?: string): Promise<string> => {
+      if (!id) return "";
+      if (!connCache.has(id)) { const cn = await repos.connections.get(c.tenantId, id); connCache.set(id, cn?.name ?? id); }
+      return connCache.get(id)!;
+    };
+    const overview: (string | number | boolean)[][] = [["数据集ID", "名称", "行数", "列数", "列清单", "来源连接", "摄入时间", "备注"]];
+    const sheets: { name: string; data: (string | number | boolean)[][]; options: Record<string, unknown> }[] = [];
+    for (const ds of datasets) {
+      const rows = await repos.rawRows.list(c.tenantId, ds.id);
+      // 列序：字段画像优先（稳定）→ 补行内出现但未画像的键（诚实全列，剔除内部 _editedAt）。
+      const cols: string[] = [];
+      const seen = new Set<string>();
+      for (const f of ds.fields ?? []) if (f?.name && !seen.has(f.name)) { seen.add(f.name); cols.push(f.name); }
+      for (const r of rows) for (const k of Object.keys(r)) if (k !== "_editedAt" && !seen.has(k)) { seen.add(k); cols.push(k); }
+      const truncated = rows.length > ROW_CAP;
+      const shown = truncated ? rows.slice(0, ROW_CAP) : rows;
+      const note = rows.length === 0 ? "空数据集（无行）" : truncated ? `已截断：仅前 ${ROW_CAP} 行（共 ${rows.length}）` : "";
+      overview.push([ds.id, ds.name, rows.length, cols.length, cols.join(", "), await connName(ds.sourceConnId), ds.syncedAt ?? "", note]);
+      // sheet 数据：空数据集诚实标注（不伪造行）；有行 → 表头 + 真业务行（+截断脚注）。
+      let data: (string | number | boolean)[][];
+      if (rows.length === 0) {
+        data = [cols.length ? cols : ["(空数据集·无列)"], ["(此数据集无行数据)"]];
+      } else {
+        data = [cols, ...shown.map((r) => cols.map((k) => cell(r[k])))];
+        if (truncated) data.push([`(已截断：仅前 ${ROW_CAP} 行，共 ${rows.length} 行——完整数据请用单集导出 /raw-datasets/:id/export)`]);
+      }
+      sheets.push({ name: sheetName(ds.name), data, options: {} });
+    }
+    const buf = xlsx.build([{ name: "概览", data: overview, options: {} }, ...sheets]);
+    // 文件名日期段（供人读·非内容·不破坏 R6 workbook 字节稳定）；connId 过滤时带连接段。
+    const date = new Date().toISOString().slice(0, 10);
+    const scope = connId ? `_conn-${connId.replace(/[^A-Za-z0-9_.-]+/g, "_")}` : "-all";
+    const filename = `source-data${scope}_${date}.xlsx`;
+    return reply
+      .header("content-type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .header("content-disposition", `attachment; filename="${filename}"`)
+      // 跨源下载（前端→datacore）须显式暴露 content-disposition，浏览器才读得到文件名。
+      .header("access-control-expose-headers", "content-disposition")
+      .send(buf);
+  });
   app.get("/a/v1/raw-datasets/:id/rows", async (req) => {
     const c = ctx(req);
     const { id } = req.params as { id: string };

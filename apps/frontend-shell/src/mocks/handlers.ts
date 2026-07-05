@@ -1946,6 +1946,17 @@ export const handlers = [
       { id: "rds-oee", name: "oee_points", sourceConnId: "conn-iot", rowCount: 9600, syncedAt: "2026-06-12T01:00:00Z", sourceCategory: "EXTERNAL", watermark: "2026-06-12T00:59:00Z" },
     ]),
   ),
+  // INTAKE-XLSX-EXPORT：全数据集多 sheet Excel 导出（mock 模式回一个占位二进制 + attachment 头，验证下载链路）。
+  http.get("*/a/v1/raw-datasets/export.xlsx", ({ request }) => {
+    const connId = new URL(request.url).searchParams.get("connId");
+    const scope = connId ? `_conn-${connId}` : "-all";
+    return new HttpResponse(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+      headers: {
+        "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "content-disposition": `attachment; filename="source-data${scope}_2026-07-05.xlsx"`,
+      },
+    });
+  }),
   // 数据源节点行数据 + 在线编辑（A7 增量）
   http.get("*/a/v1/raw-datasets/:id/rows", ({ params }) => {
     const id = String(params.id);
