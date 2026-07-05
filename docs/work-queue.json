@@ -3464,11 +3464,12 @@
       "note": "PRD §2.2计划项+§9 P2: render步绑定SOLVER_OUTPUT_SHAPES校验的真实输出字段(seed.ts:389-400十六卡invoke_solver→静态文本的占位根除)·卡rules[]自动接evaluate_rules(灭规则只挂卡面)·sliceTargets经slice-planner自动生成+索引复用(A3.4)。DoD: 16张占位卡全渲真投影(FDE抽3卡逐值对照solver invoke)·规则真执行进答案依据·齿: renderBindings⊆SOLVER_OUTPUT_SHAPES违反红·占位文本回潮红。"
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
-        "todo": "2026-07-05T08:29:30.462Z"
+        "todo": "2026-07-05T08:29:30.462Z",
+        "wip": "2026-07-05T11:56:53.956Z"
       },
       "id": "ONTO-SCEN-GROWTH-LOOP",
       "priority": "P2",
@@ -3599,11 +3600,12 @@
       }
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
-        "todo": "2026-07-05T11:18:19.874Z"
+        "todo": "2026-07-05T11:18:19.874Z",
+        "wip": "2026-07-05T11:56:54.123Z"
       },
       "id": "QUERY30-ONTOLOGY-EXT",
       "priority": "P1",
@@ -3644,13 +3646,14 @@
     {
       "id": "SANDBOX-RENAME-BASECARDS",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/PRD-frontend-visual-redesign.md",
       "title": "『预判推演看板』(/v/risk)改名『产能推演』+沙盘基地卡默认可见(转录证据纠偏)",
       "note": "⚠目标纠偏(2026-07-05彻查·转录#227原文): 改名对象=**预判推演看板(/v/risk)**·非沙盘——驾驶舱磁贴早已叫『产能推演』(DashboardView.tsx:60·66766b5)但点进去页面标题仍是『预判推演看板』(datacore synthetic/service.ts:1304+mocks/fixtures.ts:373)=名实不符正是用户两次追问处。做①: /v/risk 视图标题+nav标签→『产能推演』(ViewDef title两处+workspace nav+mock同步·若用户要沙盘也改名则另令)。做②(原单保留): 推演沙盘基地/对象状态卡默认可见——SANDBOX-LAYOUT-REWORK把runstate卡默认折叠致首屏零基地名(实证docs/evidence/sandbox-current-state.png)·修: runstate卡默认展开或基地卡回主区·折叠记忆保留。齿: /v/risk标题断言『产能推演』+沙盘首屏innerText含基地名(不点击)+nav断言。FDE: 真浏览器双页截图。",
       "at": {
-        "todo": "2026-07-05T11:22:12.756Z"
+        "todo": "2026-07-05T11:22:12.756Z",
+        "wip": "2026-07-05T11:56:54.037Z"
       }
     },
     {
@@ -3668,10 +3671,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "GRAPH-PANORAMA-ONLY",
-      "at": "2026-07-05T11:55:22.499Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "QUERY30-ONTOLOGY-EXT",
+      "at": "2026-07-05T11:56:54.123Z"
     }
   }
 }
