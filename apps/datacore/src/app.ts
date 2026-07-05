@@ -1256,6 +1256,33 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/notifications/read-all", async (req) => notifications.markAllRead(ctx(req)));
 
+  // ONTO-SCEN-LAUNCH-DET（PRD-scenario-ontogenesis §2.5·服务间）：B 侧场景卡点卡不可答开 GrowthTicket 后，
+  // 经此把「发育缺口 + 工单深链」扇出给责任角色（复用 WO-ALERT NotificationService → 前端铃铛/通知中心=收件箱）。
+  // 仅服务间凭证（x-service-token → roles=["service"]，与 /a/v1/references/report 同范式）；用户 JWT 一律 403。
+  app.post("/a/v1/notifications/notify-role", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.includes("service")) throw forbidden("notify-role is service-to-service only");
+    const body = parseBody(
+      z.object({
+        role: z.string().min(1),
+        kind: z.string().min(1),
+        title: z.string().min(1),
+        body: z.string(),
+        refType: z.string().optional(),
+        refId: z.string().optional(),
+      }),
+      req.body,
+    );
+    const notified = await notifications.notifyRole(c.tenantId, body.role, undefined, {
+      kind: body.kind,
+      title: body.title,
+      body: body.body,
+      ...(body.refType ? { refType: body.refType } : {}),
+      ...(body.refId ? { refId: body.refId } : {}),
+    });
+    return { notified };
+  });
+
   // 闭环验证引擎 VLE §4：触发验证 run + 历史 + 单次报告（admin / catalog_admin）
   app.post("/a/v1/validation/runs", async (req, reply) => {
     const c = ctx(req);

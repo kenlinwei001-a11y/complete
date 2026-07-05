@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §7` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `336c102da2ff00c6`。
+> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `571cfb21a022f4d3`。
 
 ---
 
@@ -33,7 +33,7 @@
 - **`ontology-writeback:check` 本体回写完整性门（治理 · 反向守"代码改接线却漏回写本体"）**：静态断言**每个并入 `pnpm gates` 的 `check-*.mjs` 门都在本体 §7 登记**（门名/脚本名/pnpm 别名出现在 §7）——补 `check-prd-ontology` 只查"PRD→本体悬空引用"（正向）的反向缺口（代码新增门，本体漏登记，正是 P2 漏回写 no-hardcoded 的根因）· `scripts/check-ontology-writeback.mjs`，`pnpm ontology-writeback:check`。已并入 `pnpm gates`。
 - **`prd:coverage` PRD 覆盖对账门（治理）**：解析 PRD↔实现文件双向覆盖，写 `docs/prd-coverage-index.json`（covered/uncovered/coverage 比），报告哪些 PRD 缺实现锚点 · `scripts/check-prd-coverage.mjs`，`pnpm prd:coverage`。已并入 `pnpm gates`。
 - **`meta:sync` 元本体自反落库门（Dogfooding P1）**：把本体 markdown 确定性投影为元对象物化进元租户 `__platform__`（八类节点：对象/不变量/断点/事件/域/切片/门/链路），R2 隔离（业务租户查不到元对象）+ 影响分析 BFS · `scripts/check-meta-sync.mjs`，`pnpm meta:sync`。已并入 `pnpm gates`。
-- **`ontogenesis:check` 发育闭环门（R16，G-9）**：声明性校验 R16 发育闭环不变量在本体钉牢（倒序⊕正序两相、三环自动闭合、二分处置、分相位成熟）+ §6 静态逐卡断言（每卡 plan 有 render 步 / 卡 solver ∈ SOLVER_OUTPUT_SHAPES / 卡 rules ⊆ 已发布规则 / 卡 intentKey 有意图计划；运行期事实由 grow 测试+门B 保证，静态门诚实跳过）· `scripts/check-ontogenesis.mjs`，`pnpm ontogenesis:check`。已并入 `pnpm gates`。
+- **`ontogenesis:check` 发育闭环门（R16，G-9）**：声明性校验 R16 发育闭环不变量在本体钉牢（倒序⊕正序两相、三环自动闭合、二分处置、分相位成熟）+ §6 静态逐卡断言（每卡 plan 有 render 步 / 卡 solver ∈ SOLVER_OUTPUT_SHAPES / 卡 rules ⊆ 已发布规则 / 卡 intentKey 有意图计划；运行期事实由 grow 测试+门B 保证，静态门诚实跳过）+ **§2.5 零死答 grep 断言（ONTO-SCEN-LAUNCH-DET）**：apps/*/src、packages/*/src 五根零「未能产出回答」死答串（缺口一律结构化 GapReport/诚实发育卡，回潮即红）· `scripts/check-ontogenesis.mjs`，`pnpm ontogenesis:check`。已并入 `pnpm gates`。
 - **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。
 - **场景接线回归**（守护 G-1）：20 场景全有意图+计划+求解器 · `apps/agentcore/test/scenarios-wiring.test.ts`。
 - **本体必读强制**（治理）：CLAUDE.md 铁律 0 + SessionStart 钩子（从 §8 动态注入未修断点，结构上不漂）+ `/ontology` skill。

@@ -49,7 +49,10 @@ export default function TicketCenterPage() {
   const myUserId = workspace?.user?.id;
   const [tab, setTab] = useState<TabKey>("all");
   const [fKind, setFKind] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // ONTO-SCEN-LAUNCH-DET §2.5 深链：?ticket=<id>（发育卡「已建工单 #N」/通知中心）→ 直开详情抽屉。
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get("ticket"),
+  );
 
   const { data: board } = useQuery({ queryKey: ["b", "ticket-board"], queryFn: fetchTicketBoard });
   const allRows = board?.items ?? [];

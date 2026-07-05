@@ -27,6 +27,9 @@ function codeFromError(errCode: string, errMsg: string): GapCode {
   if (/slice/.test(s)) return "NO_SLICE";
   if (/template_resolution|shape|render|output\./.test(s)) return "SHAPE_MISMATCH";
   if (/rule/.test(s)) return "NO_RULE";
+  // ONTO-SCEN-LAUNCH-DET：GOVERNED 卡确定性启动时意图不可绑定（被退发布/删除/entitlement 关闭）
+  // → 编排器以 INTENT_NOT_AVAILABLE 终止（零 classifier）——归类 NO_INTENT（补法=重新发布/重 grow）。
+  if (/intent/.test(s)) return "NO_INTENT";
   return "OTHER";
 }
 

@@ -94,4 +94,29 @@ describe("CL.7 · 对话坞缺口卡", () => {
     expect(within(card).getByTestId("gap-boundary")).toHaveTextContent("不可达：断在 SOLVER_NOT_FOUND");
     expect(within(card).getByTestId("gap-ticket-link")).toHaveAttribute("href", "/admin/growth");
   });
+
+  it("ONTO-SCEN-LAUNCH-DET §2.5：场景卡缺口 → 诚实发育卡「此卡发育中：缺 X · 已建工单 #N」+ 深链（替代死答）[teeth]", async () => {
+    loginAs("planner");
+    const answer = gapAnswer("SOLVER_NOT_FOUND", "4680-NCM 加 20% 六周能不能接");
+    const block = answer.blocks[0] as { type: "gap"; scenario?: unknown };
+    block.scenario = { scenarioKey: "S01", name: "产能可行性", maturity: "PROVISIONAL", ticketId: "gtk_01ABC" };
+    renderCard(answer);
+
+    const card = await screen.findByTestId("gap-card");
+    const dev = within(card).getByTestId("gap-scenario");
+    expect(dev).toHaveTextContent("此卡发育中");
+    expect(dev).toHaveTextContent("「产能可行性」暂未长成：缺求解器（需开发/骨架）"); // 缺 X = 缺口码人话（标签已带「缺」不重复）
+    const ticket = within(card).getByTestId("gap-scenario-ticket");
+    expect(ticket).toHaveTextContent("已建工单 #gtk_01ABC");
+    expect(ticket).toHaveAttribute("href", "/admin/tickets?ticket=gtk_01ABC"); // 深链统一工单中心（TICKET-CENTER·?ticket= 直开详情抽屉）
+    // 零死答：整卡不出现无信息兜底文案
+    expect(card.textContent).not.toContain("未能产出回答");
+  });
+
+  it("ONTO-SCEN-LAUNCH-DET：无 scenario 字段（自由问句缺口）→ 不渲染发育卡区（零回归）", async () => {
+    loginAs("planner");
+    renderCard(gapAnswer("OTHER", "自由问句"));
+    const card = await screen.findByTestId("gap-card");
+    expect(within(card).queryByTestId("gap-scenario")).toBeNull();
+  });
 });

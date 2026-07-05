@@ -2611,7 +2611,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         vpath = t?.path === "AGENT" ? "AGENT" : t?.path === "WORKFLOW" ? "WORKFLOW" : "NONE";
         const blocks = t?.answer?.blocks ?? [];
         const gapBlock = blocks.find((b) => b.type === "gap");
-        const fallbackText = blocks.some((b) => b.type === "text" && /未能产出回答|探索模式未能/.test(String((b as { markdown?: string }).markdown ?? "")));
+        // 兜底文案检测（历史探索死答形态；ONTO-SCEN-LAUNCH-DET 后 degrade 已改出结构化 gap 块，
+        // 此检测保留守旧数据/回潮——grep 门另守源码零死答串）。
+        const fallbackText = blocks.some((b) => b.type === "text" && /探索模式未能/.test(String((b as { markdown?: string }).markdown ?? "")));
         // 诚实门（闭 G-1）：答案必须**投影出真实数据**才算 VERIFIED——含承载数据的块。
         const dataBearing = blocks.some((b) =>
           b.type === "kpi" || b.type === "table" || b.type === "rule_violation" || b.type === "action_draft" ||
@@ -2765,6 +2767,75 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     await emitDomainEvent(a.tenantId, terminalEvent, { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });
     return run;
   };
+
+  // ---- ONTO-SCEN-LAUNCH-DET（PRD-scenario-ontogenesis §2.4/§2.5）：launch 正序缺口处置钩 ----
+  // 点卡任务（非内部验证）不可答 → classifyGap（法定缺口码，纯函数 R6）→ GapReport：
+  //  ① GrowthTicket：同卡同码 OPEN 票幂等复用（重复点卡不刷屏）+ growth.ticket_opened 入 outbox；
+  //  ② 降级卡（验收#4）：GOVERNED/ADVISORY → PROVISIONAL + ScenarioOntogenesisRun 留痕（launch 起源，
+  //     verification.taskId 溯源）+ scenario.gap_detected（SSE ⊕ outbox 双通道，与 grow 同 §4 L4）；
+  //  ③ 通知+收件箱（仅新开票时一次）：B→A 服务间 notify-role → NotificationService 角色扇出 → 前端铃铛/通知中心，深链工单；
+  //  ④ 返回 gap 块（附 scenario{ticketId,maturity}）→ 前端 GapCard 渲染「此卡发育中：缺 X · 已建工单 #N」
+  //     ——替代无信息死答（全站零死答串，ontogenesis:check grep 门守回潮）。
+  deps.orchestrator.setScenarioGap(async (task) => {
+    const scKey = task.context.scenarioKey;
+    if (!scKey) return null;
+    const sc = await deps.repos.scenarios.byKey(task.tenantId, scKey);
+    if (!sc) return null;
+    const report = classifyGap(task);
+    const primary = report.findings.find((f) => f.blocking) ?? report.findings[0];
+    if (report.verdict === "ANSWERABLE" || !primary) return null;
+    const now = new Date().toISOString();
+    // ① 工单（NEEDS_HUMAN → GrowthTicket；幂等：同卡同码 OPEN 复用，深链 /admin/growth）
+    const open = (await deps.repos.growthTickets.listByTenant(task.tenantId)).find(
+      (t) => t.status === "OPEN" && t.gapCode === primary.gapCode && t.fromQuestion === sc.triggerQuestion,
+    );
+    let ticketId = open?.id ?? null;
+    if (!ticketId) {
+      ticketId = newId("gtk");
+      await deps.repos.growthTickets.upsert({
+        id: ticketId,
+        tenantId: task.tenantId,
+        fromQuestion: sc.triggerQuestion,
+        gapCode: primary.gapCode,
+        ioContract: { inputs: [], outputShape: ["answer", "provenance"] },
+        ontologyRefs: { objectTypes: sc.presetContext.targetView ? [sc.presetContext.targetView] : [], slices: [], rules: sc.rules ?? [] },
+        acceptance: `场景卡「${sc.scenarioKey} ${sc.name}」正序点卡不可答（${primary.gapCode}：${primary.evidence.slice(0, 160)}）。建议补法：${primary.suggestedFill}。修复后 POST /b/v1/scenarios/${sc.scenarioKey}/grow 重验，真出答案才回 GOVERNED。`,
+        status: "OPEN",
+        createdAt: now,
+      });
+      await emitDomainEvent(task.tenantId, "growth.ticket_opened", { ticketId, gapCode: primary.gapCode, scenarioKey: sc.scenarioKey });
+      // ③ 通知 + 收件箱（仅**新开工单**时扇出一次——工单幂等复用时不重复轰炸收件箱；角色 admin；
+      //    fire-and-forget 旁路，不阻断任务终态）。
+      await deps.notifyRole?.(task.tenantId, {
+        role: "admin",
+        kind: "scenario_gap",
+        title: `场景卡「${sc.name}」发育缺口（${primary.gapCode}）`,
+        body: `点卡「${task.query.slice(0, 60)}」不可答：${primary.evidence.slice(0, 140)}。已建成长工单 ${ticketId}，修复后 grow 重验。`,
+        refType: "growth_ticket",
+        refId: ticketId,
+      });
+    }
+    // ② 降级卡 + 留痕 + 事件（launch 起源的发育运行：data 环断=事实，ontology/capability 用闭包轻检不重跑问句）
+    let maturity: import("@platform/contracts").ScenarioMaturity = sc.maturity ?? "PROVISIONAL";
+    if (sc.maturity === "GOVERNED" || sc.maturity === "ADVISORY") {
+      maturity = "PROVISIONAL";
+      const runId = newId("sor");
+      const closure = await scenarioClosure(task.tenantId, sc);
+      const run: ScenarioOntogenesisRun & { tenantId: string } = {
+        runId, tenantId: task.tenantId, scenarioKey: sc.scenarioKey, ranAt: now,
+        rings: { data: false, ontology: closure.ready, capability: closure.ready },
+        verification: { status: "NOT_VERIFIED", path: report.path, gapCode: primary.gapCode, answerPreview: null, taskId: task.id },
+        gaps: [{ gapCode: primary.gapCode, disposition: "NEEDS_HUMAN", detail: primary.evidence.slice(0, 240), ticketId }],
+        maturity,
+      };
+      await deps.repos.ontogenesisRuns.insert(run);
+      await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, lastOntogenesisRunId: runId, updatedAt: now });
+      await deps.events.emit(sc.scenarioKey, "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: primary.gapCode, ticketId });
+      await emitDomainEvent(task.tenantId, "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: primary.gapCode, ticketId });
+    }
+    // ④ 诚实发育卡（前端 GapCard scenario 区：此卡发育中 · 缺 X · 已建工单 #N · 深链）
+    return { type: "gap", report, scenario: { scenarioKey: sc.scenarioKey, name: sc.name, maturity, ticketId } };
+  });
 
   // POST /b/v1/scenarios/:key/grow —— 亲手发育验证一张卡（admin/catalog_admin）。
   app.post("/b/v1/scenarios/:key/grow", async (req, reply) => {

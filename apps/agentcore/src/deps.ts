@@ -10,6 +10,7 @@ import type { McpClientPort } from "./mcp/types.js";
 import { Metrics } from "./metrics.js";
 import type { Repos } from "./persistence/repos.js";
 import { makeRefReporter, type RefReporter } from "./refs/report.js";
+import { makeRoleNotifier, type RoleNotifier } from "./growth/notify.js";
 import { Orchestrator } from "./router/orchestrator.js";
 import { CatalogService } from "./catalog/service.js";
 import { EvalService } from "./evals.js";
@@ -34,6 +35,8 @@ export interface AppDeps {
   providerDirectory?: DataCoreProviderDirectory;
   /** 引用模式增量 §2.3：B→A 引用上报（服务间凭证；未配置 = 不上报）。 */
   reportRefs?: RefReporter;
+  /** ONTO-SCEN-LAUNCH-DET §2.5：B→A 角色通知（收件箱=WO-ALERT 通知中心；未配置服务凭证 = 不通知）。 */
+  notifyRole?: RoleNotifier;
 }
 
 export function wireDeps(base: {
@@ -98,5 +101,6 @@ export function wireDeps(base: {
     llmSettings,
     providerDirectory: base.providerDirectory,
     reportRefs,
+    notifyRole: makeRoleNotifier(base.config),
   };
 }

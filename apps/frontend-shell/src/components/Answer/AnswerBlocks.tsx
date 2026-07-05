@@ -42,7 +42,8 @@ export function AnswerBlockView({
     case "action_draft":
       return <ActionDraftBlock draftId={block.draftId} actionType={block.actionType} summary={block.summary} />;
     case "gap":
-      return <GapCard report={block.report} onRetry={onRetry} />;
+      // ONTO-SCEN-LAUNCH-DET §2.5：场景卡缺口附发育态 → GapCard 渲染诚实发育卡（缺 X · 工单深链）。
+      return <GapCard report={block.report} scenario={block.scenario} onRetry={onRetry} />;
     default:
       return null;
   }

@@ -70,5 +70,8 @@ export function useScenarioLaunch(): (card: ScenarioCardVM) => Promise<void> {
       slotPresets: card.presetContext.slotPresets,
       // §2.4 确定性绑定：卡声明的意图键随查询搭车 → 编排器跳过 LLM classify 直接绑定（点卡必出真推演答案，不受 classifier 死活影响）。
       scenarioIntentKey: card.intentKey,
+      // ONTO-SCEN-LAUNCH-DET §2.5（接缝修复）：卡键也随行——编排器据此识别 GOVERNED 卡（确定性守底）、
+      // O10 注入卡规则、不可答时走场景缺口处置（发育卡+工单+通知）。此前 UI 点卡缺此键 → 整条缺口链失联。
+      scenarioKey: card.sNo,
     });
 }

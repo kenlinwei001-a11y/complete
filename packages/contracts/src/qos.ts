@@ -276,6 +276,20 @@ export const AnswerBlockSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("gap"),
     report: GapReportSchema,
+    /**
+     * ONTO-SCEN-LAUNCH-DET（PRD-scenario-ontogenesis §2.5，additive）：缺口来自场景卡启动时附卡的发育态——
+     * 前端据此渲染诚实发育卡「此卡发育中：缺 X · 已建工单 #N」+ 工单深链（替代无信息兜底串）。
+     */
+    scenario: z
+      .object({
+        scenarioKey: z.string(),
+        name: z.string().optional(),
+        /** 降级后的相位（PROVISIONAL/ADVISORY/GOVERNED）。 */
+        maturity: z.string(),
+        /** §2.5 NEEDS_HUMAN：已开 GrowthTicket 的 id（深链 /admin/growth）；无票 null。 */
+        ticketId: z.string().nullable(),
+      })
+      .optional(),
   }),
 ]);
 export type AnswerBlock = z.infer<typeof AnswerBlockSchema>;
@@ -419,6 +433,11 @@ export const QueryTaskSchema = z.object({
     .optional(),
   /** 引用模式增量 §2.2（additive）：执行时解析到的实际版本留痕（「当时生效」） */
   resolvedRefs: z.array(ResolvedRefSchema).optional(),
+  /**
+   * ONTO-SCEN-LAUNCH-DET（additive）：内部验证任务（grow/A10 verify/growth probe 经 submitQuery
+   * {internal:true} 提交）→ 场景缺口处置（开票/通知/降级卡）不重复触发——发育验证自有留痕与开票路径。
+   */
+  internal: z.boolean().optional(),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });

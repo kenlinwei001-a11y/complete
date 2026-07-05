@@ -8,7 +8,8 @@
  * 三环的运行时落地由各被统摄 PRD（A10 build-to-verify / dogfooding 活体本体 / A15 目录派生）
  * 各自的门与测试保证。绿测试≠能用：本门是"记录该长成什么"的护栏，非功能完备证明。
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 const ONTOLOGY = "docs/SYSTEM-ONTOLOGY.md";
 const text = readFileSync(ONTOLOGY, "utf8");
@@ -121,11 +122,38 @@ for (const c of cards) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// ONTO-SCEN-LAUNCH-DET（PRD-scenario-ontogenesis §2.5·验收#4）：全站零「未能产出回答」死答串。
+// 兜底死答已被结构化缺口块（GapReport → GapCard/发育卡）替代——任何源码（apps/*/src、packages/*/src）
+// 重新引入该串即红（回潮守卫，grep 级断言）。测试目录允许出现（断言"不出现"的反证用例）。
+// ---------------------------------------------------------------------------
+const DEAD_STRING = "未能产出回答";
+const SRC_ROOTS = ["apps/agentcore/src", "apps/datacore/src", "apps/frontend-shell/src", "packages/contracts/src", "packages/llm-adapters/src"];
+const deadHits = [];
+const walk = (dir) => {
+  let entries = [];
+  try { entries = readdirSync(dir); } catch { return; }
+  for (const e of entries) {
+    const p = join(dir, e);
+    const st = statSync(p);
+    if (st.isDirectory()) walk(p);
+    else if (/\.(ts|tsx|js|mjs)$/.test(e)) {
+      const body = readFileSync(p, "utf8");
+      if (body.includes(DEAD_STRING)) deadHits.push(p);
+    }
+  }
+};
+for (const root of SRC_ROOTS) walk(root);
+if (deadHits.length > 0) {
+  fail.push(`§2.5 零死答断言：源码重新引入「${DEAD_STRING}」死答串（应出结构化缺口块/诚实发育卡）：${deadHits.join(", ")}`);
+}
+
 if (fail.length > 0) {
   console.error("✗ ontogenesis:check 失败：");
   for (const f of fail) console.error("  - " + f);
   process.exit(1);
 }
+console.log(`· §2.5 零死答 grep 断言通过：${SRC_ROOTS.length} 个 src 根零「${DEAD_STRING}」（缺口一律结构化 GapReport/发育卡，回潮即红）。`);
 console.log("· R16 发育闭环：本体已立（三环自动闭合 + 二分处置 + 透明可视 + 分相位成熟 + 倒序⊕正序两相）");
 console.log(`· §6 逐卡静态断言通过（${cards.length} 卡）：A 计划有 render 步派生器在位 · B solver(含 sop_balance→mrp_netting)∈SOLVER_OUTPUT_SHAPES · C rules⊆已发布规则集 · D intentKey 有意图/计划。`);
 console.log("· §6 运行期项诚实跳过（本静态门测不了，绿测试≠能用）：");

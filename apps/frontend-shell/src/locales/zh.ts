@@ -132,6 +132,10 @@ export const zh = {
     gapContinue: "继续推演 →",
     gapUnreachable: (code: string) => `不可达：断在 ${code}（需开发/人工补）`,
     gapTicket: "查看成长工单 →",
+    // ONTO-SCEN-LAUNCH-DET §2.5：场景卡诚实发育卡（替代无信息死答）
+    scenarioDeveloping: "此卡发育中",
+    scenarioDevelopingDetail: (name: string, missing: string) => `「${name}」暂未长成：${missing.startsWith("缺") || missing.startsWith("无") ? "" : "缺 "}${missing}`,
+    scenarioTicket: (id: string) => `已建工单 #${id} →`,
     // FILL-BOUNDARY-GUARDRAIL：触发补数据前的三闸（B1 先澄清 / B2 生成计划预览 / B3 越界人工正门）
     gapClarifyTitle: "先澄清再补 · 缺必需槽位",
     gapClarifyHint: "泛问题无对象域/实体/时间窗——补数据须先接地，避免任意问题自由补数据造成数据混乱",

@@ -84,6 +84,11 @@ export interface AgentLoopOpts {
   /** Agent scopeDeclaration.toolNames — also enforced for WORKFLOW-bound tools handled in-loop. */
   scopeToolNames?: string[];
   /**
+   * ONTO-SCEN-LAUNCH-DET：用户原始问句（task.query）。降级路径产出结构化缺口块（GapReport.question）
+   * 时使用——不用组装过上下文的 userContent 污染缺口卡的「继续推演/触发补齐」重跑问句。
+   */
+  question?: string;
+  /**
    * Phase7C 消息级滚动摘要器（可插拔）：把已折叠轮次的蒸馏素材压成一段「前情摘要」注入 system。
    * 生产可注入 LLM 摘要器；缺省为确定性兜底（拼接末 N 条，CI 可复现）。
    */
@@ -175,7 +180,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   let totalOutput = 0;
   let lastText = "";
   // WO-Q1 §3③ 开放式收敛：捕获模型最近一轮的推理文本（Kimi reasoning_content）——开放式深问句
-  // 常烧光预算在推理上、终答 text 为空，此时不丢弃推理（见 degrade 兜底），避免「未能产出回答」死答。
+  // 常烧光预算在推理上、终答 text 为空，此时不丢弃推理（见 degrade 兜底），避免无信息死答。
   let lastReasoning = "";
   let restatedReasoning = false; // T2：§3③ 结构化重述只尝试一次
   let consecutiveDenies = 0;
@@ -271,7 +276,7 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
   const degrade = async (outcome: "ANSWERED" | "BUDGET_EXHAUSTED" | "FAILED"): Promise<AgentLoopResult> => {
     // WO-Q1 §3③：终答文本为空时，若模型产出了推理（开放式深问句常如此）→ 先尝试一次「结构化重述」
     // （T2：把推理整理成简洁最终答复·单次无工具纯文本调用），重述失败/空才把原始推理作为
-    // 「探索性初步结论」诚实呈现（trustLevel 已 AGENT_EXPLORATORY）；推理也空才回落最终兜底文案。
+    // 「探索性初步结论」诚实呈现（trustLevel 已 AGENT_EXPLORATORY）。
     const reasoning = lastReasoning.trim();
     let restated = "";
     if (!lastText && reasoning && !restatedReasoning && outcome !== "FAILED" && !opts.isCancelled?.()) {
@@ -281,8 +286,36 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     const markdown =
       lastText ||
       restated ||
-      (reasoning ? `（探索推理·未结构化收尾，仅供参考）\n\n${reasoning}` : "") ||
-      "（探索模式未能产出回答）";
+      (reasoning ? `（探索推理·未结构化收尾，仅供参考）\n\n${reasoning}` : "");
+    // ONTO-SCEN-LAUNCH-DET（PRD-scenario-ontogenesis §2.5·全站零死答）：文本/推理全空 → 不再回落
+    // 无信息兜底串，而是产出**结构化缺口块**（GapReport）——前端 GapCard 渲染可点「触发诊断/补齐」
+    // + 工单深链；场景卡任务再经编排器缺口钩升级为发育卡（缺 X · 已建工单 #N）。诚实暴露断点，不作假。
+    if (!markdown) {
+      const evidence =
+        outcome === "BUDGET_EXHAUSTED"
+          ? "路径 B 探索预算耗尽，且模型未产出任何文本/推理"
+          : outcome === "FAILED"
+            ? "路径 B 探索被取消/中断，未产出文本"
+            : "模型结束对话但未产出任何文本";
+      const gapBlocks: AnswerBlock[] = [{
+        type: "gap",
+        report: {
+          question: opts.question ?? firstLineSummary(opts.userContent),
+          taskId: opts.taskId,
+          verdict: "BLOCKED",
+          path: "AGENT",
+          findings: [{ gapCode: "OTHER", atStep: "agent", evidence, suggestedFill: "触发自成长 LOOP 诊断缺口并补齐后续推", blocking: true }],
+          generatedAt: new Date().toISOString(),
+        },
+      }];
+      if (outcome === "BUDGET_EXHAUSTED") opts.metrics.agentBudgetExhausted.inc();
+      return {
+        outcome,
+        answer: { trustLevel: "AGENT_EXPLORATORY", blocks: gapBlocks, provenance: [], unverifiedNumerics: false },
+        run: finishRun(outcome === "BUDGET_EXHAUSTED"),
+        sketch,
+      };
+    }
     // 降级路径 provenance 恒空 → 文本里的 ⟦ref:N⟧ 数字索引无对应条目，诚实摘除（数字转「未溯源」示警，
     // 不渲染点不出内容的死角标）。
     const blocks: AnswerBlock[] = resolveNumericRefs([{ type: "text", markdown }], []);

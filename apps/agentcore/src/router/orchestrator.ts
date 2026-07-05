@@ -229,6 +229,15 @@ export interface OrchestratorDeps {
   memoryDistiller?: (args: { tenantId: string; query: string; toolPath: string; fallback: string }) => Promise<string>;
 }
 
+/**
+ * ONTO-SCEN-LAUNCH-DET（PRD-scenario-ontogenesis §2.5）：场景卡任务不可答 → classifyGap → GapReport →
+ * GrowthTicket + 通知 + 收件箱 + 降级卡（GOVERNED→PROVISIONAL）+ 诚实 gap 块（前端发育卡）。
+ * 由 server.ts 装配（那里有 scenarios/growthTickets/emitDomainEvent/通知客户端），编排器只在终态调用。
+ * 传入的 task 是**终态形状**（status/error 已就位，可能尚未落库）——hook 纯读 task、只写场景侧制品。
+ */
+export type ScenarioGapBlock = Extract<AnswerBlock, { type: "gap" }>;
+export type ScenarioGapHook = (task: QueryTask) => Promise<ScenarioGapBlock | null>;
+
 /** §2.2：留痕去重（同 kind+key+version 只记一次，保持首次出现顺序）。 */
 export function dedupeRefs(refs: ResolvedRef[]): ResolvedRef[] | undefined {
   if (refs.length === 0) return undefined;
@@ -282,8 +291,14 @@ export function deterministicMatchScore(query: string, intent: IntentDefinition)
 export class Orchestrator {
   private readonly pending = new Map<string, PendingClarification>();
   private readonly cancelled = new Set<string>();
+  /** ONTO-SCEN-LAUNCH-DET §2.5：场景缺口处置钩（server.ts 装配；未装配=零行为变化）。 */
+  private scenarioGap?: ScenarioGapHook;
 
   constructor(private readonly deps: OrchestratorDeps) {}
+
+  setScenarioGap(hook: ScenarioGapHook): void {
+    this.scenarioGap = hook;
+  }
 
   // -------------------------------------------------------------------------
   // 8.1 提交查询
@@ -344,6 +359,8 @@ export class Orchestrator {
       context: mergedContext,
       status: "ROUTING",
       clarificationRounds: 0,
+      // ONTO-SCEN-LAUNCH-DET：内部验证任务留痕（grow/A10 verify/growth probe）→ 场景缺口处置不重复触发。
+      ...(opts?.internal ? { internal: true } : {}),
       createdAt: new Date().toISOString(),
     };
     await this.deps.repos.tasks.insert(task);
@@ -392,6 +409,15 @@ export class Orchestrator {
       candidates = candidates.filter((i) => scene.intentCatalogFilter?.includes(i.key));
     }
 
+    // §2.4 确定性启动（PRD-scenario-ontogenesis · ONTO-SCEN-LAUNCH-DET）：GOVERNED 卡的闭包已被
+    // 倒序发育长成并经 A10 亲手验证 → 正序点卡**全程零 classifier**（确定性是发育闭合的自然结果，非补丁）。
+    // classify LLM 只服务自由问句；GOVERNED 卡即便绑定失败也**绝不**回落 LLM classify/探索——诚实缺口终结（§2.5）。
+    const forcedKey = task.context.scenarioIntentKey;
+    const scenarioCard = forcedKey && task.context.scenarioKey
+      ? await this.deps.repos.scenarios.byKey(task.tenantId, task.context.scenarioKey)
+      : undefined;
+    const governedLaunch = scenarioCard?.maturity === "GOVERNED";
+
     if (candidates.length === 0) {
       const classification: ClassificationResult = {
         candidates: [],
@@ -401,6 +427,11 @@ export class Orchestrator {
         model: "none",
       };
       await this.deps.repos.tasks.patch(taskId, { classification });
+      // GOVERNED 卡：意图目录空（被退发布/删除/entitlement 关闭）→ 不落探索，诚实缺口终结（§2.5）。
+      if (governedLaunch) {
+        await this.completeScenarioGap(taskId, "INTENT_NOT_AVAILABLE", `场景意图「${forcedKey}」不在已发布候选（本视图意图目录为空）`);
+        return;
+      }
       if (mode === "WORKFLOW_ONLY") {
         await this.completeWorkflowOnlyMiss(task, []);
         return;
@@ -412,18 +443,23 @@ export class Orchestrator {
     // §2.4 确定性绑定（PRD-scenario-ontogenesis）：来自场景卡的查询带 scenarioIntentKey →
     // 若该意图在候选内（已发布、entitlement 通过）且槽位可从上下文满足 → 直接绑定意图→计划，**跳过 LLM classify**。
     // 让点卡不受 classifier 死活/目录/缓存影响（卡的闭包已长成则正序确定运作，R16 应有之义）。
-    const forcedKey = task.context.scenarioIntentKey;
     if (forcedKey) {
       const forced = candidates.find((c) => c.key === forcedKey);
       if (forced) {
         const probe = await fillSlots(forced, {}, task.context, this.deps.engine.deps.dataCore.ontology, auth);
-        if (probe.missing.length === 0) {
+        // GOVERNED 卡：即便个别槽位未能从上下文满足也照样确定性绑定——proceedWithIntent 的槽位填充/
+        // 确定性 SLOT_FILLING 澄清同样零 classifier（零反问由 grow 验证保障，此处守底不回落 LLM）。
+        if (probe.missing.length === 0 || governedLaunch) {
           await this.deps.repos.tasks.patch(taskId, {
             classification: { candidates: [{ intentKey: forced.key, confidence: 1 }], outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "deterministic:scenario-bind" },
           });
           await this.proceedWithIntent(taskId, auth, forced, {});
           return;
         }
+      } else if (governedLaunch) {
+        // GOVERNED 卡的意图不可绑定（被退发布/删除/entitlement 关闭）→ 诚实缺口终结，不碰 classifier。
+        await this.completeScenarioGap(taskId, "INTENT_NOT_AVAILABLE", `场景意图「${forcedKey}」不在已发布候选（意图被退发布/删除或功能关闭）`);
+        return;
       }
     }
 
@@ -910,6 +946,9 @@ export class Orchestrator {
     });
 
     if (result.status === "FAILED") {
+      // ONTO-SCEN-LAUNCH-DET §2.5：场景卡 Path A 运行失败（如求解器被删）→ classifyGap → 开票/通知/
+      // 降级卡 + 诚实 gap 块答案（answer.final 先于 task.failed），前端渲染发育卡而非裸错。
+      await this.attachScenarioGapAnswer(task, result.error);
       await this.deps.repos.tasks.patch(taskId, {
         status: "FAILED",
         error: result.error,
@@ -1044,6 +1083,7 @@ export class Orchestrator {
         agentId: SEED_UNIVERSAL_AGENT_ID,
         version: "latest",
         prompt: buildAgentUser(task, priorSummary || undefined),
+        question: task.query,
         ctx: auth,
         nesting: { callChain: [], budget },
         emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
@@ -1192,6 +1232,7 @@ export class Orchestrator {
         agentId,
         version: "latest",
         prompt: buildAgentUser(task, priorSummary || undefined),
+        question: task.query,
         ctx: auth,
         nesting: { callChain: [], budget },
         emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
@@ -1309,10 +1350,12 @@ export class Orchestrator {
     // 这里兜底扫描已知 SDK 鉴权签名 → 替换为结构化中文引导（防任意未覆盖泄漏路径，R7 信封·诚实降级）。
     const { code: safeCode, message } = sanitizeLlmAuthLeak(code, rawMessage);
     code = safeCode;
+    // ONTO-SCEN-LAUNCH-DET §2.5：场景卡任务失败 → 场景缺口处置（classifyGap→工单/通知/降级卡→诚实发育卡）。
+    const scenarioHandled = await this.attachScenarioGapAnswer(task, { code, message });
     // CL.7 GF.2：路径 B agent 硬失败 → 在答案流并入结构化缺口块，对话坞渲染可点缺口卡（▶触发
     // 自成长 LOOP 实诊断+补 → 续推），而非只剩红错叙述。闭 G-3 对话侧（诚实暴露断点）。其余路径（工作流/
     // 校验）维持纯 FAILED。answer.final 先于 task.failed 发出 → useTaskStream 既得 gap 答案又得失败态。
-    if (task.path === "AGENT" && !task.answer) {
+    if (task.path === "AGENT" && !task.answer && !scenarioHandled) {
       const gapAnswer: Answer = {
         trustLevel: "AGENT_EXPLORATORY",
         unverifiedNumerics: false,
@@ -1339,5 +1382,47 @@ export class Orchestrator {
     });
     await this.deps.events.emit(taskId, "task.failed", { code, message });
     this.deps.metrics.tasksTotal.inc({ path: task.path ?? "NONE", status: "FAILED" });
+  }
+
+  /**
+   * ONTO-SCEN-LAUNCH-DET §2.4/§2.5：GOVERNED 卡确定性启动在**路由期**即不可绑定（意图不在候选）——
+   * 不碰 classifier、不落探索：诚实以缺口终结任务（缺口处置钩产出 gap 块答案 + 工单/通知/降级卡）。
+   */
+  private async completeScenarioGap(taskId: string, code: string, message: string): Promise<void> {
+    const task = await this.deps.repos.tasks.get(taskId);
+    if (!task || ["COMPLETED", "FAILED", "CANCELLED"].includes(task.status)) return;
+    await this.attachScenarioGapAnswer(task, { code, message, stepId: "classify" });
+    await this.deps.repos.tasks.patch(taskId, {
+      status: "FAILED",
+      error: { code, message, stepId: "classify" },
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(taskId, "task.failed", { code, message });
+    this.deps.metrics.tasksTotal.inc({ path: task.path ?? "NONE", status: "FAILED" });
+  }
+
+  /**
+   * §2.5 缺口=生长信号：场景卡任务（非内部验证）不可答 → 经 scenarioGap 钩（server.ts 装配：
+   * classifyGap 7 码 → GapReport → GrowthTicket + 通知 + 收件箱 + 降级卡）产出诚实 gap 块答案，
+   * patch answer + emit answer.final（先于 task.failed → useTaskStream 既得发育卡又得失败态）。
+   * 返回是否已挂载（true=前端将渲染「此卡发育中：缺 X · 已建工单 #N」，不再出现无信息死答）。
+   */
+  private async attachScenarioGapAnswer(
+    taskRef: QueryTask,
+    error: { code: string; message: string; stepId?: string },
+  ): Promise<boolean> {
+    if (!this.scenarioGap || !taskRef.context.scenarioKey || taskRef.internal) return false;
+    const task = (await this.deps.repos.tasks.get(taskRef.id)) ?? taskRef;
+    if (task.answer) return false;
+    try {
+      const block = await this.scenarioGap({ ...task, status: "FAILED", error });
+      if (!block) return false;
+      const answer: Answer = { trustLevel: "AGENT_EXPLORATORY", blocks: [block], provenance: [], unverifiedNumerics: false };
+      await this.deps.repos.tasks.patch(task.id, { answer });
+      await this.deps.events.emit(task.id, "answer.final", answer);
+      return true;
+    } catch {
+      return false; // 缺口处置失败不阻断任务终态（fail-safe：宁可少一张发育卡，不卡死任务）
+    }
   }
 }

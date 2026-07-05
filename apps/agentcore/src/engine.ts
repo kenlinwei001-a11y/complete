@@ -36,6 +36,8 @@ export interface RunRegisteredAgentOpts {
   agentId: string;
   version: number | "latest";
   prompt: string;
+  /** ONTO-SCEN-LAUNCH-DET：用户原始问句（降级缺口块 GapReport.question 用，不用组装 prompt 污染重跑）。 */
+  question?: string;
   ctx: ToolAuthCtx;
   nesting: NestingCtx;
   emit: (event: string, payload: unknown) => Promise<void>;
@@ -215,6 +217,7 @@ export class ExecutionEngine {
       tenantId: agent.tenantId,
       system,
       userContent: opts.prompt,
+      ...(opts.question ? { question: opts.question } : {}),
       tools,
       llm: this.deps.llm,
       ...(summarizer ? { summarizer } : {}),

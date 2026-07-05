@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `336c102da2ff00c6`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `571cfb21a022f4d3`。
 
 ---
 
@@ -83,6 +83,19 @@ Scenario(卡=胚胎) --POST /b/v1/scenarios/:key/grow--> growScenario(server.ts�
   --事件--> scenario.{growth_triggered|matured|gap_detected}(SSE 场景通道 ⊕ 域事件 outbox 双通道·§4 L4)
   --正序--> launch 确定性绑定(GOVERNED 卡 scenarioIntentKey → 跳过 LLM classify·deterministic:scenario-bind) --> answer(KPI/表投影)
   真 PG live-fire：包存在意图空的 PG 库 grow → ensureScenarios 懒自愈意图 → GOVERNED → 点卡出 KPI（test/scenario-grow-pg.integration.test.ts·env-gated DATABASE_URL_TEST）
+**launch 确定性链 + 缺口诚实处置链（§2.4/§2.5 收口·WO ONTO-SCEN-LAUNCH-DET）**
+launch/useScenarioLaunch(context 带 scenarioIntentKey+scenarioKey·前端接缝已补齐——此前 UI 点卡缺 scenarioKey 致 O10 规则注入与缺口链失联)
+  --runPipeline: GOVERNED 卡(repos.scenarios.byKey 判相位)--> 全程零 classifier：
+      候选命中 → deterministic:scenario-bind 绑意图→计划(槽位未满足也走确定性 SLOT_FILLING 澄清·不回落 LLM classify)
+      意图不可绑定(退发布/删除/entitlement) → completeScenarioGap(INTENT_NOT_AVAILABLE·不落探索)   ← classify LLM 只服务自由问句(D8=发育自然结果)
+  --不可答(Path A 运行失败如删求解器/路由死路)--> attachScenarioGapAnswer → scenarioGap 钩(server.ts 装配·orchestrator.setScenarioGap·task.internal=grow/probe 内部验证不触发):
+      classifyGap(法定码·纯函数 R6) → GapReport
+      → GrowthTicket(同卡同码 OPEN 幂等复用不刷屏) + growth.ticket_opened(outbox)
+      → 通知+收件箱(仅新开票一次·B→A 服务间 POST /a/v1/notifications/notify-role[x-service-token·用户态 403] → NotificationService.notifyRole 角色扇出 admin → 前端铃铛/通知中心·refType=growth_ticket 深链)
+      → 卡降级(GOVERNED/ADVISORY→PROVISIONAL) + ScenarioOntogenesisRun 留痕(launch 起源·verification.taskId 溯源·gaps[].ticketId) + scenario.gap_detected(SSE⊕outbox)
+      → 答案=gap 块(契约 additive scenario{scenarioKey,name,maturity,ticketId}) → 前端 GapCard 复用渲染诚实发育卡「此卡发育中：缺 X · 已建工单 #N →/admin/tickets?ticket=（统一工单中心直开详情抽屉·additive searchParams）」
+  全站零死答：agent/loop.ts degrade 空产出(无文本/无推理)→ 结构化 gap 块(OTHER·question=task.query 可续推)替死答串；grep 门 ontogenesis:check §2.5 守源码零「未能产出回答」回潮即红
+  齿 scenario-launch-deterministic.test.ts(5·classifier 物理拔掉/revert 绑定即红/删求解器降级链/工单+通知幂等/internal 不触发) · 真验 docs/evidence/ONTO-SCEN-LAUNCH-DET-fde.md(无 LLM key 双服务+真浏览器三截图)
 ```
 **数据→本体→推演链**
 ```

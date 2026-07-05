@@ -3430,12 +3430,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "at": {
         "todo": "2026-07-05T08:29:30.462Z",
-        "wip": "2026-07-05T10:05:37.616Z"
+        "wip": "2026-07-05T10:05:37.616Z",
+        "built": "2026-07-05T11:41:00.119Z"
       },
       "id": "ONTO-SCEN-LAUNCH-DET",
       "priority": "P1",
@@ -3443,7 +3444,8 @@
         "ONTO-SCEN-GROW"
       ],
       "title": "正序确定性绑定+诚实缺口: GOVERNED卡launch跳过classify·不可答→GapReport+工单深链·灭『未能产出回答』",
-      "note": "PRD §2.4/2.5: launch时卡GOVERNED且intentKey已发布→确定性绑定意图→计划(classify只服务自由问句·D8是发育自然结果)。不可答→classifyGap(7码)→GapReport: NEEDS_HUMAN→GrowthTicket+通知+收件箱+深链·前端诚实卡片『此卡发育中: 缺X·已建工单#N』**替换agent/loop.ts:215兜底串**。DoD=PRD验收#3+#4: 解绑classifier LLM→点GOVERNED卡仍Path A出答案(FDE真验); 人为删求解器→卡降PROVISIONAL+前端显缺口工单·全站零『未能产出回答』(grep级断言+真浏览器截图)。前端GapCard复用。"
+      "note": "PRD §2.4/2.5: launch时卡GOVERNED且intentKey已发布→确定性绑定意图→计划(classify只服务自由问句·D8是发育自然结果)。不可答→classifyGap(7码)→GapReport: NEEDS_HUMAN→GrowthTicket+通知+收件箱+深链·前端诚实卡片『此卡发育中: 缺X·已建工单#N』**替换agent/loop.ts:215兜底串**。DoD=PRD验收#3+#4: 解绑classifier LLM→点GOVERNED卡仍Path A出答案(FDE真验); 人为删求解器→卡降PROVISIONAL+前端显缺口工单·全站零『未能产出回答』(grep级断言+真浏览器截图)。前端GapCard复用。",
+      "blockReason": ""
     },
     {
       "status": "WIP",
@@ -3651,10 +3653,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "ONTO-SCEN-GROW",
-      "at": "2026-07-05T11:39:42.022Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "ONTO-SCEN-LAUNCH-DET",
+      "at": "2026-07-05T11:41:00.119Z"
     }
   }
 }

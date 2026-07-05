@@ -35,7 +35,15 @@ const GAP_DISPOSITION: Record<GapCode, { label: string; triggerable: boolean }> 
   OTHER: { label: "未定位缺口（触发诊断）", triggerable: true },
 };
 
-export function GapCard({ report, onRetry }: { report: GapReport; onRetry?: () => void }) {
+/** ONTO-SCEN-LAUNCH-DET §2.5：缺口来自场景卡启动时的发育态（契约 gap 块 additive scenario 字段）。 */
+export interface GapScenarioInfo {
+  scenarioKey: string;
+  name?: string;
+  maturity: string;
+  ticketId: string | null;
+}
+
+export function GapCard({ report, scenario, onRetry }: { report: GapReport; scenario?: GapScenarioInfo; onRetry?: () => void }) {
   const [done, setDone] = useState<GrowthRunReport | null>(null);
   const [gate, setGate] = useState<TriggerBoundaryDecision | null>(null);
   const [slotValues, setSlotValues] = useState<Record<string, unknown>>({});
@@ -67,6 +75,22 @@ export function GapCard({ report, onRetry }: { report: GapReport; onRetry?: () =
 
   return (
     <div className={styles.gapCard} data-testid="gap-card" data-gapcode={code}>
+      {/* ONTO-SCEN-LAUNCH-DET §2.5：场景卡诚实发育卡——「此卡发育中：缺 X · 已建工单 #N」+ 深链（替代死答） */}
+      {scenario && (
+        <div className={styles.gapHead} data-testid="gap-scenario">
+          <span className="badge amber">{zh.dock.scenarioDeveloping}</span>
+          <span className="zh">{zh.dock.scenarioDevelopingDetail(scenario.name ?? scenario.scenarioKey, disp.label)}</span>
+          {scenario.ticketId && (
+            <Link
+              to={`/admin/tickets?ticket=${encodeURIComponent(scenario.ticketId)}`}
+              className="btn sm"
+              data-testid="gap-scenario-ticket"
+            >
+              {zh.dock.scenarioTicket(scenario.ticketId)}
+            </Link>
+          )}
+        </div>
+      )}
       <div className={styles.gapHead}>
         <span className="badge amber" data-testid="gap-code">{zh.dock.gapTitle} · {code}</span>
         <span className={styles.gapVerdict}>{disp.label}</span>
