@@ -3159,8 +3159,8 @@
     {
       "id": "LAUNCHER-SLOT-TRUTH",
       "priority": "P0",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
@@ -3180,6 +3180,9 @@
             "assert": "齿: extractedSlots嵌套/扁平两形状归一单测;派生意图slots非空且键==argHints;chip优先级(本轮显式胜);回显断言。四包绿。"
           }
         ]
+      },
+      "at": {
+        "wip": "2026-07-05T04:06:13.184Z"
       }
     },
     {
@@ -3332,9 +3335,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "SLOT-CLARIFY-HUMANIZE",
-      "at": "2026-07-05T04:01:27.963Z"
+      "cmd": "WIP",
+      "id": "LAUNCHER-SLOT-TRUTH",
+      "at": "2026-07-05T04:06:13.184Z"
     }
   }
 }
