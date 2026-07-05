@@ -3222,8 +3222,8 @@
     {
       "id": "ANSWER-PROJECTION-HUMANIZE",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "blockReason": "",
       "doc": "docs/AUDIT-launcher-deep-sweep.md",
@@ -3243,6 +3243,9 @@
             "assert": "门: 遍历registry求解器输出字段须有中文label+unit注册(缺→红·基线ratchet);齿: 投影单测label映射/元数据分区/互斥标。"
           }
         ]
+      },
+      "at": {
+        "wip": "2026-07-05T04:15:53.202Z"
       }
     },
     {
