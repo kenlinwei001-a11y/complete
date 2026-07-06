@@ -4235,8 +4235,8 @@
     {
       "id": "NAV-DROP-LEDGER-MAP",
       "title": "删除\"台账与地图\"导航组(仅剩基地地理视图·低价值·用户亲定)",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P2",
       "deps": [],
       "doc": "apps/frontend-shell/src/pages/ShellLayout.tsx",
@@ -4262,7 +4262,8 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T12:30:00.000Z"
+        "todo": "2026-07-06T12:30:00.000Z",
+        "wip": "2026-07-06T14:09:11.853Z"
       }
     },
     {
@@ -4538,8 +4539,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "WIP",
-      "id": "CORE-NL-SOLVER-ROUTING",
-      "at": "2026-07-06T14:06:44.557Z"
+      "id": "NAV-DROP-LEDGER-MAP",
+      "at": "2026-07-06T14:09:11.854Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
