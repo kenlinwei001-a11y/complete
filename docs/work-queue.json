@@ -4173,14 +4173,57 @@
       "at": {
         "open": "2026-07-06T11:41:01.815Z"
       }
+    },
+    {
+      "id": "CAPACITY-BASECARDS-REALDATA",
+      "title": "产能推演基地卡: 补真实设备时序(不写死) + 无源actionable诚实空态",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P1",
+      "deps": [],
+      "doc": "apps/datacore/src/solvers/risk.ts",
+      "note": "用户2026-07-06亲报+亲定: 产能推演(/v/risk=RiskBoardView)每基地卡没了。根因(审核方已核代码): KILL-MOCK-RED去假后risk_timeline LIVE无真源→liveTightness返null→卡被静默跳过(risk.ts:166/217/380)。用户要两个都做且强调真实后端数据/前端可见/不写死: ①补真实设备时序(demo基地OEE/利用率/良率)让卡有真值; ②无真源出明确actionable诚实空态(带深链去补)非静默跳过。恢复\"每基地一卡\"的设计但不用hash假数据。",
+      "acceptance": {
+        "goal": "产能推演恢复每基地一卡·卡值源自真实后端设备时序(非hash/非写死/非mock)·前端可见且逐值对后端; 无真源基地/因素出actionable诚实空态(带深链)非静默跳过非假红。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "demo基地(常州/武汉等)有真实设备时序(oee:equip/util:line/yield:process); POST /a/v1/solvers/risk_timeline/invoke {args:{dataMode:LIVE}} → cards数>0且命中基地的card.hasData=true、value非null、非hash派生(liveTightness读真OEE/利用率/良率)。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "前端真浏览器: 起前端登录demo→/v/risk真渲染每基地卡带真值(截图证常州/武汉等)·前端卡显示值逐值==后端risk_timeline真值(勾稽·不写死)。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "无源诚实空态: 构造无真源基地/因素→产能推演出明确actionable文案(如\"此页需真实设备时序·在【连接器与上传/合成数据】补\")+深链, 非静默跳过、非hash假红染色。"
+          },
+          {
+            "id": "C4",
+            "type": "cmd",
+            "assert": "不写死+诚实标注: 卡值源自真实后端时序; 合成数据诚实标SYNTHETIC/dataMode透出不冒充真实; no-fake-done:check绿; green→red(篡改/清空时序源→卡值变或转诚实空态·测红)。"
+          },
+          {
+            "id": "C5",
+            "type": "cmd",
+            "assert": "pnpm -r build + pnpm -r test 全绿; 触及本体回写§2/§4且meta:sync绿。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T12:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "AUTOFILL-SOP",
-      "at": "2026-07-06T11:44:58.726Z"
+      "role": "review",
+      "cmd": "dispatch",
+      "id": "CAPACITY-BASECARDS-REALDATA",
+      "at": "2026-07-06T12:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
