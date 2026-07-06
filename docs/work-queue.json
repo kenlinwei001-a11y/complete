@@ -3706,10 +3706,11 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "todo": "2026-07-05T16:02:06.680Z"
+        "todo": "2026-07-05T16:02:06.680Z",
+        "wip": "2026-07-06T01:37:27.071Z"
       },
       "id": "CLARIFY-LOOP-CONVERGE",
       "priority": "P2",
@@ -3718,10 +3719,11 @@
       "note": "审核方接Kimi真跑端到端发现(2026-07-05·证据docs/evidence/KIMI-E2E-验证记录): 自由问句把握度低于自动执行线(τ_high默认0.85)时进AWAITING_CLARIFICATION·但INTENT_CHOICE回复后重新分类仍0.75<0.85→再次追问·多轮不收敛(实测武汉产能够不够绕≥2轮无终态)。问具体点(把握0.95如合肥影响哪些订单)直接答·证明主路通·仅低把握分支循环。修向: ①澄清回复(chosenIntentKey)应直接锁定意图跳过重分类(而非重跑classify又落0.75)·②或澄清轮次上限+到限走确定性兜底/诚实降级·③slot澄清与intent澄清分离(现似乎混淆)。齿: 低把握问句→澄清→回复→必达终态(COMPLETED或诚实降级·非无限追问)。属真实交付纪律发现·非造假。"
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "todo": "2026-07-05T16:02:06.687Z"
+        "todo": "2026-07-05T16:02:06.687Z",
+        "wip": "2026-07-06T01:37:27.129Z"
       },
       "id": "AGENT-CARD-DEFAULTAGENT",
       "priority": "P2",
@@ -3733,9 +3735,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "QUERY30-RULES",
-      "at": "2026-07-06T01:35:38.372Z"
+      "cmd": "WIP",
+      "id": "AGENT-CARD-DEFAULTAGENT",
+      "at": "2026-07-06T01:37:27.129Z"
     }
   }
 }
