@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §7` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `ef17ea6e21f35e52`。
+> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2576444b9ae95e6b`。
 
 ---
 
@@ -33,7 +33,6 @@
 - **`ontology-writeback:check` 本体回写完整性门（治理 · 反向守"代码改接线却漏回写本体"）**：静态断言**每个并入 `pnpm gates` 的 `check-*.mjs` 门都在本体 §7 登记**（门名/脚本名/pnpm 别名出现在 §7）——补 `check-prd-ontology` 只查"PRD→本体悬空引用"（正向）的反向缺口（代码新增门，本体漏登记，正是 P2 漏回写 no-hardcoded 的根因）· `scripts/check-ontology-writeback.mjs`，`pnpm ontology-writeback:check`。已并入 `pnpm gates`。
 - **`prd:coverage` PRD 覆盖对账门（治理）**：解析 PRD↔实现文件双向覆盖，写 `docs/prd-coverage-index.json`（covered/uncovered/coverage 比），报告哪些 PRD 缺实现锚点 · `scripts/check-prd-coverage.mjs`，`pnpm prd:coverage`。已并入 `pnpm gates`。
 - **`meta:sync` 元本体自反落库门（Dogfooding P1）**：把本体 markdown 确定性投影为元对象物化进元租户 `__platform__`（八类节点：对象/不变量/断点/事件/域/切片/门/链路），R2 隔离（业务租户查不到元对象）+ 影响分析 BFS · `scripts/check-meta-sync.mjs`，`pnpm meta:sync`。已并入 `pnpm gates`。
-- **`meta-runtime-truth` 元层运行时真相跑批器（META-RUNTIME-TRUTH·WO-4·§3.5·报告态非 gate）**：把每个**声称 FIXED** 的断点交叉核对其 §8 行内引用的现成 reality-judge（`check-*.mjs`/`xxx:check`）——判据真跑不通→**DRIFT**（本体谎言曝光）、通过→FIXED、无可运行判据→诚实 **UNCHECKED** · `scripts/meta-runtime-truth.mjs`（`--strict` 查出 DRIFT 即 EXIT=1·`--json`）。**report-only 不入 `pnpm gates`**（判据白名单只纳静态可跑门，需活服务的门归 UNCHECKED，避免 CI 误红）；派生纯函数 `deriveRuntimeStatus`（parse.ts·R6）由 `datacore/test/meta-ontology.test.ts` 齿守（revert→红）。
 - **`ontogenesis-runtime:check` 发育闭环收口门（R16，G-9·WO ONTO-SCEN-GATE-WRITEBACK·真跑）**：gates 链唯一**真起 agentcore 逐卡 grow** 的场景门（scripts/check-scenario-ontogenesis-runtime.mjs·内存态 buildServer+mock DataCore 合成世界·与 seed-demo-smoke 同"真启动"范式）——补上静态门测不了的 §6 运行期内核：§6.1 每 GOVERNED 卡 VERIFIED+rings.data+承载数据块(kpi/table/action_draft/⟦ref⟧) · §6.5 非 GOVERNED 卡必带 gaps[] 且 disposition∈{AUTO_DERIVE,NEEDS_HUMAN}(NEEDS_HUMAN 必带 ticketId·无静默残缺) · 工作流地板 13 张 WORKFLOW_FIRST 确定性 GOVERNED(revert 渲染投影即红·亲验) · §2.4 launch S01 deterministic:scenario-bind+Path A+承载数据块(点卡真决策视图)。实测 20/20 GOVERNED · `pnpm ontogenesis-runtime:check`，已并入 `pnpm gates`。真验 docs/evidence/ONTO-SCEN-GATE-WRITEBACK-fde.md。
 - **`ontogenesis:check` 发育闭环门（R16，G-9·静态内核）**：声明性校验 R16 发育闭环不变量在本体钉牢（倒序⊕正序两相、三环自动闭合、二分处置、分相位成熟）+ §6 静态逐卡断言（每卡 plan 有 render 步 / 卡 solver ∈ SOLVER_OUTPUT_SHAPES / 卡 rules ⊆ 已发布规则 / 卡 intentKey 有意图计划；§6.1/6.4/6.5 运行期内核现由上条 `ontogenesis-runtime:check` 真跑守住，本静态门专司契约不漂）+ **§2.5 零死答 grep 断言（ONTO-SCEN-LAUNCH-DET）**：apps/*/src、packages/*/src 五根零「未能产出回答」死答串（缺口一律结构化 GapReport/诚实发育卡，回潮即红）**+ WO RENDER-PROJ §6.2 渲染投影绑定齿**：契约登记 `SOLVER_RENDER_BINDINGS` ⊆ `SOLVER_OUTPUT_SHAPES`（逐求解器逐字段·bogus 字段亲测红）· 20 计划**实际**渲染绑定（模板引用⊕solver_summary bindings，`deriveRenderBindings` 运行期同一派生）⊆ 形状 · 派生循环 bindings 驱动+`injectScenarioRuleStep` 烘焙在位 · 静态占位文案「…推演结果：」回潮红 · growScenario `deriveSliceTargetCandidates` 切片自动派生在位；配套**真值齿** `apps/datacore/test/render-bindings-real-fields.test.ts`（真合成世界真 invoke 逐绑定字段在场）与 `datadep-manifest:check` 增 `DATADEP_ROLE_CANONICAL`↔`ROLE_CANONICAL` 逐键对账（漂移红）· `scripts/check-ontogenesis.mjs`，`pnpm ontogenesis:check`。已并入 `pnpm gates`。
 - **跨服务联调冒烟**（守护 G-2 + 挡 mock 漂移）：真实 AgentCore HTTP 客户端 ↔ 真实 DataCore · `apps/datacore/test/xservice-smoke.test.ts`。

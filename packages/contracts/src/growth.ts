@@ -80,10 +80,46 @@ export const DataRequestSchema = z.object({
 });
 export type DataRequest = z.infer<typeof DataRequestSchema>;
 
+/**
+ * AUTOFILL-SOP（用户亲令 2026-07-06·SPEC-autofill-sop §4）· 自动补 before→after 证据块。
+ * 每次自动补（真合成起步世界 / 单类型 fillData PROVISIONAL / scaffold DRAFT 计划 / 登记在办）产出一个
+ * 结构化 before→after 快照 + 数据模式位——**前后端逐值可见**（R8/铁律0.4）：前端在自成长/工单中心逐轮
+ * 渲染 before→after，前端所见逐值可对后端 GrowthLedger 同值勾稽。
+ *
+ * dataMode（诚实边界·不冒充真实）：
+ *  - SYNTHETIC   空租户经真合成正门 provision 出的确定性一致起步世界（可溯·R6·非真实业务事实）。
+ *  - PROVISIONAL 单类型 fillData 确定性合成的占位数据（PROVISIONAL·诚实标·非真实导入）。
+ *  - DRAFT       scaffold 出的 DRAFT 制品（执行计划骨架待 R4 审批·非数据）。
+ *  - NONE        未实际合成（登记在办待人工触发 / 出工单）——before==after 数据不变，诚实标"未自动补"。
+ *  - REAL        真实数据（真人正门导入落地）——本闭环不产，占位保留。
+ */
+export const GapFillDataModeSchema = z.enum(["SYNTHETIC", "PROVISIONAL", "DRAFT", "REAL", "NONE"]);
+export type GapFillDataMode = z.infer<typeof GapFillDataModeSchema>;
+
+/** before/after 状态快照：键→值（逐值可见·可对后端真值勾稽）。 */
+export const GapFillSnapshotSchema = z.record(z.string(), z.union([z.string(), z.number()]));
+export type GapFillSnapshot = z.infer<typeof GapFillSnapshotSchema>;
+
+export const GapFillEvidenceSchema = z.object({
+  gapCode: GapCodeSchema,
+  /** 补的动作（provisionWorld / fillData / scaffoldDraftPlan / registerWorklist）。 */
+  fillAction: z.string(),
+  /** 补前状态快照（如 {objectCount:0} / {rows:0} / {plan:"none"}）。 */
+  before: GapFillSnapshotSchema,
+  /** 补后状态快照（如 {objectCount:42} / {rows:6} / {plan:"plan_growth_x"}）。 */
+  after: GapFillSnapshotSchema,
+  /** 真跑证据原文（provision industry/objectCount·fillData rowCount·scaffold key 等）。 */
+  evidence: z.string(),
+  dataMode: GapFillDataModeSchema,
+});
+export type GapFillEvidence = z.infer<typeof GapFillEvidenceSchema>;
+
 export const GrowthFillResultSchema = z.object({
   gapCode: GapCodeSchema,
   /** 补法（fill-data 真人正门 / scaffold 切片·规则·意图 / generic-inference 兜底 / ticket 需开发）。 */
   action: z.string(),
+  /** AUTOFILL-SOP：本轮自动补的 before→after 证据块（逐值可见·前后端勾稽·GrowthRunReport 逐轮携带）。 */
+  fillEvidence: GapFillEvidenceSchema.optional(),
   /** 本轮补齐是否推进了链路（用于归因；同类一次补、跨类逐轮）。 */
   advanced: z.boolean(),
   /** 缺功能 → 需开发工单（带 I/O 契约线索）。 */

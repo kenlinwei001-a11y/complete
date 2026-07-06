@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GrowthRunReport, TicketBoardRow, TicketDetail } from "@platform/contracts";
+import type { GapFillEvidence, GrowthRunReport, TicketBoardRow, TicketDetail } from "@platform/contracts";
 import {
   fetchTicketBoard,
   fetchTicketDetail,
@@ -219,6 +219,8 @@ export default function TicketCenterPage() {
                     <b>第 {rd.round} 轮</b> · 缺口 <span className="badge">{rd.gapReport.verdict}</span>{" "}
                     {rd.gapReport.findings.map((f, i) => <span key={i} className="mono" style={{ marginLeft: 6 }}>{f.gapCode}</span>)}
                     {rd.fillApplied && <span style={{ marginLeft: 8, color: "var(--muted)" }}>→ 补：{rd.fillApplied.action}{rd.fillApplied.advanced ? " ✓推进" : ""}</span>}
+                    {/* AUTOFILL-SOP（SPEC §4）：每次自动补 before→after 逐值可见证据块——前端所见逐值可对后端 GrowthLedger 勾稽。 */}
+                    {rd.fillApplied?.fillEvidence && <FillEvidenceBlock round={rd.round} ev={rd.fillApplied.fillEvidence} />}
                   </div>
                 ))}
               </div>
@@ -278,6 +280,56 @@ export default function TicketCenterPage() {
       ))}
 
       {selectedId && <TicketDetailDrawer id={selectedId} onClose={() => setSelectedId(null)} />}
+    </div>
+  );
+}
+
+/**
+ * AUTOFILL-SOP（用户亲令 2026-07-06·SPEC §4）· 自动补 before→after 证据块（逐值可见·前后端勾稽）。
+ * dataMode 诚实位（SYNTHETIC/PROVISIONAL/DRAFT/NONE/REAL）——合成/占位不冒充真实。前端逐值渲染 before/after
+ * 每个键值对（data-testid `tc-fe-{round}-{before|after}-{key}`），审核方可逐值对后端 GrowthLedger 同值勾稽。
+ */
+const DATAMODE_BADGE: Record<GapFillEvidence["dataMode"], { label: string; cls: string }> = {
+  SYNTHETIC: { label: "SYNTHETIC 合成起步世界（可溯·非真实）", cls: "amber" },
+  PROVISIONAL: { label: "PROVISIONAL 占位（诚实标·非真实导入）", cls: "amber" },
+  DRAFT: { label: "DRAFT 骨架（待 R4 审批·非数据）", cls: "blue" },
+  NONE: { label: "NONE 未自动补（登记在办·待人工）", cls: "" },
+  REAL: { label: "REAL 真实数据", cls: "green" },
+};
+function FillEvidenceBlock({ round, ev }: { round: number; ev: GapFillEvidence }) {
+  const mode = DATAMODE_BADGE[ev.dataMode];
+  const renderSnap = (dir: "before" | "after", snap: GapFillEvidence["before"]) => (
+    <table className="cmp" style={{ width: "100%", fontSize: 10.5 }}>
+      <tbody>
+        {Object.entries(snap).map(([k, v]) => (
+          <tr key={k} data-testid={`tc-fe-${round}-${dir}-${k}`}>
+            <td className="mono" style={{ width: 96, color: "var(--muted2)" }}>{k}</td>
+            <td className="mono">{String(v)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+  return (
+    <div data-testid={`tc-fe-${round}`} className="panel" style={{ marginTop: 6, padding: 8, fontSize: 11 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+        <b>自动补证据</b>
+        <span className="mono" data-testid={`tc-fe-${round}-action`}>{ev.fillAction}</span>
+        <span className={`badge ${mode.cls}`} data-testid={`tc-fe-${round}-datamode`}>{ev.dataMode}</span>
+        <span className="muted" style={{ fontSize: 10 }}>{mode.label}</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
+        <div>
+          <div className="muted" style={{ fontSize: 10, marginBottom: 2 }}>before（补前）</div>
+          {renderSnap("before", ev.before)}
+        </div>
+        <div style={{ fontSize: 16, color: "var(--muted)" }}>→</div>
+        <div>
+          <div className="muted" style={{ fontSize: 10, marginBottom: 2 }}>after（补后）</div>
+          {renderSnap("after", ev.after)}
+        </div>
+      </div>
+      <div className="muted" data-testid={`tc-fe-${round}-evidence`} style={{ fontSize: 10.5, marginTop: 6 }}>{ev.evidence}</div>
     </div>
   );
 }

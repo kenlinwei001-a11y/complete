@@ -928,16 +928,17 @@ export const handlers = [
       return HttpResponse.json({ boundaryGate: { outcome: "PREVIEW", resolvedSlots: slots, reason: "必需槽位已解析、目标类型在已发布 schema 内——出生成计划预览，人确认才跑", plan: { typeKey: "Object", fields: ["id", "name", "value"], rows: 6, valueDomainSource: "注册表既有值域（BASE/SEG_REGISTRY）+ 已发布 ObjectType schema（IndustryPack·R14）", boundedEnums, origin: "SYNTHETIC", provisional: true } } });
     }
     // CL.7：可补齐的缺口（EMPTY_DATA 类，含"达成率"标记）→ CONVERGED（续推可出答案）；其余 → BOUNDARY（诚实工单）。
+    // AUTOFILL-SOP（SPEC §4）：fillApplied 携 before→after 证据块（后端真形 GapFillEvidence 镜像）——前端逐值渲染可对后端勾稽。
     if (b.query.includes("达成率")) {
       return HttpResponse.json({
         question: b.query, maxRounds: b.maxRounds ?? 4,
-        rounds: [{ round: 1, gapReport: { question: b.query, taskId: "t1", verdict: "ANSWERABLE", path: "AGENT", findings: [], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "EMPTY_DATA", action: "fill-data 已补", advanced: true } }],
+        rounds: [{ round: 1, gapReport: { question: b.query, taskId: "t1", verdict: "ANSWERABLE", path: "AGENT", findings: [], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "EMPTY_DATA", action: "fill-data 已补", advanced: true, fillEvidence: { gapCode: "EMPTY_DATA", fillAction: "fillData", before: { typeKey: "Object", rows: 0 }, after: { typeKey: "Object", rows: 6 }, evidence: "单类型 fillData（Object·seed=42）→ 确定性合成 6 行 PROVISIONAL（诚实标·非真实导入）", dataMode: "PROVISIONAL" } } }],
         terminalState: "CONVERGED", openTickets: [], generatedAt: "2026-06-17T00:00:00Z",
       });
     }
     return HttpResponse.json({
       question: b.query, maxRounds: b.maxRounds ?? 4,
-      rounds: [{ round: 1, gapReport: { question: b.query, taskId: "t1", verdict: "BOUNDARY", path: "AGENT", findings: [{ gapCode: "NO_INTENT", evidence: "无意图覆盖", suggestedFill: "scaffold", blocking: true }], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "NO_INTENT", action: "scaffold待建（出工单）", advanced: false, ticket: { gapCode: "NO_INTENT", detail: "无意图覆盖" } } }],
+      rounds: [{ round: 1, gapReport: { question: b.query, taskId: "t1", verdict: "BOUNDARY", path: "AGENT", findings: [{ gapCode: "NO_INTENT", evidence: "无意图覆盖", suggestedFill: "scaffold", blocking: true }], generatedAt: "2026-06-17T00:00:00Z" }, fillApplied: { gapCode: "NO_INTENT", action: "scaffold待建（出工单）", advanced: false, ticket: { gapCode: "NO_INTENT", detail: "无意图覆盖" }, fillEvidence: { gapCode: "NO_INTENT", fillAction: "registerWorklist(provisionWorld)", before: { worklistItems: 0, status: "gap" }, after: { worklistItems: 1, status: "OPEN", worklistItemId: "wli_demo" }, evidence: "登记在办项 wli_demo（SOFT·provisionWorld）——未自动补，待人工认领后点补数据缺口才真跑", dataMode: "NONE" } } }],
       terminalState: "BOUNDARY", openTickets: [{ gapCode: "NO_INTENT", detail: "无意图覆盖" }], generatedAt: "2026-06-17T00:00:00Z",
     });
   }),

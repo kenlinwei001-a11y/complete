@@ -1,5 +1,7 @@
 import type {
   GapCode,
+  GapFillEvidence,
+  GapFillSnapshot,
   GapFinding,
   GapReport,
   GrowthFillResult,
@@ -49,6 +51,16 @@ export function buildGrowthLoopWiring(
   const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
   const scaffoldedByGap = new Map<GapCode, ScaffoldDraft[]>();
 
+  // AUTOFILL-SOP（SPEC §4）：每次自动补产出一个 before→after 证据块（逐值可见·前后端勾稽·诚实 dataMode）。
+  const mkEvidence = (
+    gap: GapFinding,
+    fillAction: string,
+    before: GapFillSnapshot,
+    after: GapFillSnapshot,
+    evidence: string,
+    dataMode: GapFillEvidence["dataMode"],
+  ): GapFillEvidence => ({ gapCode: gap.gapCode, fillAction, before, after, evidence, dataMode });
+
   // 把「可补项」登记为在办看板一行（不自动补）——R2 带 tenantId。返回 needsHuman 结果，LOOP 该轮落 NEEDS_HUMAN。
   const registerDataGap = async (
     gap: GapFinding,
@@ -70,7 +82,16 @@ export function buildGrowthLoopWiring(
     };
     await deps.repos.growthWorklist.upsert(item);
     await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: false, needsHuman: true, worklistItemId: item.id, fillMode: fillPlan.mode });
-    return { gapCode: gap.gapCode, action, advanced: false, needsHuman: true, worklistItemId: item.id, fillMode: fillPlan.mode };
+    // 诚实边界：登记在办 = **未实际合成**（before==after 数据不变），dataMode=NONE、待人工认领点触发才真跑。
+    const fillEvidence = mkEvidence(
+      gap,
+      `registerWorklist(${fillPlan.action})`,
+      { worklistItems: 0, status: "gap" },
+      { worklistItems: 1, status: "OPEN", worklistItemId: item.id },
+      `登记在办项 ${item.id}（${fillPlan.mode}·${fillPlan.action}）——未自动补，待人工认领后点「补数据缺口」才真跑（R6 seed=${fillPlan.seed ?? 42} 确定性）`,
+      "NONE",
+    );
+    return { gapCode: gap.gapCode, action, advanced: false, needsHuman: true, worklistItemId: item.id, fillMode: fillPlan.mode, fillEvidence };
   };
 
   const probe = async (): Promise<GapReport> => {
@@ -108,7 +129,16 @@ export function buildGrowthLoopWiring(
         const prov: { provisioned: boolean; reason?: string; industry?: string; objectCount?: number } =
           await deps.dataCore.ontology.provisionWorld(a, { scale: "S", seed: 42 }).catch((e) => ({ provisioned: false, reason: (e as Error).message }));
         if (prov.provisioned) {
-          result = { gapCode: gap.gapCode, action: `空租户自动 provision 确定性合成起步世界（真合成正门·SYNTHETIC·${prov.industry ?? "?"}·${prov.objectCount ?? 0} 对象）`, advanced: true, fillMode: "SOFT" };
+          // AUTOFILL-SOP：空世界(objectCount=0) → 真合成正门 provision → 起步世界(objectCount=N)，SYNTHETIC 可溯。
+          const fillEvidence = mkEvidence(
+            gap,
+            "provisionWorld",
+            { objectCount: 0, worldEmpty: "true" },
+            { objectCount: prov.objectCount ?? 0, industry: prov.industry ?? "?", worldEmpty: "false" },
+            `空租户经真合成正门 provisionWorld（scale=S·seed=42）→ ${prov.industry ?? "?"} 起步世界·${prov.objectCount ?? 0} 对象（SYNTHETIC·R6 确定性·可溯·非真实业务事实）`,
+            "SYNTHETIC",
+          );
+          result = { gapCode: gap.gapCode, action: `空租户自动 provision 确定性合成起步世界（真合成正门·SYNTHETIC·${prov.industry ?? "?"}·${prov.objectCount ?? 0} 对象）`, advanced: true, fillMode: "SOFT", fillEvidence };
           await emitDomainEvent(a.tenantId, "growth.fill_proposed", { gapCode: gap.gapCode, advanced: true, fillMode: "SOFT", provisioned: prov.objectCount ?? 0 });
           return result;
         }
@@ -145,8 +175,17 @@ export function buildGrowthLoopWiring(
         );
       } else {
         try {
-          await deps.dataCore.ontology.fillData(a, { typeKey, fields: ["id", "name", "value"], rows: 6, seed: 42 });
-          result = { gapCode: gap.gapCode, action: "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL(fill-data)", advanced: true, fillMode: "SOFT" };
+          const r = await deps.dataCore.ontology.fillData(a, { typeKey, fields: ["id", "name", "value"], rows: 6, seed: 42 });
+          // AUTOFILL-SOP：单类型空数据(rows=0) → 确定性合成 PROVISIONAL(rows=rowCount)，诚实标 PROVISIONAL 非真实导入。
+          const fillEvidence = mkEvidence(
+            gap,
+            "fillData",
+            { typeKey, rows: 0 },
+            { typeKey, rows: r.rowCount ?? 6 },
+            `单类型 fillData（${typeKey}·fields=id,name,value·seed=42）→ 确定性合成 ${r.rowCount ?? 6} 行 PROVISIONAL（诚实标·非真实业务导入·R6 确定性）`,
+            "PROVISIONAL",
+          );
+          result = { gapCode: gap.gapCode, action: "SOFT 缺数据 → 经管线确定性合成 PROVISIONAL(fill-data)", advanced: true, fillMode: "SOFT", fillEvidence };
         } catch {
           result = { gapCode: gap.gapCode, action: "fill-data 失败", advanced: false, fillMode: "SOFT", ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
         }
@@ -156,8 +195,17 @@ export function buildGrowthLoopWiring(
         const planKey = `plan_growth_${questionSlug(body.query)}`;
         const drafts = await scaffoldDraftPlan(deps, a.tenantId, planKey);
         scaffoldedByGap.set(gap.gapCode, drafts);
+        // AUTOFILL-SOP：无执行计划(plan=none) → scaffold DRAFT 骨架(plan=planKey)，dataMode=DRAFT（待 R4 审批·非数据）。
+        const fillEvidence = mkEvidence(
+          gap,
+          "scaffoldDraftPlan",
+          { plan: "none", drafts: 0 },
+          { plan: planKey, drafts: drafts.length, drafted: drafts.map((d) => d.key).join(",") || "-" },
+          `自动 scaffold DRAFT 执行计划 ${planKey}（绑 generic_inference 兜底·${drafts.length} 制品：${drafts.map((d) => `${d.kind}:${d.key}`).join(",") || "-"}）→ 待 R4 审批发布（DRAFT·非数据·不自动上线）`,
+          "DRAFT",
+        );
         result = drafts.length > 0
-          ? { gapCode: gap.gapCode, action: `自动 scaffold DRAFT 执行计划 ${planKey}（绑 generic_inference 兜底）→ 待审批发布`, advanced: true, scaffolded: drafts }
+          ? { gapCode: gap.gapCode, action: `自动 scaffold DRAFT 执行计划 ${planKey}（绑 generic_inference 兜底）→ 待审批发布`, advanced: true, scaffolded: drafts, fillEvidence }
           : { gapCode: gap.gapCode, action: "执行计划骨架已存在（DRAFT，待审批发布）", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
       } else {
         result = { gapCode: gap.gapCode, action: "DRAFT 骨架已就绪，待审批发布/补全参数", advanced: false, ticket: { gapCode: gap.gapCode, detail: gap.evidence } };
