@@ -3976,7 +3976,7 @@
     {
       "id": "META-RUNTIME-TRUTH",
       "title": "meta #12 从镜像文档→反映运行时真相(status DRIFT检测)",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P1",
       "deps": [
@@ -3997,8 +3997,10 @@
       },
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
-        "wip": "2026-07-06T11:44:58.655Z"
-      }
+        "wip": "2026-07-06T11:44:58.655Z",
+        "built": "2026-07-06T12:07:39.933Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "SELF-SURFACES-SLICE",
@@ -4221,10 +4223,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "RETRO-AUDIT-RECALL",
-      "at": "2026-07-06T11:54:53.510Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "META-RUNTIME-TRUTH",
+      "at": "2026-07-06T12:07:39.934Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
