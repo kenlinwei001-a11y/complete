@@ -181,6 +181,11 @@ export const ExecutionPlanSchema = z.object({
   version: z.number().int(),
   status: z.enum(["DRAFT", "PUBLISHED"]),
   steps: z.array(PlanStepSchema).min(1).max(12),
+  /** SKILL-LIBRARY-EVERYWHERE §3（additive）：Path A 计划的「组装口方法论绑定」——确定性消费（render_answer 结论
+      叙事体现 skill 方法论口径）·非 LLM 注入。形同 agentcore SkillRefSchema（此处内联避免 qos↔agentcore 循环导入）。 */
+  skillRefs: z
+    .array(z.object({ skillId: z.string(), version: z.union([z.number().int(), z.literal("latest")]) }))
+    .optional(),
 });
 export type ExecutionPlan = z.infer<typeof ExecutionPlanSchema>;
 

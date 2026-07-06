@@ -6,6 +6,7 @@ import {
   fetchAgents,
   fetchMcpConfigs,
   fetchRules,
+  fetchSkills,
   fetchSolverRegistry,
   fetchWorkflowReferences,
   fetchWorkflows,
@@ -119,6 +120,9 @@ export interface StepRefData {
 
 function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition; onChanged: () => void }) {
   const [steps, setSteps] = useState<PlanStep[]>(workflow.steps);
+  // SKILL-LIBRARY-EVERYWHERE §3：工作流「组装口方法论绑定」（确定性消费于结论叙事·非 LLM 注入）。
+  const [skillRefs, setSkillRefs] = useState<{ skillId: string; version: number | "latest" }[]>(workflow.skillRefs ?? []);
+  const { data: skills } = useQuery({ queryKey: ["b", "skills", {}], queryFn: fetchSkills });
   const [errors, setErrors] = useState<{ stepId?: string; code: string; message: string }[]>([]);
   // 引用模式增量 §2.3：破坏性变更门禁（BREAKING_CHANGE_WITH_LATEST_REFS → 提示 force）
   const [breaking, setBreaking] = useState<string | null>(null);
@@ -149,7 +153,7 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
   const [runResult, setRunResult] = useState<WorkflowRunResult | null>(null);
   const runMut = useMutation({
     mutationFn: async () => {
-      await saveWorkflow(workflow.id, { steps });
+      await saveWorkflow(workflow.id, { steps, skillRefs });
       return runWorkflow(workflow.id, {});
     },
     onSuccess: (r) => {
@@ -161,7 +165,7 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
   });
 
   const saveMut = useMutation({
-    mutationFn: () => saveWorkflow(workflow.id, { steps }),
+    mutationFn: () => saveWorkflow(workflow.id, { steps, skillRefs }),
     onSuccess: () => {
       toast("已保存", "success");
       onChanged();
@@ -171,7 +175,7 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
 
   const publishMut = useMutation({
     mutationFn: async ({ force }: { force: boolean }) => {
-      await saveWorkflow(workflow.id, { steps });
+      await saveWorkflow(workflow.id, { steps, skillRefs });
       return publishWorkflow(workflow.id, { force });
     },
     onSuccess: (r) => {
@@ -244,6 +248,36 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
           {e.code}: {e.message}
         </div>
       ))}
+
+      {/* SKILL-LIBRARY-EVERYWHERE §3：组装口方法论绑定——确定性消费（结论叙事步体现方法论口径），非 agent 式提示注入。 */}
+      <div className="section-title" data-testid="wf-skill-refs">
+        方法论绑定（skill·确定性消费于结论叙事）
+        <span className="badge amber" style={{ marginLeft: 6 }}>非 LLM 注入</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+        {(skills ?? []).filter((s) => s.status === "PUBLISHED").length === 0 && (
+          <span style={{ fontSize: 11, color: "var(--muted)" }}>暂无已发布方法论 skill（去技能库发布后可绑定）</span>
+        )}
+        {(skills ?? []).filter((s) => s.status === "PUBLISHED").map((s) => {
+          const on = skillRefs.some((x) => x.skillId === s.id);
+          return (
+            <label key={s.id} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 12 }}>
+              <input
+                type="checkbox"
+                disabled={!editable}
+                checked={on}
+                onChange={() =>
+                  setSkillRefs(on ? skillRefs.filter((x) => x.skillId !== s.id) : [...skillRefs, { skillId: s.id, version: "latest" as const }])
+                }
+              />
+              <span className="zh">{s.name}</span>
+            </label>
+          );
+        })}
+      </div>
+      <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
+        绑定后：render_answer/结论叙事步在答案末尾确定性追加「方法论口径」块（取 skill 的结构模板与判定口径·R6 字节一致），不调用任何模型。
+      </p>
 
       {steps.map((step, i) => (
         <StepRow

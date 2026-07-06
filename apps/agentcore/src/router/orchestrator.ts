@@ -991,6 +991,7 @@ export class Orchestrator {
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
       trustLevel: "VERIFIED_WORKFLOW",
       onResolvedRef: (r) => resolvedRefs.push(r),
+      skillRefs: plan.skillRefs, // SKILL-LIBRARY-EVERYWHERE §3：Path A 计划绑定方法论确定性消费于结论叙事
     });
 
     if (result.status === "FAILED") {

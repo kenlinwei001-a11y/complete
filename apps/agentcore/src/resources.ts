@@ -134,8 +134,20 @@ export async function computeReferences(
     }
   }
   if (kind === "skill") {
+    // 引用计数（哪些 agent/workflow/plan/intent 在用此 skill）——SKILL-LIBRARY-EVERYWHERE §1 一等管理面。
     for (const a of agents) {
       if (a.skills.some((s) => s.skillId === id)) refs.push({ kind: "agent", id: a.id, name: a.name, via: "skills" });
+    }
+    for (const w of workflows) {
+      if ((w.skillRefs ?? []).some((s) => s.skillId === id)) refs.push({ kind: "workflow", id: w.id, name: w.name, via: "skillRefs（组装口方法论绑定）" });
+    }
+    const packages = await repos.packages.listByTenant(tenantId);
+    const plans = (await Promise.all(packages.map((p) => repos.plans.listByPackage(p.id)))).flat();
+    for (const pl of plans) {
+      if ((pl.skillRefs ?? []).some((s) => s.skillId === id)) refs.push({ kind: "plan", id: pl.id, name: `${pl.key}@v${pl.version}`, via: "skillRefs（Path A 方法论绑定）" });
+    }
+    for (const mi of await repos.materializedIntents.listByTenant(tenantId)) {
+      if (mi.bindings.skillId === id) refs.push({ kind: "intent", id: mi.id, name: `${mi.key}·${mi.name}`, via: "bindings.skillId" });
     }
   }
   if (kind === "mcp-config") {

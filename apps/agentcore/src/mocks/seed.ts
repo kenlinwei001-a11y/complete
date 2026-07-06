@@ -17,6 +17,7 @@ import {
 } from "@platform/contracts";
 import { BUILTIN_TOOLS } from "../tools/registry.js";
 import { buildUniversalAgent, buildUniversalAgentTools, seedSkillIds } from "../agents/universal.js";
+import { skillIdForIntent } from "../intents/materialize.js";
 import { injectScenarioRuleStep } from "../router/scenario-rules.js";
 import { SCENARIO_CATALOG, type ScenarioCard } from "../scenarios-catalog.js";
 import { pseudoEmbed } from "../util/embedding.js";
@@ -371,6 +372,12 @@ export function seedIntentsAndPlans(
     },
   ];
 
+  // SKILL-LIBRARY-EVERYWHERE §3/§4：Path A 计划挂对口方法论 skill（skillIdForIntent 单一来源·plan.key=intentKey）——
+  // 执行期 render_answer 结论叙事确定性体现该方法论口径（非 LLM 注入·R6）。孤儿引用由 skill-integrity 齿守。
+  for (const p of plans) {
+    p.skillRefs = [{ skillId: skillIdForIntent(p.key), version: "latest" }];
+  }
+
   const intents: IntentDefinition[] = [
     {
       id: `int_affected_orders_v1${sfx}`,
@@ -568,7 +575,8 @@ export function seedIntentsAndPlans(
     // 覆盖的规则自动插 evaluate_rules 步（payload=求解器输出整对象），使规则裁决在路径 A 真执行进答案依据
     // （验证痕迹 AXIOM/BLOCK 拦截），且不依赖点卡上下文（自由问句命中同意图同样执行）。
     const steps = injectScenarioRuleStep(baseSteps, card.rules) as ExecutionPlan["steps"];
-    plans.push({ id: planId, packageId: pkgId, key: card.intentKey, version: 1, status: "PUBLISHED", steps });
+    // SKILL-LIBRARY-EVERYWHERE §3/§4：目录派生计划挂对口方法论（确定性消费于结论叙事·skillIdForIntent 单一来源）。
+    plans.push({ id: planId, packageId: pkgId, key: card.intentKey, version: 1, status: "PUBLISHED", steps, skillRefs: [{ skillId: skillIdForIntent(card.intentKey), version: "latest" }] });
     intents.push({
       id: `int_${card.intentKey}_v1${sfx}`,
       packageId: pkgId,
@@ -842,6 +850,7 @@ export function seedRegistry(now = new Date().toISOString()): {
         { id: "s3", type: "evaluate_rules", params: { ruleIds: ["C03"], payload: { demandDelta: "{{slots.demandDelta}}" } } },
         { id: "s4", type: "render_answer", params: { blocks: [{ type: "text", markdown: "产能校核结论（见步骤溯源）" }] } },
       ] as WorkflowDefinition["steps"],
+      skillRefs: [{ skillId: "skl_seed_capacity", version: "latest" }], // SKILL-LIBRARY-EVERYWHERE §4：挂产能分析方法论（确定性消费）
       status: "PUBLISHED",
       createdAt: now,
       updatedAt: now,
@@ -860,6 +869,7 @@ export function seedRegistry(now = new Date().toISOString()): {
         { id: "s3", type: "evaluate_rules", params: { ruleIds: ["C05"], payload: { baseId: "{{slots.baseId}}" } } },
         { id: "s4", type: "render_answer", params: { blocks: [{ type: "text", markdown: "交期风险扫描结论（见步骤溯源）" }] } },
       ] as WorkflowDefinition["steps"],
+      skillRefs: [{ skillId: "skl_risk_diagnosis", version: "latest" }], // SKILL-LIBRARY-EVERYWHERE §4：挂风险诊断方法论
       status: "PUBLISHED",
       createdAt: now,
       updatedAt: now,
@@ -876,6 +886,7 @@ export function seedRegistry(now = new Date().toISOString()): {
         { id: "s2", type: "evaluate_rules", params: { ruleIds: ["C18", "C21"], payload: { period: "{{slots.period}}" } } },
         { id: "s3", type: "render_answer", params: { blocks: [{ type: "text", markdown: "产销平衡校核结论（见步骤溯源）" }] } },
       ] as WorkflowDefinition["steps"],
+      skillRefs: [{ skillId: "skl_sop_balance", version: "latest" }], // SKILL-LIBRARY-EVERYWHERE §4：挂产销平衡方法论
       status: "PUBLISHED",
       createdAt: now,
       updatedAt: now,
@@ -886,6 +897,10 @@ export function seedRegistry(now = new Date().toISOString()): {
       id: "skl_seed_capacity", tenantId: SEED_TENANT, key: "capacity_analysis", version: 1,
       name: "产能分析方法论", summary: "产能金字塔口径与 P50/P90 解读要点。",
       body: "# 产能分析\n\n1. 先看型号认证状态（量产/认证中）。\n2. P50 看均衡产线，P90 看保守口径。\n3. 缺口为负时优先评估外协与排程平移。",
+      methodology: {
+        conclusionTemplate: "按产能分析法解读：以型号认证状态为前置，P50 均衡口径判可承接、P90 保守口径判风险，缺口为负则给外协/排程平移建议。",
+        criteria: ["型号认证状态（量产/认证中）", "P50 均衡口径可承接性", "P90 保守口径缺口", "外协/排程平移杠杆"],
+      },
       resources: [], mcpServers: [], status: "PUBLISHED",
     },
     // WO-SCENE-D §2.3：补齐 skill 资产广度（1→5），各场景 agent 挂对口方法论 skill（不再全指产能分析）。
@@ -893,24 +908,101 @@ export function seedRegistry(now = new Date().toISOString()): {
       id: "skl_risk_diagnosis", tenantId: SEED_TENANT, key: "risk_diagnosis", version: 1,
       name: "风险诊断方法论", summary: "交期风险越线根因分层 + 受影响订单归因口径。",
       body: "# 风险诊断\n\n1. 越线根因分层：物料齐套缺口 / 良率波动 / 检修排程冲突，逐层排除。\n2. 时序峰值定位：先看风险时序哪一周越线，再回溯该周的产能/需求错配。\n3. 受影响订单归因：按交期违约、齐套不足、良率拖累归类，量化营收/毛利敞口。",
+      methodology: {
+        conclusionTemplate: "按风险诊断法解读：先定位风险时序越线峰值，再分层排除根因（齐套/良率/检修），最后按交期/齐套/良率归类受影响订单并量化敞口。",
+        criteria: ["越线峰值时点", "根因分层（齐套/良率/检修）", "受影响订单归因分类", "营收/毛利敞口量化"],
+      },
       resources: [], mcpServers: [], status: "PUBLISHED",
     },
     {
       id: "skl_sop_balance", tenantId: SEED_TENANT, key: "sop_balance", version: 1,
       name: "产销平衡方法论", summary: "MRP 净需求口径 + 产销缺口五步法 + 版本演进对比。",
       body: "# 产销平衡\n\n1. MRP 净需求口径：毛需求 − 在手 − 在途 = 净需求，逐物料展开。\n2. 产销缺口五步法：需求核对 → 供给核对 → 缺口定位 → 平衡杠杆（外协/平移/换型）→ 量价本利联动复核。\n3. V1→V7 版本演进对比：逐版本看缺口收敛与财务口径变化，锁定拍板依据。",
+      methodology: {
+        conclusionTemplate: "按产销平衡法解读：以 MRP 净需求（毛需求−在手−在途）为口径，走需求→供给→缺口→杠杆→量价本利五步，结合版本演进对比给拍板依据。",
+        criteria: ["MRP 净需求口径", "需求/供给/缺口逐步核对", "平衡杠杆（外协/平移/换型）", "版本演进与量价本利复核"],
+      },
       resources: [], mcpServers: [], status: "PUBLISHED",
     },
     {
       id: "skl_order_margin", tenantId: SEED_TENANT, key: "order_margin", version: 1,
       name: "订单毛利评审方法论", summary: "接单毛利下限口径 + 应用细分综合毛利 + 信用敞口联动。",
       body: "# 订单毛利评审\n\n1. 接单毛利下限口径：单笔订单毛利率不得低于该应用细分红线，低于即挂牌复议。\n2. 应用细分综合毛利：按动力/储能/消费细分聚合，评估结构性盈利而非单笔。\n3. 客户信用敞口联动：接单前核对客户信用余额，敞口超限即触发信控前置。",
+      methodology: {
+        conclusionTemplate: "按订单毛利评审法解读：以应用细分毛利下限为红线判是否挂牌，结合细分综合毛利看结构性盈利，并联动客户信用敞口做信控前置。",
+        criteria: ["应用细分毛利下限红线", "细分综合毛利结构", "客户信用敞口", "挂牌/信控前置触发"],
+      },
       resources: [], mcpServers: [], status: "PUBLISHED",
     },
     {
       id: "skl_plan_scheme", tenantId: SEED_TENANT, key: "plan_scheme", version: 1,
       name: "方案比选方法论", summary: "保毛利 vs 保规模三约束评分 + AOP 情景触发口径。",
       body: "# 方案比选\n\n1. 三约束评分：CAPEX 硬约束、现金垫承受、毛利底线，逐方案打分对比。\n2. 保毛利 vs 保规模：明确取舍点——规模换毛利的边际何时反转，给管理动作。\n3. AOP 情景触发口径：当触发条件命中（需求/价格/产能挂牌）即切换情景卡拍板。",
+      methodology: {
+        conclusionTemplate: "按方案比选法解读：在 CAPEX 硬约束/现金垫/毛利底线三约束下逐方案打分，明确保毛利与保规模的取舍反转点，给管理动作与 AOP 情景触发。",
+        criteria: ["CAPEX 硬约束", "现金垫承受", "毛利底线", "保毛利 vs 保规模取舍点"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    // SKILL-LIBRARY-EVERYWHERE §4：补种缺失方法论 skill（齐套/碳合规/认证排期/库存/信用/换型），使 20 卡逐一挂对口方法论·库存量 5→11。
+    {
+      id: "skl_kit_readiness", tenantId: SEED_TENANT, key: "kit_readiness", version: 1,
+      name: "物料齐套方法论", summary: "净需求齐套判定 + 最早齐套日 + 长协/现货补缺口径。",
+      body: "# 物料齐套\n\n1. 净需求齐套：逐订单看 BOM 物料到料是否覆盖开工需求。\n2. 最早齐套日：按到料计划推最早可开工日。\n3. 补缺口径：长协覆盖优先、现货兜底、缺口挂牌。",
+      methodology: {
+        conclusionTemplate: "按物料齐套法解读：逐订单以 BOM 净需求判齐套，推最早齐套日，缺口按长协优先/现货兜底给补料建议。",
+        criteria: ["BOM 净需求覆盖", "最早齐套日", "长协覆盖优先", "现货兜底与缺口挂牌"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_carbon_compliance", tenantId: SEED_TENANT, key: "carbon_compliance", version: 1,
+      name: "碳合规方法论", summary: "全生命周期碳足迹核算 + 出口阈值达标判定口径。",
+      body: "# 碳合规\n\n1. 全生命周期核算：材料+能耗+物流分项累加。\n2. 阈值达标：对照出口目的地（如欧盟）碳阈值判达标/超标。\n3. 减碳杠杆：绿电比例、工艺能效、就近产地。",
+      methodology: {
+        conclusionTemplate: "按碳合规法解读：全生命周期分项（材料/能耗/物流）核算碳足迹，对照出口目的地阈值判达标，超标则给绿电/能效/就近产地减碳杠杆。",
+        criteria: ["全生命周期分项核算", "出口目的地碳阈值", "达标/超标判定", "减碳杠杆（绿电/能效/产地）"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_cert_schedule", tenantId: SEED_TENANT, key: "cert_schedule", version: 1,
+      name: "认证排期方法论", summary: "认证优先级排序 + 产线占用与交付窗口协调口径。",
+      body: "# 认证排期\n\n1. 优先级：按订单交付紧迫度 + 型号战略权重排认证顺序。\n2. 产线占用：认证占用产能，需与量产排产错峰。\n3. 交付窗口：认证完成日须早于首单交期。",
+      methodology: {
+        conclusionTemplate: "按认证排期法解读：以交付紧迫度与战略权重排认证优先级，协调认证产线占用与量产错峰，确保认证完成早于首单交期。",
+        criteria: ["交付紧迫度", "型号战略权重", "认证产线占用错峰", "认证完成 vs 首单交期"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_inventory_opt", tenantId: SEED_TENANT, key: "inventory_opt", version: 1,
+      name: "库存水位方法论", summary: "超储/欠储识别 + 安全库存口径 + 资金释放测算。",
+      body: "# 库存水位\n\n1. 超储/欠储：对照安全库存上下限识别偏离物料。\n2. 安全库存口径：需求波动 × 提前期。\n3. 资金释放：超储部分 × 单价 = 可释放资金。",
+      methodology: {
+        conclusionTemplate: "按库存水位法解读：对照安全库存上下限识别超储/欠储物料，测算超储可释放资金，欠储给补货建议。",
+        criteria: ["安全库存上下限", "超储/欠储识别", "可释放资金测算", "欠储补货建议"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_credit_risk", tenantId: SEED_TENANT, key: "credit_risk", version: 1,
+      name: "信用风险方法论", summary: "客户信用敞口 + 授信余额 + 接新单前置判定口径。",
+      body: "# 信用风险\n\n1. 信用敞口：应收+在途订单额 vs 授信额度。\n2. 余额判定：敞口逼近额度即预警，超限即冻结新单。\n3. 前置动作：预付/担保/账期收紧。",
+      methodology: {
+        conclusionTemplate: "按信用风险法解读：以应收+在途订单额对照授信额度算敞口，逼近即预警、超限即冻结新单，给预付/担保/账期前置动作。",
+        criteria: ["信用敞口（应收+在途）", "授信额度余额", "预警/冻结阈值", "预付/担保/账期前置"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_changeover", tenantId: SEED_TENANT, key: "changeover_seq", version: 1,
+      name: "换型排序方法论", summary: "换型损失最小化排序 + 同族聚批 + 交期约束协调口径。",
+      body: "# 换型排序\n\n1. 换型损失：型号切换的清线/调机工时。\n2. 同族聚批：相近工艺型号连排减少换型。\n3. 交期约束：聚批不得违反紧急单交期。",
+      methodology: {
+        conclusionTemplate: "按换型排序法解读：以换型损失最小为目标对同族型号聚批连排，在不违反紧急单交期约束下给最优排序。",
+        criteria: ["换型清线/调机损失", "同族工艺聚批", "紧急单交期约束", "损失最小化排序"],
+      },
       resources: [], mcpServers: [], status: "PUBLISHED",
     },
   ];

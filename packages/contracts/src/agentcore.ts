@@ -32,6 +32,13 @@ export type RuleBindings = z.infer<typeof RuleBindingsSchema>;
 export const McpServerRefSchema = z.object({ mcpConfigId: z.string() });
 export type McpServerRef = z.infer<typeof McpServerRefSchema>;
 
+/** SKILL-LIBRARY-EVERYWHERE：统一「技能引用」子契约（agent.skills / workflow.skillRefs / plan.skillRefs 同形·单一来源）。 */
+export const SkillRefSchema = z.object({
+  skillId: z.string(),
+  version: z.union([z.number().int(), z.literal("latest")]),
+});
+export type SkillRef = z.infer<typeof SkillRefSchema>;
+
 export const AgentDefinitionSchema = z.object({
   id: z.string(), // agt_
   tenantId: z.string(),
@@ -43,12 +50,7 @@ export const AgentDefinitionSchema = z.object({
   systemPrompt: z.string(),
   tools: z.array(AgentToolRefSchema),
   ruleBindings: RuleBindingsSchema,
-  skills: z.array(
-    z.object({
-      skillId: z.string(),
-      version: z.union([z.number().int(), z.literal("latest")]),
-    }),
-  ),
+  skills: z.array(SkillRefSchema),
   mcpServers: z.array(McpServerRefSchema),
   scopeDeclaration: z.object({
     objectTypes: z.array(z.string()),
@@ -73,6 +75,9 @@ export const WorkflowDefinitionSchema = z.object({
   /** JSON Schema describing the workflow inputs（暴露为 agent 工具时的 input_schema） */
   inputs: JsonSchemaObject,
   steps: z.array(PlanStepSchema).min(1).max(12),
+  /** SKILL-LIBRARY-EVERYWHERE §3（additive）：工作流「组装口方法论绑定」——确定性消费（render_answer/结论叙事步
+      取 skill 的方法论结构模板与判定口径），**非 agent 式提示注入**（R6 确定性·workflow 不跑 LLM 自由发挥）。 */
+  skillRefs: z.array(SkillRefSchema).optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
@@ -165,6 +170,17 @@ export const SkillDefinitionSchema = z.object({
   ruleBindings: RuleBindingsSchema.optional(),
   /** WO-RESOURCE-REF §2.3（additive）：skill 声明引用的 MCP（含内置求解器 server）。 */
   mcpServers: z.array(McpServerRefSchema).default([]),
+  /** SKILL-LIBRARY-EVERYWHERE §3（additive）：方法论「结构模板 + 判定口径」——供**工作流确定性消费**
+      （workflow.skillRefs → 执行期 render_answer 把 conclusionTemplate/criteria 体现在结论叙事·R6 确定性·
+      非 LLM 注入）。agent 侧仍走 summary/body 系统提示注入；本字段是 workflow 侧确定性消费的结构承载。 */
+  methodology: z
+    .object({
+      /** 结论叙事框（确定性组装口·工作流结论句由此模板体现该方法论口径）。 */
+      conclusionTemplate: z.string().max(600),
+      /** 判定口径要点（逐条·结论叙事随之列出该方法论的判定维度）。 */
+      criteria: z.array(z.string().max(200)).default([]),
+    })
+    .optional(),
   /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
 });

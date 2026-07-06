@@ -325,6 +325,7 @@ export class ExecutionEngine {
       emit: opts.emit,
       trustLevel: "AGENT_EXPLORATORY",
       onResolvedRef: opts.onResolvedRef,
+      skillRefs: wf.skillRefs, // SKILL-LIBRARY-EVERYWHERE §3：工作流绑定方法论确定性消费
     });
     if (result.status === "FAILED") {
       throw new Error(`${result.error.code}: ${result.error.message}`);
@@ -346,6 +347,35 @@ export class ExecutionEngine {
     return match;
   }
 
+  /**
+   * SKILL-LIBRARY-EVERYWHERE §3：把 plan/workflow.skillRefs 解析为已发布方法论 SkillDefinition（确定性消费用）。
+   * 只取 PUBLISHED（避免草稿方法论污染结论叙事）；latest→最新已发布版；缺失/未发布静默跳过（门 skill-integrity:check 守孤儿引用）。
+   */
+  async resolveSkillRefs(
+    tenantId: string,
+    refs: { skillId: string; version: number | "latest" }[] | undefined,
+  ): Promise<SkillDefinition[]> {
+    if (!refs || refs.length === 0) return [];
+    const out: SkillDefinition[] = [];
+    for (const ref of refs) {
+      const direct = await this.deps.repos.skills.get(ref.skillId);
+      if (!direct || direct.tenantId !== tenantId) continue;
+      let chosen: SkillDefinition | undefined = direct;
+      if (ref.version === "latest") {
+        const siblings = (await this.deps.repos.skills.listByTenant(tenantId))
+          .filter((s) => s.key === direct.key && s.status === "PUBLISHED")
+          .sort((a, b) => b.version - a.version);
+        chosen = siblings[0] ?? (direct.status === "PUBLISHED" ? direct : undefined);
+      } else if (direct.version !== ref.version) {
+        chosen = (await this.deps.repos.skills.listByTenant(tenantId)).find(
+          (s) => s.key === direct.key && s.version === ref.version,
+        );
+      }
+      if (chosen && chosen.status === "PUBLISHED") out.push(chosen);
+    }
+    return out;
+  }
+
   /** Run plan steps with full nesting support (used by QOS path A and standalone workflows). */
   async runWorkflowSteps(opts: {
     taskId: string;
@@ -358,8 +388,11 @@ export class ExecutionEngine {
     trustLevel?: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY";
     budgetForTools?: BudgetTracker;
     onResolvedRef?: (ref: ResolvedRef) => void;
+    /** SKILL-LIBRARY-EVERYWHERE §3：绑定的方法论 skill 引用（plan/workflow.skillRefs）——确定性消费于结论叙事。 */
+    skillRefs?: { skillId: string; version: number | "latest" }[];
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
+    const skills = await this.resolveSkillRefs(opts.ctx.tenantId, opts.skillRefs);
     return runWorkflow(
       {
         executor,
@@ -391,6 +424,7 @@ export class ExecutionEngine {
         nesting: opts.nesting,
         trustLevel: opts.trustLevel,
         tenantId: opts.ctx.tenantId,
+        skills,
       },
     );
   }

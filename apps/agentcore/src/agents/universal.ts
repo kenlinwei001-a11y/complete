@@ -137,13 +137,22 @@ export async function reconcileUniversalAgent(repos: Repos, tenantId: string): P
   return existing;
 }
 
-/** 出厂 5 个 seed 技能 id（skl_seed_capacity/risk_diagnosis/sop_balance/order_margin/plan_scheme）——全域探索默认可引方法论。 */
+/**
+ * 出厂 seed 技能 id——全域探索默认可引方法论（其余经 load_skill 按需取）。
+ * SKILL-LIBRARY-EVERYWHERE §4：库存量 5→11（补齐齐套/碳合规/认证/库存/信用/换型），全域 agent 默认可引全部方法论。
+ */
 export const seedSkillIds = [
   "skl_seed_capacity",
   "skl_risk_diagnosis",
   "skl_sop_balance",
   "skl_order_margin",
   "skl_plan_scheme",
+  "skl_kit_readiness",
+  "skl_carbon_compliance",
+  "skl_cert_schedule",
+  "skl_inventory_opt",
+  "skl_credit_risk",
+  "skl_changeover",
 ];
 
 function dedupeLatestByKey(workflows: WorkflowDefinition[]): WorkflowDefinition[] {

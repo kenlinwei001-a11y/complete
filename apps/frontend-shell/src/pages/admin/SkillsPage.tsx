@@ -58,6 +58,9 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
     skill.ruleBindings ?? { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
   );
   const [mcpServers, setMcpServers] = useState<{ mcpConfigId: string }[]>(skill.mcpServers ?? []);
+  // SKILL-LIBRARY-EVERYWHERE §3：方法论「结构模板 + 判定口径」——供工作流确定性消费（render_answer 结论叙事体现口径·非 LLM 注入）。
+  const [conclusionTemplate, setConclusionTemplate] = useState(skill.methodology?.conclusionTemplate ?? "");
+  const [criteriaText, setCriteriaText] = useState((skill.methodology?.criteria ?? []).join("\n"));
   const editable = skill.status === "DRAFT";
   // RESOURCE-REF-NAV：被引用只读区（哪些 agent 挂载了本 skill）
   const refsQuery = useQuery({
@@ -65,8 +68,11 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
     queryFn: () => fetchSkillReferences(skill.id),
   });
 
+  const methodology = conclusionTemplate.trim()
+    ? { conclusionTemplate: conclusionTemplate.trim(), criteria: criteriaText.split("\n").map((c) => c.trim()).filter(Boolean) }
+    : undefined;
   const saveMut = useMutation({
-    mutationFn: () => saveSkill(skill.id, { name, summary, body, ruleBindings, mcpServers }),
+    mutationFn: () => saveSkill(skill.id, { name, summary, body, ruleBindings, mcpServers, methodology }),
     onSuccess: () => {
       toast("已保存", "success");
       onChanged();
@@ -94,6 +100,32 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
       <textarea style={{ width: "100%", minHeight: 50, marginBottom: 10 }} maxLength={400} value={summary} disabled={!editable} aria-label="summary" onChange={(e) => setSummary(e.target.value)} />
       <label style={{ fontSize: 12, color: "var(--muted)" }}>body（markdown 全文）</label>
       <textarea className="mono" style={{ width: "100%", minHeight: 220, fontSize: 12 }} value={body} disabled={!editable} aria-label="body" onChange={(e) => setBody(e.target.value)} />
+
+      {/* SKILL-LIBRARY-EVERYWHERE §3：方法论结构模板（工作流确定性消费口·非 agent 提示注入）。 */}
+      <div style={{ marginTop: 12 }} data-testid="skill-methodology">
+        <div className="section-title">
+          方法论结构模板 <span className="badge amber" style={{ marginLeft: 6 }}>工作流确定性消费·非 LLM 注入</span>
+        </div>
+        <label style={{ fontSize: 12, color: "var(--muted)" }}>结论叙事框 conclusionTemplate（workflow.skillRefs 绑定后，结论叙事步确定性体现此口径）</label>
+        <textarea
+          style={{ width: "100%", minHeight: 50, marginBottom: 8 }}
+          maxLength={600}
+          value={conclusionTemplate}
+          disabled={!editable}
+          aria-label="方法论结论叙事框"
+          data-testid="skill-methodology-template"
+          onChange={(e) => setConclusionTemplate(e.target.value)}
+        />
+        <label style={{ fontSize: 12, color: "var(--muted)" }}>判定口径 criteria（每行一条）</label>
+        <textarea
+          style={{ width: "100%", minHeight: 70, fontSize: 12 }}
+          value={criteriaText}
+          disabled={!editable}
+          aria-label="方法论判定口径"
+          data-testid="skill-methodology-criteria"
+          onChange={(e) => setCriteriaText(e.target.value)}
+        />
+      </div>
 
       {/* WO-RESOURCE-REF §2.3：规则引用 + MCP 引用（复用共享控件；声明落库 + 进被引用图，诚实不扩执行语义）。 */}
       <div style={{ marginTop: 12 }} data-testid="skill-rule-refs">

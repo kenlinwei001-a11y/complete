@@ -19,29 +19,38 @@ export const SEED_TENANT = "demo";
  */
 export { INTENT_MODE, intentModeFor } from "./intent-mode.js";
 
-/** 对口方法论 skill（复用出厂 skl_*·B4 Skill 库）。 */
-const INTENT_SKILL: Record<string, string> = {
+/**
+ * 对口方法论 skill（B4 Skill 库单一来源·20 卡逐一挂对口方法论）。
+ * SKILL-LIBRARY-EVERYWHERE §4：补种方法论 skill 后逐卡重挂对口方法论（齐套/碳合规/认证/库存/信用/换型），
+ * 不再把异质场景一律指向少数几条（库存量 5→11）。export 供 seed.ts 派生 plan.skillRefs。
+ */
+export const INTENT_SKILL: Record<string, string> = {
   capacity_feasibility: "skl_seed_capacity",
   affected_orders: "skl_risk_diagnosis",
   risk_root_cause: "skl_risk_diagnosis",
   plan_audit_q: "skl_plan_scheme",
   plan_recommend: "skl_plan_scheme",
   adopt_mitigation: "skl_risk_diagnosis",
-  cert_scheduling: "skl_seed_capacity",
-  kit_analysis: "skl_risk_diagnosis",
-  lta_gap_q: "skl_sop_balance",
-  inventory_opt: "skl_sop_balance",
-  changeover_opt: "skl_seed_capacity",
+  cert_scheduling: "skl_cert_schedule",
+  kit_analysis: "skl_kit_readiness",
+  lta_gap_q: "skl_kit_readiness",
+  inventory_opt: "skl_inventory_opt",
+  changeover_opt: "skl_changeover",
   yield_diag: "skl_risk_diagnosis",
   maint_stagger: "skl_seed_capacity",
   outsourcing_q: "skl_plan_scheme",
   quote_margin_q: "skl_order_margin",
-  credit_check: "skl_order_margin",
+  credit_check: "skl_credit_risk",
   capex_review: "skl_plan_scheme",
   sop_status: "skl_sop_balance",
   quarterly_gap_q: "skl_sop_balance",
-  carbon_q: "skl_risk_diagnosis",
+  carbon_q: "skl_carbon_compliance",
 };
+
+/** 按意图键取对口方法论 skillId（缺省回落产能分析·与既有语义一致）。供 plan/workflow.skillRefs 与全绑定链派生。 */
+export function skillIdForIntent(intentKey: string): string {
+  return INTENT_SKILL[intentKey] ?? "skl_seed_capacity";
+}
 
 /** agent-first 意图绑定的场景 agent（scene-entry defaultAgent 派生·均 PUBLISHED）。 */
 const INTENT_AGENT: Record<string, string> = {

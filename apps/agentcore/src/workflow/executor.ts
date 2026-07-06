@@ -1,4 +1,4 @@
-import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, OnError, PlanStep, ProvenanceRef, RenderBinding, ResolvedRef, RuleVerdict, ValidationTrace } from "@platform/contracts";
+import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, OnError, PlanStep, ProvenanceRef, RenderBinding, ResolvedRef, RuleVerdict, SkillDefinition, ValidationTrace } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
@@ -62,6 +62,12 @@ export interface WorkflowRunInput {
   trustLevel?: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY";
   /** Tenant scope for llm_compose provider resolution. */
   tenantId?: string;
+  /**
+   * SKILL-LIBRARY-EVERYWHERE §3：工作流「组装口方法论绑定」——已解析的方法论 skill（plan.skillRefs / workflow.skillRefs
+   * → 载入的 SkillDefinition）。render_answer/结论叙事步**确定性消费**其 methodology（conclusionTemplate/criteria），
+   * 把方法论口径体现在结论叙事——**非 agent 式 LLM 提示注入**（R6 确定性·workflow 不跑 LLM 自由发挥）。
+   */
+  skills?: SkillDefinition[];
 }
 
 export type WorkflowResult =
@@ -91,7 +97,14 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   const allVerdicts: RuleVerdict[] = [];
   const resolvedRefsSeen: ResolvedRef[] = [];
 
-  const completed = async (answer: Answer): Promise<WorkflowResult> => {
+  // SKILL-LIBRARY-EVERYWHERE §3：结论叙事步确定性消费方法论 skill（组装口绑定·非 LLM 注入）——把绑定 skill 的
+  // methodology.conclusionTemplate/criteria 体现在答案末尾一个「方法论口径」叙事块（R6：纯字符串组装·同输入字节一致）。
+  const methodologyBlock = skillMethodologyBlock(input.skills ?? []);
+  const withMethodology = (answer: Answer): Answer =>
+    methodologyBlock ? { ...answer, blocks: [...answer.blocks, methodologyBlock] } : answer;
+
+  const completed = async (answerIn: Answer): Promise<WorkflowResult> => {
+    const answer = withMethodology(answerIn);
     const trace = await buildValidationTrace(deps, { slicesUsed, sliceObjects, verdicts: allVerdicts, resolvedRefs: resolvedRefsSeen, answer });
     return { status: "COMPLETED", answer: trace ? { ...answer, validationTrace: trace } : answer, stepOutputs };
   };
@@ -317,6 +330,31 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
     provenance: [],
     unverifiedNumerics: false,
   });
+}
+
+/**
+ * SKILL-LIBRARY-EVERYWHERE §3：工作流「组装口方法论绑定」的确定性渲染（R6·非 LLM 注入）。
+ * 绑定的方法论 skill（plan/workflow.skillRefs → 已发布 SkillDefinition）在结论叙事末尾体现其**判定口径**：
+ *  · methodology.conclusionTemplate（结论叙事框）+ criteria（判定维度逐条）为结构承载；
+ *  · 缺 methodology 的旧 skill 回落 summary（能力句）。
+ * 纯字符串组装（按 skillId 稳定排序），同输入字节一致——**不调用任何 LLM**，与 agent 式提示注入本质不同。
+ * 返回 undefined 表示无绑定方法论（不追加任何块，保持既有答案不变）。
+ */
+export function skillMethodologyBlock(skills: readonly SkillDefinition[]): AnswerBlock | undefined {
+  const usable = skills.filter((s) => s && (s.methodology || s.summary));
+  if (usable.length === 0) return undefined;
+  const ordered = [...usable].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const lines: string[] = [];
+  for (const s of ordered) {
+    const framing = s.methodology?.conclusionTemplate?.trim() || s.summary?.trim() || "";
+    const criteria = s.methodology?.criteria?.filter((c) => c && c.trim()) ?? [];
+    const crit = criteria.length > 0 ? `\n  判定口径：${criteria.map((c) => c.trim()).join("；")}。` : "";
+    lines.push(`〔${s.name}〕${framing}${crit}`);
+  }
+  return {
+    type: "text",
+    markdown: `**方法论口径**（确定性组装口·非模型注入）\n${lines.join("\n")}`,
+  };
 }
 
 /**
