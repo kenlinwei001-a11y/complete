@@ -3813,7 +3813,7 @@
     {
       "id": "NO-FAKE-DONE-GATE",
       "title": "R-NO-FAKE-DONE 不变量 + no-fake-done 门(堵谎根·照出诈账)",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P0",
       "deps": [],
@@ -3857,10 +3857,10 @@
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
         "wip": "2026-07-06T10:14:54.758Z",
-        "built": "2026-07-06T10:39:45.085Z",
+        "built": "2026-07-06T11:05:31.954Z",
         "blocked": "2026-07-06T10:56:43.554Z"
       },
-      "blockReason": "meta:sync 红:G-16 在主本体 docs/SYSTEM-ONTOLOGY.md §8 无断点表行(meta 投影取不到状态)。§4 L15+§5 R-NO-FAKE-DONE 已'闭 G-16'引用·08-breakpoints.md 已提及,唯主本体 §8 缺一行表行。补 | G-16 | 描述 | 焦点 | 状态 | 即绿。其余 C1-C6 全过。"
+      "blockReason": ""
     },
     {
       "id": "CAPABILITY-OBJECT",
@@ -4017,8 +4017,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "CAPABILITY-OBJECT",
-      "at": "2026-07-06T10:58:18.344Z"
+      "id": "NO-FAKE-DONE-GATE",
+      "at": "2026-07-06T11:05:31.955Z"
     }
   }
 }
