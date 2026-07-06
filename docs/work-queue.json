@@ -3809,14 +3809,208 @@
         "done": "2026-07-06T06:09:52.233Z"
       },
       "blockReason": ""
+    },
+    {
+      "id": "NO-FAKE-DONE-GATE",
+      "title": "R-NO-FAKE-DONE 不变量 + no-fake-done 门(堵谎根·照出诈账)",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P0",
+      "deps": [],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "note": "根治WO-1(PRD可信自我账)。核心: 让'完成'构造即真——门执行/校验每张自我账目自带的 acceptance,诈的照出来。用 debattery:check 同款 ratchet 基线幂等。禁半建:C2/C3/C4 行为断言有牙。",
+      "acceptance": {
+        "goal": "系统标'完成'的自我账目(work-queue DONE)必须挂 reality-derived 证据。新建 no-fake-done 门: 逐 DONE 校验其 acceptance.criteria 里 curl 引用的端点/求解器 key 真实存在(对 SOLVER_KEYS+路由注册),诈账(如 MULTISRC-FUSION 验收打幽灵端点 source_conflict)照出来。新命名不变量 R-NO-FAKE-DONE 回写本体。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "scripts/check-no-fake-done.mjs 存在; package.json 有别名 'no-fake-done:check' 且 gates 链含 '&& node scripts/check-no-fake-done.mjs'; `pnpm no-fake-done:check` 可执行退出0(基线态)。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "核心牙齿·照出存量诈账: 门逐 status=DONE 工单解析 acceptance.criteria 里 curl 断言引用的端点路径/求解器 key,对 apps/datacore SOLVER_KEYS + 路由注册表校验存在。MULTISRC-FUSION 的 'source_conflict/invoke' 不存在 → 必被列入诈账台账(ratchet 基线 scripts/no-fake-done-baseline.json 记为已知开放,gates 不因存量红)。断言: 基线文件或门输出含 'MULTISRC-FUSION'。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "green→red 自证: 临时插一条 status=DONE 工单其 acceptance 引用不存在端点 '__ghost__/invoke'(不在基线) → `pnpm no-fake-done:check` 退出码≠0(红); 移除该条 → 退出0(绿)。"
+          },
+          {
+            "id": "C4",
+            "type": "cmd",
+            "assert": "空验收即诈: 临时把一条 DONE 工单的 acceptance.criteria 清空(或删 acceptance) → 门红(DONE 必须带可核验 acceptance,否则=无据宣称完成)。"
+          },
+          {
+            "id": "C5",
+            "type": "file",
+            "assert": "本体回写(否则 ontology-writeback/meta:sync 门红): docs/SYSTEM-ONTOLOGY.md §5 含 'R-NO-FAKE-DONE' 一行、§7 含 'no-fake-done'、§8 含 'G-16'(自我账无验证门); `pnpm gates` 中 check-ontology-writeback.mjs + check-meta-sync.mjs 绿。"
+          },
+          {
+            "id": "C6",
+            "type": "cmd",
+            "assert": "真跑能力(env-gated,对齐项目 REAL-Kimi 范式): 设 NOFAKE_LIVE=<baseURL> 时,门对 DONE 工单的 curl acceptance 真发请求校验通过(非仅静态存在); 未设时静态校验(CI 安全)。门输出诚实标注 LIVE/STATIC 模式。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T09:59:08.830Z"
+      }
+    },
+    {
+      "id": "CAPABILITY-OBJECT",
+      "title": "Capability 一等对象 + verifiedStatus 派生自现实",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P0",
+      "deps": [
+        "NO-FAKE-DONE-GATE"
+      ],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "note": "根治WO-2。能力/缺口统一对象(元租户__platform__,复用objects/links仓储不新建表)。verifiedStatus 只能从现实派生(制品在+acceptance真跑+代表问经QOS NL答出),禁手写。含代表问 NL E2E harness(复用 GrowthTicket.verify:重跑问句非直调求解器)。反半成品守卫: 模型自己也受 no-fake-done 门守。",
+      "acceptance": {
+        "goal": "Capability 对象落地,verifiedStatus 由现实派生; 先打穿'求解器能力'一条真竖井证明 probe→gap→fill→verify 闭环端到端真跑通,模型才可标完成。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "[待WO-1落地后细化] 一个真建+NL可答的求解器能力 → verifiedStatus=VERIFIED,evidence.kind=RUNTIME_PROBE; 代表问经 /api/v1 QOS 真跑(非直调/solvers/{key}/invoke)答出 ANSWERABLE+dataBearing。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "[待细化] 一个未接 NL 路由的求解器能力(9洞其一) → verifiedStatus=UNVERIFIED,自动挂开放缺口,不可手工改成 VERIFIED。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T09:59:08.830Z"
+      }
+    },
+    {
+      "id": "GAP-ACTIONABLE",
+      "title": "缺口必 actionable(修 OTHER catch-all + evidence保留 + dash泄漏)",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P0",
+      "deps": [
+        "NO-FAKE-DONE-GATE"
+      ],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "note": "根治WO-3。直接修用户实测'常州基地的瓶颈是?'工单: classifyGap 不得把具体error(LLM_PURPOSE_UNBOUND等)拍成OTHER→'人工核实内部错误'; 保留真evidence并派生{缺什么·补哪·验收}; 修 scenario-grow.ts:83 视图键dash当对象类型泄漏。",
+      "acceptance": {
+        "goal": "任何答不出的问句 → 出真答案 或 actionable缺口(缺什么·补在哪·验收=本问句E2E答出),永不 OTHER/人工核实内部错误/dash。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "[待细化] probe '常州基地的瓶颈是?' → 缺口码非 OTHER(按真错因归 NO_CAPABILITY/LLM_UNBOUND 等具体码); suggestedFill 含真 evidence(如'去 设置→LLM 用途绑定')非'人工核实内部错误'。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "[待细化] 生成的 growth-ticket 本体引用 objectType 非视图键(不再泄漏 'dash'); 无 selectedObject 时给合理占位或真相关对象类型。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "green→red: classifyGap 单测覆盖'具体error不落OTHER'与'evidence透传',植入回归必红。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T09:59:08.830Z"
+      }
+    },
+    {
+      "id": "META-RUNTIME-TRUTH",
+      "title": "meta #12 从镜像文档→反映运行时真相(status DRIFT检测)",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P1",
+      "deps": [
+        "NO-FAKE-DONE-GATE",
+        "CAPABILITY-OBJECT"
+      ],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "note": "根治WO-4。SystemBreakpoint.status 不只读§8 emoji——交叉核对该断点judge运行时结果; 声称FIXED但运行时不通→标DRIFT(本体谎言曝光)。",
+      "acceptance": {
+        "goal": "'用平台查平台自己'返回运行时真相非文档声称; 声称与真相不符→DRIFT。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "[待细化] 一个§8标✅但运行时判据不通的断点 → meta查询 status=DRIFT 而非 FIXED。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T09:59:08.830Z"
+      }
+    },
+    {
+      "id": "SELF-SURFACES-SLICE",
+      "title": "散落自测/补面归一为 Capability/Gap 切片视图",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P2",
+      "deps": [
+        "CAPABILITY-OBJECT"
+      ],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "note": "根治WO-5(增量)。工单中心(已并成长驾驶舱)/兜底统计/规划体检/校准报告/Agent评测/闭环验证VLE → 同一自我模型上的slice,逐步收敛,不再各搭各页。",
+      "acceptance": {
+        "goal": "散落面成为统一自我模型的视图,无功能丢失。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "[待细化] 至少一个散落面(如兜底统计)改为读 Capability/Gap 自我模型切片,数据同源。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T09:59:08.830Z"
+      }
+    },
+    {
+      "id": "RETRO-AUDIT-RECALL",
+      "title": "存量回炉: 门扫全DONE,诈的重置开放缺口(十个算法+9洞)",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P1",
+      "deps": [
+        "NO-FAKE-DONE-GATE"
+      ],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "note": "根治WO-6。no-fake-done 门扫全存量DONE,按新判据 claim>实的重置为开放缺口: MULTISRC-FUSION(幽灵端点)/E1-E2(自标NOT-LANDED)/AUDIT-hand-run(4≠5)/countermeasure_combo(假编排)/KILL-MOCK-RED(假红未除)+9洞(Q1-6,8-10)。持续暴露逼补。真填9洞(接NL路由+落E1/E2/N1)是随后一批fill工单。",
+      "acceptance": {
+        "goal": "存量诈账全部照出并重置为开放缺口,honest ledger 从此不藏洞。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "[待细化] 门产出存量诈账台账(≥6项: MULTISRC-FUSION/E1-E2/AUDIT-hand-run/countermeasure_combo/KILL-MOCK-RED+9洞),每项标 claim vs 实。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "[待细化] 诈的DONE重置为开放缺口(status回TODO或标记GAP),9洞各挂一张带'代表问E2E'验收的fill工单。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T09:59:08.830Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "SYSFIX-SOLVER-COUNT-DRIFT",
-      "at": "2026-07-06T06:16:58.890Z"
+      "cmd": "dispatch",
+      "id": "根治WO×6",
+      "at": "2026-07-06T09:59:08.830Z"
     }
   }
 }
