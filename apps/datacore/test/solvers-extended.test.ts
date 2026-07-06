@@ -88,7 +88,7 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
   it("/a/v1/solvers/:key/invoke 对新增 key 全部返回结果（确定性同输入同输出）", async () => {
     const t = await makeApp();
     const keys = Object.keys(EXTENDED_SOLVERS);
-    expect(keys).toHaveLength(14); // 13 + Phase6B countermeasure_combo
+    expect(keys).toHaveLength(15); // 13 + Phase6B countermeasure_combo + QUERY30-ORCH Q01 what_if_displacement（SYSFIX 将改单源派生）
     for (const key of keys) {
       const r1 = await invokeSolver(t, key, key === "mitigation_select" ? { factor: "物料齐套", tightness: 90 } : {});
       expect(r1.statusCode).toBe(200);
@@ -112,11 +112,11 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     expect(r.feasible).toBe(true); // 默认杠杆可覆盖
   });
 
-  it("catalog discover 列出全部 22 求解器（8 复用 + 13 + 1 编排器）", async () => {
+  it("catalog discover 列出全部 23 求解器（8 复用 + 13 + 1 编排器 + Q01 what_if_displacement）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
-    expect(items.length).toBe(22);
+    expect(items.length).toBe(23); // SYSFIX-SOLVER-COUNT-DRIFT 将改单源派生
     expect(items.map((i) => i.key)).toContain("countermeasure_combo");
   });
 });

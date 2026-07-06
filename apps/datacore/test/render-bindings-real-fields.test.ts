@@ -32,6 +32,16 @@ const REPRESENTATIVE_ARGS: Record<string, Record<string, unknown>> = {
   mrp_netting: {},
   quarterly_gap: { quarter: "2026Q2" },
   carbon_footprint: { modelId: "4680-NCM", baseName: "成都" },
+  // QUERY30-ORCH Q01：急单挤占推演——显式争抢集（日需求 100 > 自由产能 → 触发挤占·产出四型方案+挤占清单）。
+  what_if_displacement: {
+    model: "MX", qty: 4200, weeks: 6, advancePct: 0.2, baseId: "常州",
+    lines: [{ lineId: "L1", capacityDaily: 120, certifiedModels: ["MX", "MA"] }],
+    orders: [
+      { so: "A2", cust: "客户2", model: "MA", qty: 2100, pri: "低", marginPct: 20, penaltyClause: 0.05, substitutable: false, unitPrice: 500 },
+      { so: "A1", cust: "客户1", model: "MA", qty: 2100, pri: "高", marginPct: 10, penaltyClause: 0.1, substitutable: false, unitPrice: 500 },
+    ],
+    newUnitPrice: 600,
+  },
 };
 
 describe("渲染投影绑定 = 真实输出字段（WO ONTO-SCEN-RENDER-PROJ ①·真值齿）", () => {

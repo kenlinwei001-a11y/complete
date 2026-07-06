@@ -486,8 +486,9 @@ async function buildScaledPyramid(
 describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if，工业级）", () => {
   it("注册：SOLVER_KEYS 含通用求解器（=47，含 DS.2 cockpit_kpi + 轨B·增量1 优化模板池 5 核心 + 增量3 optimize_whatif + N1 multisource_fusion）+ 输出形状已声明（chain:check/SHAPE 覆盖）", () => {
     expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
-    // 轨B：40 → 45（5 核心）→ 46（optimize_whatif 增量3）→ 47（WO-MULTISRC-FUSION multisource_fusion）。
-    expect(SOLVER_KEYS.length).toBe(47);
+    // 轨B：40 → 45（5 核心）→ 46（optimize_whatif 增量3）→ 47（WO-MULTISRC-FUSION multisource_fusion）→ 48（QUERY30-ORCH Q01 what_if_displacement）。
+    // 注：SYSFIX-SOLVER-COUNT-DRIFT 将把此硬编码计数改为单源派生（catalog.test.ts 范式）。
+    expect(SOLVER_KEYS.length).toBe(48);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 
