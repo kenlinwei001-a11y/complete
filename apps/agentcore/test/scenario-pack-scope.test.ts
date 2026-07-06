@@ -56,13 +56,15 @@ describe("SCENARIO-PACK-SCOPE · 启动器目录按行业 pack 作用域", () =>
     const items = await listScenarios(t, "demo");
     const keys = items.map((i) => i.sNo).sort();
     expect(keys).toEqual(SCENARIO_CATALOG.map((c) => c.sNo).sort());
-    expect(items.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(items.length).toBe(SCENARIO_CATALOG.length); // 端点 items vs 目录源·互校
   });
 
   it("反证（teeth）：若启动器不按 pack 作用域（沿用旧 seedScenarios 无条件播种），logi 必被种 20 张电池卡", () => {
     // 旧路径 = seedScenarios(tenant) 不看行业 → 对 logi 也吐 20 张电池卡（泄漏本体）。
     const legacy = seedScenarios("logi");
-    expect(legacy.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(legacy.length).toBe(SCENARIO_CATALOG.length); // seedScenarios 输出 vs 目录源·互校
     expect(legacy.some((s) => BATTERY_KEYS.has(s.scenarioKey))).toBe(true);
     expect(JSON.stringify(legacy)).toContain("规划体检"); // S04 名——旧路径下 logi 会看到「月度规划体检」电池卡
   });

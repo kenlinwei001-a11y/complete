@@ -40,7 +40,8 @@ describe("G-1 · 20 场景全部接通意图与执行计划（场景→意图→
   const PRESEEDED = new Set(["capacity_feasibility", "affected_orders", "risk_root_cause", "adopt_mitigation"]);
   it("G-1 新派生场景的计划调用其声明的求解器；ACTION_DRAFT 风险级一致", () => {
     const generated = SCENARIO_CATALOG.filter((c) => !PRESEEDED.has(c.intentKey));
-    expect(generated.length).toBe(16); // 确认确实补了 16 个
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(generated.length).toBe(SCENARIO_CATALOG.length - PRESEEDED.size); // 目录减预置数·互校（确认非预置的均已派生）
     for (const card of generated) {
       const plan = planById.get(intentByKey.get(card.intentKey)!.planId!)!;
       if (card.solver !== "sop_balance") {

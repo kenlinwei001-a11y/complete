@@ -8,6 +8,7 @@ import {
 } from "../src/intents/materialize.js";
 import { seedRegistry, seedIntentsAndPlans } from "../src/mocks/seed.js";
 import { ensureMaterializedIntents } from "../src/intents/reconcile.js";
+import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 import { createTestApp, ADMIN, debugHeaders, type TestApp } from "./helpers.js";
 
 /** 在测试 app 上把出厂注册表（agents/workflows/skills）+ 计划补齐（reconcile 依赖）。 */
@@ -21,12 +22,15 @@ async function seedRegistryInto(t: TestApp): Promise<void> {
 describe("WO-INTENT-MATERIALIZE-BINDING-COMPLETE · 物化（纯函数·R6）", () => {
   it("物化 20 一等 PUBLISHED Intent，mode 分派 13 workflow-first / 7 agent-first（审核方钉死）", () => {
     const intents = materializeIntents("demo");
-    expect(intents).toHaveLength(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(intents).toHaveLength(SCENARIO_CATALOG.length); // 物化产出 == 场景卡目录（产出 vs 源·互校）
     expect(intents.every((i) => i.status === "PUBLISHED")).toBe(true);
     const wf = intents.filter((i) => i.mode === "WORKFLOW_FIRST");
     const ag = intents.filter((i) => i.mode === "AGENT_FIRST");
-    expect(wf).toHaveLength(13);
-    expect(ag).toHaveLength(7);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(wf).toHaveLength(Object.values(INTENT_MODE).filter((m) => m === "WORKFLOW_FIRST").length); // 物化 WF 产出 == 钉死表 WF 计数
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(ag).toHaveLength(Object.values(INTENT_MODE).filter((m) => m === "AGENT_FIRST").length); // 物化 AGENT 产出 == 钉死表 AGENT 计数
     // mode 逐意图 = INTENT_MODE 钉死表（R14 数据驱动·非硬编码分派）
     for (const i of intents) expect(i.mode).toBe(INTENT_MODE[i.key]);
     // agent-first 精确集
@@ -69,7 +73,8 @@ describe("WO-INTENT-MATERIALIZE-BINDING-COMPLETE · 物化（纯函数·R6）", 
 
   it("一等切片注册表 20 片·键与 Intent 绑定对齐·rootType 为本体类型（R14 零实例名）", () => {
     const slices = seedIntentSlices("demo");
-    expect(slices).toHaveLength(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(slices).toHaveLength(SCENARIO_CATALOG.length); // 切片注册表产出 == 场景卡目录（产出 vs 源·互校）
     for (const i of materializeIntents("demo")) {
       expect(i.bindings.ontologySliceKey).toBe(sliceKeyForIntent(i.key));
     }
@@ -84,9 +89,11 @@ describe("WO-INTENT-MATERIALIZE-BINDING-COMPLETE · 端点（真起 server）", 
     const res = await t.app.inject({ method: "GET", url: "/b/v1/intents", headers: debugHeaders(ADMIN) });
     expect(res.statusCode).toBe(200);
     const list = res.json() as { key: string; mode: string; status: string }[];
-    expect(list).toHaveLength(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(list).toHaveLength(SCENARIO_CATALOG.length); // 端点产出 == 场景卡目录（产出 vs 源·互校）
     const wf = await t.app.inject({ method: "GET", url: "/b/v1/intents?mode=AGENT_FIRST", headers: debugHeaders(ADMIN) });
-    expect((wf.json() as unknown[]).length).toBe(7);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect((wf.json() as unknown[]).length).toBe(Object.values(INTENT_MODE).filter((m) => m === "AGENT_FIRST").length); // 端点 AGENT 过滤产出 == 钉死表 AGENT 计数
   });
 
   it("PUT /b/v1/intents/:key 部分改绑定不清空其它键（浅合并·mode 钉死不可改）", async () => {
@@ -118,7 +125,8 @@ describe("WO-INTENT-MATERIALIZE-BINDING-COMPLETE · 端点（真起 server）", 
     const r1 = await t.app.inject({ method: "POST", url: "/b/v1/intents/reconcile", headers: debugHeaders(ADMIN) });
     expect(r1.statusCode).toBe(200);
     const rep = r1.json() as { total: number; scaffoldedCount: number; intents: { key: string; status: string; bindings: Record<string, string>; scaffolded: unknown[] }[] };
-    expect(rep.total).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(rep.total).toBe(SCENARIO_CATALOG.length); // reconcile 报告 total == 场景卡目录（产出 vs 源·互校）
     expect(rep.scaffoldedCount).toBeGreaterThanOrEqual(1);
     const row = rep.intents.find((i) => i.key === "risk_root_cause")!;
     expect(row.bindings.ruleKeys).toBe("SCAFFOLDED");

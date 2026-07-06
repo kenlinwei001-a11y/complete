@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, debugHeaders, ADMIN, PKG } from "./helpers.js";
 import { classifyFailKind } from "../src/evals.js";
+import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 
 const RISK_CTX = { view: "risk", selectedObjects: [], filters: {} };
 
@@ -52,10 +53,12 @@ describe("A14 · evals parity 报告", () => {
   it("PRD 期望用例库：seed-parity 派生 20 场景（带 intent + 工具序列期望）+ 幂等", async () => {
     const t = await createTestApp();
     const seed = (await (await t.app.inject({ method: "POST", url: "/b/v1/evals/seed-parity", headers: debugHeaders(ADMIN), payload: { packageId: PKG } })).json()) as { created: number };
-    expect(seed.created).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：seed 产出数 == 目录卡数（产出 vs 源互校）
+    expect(seed.created).toBe(SCENARIO_CATALOG.length);
     const items = (await (await t.app.inject({ method: "GET", url: "/b/v1/evals?suite=agent_quality", headers: debugHeaders(ADMIN) })).json()) as { items: { id: string; expect: { intentKey?: string; toolSequence?: { name: string }[] } }[] };
     const parityCases = items.items.filter((c) => c.id.startsWith("ec_parity_"));
-    expect(parityCases.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：列出的 parity 用例数 == 目录卡数（产出 vs 源互校）
+    expect(parityCases.length).toBe(SCENARIO_CATALOG.length);
     // PRD 期望三元：每条带 intent + 工具序列（invoke_solver）
     expect(parityCases.every((c) => c.expect.intentKey && (c.expect.toolSequence?.length ?? 0) > 0)).toBe(true);
     // 幂等

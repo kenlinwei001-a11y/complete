@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN, invokeSolver, makeApp } from "./helpers.js";
 import { EXTENDED_SOLVERS } from "../src/solvers/extended.js";
+import { EXTENDED_ROUTE_KEYS } from "../src/solvers/solver-registry.js";
+import { SOLVER_CATALOG } from "../src/catalog.js";
 
 /**
  * 20 场景目录 §2 — 13 新增求解器（E6a）。确定性、args 驱动；这里用可手算的输入断言公式正确，
@@ -88,7 +90,9 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
   it("/a/v1/solvers/:key/invoke 对新增 key 全部返回结果（确定性同输入同输出）", async () => {
     const t = await makeApp();
     const keys = Object.keys(EXTENDED_SOLVERS);
-    expect(keys).toHaveLength(15); // 13 + Phase6B countermeasure_combo + QUERY30-ORCH Q01 what_if_displacement（SYSFIX 将改单源派生）
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：extended 分派 map(EXTENDED_SOLVERS) × 派发注册表
+    // route==="extended"(EXTENDED_ROUTE_KEYS) 两独立来源互校——加扩展求解器须两处同步，非魔数长度。
+    expect(new Set(keys)).toEqual(new Set(EXTENDED_ROUTE_KEYS));
     for (const key of keys) {
       const r1 = await invokeSolver(t, key, key === "mitigation_select" ? { factor: "物料齐套", tightness: 90 } : {});
       expect(r1.statusCode).toBe(200);
@@ -116,7 +120,8 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
-    expect(items.length).toBe(23); // SYSFIX-SOLVER-COUNT-DRIFT 将改单源派生
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：discover 输出 × 求解器目录(SOLVER_CATALOG) 两独立来源互校。
+    expect(new Set(items.map((i) => i.key))).toEqual(new Set(SOLVER_CATALOG.map((c) => c.key)));
     expect(items.map((i) => i.key)).toContain("countermeasure_combo");
   });
 });

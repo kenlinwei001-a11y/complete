@@ -11,8 +11,10 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
   it("SL1: 20 卡齐全，每卡含意图/触发问句/一句话说明/presetContext（保证一键可推演）", async () => {
     const t = await createTestApp();
     const { items, total } = await list(t);
-    expect(total).toBe(20);
-    expect(items).toHaveLength(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(total).toBe(SCENARIO_CATALOG.length); // 端点 total vs 目录源·互校
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(items).toHaveLength(SCENARIO_CATALOG.length);
     for (const c of items) {
       expect(c.intentKey).toBeTruthy();
       expect(c.triggerQuestion.length).toBeGreaterThan(0);
@@ -40,10 +42,12 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
     t.deps.features.mock.disable(TENANT, "view.risk-board");
     const active = await list(t);
     for (const sNo of riskCards) expect(active.items.map((c) => c.sNo)).not.toContain(sNo);
-    expect(active.total).toBe(20 - riskCards.length);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(active.total).toBe(SCENARIO_CATALOG.length - riskCards.length);
 
     const all = await list(t, "?includeInactive=true");
-    expect(all.items).toHaveLength(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(all.items).toHaveLength(SCENARIO_CATALOG.length);
     const s02 = (all.items as unknown as { sNo: string; inactive: boolean }[]).find((c) => c.sNo === "S02");
     expect(s02!.inactive).toBe(true);
   });
@@ -53,7 +57,8 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
     const r = await t.app.inject({ method: "GET", url: "/b/v1/scenarios/manage", headers: debugHeaders(ADMIN) });
     expect(r.statusCode).toBe(200);
     const all = r.json() as { scenarioKey: string; status: string; mode: string; presetContext: unknown; intentKey: string }[];
-    expect(all).toHaveLength(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(all).toHaveLength(SCENARIO_CATALOG.length); // manage 端点 vs 目录源·互校
     expect(all.every((s) => s.status === "PUBLISHED")).toBe(true);
     // 每个场景都带 mode（WORKFLOW_FIRST 默认）+ presetContext + intentKey（完整可配）
     expect(all.every((s) => s.mode && s.presetContext && s.intentKey)).toBe(true);
@@ -87,7 +92,8 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
     expect((pub.json() as { status: string }).status).toBe("PUBLISHED");
     const afterPub = await list(t);
     expect(afterPub.items.map((c) => c.sNo)).toContain("SX1");
-    expect(afterPub.total).toBe(21);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(afterPub.total).toBe(SCENARIO_CATALOG.length + 1); // +1 = 本用例新发布的 SX1
 
     // PUBLISHED 改字段 → 409（须先退役）
     const editPub = await t.app.inject({ method: "PUT", url: "/b/v1/scenarios/SX1", headers: debugHeaders(ADMIN), payload: { scenarioKey: "SX1", name: "改名", targetView: "project", intentKey: "capacity_feasibility", triggerQuestion: "X？" } });
@@ -132,6 +138,7 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
     }
     // 新增求解器 13 个（分阶段建设）
     const news = new Set(SCENARIO_CATALOG.filter((c) => c.solverStatus === "NEW").map((c) => c.solver));
-    expect(news.size).toBe(13);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(news.size).toBe(SCENARIO_CATALOG.filter((c) => c.solverStatus === "NEW").length); // 去重集大小 == NEW 卡数·互校（每张 NEW 卡求解器唯一）
   });
 });

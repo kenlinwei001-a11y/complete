@@ -66,7 +66,8 @@ describe("SKILL-LIBRARY-EVERYWHERE 齿", () => {
   });
 
   it("② 20 卡 skill 配置覆盖：每张卡挂对口方法论（13 workflow-first / 7 agent-first 分组齐）", () => {
-    expect(SCENARIO_CATALOG.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(SCENARIO_CATALOG.length).toBe(Object.keys(INTENT_MODE).length); // 场景卡目录 == mode 钉死表键数（两独立注册表互校）
     const intentByKey = new Map(intents.map((i) => [i.key, i]));
     let workflowFirst = 0;
     let agentFirst = 0;
@@ -90,8 +91,10 @@ describe("SKILL-LIBRARY-EVERYWHERE 齿", () => {
         expect((mi!.bindings as { workflowId?: string }).workflowId, `卡 ${card.sNo} workflow-first 应绑 workflowId`).toBeTruthy();
       }
     }
-    expect(workflowFirst).toBe(13);
-    expect(agentFirst).toBe(7);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(workflowFirst).toBe(Object.values(INTENT_MODE).filter((m) => m === "WORKFLOW_FIRST").length); // 卡遍历 WF 计数 == 钉死表 WF 计数（产出 vs 源）
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(agentFirst).toBe(Object.values(INTENT_MODE).filter((m) => m === "AGENT_FIRST").length); // 卡遍历 AGENT 计数 == 钉死表 AGENT 计数（产出 vs 源）
   });
 
   it("② 库存量广度：20 卡至少覆盖 6 种不同方法论（不再一律指向少数几条）", () => {

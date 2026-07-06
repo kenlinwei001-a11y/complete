@@ -106,7 +106,8 @@ describe("② workflow-first 零回归", () => {
     expect(routing.path).toBe("WORKFLOW");
     // 13 个 workflow-first 键在物化层全部保持 WORKFLOW_FIRST（钉死表不重定）。
     const wfKeys = Object.entries(INTENT_MODE).filter(([, m]) => m === "WORKFLOW_FIRST").map(([k]) => k);
-    expect(wfKeys.length).toBe(13);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(wfKeys.length).toBe(SCENARIO_CATALOG.filter((c) => intentModeFor(c.intentKey) === "WORKFLOW_FIRST").length); // 钉死表 WF 键 == 场景卡投影 WF（两独立注册表互校）
     for (const k of wfKeys) {
       expect((await t.repos.materializedIntents.byKey("demo", k))?.mode).toBe("WORKFLOW_FIRST");
     }
@@ -117,7 +118,8 @@ describe("③ mode 单一来源（勿两处各写一套·回退场景一揽子 W
   it("一等 Scenario 投影 mode == 审核方钉死表 == 物化 Intent mode（20/20）", () => {
     expect(REEXPORTED_INTENT_MODE).toBe(INTENT_MODE); // materialize re-export = 同一张表（非拷贝）
     const scenarios = seedScenarios("demo");
-    expect(scenarios.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(scenarios.length).toBe(SCENARIO_CATALOG.length); // 场景投影产出 == 场景卡目录（产出 vs 源·互校）
     for (const s of scenarios) {
       expect(s.mode, `Scenario ${s.scenarioKey}(${s.intentKey}) 的 mode 必须派生自钉死表`).toBe(intentModeFor(s.intentKey));
     }
@@ -128,7 +130,8 @@ describe("③ mode 单一来源（勿两处各写一套·回退场景一揽子 W
     for (const mi of materializeIntents("demo")) {
       expect(mi.mode).toBe(intentModeFor(mi.key));
     }
-    expect(SCENARIO_CATALOG.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
+    expect(SCENARIO_CATALOG.length).toBe(Object.keys(INTENT_MODE).length); // 场景卡目录 == mode 钉死表键数（两独立注册表互校）
   });
 });
 

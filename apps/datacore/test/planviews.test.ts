@@ -10,6 +10,7 @@ import {
 } from "@platform/contracts";
 import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER, type TestApp } from "./helpers.js";
 import { round } from "../src/prng.js";
+import { SOLVER_GRAPH } from "../src/graphmeta.js";
 
 async function aop(t: TestApp) {
   const res = await t.app.inject({ method: "GET", url: "/a/v1/plan/aop?year=2026", headers: ADMIN });
@@ -225,15 +226,18 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(order.sourceSystem).toBe("ERP");
     // catalog §3 C29（排产冻结期）/C33（碳护照）+ 规则即引用补全 C15（经营毛利底线）/C22（换型损失）
     // 作用域含 Order → 映射表含这些行（规则一等化后真定义可见，非"未找到定义"）。
-    // QUERY30-RULES（C34–C50）新增 6 条作用域含 Order 的规则：C34 挤占优先级[Order,Line]/C35 ≥2方案门[Order]/
-    // C36 锁价现金敞口[Order,Customer]/C37 违约金权衡[Order]/C44 谷段不破交期[EnergyMeter,Order]/C49 断料口径[Shipment,Order]。
-    expect(order.rules).toEqual([
-      "C03", "C08", "C13", "C15", "C22", "C29", "C33", "C34", "C35", "C36", "C37", "C44", "C49",
-    ]);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：映射表 order.rules × 规则库(repo 已发布·scope 含 Order)
+    // 两独立来源互校——新增 Order 作用域规则两侧同涨，断言仍守"规则映射完整性"而非冻结键列表（此前 7→13 漂移根因）。
+    const orderScopedRuleKeys = (await t.repos.rules.list("demo", (r) => r.status === "PUBLISHED"))
+      .filter((r) => (r.scopeObjectTypes ?? []).includes("Order"))
+      .map((r) => r.key)
+      .sort();
+    expect(order.rules).toEqual(orderScopedRuleKeys);
     expect(order.derivations.some((d) => d.includes("qty * unitPrice"))).toBe(true);
     // 求解器与 Agent 行
     const solverRows = rows.filter((r) => r.kind === "solver");
-    expect(solverRows.length).toBe(8); // C1：新增 capex_scenario 年度情景测算求解器
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：solver 行数 == 有图元元数据的求解器数(SOLVER_GRAPH 键数·映射表据此登记 solver 行)。
+    expect(solverRows.length).toBe(Object.keys(SOLVER_GRAPH).length);
     expect(solverRows.every((r) => r.domain === "solver")).toBe(true);
     expect(rows.filter((r) => r.kind === "agent").map((r) => r.displayName)).toContain("学习Agent");
     // 计划域对象也在映射表（源系统 = 平台·计划域）

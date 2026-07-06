@@ -30,7 +30,9 @@ describe("DATADEP 站② loadContext 读清单并集（治本·非写死）", ()
   it("contextRolesToLoad(withExtended=true) 覆盖全部 22 个 SolverContext 对象字段（loadContext 加载集=清单驱动·非硬编码 22）", () => {
     const loadedFields = new Set(contextRolesToLoad(true).map((c) => c.field));
     const allFields = CONTEXT_ROLES.map((c) => c.field);
-    expect(allFields.length).toBe(22);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：声明角色字段数(CONTEXT_ROLES) == 清单驱动加载集大小
+    // （loader × 声明表两侧互校——加上下文角色两处同涨·非魔数 22；配合下方逐字段 ⊇ 即证两集恒等）。
+    expect(loadedFields.size).toBe(allFields.length);
     for (const f of allFields) expect(loadedFields.has(f), `字段 ${f} 未被清单驱动加载`).toBe(true);
   });
 

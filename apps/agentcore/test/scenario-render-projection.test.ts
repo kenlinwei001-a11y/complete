@@ -17,7 +17,8 @@ describe("① render 绑定驱动投影（bindings → KPI/表/叙事，逐值�
     const { plans } = seedIntentsAndPlans();
     const builtin = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation", "what_if_displacement_q"]);
     const derived = plans.filter((p) => !builtin.has(p.key));
-    expect(derived.length).toBe(16);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：派生计划数 == 目录中非内置卡数（产出 vs 源互校）
+    expect(derived.length).toBe(SCENARIO_CATALOG.filter((c) => !builtin.has(c.intentKey)).length);
     for (const p of derived) {
       const render = p.steps.find((s) => s.type === "render_answer")!;
       const blocks = (render.params as { blocks: Record<string, unknown>[] }).blocks;
@@ -120,7 +121,8 @@ describe("③ sliceTargets 经 slice-planner 自动生成（datadep 派生候选
 
   it("20 卡基因组齐备：renderBindings=计划真实绑定派生（单源），派生 16 卡逐一与出厂登记一致", () => {
     const genomes = deriveScenarioGenomes();
-    expect(genomes.size).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：派生基因组数 == 目录卡数（产出 vs 源互校）
+    expect(genomes.size).toBe(SCENARIO_CATALOG.length);
     const builtin = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation", "what_if_displacement_q"]);
     const { plans } = seedIntentsAndPlans();
     for (const card of SCENARIO_CATALOG) {

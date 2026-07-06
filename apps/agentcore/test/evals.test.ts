@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, debugHeaders, ADMIN, PKG, type TestApp } from "./helpers.js";
+import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 
 const RISK_CTX = { view: "risk", selectedObjects: [], filters: {} };
 
@@ -63,10 +64,12 @@ describe("AIP Evals §2 / E4 — 评测框架（mock LLM 证框架，真分待�
   it("§2 种子：从 20 场景目录派生应触发用例（GET 可列）", async () => {
     const t = await createTestApp();
     const seed = await t.app.inject({ method: "POST", url: "/b/v1/evals/seed-scenarios", headers: debugHeaders(ADMIN), payload: { packageId: PKG } });
-    expect((seed.json() as { created: number }).created).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：种子产出数 == 目录卡数（产出 vs 源互校）
+    expect((seed.json() as { created: number }).created).toBe(SCENARIO_CATALOG.length);
     const list = await t.app.inject({ method: "GET", url: "/b/v1/evals?suite=classifier", headers: debugHeaders(ADMIN) });
     const items = (list.json() as { items: { origin: string; expect: { intentKey: string } }[] }).items;
-    expect(items.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：列出的用例数 == 目录卡数（产出 vs 源互校）
+    expect(items.length).toBe(SCENARIO_CATALOG.length);
     expect(items.every((c) => c.origin === "SCENARIO")).toBe(true);
     expect(items.some((c) => c.expect.intentKey === "affected_orders")).toBe(true);
     // 幂等：重复 seed 不重复创建

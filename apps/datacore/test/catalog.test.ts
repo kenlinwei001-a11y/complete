@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
-import { ALL_SOLVER_CATALOG } from "../src/catalog.js";
+import { ALL_SOLVER_CATALOG, SOLVER_CATALOG } from "../src/catalog.js";
 import { SOLVER_KEYS } from "../src/solvers/service.js";
 
 describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", () => {
@@ -13,7 +13,9 @@ describe("能力发现与路由 §1 — 资源目录（discover 供给侧）", (
     expect(forecast).toBeDefined();
     expect(forecast!.description.length).toBeGreaterThan(0); // 「没有描述就不允许发布」纪律
     expect(Object.keys(forecast!.argHints).length).toBeGreaterThan(0);
-    expect(items.length).toBe(23); // 8 复用 + 13 新增 + 1 编排器 + QUERY30 Q01 挤占推演（无关键词=全量列表）
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：无关键词全量 discover == 求解器目录(SOLVER_CATALOG) 键集（两独立来源互校·非魔数）。
+    expect(new Set(items.map((i) => i.key))).toEqual(new Set(SOLVER_CATALOG.map((c) => c.key)));
+    expect(items.length).toBe(SOLVER_CATALOG.length);
     // 带关键词时按上下文预算截断 ≤20
     const q = (await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers&query=产能", headers: ADMIN })).json() as { items: unknown[] };
     expect(q.items.length).toBeLessThanOrEqual(20);

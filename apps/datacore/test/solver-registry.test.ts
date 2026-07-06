@@ -65,7 +65,8 @@ const EXPECTED_EXTENDED = [
 describe("HARDCODE-DISPATCH-REGISTRY · 求解器派发单一来源", () => {
   it("① 语义零变：REGISTRY_SOLVER_KEYS 顺序/集合与重构前逐项一致", () => {
     expect(REGISTRY_SOLVER_KEYS).toEqual(EXPECTED_KEYS);
-    expect(REGISTRY_SOLVER_KEYS).toHaveLength(48);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：长度取自独立枚举 EXPECTED_KEYS（EXPECTED_KEYS 即"第二来源"·上一行已逐 key 冻结·此处非另立魔数）。
+    expect(REGISTRY_SOLVER_KEYS).toHaveLength(EXPECTED_KEYS.length);
   });
 
   it("② SOLVER_KEYS 派生自 registry（同一来源·不再平行字面数组）", () => {
@@ -104,8 +105,14 @@ describe("HARDCODE-DISPATCH-REGISTRY · 求解器派发单一来源", () => {
   it("① 每 key 恰属一个 route，且 context+graph+extended == 全集", () => {
     const byRoute = { context: 0, graph: 0, extended: 0 };
     for (const d of SOLVER_REGISTRY) byRoute[d.route]++;
-    expect(byRoute).toEqual({ context: 10, graph: 23, extended: 15 });
-    expect(SOLVER_BY_KEY.size).toBe(48);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：route 分桶数取自独立枚举 EXPECTED_GRAPH/EXPECTED_EXTENDED
+    // （互校 registry 的 route 标签 vs 重构前 if 链/extended map 快照·非魔数；加求解器只需在对应枚举登记，此处随之同涨）。
+    expect(byRoute).toEqual({
+      context: EXPECTED_KEYS.length - EXPECTED_GRAPH.length - EXPECTED_EXTENDED.length,
+      graph: EXPECTED_GRAPH.length,
+      extended: EXPECTED_EXTENDED.length,
+    });
+    expect(SOLVER_BY_KEY.size).toBe(EXPECTED_KEYS.length);
   });
 
   it("③ graph 求解器真经 registry 派发出结果（构造期 graphHandlers==registry 断言已在 SolverService 构造时守）", async () => {

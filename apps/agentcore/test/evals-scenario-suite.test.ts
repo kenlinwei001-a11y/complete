@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, debugHeaders, ADMIN, PKG } from "./helpers.js";
+import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 
 /**
  * A14 · 亲手跑 agent evals 比对 PRD：把 20 场景目录（= PRD 验收场景）种子化为 eval 用例，
@@ -12,12 +13,14 @@ describe("A14 · 20 场景 eval 套件 hand-run（比对 PRD）", () => {
     const t = await createTestApp();
     // ① 种子化 20 场景为 eval 用例
     const seed = await t.app.inject({ method: "POST", url: "/b/v1/evals/seed-scenarios", headers: debugHeaders(ADMIN), payload: { packageId: PKG } });
-    expect((seed.json() as { created: number }).created).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：种子产出数 == 目录卡数（产出 vs 源互校）
+    expect((seed.json() as { created: number }).created).toBe(SCENARIO_CATALOG.length);
     // ② 取有序用例（run 与 list 同序）
     const cases = (await t.app.inject({ method: "GET", url: "/b/v1/evals?suite=classifier", headers: debugHeaders(ADMIN) })).json() as {
       items: { id: string; input: { query: string }; expect: { intentKey: string | null; toolSequence?: { name: string }[] } }[];
     };
-    expect(cases.items.length).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：列出的用例数 == 目录卡数（产出 vs 源互校）
+    expect(cases.items.length).toBe(SCENARIO_CATALOG.length);
     // ③ 喂入每条用例"应得意图"（模拟完美分类器；考验的是下游执行）
     for (const c of cases.items) {
       t.llm.queueClassification({ candidates: c.expect.intentKey ? [{ intentKey: c.expect.intentKey, confidence: 0.95 }] : [], outOfCatalog: c.expect.intentKey === null, extractedSlots: {} });
@@ -35,9 +38,11 @@ describe("A14 · 20 场景 eval 套件 hand-run（比对 PRD）", () => {
     for (const f of report.results.filter((r) => !r.pass)) console.log(`[A14] INTENT-FAIL ${f.caseId}: ${f.failures.join(";")}`);
     for (const b of broken) console.log(`[A14] NO-ANSWER ${b.caseId} path=${b.observed.path} ans=${(b.observed.answerExcerpt ?? "").slice(0, 80)}`);
     console.log(`[A14] 比对 PRD：${report.passed}/${report.total} 意图命中 · ${report.total - broken.length}/${report.total} 真执行并产出答案 · llmMode=MOCK`);
-    expect(report.total).toBe(20);
-    expect(report.metrics.intentAccuracy).toBe(1); // ① 20/20 意图命中
-    expect(report.passed).toBe(20);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：跑过用例总数 == 目录卡数（产出 vs 源互校）
+    expect(report.total).toBe(SCENARIO_CATALOG.length);
+    expect(report.metrics.intentAccuracy).toBe(1); // ① 全场景意图命中
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：通过数 == 目录卡数（全绿·产出 vs 源互校）
+    expect(report.passed).toBe(SCENARIO_CATALOG.length);
     expect(report.passRate).toBe(1);
     expect(broken).toEqual([]); // ②③ 20/20 真执行 + 产出非空答案（无静态/空壳场景）
   });

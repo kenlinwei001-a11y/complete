@@ -3,6 +3,7 @@ import { makeApp, invokeSolver, type TestApp } from "./helpers.js";
 import type { AuthCtx, LinkTypeDef, ObjectInstance, ObjectTypeDef, PropertyDef } from "../src/domain.js";
 import { CyclicDerivationError } from "../src/ontology-core.js";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
+import { ALL_SOLVER_CATALOG } from "../src/catalog.js";
 import { parseFormula, extractDeps, evaluate, decimalRound } from "../src/ontology-dsl.js";
 
 const ADMIN_CTX: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
@@ -484,11 +485,12 @@ async function buildScaledPyramid(
 }
 
 describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if，工业级）", () => {
-  it("注册：SOLVER_KEYS 含通用求解器（=47，含 DS.2 cockpit_kpi + 轨B·增量1 优化模板池 5 核心 + 增量3 optimize_whatif + N1 multisource_fusion）+ 输出形状已声明（chain:check/SHAPE 覆盖）", () => {
+  it("注册：SOLVER_KEYS 含通用求解器 + 与能力目录键集互校（注册表↔目录同步·非魔数）+ 输出形状已声明（chain:check/SHAPE 覆盖）", () => {
     expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
-    // 轨B：40 → 45（5 核心）→ 46（optimize_whatif 增量3）→ 47（WO-MULTISRC-FUSION multisource_fusion）→ 48（QUERY30-ORCH Q01 what_if_displacement）。
-    // 注：SYSFIX-SOLVER-COUNT-DRIFT 将把此硬编码计数改为单源派生（catalog.test.ts 范式）。
-    expect(SOLVER_KEYS.length).toBe(48);
+    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：派发注册表(SOLVER_KEYS) × 能力目录(ALL_SOLVER_CATALOG)
+    // 两独立来源互校——加求解器须两侧同步登记，断言随之同涨、仍真守"注册完整性"而非魔数（catalog.test.ts 范式）。
+    expect(new Set(SOLVER_KEYS)).toEqual(new Set(ALL_SOLVER_CATALOG.map((c) => c.key)));
+    expect(SOLVER_KEYS.length).toBe(ALL_SOLVER_CATALOG.length);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 
