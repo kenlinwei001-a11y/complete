@@ -2276,6 +2276,15 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         }
       }
       await ensureScenarioPackageSeed(deps.repos, tenantId, groundedSlots);
+      // AGENT-CARD-DEFAULTAGENT（P2·发育闭环真跑发现）：一等 MaterializedIntent 是 agent-first 卡的
+      // **defaultAgent 绑定**单一来源（materialize.ts INTENT_AGENT → bindings.agentId → proceedWithIntent
+      // 尊重 MaterializedIntent.mode 委派该绑定 agent，见 MODE-DISPATCH-HONOR）。此前只在 boot(main.ts)
+      // 为 demo 播种，grow/launch 走 ensureScenarios **不**补齐 → 未经 boot 的租户/懒触发路径下 7 张
+      // agent-first 卡（S03/05/12/13/14/17/19）grow 时查无一等 Intent → 回落 Path A 工作流（agent 绑定失效、
+      // 假装 workflow-first 用确定性求解器答，与卡的 agent-first 语义相悖）。此处随场景包幂等补齐一等 Intent，
+      // 使 defaultAgent 绑定在**任何** grow/launch 路径都在位（结构就位：接真 LLM 即经绑定 agent 出答案升 GOVERNED；
+      // 无 LLM 环境诚实落 ADVISORY——agent 真跑但答案未达承载数据门，非 GOVERNED 非假绿）。幂等·R6 确定性。
+      await ensureMaterializedIntents(deps.repos, tenantId);
     }
 
     const existing = await deps.repos.scenarios.listByTenant(tenantId);
