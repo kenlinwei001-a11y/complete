@@ -26,8 +26,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     };
     expect(cfg.propagationCount).toBeGreaterThanOrEqual(2);
     expect(cfg.stateVars.length).toBeGreaterThan(0);
-    // stateVars 派生自规则 source/target stateVar（demandPressure/demandLoad/loadIndex/utilPressure）。
-    expect(cfg.stateVars).toEqual(["demandLoad", "demandPressure", "loadIndex", "utilPressure"]);
+    // stateVars 派生自规则 source/target stateVar。source 一律取**真对象已物化数值属性名**（CORE-E2-PROPAGATE C3）：
+    // Order.demandDelta / Model.totalDemand / Line.utilization（真源）；demandLoad/loadIndex 是传导写出的沙盘态。
+    expect(cfg.stateVars).toEqual(["demandDelta", "demandLoad", "loadIndex", "totalDemand", "utilization"]);
     // 节点类型派生自本体（含 demo 真类型）。
     expect(cfg.nodeTypes).toContain("Order");
     expect(cfg.nodeTypes).toContain("Model");
@@ -70,17 +71,17 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
     await enableSim(t);
-    // 取一条真 order_for_model 链路（demo 真对象实例），在其 source 订单上置初始压力。
+    // 取一条真 order_for_model 链路（demo 真对象实例），在其 source 订单上置初始需求偏差（真属性名 demandDelta）。
     const links = await t.repos.links.list("demo", (l) => l.type === "order_for_model");
     expect(links.length).toBeGreaterThan(0);
     const { fromId: orderId, toId: modelId } = links[0]!;
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
-      payload: { baseSnapshot: { [orderId]: { demandPressure: 10 }, [modelId]: { demandLoad: 0 } } },
+      payload: { baseSnapshot: { [orderId]: { demandDelta: 10 }, [modelId]: { demandLoad: 0 } } },
     })).json()).id as string;
     const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
     expect(tick.statusCode).toBe(200);
-    // Order.demandPressure=10 × coeff 0.8 → Model.demandLoad += 8（沿 order_for_model 即时传导）。
+    // Order.demandDelta=10 × coeff 0.8 → Model.demandLoad += 8（沿 order_for_model 即时传导）。
     expect((tick.json().state as Record<string, Record<string, number>>)[modelId]!.demandLoad).toBe(8);
   });
 });

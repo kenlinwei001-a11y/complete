@@ -5,7 +5,8 @@ import type { ClosureReport, GapReport, SimCertification, SimCertLevel } from "@
  *
  * 本文件**只投影**既有产物：`databuilder/closure.ts validateClosure` 的 5 维 findings
  * （OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ `databuilder/selfcheck.ts` 的 GapReport +
- * 一次 Trial Tick（`ontology-core recompute`，传导 `propagateTick` 待增量3）。
+ * 一次 Trial Tick（派生 `ontology-core recompute` + 传导 `propagateTick` 真跑于真对象态快照，
+ * CORE-E2-PROPAGATE 已兑现；`trial.rulesFired` 含真实触发的派生+传导规则数，非记 0）。
  *
  * 落地规格逐字段照抄 docs/SPEC-sandbox-readiness-certification.md（§2 三张映射表 / §5 函数签名）。
  *

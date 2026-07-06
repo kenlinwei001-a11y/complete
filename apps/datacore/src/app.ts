@@ -1342,6 +1342,40 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simCurrent = async (c: AuthCtx, s: SimSession): Promise<TickState> =>
     (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? simState(s.baseSnapshot);
 
+  // 传导图 + 规则参数（正门 R16/R4：物化对象 + 链路，任意行业；零硬编码）。/tick 与 Trial Tick 同源，
+  // 避免两条路走两套装配（CORE-E2-PROPAGATE：Trial Tick 必须用与真沙盘 tick 一字不差的 propagateTick 输入）。
+  const buildPropagationInputs = async (c: AuthCtx): Promise<{ graph: PropagationGraph; ruleParams: RuleParamLookup }> => {
+    const objects: PropagationGraph["objects"] = [];
+    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+      for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
+    }
+    const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
+    const ruleParams: RuleParamLookup = {};
+    for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
+      if (r.params) ruleParams[r.key] = r.params;
+    }
+    return { graph: { objects, links }, ruleParams };
+  };
+
+  // SIM-REAL-SNAPSHOT（簇D 治本 · CORE-E2-PROPAGATE C3）：从**真对象态**播 tick0 世界态——每对象取 obj.props
+  // 命中 stateVar 名的**真实有限数值**属性（非数值/缺失 → 不写，诚实缺省，绝不哈希造伪）。view-config nodeObjectState
+  // 与 Trial Tick 起跑态同源：推演从后端真世界态起跑，清空真源即归 0（teeth）。
+  const buildRealSnapshot = async (c: AuthCtx, stateVars: string[]): Promise<TickState> => {
+    const svSet = new Set(stateVars);
+    const snapshot: TickState = {};
+    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+      for (const o of await repos.objects.listByType(c.tenantId, t.key)) {
+        if (o.mergedInto) continue;
+        const row: Record<string, number> = {};
+        for (const [k, raw] of Object.entries(o.props as Record<string, unknown>)) {
+          if (svSet.has(k) && typeof raw === "number" && Number.isFinite(raw)) row[k] = raw;
+        }
+        if (Object.keys(row).length > 0) snapshot[o.id] = row;
+      }
+    }
+    return snapshot;
+  };
+
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
     await requireSim(c, "sim.sandbox");
@@ -1381,20 +1415,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
     const propagate = propRules.length > 0;
     let graph: PropagationGraph = { objects: [], links: [] };
-    const ruleParams: RuleParamLookup = {};
+    let ruleParams: RuleParamLookup = {};
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
     if (propagate) {
-      // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
-      const objects: PropagationGraph["objects"] = [];
-      for (const t of await repos.ontologyTypes.list(c.tenantId)) {
-        for (const o of await repos.objects.listByType(c.tenantId, t.key)) if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
-      }
-      const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
-      graph = { objects, links };
-      // coefficientRef 解析表（G-10 P1「改规则即改推演」）：PUBLISHED 规则 key -> params。
-      for (const r of await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED")) {
-        if (r.params) ruleParams[r.key] = r.params;
-      }
+      // 物化图 + 规则参数（buildPropagationInputs 同源，Trial Tick 复用同一装配）。
+      ({ graph, ruleParams } = await buildPropagationInputs(c));
     }
     let trace: PropagationTrace[] | null = null;
     for (let i = 0; i < n; i++) {
@@ -1481,22 +1506,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // SIM-REAL-SNAPSHOT（簇D 治本）：同一遍历顺带取每对象**真实当前属性态**（obj.props 命中 stateVar 名的数值属性），
     // baseSnapshot 由此播——推演从后端真世界态起跑（不再 hash(oid)）。无真值的对象/变量此处缺省（诚实空态，绝不合成）。
     const nodeObjectIds: Record<string, string[]> = {};
-    const nodeObjectState: Record<string, Record<string, number>> = {};
     for (const t of types) {
       const objs = (await repos.objects.listByType(c.tenantId, t.key))
         .filter((o) => !o.mergedInto)
         .sort((a, b) => a.id.localeCompare(b.id));
       nodeObjectIds[t.key] = objs.map((o) => o.id);
-      for (const o of objs) {
-        const row: Record<string, number> = {};
-        for (const v of stateVars) {
-          const raw = (o.props as Record<string, unknown>)[v];
-          // 仅采纳**真实数值**属性；非数值/缺失 → 不写（诚实缺省，前端遇缺退 0 静止，不哈希造伪）。
-          if (typeof raw === "number" && Number.isFinite(raw)) row[v] = raw;
-        }
-        if (Object.keys(row).length > 0) nodeObjectState[o.id] = row;
-      }
     }
+    // 真快照（buildRealSnapshot 同源，Trial Tick 起跑态与此一字不差）：obj.props 命中 stateVar 名的真实数值。
+    const nodeObjectState: Record<string, Record<string, number>> = await buildRealSnapshot(c, stateVars);
     const cfg = {
       tenantId: c.tenantId,
       nodeTypes: types.map((t) => t.key).sort(),
@@ -1540,11 +1557,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const typeKeys = new Set(types.map((t) => t.key));
     const allActions = await actions.listTypes(c);
     const allRules = await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED");
-    const allDerivs = await repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE");
     const allSlices = await repos.sliceSpecs.list(c.tenantId);
     const allProps = await repos.sim.listPropagationRules(c.tenantId, false);
 
-    const derivs = allDerivs.filter((d) => typeKeys.has(d.targetType));
+    // 派生 present（CORE-E2-PROPAGATE C3 · 真值驱动·非声明即算）：本体声明的每条派生属性，若 scope 内
+    // ≥1 真对象携带该属性的**真实有限数值** → present（真物化）；否则仅本体声明未物化 → 否。清空对象派生值即 present 掉（teeth）。
+    // sourceVars 从派生公式抽真实依赖（Type.prop 引用 + 同型裸属性引用），供扇出计数与 entering 溯源（R13）。
+    const AGG_KW = new Set(["SUM", "MIN", "MAX", "AVG", "COUNT", "BY", "IF", "COALESCE", "CLAMP", "WHERE", "this"]);
+    const derivationSourceVars = (typeKey: string, formula: string): string[] => {
+      const out = new Set<string>();
+      const qualified = new Set<string>();
+      for (const m of formula.matchAll(/([A-Za-z_]\w*)\.([A-Za-z_]\w*)/g)) { out.add(`${m[1]}.${m[2]}`); qualified.add(m[1]!); qualified.add(m[2]!); }
+      for (const m of formula.matchAll(/[A-Za-z_]\w*/g)) {
+        const id = m[0];
+        if (AGG_KW.has(id) || qualified.has(id)) continue;
+        out.add(`${typeKey}.${id}`);
+      }
+      return [...out].sort();
+    };
+    const derivations: { typeKey: string; propKey: string; sourceVars: string[]; present: boolean }[] = [];
+    for (const t of [...types].sort((a, b) => a.key.localeCompare(b.key))) {
+      const objs = (await repos.objects.listByType(c.tenantId, t.key)).filter((o) => !o.mergedInto);
+      for (const dp of t.derivedProperties) {
+        const present = objs.some((o) => { const v = (o.props as Record<string, unknown>)[dp.propKey]; return typeof v === "number" && Number.isFinite(v); });
+        derivations.push({ typeKey: t.key, propKey: dp.propKey, sourceVars: derivationSourceVars(t.key, dp.formula), present });
+      }
+    }
     const propRules = allProps.filter((p) => typeKeys.has(p.sourceTypeKey) || typeKeys.has(p.targetTypeKey));
     const slices = allSlices.filter((s) => typeKeys.has(s.spec.root.typeKey));
     // observability：被 ≥1 切片 root 覆盖的对象集合。
@@ -1572,12 +1610,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
     const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);
 
-    // ── Trial Tick（§3）：克隆态跑一遍 recompute（派生）；propagateTick 待增量3 → 传导记 0 ──
+    // ── Trial Tick（§3 · CORE-E2-PROPAGATE C1）：派生跑 recompute + 传导真跑 propagateTick（兑现增量3，非记 0）──
     let trial: TrialTickInput;
     try {
       const rc = await ontologyCore.recompute(c, [], { dryRun: true });
-      // rulesFired = 触发的派生规则数（recompute topo order 长度）。传导规则待增量3，记 0。
-      trial = { passed: true, rulesFired: rc.order.length, at: computedAt, error: null };
+      // 传导 Trial：在**真对象态快照**上真跑一遍 propagateTick（与真沙盘 /tick 同一逻辑），统计真实触发的
+      // 传导规则数（产生即时贡献或落延迟 pending 的规则）。无真源 → snapshot 空 → 触发 0（诚实，teeth）。
+      const publishedProps = await repos.sim.listPropagationRules(c.tenantId, true);
+      let firedProp = 0;
+      if (publishedProps.length > 0) {
+        const { graph, ruleParams } = await buildPropagationInputs(c);
+        const svs = [...new Set(publishedProps.flatMap((p) => [p.sourceStateVar, p.targetStateVar]))];
+        const snap = await buildRealSnapshot(c, svs);
+        const out = propagateTick(graph, snap, publishedProps, [], 0, ruleParams);
+        const fired = new Set<string>();
+        for (const tr of out.trace) if (tr.fromObjectId !== "(delayed)") fired.add(tr.ruleKey); // 即时贡献
+        for (const p of out.pending) fired.add(p.ruleKey); // 落延迟队列（延迟规则亦真触发）
+        firedProp = fired.size;
+      }
+      // rulesFired = 派生（recompute topo）真跑数 + 传导真触发规则数（真值驱动，非记 0）。
+      trial = { passed: true, rulesFired: rc.order.length + firedProp, at: computedAt, error: null };
     } catch (e) {
       // 派生图有环（CYCLIC_DERIVATION）等 → 诚实标 FAIL，不假装通过。
       trial = { passed: false, rulesFired: 0, at: computedAt, error: e instanceof Error ? e.message : String(e) };
@@ -1596,10 +1648,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         sliceCovered: coveredTypeKeys.has(t.key),
         behaviorReady: t.derivedProperties.length > 0 && scopeActions.length > 0,
       })),
-      derivations: derivs.map((d) => ({
-        typeKey: d.targetType, propKey: d.targetProp,
-        sourceVars: d.deps.map((dep) => `${dep.typeKey}.${dep.prop}`), present: true,
-      })),
+      derivations,
       actions: scopeActions.map((a) => ({ key: a.key, targetTypeKey: null })),
       slices: slices.map((s) => ({ key: s.sliceKey })),
       propagationRules: propRules.map((p) => ({

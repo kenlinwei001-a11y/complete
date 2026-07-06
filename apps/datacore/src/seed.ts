@@ -278,15 +278,19 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *  - 正交于电池合成：PropagationRule 是独立 sim 表（migration026），不碰 battery 字节一致基线。
  *  - 沿真链路：sourceTypeKey/viaLinkKey/targetTypeKey 均为 demo 本体真有的对象类型/链路 key
  *    （battery.ts：Order/Model/Base/Line + order_for_model/model_producible_at/line_belongs_to_base）。
+ *  - **接真对象态（CORE-E2-PROPAGATE C3·治本）**：sourceStateVar 一律取**真对象已物化的数值属性名**
+ *    （Order.demandDelta 需求偏差 / Model.totalDemand 型号总需求[派生] / Line.utilization 产线利用率[TS 聚合]），
+ *    使 view-config nodeObjectState 与 Trial Tick 起跑态命中真值 → **推进 tick 真有反应**（不再空世界记 0）。
+ *    targetStateVar（demandLoad/loadIndex）是传导写出的沙盘态。清空这些真源属性即 snapshot 归 0（teeth）。
  *  - stateVars 非显式声明——view-config 自动从规则 source/target stateVar 派生（种了规则即非空）。
  */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> = [
-  // ① 订单需求压力 → 沿"订单属型号"边推到型号需求负载（即时，强相关）。
+  // ① 订单需求偏差（真属性 Order.demandDelta）→ 沿"订单属型号"边推到型号需求负载（即时，强相关）。
   {
     id: "simpr_demo_order_demand",
     key: "demo_order_demand_pressure",
     sourceTypeKey: "Order",
-    sourceStateVar: "demandPressure",
+    sourceStateVar: "demandDelta",
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
@@ -298,12 +302,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     coefficientRef: null,
     status: "PUBLISHED",
   },
-  // ② 型号需求负载 → 沿"型号可产于基地"边推到基地负载指数（即时）。
+  // ② 型号总需求（真派生属性 Model.totalDemand）→ 沿"型号可产于基地"边推到基地负载指数（即时）。
   {
     id: "simpr_demo_model_to_base",
     key: "demo_model_demand_to_base_load",
     sourceTypeKey: "Model",
-    sourceStateVar: "demandLoad",
+    sourceStateVar: "totalDemand",
     viaLinkKey: "model_producible_at",
     targetTypeKey: "Base",
     targetStateVar: "loadIndex",
@@ -315,12 +319,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     coefficientRef: null,
     status: "PUBLISHED",
   },
-  // ③ 产线利用率压力 → 沿"产线归属基地"边推到基地负载指数（延迟 1 tick，演示时序传导）。
+  // ③ 产线利用率（真属性 Line.utilization·TS 聚合物化）→ 沿"产线归属基地"边推到基地负载指数（延迟 1 tick，演示时序传导）。
   {
     id: "simpr_demo_line_to_base",
     key: "demo_line_util_to_base_load",
     sourceTypeKey: "Line",
-    sourceStateVar: "utilPressure",
+    sourceStateVar: "utilization",
     viaLinkKey: "line_belongs_to_base",
     targetTypeKey: "Base",
     targetStateVar: "loadIndex",
