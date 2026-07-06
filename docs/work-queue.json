@@ -3597,7 +3597,7 @@
     {
       "id": "SKILL-LIBRARY-EVERYWHERE",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "title": "独立Skill库+agent/workflow双侧skill配置+全预设(用户亲定)",
@@ -3605,7 +3605,8 @@
       "at": {
         "todo": "2026-07-05T09:55:29.963Z",
         "wip": "2026-07-06T02:50:54.156Z",
-        "built": "2026-07-06T03:22:58.518Z"
+        "built": "2026-07-06T03:22:58.518Z",
+        "done": "2026-07-06T03:47:16.398Z"
       },
       "blockReason": ""
     },
@@ -3757,14 +3758,26 @@
         "todo": "2026-07-06T03:21:51.270Z",
         "wip": "2026-07-06T03:45:25.886Z"
       }
+    },
+    {
+      "id": "SKILL-LIB-POLISH",
+      "priority": "P3",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/evidence/SKILL-LIBRARY-fde.md",
+      "title": "SKILL-LIBRARY两处小瑕疵(审核方并行代码审查揪出·不阻断)",
+      "note": "审核方复验SKILL-LIBRARY判DONE时并行代码审查发现2处非阻断小瑕疵(供顺手清): ①注释造假门名——engine.ts:352/seed.ts:376注释写门skill-integrity:check守孤儿引用但根package.json无此脚本(grep空)·实际把关的是skill-library.test.ts经pnpm -r test·非独立命名门→改注释指真实测试文件·或真建skill-integrity:check命名门(推荐后者·与其它命名门一致)。②静默兜底削弱必须显式配置保证——skillIdForIntent(materialize.ts:51-53)/sceneAgent(seed.ts:1165)/bindings.skillId(158)均带 ?? skl_seed_capacity 兜底·当前20卡都显式映射无漏配·但将来新增未映射卡会静默回落产能方法论而非报错→建议漏配时抛错或齿断言(新增卡必显式映射)·使孤儿门能抓忘映射。均非功能缺陷·现状交付无影响。",
+      "at": {
+        "todo": "2026-07-06T03:47:16.430Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "SYSFIX-SOLVER-COUNT-DRIFT",
-      "at": "2026-07-06T03:45:25.886Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "SKILL-LIBRARY-EVERYWHERE",
+      "at": "2026-07-06T03:47:16.437Z"
     }
   }
 }
