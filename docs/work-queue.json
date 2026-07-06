@@ -4260,14 +4260,280 @@
       "at": {
         "todo": "2026-07-06T12:30:00.000Z"
       }
+    },
+    {
+      "id": "CORE-E2-PROPAGATE",
+      "priority": "P1",
+      "deps": [],
+      "doc": "apps/datacore/src/app.ts",
+      "title": "核: 落地 propagateTick 真传导 + 补齐状态变量/派生规则真源 → 沙盘&看板 what-if 真跑",
+      "note": "用户亲定\"解决核的问题\"(铁律0.6). 现\"华丽壳+没跑核\": propagateTick\"待增量3→传导记0\"(app.ts:1575), 状态变量0/11、派生规则0/11→推进tick没反应(审核方真机实测点了没变)。补齐: ①真落地propagateTick(系数×延迟真传导·非记0) ②补齐11状态变量(demandLoad/demandPressure/loadIndex/utilPressure…)的真实来源(接真对象态·非写死) ③补齐11派生规则(真规则驱动·非空)。这是E1-E2洞(OPEN)的核心fill。不写死不空态。",
+      "acceptance": {
+        "goal": "推演沙盘/预判推演看板 what-if真跑: 推进tick→全局态从0变真值、规则真触发>0条、状态变量由真对象态派生; 前后端逐值勾稽; 就绪认证世界完整度上升。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "propagateTick真传导: POST 沙盘会话 init→推进tick端点→返回态变(全局态/状态变量非全0·由真对象派生)·规则触发数>0; 非\"记0\"。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "真浏览器: 登录demo→/v/sim-sandbox→点\"推进tick\"→全局态从0.0变真值、拓扑节点变色、状态变量非0; 前端显示值逐值==后端propagateTick输出(勾稽·不写死)。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "状态变量/派生规则补齐为真: 11状态变量有真实来源(接真对象态)、11派生规则非空且真值驱动; 就绪认证\"世界完整度\"从35%升、\"暂不可进入推演\"解除(有真源时)。"
+          },
+          {
+            "id": "C4",
+            "type": "cmd",
+            "assert": "green→red+不写死: 篡改/清空真源→态归0或诚实空态(测红); 合成诚实标; no-fake-done绿; pnpm -r build+test绿; 本体回写(E1-E2/G-5相关)meta:sync绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "CORE-NL-SOLVER-ROUTING",
+      "priority": "P1",
+      "deps": [],
+      "doc": "apps/agentcore/src/scenarios-catalog.ts",
+      "title": "核: 通用多跳求解器接进 QOS 自然语言场景路由(复杂问句真答出)",
+      "note": "用户亲定\"解决核\"(9洞共性根·WO-6曝). 5个通用多跳求解器(shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius/multisource_fusion)真在, 但SCENARIO_CATALOG S01-S20无一指向它们→NL复杂问句路由零命中→落诚实缺口。补齐: 新增场景卡→intent→plan(invoke_solver)把这些求解器接进NL路由, 让\"多源仲裁/隐性集中/毛利归因/断供传导\"等问句真路由到求解器出真答案。closes MULTISRC-FUSION(Q2)/QUERY30-ORCH(Q6)/部分GAP-SCENE-C(Q8).",
+      "acceptance": {
+        "goal": "复杂多跳NL问句经QOS真路由到通用求解器出真答案(非直调·非诚实缺口)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "≥4个通用求解器各配一张场景卡(scenarios-catalog)+intent+plan; POST /api/v1/growth/probe(或ask)代表问(\"哪些供应商断供影响最大\"/\"隐性集中度\"/\"毛利倒挂根因\")→verdict=ANSWERABLE、path=WORKFLOW、matchedIntent命中、答案dataBearing(非OTHER非缺口)。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "真浏览器: QueryDock打字问代表问→经NL路由→出真答案卡(含求解器真输出)·非\"缺算法\"。逐值对后端求解器输出。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "Capability harness(WO-2)验: 每个新接能力verifiedStatus=VERIFIED·evidence=RUNTIME_PROBE(代表问经NL答出)·非直调/solvers/invoke。"
+          },
+          {
+            "id": "C4",
+            "type": "cmd",
+            "assert": "pnpm -r build+test绿·no-fake-done绿·本体§3/§8回写(9洞对应G更新)meta:sync绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "RISKBOARD-RULES-AGENTS",
+      "priority": "P1",
+      "deps": [
+        "CAPACITY-BASECARDS-REALDATA"
+      ],
+      "doc": "apps/frontend-shell/src/views/RiskBoardView.tsx",
+      "title": "预判推演看板: 补齐真实规则+agent(超CAPACITY数据层·完整交互真跑)",
+      "note": "用户亲定\"恢复预判推演看板交互+补齐真实数据/规则/agent\"(铁律0.6). CAPACITY补数据层(基地卡真时序), 本单补更深: ①风险推演链的派生/传导规则真值驱动(非写死系数) ②驱动看板下钻/推演的agent真接QOS(非兜底占位)。让看板下钻+推演真跑。",
+      "acceptance": {
+        "goal": "预判推演看板完整交互真跑: 卡真值(CAPACITY)+下钻真出数+推演由真规则/真agent驱动·非空非兜底。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "风险推演链派生/传导规则真值驱动(非写死): 相关规则端点返真规则、越线日/轨迹由真规则+真时序算。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "真浏览器: /v/risk点基地卡→下钻(逐日/逐设备/影响订单)真出数·\"推演过程DAG\"真轨迹·NL提问\"影响哪些订单\"经真agent答出。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "合成→真实徽章: 有真源时\"本推演置信度\"从\"合成数据·非真实接入\"变真实接入·dataMode透出; no-fake-done绿·build/test绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "FILL-E1-CALIB-LIVE",
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "title": "填洞Q4: 校准活体常态化(预测信几分·收敛趋势真可见)",
+      "note": "WO-6曝Q4洞. 校准基建在(CALIBRATION_SWEEP app.ts:683)但活体收敛趋势不可见。补齐真实校准活体: 预测MAPE/收敛趋势真跑真显·非手绘曲线(KILL-MOCK-RED同源)。",
+      "acceptance": {
+        "goal": "\"预测准不准/信几分\"问句可答·校准收敛趋势真值可见(真sweep非手绘)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "校准活体: sweep真跑出MAPE/收敛序列(真值·非hash)·端点返真趋势。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "真浏览器/v/校准报告: 收敛趋势图真值渲染·逐值对后端·无SYNTHETIC冒充真实。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "green→red(篡改真sweep源→趋势变/空态)·no-fake-done绿·build/test绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "FILL-AUDIT-OBS-LINE",
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "title": "填洞Q9: 审计还原决策链成一线(散点→一线·NL真跑)",
+      "note": "WO-6曝Q9洞(GAP-AUDIT-OBS). 溯源强但审计散点未成一线·AUDIT-hand-run称\"5杀手多跳全落地+真HTTP E2E\"实为4直调·NL→QOS从未真跑。补齐: 决策链审计串一线+代表问经NL真跑(非直调)。",
+      "acceptance": {
+        "goal": "\"审计还原某决策链\"问句经NL真路由答出完整决策链(数据→推演→动作→溯源一线)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "代表问经QOS NL真跑→出完整决策链审计(requestId spine串数据/推演/action)·非直调·非OTHER。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "classifyGap不再把此洞误落OTHER(归NO_CAPABILITY或真答出)·build/test绿·no-fake-done绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "FILL-XINDUSTRY-LAYOUT",
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "title": "填洞Q10: 视图layout去电池化(跨行业config即跑·G-5)",
+      "note": "WO-6曝Q10洞(GAP-XINDUSTRY-LAYOUT). 求解器大部config驱动, 但视图layout仍电池形(G-5残)·换行业不切换。补齐: 视图KPI/列/结构由ViewConfig.layout驱动·零业务常数(R14)·换租户/行业=换config不改代码。",
+      "acceptance": {
+        "goal": "跨行业租户(非电池)登录→视图layout按其config渲染·无电池业务常数泄漏。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "debattery:check基线0(无新增业务常数)·boundary-singlesource绿; 非电池租户视图不显电池型号/工序/基地名。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "真浏览器: 造一个非电池行业config→视图按config渲染(非电池形)·截图证。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "build/test绿·本体G-5回写·meta:sync绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "I18N-CHINESE-UI",
+      "priority": "P2",
+      "deps": [],
+      "doc": "apps/frontend-shell/src",
+      "title": "全站界面词中文化(含本体切片/拓扑图·除缩写)",
+      "note": "用户亲定(R2): 所有系统页面界面词需中文·含本体切片/本体拓扑图内英文字段(demandLoad→需求负载、demandPressure→需求压力、loadIndex→负载指数、utilPressure→利用压力…)·英文缩写(OEE/GWh/MCP/DAG/KSF等)或特别术语保留。走i18n/ViewConfig非写死(R14)。",
+      "acceptance": {
+        "goal": "系统页面界面词全中文·英文字段名(状态变量/切片/拓扑标签)中文化·缩写保留·无写死。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "真浏览器扫主要页面(沙盘/看板/本体切片/本体拓扑/管理台)→界面词中文·demandLoad等英文态变量显中文名·截图证。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "中文来自i18n/ViewConfig非组件写死(R14 debattery绿)·缩写白名单保留·build/test绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
+    },
+    {
+      "id": "ORDER-CONSOLIDATE",
+      "priority": "P2",
+      "deps": [],
+      "doc": "apps/frontend-shell/src",
+      "title": "订单全链聚合→订单聚合 + 基地信息并入产能推演 + 订单进台账逐行点开看推演",
+      "note": "用户亲定(R5). ①\"订单全链聚合\"改名\"订单聚合\"。②其中\"基地\"相关信息迁入\"产能推演\"页融合(审核方判:应该·基地态本属产能推演·去重)。③订单信息改为历史\"台账\"页逐行(按行展示每订单)·点击某订单→展示该订单对应推演信息。前端IA重构·无死链·数据同源不写死。",
+      "acceptance": {
+        "goal": "订单聚合改名生效·基地信息并入产能推演无重复·订单在台账逐行可点开看推演。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "真浏览器: 导航/页标题\"订单聚合\"(原订单全链聚合)·基地信息在产能推演页可见(不再两处重复)。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "订单进台账逐行: 台账页每订单一行·点某行→展开/跳该订单推演信息(真数据·非写死)。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "无死链·无悬空import·相关测试更新·build/test绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-06T13:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "CAPACITY-BASECARDS-REALDATA",
-      "at": "2026-07-06T12:56:10.399Z"
+      "role": "review",
+      "cmd": "dispatch-batch",
+      "id": "核+改造×8",
+      "at": "2026-07-06T13:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
