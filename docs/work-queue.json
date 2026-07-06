@@ -3722,25 +3722,27 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-05T16:02:06.687Z",
-        "wip": "2026-07-06T01:37:27.129Z"
+        "wip": "2026-07-06T01:37:27.129Z",
+        "built": "2026-07-06T02:02:40.844Z"
       },
       "id": "AGENT-CARD-DEFAULTAGENT",
       "priority": "P2",
       "doc": "docs/PRD-intent-materialize-binding-complete.md",
       "title": "7张智能体卡缺defaultAgent绑定→接Kimi后仍长不成正式版(发育闭环真跑发现)",
-      "note": "审核方接Kimi真跑发现(2026-07-05): 7张agent-first卡(S03/05/12/13/14/17/19)grow后仍PROVISIONAL·缺口从接Kimi前AGENT模式缺defaultAgent→接后NO_ANSWER(说明Kimi真被调12s但卡无绑定agent定义可跑)。根因: 这7卡mode=agent-first但scene-entry/intent无defaultAgent绑定→发育A10验证无agent可执行→出不了答案→不升GOVERNED。这跟随口提问的agent路是同机制(那个能答是因QOS按intent临时构建agent·但卡发育走的是绑定的defaultAgent)。修向: 为7张agent-first卡补defaultAgent绑定(从模板scaffold挂对口solver/skill/rules·接INTENT-MATERIALIZE的reconcile补齐)·使grow能真跑agent出答案升GOVERNED。齿: 7卡grow→GOVERNED(接Kimi后)·或诚实报缺口清单。关联INTENT-CONFIG-EDITOR(agent绑定配置UI)。"
+      "note": "审核方接Kimi真跑发现(2026-07-05): 7张agent-first卡(S03/05/12/13/14/17/19)grow后仍PROVISIONAL·缺口从接Kimi前AGENT模式缺defaultAgent→接后NO_ANSWER(说明Kimi真被调12s但卡无绑定agent定义可跑)。根因: 这7卡mode=agent-first但scene-entry/intent无defaultAgent绑定→发育A10验证无agent可执行→出不了答案→不升GOVERNED。这跟随口提问的agent路是同机制(那个能答是因QOS按intent临时构建agent·但卡发育走的是绑定的defaultAgent)。修向: 为7张agent-first卡补defaultAgent绑定(从模板scaffold挂对口solver/skill/rules·接INTENT-MATERIALIZE的reconcile补齐)·使grow能真跑agent出答案升GOVERNED。齿: 7卡grow→GOVERNED(接Kimi后)·或诚实报缺口清单。关联INTENT-CONFIG-EDITOR(agent绑定配置UI)。",
+      "blockReason": ""
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "CLARIFY-LOOP-CONVERGE",
-      "at": "2026-07-06T01:58:08.625Z"
+      "id": "AGENT-CARD-DEFAULTAGENT",
+      "at": "2026-07-06T02:02:40.844Z"
     }
   }
 }
