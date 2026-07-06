@@ -50,6 +50,7 @@ import { decideDataGap, groundingVocab, decideTriggerBoundary, triggerDimensions
 import { annotateRequestId } from "./tracing.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { buildEvalCapabilitySlice, unwiredSlice, WIRED_SURFACES } from "./capability/slice.js";
+import { buildGenericSolverCapabilitySlice } from "./capability/generic-solvers.js";
 import { HttpError } from "./router/orchestrator.js";
 import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
 import { streamTaskEvents } from "./api/sse.js";
@@ -2231,6 +2232,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (surface === "evals") {
       const runs = await deps.repos.evalRuns.listByTenant(a.tenantId);
       return buildEvalCapabilitySlice(runs);
+    }
+    // CORE-NL-SOLVER-ROUTING · C3：通用多跳求解器能力面——逐能力经 verifyCapability（NL 真路径
+    // orchestrator.submitQuery·非直调 solver）真跑答出 → verifiedStatus 派生 + RUNTIME_PROBE 活证据。
+    if (surface === "solvers") {
+      return buildGenericSolverCapabilitySlice({ orchestrator: deps.orchestrator, repos: deps.repos }, a);
     }
     // 未接入面：诚实占位（不 500·不 fake）。
     return unwiredSlice(surface);

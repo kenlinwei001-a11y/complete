@@ -82,6 +82,17 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S18", "S&OP 月度平衡", "sop", "sop_status", "本月产销平衡到哪一步了？", "sop_balance", ["C18", "C21", "C22"], "COMPUTE", "解读 S&OP 进度与平衡状态", [], {}),
   card("S19", "季度缺口对策", "quarter", "quarterly_gap_q", "Q2 缺口用什么组合补？", "quarterly_gap", ["C08", "C29"], "COMPUTE", "解读季度缺口对策组合", [], { quarter: "2026Q2" }),
   card("S20", "碳足迹核算", "dash", "carbon_q", "4680-NCM 出口欧盟的碳足迹达标吗？", "carbon_footprint", ["C33"], "COMPUTE", "解读碳足迹核算", [M("4680-NCM", "4680-NCM")], { modelId: "4680-NCM", baseName: "成都" }),
+  // CORE-NL-SOLVER-ROUTING（本体 §8 MULTISRC-FUSION/QUERY30-ORCH/GAP-SCENE-C 共性根）：5 个**通用多跳求解器**
+  // 早已在 datacore solver-registry 注册（route=graph·真读对象图·确定性 R6），但 S01–S20 无一指向它们 →
+  // 复杂 NL 问句（「哪些断供影响最大」「隐性集中度」「毛利倒挂根因」「多源打架仲裁」「共享瓶颈」）路由零命中、
+  // 落诚实缺口/OTHER。下 5 卡把它们接进目录单一来源 → seed 派生循环自动生成意图+计划（invoke_solver 指向该 solver）
+  // + solver_summary 按 SOLVER_RENDER_BINDINGS 投影真实输出字段 → 路径A 可作答（非 OTHER 非缺口）。
+  // slotPresets = 该求解器**真实入参**（对象类型/字段/路径·对真 DataCore 合法；mock 侧 MOCK_SOLVER_OUTPUTS 同形状回值）。
+  card("S21", "共享瓶颈争用", "risk", "shared_bottleneck_q", "多条产线抢同一个瓶颈资源，谁被挤最狠？", "shared_bottleneck", ["C02", "C09"], "COMPUTE", "解读共享资源瓶颈争用与降级", [B("changzhou", "常州")], { resourceType: "Base", sharedByType: "Line", viaField: "baseId", capacityField: "formationCapDaily", demandField: "capacityDaily" }),
+  card("S22", "隐性集中度", "risk", "concentration_risk_q", "有没有多个订单隐性集中依赖同一个型号/根节点？", "concentration_risk", ["C16", "C27"], "COMPUTE", "解读隐性集中单点敞口", [], { startType: "Order", path: [{ viaField: "model", toType: "Model" }] }),
+  card("S23", "毛利倒挂根因", "dash", "margin_attribution_q", "哪些订单毛利倒挂？根因主驱动是哪个成本项？", "margin_attribution", ["C15", "C24"], "COMPUTE", "解读毛利倒挂根因归因", [], { targetType: "Order", costFields: [{ field: "unitPrice", label: "单价" }] }),
+  card("S24", "断供影响半径", "risk", "supplier_disruption_q", "哪些供应商断供影响最大？影响半径覆盖到谁？", "supplier_disruption_radius", ["C05", "C16"], "COMPUTE", "解读断供影响半径与受累对象", [B("changzhou", "常州")], { rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] }),
+  card("S25", "多源数据仲裁", "dash", "multisource_fusion_q", "多源数据打架时按什么口径仲裁？有没有测谎命中的可疑源？", "multisource_fusion", ["C05", "C16"], "COMPUTE", "解读多源融合仲裁与测谎", [], { role: "order", fields: ["due"], sources: [{ sourceLabel: "ERP", typeKey: "Order", authority: 1 }, { sourceLabel: "MES", typeKey: "Model", authority: 2 }], defaultStrategy: "AUTHORITY" }),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {

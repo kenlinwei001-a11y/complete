@@ -480,6 +480,63 @@ const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
     summary: "急单 4680-NCM ×4200（提前 20%·6 周）日产能缺口 80，需挤占 2 单（高优先级最长位移 21 天）；2 个可行方案，推荐「延期在手单」。",
     dataMode: "MOCK",
   },
+  // CORE-NL-SOLVER-ROUTING：5 个通用多跳求解器（route=graph）mock 输出，形状对齐 datacore 真实 invoke
+  // （顶层键覆盖 SOLVER_RENDER_BINDINGS 全字段·dataMode:"MOCK" 诚实标）——使 mock 侧路径A 投影/发育验证
+  // 与真后端同构（真值以真 DataCore invoke/FDE 为准）。
+  shared_bottleneck: {
+    bottlenecks: [
+      { resourceType: "Base", resourceId: "changzhou", capacity: 260, demand: 320, sharerCount: 3 },
+    ],
+    contention: [{ resourceId: "changzhou", sharers: ["常州·动力线-A", "常州·动力线-B", "常州·储能线-C"] }],
+    downgraded: [{ resourceId: "changzhou", sharedByType: "Line", objectId: "常州·储能线-C", reason: "需求最小" }],
+    summary: "1 个共享瓶颈，3 张单争用，1 张被降级",
+    dataMode: "MOCK",
+  },
+  concentration_risk: {
+    concentrations: [
+      { rootType: "Model", rootId: "4680-NCM", dependents: ["SO-10001", "SO-10004", "SO-10007"], count: 3 },
+      { rootType: "Model", rootId: "方形-LFP", dependents: ["SO-10002", "SO-10005"], count: 2 },
+    ],
+    topExposure: { rootType: "Model", rootId: "4680-NCM", dependents: ["SO-10001", "SO-10004", "SO-10007"], count: 3 },
+    summary: "2 个隐性集中单点（Model），最大敞口 3 个依赖方",
+    dataMode: "MOCK",
+  },
+  margin_attribution: {
+    inverted: [
+      { id: "SO-10002", revenue: 480, totalCost: 512, margin: -32, marginRate: -0.0667, topDriver: { label: "原料成本", value: 380, share: 0.742 }, attribution: [{ label: "原料成本", value: 380, share: 0.742 }, { label: "制造费用", value: 132, share: 0.258 }] },
+    ],
+    rootDrivers: [{ label: "原料成本", invertedCount: 1, totalValue: 380 }],
+    invertedCount: 1,
+    summary: "1 个目标毛利倒挂；根因主驱动 原料成本（拉穿 1 个）",
+    dataMode: "MOCK",
+  },
+  supplier_disruption_radius: {
+    rootType: "Base",
+    rootId: "changzhou",
+    layers: [
+      { type: "Line", viaField: "baseId", count: 3, ids: ["常州·动力线-A", "常州·动力线-B", "常州·储能线-C"] },
+      { type: "Process", viaField: "lineId", count: 9, ids: [] },
+      { type: "Equipment", viaField: "processId", count: 21, ids: [] },
+    ],
+    radius: 3,
+    totalAffected: 33,
+    leafType: "Equipment",
+    leafCount: 21,
+    summary: "断供「changzhou」影响半径 3 层、波及 33 个对象；叶层 Equipment 21 个",
+    dataMode: "MOCK",
+  },
+  multisource_fusion: {
+    role: "order",
+    fused: [
+      { pk: "SO-10001", verdict: "TRUSTED", confidence: 1, fields: [{ field: "due", value: "2026-07-12", conflict: false }] },
+      { pk: "SO-10002", verdict: "SUSPECT", confidence: 0.4, fields: [{ field: "due", value: "2026-07-20", conflict: true }] },
+    ],
+    suspectCount: 1,
+    conflictCount: 1,
+    strategies: ["AUTHORITY"],
+    summary: "2 个对象归并，1 处冲突仲裁，1 处测谎命中",
+    dataMode: "MOCK",
+  },
 };
 
 export class MockSolverClient implements SolverClient {

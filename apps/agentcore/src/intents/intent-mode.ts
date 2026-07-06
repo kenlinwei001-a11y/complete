@@ -24,6 +24,13 @@ export const INTENT_MODE: Record<string, IntentMode> = {
   credit_check: "WORKFLOW_FIRST",
   sop_status: "WORKFLOW_FIRST",
   carbon_q: "WORKFLOW_FIRST",
+  // CORE-NL-SOLVER-ROUTING：5 个通用多跳求解器场景卡——价值在「有哪些/谁最狠/是多少」（求解器算出的
+  // 承载数据表），故 WORKFLOW_FIRST（路径A 确定性作答，非 agent 自由推理）。
+  shared_bottleneck_q: "WORKFLOW_FIRST",
+  concentration_risk_q: "WORKFLOW_FIRST",
+  margin_attribution_q: "WORKFLOW_FIRST",
+  supplier_disruption_q: "WORKFLOW_FIRST",
+  multisource_fusion_q: "WORKFLOW_FIRST",
   risk_root_cause: "AGENT_FIRST",
   plan_recommend: "AGENT_FIRST",
   yield_diag: "AGENT_FIRST",

@@ -54,7 +54,8 @@ const app = await buildServer(deps);
 await app.ready();
 
 const cards = SCENARIO_CATALOG.map((c) => c.sNo);
-if (cards.length !== 20) fail.push(`§6 运行期：出厂目录不是 20 卡（实 ${cards.length}）——目录漂移`);
+// CORE-NL-SOLVER-ROUTING：20 → 25（新增 5 个通用多跳求解器卡 S21–S25·全 WORKFLOW_FIRST）。
+if (cards.length !== 25) fail.push(`§6 运行期：出厂目录不是 25 卡（实 ${cards.length}）——目录漂移`);
 
 const table = [];
 let governed = 0;
@@ -87,7 +88,7 @@ for (const k of cards) {
   }
 }
 
-// 工作流地板（确定性齿·revert-red 靶）：13 张 WORKFLOW_FIRST 卡必 GOVERNED（无 LLM 也必过）。
+// 工作流地板（确定性齿·revert-red 靶）：18 张 WORKFLOW_FIRST 卡必 GOVERNED（无 LLM 也必过·CORE-NL-SOLVER-ROUTING 后 13→18）。
 const wfCards = table.filter((r) => r.mode === "WORKFLOW_FIRST");
 for (const r of wfCards) {
   if (r.maturity !== "GOVERNED") fail.push(`工作流地板 卡 ${r.k}(WORKFLOW_FIRST): 应确定性 GOVERNED，实 ${r.maturity}/${r.gap ?? ""}（渲染投影/确定性绑定退化）`);
@@ -120,6 +121,6 @@ if (fail.length > 0) {
   console.error("  逐卡：" + table.map((r) => `${r.k}=${r.maturity}${r.v ? "/" + r.v : ""}`).join(" "));
   process.exit(1);
 }
-console.log(`✓ scenario-ontogenesis-runtime:check —— 20 卡真 grow 跑通：${governed}/20 GOVERNED，分布 ${JSON.stringify(dist)}。`);
+console.log(`✓ scenario-ontogenesis-runtime:check —— ${cards.length} 卡真 grow 跑通：${governed}/${cards.length} GOVERNED，分布 ${JSON.stringify(dist)}。`);
 console.log(`  §6.1 每 GOVERNED 卡 VERIFIED + rings.data + 承载数据块（投影真数据）· §6.5 非 GOVERNED 卡必带 gaps 处置（无静默残缺）·`);
 console.log(`  工作流地板 ${wfCards.length} 张 WORKFLOW_FIRST 全 GOVERNED（确定性·revert-red 齿）· §2.4 launch S01 确定性绑定 Path A 出真决策视图。`);

@@ -42,6 +42,13 @@ const REPRESENTATIVE_ARGS: Record<string, Record<string, unknown>> = {
     ],
     newUnitPrice: 600,
   },
+  // CORE-NL-SOLVER-ROUTING：5 个通用多跳求解器（route=graph·读对象图）代表性入参（结构合法·seedBattery
+  // 世界真类型/字段/路径；handler 无条件回全形状——即便结果集空，绑定字段仍在输出中在场，真值齿只钉字段在场）。
+  shared_bottleneck: { resourceType: "Base", sharedByType: "Line", viaField: "baseId", capacityField: "formationCapDaily", demandField: "capacityDaily" },
+  concentration_risk: { startType: "Order", path: [{ viaField: "model", toType: "Model" }] },
+  margin_attribution: { targetType: "Order", costFields: [{ field: "unitPrice", label: "单价" }] },
+  supplier_disruption_radius: { rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] },
+  multisource_fusion: { role: "order", fields: ["due"], sources: [{ sourceLabel: "ERP", typeKey: "Order", authority: 1 }, { sourceLabel: "MES", typeKey: "Model", authority: 2 }] },
 };
 
 describe("渲染投影绑定 = 真实输出字段（WO ONTO-SCEN-RENDER-PROJ ①·真值齿）", () => {

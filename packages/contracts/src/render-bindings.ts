@@ -120,4 +120,35 @@ export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBind
     { block: "table", fromSolverField: "displacedOrders" },
     { block: "text", fromSolverField: "summary" },
   ],
+  // CORE-NL-SOLVER-ROUTING：5 个通用多跳求解器（route=graph）的投影绑定（⊆ solver-registry outputShape·
+  // datacore render-bindings-real-fields.test 真 invoke 逐字段钉「真在输出中」）。每卡 ≥1 kpi/table 承载数据块。
+  shared_bottleneck: [
+    { block: "table", fromSolverField: "bottlenecks" },
+    { block: "table", fromSolverField: "contention" },
+    { block: "table", fromSolverField: "downgraded" },
+    { block: "text", fromSolverField: "summary" },
+  ],
+  concentration_risk: [
+    { block: "table", fromSolverField: "concentrations" },
+    { block: "text", fromSolverField: "summary" },
+  ],
+  margin_attribution: [
+    { block: "kpi", fromSolverField: "invertedCount" },
+    { block: "table", fromSolverField: "inverted" },
+    { block: "table", fromSolverField: "rootDrivers" },
+    { block: "text", fromSolverField: "summary" },
+  ],
+  supplier_disruption_radius: [
+    { block: "kpi", fromSolverField: "radius" },
+    { block: "kpi", fromSolverField: "totalAffected" },
+    { block: "kpi", fromSolverField: "leafCount" },
+    { block: "table", fromSolverField: "layers" },
+    { block: "text", fromSolverField: "summary" },
+  ],
+  multisource_fusion: [
+    { block: "kpi", fromSolverField: "suspectCount" },
+    { block: "kpi", fromSolverField: "conflictCount" },
+    { block: "table", fromSolverField: "fused" },
+    { block: "text", fromSolverField: "summary" },
+  ],
 });

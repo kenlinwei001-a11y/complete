@@ -164,7 +164,7 @@ export function buildEvalCapabilitySlice(runs: EvalRunReport[], at?: string): Ca
 }
 
 /** 已接入的自我面清单（其余散落面为后续增量·诚实边界）。 */
-export const WIRED_SURFACES = ["evals"] as const;
+export const WIRED_SURFACES = ["evals", "solvers"] as const;
 
 /** 未接入面的诚实占位 slice（wired=false·rows=[]）——不假装已归一（正是本 PRD 根治的 claim>实）。 */
 export function unwiredSlice(surface: string, at?: string): CapabilitySlice {

@@ -45,6 +45,13 @@ export const INTENT_SKILL: Record<string, string> = {
   sop_status: "skl_sop_balance",
   quarterly_gap_q: "skl_sop_balance",
   carbon_q: "skl_carbon_compliance",
+  // CORE-NL-SOLVER-ROUTING：5 个通用求解器场景卡对口方法论（复用既有出厂 skill·SKILL-LIB-POLISH②
+  // 目录卡必须显式挂对口方法论，漏配即 skillIdForIntent 抛错）。
+  shared_bottleneck_q: "skl_seed_capacity",
+  concentration_risk_q: "skl_risk_diagnosis",
+  margin_attribution_q: "skl_order_margin",
+  supplier_disruption_q: "skl_risk_diagnosis",
+  multisource_fusion_q: "skl_risk_diagnosis",
 };
 
 /** 默认方法论（真实兜底·仅供非目录键的 hardcoded 计划如 what_if_displacement_q 用·目录卡禁静默回落）。 */
@@ -105,6 +112,12 @@ const INTENT_SLICE_ROOT: Record<string, string> = {
   sop_status: "Plan",
   quarterly_gap_q: "Plan",
   carbon_q: "Model",
+  // CORE-NL-SOLVER-ROUTING：通用求解器读的主对象类型（切片 rootType·industry-agnostic 本体 key）。
+  shared_bottleneck_q: "Base",
+  concentration_risk_q: "Order",
+  margin_attribution_q: "Order",
+  supplier_disruption_q: "Base",
+  multisource_fusion_q: "Order",
 };
 
 /** BP-4 对齐 seedIntentsAndPlans：sop_balance 求解器实际绑 mrp_netting（已注册·有真表）。 */

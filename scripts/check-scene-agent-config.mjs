@@ -77,8 +77,9 @@ const skillIds = new Set(skills.map((s) => s.id));
 const { plans } = seed.seedIntentsAndPlans("demo");
 const planById = new Map(plans.map((p) => [p.id, p]));
 
-if (intents.length !== 20) {
-  fail(`一等 Intent 物化数=${intents.length}，应为 20（20 场景 intentKey 全物化）。`);
+// CORE-NL-SOLVER-ROUTING：出厂场景卡 20 → 25（新增 5 个通用多跳求解器卡 S21–S25）。
+if (intents.length !== 25) {
+  fail(`一等 Intent 物化数=${intents.length}，应为 25（25 场景 intentKey 全物化）。`);
 }
 for (const it of intents) {
   const id = `intent(${it.key})`;
