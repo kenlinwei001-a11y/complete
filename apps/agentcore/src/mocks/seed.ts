@@ -373,7 +373,8 @@ export function seedIntentsAndPlans(
   ];
 
   // SKILL-LIBRARY-EVERYWHERE §3/§4：Path A 计划挂对口方法论 skill（skillIdForIntent 单一来源·plan.key=intentKey）——
-  // 执行期 render_answer 结论叙事确定性体现该方法论口径（非 LLM 注入·R6）。孤儿引用由 skill-integrity 齿守。
+  // 执行期 render_answer 结论叙事确定性体现该方法论口径（非 LLM 注入·R6）。
+  // 孤儿引用由命名门 `skill-integrity:check`（scripts/check-skill-integrity.mjs）+ skill-library.test.ts 齿守。
   for (const p of plans) {
     p.skillRefs = [{ skillId: skillIdForIntent(p.key), version: "latest" }];
   }

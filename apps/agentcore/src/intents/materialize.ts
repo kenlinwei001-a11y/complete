@@ -47,9 +47,29 @@ export const INTENT_SKILL: Record<string, string> = {
   carbon_q: "skl_carbon_compliance",
 };
 
-/** 按意图键取对口方法论 skillId（缺省回落产能分析·与既有语义一致）。供 plan/workflow.skillRefs 与全绑定链派生。 */
+/** 默认方法论（真实兜底·仅供非目录键的 hardcoded 计划如 what_if_displacement_q 用·目录卡禁静默回落）。 */
+export const DEFAULT_SKILL_ID = "skl_seed_capacity";
+
+/**
+ * 按意图键取对口方法论 skillId。供 plan/workflow.skillRefs 与全绑定链派生。
+ * SKILL-LIB-POLISH②：目录卡（∈SCENARIO_CATALOG）**必须**显式挂对口方法论——漏配即**抛错**（非静默回落
+ * skl_seed_capacity·否则将来新增未映射卡会悄悄退回产能方法论而非报错）。门 skill-integrity:check 亦静态守此。
+ * 非目录键（hardcoded 计划 what_if_displacement_q 等）保留 DEFAULT_SKILL_ID 真实默认。
+ */
 export function skillIdForIntent(intentKey: string): string {
-  return INTENT_SKILL[intentKey] ?? "skl_seed_capacity";
+  const explicit = INTENT_SKILL[intentKey];
+  if (explicit) return explicit;
+  if (scenarioByIntent(intentKey)) {
+    throw new Error(
+      `skillIdForIntent: 场景卡「${intentKey}」缺显式 INTENT_SKILL 映射——禁静默回落 ${DEFAULT_SKILL_ID}，请在 INTENT_SKILL 显式挂对口方法论。`,
+    );
+  }
+  return DEFAULT_SKILL_ID;
+}
+
+/** 目录卡中未显式挂 INTENT_SKILL 映射的 intentKey（供门 skill-integrity:check 静态揪漏配·空=全覆盖）。 */
+export function unmappedCatalogIntentKeys(): string[] {
+  return SCENARIO_CATALOG.filter((c) => !INTENT_SKILL[c.intentKey]).map((c) => c.intentKey);
 }
 
 /** agent-first 意图绑定的场景 agent（scene-entry defaultAgent 派生·均 PUBLISHED）。 */
@@ -155,7 +175,8 @@ export function materializeIntents(tenantId = SEED_TENANT, now = new Date().toIS
       solverKey,
       ruleKeys: [...card.rules], // evaluation（C-规则默认 evaluation·datacore 契约「未标视为 evaluation」）
       constraintKeys: [] as string[], // constraint（本 catalog 无 constraint-typed 规则→空·reconcile 可后补）
-      skillId: INTENT_SKILL[key] ?? "skl_seed_capacity",
+      skillId: skillIdForIntent(key), // SKILL-LIB-POLISH②：经守卫单一来源·目录卡漏配即抛错（非静默回落）
+
       ontologySliceKey: sliceKeyForIntent(key),
       ...(mode === "AGENT_FIRST"
         ? { agentId: INTENT_AGENT[key] ?? "agt_seed_analyst" }

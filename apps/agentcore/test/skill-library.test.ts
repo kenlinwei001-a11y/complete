@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SkillDefinition } from "@platform/contracts";
 import { seedRegistry, seedIntentsAndPlans } from "../src/mocks/seed.js";
-import { materializeIntents } from "../src/intents/materialize.js";
+import { materializeIntents, skillIdForIntent, unmappedCatalogIntentKeys } from "../src/intents/materialize.js";
 import { INTENT_MODE } from "../src/intents/intent-mode.js";
 import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 import { skillMethodologyBlock } from "../src/workflow/executor.js";
@@ -95,6 +95,14 @@ describe("SKILL-LIBRARY-EVERYWHERE 齿", () => {
     expect(workflowFirst).toBe(Object.values(INTENT_MODE).filter((m) => m === "WORKFLOW_FIRST").length); // 卡遍历 WF 计数 == 钉死表 WF 计数（产出 vs 源）
     // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
     expect(agentFirst).toBe(Object.values(INTENT_MODE).filter((m) => m === "AGENT_FIRST").length); // 卡遍历 AGENT 计数 == 钉死表 AGENT 计数（产出 vs 源）
+  });
+
+  it("② 漏配保护齿（SKILL-LIB-POLISH②）：每张目录卡显式挂 INTENT_SKILL·无一走静默兜底", () => {
+    // 门 skill-integrity:check 同源静态守：目录卡缺显式映射即会静默回落 skl_seed_capacity——齿钉死"无一漏配"。
+    expect(unmappedCatalogIntentKeys()).toEqual([]);
+    // 目录卡漏配时 skillIdForIntent 运行期抛错（非静默回落）；非目录键保留真实默认。
+    expect(() => skillIdForIntent("__nonexistent_card_key__")).not.toThrow();
+    expect(skillIdForIntent("__nonexistent_card_key__")).toBe("skl_seed_capacity");
   });
 
   it("② 库存量广度：20 卡至少覆盖 6 种不同方法论（不再一律指向少数几条）", () => {

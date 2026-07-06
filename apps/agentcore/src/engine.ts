@@ -349,7 +349,9 @@ export class ExecutionEngine {
 
   /**
    * SKILL-LIBRARY-EVERYWHERE §3：把 plan/workflow.skillRefs 解析为已发布方法论 SkillDefinition（确定性消费用）。
-   * 只取 PUBLISHED（避免草稿方法论污染结论叙事）；latest→最新已发布版；缺失/未发布静默跳过（门 skill-integrity:check 守孤儿引用）。
+   * 只取 PUBLISHED（避免草稿方法论污染结论叙事）；latest→最新已发布版；缺失/未发布静默跳过。
+   * 孤儿引用（指向不存在/未发布 skillId）由命名门 `skill-integrity:check`（scripts/check-skill-integrity.mjs）
+   * 静态守 + skill-library.test.ts 齿双保（不让此处运行期静默跳过掩盖漏配）。
    */
   async resolveSkillRefs(
     tenantId: string,
