@@ -30,13 +30,18 @@ const CONFIG_VERSION_TTL_MS = 5 * 60_000;
 // 每项 kind=view（查 workspace.navigation，/v/:key）或 admin（查 visibleAdminPages，/admin/:path）；
 // 逐项可见性仍按角色 + entitlement 过滤；空组自动隐藏；折叠记忆复用 NavGroup。图谱(view)并入「建模与图谱」与本体/建模同组（闭"图谱与本体拆两区"）；meta 补回「平台与系统」。
 type NavItemRef = { kind: "view" | "admin"; key: string };
+// NAV-DROP-LEDGER-MAP（用户亲定 2026-07-06）：低价值「台账与地图」导航组（仅剩基地地理视图 geo-map）退役——
+// 组删除 + geo-map 视图退役。后端（datacore）仍可能在 workspace.navigation 下发 geo-map（未同步退役），
+// 故前端过滤退役键防其漏入「其它」兜底组；旧深链 /v/geo-map 由 App.tsx tombstone 302→/v/risk
+// （产能推演·承接 GeoMap 原「查看风险」CTA），非白屏死链。
+const RETIRED_VIEW_KEYS = new Set<string>(["geo-map"]);
 // WO-NAV-SANDBOX：游离的 sim-sandbox/sim-init 特殊 nav 项并入「推演」组（不再单列于 nav 末尾）；
 // 仍受 sim.sandbox entitlement 门控显隐（R3 不破，SimSandboxGuard 路由守卫不动）。extra 渲染槽承载它们。
 const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[]; extra?: "sim-sandbox" }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
   { title: "推演", items: ["project-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })), extra: "sim-sandbox" },
-  { title: "台账与地图", items: ["geo-map"].map((key) => ({ kind: "view" as const, key })) },
+  // NAV-DROP-LEDGER-MAP：「台账与地图」组（仅基地地理视图 geo-map）已退役删除（订单台账早移入「数据」组）。geo-map 见 RETIRED_VIEW_KEYS 过滤 + App.tsx tombstone。
   // WO-NAV-DATA：「数据接入」→「数据」；移入 order（订单台账，从台账与地图）+ data-builder（数据构建发动机，从构建与成长）。
   { title: "数据", items: [
     { kind: "admin" as const, key: "connections" },
@@ -296,7 +301,7 @@ export default function ShellLayout() {
         <nav className={styles.group} data-testid="nav-business">
           {/* WO-NAV-SANDBOX：sim-sandbox/sim-init 不再游离于此——经 simSandboxOn 并入「推演」组（仍 sim.sandbox 门控）。 */}
           <UnifiedNav
-            views={workspace.navigation.filter((item) => item.group !== "admin")}
+            views={workspace.navigation.filter((item) => item.group !== "admin" && !RETIRED_VIEW_KEYS.has(item.viewKey ?? item.key))}
             adminPages={adminPages}
             simSandboxOn={featureOn(workspace, "sim.sandbox")}
           />

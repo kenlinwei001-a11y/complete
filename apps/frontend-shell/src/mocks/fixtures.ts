@@ -108,7 +108,6 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true },
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
   { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["affected_orders"] } },
-  { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   // 运营态出厂配置增量 §2/§4：运营回顾（只读历史证据链页面，消费 GET /a/v1/history/bundle）
   { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   { key: "view.task-dag", name: "任务编排 DAG", level: "BLOCK", defaultOn: true },
@@ -390,7 +389,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
         segColors: { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" },
       },
     },
-    { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
+    // NAV-DROP-LEDGER-MAP（用户亲定 2026-07-06）：基地地理视图（geo-map）随「台账与地图」组退役，mock 不再下发。
     // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面）
     { key: "review", title: "运营回顾", renderer: "review", layout: {} },
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底

@@ -324,20 +324,7 @@ export const zh = {
     problemFinance: (v: number) => `财务贡献 ${v.toFixed(1)} 亿`,
     dagTitle: "逐单根因链（订单 → 判定 → 根因 → 对策）",
   },
-  /** §7.17 地理视图 */
-  geo: {
-    title: "基地地理视图",
-    legendTitle: "定位（颜色）· GWh（大小）",
-    overseas: "海外基地",
-    cardLines: "产线数",
-    cardGwh: "产能 (GWh)",
-    cardYear: "投产年",
-    cardProduct: "主产品",
-    cardUtil: "利用率",
-    cardBottleneck: "当前瓶颈",
-    gotoRisk: "查看风险",
-    gotoGraph: "图谱中查看",
-  },
+  // NAV-DROP-LEDGER-MAP（用户亲定 2026-07-06）：§7.17 地理视图（geo）文案随基地地理视图退役删除。
   /** §7.19 任务编排 DAG */
   taskDag: {
     section: "编排推演 DAG",

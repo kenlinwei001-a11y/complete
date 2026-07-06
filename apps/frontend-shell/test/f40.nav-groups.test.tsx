@@ -21,8 +21,8 @@ describe("F40 · 统一域分组导航（N1：视图+管理合一套域分组，
     renderApp("/v/dash");
 
     const nav = await screen.findByTestId("nav-business");
-    // N1 统一域分组头（推演/台账与地图/建模与图谱…）
-    for (const g of ["规划与平衡", "推演", "台账与地图", "建模与图谱"]) {
+    // N1 统一域分组头（推演/建模与图谱…）
+    for (const g of ["规划与平衡", "推演", "建模与图谱"]) {
       expect(within(nav).getByTestId(`nav-group-${g}`)).toBeInTheDocument();
     }
     // 概览项（无组头）直接可见
@@ -30,6 +30,13 @@ describe("F40 · 统一域分组导航（N1：视图+管理合一套域分组，
 
     // NAV-GRAPH-MERGE（用户亲报 IA 冗余）：不再存在独立「图谱体系」组。回退成两组即红。
     expect(within(nav).queryByTestId("nav-group-图谱体系")).toBeNull();
+
+    // NAV-DROP-LEDGER-MAP（用户亲定 2026-07-06·teeth）：低价值「台账与地图」组（仅基地地理视图）已退役——
+    // 组头不再出现；基地地理视图不得漏入「其它」兜底组（重加回组或项即红）。
+    expect(within(nav).queryByTestId("nav-group-台账与地图")).toBeNull();
+    expect(within(nav).queryByText("基地地理视图")).toBeNull();
+    const leftoverLm = within(nav).queryByTestId("nav-group-其它");
+    if (leftoverLm) expect(within(leftoverLm).queryByText("基地地理视图")).toBeNull();
 
     // GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05·无豁免）：图谱唯一入口=「图谱全景」；
     // 七视角（主干/流/源/求解器/MVP/智能体/学习闭环）全删——重新加回任何一个即红。

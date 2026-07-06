@@ -145,6 +145,10 @@ export const routes: RouteObject[] = [
       { path: "v/sim-init", element: <SimInitGuard /> },
       // GRAPH-PANORAMA-ONLY：退役图谱视角深链 302→全景（静态段先于 :viewKey 匹配）。
       ...RETIRED_GRAPH_VIEW_KEYS.map((k): RouteObject => ({ path: `v/${k}`, element: <Navigate to="/v/graph" replace /> })),
+      // NAV-DROP-LEDGER-MAP（用户亲定 2026-07-06·参 GRAPH-PANORAMA-ONLY / GROWTH-TICKET-MERGE tombstone 范式）：
+      // 低价值「台账与地图」组（仅基地地理视图 geo-map）退役——旧深链/书签 302→/v/risk（产能推演·风险看板，
+      // 承接 GeoMap 原「查看风险」CTA），非白屏死链；静态段先于 :viewKey 匹配。
+      { path: "v/geo-map", element: <Navigate to="/v/risk" replace /> },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

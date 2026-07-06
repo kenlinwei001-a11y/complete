@@ -23,9 +23,9 @@ describe("WO-NAV-DATA / WO-NAV-SANDBOX · 导航 IA 重组", () => {
     }
     // 旧组名「数据接入」不再存在
     expect(within(nav).queryByTestId("nav-group-数据接入")).not.toBeInTheDocument();
-    // order（订单台账）已从「台账与地图」移出 → 该组只剩 geo-map（基地地理视图）
-    const ledgerInLandmap = within(within(nav).getByTestId("nav-group-台账与地图")).queryByText("订单台账");
-    expect(ledgerInLandmap).not.toBeInTheDocument();
+    // NAV-DROP-LEDGER-MAP（用户亲定 2026-07-06）：order（订单台账）早移入「数据」组（上方已断言在该组内）；
+    // 「台账与地图」组本身（仅剩基地地理视图·低价值）已整组退役删除——组头不再存在。
+    expect(within(nav).queryByTestId("nav-group-台账与地图")).not.toBeInTheDocument();
   });
 
   it("WO-NAV-SANDBOX：sim.sandbox 关 → 推演组无沙盘/初始化项（R3 门控，默认态）", async () => {

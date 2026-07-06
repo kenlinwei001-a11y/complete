@@ -58,6 +58,7 @@ registerRenderer("sop-balance", () => import("./sim/SopBalanceView"));
 registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));
-registerRenderer("geo-map", () => import("./plan/GeoMapView"));
+// NAV-DROP-LEDGER-MAP（用户亲定 2026-07-06）：基地地理视图（geo-map）随「台账与地图」组退役——
+// 渲染器注销 + 组件删除；旧深链 /v/geo-map 由 App.tsx tombstone 302→/v/risk（非幽灵路由）。
 // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面，renderer 复用 dashboard 类网格风格）
 registerRenderer("review", () => import("./ReviewView"));
