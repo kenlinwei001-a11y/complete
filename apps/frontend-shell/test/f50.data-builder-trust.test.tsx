@@ -66,9 +66,9 @@ describe("F50 · 数据构建发动机控制台 P3/P3.5/P4（区6 信任 + 区7 
     loginAs("planner");
     renderApp("/admin/data-builder");
     await screen.findByTestId("data-builder-page");
-    // 自成长收编：缺口工单看板内嵌 + 聚焦视图深链
+    // 自成长收编：缺口工单看板内嵌 + 深链（GROWTH-TICKET-MERGE：聚焦视图归并入工单中心，深链改指工单中心）
     const growth = await screen.findByTestId("db-growth-console");
-    expect(within(growth).getByText(/自成长聚焦视图/)).toBeTruthy();
+    expect(within(growth).getByText(/工单中心/)).toBeTruthy();
     // 合成数据页收编：快速合成入口同在本页
     expect(screen.getByTestId("db-quick-synth")).toBeTruthy();
   });

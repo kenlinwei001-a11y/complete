@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { TicketBoardRow, TicketDetail } from "@platform/contracts";
+import type { GrowthRunReport, TicketBoardRow, TicketDetail } from "@platform/contracts";
 import {
   fetchTicketBoard,
   fetchTicketDetail,
+  fetchGrowthLedger,
   claimWorklistItem,
   releaseWorklistItem,
   fillWorklistItem,
@@ -15,15 +16,26 @@ import { toast, toastError } from "@/store/toastStore";
 import { DrillBack } from "@/components/DrillBack";
 
 /**
- * 统一工单中心（TICKET-CENTER-UNIFIED·用户亲定 2026-07-05）：
+ * 统一工单中心（TICKET-CENTER-UNIFIED·用户亲定 2026-07-05；GROWTH-TICKET-MERGE 2026-07-06 归并自成长驾驶舱）：
  * 「所有类似需要补数据/补求解器/补…，认领之后都集中在一个页面，点击每个工单，都可以看到详情，列举补充的内容」。
  * - 聚合全类型（三源真值·零造行）：WorklistItem(DATA_GAP) + B3 HARD DataRequest 人工描述单 + GrowthTicket(FEATURE/PLAN_SCAFFOLD/SOLVER_GAP)；
  *   kind 为开放扩展位——ONTO-SCEN 批次 NEEDS_HUMAN 发育工单（GrowthTicket 同源）自动进面，零硬耦合。
+ * - **指标头条**（承接自成长驾驶舱·防丢）：需求可答率（成长账本 CONVERGED 占比 answerRate）+ 补成率（board DONE 占比 fillRate）+ 待认领 + 我的在办。
+ * - **诊断新缺口入口**（承接自成长驾驶舱·防丢）：把「客户明确问题」当燃料真跑一轮 QOS 诊断缺口（runGrowth）→ 诊断出的可补项登记为工单落入下方看板，缺功能出工单。
  * - Tab：全部 | 待认领 | 我的在办（认领后默认落此·跨类型聚合）| 已完成。
  * - 点行 → 详情抽屉（侧滑）：通用段（问句/缺口码/类型/状态时间线/认领人）+ **补充内容清单段**（按类型列举 what needs to be supplied）。
  * - kind-first 权限语义不破（GROWTH fix）：仅 WORKLIST 真在办项（claimable）走认领/释放/补生命周期；
  *   FEATURE/SOLVER_GAP 只读、PLAN_SCAFFOLD 深链去审批——绝不对 gtk_ 调 worklist claim（后端 409 guard 同守）。
+ *
+ * GROWTH-TICKET-MERGE：/admin/growth 页归并撤退（302→/admin/tickets），其两处独有功能（诊断触发入口 + 量化指标头条）
+ * 在此承接落地——工单中心为超集主体，防功能丢失。
  */
+const TERMINAL_BADGE: Record<string, { label: string; cls: string }> = {
+  CONVERGED: { label: "已收敛 ✓", cls: "green" },
+  BOUNDARY: { label: "边界（仅剩缺功能工单）", cls: "amber" },
+  MAX_ROUNDS: { label: "未收敛（达 K 轮）", cls: "red" },
+  NEEDS_HUMAN: { label: "待人工补（已入看板）", cls: "amber" },
+};
 const KIND_LABEL: Record<string, string> = {
   DATA_GAP: "缺数据",
   DATA_REQUEST: "补数描述单",
@@ -54,15 +66,31 @@ export default function TicketCenterPage() {
   const [selectedId, setSelectedId] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("ticket"),
   );
+  // GROWTH-TICKET-MERGE：诊断新缺口入口（承接自成长驾驶舱·防丢）。折叠态 + 运行框 + 本次运行报告。
+  const [diagnoseOpen, setDiagnoseOpen] = useState(false);
+  const [probeQuery, setProbeQuery] = useState("常州影响哪些订单？"); // debattery-allow（输入框示例占位，非业务常数）
+  const [probeK, setProbeK] = useState(4);
+  const [report, setReport] = useState<GrowthRunReport | null>(null);
 
   const { data: board } = useQuery({ queryKey: ["b", "ticket-board"], queryFn: fetchTicketBoard });
   const allRows = board?.items ?? [];
+  // 指标头条：需求可答率（成长账本 CONVERGED 占比）——承接自成长驾驶舱·防丢。
+  const { data: ledger } = useQuery({ queryKey: ["b", "growth-ledger"], queryFn: fetchGrowthLedger });
+  const runs = ledger?.items ?? [];
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["b", "ticket-board"] });
     void qc.invalidateQueries({ queryKey: ["b", "ticket-detail"] });
     void qc.invalidateQueries({ queryKey: ["b", "growth-worklist"] });
+    void qc.invalidateQueries({ queryKey: ["b", "growth-ledger"] });
   };
+
+  // 诊断新缺口：把客户问题当燃料真跑一轮 QOS 诊断缺口 → 诊断出的可补项登记为工单落下方看板（缺功能出工单）。
+  const probe = useMutation({
+    mutationFn: () => runGrowth(probeQuery, probeK),
+    onSuccess: (r) => { setReport(r); invalidate(); },
+    onError: toastError,
+  });
 
   const claim = useMutation({
     mutationFn: (id: string) => claimWorklistItem(id),
@@ -104,6 +132,14 @@ export default function TicketCenterPage() {
 
   const kinds = useMemo(() => [...new Set(allRows.map((r) => r.kind))].sort(), [allRows]);
 
+  // 指标头条（承接自成长驾驶舱·防丢）：需求可答率（账本 CONVERGED 占比）+ 补成率（board DONE 占比）+ 待认领 + 我的在办。
+  const answerable = runs.filter((e) => e.report.terminalState === "CONVERGED").length;
+  const answerRate = runs.length ? Math.round((answerable / runs.length) * 100) : 0;
+  const openCount = allRows.filter((r) => r.status === "OPEN").length;
+  const mineCount = allRows.filter((r) => r.owner === myUserId && (r.status === "CLAIMED" || r.status === "IN_PROGRESS")).length;
+  const doneCount = allRows.filter((r) => r.status === "DONE").length;
+  const fillRate = allRows.length ? Math.round((doneCount / allRows.length) * 100) : 0;
+
   // 行内操作随态（kind-first 分流·GROWTH fix 409 guard 语义保真）：
   const rowActions = (r: TicketBoardRow) => {
     if (!r.claimable) {
@@ -139,7 +175,56 @@ export default function TicketCenterPage() {
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>工单中心</h2>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
         全类型补 X 工单一页集中（缺数据 / 补数描述单 / 缺计划 / 缺求解器 / 缺功能）——点工单看详情与补充内容清单；认领后归入「我的在办」。
-        诊断运行视图见 <a href="/admin/growth">自成长驾驶舱</a>。
+        上方「诊断新缺口」把客户问题当燃料真跑一轮 QOS 诊断缺口 → 可补项登记为工单（缺功能出工单）。
+      </div>
+
+      {/* 指标头条（GROWTH-TICKET-MERGE 承接自成长驾驶舱·防丢）：需求可答率 + 补成率 + 待认领 + 我的在办。 */}
+      <div className="panel" style={{ marginBottom: 12, display: "flex", gap: 24, fontSize: 12, flexWrap: "wrap" }} data-testid="tc-metrics">
+        <span data-testid="tc-metric-answer-rate">需求可答率 <b style={{ color: "var(--ok)" }}>{answerRate}%</b> <span className="muted">({answerable}/{runs.length})</span></span>
+        <span>补成率 <b style={{ color: "var(--ok)" }} data-testid="tc-metric-fillrate">{fillRate}%</b> <span className="muted">({doneCount}/{allRows.length})</span></span>
+        <span>待认领 <b className="amber" data-testid="tc-metric-open">{openCount}</b></span>
+        <span>我的在办 <b data-testid="tc-metric-mine">{mineCount}</b></span>
+      </div>
+
+      {/* 诊断新缺口入口（GROWTH-TICKET-MERGE 承接自成长驾驶舱·防丢）：折叠面板 + 运行框 + 本次运行报告。 */}
+      <div className="panel" style={{ marginBottom: 12 }} data-testid="tc-diagnose-entry">
+        <button
+          type="button"
+          className={`btn sm${diagnoseOpen ? " primary" : ""}`}
+          data-testid="tc-diagnose-toggle"
+          aria-expanded={diagnoseOpen}
+          onClick={() => setDiagnoseOpen((v) => !v)}
+        >
+          <span style={{ display: "inline-block", width: 10, transition: "transform .15s", transform: diagnoseOpen ? "none" : "rotate(-90deg)" }}>▾</span>{" "}
+          诊断新缺口（把客户问题当燃料跑一轮 QOS）
+        </button>
+        {diagnoseOpen && (
+          <div data-testid="tc-diagnose-panel" style={{ marginTop: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <input data-testid="tc-diagnose-query" value={probeQuery} onChange={(e) => setProbeQuery(e.target.value)} style={{ flex: 1, minWidth: 240 }} />
+              <label style={{ fontSize: 12 }}>K <input data-testid="tc-diagnose-k" type="number" value={probeK} min={1} max={20} onChange={(e) => setProbeK(Number(e.target.value))} style={{ width: 56 }} /></label>
+              <button className="btn primary sm" data-testid="tc-diagnose-run" disabled={probe.isPending || !probeQuery.trim()} onClick={() => probe.mutate()}>{probe.isPending ? "跑动中…" : "运行诊断"}</button>
+            </div>
+            <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>
+              缺数据**不自动补**——诊断出的可补项登记为下方看板一行（OPEN·DATA_GAP），认领后点「补数据缺口」才真跑（R6 确定性）；缺功能出工单。
+            </div>
+            {report && (
+              <div className="panel" data-testid="tc-diagnose-report" style={{ padding: 10 }}>
+                <div className="section-title">
+                  本次运行 <span className={`badge ${TERMINAL_BADGE[report.terminalState]?.cls}`} data-testid="tc-diagnose-terminal">{TERMINAL_BADGE[report.terminalState]?.label}</span>
+                  <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>{report.rounds.length} 轮 / K={report.maxRounds}</span>
+                </div>
+                {report.rounds.map((rd) => (
+                  <div key={rd.round} data-testid={`tc-diagnose-round-${rd.round}`} style={{ fontSize: 11.5, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                    <b>第 {rd.round} 轮</b> · 缺口 <span className="badge">{rd.gapReport.verdict}</span>{" "}
+                    {rd.gapReport.findings.map((f, i) => <span key={i} className="mono" style={{ marginLeft: 6 }}>{f.gapCode}</span>)}
+                    {rd.fillApplied && <span style={{ marginLeft: 8, color: "var(--muted)" }}>→ 补：{rd.fillApplied.action}{rd.fillApplied.advanced ? " ✓推进" : ""}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tab（跨类型聚合收窄） */}
@@ -184,7 +269,8 @@ export default function TicketCenterPage() {
           </div>
           <span style={{ display: "inline-flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
             <Link to="/v/dash" className="btn primary sm" data-testid="tc-empty-cta">去问答坞提问 →</Link>
-            <Link to="/admin/growth" className="btn sm" data-testid="tc-empty-growth">自成长驾驶舱</Link>
+            {/* GROWTH-TICKET-MERGE：原「自成长驾驶舱」深链已归并——改为就地展开「诊断新缺口」入口（防死链）。 */}
+            <button type="button" className="btn sm" data-testid="tc-empty-diagnose" onClick={() => setDiagnoseOpen(true)}>诊断新缺口 →</button>
           </span>
         </div>
       ) : (

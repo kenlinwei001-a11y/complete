@@ -115,7 +115,7 @@ export function GapCard({ report, scenario, onRetry }: { report: GapReport; scen
       {!done && !disp.triggerable && (
         <div className={styles.gapBoundary} data-testid="gap-boundary">
           {zh.dock.gapUnreachable(code)}
-          <Link to="/admin/growth" className="btn sm" style={{ marginLeft: 8 }} data-testid="gap-ticket-link">
+          <Link to="/admin/tickets" className="btn sm" style={{ marginLeft: 8 }} data-testid="gap-ticket-link">
             {zh.dock.gapTicket}
           </Link>
         </div>
@@ -218,7 +218,7 @@ export function GapCard({ report, scenario, onRetry }: { report: GapReport; scen
           ) : (
             <div className={styles.gapBoundary} data-testid="gap-still-blocked">
               {zh.dock.gapUnreachable(stuckCode)}
-              <Link to="/admin/growth" className="btn sm" style={{ marginLeft: 8 }} data-testid="gap-ticket-link">
+              <Link to="/admin/tickets" className="btn sm" style={{ marginLeft: 8 }} data-testid="gap-ticket-link">
                 {zh.dock.gapTicket}
               </Link>
             </div>

@@ -92,7 +92,8 @@ describe("CL.7 · 对话坞缺口卡", () => {
     const card = await screen.findByTestId("gap-card");
     expect(within(card).queryByTestId("gap-trigger")).toBeNull();
     expect(within(card).getByTestId("gap-boundary")).toHaveTextContent("不可达：断在 SOLVER_NOT_FOUND");
-    expect(within(card).getByTestId("gap-ticket-link")).toHaveAttribute("href", "/admin/growth");
+    // GROWTH-TICKET-MERGE：工单深链归并指向工单中心（自成长驾驶舱已归并·超集承接）。
+    expect(within(card).getByTestId("gap-ticket-link")).toHaveAttribute("href", "/admin/tickets");
   });
 
   it("ONTO-SCEN-LAUNCH-DET §2.5：场景卡缺口 → 诚实发育卡「此卡发育中：缺 X · 已建工单 #N」+ 深链（替代死答）[teeth]", async () => {

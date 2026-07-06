@@ -459,7 +459,8 @@ function QuickSynthPanel() {
 /**
  * P4 三页归一（页面归属决议）：把自成长发动机的「缺口工单看板」收编进数据构建发动机控制台——
  * 建域/推演自检出的功能缺口在此沉淀为厂商中立工单，与每条记录区6 功能缺失自检贯通；
- * 路由 /admin/growth 保留为"自成长聚焦视图"（LOOP/账本/工单全貌），本页内嵌摘要 = 无功能丢失（UI-7）。
+ * GROWTH-TICKET-MERGE（2026-07-06）：自成长驾驶舱归并入工单中心 /admin/tickets（超集·诊断触发+指标头条+全类型聚合），
+ * 本页内嵌摘要深链改指工单中心 = 无功能丢失（UI-7）。
  */
 function GrowthConsolePanel() {
   const { data } = useQuery({ queryKey: ["b", "growth-tickets"], queryFn: fetchGrowthTickets });
@@ -472,7 +473,7 @@ function GrowthConsolePanel() {
       </div>
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>
         建域/推演自检出的功能缺口在此沉淀为工单（厂商中立施工），与每条历史记录区6 的功能缺失自检贯通。
-        <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 自成长聚焦视图（LOOP / 成长账本 / 工单全貌）</a>
+        <a href="/admin/tickets" style={{ marginLeft: 6 }}>→ 工单中心（诊断触发 / 指标头条 / 全类型工单聚合）</a>
       </div>
       {tickets.length === 0 ? (
         <div style={{ fontSize: 11.5, color: "var(--muted)" }}>暂无缺口工单（建域/推演自检全通过）。</div>

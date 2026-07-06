@@ -113,7 +113,7 @@ export default function ScenarioLauncherPage() {
                 </div>
                 <div style={{ fontSize: 12, color: "var(--muted)" }}>{c.triggerQuestion}</div>
                 <div style={{ fontSize: 10.5, color: "var(--muted2)" }}>{c.groundingGap?.detail ?? "引用的对象类型在本租户零实例，需先补数据。"}</div>
-                <button className="btn sm" style={{ alignSelf: "flex-start", marginTop: 2 }} data-testid={`needsdata-claim-${c.sNo}`} onClick={() => navigate("/admin/growth")}>
+                <button className="btn sm" style={{ alignSelf: "flex-start", marginTop: 2 }} data-testid={`needsdata-claim-${c.sNo}`} onClick={() => navigate("/admin/tickets")}>
                   认领并补数据 →
                 </button>
               </div>

@@ -58,8 +58,7 @@ const DomainsPage = lazy(() => import("@/pages/admin/DomainsPage"));
 const EvalsPage = lazy(() => import("@/pages/admin/EvalsPage"));
 const SlicesPage = lazy(() => import("@/pages/admin/SlicesPage"));
 const MergePage = lazy(() => import("@/pages/admin/MergePage"));
-const GrowthCockpitPage = lazy(() => import("@/pages/admin/GrowthCockpitPage"));
-const TicketCenterPage = lazy(() => import("@/pages/admin/TicketCenterPage")); // TICKET-CENTER-UNIFIED（用户亲定 2026-07-05）
+const TicketCenterPage = lazy(() => import("@/pages/admin/TicketCenterPage")); // TICKET-CENTER-UNIFIED（用户亲定 2026-07-05）；GROWTH-TICKET-MERGE 归并自成长驾驶舱（2026-07-06）
 const SolverReviewPage = lazy(() => import("@/pages/admin/SolverReviewPage"));
 const SolversPage = lazy(() => import("@/pages/admin/SolversPage"));
 const ConfigMigrationPage = lazy(() => import("@/pages/admin/ConfigMigrationPage"));
@@ -187,7 +186,10 @@ export const routes: RouteObject[] = [
       admin("evals", <EvalsPage />),
       admin("slices", <SlicesPage />),
       admin("merge", <MergePage />),
-      admin("growth", <GrowthCockpitPage />),
+      // GROWTH-TICKET-MERGE（用户亲定 2026-07-06·参 GRAPH-PANORAMA-ONLY tombstone 范式）：
+      // 自成长驾驶舱 /admin/growth 与工单中心功能多重合 → 合为工单中心（超集）。旧路由/书签/内链
+      // 302→/admin/tickets（tombstone 重定向防死链——页已删，独有功能[诊断触发+指标头条]在工单中心承接）。
+      { path: "admin/growth", element: <Navigate to="/admin/tickets" replace /> },
       admin("tickets", <TicketCenterPage />),
       admin("solver-review", <SolverReviewPage />),
       admin("solvers", <SolversPage />),

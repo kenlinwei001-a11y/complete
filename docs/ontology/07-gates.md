@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §7` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `a5988fb474124956`。
+> **改接线改母体 §7，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `aef142ab14660760`。
 
 ---
 
@@ -11,7 +11,7 @@
 - **闭包门**（数据构建）：object/data/forward 三向，HARD 失败拒发布 · `closure.ts`。
 - **validate**（工作流/本体）：DAG 环 / 类型 / render 末步 / storageMode 一致性。
 - **准备度评分**（实体/子图成熟度）。
-- **entitlement 门**：FEATURE_NOT_FOUND（先于 authz）。**feature 退役声明门（GRAPH-PANORAMA-ONLY 起）**：静态注册键删除必须同步入 `RETIRED_FEATURE_KEYS`/`RETIRED_VIEW_KEYS`（datacore `features.ts`·agentcore `features/registry.ts` 镜像）防幽灵 entitlement——残留 override 忽略、新 override 400、退役视图键禁动态注册/不下发 workspace；teeth：datacore `planviews.test.ts`（400+解析零残留）· agentcore `qos-f-entitlement.test.ts`（注册表零残留）· frontend `f25.graph-panorama.test.tsx`（退役键重现即红）。
+- **entitlement 门**：FEATURE_NOT_FOUND（先于 authz）。**feature 退役声明门（GRAPH-PANORAMA-ONLY 起）**：静态注册键删除必须同步入 `RETIRED_FEATURE_KEYS`/`RETIRED_VIEW_KEYS`（datacore `features.ts`·agentcore `features/registry.ts` 镜像）防幽灵 entitlement——残留 override 忽略、新 override 400、退役视图键禁动态注册/不下发 workspace；teeth：datacore `planviews.test.ts`（400+解析零残留）· agentcore `qos-f-entitlement.test.ts`（注册表零残留）· frontend `f25.graph-panorama.test.tsx`（退役键重现即红）。**导航 IA 退役同范式（GROWTH-TICKET-MERGE 2026-07-06）**：前端管理页/导航项退役（非 datacore feature 键）同走「声明退役非静默删」——`/admin/growth` 页删后 `App.tsx` 留 tombstone 302→`/admin/tickets`（防死链）、`adminRegistry.ts` ADMIN_PAGES 撤 growth 登记 + 「构建与成长」组去重 + 角色门取并集（growth∪tickets=admin/data_admin/catalog_admin）、`ShellLayout.tsx` NAV_GROUPS 撤 growth、内链改指存活页；teeth：frontend `f63.growth-ticket-merge.test.tsx`（导航无 growth 项/302 一致/角色门并集/独有功能承接·revert 任一即红）。
 - **规则 BLOCK 短路**（工作流步骤遇 BLOCK 终止）。
 - **A6 行级过滤**（query/slice/solver 读出）。
 - **VLE 闭环验证引擎**（七段断言 + 三覆盖率，独立参照预言机双算）· `validation` · `apps/datacore/src/vle.ts`。七段全覆盖：①接入(GenSpec 行数守恒) · ②对象化(产出>0 + 引用完整性) · ③聚合派生(聚合==明细差分,经 query 路径) · ④规则查全查准(独立 plain-JS 谓词:字段齐备查全 + 植入越线行 C03 查准) · ⑤求解器执行(**参照实现双算 V5**：被测 capacity_forecast P50/P90 vs 独立参照预言机 `vle-oracle.ts`[第二套独立代码,设备→工序→产线→基地→周曲线累计,**零 import 被测**]逐字段比对容差 1e-6,改坏系数即⑤红+diff 下钻——VL2 真捕获人造 bug) · ⑥行动终态(R4:已注册 ActionType 审批链非空,无直写后门) · ⑦校准注入(提案 simulatedMapeAfter<mapeBefore,无反校准)。`assertionCov = 已覆盖规范段/7`（非硬编码 1）；VL7/V9 静态独立性:vle.ts 与 `vle-oracle.ts` 均不 import `solvers/service`/`solvers/capacity`/`ruledsl`——参照预言机独立于被测，杜绝"用被测算被测"。**门 `validation:check`（轨D 新建 · real-backend 聚合外独立门，同 `ui-smoke:*`）**：V10 真跑 SMOKE（pass + 工程验证度≥基线 + ⑤含 reference 双算断言才过；植入坏系数→门红 exit1）+ V9 静态扫零被测 import；· `scripts/check-validation.mjs`，`pnpm validation:check`。**已并入 `pnpm gates` 聚合**（评审打回校正：VLE 不进 gates=CI 拦不住=形同虚设；gates 链内前置 `pnpm --filter datacore build` 确保对当前源码跑 SMOKE → 改坏求解器 `pnpm gates` 真红）。
