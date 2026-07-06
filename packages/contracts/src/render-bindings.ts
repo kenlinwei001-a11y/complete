@@ -111,4 +111,13 @@ export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBind
     { block: "kpi", fromSolverField: "verdict" },
     { block: "kpi", fromSolverField: "maxLever" },
   ],
+  // QUERY30 缺口③ Q01 样板：接单挤占推演。KPI=推荐案/可行方案数/高优先级最长位移天；表=四型方案 + 挤占清单；叙事=结论。
+  what_if_displacement: [
+    { block: "kpi", fromSolverField: "recommended" },
+    { block: "kpi", fromSolverField: "schemeCount" },
+    { block: "kpi", fromSolverField: "highPriDisplaceDays" },
+    { block: "table", fromSolverField: "schemes" },
+    { block: "table", fromSolverField: "displacedOrders" },
+    { block: "text", fromSolverField: "summary" },
+  ],
 });

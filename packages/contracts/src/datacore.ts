@@ -223,6 +223,9 @@ export const SOLVER_RULE_REFS: Record<string, string[]> = {
   capex_scenario: ["C18", "C23"],
   quarterly_gap: ["C08", "C29", "C47"],
   carbon_footprint: ["C33"],
+  // QUERY30 缺口③ Q01 样板：接单挤占推演。C34 挤占优先级不变量（Displace.highPriDisplaceDays）· C35 重大变更须≥2方案（PlanSet.schemeCount）——
+  // 经 ruleEvalPayload 映射真评估（措施命名空间来自求解器真实产出：canonical 挤占级联 + 可行方案数）。
+  what_if_displacement: ["C34", "C35"],
 };
 
 /**

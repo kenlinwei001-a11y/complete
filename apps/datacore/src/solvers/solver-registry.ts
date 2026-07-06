@@ -100,6 +100,8 @@ export const SOLVER_REGISTRY: readonly SolverDescriptor[] = [
   { key: "combinatorial_auction", route: "graph", outputShape: ["status", "optimal", "winners", "objective", "bidType", "itemCount", "bidCount", "summary"], liveDefault: true },
   { key: "optimize_whatif", route: "graph", outputShape: ["baselineObjective", "perturbedObjective", "deltaObjective", "feasible", "conflictConstraints", "explanation", "summary"], liveDefault: true },
   { key: "multisource_fusion", route: "graph", outputShape: ["role", "fused", "suspectCount", "conflictCount", "dataMode", "strategies", "summary"] },
+  // QUERY30 缺口③ Q01 样板：接单挤占推演（extended 路由·args 驱动·确定性 R6·接 C34/C35）。
+  { key: "what_if_displacement", route: "extended", outputShape: ["newOrder", "base", "feasibleWithoutDisplacement", "freeDaily", "shortfallDaily", "displacedOrders", "highPriDisplaceDays", "totalDisplaced", "schemes", "schemeCount", "recommended", "comparison", "ruleRefs", "summary"] },
 ] as const;
 
 /** key→descriptor（O(1) 查·派发码用）。 */

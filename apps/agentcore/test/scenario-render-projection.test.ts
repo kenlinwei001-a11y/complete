@@ -15,7 +15,7 @@ import { SCENARIO_CATALOG } from "../src/scenarios-catalog.js";
 describe("① render 绑定驱动投影（bindings → KPI/表/叙事，逐值真投影）", () => {
   it("16 张派生卡计划：render 块零静态占位文本 + solver_summary 携非空 bindings（占位回潮即红）", () => {
     const { plans } = seedIntentsAndPlans();
-    const builtin = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation"]);
+    const builtin = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation", "what_if_displacement_q"]);
     const derived = plans.filter((p) => !builtin.has(p.key));
     expect(derived.length).toBe(16);
     for (const p of derived) {
@@ -121,7 +121,7 @@ describe("③ sliceTargets 经 slice-planner 自动生成（datadep 派生候选
   it("20 卡基因组齐备：renderBindings=计划真实绑定派生（单源），派生 16 卡逐一与出厂登记一致", () => {
     const genomes = deriveScenarioGenomes();
     expect(genomes.size).toBe(20);
-    const builtin = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation"]);
+    const builtin = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation", "what_if_displacement_q"]);
     const { plans } = seedIntentsAndPlans();
     for (const card of SCENARIO_CATALOG) {
       const g = genomes.get(card.intentKey)!;

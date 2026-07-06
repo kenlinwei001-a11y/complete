@@ -449,6 +449,37 @@ const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
     ruleRefs: ["C33"],
     dataMode: "MOCK",
   },
+  // QUERY30 缺口③ Q01 样板：接单挤占推演 mock 输出（形状镜像真实 DataCore `what_if_displacement`·覆盖
+  // SOLVER_RENDER_BINDINGS 全字段：recommended/schemeCount/highPriDisplaceDays/schemes/displacedOrders/summary）。
+  // 确定性字面量·dataMode:"MOCK" 诚实标（真值以真 DataCore invoke/FDE 为准，见 docs/evidence/QUERY30-ORCH-Q01-fde.md）。
+  what_if_displacement: {
+    newOrder: { model: "4680-NCM", qty: 4200, advancePct: 0.2, weeks: 6, dailyDemand: 100 },
+    base: "常州",
+    feasibleWithoutDisplacement: false,
+    freeDaily: 20,
+    shortfallDaily: 80,
+    displacedOrders: [
+      { so: "SO-3502", cust: "储能大客户F", pri: "低", qty: 2100, displaceDays: 21, penaltyWan: 10.5, reScheme: "延期 21 天（违约金 10.5 万）" },
+      { so: "SO-3488", cust: "动力集团A", pri: "高", qty: 2100, displaceDays: 21, penaltyWan: 21, reScheme: "延期 21 天（违约金 21 万）" },
+    ],
+    highPriDisplaceDays: 21,
+    totalDisplaced: 2,
+    schemes: [
+      { key: "delay", name: "延期在手单", feasible: true, displacedCount: 2, promiseDeltaDays: 21, marginPct: 13.5, outsourceRatio: 0, penaltyTotalWan: 31.5, cashOccupiedWan: 252, note: "位移 2 单" },
+      { key: "outsource", name: "外协消化", feasible: false, displacedCount: 0, promiseDeltaDays: 0, marginPct: 11.5, outsourceRatio: 0, penaltyTotalWan: 0, cashOccupiedWan: 252, note: "可外协单不足" },
+      { key: "split", name: "拆单分线", feasible: false, displacedCount: 0, promiseDeltaDays: 0, marginPct: 13, outsourceRatio: 0, penaltyTotalWan: 0, cashOccupiedWan: 252, note: "认证线不足 2 条" },
+      { key: "downgrade", name: "降级部分承接", feasible: true, displacedCount: 0, promiseDeltaDays: 33, marginPct: 13.5, outsourceRatio: 0, penaltyTotalWan: 0, cashOccupiedWan: 50.4, note: "仅接 840/4200 套" },
+    ],
+    schemeCount: 2,
+    recommended: "delay",
+    comparison: {
+      columns: ["方案", "交期影响(天)", "毛利率(%)", "挤占单数", "外协比", "现金占用(万)"],
+      rows: [["延期在手单", 21, 13.5, 2, 0, 252], ["外协消化", 0, 11.5, 0, 0, 252], ["拆单分线", 0, 13, 0, 0, 252], ["降级部分承接", 33, 13.5, 0, 0, 50.4]],
+    },
+    ruleRefs: ["C34", "C35"],
+    summary: "急单 4680-NCM ×4200（提前 20%·6 周）日产能缺口 80，需挤占 2 单（高优先级最长位移 21 天）；2 个可行方案，推荐「延期在手单」。",
+    dataMode: "MOCK",
+  },
 };
 
 export class MockSolverClient implements SolverClient {

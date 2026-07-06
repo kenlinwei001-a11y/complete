@@ -334,6 +334,41 @@ export function seedIntentsAndPlans(
         },
       ],
     },
+    // QUERY30 缺口③ Q01 样板 · 接单全链推演 workflow（DESIGN-query30 §2.5）：可行性→四型方案组→挤占级联→毛利→逐单再方案，
+    // 全部由 what_if_displacement 求解器一步产出（内含四型方案 + 挤占清单 + 逐单再方案）；C34/C35 经 SOLVER_RULE_REFS 求解器内真评估透出。
+    // render 走 solver_summary（SOLVER_RENDER_BINDINGS["what_if_displacement"] 投影 recommended/schemeCount/highPriDisplaceDays/schemes/displacedOrders/summary 真实字段·消灭静态占位）。
+    {
+      id: `plan_what_if_displacement_q_v1${sfx}`,
+      packageId: pkgId,
+      key: "what_if_displacement_q",
+      version: 1,
+      status: "PUBLISHED",
+      steps: [
+        {
+          id: "s1",
+          type: "invoke_solver",
+          params: {
+            solverKey: "what_if_displacement",
+            args: {
+              model: "{{slots.model.objectId}}",
+              qty: "{{slots.qty}}",
+              advancePct: "{{slots.advancePct}}",
+              weeks: "{{slots.weeks}}",
+              baseId: "{{slots.base.objectId}}",
+            },
+          },
+        },
+        {
+          id: "render",
+          type: "render_answer",
+          params: {
+            blocks: [
+              { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1", bindings: [...(SOLVER_RENDER_BINDINGS.what_if_displacement ?? [])] },
+            ],
+          },
+        },
+      ],
+    },
   ];
 
   const intents: IntentDefinition[] = [
@@ -464,6 +499,32 @@ export function seedIntentsAndPlans(
       ],
       planId: `plan_adopt_mitigation_v1${sfx}`,
       riskLevel: "ACTION_DRAFT",
+      owner: "seed",
+      createdAt: now,
+      updatedAt: now,
+    },
+    // QUERY30 缺口③ Q01 样板意图（DESIGN-query30 §2.5）：接单挤占推演。**不入 SCENARIO_CATALOG**（避横铺·分期）——
+    // 直接注册为一等意图+计划（同 4 内置样式），路径 A 可路由该问句 → what_if_displacement 求解器。经发育管道 growScenario
+    // 长成场景卡（PROVISIONAL 起·发育 run 留痕·非 seed 手装 GOVERNED 卡）。
+    {
+      id: `int_what_if_displacement_q_v1${sfx}`,
+      packageId: pkgId,
+      key: "what_if_displacement_q",
+      version: 1,
+      status: "PUBLISHED",
+      name: "接单挤占推演",
+      description: "某急单（型号/数量/提前比例/周数）插进来能不能接、会挤占哪些在手订单、有哪些方案（延期/外协/拆单/降级四型量化比较），被挤订单逐单再方案。",
+      examples: ["4680-NCM 加 20% 六周能不能接？会挤占哪些订单？", "这个急单插进来挤占哪些单、有哪些方案", "加单能不能接，被挤的订单怎么办"],
+      enabledViews: "*",
+      slots: [
+        { name: "model", type: "objectRef", required: true, defaultFrom: "$.selectedObjects[0]", clarifyPrompt: "请指明急单型号（如 4680-NCM；也可在页面选中型号自动带入）", description: "急单型号（Model 对象引用）", refType: "Model" },
+        { name: "qty", type: "number", required: true, clarifyPrompt: "请提供急单数量（套/只填数字）", description: "急单数量" },
+        { name: "advancePct", type: "number", required: false, description: "提前交付比例（0.2 表示提前 20%），缺省 0" },
+        { name: "weeks", type: "number", required: false, description: "交付周数，缺省 6" },
+        { name: "base", type: "objectRef", required: false, defaultFrom: "$.selectedObjects[1]", clarifyPrompt: "请指明落单基地（可选，如 常州）", description: "落单基地（Base 对象引用）", refType: "Base" },
+      ],
+      planId: `plan_what_if_displacement_q_v1${sfx}`,
+      riskLevel: "COMPUTE",
       owner: "seed",
       createdAt: now,
       updatedAt: now,

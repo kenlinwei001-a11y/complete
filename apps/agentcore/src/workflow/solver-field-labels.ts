@@ -138,6 +138,14 @@ export const FIELD_LABELS: Readonly<Record<string, FieldLabel>> = {
   perturbedObjective: { label: "扰动后目标值" },
   deltaObjective: { label: "目标值变动" },
 
+  // —— QUERY30 缺口③ Q01 what_if_displacement 接单挤占推演标量字段 ——
+  feasibleWithoutDisplacement: { label: "免挤占可承接" },
+  freeDaily: { label: "自由日产能", unit: "套/日" },
+  shortfallDaily: { label: "日产能缺口", unit: "套/日" },
+  highPriDisplaceDays: { label: "高优先级最长位移", unit: "天" },
+  totalDisplaced: { label: "挤占订单数", unit: "单" },
+  schemeCount: { label: "可行方案数", unit: "个" },
+
   // —— carbon_footprint 构成子字段（避免展开落 camelCase 英文回落）——
   breakdown: { label: "构成" },
   materialCarbon: { label: "物料碳排", unit: "kgCO₂e" },
@@ -239,6 +247,10 @@ export const STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
   "excludedFactors",
   "schemes",
   "recommend",
+  // QUERY30 缺口③ Q01 what_if_displacement 结构性容器（数组/对象·投成表或展开·非标量 KPI）。
+  "newOrder",
+  "displacedOrders",
+  "comparison",
   "windows",
   "projects",
   "c23",

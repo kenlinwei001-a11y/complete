@@ -425,6 +425,164 @@ export function carbonFootprint(args: Record<string, unknown>) {
 }
 
 /**
+ * QUERY30 缺口③ Q01 样板求解器 · `what_if_displacement`（DESIGN-query30 §2.5）——
+ * **接单挤占推演**：某急单（model/qty/提前 advancePct/weeks）插进来能不能接、会挤占哪些在手订单、
+ * 有哪些处置方案（四型确定性枚举）、被挤订单各自的再方案。全程 **args 驱动 · 确定性（R6·禁 random/时钟）**，
+ * 逐值可溯自真实 Order（so/cust/pri/qty/marginPct/penaltyClause/substitutable，QUERY30-ONTOLOGY-EXT 五件套）
+ * 与真实 Line（capacityDaily/certifiedModels，同批新增）。
+ *
+ * 挤占级联（Q01「会挤占哪些订单」）= 直接影响集：为腾出急单日产能缺口，按 **优先级升序·交期最晚优先** 位移在手单，
+ * 每单位移天数 displaceDays ∝ 单量。C34（挤占优先级不变量）读 canonical 级联的 `highPriDisplaceDays`；
+ * C35（重大变更须 ≥2 方案）读 `schemeCount`（可行方案数）。二者经 service.ts ruleEvalPayload 映射进 evaluate_rules 真裁决。
+ *
+ * 四型方案（Q01「输出多个方案和方案量化比较」）：延期 delay / 外协 outsource / 拆单 split / 降级 downgrade，
+ * 各自 feasible 判定 + 五维量化（交期影响/毛利率/挤占单数/外协比/现金占用）；推荐案确定性择优。
+ */
+const PRI_RANK: Record<string, number> = { 低: 0, 中: 1, 高: 2 };
+const priRank = (v: unknown) => PRI_RANK[str(v)] ?? 1;
+
+interface DispOrder {
+  so: string; cust: string; pri: string; qty: number; marginPct: number;
+  penaltyClause: number; substitutable: boolean; unitPrice: number;
+}
+
+export function whatIfDisplacement(args: Record<string, unknown>) {
+  const model = str(args.model);
+  const qty = num(args.qty, 0);
+  const advancePct = num(args.advancePct, 0);
+  const weeks = Math.max(1, num(args.weeks, 6));
+  const baseId = str(args.baseId);
+  const horizonDays = weeks * 7;
+  // 参数化阈值（改 param 改果·R14）：违约/毛利系数默认 == 内联（R6 字节一致）。
+  const advanceErosion = num(args.advanceErosion, 0.5);   // 提前交付对毛利的侵蚀系数（Q01「毛利率是否因提前而变化」）
+  const outsourceMarginHit = num(args.outsourceMarginHit, 2); // 外协方案毛利折让（pp）
+  const outsourceUnitCost = num(args.outsourceUnitCost, 0.15);  // 外协溢价（占货值比）
+  const baseMargin = num(args.baseMargin, 15);            // 急单基准毛利率（无 Segment 锚时）
+
+  const lines = (Array.isArray(args.lines) ? args.lines : []) as { lineId?: unknown; capacityDaily?: unknown; certifiedModels?: unknown }[];
+  const orders = (Array.isArray(args.orders) ? args.orders : []) as Record<string, unknown>[];
+
+  // 认证可产该型号的线（Q01 认证线约束）；无匹配 → 回落全部线并标注（诚实·非静默兜底）。
+  const certOf = (l: { certifiedModels?: unknown }) => (Array.isArray(l.certifiedModels) ? (l.certifiedModels as string[]) : []);
+  const certLinesRaw = lines.filter((l) => certOf(l).includes(model));
+  const certFallback = certLinesRaw.length === 0;
+  const certLines = certFallback ? lines : certLinesRaw;
+  const totalCap = round(certLines.reduce((s, l) => s + num(l.capacityDaily), 0), 2);
+  const certModelSet = new Set(certLines.flatMap(certOf));
+
+  // 与急单争同一批线的在手单（其型号被这些线认证）。
+  const contending: DispOrder[] = orders
+    .filter((o) => certModelSet.size === 0 || certModelSet.has(str(o.model)))
+    .map((o) => ({
+      so: str(o.so), cust: str(o.cust), pri: str(o.pri, "中"), qty: num(o.qty),
+      marginPct: num(o.marginPct), penaltyClause: num(o.penaltyClause),
+      substitutable: o.substitutable === true, unitPrice: num(o.unitPrice, 600),
+    }));
+
+  const dailyDemand = Math.ceil(qty / horizonDays);
+  const committedDaily = round(contending.reduce((s, o) => s + o.qty, 0) / horizonDays, 2);
+  const freeDaily = round(Math.max(0, totalCap - committedDaily), 2);
+  const shortfallDaily = round(Math.max(0, dailyDemand - freeDaily), 2);
+  const feasibleWithoutDisplacement = shortfallDaily <= 0;
+  const unitsToFree = Math.round(shortfallDaily * horizonDays);
+  const totalExistingUnits = contending.reduce((s, o) => s + o.qty, 0) || 1;
+  const goodsWan = round((qty * num(args.newUnitPrice, 600)) / 10000, 2); // 急单货值（万·现金占用基）
+
+  // 位移候选序：优先级升序（先挤低 pri）·同级交期最晚优先（无 dueDay 则按 so 稳定）。
+  const displaceOrder = (a: DispOrder, b: DispOrder) => priRank(a.pri) - priRank(b.pri) || (a.so < b.so ? -1 : 1);
+  // 贪心腾容：按候选序累计 qty 至 ≥ unitsToFree；每单 displaceDays ∝ 单量（clamp[1,horizon]）。
+  const freeBy = (pool: DispOrder[]) => {
+    const disp: (DispOrder & { displaceDays: number; penaltyWan: number; reScheme: string })[] = [];
+    let freed = 0;
+    for (const o of [...pool].sort(displaceOrder)) {
+      if (freed >= unitsToFree) break;
+      const displaceDays = Math.min(horizonDays, Math.max(1, Math.ceil(o.qty / Math.max(1, dailyDemand))));
+      const penaltyWan = round((o.qty * o.unitPrice * o.penaltyClause) / 10000, 2);
+      // 逐单再方案（Q01「被影响订单是否也有多方案」）：可外协→外协消化不延期；否则延期 N 天并计违约金。
+      const reScheme = o.substitutable ? "外协消化（不延期）" : `延期 ${displaceDays} 天（违约金 ${penaltyWan} 万）`;
+      disp.push({ ...o, displaceDays, penaltyWan, reScheme });
+      freed += o.qty;
+    }
+    return { disp, freed, enough: freed >= unitsToFree };
+  };
+
+  // canonical 挤占级联（Q01「会挤占哪些订单」）= 延期口径直接影响集。
+  const cascade = feasibleWithoutDisplacement ? { disp: [], freed: 0, enough: true } : freeBy(contending);
+  const highPriDisplaceDays = cascade.disp.filter((d) => d.pri === "高").reduce((m, d) => Math.max(m, d.displaceDays), 0);
+  const rushMargin = round(baseMargin * (1 - advancePct * advanceErosion), 1); // 提前 → 毛利侵蚀
+
+  // 四型方案确定性枚举。
+  type Scheme = { key: string; name: string; feasible: boolean; displacedCount: number; promiseDeltaDays: number; marginPct: number; outsourceRatio: number; penaltyTotalWan: number; cashOccupiedWan: number; note: string };
+  const schemes: Scheme[] = [];
+
+  // ① 延期 delay：位移低 pri 在手单。
+  {
+    const r = feasibleWithoutDisplacement ? { disp: [], enough: true } : freeBy(contending);
+    const penalty = round(r.disp.reduce((s, d) => s + d.penaltyWan, 0), 2);
+    const maxDelay = r.disp.reduce((m, d) => Math.max(m, d.displaceDays), 0);
+    schemes.push({ key: "delay", name: "延期在手单", feasible: feasibleWithoutDisplacement || r.enough, displacedCount: r.disp.length, promiseDeltaDays: maxDelay, marginPct: rushMargin, outsourceRatio: 0, penaltyTotalWan: penalty, cashOccupiedWan: goodsWan, note: feasibleWithoutDisplacement ? "免挤占直接承接" : `位移 ${r.disp.length} 单` });
+  }
+  // ② 外协 outsource：仅位移可外协单（不延期·计外协溢价）。
+  {
+    const pool = contending.filter((o) => o.substitutable);
+    const r = feasibleWithoutDisplacement ? { disp: [], freed: 0, enough: true } : freeBy(pool);
+    const outsourcedUnits = r.disp.reduce((s, d) => s + d.qty, 0);
+    const outsourceRatio = round(outsourcedUnits / totalExistingUnits, 3);
+    const outsourceCostWan = round((outsourcedUnits * (contending[0]?.unitPrice ?? 600) * outsourceUnitCost) / 10000, 2);
+    schemes.push({ key: "outsource", name: "外协消化", feasible: feasibleWithoutDisplacement || r.enough, displacedCount: r.disp.length, promiseDeltaDays: 0, marginPct: round(rushMargin - outsourceMarginHit, 1), outsourceRatio, penaltyTotalWan: 0, cashOccupiedWan: round(goodsWan + outsourceCostWan, 2), note: r.enough ? `外协 ${r.disp.length} 单腾容` : "可外协单不足" });
+  }
+  // ③ 拆单 split：急单跨 ≥2 认证线分摊（避免单线越限）。
+  {
+    const feasible = certLines.length >= 2 && dailyDemand <= totalCap && !certFallback;
+    // 分摊后仍需位移的残量（低 pri）。
+    const residualUnits = Math.max(0, unitsToFree - Math.round(freeDaily * horizonDays));
+    const r = residualUnits > 0 ? freeBy(contending) : { disp: [], enough: true };
+    schemes.push({ key: "split", name: "拆单分线", feasible: feasible, displacedCount: feasibleWithoutDisplacement ? 0 : r.disp.length, promiseDeltaDays: 0, marginPct: round(rushMargin - 0.5, 1), outsourceRatio: 0, penaltyTotalWan: 0, cashOccupiedWan: goodsWan, note: feasible ? `跨 ${certLines.length} 线分摊` : (certFallback ? "无认证线" : "认证线不足 2 条") });
+  }
+  // ④ 降级 downgrade：只承接自由产能可覆盖的部分（部分接·不挤占）。
+  {
+    const acceptedQty = Math.min(qty, Math.round(freeDaily * horizonDays));
+    const unmet = qty - acceptedQty;
+    const promiseDelta = unmet > 0 ? Math.min(horizonDays, Math.ceil(unmet / Math.max(1, dailyDemand))) : 0;
+    schemes.push({ key: "downgrade", name: "降级部分承接", feasible: true, displacedCount: 0, promiseDeltaDays: promiseDelta, marginPct: rushMargin, outsourceRatio: 0, penaltyTotalWan: 0, cashOccupiedWan: round((acceptedQty * num(args.newUnitPrice, 600)) / 10000, 2), note: unmet > 0 ? `仅接 ${acceptedQty}/${qty} 套` : "自由产能足量承接" });
+  }
+
+  const feasibleSchemes = schemes.filter((s) => s.feasible);
+  const schemeCount = feasibleSchemes.length;
+  // 推荐案确定性择优：挤占少 > 违约低 > 毛利高 > 现金省 > key 字典序。
+  const recommended = [...feasibleSchemes].sort((a, b) =>
+    a.displacedCount - b.displacedCount || a.penaltyTotalWan - b.penaltyTotalWan ||
+    b.marginPct - a.marginPct || a.cashOccupiedWan - b.cashOccupiedWan || (a.key < b.key ? -1 : 1),
+  )[0]?.key ?? null;
+
+  const comparison = {
+    columns: ["方案", "交期影响(天)", "毛利率(%)", "挤占单数", "外协比", "现金占用(万)"],
+    rows: schemes.map((s) => [s.name, s.promiseDeltaDays, s.marginPct, s.displacedCount, s.outsourceRatio, s.cashOccupiedWan]),
+  };
+
+  const summary = feasibleWithoutDisplacement
+    ? `急单 ${model} ×${qty}（${weeks} 周）自由产能足量承接、无需挤占；${schemeCount} 个可行方案，推荐「${schemes.find((s) => s.key === recommended)?.name ?? "-"}」。`
+    : `急单 ${model} ×${qty}（提前 ${Math.round(advancePct * 100)}%·${weeks} 周）日产能缺口 ${shortfallDaily}，需挤占 ${cascade.disp.length} 单（高优先级最长位移 ${highPriDisplaceDays} 天）；${schemeCount} 个可行方案，推荐「${schemes.find((s) => s.key === recommended)?.name ?? "-"}」。`;
+
+  return {
+    newOrder: { model, qty, advancePct, weeks, dailyDemand },
+    base: baseId,
+    feasibleWithoutDisplacement,
+    freeDaily,
+    shortfallDaily,
+    displacedOrders: cascade.disp,
+    highPriDisplaceDays,
+    totalDisplaced: cascade.disp.length,
+    schemes,
+    schemeCount,
+    recommended,
+    comparison,
+    ruleRefs: ["C34", "C35"],
+    summary,
+  };
+}
+
+/**
  * RISK-TRAJECTORY-DEFAKE（G2/G3·治本·命名而非匿名内联）：**合成默认输入**的命名常量。
  * 仅当调用方未显式传 args 时用于兜底演示；对应 dataMode 分别标 PARTIAL（估算缺口）/ MOCK（合成良率序列），
  * **不冒充真源**。此前 `totalDemand*0.15` 匿名内联、良率断点标 `source:"MES"` 谎称来自制造执行系统（假源归因）。
@@ -629,6 +787,27 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
       // G2：默认 gap 同口径估算（dataMode 无 levers 时已标 PARTIAL）。
       return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), ...args };
+    },
+  },
+  // QUERY30 缺口③ Q01 样板：接单挤占推演。orders/lines 真对象在场（QUERY30-ONTOLOGY-EXT 五件套 + 线级 capacityDaily/certifiedModels）→ LIVE；否则 MOCK。
+  what_if_displacement: {
+    fn: whatIfDisplacement,
+    dataMode: (c, args) => (argHas(args, "orders") || (nonEmpty(c.orders) && nonEmpty(c.lines)) ? "LIVE" : "MOCK"),
+    deriveArgs: (c, args) => {
+      // 显式 orders 优先（直接单测/编排显式喂）；否则从本体对象图装配（按 baseId 过滤在手单 + 线级产能/认证型号）。
+      const baseId = str(args.baseId);
+      const th = injectThresholds({ advanceErosion: c.params?.displacement?.advanceErosion, outsourceMarginHit: c.params?.displacement?.outsourceMarginHit, outsourceUnitCost: c.params?.displacement?.outsourceUnitCost, baseMargin: c.params?.displacement?.baseMargin });
+      if (argHas(args, "orders")) return { ...th, ...args };
+      const lines = (c.lines ?? []).map(props)
+        .filter((l) => baseId === "" || str(l.baseId) === baseId)
+        .map((l) => ({ lineId: str(l.lineId), capacityDaily: num(l.capacityDaily), certifiedModels: Array.isArray(l.certifiedModels) ? l.certifiedModels : [] }));
+      const orders = (c.orders ?? []).map(props)
+        .filter((o) => baseId === "" || (Array.isArray(o.bases) && (o.bases as string[]).includes(baseId)))
+        .map((o) => ({ so: str(o.so), cust: str(o.cust), model: str(o.model), qty: num(o.qty), pri: str(o.pri, "中"), marginPct: num(o.marginPct), penaltyClause: num(o.penaltyClause), substitutable: o.substitutable === true, unitPrice: num(o.unitPrice, 600) }));
+      // 急单单价：取同型号在手单单价（真值锚）或型号目录价，均缺则内联默认。
+      const modelUnit = orders.find((o) => o.model === str(args.model))?.unitPrice
+        ?? num((c.models ?? []).map(props).find((m) => str(m.modelId) === str(args.model))?.unitPrice, 600);
+      return { ...th, newUnitPrice: modelUnit, ...args, lines, orders };
     },
   },
 };

@@ -225,6 +225,17 @@ export interface SolverParamsShape {
     urgencyPivot: number;
     urgencySpan: number;
   };
+  /** QUERY30 缺口③ Q01 `what_if_displacement`：接单挤占推演系数（缺省→回落体内内联默认·R6 字节一致）。 */
+  displacement?: {
+    /** 提前交付对急单毛利的侵蚀系数（marginPct = baseMargin×(1−advancePct×advanceErosion)，原内联 0.5）。 */
+    advanceErosion: number;
+    /** 外协方案毛利折让 pp（原内联 2）。 */
+    outsourceMarginHit: number;
+    /** 外协溢价占货值比（原内联 0.15）。 */
+    outsourceUnitCost: number;
+    /** 急单基准毛利率（无 Segment 锚时，原内联 15）。 */
+    baseMargin: number;
+  };
   cert?: {
     /** C26 并行认证工程师组数缺省（原 deriveArgs 内联 3）。 */
     engineerGroups: number;

@@ -2277,6 +2277,11 @@ export class SolverService {
     } else if (solverKey === "mitigation_select") {
       const plans = Array.isArray(out.plans) ? out.plans : [];
       base.PlanSet = { ...(base.PlanSet as Record<string, unknown>), schemeCount: plans.length };
+    } else if (solverKey === "what_if_displacement") {
+      // QUERY30 Q01 样板：C34 挤占优先级不变量（Displace.highPriDisplaceDays = canonical 级联中高优先级订单最长位移天）·
+      // C35 重大变更须≥2方案（PlanSet.schemeCount = 求解器真实产出的可行方案数）。两者皆求解器真实输出、非造 measured。
+      base.Displace = { ...(base.Displace as Record<string, unknown>), highPriDisplaceDays: num(out.highPriDisplaceDays) };
+      base.PlanSet = { ...(base.PlanSet as Record<string, unknown>), schemeCount: num(out.schemeCount) };
     }
     // C37 净增益（DSL 无算术 → 此处派生）：netGain = 增量毛利 − 违约金合计（args 真实输入）。
     if (base.Tradeoff && typeof base.Tradeoff === "object" && !Array.isArray(base.Tradeoff)) {

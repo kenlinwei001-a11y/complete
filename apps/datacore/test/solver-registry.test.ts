@@ -35,7 +35,7 @@ const EXPECTED_KEYS = [
   "shared_bottleneck", "concentration_risk", "margin_attribution", "supplier_disruption_radius",
   "selection_optimize", "assignment_optimize", "sequencing_optimize", "packing_optimize",
   "facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction",
-  "optimize_whatif", "multisource_fusion",
+  "optimize_whatif", "multisource_fusion", "what_if_displacement",
 ];
 
 // 重构前 A6_READOUT_SOLVERS 白名单。
@@ -59,13 +59,13 @@ const EXPECTED_GRAPH = [
 const EXPECTED_EXTENDED = [
   "mitigation_select", "cert_schedule", "kit_readiness", "lta_gap", "inventory_optimize", "changeover_sequence",
   "yield_diagnosis", "maintenance_stagger", "outsourcing_split", "quote_margin", "credit_exposure",
-  "quarterly_gap", "carbon_footprint", "countermeasure_combo",
+  "quarterly_gap", "carbon_footprint", "countermeasure_combo", "what_if_displacement",
 ];
 
 describe("HARDCODE-DISPATCH-REGISTRY · 求解器派发单一来源", () => {
   it("① 语义零变：REGISTRY_SOLVER_KEYS 顺序/集合与重构前逐项一致", () => {
     expect(REGISTRY_SOLVER_KEYS).toEqual(EXPECTED_KEYS);
-    expect(REGISTRY_SOLVER_KEYS).toHaveLength(47);
+    expect(REGISTRY_SOLVER_KEYS).toHaveLength(48);
   });
 
   it("② SOLVER_KEYS 派生自 registry（同一来源·不再平行字面数组）", () => {
@@ -104,8 +104,8 @@ describe("HARDCODE-DISPATCH-REGISTRY · 求解器派发单一来源", () => {
   it("① 每 key 恰属一个 route，且 context+graph+extended == 全集", () => {
     const byRoute = { context: 0, graph: 0, extended: 0 };
     for (const d of SOLVER_REGISTRY) byRoute[d.route]++;
-    expect(byRoute).toEqual({ context: 10, graph: 23, extended: 14 });
-    expect(SOLVER_BY_KEY.size).toBe(47);
+    expect(byRoute).toEqual({ context: 10, graph: 23, extended: 15 });
+    expect(SOLVER_BY_KEY.size).toBe(48);
   });
 
   it("③ graph 求解器真经 registry 派发出结果（构造期 graphHandlers==registry 断言已在 SolverService 构造时守）", async () => {
