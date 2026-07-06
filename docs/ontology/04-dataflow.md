@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §4` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `aef142ab14660760`。
+> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `de7b519c8e2c2c98`。
 
 ---
 
@@ -82,6 +82,7 @@
 | L-sim | `sim.checkpoint_saved` | 沙盘命名存档（增量 1）→ 失效检查点列表/分支基点 | IN_SESSION | sim-checkpoints | — |
 | L-sim | `sim.branched` | 以检查点态开新分支会话（增量 1）→ 失效会话树/对比视图 | IN_SESSION | sim-sessions, sim-compare | — |
 | L-mem | `experience.distilled` | **WO-B AGENT-OBSERVATIONAL-MEMORY·观察记忆写侧**：path B / 场景 agent 任务达终态（COMPLETED+answer）时 `orchestrator.recordExperience` 把 decision-trace 确定性蒸馏为 `origin:OBSERVED` 经验条目落库后发（载 id/origin/provenance=taskId/intentKey/toolPath·**不含业务数字**）→ 供后续 `search_experience` 检索（带免责·OBSERVED 永不冒充真值 KILL-MOCK-RED）。R2 tenant 随身·R6 确定性蒸馏·留存走 G-RET 增长表哲学 | IN_SESSION | experience(`search_experience`) | — |
+| L15 | `selfaccount.fake_detected` | **PRD-trustworthy-self-accounting WO-1·`no-fake-done:check` 门查出自我账目诈账**：某张 work-queue DONE 的 `acceptance` 引用幽灵制品（求解器 key ∉ DataCore `SOLVER_REGISTRY`）或空验收（无 `criteria`）→ 门报此事件语义（`scripts/check-no-fake-done.mjs`·静态门只报清单 + 可落开放缺口；真事件入 outbox 属运行时 WO-2 Capability）→ 该 DONE 打回**开放缺口**。R6 确定性（纯静态·无网络/时钟/随机）·守 R-NO-FAKE-DONE·闭 G-16 | NOTIFY | notifications, growth-tickets(开放缺口) | — |
 
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。
 >

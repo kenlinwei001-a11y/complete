@@ -1,7 +1,7 @@
 # 本体索引（母体克隆·层层索引入口 · 层 1）
 
 <!-- 自动生成·勿手改 -->
-<!-- ontology-hash: aef142ab14660760 -->
+<!-- ontology-hash: de7b519c8e2c2c98 -->
 > ⚠ **由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md` 派生。** 母体=唯一真相源；本目录=可追溯克隆切片（R-一致·不新增事实）。
 > **协议**：先按下方"任务→切片"检索该读哪片 → 只读对应切片（简洁）→ 改接线改母体后 `node scripts/build-ontology-slices.mjs` 同步（门 `ontology-slices:check` 守漂移）。
 
@@ -61,7 +61,7 @@
 |---|---|---|---|
 | 数据怎么进系统（连接器 / 原始表 / 合成 / 构建发动机） | §2.A〔→02-object-types.md〕 数据接入域 | §3〔→03-relations.md〕 关系图 · §10.2〔→10-self-domains.md〕 D1 | R2 · G-8 |
 | 对象类型 / 实例 / 派生 / 切片 | §2.B〔→02-object-types.md〕 本体对象域 | §10.2〔→10-self-domains.md〕 D2 · §10.3〔→10-self-domains.md〕 类型血缘 | R6 · R11 |
-| 规则 / 约束 / 规则文档抽取 | §2.C〔→02-object-types.md〕 规则约束域 | §10.2〔→10-self-domains.md〕 D3 | R19 |
+| 规则 / 约束 / 规则文档抽取 | §2.C〔→02-object-types.md〕 规则约束域 | §10.2〔→10-self-domains.md〕 D3 | G-10 |
 | Action 审批 / 真值写回 / 出站执行 | §2.D〔→02-object-types.md〕 行动权限域 | §6〔→06-actions.md〕 行动 · §10.2〔→10-self-domains.md〕 D5 | R4 |
 | 求解器 / 校准 / 仿真 / S&OP / 多源融合 | §2.E〔→02-object-types.md〕 求解推演域 | §3〔→03-relations.md〕（求解器↔计划）· §10.4〔→10-self-domains.md〕 | R6 · G-2 |
 | 时序 / 模拟时钟 / 回放 / 达成率下钻 | §2.F〔→02-object-types.md〕 时序运营域 | §10.2〔→10-self-domains.md〕 D10 | R13 · R14 |

@@ -1,0 +1,35 @@
+{
+  "_comment": "no-fake-done 棘轮基线（诚实记录当前已知诈账 / 无验证 DONE·非洗白）。每条待 PRD-trustworthy-self-accounting WO-6 回炉重置为开放缺口。门只在出现基线外的新 FAKE/UNVERIFIABLE 时红。",
+  "fake": {
+    "MULTISRC-FUSION": "acceptance 6 条 curl 全指 /a/v1/solvers/source_conflict/invoke，但 source_conflict 求解器全仓零命中（幽灵·真求解器 key 为 multisource_fusion）→ 制品缺失=诈（PRD §6.1 教科书铁证）。待 WO-6 回炉重置为开放缺口。"
+  },
+  "unverifiable": {
+    "ACTUATE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "ADOPT-MITIGATION-FREEPATH": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "AGENT-CARD-DEFAULTAGENT": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "CAPACITY-W-RECONCILE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "CLARIFY-COMBOBOX-DISMISS": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "CLARIFY-LOOP-CONVERGE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "GRAPH-PANORAMA-ONLY": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "GROWTH-BOARD-EMPTYSTATE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "GROWTH-TICKET-MERGE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "INTAKE-XLSX-EXPORT": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "OBSERVABILITY": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "ONTO-SCEN-CONTRACT": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "ONTO-SCEN-GATE-WRITEBACK": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "ONTO-SCEN-GROW": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "ONTO-SCEN-GROWTH-LOOP": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "ONTO-SCEN-LAUNCH-DET": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "ONTO-SCEN-RENDER-PROJ": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "PANORAMA-FIELD-INTAKE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "PANORAMA-SLICE-BACKFILL": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "POLISH-P3-BUNDLE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "QUERY30-ONTOLOGY-EXT": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "QUERY30-ORCH": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "QUERY30-RULES": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "SANDBOX-RENAME-BASECARDS": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "SKILL-LIBRARY-EVERYWHERE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "SYSFIX-SOLVER-COUNT-DRIFT": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "TICKET-CENTER-UNIFIED": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。"
+  }
+}
