@@ -3707,17 +3707,19 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-05T16:02:06.680Z",
-        "wip": "2026-07-06T01:37:27.071Z"
+        "wip": "2026-07-06T01:37:27.071Z",
+        "built": "2026-07-06T01:58:08.625Z"
       },
       "id": "CLARIFY-LOOP-CONVERGE",
       "priority": "P2",
       "doc": "docs/evidence/KIMI-E2E-验证记录-2026-07-05.md",
       "title": "低把握自由问句澄清循环不收敛(Kimi真测发现·把握75%反复追问绕圈)",
-      "note": "审核方接Kimi真跑端到端发现(2026-07-05·证据docs/evidence/KIMI-E2E-验证记录): 自由问句把握度低于自动执行线(τ_high默认0.85)时进AWAITING_CLARIFICATION·但INTENT_CHOICE回复后重新分类仍0.75<0.85→再次追问·多轮不收敛(实测武汉产能够不够绕≥2轮无终态)。问具体点(把握0.95如合肥影响哪些订单)直接答·证明主路通·仅低把握分支循环。修向: ①澄清回复(chosenIntentKey)应直接锁定意图跳过重分类(而非重跑classify又落0.75)·②或澄清轮次上限+到限走确定性兜底/诚实降级·③slot澄清与intent澄清分离(现似乎混淆)。齿: 低把握问句→澄清→回复→必达终态(COMPLETED或诚实降级·非无限追问)。属真实交付纪律发现·非造假。"
+      "note": "审核方接Kimi真跑端到端发现(2026-07-05·证据docs/evidence/KIMI-E2E-验证记录): 自由问句把握度低于自动执行线(τ_high默认0.85)时进AWAITING_CLARIFICATION·但INTENT_CHOICE回复后重新分类仍0.75<0.85→再次追问·多轮不收敛(实测武汉产能够不够绕≥2轮无终态)。问具体点(把握0.95如合肥影响哪些订单)直接答·证明主路通·仅低把握分支循环。修向: ①澄清回复(chosenIntentKey)应直接锁定意图跳过重分类(而非重跑classify又落0.75)·②或澄清轮次上限+到限走确定性兜底/诚实降级·③slot澄清与intent澄清分离(现似乎混淆)。齿: 低把握问句→澄清→回复→必达终态(COMPLETED或诚实降级·非无限追问)。属真实交付纪律发现·非造假。",
+      "blockReason": ""
     },
     {
       "status": "WIP",
@@ -3735,10 +3737,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "QUERY30-RULES",
-      "at": "2026-07-06T01:45:36.295Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "CLARIFY-LOOP-CONVERGE",
+      "at": "2026-07-06T01:58:08.625Z"
     }
   }
 }
