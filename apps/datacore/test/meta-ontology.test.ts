@@ -3,9 +3,30 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { parseMetaOntology } from "../src/meta/parse.js";
-import { resolveDocsDir } from "../src/meta/service.js";
+import { parseMetaOntology, deriveRuntimeStatus } from "../src/meta/parse.js";
+import { MetaOntologyService, META_TENANT, resolveDocsDir } from "../src/meta/service.js";
+import { OutboxService } from "../src/outbox.js";
+import { createMemoryRepos } from "../src/repo/memory.js";
 import { makeApp, ADMIN, debugUser } from "./helpers.js";
+
+// META-RUNTIME-TRUTH 齿的合成本体夹具：一个声称 ✅FIXED（判据待跑）+ 一个 ◐PARTIAL。
+const RT_MD = [
+  "## 8. 断点",
+  "| 编号 | 断点 | 链路位置 | 性质 |",
+  "|---|---|---|---|",
+  "| G-90 | ✅ 已修 R6 招牌 | X→Y | ✅ 已闭（`debattery:check` 守·revert 即红） |",
+  "| G-91 | ◐ 部分修 | X→Y | ◐ 大部 |",
+  "`meta.ontology_synced`",
+].join("\n");
+const RT_IDX = {
+  ontology: { invariants: ["R6"], breakpoints: ["G-90", "G-91"] },
+  breakpointCoverage: { "G-90": ["PRD-x"] },
+  prds: {},
+};
+const bpProps = (md: string, idx: unknown, g: string, opts?: Parameters<typeof parseMetaOntology>[2]) =>
+  (parseMetaOntology(md, idx as Parameters<typeof parseMetaOntology>[1], opts).nodes.find(
+    (n) => n.kind === "SystemBreakpoint" && n.key === g,
+  )!.props) as Record<string, unknown>;
 
 // cwd 无关：与产品同源 resolveDocsDir()（META-SYNC-CWD-FIX 同病同治·从仓根 --root 跑不再 ENOENT 假红）
 const DOCS = resolveDocsDir();
@@ -156,5 +177,54 @@ describe("Dogfooding · Entitlement 先于 authz（admin.meta-ontology 功能门
     expect((r.json() as { error: { code: string } }).error.code).toBe("FEATURE_NOT_FOUND");
     const g = await t.app.inject({ method: "GET", url: "/a/v1/meta/ontology", headers: ADMIN });
     expect(g.statusCode).toBe(404);
+  });
+});
+
+describe("META-RUNTIME-TRUTH · 断点声称 ↔ 运行时判据交叉核对（PRD §3.5·根治 P2 meta 镜像谎言）", () => {
+  it("deriveRuntimeStatus 三态派生（纯函数 R6）：只对声称 FIXED 核对，其余原样透传", () => {
+    // 声称 FIXED：判据不通=DRIFT（本体谎言曝光）；判据通=FIXED；无判据/未跑=UNCHECKED（诚实·不信 emoji）
+    expect(deriveRuntimeStatus("FIXED", { ran: true, passed: false })).toBe("DRIFT");
+    expect(deriveRuntimeStatus("FIXED", { ran: true, passed: true })).toBe("FIXED");
+    expect(deriveRuntimeStatus("FIXED", undefined)).toBe("UNCHECKED");
+    expect(deriveRuntimeStatus("FIXED", { ran: false, passed: false })).toBe("UNCHECKED");
+    // 未自称已修 → 无谎可揭，判据结果不覆盖
+    expect(deriveRuntimeStatus("PARTIAL", { ran: true, passed: false })).toBe("PARTIAL");
+    expect(deriveRuntimeStatus("OPEN", { ran: true, passed: true })).toBe("OPEN");
+  });
+
+  it("向后兼容：不传 judgeResults → status 仍读 §8 声称（emoji），claimedStatus/judgeRefs 亮出", () => {
+    const p = bpProps(RT_MD, RT_IDX, "G-90");
+    expect(p.status).toBe("FIXED"); // 无判据入参时 = 声称（不破既有 sync/parse 测试）
+    expect(p.claimedStatus).toBe("FIXED");
+    expect(p.judgeRefs).toEqual(["debattery:check"]); // 整行门名抽取（供交叉核对）
+    expect(p.runtimeChecked).toBe(false);
+  });
+
+  it("齿①：声称 FIXED 但运行时判据不通 → status 派生为 DRIFT（非 FIXED）·claimedStatus 保留两张皮", () => {
+    const p = bpProps(RT_MD, RT_IDX, "G-90", { judgeResults: { "G-90": { ran: true, passed: false } } });
+    expect(p.status).toBe("DRIFT"); // revert deriveRuntimeStatus→只信 emoji 则此断言塌（green→red 自证）
+    expect(p.claimedStatus).toBe("FIXED"); // §8 声称仍留痕，审计对照
+    expect(p.runtimeStatus).toBe("DRIFT");
+    expect(p.runtimeChecked).toBe(true);
+  });
+
+  it("齿②：真 FIXED 且判据通 → FIXED（不误报 DRIFT）；无判据可跑 → UNCHECKED（诚实·非假 FIXED）", () => {
+    // 判据真跑通过 → 印证声称
+    expect(bpProps(RT_MD, RT_IDX, "G-90", { judgeResults: { "G-90": { ran: true, passed: true } } }).status).toBe("FIXED");
+    // 传了 judgeResults 但此断点无条目（无判据可跑）→ 诚实 UNCHECKED，绝不默认信 emoji 假 FIXED
+    expect(bpProps(RT_MD, RT_IDX, "G-90", { judgeResults: {} }).status).toBe("UNCHECKED");
+    // PARTIAL 声称不被判据覆盖（未自称已修）
+    expect(bpProps(RT_MD, RT_IDX, "G-91", { judgeResults: { "G-91": { ran: true, passed: false } } }).status).toBe("PARTIAL");
+  });
+
+  it("齿③：sync 落库「用平台查平台自己」→ 元对象 status 即运行时真相（DRIFT），非 §8 emoji 声称", async () => {
+    const repos = createMemoryRepos();
+    const outbox = new OutboxService(repos, { info() {}, error() {}, warn() {}, debug() {}, child() { return this; } } as never);
+    const svc = new MetaOntologyService(repos, outbox);
+    const ctx = { tenantId: META_TENANT, userId: "u", roles: ["admin"], attributes: {} };
+    await svc.sync(ctx, { ontologyMd: RT_MD, prdIndex: RT_IDX }, { judgeResults: { "G-90": { ran: true, passed: false } } });
+    const stored = await svc.getBreakpoint(ctx, "G-90");
+    expect(stored?.props.status).toBe("DRIFT"); // 落库对象反映运行时真相
+    expect(stored?.props.claimedStatus).toBe("FIXED");
   });
 });

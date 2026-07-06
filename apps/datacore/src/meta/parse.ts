@@ -20,6 +20,38 @@ export interface MetaParseResult {
   edges: MetaEdge[];
 }
 
+/**
+ * META-RUNTIME-TRUTH（PRD-trustworthy-self-accounting §3.5·根治 P2 meta 镜像谎言）：
+ * 断点关联「运行时判据」的一次真实跑批结果。`ran=false` → 判据无法运行（纯文档态/需活服务，
+ * 诚实标 UNCHECKED，绝不默认信 §8 emoji）；`ran=true` → 判据真跑出裁决，`passed` 即真值。
+ */
+export interface JudgeResult {
+  ran: boolean;
+  passed: boolean;
+  via?: string;
+}
+export type JudgeResults = Record<string, JudgeResult>;
+export interface MetaParseOptions {
+  /** 断点键（G-N）→ 其运行时判据跑批结果。给了才做交叉核对；不给则回退「读 §8 声称」（向后兼容）。 */
+  judgeResults?: JudgeResults;
+}
+
+/** §8 行内引用的门（judge）：`xxx:check` 或 `check-xxx.mjs`（比 ⑥ 门节点抽取更宽，覆盖性质列所有门名）。 */
+const JUDGE_REF_RE = /`((?:[a-z][a-z0-9-]*):check|check-[a-z-]+\.mjs)`/g;
+
+/**
+ * META-RUNTIME-TRUTH 核心派生（纯函数 R6）：把「§8 声称状态」与「运行时判据裁决」交叉核对。
+ * 只对**声称 FIXED**的断点做真相核对（PARTIAL/OPEN/UNKNOWN 未自称已修，无谎可揭，原样透传）：
+ *   - 无判据可跑（judge 缺失 / ran=false）→ `UNCHECKED`（诚实边界：不默认信 emoji 为真）
+ *   - 判据真跑且通过 → `FIXED`（真相印证声称）
+ *   - 判据真跑但不通 → `DRIFT`（本体谎言曝光：声称已修，运行时判据不通）
+ */
+export function deriveRuntimeStatus(claimedStatus: string, judge?: JudgeResult): string {
+  if (claimedStatus !== "FIXED") return claimedStatus;
+  if (!judge || !judge.ran) return "UNCHECKED";
+  return judge.passed ? "FIXED" : "DRIFT";
+}
+
 interface PrdIndex {
   ontology: { invariants: string[]; breakpoints: string[] };
   breakpointCoverage: Record<string, string[]>;
@@ -28,17 +60,22 @@ interface PrdIndex {
 
 const nodeId = (kind: MetaNode["kind"], key: string) => `${kind}:${key}`;
 
-/** §8 断点表行 → 状态（✅已修/◐部分/⬜未修）+ 关联不变量(R*) + 链路位置（第3列）。 */
-function parseBreakpointRow(md: string, g: string): { status: string; relatedInvariants: string[]; linkPosition: string } {
+/**
+ * §8 断点表行 → 声称状态（✅已修/◐部分/⬜未修）+ 关联不变量(R*) + 链路位置（第3列）
+ * + 运行时判据引用（judgeRefs·整行内所有 `xxx:check`/`check-xxx.mjs` 门名，供 META-RUNTIME-TRUTH 交叉核对）。
+ */
+function parseBreakpointRow(md: string, g: string): { status: string; relatedInvariants: string[]; linkPosition: string; judgeRefs: string[] } {
   const line = md.split("\n").find((l) => new RegExp(`^\\|\\s*${g}\\s*\\|`).test(l)) ?? "";
   const cols = line.split("|").map((c) => c.trim());
   const body = cols[2] ?? "";
   const status = /✅/.test(body) ? "FIXED" : /◐/.test(body) ? "PARTIAL" : /⬜|未修/.test(body) ? "OPEN" : "UNKNOWN";
   const relatedInvariants = [...new Set([...body.matchAll(/\bR(\d+)\b/g)].map((m) => `R${m[1]}`))];
-  return { status, relatedInvariants, linkPosition: (cols[3] ?? "").slice(0, 120) };
+  // 门名在整行任意列（多数在性质列 cols[4]）：全行抽取、去重、稳定排序（R6 确定性）。
+  const judgeRefs = [...new Set([...line.matchAll(JUDGE_REF_RE)].map((m) => m[1] as string))].sort();
+  return { status, relatedInvariants, linkPosition: (cols[3] ?? "").slice(0, 120), judgeRefs };
 }
 
-export function parseMetaOntology(ontologyMd: string, prdIndex: PrdIndex): MetaParseResult {
+export function parseMetaOntology(ontologyMd: string, prdIndex: PrdIndex, opts?: MetaParseOptions): MetaParseResult {
   const nodes: MetaNode[] = [];
   const edges: MetaEdge[] = [];
   const push = (n: MetaNode) => nodes.push(n);
@@ -48,11 +85,31 @@ export function parseMetaOntology(ontologyMd: string, prdIndex: PrdIndex): MetaP
   const invariants = [...prdIndex.ontology.invariants].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   for (const r of invariants) push({ kind: "SystemInvariant", key: r, props: { id: r } });
 
-  // ② 断点 G*（index 给 id + PRD 覆盖;markdown §8 给状态 + 关联不变量 + 链路位置）
+  // ② 断点 G*（index 给 id + PRD 覆盖;markdown §8 给声称状态 + 关联不变量 + 链路位置 + 判据引用）
+  // META-RUNTIME-TRUTH：给了 judgeResults 才交叉核对——status 派生为运行时真相（FIXED/DRIFT/UNCHECKED）；
+  // 未给（向后兼容）则 status = §8 声称。claimedStatus 恒保留 §8 emoji 声称，供审计对照两张皮。
   for (const g of [...prdIndex.ontology.breakpoints].sort()) {
-    const { status, relatedInvariants, linkPosition } = parseBreakpointRow(ontologyMd, g);
+    const { status: claimedStatus, relatedInvariants, linkPosition, judgeRefs } = parseBreakpointRow(ontologyMd, g);
     const relatedPRDs = prdIndex.breakpointCoverage[g] ?? [];
-    push({ kind: "SystemBreakpoint", key: g, props: { id: g, status, linkPosition, relatedInvariants, relatedPRDs } });
+    const judge = opts?.judgeResults?.[g];
+    const runtimeStatus = deriveRuntimeStatus(claimedStatus, judge);
+    const status = opts?.judgeResults ? runtimeStatus : claimedStatus;
+    push({
+      kind: "SystemBreakpoint",
+      key: g,
+      props: {
+        id: g,
+        status,
+        claimedStatus,
+        runtimeStatus,
+        runtimeChecked: !!(judge && judge.ran),
+        judge: judge ?? null,
+        judgeRefs,
+        linkPosition,
+        relatedInvariants,
+        relatedPRDs,
+      },
+    });
     for (const r of relatedInvariants) if (invariants.includes(r)) link({ from: nodeId("SystemBreakpoint", g), to: nodeId("SystemInvariant", r), kind: "related_to" });
   }
 

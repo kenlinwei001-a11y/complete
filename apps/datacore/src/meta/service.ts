@@ -5,7 +5,7 @@ import type { AuthCtx, LinkInstance, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { OutboxService } from "../outbox.js";
 import { META_ACCESS_DEFAULT_ROLES } from "@platform/contracts";
-import { parseMetaOntology, type MetaEdge, type MetaNode } from "./parse.js";
+import { parseMetaOntology, type JudgeResults, type MetaEdge, type MetaNode } from "./parse.js";
 
 /** Dogfooding 元租户：系统自我模型挂此命名空间,业务租户经 R2 天然见不到（铁纪律①）。 */
 export const META_TENANT = "__platform__";
@@ -61,10 +61,19 @@ export class MetaOntologyService {
     return { ontologyMd, prdIndex };
   }
 
-  /** 幂等重物化（R6 确定性）：同 markdown → 同投影;清旧 META 对象/链路后重建,发 meta.ontology_synced。 */
-  async sync(_ctx: AuthCtx, sources?: { ontologyMd: string; prdIndex: unknown }): Promise<MetaSyncResult> {
+  /**
+   * 幂等重物化（R6 确定性）：同 markdown → 同投影;清旧 META 对象/链路后重建,发 meta.ontology_synced。
+   * META-RUNTIME-TRUTH（§3.5）：传 `judgeResults` 时断点 status 派生为运行时真相（声称 FIXED 但
+   * 判据不通 → DRIFT；无判据 → UNCHECKED），「用平台查平台自己」落库的即运行时真相非 §8 emoji 声称；
+   * 不传（测试/纯投影）则维持读 §8 声称，向后兼容。
+   */
+  async sync(
+    _ctx: AuthCtx,
+    sources?: { ontologyMd: string; prdIndex: unknown },
+    opts?: { judgeResults?: JudgeResults },
+  ): Promise<MetaSyncResult> {
     const { ontologyMd, prdIndex } = sources ?? (await this.readSources());
-    const { nodes, edges } = parseMetaOntology(ontologyMd, prdIndex as Parameters<typeof parseMetaOntology>[1]);
+    const { nodes, edges } = parseMetaOntology(ontologyMd, prdIndex as Parameters<typeof parseMetaOntology>[1], opts);
 
     await this.repos.objects.removeWhere(META_TENANT, (o) => o.origin.type === "META");
     await this.repos.links.removeWhere(META_TENANT, (l) => l.origin.type === "META");
