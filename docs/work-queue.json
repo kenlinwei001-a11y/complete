@@ -4028,14 +4028,14 @@
     {
       "id": "RETRO-AUDIT-RECALL",
       "title": "存量回炉: 门扫全DONE,诈的重置开放缺口(十个算法+9洞)",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P1",
       "deps": [
         "NO-FAKE-DONE-GATE"
       ],
       "doc": "docs/PRD-trustworthy-self-accounting.md",
-      "note": "根治WO-6。no-fake-done 门扫全存量DONE,按新判据 claim>实的重置为开放缺口: MULTISRC-FUSION(幽灵端点)/E1-E2(自标NOT-LANDED)/AUDIT-hand-run(4≠5)/countermeasure_combo(假编排)/KILL-MOCK-RED(假红未除)+9洞(Q1-6,8-10)。持续暴露逼补。真填9洞(接NL路由+落E1/E2/N1)是随后一批fill工单。",
+      "note": "【审核方复验DONE 2026-07-06】WO-6回炉达标: 门EXIT=0(回炉后)+植假__FOOL6__仍红(未破门)·3假DONE(MULTISRC-FUSION/QUERY30-ORCH/E1-E2)证明claim>实→降级OPEN带gap三元·3新actionable缺口(GAP-SCENE-C/AUDIT-OBS/XINDUSTRY)曝Q6/8/9/10·9洞北极星距离表(逐洞代表问NL验收锚+缺什么+fill单)·基线缩28→26(fake0+unverif26)·OPEN不破next-dev/review·meta-sync/prd-ontology/ontology-writeback绿。诚实亮点: KILL-MOCK-RED复核已LANDED(risk.ts无源→null·genuine-sim绿)不入洞不降级(不作假)——与铁律0.6一致:去假已成·补齐真数据归CAPACITY-BASECARDS-REALDATA。正确scoped: 只曝光非填洞(填洞WO-7+)。诚实边界: dev未自跑全套gates(WO-6零产品码·只动queue/baseline/本体doc·受影响门我已验绿)。用户全部回炉决定已交付: 9洞从此明晃晃挂OPEN不再藏完成里。 ⟪原⟫ 根治WO-6。no-fake-done 门扫全存量DONE,按新判据 claim>实的重置为开放缺口: MULTISRC-FUSION(幽灵端点)/E1-E2(自标NOT-LANDED)/AUDIT-hand-run(4≠5)/countermeasure_combo(假编排)/KILL-MOCK-RED(假红未除)+9洞(Q1-6,8-10)。持续暴露逼补。真填9洞(接NL路由+落E1/E2/N1)是随后一批fill工单。",
       "acceptance": {
         "goal": "存量诈账全部照出并重置为开放缺口,honest ledger 从此不藏洞。",
         "criteria": [
@@ -4054,7 +4054,8 @@
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
         "wip": "2026-07-06T11:24:00.648Z",
-        "built": "2026-07-06T11:41:28.515Z"
+        "built": "2026-07-06T11:41:28.515Z",
+        "done": "2026-07-06T11:54:53.510Z"
       },
       "blockReason": ""
     },
@@ -4221,9 +4222,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "dispatch",
-      "id": "CAPACITY-BASECARDS-REALDATA",
-      "at": "2026-07-06T12:00:00.000Z"
+      "cmd": "DONE",
+      "id": "RETRO-AUDIT-RECALL",
+      "at": "2026-07-06T11:54:53.510Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
