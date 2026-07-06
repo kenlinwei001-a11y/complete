@@ -93,6 +93,8 @@ export const SOLVER_DATADEP: Readonly<Record<string, DataDependency>> = Object.f
   plan_generate: { requires: [r("base"), r("segment"), r("sopVersion")] },
   capex_scenario: { requires: [r("base"), r("capexProject")] },
   order_fullchain: { requires: [r("order"), r("model"), r("demandSegment"), r("materialBalance")] },
+  // QUERY30-ORCH Q01：急单挤占推演——读在手单/线级产能/型号目录（deriveArgs 从 c.orders/c.lines/c.models 装配）。
+  what_if_displacement: { requires: [r("order"), r("line"), r("model")] },
   mrp_netting: { requires: [r("materialBalance")] },
   finance_pnl: { requires: [r("segment"), r("sopVersion")] },
   audit_timeline: { requires: [r("dataHealth")] },
