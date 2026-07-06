@@ -4306,12 +4306,13 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-06T14:06:44.503Z",
-        "built": "2026-07-06T14:42:24.898Z"
+        "built": "2026-07-06T14:42:24.898Z",
+        "done": "2026-07-06T14:49:52.554Z"
       },
       "blockReason": ""
     },
@@ -4548,9 +4549,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "BLOCKED",
-      "id": "META-RUNTIME-TRUTH",
-      "at": "2026-07-06T14:44:05.508Z"
+      "cmd": "DONE",
+      "id": "CORE-E2-PROPAGATE",
+      "at": "2026-07-06T14:49:52.555Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
