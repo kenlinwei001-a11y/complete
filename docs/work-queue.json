@@ -3782,14 +3782,26 @@
       "at": {
         "todo": "2026-07-06T03:55:34.228Z"
       }
+    },
+    {
+      "id": "GROWTH-TICKET-MERGE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "doc": "docs/PRD-nav-ia-reorg.md",
+      "title": "自成长驾驶舱并入工单中心合一(用户亲定·功能重合)——保留诊断触发+指标头条防丢",
+      "note": "用户亲定(2026-07-06): 自成长发动机驾驶舱(/admin/growth)与工单中心(/admin/tickets)功能多重合·合为一个工单中心。审核方查证重叠属实: 两页都有claimWorklistItem认领+补数据缺口就地按钮(growth GrowthCockpitPage / tickets TicketCenterPage:122 tc-fill)+筛选·工单中心已是超集(聚合三源DATA_GAP+DataRequest+GrowthTicket·含缺数据项)。背景: TicketCenterPage:162注释显示dev当初故意留驾驶舱作诊断运行视图分开·现用户裁定合一。做: ①以工单中心(/admin/tickets)为主体承接·**必须保留驾驶舱两处独有功能防丢**: (a)诊断触发入口——'把客户问题当燃料跑一轮QOS诊断缺口'(GrowthCockpitPage:42 GrowthRunReport/report state·runGrowthProbe)·合并后作工单中心顶部一个'诊断新缺口'入口/tab·(b)量化指标头条——需求可答率(账本answerRate)+补成率(fillRate)(GrowthCockpitPage:94/138/141)·合并后作工单中心头部指标条。②撤/admin/growth导航项·路由302→/admin/tickets(或删页·tombstone重定向防死链·参GRAPH-PANORAMA-ONLY范式)。③角色门合并: growth(admin/data_admin) ∪ tickets(admin/catalog_admin)→工单中心取并集(admin/data_admin/catalog_admin)·防某角色合并后失去访问。④adminRegistry构建与成长组去重(现paths含tickets+growth两个)。齿: 导航无growth独立项+工单中心含诊断触发+指标头条断言(合并后二独有功能在)+302重定向一致性+角色并集可达。本体回写: §7导航IA变更+G-9相关行(自成长发动机页归并)。FDE: 真浏览器工单中心一页见全部三源工单+诊断触发+指标条·growth旧路由跳工单中心(栈恢复补截图)。",
+      "at": {
+        "todo": "2026-07-06T03:57:27.551Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
       "cmd": "QUEUE",
-      "id": "GROWTH-BOARD-EMPTYSTATE",
-      "at": "2026-07-06T03:55:34.229Z"
+      "id": "GROWTH-TICKET-MERGE",
+      "at": "2026-07-06T03:57:27.552Z"
     }
   }
 }
