@@ -4005,7 +4005,7 @@
     {
       "id": "SELF-SURFACES-SLICE",
       "title": "散落自测/补面归一为 Capability/Gap 切片视图",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P2",
       "deps": [
@@ -4025,8 +4025,10 @@
       },
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
-        "wip": "2026-07-06T12:24:12.880Z"
-      }
+        "wip": "2026-07-06T12:24:12.880Z",
+        "built": "2026-07-06T12:45:47.372Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "RETRO-AUDIT-RECALL",
@@ -4260,10 +4262,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "dispatch",
-      "id": "NAV-DROP-LEDGER-MAP",
-      "at": "2026-07-06T12:30:00.000Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "SELF-SURFACES-SLICE",
+      "at": "2026-07-06T12:45:47.373Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
