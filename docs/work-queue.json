@@ -4223,14 +4223,47 @@
         "todo": "2026-07-06T12:00:00.000Z",
         "wip": "2026-07-06T12:24:12.810Z"
       }
+    },
+    {
+      "id": "NAV-DROP-LEDGER-MAP",
+      "title": "删除\"台账与地图\"导航组(仅剩基地地理视图·低价值·用户亲定)",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P2",
+      "deps": [],
+      "doc": "apps/frontend-shell/src/pages/ShellLayout.tsx",
+      "note": "用户2026-07-06亲定: \"台账与地图\"组现只剩基地地理视图(地图)·价值不大→删该导航组。诚实归类: 非因假数据(铁律0.6不适用·不是补齐场景)·是低价值/冗余 consolidation。撤导航组+路由处置(老链302重定向或诚实移除)·无死链·相关测试同步更新。若日后基地地理有价值可另议并入产能推演(R5另单)。",
+      "acceptance": {
+        "goal": "\"台账与地图\"导航组从左导航移除(仅剩的低价值地图项一并处置); 无死链、无悬空import、测试同步。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "file",
+            "assert": "ShellLayout.tsx / adminRegistry(或 nav 配置)移除\"台账与地图\"组及其基地地理视图项; 真浏览器登录demo→左导航不再出现\"台账与地图\"组。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "老路由(基地地理视图/geo 路由)处置: 302重定向到合理页或诚实移除(非白屏死链); 深链兜底不掉登录。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "无悬空import(GeoMapView 若删则无残留引用致构建断); pnpm -r build + pnpm -r test 全绿; 相关测试更新(无测试仍断言该组/项存在)。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T12:30:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "SELF-SURFACES-SLICE",
-      "at": "2026-07-06T12:24:12.880Z"
+      "role": "review",
+      "cmd": "dispatch",
+      "id": "NAV-DROP-LEDGER-MAP",
+      "at": "2026-07-06T12:30:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
