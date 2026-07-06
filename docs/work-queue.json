@@ -3976,8 +3976,8 @@
     {
       "id": "META-RUNTIME-TRUTH",
       "title": "meta #12 从镜像文档→反映运行时真相(status DRIFT检测)",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P1",
       "deps": [
         "NO-FAKE-DONE-GATE",
@@ -3996,7 +3996,8 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T09:59:08.830Z"
+        "todo": "2026-07-06T09:59:08.830Z",
+        "wip": "2026-07-06T11:44:58.655Z"
       }
     },
     {
@@ -4060,8 +4061,8 @@
     {
       "id": "AUTOFILL-SOP",
       "title": "自动补 SOP 落地: 前后端逐值可见 + 每类自动补NL-E2E测",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P1",
       "deps": [
         "CAPABILITY-OBJECT"
@@ -4099,7 +4100,8 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T11:30:00.000Z"
+        "todo": "2026-07-06T11:30:00.000Z",
+        "wip": "2026-07-06T11:44:58.726Z"
       }
     },
     {
@@ -4176,9 +4178,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "RETRO-AUDIT-RECALL",
-      "at": "2026-07-06T11:41:28.515Z"
+      "cmd": "WIP",
+      "id": "AUTOFILL-SOP",
+      "at": "2026-07-06T11:44:58.726Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
