@@ -3865,7 +3865,7 @@
     {
       "id": "CAPABILITY-OBJECT",
       "title": "Capability 一等对象 + verifiedStatus 派生自现实",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P0",
       "deps": [
@@ -3890,8 +3890,10 @@
       },
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
-        "wip": "2026-07-06T10:37:21.500Z"
-      }
+        "wip": "2026-07-06T10:37:21.500Z",
+        "built": "2026-07-06T10:58:18.344Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "GAP-ACTIONABLE",
@@ -4013,10 +4015,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "BLOCKED",
-      "id": "NO-FAKE-DONE-GATE",
-      "at": "2026-07-06T10:56:43.554Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "CAPABILITY-OBJECT",
+      "at": "2026-07-06T10:58:18.344Z"
     }
   }
 }
