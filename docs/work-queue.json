@@ -3813,12 +3813,12 @@
     {
       "id": "NO-FAKE-DONE-GATE",
       "title": "R-NO-FAKE-DONE 不变量 + no-fake-done 门(堵谎根·照出诈账)",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P0",
       "deps": [],
       "doc": "docs/PRD-trustworthy-self-accounting.md",
-      "note": "【审核方复验 2026-07-06·门红BLOCK·仅差1行】亲手骗门全过·门核心达标: C1注册(package.json:61 no-fake-done:check+gates链)·C2照出MULTISRC-FUSION幽灵端点source_conflict进基线(94张DONE扫·1FAKE+27UNVERIFIABLE)·C3 green→red自证(植__FOOL_GHOST__引幽灵→exit1红·移除→绿)·C4空验收即红(__FOOL_EMPTY__→UNVERIFIABLE红)·C5 §5 R-NO-FAKE-DONE+§4 L15+§7门已回写且诚实边界明写(静态守key存在性·真跑E2E属WO-2)·C6诚实静态边界脚本内明写(line30-32)·ratchet基线幂等。**唯一门红(BLOCK点): check-meta-sync 红——G-16 在主本体§8无断点表行(现仅§4/§5闭G-16引用+08-breakpoints.md提及,主SYSTEM-ONTOLOGY.md §8缺表行→meta投影取不到状态)。修:在§8断点表补一行 | G-16 | 自我账无验证门(work-queue DONE手打status不绑制品·collab-queue.mjs done只set不查) | 焦点work-queue.status↔制品 | 本PRD WO-1闭 | 即meta:sync绿。**诚实附注:另一门红check-prd-ontology(我PRD §0悬空引用R18/R19)是审核方自己的文档问题·已由审核方本提交reword清除·非dev责。dev只需补§8 G-16表行→重标built→我秒复验。 ⟪原⟫ 根治WO-1(PRD可信自我账)。核心: 让'完成'构造即真——门执行/校验每张自我账目自带的 acceptance,诈的照出来。用 debattery:check 同款 ratchet 基线幂等。禁半建:C2/C3/C4 行为断言有牙。",
+      "note": "【审核方复验DONE·返工后 2026-07-06】BLOCK点已闭: G-16 §8断点表行已补(SYSTEM-ONTOLOGY.md:732·且诚实分期列WO-2 NL-E2E/WO-4 meta-DRIFT/WO-6回炉)·meta:sync绿。gate返工未弄坏:基线态exit0绿+植假__FOOL2__(引幽灵__ghost2__)仍exit≠0红。prd-ontology绿(审核方PRD R18/19悬空已自清)·ontology-writeback绿。前轮骗门全过:C2照MULTISRC-FUSION幽灵source_conflict+C3 green→red+C4空验收即红+C1注册+C5回写+C6诚实静态边界。**堵谎根第一道门真落地·门自身不可诈(亲手验)。** 诚实边界:验了全部受影响门(meta-sync/prd-ontology/ontology-writeback/no-fake-done)+门行为·未单跑5min全gates链(WO-1零产品码改动·全链绿更相关于WO-2代码单)。 ⟪原⟫ 【审核方复验 2026-07-06·门红BLOCK·仅差1行】亲手骗门全过·门核心达标: C1注册(package.json:61 no-fake-done:check+gates链)·C2照出MULTISRC-FUSION幽灵端点source_conflict进基线(94张DONE扫·1FAKE+27UNVERIFIABLE)·C3 green→red自证(植__FOOL_GHOST__引幽灵→exit1红·移除→绿)·C4空验收即红(__FOOL_EMPTY__→UNVERIFIABLE红)·C5 §5 R-NO-FAKE-DONE+§4 L15+§7门已回写且诚实边界明写(静态守key存在性·真跑E2E属WO-2)·C6诚实静态边界脚本内明写(line30-32)·ratchet基线幂等。**唯一门红(BLOCK点): check-meta-sync 红——G-16 在主本体§8无断点表行(现仅§4/§5闭G-16引用+08-breakpoints.md提及,主SYSTEM-ONTOLOGY.md §8缺表行→meta投影取不到状态)。修:在§8断点表补一行 | G-16 | 自我账无验证门(work-queue DONE手打status不绑制品·collab-queue.mjs done只set不查) | 焦点work-queue.status↔制品 | 本PRD WO-1闭 | 即meta:sync绿。**诚实附注:另一门红check-prd-ontology(我PRD §0悬空引用R18/R19)是审核方自己的文档问题·已由审核方本提交reword清除·非dev责。dev只需补§8 G-16表行→重标built→我秒复验。 ⟪原⟫ 根治WO-1(PRD可信自我账)。核心: 让'完成'构造即真——门执行/校验每张自我账目自带的 acceptance,诈的照出来。用 debattery:check 同款 ratchet 基线幂等。禁半建:C2/C3/C4 行为断言有牙。",
       "acceptance": {
         "goal": "系统标'完成'的自我账目(work-queue DONE)必须挂 reality-derived 证据。新建 no-fake-done 门: 逐 DONE 校验其 acceptance.criteria 里 curl 引用的端点/求解器 key 真实存在(对 SOLVER_KEYS+路由注册),诈账(如 MULTISRC-FUSION 验收打幽灵端点 source_conflict)照出来。新命名不变量 R-NO-FAKE-DONE 回写本体。",
         "criteria": [
@@ -3858,7 +3858,8 @@
         "todo": "2026-07-06T09:59:08.830Z",
         "wip": "2026-07-06T10:14:54.758Z",
         "built": "2026-07-06T11:05:31.954Z",
-        "blocked": "2026-07-06T10:56:43.554Z"
+        "blocked": "2026-07-06T10:56:43.554Z",
+        "done": "2026-07-06T11:21:40.793Z"
       },
       "blockReason": ""
     },
@@ -4015,10 +4016,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
+      "role": "review",
+      "cmd": "DONE",
       "id": "NO-FAKE-DONE-GATE",
-      "at": "2026-07-06T11:05:31.955Z"
+      "at": "2026-07-06T11:21:40.793Z"
     }
   }
 }
