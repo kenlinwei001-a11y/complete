@@ -3813,8 +3813,8 @@
     {
       "id": "NO-FAKE-DONE-GATE",
       "title": "R-NO-FAKE-DONE 不变量 + no-fake-done 门(堵谎根·照出诈账)",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P0",
       "deps": [],
       "doc": "docs/PRD-trustworthy-self-accounting.md",
@@ -3855,7 +3855,8 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T09:59:08.830Z"
+        "todo": "2026-07-06T09:59:08.830Z",
+        "wip": "2026-07-06T10:14:54.758Z"
       }
     },
     {
@@ -4007,10 +4008,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "dispatch",
-      "id": "根治WO×6",
-      "at": "2026-07-06T09:59:08.830Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "NO-FAKE-DONE-GATE",
+      "at": "2026-07-06T10:14:54.760Z"
     }
   }
 }
