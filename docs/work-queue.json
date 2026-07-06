@@ -3662,13 +3662,13 @@
       "blockReason": ""
     },
     {
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-05T11:18:19.882Z",
         "wip": "2026-07-06T02:05:37.603Z",
-        "built": "2026-07-06T02:44:27.737Z",
+        "built": "2026-07-06T03:44:56.740Z",
         "blocked": "2026-07-06T03:08:01.293Z"
       },
       "id": "QUERY30-ORCH",
@@ -3679,7 +3679,7 @@
         "QUERY30-ONTOLOGY-EXT",
         "QUERY30-RULES"
       ],
-      "blockReason": "真跑复验门红(dev标BUILT但datacore 4红·同QUERY30-RULES只跑gates未跑全套datacore·gates不覆盖这些计数断言): 加what_if_displacement求解器但4处跨模块注册/计数未同步·全属'新增项未同步'非功能bug(求解器真算逻辑在·dev FDE真invoke出真值·代码179行真枚举四型方案五维量化确认非stub): ①ontology-core.test.ts SOLVER_KEYS=47→实际48 ②solvers-extended.test.ts discover求解器数22→23 ③solvers-extended.test.ts 列表长度14→15 ④render-bindings-real-fields.test.ts 缺what_if_displacement的REPRESENTATIVE_ARGS登记(运行期invoke每绑定求解器验字段真实·无代表性入参即undefined红)。修法: 前3更新计数断言(48/23/15·按实际)·第4补REPRESENTATIVE_ARGS[what_if_displacement]={model,qty,advancePct,weeks,baseId}(参dev FDE入参4680-NCM/4200/0.2/6/changzhou)·重跑全套datacore转绿。**同类第4例**(承MULTISRC46→47/QUERY30-RULES order.rules7→13/本次求解器计数)——强烈建议系统性根治: 要么gate扩为跑全套单测(现gates码0却4单测红=覆盖盲区)·要么求解器总数集中单一来源(勿在N处硬编码)·否则每加1求解器必漏同步。诚实边界: 求解器功能真好·仅测试套件注册同步缺失·mechanical易修。"
+      "blockReason": ""
     },
     {
       "id": "SANDBOX-RENAME-BASECARDS",
@@ -3762,8 +3762,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "SKILL-LIBRARY-EVERYWHERE",
-      "at": "2026-07-06T03:22:58.518Z"
+      "id": "QUERY30-ORCH",
+      "at": "2026-07-06T03:44:56.740Z"
     }
   }
 }
