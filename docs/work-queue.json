@@ -3748,22 +3748,23 @@
     {
       "id": "SYSFIX-SOLVER-COUNT-DRIFT",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/work-queue.json",
       "title": "系统性根治: 求解器计数漂移(同类第4次)——测试硬编码数字改为单一来源派生 + 门禁纳全套单测(审核方亲定·非建议)",
       "note": "审核方判(2026-07-05·根因已实证): 求解器/规则计数断言未随新增同步·同类第4次(MULTISRC 46→47·QUERY30-RULES order.rules 7→13·QUERY30-ORCH 求解器47→48/22→23/14→15)。**这是独立根治单·非某WO附带·必须真做两件事否则第5次必犯**: ①【测试单源化】把散落测试里硬编码的求解器/规则数字全改为动态派生: ontology-core.test.ts(SOLVER_KEYS=47硬编码)/solvers-extended.test.ts(22/14硬编码)→改用 SOLVER_KEYS.length / ALL_SOLVER_CATALOG.length(catalog.test.ts已是正确范式·照抄)·grep全仓 toBe(数字)+求解器/规则语境逐处消灭硬编码计数·加注释禁止再硬编码。②【门禁补盲】现gates脚本(package.json:62)跑40+专项check+几个指定测试文件·但**不跑datacore/agentcore全套vitest**→计数断言失败照不到(dev'门禁绿'=假信号·4次假绿根源)。修: gates末尾追加 pnpm --filter datacore test + pnpm --filter agentcore test(或新建 gates:full 含全套单测·CI/交付前必跑)·使'门禁绿'真=全绿。齿: ①改后新增1个求解器(临时)→全套仍绿(动态派生生效·revert临时求解器验证不再硬编码断裂) ②gates脚本含全套单测调用(grep断言)。DoD: 全仓求解器/规则计数硬编码0残留(grep证)+gates真跑全套单测+一次'加求解器不破测试'演练。审核方复验: 亲自加个假求解器看全套是否自适应绿+门禁是否照到单测。根因证据: 本轮对话已扒出catalog.test.ts用SOLVER_KEYS.length(对)vs ontology-core硬编码47(错)·gates脚本无vitest全跑。",
       "at": {
-        "todo": "2026-07-06T03:21:51.270Z"
+        "todo": "2026-07-06T03:21:51.270Z",
+        "wip": "2026-07-06T03:45:25.886Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "QUERY30-ORCH",
-      "at": "2026-07-06T03:44:56.740Z"
+      "cmd": "WIP",
+      "id": "SYSFIX-SOLVER-COUNT-DRIFT",
+      "at": "2026-07-06T03:45:25.886Z"
     }
   }
 }
