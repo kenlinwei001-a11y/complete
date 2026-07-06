@@ -4349,12 +4349,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-06T14:06:44.556Z"
-      }
+        "wip": "2026-07-06T14:06:44.556Z",
+        "built": "2026-07-06T14:52:03.029Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "RISKBOARD-RULES-AGENTS",
@@ -4549,10 +4551,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "NAV-DROP-LEDGER-MAP",
-      "at": "2026-07-06T14:51:43.040Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "CORE-NL-SOLVER-ROUTING",
+      "at": "2026-07-06T14:52:03.029Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
