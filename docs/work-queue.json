@@ -3659,11 +3659,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
-        "todo": "2026-07-05T11:18:19.882Z"
+        "todo": "2026-07-05T11:18:19.882Z",
+        "wip": "2026-07-06T02:05:37.603Z"
       },
       "id": "QUERY30-ORCH",
       "priority": "P1",
@@ -3741,10 +3742,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "AGENT-CARD-DEFAULTAGENT",
-      "at": "2026-07-06T02:05:30.697Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "QUERY30-ORCH",
+      "at": "2026-07-06T02:05:37.603Z"
     }
   }
 }
