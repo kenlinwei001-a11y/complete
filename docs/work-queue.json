@@ -4014,14 +4014,59 @@
         "todo": "2026-07-06T09:59:08.830Z",
         "wip": "2026-07-06T11:24:00.648Z"
       }
+    },
+    {
+      "id": "AUTOFILL-SOP",
+      "title": "自动补 SOP 落地: 前后端逐值可见 + 每类自动补NL-E2E测",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P1",
+      "deps": [
+        "CAPABILITY-OBJECT"
+      ],
+      "doc": "docs/SPEC-autofill-sop.md",
+      "note": "用户2026-07-06亲令。补自动补机制两处不达标: 一每次自动补前后端逐值可见(证据块before→after+前端渲染+对后端GrowthLedger逐值勾稽·R8/铁律0.4) 二每类自动补一条「代表问经QOS NL真跑答出」E2E(复用WO-2 probeRepresentativeNL走submitQuery非直调求解器)。SOP见doc §4/§5。禁半建:C2/C3/C4行为断言有牙。诚实标合成PROVISIONAL/SYNTHETIC不冒充真实。",
+      "acceptance": {
+        "goal": "自动补机制达SOP标准: 每次自动补的before→after+证据在前端可见且逐值对得上后端GrowthLedger; 每类自动补有一条经NL路由真跑的E2E守护; green→red自证。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "file",
+            "assert": "契约 GapFillEvidence {gapCode,fillAction,before,after,evidence,dataMode} 落 packages/contracts; growth fill 产出填该证据块; GrowthRunReport逐轮携带。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "前后端逐值勾稽: 触发一次自动补→后端GrowthLedger/GrowthRunReport返before→after+证据; 前端(自成长/工单中心)逐轮渲染同值·合成标PROVISIONAL/SYNTHETIC非冒充(dataMode透出)。后端值==前端渲染值逐值。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "每类自动补NL-E2E: 意图/计划/切片/兜底至少4类各一条——构造缺口→跑自动补→代表问经orchestrator.submitQuery(NL·spy证path/matchedIntent·非直调/solvers/invoke)真跑→断言answered/CONVERGED或诚实降级。复用WO-2 probeRepresentativeNL。"
+          },
+          {
+            "id": "C4",
+            "type": "cmd",
+            "assert": "green→red自证: revert某类自动补逻辑 或 篡改证据块before/after → 对应E2E/勾稽测红; 恢复→绿。"
+          },
+          {
+            "id": "C5",
+            "type": "cmd",
+            "assert": "pnpm -r build + pnpm -r test 全绿; no-fake-done:check绿(acceptance不引幽灵制品); 触及本体回写§2.H/§4且meta:sync绿。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-06T11:30:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "CAPABILITY-OBJECT",
-      "at": "2026-07-06T11:25:52.857Z"
+      "cmd": "dispatch",
+      "id": "AUTOFILL-SOP",
+      "at": "2026-07-06T11:30:00.000Z"
     }
   }
 }
