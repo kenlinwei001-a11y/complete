@@ -149,6 +149,8 @@ export const RiskCardSchema = z.object({
   // WO-KILL-MOCK-RED（治本）：hasData=false ⇒ 该卡无真实数据源（诚实空态）——前端显 noDataReason·不染红/不进决策。
   hasData: z.boolean().optional(),
   noDataReason: z.string().optional(),
+  // CAPACITY-BASECARDS-REALDATA（诚实空态 actionable）：无真源基地卡带深链引导去数据接入/上传（非静默跳过·非假红）。
+  deeplink: z.object({ to: z.string(), label: z.string() }).optional(),
   // 实测当前张力（liveTightness）：value=当前值(无真源=null)，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值。
   currentTightness: z.object({ value: z.number().nullable(), live: z.boolean() }).optional(),
   // WO-FORECAST-SIM：需求驱动因素的真缺口溯源——gapWan=预测需求−产能（万套·基地分摊），source 标真源口径（R13 可溯）。

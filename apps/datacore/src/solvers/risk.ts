@@ -372,16 +372,21 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
   if (args.base && args.factor) {
     pairs.push({ baseId: resolveBaseId(c, args.base), factor: args.factor, forced: true });
   } else {
+    // CAPACITY-BASECARDS-REALDATA（每基地一卡·治本·P1 回归修复）：为每个基地取**真张力最高的有真源因子**为代表
+    // （liveTightness：真设备 OEE / 产线利用率 / 工序良率 或真需求-产能缺口），恢复"每基地一卡"设计。
+    // 旧口径（排除主因子 + 跳过越线因子 `ltv>=threshold continue` + 非越线不出）在 KILL-MOCK-RED 去假后把每基地
+    // 真瓶颈（瓶颈工序 ~90 越线）全数排除、其余非越线真因子又不出卡 → "每基地卡全没了"（0 卡）。
+    // 新口径：每基地一卡——有真源→代表因子出 LIVE 真值卡（可越线可不越线·如实显真张力）；
+    //          某基地任何因子都无真源→诚实空态卡（hasData=false·noDataReason·深链去数据接入），非静默跳过、非 hash 假红。
     for (const b of c.bases.map((x) => str(x.props.baseId)).sort()) {
-      const primary = primaryFactor(c, b);
+      let best: { factor: string; value: number } | null = null;
       for (const f of c.params.bottleneck.factors) {
-        if (f === primary) continue;
-        // WO-FORECAST-SIM：候选筛选用真张力（liveTightness：真预测+真产能缺口优先）——与下方 series 基线同源。
-        // 无真源（value===null）不在此跳过（留待卡循环按 !lt.live 处理：自动扫描跳过·显式点选出诚实空态）。
-        const ltv = liveTightness(c, b, f).value;
-        if (ltv !== null && ltv >= p.threshold) continue;
-        pairs.push({ baseId: b, factor: f, forced: false });
+        const lt = liveTightness(c, b, f);
+        // 真张力最高者为代表（严格 > → 因子表序 tie-break·确定性 R6·非哈希）。
+        if (lt.live && lt.value !== null && (best === null || lt.value > best.value)) best = { factor: f, value: lt.value };
       }
+      // 有真源 → 代表因子（真张力最高）；无真源 → 主因子占位（卡循环走 !lt.live 分支出诚实空态·深链）。
+      pairs.push({ baseId: b, factor: best?.factor ?? primaryFactor(c, b), forced: false });
     }
   }
 
@@ -390,12 +395,11 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // 诚实披露：liveTightness 给该因素的"实测当前张力"——有真数据(LIVE: 设备OEE/瓶颈工序/良率波动 读
     // 真 OEE/利用率/良率·或真需求-产能缺口)则 dataMode=LIVE 亮真值；无真数据源 → lt.live=false（value=null）。
     const lt = liveTightness(c, pair.baseId, pair.factor);
-    // WO-KILL-MOCK-RED（治本·非贴标签）：无真数据源（!lt.live）绝不伪造决策级红/越线。
-    //  - 自动扫描的无数据因素：直接跳过（不是红候选）。
-    //  - 用户显式点选（forced，如洛阳·设备OEE 原案）：返回诚实空态卡（crossDay=null·peak=null·series=[]·
-    //    hasData=false），前端据此显"无真实数据源·不参与越线判定·请接入实测数据"，**不出红**。
+    // WO-KILL-MOCK-RED + CAPACITY-BASECARDS-REALDATA（治本·非贴标签）：无真数据源（!lt.live）绝不伪造决策级红/越线，
+    // 但也**不静默跳过**——出 actionable 诚实空态卡（每基地一卡设计不因缺源而丢基地）。
+    //  - 自动扫描（每基地代表因子无真源）/ 用户显式点选（forced·如洛阳·设备OEE 原案）一律：诚实空态卡
+    //    （crossDay=null·peak=null·series=[]·hasData=false·带深链去数据接入），前端显"暂无真实测量数据·去补 X"，**不出红**。
     if (!lt.live || lt.value === null) {
-      if (!pair.forced) continue;
       cards.push({
         base: baseName(c, pair.baseId),
         baseId: pair.baseId,
@@ -403,7 +407,8 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
         dataMode: "MOCK",
         hasData: false,
         currentTightness: { value: null, live: false },
-        noDataReason: "该基地×因子无真实数据源（无逐设备 OEE / 利用率 / 良率实测·无真需求-产能预测），不参与越线判定——请接入真实设备/订单数据（连接器与上传）。",
+        noDataReason: "该基地暂无真实测量数据（无逐设备 OEE / 产线利用率 / 工序良率实测·无真需求-产能预测），不参与越线判定——请接入真实设备/订单数据后再评估。",
+        deeplink: { to: "/admin/connections", label: "去数据接入 / 上传实测数据 →" },
         peak: null,
         crossDay: null,
         series: [],
@@ -418,7 +423,8 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     const baseline = lt.value;
     const series = tensionSeries(c, pair.factor, horizon, events, undefined, baseline);
     const crossDay = crossDayOf(series, p.threshold);
-    if (!pair.forced && crossDay === null) continue;
+    // CAPACITY-BASECARDS-REALDATA（每基地一卡）：真源基地即使当前未越线也如实出卡（显真张力·crossDay=null 排后），
+    // 不再"非越线即丢卡"——决策看板要看到每基地真实态（含"暂稳"），而非只剩越线基地。
     // WO-FORECAST-SIM：需求驱动因素附"真缺口=预测需求−产能"溯源（万套·基地分摊·R13），前端可解释"红色由何而来"。
     const dc = DEMAND_DRIVEN_FACTORS.has(pair.factor) ? demandCapacityTightness(c, pair.baseId) : null;
     const card: Record<string, unknown> = {

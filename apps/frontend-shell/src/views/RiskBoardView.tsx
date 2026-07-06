@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema } from "@platform/contracts";
@@ -130,6 +130,20 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 <div className="empty-state" data-testid={`risk-nodata-${card.base}`}
                   style={{ fontSize: 11.5, lineHeight: 1.6, color: "var(--muted)", marginTop: 4 }}>
                   {card.noDataReason ?? NO_DATA_HINT}
+                  {/* CAPACITY-BASECARDS-REALDATA：actionable 深链去数据接入/上传（非静默跳过·非假红）——
+                      stopPropagation 避免触发卡片 setDetail。 */}
+                  {card.deeplink && (
+                    <div style={{ marginTop: 6 }}>
+                      <Link
+                        to={card.deeplink.to}
+                        data-testid={`risk-nodata-cta-${card.base}`}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ fontSize: 11.5, color: "var(--accent, #43B7D7)", fontWeight: 600 }}
+                      >
+                        {card.deeplink.label}
+                      </Link>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
