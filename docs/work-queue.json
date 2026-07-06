@@ -3862,8 +3862,8 @@
     {
       "id": "CAPABILITY-OBJECT",
       "title": "Capability 一等对象 + verifiedStatus 派生自现实",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P0",
       "deps": [
         "NO-FAKE-DONE-GATE"
@@ -3886,14 +3886,15 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T09:59:08.830Z"
+        "todo": "2026-07-06T09:59:08.830Z",
+        "wip": "2026-07-06T10:37:21.500Z"
       }
     },
     {
       "id": "GAP-ACTIONABLE",
       "title": "缺口必 actionable(修 OTHER catch-all + evidence保留 + dash泄漏)",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P0",
       "deps": [
         "NO-FAKE-DONE-GATE"
@@ -3921,7 +3922,8 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T09:59:08.830Z"
+        "todo": "2026-07-06T09:59:08.830Z",
+        "wip": "2026-07-06T10:37:21.428Z"
       }
     },
     {
@@ -4010,8 +4012,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "WIP",
-      "id": "NO-FAKE-DONE-GATE",
-      "at": "2026-07-06T10:14:54.760Z"
+      "id": "CAPABILITY-OBJECT",
+      "at": "2026-07-06T10:37:21.500Z"
     }
   }
 }
