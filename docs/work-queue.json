@@ -1,5 +1,5 @@
 {
-  "_schema": "协同工作队列·单一机器可读来源。status: TODO(可开工)|WIP(dev建中)|BUILT(dev交付待复验)|DONE(审核核发)|BLOCKED(门红待修). 用 scripts/collab-queue.mjs 读写(勿手改·避免格式漂移). 每次改一行·fetch/rebase/push.",
+  "_schema": "协同工作队列·单一机器可读来源。status: TODO(可开工)|WIP(dev建中)|BUILT(dev交付待复验)|DONE(审核核发)|BLOCKED(门红待修)|OPEN(WO-6回炉·由假DONE降级的开放缺口·带gap三元·待WO-7+按『代表问经NL真跑答出』填). 用 scripts/collab-queue.mjs 读写(勿手改·避免格式漂移). 每次改一行·fetch/rebase/push.",
   "items": [
     {
       "id": "SOLVER-BINDING",
@@ -231,12 +231,12 @@
       "title": "N1多源融合+冲突仲裁+测谎",
       "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
       "priority": "P1",
-      "status": "DONE",
+      "status": "OPEN",
       "owner": "dev",
       "deps": [
         "SOLVER-BINDING"
       ],
-      "note": "建在绑定层之上",
+      "note": "[回炉WO-6·假DONE降开放缺口] 6条curl验收全指幽灵求解器 source_conflict(真key=multisource_fusion·全仓零命中)→一执行即404；且无真多源数据、multisource_fusion 未接进 QOS NL 场景路由 ‖ 原note: 建在绑定层之上",
       "acceptance": {
         "goal": "CEO 就\"同一 Order 的交期风险\"提问时，ERP 报交期 T1、MES 因产能不足报实际 T2 各执一词 → 用户得到一个融合答案：带两源溯源 + 仲裁结论(采纳哪源/为何) + 置信；且当某基地虚报产能(明显高于他源)时，答案把该源标为 SUSPECT 并降置信(不照单全收)，而非直接采信好看的数字。",
         "criteria": [
@@ -307,17 +307,30 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "",
+      "gap": {
+        "code": "SOLVER_NOT_FOUND",
+        "holes": [
+          "Q2"
+        ],
+        "what": "N1多源仲裁：acceptance 锚幽灵端点 /a/v1/solvers/source_conflict/invoke(404)·真key multisource_fusion 存在但未接 NL 场景路由·无真 ERP/MES 双源数据",
+        "where": "acceptance criteria source_conflict→multisource_fusion(solver-registry.ts:102)；agentcore 场景/意图路由绑 multisource_fusion；注入真双源",
+        "acceptance": "代表问『同一Order交期ERP报T1、MES因产能报T2，信哪个?』经 QueryDock NL→QOS 真跑，答出两源溯源+仲裁结论+SUSPECT测谎（非手搓args直调/solvers/multisource_fusion/invoke）",
+        "fillWO": "WO-7+ (N1 NL落地)"
+      },
+      "at": {
+        "open": "2026-07-06T11:41:01.815Z"
+      }
     },
     {
       "id": "E1-E2",
       "title": "校准活体常态化 + 沙盘what-if进决策",
       "doc": "docs/WO-design-E-calibration-sandbox-live-loop.md",
       "priority": "P1",
-      "status": "DONE",
+      "status": "OPEN",
       "owner": "dev",
       "deps": [],
-      "note": "仅设计零代码·NOT-LANDED",
+      "note": "[回炉WO-6·假DONE降开放缺口] note原本自打脸『仅设计零代码·NOT-LANDED』；E2 propagateTick 仍『待增量3』(app.ts:1293)——DONE↔note 结构矛盾 ‖ 原note: 仅设计零代码·NOT-LANDED",
       "acceptance": {
         "goal": "用户在决策系统里日常用着，不必手动点\"立即校准\"——系统自动越用越准(校准看板能看到 MAPE 随轮下降的趋势)，并且在风险/规划/订单看到问题时能一键\"就此开 what-if 推演\"、对比基线、采纳或弃，全程不污染主世界。",
         "criteria": [
@@ -388,7 +401,23 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "",
+      "gap": {
+        "code": "NO_CAPABILITY",
+        "holes": [
+          "Q1",
+          "Q3",
+          "Q4",
+          "Q5"
+        ],
+        "what": "E1校准活体常态化+E2沙盘what-if进决策 均未落地（自认NOT-LANDED）：无 CALIBRATION_SWEEP 自动校准、无 convergence 趋势、propagateTick 未实装、风险/规划/订单无一键 what-if 入口",
+        "where": "E1: scheduler CALIBRATION_SWEEP + /calibration/convergence；E2: propagateTick 实装 + 决策入口一键 what-if",
+        "acceptance": "Q4『预测信几分?』看到MAPE随轮下降；Q1『毛利跌破+择杠杆』/Q3『断供30天传导』经 NL 一键开 what-if 对比基线采纳——均经 QueryDock NL→QOS 真跑答出",
+        "fillWO": "WO-7+ (E1/E2 落地)"
+      },
+      "at": {
+        "open": "2026-07-06T11:41:01.815Z"
+      }
     },
     {
       "id": "RESOURCE-REF",
@@ -3663,7 +3692,7 @@
       "blockReason": ""
     },
     {
-      "status": "DONE",
+      "status": "OPEN",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
@@ -3671,17 +3700,28 @@
         "wip": "2026-07-06T02:05:37.603Z",
         "built": "2026-07-06T03:44:56.740Z",
         "blocked": "2026-07-06T03:08:01.293Z",
-        "done": "2026-07-06T04:06:27.706Z"
+        "done": "2026-07-06T04:06:27.706Z",
+        "open": "2026-07-06T11:41:01.815Z"
       },
       "id": "QUERY30-ORCH",
       "priority": "P1",
       "title": "QUERY30缺口③: 10新求解器+countermeasure跨期增强+7workflow+2agent+5skill+30intent入目录(经ONTO-SCEN发育管道·非seed手装)",
-      "note": "设计源§2.5/2.6。求解器: what_if_displacement(Q01核心·方案四型确定性枚举+挤占级联+逐单再方案)/multi_plan_compare(五维比较矩阵)/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives+countermeasure_combo跨期增强·全部registry注册(description/argHints/outputShape·R3过滤)。workflow 7条链(§2.5表·接单全链推演为Q01样板)。agent: 接单参谋+供应链风控(绑工具+skill+POST_CHECK)。skill 5方法论(接SKILL-LIBRARY-EVERYWHERE)。30问入intent目录→经ONTO-SCEN管道长成场景卡(PROVISIONAL起·闭G-9·非seed.ts手装)。分期铁律: 先Q01全链打穿样板再横铺(设计§3)。齿: 求解器R6确定性+比较矩阵字段完整+intent目录30条+发育run留痕。",
+      "note": "[回炉WO-6·假DONE降开放缺口] countermeasure_combo『跨求解器编排』实为借名+魔数系数(extended.ts:376·gap×0.3/0.15/0.1/0.2/0.5·从不真调 cert_schedule/changeover_sequence 等子求解器)；10求解器函数在但 SCENARIO_CATALOG S01–S20 无一指向通用求解器→NL 场景路由零命中(9洞共性根) ‖ 原note: 设计源§2.5/2.6。求解器: what_if_displacement(Q01核心·方案四型确定性枚举+挤占级联+逐单再方案)/multi_plan_compare(五维比较矩阵)/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives+countermeasure_combo跨期增强·全部registry注册(description/argHints/outputShape·R3过滤)。workflow 7条链(§2.5表·接单全链推演为Q01样板)。agent: 接单参谋+供应链风控(绑工具+skill+POST_CHECK)。skill 5方法论(接SKILL-LIBRARY-EVERYWHERE)。30问入intent目录→经ONTO-SCEN管道长成场景卡(PROVISIONAL起·闭G-9·非seed.ts手装)。分期铁律: 先Q01全链打穿样板再横铺(设计§3)。齿: 求解器R6确定性+比较矩阵字段完整+intent目录30条+发育run留痕。",
       "deps": [
         "QUERY30-ONTOLOGY-EXT",
         "QUERY30-RULES"
       ],
-      "blockReason": ""
+      "blockReason": "",
+      "gap": {
+        "code": "NO_CAPABILITY",
+        "holes": [
+          "Q6"
+        ],
+        "what": "跨求解器编排诈账：countermeasureCombo 只借子求解器名+魔数系数拼答案·从不真调；且通用多跳求解器未接进 QOS NL 场景路由（catalog S01-S20 全电池卡）",
+        "where": "extended.ts:376 countermeasureCombo 真调所列子求解器；agentcore 场景目录 S01-S20 绑通用求解器 intent 路由",
+        "acceptance": "Q6『保交付/毛利/信用三选二怎么排杠杆组合?』经 QueryDock NL→QOS 真跑，答出真调各子求解器的组合方案（非魔数·非借名）",
+        "fillWO": "WO-7+ (NL路由 + countermeasure 真编排)"
+      }
     },
     {
       "id": "SANDBOX-RENAME-BASECARDS",
@@ -4059,6 +4099,76 @@
       "at": {
         "todo": "2026-07-06T11:30:00.000Z"
       }
+    },
+    {
+      "id": "GAP-SCENE-C",
+      "title": "SCENE-C: 通用多跳求解器未铺进角色场景NL路由(按角色接地答案)",
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "priority": "P1",
+      "status": "OPEN",
+      "owner": "",
+      "deps": [],
+      "note": "[回炉WO-6·9洞曝光] 5个通用多跳求解器在 agentcore 场景/意图路由零命中；按角色接地(base_manager/planner/CEO)未全铺",
+      "gap": {
+        "code": "NO_INTENT",
+        "holes": [
+          "Q6",
+          "Q8"
+        ],
+        "what": "通用求解器未接 NL 场景路由·SCENE-C 角色接地未全铺——不同角色问同一问题得不到角色化接地答案",
+        "where": "agentcore 意图目录 + 场景卡绑定通用求解器 + 角色 workspace 视图分发",
+        "acceptance": "Q8『不同角色问同一瓶颈各自得接地答案』：以 base_manager:常州 与 planner 分别经 QueryDock NL 问『我的瓶颈是?』真跑答出角色化结果",
+        "fillWO": "WO-7+ (SCENE-C)"
+      },
+      "at": {
+        "open": "2026-07-06T11:41:01.815Z"
+      }
+    },
+    {
+      "id": "GAP-AUDIT-OBS",
+      "title": "AUDIT-OBS: 审计散点未成一线 + AUDIT-hand-run.md§③夸大(4直调·NL→QOS从未真跑)",
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "priority": "P1",
+      "status": "OPEN",
+      "owner": "",
+      "deps": [],
+      "note": "[回炉WO-6·9洞曝光] AUDIT-hand-run.md§③称『5杀手多跳全落地+真实HTTP E2E』实为4个直调(shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius 手搓args直调/solvers/{key}/invoke)·NL→QOS从未真跑；classifyGap 把此洞误落OTHER",
+      "gap": {
+        "code": "NO_CAPABILITY",
+        "holes": [
+          "Q9"
+        ],
+        "what": "审计链未聚成一线(AUDIT-OBS)；文档夸大『真实HTTP E2E』实为绕开NL的4个直调；classifyGap 误落 OTHER 丢真相",
+        "where": "审计链聚合成一线 + classifyGap 保留 evidence 原文去 OTHER catch-all(probe.ts:22-30·WO-3)",
+        "acceptance": "Q9『还原这次决策完整链路(谁/依据/求解器/规则/Action)』经 QueryDock NL→QOS 真跑答出一条完整审计线",
+        "fillWO": "WO-7+ (AUDIT-OBS·依赖WO-3 gap actionable)"
+      },
+      "at": {
+        "open": "2026-07-06T11:41:01.815Z"
+      }
+    },
+    {
+      "id": "GAP-XINDUSTRY-LAYOUT",
+      "title": "跨行业config即跑: 求解器大部在但视图layout仍电池形(G-5)",
+      "doc": "docs/PRD-trustworthy-self-accounting.md",
+      "priority": "P2",
+      "status": "OPEN",
+      "owner": "",
+      "deps": [],
+      "note": "[回炉WO-6·9洞曝光] 换行业 config 后 layout 不随之切换(仍电池形·G-5邻域)",
+      "gap": {
+        "code": "NO_CAPABILITY",
+        "holes": [
+          "Q10"
+        ],
+        "what": "跨行业 config 即跑：求解器大部在，但视图 layout 仍电池形(G-5)·换行业 config 后 layout 不切换",
+        "where": "视图 layout 由行业 config/genome 驱动(G-5 邻域)",
+        "acceptance": "Q10『换一个行业config直接跑，界面/求解器随行业切换』经真起服务+真浏览器看到非电池形 layout",
+        "fillWO": "WO-7+ (G-5 跨行业layout)"
+      },
+      "at": {
+        "open": "2026-07-06T11:41:01.815Z"
+      }
     }
   ],
   "meta": {
@@ -4067,6 +4177,35 @@
       "cmd": "dispatch",
       "id": "AUTOFILL-SOP",
       "at": "2026-07-06T11:30:00.000Z"
+    },
+    "retroAuditRecall": {
+      "wo": "RETRO-AUDIT-RECALL (WO-6)",
+      "at": "2026-07-06T11:41:01.815Z",
+      "downgraded": [
+        "MULTISRC-FUSION",
+        "E1-E2",
+        "QUERY30-ORCH"
+      ],
+      "newOpenGaps": [
+        "GAP-SCENE-C",
+        "GAP-AUDIT-OBS",
+        "GAP-XINDUSTRY-LAYOUT"
+      ],
+      "notDowngraded_landedSincePRDSnapshot": {
+        "KILL-MOCK-RED": "PRD§6.3快照标TODO/未做·回炉复核已LANDED(risk.ts:166/393/403无源→null·mockTightness不再吐假红·genuine-sim:check EXIT=0)——不降级=不作假(铁律0.4)；审核方可 genuine-sim:check 复核"
+      },
+      "holesCovered": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q8",
+        "Q9",
+        "Q10"
+      ],
+      "note": "本单只诚实曝光 9 洞为 actionable 开放缺口·不填洞（填洞=WO-7+·每单以代表问经NL真跑答出验收）"
     }
   }
 }

@@ -65,7 +65,7 @@ function set(id, status, patch = {}, role = "dev") {
 switch (cmd) {
   case "show": {
     const w = Math.max(...q.items.map((i) => i.id.length));
-    for (const s of ["BLOCKED", "BUILT", "WIP", "TODO", "DONE"])
+    for (const s of ["BLOCKED", "BUILT", "WIP", "TODO", "OPEN", "DONE"])
       for (const it of q.items.filter((i) => i.status === s).sort(bySort))
         console.log(`${it.status.padEnd(7)} ${it.priority} ${it.id.padEnd(w)}  ${it.title}${it.note ? "  ·"+it.note : ""}`);
     break;
