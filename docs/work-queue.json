@@ -3813,7 +3813,7 @@
     {
       "id": "NO-FAKE-DONE-GATE",
       "title": "R-NO-FAKE-DONE 不变量 + no-fake-done 门(堵谎根·照出诈账)",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P0",
       "deps": [],
@@ -3856,8 +3856,10 @@
       },
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
-        "wip": "2026-07-06T10:14:54.758Z"
-      }
+        "wip": "2026-07-06T10:14:54.758Z",
+        "built": "2026-07-06T10:39:45.085Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "CAPABILITY-OBJECT",
@@ -4011,9 +4013,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "CAPABILITY-OBJECT",
-      "at": "2026-07-06T10:37:21.500Z"
+      "cmd": "BUILT",
+      "id": "NO-FAKE-DONE-GATE",
+      "at": "2026-07-06T10:39:45.085Z"
     }
   }
 }
