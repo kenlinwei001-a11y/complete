@@ -225,7 +225,11 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(order.sourceSystem).toBe("ERP");
     // catalog §3 C29（排产冻结期）/C33（碳护照）+ 规则即引用补全 C15（经营毛利底线）/C22（换型损失）
     // 作用域含 Order → 映射表含这些行（规则一等化后真定义可见，非"未找到定义"）。
-    expect(order.rules).toEqual(["C03", "C08", "C13", "C15", "C22", "C29", "C33"]);
+    // QUERY30-RULES（C34–C50）新增 6 条作用域含 Order 的规则：C34 挤占优先级[Order,Line]/C35 ≥2方案门[Order]/
+    // C36 锁价现金敞口[Order,Customer]/C37 违约金权衡[Order]/C44 谷段不破交期[EnergyMeter,Order]/C49 断料口径[Shipment,Order]。
+    expect(order.rules).toEqual([
+      "C03", "C08", "C13", "C15", "C22", "C29", "C33", "C34", "C35", "C36", "C37", "C44", "C49",
+    ]);
     expect(order.derivations.some((d) => d.includes("qty * unitPrice"))).toBe(true);
     // 求解器与 Agent 行
     const solverRows = rows.filter((r) => r.kind === "solver");
