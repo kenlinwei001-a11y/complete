@@ -3597,15 +3597,17 @@
     {
       "id": "SKILL-LIBRARY-EVERYWHERE",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/PRD-scenario-ontogenesis.md",
       "title": "独立Skill库+agent/workflow双侧skill配置+全预设(用户亲定)",
       "note": "用户亲定(2026-07-05): 『需要有单独的skill库，在agent,workflow里面需要有单独的配置skill功能。所有都需要被预设配置好。』现状实测: skills registry(B4)+/admin/skills页存在·agent真挂skill(skl_seed_capacity产能法/skl_plan_scheme方案比选法·注入系统提示生效)·**workflow零skill机制**(无步型无绑定)·且skill库存量仅2-3条方法论。建: ①Skill库页升级为一等管理面(列表/详情/版本/新建/编辑/引用计数=哪些agent/workflow在用·发现纪律description必填); ②agent编辑面板加skill配置区(多选绑定·已有repo字段·补UI); ③workflow侧skill机制设计+落地: 确定性工作流不跑LLM自由发挥→skill在workflow=**组装口方法论绑定**(render_answer/结论叙事步消费skill的结构模板与判定口径·R6确定性·非LLM注入)·plan级skillRefs字段(contracts additive)+执行期把skill方法论体现在结论句/叙事模板选择; ④全预设: 20卡的7个agent与13条workflow逐一配好合适skill(产能法/根因法/方案比选法/齐套法/碳合规法…缺的方法论skill补种子·各带description)·发布态; ⑤齿: skill引用完整性门(agent/workflow引用的skillId必存在且PUBLISHED·孤儿引用红)+20卡skill配置覆盖断言。FDE: /admin/skills真浏览器管理面走查+抽1 agent卡验skill方法论体现在答案+1 workflow卡验结论叙事随skill模板。诚实边界: workflow-skill为确定性消费(模板/口径)非agent式提示注入·PRD语义在单内钉死防跑偏。",
       "at": {
         "todo": "2026-07-05T09:55:29.963Z",
-        "wip": "2026-07-06T02:50:54.156Z"
-      }
+        "wip": "2026-07-06T02:50:54.156Z",
+        "built": "2026-07-06T03:22:58.518Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "INTAKE-XLSX-EXPORT",
@@ -3758,10 +3760,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "QUEUE",
-      "id": "SYSFIX-SOLVER-COUNT-DRIFT",
-      "at": "2026-07-06T03:21:51.271Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "SKILL-LIBRARY-EVERYWHERE",
+      "at": "2026-07-06T03:22:58.518Z"
     }
   }
 }
