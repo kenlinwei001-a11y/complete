@@ -4027,7 +4027,7 @@
     {
       "id": "RETRO-AUDIT-RECALL",
       "title": "存量回炉: 门扫全DONE,诈的重置开放缺口(十个算法+9洞)",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P1",
       "deps": [
@@ -4052,8 +4052,10 @@
       },
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
-        "wip": "2026-07-06T11:24:00.648Z"
-      }
+        "wip": "2026-07-06T11:24:00.648Z",
+        "built": "2026-07-06T11:41:28.515Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "AUTOFILL-SOP",
@@ -4173,10 +4175,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "dispatch",
-      "id": "AUTOFILL-SOP",
-      "at": "2026-07-06T11:30:00.000Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "RETRO-AUDIT-RECALL",
+      "at": "2026-07-06T11:41:28.515Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
