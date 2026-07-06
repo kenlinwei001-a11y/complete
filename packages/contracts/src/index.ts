@@ -46,3 +46,4 @@ export * from "./decision.js";
 export * from "./viewlayout.js";
 export * from "./industrypack.js";
 export * from "./intake-coverage.js";
+export * from "./capability.js";
