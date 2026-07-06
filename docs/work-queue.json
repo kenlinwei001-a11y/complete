@@ -4005,8 +4005,8 @@
     {
       "id": "SELF-SURFACES-SLICE",
       "title": "散落自测/补面归一为 Capability/Gap 切片视图",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P2",
       "deps": [
         "CAPABILITY-OBJECT"
@@ -4024,7 +4024,8 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T09:59:08.830Z"
+        "todo": "2026-07-06T09:59:08.830Z",
+        "wip": "2026-07-06T12:24:12.880Z"
       }
     },
     {
@@ -4182,8 +4183,8 @@
     {
       "id": "CAPACITY-BASECARDS-REALDATA",
       "title": "产能推演基地卡: 补真实设备时序(不写死) + 无源actionable诚实空态",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P1",
       "deps": [],
       "doc": "apps/datacore/src/solvers/risk.ts",
@@ -4219,16 +4220,17 @@
         ]
       },
       "at": {
-        "todo": "2026-07-06T12:00:00.000Z"
+        "todo": "2026-07-06T12:00:00.000Z",
+        "wip": "2026-07-06T12:24:12.810Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "AUTOFILL-SOP",
-      "at": "2026-07-06T12:10:20.127Z"
+      "cmd": "WIP",
+      "id": "SELF-SURFACES-SLICE",
+      "at": "2026-07-06T12:24:12.880Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
