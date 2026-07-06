@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GrowthRunReport, WorklistItem, WorklistKind, WorklistStatus } from "@platform/contracts";
 import {
@@ -106,11 +107,19 @@ export default function GrowthCockpitPage() {
     if (i.kind === "PLAN_SCAFFOLD") return <a className="btn sm" data-testid={`wl-approve-${i.id}`} href={i.deeplink ?? "/admin/actions"}>去审批</a>;
     if (i.kind === "FEATURE") return <span className="muted" style={{ fontSize: 11 }} data-testid={`wl-feature-${i.id}`}>需开发（工单）</span>;
     // DATA_GAP：真在办项·完整人工闸生命周期。
-    if (i.status === "OPEN") return <button className="btn sm" data-testid={`wl-claim-${i.id}`} onClick={() => claim.mutate(i.id)} disabled={claim.isPending}>认领</button>;
+    // GROWTH-BOARD-EMPTYSTATE：两步流程可见化——OPEN 行「认领」旁挂 ① 提示（认领后才解锁「补」），
+    // 认领后 CLAIMED/IN_PROGRESS 行「补数据缺口」前挂 ② 标记，让"先认领→再补"两步不再隐形。
+    if (i.status === "OPEN") return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <button className="btn sm" data-testid={`wl-claim-${i.id}`} onClick={() => claim.mutate(i.id)} disabled={claim.isPending}>认领</button>
+        <span className="muted" style={{ fontSize: 10 }} data-testid={`wl-claim-hint-${i.id}`}>① 认领后解锁「补数据缺口」</span>
+      </span>
+    );
     if (i.status === "DONE") return <button className="btn sm" data-testid={`wl-rerun-${i.id}`} onClick={() => rerun.mutate(i.fromQuestion)} disabled={rerun.isPending}>继续推演</button>;
     // CLAIMED / IN_PROGRESS
     return (
-      <span style={{ display: "inline-flex", gap: 6 }}>
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+        <span className="badge blue" style={{ fontSize: 10 }} data-testid={`wl-step2-${i.id}`}>② 已认领</span>
         <button className="btn primary sm" data-testid={`wl-fill-${i.id}`} onClick={() => fill.mutate(i.id)} disabled={fill.isPending}>{fill.isPending ? "补数中…" : "补数据缺口"}</button>
         <button className="btn sm" data-testid={`wl-release-${i.id}`} onClick={() => release.mutate(i.id)} disabled={release.isPending}>释放</button>
       </span>
@@ -190,7 +199,13 @@ export default function GrowthCockpitPage() {
         <thead><tr><th>问题</th><th>缺口码</th><th>类型</th><th>状态</th><th>认领人</th><th>操作</th></tr></thead>
         <tbody>
           {items.map((i) => (
-            <tr key={i.id} data-testid={`wl-row-${i.id}`}>
+            <tr
+              key={i.id}
+              data-testid={`wl-row-${i.id}`}
+              // 认领后行高亮：我的在办项（CLAIMED/IN_PROGRESS）着色，指引进入"② 补数据缺口"这一步。
+              data-claimed={i.owner === myUserId && (i.status === "CLAIMED" || i.status === "IN_PROGRESS") ? "1" : undefined}
+              style={i.owner === myUserId && (i.status === "CLAIMED" || i.status === "IN_PROGRESS") ? { background: "rgba(80,140,255,.10)" } : undefined}
+            >
               <td style={{ fontSize: 11.5 }}>{i.fromQuestion}</td>
               <td className="mono">{i.gapCode}</td>
               <td><span className={`badge ${WL_KIND_BADGE[i.kind]}`}>{WL_KIND_LABEL[i.kind]}</span></td>
@@ -201,7 +216,22 @@ export default function GrowthCockpitPage() {
           ))}
         </tbody>
       </table>
-      {items.length === 0 && <div className="empty-state" data-testid="wl-empty">{allItems.length === 0 ? "暂无在办项——跑一个问题诊断缺口。" : "无匹配筛选的在办项。"}</div>}
+      {items.length === 0 && (allItems.length === 0 ? (
+        // GROWTH-BOARD-EMPTYSTATE：干净租户看板 0 条 → 非裸空表，给引导卡 + 深链去问答坞提问。
+        // 逐行「认领/补」按钮须先有行才附着，空看板下用户以为没功能——此处补上"下一步"入口。
+        <div className="panel" data-testid="wl-empty-guide" style={{ padding: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>暂无待补缺口</div>
+          <div className="muted" style={{ fontSize: 11.5, marginBottom: 10, lineHeight: 1.7, maxWidth: 460, margin: "0 auto 10px" }}>
+            去对话问一个系统答不出的问题，诊断出缺口后会在此生成待办——认领后再点「补数据缺口」即可确定性合成补齐（R6）。
+          </div>
+          <span style={{ display: "inline-flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link to="/v/dash" className="btn primary sm" data-testid="wl-empty-cta">去问答坞提问 →</Link>
+            <span className="muted" style={{ fontSize: 10, alignSelf: "center" }}>或用上方「运行」框直接跑一个问句</span>
+          </span>
+        </div>
+      ) : (
+        <div className="empty-state" data-testid="wl-empty">无匹配筛选的在办项。</div>
+      ))}
 
       {/* 成长账本 */}
       <div className="section-title">成长账本（demand-indexed）</div>

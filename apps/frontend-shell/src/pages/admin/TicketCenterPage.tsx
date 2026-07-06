@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TicketBoardRow, TicketDetail } from "@platform/contracts";
 import {
@@ -110,13 +111,20 @@ export default function TicketCenterPage() {
       if (r.kind === "PLAN_SCAFFOLD") return <a className="btn sm" data-testid={`tc-approve-${r.id}`} href={r.deeplink ?? "/admin/actions"} onClick={(e) => e.stopPropagation()}>去审批</a>;
       return <span className="muted" style={{ fontSize: 11 }} data-testid={`tc-readonly-${r.id}`}>需开发（工单）</span>;
     }
-    if (r.status === "OPEN") return <button className="btn sm" data-testid={`tc-claim-${r.id}`} onClick={(e) => { e.stopPropagation(); claim.mutate(r.id); }} disabled={claim.isPending}>认领</button>;
+    // GROWTH-BOARD-EMPTYSTATE：两步可见——OPEN 行「认领」旁挂 ① 提示，认领后 ② 标记 + 「补数据缺口」解锁。
+    if (r.status === "OPEN") return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <button className="btn sm" data-testid={`tc-claim-${r.id}`} onClick={(e) => { e.stopPropagation(); claim.mutate(r.id); }} disabled={claim.isPending}>认领</button>
+        <span className="muted" style={{ fontSize: 10 }} data-testid={`tc-claim-hint-${r.id}`}>① 认领后解锁补</span>
+      </span>
+    );
     if (r.status === "DONE") return <button className="btn sm" data-testid={`tc-rerun-${r.id}`} onClick={(e) => { e.stopPropagation(); rerun.mutate(r.fromQuestion); }} disabled={rerun.isPending}>继续推演</button>;
     if (r.status === "NEEDS_HUMAN") return <span className="muted" style={{ fontSize: 11 }}>待人工</span>;
     // CLAIMED / IN_PROGRESS：DATA_REQUEST（HARD 导入）走真人正门深链，DATA_GAP 可触发补。
     const isImport = r.kind === "DATA_REQUEST";
     return (
-      <span style={{ display: "inline-flex", gap: 6 }}>
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+        <span className="badge blue" style={{ fontSize: 10 }} data-testid={`tc-step2-${r.id}`}>② 已认领</span>
         {isImport
           ? <a className="btn sm" data-testid={`tc-import-${r.id}`} href={r.deeplink ?? "/connections"} onClick={(e) => e.stopPropagation()}>去导入</a>
           : <button className="btn primary sm" data-testid={`tc-fill-${r.id}`} onClick={(e) => { e.stopPropagation(); fill.mutate(r.id); }} disabled={fill.isPending}>{fill.isPending ? "补数中…" : "补数据缺口"}</button>}
@@ -167,11 +175,21 @@ export default function TicketCenterPage() {
           ))}
         </tbody>
       </table>
-      {rows.length === 0 && (
-        <div className="empty-state" data-testid="tc-empty">
-          {allRows.length === 0 ? "暂无工单——在自成长驾驶舱跑一个问题诊断缺口，或场景发育/就绪探测出缺口后自动登记。" : "本 Tab / 类型下暂无工单。"}
+      {rows.length === 0 && (allRows.length === 0 ? (
+        // GROWTH-BOARD-EMPTYSTATE：干净租户 0 工单 → 非裸空表，给引导卡 + 深链去问答坞提问（诊断出缺口才生成待办）。
+        <div className="panel" data-testid="tc-empty-guide" style={{ padding: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>暂无待补缺口</div>
+          <div className="muted" style={{ fontSize: 11.5, marginBottom: 10, lineHeight: 1.7, maxWidth: 480, margin: "0 auto 10px" }}>
+            去对话问一个系统答不出的问题，诊断出缺口后会在此生成待办；或场景发育/就绪探测出缺口也会自动登记。认领后再点「补数据缺口」补齐。
+          </div>
+          <span style={{ display: "inline-flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link to="/v/dash" className="btn primary sm" data-testid="tc-empty-cta">去问答坞提问 →</Link>
+            <Link to="/admin/growth" className="btn sm" data-testid="tc-empty-growth">自成长驾驶舱</Link>
+          </span>
         </div>
-      )}
+      ) : (
+        <div className="empty-state" data-testid="tc-empty">本 Tab / 类型下暂无工单。</div>
+      ))}
 
       {selectedId && <TicketDetailDrawer id={selectedId} onClose={() => setSelectedId(null)} />}
     </div>
