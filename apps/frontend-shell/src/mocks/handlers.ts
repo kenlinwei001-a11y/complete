@@ -877,6 +877,38 @@ export const handlers = [
       ],
     }),
   ),
+  // WO-5（自我账 §3.6）：散落自我面 → 统一 Capability/Gap slice。**镜像后端 buildEvalCapabilitySlice
+  // 对上方 eval-runs 固件（erun_1: classifier·MOCK·passRate 0.95·parity INTENT:1）的真实投影**：
+  // MOCK 高分 → 诚实 UNVERIFIED（禁假 VERIFIED）+ actionable Gap（接真模型 · 意图错分 1 例）。
+  http.get("*/b/v1/self/capability-slice", ({ request }) => {
+    const surface = new URL(request.url).searchParams.get("surface") ?? "evals";
+    if (surface !== "evals") {
+      return HttpResponse.json({ surface, wired: false, generatedAt: "2026-06-17T08:02:00Z", rows: [], note: `「${surface}」面尚未接入统一 Capability/Gap 模型——后续增量（本增量先打穿 evals 证模式成立）。` });
+    }
+    return HttpResponse.json({
+      surface: "evals",
+      wired: true,
+      generatedAt: "2026-06-17T08:02:00Z",
+      rows: [
+        {
+          capability: {
+            key: "eval:classifier",
+            kind: "feature",
+            claim: "把用户问句正确路由到意图/域外（分类器质量达标）",
+            representativeQuery: "跑「分类器」评测套件（用例经 QOS NL 路径逐条真跑）",
+            acceptance: "passRate≥90% 且 llmMode=REAL",
+            verifiedStatus: "UNVERIFIED",
+            evidence: { kind: "RUNTIME_PROBE", at: "2026-06-17T08:02:00Z", detail: "最新运行 erun_1: llmMode=MOCK passRate=95% (19/20) · MOCK 跑分仅证框架非真实质量" },
+          },
+          gaps: [
+            { what: "真实 LLM 未接入（llmMode=MOCK）——跑分仅证评测框架，非真实质量", where: "LLM Provider 绑定（/admin/llm-providers）后以 REAL 模式重跑评测", acceptance: "接真模型后「分类器」passRate≥90% 且 llmMode=REAL", gapCode: "LLM_PURPOSE_UNBOUND", blocking: true },
+            { what: "意图错分 1 例与 PRD 期望不符", where: "评测套件「分类器」用例（parity byCase 下钻定位）", acceptance: "修复后重跑「分类器」，意图错分归零", gapCode: "NO_INTENT", blocking: true },
+          ],
+        },
+      ],
+      note: "全部为 MOCK 跑分（仅证评测框架，非真实质量）——绑定真实 LLM 以 REAL 重跑后方可 VERIFIED。",
+    });
+  }),
   http.post("*/a/v1/objects/merge-scan", () => HttpResponse.json({ candidates: [{ id: "mc_new" }] })),
   http.get("*/a/v1/objects/merge-candidates", () =>
     HttpResponse.json([

@@ -49,6 +49,7 @@ import { newId } from "./ids.js";
 import { decideDataGap, groundingVocab, decideTriggerBoundary, triggerDimensions } from "./growth/data-boundary.js";
 import { annotateRequestId } from "./tracing.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
+import { buildEvalCapabilitySlice, unwiredSlice, WIRED_SURFACES } from "./capability/slice.js";
 import { HttpError } from "./router/orchestrator.js";
 import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
 import { streamTaskEvents } from "./api/sse.js";
@@ -2216,6 +2217,27 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/b/v1/evals/runs", async (req) => {
     const a = await auth(req);
     return { items: await deps.repos.evalRuns.listByTenant(a.tenantId) };
+  });
+
+  /**
+   * 可信自我账 · WO-5（PRD-trustworthy-self-accounting §3.6）：散落自我面 → 统一 Capability/Gap slice 视图。
+   * `?surface=evals`（本增量真接入）：读该租户评测运行 → 每套件最新运行投影为 Capability（verifiedStatus
+   * 恒经派生器·禁手打）+ 关联 actionable Gap 三元。其余散落面（fallback/calibration/vle/…）返回
+   * **诚实占位**（wired=false·rows=[]·note 指明后续增量）——绝不假装已归一（正是本 PRD 根治的 claim>实）。
+   */
+  app.get("/b/v1/self/capability-slice", async (req) => {
+    const a = await auth(req);
+    const surface = ((req.query as { surface?: string }).surface ?? "evals").trim();
+    if (surface === "evals") {
+      const runs = await deps.repos.evalRuns.listByTenant(a.tenantId);
+      return buildEvalCapabilitySlice(runs);
+    }
+    // 未接入面：诚实占位（不 500·不 fake）。
+    return unwiredSlice(surface);
+  });
+  app.get("/b/v1/self/surfaces", async (req) => {
+    await auth(req);
+    return { wired: [...WIRED_SURFACES] };
   });
 
   // 数据流闭环 §3/§6：联动刷新接线注册表（前端缓存失效路由的单一来源）。

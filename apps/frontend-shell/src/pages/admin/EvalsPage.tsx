@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createEvalCase, fetchEvalCases, fetchEvalRuns, runEvalSuite } from "@/api/endpoints";
+import { createEvalCase, fetchCapabilitySlice, fetchEvalCases, fetchEvalRuns, runEvalSuite } from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
 import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
+import CapabilitySliceView from "@/components/CapabilitySliceView";
 
 /**
  * Agent 评测体系（运营完备性 OC2）：评测用例库 + 跑评测套件 + 历史报告（意图准确率/工具正确率/时延）。
@@ -18,6 +19,8 @@ export default function EvalsPage() {
   const [suite, setSuite] = useState<string>("classifier");
   const { data: cases } = useQuery({ queryKey: ["b", "eval-cases", suite], queryFn: () => fetchEvalCases(suite) });
   const { data: runs } = useQuery({ queryKey: ["b", "eval-runs"], queryFn: fetchEvalRuns });
+  // WO-5：本面接入统一 Capability/Gap slice（评测运行 → 每套件能力 + verifiedStatus + actionable Gap）。
+  const { data: slice } = useQuery({ queryKey: ["b", "capability-slice", "evals"], queryFn: () => fetchCapabilitySlice("evals") });
   const { data: workspace } = useWorkspace();
   const packageId = firstPackageId(workspace);
 
@@ -59,6 +62,12 @@ export default function EvalsPage() {
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Agent 评测</h2>
       <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
         评测用例（应触发/不应触发/行为增益）→ 跑套件 → 意图准确率/工具正确率/时延。是 Agent 发布门禁的度量来源。
+      </div>
+
+      {/* WO-5（自我账 §3.6）：本面接入统一 Capability/Gap slice——每套件能力 + 派生 verifiedStatus + actionable Gap。 */}
+      <div className="section-title">能力/缺口切片（统一自我模型）</div>
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="evals-capability-slice">
+        <CapabilitySliceView slice={slice} />
       </div>
 
       <div className="panel" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>

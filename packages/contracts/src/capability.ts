@@ -139,3 +139,56 @@ export function buildCapability(spec: CapabilitySpec, derive: DeriveVerifiedInpu
     evidence,
   });
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * WO-5 · SELF-SURFACES-SLICE（PRD-trustworthy-self-accounting §3.6）
+ *
+ * 散落自我面（兜底统计 / Agent 评测 / 校准 / VLE / 规划体检 / 工单中心）逐步收敛为
+ * **同一 Capability/Gap 自我模型上的 slice 视图**——不再各搭各页。一个 slice = 某散落面
+ * 的真实运行时数据**投影**到统一模型：每行 = 一项 Capability（复用 WO-2 派生态 verifiedStatus·
+ * 禁手打）+ 其**关联 actionable Gap 三元**（what/where/acceptance·复用 GAP-ACTIONABLE 口径）。
+ *
+ * 契约只放**共享形状**（schema/type）；各面的投影器（如 evals→slice）留在其宿主服务
+ * （agentcore），因需读该面私有运行时数据——契约不跨包 import app 源（contracts-only-shared）。
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * actionable Gap 三元（复用 growth `GapFinding` 的 what/where/acceptance 语义·永不"人工核实内部错误/dash"）。
+ * `gapCode` 为可行动错因（自由串·与 GapCode 码表对齐但不强绑），`blocking` 标是否阻塞该能力被验证。
+ */
+export const CapabilityGapSchema = z.object({
+  /** 缺什么（可行动·非"内部错误"）。 */
+  what: z.string(),
+  /** 补在哪（落点·真实位置）。 */
+  where: z.string(),
+  /** 验收（该能力经何判据即算被验证）。 */
+  acceptance: z.string(),
+  /** 可行动错因码（对齐 growth GapCode 语义·自由串免跨包强耦）。 */
+  gapCode: z.string().default("OTHER"),
+  /** 是否阻塞该 Capability 被验证（true=verifiedStatus 达不到 VERIFIED 的根因）。 */
+  blocking: z.boolean().default(true),
+});
+export type CapabilityGap = z.infer<typeof CapabilityGapSchema>;
+
+/** slice 一行：一项 Capability（含派生 verifiedStatus）+ 其关联 actionable Gap 列。 */
+export const CapabilitySliceRowSchema = z.object({
+  capability: CapabilitySchema,
+  gaps: z.array(CapabilityGapSchema),
+});
+export type CapabilitySliceRow = z.infer<typeof CapabilitySliceRowSchema>;
+
+/**
+ * 自我面 slice 视图响应：某散落面（surface）投影到统一 Capability/Gap 模型的行集。
+ * `surface` = 面标识（如 `evals` / `fallback`）；`wired` 标该面是否已真接入（false=后续增量·诚实空态）。
+ */
+export const CapabilitySliceSchema = z.object({
+  surface: z.string(),
+  /** 该面是否已真接入统一模型（false → 诚实占位·非本增量·rows 为空）。 */
+  wired: z.boolean(),
+  /** 生成时刻（真跑时钟）。 */
+  generatedAt: IsoTime,
+  rows: z.array(CapabilitySliceRowSchema),
+  /** 诚实注（如"MOCK 跑分仅证框架" / "本面后续增量接入"）——指明真值证在何处。 */
+  note: z.string().default(""),
+});
+export type CapabilitySlice = z.infer<typeof CapabilitySliceSchema>;

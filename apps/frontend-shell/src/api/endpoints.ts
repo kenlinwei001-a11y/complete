@@ -1145,6 +1145,9 @@ import type { EvalCase, EvalRunReport } from "@platform/contracts";
 export const fetchEvalCases = (suite?: string) =>
   api.b<{ items: EvalCase[] }>(`/b/v1/evals${suite ? `?suite=${suite}` : ""}`);
 export const fetchEvalRuns = () => api.b<{ items: EvalRunReport[] }>("/b/v1/evals/runs");
+/** WO-5（自我账 §3.6）：散落自我面 → 统一 Capability/Gap slice 视图（surface=evals 已接入）。 */
+export const fetchCapabilitySlice = (surface: string) =>
+  api.b<import("@platform/contracts").CapabilitySlice>(`/b/v1/self/capability-slice?surface=${encodeURIComponent(surface)}`);
 export const runEvalSuite = (suite: string, agentKey?: string) =>
   api.b<EvalRunReport>("/b/v1/evals/run", { method: "POST", body: { suite, ...(agentKey ? { agentKey } : {}) } });
 /** C9 评测用例 CRUD（input/expect）：POST /b/v1/evals（catalog_admin）。满足 agent/skill 发布门禁≥3 用例。 */
