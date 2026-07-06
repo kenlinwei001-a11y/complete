@@ -4185,7 +4185,7 @@
     {
       "id": "CAPACITY-BASECARDS-REALDATA",
       "title": "产能推演基地卡: 补真实设备时序(不写死) + 无源actionable诚实空态",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P1",
       "deps": [],
@@ -4223,8 +4223,10 @@
       },
       "at": {
         "todo": "2026-07-06T12:00:00.000Z",
-        "wip": "2026-07-06T12:24:12.810Z"
-      }
+        "wip": "2026-07-06T12:24:12.810Z",
+        "built": "2026-07-06T12:56:10.399Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "NAV-DROP-LEDGER-MAP",
@@ -4264,8 +4266,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "SELF-SURFACES-SLICE",
-      "at": "2026-07-06T12:45:47.373Z"
+      "id": "CAPACITY-BASECARDS-REALDATA",
+      "at": "2026-07-06T12:56:10.399Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
