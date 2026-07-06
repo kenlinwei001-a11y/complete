@@ -16,7 +16,7 @@
   - **复用现成 reality-judge**（不新建判据）：`classifyGap`(probe.ts:47)、`verifyScenario`(server.ts:2079)、`GrowthTicket.verify`(server.ts:353)、`RUNTIME_PROBE`(storybuildrun.ts:328)。
 - **链路**：扩 `sys.meta.change_loop`(D11 §10.3)——把"影响分析"升为"不变量真值校验"；接 `sys.orch.query_to_answer`(D7) 的 gap 块使其 actionable；复用 growth `L13`。
 - **事件**：复用 `growth.gap_detected` / `growth.converged`(L13)；**新增** `selfaccount.fake_detected`（no-fake-done 门查出诈账，级别 NOTIFY，落缺口+通知）。
-- **不变量**：**新增 `R-NO-FAKE-DONE`（命名式**，不占 R18——R 号止于 R17 且 §0.5 有 R18/R19 悬空指针；命名式贴合 R-RETENTION/R-AUDIT/R-DR 约定，零碰撞、不触发 meta:sync 索引逐条校验）。**不得违反**：R4（fill 补缺口经 Action 审批·scaffold 为 DRAFT）、R6（判据确定性）、R2（租户隔离）、R11/R13（闭包+可溯源）、R16（发育闭环）。
+- **不变量**：**新增 `R-NO-FAKE-DONE`（命名式**，不占数字编号槽·贴合 R-RETENTION/R-AUDIT/R-DR 约定，零碰撞、不触发 meta:sync 索引逐条校验）。**不得违反**：R4（fill 补缺口经 Action 审批·scaffold 为 DRAFT）、R6（判据确定性）、R2（租户隔离）、R11/R13（闭包+可溯源）、R16（发育闭环）。
 - **断点**：
   - 修复 **G-9 残留**（"自动补成 GOVERNED 招牌活体"——本 PRD 让其判据被 no-fake-done 门守）。
   - **新增 G-16**：自我构建账本（work-queue DONE）+ 自我镜像（meta 断点 FIXED）**无验证门**——手打状态字与"制品真存在+重跑可答"零绑定（`collab-queue.mjs:60` 裸赋值；全仓零 `check-*.mjs` 引用 work-queue）。本 PRD 即关闭 G-16。
@@ -156,4 +156,4 @@ Capability {
 ---
 
 ## 8. 回写本体（改完必做·本体是单一来源）
-- §2.H 新增 `Capability`；§4 新增 `selfaccount.fake_detected`(L15)；§5 新增 `R-NO-FAKE-DONE`；§7 新增 `no-fake-done:check`；§8 新增 G-16（并更新 G-9 收口口径）；§0.5 顺手清 R18/R19 悬空指针。
+- §2.H 新增 `Capability`；§4 新增 `selfaccount.fake_detected`(L15)；§5 新增 `R-NO-FAKE-DONE`；§7 新增 `no-fake-done:check`；§8 新增 G-16（并更新 G-9 收口口径）；§0.5 顺手清悬空的编号指针。
