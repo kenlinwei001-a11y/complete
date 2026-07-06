@@ -3866,14 +3866,14 @@
     {
       "id": "CAPABILITY-OBJECT",
       "title": "Capability 一等对象 + verifiedStatus 派生自现实",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P0",
       "deps": [
         "NO-FAKE-DONE-GATE"
       ],
       "doc": "docs/PRD-trustworthy-self-accounting.md",
-      "note": "根治WO-2。能力/缺口统一对象(元租户__platform__,复用objects/links仓储不新建表)。verifiedStatus 只能从现实派生(制品在+acceptance真跑+代表问经QOS NL答出),禁手写。含代表问 NL E2E harness(复用 GrowthTicket.verify:重跑问句非直调求解器)。反半成品守卫: 模型自己也受 no-fake-done 门守。",
+      "note": "【审核方复验DONE 2026-07-06】build rc=0(4包)·capability-object 4过+capability-verify 4过。齿①verifiedStatus恒经deriveVerifiedStatus·三真为唯一VERIFIED(revert即红)·drift→STALE;齿②NL harness唯一入口submitQuery·spy证query==代表问+path==WORKFLOW+matchedIntent(非直调/solvers/invoke);齿③答不出→诚实UNVERIFIED。复用objects仓储·§2.H回写+meta:sync绿·no-fake-done绿。诚实:齿测用mock LLM·NL路径结构证实未真打Kimi·活栈真跑属真能力验证(env-gated)。反4个假E2E判据落地。 ⟪原⟫ 根治WO-2。能力/缺口统一对象(元租户__platform__,复用objects/links仓储不新建表)。verifiedStatus 只能从现实派生(制品在+acceptance真跑+代表问经QOS NL答出),禁手写。含代表问 NL E2E harness(复用 GrowthTicket.verify:重跑问句非直调求解器)。反半成品守卫: 模型自己也受 no-fake-done 门守。",
       "acceptance": {
         "goal": "Capability 对象落地,verifiedStatus 由现实派生; 先打穿'求解器能力'一条真竖井证明 probe→gap→fill→verify 闭环端到端真跑通,模型才可标完成。",
         "criteria": [
@@ -3892,7 +3892,8 @@
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
         "wip": "2026-07-06T10:37:21.500Z",
-        "built": "2026-07-06T10:58:18.344Z"
+        "built": "2026-07-06T10:58:18.344Z",
+        "done": "2026-07-06T11:25:52.857Z"
       },
       "blockReason": ""
     },
@@ -4017,10 +4018,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "RETRO-AUDIT-RECALL",
-      "at": "2026-07-06T11:24:00.649Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "CAPABILITY-OBJECT",
+      "at": "2026-07-06T11:25:52.857Z"
     }
   }
 }
