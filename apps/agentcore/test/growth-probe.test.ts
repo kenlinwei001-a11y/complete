@@ -59,6 +59,48 @@ describe("classifyGap · 终态→缺口分类", () => {
     expect(r.findings[0]!.gapCode).toBe("NO_INTENT");
     expect(r.findings[0]!.blocking).toBe(false);
   });
+
+  // ── GAP-ACTIONABLE 齿（PRD §3.4·修 P3 用户实测痛点「常州基地的瓶颈是?」→工单看不到补什么/在哪补）──
+  it("齿：FAILED LLM_PURPOSE_UNBOUND → actionable gap（非 OTHER·非「人工核实内部错误」·suggestedFill 含真修法）", () => {
+    // 真实 evidence：orchestrator sanitizeLlmAuthLeak 归一码（用户实测「常州基地的瓶颈是?」终态即此）。
+    const r = classifyGap(base({
+      query: "常州基地的瓶颈是?", status: "FAILED", path: "WORKFLOW",
+      error: { code: "LLM_PURPOSE_UNBOUND", message: "LLM 用途未解析到可用 provider 或密钥无效——请在 设置→LLM 用途绑定 配置 provider 与密钥", stepId: "classify" },
+    }));
+    const f = r.findings[0]!;
+    expect(f.gapCode).toBe("LLM_PURPOSE_UNBOUND"); // 入正式码表，不再拍 OTHER
+    expect(f.gapCode).not.toBe("OTHER");
+    // 保留 evidence 原文（具体可行动错因不丢真相）：
+    expect(f.evidence).toContain("设置→LLM 用途绑定");
+    // 派生 what/where/acceptance（缺什么·补在哪·验收=本问句 E2E 答出）：
+    expect(f.what).toBeTruthy();
+    expect(f.where).toContain("设置→LLM 用途绑定");
+    expect(f.acceptance).toContain("常州基地的瓶颈是?");
+    // suggestedFill 含真修法（永不「人工核实内部错误」）：
+    expect(f.suggestedFill).toContain("设置→LLM 用途绑定");
+    expect(f.suggestedFill).not.toContain("人工核实内部错误");
+  });
+
+  it("齿：LLM 鉴权泄漏原始串（Could not resolve authentication）→ 归一 LLM_PURPOSE_UNBOUND actionable，不泄漏 SDK 串到 gapCode", () => {
+    const r = classifyGap(base({ query: "常州瓶颈?", status: "FAILED", path: "WORKFLOW", error: { code: "TOOL_ERROR", message: "Could not resolve authentication method: x-api-key missing" } }));
+    expect(r.findings[0]!.gapCode).toBe("LLM_PURPOSE_UNBOUND");
+    expect(r.findings[0]!.suggestedFill).toContain("设置→LLM 用途绑定");
+  });
+
+  it("齿：任一终态的 finding 都携带 actionable what/where/acceptance，永不「人工核实内部错误」", () => {
+    // 覆盖 ②失败未映射 / ④其它终态 —— 即便落 OTHER 码，也 actionable（保留 evidence 原文·派生三元）。
+    const other = classifyGap(base({ query: "某问句?", status: "FAILED", path: "WORKFLOW", error: { code: "WEIRD_INTERNAL", message: "unexpected internal state z" } }));
+    const cancelled = classifyGap(base({ query: "某问句?", status: "CANCELLED", path: "NONE" }));
+    for (const r of [other, cancelled]) {
+      const f = r.findings[0]!;
+      expect(f.suggestedFill).not.toContain("人工核实内部错误");
+      expect(f.what).toBeTruthy();
+      expect(f.where).toBeTruthy();
+      expect(f.acceptance).toContain("某问句?"); // 验收线=本问句 E2E 答出
+    }
+    // OTHER 码仍保留真实 evidence 原文（不被兜底文案掩盖）：
+    expect(other.findings[0]!.evidence).toContain("unexpected internal state z");
+  });
 });
 
 describe("growth probe endpoint · 真实 orchestrator 实跑", () => {

@@ -17,7 +17,8 @@ export const GapCodeSchema = z.enum([
   "SOLVER_NOT_FOUND", // invoke_solver 求解器未注册
   "SHAPE_MISMATCH", // 渲染绑定字段不在求解器输出形状（G-2）
   "NO_CAPABILITY", // 需要本体/求解器根本没有的领域能力 → 需开发
-  "OTHER", // 未归类的内部错误
+  "LLM_PURPOSE_UNBOUND", // GAP-ACTIONABLE：LLM 用途未绑定/密钥无效（具体可行动错因·入正式码表，不再拍 OTHER 丢真相）
+  "OTHER", // 未归类的内部错误（仍保留 evidence 原文 + 派生 what/where/acceptance，永不"人工核实内部错误"）
 ]);
 export type GapCode = z.infer<typeof GapCodeSchema>;
 
@@ -29,6 +30,10 @@ export const GapFindingSchema = z.object({
   evidence: z.string(),
   /** 建议补法（数据合成 / 建切片 / generic-inference 兜底 / 需开发工单 …）。 */
   suggestedFill: z.string(),
+  /** GAP-ACTIONABLE 三元（缺什么·补在哪·验收=本问句 E2E 答出）——工单页据此渲染，永不"人工核实内部错误/dash"。 */
+  what: z.string().optional(),
+  where: z.string().optional(),
+  acceptance: z.string().optional(),
   /** 是否阻塞答案（true=问句答不出）。 */
   blocking: z.boolean(),
 });

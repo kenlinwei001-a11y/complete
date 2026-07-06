@@ -31,6 +31,8 @@ const GAP_DISPOSITION: Record<GapCode, { label: string; triggerable: boolean }> 
   SOLVER_NOT_FOUND: { label: "缺求解器（需开发/骨架）", triggerable: false },
   SHAPE_MISMATCH: { label: "渲染形状不匹配", triggerable: false },
   NO_CAPABILITY: { label: "缺领域能力（需开发）", triggerable: false },
+  // GAP-ACTIONABLE（PRD §3.4）：LLM 用途未绑定/密钥无效——真人到 设置→LLM 用途绑定 补，系统不能凭空造密钥（不可即时触发）。
+  LLM_PURPOSE_UNBOUND: { label: "LLM 用途未绑定（去设置→LLM 用途绑定）", triggerable: false },
   // OTHER（含路径 B agent 中断）：触发自成长 LOOP 做真实 classifyGap 诊断+补，再续推。
   OTHER: { label: "未定位缺口（触发诊断）", triggerable: true },
 };
@@ -97,7 +99,16 @@ export function GapCard({ report, scenario, onRetry }: { report: GapReport; scen
       </div>
       {primary && (
         <div className={styles.gapBody}>
-          <div className="zh">{primary.suggestedFill || primary.evidence}</div>
+          {/* GAP-ACTIONABLE（PRD §3.4）：优先渲染「缺什么·补在哪·验收」三元（永不「人工核实内部错误/dash」）；缺三元时回落 suggestedFill/evidence。 */}
+          {primary.what || primary.where || primary.acceptance ? (
+            <ul className="zh" data-testid="gap-actionable" style={{ margin: 0, paddingLeft: 18 }}>
+              {primary.what && <li data-testid="gap-what">缺什么：{primary.what}</li>}
+              {primary.where && <li data-testid="gap-where">补在哪：{primary.where}</li>}
+              {primary.acceptance && <li data-testid="gap-acceptance">{primary.acceptance}</li>}
+            </ul>
+          ) : (
+            <div className="zh">{primary.suggestedFill || primary.evidence}</div>
+          )}
         </div>
       )}
 

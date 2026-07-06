@@ -315,7 +315,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       ...Object.values(body.context.filters ?? {}).map((v) => String(v)),
     ].join(" ");
     const explicitType = body.context.selectedObjects?.[0]?.objectType;
-    const targetTypeKey = explicitType || body.context.view || "Object";
+    // GAP-ACTIONABLE（PRD §3.4·P3 修）：视图键 ≠ 对象类型——不把 view 键当目标对象类型；缺显式类型时回落 "Object"。
+    const targetTypeKey = explicitType || "Object";
     const publishedTypes = (await deps.dataCore.ontology.listObjectTypes(a).catch(() => [] as { key: string }[])).map((t) => t.key).filter((k): k is string => !!k);
     const decision = decideTriggerBoundary({
       question: body.query, contextText, providedSlots: slotValues, dimensions: triggerDimensions(),
@@ -364,9 +365,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // P4：成长账本(demand-indexed) + 缺功能→成长工单（厂商中立施工契约，带真实 I/O 契约 + 本体引用骨架）
     const now = new Date().toISOString();
     await deps.repos.growthLedger.insert({ id: newId("glr"), tenantId: a.tenantId, report, createdAt: now });
-    // 从真实 context 推断骨架（agentcore 可见：view + selectedObjects + filters）；非空，供 code-agent 定位施工。
+    // 从真实 context 推断骨架（agentcore 可见：selectedObjects + filters）；供 code-agent 定位施工。
     const ctxTypes = [...new Set((body.context.selectedObjects ?? []).map((o) => o.objectType).filter((x): x is string => !!x))];
-    const refObjectTypes = [...new Set([...ctxTypes, ...(body.context.view ? [body.context.view] : [])])];
+    // GAP-ACTIONABLE（PRD §3.4·P3 修）：**视图键 ≠ 对象类型**。ontologyRefs.objectTypes 只收**显式声明的对象类型**
+    // （selectedObjects[*].objectType），绝不把视图键（如 dash/risk）混进去——此前泄漏致工单页「对象类型=dash」。
+    const refObjectTypes = ctxTypes;
     // 每 gapCode 期望输出形状骨架（求解器骨架契约的签名来源；B 兜底/求解器骨架知道该产出什么）。
     const OUTPUT_SHAPE_BY_GAP: Partial<Record<import("@platform/contracts").GapCode, string[]>> = {
       SOLVER_NOT_FOUND: ["value", "unit", "rows", "provenance"],

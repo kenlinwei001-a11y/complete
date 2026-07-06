@@ -121,7 +121,11 @@ export function buildGrowthLoopWiring(
         ...(body.context.selectedObjects ?? []).map((o) => o.objectId),
         ...Object.values(body.context.filters ?? {}).map((v) => String(v)),
       ].join(" ");
-      const typeKey = body.context.selectedObjects?.[0]?.objectType || body.context.view || "Object";
+      // GAP-ACTIONABLE（PRD §3.4 · P3 修）：**视图键 ≠ 对象类型**。旧代码 `objectType || view || "Object"`
+      // 把视图键（如 "dash"）当对象类型泄漏进工单/DataRequest.typeKey。仅取**显式声明的对象类型**
+      // （selectedObjects[0].objectType）；缺失时诚实回落通用占位 "Object"，绝不把 view 键冒充对象类型。
+      const explicitObjectType = body.context.selectedObjects?.[0]?.objectType;
+      const typeKey = explicitObjectType || "Object";
       const decision = decideDataGap(body.query, ctxText, groundingVocab(), { typeKey });
       if (decision.mode === "HARD") {
         result = {

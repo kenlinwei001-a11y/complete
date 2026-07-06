@@ -332,6 +332,14 @@ launch/useScenarioLaunch(context 带 scenarioIntentKey+scenarioKey·前端接缝
       意图不可绑定(退发布/删除/entitlement) → completeScenarioGap(INTENT_NOT_AVAILABLE·不落探索)   ← classify LLM 只服务自由问句(D8=发育自然结果)
   --不可答(Path A 运行失败如删求解器/路由死路)--> attachScenarioGapAnswer → scenarioGap 钩(server.ts 装配·orchestrator.setScenarioGap·task.internal=grow/probe 内部验证不触发):
       classifyGap(法定码·纯函数 R6) → GapReport
+      GAP-ACTIONABLE(WO-3·PRD-trustworthy-self-accounting §3.4·修 P3 用户实测痛点「常州基地的瓶颈是?」→工单看不到补什么/在哪补):
+        ① 去 OTHER catch-all「丢真相」：具体错因 `LLM_PURPOSE_UNBOUND`(orchestrator.sanitizeLlmAuthLeak 归一码/鉴权泄漏签名)
+           **入正式缺口码表**(codeFromError 显式映射·gapDisposition=NEEDS_HUMAN 穷尽)；未映射码仍归 OTHER 但**保留 evidence 原文**。
+        ② 每张缺口 finding 经 `actionableFill(code,question)` 派生 `{what 缺什么·where 补在哪·acceptance 验收=本问句 NL 真跑 E2E 答出}`(GapFinding additive 三元)
+           → suggestedFill 含真修法(如「设置→LLM 用途绑定」)·**永不「人工核实内部错误」**(FILL.OTHER 亦改可行动导语)。
+        ③ **视图键 ≠ 对象类型**：scenario-grow.ts DataRequest.typeKey 与 server.ts GrowthTicket.ontologyRefs.objectTypes
+           只收**显式声明的对象类型**(selectedObjects[*].objectType)，缺失回落 "Object"·**绝不把视图键(dash/risk)冒充对象类型**(此前致工单页「对象类型=dash」)。
+        齿 growth-probe.test.ts(LLM_PURPOSE_UNBOUND→actionable·revert 拍 OTHER 红) + growth-autofill.test.ts(view=dash/risk 不入 objectTypes·revert 红)·真验 docs/evidence/GAP-ACTIONABLE-fde.md
       → GrowthTicket(同卡同码 OPEN 幂等复用不刷屏) + growth.ticket_opened(outbox)
       → 通知+收件箱(仅新开票一次·B→A 服务间 POST /a/v1/notifications/notify-role[x-service-token·用户态 403] → NotificationService.notifyRole 角色扇出 admin → 前端铃铛/通知中心·refType=growth_ticket 深链)
       → 卡降级(GOVERNED/ADVISORY→PROVISIONAL) + ScenarioOntogenesisRun 留痕(launch 起源·verification.taskId 溯源·gaps[].ticketId) + scenario.gap_detected(SSE⊕outbox)
