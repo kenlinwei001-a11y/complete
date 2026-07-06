@@ -316,7 +316,8 @@ interface FallbackTrace {                      // ID 前缀 fbt_，仅路径 B �
    - `outOfCatalog=true` 或 `candidates[0].confidence < τ_low` → 路径 B。
    - `τ_low ≤ c < τ_high` → status=AWAITING_CLARIFICATION，SSE 推 `clarification.required`（type=INTENT_CHOICE，附 ≤3 候选的 name/description + "都不是" 选项）。用户答复见 §8.3：选中 → 按该意图继续；"都不是" → 路径 B。
    - `c ≥ τ_high` → 进入槽位补全。
-4. **守卫**：同一 task 累计澄清（意图选择 + 槽位反问合计）> 2 轮 → 路径 B。澄清等待超时 10 分钟 → status=CANCELLED。
+4. **守卫**：同一 task 累计澄清（意图选择 + 槽位反问合计）> 2 轮 → 收敛终态。澄清等待超时 10 分钟 → status=CANCELLED。
+   - **收敛终态分叉（CLARIFY-LOOP-CONVERGE·Kimi 端到端真跑修正）**：轮次耗尽时若该意图是用户经 **INTENT_CHOICE 显式锁定**（选中而非"都不是"）→ **诚实降级终态**（`status=COMPLETED`·答案点名锁定意图 + 明说缺哪些必填参数 + 指路补齐·绝不合成/兜底业务数字·非无限追问），而**非**静默丢进开放式路径 B 泛答（那会丢弃用户"就问这个意图"的明确选择，被感知为"选了白选·反复澄清不收敛"）。非锁定（高把握自动匹配后纯槽位反问耗尽 / "都不是"拒绝全部候选）→ 保持路径 B（本条第 2/3 步既有语义）。实现 `orchestrator.completeLockedClarifyDegrade`，齿 `clarify-loop-converge.test.ts`（revert→path=AGENT 红）。
 
 ### 5.2 槽位补全
 

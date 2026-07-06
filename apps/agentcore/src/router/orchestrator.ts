@@ -213,6 +213,14 @@ interface PendingClarification {
   slots: Record<string, unknown>;
   missing: SlotDef[];
   timer: NodeJS.Timeout;
+  /**
+   * CLARIFY-LOOP-CONVERGE：用户经 INTENT_CHOICE **显式选定**的意图被锁定（locked=true）。
+   * 锁定后其后续槽位反问轮次耗尽时 → **诚实降级终态**（明说缺哪些参数、给出最佳理解），绝不把用户的
+   * 显式选择静默丢进开放式路径 B 从零再探索——那正是低把握自由问句被 Kimi 端到端观察到"绕圈/不收敛"的根因：
+   * 用户已明确"就问这个意图"，系统却在缺参时抛弃该选择、转泛答，用户感知为反复澄清不收敛。
+   * 非锁定（高把握自动匹配 / "都不是"拒绝全部候选）保持既有路径 B 语义（PRD §5.1.2-4）。
+   */
+  locked?: boolean;
 }
 
 export interface OrchestratorDeps {
@@ -722,6 +730,8 @@ export class Orchestrator {
       slots: Record<string, unknown>;
       missing: SlotDef[];
       payload: Record<string, unknown>;
+      /** CLARIFY-LOOP-CONVERGE：本轮澄清所属意图是否为用户经 INTENT_CHOICE 显式锁定（随轮次传播）。 */
+      locked?: boolean;
     },
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
@@ -743,6 +753,7 @@ export class Orchestrator {
       slots: opts.slots,
       missing: opts.missing,
       timer,
+      locked: opts.locked,
     });
 
     await this.deps.events.emit(taskId, "clarification.required", { ...opts.payload, round });
@@ -779,8 +790,10 @@ export class Orchestrator {
         await this.runPathB(taskId, auth, task.classification);
         return;
       }
+      // CLARIFY-LOOP-CONVERGE：用户显式选定意图 → 锁定（locked=true）。后续若槽位补全轮次耗尽，
+      // 走诚实降级终态而非静默丢进路径 B（见 proceedWithIntent 尾部守卫）。
       setImmediate(() => {
-        void this.proceedWithIntent(taskId, auth, intent, task.classification?.extractedSlots ?? {}).catch((err) =>
+        void this.proceedWithIntent(taskId, auth, intent, task.classification?.extractedSlots ?? {}, {}, true).catch((err) =>
           this.failFromError(taskId, err),
         );
       });
@@ -810,7 +823,8 @@ export class Orchestrator {
     const merged = { ...pending.slots };
     const extractedPlus: Record<string, unknown> = { ...slotValues };
     // already-filled slots stay; provided values validated through the normal pipeline
-    await this.proceedWithIntent(taskId, auth, intent, extractedPlus, merged);
+    // CLARIFY-LOOP-CONVERGE：把锁定标记随槽位轮次传播（INTENT_CHOICE 选定后的槽位反问仍是锁定态）。
+    await this.proceedWithIntent(taskId, auth, intent, extractedPlus, merged, pending.locked ?? false);
   }
 
   private async proceedWithIntent(
@@ -819,6 +833,11 @@ export class Orchestrator {
     intent: IntentDefinition,
     extracted: Record<string, unknown>,
     presetSlots: Record<string, unknown> = {},
+    /**
+     * CLARIFY-LOOP-CONVERGE：本意图是否为用户经 INTENT_CHOICE **显式锁定**（默认 false=高把握自动匹配）。
+     * 锁定态在槽位轮次耗尽时走诚实降级终态（守卫见下），非锁定保持既有路径 B 语义。
+     */
+    locked = false,
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
@@ -879,6 +898,15 @@ export class Orchestrator {
 
     if (stillMissing.length > 0) {
       if (task.clarificationRounds >= 2) {
+        // CLARIFY-LOOP-CONVERGE：轮次耗尽的分叉——
+        // ① 用户经 INTENT_CHOICE **显式锁定**了意图：绝不把该选择静默丢进开放式路径 B（那会丢弃用户
+        //    "就问这个意图"的明确意愿、转泛答，正是 Kimi 端到端观察到的低把握"绕圈/不收敛"根因）。
+        //    改走**诚实降级终态**：明说该意图缺哪些参数、给出最佳理解、指路如何补齐（COMPLETED·非无限追问）。
+        // ② 未锁定（高把握自动匹配后纯槽位反问耗尽）：保持既有路径 B 语义（PRD §5.1.2-4·A5 不回归）。
+        if (locked) {
+          await this.completeLockedClarifyDegrade(task, intent, stillMissing);
+          return;
+        }
         await this.runPathB(taskId, auth, task.classification);
         return;
       }
@@ -887,6 +915,8 @@ export class Orchestrator {
         intent,
         slots: finalSlots,
         missing: stillMissing,
+        // CLARIFY-LOOP-CONVERGE：锁定态随槽位轮次传播（下一轮回到本方法仍是锁定态）。
+        locked,
         payload: {
           // CLARIFY-CHAIN-FIX（簇⑨断①②）：payload 走契约 ClarificationSlot 全量传输——
           // 人话 clarifyPrompt（前端 label 所读字段·非旧 `prompt` 错位名）+ enum 取值 + objectRef 类型。
@@ -1289,6 +1319,44 @@ export class Orchestrator {
     await this.deps.repos.tasks.patch(task.id, {
       status: "COMPLETED",
       path: "WORKFLOW",
+      answer,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(task.id, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+  }
+
+  /**
+   * CLARIFY-LOOP-CONVERGE：用户经 INTENT_CHOICE **锁定**的意图在澄清轮次耗尽后仍缺必填参数 → **诚实降级终态**。
+   * 不再无限追问、也不静默转开放式路径 B 泛答（那会丢弃用户"就问这个意图"的明确选择、被感知为绕圈不收敛）。
+   * 产出：锁定意图名 + 缺失参数的人话清单（clarifyPrompt/description/裸名回落）+ 补齐指路。COMPLETED·非 FAILED
+   * （这是可控降级而非错误）。记 matchedIntent（审计：用户确实选定了此意图）。绝不合成/兜底任何业务数字（R6·诚实边界）。
+   */
+  private async completeLockedClarifyDegrade(
+    task: QueryTask,
+    intent: IntentDefinition,
+    missing: SlotDef[],
+  ): Promise<void> {
+    const paramLines = missing
+      .map((s) => `- ${s.clarifyPrompt?.trim() || s.description?.trim() || s.name}`)
+      .join("\n");
+    const answer: Answer = {
+      trustLevel: "VERIFIED_WORKFLOW",
+      blocks: [
+        {
+          type: "text",
+          markdown:
+            `我已锁定你要问的是「${intent.name}」，但还差以下参数才能给出精确结果，暂无法作答（不会用估计值糊弄）：\n${paramLines}\n\n` +
+            `请在上面补齐这些参数后重问，或换一种更具体的问法（例如直接带上基地/型号/时间等）。`,
+        },
+      ],
+      provenance: [],
+      unverifiedNumerics: false,
+    };
+    await this.deps.repos.tasks.patch(task.id, {
+      status: "COMPLETED",
+      path: "WORKFLOW",
+      matchedIntent: { intentId: intent.id, intentKey: intent.key, version: intent.version },
       answer,
       completedAt: new Date().toISOString(),
     });

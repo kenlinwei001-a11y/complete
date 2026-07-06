@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `2ceef0e9662f4bd0`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `e37a5639231f05bf`。
 
 ---
 
@@ -32,6 +32,16 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
                        │  → 前端 Clarification 按 clarifyPrompt 渲 label、enum 渲真选项、按 round 重渲多轮（submitted 按轮记）
                        │  → 回填结构化对象引用归一**业务主键**（真 DataCore {id,props{modelId…}} 形·下游切片/求解器可用）。
                        │  红线：服务端有的人话 = 用户看到的（逐值）；门 `clarify-humanized:check` 守两端字段对齐。
+                       ├─**澄清收敛终态（CLARIFY-LOOP-CONVERGE·P2·Kimi 端到端真跑发现·2026-07-06）**：低把握自由问句
+                       │  （τ_low ≤ conf < τ_high）→ INTENT_CHOICE 澄清。同一 task 澄清轮次本已**有界**（INTENT_CHOICE 轮1 →
+                       │  槽位反问轮2 → 耗尽·`clarificationRounds≤2`·非无限追问）——真根因非"重分类循环"（编排层无重入 classify），
+                       │  而是**用户经 INTENT_CHOICE 显式锁定的意图在缺参耗尽时被静默丢进开放式路径 B 泛答**，丢弃了用户
+                       │  "就问这个意图"的明确选择 → 用户感知为"选了白选·反复澄清不收敛"。治：`proceedWithIntent(…,locked)`
+                       │  锁定标记随 INTENT_CHOICE 选定→槽位轮次传播（`PendingClarification.locked`）；锁定意图轮次耗尽 →
+                       │  `completeLockedClarifyDegrade` **诚实降级终态**（COMPLETED·点名锁定意图+明说缺哪些参数+指路补齐·
+                       │  绝不合成/兜底业务数字·非 FAILED），**绝不**静默转路径 B。非锁定（高把握纯槽位反问耗尽/"都不是"拒绝
+                       │  全部候选）保持既有路径 B 语义（PRD §5.1.2-4·A5 不回归）。齿 `clarify-loop-converge.test.ts`
+                       │  （锁定→诚实降级 path=WORKFLOW·revert→path=AGENT 红 ⊕ 对照非锁定→路径 B 不回归）。
                        └─**B→A 交叉验证（推演验证痕迹·运行时）**：用到 resolve_slice 的推演完成时，把结论对象断言
                           --OBO HTTP /a/v1/ontology/cross-validate--> DataCore 对照知识图谱已有事实核对（fail-open），
                           连同一致性检查组装为 Answer.validationTrace（前端 ValidationTracePanel 展示，让用户信任）
