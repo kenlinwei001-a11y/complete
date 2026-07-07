@@ -4691,14 +4691,47 @@
         "todo": "2026-07-07T00:00:00.000Z",
         "wip": "2026-07-07T03:58:07.415Z"
       }
+    },
+    {
+      "id": "SCENE-LAUNCHER-DEADLINK-FIX",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P2",
+      "deps": [],
+      "doc": "apps/frontend-shell/src/pages/admin/ScenesPage.tsx",
+      "title": "修\"在启动器打开\"死链404(ScenesPage raw targetView未归一→/v/:viewKey 404)",
+      "note": "用户2026-07-07实测: 场景启动器→任一卡\"查看发育\"→ScenesPage→\"在启动器打开\"→404\"该功能不存在或未开通\"。根因(审核方真跑定位·airtight): ScenesPage.tsx:143 Link to=`/v/${scenario.targetView}` 用raw短键·未过registry.ts:45 normalizeViewKey归一(registry.ts:22钉死\"targetView短键须归一到workspace.views真实注册键\")→短键≠注册键时/v/:viewKey→ViewPage 404。status===\"PUBLISHED\"守卫拦不住(是键归一问题·非发布态);且未校验落点view是否在用户workspace.views(entitlement)→gated-off也404。\"任一卡片\"=系统性(归一缺失)非个别。铁律0.5我出设计dev建·铁律0.4真跑复现。",
+      "acceptance": {
+        "goal": "\"在启动器打开\"深链归一+可达校验: 先normalizeViewKey归一targetView再拼/v/:viewKey; 归一后键须在workspace.views注册且开通才给链·否则诚实提示(落点未开通/未注册)非死链404。与启动器▶启动同一归一口径; 复现用户路径真跑通。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "ScenesPage \"在启动器打开\"改用normalizeViewKey(scenario.targetView)拼链·真浏览器复现用户路径(场景启动器→查看发育→ScenesPage→在启动器打开)→真达落点视图非404。"
+          },
+          {
+            "id": "C2",
+            "type": "file",
+            "assert": "归一后键不在workspace.views注册/未开通→不给链·出诚实hint(该场景落点未注册/未开通)非死链非404(RESOURCE-REF-NAV\"未开通不给死链\"守到view级·非只查status)。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "齿断言: raw短键≠注册键的场景→link用归一键或不给链(green→red: 回退用raw即红)·build+test绿·相关scene E2E同步。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-07T01:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "FILL-XINDUSTRY-LAYOUT",
-      "at": "2026-07-07T03:58:07.469Z"
+      "role": "review",
+      "cmd": "dispatch",
+      "id": "SCENE-LAUNCHER-DEADLINK-FIX",
+      "at": "2026-07-07T01:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
