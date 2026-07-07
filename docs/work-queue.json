@@ -4548,14 +4548,154 @@
       "at": {
         "todo": "2026-07-06T13:00:00.000Z"
       }
+    },
+    {
+      "id": "RISKBOARD-LAYOUT-REWORK",
+      "priority": "P2",
+      "deps": [
+        "CAPACITY-BASECARDS-REALDATA",
+        "RISKBOARD-RULES-AGENTS"
+      ],
+      "doc": "apps/frontend-shell/src/views/RiskBoardView.tsx",
+      "title": "预判推演看板布局重构: 卡面一级开推演+营收敞口上浮+决策摘要头+按业务影响排序",
+      "note": "来自CEO故事脚本反思(2026-07-07用户点头)。铁律0.5我出设计dev建。看板现是扎实\"诊断台\",升为\"高管决策漏斗\":诊断→沙盘比选→工单落决策。纯前端为主(RiskBoardView)+可能需后端补决策摘要聚合字段。诚实边界:营收敞口需真订单数据(demo合成诚实标·非写死)。",
+      "acceptance": {
+        "goal": "预判推演看板(/v/risk)从诊断台升为高管决策漏斗: ①每张风险卡\"开推演对策\"按钮上到卡面一级(不再埋详情弹窗·带{base,factor}进/v/sim-sandbox) ②受威胁大客户/营收敞口从三级弹窗上浮到卡面副标题 ③顶部决策摘要头(N基地红黄数·最早越线日·危及几大客户·总敞口¥·可行对策数) ④卡按业务影响(营收/客户重要度)排序而非纯technical peak。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "卡面一级带\"开推演对策\"按钮(非仅详情内risk-open-whatif)·点击带{base,factor}presetContext进/v/sim-sandbox·sim.sandbox entitlement关时诚实降级不落死链。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "卡面副标题显真受威胁客户+营收敞口(读card.affectedOrders/revenueWan真值·非写死)·真浏览器登录demo逐值对后端。"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "顶部决策摘要头真聚合(基地红/黄数·最早越线日·危及客户数·总敞口·对策数)·值源自真risk_timeline非硬编·真浏览器可见。"
+          },
+          {
+            "id": "C4",
+            "type": "cmd",
+            "assert": "卡按业务影响排序(真数据驱动)·测试齿断言排序键=业务影响非peak·改真源排序随之变(非写死)·build+test绿·genuine-sim绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-07T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "FAKEDATA-SWEEP",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/AUDIT-fakedata-sweep.md",
+      "title": "系统性扫假数据残口(全仓·违\"推演基于真实数据\"第一性)+逐个WO化",
+      "note": "我flagged(原task#37·2026-07-07用户点头)。第一性:推演必基于真实数据。审计+派生WO批,产出全仓清单+子WO,非单点修。铁律0.6:补齐真实非删非空。",
+      "acceptance": {
+        "goal": "全仓系统性扫决策级假数据残口(hash/写死系数/兜底值冒充真实),覆盖solver+前端view+seed,非抽样;每个残口出actionable处置(补真源/诚实空态/consolidation三选一·默认补真源)并WO化入队列;扫描器可确定性重跑。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "产出AUDIT-fakedata-sweep.md扫描清单: 全仓过决策路径揪hash/写死/兜底冒充真实·逐条{位置file:line·假在哪·真源应是什么·补法}·覆盖SOLVER_REGISTRY全量+前端决策view+seed·非抽样(声明扫描口径与范围)。"
+          },
+          {
+            "id": "C2",
+            "type": "file",
+            "assert": "每个残口出处置三元(补真源/诚实空态/consolidation·默认补真源)并WO化: 新增子WO入work-queue(带acceptance有牙)·清单与队列勾稽(每残口→一处置或一子WO)。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "扫描器确定性可重跑(纯静态·无网络/时钟);建议纳入gates防新增(可选check-no-fake-data命名门·green→red自证)·现有gates不回归。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-07T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "OPTIONA-B1B2-UX",
+      "priority": "P2",
+      "deps": [],
+      "doc": "apps/frontend-shell/src/pages",
+      "title": "option A两UX断点: B1无LLM建模诚实降级 + B2上传后归域引导",
+      "note": "option A最深裁决(B2归域→materialize→SOLVER→答案)遗留两UX断点(原task#18·2026-07-07用户点头)。铁律0.4不白屏不假成功。",
+      "acceptance": {
+        "goal": "补option A全链两UX断点: ①B1 无LLM用途绑定时建模UX诚实降级(不白屏/不假装·给确定性手动建模路径或明确\"需配LLM用途\"可行动引导) ②B2 数据上传后主动归域引导(上传→提示归到哪个域/对象类型→物化)使数据真流入本体被求解器可用。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "B1: 无LLM用途绑定时进建模页→真浏览器见诚实降级UX(明确提示+可行动引导去配置或走确定性路径)·非白屏非假成功。"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "B2: 真浏览器上传数据后→出归域引导(选域/对象类型)→归域后数据物化可见(对象浏览器/切片能查到该数据)·前端对后端逐值。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "相关E2E齿(无LLM降级分支+上传归域闭环)·build+test绿。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-07T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "GENUINE-SIM-GATE-HARDEN",
+      "priority": "P3",
+      "deps": [],
+      "doc": "scripts/check-genuine-sim.mjs",
+      "title": "genuine-sim门加固(哨兵→全量决策求解器·防新求解器绕过诚实标)",
+      "note": "我flagged可选债(原task#10·门脆性·2026-07-07用户点头)。现门是\"保守哨兵\"仅钉死轨M增量1/1b·覆盖窄易漏。防KILL-MOCK-RED成果被将来新求解器悄悄绕过。",
+      "acceptance": {
+        "goal": "genuine-sim:check从保守哨兵扩为对全量决策级求解器强制诚实位: 每个决策求解器(risk_timeline/capacity_forecast/bottleneck_matrix/sandbox propagate等)必带dataMode输出+前端消费点必读dataMode/live分档,防新求解器绕过诚实标混入假红。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "门扫描范围从哨兵名单扩为SOLVER_REGISTRY全量决策级求解器·每个必带dataMode输出位·前端消费点必读dataMode/live分档(声明\"决策级\"判定口径)。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "green→red自证: 植假(新增不带dataMode的决策求解器/前端漏消费)→门红EXIT=1·证门有牙。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "现有全绿不回归·build+test绿·与no-silent-mock边界划清不冲突。"
+          }
+        ]
+      },
+      "status": "TODO",
+      "owner": null,
+      "at": {
+        "todo": "2026-07-07T00:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "CORE-NL-SOLVER-ROUTING",
-      "at": "2026-07-07T03:44:52.004Z"
+      "cmd": "dispatch",
+      "id": "RISKBOARD-LAYOUT-REWORK+FAKEDATA-SWEEP+OPTIONA-B1B2-UX+GENUINE-SIM-GATE-HARDEN",
+      "at": "2026-07-07T00:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
