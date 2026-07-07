@@ -8,6 +8,27 @@
  * 诚实边界（保守哨兵，非全量静态分析）：钉死轨M 增量1/1b 已闭合的诚实通道——risk_timeline /
  * capacity_forecast 输出带 dataMode + 前端 RiskBoardView/ProjectSimView 消费之。假3(OrderChainView
  * hashN 库存)/假4(PropagationTimeline 写死)待其增量修后扩入本门断言。
+ *
+ * ── GENUINE-SIM-GATE-HARDEN（C1 覆盖加固·§⑩）─────────────────────────────────────────
+ * 上述①–⑨ 为**具体哨兵**（钉死若干求解器+视图的逐行文案/守卫）。§⑩ 在其之上加一层**登记驱动的全量覆盖**：
+ * 遍历派发单一来源 `SOLVER_REGISTRY`，把每个【决策级】求解器都强制归入「有专属前端决策视图·消费 dataMode」
+ * 或「无专属视图·经通用答案渲染器消费诚实位」——**完整性缺口即红**（新增决策求解器必须表态，防覆盖窄漏）。
+ *
+ * ── 与 `no-silent-mock:check` 的边界（读该门确认·不重叠不打架）────────────────────────
+ *   no-silent-mock = **后端契约层·全量存在性**权威门：每个 SOLVER_KEY 的 `SOLVER_OUTPUT_SHAPES` 含 dataMode 字段。
+ *   genuine-sim   = **端到端·决策级子集的消费闭环**：分类口径 + 前端消费面覆盖 + 「无真源不伪造决策红」行为(§⑧)。
+ *   二者**同向不打架**：若某求解器后端漏 dataMode → no-silent-mock 红（存在性）；genuine-sim 侧其前端消费/
+ *   分类同样立不住。genuine-sim **不复检后端 shape 存在性**（归 no-silent-mock），只借读 shape 把「后端有位→
+ *   前端消费」串成一条决策级链。职责分层清晰：一个守后端全量，一个守决策级端到端。
+ *
+ * ── C2 牙齿自证（green→red·可复现）─────────────────────────────────────────────────
+ *  齿A｜新增决策求解器未表态：在 apps/datacore/src/solvers/solver-registry.ts 追加
+ *      `{ key: "fake_decision_solver", route: "extended", outputShape: ["verdict","gap","recommended","ruleRefs"] }`
+ *      → `pnpm --filter datacore build` → `node scripts/check-genuine-sim.mjs` ⇒ EXIT=1「C1 覆盖缺口：…未归类前端消费面」。
+ *  齿B｜前端漏消费 dataMode：把某 MAPPED 视图（如 SopBalanceView.tsx 之 finance_pnl/mrp_netting）的
+ *      dataMode/isLiveDecision/.live 消费全数抹除 → `node scripts/check-genuine-sim.mjs`
+ *      ⇒ EXIT=1「C1 前端漏消费：…未读 dataMode/live 分档」。SopBalanceView 超出①–⑨ 哨兵覆盖，证扩齿有效。
+ *  （二齿均已实测：植假即红·git 还原(+重建)即绿。）
  */
 import { readFileSync } from "node:fs";
 
@@ -180,9 +201,112 @@ try {
   fail(`v2 语义门：无法导入 dist 真调 riskTimeline（先 pnpm --filter datacore build）：${e.message}`);
 }
 
+// ⑩ C1（GENUINE-SIM-GATE-HARDEN）：覆盖从哨兵名单扩为 SOLVER_REGISTRY 全量【决策级】求解器。
+// ── 决策级判定口径（门内声明·可复现）──────────────────────────────────────────────────
+//  「决策级」= 求解器输出被渲染给人以驱动 go/no-go：红/黄状态、越阈、财务敞口、裁决(verdict)、
+//   或可行动处置(planRows/plans/recommended/gap/optimal…)。判定采【默认决策级·白名单豁免】口径：
+//   `SOLVER_REGISTRY` 全部键**默认视为决策级**，仅 NON_DECISION_KEYS（纯拓扑/描述性读出·不渲染红/裁决）显式豁免。
+//   反向口径（默认非决策级、命中信号字段才算）会**漏判**——如 bottleneck_matrix 无显式信号字段却是决策面——
+//   故取「默认决策级」求宽覆盖（宽 = 更难作假）。每个决策级键必须落入 FRONTEND_MAPPED（有专属前端决策视图·
+//   消费 dataMode/live 分档）或 FRONTEND_EXEMPT（无专属视图·经 QOS/Agent 通用答案渲染器 + 共享诚实位徽章消费·
+//   前端 grep 0 专属引用）二者之一——完整性缺口即红（新增决策求解器强制表态·治覆盖窄漏）。
+try {
+  const { SOLVER_REGISTRY } = await import("../apps/datacore/dist/solvers/solver-registry.js");
+  const { SOLVER_OUTPUT_SHAPES } = await import("../apps/datacore/dist/solvers/service.js");
+  const allKeys = SOLVER_REGISTRY.map((d) => d.key);
+
+  // 纯描述性/拓扑读出——不渲染红/裁决/财务敞口，非 go/no-go 决策面（每项附豁免理由）。
+  const NON_DECISION_KEYS = {
+    capacity_rollup: "纯产能拓扑读出（A6 readout：bases+ruleRefs）·不渲染红/黄/裁决·非 go/no-go 决策面",
+  };
+
+  // 有专属前端决策视图·必**读 dataMode/live 分档**（消费点文件·破其 dataMode 消费即红）。
+  const FRONTEND_MAPPED = {
+    capacity_forecast: ["apps/frontend-shell/src/views/sim/ProjectSimView.tsx"],
+    bottleneck_matrix: ["apps/frontend-shell/src/views/sim/ProjectSimView.tsx"],
+    risk_timeline: ["apps/frontend-shell/src/views/RiskBoardView.tsx", "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"],
+    affected_orders: ["apps/frontend-shell/src/views/DashboardView.tsx", "apps/frontend-shell/src/views/plan/OrderChainView.tsx"],
+    audit_timeline: ["apps/frontend-shell/src/views/sim/PlanAuditView.tsx"],
+    plan_audit: ["apps/frontend-shell/src/views/sim/PlanAuditView.tsx"],
+    plan_generate: ["apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"],
+    plan_rootcause: ["apps/frontend-shell/src/views/DashboardView.tsx"],
+    metric_rollup: ["apps/frontend-shell/src/views/DashboardView.tsx"],
+    order_fullchain: ["apps/frontend-shell/src/views/plan/OrderChainView.tsx", "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"],
+    ksf_graph: ["apps/frontend-shell/src/components/KsfGraph.tsx"],
+    finance_pnl: ["apps/frontend-shell/src/views/sim/SopBalanceView.tsx"],
+    mrp_netting: ["apps/frontend-shell/src/views/sim/SopBalanceView.tsx"],
+    mitigation_select: ["apps/frontend-shell/src/views/RiskBoardView.tsx"],
+  };
+
+  // 决策级但无专属前端视图——诚实位经 QOS/Agent 通用答案渲染器 + 共享 DataModeBadge 消费（前端 grep 0 专属引用）。
+  const VIA_PROJECTION = "经 QOS/Agent 通用答案渲染器 + 共享 DataModeBadge 消费诚实位·无专属前端决策视图（前端 grep 0 专属引用）";
+  const FRONTEND_EXEMPT = {
+    capex_scenario: VIA_PROJECTION, cockpit_kpi: VIA_PROJECTION, quarterly_gap: VIA_PROJECTION,
+    counterfactual_timeline: VIA_PROJECTION, cert_schedule: VIA_PROJECTION,
+    kit_readiness: VIA_PROJECTION, lta_gap: VIA_PROJECTION, inventory_optimize: VIA_PROJECTION,
+    changeover_sequence: VIA_PROJECTION, yield_diagnosis: VIA_PROJECTION, maintenance_stagger: VIA_PROJECTION,
+    outsourcing_split: VIA_PROJECTION, quote_margin: VIA_PROJECTION, credit_exposure: VIA_PROJECTION,
+    carbon_footprint: VIA_PROJECTION, countermeasure_combo: VIA_PROJECTION, what_if_displacement: VIA_PROJECTION,
+    generic_inference: VIA_PROJECTION, shared_bottleneck: VIA_PROJECTION, concentration_risk: VIA_PROJECTION,
+    margin_attribution: VIA_PROJECTION, supplier_disruption_radius: VIA_PROJECTION, selection_optimize: VIA_PROJECTION,
+    assignment_optimize: VIA_PROJECTION, sequencing_optimize: VIA_PROJECTION, packing_optimize: VIA_PROJECTION,
+    facility_location: VIA_PROJECTION, min_cost_flow: VIA_PROJECTION, set_cover: VIA_PROJECTION,
+    independent_set: VIA_PROJECTION, combinatorial_auction: VIA_PROJECTION, optimize_whatif: VIA_PROJECTION,
+    multisource_fusion: VIA_PROJECTION,
+  };
+
+  const decisionKeys = allKeys.filter((k) => !(k in NON_DECISION_KEYS));
+
+  // (a) 分类完整性：每个决策级键恰好落入 MAPPED 或 EXEMPT 其一（缺口=新增决策求解器未表态·红）。
+  for (const k of decisionKeys) {
+    const inMapped = k in FRONTEND_MAPPED;
+    const inExempt = k in FRONTEND_EXEMPT;
+    if (!inMapped && !inExempt) {
+      fail(`C1 覆盖缺口：决策级求解器「${k}」未归类前端消费面 —— 补 FRONTEND_MAPPED['${k}']（有专属决策视图·须消费 dataMode）或 FRONTEND_EXEMPT['${k}']（无专属视图·经通用答案渲染器消费·附理由）；若非决策级则加入 NON_DECISION_KEYS 并注理由。`);
+    }
+    if (inMapped && inExempt) fail(`C1：决策级求解器「${k}」同时在 MAPPED 与 EXEMPT（分类冲突）。`);
+  }
+  // (b) 反漂移：MAPPED/EXEMPT/NON_DECISION 引用的键必须真在 registry（删/改名求解器即红）。
+  for (const map of [FRONTEND_MAPPED, FRONTEND_EXEMPT, NON_DECISION_KEYS]) {
+    for (const k of Object.keys(map)) {
+      if (!allKeys.includes(k)) fail(`C1 漂移：覆盖表引用「${k}」已不在 SOLVER_REGISTRY（求解器删/改名·同步覆盖表）。`);
+    }
+  }
+  // (c) 决策级子集端到端链：借读 SOLVER_OUTPUT_SHAPES 确认后端有 dataMode 位（存在性权威归 no-silent-mock；
+  //     此处只把「后端有位→前端消费」串成决策级链，同向不打架）。
+  for (const k of decisionKeys) {
+    const shape = SOLVER_OUTPUT_SHAPES[k];
+    if (shape && !shape.includes("dataMode")) {
+      fail(`C1 链断：决策级「${k}」后端输出形状无 dataMode（前端无从分档；存在性权威门 no-silent-mock 亦应红）。`);
+    }
+  }
+  // (d) MAPPED 前端消费面必读 dataMode/live 分档（破消费即红·扩齿超出①–⑨ 哨兵覆盖的视图如 SopBalanceView/KsfGraph）。
+  for (const [k, files] of Object.entries(FRONTEND_MAPPED)) {
+    for (const f of files) {
+      const src = read(f);
+      if (!/dataMode|isLiveDecision|notLiveDecision|\.live\b/.test(src)) {
+        fail(`C1 前端漏消费：决策级「${k}」映射视图 ${f} 未读 dataMode/live 分档（诚实位裸渲染回潮）。`);
+      }
+    }
+  }
+  // (e) 中央决策门完整性：isLiveDecision 必严格 `dataMode === "LIVE"`（放宽如 !=="MOCK" 会放 SYNTHETIC 出决策红）。
+  const decisionValue = read("apps/frontend-shell/src/components/DecisionValue.tsx");
+  if (!/export function isLiveDecision[\s\S]{0,220}?return dataMode === "LIVE";/.test(decisionValue)) {
+    fail('C1 中央门被放宽：DecisionValue.isLiveDecision 非严格 `return dataMode === "LIVE";`（放行非 LIVE 出决策红·全站决策面同时失守）。');
+  }
+
+  const mappedN = Object.keys(FRONTEND_MAPPED).length;
+  const exemptN = Object.keys(FRONTEND_EXEMPT).length;
+  if (!red) {
+    console.log(`· genuine-sim §⑩ 覆盖：SOLVER_REGISTRY ${allKeys.length} 求解器 → 决策级 ${decisionKeys.length}（豁免非决策 ${Object.keys(NON_DECISION_KEYS).length}）；其中前端专属视图 ${mappedN} 个（消费 dataMode/live）+ 通用渲染器 ${exemptN} 个；分类完整无缺口。`);
+  }
+} catch (e) {
+  fail(`C1 覆盖门：无法导入 dist SOLVER_REGISTRY/SOLVER_OUTPUT_SHAPES（先 pnpm --filter datacore build）：${e.message}`);
+}
+
 if (red) {
-  console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 无真源不伪造决策红（risk.ts liveTightness 返 null·卡 hasData:false·planRows 只 live）+ 前端消费显估算/实测/空态。");
+  console.error("\n✗ genuine-sim:check 未过：推演红/黄/数字疑似裸渲染当真值（假推演回潮）。修法：输出 schema 加 dataMode + 无真源不伪造决策红（risk.ts liveTightness 返 null·卡 hasData:false·planRows 只 live）+ 前端消费显估算/实测/空态；§⑩ 决策级求解器须归类前端消费面。");
   process.exit(1);
 }
 console.log("· genuine-sim：risk_timeline/capacity_forecast/bottleneck_matrix 输出带 dataMode；前端 RiskBoardView/ProjectSimView 消费 dataMode/live 显估算/实测；bottleneck 前端传 LIVE。");
-console.log("✓ genuine-sim:check 通过（保守哨兵：钉死轨M 增量1/1b 诚实通道；假3/假4 修后扩入）。");
+console.log("✓ genuine-sim:check 通过（哨兵①–⑨ + §⑩ SOLVER_REGISTRY 全量决策级覆盖·分类完整）。");
