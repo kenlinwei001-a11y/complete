@@ -4691,12 +4691,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-07T00:00:00.000Z",
-        "wip": "2026-07-07T03:58:07.415Z"
-      }
+        "wip": "2026-07-07T03:58:07.415Z",
+        "built": "2026-07-07T04:14:46.706Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "SCENE-LAUNCHER-DEADLINK-FIX",
@@ -4734,10 +4736,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "dispatch",
-      "id": "SCENE-LAUNCHER-DEADLINK-FIX",
-      "at": "2026-07-07T01:00:00.000Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "GENUINE-SIM-GATE-HARDEN",
+      "at": "2026-07-07T04:14:46.706Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
