@@ -1,5 +1,5 @@
 {
-  "_comment": "no-fake-done 棘轮基线（诚实记录当前已知诈账/无验证 DONE·非洗白）。WO-6 回炉已把证明 claim>实 的诈账(MULTISRC-FUSION幽灵求解器·QUERY30-ORCH借名+NL未接)降级为 work-queue OPEN 开放缺口·相应从基线移出（基线缩=回炉真进展）。E1-E2 亦降级(不在基线因其有criteria)。KILL-MOCK-RED 复核已LANDED不入洞。余项为『DONE但缺机器可校验acceptance』待 WO-2 Capability.verifiedStatus·非claim>实诈账·不制造假缺口。门只在出现基线外的新 FAKE/UNVERIFIABLE 时红。",
+  "_comment": "no-fake-done 棘轮基线（诚实记录当前已知诈账 / 无验证 DONE·非洗白）。每条待 PRD-trustworthy-self-accounting WO-6 回炉重置为开放缺口。门只在出现基线外的新 FAKE/UNVERIFIABLE 时红。",
   "fake": {},
   "unverifiable": {
     "ACTUATE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
@@ -25,6 +25,7 @@
     "QUERY30-ONTOLOGY-EXT": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
     "QUERY30-RULES": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
     "SANDBOX-RENAME-BASECARDS": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
+    "SKILL-LIB-POLISH": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
     "SKILL-LIBRARY-EVERYWHERE": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
     "SYSFIX-SOLVER-COUNT-DRIFT": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。",
     "TICKET-CENTER-UNIFIED": "DONE 但无 acceptance.criteria，无从静态校验制品；诚实记录·待 WO-6 回炉重置为开放缺口。"

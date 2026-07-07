@@ -3982,7 +3982,7 @@
     {
       "id": "META-RUNTIME-TRUTH",
       "title": "meta #12 从镜像文档→反映运行时真相(status DRIFT检测)",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P1",
       "deps": [
@@ -4003,11 +4003,11 @@
       },
       "at": {
         "todo": "2026-07-06T09:59:08.830Z",
-        "wip": "2026-07-06T11:44:58.655Z",
-        "built": "2026-07-06T12:07:39.933Z",
+        "wip": "2026-07-06T14:53:36.787Z",
+        "built": "2026-07-07T03:57:00.540Z",
         "blocked": "2026-07-06T14:44:05.508Z"
       },
-      "blockReason": "机制对(deriveRuntimeStatus/DRIFT三态cross-check真跑绿·无DRIFT·meta:sync绿·全套test452文件绿)——但有覆盖盲区违反本初创自立的R-NO-FAKE-DONE。判据(meta-runtime-truth.mjs)只枚举prd-ontology-index的15编号断点G-1..G-15;而§8里命名断点G-RET/G-DR-1/G-SIEM-1/G-3b全自称✅已闭(FIXED)、G-16自身也未被投影→这些FIXED断点静默逃过DRIFT交叉核对,且判据不披露覆盖率(只印\"无DRIFT:所有已交叉核对的FIXED断点均通过\")。而G-16§8行(本单亲写)写了无条件的\"✅WO-4已闭meta镜像维\"=claim>reality+未披露的部分覆盖——测谎门在它自己审计的维度上有未声明盲区,正是本项目要根除的\"两张皮\"。小修即解(机制不重写):①判据须披露覆盖率(judged X of N+列出未交叉核对的FIXED断点);②把命名断点+G-16纳入prd-ontology-index.json的breakpoints一并cross-check,或把G-16\"✅已闭\"那句降为◐并注明真实范围(仅编号G-1..G-15)。复现:node scripts/meta-runtime-truth.mjs只列G-1..G-15(计15);§8见G-RET/G-DR-1/G-SIEM-1/G-3b均\"✅已闭\"但不在该表。"
+      "blockReason": ""
     },
     {
       "id": "SELF-SURFACES-SLICE",
@@ -4692,10 +4692,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "dispatch",
-      "id": "RISKBOARD-LAYOUT-REWORK+FAKEDATA-SWEEP+OPTIONA-B1B2-UX+GENUINE-SIM-GATE-HARDEN",
-      "at": "2026-07-07T00:00:00.000Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "META-RUNTIME-TRUTH",
+      "at": "2026-07-07T03:57:00.541Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

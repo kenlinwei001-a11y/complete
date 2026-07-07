@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { parseMetaOntology, deriveRuntimeStatus } from "../src/meta/parse.js";
@@ -226,5 +228,30 @@ describe("META-RUNTIME-TRUTH · 断点声称 ↔ 运行时判据交叉核对（P
     const stored = await svc.getBreakpoint(ctx, "G-90");
     expect(stored?.props.status).toBe("DRIFT"); // 落库对象反映运行时真相
     expect(stored?.props.claimedStatus).toBe("FIXED");
+  });
+
+  it("齿④（返工·覆盖率自证）：跑批器独立枚举 §8 全表，声称 FIXED 但无判据者显性列入 uncoveredFixed（命名断点不静默逃过）", () => {
+    // META-RUNTIME-TRUTH 返工根因：parse.ts 只投影编号 G-1..G-15，§8 命名断点（G-RET/G-DR-1/
+    // G-SIEM-1/G-3b）自称 ✅ 却从不进交叉核对，且判据从不披露覆盖率 → 测谎门自身留未声明盲区。
+    // 本齿真跑跑批器（对真 §8）验证：覆盖率被披露 + 那 4 个自称已闭却无判据者被显性列入 uncoveredFixed。
+    // revert 跑批器的 §8 独立枚举/覆盖率段 → coverage 缺失或 uncoveredFixed 不含命名断点 → 此断言塌（green→red）。
+    const here = fileURLToPath(new URL(".", import.meta.url));
+    const root = join(here, "..", "..", "..");
+    const script = join(root, "scripts", "meta-runtime-truth.mjs");
+    const distParse = join(root, "apps", "datacore", "dist", "meta", "parse.js");
+    if (!existsSync(distParse)) return; // 跑批器依赖 dist（gates 链先 build）；无 dist 诚实跳过·非假绿
+    const r = spawnSync("node", [script, "--json"], { cwd: root, encoding: "utf8", timeout: 180_000 });
+    expect(r.status).toBe(0);
+    const out = JSON.parse(r.stdout) as {
+      coverage: { totalSection8: number; parsed: number; unparsed: string[]; claimedFixed: number; crossCheckedFixed: number; uncoveredFixed: string[] };
+    };
+    const cov = out.coverage;
+    expect(cov.totalSection8).toBeGreaterThan(cov.parsed); // §8 全表 > 编号投影（命名断点存在）
+    expect(cov.claimedFixed).toBeGreaterThan(cov.crossCheckedFixed); // 声称 FIXED > 真交叉核对印证（有未核对者）
+    // 4 个命名断点自称 ✅ 却无静态判据 → 必被显性列入未核对清单（不静默逃过）
+    for (const named of ["G-3b", "G-RET", "G-DR-1", "G-SIEM-1"]) {
+      expect(cov.unparsed).toContain(named); // parse 未投影
+      expect(cov.uncoveredFixed).toContain(named); // 但跑批器独立枚举后显性披露为未核对
+    }
   });
 });

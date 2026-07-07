@@ -92,8 +92,45 @@ const rows = breakpoints.map((bp) => {
 const drift = rows.filter((r) => r.status === "DRIFT");
 const tally = rows.reduce((a, r) => ((a[r.status] = (a[r.status] ?? 0) + 1), a), {});
 
+// ⑤ 覆盖率披露（R-NO-FAKE-DONE 自证·根治 META-RUNTIME-TRUTH 返工盲区）：
+// parse.js 只投影 §8 编号断点 G-1..G-15；§8 另有命名断点（G-RET/G-DR-1/G-SIEM-1/G-3b/G-16/
+// G-CAP-1/G-CRON-1）——其中数个自称 ✅ 已闭却从不进交叉核对。测谎门若不披露自身覆盖率，
+// 就在它自己审计的维度上留未声明盲区（正是本项目要根除的"两张皮"）。故独立枚举 §8 全部断点行，
+// 显性列出"声称 FIXED 但未被运行时判据交叉核对"者——不静默逃过、不默认信 emoji。
+const allBp = md
+  .split("\n")
+  .filter((l) => /^\|\s*G-[A-Za-z0-9-]+\s*\|/.test(l))
+  .map((l) => {
+    const cells = l.split("|").map((c) => c.trim());
+    const id = cells[1];
+    const statusCell = cells[cells.length - 2] || "";
+    // 声称 FIXED = 状态列含 ✅ 且不以 部分/登记/开放（◐🚧❌）打头
+    const claimedFixed = statusCell.includes("✅") && !/[◐🚧❌]/.test(statusCell);
+    return { id, claimedFixed };
+  });
+const parsedIds = new Set(rows.map((r) => r.g));
+const crossCheckedFixedIds = new Set(rows.filter((r) => r.status === "FIXED").map((r) => r.g));
+// 声称 FIXED 全集：编号断点信 parse.js 权威 claimedStatus（单一来源·勿双解析器打架）；
+// 命名断点（parse 未投影）才用独立 §8 扫描的 claimedFixed 补齐。
+const claimedFixedAll = [
+  ...rows.filter((r) => r.claimed === "FIXED").map((r) => r.g),
+  ...allBp.filter((b) => !parsedIds.has(b.id) && b.claimedFixed).map((b) => b.id),
+];
+// 未纳入交叉核对的"声称 FIXED"断点 = 声称 FIXED 全集 − 真跑判据印证为 FIXED 者
+const uncoveredFixed = claimedFixedAll.filter((id) => !crossCheckedFixedIds.has(id));
+// §8 断点里 parse.js 完全未投影者（命名断点）——附于报告尾部显性化，防"表里只有编号"错觉
+const unparsedBp = allBp.map((b) => b.id).filter((id) => !parsedIds.has(id));
+const coverage = {
+  totalSection8: allBp.length,
+  parsed: rows.length,
+  unparsed: unparsedBp,
+  claimedFixed: claimedFixedAll.length,
+  crossCheckedFixed: crossCheckedFixedIds.size,
+  uncoveredFixed,
+};
+
 if (JSON_OUT) {
-  console.log(JSON.stringify({ rows, tally, drift: drift.map((r) => r.g) }, null, 2));
+  console.log(JSON.stringify({ rows, tally, drift: drift.map((r) => r.g), coverage }, null, 2));
 } else {
   console.log("META-RUNTIME-TRUTH · 断点声称 ↔ 运行时判据交叉核对\n");
   for (const r of rows.sort((a, b) => a.g.localeCompare(b.g, undefined, { numeric: true }))) {
@@ -103,10 +140,26 @@ if (JSON_OUT) {
   console.log(
     `\n计: ${Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(" · ")}`,
   );
+  // 覆盖率披露（自证·不留未声明盲区）
+  console.log(
+    `\n覆盖率: §8 共 ${coverage.totalSection8} 断点 · parse 投影 ${coverage.parsed}（编号 G-1..G-15）` +
+      `${coverage.unparsed.length ? ` · 未投影(命名断点) ${coverage.unparsed.length}: ${coverage.unparsed.join(", ")}` : ""}`,
+  );
+  console.log(
+    `        声称 FIXED ${coverage.claimedFixed} · 运行时判据交叉核对印证 ${coverage.crossCheckedFixed}` +
+      ` · 未交叉核对 ${coverage.uncoveredFixed.length}${coverage.uncoveredFixed.length ? `: ${coverage.uncoveredFixed.join(", ")}` : ""}`,
+  );
+  if (coverage.uncoveredFixed.length) {
+    console.log(
+      `        ⚠ 上列断点自称 FIXED 但无可运行静态判据交叉核对（纯文档态/需活服务门/parse 未投影）→ 诚实归 UNCHECKED·未默认信 emoji·未冒充已核。`,
+    );
+  }
   if (drift.length) {
     console.error(`\n✗ 发现 ${drift.length} 处本体谎言（声称 FIXED 但运行时判据不通）：${drift.map((r) => r.g).join(", ")}`);
   } else {
-    console.log("\n✓ 无 DRIFT：所有已交叉核对的 FIXED 断点，运行时判据均通过（或诚实 UNCHECKED）。");
+    console.log(
+      `\n✓ 无 DRIFT：所有已交叉核对的 FIXED 断点运行时判据均通过；未核对者已按覆盖率显性披露（非默认信·非静默逃过）。`,
+    );
   }
 }
 
