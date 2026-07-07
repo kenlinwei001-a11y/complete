@@ -4732,14 +4732,47 @@
       "at": {
         "todo": "2026-07-07T01:00:00.000Z"
       }
+    },
+    {
+      "id": "GAP-ADVICE-QUALITY",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P2",
+      "deps": [],
+      "doc": "apps/agentcore/src/growth/probe.ts",
+      "title": "缺口诊断建议增强(落Agent时提确定性求解器替代)+文案澄清(用途一次绑非逐题)",
+      "note": "用户2026-07-07实测\"常州物料齐套为什么这天越线\"→LLM_PURPOSE_UNBOUND。审核方真跑定位: 确定性匹配已路由(deterministic:example-match)到path B(Agent)·因该因果归因题无专属确定性求解器(path A)→落Agent需LLM→无LLM报错(非听不懂)。两缺陷: ①诊断偏窄——只给\"绑LLM\"一条·漏\"建确定性求解器走path A地板\"(违\"确定性是地板\");②文案误导——\"为该用途绑定\"易读成逐题绑·实为per-purpose每租户一次绑·全部同类问题即生效。铁律0.5我出设计dev建。",
+      "acceptance": {
+        "goal": "缺口诊断建议既准又不误导: ①文案明确\"按用途一次绑定·所有同类问题即生效·非逐题绑\"(消除逐题绑误解);②当gapCode=LLM_PURPOSE_UNBOUND且task.path=AGENT(无专属求解器落Agent)时·actionable同时给两条根因解——\"绑该用途LLM(一次·全生效)\"+\"或为该问题类建确定性求解器(path A·无需LLM)\"·不只给绑LLM。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "probe.ts actionableFill(LLM_PURPOSE_UNBOUND) 文案含\"一次绑定该用途·所有同类问题即生效(非逐题绑)\"·真跑该问句诊断证据体现此措辞·不含/不暗示\"每题单独绑\"。"
+          },
+          {
+            "id": "C2",
+            "type": "file",
+            "assert": "gapCode=LLM_PURPOSE_UNBOUND 且 task.path=AGENT(落Agent非path A)时·建议同时含\"或为该问题类建确定性求解器走path A(无需LLM)\"根因解·非单一\"绑LLM\";path A已可答(WORKFLOW)的问句不受影响。"
+          },
+          {
+            "id": "C3",
+            "type": "cmd",
+            "assert": "齿断言两文案(一次绑措辞 + Agent路时求解器替代建议)·growth-probe.test.ts 更新有牙(改回旧文案即红)·build+test绿。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-07T03:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "GENUINE-SIM-GATE-HARDEN",
-      "at": "2026-07-07T04:14:46.706Z"
+      "role": "review",
+      "cmd": "dispatch",
+      "id": "GAP-ADVICE-QUALITY",
+      "at": "2026-07-07T03:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
