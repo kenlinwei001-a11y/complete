@@ -4496,7 +4496,7 @@
       "deps": [],
       "doc": "apps/frontend-shell/src",
       "title": "全站界面词中文化(含本体切片/拓扑图·除缩写)",
-      "note": "用户亲定(R2): 所有系统页面界面词需中文·含本体切片/本体拓扑图内英文字段(demandLoad→需求负载、demandPressure→需求压力、loadIndex→负载指数、utilPressure→利用压力…)·英文缩写(OEE/GWh/MCP/DAG/KSF等)或特别术语保留。走i18n/ViewConfig非写死(R14)。",
+      "note": "用户亲定(R2): 所有系统页面界面词需中文·含本体切片/本体拓扑图内英文字段(demandLoad→需求负载、demandPressure→需求压力、loadIndex→负载指数、utilPressure→利用压力…)·英文缩写(OEE/GWh/MCP/DAG/KSF等)或特别术语保留。走i18n/ViewConfig非写死(R14)。 ‖ 用户2026-07-07加订: 一并去生物/军事隐喻词(只改界面词zh.ts+本体文档展示词·不碰enum/testid/key): 发育→验证/就绪(发育中·未审核→待验证·查看发育→查看验证状态·发育升相/闭环→验证通过/验证闭环·GOVERNED显示保留已验证); 退役→下线(已下线/停用); 自成长发动机/倒序发育等→能力生成/自动补全。审核方建议已获用户点头。",
       "acceptance": {
         "goal": "系统页面界面词全中文·英文字段名(状态变量/切片/拓扑标签)中文化·缩写保留·无写死。",
         "criteria": [
@@ -4509,13 +4509,19 @@
             "id": "C2",
             "type": "cmd",
             "assert": "中文来自i18n/ViewConfig非组件写死(R14 debattery绿)·缩写白名单保留·build/test绿。"
+          },
+          {
+            "id": "C-DEMETA",
+            "type": "cmd",
+            "assert": "去隐喻: 全站界面词无\"发育/退役/升相\"等隐喻词(grep zh.ts+展示层空或仅注释)·统一验证/就绪/下线; enum键(GOVERNED/PROVISIONAL)/testid/路由key不变(grep仍在); 真浏览器抽查场景启动器/导航词已换; build+test绿。"
           }
         ]
       },
       "status": "TODO",
       "owner": null,
       "at": {
-        "todo": "2026-07-06T13:00:00.000Z"
+        "todo": "2026-07-06T13:00:00.000Z",
+        "amended": "2026-07-07T02:00:00.000Z"
       }
     },
     {
