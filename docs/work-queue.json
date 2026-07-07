@@ -4349,12 +4349,13 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-06T14:06:44.556Z",
-        "built": "2026-07-06T14:52:03.029Z"
+        "built": "2026-07-06T14:52:03.029Z",
+        "done": "2026-07-07T03:44:52.004Z"
       },
       "blockReason": ""
     },
@@ -4551,10 +4552,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
+      "role": "review",
+      "cmd": "DONE",
       "id": "CORE-NL-SOLVER-ROUTING",
-      "at": "2026-07-06T14:52:03.029Z"
+      "at": "2026-07-07T03:44:52.004Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
