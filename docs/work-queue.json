@@ -5213,7 +5213,7 @@
       "title": "L0·主单P2: preAnalyzeQuery旁路+pre_analyses R9+3事件+GapCard全景条",
       "doc": "docs/PRD-gap-analysis-engine.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "UPG-L0-GAPCORE"
@@ -5247,8 +5247,10 @@
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
-        "wip": "2026-07-09T15:33:28.391Z"
-      }
+        "wip": "2026-07-09T15:33:28.391Z",
+        "built": "2026-07-09T16:36:38.821Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-HIDDENREQ",
@@ -5496,10 +5498,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "BLOCKED",
-      "id": "UPG-L0-CLASSIFY-FUSE",
-      "at": "2026-07-09T16:34:11.653Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "UPG-L0-PREANALYSIS",
+      "at": "2026-07-09T16:36:38.821Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
