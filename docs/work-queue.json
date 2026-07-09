@@ -5164,7 +5164,7 @@
       "title": "L0·主单P0-1: diffGap纯核+契约冻结+analyzeGap无损改造+registry-snapshot",
       "doc": "docs/PRD-gap-analysis-engine.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "PRD-gap §5/§13 Phase0-1: diffGap(required,existing,meta)纯函数落@platform/contracts(R1/R6·generatedAt注入)；analyzeGap(provisioners.ts:106)改为收集existing→调diffGap·对外签名行为不变(唯一调用点service.ts:406零改)；GET /a/v1/databuilder/registry-snapshot(仅6类A栈·SERVICE_TOKEN/OBO)；契约扩GapTarget/Severity/Remediation/Explanation/ExecutionStep全optional。不触agentcore/前端/QOS。",
@@ -5197,12 +5197,14 @@
             "assert": "回退演练:关feature→snapshot端点404·revert后provisioners.test绿"
           }
         ],
-        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统",
+        "reviewEvidence": "审核方worktree隔离真跑复验PASS(2026-07-09): C1 diffGap纯核(contracts databuilder.ts:550-592·无IO/时钟随机·generatedAt经meta注入)diff-gap.test 8/8绿byte确定; C2 analyzeGap改造(provisioners.ts:107-149·唯一调用点service.ts:406零改)provisioners.test 12/12(6 byte等价场景)+databuilder.test 36绿·MODULE_KINDS序守恒; C3 真起datacore registry-snapshot(app.ts:3643)service-token→200恰6类A栈[dataset,kb_doc,ontology_type,rule,slice,solver]无B泄漏·X-Debug/JWT→403; C4 pnpm -r build EXIT0+contracts 24/datacore GAPCORE面49绿(定向·避全量超时); C5 回退演练feature off→404 FEATURE_NOT_FOUND·revert→200. ontology-slices绿·母体🚧诚实. 非阻断提示:feature key连字符databuilder.registry-snapshot(自洽)·demo经battery行业模板开启(既有平台模式非违纪)。"
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T15:06:22.963Z",
-        "built": "2026-07-09T15:32:05.550Z"
+        "built": "2026-07-09T15:32:05.550Z",
+        "done": "2026-07-09T16:22:42.508Z"
       },
       "blockReason": ""
     },
@@ -5487,10 +5489,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "Q30-P1-Q01VERT",
-      "at": "2026-07-09T16:18:59.493Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "UPG-L0-GAPCORE",
+      "at": "2026-07-09T16:22:42.509Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
