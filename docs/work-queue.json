@@ -5382,7 +5382,7 @@
       "title": "L0·兄弟A A3: 高频未覆盖类目补path-A求解器(因果归因优先·治没有对的求解器·施工)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P2",
-      "status": "TODO",
+      "status": "WIP",
       "owner": "dev",
       "deps": [
         "UPG-L0-SOLVER-COVERAGE"
@@ -5410,7 +5410,8 @@
         "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
       },
       "at": {
-        "todo": "2026-07-09T15:00:00.000Z"
+        "todo": "2026-07-09T15:00:00.000Z",
+        "wip": "2026-07-09T16:25:30.900Z"
       }
     },
     {
@@ -5457,7 +5458,7 @@
       "title": "L0·兄弟B B2: 就地批复整合+旧面tombstone退役(入口①收敛闭环)",
       "doc": "docs/PRD-gapfill-surface-consolidation.md",
       "priority": "P2",
-      "status": "TODO",
+      "status": "WIP",
       "owner": "dev",
       "deps": [
         "UPG-L0-CONSOLE-BOARD"
@@ -5485,16 +5486,17 @@
         "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
       },
       "at": {
-        "todo": "2026-07-09T15:00:00.000Z"
+        "todo": "2026-07-09T15:00:00.000Z",
+        "wip": "2026-07-09T16:25:30.974Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "UPG-L0-CONSOLE-BOARD",
-      "at": "2026-07-09T16:24:29.048Z"
+      "cmd": "WIP",
+      "id": "UPG-L0-CONSOLE-APPROVE",
+      "at": "2026-07-09T16:25:30.974Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
