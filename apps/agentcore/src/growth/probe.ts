@@ -16,7 +16,7 @@ export const FILL: Record<GapCode, string> = {
   SOLVER_NOT_FOUND: "B：绑 generic-inference 兜底；C：产出带 I/O 契约的求解器骨架 GrowthTicket",
   SHAPE_MISMATCH: "修渲染绑定使 ⊆ 求解器输出形状，或出工单",
   NO_CAPABILITY: "产出需开发 GrowthTicket（带 I/O 契约）→ code agent 施工",
-  LLM_PURPOSE_UNBOUND: "设置→LLM 用途绑定：为该用途绑定可用 provider 与有效密钥（AES-GCM 落库），再重跑本问句",
+  LLM_PURPOSE_UNBOUND: "设置→LLM 用途绑定：一次绑定该用途（配置可用 provider 与有效密钥·AES-GCM 落库）·所有同类问题即生效（非逐题绑·绑定任一大类即覆盖全部用途·无需逐意图单独绑定），再重跑本问句",
   // GAP-ACTIONABLE（P3 修）：绝不再是"人工核实内部错误"占位——即便未归类，也据真实 evidence 给可行动补法。
   OTHER: "据实跑 evidence 原文定位真实断点后补齐（保留原始错因，不以人工兜底占位掩盖真相）",
 };
@@ -36,7 +36,7 @@ const ACTIONABLE_WHAT_WHERE: Record<GapCode, { what: string; where: string }> = 
   SOLVER_NOT_FOUND: { what: "求解器未注册（invoke_solver）", where: "绑 generic-inference 兜底，或出带 I/O 契约的求解器骨架工单" },
   SHAPE_MISMATCH: { what: "渲染绑定字段不在求解器输出形状（G-2）", where: "修渲染绑定使 ⊆ 求解器输出，或出工单" },
   NO_CAPABILITY: { what: "缺领域能力（本体/求解器根本没有）", where: "产出需开发 GrowthTicket（带 I/O 契约）→ code agent 施工" },
-  LLM_PURPOSE_UNBOUND: { what: "LLM 用途未解析到可用 provider 或密钥无效", where: "设置→LLM 用途绑定（配置 provider 与有效密钥）" },
+  LLM_PURPOSE_UNBOUND: { what: "LLM 用途未解析到可用 provider 或密钥无效", where: "设置→LLM 用途绑定：一次绑定该用途（配置 provider 与有效密钥）·所有同类问题即生效（非逐题绑·无需逐意图单独绑定）" },
   OTHER: { what: "未归类内部错误（真实 evidence 原文已保留）", where: "据 evidence 原文定位真实断点后补齐（非人工兜底占位）" },
 };
 
@@ -44,15 +44,23 @@ const ACTIONABLE_WHAT_WHERE: Record<GapCode, { what: string; where: string }> = 
  * 据缺口码 + 本问句派生 actionable 三元 `{what, where, acceptance}` 与 suggestedFill。
  * acceptance 恒钉「本问句经 NL 真跑 E2E 答出真实承载数据」——即 DoD 验收线（永不 dash/人工核实）。
  */
-export function actionableFill(code: GapCode, question: string): Pick<GapFinding, "what" | "where" | "acceptance" | "suggestedFill"> {
+export function actionableFill(code: GapCode, question: string, path?: QueryTask["path"] | "NONE"): Pick<GapFinding, "what" | "where" | "acceptance" | "suggestedFill"> {
   const g = ACTIONABLE_WHAT_WHERE[code];
   const acceptance = code === "ANSWERABLE"
     ? "无需补齐"
     : `验收=「${question}」经 NL 真跑 E2E 答出真实承载数据（非空投影、过诚实门）`;
+  // GAP-ADVICE-QUALITY（P2·用户实测「常州物料齐套为什么这天越线」）：LLM 用途未绑且**落 Agent（path B）**——
+  // 诊断不能只给"绑 LLM"（漏"确定性是地板"）。该因果归因题**无专属确定性求解器(path A)**才回落 Agent 需 LLM，
+  // 故根因解含**两条并列**：①一次绑该用途（覆盖全部同类问题）；②或为该问题类建确定性求解器走 path A（无需 LLM·地板优先）。
+  // path A 已可答（WORKFLOW/其它非 AGENT 路）的问句 path≠AGENT，不触此分支 → 不受影响。
+  const solverAlt = code === "LLM_PURPOSE_UNBOUND" && path === "AGENT"
+    ? "；或为该问题类建确定性求解器走 path A（无需 LLM·确定性是地板，优先此路）"
+    : "";
+  const where = g.where + solverAlt;
   const suggestedFill = code === "ANSWERABLE"
     ? FILL.ANSWERABLE
-    : `缺什么：${g.what}；补在哪：${g.where}；${acceptance}`;
-  return { what: g.what, where: g.where, acceptance, suggestedFill };
+    : `缺什么：${g.what}；补在哪：${where}；${acceptance}`;
+  return { what: g.what, where, acceptance, suggestedFill };
 }
 
 /**
@@ -148,7 +156,7 @@ export function classifyGap(task: QueryTask): GapReport {
   // 真 what/where/acceptance（LLM_PURPOSE_UNBOUND 等具体错因入码表·永不"人工核实内部错误"）。
   if (task.status === "FAILED" && task.error) {
     const code = codeFromError(task.error.code, task.error.message);
-    findings.push({ gapCode: code, atStep: task.error.stepId, evidence: `${task.error.code}: ${task.error.message}`.slice(0, 240), blocking: true, ...actionableFill(code, task.query) });
+    findings.push({ gapCode: code, atStep: task.error.stepId, evidence: `${task.error.code}: ${task.error.message}`.slice(0, 240), blocking: true, ...actionableFill(code, task.query, path) });
     return { question: task.query, taskId: task.id, verdict: code === "NO_CAPABILITY" ? "BOUNDARY" : "BLOCKED", path, findings, generatedAt: new Date().toISOString() };
   }
 

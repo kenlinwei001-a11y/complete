@@ -79,6 +79,34 @@ describe("classifyGap · 终态→缺口分类", () => {
     // suggestedFill 含真修法（永不「人工核实内部错误」）：
     expect(f.suggestedFill).toContain("设置→LLM 用途绑定");
     expect(f.suggestedFill).not.toContain("人工核实内部错误");
+    // GAP-ADVICE-QUALITY C1 齿：文案钉「一次绑定该用途·所有同类问题即生效（非逐题绑）」——
+    // 与 LLM-ROLE-RESOLUTION-FIX 同措辞（绑任一大类即覆盖全部用途），不暗示逐题/每题单独绑。改回旧文案即红。
+    expect(f.suggestedFill).toContain("一次绑定该用途");
+    expect(f.suggestedFill).toContain("所有同类问题即生效");
+    expect(f.suggestedFill).toContain("无需逐意图单独绑定");
+    expect(f.suggestedFill).not.toContain("每题单独绑");
+    // C2 反向齿：path=WORKFLOW（path A 已可答·非落 Agent）**不**追加"建确定性求解器"替代解——不受影响。
+    expect(f.suggestedFill).not.toContain("建确定性求解器走 path A");
+  });
+
+  // ── GAP-ADVICE-QUALITY C2 齿（P2·用户实测「常州物料齐套为什么这天越线」→LLM_PURPOSE_UNBOUND）──
+  // 确定性匹配路由到 path B(Agent)·因该因果归因题无专属确定性求解器(path A)→落 Agent 需 LLM→无 LLM 报错。
+  // 诊断不能只给"绑 LLM"（漏"确定性是地板"）：path=AGENT 时须**同时**给"建确定性求解器走 path A"根因解。
+  it("齿C2：LLM_PURPOSE_UNBOUND 且落 Agent(path=AGENT·无 path A 求解器) → 建议同时含「建确定性求解器走 path A」根因解（非单一绑 LLM）", () => {
+    const r = classifyGap(base({
+      query: "常州物料齐套为什么这天越线?", status: "FAILED", path: "AGENT",
+      error: { code: "LLM_PURPOSE_UNBOUND", message: "LLM 调用未成功：未绑定任何 LLM 用途，或已绑定 provider 的密钥无效/不可达。绑定任一大类即覆盖全部用途，无需逐意图单独绑定。", stepId: "agent" },
+    }));
+    const f = r.findings[0]!;
+    expect(f.gapCode).toBe("LLM_PURPOSE_UNBOUND");
+    // ① 一次绑该用途·覆盖全部同类问题（C1 措辞在 AGENT 路同样在场）：
+    expect(f.suggestedFill).toContain("一次绑定该用途");
+    expect(f.suggestedFill).toContain("所有同类问题即生效");
+    expect(f.suggestedFill).not.toContain("每题单独绑");
+    // ② 确定性地板替代解（走 path A·无需 LLM）——本单核心：不再单一"绑 LLM"。改前（无此分支）即红。
+    expect(f.suggestedFill).toContain("建确定性求解器走 path A");
+    expect(f.suggestedFill).toContain("无需 LLM");
+    expect(f.where).toContain("建确定性求解器走 path A");
   });
 
   it("齿：LLM 鉴权泄漏原始串（Could not resolve authentication）→ 归一 LLM_PURPOSE_UNBOUND actionable，不泄漏 SDK 串到 gapCode", () => {
