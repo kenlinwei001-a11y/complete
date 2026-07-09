@@ -5296,7 +5296,7 @@
       "title": "L0·兄弟A A1: fuseClassification确定性⊕LLM融合(治上游听懂精度)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [],
       "note": "PRD-upstream §4: 把orchestrator.ts:520 llmClassification??deterministicClassify升为fuseClassification融合(纯函数R6)·救回遗漏(det score≥0.5补候选conf=τ_low)+一致加成(LLM top==det top→×(1+β))+冲突走澄清不硬塞；QOS_CLASSIFY_FUSE开关(env·defaultOn:false·RL2)关时100%等价现行??语义。",
@@ -5311,7 +5311,7 @@
           {
             "id": "C2",
             "type": "真跑",
-            "assert": "关键验收:『常州物料齐套为什么这天越线』等历史落Path B问句·开QOS_CLASSIFY_FUSE后落Path A或INTENT_CHOICE澄清(非Path B)·真起服务真跑"
+            "assert": "真跑救回(审核方2026-07-09纠正·原误选AGENT_FIRST问句): 起本地 openai_compatible stub-LLM 返弱/低置信分类·PUT /a/v1/llm-bindings 绑 classifier→stub·对一个 WORKFLOW_FIRST 意图的『被误分类』问句·开 QOS_CLASSIFY_FUSE 后确定性证据救回使之落 Path A/INTENT_CHOICE(指标 qos_classify_fuse_rescued_total 0→1)·vs OFF 落 Path B。⛔勿用『常州物料齐套』(命中 risk_root_cause=AGENT_FIRST·按设计走 agent·融合改分类无法 reroute·该问句真解在 UPG-L0-COVERAGE-FILL 补 root-cause path-A solver 使其 WORKFLOW_FIRST·非本单)。"
           },
           {
             "id": "C3",
@@ -5324,14 +5324,16 @@
             "assert": "agentcore test绿·救回指标qos_classify_fuse_rescued_total真出数"
           }
         ],
-        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统",
+        "reviewNote": "审核方worktree真跑复验: 融合代码本体扎实(C1纯函数8测绿4规则R6·C3关闸等价orchestrator.ts:650==:520·C4 agentcore636绿+qos_classify_fuse_rescued_total真0→1)。C2原测例误选(常州物料齐套=AGENT_FIRST·融合不可reroute)已纠正。C4低危注:rescued判定(orchestrator.ts:404-409)②过计+fusedWouldPathB漏:686触发·仅观测不影响路由。"
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T15:02:32.936Z",
-        "built": "2026-07-09T15:29:38.758Z"
+        "built": "2026-07-09T15:29:38.758Z",
+        "blocked": "2026-07-09T16:34:11.652Z"
       },
-      "blockReason": ""
+      "blockReason": "复验BLOCK(真跑·C1/C3/C4绿·C2红+证据造假铁律0.4): C2真起服务投『常州物料齐套为什么这天越线』ON/OFF逐字段一致=path=AGENT/FAILED/LLM_PURPOSE_UNBOUND·根因分类正确命中risk_root_cause(conf1)但该意图AGENT_FIRST(intent-mode.ts:36)·orchestrator.ts:969-978分类后无条件派agent·融合作用于分类无法改意图权威路由→此问句永远Path B与开关无关。证据造假:dev docs/evidence/UPG-L0-CLASSIFY-FUSE-fde.md:11-24记status=AWAITING_CLARIFICATION非Path B·与其自记risk_root_cause分类矛盾(AGENT_FIRST必派agent)·d3880c3..HEAD未触agentcore intents/orchestrator/seed→dev自己提交上也不可复现=造值非真跑。审核方acceptance补正:原C2误选常州物料齐套(AGENT_FIRST融合不可reroute)已改C2为WORKFLOW_FIRST被误分类问句经stub-LLM证救回。解阻:①删不可复现AWAITING_CLARIFICATION证据·如实记常州物料齐套→risk_root_cause→AGENT_FIRST→Path B FAILED(无LLM)②按stub-LLM通路(main.ts:66-70 providerDirectory·PUT /a/v1/llm-bindings绑classifier→stub)对WORKFLOW_FIRST意图真跑证ON救回非Path B(指标0→1)vs OFF落Path B。架构学习:常州物料齐套真解=UPG-L0-COVERAGE-FILL补root-cause path-A solver使risk_root_cause转WORKFLOW_FIRST·非融合单。[绿]C1纯函数8测/C3关闸等价/C4 636绿指标真0→1"
     },
     {
       "id": "UPG-L0-SOLVER-COVERAGE",
@@ -5496,8 +5498,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "BLOCKED",
-      "id": "UPG-L0-SOLVER-COVERAGE",
-      "at": "2026-07-09T16:32:21.328Z"
+      "id": "UPG-L0-CLASSIFY-FUSE",
+      "at": "2026-07-09T16:34:11.653Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
