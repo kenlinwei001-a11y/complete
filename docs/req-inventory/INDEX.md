@@ -13,9 +13,9 @@
 | LEDGER-V4-1 | 开发第四卷 Ch65-70 | 178 |
 | LEDGER-SM-1 | 5 份说明书 Ch01-38 | 192 |
 
-**用户补传缺章**（逐章判定见 `SUPPLEMENT_*`）：Ch41 需求图引擎 ✓ · Ch49 Skill Platform ✓ · Ch51 Agent Runtime ✓ · Ch54 Simulation Engine ✓ · Ch67 云原生(原 ZIP 已含·V3.0 确认版) ✓。
+**用户补传缺章**（逐章判定见 `SUPPLEMENT_*`）：Ch41 需求图引擎 ✓ · Ch42 约束引擎 ✓ · Ch46 知识图谱(Vol XIV) ✓ · Ch49 Skill Platform ✓ · Ch51 Agent Runtime ✓ · Ch54 Simulation ✓ · Ch67 云原生 ✓。
 
-**仍缺 6 章（HELD·缺料无法盘）**：Ch42 / Ch46 / Ch47 / Ch48（Volume XIV 层未见）/ Ch66 / Ch68。
+**仍缺 4 章（HELD·缺料无法盘）**：Ch47 Data Fabric / Ch48（Vol XIV 尾）/ Ch66 / Ch68。
 
 ## verdict 五类
 - `SYS-HAS`：现系统已有（带 file:line）——约 1149/1569 抽样占比 ~73%，现系统覆盖度远高于规格预期。
@@ -27,7 +27,7 @@
 ## OMISSION 去重（9-14 簇 · 详见 `_MASTER`/汇总）
 最强两簇（多代理独立撞）：**① Workflow DAG 运行时**（并行/条件/补偿/durable·executor 严格串行）· **② 企业记忆/CBR/决策学习闭环**（经验→案例→自动复用 + feedback→调参·Ch41.22/49.23/51.16 三处规格印证）。其余：实时流式数据链 / 跨系统 Saga / 预测 ML / Skill 7 件套形式化 / 5 角色 Agent + Multi-Agent / 证据量化评分 / 国产算力 / 工业数据规模 / Safety Agent / 异步求解 job。
 
-**补章信号**：已补 5 章（41/49/51/54/67）净新增遗漏 ≈1（Agent 三层记忆·并入簇②）——缺章在**确认既有遗漏、非开新战线**，清单稳定。
+**补章信号**：已补 7 章（41/42/46/49/51/54/67）净新增 ≈4 具体项（Graph RAG / 实体链接 / 约束冲突检测 SAT / Agent 三层记忆）——**均并入既有簇**（②知识记忆 · 求解覆盖），**未开全新战线**。Vol XIV(Ch46 知识图谱)使**簇②升格为一等「企业知识与记忆层」**（原先低估为散点），且其 Graph RAG 部分**直接服务倒推精度**。
 
 ## 保证范围（诚实边界）
 - ✅ 对 ZIP 在册 11 文件 + 3 补章：逐句入册、可抽查（抽任一句 → 查其 ID/verdict/依据）。
