@@ -4755,7 +4755,7 @@
     },
     {
       "id": "GAP-ADVICE-QUALITY",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P2",
       "deps": [],
@@ -4784,8 +4784,10 @@
       },
       "at": {
         "todo": "2026-07-07T03:00:00.000Z",
-        "wip": "2026-07-09T04:06:43.209Z"
-      }
+        "wip": "2026-07-09T04:06:43.209Z",
+        "built": "2026-07-09T04:19:54.133Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "LLM-ROLE-RESOLUTION-FIX",
@@ -4891,9 +4893,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "I18N-CHINESE-UI",
-      "at": "2026-07-09T04:06:43.268Z"
+      "cmd": "BUILT",
+      "id": "GAP-ADVICE-QUALITY",
+      "at": "2026-07-09T04:19:54.133Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
