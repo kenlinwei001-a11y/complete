@@ -4960,7 +4960,7 @@
     },
     {
       "id": "DEPLOY0707-PIPELINE-SALVAGE",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P3",
       "deps": [],
@@ -4995,16 +4995,18 @@
       "at": {
         "todo": "2026-07-09T07:00:00.000Z",
         "amended": "2026-07-09T07:30:00.000Z",
-        "wip": "2026-07-09T09:02:34.200Z"
-      }
+        "wip": "2026-07-09T09:02:34.200Z",
+        "built": "2026-07-09T09:04:54.845Z"
+      },
+      "blockReason": ""
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "DEPLOY0707-PIPELINE-SALVAGE",
-      "at": "2026-07-09T09:02:34.201Z"
+      "at": "2026-07-09T09:04:54.845Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
