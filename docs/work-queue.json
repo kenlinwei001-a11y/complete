@@ -5418,7 +5418,7 @@
       "title": "L0·兄弟B B1: Console吸收script目标(TicketBoardRow source=BUILD_CLOSURE·入口①收敛)",
       "doc": "docs/PRD-gapfill-surface-consolidation.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "UPG-L0-GAPCORE"
@@ -5447,8 +5447,10 @@
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
-        "wip": "2026-07-09T15:45:52.389Z"
-      }
+        "wip": "2026-07-09T15:45:52.389Z",
+        "built": "2026-07-09T16:24:29.047Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-CONSOLE-APPROVE",
@@ -5489,10 +5491,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "UPG-L0-GAPCORE",
-      "at": "2026-07-09T16:22:42.509Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "UPG-L0-CONSOLE-BOARD",
+      "at": "2026-07-09T16:24:29.048Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
