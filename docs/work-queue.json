@@ -4129,7 +4129,7 @@
       "title": "SCENE-C: 通用多跳求解器未铺进角色场景NL路由(按角色接地答案)",
       "doc": "docs/PRD-trustworthy-self-accounting.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "[回炉WO-6·9洞曝光] 5个通用多跳求解器在 agentcore 场景/意图路由零命中；按角色接地(base_manager/planner/CEO)未全铺 ‖ 用户2026-07-09裁决继续建·登TODO。缩范围: NL路由已由CORE-NL-SOLVER-ROUTING(DONE)填·本单只做剩余「按角色场景接地答案」层。",
@@ -4147,8 +4147,10 @@
       "at": {
         "open": "2026-07-06T11:41:01.815Z",
         "todo": "2026-07-09T08:00:00.000Z",
-        "wip": "2026-07-09T07:56:46.207Z"
-      }
+        "wip": "2026-07-09T07:56:46.207Z",
+        "built": "2026-07-09T08:05:20.848Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "GAP-AUDIT-OBS",
@@ -4997,9 +4999,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "GAP-SCENE-C",
-      "at": "2026-07-09T07:56:46.207Z"
+      "at": "2026-07-09T08:05:20.849Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
