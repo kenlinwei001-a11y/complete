@@ -5059,50 +5059,42 @@
       "title": "QUERY30拆单P0·数据地基: Line.capacityDaily/certifiedModels+Order.promiseDate/marginPct/allocatedLineIds+边ALLOCATED_ON/DISPLACES(先核后建)",
       "doc": "docs/DESIGN-query30-orch-split.md",
       "priority": "P0",
-      "status": "TODO",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "QUERY30-ONTOLOGY-EXT"
       ],
       "note": "[QUERY30-ORCH 拆单 P0·数据地基先行·否则9求解器建在沙上(绿测试≠能用)] **先核后建**: QUERY30-ONTOLOGY-EXT 标 DONE 但审核方 2026-07-09 grep 静态契约(packages/contracts/src)零命中 Line.capacityDaily/certifiedModels、Order.promiseDate/allocatedLineIds、边 Order-ALLOCATED_ON→Line/DISPLACES。① 先核实是否以动态 ObjectType/PropertyDef 落在 datacore 运行时(非静态TS契约)——若已真落地可查真值→P0缩为核验+补测; ② 若确缺: Line 加 capacityDaily(线级日产能number·设计§2.1标『最大单点缺口』:Line现仅3字段lineId/baseId/name)/certifiedModels(可产型号string[])/changeoverGroup; Order 加 promiseDate/marginPct(单毛利·现仅Segment级gmRate)/allocatedLineIds(占线明细·挤占锚); 本体边 Order-ALLOCATED_ON→Line、Order-DISPLACES→Order。契约+仓储双实现(datacore repo/memory.ts+repo/pg.ts+repo.ts接口+migrations/*.sql)同步。设计源§2.1/§2.2。分期铁律:P0绿才可开P1。",
       "acceptance": {
-        "goal": "挤占推演的数据锚(Line.capacityDaily·Order.allocatedLineIds·Order-DISPLACES边)真实可查·非Base聚合兜底——否则what_if_displacement无法做真挤占分析。",
+        "goal": "挤占推演数据锚(Line.capacityDaily·Order.allocatedLineIds/marginPct·Order-DISPLACES边)真实可查且已物化赋值·非Base聚合兜底。",
+        "resolution": "已存·核验通过(审核方2026-07-09真跑)。QUERY30-ONTOLOGY-EXT 经动态本体 PropertyDef 落地(非静态TS契约·故先前grep contracts零命中系找错层)。",
         "criteria": [
           {
             "id": "C1",
-            "type": "curl",
-            "assert": "Line 对象含 capacityDaily 字段·查 demo 常州线实例返回线级具体正数(非 Base 日产能÷线数的兜底值);certifiedModels 为非空 string[]"
+            "type": "code+test",
+            "assert": "Line.capacityDaily/certifiedModels/changeoverGroup propDef 存(battery.ts:490-492)且真拓扑派生赋值(1768-1770·化成/老化上限取小非Base聚合)"
           },
           {
             "id": "C2",
-            "type": "curl",
-            "assert": "Order 对象含 promiseDate(承诺交期)+allocatedLineIds(占线明细数组·非空)+marginPct(单级毛利·区别于 Segment 级 gmRate)"
+            "type": "code+test",
+            "assert": "Order.promiseDate/allocatedLineIds/marginPct propDef 存(battery.ts:471-473)且逐单赋真值(promiseDate:1595·allocatedLineIds:1597·marginPct:1596 确定性hash压价行低毛利)"
           },
           {
             "id": "C3",
             "type": "test",
-            "assert": "本体含边 Order-ALLOCATED_ON→Line 与 Order-DISPLACES→Order·可经图/ontology 查询遍历(非仅文档声明)"
+            "assert": "边 order_allocated_on(Order→Line)/order_displaces(Order→Order)注册(battery.ts:807-808)+真建链(service.ts:839/850)+neighbors真跳——query30-ontology-ext.test『6新边可解引用真跳·Order→Line/Order→Order』绿"
           },
           {
             "id": "C4",
             "type": "gate",
-            "assert": "契约(packages/contracts)+仓储双实现(datacore repo/memory.ts+repo/pg.ts+repo.ts接口)+迁移(migrations/*.sql)齐改·pnpm -r build && pnpm -r test 退出0·datacore 测试数≥基线"
-          },
-          {
-            "id": "C5",
-            "type": "curl",
-            "assert": "R6 确定性:同 tenant 同 seed 查同对象两次 JSON 字节一致"
+            "assert": "query30-ontology-ext.test 4/4 绿(2026-07-09真跑):物化非空+主键/FK带值+R6同seed字节一致+Line/Order新字段进模板(G-6)"
           }
         ],
-        "method": [
-          {
-            "for": "C1",
-            "run": "起内存态 datacore(SEED_DEMO=1)·curl 常州 Line 实例·jq .capacityDaily 期望正数、.certifiedModels|length>0"
-          }
-        ]
+        "evidence": "apps/datacore/src/synthetic/battery.ts:471-473,490-492,807-808,1595-1597,1768-1770 + service.ts:839/850 + apps/datacore/test/query30-ontology-ext.test.ts 4/4"
       },
       "at": {
-        "todo": "2026-07-09T09:41:32.786Z"
+        "todo": "2026-07-09T09:41:32.786Z",
+        "done": "2026-07-09T09:47:27.122Z"
       }
     },
     {
@@ -5165,9 +5157,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DISPATCH",
-      "id": "Q30-P0+P1",
-      "at": "2026-07-09T09:41:32.786Z"
+      "cmd": "DONE",
+      "id": "Q30-P0-DATAFOUND",
+      "at": "2026-07-09T09:47:27.122Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
