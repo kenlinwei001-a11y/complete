@@ -4875,7 +4875,7 @@
       "title": "填补F2: OrderChain库存价值接真库存对象(替写死占比系数)+清hash幅度死注释",
       "doc": "docs/AUDIT-fakedata-sweep.md",
       "priority": "P3",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "FAKEDATA-SWEEP F2派生(低优·已诚实标透明估算非冒充)。OrderChainView.tsx:34 成品/在制/原料库存价值=营收×写死占比{fg:0.22,wip:0.3,rm:0.18}(无实测库存)·第二位hash幅度注释残留(hash现编已删见:157)。处置:①有真库存对象(成品/在制/原料按SKU数量×单价)→取真值;②无→保留占比估算但诚实标(现状)+清理[base,hash幅度]死注释为[base]。",
@@ -4896,8 +4896,10 @@
       },
       "at": {
         "todo": "2026-07-09T00:00:00.000Z",
-        "wip": "2026-07-09T05:08:10.090Z"
-      }
+        "wip": "2026-07-09T05:08:10.090Z",
+        "built": "2026-07-09T05:21:02.358Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "I18N-LONGTAIL",
@@ -4930,10 +4932,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "dispatch",
-      "id": "I18N-LONGTAIL",
-      "at": "2026-07-09T04:30:00.000Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "FILL-ORDERCHAIN-INVENTORY-REAL",
+      "at": "2026-07-09T05:21:02.359Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
