@@ -44,6 +44,10 @@
 
 **非目标**：不建 7 层图验证器、不建常驻 Redis Registry、不建 Graph Rewrite 引擎、不在 DataCore 侧聚合 AgentCore 注册表（架构不成立，见 §3）。
 
+> **精度边界与关联单（诚实声明·防过读）**：系统"倒推"两段串联——`①classify(听懂→意图)` → `②依赖闭包(意图→求解器→类型→数据)`。本 PRD 只解决 **②下游**（§8 不造假 key 闭包），**不动 ①上游 classify**（§6 复用既有 `ClassificationResult`）。因 ①②串联，**②精度上限被 ① 锁死**（garbage in → precise closure of garbage）；且本 PRD §10 已自设限：预分析是**咨询信号非判决**，权威判决仍归 reactive `classifyGap`。因此本单是"引擎去重 + 下游依赖精度"升级，**不是**倒推精度的根治，也**不减用户可见入口**（反而 +1 全景条）。这两块的根治另立兄弟单，各一命题（利于多 agent 按文档同步）：
+> - **兄弟单 A** `docs/PRD-upstream-classify-precision.md`：上游分类精度（确定性⊕LLM 融合，减 LLM 依赖）+ 求解器覆盖补齐——倒推精度的真杠杆。
+> - **兄弟单 B** `docs/PRD-gapfill-surface-consolidation.md`：把 GapCard/工单中心/DataBuilder 的缺口-补齐面并成一个 Console（R17 决策单页）——真正"减面"。
+
 ---
 
 ## §2 As-Is 精确现状（逐条核对）

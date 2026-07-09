@@ -917,6 +917,22 @@
         "scripts/check-hidden-req-keys.mjs"
       ]
     },
+    "PRD-gapfill-surface-consolidation.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R2",
+        "R4"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-4"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-generation-boundary-grounding.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1523,6 +1539,24 @@
       ],
       "artifacts": [],
       "brokenArtifacts": []
+    },
+    "PRD-upstream-classify-precision.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R16",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-3",
+        "G-4"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
     }
   },
   "breakpointCoverage": {
@@ -1544,7 +1578,8 @@
       "PRD-query-orchestration-service.md",
       "PRD-scenario-launcher.md",
       "PRD-system-ontogenesis-spec.md",
-      "PRD-unified-build-engine.md"
+      "PRD-unified-build-engine.md",
+      "PRD-upstream-classify-precision.md"
     ],
     "G-8": [
       "PRD-A18-provisional-build-closure.md",
@@ -1621,6 +1656,7 @@
       "PRD-frontend.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-gap-analysis-engine.md",
+      "PRD-gapfill-surface-consolidation.md",
       "PRD-implementation-handbook.md",
       "PRD-maturity-master-plan.md",
       "PRD-platform-foundry-aip.md",
@@ -1630,12 +1666,15 @@
       "PRD-traceability-and-baseline-v2.md",
       "PRD-traceability-and-baseline.md",
       "PRD-trustworthy-self-accounting.md",
-      "PRD-unified-build-engine.md"
+      "PRD-unified-build-engine.md",
+      "PRD-upstream-classify-precision.md"
     ],
     "G-4": [
       "PRD-addendum-admin-console-closure.md",
       "PRD-gap-analysis-engine.md",
-      "PRD-unified-build-engine.md"
+      "PRD-gapfill-surface-consolidation.md",
+      "PRD-unified-build-engine.md",
+      "PRD-upstream-classify-precision.md"
     ],
     "G-7": [
       "PRD-addendum-capability-routing.md",
