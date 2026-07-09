@@ -4446,15 +4446,17 @@
             "type": "cmd",
             "assert": "合成→真实徽章: 有真源时\"本推演置信度\"从\"合成数据·非真实接入\"变真实接入·dataMode透出; no-fake-done绿·build/test绿。"
           }
-        ]
+        ],
+        "reviewEvidence": "审核方真跑复验 2026-07-09(dd0bf9e): build 4包绿 + datacore风险测15/15(cockpit-risk/risk-trajectory-defake/concentration-risk) + frontend风险测18/18(kill-mock-red/live-under-synthetic/basecards-realdata/rename/decision-funnel)。C1: risk_timeline/invoke .data.appliedRules=C05/C21(真表达式SUSTAIN/balanceDeviationPct·非写死)·8卡真crossDay/peak/30d-series·dataMode=SYNTHETIC·敞口诚实缺。C2: 真浏览器/v/risk 8基地卡渲染+点卡下钻modal(bottleneck-detail-panel/datamode/table/逐日张力/DAG轨迹/WMS-ERP边界注)全present(截图/tmp/shots-rb)。NL-agent leg=dev真Kimi证实(6真订单SO-3391..·path=WORKFLOW·matchedIntent=affected_orders)·审核方环境无Kimi key未复现·接受证据。C3: 徽章「合成数据」逐值对照后端SYNTHETIC·营收敞口诚实空—·no-fake-done绿。"
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-09T03:15:25.025Z",
         "reclaimed": "2026-07-09T02:30:00.000Z",
-        "built": "2026-07-09T09:12:03.643Z"
+        "built": "2026-07-09T09:12:03.643Z",
+        "done": "2026-07-09T10:33:45.491Z"
       },
       "blockReason": ""
     },
@@ -5158,8 +5160,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "Q30-P0-DATAFOUND",
-      "at": "2026-07-09T09:47:27.122Z"
+      "id": "RISKBOARD-RULES-AGENTS",
+      "at": "2026-07-09T10:33:45.491Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
