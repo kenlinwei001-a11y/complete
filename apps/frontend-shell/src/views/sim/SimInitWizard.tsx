@@ -9,6 +9,7 @@ import {
   type SimScopePrecheck,
 } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
+import { stateVarLabel } from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
 /**
@@ -265,7 +266,7 @@ export default function SimInitWizard({ injectedConfig }: SimInitWizardProps = {
                       });
                     }}
                   />
-                  {v}
+                  <span title={v}>{stateVarLabel(v)}</span>
                 </label>
               ))}
             </div>

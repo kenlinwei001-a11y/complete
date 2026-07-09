@@ -105,7 +105,7 @@ describe("CL.7 · 对话坞缺口卡", () => {
 
     const card = await screen.findByTestId("gap-card");
     const dev = within(card).getByTestId("gap-scenario");
-    expect(dev).toHaveTextContent("此卡发育中");
+    expect(dev).toHaveTextContent("此卡待验证");
     expect(dev).toHaveTextContent("「产能可行性」暂未长成：缺求解器（需开发/骨架）"); // 缺 X = 缺口码人话（标签已带「缺」不重复）
     const ticket = within(card).getByTestId("gap-scenario-ticket");
     expect(ticket).toHaveTextContent("已建工单 #gtk_01ABC");

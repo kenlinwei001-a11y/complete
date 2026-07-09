@@ -10,7 +10,7 @@ export const zh = {
     edit: "编辑",
     delete: "删除",
     publish: "发布",
-    retire: "退役",
+    retire: "下线",
     search: "搜索",
     copy: "复制",
     copied: "已复制",
@@ -42,6 +42,13 @@ export const zh = {
     paletteTitle: "⌘K · 场景命令面板",
     searchAria: "搜索场景",
     searchPlaceholder: "搜场景名 / 触发问句…",
+    // 场景卡成熟度展示词（R14：展示词集中于 i18n；enum GOVERNED/PROVISIONAL 不变）
+    maturityVerified: "已验证",
+    maturityDeveloping: "待验证·未审核",
+    maturityVerifiedTitle: "已亲手跑通验证（GOVERNED）",
+    maturityDevelopingTitle: "此卡尚未亲手跑通验证（待验证·未审核）",
+    developingHint: "此卡尚未亲手跑通验证（待验证），默认不可直接推演；验证通过后自动可用。",
+    viewDeveloping: "查看验证状态 →",
   },
   login: {
     title: "登录",
@@ -88,7 +95,7 @@ export const zh = {
     evals: "Agent 评测",
     slices: "本体切片",
     merge: "实体合并",
-    growth: "自成长发动机",
+    growth: "能力生成",
     solverReview: "求解器审核台",
     solvers: "求解器目录",
     configMigration: "配置迁移",
@@ -133,7 +140,7 @@ export const zh = {
     gapUnreachable: (code: string) => `不可达：断在 ${code}（需开发/人工补）`,
     gapTicket: "查看成长工单 →",
     // ONTO-SCEN-LAUNCH-DET §2.5：场景卡诚实发育卡（替代无信息死答）
-    scenarioDeveloping: "此卡发育中",
+    scenarioDeveloping: "此卡待验证",
     scenarioDevelopingDetail: (name: string, missing: string) => `「${name}」暂未长成：${missing.startsWith("缺") || missing.startsWith("无") ? "" : "缺 "}${missing}`,
     scenarioTicket: (id: string) => `已建工单 #${id} →`,
     // FILL-BOUNDARY-GUARDRAIL：触发补数据前的三闸（B1 先澄清 / B2 生成计划预览 / B3 越界人工正门）
@@ -822,6 +829,32 @@ export const zh = {
     },
   },
 } as const;
+
+/**
+ * 沙盘/推演状态变量英文键 → 中文展示名（R14：展示词集中于 i18n，不散落视图）。
+ * 键（demandLoad/loadIndex…）是本体传导规则下发的 stateVar 标识，属数据契约不改；
+ * 仅在此登记其中文展示名。未登记的键诚实回退原样（不臆造中文）。
+ */
+const STATE_VAR_LABELS: Record<string, string> = {
+  demandLoad: "需求负载",
+  demandPressure: "需求压力",
+  loadIndex: "负载指数",
+  utilPressure: "利用压力",
+  utilization: "利用率",
+  readiness: "就绪度",
+  capacityGap: "产能缺口",
+  serviceLevel: "服务水平",
+  inventoryDays: "库存天数",
+  riskIndex: "风险指数",
+  risk: "风险",
+  load: "负载",
+  delay: "延迟",
+};
+
+/** 状态变量键 → 中文展示名；未登记则回退原键（诚实，不臆造）。 */
+export function stateVarLabel(v: string): string {
+  return STATE_VAR_LABELS[v] ?? v;
+}
 
 export type Locale = typeof zh;
 export default zh;

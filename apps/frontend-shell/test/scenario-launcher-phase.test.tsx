@@ -65,12 +65,12 @@ describe("ONTO-SCEN-GROWTH-LOOP · 启动器相位呈现（诚实分层）", () 
 
     const prov = await screen.findByTestId("launcher-card-P02");
     expect(prov).toHaveAttribute("data-maturity", "PROVISIONAL");
-    // 诚实标注「发育中/未审核」（非隐藏、非假可用）
-    expect(within(prov).getByTestId("launcher-maturity-P02")).toHaveTextContent("发育中");
+    // 诚实标注「待验证/未审核」（非隐藏、非假可用）
+    expect(within(prov).getByTestId("launcher-maturity-P02")).toHaveTextContent("待验证");
     expect(within(prov).getByTestId("launcher-developing-hint-P02")).toBeInTheDocument();
     // 默认不可直接跑：启动按钮 disabled
     expect(within(prov).getByTestId("launcher-launch-P02")).toBeDisabled();
-    // 诚实降级动作：「查看发育」深链（非启动推演）
+    // 诚实降级动作：「查看验证状态」深链（非启动推演）
     expect(within(prov).getByTestId("launcher-developing-P02")).toBeInTheDocument();
   });
 });

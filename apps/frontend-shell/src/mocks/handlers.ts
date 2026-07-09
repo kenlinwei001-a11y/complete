@@ -2520,7 +2520,7 @@ export const handlers = [
     const body = (await request.json()) as Record<string, unknown>;
     const sc = db.scenarios.find((s) => s.scenarioKey === params.key);
     if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");
-    if (sc.status === "PUBLISHED") return err(409, "INVALID_STATE", "场景已发布，请先退役再改");
+    if (sc.status === "PUBLISHED") return err(409, "INVALID_STATE", "场景已发布，请先下线再改");
     Object.assign(sc, body, { status: "DRAFT", updatedAt: new Date().toISOString() });
     return HttpResponse.json(sc);
   }),

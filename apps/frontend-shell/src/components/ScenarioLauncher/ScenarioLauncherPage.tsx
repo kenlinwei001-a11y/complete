@@ -53,7 +53,7 @@ export default function ScenarioLauncherPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
             {cards.map((c) => {
               // ONTO-SCEN-GROWTH-LOOP §2.6（R3 诚实分层）：仅 GOVERNED 默认可用；PROVISIONAL/ADVISORY 诚实标
-              // 「发育中·未审核」——默认不可直接推演（按钮 disabled），改出「查看发育」深链（非隐藏·非假可用）。
+              // 「待验证·未审核」——默认不可直接推演（按钮 disabled），改出「查看验证状态」深链（非隐藏·非假可用）。
               const developing = c.maturity !== undefined && c.maturity !== "GOVERNED";
               return (
               <div key={c.sNo} className="panel" data-testid={`launcher-card-${c.sNo}`} data-maturity={c.maturity ?? "PROVISIONAL"} style={{ display: "flex", flexDirection: "column", gap: 6, ...(developing ? { opacity: 0.92 } : {}) }}>
@@ -64,10 +64,10 @@ export default function ScenarioLauncherPage() {
                   <span
                     className={`badge ${developing ? "amber" : "green"}`}
                     data-testid={`launcher-maturity-${c.sNo}`}
-                    title={developing ? "此卡尚未亲手跑通验证（发育中·未审核）" : "已亲手跑通验证（GOVERNED）"}
+                    title={developing ? zh.launcher.maturityDevelopingTitle : zh.launcher.maturityVerifiedTitle}
                     style={{ marginLeft: "auto" }}
                   >
-                    {developing ? "发育中·未审核" : "已验证"}
+                    {developing ? zh.launcher.maturityDeveloping : zh.launcher.maturityVerified}
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--muted)" }}>{c.triggerQuestion}</div>
@@ -77,7 +77,7 @@ export default function ScenarioLauncherPage() {
                 </div>
                 {developing && (
                   <div className="muted" data-testid={`launcher-developing-hint-${c.sNo}`} style={{ fontSize: 10.5 }}>
-                    此卡尚未亲手跑通验证（发育中），默认不可直接推演；发育升相后自动可用。
+                    {zh.launcher.developingHint}
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
@@ -86,7 +86,7 @@ export default function ScenarioLauncherPage() {
                   </button>
                   {developing && (
                     <button className="btn sm" data-testid={`launcher-developing-${c.sNo}`} onClick={() => navigate(`/admin/scenes?scenario=${encodeURIComponent(c.sNo)}`)}>
-                      查看发育 →
+                      {zh.launcher.viewDeveloping}
                     </button>
                   )}
                 </div>

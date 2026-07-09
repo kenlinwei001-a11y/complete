@@ -267,7 +267,7 @@ export default function TicketCenterPage() {
         <div className="panel" data-testid="tc-empty-guide" style={{ padding: 16, textAlign: "center" }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>暂无待补缺口</div>
           <div className="muted" style={{ fontSize: 11.5, marginBottom: 10, lineHeight: 1.7, maxWidth: 480, margin: "0 auto 10px" }}>
-            去对话问一个系统答不出的问题，诊断出缺口后会在此生成待办；或场景发育/就绪探测出缺口也会自动登记。认领后再点「补数据缺口」补齐。
+            去对话问一个系统答不出的问题，诊断出缺口后会在此生成待办；或场景验证/就绪探测出缺口也会自动登记。认领后再点「补数据缺口」补齐。
           </div>
           <span style={{ display: "inline-flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
             <Link to="/v/dash" className="btn primary sm" data-testid="tc-empty-cta">去问答坞提问 →</Link>

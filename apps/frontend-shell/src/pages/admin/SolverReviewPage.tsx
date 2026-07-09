@@ -16,7 +16,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   ADVISORY_PASSED: { label: "advisory 通过", cls: "amber" },
   GOVERNED: { label: "已治理", cls: "green" },
   GENERATED: { label: "已生成", cls: "" },
-  RETIRED: { label: "已退役", cls: "" },
+  RETIRED: { label: "已下线", cls: "" },
 };
 const TRUST_LABEL: Record<string, string> = { UNVERIFIED: "未认证", ADVISORY_PASSED: "advisory", VERIFIED: "已验证", CALIBRATED: "已校准" };
 

@@ -27,6 +27,7 @@ import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxRunHistory } from "./SandboxRunHistory";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
+import { stateVarLabel } from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
 /**
@@ -1002,7 +1003,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
                 const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
                 return (
                   <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
-                    <span>{v}</span>
+                    <span title={v}>{stateVarLabel(v)}</span>
                     <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
                   </div>
                 );
