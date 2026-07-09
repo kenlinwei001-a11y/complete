@@ -5157,14 +5157,328 @@
         "built": "2026-07-09T14:34:22.786Z"
       },
       "blockReason": ""
+    },
+    {
+      "id": "UPG-L0-GAPCORE",
+      "title": "L0·主单P0-1: diffGap纯核+契约冻结+analyzeGap无损改造+registry-snapshot",
+      "doc": "docs/PRD-gap-analysis-engine.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [],
+      "note": "PRD-gap §5/§13 Phase0-1: diffGap(required,existing,meta)纯函数落@platform/contracts(R1/R6·generatedAt注入)；analyzeGap(provisioners.ts:106)改为收集existing→调diffGap·对外签名行为不变(唯一调用点service.ts:406零改)；GET /a/v1/databuilder/registry-snapshot(仅6类A栈·SERVICE_TOKEN/OBO)；契约扩GapTarget/Severity/Remediation/Explanation/ExecutionStep全optional。不触agentcore/前端/QOS。",
+      "acceptance": {
+        "goal": "diffGap纯核落地+analyzeGap行为等价+6类有界snapshot·零热路径。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "diffGap纯函数(无IO/时钟随机·R6)单测绿·同输入字节一致"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "analyzeGap改造前后byte等价测试(同输入GapAnalysis JSON字节一致)+provisioners.test保持绿"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "起datacore·SERVICE_TOKEN curl registry-snapshot返6类A栈·用户JWT→403"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "pnpm -r build && test退出0·四包绿"
+          },
+          {
+            "id": "C5",
+            "type": "真跑",
+            "assert": "回退演练:关feature→snapshot端点404·revert后provisioners.test绿"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
+    },
+    {
+      "id": "UPG-L0-PREANALYSIS",
+      "title": "L0·主单P2: preAnalyzeQuery旁路+pre_analyses R9+3事件+GapCard全景条",
+      "doc": "docs/PRD-gap-analysis-engine.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "UPG-L0-GAPCORE"
+      ],
+      "note": "PRD-gap §6/§7/§9: preAnalyzeQuery(复用ClassificationResult推需求→组两侧snapshot→diffGap→enrich·后台void异步不阻塞SSE)；pre_analyses R9四处+migration013(带down)+RETENTION登记；growth.pre_analysis_started/done/failed登event-subscriptions；GET /b/v1/growth/pre-analysis/:taskId(R2)；MANUAL/DEVELOP缺口收口growthWorklist；GapCard顶部全景条+CoverageRing(R-QUANT零新色四状态诚实)。",
+      "acceptance": {
+        "goal": "预分析旁路闭环+全景条·倒推②近期·咨询信号非判决(权威仍classifyGap)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "PRD§15 V1-V7全条:真起双服务+真浏览器逐值对照·全景条≤20s出现·环stroke===token色·徽章数===端点severity计数·score<0.5下方reactive三闸仍可用·V7无taskId时GapCard 100%同改造前"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "R6同query双跑PreAnalysisReport字节一致(LLM mock)·R2 tenantB取tenantA taskId→404"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "回退演练:关growth.pre_analysis→端点404+浏览器GapCard逐像素同改造前+migration down→up幂等"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "no-fake-done绿+四包test绿+retention-coverage绿"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
+    },
+    {
+      "id": "UPG-L0-HIDDENREQ",
+      "title": "L0·主单P3: expandHiddenRequirements三白名单+统一验证+hidden-req-keys门",
+      "doc": "docs/PRD-gap-analysis-engine.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "UPG-L0-PREANALYSIS"
+      ],
+      "note": "PRD-gap §8: expandHiddenRequirements纯函数(三白名单by-construction:本体图真类型/真链路/SOLVER_DATADEP真求解器·零幽灵key·R6/R14)·B-Phase1依赖闭包→B-Phase2图一跳；补齐走verifyBuild/ClosureReport；scripts/check-hidden-req-keys.mjs入gates+登母体§7。",
+      "acceptance": {
+        "goal": "隐藏需求闭包不造假key·by-construction零幽灵。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "PRD§15 V8:喂含order显式需求+真电池本体图→断言每个扩展key∈真实注册表(test/hidden-req.test.ts)"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "测谎对照:构造注入幽灵key→hidden-req-keys:check门红(green→red自证)"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "回退演练:关growth.hidden_req→诊断=仅显式需求(与不做一致)"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "hidden-req-keys:check绿+登母体§7+ontology-writeback绿+四包test绿"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
+    },
+    {
+      "id": "UPG-L0-CLASSIFY-FUSE",
+      "title": "L0·兄弟A A1: fuseClassification确定性⊕LLM融合(治上游听懂精度)",
+      "doc": "docs/PRD-upstream-classify-precision.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [],
+      "note": "PRD-upstream §4: 把orchestrator.ts:520 llmClassification??deterministicClassify升为fuseClassification融合(纯函数R6)·救回遗漏(det score≥0.5补候选conf=τ_low)+一致加成(LLM top==det top→×(1+β))+冲突走澄清不硬塞；QOS_CLASSIFY_FUSE开关(env·defaultOn:false·RL2)关时100%等价现行??语义。",
+      "acceptance": {
+        "goal": "确定性证据从仅无LLM兜底升为与LLM融合·减LLM依赖·救回领域术语误判。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "fuseClassification纯函数单测(LLM有/无/冲突/救回四类)·R6确定"
+          },
+          {
+            "id": "C2",
+            "type": "真跑",
+            "assert": "关键验收:『常州物料齐套为什么这天越线』等历史落Path B问句·开QOS_CLASSIFY_FUSE后落Path A或INTENT_CHOICE澄清(非Path B)·真起服务真跑"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "回退演练:QOS_CLASSIFY_FUSE=off→100%回现行llm??deterministic(等价测试)"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "agentcore test绿·救回指标qos_classify_fuse_rescued_total真出数"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
+    },
+    {
+      "id": "UPG-L0-SOLVER-COVERAGE",
+      "title": "L0·兄弟A A2: SOLVER_COVERAGE覆盖矩阵+solver-coverage门(治没有对的求解器·诊断)",
+      "doc": "docs/PRD-upstream-classify-precision.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "UPG-L0-CLASSIFY-FUSE"
+      ],
+      "note": "PRD-upstream §5.1/§6: SOLVER_COVERAGE(problemClass→solverKey[]·@platform/contracts·纯数据R14)；solver-coverage:check门(引用solverKey必∈SOLVER_REGISTRY·对齐no-fake-done防幽灵·登母体§7)；未覆盖类目显式列缺口非静默Path B；qos_pathb_by_problemclass{class}分桶指标。",
+      "acceptance": {
+        "goal": "命中意图但无对求解器显式化·不再静默落Path B。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "solver-coverage:check门绿·矩阵引用key全∈SOLVER_REGISTRY(注入幽灵key→门红自证)"
+          },
+          {
+            "id": "C2",
+            "type": "真跑",
+            "assert": "未覆盖类目(如因果归因)经NL真跑→显式报覆盖缺口(非静默generic兜底)"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "qos_pathb_by_problemclass指标真出数·可排补齐优先级"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "登母体§7+ontology-writeback绿+agentcore test绿"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
+    },
+    {
+      "id": "UPG-L0-COVERAGE-FILL",
+      "title": "L0·兄弟A A3: 高频未覆盖类目补path-A求解器(因果归因优先·治没有对的求解器·施工)",
+      "doc": "docs/PRD-upstream-classify-precision.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "UPG-L0-SOLVER-COVERAGE"
+      ],
+      "note": "PRD-upstream §5.2: 未覆盖高频类目(因果归因·实测SOLVER_DATADEP无通用root-cause)走既有SOLVER_NOT_FOUND→骨架GrowthTicket(带I/O契约probe.ts:36)路径补path-A求解器；按A4 Path B落点频次排序；solver autoCreatable:false→R4审批发布。",
+      "acceptance": {
+        "goal": "高频未覆盖类目真补上path-A求解器·代表问真跑答出。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "因果归因代表问『为什么X恶化/越线』经QueryDock NL真跑→答出归因链(非generic兜底·非Path B)"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "新求解器∈SOLVER_REGISTRY+R6确定性+I/O契约齿测"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "no-fake-done绿(新solver key真存在)+四包test绿"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
+    },
+    {
+      "id": "UPG-L0-CONSOLE-BOARD",
+      "title": "L0·兄弟B B1: Console吸收script目标(TicketBoardRow source=BUILD_CLOSURE·入口①收敛)",
+      "doc": "docs/PRD-gapfill-surface-consolidation.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "UPG-L0-GAPCORE"
+      ],
+      "note": "PRD-surface §3/§5 B1: boardRowFromClosure(StoryBuildRun.ClosureReport MISSING段→board行·R13纯只读投影)；TicketBoardRow.source+=BUILD_CLOSURE(additive·kind开放z.string)；/growth/board支持source过滤；Console顶部source透镜(全部/query/script/对话)+详情闭包段。零新页零新色。",
+      "acceptance": {
+        "goal": "缺口-补齐三面收敛为单Console·一页看全所有来源缺口(R17)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "一次建域的ClosureReport MISSING段出现在Console board·详情逐值对GET /tickets/:id/detail(真浏览器)"
+          },
+          {
+            "id": "C2",
+            "type": "真跑",
+            "assert": "source透镜切换(全部/query/script/对话)真跑·徽章仅既有token零新色(CSS门check-css-vars)"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "回退演练:source=BUILD_CLOSURE透镜关闭→回现状query目标board·DataBuilder各面未删"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
+    },
+    {
+      "id": "UPG-L0-CONSOLE-APPROVE",
+      "title": "L0·兄弟B B2: 就地批复整合+旧面tombstone退役(入口①收敛闭环)",
+      "doc": "docs/PRD-gapfill-surface-consolidation.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "UPG-L0-CONSOLE-BOARD"
+      ],
+      "note": "PRD-surface §5 B2: DataBuilder待审批补齐(db-approvals R4)整合进Console详情抽屉就地批复(不跳/admin/actions·R17)；被完全承接子面走GROWTH-TICKET-MERGE范式tombstone 302+承接测试(不静默删·RL2/RL9)；逐元素PRD过审R-PRD。",
+      "acceptance": {
+        "goal": "就地R4批复+旧面additive退役·不丢功能。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "Console详情抽屉就地批复补齐(db-approve/reject)·不跳页(R17)·真浏览器验"
+          },
+          {
+            "id": "C2",
+            "type": "真跑",
+            "assert": "被承接子面tombstone 302深链+承接测试绿(f63.growth-ticket-merge.test同款)·不静默删"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "回退演练:承接前旧面保留可回退+逐元素PRD过R-PRD"
+          }
+        ],
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+      },
+      "at": {
+        "todo": "2026-07-09T15:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "Q30-P1-Q01VERT",
-      "at": "2026-07-09T14:34:22.787Z"
+      "role": "review",
+      "cmd": "DISPATCH",
+      "id": "UPG-L0(8WO)",
+      "at": "2026-07-09T15:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
@@ -5220,6 +5534,15 @@
         "③ 2 BLOCK(见各自blockReason·均小修): ORDER-CONSOLIDATE=改名只改前端·后端 features.ts:26 name + synthetic pack titles(service.ts:1402/battery.pack.ts:112)仍旧名→左导航真显「订单全链聚合」(fresh vite确认非stale)·datacore侧一并改「订单聚合」再真浏览器验nav。 I18N-LONGTAIL=3页仍显 Workflow/Skill/Action/Provider(未译·不在102词allowlist·而同类Agent已whitelist·不一致)+BuildWorkflowRun类名泄漏UI(endpoints.ts:13)·逐个决策入白名单/中文化。",
         "④ next-dev 优先序建议: 先修2 BLOCK(快·用户在意) → 3新TODO+DEPLOY0707-SALVAGE(带回退机制·pipeline先判vs databuilder重叠勿造第二套) → 收尾 RISKBOARD-RULES-AGENTS WIP。"
       ]
+    },
+    "upgradeProject": {
+      "name": "Decision OS 大版本升级",
+      "master": "docs/DESIGN-decision-os-complete-upgrade.md",
+      "coverage": "docs/UPGRADE-chapter-coverage-matrix.md",
+      "inventory": "docs/req-inventory/",
+      "layers": "L0(3PRD·本批)→L1脊柱→L1.5知识记忆→L2内核→L3硬化",
+      "rolling": "L0全派·next-dev按依赖序取;L1-L3由reviewer在loop逐层细化施工PRD后再派(不整包派·防QUERY30-ORCH式假premise epic)",
+      "at": "2026-07-09T15:00:00.000Z"
     }
   }
 }
