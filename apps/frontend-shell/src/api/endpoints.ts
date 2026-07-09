@@ -1264,8 +1264,9 @@ export const releaseWorklistItem = (id: string) => api.b<WorklistItem>(`/b/v1/gr
 export const fillWorklistItem = (id: string) => api.b<WorklistItem>(`/b/v1/growth/worklist/${id}/fill`, { method: "POST" });
 
 // TICKET-CENTER-UNIFIED：统一工单中心（三源聚合看板 + 点行详情抽屉）。
-import type { TicketBoardRow, TicketDetail } from "@platform/contracts";
-export const fetchTicketBoard = () => api.b<{ items: TicketBoardRow[] }>("/b/v1/growth/board");
+// UPG-L0-CONSOLE-BOARD：board 响应 additive `buildClosureEnabled`（暗发位·前端据此显隐 script 透镜 tab）。
+import type { TicketBoardResponse, TicketDetail } from "@platform/contracts";
+export const fetchTicketBoard = () => api.b<TicketBoardResponse>("/b/v1/growth/board");
 export const fetchTicketDetail = (id: string) => api.b<TicketDetail>(`/b/v1/growth/tickets/${id}/detail`);
 
 // Dogfooding P2：系统本体活查询面（meta）。MetaAccessPolicy 角色白名单门控（默认 admin）。

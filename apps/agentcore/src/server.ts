@@ -588,26 +588,88 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     };
   };
 
-  // 列表端点（统一 kind 标）：GET /api/v1/growth/board?status=&owner=&kind=（owner=me → 当前 actor）。
+  // UPG-L0-CONSOLE-BOARD（PRD-gapfill-surface-consolidation §3·暗发 defaultOn:false·RL2）：
+  // env GROWTH_BUILD_CLOSURE=1/true 派生的「script 目标」BUILD_CLOSURE 透镜开关（服务端权威）。
+  // 关闸（缺省）→ board = 改造前 query-目标（WORKLIST∪GROWTH_TICKET）·回退演练 C3·关闸=改造前系统。
+  const buildClosureOn = /^(1|true|on|yes)$/i.test((deps.config.GROWTH_BUILD_CLOSURE ?? "").trim());
+  // 闭包维 → 缺口码（R13：仅换标不造真值，源仍是 ClosureReport）。
+  const CLOSURE_GAPCODE: Record<string, import("@platform/contracts").GapCode> = {
+    CHAIN: "SOLVER_NOT_FOUND", FORWARD: "SOLVER_NOT_FOUND", SHAPE: "SHAPE_MISMATCH", OBJECT: "NO_CAPABILITY", DATA: "EMPTY_DATA",
+  };
+  // R13 纯只读投影：StoryBuildRun.ClosureReport 的 MISSING/FAILED/DROPPED 段 → 统一 board 行（无 mutation·恒 claimable=false·
+  // 源仍是 StoryBuildRun）。id=`sbc_<runId>.<findingIdx>`（detail 端点按前缀分源、按 runId 回投影整份闭包）。
+  const boardRowFromClosure = (run: import("@platform/contracts").StoryBuildRun): import("@platform/contracts").TicketBoardRow[] => {
+    const cr = run.closureReport;
+    if (!cr) return [];
+    const missing = cr.findings.filter((f) => f.status === "MISSING" || f.status === "FAILED" || f.status === "DROPPED");
+    return missing.map((f, i) => ({
+      id: `sbc_${run.id}.${i}`, tenantId: run.tenantId, source: "BUILD_CLOSURE" as const, kind: "BUILD_CLOSURE",
+      fromQuestion: run.script, gapCode: CLOSURE_GAPCODE[f.kind] ?? "OTHER", status: "OPEN" as const,
+      claimable: false, deeplink: `/admin/data-builder?run=${run.id}`,
+      evidence: `[闭包 ${f.kind}·${f.status}] ${f.ref}${f.detail ? ` · ${f.detail}` : ""}`,
+      createdAt: run.createdAt, updatedAt: run.createdAt,
+    }));
+  };
+
+  // 列表端点（统一 kind 标）：GET /api/v1/growth/board?status=&owner=&kind=&source=（owner=me → 当前 actor；source=source 透镜过滤）。
   app.get("/api/v1/growth/board", async (req) => {
     const a = await auth(req);
-    const { status, owner, kind } = req.query as { status?: string; owner?: string; kind?: string };
+    const { status, owner, kind, source } = req.query as { status?: string; owner?: string; kind?: string; source?: string };
     const wl = (await deps.repos.growthWorklist.listByTenant(a.tenantId)).map(boardRowFromWorklist);
     const tks = (await deps.repos.growthTickets.listByTenant(a.tenantId)).map(boardRowFromTicket);
-    let rows = [...wl, ...tks].sort((x, y) => (x.createdAt < y.createdAt ? 1 : -1));
+    // 暗发：flag 开 → 收进 script-目标 BUILD_CLOSURE 行（OBO 拉建域运行·R13 投影）；非 admin/不可达诚实降级为空（不阻断既有 board）。
+    let closureRows: import("@platform/contracts").TicketBoardRow[] = [];
+    if (buildClosureOn) {
+      try {
+        const runs = await deps.dataCore.databuilder.listStoryRuns(a);
+        closureRows = runs.flatMap(boardRowFromClosure);
+      } catch { closureRows = []; }
+    }
+    let rows = [...wl, ...tks, ...closureRows].sort((x, y) => (x.createdAt < y.createdAt ? 1 : -1));
     if (status) rows = rows.filter((r) => r.status === status);
     if (kind) rows = rows.filter((r) => r.kind === kind);
+    // source 透镜（additive·默认不传=全部=现状）：WORKLIST / GROWTH_TICKET / BUILD_CLOSURE 精确过滤。
+    if (source) rows = rows.filter((r) => r.source === source);
     if (owner) {
       const want = owner === "me" ? a.userId : owner;
       rows = rows.filter((r) => r.owner === want);
     }
-    return { items: rows };
+    // buildClosureEnabled：前端据此显隐 script 透镜 tab（关闸→隐藏·C3）。
+    return { items: rows, buildClosureEnabled: buildClosureOn };
   });
 
   // 详情聚合端点：GET /api/v1/growth/tickets/:id/detail（统一 id 空间 wli_/gtk_·union 双源 + manifest requires + 边界结论·R13 只读投影不造新真值）。
   app.get("/api/v1/growth/tickets/:id/detail", async (req) => {
     const a = await auth(req);
     const { id } = req.params as { id: string };
+    // UPG-L0-CONSOLE-BOARD：script 目标 BUILD_CLOSURE 行详情——回投影 StoryBuildRun.ClosureReport 全链闭包逐段（R13 只读）。
+    // 关闸（暗发 OFF）→ sbc_ 行不存在 → 404（C3 回退：改造前系统无此源）。
+    if (id.startsWith("sbc_")) {
+      if (!buildClosureOn) throw new HttpError(404, "TICKET_NOT_FOUND", `工单不存在: ${id}`);
+      const rest = id.slice(4);
+      const lastDot = rest.lastIndexOf(".");
+      const runId = lastDot >= 0 ? rest.slice(0, lastDot) : rest;
+      const idx = lastDot >= 0 ? Number(rest.slice(lastDot + 1)) : 0;
+      let run: import("@platform/contracts").StoryBuildRun | undefined;
+      try {
+        run = (await deps.dataCore.databuilder.listStoryRuns(a)).find((r) => r.id === runId);
+      } catch { run = undefined; }
+      const cr = run?.closureReport;
+      if (!run || !cr) throw new HttpError(404, "TICKET_NOT_FOUND", `工单不存在: ${id}`);
+      const rows = boardRowFromClosure(run);
+      const row = rows[idx] ?? rows[0];
+      if (!row) throw new HttpError(404, "TICKET_NOT_FOUND", `工单不存在: ${id}`);
+      const supply: import("@platform/contracts").TicketSupply = {
+        closure: {
+          gatePassed: cr.gatePassed, buildMode: cr.buildMode,
+          segments: cr.findings.map((f) => ({ kind: f.kind, ref: f.ref, status: f.status, detail: f.detail, severity: f.severity })),
+          counts: { objectsBound: cr.objectsBound, dataOrphans: cr.dataOrphans, forwardMissing: cr.forwardMissing, chainBroken: cr.chainBroken, shapeBroken: cr.shapeBroken },
+        },
+        deeplink: row.deeplink,
+      };
+      const timeline = [{ at: run.createdAt, label: `建域运行（${run.status}·闭包${cr.gatePassed ? "通过" : "未通过"}）` }];
+      return { row, timeline, supply } satisfies import("@platform/contracts").TicketDetail;
+    }
     const w = await deps.repos.growthWorklist.get(a.tenantId, id);
     if (w) {
       const row = boardRowFromWorklist(w);

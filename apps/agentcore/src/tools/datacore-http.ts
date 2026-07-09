@@ -1,9 +1,10 @@
-import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, StoryBuildRun, ToolPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
   type ActionClient,
   type CatalogClient,
+  type DatabuilderClient,
   type DataGenClient,
   type EpochClient,
   type DataCoreClient,
@@ -332,8 +333,21 @@ class HttpIamClient implements IamClient {
   }
 }
 
+/**
+ * UPG-L0-CONSOLE-BOARD：建域运行只读读取（OBO → DataCore GET /a/v1/databuilder/runs·requireAdmin）。
+ * 供 boardRowFromClosure 投影 ClosureReport MISSING 段（R13）。非 admin/不可达时上游 catch 诚实降级为空。
+ */
+class HttpDatabuilderClient implements DatabuilderClient {
+  constructor(private readonly baseUrl: string) {}
+  async listStoryRuns(ctx: ToolAuthCtx): Promise<StoryBuildRun[]> {
+    const res = await call<{ items?: StoryBuildRun[] } | StoryBuildRun[]>(this.baseUrl, ctx, "GET", "/a/v1/databuilder/runs");
+    return Array.isArray(res) ? res : (res.items ?? []);
+  }
+}
+
 export function createHttpDataCore(baseUrl: string): DataCoreClient {
   return {
+    databuilder: new HttpDatabuilderClient(baseUrl),
     ontology: new HttpOntologyClient(baseUrl),
     solver: new HttpSolverClient(baseUrl),
     rules: new HttpRuleEngineClient(baseUrl),

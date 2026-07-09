@@ -1,8 +1,9 @@
-import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, StoryBuildRun, ToolPayload } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
   CatalogClient,
+  DatabuilderClient,
   DataCoreClient,
   DataGenClient,
   IamClient,
@@ -918,6 +919,18 @@ export class MockSimClient implements SimClient {
   }
 }
 
+/**
+ * UPG-L0-CONSOLE-BOARD：建域运行只读 mock（tenant-scoped·R2）。测试经 `seed()` 注入 StoryBuildRun，
+ * `listStoryRuns` 按 ctx.tenantId 过滤——供 boardRowFromClosure 投影 ClosureReport MISSING 段（R13）。
+ */
+export class MockDatabuilderClient implements DatabuilderClient {
+  private readonly runs: StoryBuildRun[] = [];
+  seed(...runs: StoryBuildRun[]): void { this.runs.push(...runs); }
+  async listStoryRuns(ctx: ToolAuthCtx): Promise<StoryBuildRun[]> {
+    return this.runs.filter((r) => r.tenantId === ctx.tenantId);
+  }
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
   solver: MockSolverClient;
@@ -929,6 +942,7 @@ export interface MockDataCore extends DataCoreClient {
   catalog: MockCatalogClient;
   datagen: MockDataGenClient;
   sim: MockSimClient;
+  databuilder: MockDatabuilderClient;
 }
 
 export function createMockDataCore(): MockDataCore {
@@ -944,5 +958,6 @@ export function createMockDataCore(): MockDataCore {
     epoch: { async current() { return { epoch: 1 }; } },
     datagen: new MockDataGenClient(),
     sim: new MockSimClient(),
+    databuilder: new MockDatabuilderClient(),
   };
 }

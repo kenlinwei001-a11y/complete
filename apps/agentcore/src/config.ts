@@ -44,6 +44,10 @@ const ConfigSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/i)
     .default("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+  /** UPG-L0-CONSOLE-BOARD（PRD-gapfill-surface-consolidation §3/§4·暗发 defaultOn:false·RL2）：
+   *  =1/true 时开启统一 Console 的「script 目标」BUILD_CLOSURE 透镜（board 收进 StoryBuildRun.ClosureReport
+   *  MISSING 段只读投影 + 前端 script 透镜 tab 显现）。缺省关 = 回退演练现状 query-目标 board（C3·关闸=改造前系统）。 */
+  GROWTH_BUILD_CLOSURE: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 

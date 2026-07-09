@@ -42,9 +42,30 @@ const KIND_LABEL: Record<string, string> = {
   PLAN_SCAFFOLD: "缺计划",
   SOLVER_GAP: "缺求解器",
   FEATURE: "缺功能",
+  // UPG-L0-CONSOLE-BOARD：script 目标建域闭包缺口（StoryBuildRun.ClosureReport MISSING 段·只读投影）。
+  BUILD_CLOSURE: "建域闭包缺口",
 };
-const KIND_BADGE: Record<string, string> = { DATA_GAP: "amber", DATA_REQUEST: "red", PLAN_SCAFFOLD: "blue", SOLVER_GAP: "blue", FEATURE: "" };
+const KIND_BADGE: Record<string, string> = { DATA_GAP: "amber", DATA_REQUEST: "red", PLAN_SCAFFOLD: "blue", SOLVER_GAP: "blue", FEATURE: "", BUILD_CLOSURE: "amber" };
 const STATUS_BADGE: Record<string, string> = { OPEN: "amber", CLAIMED: "blue", IN_PROGRESS: "blue", DONE: "green", NEEDS_HUMAN: "amber" };
+
+/**
+ * UPG-L0-CONSOLE-BOARD（PRD-gapfill-surface-consolidation §4.1·零新色）：source 徽章仅用既有 badge token（blue/amber）。
+ * WORKLIST=query 目标（蓝）· GROWTH_TICKET=对话诊断出的缺口工单（琥珀）· BUILD_CLOSURE=script 建域闭包（琥珀）。
+ */
+const SOURCE_LABEL: Record<string, string> = { WORKLIST: "query 目标", GROWTH_TICKET: "对话缺口", BUILD_CLOSURE: "script 建域" };
+const SOURCE_BADGE: Record<string, string> = { WORKLIST: "blue", GROWTH_TICKET: "amber", BUILD_CLOSURE: "amber" };
+
+/**
+ * source 透镜（PRD §3·additive·一页看全所有来源 R17）：全部 / query 目标 / script 目标 / 对话缺口。
+ * script 目标（BUILD_CLOSURE）为**暗发透镜**——仅 buildClosureEnabled=true 时显现，关闸即隐藏（回退演练 C3）。
+ */
+type SourceLens = { key: string; label: string; source: string; darkLaunch?: boolean };
+const SOURCE_LENSES: SourceLens[] = [
+  { key: "all", label: "全部", source: "" },
+  { key: "query", label: "query 目标", source: "WORKLIST" },
+  { key: "script", label: "script 目标", source: "BUILD_CLOSURE", darkLaunch: true },
+  { key: "conv", label: "对话缺口", source: "GROWTH_TICKET" },
+];
 
 type TabKey = "all" | "open" | "mine" | "done";
 const TABS: { key: TabKey; label: string }[] = [
@@ -62,6 +83,8 @@ export default function TicketCenterPage() {
   const myUserId = workspace?.user?.id;
   const [tab, setTab] = useState<TabKey>("all");
   const [fKind, setFKind] = useState("");
+  // UPG-L0-CONSOLE-BOARD：source 透镜（默认"全部"·一页看全所有来源 R17）。
+  const [sourceLens, setSourceLens] = useState("");
   // ONTO-SCEN-LAUNCH-DET §2.5 深链：?ticket=<id>（发育卡「已建工单 #N」/通知中心）→ 直开详情抽屉。
   const [selectedId, setSelectedId] = useState<string | null>(
     () => new URLSearchParams(window.location.search).get("ticket"),
@@ -74,6 +97,9 @@ export default function TicketCenterPage() {
 
   const { data: board } = useQuery({ queryKey: ["b", "ticket-board"], queryFn: fetchTicketBoard });
   const allRows = board?.items ?? [];
+  // UPG-L0-CONSOLE-BOARD 暗发位：script 目标 BUILD_CLOSURE 透镜是否开启（服务端权威·关闸→隐藏 script 透镜·C3）。
+  const buildClosureEnabled = board?.buildClosureEnabled ?? false;
+  const sourceLenses = SOURCE_LENSES.filter((l) => !l.darkLaunch || buildClosureEnabled);
   // 指标头条：需求可答率（成长账本 CONVERGED 占比）——承接自成长驾驶舱·防丢。
   const { data: ledger } = useQuery({ queryKey: ["b", "growth-ledger"], queryFn: fetchGrowthLedger });
   const runs = ledger?.items ?? [];
@@ -117,11 +143,13 @@ export default function TicketCenterPage() {
   // Tab 收窄（跨类型聚合）：待认领=OPEN；我的在办=owner==me 且未完成；已完成=DONE。
   const rows = useMemo(() => allRows.filter((r) => {
     if (fKind && r.kind !== fKind) return false;
+    // source 透镜过滤（additive·"全部"=sourceLens 空=不过滤=现状）。
+    if (sourceLens && r.source !== sourceLens) return false;
     if (tab === "open") return r.status === "OPEN";
     if (tab === "mine") return r.owner === myUserId && (r.status === "CLAIMED" || r.status === "IN_PROGRESS");
     if (tab === "done") return r.status === "DONE";
     return true;
-  }), [allRows, tab, fKind, myUserId]);
+  }), [allRows, tab, fKind, sourceLens, myUserId]);
 
   const tabCount = (k: TabKey) => allRows.filter((r) => {
     if (k === "open") return r.status === "OPEN";
@@ -145,6 +173,8 @@ export default function TicketCenterPage() {
     if (!r.claimable) {
       // GrowthTicket 只读映射行：绝不出认领（误调 worklist claim → 后端 409）；PLAN_SCAFFOLD 深链去审批，其余"需开发（工单）"。
       if (r.kind === "PLAN_SCAFFOLD") return <a className="btn sm" data-testid={`tc-approve-${r.id}`} href={r.deeplink ?? "/admin/actions"} onClick={(e) => e.stopPropagation()}>去审批</a>;
+      // UPG-L0-CONSOLE-BOARD：BUILD_CLOSURE 行只读投影（源=StoryBuildRun）——深链回建域台看全链闭包（R13·就地下钻不跳页语义）。
+      if (r.kind === "BUILD_CLOSURE") return <a className="btn sm" data-testid={`tc-closure-link-${r.id}`} href={r.deeplink ?? "/admin/data-builder"} onClick={(e) => e.stopPropagation()}>去建域台</a>;
       return <span className="muted" style={{ fontSize: 11 }} data-testid={`tc-readonly-${r.id}`}>需开发（工单）</span>;
     }
     // GROWTH-BOARD-EMPTYSTATE：两步可见——OPEN 行「认领」旁挂 ① 提示，认领后 ② 标记 + 「补数据缺口」解锁。
@@ -229,6 +259,25 @@ export default function TicketCenterPage() {
         )}
       </div>
 
+      {/* UPG-L0-CONSOLE-BOARD：source 透镜（PRD §3·一页看全所有来源 R17·零新色仅用既有 badge token）。
+          script 目标（BUILD_CLOSURE）为暗发透镜——关闸即整段隐藏（buildClosureEnabled=false·C3 回退=改造前 query-目标 board）。 */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }} data-testid="tc-source-lens">
+        <span className="muted" style={{ fontSize: 11 }}>来源</span>
+        {sourceLenses.map((l) => (
+          <button
+            key={l.key}
+            type="button"
+            className={`badge${sourceLens === l.source ? " blue" : ""}`}
+            data-testid={`tc-source-${l.key}`}
+            aria-pressed={sourceLens === l.source}
+            style={{ cursor: "pointer", background: "transparent" }}
+            onClick={() => setSourceLens(l.source)}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+
       {/* Tab（跨类型聚合收窄） */}
       <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
         {TABS.map((t) => (
@@ -254,7 +303,11 @@ export default function TicketCenterPage() {
             <tr key={r.id} data-testid={`tc-row-${r.id}`} style={{ cursor: "pointer" }} onClick={() => setSelectedId(r.id)} title="点击查看详情与补充内容清单">
               <td style={{ fontSize: 11.5 }}>{r.fromQuestion}</td>
               <td className="mono">{r.gapCode}</td>
-              <td><span className={`badge ${KIND_BADGE[r.kind] ?? ""}`} data-testid={`tc-kind-${r.id}`}>{KIND_LABEL[r.kind] ?? r.kind}</span></td>
+              <td>
+                <span className={`badge ${KIND_BADGE[r.kind] ?? ""}`} data-testid={`tc-kind-${r.id}`}>{KIND_LABEL[r.kind] ?? r.kind}</span>
+                {" "}
+                <span className={`badge ${SOURCE_BADGE[r.source] ?? ""}`} data-testid={`tc-source-badge-${r.id}`} style={{ fontSize: 10 }}>{SOURCE_LABEL[r.source] ?? r.source}</span>
+              </td>
               <td><span className={`badge ${STATUS_BADGE[r.status] ?? ""}`} data-testid={`tc-status-${r.id}`}>{r.status}</span></td>
               <td style={{ fontSize: 11.5 }} data-testid={`tc-owner-${r.id}`}>{r.owner ?? "—"}</td>
               <td>{rowActions(r)}</td>
@@ -430,6 +483,32 @@ function TicketDetailBody({ detail }: { detail: TicketDetail }) {
             <b>{supply.boundary.gate}</b> · {supply.boundary.conclusion}
           </div>
         )}
+        {/* UPG-L0-CONSOLE-BOARD（PRD §3/§4.1）：script 目标行——全链闭包逐段（CHAIN/SHAPE/OBJECT/DATA/FORWARD·BOUND/MISSING·R13 只读投影）+ counts。 */}
+        {supply.closure && (
+          <div data-testid="tc-d-closure">
+            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+              全链闭包逐段（R11·StoryBuildRun.ClosureReport 只读投影）· 闸{" "}
+              <span className={`badge ${supply.closure.gatePassed ? "green" : "red"}`} data-testid="tc-d-closure-gate">{supply.closure.gatePassed ? "通过" : "未通过"}</span>{" "}
+              <span className="mono muted" style={{ fontSize: 10 }}>{supply.closure.buildMode}</span>
+            </div>
+            <table className="cmp" style={{ width: "100%" }}>
+              <thead><tr><th>维</th><th>引用</th><th>状态</th><th>说明</th></tr></thead>
+              <tbody>
+                {supply.closure.segments.map((s, i) => (
+                  <tr key={`${s.kind}-${s.ref}-${i}`} data-testid={`tc-d-closure-seg-${s.kind}`}>
+                    <td className="mono">{s.kind}</td>
+                    <td className="mono" style={{ fontSize: 10.5 }}>{s.ref}</td>
+                    <td><span className={`badge ${s.status === "BOUND" || s.status === "ORPHAN_PASSED" ? "green" : "red"}`}>{s.status}</span></td>
+                    <td style={{ fontSize: 10.5 }}>{s.detail ?? "—"}{s.severity ? ` · ${s.severity}` : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="muted mono" data-testid="tc-d-closure-counts" style={{ fontSize: 10, marginTop: 4 }}>
+              objectsBound={supply.closure.counts.objectsBound} · dataOrphans={supply.closure.counts.dataOrphans} · forwardMissing={supply.closure.counts.forwardMissing} · chainBroken={supply.closure.counts.chainBroken} · shapeBroken={supply.closure.counts.shapeBroken}
+            </div>
+          </div>
+        )}
         {supply.dataRequest && (
           <div data-testid="tc-d-datarequest">
             <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>精确补数请求（DataRequest·人工描述单）</div>
@@ -498,7 +577,7 @@ function TicketDetailBody({ detail }: { detail: TicketDetail }) {
             {row.kind === "PLAN_SCAFFOLD" ? "去审批 →" : row.kind === "DATA_REQUEST" ? "去导入（真人正门）→" : "打开操作深链 →"}
           </a>
         )}
-        {!supply.fillPlan && !supply.dataRequest && !supply.ioContract && !supply.acceptance && (!supply.scaffoldedDrafts || supply.scaffoldedDrafts.length === 0) && (
+        {!supply.fillPlan && !supply.dataRequest && !supply.ioContract && !supply.acceptance && !supply.closure && (!supply.scaffoldedDrafts || supply.scaffoldedDrafts.length === 0) && (
           <div className="empty-state" style={{ fontSize: 11 }}>该工单真源未携结构化补充清单——以上方诊断证据为准（诚实空态，不造行）。</div>
         )}
       </div>

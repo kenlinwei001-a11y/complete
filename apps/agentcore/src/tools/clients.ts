@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, StoryBuildRun, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -151,6 +151,15 @@ export interface SimClient {
   certify(ctx: ToolAuthCtx, sessionId: string, scope?: string, target?: string): Promise<Record<string, unknown>>;
 }
 
+/**
+ * UPG-L0-CONSOLE-BOARD（PRD-gapfill-surface-consolidation §3）：只读拉取本租户建域运行（StoryBuildRun），
+ * 供 `boardRowFromClosure` 把 ClosureReport 的 MISSING 段投影为统一 Console board 行（R13 纯只读投影不造新真值）。
+ * OBO 透传 → DataCore GET /a/v1/databuilder/runs（requireAdmin·非 admin 角色 403 → 上游 catch 诚实降级为空）。
+ */
+export interface DatabuilderClient {
+  listStoryRuns(ctx: ToolAuthCtx): Promise<StoryBuildRun[]>;
+}
+
 export interface DataCoreClient {
   ontology: OntologyClient;
   solver: SolverClient;
@@ -164,6 +173,8 @@ export interface DataCoreClient {
   datagen: DataGenClient;
   /** 增量4 §5：AI 推演指挥台的沙盘工具出口（仅 sim.commander/sim.sandbox 开通时对 agent 可见）。 */
   sim: SimClient;
+  /** UPG-L0-CONSOLE-BOARD：建域运行只读读取（ClosureReport MISSING 段 → Console board 投影源）。 */
+  databuilder: DatabuilderClient;
 }
 
 export class DataCoreUnavailableError extends Error {

@@ -253,8 +253,13 @@ export type WorklistItem = z.infer<typeof WorklistItemSchema>;
  * 看板行 = 三源真值只读投影（R13·零造行）：WorklistItem(DATA_GAP·含 B3 HARD 人工描述单) + GrowthTicket(FEATURE/PLAN_SCAFFOLD/SOLVER 缺)。
  */
 
-/** 行来源（哪个真值仓储）：WORKLIST=growthWorklist 真在办项（可认领）· GROWTH_TICKET=GrowthTicket 映射（只读/深链，409 guard 守认领误用）。 */
-export const TicketCenterSourceSchema = z.enum(["WORKLIST", "GROWTH_TICKET"]);
+/**
+ * 行来源（哪个真值仓储）：WORKLIST=growthWorklist 真在办项（可认领）· GROWTH_TICKET=GrowthTicket 映射（只读/深链，409 guard 守认领误用）。
+ * UPG-L0-CONSOLE-BOARD（PRD-gapfill-surface-consolidation §3·additive 暗发）：BUILD_CLOSURE=StoryBuildRun.ClosureReport
+ * 的 MISSING 段只读投影（R13 纯只读投影不造新真值·恒 claimable=false·源仍是 StoryBuildRun）——把 script-目标建域缺口
+ * 收进同一 Console board 的「script 目标」透镜。枚举扩一枚为**向后兼容 additive**（既有 WORKLIST/GROWTH_TICKET 读者不受影响）。
+ */
+export const TicketCenterSourceSchema = z.enum(["WORKLIST", "GROWTH_TICKET", "BUILD_CLOSURE"]);
 export type TicketCenterSource = z.infer<typeof TicketCenterSourceSchema>;
 
 /**
@@ -266,7 +271,8 @@ export type TicketCenterSource = z.infer<typeof TicketCenterSourceSchema>;
  *  - SOLVER_GAP    缺求解器（GrowthTicket gapCode=SOLVER_NOT_FOUND·只读·施工工单）
  *  - FEATURE       缺功能需开发（只读·施工工单）
  */
-export const TICKET_CENTER_KNOWN_KINDS = ["DATA_GAP", "DATA_REQUEST", "PLAN_SCAFFOLD", "SOLVER_GAP", "FEATURE"] as const;
+// UPG-L0-CONSOLE-BOARD：BUILD_CLOSURE = StoryBuildRun.ClosureReport 的 MISSING 段投影行（script 目标建域缺口·只读）。
+export const TICKET_CENTER_KNOWN_KINDS = ["DATA_GAP", "DATA_REQUEST", "PLAN_SCAFFOLD", "SOLVER_GAP", "FEATURE", "BUILD_CLOSURE"] as const;
 
 export const TicketBoardRowSchema = z.object({
   id: z.string(), // wli_ | gtk_（统一 id 空间，detail 端点按前缀分源查）
@@ -286,6 +292,17 @@ export const TicketBoardRowSchema = z.object({
 });
 export type TicketBoardRow = z.infer<typeof TicketBoardRowSchema>;
 
+/**
+ * UPG-L0-CONSOLE-BOARD（PRD §3/§4.1）：统一 board 列表响应。`buildClosureEnabled` 为**暗发位**（服务端权威·env
+ * `GROWTH_BUILD_CLOSURE` 派生·defaultOn:false）——前端据此显隐「script 目标」source 透镜 tab（关闸 = 改造前 query-目标
+ * board·回退演练 C3）。additive：既有 `{ items }` 读者不受影响（字段可选默认 false）。
+ */
+export const TicketBoardResponseSchema = z.object({
+  items: z.array(TicketBoardRowSchema),
+  buildClosureEnabled: z.boolean().default(false),
+});
+export type TicketBoardResponse = z.infer<typeof TicketBoardResponseSchema>;
+
 /** DATA_GAP 详情：DataDependency requires 逐条（solver 入口 manifest 实测 present-vs-needed 投影）。 */
 export const TicketSupplyRequireSchema = z.object({
   roleType: z.string(),
@@ -296,8 +313,42 @@ export const TicketSupplyRequireSchema = z.object({
 });
 export type TicketSupplyRequire = z.infer<typeof TicketSupplyRequireSchema>;
 
+/**
+ * UPG-L0-CONSOLE-BOARD（PRD §3/§4.1·R13 纯只读投影）：script 目标行（source=BUILD_CLOSURE）详情的「全链闭包逐段」块——
+ * 直接投影 StoryBuildRun.ClosureReport（CHAIN/SHAPE/OBJECT/DATA/FORWARD 逐段 BOUND/MISSING），字段自包含（不 import databuilder，避免契约循环）。
+ */
+export const TicketClosureSegmentSchema = z.object({
+  /** 闭包维：OBJECT/DATA/FORWARD/CHAIN/SHAPE（ClosureFinding.kind 原值）。 */
+  kind: z.string(),
+  /** typeKey / dataset.field / solverKey.field / solver:key / solver.output.path（ClosureFinding.ref 原值）。 */
+  ref: z.string(),
+  /** BOUND/ORPHAN_PASSED/DROPPED/MISSING/FAILED（ClosureFinding.status 原值）。 */
+  status: z.string(),
+  detail: z.string().optional(),
+  /** HARD/ADVISORY（A18 双模；ClosureFinding.severity 原值）。 */
+  severity: z.string().optional(),
+});
+export type TicketClosureSegment = z.infer<typeof TicketClosureSegmentSchema>;
+
+export const TicketClosureSchema = z.object({
+  gatePassed: z.boolean(),
+  buildMode: z.string(),
+  segments: z.array(TicketClosureSegmentSchema),
+  /** ClosureReport 计数（objectsBound/dataOrphans/forwardMissing/chainBroken/shapeBroken）逐值透出（R-QUANT）。 */
+  counts: z.object({
+    objectsBound: z.number().int(),
+    dataOrphans: z.number().int(),
+    forwardMissing: z.number().int(),
+    chainBroken: z.number().int(),
+    shapeBroken: z.number().int(),
+  }),
+});
+export type TicketClosure = z.infer<typeof TicketClosureSchema>;
+
 /** 补充内容清单段（核心·按类型列举 what needs to be supplied）——全部为真源字段只读投影（R13·零造行）。 */
 export const TicketSupplySchema = z.object({
+  /** UPG-L0-CONSOLE-BOARD：BUILD_CLOSURE 行——全链闭包逐段（StoryBuildRun.ClosureReport 只读投影·R13）。 */
+  closure: TicketClosureSchema.optional(),
   /** DATA_GAP/DATA_REQUEST：补法计划（typeKey/字段/行数/seed/mode——认领后触发真跑的确定性参数）。 */
   fillPlan: WorklistFillPlanSchema.optional(),
   /** DATA_GAP：solver 入口 DataDependency requires 逐条（fromQuestion 携 entryRef 时经 checkReadiness 实测；探测失败诚实缺省）。 */
