@@ -4923,7 +4923,7 @@
     },
     {
       "id": "I18N-LONGTAIL",
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P3",
       "deps": [],
@@ -4947,11 +4947,11 @@
       },
       "at": {
         "todo": "2026-07-09T04:30:00.000Z",
-        "wip": "2026-07-09T05:43:05.474Z",
-        "built": "2026-07-09T06:05:53.400Z",
+        "wip": "2026-07-09T07:40:36.295Z",
+        "built": "2026-07-09T07:56:33.290Z",
         "blocked": "2026-07-09T07:14:35.976Z"
       },
-      "blockReason": "C1未达(残余非白名单英文逐个中文化或加白名单): 真浏览器3页(数据构建发动机/求解器审核台/配置迁移)仍显 Workflow/Skill/Action/Provider(未译·不在102词allowlist·而同类object-type Agent已whitelist·不一致) + onboarding/scaffold/bundle/diff/Saga + BuildWorkflowRun(原始类型名泄漏进UI·endpoints.ts:13类型)。修: 逐个决策(Workflow/Skill/Action/Provider等域对象类型比照Agent入allowlist·generics中文化·BuildWorkflowRun类名不显UI)·allowlist显式盘点补全后真浏览器无非白名单裸英文。"
+      "blockReason": ""
     },
     {
       "id": "DEPLOY0707-PIPELINE-SALVAGE",
@@ -4997,8 +4997,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "ORDER-CONSOLIDATE",
-      "at": "2026-07-09T07:40:21.388Z"
+      "id": "I18N-LONGTAIL",
+      "at": "2026-07-09T07:56:33.291Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
