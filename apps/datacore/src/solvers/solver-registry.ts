@@ -74,7 +74,7 @@ export const SOLVER_REGISTRY: readonly SolverDescriptor[] = [
   { key: "credit_exposure", route: "extended", outputShape: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "ruleRefs"] },
   { key: "quarterly_gap", route: "extended", outputShape: ["quarter", "combo", "residualGap", "ruleRefs"] },
   { key: "carbon_footprint", route: "extended", outputShape: ["modelId", "baseName", "total", "breakdown", "threshold", "verdict", "maxLever", "ruleRefs"] },
-  { key: "countermeasure_combo", route: "extended", outputShape: ["gap", "combo", "residualGap", "totalCost", "feasible", "ruleRefs"] },
+  { key: "countermeasure_combo", route: "extended", outputShape: ["gap", "combo", "residualGap", "totalCost", "feasible", "needsRealLevers", "ruleRefs"] },
   { key: "plan_rootcause", route: "graph", outputShape: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs", "excludedFactors"] },
   { key: "metric_rollup", route: "graph", outputShape: ["metrics", "missCount", "byLevel", "summary"], liveDefault: true },
   { key: "cockpit_kpi", route: "graph", outputShape: ["supplyV7", "revAttainPct", "utilPeak", "aopBaseRev", "cashCushion"], liveDefault: true },

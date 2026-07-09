@@ -102,18 +102,34 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     }
   });
 
-  it("Phase6B countermeasure_combo 跨求解器编排：贪心最小成本闭合缺口 + 来源求解器留痕", () => {
+  // QUERY30-ORCH 回炉治本（KILL-MOCK-RED·决策级绝不用写死系数冒充真实）：
+  it("countermeasure_combo 无真实杠杆 → 诚实降级(空组合+needsRealLevers·不以启发系数冒充决策)", () => {
     const r = EXTENDED_SOLVERS.countermeasure_combo!({ gap: 100 }) as {
-      combo: { solver: string; release: number; cost: number }[];
-      residualGap: number;
-      totalCost: number;
-      feasible: boolean;
+      combo: unknown[]; residualGap: number; feasible: boolean; needsRealLevers: boolean; note: string;
     };
+    // 治本前此处默认用 gap×{0.3,0.15,…} 编造决策级组合 → 改后诚实空组合（改回魔数默认即红）。
+    expect(r.combo).toHaveLength(0);
+    expect(r.needsRealLevers).toBe(true);
+    expect(r.feasible).toBe(false);
+    expect(r.residualGap).toBe(100); // 未真闭合任何缺口（诚实）
+    expect(r.note).toContain("绝不以启发系数冒充"); // 诚实说明在场
+  });
+  it("countermeasure_combo 提供真实杠杆(各子求解器真算释放量) → 真贪心最小成本闭合 + 来源求解器留痕", () => {
+    const levers = [
+      { key: "cert_unlock", solver: "cert_schedule", scene: "S07", release: 30, unitCost: 0.5, costRank: 1 },
+      { key: "changeover", solver: "changeover_sequence", scene: "S11", release: 20, unitCost: 0.6, costRank: 1 },
+      { key: "capex", solver: "capex_scenario", scene: "S17", release: 60, unitCost: 2.2, costRank: 3 },
+    ];
+    const r = EXTENDED_SOLVERS.countermeasure_combo!({ gap: 100, levers }) as {
+      combo: { solver: string; release: number; cost: number }[];
+      residualGap: number; totalCost: number; feasible: boolean; needsRealLevers: boolean;
+    };
+    expect(r.needsRealLevers).toBe(false);
     expect(r.combo.length).toBeGreaterThan(0);
     expect(r.combo.every((c) => typeof c.solver === "string")).toBe(true); // 每段标注来源求解器
     const released = r.combo.reduce((s, c) => s + c.release, 0);
     expect(released).toBeCloseTo(100 - r.residualGap, 4);
-    expect(r.feasible).toBe(true); // 默认杠杆可覆盖
+    expect(r.feasible).toBe(true); // 30+20+60 ≥ 100 → 可行
   });
 
   it("catalog discover 列出全部 23 求解器（8 复用 + 13 + 1 编排器 + Q01 what_if_displacement）", async () => {

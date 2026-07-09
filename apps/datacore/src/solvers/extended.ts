@@ -370,19 +370,34 @@ export function quarterlyGap(args: Record<string, unknown>) {
 /**
  * Phase6B 跨求解器编排器（meta-solver）：把多个求解器提供的「杠杆」按 成本档→单位成本 排序，
  * 贪心最小成本闭合产销缺口；每段产出标注来源求解器(solver/scene)，返回组合/残差/总成本/可行性。
- * 各杠杆可释放量(release)缺省按 gap 比例派生（编排时由对应求解器回填实算值）。确定性。
+ *
+ * ⚠ QUERY30-ORCH 回炉治本（KILL-MOCK-RED·决策级绝不用写死系数冒充真实）：
+ * 各杠杆的可释放量 `release` **必须由调用方（编排层）真调对应子求解器算出后回填**（cert_schedule/
+ * changeover_sequence/… 的真实产出映射到 gap 释放量）。此前默认杠杆用 `gap×{0.3,0.15,0.1,0.2,0.5}`
+ * **启发系数冒充各求解器释放量**——是决策级魔数假值（一个"cert 能解 30% 缺口"是编造的决策断言）。
+ * 现改为**诚实降级**：未提供真实 `levers` → 不编造 → 返回空组合 + `needsRealLevers:true` + 诚实说明
+ * （指明须先跑各子求解器得真实释放量再编排）。真实 `levers`（携真算 release）在场 → 真贪心背包（不变）。
+ * 真正的「跨求解器编排」（把异构子求解器产出归一到统一 gap 释放账本）属 QUERY30 §2.5/2.6 核心设计，
+ * 待编排层落地（本单只除假·不以魔数冒充）。确定性（R6）。
  */
 type ComboLever = { key: string; solver: string; scene?: string; release: number; unitCost: number; costRank: number };
 export function countermeasureCombo(args: Record<string, unknown>) {
   const gap = round(num(args.gap, 10), 4);
-  const levers: ComboLever[] = (args.levers as ComboLever[]) ?? [
-    { key: "cert_unlock", solver: "cert_schedule", scene: "S07", release: round(gap * 0.3, 4), unitCost: 0.5, costRank: 1 },
-    { key: "changeover", solver: "changeover_sequence", scene: "S11", release: round(gap * 0.15, 4), unitCost: 0.6, costRank: 1 },
-    { key: "stagger", solver: "maintenance_stagger", scene: "S13", release: round(gap * 0.1, 4), unitCost: 0.7, costRank: 2 },
-    { key: "outsource", solver: "outsourcing_split", scene: "S14", release: round(gap * 0.2, 4), unitCost: 1.4, costRank: 2 }, // C08 外协 ≤20%
-    { key: "capex", solver: "capex_scenario", scene: "S17", release: round(gap * 0.5, 4), unitCost: 2.2, costRank: 3 },
-  ];
-  const sorted = [...levers].sort((a, b) => a.costRank - b.costRank || a.unitCost - b.unitCost);
+  const rawLevers = args.levers as ComboLever[] | undefined;
+  // 诚实降级：无真实杠杆（各子求解器真算释放量）→ 不以启发系数编造决策级组合。
+  if (!Array.isArray(rawLevers) || rawLevers.length === 0) {
+    return {
+      gap,
+      combo: [],
+      residualGap: gap,
+      totalCost: 0,
+      feasible: false,
+      needsRealLevers: true,
+      note: "未提供真实杠杆：跨求解器编排须先真调各子求解器（cert_schedule/changeover_sequence/maintenance_stagger/outsourcing_split/capex_scenario）得各自真实释放量再编排——绝不以启发系数冒充决策级释放量（KILL-MOCK-RED）。",
+      ruleRefs: ["C08", "C23", "C29"],
+    };
+  }
+  const sorted = [...rawLevers].sort((a, b) => a.costRank - b.costRank || a.unitCost - b.unitCost);
   let remaining = gap;
   let totalCost = 0;
   const combo: Record<string, unknown>[] = [];
@@ -395,7 +410,7 @@ export function countermeasureCombo(args: Record<string, unknown>) {
       remaining = round(remaining - use, 4);
     }
   }
-  return { gap, combo, residualGap: round(Math.max(0, remaining), 4), totalCost, feasible: remaining <= 0, ruleRefs: ["C08", "C23", "C29"] };
+  return { gap, combo, residualGap: round(Math.max(0, remaining), 4), totalCost, feasible: remaining <= 0, needsRealLevers: false, ruleRefs: ["C08", "C23", "C29"] };
 }
 
 // S20 carbon_footprint：碳足迹 = Σ(物料单耗×碳因子) + Σ工序(单位能耗×电网因子(省))；对比欧盟阈值。
@@ -782,7 +797,7 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
   },
   countermeasure_combo: {
     fn: countermeasureCombo,
-    dataMode: (c, args) => (argHas(args, "levers") ? "LIVE" : "PARTIAL"), // 默认 levers 启发系数
+    dataMode: (c, args) => (argHas(args, "levers") ? "LIVE" : "MOCK"), // 无真实杠杆→诚实降级(空组合)·非启发系数假值
     deriveArgs: (c, args) => {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
       // G2：默认 gap 同口径估算（dataMode 无 levers 时已标 PARTIAL）。
