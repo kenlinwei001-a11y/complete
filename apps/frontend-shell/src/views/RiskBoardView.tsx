@@ -23,6 +23,61 @@ import styles from "./RiskBoardView.module.css";
 type RiskCard = RiskTimelineOutput["cards"][number];
 
 /**
+ * RISKBOARD-LAYOUT-REWORK（诊断台 → 高管决策漏斗）：卡业务影响真值口径（C2/C3/C4 单一来源）。
+ * 营收敞口 = Σ 受影响订单 revenueWan（后端 affectedOrders 由产能传导引擎按越线日真算·qty×细分单价·R13 可溯）；
+ * 受威胁客户 = 受影响订单去重客户数。**全部读 card.affectedOrders 真值·前端不写死**（改后端真源→值随之变）。
+ */
+function orderRows(card: RiskCard): Record<string, unknown>[] {
+  return (card.affectedOrders ?? []) as Record<string, unknown>[];
+}
+export function cardExposureWan(card: RiskCard): number {
+  return orderRows(card).reduce((s, o) => {
+    const v = typeof o.revenueWan === "number" ? o.revenueWan : Number(o.revenueWan);
+    return s + (Number.isFinite(v) ? v : 0);
+  }, 0);
+}
+export function cardThreatenedCusts(card: RiskCard): number {
+  return new Set(orderRows(card).map((o) => String(o.cust ?? "")).filter((x) => x !== "")).size;
+}
+/**
+ * C4：卡按**业务影响**排序（真数据驱动·非 peak）。排序键 = 营收敞口（万）·次序客户数、基地名定序（确定性）。
+ * 改后端 affectedOrders 真源 → 排序随之变（teeth：revert→红）。峰值 peak 不参与排序键。
+ */
+export function cardBusinessImpact(card: RiskCard): number {
+  return cardExposureWan(card);
+}
+export function sortCardsByImpact(cards: RiskCard[]): RiskCard[] {
+  return [...cards].sort((a, b) => {
+    const ea = cardBusinessImpact(a), eb = cardBusinessImpact(b);
+    if (eb !== ea) return eb - ea;
+    const ca = cardThreatenedCusts(a), cb = cardThreatenedCusts(b);
+    if (cb !== ca) return cb - ca;
+    return a.base.localeCompare(b.base);
+  });
+}
+/**
+ * C3 决策摘要头·危及客户 + 总营收敞口聚合（跨给定卡集·通常为 LIVE 决策卡）。
+ * 同一订单可经多基地瓶颈受威胁（真后端：SO-xxxx 同挂 合肥/常州）——总敞口按订单号 so 去重、客户按 cust 去重，防双记虚增。
+ */
+export function aggregateThreat(cards: RiskCard[]): { totalExposure: number; totalCusts: number } {
+  const exposureBySo = new Map<string, number>();
+  const custSet = new Set<string>();
+  let anonSo = 0;
+  for (const c of cards) {
+    for (const o of orderRows(c)) {
+      const rev = typeof o.revenueWan === "number" ? o.revenueWan : Number(o.revenueWan);
+      if (Number.isFinite(rev)) {
+        const key = o.so != null && String(o.so) !== "" ? `so:${o.so}` : `anon:${anonSo++}`;
+        exposureBySo.set(key, rev);
+      }
+      const cust = String(o.cust ?? "");
+      if (cust !== "") custSet.add(cust);
+    }
+  }
+  return { totalExposure: [...exposureBySo.values()].reduce((s, v) => s + v, 0), totalCusts: custSet.size };
+}
+
+/**
  * FILL-XINDUSTRY-LAYOUT（G-5 8a·R14）：受影响订单表列（型号/营收敞口等制造订单维度）默认结构。
  * 优先由 `view.layout.affectedOrderColumns` 下发·此常量仅电池兜底（换行业换 config 即换列）。
  */
@@ -82,11 +137,35 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
     return "MUTED"; // 显式 MOCK/SYNTHETIC/其它非 LIVE → 中性
   };
   // 首要风险仅在真数据卡间取（避免合成/mock 峰值抢「首要」红标）。
-  const livePeaks = data.cards.filter((c) => cardDecisionMode(c) === "LIVE").map((c) => c.peak ?? 0);
+  const liveCards = data.cards.filter((c) => cardDecisionMode(c) === "LIVE");
+  const livePeaks = liveCards.map((c) => c.peak ?? 0);
   const maxPeak = livePeaks.length ? Math.max(0, ...livePeaks) : 0;
+  // C4：卡按业务影响（营收敞口）排序——真数据驱动·非 peak（改后端 affectedOrders 真源→次序随之变）。
+  const orderedCards = sortCardsByImpact(data.cards);
+  // C3 决策摘要头（高管决策漏斗）：全部聚合自真 risk_timeline（非硬编）。
+  //   红/黄基地数 = LIVE 卡按峰值越阈值/临近分档；最早越线日 = LIVE 卡 crossDay 最小；
+  //   危及客户数/总敞口 = Σ 各卡 affectedOrders 去重客户/revenueWan（真值）；对策数 = planRows 行数。
+  const summaryRed = liveCards.filter((c) => c.peak != null && c.peak >= data.threshold).length;
+  const summaryYellow = liveCards.filter((c) => c.peak != null && c.peak >= data.threshold - bandWidth && c.peak < data.threshold).length;
+  const crossDays = liveCards.map((c) => c.crossDay).filter((d): d is number => d != null);
+  const earliestCross = crossDays.length ? Math.min(...crossDays) : null;
+  // 危及客户/总敞口只聚合 LIVE 决策卡（与红/黄/最早越线同口径）——不让 MOCK/合成估算张力的卡虚增决策级威胁数字（诚实边界）；
+  // 并按订单号 so 去重敞口、cust 去重客户（同订单多基地受威胁防双记）。
+  const { totalExposure, totalCusts } = aggregateThreat(liveCards);
+  const mitigationCount = data.planRows?.length ?? 0;
   return (
     <div>
       {drilledIn && <DrillBack testId="risk-back" trail={[{ label: "风险看板" }]} />}
+      {/* C3 决策摘要头（诊断台→高管决策漏斗）：一屏聚合当前推演的决策级真值——红/黄基地、最早越线、危及客户、总敞口、对策数。
+          值源自真 risk_timeline（LIVE 卡 + affectedOrders 真算），非硬编；无真数据自然归零（诚实）。 */}
+      <div className={styles.summary} data-testid="risk-decision-summary">
+        <SummaryStat testId="risk-summary-red" label="越线基地" value={String(summaryRed)} tone="danger" suffix="个" />
+        <SummaryStat testId="risk-summary-yellow" label="临近基地" value={String(summaryYellow)} tone="warn" suffix="个" />
+        <SummaryStat testId="risk-summary-earliest" label="最早越线" value={earliestCross != null ? `D+${earliestCross}` : "—"} />
+        <SummaryStat testId="risk-summary-custs" label="危及客户" value={String(totalCusts)} suffix="家" />
+        <SummaryStat testId="risk-summary-exposure" label="营收敞口" value={totalExposure > 0 ? String(Math.round(totalExposure)) : "—"} suffix={totalExposure > 0 ? "万" : ""} tone="danger" />
+        <SummaryStat testId="risk-summary-mitigations" label="对策" value={String(mitigationCount)} suffix="项" />
+      </div>
       {/* §2.2-a 三档图例文案（红/黄/蓝档与 heat strip/MiniStrip 同色阈值口径）+ 首要风险（peak 最高）标注 */}
       <div data-testid="risk-legend" style={{ display: "flex", gap: 14, fontSize: 12, marginBottom: 8, alignItems: "center", color: "var(--muted)" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: "#E0626C", borderRadius: 2 }} />{zh.risk.legendHigh}</span>
@@ -104,7 +183,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
         </div>
       )}
       <div className={styles.grid}>
-        {data.cards.map((card) => {
+        {orderedCards.map((card) => {
           const selected = selectedObjects.some((o) => o.label === card.base);
           const mode = cardDecisionMode(card);
           const live = mode === "LIVE";
@@ -166,6 +245,19 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
                 </div>
               ) : (
                 <>
+                  {/* C2 卡面副标题：受威胁客户 + 营收敞口——读 card.affectedOrders 真值（去重客户 / Σ revenueWan），
+                      前端不写死；无关联订单则诚实"—"（改后端真源→值随之变）。 */}
+                  {(() => {
+                    const custs = cardThreatenedCusts(card);
+                    const exposure = cardExposureWan(card);
+                    return (
+                      <div className={styles.subtitle} data-testid={`risk-affected-${card.base}`}>
+                        受威胁客户 <b data-testid={`risk-custs-${card.base}`}>{custs}</b>
+                        <span style={{ margin: "0 6px", color: "var(--line2)" }}>·</span>
+                        营收敞口 <b className="mono" data-testid={`risk-exposure-${card.base}`}>{exposure > 0 ? `${Math.round(exposure)} 万` : "—"}</b>
+                      </div>
+                    );
+                  })()}
                   {/* 诚实标 dataMode：MOCK/合成/无真源 → "估算·无实测"；仅真数据卡标"实测当前 N"。 */}
                   {!live && (
                     <div className="badge" data-testid={`risk-datamode-${card.base}`} title="该因素无真数据源（或合成/顶层非实测），基线张力为启发/合成估算（非实测）——不作决策红"
@@ -193,6 +285,33 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
                     </span>
                   </div>
                   <MiniStrip series={card.series} threshold={data.threshold} dataMode={live ? "LIVE" : "MOCK"} />
+                  {/* C1 卡面一级「开推演对策」：一键带 {base,factor} presetContext 进沙盘（复用既有沙盘链·非仅详情内 risk-open-whatif）。
+                      sim.sandbox entitlement 关时诚实降级为禁用态 + 说明，不 navigate（避免落沙盘 404 死路）。 */}
+                  <div className={styles.cardActions}>
+                    {canWhatIf ? (
+                      <button
+                        className="btn sm primary"
+                        data-testid={`risk-card-whatif-${card.base}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openWhatIf({ source: "risk-board", subject: card.base, factor: card.factor, label: `${card.base} · ${card.factor}` });
+                        }}
+                      >
+                        开推演对策 →
+                      </button>
+                    ) : (
+                      <button
+                        className="btn sm"
+                        data-testid={`risk-card-whatif-${card.base}`}
+                        data-disabled-reason="sim.sandbox"
+                        disabled
+                        title="推演沙盘（sim.sandbox）未开通——开通后可就此风险一键开对策推演（当前不跳转，避免落沙盘 404 死路）"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        开推演对策（未开通）
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -580,6 +699,20 @@ function MitigationPanel({ base, factor, tightness }: { base: string; factor: st
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+/** C3 决策摘要头单格：标签 + 大数 + 单位后缀（tone 决定红/黄/中性色·纯展示·值由父层真聚合传入）。 */
+function SummaryStat({ testId, label, value, suffix, tone }: { testId: string; label: string; value: string; suffix?: string; tone?: "danger" | "warn" }) {
+  const color = tone === "danger" ? "var(--danger)" : tone === "warn" ? "var(--warn, #caa23a)" : "var(--txt)";
+  return (
+    <div className={styles.summaryStat} data-testid={testId}>
+      <div className={styles.summaryLabel}>{label}</div>
+      <div className={styles.summaryValue} style={{ color }}>
+        <span className="mono" data-testid={`${testId}-value`}>{value}</span>
+        {suffix ? <span className={styles.summarySuffix}>{suffix}</span> : null}
+      </div>
     </div>
   );
 }
