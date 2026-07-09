@@ -4424,12 +4424,13 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-09T05:08:09.940Z",
-        "built": "2026-07-09T05:42:53.519Z"
+        "built": "2026-07-09T05:42:53.519Z",
+        "done": "2026-07-09T07:14:35.822Z"
       },
       "blockReason": ""
     },
@@ -4568,14 +4569,15 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-09T06:17:16.890Z",
-        "built": "2026-07-09T06:47:20.768Z"
+        "built": "2026-07-09T06:47:20.768Z",
+        "blocked": "2026-07-09T07:14:35.894Z"
       },
-      "blockReason": ""
+      "blockReason": "改名不完整(真浏览器fresh vite确认非stale): 前端已改(zh.ts:297 title/breadcrumb/fixtures=订单聚合)但后端视图标签未改→左导航仍显旧名\"订单全链聚合\"。源: datacore features.ts:26 name=\"订单全链聚合\" + synthetic/service.ts:1402 + packs/battery-manufacturing.pack.ts:112。用户明确要的改名从用户视角是失败的(nav旧名·页标题新名·不一致)。修: datacore侧view name/pack titles一并改\"订单聚合\"·真浏览器左导航验证显新名。基地迁移/逐行部分暂未否决(先修改名再整体复验)。"
     },
     {
       "id": "RISKBOARD-LAYOUT-REWORK",
@@ -4612,12 +4614,13 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-07T00:00:00.000Z",
         "wip": "2026-07-09T05:43:05.399Z",
-        "built": "2026-07-09T06:17:04.563Z"
+        "built": "2026-07-09T06:17:04.563Z",
+        "done": "2026-07-09T07:14:35.749Z"
       },
       "blockReason": ""
     },
@@ -4915,7 +4918,7 @@
     },
     {
       "id": "I18N-LONGTAIL",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "priority": "P3",
       "deps": [],
@@ -4940,9 +4943,10 @@
       "at": {
         "todo": "2026-07-09T04:30:00.000Z",
         "wip": "2026-07-09T05:43:05.474Z",
-        "built": "2026-07-09T06:05:53.400Z"
+        "built": "2026-07-09T06:05:53.400Z",
+        "blocked": "2026-07-09T07:14:35.976Z"
       },
-      "blockReason": ""
+      "blockReason": "C1未达(残余非白名单英文逐个中文化或加白名单): 真浏览器3页(数据构建发动机/求解器审核台/配置迁移)仍显 Workflow/Skill/Action/Provider(未译·不在102词allowlist·而同类object-type Agent已whitelist·不一致) + onboarding/scaffold/bundle/diff/Saga + BuildWorkflowRun(原始类型名泄漏进UI·endpoints.ts:13类型)。修: 逐个决策(Workflow/Skill/Action/Provider等域对象类型比照Agent入allowlist·generics中文化·BuildWorkflowRun类名不显UI)·allowlist显式盘点补全后真浏览器无非白名单裸英文。"
     },
     {
       "id": "DEPLOY0707-PIPELINE-SALVAGE",
@@ -4987,9 +4991,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "dispatch",
-      "id": "DEPLOY0707-PIPELINE-SALVAGE",
-      "at": "2026-07-09T07:00:00.000Z"
+      "cmd": "BLOCKED",
+      "id": "I18N-LONGTAIL",
+      "at": "2026-07-09T07:14:35.976Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
