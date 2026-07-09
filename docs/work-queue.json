@@ -4677,12 +4677,13 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-07T00:00:00.000Z",
         "wip": "2026-07-09T05:08:10.013Z",
-        "built": "2026-07-09T05:33:31.807Z"
+        "built": "2026-07-09T05:33:31.807Z",
+        "done": "2026-07-09T05:40:53.012Z"
       },
       "blockReason": ""
     },
@@ -4935,10 +4936,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
+      "role": "review",
+      "cmd": "DONE",
       "id": "OPTIONA-B1B2-UX",
-      "at": "2026-07-09T05:33:31.807Z"
+      "at": "2026-07-09T05:40:53.012Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
