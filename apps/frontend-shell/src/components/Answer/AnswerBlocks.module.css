@@ -77,6 +77,43 @@
   margin: 6px 0;
   background: rgba(232, 181, 74, 0.06);
 }
+/* UPG-L0-PREANALYSIS（PRD §7.2）：GapCard 顶部预分析全景条（只读·复用 token·零新色）。 */
+.gapPanorama {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.panoramaSummary {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panoramaBadges {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.panoramaBadge {
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  border: 1px solid transparent;
+}
+.panoramaBadge[data-sev="WARNING"] { color: var(--warn); border-color: var(--warn); }
+.panoramaBadge[data-sev="INFO"] { color: var(--muted2); border-color: var(--line2); }
+.panoramaBadge[data-sev="OK"] { color: var(--ok); border-color: var(--ok); }
+.panoramaBadge[data-sev="FAILED"] { color: var(--danger); border-color: var(--danger); }
+.panoramaLink { flex: 0 0 auto; font-size: 11px; }
 .gapHead {
   display: flex;
   align-items: center;

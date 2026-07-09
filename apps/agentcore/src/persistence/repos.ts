@@ -306,6 +306,14 @@ export interface Repos {
     get(tenantId: string, id: string): Promise<import("@platform/contracts").WorklistItem | undefined>;
     listByTenant(tenantId: string): Promise<import("@platform/contracts").WorklistItem[]>;
   };
+  /**
+   * UPG-L0-PREANALYSIS（PRD-gap-analysis-engine §9）：预分析旁路产出（PreAnalysisReport）·R9 仓储双实现。
+   * 按 taskId 主键存（一 query 一 report）·R2 tenant_id 谓词（跨租户 getByTaskId → undefined → 端点 404）。
+   */
+  preAnalyses: {
+    upsert(r: import("@platform/contracts").PreAnalysisReport): Promise<void>;
+    getByTaskId(tenantId: string, taskId: string): Promise<import("@platform/contracts").PreAnalysisReport | undefined>;
+  };
   /** D-29 实时环 E-c：B 侧领域事件馈源（append + 按 since 游标列出，供 /b/v1/outbox 轮询）。 */
   domainEvents: {
     append(e: DomainEventRow): Promise<void>;

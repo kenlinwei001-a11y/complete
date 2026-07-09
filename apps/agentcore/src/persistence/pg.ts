@@ -519,6 +519,15 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows.map((x) => x.doc as import("@platform/contracts").WorklistItem);
       },
     },
+    preAnalyses: {
+      async upsert(r) {
+        await q(`INSERT INTO pre_analyses(task_id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (task_id) DO UPDATE SET doc = $3`, [r.taskId, r.tenantId, JSON.stringify(r)]);
+      },
+      async getByTaskId(tenantId, taskId) {
+        const r = await q(`SELECT doc FROM pre_analyses WHERE tenant_id = $1 AND task_id = $2`, [tenantId, taskId]);
+        return r.rows[0]?.doc as import("@platform/contracts").PreAnalysisReport | undefined;
+      },
+    },
     evalCases: {
       async upsert(c) {
         await q(

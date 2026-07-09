@@ -1213,7 +1213,7 @@ export const fetchObjectMerges = () => api.a<{ items: ObjectMerge[] }>("/a/v1/ob
 export const unmergeObjects = (id: string) => api.a<{ ok: boolean }>(`/a/v1/objects/merges/${id}/unmerge`, { method: "POST" });
 
 // ---- 自成长发动机驾驶舱（P6）：运行 LOOP / 成长账本 / 工单看板 ----
-import type { GrowthRunReport, GrowthLedgerEntry, GrowthTicket, WorklistItem, TriggerBoundaryDecision } from "@platform/contracts";
+import type { GrowthRunReport, GrowthLedgerEntry, GrowthTicket, WorklistItem, TriggerBoundaryDecision, PreAnalysisReport } from "@platform/contracts";
 // 驾驶舱 LOOP（admin 显式运行·confirmed=true 跳过内容闸；SOFT/空租户仍登记在办看板人工闸）。
 export const runGrowth = (query: string, maxRounds = 4, packageId = "pkg_battery_manufacturing", view = "dash") =>
   api.b<GrowthRunReport>("/b/v1/growth/run", { method: "POST", body: { packageId, query, context: { view, selectedObjects: [], filters: {} }, maxRounds, confirmed: true } });
@@ -1249,6 +1249,8 @@ export const growthTrigger = (args: {
 export const fetchGrowthLedger = () => api.b<{ items: GrowthLedgerEntry[] }>("/b/v1/growth/ledger");
 export const fetchGrowthTickets = () => api.b<{ items: GrowthTicket[] }>("/b/v1/growth/tickets");
 export const claimGrowthTicket = (id: string) => api.b<GrowthTicket>(`/b/v1/growth/tickets/${id}/claim`, { method: "POST", body: { assignee: "cli-agent" } });
+// UPG-L0-PREANALYSIS：查询预分析全景（暗发·feature 关时后端 404 → 前端自然不渲染全景条·RL2）。
+export const fetchPreAnalysis = (taskId: string) => api.b<PreAnalysisReport>(`/b/v1/growth/pre-analysis/${taskId}`);
 
 // GROWTH-WORKLIST-HUMAN-FILL：在办看板（按状态/认领人/类型筛 + 认领 + 人工触发补数据缺口）。
 export const fetchGrowthWorklist = (f: { status?: string; owner?: string; kind?: string } = {}) => {

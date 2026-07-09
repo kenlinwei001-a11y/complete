@@ -63,6 +63,7 @@ import { classifyGap, FILL, gapDisposition } from "./growth/probe.js";
 import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
+import { preAnalyzeQuery } from "./growth/pre-analyze.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { seedScenarios, scenarioFromPackScenario } from "./scenarios-catalog.js";
@@ -198,6 +199,42 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const emitDomainEvent = (tenantId: string, event: string, payload: Record<string, unknown> = {}): Promise<void> =>
     deps.repos.domainEvents.append({ id: newId("evt"), tenantId, event, payload, createdAt: new Date().toISOString() });
 
+  /**
+   * UPG-L0-PREANALYSIS（PRD-gap-analysis-engine §6）：QOS 提交后**后台异步**起全景预分析旁路——
+   * 不阻塞 SSE 热路径（void·fire-and-forget）。仅 feature `growth.pre_analysis`（defaultOn:false·RL2）开时起。
+   * 复用 orchestrator 已算的**同一** ClassificationResult（轮询任务待 classify 落定·LLM mock·R6 确定），
+   * 调 preAnalyzeQuery（同一 diffGap 纯核）→ upsert + 3 事件（started/done/failed·失败诚实不静默·铁律0.4）。
+   */
+  const startPreAnalysis = async (a: RequestAuth, taskId: string, query: string): Promise<void> => {
+    if (!(await deps.features.isEnabled(a.tenantId, "growth.pre_analysis", a.token))) return; // 暗发关 = 旧路径零变化
+    void (async () => {
+      const nowIso = () => new Date().toISOString();
+      try {
+        await emitDomainEvent(a.tenantId, "growth.pre_analysis_started", { taskId });
+        // 复用同一 classification：轮询任务直至 classify 落定或达终态（≤30s·非阻塞热路径·mock 下瞬时）。
+        const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+        let task = await deps.repos.tasks.get(taskId);
+        for (let i = 0; i < 120 && (!task || (!task.classification && !TERMINAL.has(task.status))); i++) {
+          await new Promise((r) => setTimeout(r, 250));
+          task = await deps.repos.tasks.get(taskId);
+        }
+        const report = await preAnalyzeQuery(
+          { repos: deps.repos, config: deps.config },
+          { tenantId: a.tenantId, taskId, query, classification: task?.classification, generatedAt: nowIso() },
+        );
+        await deps.repos.preAnalyses.upsert(report);
+        await emitDomainEvent(a.tenantId, "growth.pre_analysis_done", { taskId, totalGaps: report.summary?.totalGaps ?? 0 });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await deps.repos.preAnalyses
+          .upsert({ taskId, tenantId: a.tenantId, query, status: "FAILED", error: msg, createdAt: nowIso() })
+          .catch(() => {});
+        await emitDomainEvent(a.tenantId, "growth.pre_analysis_failed", { taskId, error: msg }).catch(() => {});
+        app.log.error({ taskId, err: msg }, "preAnalyzeQuery failed");
+      }
+    })();
+  };
+
   app.setErrorHandler((err, req, reply) => {
     const requestId = req.id as string;
     if (err instanceof HttpError) {
@@ -262,6 +299,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const body = SubmitQueryBodySchema.parse(req.body);
     const idem = req.headers["idempotency-key"];
     const result = await deps.orchestrator.submitQuery(a, body, typeof idem === "string" ? idem : undefined);
+    // UPG-L0-PREANALYSIS：后台起全景预分析旁路（暗发·feature 关时内部即返·不阻塞 202 响应）。
+    await startPreAnalysis(a, result.taskId, body.query);
     return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl });
   });
 
@@ -414,6 +453,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/api/v1/growth/tickets", async (req) => {
     const a = await auth(req);
     return { items: await deps.repos.growthTickets.listByTenant(a.tenantId) };
+  });
+
+  // UPG-L0-PREANALYSIS（PRD-gap-analysis-engine §6/§11）：查询预分析全景（暗发·feature 关 → 404 FEATURE_NOT_FOUND
+  // ·R3 先于 authz·回退演练 C3）。R2：getByTaskId 带 tenant 谓词 → 跨租户取他人 taskId 恒 undefined → 404。
+  // 经 /b/v1 重写别名 → 前端 GapCard 全景条按 growth-preanalysis 失效重拉本端点。
+  app.get("/api/v1/growth/pre-analysis/:taskId", async (req, reply) => {
+    const a = await auth(req);
+    if (!(await deps.features.isEnabled(a.tenantId, "growth.pre_analysis", a.token))) {
+      throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    }
+    const { taskId } = req.params as { taskId: string };
+    const report = await deps.repos.preAnalyses.getByTaskId(a.tenantId, taskId);
+    if (!report) throw new HttpError(404, "PRE_ANALYSIS_NOT_FOUND", `pre-analysis not found: ${taskId}`);
+    return reply.status(200).send(report);
   });
 
   // P5：code-agent 执行器接缝——工单领取/草稿/重跑验证闭环（厂商中立：任意 agent 经 REST/CLI/MCP 同面操作）。

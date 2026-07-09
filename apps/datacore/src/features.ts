@@ -99,6 +99,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // defaultOn:false（RL2）——关 = GET /a/v1/databuilder/registry-snapshot 404 FEATURE_NOT_FOUND
   // （R3 先于 authz·回退演练 C5）。现有租户零影响（additive）。
   { key: "databuilder.registry-snapshot", name: "配套现状快照（服务间）", level: "BLOCK", defaultOn: false },
+  // UPG-L0-PREANALYSIS（PRD-gap-analysis-engine §6/§11）：AgentCore 查询预分析全景旁路的权威 entitlement
+  // （DataCore 是 entitlement 唯一真相源·AgentCore 经 /a/v1/tenants/{id}/features 解析下发）。暗发
+  // defaultOn:false（RL2）——关 = AgentCore 不起后台预分析 + /b/v1/growth/pre-analysis/:taskId 404。现有租户零影响。
+  { key: "growth.pre_analysis", name: "查询预分析全景", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

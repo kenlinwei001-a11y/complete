@@ -84,6 +84,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
     bindings: { intents: ["adopt_mitigation"] },
   },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
+  // UPG-L0-PREANALYSIS（PRD-gap-analysis-engine §6/§11）：QOS 异步全景预分析旁路。暗发 defaultOn:false
+  // （RL2）——关 = 不起后台预分析 + GET /b/v1/growth/pre-analysis/:taskId 404 FEATURE_NOT_FOUND（R3 先于
+  // authz·回退演练 C3）。权威 entitlement 由 DataCore 解析下发（features.ts 同键同 defaultOn:false）；此处注册
+  // 使 featureEnabled 认得该键（DataCore 报关时 !set.has(key) → false·不落 unknown-key 恒真陷阱）。
+  { key: "growth.pre_analysis", name: "查询预分析全景", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

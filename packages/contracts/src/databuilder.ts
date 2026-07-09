@@ -503,6 +503,52 @@ export const GapAnalysisSchema = z.object({
 });
 export type GapAnalysis = z.infer<typeof GapAnalysisSchema>;
 
+// ---- §2.H 预分析旁路对象（PRD-gap-analysis-engine §4）：AgentCore 查询预分析 preAnalyzeQuery 产出 -----
+// 与 GapAnalysisSchema/diffGap 同文件（放 growth.ts 会构成 growth→databuilder→datadep→growth 运行期循环 TDZ，
+// datadep 复用 growth 的 GapFindingSchema），故此处落地；经 @platform/contracts 桶导出，消费方
+// `import { PreAnalysisReport } from "@platform/contracts"` 无感（不感知定义文件）。
+
+/**
+ * CapabilitySnapshot = AgentCore 组装的「本租户已有能力」跨侧快照（byKind：kind→已有 key 列表）——
+ * A 栈经 `GET /a/v1/databuilder/registry-snapshot`（6 类）· B 栈查自己 repos（intent/plan/workflow/…）。
+ * takenAt 由调用方注入（R6 确定性·纯函数不取时钟）。
+ */
+export const CapabilitySnapshotSchema = z.object({
+  byKind: z.record(z.string(), z.array(z.string())),
+  takenAt: z.string(),
+});
+export type CapabilitySnapshot = z.infer<typeof CapabilitySnapshotSchema>;
+
+/**
+ * PreAnalysisReport = 「后台异步全景预分析」的结构化产出（G3·PRD §6）——把一条 query 涉及的缺口
+ * **提前给全景**（复用同一 `diffGap` 纯核 + enrich），不阻塞 SSE 热路径。
+ *
+ * 诚实边界（§10·铁律 0.4）：**咨询信号非判决**——权威判决仍归 reactive `classifyGap`。
+ * summary.coverageScore/severity 为进度/提示信号，永不误红（solver/意图缺失最高 WARNING）。
+ * status 三态：RUNNING（后台跑中·占位先落）/ DONE（gapAnalysis+summary 就位）/ FAILED（error 诚实留痕）。
+ * R2：taskId+tenantId 携带，读一律带 tenantId 谓词（跨租户 404）。
+ */
+export const PreAnalysisReportSchema = z.object({
+  taskId: z.string(),
+  tenantId: z.string(),
+  query: z.string(),
+  status: z.enum(["RUNNING", "DONE", "FAILED"]),
+  gapAnalysis: GapAnalysisSchema.optional(),
+  summary: z
+    .object({
+      totalGaps: z.number().int(),
+      autoFixable: z.number().int(),
+      manualRequired: z.number().int(),
+      developRequired: z.number().int(),
+      coverageScore: z.number().min(0).max(1),
+      executionSteps: z.number().int(),
+    })
+    .optional(),
+  error: z.string().optional(),
+  createdAt: z.string(),
+});
+export type PreAnalysisReport = z.infer<typeof PreAnalysisReportSchema>;
+
 // ---- diff 纯核（§5 · R1 contracts-only-shared · R6 确定性：无 IO/时钟/随机） -------------
 // 两服务共用一个 diff：DataCore analyzeGap（script 目标）与 AgentCore preAnalyzeQuery（query 目标）
 // 各自组装 required/existing 后调本函数。generatedAt 由调用方经 meta 注入（不在内部取 new Date()），

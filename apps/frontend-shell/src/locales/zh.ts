@@ -111,6 +111,17 @@ export const zh = {
     featureClosed: "该功能已被管理员关闭",
   },
   dock: {
+    // UPG-L0-PREANALYSIS：GapCard 顶部预分析全景条（咨询信号·非判决·文案用「系统诊断」不用「不可执行」）。
+    panoramaSummary: (total: number, auto: number) => `系统诊断：本查询涉及 ${total} 项缺口（可自动补 ${auto} 项）`,
+    panoramaTickets: "查看工单",
+    panoramaRunning: "诊断中…",
+    panoramaClear: "诊断通过",
+    panoramaFailed: "诊断暂时不可用",
+    panoramaRetry: "重试",
+    sevBlocker: "⛔ 阻断",
+    sevError: "错误",
+    sevWarning: "待补",
+    sevInfo: "提示",
     placeholder: "输入问题，回车提交…",
     expand: "展开对话",
     collapse: "收起",

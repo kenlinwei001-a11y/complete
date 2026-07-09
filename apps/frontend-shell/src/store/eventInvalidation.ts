@@ -29,6 +29,8 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   "story-runs": [["a", "story-runs"], ["a", "build-jobs"]],
   "growth-ledger": [["b", "growth-ledger"]],
   "growth-tickets": [["b", "growth-tickets"]],
+  // UPG-L0-PREANALYSIS：查询预分析全景（GapCard 全景条按此失效重拉 /b/v1/growth/pre-analysis/:taskId）。
+  "growth-preanalysis": [["b", "growth", "pre-analysis"]],
   // WO-ALERT (D6)：主动决策推送的待办消费端——通知中心铃铛 + 审批/处置收件箱。
   notifications: [["a", "notifications"]],
   "approval-inbox": [["a", "action-drafts"], ["a", "notifications"]],
@@ -64,6 +66,9 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = {
   "growth.fill_proposed": ["growth-ledger"],
   "growth.ticket_opened": ["growth-tickets", "growth-ledger"],
   "growth.converged": ["growth-ledger", "growth-tickets"],
+  // UPG-L0-PREANALYSIS：后台预分析全景 done/failed → 失效全景条查询（≤DEFAULT_POLL_MS=20s·D-29）。
+  "growth.pre_analysis_done": ["growth-preanalysis"],
+  "growth.pre_analysis_failed": ["growth-preanalysis"],
   // WO-ALERT (D6 §3.7)：决策阈值越线告警（带处置建议）→ 失效通知中心 + 处置收件箱（被动页主动点亮）。
   "decision.alert": ["notifications", "approval-inbox"],
 };

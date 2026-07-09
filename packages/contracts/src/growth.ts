@@ -51,6 +51,10 @@ export const GapReportSchema = z.object({
 });
 export type GapReport = z.infer<typeof GapReportSchema>;
 
+// 注：统一 GapAnalysis 引擎的预分析旁路对象 `CapabilitySnapshot`/`PreAnalysisReport`（§2.H）与
+// `GapAnalysisSchema`/`diffGap` 共同落 `databuilder.ts`（避免 growth→databuilder→datadep→growth 运行期
+// 循环 TDZ；datadep 复用本文件 GapFindingSchema）。二者同经 `@platform/contracts` 桶导出，消费方无感。
+
 /**
  * 自成长发动机 P3 · LOOP：探针→补齐→重跑→收敛（K 有界）。
  * 收敛终态（PRD §8）：CONVERGED（出可验证答案）/ BOUNDARY（仅剩缺功能工单）/ MAX_ROUNDS（未收敛）。

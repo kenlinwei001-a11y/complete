@@ -1,12 +1,74 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { GapReport, GapCode, GrowthRunReport, TriggerBoundaryDecision } from "@platform/contracts";
-import { growthTrigger, type GrowthTriggerResponse } from "@/api/endpoints";
+import { growthTrigger, fetchPreAnalysis, type GrowthTriggerResponse } from "@/api/endpoints";
 import { SlotFillingForm } from "@/components/QueryDock/Clarification";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import { CoverageRing } from "./CoverageRing";
 import styles from "./AnswerBlocks.module.css";
+
+/**
+ * UPG-L0-PREANALYSIS（PRD §7.2）：GapCard 顶部**只读**预分析全景条（融合式·零新页·主体不动）。
+ * 复用 report.taskId 拉 `GET /b/v1/growth/pre-analysis/:taskId`——feature 关时后端 404 → query error → 不渲染
+ * （回退演练 C3：逐像素同改造前）。四状态（§7.2）：RUNNING/DONE(有缺口/无缺口)/FAILED；无 taskId/404 → null。
+ * 咨询信号非判决（§10）：即便 coverageScore<0.5 也只显色，不阻断下方既有三闸（reactive 权威判决 classifyGap）。
+ */
+function GapPanorama({ taskId }: { taskId?: string }) {
+  const pre = useQuery({
+    queryKey: ["b", "growth", "pre-analysis", taskId],
+    queryFn: () => fetchPreAnalysis(taskId as string),
+    enabled: !!taskId,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === "RUNNING" ? 5000 : false),
+  });
+  if (!taskId || pre.isError || !pre.data) return null; // 404（暗发关）/未就绪 → 不渲染（改造前形态）
+  const r = pre.data;
+  if (r.status === "RUNNING") {
+    return (
+      <div className={styles.gapPanorama} data-testid="gap-panorama" data-status="RUNNING">
+        <span className={styles.panoramaSummary}>{zh.dock.panoramaRunning}</span>
+      </div>
+    );
+  }
+  if (r.status === "FAILED") {
+    return (
+      <div className={styles.gapPanorama} data-testid="gap-panorama" data-status="FAILED">
+        <span className={styles.panoramaSummary}>{zh.dock.panoramaFailed}</span>
+        <button type="button" className="btn sm" onClick={() => pre.refetch()}>{zh.dock.panoramaRetry}</button>
+      </div>
+    );
+  }
+  const total = r.summary?.totalGaps ?? 0;
+  const auto = r.summary?.autoFixable ?? 0;
+  const score = r.summary?.coverageScore ?? 1;
+  if (total === 0) {
+    return (
+      <div className={styles.gapPanorama} data-testid="gap-panorama" data-status="DONE" data-total="0">
+        <CoverageRing score={score} />
+        <span className={styles.panoramaSummary}>{zh.dock.panoramaClear}</span>
+        <span className={styles.panoramaBadges}><span className={styles.panoramaBadge} data-sev="OK">{zh.dock.panoramaClear}</span></span>
+      </div>
+    );
+  }
+  // 按 severity 计数（预分析永不 BLOCKER/ERROR·§10；计数 0 的档不渲染）。
+  const sevCount: Record<string, number> = {};
+  for (const e of r.gapAnalysis?.entries ?? []) for (const it of e.items) if (it.severity && it.status !== "EXISTS") sevCount[it.severity] = (sevCount[it.severity] ?? 0) + 1;
+  const sevLabel: Record<string, string> = { BLOCKER: zh.dock.sevBlocker, ERROR: zh.dock.sevError, WARNING: zh.dock.sevWarning, INFO: zh.dock.sevInfo };
+  return (
+    <div className={styles.gapPanorama} data-testid="gap-panorama" data-status="DONE" data-total={total}>
+      <CoverageRing score={score} />
+      <span className={styles.panoramaSummary}>{zh.dock.panoramaSummary(total, auto)}</span>
+      <span className={styles.panoramaBadges}>
+        {(["BLOCKER", "ERROR", "WARNING", "INFO"] as const).filter((s) => sevCount[s]).map((s) => (
+          <span key={s} className={styles.panoramaBadge} data-sev={s} data-testid={`gap-panorama-sev-${s}`}>{sevLabel[s]} {sevCount[s]}</span>
+        ))}
+      </span>
+      <Link to={`/admin/tickets?taskId=${encodeURIComponent(taskId)}`} className="btn sm" data-testid="gap-panorama-tickets">{zh.dock.panoramaTickets}</Link>
+    </div>
+  );
+}
 
 /**
  * CL.7（PRD-in-dialog-gap-fill-loop）：对话坞内缺口卡——答案命中缺口时，给出可点的
@@ -77,6 +139,8 @@ export function GapCard({ report, scenario, onRetry }: { report: GapReport; scen
 
   return (
     <div className={styles.gapCard} data-testid="gap-card" data-gapcode={code}>
+      {/* UPG-L0-PREANALYSIS §7.2：顶部只读预分析全景条（暗发关/无 taskId → 不渲染·主体逐像素不变）。 */}
+      <GapPanorama taskId={report.taskId} />
       {/* ONTO-SCEN-LAUNCH-DET §2.5：场景卡诚实发育卡——「此卡发育中：缺 X · 已建工单 #N」+ 深链（替代死答） */}
       {scenario && (
         <div className={styles.gapHead} data-testid="gap-scenario">

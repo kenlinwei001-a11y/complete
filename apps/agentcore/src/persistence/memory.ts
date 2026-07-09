@@ -64,6 +64,7 @@ export function createMemoryRepos(): Repos {
   const growthLedger = new Map<string, import("@platform/contracts").GrowthLedgerEntry>();
   const growthTickets = new Map<string, import("@platform/contracts").GrowthTicket>();
   const growthWorklist = new Map<string, import("@platform/contracts").WorklistItem>();
+  const preAnalyses = new Map<string, import("@platform/contracts").PreAnalysisReport>();
   const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
   const evalRuns = new Map<string, import("@platform/contracts").EvalRunReport>();
 
@@ -429,6 +430,10 @@ export function createMemoryRepos(): Repos {
       async upsert(w) { growthWorklist.set(w.id, clone(w)); },
       async get(tenantId, id) { const w = growthWorklist.get(id); return w && w.tenantId === tenantId ? clone(w) : undefined; },
       async listByTenant(tenantId) { return [...growthWorklist.values()].filter((w) => w.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
+    },
+    preAnalyses: {
+      async upsert(r) { preAnalyses.set(r.taskId, clone(r)); },
+      async getByTaskId(tenantId, taskId) { const r = preAnalyses.get(taskId); return r && r.tenantId === tenantId ? clone(r) : undefined; },
     },
     domainEvents: {
       async append(e) { domainEvents.push(clone(e)); },

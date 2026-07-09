@@ -70,6 +70,11 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "growth.fill_triggered", producer: "自成长发动机·人工触发补数据缺口（认领后点补·真跑 fillData/provisionWorld）", tier: "IN_SESSION", invalidates: ["growth-worklist", "dashboard", "risk", "scenario-data", "object-queries"] },
   { event: "growth.ticket_opened", producer: "自成长发动机·缺功能落工单", tier: "NOTIFY", invalidates: ["growth-tickets", "notifications"] },
   { event: "growth.converged", producer: "自成长发动机·LOOP 收敛（问句现可答）", tier: "IN_SESSION", invalidates: ["growth-ledger", "growth-tickets"] },
+  // UPG-L0-PREANALYSIS（PRD-gap-analysis-engine §6/§7.1）：查询预分析旁路 3 事件（暗发·feature 开时才产出）。
+  // GapCard 全景条据 growth-preanalysis 失效重拉 GET /b/v1/growth/pre-analysis/:taskId（≤DEFAULT_POLL_MS=20s·D-29）。
+  { event: "growth.pre_analysis_started", producer: "查询预分析·后台起（占位 RUNNING·不阻塞 SSE）", tier: "IN_SESSION", invalidates: ["growth-preanalysis"] },
+  { event: "growth.pre_analysis_done", producer: "查询预分析·全景就位（gapAnalysis+summary）", tier: "IN_SESSION", invalidates: ["growth-preanalysis"] },
+  { event: "growth.pre_analysis_failed", producer: "查询预分析·失败诚实留痕（QOS 照常）", tier: "IN_SESSION", invalidates: ["growth-preanalysis"] },
   { event: "quarantine.row_added", producer: "隔离区入库", tier: "NOTIFY", invalidates: ["notifications", "quarantine"] },
   // L16 感知层环：用户实体在本租户任何已发布类型都解析不到 → 域外信号（最近邻候选 + 误触发率埋点）
   { event: "entity.out_of_domain", producer: "感知层·槽位解析（裸串实体域外）", tier: "NOTIFY", invalidates: ["perception-metrics"] },
