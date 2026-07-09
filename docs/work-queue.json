@@ -4527,13 +4527,15 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "amended": "2026-07-07T02:00:00.000Z",
-        "wip": "2026-07-09T04:06:43.268Z"
-      }
+        "wip": "2026-07-09T04:06:43.268Z",
+        "built": "2026-07-09T04:30:29.443Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "ORDER-CONSOLIDATE",
@@ -4894,8 +4896,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "GAP-ADVICE-QUALITY",
-      "at": "2026-07-09T04:19:54.133Z"
+      "id": "I18N-CHINESE-UI",
+      "at": "2026-07-09T04:30:29.443Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
