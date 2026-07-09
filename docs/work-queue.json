@@ -4777,8 +4777,8 @@
     },
     {
       "id": "LLM-ROLE-RESOLUTION-FIX",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P1",
       "deps": [],
       "doc": "apps/agentcore/src/llm/providers.ts",
@@ -4811,7 +4811,8 @@
       },
       "at": {
         "todo": "2026-07-07T04:00:00.000Z",
-        "amended": "2026-07-07T05:00:00.000Z"
+        "amended": "2026-07-07T05:00:00.000Z",
+        "wip": "2026-07-09T03:04:38.662Z"
       }
     },
     {
@@ -4874,9 +4875,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "FAKEDATA-SWEEP",
-      "at": "2026-07-09T03:04:05.691Z"
+      "cmd": "WIP",
+      "id": "LLM-ROLE-RESOLUTION-FIX",
+      "at": "2026-07-09T03:04:38.662Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
