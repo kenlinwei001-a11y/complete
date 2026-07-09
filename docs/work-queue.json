@@ -4609,10 +4609,11 @@
           }
         ]
       },
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "todo": "2026-07-07T00:00:00.000Z"
+        "todo": "2026-07-07T00:00:00.000Z",
+        "wip": "2026-07-09T05:43:05.399Z"
       }
     },
     {
@@ -4909,8 +4910,8 @@
     },
     {
       "id": "I18N-LONGTAIL",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P3",
       "deps": [],
       "doc": "apps/frontend-shell/src",
@@ -4932,16 +4933,17 @@
         ]
       },
       "at": {
-        "todo": "2026-07-09T04:30:00.000Z"
+        "todo": "2026-07-09T04:30:00.000Z",
+        "wip": "2026-07-09T05:43:05.474Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "FILL-E1-CALIB-LIVE",
-      "at": "2026-07-09T05:42:53.519Z"
+      "cmd": "WIP",
+      "id": "I18N-LONGTAIL",
+      "at": "2026-07-09T05:43:05.474Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
