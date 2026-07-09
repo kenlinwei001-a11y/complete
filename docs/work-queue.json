@@ -5301,7 +5301,7 @@
       "title": "L0·兄弟A A1: fuseClassification确定性⊕LLM融合(治上游听懂精度)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "WIP",
       "owner": "dev",
       "deps": [],
       "note": "PRD-upstream §4: 把orchestrator.ts:520 llmClassification??deterministicClassify升为fuseClassification融合(纯函数R6)·救回遗漏(det score≥0.5补候选conf=τ_low)+一致加成(LLM top==det top→×(1+β))+冲突走澄清不硬塞；QOS_CLASSIFY_FUSE开关(env·defaultOn:false·RL2)关时100%等价现行??语义。",
@@ -5334,7 +5334,7 @@
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
-        "wip": "2026-07-09T15:02:32.936Z",
+        "wip": "2026-07-09T17:14:11.806Z",
         "built": "2026-07-09T15:29:38.758Z",
         "blocked": "2026-07-09T16:34:11.652Z"
       },
@@ -5345,7 +5345,7 @@
       "title": "L0·兄弟A A2: SOLVER_COVERAGE覆盖矩阵+solver-coverage门(治没有对的求解器·诊断)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "BLOCKED",
+      "status": "WIP",
       "owner": "dev",
       "deps": [
         "UPG-L0-CLASSIFY-FUSE"
@@ -5379,7 +5379,7 @@
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
-        "wip": "2026-07-09T15:33:28.336Z",
+        "wip": "2026-07-09T17:14:11.752Z",
         "built": "2026-07-09T15:45:14.298Z",
         "blocked": "2026-07-09T16:32:21.328Z"
       },
@@ -5506,9 +5506,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "UPG-L0-HIDDENREQ",
-      "at": "2026-07-09T17:13:02.708Z"
+      "cmd": "WIP",
+      "id": "UPG-L0-CLASSIFY-FUSE",
+      "at": "2026-07-09T17:14:11.806Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
