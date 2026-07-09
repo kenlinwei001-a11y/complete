@@ -120,6 +120,13 @@ export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBind
     { block: "table", fromSolverField: "displacedOrders" },
     { block: "text", fromSolverField: "summary" },
   ],
+  // QUERY30 缺口③ Q01 样板：多方案五维比较矩阵。KPI=推荐方案键/可比方案数；表=五维比较矩阵；叙事=择优说明/门。
+  multi_plan_compare: [
+    { block: "kpi", fromSolverField: "recommendedKey" },
+    { block: "kpi", fromSolverField: "comparedCount" },
+    { block: "table", fromSolverField: "matrix" },
+    { block: "text", fromSolverField: "note" },
+  ],
   // CORE-NL-SOLVER-ROUTING：5 个通用多跳求解器（route=graph）的投影绑定（⊆ solver-registry outputShape·
   // datacore render-bindings-real-fields.test 真 invoke 逐字段钉「真在输出中」）。每卡 ≥1 kpi/table 承载数据块。
   shared_bottleneck: [

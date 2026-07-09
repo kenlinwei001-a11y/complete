@@ -102,6 +102,8 @@ export const SOLVER_REGISTRY: readonly SolverDescriptor[] = [
   { key: "multisource_fusion", route: "graph", outputShape: ["role", "fused", "suspectCount", "conflictCount", "dataMode", "strategies", "summary"] },
   // QUERY30 缺口③ Q01 样板：接单挤占推演（extended 路由·args 驱动·确定性 R6·接 C34/C35）。
   { key: "what_if_displacement", route: "extended", outputShape: ["newOrder", "base", "feasibleWithoutDisplacement", "freeDaily", "shortfallDaily", "displacedOrders", "highPriDisplaceDays", "totalDisplaced", "schemes", "schemeCount", "recommended", "comparison", "ruleRefs", "summary"] },
+  // QUERY30 缺口③ Q01 样板：多方案五维比较矩阵（extended 路由·纯聚合层·确定性 R6·≥2 可比方案门 C35 口径）。
+  { key: "multi_plan_compare", route: "extended", outputShape: ["matrix", "recommendedKey", "dims", "comparedCount", "note"] },
 ] as const;
 
 /** key→descriptor（O(1) 查·派发码用）。 */

@@ -132,7 +132,7 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     expect(r.feasible).toBe(true); // 30+20+60 ≥ 100 → 可行
   });
 
-  it("catalog discover 列出全部 23 求解器（8 复用 + 13 + 1 编排器 + Q01 what_if_displacement）", async () => {
+  it("catalog discover 列出全部 24 求解器（8 复用 + 13 + 1 编排器 + Q01 what_if_displacement + multi_plan_compare）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;

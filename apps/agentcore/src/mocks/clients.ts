@@ -480,6 +480,27 @@ const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
     summary: "急单 4680-NCM ×4200（提前 20%·6 周）日产能缺口 80，需挤占 2 单（高优先级最长位移 21 天）；2 个可行方案，推荐「延期在手单」。",
     dataMode: "MOCK",
   },
+  // QUERY30 缺口③ Q01 样板：多方案五维比较矩阵 mock 输出（形状镜像真实 DataCore `multi_plan_compare`·矩阵逐值溯自
+  // 上 what_if_displacement mock 四型方案；毛利并列 13.5 → 挤占少者 downgrade 胜·comparedCount=2）。dataMode:"MOCK" 诚实标。
+  multi_plan_compare: {
+    matrix: [
+      { key: "delay", name: "延期在手单", feasible: true, promiseDeltaDays: 21, marginPct: 13.5, displacedCount: 2, outsourceRatio: 0, cashOccupiedWan: 252 },
+      { key: "outsource", name: "外协消化", feasible: false, promiseDeltaDays: 0, marginPct: 11.5, displacedCount: 0, outsourceRatio: 0, cashOccupiedWan: 252 },
+      { key: "split", name: "拆单分线", feasible: false, promiseDeltaDays: 0, marginPct: 13, displacedCount: 0, outsourceRatio: 0, cashOccupiedWan: 252 },
+      { key: "downgrade", name: "降级部分承接", feasible: true, promiseDeltaDays: 33, marginPct: 13.5, displacedCount: 0, outsourceRatio: 0, cashOccupiedWan: 50.4 },
+    ],
+    recommendedKey: "downgrade",
+    dims: [
+      { key: "promiseDeltaDays", label: "交期Δ(天)" },
+      { key: "marginPct", label: "毛利(%)" },
+      { key: "displacedCount", label: "挤占数" },
+      { key: "outsourceRatio", label: "外协比" },
+      { key: "cashOccupiedWan", label: "现金占用(万)" },
+    ],
+    comparedCount: 2,
+    note: "2 个可行方案可比·推荐「降级部分承接」（毛利优先·可行前置）",
+    dataMode: "MOCK",
+  },
   // CORE-NL-SOLVER-ROUTING：5 个通用多跳求解器（route=graph）mock 输出，形状对齐 datacore 真实 invoke
   // （顶层键覆盖 SOLVER_RENDER_BINDINGS 全字段·dataMode:"MOCK" 诚实标）——使 mock 侧路径A 投影/发育验证
   // 与真后端同构（真值以真 DataCore invoke/FDE 为准）。
@@ -682,7 +703,7 @@ export class MockRuleEngineClient implements RuleEngineClient {
   }
   // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）。
   async listRuleKeys(): Promise<string[]> {
-    return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
+    return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33", "C34", "C35"];
   }
 }
 

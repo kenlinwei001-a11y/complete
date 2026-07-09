@@ -106,6 +106,7 @@ export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "carbon_footprint", name: "碳足迹核算", description: "物料+能耗两段碳排，对比欧盟阈值给改善杠杆。", argHints: { modelId: "型号", baseName: "基地" }, domain: "plan" },
   { key: "countermeasure_combo", name: "对策组合编排器", description: "跨求解器编排：多杠杆按成本贪心闭合缺口，每段标注来源求解器，返回组合/残差/总成本/可行性。", argHints: { gap: "缺口", levers: "杠杆集(可选)" }, domain: "plan" },
   { key: "what_if_displacement", name: "接单挤占推演", description: "某急单（型号/数量/提前比例/周数）插进来能不能接、会挤占哪些在手订单（按优先级级联·C34 挤占优先级不变量）、四型方案（延期/外协/拆单/降级）确定性枚举 + 五维量化比较（≥2 方案门 C35），被挤订单逐单再方案。回答『XX 急单插进来能不能接、挤占哪些单、有哪些方案』。", argHints: { model: "急单型号，如 4680-NCM", qty: "急单数量", advancePct: "提前交付比例，如 0.2", weeks: "交付周数", baseId: "落单基地 ID" }, domain: "plan" },
+  { key: "multi_plan_compare", name: "多方案比较矩阵", description: "对接单挤占推演产出的四型方案做五维比较矩阵（交期Δ/毛利/挤占数/外协比/现金占用），确定性择优推荐（毛利优先·可行前置），≥2 可比方案门（C35 口径·不足则诚实不强推）。纯聚合层·每值溯自方案字段。回答『这些方案怎么比、推荐哪个』。", argHints: { schemes: "what_if_displacement 输出的四型方案数组（缺省则从对象图自动装配急单推演）" }, domain: "plan" },
 ];
 
 /**

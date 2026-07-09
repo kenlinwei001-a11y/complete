@@ -35,7 +35,7 @@ const EXPECTED_KEYS = [
   "shared_bottleneck", "concentration_risk", "margin_attribution", "supplier_disruption_radius",
   "selection_optimize", "assignment_optimize", "sequencing_optimize", "packing_optimize",
   "facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction",
-  "optimize_whatif", "multisource_fusion", "what_if_displacement",
+  "optimize_whatif", "multisource_fusion", "what_if_displacement", "multi_plan_compare",
 ];
 
 // 重构前 A6_READOUT_SOLVERS 白名单。
@@ -59,7 +59,7 @@ const EXPECTED_GRAPH = [
 const EXPECTED_EXTENDED = [
   "mitigation_select", "cert_schedule", "kit_readiness", "lta_gap", "inventory_optimize", "changeover_sequence",
   "yield_diagnosis", "maintenance_stagger", "outsourcing_split", "quote_margin", "credit_exposure",
-  "quarterly_gap", "carbon_footprint", "countermeasure_combo", "what_if_displacement",
+  "quarterly_gap", "carbon_footprint", "countermeasure_combo", "what_if_displacement", "multi_plan_compare",
 ];
 
 describe("HARDCODE-DISPATCH-REGISTRY · 求解器派发单一来源", () => {

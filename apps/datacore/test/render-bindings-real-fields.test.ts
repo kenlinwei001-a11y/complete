@@ -42,6 +42,16 @@ const REPRESENTATIVE_ARGS: Record<string, Record<string, unknown>> = {
     ],
     newUnitPrice: 600,
   },
+  // QUERY30-ORCH Q01：多方案比较矩阵——同上争抢集（无 schemes → deriveArgs 复用 what_if_displacement 装配四型方案后喂入·产出五维矩阵）。
+  multi_plan_compare: {
+    model: "MX", qty: 4200, weeks: 6, advancePct: 0.2, baseId: "常州",
+    lines: [{ lineId: "L1", capacityDaily: 120, certifiedModels: ["MX", "MA"] }],
+    orders: [
+      { so: "A2", cust: "客户2", model: "MA", qty: 2100, pri: "低", marginPct: 20, penaltyClause: 0.05, substitutable: false, unitPrice: 500 },
+      { so: "A1", cust: "客户1", model: "MA", qty: 2100, pri: "高", marginPct: 10, penaltyClause: 0.1, substitutable: false, unitPrice: 500 },
+    ],
+    newUnitPrice: 600,
+  },
   // CORE-NL-SOLVER-ROUTING：5 个通用多跳求解器（route=graph·读对象图）代表性入参（结构合法·seedBattery
   // 世界真类型/字段/路径；handler 无条件回全形状——即便结果集空，绑定字段仍在输出中在场，真值齿只钉字段在场）。
   shared_bottleneck: { resourceType: "Base", sharedByType: "Line", viaField: "baseId", capacityField: "formationCapDaily", demandField: "capacityDaily" },

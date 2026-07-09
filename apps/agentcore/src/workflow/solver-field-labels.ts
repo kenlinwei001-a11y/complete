@@ -146,6 +146,10 @@ export const FIELD_LABELS: Readonly<Record<string, FieldLabel>> = {
   totalDisplaced: { label: "挤占订单数", unit: "单" },
   schemeCount: { label: "可行方案数", unit: "个" },
 
+  // —— QUERY30 缺口③ Q01 multi_plan_compare 多方案比较矩阵标量字段 ——
+  recommendedKey: { label: "推荐方案" },
+  comparedCount: { label: "可比方案数", unit: "个" },
+
   // —— carbon_footprint 构成子字段（避免展开落 camelCase 英文回落）——
   breakdown: { label: "构成" },
   materialCarbon: { label: "物料碳排", unit: "kgCO₂e" },
@@ -251,6 +255,10 @@ export const STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
   "newOrder",
   "displacedOrders",
   "comparison",
+  // QUERY30 缺口③ Q01 multi_plan_compare 结构性容器（矩阵/维度声明·投成表；note 叙事段·投成文本）。
+  "matrix",
+  "dims",
+  "note",
   "windows",
   "projects",
   "c23",

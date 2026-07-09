@@ -98,6 +98,10 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   // （MES authority=3 最高→采实际交期）；cap 三源（ERP/SRM 相近·MES 虚高）→ 测谎命中 SUSPECT·审慎取最保守值不照单全收。
   // 三源而非两源：两源无法定中位判谁虚报，三源方能揪出 MES 离群（诚实测谎前提）。
   card("S25", "多源数据仲裁", "dash", "multisource_fusion_q", "多源数据打架时按什么口径仲裁？有没有测谎命中的可疑源？", "multisource_fusion", ["C05", "C16"], "COMPUTE", "解读多源融合仲裁与测谎", [], { role: "order", fields: ["due", "cap"], sources: [{ sourceLabel: "ERP", typeKey: "ErpOrder", authority: 1, asOfField: "asOf" }, { sourceLabel: "MES", typeKey: "MesOrder", authority: 3, asOfField: "asOf" }, { sourceLabel: "SRM", typeKey: "SrmOrder", authority: 2, asOfField: "asOf" }], defaultStrategy: "AUTHORITY", suspectThreshold: 0.15 }),
+  // QUERY30 缺口③ Q01 样板（DESIGN-query30 §2.5·解 R3 电池卡·9洞共性根）：接单挤占推演 NL 入 QOS 场景路由。
+  // 意图键 what_if_displacement_q 已在 seed 注册一等意图+计划（接单全链推演 workflow：what_if_displacement→multi_plan_compare）；
+  // 本卡把 Q01 样板问句接进启动器目录单一来源 → GET /b/v1/scenarios 下发 + NL 分类命中该意图 → 路径A 真跑真求解器。
+  card("S26", "接单挤占推演", "project", "what_if_displacement_q", "4680-NCM 加 20% 六周插进来能不能接·会挤占哪些单·有哪些方案？", "what_if_displacement", ["C34", "C35"], "COMPUTE", "解读接单挤占推演与多方案比较", [M("4680-NCM", "4680-NCM"), B("changzhou", "常州")], { model: "4680-NCM", qty: 5000, advancePct: 0.2, weeks: 6, baseId: "changzhou" }),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {

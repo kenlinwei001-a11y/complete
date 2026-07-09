@@ -77,9 +77,11 @@ const skillIds = new Set(skills.map((s) => s.id));
 const { plans } = seed.seedIntentsAndPlans("demo");
 const planById = new Map(plans.map((p) => [p.id, p]));
 
-// CORE-NL-SOLVER-ROUTING：出厂场景卡 20 → 25（新增 5 个通用多跳求解器卡 S21–S25）。
-if (intents.length !== 25) {
-  fail(`一等 Intent 物化数=${intents.length}，应为 25（25 场景 intentKey 全物化）。`);
+// 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：一等 Intent 物化数 == 出厂场景卡数（SCENARIO_CATALOG）。
+// S21–S25 通用多跳求解器卡 + S26 QUERY30 Q01 接单挤占推演卡皆经同一物化派生。
+const { SCENARIO_CATALOG } = await import(`${base}/scenarios-catalog.js`);
+if (intents.length !== SCENARIO_CATALOG.length) {
+  fail(`一等 Intent 物化数=${intents.length}，应为 ${SCENARIO_CATALOG.length}（SCENARIO_CATALOG 场景卡全物化）。`);
 }
 for (const it of intents) {
   const id = `intent(${it.key})`;

@@ -31,6 +31,8 @@ export const INTENT_MODE: Record<string, IntentMode> = {
   margin_attribution_q: "WORKFLOW_FIRST",
   supplier_disruption_q: "WORKFLOW_FIRST",
   multisource_fusion_q: "WORKFLOW_FIRST",
+  // QUERY30 缺口③ Q01 样板：接单挤占推演——价值在「能不能接/挤占哪些/有哪些方案」（求解器承载数据表）→ WORKFLOW_FIRST。
+  what_if_displacement_q: "WORKFLOW_FIRST",
   risk_root_cause: "AGENT_FIRST",
   plan_recommend: "AGENT_FIRST",
   yield_diag: "AGENT_FIRST",

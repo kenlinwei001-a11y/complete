@@ -598,6 +598,58 @@ export function whatIfDisplacement(args: Record<string, unknown>) {
 }
 
 /**
+ * QUERY30 缺口③ Q01 样板 · `multi_plan_compare`（DESIGN-query30 §2.5）——**多方案五维比较矩阵**（纯聚合层）。
+ *
+ * 输入 `args.schemes`（= `what_if_displacement` 输出的四型方案数组，或经 registry deriveArgs 自动装配急单推演后喂入）。
+ * 输出对每个方案一行的**五维比较矩阵**（每维逐值溯自方案字段·**零系数·纯投影 R13**）：
+ *   交期Δ=promiseDeltaDays · 毛利=marginPct · 挤占数=displacedCount · 外协比=outsourceRatio · 现金占用=cashOccupiedWan。
+ *
+ * 推荐案（`recommendedKey`）**确定性择优**（R6）——文档化 tiebreak 序（保毛利导向·与 what_if_displacement 自身
+ * 「挤占最少」导向的 recommended 正交，二者服务不同决策口径）：
+ *   ① 仅在**可行**方案中择（feasible 前置）；② 毛利率高优先（marginPct 降序）；③ 挤占少（displacedCount 升序）；
+ *   ④ 现金占用省（cashOccupiedWan 升序）；⑤ key 字典序（末位稳定断结）。
+ *
+ * **≥2 可比方案门（C35 口径·纯本层判定不落规则裁决）**：可行方案 <2 → **诚实标「可比方案不足2·不强推」**、
+ * `recommendedKey=null`（不硬推单一方案·G「诚实边界」）。可行 ≥2 → 给推荐案 + 说明。
+ */
+export function multiPlanCompare(args: Record<string, unknown>) {
+  const raw = Array.isArray(args.schemes) ? (args.schemes as Record<string, unknown>[]) : [];
+  // 五维比较维度声明（label 仅字段语义·无业务数字·R14）。
+  const dims = [
+    { key: "promiseDeltaDays", label: "交期Δ(天)" },
+    { key: "marginPct", label: "毛利(%)" },
+    { key: "displacedCount", label: "挤占数" },
+    { key: "outsourceRatio", label: "外协比" },
+    { key: "cashOccupiedWan", label: "现金占用(万)" },
+  ];
+  // 每行 = 方案标识 + 五维（逐值投影自方案字段·无新真值）。
+  const matrix = raw.map((s) => ({
+    key: str(s.key),
+    name: str(s.name),
+    feasible: s.feasible === true,
+    promiseDeltaDays: num(s.promiseDeltaDays),
+    marginPct: num(s.marginPct),
+    displacedCount: num(s.displacedCount),
+    outsourceRatio: num(s.outsourceRatio),
+    cashOccupiedWan: num(s.cashOccupiedWan),
+  }));
+  const feasible = matrix.filter((r) => r.feasible);
+  const comparedCount = feasible.length;
+  // 确定性择优（文档化 tiebreak·毛利优先）。
+  const best = [...feasible].sort((a, b) =>
+    b.marginPct - a.marginPct || a.displacedCount - b.displacedCount ||
+    a.cashOccupiedWan - b.cashOccupiedWan || (a.key < b.key ? -1 : 1),
+  )[0];
+  // C35 口径 ≥2 可比方案门：不足 2 → 不强推（recommendedKey=null·诚实标）。
+  const enough = comparedCount >= 2;
+  const recommendedKey = enough ? (best?.key ?? null) : null;
+  const note = enough
+    ? `${comparedCount} 个可行方案可比·推荐「${best?.name ?? "-"}」（毛利优先·可行前置）`
+    : `可比方案不足2·不强推（可行方案 ${comparedCount} 个）`;
+  return { matrix, recommendedKey, dims, comparedCount, note };
+}
+
+/**
  * RISK-TRAJECTORY-DEFAKE（G2/G3·治本·命名而非匿名内联）：**合成默认输入**的命名常量。
  * 仅当调用方未显式传 args 时用于兜底演示；对应 dataMode 分别标 PARTIAL（估算缺口）/ MOCK（合成良率序列），
  * **不冒充真源**。此前 `totalDemand*0.15` 匿名内联、良率断点标 `source:"MES"` 谎称来自制造执行系统（假源归因）。
@@ -823,6 +875,19 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
       const modelUnit = orders.find((o) => o.model === str(args.model))?.unitPrice
         ?? num((c.models ?? []).map(props).find((m) => str(m.modelId) === str(args.model))?.unitPrice, 600);
       return { ...th, newUnitPrice: modelUnit, ...args, lines, orders };
+    },
+  },
+  // QUERY30 缺口③ Q01 样板：多方案五维比较矩阵（纯聚合层）。显式 schemes → LIVE；否则复用 what_if_displacement
+  // 装配急单推演产出四型方案再喂入（dataMode 随 what_if_displacement 诚实位·非本层新真值）。
+  multi_plan_compare: {
+    fn: multiPlanCompare,
+    dataMode: (c, args) => (argHas(args, "schemes") ? "LIVE" : EXTENDED_REGISTRY.what_if_displacement!.dataMode(c, args)),
+    deriveArgs: (c, args) => {
+      if (argHas(args, "schemes")) return args;
+      // 无显式方案集 → 经 what_if_displacement 的 deriveArgs 装配急单推演入参、跑出四型方案，投入比较层（纯派生·R6）。
+      const wdArgs = EXTENDED_REGISTRY.what_if_displacement!.deriveArgs(c, args);
+      const wd = whatIfDisplacement(wdArgs);
+      return { ...args, schemes: wd.schemes };
     },
   },
 };

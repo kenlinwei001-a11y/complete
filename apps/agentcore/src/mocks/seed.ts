@@ -335,9 +335,10 @@ export function seedIntentsAndPlans(
         },
       ],
     },
-    // QUERY30 缺口③ Q01 样板 · 接单全链推演 workflow（DESIGN-query30 §2.5）：可行性→四型方案组→挤占级联→毛利→逐单再方案，
-    // 全部由 what_if_displacement 求解器一步产出（内含四型方案 + 挤占清单 + 逐单再方案）；C34/C35 经 SOLVER_RULE_REFS 求解器内真评估透出。
-    // render 走 solver_summary（SOLVER_RENDER_BINDINGS["what_if_displacement"] 投影 recommended/schemeCount/highPriDisplaceDays/schemes/displacedOrders/summary 真实字段·消灭静态占位）。
+    // QUERY30 缺口③ Q01 样板 · 接单全链推演 workflow（DESIGN-query30 §2.5）：可行性→四型方案组→挤占级联→毛利→受影响订单逐单再方案→多方案五维比较。
+    // s1 what_if_displacement 一步产出可行性/四型方案/挤占清单/逐单再方案（C34/C35 经 SOLVER_RULE_REFS 求解器内真评估透出）；
+    // s2 multi_plan_compare 接 s1 的 schemes 出五维比较矩阵 + 确定性推荐（纯聚合层·真链式 step→step 传参）。
+    // render 走 solver_summary 两块（各投 SOLVER_RENDER_BINDINGS 真实字段·消灭静态占位）。
     {
       id: `plan_what_if_displacement_q_v1${sfx}`,
       packageId: pkgId,
@@ -360,11 +361,21 @@ export function seedIntentsAndPlans(
           },
         },
         {
+          id: "s2",
+          type: "invoke_solver",
+          params: {
+            solverKey: "multi_plan_compare",
+            // 链式传参：s1 输出的四型方案数组喂入比较层（executor 精确解析单一 {{ref}} 为真数组）。
+            args: { schemes: "{{steps.s1.output.data.schemes}}" },
+          },
+        },
+        {
           id: "render",
           type: "render_answer",
           params: {
             blocks: [
               { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1", bindings: [...(SOLVER_RENDER_BINDINGS.what_if_displacement ?? [])] },
+              { type: "solver_summary", output: "{{steps.s2.output}}", fromStep: "s2", bindings: [...(SOLVER_RENDER_BINDINGS.multi_plan_compare ?? [])] },
             ],
           },
         },

@@ -97,4 +97,80 @@ describe("QUERY30 缺口③ Q01 · what_if_displacement 接单挤占推演", () 
     expect(out.displacedOrders as unknown[]).toHaveLength(0);
     expect(out.highPriDisplaceDays).toBe(0);
   });
+
+  it("⑥ 诚实认证线回落：无认证该型号的线 → certFallback（回落全部线·不静默兜底）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 无线认证 MX（仅认证 MA）→ certLinesRaw 空 → certFallback 回落全部线并诚实承接（非静默丢弃）。
+    const out = data(await invokeSolver(t, "what_if_displacement", {
+      ...CONTEND,
+      lines: [{ lineId: "L1", capacityDaily: 500, certifiedModels: ["MA"] }],
+    }));
+    // 回落后 500 日产能足量 → 免挤占承接；拆单方案因 certFallback 判不可行（无真认证线·诚实标）。
+    expect(out.feasibleWithoutDisplacement).toBe(true);
+    const split = (out.schemes as { key: string; feasible: boolean; note: string }[]).find((s) => s.key === "split")!;
+    expect(split.feasible).toBe(false);
+    expect(split.note).toBe("无认证线");
+  });
+});
+
+/**
+ * QUERY30 缺口③ Q01 样板 · `multi_plan_compare`（DESIGN-query30 §2.5）——多方案五维比较矩阵（纯聚合层）。
+ * 齿：① 每行五维完整 + 确定性 recommendedKey；② R6（同输入字节一致）；③ <2 可比方案 → 诚实不强推。
+ */
+describe("QUERY30 缺口③ Q01 · multi_plan_compare 多方案比较矩阵", () => {
+  // 三可行方案（毛利/挤占/现金各异）+ 一不可行 → 择优可判、门可测。
+  const SCHEMES = [
+    { key: "delay", name: "延期在手单", feasible: true, displacedCount: 2, promiseDeltaDays: 21, marginPct: 12, outsourceRatio: 0, penaltyTotalWan: 30, cashOccupiedWan: 252 },
+    { key: "outsource", name: "外协消化", feasible: true, displacedCount: 1, promiseDeltaDays: 0, marginPct: 10, outsourceRatio: 0.3, penaltyTotalWan: 0, cashOccupiedWan: 300 },
+    { key: "split", name: "拆单分线", feasible: false, displacedCount: 0, promiseDeltaDays: 0, marginPct: 11.5, outsourceRatio: 0, penaltyTotalWan: 0, cashOccupiedWan: 252 },
+    { key: "downgrade", name: "降级部分承接", feasible: true, displacedCount: 0, promiseDeltaDays: 10, marginPct: 12, outsourceRatio: 0, penaltyTotalWan: 0, cashOccupiedWan: 120 },
+  ];
+
+  it("① 五维矩阵完整 + 确定性择优（毛利优先·可行前置）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = data(await invokeSolver(t, "multi_plan_compare", { schemes: SCHEMES }));
+    const matrix = out.matrix as Record<string, unknown>[];
+    expect(matrix).toHaveLength(4);
+    // 每行五维齐全（+ 标识/可行位）。
+    for (const row of matrix) {
+      for (const k of ["promiseDeltaDays", "marginPct", "displacedCount", "outsourceRatio", "cashOccupiedWan"]) {
+        expect(typeof row[k], `矩阵行缺维度 ${k}`).toBe("number");
+      }
+    }
+    expect((out.dims as unknown[])).toHaveLength(5);
+    // 可行 3 个（delay/outsource/downgrade）；毛利并列 12 的 delay(挤占2) vs downgrade(挤占0) → 挤占少者 downgrade 胜。
+    expect(out.comparedCount).toBe(3);
+    expect(out.recommendedKey).toBe("downgrade");
+    expect(out.note).toContain("降级部分承接");
+  });
+
+  it("② R6 确定性：同输入两次 invoke 字节一致", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const a = await invokeSolver(t, "multi_plan_compare", { schemes: SCHEMES });
+    const b = await invokeSolver(t, "multi_plan_compare", { schemes: SCHEMES });
+    expect(JSON.stringify(data(a))).toBe(JSON.stringify(data(b)));
+  });
+
+  it("③ <2 可比方案门（C35 口径）：仅 1 可行 → 诚实不强推·recommendedKey=null", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const oneFeasible = SCHEMES.map((s) => (s.key === "delay" ? s : { ...s, feasible: false }));
+    const out = data(await invokeSolver(t, "multi_plan_compare", { schemes: oneFeasible }));
+    expect(out.comparedCount).toBe(1);
+    expect(out.recommendedKey).toBeNull();
+    expect(out.note).toContain("可比方案不足2");
+  });
+
+  it("④ 无显式 schemes → deriveArgs 复用 what_if_displacement 装配四型方案再比较（端到端·纯派生）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = data(await invokeSolver(t, "multi_plan_compare", CONTEND));
+    // 四型方案 → 四行矩阵；至少 delay/downgrade 可行 → comparedCount≥2。
+    expect((out.matrix as unknown[]).length).toBe(4);
+    expect(out.comparedCount as number).toBeGreaterThanOrEqual(2);
+    expect(out.recommendedKey).toBeTruthy();
+  });
 });
