@@ -4609,12 +4609,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-07T00:00:00.000Z",
-        "wip": "2026-07-09T05:43:05.399Z"
-      }
+        "wip": "2026-07-09T05:43:05.399Z",
+        "built": "2026-07-09T06:17:04.563Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "FAKEDATA-SWEEP",
@@ -4944,8 +4946,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "I18N-LONGTAIL",
-      "at": "2026-07-09T06:05:53.401Z"
+      "id": "RISKBOARD-LAYOUT-REWORK",
+      "at": "2026-07-09T06:17:04.563Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
