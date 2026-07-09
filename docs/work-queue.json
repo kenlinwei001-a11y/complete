@@ -3698,7 +3698,7 @@
       "blockReason": ""
     },
     {
-      "status": "BLOCKED",
+      "status": "OPEN",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
@@ -3707,7 +3707,7 @@
         "built": "2026-07-06T03:44:56.740Z",
         "blocked": "2026-07-09T09:01:56.417Z",
         "done": "2026-07-06T04:06:27.706Z",
-        "open": "2026-07-06T11:41:01.815Z"
+        "open": "2026-07-09T09:41:58.013Z"
       },
       "id": "QUERY30-ORCH",
       "priority": "P1",
@@ -3717,7 +3717,7 @@
         "QUERY30-ONTOLOGY-EXT",
         "QUERY30-RULES"
       ],
-      "blockReason": "Phase1(KILL-MOCK-RED治本)已committed: countermeasure_combo除魔数假值→诚实降级(需真levers·datacore1019绿·齿测在)。但WO整体是分期epic·非单build: ①note称'10求解器函数在'不准——实测仅2/10存在(what_if_displacement+countermeasure_combo)·另8个(multi_plan_compare/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives)全仓零命中MISSING; ②真'跨求解器编排'=映射异构子求解器产出(cert_schedule→schedule/changeover_sequence→savedVsDueMin/capex→windows·各不同·无公共release字段)到统一gap释放账本·属§2.5/2.6核心设计工作·非补丁; ③另需7workflow+2agent+5skill+30intent经ONTO-SCEN发育管道。请协调方拆分为分期WO(Q01 what_if_displacement NL打穿→8求解器横铺→编排层gap账本→workflow/agent/skill/intent发育)·分期铁律见设计§3。",
+      "blockReason": "Phase1(KILL-MOCK-RED治本)已committed: countermeasure_combo除魔数假值→诚实降级(需真levers·datacore1019绿·齿测在)。但WO整体是分期epic·非单build: ①note称'10求解器函数在'不准——实测仅2/10存在(what_if_displacement+countermeasure_combo)·另8个(multi_plan_compare/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives)全仓零命中MISSING; ②真'跨求解器编排'=映射异构子求解器产出(cert_schedule→schedule/changeover_sequence→savedVsDueMin/capex→windows·各不同·无公共release字段)到统一gap释放账本·属§2.5/2.6核心设计工作·非补丁; ③另需7workflow+2agent+5skill+30intent经ONTO-SCEN发育管道。请协调方拆分为分期WO(Q01 what_if_displacement NL打穿→8求解器横铺→编排层gap账本→workflow/agent/skill/intent发育)·分期铁律见设计§3。 ‖ [2026-07-09拆单] 已拆为 Q30-P0-DATAFOUND(数据地基·TODO)+Q30-P1-Q01VERT(Q01样板·gated on P0)·见 docs/DESIGN-query30-orch-split.md。dev 走 P0/P1 分期WO·勿直接啃本 epic。P2-P5 待 P1 复验绿后登。",
       "gap": {
         "code": "NO_CAPABILITY",
         "holes": [
@@ -5053,14 +5053,121 @@
         "done": "2026-07-09T09:23:32.987Z"
       },
       "blockReason": ""
+    },
+    {
+      "id": "Q30-P0-DATAFOUND",
+      "title": "QUERY30拆单P0·数据地基: Line.capacityDaily/certifiedModels+Order.promiseDate/marginPct/allocatedLineIds+边ALLOCATED_ON/DISPLACES(先核后建)",
+      "doc": "docs/DESIGN-query30-orch-split.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "QUERY30-ONTOLOGY-EXT"
+      ],
+      "note": "[QUERY30-ORCH 拆单 P0·数据地基先行·否则9求解器建在沙上(绿测试≠能用)] **先核后建**: QUERY30-ONTOLOGY-EXT 标 DONE 但审核方 2026-07-09 grep 静态契约(packages/contracts/src)零命中 Line.capacityDaily/certifiedModels、Order.promiseDate/allocatedLineIds、边 Order-ALLOCATED_ON→Line/DISPLACES。① 先核实是否以动态 ObjectType/PropertyDef 落在 datacore 运行时(非静态TS契约)——若已真落地可查真值→P0缩为核验+补测; ② 若确缺: Line 加 capacityDaily(线级日产能number·设计§2.1标『最大单点缺口』:Line现仅3字段lineId/baseId/name)/certifiedModels(可产型号string[])/changeoverGroup; Order 加 promiseDate/marginPct(单毛利·现仅Segment级gmRate)/allocatedLineIds(占线明细·挤占锚); 本体边 Order-ALLOCATED_ON→Line、Order-DISPLACES→Order。契约+仓储双实现(datacore repo/memory.ts+repo/pg.ts+repo.ts接口+migrations/*.sql)同步。设计源§2.1/§2.2。分期铁律:P0绿才可开P1。",
+      "acceptance": {
+        "goal": "挤占推演的数据锚(Line.capacityDaily·Order.allocatedLineIds·Order-DISPLACES边)真实可查·非Base聚合兜底——否则what_if_displacement无法做真挤占分析。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "Line 对象含 capacityDaily 字段·查 demo 常州线实例返回线级具体正数(非 Base 日产能÷线数的兜底值);certifiedModels 为非空 string[]"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "Order 对象含 promiseDate(承诺交期)+allocatedLineIds(占线明细数组·非空)+marginPct(单级毛利·区别于 Segment 级 gmRate)"
+          },
+          {
+            "id": "C3",
+            "type": "test",
+            "assert": "本体含边 Order-ALLOCATED_ON→Line 与 Order-DISPLACES→Order·可经图/ontology 查询遍历(非仅文档声明)"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "契约(packages/contracts)+仓储双实现(datacore repo/memory.ts+repo/pg.ts+repo.ts接口)+迁移(migrations/*.sql)齐改·pnpm -r build && pnpm -r test 退出0·datacore 测试数≥基线"
+          },
+          {
+            "id": "C5",
+            "type": "curl",
+            "assert": "R6 确定性:同 tenant 同 seed 查同对象两次 JSON 字节一致"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态 datacore(SEED_DEMO=1)·curl 常州 Line 实例·jq .capacityDaily 期望正数、.certifiedModels|length>0"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-09T09:41:32.786Z"
+      }
+    },
+    {
+      "id": "Q30-P1-Q01VERT",
+      "title": "QUERY30拆单P1·Q01垂直打穿(样板·分期铁律): what_if_displacement校验+新建multi_plan_compare五维矩阵+接单全链workflow+Q01 NL入QOS路由",
+      "doc": "docs/DESIGN-query30-orch-split.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "dev",
+      "deps": [
+        "Q30-P0-DATAFOUND"
+      ],
+      "note": "[QUERY30-ORCH 拆单 P1·样板·分期铁律:先打穿Q01全链再横铺(设计§3)] ① 校验 what_if_displacement(已注册solver-registry.ts) 真挤占级联:方案枚举(延期/外协/拆单/降级)+被挤订单级联+逐单再方案·R6确定性; ② 新建 multi_plan_compare 求解器(五维比较矩阵:交期/毛利/挤占数/外协比/现金占用)·纯聚合层·registry注册(key+route+outputShape·R3过滤); ③ 接单全链推演 workflow(可行性→方案组→挤占→毛利→受影响订单→逐单再方案); ④ Q01 NL 入 QOS 场景路由(catalog指向通用求解器·解R3电池卡·9洞共性根;CORE-NL-SOLVER-ROUTING已接5通用求解器进S21-25·本单接Q01样例问)。设计源§1 Q01/§2.5。**这条是所有横铺(P2/P3)的样板与验收基线**。",
+      "acceptance": {
+        "goal": "Q01『4680-NCM加20%六周能不能接·输出多方案量化比较·挤占哪些订单人材物产线·毛利率是否因提前20%变化·被影响订单是否也有多方案比较』经 QueryDock NL→QOS 真跑答全。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "Q01 问句经 QueryDock NL→QOS 分类命中『接单全链推演』workflow(非 fallback/generic 兜底)·返回含≥2 方案(C35 方案数下限)"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "multi_plan_compare ∈ SOLVER_REGISTRY·输出五维矩阵(交期/毛利/挤占数/外协比/现金占用)·每方案全五维非空"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "答案含挤占明细(被挤订单列表·以 allocatedLineIds 为锚)+毛利变化(提前20%的 marginPct delta·非 Segment 兜底)"
+          },
+          {
+            "id": "C4",
+            "type": "真跑",
+            "assert": "被影响订单各自再出≥2方案(逐单再方案·what_if_displacement 级联·非只列名)"
+          },
+          {
+            "id": "C5",
+            "type": "curl",
+            "assert": "R6:同输入同 seed 重跑 QOS 答案结构字节一致"
+          },
+          {
+            "id": "C6",
+            "type": "gate",
+            "assert": "4包 build+test 绿+新增 multi_plan_compare 测+Q01 NL 路由测"
+          }
+        ],
+        "method": [
+          {
+            "for": "C1",
+            "run": "起内存态 datacore+agentcore·经 QueryDock(或 POST /b/v1 QOS)提 Q01 全文·核 SSE 答案:方案数≥2、五维矩阵present、挤占明细present、被影响订单逐单再方案present"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-09T09:41:32.786Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "I18N-LONGTAIL",
-      "at": "2026-07-09T09:23:33.230Z"
+      "cmd": "DISPATCH",
+      "id": "Q30-P0+P1",
+      "at": "2026-07-09T09:41:32.786Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
