@@ -23,7 +23,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）
   { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"], solverKeys: ["capex_scenario"] } },
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
-  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
+  { key: "view.order-chain", name: "订单聚合", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   // WO-8：场景启动器视图——AgentCore registry 已注册(defaultOn) 但 DataCore(权威 entitlement 源)此前缺 →
   // 解析集无 view.scenarios → launcherEnabled 恒 false、SL2「关 view.scenarios 隐藏启动器」门结构性永不可触发。

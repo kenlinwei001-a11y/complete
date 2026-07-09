@@ -109,7 +109,7 @@ const batteryViews: Record<string, IndustryViewDef> = {
     layout: { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] },
   },
   "order-chain": {
-    title: "订单全链聚合",
+    title: "订单聚合",
     renderer: "order-chain",
     layout: {
       solverKey: "affected_orders",

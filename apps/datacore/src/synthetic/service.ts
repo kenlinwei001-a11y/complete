@@ -1399,7 +1399,7 @@ export class SyntheticService {
         layout: { endpoint: "/a/v1/plan/quarterly", n: 6, gapTiers: { red: 4, yellow: 0 }, ltaEscalatePct: 5, units: { output: "万套", material: "吨" } },
       },
       "order-chain": {
-        title: "订单全链聚合",
+        title: "订单聚合",
         renderer: "order-chain",
         layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS, econ: ORDER_CHAIN_ECON, outputFields: ["rows", "problems", "summary", "columns"] },
       },

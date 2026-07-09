@@ -54,7 +54,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true },
   // 场景启动器视图（catalog SL2：关闭 view.scenarios → 启动器/场景卡消失）。此前未注册 → viewAllowed 恒真不可关。
   { key: "view.scenarios", name: "场景启动器", level: "VIEW", defaultOn: true },
-  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
+  { key: "view.order-chain", name: "订单聚合", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
   // GRAPH-PANORAMA-ONLY（用户亲定 2026-07-05）：view.graph.persp.* 八键已声明退役
