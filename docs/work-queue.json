@@ -4424,10 +4424,11 @@
           }
         ]
       },
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "todo": "2026-07-06T13:00:00.000Z"
+        "todo": "2026-07-06T13:00:00.000Z",
+        "wip": "2026-07-09T05:08:09.940Z"
       }
     },
     {
@@ -4675,10 +4676,11 @@
           }
         ]
       },
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "todo": "2026-07-07T00:00:00.000Z"
+        "todo": "2026-07-07T00:00:00.000Z",
+        "wip": "2026-07-09T05:08:10.013Z"
       }
     },
     {
@@ -4870,8 +4872,8 @@
       "title": "填补F2: OrderChain库存价值接真库存对象(替写死占比系数)+清hash幅度死注释",
       "doc": "docs/AUDIT-fakedata-sweep.md",
       "priority": "P3",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "note": "FAKEDATA-SWEEP F2派生(低优·已诚实标透明估算非冒充)。OrderChainView.tsx:34 成品/在制/原料库存价值=营收×写死占比{fg:0.22,wip:0.3,rm:0.18}(无实测库存)·第二位hash幅度注释残留(hash现编已删见:157)。处置:①有真库存对象(成品/在制/原料按SKU数量×单价)→取真值;②无→保留占比估算但诚实标(现状)+清理[base,hash幅度]死注释为[base]。",
       "acceptance": {
@@ -4890,16 +4892,17 @@
         ]
       },
       "at": {
-        "todo": "2026-07-09T00:00:00.000Z"
+        "todo": "2026-07-09T00:00:00.000Z",
+        "wip": "2026-07-09T05:08:10.090Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "FILL-AUDIT-TIMELINE-REAL",
-      "at": "2026-07-09T04:47:07.331Z"
+      "cmd": "WIP",
+      "id": "FILL-ORDERCHAIN-INVENTORY-REAL",
+      "at": "2026-07-09T05:08:10.090Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
