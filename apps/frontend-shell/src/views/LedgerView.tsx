@@ -136,7 +136,7 @@ export default function LedgerView({ view }: ViewRendererProps) {
                               navigate(`/v/order-chain?focus=${encodeURIComponent(String(row.props.so ?? row.id))}`);
                             }}
                           >
-                            → 看订单全链
+                            → 看订单聚合
                           </button>
                           <button
                             className="btn sm"

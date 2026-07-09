@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup, KpiCardDef, DagLayerLayout, OrderChainNodeRef } from "@platform/contracts";
@@ -61,7 +61,8 @@ function safeScrollIntoView(el: Element | null | undefined) {
 const CHAIN_COLORS = ["#7E8BEE", "#E8B54A", "#DD7E9E", "#62BE77"];
 const CHAIN_TITLES = ["订单", "判定", "根因", "对策"];
 
-/** 订单全链聚合（renderer=order-chain，§7.16）：affected_orders 扩展输出消费面 */
+/** 订单聚合（renderer=order-chain，§7.16）：affected_orders 扩展输出消费面
+ *  ORDER-CONSOLIDATE C1①：页名「订单全链聚合」→「订单聚合」（基地态迁「产能推演」·此处不再重复基地维度）。 */
 export default function OrderChainView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：问题分类标签 + 产品段配色由 ViewConfig.layout 声明，常量仅兜底
   const categoryLabels = (view.layout?.categoryLabels as Record<string, string> | undefined) ?? CATEGORY_LABEL;
@@ -69,9 +70,10 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   // 8a：全链 KPI 卡结构 + 11 节点 DAG 层拓扑由 ViewConfig.layout 声明，常量仅兜底（R14）。
   const ofcKpis = (view.layout?.kpis as KpiCardDef[] | undefined) ?? DEFAULT_OFC_KPIS;
   const ofcDagLayout = (view.layout?.dagLayout as DagLayerLayout | undefined) ?? DEFAULT_OFC_DAG_LAYOUT;
-  const [baseFilter, setBaseFilter] = useState<string>("");
   const [openProblem, setOpenProblem] = useState<OrderProblemGroup | null>(null);
-  const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG
+  // ORDER-CONSOLIDATE C2：订单明细逐行可展开——点行展开该订单「推演信息」（order_fullchain 真值·复用既有 order 推演数据源）。
+  const [expandedSo, setExpandedSo] = useState<string | null>(null);
+  const [searchParams] = useSearchParams(); // 从驾驶舱问题卡下钻：?problem=<category> 自动展开根因 DAG；台账下钻：?focus=<so> 自动展开该单推演
   // WO-ORDERCHAIN-DAG-DRILL：根因链节点分层下钻路由（order→360 · judge→本页全链三判 · risk→风险看板 · action→行动审批）。
   const navigate = useNavigate();
   const chainAdopt = useActionDraft();
@@ -104,7 +106,6 @@ export default function OrderChainView({ view }: ViewRendererProps) {
         break;
     }
   };
-  const [segMode, setSegMode] = useState<"app" | "base">("app"); // econ 看板分组：应用细分 / 风险基地
   // 轨M 增量1（假3 复审修·RL5）：库存占营收系数从后端 view.layout.econ 下发（换租户=换配置），
   // 不再用前端写死的 ECON_DEFAULT.coef；segPrice/segMargin 仍取 SEG_REGISTRY 契约单一来源（真价/利）。
   const deliveredEcon = view.layout?.econ as { coef?: typeof ECON_DEFAULT.coef; assumed?: boolean; note?: string } | undefined;
@@ -112,26 +113,14 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   // 库存系数是否为后端下发的固定假设（assumed）+ 披露文案（无下发则前端兜底·明标）。
   const econNote = deliveredEcon?.note ?? "成品库存/在制/原料 = 营收 × 行业占比固定假设（无实测库存数据，前端兜底系数）";
 
+  // ORDER-CONSOLIDATE C1②：基地维度（筛选器/按基地聚合）已迁「产能推演」——此处不再按基地过滤，恒取全量受影响订单。
   const { data, isLoading } = useQuery({
-    queryKey: ["b", "affected-orders", { base: baseFilter }],
-    queryFn: async () => {
-      const res = await runSolver("affected_orders", baseFilter ? { base: baseFilter } : {});
-      return { out: res.data as AffectedOrdersOutputVM, snapshotVersion: res.snapshotVersion };
-    },
-  });
-  // 全量基地清单（筛选器选项固定，不随过滤结果收窄）
-  const { data: allData } = useQuery({
     queryKey: ["b", "affected-orders", { base: "" }],
     queryFn: async () => {
       const res = await runSolver("affected_orders", {});
       return { out: res.data as AffectedOrdersOutputVM, snapshotVersion: res.snapshotVersion };
     },
   });
-
-  const riskBases = useMemo(
-    () => [...new Set((allData?.out.rows ?? []).flatMap((r) => r.risks.map((k) => k.base)))],
-    [allData],
-  );
 
   // 驾驶舱「待解决问题」卡下钻：?problem=<category> → 数据就绪后自动展开该类逐单根因 DAG。
   const problemQuery = searchParams.get("problem");
@@ -140,6 +129,13 @@ export default function OrderChainView({ view }: ViewRendererProps) {
     const match = data.out.problems.find((p) => p.category === problemQuery);
     if (match) setOpenProblem(match);
   }, [problemQuery, data]);
+
+  // ORDER-CONSOLIDATE C2：台账/驾驶舱下钻 ?focus=<so> → 数据就绪后自动展开该订单的推演行（去死链·复用 LedgerView 既有深链）。
+  const focusSo = searchParams.get("focus");
+  useEffect(() => {
+    if (!focusSo || !data) return;
+    if (data.out.rows.some((r) => r.so === focusSo)) setExpandedSo(focusSo);
+  }, [focusSo, data]);
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
   const { out, snapshotVersion } = data;
@@ -164,9 +160,9 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       wip: sales * econCfg.coef.wip[0]!,
       rm: sales * econCfg.coef.rm[0]!,
     };
-    // app 模式按应用细分；base 模式按首个关联风险基地（跨基地订单计入首基地）。
-    const key = segMode === "app" ? r.seg : (r.risks[0]?.base?.replace("基地", "").replace("·总部", "") ?? "其他");
-    const color = segMode === "app" ? (segColors[r.seg] ?? "#7E8BEE") : "#54B5C4";
+    // ORDER-CONSOLIDATE C1②：仅按应用细分聚合（按基地聚合已迁「产能推演」·基地营收敞口见风险卡）。
+    const key = r.seg;
+    const color = segColors[r.seg] ?? "#7E8BEE";
     let g = econGroups.get(key);
     if (!g) {
       g = { color, agg: empty() };
@@ -179,7 +175,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   }
   const econRows = [...econGroups.entries()]
     .map(([key, g]) => ({ key, color: g.color, ...g.agg, gmRate: g.agg.sales > 0 ? (g.agg.gp / g.agg.sales) * 100 : 0 }))
-    .sort((a, b) => (segMode === "app" ? SEG_ORDER.indexOf(a.key) - SEG_ORDER.indexOf(b.key) : b.sales - a.sales));
+    .sort((a, b) => SEG_ORDER.indexOf(a.key) - SEG_ORDER.indexOf(b.key));
   const econGmRate = econTotal.sales > 0 ? (econTotal.gp / econTotal.sales) * 100 : 0;
 
   return (
@@ -189,7 +185,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       <DrillBack
         testId="order-chain-back"
         fallbackTo="/v/dash"
-        trail={[{ label: "经营驾驶舱", to: "/v/dash" }, { label: "订单全链聚合" }]}
+        trail={[{ label: "经营驾驶舱", to: "/v/dash" }, { label: "订单聚合" }]}
       />
       <div className={simStyles.head}>
         <div>
@@ -207,31 +203,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       {/* ORD：订单全链推演（订单中心，order_fullchain 三判 + 统一结论 + 11 节点 DAG）。问题归并作超集保留在下方。 */}
       <OrderFullchainPanel kpis={ofcKpis} dagLayout={ofcDagLayout} so={ofcSo} onSoChange={setOfcSo} focus={ofcFocus} />
 
-      {/* 基地筛选器（下拉 + 清除 chip） */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <label style={{ fontSize: 11.5, color: "var(--muted)" }}>
-          {zh.orderChain.baseFilter}
-          <select
-            value={baseFilter}
-            aria-label={zh.orderChain.baseFilter}
-            data-testid="oc-base-filter"
-            style={{ marginLeft: 8 }}
-            onChange={(e) => setBaseFilter(e.target.value)}
-          >
-            <option value="">{zh.orderChain.allBases(riskBases.length)}</option>
-            {riskBases.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </label>
-        {baseFilter && (
-          <button className={styles.chip} style={{ cursor: "pointer", color: "var(--c-capacity)", borderColor: "var(--c-capacity)" }} data-testid="oc-clear-filter" onClick={() => setBaseFilter("")}>
-            {zh.orderChain.clearFilter(baseFilter)}
-          </button>
-        )}
-      </div>
+      {/* ORDER-CONSOLIDATE C1②：基地筛选器已迁「产能推演」（基地态本属产能推演·去两处重复）——此页恒展示全量受影响订单，按基地看敞口/受威胁客户请转产能推演。 */}
 
       {/* 财务影响汇总条 */}
       <div className={styles.sumBar} data-testid="oc-summary">
@@ -278,29 +250,12 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{zh.orderChain.econSection}</span>
-          <span data-testid="oc-segsel">
-            <button
-              className={styles.chip}
-              style={{ cursor: "pointer", ...(segMode === "app" ? { color: "var(--c-capacity)", borderColor: "var(--c-capacity)" } : {}) }}
-              data-testid="oc-segmode-app"
-              onClick={() => setSegMode("app")}
-            >
-              {zh.orderChain.byApp}
-            </button>
-            <button
-              className={styles.chip}
-              style={{ cursor: "pointer", marginLeft: 6, ...(segMode === "base" ? { color: "var(--c-capacity)", borderColor: "var(--c-capacity)" } : {}) }}
-              data-testid="oc-segmode-base"
-              onClick={() => setSegMode("base")}
-            >
-              {zh.orderChain.byBase}
-            </button>
-          </span>
+          {/* ORDER-CONSOLIDATE C1②：按基地聚合切换已迁「产能推演」——此看板仅按应用细分（订单/产品维度）。 */}
         </div>
         <table className="cmp" data-testid="oc-econ-table">
           <thead>
             <tr>
-              <th>{segMode === "app" ? zh.orderChain.colSeg : zh.orderChain.colBase}</th>
+              <th>{zh.orderChain.colSeg}</th>
               <th>{zh.orderChain.econCap}</th>
               {/* 轨M 增量1（假3）：成品库存/在制/原料无实测库存数据 → 营收×行业占比估算，表头诚实标"估算"。 */}
               <th title={`${econNote}（营收×${Math.round(econCfg.coef.fg[0]! * 100)}%）`}>{zh.orderChain.econFg}<sup data-testid="econ-est-fg" style={{ color: "var(--warn,#caa23a)", fontSize: 9 }}> 估算·{Math.round(econCfg.coef.fg[0]! * 100)}%</sup></th>
@@ -344,14 +299,16 @@ export default function OrderChainView({ view }: ViewRendererProps) {
         </table>
       </div>
 
-      {/* 受影响订单明细 */}
+      {/* 受影响订单明细（ORDER-CONSOLIDATE C2：台账式逐行·每订单一行·点行展开该单推演信息） */}
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">
-          {zh.orderChain.detailSection}（{baseFilter || "全部风险基地"}）
+          {zh.orderChain.detailSection}
+          <span style={{ fontSize: 11, color: "var(--muted2)", marginLeft: 8 }}>{zh.orderChain.rowExpandHint}</span>
         </div>
         <table className="cmp" data-testid="oc-detail-table">
           <thead>
             <tr>
+              <th style={{ width: 24 }} />
               <th>{zh.orderChain.colOrder}</th>
               <th>{zh.orderChain.colCust}</th>
               <th>{zh.orderChain.colSeg}</th>
@@ -366,16 +323,19 @@ export default function OrderChainView({ view }: ViewRendererProps) {
             {out.rows.map((r) => {
               const shown = r.risks.slice(0, CHIP_LIMIT);
               const more = r.risks.length - shown.length;
+              const isExpanded = expandedSo === r.so;
               return (
+                <Fragment key={r.so}>
                 <tr
-                  key={r.so}
                   data-testid={`oc-row-${r.so}`}
                   style={{ cursor: "pointer" }}
-                  onClick={() =>
-                    // 行点击 → 订单写入 selectedObjects（对话上下文）
-                    useSessionStore.getState().toggleSelectedObject({ objectType: "Order", objectId: `ord-${r.so}`, label: r.so })
-                  }
+                  onClick={() => {
+                    // ORDER-CONSOLIDATE C2：点行 → 展开/收起该单推演行（每单一行·台账式）；同时写入 selectedObjects（对话上下文）。
+                    setExpandedSo((cur) => (cur === r.so ? null : r.so));
+                    useSessionStore.getState().toggleSelectedObject({ objectType: "Order", objectId: `ord-${r.so}`, label: r.so });
+                  }}
                 >
+                  <td data-testid={`oc-caret-${r.so}`}>{isExpanded ? "▾" : "▸"}</td>
                   <td>
                     <b>{r.so}</b>
                   </td>
@@ -414,6 +374,15 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                   </td>
                   <td style={{ color: decisionVerdictColor("var(--danger)", out.dataMode), fontWeight: 700 }}>{zh.orderChain.delayDays(r.delay)}</td>
                 </tr>
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={9} style={{ background: "var(--bg2, rgba(255,255,255,0.02))" }}>
+                      {/* ORDER-CONSOLIDATE C2：该订单推演信息（order_fullchain 三判 + 统一结论·真值·复用既有 order 推演求解器）。 */}
+                      <OrderInlineSim so={r.so} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -461,6 +430,54 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 /** UI-POLISH：P90/需求等求解器真值常为长裸浮点（如 1.1615）；展示时定 1 位小数、整数不带尾零/千分位，
  *  仅格式化不改值（逐值对照后端仍是同一真值·四舍五入到 0.1）。 */
 export const fmtQty = (v: number): string => (Number.isFinite(v) ? Number(v.toFixed(1)).toLocaleString("zh-CN") : "—");
+
+/**
+ * ORDER-CONSOLIDATE C2：订单明细行内「推演信息」展开面板。
+ * 复用既有 order 推演数据源（order_fullchain 求解器·与上方 OrderFullchainPanel 同源），
+ * 逐订单真算三关联判（交期/齐套/财务）+ 统一结论——真值·非写死（R13/R14）。
+ * 无真数据（求解器不可达/空）→ 诚实降级文案，绝不裸空/编造。
+ */
+function OrderInlineSim({ so }: { so: string }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["b", "order_fullchain", so],
+    queryFn: async () => (await runSolver("order_fullchain", { so })).data as OFC,
+  });
+  if (isLoading) return <div style={{ color: "var(--muted2)", padding: "8px 4px", fontSize: 12 }} data-testid={`oc-sim-loading-${so}`}>{zh.common.loading}</div>;
+  if (isError || !data) return <div className="empty-state" data-testid={`oc-sim-empty-${so}`} style={{ fontSize: 12 }}>该订单推演暂不可达——诚实降级（order_fullchain 求解器无返回）。</div>;
+  const verdictColor = decisionVerdictColor(data.vc ?? "var(--txt)", data.dataMode, "var(--muted)");
+  const judges: { key: string; label: string; verdict: string; detail: string }[] = [
+    { key: "cap", label: "①交期·产能", verdict: data.judges.cap.verdict, detail: `P90 ${fmtQty(data.judges.cap.p90)} vs 需求 ${fmtQty(data.judges.cap.demand)}` },
+    { key: "kit", label: "②齐套·MRP", verdict: data.judges.kit.verdict, detail: `${data.judges.kit.material} 缺 ${data.judges.kit.gapTon} 吨` },
+    { key: "fin", label: "③财务·经营", verdict: data.judges.fin.verdict, detail: `毛利 ${data.judges.fin.marginPct}% vs 底线 ${data.judges.fin.floorPct}%` },
+  ];
+  return (
+    <div data-testid={`oc-sim-${so}`} style={{ padding: "8px 4px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, fontSize: 12.5 }}>
+        <span style={{ color: "var(--muted)" }}>{zh.orderChain.simTitle}</span>
+        <b data-testid={`oc-sim-verdict-${so}`} style={{ color: verdictColor }}>{data.verdict}</b>
+        {data.dataMode && data.dataMode !== "LIVE" && (
+          <span className="badge" data-testid={`oc-sim-datamode-${so}`} style={{ background: "var(--warn,#caa23a)", color: "#1a1400", fontSize: 10 }}>{data.dataMode}·估算</span>
+        )}
+      </div>
+      <table className="cmp" data-testid={`oc-sim-judges-${so}`}>
+        <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>
+        <tbody>
+          {judges.map((j) => {
+            const refs = (data.judges as unknown as Record<string, { ruleRefs: string[] }>)[j.key]?.ruleRefs ?? [];
+            return (
+              <tr key={j.key} data-testid={`oc-sim-judge-${so}-${j.key}`}>
+                <td>{j.label}</td>
+                <td>{j.verdict}</td>
+                <td className="mono">{j.detail}</td>
+                <td className="mono">{refs.length > 0 ? <RuleRef code={refs.join("/")} /> : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /**
  * ORD 订单全链推演面板（order_fullchain）：订单选择器 → 6 KPI + 统一结论（三色）+ 三判明细 + 11 节点

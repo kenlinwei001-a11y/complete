@@ -292,21 +292,18 @@ export const zh = {
     // PRD-IND-quarter §4.5(F)：LTA 脚注去硬编码（迁 i18n，R14）；与风险看板「到货间隙」+ S&OP 第⑤步决议同源。
     ltaFootnote: "正极 −8.0% 偏差与预警大屏「到货间隙」事件同源；已在月度 S&OP 第⑤步决议加急 200 吨对冲。",
   },
-  /** §7.16 订单全链聚合 */
+  /** §7.16 订单聚合（ORDER-CONSOLIDATE C1①：原「订单全链聚合」·基地维度迁「产能推演」） */
   orderChain: {
-    title: "订单全链聚合",
-    baseFilter: "基地筛选",
-    allBases: (n: number) => `全部风险基地（${n}）`,
-    clearFilter: (b: string) => `✕ 清除（当前：${b}）`,
+    title: "订单聚合",
     sumOrders: "涉及订单数",
     sumQty: "合计万套",
     sumCusts: "客户数",
     sumRevenue: "涉及收入(亿)",
+    // ORDER-CONSOLIDATE C2：订单明细逐行可展开推演信息
+    rowExpandHint: "点订单行展开该单推演信息（三关联判 → 统一结论）",
+    simTitle: "该订单推演",
     // PRD-IND-order-aggregate §4.5-A：经营数据看板 econTable
     econSection: "经营数据看板（万套 · 亿元）",
-    byApp: "按应用细分",
-    byBase: "按风险基地",
-    colBase: "基地",
     econCap: "未结产能(万套)",
     econFg: "成品库存(亿)",
     econWip: "在制(亿)",
