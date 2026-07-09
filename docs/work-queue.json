@@ -4952,7 +4952,7 @@
       "deps": [],
       "doc": "docs/HANDOFF-DEPLOY0707-SALVAGE.md",
       "title": "deploy-0707择要移植(pipeline评估+文档)·以vigilant为准不反向合并",
-      "note": "用户2026-07-09定:以vigilant为准择要移植deploy-0707独有价值不整分支合并(会倒退718文件+复活已删代码+254冲突)。审核方staged docs/deploy0707-salvage.tar.gz(64KB·14文件·pipeline源+5PRD)+manifest。核心决策:pipeline/OntologyWorkflow与databuilder重叠·先判并/不并·不造第二套引擎·适配旧版契约。db-seed 159k+5.6MB二进制不入git。铁律0.5我出handoff·dev评估移植。",
+      "note": "用户2026-07-09定:以vigilant为准择要移植deploy-0707独有价值不整分支合并(会倒退718文件+复活已删代码+254冲突)。审核方staged docs/deploy0707-salvage.tar.gz(64KB·14文件·pipeline源+5PRD)+manifest。核心决策:pipeline/OntologyWorkflow与databuilder重叠·先判并/不并·不造第二套引擎·适配旧版契约。db-seed 159k+5.6MB二进制不入git。铁律0.5我出handoff·dev评估移植。 ‖ 用户2026-07-09加订(回退机制·避免失败无解): 移植是「往主干加」非「反向合并」·vigilant主干任何时候不被破坏——失败=不落该移植/git revert那几个commit即回到当前干净vigilant·零倒退。",
       "acceptance": {
         "goal": "以vigilant为准择要移植:先评估pipeline vs databuilder重叠·只移植真additive非重复且适配当前契约·文档择relevant并入·全绿·本体回写·移植完删handoff+tarball。",
         "criteria": [
@@ -4969,12 +4969,18 @@
           {
             "id": "C3",
             "type": "file",
-            "assert": "文档择relevant并入docs(并入PRD-*补《本体引用与影响》过门)·db-seed/binary deliverables评估写清不裸入git·移植完删tarball+HANDOFF。"
+            "assert": "文档择relevant并入docs(并入PRD-*补《本体引用与影响》过门)·db-seed/binary deliverables评估写清不裸入git。**tarball+HANDOFF保留到移植经审核方复验DONE后才删**(未验证前不删·留作回退源)。"
+          },
+          {
+            "id": "C4",
+            "type": "cmd",
+            "assert": "回退机制(硬性): ①移植走可revert的独立commit·绝不force-push·绝不破坏vigilant主干(失败→git revert即回当前干净态·零倒退)。②pipeline若判与databuilder冗余/冲突→诚实skip并写明依据(是解决方案·非死路·非硬塞第二套引擎)。③deploy-0707全量原件保全: 已在repo docs/deploy0707-salvage.tar.gz(源+文档)+用户本地Mac; 建议用户把完整deploy-0707推origin为archive分支(claude/deploy-0707-archive)作彻底回退点。每步移植前后pnpm -r build+test绿方可继续·断则停并revert。"
           }
         ]
       },
       "at": {
-        "todo": "2026-07-09T07:00:00.000Z"
+        "todo": "2026-07-09T07:00:00.000Z",
+        "amended": "2026-07-09T07:30:00.000Z"
       }
     }
   ],
