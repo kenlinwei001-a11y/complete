@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
+import { invokeSolver, makeApp, seedBattery } from "./helpers.js";
 
 /**
  * QUERY30 缺口③ Q01 样板 · `what_if_displacement`（DESIGN-query30 §2.5）——接单挤占推演。
@@ -62,6 +62,21 @@ describe("QUERY30 缺口③ Q01 · what_if_displacement 接单挤占推演", () 
     expect(out.highPriDisplaceDays).toBe(21);
     // 逐单再方案：不可外协 → 延期方案（Q01「被影响订单也有多方案」）。
     expect(disp.every((d) => d.reScheme.includes("延期"))).toBe(true);
+  });
+
+  it("③b C4 每被挤单 ≥2 备选再方案（reSchemes·确定性派生自本单真值·非填充）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = data(await invokeSolver(t, "what_if_displacement", CONTEND));
+    const disp = out.displacedOrders as { so: string; reScheme: string; reSchemes: string[] }[];
+    expect(disp.length).toBeGreaterThan(0);
+    // C4：每一被挤在手单必须携 ≥2 个互异的真实再方案（延期 / 拆单并行 / 降级协商 或 外协消化）。
+    for (const d of disp) {
+      expect(Array.isArray(d.reSchemes)).toBe(true);
+      expect(d.reSchemes.length).toBeGreaterThanOrEqual(2);
+      expect(new Set(d.reSchemes).size).toBe(d.reSchemes.length); // 互异·非重复填充
+      expect(d.reScheme).toBe(d.reSchemes[0]); // 主推方案 = 首选
+    }
   });
 
   it("④ C34 挤占优先级不变量真裁决：高 pri 被挤 21 天 > 上限 5 → BLOCK", async () => {

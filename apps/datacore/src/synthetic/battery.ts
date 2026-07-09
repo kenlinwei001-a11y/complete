@@ -76,6 +76,21 @@ const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: 
   { so: "SO-3540", cust: "商用车集团G", model: "2170-NCM", qty: 6, due: "2026-07-17", pri: "低" },
 ];
 
+/**
+ * QUERY30-Q01VERT（KILL-MOCK-RED 返工·数据地基维度校正）——**订单量→电芯口径换算系数**。
+ *
+ * 根因：HTML 24 单的 `qty` 以**批次录入口径**（个位/两位数）记录，而 `Line.capacityDaily` 是**线级电芯日产能**
+ * （化成/老化取小 ≈ 6 万只/日·真拓扑派生）。二者相差约 4 个数量级 → `what_if_displacement` 直接比较时，任何现实急单
+ * 都远小于自由产能（`feasibleWithoutDisplacement=true`·零挤占），Q01「会挤占哪些单」在真种子上结构性失效。
+ *
+ * 治本（沿本体·非兜底）：把订单量换算到与 `capacityDaily` **同一电芯口径**（只/cell）——`qty_cells = qty × 该系数`。
+ * 系数取 40000（每录入单位≈4 万只批次），使**旗舰常州 4680 线在手单在 6 周窗口内自然消费 ~93% 线产能**
+ * （常州本就是全域瓶颈基地：化成瓶颈 92 · 在途覆盖<3 天，高负荷符合叙事），从而**现实急单真挤占真在手单**。
+ * 仅换算**订单量**（reviewer 指定：优先缩放订单而非扭曲产能）；`capacityDaily` 及基地 `formationCapDaily/agingCapDaily`
+ * （capacity_rollup / vle-oracle 消费）**不动**。R6：常量确定性·同种子字节一致。marginPct/单价/各比率为**每单位口径**不随量变。
+ */
+const ORDER_QTY_CELLS_PER_LOT = 40000;
+
 // ---------------------------------------------------------------------------
 // §S1 scenario-pack solver parameters (battery defaults — NEVER hardcoded in solver code)
 // ---------------------------------------------------------------------------
@@ -1615,7 +1630,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       so: o.so,
       cust: o.cust,
       model: o.model,
-      qty: o.qty,
+      qty: o.qty * ORDER_QTY_CELLS_PER_LOT, // 维度校正：批次口径→电芯口径（与 Line.capacityDaily 同口径·Q01 挤占真触发）
       due: o.due,
       pri: o.pri,
       bases: orderBases,
@@ -1643,7 +1658,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
     const so = `SO-9${String(i).padStart(5, "0")}`;
     orders.push({
-      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 100, 2500), due,
+      so, cust: pick(rng, CUSTOMERS), model: model.modelId, qty: randInt(rng, 100, 2500) * ORDER_QTY_CELLS_PER_LOT, due,
       pri: ["高", "中", "低"][i % 3], bases: orderBases, status: "OPEN", unitPrice: model.unitPrice,
       demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
       outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §2` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §2，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `95a76c64a6d7f12d`。
+> **改接线改母体 §2，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `9d21ff4ddcbca150`。
 
 ---
 
@@ -152,6 +152,7 @@
 - **LaborShift（班组·mes 源）** `shiftId(pk)/baseId(ref→Base)/lineId(ref→Line)/headcount/skillModels/borrowable`："人材物"的**人**（此前仅 `Process.attendance` 一个聚合数）。每线白/夜两班。`TYPE_SOURCE_SYSTEM=mes`（Q09）。
 - **CarbonPassport（电池护照·ems 源）** `passportId(pk)/modelId(ref→Model)/co2PerKwh/recycledPct/dueDiligence/labelStatus/expiry`：C33 引用"碳护照"但此前系统无此对象。每型号一本，植入 1 本缺再生料/待补标签（Q13 补数戏剧点）。`TYPE_SOURCE_SYSTEM=ems`（Q13/Q14）。
 - **字段批（现有类型 §2.1）**：**Line +3**（`capacityDaily` 线级瓶颈日产能[真拓扑 min(化成,老化)派生非 Base 聚合猜值]/`certifiedModels` 线级可产型号/`changeoverGroup` 换型化学族——Line 最大单点缺口·线级推演此前全靠 Base 聚合）；**Order +7**（`promiseDate`/`marginPct`/`allocatedLineIds`[order_allocated_on 边源·真 Line id]/`penaltyClause`/`substitutable`/`priceLockedUntil`/`costBreakdown`——挤占与毛利推演锚·Q01/Q02/Q03/Q11）。均确定性派生（hashString/拓扑·不消费 rng·既有对象字节不变）。
+  - **🚧 Q30-P1-Q01VERT 数据地基维度校正（KILL-MOCK-RED 返工 2026-07-09）**：`Order.qty` 原以批次口径（个位/两位数）记录，与 `Line.capacityDaily`（电芯只/日 ≈6 万只）**相差约 4 个数量级**，致 `what_if_displacement` 在真种子上任何现实急单皆免挤占（`feasible=true·totalDisplaced=0`·Q01 结构性失效）。治本：`ORDER_QTY_CELLS_PER_LOT=40000` 把订单量换算到与 `capacityDaily` **同电芯口径（只/cell）**——`qty_cells=qty×40000`，使旗舰常州 4680 线在手单在 6 周窗口自然消费 ~93% 线产能（57143/61698）→ 现实急单（如 4680-NCM×600000）**真挤占真在手单**（SO-3476 中 + SO-3391 高·各带 ≥2 备选再方案 `reSchemes[]`·C4）。仅缩放**订单量**（reviewer 指定优先缩放订单而非扭曲产能）；`Line.capacityDaily`（**grep 证实仅 `what_if_displacement` 消费**·非跨求解器共享）与基地 `formationCapDaily/agingCapDaily`（capacity_rollup/vle-oracle 消费）不动。均匀缩放**保比率**（毛利率/达成率/相对序不变）→ datacore 全量套件 1031 绿·现有字节基线零漂移。R6：常量确定性同种子字节一致。证据 `docs/evidence/QUERY30-Q01-P1-multi-plan-fde.md`（旧 §① 手喂造假已改真种子）。
 - **数据接入分类（14 域面板）**：`supply_partners`(供应商与长协=Supplier/LtaContract) 新增第 14 类；BomLine→material_inventory、LaborShift→capacity_base、CarbonPassport→quality_compliance（`synthetic/data-categories.ts`）。字段覆盖铁律经 `coverage_<type>` 切片自动覆盖新类型全字段。
 - **门/齿**：`test/query30-ontology-ext.test.ts`（新类型往返·R6 种子确定性·6 边 neighbors 真跳·模板列⊇props 含 FK）；接缝 `intake-coverage.ts` 以 `ontology.listTypes` 为基准·新类型自动进覆盖矩阵；frozen 超集 `demo-chain-provenance.test`（40 类/560 对象）。
 

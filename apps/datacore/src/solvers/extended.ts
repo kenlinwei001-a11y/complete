@@ -507,15 +507,33 @@ export function whatIfDisplacement(args: Record<string, unknown>) {
   const displaceOrder = (a: DispOrder, b: DispOrder) => priRank(a.pri) - priRank(b.pri) || (a.so < b.so ? -1 : 1);
   // 贪心腾容：按候选序累计 qty 至 ≥ unitsToFree；每单 displaceDays ∝ 单量（clamp[1,horizon]）。
   const freeBy = (pool: DispOrder[]) => {
-    const disp: (DispOrder & { displaceDays: number; penaltyWan: number; reScheme: string })[] = [];
+    const disp: (DispOrder & { displaceDays: number; penaltyWan: number; reScheme: string; reSchemes: string[] })[] = [];
     let freed = 0;
     for (const o of [...pool].sort(displaceOrder)) {
       if (freed >= unitsToFree) break;
       const displaceDays = Math.min(horizonDays, Math.max(1, Math.ceil(o.qty / Math.max(1, dailyDemand))));
       const penaltyWan = round((o.qty * o.unitPrice * o.penaltyClause) / 10000, 2);
-      // 逐单再方案（Q01「被影响订单是否也有多方案」）：可外协→外协消化不延期；否则延期 N 天并计违约金。
-      const reScheme = o.substitutable ? "外协消化（不延期）" : `延期 ${displaceDays} 天（违约金 ${penaltyWan} 万）`;
-      disp.push({ ...o, displaceDays, penaltyWan, reScheme });
+      // 逐单再方案（Q01「被影响订单是否也有多方案」·C4 每被挤单须 ≥2 备选）：全部**确定性派生自本单真值**
+      // （qty/unitPrice/penaltyClause/substitutable/displaceDays），非填充。三型口径：
+      //   ① 延期 delay：整单顺延 displaceDays 天，计违约金 penaltyWan 万（交期换产能）；
+      //   ② 外协/拆单：可外协单→外协消化（不延期·外协溢价 outsourceWan 万）；不可外协单→拆单并行
+      //      （半量转认证副线·缓 splitDays 天·仅半量违约 splitPenaltyWan 万）；
+      //   ③ 降级协商 downgrade：与客户协商缩量交付（承接可覆盖部分·免违约），末位保底方案。
+      // 主推方案 reScheme = 可外协取外协、否则取延期（与既有 canonical 口径一致·R6 字节兼容）。
+      const outsourceWan = round((o.qty * o.unitPrice * outsourceUnitCost) / 10000, 2);
+      const splitDays = Math.max(1, Math.ceil(displaceDays / 2));
+      const splitPenaltyWan = round(penaltyWan / 2, 2);
+      const delayScheme = `延期 ${displaceDays} 天（违约金 ${penaltyWan} 万）`;
+      const altScheme = o.substitutable
+        ? `外协消化（不延期·外协溢价 ${outsourceWan} 万）`
+        : `拆单并行（半量转副线·缓 ${splitDays} 天·违约金 ${splitPenaltyWan} 万）`;
+      const negotiateScheme = "降级协商（缩量交付·免违约）";
+      // 可外协单主推外协（不延期最优）；否则主推延期。reSchemes 恒 ≥2（C4 不变量·各口径互异非重复）。
+      const reSchemes = o.substitutable
+        ? [altScheme, delayScheme, negotiateScheme]
+        : [delayScheme, altScheme, negotiateScheme];
+      const reScheme = reSchemes[0]!;
+      disp.push({ ...o, displaceDays, penaltyWan, reScheme, reSchemes });
       freed += o.qty;
     }
     return { disp, freed, enough: freed >= unitsToFree };
