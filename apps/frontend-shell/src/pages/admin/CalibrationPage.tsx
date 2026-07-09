@@ -222,10 +222,29 @@ export default function CalibrationPage() {
         </div>
         {convergence && convergence.points.length > 0 ? (
           <>
+            {/* FILL-E1-CALIB-LIVE·C2 dataMode 诚实标注：末轮回落静态基线（无真配对）→ 不把 flat 水平线冒充"收敛良好"。 */}
+            {convergence.baselineOnly && (
+              <div
+                className="empty-hint"
+                data-testid="calib-convergence-baseline"
+                style={{ marginBottom: 8, padding: "8px 10px", borderRadius: 6, background: "rgba(224,158,63,.10)", color: "var(--muted)", fontSize: 13 }}
+              >
+                <span className="badge amber" style={{ marginRight: 8 }}>
+                  静态基线 · 无真实配对
+                </span>
+                本轮清扫未取得真实预测/实绩配对，MAPE 回落诚实静态基线（水平线·<b>未测得改进</b>），<b>非</b>真实收敛。积累真配对后逐轮 mapeAfter 才会真实下降。
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap", fontSize: 12 }}>
-              <span className={`badge ${convergence.converging ? "green" : "red"}`} data-testid="calib-converging-badge">
-                {convergence.converging ? "收敛良好（末轮 ≤ 首轮）" : "未收敛（末轮 > 首轮）"}
-              </span>
+              {convergence.baselineOnly ? (
+                <span className="badge amber" data-testid="calib-converging-badge">
+                  静态基线 · 未测得改进
+                </span>
+              ) : (
+                <span className={`badge ${convergence.converging ? "green" : "red"}`} data-testid="calib-converging-badge">
+                  {convergence.converging ? "收敛良好（末轮 ≤ 首轮）" : "未收敛（末轮 > 首轮）"}
+                </span>
+              )}
               <span className="badge" data-testid="calib-improved-badge">
                 {convergence.improvedPct >= 0 ? "↓" : "↑"} MAPE 改善 {convergence.improvedPct} 个百分点（{convergence.rounds} 轮）
               </span>

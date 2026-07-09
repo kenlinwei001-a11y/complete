@@ -242,6 +242,8 @@ export const CalibrationConvergencePointSchema = z.object({
   proposalsCreated: z.number().int(), // 本轮新增 PENDING 提案
   autoApplied: z.number().int(), // 本轮自动应用数（EMA 小步长）
   paramsVersion: z.number().int().optional(), // 清扫后 solver_params 版本（参数演进可溯）
+  /** FILL-E1-CALIB-LIVE·C1 dataMode：本轮 mape 回落诚实静态基线（无真配对·flat·未测得改进）。 */
+  baselineOnly: z.boolean().optional(),
 });
 export type CalibrationConvergencePoint = z.infer<typeof CalibrationConvergencePointSchema>;
 
@@ -253,6 +255,8 @@ export const CalibrationConvergenceSchema = z.object({
   improvedPct: z.number(),
   /** 末轮 mapeAfter 是否 ≤ 首轮（单调下降/持平 = 收敛良好）。 */
   converging: z.boolean(),
+  /** FILL-E1-CALIB-LIVE·C1 dataMode：末轮回落静态基线（无真配对）→ true，UI 标"静态基线·无真实配对·未测得改进"，不当收敛。 */
+  baselineOnly: z.boolean().optional(),
 });
 export type CalibrationConvergence = z.infer<typeof CalibrationConvergenceSchema>;
 

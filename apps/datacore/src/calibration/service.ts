@@ -132,7 +132,11 @@ export class CalibrationService {
   async sweep(tenantId: string, trigger = "CALIBRATION_SWEEP"): Promise<CalibrationRunResult & { round: number }> {
     const mapeBefore = await this.latestMape(tenantId);
     const run = await this.runAll(tenantId, trigger);
-    const mapeAfter = await this.latestMape(tenantId);
+    // FILL-E1-CALIB-LIVE·C1：post-sweep report 同时取 mape 与 baselineOnly（dataMode）——
+    // baselineOnly=true 表示本轮无真配对、mape 回落静态基线（flat·未测得改进），落库供前端诚实标注，
+    // 避免把"无真源的水平线"当"越用越准的收敛"展示（KILL-MOCK-RED 同源）。
+    const after = await this.latestReport(tenantId);
+    const mapeAfter = after.mape;
     const paramsVersion = await this.solvers.paramsVersion(tenantId);
     const existing = await this.repos.calibrationConvergence.list(tenantId);
     const round = existing.length + 1;
@@ -147,9 +151,10 @@ export class CalibrationService {
       slicesEvaluated: run.slicesEvaluated,
       proposalsCreated: run.created,
       autoApplied: run.autoApplied,
+      baselineOnly: after.baselineOnly,
       ...(typeof paramsVersion === "number" ? { paramsVersion } : {}),
     });
-    await this.outbox.emit(tenantId, "calibration.swept", { round, mapeBefore, mapeAfter, created: run.created, autoApplied: run.autoApplied });
+    await this.outbox.emit(tenantId, "calibration.swept", { round, mapeBefore, mapeAfter, baselineOnly: after.baselineOnly, created: run.created, autoApplied: run.autoApplied });
     return { ...run, round };
   }
 
@@ -864,7 +869,16 @@ export class CalibrationService {
   }
 
   private async latestMape(tenantId: string): Promise<number> {
+    return (await this.latestReport(tenantId)).mape;
+  }
+
+  /**
+   * FILL-E1-CALIB-LIVE·C1：末点 MAPE + dataMode（baselineOnly）一并派生自 report()。
+   * baselineOnly=true ⇔ 无真配对/无 A8 真聚合、report 回落诚实静态基线（flat 水平线）。
+   */
+  private async latestReport(tenantId: string): Promise<{ mape: number; baselineOnly: boolean }> {
     const r = await this.report(tenantId);
-    return r.points.length > 0 ? (r.points[r.points.length - 1] as { mape: number }).mape : DEFAULT_THRESHOLD_PCT;
+    const mape = r.points.length > 0 ? (r.points[r.points.length - 1] as { mape: number }).mape : DEFAULT_THRESHOLD_PCT;
+    return { mape, baselineOnly: r.baselineOnly === true };
   }
 }

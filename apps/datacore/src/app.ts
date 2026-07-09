@@ -4063,6 +4063,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const first = points[0];
     const last = points[points.length - 1];
     const improvedPct = first && last ? Number((first.mapeAfter - last.mapeAfter).toFixed(2)) : 0;
+    // FILL-E1-CALIB-LIVE·C1 dataMode 透出：末轮回落静态基线（无真配对）→ 顶层 baselineOnly=true，
+    // 前端据此改画"静态基线·无真实配对·未测得改进"，不把 flat 水平线冒充"收敛良好"（诚实边界）。
+    const baselineOnly = last?.baselineOnly === true;
     return {
       points: points.map((p) => ({
         round: p.round,
@@ -4074,10 +4077,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         proposalsCreated: p.proposalsCreated,
         autoApplied: p.autoApplied,
         ...(p.paramsVersion !== undefined ? { paramsVersion: p.paramsVersion } : {}),
+        ...(p.baselineOnly !== undefined ? { baselineOnly: p.baselineOnly } : {}),
       })),
       rounds: points.length,
       improvedPct,
       converging: !last || !first ? true : last.mapeAfter <= first.mapeAfter,
+      ...(baselineOnly ? { baselineOnly: true } : {}),
     };
   });
   // WO-E1：手动触发一轮活体清扫（运维/演示/FDE 真跑·catalog_admin；常态由 CALIBRATION_SWEEP cron 跑）。

@@ -47,4 +47,32 @@ describe("WO-CALIB-CONVERGENCE-UI · 收敛史前端消费", () => {
     expect(await screen.findByTestId("calib-convergence-empty")).toBeTruthy();
     expect(screen.queryByTestId("calib-convergence-chart")).toBeNull();
   });
+
+  // FILL-E1-CALIB-LIVE·C2 dataMode 诚实标注：后端 baselineOnly=true（末轮回落静态基线·无真配对）→
+  // 面板显"静态基线·无真实配对"诚实提示 + 徽章改"静态基线·未测得改进"，**不**冒充"收敛良好"。
+  it("dataMode · 后端 baselineOnly=true → 显诚实静态基线提示·不冒充收敛良好（flat 不当收敛）", async () => {
+    server.use(
+      http.get("*/a/v1/calibration/convergence", () =>
+        HttpResponse.json({
+          points: [
+            { round: 1, at: "2026-07-01T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 11.2, mapeAfter: 11.2, slicesEvaluated: 0, proposalsCreated: 0, autoApplied: 0, baselineOnly: true },
+            { round: 2, at: "2026-07-02T02:00:00Z", trigger: "CALIBRATION_SWEEP", mapeBefore: 11.2, mapeAfter: 11.2, slicesEvaluated: 0, proposalsCreated: 0, autoApplied: 0, baselineOnly: true },
+          ],
+          rounds: 2,
+          improvedPct: 0,
+          converging: true,
+          baselineOnly: true,
+        }),
+      ),
+    );
+    loginAs("planner");
+    renderApp("/admin/calibration");
+
+    const panel = await screen.findByTestId("calib-convergence-panel");
+    // 诚实静态基线提示存在（与 MAPE 趋势面板 baselineOnly 同源诚实边界）。
+    expect(await within(panel).findByTestId("calib-convergence-baseline")).toBeTruthy();
+    // 徽章改"静态基线·未测得改进"——绝不显"收敛良好"（flat 水平线不冒充真收敛）。
+    expect(within(panel).getByTestId("calib-converging-badge").textContent).toContain("静态基线");
+    expect(within(panel).getByTestId("calib-converging-badge").textContent).not.toContain("收敛良好");
+  });
 });

@@ -976,6 +976,12 @@ export interface CalibrationConvergenceRecord {
   proposalsCreated: number;
   autoApplied: number;
   paramsVersion?: number;
+  /**
+   * FILL-E1-CALIB-LIVE·C1 dataMode 透出：本轮 mape 是否回落到诚实静态基线（无真实配对）。
+   * true = 本轮无真 pair，mapeBefore/After 均为静态基线常数（flat·未测得改进），前端标"静态基线·无真实配对"；
+   * false = mape 来自真配对滚动 MAPE 或 A8 真聚合（真收敛）。避免把 baseline flat 冒充成"收敛良好"。
+   */
+  baselineOnly?: boolean;
 }
 
 export interface CalibrationHistoryRecord {
