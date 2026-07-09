@@ -4711,7 +4711,7 @@
     },
     {
       "id": "SCENE-LAUNCHER-DEADLINK-FIX",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P2",
       "deps": [],
@@ -4740,8 +4740,10 @@
       },
       "at": {
         "todo": "2026-07-07T01:00:00.000Z",
-        "wip": "2026-07-09T03:20:25.038Z"
-      }
+        "wip": "2026-07-09T03:20:25.038Z",
+        "built": "2026-07-09T03:27:23.739Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "GAP-ADVICE-QUALITY",
@@ -4878,9 +4880,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "SCENE-LAUNCHER-DEADLINK-FIX",
-      "at": "2026-07-09T03:20:25.038Z"
+      "at": "2026-07-09T03:27:23.739Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

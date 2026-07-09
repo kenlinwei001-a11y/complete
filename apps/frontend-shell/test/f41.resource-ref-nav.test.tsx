@@ -160,10 +160,22 @@ describe("F41 · RESOURCE-REF-NAV 资源反向引用图 + 导航透出", () => {
     loginAs("planner");
     renderApp("/admin/scenes");
 
-    // SX-explore 发布态 → targetView=graph → /v/graph
+    // SX-explore 发布态 → targetView=graph（无别名）→ /v/graph
     const sceneRow = await screen.findByTestId("scenario-row-SX-explore");
     const launcherLink = within(sceneRow).getByTestId("scenario-launcher-SX-explore");
     expect(launcherLink).toHaveTextContent("在启动器打开→");
     expect(launcherLink.getAttribute("href")).toBe("/v/graph");
+  });
+
+  it("SCENE-LAUNCHER-DEADLINK-FIX：别名短键 targetView 经 normalizeViewKey 归一到真实注册键（治「任一卡片→404」）", async () => {
+    loginAs("planner");
+    renderApp("/admin/scenes");
+    // S01 targetView=project（别名）→ 归一 project-sim → /v/project-sim（此前裸 /v/project → ViewPage 查无 renderer → 404）
+    const s01 = await screen.findByTestId("scenario-row-S01");
+    expect(within(s01).getByTestId("scenario-launcher-S01").getAttribute("href")).toBe("/v/project-sim");
+    // S04 targetView=audit（别名）→ 归一 plan-audit → /v/plan-audit
+    const s04 = await screen.findByTestId("scenario-row-S04");
+    expect(within(s04).getByTestId("scenario-launcher-S04").getAttribute("href")).toBe("/v/plan-audit");
+    // revert normalizeViewKey 归一 → href 退回 /v/project、/v/audit（死链短键）→ 上述断言塌（green→red 自证）
   });
 });

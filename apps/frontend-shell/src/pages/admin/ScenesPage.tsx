@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
 import { createScenario, fetchAgents, fetchIntents, fetchScenariosManage, fetchViewConfigs, growScenario, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
 import { invalidateForEvent } from "@/store/eventInvalidation";
+import { normalizeViewKey } from "@/views/registry";
 import { useWorkspace, firstPackageId } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -140,7 +141,10 @@ function ScenarioRow({
           {/* RESOURCE-REF-NAV：发布态直达启动器落点视图（未发布/未开通不给死链） */}
           {scenario.status === "PUBLISHED" && !scenario.inactive && (
             <div style={{ fontSize: 11, marginTop: 2 }}>
-              <Link to={`/v/${scenario.targetView}`} data-testid={`scenario-launcher-${scenario.scenarioKey}`}>在启动器打开→</Link>
+              {/* SCENE-LAUNCHER-DEADLINK-FIX：targetView 短键（audit/project/quarter/…）必经 normalizeViewKey 归一到
+                  workspace.views 真实注册键（plan-audit/project-sim/…）再拼 /v/:viewKey，否则 /v/audit→ViewPage 查无
+                  renderer→404「该功能不存在」。用户实测「任一卡片→在启动器打开→404」系统性根因即此归一缺失。 */}
+              <Link to={`/v/${normalizeViewKey(scenario.targetView) ?? scenario.targetView}`} data-testid={`scenario-launcher-${scenario.scenarioKey}`}>在启动器打开→</Link>
             </div>
           )}
         </td>
