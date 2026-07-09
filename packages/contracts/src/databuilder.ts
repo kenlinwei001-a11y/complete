@@ -418,12 +418,59 @@ export type ModuleKind = z.infer<typeof ModuleKindSchema>;
 export const GapStatusSchema = z.enum(["EXISTS", "TO_CREATE", "MISSING"]);
 export type GapStatus = z.infer<typeof GapStatusSchema>;
 
-export const GapItemSchema = z.object({ key: z.string(), status: GapStatusSchema });
+/** provisioner「侧」：content 产数据/文档 · structure 本体栈 · code 求解器 · cross_system B 栈。 */
+export const GapSideSchema = z.enum(["content", "structure", "code", "cross_system"]);
+export type GapSide = z.infer<typeof GapSideSchema>;
+
+// ---- 统一 GapAnalysis 引擎（PRD-gap-analysis-engine §4）：全部新增字段 optional ----------
+// 现有 GapAnalysisSchema 无 z.strict()，消费方仅读 entries/totals → 追加 optional 字段零破坏。
+// script 目标（DataCore analyzeGap）不填这些 optional 字段 → 序列化 byte 等价；query 目标
+// （AgentCore 预分析）叠加 severity/explanation/remediation/executionPlan/coverageScore 咨询信号。
+
+/** 诊断目标：script（合成脚本建域）或 query（用户问句预分析）。 */
+export const GapTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("script"), script: z.string(), seed: z.number().int().optional() }),
+  z.object({
+    kind: z.literal("query"),
+    query: z.string(),
+    context: z.object({ base: z.string().optional(), segment: z.string().optional() }).optional(),
+  }),
+]);
+export type GapTarget = z.infer<typeof GapTargetSchema>;
+
+/** 严重度（咨询信号·§10：预分析永不误红，最高 WARNING；BLOCKER 仅来自 classifyGap 权威判决）。 */
+export const GapSeveritySchema = z.enum(["INFO", "WARNING", "ERROR", "BLOCKER"]);
+export type GapSeverity = z.infer<typeof GapSeveritySchema>;
+
+/** 补齐策略 + 代价估算（喂前端「查看工单」/执行计划）。 */
+export const GapRemediationSchema = z.object({
+  strategy: z.enum(["AUTO", "AUTO_WITH_APPROVAL", "MANUAL", "DEVELOP"]),
+  estimatedEffort: z.enum(["SECONDS", "MINUTES", "HOURS", "DAYS"]),
+  canBeParallel: z.boolean(),
+});
+export type GapRemediation = z.infer<typeof GapRemediationSchema>;
+
+/** 可解释（R13 溯源）：why 为何缺 · evidence 指真实依据（trace/checkReadiness 计数）· alternative 备选。 */
+export const GapExplanationSchema = z.object({
+  why: z.string(),
+  evidence: z.string(),
+  alternative: z.string().optional(),
+});
+export type GapExplanation = z.infer<typeof GapExplanationSchema>;
+
+export const GapItemSchema = z.object({
+  key: z.string(),
+  status: GapStatusSchema,
+  // —— query 目标叠加（optional·script 目标不填 → byte 等价）——
+  severity: GapSeveritySchema.optional(),
+  explanation: GapExplanationSchema.optional(),
+  remediation: GapRemediationSchema.optional(),
+});
 export type GapItem = z.infer<typeof GapItemSchema>;
 
 export const GapAnalysisEntrySchema = z.object({
   kind: ModuleKindSchema,
-  side: z.enum(["content", "structure", "code", "cross_system"]),
+  side: GapSideSchema,
   needed: z.number().int(),
   existing: z.number().int(),
   toCreate: z.number().int(),
@@ -432,9 +479,145 @@ export const GapAnalysisEntrySchema = z.object({
 });
 export type GapAnalysisEntry = z.infer<typeof GapAnalysisEntrySchema>;
 
+/** 执行计划步（side 四层拓扑序 content→structure→code→cross_system；某层无缺口即跳过·不虚构空步）。 */
+export const ExecutionStepSchema = z.object({
+  step: z.number().int(),
+  side: GapSideSchema,
+  keys: z.array(z.string()),
+  rationale: z.string(),
+});
+export type ExecutionStep = z.infer<typeof ExecutionStepSchema>;
+
 export const GapAnalysisSchema = z.object({
   entries: z.array(GapAnalysisEntrySchema),
-  totals: z.object({ needed: z.number().int(), existing: z.number().int(), toCreate: z.number().int(), missing: z.number().int() }),
+  totals: z.object({
+    needed: z.number().int(),
+    existing: z.number().int(),
+    toCreate: z.number().int(),
+    missing: z.number().int(),
+    coverageScore: z.number().min(0).max(1).optional(), // 咨询信号·非门禁（§10）
+  }),
+  target: GapTargetSchema.optional(), // optional：现有调用不传
+  executionPlan: z.array(ExecutionStepSchema).optional(),
   generatedAt: z.string(),
 });
 export type GapAnalysis = z.infer<typeof GapAnalysisSchema>;
+
+// ---- diff 纯核（§5 · R1 contracts-only-shared · R6 确定性：无 IO/时钟/随机） -------------
+// 两服务共用一个 diff：DataCore analyzeGap（script 目标）与 AgentCore preAnalyzeQuery（query 目标）
+// 各自组装 required/existing 后调本函数。generatedAt 由调用方经 meta 注入（不在内部取 new Date()），
+// 保证同输入 byte 一致可重放。
+
+const uniqKeys = (xs: readonly string[]): string[] => [...new Set(xs)];
+const EMPTY_SET: ReadonlySet<string> = new Set<string>();
+
+const SIDE_ORDER: readonly GapSide[] = ["content", "structure", "code", "cross_system"];
+/** §10 覆盖率权重（经验值·待 Phase 3 用真实成功率相关性校准·诚实标注·仅咨询信号不作门禁）。 */
+const SIDE_WEIGHTS: Record<GapSide, number> = { content: 0.2, structure: 0.3, code: 0.4, cross_system: 0.1 };
+const SIDE_RATIONALE: Record<GapSide, string> = {
+  content: "内容层：先备齐数据/文档（合成或接入）",
+  structure: "结构层：本体类型/规则/切片就位",
+  code: "代码层：求解器等纯函数制品（缺则落工单开发）",
+  cross_system: "跨系统层：AgentCore B 栈制品（经 scaffold 创建）",
+};
+
+export interface DiffGapMeta {
+  /** kind → side（provisioner.side）。 */
+  side: Record<string, GapSide>;
+  /** kind → autoCreatable（provisioner.autoCreatable）。false（如 solver）→ 缺则 MISSING。 */
+  autoCreatable: Record<string, boolean>;
+  /** R6：调用方注入生成时刻（纯函数内部不取时钟）。 */
+  generatedAt: string;
+  /** 诊断目标（optional·script 目标可不填以保 byte 等价）。 */
+  target?: GapTarget;
+  /**
+   * 显式判定为 MISSING 的 key（覆盖 autoCreatable 默认）。cross_system 类 scaffold 回执判 MISSING 时
+   * 经此传入——单个 autoCreatable 布尔无法表达「同 kind 内部分 key 不可建」，故以 per-key 集合补足，
+   * 使 diffGap 忠实复现三态（REUSED→EXISTS / MISSING→MISSING / SCAFFOLDED|无回执→TO_CREATE）。
+   */
+  missing?: Partial<Record<string, ReadonlySet<string>>>;
+  /**
+   * 叠加咨询信号：executionPlan（side 四层拓扑序）+ totals.coverageScore。
+   * DataCore analyzeGap 不传（保持与改造前 byte 等价）；AgentCore 预分析传 true。
+   */
+  enrich?: boolean;
+}
+
+/**
+ * 跨模块统一 diff（§5）：required（每类需要的 key）vs existing（每类已有的 key）→ GapAnalysis。
+ * 纯函数：无 IO/时钟/随机，generatedAt 经 meta 注入 → 同输入字节级一致（R6）。
+ */
+export function diffGap(
+  required: Partial<Record<string, readonly string[]>>,
+  existing: Partial<Record<string, ReadonlySet<string>>>,
+  meta: DiffGapMeta,
+): GapAnalysis {
+  const entries: GapAnalysisEntry[] = [];
+  for (const kind of MODULE_KINDS) {
+    const need = uniqKeys(required[kind] ?? []);
+    if (need.length === 0) continue;
+    const have = existing[kind] ?? EMPTY_SET;
+    const miss = meta.missing?.[kind];
+    const items: GapItem[] = need.map((key) => ({
+      key,
+      status: have.has(key) ? "EXISTS" : miss?.has(key) ? "MISSING" : meta.autoCreatable[kind] ? "TO_CREATE" : "MISSING",
+    }));
+    entries.push({
+      kind,
+      side: meta.side[kind]!,
+      needed: items.length,
+      existing: items.filter((i) => i.status === "EXISTS").length,
+      toCreate: items.filter((i) => i.status === "TO_CREATE").length,
+      missing: items.filter((i) => i.status === "MISSING").length,
+      items,
+    });
+  }
+  const totals = entries.reduce(
+    (a, e) => ({ needed: a.needed + e.needed, existing: a.existing + e.existing, toCreate: a.toCreate + e.toCreate, missing: a.missing + e.missing }),
+    { needed: 0, existing: 0, toCreate: 0, missing: 0 } as {
+      needed: number;
+      existing: number;
+      toCreate: number;
+      missing: number;
+      coverageScore?: number;
+    },
+  );
+  const analysis: GapAnalysis = { entries, totals, generatedAt: meta.generatedAt };
+  if (meta.target) analysis.target = meta.target;
+  if (meta.enrich) {
+    analysis.executionPlan = buildExecutionPlan(entries);
+    analysis.totals.coverageScore = computeCoverageScore(entries);
+  }
+  return analysis;
+}
+
+/** side 四层拓扑序：每层收集该层待动作（非 EXISTS）的 key 为一步；某层无缺口即跳过（§5 诚实·不造空步）。 */
+export function buildExecutionPlan(entries: readonly GapAnalysisEntry[]): ExecutionStep[] {
+  const steps: ExecutionStep[] = [];
+  let step = 1;
+  for (const side of SIDE_ORDER) {
+    const keys = uniqKeys(
+      entries.filter((e) => e.side === side).flatMap((e) => e.items.filter((i) => i.status !== "EXISTS").map((i) => i.key)),
+    );
+    if (keys.length === 0) continue;
+    steps.push({ step, side, keys, rationale: SIDE_RATIONALE[side] });
+    step += 1;
+  }
+  return steps;
+}
+
+/** 覆盖率（§10 咨询信号·非门禁）：每侧 existing/needed 按权重加权，仅计有需求的侧；3 位定点保 R6 确定。 */
+export function computeCoverageScore(entries: readonly GapAnalysisEntry[]): number {
+  let num = 0;
+  let den = 0;
+  for (const side of SIDE_ORDER) {
+    const es = entries.filter((e) => e.side === side);
+    const needed = es.reduce((a, e) => a + e.needed, 0);
+    if (needed === 0) continue;
+    const existing = es.reduce((a, e) => a + e.existing, 0);
+    const w = SIDE_WEIGHTS[side];
+    num += w * (existing / needed);
+    den += w;
+  }
+  return den === 0 ? 1 : Math.round((num / den) * 1000) / 1000;
+}

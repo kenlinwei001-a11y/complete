@@ -101,6 +101,7 @@ import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH, BUSIN
 import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
 import { DataBuilderService } from "./databuilder/service.js";
+import { buildRegistrySnapshot } from "./databuilder/provisioners.js";
 import { SimClockService } from "./simclock.js";
 import { HistoryService } from "./livedin/bundle.js";
 import { FeatureService, VIEW_FEATURE_MAP, RETIRED_VIEW_KEYS, featureNotFound } from "./features.js";
@@ -3635,6 +3636,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     requireAdmin(c);
     return databuilder.getStoryRun(c, (req.params as { id: string }).id);
+  });
+  // UPG-L0-GAPCORE（PRD-gap-analysis-engine §3/§11）：有界配套现状快照——仅 6 类 A 栈（DataCore 真拥有），
+  // B 栈 cross_system 聚合归 AgentCore（§3）。R3 entitlement 先于 authz：功能关（暗发 defaultOn:false）→ 404；
+  // 仅服务间凭证（x-service-token → roles=["service"]）或 OBO service，用户 JWT 一律 403（与 notify-role 同范式）。
+  app.get("/a/v1/databuilder/registry-snapshot", async (req) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "databuilder.registry-snapshot"))) throw featureNotFound();
+    if (!c.roles.includes("service")) throw forbidden("registry-snapshot is service-to-service only");
+    return buildRegistrySnapshot({ repos, ontology }, c);
   });
   // 工业级工作流运行时：持久化步骤状态机（检查点/可重入/可重试/可观测）。
   // POST 启动一次故事建域工作流；GET 看运行 + 逐步状态/尝试/计时（可观测）；resume 从崩溃/失败处续跑。

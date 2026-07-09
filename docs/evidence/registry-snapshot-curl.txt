@@ -1,0 +1,24 @@
+############ UPG-L0-GAPCORE · registry-snapshot 真跑证据 (2026-07-09T15:22:54Z) ############
+server: PORT=4001 SEED_DEMO=1 SERVICE_TOKEN=svc · demo tenant (battery→全键·flag 默认 ON)
+
+### login demo/admin/demo1234 → Bearer ###
+accessToken: eyJhbGciOiJSUzI1NiIsImtpZCI6... (len 634)
+
+### C3a · flag ON · x-service-token=svc + x-tenant-id=demo → EXPECT 200 · 仅 6 类 A 栈 ###
+HTTP 200
+kinds (6): dataset, kb_doc, ontology_type, rule, slice, solver
+counts: {"dataset":40,"kb_doc":0,"ontology_type":43,"rule":45,"slice":48,"solver":49}
+B-stack kinds present? (EXPECT none): []
+
+### C3b · 用户 JWT (Bearer, roles=admin 非 service) → EXPECT 403 ###
+HTTP 403
+body: {"error":{"code":"FORBIDDEN","message":"registry-snapshot is service-to-service only","requestId":"req_mc8bm8q5wese82hd"}}
+
+### C5 · 回退演练 (RL2 暗发)：关闸 flag → EXPECT 404 FEATURE_NOT_FOUND ###
+turn OFF (tenant override) HTTP 200
+service-token call with flag OFF → HTTP 404
+body: {"error":{"code":"FEATURE_NOT_FOUND","message":"feature not found","requestId":"req_yt1rv3vz5v5vzbkh"}}
+restore ON HTTP 200
+confirm ON again → HTTP 200
+
+############ END ############

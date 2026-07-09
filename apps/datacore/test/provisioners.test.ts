@@ -86,4 +86,79 @@ describe("比对现状 analyzeGap · 跨模块统一 diff（EXISTS 复用 / TO_C
     expect(g.totals.missing).toBeGreaterThanOrEqual(1); // ghost_solver
     expect(summarizeGap(g)).toMatch(/需 \d+ · 复用 \d+ · 新建 \d+ · 缺 \d+/);
   });
+
+  // C2（UPG-L0-GAPCORE §5/§14）：analyzeGap 无损改造——内部改为「收集 required/existing → 调 diffGap 纯核」。
+  // 关键门：同输入 → 与改造前 GapAnalysis JSON **byte 一致**（唯一调用点 service.ts 零改）。下面内联一份
+  // 改造前 analyzeGap 原始实现（legacyAnalyzeGap·除 generatedAt 注入化外逐字等价），逐场景 JSON 比对。
+  describe("analyzeGap 无损改造 · 改造前后 byte 等价（THE KEY GATE）", () => {
+    const uniqLocal = (xs: string[]): string[] => [...new Set(xs)];
+    async function legacyAnalyzeGap(
+      d: ProvisionerDeps,
+      ctx: AuthCtx,
+      p: BuildPlan,
+      scaffoldReceipt?: { items: { kind: string; key: string; status: "REUSED" | "SCAFFOLDED" | "MISSING" }[]; fullChainOk: boolean },
+      generatedAt = "FIXED",
+    ) {
+      const recByKind = new Map<string, Map<string, "REUSED" | "SCAFFOLDED" | "MISSING">>();
+      for (const it of scaffoldReceipt?.items ?? []) {
+        if (!recByKind.has(it.kind)) recByKind.set(it.kind, new Map());
+        recByKind.get(it.kind)!.set(it.key, it.status);
+      }
+      const entries: { kind: string; side: string; needed: number; existing: number; toCreate: number; missing: number; items: { key: string; status: string }[] }[] = [];
+      for (const prov of MODULE_PROVISIONERS) {
+        const planned = uniqLocal(prov.planned(p));
+        if (planned.length === 0) continue;
+        let items: { key: string; status: string }[];
+        if (prov.side === "cross_system") {
+          const rec = recByKind.get(prov.kind);
+          items = planned.map((key) => {
+            const s = rec?.get(key);
+            const status = s === "REUSED" ? "EXISTS" : s === "MISSING" ? "MISSING" : "TO_CREATE";
+            return { key, status };
+          });
+        } else {
+          const existing = await prov.existing!(d, ctx);
+          items = planned.map((key) => ({ key, status: existing.has(key) ? "EXISTS" : prov.autoCreatable ? "TO_CREATE" : "MISSING" }));
+        }
+        entries.push({
+          kind: prov.kind,
+          side: prov.side,
+          needed: items.length,
+          existing: items.filter((i) => i.status === "EXISTS").length,
+          toCreate: items.filter((i) => i.status === "TO_CREATE").length,
+          missing: items.filter((i) => i.status === "MISSING").length,
+          items,
+        });
+      }
+      const totals = entries.reduce(
+        (a, e) => ({ needed: a.needed + e.needed, existing: a.existing + e.existing, toCreate: a.toCreate + e.toCreate, missing: a.missing + e.missing }),
+        { needed: 0, existing: 0, toCreate: 0, missing: 0 },
+      );
+      return { entries, totals, generatedAt };
+    }
+
+    // 归一化 generatedAt（唯一非确定字段），其余全字段 byte 比对。
+    const norm = (g: unknown) => JSON.stringify({ ...(g as Record<string, unknown>), generatedAt: "FIXED" });
+
+    const scenarios: {
+      name: string;
+      opts: { types?: string[]; rules?: string[]; slices?: string[]; datasets?: string[]; kb?: string[] };
+      receipt?: { items: { kind: string; key: string; status: "REUSED" | "SCAFFOLDED" | "MISSING" }[]; fullChainOk: boolean };
+    }[] = [
+      { name: "混合：结构已有/新建 + solver 已注册/幽灵 MISSING + dataset 新建", opts: { types: ["Existing"], rules: ["R1"], slices: ["slice_existing"] } },
+      { name: "全空现状：结构全 TO_CREATE + solver 全 MISSING", opts: {} },
+      { name: "结构全命中：EXISTS", opts: { types: ["Existing", "NewType"], rules: ["R1", "R2"], slices: ["slice_existing", "slice_new"] } },
+      { name: "cross_system 三态 REUSED→EXISTS", opts: {}, receipt: { items: [{ kind: "intent", key: "intent_a", status: "REUSED" }], fullChainOk: true } },
+      { name: "cross_system 三态 MISSING→MISSING（missing 集覆盖 autoCreatable）", opts: {}, receipt: { items: [{ kind: "intent", key: "intent_a", status: "MISSING" }], fullChainOk: false } },
+      { name: "cross_system 三态 SCAFFOLDED→TO_CREATE", opts: {}, receipt: { items: [{ kind: "intent", key: "intent_a", status: "SCAFFOLDED" }], fullChainOk: true } },
+    ];
+
+    for (const sc of scenarios) {
+      it(`byte 等价 · ${sc.name}`, async () => {
+        const before = await legacyAnalyzeGap(deps(sc.opts), CTX, plan, sc.receipt);
+        const after = await analyzeGap(deps(sc.opts), CTX, plan, sc.receipt as never);
+        expect(norm(after)).toBe(norm(before));
+      });
+    }
+  });
 });

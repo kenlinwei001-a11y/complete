@@ -95,6 +95,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { apiTags: ["opt-whatif"], solverKeys: ["optimize_whatif"] } },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  // UPG-L0-GAPCORE（PRD-gap-analysis-engine §3/§11）：配套现状快照（6 类 A 栈·服务间/OBO）。暗发
+  // defaultOn:false（RL2）——关 = GET /a/v1/databuilder/registry-snapshot 404 FEATURE_NOT_FOUND
+  // （R3 先于 authz·回退演练 C5）。现有租户零影响（additive）。
+  { key: "databuilder.registry-snapshot", name: "配套现状快照（服务间）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

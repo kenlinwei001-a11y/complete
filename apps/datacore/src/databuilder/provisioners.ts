@@ -3,7 +3,8 @@
 // 三处的"需要 vs 已有"收敛成一张跨模块统一 diff。模块全集 = BuildPlan 的 13 个 need 数组，一一对应
 // 注册表里的 provisioner——**新增模块必须注册**（provisioners.test 覆盖门强制；BuildPlan 任一根级数组
 // 字段未登记即红，保证"倒序"无遗漏、未来新模块自动被纳入统一机制）。
-import type { BuildPlan, GapAnalysis, GapAnalysisEntry, GapItem, GapStatus, ModuleKind, ScaffoldReceipt } from "@platform/contracts";
+import type { BuildPlan, GapAnalysis, GapSide, ModuleKind, ScaffoldReceipt } from "@platform/contracts";
+import { diffGap } from "@platform/contracts";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyService } from "../ontology.js";
 import type { AuthCtx } from "../domain.js";
@@ -109,42 +110,56 @@ export async function analyzeGap(
   plan: BuildPlan,
   scaffoldReceipt?: ScaffoldReceipt,
 ): Promise<GapAnalysis> {
+  // 无损改造（PRD §5/§6）：收集 required/existing → 调共享纯核 diffGap。对外签名与输出 byte 与改造前一致
+  //（唯一调用点 service.ts 零改）。cross_system 三态经 existing(REUSED) + missing(scaffold MISSING) 集合
+  // 传给 diffGap 忠实复现（SCAFFOLDED/无回执 → autoCreatable=true → TO_CREATE）。
   const recByKind = new Map<string, Map<string, "REUSED" | "SCAFFOLDED" | "MISSING">>();
   for (const it of scaffoldReceipt?.items ?? []) {
     if (!recByKind.has(it.kind)) recByKind.set(it.kind, new Map());
     recByKind.get(it.kind)!.set(it.key, it.status);
   }
-  const entries: GapAnalysisEntry[] = [];
+  const required: Partial<Record<string, string[]>> = {};
+  const existing: Partial<Record<string, ReadonlySet<string>>> = {};
+  const missing: Partial<Record<string, ReadonlySet<string>>> = {};
+  const side: Record<string, GapSide> = {};
+  const autoCreatable: Record<string, boolean> = {};
   for (const prov of MODULE_PROVISIONERS) {
+    side[prov.kind] = prov.side;
+    autoCreatable[prov.kind] = prov.autoCreatable;
     const planned = uniq(prov.planned(plan));
     if (planned.length === 0) continue;
-    let items: GapItem[];
+    required[prov.kind] = planned;
     if (prov.side === "cross_system") {
       const rec = recByKind.get(prov.kind);
-      items = planned.map((key) => {
+      const ex = new Set<string>();
+      const miss = new Set<string>();
+      for (const key of planned) {
         const s = rec?.get(key);
-        const status: GapStatus = s === "REUSED" ? "EXISTS" : s === "MISSING" ? "MISSING" : "TO_CREATE";
-        return { key, status };
-      });
+        if (s === "REUSED") ex.add(key);
+        else if (s === "MISSING") miss.add(key);
+        // SCAFFOLDED / 无回执 → 不入两集 → diffGap 按 autoCreatable=true 判 TO_CREATE（与改造前一致）。
+      }
+      existing[prov.kind] = ex;
+      if (miss.size > 0) missing[prov.kind] = miss;
     } else {
-      const existing = await prov.existing!(deps, ctx);
-      items = planned.map((key) => ({ key, status: existing.has(key) ? "EXISTS" : prov.autoCreatable ? "TO_CREATE" : "MISSING" }));
+      existing[prov.kind] = await prov.existing!(deps, ctx);
     }
-    entries.push({
-      kind: prov.kind,
-      side: prov.side,
-      needed: items.length,
-      existing: items.filter((i) => i.status === "EXISTS").length,
-      toCreate: items.filter((i) => i.status === "TO_CREATE").length,
-      missing: items.filter((i) => i.status === "MISSING").length,
-      items,
-    });
   }
-  const totals = entries.reduce(
-    (a, e) => ({ needed: a.needed + e.needed, existing: a.existing + e.existing, toCreate: a.toCreate + e.toCreate, missing: a.missing + e.missing }),
-    { needed: 0, existing: 0, toCreate: 0, missing: 0 },
-  );
-  return { entries, totals, generatedAt: new Date().toISOString() };
+  return diffGap(required, existing, { side, autoCreatable, missing, generatedAt: new Date().toISOString() });
+}
+
+/**
+ * 有界配套现状快照（PRD §3/§11 · GET /a/v1/databuilder/registry-snapshot）：仅返回 DataCore 真拥有的
+ * 6 类 A 栈（有 existing() 的 provisioner）。7 类 cross_system（B 栈在 AgentCore）无 existing()——
+ * DataCore 看不见，query 目标聚合归 AgentCore（架构决策 §3）。确定性：kind 与 key 均升序（R6）。
+ */
+export async function buildRegistrySnapshot(deps: ProvisionerDeps, ctx: AuthCtx): Promise<Record<string, string[]>> {
+  const snapshot: Record<string, string[]> = {};
+  for (const prov of MODULE_PROVISIONERS) {
+    if (!prov.existing) continue; // 仅 6 类 A 栈（content/structure/code）
+    snapshot[prov.kind] = [...(await prov.existing(deps, ctx))].sort();
+  }
+  return snapshot;
 }
 
 /** 一行摘要（喂工作流步 detail）：需 N · 复用 X · 新建 Y · 缺 Z。 */
