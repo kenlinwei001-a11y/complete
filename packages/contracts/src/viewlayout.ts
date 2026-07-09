@@ -44,3 +44,11 @@ export const DagPaletteSchema = z.object({
   solverNodes: z.array(z.object({ id: z.string(), label: z.string() })),
 });
 export type DagPalette = z.infer<typeof DagPaletteSchema>;
+
+/**
+ * 通用表列定义（列头 label + 取值键·渲染器按 key 从行对象取值/格式化，value 仍绑后端真值）。
+ * FILL-XINDUSTRY-LAYOUT（G-5 8a 续收）：RiskBoard 受影响订单表列曾 JSX 字面量写死（型号/营收敞口等制造订单维度），
+ * 迁入 `view.layout.affectedOrderColumns` → 换行业换 config 即换列（值格式化按 key 绑真值·不改语义）。
+ */
+export const ViewColumnDefSchema = z.object({ key: z.string(), label: z.string() });
+export type ViewColumnDef = z.infer<typeof ViewColumnDefSchema>;

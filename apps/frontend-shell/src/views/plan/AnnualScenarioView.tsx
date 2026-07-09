@@ -16,7 +16,8 @@ import styles from "./PlanViews.module.css";
 
 // 接线：合成生成器与端点默认均种 2026（battery generatePlanDomain / PlanService.aop 默认年）；
 // 视图请求年须与之统一，否则 plan.aop(year) 过滤空 → 视图空数据（修 §2#15 接线 bug）。
-const YEAR = 2026;
+// FILL-XINDUSTRY-LAYOUT（G-5 8a·R14）：计划年由 ViewConfig.layout.year 下发（后端 VIEW_DEFS 已下发），常量仅兜底。
+const DEFAULT_YEAR = 2026;
 
 /** 情景顶边色条（保守灰蓝 / 基准蓝 / 激进琥珀，对齐原型 AOP_SCEN.c） */
 const SCEN_COLORS: Record<string, string> = {
@@ -26,10 +27,13 @@ const SCEN_COLORS: Record<string, string> = {
 };
 
 /** 年度情景规划台（renderer=annual-scenario，§7.14）：三情景卡 + 触发挂牌 + 目标分解流 */
-export default function AnnualScenarioView(_props: ViewRendererProps) {
+export default function AnnualScenarioView({ view }: ViewRendererProps) {
+  // FILL-XINDUSTRY-LAYOUT（G-5 8a·R14）：计划年 + 目标分解产量单位由 layout 下发·前端消费（换行业换 config）。
+  const planYear = (view.layout?.year as number | undefined) ?? DEFAULT_YEAR;
+  const unit = (view.layout?.unit as string | undefined) ?? "万套"; // debattery-allow（电池产量单位兜底·换行业经 layout.unit 下发）
   const { data, isLoading } = useQuery({
-    queryKey: ["a", "plan-aop", { year: YEAR }],
-    queryFn: () => fetchAop(YEAR),
+    queryKey: ["a", "plan-aop", { year: planYear }],
+    queryFn: () => fetchAop(planYear),
   });
 
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
@@ -41,7 +45,7 @@ export default function AnnualScenarioView(_props: ViewRendererProps) {
     <div data-testid="annual-scenario-view">
       <div className={simStyles.head}>
         <div>
-          <h3>{zh.aop.title(YEAR)}</h3>
+          <h3>{zh.aop.title(planYear)}</h3>
           <div className={simStyles.sub}>
             产能建设求解器：情景需求曲线 vs 投产时点 → 缺口/过剩窗口 · IRR · 利用率预测（<RuleRef code="C23" /> 门槛校验，<RuleRef code="C18" /> 现金垫底线）· 情景挂触发条件活在系统里。
           </div>
@@ -59,7 +63,7 @@ export default function AnnualScenarioView(_props: ViewRendererProps) {
 
       {baseline?.capexScenario && <CapexWindowCurve scenario={baseline} />}
       <TriggerBoard triggers={data.triggers} />
-      <DecompositionFlow decomposition={data.decomposition} baselineDemand={baseline?.demand} />
+      <DecompositionFlow decomposition={data.decomposition} baselineDemand={baseline?.demand} unit={unit} />
     </div>
   );
 }
@@ -272,7 +276,7 @@ function TriggerBoard({ triggers }: { triggers: AopResponse["triggers"] }) {
 }
 
 /** 目标分解流（年 → 季 → 月）：分解节点悬停溯源（targetRef 与 S&OP 目标线同源） */
-function DecompositionFlow({ decomposition, baselineDemand }: { decomposition: AopResponse["decomposition"]; baselineDemand?: number }) {
+function DecompositionFlow({ decomposition, baselineDemand, unit }: { decomposition: AopResponse["decomposition"]; baselineDemand?: number; unit: string }) {
   const [prov, setProv] = useState<{ ref: string; top: number; left: number } | null>(null);
   const year = decomposition.find((d) => d.level === "year");
   const quarters = decomposition.filter((d) => d.level === "quarter");
@@ -298,7 +302,7 @@ function DecompositionFlow({ decomposition, baselineDemand }: { decomposition: A
         {year && (
           <div className={styles.decNode} data-testid="dec-node-year" onMouseEnter={(e) => hover(e, year.targetRef)} onMouseLeave={() => setProv(null)}>
             <b>{year.period}</b>
-            {year.value.toLocaleString("zh-CN")} 万套
+            {year.value.toLocaleString("zh-CN")} {unit}
           </div>
         )}
         {quarters.map((q) => {
@@ -313,7 +317,7 @@ function DecompositionFlow({ decomposition, baselineDemand }: { decomposition: A
                 onMouseLeave={() => setProv(null)}
               >
                 <b>{q.period}</b>
-                {q.value} 万套
+                {q.value} {unit}
                 {qMonths.length > 0 && (
                   <div className={styles.decMonths}>
                     {qMonths.map((m) => (

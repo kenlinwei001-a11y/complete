@@ -25,6 +25,12 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：缺口档位阈值由 ViewConfig.layout.gapTiers 声明（后端 VIEW_DEFS 已下发），常量仅兜底
   const gapTiers = (view.layout?.gapTiers as { red?: number; yellow?: number } | undefined) ?? { red: 4, yellow: 0 };
   const tierOf = (gap: number): "red" | "amber" | "green" => (gap > (gapTiers.red ?? 4) ? "red" : gap > (gapTiers.yellow ?? 0) ? "amber" : "green");
+  // FILL-XINDUSTRY-LAYOUT（G-5 8a·R14）：长协越线阈 + 产出/物料单位由 ViewConfig.layout 下发（后端 VIEW_DEFS 已下发），
+  // 前端消费·常量仅电池兜底（换行业换 config 即换阈值/单位·不改代码）。
+  const ltaEscalatePct = (view.layout?.ltaEscalatePct as number | undefined) ?? 5;
+  const units = (view.layout?.units as { output?: string; material?: string } | undefined) ?? {};
+  const outputUnit = units.output ?? "万套"; // debattery-allow（电池产量单位兜底·换行业经 layout.units 下发）
+  const materialUnit = units.material ?? "吨"; // debattery-allow（电池物料单位兜底·换行业经 layout.units 下发）
   // HARDCODE-CLOCK-DERIVE：不在前端钉当前起始季；省略 from → 后端按模拟时钟 forecastStart 派生起始季。
   const { data, isLoading } = useQuery({
     queryKey: ["a", "plan-quarterly", { n: 6 }],
@@ -65,7 +71,7 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
 
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span>产能爬坡 vs 需求（万套/季）</span>
+          <span>产能爬坡 vs 需求（{outputUnit}/季）</span>
           {/* WO-VIS-SIGNALS-2 ②：季度需求条加上游溯源 → 跳年度情景规划的目标分解流（季度需求由年度基准需求逐层分解而来）。
               此前季度需求只有 bar+tooltip，看不到"这个季度需求是从哪年度目标拆下来的"。 */}
           <button className="badge" data-testid="quarter-goto-annual" style={{ marginLeft: "auto", cursor: "pointer" }} title="看年度分解：季度需求的上游（年→季→月目标分解）" onClick={() => navigate("/v/annual-scenario")}>
@@ -141,13 +147,13 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
           <tbody>
             {data.ltaDeviation.map((r) => {
               // E3 治本：越线判定消费后端权威 breach（C27 长协阈 5% 在后端判）；后端未发时才回退前端算（兼容旧响应）。
-              const breach = r.breach ?? Math.abs(r.deviationPct) > 5;
+              const breach = r.breach ?? Math.abs(r.deviationPct) > ltaEscalatePct;
               return (
                 <tr key={r.material} data-testid={`lta-${r.material}`} data-breach={breach}>
                   <td className="zh">
                     <b>{r.material}</b>
                   </td>
-                  <td>{r.planned.toLocaleString("zh-CN")} 吨/季</td>
+                  <td>{r.planned.toLocaleString("zh-CN")} {materialUnit}/季</td>
                   <td>{r.actual.toLocaleString("zh-CN")}</td>
                   <td style={{ color: breach ? "var(--danger)" : "var(--ok)", fontWeight: 700 }} data-testid={`lta-dev-${r.material}`}>
                     {/* 轨N 跟进2·KPI 裸数字接 Provenance：长协偏差% 接季度滚动求解器真算（C27 长协）。 */}

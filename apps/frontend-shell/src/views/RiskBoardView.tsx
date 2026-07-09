@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { RiskTimelineOutput } from "@platform/contracts";
+import type { RiskTimelineOutput, ViewColumnDef } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema } from "@platform/contracts";
 import type { HistoryRiskCase } from "@platform/contracts";
 import { fetchHistoryBundle, invokeSolver, queryTimeseriesAgg } from "@/api/endpoints";
@@ -22,8 +22,27 @@ import styles from "./RiskBoardView.module.css";
 
 type RiskCard = RiskTimelineOutput["cards"][number];
 
+/**
+ * FILL-XINDUSTRY-LAYOUT（G-5 8a·R14）：受影响订单表列（型号/营收敞口等制造订单维度）默认结构。
+ * 优先由 `view.layout.affectedOrderColumns` 下发·此常量仅电池兜底（换行业换 config 即换列）。
+ */
+const DEFAULT_AFFECTED_ORDER_COLUMNS: ViewColumnDef[] = [
+  { key: "so", label: "SO" },
+  { key: "cust", label: "客户" }, // debattery-allow
+  { key: "model", label: "型号" }, // debattery-allow
+  { key: "qty", label: "数量" }, // debattery-allow
+  { key: "due", label: "交期" }, // debattery-allow
+  { key: "delay", label: "预计延误" }, // debattery-allow
+  { key: "revenueWan", label: "营收敞口" }, // debattery-allow
+];
+
 /** 推演看板（renderer=risk-board，PRD §7.3）：风险卡网格 + 逐日 heat strip + 受影响订单弹窗 */
-export default function RiskBoardView(_props: ViewRendererProps) {
+export default function RiskBoardView({ view }: ViewRendererProps) {
+  // FILL-XINDUSTRY-LAYOUT（G-5 8a·R14）：产量单位/瓶颈维数兜底/越线带宽/订单列由 ViewConfig.layout 下发·常量仅兜底。
+  const unit = (view.layout?.unit as string | undefined) ?? "万套"; // debattery-allow（电池产量单位兜底·换行业经 layout.unit 下发）
+  const factorCount = (view.layout?.factorCount as number | undefined) ?? 7;
+  const bandWidth = (view.layout?.bandWidth as number | undefined) ?? 15;
+  const affectedOrderColumns = (view.layout?.affectedOrderColumns as ViewColumnDef[] | undefined) ?? DEFAULT_AFFECTED_ORDER_COLUMNS;
   const { data, isLoading } = useQuery({
     queryKey: ["a", "risk-timeline", {}],
     queryFn: async () => {
@@ -229,7 +248,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                         type: "bar",
                         data: detail.series.map((v) => ({
                           value: v,
-                          itemStyle: { color: v >= data.threshold ? "#E0626C" : v >= data.threshold - 15 ? "#E8B54A" : "#43B7D7" },
+                          itemStyle: { color: v >= data.threshold ? "#E0626C" : v >= data.threshold - bandWidth ? "#E8B54A" : "#43B7D7" },
                         })),
                       },
                     ],
@@ -264,14 +283,14 @@ export default function RiskBoardView(_props: ViewRendererProps) {
             ))}
           </div>
           {/* 轨N 增量3·风险点详情：该基地瓶颈因素逐项（接现成 bottleneck_matrix·LIVE/MOCK 诚实标，不新建风险引擎）。 */}
-          <BottleneckDetailPanel base={detail.base} threshold={data.threshold} />
+          <BottleneckDetailPanel base={detail.base} threshold={data.threshold} factorCount={factorCount} bandWidth={bandWidth} />
           {/* cockpit P3 对症方案 → 工单（mitigation_select 优选 → 采纳经 adopt_mitigation Action 审批，R4 不直改）。
               无真峰值（合成/无真源卡）→ tightness 传 0，后端按方案性价比排序（不据假紧迫度推荐）。 */}
           <MitigationPanel base={detail.base} factor={detail.factor} tightness={detail.peak ?? 0} />
         </Modal>
       )}
 
-      {ordersDay && <AffectedOrdersModal card={ordersDay.card} day={ordersDay.day} onClose={() => setOrdersDay(null)} />}
+      {ordersDay && <AffectedOrdersModal card={ordersDay.card} day={ordersDay.day} onClose={() => setOrdersDay(null)} unit={unit} columns={affectedOrderColumns} />}
 
       {/* PRD-IND-risk §2.4：处置行动计划表（按越线日前置 7 天排启动 · 峰值≥90 配备份方案 · 14 天内反提 S&OP）。
           治本：顶层非 LIVE（合成/无真源）⇒ 决策级处置工单不渲染（哈希/合成越线不产处置结论）。 */}
@@ -447,7 +466,7 @@ type MitPlan = { key: string; name: string; eff: number; tn: number; cost: strin
  * 接现成 bottleneck_matrix 求解器（基地×7因素已算）·请求 LIVE（守 genuine-sim 红线，有真数据走真算）·
  * 诚实标 dataMode（LIVE 实测 / MOCK 无真数据源估算），不新建风险引擎、不前端写死（R13/R14）。
  */
-function BottleneckDetailPanel({ base, threshold }: { base: string; threshold: number }) {
+function BottleneckDetailPanel({ base, threshold, factorCount, bandWidth }: { base: string; threshold: number; factorCount: number; bandWidth: number }) {
   const { data, isLoading } = useQuery({
     queryKey: ["a", "bottleneck_matrix", "detail", base],
     queryFn: async () => {
@@ -459,7 +478,7 @@ function BottleneckDetailPanel({ base, threshold }: { base: string; threshold: n
   return (
     <div style={{ marginTop: 14 }} data-testid="bottleneck-detail-panel">
       <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        该基地瓶颈因素逐项（{data?.factors.length ?? 7} 维 · bottleneck_matrix）
+        该基地瓶颈因素逐项（{data?.factors.length ?? factorCount} 维 · bottleneck_matrix）
         {data && (
           <span className="badge" data-testid="bottleneck-detail-datamode"
             style={{ background: data.dataMode === "LIVE" ? "rgba(98,190,119,.18)" : "rgba(210,176,76,.18)", color: data.dataMode === "LIVE" ? "var(--ok)" : "#D2B04C", fontSize: 10 }}>
@@ -496,7 +515,7 @@ function BottleneckDetailPanel({ base, threshold }: { base: string; threshold: n
                     {raw != null ? Math.round(v) : "—"}
                   </td>
                   <td className="zh" style={{ color: decisionColor(raw, threshold, cellLive ? "LIVE" : "MOCK", { calm: "var(--muted)" }) }}>
-                    {!cellLive ? "无实测" : v >= threshold ? "越线" : v >= threshold - 15 ? "关注" : "正常"}
+                    {!cellLive ? "无实测" : v >= threshold ? "越线" : v >= threshold - bandWidth ? "关注" : "正常"}
                   </td>
                 </tr>
               );
@@ -582,9 +601,17 @@ function MiniStrip({ series, threshold, dataMode }: { series: number[]; threshol
  * `card.affectedOrders`——由产能传导引擎按越线日 D+crossDay 真算（订单 props.bases 含该基地·交期落窗口），
  * 非哈希标签查询。MOCK 卡诚实声明「张力曲线为 mock 基线启发（非实测）」；空列表给诚实解释，**绝不裸空**。
  */
-function AffectedOrdersModal({ card, day: _day, onClose }: { card: RiskCard; day: number; onClose: () => void }) {
+function AffectedOrdersModal({ card, day: _day, onClose, unit, columns }: { card: RiskCard; day: number; onClose: () => void; unit: string; columns: ViewColumnDef[] }) {
   const orders = (card.affectedOrders ?? []) as Record<string, unknown>[];
   const isMock = card.dataMode === "MOCK";
+  // FILL-XINDUSTRY-LAYOUT（G-5 8a·R14）：列头 label 由 layout.affectedOrderColumns 驱动·迭代 columns；
+  // value 按 col.key 从订单对象取值/格式化（绑后端真值·不改语义）。换行业换 config 即换列（型号→区域…）。
+  const monoKeys = new Set(["qty", "due", "delay", "revenueWan"]);
+  const cellText = (o: Record<string, unknown>, key: string): string => {
+    if (key === "delay") return o.delay != null ? `+${o.delay}天` : "—";
+    if (key === "revenueWan") return o.revenueWan != null ? `${o.revenueWan} 万` : "—";
+    return String(o[key] ?? "—");
+  };
   const baselineN = card.currentTightness?.value != null ? Math.round(card.currentTightness.value) : null;
   // WO-FORECAST-SIM：需求驱动因素的真缺口溯源（gapWan=预测需求−产能·真源 DemandSegment/SopVersion），LIVE 诚实位。
   // demandGap 已是 RiskCardSchema 一等字段（contracts solvers.ts），直接读·无需内联类型断言。
@@ -598,7 +625,7 @@ function AffectedOrdersModal({ card, day: _day, onClose }: { card: RiskCard; day
           style={{ background: "rgba(98,190,119,.12)", border: "1px solid var(--ok,#62be77)", borderRadius: 6, padding: "8px 10px", fontSize: 11.5, color: "var(--muted)", marginBottom: 10 }}
         >
           ✓ 该因素（{card.factor}）紧张度由<b>真需求-产能缺口</b>派生（基线 {baselineN ?? "—"}·<b>非哈希</b>·确定性可溯）。
-          缺口 = <b>预测需求 − 产能</b> ≈ <b className="mono">{demandGap.gapWan} 万套</b>（来源：{demandGap.source}）。
+          缺口 = <b>预测需求 − 产能</b> ≈ <b className="mono">{demandGap.gapWan} {unit}</b>（来源：{demandGap.source}）。
           下表受影响订单由产能传导引擎按越线日 {card.crossDay != null ? `D+${card.crossDay}` : "推演终点"} 真算。
         </div>
       )}
@@ -615,25 +642,19 @@ function AffectedOrdersModal({ card, day: _day, onClose }: { card: RiskCard; day
       <table className="cmp" data-testid="affected-orders-table">
         <thead>
           <tr>
-            <th>SO</th>
-            <th>客户</th>
-            <th>型号</th>
-            <th>数量</th>
-            <th>交期</th>
-            <th>预计延误</th>
-            <th>营收敞口</th>
+            {columns.map((col) => (
+              <th key={col.key} data-col={col.key}>{col.label}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {orders.map((o, i) => (
             <tr key={String(o.so ?? i)}>
-              <td>{String(o.so ?? "—")}</td>
-              <td className="zh">{String(o.cust ?? "—")}</td>
-              <td>{String(o.model ?? "—")}</td>
-              <td className="mono">{String(o.qty ?? "—")}</td>
-              <td className="mono">{String(o.due ?? "—")}</td>
-              <td className="mono">{o.delay != null ? `+${o.delay}天` : "—"}</td>
-              <td className="mono">{o.revenueWan != null ? `${o.revenueWan} 万` : "—"}</td>
+              {columns.map((col) => (
+                <td key={col.key} className={col.key === "cust" ? "zh" : monoKeys.has(col.key) ? "mono" : undefined}>
+                  {cellText(o, col.key)}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

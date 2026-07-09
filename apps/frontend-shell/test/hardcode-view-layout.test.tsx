@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 import { ACCOUNTS, workspaceForAccount } from "@/mocks/fixtures";
@@ -90,5 +91,49 @@ describe("HARDCODE-VIEW-LAYOUT · 视图结构 config 驱动（Hβ 8a）", () =>
     // 六层 DAG 的固定求解器节点标签由 config 提供（不是写死"聚合求解器"）
     expect(await screen.findByText("配置聚合求解器X", {}, { timeout: 15000 })).toBeInTheDocument();
     expect(screen.getByText("配置瓶颈求解器X")).toBeInTheDocument();
+  });
+
+  // ── FILL-XINDUSTRY-LAYOUT（G-5 8a 续收·R14）：plan/sim 视图产量单位/阈值/订单列由 view.layout 驱动 ──
+
+  it("β5 QuarterlyRolling 产出/物料单位来自 layout.units（注入非电池单位 → 渲染 → 证明非写死万套/吨）", async () => {
+    overrideViewLayout({
+      "quarterly-rolling": { units: { output: "配置产出X", material: "配置物料X" } },
+    });
+    loginAs("planner");
+    renderApp("/v/quarterly-rolling");
+    // 段标题产出单位走 config（曾写死"万套/季"）
+    expect(await screen.findByText(/配置产出X\/季/, {}, { timeout: 15000 })).toBeInTheDocument();
+    // LTA 表物料单位走 config（曾写死"吨/季"）——单位与数值/「/季」分属不同文本节点，按表 textContent 断言
+    const ltaTable = await screen.findByTestId("lta-table");
+    expect(ltaTable.textContent).toContain("配置物料X");
+    expect(ltaTable.textContent).not.toContain("吨/季");
+  });
+
+  it("β6 AnnualScenario 目标分解产量单位来自 layout.unit（注入非电池单位 → 渲染 → 证明非写死万套）", async () => {
+    overrideViewLayout({
+      "annual-scenario": { unit: "配置单位X" },
+    });
+    loginAs("planner");
+    renderApp("/v/annual-scenario");
+    const flow = await screen.findByTestId("aop-dec-flow", {}, { timeout: 15000 });
+    // 分解节点单位由 config 迭代替换（曾写死"万套"），year/quarter 多节点均带注入单位
+    expect(within(flow).getAllByText(/配置单位X/).length).toBeGreaterThan(0);
+  });
+
+  it("β7 RiskBoard 受影响订单列头来自 layout.affectedOrderColumns（注入非电池列 → 渲染 → 证明非写死型号/营收敞口）", async () => {
+    overrideViewLayout({
+      risk: { affectedOrderColumns: [{ key: "region", label: "配置区域列X" }, { key: "cust", label: "客户" }], unit: "配置单位X" },
+    });
+    loginAs("planner");
+    const user = userEvent.setup();
+    renderApp("/v/risk");
+    // 打开某基地风险卡详情 → 点某越线日 → 受影响订单弹窗
+    await user.click(await screen.findByTestId("risk-card-常州", {}, { timeout: 15000 }));
+    await user.click(await screen.findByTestId("risk-day-0"));
+    const table = await screen.findByTestId("affected-orders-table");
+    // 列头由 config 迭代（注入"配置区域列X"渲染出来），且旧写死"型号/营收敞口"不再出现
+    expect(within(table).getByText("配置区域列X")).toBeInTheDocument();
+    expect(within(table).queryByText("型号")).not.toBeInTheDocument();
+    expect(within(table).queryByText("营收敞口")).not.toBeInTheDocument();
   });
 });

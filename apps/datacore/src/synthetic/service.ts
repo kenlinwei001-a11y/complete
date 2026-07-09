@@ -1356,7 +1356,30 @@ export class SyntheticService {
       },
       // DF.6 拉取靶：每 solver-backed 视图声明它"要拉取的求解器输出字段"（pull target）——
       // 喂 ModuleProvisioner/SHAPE 闭包：拉取靶 ⊄ 求解器输出形状 → 缺该输出字段 → TO_CREATE（G-8/R12 输出侧）。
-      risk: { title: "产能推演", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14, outputFields: ["cards", "planRows", "horizon", "threshold"] } },
+      // FILL-XINDUSTRY-LAYOUT（G-5 8a 续收·R14）：把 RiskBoard 前端曾写死的电池呈现常数（产量单位/瓶颈维数兜底/
+      // 越线带宽/受影响订单列）真下发 ViewConfig.layout → 前端消费·常量仅兜底（换行业换 config 即换单位/列，不改代码）。
+      // unit=万套（电芯套）·factorCount=7（电池瓶颈固定枚举）·bandWidth=15（heat 越线带）·affectedOrderColumns=制造订单维度列。
+      risk: {
+        title: "产能推演",
+        renderer: "risk-board",
+        layout: {
+          solverKey: "risk_timeline",
+          horizon: 14,
+          unit: "万套",
+          factorCount: 7,
+          bandWidth: 15,
+          affectedOrderColumns: [
+            { key: "so", label: "SO" },
+            { key: "cust", label: "客户" },
+            { key: "model", label: "型号" },
+            { key: "qty", label: "数量" },
+            { key: "due", label: "交期" },
+            { key: "delay", label: "预计延误" },
+            { key: "revenueWan", label: "营收敞口" },
+          ],
+          outputFields: ["cards", "planRows", "horizon", "threshold"],
+        },
+      },
       order: { title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
       "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] } },
       "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] } },
@@ -1366,12 +1389,14 @@ export class SyntheticService {
       "annual-scenario": {
         title: "年度情景规划台",
         renderer: "annual-scenario",
-        layout: { endpoint: "/a/v1/plan/aop", year: 2026, actionTypeKey: "AOP情景拍板", finalizeFeature: "act.aop-finalize" },
+        // FILL-XINDUSTRY-LAYOUT：unit（目标分解节点产量单位）随 config 下发·前端消费（曾写死"万套"）。
+        layout: { endpoint: "/a/v1/plan/aop", year: 2026, unit: "万套", actionTypeKey: "AOP情景拍板", finalizeFeature: "act.aop-finalize" },
       },
       "quarterly-rolling": {
         title: "季度滚动看板",
         renderer: "quarterly-rolling",
-        layout: { endpoint: "/a/v1/plan/quarterly", n: 6, gapTiers: { red: 4, yellow: 0 }, ltaEscalatePct: 5 },
+        // FILL-XINDUSTRY-LAYOUT：units（产出/物料单位）随 config 下发·前端消费（曾写死"万套/季""吨/季"）。
+        layout: { endpoint: "/a/v1/plan/quarterly", n: 6, gapTiers: { red: 4, yellow: 0 }, ltaEscalatePct: 5, units: { output: "万套", material: "吨" } },
       },
       "order-chain": {
         title: "订单全链聚合",
