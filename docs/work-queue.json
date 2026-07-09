@@ -5336,7 +5336,7 @@
       "title": "L0·兄弟A A2: SOLVER_COVERAGE覆盖矩阵+solver-coverage门(治没有对的求解器·诊断)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "UPG-L0-CLASSIFY-FUSE"
@@ -5370,8 +5370,10 @@
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
-        "wip": "2026-07-09T15:33:28.336Z"
-      }
+        "wip": "2026-07-09T15:33:28.336Z",
+        "built": "2026-07-09T15:45:14.298Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-COVERAGE-FILL",
@@ -5485,9 +5487,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "UPG-L0-PREANALYSIS",
-      "at": "2026-07-09T15:33:28.391Z"
+      "cmd": "BUILT",
+      "id": "UPG-L0-SOLVER-COVERAGE",
+      "at": "2026-07-09T15:45:14.298Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
