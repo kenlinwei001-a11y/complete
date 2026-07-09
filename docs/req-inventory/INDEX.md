@@ -13,9 +13,9 @@
 | LEDGER-V4-1 | 开发第四卷 Ch65-70 | 178 |
 | LEDGER-SM-1 | 5 份说明书 Ch01-38 | 192 |
 
-**用户补传缺章**（逐章判定见 `SUPPLEMENT_*`）：Ch41 需求图引擎 ✓ · Ch42 约束引擎 ✓ · Ch46 知识图谱(Vol XIV) ✓ · Ch49 Skill Platform ✓ · Ch51 Agent Runtime ✓ · Ch54 Simulation ✓ · Ch67 云原生 ✓。
+**用户补传缺章**（逐章判定见 `SUPPLEMENT_*`）：Ch41 需求图引擎 ✓ · Ch42 约束引擎 ✓ · Ch46 知识图谱 ✓ · Ch47 Data Fabric ✓ · Ch49 Skill Platform ✓ · Ch51 Agent Runtime ✓ · Ch54 Simulation ✓ · Ch67 云原生 ✓。
 
-**仍缺 4 章（HELD·缺料无法盘）**：Ch47 Data Fabric / Ch48（Vol XIV 尾）/ Ch66 / Ch68。
+**仍缺 1 章**：Ch48 Workflow Engine（=遗漏簇①「Workflow DAG 运行时」详规）。**Ch66/68 用户裁定不需要**（2026-07-09·从 HELD 移除·不计入遗漏）。→ Ch48 到齐即可出总台账定稿。
 
 ## verdict 五类
 - `SYS-HAS`：现系统已有（带 file:line）——约 1149/1569 抽样占比 ~73%，现系统覆盖度远高于规格预期。
