@@ -3696,12 +3696,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-09T08:00:00.000Z",
-        "wip": "2026-07-06T02:05:37.603Z",
+        "wip": "2026-07-09T08:48:16.825Z",
         "built": "2026-07-06T03:44:56.740Z",
         "blocked": "2026-07-06T03:08:01.293Z",
         "done": "2026-07-06T04:06:27.706Z",
@@ -5001,9 +5001,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "MULTISRC-FUSION",
-      "at": "2026-07-09T08:47:47.976Z"
+      "cmd": "WIP",
+      "id": "QUERY30-ORCH",
+      "at": "2026-07-09T08:48:16.825Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
