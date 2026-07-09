@@ -31,7 +31,7 @@ const CHIP_LIMIT = 4;
 const ECON_DEFAULT = {
   segPrice: Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.priceWan])) as Record<string, number>, // DF.3 单一来源（万元/套）
   segMargin: Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.marginPct / 100])) as Record<string, number>, // DF.3 单一来源（%→分数）
-  coef: { fg: [0.22, 0.12], wip: [0.3, 0.15], rm: [0.18, 0.1] }, // debattery-allow：成品/在制/原料占营收系数 [base, hash幅度]
+  coef: { fg: [0.22], wip: [0.3], rm: [0.18] }, // debattery-allow：成品/在制/原料占营收系数 [base]（hash幅度死值已清·:157 已删 hash 现编·仅 [0] 被消费）
 };
 const SEG_ORDER = ["乘用车", "商用车", "储能"]; // debattery-allow：econ 看板细分行展示顺序（非业务数值）
 
