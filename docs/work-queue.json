@@ -4389,11 +4389,12 @@
           }
         ]
       },
-      "status": "WIP",
-      "owner": "dev",
+      "status": "TODO",
+      "owner": null,
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-07T03:58:07.358Z"
+        "wip": "2026-07-07T03:58:07.358Z",
+        "reclaimed": "2026-07-09T02:30:00.000Z"
       }
     },
     {
@@ -4484,11 +4485,12 @@
           }
         ]
       },
-      "status": "WIP",
-      "owner": "dev",
+      "status": "TODO",
+      "owner": null,
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-07T03:58:07.469Z"
+        "wip": "2026-07-07T03:58:07.469Z",
+        "reclaimed": "2026-07-09T02:30:00.000Z"
       }
     },
     {
@@ -4811,9 +4813,8 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "GENUINE-SIM-GATE-HARDEN",
-      "at": "2026-07-09T02:19:09.483Z"
+      "cmd": "reclaim-stale-wip",
+      "at": "2026-07-09T02:30:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
