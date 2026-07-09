@@ -11,7 +11,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoCalibrationConvergence, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedA6ReferenceTemplate, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoMultiSourceFusion, seedDemoCalibrationConvergence, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedA6ReferenceTemplate, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -76,6 +76,10 @@ async function main(): Promise<void> {
     // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
     await seedDemoPropagationRules(repos);
     logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
+    // WO-MULTISRC-FUSION-DOMAIN（N1 收尾）：播 demo 多源同事实夹具（ErpOrder/MesOrder/SrmOrder·SYNTHETIC 标记），
+    // 使 S25「多源打架仲裁/测谎」活体 NL 问句有真材料可融（真冲突 + 真测谎命中）。正交于电池合成、确定性 R6。
+    await seedDemoMultiSourceFusion(repos);
+    logger.info("SEED_DEMO=1: seeded demo multi-source fusion fixture (ErpOrder/MesOrder/SrmOrder, SYNTHETIC, conflict+SUSPECT)");
     // WO-CALIB-CONVERGENCE-UI（G-VIS-1·退回窄修）：播 demo 真校准配对 → 真引擎逐轮 sweep 算出收敛度
     // （mapeAfter 25→13.64→5.26·§2.E）→ 校准页「收敛史」= 真引擎产物·非手绘；末轮配对保留 → 用户真 sweep 一致不自曝。
     try {

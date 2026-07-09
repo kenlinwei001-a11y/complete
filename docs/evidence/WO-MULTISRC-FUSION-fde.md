@@ -300,3 +300,53 @@
 ```
 
 #### R6 确定性：场景1 重跑与首跑字节一致 = true
+
+---
+
+## 收尾 FDE（2026-07-09）· 活体真 demo 多源数据 + S25 NL 接地
+
+**为什么收尾**：初版求解器 + 单测已绿，但 (a) 运行态 demo 租户无任一对象存在两源同 pk → S25 活体 NL 一跑必空；(b) S25 场景卡 `sources` 曾指不相关类型（`Order`+`Model`·pk 永不重叠）。
+
+**诚实数据边界**：本次播的 `ErpOrder/MesOrder/SrmOrder` 是 **DEMO 合成夹具（origin=SYNTHETIC·jobId=`seed-multisrc-fusion-demo`）**，用真实 demo 订单号（SO-3391 等）演示"同一订单事实被 ERP/MES/SRM 各执一词"的融合机制——**非从真实源系统抽来的真源数据**。真实租户由真连接器同步 + SolverBinding 归一喂入（机制同·数据真）。
+
+### 真起服务（内存态·SEED_DEMO=1）
+- datacore：`PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs-msf SEED_DEMO=1 CREDENTIAL_KEY=<64hex> SERVICE_TOKEN=svc node apps/datacore/dist/server.js`
+  - 启动日志：`SEED_DEMO=1: seeded demo multi-source fusion fixture (ErpOrder/MesOrder/SrmOrder, SYNTHETIC, conflict+SUSPECT)`
+- agentcore：`PORT=4102 DATACORE_BASE_URL=http://127.0.0.1:4001 SERVICE_TOKEN=svc node apps/agentcore/dist/main.js`
+
+### 真 HTTP：`POST /a/v1/solvers/multisource_fusion/invoke`（S25 口径·X-Debug-User: demo:admin:admin）
+入参 = S25 场景卡 slotPresets（role=order·fields=[due,cap]·ERP/MES/SRM authority 1/3/2·defaultStrategy=AUTHORITY·suspectThreshold=0.15）。真实返回（`.data` 摘要）：
+
+```json
+{
+  "role": "order",
+  "dataMode": "MOCK",
+  "conflictCount": 4,
+  "suspectCount": 2,
+  "strategies": ["AUTHORITY", "CONSERVATIVE"],
+  "summary": "多源融合 5 个对象（role=order·3 源）：4 个存在跨源冲突经仲裁，2 个测谎命中标 SUSPECT（置信降级·不照单全收）。",
+  "fusedPks": ["SO-3391", "SO-3402", "SO-3415", "SO-3431", "SO-3445"],
+  "SO_3391": {
+    "verdict": "SUSPECT", "confidence": 0.35, "contributingSources": ["ERP", "MES", "SRM"],
+    "due": { "conflict": true, "chosenSource": "MES", "value": "2026-07-08", "strategy": "AUTHORITY" },
+    "cap": {
+      "conflict": true, "suspect": true, "strategy": "CONSERVATIVE",
+      "chosenValue": 8, "chosenSource": "ERP", "confidence": 0.35,
+      "suspectEvidence": { "spread": 1.333333, "threshold": 0.15, "outlierSource": "MES", "outlierValue": 20, "median": 9 }
+    }
+  }
+}
+```
+
+**读法**：SO-3391 交期各执一词（ERP 06-24 vs MES 07-08）→ 权威源仲裁采纳 MES 实际交期；产能三源 ERP=8/SRM=9/MES=20 → 测谎揪出 **MES 虚报**（离群·极差 1.333>0.15）→ 审慎取最保守 cap=8（**不照单全收 20**·CONSERVATIVE）+ 置信降级 0.35 + verdict=SUSPECT。整批 `dataMode=MOCK`（有测谎命中→头条最审慎不冒充真值）。
+
+### dataMode 诚实边界（活体实测·重要）
+- **S25 口径 [due,cap]** → `dataMode=MOCK`（suspectCount>0 → 头条最审慎）。
+- **仅冲突无测谎**（fields=[due] 两源）→ 求解器核判 PARTIAL，但因底层对象 origin=SYNTHETIC，invoke wrapper 的置信叠加把头条抬为 **`dataMode=SYNTHETIC`**——**诚实标注"这是合成夹具数据"**（真实租户真源数据则为 LIVE/PARTIAL）。
+- **R2 隔离**：`X-Debug-User: other:u:admin` 同参数 → `fused` 数 0（demo 夹具不越租户）。
+
+### S25 场景卡活体下发（`GET /b/v1/scenarios`·agentcore）
+`sNo=S25 · solver=multisource_fusion · slotPresets.sources=[ErpOrder, MesOrder, SrmOrder]`（已接种子真类型·非旧 Order/Model 幽灵）。
+
+### 门（teeth）
+`apps/datacore/test/multisource-fusion.test.ts` 新增「DEMO SEED 多源夹具」组：断言 `seedDemoMultiSourceFusion` 播的真 demo 数据经 S25 口径融合出 conflictCount=4 / suspectCount=2 / SO-3391 verdict=SUSPECT / cap 审慎取 8 / outlierSource=MES / AUDIT `fusion.suspect_detected` 留痕 + `fused_objects` 快照 + R6 字节一致。**撤种子/改一致即红**。

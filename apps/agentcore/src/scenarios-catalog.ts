@@ -92,7 +92,12 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S22", "隐性集中度", "risk", "concentration_risk_q", "有没有多个订单隐性集中依赖同一个型号/根节点？", "concentration_risk", ["C16", "C27"], "COMPUTE", "解读隐性集中单点敞口", [], { startType: "Order", path: [{ viaField: "model", toType: "Model" }] }),
   card("S23", "毛利倒挂根因", "dash", "margin_attribution_q", "哪些订单毛利倒挂？根因主驱动是哪个成本项？", "margin_attribution", ["C15", "C24"], "COMPUTE", "解读毛利倒挂根因归因", [], { targetType: "Order", costFields: [{ field: "unitPrice", label: "单价" }] }),
   card("S24", "断供影响半径", "risk", "supplier_disruption_q", "哪些供应商断供影响最大？影响半径覆盖到谁？", "supplier_disruption_radius", ["C05", "C16"], "COMPUTE", "解读断供影响半径与受累对象", [B("changzhou", "常州")], { rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] }),
-  card("S25", "多源数据仲裁", "dash", "multisource_fusion_q", "多源数据打架时按什么口径仲裁？有没有测谎命中的可疑源？", "multisource_fusion", ["C05", "C16"], "COMPUTE", "解读多源融合仲裁与测谎", [], { role: "order", fields: ["due"], sources: [{ sourceLabel: "ERP", typeKey: "Order", authority: 1 }, { sourceLabel: "MES", typeKey: "Model", authority: 2 }], defaultStrategy: "AUTHORITY" }),
+  // S25 slotPresets = multisource_fusion 真实入参，指向 SEED_DEMO 播的多源同事实夹具（ErpOrder/MesOrder/SrmOrder·
+  // 见 datacore seedDemoMultiSourceFusion）。同一订单号（SO-3391 等）跨三源：ERP 计划交期偏早 / MES 现场实际偏晚（更权威）
+  // / SRM 供方确认产能——role=order 归一后按 pk 归并。fields=[due(交期·仲裁维), cap(产能·测谎维)]：due 冲突走 AUTHORITY
+  // （MES authority=3 最高→采实际交期）；cap 三源（ERP/SRM 相近·MES 虚高）→ 测谎命中 SUSPECT·审慎取最保守值不照单全收。
+  // 三源而非两源：两源无法定中位判谁虚报，三源方能揪出 MES 离群（诚实测谎前提）。
+  card("S25", "多源数据仲裁", "dash", "multisource_fusion_q", "多源数据打架时按什么口径仲裁？有没有测谎命中的可疑源？", "multisource_fusion", ["C05", "C16"], "COMPUTE", "解读多源融合仲裁与测谎", [], { role: "order", fields: ["due", "cap"], sources: [{ sourceLabel: "ERP", typeKey: "ErpOrder", authority: 1, asOfField: "asOf" }, { sourceLabel: "MES", typeKey: "MesOrder", authority: 3, asOfField: "asOf" }, { sourceLabel: "SRM", typeKey: "SrmOrder", authority: 2, asOfField: "asOf" }], defaultStrategy: "AUTHORITY", suspectThreshold: 0.15 }),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp } from "./helpers.js";
+import { seedDemoMultiSourceFusion, DEMO_TENANT } from "../src/seed.js";
 import type { AuthCtx } from "../src/domain.js";
 import type { MultiSourceFusionOutput } from "@platform/contracts";
 
@@ -198,6 +199,77 @@ describe("WO-MULTISRC-FUSION · N1 多源融合 + 仲裁 + 测谎", () => {
     })) as unknown as MultiSourceFusionOutput;
     expect(out.fused).toHaveLength(0);
     expect(await t.repos.fusedObjects.list("other")).toHaveLength(0);
+  });
+
+  // WO-MULTISRC-FUSION-DOMAIN 收尾：验 **DEMO SEED**（非临时手搓）真带多源同事实数据，S25 口径融合真出
+  // 冲突 + 测谎。teeth：把 seedDemoMultiSourceFusion 的种子撤掉/改一致 → 本组必红（无真多源即空）。
+  describe("DEMO SEED 多源夹具 · S25 口径融合真出冲突 + 测谎（活体证据同源）", () => {
+    // S25 场景卡 slotPresets 的真实入参（与 apps/agentcore scenarios-catalog.ts S25 一字对齐）。
+    const S25_ARGS = {
+      role: "order",
+      fields: ["due", "cap"],
+      sources: [
+        { sourceLabel: "ERP", typeKey: "ErpOrder", authority: 1, asOfField: "asOf" },
+        { sourceLabel: "MES", typeKey: "MesOrder", authority: 3, asOfField: "asOf" },
+        { sourceLabel: "SRM", typeKey: "SrmOrder", authority: 2, asOfField: "asOf" },
+      ],
+      defaultStrategy: "AUTHORITY",
+      suspectThreshold: 0.15,
+    };
+
+    it("seedDemoMultiSourceFusion 播的 demo 数据 → 同 pk 三源归并 + due 冲突仲裁 + cap 测谎 SUSPECT（揪出 MES 虚报·审慎取最保守）", async () => {
+      const t = await makeApp();
+      await seedDemoMultiSourceFusion(t.repos);
+      const ctx: AuthCtx = { tenantId: DEMO_TENANT, userId: "admin", roles: ["admin"], attributes: {} };
+      const out = (await t.services.solvers.invoke(ctx, "multisource_fusion", S25_ARGS)) as unknown as MultiSourceFusionOutput;
+
+      // 五张真实 demo 订单号跨三源同 pk（各 ≥2 源）→ 全部纳入融合。
+      expect(out.fused.map((f) => f.pk).sort()).toEqual(["SO-3391", "SO-3402", "SO-3415", "SO-3431", "SO-3445"]);
+      // 四张交期各执一词（SO-3415 三源一致除外）→ 冲突；两张 MES 虚报产能 → 测谎命中。
+      expect(out.conflictCount).toBe(4);
+      expect(out.suspectCount).toBe(2);
+      // 有测谎命中 → 头条最审慎 MOCK（不冒充真值·R13）；仅冲突无测谎才 PARTIAL。
+      expect(out.dataMode).toBe("MOCK");
+
+      // 焦点对象 SO-3391：due 冲突（ERP 早 vs MES 晚）+ cap 测谎命中。
+      const fo = out.fused.find((f) => f.pk === "SO-3391")!;
+      expect(fo.verdict).toBe("SUSPECT");
+      const due = fo.fields.find((f) => f.field === "due")!;
+      expect(due.conflict).toBe(true);
+      expect(due.suspect).toBe(false); // 日期非数值 → 无数值测谎
+      // 交期仲裁走权威（MES authority=3 最高）→ 采现场实际交期（更晚）。
+      expect(due.strategy).toBe("AUTHORITY");
+      expect(due.chosenSource).toBe("MES");
+      expect(due.value).toBe("2026-07-08");
+      // due 仅 ERP/MES 两源报（SRM 无交期字段）→ 溯源两源。
+      expect(due.sources.filter((s) => s.value !== undefined).map((s) => s.source).sort()).toEqual(["ERP", "MES"]);
+
+      // cap 测谎：三源 8/9/20 → MES(20) 为离群（虚报），审慎取最保守最小值 8（不照单全收 20）。
+      const cap = fo.fields.find((f) => f.field === "cap")!;
+      expect(cap.suspect).toBe(true);
+      expect(cap.strategy).toBe("CONSERVATIVE");
+      expect(cap.suspectEvidence!.outlierSource).toBe("MES");
+      expect(cap.suspectEvidence!.outlierValue).toBe(20);
+      expect(cap.value).toBe(8);
+      expect(cap.chosenSource).toBe("ERP");
+      expect(cap.confidence).toBe(0.35); // 测谎命中 → 置信降级
+
+      // AUDIT 留痕 + 快照落库（复盘锚·R13 问责）：SUSPECT/冲突对象各记一条。
+      const snaps = await t.repos.fusedObjects.list(DEMO_TENANT);
+      expect(snaps.some((s) => s.pk === "SO-3391" && s.verdict === "SUSPECT")).toBe(true);
+      const audits = await t.repos.auditLog.list(DEMO_TENANT);
+      expect(audits.some((a) => a.action === "fusion.suspect_detected" && a.targetId === "order:SO-3391")).toBe(true);
+    });
+
+    it("R6 确定性：demo 夹具同参数重跑字节一致（种子固定·无随机）", async () => {
+      const run = async () => {
+        const t = await makeApp();
+        await seedDemoMultiSourceFusion(t.repos);
+        const ctx: AuthCtx = { tenantId: DEMO_TENANT, userId: "admin", roles: ["admin"], attributes: {} };
+        return JSON.stringify(await t.services.solvers.invoke(ctx, "multisource_fusion", S25_ARGS));
+      };
+      expect(await run()).toEqual(await run());
+    });
   });
 
   it("A5 规则驱动仲裁（G-10 可编辑）：已发布 fusion_arb 规则命中 → 字段级策略覆盖默认", async () => {

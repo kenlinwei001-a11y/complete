@@ -1,7 +1,7 @@
 import type { PropagationRule } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
-import type { AuthCtx } from "./domain.js";
+import type { AuthCtx, ObjectTypeDef } from "./domain.js";
 import type { CalibrationService } from "./calibration/service.js";
 import { buildReplayModel, replayPredictedDaily } from "./calibration/index.js";
 import { datePlus } from "./calibration/config.js";
@@ -345,6 +345,83 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
 export async function seedDemoPropagationRules(repos: Repos): Promise<void> {
   for (const r of DEMO_PROPAGATION_RULES) {
     await repos.sim.putPropagationRule({ ...r, tenantId: DEMO_TENANT });
+  }
+}
+
+/**
+ * WO-MULTISRC-FUSION-DOMAIN（N1·收尾）：给 demo 播**真多源同事实**数据，让活体 NL 问句
+ * 「多源数据打架时按什么口径仲裁？有没有测谎命中的可疑源？」（场景卡 S25→multisource_fusion）
+ * 有真材料可融——此前 demo 无任一对象存在两源同 pk 冲突态，S25 活体一跑必空。
+ *
+ * ⚠️ 诚实数据边界（铁律0.4·非冒充真源）：本函数播的 ErpOrder/MesOrder/SrmOrder 是 **DEMO 合成夹具
+ * （SYNTHETIC fixture）**，用真实 demo 订单号（SO-3391 等）演示"同一订单事实被 ERP/MES/SRM 三源各执
+ * 一词"的融合机制；**不是**从真实 ERP/MES/SRM 系统抽来的真源数据。origin 一律标 SYNTHETIC（jobId
+ * = seed-multisrc-fusion-demo）。真实租户的多源融合由真连接器同步 + SolverBinding 归一喂入，机制同、数据真。
+ *
+ * 播什么（确定性 R6·同 SEED_DEMO 重跑字节一致·R2 全落 DEMO_TENANT）：
+ *  - 三个已发布对象类型（domain=sales）：
+ *      ErpOrder{so(pk), due, cap, asOf}   — ERP 计划系统：交期乐观（偏早）、计划占用产能
+ *      MesOrder{so(pk), due, cap, asOf}   — MES 制造执行：交期为现场实际（偏晚·更权威）、**自报产能虚高**
+ *      SrmOrder{so(pk), cap, asOf}        — SRM 供方确认：仅报可供产能（作测谎第三参照·无交期）
+ *  - 五张真实 demo 订单号跨三源同 pk（cap 三源方能定中位、揪出 MES 虚报为离群；两源无法判谁虚报）：
+ *      SO-3391/SO-3431 → due 冲突 + cap 测谎命中 SUSPECT（MES 虚高被揪·审慎取最保守最小值·不照单全收 R13）
+ *      SO-3402/SO-3445 → due 冲突（仅仲裁·无测谎）
+ *      SO-3415        → 三源全一致（无冲突无测谎·演示 dataMode LIVE 侧）
+ * 融合口径：defaultStrategy=AUTHORITY（MES 权威最高→交期采实际值）；测谎命中字段强制 CONSERVATIVE。
+ * 整批输出 dataMode=MOCK（有测谎命中→头条最审慎·不冒充真值；若只有冲突无测谎则 PARTIAL）。
+ */
+const MSF_JOB_ID = "seed-multisrc-fusion-demo";
+/** 每行：订单号 → 三源取值（cap 数值·due 交期·asOf 新鲜度）。固定表 = R6 确定性。 */
+const DEMO_MULTISRC_ORDERS: {
+  so: string;
+  erp: { due: string; cap: number; asOf: string };
+  mes: { due: string; cap: number; asOf: string };
+  srm: { cap: number; asOf: string };
+}[] = [
+  // MES 虚报产能（20 vs ERP 8 / SRM 9）→ 极差远超阈值 0.15 → 测谎命中 SUSPECT；交期 ERP 早 vs MES 晚 → 冲突。
+  { so: "SO-3391", erp: { due: "2026-06-24", cap: 8, asOf: "2026-06-10" }, mes: { due: "2026-07-08", cap: 20, asOf: "2026-06-25" }, srm: { cap: 9, asOf: "2026-06-22" } },
+  // 交期冲突（ERP 早 vs MES 晚），产能三源相近（12/13/12·极差 <阈值）→ 仅仲裁·无测谎。
+  { so: "SO-3402", erp: { due: "2026-07-02", cap: 12, asOf: "2026-06-11" }, mes: { due: "2026-07-16", cap: 13, asOf: "2026-06-26" }, srm: { cap: 12, asOf: "2026-06-23" } },
+  // 三源全一致（交期同·产能同）→ 无冲突无测谎（诚实"一致即高置信"侧）。
+  { so: "SO-3415", erp: { due: "2026-07-18", cap: 6, asOf: "2026-06-12" }, mes: { due: "2026-07-18", cap: 6, asOf: "2026-06-27" }, srm: { cap: 6, asOf: "2026-06-24" } },
+  // MES 再次虚报（24 vs 9/10）→ 测谎命中；交期冲突。
+  { so: "SO-3431", erp: { due: "2026-06-28", cap: 9, asOf: "2026-06-13" }, mes: { due: "2026-07-12", cap: 24, asOf: "2026-06-28" }, srm: { cap: 10, asOf: "2026-06-25" } },
+  // 交期冲突，产能相近（11/12/11）→ 仅仲裁·无测谎。
+  { so: "SO-3445", erp: { due: "2026-07-05", cap: 11, asOf: "2026-06-14" }, mes: { due: "2026-07-19", cap: 12, asOf: "2026-06-29" }, srm: { cap: 11, asOf: "2026-06-26" } },
+];
+
+/**
+ * 播 demo 多源融合夹具（幂等：固定类型 id/对象 id + 直接 put 覆盖·R6 字节一致）。仅新增 sales 域三型 +
+ * 其对象，正交于 battery 合成（不改电池字节基线）。由 SEED_DEMO 在 seedDemoSynthetic 之后调用。
+ */
+export async function seedDemoMultiSourceFusion(repos: Repos): Promise<void> {
+  const mkType = (key: string, displayName: string, hasDue: boolean): ObjectTypeDef => ({
+    id: `otype_${DEMO_TENANT}_${key}`,
+    tenantId: DEMO_TENANT,
+    key,
+    displayName,
+    domain: "sales",
+    properties: [
+      { propKey: "so", dataType: "string", isPrimaryKey: true, searchable: true, description: "订单号（多源共享业务主键）" },
+      ...(hasDue ? [{ propKey: "due", dataType: "date" as const, isPrimaryKey: false, description: "交期" }] : []),
+      { propKey: "cap", dataType: "number", isPrimaryKey: false, description: "该订单占用/申报产能（数值·测谎维）" },
+      { propKey: "asOf", dataType: "date", isPrimaryKey: false, description: "该源取值的观测时点（新鲜度）" },
+    ],
+    derivedProperties: [],
+    sourceBindings: [],
+    version: 1,
+    status: "ACTIVE",
+    published: true,
+  });
+  await repos.ontologyTypes.put(mkType("ErpOrder", "订单·ERP 源（计划）", true));
+  await repos.ontologyTypes.put(mkType("MesOrder", "订单·MES 源（制造执行）", true));
+  await repos.ontologyTypes.put(mkType("SrmOrder", "订单·SRM 源（供方确认产能）", false));
+
+  const origin = { type: "SYNTHETIC" as const, jobId: MSF_JOB_ID };
+  for (const r of DEMO_MULTISRC_ORDERS) {
+    await repos.objects.put({ id: `obj_${DEMO_TENANT}_erp_${r.so}`, tenantId: DEMO_TENANT, type: "ErpOrder", objectKey: r.so, props: { so: r.so, due: r.erp.due, cap: r.erp.cap, asOf: r.erp.asOf }, origin });
+    await repos.objects.put({ id: `obj_${DEMO_TENANT}_mes_${r.so}`, tenantId: DEMO_TENANT, type: "MesOrder", objectKey: r.so, props: { so: r.so, due: r.mes.due, cap: r.mes.cap, asOf: r.mes.asOf }, origin });
+    await repos.objects.put({ id: `obj_${DEMO_TENANT}_srm_${r.so}`, tenantId: DEMO_TENANT, type: "SrmOrder", objectKey: r.so, props: { so: r.so, cap: r.srm.cap, asOf: r.srm.asOf }, origin });
   }
 }
 
