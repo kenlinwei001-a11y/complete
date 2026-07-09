@@ -4839,7 +4839,7 @@
       "title": "填补F1: auditTimeline逐日曲线接真日序(替hash派生·无真源诚实空态)",
       "doc": "docs/AUDIT-fakedata-sweep.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "FAKEDATA-SWEEP F1派生。risk.ts:642/649 auditTimeline逐日传导曲线/峰值/越线日由hashString(kind)确定性派生·无实测(已诚实标MOCK/PARTIAL)。补真源:各审计项(产销/毛利/齐套/现金/份额/爬坡/外协/capex)真实逐日指标时序(真订单/毛利/库存/现金流按日聚合)·同CAPACITY-BASECARDS为risk_timeline补真设备时序范式。有真源取真日序·无真源退诚实空态(不哈希造曲线)·dataMode由真源在否派生。",
@@ -4860,8 +4860,10 @@
       },
       "at": {
         "todo": "2026-07-09T00:00:00.000Z",
-        "wip": "2026-07-09T04:06:07.986Z"
-      }
+        "wip": "2026-07-09T04:06:07.986Z",
+        "built": "2026-07-09T04:47:07.331Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "FILL-ORDERCHAIN-INVENTORY-REAL",
@@ -4896,8 +4898,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "I18N-CHINESE-UI",
-      "at": "2026-07-09T04:30:29.443Z"
+      "id": "FILL-AUDIT-TIMELINE-REAL",
+      "at": "2026-07-09T04:47:07.331Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
