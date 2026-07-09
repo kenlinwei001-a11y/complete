@@ -70,6 +70,8 @@ solvers/rules/scenes/agents 全部真建出，跨系统 scaffold 全链 `fullCha
   缺参 → **≥400 错误信封**（不静默空结果）。补齐了 service 层 invoke() 抓不到的"路由/契约/序列化"那一层。
 - 注：4 个通用求解器未绑定任何 feature → entitlement `requireByBinding` 视为不受控放行（任意租户可调）。
 
+> **诚实更正（FILL-AUDIT-OBS-LINE·2026-07-09·闭 WO-6 曝 Q9 洞 GAP-AUDIT-OBS）**：上文"真实 HTTP 端到端"实为 **4 个直调** `POST /a/v1/solvers/{key}/invoke`（手搓 args），**NL→QOS 从未真跑**，审计散点未成一线——WO-6 回炉如实曝此洞。**现补齐 NL 真跑 + 决策链审计一线**：`supplier_disruption_radius`/`margin_attribution` 代表问经 QOS **NL 真路由**（CORE-NL-SOLVER-ROUTING 接进 S21–S25·`submitQuery` 分类→路径A 工作流→`invoke_solver`·非直调）→ 达终态经 `GET /api/v1/queries/:taskId/decision-trace` 取出**完整决策链审计一线**（`decisionId`=task.id 作 spine·串 数据[classification/resolvedRefs]→推演[toolCalls 求解器真实调用]→结论[trustLevel/provenance/ontologyValidation]·R2 跨租户 404 隔离），编排 DAG 投影（`/trace`）非空成链。teeth `apps/agentcore/test/audit-obs-line.test.ts`（revert NL 路由→回直调→无 task/无 spine→红·green→red 自证）·`classifyGap` 视之 ANSWERABLE（非 OTHER）。
+
 ### ④ 组合最优化引擎落地（CP-SAT sidecar，自托管，真求解实证）
 回应"复杂推演 TS 解不动、是否要引擎/谷歌在线 API"：查证后**自托管 OR-Tools CP-SAT**（不直连谷歌
 在线 API——那会让 tenant 数据出境，违 R2/离线部署姿态）。`selection_optimize` 走 sidecar 给可证最优。

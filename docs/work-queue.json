@@ -4452,12 +4452,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-09T03:51:18.720Z"
-      }
+        "wip": "2026-07-09T03:51:18.720Z",
+        "built": "2026-07-09T03:57:45.396Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "FILL-XINDUSTRY-LAYOUT",
@@ -4885,9 +4887,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "FILL-AUDIT-OBS-LINE",
-      "at": "2026-07-09T03:51:18.721Z"
+      "at": "2026-07-09T03:57:45.396Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
