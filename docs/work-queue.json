@@ -4677,12 +4677,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-07T00:00:00.000Z",
-        "wip": "2026-07-09T05:08:10.013Z"
-      }
+        "wip": "2026-07-09T05:08:10.013Z",
+        "built": "2026-07-09T05:33:31.807Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "GENUINE-SIM-GATE-HARDEN",
@@ -4933,10 +4935,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "FILL-ORDERCHAIN-INVENTORY-REAL",
-      "at": "2026-07-09T05:26:19.095Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "OPTIONA-B1B2-UX",
+      "at": "2026-07-09T05:33:31.807Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
