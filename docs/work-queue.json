@@ -4378,7 +4378,7 @@
       ],
       "doc": "apps/frontend-shell/src/views/RiskBoardView.tsx",
       "title": "预判推演看板: 补齐真实规则+agent(超CAPACITY数据层·完整交互真跑)",
-      "note": "用户亲定\"恢复预判推演看板交互+补齐真实数据/规则/agent\"(铁律0.6). CAPACITY补数据层(基地卡真时序), 本单补更深: ①风险推演链的派生/传导规则真值驱动(非写死系数) ②驱动看板下钻/推演的agent真接QOS(非兜底占位)。让看板下钻+推演真跑。 ⟪dev进度2026-07-09⟫ C1后端(风险推演链派生/传导规则真值驱动·risk.ts/types.ts/contracts solvers.ts+battery.ts+151行齿测)已落·datacore全套1013绿无回归；C2(真浏览器下钻逐日/逐设备/影响订单+NL经真agent答)、C3(合成→真实徽章)未做(原agent组织额度中断于1/3处·主控接管保住C1绿增量)。 ⟪dev复核2026-07-09⟫ C1三包全绿确认(datacore1013+agentcore617+frontend500·契约改动不破前端)。C2/C3前端代码基建已在(RiskBoardView: DrillBack/focus下钻+onClick卡+RiskPopover+DataModeBadge置信度徽章risk-confidence-datamode)。**剩纯活栈FDE验证**: C2真浏览器点基地卡→下钻逐日/逐设备/影响订单真出数+推演DAG真轨迹+NL提问经真agent(Kimi)答·C3有真源时徽章LIVE——须真起前端+真连LLM。**阻断: 组织月度额度上限(claude.ai/settings/usage)**致活LLM不可用→C2 NL真agent答无法真跑验证。按铁律0.4不假标已验。待提额+活栈后补C2/C3 FDE。WO留WIP。 ⟪dev复核2026-07-09提额后⟫ 用户提额恢复Anthropic侧(我的子agent扇出+我Claude FDE已恢复·3车道并行在跑)。复核本dev环境: 无Moonshot/Kimi key(env仅ANTHROPIC_BASE_URL=Claude代理)——平台自身NL agent用Kimi/Moonshot·其key不在本环境(审核方环境才有真连Kimi)。故C2的NL经真agent答活栈FDE在本环境仍不可真跑(非额度·是Kimi key缺位)。C2下钻(逐日/逐设备/影响订单)+C3徽章属确定性求解器输出(无需LLM)可API/浏览器FDE。建议C2 NL-agent-live由审核方Kimi环境复验·或本环境注入Moonshot key。C1三包全绿已落·WO留WIP待C2/C3 FDE。 ⟪dev活栈FDE2026-07-09用户提供Kimi key后⟫ **C2 NL-agent-live已真Kimi证实**: 真起datacore(SEED_DEMO+KIMI_API_KEY自动配provider+6用途绑定)+agentcore真连api.moonshot.cn·提交NL问句「常州基地影响哪些订单？」→真Kimi分类器路由affected_orders→path=WORKFLOW·COMPLETED·VERIFIED_WORKFLOW·答出真订单表(SO-3391整车厂A/SO-3445整车厂B…共6张·带provenance)·非LLM_PURPOSE_UNBOUND非mock(证据docs/evidence/RISKBOARD-C2-nl-agent-live-fde.md)。连带活证LLM-ROLE-RESOLUTION-FIX。剩C2真浏览器点卡下钻截图+C3徽章视觉属前端渲染层(基建已在·数据源C1绿)·可Playwright补或审核方Kimi环境复验。key仅临时env不入提交物。",
+      "note": "用户亲定\"恢复预判推演看板交互+补齐真实数据/规则/agent\"(铁律0.6). CAPACITY补数据层(基地卡真时序), 本单补更深: ①风险推演链的派生/传导规则真值驱动(非写死系数) ②驱动看板下钻/推演的agent真接QOS(非兜底占位)。让看板下钻+推演真跑。 ⟪dev进度2026-07-09⟫ C1后端(风险推演链派生/传导规则真值驱动·risk.ts/types.ts/contracts solvers.ts+battery.ts+151行齿测)已落·datacore全套1013绿无回归；C2(真浏览器下钻逐日/逐设备/影响订单+NL经真agent答)、C3(合成→真实徽章)未做(原agent组织额度中断于1/3处·主控接管保住C1绿增量)。 ⟪dev复核2026-07-09⟫ C1三包全绿确认(datacore1013+agentcore617+frontend500·契约改动不破前端)。C2/C3前端代码基建已在(RiskBoardView: DrillBack/focus下钻+onClick卡+RiskPopover+DataModeBadge置信度徽章risk-confidence-datamode)。**剩纯活栈FDE验证**: C2真浏览器点基地卡→下钻逐日/逐设备/影响订单真出数+推演DAG真轨迹+NL提问经真agent(Kimi)答·C3有真源时徽章LIVE——须真起前端+真连LLM。**阻断: 组织月度额度上限(claude.ai/settings/usage)**致活LLM不可用→C2 NL真agent答无法真跑验证。按铁律0.4不假标已验。待提额+活栈后补C2/C3 FDE。WO留WIP。 ⟪dev复核2026-07-09提额后⟫ 用户提额恢复Anthropic侧(我的子agent扇出+我Claude FDE已恢复·3车道并行在跑)。复核本dev环境: 无Moonshot/Kimi key(env仅ANTHROPIC_BASE_URL=Claude代理)——平台自身NL agent用Kimi/Moonshot·其key不在本环境(审核方环境才有真连Kimi)。故C2的NL经真agent答活栈FDE在本环境仍不可真跑(非额度·是Kimi key缺位)。C2下钻(逐日/逐设备/影响订单)+C3徽章属确定性求解器输出(无需LLM)可API/浏览器FDE。建议C2 NL-agent-live由审核方Kimi环境复验·或本环境注入Moonshot key。C1三包全绿已落·WO留WIP待C2/C3 FDE。 ⟪dev活栈FDE2026-07-09用户提供Kimi key后⟫ **C2 NL-agent-live已真Kimi证实**: 真起datacore(SEED_DEMO+KIMI_API_KEY自动配provider+6用途绑定)+agentcore真连api.moonshot.cn·提交NL问句「常州基地影响哪些订单？」→真Kimi分类器路由affected_orders→path=WORKFLOW·COMPLETED·VERIFIED_WORKFLOW·答出真订单表(SO-3391整车厂A/SO-3445整车厂B…共6张·带provenance)·非LLM_PURPOSE_UNBOUND非mock(证据docs/evidence/RISKBOARD-C2-nl-agent-live-fde.md)。连带活证LLM-ROLE-RESOLUTION-FIX。剩C2真浏览器点卡下钻截图+C3徽章视觉属前端渲染层(基建已在·数据源C1绿)·可Playwright补或审核方Kimi环境复验。key仅临时env不入提交物。 ⟪dev活栈真浏览器FDE2026-07-09⟫ C2/C3活栈真浏览器FDE通过(真datacore SEED_DEMO+真agentcore+真vite指向真后端+真Chromium): C3徽章逐值对照后端dataMode=SYNTHETIC→前端显「合成数据」·敞口0诚实显—; C2 8真基地卡+点卡下钻详情Modal(bottleneck-detail-panel/detail-datamode/detail-table+逐日张力·带WMS/ERP数据边界诚实注)。证据docs/evidence/RISKBOARD-C2C3-live-browser-fde.md。连同C1三包绿+C2 NL-agent-live真Kimi证实→全FDE闭环。",
       "acceptance": {
         "goal": "预判推演看板完整交互真跑: 卡真值(CAPACITY)+下钻真出数+推演由真规则/真agent驱动·非空非兜底。",
         "criteria": [
@@ -4399,13 +4399,15 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-09T03:15:25.025Z",
-        "reclaimed": "2026-07-09T02:30:00.000Z"
-      }
+        "reclaimed": "2026-07-09T02:30:00.000Z",
+        "built": "2026-07-09T09:12:03.643Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "FILL-E1-CALIB-LIVE",
@@ -5005,8 +5007,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "DEPLOY0707-PIPELINE-SALVAGE",
-      "at": "2026-07-09T09:04:54.845Z"
+      "id": "RISKBOARD-RULES-AGENTS",
+      "at": "2026-07-09T09:12:03.644Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
