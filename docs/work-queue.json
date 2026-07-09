@@ -3982,7 +3982,7 @@
     {
       "id": "META-RUNTIME-TRUTH",
       "title": "meta #12 从镜像文档→反映运行时真相(status DRIFT检测)",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P1",
       "deps": [
@@ -4005,7 +4005,8 @@
         "todo": "2026-07-06T09:59:08.830Z",
         "wip": "2026-07-06T14:53:36.787Z",
         "built": "2026-07-07T03:57:00.540Z",
-        "blocked": "2026-07-06T14:44:05.508Z"
+        "blocked": "2026-07-06T14:44:05.508Z",
+        "done": "2026-07-09T02:19:09.426Z"
       },
       "blockReason": ""
     },
@@ -4691,12 +4692,13 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-07T00:00:00.000Z",
         "wip": "2026-07-07T03:58:07.415Z",
-        "built": "2026-07-07T04:14:46.706Z"
+        "built": "2026-07-07T04:14:46.706Z",
+        "done": "2026-07-09T02:19:09.483Z"
       },
       "blockReason": ""
     },
@@ -4809,9 +4811,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "dispatch",
-      "id": "LLM-ROLE-RESOLUTION-FIX",
-      "at": "2026-07-07T04:00:00.000Z"
+      "cmd": "DONE",
+      "id": "GENUINE-SIM-GATE-HARDEN",
+      "at": "2026-07-09T02:19:09.483Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
