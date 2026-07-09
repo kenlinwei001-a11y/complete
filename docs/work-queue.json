@@ -231,12 +231,12 @@
       "title": "N1多源融合+冲突仲裁+测谎",
       "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
       "priority": "P1",
-      "status": "OPEN",
-      "owner": "dev",
+      "status": "TODO",
+      "owner": null,
       "deps": [
         "SOLVER-BINDING"
       ],
-      "note": "[回炉WO-6·假DONE降开放缺口] 6条curl验收全指幽灵求解器 source_conflict(真key=multisource_fusion·全仓零命中)→一执行即404；且无真多源数据、multisource_fusion 未接进 QOS NL 场景路由 ‖ 原note: 建在绑定层之上",
+      "note": "[回炉WO-6·假DONE降开放缺口] 6条curl验收全指幽灵求解器 source_conflict(真key=multisource_fusion·全仓零命中)→一执行即404；且无真多源数据、multisource_fusion 未接进 QOS NL 场景路由 ‖ 原note: 建在绑定层之上 ‖ 用户2026-07-09裁决继续建·登TODO。",
       "acceptance": {
         "goal": "CEO 就\"同一 Order 的交期风险\"提问时，ERP 报交期 T1、MES 因产能不足报实际 T2 各执一词 → 用户得到一个融合答案：带两源溯源 + 仲裁结论(采纳哪源/为何) + 置信；且当某基地虚报产能(明显高于他源)时，答案把该源标为 SUSPECT 并降置信(不照单全收)，而非直接采信好看的数字。",
         "criteria": [
@@ -319,7 +319,8 @@
         "fillWO": "WO-7+ (N1 NL落地)"
       },
       "at": {
-        "open": "2026-07-06T11:41:01.815Z"
+        "open": "2026-07-06T11:41:01.815Z",
+        "todo": "2026-07-09T08:00:00.000Z"
       }
     },
     {
@@ -327,10 +328,10 @@
       "title": "校准活体常态化 + 沙盘what-if进决策",
       "doc": "docs/WO-design-E-calibration-sandbox-live-loop.md",
       "priority": "P1",
-      "status": "OPEN",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
-      "note": "[回炉WO-6·假DONE降开放缺口] note原本自打脸『仅设计零代码·NOT-LANDED』；E2 propagateTick 仍『待增量3』(app.ts:1293)——DONE↔note 结构矛盾 ‖ 原note: 仅设计零代码·NOT-LANDED",
+      "note": "[回炉WO-6·假DONE降开放缺口] note原本自打脸『仅设计零代码·NOT-LANDED』；E2 propagateTick 仍『待增量3』(app.ts:1293)——DONE↔note 结构矛盾 ‖ 原note: 仅设计零代码·NOT-LANDED ‖ 用户2026-07-09裁决关闭: 已被 FILL-E1-CALIB-LIVE(校准活体)+CORE-E2-PROPAGATE(沙盘what-if真传导)均DONE 实填·审核方已复验。",
       "acceptance": {
         "goal": "用户在决策系统里日常用着，不必手动点\"立即校准\"——系统自动越用越准(校准看板能看到 MAPE 随轮下降的趋势)，并且在风险/规划/订单看到问题时能一键\"就此开 what-if 推演\"、对比基线、采纳或弃，全程不污染主世界。",
         "criteria": [
@@ -416,7 +417,8 @@
         "fillWO": "WO-7+ (E1/E2 落地)"
       },
       "at": {
-        "open": "2026-07-06T11:41:01.815Z"
+        "open": "2026-07-06T11:41:01.815Z",
+        "done": "2026-07-09T08:00:00.000Z"
       }
     },
     {
@@ -3692,11 +3694,11 @@
       "blockReason": ""
     },
     {
-      "status": "OPEN",
-      "owner": "dev",
+      "status": "TODO",
+      "owner": null,
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
-        "todo": "2026-07-05T11:18:19.882Z",
+        "todo": "2026-07-09T08:00:00.000Z",
         "wip": "2026-07-06T02:05:37.603Z",
         "built": "2026-07-06T03:44:56.740Z",
         "blocked": "2026-07-06T03:08:01.293Z",
@@ -3706,7 +3708,7 @@
       "id": "QUERY30-ORCH",
       "priority": "P1",
       "title": "QUERY30缺口③: 10新求解器+countermeasure跨期增强+7workflow+2agent+5skill+30intent入目录(经ONTO-SCEN发育管道·非seed手装)",
-      "note": "[回炉WO-6·假DONE降开放缺口] countermeasure_combo『跨求解器编排』实为借名+魔数系数(extended.ts:376·gap×0.3/0.15/0.1/0.2/0.5·从不真调 cert_schedule/changeover_sequence 等子求解器)；10求解器函数在但 SCENARIO_CATALOG S01–S20 无一指向通用求解器→NL 场景路由零命中(9洞共性根) ‖ 原note: 设计源§2.5/2.6。求解器: what_if_displacement(Q01核心·方案四型确定性枚举+挤占级联+逐单再方案)/multi_plan_compare(五维比较矩阵)/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives+countermeasure_combo跨期增强·全部registry注册(description/argHints/outputShape·R3过滤)。workflow 7条链(§2.5表·接单全链推演为Q01样板)。agent: 接单参谋+供应链风控(绑工具+skill+POST_CHECK)。skill 5方法论(接SKILL-LIBRARY-EVERYWHERE)。30问入intent目录→经ONTO-SCEN管道长成场景卡(PROVISIONAL起·闭G-9·非seed.ts手装)。分期铁律: 先Q01全链打穿样板再横铺(设计§3)。齿: 求解器R6确定性+比较矩阵字段完整+intent目录30条+发育run留痕。",
+      "note": "[回炉WO-6·假DONE降开放缺口] countermeasure_combo『跨求解器编排』实为借名+魔数系数(extended.ts:376·gap×0.3/0.15/0.1/0.2/0.5·从不真调 cert_schedule/changeover_sequence 等子求解器)；10求解器函数在但 SCENARIO_CATALOG S01–S20 无一指向通用求解器→NL 场景路由零命中(9洞共性根) ‖ 原note: 设计源§2.5/2.6。求解器: what_if_displacement(Q01核心·方案四型确定性枚举+挤占级联+逐单再方案)/multi_plan_compare(五维比较矩阵)/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives+countermeasure_combo跨期增强·全部registry注册(description/argHints/outputShape·R3过滤)。workflow 7条链(§2.5表·接单全链推演为Q01样板)。agent: 接单参谋+供应链风控(绑工具+skill+POST_CHECK)。skill 5方法论(接SKILL-LIBRARY-EVERYWHERE)。30问入intent目录→经ONTO-SCEN管道长成场景卡(PROVISIONAL起·闭G-9·非seed.ts手装)。分期铁律: 先Q01全链打穿样板再横铺(设计§3)。齿: 求解器R6确定性+比较矩阵字段完整+intent目录30条+发育run留痕。 ‖ 用户2026-07-09裁决继续建·登TODO。",
       "deps": [
         "QUERY30-ONTOLOGY-EXT",
         "QUERY30-RULES"
@@ -4127,10 +4129,10 @@
       "title": "SCENE-C: 通用多跳求解器未铺进角色场景NL路由(按角色接地答案)",
       "doc": "docs/PRD-trustworthy-self-accounting.md",
       "priority": "P1",
-      "status": "OPEN",
-      "owner": "",
+      "status": "TODO",
+      "owner": null,
       "deps": [],
-      "note": "[回炉WO-6·9洞曝光] 5个通用多跳求解器在 agentcore 场景/意图路由零命中；按角色接地(base_manager/planner/CEO)未全铺",
+      "note": "[回炉WO-6·9洞曝光] 5个通用多跳求解器在 agentcore 场景/意图路由零命中；按角色接地(base_manager/planner/CEO)未全铺 ‖ 用户2026-07-09裁决继续建·登TODO。缩范围: NL路由已由CORE-NL-SOLVER-ROUTING(DONE)填·本单只做剩余「按角色场景接地答案」层。",
       "gap": {
         "code": "NO_INTENT",
         "holes": [
@@ -4143,7 +4145,8 @@
         "fillWO": "WO-7+ (SCENE-C)"
       },
       "at": {
-        "open": "2026-07-06T11:41:01.815Z"
+        "open": "2026-07-06T11:41:01.815Z",
+        "todo": "2026-07-09T08:00:00.000Z"
       }
     },
     {
@@ -4151,10 +4154,10 @@
       "title": "AUDIT-OBS: 审计散点未成一线 + AUDIT-hand-run.md§③夸大(4直调·NL→QOS从未真跑)",
       "doc": "docs/PRD-trustworthy-self-accounting.md",
       "priority": "P1",
-      "status": "OPEN",
+      "status": "DONE",
       "owner": "",
       "deps": [],
-      "note": "[回炉WO-6·9洞曝光] AUDIT-hand-run.md§③称『5杀手多跳全落地+真实HTTP E2E』实为4个直调(shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius 手搓args直调/solvers/{key}/invoke)·NL→QOS从未真跑；classifyGap 把此洞误落OTHER",
+      "note": "[回炉WO-6·9洞曝光] AUDIT-hand-run.md§③称『5杀手多跳全落地+真实HTTP E2E』实为4个直调(shared_bottleneck/concentration_risk/margin_attribution/supplier_disruption_radius 手搓args直调/solvers/{key}/invoke)·NL→QOS从未真跑；classifyGap 把此洞误落OTHER ‖ 用户2026-07-09裁决关闭: 已被 FILL-AUDIT-OBS-LINE(DONE·NL真跑成审计一线+更正§③夸大) 实填·审核方已复验。",
       "gap": {
         "code": "NO_CAPABILITY",
         "holes": [
@@ -4166,7 +4169,8 @@
         "fillWO": "WO-7+ (AUDIT-OBS·依赖WO-3 gap actionable)"
       },
       "at": {
-        "open": "2026-07-06T11:41:01.815Z"
+        "open": "2026-07-06T11:41:01.815Z",
+        "done": "2026-07-09T08:00:00.000Z"
       }
     },
     {
@@ -4174,10 +4178,10 @@
       "title": "跨行业config即跑: 求解器大部在但视图layout仍电池形(G-5)",
       "doc": "docs/PRD-trustworthy-self-accounting.md",
       "priority": "P2",
-      "status": "OPEN",
+      "status": "DONE",
       "owner": "",
       "deps": [],
-      "note": "[回炉WO-6·9洞曝光] 换行业 config 后 layout 不随之切换(仍电池形·G-5邻域)",
+      "note": "[回炉WO-6·9洞曝光] 换行业 config 后 layout 不随之切换(仍电池形·G-5邻域) ‖ 用户2026-07-09裁决关闭: 已被 FILL-XINDUSTRY-LAYOUT(DONE·视图去电池化config驱动) 实填·审核方已复验。",
       "gap": {
         "code": "NO_CAPABILITY",
         "holes": [
@@ -4189,7 +4193,8 @@
         "fillWO": "WO-7+ (G-5 跨行业layout)"
       },
       "at": {
-        "open": "2026-07-06T11:41:01.815Z"
+        "open": "2026-07-06T11:41:01.815Z",
+        "done": "2026-07-09T08:00:00.000Z"
       }
     },
     {
@@ -4991,9 +4996,8 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "BLOCKED",
-      "id": "I18N-LONGTAIL",
-      "at": "2026-07-09T07:14:35.976Z"
+      "cmd": "adjudicate-open",
+      "at": "2026-07-09T08:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
