@@ -231,7 +231,7 @@
       "title": "N1多源融合+冲突仲裁+测谎",
       "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "SOLVER-BINDING"
@@ -322,7 +322,8 @@
         "open": "2026-07-06T11:41:01.815Z",
         "todo": "2026-07-09T08:00:00.000Z",
         "wip": "2026-07-09T08:05:37.928Z",
-        "built": "2026-07-09T08:47:47.975Z"
+        "built": "2026-07-09T08:47:47.975Z",
+        "done": "2026-07-09T09:23:33.046Z"
       }
     },
     {
@@ -4131,7 +4132,7 @@
       "title": "SCENE-C: 通用多跳求解器未铺进角色场景NL路由(按角色接地答案)",
       "doc": "docs/PRD-trustworthy-self-accounting.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "[回炉WO-6·9洞曝光] 5个通用多跳求解器在 agentcore 场景/意图路由零命中；按角色接地(base_manager/planner/CEO)未全铺 ‖ 用户2026-07-09裁决继续建·登TODO。缩范围: NL路由已由CORE-NL-SOLVER-ROUTING(DONE)填·本单只做剩余「按角色场景接地答案」层。",
@@ -4150,7 +4151,8 @@
         "open": "2026-07-06T11:41:01.815Z",
         "todo": "2026-07-09T08:00:00.000Z",
         "wip": "2026-07-09T07:56:46.207Z",
-        "built": "2026-07-09T08:05:20.848Z"
+        "built": "2026-07-09T08:05:20.848Z",
+        "done": "2026-07-09T09:23:33.110Z"
       },
       "blockReason": ""
     },
@@ -4176,6 +4178,16 @@
       "at": {
         "open": "2026-07-06T11:41:01.815Z",
         "done": "2026-07-09T08:00:00.000Z"
+      },
+      "acceptance": {
+        "goal": "此洞由 FILL-AUDIT-OBS-LINE 实填·关闭=该fill达标。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "已由 FILL-AUDIT-OBS-LINE(DONE)实填并经审核方复验：audit-obs-line.test 3绿·NL真跑成审计一线·审核方复验DONE。"
+          }
+        ]
       }
     },
     {
@@ -4200,6 +4212,16 @@
       "at": {
         "open": "2026-07-06T11:41:01.815Z",
         "done": "2026-07-09T08:00:00.000Z"
+      },
+      "acceptance": {
+        "goal": "此洞由 FILL-XINDUSTRY-LAYOUT 实填·关闭=该fill达标。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "已由 FILL-XINDUSTRY-LAYOUT(DONE)实填并经审核方复验：视图去电池化config驱动·6测绿·审核方复验DONE。"
+          }
+        ]
       }
     },
     {
@@ -4581,13 +4603,14 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-09T07:29:16.019Z",
         "built": "2026-07-09T07:40:21.388Z",
-        "blocked": "2026-07-09T07:14:35.894Z"
+        "blocked": "2026-07-09T07:14:35.894Z",
+        "done": "2026-07-09T09:23:33.171Z"
       },
       "blockReason": ""
     },
@@ -4930,7 +4953,7 @@
     },
     {
       "id": "I18N-LONGTAIL",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P3",
       "deps": [],
@@ -4956,13 +4979,14 @@
         "todo": "2026-07-09T04:30:00.000Z",
         "wip": "2026-07-09T07:40:36.295Z",
         "built": "2026-07-09T07:56:33.290Z",
-        "blocked": "2026-07-09T07:14:35.976Z"
+        "blocked": "2026-07-09T07:14:35.976Z",
+        "done": "2026-07-09T09:23:33.230Z"
       },
       "blockReason": ""
     },
     {
       "id": "DEPLOY0707-PIPELINE-SALVAGE",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P3",
       "deps": [],
@@ -4998,17 +5022,18 @@
         "todo": "2026-07-09T07:00:00.000Z",
         "amended": "2026-07-09T07:30:00.000Z",
         "wip": "2026-07-09T09:02:34.200Z",
-        "built": "2026-07-09T09:04:54.845Z"
+        "built": "2026-07-09T09:04:54.845Z",
+        "done": "2026-07-09T09:23:32.987Z"
       },
       "blockReason": ""
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "RISKBOARD-RULES-AGENTS",
-      "at": "2026-07-09T09:12:03.644Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "I18N-LONGTAIL",
+      "at": "2026-07-09T09:23:33.230Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
