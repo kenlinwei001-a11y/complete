@@ -4943,14 +4943,47 @@
         "built": "2026-07-09T06:05:53.400Z"
       },
       "blockReason": ""
+    },
+    {
+      "id": "DEPLOY0707-PIPELINE-SALVAGE",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P3",
+      "deps": [],
+      "doc": "docs/HANDOFF-DEPLOY0707-SALVAGE.md",
+      "title": "deploy-0707择要移植(pipeline评估+文档)·以vigilant为准不反向合并",
+      "note": "用户2026-07-09定:以vigilant为准择要移植deploy-0707独有价值不整分支合并(会倒退718文件+复活已删代码+254冲突)。审核方staged docs/deploy0707-salvage.tar.gz(64KB·14文件·pipeline源+5PRD)+manifest。核心决策:pipeline/OntologyWorkflow与databuilder重叠·先判并/不并·不造第二套引擎·适配旧版契约。db-seed 159k+5.6MB二进制不入git。铁律0.5我出handoff·dev评估移植。",
+      "acceptance": {
+        "goal": "以vigilant为准择要移植:先评估pipeline vs databuilder重叠·只移植真additive非重复且适配当前契约·文档择relevant并入·全绿·本体回写·移植完删handoff+tarball。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "评估pipeline/OntologyWorkflow vs databuilder(+在建建模pipeline)重叠·产出并/不并/部分并判断+依据·不造第二套引擎。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "择要移植(若判并):仅真additive非重复·适配当前契约(旧版不能裸拷)·contracts+migration+tests齐·build+test+gates绿·触及链路回写本体+meta:sync绿。"
+          },
+          {
+            "id": "C3",
+            "type": "file",
+            "assert": "文档择relevant并入docs(并入PRD-*补《本体引用与影响》过门)·db-seed/binary deliverables评估写清不裸入git·移植完删tarball+HANDOFF。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-09T07:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "ORDER-CONSOLIDATE",
-      "at": "2026-07-09T06:47:20.768Z"
+      "role": "review",
+      "cmd": "dispatch",
+      "id": "DEPLOY0707-PIPELINE-SALVAGE",
+      "at": "2026-07-09T07:00:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
