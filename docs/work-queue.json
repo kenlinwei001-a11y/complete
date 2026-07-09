@@ -5338,7 +5338,7 @@
       "title": "L0·兄弟A A2: SOLVER_COVERAGE覆盖矩阵+solver-coverage门(治没有对的求解器·诊断)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [
         "UPG-L0-CLASSIFY-FUSE"
@@ -5373,9 +5373,10 @@
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T15:33:28.336Z",
-        "built": "2026-07-09T15:45:14.298Z"
+        "built": "2026-07-09T15:45:14.298Z",
+        "blocked": "2026-07-09T16:32:21.328Z"
       },
-      "blockReason": ""
+      "blockReason": "复验BLOCK(真跑·C1/C2/C4绿·C3红): C3指标 qos_pathb_by_problemclass 代码中不存在——metrics.ts(78-158·19指标)无此counter·全仓grep+git log -S全历史仅现于work-queue.json+PRD·从未落代码·本单两提交(fd43751/51a587b)未触metrics.ts。且不可即插:ClassificationResult(contracts/qos.ts)无problemClass字段·无intentKey→problemClass映射→无法真出数。属本单范围内漏交(PRD§7 Phase A2『Path B落点分桶指标』+acceptance C3)·非依赖A1的rescued指标。[绿]C1门自证:check-solver-coverage.mjs RC=0·21类目引49key全∈SOLVER_REGISTRY零幽灵·测谎注fake_solver→门红RC=1→还原复绿(green→red→green自证)。C2矩阵显式列4缺口(general_causal_attribution等)但纯声明数据零运行期消费·无intentKey→problemClass映射·未覆盖类目NL查询仍静默落Path B(与C3同根)。C4 writeback绿(44门§7漏登0)+slices绿(hash95a76c64)+datacore1034/agentcore636绿零回归。解阻:①metrics.ts增qos_pathb_by_problemclass{class} counter+接线(先给ClassificationResult补problemClass或建intentKey→problemClass映射·runPathB落点.inc({class}))+真跑出数+补单测 ②顺带C2矩阵接进运行期(未覆盖类目真显式报缺口非静默Path B)。其余三齿保留"
     },
     {
       "id": "UPG-L0-COVERAGE-FILL",
@@ -5493,10 +5494,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "UPG-L0-CONSOLE-APPROVE",
-      "at": "2026-07-09T16:25:30.974Z"
+      "role": "review",
+      "cmd": "BLOCKED",
+      "id": "UPG-L0-SOLVER-COVERAGE",
+      "at": "2026-07-09T16:32:21.328Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
