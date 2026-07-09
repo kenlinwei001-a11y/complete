@@ -231,7 +231,7 @@
       "title": "N1多源融合+冲突仲裁+测谎",
       "doc": "docs/WO-MULTISRC-FUSION-DOMAIN.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "SOLVER-BINDING"
@@ -321,7 +321,8 @@
       "at": {
         "open": "2026-07-06T11:41:01.815Z",
         "todo": "2026-07-09T08:00:00.000Z",
-        "wip": "2026-07-09T08:05:37.928Z"
+        "wip": "2026-07-09T08:05:37.928Z",
+        "built": "2026-07-09T08:47:47.975Z"
       }
     },
     {
@@ -5000,9 +5001,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "MULTISRC-FUSION",
-      "at": "2026-07-09T08:05:37.929Z"
+      "at": "2026-07-09T08:47:47.976Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
