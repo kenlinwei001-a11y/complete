@@ -304,6 +304,113 @@ export function deterministicMatchScore(query: string, intent: IntentDefinition)
   return best;
 }
 
+/** deterministicClassify 的纯核心（与 fuseClassification ① 分支共用·R6 同输入同输出）。scored 需已降序。 */
+function deterministicClassifyFromScores(
+  scored: { key: string; score: number }[],
+): ClassificationResult | undefined {
+  const STRONG = 0.5,
+    MARGIN = 0.15,
+    WEAK = 0.34;
+  const top = scored[0];
+  if (!top || top.score < WEAK) return undefined; // 无足够确定性证据 → 不硬塞，交上层诚实降级
+  const second = scored[1]?.score ?? 0;
+  const base = { outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "deterministic:example-match" };
+  // 唯一强匹配 → 高置信 → path A
+  if (top.score >= STRONG && (scored.length === 1 || top.score - second >= MARGIN)) {
+    return { candidates: [{ intentKey: top.key, confidence: 1 }], ...base };
+  }
+  // 多候选接近 → 中置信 → INTENT_CHOICE 确定性澄清（落 τ_low..τ_high 之间的固定 0.7）
+  const near = scored.filter((s) => s.score >= WEAK).slice(0, 3).map((s) => ({ intentKey: s.key, confidence: 0.7 }));
+  return { candidates: near, ...base };
+}
+
+/** PRD-upstream-classify-precision §4 · 一致性加成系数 β 默认值。 */
+export const FUSE_BETA_DEFAULT = 0.1;
+
+/**
+ * PRD-upstream-classify-precision §4 (A1)·分类融合（确定性 ⊕ LLM，不再互斥）。
+ * 纯函数（R6·无时钟/随机·可单测）：LLM 与确定性都算，再合成。返回 {result, rescued}。
+ * 规则（PRD §4 逐条）：
+ *  ① LLM 缺失 → 退回纯确定性（== 现行 deterministicClassify 语义·向后兼容）。
+ *  ② 救回遗漏：确定性 score≥0.5 命中的意图若不在 LLM 候选 → 以 confidence=τ_low 补入（避免漏路由 Path B）。
+ *  ③ 一致性加成：LLM top 与确定性 top 同一意图 → 置信 ×(1+β)（只上浮·不下调 LLM top·PRD §8）。
+ *  ④ 冲突不硬塞：LLM 与确定性 top 分歧且都不强 → 不额外动作 → 维持 LLM 语义（中置信→INTENT_CHOICE 澄清·诚实不赌）。
+ * `rescued`（=②确定性补入使 top 从 <τ_low 脱离 Path B）供 qos_classify_fuse_rescued_total 计量。
+ * **等价保证**：LLM 存在且无补入/无上浮时，result 与输入 llm 逐字段一致（关闸 == 现行 `llm ?? det` 的 llm 分支）。
+ */
+export function fuseClassification(
+  llm: ClassificationResult | undefined,
+  candidates: IntentDefinition[],
+  query: string,
+  tau: { high: number; low: number },
+  beta: number = FUSE_BETA_DEFAULT,
+): { result: ClassificationResult | undefined; rescued: boolean } {
+  const scored = candidates
+    .map((c) => ({ key: c.key, score: deterministicMatchScore(query, c) }))
+    .sort((a, b) => b.score - a.score);
+
+  // ① LLM 缺失 → 纯确定性（100% 等价现行 deterministicClassify）
+  if (!llm) {
+    return { result: deterministicClassifyFromScores(scored), rescued: false };
+  }
+
+  const STRONG = 0.5;
+  const fused = llm.candidates.map((c) => ({ ...c }));
+
+  // ② 救回遗漏：det score≥0.5 命中的意图不在 LLM 候选 → 补入，confidence=τ_low（scored 已降序）
+  let added = false;
+  for (const d of scored) {
+    if (d.score < STRONG) break;
+    if (!fused.some((c) => c.intentKey === d.key)) {
+      fused.push({ intentKey: d.key, confidence: tau.low });
+      added = true;
+    }
+  }
+
+  // ③ 一致性加成：LLM top 与确定性 top 同一意图 → ×(1+β)（只上浮·封顶 1·不下调）
+  const detTop = scored[0];
+  const llmTopKey = llm.candidates[0]?.intentKey;
+  let bonusApplied = false;
+  if (detTop && detTop.score > 0 && llmTopKey && detTop.key === llmTopKey) {
+    const t = fused.find((c) => c.intentKey === llmTopKey);
+    if (t) {
+      const boosted = Math.min(1, t.confidence * (1 + beta));
+      if (boosted !== t.confidence) {
+        t.confidence = boosted;
+        bonusApplied = true;
+      }
+    }
+  }
+
+  // ④ 无补入/无上浮 → 100% 等价输入 llm（严格等价关闸态 `llm ?? det` 的 llm 分支·候选序/字段不变）
+  if (!added && !bonusApplied) {
+    return { result: { ...llm, candidates: fused }, rescued: false };
+  }
+
+  // 稳定排序（confidence 降序·同分保持插入序 → R6 确定），截前 3
+  const sorted = fused
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => b.c.confidence - a.c.confidence || a.i - b.i)
+    .map((x) => x.c)
+    .slice(0, 3);
+
+  const result: ClassificationResult = {
+    ...llm,
+    candidates: sorted,
+    // 补入后目录内已有候选 → outOfCatalog 置 false；未补入则保持 LLM 判定
+    outOfCatalog: added ? false : llm.outOfCatalog,
+  };
+
+  // rescue 计量：原 LLM 会落 Path B（outOfCatalog / 无 top / top<τ_low），而②补入后 top≥τ_low 脱离 Path B
+  const llmTopConf = llm.candidates[0]?.confidence ?? 0;
+  const llmWouldPathB = llm.outOfCatalog || !llm.candidates[0] || llmTopConf < tau.low;
+  const fusedTop = sorted[0];
+  const fusedWouldPathB = result.outOfCatalog || !fusedTop || fusedTop.confidence < tau.low;
+  const rescued = added && llmWouldPathB && !fusedWouldPathB;
+
+  return { result, rescued };
+}
+
 export class Orchestrator {
   private readonly pending = new Map<string, PendingClarification>();
   private readonly cancelled = new Set<string>();
@@ -507,6 +614,10 @@ export class Orchestrator {
       }
     }
 
+    // ③ τ 阈值（融合与决策共用·提前算）
+    const tauHigh = pkg.thresholds?.high ?? this.deps.config.QOS_TAU_HIGH;
+    const tauLow = pkg.thresholds?.low ?? this.deps.config.QOS_TAU_LOW;
+
     // ② LLM classification (with up to 2 retries)
     // WO-Q1：分类期 LLM 往返慢（Kimi 推理模型可达 ~30s），此前 task.accepted→routing.completed 间纯静默。
     // 发一个 "classify" 处理步（复用既有 step.started/completed 帧·前端 selectStepRows 直接渲染 → 思考态可见），
@@ -520,7 +631,24 @@ export class Orchestrator {
     // LLM classifier 失败（不可用/超时/限流·3 次重试后无产出）计数——**不论**确定性兜底是否随后救回
     // （指标语义 = "LLM 分类失败率"，与路由结果解耦；WO-QOS-DIAG 前该 inc 与 path-B 分支耦合，兜底救回会漏计）。
     if (!llmClassification) this.deps.metrics.classifierErrors.inc();
-    const classification = llmClassification ?? this.deterministicClassify(task, candidates);
+    // PRD-upstream-classify-precision §4 (A1)·分类融合暗发开关（QOS_CLASSIFY_FUSE·defaultOn:false·RL2）：
+    // ON → fuseClassification（确定性 ⊕ LLM·救回领域术语误判·②补入/③一致性加成/④冲突不硬塞）；
+    // OFF → 100% 等价现行 `llmClassification ?? deterministicClassify`（旧路径不删·关闸=改造前系统·可证回退）。
+    let classification: ClassificationResult | undefined;
+    if (this.deps.config.QOS_CLASSIFY_FUSE === "1") {
+      const fuse = fuseClassification(
+        llmClassification,
+        candidates,
+        task.query,
+        { high: tauHigh, low: tauLow },
+        this.deps.config.QOS_CLASSIFY_FUSE_BETA,
+      );
+      classification = fuse.result;
+      // A4 可观测：确定性补入使查询落 Path A/澄清而非 Path B → 救回计数。
+      if (fuse.rescued) this.deps.metrics.classifyFuseRescued.inc();
+    } else {
+      classification = llmClassification ?? this.deterministicClassify(task, candidates);
+    }
     await this.deps.events.emit(taskId, "step.completed", {
       stepId: "classify",
       type: "classify",
@@ -543,9 +671,7 @@ export class Orchestrator {
     }
     await this.deps.repos.tasks.patch(taskId, { classification });
 
-    // ③ τ decision
-    const tauHigh = pkg.thresholds?.high ?? this.deps.config.QOS_TAU_HIGH;
-    const tauLow = pkg.thresholds?.low ?? this.deps.config.QOS_TAU_LOW;
+    // ③ τ decision（tauHigh/tauLow 已于分类前算出·此处复用）
     const top = classification.candidates[0];
 
     if (classification.outOfCatalog || !top || top.confidence < tauLow) {
@@ -662,21 +788,10 @@ export class Orchestrator {
    * model 标 `deterministic:example-match`（审计诚实位·非 LLM）。
    */
   private deterministicClassify(task: QueryTask, candidates: IntentDefinition[]): ClassificationResult | undefined {
-    const STRONG = 0.5, MARGIN = 0.15, WEAK = 0.34;
     const scored = candidates
       .map((c) => ({ key: c.key, score: deterministicMatchScore(task.query, c) }))
       .sort((a, b) => b.score - a.score);
-    const top = scored[0];
-    if (!top || top.score < WEAK) return undefined; // 无足够确定性证据 → 不硬塞，交上层诚实降级
-    const second = scored[1]?.score ?? 0;
-    const base = { outOfCatalog: false, extractedSlots: {}, latencyMs: 0, model: "deterministic:example-match" };
-    // 唯一强匹配 → 高置信 → path A
-    if (top.score >= STRONG && (scored.length === 1 || top.score - second >= MARGIN)) {
-      return { candidates: [{ intentKey: top.key, confidence: 1 }], ...base };
-    }
-    // 多候选接近 → 中置信 → INTENT_CHOICE 确定性澄清（落 τ_low..τ_high 之间的固定 0.7）
-    const near = scored.filter((s) => s.score >= WEAK).slice(0, 3).map((s) => ({ intentKey: s.key, confidence: 0.7 }));
-    return { candidates: near, ...base };
+    return deterministicClassifyFromScores(scored);
   }
 
   /** 最近 6 轮会话摘要（增量 §1.4：与 agent 前情摘要共用 prompts.ts 的同一构建器） */

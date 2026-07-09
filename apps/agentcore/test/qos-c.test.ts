@@ -77,7 +77,7 @@ describe("Clarification & classifier degradation (§12 C1–C2)", () => {
   it("C2: classifier RateLimitError ×3 + 开放问句（无确定性匹配）→ path B + qos_classifier_errors_total", async () => {
     // WO-QOS-DIAG：确定性兜底仅救回词面近 examples 的问句；此处用**开放/无预设匹配**问句，
     // 确保仍走 path-B 降级分支（classifier 错误 → 无 LLM 且无确定性命中 → agent 探索）。
-    // preset 近似问句（如"影响哪些订单？"）现由确定性兜底路由 path A —— 见 router-deterministic-classify.test.ts。
+    // preset 近似问句（如"影响哪些订单？"）现由确定性兜底路由 path A —— 见 router-deterministic-classify.test.ts / router-classify-fuse.test.ts。
     t.llm.queueClassification(new FakeRateLimitError(), new FakeRateLimitError(), new FakeRateLimitError());
     t.llm.queueAgentTurn({
       content: [

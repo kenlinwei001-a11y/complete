@@ -84,6 +84,11 @@ export class Metrics {
     [50, 100, 250, 500, 1000, 1500, 3000, 10000],
   );
   readonly classifierErrors = new Counter("qos_classifier_errors_total", "Classifier failures after retries");
+  /** PRD-upstream-classify-precision §6 (A4)：确定性融合救回（det 补入使查询落 Path A/澄清而非 Path B）计数。 */
+  readonly classifyFuseRescued = new Counter(
+    "qos_classify_fuse_rescued_total",
+    "Classifications rescued from Path B by deterministic fusion",
+  );
   readonly clarificationRounds = new Counter("qos_clarification_rounds_total", "Clarification rounds by kind");
   readonly agentBudgetExhausted = new Counter(
     "qos_agent_budget_exhausted_total",
@@ -130,6 +135,7 @@ export class Metrics {
         this.pathAHitRatio,
         this.classifierLatency,
         this.classifierErrors,
+        this.classifyFuseRescued,
         this.clarificationRounds,
         this.agentBudgetExhausted,
         this.unverifiedNumerics,

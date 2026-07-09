@@ -14,6 +14,14 @@ const ConfigSchema = z.object({
   QOS_DEFAULT_LLM_PROVIDER: z.string().default("anthropic"),
   QOS_TAU_HIGH: z.coerce.number().default(0.85),
   QOS_TAU_LOW: z.coerce.number().default(0.55),
+  /**
+   * PRD-upstream-classify-precision §4 (A1·分类融合) 暗发开关（defaultOn:false·RL2）：
+   * =1 时 classify 用 `fuseClassification`（确定性 ⊕ LLM 融合·救回领域术语误判）；
+   * 缺省（OFF）100% 等价现行 `llmClassification ?? deterministicClassify`（旧路径不删·可证回退）。
+   */
+  QOS_CLASSIFY_FUSE: z.string().optional(),
+  /** §4 ③ 一致性加成系数 β（LLM top 与确定性 top 同一意图 → 置信 ×(1+β)）；默认 0.1。 */
+  QOS_CLASSIFY_FUSE_BETA: z.coerce.number().default(0.1),
   /** 同步求解代理 /b/v1/solvers/{key}/run 超时（增量 §0-2：超时 → 504 SOLVER_TIMEOUT） */
   SOLVER_RUN_TIMEOUT_MS: z.coerce.number().int().default(15_000),
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
