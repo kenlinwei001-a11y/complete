@@ -429,22 +429,28 @@ export class LlmSettings {
 
   async roleModel(tenantId: string | undefined, role: LlmRole, explicit?: string): Promise<string> {
     if (explicit) return explicit; // scenario package field wins（场景包覆盖）
+    // LLM-ROLE-RESOLUTION-FIX（用户亲定不变量）：**绑定任一大类 = 完全覆盖全部用途**。
+    // 解析优先级：① 请求角色本身的绑定 → ② 跨角色通用兜底（任一已绑角色·prefer agent>classifier>compose）
+    // → ③ env 默认。此前仅 compose→agent 有兜底，agent/classifier 未绑即落无 key 的 env 默认 → 鉴权失败
+    // → 被误标"用途未绑定"（用户实测"已绑 classifier 仍报 agent 未绑"）。通用兜底根治：任一绑定即全覆盖。
+    const FALLBACK_ORDER: LlmRole[] = ["agent", "classifier", "compose"]; // 跨角色兜底优先序（能力强者优先）
     if (tenantId && this.directory) {
       // 用途矩阵租户级默认（A 为 source of truth；role 名与 purpose key 同名）
       const bound = await this.directory.bindingFor(tenantId, role);
       if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${bound.modelId}`;
-      if (role === "compose") {
-        const agentBound = await this.directory.bindingFor(tenantId, "agent");
-        if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${agentBound.modelId}`;
+      for (const r of FALLBACK_ORDER) {
+        if (r === role) continue;
+        const fb = await this.directory.bindingFor(tenantId, r);
+        if (fb) return `${DATACORE_PROVIDER_PREFIX}${fb.providerId}:${fb.modelId}`;
       }
     }
     if (tenantId) {
       const bound = await this.repos.llmBindings.get(tenantId, role);
       if (bound) return `${bound.providerKey}:${bound.model}`;
-      if (role === "compose") {
-        // compose falls back to the agent binding before env defaults
-        const agentBound = await this.repos.llmBindings.get(tenantId, "agent");
-        if (agentBound) return `${agentBound.providerKey}:${agentBound.model}`;
+      for (const r of FALLBACK_ORDER) {
+        if (r === role) continue;
+        const fb = await this.repos.llmBindings.get(tenantId, r);
+        if (fb) return `${fb.providerKey}:${fb.model}`;
       }
     }
     return role === "classifier" ? this.config.QOS_CLASSIFIER_MODEL : this.config.QOS_AGENT_MODEL;

@@ -65,7 +65,7 @@ describe("classifyGap · 终态→缺口分类", () => {
     // 真实 evidence：orchestrator sanitizeLlmAuthLeak 归一码（用户实测「常州基地的瓶颈是?」终态即此）。
     const r = classifyGap(base({
       query: "常州基地的瓶颈是?", status: "FAILED", path: "WORKFLOW",
-      error: { code: "LLM_PURPOSE_UNBOUND", message: "LLM 用途未解析到可用 provider 或密钥无效——请在 设置→LLM 用途绑定 配置 provider 与密钥", stepId: "classify" },
+      error: { code: "LLM_PURPOSE_UNBOUND", message: "LLM 调用未成功：未绑定任何 LLM 用途，或已绑定 provider 的密钥无效/不可达。请在 设置→LLM 用途绑定 确认已绑 provider 且密钥有效——绑定任一大类即覆盖全部用途，无需逐意图单独绑定。", stepId: "classify" },
     }));
     const f = r.findings[0]!;
     expect(f.gapCode).toBe("LLM_PURPOSE_UNBOUND"); // 入正式码表，不再拍 OTHER

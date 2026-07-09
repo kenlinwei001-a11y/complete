@@ -178,7 +178,10 @@ function sanitizeLlmAuthLeak(code: string, message: string): { code: string; mes
   if (LLM_AUTH_LEAK_SIGNATURES.some((s) => lower.includes(s))) {
     return {
       code: "LLM_PURPOSE_UNBOUND",
-      message: "LLM 用途未解析到可用 provider 或密钥无效——请在 设置→LLM 用途绑定 配置 provider 与密钥",
+      // LLM-ROLE-RESOLUTION-FIX：诚实区分错因（不再一律断言"未绑定"误导已绑用户）。跨角色通用兜底后，
+      // 仍报此错 = 要么未绑任何用途、要么已绑 provider 的密钥无效/不可达。并声明全覆盖不变量（绑任一大类即全覆盖）。
+      message:
+        "LLM 调用未成功：未绑定任何 LLM 用途，或已绑定 provider 的密钥无效/不可达。请在 设置→LLM 用途绑定 确认已绑 provider 且密钥有效——绑定任一大类即覆盖全部用途，无需逐意图单独绑定。",
     };
   }
   return { code, message };
