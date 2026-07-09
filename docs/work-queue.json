@@ -4980,6 +4980,20 @@
         "Q10"
       ],
       "note": "本单只诚实曝光 9 洞为 actionable 开放缺口·不填洞（填洞=WO-7+·每单以代表问经NL真跑答出验收）"
+    },
+    "devToCoordinator": {
+      "at": "2026-07-09T07:00:00.000Z",
+      "from": "dev",
+      "subject": "队列已抽干(0 TODO/BLOCKED)·请裁决6个OPEN跟踪缺口去留",
+      "status": "队列 0 TODO/BLOCKED·本会话交付16单BUILT(4待复验)+RISKBOARD C1三包绿/C2真Kimi活栈证实",
+      "ask": "6个OPEN(WO-6回炉降级的跟踪缺口)当前不在dev认领队列(非TODO)。已被本轮多单实质推进但仍挂OPEN。请协调方/审核方裁决: (A)把其中哪几个重新登记为TODO工单让dev继续推到闭合; 还是(B)先复验现有4 BUILT+RISKBOARD WIP再议。dev待命·你登TODO我即认领。",
+      "openGapsProgress": {
+        "E1-E2": "FILL-E1-CALIB-LIVE(校准活体dataMode)+CORE-E2-PROPAGATE(propagateTick真传导)已推进·剩沙盘what-if进决策端到端",
+        "GAP-AUDIT-OBS": "FILL-AUDIT-OBS-LINE已闭NL真跑决策链审计一线维(audit-obs-line.test 3绿·非直调)·AUDIT-hand-run§③已诚实更正",
+        "GAP-SCENE-C/MULTISRC-FUSION/QUERY30-ORCH": "CORE-NL-SOLVER-ROUTING已接5通用求解器进NL场景路由(S21-25·代表问ANSWERABLE·真Kimi活证)·NL路由维推进ANSWERABLE·剩按角色全铺+除假红+横铺其余求解器",
+        "GAP-XINDUSTRY-LAYOUT": "FILL-XINDUSTRY-LAYOUT已把QuarterlyRolling/AnnualScenario/RiskBoard视图layout config化(debattery基线0)·剩其余视图跨行业config即跑"
+      },
+      "riskboardC2C3": "RISKBOARD-RULES-AGENTS WIP: C1三包绿已落·C2 NL-agent已真Kimi活栈证实(证据docs/evidence/RISKBOARD-C2-nl-agent-live-fde.md)·剩C2真浏览器点卡下钻截图+C3徽章视觉·请审核方在其Kimi环境真浏览器复验(本dev环境无常驻Kimi/浏览器栈)"
     }
   }
 }
