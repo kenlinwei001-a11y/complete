@@ -4630,12 +4630,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-07T00:00:00.000Z",
-        "wip": "2026-07-09T02:57:17.840Z"
-      }
+        "wip": "2026-07-09T02:57:17.840Z",
+        "built": "2026-07-09T03:04:05.690Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "OPTIONA-B1B2-UX",
@@ -4811,14 +4813,70 @@
         "todo": "2026-07-07T04:00:00.000Z",
         "amended": "2026-07-07T05:00:00.000Z"
       }
+    },
+    {
+      "id": "FILL-AUDIT-TIMELINE-REAL",
+      "title": "填补F1: auditTimeline逐日曲线接真日序(替hash派生·无真源诚实空态)",
+      "doc": "docs/AUDIT-fakedata-sweep.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "FAKEDATA-SWEEP F1派生。risk.ts:642/649 auditTimeline逐日传导曲线/峰值/越线日由hashString(kind)确定性派生·无实测(已诚实标MOCK/PARTIAL)。补真源:各审计项(产销/毛利/齐套/现金/份额/爬坡/外协/capex)真实逐日指标时序(真订单/毛利/库存/现金流按日聚合)·同CAPACITY-BASECARDS为risk_timeline补真设备时序范式。有真源取真日序·无真源退诚实空态(不哈希造曲线)·dataMode由真源在否派生。",
+      "acceptance": {
+        "goal": "auditTimeline逐日曲线由真日序驱动(非hash派生);无真源诚实空态;dataMode真值驱动。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "cmd",
+            "assert": "有真日序时auditTimeline.series逐值来自真源聚合(非hashString派生)·dataMode=LIVE/PARTIAL;无真源→series空/退化MOCK诚实标·不哈希造曲线。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "green→red:revert接真源改动→曲线回hash派生→no-fake-data:check基线外仍LABELED但须诚实标;teeth该项无真源→空态(非满曲线)。pnpm -r build+test绿·no-fake-data:check绿。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-09T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "FILL-ORDERCHAIN-INVENTORY-REAL",
+      "title": "填补F2: OrderChain库存价值接真库存对象(替写死占比系数)+清hash幅度死注释",
+      "doc": "docs/AUDIT-fakedata-sweep.md",
+      "priority": "P3",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "FAKEDATA-SWEEP F2派生(低优·已诚实标透明估算非冒充)。OrderChainView.tsx:34 成品/在制/原料库存价值=营收×写死占比{fg:0.22,wip:0.3,rm:0.18}(无实测库存)·第二位hash幅度注释残留(hash现编已删见:157)。处置:①有真库存对象(成品/在制/原料按SKU数量×单价)→取真值;②无→保留占比估算但诚实标(现状)+清理[base,hash幅度]死注释为[base]。",
+      "acceptance": {
+        "goal": "库存价值有真源时取真库存对象聚合·无真源保留诚实标估算;清死注释。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "file",
+            "assert": "coef注释[base,hash幅度]→[base](hash幅度死值清除·:157已删hash现编);有真库存对象时OrderChain库存价值逐值对真源·无则诚实标透明估算(现状保留)。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "pnpm --filter frontend-shell build+test绿·无回归。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-09T00:00:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "FAKEDATA-SWEEP",
-      "at": "2026-07-09T02:57:17.840Z"
+      "at": "2026-07-09T03:04:05.691Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
