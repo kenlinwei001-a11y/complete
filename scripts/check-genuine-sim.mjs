@@ -129,9 +129,11 @@ if (!/ORDER_CHAIN_ECON|econ:\s*ORDER_CHAIN_ECON/.test(svc)) {
 }
 
 // ⑦ A0（空洞数据冰山结构性根因）：dataMode 诚实位推广到 audit_timeline + extended 全族——防"哈希/魔数静默冒充真算"回潮。
-// audit_timeline 逐日曲线 kind 名哈希派生 → 必透 dataMode；extended 13 求解器据真对象 vs 魔数兜底置 LIVE/MOCK/PARTIAL。
-if (!/dataMode:\s*orders\.length/.test(risk)) {
-  fail("risk.ts auditTimeline 未透 dataMode（审计逐日曲线 kind 哈希派生·无诚实位·A1 回潮）");
+// audit_timeline 必透 dataMode。FILL-AUDIT-TIMELINE-REAL 治本后：有真日序→dataMode:"LIVE"、无真源→hasData:false+dataMode:"MOCK"+noDataReason
+// （不再哈希造曲线）；口径由旧 `dataMode: orders.length` 升级为「auditTimeline 函数体透 dataMode + 无真源诚实空态 hasData:false」。
+const auditTimelineBody = (risk.match(/function auditTimeline[\s\S]{0,3000}/) ?? [""])[0];
+if (!/dataMode:/.test(auditTimelineBody) || !/hasData:\s*false/.test(auditTimelineBody)) {
+  fail("risk.ts auditTimeline 未透 dataMode / 无真源未退诚实空态（hasData:false）——审计逐日曲线诚实位缺失·A1 回潮");
 }
 const ext = read("apps/datacore/src/solvers/extended.ts");
 if (!/export function extendedDataMode/.test(ext)) {
