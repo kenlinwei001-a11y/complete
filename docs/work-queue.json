@@ -4960,8 +4960,8 @@
     },
     {
       "id": "DEPLOY0707-PIPELINE-SALVAGE",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P3",
       "deps": [],
       "doc": "docs/HANDOFF-DEPLOY0707-SALVAGE.md",
@@ -4994,16 +4994,17 @@
       },
       "at": {
         "todo": "2026-07-09T07:00:00.000Z",
-        "amended": "2026-07-09T07:30:00.000Z"
+        "amended": "2026-07-09T07:30:00.000Z",
+        "wip": "2026-07-09T09:02:34.200Z"
       }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "BLOCKED",
-      "id": "QUERY30-ORCH",
-      "at": "2026-07-09T09:01:56.418Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "DEPLOY0707-PIPELINE-SALVAGE",
+      "at": "2026-07-09T09:02:34.201Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
