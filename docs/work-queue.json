@@ -4713,7 +4713,7 @@
     },
     {
       "id": "SCENE-LAUNCHER-DEADLINK-FIX",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P2",
       "deps": [],
@@ -4743,7 +4743,8 @@
       "at": {
         "todo": "2026-07-07T01:00:00.000Z",
         "wip": "2026-07-09T03:20:25.038Z",
-        "built": "2026-07-09T03:27:23.739Z"
+        "built": "2026-07-09T03:27:23.739Z",
+        "done": "2026-07-09T03:34:51.987Z"
       },
       "blockReason": ""
     },
@@ -4884,8 +4885,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "FILL-XINDUSTRY-LAYOUT",
-      "at": "2026-07-09T03:31:12.699Z"
+      "id": "SCENE-LAUNCHER-DEADLINK-FIX",
+      "at": "2026-07-09T03:34:51.987Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
