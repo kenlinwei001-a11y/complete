@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §4` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `03f626d1172aa92f`。
+> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `426c3bdad824cc33`。
 
 ---
 
@@ -54,6 +54,9 @@
 | L13 | `growth.fill_triggered` | 自成长发动机·人工触发补数据缺口（认领人点「补数据缺口」→真跑 fillData/provisionWorld·R6 seed 确定性·`POST /b/v1/growth/worklist/:id/fill`→DONE） | IN_SESSION | growth-worklist, dashboard, risk, scenario-data, object-queries | — |
 | L13 | `growth.ticket_opened` | 自成长发动机·缺功能落工单（带真实 I/O 契约+本体引用骨架；P5 推送触达；拉兜底=`GET /api/v1/growth/tickets`） | NOTIFY | growth-tickets, notifications | — |
 | L13 | `growth.converged` | 自成长发动机·LOOP 收敛（问句现可答） | IN_SESSION | growth-ledger, growth-tickets | — |
+| L13 | `growth.pre_analysis_started` | 🚧 拟立·待落地·统一 GapAnalysis·QOS 提交后台异步预分析起（不阻塞 SSE·`preAnalyzeQuery`·PRD-gap-analysis-engine §6） | IN_SESSION | growth-preanalysis | — |
+| L13 | `growth.pre_analysis_done` | 🚧 拟立·待落地·统一 GapAnalysis·后台预分析出全景（`PreAnalysisReport` 落 `pre_analyses`·coverageScore/severity/executionPlan·咨询信号非判决·权威判决仍 `classifyGap`） | IN_SESSION | growth-preanalysis, growth-worklist | — |
+| L13 | `growth.pre_analysis_failed` | 🚧 拟立·待落地·统一 GapAnalysis·预分析失败诚实暴露（不静默·落 `status:FAILED`+error·前端「诊断暂时不可用」·铁律0.4） | NOTIFY | growth-preanalysis, notifications | — |
 | L14 | `meta.ontology_synced` | Dogfooding·系统本体自反投影重物化完成（`POST /a/v1/meta/sync`）→ 失效 `/a/v1/meta/*` 查询缓存 + meta MCP 工具结果 | INVALIDATE | meta-ontology(`/meta/*` 视图) | — |
 | L15 | `storybuild.run_recorded` | 数据构建发动机·故事建域记录完成（`runStory`）→ 经 F1 全局通道失效历史推演记录/模块同步矩阵 | IN_SESSION | story-runs | — |
 | L15 | `fde.node_advanced` | A5 FDE 编排工作流·节点状态推进（`fde-graph.ts projectFdeNodes` 投影 7 执行步→8 语义节点，引擎 onAdvance 每步迁移发）→ 实时点亮节点状态图（跨会话/被动页） | IN_SESSION | fde-graph, story-runs, workflow-runs | — |

@@ -886,6 +886,37 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-gap-analysis-engine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-3",
+        "G-4",
+        "G-8"
+      ],
+      "artifacts": [
+        "packages/contracts/src/databuilder.ts",
+        "packages/contracts/src/growth.ts",
+        "scripts/check-hidden-req-keys.mjs",
+        "scripts/check-prd-ontology.mjs"
+      ],
+      "brokenArtifacts": [
+        "scripts/check-hidden-req-keys.mjs"
+      ]
+    },
     "PRD-generation-boundary-grounding.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1504,6 +1535,7 @@
       "PRD-discover-real-type-names.md",
       "PRD-empty-tenant-bootstrap.md",
       "PRD-fde-fullstack-build-workflow.md",
+      "PRD-gap-analysis-engine.md",
       "PRD-in-dialog-gap-fill-loop.md",
       "PRD-inference-process-enhancement.md",
       "PRD-intent-materialize-binding-complete.md",
@@ -1546,6 +1578,7 @@
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
       "PRD-fullstack-story-build-g8.md",
+      "PRD-gap-analysis-engine.md",
       "PRD-generation-boundary-grounding.md",
       "PRD-implementation-handbook.md",
       "PRD-inference-process-enhancement.md",
@@ -1587,6 +1620,7 @@
       "PRD-frontend-addendum-sim-views.md",
       "PRD-frontend.md",
       "PRD-fullstack-story-build-g8.md",
+      "PRD-gap-analysis-engine.md",
       "PRD-implementation-handbook.md",
       "PRD-maturity-master-plan.md",
       "PRD-platform-foundry-aip.md",
@@ -1600,6 +1634,7 @@
     ],
     "G-4": [
       "PRD-addendum-admin-console-closure.md",
+      "PRD-gap-analysis-engine.md",
       "PRD-unified-build-engine.md"
     ],
     "G-7": [
@@ -1785,7 +1820,8 @@
     ],
     "packages/contracts/src/databuilder.ts": [
       "PRD-build-workflow-runtime.md",
-      "PRD-databuilder-page-unified-spec.md"
+      "PRD-databuilder-page-unified-spec.md",
+      "PRD-gap-analysis-engine.md"
     ],
     "apps/agentcore/src/features/registry.ts": [
       "PRD-cli-full-coverage.md"
@@ -1826,7 +1862,8 @@
       "PRD-dogfooding-self-ontology.md"
     ],
     "scripts/check-prd-ontology.mjs": [
-      "PRD-dogfooding-self-ontology.md"
+      "PRD-dogfooding-self-ontology.md",
+      "PRD-gap-analysis-engine.md"
     ],
     "scripts/check-system-ontology.mjs": [
       "PRD-dogfooding-self-ontology.md"
@@ -1845,6 +1882,12 @@
     ],
     "apps/frontend-shell/src/styles/tokens.css": [
       "PRD-frontend-visual-redesign.md"
+    ],
+    "packages/contracts/src/growth.ts": [
+      "PRD-gap-analysis-engine.md"
+    ],
+    "scripts/check-hidden-req-keys.mjs": [
+      "PRD-gap-analysis-engine.md"
     ],
     "apps/datacore/src/domain.ts": [
       "PRD-generation-boundary-grounding.md"
