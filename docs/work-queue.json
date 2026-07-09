@@ -4424,12 +4424,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-09T05:08:09.940Z"
-      }
+        "wip": "2026-07-09T05:08:09.940Z",
+        "built": "2026-07-09T05:42:53.519Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "FILL-AUDIT-OBS-LINE",
@@ -4936,10 +4938,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "OPTIONA-B1B2-UX",
-      "at": "2026-07-09T05:40:53.012Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "FILL-E1-CALIB-LIVE",
+      "at": "2026-07-09T05:42:53.519Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
