@@ -4574,15 +4574,15 @@
           }
         ]
       },
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-09T06:17:16.890Z",
-        "built": "2026-07-09T06:47:20.768Z",
+        "wip": "2026-07-09T07:29:16.019Z",
+        "built": "2026-07-09T07:40:21.388Z",
         "blocked": "2026-07-09T07:14:35.894Z"
       },
-      "blockReason": "改名不完整(真浏览器fresh vite确认非stale): 前端已改(zh.ts:297 title/breadcrumb/fixtures=订单聚合)但后端视图标签未改→左导航仍显旧名\"订单全链聚合\"。源: datacore features.ts:26 name=\"订单全链聚合\" + synthetic/service.ts:1402 + packs/battery-manufacturing.pack.ts:112。用户明确要的改名从用户视角是失败的(nav旧名·页标题新名·不一致)。修: datacore侧view name/pack titles一并改\"订单聚合\"·真浏览器左导航验证显新名。基地迁移/逐行部分暂未否决(先修改名再整体复验)。"
+      "blockReason": ""
     },
     {
       "id": "RISKBOARD-LAYOUT-REWORK",
@@ -4995,9 +4995,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "comms-reply",
-      "at": "2026-07-09T08:10:00.000Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "ORDER-CONSOLIDATE",
+      "at": "2026-07-09T07:40:21.388Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
