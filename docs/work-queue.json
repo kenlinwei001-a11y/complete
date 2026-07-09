@@ -4528,13 +4528,14 @@
           }
         ]
       },
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "amended": "2026-07-07T02:00:00.000Z",
         "wip": "2026-07-09T04:06:43.268Z",
-        "built": "2026-07-09T04:30:29.443Z"
+        "built": "2026-07-09T04:30:29.443Z",
+        "done": "2026-07-09T05:10:30.642Z"
       },
       "blockReason": ""
     },
@@ -4759,7 +4760,7 @@
     },
     {
       "id": "GAP-ADVICE-QUALITY",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "priority": "P2",
       "deps": [],
@@ -4789,7 +4790,8 @@
       "at": {
         "todo": "2026-07-07T03:00:00.000Z",
         "wip": "2026-07-09T04:06:43.209Z",
-        "built": "2026-07-09T04:19:54.133Z"
+        "built": "2026-07-09T04:19:54.133Z",
+        "done": "2026-07-09T05:10:30.525Z"
       },
       "blockReason": ""
     },
@@ -4841,7 +4843,7 @@
       "title": "填补F1: auditTimeline逐日曲线接真日序(替hash派生·无真源诚实空态)",
       "doc": "docs/AUDIT-fakedata-sweep.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "FAKEDATA-SWEEP F1派生。risk.ts:642/649 auditTimeline逐日传导曲线/峰值/越线日由hashString(kind)确定性派生·无实测(已诚实标MOCK/PARTIAL)。补真源:各审计项(产销/毛利/齐套/现金/份额/爬坡/外协/capex)真实逐日指标时序(真订单/毛利/库存/现金流按日聚合)·同CAPACITY-BASECARDS为risk_timeline补真设备时序范式。有真源取真日序·无真源退诚实空态(不哈希造曲线)·dataMode由真源在否派生。",
@@ -4863,7 +4865,8 @@
       "at": {
         "todo": "2026-07-09T00:00:00.000Z",
         "wip": "2026-07-09T04:06:07.986Z",
-        "built": "2026-07-09T04:47:07.331Z"
+        "built": "2026-07-09T04:47:07.331Z",
+        "done": "2026-07-09T05:10:30.584Z"
       },
       "blockReason": ""
     },
@@ -4895,14 +4898,42 @@
         "todo": "2026-07-09T00:00:00.000Z",
         "wip": "2026-07-09T05:08:10.090Z"
       }
+    },
+    {
+      "id": "I18N-LONGTAIL",
+      "status": "TODO",
+      "owner": null,
+      "priority": "P3",
+      "deps": [],
+      "doc": "apps/frontend-shell/src",
+      "title": "中文化长尾扫尾(I18N-CHINESE-UI主页面已done后·dev诚实标的剩余)",
+      "note": "I18N-CHINESE-UI(已DONE)诚实边界: 主要页面+本体切片/拓扑+去隐喻已中文化并真浏览器验证·但dev标剩余长尾未做也未开单——本单接住: 数据构建发动机等产品名界面词、非主页面残余英文串全站扫、代码注释非界面词不算。缩写白名单(OEE/BOM/SKU/Agent/QOS等)保留。审核方补开(dev提及未建)。",
+      "acceptance": {
+        "goal": "全站残余英文界面词(非缩写白名单)中文化扫尾: 产品名标签+非主页面残串·真浏览器抽查+grep展示层无非白名单裸英文·enum/testid/key不动·build+test绿。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "grep展示层(zh.ts+组件JSX文案)残余非白名单英文界面词清单→逐个中文化或加白名单·真浏览器抽查3非主页面(如数据构建发动机/求解器审核台/配置迁移)界面词中文。"
+          },
+          {
+            "id": "C2",
+            "type": "cmd",
+            "assert": "缩写白名单显式维护(OEE/BOM/SKU/Agent/QOS/S&OP等)·debattery绿·build+test绿·enum/testid/key grep仍在(未误改)。"
+          }
+        ]
+      },
+      "at": {
+        "todo": "2026-07-09T04:30:00.000Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "FILL-ORDERCHAIN-INVENTORY-REAL",
-      "at": "2026-07-09T05:08:10.090Z"
+      "role": "review",
+      "cmd": "dispatch",
+      "id": "I18N-LONGTAIL",
+      "at": "2026-07-09T04:30:00.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
