@@ -5164,7 +5164,7 @@
       "title": "L0·主单P0-1: diffGap纯核+契约冻结+analyzeGap无损改造+registry-snapshot",
       "doc": "docs/PRD-gap-analysis-engine.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "PRD-gap §5/§13 Phase0-1: diffGap(required,existing,meta)纯函数落@platform/contracts(R1/R6·generatedAt注入)；analyzeGap(provisioners.ts:106)改为收集existing→调diffGap·对外签名行为不变(唯一调用点service.ts:406零改)；GET /a/v1/databuilder/registry-snapshot(仅6类A栈·SERVICE_TOKEN/OBO)；契约扩GapTarget/Severity/Remediation/Explanation/ExecutionStep全optional。不触agentcore/前端/QOS。",
@@ -5201,8 +5201,10 @@
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
-        "wip": "2026-07-09T15:06:22.963Z"
-      }
+        "wip": "2026-07-09T15:06:22.963Z",
+        "built": "2026-07-09T15:32:05.550Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-PREANALYSIS",
@@ -5482,8 +5484,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "UPG-L0-CLASSIFY-FUSE",
-      "at": "2026-07-09T15:29:38.758Z"
+      "id": "UPG-L0-GAPCORE",
+      "at": "2026-07-09T15:32:05.551Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
