@@ -243,7 +243,7 @@
           {
             "id": "C1",
             "type": "curl",
-            "assert": "同一 Order 注入 ERP 交期 T1 与 MES(产能不足)交期 T2 两源后，POST /a/v1/solvers/source_conflict/invoke 返回的融合对象 fields 里对应字段 sources 数组长度 == 2（ERP+MES 都在），且每个 source 元素含 {source,value,confidence} 三键——非只留一源丢证据"
+            "assert": "同一 Order 注入 ERP 交期 T1 与 MES(产能不足)交期 T2 两源后，POST /a/v1/solvers/multisource_fusion/invoke 返回的融合对象 fields 里对应字段 sources 数组长度 == 2（ERP+MES 都在），且每个 source 元素含 {source,value,confidence} 三键——非只留一源丢证据"
           },
           {
             "id": "C2",
@@ -279,33 +279,34 @@
         "method": [
           {
             "for": "C1",
-            "run": "起内存态 datacore（PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js）。按 SolverBinding(role=order) 注入同一 Order 的 ERP 源(交期 T1)与 MES 源(产能不足→交期 T2)后：curl -s -XPOST 127.0.0.1:4001/a/v1/solvers/source_conflict/invoke -H 'X-Debug-User:demo:admin:admin+planner+catalog_admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<orderPk>\"}}' | jq '.fields.dueDate.sources | length' → 期望 2；再 jq '.fields.dueDate.sources[0] | has(\"source\") and has(\"value\") and has(\"confidence\")' → 期望 true"
+            "run": "起内存态 datacore（PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js）。按 SolverBinding(role=order) 注入同一 Order 的 ERP 源(交期 T1)与 MES 源(产能不足→交期 T2)后：curl -s -XPOST 127.0.0.1:4001/a/v1/solvers/multisource_fusion/invoke -H 'X-Debug-User:demo:admin:admin+planner+catalog_admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<orderPk>\"}}' | jq '.fields.dueDate.sources | length' → 期望 2；再 jq '.fields.dueDate.sources[0] | has(\"source\") and has(\"value\") and has(\"confidence\")' → 期望 true"
           },
           {
             "for": "C2",
-            "run": "同 C1 响应：curl ... /solvers/source_conflict/invoke ... | jq '.verdict != null and (.verdict.chosenSource==\"ERP\" or .verdict.chosenSource==\"MES\") and (.verdict.reason|type==\"string\" and length>0)' → 期望 true（偷懒失败态对照：verdict==null 或 reason 空）"
+            "run": "同 C1 响应：curl ... /solvers/multisource_fusion/invoke ... | jq '.verdict != null and (.verdict.chosenSource==\"ERP\" or .verdict.chosenSource==\"MES\") and (.verdict.reason|type==\"string\" and length>0)' → 期望 true（偷懒失败态对照：verdict==null 或 reason 空）"
           },
           {
             "for": "C3",
-            "run": "冲突态：curl ... source_conflict/invoke（C1 双源入参）| jq -r '.dataMode' → 期望 PARTIAL。对照无冲突态：仅注入单源(或两源同值)后同命令 | jq -r '.dataMode' → 期望 LIVE。两次 dataMode 不同即证诚实位随一致性变化"
+            "run": "冲突态：curl ... multisource_fusion/invoke（C1 双源入参）| jq -r '.dataMode' → 期望 PARTIAL。对照无冲突态：仅注入单源(或两源同值)后同命令 | jq -r '.dataMode' → 期望 LIVE。两次 dataMode 不同即证诚实位随一致性变化"
           },
           {
             "for": "C4",
-            "run": "注入 MES 产能数值明显高于 ERP/SRM 他源(超阈值·MU13 虚报)后：curl ... source_conflict/invoke ... | jq '[.fields.capacity.sources[] | select(.source==\"MES\")][0] | .status==\"SUSPECT\" or .suspect==true' → 期望 true；并 jq '([.fields.capacity.sources[]|select(.source==\"MES\")][0].confidence) < ([.fields.capacity.sources[]|select(.source!=\"MES\")][0].confidence)' → 期望 true"
+            "run": "注入 MES 产能数值明显高于 ERP/SRM 他源(超阈值·MU13 虚报)后：curl ... multisource_fusion/invoke ... | jq '[.fields.capacity.sources[] | select(.source==\"MES\")][0] | .status==\"SUSPECT\" or .suspect==true' → 期望 true；并 jq '([.fields.capacity.sources[]|select(.source==\"MES\")][0].confidence) < ([.fields.capacity.sources[]|select(.source!=\"MES\")][0].confidence)' → 期望 true"
           },
           {
             "for": "C5",
-            "run": "A=$(curl -s -XPOST 127.0.0.1:4001/a/v1/solvers/source_conflict/invoke -H 'X-Debug-User:demo:admin:admin+planner+catalog_admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<orderPk>\",\"seed\":42}}'); B=$(curl -s -XPOST ... 同一命令 同 seed); diff <(echo \"$A\"|jq -S .) <(echo \"$B\"|jq -S .) → 期望空输出(退出码 0)"
+            "run": "A=$(curl -s -XPOST 127.0.0.1:4001/a/v1/solvers/multisource_fusion/invoke -H 'X-Debug-User:demo:admin:admin+planner+catalog_admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<orderPk>\",\"seed\":42}}'); B=$(curl -s -XPOST ... 同一命令 同 seed); diff <(echo \"$A\"|jq -S .) <(echo \"$B\"|jq -S .) → 期望空输出(退出码 0)"
           },
           {
             "for": "C6",
-            "run": "curl -s -o /dev/null -w '%{http_code}' -XPOST 127.0.0.1:4001/a/v1/solvers/source_conflict/invoke -H 'X-Debug-User:tenantB:evil:admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<tenantA-orderPk>\"}}' → 期望 403 或 404；并 curl 同请求(不加 -o) | grep -c 'T1\\|T2' → 期望 0(不泄漏跨租户源值)"
+            "run": "curl -s -o /dev/null -w '%{http_code}' -XPOST 127.0.0.1:4001/a/v1/solvers/multisource_fusion/invoke -H 'X-Debug-User:tenantB:evil:admin' -H 'Content-Type:application/json' -d '{\"args\":{\"role\":\"order\",\"pk\":\"<tenantA-orderPk>\"}}' → 期望 403 或 404；并 curl 同请求(不加 -o) | grep -c 'T1\\|T2' → 期望 0(不泄漏跨租户源值)"
           },
           {
             "for": "C7",
             "run": "cd /home/user/complete && pnpm -r build && pnpm -r test；echo $? → 期望 0。核对 datacore 测试统计行 tests >= 69 且新增 fusion/arbitration/lie-detection 用例：pnpm --filter datacore test 2>&1 | grep -Ei 'SUSPECT|仲裁|verdict|fus' → 期望非空(有断言 SUSPECT/仲裁的用例)"
           }
-        ]
+        ],
+        "evidence": "真验证制品：求解器 multisource_fusion ∈ SOLVER_REGISTRY(solver-registry.ts:102·catalog.ts:150·service.ts:124)；测试 apps/datacore/test/multisource-fusion.test.ts 9/9 绿(2026-07-09 真跑)——覆盖 sources归并/仲裁verdict/dataMode PARTIAL·LIVE/SUSPECT测谎(MES虚报)/R6字节一致/R2隔离/AUDIT留痕"
       },
       "blockReason": "",
       "gap": {
@@ -4154,7 +4155,33 @@
         "built": "2026-07-09T08:05:20.848Z",
         "done": "2026-07-09T09:23:33.110Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "角色场景卡的自然语言问句在启动时被 groundScenario 接地为真实对象/时间：死 lineId(动力线-A) 还原为同类型真实首选实例(LINE-changzhou)、相对时间(这天/下周/Q2)按 sim-clock 注入具体值、被引类型零实例→needsData(EMPTY_DATA) 而非编造——通用多跳求解器铺进角色场景 NL 路由后按角色接地作答。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "test",
+            "assert": "死对象接地：groundScenario 把不存在的 slotPresets.lineId(常州·动力线-A) 还原为同类型真实首选实例 LINE-changzhou，且 changes 含 {field:slotPresets.lineId, reason:dead_object_resolved}；已是真实对象则原样保留——见 launcher-grounded-questions.test.ts:34-42"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "相对时间按 sim-clock 具体注入：「这天」→slotPresets.day=2026-06-10、「下周」→周区间、「Q2」→2026Q2、缺 month→clock 当前月 2026-06 且问句具象化；无 sim-clock 锚点则诚实留原样不编造 wall clock——见 test:46-84"
+          },
+          {
+            "id": "C3",
+            "type": "test",
+            "assert": "可答性过滤：selectedObjects 引用类型零实例 → needsData=true + groundingGap.gapCode=EMPTY_DATA + missingType 标注，不拿空数据强答——见 test:88-93"
+          },
+          {
+            "id": "C4",
+            "type": "test",
+            "assert": "回归全绿：apps/agentcore/test/launcher-grounded-questions.test.ts 22/22 通过(2026-07-09 真跑)"
+          }
+        ],
+        "evidence": "真验证制品：groundScenario(apps/agentcore src) + 测试 launcher-grounded-questions.test.ts 22/22 绿；证据 docs/evidence/launcher-grounded-{browser.png,scenarios.txt,launch.md}"
+      }
     },
     {
       "id": "GAP-AUDIT-OBS",
