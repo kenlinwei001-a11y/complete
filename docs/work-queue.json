@@ -4910,7 +4910,7 @@
     },
     {
       "id": "I18N-LONGTAIL",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "priority": "P3",
       "deps": [],
@@ -4934,16 +4934,18 @@
       },
       "at": {
         "todo": "2026-07-09T04:30:00.000Z",
-        "wip": "2026-07-09T05:43:05.474Z"
-      }
+        "wip": "2026-07-09T05:43:05.474Z",
+        "built": "2026-07-09T06:05:53.400Z"
+      },
+      "blockReason": ""
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "I18N-LONGTAIL",
-      "at": "2026-07-09T05:43:05.474Z"
+      "at": "2026-07-09T06:05:53.401Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
