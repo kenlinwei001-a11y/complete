@@ -68,7 +68,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "config-migration", label: zh.nav.configMigration, roles: ["admin"] },
   { path: "meta", label: "系统自我", roles: ["admin"] },
   { path: "boundary", label: "边界册治理", roles: ["admin"] },
-  { path: "prototype-intake", label: "原型 intake", roles: ["admin", "data_admin"] },
+  { path: "prototype-intake", label: "原型接入", roles: ["admin", "data_admin"] },
   // WO-11.5：推演历史——此前路由+组件在但无导航入口（孤儿页，仅顶栏 🕐 侧滑可达）。
   // 任何能发起 QOS 推演的角色都该能回看自己的历史：admin/planner/catalog_admin。
   { path: "query-history", label: zh.nav.queryHistory, roles: ["admin", "planner", "catalog_admin"] },

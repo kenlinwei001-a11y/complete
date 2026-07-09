@@ -560,7 +560,7 @@ export const zh = {
     },
   },
   intake: {
-    title: "原型 intake（HTML → 数据表/关系/对账）",
+    title: "原型接入（HTML → 数据表/关系/对账）",
     sub: "粘贴 HTML 原型 → 确定性解析内嵌数据表（列+样例）与关系 → 与既有本体字段对账（自动映射/待确认候选/诚实标未解析），让「下一个 HTML 自动复刻数据与关系」可见可重复。",
     placeholder: "粘贴含 <script>const NAME=[...]</script> 的 HTML 原型……",
     parse: "解析 + 对账",
@@ -855,6 +855,47 @@ const STATE_VAR_LABELS: Record<string, string> = {
 export function stateVarLabel(v: string): string {
   return STATE_VAR_LABELS[v] ?? v;
 }
+
+/**
+ * 界面英文术语白名单（I18N-LONGTAIL C2·显式维护）。
+ *
+ * 界面文案默认中文（R14：展示词集中于 i18n / 组件不写死中文常数）。以下英文 token 属**有意保留**、
+ * 不作中文化——它们是行业通用缩写、平台/契约标识或枚举值，中文化反而降低可读性或破坏溯源：
+ *  1) 通用缩写/行业术语：读者按英文识别更快，翻译无收益。
+ *  2) 枚举值（大写下划线）：与后端契约一字不差，**禁改**（改即破测试/接线，见铁律 R14）。
+ *     UI 只可改其中文「标签」（如 STATUS_BADGE.label），键（GOVERNED/PROVISIONAL…）恒不变。
+ *  3) 契约字段名 / 技术标识：admin 配置表单里刻意透出真实字段键（typeKey/rowFilter/severity…）
+ *     供运营对照后端，属技术标识而非可译界面词。
+ *
+ * 维护约定：新增界面英文词前先判断是否属下列类别；不属于 → 应中文化（入 zh.* 或就地中文）。
+ * 本表是「显式盘点」而非门禁（当前无全站英文扫门）；扩充时补注类别与理由。
+ */
+export const UI_TERM_ALLOWLIST = {
+  /** 类别1 · 通用缩写 / 行业术语（保留英文，读者按缩写识别）。 */
+  abbreviations: [
+    "OEE", "BOM", "SKU", "QOS", "S&OP", "MRP", "PLM", "CDC", "KSF", "VLE", "KPI",
+    "Agent", "MCP", "LLM", "DSL", "IAM", "SSE", "DAG", "RAG", "OBO", "SLO", "TTL",
+    "API", "URL", "JWT", "JWKS", "RS256", "AES", "GCM", "JSON", "CSV", "SQL", "OCR",
+    "PDF", "XLSX", "HTML", "CRUD", "RBAC", "ETL", "cron", "stdio", "diff", "schema",
+    "bundle", "Saga", "seed", "provenance", "onboarding",
+  ],
+  /** 类别2 · 枚举值（与契约一字不差·**键禁改**·仅其中文标签可译）。 */
+  enumValues: [
+    "GOVERNED", "PROVISIONAL", "UNREGISTERED", "ADVISORY_PASSED", "GENERATED", "RETIRED",
+    "UNVERIFIED", "VERIFIED", "CALIBRATED", "ACTIVE", "DISABLED", "DRAFT",
+    "OVERWRITE", "SKIP", "FAIL", "BLOCK", "WARN", "INFO", "SMOKE", "COMPUTE",
+    "TIMESERIES", "VALIDATING", "DRY_RUN_OK", "APPLYING_A", "APPLYING_B", "COMMITTED",
+    "COMPENSATING", "COMPENSATED", "FAILED", "synthetic", "real-sourced",
+  ],
+  /** 类别3 · 契约字段名 / 技术标识（admin 表单刻意透出真实键供对照后端）。 */
+  contractFields: [
+    "typeKey", "propKey", "sourceField", "rowFilter", "presetContext", "severity",
+    "clarifyPrompt", "expression", "modelId", "baseUrl", "maxContext", "seriesKey",
+    "sliceKey", "domainKey", "maxNodes", "colorBy", "linkKinds", "dimOthers",
+    "realizedOutcome", "descriptionSchema", "slotPresets", "selectedObjects",
+    "querySample", "topToolSketch", "scheduledAt", "transport", "command",
+  ],
+} as const;
 
 export type Locale = typeof zh;
 export default zh;

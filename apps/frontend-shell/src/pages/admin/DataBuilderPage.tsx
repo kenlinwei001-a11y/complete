@@ -598,7 +598,7 @@ function OperationalPipelineBoard() {
           <table className="cmp" data-testid="db-pipeline-table" style={{ fontSize: 11.5 }}>
             <thead>
               <tr>
-                <th>数据源</th><th>来源</th><th>状态</th><th>last sync</th><th>新鲜度</th><th>数据集</th><th>行数</th><th>增量(CDC)</th><th>隔离</th><th></th>
+                <th>数据源</th><th>来源</th><th>状态</th><th>上次同步</th><th>新鲜度</th><th>数据集</th><th>行数</th><th>增量(CDC)</th><th>隔离</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -611,7 +611,7 @@ function OperationalPipelineBoard() {
                     <td title={r.connectorTypeKey}>{r.name}</td>
                     <td>
                       <span className="badge" data-testid={`db-origin-${r.connId}`} data-origin={r.origin} title={om.title} style={{ color: om.color, borderColor: om.color }}>
-                        {r.origin === "synthetic" ? "synthetic" : "real"}
+                        {r.origin === "synthetic" ? "合成" : "真实"}
                       </span>
                     </td>
                     <td><span style={{ color: statusColor }} title={r.lastError}>{r.status}</span></td>

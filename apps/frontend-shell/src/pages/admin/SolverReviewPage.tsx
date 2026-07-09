@@ -13,12 +13,12 @@ import { Modal } from "@/components/ui/Modal";
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   PROVISIONAL: { label: "审核中", cls: "amber" },
   UNREGISTERED: { label: "自检未过", cls: "red" },
-  ADVISORY_PASSED: { label: "advisory 通过", cls: "amber" },
+  ADVISORY_PASSED: { label: "建议通过", cls: "amber" },
   GOVERNED: { label: "已治理", cls: "green" },
   GENERATED: { label: "已生成", cls: "" },
   RETIRED: { label: "已下线", cls: "" },
 };
-const TRUST_LABEL: Record<string, string> = { UNVERIFIED: "未认证", ADVISORY_PASSED: "advisory", VERIFIED: "已验证", CALIBRATED: "已校准" };
+const TRUST_LABEL: Record<string, string> = { UNVERIFIED: "未认证", ADVISORY_PASSED: "建议级", VERIFIED: "已验证", CALIBRATED: "已校准" };
 
 export default function SolverReviewPage() {
   const qc = useQueryClient();
@@ -114,7 +114,7 @@ export default function SolverReviewPage() {
           <div data-testid="solver-artifact-detail">
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
               <span className={`badge ${STATUS_BADGE[detail.status]?.cls ?? ""}`}>{STATUS_BADGE[detail.status]?.label ?? detail.status}</span>
-              {" · "}origin={detail.origin} · trustLevel={TRUST_LABEL[detail.trustLevel] ?? detail.trustLevel} · 创建人 {detail.createdBy}
+              {" · "}来源={detail.origin} · 信任级={TRUST_LABEL[detail.trustLevel] ?? detail.trustLevel} · 创建人 {detail.createdBy}
               {detail.rejectReason && <span style={{ color: "var(--danger)" }}> · 自检失败：{detail.rejectReason}</span>}
             </div>
             {detail.rationale && (
