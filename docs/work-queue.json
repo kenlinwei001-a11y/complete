@@ -5104,7 +5104,7 @@
       "title": "QUERY30拆单P1·Q01垂直打穿(样板·分期铁律): what_if_displacement校验+新建multi_plan_compare五维矩阵+接单全链workflow+Q01 NL入QOS路由",
       "doc": "docs/DESIGN-query30-orch-split.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "Q30-P0-DATAFOUND"
@@ -5153,16 +5153,18 @@
       },
       "at": {
         "todo": "2026-07-09T09:41:32.786Z",
-        "wip": "2026-07-09T13:31:40.319Z"
-      }
+        "wip": "2026-07-09T13:31:40.319Z",
+        "built": "2026-07-09T14:34:22.786Z"
+      },
+      "blockReason": ""
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "Q30-P1-Q01VERT",
-      "at": "2026-07-09T13:31:40.332Z"
+      "at": "2026-07-09T14:34:22.787Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
