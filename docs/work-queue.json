@@ -5494,16 +5494,17 @@
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T16:25:30.974Z",
-        "built": "2026-07-09T16:52:00.000Z"
-      }
+        "built": "2026-07-09T16:55:00.485Z"
+      },
+      "blockReason": ""
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "UPG-L0-HIDDENREQ",
-      "at": "2026-07-09T16:37:22.199Z"
+      "cmd": "BUILT",
+      "id": "UPG-L0-CONSOLE-APPROVE",
+      "at": "2026-07-09T16:55:00.486Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
