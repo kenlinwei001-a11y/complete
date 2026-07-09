@@ -5104,7 +5104,7 @@
       "title": "QUERY30拆单P1·Q01垂直打穿(样板·分期铁律): what_if_displacement校验+新建multi_plan_compare五维矩阵+接单全链workflow+Q01 NL入QOS路由",
       "doc": "docs/DESIGN-query30-orch-split.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "Q30-P0-DATAFOUND"
@@ -5154,10 +5154,10 @@
       "at": {
         "todo": "2026-07-09T09:41:32.786Z",
         "wip": "2026-07-09T15:33:28.280Z",
-        "built": "2026-07-09T14:34:22.786Z",
+        "built": "2026-07-09T16:18:59.493Z",
         "blocked": "2026-07-09T15:25:44.370Z"
       },
-      "blockReason": "复验BLOCK(真跑·铁律0.4/KILL-MOCK-RED): C1/C2/C6绿·C3/C4红。真Q01对真seed零挤占——LINE-changzhou capacityDaily=61698/天碾压急单120/天~500倍·feasibleWithoutDisplacement=true·displacedOrders=[]·C3挤占明细空(毛利delta那半真:15→13.5由advancePct侵蚀)。dev证据docs/evidence/QUERY30-Q01-P1-multi-plan-fde.md§①用手喂合成lines/orders(MX×4200·2100+2100单)冒充打穿=用合成冒充真值(违反)。C4结构缺:extended.ts:517每被挤单仅1个reScheme永非≥2。根因=数据地基量纲(线级万/天vs单级个位)使Q01挤占结构性不可能——Q30-P0-DATAFOUND标DONE但capacityDaily值域不适Q01场景(审核方先前P0核验只验字段在·未验量纲可比·登记补正)。解阻:①修synthetic(battery.ts)令changzhou 4680-NCM在手单/产能与急单量纲可比·真造出挤占(慎:capacity被他求解器共用)②extended.ts:517逐被挤单出≥2再方案。最小复现:POST /a/v1/solvers/what_if_displacement/invoke {model:4680-NCM,qty:5000,advancePct:0.2,weeks:6,baseId:changzhou}→feasibleWithoutDisplacement=true,totalDisplaced=0"
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-GAPCORE",
@@ -5488,9 +5488,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "UPG-L0-CONSOLE-BOARD",
-      "at": "2026-07-09T15:45:52.389Z"
+      "cmd": "BUILT",
+      "id": "Q30-P1-Q01VERT",
+      "at": "2026-07-09T16:18:59.493Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
