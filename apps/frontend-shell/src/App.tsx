@@ -194,6 +194,11 @@ export const routes: RouteObject[] = [
       // 自成长驾驶舱 /admin/growth 与工单中心功能多重合 → 合为工单中心（超集）。旧路由/书签/内链
       // 302→/admin/tickets（tombstone 重定向防死链——页已删，独有功能[诊断触发+指标头条]在工单中心承接）。
       { path: "admin/growth", element: <Navigate to="/admin/tickets" replace /> },
+      // UPG-L0-CONSOLE-APPROVE（PRD-gapfill-surface-consolidation §5 B2·§4.3·参 GROWTH-TICKET-MERGE tombstone 范式·RL2/RL9）：
+      // 「待审批补齐」子面（db-approvals·R4 就地批复）被统一 Console 详情抽屉完全承接——其规范深链 /admin/db-approvals
+      // 302→/admin/tickets（tombstone 深链·防死链，能力在 Console 抽屉承接）。不静默删：DataBuilder InPlaceApprovalPanel
+      // 旧面保留可回退（additive·回退演练 C3）。
+      { path: "admin/db-approvals", element: <Navigate to="/admin/tickets" replace /> },
       admin("tickets", <TicketCenterPage />),
       admin("solver-review", <SolverReviewPage />),
       admin("solvers", <SolversPage />),

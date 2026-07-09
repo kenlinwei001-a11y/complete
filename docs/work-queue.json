@@ -5464,7 +5464,7 @@
       "title": "L0·兄弟B B2: 就地批复整合+旧面tombstone退役(入口①收敛闭环)",
       "doc": "docs/PRD-gapfill-surface-consolidation.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "UPG-L0-CONSOLE-BOARD"
@@ -5493,7 +5493,8 @@
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
-        "wip": "2026-07-09T16:25:30.974Z"
+        "wip": "2026-07-09T16:25:30.974Z",
+        "built": "2026-07-09T16:52:00.000Z"
       }
     }
   ],

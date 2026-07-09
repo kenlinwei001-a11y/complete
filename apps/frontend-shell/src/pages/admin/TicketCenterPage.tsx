@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GapFillEvidence, GrowthRunReport, TicketBoardRow, TicketDetail } from "@platform/contracts";
+import type { ActionDraft, GapFillEvidence, GrowthRunReport, TicketBoardRow, TicketDetail } from "@platform/contracts";
 import {
   fetchTicketBoard,
   fetchTicketDetail,
@@ -10,6 +10,8 @@ import {
   releaseWorklistItem,
   fillWorklistItem,
   runGrowth,
+  fetchActionDrafts,
+  decideActionDraft,
 } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
@@ -99,6 +101,8 @@ export default function TicketCenterPage() {
   const allRows = board?.items ?? [];
   // UPG-L0-CONSOLE-BOARD 暗发位：script 目标 BUILD_CLOSURE 透镜是否开启（服务端权威·关闸→隐藏 script 透镜·C3）。
   const buildClosureEnabled = board?.buildClosureEnabled ?? false;
+  // UPG-L0-CONSOLE-APPROVE 暗发位：详情抽屉「就地批复」是否开启（服务端权威·关闸→抽屉无就地批复段·仍走旧审批面·C3）。
+  const inDrawerApproveEnabled = board?.inDrawerApproveEnabled ?? false;
   const sourceLenses = SOURCE_LENSES.filter((l) => !l.darkLaunch || buildClosureEnabled);
   // 指标头条：需求可答率（成长账本 CONVERGED 占比）——承接自成长驾驶舱·防丢。
   const { data: ledger } = useQuery({ queryKey: ["b", "growth-ledger"], queryFn: fetchGrowthLedger });
@@ -332,7 +336,7 @@ export default function TicketCenterPage() {
         <div className="empty-state" data-testid="tc-empty">本 Tab / 类型下暂无工单。</div>
       ))}
 
-      {selectedId && <TicketDetailDrawer id={selectedId} onClose={() => setSelectedId(null)} />}
+      {selectedId && <TicketDetailDrawer id={selectedId} approveEnabled={inDrawerApproveEnabled} onClose={() => setSelectedId(null)} />}
     </div>
   );
 }
@@ -387,8 +391,8 @@ function FillEvidenceBlock({ round, ev }: { round: number; ev: GapFillEvidence }
   );
 }
 
-/** 详情抽屉（侧滑）：通用段 + 状态时间线 + 补充内容清单段（核心·按类型列举）。 */
-function TicketDetailDrawer({ id, onClose }: { id: string; onClose: () => void }) {
+/** 详情抽屉（侧滑）：通用段 + 状态时间线 + 补充内容清单段（核心·按类型列举）+ 就地批复段（暗发）。 */
+function TicketDetailDrawer({ id, approveEnabled, onClose }: { id: string; approveEnabled: boolean; onClose: () => void }) {
   const { data: detail, isLoading, error } = useQuery({ queryKey: ["b", "ticket-detail", id], queryFn: () => fetchTicketDetail(id) });
   return (
     <div
@@ -411,7 +415,50 @@ function TicketDetailDrawer({ id, onClose }: { id: string; onClose: () => void }
         {isLoading && <div className="hint">加载中…</div>}
         {error != null && <div className="empty-state">详情加载失败：{(error as Error).message}</div>}
         {detail && <TicketDetailBody detail={detail} />}
+        {/* UPG-L0-CONSOLE-APPROVE（PRD §5 B2·§4.1）：DataBuilder 待审批补齐（db-approvals·R4）就地批复整合进
+            Console 详情抽屉——不跳 /admin/actions（R17 就地下钻）。暗发段：仅 approveEnabled=true 时现（关闸→隐藏·
+            仍走 DataBuilder InPlaceApprovalPanel / /admin/actions·回退 C3）。 */}
+        {approveEnabled && <InDrawerApprovalSection />}
       </aside>
+    </div>
+  );
+}
+
+/**
+ * UPG-L0-CONSOLE-APPROVE（PRD-gapfill-surface-consolidation §5 B2·§4.1·R4·R17）：详情抽屉内「就地批复」段。
+ * DataBuilder「待审批补齐」（InPlaceApprovalPanel·db-approvals）整合进统一 Console 抽屉——admin 在抽屉内直接批复
+ * 自动补齐的真值写入（物化/发布经 Action 审批·R4），**不跳 /admin/actions**（R17 就地下钻不跳页）。
+ * - 复用既有 db-approve/db-reject 交互（同 `fetchActionDrafts("PENDING_APPROVAL")` + `decideActionDraft`）。
+ * - 零新色：仅用既有 token（panel/badge amber/btn primary sm/btn sm/var(--amber|border|muted)）——check-css-vars 绿。
+ * - 诚实空态：无待批草稿 → 段隐（不造行）。旧 DataBuilder 面未删（additive·回退 C3）。
+ */
+function InDrawerApprovalSection() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["a", "action-drafts", { status: "PENDING_APPROVAL" }], queryFn: () => fetchActionDrafts("PENDING_APPROVAL") });
+  const drafts = (data ?? []) as ActionDraft[];
+  const decide = useMutation({
+    mutationFn: ({ id, d }: { id: string; d: "APPROVE" | "REJECT" }) => decideActionDraft(id, d, d === "APPROVE" ? "抽屉内就地批复" : "抽屉内就地驳回"),
+    onSuccess: (_r, v) => { toast(v.d === "APPROVE" ? "已批准（就地·未离开 Console）" : "已驳回（就地·未离开 Console）", "success"); void qc.invalidateQueries({ queryKey: ["a", "action-drafts"] }); },
+    onError: toastError,
+  });
+  // 诚实空态：无待批 → 不渲染（不造行·抽屉仍以工单详情为主）。
+  if (drafts.length === 0) return null;
+  return (
+    <div className="panel" data-testid="tc-db-approvals" style={{ marginTop: 12, borderColor: "var(--amber,#DD9551)" }}>
+      <div className="section-title" style={{ fontSize: 12 }}>
+        待审批补齐（就地批复，不跳转 · R4） <span className="badge amber" data-testid="tc-db-approval-count">{drafts.length}</span>
+      </div>
+      <div className="muted" style={{ fontSize: 10.5, marginBottom: 6 }}>
+        自动补齐的真值写入（物化/发布）经 Action 审批——就地批复，无需跳 /admin/actions（R17 一页看全·就地下钻）。
+      </div>
+      {drafts.map((d) => (
+        <div key={d.id} data-testid={`tc-db-approval-${d.id}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+          <span className="badge">{d.actionTypeKey}</span>
+          <span style={{ flex: 1, fontSize: 11.5, color: "var(--muted)" }} className="mono">{d.id}</span>
+          <button className="btn primary sm" data-testid={`tc-db-approve-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "APPROVE" })}>批准</button>
+          <button className="btn sm" data-testid={`tc-db-reject-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "REJECT" })}>驳回</button>
+        </div>
+      ))}
     </div>
   );
 }

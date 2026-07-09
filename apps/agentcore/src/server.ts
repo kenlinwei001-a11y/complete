@@ -645,6 +645,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // env GROWTH_BUILD_CLOSURE=1/true 派生的「script 目标」BUILD_CLOSURE 透镜开关（服务端权威）。
   // 关闸（缺省）→ board = 改造前 query-目标（WORKLIST∪GROWTH_TICKET）·回退演练 C3·关闸=改造前系统。
   const buildClosureOn = /^(1|true|on|yes)$/i.test((deps.config.GROWTH_BUILD_CLOSURE ?? "").trim());
+  // UPG-L0-CONSOLE-APPROVE（PRD §5 B2·§4.1·暗发 defaultOn:false·RL2）：Console 详情抽屉「就地批复」开关
+  // （服务端权威·env CONSOLE_INDRAWER_APPROVE 派生）。关闸（缺省）→ 抽屉无就地批复段 = 改造前系统（仍走
+  // DataBuilder InPlaceApprovalPanel / /admin/actions·回退演练 C3·关闸=改造前系统）。
+  const inDrawerApproveOn = /^(1|true|on|yes)$/i.test((deps.config.CONSOLE_INDRAWER_APPROVE ?? "").trim());
   // 闭包维 → 缺口码（R13：仅换标不造真值，源仍是 ClosureReport）。
   const CLOSURE_GAPCODE: Record<string, import("@platform/contracts").GapCode> = {
     CHAIN: "SOLVER_NOT_FOUND", FORWARD: "SOLVER_NOT_FOUND", SHAPE: "SHAPE_MISMATCH", OBJECT: "NO_CAPABILITY", DATA: "EMPTY_DATA",
@@ -688,7 +692,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       rows = rows.filter((r) => r.owner === want);
     }
     // buildClosureEnabled：前端据此显隐 script 透镜 tab（关闸→隐藏·C3）。
-    return { items: rows, buildClosureEnabled: buildClosureOn };
+    // inDrawerApproveEnabled：前端据此在详情抽屉显隐「就地批复」段（关闸→隐藏·仍走旧审批面·C3）。
+    return { items: rows, buildClosureEnabled: buildClosureOn, inDrawerApproveEnabled: inDrawerApproveOn };
   });
 
   // 详情聚合端点：GET /api/v1/growth/tickets/:id/detail（统一 id 空间 wli_/gtk_·union 双源 + manifest requires + 边界结论·R13 只读投影不造新真值）。

@@ -304,6 +304,14 @@ export type TicketBoardRow = z.infer<typeof TicketBoardRowSchema>;
 export const TicketBoardResponseSchema = z.object({
   items: z.array(TicketBoardRowSchema),
   buildClosureEnabled: z.boolean().default(false),
+  /**
+   * UPG-L0-CONSOLE-APPROVE（PRD-gapfill-surface-consolidation §5 B2·§4.1）：Console 详情抽屉「就地批复」
+   * 暗发位（服务端权威·env `CONSOLE_INDRAWER_APPROVE` 派生·defaultOn:false）——前端据此在详情抽屉内显隐
+   * 「待审批补齐（就地批复）」段（R4 补齐经 Action 审批·R17 就地下钻不跳 /admin/actions）。关闸 = 改造前系统
+   * （抽屉无就地批复段·仍走 DataBuilder InPlaceApprovalPanel / /admin/actions·回退演练 C3）。additive：既有
+   * `{ items }` / `{ buildClosureEnabled }` 读者不受影响（字段可选默认 false）。
+   */
+  inDrawerApproveEnabled: z.boolean().default(false),
 });
 export type TicketBoardResponse = z.infer<typeof TicketBoardResponseSchema>;
 

@@ -48,6 +48,11 @@ const ConfigSchema = z.object({
    *  =1/true 时开启统一 Console 的「script 目标」BUILD_CLOSURE 透镜（board 收进 StoryBuildRun.ClosureReport
    *  MISSING 段只读投影 + 前端 script 透镜 tab 显现）。缺省关 = 回退演练现状 query-目标 board（C3·关闸=改造前系统）。 */
   GROWTH_BUILD_CLOSURE: z.string().optional(),
+  /** UPG-L0-CONSOLE-APPROVE（PRD-gapfill-surface-consolidation §5 B2·§4.1·暗发 defaultOn:false·RL2）：
+   *  =1/true 时在统一 Console 详情抽屉内开启「就地批复」段（DataBuilder 待审批补齐 db-approvals R4 整合进
+   *  抽屉·不跳 /admin/actions·R17）。缺省关 = 改造前系统（抽屉无就地批复段·仍走 DataBuilder InPlaceApprovalPanel
+   *  / /admin/actions·C3 回退演练·关闸=改造前系统）。 */
+  CONSOLE_INDRAWER_APPROVE: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 
