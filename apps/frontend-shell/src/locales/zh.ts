@@ -874,7 +874,11 @@ export const UI_TERM_ALLOWLIST = {
     "Agent", "MCP", "LLM", "DSL", "IAM", "SSE", "DAG", "RAG", "OBO", "SLO", "TTL",
     "API", "URL", "JWT", "JWKS", "RS256", "AES", "GCM", "JSON", "CSV", "SQL", "OCR",
     "PDF", "XLSX", "HTML", "CRUD", "RBAC", "ETL", "cron", "stdio", "diff", "schema",
-    "bundle", "Saga", "seed", "provenance", "onboarding",
+    "bundle", "Saga", "seed", "provenance", "onboarding", "scaffold",
+  ],
+  /** 类别1b · 平台一等对象类型名（与「Agent」同类·作为对象类型标识保留英文·常与中文标签并列如「Skill 库」「Action 审批」）。 */
+  objectTypeNames: [
+    "Workflow", "Skill", "Action", "Provider",
   ],
   /** 类别2 · 枚举值（与契约一字不差·**键禁改**·仅其中文标签可译）。 */
   enumValues: [

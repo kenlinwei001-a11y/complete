@@ -1050,9 +1050,9 @@ export default function DataBuilderPage() {
             aria-selected={mode === "onboarding"}
             className={`btn sm ${mode === "onboarding" ? "primary" : ""}`}
             onClick={() => setMode("onboarding")}
-            title="冷启动/onboarding 建域：故事→建域→闭包→publish（保留 BuildWorkflowRun/scaffold/growth 全部能力）"
+            title="冷启动建域：故事→建域→闭包→发布（保留 建域工作流/scaffold/发育 全部能力）"
           >
-            建域 · 冷启动 onboarding
+            建域 · 冷启动
           </button>
           <button
             role="tab"
@@ -1067,7 +1067,7 @@ export default function DataBuilderPage() {
         </div>
         <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
           {mode === "onboarding"
-            ? "发动机定位：冷启动/onboarding 建域引擎——把故事/原型/模板变成一套可用的本体域。运营态数据流不在此（见「运营管线」）。"
+            ? "发动机定位：冷启动建域引擎——把故事/原型/模板变成一套可用的本体域。运营态数据流不在此（见「运营管线」）。"
             : "运营态数据流走 WO-PIPE-INCR 真增量同步；本看板只观测既有产物 + 标各源 synthetic/real，发动机不背运营持续职责。"}
         </span>
       </div>
@@ -1077,11 +1077,11 @@ export default function DataBuilderPage() {
       ) : (
       <>
       <div className="panel" style={{ marginBottom: 14 }}>
-        <h2 style={{ margin: "0 0 4px" }}>数据构建发动机 · 冷启动建域引擎（onboarding）</h2>
+        <h2 style={{ margin: "0 0 4px" }}>数据构建发动机 · 冷启动建域引擎</h2>
         <div style={{ fontSize: 12, color: "var(--muted)" }}>
           输入场景脚本 → agent 自动「意图分析→计划→分解」→ 把原料灌进连接器/知识库等上游节点 → 触发本体建模/规则等加工 →
           双向闭包门禁（对象必入本体切片·硬；data 孤儿放行·软；正向依赖缺失·硬）。确定性可重放。
-          <br /><b>职责边界</b>：发动机做<b>冷启动/onboarding 建域</b>（保留 BuildWorkflowRun/scaffold/growth 全部能力）；
+          <br /><b>职责边界</b>：发动机做<b>冷启动建域</b>（保留 建域工作流/scaffold/发育 全部能力）；
           运营态持续数据流（增量同步/新鲜度刷新）走 <b>WO-PIPE-INCR</b>，见上方「运营管线」态。
         </div>
         {preset && (
