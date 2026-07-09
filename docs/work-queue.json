@@ -5289,7 +5289,7 @@
       "title": "L0·兄弟A A1: fuseClassification确定性⊕LLM融合(治上游听懂精度)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "TODO",
+      "status": "WIP",
       "owner": "dev",
       "deps": [],
       "note": "PRD-upstream §4: 把orchestrator.ts:520 llmClassification??deterministicClassify升为fuseClassification融合(纯函数R6)·救回遗漏(det score≥0.5补候选conf=τ_low)+一致加成(LLM top==det top→×(1+β))+冲突走澄清不硬塞；QOS_CLASSIFY_FUSE开关(env·defaultOn:false·RL2)关时100%等价现行??语义。",
@@ -5320,7 +5320,8 @@
         "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
       },
       "at": {
-        "todo": "2026-07-09T15:00:00.000Z"
+        "todo": "2026-07-09T15:00:00.000Z",
+        "wip": "2026-07-09T15:02:32.936Z"
       }
     },
     {
@@ -5475,10 +5476,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DISPATCH",
-      "id": "UPG-L0(8WO)",
-      "at": "2026-07-09T15:00:00.000Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "UPG-L0-CLASSIFY-FUSE",
+      "at": "2026-07-09T15:02:32.938Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
