@@ -3,11 +3,12 @@ import type {
   GapAnalysis,
   GapItem,
   GapSide,
+  HiddenReqGraph,
   MaterializedIntent,
   ModuleKind,
   PreAnalysisReport,
 } from "@platform/contracts";
-import { MODULE_KINDS, diffGap } from "@platform/contracts";
+import { DATADEP_ROLE_CANONICAL, MODULE_KINDS, SOLVER_DATADEP, diffGap, expandHiddenRequirements } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
 import type { Repos } from "../persistence/repos.js";
 
@@ -183,6 +184,56 @@ export async function fetchRegistrySnapshot(
   }
 }
 
+/**
+ * 真实本体图（UPG-L0-HIDDENREQ §8·白名单①②真类型/真链路的唯一来源）——服务间凭证拉 DataCore
+ * `GET /a/v1/ontology/graph`（roles=["service"]·x-tenant-id·R2）。不可达/未配置 → undefined
+ * （诚实降级：无真图 → 不做隐藏需求闭包·== 不做·非造假空扩展）。
+ */
+export async function fetchOntologyGraph(
+  config: Pick<AppConfig, "DATACORE_BASE_URL" | "SERVICE_TOKEN">,
+  tenantId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<HiddenReqGraph | undefined> {
+  const baseUrl = config.DATACORE_BASE_URL;
+  const token = config.SERVICE_TOKEN;
+  if (!baseUrl || !token) return undefined;
+  try {
+    const res = await fetchImpl(`${baseUrl}/a/v1/ontology/graph`, {
+      method: "GET",
+      headers: { "x-service-token": token, "x-tenant-id": tenantId, "x-service-caller": "agentcore" },
+    });
+    if (!res.ok) return undefined;
+    const g = (await res.json()) as { nodes?: { key: string }[]; edges?: { from: string; to: string; label: string }[] };
+    return { nodes: g.nodes ?? [], edges: g.edges ?? [] };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 隐藏需求闭包折叠（UPG-L0-HIDDENREQ §8·纯函数·R6）：把显式需求（solver/ontology_type）经
+ * `expandHiddenRequirements`（三白名单 by-construction·零幽灵）扩为隐藏需求，回并到 `required`——
+ * 隐藏对象类型 → `ontology_type`、隐藏求解器 → `solver`（与 diffGap 消费的 required map 同命名空间）。
+ * bindings 用 canonical 解析（无租户 SolverBinding 时回退 DATADEP_ROLE_CANONICAL·对齐 solver-binding 门约定）。
+ * graph 缺失 → 原样返回（诚实：无真图不扩展）。
+ */
+export function foldHiddenRequirements(
+  required: Partial<Record<ModuleKind, string[]>>,
+  graph: HiddenReqGraph | undefined,
+): Partial<Record<ModuleKind, string[]>> {
+  if (!graph) return required;
+  const expansion = expandHiddenRequirements(
+    { objectTypes: required.ontology_type ?? [], solvers: required.solver ?? [] },
+    graph,
+    SOLVER_DATADEP,
+    { resolve: (roleType) => DATADEP_ROLE_CANONICAL[roleType] },
+  );
+  const merged: Partial<Record<ModuleKind, string[]>> = { ...required };
+  merged.ontology_type = [...new Set([...(required.ontology_type ?? []), ...expansion.requiredObjectTypes])].sort();
+  merged.solver = [...new Set([...(required.solver ?? []), ...expansion.requiredSolvers])].sort();
+  return merged;
+}
+
 /** B 栈现状（查 agentcore 自己 repos·R2 tenant 谓词）+ A 栈快照 → existing map。 */
 export async function assembleExisting(
   deps: PreAnalyzeDeps,
@@ -224,6 +275,11 @@ export interface PreAnalyzeInput {
   classification: ClassificationResult | undefined;
   /** R6：调用方注入生成时刻（纯核不取时钟·同输入字节一致）。 */
   generatedAt: string;
+  /**
+   * UPG-L0-HIDDENREQ §8：隐藏需求闭包开关（暗发 `growth.hidden_req` defaultOn:false·RL2）。
+   * undefined/false → 只诊断显式需求（== 不做隐藏需求发现·回退演练 C3）；true → 折叠三白名单隐藏需求。
+   */
+  hiddenReqEnabled?: boolean;
 }
 
 /**
@@ -231,10 +287,17 @@ export interface PreAnalyzeInput {
  * 字节一致的 PreAnalysisReport。A 栈快照不可达时诚实降级（只诊断可靠取到 existing 的 kind，不造假缺口）。
  */
 export async function preAnalyzeQuery(deps: PreAnalyzeDeps, input: PreAnalyzeInput): Promise<PreAnalysisReport> {
-  const { tenantId, taskId, query, classification, generatedAt } = input;
+  const { tenantId, taskId, query, classification, generatedAt, hiddenReqEnabled } = input;
   const mis = await deps.repos.materializedIntents.listByTenant(tenantId);
   const byKey = new Map(mis.map((m) => [m.key, m] as const));
-  const required = deriveRequirements(classification, byKey);
+  let required = deriveRequirements(classification, byKey);
+
+  // UPG-L0-HIDDENREQ §8（暗发·flag OFF 时零变化·回退演练 C3）：显式需求 → 三白名单隐藏需求闭包，
+  // 回并前于组装 existing/diff（隐藏对象类型/求解器一并诊断就绪）。无真图时诚实不扩展。
+  if (hiddenReqEnabled) {
+    const graph = await fetchOntologyGraph(deps.config, tenantId, deps.fetchImpl ?? fetch);
+    required = foldHiddenRequirements(required, graph);
+  }
 
   const aSnapshot = await fetchRegistrySnapshot(deps.config, tenantId, deps.fetchImpl ?? fetch);
   const { existing, snapshotAvailable } = await assembleExisting(deps, tenantId, aSnapshot);

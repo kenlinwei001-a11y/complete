@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DataDependencySchema } from "./datadep.js";
+import { DataDependencySchema, type DataDependency } from "./datadep.js";
 
 // ---------------------------------------------------------------------------
 // A7 Foundry-Grade Data Builder（agent 驱动的 data pipeline 发动机）
@@ -666,4 +666,140 @@ export function computeCoverageScore(entries: readonly GapAnalysisEntry[]): numb
     den += w;
   }
   return den === 0 ? 1 : Math.round((num / den) * 1000) / 1000;
+}
+
+// ---- 隐藏需求发现「不造假 key」（§8 · R1/R6/R14 · by-construction 零幽灵） ------------------
+// 弃「Order→BOM 硬编码 + capacity_loss 幽灵 key」；改为读系统已有的 SOLVER_DATADEP + 沿租户真实本体图
+// 闭包。**每个扩展 key 过三张真实白名单**（本体图真类型 / 真链路 / SOLVER_DATADEP 真求解器）——
+// filter(has) 之外的 key 结构上进不来 → 不可能产 capacity_loss/production_line 等幽灵（门 hidden-req-keys:check
+// 静态自证）。纯函数：无时钟/随机，输入决定输出（R6 字节一致）；只认抽象 roleType + 图结构（业务名经
+// bindings.resolve / 租户图·换行业 0 码改·R14）；trace 喂 GapExplanation.evidence（R13 可溯）。
+
+/** 本体图精简视图（只取 expandHiddenRequirements 所需·真实 `GET /a/v1/ontology/graph` 的子集）。 */
+export interface HiddenReqGraph {
+  /** 真实对象类型节点（白名单①·`key` = 类型键，如 Order/Model）。 */
+  nodes: readonly { key: string }[];
+  /** 真实链路边（白名单②·`label` = linkKey；`from`/`to` = `n-<typeKey>` 节点 id）。 */
+  edges: readonly { from: string; to: string; label: string }[];
+}
+
+/** 显式需求（分类器绑定投影·objectTypes 真类型键 / solvers 真求解器键；非白名单项由本函数 filter 丢弃）。 */
+export interface HiddenReqExplicit {
+  objectTypes: readonly string[];
+  solvers: readonly string[];
+}
+
+/** 角色→租户真实类型解析器（SolverBinding·R14 抽象角色经此落地真类型；无绑定回退 canonical 或返 undefined）。 */
+export interface HiddenReqBindings {
+  resolve(roleType: string): string | undefined;
+}
+
+/** 一条扩展溯源（喂 GapExplanation.evidence·R13）：added=新纳入的真 key，kind=其所属注册表，via=经由何真实结构。 */
+export interface HiddenReqTrace {
+  added: string;
+  kind: "objectType" | "solver" | "link";
+  via: string;
+}
+
+/** 隐藏需求闭包结果：三类真 key（全 ∈ 各自真实白名单）+ 溯源。 */
+export interface HiddenRequirementExpansion {
+  requiredObjectTypes: string[];
+  requiredSolvers: string[];
+  requiredLinks: string[];
+  trace: HiddenReqTrace[];
+}
+
+/**
+ * §8 反查阈值（结构性扩展启发式·非业务/行业常数 R14）：某真求解器的依赖角色 ≥ 此比例已在需求集，
+ * 才反向建议该求解器（防过度扩展）。命名常量单一来源·可校准（对齐 SIDE_WEIGHTS 咨询信号定位）。
+ */
+export const HIDDEN_REQ_COVERAGE_THRESHOLD = 0.6;
+
+/** 节点 id（`n-<typeKey>`）→ 类型键（去 `n-` 前缀·与 DataCore ontology/graph 边端点约定一致）。 */
+function stripNodeId(id: string): string {
+  return id.startsWith("n-") ? id.slice(2) : id;
+}
+
+/**
+ * 隐藏需求发现（纯函数·R6·R14·PRD §8 verbatim）：把显式需求 by-construction 扩为隐藏需求，
+ * 严格从三张真实白名单取 key（零幽灵）：
+ *  ① SOLVER_DATADEP 真求解器依赖闭包（B-Phase1）：显式 solver → 声明的抽象角色 → bindings 解析成
+ *     租户真实类型（∈ 图节点才纳入）+ viaLinks（∈ 图边才纳入）。
+ *  ② 本体图一跳（B-Phase2）：已纳入类型沿真实边走一跳，只到达真实存在的邻居类型（∈ 图节点）。
+ *  ③ 反查（防过扩）：依赖角色覆盖 ≥ HIDDEN_REQ_COVERAGE_THRESHOLD 已在需求集的真 solver 才反建议。
+ * 保证：每个输出 key ∈ 其真实注册表（typeKeys/linkKeys/solverKeys）——filter(has) 外进不来；
+ * 无真实扩展路径 → 诚实空集（不编）。输出数组排序 → 同输入字节一致（R6）。
+ */
+export function expandHiddenRequirements(
+  explicit: HiddenReqExplicit,
+  graph: HiddenReqGraph,
+  datadep: Readonly<Record<string, DataDependency>>,
+  bindings: HiddenReqBindings,
+): HiddenRequirementExpansion {
+  // 三张真实白名单（唯一取 key 来源·by-construction）。
+  const typeKeys = new Set(graph.nodes.map((n) => n.key));
+  const linkKeys = new Set(graph.edges.map((e) => e.label));
+  const solverKeys = new Set(Object.keys(datadep));
+
+  const outTypes = new Set<string>();
+  const outSolvers = new Set<string>();
+  const outLinks = new Set<string>();
+  const trace: HiddenReqTrace[] = [];
+  const addType = (t: string, via: string): void => {
+    if (!typeKeys.has(t) || outTypes.has(t)) return; // 白名单① + 去重
+    outTypes.add(t);
+    trace.push({ added: t, kind: "objectType", via });
+  };
+  const addSolver = (s: string, via: string): void => {
+    if (!solverKeys.has(s) || outSolvers.has(s)) return; // 白名单③ + 去重
+    outSolvers.add(s);
+    trace.push({ added: s, kind: "solver", via });
+  };
+  const addLink = (lk: string, via: string): void => {
+    if (!linkKeys.has(lk) || outLinks.has(lk)) return; // 白名单② + 去重
+    outLinks.add(lk);
+    trace.push({ added: lk, kind: "link", via });
+  };
+
+  // 种子：显式需求过白名单（非注册表项直接丢·不进 trace，因非"隐藏"扩展）。排序保 R6 确定。
+  for (const t of [...explicit.objectTypes].sort()) if (typeKeys.has(t)) outTypes.add(t);
+  for (const s of [...explicit.solvers].sort()) if (solverKeys.has(s)) outSolvers.add(s);
+
+  // ① 求解器依赖闭包（真求解器 → 声明的真角色 → 真类型 / 真链路）。
+  for (const s of [...outSolvers].sort()) {
+    for (const it of datadep[s]?.requires ?? []) {
+      const rt = bindings.resolve(it.roleType);
+      if (rt) addType(rt, `solver:${s} role ${it.roleType}`);
+      for (const lk of it.viaLinks ?? []) addLink(lk, `solver:${s} via ${lk}`);
+    }
+  }
+
+  // ② 本体图一跳（已纳入类型沿真实边走一跳·只到真实邻居类型）。快照当前类型集避免同轮级联多跳。
+  const seedTypes = [...outTypes].sort();
+  for (const t of seedTypes) {
+    for (const e of graph.edges) {
+      if (e.from !== `n-${t}`) continue;
+      const nb = stripNodeId(e.to);
+      if (!typeKeys.has(nb)) continue;
+      addType(nb, `link:${e.label}`);
+      addLink(e.label, `link:${e.label} from ${t}`);
+    }
+  }
+
+  // ③ 反查（防过扩）：真 solver 的依赖角色覆盖 ≥ 阈值已在需求集 → 反向建议（每 key 仍 ∈ solverKeys）。
+  for (const s of [...solverKeys].sort()) {
+    if (outSolvers.has(s)) continue;
+    const roles = (datadep[s]?.requires ?? []).map((x) => bindings.resolve(x.roleType));
+    const resolved = roles.filter((rt): rt is string => !!rt);
+    if (resolved.length === 0) continue;
+    const covered = resolved.filter((rt) => outTypes.has(rt)).length / resolved.length;
+    if (covered >= HIDDEN_REQ_COVERAGE_THRESHOLD) addSolver(s, `covers ${Math.round(covered * 100)}% required types`);
+  }
+
+  return {
+    requiredObjectTypes: [...outTypes].sort(),
+    requiredSolvers: [...outSolvers].sort(),
+    requiredLinks: [...outLinks].sort(),
+    trace,
+  };
 }

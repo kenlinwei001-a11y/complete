@@ -218,9 +218,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
           await new Promise((r) => setTimeout(r, 250));
           task = await deps.repos.tasks.get(taskId);
         }
+        // UPG-L0-HIDDENREQ §8：隐藏需求闭包独立暗发开关（defaultOn:false·回退演练 C3——关 = 仅显式需求）。
+        const hiddenReqEnabled = await deps.features.isEnabled(a.tenantId, "growth.hidden_req", a.token);
         const report = await preAnalyzeQuery(
           { repos: deps.repos, config: deps.config },
-          { tenantId: a.tenantId, taskId, query, classification: task?.classification, generatedAt: nowIso() },
+          { tenantId: a.tenantId, taskId, query, classification: task?.classification, generatedAt: nowIso(), hiddenReqEnabled },
         );
         await deps.repos.preAnalyses.upsert(report);
         await emitDomainEvent(a.tenantId, "growth.pre_analysis_done", { taskId, totalGaps: report.summary?.totalGaps ?? 0 });

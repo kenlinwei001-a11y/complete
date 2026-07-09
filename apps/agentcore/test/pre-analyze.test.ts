@@ -36,6 +36,23 @@ const classification = (intentKeys: string[]): ClassificationResult => ({
 const snapshotFetch = (snapshot: Record<string, string[]>): typeof fetch =>
   (async () => ({ ok: true, json: async () => snapshot })) as unknown as typeof fetch;
 
+/** URL 路由 fetch：registry-snapshot 与 ontology/graph 两端点各返其体（UPG-L0-HIDDENREQ §8 整合验证）。 */
+const routedFetch = (snapshot: Record<string, string[]>, graph: unknown): typeof fetch =>
+  (async (url: string) => {
+    if (String(url).includes("/ontology/graph")) return { ok: true, json: async () => graph };
+    return { ok: true, json: async () => snapshot };
+  }) as unknown as typeof fetch;
+
+// 真电池本体图（节点=真类型键·边=真链路）——affected_orders 依赖 base/order/model → Base/Order/Model。
+const BATTERY_GRAPH = {
+  nodes: ["Base", "Line", "Process", "Equipment", "Model", "Order", "Shipment"].map((key) => ({ key })),
+  edges: [
+    { from: "n-Order", to: "n-Model", label: "order_uses_model" },
+    { from: "n-Order", to: "n-Shipment", label: "order_ships_via" },
+    { from: "n-Model", to: "n-Base", label: "model_at_base" },
+  ],
+};
+
 describe("deriveRequirements · 复用分类器绑定推需求（不造轮子·R14 抽象键）", () => {
   it("候选意图 → 其 MaterializedIntent.bindings 展开需求；未物化意图仍计 intent 缺口", () => {
     const byKey = new Map([
@@ -111,6 +128,42 @@ describe("preAnalyzeQuery · 两侧 existing → 共享 diffGap（咨询信号�
     expect(kinds.has("rule")).toBe(false);
     expect(kinds.has("slice")).toBe(false);
     expect(kinds.has("intent")).toBe(true);
+  });
+
+  it("C3 回退演练：growth.hidden_req OFF → 诊断=仅显式需求（== 不做隐藏需求发现）", async () => {
+    const repos = createMemoryRepos();
+    await repos.materializedIntents.upsert(
+      mi({ key: "orders_intent", bindings: { solverKey: "affected_orders", ruleKeys: [], constraintKeys: [], skillId: "", ontologySliceKey: "" } }),
+    );
+    const snapshot = { solver: ["affected_orders"], rule: [], slice: [], ontology_type: ["Base", "Order", "Model", "Shipment"], dataset: [], kb_doc: [] };
+    const deps: PreAnalyzeDeps = {
+      repos,
+      config: { DATACORE_BASE_URL: "http://x", SERVICE_TOKEN: "svc" },
+      fetchImpl: routedFetch(snapshot, BATTERY_GRAPH),
+    };
+    const base = {
+      tenantId: "demo",
+      taskId: "task_c3",
+      query: "订单受影响推演？",
+      classification: classification(["orders_intent"]),
+      generatedAt: "2026-07-09T00:00:00.000Z",
+    };
+    const off = await preAnalyzeQuery(deps, { ...base, hiddenReqEnabled: false });
+    const offKinds = new Set(off.gapAnalysis!.entries.map((e) => e.kind));
+    // 关闸：无隐藏对象类型闭包 → ontology_type 侧不出现（显式需求里没有 ontology_type）。
+    expect(offKinds.has("ontology_type")).toBe(false);
+    // 显式 solver 仍在（affected_orders）。
+    expect(off.gapAnalysis!.entries.find((e) => e.kind === "solver")!.items.map((i) => i.key)).toEqual(["affected_orders"]);
+
+    // 开闸对照：隐藏需求闭包纳入真类型（Base/Order/Model + 一跳 Shipment）·每个 ∈ 真图节点（零幽灵）。
+    const on = await preAnalyzeQuery(deps, { ...base, hiddenReqEnabled: true });
+    const onOntology = on.gapAnalysis!.entries.find((e) => e.kind === "ontology_type");
+    expect(onOntology, "开闸后 ontology_type 侧应出现隐藏对象类型").toBeTruthy();
+    const graphKeys = new Set(BATTERY_GRAPH.nodes.map((n) => n.key));
+    for (const it of onOntology!.items) expect(graphKeys.has(it.key), `隐藏类型 ${it.key} ∈ 真本体图`).toBe(true);
+    expect(onOntology!.items.map((i) => i.key)).toEqual(expect.arrayContaining(["Base", "Order", "Model", "Shipment"]));
+    // 关闸 == 改造前：OFF 报告不含任何隐藏扩展（与「不做」逐字一致的结构证据）。
+    expect(JSON.stringify(off.gapAnalysis!.entries.map((e) => e.kind))).not.toContain("ontology_type");
   });
 
   it("R6：同 query 同现状同注入 generatedAt → PreAnalysisReport 字节一致", async () => {

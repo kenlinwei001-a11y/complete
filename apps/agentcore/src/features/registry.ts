@@ -89,6 +89,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // authz·回退演练 C3）。权威 entitlement 由 DataCore 解析下发（features.ts 同键同 defaultOn:false）；此处注册
   // 使 featureEnabled 认得该键（DataCore 报关时 !set.has(key) → false·不落 unknown-key 恒真陷阱）。
   { key: "growth.pre_analysis", name: "查询预分析全景", level: "BLOCK", defaultOn: false },
+  // UPG-L0-HIDDENREQ（PRD-gap-analysis-engine §8）：隐藏需求闭包（expandHiddenRequirements 三白名单·零幽灵）。暗发
+  // defaultOn:false（RL2）——关 = preAnalyzeQuery 只诊断显式需求（== 不做隐藏需求发现·回退演练 C3）。权威 entitlement
+  // 由 DataCore features.ts 同键同 defaultOn:false 下发；此处注册使 featureEnabled 认得该键（关时 !set.has→false）。
+  { key: "growth.hidden_req", name: "隐藏需求闭包发现", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

@@ -103,6 +103,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // （DataCore 是 entitlement 唯一真相源·AgentCore 经 /a/v1/tenants/{id}/features 解析下发）。暗发
   // defaultOn:false（RL2）——关 = AgentCore 不起后台预分析 + /b/v1/growth/pre-analysis/:taskId 404。现有租户零影响。
   { key: "growth.pre_analysis", name: "查询预分析全景", level: "BLOCK", defaultOn: false },
+  // UPG-L0-HIDDENREQ（PRD-gap-analysis-engine §8）：隐藏需求闭包（expandHiddenRequirements 三白名单·零幽灵）的
+  // 权威 entitlement。暗发 defaultOn:false（RL2）——关 = 预分析只诊断显式需求（与不做隐藏需求发现一致·回退演练 C3）。现有租户零影响。
+  { key: "growth.hidden_req", name: "隐藏需求闭包发现", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
