@@ -4485,13 +4485,15 @@
           }
         ]
       },
-      "status": "TODO",
+      "status": "BUILT",
       "owner": null,
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
         "wip": "2026-07-07T03:58:07.469Z",
-        "reclaimed": "2026-07-09T02:30:00.000Z"
-      }
+        "reclaimed": "2026-07-09T02:30:00.000Z",
+        "built": "2026-07-09T02:47:17.627Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "I18N-CHINESE-UI",
@@ -4812,9 +4814,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "reclaim-stale-wip",
-      "at": "2026-07-09T02:30:00.000Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "FILL-XINDUSTRY-LAYOUT",
+      "at": "2026-07-09T02:47:17.627Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
