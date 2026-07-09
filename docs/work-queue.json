@@ -4711,8 +4711,8 @@
     },
     {
       "id": "SCENE-LAUNCHER-DEADLINK-FIX",
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "priority": "P2",
       "deps": [],
       "doc": "apps/frontend-shell/src/pages/admin/ScenesPage.tsx",
@@ -4739,7 +4739,8 @@
         ]
       },
       "at": {
-        "todo": "2026-07-07T01:00:00.000Z"
+        "todo": "2026-07-07T01:00:00.000Z",
+        "wip": "2026-07-09T03:20:25.038Z"
       }
     },
     {
@@ -4878,8 +4879,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "WIP",
-      "id": "RISKBOARD-RULES-AGENTS",
-      "at": "2026-07-09T03:15:25.025Z"
+      "id": "SCENE-LAUNCHER-DEADLINK-FIX",
+      "at": "2026-07-09T03:20:25.038Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
