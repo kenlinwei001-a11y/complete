@@ -4389,11 +4389,11 @@
           }
         ]
       },
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-07T03:58:07.358Z",
+        "wip": "2026-07-09T03:15:25.025Z",
         "reclaimed": "2026-07-09T02:30:00.000Z"
       }
     },
@@ -4877,9 +4877,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "LLM-ROLE-RESOLUTION-FIX",
-      "at": "2026-07-09T03:14:29.836Z"
+      "cmd": "WIP",
+      "id": "RISKBOARD-RULES-AGENTS",
+      "at": "2026-07-09T03:15:25.025Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
