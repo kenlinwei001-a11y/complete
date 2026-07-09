@@ -4568,12 +4568,14 @@
           }
         ]
       },
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
         "todo": "2026-07-06T13:00:00.000Z",
-        "wip": "2026-07-09T06:17:16.890Z"
-      }
+        "wip": "2026-07-09T06:17:16.890Z",
+        "built": "2026-07-09T06:47:20.768Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "RISKBOARD-LAYOUT-REWORK",
@@ -4946,9 +4948,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "ORDER-CONSOLIDATE",
-      "at": "2026-07-09T06:17:16.890Z"
+      "at": "2026-07-09T06:47:20.768Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
