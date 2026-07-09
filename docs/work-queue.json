@@ -4452,10 +4452,11 @@
           }
         ]
       },
-      "status": "TODO",
-      "owner": null,
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "todo": "2026-07-06T13:00:00.000Z"
+        "todo": "2026-07-06T13:00:00.000Z",
+        "wip": "2026-07-09T03:51:18.720Z"
       }
     },
     {
@@ -4883,10 +4884,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "SCENE-LAUNCHER-DEADLINK-FIX",
-      "at": "2026-07-09T03:34:51.987Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "FILL-AUDIT-OBS-LINE",
+      "at": "2026-07-09T03:51:18.721Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
