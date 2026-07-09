@@ -59,6 +59,8 @@ const REPRESENTATIVE_ARGS: Record<string, Record<string, unknown>> = {
   margin_attribution: { targetType: "Order", costFields: [{ field: "unitPrice", label: "单价" }] },
   supplier_disruption_radius: { rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] },
   multisource_fusion: { role: "order", fields: ["due"], sources: [{ sourceLabel: "ERP", typeKey: "Order", authority: 1 }, { sourceLabel: "MES", typeKey: "Model", authority: 2 }] },
+  // UPG-L0-COVERAGE-FILL：通用因果归因代表性入参（S27 slotPresets 同口径·Metric.actual<floorVal 判越线，沿 MaterialBalance.gapTon 真证据字段量化根因）。
+  causal_attribution: { targetType: "Metric", valueField: "actual", thresholdField: "floorVal", direction: "below", driverType: "MaterialBalance", evidenceField: "gapTon", groupField: "material" },
 };
 
 describe("渲染投影绑定 = 真实输出字段（WO ONTO-SCEN-RENDER-PROJ ①·真值齿）", () => {

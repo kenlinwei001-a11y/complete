@@ -104,6 +104,9 @@ export const SOLVER_REGISTRY: readonly SolverDescriptor[] = [
   { key: "what_if_displacement", route: "extended", outputShape: ["newOrder", "base", "feasibleWithoutDisplacement", "freeDaily", "shortfallDaily", "displacedOrders", "highPriDisplaceDays", "totalDisplaced", "schemes", "schemeCount", "recommended", "comparison", "ruleRefs", "summary"] },
   // QUERY30 缺口③ Q01 样板：多方案五维比较矩阵（extended 路由·纯聚合层·确定性 R6·≥2 可比方案门 C35 口径）。
   { key: "multi_plan_compare", route: "extended", outputShape: ["matrix", "recommendedKey", "dims", "comparedCount", "note"] },
+  // UPG-L0-COVERAGE-FILL：通用因果归因 / root-cause（graph 路由·真读对象图·args 驱动泛化·确定性 R6·零业务常数 R14）。
+  // 治 general_causal_attribution 覆盖缺口（PRD-upstream §5.2）——每个归因数溯源真字段，诚实空态不冒充。liveDefault：纯真对象读出/真聚合。
+  { key: "causal_attribution", route: "graph", outputShape: ["crossed", "rootDrivers", "crossedCount", "totalGap", "direction", "valueField", "driverField", "summary"], liveDefault: true },
 ] as const;
 
 /** key→descriptor（O(1) 查·派发码用）。 */

@@ -124,6 +124,7 @@ export class SolverService {
     multisource_fusion: (ctx, args) => this.multiSourceFusion(ctx, args),
     concentration_risk: (ctx, args) => this.concentrationRisk(ctx, args),
     margin_attribution: (ctx, args) => this.marginAttribution(ctx, args),
+    causal_attribution: (ctx, args) => this.causalAttribution(ctx, args),
     plan_rootcause: (ctx, args) => this.planRootcause(ctx, args),
     metric_rollup: (ctx, args) => this.metricRollup(ctx, args),
     cockpit_kpi: (ctx) => this.cockpitKpi(ctx),
@@ -705,6 +706,115 @@ export class SolverService {
       rootDrivers,
       invertedCount: inverted.length,
       summary: `${inverted.length} 个目标毛利倒挂；根因主驱动 ${rootDrivers[0]?.label ?? "—"}（拉穿 ${rootDrivers[0]?.invertedCount ?? 0} 个）`,
+    };
+  }
+
+  /**
+   * UPG-L0-COVERAGE-FILL · 通用因果归因 / root-cause（净室读任意对象图·确定性 R6·零业务常数 R14·PRD-upstream §5.2）：
+   * 治「全表无通用因果归因 path-A 求解器」——回答「为什么指标 X 恶化/越线」。**每个归因数都溯源真字段**
+   * （metric.actual / metric.floorVal / driver.evidenceField），零魔数、零哈希、零兜底系数（KILL-MOCK-RED）。
+   *
+   * 与 `margin_attribution`（窄口径财务成本项）/ `plan_rootcause`（需 RootCauseChain 模板对象）互补：本器**不需**
+   * 预置归因模板，纯 args 驱动泛化——(targetType,valueField,threshold) 判越线，(driverType,evidenceField,groupField)
+   * 沿真实驱动对象按真证据字段量化根因贡献，故 R14 抽象、换行业 0 码改（业务实体名全在 args/场景卡预置）。
+   *
+   * 复用既有派生范式：越线判定同 plan_rootcause（actual<floor→RED；全达标则取最弱一个使归因链恒有内容）；
+   * 根因量化同 margin_attribution（按真值排序 + share=贡献/总贡献聚合根驱动）。
+   * args: { targetType, valueField?(默认 actual), thresholdField?|threshold?, direction?(below|above,默认 below),
+   *         driverType, evidenceField, groupField?, maxDrivers?(默认 6) }。
+   * 诚实空态（R6/铁律0.4）：目标/驱动对象真缺 → 空归因 + dataMode=PARTIAL + reason（绝不合成冒充真值）。
+   */
+  private async causalAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const targetType = str(args.targetType);
+    const valueField = str(args.valueField, "actual");
+    const thresholdField = args.thresholdField ? str(args.thresholdField) : undefined;
+    const argThreshold = args.threshold !== undefined ? num(args.threshold) : undefined;
+    const direction = str(args.direction, "below") === "above" ? "above" : "below";
+    const driverType = str(args.driverType);
+    const evidenceField = str(args.evidenceField);
+    const groupField = args.groupField ? str(args.groupField) : undefined;
+    const maxDrivers = Math.max(1, Math.floor(num(args.maxDrivers, 6)));
+    if (!targetType) throw validationError("causal_attribution 需 targetType（越线指标对象类型）");
+    if (!driverType || !evidenceField) throw validationError("causal_attribution 需 driverType + evidenceField（真实证据字段·每个归因数溯源真字段）");
+
+    // 空态诚实位（reason 指明真值证在何处·不占位掩盖）。
+    const empty = (reason: string): Record<string, unknown> => ({
+      crossed: [], rootDrivers: [], crossedCount: 0, totalGap: 0,
+      direction, valueField, driverField: evidenceField, dataMode: "PARTIAL",
+      summary: `无法归因：${reason}（诚实空态·非合成冒充）`,
+    });
+
+    // 1) 目标指标对象 + 越线判定（value vs threshold；threshold 优先取对象 thresholdField，否则用 arg 阈值）。
+    const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === targetType))[0];
+    const tpk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const targetObjs = await this.repos.objects.listByType(ctx.tenantId, targetType);
+    if (targetObjs.length === 0) return empty(`目标类型「${targetType}」无对象实例`);
+
+    const nameField = tdef?.properties.find((p) => p.propKey === "name") ? "name" : undefined;
+    type Row = { id: string; name: string; value: number; threshold: number; gap: number; gapPct: number; offTarget: boolean; ratio: number };
+    const rows: Row[] = [];
+    for (const o of targetObjs) {
+      const id = String((tpk ? o.props[tpk] : undefined) ?? o.id);
+      if (o.props[valueField] === undefined) continue; // 无该指标值 → 不可判（不臆造）
+      const value = num(o.props[valueField]);
+      const threshold = thresholdField !== undefined
+        ? (o.props[thresholdField] !== undefined ? num(o.props[thresholdField]) : (argThreshold ?? NaN))
+        : (argThreshold ?? NaN);
+      if (!Number.isFinite(threshold)) continue; // 无阈值 → 不可判越线
+      const offTarget = direction === "below" ? value < threshold : value > threshold;
+      const gap = round(direction === "below" ? threshold - value : value - threshold, 4);
+      const gapPct = threshold !== 0 ? round((gap / Math.abs(threshold)) * 100, 2) : 0;
+      const ratio = threshold !== 0 ? value / threshold : value;
+      rows.push({ id, name: nameField ? str(o.props[nameField], id) : id, value, threshold, gap, gapPct, offTarget, ratio });
+    }
+    if (rows.length === 0) return empty(`目标类型「${targetType}」无可判定的 ${valueField}/阈值（字段缺失）`);
+
+    // 越线者优先；全达标则取「最弱一个」（ratio 最低/最高），使归因链恒有内容（同 plan_rootcause「最大风险」）。
+    let crossed = rows.filter((r) => r.offTarget).sort((a, b) => b.gap - a.gap || a.id.localeCompare(b.id));
+    if (crossed.length === 0) {
+      const weakest = [...rows].sort((a, b) => (direction === "below" ? a.ratio - b.ratio : b.ratio - a.ratio) || a.id.localeCompare(b.id))[0]!;
+      crossed = [weakest];
+    }
+    const totalGap = round(crossed.reduce((s, r) => s + Math.max(0, r.gap), 0), 4);
+
+    // 2) 根因驱动：真实驱动对象按 groupField 聚合真证据字段（evidenceField 绝对值），share=贡献/总贡献。
+    const driverObjs = await this.repos.objects.listByType(ctx.tenantId, driverType);
+    if (driverObjs.length === 0) return { ...empty(`驱动类型「${driverType}」无对象实例`), crossed, crossedCount: crossed.length, totalGap };
+    const ddef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === driverType))[0];
+    const dpk = ddef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const agg = new Map<string, { group: string; contribution: number; count: number }>();
+    for (const d of driverObjs) {
+      if (d.props[evidenceField] === undefined) continue;
+      const ev = Math.abs(num(d.props[evidenceField]));
+      if (ev <= 0) continue; // 证据反算达标（贡献 0）→ 不解释缺口（反事实排除·同 plan_rootcause excludedFactors 精神）
+      const group = groupField ? str(d.props[groupField], "?") : String((dpk ? d.props[dpk] : undefined) ?? d.id);
+      const cur = agg.get(group) ?? { group, contribution: 0, count: 0 };
+      cur.contribution = round(cur.contribution + ev, 4);
+      cur.count += 1;
+      agg.set(group, cur);
+    }
+    const totalContribution = round([...agg.values()].reduce((s, d) => s + d.contribution, 0), 4);
+    const rootDrivers = [...agg.values()]
+      .map((d) => ({ group: d.group, contribution: d.contribution, count: d.count, share: totalContribution > 0 ? round(d.contribution / totalContribution, 4) : 0 }))
+      .sort((a, b) => b.contribution - a.contribution || a.group.localeCompare(b.group))
+      .slice(0, maxDrivers);
+
+    if (rootDrivers.length === 0) {
+      return { ...empty(`驱动类型「${driverType}」的证据字段「${evidenceField}」全达标/为空·无可归因根驱动`), crossed, crossedCount: crossed.length, totalGap };
+    }
+
+    const top = rootDrivers[0]!;
+    const worst = crossed[0]!;
+    return {
+      crossed,
+      rootDrivers,
+      crossedCount: crossed.length,
+      totalGap,
+      direction,
+      valueField,
+      driverField: evidenceField,
+      dataMode: "LIVE",
+      summary: `${crossed.filter((r) => r.offTarget).length || 0} 项「${targetType}.${valueField}」越线（最重「${worst.name}」缺口 ${worst.gap}，实测 ${worst.value} vs 阈值 ${worst.threshold}）；根因主驱动「${top.group}」（${evidenceField} ${top.contribution}·占 ${round(top.share * 100, 1)}%），沿 ${rootDrivers.length} 个真实驱动对象量化取证`,
     };
   }
 

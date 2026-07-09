@@ -54,6 +54,8 @@ export const INTENT_SKILL: Record<string, string> = {
   multisource_fusion_q: "skl_risk_diagnosis",
   // QUERY30 缺口③ Q01 样板：接单挤占推演对口「经营方案」方法论（多方案比选口径）。
   what_if_displacement_q: "skl_plan_scheme",
+  // UPG-L0-COVERAGE-FILL：通用因果归因对口「风险诊断」方法论（越线根因取证口径）。
+  causal_attribution_q: "skl_risk_diagnosis",
 };
 
 /** 默认方法论（真实兜底·仅供非目录键的 hardcoded 计划如 what_if_displacement_q 用·目录卡禁静默回落）。 */
@@ -122,6 +124,8 @@ const INTENT_SLICE_ROOT: Record<string, string> = {
   multisource_fusion_q: "Order",
   // QUERY30 缺口③ Q01 样板：接单挤占推演主对象=急单型号（Model）。
   what_if_displacement_q: "Model",
+  // UPG-L0-COVERAGE-FILL：通用因果归因主对象=越线指标（Metric·decision 域一等对象）。
+  causal_attribution_q: "Metric",
 };
 
 /** BP-4 对齐 seedIntentsAndPlans：sop_balance 求解器实际绑 mrp_netting（已注册·有真表）。 */

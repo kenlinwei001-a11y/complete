@@ -36,9 +36,17 @@ describe("SOLVER_COVERAGE 覆盖矩阵（诊断·纯数据·R14）", () => {
     for (const cls of UNCOVERED_PROBLEM_CLASSES) {
       expect(covered.has(cls), `类目「${cls}」既覆盖又列缺口·自相矛盾`).toBe(false);
     }
-    // 缺口显式非空——本单核心：未覆盖类目显式列出（PRD §5.1）。
+    // 缺口显式非空——本单核心：未覆盖类目显式列出（PRD §5.1）。剩余诚实缺口仍显式列出（趋势/异常/语义抽取）。
     expect(UNCOVERED_PROBLEM_CLASSES.length).toBeGreaterThan(0);
-    expect(UNCOVERED_PROBLEM_CLASSES).toContain("general_causal_attribution");
+    expect(UNCOVERED_PROBLEM_CLASSES).toContain("temporal_trend_decomposition");
+  });
+
+  it("UPG-L0-COVERAGE-FILL：general_causal_attribution 已由 causal_attribution 覆盖（移出缺口·真 solver ∈ registry）", () => {
+    // 高频未覆盖类目已补 path-A 求解器：从缺口移出、进覆盖矩阵、指向真实注册 solver。
+    expect(UNCOVERED_PROBLEM_CLASSES).not.toContain("general_causal_attribution");
+    expect(SOLVER_COVERAGE.general_causal_attribution).toEqual(["causal_attribution"]);
+    expect(registered.has("causal_attribution"), "causal_attribution ∉ SOLVER_REGISTRY（幽灵 key）").toBe(true);
+    expect(problemClassesForSolver("causal_attribution")).toContain("general_causal_attribution");
   });
 
   it("反查/去重确定性（R6）", () => {

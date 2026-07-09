@@ -102,6 +102,11 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   // 意图键 what_if_displacement_q 已在 seed 注册一等意图+计划（接单全链推演 workflow：what_if_displacement→multi_plan_compare）；
   // 本卡把 Q01 样板问句接进启动器目录单一来源 → GET /b/v1/scenarios 下发 + NL 分类命中该意图 → 路径A 真跑真求解器。
   card("S26", "接单挤占推演", "project", "what_if_displacement_q", "4680-NCM 加 20% 六周插进来能不能接·会挤占哪些单·有哪些方案？", "what_if_displacement", ["C34", "C35"], "COMPUTE", "解读接单挤占推演与多方案比较", [M("4680-NCM", "4680-NCM"), B("changzhou", "常州")], { model: "4680-NCM", qty: 5000, advancePct: 0.2, weeks: 6, baseId: "changzhou" }),
+  // UPG-L0-COVERAGE-FILL（PRD-upstream §5.2·治「全表无通用因果归因 path-A 求解器」·补高频未覆盖类目 general_causal_attribution）：
+  // 「为什么 X 恶化/越线」通用因果归因经 QOS NL 路由命中本卡 → 路径A 工作流 → causal_attribution 真求解器（读真对象图·
+  // 每个归因数溯源真字段），不再静默落 Path B。slotPresets = 求解器真实入参（Metric.actual<floorVal 判越线，
+  // 沿 MaterialBalance.gapTon 真证据字段量化根因主驱动物料·对真 DataCore 合法）。WORKFLOW_FIRST（价值在「越线多少/根因是谁」承载数据）。
+  card("S27", "指标越线根因归因", "dash", "causal_attribution_q", "为什么这项经营指标越线恶化？根因主驱动是哪个？", "causal_attribution", ["C16"], "COMPUTE", "解读指标越线的通用因果归因链", [], { targetType: "Metric", valueField: "actual", thresholdField: "floorVal", direction: "below", driverType: "MaterialBalance", evidenceField: "gapTon", groupField: "material" }),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {

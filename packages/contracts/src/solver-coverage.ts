@@ -78,6 +78,12 @@ export const SOLVER_COVERAGE: Record<string, string[]> = {
   affected_scope_enumeration: ["affected_orders"],
   /** 全链条追溯 / 通用多跳推演（跨对象顺链走）。 */
   full_chain_trace: ["order_fullchain", "ksf_graph", "generic_inference"],
+  /**
+   * 通用跨域因果归因 / root-cause（为什么 X 恶化/越线·WO UPG-L0-COVERAGE-FILL·PRD-upstream §5.2）。
+   * 由**通用** `causal_attribution`（route=graph·args 驱动泛化·每个归因数溯源真字段·R6/R14）覆盖——补齐此前
+   * 「全表无通用因果归因 path-A 求解器」的高频缺口（原静默落 Path B）。窄口径归因（financial/plan/quality）另有专器。
+   */
+  general_causal_attribution: ["causal_attribution"],
 };
 
 /**
@@ -86,14 +92,12 @@ export const SOLVER_COVERAGE: Record<string, string[]> = {
  * 这些分析原型在 `SOLVER_REGISTRY` **无通用 path-A 求解器**——命中此类问句只能诚实报覆盖缺口，
  * 而非静默 generic 兜底。缺口驱动 A3 覆盖补齐优先级（PRD §5.2·按 Path B 落点频次滚动）。
  *
- * 对齐 PRD §2.2 逐条核对：*「全表无通用因果归因/root-cause path-A 求解器（只有窄口径
- * margin_attribution 财务归因）」* —— 故 `general_causal_attribution`（**通用跨域**因果归因）
- * 显式列为缺口；已有的 `financial_attribution` / `plan_deviation_diagnosis` / `quality_root_cause`
- * 仅是**窄口径**覆盖，不冒充通用归因。
+ * 对齐 PRD §2.2 逐条核对：曾经*「全表无通用因果归因/root-cause path-A 求解器」*的缺口已由 WO
+ * UPG-L0-COVERAGE-FILL 补齐——`general_causal_attribution` 现由通用 `causal_attribution` 覆盖（见上表），
+ * 已从本缺口清单**移出**（覆盖 ∩ 缺口 = ∅·门 solver-coverage:check 守）。窄口径 `financial_attribution` /
+ * `plan_deviation_diagnosis` / `quality_root_cause` 仍是专口径覆盖，不冒充通用归因。
  */
 export const UNCOVERED_PROBLEM_CLASSES: readonly string[] = Object.freeze([
-  /** 通用跨域因果归因 / root-cause（无通用 path-A·仅窄口径 financial/plan/quality·PRD §2.2）。 */
-  "general_causal_attribution",
   /** 时序趋势 / 季节性分解（capacity_forecast 是产能专用·非通用趋势分解）。 */
   "temporal_trend_decomposition",
   /** 通用异常 / 离群检测（registry 无 path-A·此前走 generic/Path B）。 */

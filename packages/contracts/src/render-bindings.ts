@@ -158,4 +158,12 @@ export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBind
     { block: "table", fromSolverField: "fused" },
     { block: "text", fromSolverField: "summary" },
   ],
+  // UPG-L0-COVERAGE-FILL：通用因果归因 root-cause。KPI=越线项数/总缺口；表=越线明细 + 根因主驱动（真证据字段量化）；叙事=归因链结论。
+  causal_attribution: [
+    { block: "kpi", fromSolverField: "crossedCount" },
+    { block: "kpi", fromSolverField: "totalGap" },
+    { block: "table", fromSolverField: "crossed" },
+    { block: "table", fromSolverField: "rootDrivers" },
+    { block: "text", fromSolverField: "summary" },
+  ],
 });

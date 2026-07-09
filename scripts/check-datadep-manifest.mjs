@@ -50,6 +50,8 @@ const EXEMPT = new Set([
   "generic_inference", "shared_bottleneck", "concentration_risk", "margin_attribution",
   "supplier_disruption_radius", "multisource_fusion",
   "plan_rootcause", "metric_rollup", "cockpit_kpi", "ksf_graph",
+  // UPG-L0-COVERAGE-FILL：通用因果归因 root-cause（args 驱动·读任意目标/驱动对象类型·非 SolverContext 固定 22 类·同 margin_attribution 净室族豁免）。
+  "causal_attribution",
   "counterfactual_timeline",
 ]);
 
