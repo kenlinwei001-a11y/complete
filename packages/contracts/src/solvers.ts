@@ -165,28 +165,51 @@ export const RiskCardSchema = z.object({
     .object({ series: z.array(z.number()), appliedPlan: z.string(), effectiveFrom: z.number() })
     .optional(),
 });
-/** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
+/**
+ * RISKBOARD-RULES-AGENTS（C1）：驱动本推演的**真规则**（从租户已发布规则仓 c.rules 解析，非写死标签）。
+ * role = 该规则在推演中扮演的角色（越线阈值 / 处置计划触发）；expression/severity 为规则仓真值（R13 可溯）。
+ * 前端"相关规则"面板据此显真规则表达式，改规则/参数即改推演结论——回退到写死标签则 name/expression 缺失即红。
+ */
+export const RiskAppliedRuleSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  expression: z.string(),
+  severity: z.enum(["BLOCK", "WARN", "INFO"]),
+  role: z.string(), // 越线阈值 / 处置计划 等
+  /** 该规则携带的命名阈值参数（rule.params·如 tensionThreshold），改 param 即改裁决。 */
+  params: z.record(z.string(), z.number()).optional(),
+});
+export type RiskAppliedRule = z.infer<typeof RiskAppliedRuleSchema>;
+
+/** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 planLeadDays 天排启动）。 */
 export const RiskPlanRowSchema = z.object({
   act: z.string(), // 行动项（方案名（基地））
   det: z.string(), // 详情（峰值·对象）
   owner: z.string(), // 责任人（基地负责人 · X经理 / 计划中心→S&OP）
-  start: z.string(), // 启动 T+{cross−7}·{date}
+  start: z.string(), // 启动 T+{cross−leadDays}·{date}
   done: z.string(), // 完成 T+{cross}·{date}
   eff: z.string(), // 预期（消解幅度·起效时间）
-  rule: z.string(), // 关联规则 C05/C21
+  rule: z.string(), // 关联规则号 C05/C21
+  // RISKBOARD-RULES-AGENTS（C1）：从规则仓解析的真规则（name/expression/severity）——非仅裸规则号。
+  // 未在租户规则仓发布（无定义）→ null（诚实标"未发布定义"，不冒充有真规则）。
+  ruleRef: RiskAppliedRuleSchema.nullable().optional(),
 });
 export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
 
 export const RiskTimelineOutputSchema = z.object({
   horizon: z.number().int(),
-  threshold: z.number(), // 默认 85
+  threshold: z.number(), // 越线阈值（默认 85·可被携 tensionThreshold param 的已发布规则覆盖·见 thresholdRuleKey）
+  // RISKBOARD-RULES-AGENTS（C1）：越线阈值来源——若某已发布规则携 tensionThreshold param 则为该规则号，否则 undefined（用 SolverParam 默认）。
+  thresholdRuleKey: z.string().optional(),
+  // RISKBOARD-RULES-AGENTS（C1）：驱动本推演的真规则集（从规则仓解析·越线阈值 + 处置计划触发规则），前端"相关规则"面板据此显真表达式。
+  appliedRules: z.array(RiskAppliedRuleSchema).optional(),
   // 轨M 增量1：顶层 dataMode（LIVE/MOCK/PARTIAL）——前端据此提示"部分估算"，红/黄状态不再裸渲染当真值。
   // WO-FRESHNESS：扩 SolverDataModeSchema（追加 STALE/SYNTHETIC，invoke 统一叠加新鲜度/合成维）。
   dataMode: SolverDataModeSchema.optional(),
   // WO-FRESHNESS：置信度三维 structured（真实↔合成 × 新鲜↔陈旧 × 实测↔估算）。
   confidence: SolverConfidenceSchema.optional(),
   cards: z.array(RiskCardSchema).max(8),
-  // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP）。
+  // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥planBackupPeak 备份 + planSopReflectDays 天内反提 S&OP）。
   planRows: z.array(RiskPlanRowSchema).optional(),
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;

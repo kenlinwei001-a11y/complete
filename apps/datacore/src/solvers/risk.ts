@@ -352,6 +352,49 @@ export function crossDayOf(series: number[], threshold: number): number | null {
   return idx === -1 ? null : idx + 1;
 }
 
+// ---------------------------------------------------------------------------
+// RISKBOARD-RULES-AGENTS（C1）：越线阈值 + 处置计划由**真规则仓**（c.rules）驱动，非写死系数/标签。
+// ---------------------------------------------------------------------------
+
+export interface RiskAppliedRuleOut {
+  key: string;
+  name: string;
+  expression: string;
+  severity: "BLOCK" | "WARN" | "INFO";
+  role: string;
+  params?: Record<string, number>;
+}
+
+/**
+ * 越线阈值真规则解析（确定性 R6）：扫描本租户**已发布规则**（c.rules），取携命名 param
+ * `tensionThresholdParamKey`（默认 "tensionThreshold"）的规则——按 key 排序取首个（确定性）——其 param 值即越线阈值。
+ * 无此规则 → 回落 SolverParam `risk.threshold`（仍为三层真值源·可校准）。**发布/改该规则的 param 即改越线日**（C1 牙齿）。
+ * 返回 { value, ruleKey, rule }：ruleKey/rule 非空即"越线日由真规则算"，前端"相关规则"面板显真表达式。
+ */
+export function resolveTensionThreshold(c: SolverContext): { value: number; ruleKey?: string; rule?: RiskAppliedRuleOut } {
+  const paramKey = c.params.risk.tensionThresholdParamKey || "tensionThreshold";
+  const rules = c.rules ?? {};
+  const hit = Object.keys(rules)
+    .sort()
+    .map((k) => rules[k]!)
+    .find((r) => r.params != null && typeof r.params[paramKey] === "number");
+  if (hit) {
+    return {
+      value: hit.params![paramKey]!,
+      ruleKey: hit.key,
+      rule: { key: hit.key, name: hit.name, expression: hit.expression, severity: hit.severity, role: "越线阈值", params: hit.params },
+    };
+  }
+  return { value: c.params.risk.threshold };
+}
+
+/** 从规则仓解析单条真规则（含 role）——未发布 → null（诚实标，不冒充有定义）。 */
+export function resolveRuleRef(c: SolverContext, key: string, role: string): RiskAppliedRuleOut | null {
+  const r = c.rules?.[key];
+  if (!r) return null;
+  return { key: r.key, name: r.name, expression: r.expression, severity: r.severity, role, ...(r.params ? { params: r.params } : {}) };
+}
+
 export interface RiskTimelineArgs {
   base?: string; // baseId or 中文名
   factor?: string;
@@ -368,6 +411,10 @@ function resolveBaseId(c: SolverContext, ref: string): string {
 export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
   const p = c.params.risk;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
+  // RISKBOARD-RULES-AGENTS（C1）：越线阈值优先由**已发布规则**（携 tensionThreshold param）驱动——发布/改该规则即改越线日。
+  // 无此规则 → 回落 SolverParam risk.threshold（三层真值源·可校准）。crossDay/planRows 全用此解析后的阈值。
+  const tt = resolveTensionThreshold(c);
+  const threshold = tt.value;
   const pairs: { baseId: string; factor: string; forced: boolean }[] = [];
   if (args.base && args.factor) {
     pairs.push({ baseId: resolveBaseId(c, args.base), factor: args.factor, forced: true });
@@ -422,7 +469,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // 改 DemandSegment/SopVersion 真值 → lt 变 → 曲线随之变（非哈希恒定·R6 可溯·C6：真数据出真红）。
     const baseline = lt.value;
     const series = tensionSeries(c, pair.factor, horizon, events, undefined, baseline);
-    const crossDay = crossDayOf(series, p.threshold);
+    const crossDay = crossDayOf(series, threshold);
     // CAPACITY-BASECARDS-REALDATA（每基地一卡）：真源基地即使当前未越线也如实出卡（显真张力·crossDay=null 排后），
     // 不再"非越线即丢卡"——决策看板要看到每基地真实态（含"暂稳"），而非只剩越线基地。
     // WO-FORECAST-SIM：需求驱动因素附"真缺口=预测需求−产能"溯源（万套·基地分摊·R13），前端可解释"红色由何而来"。
@@ -457,7 +504,7 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
         appliedPlan: plan.name,
         effectiveFrom: plan.tn,
         peak: Math.max(...mitSeries),
-        crossDay: crossDayOf(mitSeries, p.threshold),
+        crossDay: crossDayOf(mitSeries, threshold),
       };
     }
     cards.push(card);
@@ -471,13 +518,24 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
   // 顶层 dataMode：全 LIVE→LIVE，全 MOCK→MOCK，混合→PARTIAL（前端据此提示"部分估算"）。
   const modes = new Set(shown.map((c2) => c2.dataMode as string));
   const dataMode = modes.size === 0 ? "MOCK" : modes.size === 1 ? [...modes][0] : "PARTIAL";
+  const planRows = buildRiskPlanRows(c, shown, threshold);
+  // RISKBOARD-RULES-AGENTS（C1）：驱动本推演的真规则集 = 越线阈值规则（若有）⊕ 处置计划表引用的真规则（从规则仓解析·去重）。
+  const appliedRules: RiskAppliedRuleOut[] = [];
+  if (tt.rule) appliedRules.push(tt.rule);
+  const seenRuleKeys = new Set(appliedRules.map((r) => r.key));
+  for (const row of planRows) {
+    const ref = (row as { ruleRef?: RiskAppliedRuleOut | null }).ruleRef;
+    if (ref && !seenRuleKeys.has(ref.key)) { appliedRules.push(ref); seenRuleKeys.add(ref.key); }
+  }
   return {
     horizon,
-    threshold: p.threshold,
+    threshold,
+    ...(tt.ruleKey ? { thresholdRuleKey: tt.ruleKey } : {}),
+    ...(appliedRules.length > 0 ? { appliedRules } : {}),
     dataMode,
     cards: shown,
     mitigationLibrary: p.mitigations,
-    planRows: buildRiskPlanRows(c, shown, p.threshold),
+    planRows,
   };
 }
 
@@ -508,18 +566,23 @@ function buildRiskPlanRows(
 ): Record<string, unknown>[] {
   const fs = c.params.forecastStart;
   const mits = c.params.risk.mitigations;
+  // RISKBOARD-RULES-AGENTS（C1）：决策偏移入 params.risk.plan（越线前启动/反提判据/备份触发·可校准·非内联魔数）。
+  const pl = c.params.risk.plan;
+  // RISKBOARD-RULES-AGENTS（C1）：规则号 → 从规则仓解析真规则（name/expression/severity），非仅写死标签。
+  const c05Ref = resolveRuleRef(c, "C05", "处置计划·产线利用率持续越线");
+  const c21Ref = resolveRuleRef(c, "C21", "处置计划·产销平衡反提 S&OP");
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   const early: string[] = [];
   for (const card of cards) {
     // WO-KILL-MOCK-RED（治本）：处置工单是决策级输出——只从有真数据（hasData!==false 且有越线）的卡生成。
-    // 无真源诚实空态卡（hasData:false·crossDay:null）绝不进处置计划表（不伪造"越线前7天启动"这类可行动结论）。
+    // 无真源诚实空态卡（hasData:false·crossDay:null）绝不进处置计划表（不伪造"越线前启动"这类可行动结论）。
     if (card.hasData === false || card.crossDay === null || card.crossDay === undefined) continue;
     const base = str(card.base);
     const factor = str(card.factor);
     const peak = Math.round(num(card.peak));
-    const cross = (card.crossDay as number | null) ?? num(card.horizon, 14);
-    if (cross <= 14 && !early.includes(base)) early.push(base);
+    const cross = (card.crossDay as number | null) ?? num(card.horizon, pl.crossFallbackDays);
+    if (cross <= pl.sopReflectDays && !early.includes(base)) early.push(base);
     if (seen.has(base)) continue; // 每基地主因素一行（cards 已按越线日排序）
     seen.add(base);
     const owner = `基地负责人 · ${RISK_OWNER_NAMES[riskHashN(base, 8)]}经理`;
@@ -530,32 +593,35 @@ function buildRiskPlanRows(
       act: `${s0.name}（${base.replace("基地", "").replace("·总部", "")}）`,
       det: `峰值${peak}·${RISK_FACTOR_OBJ[factor] ?? factor}`,
       owner,
-      start: `T+${cross - 7}·${mmdd(fs, cross - 7)}（越线前7天）`,
+      start: `T+${cross - pl.leadDays}·${mmdd(fs, cross - pl.leadDays)}（越线前${pl.leadDays}天）`,
       done: `T+${cross}·${mmdd(fs, cross)}（越线日）`,
       eff: `消解≈${s0.eff}·${s0.tn}天起效`,
       rule: "C05",
+      ruleRef: c05Ref,
     });
-    if (peak >= 90 && sols[1]) {
+    if (peak >= pl.backupPeakThreshold && sols[1]) {
       rows.push({
         act: `${sols[1].name}（${base.replace("基地", "").replace("·总部", "")}·备份方案）`,
-        det: "峰值≥90 双保险",
+        det: `峰值≥${pl.backupPeakThreshold} 双保险`,
         owner,
-        start: `T+${cross - 3}·${mmdd(fs, cross - 3)}`,
-        done: `T+${cross + 7}·${mmdd(fs, cross + 7)}`,
+        start: `T+${cross - pl.backupLeadDays}·${mmdd(fs, cross - pl.backupLeadDays)}`,
+        done: `T+${cross + pl.backupTailDays}·${mmdd(fs, cross + pl.backupTailDays)}`,
         eff: `消解≈${sols[1].eff}·${sols[1].tn}天起效`,
         rule: "C05",
+        ruleRef: c05Ref,
       });
     }
   }
   if (early.length > 0) {
     rows.push({
       act: `反提月度计划差异（${early.map((b) => b.replace("基地", "").replace("·总部", "")).join("、")}）`,
-      det: "14 天内越线，需计划层资源协同",
+      det: `${pl.sopReflectDays} 天内越线，需计划层资源协同`,
       owner: "计划中心 → S&OP",
       start: `T+1·${mmdd(fs, 1)}`,
       done: "本周 S&OP",
       eff: "计划-执行闭环，差异进入月度议程",
       rule: "C21",
+      ruleRef: c21Ref,
     });
   }
   void threshold;
@@ -781,7 +847,7 @@ export function affectedOrders(
       dueDay,
       delay,
       revenueWan,
-      impact: round(Math.min(1, 0.2 + delay / 10), 2),
+      impact: round(Math.min(1, p.affected.impactBase + delay / p.affected.impactDiv), 2),
     };
   });
   const problems = buildOrderProblems(c, baseId, affected, day ?? num(args.toDay, 180));
@@ -838,7 +904,8 @@ export function affectedOrdersAggregate(
     bySegment: { seg: string; revenue: number; revShare: number; marginPct: number; contributionPp: number; gapContributionPp: number; orderCount: number }[];
   };
 } {
-  const threshold = c.params.risk.threshold;
+  // RISKBOARD-RULES-AGENTS（C1）：越线阈值与 risk_timeline 同源（优先携 tensionThreshold param 的已发布规则）。
+  const threshold = resolveTensionThreshold(c).value;
   const horizon = Math.max(1, Math.floor(num(args.horizon, 30)));
   const filterBase = args.base ? resolveBaseId(c, str(args.base)) : null;
   const baseIds = c.bases

@@ -80,12 +80,33 @@ export interface SolverParamsShape {
      * 用于 problems[] financeImpact 估算。默认 600（R6 字节一致）；订单有真 unitPrice 则以真值为准。
      */
     fallbackUnitPrice: number;
+    /**
+     * RISKBOARD-RULES-AGENTS（C1·可校准·非内联魔数）：处置行动计划表（buildRiskPlanRows）的决策偏移。
+     * 此前 7（越线前启动）/ 14（X天内越线→反提 S&OP）/ 90（峰值≥N 出备份方案）/ 3·7（备份方案偏移）
+     * 皆内联写死于 buildRiskPlanRows；现入参（改 param 即改工单启动日/反提判据/备份触发·R14 可校准·R6 字节一致）。
+     */
+    plan: {
+      leadDays: number;          // 主方案：越线前 N 天启动（默认 7）
+      sopReflectDays: number;    // ≤N 天内越线 → 反提 S&OP（默认 14）
+      backupPeakThreshold: number; // 峰值≥N → 出备份方案（默认 90）
+      backupLeadDays: number;    // 备份方案启动偏移（默认 3）
+      backupTailDays: number;    // 备份方案完成偏移（默认 7）
+      crossFallbackDays: number; // 卡无 crossDay 时兜底越线日（默认 14）
+    };
+    /**
+     * RISKBOARD-RULES-AGENTS（C1·可校准）：携 tensionThreshold param 的已发布规则可覆盖越线阈值。
+     * 求解器扫描 c.rules，取携此命名 param 的规则（按 key 排序取首个·确定性 R6）；无 → 用 risk.threshold。
+     */
+    tensionThresholdParamKey: string;
     mitigations: Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk: string }[]>;
   };
   affected: {
     windowBefore: number;
     windowAfter: number;
     delayDiv: number;
+    /** RISKBOARD-RULES-AGENTS（C1·可校准·非内联魔数）：受影响订单影响度打分 = min(1, impactBase + delay/impactDiv)。 */
+    impactBase: number;
+    impactDiv: number;
     fallbackMax: number;
     /** §S1.5 修订: problems[] 4 类归并阈值 */
     problems: {

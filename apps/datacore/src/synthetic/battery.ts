@@ -143,6 +143,10 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     demandTension: { base: 62, loadGain: 70, shareBase: 0.6, shareGain: 0.8, utilPivot: 0.8, utilGain: 40, upsideGain: 0.5, tensionCap: 98 },
     deliveryLaborPerWan: 1.6,
     fallbackUnitPrice: 600,
+    // RISKBOARD-RULES-AGENTS（C1·处置计划决策偏移入参·非内联魔数·R6 字节一致）。
+    plan: { leadDays: 7, sopReflectDays: 14, backupPeakThreshold: 90, backupLeadDays: 3, backupTailDays: 7, crossFallbackDays: 14 },
+    // RISKBOARD-RULES-AGENTS（C1·越线阈值可被携此命名 param 的已发布规则覆盖·真规则驱动越线日）。
+    tensionThresholdParamKey: "tensionThreshold",
     mitigations: {
       物料齐套: [
         { key: "early_stock", name: "提前备料", eff: 12, tn: 2, cost: "中", risk: "低" },
@@ -185,6 +189,9 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     windowBefore: 7,
     windowAfter: 14,
     delayDiv: 8,
+    // RISKBOARD-RULES-AGENTS（C1·影响度打分系数入参·原内联 0.2 + delay/10·R6 字节一致）。
+    impactBase: 0.2,
+    impactDiv: 10,
     fallbackMax: 5,
     // §S1.5 修订: problems[] 4 类归并阈值（交期/毛利/齐套/信用）
     problems: {
