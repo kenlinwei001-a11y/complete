@@ -2336,7 +2336,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const GROUND_TYPES = ["Line", "Base", "Model", "Customer"] as const;
   const groundingCache = new Map<string, { at: number; ctx: GroundingContext }>();
   const buildGroundingContext = async (a: RequestAuth): Promise<GroundingContext> => {
-    const cached = groundingCache.get(a.tenantId);
+    // GAP-SCENE-C 按角色接地：从 `base_manager:<名>` 角色派生辖区基地（planner/admin/CEO → 空 = 全域）。
+    // OBO 行级过滤已按角色缩数据集，故缓存键须含辖区签名（否则 base_manager 的常州快照会污染 planner 的全域）。
+    const bases = a.roles.filter((r) => r.startsWith("base_manager:")).map((r) => r.slice("base_manager:".length)).filter(Boolean);
+    const scopeSig = bases.length ? bases.slice().sort().join("|") : "__all__";
+    const cacheKey = `${a.tenantId}::${scopeSig}`;
+    const cached = groundingCache.get(cacheKey);
     if (cached && Date.now() - cached.at < 60_000) return cached.ctx;
     const objectsByType: Record<string, GroundObject[]> = {};
     for (const type of GROUND_TYPES) {
@@ -2361,8 +2366,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       }
     }
     const clock = await deps.dataCore.ontology.getSimClock(a).catch(() => undefined);
-    const ctx: GroundingContext = { simDate: clock?.simDate, objectsByType };
-    groundingCache.set(a.tenantId, { at: Date.now(), ctx });
+    const ctx: GroundingContext = { simDate: clock?.simDate, objectsByType, roleScope: { bases } };
+    groundingCache.set(cacheKey, { at: Date.now(), ctx });
     return ctx;
   };
 

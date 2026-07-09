@@ -66,6 +66,14 @@ export interface GroundingContext {
   simDate?: string;
   /** 租户真实对象实例，按对象类型分组（已 fetch 到才有键；缺键=未探测，非"零实例"）。 */
   objectsByType: Record<string, GroundObject[]>;
+  /**
+   * GAP-SCENE-C · 按角色接地：当前用户的 Base 域范围（从 `base_manager:<名>` 角色派生）。
+   * 非空 → 场景卡 Base 引用优先接地到该角色所辖基地（而非确定性首选 objs[0]），使
+   * base_manager:常州 问「共享瓶颈/断供影响」时答案落在常州、别的基地长落自己的基地；
+   * planner/admin/CEO 无 base_manager 角色 → bases 空 → 全域视角（保留首选，不强制单基地）。
+   * 诚实边界：所辖基地在租户零实例时不编造，回落既有首选/gap 逻辑。
+   */
+  roleScope?: { bases?: string[] };
 }
 
 /** slotPreset 键 → 对象类型（对象引用型槽位；用于死对象 resolve）。 */
@@ -80,7 +88,7 @@ export interface GroundingChange {
   field: string;
   from: unknown;
   to: unknown;
-  reason: "dead_object_resolved" | "relative_time_resolved" | "slot_filled" | "object_verified";
+  reason: "dead_object_resolved" | "relative_time_resolved" | "slot_filled" | "object_verified" | "role_scoped";
 }
 
 export interface GroundedScenario {
@@ -174,7 +182,10 @@ export function groundScenario(
   let needsData = false;
   let groundingGap: GroundedScenario["groundingGap"];
 
+  const scopedBases = gctx.roleScope?.bases ?? [];
   // 1) selectedObjects：死对象→同类型真实首选实例；类型零实例→标 gap（待补）。
+  //    GAP-SCENE-C 按角色接地：Base 引用优先落到当前角色所辖基地（scopedBases 命中真实例即用），
+  //    非首选 objs[0]——让 base_manager:常州 的场景答案落在常州、别的基地长落自己的基地。
   const selectedObjects = card.presetContext.selectedObjects.map((so) => {
     const objs = gctx.objectsByType[so.objectType];
     if (!objs) return so; // 未探测该类型 → 尽力，不动
@@ -182,6 +193,15 @@ export function groundScenario(
       needsData = true;
       groundingGap = { gapCode: "EMPTY_DATA", missingType: so.objectType, detail: `对象类型「${so.objectType}」在本租户零实例，无法接地引用「${so.objectId}」——需先补该类型数据。` };
       return so;
+    }
+    // 按角色接地：Base 引用且角色有辖区 → 优先辖区内真实例（诚实：辖区在租户零命中则回落既有逻辑，不编造）。
+    if (so.objectType === "Base" && scopedBases.length > 0) {
+      const scoped = scopedBases.map((b) => matchObject(objs, b)).find(Boolean);
+      if (scoped && scoped.key !== so.objectId) {
+        changes.push({ field: `selectedObjects.${so.objectType}`, from: so.objectId, to: scoped.key, reason: "role_scoped" });
+        return { objectType: so.objectType, objectId: scoped.key, label: scoped.label };
+      }
+      if (scoped) return { objectType: so.objectType, objectId: scoped.key, label: scoped.label };
     }
     const hit = matchObject(objs, so.objectId);
     if (hit) {
@@ -195,12 +215,24 @@ export function groundScenario(
   });
 
   // 2) slotPresets：对象引用型槽位 resolve 死对象；相对时间填槽。
+  //    GAP-SCENE-C：Base 引用型槽（baseId/rootId 指向 Base）先按角色辖区接地，再回落首选。
   const slotPresets: Record<string, unknown> = { ...card.presetContext.slotPresets };
-  for (const [k, type] of Object.entries(SLOT_OBJECT_TYPE)) {
+  const rootIsBase = slotPresets.rootType === "Base";
+  const slotTypeOf: Record<string, string> = { ...SLOT_OBJECT_TYPE, ...(rootIsBase ? { rootId: "Base" } : {}) };
+  for (const [k, type] of Object.entries(slotTypeOf)) {
     const v = slotPresets[k];
     if (typeof v !== "string" || v === "") continue;
     const objs = gctx.objectsByType[type];
     if (!objs || objs.length === 0) continue; // 未探测/零实例 → 不编造
+    // 按角色接地：Base 槽且角色有辖区 → 优先辖区内真实例（辖区零命中→回落既有逻辑，不编造）。
+    if (type === "Base" && scopedBases.length > 0) {
+      const scoped = scopedBases.map((b) => matchObject(objs, b)).find(Boolean);
+      if (scoped) {
+        if (scoped.key !== v) changes.push({ field: `slotPresets.${k}`, from: v, to: scoped.key, reason: "role_scoped" });
+        slotPresets[k] = scoped.key;
+        continue;
+      }
+    }
     if (matchObject(objs, v)) continue; // 已是真实对象 → 保留
     const first = objs[0]!;
     changes.push({ field: `slotPresets.${k}`, from: v, to: first.key, reason: "dead_object_resolved" });

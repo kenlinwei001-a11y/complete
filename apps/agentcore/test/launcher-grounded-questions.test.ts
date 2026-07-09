@@ -132,3 +132,45 @@ describe("R6 确定性：同租户同 clock 同数据 → 同接地结果", () =
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
+
+// ── GAP-SCENE-C · 按角色场景接地答案（base_manager 辖区落自己的基地·非确定性首选 objs[0]）──
+// demo Base 首选（objs[0]）=常州；成都基地长问「共享瓶颈/断供影响」须落成都、别被常州顶掉。
+const S24Base = { triggerQuestion: "哪些供应商断供影响最大？", presetContext: { selectedObjects: [{ objectType: "Base", objectId: "changzhou", label: "常州" }], slotPresets: { rootType: "Base", rootId: "changzhou" } } };
+const S21Slot = { triggerQuestion: "多条产线抢同一个瓶颈资源，谁被挤最狠？", presetContext: { selectedObjects: [], slotPresets: { baseId: "changzhou", resourceType: "Base" } } };
+const scoped = (bases: string[]): GroundingContext => ({ ...DEMO, roleScope: { bases } });
+
+describe("GAP-SCENE-C 按角色接地：base_manager 场景答案落辖区基地", () => {
+  it("成都基地长 → Base selectedObject 从常州改接地成都（role_scoped·非首选常州）", () => {
+    const g = groundScenario(S24Base, scoped(["成都"]));
+    expect(g.selectedObjects[0]!.objectId).toBe("chengdu");
+    expect(g.selectedObjects[0]!.label).toBe("成都");
+    expect(g.changes.some((c) => c.field === "selectedObjects.Base" && c.reason === "role_scoped")).toBe(true);
+  });
+  it("成都基地长 → rootId(Base 槽) 接地成都", () => {
+    const g = groundScenario(S24Base, scoped(["成都"]));
+    expect(g.slotPresets.rootId).toBe("chengdu");
+    expect(g.changes.some((c) => c.field === "slotPresets.rootId" && c.reason === "role_scoped")).toBe(true);
+  });
+  it("成都基地长 → baseId 槽接地成都（非首选常州）", () => {
+    const g = groundScenario(S21Slot, scoped(["成都"]));
+    expect(g.slotPresets.baseId).toBe("chengdu");
+  });
+  it("常州基地长 → 落常州（与卡面同·不误换）", () => {
+    const g = groundScenario(S24Base, scoped(["常州"]));
+    expect(g.selectedObjects[0]!.objectId).toBe("changzhou");
+    expect(g.slotPresets.rootId).toBe("changzhou");
+  });
+  it("planner/admin（无辖区）→ 保留既有首选/verified 行为（不强制单基地·回归守卫）", () => {
+    const g = groundScenario(S24Base, DEMO); // 无 roleScope
+    expect(g.selectedObjects[0]!.objectId).toBe("changzhou"); // matchObject 命中常州
+    expect(g.changes.some((c) => c.reason === "role_scoped")).toBe(false);
+  });
+  it("诚实：辖区基地在租户零命中（洛阳未建）→ 不编造·回落首选常州·无 role_scoped", () => {
+    const g = groundScenario(S24Base, scoped(["洛阳"]));
+    expect(g.selectedObjects[0]!.objectId).toBe("changzhou");
+    expect(g.changes.some((c) => c.reason === "role_scoped")).toBe(false);
+  });
+  it("R6 确定性：同辖区同数据 → 字节级一致", () => {
+    expect(JSON.stringify(groundScenario(S24Base, scoped(["成都"])))).toBe(JSON.stringify(groundScenario(S24Base, scoped(["成都"]))));
+  });
+});
