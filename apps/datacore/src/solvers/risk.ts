@@ -1,4 +1,4 @@
-import { round, hashString } from "../prng.js";
+import { round } from "../prng.js";
 import { SEG_REGISTRY, classifySegment } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { baseName, clamp, dayFrom, maintWeekOf, num, str, type SolverContext } from "./types.js";
@@ -630,45 +630,99 @@ function buildRiskPlanRows(
 }
 
 /**
- * audit / generate 视图 · 每审计项独立时序（audit_timeline，确定性 R6）：按 kind（产销/毛利/齐套/现金/份额/
- * 爬坡/外协/capex23/struct）出 90 天逐日传导度 series——4 阶段（事件窗→约束越线→波及订单→财务击穿）锚点
- * 分段线性 + 固定 hashN 微抖动 + clamp[40,97]，越线日/峰值。**与产能推演 risk_timeline 同款逐日交互**（前端共用组件）。
- * 形状由 kind 名 hash 确定性派生（R14 无 per-kind 业务常数），阈值取 params.risk.threshold。args: { kind, horizon=90 }。
+ * FILL-AUDIT-TIMELINE-REAL（FAKEDATA-SWEEP F1·治本·铁律0.6）：审计口径 → 对应产能瓶颈因素，
+ * 仅**有真日序源**的口径出真曲线，无真源退**诚实空态**（绝不 hashString 造曲线）。
+ * 「产销」= 产销缺口（真需求−产能）→ 需求驱动张力（demandCapacityTightness）；「齐套」= 物料齐套 →
+ * 需求驱动张力 + 到货间隙真事件。二者复用 risk_timeline 同款真机制（真基线 liveTightness + 真事件脉冲），
+ * 与 CAPACITY-BASECARDS 为 risk_timeline 补真时序同范式。其余口径（毛利/现金/份额/struct/capex23/爬坡/外协）
+ * 是财务/结构维度，系统无逐日实测时序源 → 诚实空态（series 空·hasData:false·dataMode:MOCK）。
+ */
+const AUDIT_KIND_FACTOR: Record<string, string> = {
+  产销: "瓶颈工序", // 产销缺口 = 真需求−产能 → 需求驱动瓶颈张力（demandCapacityTightness/真产线利用率）
+  齐套: "物料齐套", // 物料齐套 → 需求驱动张力（demandCapacityTightness）+ 到货间隙真事件脉冲
+};
+
+/**
+ * audit / generate 视图 · 每审计项独立时序（audit_timeline，确定性 R6）：按 kind 出 horizon 天逐日传导度 series。
+ * **真源在否派生 dataMode**（KILL-MOCK-RED·铁律0.6）：kind 映射到有真基线的瓶颈因素（产销/齐套）→ 逐基地
+ * 真张力（liveTightness：真产线利用率 或 真需求-产能缺口）+ 真事件脉冲（tensionSeries·检修周/订单交期/到货周期）
+ * 网络级逐日取 max（最坏传导·真值聚合非 hash）→ dataMode=LIVE、4 阶段锚定真峰值日、越线日/峰值由真曲线算。
+ * 无真源（无对应瓶颈因素·或该因素全基地无真实测量/预测）→ 诚实空态（series:[]·hasData:false·dataMode:MOCK），
+ * 绝不 hashString 造曲线。阈值优先由携 tensionThreshold param 的真规则算（resolveTensionThreshold·C1）。
+ * args: { kind, horizon=90 }。
  */
 export function auditTimeline(c: SolverContext, args: Record<string, unknown>): Record<string, unknown> {
   const kind = str(args.kind, "struct");
   const horizon = Math.max(30, Math.floor(num(args.horizon, 90)));
-  const threshold = c.params.risk.threshold;
-  const h = hashString(kind);
-  const peakDay = 16 + (h % 40);
-  const peakVal = clamp(threshold + 2 + (h % 12), 40, 97);
-  const base = 48 + (h % 10);
+  // 越线阈值：优先由已发布规则（tensionThreshold param）驱动，回落 params.risk.threshold（C1·三层真值源）。
+  const threshold = resolveTensionThreshold(c).value;
+  const factor = AUDIT_KIND_FACTOR[kind];
+
+  // 收集该因素**有真基线**（liveTightness.live）的基地，逐基地真基线 + 真事件建真日序（与 risk_timeline 同口径）。
+  const liveBases: { baseId: string; events: RiskEvent[]; series: number[]; peak: number }[] = [];
+  if (factor) {
+    for (const baseId of c.bases.map((b) => str(b.props.baseId)).sort()) {
+      const lt = liveTightness(c, baseId, factor);
+      if (!lt.live || lt.value === null) continue; // 无真源 → 不参与（不伪造基线）
+      const events = riskEvents(c, baseId, horizon);
+      const series = tensionSeries(c, factor, horizon, events, undefined, lt.value);
+      liveBases.push({ baseId, events, series, peak: Math.max(...series) });
+    }
+  }
+
+  if (liveBases.length === 0) {
+    // 诚实空态（KILL-MOCK-RED·铁律0.6）：无真日序源 → 不 hashString 造曲线，退空态并指明真值证在何处。
+    const reason = factor
+      ? `审计口径「${kind}」映射产能瓶颈因素「${factor}」，但暂无真实测量/预测数据源（无逐设备 OEE / 产线利用率 / 工序良率实测·无真需求-产能预测）→ 不伪造逐日传导曲线，请接入真实数据后再评估。`
+      : `审计口径「${kind}」为财务/结构维度，系统无对应逐日实测时序源 → 不伪造逐日传导曲线（诚实空态）；如需时序请接入该口径的真实日度指标。`;
+    return {
+      kind,
+      series: [],
+      stages: [],
+      peak: null,
+      crossDay: null,
+      threshold,
+      events: [],
+      affectedOrders: [],
+      hasData: false,
+      noDataReason: reason,
+      deeplink: { to: "/admin/connections", label: "去数据接入 / 上传实测数据 →" },
+      // 诚实位：无真源 → MOCK（诚实空态·前端灰/空·不出决策级红）。
+      dataMode: "MOCK",
+    };
+  }
+
+  // 网络级真日序 = 各真源基地逐日张力取 max（最坏传导度·确定性 R6·真值聚合非 hash）。
   const series: number[] = [];
   for (let d = 0; d < horizon; d++) {
-    const ramp = d <= peakDay ? base + (peakVal - base) * (d / Math.max(1, peakDay)) : peakVal - (peakVal - base) * 0.4 * ((d - peakDay) / Math.max(1, horizon - peakDay));
-    const jitter = (hashString(`${kind}:${d}`) % 7) - 3;
-    series.push(round(clamp(ramp + jitter, 40, 97), 0));
+    series.push(Math.max(...liveBases.map((lb) => lb.series[d] ?? 0)));
   }
-  const crossIdx = series.findIndex((v) => v >= threshold);
+  const peak = Math.max(...series);
+  const crossDay = crossDayOf(series, threshold); // 1-based 越线日 或 null（真曲线算·非 hash 目标）
+  // 4 阶段锚定**真峰值日**（真日序 argmax·非 hash peakDay）。
+  const peakDay = series.indexOf(peak);
   const stages = [
     { d: Math.max(2, peakDay - 14), label: "事件窗" },
     { d: peakDay, label: "约束越线" },
     { d: Math.min(horizon - 1, peakDay + 7), label: "波及订单" },
     { d: Math.min(horizon - 1, peakDay + 18), label: "财务击穿" },
   ];
-  // PRD §5：复用 risk_timeline 的 events/affectedOrders 引擎——按 kind hash 选代表基地（确定性 R6），
-  // 使每审计项逐日轴也带当日事件 + 受影响订单（与产能推演同款悬停详情）。
-  const baseIds = c.bases.map((b) => str(b.props.baseId)).sort();
-  const repBase = baseIds.length > 0 ? baseIds[h % baseIds.length]! : "";
-  const events = repBase ? riskEvents(c, repBase, horizon) : [];
-  const orders = repBase ? affectedOrders(c, { baseId: repBase, day: crossIdx < 0 ? horizon : crossIdx, peak: Math.max(...series) }).affected : [];
+  // 代表基地（峰值最高·baseId 排序 tie-break·确定性）→ 悬停详情事件 + 波及订单取自它（真引擎算）。
+  const rep = [...liveBases].sort((a, b) => b.peak - a.peak || (a.baseId < b.baseId ? -1 : 1))[0]!;
+  const orders = affectedOrders(c, { baseId: rep.baseId, day: crossDay ?? horizon, peak }).affected;
   return {
-    kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold,
-    events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
+    kind,
+    series,
+    stages,
+    peak,
+    crossDay,
+    threshold,
+    repBase: baseName(c, rep.baseId),
+    hasData: true,
+    events: rep.events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
     affectedOrders: orders,
-    // A0 诚实位：逐日传导曲线/峰值/越线日由 kind 名哈希确定性派生（无实测）；events/affectedOrders 由真引擎算。
-    // 真假混合 → PARTIAL（前端标"曲线确定性派生·无实测，波及订单真算"）；无真订单可关联时退化 MOCK。
-    dataMode: orders.length > 0 ? "PARTIAL" : "MOCK",
+    // 诚实位：逐日传导度由**真需求-产能张力**（liveTightness 真基线·改真产线利用率/预测即变·R6）+ 真事件脉冲派生（非 hash）。
+    dataMode: "LIVE",
   };
 }
 

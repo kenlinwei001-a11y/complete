@@ -363,7 +363,7 @@ function RiskPropagation({ itemId, kind }: { itemId: string; kind?: string }) {
     queryKey: ["b", "solver", "audit_timeline", kind ?? "struct"],
     queryFn: async () => {
       const res = await runSolver("audit_timeline", { kind: kind ?? "struct" });
-      return res.data as { kind: string; series: number[]; threshold: number; crossDay: number | null; peak: number; events?: unknown[]; affectedOrders?: unknown[]; dataMode?: string };
+      return res.data as { kind: string; series: number[]; threshold: number; crossDay: number | null; peak: number; events?: unknown[]; affectedOrders?: unknown[]; dataMode?: string; hasData?: boolean; noDataReason?: string; deeplink?: { to: string; label: string } };
     },
   });
   // ② 4 节点传导链 stepper + 受影响订单弹窗：复用 risk_timeline（全局唯一 PropagationTimeline 实现）。
@@ -379,16 +379,26 @@ function RiskPropagation({ itemId, kind }: { itemId: string; kind?: string }) {
     <div className={styles.tlBox} data-testid={`audit-risk-timeline-${itemId}`}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>
         <span>{zh.sim.audit.timelineHint}{kind ? ` · 口径：${kind}` : ""}</span>
-        {/* A0 诚实位：audit_timeline 曲线由 kind 名哈希确定性派生（无实测）、波及订单真算 → 标 PARTIAL/MOCK，禁哈希冒充真算 */}
+        {/* FILL-AUDIT-TIMELINE-REAL（F1 治本）：曲线真源在否派生——有真源口径（产销/齐套→需求-产能张力+真事件）
+            真值聚合出曲线（measurement=LIVE）；无真源口径退诚实空态（series 空·hasData=false·MOCK·绝不哈希造曲线）。 */}
         <DataModeBadge
           mode={dot.data?.dataMode}
-          note="逐日传导曲线/峰值/越线日为确定性派生（kind 名哈希·无实测）；波及订单由产能传导引擎真算"
+          note="逐日传导曲线：有真日序源口径（产销/齐套）由真需求-产能张力聚合 + 真事件脉冲派生（measurement=LIVE·非哈希）；无真源口径退诚实空态（不伪造曲线）"
           testId={`audit-timeline-datamode-${itemId}`}
         />
       </div>
       {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
-      {/* PRD §2②：逐日圆点轴消费按 kind 派生的 audit_timeline series（每项独立曲线） */}
-      {dot.data && (
+      {/* 无真日序源（财务/结构维度无逐日实测）→ 诚实空态：不画曲线，指明真值证在何处（去数据接入）。 */}
+      {dot.data && dot.data.hasData === false && (
+        <div data-testid={`audit-timeline-nodata-${itemId}`} style={{ fontSize: 11, color: "var(--muted2)", padding: "4px 0" }}>
+          <span>{dot.data.noDataReason ?? "该审计口径暂无真实逐日时序源，不伪造曲线（诚实空态）。"}</span>
+          {dot.data.deeplink && (
+            <a href={dot.data.deeplink.to} style={{ marginLeft: 6, color: "var(--accent)" }}>{dot.data.deeplink.label}</a>
+          )}
+        </div>
+      )}
+      {/* PRD §2②：逐日圆点轴消费按 kind 派生的 audit_timeline series（每项独立曲线·仅有真源时非空） */}
+      {dot.data && dot.data.hasData !== false && (
         <DailyDotAxis
           series={dot.data.series}
           threshold={dot.data.threshold}
