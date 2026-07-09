@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { submitIntake, importIntake, objectifyIntake, type IntakePreview, type IntakeImportResult, type IntakeObjectifyResult } from "@/api/endpoints";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { submitIntake, importIntake, objectifyIntake, fetchObjectTypes, type IntakePreview, type IntakeImportResult, type IntakeObjectifyResult } from "@/api/endpoints";
 import zh from "@/locales/zh";
 
 /**
@@ -23,6 +23,17 @@ export default function PrototypeIntakePage() {
   const r: IntakePreview | undefined = m.data;
   const ir: IntakeImportResult | undefined = imp.data;
   const or: IntakeObjectifyResult | undefined = obj.data;
+
+  // C2 断点（OPTIONA-B1B2-UX）：上传数据后 → 出「归域引导」（选域/对象类型）→ 归域后数据物化可见。
+  // 已发布对象类型（含 domain）作为"归域"目标真值源，与解析对账 autoMapped 的 targetType 对齐 →
+  // 逐数据集显"将归入哪个对象类型 / 哪个域"，让 B2 的归域从裸按钮升级为可见引导（前端逐值对后端）。
+  const { data: objectTypes } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
+  const domainByType = new Map((objectTypes ?? []).map((ty) => [ty.key, ty.domain ?? null]));
+  // 每个导入数据集的建议归域目标：从解析对账 autoMapped 的 datasetName→targetType 归并（同一表可命中多列，取首个类型）。
+  const targetTypeByDataset = new Map<string, string>();
+  for (const a of r?.reconcile.autoMapped ?? []) {
+    if (!targetTypeByDataset.has(a.datasetName)) targetTypeByDataset.set(a.datasetName, a.targetType);
+  }
 
   return (
     <div data-testid="intake-page">
@@ -69,16 +80,52 @@ export default function PrototypeIntakePage() {
               </li>
             ))}
           </ul>
+          {/* C2 断点 · 归域引导（选域/对象类型）：逐导入数据集显"将归入哪个对象类型 / 哪个域"——
+              命中对账 autoMapped → 走「物化为对象」归入既有类型；未命中 → 走「建模为新类型」归入新域。
+              让 B2 归域从裸按钮升级为可见引导；域/类型取自后端已发布本体（前端逐值对后端）。 */}
+          <div className="panel" data-testid="intake-domain-guide" style={{ marginTop: 10, borderColor: "var(--accent,#7E8BEE)" }}>
+            <div className="section-title">下一步 · 归域引导（选域 / 对象类型 → 物化为可查询对象）</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted2)", marginBottom: 6 }}>
+              上传数据要成为可查询对象，需先「归域」——把每张表归入某个对象类型（该类型已属某业务域）。命中对账即可一键物化；未命中的表到建模页建成新类型（归入新域）。
+            </div>
+            <table className="cmp" data-testid="intake-guide-table" style={{ width: "100%", fontSize: 12 }}>
+              <thead><tr><th>导入表</th><th>行数</th><th>建议归入对象类型</th><th>所属域</th><th>归域方式</th></tr></thead>
+              <tbody>
+                {ir.datasets.map((d) => {
+                  const targetType = targetTypeByDataset.get(d.name);
+                  const domain = targetType ? domainByType.get(targetType) : undefined;
+                  const mapped = !!targetType;
+                  return (
+                    <tr key={d.id} data-testid={`intake-guide-row-${d.name}`} data-mapped={mapped ? "1" : "0"}>
+                      <td className="mono">{d.name}</td>
+                      <td>{d.rowCount}</td>
+                      <td>
+                        {mapped
+                          ? <span className="mono" data-testid={`intake-guide-type-${d.name}`}>{targetType}</span>
+                          : <span style={{ color: "var(--amber,#DD9551)" }} data-testid={`intake-guide-unmapped-${d.name}`}>未命中既有类型</span>}
+                      </td>
+                      <td>{mapped ? (domain ?? <span style={{ color: "var(--muted2)" }}>未归域</span>) : <span style={{ color: "var(--muted2)" }}>—</span>}</td>
+                      <td style={{ fontSize: 11 }}>
+                        {mapped
+                          ? <span style={{ color: "var(--c-capacity,#36BFA5)" }}>↓「物化为对象」归入既有类型</span>
+                          : <span style={{ color: "var(--amber,#DD9551)" }}>↓「建模为新类型」归入新域</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           {/* P3 闭环末步：把导入表按对账物化为既有对象类型 ObjectInstance；或建模为新类型 */}
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-            <button className="btn" data-testid="intake-objectify" disabled={obj.isPending} onClick={() => obj.mutate(ir.connection.id)}>
-              {obj.isPending ? zh.common.loading : zh.intake.objectifyBtn}
+            <button className="btn primary" data-testid="intake-objectify" disabled={obj.isPending} onClick={() => obj.mutate(ir.connection.id)}>
+              {obj.isPending ? zh.common.loading : `① ${zh.intake.objectifyBtn}（归入既有类型）`}
             </button>
             <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.objectifyHint}</span>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
             <Link className="btn" data-testid="intake-model-new" to={`/admin/modeling?datasets=${ir.datasets.map((d) => d.id).join(",")}`}>
-              {zh.intake.modelNewBtn}
+              ② {zh.intake.modelNewBtn}
             </Link>
             <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.modelNewHint}</span>
           </div>
@@ -94,6 +141,14 @@ export default function PrototypeIntakePage() {
                       </li>
                     ))}
                   </ul>
+                  {/* C2 断点 · 归域后「物化可见」核对：深链去对象浏览器（逐值核对计数）+ 切片浏览器（查到该数据）。
+                      物化对象总数 = 各类型 count 之和（前端逐值对后端 objectify 返回，非写死）。 */}
+                  <div data-testid="intake-materialize-verify" style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "rgba(54,191,165,.10)", border: "1px solid var(--c-capacity,#36BFA5)", fontSize: 11.5 }}>
+                    ✓ 已归域并物化 <b data-testid="intake-materialize-total">{or.materialized.reduce((s, mz) => s + mz.count, 0)}</b> 个对象（{or.materialized.length} 个对象类型）——现可查询。核对可见：
+                    <Link to="/admin/object-types" data-testid="intake-verify-objects-link" style={{ margin: "0 6px" }}>→ 对象浏览器（逐类型计数）</Link>
+                    ·
+                    <Link to="/admin/slices" data-testid="intake-verify-slices-link" style={{ marginLeft: 6 }}>→ 切片浏览器（查到该数据）</Link>
+                  </div>
                 </>
               ) : (
                 <div style={{ color: "var(--muted2)" }} data-testid="intake-objectified-empty">{zh.intake.objectifyEmpty}</div>

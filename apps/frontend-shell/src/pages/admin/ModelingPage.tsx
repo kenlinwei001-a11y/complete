@@ -6,6 +6,7 @@ import {
   createSimSession,
   deriveModeling,
   fetchBusinessDomains,
+  fetchLlmBindings,
   fetchModelingCoverage,
   fetchModelingDrafts,
   fetchObjectTypes,
@@ -65,6 +66,18 @@ function useCertSession() {
 /** 本体建模工作台（PRD §7.6）：AI 建议草案（A3 suggest）+ 三栏 = 源字段 | 映射画布 | 操作面板；PATCH 乐观更新+回滚 */
 export default function ModelingPage() {
   const queryClient = useQueryClient();
+  const hasToken = useHasToken();
+  // C1 断点（OPTIONA-B1B2-UX）：无 LLM 用途绑定时进建模页 → 诚实降级 UX（非白屏非假成功）。
+  // 判据 = bindings.length===0（LLM-ROLE-RESOLUTION-FIX 不变量：绑定任一大类即覆盖全部用途，
+  // 故任一绑定在场即 AI 建议可经跨角色兜底解析——无需 modeling 用途单独绑定）。
+  // token 未就绪 / 查询报错 → bindings 保持 undefined → 不判定"无绑定"（避免假阳降级），诚实等待。
+  const { data: llmBindingsData } = useQuery({
+    queryKey: ["a", "llm-bindings"],
+    queryFn: fetchLlmBindings,
+    enabled: hasToken,
+    retry: false,
+  });
+  const noLlmBound = llmBindingsData !== undefined && (llmBindingsData.bindings?.length ?? 0) === 0;
   const { data: drafts } = useQuery({ queryKey: ["a", "modeling-drafts", {}], queryFn: fetchModelingDrafts });
   // 轨L 增量3：已发布本体（中心真值闭合权威源）——本体已存在则中心绝不显"暂无本体"（非只看草案）。
   const { data: publishedTypes } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
@@ -133,6 +146,28 @@ export default function ModelingPage() {
           {t.newDraft}
         </button>
       </div>
+      {/* C1 断点 · 无 LLM 绑定诚实降级横幅（非白屏非假成功）：明确"AI 建议不可用" + 两条可行动路径
+          （① 去配置 LLM 用途绑定 · ② 走确定性建模无需 LLM）。文案对齐 LLM-ROLE-RESOLUTION-FIX。 */}
+      {noLlmBound && (
+        <div
+          data-testid="modeling-llm-degraded"
+          style={{
+            marginBottom: 12, padding: "10px 12px", borderRadius: 8, fontSize: 12.5, lineHeight: 1.7,
+            border: "1px solid var(--amber,#DD9551)", background: "rgba(221,149,81,.12)", color: "var(--txt)",
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            ⚠ 未绑定任何 LLM 用途 — AI 建模建议当前不可用（诚实降级，不空白、不假成功）
+          </div>
+          <div style={{ color: "var(--muted2)" }}>
+            两条可行动路径：
+            <b> ① 去配置 LLM 用途绑定</b>（
+            <Link to="/admin/llm-providers" data-testid="modeling-llm-config-link" style={{ color: "var(--accent,#7E8BEE)" }}>设置 → LLM 用途绑定</Link>
+            ）——<b>绑定任一大类即覆盖全部用途，无需逐意图单独绑定</b>；
+            或 <b>② 走确定性建模路径</b>（无需 LLM）：点上方「{t.newDraft}」选数据集 →「确定性建模（全字段）」，每个字段全建模 100% 覆盖后即可发布物化。
+          </div>
+        </div>
+      )}
       {/* 任务#2 · 核心交付：本体模型「创建过程」低代码 Pipeline（6 阶段节点+连线·默认展开·状态驱动自真草案态）。
           放在草案选择器下方、就绪认证/成品 DAG 上方；有活动草案即显（不依赖已发布类型）。 */}
       {activeDraft && (
@@ -231,6 +266,7 @@ export default function ModelingPage() {
       )}
       {suggestOpen && (
         <SuggestModal
+          noLlmBound={noLlmBound}
           initialSelected={preselect}
           onClose={() => { setSuggestOpen(false); if (params.has("datasets")) { params.delete("datasets"); setParams(params, { replace: true }); } }}
           onCreated={async (newDraftId) => {
@@ -798,7 +834,7 @@ function PublishedOntologyView({ types, onSelectType }: { types: Awaited<ReturnT
 }
 
 /** 新建草案：选原始数据集 → POST /a/v1/modeling/suggest（A3 半自动建模入口） */
-function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: () => void; onCreated: (draftId: string) => void; initialSelected?: string[] }) {
+function SuggestModal({ onClose, onCreated, initialSelected = [], noLlmBound = false }: { onClose: () => void; onCreated: (draftId: string) => void; initialSelected?: string[]; noLlmBound?: boolean }) {
   const { data: rawDatasets } = useQuery({ queryKey: ["a", "raw-datasets", {}], queryFn: () => fetchRawDatasets() });
   const [selected, setSelected] = useState<string[]>(initialSelected);
 
@@ -823,6 +859,14 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
   return (
     <Modal title={t.newDraft} onClose={onClose} width={460}>
       <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{t.newDraftHint}</p>
+      {/* C1 断点 · 弹窗内诚实降级提示：无 LLM 绑定 → AI 建议禁用，引导走确定性路径或去配置。 */}
+      {noLlmBound && (
+        <div data-testid="suggest-llm-degraded" style={{ fontSize: 11.5, lineHeight: 1.6, color: "var(--txt)", background: "rgba(221,149,81,.12)", border: "1px solid var(--amber,#DD9551)", borderRadius: 6, padding: "6px 8px", marginBottom: 10 }}>
+          未绑定 LLM 用途 → <b>AI 建议不可用</b>。请走下方<b>「确定性建模（全字段）」</b>（无需 LLM），或先
+          <Link to="/admin/llm-providers" data-testid="suggest-llm-config-link" style={{ color: "var(--accent,#7E8BEE)", margin: "0 3px" }}>去配置绑定</Link>
+          （绑定任一大类即覆盖全部用途）。
+        </div>
+      )}
       {(rawDatasets ?? []).length === 0 && <div className="empty-state">{t.newDraftEmpty}</div>}
       {(rawDatasets ?? []).map((ds) => (
         <label key={ds.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", fontSize: 12.5 }}>
@@ -851,8 +895,9 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
         </button>
         <button
           className="btn primary"
-          disabled={selected.length === 0 || suggestMut.isPending}
+          disabled={selected.length === 0 || suggestMut.isPending || noLlmBound}
           data-testid="modeling-suggest-run"
+          title={noLlmBound ? "未绑定 LLM 用途 —— AI 建议不可用，请走确定性建模或先去配置绑定" : undefined}
           onClick={() => suggestMut.mutate()}
         >
           {t.suggestRun}
