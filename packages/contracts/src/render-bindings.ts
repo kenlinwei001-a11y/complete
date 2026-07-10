@@ -226,4 +226,14 @@ export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBind
     { block: "table", fromSolverField: "rootDrivers" },
     { block: "text", fromSolverField: "summary" },
   ],
+  // Q30-P4 跨求解器编排层：对策组合编排器（治 countermeasure 诈账根）。KPI=总成本/残余缺口/可行性；表=所选杠杆组合
+  // （每条含来源求解器 solver + 释放量 release + 换算依据 basis·逐值溯自子求解器真产出）+ 三选二目标表；叙事=编排结论。
+  countermeasure_combo: [
+    { block: "kpi", fromSolverField: "totalCost" },
+    { block: "kpi", fromSolverField: "residualGap" },
+    { block: "kpi", fromSolverField: "feasible" },
+    { block: "table", fromSolverField: "combo" },
+    { block: "table", fromSolverField: "objectives" },
+    { block: "text", fromSolverField: "note" },
+  ],
 });

@@ -71,6 +71,8 @@ const REPRESENTATIVE_ARGS: Record<string, Record<string, unknown>> = {
   energy_cost_schedule: {},
   reroute_decision: {},
   multi_constraint_schedule: {},
+  // Q30-P4 跨求解器编排层：空入参→编排层真调 4 子求解器自本体对象图建真 gap 释放账本（levers 非手喂）。
+  countermeasure_combo: {},
 };
 
 describe("渲染投影绑定 = 真实输出字段（WO ONTO-SCEN-RENDER-PROJ ①·真值齿）", () => {

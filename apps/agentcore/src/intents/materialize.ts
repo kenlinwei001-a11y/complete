@@ -66,6 +66,8 @@ export const INTENT_SKILL: Record<string, string> = {
   energy_cost_schedule_q: "skl_carbon_compliance", // 能耗成本排程（能耗/碳排）→ 碳合规方法论
   reroute_decision_q: "skl_risk_diagnosis", // 改道决策（断供/停线响应）→ 风险诊断方法论
   multi_constraint_schedule_q: "skl_changeover", // 多约束联合排产 → 换型/排产方法论
+  // Q30-P4 跨求解器编排层（治 countermeasure 诈账根）：对策组合编排 → S&OP 平衡方法论（缺口闭合/保交付毛利信用三选二口径）。
+  countermeasure_combo_q: "skl_sop_balance",
 };
 
 /** 默认方法论（真实兜底·仅供非目录键的 hardcoded 计划如 what_if_displacement_q 用·目录卡禁静默回落）。 */
@@ -146,6 +148,7 @@ const INTENT_SLICE_ROOT: Record<string, string> = {
   energy_cost_schedule_q: "Base", // 能耗成本排程主对象=能耗计量所属基地
   reroute_decision_q: "Line", // 改道决策主对象=停线产线
   multi_constraint_schedule_q: "Order", // 多约束联合排产主对象=待排产订单
+  countermeasure_combo_q: "Base", // Q30-P4 对策组合编排主对象=缺口所在基地（产销/产能账本承载）
 };
 
 /** BP-4 对齐 seedIntentsAndPlans：sop_balance 求解器实际绑 mrp_netting（已注册·有真表）。 */

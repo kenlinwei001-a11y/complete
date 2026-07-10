@@ -397,8 +397,11 @@ export const STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
   "changeover", // multi_constraint_schedule 换型子解（对象·展开·子解 totalChangeoverMin/savedVsDueMin）
   "cert", // multi_constraint_schedule 认证子解（对象·展开·子解 scheduledCount/engineerGroups）
   "blockedByCert", // multi_constraint_schedule 待认证阻塞单集（数组·展开）
-  "subSolvers", // multi_constraint_schedule 子求解器清单（数组·展开）
+  "subSolvers", // multi_constraint_schedule / countermeasure_combo 子求解器清单（数组·展开）
   "constraintsSatisfied", // multi_constraint_schedule 三约束满足标（对象·展开）
+  // Q30-P4 跨求解器编排层 countermeasure_combo 结构性容器（数组/对象·展开·非标量 KPI）。
+  "objectives", // 保交付/保毛利/保信用 三目标各自 PROTECTED/SACRIFICED/NEUTRAL（数组·投表）
+  "tradeoff", // 三选二权衡结论（对象·展开·protected/sacrificed/note）
 ]);
 
 /**

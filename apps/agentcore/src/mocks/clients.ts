@@ -456,6 +456,30 @@ const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
     ruleRefs: ["C08", "C29"],
     dataMode: "MOCK",
   },
+  // Q30-P4 跨求解器编排层：对策组合编排 mock 输出（形状镜像真实 DataCore `countermeasure_combo` 编排结果·覆盖
+  // SOLVER_RENDER_BINDINGS 全字段 totalCost/residualGap/feasible/combo/objectives/note）。确定性字面量·dataMode:"MOCK"
+  // 诚实标（真值以真 DataCore 编排 invoke/FDE 为准·各杠杆 release 逐值溯自子求解器·见 docs/evidence/QUERY30-P4-orchestration-fde.md）。
+  countermeasure_combo: {
+    gap: 144,
+    combo: [
+      { key: "cert_unlock", solver: "cert_schedule", scene: "S07", release: 107.33, cost: 10.0032, protects: ["delivery"], sacrifices: [], basis: "Σ schedule[].unlockCapacity=107.33（认证解锁产能贡献）" },
+      { key: "outsource_overtime", solver: "outsourcing_split", scene: "S14", release: 36.67, cost: 36.67, protects: ["delivery"], sacrifices: [], basis: "allocation[overtime].qty=57.6万套·单位成本1（渠道真产出）" },
+    ],
+    residualGap: 0,
+    totalCost: 46.6732,
+    feasible: true,
+    needsRealLevers: false,
+    subSolvers: ["cert_schedule", "changeover_sequence", "outsourcing_split", "capex_scenario"],
+    objectives: [
+      { objective: "delivery", label: "保交付", status: "PROTECTED" },
+      { objective: "margin", label: "保毛利", status: "NEUTRAL" },
+      { objective: "credit", label: "保信用", status: "NEUTRAL" },
+    ],
+    tradeoff: { protected: ["保交付"], sacrificed: [], note: "缺口闭合；保 [保交付]，舍 [无]" },
+    note: "跨求解器编排真调 4 子求解器·选 2 杠杆闭合缺口·各释放量逐值溯自子求解器真产出（非魔数系数·KILL-MOCK-RED）。",
+    ruleRefs: ["C08", "C23", "C29"],
+    dataMode: "MOCK",
+  },
   carbon_footprint: {
     modelId: "4680-NCM",
     baseName: "成都",

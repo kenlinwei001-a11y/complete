@@ -49,6 +49,8 @@ export const INTENT_MODE: Record<string, IntentMode> = {
   energy_cost_schedule_q: "WORKFLOW_FIRST",
   reroute_decision_q: "WORKFLOW_FIRST",
   multi_constraint_schedule_q: "WORKFLOW_FIRST",
+  // Q30-P4 跨求解器编排层（治 countermeasure 诈账根）：对策组合编排——价值在「杠杆组合怎么排/保哪两个舍哪个/总成本残余缺口」（编排层真调子求解器承载数据表）→ WORKFLOW_FIRST。
+  countermeasure_combo_q: "WORKFLOW_FIRST",
   plan_recommend: "AGENT_FIRST",
   yield_diag: "AGENT_FIRST",
   maint_stagger: "AGENT_FIRST",

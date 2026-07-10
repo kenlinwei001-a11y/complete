@@ -3,6 +3,8 @@ import { round } from "../prng.js";
 import { num, str, type SolverContext } from "./types.js";
 import { liveTightness } from "./risk.js";
 import { currentMonth, currentQuarter } from "../clockderive.js";
+// Q30-P4 跨求解器编排：capex_scenario（context 求解器·非扩展 registry）作为「扩产杠杆」被编排层真调。
+import { capexScenario, type CapexProjectInput } from "./capex.js";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -380,10 +382,18 @@ export function quarterlyGap(args: Record<string, unknown>) {
  * 真正的「跨求解器编排」（把异构子求解器产出归一到统一 gap 释放账本）属 QUERY30 §2.5/2.6 核心设计，
  * 待编排层落地（本单只除假·不以魔数冒充）。确定性（R6）。
  */
-type ComboLever = { key: string; solver: string; scene?: string; release: number; unitCost: number; costRank: number };
+/** gap 释放账本的三大经营目标（保交付/保毛利/保信用·「三选二」权衡的坐标轴·Q6 真痛点）。 */
+export type LeverObjective = "delivery" | "margin" | "credit";
+const OBJECTIVE_LABEL: Record<LeverObjective, string> = { delivery: "保交付", margin: "保毛利", credit: "保信用" };
+type ComboLever = {
+  key: string; solver: string; scene?: string;
+  release: number; unitCost: number; costRank: number;
+  protects?: LeverObjective[]; sacrifices?: LeverObjective[]; basis?: string; dataMode?: string;
+};
 export function countermeasureCombo(args: Record<string, unknown>) {
   const gap = round(num(args.gap, 10), 4);
   const rawLevers = args.levers as ComboLever[] | undefined;
+  const subSolvers = Array.isArray(args.subSolvers) ? (args.subSolvers as string[]) : [];
   // 诚实降级：无真实杠杆（各子求解器真算释放量）→ 不以启发系数编造决策级组合。
   if (!Array.isArray(rawLevers) || rawLevers.length === 0) {
     return {
@@ -393,11 +403,15 @@ export function countermeasureCombo(args: Record<string, unknown>) {
       totalCost: 0,
       feasible: false,
       needsRealLevers: true,
-      note: "未提供真实杠杆：跨求解器编排须先真调各子求解器（cert_schedule/changeover_sequence/maintenance_stagger/outsourcing_split/capex_scenario）得各自真实释放量再编排——绝不以启发系数冒充决策级释放量（KILL-MOCK-RED）。",
+      subSolvers,
+      objectives: null,
+      tradeoff: null,
+      note: "未提供真实杠杆：跨求解器编排须先真调各子求解器（cert_schedule/changeover_sequence/outsourcing_split/capex_scenario）得各自真实释放量再编排——绝不以启发系数冒充决策级释放量（KILL-MOCK-RED）。",
       ruleRefs: ["C08", "C23", "C29"],
     };
   }
-  const sorted = [...rawLevers].sort((a, b) => a.costRank - b.costRank || a.unitCost - b.unitCost);
+  // 贪心最小成本：成本档升序 → 单位成本升序 → key 字典序（确定性 R6 tiebreak）。
+  const sorted = [...rawLevers].sort((a, b) => a.costRank - b.costRank || a.unitCost - b.unitCost || (a.key < b.key ? -1 : 1));
   let remaining = gap;
   let totalCost = 0;
   const combo: Record<string, unknown>[] = [];
@@ -405,12 +419,43 @@ export function countermeasureCombo(args: Record<string, unknown>) {
     if (remaining <= 0) break;
     const use = round(Math.min(remaining, l.release), 4);
     if (use > 0) {
-      combo.push({ key: l.key, solver: l.solver, scene: l.scene, release: use, cost: round(use * l.unitCost, 4) });
+      combo.push({
+        key: l.key, solver: l.solver, scene: l.scene, release: use, cost: round(use * l.unitCost, 4),
+        protects: l.protects ?? [], sacrifices: l.sacrifices ?? [], basis: l.basis,
+      });
       totalCost = round(totalCost + use * l.unitCost, 4);
       remaining = round(remaining - use, 4);
     }
   }
-  return { gap, combo, residualGap: round(Math.max(0, remaining), 4), totalCost, feasible: remaining <= 0, needsRealLevers: false, ruleRefs: ["C08", "C23", "C29"] };
+  const feasible = remaining <= 0;
+  const residualGap = round(Math.max(0, remaining), 4);
+  // 「三选二」权衡：所选组合对保交付/保毛利/保信用各自的净影响——某目标被任一所选杠杆牺牲→SACRIFICED（保守诚实·
+  // 优先于 PROTECTED）；仅被保护且无牺牲→PROTECTED；未触及→NEUTRAL。逐值来自各杠杆 protects/sacrifices 标签
+  // （映射器按杠杆真实性质确定性打·非编造），故答「杠杆组合怎么排、保哪两个舍哪个」。
+  const AXES: LeverObjective[] = ["delivery", "margin", "credit"];
+  const protectedSet = new Set<LeverObjective>();
+  const sacrificedSet = new Set<LeverObjective>();
+  for (const c of combo) {
+    for (const p of ((c.protects as LeverObjective[]) ?? [])) protectedSet.add(p);
+    for (const s of ((c.sacrifices as LeverObjective[]) ?? [])) sacrificedSet.add(s);
+  }
+  const objectives = AXES.map((o) => ({
+    objective: o,
+    label: OBJECTIVE_LABEL[o],
+    status: sacrificedSet.has(o) ? "SACRIFICED" : protectedSet.has(o) ? "PROTECTED" : "NEUTRAL",
+  }));
+  const protectedAxes = objectives.filter((o) => o.status === "PROTECTED").map((o) => o.label);
+  const sacrificedAxes = objectives.filter((o) => o.status === "SACRIFICED").map((o) => o.label);
+  const tradeoff = {
+    protected: protectedAxes,
+    sacrificed: sacrificedAxes,
+    note: `${feasible ? "缺口闭合" : `残余缺口 ${residualGap}`}；保 [${protectedAxes.join("、") || "—"}]，舍 [${sacrificedAxes.join("、") || "无"}]`,
+  };
+  return {
+    gap, combo, residualGap, totalCost, feasible, needsRealLevers: false, subSolvers, objectives, tradeoff,
+    note: `跨求解器编排真调 ${subSolvers.length || combo.length} 子求解器·选 ${combo.length} 杠杆${feasible ? "闭合缺口" : "未闭合(残余诚实明示)"}·各释放量逐值溯自子求解器真产出（非魔数系数·KILL-MOCK-RED）。`,
+    ruleRefs: ["C08", "C23", "C29"],
+  };
 }
 
 // S20 carbon_footprint：碳足迹 = Σ(物料单耗×碳因子) + Σ工序(单位能耗×电网因子(省))；对比欧盟阈值。
@@ -680,6 +725,191 @@ const props = (o: ObjectInstance) => o.props as Record<string, unknown>;
 const argHas = (args: Record<string, unknown>, k: string) => args[k] !== undefined;
 const nonEmpty = (arr?: unknown[]) => Array.isArray(arr) && arr.length > 0;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Q30-P4 跨求解器编排层（治 countermeasure_combo 诈账根 · DESIGN-query30-orch §1 P4 行）
+//
+// 「gap 释放账本」适配层：把异构子求解器**各不相同、无公共 release 字段**的真实产出（cert_schedule→认证解锁
+// 产能 unlockCapacity / changeover_sequence→省下换型分钟 savedVsDueMin / outsourcing_split→三渠道分配量
+// allocation.qty / capex_scenario→扩产供给曲线 S 相对基线 s0 的峰值新增）**确定性映射**到**统一计量单位 万套
+// （10^4 套产能）** 的「杠杆」（release + unitCost + costRank + 三选二目标标签 + 换算依据 basis）。
+//
+// ⛔ KILL-MOCK-RED 铁律：每个映射器的 release **逐值取自子求解器真输出字段**——零启发系数、零借名。跨单位换算
+//   只用**物理/单位常数**（1440 分/天·10000 套/万套）× **真对象量**（Line.capacityDaily·traced），绝不用
+//   `gap×0.3` 一类编造决策级释放量的魔数（那正是被治的历史诈账根）。子求解器真无产出→该杠杆诚实缺席（返回
+//   null·不以估算/魔数补位）；组合无可行解→ countermeasureCombo 诚实 feasible:false + 残余缺口（不虚构达标）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CELLS_PER_WAN = 10000; // 套 → 万套（单位常数·非业务阈值·丙档诚实项）
+const MIN_PER_DAY = 1440;    // 分 / 天（物理常数·非业务阈值·丙档诚实项）
+
+/** 编排层杠杆（喂 countermeasureCombo 的 levers 元素）——含三选二目标标签与换算依据（R13 可溯）。 */
+export interface OrchestratedLever {
+  key: string; solver: string; scene?: string;
+  release: number; unitCost: number; costRank: number;
+  protects: LeverObjective[]; sacrifices: LeverObjective[]; basis: string; dataMode: string;
+}
+
+/**
+ * cert_schedule → 认证解锁杠杆：待认证型号认证完成后解锁的产能贡献。**release = Σ schedule[].unlockCapacity**
+ * （`unlockCapacity` 即该型号 gapContribution·本就是「缺口贡献」量纲=万套-capacity·**直接求和·零系数**）。
+ * 成本代理 = 认证最晚完成周 ÷ 释放量（越晚认证单位成本越高·纯取自真 schedule.finishWeek·非金额魔数）；
+ * costRank=1（内部工程·低直接成本）。保交付（解锁产能），不动毛利/信用。无待认证型号→null（诚实缺席）。
+ */
+export function mapCertLever(certOut: Record<string, unknown>, dataMode: string): OrchestratedLever | null {
+  const schedule = Array.isArray(certOut?.schedule) ? (certOut.schedule as Record<string, unknown>[]) : [];
+  const release = round(schedule.reduce((s, x) => s + num(x.unlockCapacity), 0), 4);
+  if (release <= 0) return null;
+  const maxWeek = schedule.reduce((m, x) => Math.max(m, num(x.finishWeek)), 0);
+  const unitCost = round(maxWeek / Math.max(1e-9, release), 4);
+  return {
+    key: "cert_unlock", solver: "cert_schedule", scene: "S07",
+    release, unitCost, costRank: 1, protects: ["delivery"], sacrifices: [], dataMode,
+    basis: `Σ schedule[].unlockCapacity=${release}（认证解锁产能贡献·直接求和·最晚完成周 ${maxWeek}）`,
+  };
+}
+
+/**
+ * changeover_sequence → 换型释放杠杆：优化排序 vs 交期序省下的换型分钟（savedVsDueMin）转成可多产的产能。
+ * **release = savedVsDueMin/1440(天占比) × 该线真 capacityDaily(套/天) / 10000(→万套)**——省下的换型时间即可多
+ * 生产的时间，乘**真 Line.capacityDaily**（traced）再除单位常数。仅重排序无外购成本→unitCost=0·costRank=1·
+ * 保交付+保毛利。savedVsDueMin≤0 或无真线产能→null（诚实缺席·如本实例排序无省时时 savedVsDueMin=0）。
+ */
+export function mapChangeoverLever(coOut: Record<string, unknown>, lineCapacityDaily: number, dataMode: string): OrchestratedLever | null {
+  const savedMin = num(coOut?.savedVsDueMin);
+  if (savedMin <= 0 || lineCapacityDaily <= 0) return null;
+  const release = round((savedMin / MIN_PER_DAY) * lineCapacityDaily / CELLS_PER_WAN, 4);
+  if (release <= 0) return null;
+  return {
+    key: "changeover_free", solver: "changeover_sequence", scene: "S11",
+    release, unitCost: 0, costRank: 1, protects: ["delivery", "margin"], sacrifices: [], dataMode,
+    basis: `savedVsDueMin=${savedMin}分 /1440 ×线日产能${lineCapacityDaily} /10000 = ${release}万套（省换型时间→多产·零外购成本）`,
+  };
+}
+
+/**
+ * outsourcing_split → 三渠道释放杠杆：allocation 各渠道真实消化量 qty 即该渠道释放的产能（编排以万套喂 gap→
+ * qty 已是万套），**unitCost = 渠道真 cost/qty**（traced 自 allocation）。自产加班保交付；外协保交付但溢价舍
+ * 毛利；延期舍交付+信用（违约金）保毛利。qty≤0 的渠道诚实略过。
+ */
+export function mapOutsourcingLevers(osOut: Record<string, unknown>, dataMode: string): OrchestratedLever[] {
+  const alloc = Array.isArray(osOut?.allocation) ? (osOut.allocation as Record<string, unknown>[]) : [];
+  const META: Record<string, { costRank: number; protects: LeverObjective[]; sacrifices: LeverObjective[] }> = {
+    overtime: { costRank: 1, protects: ["delivery"], sacrifices: [] },
+    outsource: { costRank: 2, protects: ["delivery"], sacrifices: ["margin"] },
+    delay: { costRank: 3, protects: ["margin"], sacrifices: ["delivery", "credit"] },
+  };
+  const out: OrchestratedLever[] = [];
+  for (const a of alloc) {
+    const channel = str(a.channel);
+    const qty = num(a.qty);
+    const meta = META[channel];
+    if (!meta || qty <= 0) continue;
+    const unitCost = round(num(a.cost) / Math.max(1e-9, qty), 4);
+    out.push({
+      key: `outsource_${channel}`, solver: "outsourcing_split", scene: "S14",
+      release: round(qty, 4), unitCost, costRank: meta.costRank, protects: meta.protects, sacrifices: meta.sacrifices, dataMode,
+      basis: `allocation[${channel}].qty=${round(qty, 4)}万套·单位成本${unitCost}（渠道真产出）`,
+    });
+  }
+  return out;
+}
+
+/**
+ * capex_scenario → 扩产杠杆：情景测算供给曲线 S 相对现有基线 s0 的**峰值新增产能 max(S[q]−s0[q])**（万套/季·
+ * 扩产项目达产后每季新增·traced 自 capexScenario 真 S/s0）。**unitCost = Σ 现金流投产期投入(亿)/release**（取
+ * 自真 cashflow 负值段·非魔数）·costRank=3（高成本档）。扩产保交付(长期)·巨额现金支出压信用→舍 credit。
+ * 无扩产项目/无净新增→null（诚实缺席）。
+ */
+export function mapCapexLever(capexOut: Record<string, unknown>, dataMode: string): OrchestratedLever | null {
+  const S = Array.isArray(capexOut?.S) ? (capexOut.S as unknown[]).map((x) => num(x)) : [];
+  const s0 = Array.isArray(capexOut?.s0) ? (capexOut.s0 as unknown[]).map((x) => num(x)) : [];
+  const projects = Array.isArray(capexOut?.projects) ? (capexOut.projects as Record<string, unknown>[]) : [];
+  if (S.length === 0 || projects.length === 0) return null;
+  const release = round(Math.max(0, ...S.map((s, q) => s - (s0[q] ?? 0))), 4);
+  if (release <= 0) return null;
+  const totalInvest = round(
+    projects.reduce((sum, p) => {
+      const cf = Array.isArray(p.cashflow) ? (p.cashflow as unknown[]).map((x) => num(x)) : [];
+      return sum + cf.reduce((a, x) => a + Math.max(0, -x), 0);
+    }, 0),
+    4,
+  );
+  const unitCost = round(totalInvest / Math.max(1e-9, release), 4);
+  return {
+    key: "capex_expand", solver: "capex_scenario", scene: "S17",
+    release, unitCost, costRank: 3, protects: ["delivery"], sacrifices: ["credit"], dataMode,
+    basis: `峰值新增产能 max(S−s0)=${release}万套/季·总投入${totalInvest}亿（capexScenario 真 S/cashflow）`,
+  };
+}
+
+/**
+ * 跨求解器编排：**真调**各可作杠杆的子求解器（经其真实 deriveArgs 从本体对象图派生入参→真求解体），把各自
+ * 真产出经上述映射器归一到万套 gap 释放账本，返回 { gap, levers, subSolvers, ledger }。确定性（R6·全纯函数·
+ * 无时钟/随机/网络）。子求解器真无产出→该杠杆诚实缺席（映射器返 null·不补位）。
+ *
+ * 诚实边界：**maintenance_stagger 不入决策级释放账本**——其 deriveArgs 的 loadByWeek 为演示合成值（非真
+ * MaintPlan 派生·见 solvers-extended 注），且 loadDrop 量纲=负荷单位 ≠ 产能万套（无真换算基）；错峰检修只挪动
+ * 产能可用**时点**、不新增净产能，故不作闭合年缺口的杠杆（纳入即为借名/单位错配诈账·KILL-MOCK-RED）。
+ */
+export function orchestrateCountermeasureLevers(
+  c: SolverContext,
+  args: Record<string, unknown>,
+): { gap: number; levers: OrchestratedLever[]; subSolvers: string[]; ledger: Record<string, unknown>[] } {
+  const totalDemandWan = round((c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) / CELLS_PER_WAN, 4) || 100;
+  const gap = round(num(args.gap, round(totalDemandWan * DEFAULT_GAP_FRACTION, 2)), 4);
+  const levers: OrchestratedLever[] = [];
+  const subSolvers: string[] = [];
+  const ledger: Record<string, unknown>[] = [];
+  const pushLedger = (solver: string, present: boolean, detail: string) => ledger.push({ solver, present, detail });
+
+  // ① cert_schedule 真调（自 c.certifications 经其真实 deriveArgs 派生·非手喂合成入参）。
+  const certDesc = EXTENDED_REGISTRY.cert_schedule!;
+  const certOut = certDesc.fn(certDesc.deriveArgs(c, {}));
+  subSolvers.push("cert_schedule");
+  const certLever = mapCertLever(certOut, certDesc.dataMode(c, {}));
+  if (certLever) { levers.push(certLever); pushLedger("cert_schedule", true, certLever.basis); }
+  else pushLedger("cert_schedule", false, "无待认证型号可解锁→诚实缺席");
+
+  // ② changeover_sequence 真调（自 c.orders + c.changeoverMatrix 派生）。线日产能取自真 Line.capacityDaily。
+  const coDesc = EXTENDED_REGISTRY.changeover_sequence!;
+  const coOut = coDesc.fn(coDesc.deriveArgs(c, {}));
+  subSolvers.push("changeover_sequence");
+  const lineList = (c.lines ?? []).map(props);
+  const lineCap = num(lineList.find((l) => str(l.lineId) === str(coOut.lineId))?.capacityDaily) || num(lineList[0]?.capacityDaily);
+  const coLever = mapChangeoverLever(coOut, lineCap, coDesc.dataMode(c, {}));
+  if (coLever) { levers.push(coLever); pushLedger("changeover_sequence", true, coLever.basis); }
+  else pushLedger("changeover_sequence", false, `savedVsDueMin=${num(coOut.savedVsDueMin)}≤0 或无真线产能→诚实缺席`);
+
+  // ③ outsourcing_split 真调（以万套喂真 gap·非 15% 兜底估算·让 gap 与其余杠杆同量纲）。
+  const osDesc = EXTENDED_REGISTRY.outsourcing_split!;
+  const osOut = osDesc.fn(osDesc.deriveArgs(c, { gap, totalDemand: totalDemandWan }));
+  subSolvers.push("outsourcing_split");
+  const osLevers = mapOutsourcingLevers(osOut, osDesc.dataMode(c, { gap }));
+  if (osLevers.length > 0) { for (const lv of osLevers) levers.push(lv); pushLedger("outsourcing_split", true, osLevers.map((l) => l.basis).join("；")); }
+  else pushLedger("outsourcing_split", false, "无渠道分配→诚实缺席");
+
+  // ④ capex_scenario 真调（自 params.capexScenario 情景的真项目集·非扩展 registry→直调 capexScenario）。
+  const capexCfg = c.params?.capexScenario;
+  const scen = capexCfg?.scenarios ? (capexCfg.scenarios.aggressive ?? capexCfg.scenarios.baseline ?? Object.values(capexCfg.scenarios)[0]) : undefined;
+  const capexProjects = (scen?.projects ?? []) as CapexProjectInput[];
+  if (capexProjects.length > 0) {
+    subSolvers.push("capex_scenario");
+    try {
+      const quarters = 8;
+      const capexOut = capexScenario(c, { scenarioKey: "aggressive", demand: Array.from({ length: quarters }, () => gap), projects: capexProjects });
+      const capexLever = mapCapexLever(capexOut, "PARTIAL");
+      if (capexLever) { levers.push(capexLever); pushLedger("capex_scenario", true, capexLever.basis); }
+      else pushLedger("capex_scenario", false, "无扩产净新增→诚实缺席");
+    } catch (e) {
+      pushLedger("capex_scenario", false, `capex 测算无解(${(e as Error)?.message ?? "err"})→诚实缺席`);
+    }
+  } else {
+    pushLedger("capex_scenario", false, "无扩产情景项目集→诚实缺席");
+  }
+
+  return { gap, levers, subSolvers, ledger };
+}
+
 /**
  * HARDCODE-DISPATCH-REGISTRY 治本（审计 γ2）· 扩展求解器**单一登记**（每 solver 一条 {fn, dataMode, deriveArgs}）。
  *
@@ -867,11 +1097,16 @@ export const EXTENDED_REGISTRY: Record<string, ExtendedSolverDescriptor> = {
   },
   countermeasure_combo: {
     fn: countermeasureCombo,
-    dataMode: (c, args) => (argHas(args, "levers") ? "LIVE" : "MOCK"), // 无真实杠杆→诚实降级(空组合)·非启发系数假值
+    // Q30-P4：无显式 levers 时经编排层**真调子求解器**建真杠杆（含估算/合成子解）→ PARTIAL（诚实·不冒充 LIVE
+    // 实测）；显式 levers（调用方已真算）→ LIVE；无任何子求解器数据源→ MOCK（编排产不出真杠杆→诚实降级）。
+    dataMode: (c, args) => (argHas(args, "levers") ? "LIVE" : nonEmpty(c.certifications) || nonEmpty(c.orders) ? "PARTIAL" : "MOCK"),
     deriveArgs: (c, args) => {
-      const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
-      // G2：默认 gap 同口径估算（dataMode 无 levers 时已标 PARTIAL）。
-      return { gap: num(args.gap, Math.round(totalDemand * DEFAULT_GAP_FRACTION)), ...args };
+      // 显式 levers 优先（直接单测/调用方已真调子求解器回填）→ 原样（保留既有直调契约·R6·测试字节兼容）。
+      if (Array.isArray(args.levers)) return { ...args };
+      // Q30-P4 跨求解器编排：真调 cert_schedule/changeover_sequence/outsourcing_split/capex_scenario，把各异构真
+      // 产出映射到统一万套 gap 释放账本（各释放量逐值溯自子求解器真输出·非魔数系数），喂 countermeasureCombo。
+      const orch = orchestrateCountermeasureLevers(c, args);
+      return { ...args, gap: orch.gap, levers: orch.levers, subSolvers: orch.subSolvers, leverLedger: orch.ledger };
     },
   },
   // QUERY30 缺口③ Q01 样板：接单挤占推演。orders/lines 真对象在场（QUERY30-ONTOLOGY-EXT 五件套 + 线级 capacityDaily/certifiedModels）→ LIVE；否则 MOCK。

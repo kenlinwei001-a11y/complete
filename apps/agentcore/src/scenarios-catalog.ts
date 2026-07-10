@@ -140,6 +140,9 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S34", "改道决策", "risk", "reroute_decision_q", "常州这条产线停了，产量改道到哪几条线总成本最低？", "reroute_decision", ["C05", "C22"], "COMPUTE", "解读断供改道最小成本流分配", [B("changzhou", "常州")], { lineId: "LINE-changzhou" }),
   // S35 多约束联合排产：复用排产族三子求解器（真调 sequencing_optimize + changeover_sequence + cert_schedule 联合解·非各自为战）。
   card("S35", "多约束联合排产", "project", "multi_constraint_schedule_q", "这批订单怎么排，既排序最优、又少换型、又不违认证就绪？", "multi_constraint_schedule", ["C22", "C26", "C29"], "COMPUTE", "解读排序+换型+认证三约束联合排产", [], { jobType: "Order", groupField: "model" }),
+  // Q30-P4 跨求解器编排层（治 countermeasure 诈账根）：对策组合编排——空 slotPresets（不手喂合成杠杆·datacore 编排层
+  // 真调 cert_schedule/changeover_sequence/outsourcing_split/capex_scenario 建真 gap 释放账本），求最小成本闭合缺口 + 三选二权衡。
+  card("S36", "对策组合编排", "plan", "countermeasure_combo_q", "保交付/保毛利/保信用三选二，杠杆组合怎么排？", "countermeasure_combo", ["C08", "C23", "C29"], "COMPUTE", "解读跨求解器编排的最小成本杠杆组合与保交付/毛利/信用三选二权衡", [], {}),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {
