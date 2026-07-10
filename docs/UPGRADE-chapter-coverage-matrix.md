@@ -102,3 +102,8 @@
 ## 图例 · 升级层（详见 `docs/DESIGN-decision-os-complete-upgrade.md`）
 L0 PRD-gap 收口(全景预分析+console) · L1 纵向脊柱(A需求图/W工作流DAG运行时/B计划综合/C因果GraphRAG) · L1.5 知识与记忆层 · L2 统一 Decision 内核 · L3 企业硬化。全程暗发可回退（十红线 RL2/RL9）。
 **勾的纪律**：对应 WO dev BUILT → 审核方**真跑复验**（含回退演练）→ DONE → 本表该章翻 ✅。绝不凭设计/绿测试翻勾（铁律 0.4·绿测试≠达成）。
+
+## 复验进度（滚动·真跑为据）
+- **2026-07-09 L0 真跑 DONE**：UPG-L0-GAPCORE · UPG-L0-HIDDENREQ · UPG-L0-CONSOLE-BOARD · UPG-L0-CONSOLE-APPROVE（4/8）。
+- **里程碑·入口①收敛达成**：兄弟单B（CONSOLE-BOARD+APPROVE）真跑闭环——缺口-补齐三面（GapCard/工单中心/DataBuilder）收敛为单 Console（source 透镜+就地 R4 批复+旧面 tombstone 承接）。→ 推进 Ch29 Decision Cockpit / Ch61 Manufacturing Cockpit 的"统一决策入口"面（其余面待 L0-B/L1）。
+- **返工中**：CLASSIFY-FUSE · SOLVER-COVERAGE · COVERAGE-FILL（dev 据 BLOCK 重做）· Q30-P1（re-scope 后重做）。

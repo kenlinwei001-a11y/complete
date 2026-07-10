@@ -5481,7 +5481,7 @@
       "title": "L0·兄弟B B2: 就地批复整合+旧面tombstone退役(入口①收敛闭环)",
       "doc": "docs/PRD-gapfill-surface-consolidation.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "UPG-L0-CONSOLE-BOARD"
@@ -5506,12 +5506,14 @@
             "assert": "回退演练:承接前旧面保留可回退+逐元素PRD过R-PRD"
           }
         ],
-        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统",
+        "reviewEvidence": "审核方worktree真跑复验PASS(2026-07-09·真浏览器+后端逐值+audit·非造假): 隔离worktree重置origin HEAD54316bd(实现f144a9e)四包build绿。C1就地批复真跑:抽屉「待审批补齐(就地·不跳·R4)」badge=2·UI行testid==后端草稿ID(act_pp8h7.../act_gc5zn...)·前端真POST /a/v1/action-drafts/{id}/decision{decision:APPROVE}·后端PENDING_APPROVAL→EXECUTED·/audit记APPROVE·URL恒/admin/tickets不跳actions(R17)。C2 tombstone:/admin/db-approvals→Navigate replace /admin/tickets(SPA重定向·SPA+硬刷两访问都命中)·/admin/growth→/tickets(f63)·承接测f65+f63+f62=11绿+agentcore ticket-center+build-closure=8绿·db-approvals不在ADMIN_PAGES。C3回退:flag OFF抽屉就地批复段消失·旧面InPlaceApprovalPanel保留(DataBuilderPage.tsx:17/1043)·defaultOn:false实测·待批草稿保留不丢。门:ontology-slices绿(§2.H回写同步)+css-vars绿(复用--amber零新色)。次要非阻断:e2e脚本假设SEED_DEMO有草稿(实空需预置)·就地批复段展示全部PENDING草稿(同旧面行为符PRD)。"
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T16:25:30.974Z",
-        "built": "2026-07-09T16:55:00.485Z"
+        "built": "2026-07-09T16:55:00.485Z",
+        "done": "2026-07-10T03:20:25.752Z"
       },
       "blockReason": ""
     }
@@ -5520,8 +5522,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "UPG-L0-CONSOLE-BOARD",
-      "at": "2026-07-10T03:19:02.192Z"
+      "id": "UPG-L0-CONSOLE-APPROVE",
+      "at": "2026-07-10T03:20:25.752Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
