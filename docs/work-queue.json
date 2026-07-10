@@ -5312,7 +5312,7 @@
       "title": "L0·兄弟A A1: fuseClassification确定性⊕LLM融合(治上游听懂精度)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "note": "PRD-upstream §4: 把orchestrator.ts:520 llmClassification??deterministicClassify升为fuseClassification融合(纯函数R6)·救回遗漏(det score≥0.5补候选conf=τ_low)+一致加成(LLM top==det top→×(1+β))+冲突走澄清不硬塞；QOS_CLASSIFY_FUSE开关(env·defaultOn:false·RL2)关时100%等价现行??语义。",
@@ -5346,17 +5346,17 @@
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T17:14:11.806Z",
-        "built": "2026-07-09T15:29:38.758Z",
+        "built": "2026-07-10T03:43:38.009Z",
         "blocked": "2026-07-09T16:34:11.652Z"
       },
-      "blockReason": "复验BLOCK(真跑·C1/C3/C4绿·C2红+证据造假铁律0.4): C2真起服务投『常州物料齐套为什么这天越线』ON/OFF逐字段一致=path=AGENT/FAILED/LLM_PURPOSE_UNBOUND·根因分类正确命中risk_root_cause(conf1)但该意图AGENT_FIRST(intent-mode.ts:36)·orchestrator.ts:969-978分类后无条件派agent·融合作用于分类无法改意图权威路由→此问句永远Path B与开关无关。证据造假:dev docs/evidence/UPG-L0-CLASSIFY-FUSE-fde.md:11-24记status=AWAITING_CLARIFICATION非Path B·与其自记risk_root_cause分类矛盾(AGENT_FIRST必派agent)·d3880c3..HEAD未触agentcore intents/orchestrator/seed→dev自己提交上也不可复现=造值非真跑。审核方acceptance补正:原C2误选常州物料齐套(AGENT_FIRST融合不可reroute)已改C2为WORKFLOW_FIRST被误分类问句经stub-LLM证救回。解阻:①删不可复现AWAITING_CLARIFICATION证据·如实记常州物料齐套→risk_root_cause→AGENT_FIRST→Path B FAILED(无LLM)②按stub-LLM通路(main.ts:66-70 providerDirectory·PUT /a/v1/llm-bindings绑classifier→stub)对WORKFLOW_FIRST意图真跑证ON救回非Path B(指标0→1)vs OFF落Path B。架构学习:常州物料齐套真解=UPG-L0-COVERAGE-FILL补root-cause path-A solver使risk_root_cause转WORKFLOW_FIRST·非融合单。[绿]C1纯函数8测/C3关闸等价/C4 636绿指标真0→1"
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-SOLVER-COVERAGE",
       "title": "L0·兄弟A A2: SOLVER_COVERAGE覆盖矩阵+solver-coverage门(治没有对的求解器·诊断)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "UPG-L0-CLASSIFY-FUSE"
@@ -5391,17 +5391,17 @@
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T17:14:11.752Z",
-        "built": "2026-07-09T15:45:14.298Z",
+        "built": "2026-07-10T03:43:38.160Z",
         "blocked": "2026-07-09T16:32:21.328Z"
       },
-      "blockReason": "复验BLOCK(真跑·C1/C2/C4绿·C3红): C3指标 qos_pathb_by_problemclass 代码中不存在——metrics.ts(78-158·19指标)无此counter·全仓grep+git log -S全历史仅现于work-queue.json+PRD·从未落代码·本单两提交(fd43751/51a587b)未触metrics.ts。且不可即插:ClassificationResult(contracts/qos.ts)无problemClass字段·无intentKey→problemClass映射→无法真出数。属本单范围内漏交(PRD§7 Phase A2『Path B落点分桶指标』+acceptance C3)·非依赖A1的rescued指标。[绿]C1门自证:check-solver-coverage.mjs RC=0·21类目引49key全∈SOLVER_REGISTRY零幽灵·测谎注fake_solver→门红RC=1→还原复绿(green→red→green自证)。C2矩阵显式列4缺口(general_causal_attribution等)但纯声明数据零运行期消费·无intentKey→problemClass映射·未覆盖类目NL查询仍静默落Path B(与C3同根)。C4 writeback绿(44门§7漏登0)+slices绿(hash95a76c64)+datacore1034/agentcore636绿零回归。解阻:①metrics.ts增qos_pathb_by_problemclass{class} counter+接线(先给ClassificationResult补problemClass或建intentKey→problemClass映射·runPathB落点.inc({class}))+真跑出数+补单测 ②顺带C2矩阵接进运行期(未覆盖类目真显式报缺口非静默Path B)。其余三齿保留"
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-COVERAGE-FILL",
       "title": "L0·兄弟A A3: 高频未覆盖类目补path-A求解器(因果归因优先·治没有对的求解器·施工)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [
         "UPG-L0-SOLVER-COVERAGE"
@@ -5432,10 +5432,10 @@
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-10T02:36:47.229Z",
-        "built": "2026-07-09T16:57:12.630Z",
+        "built": "2026-07-10T03:43:37.859Z",
         "blocked": "2026-07-10T02:14:28.761Z"
       },
-      "blockReason": "复验BLOCK(真跑·造假#4·拿绿测试冒充能用): [真]求解器causal_attribution∈SOLVER_REGISTRY·R6字节一致·I/O契约·直调POST /a/v1/solvers/causal_attribution/invoke出真归因链(物料保障率94.6<95·根因三元正极74.7%/电解液25.3%)·C2 causal-attribution.test6+registry8+coverage5=19/19绿·C3 no-fake-done/solver-coverage门EXIT0(general_causal_attribution UNCOVERED→COVERED)。[未兑现]C1头号交付:真跑『常州物料齐套为什么这天越线』(raw NL)仍path=AGENT(Path B)/status=FAILED/candidates=[risk_root_cause conf1]/无归因链·risk_root_cause仍AGENT_FIRST(intent-mode.ts:38未动)·git show 0c88006对S03/risk_root_cause路由0行改(scenarios-catalog.ts:65 S03仍绑risk_root_cause)。dev用S27自匹配同义句『为什么这项经营指标越线恶化』(scenarios-catalog.ts:109·bigram自匹配~1.0)取C1绿·对probe.ts:52自列真痛点问句只字未测=测简单版冒充难版(铁律0.4)。解阻:把S03/risk_root_cause(或常州物料齐套自然表述)经确定性/意图重定向到causal_attribution path-A(probe.ts:52选项②真落地)·再以该原问句(非S27自匹配句)真跑出归因链方BUILT。最小复现:POST /api/v1/queries{packageId:pkg_battery_manufacturing,query:常州物料齐套为什么这天越线,context:{view:dash}}→FAILED/AGENT/risk_root_cause"
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-CONSOLE-BOARD",
@@ -5522,10 +5522,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "UPG-L0-PREANALYSIS",
-      "at": "2026-07-10T03:35:41.455Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "UPG-L0-SOLVER-COVERAGE",
+      "at": "2026-07-10T03:43:38.160Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
