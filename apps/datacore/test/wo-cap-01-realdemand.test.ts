@@ -118,8 +118,11 @@ describe("WO-CAP-01-REALDEMAND · 风险张力绑真供需（闭 G-SIM-FAKE）",
     const off = (await auto()).data;
     expect(off.cards.length).toBeGreaterThan(0);
     for (const c of off.cards) {
-      expect(c.factor).toBe("瓶颈工序"); // OFF：合成扁平利用率重新当代表
-      expect(c.currentTightness?.value ?? 0).toBeGreaterThanOrEqual(85); // 恒红
+      // OFF（回退演练）：合成扁平源重新当决策级代表（source=LIVE）——每基地取真张力最高的合成源因子。
+      // WO-FAKE-01（补 WO-CAP-01 洞·oee:equip 逐基地分化后）：OFF 下 设备OEE 亦为 LIVE 合成源，低 OEE 基地其
+      // 设备OEE 张力可高于合成扁平 util（瓶颈工序）→ 代表因子为 设备OEE（仍是合成源恒红·回退演练语义不变）。
+      expect(["瓶颈工序", "设备OEE"]).toContain(c.factor);
+      expect(c.currentTightness?.value ?? 0).toBeGreaterThanOrEqual(85); // 恒红（合成源决策级越阈·回退演练）
     }
     expect(off.cards.length).toBeGreaterThan(on.cards.filter((c) => (c.currentTightness?.value ?? 0) >= 85).length - 1);
   });

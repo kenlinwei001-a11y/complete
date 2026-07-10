@@ -180,19 +180,27 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
   // WO-CAP-01-REALDEMAND（暗发 `qos.risk_realdemand`·defaultOn:false）：ON=需求驱动瓶颈因素绑真供需；
   // OFF（未解析该键·或测试直构 ctx 无 features）=现行 lines-utilization 分支不变（回退演练即此路径）。
   const realDemand = c.features?.has("qos.risk_realdemand") === true;
-  // 设备/工艺类真实快照实测（与需求无关·本就是设备态·恒真源 LIVE·feature 不影响）。
+  // WO-FAKE-01（闭 G-SIM-FAKE·补 WO-CAP-01 只修 util:line 的洞·同 util:line 诚实位）：设备OEE/良率读的是
+  // **合成扁平种子**（oee:equip mean0.78 / yield:process mean0.952·WO-FAKE-01 加每基地乘子后逐基地分化但仍是 demo 合成·
+  // 非真实逐基地 OEE/良率实测抽数）→ 与 util:line 同病同治：
+  //   · ON（realDemand·demo 默认全开）= source=SYNTHETIC → **不参与决策级染红竞选**（riskTimeline bestLive 只在真源间竞选）、
+  //     卡 dataMode 继承 SYNTHETIC（前端灰显·不决策级染红）；值仍逐基地真算（改 oee_current/yield_baseline 即变·R6 可溯）。
+  //   · OFF（回退演练·未开该键或测试直构 ctx 无 features）= source=LIVE（现行行为不变·回退演练即此路径）。
+  // 诚实边界（铁律 0.4/0.6）：无真实逐基地 OEE/良率实测源 → 不冒充 LIVE，据实标 SYNTHETIC；同时种子已按基地补齐分化（非止步扁平）。
   if (factor === "设备OEE") {
     const eq = c.equipment.filter((e) => e.props.baseId === baseId && typeof e.props.oee_current === "number");
     if (eq.length > 0) {
       const avg = eq.reduce((a, e) => a + num(e.props.oee_current), 0) / eq.length;
-      return { value: clamp(Math.round(lp.oeeBase + (1 - avg) * lp.oeeK), 0, 100), live: true, source: "LIVE" };
+      const source: TightnessSource = realDemand ? "SYNTHETIC" : "LIVE";
+      return { value: clamp(Math.round(lp.oeeBase + (1 - avg) * lp.oeeK), 0, 100), live: true, source };
     }
   }
   if (factor === "良率波动") {
     const procs = c.processes.filter((pr) => pr.props.baseId === baseId && typeof pr.props.yield_baseline === "number");
     if (procs.length > 0) {
       const avg = procs.reduce((a, pr) => a + num(pr.props.yield_baseline), 0) / procs.length;
-      return { value: clamp(Math.round(lp.yieldBase + (1 - avg) * lp.yieldK), 0, 100), live: true, source: "LIVE" };
+      const source: TightnessSource = realDemand ? "SYNTHETIC" : "LIVE";
+      return { value: clamp(Math.round(lp.yieldBase + (1 - avg) * lp.yieldK), 0, 100), live: true, source };
     }
   }
   // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·核心）：ON 时需求驱动型瓶颈因素（瓶颈工序/物料齐套/人力工时）

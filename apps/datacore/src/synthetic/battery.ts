@@ -1162,6 +1162,55 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
   ];
 }
 
+/**
+ * WO-FAKE-01（P0·闭 G-SIM-FAKE·补 WO-CAP-01 只修 util:line 的洞）：oee:equip / yield:process **确定性每基地乘子**
+ * （⛔非 rng·守 R6·同 WO-CAP-02 产能分化 CAPACITY_MULT_BY_BASE 的 R6-safe 模式）。
+ *
+ * 病根（审计 R1/R2·docs/AUDIT-solver-fake-residues.md）：`oee:equip` mean0.78 / `yield:process` mean0.952 为**全局单一均值**
+ * → 12 基地设备/工序 OEE/良率几乎同档 → Equipment.oee_current / Process.yield_baseline 逐基地扁平 → risk_timeline
+ * 设备OEE/良率张力**恒定**（clamp(oeeBase30+(1-0.78)×220)≈78 / clamp(yieldBase35+(1-0.952)×600)≈64 全基地同）·对真业务输入零敏感·却标 LIVE 决策级染红。
+ *
+ * 修（治本·两手·守铁律 0.4/0.6）：① 种子按基地拉开档次（本表·令值不再扁平·curl 逐基地不同）；② risk.ts 据实标 SYNTHETIC
+ * 不冒充 LIVE 决策级红（这是 demo 合成数据的每基地分化·非真实逐基地 OEE/良率实测抽数·origin=SYNTHETIC 不变）。
+ *
+ * 方向（配合 WO-CAP-02 瓶颈基地叙事）：设备OEE 主瓶颈基地（合肥）配**低 OEE 乘子**（真设备态更弱），富余基地配高；
+ * 良率随基地小幅分化。⚠️ 校准耦合约束（同 WO-CAP-02:1568）：4680-NCM 产地（常州/成都/合肥）的 yield 进 `capacity_forecast|all|4680-NCM`
+ * 校准切片 → 良率乘子对这三地取**温和且子集均值≈1.0**（避免 m11-calibration C9 回测/EMA 漂移误判 STRUCTURAL_SHIFT），其余基地略强分化。
+ * 全表乘子**均值≈1.0**（保网络级 OEE/良率总均值≈原·下游聚合与快照近似不变），仅**逐基地**拉开档次。乘子只缩放结构性均值（noise 绝对不变）。
+ */
+const OEE_MULT_BY_BASE: Record<string, number> = {
+  // 设备OEE 主瓶颈 / 4680-NCM 产地（温和·守校准）——真设备态偏弱
+  hefei: 0.96, // 合肥（设备OEE 主瓶颈·4680 产地·温和）
+  changzhou: 0.99, // 常州（4680 产地·温和）
+  chengdu: 1.05, // 成都（4680 产地·温和·使三地子集均值≈1.0）
+  // 其余基地（强分化·均值≈1.0）
+  jiangmen: 1.02,
+  handan: 1.0,
+  meishan: 0.98,
+  wuhan: 1.05,
+  xinyang: 1.03,
+  zaozhuang: 1.0,
+  zigong: 1.04,
+  luoyang: 0.93,
+  xiamen: 1.05,
+};
+const YIELD_MULT_BY_BASE: Record<string, number> = {
+  // 4680-NCM 产地（极温和·子集均值≈1.0·守 m11 校准回测/EMA 漂移闸）
+  hefei: 0.99,
+  changzhou: 0.99,
+  chengdu: 1.02,
+  // 其余基地（温和分化·守 yield clamp 0.995 → mult ≤ ~1.04）
+  jiangmen: 0.98,
+  handan: 0.99,
+  meishan: 1.0,
+  wuhan: 1.02,
+  xinyang: 1.01,
+  zaozhuang: 1.0,
+  zigong: 1.02,
+  luoyang: 1.03,
+  xiamen: 1.03,
+};
+
 export const BATTERY_TEMPLATE: IndustryTemplate = {
   industryKey: "battery-manufacturing",
   ontology: {
@@ -1261,8 +1310,8 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
   solverParams: BATTERY_SOLVER_PARAMS,
   // A8.6 §6.1 — measureField/weightField are battery-pack extensions consumed by the generator.
   tsGenerators: [
-    { seriesKey: "oee:equip", entityType: "Equipment", grain: "day", base: { mean: 0.78, noise: 0.04 }, effects: ["maint_window_dip", "weekend_dip"], measureField: "oee", weightField: "output" },
-    { seriesKey: "yield:process", entityType: "Process", grain: "day", base: { mean: 0.952, noise: 0.008 }, effects: ["maint_window_dip"], measureField: "yield" },
+    { seriesKey: "oee:equip", entityType: "Equipment", grain: "day", base: { mean: 0.78, noise: 0.04 }, effects: ["maint_window_dip", "weekend_dip"], measureField: "oee", weightField: "output", baseMult: OEE_MULT_BY_BASE },
+    { seriesKey: "yield:process", entityType: "Process", grain: "day", base: { mean: 0.952, noise: 0.008 }, effects: ["maint_window_dip"], measureField: "yield", baseMult: YIELD_MULT_BY_BASE },
     { seriesKey: "output:line", entityType: "Line", grain: "day", base: { mean: 30000, noise: 1800 }, drift: 8, effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "output" },
     // R13 真派生（非 flat seed）：达成率 = 设备效率达成 × 良率达成 × 排程事件损。逐日持久化分量
     // （oeeAttain/yieldAttain/eventDip），使"为何未达成"可逐日拆为 设备效率损/良率损/检修·周末·爬坡损。

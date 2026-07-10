@@ -21,7 +21,11 @@ describe("计划达成率真派生 · 逐设备勾稽", () => {
     expect(points.length).toBeGreaterThan(20);
     for (const p of points) {
       const v = p.values as Record<string, number>;
-      expect(Math.abs(v.attainment - v.oeeAttain * v.yieldAttain)).toBeLessThan(0.011); // clamp/取整容差
+      // 乘法分解成立：attainment = clamp(oeeAttain × yieldAttain, [0.4,0.995])（rollupLineAttainment 物理钳制——
+      // 达成率 ≤ 99.5%）。WO-FAKE-01 令 oee:equip 逐基地分化后，高 OEE 基地更常触 0.995 上钳 → 与钳后积对齐（更精确断言·
+      // 非放宽：仍钉死乘法分解，仅显式计入 rollup 本就施加的 clamp）。
+      const clampedProduct = Math.min(0.995, Math.max(0.4, v.oeeAttain * v.yieldAttain));
+      expect(Math.abs(v.attainment - clampedProduct)).toBeLessThan(0.011); // 仅余 round 容差
       // 分量与产线实际 OEE/良率 + 计划基准自洽
       expect(Math.abs(v.oeeAttain - v.lineOee / OEE_PLAN)).toBeLessThan(0.002);
       expect(Math.abs(v.yieldAttain - v.lineYield / YIELD_PLAN)).toBeLessThan(0.002);

@@ -30,6 +30,15 @@ export interface TsGenSpec {
   weightField?: string;
   /** 派生序列：measureField 由 derive 命名损因相乘算出，并额外持久化各分量（R13 逐日拆因）。 */
   derive?: TsGenDerive;
+  /**
+   * WO-FAKE-01（闭 G-SIM-FAKE·补 WO-CAP-01 洞·同 WO-CAP-02 产能分化模式）：**确定性**每基地乘子（⛔非 rng·守 R6）——
+   * 令 oee:equip / yield:process **按基地拉开档次**（非全基地扁平同值），使 Equipment.oee_current / Process.yield_baseline
+   * 逐基地分化 → risk_timeline 设备OEE/良率 张力**不再恒定**。乘子只缩放结构性均值（mean×mult·noise 绝对不变），
+   * 键按 baseId 固定映射（非随机·非时钟）；缺基地键 → 1（默认不变·向后兼容其余序列 R6 字节一致）。
+   * 诚实边界：这是 demo 合成数据的**每基地分化**（origin=SYNTHETIC 不变），非真实逐基地 OEE/良率实测抽数——
+   * 故 risk.ts 仍据实标 SYNTHETIC、不冒充 LIVE 决策级红（KILL-MOCK-RED / 铁律 0.4）。
+   */
+  baseMult?: Record<string, number>;
 }
 
 /**
@@ -135,7 +144,10 @@ export function genPoint(
     yieldAttain = round(yieldActual / d.yieldPlan, 4);
     v = oeeAttain * yieldAttain; // 结构性基线（事件损前）
   } else {
-    v = spec.base.mean + spec.base.noise * gauss(rng);
+    // WO-FAKE-01：确定性每基地乘子（守 R6·非 rng）只缩放结构性均值——noise 绝对不变、rng 调用序不变（byte-identical
+    // 其余序列 + 权重 output）。缺基地键 → 1（默认不变）。令 oee:equip/yield:process 逐基地分化，扁平→有档次。
+    const baseMult = spec.baseMult?.[entity.baseId] ?? 1;
+    v = spec.base.mean * baseMult + spec.base.noise * gauss(rng);
     if (spec.drift) v += spec.drift * dayIndex;
   }
   const effects = spec.effects ?? [];
