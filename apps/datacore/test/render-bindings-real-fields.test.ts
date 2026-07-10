@@ -61,6 +61,10 @@ const REPRESENTATIVE_ARGS: Record<string, Record<string, unknown>> = {
   multisource_fusion: { role: "order", fields: ["due"], sources: [{ sourceLabel: "ERP", typeKey: "Order", authority: 1 }, { sourceLabel: "MES", typeKey: "Model", authority: 2 }] },
   // UPG-L0-COVERAGE-FILL：通用因果归因代表性入参（S27 slotPresets 同口径·Metric.actual<floorVal 判越线，沿 MaterialBalance.gapTon 真证据字段量化根因）。
   causal_attribution: { targetType: "Metric", valueField: "actual", thresholdField: "floorVal", direction: "below", driverType: "MaterialBalance", evidenceField: "gapTon", groupField: "material" },
+  // Q30-P2 求解器横铺 A（复用现有机器）代表性入参（S28/S29/S30 slotPresets 同口径·对真合成种子世界合法）。
+  capex_alternatives: { scenarioKey: "枣庄储能线", demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], alternatives: [{ key: "A", label: "小步快跑", projects: [{ id: "A1", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }, { key: "B", label: "一步到位", projects: [{ id: "B1", q0: 0, cap: 8, capex: [6, 4], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }] },
+  full_cost_rollup: {},
+  signal_propagation: { signal: "产能扰动", rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] },
 };
 
 describe("渲染投影绑定 = 真实输出字段（WO ONTO-SCEN-RENDER-PROJ ①·真值齿）", () => {

@@ -26,7 +26,8 @@
  */
 export const SOLVER_COVERAGE: Record<string, string[]> = {
   /** 描述性聚合 / 汇总卷积（当前态是什么）。 */
-  descriptive_aggregation: ["capacity_rollup", "metric_rollup", "cockpit_kpi", "finance_pnl"],
+  // Q30-P2：full_cost_rollup（全成本卷积·复用 capacity_rollup+finance_pnl·产能→成本→损益）挂此类目。
+  descriptive_aggregation: ["capacity_rollup", "metric_rollup", "cockpit_kpi", "finance_pnl", "full_cost_rollup"],
   /** 前向投影 / 时间轴推演（未来会怎样）。 */
   forward_projection: ["capacity_forecast", "risk_timeline", "audit_timeline"],
   /** 瓶颈 / 争用识别（卡在哪）。 */
@@ -55,11 +56,13 @@ export const SOLVER_COVERAGE: Record<string, string[]> = {
   /** 集中度 / 暴露分析（鸡蛋是否在一个篮子）。 */
   concentration_analysis: ["concentration_risk"],
   /** 传导半径 / 影响辐射（断一处波及多远）。 */
-  propagation_radius: ["supplier_disruption_radius"],
+  // Q30-P2：signal_propagation（信号图传导·复用 supplier_disruption_radius 的反向多跳 BFS）挂此类目。
+  propagation_radius: ["supplier_disruption_radius", "signal_propagation"],
   /** 多源仲裁 / 冲突归并（各执一词时信谁）。 */
   multi_source_reconciliation: ["multisource_fusion"],
   /** 备选方案对比（哪个方案好）。 */
-  alternative_comparison: ["multi_plan_compare"],
+  // Q30-P2：capex_alternatives 亦服务此类目（CAPEX 多方案五维比较矩阵·择优推荐）。
+  alternative_comparison: ["multi_plan_compare", "capex_alternatives"],
   /** 需求净额 / 齐套核算（差多少料）。 */
   requirement_netting: ["mrp_netting", "kit_readiness", "lta_gap"],
   /** 排程 / 换型时序（先做谁）。 */
@@ -73,7 +76,8 @@ export const SOLVER_COVERAGE: Record<string, string[]> = {
   /** 排放足迹核算。 */
   emission_footprint: ["carbon_footprint"],
   /** 投资情景推演。 */
-  investment_scenario: ["capex_scenario"],
+  // Q30-P2：capex_alternatives（CAPEX 方案比选·复用 capex_scenario·多方案聚合择优）挂此类目。
+  investment_scenario: ["capex_scenario", "capex_alternatives"],
   /** 受影响范围枚举（谁被影响了）。 */
   affected_scope_enumeration: ["affected_orders"],
   /** 全链条追溯 / 通用多跳推演（跨对象顺链走）。 */
@@ -146,6 +150,10 @@ export const INTENT_PROBLEM_CLASS: Record<string, string> = {
   multisource_fusion_q: "multi_source_reconciliation",
   what_if_displacement_q: "sensitivity_whatif",
   causal_attribution_q: "general_causal_attribution",
+  // Q30-P2 求解器横铺 A：3 个复用求解器场景卡的意图归口。
+  capex_alternatives_q: "investment_scenario",
+  full_cost_rollup_q: "descriptive_aggregation",
+  signal_propagation_q: "propagation_radius",
 };
 
 /** 未知/未登记意图的诚实归口（非静默丢弃）。 */

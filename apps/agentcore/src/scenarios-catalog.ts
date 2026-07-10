@@ -116,6 +116,16 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   // 每个归因数溯源真字段），不再静默落 Path B。slotPresets = 求解器真实入参（Metric.actual<floorVal 判越线，
   // 沿 MaterialBalance.gapTon 真证据字段量化根因主驱动物料·对真 DataCore 合法）。WORKFLOW_FIRST（价值在「越线多少/根因是谁」承载数据）。
   card("S27", "指标越线根因归因", "dash", "causal_attribution_q", "为什么这项经营指标越线恶化？根因主驱动是哪个？", "causal_attribution", ["C16"], "COMPUTE", "解读指标越线的通用因果归因链", [], { targetType: "Metric", valueField: "actual", thresholdField: "floorVal", direction: "below", driverType: "MaterialBalance", evidenceField: "gapTon", groupField: "material" }),
+  // Q30-P2 求解器横铺 A（DESIGN-query30 §1 P2 行·复用现有机器·非从零）：3 张场景卡把 3 个复用求解器接进目录单一来源
+  // → seed 派生循环自动生成意图+计划（invoke_solver 指向该 solver）+ solver_summary 按 SOLVER_RENDER_BINDINGS 投影真实输出字段
+  // → 路径A 可作答（WORKFLOW_FIRST·价值在承载数据表）。slotPresets = 该求解器**真实入参**（对真 DataCore SEED_DEMO 合法）。
+  //
+  // S28 CAPEX 方案比选：复用 capex_scenario（多套产能建设方案各测算 IRR/util24/C23 后聚合择优）。slotPresets=同一需求曲线 + 两套方案（小步快跑/一步到位）。
+  card("S28", "CAPEX 方案比选", "generate", "capex_alternatives_q", "枣庄储能线有几套投资方案，哪套 IRR 和回报最优？", "capex_alternatives", ["C18", "C23"], "COMPUTE", "解读 CAPEX 多方案比选与推荐", [], { scenarioKey: "枣庄储能线", demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], alternatives: [{ key: "A", label: "小步快跑", projects: [{ id: "A1", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }, { key: "B", label: "一步到位", projects: [{ id: "B1", q0: 0, cap: 8, capex: [6, 4], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }] }),
+  // S29 全成本卷积：复用 capacity_rollup + finance_pnl（产能→成本→损益）。无入参（读 Base 产能 + FinancePlan 财务对象）。
+  card("S29", "全成本卷积", "dash", "full_cost_rollup_q", "把产能卷到成本再到损益，全成本口径下经营态势如何？", "full_cost_rollup", ["C15", "C18"], "COMPUTE", "解读全成本卷积（产能→成本→损益）", [], {}),
+  // S30 信号图传导：复用 supplier_disruption_radius 的反向多跳 BFS。slotPresets=常州基地沿 Line→Process→Equipment 产线图传导（对 SEED_DEMO 真图合法）。
+  card("S30", "信号图传导", "risk", "signal_propagation_q", "某个信号从常州基地沿产线图传导，会扩散到哪些工序设备？", "signal_propagation", ["C05", "C16"], "COMPUTE", "解读信号沿供应链/产线图的传导半径与受影响集", [B("changzhou", "常州")], { signal: "产能扰动", rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] }),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {

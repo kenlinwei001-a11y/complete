@@ -158,6 +158,30 @@ export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBind
     { block: "table", fromSolverField: "fused" },
     { block: "text", fromSolverField: "summary" },
   ],
+  // Q30-P2 求解器横铺 A（复用 capex_scenario）：CAPEX 方案比选。KPI=推荐方案键/可比方案数；表=五维比较矩阵；叙事=择优说明。
+  capex_alternatives: [
+    { block: "kpi", fromSolverField: "recommendedKey" },
+    { block: "kpi", fromSolverField: "comparedCount" },
+    { block: "table", fromSolverField: "alternatives" },
+    { block: "text", fromSolverField: "note" },
+  ],
+  // Q30-P2 求解器横铺 A（复用 capacity_rollup+finance_pnl）：全成本卷积。KPI=总周产能/毛利/毛利率；表=量价本利科目+基地产能；叙事=卷积结论。
+  full_cost_rollup: [
+    { block: "kpi", fromSolverField: "capacityWeeklyWan" },
+    { block: "kpi", fromSolverField: "grossMargin" },
+    { block: "kpi", fromSolverField: "marginPct" },
+    { block: "table", fromSolverField: "pnl" },
+    { block: "table", fromSolverField: "capacityBases" },
+    { block: "text", fromSolverField: "summary" },
+  ],
+  // Q30-P2 求解器横铺 A（复用 supplier_disruption_radius 的 BFS）：信号图传导。KPI=半径/受影响总数/末端触达数；表=逐层集；叙事=传导结论。
+  signal_propagation: [
+    { block: "kpi", fromSolverField: "radius" },
+    { block: "kpi", fromSolverField: "totalAffected" },
+    { block: "kpi", fromSolverField: "reachedCount" },
+    { block: "table", fromSolverField: "layers" },
+    { block: "text", fromSolverField: "summary" },
+  ],
   // UPG-L0-COVERAGE-FILL：通用因果归因 root-cause。KPI=越线项数/总缺口；表=越线明细 + 根因主驱动（真证据字段量化）；叙事=归因链结论。
   causal_attribution: [
     { block: "kpi", fromSolverField: "crossedCount" },

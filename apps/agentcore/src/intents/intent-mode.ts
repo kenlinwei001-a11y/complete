@@ -39,6 +39,10 @@ export const INTENT_MODE: Record<string, IntentMode> = {
   // → 无 LLM 时恒 Path B FAILED。改 WORKFLOW_FIRST：重定向到 path-A 通用 causal_attribution 求解器（route=graph·
   // 读真对象图·每个归因数溯源真字段），价值在「越线多少/根因主驱动是哪个物料」承载数据 → 确定性作答不落 Path B。
   risk_root_cause: "WORKFLOW_FIRST",
+  // Q30-P2 求解器横铺 A：3 个复用求解器场景卡——价值在「哪套最优/全成本态势/传导到谁」（求解器承载数据表）→ WORKFLOW_FIRST。
+  capex_alternatives_q: "WORKFLOW_FIRST",
+  full_cost_rollup_q: "WORKFLOW_FIRST",
+  signal_propagation_q: "WORKFLOW_FIRST",
   plan_recommend: "AGENT_FIRST",
   yield_diag: "AGENT_FIRST",
   maint_stagger: "AGENT_FIRST",

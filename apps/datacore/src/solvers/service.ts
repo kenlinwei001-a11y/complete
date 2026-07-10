@@ -22,7 +22,7 @@ import type { SolverArtifact, SolverGenDraft, SolverExperiment, ExperimentArm, E
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
-import { capexScenario, type CapexScenarioArgs } from "./capex.js";
+import { capexScenario, capexAlternatives, type CapexScenarioArgs, type CapexAlternativesArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs, extendedDataMode } from "./extended.js";
 import { FeatureService } from "../features.js";
 
@@ -133,7 +133,11 @@ export class SolverService {
     order_fullchain: (ctx, args) => this.orderFullchain(ctx, args),
     mrp_netting: (ctx) => this.mrpNetting(ctx),
     finance_pnl: (ctx) => this.financePnl(ctx),
+    // Q30-P2 求解器横铺 A：全成本卷积（**复用** capacity_rollup + finance_pnl·产能→成本→损益）。
+    full_cost_rollup: (ctx) => this.fullCostRollup(ctx),
     supplier_disruption_radius: (ctx, args) => this.supplierDisruptionRadius(ctx, args),
+    // Q30-P2 求解器横铺 A：信号图传导（**复用** supplier_disruption_radius 的反向多跳 BFS·同图传导机器）。
+    signal_propagation: (ctx, args) => this.signalPropagation(ctx, args),
     selection_optimize: (ctx, args) => this.selectionOptimize(ctx, args),
     assignment_optimize: (ctx, args) => this.assignmentOptimize(ctx, args),
     sequencing_optimize: (ctx, args) => this.sequencingOptimize(ctx, args),
@@ -1270,6 +1274,34 @@ export class SolverService {
     const layers = Array.isArray(args.layers) ? (args.layers as { type: string; viaField: string }[]) : [];
     if (!rootType || !rootId || layers.length === 0) throw validationError("supplier_disruption_radius 需 rootType + rootId + layers:[{type,viaField}]");
 
+    const { result, radius, totalAffected, leaf } = await this.traverseGraphRadius(ctx, rootId, layers);
+    return {
+      rootType,
+      rootId,
+      layers: result,
+      radius,
+      totalAffected,
+      leafType: leaf?.type ?? null,
+      leafCount: leaf?.count ?? 0,
+      summary: `断供「${rootId}」影响半径 ${radius} 层、波及 ${totalAffected} 个对象；叶层 ${leaf?.type ?? "—"} ${leaf?.count ?? 0} 个`,
+    };
+  }
+
+  /**
+   * Q30-P2 求解器横铺 A · 反向多跳图传导 BFS 单一实现（净室·确定性 R6）——从根沿"谁引用我"逐层扇出，
+   * 逐层算受冲击集合/穿透层数（半径）。`supplier_disruption_radius`（断供影响）与 `signal_propagation`
+   * （信号沿供应链/产线图扩散）**共用**此机器（同一 BFS·仅语义外壳不同），不重造图遍历逻辑。
+   */
+  private async traverseGraphRadius(
+    ctx: AuthCtx,
+    rootId: string,
+    layers: { type: string; viaField: string }[],
+  ): Promise<{
+    result: { type: string; viaField: string; count: number; ids: string[] }[];
+    radius: number;
+    totalAffected: number;
+    leaf: { type: string; viaField: string; count: number; ids: string[] } | undefined;
+  }> {
     let frontier = new Set<string>([rootId]); // 当前层可被引用的"上一层主键"集合
     const result: { type: string; viaField: string; count: number; ids: string[] }[] = [];
     let radius = 0;
@@ -1286,15 +1318,77 @@ export class SolverService {
     }
     const leaf = result[result.length - 1];
     const totalAffected = result.reduce((s, l) => s + l.count, 0);
+    return { result, radius, totalAffected, leaf };
+  }
+
+  /**
+   * Q30-P2 求解器横铺 A · signal_propagation — 信号图传导（**复用** supplier_disruption_radius 的反向多跳
+   * BFS·traverseGraphRadius）。某信号（供应/需求/质量/风险扰动）从根节点沿供应链/产线图逐层扩散——算
+   * 扩散半径（穿透层数）、逐层受影响集、末端触达集合，与断供影响半径同图传导机器、仅语义外壳（signal vs 断供）不同。
+   * args: { signal?（信号标签·回显）, rootType, rootId, layers:[{type,viaField}] }。诚实空态：断链即半径截断（不虚构触达）。
+   */
+  private async signalPropagation(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const signal = args.signal !== undefined ? str(args.signal) : "信号";
+    const rootType = str(args.rootType);
+    const rootId = str(args.rootId);
+    const layers = Array.isArray(args.layers) ? (args.layers as { type: string; viaField: string }[]) : [];
+    if (!rootType || !rootId || layers.length === 0) throw validationError("signal_propagation 需 rootType + rootId + layers:[{type,viaField}]");
+
+    const { result, radius, totalAffected, leaf } = await this.traverseGraphRadius(ctx, rootId, layers);
+    // 受影响集合：逐层触达对象合并（去重排序·确定性 R6）——回答"信号最终波及了谁"。
+    const affectedSet = [...new Set(result.flatMap((l) => l.ids))].sort();
     return {
+      signal,
       rootType,
       rootId,
       layers: result,
       radius,
       totalAffected,
-      leafType: leaf?.type ?? null,
-      leafCount: leaf?.count ?? 0,
-      summary: `断供「${rootId}」影响半径 ${radius} 层、波及 ${totalAffected} 个对象；叶层 ${leaf?.type ?? "—"} ${leaf?.count ?? 0} 个`,
+      reachedType: leaf?.type ?? null,
+      reachedCount: leaf?.count ?? 0,
+      affectedSet,
+      summary: `信号「${signal}」自「${rootId}」沿图传导半径 ${radius} 层、波及 ${totalAffected} 个对象；末端触达 ${leaf?.type ?? "—"} ${leaf?.count ?? 0} 个`,
+    };
+  }
+
+  /**
+   * Q30-P2 求解器横铺 A · full_cost_rollup — 全成本卷积（**复用** capacity_rollup(computeRollup) +
+   * finance_pnl·产能→成本→损益）。把产能上卷（各基地周产能 weeklyWan·真读设备/产线）与量价本利科目表
+   * （FinancePlan 收入/成本/毛利 + 毛利率·真读财务对象）卷积成一张"产能撑起多少收入/成本/毛利"的全成本视图。
+   * 无入参（读对象图）。确定性 R6：纯真对象读出 + 算术，零业务魔数。诚实空态：真无财务/产能对象 → 0/空 + 诚实 dataMode。
+   */
+  private async fullCostRollup(ctx: AuthCtx): Promise<Record<string, unknown>> {
+    // ① 产能侧：复用 capacity_rollup 机器（computeRollup·基地周产能 weeklyWan）。
+    const solverCtx = await this.loadContext(ctx.tenantId, undefined, undefined, ctx);
+    const rollup = computeRollup(solverCtx);
+    const capacityBases = rollup.bases
+      .map((b) => ({ baseId: str(b.baseId), weeklyWan: round(Math.max(0, num(b.weeklyWan)), 4) }))
+      .sort((a, b) => b.weeklyWan - a.weeklyWan || a.baseId.localeCompare(b.baseId));
+    const capacityWeeklyWan = round(capacityBases.reduce((s, b) => s + b.weeklyWan, 0), 4);
+
+    // ② 成本→损益侧：复用 finance_pnl 机器（收入/销售成本/毛利 预算vs滚动 + 毛利率行 + 结构归因）。
+    const fin = (await this.financePnl(ctx)) as {
+      pnl: { subject: string; budget: number; rolling: number; diff: number }[];
+      gmRow: { subject: string; budgetPct: number; rollPct: number; diffPp: number };
+      attribution: string;
+    };
+    const rollingOf = (subject: string) => num(fin.pnl.find((r) => r.subject === subject)?.rolling);
+    const revenue = rollingOf("收入");
+    const cost = rollingOf("销售成本");
+    const grossMargin = rollingOf("毛利");
+    const marginPct = num(fin.gmRow?.rollPct);
+
+    return {
+      capacityWeeklyWan,
+      capacityBases,
+      revenue,
+      cost,
+      grossMargin,
+      marginPct,
+      pnl: fin.pnl,
+      gmRow: fin.gmRow,
+      attribution: fin.attribution,
+      summary: `全成本卷积：产能 ${capacityWeeklyWan} 万套/周（${capacityBases.length} 基地）→ 收入 ${revenue}/销售成本 ${cost}/毛利 ${grossMargin}（毛利率 ${marginPct}%·C15）`,
     };
   }
 
@@ -1876,6 +1970,9 @@ export class SolverService {
         return planGenerate(c, args as unknown as PlanGenerateArgs);
       case "capex_scenario":
         return capexScenario(c, args as unknown as CapexScenarioArgs);
+      // Q30-P2 求解器横铺 A：CAPEX 方案比选（**复用** capex_scenario·同 context 路由·纯聚合择优）。
+      case "capex_alternatives":
+        return capexAlternatives(c, args as unknown as CapexAlternativesArgs);
       default: {
         // 20 场景目录 §2 新增 13 求解器：缺 args 时从对象数据推导（E6b），再确定性求解
         const ext = EXTENDED_SOLVERS[solverKey];

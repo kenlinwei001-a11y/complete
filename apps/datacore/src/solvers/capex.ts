@@ -276,3 +276,125 @@ export function capexScenario(c: SolverContext, args: CapexScenarioArgs): Record
     c23: { irrMin, util24Min },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Q30-P2 · capex_alternatives — CAPEX 方案比选（**复用** capex_scenario·非从零）。
+//
+// 治「投资方案怎么比选」：对同一需求曲线下的**多套产能建设方案**（每套一组产能项目）各跑一次
+// `capexScenario`（复用 C1 公式级机器·IRR 牛顿迭代 / util24 / C23 判定），再把各方案的项目级结果
+// 卷积成**可比标量**（平均 IRR / 最低 IRR / C23 达标项数 / NPV 合计 / 峰值缺口）→ 五维比较矩阵 +
+// 确定性择优推荐（先「全项目 C23 达标」优先，再 NPV 合计高者，缺口小者、方案键序 tiebreak·R6）。
+// 确定性：同 (需求曲线 / 各方案项目集 / 税率参数) → 同输出（capexScenario 本身确定·本层纯聚合排序）。
+// ---------------------------------------------------------------------------
+
+export interface CapexAlternativeInput {
+  /** 方案键（回显 + 稳定排序 + 推荐引用）。 */
+  key: string;
+  /** 方案人话标签（回显·缺省取 key）。 */
+  label?: string;
+  /** 该方案的产能项目集（喂 capexScenario）。 */
+  projects: CapexProjectInput[];
+}
+
+export interface CapexAlternativesArgs {
+  scenarioKey?: string;
+  /** 情景需求曲线 D[q]（按季，万套），全方案共用。 */
+  demand: number[];
+  /** 现有供给 S0[q]（缺省由 SolverContext 派生·同 capex_scenario）。 */
+  s0?: number[];
+  /** 待比选方案集（≥1）。 */
+  alternatives: CapexAlternativeInput[];
+  gapMinQuarters?: number;
+  surplusPct?: number;
+}
+
+interface AlternativeResult {
+  key: string;
+  label: string;
+  projectCount: number;
+  avgIrr: number; // 百分数
+  minIrr: number; // 百分数
+  c23PassCount: number;
+  allC23Pass: boolean;
+  npvSum: number; // 亿
+  peakGap: number; // 万套/季（G 最大值·>0 表最深缺口·≤0 表全程满足）
+}
+
+/**
+ * Q30-P2 capex_alternatives：多方案比选（复用 capexScenario·纯聚合择优）。
+ * 诚实空态（R6/铁律0.4）：alternatives 空 → 空 alternatives + note 说明（绝不合成方案冒充）。
+ */
+export function capexAlternatives(c: SolverContext, args: CapexAlternativesArgs): Record<string, unknown> {
+  const scenarioKey = args.scenarioKey ?? "";
+  const demand = (args.demand ?? []).map((x) => num(x));
+  const Q = demand.length;
+  const alts = Array.isArray(args.alternatives) ? args.alternatives : [];
+  const dims = ["avgIrr", "minIrr", "c23PassCount", "npvSum", "peakGap"] as const;
+
+  if (Q === 0 || alts.length === 0) {
+    return {
+      scenarioKey,
+      quarters: Q,
+      comparedCount: 0,
+      alternatives: [] as AlternativeResult[],
+      recommendedKey: null,
+      dims,
+      note:
+        Q === 0
+          ? "无需求曲线（demand 为空）——无法比选，请补 demand[]（诚实空态·不虚构方案）"
+          : "无候选方案（alternatives 为空）——无可比选项（诚实空态·不虚构方案）",
+    };
+  }
+
+  // 确定性：方案按 key 升序跑 + 聚合。
+  const sorted = [...alts].sort((a, b) => String(a.key).localeCompare(String(b.key)));
+  const results: AlternativeResult[] = [];
+  for (const alt of sorted) {
+    const sub = capexScenario(c, {
+      scenarioKey: alt.key,
+      demand: args.demand,
+      ...(args.s0 !== undefined ? { s0: args.s0 } : {}),
+      projects: alt.projects ?? [],
+      ...(args.gapMinQuarters !== undefined ? { gapMinQuarters: args.gapMinQuarters } : {}),
+      ...(args.surplusPct !== undefined ? { surplusPct: args.surplusPct } : {}),
+    });
+    const projects = (sub.projects ?? []) as ProjectResult[];
+    const G = (sub.G ?? []) as number[];
+    const irrs = projects.map((p) => p.irr);
+    const npvSum = round(projects.reduce((s, p) => s + p.npvAtIrr, 0), 6);
+    const c23PassCount = projects.filter((p) => p.c23pass).length;
+    const peakGap = G.length > 0 ? round(Math.max(...G), 4) : 0;
+    results.push({
+      key: alt.key,
+      label: alt.label ?? alt.key,
+      projectCount: projects.length,
+      avgIrr: irrs.length > 0 ? round(irrs.reduce((s, x) => s + x, 0) / irrs.length, 2) : 0,
+      minIrr: irrs.length > 0 ? round(Math.min(...irrs), 2) : 0,
+      c23PassCount,
+      allC23Pass: projects.length > 0 && c23PassCount === projects.length,
+      npvSum,
+      peakGap,
+    });
+  }
+
+  // 择优（确定性）：① 全项目 C23 达标者优先；② NPV 合计高者；③ 峰值缺口小者；④ 方案键序。
+  const recommended = [...results].sort(
+    (a, b) =>
+      Number(b.allC23Pass) - Number(a.allC23Pass) ||
+      b.npvSum - a.npvSum ||
+      a.peakGap - b.peakGap ||
+      a.key.localeCompare(b.key),
+  )[0];
+
+  return {
+    scenarioKey,
+    quarters: Q,
+    comparedCount: results.length,
+    alternatives: results,
+    recommendedKey: recommended?.key ?? null,
+    dims,
+    note: recommended
+      ? `比选 ${results.length} 套方案：推荐「${recommended.label}」（${recommended.allC23Pass ? "全项目 C23 达标·" : ""}NPV 合计 ${recommended.npvSum} 亿最优）`
+      : "无可推荐方案",
+  };
+}

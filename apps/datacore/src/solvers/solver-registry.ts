@@ -107,6 +107,13 @@ export const SOLVER_REGISTRY: readonly SolverDescriptor[] = [
   // UPG-L0-COVERAGE-FILL：通用因果归因 / root-cause（graph 路由·真读对象图·args 驱动泛化·确定性 R6·零业务常数 R14）。
   // 治 general_causal_attribution 覆盖缺口（PRD-upstream §5.2）——每个归因数溯源真字段，诚实空态不冒充。liveDefault：纯真对象读出/真聚合。
   { key: "causal_attribution", route: "graph", outputShape: ["crossed", "rootDrivers", "crossedCount", "totalGap", "direction", "valueField", "driverField", "summary"], liveDefault: true },
+  // Q30-P2 求解器横铺 A（复用·低成本·DESIGN-query30 §1 P2 行）：
+  //  · capex_alternatives — CAPEX 方案比选，**复用** capex_scenario（context 路由·多方案各跑一次再聚合择优·含启发默认 PARTIAL）。
+  { key: "capex_alternatives", route: "context", outputShape: ["scenarioKey", "quarters", "comparedCount", "alternatives", "recommendedKey", "dims", "note"] },
+  //  · full_cost_rollup — 全成本卷积（产能→成本→损益），**复用** capacity_rollup + finance_pnl（graph 路由·纯真对象读出+算术·liveDefault）。
+  { key: "full_cost_rollup", route: "graph", outputShape: ["capacityWeeklyWan", "capacityBases", "revenue", "cost", "grossMargin", "marginPct", "pnl", "gmRow", "attribution", "summary"], liveDefault: true },
+  //  · signal_propagation — 信号图传导（沿供应链/产线图扩散半径与受影响集），**复用** supplier_disruption_radius 的反向多跳 BFS（graph 路由）。
+  { key: "signal_propagation", route: "graph", outputShape: ["signal", "rootType", "rootId", "layers", "radius", "totalAffected", "reachedType", "reachedCount", "affectedSet", "summary"] },
 ] as const;
 
 /** key→descriptor（O(1) 查·派发码用）。 */

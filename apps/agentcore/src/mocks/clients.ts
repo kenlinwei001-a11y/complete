@@ -576,6 +576,60 @@ const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
     summary: "2 个对象归并，1 处冲突仲裁，1 处测谎命中",
     dataMode: "MOCK",
   },
+  // Q30-P2 求解器横铺 A：3 个复用求解器 mock 输出**形状对齐真实 DataCore**（同 SOLVER_OUTPUT_SHAPES 登记键 +
+  // dataMode:MOCK 诚实标）——使路径A投影（SOLVER_RENDER_BINDINGS）在 mock 侧与真后端同构（真值以真 DataCore 联调为准·
+  // 齿：datacore render-bindings-real-fields.test 钉「绑定字段真在真实输出中」）。
+  capex_alternatives: {
+    scenarioKey: "枣庄储能线",
+    quarters: 4,
+    comparedCount: 2,
+    alternatives: [
+      { key: "A", label: "小步快跑", projectCount: 1, avgIrr: 18.2, minIrr: 18.2, c23PassCount: 1, allC23Pass: true, npvSum: 6.3, peakGap: 5 },
+      { key: "B", label: "一步到位", projectCount: 1, avgIrr: 15.1, minIrr: 15.1, c23PassCount: 1, allC23Pass: true, npvSum: 9.8, peakGap: 1 },
+    ],
+    recommendedKey: "B",
+    dims: ["avgIrr", "minIrr", "c23PassCount", "npvSum", "peakGap"],
+    note: "比选 2 套方案：推荐「一步到位」（全项目 C23 达标·NPV 合计 9.8 亿最优）",
+    dataMode: "MOCK",
+  },
+  full_cost_rollup: {
+    capacityWeeklyWan: 42.5,
+    capacityBases: [
+      { baseId: "changzhou", weeklyWan: 18.5 },
+      { baseId: "chengdu", weeklyWan: 14 },
+      { baseId: "zaozhuang", weeklyWan: 10 },
+    ],
+    revenue: 120,
+    cost: 103,
+    grossMargin: 17,
+    marginPct: 14.2,
+    pnl: [
+      { subject: "收入", budget: 122, rolling: 120, diff: -2 },
+      { subject: "销售成本", budget: 102, rolling: 103, diff: 1 },
+      { subject: "毛利", budget: 20, rolling: 17, diff: -3 },
+    ],
+    gmRow: { subject: "毛利率", budgetPct: 16.4, rollPct: 14.2, diffPp: -2.2 },
+    attribution: "毛利率 16.4%→14.2%（-2.2pp）：储能占比结构拉低",
+    summary: "全成本卷积：产能 42.5 万套/周（3 基地）→ 收入 120/销售成本 103/毛利 17（毛利率 14.2%·C15）",
+    dataMode: "MOCK",
+  },
+  signal_propagation: {
+    signal: "产能扰动",
+    rootType: "Base",
+    rootId: "changzhou",
+    layers: [
+      { type: "Line", viaField: "baseId", count: 3, ids: ["常州·动力线-A", "常州·动力线-B", "常州·储能线-C"] },
+      { type: "Process", viaField: "lineId", count: 9, ids: [] },
+      { type: "Equipment", viaField: "processId", count: 21, ids: [] },
+    ],
+    radius: 3,
+    totalAffected: 33,
+    reachedType: "Equipment",
+    reachedCount: 21,
+    affectedSet: ["常州·动力线-A", "常州·动力线-B", "常州·储能线-C"],
+    summary: "信号「产能扰动」自「changzhou」沿图传导半径 3 层、波及 33 个对象；末端触达 Equipment 21 个",
+    dataMode: "MOCK",
+  },
 };
 
 export class MockSolverClient implements SolverClient {

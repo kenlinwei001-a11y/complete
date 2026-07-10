@@ -56,6 +56,10 @@ export const INTENT_SKILL: Record<string, string> = {
   what_if_displacement_q: "skl_plan_scheme",
   // UPG-L0-COVERAGE-FILL：通用因果归因对口「风险诊断」方法论（越线根因取证口径）。
   causal_attribution_q: "skl_risk_diagnosis",
+  // Q30-P2 求解器横铺 A：3 个复用求解器场景卡对口方法论（复用既有出厂 skill）。
+  capex_alternatives_q: "skl_plan_scheme", // CAPEX 方案比选 → 经营方案方法论（多方案比选口径·同 capex_review）
+  full_cost_rollup_q: "skl_order_margin", // 全成本卷积（成本→损益）→ 接单毛利/成本方法论
+  signal_propagation_q: "skl_risk_diagnosis", // 信号图传导 → 风险诊断方法论（同 supplier_disruption_q）
 };
 
 /** 默认方法论（真实兜底·仅供非目录键的 hardcoded 计划如 what_if_displacement_q 用·目录卡禁静默回落）。 */
@@ -126,6 +130,10 @@ const INTENT_SLICE_ROOT: Record<string, string> = {
   what_if_displacement_q: "Model",
   // UPG-L0-COVERAGE-FILL：通用因果归因主对象=越线指标（Metric·decision 域一等对象）。
   causal_attribution_q: "Metric",
+  // Q30-P2 求解器横铺 A：3 个复用求解器读的主对象类型（切片 rootType·industry-agnostic 本体 key）。
+  capex_alternatives_q: "Base", // CAPEX 方案比选主对象=投资落点基地
+  full_cost_rollup_q: "Base", // 全成本卷积主对象=产能承载基地
+  signal_propagation_q: "Base", // 信号图传导主对象=信号源基地
 };
 
 /** BP-4 对齐 seedIntentsAndPlans：sop_balance 求解器实际绑 mrp_netting（已注册·有真表）。 */

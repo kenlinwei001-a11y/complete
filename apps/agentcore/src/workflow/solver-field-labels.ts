@@ -150,6 +150,25 @@ export const FIELD_LABELS: Readonly<Record<string, FieldLabel>> = {
   recommendedKey: { label: "推荐方案" },
   comparedCount: { label: "可比方案数", unit: "个" },
 
+  // —— causal_attribution 通用因果归因标量字段（补裸 key 存量·solver-label-coverage 守）——
+  valueField: { label: "取值字段" },
+  driverField: { label: "驱动字段" },
+  crossedCount: { label: "越线项数", unit: "项" },
+  totalGap: { label: "总缺口" },
+  direction: { label: "越线方向" },
+
+  // —— Q30-P2 求解器横铺 A · full_cost_rollup 全成本卷积标量字段 ——
+  capacityWeeklyWan: { label: "总周产能", unit: "万套/周" },
+  revenue: { label: "收入" },
+  cost: { label: "销售成本" },
+  grossMargin: { label: "毛利" },
+  marginPct: { label: "毛利率", unit: "%" },
+
+  // —— Q30-P2 求解器横铺 A · signal_propagation 信号图传导标量字段 ——
+  signal: { label: "信号" },
+  reachedType: { label: "末端触达类型" },
+  reachedCount: { label: "末端触达数", unit: "个" },
+
   // —— carbon_footprint 构成子字段（避免展开落 camelCase 英文回落）——
   breakdown: { label: "构成" },
   materialCarbon: { label: "物料碳排", unit: "kgCO₂e" },
@@ -333,6 +352,11 @@ export const STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
   "explanation",
   "fused",
   "strategies",
+  // Q30-P2 求解器横铺 A + causal_attribution 存量 结构性容器（数组/对象·投成表或展开·非标量 KPI）。
+  "crossed", // causal_attribution 越线明细（数组·投表·补存量）
+  "alternatives", // capex_alternatives 五维比较矩阵（方案数组·投表）
+  "capacityBases", // full_cost_rollup 基地产能明细（数组·投表）
+  "affectedSet", // signal_propagation 受影响对象集（id 数组·展开）
 ]);
 
 /**

@@ -105,6 +105,8 @@ export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "quarterly_gap", name: "季度缺口对策", description: "对策按成本升序贪心覆盖季度缺口，残余明示。", argHints: { quarter: "季度", gap: "缺口" }, domain: "plan" },
   { key: "carbon_footprint", name: "碳足迹核算", description: "物料+能耗两段碳排，对比欧盟阈值给改善杠杆。", argHints: { modelId: "型号", baseName: "基地" }, domain: "plan" },
   { key: "countermeasure_combo", name: "对策组合编排器", description: "跨求解器编排：多杠杆按成本贪心闭合缺口，每段标注来源求解器，返回组合/残差/总成本/可行性。", argHints: { gap: "缺口", levers: "杠杆集(可选)" }, domain: "plan" },
+  // Q30-P2 求解器横铺 A（复用 capex_scenario）：CAPEX 方案比选。
+  { key: "capex_alternatives", name: "CAPEX 方案比选", description: "同一需求曲线下多套产能建设方案（各一组产能项目）逐一测算（复用产能投资情景机器·IRR/util24/C23），卷积成五维比较矩阵（平均IRR/最低IRR/C23达标项/NPV合计/峰值缺口）+ 确定性择优推荐（全项目C23达标优先·NPV高者）。回答『几套投资方案怎么比、推荐投哪套』。", argHints: { demand: "季度需求曲线（万套）", alternatives: "待比选方案集（各含产能项目组）" }, domain: "plan" },
   { key: "what_if_displacement", name: "接单挤占推演", description: "某急单（型号/数量/提前比例/周数）插进来能不能接、会挤占哪些在手订单（按优先级级联·C34 挤占优先级不变量）、四型方案（延期/外协/拆单/降级）确定性枚举 + 五维量化比较（≥2 方案门 C35），被挤订单逐单再方案。回答『XX 急单插进来能不能接、挤占哪些单、有哪些方案』。", argHints: { model: "急单型号，如 4680-NCM", qty: "急单数量", advancePct: "提前交付比例，如 0.2", weeks: "交付周数", baseId: "落单基地 ID" }, domain: "plan" },
   { key: "multi_plan_compare", name: "多方案比较矩阵", description: "对接单挤占推演产出的四型方案做五维比较矩阵（交期Δ/毛利/挤占数/外协比/现金占用），确定性择优推荐（毛利优先·可行前置），≥2 可比方案门（C35 口径·不足则诚实不强推）。纯聚合层·每值溯自方案字段。回答『这些方案怎么比、推荐哪个』。", argHints: { schemes: "what_if_displacement 输出的四型方案数组（缺省则从对象图自动装配急单推演）" }, domain: "plan" },
 ];
@@ -121,6 +123,8 @@ export const COCKPIT_SOLVER_CATALOG: CatalogItem[] = [
   { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸 C15→C13→C18）+ 统一结论（可接/提价X%接/不建议接）+ 业务建模链 DAG。回答『这单能不能接、为何提价、卡在哪一判』。", argHints: { so: "订单号(缺省取首单)" }, domain: "decision" },
   { key: "mrp_netting", name: "物料 MRP 净需求", description: "读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）。S&OP 供应评审物料线。", argHints: {}, domain: "plan" },
   { key: "finance_pnl", name: "量价本利科目表", description: "读 FinancePlan+DemandSegment 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 结构归因（C15）。S&OP 财务整合。", argHints: {}, domain: "plan" },
+  // Q30-P2 求解器横铺 A（复用 capacity_rollup + finance_pnl）：全成本卷积。
+  { key: "full_cost_rollup", name: "全成本卷积", description: "把产能上卷（各基地周产能·真读设备/产线）与量价本利科目表（收入/销售成本/毛利+毛利率·真读财务对象）卷积成一张『产能撑起多少收入/成本/毛利』的全成本视图（复用产能上卷 + 量价本利两台机器）。回答『产能→成本→损益全链条卷积后经营态势如何』。", argHints: {}, domain: "plan" },
   { key: "audit_timeline", name: "审计项时序推演", description: "按审计项 kind 出 90 天逐日传导度 series + 4 阶段（事件窗→约束越线→波及订单→财务击穿），与产能推演同款逐日交互。规划体检/规划建议共用。", argHints: { kind: "审计项类别(产销/毛利/齐套/现金…)", horizon: "天数(默认90)" }, domain: "plan" },
   { key: "ksf_graph", name: "财务 KSF 图", description: "3 层有向图投影：待解决问题（越线 Metric）→ 关键成功要素 KSF（5 一等对象）→ 财务计划指标（Metric）。问题→KSF 威胁边、KSF→财务 支撑边，读 Metric(ksfRef)+KSF 投影。规划体检/规划建议共用。", argHints: {}, domain: "decision" },
 ];
@@ -136,6 +140,8 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "concentration_risk", name: "隐性集中度", description: "多跳反向聚合，沿暗线找单点集中（看似分散实则汇聚到同一上游）。净室通用。", argHints: { rootType: "起点对象类型" }, domain: "generic" },
   { key: "margin_attribution", name: "毛利倒挂归因", description: "成本项拆解 + 倒挂群主驱动聚合，定位毛利倒挂的根因成本项。净室通用。", argHints: { itemType: "成本承载对象类型" }, domain: "generic" },
   { key: "supplier_disruption_radius", name: "断供影响半径", description: "给定单一供应商断供，反向多跳逐层扇出算扩散半径与叶层敞口。净室通用。", argHints: { rootType: "供应来源类型", rootId: "断供来源 ID" }, domain: "generic" },
+  // Q30-P2 求解器横铺 A（复用 supplier_disruption_radius 的反向多跳 BFS）：信号图传导。
+  { key: "signal_propagation", name: "信号图传导", description: "某信号（供应/需求/质量/风险扰动）从根节点沿供应链/产线图逐层扩散，算扩散半径（穿透层数）、逐层受影响集与末端触达集合。与断供影响半径同图传导机器·净室通用。回答『这个信号沿供应链/产线传导到哪、波及谁』。", argHints: { rootType: "根节点类型", rootId: "信号源 ID", layers: "逐层 [{type,viaField}]", signal: "信号标签（可选）" }, domain: "generic" },
   { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。贪心给不出最优时用。", argHints: { items: "候选项(价值/重量)", budget: "预算上限" }, domain: "generic" },
   { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）：把待办项指派到容器/基地，最小化总成本，满足容量约束。", argHints: { items: "待指派项", bins: "容器(容量/成本)" }, domain: "generic" },
   { key: "sequencing_optimize", name: "排序最优化", description: "通用排序最优化（CP-SAT 可证最优）：在切换成本矩阵上求最短换型路径序列。", argHints: { jobs: "作业集", changeover: "两两切换成本" }, domain: "generic" },

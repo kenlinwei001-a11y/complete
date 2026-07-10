@@ -38,6 +38,8 @@ const EXPECTED_KEYS = [
   "optimize_whatif", "multisource_fusion", "what_if_displacement", "multi_plan_compare",
   // UPG-L0-COVERAGE-FILL：通用因果归因 root-cause（graph 路由·追加末位·补 general_causal_attribution 覆盖缺口）。
   "causal_attribution",
+  // Q30-P2 求解器横铺 A（复用现有机器·追加末位）：CAPEX 方案比选（context）/ 全成本卷积（graph）/ 信号图传导（graph）。
+  "capex_alternatives", "full_cost_rollup", "signal_propagation",
 ];
 
 // 重构前 A6_READOUT_SOLVERS 白名单。
@@ -45,7 +47,7 @@ const EXPECTED_A6 = ["bottleneck_matrix", "capacity_rollup"];
 // 重构前 LIVE_DEFAULT_SOLVERS 白名单（排序后）。
 const EXPECTED_LIVE = [
   "assignment_optimize", "capacity_rollup", "causal_attribution", "cockpit_kpi", "combinatorial_auction", "concentration_risk",
-  "facility_location", "finance_pnl", "generic_inference", "independent_set", "ksf_graph", "margin_attribution",
+  "facility_location", "finance_pnl", "full_cost_rollup", "generic_inference", "independent_set", "ksf_graph", "margin_attribution",
   "metric_rollup", "min_cost_flow", "mrp_netting", "optimize_whatif", "packing_optimize", "plan_audit",
   "plan_generate", "selection_optimize", "sequencing_optimize", "set_cover", "shared_bottleneck",
 ];
@@ -58,6 +60,8 @@ const EXPECTED_GRAPH = [
   "combinatorial_auction", "optimize_whatif",
   // UPG-L0-COVERAGE-FILL：通用因果归因 root-cause（graph 路由新增·graphHandlers 同步登记）。
   "causal_attribution",
+  // Q30-P2 求解器横铺 A（graph 路由新增·graphHandlers 同步登记）：全成本卷积（复用 capacity_rollup+finance_pnl）/ 信号图传导（复用 supplier_disruption_radius BFS）。
+  "full_cost_rollup", "signal_propagation",
 ];
 // 重构前 EXTENDED_SOLVERS 分派 map（14）。
 const EXPECTED_EXTENDED = [
