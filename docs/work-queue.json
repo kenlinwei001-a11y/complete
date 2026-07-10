@@ -3698,12 +3698,12 @@
       "blockReason": ""
     },
     {
-      "status": "OPEN",
+      "status": "WIP",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-09T08:00:00.000Z",
-        "wip": "2026-07-09T08:48:16.825Z",
+        "wip": "2026-07-10T19:04:10.711Z",
         "built": "2026-07-06T03:44:56.740Z",
         "blocked": "2026-07-09T09:01:56.417Z",
         "done": "2026-07-06T04:06:27.706Z",
@@ -5984,10 +5984,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "WO-CAP-01-REALDEMAND",
-      "at": "2026-07-10T18:42:36.062Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "QUERY30-ORCH",
+      "at": "2026-07-10T19:04:10.726Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
