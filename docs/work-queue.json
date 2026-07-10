@@ -5641,7 +5641,7 @@
       "title": "tick改输入天数批量推演(纯前端)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5663,16 +5663,18 @@
       "at": {
         "created": "2026-07-10",
         "wip": "2026-07-10T15:45:02.421Z",
-        "built": "2026-07-10T16:15:40.381Z"
+        "built": "2026-07-10T16:15:40.381Z",
+        "done": "2026-07-10T17:57:39.670Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器复验(agent ae8c049)：命令条天数N输入·runTicks(N)。N=7→curTick0→7·真发7次POST/tick(逐次响应curTick1..7)·时间轴8格(1基线+7逐日)·后端oracle GET/world session.tick=7=真落库非前端state。默认N=1单步等价·1次POST{n:1}。"
     },
     {
       "id": "WO-CAP-05-BRANCH-VISIBLE",
       "title": "分支结果可达(治点了没反应·结果埋1652px)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5694,9 +5696,11 @@
       "at": {
         "created": "2026-07-10",
         "wip": "2026-07-10T16:16:45.691Z",
-        "built": "2026-07-10T17:23:44.800Z"
+        "built": "2026-07-10T17:23:44.800Z",
+        "done": "2026-07-10T17:57:39.757Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器复验(agent ae8c049)：SimComparePanel移入左主区命令条下·boundingBox y=248.67 inViewport=true·pageScrollY=0天然首屏(不再1652px栈底)。A/B逐值对照/a/v1/sim/compare全MATCH(A tick0 3339.5/tick7 47283.7·B tick0=A tick7=检查点真派生子会话)。onBranch成功scrollIntoView兜底。五维=tickMean宽泛措辞已验真。"
     },
     {
       "id": "WO-CAP-06-WHATIF-SCOPE",
@@ -5909,10 +5913,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "WO-CAP-03-KPI-FIX",
-      "at": "2026-07-10T17:43:35.559Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "WO-CAP-05-BRANCH-VISIBLE",
+      "at": "2026-07-10T17:57:39.758Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
