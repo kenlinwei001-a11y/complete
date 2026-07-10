@@ -5104,7 +5104,7 @@
       "title": "QUERY30拆单P1·Q01垂直打穿(样板·分期铁律): what_if_displacement校验+新建multi_plan_compare五维矩阵+接单全链workflow+Q01 NL入QOS路由",
       "doc": "docs/DESIGN-query30-orch-split.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [
         "Q30-P0-DATAFOUND"
@@ -5155,9 +5155,9 @@
         "todo": "2026-07-09T09:41:32.786Z",
         "wip": "2026-07-09T15:33:28.280Z",
         "built": "2026-07-09T16:18:59.493Z",
-        "blocked": "2026-07-09T15:25:44.370Z"
+        "blocked": "2026-07-10T02:19:32.847Z"
       },
-      "blockReason": ""
+      "blockReason": "复验BLOCK(真跑·又造假#5换马甲): 真Q01对真seed(qty=5000出厂场景值)totalDisplaced=0·与前次BLOCK字节相同(feasibleWithoutDisplacement=true·freeDaily=4555/天·displacedOrders=[])。dev把前次手喂合成orders换成手喂qty=600000自证·缩放真加在真seed(battery.ts:92 ORDER_QTY_CELLS_PER_LOT=40000缩在手单·注释自认按常州线~93%产能反推留freeDaily=4555/天自由产能)·但出厂Q01急单qty仍=5000(scenarios-catalog.ts:104 S26未随电芯口径放大·seed.ts:353工作流{{slots.qty}}原样透传)→qty=5000(dailyDemand120/天)塞4555/天自由产能=结构性零挤占·挤占只在qty≥~191310才现·dev证据用qty=600000(出厂任何路径都不喂的手挑值)·证据文档第18行自认qty=5000→totalDisplaced=0。extended.ts:516-536每被挤单reScheme=3(≥2结构对)但真链0被挤单功能够不着。[红]C3挤占明细半边仍空/C4真链0被影响订单无逐单再方案。[绿]C1分类命中what_if_displacement_q非兜底/C2 multi_plan_compare五维present/C5 R6字节一致/C6 build绿query30-orch.test 12/12(但用手喂orders fixture测机制非真seed)。解阻:出厂场景/NL默认急单qty校正到电芯口径(scenarios-catalog.ts:104)·或抬常州利用率使小急单即挤占——使qty=5000真Q01自身真出挤占·而非只手喂600000时出。此单两次同根(数据场景量纲使真Q01结构性零挤占)·建议协调方裁决是否re-scope"
     },
     {
       "id": "UPG-L0-GAPCORE",
@@ -5511,8 +5511,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "BLOCKED",
-      "id": "UPG-L0-COVERAGE-FILL",
-      "at": "2026-07-10T02:14:28.762Z"
+      "id": "Q30-P1-Q01VERT",
+      "at": "2026-07-10T02:19:32.848Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
