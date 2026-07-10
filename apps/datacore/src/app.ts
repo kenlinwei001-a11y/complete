@@ -58,8 +58,9 @@ import { OpsTeamService } from "./opsteam/team.js";
 import { OpsScheduleService } from "./opsteam/schedule.js";
 import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
-import { OpsScheduleSchema, OntologyWorkflowUpsertSchema } from "@platform/contracts";
+import { OpsScheduleSchema, OntologyWorkflowUpsertSchema, TransformSpecUpsertSchema } from "@platform/contracts";
 import { WorkflowService } from "./pipeline/service.js";
+import { TransformService } from "./transform/service.js";
 import { runProcessing } from "./pipeline/processing.js";
 import { GenericInferenceInputSchema } from "./pipeline/generic-inference.js";
 import type { AuthCtx } from "./domain.js";
@@ -233,6 +234,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
   const workflows = new WorkflowService(repos, ontology, ontologyCore);
+  const transforms = new TransformService(repos);
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
   const catalog = new CatalogService(repos, features);
@@ -1363,6 +1365,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(GenericInferenceInputSchema, req.body);
     return workflows.inference(ctx(req), (req.params as { id: string }).id, body);
   });
+
+  // ---- E2 数据集转换引擎（M2）：声明式 transform DAG + 列级血缘 + 增量物化 ----
+  app.get("/a/v1/transforms", async (req) => ({ items: await transforms.list(ctx(req)) }));
+  app.post("/a/v1/transforms", async (req, reply) => {
+    const body = parseBody(TransformSpecUpsertSchema, req.body);
+    const spec = await transforms.create(ctx(req), body);
+    return reply.status(201).send(spec);
+  });
+  app.get("/a/v1/transforms/:id", async (req) => transforms.get(ctx(req), (req.params as { id: string }).id));
+  app.put("/a/v1/transforms/:id", async (req) => {
+    const body = parseBody(TransformSpecUpsertSchema, req.body);
+    return transforms.update(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/transforms/:id/validate", async (req) => transforms.validate(ctx(req), (req.params as { id: string }).id));
+  app.post("/a/v1/transforms/:id/materialize", async (req) => transforms.materialize(ctx(req), (req.params as { id: string }).id));
+  app.get("/a/v1/transforms/:id/lineage", async (req) => transforms.lineage(ctx(req), (req.params as { id: string }).id));
 
   // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {

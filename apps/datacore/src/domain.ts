@@ -363,6 +363,21 @@ export interface OntologyWorkflowRecord {
   updatedAt: string;
 }
 
+/** E2 数据集转换引擎（maturity §5 · M2）：转换规格 / 运行记录持久化（doc = 契约）。 */
+export interface TransformSpecRecord {
+  id: string; // tf_
+  tenantId: string;
+  doc: import("@platform/contracts").TransformSpec;
+  updatedAt: string;
+}
+
+export interface TransformRunRecord {
+  id: string; // tfrun_
+  tenantId: string;
+  doc: import("@platform/contracts").TransformRun;
+  updatedAt: string;
+}
+
 export interface ObjectInstance {
   id: string; // obj_
   tenantId: string;

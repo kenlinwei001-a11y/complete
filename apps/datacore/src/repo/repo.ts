@@ -57,6 +57,8 @@ import type {
   SolverParamsHistoryRecord,
   SolverParamsRecord,
   SopVersion,
+  TransformSpecRecord,
+  TransformRunRecord,
   SyncJob,
   SyntheticJob,
   Tenant,
@@ -217,6 +219,9 @@ export interface Repos {
   sliceSpecs: Store<SliceSpecRecord>;
   /** OntoFlow（PRD v2 / 013_pipeline.sql）：本体建模工作流。 */
   ontologyWorkflows: Store<OntologyWorkflowRecord>;
+  /** E2 数据集转换引擎（014_transforms.sql）：转换规格 + 运行记录。 */
+  transformSpecs: Store<TransformSpecRecord>;
+  transformRuns: Store<TransformRunRecord>;
   // 治理增量（009_ontology_governance.sql）
   domains: Store<DomainRecord>;
   elementRefs: Store<ElementRefRecord>;

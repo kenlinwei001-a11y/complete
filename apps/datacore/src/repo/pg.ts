@@ -541,6 +541,8 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     derivationValueRuns: new PgStore(pool, "derivation_value_runs"),
     sliceSpecs: new PgStore(pool, "slice_specs"),
     ontologyWorkflows: new PgStore(pool, "ontology_workflows"),
+    transformSpecs: new PgStore(pool, "transform_specs"),
+    transformRuns: new PgStore(pool, "transform_runs"),
     domains: new PgStore(pool, "domains"),
     elementRefs: new PgStore(pool, "element_refs"),
     publishRequests: new PgStore(pool, "publish_requests"),

@@ -16,3 +16,4 @@ export * from "./replay-ops.js";
 export * from "./ontology-governance.js";
 export * from "./execution.js";
 export * from "./pipeline.js";
+export * from "./transform.js";
