@@ -149,6 +149,8 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   { key: "optimize_whatif", name: "优化 what-if", description: "对已绑定的优化模板做结构化扰动（改参/加约束/松约束/换目标权重）→ sidecar 重解 → Δ目标值/可行性/冲突约束。", argHints: { templateKey: "模板键", perturbation: "结构化扰动" }, domain: "generic" },
   // N1 多源融合（WO-MULTISRC-FUSION）：跨来源按 PK 归并 FusedObject + A5 冲突仲裁 + 测谎 SUSPECT + AUDIT 留痕（建在 SolverBinding 之上）。
   { key: "multisource_fusion", name: "多源融合", description: "对同一对象类型的多个数据源按主键归并为 FusedObject：字段级冲突按 A5 仲裁策略裁定，越界/矛盾值标 SUSPECT（测谎），全程留 AUDIT。回答『多个来源打架时以谁为准、哪些值可疑』。", argHints: { role: "对象角色(经 SolverBinding 解真实类型)", sources: "≥2 个来源数据集", fields: "≥1 个参与融合的字段" }, domain: "generic" },
+  // UPG-L0-COVERAGE-FILL：通用因果归因（覆盖 general_causal_attribution 类目·净室通用·复用 plan_rootcause 越线检测 + margin_attribution 主驱动聚合·零模板）。补 catalog 条目同步 SOLVER_REGISTRY（COVERAGE-FILL 原漏登致 catalog↔registry 计数漂移）。
+  { key: "causal_attribution", name: "通用因果归因", description: "判定某经营指标为何恶化/越线（目标类型实测值对底线/阈值），再按真实驱动对象逐项量化根因主驱动（share=贡献/总贡献）。每个归因数字溯源真实字段，无真数据诚实空态。回答『为什么 X 越线恶化、根因主驱动是哪项』。", argHints: { targetType: "指标承载对象类型", valueField: "实测值字段", driverType: "驱动对象类型", evidenceField: "驱动证据字段" }, domain: "generic" },
 ];
 
 /** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */
