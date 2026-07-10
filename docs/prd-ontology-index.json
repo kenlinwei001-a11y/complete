@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-09",
+  "generatedAt": "2026-07-10",
   "ontology": {
     "invariants": [
       "R1",
@@ -913,9 +913,7 @@
         "scripts/check-hidden-req-keys.mjs",
         "scripts/check-prd-ontology.mjs"
       ],
-      "brokenArtifacts": [
-        "scripts/check-hidden-req-keys.mjs"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-gapfill-surface-consolidation.md": {
       "hasOntologyRef": true,
