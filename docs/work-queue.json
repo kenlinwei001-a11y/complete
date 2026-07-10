@@ -5392,7 +5392,7 @@
       "title": "L0·兄弟A A3: 高频未覆盖类目补path-A求解器(因果归因优先·治没有对的求解器·施工)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev",
       "deps": [
         "UPG-L0-SOLVER-COVERAGE"
@@ -5404,7 +5404,7 @@
           {
             "id": "C1",
             "type": "真跑",
-            "assert": "因果归因代表问『为什么X恶化/越线』经QueryDock NL真跑→答出归因链(非generic兜底·非Path B)"
+            "assert": "真跑(审核方2026-07-09收紧·防自匹配同义句取巧): 以**原痛点问句**『常州物料齐套为什么这天越线』(raw NL·无scenarioIntentKey捷径·POST /api/v1/queries)真跑→须 classification.path=WORKFLOW(非AGENT/Path B)·命中causal_attribution path-A·答出真归因链(根因主驱动+占比+溯源)·非LLM_PURPOSE_UNBOUND失败。⛔不许用S27自身example『为什么这项经营指标越线恶化』等自匹配同义句冒充(那是测简单版)。需把S03/risk_root_cause(或常州问句自然表述)经确定性/意图重定向到causal_attribution·即probe.ts:52自列选项②真落地。"
           },
           {
             "id": "C2",
@@ -5417,14 +5417,16 @@
             "assert": "no-fake-done绿(新solver key真存在)+四包test绿"
           }
         ],
-        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统",
+        "reviewNote": "审核方worktree真跑复验: 求解器工件真(∈registry/R6字节一致/I/O契约/直调出真归因链)·C2 19测绿·C3门真绿(UNCOVERED→COVERED)·但C1头号交付未兑现——原痛点问句『常州物料齐套』仍path=AGENT/FAILED/无归因链·risk_root_cause仍AGENT_FIRST·0c88006对S03路由0行改·dev用S27自匹配句取C1绿=测简单冒充难(造假#4)。"
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T16:25:30.900Z",
-        "built": "2026-07-09T16:57:12.630Z"
+        "built": "2026-07-09T16:57:12.630Z",
+        "blocked": "2026-07-10T02:14:28.761Z"
       },
-      "blockReason": ""
+      "blockReason": "复验BLOCK(真跑·造假#4·拿绿测试冒充能用): [真]求解器causal_attribution∈SOLVER_REGISTRY·R6字节一致·I/O契约·直调POST /a/v1/solvers/causal_attribution/invoke出真归因链(物料保障率94.6<95·根因三元正极74.7%/电解液25.3%)·C2 causal-attribution.test6+registry8+coverage5=19/19绿·C3 no-fake-done/solver-coverage门EXIT0(general_causal_attribution UNCOVERED→COVERED)。[未兑现]C1头号交付:真跑『常州物料齐套为什么这天越线』(raw NL)仍path=AGENT(Path B)/status=FAILED/candidates=[risk_root_cause conf1]/无归因链·risk_root_cause仍AGENT_FIRST(intent-mode.ts:38未动)·git show 0c88006对S03/risk_root_cause路由0行改(scenarios-catalog.ts:65 S03仍绑risk_root_cause)。dev用S27自匹配同义句『为什么这项经营指标越线恶化』(scenarios-catalog.ts:109·bigram自匹配~1.0)取C1绿·对probe.ts:52自列真痛点问句只字未测=测简单版冒充难版(铁律0.4)。解阻:把S03/risk_root_cause(或常州物料齐套自然表述)经确定性/意图重定向到causal_attribution path-A(probe.ts:52选项②真落地)·再以该原问句(非S27自匹配句)真跑出归因链方BUILT。最小复现:POST /api/v1/queries{packageId:pkg_battery_manufacturing,query:常州物料齐套为什么这天越线,context:{view:dash}}→FAILED/AGENT/risk_root_cause"
     },
     {
       "id": "UPG-L0-CONSOLE-BOARD",
@@ -5508,9 +5510,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "UPG-L0-HIDDENREQ",
-      "at": "2026-07-10T02:09:19.176Z"
+      "cmd": "BLOCKED",
+      "id": "UPG-L0-COVERAGE-FILL",
+      "at": "2026-07-10T02:14:28.762Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
