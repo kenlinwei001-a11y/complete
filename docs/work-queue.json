@@ -5768,6 +5768,114 @@
         "discipline": "additive·依赖05/06/07落地"
       },
       "at": "2026-07-10"
+    },
+    {
+      "id": "WO-MERGE-01",
+      "title": "合并OntoFlow①后端:移植pipeline(readiness/scaffold/generic-inference/processing/subgraph)进主线+B1门控+B2 scaffold真落库",
+      "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "OntoFlow pipeline后端功能移植进主线(适配主线service.ts/app.ts/迁移)·带病BLOCK当场做对(门控+scaffold落库)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "移植后真跑:generic-inference四跳真重算(Δ→沿派生/link/二跳·改Δ改目标真变)·readiness随数据真变·scaffold真落库(scaffold后/b/v1/agents/scene-entries真多产可查·非只JSON)"
+          },
+          {
+            "id": "C2",
+            "type": "真跑·B1门控",
+            "assert": "feature.data-builder注册主线FEATURE_REGISTRY+/a/v1/ontology-workflows/*挂requireFeature·关→404 FEATURE_NOT_FOUND·开→可用"
+          },
+          {
+            "id": "C3",
+            "type": "gate·R6",
+            "assert": "pipeline契约∈contracts+R6三端byte-identical+迁移down→up真pg幂等+四包build+test绿(随迁test:readiness/scaffold/generic-inference/processing/workflow/pipeline)"
+          },
+          {
+            "id": "C4",
+            "type": "真跑·隔离",
+            "assert": "跨租户404·R2/R3隔离"
+          }
+        ],
+        "discipline": "移植=复用O已复验真算代码适配主线·非重写;暗发feature·additive·迁移带down·KILL-MOCK-RED(scaffold须真落库非空壳)"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-MERGE-02",
+      "title": "合并OntoFlow②前端:移植pipeline画布组件+DataBuilderPage统一入口+B3推演前端+B4契约对齐",
+      "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-MERGE-01"
+      ],
+      "acceptance": {
+        "goal": "pipeline前端(WorkflowCanvas/NodeConfigPanel/ReadinessGauge)移植+DataBuilderPage统一(调和主线既有)+补推演入口+契约对齐。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑·真浏览器",
+            "assert": "双模式端到端(图谱先行/数据先行)真走:画布真编辑真落后端→发布真产本体(可查)→scaffold真产视图/场景入口(可查)→通用推演Δ→前后对比逐值对照后端"
+          },
+          {
+            "id": "C2",
+            "type": "真跑·B3",
+            "assert": "前端有「推演」入口·消费/:id/inference·Δ+受影响对象前后对比UI(逐值对照后端generic-inference真值)"
+          },
+          {
+            "id": "C3",
+            "type": "真跑·B4契约",
+            "assert": "真后端发布→面板类型/链路真显示真类型名(非空白)·MSW与真后端同形·f41校验类型值真断言(堵绿测试≠能用)"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "DataBuilderPage单一入口(adminRegistry·非双页并列)·既有前端测不破"
+          }
+        ],
+        "discipline": "真浏览器逐值对照后端(KILL-MOCK-RED)·不移植GeoMapView(主线已退役geo-map)"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-MERGE-03",
+      "title": "合并OntoFlow③收口:pipeline↔databuilder引擎协同+母体回写+OntoFlow分支退役",
+      "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-MERGE-01",
+        "WO-MERGE-02"
+      ],
+      "acceptance": {
+        "goal": "pipeline画布与主线databuilder引擎协同接线+本体母体回写+OntoFlow分支退役标记。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "pipeline画布节点级数据处理/接入走主线databuilder引擎能力(协同非替代)·真跑一条端到端证接线"
+          },
+          {
+            "id": "C2",
+            "type": "gate·本体",
+            "assert": "回写SYSTEM-ONTOLOGY.md §2新对象类型(OntologyWorkflow/EntityNode/ProcessingSpec/ReadinessScore/ScaffoldBlueprint)+§3新链路+pnpm ontology:slices·ontology-slices:check+ontology-writeback:check绿"
+          },
+          {
+            "id": "C3",
+            "type": "运维",
+            "assert": "OntoFlow分支退役标记(不再push新功能·docs注明)·统一到主线单queue单dev"
+          }
+        ],
+        "discipline": "additive·母体回写不可省(铁律0)"
+      },
+      "at": "2026-07-10"
     }
   ],
   "meta": {
@@ -5855,6 +5963,17 @@
       ],
       "at": "2026-07-10",
       "note": "产能推演决策流重构:假推演根治+型号维度+运营一条龙(3真跑代理诊断)"
+    },
+    "mergeOntoflow": {
+      "prd": "docs/PRD-merge-ontoflow-into-mainline.md",
+      "wos": [
+        "WO-MERGE-01",
+        "WO-MERGE-02",
+        "WO-MERGE-03"
+      ],
+      "at": "2026-07-10",
+      "trunk": "claude/vigilant-knuth-b1nmxn",
+      "note": "合并OntoFlow进主线:主干=主线(超集+治理)·移植pipeline功能+4fix·OntoFlow分支退役·统一一dev一queue"
     }
   }
 }
