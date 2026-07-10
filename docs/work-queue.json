@@ -5532,8 +5532,8 @@
       "title": "产能推演·假推演根治:风险张力绑真供需(闭G-SIM-FAKE)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P0",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "acceptance": {
         "goal": "风险张力不再建在合成扁平util·改取真供需模型demandCapacityTightness·红对真需求敏感·不再全基地恒红。",
@@ -5566,7 +5566,10 @@
         ],
         "discipline": "暗发feature qos.risk_realdemand(defaultOn:false)·additive·关闸=现行lines-utilization分支·回退演练入齿(铁律0.4)"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-10T15:45:02.362Z"
+      }
     },
     {
       "id": "WO-CAP-02-SEED-VARY",
@@ -5630,8 +5633,8 @@
       "title": "tick改输入天数批量推演(纯前端)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "acceptance": {
         "goal": "命令条加天数N输入·一次推N天(后端app.ts:1426已支持N步·前端runTicks现成)。",
@@ -5649,7 +5652,10 @@
         ],
         "discipline": "纯前端·后端不动·additive"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-10T15:45:02.421Z"
+      }
     },
     {
       "id": "WO-CAP-05-BRANCH-VISIBLE",
@@ -5885,8 +5891,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "WIP",
-      "id": "WO-MERGE-01",
-      "at": "2026-07-10T15:39:57.480Z"
+      "id": "WO-CAP-04-TICK-DAYS",
+      "at": "2026-07-10T15:45:02.421Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
