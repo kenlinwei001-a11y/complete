@@ -53,6 +53,12 @@ const EXEMPT = new Set([
   // UPG-L0-COVERAGE-FILL：通用因果归因 root-cause（args 驱动·读任意目标/驱动对象类型·非 SolverContext 固定 22 类·同 margin_attribution 净室族豁免）。
   "causal_attribution",
   "counterfactual_timeline",
+  // QUERY30-ORCH 横铺 A/B（Q30-P2/P3）：3 复用类真调 EXEMPT 子求解器（自身不经固定 SolverContext 角色·经子求解器 invoke/arg 装配）
+  "signal_propagation", "reroute_decision", "multi_constraint_schedule",
+  // 2 复用类真调「已声明清单」子求解器（capex_scenario / capacity_rollup+finance_pnl）·自身经子求解器 invoke·不另加固定角色
+  "capex_alternatives", "full_cost_rollup",
+  // 3 新域求解器：经 repos.objects.listByType 直读非 SolverContext 对象（FinanceAccount/Customer/Order · LaborShift/Line/Order · EnergyMeter/Order）·同 margin_attribution 净室族豁免
+  "cash_projection", "labor_balance", "energy_cost_schedule",
 ]);
 
 let red = false;

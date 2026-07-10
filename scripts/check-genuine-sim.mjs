@@ -257,6 +257,10 @@ try {
     multisource_fusion: VIA_PROJECTION,
     // QUERY30 求解器·无专属前端决策视图（前端 grep 0 引用）·同 what_if_displacement/generic_inference 归类。
     multi_plan_compare: VIA_PROJECTION, causal_attribution: VIA_PROJECTION,
+    // QUERY30-ORCH 横铺 A/B（Q30-P2/P3·8 求解器）·均无专属前端决策视图（前端 grep 0 引用）·经 QOS/Agent 通用答案渲染器 + DataModeBadge 消费诚实位。
+    capex_alternatives: VIA_PROJECTION, full_cost_rollup: VIA_PROJECTION, signal_propagation: VIA_PROJECTION,
+    cash_projection: VIA_PROJECTION, labor_balance: VIA_PROJECTION, energy_cost_schedule: VIA_PROJECTION,
+    reroute_decision: VIA_PROJECTION, multi_constraint_schedule: VIA_PROJECTION,
   };
 
   const decisionKeys = allKeys.filter((k) => !(k in NON_DECISION_KEYS));
