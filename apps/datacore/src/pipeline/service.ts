@@ -1,10 +1,14 @@
 import type { OntologyWorkflow, OntologyWorkflowUpsert, WfValidationIssue } from "@platform/contracts";
-import type { AuthCtx, OntologyWorkflowRecord } from "../domain.js";
+import type { AuthCtx, OntologyWorkflowRecord, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import { newId } from "../ids.js";
 import { notFound, validationError, AppError } from "../errors.js";
 import { runProcessing, type EntityRecord } from "./processing.js";
 import { buildTypeDefs, buildLinkDefs, buildSliceSpec } from "./subgraph.js";
+import { computeReadiness } from "./readiness.js";
+import { buildScaffold } from "./scaffold.js";
+import { computeInference, type GenericInferenceInput, type GenericInferenceOutput } from "./generic-inference.js";
+import type { ReadinessResult, ScaffoldResult } from "@platform/contracts";
 import type { OntologyService } from "../ontology.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 
@@ -146,6 +150,31 @@ export class WorkflowService {
     if (slice) await this.ontologyCore.putSliceSpec(ctx, slice.sliceKey, 1, slice.spec as never);
     await this.save({ ...wf, status: "PUBLISHED", updatedAt: new Date().toISOString() });
     return { types: typeDefs.map((t) => t.key), links: linkDefs.map((l) => l.key), sliceKey: slice?.sliceKey, version };
+  }
+
+  /** P4 准备度：各实体/子图局部仿真准备度评分（纯确定性，见 readiness.ts）。 */
+  async readiness(ctx: AuthCtx, id: string): Promise<ReadinessResult> {
+    const wf = await this.get(ctx, id);
+    return computeReadiness(wf);
+  }
+
+  /** P4 生成应用（§8.1）：从已发布本体派生视图/场景/Agent/场景包/求解器绑定。 */
+  async scaffold(ctx: AuthCtx, id: string): Promise<ScaffoldResult> {
+    const wf = await this.get(ctx, id);
+    return buildScaffold(wf);
+  }
+
+  /**
+   * P4 通用 what-if（§8.2）：对已发布本体的 ONTOLOGY 类型对象施加变更，
+   * 沿派生/聚合边有界传播，输出 before/after。领域深推演仍需求解器（可插拔）。
+   */
+  async inference(ctx: AuthCtx, id: string, input: GenericInferenceInput): Promise<GenericInferenceOutput> {
+    const wf = await this.get(ctx, id);
+    const types = buildTypeDefs(wf).filter((t) => t.storageMode === "ONTOLOGY");
+    const links = buildLinkDefs(wf);
+    const objectsByType: Record<string, ObjectInstance[]> = {};
+    for (const t of types) objectsByType[t.key] = await this.repos.objects.listByType(ctx.tenantId, t.key);
+    return computeInference({ types, links, objectsByType }, input);
   }
 
   private hasCycle(wf: OntologyWorkflow): boolean {

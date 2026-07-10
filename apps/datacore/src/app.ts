@@ -61,6 +61,7 @@ import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema, OntologyWorkflowUpsertSchema } from "@platform/contracts";
 import { WorkflowService } from "./pipeline/service.js";
 import { runProcessing } from "./pipeline/processing.js";
+import { GenericInferenceInputSchema } from "./pipeline/generic-inference.js";
 import type { AuthCtx } from "./domain.js";
 
 declare module "fastify" {
@@ -1355,6 +1356,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return workflows.promote(ctx(req), id, nodeId);
   });
   app.post("/a/v1/ontology-workflows/:id/publish", async (req) => workflows.publish(ctx(req), (req.params as { id: string }).id));
+  // ---- OntoFlow（PRD v2 · P4）准备度 / 生成应用 / 通用 what-if ----------------
+  app.post("/a/v1/ontology-workflows/:id/readiness", async (req) => workflows.readiness(ctx(req), (req.params as { id: string }).id));
+  app.post("/a/v1/ontology-workflows/:id/scaffold", async (req) => workflows.scaffold(ctx(req), (req.params as { id: string }).id));
+  app.post("/a/v1/ontology-workflows/:id/inference", async (req) => {
+    const body = parseBody(GenericInferenceInputSchema, req.body);
+    return workflows.inference(ctx(req), (req.params as { id: string }).id, body);
+  });
 
   // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {
