@@ -5580,7 +5580,7 @@
       "title": "产能推演·种子按基地分化+传导衰减(治恒红无涨落)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5606,15 +5606,17 @@
       },
       "at": {
         "created": "2026-07-10",
-        "wip": "2026-07-10T17:43:35.431Z"
-      }
+        "wip": "2026-07-10T17:43:35.431Z",
+        "built": "2026-07-10T20:46:54.508Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-CAP-03-KPI-FIX",
       "title": "沙盘KPI口径正名(治利用率2%误导)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5635,8 +5637,10 @@
       },
       "at": {
         "created": "2026-07-10",
-        "wip": "2026-07-10T17:43:35.559Z"
-      }
+        "wip": "2026-07-10T17:43:35.559Z",
+        "built": "2026-07-10T20:46:54.587Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-CAP-04-TICK-DAYS",
@@ -5709,7 +5713,7 @@
       "title": "跳转真带基地并生效(闭G-3)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5730,15 +5734,17 @@
       },
       "at": {
         "created": "2026-07-10",
-        "wip": "2026-07-10T17:43:35.488Z"
-      }
+        "wip": "2026-07-10T17:43:35.488Z",
+        "built": "2026-07-10T20:46:54.667Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-CAP-07-MODEL-DIM",
       "title": "产能推演加电池型号维度(用户明确要·后端现成)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P2",
-      "status": "TODO",
+      "status": "BUILT",
       "owner": "",
       "deps": [],
       "acceptance": {
@@ -5762,7 +5768,11 @@
         ],
         "discipline": "additive·R14配置驱动·whatif.ts已有model/demand/weeks字段"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "built": "2026-07-10T20:46:54.761Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-CAP-08-OPS-FLOW",
@@ -5847,7 +5857,7 @@
       "title": "合并OntoFlow②前端:移植pipeline画布组件+DataBuilderPage统一入口+B3推演前端+B4契约对齐",
       "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
       "priority": "P1",
-      "status": "TODO",
+      "status": "BUILT",
       "owner": "",
       "deps": [
         "WO-MERGE-01"
@@ -5878,7 +5888,11 @@
         ],
         "discipline": "真浏览器逐值对照后端(KILL-MOCK-RED)·不移植GeoMapView(主线已退役geo-map)"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "built": "2026-07-10T20:46:54.949Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-MERGE-03",
@@ -5920,9 +5934,11 @@
       "at": "2026-07-10"
     },
     {
-      "status": "TODO",
+      "status": "BUILT",
       "owner": "",
-      "at": {},
+      "at": {
+        "built": "2026-07-10T20:46:54.859Z"
+      },
       "id": "WO-FAKE-01",
       "priority": "P0",
       "deps": [],
@@ -5948,7 +5964,8 @@
           }
         ],
         "discipline": "确定性乘子非rng·additive。此单+CAP-02+FAKE-05落地=假推演真根治(用户不打折)。"
-      }
+      },
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -5985,9 +6002,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
-      "id": "QUERY30-ORCH",
-      "at": "2026-07-10T19:04:10.726Z"
+      "cmd": "BUILT",
+      "id": "WO-MERGE-02",
+      "at": "2026-07-10T20:46:54.949Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
