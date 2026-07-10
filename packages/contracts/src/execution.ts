@@ -78,6 +78,7 @@ export const QuarantineReasonSchema = z.enum([
   "UNIT_ERROR",
   "RULE_REJECT",
   "DUP_KEY",
+  "SCHEMA_DRIFT", // E1：连接器增量同步发现 schema 漂移（列增删/类型变化）→ 隔离区
 ]);
 export type QuarantineReason = z.infer<typeof QuarantineReasonSchema>;
 

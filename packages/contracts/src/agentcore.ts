@@ -243,6 +243,9 @@ export const EvalCaseResultSchema = z.object({
     latencyMs: z.number(),
     tokenCost: z.number().optional(),
     answerExcerpt: z.string().optional(),
+    /** E4：回答中出现的、无工具/求解器溯源支撑的数字（幻觉信号）。 */
+    unverifiedNumerics: z.array(z.string()).optional(),
+    hallucination: z.boolean().optional(),
   }),
 });
 export type EvalCaseResult = z.infer<typeof EvalCaseResultSchema>;
@@ -264,9 +267,35 @@ export const EvalRunReportSchema = z.object({
     avgToolCalls: z.number(),
     avgLatencyMs: z.number(),
     avgTokenCost: z.number(),
+    /** E4：幻觉率 = 含未溯源数字的用例占比（0–1，越低越好）。可选以兼容既有报告。 */
+    hallucinationRate: z.number().optional(),
   }),
   results: z.array(EvalCaseResultSchema),
   /** mock LLM 跑出的分数仅证框架，非真实质量（接真模型后即真）。 */
   llmMode: z.enum(["MOCK", "REAL"]),
 });
 export type EvalRunReport = z.infer<typeof EvalRunReportSchema>;
+
+// E4：影子发布门禁 —— 候选 eval 跑分对照阈值（意图≥0.9/工具≥0.85/幻觉率≤上限），
+// 供发布 agent/skill 版本前作 gate。可对照 baseline 运行（回归不劣化）。
+export const EvalGateThresholdsSchema = z.object({
+  intentAccuracy: z.number().default(0.9),
+  toolCorrectness: z.number().default(0.85),
+  maxHallucinationRate: z.number().default(0.1),
+});
+export type EvalGateThresholds = z.infer<typeof EvalGateThresholdsSchema>;
+
+export const EvalGateResultSchema = z.object({
+  pass: z.boolean(),
+  candidateRunId: z.string(),
+  baselineRunId: z.string().optional(),
+  thresholds: EvalGateThresholdsSchema,
+  metrics: z.object({
+    intentAccuracy: z.number(),
+    toolCorrectness: z.number(),
+    hallucinationRate: z.number(),
+  }),
+  /** 未过门原因（人读）。pass=true 时为空。 */
+  failures: z.array(z.string()),
+});
+export type EvalGateResult = z.infer<typeof EvalGateResultSchema>;
