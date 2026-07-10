@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `c83b15a15b077e54`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `45d9afe07dcad802`。
 
 ---
 
@@ -219,6 +219,9 @@ WO-SIM-PRESET-INJECT(命门·治 G-3 launcher→view 接缝·G-VIS-1·additive)�
   **落点键修**：`useQuickLaunch` 导航用 `normalizeViewKey(targetView)`(project→project-sim)——ViewPage 按 workspace.views 规范键查视图,短键 /v/project 查不到→ForbiddenPage(真点卡落空白)。
   **参数对齐**：`scenarioSlotsToPreset` modelId→model·demandDelta(相对)→绝对 demand(以 DEFAULT_QTY=40 为基·0.2→48)·weeks 直传(治「名不同/相对vs绝对」)。**4 视图读通道**：project-sim(型号/需求/时窗→capacity_forecast)·plan-audit(cashCushion 元→亿→现金垫)·plan-generate(目标键 override)·sop-balance(C5 示例占位值未改→运行前软阻断防喂 C21)。URL 深链通道保留(deep-link 兼容·分享链接走 URL·launcher 走 sessionStore)。
   牙齿 `resolveSimPreset`/`scenarioSlotsToPreset` R14 型号白名单+R6 裁剪。真启动器点卡 e2e(真浏览器·点 S01 卡「4680-NCM 加 20% 六周」→落 /v/project-sim→型号 4680-NCM·需求 input=48(=40×1.2·非默认 40)·6周·前端 input==求解器入参·oracle qty=48)：docs/evidence/SIM-PRESET-INJECT-fde.md(v2·BLOCK 复修)
+WO-CAP-07-MODEL-DIM(链路⑤·型号产能链前端 surface·additive·闭「后端有·前端未 surface」)：**型号维度切片进推演沙盘**——后端型号维度早现成（`capacity_forecast` 按 modelId 建·`catalog.ts`；型号可产基地网络 `PRODUCIBLE_AT`·Model 一等类型 `graphmeta.ts`），此前推演沙盘只基地/全局态视角、从不 surface 型号维度。
+  **链路**：`SandboxView` 挂 `ModelCapacitySlice`(独立 panel·不动 KPI/命令条/DAG 区) → 型号下拉**来自本体 Model 对象** `GET /a/v1/objects?type=Model`(R14 配置驱动·非写死·what-if 带入型号作初值) → 选型号 `capacity_forecast(modelId,qty,weeks)`(经 `useLiveSolver`·同前端既有求解路径) → 展示该型号 **P50/P90/缺口/主瓶颈** + **型号可产基地网络**(perBaseRows=可产基地·带各基地瓶颈/紧张度；nonProducible=不可产基地；producibleCount/totalBases 收敛)。KILL-MOCK-RED：紧张度 `live!==true` → 灰「估算」不染决策红。
+  牙齿 `test/wo-cap-07-model-dim.test.tsx`(型号列表来自 Model 对象非写死·选型号逐值出 P50/P90/缺口/主瓶颈+可产基地网络·切型号重调求解器·无 Model 诚实空态)。真起 datacore+agentcore·真浏览器逐值对照(admin/demo1234·/v/sim-sandbox 选 4680-NCM→P50 5.2/P90 4.9/缺口 35.1/主瓶颈 设备OEE·可产基地 常州/成都/合肥·3/12 收敛·逐值==capacity_forecast 端点·下拉==本体 Model 对象)：docs/evidence/wo-cap-07-model-dim-fde.md
 LAUNCH-VIEW-KEY-ALIGN(治 G-3 落点断链·簇② 404/403·单一键口径·additive)：`normalizeViewKey`/`VIEW_ALIAS` 的口径须**唯一对齐 workspace.views 真实注册键**——dash/risk 的真键**就是短键本身**(`{key:"dash",renderer:"dashboard"}`/`{key:"risk",renderer:"risk-board"}`·datacore `synthetic/service.ts`+mocks/fixtures.ts)，曾误把 dash→dashboard、risk→risk-board 当"规范化" → 卡落 `/v/dashboard`(无 `view.dashboard` feature=404·S15/16/20) / `/v/risk-board`(无 `risk-board` view key=403·S12/13)。**修**：`VIEW_ALIAS` 只登记 workspace 键≠卡短键的视图(sim 类 sop→sop-balance/project→project-sim/audit→plan-audit/generate→plan-generate/quarter→quarterly-rolling)；dash/risk/graph/order 短键即真键**不得再别名**(一别名即回归 404/403)。渲染器解析(`getRenderer`)另走 `view.renderer` 长名·不依赖此表补 dash/risk。牙齿 `test/launch-view-key-align.test.ts`(逐卡 targetView→真键=真放行·revert 别名→404/403 复红)。真起 datacore+agentcore·真浏览器逐卡(admin/demo1234·点 S12/13/15/16/20→落 /v/risk·/v/dash 真渲染无 404/403)：docs/evidence/launch-view-key-align-results.json + launch-S{12,13,15,16,20}-{risk,dash}.png
 closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(propagateTick/recompute 空跑1tick)
   --deriveCertification(纯投影,零新校验 RL3·增量2 已落)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」

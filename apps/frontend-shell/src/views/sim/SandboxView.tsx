@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { parseWhatIfPreset, resolveBaseId, cropConfigToBase, cropWorldToBase, type WhatIfPreset } from "./whatif";
+import ModelCapacitySlice from "./ModelCapacitySlice";
 import type { PropagationRule, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
   createSimSession,
@@ -1044,6 +1045,11 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           <span className={styles.sub} style={{ marginLeft: "auto" }}>就此问题推演对比基线 · 决策完即弃或采纳为 Action（R4）</span>
         </div>
       )}
+
+      {/* WO-CAP-07-MODEL-DIM（型号维度·本体链路⑤前端 surface·additive）：电池型号切片——选型号 →
+          capacity_forecast(modelId,qty,weeks) 出该型号 P50/P90/缺口/主瓶颈 + 型号可产基地网络（PRODUCIBLE_AT）。
+          型号列表来自本体 Model 对象（R14·非写死）；what-if 带入的型号/需求/周数作初值。独立 panel·不动 KPI/命令条区。 */}
+      <ModelCapacitySlice initialModel={whatIf?.model} demand={whatIf?.demand} weeks={whatIf?.weeks} />
 
       {/* WO-SANDBOX-LAYOUT-REWORK（PRD-frontend-visual-redesign §5·Option A·治拥挤）：
           整页栅格 主 7fr（hero 主视觉焦点）/ 右 5fr（折叠卡片栈·渐进披露）·大留白。
