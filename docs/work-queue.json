@@ -5520,6 +5520,248 @@
         "done": "2026-07-10T03:20:25.752Z"
       },
       "blockReason": ""
+    },
+    {
+      "id": "WO-CAP-01-REALDEMAND",
+      "title": "产能推演·假推演根治:风险张力绑真供需(闭G-SIM-FAKE)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "风险张力不再建在合成扁平util·改取真供需模型demandCapacityTightness·红对真需求敏感·不再全基地恒红。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "开关ON→常州物料齐套/产能类因子张力取demandCapacityTightness(~65<阈值85)→常州不再决策级染红·至少一真紧约束基地(hefei/合肥)仍红。逐值:卡tightness==端点demandCapacityTightness值(真浏览器对照)。risk.ts:179-184/428-437"
+          },
+          {
+            "id": "C2",
+            "type": "真跑·敏感性",
+            "assert": "改一基地DemandSegment.p50真需求→该基地张力真变(证非合成常数)。开关OFF→回现行全红(回退演练)"
+          },
+          {
+            "id": "C3",
+            "type": "真跑·诚实位",
+            "assert": "合成源卡dataMode继承SYNTHETIC不自报LIVE·前端RiskBoardView:133-138不染决策红(截图对照)。risk.ts:481+service.ts:1967-71"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "genuine-sim/no-fake-done绿·datacore test绿·母体§8回写G-SIM-FAKE(ontology-writeback:check绿)"
+          },
+          {
+            "id": "C5",
+            "type": "R6",
+            "assert": "同seed同输入两跑字节一致"
+          }
+        ],
+        "discipline": "暗发feature qos.risk_realdemand(defaultOn:false)·additive·关闸=现行lines-utilization分支·回退演练入齿(铁律0.4)"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-CAP-02-SEED-VARY",
+      "title": "产能推演·种子按基地分化+传导衰减(治恒红无涨落)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P0",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "util:line不再全基地钉mean92·按基地/真负载分化(确定性乘子)·传导加decay→有红有绿+逐日涨落。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "风险看板8基地有红有绿(非全红)·沙盘逐日tick时间轴有涨有落(非单调)。真浏览器截图+端点对照。battery.ts:1710-1711/1728/1747-1748/1280+seed.ts:300/316/333"
+          },
+          {
+            "id": "C2",
+            "type": "test",
+            "assert": "只调产能常量/订单量/per-base乘子(⛔勿动util/OEE/良率时序均值否则solvers.test.ts:211-314破)·synthetic.test.ts SY1/SY2仍绿·列受影响断言"
+          },
+          {
+            "id": "C3",
+            "type": "R6",
+            "assert": "同(industry,scale,seed=42)重跑字节一致·乘子非rng"
+          }
+        ],
+        "discipline": "确定性乘子(非随机/时钟)·additive"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-CAP-03-KPI-FIX",
+      "title": "沙盘KPI口径正名(治利用率2%误导)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "KPI均值按携带变量对象算(非÷575)+单位统一+利用率正名。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "每KPI==后端该变量在其归属对象上真均值(浏览器对照端点)·利用率显真产能利用率区间(非2.0稀释)·SandboxView:1003/743-747;cert.knowledge正名schema覆盖率:302/401"
+          },
+          {
+            "id": "C2",
+            "type": "gate·R6",
+            "assert": "gate绿+同seed字节一致"
+          }
+        ],
+        "discipline": "additive·i18n展示词"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-CAP-04-TICK-DAYS",
+      "title": "tick改输入天数批量推演(纯前端)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "命令条加天数N输入·一次推N天(后端app.ts:1426已支持N步·前端runTicks现成)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "输入N=7点一次→推进7天·时间轴7点·curTick+7(浏览器对照端点curTick)。SandboxView:1015/867-892"
+          },
+          {
+            "id": "C2",
+            "type": "R6·回退",
+            "assert": "同N同seed字节一致·默认N=1等价现行"
+          }
+        ],
+        "discipline": "纯前端·后端不动·additive"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-CAP-05-BRANCH-VISIBLE",
+      "title": "分支结果可达(治点了没反应·结果埋1652px)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "对比卡移出右栏栈底到左主区/右栏顶+onBranch成功scrollIntoView。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "点分支→SimComparePanel进首屏视口(boundingBox.inViewport=true)+真A/B五维差异可见(对照端点compare值)。SandboxView:1196-1209/817-832"
+          },
+          {
+            "id": "C2",
+            "type": "真跑",
+            "assert": "不破右栏折叠记忆(§5密度)"
+          }
+        ],
+        "discipline": "additive·布局"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-CAP-06-WHATIF-SCOPE",
+      "title": "跳转真带基地并生效(闭G-3)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "init按presetContext.subject裁剪世界(现用全量cfg=摆设)·所有跳沙盘按钮走openWhatIf。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "从产能推演基地卡点开始推演→沙盘显基地徽章+世界真按该基地裁剪(对象数<全量·对照端点SimSession.scope+baseSnapshot)。SandboxView:750-755;whatif.ts;排查开始推演(zh.sim.run)按钮接线"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "回写母体§8 G-3标闭(ontology-writeback绿)"
+          }
+        ],
+        "discipline": "additive·R3隔离"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-CAP-07-MODEL-DIM",
+      "title": "产能推演加电池型号维度(用户明确要·后端现成)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "acceptance": {
+        "goal": "产能推演加型号切片·按型号出P50/P90/缺口/主瓶颈+型号级瓶颈基地+方案(capacity_forecast已modelId-keyed catalog.ts:86)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "选真型号(4680-NCM)→产能推演显该型号P50/P90/缺口/主瓶颈(逐值对照capacity_forecast端点)·型号级瓶颈基地列表真(对照PRODUCIBLE_AT catalog.ts:33)"
+          },
+          {
+            "id": "C2",
+            "type": "真跑·R14",
+            "assert": "型号列表来自本体Model对象非写死"
+          },
+          {
+            "id": "C3",
+            "type": "gate·本体",
+            "assert": "R6/gate绿·新增链路⑤前端surface回写母体§3"
+          }
+        ],
+        "discipline": "additive·R14配置驱动·whatif.ts已有model/demand/weeks字段"
+      },
+      "at": "2026-07-10"
+    },
+    {
+      "id": "WO-CAP-08-OPS-FLOW",
+      "title": "运营负责人一条龙(瓶颈→推演→方案对比→采纳·治设计不清晰)",
+      "doc": "docs/PRD-capacity-sim-decision-flow.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-CAP-05-BRANCH-VISIBLE",
+        "WO-CAP-06-WHATIF-SCOPE",
+        "WO-CAP-07-MODEL-DIM"
+      ],
+      "acceptance": {
+        "goal": "瓶颈(风险看板)→开推演(沙盘·带基地/型号)→比方案(分支)→采纳串成可见一流+4卡加场景语+双向跨页导引。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "真浏览器走一条龙:风险看板选基地→开推演→沙盘聚焦该基地→分支比2方案→采纳产Action草稿(逐步真跑不断链)"
+          },
+          {
+            "id": "C2",
+            "type": "真跑",
+            "assert": "4卡(SandboxView:1143/1163/1177/1184)加解决什么运营问题场景语·风险TOP3默认展开"
+          },
+          {
+            "id": "C3",
+            "type": "真跑·R3",
+            "assert": "跨页跳链无404死路·关沙盘entitlement时诚实降级"
+          }
+        ],
+        "discipline": "additive·依赖05/06/07落地"
+      },
+      "at": "2026-07-10"
     }
   ],
   "meta": {
@@ -5592,6 +5834,21 @@
       "layers": "L0(3PRD·本批)→L1脊柱→L1.5知识记忆→L2内核→L3硬化",
       "rolling": "L0全派·next-dev按依赖序取;L1-L3由reviewer在loop逐层细化施工PRD后再派(不整包派·防QUERY30-ORCH式假premise epic)",
       "at": "2026-07-09T15:00:00.000Z"
+    },
+    "capacitySimFlow": {
+      "prd": "docs/PRD-capacity-sim-decision-flow.md",
+      "wos": [
+        "WO-CAP-01-REALDEMAND",
+        "WO-CAP-02-SEED-VARY",
+        "WO-CAP-03-KPI-FIX",
+        "WO-CAP-04-TICK-DAYS",
+        "WO-CAP-05-BRANCH-VISIBLE",
+        "WO-CAP-06-WHATIF-SCOPE",
+        "WO-CAP-07-MODEL-DIM",
+        "WO-CAP-08-OPS-FLOW"
+      ],
+      "at": "2026-07-10",
+      "note": "产能推演决策流重构:假推演根治+型号维度+运营一条龙(3真跑代理诊断)"
     }
   }
 }
