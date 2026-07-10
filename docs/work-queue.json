@@ -5633,7 +5633,7 @@
       "title": "tick改输入天数批量推演(纯前端)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5654,8 +5654,10 @@
       },
       "at": {
         "created": "2026-07-10",
-        "wip": "2026-07-10T15:45:02.421Z"
-      }
+        "wip": "2026-07-10T15:45:02.421Z",
+        "built": "2026-07-10T16:15:40.381Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-CAP-05-BRANCH-VISIBLE",
@@ -5890,9 +5892,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "WO-CAP-04-TICK-DAYS",
-      "at": "2026-07-10T15:45:02.421Z"
+      "at": "2026-07-10T16:15:40.381Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
