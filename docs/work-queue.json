@@ -5968,9 +5968,11 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-10T20:48:44.486Z"
+      },
       "id": "WO-FAKE-05",
       "priority": "P1",
       "deps": [],
@@ -6002,9 +6004,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-MERGE-02",
-      "at": "2026-07-10T20:46:54.949Z"
+      "cmd": "WIP",
+      "id": "WO-FAKE-05",
+      "at": "2026-07-10T20:48:44.487Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
