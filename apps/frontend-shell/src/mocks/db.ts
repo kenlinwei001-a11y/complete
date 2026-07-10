@@ -1,4 +1,4 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, OntologyWorkflow, PurposeBinding, RuleEntry, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -69,6 +69,44 @@ interface MockDb {
   adminViews: AdminViewConfig[];
   // 回放编排器 §6：运营自动化配置（租户级，缺省空）
   opsSchedule: { forecasts: unknown[]; tenantId: string; updatedAt: string; updatedBy: string } | null;
+  // OntoFlow 统一本体建模工作流（PRD v2）
+  ontologyWorkflows: OntologyWorkflow[];
+}
+
+/** OntoFlow 起手种子（数据先行链，含一个 SUBGRAPH_ENTITY）。 */
+function seedOntologyWorkflows(): OntologyWorkflow[] {
+  return [
+    {
+      id: "owf-seed",
+      tenantId: TENANT_ID,
+      name: "订单本体工作流",
+      entryMode: "DATA_FIRST",
+      status: "DRAFT",
+      nodes: [
+        { id: "src-1", kind: "SOURCE_SELECT", label: "数据选择", position: { x: 60, y: 80 }, spec: {} },
+        { id: "tbl-1", kind: "SOURCE_TABLE", label: "源表", position: { x: 250, y: 80 }, spec: { rawDatasetId: "rds-orders", role: "event" } },
+        { id: "proc-1", kind: "PROCESS", label: "数据处理", position: { x: 440, y: 80 }, spec: { mappings: [], mode: "BATCH" } },
+        {
+          id: "entity-1",
+          kind: "SUBGRAPH_ENTITY",
+          label: "订单",
+          position: { x: 630, y: 80 },
+          storageMode: "STATIC",
+          modeling: { typeKey: "Order", displayName: "订单", primaryKey: "orderId", properties: [{ propKey: "orderId", dataType: "String" }], stateVariables: [], derived: [] },
+          dataSource: { rawDatasetId: "rds-orders", role: "event" },
+        },
+        { id: "sink-1", kind: "ONTOLOGY_SINK", label: "本体库", position: { x: 820, y: 80 }, spec: {} },
+      ],
+      edges: [
+        { from: "src-1", to: "tbl-1" },
+        { from: "tbl-1", to: "proc-1" },
+        { from: "proc-1", to: "entity-1" },
+        { from: "entity-1", to: "sink-1" },
+      ],
+      createdAt: "2026-06-01T08:00:00Z",
+      updatedAt: "2026-06-01T08:00:00Z",
+    },
+  ];
 }
 
 function freshDb(): MockDb {
@@ -105,6 +143,7 @@ function freshDb(): MockDb {
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),
     opsSchedule: null,
+    ontologyWorkflows: seedOntologyWorkflows(),
   };
 }
 

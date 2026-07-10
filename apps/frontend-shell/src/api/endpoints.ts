@@ -578,3 +578,62 @@ export const putLlmBindings = (bindings: PurposeBinding[]) =>
     method: "PUT",
     body: { bindings },
   });
+
+// ---------------- OntoFlow 统一本体建模工作流（PRD v2 §4，DataCore A，feature.data-builder 门控） ----------------
+
+import type {
+  OntologyWorkflow,
+  OntologyWorkflowUpsert,
+  WfValidationIssue,
+  ReadinessResult,
+  ScaffoldResult,
+} from "@platform/contracts";
+
+/** validate 结果：DAG/类型/映射/storageMode 一致性问题列表。 */
+export interface WfValidateResult {
+  ok: boolean;
+  issues: WfValidationIssue[];
+}
+
+/** preview 结果：dry-run 取样 PROCESS → 实体/状态变量（不落库）。 */
+export interface WfPreviewResult {
+  nodeId: string;
+  typeKey: string;
+  entities: { key: string; props: Record<string, unknown> }[];
+  stateVariables: { propKey: string; value: unknown }[];
+  quarantined?: number;
+}
+
+/** publish 结果：产出/更新本体（types/links/slices）+ Action 门控物化引用。 */
+export interface WfPublishResult {
+  types: { typeKey: string; displayName: string }[];
+  links: { linkKey: string; fromTypeKey: string; toTypeKey: string }[];
+  sliceKey: string;
+  version: number;
+  actionDraftId?: string;
+}
+
+export const listOntologyWorkflows = () => api.a<{ items: OntologyWorkflow[] }>("/a/v1/ontology-workflows");
+export const getOntologyWorkflow = (id: string) => api.a<OntologyWorkflow>(`/a/v1/ontology-workflows/${id}`);
+export const createOntologyWorkflow = (body: OntologyWorkflowUpsert) =>
+  api.a<OntologyWorkflow>("/a/v1/ontology-workflows", { body });
+export const updateOntologyWorkflow = (id: string, body: OntologyWorkflowUpsert) =>
+  api.a<OntologyWorkflow>(`/a/v1/ontology-workflows/${id}`, { method: "PUT", body });
+export const validateOntologyWorkflow = (id: string) =>
+  api.a<WfValidateResult>(`/a/v1/ontology-workflows/${id}/validate`, { body: {} });
+export const previewOntologyWorkflow = (id: string, nodeId: string, rows?: Record<string, unknown>[]) =>
+  api.a<WfPreviewResult>(`/a/v1/ontology-workflows/${id}/preview`, { body: { nodeId, rows: rows ?? [] } });
+export const promoteWorkflowNode = (id: string, nodeId: string) =>
+  api.a<OntologyWorkflow>(`/a/v1/ontology-workflows/${id}/nodes/${nodeId}/promote`, { body: {} });
+export const readinessOntologyWorkflow = (id: string) =>
+  api.a<ReadinessResult>(`/a/v1/ontology-workflows/${id}/readiness`, { body: {} });
+export const publishOntologyWorkflow = (id: string) =>
+  api.a<WfPublishResult>(`/a/v1/ontology-workflows/${id}/publish`, { body: {} });
+export const scaffoldOntologyWorkflow = (id: string) =>
+  api.a<ScaffoldResult>(`/a/v1/ontology-workflows/${id}/scaffold`, { body: {} });
+/** 上传文件（含 xlsx）→ RawDataset（复用连接器上传语义）。 */
+export const uploadConnectionFile = (connId: string, file: File) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api.a<{ rawDatasetId: string; datasetName: string }>(`/a/v1/connections/${connId}/upload`, { formData: fd });
+};

@@ -1,0 +1,296 @@
+/* OntoFlow 本体建模工作流：画布 / 配置面板 / 准备度 */
+
+/* ---- 画布 ---- */
+.canvasWrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg2);
+  overflow: hidden;
+  min-height: 420px;
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.paletteLabel {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.canvasSvg {
+  width: 100%;
+  height: 460px;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+
+.wfEdge {
+  stroke: var(--muted2);
+  stroke-width: 1.6;
+  marker-end: url(#arrow);
+}
+
+.wfNode {
+  cursor: pointer;
+}
+.wfNodeBox {
+  transition: stroke 0.1s;
+}
+.wfNodeKind {
+  font-size: 11px;
+  font-weight: 600;
+}
+.wfNodeMode {
+  font-size: 10px;
+  fill: var(--muted);
+  font-weight: 400;
+}
+.wfNodeName {
+  font-size: 12.5px;
+  fill: var(--txt);
+}
+
+.canvasEmpty {
+  position: absolute;
+  top: 55%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--muted2);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* ---- 配置面板 ---- */
+.configPanel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--panel);
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+.configHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.configKindDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.configLabel {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.storageRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.toggle {
+  display: inline-flex;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.toggleBtn {
+  border: none;
+  background: transparent;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.toggleOn {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+.tab {
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.tabOn {
+  color: var(--txt);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.tabBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.field input,
+.field select {
+  font-size: 12.5px;
+}
+.inlineFields {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.inlineFields > * {
+  flex: 1;
+}
+.subLabel {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 6px 0 4px;
+}
+
+.mapTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.mapTable th {
+  text-align: left;
+  color: var(--muted2);
+  font-weight: 500;
+  padding: 2px 3px;
+}
+.mapTable td {
+  padding: 2px 3px;
+}
+.mapTable input,
+.mapTable select {
+  width: 100%;
+  font-size: 11.5px;
+}
+
+.facets {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.facet {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.facet legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--txt);
+  padding: 0 4px;
+}
+
+/* ---- 准备度 ---- */
+.gauge {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--panel);
+}
+.gaugeHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.gaugeScore {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.gaugeScore strong {
+  font-size: 26px;
+}
+.gaugeScore span {
+  color: var(--muted2);
+  font-size: 13px;
+}
+.gaugeEntity {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.gaugeEntityHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.gaugeEntityScore {
+  margin-left: auto;
+  color: var(--muted);
+}
+.gaugeDim {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  margin: 2px 0;
+}
+.gaugeDimLabel {
+  width: 68px;
+  color: var(--muted);
+  flex: none;
+}
+.gaugeBar {
+  flex: 1;
+  height: 7px;
+  background: var(--bg2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.gaugeBarFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+}
+.gaugeDimScore {
+  width: 22px;
+  text-align: right;
+  color: var(--muted2);
+  flex: none;
+}
+.gaugeMissing {
+  font-size: 11px;
+  color: var(--warn);
+  margin-top: 4px;
+}

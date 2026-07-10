@@ -45,6 +45,7 @@ export const zh = {
     connections: "连接器与上传",
     ruleDocs: "规则文档审核",
     modeling: "本体建模",
+    dataBuilder: "本体建模工作流",
     rules: "规则库",
     permissions: "权限策略",
     synthetic: "合成数据",

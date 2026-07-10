@@ -143,6 +143,21 @@ flowchart LR
 
 每条数据带 `origin`(SYNTHETIC/jobId 或 LIVE/connId)；切片/求解器结果带 `snapshotVersion = {本体版本}.{epoch}`；派生有 value_runs；规则候选有原文 sourceQuote 回链；隔离区行可编辑重处理。
 
+## OntoFlow 统一建模工作流（PRD v2 · 一张画布贯通数据先行 ⊕ 图谱先行）
+
+在上述地基之上，`/admin/data-builder`（导航「本体建模工作流」，角色 admin/data_admin）提供可视化画布，六种节点（SOURCE_SELECT/SOURCE_TABLE/PROCESS/SUBGRAPH_ENTITY/SUBGRAPH_LINK/ONTOLOGY_SINK）统一编排两条建模路径，端点全部在 DataCore `/a/v1/ontology-workflows`：
+
+- **P1 CRUD/校验**：`GET/POST`、`GET/PUT/:id`、`POST /:id/validate`（节点唯一/边引用/DAG 无环/主键齐备/链路端点/STATIC⊕ONTOLOGY 一致性）。
+- **P2 数据处理**：`POST /:id/preview`（dry-run 取样跑 ProcessingEngine：映射+聚合折叠+分组+失效+脱敏 → 实体/状态变量，不落库）；连接器 `POST /connections/:id/upload` 支持 xlsx。
+- **P3 提升/发布**：`POST /:id/nodes/:nodeId/promote`（STATIC→ONTOLOGY）；`POST /:id/publish` → 落本体 types/links/version + SliceSpec，对象物化经 **Action 门控**（Phase9B domainExecutor），异常行入**隔离区**。
+- **P4 准备度/生成应用/通用推演**：
+  - `POST /:id/readiness` → 各实体 7 维加权评分（字段/主键/数据源/状态变量/行动/派生/存储模式）+ 等级（NASCENT/DEVELOPING/READY）+ 缺项引导（前端 ReadinessGauge「NN/100」）。
+  - `POST /:id/scaffold` → 从已发布本体生成 视图（台账/驾驶舱/图谱）+ 场景入口（AGENT_FIRST）+ 默认 Agent（通用工具集 query_objects/resolve_slice/invoke_solver/evaluate_rules/aggregate_objects）+ 场景包 + 通用求解器绑定。
+  - `POST /:id/inference` → 通用 what-if（确定性单因子：直接改 → 沿派生/单跳聚合链路重算受影响对象 → 前后对比）。**边界**：复杂时序/容量多轮推演仍需可插拔领域求解器。
+- **P5 前端**：自研轻量 SVG 画布（拖拽/连线/pan-zoom）+ 右侧 NodeConfigPanel（存储模式切换+提升；实体三页签 数据源/数据处理/子图建模六页）+ ReadinessGauge；`VITE_MOCK=1` 经 MSW 全流程可跑。
+
+「立即可用」= 通用推演；领域级深推演按需绑定求解器。真值写入一律经 Action 审批，读出贯穿 A6 行级 + 脱敏。
+
 ## ASCII 兜底（终端可读）
 
 ```

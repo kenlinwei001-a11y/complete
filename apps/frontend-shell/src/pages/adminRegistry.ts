@@ -15,6 +15,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "connections", label: zh.nav.connections, roles: ["admin", "data_admin"] },
   { path: "rule-docs", label: zh.nav.ruleDocs, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "modeling", label: zh.nav.modeling, roles: ["admin", "data_admin"] },
+  { path: "data-builder", label: zh.nav.dataBuilder, roles: ["admin", "data_admin"] },
   { path: "rules", label: zh.nav.rules, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "permissions", label: zh.nav.permissions, roles: ["admin"] },
   { path: "synthetic", label: zh.nav.synthetic, roles: ["admin"] },
