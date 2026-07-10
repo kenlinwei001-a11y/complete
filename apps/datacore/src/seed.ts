@@ -314,8 +314,15 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     coefficient: 0.6,
     delayTicks: 0,
     combine: "sum",
-    decay: null,
-    clamp: null,
+    // WO-CAP-02-SEED-VARY（治"只涨不落"）：基地负载传导加**衰减** decay（每 tick 贡献 ×(1−1/den)=0.9·PRD 0.85~0.95，
+    // 压低单调爬升斜率）+ **上限 clamp**（把 loadIndex 夹进有限区间 [0, 2e6]，**根治原 sum+decay:null 的无界暴涨**——
+    // 原每 tick 恒 +0.6·totalDemand 的巨量、单调线性冲到千万级恒顶）。加 clamp 后各基地按其真需求负载**先后触顶**、
+    // 高需求基地先到顶(热)、低需求基地留在顶下(凉)→ 逐日曲线**有升有平·基地间有高有低**（非全基地同步暴涨恒红）。
+    // 诚实边界：propagateTick 以 sum 累加"携带态"，源为常量 → 单条基地曲线本征单调（引擎不衰减携带值）；
+    // 真正"逐日有涨有落"的风险曲线由 risk_timeline 的事件脉冲(到货间隙/检修窗)提供，见 battery.ts scenarioScript/eventAmps。
+    // decay/clamp 全确定性（无 rng/时钟·守 R6）。
+    decay: { window: 1, den: 10 },
+    clamp: { min: 0, max: 2000000 },
     coefficientRef: null,
     status: "PUBLISHED",
   },
@@ -331,8 +338,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     coefficient: 0.5,
     delayTicks: 1,
     combine: "sum",
-    decay: null,
-    clamp: null,
+    // WO-CAP-02-SEED-VARY：产线利用率→基地负载同加衰减 + 上限 clamp（与 model→base 同口径·延迟 1 tick 保留时序传导）。
+    decay: { window: 1, den: 10 },
+    clamp: { min: 0, max: 2000000 },
     coefficientRef: null,
     status: "PUBLISHED",
   },

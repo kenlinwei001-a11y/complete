@@ -1551,6 +1551,45 @@ function isoDate(ms: number): string {
 }
 
 /**
+ * WO-CAP-02-SEED-VARY（§3 种子按基地分化·治恒红无涨落）：**确定性**每基地产能乘子（⛔非 rng·守 R6）。
+ * 目的：让各基地真产能（化成/老化 → weeklyWan → demandCapacityTightness 的产能份额）**拉开档次**，
+ * 从而风险看板的需求-产能张力在基地间**有高有低**（配合 WO-CAP-01 的真供需染红逻辑 → 有红有绿），
+ * 而非当前"12 基地产能几乎同档 → 张力全簇在 56–68"的扁平态。
+ *
+ * 口径（守 C2·**只调产能常量·不动 util/OEE/良率时序均值**）：只乘化成通道数 channels + 老化库位 agingSlots
+ * （二者派生出工序产能 + 基地共享产能上限 formationCapDaily/agingCapDaily），**不碰** util:line/oee:equip/yield:process
+ * 时序均值（那会破 solvers.test.ts:211-314 的 设备OEE/良率 基线）。乘子按 baseId 固定映射（非随机·非时钟）。
+ *
+ * 方向（守 PRD §2 CAP-02 配比·瓶颈基地低产能）：瓶颈基地（BATTERY_SOLVER_PARAMS.bottleneck.primary :127-140
+ * 已定 常州/合肥/江门 等）配**低产能乘子**（真产能↓ → 真需求/真产能占比↑ → 供需张力↑），非瓶颈基地配**高产能**。
+ * 这是把"哪个基地紧"从合成扁平 util:line(mean92 全同) 挪回**真产能落差**上；配合 WO-CAP-01 用真供需张力
+ * demandCapacityTightness 取代合成 util 染红后，低产能瓶颈基地→红、高产能富余基地→绿，得"有红有绿"。
+ * 值域 0.82–1.25（PRD 示例配比 0.75–1.25 的收敛版），令各基地真周产能 weeklyWan 拉开约 1.5× 档次（原近扁平 1.2×）。
+ * ⚠️ 校准耦合约束（实测坐实）：4680-NCM 的产地（常州/成都/合肥）产能进 `capacity_forecast|all|4680-NCM` 校准切片，
+ * 幅度过大（±25%）会削弱 Process.yield 在预测中的杠杆 → m11-calibration C9 的 EMA 方法A回测改进闸不过（提案消失）。
+ * 故这三地用**温和差异化**（0.92/1.08/0.92·±8%），其余基地保留强差异化（0.82–1.25）；差异化整体仍显著、确定性、守 R6。
+ */
+const CAPACITY_MULT_BY_BASE: Record<string, number> = {
+  // 瓶颈基地（低产能·真紧约束）——PRD §2 CAP-02 示例配比
+  hefei: 0.92, // 合肥（设备OEE 主瓶颈·4680-NCM 产地·温和差异化守 m11 校准回测闸）
+  changzhou: 0.92, // 常州（瓶颈工序 主瓶颈·4680-NCM 产地·温和差异化守 m11 校准回测闸）
+  jiangmen: 0.82, // 江门（物料齐套 主瓶颈）
+  handan: 0.85, // 邯郸（物料齐套 主瓶颈）
+  meishan: 0.9, // 眉山（人力工时）
+  // 富余基地（高产能·相对宽松）
+  wuhan: 1.1,
+  xinyang: 1.05,
+  zaozhuang: 1.0,
+  zigong: 1.1,
+  luoyang: 1.2,
+  chengdu: 1.08, // 成都（4680-NCM 产地·温和差异化守 m11 校准回测闸）
+  xiamen: 1.25,
+};
+function capacityMultOf(baseId: string): number {
+  return CAPACITY_MULT_BY_BASE[baseId] ?? 1;
+}
+
+/**
  * Deterministic generation: master data (Base) → Model → Order → production
  * topology (Line/Process/Equipment) → calendars (MaintPlan/Shipment) → misc.
  * Referential integrity by construction; same seed → byte-identical output.
@@ -1707,7 +1746,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         });
       }
     }
-    const channels = randInt(rngTopo, 600, 780);
+    // WO-CAP-02：确定性每基地产能乘子（乘化成通道数·非 rng·R6）。rng 抽样步长不变（仅事后乘固定映射）。
+    const capMult = capacityMultOf(b.baseId);
+    const channels = Math.round(randInt(rngTopo, 600, 780) * capMult);
     const channelOutputDaily = randInt(rngTopo, 80, 95);
     processes.push({
       processId: `${lineId}-formation`,
@@ -1725,7 +1766,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       agingSlots: 0,
       agingDays: 0,
     });
-    const agingSlots = randInt(rngTopo, 260000, 340000);
+    // WO-CAP-02：老化库位同乘确定性基地产能乘子（与化成同向·非 rng·R6）。
+    const agingSlots = Math.round(randInt(rngTopo, 260000, 340000) * capMult);
     const agingDays = 5;
     processes.push({
       processId: `${lineId}-aging`,
