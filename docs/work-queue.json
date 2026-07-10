@@ -5532,7 +5532,7 @@
       "title": "产能推演·假推演根治:风险张力绑真供需(闭G-SIM-FAKE)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P0",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5568,8 +5568,10 @@
       },
       "at": {
         "created": "2026-07-10",
-        "wip": "2026-07-10T15:45:02.362Z"
-      }
+        "wip": "2026-07-10T15:45:02.362Z",
+        "built": "2026-07-10T17:42:26.211Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-CAP-02-SEED-VARY",
@@ -5900,8 +5902,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-MERGE-01",
-      "at": "2026-07-10T17:26:26.338Z"
+      "id": "WO-CAP-01-REALDEMAND",
+      "at": "2026-07-10T17:42:26.211Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
