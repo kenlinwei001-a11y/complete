@@ -5220,7 +5220,7 @@
       "title": "L0·主单P2: preAnalyzeQuery旁路+pre_analyses R9+3事件+GapCard全景条",
       "doc": "docs/PRD-gap-analysis-engine.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "UPG-L0-GAPCORE"
@@ -5255,9 +5255,11 @@
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T15:33:28.391Z",
-        "built": "2026-07-09T16:36:38.821Z"
+        "built": "2026-07-09T16:36:38.821Z",
+        "done": "2026-07-10T03:35:41.454Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 真浏览器逐值对照后端(agent a8192254)：全景条441ms·环stroke===token·徽章1===端点totalGaps1·R6字节一致·R2跨租户404·回退演练FEATURE_NOT_FOUND·migration013真pg幂等。次要债(不阻断)：①pre_analyses(agentcore)无sweep·retention-coverage:check只治DataCore表→门恒绿但PRD§9 RETENTION对agentcore未生效(挂G-RET)；②demo唯一缺口源=hidden_req ObjectType(HIDDENREQ透出)。"
     },
     {
       "id": "UPG-L0-HIDDENREQ",
@@ -5522,8 +5524,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "UPG-L0-CONSOLE-APPROVE",
-      "at": "2026-07-10T03:20:25.752Z"
+      "id": "UPG-L0-PREANALYSIS",
+      "at": "2026-07-10T03:35:41.455Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
