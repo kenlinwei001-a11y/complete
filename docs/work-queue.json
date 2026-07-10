@@ -5578,8 +5578,8 @@
       "title": "产能推演·种子按基地分化+传导衰减(治恒红无涨落)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P0",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "acceptance": {
         "goal": "util:line不再全基地钉mean92·按基地/真负载分化(确定性乘子)·传导加decay→有红有绿+逐日涨落。",
@@ -5602,15 +5602,18 @@
         ],
         "discipline": "确定性乘子(非随机/时钟)·additive"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-10T17:43:35.431Z"
+      }
     },
     {
       "id": "WO-CAP-03-KPI-FIX",
       "title": "沙盘KPI口径正名(治利用率2%误导)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "acceptance": {
         "goal": "KPI均值按携带变量对象算(非÷575)+单位统一+利用率正名。",
@@ -5628,7 +5631,10 @@
         ],
         "discipline": "additive·i18n展示词"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-10T17:43:35.559Z"
+      }
     },
     {
       "id": "WO-CAP-04-TICK-DAYS",
@@ -5697,8 +5703,8 @@
       "title": "跳转真带基地并生效(闭G-3)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "acceptance": {
         "goal": "init按presetContext.subject裁剪世界(现用全量cfg=摆设)·所有跳沙盘按钮走openWhatIf。",
@@ -5716,7 +5722,10 @@
         ],
         "discipline": "additive·R3隔离"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-10T17:43:35.488Z"
+      }
     },
     {
       "id": "WO-CAP-07-MODEL-DIM",
@@ -5901,9 +5910,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-CAP-01-REALDEMAND",
-      "at": "2026-07-10T17:42:26.211Z"
+      "cmd": "WIP",
+      "id": "WO-CAP-03-KPI-FIX",
+      "at": "2026-07-10T17:43:35.559Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
