@@ -9,6 +9,7 @@ import type { RawDatasetVM } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
+import { OntologyWorkflowStudio } from "./OntologyWorkflowStudio";
 
 /**
  * 自成长发动机 §6.4：就地审批面板——自动补齐的真值写入(物化/发布)经 Action 审批；
@@ -958,7 +959,7 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
  * A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）：
  * 故事脚本 → 七阶段（intake→comprehend→gap→rawin→transform→closure→publish）→ 双向闭包报告。
  */
-export default function DataBuilderPage() {
+function DataBuilderEngine() {
   const qc = useQueryClient();
   const [script, setScript] = useState("常州基地产能紧张，影响订单交期与客户信用，请做风险推演"); // debattery-allow：构建脚本输入框 demo 占位（用户自行覆写）
   const [seed, setSeed] = useState(42);
@@ -1332,6 +1333,36 @@ export default function DataBuilderPage() {
       </div>
       </>
       )}
+    </div>
+  );
+}
+
+/**
+ * WO-MERGE-02：数据构建统一入口（单一 adminRegistry 项 `data-builder`，非双页并列）。
+ * 两页签 —— 「数据构建发动机」(主线 databuilder/ 引擎，默认) 与「本体建模工作流」(移植 OntoFlow pipeline 画布)。
+ * PRD §3：画布与引擎互补（引擎做接入/派生，画布做两模式统一建模 + 发布 + 通用推演）；深度节点级协同接线见 WO-MERGE-03。
+ */
+export default function DataBuilderPage() {
+  const [tab, setTab] = useState<"engine" | "studio">("engine");
+  return (
+    <div>
+      <div data-testid="db-mode-tabs" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        <button
+          className={`btn sm ${tab === "engine" ? "primary" : ""}`}
+          data-testid="db-tab-engine"
+          onClick={() => setTab("engine")}
+        >
+          数据构建发动机
+        </button>
+        <button
+          className={`btn sm ${tab === "studio" ? "primary" : ""}`}
+          data-testid="db-tab-studio"
+          onClick={() => setTab("studio")}
+        >
+          本体建模工作流
+        </button>
+      </div>
+      {tab === "engine" ? <DataBuilderEngine /> : <OntologyWorkflowStudio />}
     </div>
   );
 }

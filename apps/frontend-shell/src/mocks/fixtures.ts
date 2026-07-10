@@ -122,6 +122,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "act.plan-audit.apply-fix", name: "体检一键修正", level: "ACTION", defaultOn: true, requires: ["view.plan-audit"] },
   { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true, requires: ["view.risk-board"], bindings: { intents: ["adopt_mitigation"] } },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
+  // WO-MERGE-02（B1 Entitlement 铁律）：OntoFlow 本体建模工作流门控——关 → 「数据构建」导航隐藏 + 页面 404，
+  // 与真后端 data-builder feature 同键（defaultOn）。
+  { key: "data-builder", name: "本体建模工作流", level: "VIEW", defaultOn: true },
   // 推演沙盘（暗发 entitlement·R3）：mock 注册表补 key 但 **defaultOn:false 默认关**（WO-E2 纪律不破：
   // 不对任何角色全局打开）。演示/取证走正门：PUT /a/v1/tenants/:id/features 开租户 override 即亮
   // （与 ui-smoke-sandbox.mjs 真后端同一开通路径；SANDBOX-EDGE-LABEL-AVOID 真浏览器取证用）。

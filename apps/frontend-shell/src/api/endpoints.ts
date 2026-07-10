@@ -1335,3 +1335,68 @@ import type { ConfigBundle, ImportJob, ImportConflictPolicy } from "@platform/co
 export const exportConfigBundle = () => api.a<ConfigBundle>("/a/v1/config-bundles/export");
 export const importConfigBundle = (bundle: ConfigBundle, dryRun: boolean, conflictPolicy: ImportConflictPolicy) =>
   api.a<ImportJob>("/a/v1/config-bundles/import", { method: "POST", body: { bundle, dryRun, conflictPolicy } });
+
+// ---------------- OntoFlow 统一本体建模工作流（WO-MERGE-02·PRD v2 §4，DataCore A，feature.data-builder 门控） ----------------
+import type {
+  OntologyWorkflow,
+  OntologyWorkflowUpsert,
+  WfValidationIssue,
+  ReadinessResult,
+  ScaffoldResult,
+  GenericInferenceInput,
+  GenericInferenceOutput,
+} from "@platform/contracts";
+
+/** validate 结果：DAG/类型/映射/storageMode 一致性问题列表。 */
+export interface WfValidateResult {
+  ok: boolean;
+  issues: WfValidationIssue[];
+}
+
+/** preview 结果：dry-run 取样 PROCESS → 实体/状态变量（不落库）。 */
+export interface WfPreviewResult {
+  nodeId: string;
+  typeKey: string;
+  entities: { key: string; props: Record<string, unknown> }[];
+  stateVariables: { propKey: string; value: unknown }[];
+  quarantined?: number;
+}
+
+/**
+ * publish 结果：产出/更新本体（types/links/slice）。
+ * WO-MERGE-02 B4：与真后端 `pipeline/service.ts#publish` 同形——types/links 为类型键 / 链路键的 string[]（非对象）。
+ */
+export interface WfPublishResult {
+  types: string[];
+  links: string[];
+  sliceKey?: string;
+  version: number;
+}
+
+export const listOntologyWorkflows = () => api.a<{ items: OntologyWorkflow[] }>("/a/v1/ontology-workflows");
+export const getOntologyWorkflow = (id: string) => api.a<OntologyWorkflow>(`/a/v1/ontology-workflows/${id}`);
+export const createOntologyWorkflow = (body: OntologyWorkflowUpsert) =>
+  api.a<OntologyWorkflow>("/a/v1/ontology-workflows", { body });
+export const updateOntologyWorkflow = (id: string, body: OntologyWorkflowUpsert) =>
+  api.a<OntologyWorkflow>(`/a/v1/ontology-workflows/${id}`, { method: "PUT", body });
+export const validateOntologyWorkflow = (id: string) =>
+  api.a<WfValidateResult>(`/a/v1/ontology-workflows/${id}/validate`, { body: {} });
+export const previewOntologyWorkflow = (id: string, nodeId: string, rows?: Record<string, unknown>[]) =>
+  api.a<WfPreviewResult>(`/a/v1/ontology-workflows/${id}/preview`, { body: { nodeId, rows: rows ?? [] } });
+export const promoteWorkflowNode = (id: string, nodeId: string) =>
+  api.a<OntologyWorkflow>(`/a/v1/ontology-workflows/${id}/nodes/${nodeId}/promote`, { body: {} });
+export const readinessOntologyWorkflow = (id: string) =>
+  api.a<ReadinessResult>(`/a/v1/ontology-workflows/${id}/readiness`, { body: {} });
+export const publishOntologyWorkflow = (id: string) =>
+  api.a<WfPublishResult>(`/a/v1/ontology-workflows/${id}/publish`, { body: {} });
+export const scaffoldOntologyWorkflow = (id: string) =>
+  api.a<ScaffoldResult>(`/a/v1/ontology-workflows/${id}/scaffold`, { body: {} });
+/** 通用 what-if 推演（WO-MERGE-02 B3）：某类型/对象某属性施加 Δ/setValue → 沿派生/link 有界传播 → before/after。 */
+export const inferenceOntologyWorkflow = (id: string, input: GenericInferenceInput) =>
+  api.a<GenericInferenceOutput>(`/a/v1/ontology-workflows/${id}/inference`, { body: input });
+/** 上传文件（含 xlsx）→ RawDataset（复用连接器上传语义）。 */
+export const uploadConnectionFile = (connId: string, file: File) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api.a<{ rawDatasetId: string; datasetName: string }>(`/a/v1/connections/${connId}/upload`, { formData: fd });
+};

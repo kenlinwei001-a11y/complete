@@ -2156,6 +2156,185 @@ export const handlers = [
     return HttpResponse.json({ jobId: id }, { status: 202 });
   }),
 
+  // ---- OntoFlow 统一本体建模工作流（WO-MERGE-02·PRD v2 §4，feature.data-builder 门控） ----
+  // MSW 与真后端 pipeline/service.ts 同形（B4 publish=string[]、B3 inference=GenericInferenceOutput）。
+  http.get("*/a/v1/ontology-workflows", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json({ items: db.ontologyWorkflows });
+  }),
+  http.post("*/a/v1/ontology-workflows", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json()) as Record<string, unknown>;
+    if (!body.name) return err(422, "VALIDATION_ERROR", "name required");
+    const now = new Date().toISOString();
+    const wf = {
+      id: newId("owf"),
+      tenantId: TENANT_ID,
+      name: String(body.name),
+      entryMode: (body.entryMode as string) ?? "DATA_FIRST",
+      status: (body.status as string) ?? "DRAFT",
+      nodes: (body.nodes as unknown[]) ?? [],
+      edges: (body.edges as unknown[]) ?? [],
+      createdAt: now,
+      updatedAt: now,
+    } as unknown as (typeof db.ontologyWorkflows)[number];
+    db.ontologyWorkflows.unshift(wf);
+    return HttpResponse.json(wf, { status: 201 });
+  }),
+  http.get("*/a/v1/ontology-workflows/:id", ({ params }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    return wf ? HttpResponse.json(wf) : err(404, "NOT_FOUND", "工作流不存在");
+  }),
+  http.put("*/a/v1/ontology-workflows/:id", async ({ params, request }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    const body = (await request.json()) as Record<string, unknown>;
+    Object.assign(wf, {
+      name: body.name ?? wf.name,
+      entryMode: body.entryMode ?? wf.entryMode,
+      status: body.status ?? wf.status,
+      nodes: (body.nodes as typeof wf.nodes) ?? wf.nodes,
+      edges: (body.edges as typeof wf.edges) ?? wf.edges,
+      updatedAt: new Date().toISOString(),
+    });
+    return HttpResponse.json(wf);
+  }),
+  http.post("*/a/v1/ontology-workflows/:id/validate", ({ params }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    const ids = new Set(wf.nodes.map((n) => n.id));
+    const issues: { nodeId?: string; code: string; message: string }[] = [];
+    for (const e of wf.edges) {
+      if (!ids.has(e.from) || !ids.has(e.to)) issues.push({ code: "DANGLING_EDGE", message: `边引用了不存在的节点：${e.from}→${e.to}` });
+    }
+    for (const n of wf.nodes) {
+      if (n.kind === "SUBGRAPH_ENTITY" && !n.modeling?.primaryKey) {
+        issues.push({ nodeId: n.id, code: "MISSING_PRIMARY_KEY", message: `实体 ${n.modeling?.typeKey ?? n.id} 缺少主键` });
+      }
+    }
+    return HttpResponse.json({ ok: issues.length === 0, issues });
+  }),
+  http.post("*/a/v1/ontology-workflows/:id/preview", async ({ params, request }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    const body = (await request.json().catch(() => ({}))) as { nodeId?: string };
+    const node = wf.nodes.find((n) => n.id === body.nodeId && n.kind === "SUBGRAPH_ENTITY") ?? wf.nodes.find((n) => n.kind === "SUBGRAPH_ENTITY");
+    if (!node || node.kind !== "SUBGRAPH_ENTITY") return err(422, "NO_ENTITY", "无实体节点可预览");
+    const typeKey = node.modeling.typeKey;
+    const pk = node.modeling.primaryKey || "id";
+    const stateVars = (node.processing?.mappings ?? []).filter((m) => m.isStateVariable).map((m) => ({ propKey: m.targetProp, value: 42 }));
+    return HttpResponse.json({
+      nodeId: node.id,
+      typeKey,
+      entities: [
+        { key: `${typeKey}-0001`, props: { [pk]: `${typeKey}-0001`, _synthesized: true } },
+        { key: `${typeKey}-0002`, props: { [pk]: `${typeKey}-0002`, _synthesized: true } },
+      ],
+      stateVariables: stateVars,
+      quarantined: 0,
+    });
+  }),
+  http.post("*/a/v1/ontology-workflows/:id/nodes/:nodeId/promote", ({ params }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    const node = wf.nodes.find((n) => n.id === params.nodeId);
+    if (!node || node.kind !== "SUBGRAPH_ENTITY") return err(404, "NOT_FOUND", "实体节点不存在");
+    if (!node.modeling?.primaryKey) return err(422, "PROMOTE_REJECTED", "缺主键，无法提升为本体图谱");
+    node.storageMode = "ONTOLOGY";
+    wf.updatedAt = new Date().toISOString();
+    return HttpResponse.json(wf);
+  }),
+  http.post("*/a/v1/ontology-workflows/:id/readiness", ({ params }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    const grade = (s: number) => (s >= 80 ? "READY" : s >= 50 ? "DEVELOPING" : "NASCENT");
+    const dim = (key: string, label: string, score: number) => ({ key, label, score, weight: 1 });
+    const entities = wf.nodes
+      .filter((n) => n.kind === "SUBGRAPH_ENTITY")
+      .map((n) => {
+        if (n.kind !== "SUBGRAPH_ENTITY") return null!;
+        const m = n.modeling;
+        const dims = [
+          dim("properties", "属性", Math.min(100, (m.properties?.length ?? 0) * 40)),
+          dim("primaryKey", "主键", m.primaryKey ? 100 : 0),
+          dim("dataSource", "数据源", n.dataSource?.rawDatasetId ? 100 : 0),
+          dim("stateVariables", "状态变量", (m.stateVariables?.length ?? 0) > 0 ? 100 : 40),
+          dim("actions", "行动", (m.actions?.length ?? 0) > 0 ? 100 : 0),
+          dim("derived", "派生", (m.derived?.length ?? 0) > 0 ? 100 : 30),
+          dim("storageMode", "存储模式", n.storageMode === "ONTOLOGY" ? 100 : 50),
+        ];
+        const score = Math.round(dims.reduce((a, d) => a + d.score, 0) / dims.length);
+        const missing = dims.filter((d) => d.score < 50).map((d) => d.label);
+        return { nodeId: n.id, typeKey: m.typeKey, storageMode: n.storageMode, score, grade: grade(score), dimensions: dims, missing };
+      });
+    const overall = entities.length ? Math.round(entities.reduce((a, e) => a + e.score, 0) / entities.length) : 0;
+    return HttpResponse.json({ overall, grade: grade(overall), entities });
+  }),
+  http.post("*/a/v1/ontology-workflows/:id/publish", ({ params }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    // WO-MERGE-02 B4：与真后端 pipeline/service.ts#publish 同形——types/links 为类型键 / 链路键的 string[]。
+    const types = wf.nodes.filter((n) => n.kind === "SUBGRAPH_ENTITY").map((n) => (n.kind === "SUBGRAPH_ENTITY" ? n.modeling.typeKey : "")).filter(Boolean);
+    const links = wf.nodes.filter((n) => n.kind === "SUBGRAPH_LINK").map((n) => (n.kind === "SUBGRAPH_LINK" ? n.spec.linkKey : "")).filter(Boolean);
+    wf.status = "PUBLISHED";
+    wf.updatedAt = new Date().toISOString();
+    return HttpResponse.json({ types, links, sliceKey: `${wf.id}-slice`, version: 1 });
+  }),
+  // WO-MERGE-02 B3：通用 what-if 推演（与真后端 pipeline/generic-inference.ts#computeInference 输出同形 GenericInferenceOutput）。
+  http.post("*/a/v1/ontology-workflows/:id/inference", async ({ params, request }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    const body = (await request.json().catch(() => ({}))) as {
+      changes?: { typeKey: string; prop: string; delta?: number; setValue?: unknown }[];
+    };
+    const ch = body.changes?.[0];
+    if (!ch) return err(422, "NO_CHANGE", "缺少 change");
+    const entity = wf.nodes.find((n) => n.kind === "SUBGRAPH_ENTITY" && n.modeling.typeKey === ch.typeKey);
+    if (!entity || entity.kind !== "SUBGRAPH_ENTITY") return err(422, "UNKNOWN_TYPE", "未知实体类型");
+    const objId = `${ch.typeKey}-0001`;
+    const before = 100;
+    const after = ch.setValue !== undefined ? ch.setValue : before + (ch.delta ?? 0);
+    // 一条 direct（被改属性）+ 一条 derived（本对象算术派生再算，via=derived:total）—— 确定性、无时钟/随机。
+    const changed = [
+      { objectId: objId, typeKey: ch.typeKey, prop: ch.prop, before, after, via: "direct" },
+      { objectId: objId, typeKey: ch.typeKey, prop: "total", before: before * 2, after: Number(after) * 2, via: "derived:total" },
+    ];
+    return HttpResponse.json({
+      deterministic: true,
+      changed,
+      aggregates: [{ typeKey: ch.typeKey, prop: "total", fn: "SUM", sourceType: ch.typeKey }],
+      note: "通用 what-if（立即可用）：单因子沿派生/聚合边有界传播；复杂时序/容量推演需领域求解器。",
+    });
+  }),
+  http.post("*/a/v1/ontology-workflows/:id/scaffold", ({ params }) => {
+    const wf = db.ontologyWorkflows.find((w) => w.id === params.id);
+    if (!wf) return err(404, "NOT_FOUND", "工作流不存在");
+    const entities = wf.nodes.filter((n) => n.kind === "SUBGRAPH_ENTITY");
+    const views = [
+      ...entities.map((n) => (n.kind === "SUBGRAPH_ENTITY" ? { key: `ledger-${n.modeling.typeKey}`, kind: "ledger" as const, title: `${n.modeling.displayName} 台账`, typeKey: n.modeling.typeKey } : null!)).filter(Boolean),
+      { key: "dashboard", kind: "dashboard" as const, title: "驾驶舱" },
+      { key: "graph", kind: "graph" as const, title: "本体图谱" },
+    ];
+    const scenes = entities.map((n) => (n.kind === "SUBGRAPH_ENTITY" ? { key: `scene-${n.modeling.typeKey}`, title: `${n.modeling.displayName} 助手`, mode: "AGENT_FIRST" as const, typeKey: n.modeling.typeKey, agentKey: `agent-${n.modeling.typeKey}` } : null!)).filter(Boolean);
+    const agents = entities.map((n) => (n.kind === "SUBGRAPH_ENTITY" ? { key: `agent-${n.modeling.typeKey}`, title: `${n.modeling.displayName} Agent`, tools: ["query_objects", "resolve_slice", "invoke_solver", "evaluate_rules", "aggregate_objects"] } : null!)).filter(Boolean);
+    const viewKeys = views.map((v) => v.key);
+    return HttpResponse.json({
+      views,
+      scenes,
+      agents,
+      scenarioPackages: [`pack-${wf.id}`],
+      solverBindings: ["generic_whatif"],
+      persisted: { viewConfigId: `vc_scaffold_${TENANT_ID}_${wf.id}`, viewKeys, agentsPushed: [], sceneEntriesPushed: [], deferred: agents.length + scenes.length > 0 ? ["agentcore-agents-scenes"] : [] },
+    });
+  }),
+  http.post("*/a/v1/connections/:id/upload", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const form = await request.formData().catch(() => null);
+    const file = form?.get("file");
+    const datasetName = file instanceof File ? file.name : "uploaded.xlsx";
+    return HttpResponse.json({ rawDatasetId: newId("rds"), datasetName }, { status: 201 });
+  }),
+
   // ---- 合成数据 ----
   http.get("*/a/v1/industry-templates", () =>
     HttpResponse.json([{ industryKey: "battery-manufacturing" }, { industryKey: "discrete-assembly" }, { industryKey: "retail-supply-chain" }]),

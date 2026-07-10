@@ -6,6 +6,8 @@ export interface AdminPageDef {
   label: string;
   /** 命中任一基础角色即可见；"admin" 角色覆盖全部 */
   roles: string[];
+  /** 可选 Entitlement 门控键：关 → 导航隐藏 + 路由 404（AdminGuard/ShellLayout 消费，WO-MERGE-02 B1）。 */
+  feature?: string;
 }
 
 export const ADMIN_PAGES: AdminPageDef[] = [
@@ -24,7 +26,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "rules", label: zh.nav.rules, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "permissions", label: zh.nav.permissions, roles: ["admin"] },
   { path: "synthetic", label: zh.nav.synthetic, roles: ["admin"] },
-  { path: "data-builder", label: zh.nav.dataBuilder, roles: ["admin"] },
+  { path: "data-builder", label: zh.nav.dataBuilder, roles: ["admin"], feature: "data-builder" },
   { path: "actions", label: zh.nav.actions, roles: ["admin", "approver"] },
   // WO-DECISION-RECORD（PRD §3.7 D8）：一等 Decision 记录（问责+组织学习·预测 vs 实现）
   { path: "decisions", label: "决策记录", roles: ["admin", "approver", "planner"] },

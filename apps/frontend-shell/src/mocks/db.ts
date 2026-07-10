@@ -1,4 +1,4 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, IntentSliceSpec, LlmProvider, MaterializedIntent, McpServerConfig, PurposeBinding, RuleEntry, Scenario, ScheduledJob, SchedulerRun, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, IntentSliceSpec, LlmProvider, MaterializedIntent, McpServerConfig, OntologyWorkflow, PurposeBinding, RuleEntry, Scenario, ScheduledJob, SchedulerRun, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -87,6 +87,8 @@ interface MockDb {
   // S3 调度器（WO-OPS-GOV-VISIBILITY §①）
   scheduledJobs: ScheduledJob[];
   schedulerRuns: SchedulerRun[];
+  // WO-MERGE-02：OntoFlow 本体建模工作流（移植；MSW CRUD + readiness/scaffold/inference 同真后端形）。
+  ontologyWorkflows: OntologyWorkflow[];
 }
 
 function freshDb(): MockDb {
@@ -135,7 +137,44 @@ function freshDb(): MockDb {
     opsSchedule: null,
     scheduledJobs: structuredClone(SCHEDULED_JOBS),
     schedulerRuns: structuredClone(SCHEDULER_RUNS),
+    ontologyWorkflows: seedOntologyWorkflows(),
   };
+}
+
+/** WO-MERGE-02：OntoFlow 种子工作流（数据先行订单链，含实体节点，供画布首屏渲染）。 */
+function seedOntologyWorkflows(): OntologyWorkflow[] {
+  return [
+    {
+      id: "owf-seed",
+      tenantId: TENANT_ID,
+      name: "订单本体工作流",
+      entryMode: "DATA_FIRST",
+      status: "DRAFT",
+      nodes: [
+        { id: "src-1", kind: "SOURCE_SELECT", label: "数据选择", position: { x: 60, y: 80 }, spec: {} },
+        { id: "tbl-1", kind: "SOURCE_TABLE", label: "源表", position: { x: 250, y: 80 }, spec: { rawDatasetId: "rds-orders", role: "event" } },
+        { id: "proc-1", kind: "PROCESS", label: "数据处理", position: { x: 440, y: 80 }, spec: { mappings: [], mode: "BATCH" } },
+        {
+          id: "entity-1",
+          kind: "SUBGRAPH_ENTITY",
+          label: "订单",
+          position: { x: 630, y: 80 },
+          storageMode: "STATIC",
+          modeling: { typeKey: "Order", displayName: "订单", primaryKey: "orderId", properties: [{ propKey: "orderId", dataType: "String" }], stateVariables: [], derived: [] },
+          dataSource: { rawDatasetId: "rds-orders", role: "event" },
+        },
+        { id: "sink-1", kind: "ONTOLOGY_SINK", label: "本体库", position: { x: 820, y: 80 }, spec: {} },
+      ],
+      edges: [
+        { from: "src-1", to: "tbl-1" },
+        { from: "tbl-1", to: "proc-1" },
+        { from: "proc-1", to: "entity-1" },
+        { from: "entity-1", to: "sink-1" },
+      ],
+      createdAt: "2026-06-01T08:00:00Z",
+      updatedAt: "2026-06-01T08:00:00Z",
+    },
+  ];
 }
 
 export let db: MockDb = freshDb();

@@ -255,7 +255,8 @@ export default function ShellLayout() {
   }
 
   const roles = workspace.user?.roles ?? [];
-  const adminPages = visibleAdminPages(roles);
+  // 角色可见 ∩ feature 开通（关 → 导航隐藏，与 AdminGuard 的 404 一致，WO-MERGE-02 B1）。
+  const adminPages = visibleAdminPages(roles).filter((p) => !p.feature || featureOn(workspace, p.feature));
   const onViewPage = location.pathname.startsWith("/v/");
   const dockOn = featureOn(workspace, "shell.query-dock");
 

@@ -12,11 +12,13 @@ export function AdminGuard({ path, featureKey, children }: { path: string; featu
   const { data: workspace, isLoading } = useWorkspace();
   if (isLoading || !workspace) return <div className="empty-state">{zh.common.loading}</div>;
 
-  if (featureKey && workspace.features && !workspace.features.includes(featureKey)) {
+  const page = ADMIN_PAGES.find((p) => p.path === path);
+  // Entitlement 先于 authz：显式传入或注册表声明的 feature 关 → 404（先于角色 403）。
+  const gate = featureKey ?? page?.feature;
+  if (gate && workspace.features && !workspace.features.includes(gate)) {
     return <NotFoundPage />;
   }
 
-  const page = ADMIN_PAGES.find((p) => p.path === path);
   if (!page) return <NotFoundPage />;
   const roles = workspace.user?.roles ?? [];
   if (!canAccessAdmin(roles, page)) return <ForbiddenPage />;
