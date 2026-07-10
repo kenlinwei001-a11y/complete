@@ -5314,7 +5314,7 @@
       "title": "L0·兄弟A A1: fuseClassification确定性⊕LLM融合(治上游听懂精度)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "note": "PRD-upstream §4: 把orchestrator.ts:520 llmClassification??deterministicClassify升为fuseClassification融合(纯函数R6)·救回遗漏(det score≥0.5补候选conf=τ_low)+一致加成(LLM top==det top→×(1+β))+冲突走澄清不硬塞；QOS_CLASSIFY_FUSE开关(env·defaultOn:false·RL2)关时100%等价现行??语义。",
@@ -5349,16 +5349,18 @@
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T17:14:11.806Z",
         "built": "2026-07-10T03:43:38.009Z",
-        "blocked": "2026-07-09T16:34:11.652Z"
+        "blocked": "2026-07-09T16:34:11.652Z",
+        "done": "2026-07-10T06:19:37.655Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 对抗真跑(agent a75951):救回真门控rescued=added&&llmWouldPathB&&!fusedWouldPathB(orchestrator.ts:409非无条件)·指标仅救回inc(:648)·关闸llm??deterministic(:650)。独立重跑coverage-fill-classify-fuse-rework+router-classify-fuse 14/14绿:最弱LLM stub(outOfCatalog空候选)喂真痛点句→开FUSE救回rescued0→1 path≠AGENT·关→AGENT。真差分非自匹配。dev引用:520是过时行号(瑕疵不影响实质)。诚实:createTestApp真orchestrator+LLM受控注入(未另起HTTP stub进程·与传输正交)。"
     },
     {
       "id": "UPG-L0-SOLVER-COVERAGE",
       "title": "L0·兄弟A A2: SOLVER_COVERAGE覆盖矩阵+solver-coverage门(治没有对的求解器·诊断)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "UPG-L0-CLASSIFY-FUSE"
@@ -5394,16 +5396,18 @@
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T17:14:11.752Z",
         "built": "2026-07-10T03:43:38.160Z",
-        "blocked": "2026-07-09T16:32:21.328Z"
+        "blocked": "2026-07-09T16:32:21.328Z",
+        "done": "2026-07-10T06:19:37.723Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 对抗真跑(agent a75951·指标此前造假现真落代码):C1 solver-coverage:check RC0(22类目50key全∈registry零幽灵3诚实缺口)+幽灵自证(注入__ghost_zzz__→门红RC1→还原复绿·门真校验)。C3 qos_pathb_by_problemclass真定义metrics.ts:96+真埋点orchestrator.ts:1163+真注册:147·真端点baseline0→喂out-of-catalog→{class=unknown_intent}1(与dev声称一致·真Prometheus counter)。C2显式coverage-gap事件非静默·C4 ontology-writeback RC0+agentcore653。"
     },
     {
       "id": "UPG-L0-COVERAGE-FILL",
       "title": "L0·兄弟A A3: 高频未覆盖类目补path-A求解器(因果归因优先·治没有对的求解器·施工)",
       "doc": "docs/PRD-upstream-classify-precision.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "UPG-L0-SOLVER-COVERAGE"
@@ -5435,9 +5439,11 @@
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-10T02:36:47.229Z",
         "built": "2026-07-10T03:43:37.859Z",
-        "blocked": "2026-07-10T02:14:28.761Z"
+        "blocked": "2026-07-10T02:14:28.761Z",
+        "done": "2026-07-10T06:19:37.588Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 对抗真跑(agent a75951·头号造假#4未复发):C1原句「常州物料齐套为什么这天越线」(raw NL无scenarioIntentKey非S27同义句)→path=WORKFLOW/causal_attribution(非AGENT)·答物料保障率94.6<95·根因三元正极654占74.7%+电解液222占25.3%。数值seed真算(battery.ts:1849 gapTon=net*(1-lta/100)·MAT表net8180/lta92→654)·真端点GET objects?type=MaterialBalance交叉验证·铁证live ratio0.99578全精度vs mock硬编码0.9958=走DataCore真求解器service.ts:727非mock。路由真改a683258三处(intent-mode.ts:38 risk_root_cause AGENT_FIRST→WORKFLOW_FIRST·S03 risk_timeline→causal_attribution·seed.ts plan resolve_slice→invoke_solver)。C2∈registry+R6字节一致·C3 no-fake-done RC0。"
     },
     {
       "id": "UPG-L0-CONSOLE-BOARD",
@@ -5768,8 +5774,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "Q30-P1-Q01VERT",
-      "at": "2026-07-10T06:02:14.527Z"
+      "id": "UPG-L0-SOLVER-COVERAGE",
+      "at": "2026-07-10T06:19:37.724Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
