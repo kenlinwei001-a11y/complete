@@ -322,3 +322,40 @@ describe("SIM-REAL-SNAPSHOT · deriveBaseSnapshot 取后端真属性态（非 ha
     expect(snap["obj_x"]).toEqual({ s1: 0 });
   });
 });
+
+// ── WO-CAP-03-KPI-FIX：KPI 口径 = 携带者真均值（分母=携带者，非全对象稀释）+ 量纲统一 + cert.knowledge 正名。 ──
+describe("WO-CAP-03 · KPI 携带者真均值 + 量纲统一（治利用率 2.0 稀释）", () => {
+  afterEach(() => cleanup());
+  // Line.utilization 百分(92/90) 与 Process.utilization 分数(0.9/1.0) 混存同一 stateVar；另 3 个 Order 对象不携带 utilization。
+  const MIXED: SandboxViewConfig = {
+    tenantId: "tenant-cap",
+    nodeTypes: ["Line", "Process", "Order"],
+    linkTypes: ["line_has_process"],
+    stateVars: ["utilization"],
+    radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
+    screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
+    propagationCount: 1,
+    nodeObjectIds: { Line: ["L1", "L2"], Process: ["P1", "P2"], Order: ["O1", "O2", "O3"] },
+    nodeObjectState: { L1: { utilization: 92 }, L2: { utilization: 90 }, P1: { utilization: 0.9 }, P2: { utilization: 1.0 } },
+  };
+
+  it("利用率 KPI = 携带者(4)量纲统一后真均值 93.0（非 ÷7 稀释 26.3·非未归一 46.0）", async () => {
+    wrap(MIXED);
+    await screen.findByTestId("sandbox-view");
+    const kpi = await screen.findByTestId("sandbox-kpi-utilization-val");
+    // 携带者 4 个：Line[92,90] 百分保留 + Process[0.9,1.0]×100 归一 → [92,90,90,100] 均值 93.0。
+    await waitFor(() => expect(kpi.textContent).toBe("93.0"));
+    // 反证稀释/未归一（若回退 ÷全对象 或不统一量纲，值会是 26.3 / 46.0 等，断言转红）。
+    expect(kpi.textContent).not.toBe("26.3");
+    expect(kpi.textContent).not.toBe("46.0");
+    expect(kpi.textContent).not.toBe("2.0");
+  });
+
+  it("cert.knowledge 正名：健康雷达该维展示「建模完整度」而非误标「利用率」", async () => {
+    wrap(MIXED);
+    await screen.findByTestId("sandbox-view");
+    const axis = await screen.findByTestId("sandbox-health-axis-utilization");
+    expect(axis.textContent).toContain("建模完整度");
+    expect(axis.textContent).not.toContain("利用率");
+  });
+});

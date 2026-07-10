@@ -865,6 +865,15 @@ export function stateVarLabel(v: string): string {
 }
 
 /**
+ * WO-CAP-03-KPI-FIX（R14 展示词入 i18n）：就绪认证的 `cert.dims.knowledge` 维**正名**。
+ * 它 = 对象类型字段被消费的比率（certification.ts `knowledge = pct(consumedFields, totalFields)`），
+ * 即**schema 覆盖率 / 建模完整度**——与「产能利用率」（Line/Process.utilization）**无关**，此前误标「利用率」误导。
+ * 展示名集中于此，视图不再散落写「利用率」冒充产能口径。
+ */
+export const SIM_KNOWLEDGE_DIM_LABEL = "建模完整度";
+export const SIM_KNOWLEDGE_DIM_SRC = "dims.knowledge（字段消费率=schema覆盖率/建模完整度）";
+
+/**
  * 界面英文术语白名单（I18N-LONGTAIL C2·显式维护）。
  *
  * 界面文案默认中文（R14：展示词集中于 i18n / 组件不写死中文常数）。以下英文 token 属**有意保留**、

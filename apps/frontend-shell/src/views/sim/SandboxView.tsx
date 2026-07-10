@@ -27,7 +27,7 @@ import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxRunHistory } from "./SandboxRunHistory";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
-import { stateVarLabel } from "@/locales/zh";
+import { stateVarLabel, SIM_KNOWLEDGE_DIM_LABEL, SIM_KNOWLEDGE_DIM_SRC } from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
 /**
@@ -75,6 +75,59 @@ function aggregate(row: Record<string, number> | undefined): number {
   const vals = Object.values(row);
   if (vals.length === 0) return 0;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+/**
+ * WO-CAP-03-KPI-FIX：单个 stateVar 的**真均值**——只在**携带该变量的对象**上取均值
+ * （分母 = 携带者数，**非全 575 对象**），治「Σ携带者值 ÷ 全对象 = 稀释误标」
+ * （利用率此前 (12×92 + 60×0.95) / 575 ≈ **2.0**·误冒充"利用率"）。
+ *
+ * 携带者判定 = 后端**真快照** `cfg.nodeObjectState[oid][v]` 为有限数（= obj.props 命中该 stateVar 的数值型属性，
+ * 与 datacore `buildRealSnapshot` 同源）；世界态被 tick 传导后取 `world[oid][v]` 现态（反映推演）。
+ *
+ * 量纲统一（PRD §2.1）：同一 stateVar 若携带者跨「分数(≤1)/百分(>1)」两种量纲
+ * （如 `Line.utilization` 百分 90-93 vs `Process.utilization` 分数 0.88-1.0），聚合前把分数值 ×100 归一到 0-100，
+ * 避免 0.95 与 92 直接混算。仅当携带者同时含 >1 与 ≤1 两类才归一（纯分数比率变量如 demandDelta 不被改动）。
+ *
+ * 无 `nodeObjectState`（老配置/测试桩）→ 退回「全 world 对象均值」兜底（无真携带信息时不臆断，向后兼容）。
+ */
+function carrierMean(cfg: SandboxViewConfig, world: TickState, v: string): { value: number; carriers: number } {
+  const nos = cfg.nodeObjectState;
+  const objs = Object.keys(world);
+  const ids = nos
+    ? objs.filter((o) => {
+        const r = nos[o]?.[v];
+        return typeof r === "number" && Number.isFinite(r);
+      })
+    : objs;
+  if (ids.length === 0) return { value: 0, carriers: 0 };
+  let vals = ids.map((o) => world[o]?.[v] ?? 0);
+  const hasPct = vals.some((x) => x > 1);
+  const hasFrac = vals.some((x) => x <= 1);
+  if (hasPct && hasFrac) vals = vals.map((x) => (x <= 1 ? x * 100 : x)); // 分数→百分，统一 0-100
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return { value: mean, carriers: ids.length };
+}
+
+/**
+ * WO-CAP-03-KPI-FIX：全局态（0-100）——**按变量归一后再聚合**，勿把 totalDemand(32万量级) 等无界计数变量
+ * 混入 0-100 全局态（此前 Σaggregate÷对象数 = **3339.5** 远超注释宣称 0-100、恒过阈值恒红误导）。
+ * 各 stateVar 取「携带者真均值」，仅纳入归一后 ≤100 的**有界比率/百分变量**（无界计数变量排除），末端 clamp 0-100。
+ * 无真快照（测试桩/老配置）→ 退回原 world 聚合（保持 tick 响应·向后兼容）。
+ */
+function computeGlobalKpi(cfg: SandboxViewConfig, world: TickState): number {
+  const objs = Object.keys(world);
+  if (objs.length === 0) return 0;
+  if (cfg.nodeObjectState) {
+    const perVar = cfg.stateVars
+      .map((v) => carrierMean(cfg, world, v))
+      .filter((r) => r.carriers > 0 && r.value <= 100);
+    if (perVar.length > 0) {
+      const m = perVar.reduce((a, r) => a + r.value, 0) / perVar.length;
+      return Math.max(0, Math.min(100, m));
+    }
+  }
+  return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.length;
 }
 
 /** 聚合值 → 着色（高=暖红 警示 / 中=琥珀 / 低=青）。红带阈 = 权威 sim 配置（view-config.heatThreshold，非内联 70）；
@@ -294,12 +347,12 @@ function deriveHealthDims(cert: SimCertification | null): RadarDim[] {
   if (!cert) return [];
   const wc = cert.worldCompleteness;
   const ruleCov = ratioPct(wc.propagationRules.present, wc.propagationRules.needed);
-  // 利用率：知识维已含「DATA 维 + 利用率」投影（契约注释），直接取 dims.knowledge。
+  // 建模完整度（正名·WO-CAP-03）：dims.knowledge = 字段消费率(schema 覆盖率)，非产能利用率，直接取。
   const closure = ratioPct(wc.derivationRules.present, wc.derivationRules.needed);
   const activation = ratioPct(wc.actions.present, wc.actions.needed);
   return [
     { key: "ruleCoverage", label: "规则覆盖", value: ruleCov.value, hasData: ruleCov.hasData, src: "worldCompleteness.propagationRules" },
-    { key: "utilization", label: "利用率", value: Math.round(cert.dims.knowledge), hasData: true, src: "dims.knowledge（DATA维+利用率）" },
+    { key: "utilization", label: SIM_KNOWLEDGE_DIM_LABEL, value: Math.round(cert.dims.knowledge), hasData: true, src: SIM_KNOWLEDGE_DIM_SRC },
     { key: "closure", label: "闭包", value: closure.value, hasData: closure.hasData, src: "worldCompleteness.derivationRules" },
     { key: "cycleSafety", label: "周期安全", value: cert.l4Checks.fanoutSafe ? 100 : 0, hasData: true, src: "l4Checks.fanoutSafe（无高风险扇出）" },
     { key: "observability", label: "可观测", value: cert.l4Checks.observabilityMet ? 100 : Math.round(cert.dims.structure), hasData: true, src: "l4Checks.observabilityMet / dims.structure" },
@@ -398,7 +451,7 @@ function EvalChecklist({ cert, cfg }: { cert: SimCertification; cfg: SandboxView
   const queryCovered = cert.l4Checks.observabilityMet;
   const rows: { key: string; label: string; val: string; ok: boolean; note: string }[] = [
     { key: "state", label: "State 状态变量", val: `${cfg.stateVars.length}`, ok: cfg.stateVars.length > 0, note: "纳入推演的状态变量（view-config.stateVars）" },
-    { key: "action", label: "Action 行动", val: `${wc.actions.present} · 利用率 ${Math.round(cert.dims.knowledge)}%`, ok: wc.actions.present > 0, note: "写回行动数 · 知识利用率(dims.knowledge)" },
+    { key: "action", label: "Action 行动", val: `${wc.actions.present} · ${SIM_KNOWLEDGE_DIM_LABEL} ${Math.round(cert.dims.knowledge)}%`, ok: wc.actions.present > 0, note: "写回行动数 · 建模完整度(dims.knowledge=字段消费率)" },
     { key: "writeback", label: "Writeback 写回", val: cert.l4Checks.writebackComplete ? "完整" : "缺", ok: cert.l4Checks.writebackComplete, note: "≥1 writeback ActionType(l4Checks.writebackComplete)" },
     { key: "query", label: "Query 图查询", val: queryCovered ? "已覆盖" : "0", ok: queryCovered, note: queryCovered ? "切片覆盖达标(observabilityMet)" : "无切片覆盖 · 图查询页后端未建(§10.1 RESERVED)" },
   ];
@@ -750,12 +803,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   const compareRef = useRef<HTMLDivElement | null>(null);
   const scrollToCompareRef = useRef(false); // 仅「分支」触发滚动（刷新对比不打扰）；useEffect 待 compare 渲染后消费。
 
-  // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
-  const globalKpi = useMemo(() => {
-    const objs = Object.keys(world);
-    if (objs.length === 0) return 0;
-    return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.length;
-  }, [world]);
+  // 全局 KPI（0-100）= 各 stateVar「携带者真均值」按变量归一后聚合（WO-CAP-03·排除无界计数变量·治 3339.5 恒红）。
+  const globalKpi = useMemo(() => (cfg ? computeGlobalKpi(cfg, world) : 0), [world, cfg]);
 
   // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
   const init = useCallback(async (c: SandboxViewConfig) => {
@@ -773,7 +822,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       setSessionId(s.id);
       setWorld(base);
       setCurTick(0);
-      const g0 = Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length);
+      const g0 = computeGlobalKpi(c, base); // WO-CAP-03：时间轴与全局态同口径（归一后聚合，非原始混算）
       setHistory([g0]);
       // 就绪认证：诚实展示 L0-L4 + 三元组 + Trial Tick + 完整度 + entering + canEnter + gaps。
       try {
@@ -887,7 +936,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           const res = await simTick(sessionId, 1);
           last = res.state;
           lastTick = res.curTick;
-          const g = Object.keys(res.state).reduce((a, o) => a + aggregate(res.state[o]), 0) / Math.max(1, Object.keys(res.state).length);
+          const g = computeGlobalKpi(cfg!, res.state); // WO-CAP-03：逐 tick 时间轴同全局态口径（归一后聚合）
           setHistory((h) => [...h, g]);
         }
         if (last) {
@@ -900,7 +949,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
         setTicking(false);
       }
     },
-    [sessionId, curTick],
+    [sessionId, curTick, cfg],
   );
 
   // AI 指挥台分发：NL → 确定性意图 → 映射**现有沙盘动作**（tick/checkpoint/branch/query），不新建并行动作。
@@ -1011,11 +1060,11 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
             </div>
             <div className={styles.threeKpiRow}>
               {cfg.stateVars.map((v) => {
-                const objs = Object.keys(world);
-                const avg = objs.length ? objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length : 0;
+                // WO-CAP-03-KPI-FIX：只在**携带该变量的对象**上取均值（分母=携带者，非全 575）+ 量纲统一（分数↔百分）。
+                const { value: avg, carriers } = carrierMean(cfg, world, v);
                 return (
                   <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
-                    <span title={v}>{stateVarLabel(v)}</span>
+                    <span title={`${v} · ${carriers} 个携带对象取均值（口径：携带者真均值，非全对象稀释）`}>{stateVarLabel(v)}</span>
                     <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
                   </div>
                 );
