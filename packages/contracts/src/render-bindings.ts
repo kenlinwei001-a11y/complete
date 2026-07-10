@@ -182,6 +182,42 @@ export const SOLVER_RENDER_BINDINGS: Readonly<Record<string, readonly RenderBind
     { block: "table", fromSolverField: "layers" },
     { block: "text", fromSolverField: "summary" },
   ],
+  // Q30-P3 求解器横铺 B（新域·中成本）——3 新域 + 2 复用类，绑定字段均求解器无条件产出（真值齿钉死·缺字段即红）。
+  // cash_projection 现金流投影：KPI=安全垫最低/期初现金；表=逐周现金曲线；叙事=投影结论。
+  cash_projection: [
+    { block: "kpi", fromSolverField: "minCashWan" },
+    { block: "kpi", fromSolverField: "openingCashWan" },
+    { block: "table", fromSolverField: "weeks" },
+    { block: "text", fromSolverField: "summary" },
+  ],
+  // labor_balance 人力平衡：KPI=净缺口/欠配线数；表=逐线配工缺口；叙事=估算口径说明。
+  labor_balance: [
+    { block: "kpi", fromSolverField: "totalGap" },
+    { block: "kpi", fromSolverField: "deficitLineCount" },
+    { block: "table", fromSolverField: "lines" },
+    { block: "text", fromSolverField: "note" },
+  ],
+  // energy_cost_schedule 能耗成本排程：KPI=总能耗/总碳排；表=逐基地能耗；叙事=电价缺失诚实说明。
+  energy_cost_schedule: [
+    { block: "kpi", fromSolverField: "totalEnergyKwh" },
+    { block: "kpi", fromSolverField: "totalCarbonKg" },
+    { block: "table", fromSolverField: "bases" },
+    { block: "text", fromSolverField: "note" },
+  ],
+  // reroute_decision 改道决策（复用 min_cost_flow 真调）：KPI=改道量/总成本；表=候选产线；叙事=改道结论。
+  reroute_decision: [
+    { block: "kpi", fromSolverField: "shippedVolume" },
+    { block: "kpi", fromSolverField: "objective" },
+    { block: "table", fromSolverField: "candidates" },
+    { block: "text", fromSolverField: "summary" },
+  ],
+  // multi_constraint_schedule 多约束联合排产（复用排产族三子解真调）：KPI=换型子解/认证子解（对象展开一层）；表=联合排产序；叙事=三约束联解说明。
+  multi_constraint_schedule: [
+    { block: "kpi", fromSolverField: "changeover" },
+    { block: "kpi", fromSolverField: "cert" },
+    { block: "table", fromSolverField: "jointSequence" },
+    { block: "text", fromSolverField: "summary" },
+  ],
   // UPG-L0-COVERAGE-FILL：通用因果归因 root-cause。KPI=越线项数/总缺口；表=越线明细 + 根因主驱动（真证据字段量化）；叙事=归因链结论。
   causal_attribution: [
     { block: "kpi", fromSolverField: "crossedCount" },

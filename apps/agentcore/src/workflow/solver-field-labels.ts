@@ -214,6 +214,36 @@ export const FIELD_LABELS: Readonly<Record<string, FieldLabel>> = {
   status: { label: "求解状态" },
   ok: { label: "是否达标" },
   infeasible: { label: "是否不可行" },
+
+  // —— Q30-P3 求解器横铺 B · cash_projection 现金流投影标量字段 ——
+  horizonWeeks: { label: "投影/排程周数", unit: "周" },
+  openingCashWan: { label: "期初现金", unit: "万元" },
+  minCashWan: { label: "现金安全垫(最低点)", unit: "万元" },
+  minCashWeek: { label: "安全垫最低周", unit: "周" },
+  totalInflowWan: { label: "累计回款", unit: "万元" },
+  totalOutflowWan: { label: "累计付款", unit: "万元" },
+  orderCount: { label: "订单数", unit: "单" },
+  baseCount: { label: "基地数", unit: "个" },
+
+  // —— Q30-P3 求解器横铺 B · labor_balance 人力平衡标量字段 ——
+  laborPerWan: { label: "人力需求系数", unit: "人·班/万套" },
+  totalHeadcount: { label: "编制合计", unit: "人" },
+  totalRequiredManShifts: { label: "需求人力", unit: "人·班" },
+  totalAvailableManShifts: { label: "可用人力", unit: "人·班" },
+  deficitLineCount: { label: "欠配产线数", unit: "线" },
+
+  // —— Q30-P3 求解器横铺 B · energy_cost_schedule 能耗成本排程标量字段 ——
+  tariffAvailable: { label: "有分时电价" },
+  totalEnergyKwh: { label: "总能耗", unit: "kWh" },
+  totalCarbonKg: { label: "总碳排", unit: "kg" },
+  totalEnergyCostWan: { label: "总能耗成本", unit: "万元" },
+
+  // —— Q30-P3 求解器横铺 B · reroute_decision 改道决策标量字段 ——
+  disruptedLineId: { label: "停线产线" },
+  reroutedVolume: { label: "待改道产量" },
+  shippedVolume: { label: "已改道产量" },
+  unmetVolume: { label: "未改道产量" },
+  subSolver: { label: "子求解器" },
 };
 
 /**
@@ -357,6 +387,18 @@ export const STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
   "alternatives", // capex_alternatives 五维比较矩阵（方案数组·投表）
   "capacityBases", // full_cost_rollup 基地产能明细（数组·投表）
   "affectedSet", // signal_propagation 受影响对象集（id 数组·展开）
+  // Q30-P3 求解器横铺 B 结构性容器（数组/对象·投成表或展开·非标量 KPI）。
+  "weeks", // cash_projection 逐周现金曲线（数组·投表）
+  "lines", // labor_balance 逐线配工缺口（数组·投表）
+  "tariff", // energy_cost_schedule 分时电价结构（对象·展开·非标量）
+  "disruptedModels", // reroute_decision 断线量产型号集（数组·展开）
+  "jointSequence", // multi_constraint_schedule 联合排产序（数组·投表）
+  "sequencing", // multi_constraint_schedule 排序子解（对象·展开·子解 objective/changeovers）
+  "changeover", // multi_constraint_schedule 换型子解（对象·展开·子解 totalChangeoverMin/savedVsDueMin）
+  "cert", // multi_constraint_schedule 认证子解（对象·展开·子解 scheduledCount/engineerGroups）
+  "blockedByCert", // multi_constraint_schedule 待认证阻塞单集（数组·展开）
+  "subSolvers", // multi_constraint_schedule 子求解器清单（数组·展开）
+  "constraintsSatisfied", // multi_constraint_schedule 三约束满足标（对象·展开）
 ]);
 
 /**

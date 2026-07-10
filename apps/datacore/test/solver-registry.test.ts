@@ -40,13 +40,16 @@ const EXPECTED_KEYS = [
   "causal_attribution",
   // Q30-P2 求解器横铺 A（复用现有机器·追加末位）：CAPEX 方案比选（context）/ 全成本卷积（graph）/ 信号图传导（graph）。
   "capex_alternatives", "full_cost_rollup", "signal_propagation",
+  // Q30-P3 求解器横铺 B（新域+复用类·追加末位·全 graph 路由）：现金流投影/人力平衡/能耗成本排程/改道决策/多约束联合排产。
+  "cash_projection", "labor_balance", "energy_cost_schedule", "reroute_decision", "multi_constraint_schedule",
 ];
 
 // 重构前 A6_READOUT_SOLVERS 白名单。
 const EXPECTED_A6 = ["bottleneck_matrix", "capacity_rollup"];
 // 重构前 LIVE_DEFAULT_SOLVERS 白名单（排序后）。
 const EXPECTED_LIVE = [
-  "assignment_optimize", "capacity_rollup", "causal_attribution", "cockpit_kpi", "combinatorial_auction", "concentration_risk",
+  // Q30-P3：cash_projection 纯真对象读出+算术·liveDefault（排序位 capacity_rollup < cash_projection < causal_attribution）。
+  "assignment_optimize", "capacity_rollup", "cash_projection", "causal_attribution", "cockpit_kpi", "combinatorial_auction", "concentration_risk",
   "facility_location", "finance_pnl", "full_cost_rollup", "generic_inference", "independent_set", "ksf_graph", "margin_attribution",
   "metric_rollup", "min_cost_flow", "mrp_netting", "optimize_whatif", "packing_optimize", "plan_audit",
   "plan_generate", "selection_optimize", "sequencing_optimize", "set_cover", "shared_bottleneck",
@@ -62,6 +65,8 @@ const EXPECTED_GRAPH = [
   "causal_attribution",
   // Q30-P2 求解器横铺 A（graph 路由新增·graphHandlers 同步登记）：全成本卷积（复用 capacity_rollup+finance_pnl）/ 信号图传导（复用 supplier_disruption_radius BFS）。
   "full_cost_rollup", "signal_propagation",
+  // Q30-P3 求解器横铺 B（graph 路由新增·graphHandlers 同步登记·全 5 者 graph）：现金流投影/人力平衡/能耗成本排程/改道决策(复用 min_cost_flow)/多约束联合排产(复用排产族三子解)。
+  "cash_projection", "labor_balance", "energy_cost_schedule", "reroute_decision", "multi_constraint_schedule",
 ];
 // 重构前 EXTENDED_SOLVERS 分派 map（14）。
 const EXPECTED_EXTENDED = [

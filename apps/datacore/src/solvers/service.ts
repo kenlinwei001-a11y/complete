@@ -148,6 +148,12 @@ export class SolverService {
     independent_set: (ctx, args) => this.independentSet(ctx, args),
     combinatorial_auction: (ctx, args) => this.combinatorialAuction(ctx, args),
     optimize_whatif: (ctx, args) => this.optimizeWhatif(ctx, args),
+    // Q30-P3 求解器横铺 B（新域·中成本）——3 新域真读 SEED 对象派生 + 2 复用类真调子求解器。
+    cash_projection: (ctx, args) => this.cashProjection(ctx, args),
+    labor_balance: (ctx, args) => this.laborBalance(ctx, args),
+    energy_cost_schedule: (ctx, args) => this.energyCostSchedule(ctx, args),
+    reroute_decision: (ctx, args) => this.rerouteDecision(ctx, args),
+    multi_constraint_schedule: (ctx, args) => this.multiConstraintSchedule(ctx, args),
   };
 
   constructor(private repos: Repos) {
@@ -1389,6 +1395,386 @@ export class SolverService {
       gmRow: fin.gmRow,
       attribution: fin.attribution,
       summary: `全成本卷积：产能 ${capacityWeeklyWan} 万套/周（${capacityBases.length} 基地）→ 收入 ${revenue}/销售成本 ${cost}/毛利 ${grossMargin}（毛利率 ${marginPct}%·C15）`,
+    };
+  }
+
+  /**
+   * Q30-P3 求解器横铺 B · cash_projection — 现金流投影（新域·graph 路由·真读 SEED 对象派生·零合成/兜底）。
+   * 真读 FinanceAccount.cashOnHand（期初现金·亿→万元）+ Order(qty×unitPrice=营收·marginPct→销售成本·due 交期)
+   * + Customer.termDays（回款账期 T+termDays）→ 逐周回款/付款净现金累积成现金曲线 + 13 周安全垫（最低点·C18 口径）。
+   * 确定性 R6：纯真对象读出 + 算术，无时钟随机（周桶基于 params.forecastStart）。诚实空态：真无对象 → 0/空 + dataMode 非 LIVE。
+   */
+  private async cashProjection(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const horizonWeeks = Math.max(1, Math.min(52, Math.round(num(args.horizonWeeks, 13))));
+    const baseFilter = args.baseId !== undefined ? str(args.baseId) : "";
+    const params = await this.getParams(ctx.tenantId);
+    const startStr = str((params as unknown as { forecastStart?: string }).forecastStart, str((BATTERY_SOLVER_PARAMS as Record<string, unknown>).forecastStart, "2026-07-01"));
+    const t0 = Date.parse(`${startStr}T00:00:00Z`);
+
+    // ① 期初现金：真读 FinanceAccount.cashOnHand（亿→万元）。
+    const accounts = await this.repos.objects.listByType(ctx.tenantId, "FinanceAccount");
+    const accs = baseFilter ? accounts.filter((a) => str(a.props.baseId) === baseFilter) : accounts;
+    const openingCashWan = round(accs.reduce((s, a) => s + num(a.props.cashOnHand) * 10000, 0), 2);
+    const baseCount = new Set(accs.map((a) => str(a.props.baseId))).size;
+
+    // 客户账期索引（真读 Customer.termDays·回款账期 T+termDays）。
+    const customers = await this.repos.objects.listByType(ctx.tenantId, "Customer");
+    const termByCust = new Map<string, number>();
+    for (const c of customers) termByCust.set(str(c.props.custName), num(c.props.termDays, 60));
+
+    // ② 逐订单现金事件：真读 Order（营收=qty×unitPrice·万元；销售成本=营收×(1-毛利率)；回款周=交期+账期；付款周=交期）。
+    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
+    const bucket = Array.from({ length: horizonWeeks }, (_, w) => ({ week: w, inflowWan: 0, outflowWan: 0 }));
+    let orderCount = 0;
+    for (const o of orders) {
+      const obases = Array.isArray(o.props.bases) ? (o.props.bases as string[]) : [];
+      if (baseFilter && !obases.includes(baseFilter)) continue;
+      const dueMs = Date.parse(`${str(o.props.due)}T00:00:00Z`);
+      if (!Number.isFinite(dueMs)) continue;
+      const revenueWan = round(num(o.props.qty) * num(o.props.unitPrice) / 10000, 2);
+      if (revenueWan <= 0) continue;
+      const cogsWan = round(revenueWan * (1 - num(o.props.marginPct) / 100), 2);
+      const term = termByCust.get(str(o.props.cust)) ?? 60;
+      const collectWeek = Math.floor((dueMs + term * DAY_MS - t0) / (7 * DAY_MS));
+      const payWeek = Math.floor((dueMs - t0) / (7 * DAY_MS));
+      orderCount++;
+      if (collectWeek >= 0 && collectWeek < horizonWeeks) bucket[collectWeek]!.inflowWan = round(bucket[collectWeek]!.inflowWan + revenueWan, 2);
+      if (payWeek >= 0 && payWeek < horizonWeeks) bucket[payWeek]!.outflowWan = round(bucket[payWeek]!.outflowWan + cogsWan, 2);
+    }
+
+    // ③ 现金曲线：期初 + 逐周净现金累积 → 逐周期末现金 + 安全垫（最低点）。
+    let running = openingCashWan;
+    let minCashWan = openingCashWan;
+    let minCashWeek = 0;
+    const weeks = bucket.map((w) => {
+      const netWan = round(w.inflowWan - w.outflowWan, 2);
+      running = round(running + netWan, 2);
+      if (running < minCashWan) { minCashWan = running; minCashWeek = w.week; }
+      const weekStart = new Date(t0 + w.week * 7 * DAY_MS).toISOString().slice(0, 10);
+      return { week: w.week, weekStart, inflowWan: w.inflowWan, outflowWan: w.outflowWan, netWan, endingCashWan: running };
+    });
+    const totalInflowWan = round(weeks.reduce((s, w) => s + w.inflowWan, 0), 2);
+    const totalOutflowWan = round(weeks.reduce((s, w) => s + w.outflowWan, 0), 2);
+
+    return {
+      horizonWeeks,
+      openingCashWan,
+      weeks,
+      minCashWan,
+      minCashWeek,
+      totalInflowWan,
+      totalOutflowWan,
+      orderCount,
+      baseCount,
+      dataMode: accs.length > 0 || orderCount > 0 ? "LIVE" : "PARTIAL",
+      summary: `现金流投影 ${horizonWeeks} 周：期初 ${openingCashWan} 万元·回款 ${totalInflowWan}/付款 ${totalOutflowWan} 万元·安全垫最低 ${minCashWan} 万元(第 ${minCashWeek} 周·${orderCount} 单)`,
+    };
+  }
+
+  /**
+   * Q30-P3 求解器横铺 B · labor_balance — 人力平衡（新域·graph 路由·真读 SEED 对象派生）。
+   * 真读 LaborShift.headcount/borrowable/skillModels（编制·白/夜班）+ Order.allocatedLineIds（派单需求）→ 逐产线
+   * 配工与缺口（需求人·班 vs 可用人·班）。人力需求系数 laborPerWan 取 params.risk.deliveryLaborPerWan（估算参数·标 PARTIAL·
+   * 不冒充实测）；编制/派单为真读对象。确定性 R6：纯真对象读出 + 算术。诚实空态：真无对象 → 空 lines + PARTIAL。
+   */
+  private async laborBalance(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const params = await this.getParams(ctx.tenantId);
+    const laborPerWan = round(num(args.laborPerWan, num((params as unknown as { risk?: { deliveryLaborPerWan?: number } }).risk?.deliveryLaborPerWan, 1.6)), 4);
+    const baseFilter = args.baseId !== undefined ? str(args.baseId) : "";
+
+    const linesRaw = await this.repos.objects.listByType(ctx.tenantId, "Line");
+    const shiftsRaw = await this.repos.objects.listByType(ctx.tenantId, "LaborShift");
+    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
+
+    // 逐线派单需求（真读 Order.allocatedLineIds → 该线承接订单 qty 合计·电芯口径）。
+    const demandByLine = new Map<string, number>();
+    for (const o of orders) {
+      const alloc = Array.isArray(o.props.allocatedLineIds) ? (o.props.allocatedLineIds as string[]) : [];
+      const qty = num(o.props.qty);
+      for (const lid of alloc) demandByLine.set(lid, (demandByLine.get(lid) ?? 0) + qty);
+    }
+    // 逐线班组（真读 LaborShift.headcount/borrowable/skillModels）。
+    const shiftByLine = new Map<string, ObjectInstance[]>();
+    for (const s of shiftsRaw) {
+      const lid = str(s.props.lineId);
+      const arr = shiftByLine.get(lid);
+      if (arr) arr.push(s); else shiftByLine.set(lid, [s]);
+    }
+
+    const lines = linesRaw
+      .filter((l) => !baseFilter || str(l.props.baseId) === baseFilter)
+      .map((l) => {
+        const lid = str(l.props.lineId);
+        const ls = shiftByLine.get(lid) ?? [];
+        const availableHeadcount = ls.reduce((s, x) => s + num(x.props.headcount), 0);
+        const borrowableHeadcount = ls.filter((x) => x.props.borrowable === true).reduce((s, x) => s + num(x.props.headcount), 0);
+        const availableManShifts = availableHeadcount; // 编制人数合计 = 日可用人·班（每人一班）
+        const routedDemandWan = round((demandByLine.get(lid) ?? 0) / 10000, 4);
+        const requiredManShifts = round(routedDemandWan * laborPerWan, 2);
+        const gap = round(requiredManShifts - availableManShifts, 2);
+        return { lineId: lid, baseId: str(l.props.baseId), availableHeadcount, shiftCount: ls.length, borrowableHeadcount, routedDemandWan, requiredManShifts, availableManShifts, gap, skillModels: str(ls[0]?.props.skillModels) };
+      })
+      .sort((a, b) => b.gap - a.gap || a.lineId.localeCompare(b.lineId));
+
+    const totalHeadcount = lines.reduce((s, l) => s + l.availableHeadcount, 0);
+    const totalRequiredManShifts = round(lines.reduce((s, l) => s + l.requiredManShifts, 0), 2);
+    const totalAvailableManShifts = lines.reduce((s, l) => s + l.availableManShifts, 0);
+    const totalGap = round(totalRequiredManShifts - totalAvailableManShifts, 2);
+    const deficitLineCount = lines.filter((l) => l.gap > 0).length;
+
+    return {
+      laborPerWan,
+      lines,
+      totalHeadcount,
+      totalRequiredManShifts,
+      totalAvailableManShifts,
+      totalGap,
+      deficitLineCount,
+      note: `人力需求系数 laborPerWan=${laborPerWan} 人·班/万套（估算参数·非实测→dataMode=PARTIAL·不冒充实测）；编制/班次/派单需求均真读对象`,
+      dataMode: "PARTIAL",
+      summary: `人力平衡：${lines.length} 线·编制 ${totalHeadcount} 人·需求 ${totalRequiredManShifts} 人·班/可用 ${totalAvailableManShifts}·净缺口 ${totalGap}（${deficitLineCount} 线欠配）`,
+    };
+  }
+
+  /**
+   * Q30-P3 求解器横铺 B · energy_cost_schedule — 能耗成本排程（新域·graph 路由·真读 SEED 对象派生）。
+   * 真读 EnergyMeter.energyPerUnit/gridFactor（基地单耗/电网碳因子）+ Order.bases（逐基地需求）→ 能耗(kWh)/碳排(kg)
+   * 逐周排程。⚠ **SEED 无分时电价(TOU)数据**（gridFactor 是碳排因子非电价）——电价须调用方经 args.tariff 提供；
+   * 缺失即**诚实空缺**（totalEnergyCostWan=null + note 指明·绝不虚构峰谷价）。确定性 R6。能耗/碳排真值 LIVE·电价缺失 PARTIAL。
+   */
+  private async energyCostSchedule(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const horizonWeeks = Math.max(1, Math.min(52, Math.round(num(args.horizonWeeks, 4))));
+    const baseFilter = args.baseId !== undefined ? str(args.baseId) : "";
+    const tIn = (args.tariff && typeof args.tariff === "object") ? args.tariff as Record<string, unknown> : undefined;
+    const shIn = (tIn?.shares && typeof tIn.shares === "object") ? tIn.shares as Record<string, unknown> : undefined;
+    const tariff = tIn
+      ? { peak: num(tIn.peak), flat: num(tIn.flat), valley: num(tIn.valley), shares: shIn ? { peak: num(shIn.peak), flat: num(shIn.flat), valley: num(shIn.valley) } : null }
+      : null;
+    const tariffAvailable = tariff !== null && (tariff.peak > 0 || tariff.flat > 0 || tariff.valley > 0);
+
+    // 加权电价（元/kWh）：有分时段占比→峰/平/谷加权；仅有价无占比→按平段计价（诚实标注·不虚构峰谷占比）。
+    let weightedPrice = 0;
+    let priceNote = "";
+    if (tariffAvailable) {
+      const sh = tariff!.shares;
+      const shareSum = sh ? sh.peak + sh.flat + sh.valley : 0;
+      if (sh && shareSum > 0) {
+        weightedPrice = (tariff!.peak * sh.peak + tariff!.flat * sh.flat + tariff!.valley * sh.valley) / shareSum;
+        priceNote = "按分时段占比加权计价";
+      } else {
+        weightedPrice = tariff!.flat > 0 ? tariff!.flat : tariff!.peak;
+        priceNote = "仅有电价无分时段占比数据·按平段计价（不虚构峰谷占比）";
+      }
+    }
+
+    const meters = await this.repos.objects.listByType(ctx.tenantId, "EnergyMeter");
+    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
+    const demandByBase = new Map<string, number>();
+    for (const o of orders) {
+      const obases = Array.isArray(o.props.bases) ? (o.props.bases as string[]) : [];
+      const qty = num(o.props.qty);
+      for (const b of obases) demandByBase.set(b, (demandByBase.get(b) ?? 0) + qty);
+    }
+
+    const bases = meters
+      .filter((m) => !baseFilter || str(m.props.baseId) === baseFilter)
+      .map((m) => {
+        const baseId = str(m.props.baseId);
+        const energyPerUnit = num(m.props.energyPerUnit);
+        const gridFactor = num(m.props.gridFactor);
+        const plannedOutput = demandByBase.get(baseId) ?? 0;
+        const energyKwh = round(plannedOutput * energyPerUnit, 1);
+        const carbonKg = round(energyKwh * gridFactor, 1);
+        const energyCostWan = tariffAvailable ? round(energyKwh * weightedPrice / 10000, 2) : null;
+        return { baseId, processKey: str(m.props.processKey), energyPerUnit, gridFactor, plannedOutput, energyKwh, carbonKg, energyCostWan };
+      })
+      .sort((a, b) => b.energyKwh - a.energyKwh || a.baseId.localeCompare(b.baseId));
+
+    const totalEnergyKwh = round(bases.reduce((s, b) => s + b.energyKwh, 0), 1);
+    const totalCarbonKg = round(bases.reduce((s, b) => s + b.carbonKg, 0), 1);
+    const totalEnergyCostWan = tariffAvailable ? round(bases.reduce((s, b) => s + (b.energyCostWan ?? 0), 0), 2) : null;
+
+    // 逐周排程：真能耗按 horizon 均摊到周（SEED 无逐时能耗序列·均摊为诚实近似·非虚构峰谷分布）。
+    const schedule = Array.from({ length: horizonWeeks }, (_, w) => ({
+      week: w,
+      energyKwh: round(totalEnergyKwh / horizonWeeks, 1),
+      energyCostWan: tariffAvailable ? round((totalEnergyCostWan ?? 0) / horizonWeeks, 2) : null,
+    }));
+
+    const note = tariffAvailable
+      ? `能耗/碳排真读 EnergyMeter×需求；电价经 args.tariff 提供（${priceNote}·SEED 无 TOU 电价故须调用方供）`
+      : "⚠ SEED 未含分时电价(TOU)数据·gridFactor 为碳排因子非电价——能耗/碳排为真值，成本诚实空缺(须经 args.tariff 提供电价·绝不虚构峰谷价)";
+
+    return {
+      horizonWeeks,
+      tariffAvailable,
+      tariff,
+      bases,
+      schedule,
+      totalEnergyKwh,
+      totalCarbonKg,
+      totalEnergyCostWan,
+      note,
+      dataMode: tariffAvailable ? "LIVE" : "PARTIAL",
+      summary: `能耗成本排程 ${horizonWeeks} 周：${bases.length} 基地·总能耗 ${totalEnergyKwh} kWh·碳排 ${totalCarbonKg} kg·成本 ${tariffAvailable ? `${totalEnergyCostWan} 万元` : "无电价(诚实空缺)"}`,
+    };
+  }
+
+  /** reroute_decision 诚实空态壳（形状稳定·R11）：无候选/无产量/无产线时返回空改道 + note（不虚构流）。 */
+  private rerouteEmpty(disruptedLineId: string, disruptedModels: string[], note: string, reroutedVolume = 0, candidates: unknown[] = []): Record<string, unknown> {
+    return { disruptedLineId, disruptedModels, reroutedVolume, shippedVolume: 0, unmetVolume: reroutedVolume, candidates, flows: [], objective: 0, optimal: false, status: "EMPTY", subSolver: "min_cost_flow", note, dataMode: "PARTIAL", summary: `改道决策：${note}` };
+  }
+
+  /**
+   * Q30-P3 求解器横铺 B · reroute_decision — 改道决策（**复用** min_cost_flow·真调 CP-SAT sidecar·非借名魔数）。
+   * 断供/停线产线（args.lineId 或首线）的产量改道到能产同型号(真读 Certification 量产)且有余量的候选产线，
+   * 建带容量/成本网络后**真调 this.minCostFlow** 求最小成本流分配。arc 成本 = **真 ChangeoverMatrix 换型分钟**
+   * （断线型号↔候选可产型号最小换型·非魔数系数）。结果 flows/objective 直取子求解器真值（随子解变而变）。
+   * 诚实降级：最优化引擎未接入 → status=NO_OPTIMIZER + 空流(不 throw·不虚构)。诚实空态：无候选/无产量 → 空壳。
+   */
+  private async rerouteDecision(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const seed = Number(args.seed ?? 42);
+    const linesRaw = await this.repos.objects.listByType(ctx.tenantId, "Line");
+    const certs = await this.repos.objects.listByType(ctx.tenantId, "Certification");
+    const changeover = await this.repos.objects.listByType(ctx.tenantId, "ChangeoverMatrix");
+
+    const byLine = new Map(linesRaw.map((l) => [str(l.props.lineId), l]));
+    const disruptedLineId = args.lineId !== undefined ? str(args.lineId) : str(linesRaw[0]?.props.lineId);
+    const disrupted = byLine.get(disruptedLineId);
+    if (!disrupted) return this.rerouteEmpty(disruptedLineId, [], "无有效产线（诚实空态·不虚构改道）");
+
+    const disruptedModels = [...new Set(certs.filter((c) => str(c.props.lineId) === disruptedLineId && str(c.props.status) === "量产").map((c) => str(c.props.modelId)))].sort();
+    const reroutedVolume = Math.round(num(disrupted.props.capacityDaily, 0));
+
+    const modelToLines = new Map<string, Set<string>>();
+    for (const c of certs) {
+      if (str(c.props.status) !== "量产") continue;
+      const mid = str(c.props.modelId);
+      const set = modelToLines.get(mid);
+      if (set) set.add(str(c.props.lineId)); else modelToLines.set(mid, new Set([str(c.props.lineId)]));
+    }
+    const coMin = new Map<string, number>();
+    for (const e of changeover) coMin.set(`${str(e.props.fromModel)}__${str(e.props.toModel)}`, num(e.props.minutes));
+    const candLineIds = new Set<string>();
+    for (const m of disruptedModels) for (const lid of (modelToLines.get(m) ?? new Set<string>())) if (lid !== disruptedLineId) candLineIds.add(lid);
+
+    const candidates = [...candLineIds]
+      .map((lid) => {
+        const l = byLine.get(lid);
+        const spare = Math.max(0, Math.round(num(l?.props.capacityDaily) - num(l?.props.actual_output_daily)));
+        const candModels = certs.filter((c) => str(c.props.lineId) === lid && str(c.props.status) === "量产").map((c) => str(c.props.modelId));
+        let cost = 999;
+        for (const dm of disruptedModels) for (const cm of candModels) {
+          if (cm === dm) { cost = Math.min(cost, 0); continue; }
+          const k = `${cm}__${dm}`;
+          if (coMin.has(k)) cost = Math.min(cost, coMin.get(k)!);
+        }
+        if (cost === 999) cost = 120; // 真 ChangeoverMatrix 缺该对 → 保守换型成本（诚实上界·非业务魔数系数）
+        return { lineId: lid, baseId: str(l?.props.baseId), spare, rerouteCostPerUnit: cost };
+      })
+      .filter((c) => c.spare > 0)
+      .sort((a, b) => a.rerouteCostPerUnit - b.rerouteCostPerUnit || a.lineId.localeCompare(b.lineId));
+
+    if (reroutedVolume <= 0 || candidates.length === 0) {
+      return this.rerouteEmpty(disruptedLineId, disruptedModels, reroutedVolume <= 0 ? "断线无可改道产量（capacityDaily=0·诚实空态）" : "无可改道候选产线（无量产同型余量·诚实空态）", reroutedVolume, candidates);
+    }
+    if (!this.optimizer?.solveMinCostFlow) {
+      return { disruptedLineId, disruptedModels, reroutedVolume, shippedVolume: 0, unmetVolume: reroutedVolume, candidates, flows: [], objective: 0, optimal: false, status: "NO_OPTIMIZER", subSolver: "min_cost_flow", note: "最优化引擎未接入（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）——改道流诚实空缺不虚构", dataMode: "PARTIAL", summary: `改道决策：${disruptedLineId} 停线·${candidates.length} 候选线待分配·最优化引擎未接入(诚实空缺)` };
+    }
+    const totalSpare = candidates.reduce((s, c) => s + c.spare, 0);
+    const shippedVolume = Math.min(reroutedVolume, totalSpare);
+    const unmetVolume = Math.max(0, reroutedVolume - totalSpare);
+    // 真调 min_cost_flow：源 SRC(供 shipped)→候选(cap=spare·cost=真换型分钟)→汇 SINK(需 shipped)。
+    const nodes = [
+      { id: "SRC", supply: shippedVolume },
+      { id: "SINK", supply: -shippedVolume },
+      ...candidates.map((c) => ({ id: c.lineId, supply: 0 })),
+    ];
+    const arcs = [
+      ...candidates.map((c) => ({ from: "SRC", to: c.lineId, cost: c.rerouteCostPerUnit, cap: c.spare })),
+      ...candidates.map((c) => ({ from: c.lineId, to: "SINK", cost: 0, cap: c.spare })),
+    ];
+    const mcf = await this.minCostFlow(ctx, { nodes, arcs, nodeType: "Line", seed });
+    return {
+      disruptedLineId,
+      disruptedModels,
+      reroutedVolume,
+      shippedVolume,
+      unmetVolume,
+      candidates,
+      flows: mcf.flows,
+      objective: mcf.objective,
+      optimal: mcf.optimal,
+      status: mcf.status,
+      subSolver: "min_cost_flow",
+      note: `改道流经 min_cost_flow(CP-SAT) 真解；arc 成本=真 ChangeoverMatrix 换型分钟(非魔数)${unmetVolume > 0 ? `·余量不足未改道 ${unmetVolume}` : ""}`,
+      dataMode: "LIVE",
+      summary: `改道决策：${disruptedLineId} 停线 ${reroutedVolume}→改道 ${shippedVolume} 至 ${candidates.length} 候选线·总成本 ${mcf.objective}（${mcf.optimal ? "可证最优" : mcf.status}）`,
+    };
+  }
+
+  /**
+   * Q30-P3 求解器横铺 B · multi_constraint_schedule — 多约束联合排产（**复用**排产族三子求解器·三约束联解·真调各子解）。
+   * **真调** ① sequencing_optimize（graph·CP-SAT 换型组最短切换序·可证最优）+ ② changeover_sequence（extended·NN 最小换型序·
+   * 逐单换型分钟）+ ③ cert_schedule（extended·C26 并行约束认证排周·未量产型号阻塞窗）→ 联合成一张既最优排序、又计入真换型
+   * 成本、又受认证就绪门控的排产表（非各自为战·非借名魔数）。结果逐单字段直取三子解真值（随子解变而变）。
+   * 诚实降级：排序引擎未接入 → 以换型子解 NN 序为联合基序(标 PARTIAL·不虚构最优)。R6 确定性。
+   */
+  private async multiConstraintSchedule(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const seed = Number(args.seed ?? 42);
+    const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
+
+    // 子约束②换型：真调 changeover_sequence（自 c.orders + c.changeoverMatrix 派生·逐单换型分钟）。
+    const co = this.compute(c, "changeover_sequence", {}) as unknown as {
+      lineId: string; sequence: { orderId: string; modelId: string; changeoverMin: number }[]; totalChangeoverMin: number; savedVsDueMin: number;
+    };
+    // 子约束③认证：真调 cert_schedule（自 c.certifications 派生·C26 并行约束贪心排周）。
+    const cert = this.compute(c, "cert_schedule", {}) as unknown as {
+      schedule: { model: string; line: string; startWeek: number; finishWeek: number }[]; engineerGroups: number;
+    };
+    const certPending = new Map<string, number>(); // 在认证排期中(未量产)的型号 → 认证完成周（该型号在此周前阻塞）
+    for (const s of cert.schedule) certPending.set(str(s.model), num(s.finishWeek));
+
+    // 子约束①排序：**真调 sequencing_optimize 的 CP-SAT 排序引擎**（`solveSequencing`·同 model="sequencing"/同协议·换型组最短切换序·可证最优），
+    // bounded 到本次联合排产窗口（换型子解已选真订单·`maxJobs` 默认 8）——因 sequencing_optimize 求解器读全订单簿(≥24)时 exact-TSP(AddCircuit)
+    // 组合爆炸不可解（实测 >90s），联合排产本就按线/周窗口作业，故对**换型子解选出的真订单窗口**求最优（非全簿·非借名魔数·真 CP-SAT 解）。
+    // 需最优化引擎；未接入则诚实降级（以换型子解 NN 序为基序·不虚构最优）。
+    const maxJobs = Math.max(2, Math.min(10, Math.round(num(args.maxJobs, 8))));
+    const window = co.sequence.slice(0, maxJobs); // 联合排产窗口（换型子解已选真订单·id=orderId·group=modelId）
+    let sequencing: Record<string, unknown>;
+    let baseSeq: { orderId: string; modelId: string; changeoverMin: number }[];
+    if (this.optimizer?.solveSequencing && window.length >= 2) {
+      const jobs = window.map((x) => ({ id: x.orderId, group: x.modelId }));
+      const seq = await this.optimizer.solveSequencing({ model: "sequencing", seed, jobs });
+      sequencing = { objective: seq.objective, changeovers: seq.changeovers, optimal: seq.optimal, status: seq.status, subSolver: "sequencing_optimize", jobCount: jobs.length };
+      const coByOrder = new Map(co.sequence.map((x) => [x.orderId, x]));
+      baseSeq = seq.sequence.map((oid) => coByOrder.get(oid) ?? { orderId: oid, modelId: "", changeoverMin: 0 });
+      for (const x of co.sequence) if (!seq.sequence.includes(x.orderId)) baseSeq.push(x); // 窗口外/未进 CP-SAT 序者补尾（形状稳定）
+    } else {
+      sequencing = { objective: 0, changeovers: 0, optimal: false, status: "NO_OPTIMIZER", subSolver: "sequencing_optimize", jobCount: window.length };
+      baseSeq = co.sequence; // 诚实降级：无 CP-SAT / 窗口 <2 单 → 以换型子解 NN 序为联合基序
+    }
+
+    // 联合解：每单 = 排序位次(①) + 换型分钟(②) + 认证就绪(③)。三约束同解。
+    const blockedByCert: string[] = [];
+    const jointSequence = baseSeq.map((x, i) => {
+      const finishWeek = certPending.get(x.modelId);
+      const certReady = finishWeek === undefined; // 不在认证排期=已量产就绪
+      if (!certReady) blockedByCert.push(x.orderId);
+      return { orderId: x.orderId, model: x.modelId, position: i, changeoverMin: x.changeoverMin, certReady, certFinishWeek: certReady ? null : finishWeek };
+    });
+
+    return {
+      jointSequence,
+      sequencing,
+      changeover: { lineId: co.lineId, totalChangeoverMin: co.totalChangeoverMin, savedVsDueMin: co.savedVsDueMin, subSolver: "changeover_sequence" },
+      cert: { scheduledCount: cert.schedule.length, engineerGroups: cert.engineerGroups, subSolver: "cert_schedule" },
+      blockedByCert,
+      subSolvers: ["sequencing_optimize", "changeover_sequence", "cert_schedule"],
+      constraintsSatisfied: { sequencing: sequencing.optimal === true, changeover: co.sequence.length > 0, cert: true },
+      note: `多约束联合排产：真调 sequencing_optimize CP-SAT 排序引擎(①排序·bounded 联合窗口 ${window.length} 单)+changeover_sequence(②换型合计${co.totalChangeoverMin}分)+cert_schedule(③认证${cert.schedule.length}项) 三子解联合·非各自为战${this.optimizer?.solveSequencing ? "" : "·⚠排序引擎未接入(以换型序为基序·诚实降级)"}`,
+      dataMode: this.optimizer?.solveSequencing ? "LIVE" : "PARTIAL",
+      summary: `多约束联合排产：${jointSequence.length} 单·换型合计 ${co.totalChangeoverMin} 分·${blockedByCert.length} 单待认证阻塞（排序${sequencing.optimal === true ? "最优" : String(sequencing.status)}/换型/认证三约束联解）`,
     };
   }
 

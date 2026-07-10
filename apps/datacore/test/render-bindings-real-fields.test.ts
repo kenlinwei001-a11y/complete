@@ -65,6 +65,12 @@ const REPRESENTATIVE_ARGS: Record<string, Record<string, unknown>> = {
   capex_alternatives: { scenarioKey: "枣庄储能线", demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], alternatives: [{ key: "A", label: "小步快跑", projects: [{ id: "A1", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }, { key: "B", label: "一步到位", projects: [{ id: "B1", q0: 0, cap: 8, capex: [6, 4], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }] },
   full_cost_rollup: {},
   signal_propagation: { signal: "产能扰动", rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] },
+  // Q30-P3 求解器横铺 B（新域·中成本）代表性入参：3 新域读真对象无需入参；2 复用类无 optimizer 注入时走诚实降级路径（全形状字段仍在场·真值齿只钉字段在场）。
+  cash_projection: {},
+  labor_balance: {},
+  energy_cost_schedule: {},
+  reroute_decision: {},
+  multi_constraint_schedule: {},
 };
 
 describe("渲染投影绑定 = 真实输出字段（WO ONTO-SCEN-RENDER-PROJ ①·真值齿）", () => {

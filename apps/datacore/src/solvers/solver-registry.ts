@@ -114,6 +114,17 @@ export const SOLVER_REGISTRY: readonly SolverDescriptor[] = [
   { key: "full_cost_rollup", route: "graph", outputShape: ["capacityWeeklyWan", "capacityBases", "revenue", "cost", "grossMargin", "marginPct", "pnl", "gmRow", "attribution", "summary"], liveDefault: true },
   //  · signal_propagation — 信号图传导（沿供应链/产线图扩散半径与受影响集），**复用** supplier_disruption_radius 的反向多跳 BFS（graph 路由）。
   { key: "signal_propagation", route: "graph", outputShape: ["signal", "rootType", "rootId", "layers", "radius", "totalAffected", "reachedType", "reachedCount", "affectedSet", "summary"] },
+  // Q30-P3 求解器横铺 B（新域·中成本·DESIGN-query30 §1 P3 行）——3 新域（graph 路由·真读 SEED 对象派生·零合成/兜底冒充）+ 2 复用类（真调子求解器·非借名魔数）：
+  //  · cash_projection — 现金流投影（新域·真读 FinanceAccount 期初现金 + Order 值/交期/毛利 + Customer 账期 → 逐周回款/付款/现金曲线·13 周安全垫·纯真对象+算术）。
+  { key: "cash_projection", route: "graph", outputShape: ["horizonWeeks", "openingCashWan", "weeks", "minCashWan", "minCashWeek", "totalInflowWan", "totalOutflowWan", "orderCount", "baseCount", "summary"], liveDefault: true },
+  //  · labor_balance — 人力平衡（新域·真读 LaborShift 编制/班次 + Process 出勤 + Order 派线需求 → 逐线配工与缺口；laborPerWan 系估算参数故默认 PARTIAL·不冒充实测）。
+  { key: "labor_balance", route: "graph", outputShape: ["laborPerWan", "lines", "totalHeadcount", "totalRequiredManShifts", "totalAvailableManShifts", "totalGap", "deficitLineCount", "note", "summary"] },
+  //  · energy_cost_schedule — 能耗成本排程（新域·真读 EnergyMeter 单耗/电网因子 + Order 需求 → 能耗/碳排逐周排程；⚠ SEED 无分时电价→tariff 须经 args 提供·缺失诚实空态不冒充）。
+  { key: "energy_cost_schedule", route: "graph", outputShape: ["horizonWeeks", "tariffAvailable", "tariff", "bases", "schedule", "totalEnergyKwh", "totalCarbonKg", "totalEnergyCostWan", "note", "summary"] },
+  //  · reroute_decision — 改道决策（**复用** min_cost_flow·真调 CP-SAT sidecar）：断供/停线产线的产量改道到有余量候选产线，最小成本流分配（arc 成本=真 ChangeoverMatrix 换型分钟·非魔数）。
+  { key: "reroute_decision", route: "graph", outputShape: ["disruptedLineId", "disruptedModels", "reroutedVolume", "shippedVolume", "unmetVolume", "candidates", "flows", "objective", "optimal", "status", "subSolver", "note", "summary"] },
+  //  · multi_constraint_schedule — 多约束联合排产（**复用**排产族 sequencing_optimize + cert_schedule + changeover_sequence·三约束联解·真调各子求解器·非各自为战·非借名魔数）。
+  { key: "multi_constraint_schedule", route: "graph", outputShape: ["jointSequence", "sequencing", "changeover", "cert", "blockedByCert", "subSolvers", "constraintsSatisfied", "note", "summary"] },
 ] as const;
 
 /** key→descriptor（O(1) 查·派发码用）。 */

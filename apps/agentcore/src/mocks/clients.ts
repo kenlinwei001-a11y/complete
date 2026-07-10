@@ -630,6 +630,92 @@ const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
     summary: "信号「产能扰动」自「changzhou」沿图传导半径 3 层、波及 33 个对象；末端触达 Equipment 21 个",
     dataMode: "MOCK",
   },
+  // Q30-P3 求解器横铺 B：5 求解器 mock 输出**形状对齐真实 DataCore**（同 SOLVER_OUTPUT_SHAPES 登记键 + dataMode:MOCK 诚实标）——
+  // 真值以真 DataCore 联调为准（齿：datacore render-bindings-real-fields.test + q30-p3 单测钉真值）。
+  cash_projection: {
+    horizonWeeks: 13,
+    openingCashWan: 3_200_000,
+    weeks: [
+      { week: 0, weekStart: "2026-07-01", inflowWan: 0, outflowWan: 12000, netWan: -12000, endingCashWan: 3_188_000 },
+      { week: 1, weekStart: "2026-07-08", inflowWan: 8000, outflowWan: 9000, netWan: -1000, endingCashWan: 3_187_000 },
+    ],
+    minCashWan: 3_180_000,
+    minCashWeek: 5,
+    totalInflowWan: 45000,
+    totalOutflowWan: 62000,
+    orderCount: 18,
+    baseCount: 12,
+    summary: "现金流投影 13 周：期初 3200000 万元·回款 45000/付款 62000 万元·安全垫最低 3180000 万元(第 5 周·18 单)",
+    dataMode: "MOCK",
+  },
+  labor_balance: {
+    laborPerWan: 1.6,
+    lines: [
+      { lineId: "LINE-changzhou", baseId: "changzhou", availableHeadcount: 42, shiftCount: 2, borrowableHeadcount: 22, routedDemandWan: 96, requiredManShifts: 153.6, availableManShifts: 42, gap: 111.6, skillModels: "4680-NCM|S192-LFP|L300-NCM" },
+    ],
+    totalHeadcount: 480,
+    totalRequiredManShifts: 1200,
+    totalAvailableManShifts: 480,
+    totalGap: 720,
+    deficitLineCount: 11,
+    note: "人力需求系数 laborPerWan=1.6 人·班/万套（估算参数·非实测→dataMode=PARTIAL·不冒充实测）；编制/班次/派单需求均真读对象",
+    summary: "人力平衡：12 线·编制 480 人·需求 1200 人·班/可用 480·净缺口 720（11 线欠配）",
+    dataMode: "MOCK",
+  },
+  energy_cost_schedule: {
+    horizonWeeks: 4,
+    tariffAvailable: true,
+    tariff: { peak: 1.2, flat: 0.7, valley: 0.35, shares: { peak: 0.3, flat: 0.4, valley: 0.3 } },
+    bases: [
+      { baseId: "chengdu", processKey: "涂布", energyPerUnit: 1.5, gridFactor: 0.78, plannedOutput: 640000, energyKwh: 960000, carbonKg: 748800, energyCostWan: 71.28 },
+    ],
+    schedule: [
+      { week: 0, energyKwh: 240000, energyCostWan: 17.82 },
+    ],
+    totalEnergyKwh: 3_600_000,
+    totalCarbonKg: 2_340_000,
+    totalEnergyCostWan: 267.3,
+    note: "能耗/碳排真读 EnergyMeter×需求；电价经 args.tariff 提供（按分时段占比加权计价·SEED 无 TOU 电价故须调用方供）",
+    summary: "能耗成本排程 4 周：12 基地·总能耗 3600000 kWh·碳排 2340000 kg·成本 267.3 万元",
+    dataMode: "MOCK",
+  },
+  reroute_decision: {
+    disruptedLineId: "LINE-changzhou",
+    disruptedModels: ["4680-NCM"],
+    reroutedVolume: 62000,
+    shippedVolume: 62000,
+    unmetVolume: 0,
+    candidates: [
+      { lineId: "LINE-hefei", baseId: "hefei", spare: 40000, rerouteCostPerUnit: 0 },
+      { lineId: "LINE-xian", baseId: "xian", spare: 30000, rerouteCostPerUnit: 45 },
+    ],
+    flows: [
+      { from: "SRC", to: "LINE-hefei", flow: 40000 },
+      { from: "SRC", to: "LINE-xian", flow: 22000 },
+    ],
+    objective: 990000,
+    optimal: true,
+    status: "OPTIMAL",
+    subSolver: "min_cost_flow",
+    note: "改道流经 min_cost_flow(CP-SAT) 真解；arc 成本=真 ChangeoverMatrix 换型分钟(非魔数)",
+    summary: "改道决策：LINE-changzhou 停线 62000→改道 62000 至 2 候选线·总成本 990000（可证最优）",
+    dataMode: "MOCK",
+  },
+  multi_constraint_schedule: {
+    jointSequence: [
+      { orderId: "SO-3391", model: "4680-NCM", position: 0, changeoverMin: 0, certReady: true, certFinishWeek: null },
+      { orderId: "SO-3415", model: "S192-LFP", position: 1, changeoverMin: 120, certReady: false, certFinishWeek: 3 },
+    ],
+    sequencing: { objective: 2, changeovers: 2, optimal: true, status: "OPTIMAL", subSolver: "sequencing_optimize" },
+    changeover: { lineId: "L1", totalChangeoverMin: 240, savedVsDueMin: 60, subSolver: "changeover_sequence" },
+    cert: { scheduledCount: 6, engineerGroups: 3, subSolver: "cert_schedule" },
+    blockedByCert: ["SO-3415"],
+    subSolvers: ["sequencing_optimize", "changeover_sequence", "cert_schedule"],
+    constraintsSatisfied: { sequencing: true, changeover: true, cert: true },
+    note: "多约束联合排产：真调 sequencing_optimize(①排序)+changeover_sequence(②换型合计240分)+cert_schedule(③认证6项) 三子解联合·非各自为战",
+    summary: "多约束联合排产：6 单·换型合计 240 分·1 单待认证阻塞（排序最优/换型/认证三约束联解）",
+    dataMode: "MOCK",
+  },
 };
 
 export class MockSolverClient implements SolverClient {
@@ -775,7 +861,8 @@ export class MockRuleEngineClient implements RuleEngineClient {
   }
   // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）。
   async listRuleKeys(): Promise<string[]> {
-    return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33", "C34", "C35"];
+    // Q30-P3：补 C41(加班合规上限)/C44(谷段迁移不破交期)——datacore battery.ts 真发布规则（C34–C50 集内），S32 人力平衡 / S33 能耗排程卡引用之。
+    return ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33", "C34", "C35", "C41", "C44"];
   }
 }
 

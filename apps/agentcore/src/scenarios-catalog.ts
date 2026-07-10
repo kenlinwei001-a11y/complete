@@ -126,6 +126,20 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S29", "全成本卷积", "dash", "full_cost_rollup_q", "把产能卷到成本再到损益，全成本口径下经营态势如何？", "full_cost_rollup", ["C15", "C18"], "COMPUTE", "解读全成本卷积（产能→成本→损益）", [], {}),
   // S30 信号图传导：复用 supplier_disruption_radius 的反向多跳 BFS。slotPresets=常州基地沿 Line→Process→Equipment 产线图传导（对 SEED_DEMO 真图合法）。
   card("S30", "信号图传导", "risk", "signal_propagation_q", "某个信号从常州基地沿产线图传导，会扩散到哪些工序设备？", "signal_propagation", ["C05", "C16"], "COMPUTE", "解读信号沿供应链/产线图的传导半径与受影响集", [B("changzhou", "常州")], { signal: "产能扰动", rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] }),
+  // Q30-P3 求解器横铺 B（新域·中成本·DESIGN-query30 §1 P3 行）：5 张场景卡把 3 新域 + 2 复用类接进目录单一来源
+  // → seed 派生循环自动生成意图+计划（invoke_solver 指向该 solver）+ solver_summary 按 SOLVER_RENDER_BINDINGS 投影真实输出字段
+  // → 路径A 可作答（WORKFLOW_FIRST·价值在承载数据表）。slotPresets = 该求解器**真实入参**（对真 DataCore SEED_DEMO 合法）。
+  //
+  // S31 现金流投影：真读 FinanceAccount 期初现金 + Order 营收/交期/毛利 + Customer 账期 → 逐周现金曲线 + 13 周安全垫。无需具象锚点。
+  card("S31", "现金流投影", "dash", "cash_projection_q", "未来 13 周现金流怎么走？现金安全垫最低到多少、哪一周最紧张？", "cash_projection", ["C18"], "COMPUTE", "解读现金流投影与安全垫最低点", [], { horizonWeeks: 13 }),
+  // S32 人力平衡：真读 LaborShift 编制/班次 + Order 派线需求 → 逐线配工与缺口。laborPerWan 系估算参数（PARTIAL·不冒充实测）。
+  card("S32", "人力平衡", "risk", "labor_balance_q", "各产线人力配得过来吗？哪些线欠配、缺多少人·班？", "labor_balance", ["C41"], "COMPUTE", "解读逐线配工与人力缺口", [], {}),
+  // S33 能耗成本排程：真读 EnergyMeter 单耗/电网因子 + Order 需求 → 能耗/碳排逐周排程。⚠ SEED 无分时电价→tariff 经 slotPresets 由调用方(规划者)显式提供（非冒充种子真值·求解器 note 标注来源）；缺失则成本诚实空缺。
+  card("S33", "能耗成本排程", "dash", "energy_cost_schedule_q", "各基地能耗和碳排怎么排？按分时电价这一周期的电费成本多少？", "energy_cost_schedule", ["C44"], "COMPUTE", "解读能耗/碳排逐周排程与分时电价成本", [], { horizonWeeks: 4, tariff: { peak: 1.2, flat: 0.7, valley: 0.35, shares: { peak: 0.3, flat: 0.4, valley: 0.3 } } }),
+  // S34 改道决策：复用 min_cost_flow（真调 CP-SAT）。断供/停线产线（常州线）产量改道到能产同型号且有余量的候选线，最小成本流分配·arc 成本=真换型分钟。
+  card("S34", "改道决策", "risk", "reroute_decision_q", "常州这条产线停了，产量改道到哪几条线总成本最低？", "reroute_decision", ["C05", "C22"], "COMPUTE", "解读断供改道最小成本流分配", [B("changzhou", "常州")], { lineId: "LINE-changzhou" }),
+  // S35 多约束联合排产：复用排产族三子求解器（真调 sequencing_optimize + changeover_sequence + cert_schedule 联合解·非各自为战）。
+  card("S35", "多约束联合排产", "project", "multi_constraint_schedule_q", "这批订单怎么排，既排序最优、又少换型、又不违认证就绪？", "multi_constraint_schedule", ["C22", "C26", "C29"], "COMPUTE", "解读排序+换型+认证三约束联合排产", [], { jobType: "Order", groupField: "model" }),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {

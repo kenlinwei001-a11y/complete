@@ -29,7 +29,8 @@ export const SOLVER_COVERAGE: Record<string, string[]> = {
   // Q30-P2：full_cost_rollup（全成本卷积·复用 capacity_rollup+finance_pnl·产能→成本→损益）挂此类目。
   descriptive_aggregation: ["capacity_rollup", "metric_rollup", "cockpit_kpi", "finance_pnl", "full_cost_rollup"],
   /** 前向投影 / 时间轴推演（未来会怎样）。 */
-  forward_projection: ["capacity_forecast", "risk_timeline", "audit_timeline"],
+  // Q30-P3：cash_projection（现金流投影·真读订单/回款/占用推逐周现金曲线）挂此类目。
+  forward_projection: ["capacity_forecast", "risk_timeline", "audit_timeline", "cash_projection"],
   /** 瓶颈 / 争用识别（卡在哪）。 */
   bottleneck_detection: ["bottleneck_matrix", "shared_bottleneck"],
   /** 财务口径归因（钱从哪来/差在哪·窄口径归因）。 */
@@ -50,6 +51,8 @@ export const SOLVER_COVERAGE: Record<string, string[]> = {
     "independent_set",
     "combinatorial_auction",
     "inventory_optimize",
+    // Q30-P3：reroute_decision（改道决策·复用 min_cost_flow 真调 CP-SAT·最小成本流分配）挂此类目。
+    "reroute_decision",
   ],
   /** 敏感性 / what-if 反事实（改一处会怎样）。 */
   sensitivity_whatif: ["optimize_whatif", "what_if_displacement", "counterfactual_timeline"],
@@ -66,13 +69,15 @@ export const SOLVER_COVERAGE: Record<string, string[]> = {
   /** 需求净额 / 齐套核算（差多少料）。 */
   requirement_netting: ["mrp_netting", "kit_readiness", "lta_gap"],
   /** 排程 / 换型时序（先做谁）。 */
-  schedule_sequencing: ["changeover_sequence", "cert_schedule", "maintenance_stagger"],
+  // Q30-P3：energy_cost_schedule（能耗成本排程·真读能耗计量×需求）+ multi_constraint_schedule（多约束联合排产·复用排产族三子解真调）挂此类目。
+  schedule_sequencing: ["changeover_sequence", "cert_schedule", "maintenance_stagger", "energy_cost_schedule", "multi_constraint_schedule"],
   /** 缺口弥合 / 对策合成（怎么补上）。 */
   gap_closure_synthesis: ["plan_generate", "countermeasure_combo", "quarterly_gap", "mitigation_select"],
   /** 敞口评估（能不能再接·信用/额度）。 */
   exposure_assessment: ["credit_exposure"],
   /** 产能分配 / 外协切分（自制还是外协）。 */
-  sourcing_allocation: ["outsourcing_split"],
+  // Q30-P3：labor_balance（人力平衡·按工序/班次配工与缺口·资源分配口径）挂此类目。
+  sourcing_allocation: ["outsourcing_split", "labor_balance"],
   /** 排放足迹核算。 */
   emission_footprint: ["carbon_footprint"],
   /** 投资情景推演。 */
@@ -154,6 +159,12 @@ export const INTENT_PROBLEM_CLASS: Record<string, string> = {
   capex_alternatives_q: "investment_scenario",
   full_cost_rollup_q: "descriptive_aggregation",
   signal_propagation_q: "propagation_radius",
+  // Q30-P3 求解器横铺 B：3 新域 + 2 复用类场景卡的意图归口。
+  cash_projection_q: "forward_projection",
+  labor_balance_q: "sourcing_allocation",
+  energy_cost_schedule_q: "schedule_sequencing",
+  reroute_decision_q: "constraint_optimization",
+  multi_constraint_schedule_q: "schedule_sequencing",
 };
 
 /** 未知/未登记意图的诚实归口（非静默丢弃）。 */

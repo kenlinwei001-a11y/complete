@@ -60,6 +60,12 @@ export const INTENT_SKILL: Record<string, string> = {
   capex_alternatives_q: "skl_plan_scheme", // CAPEX 方案比选 → 经营方案方法论（多方案比选口径·同 capex_review）
   full_cost_rollup_q: "skl_order_margin", // 全成本卷积（成本→损益）→ 接单毛利/成本方法论
   signal_propagation_q: "skl_risk_diagnosis", // 信号图传导 → 风险诊断方法论（同 supplier_disruption_q）
+  // Q30-P3 求解器横铺 B：3 新域 + 2 复用类场景卡的对口方法论。
+  cash_projection_q: "skl_sop_balance", // 现金流投影（回款/付款/安全垫）→ S&OP 平衡方法论（现金垫口径）
+  labor_balance_q: "skl_seed_capacity", // 人力平衡（配工与缺口）→ 产能方法论（人力产能配置口径）
+  energy_cost_schedule_q: "skl_carbon_compliance", // 能耗成本排程（能耗/碳排）→ 碳合规方法论
+  reroute_decision_q: "skl_risk_diagnosis", // 改道决策（断供/停线响应）→ 风险诊断方法论
+  multi_constraint_schedule_q: "skl_changeover", // 多约束联合排产 → 换型/排产方法论
 };
 
 /** 默认方法论（真实兜底·仅供非目录键的 hardcoded 计划如 what_if_displacement_q 用·目录卡禁静默回落）。 */
@@ -134,6 +140,12 @@ const INTENT_SLICE_ROOT: Record<string, string> = {
   capex_alternatives_q: "Base", // CAPEX 方案比选主对象=投资落点基地
   full_cost_rollup_q: "Base", // 全成本卷积主对象=产能承载基地
   signal_propagation_q: "Base", // 信号图传导主对象=信号源基地
+  // Q30-P3 求解器横铺 B：5 求解器读的主对象类型（切片 rootType·industry-agnostic 本体 key）。
+  cash_projection_q: "Base", // 现金流投影主对象=基地财务账户所属基地
+  labor_balance_q: "Line", // 人力平衡主对象=配工产线
+  energy_cost_schedule_q: "Base", // 能耗成本排程主对象=能耗计量所属基地
+  reroute_decision_q: "Line", // 改道决策主对象=停线产线
+  multi_constraint_schedule_q: "Order", // 多约束联合排产主对象=待排产订单
 };
 
 /** BP-4 对齐 seedIntentsAndPlans：sop_balance 求解器实际绑 mrp_netting（已注册·有真表）。 */

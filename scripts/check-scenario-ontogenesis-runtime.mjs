@@ -54,8 +54,9 @@ const app = await buildServer(deps);
 await app.ready();
 
 const cards = SCENARIO_CATALOG.map((c) => c.sNo);
-// CORE-NL-SOLVER-ROUTING：20 → 25（新增 5 个通用多跳求解器卡 S21–S25·全 WORKFLOW_FIRST）。
-if (cards.length !== 25) fail.push(`§6 运行期：出厂目录不是 25 卡（实 ${cards.length}）——目录漂移`);
+// CORE-NL-SOLVER-ROUTING：20 → 25（S21–S25 通用多跳）；Q30-P1/P2 26→30（S26 挤占推演 + S27 因果归因 + S28–S30 横铺A）；
+// Q30-P3 30→35（S31–S35 横铺B：现金流/人力/能耗 3 新域 + 改道/多约束 2 复用类·全 WORKFLOW_FIRST）。
+if (cards.length !== 35) fail.push(`§6 运行期：出厂目录不是 35 卡（实 ${cards.length}）——目录漂移`);
 
 const table = [];
 let governed = 0;

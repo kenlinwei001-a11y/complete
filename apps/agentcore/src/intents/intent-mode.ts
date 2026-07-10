@@ -43,6 +43,12 @@ export const INTENT_MODE: Record<string, IntentMode> = {
   capex_alternatives_q: "WORKFLOW_FIRST",
   full_cost_rollup_q: "WORKFLOW_FIRST",
   signal_propagation_q: "WORKFLOW_FIRST",
+  // Q30-P3 求解器横铺 B：3 新域 + 2 复用类场景卡——价值在「现金曲线/配工缺口/能耗排程/改道分配/联合排产」（求解器承载数据表）→ WORKFLOW_FIRST。
+  cash_projection_q: "WORKFLOW_FIRST",
+  labor_balance_q: "WORKFLOW_FIRST",
+  energy_cost_schedule_q: "WORKFLOW_FIRST",
+  reroute_decision_q: "WORKFLOW_FIRST",
+  multi_constraint_schedule_q: "WORKFLOW_FIRST",
   plan_recommend: "AGENT_FIRST",
   yield_diag: "AGENT_FIRST",
   maint_stagger: "AGENT_FIRST",
