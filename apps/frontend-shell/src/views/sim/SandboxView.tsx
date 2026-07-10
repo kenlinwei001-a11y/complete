@@ -721,6 +721,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   const [world, setWorld] = useState<TickState>({});
   const [curTick, setCurTick] = useState(0);
   const [ticking, setTicking] = useState(false);
+  const [tickDays, setTickDays] = useState(1); // 命令条批量推进天数 N（默认 1 = 现行单 tick 行为·WO-CAP-04）
   const [history, setHistory] = useState<number[]>([]); // 逐 tick 全局均值轨迹（时间轴/KPI heat）
   const [cert, setCert] = useState<SimCertification | null>(null);
   const [certScope, setCertScope] = useState<"GLOBAL" | "LOCAL">("GLOBAL"); // ④ 就绪范围（现可切，不再写死 GLOBAL）
@@ -786,22 +787,6 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
     },
     [sessionId],
   );
-
-  const onTick = useCallback(async () => {
-    if (!sessionId) return;
-    setTicking(true);
-    try {
-      const res = await simTick(sessionId, 1);
-      setWorld(res.state);
-      setCurTick(res.curTick);
-      const g = Object.keys(res.state).reduce((a, o) => a + aggregate(res.state[o]), 0) / Math.max(1, Object.keys(res.state).length);
-      setHistory((h) => [...h, g]);
-    } catch (e) {
-      toastError(e);
-    } finally {
-      setTicking(false);
-    }
-  }, [sessionId]);
 
   const onCheckpoint = useCallback(async () => {
     if (!sessionId) return;
@@ -994,7 +979,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           {/* 顶栏 · 全局态大数（主指标视觉权重最高·30px/700）+ 次级 stateVar KPI 小号排布 */}
           <div className={styles.heroState} data-testid="sandbox-kpis">
             <div className={styles.kpiHero} data-testid="sandbox-kpi-global">
-              <span>全局态（tick {curTick}）</span>
+              <span>全局态（tick <span data-testid="sandbox-cur-tick">{curTick}</span>）</span>
               <b style={{ color: heatColor(globalKpi, heatThreshold) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
             </div>
             <div className={styles.threeKpiRow}>
@@ -1013,8 +998,25 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
 
           {/* 命令条：推进 tick / 存档 / 分支 / 采纳 + tick 时间轴 heat（收为一条命令条） */}
           <div className="panel" data-testid="sandbox-controls" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px" }}>
-            <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
-              {ticking ? "推进中…" : "推进 tick"}
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }} className={styles.sub}>
+              天数 N
+              <input
+                type="number"
+                min={1}
+                max={50}
+                step={1}
+                value={tickDays}
+                data-testid="sandbox-tick-days"
+                disabled={!sessionId || ticking}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  setTickDays(Number.isFinite(v) ? Math.max(1, Math.min(50, v)) : 1);
+                }}
+                style={{ width: 56 }}
+              />
+            </label>
+            <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={() => runTicks(tickDays)}>
+              {ticking ? "推进中…" : tickDays > 1 ? `推进 ${tickDays} 天` : "推进 tick"}
             </button>
             <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
               存档检查点
