@@ -5440,7 +5440,7 @@
       "title": "L0·兄弟B B1: Console吸收script目标(TicketBoardRow source=BUILD_CLOSURE·入口①收敛)",
       "doc": "docs/PRD-gapfill-surface-consolidation.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "UPG-L0-GAPCORE"
@@ -5465,12 +5465,14 @@
             "assert": "回退演练:source=BUILD_CLOSURE透镜关闭→回现状query目标board·DataBuilder各面未删"
           }
         ],
-        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统",
+        "reviewEvidence": "审核方worktree真跑复验PASS(2026-07-09·真浏览器逐值对照后端·未采信dev证据): 真起datacore4011 SEED_DEMO+agentcore4112 GROWTH_BUILD_CLOSURE=1+vite5211+comprehend桩4399·四包build绿。C1真POST建域→DataCore真闭包引擎产真StoryBuildRun(sbr_...FAILED·CHAIN FAILED solver未注册)→boardRowFromClosure(server.ts:660-671纯读closureReport.findings无mutation恒claimable=false·R13)→前端board行DOM逐值==后端GET /growth/board+/tickets/:id/detail(fromQuestion/gapCode SOLVER_NOT_FOUND/kind建域闭包缺口/source script建域/7逐段CHAIN=FAILED全一致·截图rev-console-on)。C2 4透镜切换真跑+零新色(getComputedStyle 8徽章去重3色全∈活主题token{accent/amber/ok/danger/muted}·BUILD_CLOSURE徽章===--amber·check-css-vars门绿)。C3回退演练关GROWTH_BUILD_CLOSURE→board 0行·sbc_ detail 404·source无script tab·DataBuilder各面未删(3de2ce7未改DataBuilderPage)。纪律:暗发defaultOn:false实测·additive·旧路径不删。注:worktree陈旧(778cc58)故在主检出HEAD 54316bd(含BUILT提交3de2ce7)真跑·完清自己端口+还原.env.local+git无改动。"
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T15:45:52.389Z",
-        "built": "2026-07-09T16:24:29.047Z"
+        "built": "2026-07-09T16:24:29.047Z",
+        "done": "2026-07-10T03:19:02.192Z"
       },
       "blockReason": ""
     },
@@ -5516,10 +5518,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "Q30-P1-Q01VERT",
-      "at": "2026-07-10T03:14:30.141Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "UPG-L0-CONSOLE-BOARD",
+      "at": "2026-07-10T03:19:02.192Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
