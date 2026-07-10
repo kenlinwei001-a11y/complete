@@ -39,6 +39,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
   { key: "view.project-sim.whatif", name: "What-if 调参", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },
   { key: "view.risk-board.mitigation", name: "处置方案区", level: "BLOCK", defaultOn: true, requires: ["view.risk-board"] },
+  // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·暗发 defaultOn:false·additive）：风险张力需求驱动因素绑真供需
+  // demandCapacityTightness（真 DemandSegment/SopVersion vs 真产能）——ON=红对真实需求敏感·常州真供需 ~65 不再
+  // 决策级恒红；OFF（关闸）=现行 lines-utilization 合成扁平分支不变（回退演练）。**无 solverKeys 绑定**（不 404
+  // risk_timeline·OFF 仍可跑旧路径）·纯求解器内行为读 `SolverContext.features`。battery 模板全开 → demo 默认 ON。
+  { key: "qos.risk_realdemand", name: "风险张力绑真供需（暗发）", level: "BLOCK", defaultOn: false, requires: ["view.risk-board"] },
   { key: "view.dash.widget.capacity", name: "驾驶舱·产能卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   { key: "view.dash.widget.risk", name: "驾驶舱·风险卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   // cockpit P1 富 KPI（需求/财务、物料）

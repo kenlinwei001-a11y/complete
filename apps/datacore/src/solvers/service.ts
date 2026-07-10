@@ -24,6 +24,7 @@ import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatri
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs, extendedDataMode } from "./extended.js";
+import { FeatureService } from "../features.js";
 
 /**
  * QUERY30 缺口② C34–C50（DESIGN-query30 §2.3）：规则码 → expression measured 命名空间。
@@ -173,6 +174,25 @@ export class SolverService {
   invalidateBindingCache(tenantId?: string): void {
     if (tenantId) this.bindingIdxByTenant.delete(tenantId);
     else this.bindingIdxByTenant.clear();
+  }
+
+  // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·暗发）：本租户生效功能键集缓存（loadContext 注入 SolverContext.features
+  // 供求解器行为暗发）。避免每次 loadContext 都重解析 entitlement（hot path·全 solver 调用）。功能配置写路径经
+  // `invalidateFeatureCache` 清（app.ts PUT /features 后调用），保证暗发开关翻转即时生效（回退演练 C2）。
+  private featuresByTenant = new Map<string, Set<string>>();
+  private featureSvc?: FeatureService;
+  private async resolveTenantFeatures(tenantId: string): Promise<Set<string>> {
+    const cached = this.featuresByTenant.get(tenantId);
+    if (cached) return cached;
+    if (!this.featureSvc) this.featureSvc = new FeatureService(this.repos);
+    const set = new Set((await this.featureSvc.resolve(tenantId)).features);
+    this.featuresByTenant.set(tenantId, set);
+    return set;
+  }
+  /** 功能配置写路径变更后清缓存（保证 SolverContext.features 随 entitlement 翻转·暗发开关即时生效）。 */
+  invalidateFeatureCache(tenantId?: string): void {
+    if (tenantId) this.featuresByTenant.delete(tenantId);
+    else this.featuresByTenant.clear();
   }
 
   /** generic_inference 需读对象图 + 前向重算（recompute 在 OntologyCore）；app.ts 构造后注入。 */
@@ -1691,6 +1711,11 @@ export class SolverService {
       rules[r.key] = { key: r.key, name: r.name, expression: r.expression, severity: r.severity, params: r.params };
     }
     const ruleSetVersion = `rsv_${hashString(canonicalJson(publishedRules.map((r) => ({ k: r.key, v: r.version, e: r.expression, s: r.severity, p: r.params ?? {} })))).toString(16)}`;
+    // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·暗发）：解析本租户生效功能键集注入 ctx，供求解器行为暗发
+    // （当前 `qos.risk_realdemand` 令风险张力需求驱动因素绑真供需）。租户级 entitlement（entitlement 先于 authz），
+    // 内部计算无 ctx 亦按 tenantId 稳定解析（R6 确定性·无时钟/随机）。additive：不读该键的求解器零影响。
+    // per-tenant 缓存（resolveTenantFeatures）避免 hot-path 重解析·功能写路径 invalidateFeatureCache 清。
+    const features = await this.resolveTenantFeatures(tenantId);
     // #4 性能：扩展数据（E6b 10 类·extended 角色）仅 13 新求解器需要 —— contextRolesToLoad 已按
     // withExtended 门控（默认不加载·省全表扫描），未加载的角色在下方 `loaded.field ?? empty` 归空。
     return {
@@ -1721,6 +1746,7 @@ export class SolverService {
       carbonFactors: sortById(loaded.carbonFactors ?? empty),
       rules,
       ruleSetVersion,
+      features,
     };
   }
 

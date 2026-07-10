@@ -167,39 +167,62 @@ export function demandCapacityTightness(c: SolverContext, baseId: string): { val
  * 此前回落 `mockTightness`（基地名+因子名哈希 → 恒红越线）是"MOCK 值上线为决策级红"的根断点（G-DM-1）。
  * 决策级红/越线只能来自 live===true（真数据出真红·C6：有真数据仍照常出红，非无脑灭红）。
  */
-export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number | null; live: boolean } {
+/**
+ * WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE）：紧张度**真源诚实位**——
+ *  · LIVE      = 真实测量/真供需（设备 OEE·工序良率·真需求-产能缺口 demandCapacityTightness）；
+ *  · SYNTHETIC = 合成扁平产线利用率（`util:line` mean92 全基地同·非真供需）→ 不参与决策级染红竞选、卡 dataMode 继承 SYNTHETIC。
+ * live===false 时 source 无意义（占位 LIVE）。
+ */
+export type TightnessSource = "LIVE" | "SYNTHETIC";
+
+export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number | null; live: boolean; source: TightnessSource } {
   const lp = c.params.bottleneck.live;
+  // WO-CAP-01-REALDEMAND（暗发 `qos.risk_realdemand`·defaultOn:false）：ON=需求驱动瓶颈因素绑真供需；
+  // OFF（未解析该键·或测试直构 ctx 无 features）=现行 lines-utilization 分支不变（回退演练即此路径）。
+  const realDemand = c.features?.has("qos.risk_realdemand") === true;
+  // 设备/工艺类真实快照实测（与需求无关·本就是设备态·恒真源 LIVE·feature 不影响）。
   if (factor === "设备OEE") {
     const eq = c.equipment.filter((e) => e.props.baseId === baseId && typeof e.props.oee_current === "number");
     if (eq.length > 0) {
       const avg = eq.reduce((a, e) => a + num(e.props.oee_current), 0) / eq.length;
-      return { value: clamp(Math.round(lp.oeeBase + (1 - avg) * lp.oeeK), 0, 100), live: true };
-    }
-  }
-  if (factor === "瓶颈工序") {
-    const lines = c.lines.filter((l) => l.props.baseId === baseId && typeof l.props.utilization === "number");
-    if (lines.length > 0) {
-      const avg = lines.reduce((a, l) => a + num(l.props.utilization), 0) / lines.length;
-      return { value: clamp(Math.round(avg * lp.utilK + lp.utilBase), 0, 100), live: true };
+      return { value: clamp(Math.round(lp.oeeBase + (1 - avg) * lp.oeeK), 0, 100), live: true, source: "LIVE" };
     }
   }
   if (factor === "良率波动") {
     const procs = c.processes.filter((pr) => pr.props.baseId === baseId && typeof pr.props.yield_baseline === "number");
     if (procs.length > 0) {
       const avg = procs.reduce((a, pr) => a + num(pr.props.yield_baseline), 0) / procs.length;
-      return { value: clamp(Math.round(lp.yieldBase + (1 - avg) * lp.yieldK), 0, 100), live: true };
+      return { value: clamp(Math.round(lp.yieldBase + (1 - avg) * lp.yieldK), 0, 100), live: true, source: "LIVE" };
     }
   }
-  // WO-FORECAST-SIM：需求驱动因素（瓶颈工序/人力工时/物料齐套——随需求-产能缺口共振）无逐设备实测源时，
-  // 优先用**真需求-产能缺口**派生的基地紧张度（DemandSegment/SopVersion 真预测存在即 LIVE，可溯·R6），
-  // 而非 mockTightness 哈希。其余纯设备/物流因素（设备OEE 已上方处理 / 物流时长 / 换型损失）无真源回落 MOCK。
-  if (DEMAND_DRIVEN_FACTORS.has(factor)) {
+  // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·核心）：ON 时需求驱动型瓶颈因素（瓶颈工序/物料齐套/人力工时）
+  // **优先取真供需张力** demandCapacityTightness（真 DemandSegment/SopVersion vs 真产能）——拦在下方合成
+  // 产线利用率分支之前，使"红"对真实需求敏感（常州真供需 ~65<阈值 → 不再决策级染红），非合成扁平 util:line
+  // mean92 恒红。有真预测即 LIVE·可溯 R6。无真供需预测 → 落合成兜底（下方·标 SYNTHETIC·不决策级染红）。
+  if (realDemand && DEMAND_DRIVEN_FACTORS.has(factor)) {
     const dc = demandCapacityTightness(c, baseId);
-    if (dc.live) return { value: dc.value, live: true };
+    if (dc.live) return { value: dc.value, live: true, source: "LIVE" };
+  }
+  if (factor === "瓶颈工序") {
+    const lines = c.lines.filter((l) => l.props.baseId === baseId && typeof l.props.utilization === "number");
+    if (lines.length > 0) {
+      const avg = lines.reduce((a, l) => a + num(l.props.utilization), 0) / lines.length;
+      // OFF（回退演练）：现行行为——合成产线利用率上线为决策级张力（source=LIVE·恒红）。
+      // ON 且到此（无真供需预测）：合成扁平 util:line（G-SIM-FAKE 假推演源）仅作背景兜底·标 SYNTHETIC·不决策级染红。
+      const source: TightnessSource = realDemand ? "SYNTHETIC" : "LIVE";
+      return { value: clamp(Math.round(avg * lp.utilK + lp.utilBase), 0, 100), live: true, source };
+    }
+  }
+  // OFF 路径 · WO-FORECAST-SIM：需求驱动因素（瓶颈工序无 lines 兜底 / 人力工时 / 物料齐套——随需求-产能缺口共振）
+  // 无逐设备实测源时用**真需求-产能缺口**派生的基地紧张度（DemandSegment/SopVersion 真预测存在即 LIVE·可溯 R6），
+  // 而非 mockTightness 哈希。ON 路径此因子已在上方真供需分支处理（此处仅 OFF 生效）。
+  if (!realDemand && DEMAND_DRIVEN_FACTORS.has(factor)) {
+    const dc = demandCapacityTightness(c, baseId);
+    if (dc.live) return { value: dc.value, live: true, source: "LIVE" };
   }
   // 治本：无任何真实数据源（无逐设备 OEE/利用率/良率·无真需求-产能预测）→ 不伪造决策级紧张度。
   // （旧回落经 mockTightness 哈希造恒红越线，是洛阳·设备OEE 假红的根源 G-DM-1，已删。）
-  return { value: null, live: false };
+  return { value: null, live: false, source: "LIVE" };
 }
 
 /** 需求驱动型瓶颈因素：紧张度随真需求-产能缺口共振（无逐设备实测源 → 用 demandCapacityTightness）。 */
@@ -426,14 +449,23 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // 新口径：每基地一卡——有真源→代表因子出 LIVE 真值卡（可越线可不越线·如实显真张力）；
     //          某基地任何因子都无真源→诚实空态卡（hasData=false·noDataReason·深链去数据接入），非静默跳过、非 hash 假红。
     for (const b of c.bases.map((x) => str(x.props.baseId)).sort()) {
-      let best: { factor: string; value: number } | null = null;
+      // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE）：**决策级染红竞选只在真源（source=LIVE）因子间**取真张力最高者为代表；
+      // 合成源（source=SYNTHETIC·合成扁平产线利用率）只作背景估算——仅当基地无任何真源因子时才占位为代表，
+      // 且其卡 dataMode 继承 SYNTHETIC（前端灰显·不决策级染红）。皆无真源/合成源 → 主因子占位走诚实空态卡。
+      let bestLive: { factor: string; value: number } | null = null;
+      let bestSynth: { factor: string; value: number } | null = null;
       for (const f of c.params.bottleneck.factors) {
         const lt = liveTightness(c, b, f);
+        if (!lt.live || lt.value === null) continue;
         // 真张力最高者为代表（严格 > → 因子表序 tie-break·确定性 R6·非哈希）。
-        if (lt.live && lt.value !== null && (best === null || lt.value > best.value)) best = { factor: f, value: lt.value };
+        if (lt.source === "SYNTHETIC") {
+          if (bestSynth === null || lt.value > bestSynth.value) bestSynth = { factor: f, value: lt.value };
+        } else if (bestLive === null || lt.value > bestLive.value) {
+          bestLive = { factor: f, value: lt.value };
+        }
       }
-      // 有真源 → 代表因子（真张力最高）；无真源 → 主因子占位（卡循环走 !lt.live 分支出诚实空态·深链）。
-      pairs.push({ baseId: b, factor: best?.factor ?? primaryFactor(c, b), forced: false });
+      const rep = bestLive ?? bestSynth;
+      pairs.push({ baseId: b, factor: rep?.factor ?? primaryFactor(c, b), forced: false });
     }
   }
 
@@ -474,11 +506,15 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
     // 不再"非越线即丢卡"——决策看板要看到每基地真实态（含"暂稳"），而非只剩越线基地。
     // WO-FORECAST-SIM：需求驱动因素附"真缺口=预测需求−产能"溯源（万套·基地分摊·R13），前端可解释"红色由何而来"。
     const dc = DEMAND_DRIVEN_FACTORS.has(pair.factor) ? demandCapacityTightness(c, pair.baseId) : null;
+    // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·诚实位下沉到卡级）：卡输入是合成物化序列（合成扁平产线利用率·
+    // source=SYNTHETIC）时 dataMode **继承 SYNTHETIC** 而非自报 LIVE——前端 RiskBoardView.cardDecisionMode
+    // 据此不把合成数据当决策级 LIVE 染红（改走灰"估算·无实测"）。真源（LIVE）卡如常自报 LIVE 出真张力/越线。
+    const cardDataMode: "LIVE" | "SYNTHETIC" = lt.source === "SYNTHETIC" ? "SYNTHETIC" : "LIVE";
     const card: Record<string, unknown> = {
       base: baseName(c, pair.baseId),
       baseId: pair.baseId,
       factor: pair.factor,
-      dataMode: "LIVE",
+      dataMode: cardDataMode,
       hasData: true,
       currentTightness: { value: lt.value, live: true },
       ...(dc && dc.live ? { demandGap: { gapWan: dc.gap, source: "DemandSegment(p50/p90)+SopVersionRow.demand−产能" } } : {}),
@@ -577,7 +613,9 @@ function buildRiskPlanRows(
   for (const card of cards) {
     // WO-KILL-MOCK-RED（治本）：处置工单是决策级输出——只从有真数据（hasData!==false 且有越线）的卡生成。
     // 无真源诚实空态卡（hasData:false·crossDay:null）绝不进处置计划表（不伪造"越线前启动"这类可行动结论）。
-    if (card.hasData === false || card.crossDay === null || card.crossDay === undefined) continue;
+    // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE）：合成源卡（dataMode=SYNTHETIC·合成扁平产线利用率）同样不进决策级
+    // 处置计划表——合成背景估算不当决策级可行动结论（与"不决策级染红"同口径）。
+    if (card.hasData === false || card.dataMode === "SYNTHETIC" || card.crossDay === null || card.crossDay === undefined) continue;
     const base = str(card.base);
     const factor = str(card.factor);
     const peak = Math.round(num(card.peak));

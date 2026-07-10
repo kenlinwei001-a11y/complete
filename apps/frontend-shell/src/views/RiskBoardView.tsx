@@ -130,11 +130,14 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
   //   卡**自报 dataMode==="LIVE"**（后端由真实测 OEE liveTightness 算出·hasData!==false）⇒ LIVE
   //   —— 即便顶层 dataMode=SYNTHETIC（demo 对象合成），真实测卡的越线/峰值/series 仍照常出（真数据非顶层能抹）。
   //   卡未标 dataMode（旧 fixture）⇒ 随顶层 topLive（向后兼容）；卡显式非 LIVE（MOCK/SYNTHETIC）或 hasData=false ⇒ MUTED。
+  // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·诚实位）：合成源卡（后端 risk.ts 令 source=SYNTHETIC 的合成扁平产线
+  //   利用率兜底卡）dataMode 继承 "SYNTHETIC" 而非自报 LIVE → 命中下方 `return "MUTED"`，**不决策级染红**（走灰
+  //   估算·无实测）；真供需/真实测卡（dataMode="LIVE"）仍如常出真张力/越线红。前端无需改判据——后端诚实位下沉即生效。
   const cardDecisionMode = (c: RiskCard): "LIVE" | "MUTED" => {
     if (c.hasData === false) return "MUTED";
-    if (c.dataMode === "LIVE") return "LIVE"; // 自报实测 → 出红（不被顶层合成过度抑制·非伪造：真 OEE 派生）
+    if (c.dataMode === "LIVE") return "LIVE"; // 自报实测 → 出红（不被顶层合成过度抑制·非伪造：真 OEE / 真供需派生）
     if (c.dataMode == null) return topLive ? "LIVE" : "MUTED"; // 未标 → 随顶层（兼容旧 fixture/真 LIVE 顶层）
-    return "MUTED"; // 显式 MOCK/SYNTHETIC/其它非 LIVE → 中性
+    return "MUTED"; // 显式 MOCK/SYNTHETIC（含 WO-CAP-01 合成源卡）/其它非 LIVE → 中性
   };
   // 首要风险仅在真数据卡间取（避免合成/mock 峰值抢「首要」红标）。
   const liveCards = data.cards.filter((c) => cardDecisionMode(c) === "LIVE");

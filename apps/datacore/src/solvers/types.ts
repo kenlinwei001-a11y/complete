@@ -381,6 +381,10 @@ export interface SolverContext {
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
   rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number> }>;
   ruleSetVersion?: string;
+  // WO-CAP-01-REALDEMAND（闭 G-SIM-FAKE·暗发）：本租户已解析生效的功能键集（entitlement resolve 结果）。
+  // 求解器据此做行为暗发——当前：`qos.risk_realdemand` 令风险张力需求驱动因素绑真供需 demandCapacityTightness。
+  // optional：缺省（测试直构 ctx / 内部计算）视为空集 → 走关闸旧路径（向后兼容 R6·回退演练即此路径）。
+  features?: Set<string>;
 }
 
 export function num(v: unknown, fallback = 0): number {

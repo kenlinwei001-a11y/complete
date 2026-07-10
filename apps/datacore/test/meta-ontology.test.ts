@@ -253,5 +253,5 @@ describe("META-RUNTIME-TRUTH · 断点声称 ↔ 运行时判据交叉核对（P
       expect(cov.unparsed).toContain(named); // parse 未投影
       expect(cov.uncoveredFixed).toContain(named); // 但跑批器独立枚举后显性披露为未核对
     }
-  });
+  }, 120_000); // 本齿 spawnSync 跑批器子进程（内部 180s 超时·读 §8 + 导入 dist + 交叉核对），并发负载下 >30s
 });

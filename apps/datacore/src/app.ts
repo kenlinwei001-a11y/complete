@@ -3954,6 +3954,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (id !== c.tenantId) throw forbidden("cross-tenant feature write");
     const body = parseBody(z.object({ overrides: z.record(z.string(), z.boolean()) }), req.body);
     await features.putTenantConfig(c, id, body.overrides);
+    solvers.invalidateFeatureCache(id); // WO-CAP-01：暗发功能开关翻转即时生效于求解器（qos.risk_realdemand·回退演练）
     return features.resolve(id);
   });
   app.put("/a/v1/tenants/:id/features/roles/:role", async (req) => {
@@ -3963,6 +3964,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (id !== c.tenantId) throw forbidden("cross-tenant feature write");
     const body = parseBody(z.object({ overrides: z.record(z.string(), z.boolean()) }), req.body);
     await features.putRoleConfig(c, id, role, body.overrides);
+    solvers.invalidateFeatureCache(id); // WO-CAP-01：同上（角色层 override 变更亦清缓存）
     return features.resolve(id, role);
   });
   app.get("/a/v1/tenants/:id/features/preview", async (req) => {
