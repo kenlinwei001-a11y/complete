@@ -13,13 +13,24 @@ function splitSentences(markdown: string): string[] {
   return markdown.split(/(?<=[。．！？!?；;\n])|(?<=\.)(?=\s|$)/u);
 }
 
-export function hasUnverifiedNumerics(markdown: string): boolean {
+/** 用 PRD 同款正则抽取一段文本里的数值 token（先剔除 ISO 日期），保持顺序、可含重复。 */
+export function extractNumericTokens(text: string): string[] {
+  ISO_DATE_RE.lastIndex = 0;
+  const withoutDates = text.replace(ISO_DATE_RE, "");
+  NUMERIC_RE.lastIndex = 0;
+  return [...withoutDates.matchAll(NUMERIC_RE)].map((m) => m[0]);
+}
+
+/** 回答文本中「无引用溯源」的数值 token（先丢含 ⟦ref:*⟧ 的句子，再抽取）。 */
+export function extractUnverifiedNumerics(markdown: string): string[] {
   const kept = splitSentences(markdown)
     .filter((s) => !REF_MARK_RE.test(s))
     .join("");
-  const withoutDates = kept.replace(ISO_DATE_RE, "");
-  NUMERIC_RE.lastIndex = 0;
-  return NUMERIC_RE.test(withoutDates);
+  return extractNumericTokens(kept);
+}
+
+export function hasUnverifiedNumerics(markdown: string): boolean {
+  return extractUnverifiedNumerics(markdown).length > 0;
 }
 
 export function scanBlocks(blocks: { type: string; markdown?: string }[]): boolean {

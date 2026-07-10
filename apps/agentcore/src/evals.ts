@@ -1,9 +1,12 @@
-import type { EvalCase, EvalCaseResult, EvalRunReport, EvalSuite } from "@platform/contracts";
+import type { EvalCase, EvalCaseResult, EvalGateResult, EvalGateThresholds, EvalRunReport, EvalSuite } from "@platform/contracts";
+import { EvalGateThresholdsSchema } from "@platform/contracts";
 import type { Repos } from "./persistence/repos.js";
 import type { Orchestrator } from "./router/orchestrator.js";
+import { HttpError } from "./router/orchestrator.js";
 import type { RequestAuth } from "./auth.js";
 import { newId } from "./ids.js";
 import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
+import { extractNumericTokens, extractUnverifiedNumerics } from "./util/numerics.js";
 
 /**
  * AIP Evals（运营完备性增量 §2 / 成熟度 E4）。
@@ -105,12 +108,74 @@ export class EvalService {
         avgToolCalls: total === 0 ? 0 : round(results.reduce((s, r) => s + r.observed.toolCount, 0) / total),
         avgLatencyMs: total === 0 ? 0 : Math.round(results.reduce((s, r) => s + r.observed.latencyMs, 0) / total),
         avgTokenCost: total === 0 ? 0 : Math.round(results.reduce((s, r) => s + (r.observed.tokenCost ?? 0), 0) / total),
+        hallucinationRate: total === 0 ? 0 : round(results.filter((r) => r.observed.hallucination).length / total),
       },
       results,
       llmMode: opts.llmMode ?? "MOCK",
     };
     await this.deps.repos.evalRuns.insert(report);
     return report;
+  }
+
+  // -- shadow release gate (E4) --------------------------------------------
+
+  /**
+   * 影子发布门禁：候选运行需同时满足绝对阈值（意图/工具正确率下限、幻觉率上限）；
+   * 若给基线运行，则还需相对基线不退化（意图/工具正确率 ≥ 基线−ε、幻觉率 ≤ 基线）。
+   */
+  async gate(
+    auth: RequestAuth,
+    input: { candidateRunId: string; baselineRunId?: string; thresholds?: Partial<EvalGateThresholds> },
+  ): Promise<EvalGateResult> {
+    const thresholds = EvalGateThresholdsSchema.parse(input.thresholds ?? {});
+    const candidate = await this.deps.repos.evalRuns.get(input.candidateRunId);
+    if (!candidate || candidate.tenantId !== auth.tenantId) {
+      throw new HttpError(404, "EVAL_RUN_NOT_FOUND", `eval run not found: ${input.candidateRunId}`);
+    }
+    const metrics = {
+      intentAccuracy: candidate.metrics.intentAccuracy,
+      toolCorrectness: candidate.metrics.toolCorrectness,
+      hallucinationRate: candidate.metrics.hallucinationRate ?? 0,
+    };
+
+    const failures: string[] = [];
+    if (metrics.intentAccuracy < thresholds.intentAccuracy) {
+      failures.push(`意图准确率 ${metrics.intentAccuracy} 低于阈值 ${thresholds.intentAccuracy}`);
+    }
+    if (metrics.toolCorrectness < thresholds.toolCorrectness) {
+      failures.push(`工具正确率 ${metrics.toolCorrectness} 低于阈值 ${thresholds.toolCorrectness}`);
+    }
+    if (metrics.hallucinationRate > thresholds.maxHallucinationRate) {
+      failures.push(`幻觉率 ${metrics.hallucinationRate} 高于上限 ${thresholds.maxHallucinationRate}`);
+    }
+
+    if (input.baselineRunId) {
+      const baseline = await this.deps.repos.evalRuns.get(input.baselineRunId);
+      if (!baseline || baseline.tenantId !== auth.tenantId) {
+        throw new HttpError(404, "EVAL_RUN_NOT_FOUND", `eval run not found: ${input.baselineRunId}`);
+      }
+      const baseIntent = baseline.metrics.intentAccuracy;
+      const baseTool = baseline.metrics.toolCorrectness;
+      const baseHalluc = baseline.metrics.hallucinationRate ?? 0;
+      if (metrics.intentAccuracy < baseIntent - REGRESSION_EPSILON) {
+        failures.push(`意图准确率较基线退化：${metrics.intentAccuracy} < 基线 ${baseIntent}`);
+      }
+      if (metrics.toolCorrectness < baseTool - REGRESSION_EPSILON) {
+        failures.push(`工具正确率较基线退化：${metrics.toolCorrectness} < 基线 ${baseTool}`);
+      }
+      if (metrics.hallucinationRate > baseHalluc + REGRESSION_EPSILON) {
+        failures.push(`幻觉率较基线恶化：${metrics.hallucinationRate} > 基线 ${baseHalluc}`);
+      }
+    }
+
+    return {
+      pass: failures.length === 0,
+      candidateRunId: input.candidateRunId,
+      ...(input.baselineRunId ? { baselineRunId: input.baselineRunId } : {}),
+      thresholds,
+      metrics,
+      failures,
+    };
   }
 
   private async runCase(auth: RequestAuth, c: EvalCase, timeoutMs: number): Promise<EvalCaseResult> {
@@ -137,6 +202,22 @@ export class EvalService {
     const observedIntent = task?.matchedIntent?.intentKey ?? task?.classification?.candidates?.[0]?.intentKey ?? null;
     const outOfCatalog = task?.classification?.outOfCatalog ?? false;
     const answerText = task?.answer ? JSON.stringify(task.answer) : "";
+
+    // —— 幻觉率（E4）：回答里出现、但无法在本 case 工具/求解器证据中溯源的数值即为「未核实」。
+    // 证据 = 本次任务所有工具/求解器调用的输入与输出（invoke_solver 亦经工具调用留痕）。
+    const answerBlocks = ((task?.answer?.blocks ?? []) as { type: string; markdown?: string }[]);
+    const answerMarkdown = answerBlocks
+      .filter((b) => b.type === "text" && typeof b.markdown === "string")
+      .map((b) => b.markdown as string)
+      .join("\n");
+    const evidenceText = toolRows
+      .map((r) => JSON.stringify(r.output ?? "") + JSON.stringify(r.input ?? ""))
+      .join("\n");
+    const verified = new Set(extractNumericTokens(evidenceText).map(normalizeNumeric));
+    const unverifiedNumerics = [
+      ...new Set(extractUnverifiedNumerics(answerMarkdown).filter((n) => !verified.has(normalizeNumeric(n)))),
+    ].sort();
+    const hallucination = unverifiedNumerics.length > 0;
 
     // —— assertions ——
     if (c.expect.intentKey !== undefined) {
@@ -173,6 +254,8 @@ export class EvalService {
         latencyMs: Date.now() - t0,
         tokenCost,
         answerExcerpt: answerText.slice(0, 200),
+        unverifiedNumerics,
+        hallucination,
       },
     };
   }
@@ -188,8 +271,19 @@ export class EvalService {
   }
 }
 
+/** 基线相对比较容差（浮点噪声，非放宽退化判定）。 */
+const REGRESSION_EPSILON = 1e-9;
+
 function round(n: number): number {
   return Math.round(n * 10000) / 10000;
+}
+
+/** 归一化数值 token 以便证据比对：去千分位分隔符与单位/百分号后缀、末尾小数点。 */
+function normalizeNumeric(tok: string): string {
+  return tok
+    .replace(/[,，]/g, "")
+    .replace(/(%|万|亿|GWh|套|吨|天|周)$/u, "")
+    .replace(/\.$/u, "");
 }
 
 /** name 子序列匹配（期望工具按序作为实际工具序列的子序列出现）。 */

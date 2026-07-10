@@ -1350,6 +1350,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     return { items: await deps.repos.evalRuns.listByTenant(a.tenantId) };
   });
+  // E4 影子发布门禁：候选运行是否达阈值（可选相对基线不退化）。
+  app.post("/b/v1/evals/gate", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const body = z
+      .object({
+        candidateRunId: z.string(),
+        baselineRunId: z.string().optional(),
+        thresholds: z
+          .object({
+            intentAccuracy: z.number().optional(),
+            toolCorrectness: z.number().optional(),
+            maxHallucinationRate: z.number().optional(),
+          })
+          .optional(),
+      })
+      .parse(req.body ?? {});
+    return deps.evals.gate(a, body);
+  });
 
   // 数据流闭环 §3/§6：联动刷新接线注册表（前端缓存失效路由的单一来源）。
   // ?event= 过滤某事件的下游；?view= 反查某消费页依赖的事件。
