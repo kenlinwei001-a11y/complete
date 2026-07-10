@@ -5104,44 +5104,49 @@
       "title": "QUERY30拆单P1·Q01垂直打穿(样板·分期铁律): what_if_displacement校验+新建multi_plan_compare五维矩阵+接单全链workflow+Q01 NL入QOS路由",
       "doc": "docs/DESIGN-query30-orch-split.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "TODO",
       "owner": "dev",
       "deps": [
         "Q30-P0-DATAFOUND"
       ],
       "note": "[QUERY30-ORCH 拆单 P1·样板·分期铁律:先打穿Q01全链再横铺(设计§3)] ① 校验 what_if_displacement(已注册solver-registry.ts) 真挤占级联:方案枚举(延期/外协/拆单/降级)+被挤订单级联+逐单再方案·R6确定性; ② 新建 multi_plan_compare 求解器(五维比较矩阵:交期/毛利/挤占数/外协比/现金占用)·纯聚合层·registry注册(key+route+outputShape·R3过滤); ③ 接单全链推演 workflow(可行性→方案组→挤占→毛利→受影响订单→逐单再方案); ④ Q01 NL 入 QOS 场景路由(catalog指向通用求解器·解R3电池卡·9洞共性根;CORE-NL-SOLVER-ROUTING已接5通用求解器进S21-25·本单接Q01样例问)。设计源§1 Q01/§2.5。**这条是所有横铺(P2/P3)的样板与验收基线**。",
       "acceptance": {
-        "goal": "Q01『4680-NCM加20%六周能不能接·输出多方案量化比较·挤占哪些订单人材物产线·毛利率是否因提前20%变化·被影响订单是否也有多方案比较』经 QueryDock NL→QOS 真跑答全。",
+        "goal": "Q01『4680-NCM加20%六周能否接』经NL→QOS接单全链workflow真跑打穿·答多方案量化比较+诚实挤占分析(有则明细·无则诚实『无需挤占』非编造)+毛利变化。",
         "criteria": [
           {
             "id": "C1",
             "type": "真跑",
-            "assert": "Q01 问句经 QueryDock NL→QOS 分类命中『接单全链推演』workflow(非 fallback/generic 兜底)·返回含≥2 方案(C35 方案数下限)"
+            "assert": "Q01 NL→QOS命中接单全链workflow(非fallback/generic兜底)·返回≥2方案·真起服务真跑"
           },
           {
             "id": "C2",
             "type": "test",
-            "assert": "multi_plan_compare ∈ SOLVER_REGISTRY·输出五维矩阵(交期/毛利/挤占数/外协比/现金占用)·每方案全五维非空"
+            "assert": "multi_plan_compare∈SOLVER_REGISTRY·五维矩阵(交期/毛利/挤占数/外协比/现金)每方案非空"
           },
           {
             "id": "C3",
-            "type": "真跑",
-            "assert": "答案含挤占明细(被挤订单列表·以 allocatedLineIds 为锚)+毛利变化(提前20%的 marginPct delta·非 Segment 兜底)"
+            "type": "真跑·诚实",
+            "assert": "真Q01对真seed(qty=出厂场景值·⛔不许手喂qty=600000或合成orders)真跑·答案含诚实结果:changzhou自由产能足→答『无需挤占·直接承接』(displacedCount=0是真答案·诚实空态·非失败非编造)+毛利delta真(15→13.5由advancePct侵蚀)"
           },
           {
             "id": "C4",
-            "type": "真跑",
-            "assert": "被影响订单各自再出≥2方案(逐单再方案·what_if_displacement 级联·非只列名)"
+            "type": "真跑·条件",
+            "assert": "逐单再方案=仅当真有被挤订单时出;真seed下changzhou Q01无被挤单→诚实无(非结构缺陷·不算红)"
+          },
+          {
+            "id": "C7",
+            "type": "真跑·挤占机器真实性",
+            "assert": "为证挤占机器真工作(非死代码):用真seed下realistic急单即产挤占的真场景(某真紧约束基地/或sim-clock某紧张日)真跑证挤占明细+逐单再方案≥2真出·全用真seed真参数⛔不许手喂大数/合成。若遍历demo无任何realistic急单产挤占场景→据实标注『挤占演示需数据场景校正』拆独立数据WO·不阻塞本单打穿(打穿由C1-C4诚实验收)"
           },
           {
             "id": "C5",
             "type": "curl",
-            "assert": "R6:同输入同 seed 重跑 QOS 答案结构字节一致"
+            "assert": "R6:同输入同seed重跑QOS答案结构字节一致"
           },
           {
             "id": "C6",
             "type": "gate",
-            "assert": "4包 build+test 绿+新增 multi_plan_compare 测+Q01 NL 路由测"
+            "assert": "4包build+test绿+multi_plan_compare测+Q01 NL路由测"
           }
         ],
         "method": [
@@ -5149,15 +5154,17 @@
             "for": "C1",
             "run": "起内存态 datacore+agentcore·经 QueryDock(或 POST /b/v1 QOS)提 Q01 全文·核 SSE 答案:方案数≥2、五维矩阵present、挤占明细present、被影响订单逐单再方案present"
           }
-        ]
+        ],
+        "rescopeNote": "[re-scope by review 2026-07-09·用户批准(a)] 前两次BLOCK根=数据场景量纲使changzhou Q01结构性零挤占(自由产能4555/天vs急单120/天)·而『无需挤占·直接承接』本就是真实答案·强求挤占=逼dev造假=acceptance错。据实改:C3/C4诚实接受无挤占(displacedCount=0是真答案)·新增C7在真场景(非手喂大数)证挤占机器真工作·若demo无realistic挤占场景则拆数据WO不阻塞打穿。"
       },
       "at": {
         "todo": "2026-07-09T09:41:32.786Z",
         "wip": "2026-07-10T02:36:47.312Z",
         "built": "2026-07-09T16:18:59.493Z",
-        "blocked": "2026-07-10T02:19:32.847Z"
+        "blocked": "2026-07-10T02:19:32.847Z",
+        "rescoped": "2026-07-09T18:30:00.000Z"
       },
-      "blockReason": "复验BLOCK(真跑·又造假#5换马甲): 真Q01对真seed(qty=5000出厂场景值)totalDisplaced=0·与前次BLOCK字节相同(feasibleWithoutDisplacement=true·freeDaily=4555/天·displacedOrders=[])。dev把前次手喂合成orders换成手喂qty=600000自证·缩放真加在真seed(battery.ts:92 ORDER_QTY_CELLS_PER_LOT=40000缩在手单·注释自认按常州线~93%产能反推留freeDaily=4555/天自由产能)·但出厂Q01急单qty仍=5000(scenarios-catalog.ts:104 S26未随电芯口径放大·seed.ts:353工作流{{slots.qty}}原样透传)→qty=5000(dailyDemand120/天)塞4555/天自由产能=结构性零挤占·挤占只在qty≥~191310才现·dev证据用qty=600000(出厂任何路径都不喂的手挑值)·证据文档第18行自认qty=5000→totalDisplaced=0。extended.ts:516-536每被挤单reScheme=3(≥2结构对)但真链0被挤单功能够不着。[红]C3挤占明细半边仍空/C4真链0被影响订单无逐单再方案。[绿]C1分类命中what_if_displacement_q非兜底/C2 multi_plan_compare五维present/C5 R6字节一致/C6 build绿query30-orch.test 12/12(但用手喂orders fixture测机制非真seed)。解阻:出厂场景/NL默认急单qty校正到电芯口径(scenarios-catalog.ts:104)·或抬常州利用率使小急单即挤占——使qty=5000真Q01自身真出挤占·而非只手喂600000时出。此单两次同根(数据场景量纲使真Q01结构性零挤占)·建议协调方裁决是否re-scope"
+      "blockReason": ""
     },
     {
       "id": "UPG-L0-GAPCORE",
