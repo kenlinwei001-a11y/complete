@@ -238,7 +238,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const catalog = new CatalogService(repos, features);
   const governance = new OntologyGovernanceService(repos, authz, ontology, ontologyCore, features, metrics, outbox);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
-  const connectors = new ConnectorService(repos, blob, cipher, metrics, deps.fetchImpl ?? fetch);
+  const connectors = new ConnectorService(repos, blob, cipher, metrics, quarantine, deps.fetchImpl ?? fetch);
   // LLM Provider 增量 §1：provider 配置落位 A；A2/A3/A7 调用方经租户用途路由消费
   const llmProviders = new LlmProviderService(repos, cipher, outbox);
   const routedLlm = new TenantRoutedLlmClient(repos, cipher, llm, metrics);

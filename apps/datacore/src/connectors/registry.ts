@@ -123,6 +123,18 @@ export const CONNECTOR_TYPES: ConnectorType[] = [
     configSchema: { type: "object", properties: {} },
     capabilities: { batch: true, incremental: false, schemaDiscovery: true },
   },
+  {
+    // E1: incremental-capable mock. Upstream rows live in `config.rows`; each sync
+    // resumes from the persisted watermark cursor (array offset) so only newly
+    // appended rows are fetched. Used to exercise cursor checkpoint + schema drift.
+    key: "mock_incremental",
+    category: "EXTERNAL",
+    configSchema: {
+      type: "object",
+      properties: { rows: { type: "array" }, datasetName: { type: "string" } },
+    },
+    capabilities: { batch: true, incremental: true, schemaDiscovery: true },
+  },
 ];
 
 /** Config fields treated as credentials (AES-256-GCM at rest, never echoed). */
@@ -246,6 +258,44 @@ class StaticAdapter extends RowsAdapter {
   }
 }
 
+/**
+ * E1 incremental mock: a single dataset whose rows come from `config.rows`. The
+ * cursor is the array offset (as a string). `fetchBatch(name, cursor)` returns the
+ * rows appended since that offset and advances the cursor to the new length; when
+ * nothing is new it returns an empty batch with no nextCursor (drain terminates).
+ * This lets a test simulate "new rows since cursor" by growing `config.rows`.
+ */
+export class MockIncrementalAdapter implements SourceAdapter {
+  constructor(private config: { rows?: Record<string, unknown>[]; datasetName?: string }) {}
+
+  private get name(): string {
+    return this.config.datasetName ?? "events";
+  }
+
+  private get rows(): Record<string, unknown>[] {
+    return Array.isArray(this.config.rows) ? this.config.rows : [];
+  }
+
+  async listDatasets(): Promise<string[]> {
+    return [this.name];
+  }
+
+  async discoverSchema(): Promise<SourceSchema> {
+    return { datasets: [{ name: this.name, fields: profileRows(this.rows) }] };
+  }
+
+  async fetchBatch(
+    dataset: string,
+    cursor?: string,
+  ): Promise<{ rows: Record<string, unknown>[]; nextCursor?: string }> {
+    const rows = dataset === this.name ? this.rows : [];
+    const start = cursor ? Number(cursor) : 0;
+    const page = rows.slice(start);
+    if (page.length === 0) return { rows: [] };
+    return { rows: page, nextCursor: String(rows.length) };
+  }
+}
+
 export function createAdapter(
   connectorTypeKey: string,
   config: Record<string, unknown>,
@@ -261,6 +311,8 @@ export function createAdapter(
       return new StaticAdapter(MOCK_ERP_DATA);
     case "mock_crm":
       return new StaticAdapter(MOCK_CRM_DATA);
+    case "mock_incremental":
+      return new MockIncrementalAdapter(config as { rows?: Record<string, unknown>[]; datasetName?: string });
     default:
       throw validationError(
         `connector type '${connectorTypeKey}' is registered but has no adapter implementation yet`,

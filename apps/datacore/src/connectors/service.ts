@@ -5,11 +5,13 @@ import type { BlobStore } from "../blob.js";
 import type { Metrics } from "../metrics.js";
 import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
+import type { QuarantineService } from "../quarantine.js";
 import { CredentialCipher } from "../crypto.js";
 import { newId } from "../ids.js";
 import { notFound, validationError } from "../errors.js";
 import { createAdapter, CREDENTIAL_FIELDS, getConnectorType } from "./registry.js";
 import { profileRows, suggestDatasetKind } from "./profiler.js";
+import type { FieldProfile } from "@platform/contracts";
 
 /** Per-dataset config on the connection (A8.1: TIMESERIES marking, also for CSV uploads). */
 interface DatasetConfig {
@@ -19,6 +21,46 @@ interface DatasetConfig {
   entityRefField?: string;
   timeField?: string;
   measureFields?: string[];
+}
+
+/** E1: serialize a profiled schema into a deterministic `field:type` fingerprint (sorted by name). */
+function fingerprintOf(fields: FieldProfile[]): string {
+  return [...fields]
+    .map((f) => `${f.name}:${f.inferredType}`)
+    .sort()
+    .join(",");
+}
+
+/** Parse a fingerprint string back into a field→type map. */
+function parseFingerprint(fp: string): Map<string, string> {
+  const map = new Map<string, string>();
+  if (fp === "") return map;
+  for (const part of fp.split(",")) {
+    const idx = part.lastIndexOf(":");
+    map.set(part.slice(0, idx), part.slice(idx + 1));
+  }
+  return map;
+}
+
+/** E1: diff two fingerprints → added/removed/type-changed columns (all sorted for determinism). */
+function diffFingerprints(
+  priorFp: string,
+  currentFp: string,
+): { added: string[]; removed: string[]; typeChanged: { field: string; from: string; to: string }[] } {
+  const prior = parseFingerprint(priorFp);
+  const current = parseFingerprint(currentFp);
+  const added: string[] = [];
+  const removed: string[] = [];
+  const typeChanged: { field: string; from: string; to: string }[] = [];
+  for (const [name, type] of current) {
+    if (!prior.has(name)) added.push(name);
+    else if (prior.get(name) !== type) typeChanged.push({ field: name, from: prior.get(name)!, to: type });
+  }
+  for (const name of prior.keys()) if (!current.has(name)) removed.push(name);
+  added.sort();
+  removed.sort();
+  typeChanged.sort((a, b) => a.field.localeCompare(b.field));
+  return { added, removed, typeChanged };
 }
 
 /** A1 connector framework: connections, schema discovery, sync → RawDataset | ts writer. */
@@ -31,6 +73,7 @@ export class ConnectorService {
     private blob: BlobStore,
     private cipher: CredentialCipher,
     private metrics: Metrics,
+    private quarantine: QuarantineService,
     private fetchImpl: typeof fetch = fetch,
   ) {}
 
@@ -177,54 +220,105 @@ export class ConnectorService {
     await this.repos.syncJobs.put(job);
     try {
       const adapter = createAdapter(conn.connectorTypeKey, this.decryptedConfig(conn), this.blob, this.fetchImpl);
+      const connectorIncremental = getConnectorType(conn.connectorTypeKey)?.capabilities.incremental === true;
       const datasets = await adapter.listDatasets();
       for (const name of datasets) {
-        const rows: Record<string, unknown>[] = [];
-        let cursor: string | undefined;
+        const dsCfg = this.datasetConfig(conn, name);
+        const isTimeseries = dsCfg?.kind === "TIMESERIES" && !!this.ts;
+        // E1: incremental resume applies only to entity datasets on incremental
+        // connectors; TIMESERIES keeps its full-snapshot writer path unchanged.
+        const useIncremental = connectorIncremental && !isTimeseries;
+        const startCursor = useIncremental ? conn.cursorState?.[name] : undefined;
+
+        // Drain: for incremental, `fetched` holds only rows appended since the
+        // stored watermark; for full connectors it holds the full snapshot.
+        const fetched: Record<string, unknown>[] = [];
+        let cursor: string | undefined = startCursor;
+        let resumeCursor: string | undefined = startCursor;
         do {
           const batch = await adapter.fetchBatch(name, cursor);
-          rows.push(...batch.rows);
+          fetched.push(...batch.rows);
           cursor = batch.nextCursor;
+          if (cursor !== undefined) resumeCursor = cursor;
         } while (cursor);
+
         // A8.1: TIMESERIES datasets bypass raw_datasets/materialize and land via the ts writer.
-        const dsCfg = this.datasetConfig(conn, name);
-        if (dsCfg?.kind === "TIMESERIES" && this.ts) {
+        if (isTimeseries && this.ts) {
           const numericFields =
-            dsCfg.measureFields ??
-            profileRows(rows.slice(0, 200))
-              .filter((f) => f.inferredType === "number" && f.name !== dsCfg.entityRefField)
+            dsCfg!.measureFields ??
+            profileRows(fetched.slice(0, 200))
+              .filter((f) => f.inferredType === "number" && f.name !== dsCfg!.entityRefField)
               .map((f) => f.name);
           const r = await this.ts.writeDatasetRows(ctx.tenantId, {
-            seriesKey: dsCfg.seriesKey ?? `${name}`,
-            entityType: dsCfg.entityType ?? name,
-            entityRefField: dsCfg.entityRefField ?? "entityId",
-            timeField: dsCfg.timeField ?? "ts",
+            seriesKey: dsCfg!.seriesKey ?? `${name}`,
+            entityType: dsCfg!.entityType ?? name,
+            entityRefField: dsCfg!.entityRefField ?? "entityId",
+            timeField: dsCfg!.timeField ?? "ts",
             measureFields: numericFields,
             connId: conn.id,
             origin: "CONNECTOR",
-          }, rows);
+          }, fetched);
           job.rowCounts[name] = r.written + r.late;
           continue;
         }
-        // Idempotent: replace dataset rows (one RawDataset per conn+dataset name).
+
+        // E1 schema drift: compare this run's fingerprint against the prior one.
+        // Skip when nothing was fetched (an incremental no-op would otherwise read
+        // as "all columns removed"). Drift is flagged, NOT blocking — the data still
+        // lands below; only a single quarantine marker is recorded per drift.
+        if (fetched.length > 0) {
+          const currentFp = fingerprintOf(profileRows(fetched));
+          const priorFp = conn.schemaFingerprint?.[name];
+          if (priorFp !== undefined && priorFp !== currentFp) {
+            const diff = diffFingerprints(priorFp, currentFp);
+            if (diff.added.length || diff.removed.length || diff.typeChanged.length) {
+              const detail =
+                `dataset '${name}' schema drift — ` +
+                `added: [${diff.added.join(", ")}]; ` +
+                `removed: [${diff.removed.join(", ")}]; ` +
+                `typeChanged: [${diff.typeChanged.map((c) => `${c.field} ${c.from}→${c.to}`).join(", ")}]`;
+              await this.quarantine.record(ctx.tenantId, {
+                connId,
+                dataset: name,
+                raw: { added: diff.added, removed: diff.removed, typeChanged: diff.typeChanged },
+                reason: "SCHEMA_DRIFT",
+                detail,
+                reprocess: { targetKey: name, mapping: [] },
+              });
+            }
+          }
+          conn.schemaFingerprint = { ...(conn.schemaFingerprint ?? {}), [name]: currentFp };
+        }
+
+        // Idempotent: one RawDataset per conn+dataset name. Full connectors replace
+        // the snapshot; incremental connectors APPEND the newly-fetched rows so
+        // history is retained and rowCount is cumulative.
         const existing = (
           await this.repos.rawDatasets.list(
             ctx.tenantId,
             (d) => d.sourceConnId === connId && d.name === name,
           )
         )[0];
+        const priorRows =
+          useIncremental && existing ? await this.repos.rawRows.list(ctx.tenantId, existing.id) : [];
+        const finalRows = useIncremental ? priorRows.concat(fetched) : fetched;
         const ds: RawDataset = {
           id: existing?.id ?? newId("rds"),
           tenantId: ctx.tenantId,
           sourceConnId: connId,
           name,
-          fields: profileRows(rows),
-          rowCount: rows.length,
+          fields: profileRows(finalRows),
+          rowCount: finalRows.length,
           syncedAt: new Date().toISOString(),
         };
         await this.repos.rawDatasets.put(ds);
-        await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
-        job.rowCounts[name] = rows.length;
+        await this.repos.rawRows.replace(ctx.tenantId, ds.id, finalRows);
+        job.rowCounts[name] = useIncremental ? fetched.length : finalRows.length;
+
+        // E1: persist the advanced watermark so the next sync resumes from here.
+        if (useIncremental && resumeCursor !== undefined) {
+          conn.cursorState = { ...(conn.cursorState ?? {}), [name]: resumeCursor };
+        }
       }
       job.status = "SUCCEEDED";
       job.finishedAt = new Date().toISOString();

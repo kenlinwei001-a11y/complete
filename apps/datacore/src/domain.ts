@@ -105,6 +105,16 @@ export interface Connection {
   status: "ACTIVE" | "DISABLED" | "ERROR";
   lastSyncAt?: string;
   lastError?: string;
+  /**
+   * E1 生产连接器：增量同步的持久化断点。dataset 名 → 上次拉取到的 watermark cursor。
+   * 增量数据集下次 sync 从此续拉（跨 sync run 恢复），非增量数据集不使用。
+   */
+  cursorState?: Record<string, string>;
+  /**
+   * E1：每个 dataset 的 schema 指纹（序列化 `field:type` 有序串），用于 schema drift 检测。
+   * dataset 名 → 指纹串。首次 sync 无指纹（不算 drift）。
+   */
+  schemaFingerprint?: Record<string, string>;
 }
 
 export interface SyncJob {
@@ -680,7 +690,7 @@ export interface QuarantineRowRecord {
   connId: string; // datasetId（来源管线锚点）
   dataset: string; // dataset 名
   raw: Record<string, unknown>; // 原始行（可行内编辑后重投）
-  reason: "SCHEMA_MISMATCH" | "TYPE_ERROR" | "REF_NOT_FOUND" | "UNIT_ERROR" | "RULE_REJECT" | "DUP_KEY";
+  reason: "SCHEMA_MISMATCH" | "TYPE_ERROR" | "REF_NOT_FOUND" | "UNIT_ERROR" | "RULE_REJECT" | "DUP_KEY" | "SCHEMA_DRIFT";
   detail?: string;
   status: "PENDING" | "REPROCESSED" | "DISCARDED";
   /** 重处理上下文：目标类型 + 字段映射 + 主键（重投时重建对象）。 */
