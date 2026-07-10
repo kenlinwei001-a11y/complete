@@ -157,3 +157,81 @@ export type OntologyWorkflowUpsert = z.infer<typeof OntologyWorkflowUpsertSchema
 /** validate 结果。 */
 export const WfValidationIssueSchema = z.object({ nodeId: z.string().optional(), code: z.string(), message: z.string() });
 export type WfValidationIssue = z.infer<typeof WfValidationIssueSchema>;
+
+// ---------------------------------------------------------------------------
+// P4：准备度（readiness）+ 生成应用（scaffold）结果契约。
+// 均为纯结构 zod，跨包共享（前端 ReadinessGauge / scaffold 结果面板消费，后端产出）。
+// generic-inference 的输入/输出契约由 datacore 侧就近定义（前端不消费）。
+// ---------------------------------------------------------------------------
+
+/** 局部仿真准备度评分等级（截图「67/100」下的成熟度门）。 */
+export const ReadinessGradeSchema = z.enum(["NASCENT", "DEVELOPING", "READY"]);
+export type ReadinessGrade = z.infer<typeof ReadinessGradeSchema>;
+
+/** 单维度评分（字段/主键/数据源/状态变量/行动/派生/存储模式）。 */
+export const ReadinessDimensionSchema = z.object({
+  key: z.enum(["properties", "primaryKey", "dataSource", "stateVariables", "actions", "derived", "storageMode"]),
+  label: z.string(),
+  score: z.number().int().min(0).max(100),
+  weight: z.number(),
+  detail: z.string().optional(),
+});
+export type ReadinessDimension = z.infer<typeof ReadinessDimensionSchema>;
+
+/** 单实体节点准备度 + 缺项引导。 */
+export const EntityReadinessSchema = z.object({
+  nodeId: z.string(),
+  typeKey: z.string(),
+  storageMode: WfStorageModeSchema,
+  score: z.number().int().min(0).max(100),
+  grade: ReadinessGradeSchema,
+  dimensions: z.array(ReadinessDimensionSchema),
+  missing: z.array(z.string()).default([]),
+});
+export type EntityReadiness = z.infer<typeof EntityReadinessSchema>;
+
+/** 工作流整体 + 各实体准备度。 */
+export const ReadinessResultSchema = z.object({
+  overall: z.number().int().min(0).max(100),
+  grade: ReadinessGradeSchema,
+  entities: z.array(EntityReadinessSchema),
+});
+export type ReadinessResult = z.infer<typeof ReadinessResultSchema>;
+
+/** scaffold 生成的视图（每类型台账 + 全局驾驶舱/图谱）。 */
+export const ScaffoldViewSchema = z.object({
+  key: z.string(),
+  kind: z.enum(["ledger", "dashboard", "graph"]),
+  title: z.string(),
+  typeKey: z.string().optional(),
+});
+export type ScaffoldView = z.infer<typeof ScaffoldViewSchema>;
+
+/** scaffold 生成的场景入口（每核心实体一个 AGENT_FIRST 场景）。 */
+export const ScaffoldSceneSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  mode: z.literal("AGENT_FIRST"),
+  typeKey: z.string(),
+  agentKey: z.string(),
+});
+export type ScaffoldScene = z.infer<typeof ScaffoldSceneSchema>;
+
+/** scaffold 生成的默认 Agent（绑定通用工具）。 */
+export const ScaffoldAgentSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  tools: z.array(z.string()),
+  systemPrompt: z.string().optional(),
+});
+export type ScaffoldAgent = z.infer<typeof ScaffoldAgentSchema>;
+
+/** scaffold 结果：视图/场景/Agent/场景包/求解器绑定。 */
+export const ScaffoldResultSchema = z.object({
+  views: z.array(ScaffoldViewSchema).default([]),
+  scenes: z.array(ScaffoldSceneSchema).default([]),
+  agents: z.array(ScaffoldAgentSchema).default([]),
+  scenarioPackages: z.array(z.string()).default([]),
+  solverBindings: z.array(z.string()).default([]),
+});
+export type ScaffoldResult = z.infer<typeof ScaffoldResultSchema>;
