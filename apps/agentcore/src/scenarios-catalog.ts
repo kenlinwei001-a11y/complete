@@ -105,12 +105,12 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   // QUERY30 缺口③ Q01 样板（DESIGN-query30 §2.5·解 R3 电池卡·9洞共性根）：接单挤占推演 NL 入 QOS 场景路由。
   // 意图键 what_if_displacement_q 已在 seed 注册一等意图+计划（接单全链推演 workflow：what_if_displacement→multi_plan_compare）；
   // 本卡把 Q01 样板问句接进启动器目录单一来源 → GET /b/v1/scenarios 下发 + NL 分类命中该意图 → 路径A 真跑真求解器。
-  // qty=520000 为**电芯口径**（与 SEED_DEMO 在手单同口径：battery.ts ORDER_QTY_CELLS_PER_LOT=40000·13 批次=最大在手 4680-NCM 单 SO-3490 之量）。
-  // KILL-MOCK-RED 返工#2 根治：旧默认 qty=5000 系批次口径遗留（未随订单缩放到电芯口径），在真种子上 dailyDemand≈120 «« 常州自由日产能 4555 →
-  // feasibleWithoutDisplacement=true·结构性零挤占（Q01「会挤占哪些单」失效）。校正为真实大单量级（=最大在手 4680-NCM 单 SO-3490=13 批次，
-  // 取自真实订单量分布·非「压到刚好触发」的手挑最小值 ≈191316 只，实测约 2.7× 该阈）→ 真种子上真挤占 SO-3476(中)+SO-3391(高)、
-  // C34 highPriDisplaceDays=26·C35 schemeCount≥2 皆在真数据成立、纯由场景默认复现（无手喂入参）。证据见 docs/evidence/QUERY30-Q01-P1-multi-plan-fde.md。
-  card("S26", "接单挤占推演", "project", "what_if_displacement_q", "4680-NCM 加 20% 六周插进来能不能接·会挤占哪些单·有哪些方案？", "what_if_displacement", ["C34", "C35"], "COMPUTE", "解读接单挤占推演与多方案比较", [M("4680-NCM", "4680-NCM"), B("changzhou", "常州")], { model: "4680-NCM", qty: 520000, advancePct: 0.2, weeks: 6, baseId: "changzhou" }),
+  // qty=5000 为**出厂场景默认值**（4680-NCM 一批常规接单问询量）。⛔ 不手喂大数造挤占（Q30-P1 re-scope·用户批准 2026-07-09·commit 54316bd）：
+  // 常州自由日产能远大于该急单日需（dailyDemand≈120 «« 自由日产能）→ feasibleWithoutDisplacement=true·displacedCount=0。
+  // 这**本就是真实答案**（「自由产能足量承接·无需挤占」是诚实结果·非失败非编造）；返工#2 曾把 qty 抬到 520000 强逼挤占 = 逼 dev 造假 = 已按 rescope 撤销。
+  // 挤占机器真实性由 C7 独立在「真有紧约束的真场景」上验证（非在此卡手喂大单）：demo 真种子里 hefei 基地 4680-NCM 自由日产能=0（真紧约束），
+  // 把本卡 baseId 槽切到 hefei（默认 qty=5000·出厂量·非手喂）即真挤占 SO-3415（中·位移 42 天·3 个互异再方案）——机器非死代码、真种子可复现（证据 docs/evidence/QUERY30-Q01-P1-multi-plan-fde.md）。
+  card("S26", "接单挤占推演", "project", "what_if_displacement_q", "4680-NCM 加 20% 六周插进来能不能接·会挤占哪些单·有哪些方案？", "what_if_displacement", ["C34", "C35"], "COMPUTE", "解读接单挤占推演与多方案比较", [M("4680-NCM", "4680-NCM"), B("changzhou", "常州")], { model: "4680-NCM", qty: 5000, advancePct: 0.2, weeks: 6, baseId: "changzhou" }),
   // UPG-L0-COVERAGE-FILL（PRD-upstream §5.2·治「全表无通用因果归因 path-A 求解器」·补高频未覆盖类目 general_causal_attribution）：
   // 「为什么 X 恶化/越线」通用因果归因经 QOS NL 路由命中本卡 → 路径A 工作流 → causal_attribution 真求解器（读真对象图·
   // 每个归因数溯源真字段），不再静默落 Path B。slotPresets = 求解器真实入参（Metric.actual<floorVal 判越线，
