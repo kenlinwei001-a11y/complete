@@ -8,7 +8,7 @@ import {
   type DagPalette,
 } from "@platform/contracts";
 import { runSolver, searchObjects } from "@/api/endpoints";
-import { Feature } from "@/workspace/featureGate";
+import { Feature, useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
@@ -23,7 +23,7 @@ import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { decisionColor, decisionHeat, decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
 import { DecisionModeBanner } from "@/components/DecisionModeBanner";
-import { parseWhatIfPreset, type WhatIfPreset } from "./whatif";
+import { parseWhatIfPreset, useOpenWhatIf, type WhatIfPreset } from "./whatif";
 import { useScenarioPreset, presetNum, presetStr } from "./useScenarioPreset";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
@@ -259,6 +259,14 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const [dagNode, setDagNode] = useState<string | null>(null); // #3：点 DAG 节点 → 抽屉看判定/推导/输入/规则
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const action = useActionDraft();
+  // WO-CAP-06-WHATIF-SCOPE：产能推演基地卡「开始推演」→ 一键跳沙盘（带基地 subject·沙盘按该基地裁剪世界·闭 G-3）。
+  // R3 门控：仅 sim.sandbox 开通才可跳（关→不跳·避免落沙盘 404 死路）；型号一并带入（型号级 what-if）。
+  const openWhatIf = useOpenWhatIf();
+  const canRunSim = useFeature("sim.sandbox");
+  const onRunSim = canRunSim
+    ? (base: string, factor?: string) =>
+        openWhatIf({ source: "project-sim", subject: base, ...(factor ? { factor } : {}), model: modelId, label: `${base}${factor ? ` · ${factor}` : ""}` })
+    : undefined;
 
   // PRD-IND-model §4.3：CSV 上传 → parseBatchTable → 切分批模式；模板下载（纯前端文件交互）。
   const onUploadCsv = (e: ChangeEvent<HTMLInputElement>) => {
@@ -558,6 +566,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                   wi={wi}
                   onOpenBn={() => setBnOpen(true)}
                   onAdopt={adopt}
+                  onRunSim={onRunSim}
                 />
               </div>
 
@@ -653,6 +662,7 @@ function StepBody({
   wi,
   onOpenBn,
   onAdopt,
+  onRunSim,
 }: {
   step: number;
   out: CapacityForecastOutput;
@@ -665,6 +675,8 @@ function StepBody({
   wi: WhatIfOut | undefined;
   onOpenBn: () => void;
   onAdopt: () => void;
+  /** WO-CAP-06：基地卡「开始推演」→ 跳沙盘（带基地裁剪）。undefined = sim.sandbox 未开通（按钮禁用·不跳 404）。 */
+  onRunSim?: (base: string, factor?: string) => void;
 }) {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
 
@@ -895,6 +907,7 @@ function StepBody({
               <th>基地</th>
               <th>瓶颈</th>
               <th>紧张度</th>
+              <th>推演</th>
             </tr>
           </thead>
           <tbody>
@@ -921,6 +934,28 @@ function StepBody({
                   <span data-testid={`pm-tight-mode-${r.base}`} style={{ marginLeft: 6, fontSize: 10, opacity: 0.75 }}>
                     {r.live ? "实测" : "估算"}
                   </span>
+                </td>
+                <td>
+                  {/* WO-CAP-06-WHATIF-SCOPE：基地卡「开始推演」→ 带该基地进沙盘（世界按此基地裁剪·闭 G-3）。
+                      sim.sandbox 关时禁用（不跳 404·诚实降级）。 */}
+                  {onRunSim ? (
+                    <button
+                      className="btn sm primary"
+                      data-testid={`pm-run-sim-${r.base}`}
+                      onClick={() => onRunSim(r.base, r.bottleneck)}
+                    >
+                      {zh.sim.run} →
+                    </button>
+                  ) : (
+                    <button
+                      className="btn sm"
+                      data-testid={`pm-run-sim-${r.base}`}
+                      disabled
+                      title="推演沙盘（sim.sandbox）未开通——开通后可就此基地一键开推演（当前不跳转，避免落沙盘 404 死路）"
+                    >
+                      {zh.sim.run}（未开通）
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

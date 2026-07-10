@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { parseWhatIfPreset, type WhatIfPreset } from "./whatif";
+import { parseWhatIfPreset, resolveBaseId, cropConfigToBase, cropWorldToBase, type WhatIfPreset } from "./whatif";
 import type { PropagationRule, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
   createSimSession,
@@ -706,7 +706,14 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
     enabled: !injectedConfig,
     retry: false,
   });
-  const cfg = injectedConfig ?? cfgQuery.data;
+  const cfgRaw = injectedConfig ?? cfgQuery.data;
+  // WO-CAP-06-WHATIF-SCOPE（闭 G-3）：what-if 带基地 subject 时，把沙盘世界**真按该基地裁剪**（原用全量 cfg=基地徽章摆设）。
+  // subject（基地名/id）→ 规范 baseId → cropConfigToBase 只留本基地对象（DAG/KPI/baseSnapshot 全聚焦本基地·R3 隔离他基地）。
+  const whatIfBaseId = useMemo(() => resolveBaseId(whatIf?.subject), [whatIf]);
+  const cfg = useMemo(
+    () => (cfgRaw && whatIfBaseId ? cropConfigToBase(cfgRaw, whatIfBaseId) : cfgRaw),
+    [cfgRaw, whatIfBaseId],
+  );
 
   // G-11 P3：真传导规则（系数/延迟）→ 拓扑边标注。sim.propagation 关时 404 → 容错（retry:false），边退无标注兜底。
   const rulesQuery = useQuery({
@@ -753,9 +760,15 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
   const init = useCallback(async (c: SandboxViewConfig) => {
     try {
-      const base = deriveBaseSnapshot(c);
+      // WO-CAP-06：世界态按基地裁剪——c 已是裁剪后的 cfg（nodeObjectIds 只含本基地），再滤掉空类型占位键，只留本基地真对象。
+      const snap = deriveBaseSnapshot(c);
+      const cropped = whatIfBaseId ? cropWorldToBase(snap, whatIfBaseId) : null;
+      const base = cropped && Object.keys(cropped).length > 0 ? cropped : snap;
+      const didCrop = base !== snap; // 真裁剪（该基地有对象）时，scope 记 baseId，便于溯源/对照端点。
       // WO-E2：what-if 上下文（决策入口带入）注入 SimSession.scope —— 沙盘据此聚焦推演、决策完即弃/采纳（R2/R3 隔离）。
-      const scope = whatIf ? { presetContext: whatIf as unknown as Record<string, unknown> } : {};
+      const scope = whatIf
+        ? { presetContext: whatIf as unknown as Record<string, unknown>, ...(didCrop ? { baseId: whatIfBaseId } : {}) }
+        : {};
       const s = await createSimSession({ baseSnapshot: base, scope });
       setSessionId(s.id);
       setWorld(base);
@@ -771,7 +784,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
     } catch (e) {
       toastError(e);
     }
-  }, [certScope, whatIf]);
+  }, [certScope, whatIf, whatIfBaseId]);
 
   useEffect(() => {
     if (cfg && !sessionId) void init(cfg);
