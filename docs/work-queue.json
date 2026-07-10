@@ -5802,7 +5802,7 @@
       "title": "合并OntoFlow①后端:移植pipeline(readiness/scaffold/generic-inference/processing/subgraph)进主线+B1门控+B2 scaffold真落库",
       "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5834,9 +5834,11 @@
       "at": {
         "created": "2026-07-10",
         "wip": "2026-07-10T15:39:57.480Z",
-        "built": "2026-07-10T17:26:26.338Z"
+        "built": "2026-07-10T17:26:26.338Z",
+        "done": "2026-07-10T18:12:57.188Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立对抗真HTTP复验(agent aa9c5c19·两曾BLOCK真修好):B1 feature.data-builder真注册features.ts:36·10路由挂requireDataBuilder·关→404 FEATURE_NOT_FOUND(空body仍404=门先于校验·非恒200原病)。B2 scaffold注入AGENTCORE_BASE_URL下真跨系统落库(agents15→17新增agent_BOrder/BCustomer PUBLISHED真id·scene-entries13→15·viewConfig可查·幂等·非只返JSON蓝图原病)·不注入时诚实deferred不伪造(KILL-MOCK-RED合规)。readiness真算(19→65随数据变)·generic-inference多跳真重算+Δ敏感+确定性·R6三端字节一致·多租户404·四包test RC0(随迁pipeline6文件31测绿·既有不破)。⚠CONCERN:docker-compose datacore缺AGENTCORE_BASE_URL(app.ts:530)→出厂scaffold会defer跨系统落库(仅viewConfig落)·机制真失败诚实但接线未闭·补一行即闭(并入WO-MERGE-03收口)。诚实边界:pg迁移037 down→up未pg态黑盒跑(内存模式·additive幂等+双实现齐·低风险)。"
     },
     {
       "id": "WO-MERGE-02",
@@ -5904,6 +5906,11 @@
             "id": "C3",
             "type": "运维",
             "assert": "OntoFlow分支退役标记(不再push新功能·docs注明)·统一到主线单queue单dev"
+          },
+          {
+            "id": "C4",
+            "type": "运维·出厂接线",
+            "assert": "docker-compose.yml datacore env 补 AGENTCORE_BASE_URL(app.ts:530 跨系统scaffold真落库须之·出厂态否则defer agent/scene)·deferred文案修正(网关同源是面向浏览器·非A→B服务间)。真跑compose起scaffold→agents/scene真落库非defer。"
           }
         ],
         "discipline": "additive·母体回写不可省(铁律0)"
@@ -5915,8 +5922,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "WO-CAP-05-BRANCH-VISIBLE",
-      "at": "2026-07-10T17:57:39.758Z"
+      "id": "WO-MERGE-01",
+      "at": "2026-07-10T18:12:57.189Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
