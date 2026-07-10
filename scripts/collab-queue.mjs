@@ -54,7 +54,8 @@ function set(id, status, patch = {}, role = "dev") {
   it.status = status;
   Object.assign(it, patch);
   // 心跳/审计戳: 每次迁移记 who/when(工具层时间戳·非产品 R6 范畴)
-  it.at = it.at || {};
+  // 兼容历史单 at 为字符串(如 merge-plan 批次 at:"2026-07-10")→ 归一为 {created} 对象再记戳。
+  if (typeof it.at !== "object" || it.at === null) it.at = it.at ? { created: it.at } : {};
   it.at[status.toLowerCase()] = new Date().toISOString();
   q.meta = q.meta || {};
   q.meta.lastActivity = { role, cmd: status, id, at: new Date().toISOString() };

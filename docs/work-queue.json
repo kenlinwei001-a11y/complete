@@ -5774,8 +5774,8 @@
       "title": "合并OntoFlow①后端:移植pipeline(readiness/scaffold/generic-inference/processing/subgraph)进主线+B1门控+B2 scaffold真落库",
       "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "acceptance": {
         "goal": "OntoFlow pipeline后端功能移植进主线(适配主线service.ts/app.ts/迁移)·带病BLOCK当场做对(门控+scaffold落库)。",
@@ -5803,7 +5803,10 @@
         ],
         "discipline": "移植=复用O已复验真算代码适配主线·非重写;暗发feature·additive·迁移带down·KILL-MOCK-RED(scaffold须真落库非空壳)"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-10T15:39:57.480Z"
+      }
     },
     {
       "id": "WO-MERGE-02",
@@ -5880,10 +5883,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "UPG-L0-SOLVER-COVERAGE",
-      "at": "2026-07-10T06:19:37.724Z"
+      "role": "dev",
+      "cmd": "WIP",
+      "id": "WO-MERGE-01",
+      "at": "2026-07-10T15:39:57.480Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
