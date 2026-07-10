@@ -9,7 +9,7 @@ import { text, toolUse } from "../src/llm/mock.js";
 /**
  * AGENT-CARD-DEFAULTAGENT（P2·发育闭环真跑发现·2026-07-05 接 Kimi 真测）齿检。
  *
- * 现象（审核方真跑）：7 张 agent-first 卡（S03/S05/S12/S13/S14/S17/S19）grow 后长不成——
+ * 现象（审核方真跑）：agent-first 卡（S05/S12/S13/S14/S17/S19·COVERAGE-FILL 返工后 S03 转 WORKFLOW_FIRST）grow 后长不成——
  * agent 模式无可执行的**绑定 defaultAgent** → A10 验证无 agent 出答案。
  *
  * 根因：一等 MaterializedIntent 是 agent-first 卡的 defaultAgent 绑定单一来源（materialize.ts
@@ -30,9 +30,10 @@ import { text, toolUse } from "../src/llm/mock.js";
  *  ⑤ 零回归：workflow-first 卡（S02）即便 agents 已种仍照旧 Path A 工作流 GOVERNED。
  */
 
-/** 7 张 agent-first 卡 → 期望绑定的场景 defaultAgent（materialize.ts INTENT_AGENT 单源）。 */
+/** agent-first 卡 → 期望绑定的场景 defaultAgent（materialize.ts INTENT_AGENT 单源）。
+ *  UPG-L0-COVERAGE-FILL 返工：S03(risk_root_cause) 从 AGENT_FIRST 重定向为 WORKFLOW_FIRST（走 path-A
+ *  causal_attribution 求解器·治「原问句恒 Path B FAILED」），故移出 agent-first 卡集（7→6）。 */
 const AGENT_FIRST_CARDS: { sNo: string; intentKey: string; agentId: string }[] = [
-  { sNo: "S03", intentKey: "risk_root_cause", agentId: "agt_risk" },
   { sNo: "S05", intentKey: "plan_recommend", agentId: "agt_plan_generate" },
   { sNo: "S12", intentKey: "yield_diag", agentId: "agt_risk" },
   { sNo: "S13", intentKey: "maint_stagger", agentId: "agt_risk" },
@@ -59,13 +60,13 @@ async function growAndInspect(t: TestApp, key: string) {
   return { statusCode: res.statusCode, run, task, agentRun };
 }
 
-describe("① 结构：7 张 agent-first 卡各有 defaultAgent 绑定（指向已播种 PUBLISHED 场景 agent）", () => {
-  it("materializeIntents 为 7 卡绑定 bindings.agentId = 对口场景 agent", () => {
+describe("① 结构：agent-first 卡各有 defaultAgent 绑定（指向已播种 PUBLISHED 场景 agent）", () => {
+  it("materializeIntents 为 agent-first 卡绑定 bindings.agentId = 对口场景 agent", () => {
     const mints = materializeIntents("demo");
     const { agents } = seedRegistry();
     const published = new Map(agents.filter((a) => a.status === "PUBLISHED").map((a) => [a.id, a]));
 
-    // 钉死表口径：正好这 7 张卡是 AGENT_FIRST（与 mode-dispatch-honor 同源）。
+    // 钉死表口径：正好这些卡是 AGENT_FIRST（与 mode-dispatch-honor 同源·COVERAGE-FILL 返工后 6 张）。
     const agentFirstKeys = SCENARIO_CATALOG.filter((c) => intentModeFor(c.intentKey) === "AGENT_FIRST").map((c) => c.intentKey).sort();
     expect(agentFirstKeys).toEqual(AGENT_FIRST_CARDS.map((c) => c.intentKey).sort());
 

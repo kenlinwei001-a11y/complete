@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   SOLVER_COVERAGE,
   UNCOVERED_PROBLEM_CLASSES,
+  INTENT_PROBLEM_CLASS,
+  UNKNOWN_PROBLEM_CLASS,
   coveredProblemClasses,
   coveredSolverKeys,
   problemClassesForSolver,
+  problemClassForIntent,
+  isProblemClassCovered,
   ghostSolverKeys,
 } from "@platform/contracts";
 import { REGISTRY_SOLVER_KEYS } from "../src/solvers/solver-registry.js";
@@ -55,5 +59,38 @@ describe("SOLVER_COVERAGE 覆盖矩阵（诊断·纯数据·R14）", () => {
     expect(new Set(keys).size).toBe(keys.length); // 去重
     // margin_attribution 覆盖财务归因（窄口径·非通用因果归因）。
     expect(problemClassesForSolver("margin_attribution")).toContain("financial_attribution");
+  });
+});
+
+/**
+ * WO UPG-L0-SOLVER-COVERAGE · C3：INTENT_PROBLEM_CLASS（意图→问题类目）——Path B 打点归口的运行时映射。
+ * 每个映射值必是**已覆盖类目** 或 **显式缺口类目**（防漂移·防幽灵类目）；未登记意图诚实回退 unknown_intent。
+ */
+describe("INTENT_PROBLEM_CLASS 意图→问题类目（C3·Path B 打点归口·R6）", () => {
+  const validClasses = new Set<string>([...coveredProblemClasses(), ...UNCOVERED_PROBLEM_CLASSES]);
+
+  it("每个映射的 problemClass 必 ∈ 覆盖矩阵 ∪ 缺口清单（无幽灵类目）", () => {
+    for (const [intentKey, cls] of Object.entries(INTENT_PROBLEM_CLASS)) {
+      expect(validClasses.has(cls), `意图「${intentKey}」映射到未知类目「${cls}」`).toBe(true);
+    }
+  });
+
+  it("COVERAGE-FILL 返工：risk_root_cause 归口通用因果归因（已覆盖·非缺口）", () => {
+    expect(INTENT_PROBLEM_CLASS.risk_root_cause).toBe("general_causal_attribution");
+    expect(isProblemClassCovered("general_causal_attribution")).toBe(true);
+    expect(problemClassForIntent("risk_root_cause")).toBe("general_causal_attribution");
+  });
+
+  it("未登记/空意图 → 诚实回退 unknown_intent（非静默丢弃）", () => {
+    expect(problemClassForIntent(undefined)).toBe(UNKNOWN_PROBLEM_CLASS);
+    expect(problemClassForIntent(null)).toBe(UNKNOWN_PROBLEM_CLASS);
+    expect(problemClassForIntent("nonexistent_intent_xyz")).toBe(UNKNOWN_PROBLEM_CLASS);
+    expect(isProblemClassCovered(UNKNOWN_PROBLEM_CLASS)).toBe(false); // 未知=显式缺口·须报
+  });
+
+  it("已知意图确定性归口（R6·抽样验真）", () => {
+    expect(problemClassForIntent("margin_attribution_q")).toBe("financial_attribution");
+    expect(problemClassForIntent("shared_bottleneck_q")).toBe("bottleneck_detection");
+    expect(problemClassForIntent("causal_attribution_q")).toBe("general_causal_attribution");
   });
 });

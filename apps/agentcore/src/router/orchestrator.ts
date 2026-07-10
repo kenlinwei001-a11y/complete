@@ -14,7 +14,7 @@ import type {
   SubmitQueryBody,
   TemplateValue,
 } from "@platform/contracts";
-import { ErrorCodes } from "@platform/contracts";
+import { ErrorCodes, problemClassForIntent, isProblemClassCovered } from "@platform/contracts";
 import { resolvePlanForIntent } from "../catalog/service.js";
 import { parseDataCoreSpec } from "../llm/providers.js";
 import type { RequestAuth } from "../auth.js";
@@ -1155,6 +1155,20 @@ export class Orchestrator {
     if (!task) return;
     // package 必须存在（分类阈值/意图册来源）；兜底工具面已不再取自 package 白名单（改由 agt_universal 一等配置）。
     if (!(await this.deps.repos.packages.get(task.packageId))) return;
+
+    // WO UPG-L0-SOLVER-COVERAGE C3（single choke·所有 Path B 兜底必经此处）：按**分析型问题类目**打点，
+    // 使「哪些问题类目往未验证 Path B 落」可观测（覆盖矩阵接进运行时）。类目取分类首候选意图（未登记→unknown_intent）。
+    // 未覆盖类目（无 path-A 求解器）→ 显式发 coverage-gap 事件（诚实报缺口·非静默兜底·驱动 A3 补齐优先级）。
+    const problemClass = problemClassForIntent(classification?.candidates?.[0]?.intentKey);
+    this.deps.metrics.pathBByProblemClass.inc({ class: problemClass });
+    if (problemClass === "unknown_intent" || !isProblemClassCovered(problemClass)) {
+      await this.deps.events.emit(taskId, "step.completed", {
+        stepId: "coverage-check",
+        type: "coverage-gap",
+        outcome: "gap",
+        problemClass,
+      });
+    }
 
     // entitlement PRD §5: qos.agent-fallback off → every would-be path-B branch
     // returns the WORKFLOW_ONLY behavior (请换个问法 + available intents), no agent run.

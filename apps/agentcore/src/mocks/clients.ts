@@ -291,6 +291,23 @@ export class MockOntologyClient implements OntologyClient {
  * 确定性字面量（R6）；dataMode:"MOCK" 诚实标（mock 世界产物，非真值冒充）。
  */
 const MOCK_SOLVER_OUTPUTS: Record<string, Record<string, unknown>> = {
+  // UPG-L0-COVERAGE-FILL 返工：causal_attribution（S03/S27 通用因果归因）mock 输出**形状对齐真实 DataCore**
+  // （crossed/rootDrivers/crossedCount/totalGap/direction/valueField/driverField/summary + dataMode:MOCK 诚实标）——
+  // 使路径A投影（SOLVER_RENDER_BINDINGS.causal_attribution）在 mock 侧与真后端同构（真值以真 DataCore 联调为准）。
+  causal_attribution: {
+    crossed: [{ id: "kpi-material", name: "物料保障率", value: 94.6, threshold: 95, gap: 0.4, gapPct: 0.42, offTarget: "是", ratio: 0.9958 }],
+    rootDrivers: [
+      { group: "三元正极", contribution: 654, count: 1, share: 0.7466 },
+      { group: "电解液", contribution: 222, count: 1, share: 0.2534 },
+    ],
+    crossedCount: 1,
+    totalGap: 0.4,
+    direction: "below",
+    valueField: "actual",
+    driverField: "gapTon",
+    summary: "1 项「Metric.actual」越线（最重「物料保障率」缺口 0.4）；根因主驱动「三元正极」（gapTon 654·占 74.7%）",
+    dataMode: "MOCK",
+  },
   plan_audit: {
     H: [{ id: "X05", title: "现金垫", ruleRef: "C18", why: "现金垫低于底线", kind: "现金" }],
     M: [

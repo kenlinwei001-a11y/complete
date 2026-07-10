@@ -124,8 +124,10 @@ describe("③ mode 单一来源（勿两处各写一套·回退场景一揽子 W
       expect(s.mode, `Scenario ${s.scenarioKey}(${s.intentKey}) 的 mode 必须派生自钉死表`).toBe(intentModeFor(s.intentKey));
     }
     const agentFirstCards = scenarios.filter((s) => s.mode === "AGENT_FIRST");
+    // UPG-L0-COVERAGE-FILL 返工：risk_root_cause 从 AGENT_FIRST 重定向为 WORKFLOW_FIRST（走 path-A
+    // causal_attribution 求解器·治「原问句恒 Path B FAILED」），故 agent-first 从 7 降为 6（钉死表单源更新）。
     expect(agentFirstCards.map((s) => s.intentKey).sort()).toEqual(
-      ["capex_review", "maint_stagger", "outsourcing_q", "plan_recommend", "quarterly_gap_q", "risk_root_cause", "yield_diag"].sort(),
+      ["capex_review", "maint_stagger", "outsourcing_q", "plan_recommend", "quarterly_gap_q", "yield_diag"].sort(),
     );
     for (const mi of materializeIntents("demo")) {
       expect(mi.mode).toBe(intentModeFor(mi.key));

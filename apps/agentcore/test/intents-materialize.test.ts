@@ -20,7 +20,7 @@ async function seedRegistryInto(t: TestApp): Promise<void> {
 }
 
 describe("WO-INTENT-MATERIALIZE-BINDING-COMPLETE · 物化（纯函数·R6）", () => {
-  it("物化 20 一等 PUBLISHED Intent，mode 分派 13 workflow-first / 7 agent-first（审核方钉死）", () => {
+  it("物化 20 一等 PUBLISHED Intent，mode 分派 14 workflow-first / 6 agent-first（审核方钉死·COVERAGE-FILL 返工后 risk_root_cause 转 WF）", () => {
     const intents = materializeIntents("demo");
     // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
     expect(intents).toHaveLength(SCENARIO_CATALOG.length); // 物化产出 == 场景卡目录（产出 vs 源·互校）
@@ -33,9 +33,9 @@ describe("WO-INTENT-MATERIALIZE-BINDING-COMPLETE · 物化（纯函数·R6）", 
     expect(ag).toHaveLength(Object.values(INTENT_MODE).filter((m) => m === "AGENT_FIRST").length); // 物化 AGENT 产出 == 钉死表 AGENT 计数
     // mode 逐意图 = INTENT_MODE 钉死表（R14 数据驱动·非硬编码分派）
     for (const i of intents) expect(i.mode).toBe(INTENT_MODE[i.key]);
-    // agent-first 精确集
+    // agent-first 精确集（UPG-L0-COVERAGE-FILL 返工：risk_root_cause 重定向 WORKFLOW_FIRST → agent-first 7→6）
     expect(ag.map((i) => i.key).sort()).toEqual(
-      ["capex_review", "maint_stagger", "outsourcing_q", "plan_recommend", "quarterly_gap_q", "risk_root_cause", "yield_diag"].sort(),
+      ["capex_review", "maint_stagger", "outsourcing_q", "plan_recommend", "quarterly_gap_q", "yield_diag"].sort(),
     );
   });
 

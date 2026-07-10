@@ -106,6 +106,62 @@ export const UNCOVERED_PROBLEM_CLASSES: readonly string[] = Object.freeze([
   "text_semantic_extraction",
 ]);
 
+/**
+ * WO UPG-L0-SOLVER-COVERAGE C3 —— 意图键 → 分析型问题类目（problemClass）映射。
+ *
+ * 用途：Path B 兜底时按**问题类目**打点（`qos_pathb_by_problemclass{class}`·metrics.ts），
+ * 使「哪些问题类目在往 Path B 落」可观测——覆盖矩阵从声明式诊断（静态）接进**运行时**。
+ * 每个值必 ∈ `SOLVER_COVERAGE` 的键 或 `UNCOVERED_PROBLEM_CLASSES`（门/单测双守·防漂移）。
+ * 未登记的意图（自助/pack/未知）→ `problemClassForIntent` 回退 `unknown_intent`（非静默丢弃·诚实归口）。
+ *
+ * 派生自出厂场景目录 intentKey→solver 与本文件 solver→problemClass（`problemClassesForSolver`）的合成，
+ * 固化为声明式常量（contracts 不可 import agentcore 目录·故不动态派生·但语义同源·单测守一致）。
+ */
+export const INTENT_PROBLEM_CLASS: Record<string, string> = {
+  capacity_feasibility: "forward_projection",
+  affected_orders: "affected_scope_enumeration",
+  // COVERAGE-FILL 返工：risk_root_cause 重定向到通用因果归因（causal_attribution）。
+  risk_root_cause: "general_causal_attribution",
+  plan_audit_q: "plan_deviation_diagnosis",
+  plan_recommend: "gap_closure_synthesis",
+  adopt_mitigation: "gap_closure_synthesis",
+  cert_scheduling: "schedule_sequencing",
+  kit_analysis: "requirement_netting",
+  lta_gap_q: "requirement_netting",
+  inventory_opt: "constraint_optimization",
+  changeover_opt: "schedule_sequencing",
+  yield_diag: "quality_root_cause",
+  maint_stagger: "schedule_sequencing",
+  outsourcing_q: "sourcing_allocation",
+  quote_margin_q: "financial_attribution",
+  credit_check: "exposure_assessment",
+  capex_review: "investment_scenario",
+  sop_status: "requirement_netting",
+  quarterly_gap_q: "gap_closure_synthesis",
+  carbon_q: "emission_footprint",
+  shared_bottleneck_q: "bottleneck_detection",
+  concentration_risk_q: "concentration_analysis",
+  margin_attribution_q: "financial_attribution",
+  supplier_disruption_q: "propagation_radius",
+  multisource_fusion_q: "multi_source_reconciliation",
+  what_if_displacement_q: "sensitivity_whatif",
+  causal_attribution_q: "general_causal_attribution",
+};
+
+/** 未知/未登记意图的诚实归口（非静默丢弃）。 */
+export const UNKNOWN_PROBLEM_CLASS = "unknown_intent";
+
+/** 意图键 → 问题类目（未登记回退 `unknown_intent`·确定性 R6）。 */
+export function problemClassForIntent(intentKey: string | undefined | null): string {
+  if (!intentKey) return UNKNOWN_PROBLEM_CLASS;
+  return INTENT_PROBLEM_CLASS[intentKey] ?? UNKNOWN_PROBLEM_CLASS;
+}
+
+/** 该问题类目是否有 ≥1 path-A 求解器覆盖（未覆盖 = 运行时须显式报缺口·非静默兜底）。 */
+export function isProblemClassCovered(problemClass: string): boolean {
+  return Object.prototype.hasOwnProperty.call(SOLVER_COVERAGE, problemClass);
+}
+
 /** 已覆盖的问题类目（有 ≥1 path-A 求解器）。 */
 export function coveredProblemClasses(): string[] {
   return Object.keys(SOLVER_COVERAGE);

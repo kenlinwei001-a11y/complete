@@ -132,9 +132,9 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
 
   it("目录内部一致性：solverStatus 标注复用/新增；新增求解器为分阶段建设项", () => {
     const reused = SCENARIO_CATALOG.filter((c) => c.solverStatus === "REUSED").map((c) => c.solver);
-    // 复用的求解器是已落地的 8 个之一
+    // 复用的求解器是已落地的之一（UPG-L0-COVERAGE-FILL 返工：S03 复用求解器 risk_timeline→causal_attribution·均已落地注册）
     for (const s of reused) {
-      expect(["capacity_forecast", "affected_orders", "risk_timeline", "plan_audit", "plan_generate", "bottleneck_matrix", "capex_scenario", "sop_balance"]).toContain(s);
+      expect(["capacity_forecast", "affected_orders", "risk_timeline", "causal_attribution", "plan_audit", "plan_generate", "bottleneck_matrix", "capex_scenario", "sop_balance"]).toContain(s);
     }
     // 新增求解器 13 个（分阶段建设）
     const news = new Set(SCENARIO_CATALOG.filter((c) => c.solverStatus === "NEW").map((c) => c.solver));

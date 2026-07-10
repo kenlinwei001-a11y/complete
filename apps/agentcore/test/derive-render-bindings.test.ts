@@ -18,11 +18,20 @@ describe("#1 · deriveRenderBindings（从 render_answer 自动派生渲染契�
   });
 
   it("非求解器引用（slice）不计入；无 render 求解器引用 → 空", () => {
-    // risk_root_cause 仅 resolve_slice + 文本渲染切片输出，无 invoke_solver 渲染引用
+    // adopt_mitigation：evaluate_rules + create_action_draft + 文本/action_draft 渲染，无 invoke_solver 渲染引用 → 空。
+    // （原例 risk_root_cause，UPG-L0-COVERAGE-FILL 返工后其计划改 invoke_solver causal_attribution·已带求解器渲染绑定，另立一例。）
+    const { plans } = seedIntentsAndPlans();
+    const plan = plans.find((p) => p.key === "adopt_mitigation")!;
+    const bindings = deriveRenderBindings(plan.steps as ExtendedPlanStep[]);
+    expect(Object.keys(bindings)).toHaveLength(0);
+  });
+
+  it("UPG-L0-COVERAGE-FILL 返工：risk_root_cause 计划改 invoke_solver causal_attribution → 派生该求解器渲染绑定", () => {
     const { plans } = seedIntentsAndPlans();
     const plan = plans.find((p) => p.key === "risk_root_cause")!;
     const bindings = deriveRenderBindings(plan.steps as ExtendedPlanStep[]);
-    expect(Object.keys(bindings)).toHaveLength(0);
+    expect(bindings.causal_attribution).toBeDefined();
+    expect(bindings.causal_attribution).toEqual(expect.arrayContaining(["crossedCount", "totalGap", "crossed", "rootDrivers", "summary"]));
   });
 
   it("空步骤 → 空对象", () => {

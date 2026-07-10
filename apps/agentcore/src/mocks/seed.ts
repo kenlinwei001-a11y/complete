@@ -270,21 +270,26 @@ export function seedIntentsAndPlans(
       key: "risk_root_cause",
       version: 1,
       status: "PUBLISHED",
+      // UPG-L0-COVERAGE-FILL / CLASSIFY-FUSE 返工：S03「常州物料齐套为什么这天越线」由 path-A 通用 causal_attribution
+      // 求解器作答（此前 resolve_slice(base_risk_profile) 只出风险画像·不量化根因主驱动物料）。入参与 S03 卡 slotPresets 同源
+      // （物料保障率 Metric.actual<floorVal 判越线 → 沿 MaterialBalance.gapTon 真证据字段按 material 量化根因主驱动物料）。
+      // 静态入参（不依赖 base 槽）→ 原问句 selectedObjects:[] 也不落反问；render 投 SOLVER_RENDER_BINDINGS.causal_attribution 真字段。
       steps: [
         {
           id: "s1",
-          type: "resolve_slice",
-          params: { sliceKey: "base_risk_profile", args: { baseId: "{{slots.base.objectId}}" } },
+          type: "invoke_solver",
+          params: {
+            solverKey: "causal_attribution",
+            args: { targetType: "Metric", valueField: "actual", thresholdField: "floorVal", direction: "below", driverType: "MaterialBalance", evidenceField: "gapTon", groupField: "material" },
+          },
         },
         {
           id: "render",
           type: "render_answer",
           params: {
-            // 闭 G-2 残：真实 base_risk_profile 切片不含 `data.summary`（mock 有，真后端无）→ 旧硬引用
-            // {{steps.s1.output.data.summary}} 触 TEMPLATE_RESOLUTION_ERROR。改通用投影，渲染切片真实字段（不写死、不脆断）。
             blocks: [
-              { type: "text", markdown: "基地风险画像（base_risk_profile 切片）：" },
-              { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1" },
+              { type: "text", markdown: "物料齐套越线根因归因（causal_attribution 求解器·读真对象图）：" },
+              { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1", bindings: [...(SOLVER_RENDER_BINDINGS.causal_attribution ?? [])] },
             ],
           },
         },
@@ -455,11 +460,13 @@ export function seedIntentsAndPlans(
       description: "解释某基地在某天风险越线的根因。",
       examples: ["为什么这天越线", "常州为什么风险高", "风险根因是什么"],
       enabledViews: "*",
+      // COVERAGE-FILL 返工：base 由 required→optional。causal_attribution 读全域 Metric/MaterialBalance 对象图·
+      // 不以 base 为入参（归因链恒有内容），故原问句 selectedObjects:[] 也不落 AWAITING_CLARIFICATION，直接 path-A 作答。
       slots: [
         {
           name: "base",
           type: "objectRef",
-          required: true,
+          required: false,
           defaultFrom: "$.selectedObjects[0]",
           clarifyPrompt: "请指明要分析风险根因的基地（如 常州 / 宜宾；也可在页面选中基地自动带入）",
           description: "基地对象引用",

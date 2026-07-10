@@ -62,7 +62,11 @@ const B = (id: string, label: string) => ({ objectType: "Base", objectId: id, la
 export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S01", "订单可承接性评审", "project", "capacity_feasibility", "4680-NCM 加 20% 六周能不能接？", "capacity_forecast", ["C01", "C02", "C03", "C09"], "COMPUTE", "解读产能可承接结论的口径", [M("4680-NCM", "4680-NCM")], { modelId: "4680-NCM", demandDelta: 0.2, weeks: 6 }),
   card("S02", "交期风险与受影响订单", "risk", "affected_orders", "常州基地影响哪些订单？", "affected_orders", ["C05"], "COMPUTE", "解读交期风险扫描结果", [B("changzhou", "常州")], { baseId: "changzhou" }),
-  card("S03", "风险越线根因", "risk", "risk_root_cause", "常州物料齐套为什么这天越线？", "risk_timeline", ["C06", "C11"], "COMPUTE", "解释风险越线的根因与时序", [B("changzhou", "常州")], { baseId: "changzhou", factor: "物料齐套" }),
+  // UPG-L0-COVERAGE-FILL / CLASSIFY-FUSE 返工：S03「常州物料齐套为什么这天越线」原痛点问句改由 path-A 通用
+  // causal_attribution 求解器作答（此前 risk_timeline 只出张力时序·不量化根因主驱动；且 risk_root_cause 曾 AGENT_FIRST
+  // 无 LLM 恒 Path B FAILED）。slotPresets 从 {baseId,factor:"物料齐套"} 映射为 causal_attribution 真实入参：
+  // 物料齐套=物料保障率 Metric（actual<floorVal 判越线）沿 MaterialBalance.gapTon 真证据字段按 material 量化根因主驱动物料。
+  card("S03", "风险越线根因", "risk", "risk_root_cause", "常州物料齐套为什么这天越线？", "causal_attribution", ["C06", "C16"], "COMPUTE", "解释物料齐套越线的通用因果归因链（根因主驱动物料）", [B("changzhou", "常州")], { targetType: "Metric", valueField: "actual", thresholdField: "floorVal", direction: "below", driverType: "MaterialBalance", evidenceField: "gapTon", groupField: "material" }),
   card("S04", "月度规划体检", "audit", "plan_audit_q", "现金垫 45 亿过得了体检吗？", "plan_audit", ["C15", "C16", "C18", "C21", "C23"], "COMPUTE", "解读规划体检结论", [], { cashCushion: 4_500_000_000 }),
   // LAUNCHER-GROUNDED-QUESTIONS（Part A·PRD §3 S05 处置）：抽象问句「推荐哪个经营方案？」无具象锚点、用户点名——
   // 改具象决策问（保毛利 vs 保规模 + 管理动作），使卡面即"确实可答的具象决策"。

@@ -35,7 +35,10 @@ export const INTENT_MODE: Record<string, IntentMode> = {
   what_if_displacement_q: "WORKFLOW_FIRST",
   // UPG-L0-COVERAGE-FILL：通用因果归因（为什么 X 越线/恶化）——价值在「越线多少/根因主驱动是谁」（求解器量化承载数据）→ WORKFLOW_FIRST（确定性是地板·不落 Path B）。
   causal_attribution_q: "WORKFLOW_FIRST",
-  risk_root_cause: "AGENT_FIRST",
+  // UPG-L0-COVERAGE-FILL / CLASSIFY-FUSE 返工：风险越线根因（S03「常州物料齐套为什么这天越线」）此前 AGENT_FIRST
+  // → 无 LLM 时恒 Path B FAILED。改 WORKFLOW_FIRST：重定向到 path-A 通用 causal_attribution 求解器（route=graph·
+  // 读真对象图·每个归因数溯源真字段），价值在「越线多少/根因主驱动是哪个物料」承载数据 → 确定性作答不落 Path B。
+  risk_root_cause: "WORKFLOW_FIRST",
   plan_recommend: "AGENT_FIRST",
   yield_diag: "AGENT_FIRST",
   maint_stagger: "AGENT_FIRST",

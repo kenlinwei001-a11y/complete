@@ -89,6 +89,14 @@ export class Metrics {
     "qos_classify_fuse_rescued_total",
     "Classifications rescued from Path B by deterministic fusion",
   );
+  /**
+   * WO UPG-L0-SOLVER-COVERAGE C3：Path B 兜底按**分析型问题类目**打点（label class=problemClassForIntent）。
+   * 使「哪些问题类目在往未验证 Path B 落」可观测——覆盖矩阵从声明式诊断接进运行时（未覆盖类目=显式缺口）。
+   */
+  readonly pathBByProblemClass = new Counter(
+    "qos_pathb_by_problemclass",
+    "Path B fallback runs by analytical problem class (coverage-gap observability)",
+  );
   readonly clarificationRounds = new Counter("qos_clarification_rounds_total", "Clarification rounds by kind");
   readonly agentBudgetExhausted = new Counter(
     "qos_agent_budget_exhausted_total",
@@ -136,6 +144,7 @@ export class Metrics {
         this.classifierLatency,
         this.classifierErrors,
         this.classifyFuseRescued,
+        this.pathBByProblemClass,
         this.clarificationRounds,
         this.agentBudgetExhausted,
         this.unverifiedNumerics,
