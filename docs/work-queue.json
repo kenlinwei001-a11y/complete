@@ -5664,8 +5664,8 @@
       "title": "分支结果可达(治点了没反应·结果埋1652px)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "deps": [],
       "acceptance": {
         "goal": "对比卡移出右栏栈底到左主区/右栏顶+onBranch成功scrollIntoView。",
@@ -5683,7 +5683,10 @@
         ],
         "discipline": "additive·布局"
       },
-      "at": "2026-07-10"
+      "at": {
+        "created": "2026-07-10",
+        "wip": "2026-07-10T16:16:45.691Z"
+      }
     },
     {
       "id": "WO-CAP-06-WHATIF-SCOPE",
@@ -5892,9 +5895,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-CAP-04-TICK-DAYS",
-      "at": "2026-07-10T16:15:40.381Z"
+      "cmd": "WIP",
+      "id": "WO-CAP-05-BRANCH-VISIBLE",
+      "at": "2026-07-10T16:16:45.692Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
