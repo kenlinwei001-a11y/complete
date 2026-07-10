@@ -5257,7 +5257,7 @@
       "title": "L0·主单P3: expandHiddenRequirements三白名单+统一验证+hidden-req-keys门",
       "doc": "docs/PRD-gap-analysis-engine.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [
         "UPG-L0-PREANALYSIS"
@@ -5287,12 +5287,14 @@
             "assert": "hidden-req-keys:check绿+登母体§7+ontology-writeback绿+四包test绿"
           }
         ],
-        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统"
+        "discipline": "暗发 feature/env 开关 defaultOn:false·additive·迁移带down·旧路径不删·回退演练入齿(铁律0.4)·关闸=改造前系统",
+        "reviewEvidence": "审核方worktree隔离真跑复验PASS(2026-07-09·独立重跑非信dev证据): C1 hidden-req.test V8 5/5绿(喂order+真电池本体图·每个扩展key∈真实注册表·PRD§15 V8一字对齐); C2测谎亲手green→red→green(往expandHiddenRequirements插绕过白名单的outTypes.add(GHOST_LEAK_ø)→hidden-req-keys门RC=1抓幽灵→还原复绿RC=0·证门对漏filter失效模式真有牙齿); C3回退演练pre-analyze.test绿(hiddenReqEnabled:false→无扩展·true→隐藏类型全∈真图·flag growth.hidden_req defaultOn:false双注册); C4 hidden-req-keys/ontology-writeback(45门漏登0)/slices --check三门RC=0+contracts5/agentcore5绿三包build干净。三白名单by-construction databuilder.ts:740-742(typeKeys/linkKeys/solverKeys唯一来源真实注册表).has守卫749/754/759+种子filter765+图一跳783·源码无硬编码幽灵字面量。git干净测谎已还原。dev声明经独立重跑属实非造假。"
       },
       "at": {
         "todo": "2026-07-09T15:00:00.000Z",
         "wip": "2026-07-09T16:37:22.199Z",
-        "built": "2026-07-09T17:13:02.708Z"
+        "built": "2026-07-09T17:13:02.708Z",
+        "done": "2026-07-10T02:09:19.175Z"
       },
       "blockReason": ""
     },
@@ -5505,10 +5507,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "UPG-L0-CLASSIFY-FUSE",
-      "at": "2026-07-09T17:14:11.806Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "UPG-L0-HIDDENREQ",
+      "at": "2026-07-10T02:09:19.176Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
