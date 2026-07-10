@@ -255,6 +255,8 @@ try {
     facility_location: VIA_PROJECTION, min_cost_flow: VIA_PROJECTION, set_cover: VIA_PROJECTION,
     independent_set: VIA_PROJECTION, combinatorial_auction: VIA_PROJECTION, optimize_whatif: VIA_PROJECTION,
     multisource_fusion: VIA_PROJECTION,
+    // QUERY30 求解器·无专属前端决策视图（前端 grep 0 引用）·同 what_if_displacement/generic_inference 归类。
+    multi_plan_compare: VIA_PROJECTION, causal_attribution: VIA_PROJECTION,
   };
 
   const decisionKeys = allKeys.filter((k) => !(k in NON_DECISION_KEYS));

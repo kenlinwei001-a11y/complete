@@ -175,7 +175,7 @@ export function demandCapacityTightness(c: SolverContext, baseId: string): { val
  */
 export type TightnessSource = "LIVE" | "SYNTHETIC";
 
-export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number | null; live: boolean; source: TightnessSource } {
+export function liveTightness(c: SolverContext, baseId: string, factor: string): { value: number | null; live: boolean; source?: TightnessSource } {
   const lp = c.params.bottleneck.live;
   // WO-CAP-01-REALDEMAND（暗发 `qos.risk_realdemand`·defaultOn:false）：ON=需求驱动瓶颈因素绑真供需；
   // OFF（未解析该键·或测试直构 ctx 无 features）=现行 lines-utilization 分支不变（回退演练即此路径）。
@@ -222,7 +222,8 @@ export function liveTightness(c: SolverContext, baseId: string, factor: string):
   }
   // 治本：无任何真实数据源（无逐设备 OEE/利用率/良率·无真需求-产能预测）→ 不伪造决策级紧张度。
   // （旧回落经 mockTightness 哈希造恒红越线，是洛阳·设备OEE 假红的根源 G-DM-1，已删。）
-  return { value: null, live: false, source: "LIVE" };
+  // KILL-MOCK-RED：无真源即诚实空态 —— 不带 source（值为 null 时 source 无意义，且 genuine-sim 门禁要求本回落为裸 {value:null,live:false}）。
+  return { value: null, live: false };
 }
 
 /** 需求驱动型瓶颈因素：紧张度随真需求-产能缺口共振（无逐设备实测源 → 用 demandCapacityTightness）。 */
