@@ -154,6 +154,51 @@ describe("增量4 P0 · SandboxView 三件砌齐", () => {
     expect(screen.getByTestId("sim-compare-b-1").textContent).toContain("30.0");
   });
 
+  it("WO-CAP-05 ②a：对比卡落左主区（命令条下·分支按钮邻位），不在右栏折叠栈底", async () => {
+    const user = userEvent.setup();
+    wrap();
+    const branchBtn = await screen.findByTestId("sandbox-branch-btn");
+    await waitFor(() => expect((branchBtn as HTMLButtonElement).disabled).toBe(false));
+    await user.click(branchBtn);
+    await screen.findByTestId("sim-compare-panel");
+    const card = screen.getByTestId("sandbox-compare-card");
+    // 落左主区（sandbox-main-zone），不落右栏折叠栈（sandbox-side-stack）→ 治「甩到 1652px 首屏外」。
+    const mainZone = screen.getByTestId("sandbox-main-zone");
+    const sideStack = screen.getByTestId("sandbox-side-stack");
+    expect(mainZone.contains(card)).toBe(true);
+    expect(sideStack.contains(card)).toBe(false);
+    // 命令条下、DAG 上（分支按钮邻位·首屏优先可见）：命令条在对比卡之前，拓扑在对比卡之后。
+    const controls = screen.getByTestId("sandbox-controls");
+    const topology = screen.getByTestId("sandbox-topology");
+    expect(controls.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.compareDocumentPosition(topology) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("WO-CAP-05 ②b：onBranch 成功后调 scrollIntoView 把对比卡拉进视口（治「点了没反应」）", async () => {
+    const user = userEvent.setup();
+    // jsdom 不实现 scrollIntoView——注入 spy 于原型上（组件用可选链调用）。
+    const scrollSpy = vi.fn();
+    const proto = window.HTMLElement.prototype as unknown as { scrollIntoView?: () => void };
+    const prev = proto.scrollIntoView;
+    proto.scrollIntoView = scrollSpy;
+    // rAF 兜底：jsdom 若无 rAF 则以 setTimeout 兜底，确保回调触发。
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => {
+      cb(0);
+      return 0 as unknown as number;
+    });
+    try {
+      wrap();
+      const branchBtn = await screen.findByTestId("sandbox-branch-btn");
+      await waitFor(() => expect((branchBtn as HTMLButtonElement).disabled).toBe(false));
+      await user.click(branchBtn);
+      await screen.findByTestId("sim-compare-panel");
+      await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+    } finally {
+      rafSpy.mockRestore();
+      proto.scrollIntoView = prev;
+    }
+  });
+
   it("③ 就绪面板 6 项：L0-L4 stepper / L4 三元组 / Trial Tick / 完整度 gauge / entering 清单 / scope 切换", async () => {
     const user = userEvent.setup();
     wrap();

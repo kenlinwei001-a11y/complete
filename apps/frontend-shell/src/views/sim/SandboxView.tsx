@@ -739,6 +739,9 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   const [lineage, setLineage] = useState<{ typeKey: string; objectId: string | null } | null>(null);
   const pointerRef = useRef({ x: 120, y: 120 });
   const [anchor, setAnchor] = useState({ x: 120, y: 120 });
+  // WO-CAP-05-BRANCH-VISIBLE：对比卡移到左主区（命令条下·分支按钮邻位），分支成功后 scrollIntoView 拉进首屏视口。
+  const compareRef = useRef<HTMLDivElement | null>(null);
+  const scrollToCompareRef = useRef(false); // 仅「分支」触发滚动（刷新对比不打扰）；useEffect 待 compare 渲染后消费。
 
   // 全局 KPI = 当前 world 所有对象聚合态的均值（0-100）。
   const globalKpi = useMemo(() => {
@@ -807,6 +810,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       const child = await simBranch(sessionId, cp.id);
       setBranchId(child.id);
       const cmp = await fetchSimCompare(sessionId, child.id);
+      scrollToCompareRef.current = true; // 标记：本次是「分支」→ 对比卡渲染后滚进视口（治「点了没反应」）。
       setCompare(cmp);
       toast(`已从检查点分支（子会话 ${child.id}），可逐 tick 对比`, "success");
     } catch (e) {
@@ -815,6 +819,16 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       setBranching(false);
     }
   }, [sessionId, curTick]);
+
+  // WO-CAP-05：对比数据落地后，若来自「分支」动作，把对比卡滚进首屏视口 + 短暂高亮（分支结果可达·治 1652px 首屏外）。
+  useEffect(() => {
+    if (!compare || !scrollToCompareRef.current) return;
+    scrollToCompareRef.current = false;
+    // 待 DOM 提交后再滚（对比卡为条件渲染，此刻已挂载）。
+    requestAnimationFrame(() => {
+      compareRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    });
+  }, [compare]);
 
   // 对比刷新（分支会话各自推进后重新拉序列；A 主线 + B 分支）。
   const onRefreshCompare = useCallback(async () => {
@@ -1033,6 +1047,23 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
             </div>
           </div>
 
+          {/* WO-CAP-05-BRANCH-VISIBLE：多场景 KPI 对比（北极星·分支后出现）落左主区·命令条下（分支按钮邻位）→ 点分支即在首屏视口，
+              不再甩到右栏栈底 1652px（治「点了没反应」）。onBranch 成功后 scrollIntoView 再兜底拉进视口。活动结果·非常驻噪声。 */}
+          {compare && (
+            <div className="panel" ref={compareRef} data-testid="sandbox-compare-card" data-active="1" style={{ padding: "12px 14px", borderLeft: "3px solid #43B7D7" }}>
+              <div className={styles.secHead} style={{ margin: "0 0 6px" }}>多场景 KPI 对比 · A 主线 vs B 分支（分支结果）</div>
+              <div data-testid="sandbox-compare" style={{ padding: "4px 0 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span className={styles.sub}>分支后各自推进 tick，再刷新对比看 A/B 差异</span>
+                  <button className="btn sm ghost" data-testid="sandbox-compare-refresh-btn" disabled={!branchId} onClick={onRefreshCompare}>
+                    刷新对比
+                  </button>
+                </div>
+                <SimComparePanel a={compare.a} b={compare.b} heatThreshold={heatThreshold} />
+              </div>
+            </div>
+          )}
+
           {/* 主视觉 · 业务建模链 DAG（占左主区主体·min-height 420px·节点色随 tick 变·点节点→R13 溯源悬浮） */}
           <div className={`panel ${styles.heroDag}`} data-testid="sandbox-topology" style={{ padding: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -1195,20 +1226,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
             />
           </CollapsibleCard>
 
-          {/* 多场景 KPI 对比（北极星·分支后出现）·出现即默认展开（活动结果·非常驻噪声）。 */}
-          {compare && (
-            <CollapsibleCard testId="sandbox-compare-card" title="多场景 KPI 对比 · A 主线 vs B 分支" summary="逐 tick 差异" defaultOpen={true}>
-              <div data-testid="sandbox-compare" style={{ padding: "4px 0 0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <span className={styles.sub}>分支后各自推进 tick，再刷新对比看 A/B 差异</span>
-                  <button className="btn sm ghost" data-testid="sandbox-compare-refresh-btn" disabled={!branchId} onClick={onRefreshCompare}>
-                    刷新对比
-                  </button>
-                </div>
-                <SimComparePanel a={compare.a} b={compare.b} heatThreshold={heatThreshold} />
-              </div>
-            </CollapsibleCard>
-          )}
+          {/* WO-CAP-05-BRANCH-VISIBLE：多场景 KPI 对比卡已移出右栏栈底 → 左主区命令条下（分支按钮邻位·首屏可见）。此处不再渲染。 */}
 
           {/* WO-SANDBOX-RUN-HISTORY（G-VIS-1）：历史推演记录（后端 sim_session 真留痕）·§5：默认折叠。
               refreshKey 随 sessionId/curTick 变 → 推进/分支后列表自动重取（C4 事件失效·R17 同页留痕）。 */}
