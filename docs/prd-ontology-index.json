@@ -113,6 +113,131 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-L1.5-enterprise-memory-cbr.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R13",
+        "R16",
+        "R2",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-3",
+        "G-4"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/growth/decision-case.ts",
+        "apps/datacore/src/decisions.ts",
+        "packages/contracts/src/cbr.ts",
+        "packages/contracts/src/decision.ts",
+        "scripts/check-decision-case.mjs"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/src/growth/decision-case.ts",
+        "packages/contracts/src/cbr.ts",
+        "scripts/check-decision-case.mjs"
+      ]
+    },
+    "PRD-L1A-requirement-graph-engine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-3",
+        "G-4"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/config.ts",
+        "apps/agentcore/src/growth/requirement-graph.ts",
+        "packages/contracts/src/requirement-graph.ts",
+        "scripts/check-requirement-graph.mjs"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/src/growth/requirement-graph.ts",
+        "packages/contracts/src/requirement-graph.ts",
+        "scripts/check-requirement-graph.mjs"
+      ]
+    },
+    "PRD-L1B-execution-planner-workflow-runtime.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R13",
+        "R2",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-11",
+        "G-2",
+        "G-3",
+        "G-4",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/growth/execution-planner.ts",
+        "apps/agentcore/src/workflow/dag-executor.ts",
+        "packages/contracts/src/execution-graph.ts",
+        "scripts/check-workflow-dag.mjs"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/src/growth/execution-planner.ts",
+        "apps/agentcore/src/workflow/dag-executor.ts",
+        "packages/contracts/src/execution-graph.ts",
+        "scripts/check-workflow-dag.mjs"
+      ]
+    },
+    "PRD-L2-decision-kernel.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R16",
+        "R17",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-11",
+        "G-12",
+        "G-14",
+        "G-2",
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/config.ts",
+        "apps/agentcore/src/decision/hook.ts",
+        "apps/agentcore/src/decision/kernel.ts",
+        "packages/contracts/src/decision-kernel.ts",
+        "packages/contracts/src/decision.ts",
+        "scripts/check-decision-kernel.mjs"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/src/decision/hook.ts",
+        "apps/agentcore/src/decision/kernel.ts",
+        "packages/contracts/src/decision-kernel.ts",
+        "scripts/check-decision-kernel.mjs"
+      ]
+    },
     "PRD-addendum-a8-timeseries.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -520,6 +645,27 @@
         "apps/datacore/test/build-workflow-engine.test.ts",
         "apps/datacore/test/provisioners.test.ts",
         "packages/contracts/src/databuilder.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-capacity-sim-decision-flow.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/sim/SandboxView.tsx"
       ],
       "brokenArtifacts": []
     },
@@ -1123,6 +1269,23 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-merge-ontoflow-into-mainline.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/plan/GeoMapView.tsx",
+        "packages/contracts/src/pipeline.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/frontend-shell/src/views/plan/GeoMapView.tsx"
+      ]
+    },
     "PRD-method-library-stochastic-mc.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1560,9 +1723,14 @@
   "breakpointCoverage": {
     "G-3": [
       "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-L1.5-enterprise-memory-cbr.md",
+      "PRD-L1A-requirement-graph-engine.md",
+      "PRD-L1B-execution-planner-workflow-runtime.md",
+      "PRD-L2-decision-kernel.md",
       "PRD-agent-data-generation-tools.md",
       "PRD-agent-universal-fallback.md",
       "PRD-attribution-routing-plan-audit.md",
+      "PRD-capacity-sim-decision-flow.md",
       "PRD-databuilder-page-unified-spec.md",
       "PRD-discover-real-type-names.md",
       "PRD-empty-tenant-bootstrap.md",
@@ -1581,6 +1749,7 @@
     ],
     "G-8": [
       "PRD-A18-provisional-build-closure.md",
+      "PRD-L1B-execution-planner-workflow-runtime.md",
       "PRD-addendum-a8-timeseries.md",
       "PRD-addendum-admin-console-closure.md",
       "PRD-addendum-admin-platform.md",
@@ -1627,6 +1796,9 @@
       "PRD-unified-build-engine.md"
     ],
     "G-1": [
+      "PRD-L1.5-enterprise-memory-cbr.md",
+      "PRD-L1A-requirement-graph-engine.md",
+      "PRD-L1B-execution-planner-workflow-runtime.md",
       "PRD-addendum-a8-timeseries.md",
       "PRD-addendum-admin-console-closure.md",
       "PRD-addendum-admin-platform.md",
@@ -1668,11 +1840,39 @@
       "PRD-upstream-classify-precision.md"
     ],
     "G-4": [
+      "PRD-L1.5-enterprise-memory-cbr.md",
+      "PRD-L1A-requirement-graph-engine.md",
+      "PRD-L1B-execution-planner-workflow-runtime.md",
       "PRD-addendum-admin-console-closure.md",
       "PRD-gap-analysis-engine.md",
       "PRD-gapfill-surface-consolidation.md",
       "PRD-unified-build-engine.md",
       "PRD-upstream-classify-precision.md"
+    ],
+    "G-11": [
+      "PRD-L1B-execution-planner-workflow-runtime.md",
+      "PRD-L2-decision-kernel.md",
+      "PRD-decision-support-maturity.md",
+      "PRD-sandbox-ontogenesis-buildplan.md",
+      "PRD-simulation-sandbox.md"
+    ],
+    "G-2": [
+      "PRD-L1B-execution-planner-workflow-runtime.md",
+      "PRD-L2-decision-kernel.md",
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-12": [
+      "PRD-L2-decision-kernel.md",
+      "PRD-method-library-stochastic-mc.md",
+      "PRD-opensource-fusion-lastmile.md"
+    ],
+    "G-14": [
+      "PRD-L2-decision-kernel.md",
+      "PRD-agent-native-absorb.md"
     ],
     "G-7": [
       "PRD-addendum-capability-routing.md",
@@ -1692,17 +1892,8 @@
       "PRD-prototype-intake-databuilder.md",
       "PRD-unified-build-engine.md"
     ],
-    "G-2": [
-      "PRD-addendum-solvers-and-gaps.md",
-      "PRD-cockpit-capacity-1to1-parity.md",
-      "PRD-plan-audit-1to1.md",
-      "PRD-query-orchestration-service.md",
-      "PRD-unified-build-engine.md"
-    ],
-    "G-14": [
-      "PRD-agent-native-absorb.md"
-    ],
     "G-5": [
+      "PRD-capacity-sim-decision-flow.md",
       "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-data-closure-spec.md",
       "PRD-databuilder-page-unified-spec.md",
@@ -1733,15 +1924,6 @@
       "PRD-decision-support-maturity.md",
       "PRD-rules-as-references.md",
       "PRD-simulation-sandbox.md"
-    ],
-    "G-11": [
-      "PRD-decision-support-maturity.md",
-      "PRD-sandbox-ontogenesis-buildplan.md",
-      "PRD-simulation-sandbox.md"
-    ],
-    "G-12": [
-      "PRD-method-library-stochastic-mc.md",
-      "PRD-opensource-fusion-lastmile.md"
     ],
     "G-15": [
       "PRD-trustworthy-self-accounting.md"
@@ -1793,6 +1975,59 @@
       "PRD-IND-plan-generate-1to1.md",
       "PRD-plan-generate-1to1.md"
     ],
+    "apps/agentcore/src/growth/decision-case.ts": [
+      "PRD-L1.5-enterprise-memory-cbr.md"
+    ],
+    "apps/datacore/src/decisions.ts": [
+      "PRD-L1.5-enterprise-memory-cbr.md"
+    ],
+    "packages/contracts/src/cbr.ts": [
+      "PRD-L1.5-enterprise-memory-cbr.md"
+    ],
+    "packages/contracts/src/decision.ts": [
+      "PRD-L1.5-enterprise-memory-cbr.md",
+      "PRD-L2-decision-kernel.md"
+    ],
+    "scripts/check-decision-case.mjs": [
+      "PRD-L1.5-enterprise-memory-cbr.md"
+    ],
+    "apps/agentcore/src/config.ts": [
+      "PRD-L1A-requirement-graph-engine.md",
+      "PRD-L2-decision-kernel.md"
+    ],
+    "apps/agentcore/src/growth/requirement-graph.ts": [
+      "PRD-L1A-requirement-graph-engine.md"
+    ],
+    "packages/contracts/src/requirement-graph.ts": [
+      "PRD-L1A-requirement-graph-engine.md"
+    ],
+    "scripts/check-requirement-graph.mjs": [
+      "PRD-L1A-requirement-graph-engine.md"
+    ],
+    "apps/agentcore/src/growth/execution-planner.ts": [
+      "PRD-L1B-execution-planner-workflow-runtime.md"
+    ],
+    "apps/agentcore/src/workflow/dag-executor.ts": [
+      "PRD-L1B-execution-planner-workflow-runtime.md"
+    ],
+    "packages/contracts/src/execution-graph.ts": [
+      "PRD-L1B-execution-planner-workflow-runtime.md"
+    ],
+    "scripts/check-workflow-dag.mjs": [
+      "PRD-L1B-execution-planner-workflow-runtime.md"
+    ],
+    "apps/agentcore/src/decision/hook.ts": [
+      "PRD-L2-decision-kernel.md"
+    ],
+    "apps/agentcore/src/decision/kernel.ts": [
+      "PRD-L2-decision-kernel.md"
+    ],
+    "packages/contracts/src/decision-kernel.ts": [
+      "PRD-L2-decision-kernel.md"
+    ],
+    "scripts/check-decision-kernel.mjs": [
+      "PRD-L2-decision-kernel.md"
+    ],
     "apps/datacore/src/actions.ts": [
       "PRD-admin-self-approval.md"
     ],
@@ -1830,7 +2065,8 @@
       "PRD-discover-real-type-names.md"
     ],
     "apps/datacore/src/catalog.ts": [
-      "PRD-attribution-routing-plan-audit.md"
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-capacity-sim-decision-flow.md"
     ],
     "apps/datacore/src/solvers/plan.ts": [
       "PRD-attribution-routing-plan-audit.md",
@@ -1859,6 +2095,14 @@
       "PRD-build-workflow-runtime.md",
       "PRD-databuilder-page-unified-spec.md",
       "PRD-gap-analysis-engine.md"
+    ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-capacity-sim-decision-flow.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SandboxView.tsx": [
+      "PRD-capacity-sim-decision-flow.md"
     ],
     "apps/agentcore/src/features/registry.ts": [
       "PRD-cli-full-coverage.md"
@@ -1951,6 +2195,12 @@
       "PRD-inference-process-enhancement.md",
       "PRD-order-project-sim-1to1.md"
     ],
+    "apps/frontend-shell/src/views/plan/GeoMapView.tsx": [
+      "PRD-merge-ontoflow-into-mainline.md"
+    ],
+    "packages/contracts/src/pipeline.ts": [
+      "PRD-merge-ontoflow-into-mainline.md"
+    ],
     "apps/datacore/src/solvers/capacity.ts": [
       "PRD-method-library-stochastic-mc.md"
     ],
@@ -1975,10 +2225,6 @@
     "apps/datacore/src/modeling.ts": [
       "PRD-ontology-browser-field-coverage.md",
       "PRD-prototype-intake-databuilder.md"
-    ],
-    "apps/datacore/src/solvers/risk.ts": [
-      "PRD-order-project-sim-1to1.md",
-      "PRD-plan-audit-1to1.md"
     ],
     "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
       "PRD-order-project-sim-1to1.md"
