@@ -750,6 +750,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     solverBindings: new PgStore(pool, "solver_bindings"),
     fusedObjects: new PgStore(pool, "fused_objects"), // WO-MULTISRC-FUSION-DOMAIN（N1·migration034）：多源融合对象快照
     decisions: new PgStore(pool, "decisions"),
+    ontologyWorkflows: new PgStore(pool, "ontology_workflows"),
     async ping() {
       await pool.query("SELECT 1");
     },

@@ -85,6 +85,17 @@ export interface ViewConfig {
   origin?: "SYNTHETIC" | "MANUAL";
 }
 
+/**
+ * OntoFlow（WO-MERGE-01）本体建模工作流持久记录。doc 为跨包共享的 OntologyWorkflow 契约；
+ * 仓储双实现（memory + pg ontology_workflows 表·037 迁移）。R2：读写一律 tenantId 限定。
+ */
+export interface OntologyWorkflowRecord {
+  id: string;
+  tenantId: string;
+  doc: import("@platform/contracts").OntologyWorkflow;
+  updatedAt: string;
+}
+
 export interface AuthCtx {
   tenantId: string;
   userId: string;

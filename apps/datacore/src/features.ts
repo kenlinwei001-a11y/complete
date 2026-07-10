@@ -31,6 +31,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.scenarios", name: "场景启动器", level: "VIEW", defaultOn: true },
   // 运营态出厂配置增量 §2/§4：运营回顾（只读历史证据链页面，消费 GET /a/v1/history/bundle）
   { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
+  // WO-MERGE-01 B1：OntoFlow 本体建模工作流（Entitlement 铁律）——关→ /a/v1/ontology-workflows/* 全部 404
+  // FEATURE_NOT_FOUND（先于 authz）。additive·defaultOn（暗发）。前端按 resolved features 决定导航显隐 + 诚实降级。
+  { key: "data-builder", name: "本体建模工作流", level: "VIEW", defaultOn: true, bindings: { apiTags: ["data-builder"] } },
   // BLOCK level
   { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },

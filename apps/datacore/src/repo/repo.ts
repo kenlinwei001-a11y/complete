@@ -68,6 +68,7 @@ import type {
   TsLateArrivalRecord,
   TsPointRecord,
   TsSeriesRecord,
+  OntologyWorkflowRecord,
   User,
   ViewConfig,
   WebhookRegistration,
@@ -333,6 +334,8 @@ export interface Repos {
   fusedObjects: Store<FusedObjectSnapshot>;
   // WO-DECISION-RECORD（PRD §3.7 D8·migration029）：一等 Decision 记录（上下文/备选/否决/决策人/预测 vs 实现，R2）
   decisions: Store<Decision>;
+  // OntoFlow（WO-MERGE-01·migration037）：本体建模工作流（画布 doc jsonb·R2 租户隔离·双实现）。
+  ontologyWorkflows: Store<OntologyWorkflowRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

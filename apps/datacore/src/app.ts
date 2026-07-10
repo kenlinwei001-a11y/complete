@@ -36,6 +36,7 @@ import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } 
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
 import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
+import { WorkflowService, type AgentScaffoldClient } from "./pipeline/service.js";
 import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories, hasAdapter } from "./connectors/registry.js";
@@ -51,6 +52,7 @@ import { AuditSinkInputSchema, type AuditSink } from "@platform/contracts"; // W
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
+import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
@@ -520,6 +522,73 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       }
     });
   }
+  // WO-MERGE-01 B2：OntoFlow scaffold 跨系统落库客户端（A→B·OBO x-debug-user）。
+  // 配置 AGENTCORE_BASE_URL 时：scaffold 生成的 Agent 真 create→publish（AgentCore 发布门探针要求 scope 对象类型
+  // 在 DataCore 本体存在 —— OntoFlow publish 已先落 types，故满足）→ 场景入口 PUT（AGENT_FIRST 引用已发布 Agent）。
+  // 未配置或任一步失败 → scaffold 记 persisted.deferred（诚实回执，绝不伪造已落库·KILL-MOCK-RED）。
+  let agentScaffoldClient: AgentScaffoldClient | undefined;
+  if (config.AGENTCORE_BASE_URL) {
+    const agentBase = config.AGENTCORE_BASE_URL;
+    agentScaffoldClient = {
+      async push(ctx, item) {
+        const oboHdr = { "x-debug-user": debugHeaderFor(ctx) };
+        const jsonHdr = { "content-type": "application/json", ...oboHdr };
+        try {
+          // 1) 幂等：找同 key Agent（已发布→复用；DRAFT→续用其 id）；否则 create（DRAFT）。
+          let agentId: string | undefined;
+          let published = false;
+          const listRes = await fetchImpl(`${agentBase}/b/v1/agents`, { headers: oboHdr });
+          if (listRes.ok) {
+            const agents = (await listRes.json()) as { id: string; key: string; status: string }[];
+            const same = agents.filter((a) => a.key === item.agentKey);
+            const pub = same.find((a) => a.status === "PUBLISHED");
+            if (pub) { agentId = pub.id; published = true; }
+            else agentId = same.find((a) => a.status === "DRAFT")?.id;
+          }
+          if (!agentId) {
+            const createBody = {
+              key: item.agentKey,
+              name: item.agentTitle,
+              description: "OntoFlow scaffold 生成的默认助手（通用工具 + 最小授权对象类型）",
+              model: "",
+              systemPrompt:
+                item.systemPrompt && item.systemPrompt.trim()
+                  ? item.systemPrompt
+                  : `你负责本体实体「${item.typeKey}」。用通用工具在其对象上作答与推演，业务数字一律取工具真值。`,
+              tools: item.tools.map((name) => ({ kind: "BUILTIN", name })),
+              ruleBindings: { ruleKeys: [] as string[], mode: "POST_CHECK" },
+              skills: [],
+              mcpServers: [],
+              scopeDeclaration: { objectTypes: item.objectTypes, toolNames: item.tools },
+            };
+            const cr = await fetchImpl(`${agentBase}/b/v1/agents`, { method: "POST", headers: jsonHdr, body: JSON.stringify(createBody) });
+            if (!cr.ok) return { error: `agent create ${cr.status}` };
+            agentId = ((await cr.json()) as { id: string }).id;
+          }
+          // 2) publish（幂等：已发布跳过；发布门校验失败 → 诚实报 error，不伪造）。
+          if (!published) {
+            const pr = await fetchImpl(`${agentBase}/b/v1/agents/${agentId}/publish`, { method: "POST", headers: jsonHdr, body: "{}" });
+            if (!pr.ok) return { error: `agent publish ${pr.status}` };
+            const pj = (await pr.json()) as { ok?: boolean; errors?: { message: string }[] };
+            if (pj.ok === false) return { error: `agent publish rejected: ${(pj.errors ?? []).map((e) => e.message).join("; ")}` };
+            published = true;
+          }
+          // 3) 场景入口（AGENT_FIRST·引用已发布 Agent·幂等 PUT by viewKey）。
+          const sceneBody = {
+            mode: "AGENT_FIRST",
+            defaultAgentId: agentId,
+            uiHints: { placeholder: `就「${item.sceneTitle}」提问`, suggestedQuestions: [] as string[] },
+          };
+          const sr = await fetchImpl(`${agentBase}/b/v1/scene-entries/${encodeURIComponent(item.sceneViewKey)}`, { method: "PUT", headers: jsonHdr, body: JSON.stringify(sceneBody) });
+          if (!sr.ok) return { agentPushed: item.agentKey, error: `scene-entry ${sr.status}` };
+          return { agentPushed: item.agentKey, scenePushed: item.sceneViewKey };
+        } catch (e) {
+          return { error: `agentcore unreachable: ${(e as Error).message}` };
+        }
+      },
+    };
+  }
+  const workflows = new WorkflowService(repos, ontology, ontologyCore, agentScaffoldClient);
   const opsReplay = new OpsReplayService({
     actions,
     sop,
@@ -3545,6 +3614,59 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       throw forbidden("admin / catalog_admin only");
     }
   };
+  // ---- OntoFlow（WO-MERGE-01）本体建模工作流：CRUD/校验/预览/提升/发布 + 准备度/生成应用/通用推演 ----
+  // B1 门控（Entitlement 铁律）：feature `data-builder`(apiTag) 关 → 全部 404 FEATURE_NOT_FOUND（先于 authz）。
+  const requireDataBuilder = (req: FastifyRequest) => requireFeatureTag(req, "apiTags", "data-builder");
+  app.get("/a/v1/ontology-workflows", async (req) => {
+    await requireDataBuilder(req);
+    return { items: await workflows.list(ctx(req)) };
+  });
+  app.post("/a/v1/ontology-workflows", async (req, reply) => {
+    await requireDataBuilder(req);
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    const wf = await workflows.create(ctx(req), body);
+    return reply.status(201).send(wf);
+  });
+  app.get("/a/v1/ontology-workflows/:id", async (req) => {
+    await requireDataBuilder(req);
+    return workflows.get(ctx(req), (req.params as { id: string }).id);
+  });
+  app.put("/a/v1/ontology-workflows/:id", async (req) => {
+    await requireDataBuilder(req);
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    return workflows.update(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/ontology-workflows/:id/validate", async (req) => {
+    await requireDataBuilder(req);
+    return workflows.validate(ctx(req), (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/ontology-workflows/:id/preview", async (req) => {
+    await requireDataBuilder(req);
+    const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).default([]) }), req.body);
+    return workflows.preview(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/ontology-workflows/:id/nodes/:nodeId/promote", async (req) => {
+    await requireDataBuilder(req);
+    const { id, nodeId } = req.params as { id: string; nodeId: string };
+    return workflows.promote(ctx(req), id, nodeId);
+  });
+  app.post("/a/v1/ontology-workflows/:id/publish", async (req) => {
+    await requireDataBuilder(req);
+    return workflows.publish(ctx(req), (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/ontology-workflows/:id/readiness", async (req) => {
+    await requireDataBuilder(req);
+    return workflows.readiness(ctx(req), (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/ontology-workflows/:id/scaffold", async (req) => {
+    await requireDataBuilder(req);
+    return workflows.scaffold(ctx(req), (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/ontology-workflows/:id/inference", async (req) => {
+    await requireDataBuilder(req);
+    const body = parseBody(GenericInferenceInputSchema, req.body);
+    return workflows.inference(ctx(req), (req.params as { id: string }).id, body);
+  });
   // ---- A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）------------------------
   app.get("/a/v1/data-builders", async (req) => {
     const c = ctx(req);
