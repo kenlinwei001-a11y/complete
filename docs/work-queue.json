@@ -3698,7 +3698,7 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
@@ -3706,7 +3706,7 @@
         "wip": "2026-07-10T19:04:10.711Z",
         "built": "2026-07-11T04:29:40.793Z",
         "blocked": "2026-07-09T09:01:56.417Z",
-        "done": "2026-07-06T04:06:27.706Z",
+        "done": "2026-07-11T05:43:41.134Z",
         "open": "2026-07-09T09:41:58.013Z"
       },
       "id": "QUERY30-ORCH",
@@ -3727,7 +3727,8 @@
         "where": "extended.ts:376 countermeasureCombo 真调所列子求解器；agentcore 场景目录 S01-S20 绑通用求解器 intent 路由",
         "acceptance": "Q6『保交付/毛利/信用三选二怎么排杠杆组合?』经 QueryDock NL→QOS 真跑，答出真调各子求解器的组合方案（非魔数·非借名）",
         "fillWO": "WO-7+ (NL路由 + countermeasure 真编排)"
-      }
+      },
+      "reviewNote": "PASS 独立对抗真跑真NL查询(agent aa299988·两大前科治本):①countermeasure真调4子求解器(cert_schedule/changeover/outsourcing/capex)逐值对照 certSchedule Sigma-unlock=107.33===combo release(旧魔数gap*0.3=43.2排除)·魔数系数gap*{0.3,0.15,0.1,0.2,0.5}全清仅注释残留;②10求解器NL路由真命中 S26-S42指向·7条端到端COMPLETED(cash/labor/full_cost/reroute/energy/multi_constraint/countermeasure_combo)·3条高置信AWAITING_CLARIFICATION非路由失败·countermeasure_combo_q闭环铁证·10求解器全in REGISTRY(58键solver-coverage零幽灵);③发育层7workflow/2agent/5skill/42卡真入目录·agent真接线ruleBindings[C34,C35,C13,C24]·发育管道42/42 GOVERNED真验证派生非手装(定义seed作者化但maturity真挣·无幽灵);④门全RC0(no-fake-done/genuine-sim/solver-coverage/scenario-ontogenesis/build/test零失败)。诚实边界:SEED_DEMO合成态诚实标·重度改写自由问句mock-LLM落FAILED(环境约束非缺陷)·未逐条跑全30问(抽验~10求解器+4卡grow+门42/42)。"
     },
     {
       "id": "SANDBOX-RENAME-BASECARDS",
@@ -6963,10 +6964,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "reviewer",
-      "cmd": "WIP",
-      "id": "WO-FAKE-05",
-      "at": "2026-07-11T05:42:50.665Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "QUERY30-ORCH",
+      "at": "2026-07-11T05:43:41.134Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
