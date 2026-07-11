@@ -7724,15 +7724,41 @@
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "闭包/verify据实(洞C/D·最痛):closure验切片非空且解析出minNodes(非只看domain)+ValidationTrace据实判(BUILD_STATIC/无结论数字→NOT_PASS·crossValidation不同义反复)+green→red门",
-      "note": "[LaneB·datacore·DISPATCH-databuilder-upgrade.md] 最高优先·假绿(gatePassed+ALL_PASS双绿灯能在切片空/推演没跑下同时点亮·KILL-MOCK-RED核心形态)。验证硬化部分link-无关先落暴露真相;'按LLM链路真生成paths'部分依赖LINK-STABILIZE(①②强耦合·合并复验)。复用check-requirement-graph.mjs门模板。回写母体§8 G-BUILD-SHELL/G-BUILD-VERIFY闭。green→red:植入domain有值paths:[]类型→闭包应报空;BUILD_STATIC无数字→NUMERIC NOT_PASS。",
-      "status": "BUILT",
+      "note": "[LaneB·datacore·DISPATCH-databuilder-upgrade.md] 最高优先·假绿(gatePassed+ALL_PASS双绿灯能在切片空/推演没跑下同时点亮·KILL-MOCK-RED核心形态)。验证硬化部分link-无关先落暴露真相;'按LLM链路真生成paths'部分依赖LINK-STABILIZE(①②强耦合·合并复验)。复用check-requirement-graph.mjs门模板。回写母体§8 G-BUILD-SHELL/G-BUILD-VERIFY闭。green→red:植入domain有值paths:[]类型→闭包应报空;BUILD_STATIC无数字→NUMERIC NOT_PASS。 【复验PASS·2残留dev母体§8标◐:①crossValidation同义反复未修(当前不产verdict级假绿·归后续)②洞C仅治物化0节点未治hops空富切片(归WO-DB-LINK-STABILIZE)】",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
         "wip": "2026-07-11T16:03:31.946Z",
-        "built": "2026-07-11T16:27:59.302Z"
+        "built": "2026-07-11T16:27:59.302Z",
+        "done": "2026-07-11T17:09:14.184Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "闭包/verify据实不空壳判绿(洞C/D·KILL-MOCK-RED·不靠阻断成0)。(真Kimi真跑PASS·datacore 1198测0失败)",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "洞C闭包据实green→red:真Kimi建冷链域→closure据实22节点;真run()物化0行→FAILED+gatePassed=false+CLOSURE_GATE_FAILED_EMPTY_SLICE;mutation只看domain→门RED"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "洞D verify据实:BUILD_STATIC→5条NUMERIC_PROVENANCE全FAIL+verdict非ALL_PASS(S5假绿治);mutation写死PASS→a10测RED"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "不靠阻断成0:PROVISIONAL 0行→SUCCEEDED+gatePassed诚实false+ADVISORY;真冷链STRICT→SUCCEEDED gatePassed=true(22/12/19/29节点)"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "门有牙check-closure-honest EXIT=0·mutation令门齿红还原·纯additive H3不重写·datacore 1198测0失败·未碰Dev-4"
+          }
+        ]
+      }
     },
     {
       "id": "WO-DB-LINK-STABILIZE",
@@ -7834,16 +7860,42 @@
       ],
       "doc": "docs/AUDIT-databuilder-genuine-construction-DELTA.md",
       "title": "沙盘配套智能推导(补S0悬置接缝):从故事/需求图真派生propagation_rule/state_var need(填现空need数组·供S0覆盖引擎检)·非databuilder BSTACK",
-      "note": "[Lane沙盘·dev3·补S0§3.4悬置接缝] S0建了配套契约+覆盖引擎但谁推导propagation_rule/state_var punt给RG/S1未认领(comprehend.ts:294现need空)。本单专做推导侧·与BSTACK-DERIVE划界(BSTACK绝不碰两kind)。回写§2.I。green→red:含传导语义故事→应派生propagation_rule need·现空→红。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
-      "status": "BUILT",
+      "note": "[Lane沙盘·dev3·补S0§3.4悬置接缝] S0建了配套契约+覆盖引擎但谁推导propagation_rule/state_var punt给RG/S1未认领(comprehend.ts:294现need空)。本单专做推导侧·与BSTACK-DERIVE划界(BSTACK绝不碰两kind)。回写§2.I。green→red:含传导语义故事→应派生propagation_rule need·现空→红。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。 【复验PASS·活POST路径时序接缝归WO-SANDBOX-CONFIG-DERIVE-WIRE·上游编排非本单派生逻辑】",
+      "status": "DONE",
       "owner": "dev1",
       "at": {
         "created": "2026-07-11T14:34:50.465Z",
         "wip": "2026-07-11T15:43:19.282Z",
-        "built": "2026-07-11T16:16:12.925Z"
+        "built": "2026-07-11T16:16:12.925Z",
+        "done": "2026-07-11T17:09:14.184Z"
       },
       "assignedDev": "dev1-后端",
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "从故事/需求图真派生propagation_rule/state_var need(补S0§3.4)。(真跑PASS·两悬殊故事派生不相交)",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "probe",
+            "assert": "真派生:两悬殊故事→propagation_rule交集∅·state_var类型交集∅·每条溯源真LinkType边·零幽灵"
+          },
+          {
+            "id": "C2",
+            "type": "probe",
+            "assert": "供S0覆盖引擎:preAnalyzeQuery喂真RG派生need→diffGap判EXISTS/MISSING"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "暗发双注册growth.sandbox_config_derive·flag OFF派生kind空·NG6字节一致"
+          },
+          {
+            "id": "C4",
+            "type": "test",
+            "assert": "门有牙掏空deriveSandboxConfigNeeds→4failed·还原8/8·相邻84/84·未碰Dev-2"
+          }
+        ]
+      }
     },
     {
       "id": "WO-IMPORT-MULTITABLE",
@@ -7854,13 +7906,40 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G1多表FK批量导入:新端点POST /a/v1/modeling/derive-batch(rawDatasetIds[]→跨表FK检测→一张本体图类型+链路→publish/materialize)+多文件/zip上传·复用deriveModelingSuggestion(modeling.ts:89已确定性无LLM)",
       "note": "[LaneB·datacore·索引§2序#3·HANDOFF-databuilder-genuine-and-import.md] Stage3.15导入侧·⛔不把生成逻辑塞平台(违R14·debattery:check绿)。守R-NO-ORPHAN-SOURCE:物化对象挂真rawDatasetId(green→red删源→报孤儿)。验收:传factory+production_line+equipment三表→draft出3类型+ProductionLine→Factory/Equipment→ProductionLine两链路逐值·物化/objects?type=Equipment真查origin=MATERIALIZED。 【Dev-4并行2026-07-11:deps NO-FLOOR→MERGE-03松开·复用deriveModelingSuggestion确定性不经comprehend·可立即开工与Dev-2 build-fix并行】 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev4-import",
       "at": {
-        "created": "2026-07-11T15:46:52.629Z"
+        "created": "2026-07-11T15:46:52.629Z",
+        "done": "2026-07-11T17:09:14.184Z"
       },
       "assignedDev": "dev4-import",
-      "built": "[BUILT dev4-import 2026-07-11] 新契约 contracts/src/import.ts(DeriveBatchRequest/BatchUploadResult·不用databuilder.ts) + modeling.ts deriveBatch(薄包装derive·跨表FK确定性无LLM·可选归域→autoPublish→autoMaterialize·未归域诚实publishErrors不建空壳) + app.ts两端点 POST /a/v1/uploads/batch(多文件/zip·懒解jszip) & POST /a/v1/modeling/derive-batch + feature key data-import.multitable(defaultOn:false·暗发·requires data-builder)。真跑摸底(内存SEED_DEMO=1·真起:4001):基线单表链真通(F001 capacity_gwh=51不写死) + 一步导入3表→3类型+2链路(ProductionLine→Factory/Equipment→ProductionLine)→published v1→materialize created=12→/objects?type=Equipment真查5台逐值对CSV(E001涂布机A RUNNING)。守R14(debattery:check绿·平台零业务常数·归域门拒conn_ghost幽灵域400)·R-NO-ORPHAN-SOURCE(green→red删源→DANGLING孤儿)·R6(同数据两跑图字节一致)。回写母体§2.B+§3链+pnpm ontology:slices(hash c200153499a9d599)。测:test/import-multitable.test.ts 9用例全绿·datacore 206文件/1192测全绿·no-orphan/debattery/no-fake-data/no-silent-mock/feature-parity/prd/slices gates绿。⚠共享app.ts:additive加在materialize端点后新段·push前rebase。待审核方真跑复验。"
+      "built": "[BUILT dev4-import 2026-07-11] 新契约 contracts/src/import.ts(DeriveBatchRequest/BatchUploadResult·不用databuilder.ts) + modeling.ts deriveBatch(薄包装derive·跨表FK确定性无LLM·可选归域→autoPublish→autoMaterialize·未归域诚实publishErrors不建空壳) + app.ts两端点 POST /a/v1/uploads/batch(多文件/zip·懒解jszip) & POST /a/v1/modeling/derive-batch + feature key data-import.multitable(defaultOn:false·暗发·requires data-builder)。真跑摸底(内存SEED_DEMO=1·真起:4001):基线单表链真通(F001 capacity_gwh=51不写死) + 一步导入3表→3类型+2链路(ProductionLine→Factory/Equipment→ProductionLine)→published v1→materialize created=12→/objects?type=Equipment真查5台逐值对CSV(E001涂布机A RUNNING)。守R14(debattery:check绿·平台零业务常数·归域门拒conn_ghost幽灵域400)·R-NO-ORPHAN-SOURCE(green→red删源→DANGLING孤儿)·R6(同数据两跑图字节一致)。回写母体§2.B+§3链+pnpm ontology:slices(hash c200153499a9d599)。测:test/import-multitable.test.ts 9用例全绿·datacore 206文件/1192测全绿·no-orphan/debattery/no-fake-data/no-silent-mock/feature-parity/prd/slices gates绿。⚠共享app.ts:additive加在materialize端点后新段·push前rebase。待审核方真跑复验。",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "企业级多表FK批量导入(Stage3.15导入侧·复用deriveModelingSuggestion·不塞生成逻辑违R14)。(真跑PASS·物流域跨表FK逐值)",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "3表batch各挂真rawDatasetId→derive-batch跨表成图2 FK链路逐值·差异证实(单传0链路批量才成图)·物化13条对CSV"
+          },
+          {
+            "id": "C2",
+            "type": "probe",
+            "assert": "R-NO-ORPHAN-SOURCE:origin=MATERIALIZED挂真datasetId·删源→6对象DANGLING"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "R14 check-debattery EXIT=0(物流域反证Stage3.15未入平台)·复用非重造引擎函数未动"
+          },
+          {
+            "id": "C4",
+            "type": "test",
+            "assert": "暗发OFF→404·R6幂等·门有牙(破坏FK→测红)·9/9绿·未碰Dev-2·用新import.ts"
+          }
+        ]
+      }
     },
     {
       "id": "WO-IMPORT-ONTOLOGY",
@@ -7910,14 +7989,30 @@
         "created": "2026-07-11T15:46:52.629Z"
       },
       "assignedDev": "dev4-import"
+    },
+    {
+      "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",
+      "status": "TODO",
+      "priority": "P2",
+      "owner": "",
+      "assignedDev": "dev1-后端",
+      "deps": [
+        "WO-SANDBOX-CONFIG-DERIVE"
+      ],
+      "doc": "docs/AUDIT-databuilder-genuine-construction-DELTA.md",
+      "title": "沙盘配套派生活路径接线:修pre-analysis触发时序(startPreAnalysis抢跑setImmediate RG旁路→派生gap不落live报告)·让派生need真抵达S0覆盖报告",
+      "note": "[Lane沙盘后端·dev1·CONFIG-DERIVE复验发现活路径接缝] 派生逻辑已DONE正确·活POST路径pre-analysis抢跑RG旁路→派生kind空(dev T6先seed RG绕竞态·绿测试≠活路径)。green→red:真POST传导问句→派生need应落pre-analysis报告·现空→红。",
+      "at": {
+        "created": "2026-07-11T17:09:14.184Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-TRUST-BADGE",
-      "at": "2026-07-11T16:32:55.045Z"
+      "role": "review",
+      "cmd": "DONE x3+WIRE(reconcile)",
+      "id": "2026-07-11T17:09:14.184Z",
+      "at": "2026-07-11T17:09:14.184Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
