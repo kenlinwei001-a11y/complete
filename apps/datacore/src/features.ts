@@ -114,6 +114,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // UPG-L0-HIDDENREQ（PRD-gap-analysis-engine §8）：隐藏需求闭包（expandHiddenRequirements 三白名单·零幽灵）的
   // 权威 entitlement。暗发 defaultOn:false（RL2）——关 = 预分析只诊断显式需求（与不做隐藏需求发现一致·回退演练 C3）。现有租户零影响。
   { key: "growth.hidden_req", name: "隐藏需求闭包发现", level: "BLOCK", defaultOn: false },
+  // WO-L2-1（决策内核·脊柱最后一跳收口·PRD-L2-decision-kernel.md §2.4）：用户面 entitlement 闸——
+  // 控**决策制品 DecisionPackage 读/采纳端点是否存在**（关 = GET/POST /a/v1/queries/:taskId/decision-package*
+  // 404 FEATURE_NOT_FOUND·R3 先于 authz·不泄漏存在性）。DataCore 是 entitlement 唯一真相源（对齐 growth.pre_analysis
+  // 范式·line 113）。暗发 defaultOn:false（RL2）——现有租户零影响（additive）。与进程级 env 闸 QOS_DECISION_KERNEL
+  // 双闸独立：env 关=连制品都不构（pipeline 字节一致）；feature 关=端点 404。requires shell.query-dock（决策制品源于查询）。
+  { key: "decision.kernel", name: "决策内核", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"] },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

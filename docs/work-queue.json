@@ -6656,9 +6656,11 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] "
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T06:59:55.059Z"
+      },
       "id": "WO-L2-1",
       "title": "决策制品契约 + CounterfactualResult 补 schema + 暗发双闸",
       "priority": "P1",
@@ -7238,10 +7240,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
+      "role": "dev2",
       "cmd": "WIP",
-      "id": "WO-FAKE-10",
-      "at": "2026-07-11T06:22:49.227Z"
+      "id": "WO-L2-1",
+      "at": "2026-07-11T06:59:55.060Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

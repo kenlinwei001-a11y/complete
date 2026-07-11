@@ -77,6 +77,13 @@ export const ConfigSchema = z.object({
   WRITEBACK_TARGET: z.enum(["mock", "erp_rest"]).default("mock"),
   /** 真 ERP 写回端点 base URL（仅 WRITEBACK_TARGET=erp_rest 时用）；未配=诚实 WRITEBACK_NOT_CONFIGURED。 */
   WRITEBACK_ERP_BASE_URL: z.string().optional(),
+  /**
+   * WO-L2-1（决策内核·暗发内部算法闸·进程级 deploy 控制）：`=== "1"` 开——控**是否在旁挂段
+   * 构决策制品 DecisionPackage**。关（未置/≠"1"）=该段不跑=pipeline 与改造前字节一致
+   *（对齐 QOS_CLASSIFY_FUSE 暗发范式·RL2）。与 entitlement 闸 `decision.kernel`（features.ts·per-tenant
+   * 控读/采纳端点存在性）双闸独立：env 关=连制品都不构；feature 关=端点 404 FEATURE_NOT_FOUND。
+   */
+  QOS_DECISION_KERNEL: z.string().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
