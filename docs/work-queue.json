@@ -7528,17 +7528,18 @@
       "at": {
         "wip": "2026-07-11T14:32:08.908Z",
         "built": "2026-07-11T14:32:08.971Z",
-        "blocked": "2026-07-11T13:47:30.316Z"
+        "blocked": "2026-07-11T13:47:30.316Z",
+        "done": "2026-07-11T14:46:27.420Z"
       },
       "id": "WO-FEATURE-PARITY-GATE",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "deps": [],
       "doc": "docs/work-queue.json",
       "lane": "gate-harden",
       "title": "堵根门:暗发feature键双注册一致性门(防未注册恒真陷阱·L2-1/L1B-3同类复发)",
-      "note": "[系统性·两次BLOCK同根] L2-1缺agentcore侧decision.kernel·L1B-3缺datacore侧qos.workflow_dag——暗发键双注册漏无门守·每次靠人复验抓。建门自动逮。",
+      "note": "[系统性·两次BLOCK同根] L2-1缺agentcore侧decision.kernel·L1B-3缺datacore侧qos.workflow_dag——暗发键双注册漏无门守·每次靠人复验抓。建门自动逮。 【复验PASS·根治属实·P3硬化待办:消费键正则[a-z][a-z0-9_.]+不含连字符·未来带-的BLOCK/off暗发键被消费会逃逸②·当前零影响已核实·补-即可】",
       "acceptance": {
         "goal": "每个暗发BLOCK键在datacore+agentcore双注册·单注册即门红。",
         "criteria": [
@@ -7728,9 +7729,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "REGISTER(sandbox+2)",
-      "id": "2单",
-      "at": "2026-07-11T14:34:50.465Z"
+      "cmd": "DONE",
+      "id": "WO-FEATURE-PARITY-GATE",
+      "at": "2026-07-11T14:46:27.420Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
