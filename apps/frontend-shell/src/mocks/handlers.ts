@@ -1269,11 +1269,15 @@ export const handlers = [
     const pts = CALIBRATION_CONVERGENCE;
     const first = pts[0];
     const last = pts[pts.length - 1];
+    // FILL-E1-CALIB-LIVE·C1 dataMode（对齐真后端 datacore app.ts:4202）：末轮回落静态基线（无真配对·flat）
+    // → 顶层 baselineOnly=true，UI 标"静态基线·未测得改进"，绝不把 flat 水平线冒充"收敛良好"。
+    const baselineOnly = last?.baselineOnly === true;
     return HttpResponse.json({
       points: pts,
       rounds: pts.length,
       improvedPct: first && last ? Number((first.mapeAfter - last.mapeAfter).toFixed(2)) : 0,
       converging: !last || !first ? true : last.mapeAfter <= first.mapeAfter,
+      ...(baselineOnly ? { baselineOnly: true } : {}),
     });
   }),
   http.post("*/a/v1/calibration/sweep", ({ request }) => {
@@ -1283,8 +1287,10 @@ export const handlers = [
     const round = (prev?.round ?? 0) + 1;
     const mapeBefore = prev ? prev.mapeAfter : 5.26;
     // 对齐真后端：末轮配对仍在库·无新观测 → 再 sweep 值**一致(静止)**，不再伪造逐点下降（reviewer 抓的假曲线已废）。
+    // FILL-E1-CALIB-LIVE·C1 dataMode：无新真实配对 → 本轮 flat 回落静态基线，标 baselineOnly=true（诚实"未测得改进"），
+    // GET /convergence 据末轮 baselineOnly 派生顶层 dataMode → 面板由"收敛良好"如实翻为"静态基线·未测得改进"。
     const mapeAfter = mapeBefore;
-    CALIBRATION_CONVERGENCE.push({ round, at: `2026-07-0${Math.min(round, 9)}T02:00:00Z`, trigger: "手动", mapeBefore, mapeAfter, slicesEvaluated: 12, proposalsCreated: 0, autoApplied: 0, paramsVersion: 3 + round });
+    CALIBRATION_CONVERGENCE.push({ round, at: `2026-07-0${Math.min(round, 9)}T02:00:00Z`, trigger: "手动", mapeBefore, mapeAfter, slicesEvaluated: 12, proposalsCreated: 0, autoApplied: 0, paramsVersion: 3 + round, baselineOnly: true });
     return HttpResponse.json({ paired: 12, deferred: 0, staleDeferred: false, slicesEvaluated: 12, created: 0, autoApplied: 0, held: 0, dropped: 0, insufficient: 0, round });
   }),
   // 批准/回滚不直改参数：生成「校准参数变更」Action 草稿走 §S2 审批流
@@ -2783,10 +2789,20 @@ export const handlers = [
   http.get("*/b/v1/queries", ({ request }) => {
     if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
     const limit = Math.min(200, Math.max(1, Number(new URL(request.url).searchParams.get("limit") ?? "50") || 50));
+    // WO-FAKE-07·F1/F7：对齐真后端契约（qos.ts §ClassificationResult/QueryTask）——
+    // path 用 WORKFLOW/AGENT 枚举（非陈旧 PATH_A）；classification 是完整 ClassificationResult，
+    // 意图键落 candidates[0].intentKey（非顶层扁平），否则前端意图列对真后端整列空白。
+    const cls = (intentKey: string, confidence: number, outOfCatalog = false) => ({
+      candidates: [{ intentKey, confidence }],
+      outOfCatalog,
+      extractedSlots: {},
+      latencyMs: 420,
+      model: "claude-haiku-4-5",
+    });
     const items = [
-      { taskId: "task-hist-1", query: "4680-NCM 加 20% 六周能不能接？", path: "PATH_A", status: "COMPLETED", view: "project-sim", conversationId: "conv-h1", classification: { intentKey: "capacity_feasibility", confidence: 0.94 }, answerSummary: "P50 42.0 万套 · 缺口 1.0；加夜班可补齐", createdAt: "2026-06-15T09:12:00Z", completedAt: "2026-06-15T09:12:08Z" },
-      { taskId: "task-hist-2", query: "常州基地影响哪些订单？", path: "PATH_A", status: "COMPLETED", view: "risk", conversationId: "conv-h2", classification: { intentKey: "affected_orders", confidence: 0.91 }, answerSummary: "8 单受影响 · 营收暴露 27.6 亿", createdAt: "2026-06-15T08:40:00Z", completedAt: "2026-06-15T08:40:05Z" },
-      { taskId: "task-hist-3", query: "现金垫 45 亿过得了体检吗？", path: "PATH_A", status: "COMPLETED", view: "plan-audit", conversationId: "conv-h3", classification: { intentKey: "plan_audit_q", confidence: 0.88 }, answerSummary: "站不住：现金垫 C18 越线，建议补 5 亿", createdAt: "2026-06-14T16:05:00Z", completedAt: "2026-06-14T16:05:06Z" },
+      { taskId: "task-hist-1", query: "4680-NCM 加 20% 六周能不能接？", path: "WORKFLOW", status: "COMPLETED", view: "project-sim", conversationId: "conv-h1", classification: cls("capacity_feasibility", 0.94), answerSummary: "P50 42.0 万套 · 缺口 1.0；加夜班可补齐", createdAt: "2026-06-15T09:12:00Z", completedAt: "2026-06-15T09:12:08Z" },
+      { taskId: "task-hist-2", query: "常州基地影响哪些订单？", path: "WORKFLOW", status: "COMPLETED", view: "risk", conversationId: "conv-h2", classification: cls("affected_orders", 0.91), answerSummary: "8 单受影响 · 营收暴露 27.6 亿", createdAt: "2026-06-15T08:40:00Z", completedAt: "2026-06-15T08:40:05Z" },
+      { taskId: "task-hist-3", query: "现金垫 45 亿过得了体检吗？", path: "AGENT", status: "COMPLETED", view: "plan-audit", conversationId: "conv-h3", classification: cls("plan_audit_q", 0.88, true), answerSummary: "站不住：现金垫 C18 越线，建议补 5 亿", createdAt: "2026-06-14T16:05:00Z", completedAt: "2026-06-14T16:05:06Z" },
     ].slice(0, limit);
     return HttpResponse.json({ items, total: items.length });
   }),
@@ -2794,6 +2810,16 @@ export const handlers = [
   http.get("*/b/v1/queries/:taskId", ({ params }) => {
     const task = db.tasks.get(String(params.taskId));
     if (!task) return err(404, "NOT_FOUND", "任务不存在");
+    // WO-FAKE-06：对齐真后端契约（qos.ts SessionContextSchema 必含 view/selectedObjects/filters）——
+    // MockTask.context 常为部分态（测试便利 {}），此处归一为契约合法 SessionContext，
+    // 令 fetchTask 的运行时 zod 校验（QueryTaskSchema.parse）对真实 mock 亦通过（真后端本就如此下发）。
+    const rawCtx = (task.context ?? {}) as Record<string, unknown>;
+    const context = {
+      ...rawCtx,
+      view: typeof rawCtx.view === "string" ? rawCtx.view : "dash",
+      selectedObjects: Array.isArray(rawCtx.selectedObjects) ? rawCtx.selectedObjects : [],
+      filters: rawCtx.filters && typeof rawCtx.filters === "object" ? rawCtx.filters : {},
+    };
     return HttpResponse.json({
       id: task.id,
       tenantId: TENANT_ID,
@@ -2801,7 +2827,7 @@ export const handlers = [
       packageId: PACKAGE_ID,
       conversationId: "conv-1",
       query: task.query,
-      context: task.context,
+      context,
       status: "COMPLETED",
       path: task.plan.path,
       classification: {

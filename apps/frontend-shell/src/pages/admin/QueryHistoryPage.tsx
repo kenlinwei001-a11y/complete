@@ -62,8 +62,8 @@ export default function QueryHistoryPage() {
               <tr key={it.taskId} data-testid="qh-row">
                 <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{fmt(it.createdAt)}</td>
                 <td style={{ maxWidth: 240 }}>{it.query}</td>
-                <td>{it.path ?? "—"}</td>
-                <td style={{ fontSize: 12 }}>{it.classification?.intentKey ?? "—"}</td>
+                <td data-testid="qh-path">{it.path ?? "—"}</td>
+                <td style={{ fontSize: 12 }} data-testid="qh-intent">{it.classification?.candidates?.[0]?.intentKey ?? "—"}</td>
                 <td>{badge(it.status)}</td>
                 <td style={{ maxWidth: 320, fontSize: 12, color: "var(--muted)" }}>{it.answerSummary || "—"}</td>
                 <td style={{ whiteSpace: "nowrap" }}>

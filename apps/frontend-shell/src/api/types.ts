@@ -134,6 +134,22 @@ export interface ObjectsPage {
   total: number;
 }
 
+/**
+ * WO-FAKE-06：对象查询响应运行时校验 schema（堵根 apiClient `as T` 零校验）。
+ * ObjectsPage 是前端本地 VM（contracts 无对应分页契约），此处为其形状加运行时护栏，
+ * 令 mock↔真后端形状漂移（如 items 缺 type / total 非数）运行即暴露，而非静默 `as T` 吞掉。
+ */
+export const ObjectsPageSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      type: z.string(),
+      props: z.record(z.string(), z.unknown()),
+    }),
+  ),
+  total: z.number(),
+});
+
 // ---- 本体图谱（GET /a/v1/ontology/graph） ----
 
 export interface GraphNodeVM {

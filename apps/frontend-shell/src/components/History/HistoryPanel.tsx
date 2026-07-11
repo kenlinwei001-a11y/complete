@@ -64,7 +64,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                 </div>
                 <div style={{ fontSize: 10.5, color: "var(--muted2)" }}>
                   {fmt(it.createdAt)} · {it.path ?? "—"}
-                  {it.classification?.intentKey ? ` · ${it.classification.intentKey}` : ""}
+                  {it.classification?.candidates?.[0]?.intentKey ? ` · ${it.classification.candidates[0].intentKey}` : ""}
                 </div>
                 {it.answerSummary && <div style={{ fontSize: 11, color: "var(--muted)" }}>{it.answerSummary}</div>}
                 <div style={{ display: "flex", gap: 6, marginTop: 2 }}>

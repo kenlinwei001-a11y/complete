@@ -73,7 +73,27 @@ import type {
   TickReportVM,
   Workspace,
 } from "./types";
-import { WorkspaceSchema } from "./types";
+import { WorkspaceSchema, ObjectsPageSchema } from "./types";
+// WO-FAKE-06：关键端点运行时 zod 校验（复用 contracts 已有 schema·不重定义契约）。
+import { QueryTaskSchema, SimSessionSchema, ClassificationResultSchema } from "@platform/contracts";
+import { z } from "zod";
+
+/**
+ * WO-FAKE-06 · 堵根 apiClient `res.json() as T` 零运行时校验：
+ * 对关键端点响应跑 zod 校验 —— **形状漂移（mock↔真后端）运行即抛错**（不再静默 `as T` 吞掉、测试却绿）。
+ * 关键：校验为**副作用**（漂移即抛），但**返回原始对象**而非 `schema.parse` 的剥离结果——
+ * 因部分前端 VM（如 ProvenanceRef 的 rules/value/formula）是契约 ProvenanceRefSchema 未覆盖的扩展字段，
+ * zod strip 会误删前端消费所需字段。故此处只"验形状不改数据"，既有牙齿又不破坏既有正常解析（C3）。
+ */
+function validatedShape<T>(schema: z.ZodType, raw: unknown): T {
+  const res = schema.safeParse(raw);
+  if (!res.success) {
+    // 告警可见（非静默）：形状漂移即在控制台高亮 + 抛错，令 mock↔真后端漂移运行即暴露。
+    console.error("[apiClient] 响应形状校验失败（契约漂移·堵根 WO-FAKE-06）:", res.error.issues);
+    throw res.error;
+  }
+  return raw as T;
+}
 
 // ---------------- A · DataCore ----------------
 
@@ -108,22 +128,22 @@ export const fetchFeaturePreview = (tenantId: string, role: string) =>
     `/a/v1/tenants/${tenantId}/features/preview?role=${encodeURIComponent(role)}`,
   );
 
-export const searchObjects = (type: string, q: string, extra?: Record<string, string>) => {
+export const searchObjects = async (type: string, q: string, extra?: Record<string, string>): Promise<ObjectsPage> => {
   const params = new URLSearchParams({ type, q, ...extra });
-  return api.a<ObjectsPage>(`/a/v1/objects?${params.toString()}`);
+  return validatedShape<ObjectsPage>(ObjectsPageSchema, await api.a<unknown>(`/a/v1/objects?${params.toString()}`));
 };
 
-export const queryObjectsPaged = (
+export const queryObjectsPaged = async (
   type: string,
   page: number,
   pageSize: number,
   filters: Record<string, string | string[]>,
-) => {
+): Promise<ObjectsPage> => {
   const params = new URLSearchParams({ type, page: String(page), pageSize: String(pageSize) });
   for (const [k, v] of Object.entries(filters)) {
     params.set(`f_${k}`, Array.isArray(v) ? v.join(",") : v);
   }
-  return api.a<ObjectsPage>(`/a/v1/objects?${params.toString()}`);
+  return validatedShape<ObjectsPage>(ObjectsPageSchema, await api.a<unknown>(`/a/v1/objects?${params.toString()}`));
 };
 
 // ---- 治理增量 §3 检索体系（关键词搜索 / 邻接 / 聚合）+ §5 对象 360 ----------
@@ -626,8 +646,8 @@ export const fetchSimViewConfig = () => api.a<SandboxViewConfig>("/a/v1/sim/view
 export const fetchSimPropagationRules = () =>
   api.a<{ items: PropagationRule[] }>("/a/v1/sim/propagation-rules");
 /** 创建会话（init）：baseSnapshot=tick0 世界态（对象→状态变量→数值），scope=范围裁剪。 */
-export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record<string, unknown> }) =>
-  api.a<SimSession>("/a/v1/sim/sessions", { body });
+export const createSimSession = async (body: { baseSnapshot: TickState; scope?: Record<string, unknown> }): Promise<SimSession> =>
+  validatedShape<SimSession>(SimSessionSchema, await api.a<unknown>("/a/v1/sim/sessions", { body }));
 /** 推进 n 个 tick（默认 1）→ 返回 curTick + 新世界态（+trace 若有传导规则）。 */
 export const simTick = (sessionId: string, n = 1) =>
   api.a<{ curTick: number; state: TickState; trace?: unknown[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`, { body: { n } });
@@ -845,29 +865,54 @@ export const retireScenario = (key: string) =>
 export const growScenario = (key: string) =>
   api.b<import("@platform/contracts").ScenarioOntogenesisRun>(`/b/v1/scenarios/${encodeURIComponent(key)}/grow`, { method: "POST", body: {} });
 
-export const submitQuery = (body: { packageId: string; query: string; context: SessionContext }, idempotencyKey: string) =>
-  api.b<{ taskId: string; status: string; streamUrl: string }>("/b/v1/queries", {
-    body,
-    headers: { "Idempotency-Key": idempotencyKey },
-  });
+// WO-FAKE-06：QOS 主链 submit 响应运行时校验（堵根 `as T`）。
+const SubmitQueryResponseSchema = z.object({
+  taskId: z.string(),
+  status: z.string(),
+  streamUrl: z.string(),
+});
+export const submitQuery = async (
+  body: { packageId: string; query: string; context: SessionContext },
+  idempotencyKey: string,
+): Promise<{ taskId: string; status: string; streamUrl: string }> =>
+  validatedShape<{ taskId: string; status: string; streamUrl: string }>(
+    SubmitQueryResponseSchema,
+    await api.b<unknown>("/b/v1/queries", {
+      body,
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
+  );
 
-export const fetchTask = (taskId: string) => api.b<QueryTask>(`/b/v1/queries/${taskId}`);
+// WO-FAKE-06：任务详情运行时校验（复用 contracts QueryTaskSchema·不重定义契约）。
+export const fetchTask = async (taskId: string): Promise<QueryTask> =>
+  validatedShape<QueryTask>(QueryTaskSchema, await api.b<unknown>(`/b/v1/queries/${taskId}`));
 
-/** Phase9C 推演历史列表（按租户最近任务）。 */
-export interface QueryHistoryItem {
-  taskId: string;
-  query: string;
-  path: string | null;
-  status: string;
-  view: string | null;
-  conversationId: string;
-  classification: { intentKey?: string; confidence?: number } | null;
-  answerSummary: string;
-  createdAt: string;
-  completedAt: string | null;
-}
-export const fetchQueryHistory = (limit = 100) =>
-  api.b<{ items: QueryHistoryItem[]; total: number }>(`/b/v1/queries?limit=${limit}`);
+/**
+ * Phase9C 推演历史列表（按租户最近任务）。
+ * WO-FAKE-07·F1：classification 对齐真后端契约 —— 后端 GET /api/v1/queries 直下发完整
+ * ClassificationResult（`classification: t.classification ?? null`），意图键在 `candidates[0].intentKey`
+ * 而非顶层。此前前端把 classification 当扁平 `{intentKey}` 读 → 对真后端整列空白。改用契约 schema。
+ * WO-FAKE-06：整个响应加运行时 zod 校验，令 mock↔真后端形状漂移运行即暴露（不再 `as T` 静默）。
+ */
+export const QueryHistoryItemSchema = z.object({
+  taskId: z.string(),
+  query: z.string(),
+  path: z.enum(["WORKFLOW", "AGENT"]).nullable(),
+  status: z.string(),
+  view: z.string().nullable(),
+  conversationId: z.string(),
+  classification: ClassificationResultSchema.nullable(),
+  answerSummary: z.string(),
+  createdAt: z.string(),
+  completedAt: z.string().nullable(),
+});
+export type QueryHistoryItem = z.infer<typeof QueryHistoryItemSchema>;
+export const QueryHistoryResponseSchema = z.object({
+  items: z.array(QueryHistoryItemSchema),
+  total: z.number(),
+});
+export const fetchQueryHistory = async (limit = 100): Promise<{ items: QueryHistoryItem[]; total: number }> =>
+  validatedShape<{ items: QueryHistoryItem[]; total: number }>(QueryHistoryResponseSchema, await api.b<unknown>(`/b/v1/queries?limit=${limit}`));
 export const replyClarification = (
   taskId: string,
   body: { kind: "INTENT_CHOICE" | "SLOT_FILLING"; chosenIntentKey?: string; slotValues?: Record<string, unknown>; none?: true },
