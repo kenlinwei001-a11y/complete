@@ -3728,7 +3728,27 @@
         "acceptance": "Q6『保交付/毛利/信用三选二怎么排杠杆组合?』经 QueryDock NL→QOS 真跑，答出真调各子求解器的组合方案（非魔数·非借名）",
         "fillWO": "WO-7+ (NL路由 + countermeasure 真编排)"
       },
-      "reviewNote": "PASS 独立对抗真跑真NL查询(agent aa299988·两大前科治本):①countermeasure真调4子求解器(cert_schedule/changeover/outsourcing/capex)逐值对照 certSchedule Sigma-unlock=107.33===combo release(旧魔数gap*0.3=43.2排除)·魔数系数gap*{0.3,0.15,0.1,0.2,0.5}全清仅注释残留;②10求解器NL路由真命中 S26-S42指向·7条端到端COMPLETED(cash/labor/full_cost/reroute/energy/multi_constraint/countermeasure_combo)·3条高置信AWAITING_CLARIFICATION非路由失败·countermeasure_combo_q闭环铁证·10求解器全in REGISTRY(58键solver-coverage零幽灵);③发育层7workflow/2agent/5skill/42卡真入目录·agent真接线ruleBindings[C34,C35,C13,C24]·发育管道42/42 GOVERNED真验证派生非手装(定义seed作者化但maturity真挣·无幽灵);④门全RC0(no-fake-done/genuine-sim/solver-coverage/scenario-ontogenesis/build/test零失败)。诚实边界:SEED_DEMO合成态诚实标·重度改写自由问句mock-LLM落FAILED(环境约束非缺陷)·未逐条跑全30问(抽验~10求解器+4卡grow+门42/42)。"
+      "reviewNote": "PASS 独立对抗真跑真NL查询(agent aa299988·两大前科治本):①countermeasure真调4子求解器(cert_schedule/changeover/outsourcing/capex)逐值对照 certSchedule Sigma-unlock=107.33===combo release(旧魔数gap*0.3=43.2排除)·魔数系数gap*{0.3,0.15,0.1,0.2,0.5}全清仅注释残留;②10求解器NL路由真命中 S26-S42指向·7条端到端COMPLETED(cash/labor/full_cost/reroute/energy/multi_constraint/countermeasure_combo)·3条高置信AWAITING_CLARIFICATION非路由失败·countermeasure_combo_q闭环铁证·10求解器全in REGISTRY(58键solver-coverage零幽灵);③发育层7workflow/2agent/5skill/42卡真入目录·agent真接线ruleBindings[C34,C35,C13,C24]·发育管道42/42 GOVERNED真验证派生非手装(定义seed作者化但maturity真挣·无幽灵);④门全RC0(no-fake-done/genuine-sim/solver-coverage/scenario-ontogenesis/build/test零失败)。诚实边界:SEED_DEMO合成态诚实标·重度改写自由问句mock-LLM落FAILED(环境约束非缺陷)·未逐条跑全30问(抽验~10求解器+4卡grow+门42/42)。",
+      "acceptance": {
+        "goal": "QUERY30 缺口③ epic P0–P5 全交付：横铺 10 求解器 + 跨求解器编排层 + 42 场景卡(全 grow→GOVERNED/VERIFIED·闭 G-9)·全真跑逐值对照·独立完整 pnpm gates EXIT=0。",
+        "criteria": [
+          {
+            "id": "C-solvers-p2p3",
+            "type": "真跑",
+            "assert": "横铺 A/B 求解器真跑逐值对照后端直 invoke：POST /a/v1/solvers/capex_alternatives/invoke · /a/v1/solvers/full_cost_rollup/invoke · /a/v1/solvers/signal_propagation/invoke · /a/v1/solvers/cash_projection/invoke · /a/v1/solvers/labor_balance/invoke · /a/v1/solvers/energy_cost_schedule/invoke · /a/v1/solvers/reroute_decision/invoke · /a/v1/solvers/multi_constraint_schedule/invoke 均返 dataMode 且值随真输入变（证据 docs/evidence/QUERY30-P2-solvers-fde.md / QUERY30-P3-solvers-fde.md）。"
+          },
+          {
+            "id": "C-p1-p4",
+            "type": "真跑",
+            "assert": "Q01 样板 + 编排层真跑：POST /a/v1/solvers/what_if_displacement/invoke · /a/v1/solvers/multi_plan_compare/invoke · /a/v1/solvers/countermeasure_combo/invoke（编排真调 4 子求解器建真 gap 释放账本·治诈账根·证据 QUERY30-Q01-P1-multi-plan-fde.md / QUERY30-P4-orchestration-fde.md）。"
+          },
+          {
+            "id": "C-gates",
+            "type": "gate",
+            "assert": "完整 pnpm gates EXIT=0：scenario-ontogenesis-runtime 42/42 GOVERNED · solver-coverage 58 求解器零幽灵 · datadep-manifest 58 全覆盖 · 独立复核 2353 测试全绿。"
+          }
+        ]
+      }
     },
     {
       "id": "SANDBOX-RENAME-BASECARDS",
@@ -5981,9 +6001,12 @@
       "reviewNote": "PASS 独立对抗真跑(agent a07334·真浏览器+真curl+敏感性+回退):OEE/良率去合成。设备OEE张力=[84,76,86,93,81,95,86,74,75,81,85,79]10个不同值非扁平(源Equipment.oee_current各异)·良率=[69,53,68,68,75,50,64,51,46,60,61,50]非扁平(源Process.yield_baseline)·两者dataMode=SYNTHETIC不再冒充LIVE。此前OEE 5-6基地≥85驱动7/12恒红·现全标SYNTHETIC排除决策级染红。两手(逐基地分化+诚实SYNTHETIC)都做到。母体§8 G-SIM-FAKE回写佐证AUTO决策红7→0。三门RC0·solvers19(211-314放开钉死后仍绿)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-11T06:00:30.558Z",
+        "built": "2026-07-11T06:19:17.953Z"
+      },
       "id": "WO-FAKE-05",
       "priority": "P0",
       "deps": [],
@@ -6010,7 +6033,8 @@
         ],
         "discipline": "堵根=所有同类假推演被门自动逮防复发·additive。"
       },
-      "note": "审核方交还dev建（分权：reviewer只复验不下场·避免自建自审）。堵根门·假推演铁律最高优先，dev优先接此单。"
+      "note": "审核方交还dev建（分权：reviewer只复验不下场·避免自建自审）。堵根门·假推演铁律最高优先，dev优先接此单。",
+      "blockReason": ""
     },
     {
       "status": "DONE",
@@ -6962,10 +6986,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "QUERY30-ORCH",
-      "at": "2026-07-11T05:43:41.134Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-FAKE-05",
+      "at": "2026-07-11T06:19:17.953Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
