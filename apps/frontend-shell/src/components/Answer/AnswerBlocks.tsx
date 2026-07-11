@@ -47,7 +47,7 @@ export function AnswerBlockView({
       return <GapCard report={block.report} scenario={block.scenario} onRetry={onRetry} />;
     case "sandbox_render":
       // WO-SANDBOX-AS-RENDER-TARGET（S1）：时序推演意图 → 答案先行横幅 + 「打开推演沙盘」（scenarioPreset 通道进沙盘）。
-      return <SandboxRenderBlock request={block.request} headline={block.headline} />;
+      return <SandboxRenderBlock request={block.request} headline={block.headline} followUp={block.followUp} />;
     default:
       return null;
   }
@@ -192,13 +192,14 @@ export function RuleViolationBlock({
  * SandboxView（渲染器）经 useScenarioPreset("sim-sandbox") 读取并按对象裁剪世界起跑推演（source=dialogue）。
  * headline=答案先行摘要（客户端逐 tick 补状态级结论）。
  */
-export function SandboxRenderBlock({ request, headline }: { request: SimulationRequest; headline: string }) {
+export function SandboxRenderBlock({ request, headline, followUp }: { request: SimulationRequest; headline: string; followUp?: boolean }) {
   const navigate = useNavigate();
   const setScenarioPreset = useSessionStore((s) => s.setScenarioPreset);
   const shock = request.scenario.find((a) => a.kind === "shock");
   const subject = request.scope.objectIds[0];
   const open = () => {
     // SimulationRequest 关键槽 → slotPresets（供 useScenarioPreset 读初值）；simRequest 全量随行（下游按需消费）。
+    // §5.3：followUp（多轮追问）随行 → 沙盘 auto-触发 simBranch（A/B 对比·S1 只接通机制）。
     setScenarioPreset({
       targetView: "sim-sandbox",
       slotPresets: {
@@ -207,6 +208,7 @@ export function SandboxRenderBlock({ request, headline }: { request: SimulationR
         horizonTicks: request.horizonTicks,
         source: request.source,
         ...(shock && shock.kind === "shock" ? { stateVar: shock.target.stateVar, delta: shock.delta } : {}),
+        ...(followUp ? { followUp: true } : {}),
         simRequest: request,
       },
       label: headline,
@@ -222,7 +224,7 @@ export function SandboxRenderBlock({ request, headline }: { request: SimulationR
       </div>
       <p style={{ margin: "6px 0", lineHeight: 1.6 }}>{headline}</p>
       <button type="button" className={styles.draftLink} onClick={open} data-testid="sandbox-render-open">
-        打开推演沙盘 →
+        {followUp ? "分支对比推演 →" : "打开推演沙盘 →"}
       </button>
     </div>
   );

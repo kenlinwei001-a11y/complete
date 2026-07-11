@@ -73,4 +73,34 @@ describe("sandbox_render 答案块 · 答案先行 + 打开沙盘（scenarioPres
     expect((preset!.slotPresets.simRequest as SimulationRequest).horizonTicks).toBe(21);
     expect(navigateMock).toHaveBeenCalledWith("/v/sim-sandbox");
   });
+
+  it("§5.3 followUp 追问块 → 按钮变「分支对比推演」+ preset 携 followUp（沙盘据此 auto-分支）", async () => {
+    render(
+      <MemoryRouter>
+        <AnswerBlockView
+          block={{ type: "sandbox_render", request: req, headline: "那外协呢？分支对比", followUp: true }}
+          taskId="t2"
+          provIndex={() => 0}
+        />
+      </MemoryRouter>,
+    );
+    const btn = screen.getByTestId("sandbox-render-open");
+    expect(btn.textContent).toContain("分支对比推演");
+    await userEvent.click(btn);
+    const preset = useSessionStore.getState().scenarioPreset;
+    expect(preset!.slotPresets.followUp).toBe(true);
+  });
+});
+
+describe("§5.4 mapSimSource · 五触发归一到 canonical source（R14 无业务常数）", () => {
+  it("dialogue/场景卡/what-if按钮/风险告警/工作台 各归一到 canonical 五源", async () => {
+    const { mapSimSource } = await import("@/views/sim/SandboxView");
+    expect(mapSimSource("dialogue", true)).toBe("dialogue");
+    expect(mapSimSource("scenario-launcher", true)).toBe("scenario");
+    expect(mapSimSource("ledger", false)).toBe("whatif"); // 决策视图 what-if 按钮
+    expect(mapSimSource("project-sim", false)).toBe("whatif");
+    expect(mapSimSource("risk-board", false)).toBe("alert"); // 风险看板/告警触发
+    expect(mapSimSource(undefined, false)).toBe("workspace"); // 沙盘内直接操作
+    expect(mapSimSource(undefined, true)).toBe("scenario"); // 场景卡 preset 无显式 source
+  });
 });

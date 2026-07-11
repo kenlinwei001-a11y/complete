@@ -312,6 +312,12 @@ export const AnswerBlockSchema = z.discriminatedUnion("type", [
     request: SimulationRequestSchema,
     /** 答案先行横幅（人话摘要·如"常州二线停3周·推演进行中，逐 tick 出交付缺口"）。 */
     headline: z.string(),
+    /**
+     * §5.3 多轮追问→分支（additive）：本轮是同会话前序时序推演的**追问**（如"那外协呢?"）→ true。
+     * 前端沙盘据此 auto-触发 simBranch（checkpoint→分支→A/B 对比）——S1 只接通机制（能分、能对比，A/B 此刻相同）；
+     * 往 B 注入不同应对（外协/加班改传导系数）+ 对比维换决策维=S3 的活（deps S1·本单不做）。
+     */
+    followUp: z.boolean().optional(),
   }),
 ]);
 export type AnswerBlock = z.infer<typeof AnswerBlockSchema>;

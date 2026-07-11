@@ -53,6 +53,20 @@ import styles from "./SimViews.module.css";
  * 铁律 0.4 红线：**绝不 hash(oid) 造伪初态**。某对象/变量后端无真值 → 诚实退 0（静止），不合成/不哈希冒充。
  * 空世界（该类型无对象）退 `${type}#0` 占位键（全 0，无传导，页面仍可跑）——诚实空态，非造数。
  */
+/**
+ * WO-SANDBOX-AS-RENDER-TARGET（S1·§5.4 五触发归一）：任意触发的原始 source → canonical SimulationRequest.source
+ * 五枚举（dialogue/scenario/whatif/alert/workspace·R14 无业务常数）。决策视图 what-if 按钮的 WhatIfPreset.source
+ * （risk-board=风险告警触发 / ledger·project-sim=决策 what-if）在此归一 → 全触发落同一 source 域，可溯（R13）。
+ */
+export function mapSimSource(raw: string | undefined, fromPreset: boolean): "dialogue" | "scenario" | "whatif" | "alert" | "workspace" {
+  const s = (raw ?? "").toLowerCase();
+  if (s === "dialogue") return "dialogue";
+  if (s === "scenario" || s.includes("launch") || s.includes("scenario")) return "scenario";
+  if (s === "alert" || s.includes("risk")) return "alert"; // 风险看板/告警触发
+  if (s === "whatif" || s === "ledger" || s.includes("project") || s.includes("sim")) return "whatif";
+  return fromPreset ? "scenario" : "workspace"; // 场景卡 preset 无显式 source → scenario；沙盘内直接操作 → workspace
+}
+
 export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
   const state: TickState = {};
   const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
@@ -778,15 +792,35 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       ...(weeks !== undefined ? { weeks: Math.max(1, Math.round(weeks / 7)) } : {}),
     };
   }, [urlWhatIf, simPreset]);
-  // WO-SANDBOX-AS-RENDER-TARGET（S1）：对话触发携带的完整 SimulationRequest（含 shock 情景 + horizonTicks）——
-  // 经 zod 校验（拒绝畸形 preset·不信脏值）。有效时 init 把 shock 烘进 tick0 + 下方 effect auto-推进 horizon tick
-  // → 让"问句→冲击注入→逐 tick 状态级结论"真跑通（非仅裁剪到对象的静止页）。URL what-if 通道无此载荷 → null（旧行为不变）。
+  // WO-SANDBOX-AS-RENDER-TARGET（S1·§5.4 五触发归一）：**任何触发源**（对话/what-if 按钮/场景卡/告警/工作台）
+  // 都归一为同一 SimulationRequest（同一管线、同一渲染·source 字段可溯 R13）。
+  //  · 对话触发（源已携完整 shock 载荷）→ 解析 simPreset.slots.simRequest（zod 校验·拒脏值）；
+  //  · URL what-if / 场景卡（scope-only·无 shock）→ 由 whatIf 归一构造 SimulationRequest（scenario=[]·纯当前态·
+  //    source 经 mapSimSource 归一到 canonical 五源）——**不 auto-run shock**（scenario 空 → 保裁剪静止·RL9 旧行为不变）。
+  // 净效果：五触发落同一 SimulationRequest；shock 携带者 auto-推演，scope-only 者裁剪静止；source 全程可溯。
   const simRequest = useMemo<SimulationRequest | null>(() => {
     const raw = simPreset?.slots?.simRequest;
-    if (!raw || typeof raw !== "object") return null;
-    const parsed = SimulationRequestSchema.safeParse(raw);
+    if (raw && typeof raw === "object") {
+      const parsed = SimulationRequestSchema.safeParse(raw);
+      if (parsed.success) return parsed.data; // 对话/告警等携完整 shock 载荷
+    }
+    if (!whatIf) return null;
+    // scope-only 触发（what-if 按钮/场景卡）→ 归一构造（无 shock·纯当前态演化）。
+    const baseId = resolveBaseId(whatIf.subject);
+    const built = {
+      targetView: "sim-sandbox" as const,
+      scope: { objectType: "Base", objectIds: baseId ? [baseId] : [] },
+      scenario: [],
+      horizonTicks: whatIf.weeks && whatIf.weeks > 0 ? Math.round(whatIf.weeks * 7) : 14,
+      compareBaseline: false,
+      slotPresets: {},
+      source: mapSimSource(whatIf.source, !!simPreset),
+    };
+    const parsed = SimulationRequestSchema.safeParse(built);
     return parsed.success ? parsed.data : null;
-  }, [simPreset]);
+  }, [simPreset, whatIf]);
+  // 归一 canonical source（R13 可溯·上下文条显示）——五触发落同一枚举。
+  const unifiedSource = simRequest?.source ?? "workspace";
   const cfgQuery = useQuery({
     queryKey: ["a", "sim", "view-config"],
     queryFn: fetchSimViewConfig,
@@ -827,6 +861,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   // 下方 effect 在会话就绪后消费一次（ranNonceRef 保证每 preset 只 auto-跑一次·手动 tick/切换后不复跑）。
   const pendingAutoRunRef = useRef<{ n: number; nonce: string } | null>(null);
   const ranNonceRef = useRef<string | null>(null);
+  // §5.3 多轮追问→分支：followUp preset 会话就绪（且 auto-run 消费完）后 auto-触发 simBranch（每 preset 一次·nonce 去重）。
+  const branchedNonceRef = useRef<string | null>(null);
 
   // SANDBOX-DAG-NODE-LAYOUT：DAG 视图模式（full=分层/网格全展开·aggregate=超密聚合缩略）。默认全展开（网格已可读）。
   const [dagMode, setDagMode] = useState<"full" | "aggregate">("full");
@@ -873,9 +909,11 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
         ? { presetContext: whatIf as unknown as Record<string, unknown>, ...(didCrop ? { baseId: whatIfBaseId } : {}) }
         : {};
       const s = await createSimSession({ baseSnapshot: base, scope });
-      // S1：对话触发的 SimulationRequest → 记 auto-推进 horizonTicks（下方 effect 消费·nonce 保证每 preset 只跑一次），
-      // 让传导真跑出"逐 tick 状态级结论"（答案先行·非仅裁剪静止页）。
-      if (simRequest && simPreset && simRequest.horizonTicks > 0) {
+      // S1：**仅携 shock 的** SimulationRequest → 记 auto-推进 horizonTicks（下方 effect 消费·nonce 保证每 preset 只跑一次），
+      // 让传导真跑出"逐 tick 状态级结论"（答案先行）。§5.4：scope-only 触发（what-if 按钮/场景卡·scenario=[]）**不 auto-run**
+      // → 开箱裁剪静止（RL9 旧行为零变化）；只有 shock 携带者（对话/告警冲击）才自动推演。
+      const hasShock = simRequest?.scenario.some((a) => a.kind === "shock") ?? false;
+      if (simRequest && simPreset && hasShock && simRequest.horizonTicks > 0) {
         pendingAutoRunRef.current = { n: simRequest.horizonTicks, nonce: simPreset.nonce };
       }
       setSessionId(s.id);
@@ -1022,6 +1060,19 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
     void runTicks(pending.n);
   }, [sessionId, ticking, runTicks]);
 
+  // §5.3 多轮追问→分支布线：followUp preset（同会话前序推演的追问·如"那外协呢?"）→ 会话就绪且 auto-推进消费完后
+  // auto-触发 onBranch（checkpoint→simBranch→A/B 对比）。**S1 只接通机制**：A/B 此刻相同（能分、能对比即达标）；
+  // 往 B 注入不同应对 + 对比维换决策维 = S3。每 preset 一次（nonce 去重·手动分支不受影响）。
+  useEffect(() => {
+    const followUp = simPreset?.slots?.followUp === true;
+    if (!followUp || !sessionId || branching) return;
+    if (pendingAutoRunRef.current || ticking) return; // 有 auto-推进 → 等它跑完再分支（对比含推演路径）
+    const nonce = simPreset!.nonce;
+    if (branchedNonceRef.current === nonce) return;
+    branchedNonceRef.current = nonce;
+    void onBranch();
+  }, [simPreset, sessionId, branching, ticking, onBranch]);
+
   // AI 指挥台分发：NL → 确定性意图 → 映射**现有沙盘动作**（tick/checkpoint/branch/query），不新建并行动作。
   const onIntent = useCallback(
     async (raw: string) => {
@@ -1107,7 +1158,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginTop: 8, borderLeft: "3px solid #43B7D7" }}
         >
           <span className="badge blue" data-testid="sandbox-whatif-badge">what-if</span>
-          <span className={styles.sub} data-testid="sandbox-whatif-source">来自决策入口：{whatIf.source}</span>
+          {/* §5.4 五触发归一：canonical source（dialogue/scenario/whatif/alert/workspace）——全触发落同一域·可溯 R13。 */}
+          <span className={styles.sub} data-testid="sandbox-whatif-source" data-sim-source={unifiedSource}>触发源：{unifiedSource}（原始 {whatIf.source}）</span>
           {whatIf.label && <b data-testid="sandbox-whatif-label">{whatIf.label}</b>}
           {whatIf.subject && <span className="badge" data-testid="sandbox-whatif-subject">{whatIf.subject}</span>}
           {whatIf.factor && <span className="badge" data-testid="sandbox-whatif-factor">{whatIf.factor}</span>}

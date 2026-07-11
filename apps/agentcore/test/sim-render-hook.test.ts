@@ -73,6 +73,26 @@ describe("orchestrator 沙盘渲染钩子 · 五触发归一（对话侧·真跑
     expect(txt?.type === "text" && /时序接地|建设中|S6/.test(txt.markdown)).toBe(true);
   });
 
+  it("§5.3 多轮追问→分支布线：同会话前序有 sandbox_render → 后续 sim 追问块标 followUp（前端据此 auto-分支）", async () => {
+    // 第 1 轮：shock 推演（产 sandbox_render）。
+    t.llm.queueClassification({ candidates: [{ intentKey: "sim.shock_whatif", confidence: 0.95 }], outOfCatalog: false, extractedSlots: { stateVar: "load", delta: 20, weeks: 3 } });
+    const first = await submitQuery(t, PLANNER, "常州二线停3周，交付缺口多大？", { view: "risk", selectedObjects: [{ objectType: "Base", objectId: "常州二线" }] });
+    const t1 = await waitForTask(t, first.taskId);
+    expect(blocksOf(t1).some((b) => b.type === "sandbox_render")).toBe(true);
+    const conversationId = t1.conversationId;
+    // 第 1 轮块无 followUp（首轮非追问）。
+    const sr1 = blocksOf(t1).find((b) => b.type === "sandbox_render");
+    expect(sr1?.type === "sandbox_render" && sr1.followUp).toBeFalsy();
+
+    // 第 2 轮：同 conversationId 追问 → 应标 followUp。
+    t.llm.queueClassification({ candidates: [{ intentKey: "sim.shock_whatif", confidence: 0.95 }], outOfCatalog: false, extractedSlots: { stateVar: "load", delta: 30, weeks: 3 } });
+    const second = await submitQuery(t, PLANNER, "那外协呢？", { view: "risk", selectedObjects: [{ objectType: "Base", objectId: "常州二线" }], conversationId });
+    const t2 = await waitForTask(t, second.taskId);
+    const sr2 = blocksOf(t2).find((b) => b.type === "sandbox_render");
+    expect(sr2, "追问轮应仍产 sandbox_render").toBeTruthy();
+    expect(sr2?.type === "sandbox_render" && sr2.followUp).toBe(true); // 多轮→分支布线标记
+  });
+
   it("回退演练：feature sim.sandbox_render 关 → 回落既有 Path A（无 sandbox_render·旧路径未删 RL9）", async () => {
     t.deps.features.mock.disable(TENANT, "sim.sandbox_render");
     t.llm.queueClassification({

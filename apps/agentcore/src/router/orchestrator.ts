@@ -1955,11 +1955,27 @@ export class Orchestrator {
       return true;
     }
 
+    // §5.3 多轮追问→分支布线：本轮是同会话前序时序推演的追问（如"那外协呢?"）→ 标 followUp，
+    // 前端沙盘据此 auto-触发 simBranch（A/B 对比·S1 只接通机制·A/B 此刻相同·注入不同应对=S3）。诚实：检测失败不阻断（默认非追问）。
+    const followUp = await this.isSandboxFollowUp(task);
     await this.completeSandboxAnswer(task, [
       { type: "text", markdown: assembled.block.headline },
-      assembled.block,
+      { ...assembled.block, ...(followUp ? { followUp: true } : {}) },
     ]);
     return true;
+  }
+
+  /**
+   * §5.3：本轮时序推演是否同会话前序推演的**追问**——同 conversationId 的前序任务里有产过 sandbox_render 答案块
+   * 即判 true（多轮"那外协呢?"承接）。纯读·tenant 隔离（previousConversationTasks 已带谓词）·检测异常默认 false（不阻断）。
+   */
+  private async isSandboxFollowUp(task: QueryTask): Promise<boolean> {
+    try {
+      const prior = await this.previousConversationTasks(task);
+      return prior.some((t) => (t.answer?.blocks ?? []).some((b) => (b as { type?: string }).type === "sandbox_render"));
+    } catch {
+      return false;
+    }
   }
 
   /** 终态组装（沙盘渲染/诚实短路共用·不重造 answer 组装）：patch COMPLETED + answer + answer.final 事件 + 计数。 */
