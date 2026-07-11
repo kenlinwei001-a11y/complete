@@ -17,6 +17,7 @@ import { GuardedToolExecutor } from "./tools/executor.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
+import { liftStepsToDagGraph, runWorkflowDag, type DagGraphInput } from "./workflow/dag-executor.js";
 
 export interface EngineDeps {
   repos: Repos;
@@ -392,42 +393,61 @@ export class ExecutionEngine {
     onResolvedRef?: (ref: ResolvedRef) => void;
     /** SKILL-LIBRARY-EVERYWHERE §3：绑定的方法论 skill 引用（plan/workflow.skillRefs）——确定性消费于结论叙事。 */
     skillRefs?: { skillId: string; version: number | "latest" }[];
+    /**
+     * L1-B WO-L1B-2（§2.1 执行器派发接缝·暗发）：显式 DAG 结构（gateways/多前驱）。
+     * 有则 DAG 执行器直接跑该图；无则在 QOS_WORKFLOW_DAG=1 时由 steps 线性 lift 出链图（parity 路径）。
+     * 综合图产出归 WO-L1B-4/5（规划器）；本 WO 提供派发接线，缺省 OFF 永走旧串行。
+     */
+    graph?: DagGraphInput;
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
     const skills = await this.resolveSkillRefs(opts.ctx.tenantId, opts.skillRefs);
-    return runWorkflow(
-      {
-        executor,
-        llm: this.deps.llm,
-        metrics: this.deps.metrics,
-        composeModel: await this.deps.llmSettings.roleModel(opts.ctx.tenantId, "compose"),
-        emit: opts.emit,
-        onResolvedRef: opts.onResolvedRef,
-        crossValidate: (req) => this.deps.dataCore.ontology.crossValidate(opts.ctx, req),
-        runAgentStep: async (params) => {
-          const r = await this.runRegisteredAgent({
-            taskId: opts.taskId,
-            agentId: params.agentId,
-            version: params.version,
-            prompt: params.prompt,
-            ctx: opts.ctx,
-            nesting: params.nesting,
-            emit: opts.emit,
-            expectsSchema: params.expectsSchema,
-            onResolvedRef: opts.onResolvedRef,
-          });
-          return { structured: r.structured, answer: r.answer };
-        },
+    const deps = {
+      executor,
+      llm: this.deps.llm,
+      metrics: this.deps.metrics,
+      composeModel: await this.deps.llmSettings.roleModel(opts.ctx.tenantId, "compose"),
+      emit: opts.emit,
+      onResolvedRef: opts.onResolvedRef,
+      crossValidate: (req: Parameters<typeof this.deps.dataCore.ontology.crossValidate>[1]) => this.deps.dataCore.ontology.crossValidate(opts.ctx, req),
+      runAgentStep: async (params: { agentId: string; version: number | "latest"; prompt: string; expectsSchema?: Record<string, unknown>; nesting: NestingCtx }) => {
+        const r = await this.runRegisteredAgent({
+          taskId: opts.taskId,
+          agentId: params.agentId,
+          version: params.version,
+          prompt: params.prompt,
+          ctx: opts.ctx,
+          nesting: params.nesting,
+          emit: opts.emit,
+          expectsSchema: params.expectsSchema,
+          onResolvedRef: opts.onResolvedRef,
+        });
+        return { structured: r.structured, answer: r.answer };
       },
-      {
-        steps: opts.steps,
+    };
+    // §2.1 执行器派发（additive·env 暗发）：QOS_WORKFLOW_DAG=1 且（有显式图 或 由 steps 线性 lift）
+    // → 走 DAG 执行器（拓扑并行 + Gateway + 重试）；缺省 OFF 永走旧串行 runWorkflow（逐字节等价·可证回退）。
+    const useDag = this.deps.config.QOS_WORKFLOW_DAG === "1";
+    if (useDag) {
+      const graph = opts.graph ?? liftStepsToDagGraph(opts.steps);
+      return runWorkflowDag(deps, {
+        graph,
         slots: opts.slots,
         context: opts.context,
         nesting: opts.nesting,
         trustLevel: opts.trustLevel,
         tenantId: opts.ctx.tenantId,
         skills,
-      },
-    );
+      });
+    }
+    return runWorkflow(deps, {
+      steps: opts.steps,
+      slots: opts.slots,
+      context: opts.context,
+      nesting: opts.nesting,
+      trustLevel: opts.trustLevel,
+      tenantId: opts.ctx.tenantId,
+      skills,
+    });
   }
 }

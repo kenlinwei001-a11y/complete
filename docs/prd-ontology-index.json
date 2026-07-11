@@ -192,10 +192,7 @@
         "scripts/check-workflow-dag.mjs"
       ],
       "brokenArtifacts": [
-        "apps/agentcore/src/growth/execution-planner.ts",
-        "apps/agentcore/src/workflow/dag-executor.ts",
-        "packages/contracts/src/execution-graph.ts",
-        "scripts/check-workflow-dag.mjs"
+        "apps/agentcore/src/growth/execution-planner.ts"
       ]
     },
     "PRD-L2-decision-kernel.md": {

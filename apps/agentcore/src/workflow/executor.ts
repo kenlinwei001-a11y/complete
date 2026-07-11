@@ -1,4 +1,4 @@
-import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, OnError, PlanStep, ProvenanceRef, RenderBinding, ResolvedRef, RuleVerdict, SkillDefinition, ValidationTrace } from "@platform/contracts";
+import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, OnError, PlanStep, ProvenanceRef, RenderBinding, ResolvedRef, RetryPolicy, RuleVerdict, SkillDefinition, ValidationTrace } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
@@ -84,247 +84,369 @@ interface StepAudit {
   solverKey?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 共享执行核（WO-L1B-2·串行 runWorkflow 与 DAG runWorkflowDag 逐字节等价的基石）
+// ─ executeStep：单步执行体（模板解析 + 工具派发 + render + 规则拦截 + 重试），产
+//   出 { outcome, effects }；不直接改共享态，副作用经 effects 由驱动方按确定序合并。
+// ─ mergeStepEffects：把一个步的 effects 合入共享 WorkflowState（串行=立即合·DAG=波
+//   次按 nodeId 稳定序合 → stepOutputs 键序与并行交错时序无关·R6）。
+// ─ finalizeAnswer / finalizeFailed：终态组装（方法论块 + 验证痕迹），两执行器共用
+//   → 纯线性图经 DAG 执行器与旧串行逐字节等价（§7 V6 parity）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 工作流累积态（推演验证痕迹 + 步产出/审计）——两执行器共用，确定性合并。 */
+export interface WorkflowState {
+  stepOutputs: Record<string, unknown>;
+  stepAudits: Record<string, StepAudit>;
+  slicesUsed: string[];
+  sliceObjects: { objectType: string; objectId: string; props: Record<string, unknown> }[];
+  allVerdicts: RuleVerdict[];
+  resolvedRefsSeen: ResolvedRef[];
+}
+
+export function initWorkflowState(): WorkflowState {
+  return { stepOutputs: {}, stepAudits: {}, slicesUsed: [], sliceObjects: [], allVerdicts: [], resolvedRefsSeen: [] };
+}
+
+/** 单步副作用（延迟合并·确定性）——串行立即合、DAG 波次按序合，故与并行交错时序无关。 */
+interface StepRunEffects {
+  setOutput: boolean;
+  output: unknown;
+  audit?: StepAudit;
+  slicesUsed: string[];
+  sliceObjects: { objectType: string; objectId: string; props: Record<string, unknown> }[];
+  verdicts: RuleVerdict[];
+  resolvedRefs: ResolvedRef[];
+  /** 步级重试实际尝试次数（≥1·WorkflowDagNodeState.attempts 用·串行恒 1）。 */
+  attempts: number;
+}
+function newEffects(): StepRunEffects {
+  return { setOutput: false, output: undefined, slicesUsed: [], sliceObjects: [], verdicts: [], resolvedRefs: [], attempts: 1 };
+}
+
+/** 步执行结果：CONTINUE 续跑 / SKIPPED 置空续 / ANSWER 终态答案 / FAILED 终态失败。 */
+export type StepOutcome =
+  | { kind: "CONTINUE" }
+  | { kind: "SKIPPED" }
+  | { kind: "ANSWER"; answer: Answer }
+  | { kind: "FAILED"; code: string; message: string; stepId: string };
+
+export interface StepExecResult {
+  outcome: StepOutcome;
+  effects: StepRunEffects;
+}
+
+/** 把一个步的 effects 合入共享态（驱动方按确定序调用；对齐旧 runWorkflow 内联合并顺序）。 */
+export function mergeStepEffects(state: WorkflowState, nodeId: string, effects: StepRunEffects, deps: WorkflowRunDeps): void {
+  if (effects.setOutput) state.stepOutputs[nodeId] = effects.output;
+  if (effects.audit) state.stepAudits[nodeId] = effects.audit;
+  for (const s of effects.slicesUsed) state.slicesUsed.push(s);
+  for (const o of effects.sliceObjects) state.sliceObjects.push(o);
+  for (const v of effects.verdicts) state.allVerdicts.push(v);
+  for (const ref of effects.resolvedRefs) {
+    state.resolvedRefsSeen.push(ref);
+    deps.onResolvedRef?.(ref);
+  }
+}
+
+/** 终态答案组装（方法论块 + 验证痕迹）——两执行器共用（§7 V6 parity 基石）。 */
+export async function finalizeAnswer(deps: WorkflowRunDeps, input: WorkflowRunInput, state: WorkflowState, answerIn: Answer): Promise<WorkflowResult> {
+  // SKILL-LIBRARY-EVERYWHERE §3：结论叙事步确定性消费方法论 skill（组装口绑定·非 LLM 注入）。
+  const methodologyBlock = skillMethodologyBlock(input.skills ?? []);
+  const answer = methodologyBlock ? { ...answerIn, blocks: [...answerIn.blocks, methodologyBlock] } : answerIn;
+  const trace = await buildValidationTrace(deps, {
+    slicesUsed: state.slicesUsed,
+    sliceObjects: state.sliceObjects,
+    verdicts: state.allVerdicts,
+    resolvedRefs: state.resolvedRefsSeen,
+    answer,
+  });
+  return { status: "COMPLETED", answer: trace ? { ...answer, validationTrace: trace } : answer, stepOutputs: state.stepOutputs };
+}
+
+export function finalizeFailed(state: WorkflowState, code: string, message: string, stepId?: string): WorkflowResult {
+  return { status: "FAILED", error: { code, message, stepId }, stepOutputs: state.stepOutputs };
+}
+
+/**
+ * 步级工具调用重试（簇① V2-3-164·WO-L1B-2 §4.5·有界退避·幂等守卫）。
+ * 幂等守卫：create_action_draft（出站非幂等）与 retry.idempotent===false 一律**不重试**（防重复出站·R4）。
+ * 可重试判据：retry.retryableErrors 声明则按码白名单；未声明则任何工具失败可重试（RetryableStepError 语义）。
+ * DENIED/成功即返回；退避墙钟排除出 R6 哈希（成功后输出恒等·串行 retry=undefined → maxAttempts=1 无重试）。
+ */
+async function runToolWithRetry(
+  deps: WorkflowRunDeps,
+  stepType: PlanStep["type"] | "query_timeseries_agg" | "search_knowledge",
+  params: Record<string, unknown>,
+  runOpts: { timeoutMs: number },
+  retry: RetryPolicy | undefined,
+): Promise<{ r: Awaited<ReturnType<GuardedToolExecutor["run"]>>; attempts: number }> {
+  const maxAttempts = retry?.maxAttempts ?? 1;
+  const idempotent = retry?.idempotent ?? true;
+  const retryableAllowed = stepType !== "create_action_draft" && idempotent;
+  let attempts = 0;
+  for (;;) {
+    attempts++;
+    const r = await deps.executor.run(stepType, params, runOpts);
+    if (r.ok || r.outcome === "DENIED") return { r, attempts };
+    const code = (r.payload as { error?: string } | undefined)?.error ?? "TOOL_ERROR";
+    const retryable = retry?.retryableErrors ? retry.retryableErrors.includes(code) : true;
+    if (retryableAllowed && retryable && attempts < maxAttempts) {
+      if (retry?.backoffMs && retry.backoffMs > 0) await new Promise((res) => setTimeout(res, retry.backoffMs));
+      continue;
+    }
+    return { r, attempts };
+  }
+}
+
+/**
+ * 单步执行体（QOS-PRD §5.3 + 平台 §8.2 invoke_agent / invoke_mcp_tool）——从旧 runWorkflow
+ * switch 原样抽出（逐字节等价），改为写 effects + 返回 outcome，供串行/DAG 两执行器共用。
+ * 读共享态经 scope.steps（前驱输出）与 stepAudits（render 用）；写副作用全经返回 effects 延迟合并。
+ */
+export async function executeStep(
+  deps: WorkflowRunDeps,
+  input: WorkflowRunInput,
+  step: ExtendedPlanStep,
+  scope: TemplateScope,
+  stepAudits: Record<string, StepAudit>,
+  trustLevel: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY",
+  retry?: RetryPolicy,
+): Promise<StepExecResult> {
+  const effects = newEffects();
+  const started = Date.now();
+  await deps.emit("step.started", { stepId: step.id, type: step.type });
+
+  let resolvedParams: Record<string, unknown>;
+  try {
+    resolvedParams = resolveTemplate(step.params, scope) as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof TemplateResolutionError) {
+      await deps.emit("step.completed", { stepId: step.id, type: step.type, outcome: "FAILED", durationMs: 0 });
+      return { outcome: { kind: "FAILED", code: ErrorCodes.TEMPLATE_RESOLUTION_ERROR, message: err.message, stepId: step.id }, effects };
+    }
+    throw err;
+  }
+
+  const onError = "onError" in step && step.onError ? step.onError : "FAIL";
+  const emitDone = (outcome: string) =>
+    deps.emit("step.completed", { stepId: step.id, type: step.type, outcome, durationMs: Date.now() - started });
+
+  switch (step.type) {
+    // generic tool dispatch — incl. additive A8.4/S4.1 steps (query_timeseries_agg / search_knowledge)
+    case "resolve_slice":
+    case "query_objects":
+    case "invoke_solver":
+    case "evaluate_rules":
+    case "create_action_draft":
+    case "query_timeseries_agg":
+    case "search_knowledge": {
+      const timeoutMs =
+        step.type === "invoke_solver" ? ((step as { timeoutMs?: number }).timeoutMs ?? SOLVER_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
+      const { r, attempts } = await runToolWithRetry(deps, step.type, resolvedParams, { timeoutMs }, retry);
+      effects.attempts = attempts;
+
+      if (r.outcome === "DENIED") {
+        // Permission denial → COMPLETED with 权限不足 text (NOT FAILED), no data-existence leak.
+        await emitDone("DENIED");
+        const target =
+          (resolvedParams.objectType as string | undefined) ??
+          (resolvedParams.sliceKey as string | undefined) ??
+          (resolvedParams.solverKey as string | undefined) ??
+          step.type;
+        const answer: Answer = {
+          trustLevel,
+          blocks: [{ type: "text", markdown: `你没有访问 ${target} 的权限` }],
+          provenance: [],
+          unverifiedNumerics: false,
+        };
+        return { outcome: { kind: "ANSWER", answer }, effects };
+      }
+      if (!r.ok) {
+        if (onError === "SKIP") {
+          effects.setOutput = true;
+          effects.output = null;
+          await emitDone("SKIPPED");
+          return { outcome: { kind: "SKIPPED" }, effects };
+        }
+        await emitDone("FAILED");
+        const code = (r.payload as { error?: string } | undefined)?.error ?? "TOOL_ERROR";
+        const message = (r.payload as { message?: string } | undefined)?.message ?? `步骤 ${step.id} 执行失败`;
+        return { outcome: { kind: "FAILED", code, message, stepId: step.id }, effects };
+      }
+
+      effects.setOutput = true;
+      effects.output = r.payload;
+      if (step.type === "resolve_slice") {
+        const sliceKey = (resolvedParams.sliceKey as string | undefined) ?? "";
+        if (sliceKey) effects.slicesUsed.push(sliceKey);
+        collectSliceObjects(r.payload, effects.sliceObjects);
+      }
+      effects.audit = {
+        toolCallId: r.toolCallId,
+        toolName: step.type,
+        snapshotVersion:
+          r.payload !== null && typeof r.payload === "object"
+            ? ((r.payload as Record<string, unknown>).snapshotVersion as string | undefined)
+            : undefined,
+        enrichment: enrichProvenance(step.type, r.payload),
+        ...(step.type === "invoke_solver" && typeof resolvedParams.solverKey === "string"
+          ? { solverKey: resolvedParams.solverKey }
+          : {}),
+      };
+      await emitDone("OK");
+
+      if (step.type === "evaluate_rules") {
+        const verdicts = r.payload as RuleVerdict[];
+        effects.verdicts.push(...verdicts);
+        // §2.2 留痕：规则求值结果带 ruleVersion（RuleVerdict additive）
+        for (const v of verdicts) {
+          if (v.ruleVersion !== undefined) {
+            effects.resolvedRefs.push({ kind: "rule" as const, key: v.ruleId, version: v.ruleVersion });
+          }
+        }
+        const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+        if (blocking.length > 0) {
+          // BLOCK violation → terminate; task COMPLETED with rule_violation 模板 answer (不算失败).
+          const provenance: ProvenanceRef[] = [];
+          const blocks: AnswerBlock[] = blocking.map((v) => {
+            const provId = newId("prov");
+            provenance.push({
+              id: provId,
+              source: "TOOL_RESULT",
+              toolCallId: r.toolCallId,
+              toolName: "evaluate_rules",
+              outputPath: "$",
+            });
+            return {
+              type: "rule_violation",
+              ruleId: v.ruleId,
+              severity: v.severity,
+              explanation: v.explanation,
+              provId,
+            };
+          });
+          blocks.push({
+            type: "text",
+            markdown: `本次请求被业务规则拦截（${blocking.map((v) => v.ruleId).join("、")}），详见上方违规说明 ⟦ref:0⟧。`,
+          });
+          // PROV-REF-INTEGRITY（簇⑩）：数字索引 ⟦ref:n⟧ → provenance[n].id（前端只按 id 查悬停内容）。
+          return {
+            outcome: { kind: "ANSWER", answer: { trustLevel, blocks: resolveNumericRefs(blocks, provenance), provenance, unverifiedNumerics: false } },
+            effects,
+          };
+        }
+      }
+
+      if (step.type === "create_action_draft") {
+        const draft = r.payload as { draftId: string };
+        await deps.emit("action_draft.created", {
+          draftId: draft.draftId,
+          actionType: resolvedParams.actionType,
+        });
+      }
+      return { outcome: { kind: "CONTINUE" }, effects };
+    }
+
+    case "llm_compose": {
+      try {
+        const text = await deps.llm.compose({
+          model: deps.composeModel,
+          instruction: String(resolvedParams.instruction),
+          inputs: (resolvedParams.inputs as unknown[]) ?? [],
+          tenantId: input.tenantId,
+        });
+        effects.setOutput = true;
+        effects.output = { text };
+        await emitDone("OK");
+      } catch (err) {
+        await emitDone("FAILED");
+        return { outcome: { kind: "FAILED", code: "LLM_COMPOSE_ERROR", message: err instanceof Error ? err.message : String(err), stepId: step.id }, effects };
+      }
+      return { outcome: { kind: "CONTINUE" }, effects };
+    }
+
+    case "invoke_agent": {
+      if (!deps.runAgentStep) {
+        await emitDone("FAILED");
+        return { outcome: { kind: "FAILED", code: "UNSUPPORTED_STEP", message: "invoke_agent not supported in this context", stepId: step.id }, effects };
+      }
+      deps.metrics.nestedInvocations.inc({ kind: "agent" });
+      try {
+        const child = enterNesting(input.nesting, "agent", step.params.agentId);
+        const result = await deps.runAgentStep({
+          agentId: step.params.agentId,
+          version: step.params.version,
+          prompt: typeof resolvedParams.prompt === "string" ? resolvedParams.prompt : JSON.stringify(resolvedParams.prompt),
+          expectsSchema: step.params.expectsSchema,
+          nesting: child,
+        });
+        effects.setOutput = true;
+        effects.output =
+          step.params.expectsSchema !== undefined
+            ? { data: result.structured }
+            : { data: { answer: result.answer } };
+        await emitDone("OK");
+      } catch (err) {
+        await emitDone("FAILED");
+        if (err instanceof NestingError) return { outcome: { kind: "FAILED", code: err.code, message: err.message, stepId: step.id }, effects };
+        return { outcome: { kind: "FAILED", code: "AGENT_STEP_ERROR", message: err instanceof Error ? err.message : String(err), stepId: step.id }, effects };
+      }
+      return { outcome: { kind: "CONTINUE" }, effects };
+    }
+
+    case "invoke_mcp_tool": {
+      const r = await deps.executor.run(String(resolvedParams.toolName ?? step.params.toolName), resolvedParams.args ?? {}, {
+        binding: { kind: "MCP", mcpConfigId: step.params.mcpConfigId },
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+        expectsObjectType: step.params.expectsObjectType, // stage3②：声明则运行时强制本体校验
+      });
+      if (!r.ok) {
+        await emitDone("FAILED");
+        const code = (r.payload as { error?: string } | undefined)?.error ?? "TOOL_ERROR";
+        return { outcome: { kind: "FAILED", code, message: `MCP 工具调用失败: ${step.params.toolName}`, stepId: step.id }, effects };
+      }
+      effects.setOutput = true;
+      effects.output = { data: r.payload };
+      effects.audit = { toolCallId: r.toolCallId, toolName: step.params.toolName };
+      await emitDone("OK");
+      return { outcome: { kind: "CONTINUE" }, effects };
+    }
+
+    case "render_answer": {
+      const answer = renderAnswer(
+        resolvedParams.blocks as Record<string, unknown>[],
+        stepAudits,
+        trustLevel,
+        deps.metrics,
+        // 原始（未解析）模板：显式 kpi/table 块的 value/rows 若是纯 {{steps.<s>.output.<path>}} 绑定，
+        // 从中推导字段级 outputPath（PROV-REF-INTEGRITY ②——值从哪个字段来，悬停就指哪个字段）。
+        step.params.blocks as Record<string, unknown>[] | undefined,
+      );
+      await emitDone("OK");
+      return { outcome: { kind: "ANSWER", answer }, effects };
+    }
+  }
+  // Unreachable (switch is exhaustive over ExtendedPlanStep types); satisfy control-flow analysis.
+  return { outcome: { kind: "CONTINUE" }, effects };
+}
+
 /** Path A workflow executor (QOS-PRD §5.3) + platform §8.2 invoke_agent / invoke_mcp_tool steps. */
 export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput): Promise<WorkflowResult> {
-  const stepOutputs: Record<string, unknown> = {};
-  const stepAudits: Record<string, StepAudit> = {};
+  const state = initWorkflowState();
   const trustLevel = input.trustLevel ?? "VERIFIED_WORKFLOW";
-  const scope: TemplateScope = { slots: input.slots, context: input.context, steps: stepOutputs };
-
-  // 推演验证痕迹收集（凡用到本体切片即附带）
-  const slicesUsed: string[] = [];
-  const sliceObjects: { objectType: string; objectId: string; props: Record<string, unknown> }[] = [];
-  const allVerdicts: RuleVerdict[] = [];
-  const resolvedRefsSeen: ResolvedRef[] = [];
-
-  // SKILL-LIBRARY-EVERYWHERE §3：结论叙事步确定性消费方法论 skill（组装口绑定·非 LLM 注入）——把绑定 skill 的
-  // methodology.conclusionTemplate/criteria 体现在答案末尾一个「方法论口径」叙事块（R6：纯字符串组装·同输入字节一致）。
-  const methodologyBlock = skillMethodologyBlock(input.skills ?? []);
-  const withMethodology = (answer: Answer): Answer =>
-    methodologyBlock ? { ...answer, blocks: [...answer.blocks, methodologyBlock] } : answer;
-
-  const completed = async (answerIn: Answer): Promise<WorkflowResult> => {
-    const answer = withMethodology(answerIn);
-    const trace = await buildValidationTrace(deps, { slicesUsed, sliceObjects, verdicts: allVerdicts, resolvedRefs: resolvedRefsSeen, answer });
-    return { status: "COMPLETED", answer: trace ? { ...answer, validationTrace: trace } : answer, stepOutputs };
-  };
-  const failed = (code: string, message: string, stepId?: string): WorkflowResult => ({
-    status: "FAILED",
-    error: { code, message, stepId },
-    stepOutputs,
-  });
+  const scope: TemplateScope = { slots: input.slots, context: input.context, steps: state.stepOutputs };
 
   for (const step of input.steps) {
-    const started = Date.now();
-    await deps.emit("step.started", { stepId: step.id, type: step.type });
-
-    let resolvedParams: Record<string, unknown>;
-    try {
-      resolvedParams = resolveTemplate(step.params, scope) as Record<string, unknown>;
-    } catch (err) {
-      if (err instanceof TemplateResolutionError) {
-        await deps.emit("step.completed", { stepId: step.id, type: step.type, outcome: "FAILED", durationMs: 0 });
-        return failed(ErrorCodes.TEMPLATE_RESOLUTION_ERROR, err.message, step.id);
-      }
-      throw err;
-    }
-
-    const onError = "onError" in step && step.onError ? step.onError : "FAIL";
-    const emitDone = (outcome: string) =>
-      deps.emit("step.completed", { stepId: step.id, type: step.type, outcome, durationMs: Date.now() - started });
-
-    switch (step.type) {
-      // generic tool dispatch — incl. additive A8.4/S4.1 steps (query_timeseries_agg / search_knowledge)
-      case "resolve_slice":
-      case "query_objects":
-      case "invoke_solver":
-      case "evaluate_rules":
-      case "create_action_draft":
-      case "query_timeseries_agg":
-      case "search_knowledge": {
-        const timeoutMs =
-          step.type === "invoke_solver" ? ((step as { timeoutMs?: number }).timeoutMs ?? SOLVER_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
-        const r = await deps.executor.run(step.type, resolvedParams, { timeoutMs });
-
-        if (r.outcome === "DENIED") {
-          // Permission denial → COMPLETED with 权限不足 text (NOT FAILED), no data-existence leak.
-          await emitDone("DENIED");
-          const target =
-            (resolvedParams.objectType as string | undefined) ??
-            (resolvedParams.sliceKey as string | undefined) ??
-            (resolvedParams.solverKey as string | undefined) ??
-            step.type;
-          const answer: Answer = {
-            trustLevel,
-            blocks: [{ type: "text", markdown: `你没有访问 ${target} 的权限` }],
-            provenance: [],
-            unverifiedNumerics: false,
-          };
-          return completed(answer);
-        }
-        if (!r.ok) {
-          if (onError === "SKIP") {
-            stepOutputs[step.id] = null;
-            await emitDone("SKIPPED");
-            continue;
-          }
-          await emitDone("FAILED");
-          const code = (r.payload as { error?: string } | undefined)?.error ?? "TOOL_ERROR";
-          const message = (r.payload as { message?: string } | undefined)?.message ?? `步骤 ${step.id} 执行失败`;
-          return failed(code, message, step.id);
-        }
-
-        stepOutputs[step.id] = r.payload;
-        if (step.type === "resolve_slice") {
-          const sliceKey = (resolvedParams.sliceKey as string | undefined) ?? "";
-          if (sliceKey) slicesUsed.push(sliceKey);
-          collectSliceObjects(r.payload, sliceObjects);
-        }
-        stepAudits[step.id] = {
-          toolCallId: r.toolCallId,
-          toolName: step.type,
-          snapshotVersion:
-            r.payload !== null && typeof r.payload === "object"
-              ? ((r.payload as Record<string, unknown>).snapshotVersion as string | undefined)
-              : undefined,
-          enrichment: enrichProvenance(step.type, r.payload),
-          ...(step.type === "invoke_solver" && typeof resolvedParams.solverKey === "string"
-            ? { solverKey: resolvedParams.solverKey }
-            : {}),
-        };
-        await emitDone("OK");
-
-        if (step.type === "evaluate_rules") {
-          const verdicts = r.payload as RuleVerdict[];
-          allVerdicts.push(...verdicts);
-          // §2.2 留痕：规则求值结果带 ruleVersion（RuleVerdict additive）
-          for (const v of verdicts) {
-            if (v.ruleVersion !== undefined) {
-              const ref = { kind: "rule" as const, key: v.ruleId, version: v.ruleVersion };
-              resolvedRefsSeen.push(ref);
-              deps.onResolvedRef?.(ref);
-            }
-          }
-          const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
-          if (blocking.length > 0) {
-            // BLOCK violation → terminate; task COMPLETED with rule_violation 模板 answer (不算失败).
-            const provenance: ProvenanceRef[] = [];
-            const blocks: AnswerBlock[] = blocking.map((v) => {
-              const provId = newId("prov");
-              provenance.push({
-                id: provId,
-                source: "TOOL_RESULT",
-                toolCallId: r.toolCallId,
-                toolName: "evaluate_rules",
-                outputPath: "$",
-              });
-              return {
-                type: "rule_violation",
-                ruleId: v.ruleId,
-                severity: v.severity,
-                explanation: v.explanation,
-                provId,
-              };
-            });
-            blocks.push({
-              type: "text",
-              markdown: `本次请求被业务规则拦截（${blocking.map((v) => v.ruleId).join("、")}），详见上方违规说明 ⟦ref:0⟧。`,
-            });
-            // PROV-REF-INTEGRITY（簇⑩）：数字索引 ⟦ref:n⟧ → provenance[n].id（前端只按 id 查悬停内容）。
-            return completed({ trustLevel, blocks: resolveNumericRefs(blocks, provenance), provenance, unverifiedNumerics: false });
-          }
-        }
-
-        if (step.type === "create_action_draft") {
-          const draft = r.payload as { draftId: string };
-          await deps.emit("action_draft.created", {
-            draftId: draft.draftId,
-            actionType: resolvedParams.actionType,
-          });
-        }
-        continue;
-      }
-
-      case "llm_compose": {
-        try {
-          const text = await deps.llm.compose({
-            model: deps.composeModel,
-            instruction: String(resolvedParams.instruction),
-            inputs: (resolvedParams.inputs as unknown[]) ?? [],
-            tenantId: input.tenantId,
-          });
-          stepOutputs[step.id] = { text };
-          await emitDone("OK");
-        } catch (err) {
-          await emitDone("FAILED");
-          return failed("LLM_COMPOSE_ERROR", err instanceof Error ? err.message : String(err), step.id);
-        }
-        continue;
-      }
-
-      case "invoke_agent": {
-        if (!deps.runAgentStep) {
-          await emitDone("FAILED");
-          return failed("UNSUPPORTED_STEP", "invoke_agent not supported in this context", step.id);
-        }
-        deps.metrics.nestedInvocations.inc({ kind: "agent" });
-        try {
-          const child = enterNesting(input.nesting, "agent", step.params.agentId);
-          const result = await deps.runAgentStep({
-            agentId: step.params.agentId,
-            version: step.params.version,
-            prompt: typeof resolvedParams.prompt === "string" ? resolvedParams.prompt : JSON.stringify(resolvedParams.prompt),
-            expectsSchema: step.params.expectsSchema,
-            nesting: child,
-          });
-          stepOutputs[step.id] =
-            step.params.expectsSchema !== undefined
-              ? { data: result.structured }
-              : { data: { answer: result.answer } };
-          await emitDone("OK");
-        } catch (err) {
-          await emitDone("FAILED");
-          if (err instanceof NestingError) return failed(err.code, err.message, step.id);
-          return failed("AGENT_STEP_ERROR", err instanceof Error ? err.message : String(err), step.id);
-        }
-        continue;
-      }
-
-      case "invoke_mcp_tool": {
-        const r = await deps.executor.run(String(resolvedParams.toolName ?? step.params.toolName), resolvedParams.args ?? {}, {
-          binding: { kind: "MCP", mcpConfigId: step.params.mcpConfigId },
-          timeoutMs: DEFAULT_TIMEOUT_MS,
-          expectsObjectType: step.params.expectsObjectType, // stage3②：声明则运行时强制本体校验
-        });
-        if (!r.ok) {
-          await emitDone("FAILED");
-          const code = (r.payload as { error?: string } | undefined)?.error ?? "TOOL_ERROR";
-          return failed(code, `MCP 工具调用失败: ${step.params.toolName}`, step.id);
-        }
-        stepOutputs[step.id] = { data: r.payload };
-        stepAudits[step.id] = { toolCallId: r.toolCallId, toolName: step.params.toolName };
-        await emitDone("OK");
-        continue;
-      }
-
-      case "render_answer": {
-        const answer = renderAnswer(
-          resolvedParams.blocks as Record<string, unknown>[],
-          stepAudits,
-          trustLevel,
-          deps.metrics,
-          // 原始（未解析）模板：显式 kpi/table 块的 value/rows 若是纯 {{steps.<s>.output.<path>}} 绑定，
-          // 从中推导字段级 outputPath（PROV-REF-INTEGRITY ②——值从哪个字段来，悬停就指哪个字段）。
-          step.params.blocks as Record<string, unknown>[] | undefined,
-        );
-        await emitDone("OK");
-        return completed(answer);
-      }
-    }
+    const { outcome, effects } = await executeStep(deps, input, step, scope, state.stepAudits, trustLevel);
+    mergeStepEffects(state, step.id, effects, deps);
+    if (outcome.kind === "ANSWER") return finalizeAnswer(deps, input, state, outcome.answer);
+    if (outcome.kind === "FAILED") return finalizeFailed(state, outcome.code, outcome.message, outcome.stepId);
+    // CONTINUE / SKIPPED → next step
   }
 
   // No render_answer step (standalone workflows): synthesize a summary answer from outputs.
-  return completed({
+  return finalizeAnswer(deps, input, state, {
     trustLevel,
     blocks: [{ type: "text", markdown: "工作流执行完成。" }],
     provenance: [],
