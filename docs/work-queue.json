@@ -6688,12 +6688,13 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] "
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T06:59:55.059Z",
         "built": "2026-07-11T09:02:37.595Z",
-        "blocked": "2026-07-11"
+        "blocked": "2026-07-11",
+        "done": "2026-07-11"
       },
       "id": "WO-L2-1",
       "title": "决策制品契约 + CounterfactualResult 补 schema + 暗发双闸",
@@ -6730,7 +6731,7 @@
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-1 dev2] ",
       "blockReason": "",
-      "reviewNote": "契约地基优秀(四级制品逐字段合PRD§3·decision-kernel-contract测4/4·counterfactual_timeline逐值无损承载·R1干净·mkProv 5字段严格匹配)·build绿·暗发关闸404无泄漏。但C4双注册未满足(见blockReason)。"
+      "reviewNote": "PASS(BLOCK已解·独立复验) C4双注册满足:agentcore registry.ts:100/103补decision.kernel+memory.cbr(defaultOn:false·fail-safe注释关时!set.has→false不fail-open)·datacore features.ts:122/127原注册仍在=双注册防未注册恒真陷阱。decision-kernel:check门PASS(KILL-MOCK有牙/R6/暗发双闸/白名单钉死)。agentcore670测绿零回归。Dev-2顺补memory.cbr预防L1.5-3同坑。契约地基本身优秀(前次a8b8eb763验四级制品逐字段合PRD·counterfactual活体逐值)。落点datacore=我DISPATCH指令接受(架构自洽)·PRD-L2 reconcile审核方to-do。"
     },
     {
       "status": "DONE",
