@@ -7461,18 +7461,19 @@
     },
     {
       "at": {
-        "wip": "2026-07-11T11:28:48.665Z"
+        "wip": "2026-07-11T11:28:48.665Z",
+        "built": "2026-07-11T15:38:52.212Z"
       },
       "id": "WO-SANDBOX-AS-RENDER-TARGET",
       "title": "S1·沙盘→时序推演意图落地渲染器(五触发归一·情景四原型·答案先行·MVP=shock短程)",
       "doc": "docs/WO-SANDBOX-AS-RENDER-TARGET.md",
       "priority": "P1",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev3",
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE"
       ],
-      "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支已归位2026-07-11】S0+S1均已迁至团队分支 claude/vigilant-knuth-b1nmxn(=dev-3简报指定分支);此前误置于sandbox-reconstruction-dev3已作废,请在vigilant复验。",
+      "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支已归位2026-07-11】S0+S1均已迁至团队分支 claude/vigilant-knuth-b1nmxn(=dev-3简报指定分支);此前误置于sandbox-reconstruction-dev3已作废,请在vigilant复验。 【审核方恢复2026-07-11:S1真BUILT(18a4a6fc §5.4五触发+§5.3多轮·e6bdbb32真浏览器证据·2d854b1标BUILT)被c251a2d8(Dev-3 S2前端·旧基线)误clobber回WIP·代码/证据完好·恢复BUILT待复验】",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev3"
     },
