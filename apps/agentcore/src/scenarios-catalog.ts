@@ -143,6 +143,16 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   // Q30-P4 跨求解器编排层（治 countermeasure 诈账根）：对策组合编排——空 slotPresets（不手喂合成杠杆·datacore 编排层
   // 真调 cert_schedule/changeover_sequence/outsourcing_split/capex_scenario 建真 gap 释放账本），求最小成本闭合缺口 + 三选二权衡。
   card("S36", "对策组合编排", "plan", "countermeasure_combo_q", "保交付/保毛利/保信用三选二，杠杆组合怎么排？", "countermeasure_combo", ["C08", "C23", "C29"], "COMPUTE", "解读跨求解器编排的最小成本杠杆组合与保交付/毛利/信用三选二权衡", [], {}),
+  // Q30-P5 发育层（DESIGN-query30 §2.5·闭 G-9）：7 workflow 多步链的其余 6 条场景卡（Q01 接单全链=S26 已上）。
+  // 每卡的执行计划=串起 2 个已交付求解器的多步链（见 seed.ts CHAIN_WORKFLOWS·s1→s2→render 各投真实字段+烘焙规则），
+  // 经 growScenario 三环长成（PROVISIONAL 起·发育 run 留痕·非手装 GOVERNED·闭 G-9）。card.solver=链入口求解器（s1·∈注册表）。
+  // slotPresets 复用既有单求解器卡的**已验证真实入参**（对 SEED_DEMO 合法·非手喂合成）。
+  card("S37", "现金流预警对策链", "dash", "cash_alert_combo_chain", "未来 13 周现金流哪周最紧张？安全垫击穿了用什么杠杆组合来补缺口？", "cash_projection", ["C18"], "COMPUTE", "解读现金流投影安全垫最低点 + 缺口对策组合联动的资金预警链", [], { horizonWeeks: 13 }),
+  card("S38", "断供改道决策链", "risk", "disruption_reroute_chain", "常州基地断供会波及哪些产线？停线产量改道到哪几条线总成本最低？", "supplier_disruption_radius", ["C05", "C16", "C22"], "COMPUTE", "解读断供影响半径 + 停线产量最小成本流改道的供应链应急链", [B("changzhou", "常州")], { rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] }),
+  card("S39", "齐套排产联检链", "project", "kit_schedule_chain", "先看下周订单物料齐套，再按排序+换型+认证三约束联合排产，这批订单怎么排？", "kit_readiness", ["C06", "C22", "C26"], "COMPUTE", "解读物料齐套就绪 + 三约束联合排产的齐套-排产联检链", [], { fromDay: 1, toDay: 14 }),
+  card("S40", "全成本毛利倒挂链", "dash", "fullcost_margin_chain", "全成本口径下经营态势如何？哪些订单毛利倒挂、根因主驱动是哪个成本项？", "full_cost_rollup", ["C15", "C18", "C24"], "COMPUTE", "解读全成本卷积（产能→成本→损益）+ 订单毛利倒挂根因归因链", [], {}),
+  card("S41", "信号传导集中度链", "risk", "signal_concentration_chain", "某信号从常州基地沿产线图传导会扩散到哪些工序设备？有没有隐性集中依赖同一根节点的单点敞口？", "signal_propagation", ["C05", "C16", "C27"], "COMPUTE", "解读信号沿产线图传导半径 + 隐性集中单点敞口的传导-集中度链", [B("changzhou", "常州")], { signal: "产能扰动", rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] }),
+  card("S42", "资本组合现金联检链", "generate", "capex_cash_chain", "在现金安全垫约束下，枣庄储能线的几套投资方案哪套 IRR 和回报最优？", "cash_projection", ["C18", "C23"], "COMPUTE", "解读现金安全垫约束 + CAPEX 多方案 IRR/回报比选的资本组合评审链", [], { horizonWeeks: 13 }),
 ];
 
 export function scenarioByIntent(intentKey: string): ScenarioCard | undefined {

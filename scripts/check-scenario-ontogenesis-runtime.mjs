@@ -56,8 +56,9 @@ await app.ready();
 const cards = SCENARIO_CATALOG.map((c) => c.sNo);
 // CORE-NL-SOLVER-ROUTING：20 → 25（S21–S25 通用多跳）；Q30-P1/P2 26→30（S26 挤占推演 + S27 因果归因 + S28–S30 横铺A）；
 // Q30-P3 30→35（S31–S35 横铺B：现金流/人力/能耗 3 新域 + 改道/多约束 2 复用类·全 WORKFLOW_FIRST）；
-// Q30-P4 35→36（S36 对策组合编排 countermeasure_combo_q·跨求解器编排层 Q6 NL 入口·WORKFLOW_FIRST）。
-if (cards.length !== 36) fail.push(`§6 运行期：出厂目录不是 36 卡（实 ${cards.length}）——目录漂移`);
+// Q30-P4 35→36（S36 对策组合编排 countermeasure_combo_q·跨求解器编排层 Q6 NL 入口·WORKFLOW_FIRST）；
+// Q30-P5 36→42（S37–S42 六条 workflow 多步链·串起已交付求解器·经 growScenario 三环长成·闭 G-9·全 WORKFLOW_FIRST）。
+if (cards.length !== 42) fail.push(`§6 运行期：出厂目录不是 42 卡（实 ${cards.length}）——目录漂移`);
 
 const table = [];
 let governed = 0;

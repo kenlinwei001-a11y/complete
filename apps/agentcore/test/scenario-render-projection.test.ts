@@ -123,7 +123,12 @@ describe("③ sliceTargets 经 slice-planner 自动生成（datadep 派生候选
     const genomes = deriveScenarioGenomes();
     // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）：派生基因组数 == 目录卡数（产出 vs 源互校）
     expect(genomes.size).toBe(SCENARIO_CATALOG.length);
-    const builtin = new Set(["affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation", "what_if_displacement_q"]);
+    // 排除**手写多步链计划**卡（其 render 绑定=多求解器合并·非单求解器出厂登记）：4 内置 + Q01 接单全链 + Q30-P5 六条多步链。
+    const builtin = new Set([
+      "affected_orders", "capacity_feasibility", "risk_root_cause", "adopt_mitigation", "what_if_displacement_q",
+      // Q30-P5 发育层 6 条 workflow 多步链（plan.steps s1→s2→render·genome.renderBindings=两求解器合并·见 CHAIN_WORKFLOWS）。
+      "cash_alert_combo_chain", "disruption_reroute_chain", "kit_schedule_chain", "fullcost_margin_chain", "signal_concentration_chain", "capex_cash_chain",
+    ]);
     const { plans } = seedIntentsAndPlans();
     for (const card of SCENARIO_CATALOG) {
       const g = genomes.get(card.intentKey)!;

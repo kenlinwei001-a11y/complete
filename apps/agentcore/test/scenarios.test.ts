@@ -136,9 +136,16 @@ describe("20 场景目录 §9 — 场景启动器（SL1/SL2）", () => {
     for (const s of reused) {
       expect(["capacity_forecast", "affected_orders", "risk_timeline", "causal_attribution", "plan_audit", "plan_generate", "bottleneck_matrix", "capex_scenario", "sop_balance"]).toContain(s);
     }
-    // 新增求解器 13 个（分阶段建设）
-    const news = new Set(SCENARIO_CATALOG.filter((c) => c.solverStatus === "NEW").map((c) => c.solver));
-    // 单源派生·禁再硬编码计数（SYSFIX-SOLVER-COUNT-DRIFT）
-    expect(news.size).toBe(SCENARIO_CATALOG.filter((c) => c.solverStatus === "NEW").length); // 去重集大小 == NEW 卡数·互校（每张 NEW 卡求解器唯一）
+    // Q30-P5 发育层：6 条 workflow 多步链卡（S37–S42）**复用已交付求解器**作链入口（s1）——故不再"每张 NEW 卡求解器唯一"。
+    // 分两类互校：① 非链 NEW 卡仍求解器唯一（分阶段建设各引入一新求解器）；② 链卡的链入口求解器必 ∈ 已交付（非链）NEW 卡求解器集（真复用·非幽灵）。
+    const CHAIN_KEYS = new Set(["cash_alert_combo_chain", "disruption_reroute_chain", "kit_schedule_chain", "fullcost_margin_chain", "signal_concentration_chain", "capex_cash_chain"]);
+    const nonChainNew = SCENARIO_CATALOG.filter((c) => c.solverStatus === "NEW" && !CHAIN_KEYS.has(c.intentKey));
+    const nonChainSolvers = new Set(nonChainNew.map((c) => c.solver));
+    // ① 非链 NEW 卡求解器唯一（去重集大小 == 非链 NEW 卡数）
+    expect(nonChainSolvers.size).toBe(nonChainNew.length);
+    // ② 每张链卡的链入口求解器复用一张已交付（非链）NEW 卡的求解器（真复用·串多步链·非新建求解器）
+    for (const c of SCENARIO_CATALOG.filter((c) => CHAIN_KEYS.has(c.intentKey))) {
+      expect(nonChainSolvers.has(c.solver), `链卡 ${c.sNo} 链入口求解器 ${c.solver} 非已交付求解器（幽灵）`).toBe(true);
+    }
   });
 });

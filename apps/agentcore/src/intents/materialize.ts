@@ -50,24 +50,31 @@ export const INTENT_SKILL: Record<string, string> = {
   shared_bottleneck_q: "skl_seed_capacity",
   concentration_risk_q: "skl_risk_diagnosis",
   margin_attribution_q: "skl_order_margin",
-  supplier_disruption_q: "skl_risk_diagnosis",
+  supplier_disruption_q: "skl_supply_risk", // Q30-P5：断供影响半径 → 专门的供应链风险方法论
   multisource_fusion_q: "skl_risk_diagnosis",
-  // QUERY30 缺口③ Q01 样板：接单挤占推演对口「经营方案」方法论（多方案比选口径）。
-  what_if_displacement_q: "skl_plan_scheme",
+  // QUERY30 缺口③ Q01 样板：接单挤占推演——Q30-P5 起对口专门的「接单挤占分析」方法论（方案四型枚举口径·取代通用经营方案 skill）。
+  what_if_displacement_q: "skl_displacement_analysis",
   // UPG-L0-COVERAGE-FILL：通用因果归因对口「风险诊断」方法论（越线根因取证口径）。
   causal_attribution_q: "skl_risk_diagnosis",
   // Q30-P2 求解器横铺 A：3 个复用求解器场景卡对口方法论（复用既有出厂 skill）。
   capex_alternatives_q: "skl_plan_scheme", // CAPEX 方案比选 → 经营方案方法论（多方案比选口径·同 capex_review）
   full_cost_rollup_q: "skl_order_margin", // 全成本卷积（成本→损益）→ 接单毛利/成本方法论
-  signal_propagation_q: "skl_risk_diagnosis", // 信号图传导 → 风险诊断方法论（同 supplier_disruption_q）
+  signal_propagation_q: "skl_supply_risk", // Q30-P5：信号图传导 → 专门的供应链风险方法论（传导半径口径）
   // Q30-P3 求解器横铺 B：3 新域 + 2 复用类场景卡的对口方法论。
-  cash_projection_q: "skl_sop_balance", // 现金流投影（回款/付款/安全垫）→ S&OP 平衡方法论（现金垫口径）
+  cash_projection_q: "skl_cash_projection", // 现金流投影（回款/付款/安全垫）→ Q30-P5 专门的现金投影方法论（取代通用 S&OP 平衡 skill）
   labor_balance_q: "skl_seed_capacity", // 人力平衡（配工与缺口）→ 产能方法论（人力产能配置口径）
-  energy_cost_schedule_q: "skl_carbon_compliance", // 能耗成本排程（能耗/碳排）→ 碳合规方法论
-  reroute_decision_q: "skl_risk_diagnosis", // 改道决策（断供/停线响应）→ 风险诊断方法论
+  energy_cost_schedule_q: "skl_carbon_path", // Q30-P5：能耗成本排程 → 专门的碳合规路径方法论（碳价/能耗排程/减碳杠杆口径）
+  reroute_decision_q: "skl_supply_risk", // Q30-P5：改道决策（断供/停线响应）→ 专门的供应链风险方法论（最小成本改道口径）
   multi_constraint_schedule_q: "skl_changeover", // 多约束联合排产 → 换型/排产方法论
   // Q30-P4 跨求解器编排层（治 countermeasure 诈账根）：对策组合编排 → S&OP 平衡方法论（缺口闭合/保交付毛利信用三选二口径）。
   countermeasure_combo_q: "skl_sop_balance",
+  // Q30-P5 发育层（DESIGN-query30 §2.5/§2.6·闭 G-9）：6 条 workflow 多步链场景卡挂对口方法论（含 P5 新增 5 skill）。
+  cash_alert_combo_chain: "skl_cash_projection", // 现金流预警对策链 → 现金投影方法论（安全垫/对策联动口径）
+  disruption_reroute_chain: "skl_supply_risk", // 断供改道决策链 → 供应链风险方法论（断供半径/最小成本改道口径）
+  kit_schedule_chain: "skl_changeover", // 齐套排产联检链 → 换型排序方法论（三约束排产口径）
+  fullcost_margin_chain: "skl_order_margin", // 全成本毛利倒挂链 → 订单毛利评审方法论（全成本/倒挂根因口径）
+  signal_concentration_chain: "skl_supply_risk", // 信号传导集中度链 → 供应链风险方法论（传导半径/隐性集中口径）
+  capex_cash_chain: "skl_cash_projection", // 资本组合现金联检链 → 现金投影方法论（现金约束/资本比选口径）
 };
 
 /** 默认方法论（真实兜底·仅供非目录键的 hardcoded 计划如 what_if_displacement_q 用·目录卡禁静默回落）。 */
@@ -149,6 +156,13 @@ const INTENT_SLICE_ROOT: Record<string, string> = {
   reroute_decision_q: "Line", // 改道决策主对象=停线产线
   multi_constraint_schedule_q: "Order", // 多约束联合排产主对象=待排产订单
   countermeasure_combo_q: "Base", // Q30-P4 对策组合编排主对象=缺口所在基地（产销/产能账本承载）
+  // Q30-P5 发育层 6 条 workflow 多步链主对象类型（链入口求解器读的主对象·industry-agnostic 本体 key）。
+  cash_alert_combo_chain: "Base", // 现金流预警对策链主对象=现金账户所属基地
+  disruption_reroute_chain: "Base", // 断供改道决策链主对象=断供源基地
+  kit_schedule_chain: "Order", // 齐套排产联检链主对象=待排产订单
+  fullcost_margin_chain: "Base", // 全成本毛利倒挂链主对象=产能承载基地
+  signal_concentration_chain: "Base", // 信号传导集中度链主对象=信号源基地
+  capex_cash_chain: "Base", // 资本组合现金联检链主对象=投资落点基地
 };
 
 /** BP-4 对齐 seedIntentsAndPlans：sop_balance 求解器实际绑 mrp_netting（已注册·有真表）。 */

@@ -557,6 +557,62 @@ export function seedIntentsAndPlans(
     },
   ];
 
+  // Q30-P5 发育层（DESIGN-query30 §2.5·闭 G-9）：7 workflow 多步链的其余 6 条（Q01 接单全链已上，见 plan_what_if_displacement_q）。
+  // 每条 workflow 串起 2 个**已交付求解器**（P0–P4 横铺的 10 求解器 + 编排层），s1/s2 各投 SOLVER_RENDER_BINDINGS 真实字段·
+  // injectScenarioRuleStep 把卡声明 rules 烘焙进 evaluate_rules（路径A 真裁决）。这些卡经 growScenario 三环长成
+  // （PROVISIONAL 起·发育 run 留痕·非手装 GOVERNED·闭 G-9）。args 复用既有单求解器卡的**已验证真实入参**（对 SEED_DEMO 合法）。
+  const CHAIN_WORKFLOWS: {
+    intentKey: string;
+    s1: { solverKey: string; args: Record<string, unknown> };
+    s2: { solverKey: string; args: Record<string, unknown> };
+    rules: string[];
+  }[] = [
+    // 现金流预警对策链（Q10/Q27）：逐周现金曲线 → 安全垫击穿则最小成本对策组合闭合缺口。
+    { intentKey: "cash_alert_combo_chain", s1: { solverKey: "cash_projection", args: { horizonWeeks: 13 } }, s2: { solverKey: "countermeasure_combo", args: {} }, rules: ["C18"] },
+    // 断供改道决策链（Q29）：断供影响半径 → 停线产量最小成本流改道分配。
+    { intentKey: "disruption_reroute_chain", s1: { solverKey: "supplier_disruption_radius", args: { rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] } }, s2: { solverKey: "reroute_decision", args: { lineId: "LINE-changzhou" } }, rules: ["C05", "C16", "C22"] },
+    // 齐套排产联检链（Q08）：物料齐套就绪 → 排序+换型+认证三约束联合排产。
+    { intentKey: "kit_schedule_chain", s1: { solverKey: "kit_readiness", args: { fromDay: 1, toDay: 14 } }, s2: { solverKey: "multi_constraint_schedule", args: { jobType: "Order", groupField: "model" } }, rules: ["C06", "C22", "C26"] },
+    // 全成本毛利倒挂链（Q17）：全成本卷积（产能→成本→损益）→ 订单毛利倒挂根因归因。
+    { intentKey: "fullcost_margin_chain", s1: { solverKey: "full_cost_rollup", args: {} }, s2: { solverKey: "margin_attribution", args: { targetType: "Order", costFields: [{ field: "unitPrice", label: "单价" }] } }, rules: ["C15", "C18", "C24"] },
+    // 信号传导集中度链（Q28）：信号沿产线图传导半径 → 隐性集中单点敞口。
+    { intentKey: "signal_concentration_chain", s1: { solverKey: "signal_propagation", args: { signal: "产能扰动", rootType: "Base", rootId: "changzhou", layers: [{ type: "Line", viaField: "baseId" }, { type: "Process", viaField: "lineId" }, { type: "Equipment", viaField: "processId" }] } }, s2: { solverKey: "concentration_risk", args: { startType: "Order", path: [{ viaField: "model", toType: "Model" }] } }, rules: ["C05", "C16", "C27"] },
+    // 资本组合现金联检链（Q26）：现金安全垫约束 → CAPEX 多方案 IRR/回报比选择优。
+    { intentKey: "capex_cash_chain", s1: { solverKey: "cash_projection", args: { horizonWeeks: 13 } }, s2: { solverKey: "capex_alternatives", args: { scenarioKey: "枣庄储能线", demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], alternatives: [{ key: "A", label: "小步快跑", projects: [{ id: "A1", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }, { key: "B", label: "一步到位", projects: [{ id: "B1", q0: 0, cap: 8, capex: [6, 4], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] }] } }, rules: ["C18", "C23"] },
+  ];
+  for (const ch of CHAIN_WORKFLOWS) {
+    const card = SCENARIO_CATALOG.find((c) => c.intentKey === ch.intentKey);
+    if (!card) continue; // 卡未上则跳过（防漂移）
+    const planId = `plan_${ch.intentKey}_v1${sfx}`;
+    const baseSteps: ExecutionPlan["steps"] = [
+      { id: "s1", type: "invoke_solver", params: { solverKey: ch.s1.solverKey, args: ch.s1.args as Record<string, TemplateValue> } },
+      { id: "s2", type: "invoke_solver", params: { solverKey: ch.s2.solverKey, args: ch.s2.args as Record<string, TemplateValue> } },
+      { id: "render", type: "render_answer", params: { blocks: [
+        { type: "solver_summary", output: "{{steps.s1.output}}", fromStep: "s1", bindings: [...(SOLVER_RENDER_BINDINGS[ch.s1.solverKey] ?? [])] },
+        { type: "solver_summary", output: "{{steps.s2.output}}", fromStep: "s2", bindings: [...(SOLVER_RENDER_BINDINGS[ch.s2.solverKey] ?? [])] },
+      ] } },
+    ];
+    const steps = injectScenarioRuleStep(baseSteps, ch.rules) as ExecutionPlan["steps"];
+    plans.push({ id: planId, packageId: pkgId, key: ch.intentKey, version: 1, status: "PUBLISHED", steps, skillRefs: [{ skillId: skillIdForIntent(ch.intentKey), version: "latest" }] });
+    intents.push({
+      id: `int_${ch.intentKey}_v1${sfx}`,
+      packageId: pkgId,
+      key: ch.intentKey,
+      version: 1,
+      status: "PUBLISHED",
+      name: card.name,
+      description: card.summary,
+      examples: [card.triggerQuestion],
+      enabledViews: "*",
+      slots: deriveSlotsFromCard(card),
+      planId,
+      riskLevel: "COMPUTE",
+      owner: "seed",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
   // G-1（本体 §8）：其余 16 场景此前只在 SCENARIO_CATALOG 声明、无意图/执行计划 → 路径A 够不着。
   // 从目录单一来源派生意图+计划（缝合 G-3 的目录↔意图断开），使 20 场景全部端到端可经路径A 推演。
   // 渲染用静态 text block（不解引用求解器特定字段）→ 跨 mock/真实 DataCore 均不触发模板解析错误；
@@ -1024,6 +1080,58 @@ export function seedRegistry(now = new Date().toISOString()): {
       },
       resources: [], mcpServers: [], status: "PUBLISHED",
     },
+    // Q30-P5 发育层（DESIGN-query30 §2.6·接 SKILL-LIBRARY-EVERYWHERE）：补 5 条方法论 skill，
+    // 供接单/供应链/现金/碳/SOP 移植决策链确定性消费于结论叙事（R6·非 LLM 注入）。
+    {
+      id: "skl_displacement_analysis", tenantId: SEED_TENANT, key: "displacement_analysis", version: 1,
+      name: "接单挤占分析方法论", summary: "急单挤占推演的方案四型枚举口径（延期/外协/拆单/降级）+ 被挤订单逐单再方案。",
+      body: "# 接单挤占分析\n\n1. 可行性前置：先判自由产能能否直接承接（freeDaily ≥ 日需则无需挤占）。\n2. 方案四型枚举：延期（推后在手单交期）、外协（转产能到外部）、拆单（分批交付）、降级（换低优先线）——逐型量化交期/毛利/挤占数。\n3. 被挤订单逐单再方案：每个被位移订单给独立再安排（非一刀切）。\n4. 五维比较矩阵：交期/毛利/挤占数/外协比/现金占用，确定性择优（C35 ≥2 可比方案口径）。",
+      methodology: {
+        conclusionTemplate: "按接单挤占分析法解读：先判自由产能可否直接承接，否则枚举延期/外协/拆单/降级四型方案，被挤订单逐单再安排，最后按交期/毛利/挤占数/外协比/现金占用五维择优。",
+        criteria: ["自由产能可行性前置", "方案四型枚举（延期/外协/拆单/降级）", "被挤订单逐单再方案", "五维比较矩阵择优（C34/C35）"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_supply_risk", tenantId: SEED_TENANT, key: "supply_risk", version: 1,
+      name: "供应链风险方法论", summary: "断供影响半径 + 信号图传导 + 隐性集中度 + 最小成本改道口径。",
+      body: "# 供应链风险\n\n1. 断供影响半径：从根节点沿供应链/产线图多跳 BFS，量化受累对象层级与总数。\n2. 信号图传导：扰动信号沿 基地→线→工序→设备 扩散，定位受影响集。\n3. 隐性集中度：识别多订单隐性依赖同一型号/根节点的单点敞口。\n4. 最小成本改道：断供/停线产量改道到有余量候选线，按真换型成本做最小成本流分配。",
+      methodology: {
+        conclusionTemplate: "按供应链风险法解读：先算断供/信号沿图的传导半径与受影响集，再识别隐性集中单点敞口，最后对停线产量做最小成本流改道分配。",
+        criteria: ["断供/信号传导半径", "受影响对象层级与总数", "隐性集中单点敞口", "最小成本改道分配"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_cash_projection", tenantId: SEED_TENANT, key: "cash_projection", version: 1,
+      name: "现金投影方法论", summary: "逐周现金流投影（回款账期+付款节奏+capex 支出）+ 安全垫最低点定位 + 缺口对策联动。",
+      body: "# 现金投影\n\n1. 逐周现金曲线：期初现金 + 订单回款（按客户账期）− 付款（物料/工资/capex 支出）逐周滚动。\n2. 安全垫最低点：定位现金曲线最低的那一周（minCashWeek）与最低值（minCashWan）。\n3. 缺口对策联动：安全垫击穿红线时，联动缺口对策组合（外协/平移/延期）择最小成本闭合。",
+      methodology: {
+        conclusionTemplate: "按现金投影法解读：以期初现金滚动逐周回款减付款画现金曲线，定位安全垫最低周与最低值，击穿红线则联动最小成本对策组合闭合缺口。",
+        criteria: ["逐周现金曲线（回款账期/付款节奏/capex）", "安全垫最低点定位", "现金红线判定（C18）", "缺口对策组合联动"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_carbon_path", tenantId: SEED_TENANT, key: "carbon_path", version: 1,
+      name: "碳合规路径方法论", summary: "碳价敏感性 → 逐型号毛利 → 绿电改造案 → CAPEX 评审的减碳路径口径。",
+      body: "# 碳合规路径\n\n1. 碳价敏感性：碳价上行对逐型号完全成本/毛利的传导弹性。\n2. 能耗排程：按分时电价与电网因子排能耗/碳排，识别高碳基地。\n3. 绿电改造案：绿电比例、工艺能效、就近产地三类减碳杠杆比选。\n4. CAPEX 评审：绿电改造投资走 capex 方案比选（IRR/回收期）拍板。",
+      methodology: {
+        conclusionTemplate: "按碳合规路径法解读：先测碳价对逐型号毛利的传导弹性，按分时电价排能耗定位高碳点，再比选绿电/能效/产地减碳杠杆并走 CAPEX 评审拍板。",
+        criteria: ["碳价→毛利传导弹性", "分时电价能耗排程", "绿电/能效/产地减碳杠杆", "绿电改造 CAPEX 评审"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
+    {
+      id: "skl_sop_transplant", tenantId: SEED_TENANT, key: "sop_transplant", version: 1,
+      name: "SOP 移植方法论", summary: "工艺 SOP 跨基地/跨代次移植的参数集对齐 + 设备代差风险 + 试产验证口径。",
+      body: "# SOP 移植\n\n1. 参数集对齐：源基地 SOP 参数集逐项映射到目标基地设备能力域。\n2. 设备代差风险：目标基地设备代次低于源则标注代差风险，参数需保守回调。\n3. 试产验证：移植后先小批试产，良率/节拍达标再放量，不达标回退。",
+      methodology: {
+        conclusionTemplate: "按 SOP 移植法解读：先把源基地参数集逐项映射目标设备能力域，评估设备代差风险并保守回调，移植后小批试产达标再放量。",
+        criteria: ["参数集逐项对齐", "设备代差风险标注", "试产良率/节拍验证", "达标放量/不达标回退"],
+      },
+      resources: [], mcpServers: [], status: "PUBLISHED",
+    },
   ];
   const agents: AgentDefinition[] = [
     {
@@ -1439,6 +1547,53 @@ export function seedRegistry(now = new Date().toISOString()): {
       ruleKeys: [], // 地理总览无专属裁决规则
       objectTypes: ["Base", "Line", "Process", "Model", "Order"],
       skillId: "skl_seed_capacity", // WO-SCENE-D：跨基地产能总览，挂产能分析方法论
+    }),
+  );
+
+  // Q30-P5 发育层（DESIGN-query30 §2.6）：2 个专业参谋 agent（接单参谋 + 供应链风控），
+  // 绑对口求解器族 + 对口方法论 skill + POST_CHECK 规则裁决（接单 C34/C35/C13/C24·供应链 C05/C16/C22）。
+  // 经 sceneAgent 工厂（复用既有 model 字段·模型标识不入提交物）。作为一等 PUBLISHED agent 注册，
+  // 可作 WORKFLOW_FIRST 命不中的回落场景 agent / 全域探索委派终点（真 LLM 环境下 path-B 结构化作答）。
+  agents.push(
+    sceneAgent({
+      id: "agt_order_advisor",
+      key: "order_advisor_agent",
+      name: "接单参谋",
+      description: "接单挤占推演专业参谋（Q30-P5）——急单可承接性/挤占级联/多方案比选/接单毛利/客户信用接地 + 求解器真值 + C34/C35/C13/C24 裁决",
+      systemPrompt: [
+        "你是接单参谋，服务电池制造的急单承接决策。基于**接单推演数据**（急单型号/数量/交期、在手订单挤占、",
+        "接单毛利、客户信用敞口）回答开放式接单问句（如「这个急单能不能接、会挤占谁、有哪些方案」）。",
+        "",
+        "【作答路径】优先调用求解器取真值：what_if_displacement（挤占推演·四型方案·被挤订单逐单再方案）、",
+        "multi_plan_compare（方案五维比较矩阵）、quote_margin（接单毛利评审）、credit_exposure（客户信用敞口）。",
+        "需对象数据用 query_objects/get_object（Order/Line/Model/Customer），需规则裁决用 evaluate_rules。",
+        "给出：① 能否承接结论 ② 方案四型比选与推荐 ③ 每条依据（引求解器结果/规则 C34/C35/C13/C24）。",
+      ].join("\n"),
+      tools: ["invoke_solver", "query_objects", "get_object", "evaluate_rules", "resolve_slice", "search_knowledge"],
+      ruleKeys: ["C34", "C35", "C13", "C24"], // 挤占推演/多方案比选/信用敞口/接单毛利下限 POST_CHECK
+      objectTypes: ["Order", "Line", "Model", "Customer", "FinancePlan", "Base"],
+      skillId: "skl_displacement_analysis", // 接单参谋挂挤占分析方法论
+    }),
+  );
+  agents.push(
+    sceneAgent({
+      id: "agt_supply_risk_control",
+      key: "supply_risk_agent",
+      name: "供应链风控参谋",
+      description: "供应链风控专业参谋（Q30-P5·Q04/Q06/Q29 族）——断供半径/信号传导/隐性集中/最小成本改道接地 + 求解器真值 + C05/C16/C22 裁决",
+      systemPrompt: [
+        "你是供应链风控参谋，服务电池制造的断供/停线/改道决策。基于**供应链风险数据**（供应商断供、产线停复线、",
+        "信号图传导、隐性集中敞口、改道候选线）回答开放式风控问句（如「断供影响哪些线、产量改道到哪成本最低」）。",
+        "",
+        "【作答路径】优先调用求解器取真值：supplier_disruption_radius（断供影响半径）、signal_propagation（信号图传导）、",
+        "concentration_risk（隐性集中敞口）、reroute_decision（最小成本改道分配）。",
+        "需对象数据用 query_objects/get_object（Base/Line/Process/Equipment/Order/Material），需规则裁决用 evaluate_rules。",
+        "给出：① 影响半径/受累对象结论 ② 改道/降险动作 ③ 每条依据（引求解器结果/规则 C05/C16/C22）。",
+      ].join("\n"),
+      tools: ["invoke_solver", "query_objects", "get_object", "evaluate_rules", "resolve_slice", "search_knowledge"],
+      ruleKeys: ["C05", "C16", "C22"], // 交期风险/齐套/换型改道 POST_CHECK
+      objectTypes: ["Base", "Line", "Process", "Equipment", "Order", "Material", "Supplier"],
+      skillId: "skl_supply_risk", // 供应链风控挂供应链风险方法论
     }),
   );
 

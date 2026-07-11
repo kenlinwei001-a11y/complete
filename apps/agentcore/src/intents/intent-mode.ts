@@ -51,6 +51,14 @@ export const INTENT_MODE: Record<string, IntentMode> = {
   multi_constraint_schedule_q: "WORKFLOW_FIRST",
   // Q30-P4 跨求解器编排层（治 countermeasure 诈账根）：对策组合编排——价值在「杠杆组合怎么排/保哪两个舍哪个/总成本残余缺口」（编排层真调子求解器承载数据表）→ WORKFLOW_FIRST。
   countermeasure_combo_q: "WORKFLOW_FIRST",
+  // Q30-P5 发育层（DESIGN-query30 §2.5·闭 G-9）：6 条 workflow 多步链场景卡——价值在求解器承载的数据表
+  // （现金曲线/改道分配/联合排产/毛利倒挂/传导集中/资本比选）→ WORKFLOW_FIRST（确定性路径A 真跑双求解器链）。
+  cash_alert_combo_chain: "WORKFLOW_FIRST",
+  disruption_reroute_chain: "WORKFLOW_FIRST",
+  kit_schedule_chain: "WORKFLOW_FIRST",
+  fullcost_margin_chain: "WORKFLOW_FIRST",
+  signal_concentration_chain: "WORKFLOW_FIRST",
+  capex_cash_chain: "WORKFLOW_FIRST",
   plan_recommend: "AGENT_FIRST",
   yield_diag: "AGENT_FIRST",
   maint_stagger: "AGENT_FIRST",
