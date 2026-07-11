@@ -5750,7 +5750,7 @@
       "title": "产能推演加电池型号维度(用户明确要·后端现成)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "deps": [],
       "acceptance": {
@@ -5776,9 +5776,11 @@
       },
       "at": {
         "created": "2026-07-10",
-        "built": "2026-07-10T20:46:54.761Z"
+        "built": "2026-07-10T20:46:54.761Z",
+        "done": "2026-07-11T04:27:56.933Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立复验(agent a7007cfb·4子代理+真浏览器逐值对照live capacity_forecast):型号维度真生效非写死——4680-NCM P50 5.0/P90 4.7/缺口35.3/主瓶颈设备OEE逐值==端点;换型LFP出完全不同可产基地(洛阳/信阳 vs NCM常州/成都/合肥)证非写死;LFP信阳tightness=null→显—估算守KILL-MOCK-RED;下拉6真本体Model非兜底常量。C3 R6字节一致。⚠非阻断落点偏差(留用户裁决):ModelCapacitySlice挂SandboxView(/v/sim-sandbox推演沙盘)未挂/v/risk(产能推演风险看板)·PRD字面说产能推演页·功能全兑现可达但落点可议(要否并挂/v/risk)。"
     },
     {
       "id": "WO-CAP-08-OPS-FLOW",
@@ -5863,7 +5865,7 @@
       "title": "合并OntoFlow②前端:移植pipeline画布组件+DataBuilderPage统一入口+B3推演前端+B4契约对齐",
       "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "deps": [
         "WO-MERGE-01"
@@ -5896,9 +5898,11 @@
       },
       "at": {
         "created": "2026-07-10",
-        "built": "2026-07-10T20:46:54.949Z"
+        "built": "2026-07-10T20:46:54.949Z",
+        "done": "2026-07-11T04:27:57.013Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立复验(agent a7007cfb·B3/B4曾BLOCK真修好):①画布单一入口真编辑真落后端(PUT ontology-workflows·create-get-update往返+跨租户404)databuilder引擎共存;②B3推演前端真——推演入口→generic-inference→前后对比表·48行DOM全等端点(SO-3391 qty320000→321000 direct·value derived)确定性;③B4契约对齐真——发布面板类型:Supplier、Order·链路:SUPPLIES真类型名非空白·DOM==network·MSW同形string[]·f41断言具体值·scaffold真落库(viewConfig+ledger_Supplier/Order)。四包:contracts29/agentcore653/frontend543全绿·datacore RC1唯一源worker RPC超时(1128测0失败·同机竞争非代码)。⚠非阻断:画布是第2页签非默认主视图(PRD说画布为主·可议)。"
     },
     {
       "id": "WO-MERGE-03",
@@ -6948,8 +6952,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "WO-CAP-02-SEED-VARY",
-      "at": "2026-07-11T04:11:12.820Z"
+      "id": "WO-MERGE-02",
+      "at": "2026-07-11T04:27:57.013Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
