@@ -6598,11 +6598,10 @@
       "reviewNote": "PASS(BLOCK已解·独立复验) durable核心前次已PASS(agent a1a18de:崩溃stopAfterNode→resume跳DONE逐字节等价resumedCount=1·移植BuildWorkflowEngine非重造·补偿反向序经S2·暗发关闸旧串行·684测绿)。本次修双注册验讫:datacore features.ts:137/141补qos.workflow_dag+qos.exec_planner(defaultOn:false)·agentcore registry.ts:68/69镜像仍在=双注册满足防恒真陷阱·母体§2.H/§7双注册措辞now真非overclaim。build 3包OK·workflow-dag门无回归。L1B-3闭环·解锁L1B-5/SAGA。"
     },
     {
-      "status": "DONE",
+      "status": "BUILT",
       "owner": "",
       "at": {
-        "built": "2026-07-11T11:05:10.798Z",
-        "done": "2026-07-11T11:40:17.980Z"
+        "built": "2026-07-11T11:05:10.798Z"
       },
       "id": "WO-L1B-4",
       "title": "Execution Planner synthesizePlan(Ch10 满配)+ 影子接线(shadow only)",
@@ -6644,9 +6643,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev1",
+      "at": {
+        "wip": "2026-07-11T12:56:51.791Z",
+        "built": "2026-07-11T13:09:11.050Z"
+      },
       "id": "WO-L1B-5",
       "title": "Planner SERVE 翻闸(STAGE-1 fall-through→STAGE-2 白名单)+ 全链真跑",
       "priority": "P1",
@@ -6684,7 +6686,8 @@
       "discipline": "暗发翻闸·additive·parity 分歧超阈/首包延迟回归→摘白名单秒级回退(KILL-MOCK-RED·真跑铁律0.4)。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-5 dev1] "
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-5 dev1] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -6853,12 +6856,10 @@
       "reviewNote": "PASS 独立真跑(agent a8b8eb763):Decision Package装配+Pareto+ExplanationChain+门。R6整包双跑字节一致·纯聚合零业务常数·weakestDataMode取最弱不冒充LIVE。测谎器validateDecisionPackage真抓5类注入(幽灵方案/无provId数字/伪造delta/越白名单引擎/幽灵推荐)·check-decision-kernel.mjs动态green→red自证实跑绿·方案键锁三真求解器白名单。测7/7。非阻断:纯plan_generate类recommendedKey=null属诚实(<2可比→null)。"
     },
     {
-      "status": "DONE",
+      "status": "WIP",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T09:27:19.155Z",
-        "built": "2026-07-11T11:33:47.930Z",
-        "done": "2026-07-11T12:10:59.728Z"
+        "wip": "2026-07-11T09:27:19.155Z"
       },
       "id": "WO-L2-4",
       "title": "QOS 旁挂接线(暗发·观察态)+ 持久化 + 读端点 + 事件",
@@ -6896,16 +6897,13 @@
       "discipline": "暗发观察态·additive·fire-and-forget 不阻塞首包·不改 answer/路由(NG1·KILL-MOCK-RED)。跨层:依赖 L1-A(WO-L1A-3·需求图可读若开);L1-B 就绪度可选(兜底求解器直算·PRD §9 NG4)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-4 dev2] ",
-      "blockReason": ""
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-4 dev2] "
     },
     {
-      "status": "BUILT",
+      "status": "WIP",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T09:37:43.781Z",
-        "built": "2026-07-11T12:56:42.394Z",
-        "blocked": "2026-07-11T11:56:36.013Z"
+        "wip": "2026-07-11T09:37:43.781Z"
       },
       "id": "WO-L2-5",
       "title": "采纳正门(Decision+ActionDraft·R4)+ 本体回写",
@@ -6937,8 +6935,7 @@
       "discipline": "additive·采纳经 R4 正门不直写真值(RL4)·与既有 Decision 台账不双份(RL3)·母体回写(铁律0·KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] ",
-      "blockReason": ""
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] "
     },
     {
       "status": "DONE",
@@ -7033,14 +7030,11 @@
       "reviewNote": "PASS 独立真跑(agent ae5ccd0af):案例库+确定性检索+读端点。R9四处齐·双实现R2隔离。确定性检索双跑字节一致·判别力真(常州query→常州案例#1非恒返)·breakdown可解释R13。读端点HTTP往返真跑+真起服务诚实空态。暗发关闸memory.cbr OFF→404·put零writer空表(摄取待L1.5-3)。decision-case:check有牙·L1.5测11绿·全量datacore1152 passed 0 failed·build四包绿。G-3b读侧BASE达成。"
     },
     {
-      "status": "BUILT",
-      "owner": "dev2",
-      "at": {
-        "wip": "2026-07-11T11:39:04.316Z",
-        "built": "2026-07-11T12:59:50.045Z"
-      },
+      "status": "TODO",
+      "owner": "",
+      "at": {},
       "id": "WO-L1.5-3",
-      "title": "案例摄取接线(DataCore Decision→案例·L2端口) + CBR retrieve 端点(POST /a/v1/memory/cases/retrieve-similar·相似案例检索·datacore侧)",
+      "title": "案例摄取接线(DataCore Decision→案例·agent 终态旁路·L2 端口)+ agent 先查案例库(治 G-3b 读写闭合)",
       "priority": "P1",
       "deps": [
         "WO-L1.5-2",
@@ -7075,31 +7069,12 @@
       "discipline": "暗发·additive(旧 search_experience/recordExperience 不删)·案例数字不当真值·经工具溯源(KILL-MOCK-RED)。跨层:消费 L2 DecisionArtifact 端口(WO-L2-5·PRD §9 缺则退纯文本特征·软依赖)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·datacore域·见 DISPATCH-2DEV-SPINE.md] 【审核方拆缝 2026-07-11】原含 agentcore 'retrieve_similar_cases 工具'(tools/registry+executor+clients+universal)跨 lane 撞 Dev-1/Dev-3——已拆出 WO-L1.5-3B 归 Lane A/Dev-1。本单只做 datacore 两半:①案例摄取(Decision→DecisionCase 旁路写) ②CBR retrieve 端点(相似检索·暗发键 memory.cbr_retrieve 注册 datacore features.ts·defaultOn:false)。⛔不碰 agentcore 任何文件。治 G-3b 写侧+读侧数据面。",
-      "blockReason": ""
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-3 dev2] "
     },
     {
-      "id": "WO-L1.5-3B",
-      "title": "agentcore retrieve_similar_cases 工具适配器(tools/registry+executor+clients+universal·薄 OBO 适配·调 datacore CBR retrieve 端点)",
       "status": "TODO",
-      "priority": "P1",
       "owner": "",
-      "deps": [
-        "WO-L1.5-3"
-      ],
-      "doc": "docs/PRD-L1.5-enterprise-memory-cbr.md",
-      "note": "[LaneA·dev1·agentcore域·见 DISPATCH-2DEV-SPINE.md] 【审核方拆缝 2026-07-11·从 L1.5-3 拆出】理由:①架构铁律 CLAUDE.md『AgentCore 只经 DataCore 公开 REST 访问数据』→ retrieve_similar_cases 是松耦合薄适配器·必属 agentcore·经 OBO 透传调 L1.5-3 的 datacore CBR retrieve 端点·不在 agentcore 重算相似度。②分区铁律 只碰本 lane 文件域→ agentcore tools/* = Lane A = Dev-1。暗发纪律:工具注册进 registry 但**门控**(暗发键 memory.cbr_retrieve·**双注册** agentcore registry.ts + datacore features.ts·defaultOn:false)→关闸=不在 agent 可用工具集=agent 行为字节一致(NG6);开闸(翻闸)才 agent 先查案例库。治 G-3b 读侧 agent 闭环。",
-      "at": {
-        "created": "2026-07-11T12:50:28.677Z"
-      }
-    },
-    {
-      "status": "BUILT",
-      "owner": "dev2",
-      "at": {
-        "wip": "2026-07-11T13:00:19.225Z",
-        "built": "2026-07-11T13:04:51.404Z"
-      },
+      "at": {},
       "id": "WO-L1.5-4",
       "title": "反馈信号闭环 + 决策模式挖掘→接现校准 Action R4(feedback→调参真生效·不自改真值)",
       "priority": "P1",
@@ -7130,8 +7105,7 @@
       "discipline": "additive·校准数学零改·参数变更经 R4 正门 autoApply 恒 false 不自改真值(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] ",
-      "blockReason": ""
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] "
     },
     {
       "status": "TODO",
@@ -7367,14 +7341,13 @@
     },
     {
       "at": {
-        "built": "2026-07-11T11:28:48.603Z",
-        "done": "2026-07-11T12:51:53.026Z"
+        "built": "2026-07-11T11:28:48.603Z"
       },
       "id": "WO-SANDBOX-CONFIG-COVERAGE",
       "title": "S0·沙盘配套纳入gap覆盖(propagation_rule/state_var两kind·后端·全套前置)",
       "doc": "docs/WO-SANDBOX-CONFIG-COVERAGE.md",
       "priority": "P1",
-      "status": "DONE",
+      "status": "BUILT",
       "owner": "",
       "deps": [],
       "note": "[归还Dev-3·已建于sandbox-reconstruction-dev3分支(分支指令冲突)·待搬迁到vigilant-knuth后标BUILT我验·非Dev-2] [沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
@@ -7537,14 +7510,50 @@
         ],
         "discipline": "additive·纯门加固·堵根·审核方出单·dev建·reviewer复验。"
       }
+    },
+    {
+      "status": "TODO",
+      "owner": "",
+      "id": "WO-L1.5-3B",
+      "title": "retrieve_similar_cases 工具适配器(薄 OBO→datacore·暗发·双注册)",
+      "priority": "P1",
+      "deps": [
+        "WO-L1.5-3",
+        "WO-L1B-5"
+      ],
+      "doc": "docs/PRD-L1.5-enterprise-memory-cbr.md",
+      "acceptance": {
+        "goal": "agentcore tools/registry+executor+clients+universal 落 retrieve_similar_cases 工具·薄 OBO 经用户 JWT 透传调 datacore POST /a/v1/memory/cases/retrieve-similar(绝不在 agentcore 重算相似度)·暗发键 memory.cbr_retrieve 双注册 defaultOn:false·关闸=工具不在 agent 可用集=agent 行为字节一致·开闸才 agent 先查案例库。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "真跑",
+            "assert": "真起 datacore(memory 端点)+agentcore·开闸=agent 工具集含 retrieve_similar_cases·真 OBO 调 /a/v1/memory/cases/retrieve-similar 得真案例(非 agentcore 重算)。"
+          },
+          {
+            "id": "C2",
+            "type": "真跑",
+            "assert": "关闸(memory.cbr_retrieve defaultOff)=工具不在可用集·agent 行为字节一致(NG6·回退演练)。"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "双注册一致(agentcore registry.ts + datacore features.ts 同键)·targeted 测试 + 门绿·母体回写。"
+          }
+        ]
+      },
+      "discipline": "薄 OBO·绝不重算相似度·暗发 additive·双注册 defaultOn:false·关闸=字节一致·deps L1.5-3(等 Dev-2 datacore 端点)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·审核方拆缝·ID带L1.5但agentcore活儿归Dev-1·claim WO-L1.5-3B dev1] 建完 L1B-5 后接。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1.5-4",
-      "at": "2026-07-11T13:04:51.404Z"
+      "id": "WO-L1B-5",
+      "at": "2026-07-11T13:09:11.051Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
