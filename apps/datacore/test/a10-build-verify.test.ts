@@ -16,13 +16,17 @@ describe("A10 · 终态闭环验证（verifyBuild）", () => {
     expect(run.status).toBe("SUCCEEDED");
 
     const verified = (await (await t.app.inject({ method: "POST", url: `/a/v1/databuilder/runs/${run.id}/verify`, headers: ADMIN })).json()) as {
-      verification: { status: string; evidence: string; answerable: boolean; answer: string };
+      verification: { status: string; evidence: string; answerable: boolean; answer: string; validationTrace?: { consistency: { checks: { kind: string; status: string }[]; verdict: string } } };
       nodes: { key: string; status: string }[];
     };
     expect(verified.verification.status).toBe("VERIFIED");
     expect(verified.verification.evidence).toBe("RUNTIME_PROBE");
     expect(verified.verification.answerable).toBe(true);
     expect(verified.verification.answer).toMatch(/经 QOS 实跑/);
+    // 洞D 绿侧（不过度判红）：RUNTIME_PROBE + 答案含数字 → NUMERIC_PROVENANCE PASS·verdict ALL_PASS（活证据）。
+    const vt = verified.verification.validationTrace;
+    expect(vt!.consistency.checks.filter((c) => c.kind === "NUMERIC_PROVENANCE").every((c) => c.status === "PASS")).toBe(true);
+    expect(vt!.consistency.verdict).toBe("ALL_PASS");
     // 回灌 FDE 节点图末节点（launcher）
     expect(verified.nodes.find((n) => n.key === "launcher")!.status).toBe("DONE");
 
@@ -44,12 +48,22 @@ describe("A10 · 终态闭环验证（verifyBuild）", () => {
     expect(launcher.gapCode).toBe("NOT_ANSWERABLE");
   });
 
-  it("QOS 未配 → BUILD_STATIC（兜底直调求解器，诚实标'未过运行时'）", async () => {
+  it("QOS 未配 → BUILD_STATIC（兜底直调求解器，诚实标'未过运行时'）+ 洞D：NUMERIC_PROVENANCE 据实 FAIL（非假绿 PASS）", async () => {
     const t: TestApp = await makeApp(); // 不注入 inferenceProbe
     const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 33 } })).json()) as { id: string };
-    const v = (await (await t.app.inject({ method: "POST", url: `/a/v1/databuilder/runs/${run.id}/verify`, headers: ADMIN })).json()) as { verification: { status: string; evidence: string } };
+    const v = (await (await t.app.inject({ method: "POST", url: `/a/v1/databuilder/runs/${run.id}/verify`, headers: ADMIN })).json()) as {
+      verification: { status: string; evidence: string; validationTrace?: { consistency: { checks: { kind: string; status: string }[]; verdict: string } } };
+    };
     expect(v.verification.status).toBe("BUILD_STATIC");
     expect(v.verification.evidence).toBe("BUILD_STATIC");
+    // 洞D 齿（green→red·KILL-MOCK-RED）：BUILD_STATIC(未过运行时) → NUMERIC_PROVENANCE 必 FAIL、一致性 verdict 必非 ALL_PASS
+    //（旧门写死 PASS/ALL_PASS=假绿：兜底静态答案却盖"数字已溯源"章）。
+    const vt = v.verification.validationTrace;
+    expect(vt).toBeDefined();
+    const numeric = vt!.consistency.checks.filter((c) => c.kind === "NUMERIC_PROVENANCE");
+    expect(numeric.length).toBeGreaterThan(0);
+    expect(numeric.every((c) => c.status === "FAIL")).toBe(true);
+    expect(vt!.consistency.verdict).not.toBe("ALL_PASS");
   });
 
   it("全自动末步：publish 后 onComplete 自动触发 verifyBuild（建域即带 verification，无需手动）", async () => {

@@ -624,13 +624,28 @@ export class DataBuilderService {
    * - 交叉验证（Layer2）：求解器入参所依赖的对象属性逐条 crossValidate（CONSISTENT/CONFLICT/NO_EVIDENCE）。
    * 无网络/无 LLM，同 (script, seed) 字节级一致（R6）；tenant 隔离经 ontology.crossValidate（R2）。
    */
-  private async buildStoryValidationTrace(ctx: AuthCtx, plan: BuildPlan | undefined): Promise<ValidationTrace | undefined> {
+  private async buildStoryValidationTrace(
+    ctx: AuthCtx,
+    plan: BuildPlan | undefined,
+    // WO-DB-CLOSURE-HARDEN 洞D：终态验证据实——传入 evidence（RUNTIME_PROBE=活证据·BUILD_STATIC=兜底未过运行时）
+    // + answer（结论文本）→ NUMERIC_PROVENANCE 据实判：BUILD_STATIC 或答案无结论数字 → **FAIL**（不写死 PASS）。
+    opts?: { evidence?: "RUNTIME_PROBE" | "BUILD_STATIC"; answer?: string },
+  ): Promise<ValidationTrace | undefined> {
     if (!plan || plan.solverNeeds.length === 0) return undefined;
     const checks: ConsistencyCheck[] = [];
     for (const t of plan.objectTypes) checks.push({ kind: "ENTITY_DEFINED", ref: t.typeKey, status: "PASS", detail: `对象类型 ${t.displayName} 已在本体定义` });
     for (const r of plan.rules) checks.push({ kind: "AXIOM", ref: r.key, status: "PASS", detail: r.expression });
     checks.push({ kind: "VERSION_PIN", ref: plan.id, status: "PASS", detail: `plan ${plan.scriptHash} · seed ${plan.seed}` });
-    for (const s of plan.solverNeeds) checks.push({ kind: "NUMERIC_PROVENANCE", ref: s.solverKey, status: "PASS", detail: "结论数字溯源至求解器输出形状" });
+    // NUMERIC_PROVENANCE 据实（洞D·堵"从不看 answer"假绿）：BUILD_STATIC（未过 QOS 运行时·兜底直调）或答案无数字
+    // → FAIL（数字未溯源至真实结论·非活证据）；RUNTIME_PROBE 且答案含数字 → PASS；evidence 未知（物化前预备 trace）→
+    // 保守 PASS（终态 verifyBuild 会带 evidence 重算据实）。
+    const answerHasNumber = opts?.answer !== undefined ? /\d/.test(opts.answer) : true;
+    const numericHonest = opts?.evidence === undefined
+      ? { status: "PASS" as const, detail: "结论数字溯源至求解器输出形状（预备·终态据实判见 verifyBuild）" }
+      : opts.evidence === "RUNTIME_PROBE" && answerHasNumber
+        ? { status: "PASS" as const, detail: "结论数字经 QOS 运行时实跑产出（活证据·RUNTIME_PROBE）" }
+        : { status: "FAIL" as const, detail: opts.evidence === "BUILD_STATIC" ? "BUILD_STATIC 兜底直调·未过 QOS 运行时（数字非活证据·未溯源至真实结论）" : "结论无数字/未过运行时（不假绿）" };
+    for (const s of plan.solverNeeds) checks.push({ kind: "NUMERIC_PROVENANCE", ref: s.solverKey, ...numericHonest });
     const consVerdict = checks.some((c) => c.status === "FAIL") ? "FAIL" : checks.some((c) => c.status === "WARN") ? "WARN" : "ALL_PASS";
 
     // 交叉验证：结论依据的输入对象属性 vs 知识图谱（取每类型一个代表对象，断言其实际属性值）。
@@ -750,8 +765,9 @@ export class DataBuilderService {
       }
     }
 
-    // 复用 validation 步已算的 trace（避免重复 crossValidate）；缺则补算。
-    const validationTrace = run.validationTrace ?? (await this.buildStoryValidationTrace(ctx, plan));
+    // 终态验证据实（洞D）：**带 evidence/answer 重算** trace——NUMERIC_PROVENANCE 据实判（BUILD_STATIC→FAIL），
+    // 不再复用 validation 步的乐观预备 trace（那步在 inference 前跑·evidence 未知·恒 ALL_PASS=假绿）。
+    const validationTrace = await this.buildStoryValidationTrace(ctx, plan, { evidence, answer });
     const verification: BuildVerification = {
       status, question,
       ...(answer !== undefined ? { answer } : {}),
@@ -1195,8 +1211,26 @@ export class DataBuilderService {
       await this.ontology.runDerivations(ctx);
       setPhase("transform", "DONE", `物化 ${plan.objectTypes.length} 对象类型 + ${plan.rules.length} 规则`);
 
-      // ⑥ closure（已通过；记录报告）
-      setPhase("closure", "DONE", `对象绑定 ${closure.objectsBound} · data 孤儿 ${closure.dataOrphans} · 正向缺失 ${closure.forwardMissing}`);
+      // ⑥ closure（洞C·WO-DB-CLOSURE-HARDEN·据实非空重判）：物化后统计每个"应有数据"类型（有 sourceDataset·
+      // 真调 materialize）真实物化对象数 → 重跑闭包。domain 已分配但真物化 0 节点=空壳（切片恒空判绿根因）→ OBJECT/FAILED
+      // → gatePassed=false。仅纳入"应物化"类型（无源类型不误红）。物化前的乐观 gate 无从知节点数、此处才据实。
+      const resolvedCounts = new Map<string, number>();
+      for (const t of plan.objectTypes) {
+        const wasMaterialized = !!(t.sourceDataset && datasetIdByKey.has(t.sourceDataset));
+        if (wasMaterialized) resolvedCounts.set(t.typeKey, (await this.repos.objects.listByType(ctx.tenantId, t.typeKey)).length);
+      }
+      const honestClosure = validateClosure(plan, cfg.closure, body.buildMode ?? "STRICT", resolvedCounts);
+      job.closure = honestClosure; // 据实报告取代物化前乐观 gate（诚实：切片真非空才判绿）
+      if (honestClosure.blocked) {
+        setPhase("closure", "FAILED", "闭包据实门禁未通过：domain 已分配但切片解析 0 节点（空壳·非真派生·见 closure.findings）");
+        setPhase("publish", "SKIPPED");
+        job.status = "FAILED";
+        job.error = "CLOSURE_GATE_FAILED_EMPTY_SLICE";
+        job.finishedAt = nowIso();
+        await this.repos.buildJobs.put(job);
+        return job;
+      }
+      setPhase("closure", honestClosure.gatePassed ? "DONE" : "FAILED", `对象绑定 ${honestClosure.objectsBound} · data 孤儿 ${honestClosure.dataOrphans} · 正向缺失 ${honestClosure.forwardMissing}`);
 
       // ⑦ publish & seal
       setPhase("publish", "DONE", cfg.publish.auto ? "自动发布" : "待人工发布");

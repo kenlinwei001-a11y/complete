@@ -17,17 +17,36 @@ const WORKFLOW_SOLVERS = new Set(["sop_balance"]);
  * buildMode=PROVISIONAL 把所有 HARD 失败**降级为 ADVISORY**（severity=ADVISORY），如实记录全部缺口但
  * `blocked=false`（不阻断，守"不靠阻断成 0"）。gatePassed 始终保留"STRICT 口径下是否过"的诚实判定。
  */
-export function validateClosure(plan: BuildPlan, policy: ClosurePolicy, buildMode: BuildMode = "STRICT"): ClosureReport {
+/**
+ * WO-DB-CLOSURE-HARDEN（洞C·据实非空判）：closure 只读 `domain` 存在=空壳判绿——domain 已分配但切片
+ * **真跑 resolve 零 FK 穿越/零物化对象**仍 gatePassed=true（KILL-MOCK-RED 核心形态）。
+ * 解：调用方（service.ts run() 物化后）传入 `resolvedCounts`（typeKey→真实解析/物化节点数）；本纯函数据此
+ * 把"domain 有值但解析 0 节点"从 OBJECT/BOUND 翻 OBJECT/FAILED（→ gatePassed=false）。
+ * 向后兼容：`resolvedCounts` 缺省（物化前的 dry gate / 纯单测）→ 行为不变（未知不误红·count===undefined 放行）。
+ */
+export function validateClosure(
+  plan: BuildPlan,
+  policy: ClosurePolicy,
+  buildMode: BuildMode = "STRICT",
+  resolvedCounts?: ReadonlyMap<string, number>,
+): ClosureReport {
   const findings: ClosureFinding[] = [];
   const typeByKey = new Map(plan.objectTypes.map((t) => [t.typeKey, t]));
 
-  // ---- 反向-对象：每个对象类型必须落在某个本体切片（domain）----
+  // ---- 反向-对象：每个对象类型必须落在某个本体切片（domain）**且切片非空**（洞C）----
   let objectsBound = 0;
   for (const t of plan.objectTypes) {
-    const sliced = !!t.domain && t.domain !== "unassigned";
+    const domainAssigned = !!t.domain && t.domain !== "unassigned";
+    const count = resolvedCounts?.get(t.typeKey);
+    // 提供 counts 时：domain 有值但解析 0 节点 = 空壳（判红）；未提供(物化前/单测)：未知不误红。
+    const resolvesNonEmpty = count === undefined ? true : count >= 1;
+    const sliced = domainAssigned && resolvesNonEmpty;
     if (sliced) {
       objectsBound++;
-      findings.push({ kind: "OBJECT", ref: t.typeKey, status: "BOUND", detail: `domain=${t.domain}` });
+      findings.push({ kind: "OBJECT", ref: t.typeKey, status: "BOUND", detail: `domain=${t.domain}${count === undefined ? "" : `·解析 ${count} 节点`}` });
+    } else if (domainAssigned && !resolvesNonEmpty) {
+      // domain 已分配但切片真跑解析 0 节点 —— 空壳判绿根因（洞C）：OBJECT/FAILED（→ hasObjectFail → gatePassed=false）。
+      findings.push({ kind: "OBJECT", ref: t.typeKey, status: "FAILED", detail: `domain=${t.domain} 已分配但切片解析 0 节点（空壳·非真派生·KILL-MOCK-RED）` });
     } else if (policy.object.mode === "HARD") {
       findings.push({ kind: "OBJECT", ref: t.typeKey, status: "FAILED", detail: "对象未落本体切片（domain 缺失）" });
     } else {
