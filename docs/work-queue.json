@@ -6958,7 +6958,7 @@
     },
     {
       "id": "WO-L2-5-CONCURRENCY-LOCK",
-      "status": "WIP",
+      "status": "BUILT",
       "priority": "P3",
       "owner": "dev2",
       "deps": [
@@ -6968,8 +6968,10 @@
       "title": "采纳并发加固:adopt() TOCTOU 窗口(getByTask↔回写ADOPTED间)真正闭合(乐观锁/唯一约束·pg侧)",
       "note": "[审核方记·L2-5重验非阻断观察] 幂等守卫已确定性修好顺序连采/网络重试(已DONE)。但守卫在 getByTask 与回写 ADOPTED 之间有若干 await·理论 TOCTOU 并发窗口。内存仓储微任务序列化未复现(5路并发仍1条)·pg 真并发才可能双写。真正闭合需乐观锁(version)或 DB 唯一约束(packageId+ADOPTED)。低优·独立议题。",
       "at": {
-        "wip": "2026-07-11T15:52:07.543Z"
-      }
+        "wip": "2026-07-11T15:52:07.543Z",
+        "built": "2026-07-11T16:02:33.195Z"
+      },
+      "blockReason": ""
     },
     {
       "status": "DONE",
@@ -7834,10 +7836,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev3",
-      "cmd": "WIP",
-      "id": "WO-SANDBOX-TRUST-BADGE",
-      "at": "2026-07-11T15:52:47.203Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-L2-5-CONCURRENCY-LOCK",
+      "at": "2026-07-11T16:02:33.195Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
