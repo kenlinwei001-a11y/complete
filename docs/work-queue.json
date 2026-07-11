@@ -8517,11 +8517,12 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "导入场景端到端进启动器(G3 follow-up):agentcore battery启动器合并pack.scenarios(现走SCENARIO_CATALOG忽略)+IndustryScenario补selectedObjects传resolvedObjects/targetView/slotPresets",
       "note": "[LaneA·agentcore·G3诚实交底转单] server.ts:2572-2579 battery租户走SCENARIO_CATALOG忽略pack.scenarios→导入卡进不了demo启动器。需①catalog合并pack.scenarios②IndustryScenario补selectedObjects字段让G3解析的resolvedObjects/targetView经pack传启动器。与RC-2默认输入场景天然协同(导入场景=一条有输入的可推演场景)。green→red:导入场景后demo启动器目录应出现该场景·点击带selectedObjects进推演(PRD§3.3一键推演)。",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev4-import",
       "at": {
         "created": "2026-07-11T18:33:05.251Z"
-      }
+      },
+      "built": "[BUILT dev4-import] G3 follow-up 端到端进电池启动器。①IndustryScenario(contracts/industrypack.ts)补 selectedObjects/targetView/slotPresets ②DataCore /a/v1/scenarios/pack 随卡下发 G3 解析的 resolvedObjects/targetView/slotPresets ③agentcore scenarioFromPackScenario 映射进 presetContext ④ensureScenarios 电池族在 S01-S20 专属播种之后合入导入卡(allCards 去重·不干扰电池 grounding/意图/计划播种)。green→red:导入场景经 grounding 进 demo 启动器·点击带真对象 selectedObjects 一键推演;无导入不凭空造卡·S01 仍在(合入非替换)。测:agentcore test/import-scenario-launcher-wire.test.ts 2 用例·datacore 1261/agentcore 746 全绿·gates(feature-parity/debattery/no-fake-data/prd/slices)全绿。回写母体§2.B(G3 bullet 端到端已闭)+slices。⚠跨 lane:agentcore server.ts/scenarios-catalog.ts + datacore app.ts + contracts·additive·已 rebase。待审核方真跑复验。"
     },
     {
       "id": "WO-RC1-CLOSURE-SCOPE",

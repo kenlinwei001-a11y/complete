@@ -81,6 +81,12 @@ export const IndustryScenarioSchema = z.object({
     args: z.record(z.string(), z.unknown()).optional(),
     unit: z.string().optional(),
   }),
+  // WO-IMPORT-SCENARIO-LAUNCHER-WIRE（G3 follow-up）：导入场景经 DataCore /a/v1/scenarios/pack seam 携 presetContext
+  // 进 AgentCore 启动器目录——G3 解析的真对象 selectedObjects + targetView + slotPresets 随 pack 传入卡面（一键推演 PRD §3.3）。
+  // 出厂 pack.scenarios 不带这些字段（缺省即空/默认视图），仅导入场景填充。
+  selectedObjects: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string().optional() })).optional(),
+  targetView: z.string().optional(),
+  slotPresets: z.record(z.string(), z.unknown()).optional(),
 });
 export type IndustryScenario = z.infer<typeof IndustryScenarioSchema>;
 

@@ -1041,9 +1041,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
     const industryKey = (tenant?.industry as string) || "battery-manufacturing";
     const pack = loadIndustryPack(industryKey);
-    // WO-IMPORT-SCENARIO (G3)：本租户导入场景卡合入场景包（pack 默认 + 导入·同键导入覆盖 pack 默认）→
-    // AgentCore 启动器目录经此 seam 消费导入场景（非电池/pack 驱动租户直接生效；电池族 catalog 由 agentcore 侧合并·LaneA）。
-    const importedScenarios = (await repos.importedScenarios.list(c.tenantId)).map((r) => r.scenario);
+    // WO-IMPORT-SCENARIO (G3) + LAUNCHER-WIRE：本租户导入场景卡合入场景包（pack 默认 + 导入·同键导入覆盖 pack 默认）→
+    // AgentCore 启动器目录经此 seam 消费导入场景。LAUNCHER-WIRE：把 G3 解析的 targetView/selectedObjects/slotPresets
+    // 一并随 IndustryScenario 下发（presetContext 经 scenarioFromPackScenario 传卡面·一键推演 PRD §3.3）。
+    const importedScenarios = (await repos.importedScenarios.list(c.tenantId)).map((r) => ({
+      ...r.scenario,
+      targetView: r.targetView,
+      selectedObjects: r.resolvedObjects,
+      slotPresets: r.slotPresets,
+    }));
     const packScenarios = pack?.scenarios ?? [];
     const importedKeys = new Set(importedScenarios.map((s) => s.key));
     const scenarios = [...packScenarios.filter((s) => !importedKeys.has(s.key)), ...importedScenarios];

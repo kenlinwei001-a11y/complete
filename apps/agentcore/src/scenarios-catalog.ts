@@ -223,7 +223,8 @@ export function scenarioFromPackScenario(
     scenarioKey: s.key,
     name: s.title,
     domain: "决策场景",
-    targetView: "decision-scenarios",
+    // WO-IMPORT-SCENARIO-LAUNCHER-WIRE：导入场景可携 targetView/selectedObjects/slotPresets（G3 解析真对象）→ 卡面一键推演。
+    targetView: s.targetView ?? "decision-scenarios",
     intentKey: s.key,
     triggerQuestion: s.question,
     solver: s.answer.solverKey ?? "",
@@ -231,7 +232,11 @@ export function scenarioFromPackScenario(
     riskLevel: "COMPUTE",
     summary: s.title,
     mode: "WORKFLOW_FIRST",
-    presetContext: { targetView: "decision-scenarios", selectedObjects: [], slotPresets: s.answer.args ?? {} },
+    presetContext: {
+      targetView: s.targetView ?? "decision-scenarios",
+      selectedObjects: s.selectedObjects ?? [],
+      slotPresets: s.slotPresets ?? s.answer.args ?? {},
+    },
     status: "PUBLISHED",
     version: 1,
   };

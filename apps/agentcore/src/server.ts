@@ -2603,11 +2603,19 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       await ensureMaterializedIntents(deps.repos, tenantId);
     }
 
+    // WO-IMPORT-SCENARIO-LAUNCHER-WIRE（G3 follow-up·闭"导入场景进不了 demo 启动器"）：电池族此前只走
+    // SCENARIO_CATALOG、**忽略** pack.scenarios（DataCore /a/v1/scenarios/pack seam 携本租户导入场景）→ 导入场景卡
+    // 进不了 demo 启动器目录。此处电池族也合入导入场景卡（非电池已在 packCards）——放在电池专属播种之后，
+    // 不干扰 S01-S20 的 grounding/意图/计划播种（导入卡走通用 scenarioFromPackScenario·带 G3 解析的 selectedObjects）。
+    const importedCards: Scenario[] = isBattery ? packScenarios.map((s) => scenarioFromPackScenario(s, tenantId)) : [];
+    const seenKey = new Set<string>();
+    const allCards = [...packCards, ...importedCards].filter((sc) => (seenKey.has(sc.scenarioKey) ? false : seenKey.add(sc.scenarioKey)));
+
     const existing = await deps.repos.scenarios.listByTenant(tenantId);
     const keys = new Set(existing.map((s) => s.scenarioKey));
     let added = false;
     // 按 key 幂等补齐本 pack 场景卡（即便已有自助新增/退役场景也不漏播、不覆盖既有）。
-    for (const sc of packCards) {
+    for (const sc of allCards) {
       if (!keys.has(sc.scenarioKey)) {
         await deps.repos.scenarios.upsert(sc);
         added = true;
