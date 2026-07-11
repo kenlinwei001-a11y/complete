@@ -6013,10 +6013,11 @@
       }
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "reviewer",
       "at": {
-        "wip": "2026-07-11T03:26:41.428Z"
+        "wip": "2026-07-11T03:26:41.428Z",
+        "built": "2026-07-11T04:46:48.982Z"
       },
       "id": "WO-FAKE-02",
       "deps": [],
@@ -6038,13 +6039,15 @@
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方亲建(下场)。"
       },
-      "priority": "P0"
+      "priority": "P0",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "reviewer",
       "at": {
-        "wip": "2026-07-11T03:26:41.428Z"
+        "wip": "2026-07-11T03:26:41.428Z",
+        "built": "2026-07-11T04:46:49.045Z"
       },
       "id": "WO-FAKE-03",
       "deps": [],
@@ -6066,13 +6069,15 @@
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方亲建。"
       },
-      "priority": "P0"
+      "priority": "P0",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "reviewer",
       "at": {
-        "wip": "2026-07-11T03:26:41.428Z"
+        "wip": "2026-07-11T03:26:41.428Z",
+        "built": "2026-07-11T04:46:49.105Z"
       },
       "id": "WO-FAKE-04",
       "deps": [],
@@ -6094,7 +6099,8 @@
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方亲建。"
       },
-      "priority": "P0"
+      "priority": "P0",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -6952,8 +6958,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "QUERY30-ORCH",
-      "at": "2026-07-11T04:29:40.793Z"
+      "id": "WO-FAKE-04",
+      "at": "2026-07-11T04:46:49.105Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
