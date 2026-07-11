@@ -7450,7 +7450,47 @@
       "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支已归位2026-07-11】S0+S1均已迁至团队分支 claude/vigilant-knuth-b1nmxn(=dev-3简报指定分支);此前误置于sandbox-reconstruction-dev3已作废,请在vigilant复验。 【S1 BUILT 2026-07-11·dev3】shock渲染全链(后端E2E+真浏览器+jsdom)·hold正确S6-defer·§5.4五触发归一(canonical source·真浏览器验)·§5.3多轮→simBranch布线(A/B相同=S1边界·不越界S3·真浏览器compare面板验)·R6·回退双向。证据docs/evidence/S1-*.md。⚠️全量gates有一条红=Dev-2 WO-L1.5-5改G-3b判据未更新meta-ontology齿④(铁证非S1·见前述)·我这侧sim/genuine-sim/no-fake-done全绿。后端maybeRenderSandbox钩子交Dev-1。",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev3",
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "沙盘从独立页→时序推演意图落地渲染器:五触发归一同一SimulationRequest·shock短程渲染进沙盘答案先行·hold正确S6-defer·多轮→分支布线。真起双服务+真浏览器逐值验(docs/evidence/S1-*.md)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "§5.1a shock NL真命中→sandbox_render答案块逐值(source=dialogue·targetView=sim-sandbox·scope含对象·scenario[0]=shock·compareBaseline=false·headline非空)。真起双服务真orchestrator分类路由。"
+          },
+          {
+            "id": "C2",
+            "type": "browser",
+            "assert": "§5.1a 真浏览器:沙盘渲染器真渲染+消费dialogue preset+对真后端跑shock传导+cur-tick推进到horizon+globalKPI真值+UI cur-tick逐值==后端会话tick(铁律0.4·截图S1-sandbox-realbrowser.png)。"
+          },
+          {
+            "id": "C3",
+            "type": "curl",
+            "assert": "§5.1b hold意图→诚实DEFERRED文本(时序接地建设中·S6)·无sandbox_render块(绝不假跑·KILL-MOCK-RED)。"
+          },
+          {
+            "id": "C4",
+            "type": "browser",
+            "assert": "§5.4五触发归一:mapSimSource五源(dialogue/scenario/whatif/alert/workspace)·真浏览器上下文条显示canonical source(data-sim-source)·scope-only(无shock)不auto-tick保裁剪静止(RL9)。"
+          },
+          {
+            "id": "C5",
+            "type": "browser",
+            "assert": "§5.3多轮→分支布线:后端isSandboxFollowUp(同会话前序有sandbox_render)→块标followUp(集成测双轮验)·真浏览器followUp preset→auto-simBranch→compare面板+SimComparePanel真渲染A/B(能分能对比·A/B此刻相同=S1边界·不越界S3)。"
+          },
+          {
+            "id": "C6",
+            "type": "curl",
+            "assert": "§5.6回退演练:feature sim.sandbox_render关(真JWT等缓存TTL)→无sandbox_render块回落既有PathA(旧路径未删RL9)·bindings.intents门控关时4意图不入classify候选=零行为变化。"
+          },
+          {
+            "id": "C7",
+            "type": "unit",
+            "assert": "R6装配器sim-request同输入字节一致(9单测)·前端560/agentcore723测零回归·sim/genuine-sim/ontogenesis-runtime/no-fake-done门绿(全量gates仅Dev-2 WO-L1.5-5改G-3b未更新meta-ontology齿④一条红·非S1)。"
+          }
+        ]
+      }
     },
     {
       "at": {},
