@@ -32,6 +32,8 @@ import { SimComparePanel } from "./SimComparePanel";
 import { SandboxRunHistory } from "./SandboxRunHistory";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { stateVarLabel, SIM_KNOWLEDGE_DIM_LABEL, SIM_KNOWLEDGE_DIM_SRC } from "@/locales/zh";
+import { useFeature } from "@/workspace/featureGate";
+import { SimDataModeBadge, overallDataMode, stateVarDataMode, objectDataMode, trustSummaryText } from "./SimDataModeBadge";
 import styles from "./SimViews.module.css";
 
 /**
@@ -698,7 +700,11 @@ function LineageChain({ vm }: { vm: ObjectLineageVM }) {
  * 数据源 searchObjects("Base","")（与 GeoMapView 同源·真 Base 对象·util/OEE/瓶颈/GWh 真值·非合成 RL5）；
  * util/oeeIndex 为分数（值域 0.62–0.97）→ ×100 显百分。空世界（无 Base 对象）→ 诚实空态不造数。「360→」进对象 360（/o/Base/{baseId}）。
  */
-function BaseStatusCards() {
+function BaseStatusCards({ trustBadge, cfg, propRules }: {
+  trustBadge?: boolean;
+  cfg?: SandboxViewConfig;
+  propRules?: readonly PropagationRule[];
+}) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["a", "objects", { type: "Base", view: "sandbox-basecards" }],
     queryFn: () => searchObjects("Base", ""),
@@ -736,7 +742,12 @@ function BaseStatusCards() {
               style={{ flex: "1 1 150px", minWidth: 150, border: "1px solid var(--line2,#2a2a2a)", borderRadius: 8, padding: "8px 10px" }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                <b style={{ fontSize: 13 }}>{b.name}</b>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <b style={{ fontSize: 13 }}>{b.name}</b>
+                  {trustBadge && cfg && (
+                    <SimDataModeBadge mode={objectDataMode(cfg, propRules ?? [], b.baseId)} testId={`sandbox-base-datamode-${b.baseId}`} />
+                  )}
+                </span>
                 <Link
                   to={`/o/Base/${b.baseId}`}
                   data-testid={`sandbox-base-360-${b.baseId}`}
@@ -879,6 +890,11 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
 
   // 全局 KPI（0-100）= 各 stateVar「携带者真均值」按变量归一后聚合（WO-CAP-03·排除无界计数变量·治 3339.5 恒红）。
   const globalKpi = useMemo(() => (cfg ? computeGlobalKpi(cfg, world) : 0), [world, cfg]);
+
+  // WO-SANDBOX-TRUST-BADGE（S2·前端半·方案A）：诚信位徽标闸（暗发·关=不显徽标·页面 100% 原样·回退演练 §5.6）。
+  // 汇总位纯前端派生（propRules.coefficientRef→UNCALIBRATED · 后端 cfg.nodeObjectMode→LIVE/SYNTHETIC/STALE · 皆无→UNKNOWN）。
+  const trustBadgeOn = useFeature("sim.trust_badge");
+  const overallMode = useMemo(() => (cfg ? overallDataMode(cfg, propRules) : "UNKNOWN"), [cfg, propRules]);
 
   // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
   const init = useCallback(async (c: SandboxViewConfig) => {
@@ -1179,11 +1195,26 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       <div className={styles.heroGrid} data-testid="sandbox-hero-grid">
         {/* ── 左主区 7fr：hero 主视觉焦点 ─────────────────────────────────── */}
         <div className={styles.heroMain} data-testid="sandbox-main-zone">
+          {/* WO-SANDBOX-TRUST-BADGE（S2）：顶部"本次推演可信度"汇总位——用户一眼知这轮数敢不敢信（暗发·闸关全消失）。 */}
+          {trustBadgeOn && (
+            <div
+              className={styles.sub}
+              data-testid="sandbox-trust-summary"
+              data-sim-datamode={overallMode}
+              style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12 }}
+            >
+              <SimDataModeBadge mode={overallMode} testId="sandbox-trust-summary-badge" />
+              <span data-testid="sandbox-trust-summary-text">{trustSummaryText(overallMode)}</span>
+            </div>
+          )}
           {/* 顶栏 · 全局态大数（主指标视觉权重最高·30px/700）+ 次级 stateVar KPI 小号排布 */}
           <div className={styles.heroState} data-testid="sandbox-kpis">
             <div className={styles.kpiHero} data-testid="sandbox-kpi-global">
               <span>全局态（tick <span data-testid="sandbox-cur-tick">{curTick}</span>）</span>
-              <b style={{ color: heatColor(globalKpi, heatThreshold) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <b style={{ color: heatColor(globalKpi, heatThreshold) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
+                {trustBadgeOn && <SimDataModeBadge mode={overallMode} testId="sandbox-kpi-global-datamode" />}
+              </span>
             </div>
             <div className={styles.threeKpiRow}>
               {cfg.stateVars.map((v) => {
@@ -1192,7 +1223,10 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
                 return (
                   <div key={v} className={styles.kpi} data-testid={`sandbox-kpi-${v}`}>
                     <span title={`${v} · ${carriers} 个携带对象取均值（口径：携带者真均值，非全对象稀释）`}>{stateVarLabel(v)}</span>
-                    <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <b data-testid={`sandbox-kpi-${v}-val`}>{avg.toFixed(1)}</b>
+                      {trustBadgeOn && <SimDataModeBadge mode={stateVarDataMode(cfg, propRules, v)} testId={`sandbox-kpi-${v}-datamode`} />}
+                    </span>
                   </div>
                 );
               })}
@@ -1298,7 +1332,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           </div>
 
           {/* SANDBOX-RENAME-BASECARDS ②：各基地状态卡回主区·默认可见（首屏零基地名回归修复）·非右栏折叠卡。 */}
-          <BaseStatusCards />
+          <BaseStatusCards trustBadge={trustBadgeOn} cfg={cfg} propRules={propRules} />
 
           {/* AI 指挥台（NL 驱动沙盘 · 确定性意图解析 R6）：自然语言→现有沙盘动作（tick/存档/分支/查询）·收为底栏。
               LLM 不可用即默认确定性解析（无 Date.now/random），未识别意图诚实降级显支持指令集。 */}

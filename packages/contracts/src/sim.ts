@@ -71,6 +71,12 @@ export const SimSessionSchema = z.object({
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
 
+// ── SimDataMode 沙盘诚信位（WO-SANDBOX-TRUST-BADGE·S2·让每个数字标真假·R13/KILL-MOCK-RED） ──
+// 复用既有 SolverDataMode 语义（LIVE/SYNTHETIC/STALE）+ 加 UNCALIBRATED（传导系数为默认非标定·G-10）。
+// 派生纯诚实位（无真值退最不可信档·绝不造 LIVE）。前端 DataModeBadge 消费。
+export const SimDataModeSchema = z.enum(["LIVE", "SYNTHETIC", "STALE", "UNCALIBRATED"]);
+export type SimDataMode = z.infer<typeof SimDataModeSchema>;
+
 // ── SimTickState 逐 tick 态快照（§2.1 sim_tick_state · 复合主键 session+tick） ──
 export const SimTickStateSchema = z.object({
   sessionId: z.string(),
@@ -79,6 +85,10 @@ export const SimTickStateSchema = z.object({
   state: TickStateSchema,
   pending: z.array(DelayedContributionSchema).default([]),
   trace: z.array(PropagationTraceSchema).nullable().default(null),
+  // S2（additive·optional·旧 SimTickState 反序列化零破坏）：整 tick 汇总诚信位（后端派生·取最不可信档）。
+  dataMode: SimDataModeSchema.optional(),
+  // S2：逐格诚信位（对象 id → 状态变量 → 位）——细粒度徽标（后端从 origin/dataHealth/coefficientRef 派生）。
+  cellDataMode: z.record(z.string(), z.record(z.string(), SimDataModeSchema)).optional(),
 });
 export type SimTickState = z.infer<typeof SimTickStateSchema>;
 
@@ -162,6 +172,10 @@ export const SandboxViewConfigSchema = z.object({
   // 命中 stateVar 名的**数值型**属性，其余略）。baseSnapshot 由此播——推演从后端真世界态起跑，**不再 hash(oid) 造伪初态**。
   // 无真值的对象/变量在此缺省（诚实空态）；前端遇缺退 0（诚实静止），绝不合成/哈希冒充真值。
   nodeObjectState: z.record(z.string(), z.record(z.string(), z.number())).optional(),
+  // WO-SANDBOX-TRUST-BADGE（S2·additive·optional）：每对象每变量的**来源诚信位**——由后端从 obj.origin
+  // （SYNTHETIC/LIVE 血缘）+ 派生属性新鲜度（dataHealth → STALE）派生（datacore·Dev-1 域）。缺省=后端未提供
+  // → 前端诚实"来源待披露"（绝不假标 LIVE·KILL-MOCK-RED）。UNCALIBRATED 由前端从传导规则 coefficientRef 空自派生。
+  nodeObjectMode: z.record(z.string(), z.record(z.string(), SimDataModeSchema)).optional(),
   // SIM-REAL-SNAPSHOT（簇D3）：沙盘节点「热度红带」阈——权威 sim 配置（= 后端 DEFAULT_SANDBOX_HEAT_THRESHOLD），
   // 前端不再于 SandboxView/SimComparePanel 内联 70。触达「节点热度红≥阈」决策 + tick 时间轴 heat 门。
   heatThreshold: z.number().optional(),

@@ -104,6 +104,21 @@ if (!/bottleneck_matrix"[\s\S]{0,160}dataMode:\s*"LIVE"/.test(projSim)) {
   fail("ProjectSimView 调 bottleneck_matrix 未传 dataMode:LIVE（永远 MOCK 回潮·AUDIT 真值判据③）");
 }
 
+// ④.b（WO-SANDBOX-TRUST-BADGE·S2）：沙盘每个可见数字必须绑诚信位徽标（补沙盘唯一缺的数据血缘披露面·G-DM-1 沙盘侧）。
+//   SandboxView 须消费 SimDataModeBadge + 汇总位 overallDataMode（顶部可信度）——防"沙盘裸渲染数字当真值"回潮。
+//   UNCALIBRATED 必须由 propRules 真派生（coefficientRef 空·非造）；SimDataModeBadge 派生层绝不假标 LIVE（无真源退 UNKNOWN）。
+const sandbox = read("apps/frontend-shell/src/views/sim/SandboxView.tsx");
+if (!/SimDataModeBadge/.test(sandbox) || !/overallDataMode/.test(sandbox)) {
+  fail("SandboxView 未消费 SimDataModeBadge/overallDataMode（沙盘数字裸渲染当真值·诚信位缺失·G-DM-1 沙盘侧回潮）");
+}
+const badge = read("apps/frontend-shell/src/views/sim/SimDataModeBadge.tsx");
+if (!/coefficientRef/.test(badge) || !/UNCALIBRATED/.test(badge)) {
+  fail("SimDataModeBadge 未由 coefficientRef 真派生 UNCALIBRATED（未校准诚信位非真派生·造位回潮）");
+}
+if (!/return\s*"UNKNOWN"/.test(badge)) {
+  fail("SimDataModeBadge 无真源未退 UNKNOWN（诚实'来源待披露'·绝不假标 LIVE·KILL-MOCK-RED 沙盘侧回潮）");
+}
+
 // ⑤ 假4：PropagationTimeline 财务击穿敞口必须用真营收（revenueWan，后端 affected_orders qty×真细分单价），
 // 不再以前端写死 0.6 万/套现编财务为主路径。
 const propTl = read("apps/frontend-shell/src/views/sim/PropagationTimeline.tsx");

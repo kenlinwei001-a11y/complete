@@ -100,6 +100,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 不产 sandbox_render 答案块（回落 Path B/旧 what-if URL·旧路径未删）。权威 entitlement 由 DataCore 下发，
   // AgentCore features/registry.ts 同键同 defaultOn:false 镜像（热路径闸认得该键）。sim:check §3 守全 sim.* defaultOn:false。
   { key: "sim.sandbox_render", name: "时序推演意图落地渲染", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-SANDBOX-TRUST-BADGE（S2·暗发·RL2）：沙盘每个数字绑诚信位徽标（LIVE/SYNTHETIC/STALE/UNCALIBRATED），
+  // 补沙盘唯一缺的数据血缘披露面——用户一眼知"这数敢不敢信"（G-DM-1 沙盘侧披露·KILL-MOCK-RED）。关 = 前端不显徽标、
+  // 页面 100% 原样（回退演练 §5.6）。纯前端派生渲染闸（无后端引擎逻辑）——UNCALIBRATED 前端由 propRules.coefficientRef
+  // 真派生；SYNTHETIC/LIVE/STALE 待后端 view-config.nodeObjectMode 提供对象 origin 血缘后自动升档（Dev-1 域）。
+  // battery 模板 all-on → demo 自动开；其余租户 defaultOn:false 暗发。requires sim.sandbox。
+  { key: "sim.trust_badge", name: "沙盘数据诚信位徽标", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   // 优化求解器融合（G-12·SPEC-optimization-template-pool §6）：全部暗发 defaultOn:false——按租户开不同档
   // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
   // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。

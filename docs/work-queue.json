@@ -7478,13 +7478,14 @@
     },
     {
       "at": {
-        "wip": "2026-07-11T15:52:47.203Z"
+        "wip": "2026-07-11T15:52:47.203Z",
+        "built": "2026-07-11T16:32:55.044Z"
       },
       "id": "WO-SANDBOX-TRUST-BADGE",
       "title": "S2·沙盘每数字dataMode徽标(LIVE/合成/未校准)+收编CAP-10沙盘RiskTop3标注统一",
       "doc": "docs/DISPATCH-sandbox-reconstruction.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev3",
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE",
@@ -7492,7 +7493,38 @@
       ],
       "note": "[沙盘重建·S2·可∥S1·dev3] 接CAP-03只补披露层。收编:CAP-10的沙盘RiskTop3实测/估算标注矛盾由本单dataMode判据统一收。回退:关feature=不显徽标。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。 【拆缝2026-07-11:本单=前端半(Dev-3已做契约+徽标+UNCALIBRATED派生+消费nodeObjectMode)·后端透传拆WO-SANDBOX-TRUST-BADGE-BE归Dev-1·两半co-verify(真浏览器徽标逐值对后端dataMode)才BUILT】",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3-前端"
+      "assignedDev": "dev3-前端",
+      "acceptance": {
+        "goal": "沙盘每个可见数字（顶部汇总/全局态 KPI/stateVar KPI/基地卡）绑一枚诚信位徽标，用户一眼知'这数敢不敢信'——补沙盘唯一缺的数据血缘披露面（G-DM-1 沙盘侧）。前端半：UNCALIBRATED 前端从 propagation-rules.coefficientRef 真派生；SYNTHETIC/LIVE/STALE 待后端 nodeObjectMode（Dev-1）；无 origin 诚实退 UNKNOWN 绝不假标 LIVE。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "run",
+            "assert": "真起双服务(datacore SEED_DEMO=1 + agentcore)+真 chromium+真 vite(.env.local localhost)+真 admin 登录→/v/sim-sandbox：顶部汇总位 sandbox-trust-summary 的 data-sim-datamode 逐值==后端 GET /a/v1/sim/propagation-rules coefficientRef 派生 overall（demo 全 coefficientRef=null→UNCALIBRATED）。证 scripts/e2e-sandbox-trust-badge.mjs 全绿 + docs/evidence/S2-SANDBOX-TRUST-BADGE-realbrowser.md"
+          },
+          {
+            "id": "C2",
+            "type": "run",
+            "assert": "逐 stateVar KPI 徽标 sandbox-kpi-{v}-datamode 逐值对照后端派生：coefficientRef 空的 target 变量(demandLoad/loadIndex)→UNCALIBRATED；源变量/无 origin(demandDelta/totalDemand/utilization)→UNKNOWN「来源待披露」。真浏览器 13/13 逐值一致（S2-SANDBOX-TRUST-BADGE-realbrowser.md）"
+          },
+          {
+            "id": "C3",
+            "type": "run",
+            "assert": "诚实边界(KILL-MOCK-RED)：后端未提供 view-config.nodeObjectMode（对象 origin 血缘·Dev-1 域）时，真浏览器整页零枚 data-sim-datamode=LIVE / =SYNTHETIC 徽标（绝不假标实测）。真浏览器实证 liveBadges===0 && synthBadges===0"
+          },
+          {
+            "id": "C4",
+            "type": "test",
+            "assert": "回退演练(§5.6)：feature sim.trust_badge 关→徽标全 queryByTestId===null（sandbox-trust-summary/sandbox-kpi-global-datamode/sandbox-kpi-load-datamode），沙盘 KPI 主体照常渲染；契约字段 dataMode?/cellDataMode?/nodeObjectMode? 全 optional 旧态反序列化零破坏。apps/frontend-shell/test/sandbox-trust-badge.test.tsx 9 测全绿"
+          },
+          {
+            "id": "C5",
+            "type": "gate",
+            "assert": "门 genuine-sim:check §④.b green→red 有牙：断言 SandboxView 消费 SimDataModeBadge/overallDataMode + SimDataModeBadge 由 coefficientRef 真派生 UNCALIBRATED + 无真源 return \"UNKNOWN\"。植假(改 UNKNOWN→XXXX)即红、还原即绿（已实测）。node scripts/check-genuine-sim.mjs 通过"
+          }
+        ]
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-SANDBOX-TRUST-BADGE-BE",
@@ -7884,8 +7916,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-DB-CLOSURE-HARDEN",
-      "at": "2026-07-11T16:27:59.303Z"
+      "id": "WO-SANDBOX-TRUST-BADGE",
+      "at": "2026-07-11T16:32:55.045Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
