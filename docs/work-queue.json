@@ -7529,25 +7529,30 @@
     },
     {
       "id": "WO-SANDBOX-TRUST-BADGE-BE",
-      "status": "TODO",
+      "status": "WIP",
       "priority": "P2",
-      "owner": "",
+      "owner": "dev1",
       "assignedDev": "dev1-后端",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
       "doc": "docs/WO-SANDBOX-TRUST-BADGE.md",
       "title": "S2后端半:propagateTick/view-config 透传 dataMode 诚实位(真数值派生属性=LIVE·合成对象origin=SYNTHETIC·关键源滞后=STALE·传导系数未校准=UNCALIBRATED)+SimTickState加dataMode字段+SandboxViewConfig.nodeObjectState携每对象每变量来源位",
-      "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。"
+      "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。",
+      "at": {
+        "wip": "2026-07-11T18:27:37.158Z"
+      }
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T18:27:37.242Z"
+      },
       "id": "WO-SANDBOX-BRANCH-INJECT",
       "title": "S3·分支注入不同应对+对比换决策维(交付/成本/齐套)",
       "doc": "docs/WO-SANDBOX-BRANCH-INJECT.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
@@ -8163,10 +8168,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
-      "at": "2026-07-11T18:27:08.072Z"
+      "role": "dev1",
+      "cmd": "WIP",
+      "id": "WO-SANDBOX-BRANCH-INJECT",
+      "at": "2026-07-11T18:27:37.242Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
