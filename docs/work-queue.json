@@ -7555,8 +7555,8 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev1",
       "id": "WO-L1.5-3B",
       "title": "retrieve_similar_cases 工具适配器(薄 OBO→datacore·暗发·双注册)",
       "priority": "P1",
@@ -7588,15 +7588,18 @@
       "discipline": "薄 OBO·绝不重算相似度·暗发 additive·双注册 defaultOn:false·关闸=字节一致·deps L1.5-3(等 Dev-2 datacore 端点)。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·审核方拆缝·ID带L1.5但agentcore活儿归Dev-1·claim WO-L1.5-3B dev1] 建完 L1B-5 后接。"
+      "note": "[LaneA·dev1·审核方拆缝·ID带L1.5但agentcore活儿归Dev-1·claim WO-L1.5-3B dev1] 建完 L1B-5 后接。",
+      "at": {
+        "wip": "2026-07-11T13:35:12.324Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-L1B-SAGA",
-      "at": "2026-07-11T13:34:45.848Z"
+      "role": "dev1",
+      "cmd": "WIP",
+      "id": "WO-L1.5-3B",
+      "at": "2026-07-11T13:35:12.325Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
