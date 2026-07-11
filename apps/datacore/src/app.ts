@@ -55,6 +55,7 @@ import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts";
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
 import { retrieveSimilarCases } from "./memory/decision-case.js"; // WO-L1.5-2（CBR 确定性检索·§4.2）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
+import { CaseIngestService } from "./memory/case-ingest.js"; // WO-L1.5-3（案例摄取·Decision→DecisionCase 旁挂）
 import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
@@ -374,8 +375,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);
+  // WO-L1.5-3（案例摄取·暗发 QOS_CBR_INGEST）：Decision 达终态 → 投影 DecisionCase 落库 + 发 decision_case.learned。
+  const caseIngest = new CaseIngestService(repos, outbox, () => config.QOS_CBR_INGEST === "1");
   // WO-DECISION-RECORD（PRD §3.7 D8）：一等 Decision 记录服务（上下文/备选/否决/决策人/预测 vs 实现）
-  const decisions = new DecisionService(repos, outbox);
+  const decisions = new DecisionService(repos, outbox, (c, d) => caseIngest.ingestFromDecision(c, d));
   // WO-L2-4/5（决策内核服务）：接真 in-process SolverService + 沿因果重算·装配落库 DecisionPackage·发域事件；
   // 采纳经 DecisionService/ActionService 正门（R4·不直写真值）。
   const decisionKernel = new DecisionKernelService(repos, solvers, outbox, decisions, actions, ontologyCore);

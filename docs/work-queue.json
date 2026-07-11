@@ -7031,9 +7031,11 @@
       "reviewNote": "PASS 独立真跑(agent ae5ccd0af):案例库+确定性检索+读端点。R9四处齐·双实现R2隔离。确定性检索双跑字节一致·判别力真(常州query→常州案例#1非恒返)·breakdown可解释R13。读端点HTTP往返真跑+真起服务诚实空态。暗发关闸memory.cbr OFF→404·put零writer空表(摄取待L1.5-3)。decision-case:check有牙·L1.5测11绿·全量datacore1152 passed 0 failed·build四包绿。G-3b读侧BASE达成。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T11:39:04.316Z"
+      },
       "id": "WO-L1.5-3",
       "title": "案例摄取接线(DataCore Decision→案例·agent 终态旁路·L2 端口)+ agent 先查案例库(治 G-3b 读写闭合)",
       "priority": "P1",

@@ -22,6 +22,9 @@ export class DecisionService {
   constructor(
     private repos: Repos,
     private outbox: OutboxService,
+    /** WO-L1.5-3（案例摄取旁挂·additive·可选）：决策记录/补录后 best-effort 投影为 DecisionCase。
+     * 缺省 undefined = 不摄取（改造前行为·向后兼容）。失败由回调自吞·不阻断决策记录。 */
+    private onPersisted?: (ctx: AuthCtx, decision: Decision) => Promise<void>,
   ) {}
 
   /** 创建并记录一项决策。chosen 必须命中某个 options[].key。 */
@@ -64,6 +67,7 @@ export class DecisionService {
       { decisionId: decision.id, title: decision.title, chosen: decision.chosen, decidedBy: decision.decidedBy },
       decision.id,
     );
+    if (this.onPersisted) await this.onPersisted(ctx, decision); // WO-L1.5-3 案例摄取旁挂（best-effort·可选）
     return decision;
   }
 
@@ -105,6 +109,7 @@ export class DecisionService {
       { decisionId: updated.id, title: updated.title },
       updated.id,
     );
+    if (this.onPersisted) await this.onPersisted(ctx, updated); // WO-L1.5-3 案例摄取旁挂（补录 realized 后重投影·带结果）
     return updated;
   }
 }
