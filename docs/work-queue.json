@@ -8279,14 +8279,44 @@
       "at": {
         "created": "2026-07-11T18:33:05.251Z"
       }
+    },
+    {
+      "id": "WO-RC1-CLOSURE-SCOPE",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "title": "RC-1沙盘前向闭合硬前置:补Quote/Action对象类型(或重归C24/C45/C50 scope)+给ErpOrder/MesOrder/SrmOrder建切片→closure.gatePassed+observabilityMet=true→认证亮「✓可进入推演」",
+      "note": "[数据/本体域·Dev-1·沙盘可用硬前置·一手证据cert JSON见VERIFIED§2] gaps恰4条:C24→Quote/C45→Action/C50→Action 三条FORWARD HARD(scope类型缺·核过43类本体未定义Quote/Action)+图查询覆盖40/43(ErpOrder/MesOrder/SrmOrder无切片root)。两件都修才能canEnter=L4∧trial∧gate=true。守R14(改battery本体/规则scope·非平台常数)+母体§3回写。green→red:cert canEnterSimulation现false·补齐后应true且顶部「✓可进入推演」。"
+    },
+    {
+      "id": "WO-RC-UX-KPI-CARRIER",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "title": "RC沙盘KPI磁贴反映传导目标post-tick态(现carrierMean只认原始快照载体→loadIndex/demandLoad恒0=「死的」错觉根源·主视觉DAG真变磁贴不动)",
+      "note": "[前端(+可能后端carrierMean)·感知层最高价值·一手证据VERIFIED§1③§3] 实测:tick后Base DAG Σ0→Σ358620变红·但KPI磁贴「负载指数0.0」→「0.0」不变。根因:carrierMean只认原始快照有载体的变量·传导目标(Base.loadIndex/Model.demandLoad)无原始载体→磁贴恒0。这是用户判「推了没反应·死的」的直接来源(比RC-1更贴体感)。green→red:tick后磁贴数字应随DAG真变(现恒0)。KILL-MOCK-RED:磁贴取真post-tick态非补0。"
+    },
+    {
+      "id": "WO-RC-UX-DOOR-TEXT",
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "title": "RC沙盘门文案「暂不可进入推演」→「未校准·可试跑·结论仅供参考」(标准页本就可推tick·劝退文案误导为不可用)",
+      "note": "[前端·感知层·一手证据VERIFIED§4] DOM实测「✗暂不可进入推演」劝退·但标准页推进按钮未门控canEnter(disabled只认!sessionId||ticking)·能推能变。真硬挡的「进入推演」按钮在SimInitWizard另一入口。改文案让用户知道标准页可试跑(与S2诚信位协同:试跑结论打UNCALIBRATED/仅供参考)。green→red:未认证态应显「可试跑」非「不可进入」。"
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-DB-LINK-STABILIZE",
-      "at": "2026-07-11T18:44:14.635Z"
+      "role": "review",
+      "cmd": "REGISTER(RC-1+2 UX坑·一手复验)",
+      "id": "3单",
+      "at": "2026-07-11T18:44:29.366Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
