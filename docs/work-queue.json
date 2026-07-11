@@ -6694,10 +6694,11 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "at": {
-        "wip": "2026-07-11T13:09:41.869Z"
+        "wip": "2026-07-11T13:09:41.869Z",
+        "built": "2026-07-11T13:34:45.848Z"
       },
       "id": "WO-L1B-SAGA",
       "title": "跨系统 Saga 一致性(单列·延后 L1.5·NG2)",
@@ -6719,7 +6720,8 @@
       "discipline": "暗发(qos.workflow_saga)·additive·真外部/真 sandbox 非 mock 冒充(KILL-MOCK-RED)。注:PRD §8 仅给单条 acceptance(延后 WO·外部连接器依赖)·未细分多 criteria·此处保真不编造。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] "
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] ",
+      "blockReason": ""
     },
     {
       "status": "DONE",
@@ -7591,10 +7593,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
-      "id": "WO-MERGE-03",
-      "at": "2026-07-11T13:29:54.264Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-L1B-SAGA",
+      "at": "2026-07-11T13:34:45.848Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
