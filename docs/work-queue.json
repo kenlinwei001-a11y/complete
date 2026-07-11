@@ -7449,13 +7449,15 @@
       "assignedDev": "dev3"
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T15:52:47.203Z"
+      },
       "id": "WO-SANDBOX-TRUST-BADGE",
       "title": "S2·沙盘每数字dataMode徽标(LIVE/合成/未校准)+收编CAP-10沙盘RiskTop3标注统一",
       "doc": "docs/DISPATCH-sandbox-reconstruction.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev3",
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE"
       ],
@@ -7832,10 +7834,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
+      "role": "dev3",
       "cmd": "WIP",
-      "id": "WO-L2-5-CONCURRENCY-LOCK",
-      "at": "2026-07-11T15:52:07.543Z"
+      "id": "WO-SANDBOX-TRUST-BADGE",
+      "at": "2026-07-11T15:52:47.203Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
