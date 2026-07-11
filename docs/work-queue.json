@@ -6135,11 +6135,12 @@
       "reviewNote": "PASS 独立真跑逐值(agent a044dbed):order_fullchain P90去固定haircut。真curl 24单铁验:同p50→不同p90(8单同p50=1.2572→8个不同p90 1.1229..1.1314·旧固定式应恒1.13148);p90/p50非恒0.9(24个不同比值0.8903-0.8999无一恰0.9)=mcP90Single种子化MC真分位。R6同so字节一致。靶向cockpit-order-fullchain绿·四包test全套RC0(datacore1128/agentcore653/frontend543)。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "wip": "2026-07-11T06:22:48.976Z",
-        "built": "2026-07-11T08:17:52.496Z"
+        "built": "2026-07-11T08:17:52.496Z",
+        "done": "2026-07-11"
       },
       "id": "WO-FAKE-06",
       "title": "apiClient 关键端点响应加 zod 运行时校验堵根(mock↔后端漂移即暴非静默坏)",
@@ -6167,14 +6168,16 @@
         ]
       },
       "discipline": "additive·前端版门加固堵整类漂移·治本(KILL-MOCK-RED 前端同源)。",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器(agent a8db5504):apiClient zod运行时校验。validatedShape(schema,raw)跑safeParse·漂移即console.error+抛错·包裹主链searchObjects/queryObjectsPaged/createSimSession/submitQuery/fetchTask/fetchQueryHistory。真后端4类响应全过schema无假阳性。green→red注入3处漂移(path=PATH_A/缺candidates/total=many)→全THROW·OLD as T全静默接受·牙齿测试rejects.toThrow绿。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "wip": "2026-07-11T06:22:49.037Z",
-        "built": "2026-07-11T08:17:52.631Z"
+        "built": "2026-07-11T08:17:52.631Z",
+        "done": "2026-07-11"
       },
       "id": "WO-FAKE-07",
       "title": "契约漂移三修:QueryHistory 读 candidates[0].intentKey + queries path 枚举 WORKFLOW/AGENT + calibration mock 增 baselineOnly 分支",
@@ -6202,14 +6205,16 @@
         ]
       },
       "discipline": "additive·契约形对齐真后端·诚实降级态入测(KILL-MOCK-RED)。",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器(agent a8db5504):契约漂移三修。F1真后端classification→QueryHistoryPage意图列逐行有值·逐值=后端candidates[0].intentKey(plan_audit_q/affected_orders/capacity_feasibility)·不再整列长横线。F7 queries枚举WORKFLOW/AGENT无PATH_A。F6 calibration baselineOnly分支徽章翻静态基线未测得改进。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "wip": "2026-07-11T06:22:49.103Z",
-        "built": "2026-07-11T08:17:52.731Z"
+        "built": "2026-07-11T08:17:52.731Z",
+        "done": "2026-07-11"
       },
       "id": "WO-FAKE-08",
       "title": "SimComparePanel+SandboxRunHistory tickMean 统一到分维/归一(并入或紧随 WO-CAP-03 KPI 口径)",
@@ -6240,14 +6245,16 @@
       },
       "discipline": "additive·统一 KPI 口径·去跨维扁平均误导聚合(KILL-MOCK-RED)。注:须与 WO-CAP-03 协调避重复/漏覆盖(deps 挂 WO-CAP-03-KPI-FIX)。",
       "note": "[复验实证·agent aa972508] 真浏览器逐值坐实:沙盘多场景对比'全局态'显3339.5/8682.7/9952.2/10823.8/11272.9(差+7933.3·A/B热度条整条通红),同世界主面板'全局态'仅47.3;tick0刚分支即A=B=3339.5 vs 主KPI 47.3=铁证。根因确认SimComparePanel.tsx tickMean(L16-29)裸Σ所有stateVar÷值数·未做computeGlobalKpi的无界变量剔除+量纲归一·被totalDemand(≈160万)污染。修法=复用computeGlobalKpi/carrierMean(≤100过滤)。",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器(agent a8db5504):tickMean分维归一。globalKpiFromState单一引用点·SimComparePanel+SandboxRunHistory各自tickMean已删。逐值对真compare:NEW 47.29/40.31/41.17有界0-100 vs OLD 94129/208023/238438被totalDemand32万级污染。真浏览器起47.3终41.2=主面板同口径·不再3339跨维扁平均·A/B热度条不再整条通红。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "wip": "2026-07-11T06:22:49.166Z",
-        "built": "2026-07-11T08:17:52.861Z"
+        "built": "2026-07-11T08:17:52.861Z",
+        "done": "2026-07-11"
       },
       "id": "WO-FAKE-09",
       "title": "外部信号 provenance:ExternalSignalStrip 捏值去真机构名/挂 SYNTHETIC 徽标 + ProjectSim 写死 batches 挂 DataModeBadge+运行闸",
@@ -6275,14 +6282,16 @@
         ]
       },
       "discipline": "additive·provenance 诚实标注·mock 不冒充 LIVE 权威实测喂裁决(KILL-MOCK-RED)。",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器(agent a8db5504):外信provenance+ProjectSim batches。F4 ExternalSignalStrip挂DataModeBadge合成·6信号逐值=后端(碳酸锂96000等)·后端dataMode=SYNTHETIC·tooltip追合成占位非实测·不再零provenance冠真机构名。F5 ProjectSim分批DataModeBadge部分估算PARTIAL·采纳示例占位批→运行闸软阻断proj-adopt-softblock·编辑真批解闸。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "at": {
         "wip": "2026-07-11T06:22:49.227Z",
-        "built": "2026-07-11T08:17:52.943Z"
+        "built": "2026-07-11T08:17:52.943Z",
+        "done": "2026-07-11"
       },
       "id": "WO-FAKE-10",
       "title": "魔法系数/硬编码阈收口(阈由后端下发·敞口/毛利去魔法折算·去伪溯源断言)",
@@ -6310,7 +6319,8 @@
         ]
       },
       "discipline": "additive·阈值后端下发·去前端魔法折算与伪溯源断言(KILL-MOCK-RED)。",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器(agent a8db5504):魔法阈后端下发。瓶颈阈tightnessThreshold=85后端下发(=params.risk.threshold)·ProjectSim色阶note后端阈推导非硬编码。RiskPopover用后端threshold判越线(74<85未越线)·缺阈中性灰无??85伪造。PropagationTimeline ×0.6→null:真营收392000→39.2亿真算·无真营收financeYi=null诚实空态待接入真营收不折算·vs OLD×0.6伪造。ExternalSignalsPage伪溯源断言已删。frontend全套553测绿。"
     },
     {
       "status": "DONE",
