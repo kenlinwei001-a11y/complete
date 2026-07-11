@@ -7524,11 +7524,12 @@
     {
       "at": {
         "wip": "2026-07-11T13:26:11.000Z",
-        "built": "2026-07-11T13:29:34.014Z"
+        "built": "2026-07-11T13:29:34.014Z",
+        "blocked": "2026-07-11T13:47:30.316Z"
       },
       "id": "WO-FEATURE-PARITY-GATE",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev2",
       "deps": [],
       "doc": "docs/work-queue.json",
@@ -7556,7 +7557,7 @@
         ],
         "discipline": "additive·纯门加固·堵根·审核方出单·dev建·reviewer复验。"
       },
-      "blockReason": ""
+      "blockReason": "门有牙但覆盖有盲区(独立深挖·非6条自证能露): CROSS_SYSTEM 手工策展仅6键(check-feature-parity.mjs:36-44)·漏3个正经 agentcore fail-open陷阱消费的双注册暗发键(均BLOCK·defaultOn:false·落在门自声明范围内却未守): growth.requirement_graph(消费server.ts:1011) / growth.hidden_req(server.ts:228+orchestrator.ts:794) / sim.sandbox_render(orchestrator.ts:1924)·另 qos.workflow_saga双注册暂无消费方同类应守。真跑证: 删 agentcore growth.requirement_graph 注册→门仍EXIT=0(漏逮)·对照删decision.kernel→EXIT=1。=门号称根治的L2-1式fail-open门却放行。6条自证全过(基线绿/删键有牙/memory.cbr_retrieve按pending不误红对/历史L2-1/L1B-3/L1B-4能逮)但覆盖不全。最小修(已验): check-feature-parity.mjs:41后补4行 growth.hidden_req/growth.requirement_graph/sim.sandbox_render/qos.workflow_saga(BLOCK·defaultOn:false)→补后基线绿10键无误红·删任一→红。根治(更稳·推荐): 比对集从 agentcore 实际 isEnabled 消费方(或两侧BLOCK+defaultOn:false交集)派生·勿手工策展(手工清单正是本次漏键根源)。"
     },
     {
       "status": "WIP",
@@ -7601,9 +7602,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "WO-L1B-5",
-      "at": "2026-07-11T13:36:14.272Z"
+      "cmd": "BLOCKED",
+      "id": "WO-FEATURE-PARITY-GATE",
+      "at": "2026-07-11T13:47:30.316Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
