@@ -1,7 +1,7 @@
 # 本体索引（母体克隆·层层索引入口 · 层 1）
 
 <!-- 自动生成·勿手改 -->
-<!-- ontology-hash: d97ecc1abb6e229f -->
+<!-- ontology-hash: db9e9365f962e684 -->
 > ⚠ **由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md` 派生。** 母体=唯一真相源；本目录=可追溯克隆切片（R-一致·不新增事实）。
 > **协议**：先按下方"任务→切片"检索该读哪片 → 只读对应切片（简洁）→ 改接线改母体后 `node scripts/build-ontology-slices.mjs` 同步（门 `ontology-slices:check` 守漂移）。
 

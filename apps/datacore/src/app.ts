@@ -60,7 +60,7 @@ import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决�
 import { CaseIngestService } from "./memory/case-ingest.js"; // WO-L1.5-3（案例摄取·Decision→DecisionCase 旁挂）
 import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type HorizonCoverage, type PropagationRule, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type HorizonCoverage, type PropagationRule, type PropagationTrace, type SimCheckpoint, type SimDataMode, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, DEFAULT_SANDBOX_HEAT_THRESHOLD, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { resolveExogenousFeeds, type FeedResolveSources, type FeedSpec } from "./sim/exogenous-feed.js";
@@ -1468,6 +1468,63 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return snapshot;
   };
 
+  // ── WO-SANDBOX-TRUST-BADGE（S2·Dev-1 后端半·暗发 additive·纯透传·绝不造真值） ────────────────
+  // 把**已存在的诚信信号**透传成沙盘每个数字的 dataMode——不发明新档、不伪造 LIVE（KILL-MOCK-RED 同源）。
+  // 血缘上下文单遍解出（R6 纯派生·R13 溯源）：
+  //  · 关键源新鲜度 = C09 同判据（solvers/service.ts:2472 一字不差）：任一 DataSourceHealth.critical 源
+  //    lagHours>staleHours → 真对象值降 STALE。
+  //  · origin 血缘 = obj.origin.type（SYNTHETIC/MATERIALIZED/MANUAL…），与 SolverDataMode/isSyntheticDecision 同源。
+  const loadTrustContext = async (c: AuthCtx): Promise<{ criticalStale: boolean; originById: Map<string, string> }> => {
+    const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    const params = await solvers.getParams(c.tenantId);
+    const staleHours = params.health?.staleHours ?? 2;
+    const health = await repos.objects.listByType(c.tenantId, "DataSourceHealth");
+    const criticalStale = health.some((h) => h.props.critical === true && n(h.props.lagHours) > staleHours);
+    const originById = new Map<string, string>();
+    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+      for (const o of await repos.objects.listByType(c.tenantId, t.key)) {
+        if (o.mergedInto) continue;
+        originById.set(o.id, String((o.origin as { type?: string } | undefined)?.type ?? ""));
+      }
+    }
+    return { criticalStale, originById };
+  };
+
+  // 逐 (对象,状态变量) 诚信位（复用 SolverDataMode 语义·LIVE=由真对象数据派生）：
+  //  · origin=SYNTHETIC → SYNTHETIC（合成血缘·不冒充 LIVE）
+  //  · 真对象 + 关键源滞后 → STALE（C09）
+  //  · 真对象 + 源新鲜 → LIVE
+  // 仅对 state 中**已有真数值**的格发位；无真值不发 → 前端诚实"来源待披露"（绝不假标 LIVE·KILL-MOCK-RED）。
+  // UNCALIBRATED 由前端从 propRule.coefficientRef 空自派生（契约注 sim.ts nodeObjectMode·非本端职责）。稳定序 R6。
+  const deriveCellMode = (
+    trust: { criticalStale: boolean; originById: Map<string, string> },
+    state: TickState,
+  ): Record<string, Record<string, SimDataMode>> => {
+    const mode: Record<string, Record<string, SimDataMode>> = {};
+    for (const objId of Object.keys(state).sort()) {
+      const originType = trust.originById.get(objId);
+      const m: SimDataMode = originType === "SYNTHETIC" ? "SYNTHETIC" : trust.criticalStale ? "STALE" : "LIVE";
+      const vars = state[objId] ?? {};
+      const row: Record<string, SimDataMode> = {};
+      for (const v of Object.keys(vars).sort()) row[v] = m;
+      if (Object.keys(row).length > 0) mode[objId] = row;
+    }
+    return mode;
+  };
+
+  // 汇总"整体可信度"位：取最不可信档（WO §3.2 序 LIVE<UNCALIBRATED<SYNTHETIC<STALE）。
+  // worst-mode 恒诚实——绝不高于最弱输入档（有任一合成/陈旧格 → 汇总即合成/陈旧·不冒充整体 LIVE）。空=undefined 不发。
+  const SIM_MODE_RANK: Record<SimDataMode, number> = { LIVE: 0, UNCALIBRATED: 1, SYNTHETIC: 2, STALE: 3 };
+  const summarizeCellMode = (m: Record<string, Record<string, SimDataMode>>): SimDataMode | undefined => {
+    let worst: SimDataMode | undefined;
+    for (const vars of Object.values(m)) {
+      for (const md of Object.values(vars)) {
+        if (worst === undefined || SIM_MODE_RANK[md] > SIM_MODE_RANK[worst]) worst = md;
+      }
+    }
+    return worst;
+  };
+
   // S6（§3.1）：把 feedSpecs 从**真源**（loadContext 真对象 + A8 真点）解出逐 tick 序列并**冻结进会话**。
   // 无真源 → 该 feed 不生成（feedGaps 诚实报缺口·绝不合成未来·KILL-MOCK-RED）。仅 sim.temporal_grounding 开时启用
   // （关闸 = 不解析·feeds 空 = v1.1 行为·acceptance #8）。
@@ -1628,7 +1685,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
-    return { curTick: s.curTick, state, ...(propagate ? { trace } : {}) };
+    // WO-SANDBOX-TRUST-BADGE（S2·暗发·关 sim.trust_badge = 字段缺席 = 响应字节一致）：本 tick 态"整体可信度"汇总位
+    // （worst-mode 恒诚实·绝不冒充整体 LIVE）。按需派生·不落库（putTickState 列固定·不改迁移·pg/memory 一致）。
+    const trustBadge = await features.enabled(c.tenantId, "sim.trust_badge");
+    const dataMode = trustBadge ? summarizeCellMode(deriveCellMode(await loadTrustContext(c), state)) : undefined;
+    return { curTick: s.curTick, state, ...(propagate ? { trace } : {}), ...(dataMode ? { dataMode } : {}) };
   });
   app.post("/a/v1/sim/sessions/:id/act", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
@@ -1707,11 +1768,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     // 真快照（buildRealSnapshot 同源，Trial Tick 起跑态与此一字不差）：obj.props 命中 stateVar 名的真实数值。
     const nodeObjectState: Record<string, Record<string, number>> = await buildRealSnapshot(c, stateVars);
+    // WO-SANDBOX-TRUST-BADGE（S2·暗发·关 sim.trust_badge = nodeObjectMode 缺席 = view-config 输出字节一致）：
+    // 逐 (对象,变量) 诚信位透传（origin 血缘 + C09 新鲜度·纯派生·绝不造 LIVE）。前端 Dev-3 DataModeBadge 消费此位。
+    const trustBadge = await features.enabled(c.tenantId, "sim.trust_badge");
+    const nodeObjectMode = trustBadge ? deriveCellMode(await loadTrustContext(c), nodeObjectState) : undefined;
     const cfg = {
       tenantId: c.tenantId,
       nodeTypes: types.map((t) => t.key).sort(),
       nodeObjectIds,
       nodeObjectState,
+      ...(nodeObjectMode && Object.keys(nodeObjectMode).length > 0 ? { nodeObjectMode } : {}),
       heatThreshold: DEFAULT_SANDBOX_HEAT_THRESHOLD,
       linkTypes: links.map((l) => l.key).sort(),
       stateVars,
