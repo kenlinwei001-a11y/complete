@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, DecisionCase, ExperimentArm, FusedObjectSnapshot, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverBinding, SolverExperiment, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, DecisionCase, DecisionPackage, ExperimentArm, FusedObjectSnapshot, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverBinding, SolverExperiment, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -339,6 +339,9 @@ export interface Repos {
   // WO-L1.5-2（企业记忆 CBR·migration038）：结构化决策案例 index（咨询派生·可 drop 重建·doc jsonb·R2）。
   // id = caseId；DecisionCase & {id} 满足 Store 约束（id 为 caseId 别名·upsert 天然去重）。
   decisionCases: Store<DecisionCase & { id: string }>;
+  // WO-L2-4（决策内核·migration039）：决策制品 DecisionPackage（咨询派生·可 drop 重生·doc jsonb·R2）。
+  // id = packageId；DecisionPackage & {id} 满足 Store 约束。
+  decisionPackages: Store<DecisionPackage & { id: string }>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

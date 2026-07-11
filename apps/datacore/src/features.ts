@@ -119,7 +119,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 404 FEATURE_NOT_FOUND·R3 先于 authz·不泄漏存在性）。DataCore 是 entitlement 唯一真相源（对齐 growth.pre_analysis
   // 范式·line 113）。暗发 defaultOn:false（RL2）——现有租户零影响（additive）。与进程级 env 闸 QOS_DECISION_KERNEL
   // 双闸独立：env 关=连制品都不构（pipeline 字节一致）；feature 关=端点 404。requires shell.query-dock（决策制品源于查询）。
-  { key: "decision.kernel", name: "决策内核", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"] },
+  { key: "decision.kernel", name: "决策内核", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"], bindings: { apiTags: ["decision-kernel"] } },
   // WO-L1.5-2（企业记忆·CBR·PRD-L1.5 §2.7）：用户面 entitlement 闸——控**案例读端点是否存在**
   // （关 = GET /a/v1/memory/cases/* 404 FEATURE_NOT_FOUND·R3 先于 authz·经 apiTags:["memory-cbr"] 绑定门）。
   // DataCore 是 entitlement 唯一真相源（对齐 growth.pre_analysis/decision.kernel）。暗发 defaultOn:false

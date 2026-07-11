@@ -6828,9 +6828,11 @@
       "reviewNote": "PASS 独立真跑(agent a8b8eb763):Decision Package装配+Pareto+ExplanationChain+门。R6整包双跑字节一致·纯聚合零业务常数·weakestDataMode取最弱不冒充LIVE。测谎器validateDecisionPackage真抓5类注入(幽灵方案/无provId数字/伪造delta/越白名单引擎/幽灵推荐)·check-decision-kernel.mjs动态green→red自证实跑绿·方案键锁三真求解器白名单。测7/7。非阻断:纯plan_generate类recommendedKey=null属诚实(<2可比→null)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T09:27:19.155Z"
+      },
       "id": "WO-L2-4",
       "title": "QOS 旁挂接线(暗发·观察态)+ 持久化 + 读端点 + 事件",
       "priority": "P1",
@@ -7443,10 +7445,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-L2-1",
-      "at": "2026-07-11T09:02:37.595Z"
+      "role": "dev2",
+      "cmd": "WIP",
+      "id": "WO-L2-4",
+      "at": "2026-07-11T09:27:19.171Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

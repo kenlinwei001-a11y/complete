@@ -54,6 +54,7 @@ import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonic
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
 import { retrieveSimilarCases } from "./memory/decision-case.js"; // WO-L1.5-2（CBR 确定性检索·§4.2）
+import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
 import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
@@ -375,6 +376,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const calibration = new CalibrationService(repos, outbox, solvers);
   // WO-DECISION-RECORD（PRD §3.7 D8）：一等 Decision 记录服务（上下文/备选/否决/决策人/预测 vs 实现）
   const decisions = new DecisionService(repos, outbox);
+  // WO-L2-4（决策内核服务）：接真 in-process SolverService + 沿因果重算·装配落库 DecisionPackage·发域事件。
+  const decisionKernel = new DecisionKernelService(repos, solvers, outbox, ontologyCore);
   // 运营态出厂配置增量 §1：回放引擎（生成+回放，复用真实 A8 管线 + M11 配对）
   const livedInEngine = new LivedInEngine(repos, timeseries, ontology, ruleScan, rules);
   livedInEngine.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
@@ -3163,6 +3166,36 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const found = await repos.decisionCases.get(c.tenantId, id); // R2：跨租户取不到 → 404
     if (!found) throw notFound("decision case");
     return found;
+  });
+
+  // ---- L2 决策内核 · 决策制品构建/读取（WO-L2-4·暗发·decision.kernel 门 + QOS_DECISION_KERNEL env）------
+  // 构建（旁挂-call 的 datacore 落点·调用方供 query/分类/上下文）：关 env=不构（204·pipeline 零变化·RL2）；
+  // 关 decision.kernel=404 FEATURE_NOT_FOUND（R3）。接真 in-process 求解器·每数字溯真求解器字段（R13/KILL-MOCK）。
+  app.post("/a/v1/queries/:taskId/decision-package", async (req, reply) => {
+    await requireFeatureTag(req, "apiTags", "decision-kernel");
+    if (config.QOS_DECISION_KERNEL !== "1") return reply.code(204).send(); // env 暗发关=不构决策制品
+    const c = ctx(req);
+    const { taskId } = req.params as { taskId: string };
+    const body = parseBody(
+      z.object({
+        query: z.string(),
+        intentKey: z.string().nullable().default(null),
+        slots: z.record(z.string(), z.unknown()).default({}),
+        requirementGraphId: z.string().nullable().default(null),
+        executionPlanId: z.string().nullable().default(null),
+      }),
+      req.body,
+    );
+    // generatedAt 在服务边界注入（R6·kernel 内部不取时钟）。
+    return decisionKernel.build(c, { taskId, ...body, generatedAt: new Date().toISOString() });
+  });
+  app.get("/a/v1/queries/:taskId/decision-package", async (req) => {
+    await requireFeatureTag(req, "apiTags", "decision-kernel");
+    const c = ctx(req);
+    const { taskId } = req.params as { taskId: string };
+    const pkg = await decisionKernel.getByTask(c, taskId); // R2：ctx.tenantId 过滤·跨租户取不到
+    if (!pkg) throw notFound("decision package");
+    return pkg;
   });
 
   // ---- A5 rules -----------------------------------------------------------------------
