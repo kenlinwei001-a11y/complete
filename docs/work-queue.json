@@ -6898,10 +6898,11 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T09:37:43.781Z"
+        "wip": "2026-07-11T09:37:43.781Z",
+        "built": "2026-07-11T11:38:31.324Z"
       },
       "id": "WO-L2-5",
       "title": "采纳正门(Decision+ActionDraft·R4)+ 本体回写",
@@ -6933,7 +6934,8 @@
       "discipline": "additive·采纳经 R4 正门不直写真值(RL4)·与既有 Decision 台账不双份(RL3)·母体回写(铁律0·KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "DONE",
@@ -7514,8 +7516,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L2-4",
-      "at": "2026-07-11T11:33:47.930Z"
+      "id": "WO-L2-5",
+      "at": "2026-07-11T11:38:31.325Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
