@@ -6688,11 +6688,11 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] "
     },
     {
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T06:59:55.059Z",
-        "built": "2026-07-11T07:30:02.987Z",
+        "built": "2026-07-11T09:02:37.595Z",
         "blocked": "2026-07-11"
       },
       "id": "WO-L2-1",
@@ -6729,7 +6729,7 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-1 dev2] ",
-      "blockReason": "BLOCK-C4(措辞已更正):真正待修=Dev-2在agentcore features/registry.ts补decision.kernel镜像(防未注册键恒真陷阱·PRD§2.7·registry.ts:55亲证曾咬)。⚠更正:datacore落点是我DISPATCH Lane B指令(非Dev-2擅改·先前BLOCK错怪已更正)·datacore落点架构自洽(Decision真值在datacore·agentcore经B→A REST读·合CLAUDE.md)予接受;PRD-L2写agentcore与DISPATCH写datacore矛盾由审核方reconcile。L1.5同需agentcore镜像memory.cbr(L1.5-3前)·建议一并补两键。修后built回验。",
+      "blockReason": "",
       "reviewNote": "契约地基优秀(四级制品逐字段合PRD§3·decision-kernel-contract测4/4·counterfactual_timeline逐值无损承载·R1干净·mkProv 5字段严格匹配)·build绿·暗发关闸404无泄漏。但C4双注册未满足(见blockReason)。"
     },
     {
@@ -7444,8 +7444,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1B-1",
-      "at": "2026-07-11T08:17:53.095Z"
+      "id": "WO-L2-1",
+      "at": "2026-07-11T09:02:37.595Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

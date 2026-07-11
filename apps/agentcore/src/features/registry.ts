@@ -93,6 +93,14 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // defaultOn:false（RL2）——关 = preAnalyzeQuery 只诊断显式需求（== 不做隐藏需求发现·回退演练 C3）。权威 entitlement
   // 由 DataCore features.ts 同键同 defaultOn:false 下发；此处注册使 featureEnabled 认得该键（关时 !set.has→false）。
   { key: "growth.hidden_req", name: "隐藏需求闭包发现", level: "BLOCK", defaultOn: false },
+  // WO-L2-1（决策内核·PRD-L2 §2.7·BLOCK-C4 修）：DataCore 是权威 entitlement 源（features.ts 同键同
+  // defaultOn:false·决策内核落 datacore 栈·agentcore 经 B→A REST 读）；此处**镜像注册**使 featureEnabled
+  // 认得该键——否则 unknown-key 恒真陷阱（registry.ts featureEnabled `if(!def) return true`）令 agentcore
+  // 侧任何 decision.kernel 门恒开、暗发失效。关时 DataCore 报关 → !set.has(key) → false（不 fail-open）。
+  { key: "decision.kernel", name: "决策内核", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"] },
+  // WO-L1.5-2（企业记忆·CBR·PRD-L1.5 §2.7）：同理镜像 memory.cbr（权威在 DataCore features.ts）。
+  // 关 = agentcore 侧 memory.cbr 门 !set.has→false（案例检索行为不 fail-open）。L1.5-3 agent 接线前置。
+  { key: "memory.cbr", name: "企业记忆·案例推理", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"] },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
