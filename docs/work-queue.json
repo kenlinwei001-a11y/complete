@@ -7653,10 +7653,11 @@
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "闭包/verify据实(洞C/D·最痛):closure验切片非空且解析出minNodes(非只看domain)+ValidationTrace据实判(BUILD_STATIC/无结论数字→NOT_PASS·crossValidation不同义反复)+green→red门",
       "note": "[LaneB·datacore·DISPATCH-databuilder-upgrade.md] 最高优先·假绿(gatePassed+ALL_PASS双绿灯能在切片空/推演没跑下同时点亮·KILL-MOCK-RED核心形态)。验证硬化部分link-无关先落暴露真相;'按LLM链路真生成paths'部分依赖LINK-STABILIZE(①②强耦合·合并复验)。复用check-requirement-graph.mjs门模板。回写母体§8 G-BUILD-SHELL/G-BUILD-VERIFY闭。green→red:植入domain有值paths:[]类型→闭包应报空;BUILD_STATIC无数字→NUMERIC NOT_PASS。",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev2",
       "at": {
-        "created": "2026-07-11T14:28:38.850Z"
+        "created": "2026-07-11T14:28:38.850Z",
+        "wip": "2026-07-11T16:03:31.946Z"
       }
     },
     {
@@ -7836,10 +7837,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-L2-5-CONCURRENCY-LOCK",
-      "at": "2026-07-11T16:02:33.195Z"
+      "role": "dev2",
+      "cmd": "WIP",
+      "id": "WO-DB-CLOSURE-HARDEN",
+      "at": "2026-07-11T16:03:31.946Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
