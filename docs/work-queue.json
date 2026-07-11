@@ -6551,10 +6551,10 @@
       "blockReason": ""
     },
     {
-      "status": "BLOCKED",
+      "status": "BUILT",
       "owner": "",
       "at": {
-        "built": "2026-07-11T10:12:07.907Z",
+        "built": "2026-07-11T11:25:20.620Z",
         "blocked": "2026-07-11"
       },
       "id": "WO-L1B-3",
@@ -6593,7 +6593,7 @@
       "lane": "LaneA",
       "assignedDev": "dev1",
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-3 dev1] ",
-      "blockReason": "BLOCK-注册(同L2-1双注册类):datacore端qos.workflow_dag(+qos.exec_planner)权威注册缺失——features.ts无·只agentcore registry.ts:68镜像。违WO-L1B-3 scope明写+PRD§2.6/§6双注册;全5先例暗发键(growth.requirement_graph/pre_analysis/decision.kernel/memory.cbr·含紧邻L1A-3)均datacore+agentcore双注册·此单破既定范式。母体回写§7还overclaim双注册(与代码不符=不实·违铁律0.4)。端点test用mock feature模式掩盖此缺(未跑真datacore/features解析)。影响:不破闭态回退(镜像!set.has→false·404正确避恒真陷阱)·但datacore权威注册表不可见·阻WO-L1B-5 serve正常entitlement/金丝雀开闸。最小修:datacore features.ts加{key:qos.workflow_dag,name:工作流DAG运行时,level:BLOCK,defaultOn:false}+qos.exec_planner(照L1A-3先例)·并改母体overclaim为实。修后built回验(durable核心已PASS·只需核双注册+母体)。",
+      "blockReason": "",
       "reviewNote": "durable核心PASS(独立真跑agent a1a18de·崩溃stopAfterNode→WorkflowDagInterrupted真停→resume跳DONE从就绪集重驱动·norm(resumed)===norm(uninterrupted)逐字节·resumedCount=1·移植BuildWorkflowEngine.resume非重造·补偿反向拓扑序经S2审批·不可逆诚实COMPENSATED=false·暗发关闸QOS_WORKFLOW_DAG关走旧串行NoopStore·R6·agentcore684测绿·workflow-dag门有牙·slices无漂移·migration015幂等+DOWN)。"
     },
     {
@@ -7506,8 +7506,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1B-4",
-      "at": "2026-07-11T11:05:10.798Z"
+      "id": "WO-L1B-3",
+      "at": "2026-07-11T11:25:20.620Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
