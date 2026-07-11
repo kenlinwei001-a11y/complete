@@ -8353,7 +8353,7 @@
     },
     {
       "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",
-      "status": "BUILT",
+      "status": "DONE",
       "priority": "P2",
       "owner": "",
       "assignedDev": "dev1-后端",
@@ -8365,9 +8365,45 @@
       "note": "[Lane沙盘后端·dev1·CONFIG-DERIVE复验发现活路径接缝] 派生逻辑已DONE正确·活POST路径pre-analysis抢跑RG旁路→派生kind空(dev T6先seed RG绕竞态·绿测试≠活路径)。green→red:真POST传导问句→派生need应落pre-analysis报告·现空→红。",
       "at": {
         "created": "2026-07-11T17:09:14.184Z",
-        "built": "2026-07-11T19:48:40.275Z"
+        "built": "2026-07-11T19:48:40.275Z",
+        "done": "2026-07-11T20:23:34.179Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "沙盘配套派生活路径接线·预分析自等RG就绪·竞态闭",
+        "verifiedBy": "独立真起DC+AC真HTTP真Bearer·commit 4918cc84(=HEAD祖先·3被验文件字节一致)·a1ab076a·2026-07-11",
+        "criteria": [
+          {
+            "id": "live-path-wired",
+            "assert": "真问句→orchestrator RG sideband真建RG(Line/Base/Process+event+真链路边)→预分析真派生落报告+GrowthTicket:pr_Line__line_belongs_to_base__Base/state_var Base.load等+5张[sandbox-config:*]锚工单·非空非悬置"
+          },
+          {
+            "id": "race-closed-revert-proof",
+            "assert": "决定性反证:pre-analyze回退修前(4918cc84^)→dev测真RED(齿①kinds无propagation_rule·齿③0keys=预分析抢RG前读空)·恢复→GREEN(3/3)·waitForRequirementGraph真闭竞态;无LLM自由问句短路终态wait正确停等返空诚实零假阳"
+          },
+          {
+            "id": "r6",
+            "assert": "同问句两次真HTTP派生5键字节一致"
+          },
+          {
+            "id": "s0-linkage",
+            "assert": "sandbox-config-derive.ts(S0)未回归·活路径真接上算出正确键"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "键=pr_<真类型>__<真链路key>__<真类型>从查询真触达本体链路边算·非写死;signal问句无event→零派生诚实无假阳"
+          },
+          {
+            "id": "gates-regression",
+            "assert": "agentcore 744绿(132文件)EXIT0·ontology-slices/genuine-sim/feature-parity/requirement-graph全EXIT0"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "revert→red证有牙·测试不seed RG(getByTaskId读断言rg.taskId证sideband真建非旧T6绕竞态)·逐值EXISTS/MISSING·永不BLOCKER·本体§8 G-SANDBOX-DERIVE-RACE已闭"
+          }
+        ],
+        "note": "非阻塞:①DC端口4045在WHATWG fetch bad-ports黑名单(undici拒)·后续真HTTP复验避开·agent改4041完成;②waitForRequirementGraph终态后可选补读一次(理论极窄窗口·实测无)。"
+      }
     },
     {
       "id": "WO-DB-DERIVE-DECISION-FIELDS",
@@ -8601,9 +8637,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "S3 DONE·TRUST-BADGE-BE BLOCK(合成冒充LIVE)·DATAMODE-UNIFY根WO(三症同源)",
-      "id": "4单",
-      "at": "2026-07-11T20:15:35.072Z"
+      "cmd": "DONE(CONFIG-DERIVE-WIRE复验PASS)",
+      "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",
+      "at": "2026-07-11T20:23:34.179Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
