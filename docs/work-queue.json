@@ -7110,9 +7110,12 @@
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] "
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T13:05:24.007Z",
+        "built": "2026-07-11T13:11:19.697Z"
+      },
       "id": "WO-L1.5-5",
       "title": "出厂种子案例(诚实标 SEED)+ RL/GNN 离线可插拔占位 + 全链真跑 + 母体回写",
       "priority": "P1",
@@ -7148,7 +7151,8 @@
       "discipline": "additive·SEED 真确定性派生不冒充真实累积·RL 不引入热路径随机(KILL-MOCK-RED green→red)·母体回写(铁律0)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-5 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-5 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7552,10 +7556,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev1",
-      "cmd": "WIP",
-      "id": "WO-L1B-SAGA",
-      "at": "2026-07-11T13:09:41.870Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-L1.5-5",
+      "at": "2026-07-11T13:11:19.697Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

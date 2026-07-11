@@ -11,7 +11,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoMultiSourceFusion, seedDemoCalibrationConvergence, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedA6ReferenceTemplate, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoMultiSourceFusion, seedDemoCalibrationConvergence, seedDemoDecisionCases, seedDemoSopVersion, seedDemoLlmProvider, seedDemoOptEntitlement, seedLogisticsTenant, seedA6ReferenceTemplate, seedEmptyTenant, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -80,6 +80,10 @@ async function main(): Promise<void> {
     // 使 S25「多源打架仲裁/测谎」活体 NL 问句有真材料可融（真冲突 + 真测谎命中）。正交于电池合成、确定性 R6。
     await seedDemoMultiSourceFusion(repos);
     logger.info("SEED_DEMO=1: seeded demo multi-source fusion fixture (ErpOrder/MesOrder/SrmOrder, SYNTHETIC, conflict+SUSPECT)");
+    // WO-L1.5-5（企业记忆·出厂 SEED 案例·全 origin:SEED 诚实标·绝不冒充真实累积）：给案例库出厂底料，
+    // 真实积累仍由真 Decision 摄取逐条累积（R16）。确定性投影（固定 now·R6）。正交于电池合成。
+    await seedDemoDecisionCases(repos);
+    logger.info("SEED_DEMO=1: seeded demo CBR decision cases (origin:SEED, deterministic, 底料·非冒充真实累积)");
     // WO-CALIB-CONVERGENCE-UI（G-VIS-1·退回窄修）：播 demo 真校准配对 → 真引擎逐轮 sweep 算出收敛度
     // （mapeAfter 25→13.64→5.26·§2.E）→ 校准页「收敛史」= 真引擎产物·非手绘；末轮配对保留 → 用户真 sweep 一致不自曝。
     try {

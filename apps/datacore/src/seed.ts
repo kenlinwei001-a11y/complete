@@ -10,6 +10,7 @@ import { round } from "./prng.js";
 import { mcP90Single } from "./solvers/method-mc.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import type { SopService } from "./sop.js";
+import { projectCase, type DecisionArtifact } from "./memory/decision-case.js";
 import type { SolverService } from "./solvers/service.js";
 import type { LlmProviderService } from "./llmproviders.js";
 import type { FeatureService } from "./features.js";
@@ -233,6 +234,95 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
     });
   }
   return { tenantId: DEMO_TENANT, userId: `usr_${DEMO_TENANT}_admin`, roles: ["admin"], attributes: {} };
+}
+
+/**
+ * WO-L1.5-5（企业记忆·出厂 SEED 案例·PRD-L1.5 §10 诚实边界·KILL-MOCK-RED）：
+ * demo 租户出厂 SEED 决策案例（**真确定性派生**·全 `origin:SEED` 诚实标·**绝不合成冒充真实累积**）——
+ * 给案例库出厂"底料"，真实积累仍由真 Decision 摄取逐条累积（越用越大·R16）。抄 `seedDemoCalibrationConvergence`
+ * 真产物范式：从固定决策模板经 `projectCase` 确定性投影（固定 now·非墙钟·R6 字节一致）。检索命中透 SEED 位、
+ * SEED 数字不被当已核验业务真值（disclaimer 随行）。幂等 upsert-by-caseId。
+ */
+export const SEED_CASE_NOW = "2026-01-01T00:00:00.000Z"; // 固定播种时点（R6·非墙钟）
+const SEED_CASE_TEMPLATES: DecisionArtifact[] = [
+  {
+    source: "SEED",
+    refId: "seed_cap_delay",
+    title: "产能缺口·延期在手单处置",
+    context: "基地主力产线降产致产能缺口，需在延期/外协/拆单间抉择 交付风险",
+    options: [
+      { key: "delay", label: "延期在手单" },
+      { key: "outsource", label: "外协消化" },
+      { key: "split", label: "拆单分线" },
+    ],
+    chosen: "delay",
+    rejectedRationale: [{ optionKey: "outsource", rationale: "外协比过高·毛利受损" }],
+    predicted: { summary: "延期约 5 天·保交付率", metrics: { deliveryRate: 0.92 } },
+    ctx: { intentKey: "adopt_mitigation", metrics: ["deliveryRate"] },
+  },
+  {
+    source: "SEED",
+    refId: "seed_displace_outsource",
+    title: "急单插入·外协消化挤占",
+    context: "高优先级急单插入挤占在产订单，需消化产能缺口",
+    options: [
+      { key: "delay", label: "延期" },
+      { key: "outsource", label: "外协" },
+    ],
+    chosen: "outsource",
+    rejectedRationale: [{ optionKey: "delay", rationale: "延期违约金高" }],
+    predicted: { summary: "外协比 30%·准时交付", metrics: { deliveryRate: 0.95 } },
+    ctx: { intentKey: "what_if_displacement_q", metrics: ["deliveryRate"] },
+  },
+  {
+    source: "SEED",
+    refId: "seed_margin_attribution",
+    title: "毛利率下滑·归因与处置",
+    context: "季度毛利率低于目标，需归因主因并处置",
+    options: [
+      { key: "price_up", label: "提价" },
+      { key: "cost_cut", label: "降本" },
+    ],
+    chosen: "cost_cut",
+    rejectedRationale: [{ optionKey: "price_up", rationale: "客户价格敏感·份额风险" }],
+    predicted: { summary: "降本 2pp·毛利改善", metrics: { grossMargin: 0.31 } },
+    ctx: { intentKey: "margin_attribution_q", metrics: ["grossMargin"] },
+  },
+  {
+    source: "SEED",
+    refId: "seed_credit_hold",
+    title: "客户信用敞口·放行抉择",
+    context: "客户应收敞口接近授信额度，订单放行需评估信用风险",
+    options: [
+      { key: "hold", label: "暂缓放行" },
+      { key: "release", label: "放行" },
+    ],
+    chosen: "hold",
+    rejectedRationale: [{ optionKey: "release", rationale: "敞口超授信·坏账风险" }],
+    predicted: { summary: "暂缓待回款·控风险", metrics: {} },
+    ctx: { intentKey: "credit_check", metrics: [] },
+  },
+  {
+    source: "SEED",
+    refId: "seed_maint_stagger",
+    title: "检修错峰·排程处置",
+    context: "多线检修集中致产能骤降，需错峰排程",
+    options: [
+      { key: "stagger", label: "错峰检修" },
+      { key: "defer", label: "推迟检修" },
+    ],
+    chosen: "stagger",
+    rejectedRationale: [{ optionKey: "defer", rationale: "推迟致设备风险累积" }],
+    predicted: { summary: "错峰保产能·检修不欠账", metrics: {} },
+    ctx: { intentKey: "maint_stagger", metrics: [] },
+  },
+];
+
+export async function seedDemoDecisionCases(repos: Repos): Promise<void> {
+  for (const tmpl of SEED_CASE_TEMPLATES) {
+    const kase = projectCase(tmpl, { tenantId: DEMO_TENANT, now: SEED_CASE_NOW, origin: "SEED" });
+    await repos.decisionCases.put({ ...kase, id: kase.caseId }); // 幂等 upsert
+  }
 }
 
 /**

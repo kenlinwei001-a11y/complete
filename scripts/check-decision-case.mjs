@@ -103,6 +103,16 @@ async function dynamic() {
   const c2 = m.projectCase(artifact, opts);
   if (JSON.stringify(c1) !== JSON.stringify(c2)) fail.push("R6 违例：projectCase 同输入双跑非字节一致");
 
+  // 9b) SEED 诚实维（V7·KILL-MOCK-RED·green→red）：source:SEED → origin **恒 SEED**（opts 洗不成 LEARNED·
+  // 冒充真实累积被堵）。若能洗成非 SEED → 门无牙。
+  if (typeof m.seedDemoDecisionCases !== "undefined" || true) {
+    const seedC = m.projectCase(
+      { source: "SEED", refId: "gate_seed", title: "t", context: "c 2026-01-01", options: [{ key: "a", label: "A" }], chosen: "a", ctx: { intentKey: "affected_orders" } },
+      { tenantId: "demo", now: "2026-01-01T00:00:00.000Z", origin: "LEARNED" }, // 故意试图洗成 LEARNED
+    );
+    if (seedC.origin !== "SEED") fail.push("SEED 诚实维失效：source:SEED 案例被洗成非 SEED（冒充真实累积·门无牙）");
+  }
+
   // 10) 检索确定性（§4.2·同 query+案例集+weightsVersion 双跑字节一致命中序）
   if (typeof m.retrieveSimilarCases === "function") {
     const caseB = m.projectCase({ ...artifact, refId: "dec_gate_2", title: "毛利率下降归因", context: "财务毛利 2026-09", ctx: { intentKey: "margin_attribution_q", entities: ["SEG_A"] } }, opts);

@@ -194,12 +194,29 @@ export interface RetrievalResult {
   disclaimer: string;
 }
 
+// ── §4.5 RL/GNN 离线可插拔占位（Ch11.6/11.15·CI 确定性兜底·绝不进热路径随机）─────────
+/** 嵌入 provider 接口（默认 pseudoEmbed·可换离线 GNN 图嵌入静态制品·换后仍纯查表 R6）。 */
+export interface CaseEmbeddingProvider {
+  embed(text: string): number[];
+}
+export const DEFAULT_EMBEDDING_PROVIDER: CaseEmbeddingProvider = { embed: pseudoEmbed };
+/** 重排 provider 接口（默认 identity·可换离线 RL 奖励重排静态查表·QOS_CBR_RERANK 装配·未装配=identity 兜底）。 */
+export interface CaseReranker {
+  rerank(hits: SimilarityHit[], query: SimilarityQuery): SimilarityHit[];
+}
+/** 默认 identity 重排（R6 确定性兜底·CI 恒定·关 QOS_CBR_RERANK 即此）。 */
+export const IDENTITY_RERANKER: CaseReranker = { rerank: (hits) => hits };
+
 /**
  * §4.2 三维确定性相似检索：score = W.embed·cosine ⊕ W.scenario·jaccard(problemClass) ⊕ W.business·jaccard(entities∪metrics)。
  * 排序 (score desc, caseId asc)·稳定·R6：同 (query, 案例集, weightsVersion) 双跑字节一致命中序。
  * `cases` 须为**同租户**案例（调用方经 repo.listByTenant(tenantId) 过滤·R2 by-construction）。
  */
-export function retrieveSimilarCases(cases: DecisionCase[], query: SimilarityQuery): RetrievalResult {
+export function retrieveSimilarCases(
+  cases: DecisionCase[],
+  query: SimilarityQuery,
+  reranker: CaseReranker = IDENTITY_RERANKER, // §4.5·默认 identity·未装配离线 RL 制品=R6 确定性兜底
+): RetrievalResult {
   const W = RETRIEVAL_WEIGHTS[query.weightsVersion] ?? RETRIEVAL_WEIGHTS.v1!;
   const qv = pseudoEmbed(query.text);
   const qBusiness = new Set<string>([...query.entities, ...query.metrics]);
@@ -221,7 +238,8 @@ export function retrieveSimilarCases(cases: DecisionCase[], query: SimilarityQue
     return hit;
   });
   scored.sort((a, b) => b.score - a.score || (a.caseId < b.caseId ? -1 : a.caseId > b.caseId ? 1 : 0));
-  return { hits: scored.slice(0, query.topK), total: cases.length, disclaimer: CASE_DISCLAIMER };
+  const reranked = reranker.rerank(scored, query); // 默认 identity（R6 兜底）；离线 RL 制品可换（纯查表·仍 R6）
+  return { hits: reranked.slice(0, query.topK), total: cases.length, disclaimer: CASE_DISCLAIMER };
 }
 
 // ── §4.4⑥ 决策模式挖掘（Ch11.8·确定性·咨询非规则·R6）─────────────────────────
@@ -315,7 +333,9 @@ export function projectCase(a: DecisionArtifact, opts: ProjectCaseOptions): Deci
   const problemClass = problemClassFeat ? problemClassFeat.key : null;
   const featureKeyStr = features.map((f) => `${f.dim}:${f.key}`).join(" ");
   const embedding = pseudoEmbed(`${a.title} ${a.context} ${featureKeyStr}`);
-  const origin = opts.origin ?? (a.source === "SEED" ? "SEED" : "LEARNED");
+  // KILL-MOCK-RED（V7·SEED 诚实）：source=SEED 的案例 origin **恒 SEED**（不可经 opts 洗成 LEARNED 冒充真实累积）；
+  // 非 SEED 源（真 Decision/agent 终态）→ LEARNED（真实积累）·opts.origin 仅在非 SEED 源可覆盖。
+  const origin = a.source === "SEED" ? "SEED" : (opts.origin ?? "LEARNED");
   // caseId 确定性（同 (tenantId, source, refId) 同 id·R6·upsert 天然去重）。
   const caseId = `case_${(hashString(`${opts.tenantId}|${a.source}|${a.refId}`) >>> 0).toString(16).padStart(8, "0")}`;
 
