@@ -3172,6 +3172,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!found) throw notFound("decision case");
     return found;
   });
+  // WO-L1.5-3（审核方拆缝·agent「先查案例库」检索端点·暗发 memory.cbr_retrieve 门·独立于 memory.cbr 查看门）：
+  // Dev-1 的 agentcore 薄适配器（WO-L1.5-3B·retrieve_similar_cases 工具）经 OBO 调本端点做相似案例检索。
+  // 关 memory.cbr_retrieve → 404 FEATURE_NOT_FOUND（R3·agent 回落路径提示·翻闸=字节一致 NG6）。R2 本租户案例。
+  app.post("/a/v1/memory/cases/retrieve-similar", async (req) => {
+    await requireFeatureTag(req, "apiTags", "memory-cbr-retrieve");
+    const c = ctx(req);
+    const body = (req.body ?? {}) as { query?: string; text?: string; problemClass?: string | null; entities?: string[]; metrics?: string[]; topK?: number };
+    const query = SimilarityQuerySchema.parse({
+      tenantId: c.tenantId,
+      text: body.text ?? body.query ?? "",
+      problemClass: body.problemClass ?? null,
+      entities: Array.isArray(body.entities) ? body.entities : [],
+      metrics: Array.isArray(body.metrics) ? body.metrics : [],
+      topK: body.topK ?? 5,
+    });
+    const cases = await repos.decisionCases.list(c.tenantId); // R2：仅本租户
+    return retrieveSimilarCases(cases, query);
+  });
 
   // ---- L2 决策内核 · 决策制品构建/读取（WO-L2-4·暗发·decision.kernel 门 + QOS_DECISION_KERNEL env）------
   // 构建（旁挂-call 的 datacore 落点·调用方供 query/分类/上下文）：关 env=不构（204·pipeline 零变化·RL2）；

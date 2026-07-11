@@ -129,6 +129,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // DataCore 是 entitlement 唯一真相源（对齐 growth.pre_analysis/decision.kernel）。暗发 defaultOn:false
   // （RL2）——现有租户零影响（additive）。与 env 三闸 QOS_CBR_* 独立。requires shell.query-dock。
   { key: "memory.cbr", name: "企业记忆·案例推理", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"], bindings: { apiTags: ["memory-cbr"] } },
+  // WO-L1.5-3（审核方拆缝·PRD-L1.5 §2.7）：agent「先查案例库」检索端点专用暗发闸——控 **POST /a/v1/memory/
+  // cases/retrieve-similar 是否存在**（关 = 404 FEATURE_NOT_FOUND·agent 薄适配器 WO-L1.5-3B 回落路径提示·翻闸=字节一致 NG6）。
+  // 与 memory.cbr（控案例查看读端点）**独立**：可只开 retrieve 不开查看。双注册：datacore features.ts（本行·权威）+
+  // agentcore registry.ts（Dev-1 WO-L1.5-3B 镜像·防 unknown-key 恒真陷阱）。暗发 defaultOn:false（RL2）。
+  { key: "memory.cbr_retrieve", name: "企业记忆·案例检索（agent 先查）", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"], bindings: { apiTags: ["memory-cbr-retrieve"] } },
   // L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §2.4·WO-L1A-3）：AgentCore 需求图读端点的权威 entitlement
   // （DataCore 是 entitlement 唯一真相源·AgentCore 经 /a/v1/tenants/{id}/features 解析下发·对齐 growth.pre_analysis
   // 范式 line 113）。暗发 defaultOn:false（RL2）——关 = GET /b/v1/queries/:taskId/requirement-graph 404
