@@ -269,6 +269,43 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     })();
   };
 
+  // WO-L2-4（决策内核旁挂·PRD-L2 §2.1·对齐 startPreAnalysis 金标准·additive 观察态）：
+  // 答案合成后 additive 触发 datacore 构建 DecisionPackage（B→A OBO·fire-and-forget·失败绝不阻断答题）。
+  // 双闸暗发：entitlement decision.kernel 关 = 旧路径零变化（不触发）；datacore 侧 QOS_DECISION_KERNEL env
+  // 关 = 端点回 204 不构（pipeline 字节一致）。决策内核落 datacore 栈（DISPATCH Lane B）·此处仅旁挂-call。
+  // 不改任何路由判决 / 旧答案合成（NG1）；requirementGraph/executionPlan 衔接后续增量（现退化 null·NG4 不阻断）。
+  const startDecisionKernel = async (a: RequestAuth, taskId: string, query: string): Promise<void> => {
+    if (!(await deps.features.isEnabled(a.tenantId, "decision.kernel", a.token))) return; // 暗发关 = 旧路径零变化
+    if (!deps.config.DATACORE_BASE_URL) return; // 无 datacore 落点 → 不构（诚实）
+    void (async () => {
+      try {
+        // 复用同一 classification：轮询任务直至 classify 落定或达终态（≤30s·非阻塞热路径·mock 下瞬时）。
+        const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+        let task = await deps.repos.tasks.get(taskId);
+        for (let i = 0; i < 120 && (!task || (!task.classification && !TERMINAL.has(task.status))); i++) {
+          await new Promise((r) => setTimeout(r, 250));
+          task = await deps.repos.tasks.get(taskId);
+        }
+        const cls = task?.classification;
+        const intentKey = cls?.candidates?.[0]?.intentKey ?? null;
+        const slots = (cls?.extractedSlots ?? {}) as Record<string, unknown>;
+        // B→A OBO：触发 datacore 构建（datacore QOS_DECISION_KERNEL env 关时回 204·热路径零变化）。
+        const headers: Record<string, string> = { "content-type": "application/json" };
+        if (a.token) headers["authorization"] = `Bearer ${a.token}`;
+        else if (a.debugUser) headers["x-debug-user"] = encodeURIComponent(a.debugUser);
+        await fetch(`${deps.config.DATACORE_BASE_URL}/a/v1/queries/${encodeURIComponent(taskId)}/decision-package`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ query, intentKey, slots, requirementGraphId: null, executionPlanId: null }),
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch (err) {
+        // 咨询产物·失败绝不阻断答题（旁路观察态）。
+        app.log.error({ taskId, err: err instanceof Error ? err.message : String(err) }, "startDecisionKernel failed");
+      }
+    })();
+  };
+
   app.setErrorHandler((err, req, reply) => {
     const requestId = req.id as string;
     if (err instanceof HttpError) {
@@ -335,6 +372,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const result = await deps.orchestrator.submitQuery(a, body, typeof idem === "string" ? idem : undefined);
     // UPG-L0-PREANALYSIS：后台起全景预分析旁路（暗发·feature 关时内部即返·不阻塞 202 响应）。
     await startPreAnalysis(a, result.taskId, body.query);
+    // WO-L2-4：决策内核旁挂（暗发·decision.kernel 关时内部即返·fire-and-forget·不阻塞 202·不改 answer）。
+    await startDecisionKernel(a, result.taskId, body.query);
     return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl });
   });
 
