@@ -6547,9 +6547,11 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
+      "status": "BUILT",
       "owner": "",
-      "at": {},
+      "at": {
+        "built": "2026-07-11T10:12:07.907Z"
+      },
       "id": "WO-L1B-3",
       "title": "durable checkpoint 续跑 + 补偿引擎(移植 BuildWorkflowEngine)",
       "priority": "P1",
@@ -6585,7 +6587,8 @@
       "discipline": "暗发·additive(旧 executor 永不删)·补偿不静默反转真实效果(R4·KILL-MOCK-RED)。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-3 dev1] "
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-3 dev1] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7461,8 +7464,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1A-3",
-      "at": "2026-07-11T10:04:38.528Z"
+      "id": "WO-L1B-3",
+      "at": "2026-07-11T10:12:07.907Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
