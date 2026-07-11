@@ -25,9 +25,23 @@ import type {
   AstTime,
   AstTimeGranularity,
   ClassificationResult,
+  HiddenReqBindings,
+  HiddenReqGraph,
   QuestionAst,
+  RequirementEdge,
+  RequirementEdgeKind,
+  RequirementGraph,
+  RequirementNode,
 } from "@platform/contracts";
-import { problemClassForIntent } from "@platform/contracts";
+import {
+  DATADEP_ROLE_CANONICAL,
+  SOLVER_COVERAGE,
+  SOLVER_DATADEP,
+  coveredSolverKeys,
+  deriveSliceTargetCandidates,
+  expandHiddenRequirements,
+  problemClassForIntent,
+} from "@platform/contracts";
 import type { OntologyClient, ToolAuthCtx } from "../tools/clients.js";
 import { normalizeQuery } from "../router/orchestrator.js";
 import { nearestEntities, resolveUniqueByName } from "../router/slots.js";
@@ -409,4 +423,397 @@ export async function parseQuestionAst(input: ParseQuestionAstInput): Promise<Qu
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(1, n));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L1-A · Graph Builder —— AST→RequirementGraph 八段 Pipeline（WO-L1A-2）
+// PRD-L1A-requirement-graph-engine.md §4.2（Ch04 Graph Builder）
+// ───────────────────────────────────────────────────────────────────────────
+// 纯函数（R6·同 (ast, graph, bindings, generatedAt) → 字节一致图）：无时钟/随机/LLM/IO。
+// **复用不重造**（PRD §2.2 复用清单）：
+//   · 求解器候选  ← SOLVER_COVERAGE[problemClass]（∈ SOLVER_REGISTRY·solver-coverage:check 守）
+//   · 数据依赖    ← SOLVER_DATADEP[solverKey].requires（roleType ∈ DATADEP_ROLE_CANONICAL）
+//   · 角色→类型   ← DATADEP_ROLE_CANONICAL（R14 抽象角色·非业务字面量）
+//   · 隐性需求    ← expandHiddenRequirements（L0·三白名单 by-construction·零幽灵·**不新造引擎**）
+//   · 切片目标    ← deriveSliceTargetCandidates（datadep.ts·确定性 BFS 候选）
+//   · 本体边      ← HiddenReqGraph.edges（真 LinkType 图·GET /a/v1/ontology/graph 子集·断链止步）
+// R11 三白名单 by-construction（⑩结构层校验·非可行性 NG3）——越界节点**丢弃 + 记 gap**（诚实·不入图）：
+//   · object.ontologyType ∈ publishedTypes（= graph.nodes·独立发布类型源·非取自 AST 自证防测谎穿透）
+//   · solver.solverKey    ∈ VALID_SOLVER_KEYS（coveredSolverKeys ∪ SOLVER_DATADEP 键·契约层∈registry）
+//   · data.roleType       ∈ DATADEP_ROLE_CANONICAL
+// 不接线编排（orchestrator 旁路挂载归 WO-L1A-3）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 构图器版本（R6 可重放钉版·随算法变更递增）。 */
+export const REQUIREMENT_GRAPH_BUILDER_VERSION = "rg-builder/1.0.0";
+
+/**
+ * 求解器白名单（∈ SOLVER_REGISTRY·契约层单一来源）：
+ *   coveredSolverKeys()（solver-coverage:check 守全 ∈ registry）∪ Object.keys(SOLVER_DATADEP)
+ *   （datadep-manifest:check 守·出厂求解器清单）。契约层无法 import datacore 源码（contracts-only-shared），
+ *   门 `requirement-graph:check` 在门层读 datacore `REGISTRY_SOLVER_KEYS` 对账做**真牙齿**（green→red）。
+ */
+export const VALID_SOLVER_KEYS: ReadonlySet<string> = new Set<string>([
+  ...coveredSolverKeys(),
+  ...Object.keys(SOLVER_DATADEP),
+]);
+
+/** data 角色白名单（∈ DATADEP_ROLE_CANONICAL·R14 抽象角色）。 */
+export const VALID_ROLE_TYPES: ReadonlySet<string> = new Set<string>(Object.keys(DATADEP_ROLE_CANONICAL));
+
+/** 越界丢弃记录（诚实·不入图·喂 coverageScore 分母 + 可溯源）。 */
+export interface RequirementGraphGap {
+  kind: "object" | "solver" | "data";
+  key: string;
+  reason: string;
+}
+
+export interface BuildRequirementGraphInput {
+  /** WO-L1A-1 parser 产物（唯一结构化输入）。 */
+  ast: QuestionAst;
+  /**
+   * 真实本体图（published types = `graph.nodes` 的 key·唯一发布类型白名单源；LinkType 边 = `graph.edges`）。
+   * 缺失 → 无对象节点 / 无本体边（诚实降级·不臆造类型；orchestrator 恒经 OBO REST 供图）。
+   */
+  graph: HiddenReqGraph | undefined;
+  /** 角色→租户真实类型解析（无绑定回退 canonical·对齐 foldHiddenRequirements 约定）。 */
+  bindings?: HiddenReqBindings;
+  /** R6：调用方注入生成时刻（纯核不取时钟）。 */
+  generatedAt: string;
+  /**
+   * 隐性需求闭包开关（复用 L0 `expandHiddenRequirements`·默认 true）。关 = 只显式需求
+   * （回退对照·对齐 pre-analyze hiddenReqEnabled 语义）。graph 缺失时恒不扩展（无真图不编）。
+   */
+  hiddenReqEnabled?: boolean;
+  /** 覆盖默认构图器版本（测试/回放可钉）。 */
+  builderVersion?: string;
+  /** 收集越界丢弃记录（诊断·可选·不影响图内容）。 */
+  gapsSink?: RequirementGraphGap[];
+}
+
+/** 本体链路 label → RequirementEdge.kind（Ch01.9 五类关系折叠·确定性关键词映射·真 label 存 reason·R13）。 */
+export function linkKindOf(label: string): RequirementEdgeKind {
+  const l = label.toLowerCase();
+  if (/produc|make|manufactur|assembl/.test(l)) return "produces";
+  if (/fulfill|ship|deliver|serve|satisf/.test(l)) return "fulfills";
+  if (/affect|impact|disrupt|influenc/.test(l)) return "affects";
+  if (/has|contain|belong|part_of|_at|at_|owns|of_/.test(l)) return "has";
+  if (/use|consume|require|need|depend/.test(l)) return "depends_on";
+  return "depends_on";
+}
+
+/**
+ * AST → RequirementGraph（八段 Pipeline·PRD §4.2·纯函数 R6）。
+ * ①对象节点 ②本体边（LinkType 图·断链止步）③数据节点 ④求解器节点 ⑤属性完成
+ * ⑥事件节点 ⑦约束/目标节点 ⑧隐性需求（复用 L0·不新造）⑨去重合并 ⑩三白名单校验 + coverageScore。
+ * 下游 I/O 投影（§4.3·G3）：solverCandidates / dataRequirements / sliceTargets（纯派生·喂 L1-B/slice/solver）。
+ */
+export function buildRequirementGraph(input: BuildRequirementGraphInput): RequirementGraph {
+  const { ast, graph, generatedAt } = input;
+  const builderVersion = input.builderVersion ?? REQUIREMENT_GRAPH_BUILDER_VERSION;
+  const hiddenReqEnabled = input.hiddenReqEnabled ?? true;
+  const bindings: HiddenReqBindings = input.bindings ?? { resolve: (rt) => DATADEP_ROLE_CANONICAL[rt] };
+  const problemClass = ast.intent.problemClass;
+
+  // 白名单①：发布类型（独立于 AST·防「AST 自证幽灵」穿透三白名单）。graph 缺失 → 空集（诚实无对象节点）。
+  const publishedTypes = new Set<string>((graph?.nodes ?? []).map((n) => n.key));
+
+  const nodes: RequirementNode[] = [];
+  const nodeById = new Map<string, RequirementNode>();
+  const objectTypeSet = new Set<string>(); // 已入图对象节点的 ontologyType（隐性类型去重）
+  const gaps: RequirementGraphGap[] = input.gapsSink ?? [];
+  const dataMinRows = new Map<string, number>(); // roleType → max(minRows)（⑤属性·投影用）
+  // 三白名单节点计量（⑩ coverageScore = 命中注册表节点 / 尝试节点·object+solver+data）。
+  let attempted = 0;
+  let admitted = 0;
+
+  const pushNode = (n: RequirementNode): RequirementNode => {
+    const existing = nodeById.get(n.nodeId);
+    if (existing) return existing; // ⑨去重（首现序·R6）
+    nodeById.set(n.nodeId, n);
+    nodes.push(n);
+    return n;
+  };
+
+  // ── ① Question 根节点（always·锚 requires 边）──────────────────────────────
+  const questionNodeId = `question:${ast.taskId}`;
+  pushNode({
+    nodeId: questionNodeId,
+    kind: "question",
+    name: ast.rawText.slice(0, 80) || "(empty)",
+    ontologyType: null,
+    roleType: null,
+    solverKey: null,
+    required: true,
+    confidence: clamp01(ast.intent.confidence),
+    source: "ast:question",
+    refKey: ast.intent.intentKey,
+  });
+
+  // ── ① Object 节点（AST resolved 实体·白名单① 越界丢弃·记 gap）────────────────
+  const addObjectNode = (
+    ontologyType: string,
+    objectId: string | null,
+    name: string,
+    confidence: number,
+    source: string,
+    required: boolean,
+  ): RequirementNode | null => {
+    attempted++;
+    if (!publishedTypes.has(ontologyType)) {
+      gaps.push({ kind: "object", key: ontologyType, reason: "ontologyType ∉ publishedTypes（graph.nodes）" });
+      return null;
+    }
+    admitted++;
+    objectTypeSet.add(ontologyType);
+    const nodeId = objectId ? `object:${ontologyType}:${objectId}` : `object:${ontologyType}`;
+    return pushNode({
+      nodeId,
+      kind: "object",
+      name,
+      ontologyType,
+      roleType: null,
+      solverKey: null,
+      required,
+      confidence: clamp01(confidence),
+      source,
+      refKey: objectId,
+    });
+  };
+  for (const e of ast.entities) {
+    // 仅 resolved 实体入图（fuzzy/unresolved 仅澄清·不自动绑·PRD §4.2①）。
+    if (!e.resolved || !e.ontologyType) continue;
+    addObjectNode(e.ontologyType, e.objectId, e.text, e.confidence, "ast:entity", true);
+  }
+
+  // ── ④ Solver 节点（SOLVER_COVERAGE[problemClass]·白名单② 越界丢弃）────────────
+  const addSolverNode = (solverKey: string, source: string, required: boolean): boolean => {
+    attempted++;
+    if (!VALID_SOLVER_KEYS.has(solverKey)) {
+      gaps.push({ kind: "solver", key: solverKey, reason: "solverKey ∉ SOLVER_REGISTRY（VALID_SOLVER_KEYS）" });
+      return false;
+    }
+    admitted++;
+    pushNode({
+      nodeId: `solver:${solverKey}`,
+      kind: "solver",
+      name: solverKey,
+      ontologyType: null,
+      roleType: null,
+      solverKey,
+      required,
+      confidence: 1,
+      source,
+      refKey: solverKey,
+    });
+    return true;
+  };
+  const coverageSolvers = SOLVER_COVERAGE[problemClass] ?? [];
+  const admittedCoverageSolvers: string[] = [];
+  for (const key of coverageSolvers) {
+    if (addSolverNode(key, `coverage:${problemClass}`, true)) admittedCoverageSolvers.push(key);
+  }
+
+  // ── ③ Data 节点 + ⑤ Property 完成（SOLVER_DATADEP 并集·白名单③ 越界丢弃）────────
+  const addDataNode = (roleType: string, minRows: number, source: string, props?: string[]): boolean => {
+    attempted++;
+    if (!VALID_ROLE_TYPES.has(roleType)) {
+      gaps.push({ kind: "data", key: roleType, reason: "roleType ∉ DATADEP_ROLE_CANONICAL" });
+      return false;
+    }
+    admitted++;
+    dataMinRows.set(roleType, Math.max(dataMinRows.get(roleType) ?? 0, minRows));
+    pushNode({
+      nodeId: `data:${roleType}`,
+      kind: "data",
+      name: roleType,
+      ontologyType: DATADEP_ROLE_CANONICAL[roleType] ?? null,
+      roleType,
+      solverKey: null,
+      required: true,
+      confidence: 1,
+      source,
+      refKey: roleType,
+      // ⑤ Property：只取清单声明字段（确定性·零业务权重魔数·守 R14）。
+      ...(props && props.length > 0 ? { props: { requiredFields: props } } : {}),
+    });
+    return true;
+  };
+  // solverKey → 其 admitted data roleType[]（④ solver -depends_on→ data 边用）。
+  const solverDataRoles = new Map<string, string[]>();
+  const collectSolverData = (solverKey: string, source: string): void => {
+    const roles: string[] = [];
+    for (const req of SOLVER_DATADEP[solverKey]?.requires ?? []) {
+      if (addDataNode(req.roleType, req.minRows, source, req.props)) roles.push(req.roleType);
+    }
+    solverDataRoles.set(solverKey, roles);
+  };
+  for (const key of admittedCoverageSolvers) collectSolverData(key, `datadep:${key}`);
+
+  // ── ⑧ 隐性需求（Ch05·复用 expandHiddenRequirements·三白名单 by-construction·不新造）──
+  if (hiddenReqEnabled && graph) {
+    const expansion = expandHiddenRequirements(
+      { objectTypes: [...objectTypeSet].sort(), solvers: [...admittedCoverageSolvers].sort() },
+      graph,
+      SOLVER_DATADEP,
+      bindings,
+    );
+    // 隐性对象类型（type-level·若同类型已有实例节点则跳·去重）。
+    for (const t of expansion.requiredObjectTypes) {
+      if (objectTypeSet.has(t)) continue;
+      addObjectNode(t, null, t, 0.8, "hidden_req", false);
+    }
+    // 隐性求解器 + 其数据依赖闭包。
+    for (const s of expansion.requiredSolvers) {
+      if (nodeById.has(`solver:${s}`)) continue;
+      if (addSolverNode(s, "hidden_req", false)) collectSolverData(s, `hidden_req:${s}`);
+    }
+  }
+
+  // ── ⑦ Constraint / Goal 节点（AST 约束 + 目标叙述）────────────────────────────
+  ast.constraints.forEach((c: AstConstraint, i) => {
+    pushNode({
+      nodeId: `constraint:${i}`,
+      kind: "constraint",
+      name: c.metric ? `${c.kind}:${c.metric}` : c.kind,
+      ontologyType: null,
+      roleType: null,
+      solverKey: null,
+      required: c.kind === "HARD",
+      confidence: 1,
+      source: "ast:constraint",
+      refKey: c.metric,
+      props: { kind: c.kind, operator: c.operator, direction: c.direction, value: c.value },
+    });
+  });
+  ast.objectives.forEach((o: string, i) => {
+    pushNode({
+      nodeId: `goal:${i}`,
+      kind: "goal",
+      name: o,
+      ontologyType: null,
+      roleType: null,
+      solverKey: null,
+      required: false,
+      confidence: 1,
+      source: "ast:objective",
+      refKey: o,
+    });
+  });
+
+  // ── ⑥ Event 节点（AST actions·SHUTDOWN→event·保留原文量值·R13）──────────────
+  ast.actions.forEach((a: AstAction, i) => {
+    pushNode({
+      nodeId: `event:${a.type}:${i}`,
+      kind: "event",
+      name: a.type,
+      ontologyType: a.targetType, // 作用对象本体类型（信息位·非三白名单节点）
+      roleType: null,
+      solverKey: null,
+      required: false,
+      confidence: 1,
+      source: "ast:action",
+      refKey: a.targetType,
+      props: { value: a.value, targetType: a.targetType },
+    });
+  });
+
+  // ── Time 节点（AST timeScope）──────────────────────────────────────────────
+  if (ast.timeScope) {
+    pushNode({
+      nodeId: `time:${ast.taskId}`,
+      kind: "time",
+      name: ast.timeScope.kind,
+      ontologyType: null,
+      roleType: null,
+      solverKey: null,
+      required: false,
+      confidence: 1,
+      source: "ast:time",
+      refKey: null,
+      props: { ...ast.timeScope },
+    });
+  }
+
+  // ── 边构建（确定性·去重·首现序 R6）────────────────────────────────────────
+  const edges: RequirementEdge[] = [];
+  const edgeSeen = new Set<string>();
+  const addEdge = (from: string, to: string, kind: RequirementEdgeKind, reason?: string): void => {
+    if (from === to) return;
+    if (!nodeById.has(from) || !nodeById.has(to)) return; // 断链止步·不连不存在节点
+    const edgeId = `${from}|${kind}|${to}`;
+    if (edgeSeen.has(edgeId)) return;
+    edgeSeen.add(edgeId);
+    edges.push({ edgeId, from, to, kind, ...(reason ? { reason } : {}) });
+  };
+
+  const solverNodes = nodes.filter((n) => n.kind === "solver");
+  // E1: question -requires→ solver。
+  for (const s of solverNodes) addEdge(questionNodeId, s.nodeId, "requires");
+  // E2: solver -depends_on→ data（据 solverDataRoles 映射）。
+  for (const s of solverNodes) {
+    for (const role of solverDataRoles.get(s.solverKey!) ?? []) {
+      addEdge(s.nodeId, `data:${role}`, "depends_on");
+    }
+  }
+  // E3: object -[LinkType]→ object（真 LinkType 图直连边·断链止步·kind 取 label 语义·reason 存真 label）。
+  //     graph.edges 端点约定 `n-<typeKey>`（对齐 expandHiddenRequirements stripNodeId）。
+  const objTypeToNodeId = new Map<string, string>();
+  for (const n of nodes) if (n.kind === "object" && n.ontologyType && !objTypeToNodeId.has(n.ontologyType)) {
+    objTypeToNodeId.set(n.ontologyType, n.nodeId);
+  }
+  for (const e of graph?.edges ?? []) {
+    const fromType = e.from.startsWith("n-") ? e.from.slice(2) : e.from;
+    const toType = e.to.startsWith("n-") ? e.to.slice(2) : e.to;
+    const fromNode = objTypeToNodeId.get(fromType);
+    const toNode = objTypeToNodeId.get(toType);
+    if (fromNode && toNode) addEdge(fromNode, toNode, linkKindOf(e.label), `link:${e.label}`);
+  }
+  // E4: event -affects→ 目标对象（targetType 命中对象节点）·否则 event -affects→ question。
+  for (const ev of nodes.filter((n) => n.kind === "event")) {
+    const targetNode = ev.ontologyType ? objTypeToNodeId.get(ev.ontologyType) : undefined;
+    addEdge(ev.nodeId, targetNode ?? questionNodeId, "affects", `action:${ev.name}`);
+  }
+  // E5: constraint(OBJECTIVE)/goal -optimizes→ 首个求解器（目标驱动求解）。
+  const primarySolverNodeId = solverNodes[0]?.nodeId;
+  if (primarySolverNodeId) {
+    for (const c of nodes.filter((n) => n.kind === "constraint")) {
+      const kind = (c.props as { kind?: string } | undefined)?.kind;
+      if (kind === "OBJECTIVE") addEdge(c.nodeId, primarySolverNodeId, "optimizes");
+    }
+    for (const g of nodes.filter((n) => n.kind === "goal")) addEdge(g.nodeId, primarySolverNodeId, "optimizes");
+  }
+
+  // ── 下游 I/O 投影（§4.3·纯派生·G3）────────────────────────────────────────
+  const solverCandidates = [...new Set(solverNodes.map((n) => n.solverKey!))].sort();
+  const dataRequirements = nodes
+    .filter((n) => n.kind === "data")
+    .map((n) => ({ roleType: n.roleType!, minRows: dataMinRows.get(n.roleType!) ?? 1 }))
+    .sort((a, b) => (a.roleType < b.roleType ? -1 : a.roleType > b.roleType ? 1 : 0));
+  // sliceTargets：首个 admitted coverage 求解器 + 首个实例对象类型（deriveSliceTargetCandidates·datadep.ts）。
+  const primarySolverKey = admittedCoverageSolvers[0] ?? solverCandidates[0];
+  const primaryObjectType =
+    nodes.find((n) => n.kind === "object" && n.refKey)?.ontologyType ??
+    nodes.find((n) => n.kind === "object")?.ontologyType ??
+    undefined;
+  const sliceTargets = primarySolverKey ? deriveSliceTargetCandidates(primarySolverKey, primaryObjectType) : null;
+
+  // ⑩ coverageScore（咨询·非判决·永不误红）：命中三白名单节点 / 尝试三白名单节点。
+  const coverageScore = attempted > 0 ? Number((admitted / attempted).toFixed(4)) : 1;
+
+  return {
+    graphId: `rg_${ast.taskId}`,
+    taskId: ast.taskId,
+    tenantId: ast.tenantId,
+    questionAst: ast,
+    nodes,
+    edges,
+    problemClass,
+    solverCandidates,
+    dataRequirements,
+    sliceTargets,
+    coverageScore,
+    builderVersion,
+    generatedAt,
+  };
 }

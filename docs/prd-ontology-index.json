@@ -138,9 +138,7 @@
         "scripts/check-decision-case.mjs"
       ],
       "brokenArtifacts": [
-        "apps/agentcore/src/growth/decision-case.ts",
-        "packages/contracts/src/cbr.ts",
-        "scripts/check-decision-case.mjs"
+        "apps/agentcore/src/growth/decision-case.ts"
       ]
     },
     "PRD-L1A-requirement-graph-engine.md": {
@@ -166,9 +164,7 @@
         "packages/contracts/src/requirement-graph.ts",
         "scripts/check-requirement-graph.mjs"
       ],
-      "brokenArtifacts": [
-        "scripts/check-requirement-graph.mjs"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-L1B-execution-planner-workflow-runtime.md": {
       "hasOntologyRef": true,
@@ -231,8 +227,7 @@
       ],
       "brokenArtifacts": [
         "apps/agentcore/src/decision/hook.ts",
-        "apps/agentcore/src/decision/kernel.ts",
-        "scripts/check-decision-kernel.mjs"
+        "apps/agentcore/src/decision/kernel.ts"
       ]
     },
     "PRD-addendum-a8-timeseries.md": {
