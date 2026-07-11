@@ -130,6 +130,15 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 范式 line 113）。暗发 defaultOn:false（RL2）——关 = GET /b/v1/queries/:taskId/requirement-graph 404
   // FEATURE_NOT_FOUND（R3 先于 authz·回退演练 C2）。现有租户零影响（additive）。
   { key: "growth.requirement_graph", name: "需求图引擎", level: "BLOCK", defaultOn: false },
+  // L1-B WO-L1B-3/WO-L1B-1（工作流 DAG 运行时·durable checkpoint 续跑·PRD-L1B §2.6/§7）：AgentCore workflow-dag
+  // 读/续跑端点的权威 entitlement（DataCore 是 entitlement 唯一真相源·AgentCore 经 features 解析下发·对齐
+  // growth.requirement_graph 范式 line 132）。暗发 defaultOn:false（RL2）——关 = GET/POST /b/v1/workflow-dag/runs/:runId
+  // 404 FEATURE_NOT_FOUND（R3 先于 authz·回退演练 C3）。与进程级 env 闸 QOS_WORKFLOW_DAG 独立。现有租户零影响（additive）。
+  { key: "qos.workflow_dag", name: "工作流 DAG 运行时", level: "BLOCK", defaultOn: false },
+  // L1-B WO-L1B-4/WO-L1B-5（执行规划器·综合执行图·PRD-L1B §2.6/§7·148）：规划器 serve 翻闸的权威 entitlement
+  // （DataCore 权威·同上范式）。暗发 defaultOn:false（RL2）——关 = 规划器不 serve（仍走模板判决·NG6）。与进程级 env
+  // 闸 QOS_EXEC_PLANNER（shadow/serve）独立。现有租户零影响（additive）。
+  { key: "qos.exec_planner", name: "执行规划器（综合执行图）", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
