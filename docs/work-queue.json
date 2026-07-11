@@ -7571,11 +7571,11 @@
         ]
       },
       "blockReason": "",
-      "reviewNote": "[审核方复验:核心命门PASS但合格未竟·保持BUILT·复验commit 6f9b96bd] 徽标不作假(实证0假LIVE·未校准真派生coefficientRef·21枚渲染)。不可DONE三因:①头号承诺「标合成」未达——合成值现全显UNKNOWN「来源待披露」占位·分不清合成vs来源未知·三档LIVE/SYNTHETIC/STALE全押未完的BE半;②CAP-10收编空头承诺(c251a2d8没碰RiskTop3/ModelCapacitySlice·三套dataMode各行其是);③透传非兜底(前端cellDataMode逐字照信后端nodeObjectMode·无独立合成识别·G4谎言真正防线在BE半不在S2·当前诚实仅因nodeObjectMode尚无后端填充)。待WO-SANDBOX-TRUST-BADGE-BE co-verify再议DONE;CAP-10要么真交付要么从WO撤声明。证据/tmp/s2-evidence。"
+      "reviewNote": "[审核方复验:核心命门PASS但合格未竟·保持BUILT·复验commit 6f9b96bd] 徽标不作假(实证0假LIVE·未校准真派生coefficientRef·21枚渲染)。不可DONE三因:①头号承诺「标合成」未达——合成值现全显UNKNOWN「来源待披露」占位·分不清合成vs来源未知·三档LIVE/SYNTHETIC/STALE全押未完的BE半;②CAP-10收编空头承诺(c251a2d8没碰RiskTop3/ModelCapacitySlice·三套dataMode各行其是);③透传非兜底(前端cellDataMode逐字照信后端nodeObjectMode·无独立合成识别·G4谎言真正防线在BE半不在S2·当前诚实仅因nodeObjectMode尚无后端填充)。待WO-SANDBOX-TRUST-BADGE-BE co-verify再议DONE;CAP-10要么真交付要么从WO撤声明。证据/tmp/s2-evidence。 【co-verify更新2026-07-11】BE半(TRUST-BADGE-BE)复验BLOCK(合成冒充LIVE·deriveCellMode漏MATERIALIZED-from-synthetic)→S2前端诚实透传但被喂全LIVE·头号承诺标合成永不兑现·维持BUILT待BE修复+WO-DATAMODE-UNIFY-PROVENANCE后co-verify。"
     },
     {
       "id": "WO-SANDBOX-TRUST-BADGE-BE",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "priority": "P2",
       "owner": "dev1",
       "assignedDev": "dev1-后端",
@@ -7587,20 +7587,22 @@
       "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。 【审核方·S2 co-verify要求】BE半填dataMode/nodeObjectMode时是G4谎言的真正防线:合成materialized值不得标LIVE(须按provenance——真导入rawDataset才LIVE·合成→SYNTHETIC)。与WO-IMPORT-REPLACE-SYNTHETIC(G4 BLOCK)同源返工。S2前端只透传照信·防线在此。co-verify:BE完成后与S2 WO-SANDBOX-TRUST-BADGE一起真浏览器验合成不冒充LIVE。",
       "at": {
         "wip": "2026-07-11T18:27:37.158Z",
-        "built": "2026-07-11T19:22:04.603Z"
+        "built": "2026-07-11T19:22:04.603Z",
+        "blocked": "2026-07-11T20:15:35.072Z"
       },
-      "blockReason": ""
+      "blockReason": "[审核方co-verify BLOCK·KILL-MOCK-RED命门·合成冒充LIVE] BE deriveCellMode(app.ts)只判originType==SYNTHETIC?SYNTHETIC:LIVE·漏MATERIALIZED-from-synthetic-connection档。demo走seedDemoSynthetic(viaModelingChain:true·seed.ts:355)→origin.type=MATERIALIZED(非SYNTHETIC)→BE标LIVE。真证:view-config nodeObjectMode 102/102全LIVE(0 SYNTHETIC)·world-source{synthetic·materialized560·rawDataset40全合成连接·真导入0}·同批对象经权威isSyntheticDecision(solvers/service.ts:2529·判origin SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has))自报SYNTHETIC(risk_timeline/capacity_forecast/bottleneck_matrix)。commit自称复用SolverDataMode实则重写弱判据漏B路正中demo命门。反假绿:BE test seededbattery(A路origin=SYNTHETIC)与生产seedDemoSynthetic(MATERIALIZED)分岔·齿①空断言·齿②把BUG钉成规范。修:deriveCellMode真复用isSyntheticDecision/synthDatasetIds。与G4/CAPFORECAST同根→见WO-DATAMODE-UNIFY-PROVENANCE。复验commit 577bfa57。"
     },
     {
       "at": {
         "wip": "2026-07-11T18:27:37.242Z",
-        "built": "2026-07-11T19:22:04.681Z"
+        "built": "2026-07-11T19:22:04.681Z",
+        "done": "2026-07-11T20:15:35.072Z"
       },
       "id": "WO-SANDBOX-BRANCH-INJECT",
       "title": "S3·分支注入不同应对+对比换决策维(交付/成本/齐套)",
       "doc": "docs/WO-SANDBOX-BRANCH-INJECT.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
@@ -7608,7 +7610,46 @@
       "note": "[沙盘重建·S3·依赖S1·dev3] 接CAP-05补差量。SimComparePanel(FAKE-08已修tickMean其上)。回退:白名单·关=回容器分支。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev1-后端",
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "S3分支注入不同应对+compare决策维差量·经S6 overlay·真算",
+        "verifiedBy": "独立真起datacore:4041真curl逐值对后端·真seed Base+formationCapDaily(非dev合成risk)·commit 577bfa57(target 39f4e42b)·自避778cc589坑·a9c0965f·2026-07-11",
+        "criteria": [
+          {
+            "id": "branch-inject-effective",
+            "assert": "注入外协+10000/加班+3000→分支tick0 A=68565 B=61565 A≠B·主线base不变58565·逐值证非复制"
+          },
+          {
+            "id": "compare-decision-dims",
+            "assert": "GET /sim/compare→{a:805557,b:798557,delta:-7000,verdict:A_BETTER}·a=736992(11真Base和)+68565(overlay覆盖)·逐值对后端非0填充非写死"
+          },
+          {
+            "id": "multi-response-compare",
+            "assert": "换注入→delta/verdict真翻B_BETTER·换决策维方向真翻"
+          },
+          {
+            "id": "s6-overlay-readonly",
+            "assert": "import buildSimSolverContext(context-overlay核心文件未改仅复用)·所有compare跑完live Base逐值不变(R4/F2只读实证)"
+          },
+          {
+            "id": "hidden-dual-reg-revert",
+            "assert": "sim.branch_inject datacore+agentcore双注册defaultOn:false·feature-parity有牙·关闸落回旧行为字节一致"
+          },
+          {
+            "id": "r6-determinism",
+            "assert": "同注入两次compare字节一致·纯函数无Date/random"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "差量真算(含真世界base和736992+注入差)·无匹配诚实null+NO_DATA非0填充"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "sim-branch-inject.test 5测真断言(#2 a≈realOtherRisk读真repo对账最强反mock)·agent非零realOtherSum复现更强"
+          }
+        ],
+        "scopeBoundary": "state级注入(非coefficient级ruleAdjustments·后者留propagation.ts会话overlay后接·本体§3诚实注明);前端SimComparePanel未消费decisionDims(端点级WO·前端展示随CAPSIM§3多方案+比较落地)·母体§3回写+切片重生成hash一致"
+      }
     },
     {
       "at": {
@@ -8542,14 +8583,27 @@
       },
       "title": "就绪认证进看板信任条+抽屉(并入CAPSIM§5·非独立页):看板顶一行信任条+[查看完整体检]抽屉(L0-L4/三雷达进抽屉·守RL3不动投影)",
       "note": "[前端·并入产能推演看板非独立沙盘页·以WO-CAPACITY-SIM为准] deps IA-UNIFY(先有看板surface)。RC-1闭合门决定信任条状态(canEnter)。"
+    },
+    {
+      "id": "WO-DATAMODE-UNIFY-PROVENANCE",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T20:15:35.072Z"
+      },
+      "title": "统一dataMode真值判据为isSyntheticDecision语义(治合成materialized冒充LIVE根·G4/S2-BE/CAPFORECAST三BLOCK同源)",
+      "note": "[后端·KILL-MOCK-RED系统性根·最高优先·三BLOCK同源·用户最恨] 权威判据isSyntheticDecision(solvers/service.ts:2529):origin.type=SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has(datasetId))·注释「与demo viaModelingChain一致」。但三处弱判据漏MATERIALIZED-from-synthetic-connection致合成标LIVE:①BE deriveCellMode(app.ts·nodeObjectMode)②world_source(G4·qos.risk_realdemand)③capacity_forecast perBaseRows live=true(CAPFORECAST)。统一全部dataMode判据复用isSyntheticDecision/synthDatasetIds→demo合成世界应标SYNTHETIC非LIVE。green→red:demo view-config nodeObjectMode现102/102 LIVE·修后应SYNTHETIC;补运行期provenance测试(现全绿门是静态扫描/夹具·漏运行期nodeObjectMode真BUG)。收编WO-SANDBOX-TRUST-BADGE-BE+WO-IMPORT-REPLACE-SYNTHETIC(G4)+WO-CAPFORECAST-DATAMODE-HONEST三症。CAPSIM看板用solver dataMode(权威·正确)故不受此BUG·但统一防回归。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "CAPSIM完整施工单落库(§2/§6/§7.5)·REPLICA解封",
-      "id": "WO-CAPSIM-REPLICA",
-      "at": "2026-07-11T20:13:22.920Z"
+      "cmd": "S3 DONE·TRUST-BADGE-BE BLOCK(合成冒充LIVE)·DATAMODE-UNIFY根WO(三症同源)",
+      "id": "4单",
+      "at": "2026-07-11T20:15:35.072Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
