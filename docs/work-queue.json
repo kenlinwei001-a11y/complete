@@ -6958,7 +6958,7 @@
     },
     {
       "id": "WO-L2-5-CONCURRENCY-LOCK",
-      "status": "BUILT",
+      "status": "DONE",
       "priority": "P3",
       "owner": "dev2",
       "deps": [
@@ -6966,12 +6966,38 @@
       ],
       "doc": "docs/PRD-L2-decision-kernel.md",
       "title": "采纳并发加固:adopt() TOCTOU 窗口(getByTask↔回写ADOPTED间)真正闭合(乐观锁/唯一约束·pg侧)",
-      "note": "[审核方记·L2-5重验非阻断观察] 幂等守卫已确定性修好顺序连采/网络重试(已DONE)。但守卫在 getByTask 与回写 ADOPTED 之间有若干 await·理论 TOCTOU 并发窗口。内存仓储微任务序列化未复现(5路并发仍1条)·pg 真并发才可能双写。真正闭合需乐观锁(version)或 DB 唯一约束(packageId+ADOPTED)。低优·独立议题。",
+      "note": "[审核方记·L2-5重验非阻断观察] 幂等守卫已确定性修好顺序连采/网络重试(已DONE)。但守卫在 getByTask 与回写 ADOPTED 之间有若干 await·理论 TOCTOU 并发窗口。内存仓储微任务序列化未复现(5路并发仍1条)·pg 真并发才可能双写。真正闭合需乐观锁(version)或 DB 唯一约束(packageId+ADOPTED)。低优·独立议题。 【复验PASS·真pg 5→1铁证·P3测试加固待办:dev内存态测⑥装饰性(禁锁仍绿·内存序列化双写不发生)·承重回归齿是pg行为+测⑦·若要⑥真守并发不变量需pg-backed并发测试】",
       "at": {
         "wip": "2026-07-11T15:52:07.543Z",
-        "built": "2026-07-11T16:02:33.195Z"
+        "built": "2026-07-11T16:02:33.195Z",
+        "done": "2026-07-11T16:26:56.334Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "adopt() TOCTOU并发窗口真正闭合(ExecutionLock互斥+锁内双检)·pg真并发不双写。(审核方真pg真并发验PASS·5→1铁证)",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "probe",
+            "assert": "pg真并发N=20同package adopt→14×200+6×409(ADOPT_IN_PROGRESS)·all 200同一dec·恰1 Decision+1 ActionDraft(锁真互斥·6条409证真竞争·非内存幻象)"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "门有牙green→red→green(真pg):锁ON→1 Decision·禁锁→5双写LEAK挂同一packageId·还原→1;dev测⑦禁锁转红(锁被honor有牙)"
+          },
+          {
+            "id": "C3",
+            "type": "test",
+            "assert": "无回归L2-5幂等:顺序重采no-op同ref·异方案400拒·30 decision-kernel测试绿;锁不误伤:不同package并发不阻塞·单采纳200/27ms即时释放·无死锁"
+          },
+          {
+            "id": "C4",
+            "type": "code",
+            "assert": "pg tryAcquire INSERT ON CONFLICT原子抢占·memory tryAcquire中间无await单微任务原子·adopt()锁外幂等→tryAcquire→败者重读→赢家锁内双检→finally即时释放"
+          }
+        ]
+      }
     },
     {
       "status": "DONE",
