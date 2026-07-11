@@ -8138,13 +8138,15 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G4真数据换hash假值(可选·配CAP-01):demo/租户配置world_source=synthetic|imported·选imported→求解器读Stage3.15导入真值而非hash·从源头削mockTightness/util稀释假值",
       "note": "[LaneB·datacore·索引§2序#6·配WO-CAP-01 REALDEMAND] 守R-NO-ORPHAN-SOURCE(导入对象挂真rawDatasetId可下载审计)。治假推演源头。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev4-import",
       "built": "[BUILT dev4-import] 契约扩 import.ts(WorldSource/WorldSourceStatus) + Tenant.worldSource(doc jsonb·无迁移) + app.ts GET/PUT /a/v1/world-source(admin·暗发 data-import.world-source) + feature key。⛔R14 不改求解器内部:imported→翻开既有实值杠杆 qos.risk_realdemand(合并租户 override 不覆盖它键 + invalidateFeatureCache 即时生效)→求解器 risk.ts:182 读 SolverContext.features 真需求-产能缺口替 mockTightness 哈希;synthetic→关回退。真证据(非仅翻标志):risk_timeline 输出随 world_source 翻转而实变(imported 9040f211 vs synthetic f249473e 字节不同)。守 R-NO-ORPHAN-SOURCE:imported 但 0 RawDataset/0 物化对象→诚实 warnings(世界态空不假装真值)。真跑:暗发门 404;demo 默认 synthetic;PUT imported↔synthetic 翻转 realValueLever;合并保留 opt.solver-pool;非 admin 403;空租户 imported→warning。回写母体§2.B(登 WorldSource)+§3+slices。测:test/import-world-source.test.ts 6 用例·datacore 全绿·gates(debattery/no-orphan/no-fake-data/no-silent-mock/genuine-sim/feature-parity/prd/slices)全绿。诚实交底:capacity.ts 裸 import mockTightness 收口属求解器 lane(CAP-01/FAKE)·本 WO 只补导入侧世界态源开关翻既有杠杆不重写求解器。⚠共享 app.ts additive 新段·rebase-before-push。待审核方真跑复验。",
       "at": {
-        "created": "2026-07-11T15:46:52.629Z"
+        "created": "2026-07-11T15:46:52.629Z",
+        "blocked": "2026-07-11T19:04:39.035Z"
       },
-      "assignedDev": "dev4-import"
+      "assignedDev": "dev4-import",
+      "blockReason": "[审核方独立复验BLOCK·KILL-MOCK-RED命门未过] world_source源盲+溯源盲:grep证worldSource仅现于domain.ts字段/app.ts端点/features.ts注册·无任何求解器或context加载器读它;PUT只翻qos.risk_realdemand公式旗标·两档读同一份对象集只换公式。demo(整世界SEED_DEMO合成·0真导入)+imported→dataMode:LIVE决策红57-67·值来自合成DemandSegment(dseg-1 p50=71·origin虽MATERIALIZED但rds是seed=42合成非真导入)·且无warning=合成冒充真值(违KILL-MOCK-RED)。命门(切真源→按provenance择对象→可溯源真导入值)未实现未测。dev测试把seedBattery注释成\"真对象\"只断言on!=off=假绿。暗发门/隔离/R6/空态诚实/R14/全门绿/无回归都成立(合成冒充LIVE大半是WO-CAP-01遗留杠杆demo默认开)。返工:①imported按origin=MATERIALIZED+真导入rawDataset择世界态对象(或至少合成materialized不得在imported下自报LIVE决策红)②warning从数rawDataset总数→数喂求解器真导入provenance并下沉solver dataMode③修默认态标签≠行为(demo默认worldSource synthetic但digest=imported)④补真导入真数据逐值溯源测试。证据见复验报告。"
     },
     {
       "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",
@@ -8314,9 +8316,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "REGISTER(RC-1+2 UX坑·一手复验)",
-      "id": "3单",
-      "at": "2026-07-11T18:44:29.366Z"
+      "cmd": "BLOCK(G4复验·KILL-MOCK-RED未过)",
+      "id": "WO-IMPORT-REPLACE-SYNTHETIC",
+      "at": "2026-07-11T19:04:39.035Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
