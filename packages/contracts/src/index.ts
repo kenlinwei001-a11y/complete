@@ -52,3 +52,4 @@ export * from "./capability.js";
 export * from "./solver-coverage.js";
 export * from "./pipeline.js";
 export * from "./requirement-graph.js";
+export * from "./execution-graph.js"; // L1-B WO-L1B-1 · ExecutionGraph 契约 + 线性 lift

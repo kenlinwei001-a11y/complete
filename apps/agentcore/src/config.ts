@@ -58,6 +58,20 @@ const ConfigSchema = z.object({
    *  缺省（OFF）100% 等价改造前 pipeline（旁路不执行·字节一致·可证回退）——对齐 QOS_CLASSIFY_FUSE 暗发范式。
    *  注：WO-L1A-1 只落契约 + QuestionAST 纯函数解析器 + 本开关，尚未接线编排（旁路挂载归 WO-L1A-3）。 */
   QOS_REQUIREMENT_GRAPH: z.string().optional(),
+  /**
+   * L1-B WO-L1B-1（PRD-L1B-execution-planner-workflow-runtime §2.5/§2.6·暗发 defaultOff·additive·RL2/RL9）：
+   * =1 时 QOS 执行器派发走新 DAG 执行器（`runWorkflowDag`·拓扑并行 + Gateway + 重试）；
+   * 缺省（OFF）100% 走旧串行 `runWorkflow`（executor.ts:88·逐字节等价·可证回退）。
+   * 本 WO 仅落契约 + 暗发开关·尚未接线执行器（WO-L1B-2 起接线）。
+   */
+  QOS_WORKFLOW_DAG: z.string().optional(),
+  /**
+   * L1-B WO-L1B-1（同上·DESIGN-refit §L1-B 绞杀者影子·暗发 defaultOff）：
+   * "shadow" = `synthesizePlan` 旁 `resolvePlanForIntent` 只影子对照落 divergence（零用户可见变化）；
+   * "serve" = STAGE-2 白名单 intent 翻闸用综合图。缺省（OFF）连影子都不跑（== 改造前系统）。
+   * 本 WO 仅落契约 + 暗发开关·尚未接线规划器（WO-L1B-4 起接线）。
+   */
+  QOS_EXEC_PLANNER: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 
