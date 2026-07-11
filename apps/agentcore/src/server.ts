@@ -58,6 +58,9 @@ import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 import { agentRuleRefs, planStepRuleRefs, skillRuleRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
+import { DurableWorkflowCheckpointStore } from "./workflow/checkpoint.js";
+import { resumeDagRunRow } from "./workflow/resume-run.js";
+import type { CompensateHook } from "./workflow/dag-executor.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap, FILL, gapDisposition } from "./growth/probe.js";
 import { perceptionMetrics } from "./router/perception-metrics.js";
@@ -1620,6 +1623,80 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { runId } = req.params as { runId: string };
     await streamTaskEvents(req, reply, deps.events, runId);
     return reply;
+  });
+
+  // ---------------------------------------------------------------------
+  // WO-L1B-3 · durable Workflow-DAG 运行态读端点 + 手动续跑（暗发·qos.workflow_dag entitlement 门·
+  //   先于 authz·关=404 FEATURE_NOT_FOUND·R3）。PRD-L1B §2.5/§5。
+  // ---------------------------------------------------------------------
+  const requireDagFeature = async (a: RequestAuth): Promise<void> => {
+    if (!(await deps.features.isEnabled(a.tenantId, "qos.workflow_dag", a.token))) {
+      // Entitlement 先于 authz：功能关闭 = 不存在（404·不泄露资源存在性）。
+      throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    }
+  };
+
+  /** GET 综合执行图（读·404 若关/跨租户/未综合）。综合图产出归 WO-L1B-4/5 规划器；本单从落库 run 的
+   *  执行输入回投 ExecutionGraph（形为一等图时），无则诚实 404（未综合·不伪造图）。 */
+  // 注：/b/v1/queries/* 经 rewriteUrl 重写到 /api/v1/queries/*（QOS 子集），故原生注册于 /api/v1 命名空间。
+  app.get("/api/v1/queries/:taskId/execution-graph", async (req) => {
+    const a = await auth(req);
+    await requireDagFeature(a);
+    const { taskId } = req.params as { taskId: string };
+    // Path A durable run 的 runId == taskId（engine 派发注入）；R2 tenant 谓词随身（跨租户 → undefined → 404）。
+    const row = await deps.repos.workflowDagRuns.get(a.tenantId, taskId);
+    const graph = row?.resume?.graph as { graphId?: string; nodes?: unknown } | undefined;
+    if (!graph || typeof graph.graphId !== "string") {
+      throw new HttpError(404, "EXECUTION_GRAPH_NOT_FOUND", "execution graph not synthesized");
+    }
+    return { executionGraph: graph };
+  });
+
+  /** GET durable DAG run 进度（client 轮询观察·投影用户面契约 WorkflowDagRun·resume 内部快照不外泄）。 */
+  app.get("/b/v1/workflow-dag/runs/:runId", async (req) => {
+    const a = await auth(req);
+    await requireDagFeature(a);
+    const { runId } = req.params as { runId: string };
+    const row = await deps.repos.workflowDagRuns.get(a.tenantId, runId); // R2 tenant 谓词（跨租户 → 404）
+    if (!row) throw new HttpError(404, "RUN_NOT_FOUND", `run not found: ${runId}`);
+    return { run: row.run };
+  });
+
+  /** POST 手动续跑（admin·R-AUDIT·§4.4）：载入落库 run → 跳过 DONE 节点从就绪集重驱动 → resumedCount++。
+   *  用请求者鲜活 OBO token（忠实 A6 行级过滤）；补偿反向步经 S2（R4）。 */
+  app.post("/b/v1/workflow-dag/runs/:runId/resume", async (req, reply) => {
+    const a = await auth(req);
+    await requireDagFeature(a);
+    requireRole(a, "admin");
+    const { runId } = req.params as { runId: string };
+    const store = new DurableWorkflowCheckpointStore(deps.repos);
+    const loaded = await store.load(a.tenantId, runId); // R2 tenant 谓词
+    if (!loaded) throw new HttpError(404, "RUN_NOT_FOUND", `run not found: ${runId}`);
+    if (!loaded.resume) throw new HttpError(409, "RUN_NOT_RESUMABLE", "run has no resume payload");
+    const compensate: CompensateHook = async ({ action }) => {
+      if (!action.step) return { compensated: false, detail: "no reversing step (irreversible)" };
+      const ex = deps.engine.makeExecutor(runId, a, new BudgetTracker());
+      const r = await ex.run(action.step.type, action.step.params as Record<string, unknown>, { timeoutMs: 10_000 });
+      return { compensated: r.ok, detail: r.ok ? "reversing draft submitted to S2 approval" : "reversing action failed" };
+    };
+    const result = await resumeDagRunRow(
+      {
+        makeExecutor: (taskId, ctx, budget) => deps.engine.makeExecutor(taskId, ctx, budget),
+        llm: deps.engine.deps.llm,
+        metrics: deps.engine.deps.metrics,
+        composeModel: (tenantId) => deps.engine.deps.llmSettings.roleModel(tenantId, "compose"),
+        emit: (rid, event, payload) => deps.events.emit(rid, event, payload).then(() => undefined),
+        store,
+        compensate,
+      },
+      loaded as unknown as import("./persistence/repos.js").WorkflowDagRunRow,
+      { tenantId: a.tenantId, userId: a.userId, roles: a.roles, token: a.token, requestId: a.requestId },
+    );
+    const after = await store.load(a.tenantId, runId);
+    if (result.status === "FAILED") {
+      return reply.status(200).send({ runId, status: "FAILED", error: result.error, resumedCount: after?.run.resumedCount ?? 0 });
+    }
+    return reply.status(200).send({ runId, status: "COMPLETED", answer: result.answer, resumedCount: after?.run.resumedCount ?? 0 });
   });
 
   // ---------------------------------------------------------------------

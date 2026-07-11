@@ -35,7 +35,7 @@
 - **R1 contracts-only（`05:15`）**：`ExecutionGraph`/`TaskNode`/`Transition`/`Gateway`/`CompensationAction`/`WorkflowDagRun` 全进 `@platform/contracts`；前端/跨包不重定义。
 - **R2 tenant everywhere（`05:16`）**：`ExecutionGraph`/run/checkpoint 全带 tenantId；跨租户读 run → 404。
 - **R4 真值写入经 Action 审批（`05:18`）**：补偿若涉**出站真实效果**（`create_action_draft` / actuate），其反向动作**必经 S2 Action 审批**（`domainExecutor`·EXECUTED 才落）——**绝不静默反转真实世界效果**；不可逆步诚实记录、不伪装"已补偿"。
-- **R9 仓储双实现（`05:23`）**：`workflow_dag_runs` 等新表**四处同改**（migrations `014_*.sql` + pg.ts + memory.ts + repos.ts 接口）。
+- **R9 仓储双实现（`05:23`）**：`workflow_dag_runs` 等新表**四处同改**（migrations `015_*.sql` + pg.ts + memory.ts + repos.ts 接口）。
 - **R10 / D-29 数据流闭环（`05:24`）**：产出必发事件、下游必订阅（`event-subscriptions.ts`）——DAG 内部事件走既有 outbox。
 - **R13 结论可溯源（`05:27`）**：`TaskNode` 带 `source`（源 `RequirementGraph` 节点/RG 投影）；checkpoint/run 可当场亮出；答案数字仍走 `⟦ref⟧` 溯源（现 executor renderAnswer 已保证）。
 - **R-AUDIT（`05:35`）**：run 生命周期/补偿/翻闸经 `AuditService.record`（`x-request-id` 透传·append-only）。
@@ -138,7 +138,7 @@ if (this.deps.config.QOS_EXEC_PLANNER) {                       // "shadow" | "se
 - **DAG 执行器**（agentcore）：新文件 `apps/agentcore/src/workflow/dag-executor.ts`（`runWorkflowDag` / `resumeWorkflowDag`·拓扑并行 + Gateway + 重试 + 补偿）；`workflow/checkpoint.ts` 加 `DurableWorkflowCheckpointStore`（保留 NoopStore）。
 - **规划器**（agentcore）：新文件 `apps/agentcore/src/growth/execution-planner.ts`（纯函数 `synthesizePlan`·§4.1·无 IO 除注册表读）。
 - **编排接线**：`orchestrator.ts` 加影子段（§2.2）+ `engine.ts` 加执行器派发（§2.1）+ `ops/sweep.ts` 加续跑分支（§2.3）。
-- **仓储**（R9 四处同改）：`workflow_dag_runs` 表（`migrations/014_workflow_dag_runs.sql` + pg.ts + memory.ts + repos.ts `workflowDagRuns` 接口）。
+- **仓储**（R9 四处同改）：`workflow_dag_runs` 表（`migrations/015_workflow_dag_runs.sql` + pg.ts + memory.ts + repos.ts `workflowDagRuns` 接口）。
 - **端点**（暗发·entitlement 门）：`GET /b/v1/queries/:taskId/execution-graph`（读综合图）· `GET /b/v1/workflow-dag/runs/:runId`（读 run 进度·client 轮询·对齐 build 侧 GET 观察）· `POST /b/v1/workflow-dag/runs/:runId/resume`（手动续跑·admin）。
 - **配置**：`config.ts` 加 `QOS_WORKFLOW_DAG: z.string().optional()`（`==="1"` 开 DAG 执行器）+ `QOS_EXEC_PLANNER: z.string().optional()`（`"shadow"`/`"serve"`·对齐 config.ts:22 范式）。
 - **门**：`scripts/check-workflow-dag.mjs` → `workflow-dag:check`（§0.6）并入 `pnpm gates`。
@@ -147,13 +147,13 @@ if (this.deps.config.QOS_EXEC_PLANNER) {                       // "shadow" | "se
 - **`qos.workflow_dag`（用户面 entitlement·per-tenant·`defaultOn:false`·本 WO 主键）**——控 DAG **读端点是否存在**（关=404 `FEATURE_NOT_FOUND`·先于 authz·R3）。**双注册**：**权威源** datacore `features.ts`（`{ key:"qos.workflow_dag", name:"工作流 DAG 运行时", level:"BLOCK", defaultOn:false }`·对齐 `qos.risk_realdemand` features.ts:46 暗发范式）+ **镜像** agentcore `features/registry.ts`（同键同 `defaultOn:false`·防"未注册键恒 false"陷阱·features.ts:28-31 WO-8 教训）。
 - **`qos.exec_planner`（规划器·`defaultOn:false`·对齐 DESIGN-refit §L1-B）**——同法双注册；配 env `QOS_EXEC_PLANNER` 两档 `shadow`/`serve`。
 - **内部算法闸（env·进程级·deploy 控制）**：`QOS_WORKFLOW_DAG`（`==="1"`）控是否走 DAG 执行器；`QOS_EXEC_PLANNER`（`shadow`/`serve`）控规划器影子/服务档。关=内部行为回旧路（对齐 `QOS_CLASSIFY_FUSE` 内部切换范式）。
-- **回退杠杆（§9 详列）**：关 `QOS_WORKFLOW_DAG`→永走串行 executor；关 `QOS_EXEC_PLANNER`→连影子都不跑；`serve` 白名单清空→全量回模板；关 `qos.workflow_dag`→读端点 404；migration 014 down→drop DAG run 表（咨询/运行态·业务真值零损）。
+- **回退杠杆（§9 详列）**：关 `QOS_WORKFLOW_DAG`→永走串行 executor；关 `QOS_EXEC_PLANNER`→连影子都不跑；`serve` 白名单清空→全量回模板；关 `qos.workflow_dag`→读端点 404；migration 015 down→drop DAG run 表（咨询/运行态·业务真值零损）。
 
 ### 2.7 守 DESIGN-refit 七原则（逐条兑现·`DESIGN-refit-rollback-plan.md:23-29`）
 | # | 原则 | 本 PRD 兑现 |
 |---|---|---|
 | P1 | 暗发 | `qos.workflow_dag`/`qos.exec_planner` `defaultOn:false`·demo 租户金丝雀先开 |
-| P2 | 只加不改 | 契约字段全 optional；只建新表（014）不动旧表·带 down；**旧 `runWorkflow`/`resolvePlanForIntent` 永不删** |
+| P2 | 只加不改 | 契约字段全 optional；只建新表（015）不动旧表·带 down；**旧 `runWorkflow`/`resolvePlanForIntent` 永不删** |
 | P3 | 旁路优先·权威不换手 | `resolvePlanForIntent` 判决地位不变；`synthesizePlan` 只提供综合图·永不制造假计划 |
 | P4 | 影子先行 | planner 先影子跑落 divergence·parity 门（a14-parity 先例）绿才按 intent 白名单逐个翻·异常回落模板 |
 | P5 | 回退演练入齿 | 每 WO acceptance 含真跑回退（关闸→串行/404·旧行为回归绿·migration down→up 幂等）·§7 V8 |
@@ -372,7 +372,7 @@ export type WorkflowDagRun = z.infer<typeof WorkflowDagRunSchema>;
 - **DAG 执行器落 AgentCore workflow/**：`apps/agentcore/src/workflow/dag-executor.ts`（`runWorkflowDag`/`resumeWorkflowDag`·§4.2-4.6·复用 `GuardedToolExecutor` executor.ts:147 与 render 投影 executor.ts:373/560）；`workflow/checkpoint.ts` 加 `DurableWorkflowCheckpointStore`（保留 NoopStore）。
 - **编排接线**：`orchestrator.ts:1058 runPathA`（影子段 §2.2）+ `engine.ts:382 runWorkflowSteps`（执行器派发 §2.1）+ `ops/sweep.ts`（续跑分支 §2.3）。
 - **契约落 `@platform/contracts`**（R1）：`execution-graph.ts`（§3）+ `PreAnalysisReport` 扩 `planner`（optional·影子记录搭车·复用 migration 013）。
-- **持久化**（R9 四处同改）：`workflow_dag_runs`（`migrations/014_workflow_dag_runs.sql` + pg.ts + memory.ts + repos.ts `workflowDagRuns` 接口）。
+- **持久化**（R9 四处同改）：`workflow_dag_runs`（`migrations/015_workflow_dag_runs.sql` + pg.ts + memory.ts + repos.ts `workflowDagRuns` 接口）。
 - **端点**（暗发·`qos.workflow_dag`/`qos.exec_planner` 门·经 nginx `/b/v1`→agentcore）：
   - `GET /b/v1/queries/:taskId/execution-graph` → `{executionGraph}`（读综合图·404 若关/跨租户/未综合）。
   - `GET /b/v1/workflow-dag/runs/:runId` → `{run}`（读 run 进度·client 轮询观察·对齐 build 侧 GET 语义）。
@@ -407,7 +407,7 @@ export type WorkflowDagRun = z.infer<typeof WorkflowDagRunSchema>;
 - **V5 · 补偿 / 回滚（出站经 S2·R4）**：DAG 含一出站 `create_action_draft` 后一下游 FATAL → 补偿反向序跑·出站反转**经 S2 Action 审批**（断言反向草案入 S2 审批流·非静默）；不可逆步 **`COMPENSATED=false` 诚实记录**（不伪装）。
 - **V6 · 影子对照旧串行等价（parity·P4）**：demo 30 问 + 既有场景集，同计划分别经**旧串行 `runWorkflow`**（executor.ts:88）与 **DAG 执行器纯线性 lift**（`fromLinearPlan`）→ `stepOutputs` + `answer` **逐字节一致**（a14-parity 报告先例）；任一分歧即红。
 - **V7 · R6 确定性双跑**：① 规划器——同 (`RequirementGraph`, 注册表版本) 双跑 → `ExecutionGraph` JSON 字节一致；② 运行时——同 (graph, inputs, 本体快照) 双跑（**并行交错时序不同**）→ `stepOutputs`/`answer` 字节一致（`generatedAt` 注入固定值·LLM mock）；改一处随机/时钟源即红（守 `freezePlan` 05:20）。
-- **V8 · 回退演练（被证明·非声称·P5）**：① 关 `QOS_WORKFLOW_DAG` → `runPathA` 走串行 executor·pipeline 与改造前**逐值一致** + agentcore 66 回归全绿；② 关 `qos.workflow_dag` → 三个 DAG 端点 curl **404**；③ 关 `QOS_EXEC_PLANNER` → 无影子记录；`serve` 白名单清空 → 全量回模板（该 intent 行为与模板态一致）；④ migration 014 down→up 幂等重跑。
+- **V8 · 回退演练（被证明·非声称·P5）**：① 关 `QOS_WORKFLOW_DAG` → `runPathA` 走串行 executor·pipeline 与改造前**逐值一致** + agentcore 66 回归全绿；② 关 `qos.workflow_dag` → 三个 DAG 端点 curl **404**；③ 关 `QOS_EXEC_PLANNER` → 无影子记录；`serve` 白名单清空 → 全量回模板（该 intent 行为与模板态一致）；④ migration 015 down→up 幂等重跑。
 - **V9 · R2 租户隔离**：tenantB 取 tenantA 的 `runId`/`taskId` → DAG 端点 404。
 - **V10 · gates 全绿**：`pnpm -r build && pnpm -r test`（datacore 69 / agentcore 66 / frontend 25+）+ `pnpm gates`（含新 `workflow-dag:check` + `ontology-slices:check` + `chain:check`）全绿。
 
@@ -430,7 +430,7 @@ export type WorkflowDagRun = z.infer<typeof WorkflowDagRunSchema>;
 - **中止/回退**：并行破坏确定性 / parity 分歧 → 关闸回串行。
 
 ### WO-L1B-3 · durable checkpoint 续跑 + 补偿引擎（移植 BuildWorkflowEngine）
-- **改**：`workflow/checkpoint.ts` `DurableWorkflowCheckpointStore`（保留 NoopStore）；`workflow_dag_runs` 表（migration 014 + pg.ts + memory.ts + repos.ts·R9 四处同改）；`dag-executor.ts` `resumeWorkflowDag` + 补偿反向序（§4.4/§4.6）；`ops/sweep.ts` 续跑分支（§2.3）；`GET /b/v1/workflow-dag/runs/:runId` + resume 端点（`qos.workflow_dag` 门·双注册）。
+- **改**：`workflow/checkpoint.ts` `DurableWorkflowCheckpointStore`（保留 NoopStore）；`workflow_dag_runs` 表（migration 015 + pg.ts + memory.ts + repos.ts·R9 四处同改）；`dag-executor.ts` `resumeWorkflowDag` + 补偿反向序（§4.4/§4.6）；`ops/sweep.ts` 续跑分支（§2.3）；`GET /b/v1/workflow-dag/runs/:runId` + resume 端点（`qos.workflow_dag` 门·双注册）。
 - **依赖**：WO-L1B-2 DONE。
 - **acceptance（真跑）**：① **真崩溃续跑**（V3·`stopAfterNode` 真停·续跑答案逐字节等价·`resumedCount`）；② 补偿反向序·**出站经 S2**（V5·R4·不可逆诚实记录）；③ 回退演练（V8·关闸→NoopStore+INTERRUPTED_BY_RESTART 不变·migration down→up 幂等）；④ R2 跨租户 404（V9）；⑤ 镜像 `BuildWorkflowStep` 契约对账（status/attempts/checkpoint 同形）。
 - **中止/回退**：续跑不确定 / 补偿静默反转真实效果（R4 违例）→ 关闸回退。

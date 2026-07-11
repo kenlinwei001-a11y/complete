@@ -20,6 +20,7 @@ import type {
   Scenario,
   ScenarioOntogenesisRun,
   SkillDefinition,
+  WorkflowDagRun,
   WorkflowDefinition,
 } from "@platform/contracts";
 
@@ -28,6 +29,23 @@ import type {
  * 契约层 tenantId 为向后兼容 optional（历史内嵌留痕无此字段）；仓储写入强制必填。
  */
 export type ScenarioOntogenesisRunRow = ScenarioOntogenesisRun & { tenantId: string };
+
+/**
+ * WO-L1B-3 · durable DAG 运行态落库行（workflow_dag_runs·migration 015·R9 四处同改）。
+ * `run` = 契约 WorkflowDagRun（用户面读端点投影此段）；`resume` = 崩溃续跑所需的内部执行输入
+ * 快照（graph/slots/context/compensations·非 SSE/非用户契约·序列化）。R2：tenant 谓词随身。
+ */
+export interface WorkflowDagRunRow {
+  run: WorkflowDagRun;
+  resume?: {
+    graph: unknown;
+    slots: Record<string, unknown>;
+    context: unknown;
+    trustLevel?: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY";
+    compensations?: unknown;
+    authCtx?: { tenantId: string; userId: string; roles: string[] };
+  };
+}
 
 /**
  * Stored fallback trace (S4.2): normalized query for string clustering plus a
@@ -328,6 +346,18 @@ export interface Repos {
   domainEvents: {
     append(e: DomainEventRow): Promise<void>;
     listSince(tenantId: string, since?: string): Promise<DomainEventRow[]>;
+  };
+  /**
+   * WO-L1B-3（PRD-L1B §2.3/§4.4·R9 仓储双实现）：durable DAG 运行态（workflow_dag_runs）。
+   * upsert 幂等落检查点·get 带 tenant 谓词（R2·跨租户读不到→端点 404）·remove 回退/完成清理·
+   * listResumable 系统级续跑扫描（跨租户·状态 ∈ RUNNING/WAITING/SUSPENDED/COMPENSATING·对齐
+   * tasks.listStuckExecuting 崩溃扫描语义）。暗发关（QOS_WORKFLOW_DAG off）时无人写该表 → 空表回退。
+   */
+  workflowDagRuns: {
+    upsert(row: WorkflowDagRunRow): Promise<void>;
+    get(tenantId: string, runId: string): Promise<WorkflowDagRunRow | undefined>;
+    remove(tenantId: string, runId: string): Promise<void>;
+    listResumable(): Promise<WorkflowDagRunRow[]>;
   };
   close(): Promise<void>;
 }

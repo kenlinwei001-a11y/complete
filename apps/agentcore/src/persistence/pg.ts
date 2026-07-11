@@ -21,9 +21,11 @@ import type {
   WorkflowDefinition,
 } from "@platform/contracts";
 
-import type { CredentialRow, FallbackTraceRow, QueryEventRow, Repos, ScenarioOntogenesisRunRow, TaskPatch, ToolCallRow } from "./repos.js";
+import type { CredentialRow, FallbackTraceRow, QueryEventRow, Repos, ScenarioOntogenesisRunRow, TaskPatch, ToolCallRow, WorkflowDagRunRow } from "./repos.js";
 
 const ACTIVE = ["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"];
+/** WO-L1B-3：可续跑的 DAG run 状态（崩溃后从就绪集重驱动·对齐 memory 双实现）。 */
+const RESUMABLE_DAG = ["PENDING", "RUNNING", "WAITING", "SUSPENDED", "COMPENSATING"];
 
 export async function runMigrations(pool: pg.Pool): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -671,6 +673,30 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
           payload: (x.payload ?? {}) as Record<string, unknown>,
           createdAt: new Date(x.created_at as string | Date).toISOString(),
         }));
+      },
+    },
+    // WO-L1B-3：durable DAG 运行态（workflow_dag_runs·migration 015）。R2：读一律带 tenant 谓词。
+    // 自定义 store（显式写列·不经通用 PgStore put）——doc JSONB 承载完整 WorkflowDagRunRow（run + resume 快照）；
+    // 冗余列 tenant_id/task_id/graph_id/status 便于 R2 隔离查询与续跑状态扫描。NOT NULL 列均此 INSERT 覆盖。
+    workflowDagRuns: {
+      async upsert(row: WorkflowDagRunRow) {
+        await q(
+          `INSERT INTO workflow_dag_runs(run_id, tenant_id, task_id, graph_id, status, doc, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+           ON CONFLICT (run_id) DO UPDATE SET status = $5, doc = $6, updated_at = now()`,
+          [row.run.runId, row.run.tenantId, row.run.taskId, row.run.graphId, row.run.status, JSON.stringify(row), row.run.startedAt],
+        );
+      },
+      async get(tenantId, runId) {
+        const r = await q(`SELECT doc FROM workflow_dag_runs WHERE run_id = $1 AND tenant_id = $2`, [runId, tenantId]);
+        return r.rows[0]?.doc as WorkflowDagRunRow | undefined;
+      },
+      async remove(tenantId, runId) {
+        await q(`DELETE FROM workflow_dag_runs WHERE run_id = $1 AND tenant_id = $2`, [runId, tenantId]);
+      },
+      async listResumable() {
+        const r = await q(`SELECT doc FROM workflow_dag_runs WHERE status = ANY($1) ORDER BY run_id`, [RESUMABLE_DAG]);
+        return r.rows.map((x) => x.doc as WorkflowDagRunRow);
       },
     },
     async close() {

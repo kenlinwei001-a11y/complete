@@ -108,8 +108,13 @@ export function initWorkflowState(): WorkflowState {
   return { stepOutputs: {}, stepAudits: {}, slicesUsed: [], sliceObjects: [], allVerdicts: [], resolvedRefsSeen: [] };
 }
 
-/** 单步副作用（延迟合并·确定性）——串行立即合、DAG 波次按序合，故与并行交错时序无关。 */
-interface StepRunEffects {
+/**
+ * 单步副作用（延迟合并·确定性）——串行立即合、DAG 波次按序合，故与并行交错时序无关。
+ * WO-L1B-3：DAG durable checkpoint 把本结构逐节点序列化落库（per-node checkpoint），
+ * 续跑时经 mergeStepEffects 逐字节回灌共享态（stepOutputs + stepAudits + slices/verdicts/refs）
+ * → 续跑答案与未中断跑逐字节等价（R6·render_answer 溯源 toolCallId/audit 完整恢复）。
+ */
+export interface StepRunEffects {
   setOutput: boolean;
   output: unknown;
   audit?: StepAudit;

@@ -62,6 +62,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "路径 B 兜底", level: "BLOCK", defaultOn: true },
+  // WO-L1B-3（PRD-L1B §2.6·暗发双闸·defaultOn:false·对齐 qos.risk_realdemand 范式）：DAG 运行时读端点
+  // entitlement 门（关=404 FEATURE_NOT_FOUND·先于 authz·R3）。**镜像**——权威源为 DataCore features.ts
+  // （防"未注册键恒 false"陷阱：注册后 tenant 未开→resolved set 不含键→端点 404·可暗发/可回退）。
+  { key: "qos.workflow_dag", name: "工作流 DAG 运行时", level: "BLOCK", defaultOn: false },
+  { key: "qos.exec_planner", name: "执行规划器（综合执行图）", level: "BLOCK", defaultOn: false },
   {
     key: "view.project-sim.whatif",
     name: "What-if 调参",

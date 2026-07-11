@@ -27,9 +27,12 @@ import type {
   ScenarioOntogenesisRunRow,
   TaskPatch,
   ToolCallRow,
+  WorkflowDagRunRow,
 } from "./repos.js";
 
 const ACTIVE_STATUSES = new Set(["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"]);
+/** WO-L1B-3：可续跑的 DAG run 状态（未达终态·崩溃后从就绪集重驱动·对齐 EXECUTING_* 扫描语义）。 */
+const RESUMABLE_DAG_STATUSES = new Set(["PENDING", "RUNNING", "WAITING", "SUSPENDED", "COMPENSATING"]);
 
 function clone<T>(v: T): T {
   return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
@@ -68,6 +71,7 @@ export function createMemoryRepos(): Repos {
   const requirementGraphs = new Map<string, import("@platform/contracts").RequirementGraph>();
   const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
   const evalRuns = new Map<string, import("@platform/contracts").EvalRunReport>();
+  const workflowDagRuns = new Map<string, WorkflowDagRunRow>();
 
   return {
     packages: {
@@ -523,6 +527,26 @@ export function createMemoryRepos(): Repos {
         }
         idempotency.set(key, { key, taskId, createdAt: new Date().toISOString() });
         return taskId;
+      },
+    },
+    workflowDagRuns: {
+      async upsert(row) {
+        workflowDagRuns.set(row.run.runId, clone(row));
+      },
+      async get(tenantId, runId) {
+        const r = workflowDagRuns.get(runId);
+        // R2：跨租户不可见（返回 undefined，等价 404）。
+        return r && r.run.tenantId === tenantId ? clone(r) : undefined;
+      },
+      async remove(tenantId, runId) {
+        const r = workflowDagRuns.get(runId);
+        if (r && r.run.tenantId === tenantId) workflowDagRuns.delete(runId);
+      },
+      async listResumable() {
+        return [...workflowDagRuns.values()]
+          .filter((r) => RESUMABLE_DAG_STATUSES.has(r.run.status))
+          .sort((a, b) => (a.run.runId < b.run.runId ? -1 : a.run.runId > b.run.runId ? 1 : 0))
+          .map(clone);
       },
     },
     async close() {

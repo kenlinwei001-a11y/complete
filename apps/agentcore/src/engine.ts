@@ -1,4 +1,4 @@
-import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ResolvedRef, type SkillDefinition, type WorkflowDefinition } from "@platform/contracts";
+import { mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type Answer, type ExecutionGraph, type ResolvedRef, type SkillDefinition, type WorkflowDefinition } from "@platform/contracts";
 import { runAgentLoop, type AgentLoopResult, type AgentToolSpec } from "./agent/loop.js";
 import { AGENT_SYSTEM_CORE, buildSkillSection } from "./agent/prompts.js";
 import { selectMcpTools } from "./agent/mcp-router.js";
@@ -17,7 +17,8 @@ import { GuardedToolExecutor } from "./tools/executor.js";
 import type { SkillResourceReader } from "./tools/skill-resources.js";
 import { BUILTIN_TOOLS } from "./tools/registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
-import { liftStepsToDagGraph, runWorkflowDag, type DagGraphInput } from "./workflow/dag-executor.js";
+import { liftStepsToDagGraph, runWorkflowDag, type CompensateHook, type DagGraphInput } from "./workflow/dag-executor.js";
+import { DurableWorkflowCheckpointStore } from "./workflow/checkpoint.js";
 
 export interface EngineDeps {
   repos: Repos;
@@ -430,6 +431,18 @@ export class ExecutionEngine {
     const useDag = this.deps.config.QOS_WORKFLOW_DAG === "1";
     if (useDag) {
       const graph = opts.graph ?? liftStepsToDagGraph(opts.steps);
+      // WO-L1B-3（§2.3/§4.4·暗发）：QOS_WORKFLOW_DAG=1 时注入 durable checkpoint store（DAG run 落库·
+      // 崩溃可续跑）+ 补偿钩子（ExecutionGraph.compensations 反向序·反向步经 S2 Action 审批·R4）。
+      // 缺省 OFF（NoopStore 语义）→ 无落库 → 崩溃走 INTERRUPTED_BY_RESTART 启动扫描（== 改造前·C3）。
+      const eg = opts.graph && "graphId" in opts.graph ? (opts.graph as ExecutionGraph) : undefined;
+      const executor = deps.executor;
+      const compensate: CompensateHook = async ({ action }) => {
+        if (!action.step) return { compensated: false, detail: "no reversing step (irreversible)" };
+        const r = await executor.run(action.step.type, action.step.params as Record<string, unknown>, { timeoutMs: 10_000 });
+        // 反向步（如 create_action_draft）经 GuardedToolExecutor → S2 审批流（草案态·EXECUTED 才落·R4）；
+        // 非静默反转真实效果——r.ok=草案已提交 S2（compensated:true=已进审批·非已生效）。
+        return { compensated: r.ok, detail: r.ok ? "reversing draft submitted to S2 approval" : "reversing action failed" };
+      };
       return runWorkflowDag(deps, {
         graph,
         slots: opts.slots,
@@ -438,6 +451,16 @@ export class ExecutionEngine {
         trustLevel: opts.trustLevel,
         tenantId: opts.ctx.tenantId,
         skills,
+        durable: {
+          store: new DurableWorkflowCheckpointStore(this.deps.repos),
+          runId: opts.taskId,
+          taskId: opts.taskId,
+          graphId: eg?.graphId,
+          authCtx: { tenantId: opts.ctx.tenantId, userId: opts.ctx.userId, roles: opts.ctx.roles },
+        },
+        compensations: eg?.compensations,
+        compensate,
+        // 内部 workflow_dag.* 域事件走 outbox（非 SSE·零新 SSE 事件名·QOS §8.2 守）——本单不接线 emitDag（no-op）。
       });
     }
     return runWorkflow(deps, {

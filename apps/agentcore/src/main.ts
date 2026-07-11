@@ -13,11 +13,15 @@ import { distillExperienceCases, ensureScenarioPackageSeed, SEED_TENANT, seedReg
 import { reconcileUniversalAgent } from "./agents/universal.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureMaterializedIntents } from "./intents/reconcile.js";
-import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
+import { sweepInterruptedTasks, startInterruptedSweep, sweepResumableDagRuns } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
 import { buildServer } from "./server.js";
 import { createHttpDataCore } from "./tools/datacore-http.js";
 import { LocalFsSkillResourceReader } from "./tools/skill-resources.js";
+import { DurableWorkflowCheckpointStore } from "./workflow/checkpoint.js";
+import { resumeDagRunRow } from "./workflow/resume-run.js";
+import type { CompensateHook } from "./workflow/dag-executor.js";
+import { BudgetTracker } from "./tools/budget.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -78,6 +82,41 @@ async function main(): Promise<void> {
   const swept = await sweepInterruptedTasks({ repos, events: deps.events, metrics });
   if (swept > 0) app.log.warn({ swept }, "startup sweep: stuck EXECUTING_* tasks marked INTERRUPTED_BY_RESTART");
   const stopSweep = startInterruptedSweep({ repos, events: deps.events, metrics });
+
+  // WO-L1B-3（§2.3·暗发·QOS_WORKFLOW_DAG=1 才生效）：启动续跑扫描——可续跑的 durable DAG run 走
+  // resumeWorkflowDag（跳过 DONE 节点·resumedCount++·从就绪集重驱动）而非直接 FAIL。关闸=空表·无操作
+  // （C3 回退演练：task-level INTERRUPTED_BY_RESTART 扫描不变·== 改造前系统）。
+  if (config.QOS_WORKFLOW_DAG === "1") {
+    const dagStore = new DurableWorkflowCheckpointStore(repos);
+    const resumedDag = await sweepResumableDagRuns({
+      repos,
+      log: (msg, err) => app.log.warn({ err }, msg),
+      resume: async (row) => {
+        const authCtx = row.resume?.authCtx ?? { tenantId: row.run.tenantId, userId: "system", roles: [] };
+        const ctx = { ...authCtx, requestId: `req_resume_${row.run.runId}` };
+        const compensate: CompensateHook = async ({ action }) => {
+          if (!action.step) return { compensated: false, detail: "no reversing step (irreversible)" };
+          const ex = deps.engine.makeExecutor(row.run.runId, ctx, new BudgetTracker());
+          const r = await ex.run(action.step.type, action.step.params as Record<string, unknown>, { timeoutMs: 10_000 });
+          return { compensated: r.ok, detail: r.ok ? "reversing draft submitted to S2 approval" : "reversing action failed" };
+        };
+        await resumeDagRunRow(
+          {
+            makeExecutor: (taskId, c, budget) => deps.engine.makeExecutor(taskId, c, budget),
+            llm: deps.engine.deps.llm,
+            metrics,
+            composeModel: (tenantId) => deps.engine.deps.llmSettings.roleModel(tenantId, "compose"),
+            emit: (rid, event, payload) => deps.events.emit(rid, event, payload).then(() => undefined),
+            store: dagStore,
+            compensate,
+          },
+          row,
+          ctx,
+        );
+      },
+    });
+    if (resumedDag > 0) app.log.warn({ resumedDag }, "startup: resumed durable DAG runs");
+  }
 
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, "graceful shutdown");
