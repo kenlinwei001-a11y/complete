@@ -79,6 +79,13 @@ const ConfigSchema = z.object({
    * （只 STAGE-1 fall-through 生效·零回归）。清空该 env = 秒级回退 STAGE-2（§9 回退杠杆 V8③）。
    */
   QOS_PLANNER_WHITELIST: z.string().optional(),
+  /**
+   * L1-B WO-L1B-SAGA（PRD-L1B §8·跨系统 Saga 一致性·暗发 defaultOff·additive·RL2/RL9）：
+   * =1 时 MES/ERP/WMS 出站步走 saga 通路（外部幂等键 + 对账补偿 + 部分失败重放·`workflow/saga.ts`）；
+   * 缺省（OFF）saga path 不启用 = 现行行为字节一致（NG6·可证回退）。与 entitlement 闸 `qos.workflow_saga`
+   * 双闸独立：env 关=连 saga 都不跑（pipeline 字节一致）；feature 关=端点/入口 404。镜像 QOS_* 命名。
+   */
+  QOS_WORKFLOW_SAGA: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 

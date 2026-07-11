@@ -67,6 +67,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // （防"未注册键恒 false"陷阱：注册后 tenant 未开→resolved set 不含键→端点 404·可暗发/可回退）。
   { key: "qos.workflow_dag", name: "工作流 DAG 运行时", level: "BLOCK", defaultOn: false },
   { key: "qos.exec_planner", name: "执行规划器（综合执行图）", level: "BLOCK", defaultOn: false },
+  // WO-L1B-SAGA（跨系统 Saga 一致性·PRD-L1B §8·暗发·defaultOn:false·对齐 qos.workflow_dag 范式）：MES/ERP/WMS
+  // 出站步的外部幂等键 + 对账补偿 + 部分失败重放。关 = saga path 不启用 = 现行行为字节一致（NG6·回退演练）。
+  // **镜像**——权威源为 DataCore features.ts（防"未注册键恒真陷阱"·L1B-4/L1B-3 都栽过：注册后 tenant 未开→
+  // resolved set 不含键→门 !set.has→false·可暗发/可回退）。与进程级 env 闸 QOS_WORKFLOW_SAGA 双闸独立。
+  { key: "qos.workflow_saga", name: "跨系统 Saga 一致性", level: "BLOCK", defaultOn: false },
   {
     key: "view.project-sim.whatif",
     name: "What-if 调参",

@@ -148,6 +148,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // （DataCore 权威·同上范式）。暗发 defaultOn:false（RL2）——关 = 规划器不 serve（仍走模板判决·NG6）。与进程级 env
   // 闸 QOS_EXEC_PLANNER（shadow/serve）独立。现有租户零影响（additive）。
   { key: "qos.exec_planner", name: "执行规划器（综合执行图）", level: "BLOCK", defaultOn: false },
+  // WO-L1B-SAGA（跨系统 Saga 一致性·PRD-L1B §8）：MES/ERP/WMS 出站步的外部幂等键 + 对账补偿 + 部分失败
+  // 重放的权威 entitlement（DataCore 是 entitlement 唯一真相源·AgentCore 经 features 解析下发·对齐
+  // qos.workflow_dag 范式 line 146）。暗发 defaultOn:false（RL2）——关 = saga path 不启用（现行行为字节一致·
+  // NG6·回退演练）。与进程级 env 闸 QOS_WORKFLOW_SAGA 独立。现有租户零影响（additive）。
+  { key: "qos.workflow_saga", name: "跨系统 Saga 一致性", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

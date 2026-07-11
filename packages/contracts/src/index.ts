@@ -53,3 +53,4 @@ export * from "./solver-coverage.js";
 export * from "./pipeline.js";
 export * from "./requirement-graph.js";
 export * from "./execution-graph.js"; // L1-B WO-L1B-1 · ExecutionGraph 契约 + 线性 lift
+export * from "./saga.js"; // L1-B WO-L1B-SAGA · 跨系统 Saga 一致性（外部幂等键 + 对账补偿 + 部分失败重放）
