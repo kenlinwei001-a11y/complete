@@ -8069,13 +8069,62 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G3场景导入:端点POST /a/v1/scenarios/import(Stage3.15场景JSON→映射ScenarioCard presetContext.selectedObjects+slotPresets+targetView按type)→进场景目录·衔接沙盘渲染器",
       "note": "[LaneB·datacore·索引§2序#5·衔接WO-SANDBOX-AS-RENDER-TARGET(S1)] equipment_failure类场景导入后可直接进沙盘推演。验收:导入order_acceptance场景→场景目录出现→一键推演经QOS出ACCEPT/风险(不可跑通则诚实缺求解器/数据)。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev4-import",
       "built": "[BUILT dev4-import] 契约扩 import.ts(ScenarioImportRequest/Gap/Result) + domain.ts ImportedScenarioRecord + migration040 imported_scenarios(repo.ts/memory.ts/pg.ts 三同步·down 带) + modeling.ts importScenarios(映射 IndustryScenario·objectRefs 对真对象库解析·answer 调用方给/缺省 objects 直列) + app.ts POST /a/v1/scenarios/import & GET /a/v1/scenarios/imported + /a/v1/scenarios/pack seam 合入导入场景 + feature data-import.scenario(defaultOn:false)。⛔R14 平台不写死 Stage3.15 type→求解器。诚实边界(KILL-MOCK-RED):objectRefs 对不上→MISSING_OBJECT 不放入不造幽灵;无 answer 无 ref→MISSING_ANSWER 该场景不落库。真跑:暗发门 404→开→导入 order_acceptance(声明式 answer)+equipment_failure(真 Equipment E1 解析·GHOST→MISSING_OBJECT)+broken(MISSING_ANSWER 不落库)→/scenarios/imported 可查→/scenarios/pack seam 合入 2 卡→幂等再导不翻倍。诚实交底:agentcore 启动器经 getScenarioPack 消费(非电池/pack 驱动租户直接进目录);battery 族 catalog 合并需 agentcore 侧(LaneA·登记补)。回写母体§2.B(登 ImportedScenario)+§3+slices。测:test/import-scenario.test.ts 5 用例·datacore 1210 全绿·gates(debattery/no-orphan/no-fake-data/no-silent-mock/feature-parity/prd/pg-notnull/slices)全绿。⚠共享 app.ts additive 新段·rebase-before-push。待审核方真跑复验。",
       "at": {
-        "created": "2026-07-11T15:46:52.629Z"
+        "created": "2026-07-11T15:46:52.629Z",
+        "done": "2026-07-11T18:33:05.251Z"
       },
-      "assignedDev": "dev4-import"
+      "assignedDev": "dev4-import",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "G3场景导入端到端真可用(POST /a/v1/scenarios/import)·内存+真PG16双模式独立复验",
+        "verifiedBy": "独立agent真起datacore内存:4027+真PG16:4028·真HTTP+psql直查·未采信dev测试·a9d05fe7·2026-07-11",
+        "criteria": [
+          {
+            "id": "endpoint-import-killmock",
+            "type": "http",
+            "assert": "POST自造场景→/imported+/pack逐值回显(title/question/answer.limit/targetView);变名重测输出跟输入变仍1条=非硬编码非翻倍"
+          },
+          {
+            "id": "hidden-feature-gate",
+            "type": "gate",
+            "assert": "data-import.scenario defaultOn:false requires[data-builder];fresh租户POST/GET→404;agentcore零引用经pack seam消费无fail-open"
+          },
+          {
+            "id": "migration-real-pg",
+            "type": "db",
+            "assert": "040_imported_scenarios真上PG16(表结构逐列一致+idx_tenant);三处仓储同步repo.ts+memory.ts:476+pg.ts:756;PG ON CONFLICT幂等"
+          },
+          {
+            "id": "validation-honest",
+            "type": "http",
+            "assert": "畸形→VALIDATION_ERROR400;幽灵ref→MISSING_OBJECT gap不放幽灵;无answer→MISSING_ANSWER不落库(诚实partial非静默空)"
+          },
+          {
+            "id": "tenant-isolation",
+            "type": "http",
+            "assert": "iso_b/demo双向零泄漏;PgStore.list WHERE tenant_id=$1"
+          },
+          {
+            "id": "idempotent-r6",
+            "type": "http",
+            "assert": "内存3×POST同key→1条;PG重POST→1行"
+          },
+          {
+            "id": "no-fake-green-audit",
+            "type": "audit",
+            "assert": "import-scenario.test.ts 5例真行为/真持久断言(负向MISSING_ANSWER→len0+green→red+幂等计数)非洞D写死200;独立HTTP+PG结果一致"
+          },
+          {
+            "id": "structure-consumable",
+            "type": "contract",
+            "assert": "r.scenario IndustryScenarioSchema.safeParse往返通过;非电池租户scenarioFromPackScenario正常消费"
+          }
+        ],
+        "disclosedBoundary": "⚠端到端未闭环(非本单scope·dev commit已诚实交底):demo=battery租户·agentcore启动器对battery走SCENARIO_CATALOG忽略pack.scenarios(server.ts:2572-2579)→导入场景进不了demo启动器一键推演;IndustryScenario无selectedObjects→resolvedObjects/targetView不经pack传启动器。转follow-up WO-IMPORT-SCENARIO-LAUNCHER-WIRE跟踪。"
+      }
     },
     {
       "id": "WO-IMPORT-REPLACE-SYNTHETIC",
@@ -8215,14 +8264,27 @@
       "id": "WO-SA-6",
       "title": "Equipment补5个设备台账字段(equipment_code/equipment_type/manufacturer/install_date/status·对齐equipment.csv)",
       "note": "[默认可缓做·datacore·通用] ⚠equipment_type/status值域待从equipment.csv实抽核准(否则合成落真实值域外)。声明equipmentProps:506(SA-2 mtbf后)+合成equipment.push:1675。equipment_type宜由processId工序确定性映射。green→red:合成\"FOO\"值域外→枚举校验红。"
+    },
+    {
+      "id": "WO-IMPORT-SCENARIO-LAUNCHER-WIRE",
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/PRD-enterprise-dataset-import.md",
+      "title": "导入场景端到端进启动器(G3 follow-up):agentcore battery启动器合并pack.scenarios(现走SCENARIO_CATALOG忽略)+IndustryScenario补selectedObjects传resolvedObjects/targetView/slotPresets",
+      "note": "[LaneA·agentcore·G3诚实交底转单] server.ts:2572-2579 battery租户走SCENARIO_CATALOG忽略pack.scenarios→导入卡进不了demo启动器。需①catalog合并pack.scenarios②IndustryScenario补selectedObjects字段让G3解析的resolvedObjects/targetView经pack传启动器。与RC-2默认输入场景天然协同(导入场景=一条有输入的可推演场景)。green→red:导入场景后demo启动器目录应出现该场景·点击带selectedObjects进推演(PRD§3.3一键推演)。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T18:33:05.251Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "REGISTER(full-field-parity SA-4/5/6·默认缓做)",
-      "id": "3单",
-      "at": "2026-07-11T18:31:22.842Z"
+      "cmd": "DONE(G3复验PASS)+followup",
+      "id": "WO-IMPORT-SCENARIO",
+      "at": "2026-07-11T18:33:05.251Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
