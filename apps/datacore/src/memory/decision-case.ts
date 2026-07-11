@@ -10,7 +10,7 @@
 //   R14 抽象 + 零幽灵（PROBLEM_CLASS 键恒经 problemClassForIntent ∈ 真实注册表·门守）·
 //   KILL-MOCK：案例数字随行免责·不冒充业务真值；SEED 案例 origin:SEED 诚实标。
 
-import type { CaseFeature, DecisionCase, DecisionCaseSource, SimilarityHit, SimilarityQuery } from "@platform/contracts";
+import type { CaseFeature, Decision, DecisionCase, DecisionCaseSource, SimilarityHit, SimilarityQuery } from "@platform/contracts";
 import { INTENT_PROBLEM_CLASS, UNCOVERED_PROBLEM_CLASSES, UNKNOWN_PROBLEM_CLASS, problemClassForIntent } from "@platform/contracts";
 import { hashString, round } from "../prng.js";
 
@@ -73,6 +73,28 @@ export interface DecisionArtifact {
     entities?: string[]; // 已解析本体键（base/model/segment…·∈ 已发布类型)
     metrics?: string[];
     requirementGraphId?: string;
+  };
+}
+
+/**
+ * 真 Decision 台账 → DecisionArtifact 摄取端口（§2.3·source=DECISION·L1.5-3 摄取复用）。
+ * 纯映射·无 IO：把 datacore 一等 Decision（真值单一来源）投影为案例摄取输入。ctx 由调用方补
+ *（有 L1-A/B 上下文时·无则空→退纯文本特征·退化不阻断）。
+ */
+export function decisionToArtifact(d: Decision, ctx?: DecisionArtifact["ctx"]): DecisionArtifact {
+  return {
+    source: "DECISION",
+    refId: d.id,
+    title: d.title,
+    context: d.context,
+    options: d.options.map((o) => ({ key: o.key, label: o.label })),
+    chosen: d.chosen,
+    rejectedRationale: d.rejectedRationale.map((r) => ({ optionKey: r.optionKey, rationale: r.rationale })),
+    predicted: { summary: d.predictedOutcome.summary, metrics: d.predictedOutcome.metrics },
+    realized: d.realizedOutcome
+      ? { summary: d.realizedOutcome.summary, metrics: d.realizedOutcome.metrics, recordedAt: d.realizedOutcome.recordedAt }
+      : null,
+    ctx,
   };
 }
 
