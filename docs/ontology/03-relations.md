@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `a7c714ad9b7f80ed`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `7df75f0c5bd2b03b`。
 
 ---
 
@@ -179,6 +179,20 @@ Connector --upload(.csv/.json/⚠.xlsx-TODO)--> RawDataset    ⚠ 无"数据模�
 Connector(EXTERNAL/mock_external) --sync--> RawDataset(external_signals) --materialize--> ExternalSignal(domain=external)   ✅ EXT_SIG P1（一等对象+连接器+GET /a/v1/external-signals）
 ExternalSignal --敏感性(elasticity)--> 规划指标(毛利/需求/出口营收/成本)   ✅ P2（POST /a/v1/external-signals/sensitivity：Δ指标pp=Δ信号%×elasticity 按 impact 聚合，确定性无副作用）
 ObjectInstance --lineage 反查--> RawRow→RawDataset→Connection + 派生口径   ✅ P2 端点（GET /a/v1/lineage/object/:type/:id）+ P3 前端悬浮溯源（LedgerView `<Provenance>` 组件，数据源原始表经 FieldProfilePage 可见）；结果→求解器入参对象 lineage 待后续
+```
+**OntoFlow 统一建模链（画布·两模式统一·WO-MERGE-01/02/03）**
+```
+数据源(RawDataset)/图谱先行 --可编辑画布--> OntologyWorkflow{nodes(EntityNode/LinkNode/ProcessNode),edges,entryMode}
+EntityNode(STATIC) --promote--> EntityNode(ONTOLOGY·纳入派生/推演)
+OntologyWorkflow --preview(节点级数据处理)--> EntityRecord[]（ProcessingSpec.runProcessing 折叠·R6·不落库）
+  └ **WO-MERGE-03 C1 协同（非替代）**：preview 未直传 rows + 给 source{dataset|connector|prototype}
+    → DataBuilderService.sampleSourceRows（背靠 rawRows 落地库 + prototype-intake 解析）供样例行 → pipeline 自跑 runProcessing
+    → 回执 rowsFrom:direct|databuilder（诚实标行来源）。**pipeline 画布 ↔ databuilder 引擎互补**：画布做两模式统一建模/发布/推演·databuilder 供接入/派生能力。
+OntoFlow画布 ⇄ databuilder引擎  ✅ WO-MERGE-03 C1（pipeline/service.ts WorkflowService.preview ← app.ts:600 注入 databuilder.sampleSourceRows·协同非替代·牙 ontoflow-workflow.test WF-MERGE03-C1 真跑端到端）
+OntologyWorkflow --publish--> OntologyType/Link/Version + SliceSpec（设计产物直写·物化真值走 Action）   ✅ WO-MERGE-01（B1 门控 feature.data-builder·关→404）
+OntologyWorkflow --readiness--> ReadinessResult{EntityReadiness[],ReadinessGrade}（computeReadiness·R6·无 LLM）
+OntologyWorkflow --scaffold--> ScaffoldResult{views→viewConfigs幂等落, agents/scenes→AgentCore(OBO真落或deferred)}   ✅ WO-MERGE-01 B2（真落库·未配 AGENTCORE_BASE_URL→persisted.deferred 诚实回执·KILL-MOCK-RED；WO-MERGE-03 C4 出厂 compose 补该 env→真落非 defer）
+OntologyWorkflow --inference(通用 what-if)--> GenericInferenceOutput{Δ+前后对比}（generic-inference.ts·沿因果重算·R6）   ✅ WO-MERGE-02 B3（前端「推演」入口）
 ```
 **数据构建发动机链（需求拉动）**
 ```

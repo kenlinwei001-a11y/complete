@@ -75,6 +75,10 @@ services:
       CREDENTIAL_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       # LLM Provider 增量 §1.1：服务间凭证（AgentCore 拉取 provider 配置与解密密钥；两侧同值）
       SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
+      # WO-MERGE-03 C4：服务间 A→B 内网服务地址（非网关同源·网关 :80 仅面向浏览器）。
+      # 配置后 OntoFlow scaffold 生成的 Agent/场景入口经 OBO 真跨系统落库（app.ts:539 agentScaffoldClient）；
+      # 未配则 scaffold 诚实记 deferred（不伪造已落库·KILL-MOCK-RED）。运行期按需调用·未就绪自动 defer·无启动死锁。
+      AGENTCORE_BASE_URL: ${AGENTCORE_BASE_URL:-http://agentcore:4002}
       BLOB_DIR: /data/blobs
       SEED_DEMO: ${SEED_DEMO:-1}             # 默认播种电池制造演示数据（seed 42，幂等）
       # WO-DEMO-DATA（T4·依赖型空页开箱）：部署态 demo 启用 livedIn 合成（标准合成后回放一年 T−365d→T0），

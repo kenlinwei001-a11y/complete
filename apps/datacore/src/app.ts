@@ -53,6 +53,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
+import { PreviewSourceRefSchema } from "@platform/contracts"; // WO-MERGE-03 C1（pipeline preview 经 databuilder 取样来源引用）
 import { retrieveSimilarCases, mineDecisionPatterns } from "./memory/decision-case.js"; // WO-L1.5-2/4（CBR 检索·§4.2 / 模式挖掘·§4.4⑥）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
 import { CaseIngestService } from "./memory/case-ingest.js"; // WO-L1.5-3（案例摄取·Decision→DecisionCase 旁挂）
@@ -597,7 +598,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       },
     };
   }
-  const workflows = new WorkflowService(repos, ontology, ontologyCore, agentScaffoldClient);
+  // WO-MERGE-03 C1：注入 databuilder 引擎取样能力（pipeline 画布节点级"接入"协同·非替代 runProcessing）。
+  const workflows = new WorkflowService(repos, ontology, ontologyCore, agentScaffoldClient, {
+    sampleRows: (c, ref, limit) => databuilder.sampleSourceRows(c, ref, limit),
+  });
   const opsReplay = new OpsReplayService({
     actions,
     sop,
@@ -3757,7 +3761,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/ontology-workflows/:id/preview", async (req) => {
     await requireDataBuilder(req);
-    const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).default([]) }), req.body);
+    // WO-MERGE-03 C1：rows 直传 或 source 引用（经 databuilder 取样）二选一（向后兼容：仍可只传 rows）。
+    const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).optional(), source: PreviewSourceRefSchema.optional() }), req.body);
     return workflows.preview(ctx(req), (req.params as { id: string }).id, body);
   });
   app.post("/a/v1/ontology-workflows/:id/nodes/:nodeId/promote", async (req) => {

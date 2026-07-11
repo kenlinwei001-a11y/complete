@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §4` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `a7c714ad9b7f80ed`。
+> **改接线改母体 §4，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `7df75f0c5bd2b03b`。
 
 ---
 
@@ -90,5 +90,7 @@
 > B↔A 缓存：B 对 A 资源缓存 TTL 60s + `{kind}.updated` 事件失效（钩子 `POST /b/v1/internal/invalidate`），传播 SLO ≤60s。
 >
 > **横切·全链追踪边（WO-OBSERVABILITY OBS-2·G-15）**：在 requestId 透传 spine（WO-AUDIT-OBS）之上叠 W3C `traceparent` 分布式 span 树（**互补·非替换**）。一个请求沿链路产出一棵 trace：`HTTP root span(agentcore/datacore)→OBO 跨服务(tools/datacore-http.ts 双轨注入 traceparent + 保留 x-request-id)→solver.invoke span(attr solverKey/dataMode/tenantId R2)→repo pg(auto-instrument)→outbox.emit span`。**两关联键并存**：人读 `requestId`（落日志/错误信封 R7 + span attr `app.request_id`）↔ 机器读 `traceId`（OTel 续 trace + 逐段时延/错误定位）。`tracing.ts`（两服务·bootstrap 第一个 import）起 `NodeSDK`；**未配 `OTEL_EXPORTER_OTLP_ENDPOINT` → no-op 不导出（诚实降级·不假装）**。仅 traces 信号（metrics/logs 边界外）。
+>
+> **OntoFlow 统一建模链数据流（WO-MERGE-01/02/03·§3 见 OntoFlow 统一建模链）**：OntologyWorkflow/preview/readiness/scaffold/inference 制品均为**设计产物 / 咨询性派生**（可 drop 重建·非业务真值），**不发领域失效事件**——其真值出口复用既有环：`publish` → OntologyType/Link/Version 直写（承 L 环本体版本失效）+ SliceSpec 落 `putSliceSpec`；`scaffold` 视图 → `viewConfigs` 幂等落（承既有 workspace/preview 过滤），Agent/场景 → 跨系统 AgentCore（`scaffold.manifest_recorded` 范式外·OBO 真落或 `persisted.deferred` 诚实回执）。C1 preview 取样经 databuilder `sampleSourceRows` 为**纯读**（不落库·不改真值·rowsFrom 诚实标）。故 §4 无新增 outbox 事件行（诚实：无事件即不登·KILL-MOCK-RED 于文档）。
 
 ---

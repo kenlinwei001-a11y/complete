@@ -16,7 +16,7 @@ import type {
   StoryBuildRun,
   ValidationTrace,
 } from "@platform/contracts";
-import type { ConsistencyCheck } from "@platform/contracts";
+import type { ConsistencyCheck, PreviewSourceRef } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
@@ -31,6 +31,7 @@ import { newId } from "../ids.js";
 import { invalidState, notFound, validationError } from "../errors.js";
 import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers, type ComprehendContext } from "./comprehend.js";
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
+import { extractPrototypeDatasets } from "./prototype-intake.js";
 import type { LlmClient } from "../llm.js";
 import { deriveProducedArtifacts } from "./artifacts.js";
 import { selfCheckGaps } from "./selfcheck.js";
@@ -1236,6 +1237,32 @@ export class DataBuilderService {
         },
       });
     }
+  }
+
+  /**
+   * WO-MERGE-03 C1（pipeline↔databuilder 协同·接入能力对外供行·**非替代** pipeline 处理逻辑）：
+   * 据来源引用取样例行喂 OntoFlow 画布节点级预览（runProcessing 仍归 pipeline）。
+   *   dataset   → 已落地数据集原始行（连接器/上传/原型 sync 后的统一落地库 rawRows）；
+   *   connector → 该连接器名下数据集（datasetName 指定或首个）的原始行；
+   *   prototype → 原型 HTML 内联解析全行（纯函数·R6·与物化同源 extractPrototypeDatasets）。
+   * 纯读/纯解析·租户隔离（rawRows.list 带 tenantId）·确定性（不落库·不改真值）。
+   */
+  async sampleSourceRows(ctx: AuthCtx, ref: PreviewSourceRef, limit = 100): Promise<Record<string, unknown>[]> {
+    let rows: Record<string, unknown>[];
+    if (ref.kind === "dataset") {
+      rows = await this.repos.rawRows.list(ctx.tenantId, ref.datasetId);
+    } else if (ref.kind === "connector") {
+      const datasets = await this.connectors.listRawDatasets(ctx, ref.connId);
+      const ds = ref.datasetName ? datasets.find((d) => d.name === ref.datasetName) : datasets[0];
+      if (!ds) throw notFound(`连接器 ${ref.connId} 无数据集${ref.datasetName ? ` ${ref.datasetName}` : ""}`);
+      rows = await this.repos.rawRows.list(ctx.tenantId, ds.id);
+    } else {
+      const { dataSources } = extractPrototypeDatasets(ref.html);
+      const src = ref.datasetName ? dataSources.find((d) => d.name === ref.datasetName) : dataSources[0];
+      if (!src) throw validationError(`原型 HTML 未解析出数据表${ref.datasetName ? ` ${ref.datasetName}` : ""}`);
+      rows = src.rows;
+    }
+    return rows.slice(0, limit);
   }
 
   private async materialize(ctx: AuthCtx, typeKey: string, t: BuildPlan["objectTypes"][number], datasetId: string, jobId: string): Promise<void> {

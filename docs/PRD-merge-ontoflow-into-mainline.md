@@ -3,6 +3,11 @@
 > 用户 2026-07-10 定：两条并行分支合并为一个 dev（可多 agent）开发的**单一项目**。审核方据结构性摸底定方案（无需用户裁决）。
 > **背景**：`claude/vigilant-knuth-b1nmxn`（主线·M）与 `claude/parallel-agent-tasks-d3xmzn`（OntoFlow·O）**零共同祖先**（不能 `git merge`·天量冲突）。
 
+> ## ⛔ 退役状态标记（WO-MERGE-03 C3·随本 WO 收口生效）
+> **OntoFlow 分支 `claude/parallel-agent-tasks-d3xmzn` 已退役** —— 停止独立发展，不再 push 新功能。其唯一独有价值（`pipeline/` Data Builder Studio）已由 WO-MERGE-01（后端·DONE）/ WO-MERGE-02（前端·DONE）移植进主线并落地 4 fix（B1–B4）。
+> **统一到主线**：唯一分支 `claude/vigilant-knuth-b1nmxn` · 唯一 `docs/work-queue.json` · 一个 dev（多 agent）· 全部经 `scripts/collab-queue.mjs` 取单/主线 push/审核方真跑复验。
+> 后续 pipeline/OntoFlow 相关需求 → 一律入主线 work-queue 建 WO，**不得**回到 O 分支开发。`docs/WO-ontoflow-fixes-p4-p6.md`（4 fix）已被本 PRD 的 WO-MERGE-01/02 取代（同内容·落主线）。
+
 ## §0 决策：主干 = 主线 M（据超集 + 治理·不可逆理由）
 | 维度 | 主线 M | OntoFlow O |
 |---|---|---|

@@ -6,6 +6,7 @@ import type {
   ScaffoldResult,
   GenericInferenceInput,
   GenericInferenceOutput,
+  PreviewSourceRef,
 } from "@platform/contracts";
 import type { AuthCtx, OntologyWorkflowRecord, ObjectInstance, ViewConfig } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
@@ -42,6 +43,15 @@ export interface AgentScaffoldClient {
 }
 
 /**
+ * WO-MERGE-03 C1：pipeline 画布节点级"接入"经主线 databuilder 引擎能力取样例行（**协同非替代**）。
+ * 由 app.ts 在构造 WorkflowService 时注入（背靠 DataBuilderService.sampleSourceRows）；
+ * 缺省 undefined → preview 仅接受直传 rows（旧行为不变·additive）。pipeline 仍独占 runProcessing。
+ */
+export interface SampleRowSource {
+  sampleRows(ctx: AuthCtx, ref: PreviewSourceRef, limit?: number): Promise<Record<string, unknown>[]>;
+}
+
+/**
  * OntoFlow（PRD v2）：本体建模工作流 CRUD/校验(P1) + 数据处理预览(P2) + 发布/提升(P3)
  * + 准备度/生成应用/通用推演(P4)。数据先行 ⊕ 图谱先行统一到一份 OntologyWorkflow。多租户隔离，确定性。
  */
@@ -52,6 +62,8 @@ export class WorkflowService {
     private ontologyCore: OntologyCoreService,
     /** WO-MERGE-01 B2：跨系统 scaffold（A→B）客户端；未配 AGENTCORE_BASE_URL 时缺省 undefined → deferred。 */
     private agentScaffoldClient?: AgentScaffoldClient,
+    /** WO-MERGE-03 C1：databuilder 引擎取样能力（接入·协同非替代）；缺省 undefined → preview 仅接受直传 rows。 */
+    private sampleSource?: SampleRowSource,
   ) {}
 
   async list(ctx: AuthCtx): Promise<OntologyWorkflow[]> {
@@ -133,9 +145,15 @@ export class WorkflowService {
 
   /**
    * P2 预览（dry-run）：对指定实体节点，用其 ProcessingSpec（节点内嵌或上游 PROCESS 节点）
-   * 在传入的样例 rows 上跑数据处理，返回实体记录（不落库）。rows 由前端从上传/连接器样例提供。
+   * 样例 rows 来源：① 前端直传 opts.rows（上传/连接器样例·旧行为）；② WO-MERGE-03 C1：仅给 opts.source
+   * 引用（dataset/connector/prototype）时，经注入的 databuilder 取样能力（sampleSource）取行——pipeline 画布
+   * 节点级"接入"复用主线 databuilder 引擎的落地行/原型解析（协同非替代：runProcessing 仍由 pipeline 执行）。
    */
-  async preview(ctx: AuthCtx, id: string, opts: { nodeId: string; rows: Record<string, unknown>[] }): Promise<{ typeKey: string; total: number; entities: EntityRecord[] }> {
+  async preview(
+    ctx: AuthCtx,
+    id: string,
+    opts: { nodeId: string; rows?: Record<string, unknown>[]; source?: PreviewSourceRef },
+  ): Promise<{ typeKey: string; total: number; entities: EntityRecord[]; rowsFrom: "direct" | "databuilder" }> {
     const wf = await this.get(ctx, id);
     const node = wf.nodes.find((n) => n.id === opts.nodeId);
     if (!node || node.kind !== "SUBGRAPH_ENTITY") throw validationError(`节点 ${opts.nodeId} 不是实体节点`);
@@ -147,8 +165,17 @@ export class WorkflowService {
       if (proc && proc.kind === "PROCESS") spec = proc.spec;
     }
     if (!spec) throw validationError(`实体 ${node.modeling.typeKey} 无数据处理规格（节点 processing 或上游 PROCESS）`);
-    const entities = runProcessing(opts.rows, spec);
-    return { typeKey: node.modeling.typeKey, total: entities.length, entities };
+    // 行来源：直传优先；否则据 source 引用经 databuilder 引擎取（C1 协同接线）。
+    let rows = opts.rows;
+    let rowsFrom: "direct" | "databuilder" = "direct";
+    if ((!rows || rows.length === 0) && opts.source) {
+      if (!this.sampleSource) throw validationError("未接入 databuilder 取样能力（AGENTCORE 无关·本进程 DataBuilderService 未注入）——请直传 rows");
+      rows = await this.sampleSource.sampleRows(ctx, opts.source);
+      rowsFrom = "databuilder";
+    }
+    if (!rows) throw validationError("preview 需 rows（直传）或 source（经 databuilder 取样）");
+    const entities = runProcessing(rows, spec);
+    return { typeKey: node.modeling.typeKey, total: entities.length, entities, rowsFrom };
   }
 
   /** P3 提升：实体节点 STATIC→ONTOLOGY（纳入派生/推演）。 */
@@ -230,7 +257,7 @@ export class WorkflowService {
     if (result.scenes.length === 0) {
       // 无核心实体 → 无 Agent/场景需推（非缺陷，纯结构骨架）。
     } else if (!this.agentScaffoldClient) {
-      deferred.push("agentcore-agents-scenes: AGENTCORE_BASE_URL 未配置（真部署经网关同源可达）");
+      deferred.push("agentcore-agents-scenes: AGENTCORE_BASE_URL 未配置（服务间 A→B 需配 datacore env AGENTCORE_BASE_URL 指向内网服务地址如 http://agentcore:4002；网关同源 :80 仅面向浏览器 frontend→/a|/b/v1·非服务间路由）");
     } else {
       for (const scene of result.scenes) {
         const agent = agentByKey.get(scene.agentKey);

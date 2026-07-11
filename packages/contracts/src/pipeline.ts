@@ -158,6 +158,18 @@ export type OntologyWorkflowUpsert = z.infer<typeof OntologyWorkflowUpsertSchema
 export const WfValidationIssueSchema = z.object({ nodeId: z.string().optional(), code: z.string(), message: z.string() });
 export type WfValidationIssue = z.infer<typeof WfValidationIssueSchema>;
 
+/**
+ * WO-MERGE-03 C1：预览取样行来源引用（pipeline 画布节点级"接入"经主线 databuilder 引擎能力解析样例行·协同非替代）。
+ * preview 未直传 rows 时，据此 ref 由 databuilder 从数据集/连接器/原型 HTML 取行喂 runProcessing；
+ * pipeline 仍独占 runProcessing 处理逻辑（databuilder 只供"接入/行"·不替代处理）。
+ */
+export const PreviewSourceRefSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("dataset"), datasetId: z.string().min(1) }),
+  z.object({ kind: z.literal("connector"), connId: z.string().min(1), datasetName: z.string().optional() }),
+  z.object({ kind: z.literal("prototype"), html: z.string(), datasetName: z.string().optional() }),
+]);
+export type PreviewSourceRef = z.infer<typeof PreviewSourceRefSchema>;
+
 // ---------------------------------------------------------------------------
 // P4：准备度（readiness）+ 生成应用（scaffold）+ 通用推演（generic-inference）契约。
 // 均为纯结构 zod，跨包共享（前端 ReadinessGauge / scaffold 结果面板 / 推演前后对比 UI 消费，后端产出）。

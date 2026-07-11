@@ -1267,7 +1267,8 @@
       "breakpoints": [],
       "artifacts": [
         "apps/frontend-shell/src/views/plan/GeoMapView.tsx",
-        "packages/contracts/src/pipeline.ts"
+        "packages/contracts/src/pipeline.ts",
+        "scripts/collab-queue.mjs"
       ],
       "brokenArtifacts": [
         "apps/frontend-shell/src/views/plan/GeoMapView.tsx"
@@ -2188,6 +2189,10 @@
     "packages/contracts/src/pipeline.ts": [
       "PRD-merge-ontoflow-into-mainline.md"
     ],
+    "scripts/collab-queue.mjs": [
+      "PRD-merge-ontoflow-into-mainline.md",
+      "PRD-trustworthy-self-accounting.md"
+    ],
     "apps/datacore/src/solvers/capacity.ts": [
       "PRD-method-library-stochastic-mc.md"
     ],
@@ -2248,9 +2253,6 @@
     ],
     "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
       "PRD-sop-balance-1to1.md"
-    ],
-    "scripts/collab-queue.mjs": [
-      "PRD-trustworthy-self-accounting.md"
     ]
   }
 }
