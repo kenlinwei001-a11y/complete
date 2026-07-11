@@ -7291,7 +7291,7 @@
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE"
       ],
-      "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。",
+      "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支澄清·给评估agent 2026-07-11】S0全程+S1认领+建造全部在 claude/sandbox-reconstruction-dev3-duun6o(=系统Git Development Branch Requirements指定分支);dev3简报另写 claude/vigilant-knuth-b1nmxn 与之冲突,已按权威系统要求选前者。请在 claude/sandbox-reconstruction-dev3-duun6o 复验,勿去 vigilant-knuth。",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev3"
     },
