@@ -5,7 +5,8 @@ import { parseWhatIfPreset, resolveBaseId, cropConfigToBase, cropWorldToBase, ty
 import { useScenarioPreset, presetNum, presetStr } from "./useScenarioPreset";
 import type { ViewConfigVM } from "@/api/types";
 import ModelCapacitySlice from "./ModelCapacitySlice";
-import type { PropagationRule, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
+import type { PropagationRule, SandboxViewConfig, SimCertification, SimulationRequest, TickState } from "@platform/contracts";
+import { SimulationRequestSchema } from "@platform/contracts";
 import {
   createSimSession,
   fetchObjectLineage,
@@ -777,6 +778,15 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       ...(weeks !== undefined ? { weeks: Math.max(1, Math.round(weeks / 7)) } : {}),
     };
   }, [urlWhatIf, simPreset]);
+  // WO-SANDBOX-AS-RENDER-TARGET（S1）：对话触发携带的完整 SimulationRequest（含 shock 情景 + horizonTicks）——
+  // 经 zod 校验（拒绝畸形 preset·不信脏值）。有效时 init 把 shock 烘进 tick0 + 下方 effect auto-推进 horizon tick
+  // → 让"问句→冲击注入→逐 tick 状态级结论"真跑通（非仅裁剪到对象的静止页）。URL what-if 通道无此载荷 → null（旧行为不变）。
+  const simRequest = useMemo<SimulationRequest | null>(() => {
+    const raw = simPreset?.slots?.simRequest;
+    if (!raw || typeof raw !== "object") return null;
+    const parsed = SimulationRequestSchema.safeParse(raw);
+    return parsed.success ? parsed.data : null;
+  }, [simPreset]);
   const cfgQuery = useQuery({
     queryKey: ["a", "sim", "view-config"],
     queryFn: fetchSimViewConfig,
@@ -813,6 +823,10 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   const [branchId, setBranchId] = useState<string | null>(null); // 子分支会话 id（对比用）
   const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
   const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
+  // WO-SANDBOX-AS-RENDER-TARGET（S1）：对话触发 SimulationRequest 的 auto-推进——init 记 {n:horizonTicks, nonce}，
+  // 下方 effect 在会话就绪后消费一次（ranNonceRef 保证每 preset 只 auto-跑一次·手动 tick/切换后不复跑）。
+  const pendingAutoRunRef = useRef<{ n: number; nonce: string } | null>(null);
+  const ranNonceRef = useRef<string | null>(null);
 
   // SANDBOX-DAG-NODE-LAYOUT：DAG 视图模式（full=分层/网格全展开·aggregate=超密聚合缩略）。默认全展开（网格已可读）。
   const [dagMode, setDagMode] = useState<"full" | "aggregate">("full");
@@ -836,13 +850,34 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       // WO-CAP-06：世界态按基地裁剪——c 已是裁剪后的 cfg（nodeObjectIds 只含本基地），再滤掉空类型占位键，只留本基地真对象。
       const snap = deriveBaseSnapshot(c);
       const cropped = whatIfBaseId ? cropWorldToBase(snap, whatIfBaseId) : null;
-      const base = cropped && Object.keys(cropped).length > 0 ? cropped : snap;
-      const didCrop = base !== snap; // 真裁剪（该基地有对象）时，scope 记 baseId，便于溯源/对照端点。
+      const croppedBase = cropped && Object.keys(cropped).length > 0 ? cropped : snap;
+      const didCrop = croppedBase !== snap; // 真裁剪（该基地有对象）时，scope 记 baseId，便于溯源/对照端点。
+      // WO-SANDBOX-AS-RENDER-TARGET（S1·shock 真接通）：把冲击增量烘进 tick0 baseSnapshot（atTick=0），使传导从冲击态
+      // 起跑（配合下方 auto-推进）。**诚实守卫**：仅当 shock.target.stateVar ∈ 该配置传导变量（c.stateVars）时注入——
+      // 否则传导核不认该变量、注入=无意义伪值（S0 配套预检已就该缺口告警），保持诚实不造伪态。只作用于 base 中真实
+      // 存在的对象（scope 内·objectIds="ALL" 则全 base）。无 shock/URL what-if 路径 → base 原样（旧行为零变化）。
+      let base = croppedBase;
+      const shock = simRequest?.scenario.find((a) => a.kind === "shock");
+      if (shock && shock.kind === "shock" && c.stateVars.includes(shock.target.stateVar)) {
+        const ids = shock.target.objectIds === "ALL" ? Object.keys(croppedBase) : shock.target.objectIds;
+        const shocked: TickState = {};
+        for (const [oid, row] of Object.entries(croppedBase)) {
+          shocked[oid] = ids.includes(oid)
+            ? { ...row, [shock.target.stateVar]: (row[shock.target.stateVar] ?? 0) + shock.delta }
+            : row;
+        }
+        base = shocked;
+      }
       // WO-E2：what-if 上下文（决策入口带入）注入 SimSession.scope —— 沙盘据此聚焦推演、决策完即弃/采纳（R2/R3 隔离）。
       const scope = whatIf
         ? { presetContext: whatIf as unknown as Record<string, unknown>, ...(didCrop ? { baseId: whatIfBaseId } : {}) }
         : {};
       const s = await createSimSession({ baseSnapshot: base, scope });
+      // S1：对话触发的 SimulationRequest → 记 auto-推进 horizonTicks（下方 effect 消费·nonce 保证每 preset 只跑一次），
+      // 让传导真跑出"逐 tick 状态级结论"（答案先行·非仅裁剪静止页）。
+      if (simRequest && simPreset && simRequest.horizonTicks > 0) {
+        pendingAutoRunRef.current = { n: simRequest.horizonTicks, nonce: simPreset.nonce };
+      }
       setSessionId(s.id);
       setWorld(base);
       setCurTick(0);
@@ -857,7 +892,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
     } catch (e) {
       toastError(e);
     }
-  }, [certScope, whatIf, whatIfBaseId]);
+  }, [certScope, whatIf, whatIfBaseId, simRequest, simPreset]);
 
   useEffect(() => {
     if (cfg && !sessionId) void init(cfg);
@@ -975,6 +1010,17 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
     },
     [sessionId, curTick, cfg],
   );
+
+  // WO-SANDBOX-AS-RENDER-TARGET（S1）：对话触发 auto-推进——会话就绪后自动跑 horizonTicks（每 preset 一次·nonce 去重），
+  // 让"问句→shock 注入→逐 tick 状态级结论"真跑通。手动 tick / URL what-if 路径不触发（pendingAutoRunRef 仅 init 设）。
+  useEffect(() => {
+    const pending = pendingAutoRunRef.current;
+    if (!sessionId || !pending || ticking) return;
+    if (ranNonceRef.current === pending.nonce) return;
+    ranNonceRef.current = pending.nonce;
+    pendingAutoRunRef.current = null;
+    void runTicks(pending.n);
+  }, [sessionId, ticking, runTicks]);
 
   // AI 指挥台分发：NL → 确定性意图 → 映射**现有沙盘动作**（tick/checkpoint/branch/query），不新建并行动作。
   const onIntent = useCallback(
