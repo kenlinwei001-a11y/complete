@@ -7813,12 +7813,14 @@
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "链路派生稳定(洞E):LLM链路输出+确定性FK兜底补链(复用modeling detectFkCandidates uniqueRate≥0.95)+覆盖度门+接现成slice-planner planSlice真BFS多跳·治多跳偶发断链",
       "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。 【索引§2:序#5(与IMPORT-SCENARIO)·CLOSURE切片生成收口】",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
-        "wip": "2026-07-11T18:26:15.304Z"
-      }
+        "wip": "2026-07-11T18:26:15.304Z",
+        "built": "2026-07-11T18:44:14.635Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-DB-LLM-REQUIRED-NO-FLOOR",
@@ -8281,10 +8283,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE(G3复验PASS)+followup",
-      "id": "WO-IMPORT-SCENARIO",
-      "at": "2026-07-11T18:33:05.251Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-DB-LINK-STABILIZE",
+      "at": "2026-07-11T18:44:14.635Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
