@@ -8559,12 +8559,53 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "导入场景端到端进启动器(G3 follow-up):agentcore battery启动器合并pack.scenarios(现走SCENARIO_CATALOG忽略)+IndustryScenario补selectedObjects传resolvedObjects/targetView/slotPresets",
       "note": "[LaneA·agentcore·G3诚实交底转单] server.ts:2572-2579 battery租户走SCENARIO_CATALOG忽略pack.scenarios→导入卡进不了demo启动器。需①catalog合并pack.scenarios②IndustryScenario补selectedObjects字段让G3解析的resolvedObjects/targetView经pack传启动器。与RC-2默认输入场景天然协同(导入场景=一条有输入的可推演场景)。green→red:导入场景后demo启动器目录应出现该场景·点击带selectedObjects进推演(PRD§3.3一键推演)。",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev4-import",
       "at": {
-        "created": "2026-07-11T18:33:05.251Z"
+        "created": "2026-07-11T18:33:05.251Z",
+        "done": "2026-07-11T21:31:05.515Z"
       },
-      "built": "[BUILT dev4-import] G3 follow-up 端到端进电池启动器。①IndustryScenario(contracts/industrypack.ts)补 selectedObjects/targetView/slotPresets ②DataCore /a/v1/scenarios/pack 随卡下发 G3 解析的 resolvedObjects/targetView/slotPresets ③agentcore scenarioFromPackScenario 映射进 presetContext ④ensureScenarios 电池族在 S01-S20 专属播种之后合入导入卡(allCards 去重·不干扰电池 grounding/意图/计划播种)。green→red:导入场景经 grounding 进 demo 启动器·点击带真对象 selectedObjects 一键推演;无导入不凭空造卡·S01 仍在(合入非替换)。测:agentcore test/import-scenario-launcher-wire.test.ts 2 用例·datacore 1261/agentcore 746 全绿·gates(feature-parity/debattery/no-fake-data/prd/slices)全绿。回写母体§2.B(G3 bullet 端到端已闭)+slices。⚠跨 lane:agentcore server.ts/scenarios-catalog.ts + datacore app.ts + contracts·additive·已 rebase。待审核方真跑复验。"
+      "built": "[BUILT dev4-import] G3 follow-up 端到端进电池启动器。①IndustryScenario(contracts/industrypack.ts)补 selectedObjects/targetView/slotPresets ②DataCore /a/v1/scenarios/pack 随卡下发 G3 解析的 resolvedObjects/targetView/slotPresets ③agentcore scenarioFromPackScenario 映射进 presetContext ④ensureScenarios 电池族在 S01-S20 专属播种之后合入导入卡(allCards 去重·不干扰电池 grounding/意图/计划播种)。green→red:导入场景经 grounding 进 demo 启动器·点击带真对象 selectedObjects 一键推演;无导入不凭空造卡·S01 仍在(合入非替换)。测:agentcore test/import-scenario-launcher-wire.test.ts 2 用例·datacore 1261/agentcore 746 全绿·gates(feature-parity/debattery/no-fake-data/prd/slices)全绿。回写母体§2.B(G3 bullet 端到端已闭)+slices。⚠跨 lane:agentcore server.ts/scenarios-catalog.ts + datacore app.ts + contracts·additive·已 rebase。待审核方真跑复验。",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "G3导入场景端到端进demo启动器(battery catalog合并pack.scenarios+selectedObjects传递)",
+        "verifiedBy": "独立真起DC:4055+AC:4155真seam(非mock getScenarioPack)·真POST import→真GET启动器·commit e2f5aaf6(WO 38bbbdcb·与a14d03d6字节一致)·自避778cc589坑·a9e88f96·2026-07-11",
+        "criteria": [
+          {
+            "id": "import-into-launcher-e2e",
+            "assert": "真POST /a/v1/scenarios/import(demo·引真Base/changzhou·resolvedObjects命中0gaps)→真GET /b/v1/scenarios导入卡verify-changzhou-equip-fail出现(42→43·导入前不存在)·真DC→AC seam非mock"
+          },
+          {
+            "id": "catalog-merge-pack",
+            "assert": "server.ts ensureScenarios电池族importedCards=packScenarios.map(scenarioFromPackScenario)·allCards去重播种·放S01-S20后不干扰grounding"
+          },
+          {
+            "id": "selectedobjects-passthrough",
+            "assert": "IndustryScenarioSchema补optional selectedObjects/targetView/slotPresets·启动器卡presetContext.selectedObjects=[{Base,changzhou}]非[]·targetView=sim-sandbox·objectId保真"
+          },
+          {
+            "id": "one-click-sim",
+            "assert": "导入卡launch→202→COMPLETED WORKFLOW·classify affected_orders置信1.0·VERIFIED_WORKFLOW真答案(真订单SO-3391·参数基地=常州)·scope Base/changzhou正确;歧义卡→诚实AWAITING_CLARIFICATION非缺陷"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "卡来自真导入(前无后有)·selectedObjects经groundScenario对真对象库复核object_verified·答案真订单·无写死imported-*/verify-*卡"
+          },
+          {
+            "id": "tenant-isolation",
+            "assert": "别租户pack返0导入场景·启动器42默认卡无verify-changzhou·严格隔离"
+          },
+          {
+            "id": "gates-regression",
+            "assert": "datacore1265/agentcore746 EXIT0·ontology-slices/feature-parity/debattery/no-fake-data/prd全EXIT0无漂移(首轮并发infra flake onTaskUpdate超时·独占重跑EXIT0·0测失败)"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "dev import-scenario-launcher-wire.test真green→red(断卡进启动器+selectedObjects非空含Base+合入非替换S01+无导入无泄漏)非空壳·唯mock getScenarioPack被agent真端到端补齐"
+          }
+        ],
+        "note": "非阻断:①导入卡完整GOVERNED答案取决问句是否唯一命中意图(清晰→完整·歧义→诚实澄清);②电池族importedCards映射全部pack.scenarios(现电池内置pack无scenarios故只收导入卡·将来内置pack加scenarios会一并进启动器·设计点非bug);③CI高并发datacore全测偶发onTaskUpdate超时infra flake非测试红。"
+      }
     },
     {
       "id": "WO-RC1-CLOSURE-SCOPE",
@@ -8696,9 +8737,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "BLOCK CAP-09+RC2(开箱死·修错层/偷换判据·反假绿·fold CAPSIM)",
-      "id": "2单",
-      "at": "2026-07-11T21:21:00.541Z"
+      "cmd": "DONE(LAUNCHER-WIRE复验PASS·G3端到端闭合)",
+      "id": "WO-IMPORT-SCENARIO-LAUNCHER-WIRE",
+      "at": "2026-07-11T21:31:05.515Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
