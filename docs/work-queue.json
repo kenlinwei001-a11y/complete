@@ -7403,94 +7403,47 @@
       "assignedDev": "dev3",
       "blockReason": "",
       "acceptance": {
-        "goal": "沙盘配套(传导规则/状态变量)纳入 gap 引擎覆盖——时序推演意图声明配套后可被 diffGap/preAnalyzeQuery 诊断、缺则落 GrowthTicket。真起双服务逐值验(docs/evidence/S0-SANDBOX-CONFIG-COVERAGE-e2e.md)。",
+        "goal": "沙盘配套两类对象(传导规则propagation_rule/状态变量state_var)纳入缺口覆盖引擎:经正门声明配套后预分析能诊断这两类EXISTS/MISSING·诚实缺(autoCreatable:false无scaffolder→MISSING非假TO_CREATE)·暗发观察态关闸字节一致。(审核方真跑5关PASS·独立探针不同key复现·ae0309e)",
         "criteria": [
           {
             "id": "C1",
-            "type": "unit",
-            "assert": "MODULE_KINDS 13→15(+propagation_rule/state_var·additive);provisioners.test 16 测绿含 6 场景 byte 等价门(analyzeGap 分支判据 side→existing 有无守恒)。"
+            "type": "curl",
+            "assert": "经PUT /b/v1/intents/adopt_mitigation声明bindings(stateVarKeys+propagationRuleKeys)后提交查询·growth.pre_analysis开→gapAnalysis同时含propagation_rule与state_var两类entry(改造前旧gap引擎无此两类=对照基线)"
           },
           {
             "id": "C2",
             "type": "curl",
-            "assert": "真起双服务:意图声明 stateVarKeys/propagationRuleKeys(含幽灵项)→ gapAnalysis 出 propagation_rule/state_var 两 entries;缺→MISSING(autoCreatable:false·WARNING+MANUAL),真建→EXISTS(existing 真读 sim_propagation_rule PUBLISHED + derivedProperties)。"
+            "assert": "真建1条传导规则(POST /a/v1/sim/propagation-rules PUBLISHED)+1对象类型(derivedProperties)→该两条gap status=EXISTS(registry-snapshot服务间凭证真读到自建key·非硬编码);ghost两条=MISSING(severity WARNING+strategy MANUAL·autoCreatable:false诚实缺非TO_CREATE)"
           },
           {
             "id": "C3",
-            "type": "curl",
-            "assert": "registry-snapshot 6→8 类;MISSING 经 listSandboxConfigGaps 落 GrowthTicket([sandbox-config:*] 幂等锚·二跑不重复·/admin/tickets)。"
+            "type": "gate",
+            "assert": "暗发键growth.pre_analysis关→pre-analysis端点404 FEATURE_NOT_FOUND·沙盘查询工单守恒2→2(配套覆盖不注入·字节一致);analyzeGap无损改造门6场景全绿"
           },
           {
             "id": "C4",
-            "type": "curl",
-            "assert": "R6:同意图同 query 双跑 gapAnalysis.entries 字节一致。"
-          },
-          {
-            "id": "C5",
-            "type": "curl",
-            "assert": "回退演练双向:feature 关→端点 404 FEATURE_NOT_FOUND·再开→200;旧 BuildPlan default[] 向后兼容;additive 全摘→四包 test 绿+gap 回 13 类。"
+            "type": "gate",
+            "assert": "R6:同query双跑gapAnalysis归一后逐字节相等;门有牙:provisioners.ts+pre-analyze.ts AUTOCREATABLE propagation_rule false→true→provisioners.test/pre-analyze.test S0块变红(expected MISSING got TO_CREATE)·还原绿"
           }
         ]
       }
     },
     {
       "at": {
-        "wip": "2026-07-11T11:28:48.665Z",
-        "built": "2026-07-11T15:38:52.212Z"
+        "wip": "2026-07-11T11:28:48.665Z"
       },
       "id": "WO-SANDBOX-AS-RENDER-TARGET",
       "title": "S1·沙盘→时序推演意图落地渲染器(五触发归一·情景四原型·答案先行·MVP=shock短程)",
       "doc": "docs/WO-SANDBOX-AS-RENDER-TARGET.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "WIP",
       "owner": "dev3",
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE"
       ],
-      "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支已归位2026-07-11】S0+S1均已迁至团队分支 claude/vigilant-knuth-b1nmxn(=dev-3简报指定分支);此前误置于sandbox-reconstruction-dev3已作废,请在vigilant复验。 【S1 BUILT 2026-07-11·dev3】shock渲染全链(后端E2E+真浏览器+jsdom)·hold正确S6-defer·§5.4五触发归一(canonical source·真浏览器验)·§5.3多轮→simBranch布线(A/B相同=S1边界·不越界S3·真浏览器compare面板验)·R6·回退双向。证据docs/evidence/S1-*.md。⚠️全量gates有一条红=Dev-2 WO-L1.5-5改G-3b判据未更新meta-ontology齿④(铁证非S1·见前述)·我这侧sim/genuine-sim/no-fake-done全绿。后端maybeRenderSandbox钩子交Dev-1。",
+      "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支已归位2026-07-11】S0+S1均已迁至团队分支 claude/vigilant-knuth-b1nmxn(=dev-3简报指定分支);此前误置于sandbox-reconstruction-dev3已作废,请在vigilant复验。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3",
-      "blockReason": "",
-      "acceptance": {
-        "goal": "沙盘从独立页→时序推演意图落地渲染器:五触发归一同一SimulationRequest·shock短程渲染进沙盘答案先行·hold正确S6-defer·多轮→分支布线。真起双服务+真浏览器逐值验(docs/evidence/S1-*.md)。",
-        "criteria": [
-          {
-            "id": "C1",
-            "type": "curl",
-            "assert": "§5.1a shock NL真命中→sandbox_render答案块逐值(source=dialogue·targetView=sim-sandbox·scope含对象·scenario[0]=shock·compareBaseline=false·headline非空)。真起双服务真orchestrator分类路由。"
-          },
-          {
-            "id": "C2",
-            "type": "browser",
-            "assert": "§5.1a 真浏览器:沙盘渲染器真渲染+消费dialogue preset+对真后端跑shock传导+cur-tick推进到horizon+globalKPI真值+UI cur-tick逐值==后端会话tick(铁律0.4·截图S1-sandbox-realbrowser.png)。"
-          },
-          {
-            "id": "C3",
-            "type": "curl",
-            "assert": "§5.1b hold意图→诚实DEFERRED文本(时序接地建设中·S6)·无sandbox_render块(绝不假跑·KILL-MOCK-RED)。"
-          },
-          {
-            "id": "C4",
-            "type": "browser",
-            "assert": "§5.4五触发归一:mapSimSource五源(dialogue/scenario/whatif/alert/workspace)·真浏览器上下文条显示canonical source(data-sim-source)·scope-only(无shock)不auto-tick保裁剪静止(RL9)。"
-          },
-          {
-            "id": "C5",
-            "type": "browser",
-            "assert": "§5.3多轮→分支布线:后端isSandboxFollowUp(同会话前序有sandbox_render)→块标followUp(集成测双轮验)·真浏览器followUp preset→auto-simBranch→compare面板+SimComparePanel真渲染A/B(能分能对比·A/B此刻相同=S1边界·不越界S3)。"
-          },
-          {
-            "id": "C6",
-            "type": "curl",
-            "assert": "§5.6回退演练:feature sim.sandbox_render关(真JWT等缓存TTL)→无sandbox_render块回落既有PathA(旧路径未删RL9)·bindings.intents门控关时4意图不入classify候选=零行为变化。"
-          },
-          {
-            "id": "C7",
-            "type": "unit",
-            "assert": "R6装配器sim-request同输入字节一致(9单测)·前端560/agentcore723测零回归·sim/genuine-sim/ontogenesis-runtime/no-fake-done门绿(全量gates仅Dev-2 WO-L1.5-5改G-3b未更新meta-ontology齿④一条红·非S1)。"
-          }
-        ]
-      }
+      "assignedDev": "dev3"
     },
     {
       "at": {},
@@ -7800,20 +7753,21 @@
       "doc": "docs/AUDIT-databuilder-genuine-construction-DELTA.md",
       "title": "沙盘配套智能推导(补S0悬置接缝):从故事/需求图真派生propagation_rule/state_var need(填现空need数组·供S0覆盖引擎检)·非databuilder BSTACK",
       "note": "[Lane沙盘·dev3·补S0§3.4悬置接缝] S0建了配套契约+覆盖引擎但谁推导propagation_rule/state_var punt给RG/S1未认领(comprehend.ts:294现need空)。本单专做推导侧·与BSTACK-DERIVE划界(BSTACK绝不碰两kind)。回写§2.I。green→red:含传导语义故事→应派生propagation_rule need·现空→红。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev1",
       "at": {
-        "created": "2026-07-11T14:34:50.465Z"
+        "created": "2026-07-11T14:34:50.465Z",
+        "wip": "2026-07-11T15:43:19.282Z"
       },
       "assignedDev": "dev1-后端"
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-AS-RENDER-TARGET",
-      "at": "2026-07-11T15:38:52.214Z"
+      "role": "dev1",
+      "cmd": "WIP",
+      "id": "WO-SANDBOX-CONFIG-DERIVE",
+      "at": "2026-07-11T15:43:19.284Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
