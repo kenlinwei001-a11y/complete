@@ -289,7 +289,9 @@ function deriveBStack(objectTypes: PlanObjectType[], solverNeeds: PlanSolverNeed
   const skillNeeds: PlanSkillNeed[] = solverNeeds.map((s) => ({ skillKey: `skl_${s.solverKey}`, capability: s.solverKey, resources: [] }));
   const agentNeeds: PlanAgentNeed[] = solverNeeds.map((s) => ({ agentKey: `agt_${s.solverKey}`, systemPrompt: `针对 ${s.solverKey} 的推演分析 agent`, tools: [s.solverKey], skills: [`skl_${s.solverKey}`], ruleBindings: [], scopeObjectTypes: [...new Set(s.inputFields.map((f) => f.typeKey))] }));
   const kbDocs = [{ title: "场景脚本", content: script.slice(0, 4000) }];
-  return { kbDocs, sliceNeeds, intentNeeds, planNeeds, sceneNeeds, workflowNeeds, skillNeeds, agentNeeds, mcpNeeds: [] };
+  // S0 诚实边界（WO-SANDBOX-CONFIG-COVERAGE §3.4）：倒推暂不产沙盘配套需求（"某问题到底需要哪些
+  // 传导规则/状态变量"的智能推导属 S1/RequirementGraph）——先打通"声明了就能 diff 出缺哪些"的通道。
+  return { kbDocs, sliceNeeds, intentNeeds, planNeeds, sceneNeeds, workflowNeeds, skillNeeds, agentNeeds, mcpNeeds: [], propagationRuleNeeds: [], stateVarNeeds: [] };
 }
 
 /**
@@ -594,6 +596,7 @@ export function comprehendScript(
   BuildPlan,
   | "dataSources" | "objectTypes" | "rules" | "solverNeeds" | "kbDocs" | "dataDependencies"
   | "sliceNeeds" | "intentNeeds" | "planNeeds" | "workflowNeeds" | "skillNeeds" | "agentNeeds" | "mcpNeeds" | "sceneNeeds"
+  | "propagationRuleNeeds" | "stateVarNeeds"
 > {
   // 命中实体；无命中则兜底 Order + Base 最小集（保证 pipeline 永远可跑）。
   let entities = ENTITIES.filter((e) => matches(script, e.keywords));
@@ -697,5 +700,7 @@ export function comprehendScript(
     dataDependencies: deriveDataDependencies(solverNeeds),
     sliceNeeds, intentNeeds, planNeeds, sceneNeeds,
     workflowNeeds, skillNeeds, agentNeeds, mcpNeeds: [],
+    // S0 诚实边界同 deriveBStack：地板倒推暂不产沙盘配套需求（智能推导属 S1）。
+    propagationRuleNeeds: [], stateVarNeeds: [],
   };
 }

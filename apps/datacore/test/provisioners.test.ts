@@ -30,19 +30,32 @@ describe("ModuleProvisioner 注册表 · 无遗漏保证（倒序管线：新模
 
   it("NEED_ARRAY_TO_KIND 的目标 kind 全在 MODULE_KINDS 内（映射不指向幽灵 kind）", () => {
     for (const kind of Object.values(NEED_ARRAY_TO_KIND)) expect(MODULE_KINDS).toContain(kind);
-    expect(new Set(Object.values(NEED_ARRAY_TO_KIND)).size).toBe(MODULE_KINDS.length); // 13 个字段一一映射 13 个 kind
+    expect(new Set(Object.values(NEED_ARRAY_TO_KIND)).size).toBe(MODULE_KINDS.length); // 15 个字段一一映射 15 个 kind（S0 +propagation_rule/state_var）
   });
 });
 
 describe("比对现状 analyzeGap · 跨模块统一 diff（EXISTS 复用 / TO_CREATE 新建 / MISSING 不能自动建）", () => {
-  // 最小 deps：仅 analyzeGap 触及的几处现状查询（结构/内容类）。
-  const deps = (opts: { types?: string[]; rules?: string[]; slices?: string[]; datasets?: string[]; kb?: string[] }): ProvisionerDeps => ({
-    ontology: { listTypes: async () => (opts.types ?? []).map((key) => ({ key })) } as unknown as ProvisionerDeps["ontology"],
+  // 最小 deps：仅 analyzeGap 触及的几处现状查询（结构/内容/沙盘配套类）。
+  const deps = (opts: {
+    types?: string[]; rules?: string[]; slices?: string[]; datasets?: string[]; kb?: string[];
+    /** S0：对象类型带数值派生属性（state_var existing 源）——"Type.prop" 形。 */
+    derivedProps?: Record<string, string[]>;
+    /** S0：已发布传导规则 key（propagation_rule existing 源）。 */
+    propagationRules?: string[];
+  }): ProvisionerDeps => ({
+    ontology: {
+      listTypes: async () =>
+        [...new Set([...(opts.types ?? []), ...Object.keys(opts.derivedProps ?? {})])].map((key) => ({
+          key,
+          derivedProperties: (opts.derivedProps?.[key] ?? []).map((propKey) => ({ propKey, formula: "x" })),
+        })),
+    } as unknown as ProvisionerDeps["ontology"],
     repos: {
       rules: { list: async () => (opts.rules ?? []).map((key) => ({ key })) },
       sliceSpecs: { list: async () => (opts.slices ?? []).map((sliceKey) => ({ sliceKey })) },
       rawDatasets: { list: async () => (opts.datasets ?? []).map((name) => ({ name })) },
       kbDocs: { list: async () => (opts.kb ?? []).map((filename) => ({ filename })) },
+      sim: { listPropagationRules: async (_t: string, _p?: boolean) => (opts.propagationRules ?? []).map((key) => ({ key })) },
     } as unknown as ProvisionerDeps["repos"],
   });
 
@@ -55,6 +68,7 @@ describe("比对现状 analyzeGap · 跨模块统一 diff（EXISTS 复用 / TO_C
     sliceNeeds: [{ sliceKey: "slice_existing" }, { sliceKey: "slice_new" }],
     intentNeeds: [{ intentKey: "intent_a" }],
     planNeeds: [], workflowNeeds: [], skillNeeds: [], agentNeeds: [], sceneNeeds: [], mcpNeeds: [],
+    propagationRuleNeeds: [], stateVarNeeds: [],
   } as unknown as BuildPlan;
 
   it("结构类：已有→EXISTS，未有→TO_CREATE；代码类求解器：已注册→EXISTS，未注册→MISSING（不能自动建）", async () => {
@@ -160,5 +174,66 @@ describe("比对现状 analyzeGap · 跨模块统一 diff（EXISTS 复用 / TO_C
         expect(norm(after)).toBe(norm(before));
       });
     }
+  });
+
+  // ─── S0 · WO-SANDBOX-CONFIG-COVERAGE：沙盘配套（传导规则/状态变量）纳入 gap 覆盖 ───
+  describe("S0 沙盘配套 · propagation_rule/state_var 可被 gap 诊断（缺→MISSING 落工单·有→EXISTS 真读）", () => {
+    // 时序推演需求树：2 条传导规则（1 缺）+ 2 个状态变量（1 缺）——WO §5.2 场景。
+    const simPlan = {
+      ...(plan as unknown as Record<string, unknown>),
+      dataSources: [], objectTypes: [], rules: [], solverNeeds: [], sliceNeeds: [], intentNeeds: [],
+      propagationRuleNeeds: [
+        { key: "pr_order_to_capacity", sourceStateVar: "backlog", viaLinkKey: "order_at_base", targetStateVar: "load" },
+        { key: "pr_ghost_rule", sourceStateVar: "x", viaLinkKey: "l", targetStateVar: "y" },
+      ],
+      stateVarNeeds: [
+        { typeKey: "Base", stateVar: "load" },
+        { typeKey: "Base", stateVar: "ghost_var" },
+      ],
+    } as unknown as BuildPlan;
+
+    const simDeps = () => deps({
+      derivedProps: { Base: ["load"] },
+      propagationRules: ["pr_order_to_capacity"],
+    });
+
+    it("需求树声明两类 → GapAnalysis 出现 propagation_rule/state_var 两 entries；缺的 MISSING（autoCreatable:false 无 scaffolder·诚实），有的 EXISTS（existing 真读表/派生属性）", async () => {
+      const g = await analyzeGap(simDeps(), CTX, simPlan);
+      const by = (k: string) => g.entries.find((e) => e.kind === k)!;
+      const pr = by("propagation_rule");
+      expect(pr, "propagation_rule entry 应存在").toBeTruthy();
+      expect(pr.items.find((i) => i.key === "pr_order_to_capacity")!.status).toBe("EXISTS");
+      expect(pr.items.find((i) => i.key === "pr_ghost_rule")!.status).toBe("MISSING");
+      const sv = by("state_var");
+      expect(sv, "state_var entry 应存在").toBeTruthy();
+      expect(sv.items.find((i) => i.key === "Base.load")!.status).toBe("EXISTS");
+      expect(sv.items.find((i) => i.key === "Base.ghost_var")!.status).toBe("MISSING");
+      // side 与拓扑：state_var=structure（先建派生属性）· propagation_rule=cross_system（拓扑序最后）
+      expect(sv.side).toBe("structure");
+      expect(pr.side).toBe("cross_system");
+    });
+
+    it("F4 空数组短路：非时序 plan（两 needs 空）→ gap 不出现这两类（不凭空报缺口）", async () => {
+      const g = await analyzeGap(simDeps(), CTX, plan);
+      expect(g.entries.some((e) => e.kind === "propagation_rule" || e.kind === "state_var")).toBe(false);
+    });
+
+    it("R6 确定性：同需求树双跑 GapAnalysis 字节一致（归一 generatedAt）", async () => {
+      const norm2 = (g: unknown) => JSON.stringify({ ...(g as Record<string, unknown>), generatedAt: "FIXED" });
+      const a = await analyzeGap(simDeps(), CTX, simPlan);
+      const b = await analyzeGap(simDeps(), CTX, simPlan);
+      expect(norm2(a)).toBe(norm2(b));
+    });
+
+    it("existing 只认 PUBLISHED 传导规则（DRAFT 未晋升=仍缺·WO §3.5）：repo 层 publishedOnly 缺省 true 已由 memory/pg 实现过滤,此处证 provisioner 未传 false", async () => {
+      // provisioner 调 listPropagationRules(tenantId)（默认 publishedOnly=true）——mock 记录实参。
+      let calledWith: unknown[] = [];
+      const d = deps({});
+      (d.repos as unknown as { sim: { listPropagationRules: (...a: unknown[]) => Promise<{ key: string }[]> } }).sim.listPropagationRules =
+        async (...a: unknown[]) => { calledWith = a; return []; };
+      await analyzeGap(d, CTX, simPlan);
+      expect(calledWith[0]).toBe(CTX.tenantId); // R2 tenant 谓词
+      expect(calledWith[1]).toBeUndefined(); // 未传 false → repo 默认 PUBLISHED-only
+    });
   });
 });

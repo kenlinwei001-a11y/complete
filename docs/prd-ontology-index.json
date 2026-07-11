@@ -138,9 +138,7 @@
         "scripts/check-decision-case.mjs"
       ],
       "brokenArtifacts": [
-        "apps/agentcore/src/growth/decision-case.ts",
-        "packages/contracts/src/cbr.ts",
-        "scripts/check-decision-case.mjs"
+        "apps/agentcore/src/growth/decision-case.ts"
       ]
     },
     "PRD-L1A-requirement-graph-engine.md": {
@@ -233,9 +231,7 @@
       ],
       "brokenArtifacts": [
         "apps/agentcore/src/decision/hook.ts",
-        "apps/agentcore/src/decision/kernel.ts",
-        "packages/contracts/src/decision-kernel.ts",
-        "scripts/check-decision-kernel.mjs"
+        "apps/agentcore/src/decision/kernel.ts"
       ]
     },
     "PRD-addendum-a8-timeseries.md": {
