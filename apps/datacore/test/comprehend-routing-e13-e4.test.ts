@@ -30,7 +30,7 @@ interface RunResp { status: string; buildPlan?: { scriptHash: string; seed: numb
 
 describe("增量1 · E13 comprehend 用途路由（无绑定回落 config.DC_LLM_MODEL，非占位串）", () => {
   it("无租户绑定 → comprehend 的 LLM 调用 model = config.DC_LLM_MODEL（证明读配置而非硬编码占位）", async () => {
-    const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: SENTINEL_MODEL } });
+    const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: SENTINEL_MODEL, DC_COMPREHEND_DETERMINISTIC: "0" } });
     t.llm.enqueue(LLM_OUT as unknown as Record<string, unknown>);
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 42 } });
     expect(res.statusCode).toBeLessThan(300);
@@ -43,7 +43,7 @@ describe("增量1 · E13 comprehend 用途路由（无绑定回落 config.DC_LLM
   });
 
   it("配置不同 model id → 调用随之变（路由由 config 单一来源驱动，换租户=换配置 RL5）", async () => {
-    const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: "another-model-id" } });
+    const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: "another-model-id", DC_COMPREHEND_DETERMINISTIC: "0" } });
     t.llm.enqueue(LLM_OUT as unknown as Record<string, unknown>);
     await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 7 } });
     const call = t.llm.calls.find((c) => c.user.includes("化成"));
@@ -51,7 +51,7 @@ describe("增量1 · E13 comprehend 用途路由（无绑定回落 config.DC_LLM
   });
 
   it("purpose=comprehend：携带 tenantId+purpose 调用（路由可据此选 provider 绑定）", async () => {
-    const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: SENTINEL_MODEL } });
+    const t: TestApp = await makeApp({ env: { DC_LLM_MODEL: SENTINEL_MODEL, DC_COMPREHEND_DETERMINISTIC: "0" } });
     t.llm.enqueue(LLM_OUT as unknown as Record<string, unknown>);
     await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 42 } });
     // system 提示拼了已注册求解器目录（comprehendSystemWithSolvers）→ 含 shared_bottleneck 语义提示。

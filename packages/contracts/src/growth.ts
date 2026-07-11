@@ -18,6 +18,8 @@ export const GapCodeSchema = z.enum([
   "SHAPE_MISMATCH", // 渲染绑定字段不在求解器输出形状（G-2）
   "NO_CAPABILITY", // 需要本体/求解器根本没有的领域能力 → 需开发
   "LLM_PURPOSE_UNBOUND", // GAP-ACTIONABLE：LLM 用途未绑定/密钥无效（具体可行动错因·入正式码表，不再拍 OTHER 丢真相）
+  "COMPREHEND_NOT_UNDERSTOOD", // WO-DB-LLM-REQUIRED-NO-FLOOR：LLM 未能从故事理解出任何对象（不落地板冒充理解）
+  "LLM_UNAVAILABLE", // WO-DB-LLM-REQUIRED-NO-FLOOR：LLM 瞬时不可用（超时/限流·重试仍失败·不产地板域）
   "OTHER", // 未归类的内部错误（仍保留 evidence 原文 + 派生 what/where/acceptance，永不"人工核实内部错误"）
 ]);
 export type GapCode = z.infer<typeof GapCodeSchema>;

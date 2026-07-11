@@ -16,7 +16,7 @@ import type {
   StoryBuildRun,
   ValidationTrace,
 } from "@platform/contracts";
-import type { ConsistencyCheck, PreviewSourceRef } from "@platform/contracts";
+import type { ConsistencyCheck, PreviewSourceRef, GapCode } from "@platform/contracts";
 import { BUILD_PHASES, DataBuilderConfigSchema } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
@@ -28,8 +28,8 @@ import type { KbService } from "../kb.js";
 import type { SolverService } from "../solvers/service.js";
 import { SOLVER_KEYS } from "../solvers/service.js";
 import { newId } from "../ids.js";
-import { invalidState, notFound, validationError } from "../errors.js";
-import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers, type ComprehendContext } from "./comprehend.js";
+import { invalidState, notFound, validationError, AppError } from "../errors.js";
+import { comprehendScript, deriveBackfillScripts, deriveGeneratedScripts, deriveStoryCoverage, assemblePlanBody, LlmComprehendSchema, comprehendSystemWithSolvers, type ComprehendContext, type LlmComprehendOutput } from "./comprehend.js";
 import { generateRelatedDatasets, applyScenarioTopology, type DatasetSpec } from "../synthetic/schema-gen.js";
 import { extractPrototypeDatasets } from "./prototype-intake.js";
 import type { LlmClient } from "../llm.js";
@@ -46,6 +46,13 @@ import type { BuildVerification, FdeNode, ScaffoldManifestRecord } from "@platfo
 
 const nowIso = () => new Date().toISOString();
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
+/** WO-DB-LLM-REQUIRED-NO-FLOOR：comprehend 硬门结构化错误码（无 LLM/未理解/瞬时不可用）→ 诚实 surface 为 BLOCKED 缺口·不静默降级。 */
+const COMPREHEND_GATE_CODES = new Set(["LLM_PURPOSE_UNBOUND", "COMPREHEND_NOT_UNDERSTOOD", "LLM_UNAVAILABLE"]);
+const COMPREHEND_GATE_EVIDENCE: Record<string, string> = {
+  LLM_PURPOSE_UNBOUND: "建域需绑定 comprehend 用途的 LLM（或离线置 DC_COMPREHEND_DETERMINISTIC=1 走确定性地板）——未绑定即诚实拒，绝不静默降级造错语义域。",
+  COMPREHEND_NOT_UNDERSTOOD: "LLM 未能从此故事理解出任何对象——请把业务描述写具体或补充数据后重试，不落地板冒充理解。",
+  LLM_UNAVAILABLE: "LLM 暂时不可用（超时/限流），已重试仍失败——请稍后重试，不产地板域。",
+};
 /** A18 §3.7：模块同步矩阵求解器注册存在性核验集（注册求解器 + 工作流求解器 sop_balance，与 closure CHAIN 口径一致）。 */
 const REGISTERED_SOLVERS: ReadonlySet<string> = new Set<string>([...SOLVER_KEYS, "sop_balance"]);
 
@@ -73,6 +80,11 @@ export class DataBuilderService {
      * （此前硬编码占位串 "comprehend" 作 model id → 不是真实模型 id，env 回落路径形同虚设；改为 config 注入，RL5 零写死）。
      */
     private defaultModel = "default",
+    /**
+     * WO-DB-LLM-REQUIRED-NO-FLOOR：确定性地板开关（`config.DC_COMPREHEND_DETERMINISTIC === "1"`·默认 false）。
+     * 默认 false=生产态硬依赖 LLM（无 LLM/失败/0 对象→诚实报错不建域）；true=CI/离线走关键词地板（产物标 FLOOR）。
+     */
+    private deterministicComprehend = false,
   ) {}
 
   /**
@@ -84,23 +96,39 @@ export class DataBuilderService {
    * + 租户 system-state 快照（每类型 present 行数）拼进 LLM system context → 倒推在真实现状之上（非凭空）。
    * 关键词地板不读此 context（R6 不依赖·纯 design-time 增强）。
    */
-  private async comprehendPlanBody(ctx: AuthCtx, script: string, seed: number, entryIntent?: string): Promise<ReturnType<typeof assemblePlanBody>> {
-    if (this.llm) {
+  private async comprehendPlanBody(ctx: AuthCtx, script: string, seed: number, entryIntent?: string): Promise<ReturnType<typeof assemblePlanBody> & { comprehendedBy?: "LLM" | "FLOOR" }> {
+    // WO-DB-LLM-REQUIRED-NO-FLOOR：三条静默降级路（无 LLM / 调用失败 / 0 对象 → 落 7 词电池词表地板）全断——
+    // 建域硬依赖已绑 comprehend 用途的 LLM；否则诚实报错不建域（不降级造语义错的电池味垃圾·KILL-MOCK-RED）。
+
+    // 测试/离线显式开关（默认 false·仅 CI/无网信创置 true）：走确定性地板·**产物诚实标 FLOOR**（连测试不许假装真理解）。
+    if (this.deterministicComprehend) return { ...comprehendScript(script, seed), comprehendedBy: "FLOOR" as const };
+
+    // ① 无 LLM（未绑 comprehend 用途/无 key）→ 诚实 400（不静默落地板）。
+    if (!this.llm) throw new AppError("LLM_PURPOSE_UNBOUND", "建域需绑定 comprehend 用途的 LLM（设置→LLM 用途绑定），或离线置 DC_COMPREHEND_DETERMINISTIC=1 走确定性地板", 400);
+
+    // ② LLM 调用：瞬时失败有界重试（§3.2·不吞错·不降级）；仍失败 → 原样抛（LLM_PURPOSE_UNBOUND/鉴权/超时经 R7 信封上抛）。
+    const context = await this.buildComprehendContext(ctx, entryIntent);
+    let core: LlmComprehendOutput | undefined;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const context = await this.buildComprehendContext(ctx, entryIntent);
-        const core = await this.llm.parseStructured({
-          // E13：model 为「无绑定时 env 默认」的 model id；有租户绑定则被 TenantRoutedLlmClient 解析出的真实
-          // modelId 覆盖（purpose=comprehend → provider/model 绑定）。tenantId+purpose 共同驱动路由。
+        core = await this.llm.parseStructured({
           model: this.defaultModel, maxTokens: 8000, tenantId: ctx.tenantId, purpose: "comprehend",
-          // 把已注册求解器目录 + 功能切片/入口/现状（站①输入基底）拼进提示 → LLM 在真实现状之上倒推。
           system: comprehendSystemWithSolvers(SOLVER_KEYS, context), messages: [{ role: "user", content: script }], schema: LlmComprehendSchema,
         });
-        if (core.objectTypes.length > 0) return assemblePlanBody(core, script, seed, SOLVER_KEYS);
-      } catch {
-        /* 无绑定/无 key/解析失败 → 落地板 */
+        lastErr = undefined;
+        break;
+      } catch (err) {
+        lastErr = err;
       }
     }
-    return comprehendScript(script, seed);
+    if (lastErr !== undefined) throw lastErr; // 不吞·不降级：鉴权/绑定/超时诚实上抛（R7 信封）
+
+    // ③ LLM 未理解出任何对象 → 诚实 422（不落地板冒充理解）。
+    if (!core || core.objectTypes.length === 0) {
+      throw new AppError("COMPREHEND_NOT_UNDERSTOOD", "LLM 未能从此故事理解出任何对象——请把业务描述写具体（涉及哪些实体/流程/指标），或补充数据后重试", 422);
+    }
+    return { ...assemblePlanBody(core, script, seed, SOLVER_KEYS), comprehendedBy: "LLM" as const };
   }
 
   /**
@@ -369,9 +397,11 @@ export class DataBuilderService {
           const dry = await this.run(ctx, { ...body, dryRun: true });
           // STRICT：aOk=gatePassed（HARD）；PROVISIONAL：aOk=!blocked（advisory 缺口不阻断，守"不靠阻断成 0"）。
           const aOk = dry.status === "SUCCEEDED" && (provisional ? !(dry.closure?.blocked ?? false) : (dry.closure?.gatePassed ?? false));
+          // WO-DB-LLM-REQUIRED-NO-FLOOR：comprehend 硬门失败（未建出 plan）→ 透传 code 供 record 诚实 surface。
+          const comprehendGate = !dry.planId && dry.error && COMPREHEND_GATE_CODES.has(dry.error) ? dry.error : undefined;
           return {
-            detail: `planId=${dry.planId ?? "?"} aOk=${aOk}${provisional ? " (PROVISIONAL)" : ""}`,
-            patch: { planId: dry.planId, aOk, closureReport: dry.closure },
+            detail: `planId=${dry.planId ?? "?"} aOk=${aOk}${comprehendGate ? ` ${comprehendGate}` : ""}${provisional ? " (PROVISIONAL)" : ""}`,
+            patch: { planId: dry.planId, aOk, closureReport: dry.closure, ...(comprehendGate ? { comprehendGate } : {}) },
           };
         },
       },
@@ -484,7 +514,13 @@ export class DataBuilderService {
             closureReport,
             scaffoldReceipt,
             scaffoldManifest: c["scaffoldManifest"] as ScaffoldManifestRecord | undefined,
-            gapReport: selfCheckGaps(body.script.trim(), id, closureReport, scaffoldReceipt, plan?.solverNeeds.length ?? 0),
+            gapReport: ((): ReturnType<typeof selfCheckGaps> => {
+              const base = selfCheckGaps(body.script.trim(), id, closureReport, scaffoldReceipt, plan?.solverNeeds.length ?? 0);
+              // WO-DB-LLM-REQUIRED-NO-FLOOR：comprehend 硬门失败 → 诚实 surface 具体 code 为 BLOCKING 缺口（顶格·不静默）。
+              const gate = c["comprehendGate"] as GapCode | undefined;
+              if (!gate) return base;
+              return { ...base, verdict: "BLOCKED" as const, findings: [{ gapCode: gate, atStep: "comprehend", evidence: COMPREHEND_GATE_EVIDENCE[gate] ?? gate, suggestedFill: "绑定 comprehend 用途 LLM 后重建，或补充更具体的业务描述/数据。", blocking: true }, ...base.findings] };
+            })(),
             gapAnalysis: c["gapAnalysis"] as GapAnalysis | undefined,
             answer: c["answer"] as string | undefined,
             inferenceEvidence: c["inferenceEvidence"] as "RUNTIME_PROBE" | "BUILD_STATIC" | undefined,
@@ -1240,7 +1276,9 @@ export class DataBuilderService {
       return job;
     } catch (e) {
       job.status = "FAILED";
-      job.error = e instanceof Error ? e.message : String(e);
+      // WO-DB-LLM-REQUIRED-NO-FLOOR：comprehend 硬门抛的结构化错误（LLM_PURPOSE_UNBOUND/COMPREHEND_NOT_UNDERSTOOD/
+      // LLM_UNAVAILABLE）保留其 code（供 dry_build→record 诚实surface 为 BLOCKED 缺口·不静默吞成通用失败）。
+      job.error = e instanceof AppError ? e.code : e instanceof Error ? e.message : String(e);
       job.finishedAt = nowIso();
       const running = phases.find((p) => p.status === "RUNNING");
       if (running) running.status = "FAILED";

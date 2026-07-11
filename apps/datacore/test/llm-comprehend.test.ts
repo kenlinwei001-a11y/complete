@@ -111,7 +111,7 @@ describe("§2 LLM comprehend（接 Kimi 解析任意故事）", () => {
   });
 
   it("绑定 Kimi（脚本化）→ 新颖故事经 LLM 倒推出 Process/Equipment + phantom_solver", async () => {
-    const t: TestApp = await makeApp();
+    const t: TestApp = await makeApp({ env: { DC_COMPREHEND_DETERMINISTIC: "0" } }); // 测真 LLM comprehend 路
     t.llm.enqueue(KIMI_OUTPUT as unknown as Record<string, unknown>); // 模拟 Kimi 的 comprehend 结构化输出
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 42 } });
     const run = res.json() as RunResp;
@@ -124,10 +124,12 @@ describe("§2 LLM comprehend（接 Kimi 解析任意故事）", () => {
     expect(run.gapReport!.findings.some((f) => f.gapCode === "SOLVER_NOT_FOUND" || f.gapCode === "NO_SLICE")).toBe(true);
   });
 
-  it("未绑定/未脚本化 → 关键词地板兜底（A2：已认工序/设备/瓶颈，选中 shared_bottleneck 并自动倒推参数，R6）", async () => {
-    const t: TestApp = await makeApp(); // 不 enqueue → routed LLM 无输出 → 抛错 → 落地板
+  it("确定性地板 flag（DC_COMPREHEND_DETERMINISTIC=1·A2：已认工序/设备/瓶颈，选中 shared_bottleneck 并自动倒推参数，R6·标 FLOOR）", async () => {
+    // WO-DB-LLM-REQUIRED-NO-FLOOR：地板不再是"未绑定静默兜底"（那条已删·未绑=诚实报错），而是显式 flag 路（makeApp 默认置 1）。
+    const t: TestApp = await makeApp(); // DC_COMPREHEND_DETERMINISTIC 默认 "1"（helpers）→ 走确定性地板·产物标 FLOOR
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: NOVEL, seed: 42 } });
-    const bp = (res.json() as RunResp).buildPlan!;
+    const bp = (res.json() as RunResp & { buildPlan: { comprehendedBy?: string } }).buildPlan!;
+    expect(bp.comprehendedBy).toBe("FLOOR"); // 诚实标注：确定性地板·非真 LLM 理解
     // A2：地板现在听懂"工序/设备/排产"——倒推出 Process/Equipment（不再只 Order/Line/Customer）。
     const types = bp.objectTypes.map((x) => x.typeKey);
     expect(types).toContain("Process");

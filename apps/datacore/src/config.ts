@@ -85,6 +85,12 @@ export const ConfigSchema = z.object({
    */
   QOS_DECISION_KERNEL: z.string().optional(),
   /**
+   * WO-DB-LLM-REQUIRED-NO-FLOOR：建域 comprehend 确定性地板开关（`=== "1"` 开·默认关）。
+   * **默认关=生产态硬依赖 LLM**（未绑 comprehend/调用失败/0 对象 → 诚实报错不建域·不静默降级造电池味垃圾·KILL-MOCK-RED）。
+   * 开=走确定性关键词地板 comprehendScript（**仅** CI/离线/信创无网·产物打标 `comprehendedBy:"FLOOR"` 诚实标注·非真理解）。
+   */
+  DC_COMPREHEND_DETERMINISTIC: z.string().optional(),
+  /**
    * WO-L1.5-1（企业记忆·CBR·暗发 env 闸·对齐 QOS_MEMORY_LLM 范式）：`=== "1"` 开。三闸独立控——
    * - QOS_CBR_INGEST：是否摄取 Decision→案例（关=案例 index 空·回退杠杆②）。
    * - QOS_CBR_RETRIEVAL：是否注册案例检索工具/行为（关=仅路径提示·回退杠杆①）。

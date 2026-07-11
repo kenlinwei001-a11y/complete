@@ -102,7 +102,7 @@ describe("A18 · 真服务 PROVISIONAL 建域（L1）", () => {
   });
 
   it("解阻断：缺求解器（STRICT 会 BLOCKED 全 0）→ PROVISIONAL 跑完出 SUCCEEDED 预览 + PROVISIONAL_ANSWER（不 FAILED）", async () => {
-    const t: TestApp = await makeApp();
+    const t: TestApp = await makeApp({ env: { DC_COMPREHEND_DETERMINISTIC: "0" } }); // 测 LLM comprehend 路（注入未注册求解器）
     // 注入会自造未注册求解器的 comprehend（缺件 → STRICT chainBroken 阻断）。
     t.llm.enqueue({
       objectTypes: [{ typeKey: "Cap", displayName: "产能", domain: "capacity", fields: [{ name: "capId", dataType: "string", isPrimaryKey: true }, { name: "tons", dataType: "number" }] }],

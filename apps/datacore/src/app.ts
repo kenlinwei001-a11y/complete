@@ -373,7 +373,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   );
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings);
-  const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
+  const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL, config.DC_COMPREHEND_DETERMINISTIC === "1");
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);

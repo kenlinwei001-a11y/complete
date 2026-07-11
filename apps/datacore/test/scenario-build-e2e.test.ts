@@ -25,7 +25,7 @@ const KIMI: LlmComprehendOutput = {
 
 describe("PRD-fde §3.4 · 场景拓扑端到端（物化对象里瓶颈真实存在）", () => {
   it("绑 Kimi(脚本化)+场景拓扑 → 建域后 Order 对象全共享同一 Process,产能=10", async () => {
-    const t: TestApp = await makeApp();
+    const t: TestApp = await makeApp({ env: { DC_COMPREHEND_DETERMINISTIC: "0" } }); // 测真 LLM comprehend 路（Kimi 脚本化）
     t.llm.enqueue(KIMI as unknown as Record<string, unknown>);
     const res = await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: "C、D 两客户扩产订单的共享工序瓶颈与降级", seed: 42 } });
     expect((res.json() as { status: string }).status).toBe("SUCCEEDED");

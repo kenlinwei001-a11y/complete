@@ -262,6 +262,12 @@ export const BuildPlanSchema = z.object({
     sharedResources: z.array(z.object({ resourceType: z.string(), sharedByType: z.string(), viaField: z.string(), count: z.number().int().min(1).default(1) })).default([]),
     plantedValues: z.array(z.object({ typeKey: z.string(), field: z.string(), value: z.union([z.number(), z.string()]), everyN: z.number().int().min(1).default(1) })).default([]),
   }).optional(),
+  /**
+   * WO-DB-LLM-REQUIRED-NO-FLOOR（additive·诚实标注·R13）：本 BuildPlan 的理解来源——
+   * `"LLM"`=真经绑定 LLM 理解此故事（生产态）；`"FLOOR"`=确定性关键词地板 comprehendScript（CI/离线·**非真理解·可能语义不完整**）。
+   * 缺省 undefined（旧 BuildPlan 向后兼容）。前端/结算单据此诚实显"⚠ 确定性地板理解·非 LLM"。
+   */
+  comprehendedBy: z.enum(["LLM", "FLOOR"]).optional(),
   createdAt: z.string(),
 });
 export type BuildPlan = z.infer<typeof BuildPlanSchema>;

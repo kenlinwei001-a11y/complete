@@ -23,6 +23,9 @@ export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean;
     LOG_LEVEL: "silent",
     BLOB_DIR: blobDir,
     JWT_SECRET: "test-secret",
+    // WO-DB-LLM-REQUIRED-NO-FLOOR：测试默认走确定性地板（产物标 comprehendedBy:FLOOR）→ 建域相关测试无 LLM 也确定性绿；
+    // 测 LLM comprehend 路的用例显式置 env DC_COMPREHEND_DETERMINISTIC:"0" 走真 LLM(ScriptedLlmClient enqueue)。
+    DC_COMPREHEND_DETERMINISTIC: "1",
     ...(opts?.env ?? {}),
   } as NodeJS.ProcessEnv);
   const repos = createMemoryRepos();

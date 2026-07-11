@@ -156,7 +156,7 @@ describe("站①「输入换基底」：本体切片/入口/state 快照进 desi
   });
 
   it("LLM 倒推产的 solverNeeds 也挂 requires（design-time·assemblePlanBody 经 run 路径）", async () => {
-    const t: TestApp = await makeApp();
+    const t: TestApp = await makeApp({ env: { DC_COMPREHEND_DETERMINISTIC: "0" } }); // 测 LLM comprehend 路
     const LLM_OUT: LlmComprehendOutput = {
       objectTypes: [
         { typeKey: "Order", displayName: "订单", domain: "sales", fields: [{ name: "so", dataType: "string", isPrimaryKey: true }, { name: "qty", dataType: "number" }] },
