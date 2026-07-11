@@ -7822,12 +7822,14 @@
       "doc": "docs/WO-DB-LLM-REQUIRED-NO-FLOOR.md",
       "title": "取消comprehend无-LLM地板降级(G-COMPREHEND-FLOOR):无绑定/失败/未理解→诚实报错不建(LLM_PURPOSE_UNBOUND/COMPREHEND_NOT_UNDERSTOOD)·堵service.ts:86-102主+:952次两调用点",
       "note": "[LaneB·datacore·用户钉死红线] ⚠硬前置:先跑全量测试sweep定≥14+测清单(WO只认3·实测runStory/comprehend触≥14 datacore+agentcore scaffold含comprehend-floor-a2)+CI/demo LLM绑定/flag端到端airtight(SEED_DEMO+docker demo+离线信创三态)·否则一落地破4包全绿。兼顾:DC_COMPREHEND_DETERMINISTIC flag(默认false·留地板满足RL9)+comprehendedBy:FLOOR契约标注。回写§8 G-COMPREHEND-FLOOR闭。green→red:改回地板→非电池故事产电池域→门红。 【索引§2重排2026-07-11:序#2(CLOSURE-HARDEN后·LINK前)·顺修comprehend漏绑bug(seed只建provider漏绑comprehend用途·service.ts实测踩坑)】",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
-        "wip": "2026-07-11T17:34:04.168Z"
-      }
+        "wip": "2026-07-11T17:34:04.168Z",
+        "built": "2026-07-11T18:25:39.063Z"
+      },
+      "blockReason": ""
     },
     {
       "id": "WO-DB-BSTACK-DERIVE",
@@ -8159,10 +8161,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE(复验PASS)",
-      "id": "WO-IMPORT-ONTOLOGY",
-      "at": "2026-07-11T18:17:18.884Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-DB-LLM-REQUIRED-NO-FLOOR",
+      "at": "2026-07-11T18:25:39.063Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
