@@ -203,6 +203,40 @@ try {
   fail(`v2 语义门：无法导入 dist 真调 riskTimeline（先 pnpm --filter datacore build）：${e.message}`);
 }
 
+// ⑧b C2（WO-FAKE-05 堵根·**dataMode 值诚实·行为断言**）：声称 measured/LIVE 的因子，其值必须**随真业务输入变**——
+//    扁平（改输入不动）却标 LIVE = 假推演（审计 docs/AUDIT-solver-fake-residues.md R1/R2：设备OEE/良率扁平标 LIVE 的病根）。
+//    构造两份**仅业务输入不同**的 SolverContext，真调 riskTimeline，断言其峰值张力 peak 随输入变；
+//    若因子出了非空决策峰值(measured)却两份相同 → 与真输入零耦合的扁平冒充 → 红。
+//    牙齿：把 risk.ts 设备OEE/良率分支改成忽略 oee_current/yield_baseline 返回常量 → 两份 peak 相同 → 本门必红。
+try {
+  const { riskTimeline } = await import("../apps/datacore/dist/solvers/risk.js");
+  const { BATTERY_SOLVER_PARAMS } = await import("../apps/datacore/dist/synthetic/battery.js");
+  const mkCtx = (oeeVals, yieldVals) => ({
+    tenantId: "gate-behav", params: BATTERY_SOLVER_PARAMS,
+    bases: [{ props: { baseId: "b1", name: "行为基地", util: 0 } }],
+    lines: [{ props: { baseId: "b1", lineId: "L1", utilization: 0.8 } }],
+    processes: yieldVals.map((y, i) => ({ props: { baseId: "b1", processId: `P${i}`, yield_baseline: y } })),
+    equipment: oeeVals.map((o, i) => ({ props: { baseId: "b1", equipmentId: `E${i}`, oee_current: o } })),
+    maintPlans: [], models: [], orders: [], shipments: [], segments: [], dataHealth: [],
+    certByModel: new Map(), demandSegments: [], sopVersions: [], materials: [], materialBatches: [],
+    customers: [], arInvoices: [], certifications: [],
+  });
+  const peakOf = (ctx, factor) => ((riskTimeline(ctx, { base: "行为基地", factor, horizon: 30 }).cards || [])[0] || {}).peak;
+  // 每项：{因子, 两份仅该因子真输入不同的 ctx, 真输入名}——高健康 vs 低健康应产生不同峰值张力。
+  const behav = [
+    { factor: "设备OEE", a: mkCtx([0.90, 0.90, 0.90], [0.95]), b: mkCtx([0.50, 0.55, 0.52], [0.95]), input: "Equipment.oee_current" },
+    { factor: "良率波动", a: mkCtx([0.85], [0.985, 0.985]), b: mkCtx([0.85], [0.900, 0.880]), input: "Process.yield_baseline" },
+  ];
+  for (const t of behav) {
+    const pa = peakOf(t.a, t.factor), pb = peakOf(t.b, t.factor);
+    if (pa !== null && pa !== undefined && pa === pb) {
+      fail(`C2 dataMode值诚实：riskTimeline(${t.factor}) 峰值 ${pa} 不随真输入 ${t.input} 变（扁平冒充·声称 measured 却与业务输入零耦合·G-DM-1 假推演回潮·须读真属性或诚实标 PARTIAL）`);
+    }
+  }
+} catch (e) {
+  fail(`⑧b C2 行为断言：无法导入 dist 真调 riskTimeline（先 pnpm --filter datacore build）：${e.message}`);
+}
+
 // ⑩ C1（GENUINE-SIM-GATE-HARDEN）：覆盖从哨兵名单扩为 SOLVER_REGISTRY 全量【决策级】求解器。
 // ── 决策级判定口径（门内声明·可复现）──────────────────────────────────────────────────
 //  「决策级」= 求解器输出被渲染给人以驱动 go/no-go：红/黄状态、越阈、财务敞口、裁决(verdict)、
