@@ -103,6 +103,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // defaultOn:false（RL2）——关 = preAnalyzeQuery 只诊断显式需求（== 不做隐藏需求发现·回退演练 C3）。权威 entitlement
   // 由 DataCore features.ts 同键同 defaultOn:false 下发；此处注册使 featureEnabled 认得该键（关时 !set.has→false）。
   { key: "growth.hidden_req", name: "隐藏需求闭包发现", level: "BLOCK", defaultOn: false },
+  // WO-SANDBOX-CONFIG-DERIVE（补 S0 §3.4）：从 RequirementGraph 传导语义真派生沙盘配套需求并入 preAnalyzeQuery。
+  // 权威 entitlement 由 DataCore features.ts 同键同 defaultOn:false 下发；此处**镜像注册**使 featureEnabled 认得
+  // 该键（关时 !set.has→false·不落 unknown-key 恒真陷阱）。暗发 defaultOn:false（RL2）——关 = 只诊断意图静态声明
+  // 的配套（S0 原行为字节一致）。server.ts startPreAnalysis 经 isEnabled 消费此键传入 preAnalyzeQuery。
+  { key: "growth.sandbox_config_derive", name: "沙盘配套需求传导派生", level: "BLOCK", defaultOn: false },
   // WO-L2-1（决策内核·PRD-L2 §2.7·BLOCK-C4 修）：DataCore 是权威 entitlement 源（features.ts 同键同
   // defaultOn:false·决策内核落 datacore 栈·agentcore 经 B→A REST 读）；此处**镜像注册**使 featureEnabled
   // 认得该键——否则 unknown-key 恒真陷阱（registry.ts featureEnabled `if(!def) return true`）令 agentcore

@@ -8,7 +8,7 @@ import type {
   ModuleKind,
   PreAnalysisReport,
 } from "@platform/contracts";
-import { DATADEP_ROLE_CANONICAL, MODULE_KINDS, SOLVER_DATADEP, diffGap, expandHiddenRequirements } from "@platform/contracts";
+import { DATADEP_ROLE_CANONICAL, MODULE_KINDS, SOLVER_DATADEP, deriveSandboxConfigNeeds, diffGap, expandHiddenRequirements, sandboxConfigNeedKeys } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
 import type { Repos } from "../persistence/repos.js";
 
@@ -310,6 +310,14 @@ export interface PreAnalyzeInput {
    * undefined/false → 只诊断显式需求（== 不做隐藏需求发现·回退演练 C3）；true → 折叠三白名单隐藏需求。
    */
   hiddenReqEnabled?: boolean;
+  /**
+   * WO-SANDBOX-CONFIG-DERIVE（补 S0 §3.4）：从**已构 RequirementGraph 的传导语义**真派生沙盘配套需求
+   * （propagation_rule/state_var）并入 required 的开关（暗发 `growth.sandbox_config_derive` defaultOn:false·RL2）。
+   * undefined/false → 只诊断意图静态声明的配套（== S0 原行为·回退演练零变化）；
+   * true 且该 task 有 RequirementGraph（含传导语义）→ 沿真链路补出 propagation_rule/state_var 需求 → gap 可诊断。
+   * 无 RG（QOS_REQUIREMENT_GRAPH 关）/无传导语义 → 空派生 = 零变化（诚实惰性）。
+   */
+  sandboxConfigDeriveEnabled?: boolean;
 }
 
 /**
@@ -317,10 +325,26 @@ export interface PreAnalyzeInput {
  * 字节一致的 PreAnalysisReport。A 栈快照不可达时诚实降级（只诊断可靠取到 existing 的 kind，不造假缺口）。
  */
 export async function preAnalyzeQuery(deps: PreAnalyzeDeps, input: PreAnalyzeInput): Promise<PreAnalysisReport> {
-  const { tenantId, taskId, query, classification, generatedAt, hiddenReqEnabled } = input;
+  const { tenantId, taskId, query, classification, generatedAt, hiddenReqEnabled, sandboxConfigDeriveEnabled } = input;
   const mis = await deps.repos.materializedIntents.listByTenant(tenantId);
   const byKey = new Map(mis.map((m) => [m.key, m] as const));
   let required = deriveRequirements(classification, byKey);
+
+  // WO-SANDBOX-CONFIG-DERIVE（补 S0 §3.4·暗发 growth.sandbox_config_derive·flag OFF 零变化）：从该 task 的
+  // RequirementGraph 传导语义真派生沙盘配套需求，并入 required（与意图静态声明并集去重）。RG 缺失（QOS_REQUIREMENT_GRAPH
+  // 关·getByTaskId → undefined）/无传导语义 → 空派生 = 惰性零变化。纯函数 R6（同 RG → 同需求·同快照可缓存）。
+  if (sandboxConfigDeriveEnabled) {
+    const rg = await deps.repos.requirementGraphs.getByTaskId(tenantId, taskId);
+    if (rg) {
+      const derivedKeys = sandboxConfigNeedKeys(deriveSandboxConfigNeeds(rg));
+      const mergeKeys = (kind: ModuleKind, keys: string[]) => {
+        if (keys.length === 0) return;
+        required[kind] = [...new Set([...(required[kind] ?? []), ...keys])].sort();
+      };
+      mergeKeys("state_var", derivedKeys.state_var);
+      mergeKeys("propagation_rule", derivedKeys.propagation_rule);
+    }
+  }
 
   // UPG-L0-HIDDENREQ §8（暗发·flag OFF 时零变化·回退演练 C3）：显式需求 → 三白名单隐藏需求闭包，
   // 回并前于组装 existing/diff（隐藏对象类型/求解器一并诊断就绪）。无真图时诚实不扩展。

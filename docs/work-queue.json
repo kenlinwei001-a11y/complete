@@ -7775,13 +7775,15 @@
       "doc": "docs/AUDIT-databuilder-genuine-construction-DELTA.md",
       "title": "沙盘配套智能推导(补S0悬置接缝):从故事/需求图真派生propagation_rule/state_var need(填现空need数组·供S0覆盖引擎检)·非databuilder BSTACK",
       "note": "[Lane沙盘·dev3·补S0§3.4悬置接缝] S0建了配套契约+覆盖引擎但谁推导propagation_rule/state_var punt给RG/S1未认领(comprehend.ts:294现need空)。本单专做推导侧·与BSTACK-DERIVE划界(BSTACK绝不碰两kind)。回写§2.I。green→red:含传导语义故事→应派生propagation_rule need·现空→红。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "at": {
         "created": "2026-07-11T14:34:50.465Z",
-        "wip": "2026-07-11T15:43:19.282Z"
+        "wip": "2026-07-11T15:43:19.282Z",
+        "built": "2026-07-11T16:15:35.697Z"
       },
-      "assignedDev": "dev1-后端"
+      "assignedDev": "dev1-后端",
+      "blockReason": ""
     },
     {
       "id": "WO-IMPORT-MULTITABLE",
@@ -7851,10 +7853,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "SPLIT-S2-BE",
-      "id": "1单",
-      "at": "2026-07-11T16:07:26.888Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-SANDBOX-CONFIG-DERIVE",
+      "at": "2026-07-11T16:15:35.697Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

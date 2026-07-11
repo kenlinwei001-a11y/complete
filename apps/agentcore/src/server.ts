@@ -226,9 +226,12 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         }
         // UPG-L0-HIDDENREQ §8：隐藏需求闭包独立暗发开关（defaultOn:false·回退演练 C3——关 = 仅显式需求）。
         const hiddenReqEnabled = await deps.features.isEnabled(a.tenantId, "growth.hidden_req", a.token);
+        // WO-SANDBOX-CONFIG-DERIVE（补 S0 §3.4）：从 RequirementGraph 传导语义真派生沙盘配套需求的独立暗发开关
+        // （defaultOn:false·回退演练——关 = 只诊断意图静态声明的配套·S0 原行为字节一致）。
+        const sandboxConfigDeriveEnabled = await deps.features.isEnabled(a.tenantId, "growth.sandbox_config_derive", a.token);
         const report = await preAnalyzeQuery(
           { repos: deps.repos, config: deps.config },
-          { tenantId: a.tenantId, taskId, query, classification: task?.classification, generatedAt: nowIso(), hiddenReqEnabled },
+          { tenantId: a.tenantId, taskId, query, classification: task?.classification, generatedAt: nowIso(), hiddenReqEnabled, sandboxConfigDeriveEnabled },
         );
         await deps.repos.preAnalyses.upsert(report);
         await emitDomainEvent(a.tenantId, "growth.pre_analysis_done", { taskId, totalGaps: report.summary?.totalGaps ?? 0 });

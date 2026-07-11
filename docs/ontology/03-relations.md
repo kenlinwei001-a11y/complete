@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `1356a18595db2236`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `7d56f8708d34bfd9`。
 
 ---
 
@@ -254,6 +254,10 @@ WO-SIM-PRESET-INJECT(命门·治 G-3 launcher→view 接缝·G-VIS-1·additive)�
 S0 沙盘配套进 gap 覆盖(WO-SANDBOX-CONFIG-COVERAGE·已落 2026-07-11)：时序推演意图声明配套(IntentBindings.stateVarKeys/propagationRuleKeys)
   → preAnalyzeQuery/diffGap 诊断「这推演缺哪些传导规则/状态变量」(state_var existing=derivedProperties 真读·propagation_rule existing=sim_propagation_rule PUBLISHED 真读)
   → MISSING → GrowthTicket(骨架工单·幂等锚 [sandbox-config:*]·收口 /admin/tickets)——沙盘惰性静止前先有缺口提示(§2.I 登记·G-9 配套环)。
+S1 沙盘配套需求**从传导语义真派生**(WO-SANDBOX-CONFIG-DERIVE·补 S0 §3.4 悬置接缝·2026-07-11)：填 S0 留下的空数组(comprehend.ts:294 / IntentBindings 均把"某问句到底需要哪些传导规则/状态变量"punt 给本 WO)。
+  链路：QOS classify → orchestrator `buildRequirementGraphSideband`(暗发 QOS_REQUIREMENT_GRAPH) 产 **RequirementGraph**(真本体对象节点 + 真 LinkType 边·三白名单 by-construction·零幽灵)
+  → 纯 R6 派生器 `deriveSandboxConfigNeeds`(contracts/sandbox-config-derive.ts)：**含传导语义**(状态扰动事件 SHUTDOWN/DELAY/… 或 affects 边)时,沿 RG 对象→对象真链路边(reason `link:<真链路 key>`)产 `propagation_rule` 需求(键 `pr_<S>__<link>__<T>`·引用真类型+真链路) + 传导涉及对象的 `state_var` 需求(挂真类型·状态变量名=抽象中性 "load"·同 sim-request.ts 默认·R14)；无传导语义→空派生(诚实惰性·纯查询零假阳)
+  → `preAnalyzeQuery`(暗发 `growth.sandbox_config_derive` defaultOff·双注册 datacore features.ts + agentcore registry.ts)据此并入 `required[propagation_rule]/[state_var]` → **同一 diffGap** 诊断 → 缺则 §3.5 GrowthTicket 复用路径。关闸 = 不据 RG 派生 = S0 原行为字节一致(回退演练)。诚实边界：系数×延迟/formula 真值仍需领域判断(校准/建模正门·KILL-MOCK-RED 不合成),本 WO 只答"传导链上需要哪些配套"。
 WO-CAP-07-MODEL-DIM(链路⑤·型号产能链前端 surface·additive·闭「后端有·前端未 surface」)：**型号维度切片进推演沙盘**——后端型号维度早现成（`capacity_forecast` 按 modelId 建·`catalog.ts`；型号可产基地网络 `PRODUCIBLE_AT`·Model 一等类型 `graphmeta.ts`），此前推演沙盘只基地/全局态视角、从不 surface 型号维度。
   **链路**：`SandboxView` 挂 `ModelCapacitySlice`(独立 panel·不动 KPI/命令条/DAG 区) → 型号下拉**来自本体 Model 对象** `GET /a/v1/objects?type=Model`(R14 配置驱动·非写死·what-if 带入型号作初值) → 选型号 `capacity_forecast(modelId,qty,weeks)`(经 `useLiveSolver`·同前端既有求解路径) → 展示该型号 **P50/P90/缺口/主瓶颈** + **型号可产基地网络**(perBaseRows=可产基地·带各基地瓶颈/紧张度；nonProducible=不可产基地；producibleCount/totalBases 收敛)。KILL-MOCK-RED：紧张度 `live!==true` → 灰「估算」不染决策红。
   牙齿 `test/wo-cap-07-model-dim.test.tsx`(型号列表来自 Model 对象非写死·选型号逐值出 P50/P90/缺口/主瓶颈+可产基地网络·切型号重调求解器·无 Model 诚实空态)。真起 datacore+agentcore·真浏览器逐值对照(admin/demo1234·/v/sim-sandbox 选 4680-NCM→P50 5.2/P90 4.9/缺口 35.1/主瓶颈 设备OEE·可产基地 常州/成都/合肥·3/12 收敛·逐值==capacity_forecast 端点·下拉==本体 Model 对象)：docs/evidence/wo-cap-07-model-dim-fde.md

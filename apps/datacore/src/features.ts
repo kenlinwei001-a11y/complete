@@ -118,6 +118,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // UPG-L0-HIDDENREQ（PRD-gap-analysis-engine §8）：隐藏需求闭包（expandHiddenRequirements 三白名单·零幽灵）的
   // 权威 entitlement。暗发 defaultOn:false（RL2）——关 = 预分析只诊断显式需求（与不做隐藏需求发现一致·回退演练 C3）。现有租户零影响。
   { key: "growth.hidden_req", name: "隐藏需求闭包发现", level: "BLOCK", defaultOn: false },
+  // WO-SANDBOX-CONFIG-DERIVE（补 S0 §3.4 悬置接缝）：从 RequirementGraph 传导语义真派生沙盘配套需求
+  // （propagation_rule/state_var）并入 preAnalyzeQuery 的权威 entitlement。暗发 defaultOn:false（RL2）——
+  // 关 = 只诊断意图静态声明的配套（S0 原行为字节一致·回退演练零变化）。双注册：agentcore registry.ts 同键同
+  // defaultOn:false（feature-parity:check 守·防 unknown-key 恒真陷阱）。与 growth.requirement_graph 独立
+  // （RG 须先构才有得派生；此键控"构了 RG 后是否据其传导语义补配套需求"）。现有租户零影响（additive）。
+  { key: "growth.sandbox_config_derive", name: "沙盘配套需求传导派生", level: "BLOCK", defaultOn: false },
   // WO-L2-1（决策内核·脊柱最后一跳收口·PRD-L2-decision-kernel.md §2.4）：用户面 entitlement 闸——
   // 控**决策制品 DecisionPackage 读/采纳端点是否存在**（关 = GET/POST /a/v1/queries/:taskId/decision-package*
   // 404 FEATURE_NOT_FOUND·R3 先于 authz·不泄漏存在性）。DataCore 是 entitlement 唯一真相源（对齐 growth.pre_analysis
