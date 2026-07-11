@@ -7693,14 +7693,44 @@
       "at": {
         "created": "2026-07-11T14:28:38.850Z"
       }
+    },
+    {
+      "id": "WO-SANDBOX-SHOCK-NO-FLOOR",
+      "priority": "P2",
+      "deps": [
+        "WO-SANDBOX-AS-RENDER-TARGET"
+      ],
+      "doc": "docs/AUDIT-databuilder-genuine-construction-DELTA.md",
+      "title": "沙盘shock无LLM不起推演(扩红线):maybeRenderSandbox对classification.model===deterministic:*的shock也走DEFERRED·无LLM时不做关键词级对象/stateVar选取推演·只真LLM语义分类的shock才起",
+      "note": "[Lane沙盘·dev3·用户2026-07-11扩红线绝不无LLM起推演] 摸底发现:deterministicClassify按关键词匹sim.shock_whatif时对象/stateVar选取是关键词级无LLM语义(现被DEFERRED/0/no-impact三重边界兜住不产幅度垃圾·但用户要绝不无LLM起推演)。触点orchestrator.ts:1926-1963 maybeRenderSandbox+sim-request.ts:94-153。代价:无LLM时shock推演也不跑(功能缩减更诚实)。回写§8拟登G-SANDBOX-DET-SHOCK。green→red:无LLM提交shock故事→应DEFERRED不做关键词级推演·现装配了→红。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T14:34:50.465Z"
+      }
+    },
+    {
+      "id": "WO-SANDBOX-CONFIG-DERIVE",
+      "priority": "P2",
+      "deps": [
+        "WO-SANDBOX-CONFIG-COVERAGE"
+      ],
+      "doc": "docs/AUDIT-databuilder-genuine-construction-DELTA.md",
+      "title": "沙盘配套智能推导(补S0悬置接缝):从故事/需求图真派生propagation_rule/state_var need(填现空need数组·供S0覆盖引擎检)·非databuilder BSTACK",
+      "note": "[Lane沙盘·dev3·补S0§3.4悬置接缝] S0建了配套契约+覆盖引擎但谁推导propagation_rule/state_var punt给RG/S1未认领(comprehend.ts:294现need空)。本单专做推导侧·与BSTACK-DERIVE划界(BSTACK绝不碰两kind)。回写§2.I。green→red:含传导语义故事→应派生propagation_rule need·现空→红。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T14:34:50.465Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-FEATURE-PARITY-GATE",
-      "at": "2026-07-11T14:32:08.971Z"
+      "role": "review",
+      "cmd": "REGISTER(sandbox+2)",
+      "id": "2单",
+      "at": "2026-07-11T14:34:50.465Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
