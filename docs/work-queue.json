@@ -6858,10 +6858,11 @@
       "reviewNote": "PASS 独立真跑(agent a8b8eb763):Decision Package装配+Pareto+ExplanationChain+门。R6整包双跑字节一致·纯聚合零业务常数·weakestDataMode取最弱不冒充LIVE。测谎器validateDecisionPackage真抓5类注入(幽灵方案/无provId数字/伪造delta/越白名单引擎/幽灵推荐)·check-decision-kernel.mjs动态green→red自证实跑绿·方案键锁三真求解器白名单。测7/7。非阻断:纯plan_generate类recommendedKey=null属诚实(<2可比→null)。"
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T09:27:19.155Z"
+        "wip": "2026-07-11T09:27:19.155Z",
+        "built": "2026-07-11T13:13:58.817Z"
       },
       "id": "WO-L2-4",
       "title": "QOS 旁挂接线(暗发·观察态)+ 持久化 + 读端点 + 事件",
@@ -6899,13 +6900,15 @@
       "discipline": "暗发观察态·additive·fire-and-forget 不阻塞首包·不改 answer/路由(NG1·KILL-MOCK-RED)。跨层:依赖 L1-A(WO-L1A-3·需求图可读若开);L1-B 就绪度可选(兜底求解器直算·PRD §9 NG4)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-4 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-4 dev2] ",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T09:37:43.781Z"
+        "wip": "2026-07-11T09:37:43.781Z",
+        "built": "2026-07-11T13:13:58.889Z"
       },
       "id": "WO-L2-5",
       "title": "采纳正门(Decision+ActionDraft·R4)+ 本体回写",
@@ -6937,7 +6940,8 @@
       "discipline": "additive·采纳经 R4 正门不直写真值(RL4)·与既有 Decision 台账不双份(RL3)·母体回写(铁律0·KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "DONE",
@@ -7032,9 +7036,12 @@
       "reviewNote": "PASS 独立真跑(agent ae5ccd0af):案例库+确定性检索+读端点。R9四处齐·双实现R2隔离。确定性检索双跑字节一致·判别力真(常州query→常州案例#1非恒返)·breakdown可解释R13。读端点HTTP往返真跑+真起服务诚实空态。暗发关闸memory.cbr OFF→404·put零writer空表(摄取待L1.5-3)。decision-case:check有牙·L1.5测11绿·全量datacore1152 passed 0 failed·build四包绿。G-3b读侧BASE达成。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T13:13:58.960Z",
+        "built": "2026-07-11T13:13:59.038Z"
+      },
       "id": "WO-L1.5-3",
       "title": "案例摄取接线(DataCore Decision→案例·agent 终态旁路·L2 端口)+ agent 先查案例库(治 G-3b 读写闭合)",
       "priority": "P1",
@@ -7071,12 +7078,16 @@
       "discipline": "暗发·additive(旧 search_experience/recordExperience 不删)·案例数字不当真值·经工具溯源(KILL-MOCK-RED)。跨层:消费 L2 DecisionArtifact 端口(WO-L2-5·PRD §9 缺则退纯文本特征·软依赖)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-3 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-3 dev2] ",
+      "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T13:13:59.106Z",
+        "built": "2026-07-11T13:13:59.178Z"
+      },
       "id": "WO-L1.5-4",
       "title": "反馈信号闭环 + 决策模式挖掘→接现校准 Action R4(feedback→调参真生效·不自改真值)",
       "priority": "P1",
@@ -7107,7 +7118,8 @@
       "discipline": "additive·校准数学零改·参数变更经 R4 正门 autoApply 恒 false 不自改真值(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "BUILT",
@@ -7558,8 +7570,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1.5-5",
-      "at": "2026-07-11T13:11:19.697Z"
+      "id": "WO-L1.5-4",
+      "at": "2026-07-11T13:13:59.178Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
