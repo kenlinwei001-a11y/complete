@@ -7500,11 +7500,13 @@
       }
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T13:26:11.000Z"
+      },
       "id": "WO-FEATURE-PARITY-GATE",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev2",
       "deps": [],
       "doc": "docs/work-queue.json",
       "lane": "gate-harden",
@@ -7571,10 +7573,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "RECONCILE(clobber修复)",
-      "id": "3项",
-      "at": "2026-07-11T13:14:30.728Z"
+      "role": "dev2",
+      "cmd": "WIP",
+      "id": "WO-FEATURE-PARITY-GATE",
+      "at": "2026-07-11T13:26:11.000Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
