@@ -6899,11 +6899,12 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T09:37:43.781Z",
-        "built": "2026-07-11T11:38:31.324Z"
+        "built": "2026-07-11T11:38:31.324Z",
+        "blocked": "2026-07-11T11:56:36.013Z"
       },
       "id": "WO-L2-5",
       "title": "采纳正门(Decision+ActionDraft·R4)+ 本体回写",
@@ -6936,7 +6937,7 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] ",
-      "blockReason": ""
+      "blockReason": "关4幂等FAIL: decision/service.ts adopt()(约:111-151)无 already-adopted 守卫·重复采纳静默双写(连采2次→2 Decision+2 ActionDraft 均DRAFT挂同一packageId·旧记录沦孤儿未标SUPERSEDED·两次均200无警告)·且 service.ts:109 注释自称'采纳幂等以最新为准'与实现不符。真实影响:用户二次点采纳→S2审批队列多一张重复待批草稿+问责台账多一条重复。最小修(adopt()头部拿到pkg后建Decision前·三选一):①幂等返回 if(pkg.status==='ADOPTED'&&pkg.decisionRef)return pkg; ②明确拒重复 throw validationError('该决策已采纳'); ③兑现'以最新为准':先标旧 decisionRef/actionDraftRefs 对应记录 SUPERSEDED 再建新。任一即满足门4非静默双写。务必补1条 re-adopt 单测守回归(现 decision-kernel-adopt.test.ts 4例未覆盖重采纳)。其余5关全绿:R4采纳正门(真产Decision+ActionDraft·DRAFT非EXECUTED·payload逐值===求解器draftPayload非合成)/本体回写§2.H(DecisionPackage+CBR家族非空壳)/切片无漂移有牙/暗发Entitlement双注册齐(decision.kernel+act.adopt-to-draft两侧)/门+测试20绿+contracts-only-shared。"
     },
     {
       "status": "DONE",
@@ -7518,9 +7519,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "WO-L1B-4",
-      "at": "2026-07-11T11:40:17.980Z"
+      "cmd": "BLOCKED",
+      "id": "WO-L2-5",
+      "at": "2026-07-11T11:56:36.013Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
