@@ -1627,12 +1627,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
     await requireSim(c, "sim.sandbox");
-    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown>; feedSpecs?: FeedSpec[]; horizonTicks?: number };
+    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown>; feedSpecs?: FeedSpec[]; horizonTicks?: number; grounding?: boolean };
     const base = b.baseSnapshot ?? {};
-    // S6 暗发：仅 sim.temporal_grounding 开且传了 feedSpecs 才冻结 feeds（关闸=空 feeds=v1.1·acceptance #8）。
-    const tg = await features.enabled(c.tenantId, "sim.temporal_grounding");
+    // WO-RC2-DEFAULT-FEED（§3.1）：接地是**按会话 opt-in**——租户级 sim.temporal_grounding OR env（temporalGroundingOn）
+    // OR 本次创建显式 body.grounding===true（decouple·不翻租户默认·不影响 certification 读的租户档）。三者任一开且传了
+    // feedSpecs 才从真源冻结 feeds；否则空 feeds（关闸=v1.1·acceptance #8）。冻结进会话即"本会话已接地"的持久信号，tick 据此注入。
+    const grounded = (await temporalGroundingOn(c)) || b.grounding === true;
     const horizonTicks = Math.max(1, Math.floor(Number(b.horizonTicks ?? 1)));
-    const { feeds, gaps } = tg && Array.isArray(b.feedSpecs) ? await resolveFrozenFeeds(c, b.feedSpecs, horizonTicks) : { feeds: [], gaps: [] };
+    const { feeds, gaps } = grounded && Array.isArray(b.feedSpecs) ? await resolveFrozenFeeds(c, b.feedSpecs, horizonTicks) : { feeds: [], gaps: [] };
     const s: SimSession = {
       id: newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: b.scope ?? {},
       status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
@@ -1667,9 +1669,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 增量 3 传导核接入（opt-in）：本租户有 PUBLISHED PropagationRule 才传导，否则退回恒等 tick
     // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
     const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
-    // S6（§3.2·暗发）：仅 sim.temporal_grounding 开时注入冻结 feeds（关闸 = 空 feeds = v1.1 逐 tick 字节一致·acceptance #8）。
-    const tg = await features.enabled(c.tenantId, "sim.temporal_grounding");
-    const feeds = tg ? (s.feeds ?? []) : [];
+    // WO-RC2-DEFAULT-FEED（§3.2）：注入本会话**创建时已冻结**的 feeds（decouple·不再读租户 sim.temporal_grounding
+    // ——tick 与 certification 读的租户档解耦）。feeds 仅在创建时"已接地"（temporalGroundingOn OR body.grounding）才非空，
+    // 故未接地会话 s.feeds=[] → 逐 tick 字节一致 v1.1（关闸·acceptance #8）；不引入新租户级读。
+    const feeds = s.feeds ?? [];
     // 有 PUBLISHED 传导规则 或 有冻结 feeds → 走真传导（否则恒等桩·可回退）。
     const propagate = propRules.length > 0 || feeds.length > 0;
     let graph: PropagationGraph = { objects: [], links: [] };

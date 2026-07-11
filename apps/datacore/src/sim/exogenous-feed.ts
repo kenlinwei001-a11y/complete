@@ -95,14 +95,16 @@ function resolveOne(spec: FeedSpec, horizonTicks: number, src: FeedResolveSource
   }
 
   if (source.kind === "purchase_order_eta") {
-    // 在途订单：到达 tick 入库（离散事件·天然时序）。props.arriveTick(int) + props.qty。
+    // 在途订单：到达 tick 入库（离散事件·天然时序）。真源字段 props.arriveTick(int)；
+    // 若对象未声明 arriveTick 而声明了 props.etaDay（真到货日·相对 forecastStart），按**日粒 sim 时钟**
+    // （SimClockService §6.2：1 tick = 1 模拟日）作恒等映射 etaDay→arriveTick（读真字段·非合成/外推）。props.qty 必存。
     const arrivals: { tick: number; delta: number }[] = [];
     for (const po of src.purchaseOrders) {
-      const t = num(po.props.arriveTick, NaN);
+      const t = num(po.props.arriveTick, num(po.props.etaDay, NaN));
       const qty = num(po.props.qty, NaN);
       if (Number.isFinite(t) && Number.isFinite(qty) && t >= 0 && t < horizonTicks) arrivals.push({ tick: Math.floor(t), delta: round12(qty) });
     }
-    if (arrivals.length === 0) return gap(`无在途订单落在 horizon 内（需 props.arriveTick+qty）·无真源不合成`);
+    if (arrivals.length === 0) return gap(`无在途订单落在 horizon 内（需 props.arriveTick|etaDay + qty）·无真源不合成`);
     // 同 tick 合并（确定性）。
     const byTick = new Map<number, number>();
     for (const a of arrivals) byTick.set(a.tick, round12((byTick.get(a.tick) ?? 0) + a.delta));
