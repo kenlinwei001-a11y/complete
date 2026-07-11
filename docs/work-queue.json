@@ -7524,7 +7524,8 @@
     {
       "at": {
         "wip": "2026-07-11T15:52:47.203Z",
-        "built": "2026-07-11T16:32:55.044Z"
+        "built": "2026-07-11T16:32:55.044Z",
+        "reviewed": "2026-07-11T19:46:42.988Z"
       },
       "id": "WO-SANDBOX-TRUST-BADGE",
       "title": "S2·沙盘每数字dataMode徽标(LIVE/合成/未校准)+收编CAP-10沙盘RiskTop3标注统一",
@@ -7569,7 +7570,8 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "[审核方复验:核心命门PASS但合格未竟·保持BUILT·复验commit 6f9b96bd] 徽标不作假(实证0假LIVE·未校准真派生coefficientRef·21枚渲染)。不可DONE三因:①头号承诺「标合成」未达——合成值现全显UNKNOWN「来源待披露」占位·分不清合成vs来源未知·三档LIVE/SYNTHETIC/STALE全押未完的BE半;②CAP-10收编空头承诺(c251a2d8没碰RiskTop3/ModelCapacitySlice·三套dataMode各行其是);③透传非兜底(前端cellDataMode逐字照信后端nodeObjectMode·无独立合成识别·G4谎言真正防线在BE半不在S2·当前诚实仅因nodeObjectMode尚无后端填充)。待WO-SANDBOX-TRUST-BADGE-BE co-verify再议DONE;CAP-10要么真交付要么从WO撤声明。证据/tmp/s2-evidence。"
     },
     {
       "id": "WO-SANDBOX-TRUST-BADGE-BE",
@@ -7582,7 +7584,7 @@
       ],
       "doc": "docs/WO-SANDBOX-TRUST-BADGE.md",
       "title": "S2后端半:propagateTick/view-config 透传 dataMode 诚实位(真数值派生属性=LIVE·合成对象origin=SYNTHETIC·关键源滞后=STALE·传导系数未校准=UNCALIBRATED)+SimTickState加dataMode字段+SandboxViewConfig.nodeObjectState携每对象每变量来源位",
-      "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。",
+      "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。 【审核方·S2 co-verify要求】BE半填dataMode/nodeObjectMode时是G4谎言的真正防线:合成materialized值不得标LIVE(须按provenance——真导入rawDataset才LIVE·合成→SYNTHETIC)。与WO-IMPORT-REPLACE-SYNTHETIC(G4 BLOCK)同源返工。S2前端只透传照信·防线在此。co-verify:BE完成后与S2 WO-SANDBOX-TRUST-BADGE一起真浏览器验合成不冒充LIVE。",
       "at": {
         "wip": "2026-07-11T18:27:37.158Z",
         "built": "2026-07-11T19:22:04.603Z"
@@ -8446,14 +8448,27 @@
       },
       "title": "RC-2沙盘开箱默认真feed源(S6提供能力但demo四源全EMPTY_DATA字段不匹配resolver→静止)·播dailyP50+coverageDays的DemandSegment/变tick A8序列/forecast覆盖·让demo开箱推tick世界真动",
       "note": "[数据/S6衔接·RC-2 out-of-box闭合·一手证据VERIFIED§3+S6复验] S6 ExogenousFeed引擎真通(注入真feed世界真动320000→570000已证)但demo开箱四feed源全EMPTY_DATA:demand_segment只聚合p50无dailyP50/coverageDays·sop_version有demand无dailyDemand·purchase_order字段etaDay非resolver读arriveTick·maint_plan字段week非tick/capacityDelta·ts_series全A8点tick0(synthetic写死)。需播真feed源(或修resolver字段映射+播dailyP50+coverageDays)让demo不配置推tick见非零轨迹。与WO-IMPORT-SCENARIO-LAUNCHER-WIRE协同。green→red:demo开箱推tick·KPI/传导目标态随tick真变非静止。"
+    },
+    {
+      "id": "WO-CAPFORECAST-DATAMODE-HONEST",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:46:42.988Z"
+      },
+      "title": "沙盘capacity_forecast合成冒充实测(KILL-MOCK-RED):ModelCapacitySlice.tsx:155活服务顶层dataMode=SYNTHETIC却每行live=true→前端把武汉/厦门/自贡紧张度标「实测」(就在S2「系数未校准」正上方矛盾)·修行级dataMode诚实或不标实测",
+      "note": "[前端+后端·KILL-MOCK-RED命门·S2复验一手发现] 独立真起活服务实测:capacity_forecast返回顶层dataMode=SYNTHETIC但每行live=true·ModelCapacitySlice据行live标「实测」=合成冒充实测(违铁律0.4·用户最恨)。与S2徽标同页矛盾(一个标未校准一个标实测)。修:行级dataMode按真provenance派生·合成行不得标实测·与S2/TRUST-BADGE-BE dataMode口径统一(这正是CAP-10收编该做的「统一」)。green→red:合成capacity_forecast行现标实测·修后应标合成/估算。"
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-BRANCH-INJECT",
-      "at": "2026-07-11T19:22:04.682Z"
+      "role": "review",
+      "cmd": "S2复验(保持BUILT合格未竟)+capforecast合成冒充实测WO",
+      "id": "WO-SANDBOX-TRUST-BADGE",
+      "at": "2026-07-11T19:46:42.988Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
