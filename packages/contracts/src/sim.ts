@@ -49,11 +49,58 @@ export const PropagationRuleSchema = z.object({
   combine: z.enum(["sum", "max"]).default("sum"), // 多入边如何累加
   decay: z.object({ window: z.number().int(), den: z.number() }).nullable().default(null), // 复用 risk.ts 衰减，可空
   clamp: z.object({ min: z.number(), max: z.number() }).nullable().default(null),
+  // S6 约束层（§3.5·additive·optional·旧规则/seed 反序列化零破坏）：物理边界（如库存 min=0、利用率 max=100）。
+  // 逐 tick clamp 并记违例入 constraintViolations（clamp 只夹不报，bounds 违例暴露·不静默）。min/max 各可选（单边约束）。
+  bounds: z.object({ min: z.number().optional(), max: z.number().optional() }).optional(),
   // 系数引用一条可编辑规则的 rule.params[paramKey]（G-10 P1 已落，"改规则即改推演"）；空=用内联 coefficient。
   coefficientRef: z.object({ ruleKey: z.string(), paramKey: z.string() }).nullable().default(null),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).default("DRAFT"),
 });
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
+
+// ── CellRef（作用到谁的哪个状态变量·抽象·任意行业·R14）——S6 ExogenousFeed 与 S1 ScenarioAction 共用 ──
+// （提前定义：ExogenousFeed.target / SimSession.feeds 依赖它，故置于 SimSession 之前。）
+export const CellRefSchema = z.object({
+  objectType: z.string(),
+  objectIds: z.union([z.array(z.string()), z.literal("ALL")]),
+  stateVar: z.string(),
+});
+export type CellRef = z.infer<typeof CellRefSchema>;
+
+// ── ExogenousFeed 外生驱动序列（WO-SANDBOX-TEMPORAL-GROUNDING·S6·§3.1） ──────────
+// 未来需求/在途/检修等**真源**按 scope+horizon 在 createSimSession 时解出逐 tick 序列并**冻结进会话**
+// （R6·同会话同 feed·会话内不再查库）。逐 tick 注入 propagateTick 的 target 格（R13 溯源带 feedKey）。
+// **无真源→不生成该 feed**（live=false·绝不合成未来·KILL-MOCK-RED）；coverageTicks<horizon→预检报缺口卡不外推。
+export const ExogenousFeedSourceSchema = z.discriminatedUnion("kind", [
+  // p50 预测·按真产能份额分摊（复用 risk.ts 分摊先例）。segmentKeys 匹配 DemandSegment 对象 segId/segment。
+  z.object({ kind: z.literal("demand_segment"), segmentKeys: z.array(z.string()) }),
+  z.object({ kind: z.literal("sop_version"), versionRef: z.string() }),
+  z.object({ kind: z.literal("purchase_order_eta") }), // 在途→到达 tick 入库
+  z.object({ kind: z.literal("maint_plan") }), // 检修窗口→产能置 0/降
+  z.object({ kind: z.literal("ts_series"), seriesKey: z.string() }), // A8 稀疏/密序列
+]);
+export type ExogenousFeedSource = z.infer<typeof ExogenousFeedSourceSchema>;
+
+export const ExogenousFeedSchema = z.object({
+  feedKey: z.string(),
+  target: CellRefSchema, // 注入到谁的哪个变量
+  source: ExogenousFeedSourceSchema, // 真源引用（R13·只认注册真源）
+  series: z.array(z.object({ tick: z.number().int(), delta: z.number() })), // init 从真源解出并冻结（R6）
+  live: z.boolean(), // 真源存在才 true（沿 risk.ts 诚实位口径·无真源不视作真）
+  coverageTicks: z.number().int().default(0), // 真源实际覆盖的 tick 数（诚实·绝不外推超此）
+});
+export type ExogenousFeed = z.infer<typeof ExogenousFeedSchema>;
+
+// ── ConstraintViolation 约束违例（S6·§3.5·物理不可能轨迹逐 tick 暴露·不静默） ──────
+export const ConstraintViolationSchema = z.object({
+  tick: z.number().int(),
+  objectId: z.string(),
+  stateVar: z.string(),
+  raw: z.number(), // clamp 前的原始值（可能为负/超上限）
+  clamped: z.number(), // clamp 后落在 [min,max] 的值
+  boundRef: z.string(), // 触发的约束来源（规则 key / 类型属性 meta）
+});
+export type ConstraintViolation = z.infer<typeof ConstraintViolationSchema>;
 
 // ── SimSession 会话状态机（§2.1 sim_session 表） ──────────────────────────────
 export const SimSessionStatusSchema = z.enum(["DRAFT", "READY", "RUNNING", "PAUSED", "ENDED"]);
@@ -67,6 +114,8 @@ export const SimSessionSchema = z.object({
   status: SimSessionStatusSchema.default("DRAFT"),
   curTick: z.number().int().default(0),
   parentCheckpointId: z.string().nullable().default(null), // 非空 = 本会话是某检查点的分支
+  // S6 外生驱动（additive·default([])·旧会话反序列化零破坏·NG6）：init 冻结的逐 tick 真源序列。
+  feeds: z.array(ExogenousFeedSchema).default([]),
   createdAt: z.string(),
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
@@ -89,6 +138,8 @@ export const SimTickStateSchema = z.object({
   dataMode: SimDataModeSchema.optional(),
   // S2：逐格诚信位（对象 id → 状态变量 → 位）——细粒度徽标（后端从 origin/dataHealth/coefficientRef 派生）。
   cellDataMode: z.record(z.string(), z.record(z.string(), SimDataModeSchema)).optional(),
+  // S6（additive·optional·旧 SimTickState 反序列化零破坏）：本 tick 约束违例（§3.5·物理不可能轨迹暴露·不静默）。
+  constraintViolations: z.array(ConstraintViolationSchema).optional(),
 });
 export type SimTickState = z.infer<typeof SimTickStateSchema>;
 
@@ -189,13 +240,7 @@ export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
 // 求解器维须待 WO-SANDBOX-TEMPORAL-GROUNDING（S6·外生驱动/overlay/守恒）才上线，否则基线==情景=假评估
 // （KILL-MOCK-RED）。本文件定义全四原型契约（前瞻·additive），执行层 S1 只接 shock，其余诚实答"时序接地建设中"+工单。
 
-/** 作用到谁的哪个状态变量（抽象·任意行业·R14）。 */
-export const CellRefSchema = z.object({
-  objectType: z.string(),
-  objectIds: z.union([z.array(z.string()), z.literal("ALL")]),
-  stateVar: z.string(),
-});
-export type CellRef = z.infer<typeof CellRefSchema>;
+// CellRefSchema 已上移至 SimSession 之前（ExogenousFeed/SimSession.feeds 依赖），此处不再重复定义。
 
 /** 情景动作四原型（判别联合）。S1 执行层只认 shock；hold/trend/policy 契约就位待 S6 接地。 */
 export const ScenarioActionSchema = z.discriminatedUnion("kind", [

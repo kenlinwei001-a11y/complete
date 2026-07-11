@@ -43,16 +43,18 @@ class PgSimRepo implements SimRepo {
       baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
       status: r.status as SimSession["status"], curTick: r.cur_tick as number,
       parentCheckpointId: (r.parent_checkpoint_id as string | null) ?? null,
+      // S6（§3.1·additive）：外生驱动冻结序列（旧行/无该列 → 空数组·NG6 零破坏）。
+      feeds: (r.feeds as SimSession["feeds"]) ?? [],
       createdAt: (r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)),
     };
   }
   async createSession(s: SimSession) { await this.putSession(s); }
   async putSession(s: SimSession) {
     await this.pool.query(
-      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7`,
-      [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId, s.createdAt],
+      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, feeds, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, feeds=$8`,
+      [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId, JSON.stringify(s.feeds ?? []), s.createdAt],
     );
   }
   async getSession(tenantId: string, id: string) {
@@ -65,9 +67,10 @@ class PgSimRepo implements SimRepo {
   }
   async putTickState(ts: SimTickState) {
     await this.pool.query(
-      `INSERT INTO sim_tick_state (session_id, tenant_id, tick, state, pending, trace) VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (session_id, tick) DO UPDATE SET state=$4, pending=$5, trace=$6`,
-      [ts.sessionId, ts.tenantId, ts.tick, JSON.stringify(ts.state), JSON.stringify(ts.pending), ts.trace ? JSON.stringify(ts.trace) : null],
+      `INSERT INTO sim_tick_state (session_id, tenant_id, tick, state, pending, trace, constraint_violations) VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (session_id, tick) DO UPDATE SET state=$4, pending=$5, trace=$6, constraint_violations=$7`,
+      [ts.sessionId, ts.tenantId, ts.tick, JSON.stringify(ts.state), JSON.stringify(ts.pending), ts.trace ? JSON.stringify(ts.trace) : null,
+       ts.constraintViolations && ts.constraintViolations.length > 0 ? JSON.stringify(ts.constraintViolations) : null],
     );
   }
   private rowToTick(r: Record<string, unknown>): SimTickState {
@@ -75,6 +78,8 @@ class PgSimRepo implements SimRepo {
       sessionId: r.session_id as string, tenantId: r.tenant_id as string, tick: r.tick as number,
       state: r.state as SimTickState["state"], pending: (r.pending as SimTickState["pending"]) ?? [],
       trace: (r.trace as SimTickState["trace"]) ?? null,
+      // S6（§3.5·additive）：约束违例（旧行/无该列/无违例 → 略去·optional 反序列化零破坏）。
+      ...(r.constraint_violations ? { constraintViolations: r.constraint_violations as SimTickState["constraintViolations"] } : {}),
     };
   }
   async getTickState(tenantId: string, sessionId: string, tick: number) {

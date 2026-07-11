@@ -63,6 +63,7 @@ import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, DEFAULT_SANDBOX_HEAT_THRESHOLD, type CertScope, type TrialTickInput } from "./sim/certification.js";
+import { resolveExogenousFeeds, type FeedResolveSources, type FeedSpec } from "./sim/exogenous-feed.js";
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
@@ -1466,20 +1467,65 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return snapshot;
   };
 
+  // S6（§3.1）：把 feedSpecs 从**真源**（loadContext 真对象 + A8 真点）解出逐 tick 序列并**冻结进会话**。
+  // 无真源 → 该 feed 不生成（feedGaps 诚实报缺口·绝不合成未来·KILL-MOCK-RED）。仅 sim.temporal_grounding 开时启用
+  // （关闸 = 不解析·feeds 空 = v1.1 行为·acceptance #8）。
+  const resolveFrozenFeeds = async (
+    c: AuthCtx,
+    feedSpecs: FeedSpec[],
+    horizonTicks: number,
+  ): Promise<{ feeds: SimSession["feeds"]; gaps: { feedKey: string; gapCode: string; detail: string }[] }> => {
+    if (feedSpecs.length === 0) return { feeds: [], gaps: [] };
+    const sctx = await solvers.loadContext(c.tenantId, undefined, { withExtended: true });
+    const sources: FeedResolveSources = {
+      demandSegments: sctx.demandSegments ?? [],
+      sopVersions: sctx.sopVersions ?? [],
+      purchaseOrders: sctx.purchaseOrders ?? [],
+      maintPlans: sctx.maintPlans ?? [],
+      // A8 真点：seriesKey → 逐 tick 真实测量（tick 已归一·无 tick 的点略去·不外推）。
+      tsSeriesPoints: () => [], // 覆盖见下（按需查库·避免无 ts_series feed 时空扫）
+    };
+    // ts_series feed 存在时才查 A8（懒解析·确定性）。
+    const tsKeys = feedSpecs.filter((f) => f.source.kind === "ts_series").map((f) => (f.source as { seriesKey: string }).seriesKey);
+    if (tsKeys.length > 0) {
+      const cache = new Map<string, { tick: number; value: number }[]>();
+      for (const key of tsKeys) {
+        if (cache.has(key)) continue;
+        const series = await repos.tsSeries.list(c.tenantId, (sr) => sr.seriesKey === key);
+        const pts: { tick: number; value: number }[] = [];
+        for (const sr of series) {
+          for (const p of await repos.tsPoints.list(c.tenantId, sr.id)) {
+            if (typeof p.tick === "number") pts.push({ tick: p.tick, value: p.values[sr.measureFields[0] ?? "value"] ?? 0 });
+          }
+        }
+        cache.set(key, pts);
+      }
+      sources.tsSeriesPoints = (key) => cache.get(key) ?? [];
+    }
+    const { feeds, gaps } = resolveExogenousFeeds(feedSpecs, horizonTicks, sources);
+    return { feeds, gaps };
+  };
+
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
     await requireSim(c, "sim.sandbox");
-    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
+    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown>; feedSpecs?: FeedSpec[]; horizonTicks?: number };
     const base = b.baseSnapshot ?? {};
+    // S6 暗发：仅 sim.temporal_grounding 开且传了 feedSpecs 才冻结 feeds（关闸=空 feeds=v1.1·acceptance #8）。
+    const tg = await features.enabled(c.tenantId, "sim.temporal_grounding");
+    const horizonTicks = Math.max(1, Math.floor(Number(b.horizonTicks ?? 1)));
+    const { feeds, gaps } = tg && Array.isArray(b.feedSpecs) ? await resolveFrozenFeeds(c, b.feedSpecs, horizonTicks) : { feeds: [], gaps: [] };
     const s: SimSession = {
       id: newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: b.scope ?? {},
       status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
+      feeds,
       createdAt: new Date().toISOString(),
     };
     await repos.sim.createSession(s);
     await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: 0, state: simState(base), pending: [], trace: null });
     await outbox.emit(c.tenantId, "sim.session_created", { sessionId: s.id, status: s.status });
-    return reply.status(201).send(s);
+    // feedGaps 随创建响应回带（诚实缺口卡·前端可呈现"某 feed 无真源未生成"）。
+    return reply.status(201).send({ ...s, ...(gaps.length > 0 ? { feedGaps: gaps } : {}) });
   });
   const getSimOr404 = async (c: AuthCtx, id: string): Promise<SimSession> => {
     const s = await repos.sim.getSession(c.tenantId, id);
@@ -1503,25 +1549,31 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 增量 3 传导核接入（opt-in）：本租户有 PUBLISHED PropagationRule 才传导，否则退回恒等 tick
     // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
     const propRules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED only
-    const propagate = propRules.length > 0;
+    // S6（§3.2·暗发）：仅 sim.temporal_grounding 开时注入冻结 feeds（关闸 = 空 feeds = v1.1 逐 tick 字节一致·acceptance #8）。
+    const tg = await features.enabled(c.tenantId, "sim.temporal_grounding");
+    const feeds = tg ? (s.feeds ?? []) : [];
+    // 有 PUBLISHED 传导规则 或 有冻结 feeds → 走真传导（否则恒等桩·可回退）。
+    const propagate = propRules.length > 0 || feeds.length > 0;
     let graph: PropagationGraph = { objects: [], links: [] };
     let ruleParams: RuleParamLookup = {};
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
     if (propagate) {
-      // 物化图 + 规则参数（buildPropagationInputs 同源，Trial Tick 复用同一装配）。
+      // 物化图 + 规则参数（buildPropagationInputs 同源，Trial Tick 复用同一装配）。feed "ALL" 目标解析亦用此图。
       ({ graph, ruleParams } = await buildPropagationInputs(c));
     }
     let trace: PropagationTrace[] | null = null;
     for (let i = 0; i < n; i++) {
       const beforeTick = s.curTick; // 当前 tick t（结算 pending arriveTick===t）
       if (propagate) {
-        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams);
+        const out = propagateTick(graph, state, propRules, pending, beforeTick, ruleParams, feeds);
         state = out.next; pending = out.pending; trace = out.trace; s.curTick += 1;
+        const cv = out.constraintViolations;
+        await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending, trace, ...(cv.length > 0 ? { constraintViolations: cv } : {}) });
       } else {
-        // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
+        // 无 PUBLISHED 传导规则且无 feeds：恒等桩进位（状态原样，确定性 R6；可回退）。
         state = simState(state); pending = []; trace = null; s.curTick += 1;
+        await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending, trace });
       }
-      await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending, trace });
     }
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
@@ -1561,7 +1613,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!cp || cp.sessionId !== parent.id) throw notFound("checkpoint not found");
     const baseState = (await repos.sim.getTickState(c.tenantId, parent.id, cp.tick))?.state ?? {};
     const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
-      status: "READY", curTick: 0, parentCheckpointId: cp.id, createdAt: new Date().toISOString() };
+      status: "READY", curTick: 0, parentCheckpointId: cp.id, feeds: parent.feeds ?? [], createdAt: new Date().toISOString() };
     await repos.sim.createSession(child);
     await repos.sim.putTickState({ sessionId: child.id, tenantId: c.tenantId, tick: 0, state: simState(baseState), pending: [], trace: null });
     await outbox.emit(c.tenantId, "sim.branched", { parentSessionId: parent.id, childSessionId: child.id, checkpointId: cp.id });

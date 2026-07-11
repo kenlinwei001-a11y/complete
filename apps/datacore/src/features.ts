@@ -105,6 +105,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
   { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-SANDBOX-TEMPORAL-GROUNDING（S6·暗发·RL2·defaultOff）：时序推演接地——外生驱动序列冻结注入 + 求解器模拟态
+  // overlay + hold 守恒 + 约束层。关 = feeds 不注入/overlay 不启用/不 clamp → 回 v1.1 行为（contracts default([]) 旧会话
+  // 零破坏·acceptance #8）。AgentCore registry.ts 同键同 defaultOn:false 镜像（feature-parity 门守双注册）。
+  { key: "sim.temporal_grounding", name: "时序推演接地（外生驱动/模拟态/守恒/约束·暗发）", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
   // WO-SANDBOX-AS-RENDER-TARGET（S1·暗发·RL2）：时序推演意图→沙盘渲染器落地（五触发归一）。关 = orchestrator
   // 不产 sandbox_render 答案块（回落 Path B/旧 what-if URL·旧路径未删）。权威 entitlement 由 DataCore 下发，
   // AgentCore features/registry.ts 同键同 defaultOn:false 镜像（热路径闸认得该键）。sim:check §3 守全 sim.* defaultOn:false。

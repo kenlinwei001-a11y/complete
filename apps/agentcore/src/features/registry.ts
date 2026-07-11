@@ -138,6 +138,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
     key: "sim.sandbox_render", name: "时序推演意图落地渲染", level: "BLOCK", defaultOn: false,
     bindings: { intents: ["sim.shock_whatif", "sim.hold_whatif", "sim.trend_whatif", "sim.policy_whatif"] },
   },
+  // WO-SANDBOX-TEMPORAL-GROUNDING（S6·暗发·RL2·defaultOff）：时序推演接地（外生驱动/模拟态 overlay/hold 守恒/约束）。
+  // 引擎侧落 DataCore（本键权威在 datacore features.ts·同键同 defaultOn:false）；此处**镜像注册**使 featureEnabled
+  // 认得该键（feature-parity 门守双注册·防 unknown-key 恒真陷阱）。agentcore 当前不直接消费（引擎侧），镜像即对齐。
+  { key: "sim.temporal_grounding", name: "时序推演接地（外生驱动/模拟态/守恒/约束·暗发）", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
