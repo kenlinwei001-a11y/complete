@@ -7765,16 +7765,17 @@
       "id": "WO-IMPORT-MULTITABLE",
       "priority": "P1",
       "deps": [
-        "WO-DB-LLM-REQUIRED-NO-FLOOR"
+        "WO-MERGE-03"
       ],
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G1多表FK批量导入:新端点POST /a/v1/modeling/derive-batch(rawDatasetIds[]→跨表FK检测→一张本体图类型+链路→publish/materialize)+多文件/zip上传·复用deriveModelingSuggestion(modeling.ts:89已确定性无LLM)",
-      "note": "[LaneB·datacore·索引§2序#3·HANDOFF-databuilder-genuine-and-import.md] Stage3.15导入侧·⛔不把生成逻辑塞平台(违R14·debattery:check绿)。守R-NO-ORPHAN-SOURCE:物化对象挂真rawDatasetId(green→red删源→报孤儿)。验收:传factory+production_line+equipment三表→draft出3类型+ProductionLine→Factory/Equipment→ProductionLine两链路逐值·物化/objects?type=Equipment真查origin=MATERIALIZED。",
+      "note": "[LaneB·datacore·索引§2序#3·HANDOFF-databuilder-genuine-and-import.md] Stage3.15导入侧·⛔不把生成逻辑塞平台(违R14·debattery:check绿)。守R-NO-ORPHAN-SOURCE:物化对象挂真rawDatasetId(green→red删源→报孤儿)。验收:传factory+production_line+equipment三表→draft出3类型+ProductionLine→Factory/Equipment→ProductionLine两链路逐值·物化/objects?type=Equipment真查origin=MATERIALIZED。 【Dev-4并行2026-07-11:deps NO-FLOOR→MERGE-03松开·复用deriveModelingSuggestion确定性不经comprehend·可立即开工与Dev-2 build-fix并行】 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
       "status": "TODO",
       "owner": "",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
-      }
+      },
+      "assignedDev": "dev4-import"
     },
     {
       "id": "WO-IMPORT-ONTOLOGY",
@@ -7784,12 +7785,13 @@
       ],
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G2客户本体直导:契约OntologyImportBundle({objects,relations})+端点POST /a/v1/ontology/import(校验→逐对象upsertType+逐关系upsertLinkType复用:2002/:2273→按名匹配数据建sourceBindings→发布)",
-      "note": "[LaneB·datacore·索引§2序#4·与BSTACK-DERIVE] 诚实边界:bundle类型/关系与已上传数据对不上(字段缺/表缺)→报覆盖缺口·不静默建空类型。验收:导入CALB objects.json(7类)+relations.json(HAS/USES/PRODUCES)→/admin/modeling真见7类+关系。回写§2登OntologyImportBundle。",
+      "note": "[LaneB·datacore·索引§2序#4·与BSTACK-DERIVE] 诚实边界:bundle类型/关系与已上传数据对不上(字段缺/表缺)→报覆盖缺口·不静默建空类型。验收:导入CALB objects.json(7类)+relations.json(HAS/USES/PRODUCES)→/admin/modeling真见7类+关系。回写§2登OntologyImportBundle。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
       "status": "TODO",
       "owner": "",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
-      }
+      },
+      "assignedDev": "dev4-import"
     },
     {
       "id": "WO-IMPORT-SCENARIO",
@@ -7800,12 +7802,13 @@
       ],
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G3场景导入:端点POST /a/v1/scenarios/import(Stage3.15场景JSON→映射ScenarioCard presetContext.selectedObjects+slotPresets+targetView按type)→进场景目录·衔接沙盘渲染器",
-      "note": "[LaneB·datacore·索引§2序#5·衔接WO-SANDBOX-AS-RENDER-TARGET(S1)] equipment_failure类场景导入后可直接进沙盘推演。验收:导入order_acceptance场景→场景目录出现→一键推演经QOS出ACCEPT/风险(不可跑通则诚实缺求解器/数据)。",
+      "note": "[LaneB·datacore·索引§2序#5·衔接WO-SANDBOX-AS-RENDER-TARGET(S1)] equipment_failure类场景导入后可直接进沙盘推演。验收:导入order_acceptance场景→场景目录出现→一键推演经QOS出ACCEPT/风险(不可跑通则诚实缺求解器/数据)。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
       "status": "TODO",
       "owner": "",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
-      }
+      },
+      "assignedDev": "dev4-import"
     },
     {
       "id": "WO-IMPORT-REPLACE-SYNTHETIC",
@@ -7815,20 +7818,21 @@
       ],
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G4真数据换hash假值(可选·配CAP-01):demo/租户配置world_source=synthetic|imported·选imported→求解器读Stage3.15导入真值而非hash·从源头削mockTightness/util稀释假值",
-      "note": "[LaneB·datacore·索引§2序#6·配WO-CAP-01 REALDEMAND] 守R-NO-ORPHAN-SOURCE(导入对象挂真rawDatasetId可下载审计)。治假推演源头。",
+      "note": "[LaneB·datacore·索引§2序#6·配WO-CAP-01 REALDEMAND] 守R-NO-ORPHAN-SOURCE(导入对象挂真rawDatasetId可下载审计)。治假推演源头。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
       "status": "TODO",
       "owner": "",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
-      }
+      },
+      "assignedDev": "dev4-import"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "REGISTER(import-pack)+重排",
+      "cmd": "DEV4-IMPORT-LANE",
       "id": "4单",
-      "at": "2026-07-11T15:46:52.629Z"
+      "at": "2026-07-11T15:51:03.682Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
