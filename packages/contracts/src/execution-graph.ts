@@ -163,6 +163,50 @@ export const WorkflowDagRunSchema = z.object({
 export type WorkflowDagRun = z.infer<typeof WorkflowDagRunSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 规划器影子观察记录（WO-L1B-4·shadow only·计划综合 vs 模板 divergence·纯咨询）
+// PRD §2.2（影子段）/ §8 WO-L1B-4 acceptance⑤（parity 报告按 intent 聚合 divergence）。
+// R2 tenant everywhere · R6 确定性（generatedAt 注入）· R13 可溯源（sourceGraphId/plannerVersion）。
+// 搭车 PreAnalysisReport.planner（optional·复用 pre_analyses·零新迁移·additive）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 综合执行图 vs 模板计划的确定性偏差（纯派生·无副作用·NG6 咨询非判决）。 */
+export const PlannerDivergenceSchema = z.object({
+  /** 模板计划步数（resolvePlanForIntent 产物·判决态·地位不换手）。 */
+  templateStepCount: z.number().int(),
+  /** 综合执行图节点数。 */
+  synthesizedNodeCount: z.number().int(),
+  /** 入度 0 起点数（并行前沿宽度信号·Ch10.12）。 */
+  entryNodeCount: z.number().int(),
+  /** 并行宽度上限（同一就绪批可并发的节点数·咨询）。 */
+  maxParallelWidth: z.number().int(),
+  /** 综合图相对模板**多出**的步类型（multiset 差·排序·确定性）。 */
+  addedStepTypes: z.array(z.string()),
+  /** 综合图相对模板**缺失**的步类型。 */
+  removedStepTypes: z.array(z.string()),
+  /** 步类型多重集是否一致（true = 综合与模板同步类型分布·纯拓扑差）。 */
+  sameStepTypeMultiset: z.boolean(),
+  /** 覆盖门 <0.8 或综合非法 → 诚实回落模板（fromLinearPlan·绝不产非法图）。 */
+  fellBackToTemplate: z.boolean(),
+});
+export type PlannerDivergence = z.infer<typeof PlannerDivergenceSchema>;
+
+/** 规划器影子记录（每 task 一条·R2 tenant·可按 intentKey 聚合成 parity 报告·acceptance C4）。 */
+export const PlannerShadowRecordSchema = z.object({
+  taskId: z.string(),
+  tenantId: z.string(),
+  intentKey: z.string().nullable(),
+  graphId: z.string(),
+  sourceGraphId: z.string().nullable(),
+  plannerVersion: z.string(),
+  /** Ch9.10 覆盖分（源 RequirementGraph·咨询·永不误红）。 */
+  coverageScore: z.number().min(0).max(1),
+  synthesizedNodeCount: z.number().int(),
+  divergence: PlannerDivergenceSchema,
+  generatedAt: IsoTime,
+});
+export type PlannerShadowRecord = z.infer<typeof PlannerShadowRecordSchema>;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 步类型 ↔ 节点分类映射（确定性·R6·零业务魔数）
 // ═══════════════════════════════════════════════════════════════════════════
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DataDependencySchema, type DataDependency } from "./datadep.js";
+import { PlannerShadowRecordSchema } from "./execution-graph.js";
 
 // ---------------------------------------------------------------------------
 // A7 Foundry-Grade Data Builder（agent 驱动的 data pipeline 发动机）
@@ -545,6 +546,9 @@ export const PreAnalysisReportSchema = z.object({
     })
     .optional(),
   error: z.string().optional(),
+  /** L1-B WO-L1B-4（additive·shadow only·零新迁移）：计划综合影子观察（synthesizePlan vs 模板 divergence·
+   *  纯咨询·不改判决/路由/answer·NG6）。缺省 undefined = 影子未跑（QOS_EXEC_PLANNER 关）。 */
+  planner: PlannerShadowRecordSchema.optional(),
   createdAt: z.string(),
 });
 export type PreAnalysisReport = z.infer<typeof PreAnalysisReportSchema>;

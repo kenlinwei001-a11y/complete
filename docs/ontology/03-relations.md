@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `4254cf50c7d0d9e4`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `3523cde3f3bd8bd6`。
 
 ---
 
@@ -26,6 +26,17 @@ ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draf
                        │  `GET /b/v1/queries/:taskId/requirement-graph`（entitlement `growth.requirement_graph`·defaultOn:false·关=404）。
                        │  下游投影 `solverCandidates/dataRequirements/sliceTargets` 喂 L1-B `synthesizePlan`。关 env=旁路不执行·
                        │  pipeline 与改造前**字节一致**（可证回退·NG6）；`QuestionAST`/`RequirementGraph` 咨询性派生（可 drop 重生·非业务真值）。
+                       ├─**计划综合影子链（观察态·L1-B·WO-L1B-4·暗发 `QOS_EXEC_PLANNER=shadow`·STAGE-0 shadow ONLY）**：`runPathA`
+                       │  内 `resolvePlanForIntent`（判决态·模板计划·**地位不换手**）**之后**、`runWorkflowSteps` **之前**，additive 旁路
+                       │  影子跑 `synthesizePlan(reqGraph, registries)`（`growth/execution-planner.ts`·纯函数 R6·消费 L1-A 下游投影·
+                       │  Ch10.6-10.14 满配：Task Graph/Skill Match[历史因子中性1.0·NG5 不伪造]/Agent Assign/Kahn 拓扑/并行/Solver
+                       │  Orchestration/多目标）→ 每节点 ∈ 真注册表（solverKey∈SOLVER_REGISTRY / sliceKey 白名单·复用
+                       │  requirement-graph:check 同源）·覆盖门<0.8 或综合非法→**诚实回落模板**（`fromLinearPlan`·绝不产非法图）→
+                       │  `diffPlannerShadow` 对照模板落 divergence → `orchestrator.recordPlannerShadow`（in-process sideband 有界·
+                       │  测试/FDE 可读 + best-effort 搭车既存 `PreAnalysisReport.planner`·**不新建报告**→GET pre-analysis 404 恒不变）。
+                       │  `orchestrator.runPlannerShadow` **全 try/catch 吞**·规划器失败绝不影响 answer/route/decision（NG6）；**不发 SSE
+                       │  帧·不设 graph=synthesized**（serve/翻闸归 WO-L1B-5）。关 env=连影子都不跑·同问句 answer 与改造前**逐字节一致**
+                       │  （NG6 additive·可证回退）；`ExecutionGraph`/影子记录咨询派生（可 drop 重生·非业务真值）。
                        ├─**B→A 存在性探针（引用闭合·发布门）**：workflow 步骤 solverKey/ruleIds + agent scopeDeclaration.objectTypes
                        │  发布前经 DataCore 校验真实存在（probeMissingRefs，fail-open；不存在=死路拒发布）
                        ├─**agent→agent 交接落 Handoff（WO-C·可审计）**：`runPathB` 委派点——本入口配了场景 agent 但**不可用**

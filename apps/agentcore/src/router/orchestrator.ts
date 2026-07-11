@@ -5,6 +5,7 @@ import type {
   ClassificationResult,
   ExecutionPlan,
   IntentDefinition,
+  PlannerShadowRecord,
   QueryTask,
   ResolvedRef,
   ScenarioPackage,
@@ -43,7 +44,13 @@ import { fillSlots, normalizeExtractedSlots, toClarificationSlot, type SlotSourc
 import { appendDataGapBlock } from "../scenario-grounding.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
-import { buildRequirementGraph, parseQuestionAst } from "../growth/requirement-graph.js";
+import { VALID_SOLVER_KEYS, buildRequirementGraph, parseQuestionAst } from "../growth/requirement-graph.js";
+import {
+  buildPlannerShadowRecord,
+  diffPlannerShadow,
+  synthesizePlan,
+  type PlannerRegistries,
+} from "../growth/execution-planner.js";
 import { fetchOntologyGraph } from "../growth/pre-analyze.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
@@ -420,8 +427,20 @@ export class Orchestrator {
   private scenarioGap?: ScenarioGapHook;
   /** ONTO-SCEN-GROWTH-LOOP §2.5：非内部任务的提交身份（按 taskId），供缺口钩 AUTO_DERIVE 支以真 OBO 身份重验；runPipeline 结束清。 */
   private readonly runAuth = new Map<string, RequestAuth>();
+  /**
+   * L1-B WO-L1B-4 规划器影子观察 sideband（in-process·有界·观察态·shadow only）：
+   * `synthesizePlan` 的 divergence 记录（按 taskId·测试/FDE 可读·零持久化端点变化 → 零用户可见）。
+   * 同时 best-effort 搭车既存 PreAnalysisReport.planner（durable·若报告已在·不新建 → GET pre-analysis 404 恒不变）。
+   */
+  private readonly plannerShadows = new Map<string, PlannerShadowRecord>();
+  private static readonly PLANNER_SHADOW_CAP = 512;
 
   constructor(private readonly deps: OrchestratorDeps) {}
+
+  /** WO-L1B-4：读规划器影子记录（观察态·测试/内省用·不经端点·零用户可见）。 */
+  getPlannerShadow(taskId: string): PlannerShadowRecord | undefined {
+    return this.plannerShadows.get(taskId);
+  }
 
   setScenarioGap(hook: ScenarioGapHook): void {
     this.scenarioGap = hook;
@@ -773,6 +792,74 @@ export class Orchestrator {
       await this.deps.events
         .emit(taskId, "step.completed", { stepId: "requirement-graph", type: "requirement-graph", outcome: "failed", durationMs: Date.now() - t0 })
         .catch(() => {});
+    }
+  }
+
+  /**
+   * L1-B WO-L1B-4 规划器影子（PRD §2.2/§4.1·**STAGE-0 shadow ONLY**·观察态·暗发 QOS_EXEC_PLANNER）：
+   * 载 L1-A RequirementGraph（有则用·无则跳）→ synthesizePlan（纯函数·R6·注册表入参）→ diffPlannerShadow
+   * 对照模板计划落 divergence → 记 sideband（in-process·测试/FDE 读）+ best-effort 搭车既存 PreAnalysisReport.planner。
+   *
+   * **全 try/catch 吞·绝不阻断答题**（NG6 additive）：判决/路由/answer 地位不换手；不设 graph=synthesized、
+   * 不发 SSE 帧（serve/翻闸归 WO-L1B-5）。R6：generatedAt 复用 reqGraph.generatedAt（确定性·双跑字节一致）。
+   */
+  private async runPlannerShadow(
+    taskId: string,
+    tenantId: string,
+    intent: IntentDefinition,
+    plan: ExecutionPlan,
+  ): Promise<void> {
+    try {
+      const reqGraph = await this.deps.repos.requirementGraphs.getByTaskId(tenantId, taskId);
+      if (!reqGraph) return; // L1-A 需求图未产（QOS_REQUIREMENT_GRAPH 关）→ 无可影子·诚实跳过
+
+      // 注册表读（IO 在纯函数外·synthesizePlan 本身无 IO·R6）：solverKey 白名单 + 已发布 Skill/Agent。
+      const skills = (await this.deps.repos.skills.listByTenant(tenantId)).filter((s) => s.status === "PUBLISHED");
+      const agents = (await this.deps.repos.agents.listByTenant(tenantId)).filter((a) => a.status === "PUBLISHED");
+      // 本意图模板计划绑定的 skill key（scenarioMatch 因子·plan.skillRefs → key）。
+      const boundSkillKeys = new Set<string>();
+      for (const ref of plan.skillRefs ?? []) {
+        const s = skills.find((x) => x.id === ref.skillId);
+        if (s) boundSkillKeys.add(s.key);
+      }
+      const registries: PlannerRegistries = {
+        validSolverKeys: VALID_SOLVER_KEYS,
+        skills,
+        agents,
+        boundSkillKeys,
+      };
+
+      const synthesized = synthesizePlan(reqGraph, registries, {
+        generatedAt: reqGraph.generatedAt, // R6：复用需求图确定性时刻（内部不取时钟）
+        intentKey: intent.key,
+        templateFallback: plan, // 覆盖门 <0.8 / 综合非法 → 诚实回落模板（绝不产非法图）
+      });
+      const divergence = diffPlannerShadow(plan, synthesized);
+      const record = buildPlannerShadowRecord(reqGraph, synthesized, divergence);
+      await this.recordPlannerShadow(tenantId, taskId, record);
+    } catch {
+      // 观察态·绝不阻断主链（NG6）——影子失败静默吞（不改 answer/route/decision·shadow 无用户可见留痕）。
+    }
+  }
+
+  /** 落规划器影子记录：in-process sideband（有界·必落）+ best-effort 搭车既存 PreAnalysisReport.planner（durable·不新建报告）。 */
+  private async recordPlannerShadow(
+    tenantId: string,
+    taskId: string,
+    record: PlannerShadowRecord,
+  ): Promise<void> {
+    // ① in-process sideband（有界 LRU·测试/FDE 内省·零持久化端点变化 → 零用户可见）。
+    if (this.plannerShadows.size >= Orchestrator.PLANNER_SHADOW_CAP) {
+      const oldest = this.plannerShadows.keys().next().value;
+      if (oldest !== undefined) this.plannerShadows.delete(oldest);
+    }
+    this.plannerShadows.set(taskId, record);
+    // ② best-effort durable：仅**已存在**的 PreAnalysisReport 上附 planner（不新建 → GET pre-analysis 404 恒不变·additive）。
+    try {
+      const existing = await this.deps.repos.preAnalyses.getByTaskId(tenantId, taskId);
+      if (existing) await this.deps.repos.preAnalyses.upsert({ ...existing, planner: record });
+    } catch {
+      /* durable 搭车失败不影响 in-process 观察（诚实降级） */
     }
   }
 
@@ -1131,6 +1218,15 @@ export class Orchestrator {
     const plan = resolution.plan;
     // §2.2 留痕：执行时解析到的实际版本
     const resolvedRefs: ResolvedRef[] = [{ kind: "plan", key: resolution.ref.key, version: resolution.ref.version }];
+
+    // L1-B WO-L1B-4 规划器影子段（PRD §2.2·QOS_EXEC_PLANNER·**STAGE-0 shadow ONLY**·暗发·可回退）：
+    // resolvePlanForIntent（判决态·上方 :plan）**之后**、runWorkflowSteps（下方）**之前**，additive 影子跑
+    // synthesizePlan 对照模板计划落 divergence。**零用户可见变化**：不设 graph=synthesized、不改 steps/answer/
+    // 路由、不发 SSE 帧（serve/翻闸归 WO-L1B-5）。全 try/catch 吞——规划器失败绝不影响 answer/route/decision（NG6）。
+    // 缺省 OFF（QOS_EXEC_PLANNER 未置）→ 该段不执行 → pipeline 与改造前字节一致（对齐 QOS_REQUIREMENT_GRAPH 暗发范式）。
+    if (this.deps.config.QOS_EXEC_PLANNER) {
+      await this.runPlannerShadow(taskId, task.tenantId, intent, plan);
+    }
 
     await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
     this.deps.metrics.recordRouting(true);
