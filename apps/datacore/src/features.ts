@@ -38,6 +38,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-IMPORT-MULTITABLE (G1)·企业级多表 FK 批量导入（导入侧·PRD-enterprise-dataset-import）。暗发 defaultOn:false（R3）：
   // 关 → /a/v1/modeling/derive-batch & /a/v1/uploads/batch 返回 404 FEATURE_NOT_FOUND（先于 authz）。requires data-builder。
   { key: "data-import.multitable", name: "多表批量导入（暗发）", level: "BLOCK", defaultOn: false, requires: ["data-builder"] },
+  // WO-IMPORT-ONTOLOGY (G2)·客户本体直导（objects.json/relations.json → ObjectType/LinkType）。暗发 defaultOn:false（R3）：
+  // 关 → /a/v1/ontology/import 返回 404 FEATURE_NOT_FOUND（先于 authz）。requires data-builder。
+  { key: "data-import.ontology-bundle", name: "客户本体直导（暗发）", level: "BLOCK", defaultOn: false, requires: ["data-builder"] },
   { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
   { key: "view.project-sim.whatif", name: "What-if 调参", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },

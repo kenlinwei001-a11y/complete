@@ -1,5 +1,5 @@
 import { ModelingSuggestionSchema, type FieldCoverageReport, type FieldProfile, type ModelingSuggestion, type SchemaReconcileCandidate } from "@platform/contracts";
-import type { AuthCtx, DraftOperation, FkCandidate, OntologyDraft, RawDataset } from "./domain.js";
+import type { AuthCtx, DraftOperation, FkCandidate, OntologyDraft, PropertyDef, RawDataset } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { LlmClient } from "./llm.js";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
@@ -181,6 +181,24 @@ export interface DeriveBatchResult {
   publishErrors?: { typeKey: string; message: string }[];
 }
 
+/** WO-IMPORT-ONTOLOGY (G2) · 客户本体直导入参（= Stage 3.15 objects.json/relations.json 形态）。 */
+export interface OntologyImportBundleInput {
+  objects: { name: string; displayName?: string; domain?: string; properties?: { name: string; dataType?: "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json"; isPrimaryKey?: boolean; refTo?: string }[] }[];
+  relations: { name: string; from: string; to: string; cardinality?: "1:1" | "1:N" | "N:N" }[];
+  bindDatasets?: boolean;
+  strict?: boolean;
+  publish?: boolean;
+}
+
+/** WO-IMPORT-ONTOLOGY (G2) · 本体直导结果（含诚实覆盖缺口）。 */
+export interface OntologyImportResult {
+  createdTypes: string[];
+  createdLinks: string[];
+  bound: { typeKey: string; dataset: string; mappedFields: string[]; unmappedProps: string[]; undeclaredFields: string[] }[];
+  gaps: { kind: "MISSING_TABLE" | "MISSING_FIELD" | "UNKNOWN_REF" | "DANGLING_RELATION"; object: string | null; relation: string | null; detail: string }[];
+  ontologyVersion: number | null;
+}
+
 /** A3 semi-automatic modeling: suggest → draft → human PATCH → validate → publish → materialize. */
 export class ModelingService {
   constructor(
@@ -273,6 +291,107 @@ export class ModelingService {
 
     const materialize = opts.autoMaterialize ? await this.materialize(ctx, draft.id) : undefined;
     return { draft: await this.getDraft(ctx, draft.id), published, materialize };
+  }
+
+  /**
+   * WO-IMPORT-ONTOLOGY (G2)：客户本体直导（= Stage 3.15 objects.json/relations.json）——复用 `upsertType`/`upsertLinkType`
+   * 把一份自带本体一次搬进平台（此前只能逐类/逐链手拼）。⛔ R14：只搬结构、按名绑已上传数据（可选），零行业常数。
+   * **诚实边界（不静默建空/断链·KILL-MOCK-RED）**：
+   *   · 关系端点/ref 目标解析不到（bundle 对象 ∪ 已发布类型）→ 报 `DANGLING_RELATION`/`UNKNOWN_REF`，**该链不建**（不造断链）。
+   *   · bindDatasets 时对象无匹配表 → `MISSING_TABLE`；属性在表里无对应列 → `MISSING_FIELD`（字段缺·可见覆盖）。
+   *   · strict：有任一缺口 → **不建不发布**，结构化返回缺口（同 derive-batch publishErrors 精神）。
+   * 全程确定性、不经 LLM。
+   */
+  async importOntologyBundle(ctx: AuthCtx, bundle: OntologyImportBundleInput): Promise<OntologyImportResult> {
+    const gaps: OntologyImportResult["gaps"] = [];
+    // 名→typeKey（PascalCase 确定性）。关系/ref 端点可解析到 bundle 对象或已发布类型。
+    const nameToKey = new Map<string, string>();
+    for (const o of bundle.objects) nameToKey.set(o.name, toPascal(o.name));
+    const publishedKeys = new Set((await this.ontology.listTypes(ctx)).map((t) => t.key));
+    const resolveKey = (name: string): string | undefined => {
+      if (nameToKey.has(name)) return nameToKey.get(name);
+      const k = toPascal(name);
+      if (publishedKeys.has(k)) return k;
+      if (publishedKeys.has(name)) return name;
+      return undefined;
+    };
+    // 归域校验（提供了 domain 必须是 14 合法业务域·防幽灵域 R14）。
+    for (const o of bundle.objects) {
+      if (o.domain !== undefined && o.domain !== "unassigned" && !BUSINESS_DOMAIN_KEYS.includes(o.domain)) {
+        throw validationError(`对象 '${o.name}' 域 '${o.domain}' 非法（须为 14 合法业务域之一：${BUSINESS_DOMAIN_KEYS.join("/")}）`);
+      }
+    }
+    // 按名匹配已上传 RawDataset（供 bindDatasets 建 sourceBindings + 覆盖缺口探测）。
+    const datasetByName = new Map<string, RawDataset>();
+    for (const o of bundle.objects) {
+      const ds = (await this.repos.rawDatasets.list(ctx.tenantId, (d) => d.name === o.name))[0];
+      if (ds) datasetByName.set(o.name, ds);
+    }
+
+    const bound: OntologyImportResult["bound"] = [];
+    const typeInputs = bundle.objects.map((o) => {
+      const typeKey = nameToKey.get(o.name)!;
+      const props = (o.properties ?? []).map((p) => {
+        const refKey = p.refTo ? resolveKey(p.refTo) : undefined;
+        if (p.refTo && !refKey) gaps.push({ kind: "UNKNOWN_REF", object: o.name, relation: null, detail: `属性 '${p.name}' 引用未知类型 '${p.refTo}'（未建 ref）` });
+        return {
+          propKey: p.name,
+          dataType: (p.refTo ? "ref" : (p.dataType ?? "string")) as PropertyDef["dataType"],
+          isPrimaryKey: p.isPrimaryKey ?? false,
+          refToTypeKey: refKey ?? null,
+        };
+      });
+      let sourceBindings: { connId: string; dataset: string; fieldMappings: Record<string, string> }[] = [];
+      if (bundle.bindDatasets) {
+        const ds = datasetByName.get(o.name);
+        if (!ds) {
+          gaps.push({ kind: "MISSING_TABLE", object: o.name, relation: null, detail: `本体类型 '${o.name}' 无匹配已上传数据表（表缺·未绑数据）` });
+        } else {
+          const dsFields = new Set(ds.fields.map((f) => f.name));
+          const fieldMappings: Record<string, string> = {};
+          const unmappedProps: string[] = [];
+          for (const p of o.properties ?? []) {
+            if (dsFields.has(p.name)) fieldMappings[p.name] = p.name;
+            else unmappedProps.push(p.name);
+          }
+          for (const f of unmappedProps) gaps.push({ kind: "MISSING_FIELD", object: o.name, relation: null, detail: `属性 '${f}' 在数据表 '${ds.name}' 无对应列（字段缺）` });
+          const undeclaredFields = ds.fields.map((f) => f.name).filter((fn) => !(o.properties ?? []).some((p) => p.name === fn));
+          if (Object.keys(fieldMappings).length > 0) sourceBindings = [{ connId: ds.sourceConnId, dataset: ds.name, fieldMappings }];
+          bound.push({ typeKey, dataset: ds.name, mappedFields: Object.keys(fieldMappings), unmappedProps, undeclaredFields });
+        }
+      }
+      return { key: typeKey, displayName: o.displayName ?? o.name, domain: o.domain, properties: props, derivedProperties: [], sourceBindings };
+    });
+
+    // 关系：端点解析不到 → DANGLING（不建断链）。link key = `${rel}_${from}_${to}`（同名关系多端点不冲突）。
+    const linkInputs: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: "1:1" | "1:N" | "N:N" }[] = [];
+    for (const r of bundle.relations) {
+      const fromKey = resolveKey(r.from);
+      const toKey = resolveKey(r.to);
+      if (!fromKey || !toKey) {
+        gaps.push({ kind: "DANGLING_RELATION", object: null, relation: r.name, detail: `关系 '${r.name}' 端点未解析（from='${r.from}'${fromKey ? "" : "✗"} to='${r.to}'${toKey ? "" : "✗"}）→ 未建断链` });
+        continue;
+      }
+      linkInputs.push({ key: `${r.name}_${fromKey}_${toKey}`.replace(/[^\p{L}\p{N}_-]/gu, "_"), fromTypeKey: fromKey, toTypeKey: toKey, cardinality: r.cardinality ?? "1:N" });
+    }
+
+    // strict：有缺口即不落库（诚实拒绝·不静默建）。
+    if (bundle.strict && gaps.length > 0) {
+      return { createdTypes: [], createdLinks: [], bound, gaps, ontologyVersion: null };
+    }
+
+    const createdTypes: string[] = [];
+    for (const t of typeInputs) {
+      await this.ontology.upsertType(ctx, t);
+      createdTypes.push(t.key);
+    }
+    const createdLinks: string[] = [];
+    for (const l of linkInputs) {
+      await this.ontology.upsertLinkType(ctx, l);
+      createdLinks.push(l.key);
+    }
+    const ontologyVersion = bundle.publish === false ? null : (await this.ontology.publishVersion(ctx)).version;
+    return { createdTypes, createdLinks, bound, gaps, ontologyVersion };
   }
 
   /** 字段全建模覆盖报告（R12）：草稿当前映射对导入数据源字段的覆盖率 + 未建模清单。 */

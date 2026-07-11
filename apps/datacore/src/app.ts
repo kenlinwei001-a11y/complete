@@ -53,7 +53,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
-import { DeriveBatchRequestSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1)·多表 FK 批量导入
+import { DeriveBatchRequestSchema, OntologyImportBundleSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1) / WO-IMPORT-ONTOLOGY (G2)
 import { PreviewSourceRefSchema } from "@platform/contracts"; // WO-MERGE-03 C1（pipeline preview 经 databuilder 取样来源引用）
 import { retrieveSimilarCases, mineDecisionPatterns } from "./memory/decision-case.js"; // WO-L1.5-2/4（CBR 检索·§4.2 / 模式挖掘·§4.4⑥）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
@@ -3761,6 +3761,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       }
     }
     return reply.status(201).send({ uploads, errors });
+  });
+
+  // ---- WO-IMPORT-ONTOLOGY (G2) · 客户本体直导（objects.json/relations.json → ObjectType/LinkType·PRD §3.2）----
+  // 暗发（R3）：data-import.ontology-bundle defaultOn:false → 关 = 404 FEATURE_NOT_FOUND。
+  // ⛔ R14：bundle 是外部自带本体，平台零行业常数；只搬结构、按名绑已上传数据（可选）。
+  // 诚实边界：断链/表缺/字段缺 → gaps 逐项报（不静默建空/断链）；strict → 有缺口即不建不发布。
+  app.post("/a/v1/ontology/import", async (req, reply) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.ontology-bundle"))) throw featureNotFound();
+    const body = parseBody(OntologyImportBundleSchema, req.body);
+    const r = await modeling.importOntologyBundle(c, body);
+    // strict 阻断（有缺口未落库）→ 409；正常直导 → 201。
+    const blocked = r.ontologyVersion === null && body.strict === true && r.gaps.length > 0;
+    return reply.status(blocked ? 409 : 201).send(r);
   });
 
   // ---- A7 synthetic -----------------------------------------------------------------------

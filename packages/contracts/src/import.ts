@@ -97,3 +97,77 @@ export const BatchUploadResultSchema = z.object({
   errors: z.array(z.object({ filename: z.string(), message: z.string() })),
 });
 export type BatchUploadResult = z.infer<typeof BatchUploadResultSchema>;
+
+/**
+ * WO-IMPORT-ONTOLOGY (G2) · 客户本体直导（= Stage 3.15 的 objects.json / relations.json 形态）。
+ * 平台无"导入本体"入口时只能逐类 `POST object-types` / 逐链 `upsertLinkType` 手拼——本 bundle 一次直导。
+ * ⛔ R14：bundle 是外部自带本体（客户领域词），平台代码零行业常数——只搬结构、按名绑已上传数据（可选）。
+ */
+const IMPORT_DATA_TYPES = ["string", "number", "boolean", "date", "enum", "ref", "json"] as const;
+
+export const OntologyImportObjectSchema = z.object({
+  /** 对象类型名（客户领域词·如 Factory/ProductionLine）→ 反推 typeKey(PascalCase) + displayName。 */
+  name: z.string().min(1),
+  displayName: z.string().optional(),
+  /** 可选归域（14 合法业务域之一·非成员即拒·防幽灵域 R14）。缺省 = 不归域（直导本体允许）。 */
+  domain: z.string().optional(),
+  properties: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        dataType: z.enum(IMPORT_DATA_TYPES).optional(),
+        isPrimaryKey: z.boolean().optional(),
+        /** 引用目标对象名（→ ref 属性·指向另一 bundle 对象或已发布类型）。 */
+        refTo: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+export const OntologyImportRelationSchema = z.object({
+  /** 关系名（客户领域词·如 HAS/USES/PRODUCES）。 */
+  name: z.string().min(1),
+  /** 源/目标对象名（须解析到 bundle 对象或已发布类型·否则报 DANGLING_RELATION 不静默建断链）。 */
+  from: z.string().min(1),
+  to: z.string().min(1),
+  cardinality: z.enum(["1:1", "1:N", "N:N"]).optional(),
+});
+
+export const OntologyImportBundleSchema = z.object({
+  objects: z.array(OntologyImportObjectSchema).min(1),
+  relations: z.array(OntologyImportRelationSchema).default([]),
+  /** 按对象名匹配已上传 RawDataset 建 sourceBindings（字段全建模 R12）；表缺/字段缺 → 报覆盖缺口。 */
+  bindDatasets: z.boolean().optional(),
+  /** 严格模式：有任一覆盖缺口 → 不建不发布·结构化返回缺口（诚实边界·不静默建空/断链）。 */
+  strict: z.boolean().optional(),
+  /** 直导后是否发布本体版本（默认 true）。 */
+  publish: z.boolean().optional(),
+});
+export type OntologyImportBundle = z.infer<typeof OntologyImportBundleSchema>;
+
+/** 覆盖缺口（诚实边界）：bundle 与已上传数据/自身引用对不上的逐项报告。 */
+export const OntologyImportGapSchema = z.object({
+  kind: z.enum(["MISSING_TABLE", "MISSING_FIELD", "UNKNOWN_REF", "DANGLING_RELATION"]),
+  object: z.string().nullable(),
+  relation: z.string().nullable(),
+  detail: z.string(),
+});
+
+export const OntologyImportResultSchema = z.object({
+  createdTypes: z.array(z.string()),
+  createdLinks: z.array(z.string()),
+  /** 已按名绑定数据表的类型（含映射/未映射字段·可见覆盖）。 */
+  bound: z.array(
+    z.object({
+      typeKey: z.string(),
+      dataset: z.string(),
+      mappedFields: z.array(z.string()),
+      unmappedProps: z.array(z.string()),
+      undeclaredFields: z.array(z.string()),
+    }),
+  ),
+  gaps: z.array(OntologyImportGapSchema),
+  /** 发布成功的本体版本；strict 阻断或 publish:false → null。 */
+  ontologyVersion: z.number().nullable(),
+});
+export type OntologyImportResult = z.infer<typeof OntologyImportResultSchema>;
