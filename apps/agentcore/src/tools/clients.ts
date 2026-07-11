@@ -1,4 +1,4 @@
-import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, StoryBuildRun, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, AuthCtx, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RetrieveSimilarCasesInput, RuleVerdict, SimilarCasesResult, StoryBuildRun, ToolPayload } from "@platform/contracts";
 
 /** Auth context flowing through tool calls; carries the raw OBO bearer token. */
 export interface ToolAuthCtx extends AuthCtx {
@@ -160,6 +160,16 @@ export interface DatabuilderClient {
   listStoryRuns(ctx: ToolAuthCtx): Promise<StoryBuildRun[]>;
 }
 
+/**
+ * L1.5 企业记忆·CBR（WO-L1.5-3B）：`retrieve_similar_cases` 工具的 **薄 OBO 出口** —— 透传用户 JWT
+ * 调 DataCore POST /a/v1/memory/cases/retrieve-similar，原样返回 DataCore 侧计算的相似案例。
+ * **绝不在 AgentCore 重算相似度**（pseudoEmbed/cosine/加权打分全在 DataCore·retrieveSimilarCases）；
+ * 这里只转发请求 + 回传结果。R2 tenantId 由 DataCore 据 OBO 上下文注入（入参不含 tenantId）。
+ */
+export interface MemoryClient {
+  retrieveSimilar(ctx: ToolAuthCtx, input: RetrieveSimilarCasesInput): Promise<SimilarCasesResult>;
+}
+
 export interface DataCoreClient {
   ontology: OntologyClient;
   solver: SolverClient;
@@ -175,6 +185,8 @@ export interface DataCoreClient {
   sim: SimClient;
   /** UPG-L0-CONSOLE-BOARD：建域运行只读读取（ClosureReport MISSING 段 → Console board 投影源）。 */
   databuilder: DatabuilderClient;
+  /** L1.5 WO-L1.5-3B：企业记忆·CBR 相似案例检索的薄 OBO 出口（暗发 memory.cbr_retrieve）。 */
+  memory: MemoryClient;
 }
 
 export class DataCoreUnavailableError extends Error {

@@ -1,4 +1,4 @@
-import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, StoryBuildRun, ToolPayload } from "@platform/contracts";
+import type { AggregateRequest, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RetrieveSimilarCasesInput, RuleVerdict, SimilarCasesResult, StoryBuildRun, ToolPayload } from "@platform/contracts";
 import {
   DataCoreHttpError,
   DataCoreUnavailableError,
@@ -10,6 +10,7 @@ import {
   type DataCoreClient,
   type IamClient,
   type KbClient,
+  type MemoryClient,
   type OntologyClient,
   type RuleEngineClient,
   type SimClient,
@@ -267,6 +268,19 @@ class HttpSimClient implements SimClient {
   }
 }
 
+/**
+ * L1.5 WO-L1.5-3B：企业记忆·CBR 相似案例检索的**薄 OBO 出口**（透传用户 JWT）。
+ * 只转发到 DataCore POST /a/v1/memory/cases/retrieve-similar，原样回传 DataCore 侧计算的相似案例；
+ * **绝不在 AgentCore 重算相似度**（DataCore retrieveSimilarCases 拥有 CBR 数学）。DataCore 侧 memory.cbr_retrieve
+ * 门关时 → 404 FEATURE_NOT_FOUND（DataCoreHttpError·工具层 catch 成错误信封·双保险于 agent 工具面暗发）。
+ */
+class HttpMemoryClient implements MemoryClient {
+  constructor(private readonly baseUrl: string) {}
+  retrieveSimilar(ctx: ToolAuthCtx, input: RetrieveSimilarCasesInput): Promise<SimilarCasesResult> {
+    return call<SimilarCasesResult>(this.baseUrl, ctx, "POST", `/a/v1/memory/cases/retrieve-similar`, input);
+  }
+}
+
 class HttpCatalogClient implements CatalogClient {
   constructor(private readonly baseUrl: string) {}
   discover(
@@ -359,5 +373,6 @@ export function createHttpDataCore(baseUrl: string): DataCoreClient {
     epoch: new HttpEpochClient(baseUrl),
     datagen: new HttpDataGenClient(baseUrl),
     sim: new HttpSimClient(baseUrl),
+    memory: new HttpMemoryClient(baseUrl),
   };
 }

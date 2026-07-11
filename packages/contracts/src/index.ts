@@ -45,6 +45,7 @@ export * from "./fusion.js";
 export * from "./decision.js";
 export * from "./decision-kernel.js";
 export * from "./cbr.js";
+export * from "./cbr-retrieve.js"; // L1.5 WO-L1.5-3B · retrieve_similar_cases 薄 OBO 工具 I/O 契约
 export * from "./viewlayout.js";
 export * from "./industrypack.js";
 export * from "./intake-coverage.js";

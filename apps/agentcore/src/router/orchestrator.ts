@@ -31,7 +31,7 @@ import type { AppConfig } from "../config.js";
 import type { ExecutionEngine } from "../engine.js";
 import { TaskEvents } from "../events.js";
 import type { FeatureGate } from "../features/gate.js";
-import { intentAllowed, type FeatureSet } from "../features/registry.js";
+import { featureEnabled, intentAllowed, type FeatureSet } from "../features/registry.js";
 import { newId } from "../ids.js";
 import type { LlmSettings } from "../llm/providers.js";
 import type { Metrics } from "../metrics.js";
@@ -1516,6 +1516,10 @@ export class Orchestrator {
     // enabledFeatures="ALL"（mock 默认/降级）→ 全开；显式 Set 时要求两键齐备。
     const simCommanderOn = simCommanderEnabled(enabledFeatures);
     const simNames = SIM_COMMANDER_TOOLS as readonly string[];
+    // L1.5 WO-L1.5-3B（暗发 memory.cbr_retrieve·R3）：retrieve_similar_cases 工具仅当租户开通该键时对 agent 可见
+    // （关→从暴露列表剔除=模型看不到=不存在→agent 行为字节一致 NG6）。memory.cbr_retrieve 已在 AgentCore
+    // FEATURE_REGISTRY 双注册（防 unknown-key 恒真陷阱），故可用 featureEnabled（set="ALL" 降级→全开·与 sim 同语义）。
+    const cbrRetrieveOn = featureEnabled(enabledFeatures, "memory.cbr_retrieve");
     const budget = new BudgetTracker();
     const priorSummary = agentPriorSummary(await this.previousConversationTasks(task));
     const resolvedRefs: ResolvedRef[] = [];
@@ -1532,8 +1536,13 @@ export class Orchestrator {
         emit: (e, p) => this.deps.events.emit(task.id, e, p).then(() => undefined),
         isCancelled: () => this.cancelled.has(task.id),
         onResolvedRef: (r) => resolvedRefs.push(r),
-        // R3 暗发：sim 工具关 entitlement → 从暴露列表剔除（模型看不到=不存在）；其余全工具面放行。
-        toolVisibilityFilter: (name) => simCommanderOn || !simNames.includes(name),
+        // R3 暗发：sim 工具关 entitlement → 从暴露列表剔除（模型看不到=不存在）；retrieve_similar_cases 同理受
+        // memory.cbr_retrieve 门控（关→剔除→字节一致 NG6）；其余全工具面放行。
+        toolVisibilityFilter: (name) => {
+          if (simNames.includes(name)) return simCommanderOn;
+          if (name === "retrieve_similar_cases") return cbrRetrieveOn;
+          return true;
+        },
       });
 
       await this.deps.repos.agentRuns.insert(result.run);

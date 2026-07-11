@@ -111,6 +111,13 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-L1.5-2（企业记忆·CBR·PRD-L1.5 §2.7）：同理镜像 memory.cbr（权威在 DataCore features.ts）。
   // 关 = agentcore 侧 memory.cbr 门 !set.has→false（案例检索行为不 fail-open）。L1.5-3 agent 接线前置。
   { key: "memory.cbr", name: "企业记忆·案例推理", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"] },
+  // WO-L1.5-3B（agent「先查案例库」工具面暗发·PRD-L1.5 §2.7）：镜像 memory.cbr_retrieve（权威在 DataCore
+  // features.ts·line 136·双注册·同 defaultOn:false）。此键控 **retrieve_similar_cases 工具是否在 agent 工具面**
+  // （关 = orchestrator toolVisibilityFilter 剔除→模型看不到=不存在→agent 行为字节一致 NG6·翻闸=回退演练）。
+  // 与 memory.cbr（控 datacore 案例查看读端点）**独立**：可只开 retrieve 不开查看。此处**镜像注册**使 featureEnabled
+  // 认得该键——否则 unknown-key 恒真陷阱（featureEnabled `if(!def) return true`）令工具恒可见、暗发失效；
+  // 关时 DataCore 报关 → !set.has(key) → false（不 fail-open）。与 datacore 端点自身 memory.cbr_retrieve 门双保险。
+  { key: "memory.cbr_retrieve", name: "企业记忆·案例检索（agent 先查）", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"] },
   // L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §2.4·WO-L1A-3）：用户面 entitlement 闸——控**需求图读端点
   // 是否存在**（关 = GET /b/v1/queries/:taskId/requirement-graph 404 FEATURE_NOT_FOUND·R3 先于 authz·不泄漏存在
   // 性·回退演练 C2）。暗发 defaultOn:false（RL2）——现有租户零影响（additive）。权威 entitlement 由 DataCore

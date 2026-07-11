@@ -215,6 +215,29 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     sideEffect: "READ",
     costClass: "CHEAP",
   },
+  // L1.5 企业记忆·CBR（WO-L1.5-3B·薄 OBO·暗发 memory.cbr_retrieve 门）：agent「先查案例库」再决策。
+  // 该工具是**纯 OBO 透传**——把问题特征转发 DataCore POST /a/v1/memory/cases/retrieve-similar，
+  // 原样返回 DataCore 侧计算的相似案例（相似度数学只在 DataCore·AgentCore 绝不重算·薄 OBO）。
+  // 暗发：仅当租户开通 memory.cbr_retrieve 时该工具才在 agent 工具面（关→不存在·R3·翻闸=字节一致 NG6·
+  // 由 orchestrator toolVisibilityFilter 剔除）；命中随行 origin(SEED/LEARNED)+disclaimer（案例数字不冒充业务真值）。
+  {
+    name: "retrieve_similar_cases",
+    descriptionForLLM:
+      "企业记忆·相似案例检索：按当前问题特征（文本 + 可选 problemClass/实体/指标）检索历史决策案例（结构化 CBR 案例·咨询派生）。决策前可先查案例库借鉴过往解法与取舍。返回命中含相似度打分/breakdown/origin(SEED|LEARNED)/溯源；结果仅供决策路径参考，业务数字仍以工具结果/审批真值为准。topK ≤ 20（默认 5）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "新问句/新问题文本（主检索信号）" },
+        problemClass: { type: "string", description: "可选：问题类（∈ INTENT_PROBLEM_CLASS·精化 Scenario 维）" },
+        entities: { type: "array", items: { type: "string" }, description: "可选：已解析本体键（base/model/segment…）" },
+        metrics: { type: "array", items: { type: "string" }, description: "可选：相关指标键" },
+        topK: { type: "number", maximum: 20, description: "返回条数，默认 5，上限 20" },
+      },
+      required: ["text"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
   // CL.2 合规数据生成（fill_data / run_synthetic / build_domain）：在"信息不足/空租户"时
   // 触发确定性、走管线、可溯源的合成（**触发合成 ≠ 伪造**）。回执只含元信息（jobId/runId/counts），
   // 业务数字必须由你随后用 query_objects/query_timeseries_agg 读回真实物化值；产出落未审核态

@@ -1,4 +1,4 @@
-import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RuleVerdict, StoryBuildRun, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CrossValidateRequest, CrossValidateResponse, EntryReadiness, PlanSliceRequest, PlanSliceResponse, QueryTimeseriesAggInput, RetrieveSimilarCasesInput, RuleVerdict, SimilarCasesResult, SimilarityHit, StoryBuildRun, ToolPayload } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type {
   ActionClient,
@@ -9,6 +9,7 @@ import type {
   IamClient,
   KbClient,
   KbHit,
+  MemoryClient,
   OntologyClient,
   RuleEngineClient,
   SimClient,
@@ -1113,6 +1114,24 @@ export class MockDatabuilderClient implements DatabuilderClient {
   }
 }
 
+/**
+ * L1.5 WO-L1.5-3B：企业记忆·CBR 相似案例检索的 mock（**DataCore 的测试替身**，非 AgentCore 重算）。
+ * 关键纪律（薄 OBO·绝不重算）：本替身**不做任何相似度数学**（无 pseudoEmbed/cosine/加权打分）——
+ * 相似度是 DataCore 的职责（retrieveSimilarCases），真值以真 DataCore OBO 联调为准（见 FDE）。这里仅
+ * 返回**确定性固定夹具**（形状镜像真实 RetrievalResult·origin/disclaimer 诚实随行·dataMode 隐含 MOCK），
+ * 使单测能验证「工具入参 → OBO 转发 → 结果回传」的透传链路（topK 生效）。同 MockSolverClient 固定形状范式。
+ */
+export class MockMemoryClient implements MemoryClient {
+  private static readonly SEED_HITS: SimilarityHit[] = [
+    { caseId: "case_seed_capacity_gap", score: 0.82, breakdown: { embed: 0.6, scenario: 1, business: 0.5 }, origin: "SEED", provenance: "seed:capacity_gap", disclaimer: "案例仅供决策路径/结构参考·业务数字以工具结果/审批真值为准（不作数字来源）" },
+    { caseId: "case_seed_delivery_risk", score: 0.61, breakdown: { embed: 0.5, scenario: 0.5, business: 0.5 }, origin: "SEED", provenance: "seed:delivery_risk", disclaimer: "案例仅供决策路径/结构参考·业务数字以工具结果/审批真值为准（不作数字来源）" },
+  ];
+  async retrieveSimilar(_ctx: ToolAuthCtx, input: RetrieveSimilarCasesInput): Promise<SimilarCasesResult> {
+    const hits = MockMemoryClient.SEED_HITS.slice(0, Math.max(1, Math.min(input.topK ?? 5, 20)));
+    return { hits, total: MockMemoryClient.SEED_HITS.length, disclaimer: "案例仅供决策路径/结构参考·业务数字以工具结果/审批真值为准（不作数字来源）" };
+  }
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
   solver: MockSolverClient;
@@ -1125,6 +1144,7 @@ export interface MockDataCore extends DataCoreClient {
   datagen: MockDataGenClient;
   sim: MockSimClient;
   databuilder: MockDatabuilderClient;
+  memory: MockMemoryClient;
 }
 
 export function createMockDataCore(): MockDataCore {
@@ -1141,5 +1161,6 @@ export function createMockDataCore(): MockDataCore {
     datagen: new MockDataGenClient(),
     sim: new MockSimClient(),
     databuilder: new MockDatabuilderClient(),
+    memory: new MockMemoryClient(),
   };
 }

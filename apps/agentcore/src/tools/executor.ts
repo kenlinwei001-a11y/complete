@@ -1,4 +1,4 @@
-import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, RetrieveSimilarCasesInputSchema, type SkillDefinition } from "@platform/contracts";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -333,6 +333,10 @@ export class GuardedToolExecutor {
         return this.readSkillResource(String(args.skillId ?? ""), String(args.resourceName ?? ""));
       case "search_experience":
         return this.searchExperience(String(args.query ?? ""), args.topK === undefined ? 3 : Math.min(Math.max(1, Number(args.topK)), 10));
+      // L1.5 WO-L1.5-3B：企业记忆·CBR 相似案例检索——**薄 OBO 透传**到 DataCore（绝不在此重算相似度）。
+      // contracts 边界强校验入参；DataCore 拥有 CBR 数学 + R2 tenantId 注入 + memory.cbr_retrieve 门（双保险）。
+      case "retrieve_similar_cases":
+        return this.deps.dataCore.memory.retrieveSimilar(ctx, RetrieveSimilarCasesInputSchema.parse(input));
       // 自成长发动机 A4：成长工单施工面（厂商中立，R2 租户隔离）。
       case "discover_growth_tickets":
         return this.discoverGrowthTickets(ctx.tenantId, args.status ? String(args.status) : undefined);
