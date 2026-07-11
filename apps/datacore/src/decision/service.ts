@@ -111,6 +111,15 @@ export class DecisionKernelService {
   async adopt(ctx: AuthCtx, taskId: string, scenarioKey: string): Promise<DecisionPackage> {
     const pkg = await this.getByTask(ctx, taskId);
     if (!pkg) throw notFound("decision package");
+    // 幂等守卫（门4·修 BLOCK：无守卫→重复采纳静默双写 2 Decision+2 ActionDraft 挂同一 packageId·旧记录沦孤儿）：
+    //  已采纳同方案 → 幂等返回既有制品（no-op·不再建台账/草稿·网络重试安全）；
+    //  已采纳**不同**方案 → 明确拒（不静默改判·如需改判重建决策制品）。兑现 §109 注释「幂等重入」。
+    if (pkg.status === "ADOPTED" && pkg.decisionRef) {
+      if (pkg.adoptedScenarioKey === scenarioKey) return pkg;
+      throw validationError(
+        `该决策制品已采纳方案「${pkg.adoptedScenarioKey ?? "?"}」（decisionRef=${pkg.decisionRef}）·不可重复采纳其他方案（如需改判请重建决策制品）`,
+      );
+    }
     const scenario = pkg.scenarios.find((s) => s.key === scenarioKey);
     if (!scenario) throw validationError(`scenarioKey '${scenarioKey}' 非该制品任何方案（不可采纳幽灵方案）`);
 
@@ -144,7 +153,7 @@ export class DecisionKernelService {
     }
 
     // ③ 回填制品（咨询态→ADOPTED·decisionRef/actionDraftRefs 挂真台账 id）。
-    const adopted: DecisionPackage = { ...pkg, decisionRef: decision.id, actionDraftRefs, status: "ADOPTED" };
+    const adopted: DecisionPackage = { ...pkg, decisionRef: decision.id, actionDraftRefs, status: "ADOPTED", adoptedScenarioKey: scenarioKey };
     await this.repos.decisionPackages.put({ ...adopted, id: adopted.packageId });
     await this.outbox.emit(ctx.tenantId, "decision.package_built", { packageId: pkg.packageId, taskId, status: "ADOPTED", decisionRef: decision.id }, taskId);
     return adopted;

@@ -796,6 +796,7 @@ export async function assembleDecisionPackage(
     status,
     decisionRef: null,
     actionDraftRefs: [],
+    adoptedScenarioKey: null,
     builderVersion: req.builderVersion,
     generatedAt: req.generatedAt,
   };

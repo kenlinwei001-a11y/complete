@@ -210,6 +210,8 @@ export const DecisionPackageSchema = z.object({
   status: DecisionPackageStatusSchema, // 声明式生命周期（DESIGN §4 L2 状态机）
   decisionRef: z.string().nullable(), // 采纳后 → DataCore Decision(dec_)（经正门回填）
   actionDraftRefs: z.array(z.string()), // 采纳后 → DataCore ActionDraft(act_)
+  adoptedScenarioKey: z.string().nullable().default(null), // 采纳的方案键（幂等守卫·重复采纳同方案 no-op·additive）
+
   builderVersion: z.string(),
   generatedAt: IsoTime, // 调用方注入（R6·内部不取时钟）
 });

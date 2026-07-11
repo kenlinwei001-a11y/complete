@@ -78,4 +78,38 @@ describe("WO-L2-5 · 采纳正门（Decision + ActionDraft·R4·真跑）", () =
     const bad = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_ghost/decision-package/adopt", headers: ADMIN, payload: { scenarioKey: "ghost_nonexistent" } });
     expect(bad.statusCode).toBe(400);
   });
+
+  it("⑤ 幂等守卫（修 BLOCK 门4·非静默双写）：重采同方案 no-op·采不同方案拒·不双写", async () => {
+    const t = await makeApp({ env: { QOS_DECISION_KERNEL: "1" } });
+    await seedBattery(t);
+    const { base, factor } = await realBaseFactor(t);
+    const build = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_idem/decision-package", headers: ADMIN, payload: { query: "q", intentKey: "adopt_mitigation", slots: { base, factor, horizon: 30 } } });
+    const pkg = build.json() as DecisionPackage;
+    const k1 = pkg.scenarios[0].key;
+    const k2 = pkg.scenarios.find((s) => s.key !== k1)?.key;
+
+    const linkedDecisions = async () =>
+      (((await t.app.inject({ method: "GET", url: "/a/v1/decisions", headers: ADMIN })).json() as { decisions: Decision[] }).decisions).filter((d) =>
+        d.links.some((l) => l.kind === "SCENARIO" && l.refId === pkg.packageId),
+      );
+
+    // 首采
+    const a1 = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_idem/decision-package/adopt", headers: ADMIN, payload: { scenarioKey: k1 } });
+    expect(a1.statusCode).toBe(200);
+    const dec1 = (a1.json() as DecisionPackage).decisionRef;
+    expect(await linkedDecisions()).toHaveLength(1);
+
+    // 重采**同方案** → 幂等 no-op（同 decisionRef·不新建台账/草稿）。
+    const a2 = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_idem/decision-package/adopt", headers: ADMIN, payload: { scenarioKey: k1 } });
+    expect(a2.statusCode).toBe(200);
+    expect((a2.json() as DecisionPackage).decisionRef).toBe(dec1); // 同一 Decision·未双写
+    expect(await linkedDecisions()).toHaveLength(1); // 仍 1·无孤儿双写（门4 核心）
+
+    // 采**不同方案** → 明确拒（不静默改判）。
+    if (k2) {
+      const a3 = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_idem/decision-package/adopt", headers: ADMIN, payload: { scenarioKey: k2 } });
+      expect(a3.statusCode).toBe(400);
+      expect(await linkedDecisions()).toHaveLength(1); // 拒后仍 1
+    }
+  });
 });
