@@ -20,6 +20,7 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft, SolverExperiment, ExperimentArm, ExperimentArmKind, ExperimentReport } from "@platform/contracts";
 import { capacityForecast, computeRollup, curveMult, type ForecastArgs } from "./capacity.js";
+import { mcP90Single } from "./method-mc.js";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, capexAlternatives, type CapexScenarioArgs, type CapexAlternativesArgs } from "./capex.js";
@@ -1219,7 +1220,12 @@ export class SolverService {
     const producibleWeekly = round(bases.reduce((s, bid) => s + (capByBase.get(bid) ?? 0), 0), 4);
     const hasCap = producibleWeekly > 0;
     const p50 = hasCap ? producibleWeekly : null;
-    const p90 = hasCap ? round(producibleWeekly * 0.9, 4) : null; // P90 = 保守下界（P90/P50≈0.9 建模假设·非产能本身伪造）
+    // METHOD-MC-STOCHASTIC（去固定 haircut·统一真分位口径·对齐 capacity_forecast capacity.ts:266-271）：
+    // P90 由「点估计 × 0.9 固定折算」→ mcP90Single（种子化蒙特卡洛真实经验分位·升序 0.10 保守下限）。
+    // 离散度取租户 SolverParam mc.dispersion.*（CALIBRATION 可调）；seedInput 含订单/型号/需求/可产基地/真产能
+    // → R6 同种子字节一致且随业务输入变（不再恒 =P50×0.9）。
+    const p90Seed = { solver: "order_fullchain", tenantId: ctx.tenantId, so: str(op[fSo]), modelId, qty, bases, producibleWeekly };
+    const p90 = hasCap ? round(mcP90Single(producibleWeekly, p90Seed, solverCtx.params.mc), 4) : null;
     const deliveryOk = hasCap ? (p90 as number) >= qty : null; // 无真产能 → null（不裁决）
     const deliveryJudge = hasCap
       ? { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", capacitySource: "computeRollup(真基地周产能 weeklyWan·Σ可产基地)", ruleRefs: ["C02", "C03"] }
