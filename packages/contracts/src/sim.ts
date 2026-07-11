@@ -167,3 +167,69 @@ export const SandboxViewConfigSchema = z.object({
   heatThreshold: z.number().optional(),
 });
 export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
+
+// ── SimulationRequest 归一触发载荷（WO-SANDBOX-AS-RENDER-TARGET·S1·五触发归一） ──────────
+// 人机对话/场景卡/what-if 按钮/沙盘工作台/主动告警 五类触发 → 同一载荷 → 同一管线（配套预检→建会话→
+// 推演→渲染进沙盘→答案先行）。抽象四原型全走 (objectType, stateVar, 数值)——R14 零业务常数（库存/产能/
+// 物流/金融只是配置内容，非代码）。**MVP 边界（钉死·S1 只启用 shock）**：hold/trend/policy + ImpactAssessment
+// 求解器维须待 WO-SANDBOX-TEMPORAL-GROUNDING（S6·外生驱动/overlay/守恒）才上线，否则基线==情景=假评估
+// （KILL-MOCK-RED）。本文件定义全四原型契约（前瞻·additive），执行层 S1 只接 shock，其余诚实答"时序接地建设中"+工单。
+
+/** 作用到谁的哪个状态变量（抽象·任意行业·R14）。 */
+export const CellRefSchema = z.object({
+  objectType: z.string(),
+  objectIds: z.union([z.array(z.string()), z.literal("ALL")]),
+  stateVar: z.string(),
+});
+export type CellRef = z.infer<typeof CellRefSchema>;
+
+/** 情景动作四原型（判别联合）。S1 执行层只认 shock；hold/trend/policy 契约就位待 S6 接地。 */
+export const ScenarioActionSchema = z.discriminatedUnion("kind", [
+  // 冲击：一次性增量（停线/急单）——S1 MVP 唯一执行原型（现有 act 端点直写 state + tick 短程传导）。
+  z.object({ kind: z.literal("shock"), target: CellRefSchema, delta: z.number(), atTick: z.number().int().default(0) }),
+  // 保持：钉住水位（库存保持 X·用户示例）——需 S6 overlay 每 tick 重钉，S1 不执行。
+  z.object({ kind: z.literal("hold"), target: CellRefSchema, value: z.number(), fromTick: z.number().int().default(0), toTick: z.number().int().nullable().default(null) }),
+  // 趋势：逐 tick 递变——需 S6 overlay，S1 不执行。
+  z.object({ kind: z.literal("trend"), target: CellRefSchema, deltaPerTick: z.number() }),
+  // 政策：会话级系数覆盖（叠 G-10 coefficientRef 之上，经 propagateTick 的 ruleParams 覆盖 map·引擎签名不改）——S6。
+  z.object({ kind: z.literal("policy"), ruleKey: z.string(), coefficientOverride: z.number() }),
+]);
+export type ScenarioAction = z.infer<typeof ScenarioActionSchema>;
+
+/** 情景动作原型 → 是否 S1 可执行（其余诚实答"时序接地建设中"·KILL-MOCK-RED）。执行层单一判据。 */
+export const S1_EXECUTABLE_ACTION_KINDS = ["shock"] as const;
+
+export const SimulationRequestSchema = z.object({
+  targetView: z.literal("sim-sandbox"),
+  scope: z.object({ objectType: z.string(), objectIds: z.array(z.string()) }),
+  scenario: z.array(ScenarioActionSchema).default([]), // 空 = 纯当前态演化
+  horizonTicks: z.number().int().min(1), // tick=1 模拟日（simclock 同义）·"60 天"→60、"3 周"→21
+  compareBaseline: z.boolean().default(true), // true = 双跑（基线 vs 情景）产 ImpactAssessment（S6 后启用求解器维）
+  slotPresets: z.record(z.string(), z.unknown()).default({}),
+  source: z.enum(["dialogue", "scenario", "whatif", "workspace", "alert"]), // 溯源 R13
+});
+export type SimulationRequest = z.infer<typeof SimulationRequestSchema>;
+
+// ── ImpactAssessment 利好/利空双向评估（答案先行的泛化形态·WO §2.5） ──────────────────
+// ⛔ S6 门（2026-07-11 配套审计钉死）：求解器决策维必须经 SimContextOverlay 在模拟态上算，否则基线==情景=假评估；
+// hold/长 horizon 必须有 ExogenousFeed 真源 + 守恒输出。三者由 S6 提供——**S6 未 DONE 前求解器维/hold 不上线**。
+// 本 schema 契约就位（前瞻·additive），S1 不产求解器维 ImpactAssessment（shock 短程只出状态级结论）。
+export const ImpactVerdictSchema = z.enum(["FAVORABLE", "UNFAVORABLE", "NEUTRAL", "NO_DATA"]);
+export type ImpactVerdict = z.infer<typeof ImpactVerdictSchema>;
+
+export const ImpactAssessmentSchema = z.object({
+  horizonTicks: z.number().int(),
+  items: z.array(
+    z.object({
+      dimKey: z.string(),
+      baseline: z.number().nullable(),
+      scenario: z.number().nullable(),
+      delta: z.number().nullable(),
+      // verdict 纯机械：delta 符号 × 维度 direction → FAVORABLE/UNFAVORABLE（R6·不靠 LLM 判好坏）；无数据 NO_DATA（诚实）。
+      verdict: ImpactVerdictSchema,
+      evidence: z.string(), // 真源（solver provId / trace·R13）
+    }),
+  ),
+  summary: z.string(), // "利好 2 项 · 利空 2 项 · 净判断…"
+});
+export type ImpactAssessment = z.infer<typeof ImpactAssessmentSchema>;

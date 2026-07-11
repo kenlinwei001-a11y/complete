@@ -112,6 +112,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // features.ts 同键同 defaultOn:false 下发；此处注册使 featureEnabled 认得该键（关时 !set.has→false·不落 unknown-key
   // 恒真陷阱）。与进程级 env 闸 QOS_REQUIREMENT_GRAPH 双闸独立：env 关=连图都不构（pipeline 字节一致）；feature 关=端点 404。
   { key: "growth.requirement_graph", name: "需求图引擎", level: "BLOCK", defaultOn: false },
+  // WO-SANDBOX-AS-RENDER-TARGET（S1·暗发·RL2）：时序推演意图→沙盘渲染器落地。关 = orchestrator 不产
+  // sandbox_render 答案块（回落 Path B/旧 what-if URL·旧路径未删·回退演练 §5.6）。权威 entitlement 由 DataCore
+  // features.ts 同键同 defaultOn:false 下发；此处注册使 featureEnabled 认得该键（关时 !set.has→false·不落 ungoverned 恒真陷阱）。
+  { key: "sim.sandbox_render", name: "时序推演意图落地渲染", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
@@ -149,6 +153,10 @@ const VIEW_ALIAS: Record<string, string> = {
   generate: "view.plan-generate",
   project: "view.project-sim",
   scenarios: "view.scenarios",
+  // WO-SANDBOX-AS-RENDER-TARGET（S1）：时序推演意图 targetView="sim-sandbox" → 沙盘 VIEW 门（entitlement 复用
+  // sim.sandbox·与独立路由 SimSandboxGuard 同门）。渲染器落点视图键归一。
+  "sim-sandbox": "sim.sandbox",
+  sandbox: "sim.sandbox",
   // GRAPH-PANORAMA-ONLY：graph-{persp} 视图键已退役（别名删除）；图谱唯一入口 graph → 本体图谱 VIEW 键。
   graph: "view.ontology-graph",
 };

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { IsoTime } from "./common.js";
 import { PlanRefSchema, ResolvedRefSchema } from "./refs.js";
 import { GapReportSchema } from "./growth.js";
+import { SimulationRequestSchema } from "./sim.js"; // WO-SANDBOX-AS-RENDER-TARGET·S1 sandbox_render AnswerBlock
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.1 场景包与意图目录
@@ -300,6 +301,17 @@ export const AnswerBlockSchema = z.discriminatedUnion("type", [
         grown: z.boolean().optional(),
       })
       .optional(),
+  }),
+  // WO-SANDBOX-AS-RENDER-TARGET（S1·additive）：时序推演意图命中 → 答案携归一 SimulationRequest 作 preset，
+  // 前端沙盘渲染器（registerRenderer("sim-sandbox")）据此客户端跑 shock 短程推演并渲染进沙盘（答案先行）。
+  // targetView 恒 "sim-sandbox"；headline = 答案先行横幅摘要（推演进行中/状态级结论指引，客户端 tick 后逐值补全）。
+  // 暗发：feature `sim.sandbox_render` 关 → orchestrator 不产此块（回落 Path B/旧 what-if URL·旧路径未删）。
+  z.object({
+    type: z.literal("sandbox_render"),
+    /** 归一触发载荷（SimulationRequestSchema·source=dialogue）——前端沙盘渲染器消费为 preset。 */
+    request: SimulationRequestSchema,
+    /** 答案先行横幅（人话摘要·如"常州二线停3周·推演进行中，逐 tick 出交付缺口"）。 */
+    headline: z.string(),
   }),
 ]);
 export type AnswerBlock = z.infer<typeof AnswerBlockSchema>;

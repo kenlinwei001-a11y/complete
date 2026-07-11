@@ -93,6 +93,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
   { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-SANDBOX-AS-RENDER-TARGET（S1·暗发·RL2）：时序推演意图→沙盘渲染器落地（五触发归一）。关 = orchestrator
+  // 不产 sandbox_render 答案块（回落 Path B/旧 what-if URL·旧路径未删）。权威 entitlement 由 DataCore 下发，
+  // AgentCore features/registry.ts 同键同 defaultOn:false 镜像（热路径闸认得该键）。sim:check §3 守全 sim.* defaultOn:false。
+  { key: "sim.sandbox_render", name: "时序推演意图落地渲染", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   // 优化求解器融合（G-12·SPEC-optimization-template-pool §6）：全部暗发 defaultOn:false——按租户开不同档
   // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
   // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
