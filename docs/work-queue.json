@@ -7460,6 +7460,39 @@
         ],
         "discipline": "additive·审核方欠账复验出单·dev建·reviewer复验。"
       }
+    },
+    {
+      "at": {},
+      "id": "WO-FEATURE-PARITY-GATE",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "doc": "docs/work-queue.json",
+      "lane": "gate-harden",
+      "title": "堵根门:暗发feature键双注册一致性门(防未注册恒真陷阱·L2-1/L1B-3同类复发)",
+      "note": "[系统性·两次BLOCK同根] L2-1缺agentcore侧decision.kernel·L1B-3缺datacore侧qos.workflow_dag——暗发键双注册漏无门守·每次靠人复验抓。建门自动逮。",
+      "acceptance": {
+        "goal": "每个暗发BLOCK键在datacore+agentcore双注册·单注册即门红。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "gate",
+            "assert": "新scripts/check-feature-parity.mjs:扫datacore features.ts FEATURE_REGISTRY与agentcore features/registry.ts·断言每个level:BLOCK·defaultOn:false的暗发键两侧都注册(允许datacore权威·agentcore镜像·但两侧须都有)。缺一侧→EXIT≠0列出该键+缺哪侧。"
+          },
+          {
+            "id": "C2",
+            "type": "gate",
+            "assert": "green→red自证:临时删一侧一个键→门红逮住·恢复→绿。并入package.json pnpm gates链(顺带补挂workflow-dag:check·L1B-2复验发现它也没并入)。"
+          },
+          {
+            "id": "C3",
+            "type": "真跑",
+            "assert": "跑门EXIT0(修完L1B-3的qos.workflow_dag/exec_planner后)·现有所有暗发键双注册通过。"
+          }
+        ],
+        "discipline": "additive·纯门加固·堵根·审核方出单·dev建·reviewer复验。"
+      }
     }
   ],
   "meta": {
