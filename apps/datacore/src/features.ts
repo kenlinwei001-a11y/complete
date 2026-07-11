@@ -41,6 +41,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-IMPORT-ONTOLOGY (G2)·客户本体直导（objects.json/relations.json → ObjectType/LinkType）。暗发 defaultOn:false（R3）：
   // 关 → /a/v1/ontology/import 返回 404 FEATURE_NOT_FOUND（先于 authz）。requires data-builder。
   { key: "data-import.ontology-bundle", name: "客户本体直导（暗发）", level: "BLOCK", defaultOn: false, requires: ["data-builder"] },
+  // WO-IMPORT-SCENARIO (G3)·场景导入（Stage 3.15 场景 JSON → 平台场景卡·经 /a/v1/scenarios/pack seam 进启动器目录）。
+  // 暗发 defaultOn:false（R3）：关 → /a/v1/scenarios/import & /a/v1/scenarios/imported 返回 404。requires data-builder。
+  { key: "data-import.scenario", name: "场景导入（暗发）", level: "BLOCK", defaultOn: false, requires: ["data-builder"] },
   { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
   { key: "view.project-sim.whatif", name: "What-if 调参", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },

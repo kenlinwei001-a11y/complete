@@ -753,6 +753,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     ontologyWorkflows: new PgStore(pool, "ontology_workflows"),
     decisionCases: new PgStore(pool, "decision_cases"), // WO-L1.5-2（CBR 案例·migration038·doc jsonb）
     decisionPackages: new PgStore(pool, "decision_packages"), // WO-L2-4（决策制品·migration039·doc jsonb）
+    importedScenarios: new PgStore(pool, "imported_scenarios"), // WO-IMPORT-SCENARIO（G3·导入场景卡·migration040·doc jsonb）
 
     async ping() {
       await pool.query("SELECT 1");

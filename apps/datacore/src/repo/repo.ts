@@ -3,6 +3,7 @@ import type {
   ActionDraft,
   ActionTypeRecord,
   AuditLogRecord,
+  ImportedScenarioRecord,
   CalibrationForecastRecord,
   CalibrationHistoryRecord,
   CalibrationConvergenceRecord,
@@ -342,6 +343,8 @@ export interface Repos {
   // WO-L2-4（决策内核·migration039）：决策制品 DecisionPackage（咨询派生·可 drop 重生·doc jsonb·R2）。
   // id = packageId；DecisionPackage & {id} 满足 Store 约束。
   decisionPackages: Store<DecisionPackage & { id: string }>;
+  // WO-IMPORT-SCENARIO（G3·migration040）：导入场景卡（Stage 3.15 场景 → IndustryScenario）落库·doc jsonb·R2。
+  importedScenarios: Store<ImportedScenarioRecord>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;

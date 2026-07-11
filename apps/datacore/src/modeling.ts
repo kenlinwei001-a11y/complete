@@ -1,5 +1,5 @@
 import { ModelingSuggestionSchema, type FieldCoverageReport, type FieldProfile, type ModelingSuggestion, type SchemaReconcileCandidate } from "@platform/contracts";
-import type { AuthCtx, DraftOperation, FkCandidate, OntologyDraft, PropertyDef, RawDataset } from "./domain.js";
+import type { AuthCtx, DraftOperation, FkCandidate, ImportedScenarioRecord, OntologyDraft, PropertyDef, RawDataset } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { LlmClient } from "./llm.js";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
@@ -188,6 +188,37 @@ export interface OntologyImportBundleInput {
   bindDatasets?: boolean;
   strict?: boolean;
   publish?: boolean;
+}
+
+/** WO-IMPORT-SCENARIO (G3) · 场景导入入参（= Stage 3.15 场景 JSON 映射前）。 */
+interface ScenarioImportAnswerInput {
+  kind: "objects-aggregate" | "objects" | "solver";
+  objectType?: string;
+  agg?: "sum" | "avg" | "count" | "min" | "max";
+  prop?: string;
+  columns?: string[];
+  limit?: number;
+  solverKey?: string;
+  args?: Record<string, unknown>;
+  unit?: string;
+}
+export interface ScenarioImportInput {
+  scenarios: {
+    key?: string;
+    title?: string;
+    type?: string;
+    question?: string;
+    targetView?: string;
+    objectRefs?: { objectType: string; objectId: string; label?: string }[];
+    slotPresets?: Record<string, unknown>;
+    answer?: ScenarioImportAnswerInput;
+  }[];
+}
+
+/** WO-IMPORT-SCENARIO (G3) · 场景导入结果（含诚实缺口）。 */
+export interface ScenarioImportResultOut {
+  imported: { key: string; title: string; question: string; targetView: string; resolvedObjects: { objectType: string; objectId: string; label: string }[]; answerKind: "objects-aggregate" | "objects" | "solver"; answerDeclared: boolean }[];
+  gaps: { kind: "MISSING_OBJECT" | "MISSING_ANSWER"; scenarioKey: string; detail: string }[];
 }
 
 /** WO-IMPORT-ONTOLOGY (G2) · 本体直导结果（含诚实覆盖缺口）。 */
@@ -392,6 +423,62 @@ export class ModelingService {
     }
     const ontologyVersion = bundle.publish === false ? null : (await this.ontology.publishVersion(ctx)).version;
     return { createdTypes, createdLinks, bound, gaps, ontologyVersion };
+  }
+
+  /**
+   * WO-IMPORT-SCENARIO (G3)：Stage 3.15 场景 JSON → 平台场景卡（IndustryScenario）落库（PRD §3.3）。
+   * 经 `GET /a/v1/scenarios/pack` 合入本租户场景包 → AgentCore 启动器目录消费（既有 datacore→agentcore seam·零 agentcore 改）。
+   * ⛔ R14：平台**不含** Stage 3.15 业务语义——场景的 `answer` 声明式 query 由调用方给；缺省退化为对 objectRefs 的
+   * objects 直列（真数据·确定性），既不写死 type→求解器、也不静默造答案。
+   * **诚实边界（KILL-MOCK-RED）**：objectRefs 对**已物化对象库**解析，对不上 → `MISSING_OBJECT`（不放入 selectedObjects·不造幽灵引用）；
+   * 既无 answer 又无 objectRefs → `MISSING_ANSWER`（无法确定推演内容·该场景**不落库**·诚实缺）。
+   */
+  async importScenarios(ctx: AuthCtx, req: ScenarioImportInput): Promise<ScenarioImportResultOut> {
+    const imported: ScenarioImportResultOut["imported"] = [];
+    const gaps: ScenarioImportResultOut["gaps"] = [];
+    const sanitize = (s: string) => s.replace(/[^\p{L}\p{N}_-]/gu, "_");
+    for (const s of req.scenarios) {
+      const key = sanitize((s.key ?? s.title ?? s.type ?? "scenario").toLowerCase());
+      const title = s.title ?? s.type ?? key;
+      const question = s.question ?? `关于「${title}」的决策场景`;
+      const targetView = s.targetView ?? "sim-sandbox";
+      // presetContext.selectedObjects：对真对象库解析（id = obj_${type}_${pk}·与物化身份约定同源）。
+      const resolvedObjects: { objectType: string; objectId: string; label: string }[] = [];
+      for (const r of s.objectRefs ?? []) {
+        const objId = sanitize(`obj_${r.objectType.toLowerCase()}_${r.objectId}`);
+        const obj = await this.repos.objects.get(ctx.tenantId, objId);
+        if (obj) resolvedObjects.push({ objectType: r.objectType, objectId: r.objectId, label: r.label ?? r.objectId });
+        else gaps.push({ kind: "MISSING_OBJECT", scenarioKey: key, detail: `对象 ${r.objectType}/${r.objectId}（id=${objId}）不在对象库 → 未放入 selectedObjects（诚实·不造幽灵引用）` });
+      }
+      // answer：调用方声明优先；缺省退化为 objects 直列首个 objectRef 的类型（真数据·R14 平台不猜业务语义）。
+      let answer: ScenarioImportAnswerInput;
+      let answerDeclared: boolean;
+      if (s.answer) {
+        answer = s.answer;
+        answerDeclared = true;
+      } else {
+        const objType = s.objectRefs?.[0]?.objectType;
+        if (!objType) {
+          gaps.push({ kind: "MISSING_ANSWER", scenarioKey: key, detail: `场景「${title}」未声明 answer query 且无 objectRefs → 无法确定推演内容（诚实缺·该场景未落库）` });
+          continue;
+        }
+        answer = { kind: "objects", objectType: objType, limit: 50 };
+        answerDeclared = false;
+      }
+      const rec: ImportedScenarioRecord = {
+        id: `${ctx.tenantId}:${key}`,
+        tenantId: ctx.tenantId,
+        scenarioKey: key,
+        scenario: { key, title, question, answer: answer as unknown as Record<string, unknown> },
+        targetView,
+        resolvedObjects,
+        slotPresets: s.slotPresets ?? {},
+        answerDeclared,
+      };
+      await this.repos.importedScenarios.put(rec);
+      imported.push({ key, title, question, targetView, resolvedObjects, answerKind: answer.kind, answerDeclared });
+    }
+    return { imported, gaps };
   }
 
   /** 字段全建模覆盖报告（R12）：草稿当前映射对导入数据源字段的覆盖率 + 未建模清单。 */

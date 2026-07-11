@@ -7989,8 +7989,9 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G2客户本体直导:契约OntologyImportBundle({objects,relations})+端点POST /a/v1/ontology/import(校验→逐对象upsertType+逐关系upsertLinkType复用:2002/:2273→按名匹配数据建sourceBindings→发布)",
       "note": "[LaneB·datacore·索引§2序#4·与BSTACK-DERIVE] 诚实边界:bundle类型/关系与已上传数据对不上(字段缺/表缺)→报覆盖缺口·不静默建空类型。验收:导入CALB objects.json(7类)+relations.json(HAS/USES/PRODUCES)→/admin/modeling真见7类+关系。回写§2登OntologyImportBundle。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev4-import",
+      "built": "[BUILT dev4-import] 契约扩 import.ts(OntologyImportBundle/Gap/Result) + modeling.ts importOntologyBundle(复用 upsertType/upsertLinkType·name→PascalCase typeKey·domain 非14域即拒·link key `${rel}_${from}_${to}` 同名关系不冲突·bindDatasets 按名绑 RawDataset 建 sourceBindings) + app.ts POST /a/v1/ontology/import(暗发·strict 缺口 409) + feature data-import.ontology-bundle(defaultOn:false)。诚实边界(KILL-MOCK-RED·不静默建空/断链):关系端点/ref 解析不到→DANGLING_RELATION/UNKNOWN_REF·该链/ref 不建;bindDatasets 表缺 MISSING_TABLE/字段缺 MISSING_FIELD;strict 缺口→不建不发布 409。真跑:暗发门 404→开→直导 CALB 7 类+6 关系(HAS/USES/PRODUCES)→published v1→图谱真见 7 类;断链/未知 ref green→red;strict 409·0 类型;非法域 400;bindDatasets 真 sourceBindings+覆盖缺口。回写母体§2.B(登 OntologyImportBundle)+§3+slices。测:test/import-ontology.test.ts 7 用例·datacore 1201 全绿·gates 全绿。⚠共享 app.ts additive 新段·已 rebase。待审核方真跑复验。",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
       },
@@ -8006,8 +8007,9 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G3场景导入:端点POST /a/v1/scenarios/import(Stage3.15场景JSON→映射ScenarioCard presetContext.selectedObjects+slotPresets+targetView按type)→进场景目录·衔接沙盘渲染器",
       "note": "[LaneB·datacore·索引§2序#5·衔接WO-SANDBOX-AS-RENDER-TARGET(S1)] equipment_failure类场景导入后可直接进沙盘推演。验收:导入order_acceptance场景→场景目录出现→一键推演经QOS出ACCEPT/风险(不可跑通则诚实缺求解器/数据)。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev4-import",
+      "built": "[BUILT dev4-import] 契约扩 import.ts(ScenarioImportRequest/Gap/Result) + domain.ts ImportedScenarioRecord + migration040 imported_scenarios(repo.ts/memory.ts/pg.ts 三同步·down 带) + modeling.ts importScenarios(映射 IndustryScenario·objectRefs 对真对象库解析·answer 调用方给/缺省 objects 直列) + app.ts POST /a/v1/scenarios/import & GET /a/v1/scenarios/imported + /a/v1/scenarios/pack seam 合入导入场景 + feature data-import.scenario(defaultOn:false)。⛔R14 平台不写死 Stage3.15 type→求解器。诚实边界(KILL-MOCK-RED):objectRefs 对不上→MISSING_OBJECT 不放入不造幽灵;无 answer 无 ref→MISSING_ANSWER 该场景不落库。真跑:暗发门 404→开→导入 order_acceptance(声明式 answer)+equipment_failure(真 Equipment E1 解析·GHOST→MISSING_OBJECT)+broken(MISSING_ANSWER 不落库)→/scenarios/imported 可查→/scenarios/pack seam 合入 2 卡→幂等再导不翻倍。诚实交底:agentcore 启动器经 getScenarioPack 消费(非电池/pack 驱动租户直接进目录);battery 族 catalog 合并需 agentcore 侧(LaneA·登记补)。回写母体§2.B(登 ImportedScenario)+§3+slices。测:test/import-scenario.test.ts 5 用例·datacore 1210 全绿·gates(debattery/no-orphan/no-fake-data/no-silent-mock/feature-parity/prd/pg-notnull/slices)全绿。⚠共享 app.ts additive 新段·rebase-before-push。待审核方真跑复验。",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
       },

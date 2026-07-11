@@ -53,7 +53,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
-import { DeriveBatchRequestSchema, OntologyImportBundleSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1) / WO-IMPORT-ONTOLOGY (G2)
+import { DeriveBatchRequestSchema, OntologyImportBundleSchema, ScenarioImportRequestSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1) / WO-IMPORT-ONTOLOGY (G2) / WO-IMPORT-SCENARIO (G3)
 import { PreviewSourceRefSchema } from "@platform/contracts"; // WO-MERGE-03 C1（pipeline preview 经 databuilder 取样来源引用）
 import { retrieveSimilarCases, mineDecisionPatterns } from "./memory/decision-case.js"; // WO-L1.5-2/4（CBR 检索·§4.2 / 模式挖掘·§4.4⑥）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
@@ -1035,7 +1035,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
     const industryKey = (tenant?.industry as string) || "battery-manufacturing";
     const pack = loadIndustryPack(industryKey);
-    return { industryKey, scenarios: pack?.scenarios ?? [] };
+    // WO-IMPORT-SCENARIO (G3)：本租户导入场景卡合入场景包（pack 默认 + 导入·同键导入覆盖 pack 默认）→
+    // AgentCore 启动器目录经此 seam 消费导入场景（非电池/pack 驱动租户直接生效；电池族 catalog 由 agentcore 侧合并·LaneA）。
+    const importedScenarios = (await repos.importedScenarios.list(c.tenantId)).map((r) => r.scenario);
+    const packScenarios = pack?.scenarios ?? [];
+    const importedKeys = new Set(importedScenarios.map((s) => s.key));
+    const scenarios = [...packScenarios.filter((s) => !importedKeys.has(s.key)), ...importedScenarios];
+    return { industryKey, scenarios };
   });
 
   // ---- A6 authz -------------------------------------------------------------------
@@ -3775,6 +3781,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // strict 阻断（有缺口未落库）→ 409；正常直导 → 201。
     const blocked = r.ontologyVersion === null && body.strict === true && r.gaps.length > 0;
     return reply.status(blocked ? 409 : 201).send(r);
+  });
+
+  // ---- WO-IMPORT-SCENARIO (G3) · 场景导入（Stage 3.15 场景 JSON → 平台场景卡·PRD §3.3）----
+  // 暗发（R3）：data-import.scenario defaultOn:false → 关 = 404 FEATURE_NOT_FOUND。
+  // ⛔ R14：平台不含 Stage 3.15 业务语义（type→求解器不写死）；answer 声明式 query 由调用方给·缺省 objects 直列。
+  // 落库 → 经 GET /a/v1/scenarios/pack 合入本租户场景包 → AgentCore 启动器目录消费（既有 datacore→agentcore seam）。
+  app.post("/a/v1/scenarios/import", async (req, reply) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.scenario"))) throw featureNotFound();
+    const body = parseBody(ScenarioImportRequestSchema, req.body);
+    const r = await modeling.importScenarios(c, body);
+    return reply.status(201).send(r);
+  });
+  // 已导入场景卡列表（诚实可查·前后端对照）。
+  app.get("/a/v1/scenarios/imported", async (req) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.scenario"))) throw featureNotFound();
+    return { items: await repos.importedScenarios.list(c.tenantId) };
   });
 
   // ---- A7 synthetic -----------------------------------------------------------------------

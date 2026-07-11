@@ -171,3 +171,71 @@ export const OntologyImportResultSchema = z.object({
   ontologyVersion: z.number().nullable(),
 });
 export type OntologyImportResult = z.infer<typeof OntologyImportResultSchema>;
+
+/**
+ * WO-IMPORT-SCENARIO (G3) · 场景导入（Stage 3.15 场景 JSON → 平台场景卡·PRD-enterprise-dataset-import §3.3）。
+ * ⛔ R14：平台**不含** Stage 3.15 业务语义（`ORDER_ACCEPTANCE→哪个求解器` 等映射**不写死平台**）——
+ * 场景的 `answer` 声明式 query 由调用方（Stage 3.15 侧）给；缺省则退化为对 objectRefs 的 objects 直列（真数据·确定性）。
+ * presetContext.selectedObjects 对**已物化对象库**解析（对不上 → 诚实 gap·不造幽灵引用）。
+ */
+const SCENARIO_ANSWER_KINDS = ["objects-aggregate", "objects", "solver"] as const;
+
+export const ScenarioImportAnswerSchema = z.object({
+  kind: z.enum(SCENARIO_ANSWER_KINDS),
+  objectType: z.string().optional(),
+  agg: z.enum(["sum", "avg", "count", "min", "max"]).optional(),
+  prop: z.string().optional(),
+  columns: z.array(z.string()).optional(),
+  limit: z.number().optional(),
+  solverKey: z.string().optional(),
+  args: z.record(z.string(), z.unknown()).optional(),
+  unit: z.string().optional(),
+});
+
+export const ScenarioImportItemSchema = z.object({
+  /** 场景键（缺省从 title/type 派生·同键幂等覆盖）。 */
+  key: z.string().optional(),
+  /** 场景标题（缺省用 type）。 */
+  title: z.string().optional(),
+  /** Stage 3.15 场景类型（如 ORDER_ACCEPTANCE·仅作标题/键派生·平台不据此写死求解器 R14）。 */
+  type: z.string().optional(),
+  /** 决策问句（缺省生成通用问句）。 */
+  question: z.string().optional(),
+  /** 启动器目标视图（缺省平台默认）。 */
+  targetView: z.string().optional(),
+  /** 关系到的对象（objectType+业务主键 objectId）→ presetContext.selectedObjects·对真对象库解析。 */
+  objectRefs: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string().optional() })).optional(),
+  /** 槽位预置（保证打开即可推演·不被反问）。 */
+  slotPresets: z.record(z.string(), z.unknown()).optional(),
+  /** 声明式答案 query（调用方给·R14 平台不猜业务语义）；缺省退化为 objects 直列 objectRefs 的类型。 */
+  answer: ScenarioImportAnswerSchema.optional(),
+});
+
+export const ScenarioImportRequestSchema = z.object({
+  scenarios: z.array(ScenarioImportItemSchema).min(1),
+});
+export type ScenarioImportRequest = z.infer<typeof ScenarioImportRequestSchema>;
+
+export const ScenarioImportGapSchema = z.object({
+  kind: z.enum(["MISSING_OBJECT", "MISSING_ANSWER"]),
+  scenarioKey: z.string(),
+  detail: z.string(),
+});
+
+export const ScenarioImportResultSchema = z.object({
+  imported: z.array(
+    z.object({
+      key: z.string(),
+      title: z.string(),
+      question: z.string(),
+      targetView: z.string(),
+      /** 真解析到的对象（对象库存在的·前端 selectedObjects 只放真对象）。 */
+      resolvedObjects: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string() })),
+      answerKind: z.enum(SCENARIO_ANSWER_KINDS),
+      /** 诚实位：answer 是调用方声明的（true）还是缺省退化为 objects 直列（false）。 */
+      answerDeclared: z.boolean(),
+    }),
+  ),
+  gaps: z.array(ScenarioImportGapSchema),
+});
+export type ScenarioImportResult = z.infer<typeof ScenarioImportResultSchema>;

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `1e0f2a3bd48cccc1`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `67e80ba564826a88`。
 
 ---
 
@@ -157,6 +157,7 @@ launch/useScenarioLaunch(context 带 scenarioIntentKey+scenarioKey·前端接缝
 Connector --produces--> RawDataset --suggest/modeling--> OntologyDraft --publish--> OntologyType/Link/Version
 [多文件/zip] --uploads/batch--> N×RawDataset --derive-batch(跨全部表 detectFkCandidates+deriveModelingSuggestion·确定性无 LLM)--> 一张 OntologyDraft(全类型+全跨表链路) --[可选 domains 归域→autoPublish→autoMaterialize]--> ObjectInstance(挂真 rawDatasetId·R-NO-ORPHAN-SOURCE)   ✅ WO-IMPORT-MULTITABLE（G1·企业级多表 FK 批量导入「导入侧」·POST /a/v1/uploads/batch + POST /a/v1/modeling/derive-batch·暗发 feature `data-import.multitable` defaultOn:false·⛔ R14 平台零行业常数·归域由调用方给·未归域诚实 publishErrors 不建空壳·Stage 3.15 生成逻辑留外部）
 OntologyImportBundle(objects.json/relations.json) --ontology/import(逐对象 upsertType+逐关系 upsertLinkType·可选 bindDatasets 建 sourceBindings)--> OntologyType/Link/Version(直导)   ✅ WO-IMPORT-ONTOLOGY（G2·客户本体直导·POST /a/v1/ontology/import·暗发 `data-import.ontology-bundle` defaultOn:false·诚实边界:断链/表缺/字段缺→gaps 逐项报·strict 有缺口 409 不建·⛔ R14 零行业常数）
+Stage3.15 场景 JSON --scenarios/import(映射 IndustryScenario·objectRefs 对真对象库解析·answer 调用方给/缺省 objects 直列)--> ImportedScenario(imported_scenarios·migration040) --scenarios/pack seam--> AgentCore 启动器目录(非电池/pack 驱动租户·一键推演走 QOS)   ✅ WO-IMPORT-SCENARIO（G3·POST /a/v1/scenarios/import + GET /a/v1/scenarios/imported·暗发 `data-import.scenario` defaultOn:false·诚实边界:对象对不上 MISSING_OBJECT·无 answer 无 ref MISSING_ANSWER 不落库·⛔ R14 不写死 type→求解器·battery catalog 合并待 agentcore LaneA）
 RawDataset --materialize(幂等)--> ObjectInstance --runDerivations--> DerivedProperty
 RawDataset --export(.xlsx/.csv)--> 下载文件(合成源标 .synthetic·真业务行·R6 字节稳)   ✅ WO-SOURCE-TRANSPARENCY（GET /a/v1/raw-datasets/:id/export·数据连接器页「下载 Excel」·消灭走捷径）
 所有 RawDataset --export.xlsx(多 sheet:概览+每集一 sheet)--> 一张下载文件(真业务行·空集诚实标注·>5万行截断标 truncated·R6 内容无时钟·R2 仅本租户)   ✅ INTAKE-XLSX-EXPORT（GET /a/v1/raw-datasets/export.xlsx[?connId=]·数据连接器页「导出全部源数据(Excel)」/连接级「导出本连接源数据(Excel)」·闭 G-13①产品化）

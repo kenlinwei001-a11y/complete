@@ -328,6 +328,23 @@ export interface LinkTypeDef {
   deprecation?: DeprecationMeta;
 }
 
+/**
+ * WO-IMPORT-SCENARIO (G3)：导入的场景卡（Stage 3.15 场景 JSON → IndustryScenario）落库。
+ * 经 GET /a/v1/scenarios/pack 合入本租户场景包 → AgentCore 启动器目录消费（既有 datacore→agentcore seam）。
+ * id = `${tenantId}:${scenarioKey}`（同租户同键幂等覆盖）。R6：同 JSON 同映射字节一致（无时钟/随机入内容）。
+ */
+export interface ImportedScenarioRecord {
+  id: string;
+  tenantId: string;
+  scenarioKey: string;
+  /** = @platform/contracts IndustryScenario（决策卡 + 声明式 answer query）。 */
+  scenario: { key: string; title: string; question: string; answer: Record<string, unknown> };
+  targetView: string;
+  resolvedObjects: { objectType: string; objectId: string; label: string }[];
+  slotPresets: Record<string, unknown>;
+  answerDeclared: boolean;
+}
+
 /** 治理增量 §1：域（升格为一等治理单元）。UNIQUE(tenant, domainKey)。 */
 export interface DomainRecord {
   id: string; // dom_<tenant>_<key>
