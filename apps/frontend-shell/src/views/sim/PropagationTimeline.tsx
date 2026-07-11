@@ -63,14 +63,13 @@ export function buildPropagation(out: RiskTimelineOutput, cardIndex = 0): Propag
     delay: Number(o.delay ?? 0),
     revenueWan: Number(o.revenueWan ?? 0),
   }));
-  // 轨M 增量1（假4）：财务击穿敞口 = Σ逐单真营收（qty × 真细分单价 SEG_PRICE，后端 affected_orders 真算）→ 亿，
-  // 不再前端写死 0.6 万/套。无 revenueWan（陈旧数据）则诚实标估算口径回落。
+  // 轨M 增量1（假4）· WO-FAKE-10 收口（去前端魔法折算）：财务击穿敞口 = Σ逐单真营收（qty × 真细分单价，
+  // 后端 affected_orders 真算）→ 亿。**无逐单真营收（陈旧/缺 revenueWan）→ financeYi=null 诚实空态**，
+  // 不再前端写死 0.6 万/套系数折算冒充敞口（KILL-MOCK-RED：无真源不伪造决策数字）。
   const hasRealRevenue = orders.some((o) => o.revenueWan > 0);
-  const financeWan = hasRealRevenue
-    ? orders.reduce((a, o) => a + o.revenueWan, 0)
-    : orders.reduce((a, o) => a + o.qty, 0) * 0.6; // 回落估算口径（仅无真营收时）
-  const financeYi = Math.round(financeWan / 10000 * 100) / 100;
-  const revenueMode = hasRealRevenue ? "真算" : "估算";
+  const financeYi = hasRealRevenue
+    ? Math.round(orders.reduce((a, o) => a + o.revenueWan, 0) / 10000 * 100) / 100
+    : null;
   const stages: PropagationStage[] = [
     {
       key: "event",
@@ -107,8 +106,13 @@ export function buildPropagation(out: RiskTimelineOutput, cardIndex = 0): Propag
       key: "finance",
       title: "财务击穿",
       window: "月度滚动",
-      meta: orders.length > 0 ? `延误敞口约 ${fmt(financeYi, 2)} 亿（收入口径·${revenueMode}：逐单 qty×真细分单价）` : "无财务击穿",
-      sev: financeYi >= 1 ? 2 : orders.length > 0 ? 1 : 0,
+      meta:
+        orders.length === 0
+          ? "无财务击穿"
+          : financeYi != null
+            ? `延误敞口约 ${fmt(financeYi, 2)} 亿（收入口径·真算：逐单 qty×真细分单价）`
+            : `${orders.length} 单波及·财务敞口待接入真营收（逐单 qty×真细分单价·当前无逐单真营收数据·不前端折算估算）`,
+      sev: financeYi != null && financeYi >= 1 ? 2 : orders.length > 0 ? 1 : 0,
     },
   ];
   return { base: card.base, factor: card.factor, stages, orders };

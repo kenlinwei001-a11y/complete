@@ -31,10 +31,12 @@ export function heatColor(v: number, threshold: number): string {
 }
 
 export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: { top: number; left: number; bottom: number } }) {
-  const threshold = data.threshold ?? 85;
-  // 向后兼容：仅显式非 LIVE 才灰化排除（未标 dataMode 的旧 fixture/真 LIVE 保持既有行为）。
-  const live = data.dataMode == null || data.dataMode === "LIVE";
-  const effMode = live ? "LIVE" : data.dataMode;
+  // WO-FAKE-10（阈值后端下发·前端不硬编码）：越线阈值取后端 data.threshold（risk 求解器 params.risk.threshold·可校准）；
+  // 缺阈值 → 不再内联 ?? 85 伪造阈，走中性（非 LIVE 着色·灰），对齐 OrderChainView E4 治本。
+  const threshold = data.threshold;
+  // 向后兼容：仅显式非 LIVE 才灰化排除（未标 dataMode 的旧 fixture/真 LIVE 保持既有行为）；缺阈值亦视为非 LIVE（不着决策色）。
+  const live = threshold != null && (data.dataMode == null || data.dataMode === "LIVE");
+  const effMode = live ? "LIVE" : (data.dataMode ?? "MOCK");
   const top = Math.min(anchor.bottom + 6, (typeof window !== "undefined" ? window.innerHeight : 800) - 180);
   const left = Math.min(anchor.left, (typeof window !== "undefined" ? window.innerWidth : 1200) - 280);
   return createPortal(
@@ -46,7 +48,7 @@ export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: {
       <div className={styles.metrics}>
         <span>
           {zh.risk.peak}
-          <b className="mono" style={{ color: decisionColor(data.peak, threshold, effMode) }}>
+          <b className="mono" style={{ color: decisionColor(data.peak, threshold ?? 0, effMode) }}>
             {data.peak != null ? data.peak.toFixed(0) : "—"}
           </b>
         </span>
@@ -59,7 +61,7 @@ export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: {
       {live && data.series && data.series.length > 0 ? (
         <div className={styles.strip} data-testid="risk-popover-strip">
           {data.series.map((v, i) => (
-            <span key={i} title={`D+${i} · ${v.toFixed(0)}`} style={{ background: decisionHeat(v, threshold, effMode) }} />
+            <span key={i} title={`D+${i} · ${v.toFixed(0)}`} style={{ background: decisionHeat(v, threshold ?? 0, effMode) }} />
           ))}
         </div>
       ) : (

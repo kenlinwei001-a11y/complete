@@ -108,6 +108,9 @@ export const CapacityForecastOutputSchema = z
       .array(z.object({ key: z.string(), name: z.string(), severity: z.enum(["BLOCK", "WARN", "INFO"]), outcome: z.enum(["PASS", "WARN", "BLOCK", "NOT_APPLICABLE"]), expression: z.string(), evidence: z.string().optional() }))
       .optional(),
     ruleSetVersion: z.string().optional(),
+    // WO-FAKE-10（阈值由后端下发·前端不硬编码）：瓶颈紧张度越线阈值（= risk.threshold·SolverParam 三层真值源·
+    // 可被携 tensionThreshold param 的已发布规则覆盖）。前端 ProjectSimView 据此染红/黄，常量 85/75/60 仅兜底（缺此位时）。
+    tightnessThreshold: z.number().optional(),
   })
   .catchall(z.unknown());
 export type CapacityForecastOutput = z.infer<typeof CapacityForecastOutputSchema>;
@@ -116,6 +119,8 @@ export type CapacityForecastOutput = z.infer<typeof CapacityForecastOutputSchema
 export const BottleneckMatrixOutputSchema = z.object({
   dataMode: SolverDataModeSchema, // WO-FRESHNESS：扩 STALE/SYNTHETIC（invoke 统一叠加新鲜度/合成维）
   confidence: SolverConfidenceSchema.optional(),
+  // WO-FAKE-10：瓶颈紧张度越线阈值（= risk.threshold·后端下发）——前端色阶带 red≥T / amber≥T-10 / warn≥T-25 据此推导，不再前端硬编码 85/75/60。
+  tightnessThreshold: z.number().optional(),
   factors: z.array(z.string()), // 7 因素固定枚举
   rows: z.array(
     z.object({

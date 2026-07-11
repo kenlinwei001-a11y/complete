@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchExternalSignals, fetchSignalSeries, signalSensitivity, type SignalSensitivityResult } from "@/api/endpoints";
+import { DataModeBadge } from "@/components/DataModeBadge";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -46,11 +47,21 @@ export default function ExternalSignalsPage() {
     onError: toastError,
   });
 
+  const dataMode = data?.dataMode;
+  const synthetic = dataMode === "SYNTHETIC";
   return (
     <div data-testid="external-signals-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>外部信号（环境/市场）</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
-        外部域一等对象（EXT_SIG）：经 EXTERNAL 连接器同步，带来源/单位/新鲜度可溯。给信号施加冲击可看对规划指标的敏感性。
+      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {/* WO-FAKE-10（去伪断言·诚实标来源）：无真实 EXTERNAL 连接器实测——不再断言"经 EXTERNAL 连接器同步可溯"，
+            据后端 dataMode 诚实标合成/占位；接入真连接器后转真实来源。 */}
+        <DataModeBadge mode={dataMode} note="外部信号为合成种子（冷启动/演示·非真实 EXTERNAL 连接器实测）——source 机构名仅溯源占位，勿当权威实测喂决策" testId="external-signals-datamode" />
+        <span>
+          外部域一等对象（EXT_SIG）：{synthetic
+            ? "当前为合成种子（尚未接入真实 EXTERNAL 行情/政策连接器）——source/单位/新鲜度为溯源占位，非实测同步。"
+            : "经外部连接器同步，带来源/单位/新鲜度可溯。"}
+          给信号施加冲击可看对规划指标的敏感性。
+        </span>
       </div>
 
       <table className="cmp" data-testid="signals-table" style={{ width: "100%" }}>
@@ -79,7 +90,7 @@ export default function ExternalSignalsPage() {
                 <td className="mono">{s.value} {s.unit}</td>
                 <td>{TREND(s.trend)}</td>
                 <td><span className="badge">{s.impact}</span></td>
-                <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.source} · {s.asOf}</td>
+                <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.source}{synthetic ? "（合成占位·非实测）" : ""} · {s.asOf}</td>
                 <td>
                   <input
                     type="number" step={5} value={shocks[s.signalKey] ?? 0} aria-label={`${s.name} 冲击`}

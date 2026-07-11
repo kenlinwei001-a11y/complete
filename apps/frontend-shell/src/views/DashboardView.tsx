@@ -212,7 +212,9 @@ function OrderLedgerWidget() {
   const filtered = seg ? rows.filter((r) => r.seg === seg) : rows;
   // 轨M 增量2a：综合毛利率 = 后端 marginLedger 逐细分贡献勾稽（真算·闭合·可溯），取代前端 Σgp/Σsales。
   const ml = data?.marginLedger;
-  const gmRate = ml ? ml.gmRatePct : (() => { let s = 0, g = 0; for (const r of filtered) { const e = SEG_ECON[r.seg] ?? { price: 0.6, margin: 13 }; const v = r.qty * e.price; s += v; g += (v * e.margin) / 100; } return s > 0 ? (g / s) * 100 : 0; })();
+  // WO-FAKE-10（去前端魔法折算）：后端 marginLedger 缺失时前端 Σgp/Σsales 估算，单价/毛利率仅取 SEG_REGISTRY 权威口径；
+  // 非规范细分（SEG_ECON 无此 seg）→ 跳过（不再用 {price:0.6,margin:13} 魔法系数凭空折算冒充毛利）。
+  const gmRate = ml ? ml.gmRatePct : (() => { let s = 0, g = 0; for (const r of filtered) { const e = SEG_ECON[r.seg]; if (!e) continue; const v = r.qty * e.price; s += v; g += (v * e.margin) / 100; } return s > 0 ? (g / s) * 100 : 0; })();
   return (
     <div data-testid="dash-order-ledger">
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>

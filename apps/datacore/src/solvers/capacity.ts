@@ -390,6 +390,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     qty,
     // 轨M 增量1（假2）：紧张度数据模式——LIVE=任一基地主瓶颈来自真 OEE/利用率/良率；MOCK=全回落 → 前端红/橙显"估算"。
     dataMode: anyLive ? "LIVE" : "MOCK",
+    // WO-FAKE-10（阈值后端下发·前端不硬编码）：紧张度越线阈值 = risk.threshold（SolverParam 三层真值源·可校准）。
+    tightnessThreshold: p.risk.threshold,
     // legacy aliases consumed by AgentCore QOS seed plans
     gapPct: qty > 0 ? round(Math.max(0, gap) / qty, 4) : 0,
     mainBottleneck: mainBn,

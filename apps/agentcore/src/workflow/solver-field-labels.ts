@@ -263,6 +263,7 @@ export const META_FIELDS: ReadonlySet<string> = new Set([
   "degradeNote",
   "needsRealLevers", // QUERY30-ORCH Phase1：countermeasure_combo 诚实降级标志位（须真实杠杆·非 KPI 值）
   "thresholdRuleKey", // risk_timeline：越线阈值所引规则键（规则溯源元字段·非 KPI 值）
+  "tightnessThreshold", // WO-FAKE-10：capacity_forecast/bottleneck_matrix 紧张度越线阈值（前端色阶带下发·配置元字段·非 KPI 值）
 ]);
 
 /** 元字段→脚注人话 label。 */
@@ -277,6 +278,7 @@ const META_LABELS: Readonly<Record<string, string>> = {
   mcDispRatio: "蒙特卡洛离散比",
   dispersionSource: "离散来源",
   degradeNote: "降级说明",
+  tightnessThreshold: "紧张度越线阈值",
 };
 
 /**

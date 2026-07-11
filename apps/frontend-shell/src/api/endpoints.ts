@@ -598,7 +598,8 @@ export interface ExternalSignalVM {
   elasticity?: number;
 }
 export const fetchExternalSignals = () =>
-  api.a<{ signals: ExternalSignalVM[]; total: number }>("/a/v1/external-signals");
+  // WO-FAKE-09：dataMode（后端下发·当前合成种子 → SYNTHETIC）供前端挂 DataModeBadge 诚实位（不拿 mock 冒充权威实测）。
+  api.a<{ signals: ExternalSignalVM[]; total: number; dataMode?: import("@platform/contracts").SolverDataMode }>("/a/v1/external-signals");
 export interface SignalSensitivityResult {
   impacts: { metric: string; deltaPct: number; drivers: { signalKey: string; deltaPct: number; contributionPp: number }[] }[];
   unknownSignals: string[];

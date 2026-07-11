@@ -2025,7 +2025,8 @@ export const handlers = [
       { signalKey: "usd_cny", name: "美元兑人民币", category: "汇率", value: 7.18, unit: "CNY/USD", asOf: "2026-06-15", source: "中国外汇交易中心", trend: "up", impact: "出口营收", elasticity: 0.9 },
       { signalKey: "industrial_power_price", name: "工业电价", category: "能源", value: 0.78, unit: "元/kWh", asOf: "2026-06-01", source: "国网", trend: "flat", impact: "成本", elasticity: 0.12 },
     ];
-    return HttpResponse.json({ signals, total: signals.length });
+    // WO-FAKE-09：mock 同真后端下发 dataMode=SYNTHETIC（合成种子·非真实 EXTERNAL 连接器实测）→ 前端挂 DataModeBadge 诚实位。
+    return HttpResponse.json({ signals, total: signals.length, dataMode: "SYNTHETIC" });
   }),
   http.get("*/a/v1/external-signals/:key/series", ({ params }) => {
     const key = String(params.key);

@@ -23,6 +23,7 @@ import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { decisionColor, decisionHeat, decisionVerdictColor, notLiveDecision } from "@/components/DecisionValue";
 import { DecisionModeBanner } from "@/components/DecisionModeBanner";
+import { DataModeBadge } from "@/components/DataModeBadge";
 import { parseWhatIfPreset, useOpenWhatIf, type WhatIfPreset } from "./whatif";
 import { useScenarioPreset, presetNum, presetStr } from "./useScenarioPreset";
 import zh from "@/locales/zh";
@@ -37,6 +38,14 @@ const DEFAULT_QTY = 40; // 单一模式需求量默认（万套）——场景 d
 const DEFAULT_WEEKS = 6; // 交期默认（周）
 const DEFAULT_MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"]; // debattery-allow：config(simConfig.models)/Model 对象缺失时的电池行业兜底
 const DEFAULT_LOGISTICS: Record<string, number> = { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }; // debattery-allow：simConfig.logistics 缺失兜底
+// WO-FAKE-09 F5（示例占位·非真订单批次）：分批模式初值仅为 UI 演示占位——挂 DataModeBadge + 运行闸（对齐姊妹
+// SopBalanceView 范式），用户未编辑为真交货批次前，交期/缺口裁决诚实标"示例占位"，不冒充真实订单交货计划。
+const DEFAULT_BATCHES: BatchRowInput[] = [
+  { qty: 18, dueDate: "2026-07-13", address: "上海" },
+  { qty: 22, dueDate: "2026-08-10", address: "海外" },
+];
+// WO-FAKE-10（阈值后端下发·前端不硬编码）：紧张度色阶带仅在 out.tightnessThreshold 缺失时兜底（85/75/60 = 越线 85·差 10/25）。
+const TIGHT_THRESHOLD_FALLBACK = 85; // debattery-allow：仅后端 tightnessThreshold 缺失时兜底
 
 /** WorkspaceConfig.simConfig（catchall，按租户下发；缺失则用 DEFAULT_*）。 */
 interface SimConfig {
@@ -248,10 +257,11 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const [modelId, setModelId] = useState(injected.modelId ?? models[0] ?? "");
   const [qty, setQty] = useState(injected.qty ?? DEFAULT_QTY);
   const [weeks, setWeeks] = useState(injected.weeks ?? DEFAULT_WEEKS);
-  const [batches, setBatches] = useState<BatchRowInput[]>([
-    { qty: 18, dueDate: "2026-07-13", address: "上海" },
-    { qty: 22, dueDate: "2026-08-10", address: "海外" },
-  ]);
+  const [batches, setBatches] = useState<BatchRowInput[]>(DEFAULT_BATCHES);
+  // WO-FAKE-09 F5（运行闸·对齐 SopBalanceView 范式）：批次是否仍为示例占位（未编辑/未导入真交货批次）。
+  // 未编辑 → 批次裁决诚实标"示例占位"（DataModeBadge），采纳前软阻断（防把演示占位当真交货计划落 Action）。
+  const batchesArePlaceholder = mode === "batch" && JSON.stringify(batches) === JSON.stringify(DEFAULT_BATCHES);
+  const [confirmAdopt, setConfirmAdopt] = useState(false);
   const [whatIf, setWhatIf] = useState<WhatIfState>({ nightShifts: 0, extraChannels: 0, outsourcePct: 0 });
   const [uploadMsg, setUploadMsg] = useState(""); // PRD-IND-model §4.3 CSV 导入提示
   const [step, setStep] = useState(1);
@@ -343,6 +353,12 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
   const adopt = () => {
     if (!out) return;
+    // WO-FAKE-09 F5（运行闸·软阻断）：分批模式下批次仍是示例占位（未编辑真交货批次）→ 采纳前强确认，
+    // 防把演示占位当真实交货计划落 Action（改任一批次即解闸）。对齐 SopBalanceView 的 confirmRun 范式。
+    if (batchesArePlaceholder && !confirmAdopt) {
+      setConfirmAdopt(true);
+      return;
+    }
     action.mutate({
       actionTypeKey: "采纳产能保障方案",
       payload: {
@@ -452,6 +468,13 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
             {mode === "batch" && (
               <div>
+                {/* WO-FAKE-09 F5（诚实位·裁决前标数据模式）：批次仍为示例占位（未编辑/未导入真交货批次）→ 挂既有 DataModeBadge
+                    标 PARTIAL，提示交期/缺口裁决基于演示占位，须编辑为真交货批次或上传真实分批表后再据裁决。 */}
+                {batchesArePlaceholder && (
+                  <div style={{ margin: "2px 0 8px" }}>
+                    <DataModeBadge mode="PARTIAL" note="分批批次为示例占位（未编辑/未导入真实交货批次）——交期/缺口裁决基于演示占位，请编辑为本单真实交货批次或上传真实分批表后再据裁决" testId="proj-batch-datamode" />
+                  </div>
+                )}
                 {/* PRD-IND-model §4.3：分批交货 CSV 上传 + 模板下载 */}
                 <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "4px 0 8px" }}>
                   <label className="btn sm" data-testid="batch-upload-label" style={{ cursor: "pointer" }}>
@@ -566,6 +589,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                   wi={wi}
                   onOpenBn={() => setBnOpen(true)}
                   onAdopt={adopt}
+                  adoptConfirm={batchesArePlaceholder && confirmAdopt}
+                  onCancelAdopt={() => setConfirmAdopt(false)}
                   onRunSim={onRunSim}
                 />
               </div>
@@ -586,7 +611,10 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
         <Modal title={`${zh.sim.proj.bnMatrix} · 基地×7因素`} onClose={() => setBnOpen(false)} width={720}>
           <div data-testid="bn-matrix-modal">
             {bnMatrix.isLoading && <div className="empty-state">{zh.common.loading}</div>}
-            {bnMatrix.data && (
+            {bnMatrix.data && (() => {
+              // WO-FAKE-10（阈值后端下发·前端不硬编码）：色阶带越线阈值来自 bottleneck_matrix.tightnessThreshold（缺失兜底 85）。
+              const bnThreshold = bnMatrix.data.tightnessThreshold ?? TIGHT_THRESHOLD_FALLBACK;
+              return (
               <>
                 <table className="cmp" data-testid="bn-matrix-table">
                   <thead>
@@ -612,7 +640,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                           const t = raw ?? 0;
                           return (
                             <td key={f}>
-                              <span className={styles.bnCell} style={{ background: cellLive ? bnColor(t) : "rgba(154,168,182,.28)" }} data-testid={`bn-cell-${r.base}-${f}`}>
+                              <span className={styles.bnCell} style={{ background: cellLive ? bnColor(t, bnThreshold) : "rgba(154,168,182,.28)" }} data-testid={`bn-cell-${r.base}-${f}`}>
                                 {r.primary === f ? "◉" : ""}
                                 {raw != null ? t : "—"}
                               </span>
@@ -624,10 +652,11 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                   </tbody>
                 </table>
                 <div className={styles.noteInfo}>
-                  ◉ = 主瓶颈因素 · 色阶 绿→黄→橙→红 按紧张度（&lt;60 / &lt;75 / &lt;85 / ≥85）· dataMode {bnMatrix.data.dataMode}
+                  ◉ = 主瓶颈因素 · 色阶 绿→黄→橙→红 按紧张度（&lt;{bnThreshold - 25} / &lt;{bnThreshold - 10} / &lt;{bnThreshold} / ≥{bnThreshold}·阈值后端下发）· dataMode {bnMatrix.data.dataMode}
                 </div>
               </>
-            )}
+              );
+            })()}
           </div>
         </Modal>
       )}
@@ -644,8 +673,9 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   );
 }
 
-function bnColor(t: number): string {
-  return t >= 85 ? "#DD7E9E" : t >= 75 ? "#DD9551" : t >= 60 ? "#D2B04C" : "#62BE77";
+// WO-FAKE-10（阈值后端下发·前端不硬编码）：色阶带由越线阈值 threshold 推导（red≥T / orange≥T-10 / amber≥T-25 / else green）。
+function bnColor(t: number, threshold: number): string {
+  return t >= threshold ? "#DD7E9E" : t >= threshold - 10 ? "#DD9551" : t >= threshold - 25 ? "#D2B04C" : "#62BE77";
 }
 
 // ---------------- 六步主体（每步一张数据表，§7.13） ----------------
@@ -662,6 +692,8 @@ function StepBody({
   wi,
   onOpenBn,
   onAdopt,
+  adoptConfirm,
+  onCancelAdopt,
   onRunSim,
 }: {
   step: number;
@@ -675,9 +707,14 @@ function StepBody({
   wi: WhatIfOut | undefined;
   onOpenBn: () => void;
   onAdopt: () => void;
+  /** WO-FAKE-09 F5：分批示例占位未编辑 → 采纳前软阻断（强确认）·对齐 SopBalanceView。 */
+  adoptConfirm?: boolean;
+  onCancelAdopt?: () => void;
   /** WO-CAP-06：基地卡「开始推演」→ 跳沙盘（带基地裁剪）。undefined = sim.sandbox 未开通（按钮禁用·不跳 404）。 */
   onRunSim?: (base: string, factor?: string) => void;
 }) {
+  // WO-FAKE-10（阈值后端下发·前端不硬编码）：紧张度越线阈值来自求解器 out.tightnessThreshold（缺失兜底 85）。
+  const tightThreshold = (out as { tightnessThreshold?: number }).tightnessThreshold ?? TIGHT_THRESHOLD_FALLBACK;
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
 
   if (step === 1) {
@@ -923,11 +960,11 @@ function StepBody({
                     <i
                       style={{
                         width: `${Math.min(100, r.tightness ?? 0)}%`,
-                        background: decisionHeat(r.tightness, 85, r.live ? "LIVE" : "MOCK"),
+                        background: decisionHeat(r.tightness, tightThreshold, r.live ? "LIVE" : "MOCK"),
                       }}
                     />
                   </span>
-                  <span className="mono" style={{ color: decisionColor(r.tightness, 85, r.live ? "LIVE" : "MOCK") }}>
+                  <span className="mono" style={{ color: decisionColor(r.tightness, tightThreshold, r.live ? "LIVE" : "MOCK") }}>
                     {r.tightness != null ? r.tightness : "—"}
                   </span>
                   {/* 轨M 增量1（假2）：紧张度色块不再裸渲染当真值——逐基地诚实标实测/估算（LIVE=真 OEE/利用率/良率）。 */}
@@ -1135,6 +1172,16 @@ function StepBody({
             <button className="btn sm primary" style={{ marginTop: 10 }} data-testid="proj-adopt" onClick={onAdopt}>
               {zh.sim.proj.adopt}（参数组合 + 推演快照 → Action）
             </button>
+            {/* WO-FAKE-09 F5（运行闸·软阻断）：分批示例占位未编辑即采纳 → 强确认（改任一批次即解闸）。 */}
+            {adoptConfirm && (
+              <div className={styles.noteRed} data-testid="proj-adopt-softblock" style={{ marginTop: 8 }}>
+                ⚠ 分批批次仍是<b>示例占位</b>（未编辑真交货批次）。直接采纳会把演示占位当真实交货计划落 Action → 交期/缺口裁决不可信。
+                <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+                  <button className="btn sm" data-testid="proj-adopt-confirm" onClick={onAdopt}>仍用示例批次采纳（我知道是示例）</button>
+                  <button className="btn sm" data-testid="proj-adopt-cancel" onClick={onCancelAdopt}>先去编辑真批次</button>
+                </div>
+              </div>
+            )}
           </Feature>
         </div>
       </Feature>

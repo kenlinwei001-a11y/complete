@@ -2312,7 +2312,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const signals = rows
       .map((r) => r.props)
       .sort((a, b) => String(a.category ?? "").localeCompare(String(b.category ?? "")) || String(a.signalKey).localeCompare(String(b.signalKey)));
-    return { signals, total: signals.length, snapshotVersion: result.snapshotVersion };
+    // WO-FAKE-09（诚实位·不拿 mock 冒充权威实测喂决策）：外部信号目前均为合成种子（mock_external StaticAdapter·
+    // 无真实 EXTERNAL 行情/政策连接器实测），source 字段的机构名仅为溯源占位——诚实标 SYNTHETIC，前端据此挂
+    // DataModeBadge（复用既有诚实位徽章）。接入真实外部连接器后据对象 origin 升级 LIVE。
+    return {
+      signals,
+      total: signals.length,
+      ...(signals.length > 0 ? { dataMode: "SYNTHETIC" as const } : {}),
+      snapshotVersion: result.snapshotVersion,
+    };
   });
   // 外部域（EXT_SIG · 信号时序）：信号近 12 月历史（确定性，从当前值按 trend 反推；R6）。
   // 注：A8 ts_points 管道服务高频传感器序列（OEE/良率/产出）；稀疏市场信号走此轻量时序。

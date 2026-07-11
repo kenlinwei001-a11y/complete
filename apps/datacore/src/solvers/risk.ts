@@ -240,7 +240,7 @@ const DEMAND_DRIVEN_FACTORS = new Set(["瓶颈工序", "人力工时", "物料�
 export function bottleneckMatrix(
   c: SolverContext,
   args: { dataMode?: string; baseIds?: string[] },
-): { dataMode: "LIVE" | "MOCK"; factors: string[]; rows: { base: string; tightness: Record<string, number | null>; primary: string }[] } {
+): { dataMode: "LIVE" | "MOCK"; tightnessThreshold: number; factors: string[]; rows: { base: string; tightness: Record<string, number | null>; primary: string }[] } {
   const factors = c.params.bottleneck.factors;
   const wantLive = args.dataMode === "LIVE";
   let anyLive = false;
@@ -261,7 +261,8 @@ export function bottleneckMatrix(
       }
       return { base: baseName(c, baseId), tightness, primary: primaryFactor(c, baseId) };
     });
-  return { dataMode: wantLive && anyLive ? "LIVE" : "MOCK", factors, rows };
+  // WO-FAKE-10（阈值后端下发·前端不硬编码）：紧张度越线阈值 = risk.threshold（前端色阶带据此推导，非硬编码 85/75/60）。
+  return { dataMode: wantLive && anyLive ? "LIVE" : "MOCK", tightnessThreshold: c.params.risk.threshold, factors, rows };
 }
 
 // ---------------------------------------------------------------------------
