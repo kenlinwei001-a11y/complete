@@ -6647,11 +6647,12 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "at": {
         "wip": "2026-07-11T12:56:51.791Z",
-        "built": "2026-07-11T13:09:11.050Z"
+        "built": "2026-07-11T13:09:11.050Z",
+        "done": "2026-07-11T13:36:14.272Z"
       },
       "id": "WO-L1B-5",
       "title": "Planner SERVE 翻闸(STAGE-1 fall-through→STAGE-2 白名单)+ 全链真跑",
@@ -7056,11 +7057,12 @@
       "reviewNote": "PASS 独立真跑(agent ae5ccd0af):案例库+确定性检索+读端点。R9四处齐·双实现R2隔离。确定性检索双跑字节一致·判别力真(常州query→常州案例#1非恒返)·breakdown可解释R13。读端点HTTP往返真跑+真起服务诚实空态。暗发关闸memory.cbr OFF→404·put零writer空表(摄取待L1.5-3)。decision-case:check有牙·L1.5测11绿·全量datacore1152 passed 0 failed·build四包绿。G-3b读侧BASE达成。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T13:13:58.960Z",
-        "built": "2026-07-11T13:13:59.038Z"
+        "built": "2026-07-11T13:13:59.038Z",
+        "done": "2026-07-11T13:35:28.914Z"
       },
       "id": "WO-L1.5-3",
       "title": "案例摄取接线(DataCore Decision→案例·agent 终态旁路·L2 端口)+ agent 先查案例库(治 G-3b 读写闭合)",
@@ -7102,11 +7104,12 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T13:13:59.106Z",
-        "built": "2026-07-11T13:13:59.178Z"
+        "built": "2026-07-11T13:13:59.178Z",
+        "done": "2026-07-11T13:35:28.990Z"
       },
       "id": "WO-L1.5-4",
       "title": "反馈信号闭环 + 决策模式挖掘→接现校准 Action R4(feedback→调参真生效·不自改真值)",
@@ -7142,11 +7145,12 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T13:05:24.007Z",
-        "built": "2026-07-11T13:11:19.697Z"
+        "built": "2026-07-11T13:11:19.697Z",
+        "done": "2026-07-11T13:35:29.069Z"
       },
       "id": "WO-L1.5-5",
       "title": "出厂种子案例(诚实标 SEED)+ RL/GNN 离线可插拔占位 + 全链真跑 + 母体回写",
@@ -7596,10 +7600,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev1",
-      "cmd": "WIP",
-      "id": "WO-L1.5-3B",
-      "at": "2026-07-11T13:35:12.325Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "WO-L1B-5",
+      "at": "2026-07-11T13:36:14.272Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
