@@ -6501,7 +6501,7 @@
       "reviewNote": "PASS 独立真跑(agent a96bf73d):ExecutionGraph契约+线性lift+门。三要素逐字段对齐PRD§3。TaskNode内嵌复用PlanStep(qos.ts:105 9类判别联合)非另造。线性lift对齐PRD·toLinearSteps∘fromLinearPlan≡steps往返无损。确定性双跑字节一致(默认LIFT_EPOCH 1970非墙钟)。纯函数无接线:engine/executor零引用·QOS_WORKFLOW_DAG/EXEC_PLANNER defaultOff。门workflow-dag:check真牙齿(58 solverKey白名单+5牙齿非法图全逮环/幽灵步/幽灵solver/非纯链/悬空前驱·dev亲手中和环检测green→red实证·入gates)。16/16测。母体§7登记门正确。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "at": {
         "done": "2026-07-11",
