@@ -11,6 +11,47 @@ import styles from "./SimViews.module.css";
 /** 数字一律 --font-mono */
 export const fmt = (v: number, d = 1): string => v.toLocaleString("zh-CN", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+/**
+ * WO-FAKE-08（P0 前端 defake·堵根）：单 tick「全局态」标量的**权威口径·两只读控件的单一引用点**
+ * （SimComparePanel + SandboxRunHistory 同引本函数——一处口径·一处修双处引）。
+ * 与 SandboxView 的 computeGlobalKpi/carrierMean（WO-CAP-03-KPI-FIX）**同口径**。
+ *
+ * 病根（此前两控件各自的 tickMean）：`Σ 所有对象 × 所有 stateVar ÷ cnt` = **跨维扁平均**——
+ * 把 totalDemand(32 万量级) 等**无界计数变量**与 util(0-100) 混进一个平均，分母还被全对象数稀释（同 ÷575 病），
+ * 产出的"全局态"既非 0-100 也无量纲意义，却被 A/B 对比表 / heat strip / sparkline 当**权威 KPI** 显示 → 误导决策。
+ *
+ * 口径（与 CAP-03 一字对齐）：
+ *   ① 各 stateVar 只在**携带该变量的对象**上取均值（分母 = 携带者，非全对象）；
+ *   ② 同一变量若携带者跨分数(≤1)/百分(>1)两量纲，把分数值 ×100 归一到 0-100（避免 0.95 与 92 混算）；
+ *   ③ 仅纳入归一后 ≤100 的**有界比率/百分变量**（排除无界计数变量）；④ 末端 clamp 0-100。
+ * 无任何有界变量（退化）→ 诚实返 0（不臆造扁平混算值·不冒充权威 KPI）。
+ *
+ * 携带者/量纲信息全从 `state`（= 后端 compare/session 真快照逐 tick 态）派生，零业务常数（R14）。
+ */
+export function globalKpiFromState(state: Record<string, Record<string, number>>): number {
+  const objs = Object.keys(state);
+  if (objs.length === 0) return 0;
+  const vars = new Set<string>();
+  for (const o of objs) for (const v of Object.keys(state[o] ?? {})) vars.add(v);
+  const perVar: number[] = [];
+  for (const v of vars) {
+    const carriers = objs.filter((o) => {
+      const r = state[o]?.[v];
+      return typeof r === "number" && Number.isFinite(r);
+    });
+    if (carriers.length === 0) continue;
+    let vals = carriers.map((o) => state[o]![v]!);
+    const hasPct = vals.some((x) => x > 1);
+    const hasFrac = vals.some((x) => x <= 1);
+    if (hasPct && hasFrac) vals = vals.map((x) => (x <= 1 ? x * 100 : x)); // 分数→百分，统一 0-100
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    if (mean <= 100) perVar.push(mean); // 排除无界计数变量（归一后仍 >100 → 剔除·与 computeGlobalKpi 一致）
+  }
+  if (perVar.length === 0) return 0;
+  const m = perVar.reduce((a, b) => a + b, 0) / perVar.length;
+  return Math.max(0, Math.min(100, m));
+}
+
 /** 溯源角标：求解器结果带 snapshotVersion（一个事实一个出处） */
 export function SnapshotBadge({ snapshotVersion, tool }: { snapshotVersion?: string; tool: string }) {
   if (!snapshotVersion) return null;

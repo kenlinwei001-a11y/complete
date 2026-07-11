@@ -60,6 +60,24 @@ describe("WO-SANDBOX-RUN-HISTORY · 历史推演记录面板", () => {
     expect(screen.getByTestId("sandbox-history-terminal-sess-root")).toHaveTextContent("96.0");
   });
 
+  it("牙齿·分维归一口径（WO-FAKE-08 堵扁平均）：多 stateVar+无界计数变量 → 全局态=有界变量归一均值·非跨维扁平均", async () => {
+    // 末 tick 携两变量：util(0-100 有界) + totalDemand(32 万量级·无界计数)。
+    // 分维归一口径：util 携带者[常州90,无锡80]均值=85，totalDemand 归一后 >100 剔除 → 全局态终值=85.0。
+    // 若回潮到跨维扁平均（Σ 全对象×全 stateVar ÷ cnt = (90+320000+80+300000)/4 ≈ 155042.5）则本断言红。
+    server.use(
+      http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: [SESSIONS[0]!] })),
+      http.get("*/a/v1/sim/compare", () => HttpResponse.json({ a: [
+        { tick: 0, state: { 常州: { util: 30, totalDemand: 320000 }, 无锡: { util: 20, totalDemand: 300000 } } },
+        { tick: 6, state: { 常州: { util: 90, totalDemand: 320000 }, 无锡: { util: 80, totalDemand: 300000 } } },
+      ], b: [] })),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByTestId("sandbox-history-row-sess-root"));
+    await screen.findByTestId("sandbox-history-detail-sess-root");
+    // 终值 = 有界变量(util)归一均值 85.0（非扁平 155042.5），且必落 0-100（无界计数变量被剔除）。
+    expect(screen.getByTestId("sandbox-history-terminal-sess-root")).toHaveTextContent("85.0");
+  });
+
   it("牙齿·诚实空态：无会话 → 引导空态（不伪造记录）", async () => {
     mock([]);
     renderPanel();

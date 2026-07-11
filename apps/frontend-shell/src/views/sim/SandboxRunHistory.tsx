@@ -1,7 +1,8 @@
 import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { SimSession, TickState } from "@platform/contracts";
+import type { SimSession } from "@platform/contracts";
 import { fetchSimSessions, fetchSimCompare, type SimCompareSeries } from "@/api/endpoints";
+import { globalKpiFromState } from "./shared";
 import styles from "./SimViews.module.css";
 
 /**
@@ -12,17 +13,6 @@ import styles from "./SimViews.module.css";
  *
  * refreshKey：SandboxView 传 `${sessionId}:${curTick}` ——推进/分支后变化 → 列表自动重取（C4 事件失效，无需手刷）。
  */
-
-/** 全局态标量 = 该 tick 所有对象所有状态变量均值（与 SandboxView globalKpi / SimComparePanel tickMean 同口径·R6）。 */
-function tickMean(state: TickState): number {
-  let sum = 0, cnt = 0;
-  for (const o of Object.keys(state)) {
-    for (const v of Object.values(state[o] ?? {})) {
-      if (typeof v === "number") { sum += v; cnt++; }
-    }
-  }
-  return cnt === 0 ? 0 : sum / cnt;
-}
 
 function scopeLabel(s: SimSession): string {
   const scope = s.scope as { presetContext?: { label?: string }; label?: string } | undefined;
@@ -91,7 +81,8 @@ function SessionDetail({ session }: { session: SimSession }) {
     retry: false,
   });
   const series: SimCompareSeries = data?.a ?? [];
-  const points = useMemo(() => [...series].sort((a, b) => a.tick - b.tick).map((t) => ({ tick: t.tick, mean: tickMean(t.state) })), [series]);
+  // 全局态标量 = 分维归一口径（`globalKpiFromState`·与 SandboxView computeGlobalKpi / SimComparePanel 同一引用点·WO-FAKE-08 堵扁平均·R6）。
+  const points = useMemo(() => [...series].sort((a, b) => a.tick - b.tick).map((t) => ({ tick: t.tick, mean: globalKpiFromState(t.state) })), [series]);
 
   if (isLoading) return <div className={styles.sub} data-testid={`sandbox-history-detail-loading-${session.id}`}>加载轨迹…</div>;
   if (points.length === 0) return <div className={styles.sub} data-testid={`sandbox-history-detail-empty-${session.id}`}>该会话暂无 tick 轨迹。</div>;

@@ -1,38 +1,23 @@
 import { useMemo } from "react";
 import type { SimCompareSeries } from "@/api/endpoints";
-import { HeatStrip, DEFAULT_HEAT_THRESHOLD } from "./shared";
+import { HeatStrip, DEFAULT_HEAT_THRESHOLD, globalKpiFromState } from "./shared";
 import styles from "./SimViews.module.css";
 
 /**
  * 多场景 KPI 对比面板（北极星 · 增量 4 P0）。
  *
  * 输入两会话逐 tick 态序列（`GET /a/v1/sim/compare`），把每个对象→状态变量→数值聚合成
- * 逐 tick 全局均值序列（与 SandboxView 同口径），A/B 并排 + 差异（B−A）。
+ * 逐 tick 全局态标量序列（分维归一口径·`globalKpiFromState`·与 SandboxView computeGlobalKpi 同口径·WO-FAKE-08），
+ * A/B 并排 + 差异（B−A）。此前用跨维扁平均（Σ 全对象×全 stateVar ÷ cnt·同 ÷575 病）冒充权威 KPI，已堵根。
  * 零业务常数（debattery）：全部从 compare 数据派生，无任何行业实体名/阈值常数。
  * 复用 HeatStrip（双序列 heat）展示 counterfactual_timeline 双轨形状。
  */
 
-/** 单 tick 态聚合成全局均值（所有对象所有 stateVar 的均值，0-100）。与 SandboxView.aggregate 同口径。 */
-function tickMean(state: Record<string, Record<string, number>>): number {
-  const objs = Object.keys(state);
-  if (objs.length === 0) return 0;
-  let sum = 0;
-  let cnt = 0;
-  for (const o of objs) {
-    const vals = Object.values(state[o] ?? {});
-    for (const v of vals) {
-      sum += v;
-      cnt += 1;
-    }
-  }
-  return cnt === 0 ? 0 : sum / cnt;
-}
-
-/** 序列 → 逐 tick 全局均值数组（按 tick 升序）。 */
+/** 序列 → 逐 tick 全局态标量数组（按 tick 升序）。全局态口径 = 分维归一（`globalKpiFromState`·WO-FAKE-08 堵扁平均）。 */
 function meanSeries(series: SimCompareSeries): { tick: number; mean: number }[] {
   return [...series]
     .sort((a, b) => a.tick - b.tick)
-    .map((s) => ({ tick: s.tick, mean: tickMean(s.state) }));
+    .map((s) => ({ tick: s.tick, mean: globalKpiFromState(s.state) }));
 }
 
 export function SimComparePanel({
