@@ -6133,9 +6133,11 @@
       "reviewNote": "PASS 独立真跑逐值(agent a044dbed):order_fullchain P90去固定haircut。真curl 24单铁验:同p50→不同p90(8单同p50=1.2572→8个不同p90 1.1229..1.1314·旧固定式应恒1.13148);p90/p50非恒0.9(24个不同比值0.8903-0.8999无一恰0.9)=mcP90Single种子化MC真分位。R6同so字节一致。靶向cockpit-order-fullchain绿·四包test全套RC0(datacore1128/agentcore653/frontend543)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-11T06:22:48.976Z"
+      },
       "id": "WO-FAKE-06",
       "title": "apiClient 关键端点响应加 zod 运行时校验堵根(mock↔后端漂移即暴非静默坏)",
       "priority": "P0",
@@ -6164,9 +6166,11 @@
       "discipline": "additive·前端版门加固堵整类漂移·治本(KILL-MOCK-RED 前端同源)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-11T06:22:49.037Z"
+      },
       "id": "WO-FAKE-07",
       "title": "契约漂移三修:QueryHistory 读 candidates[0].intentKey + queries path 枚举 WORKFLOW/AGENT + calibration mock 增 baselineOnly 分支",
       "priority": "P0",
@@ -6195,9 +6199,11 @@
       "discipline": "additive·契约形对齐真后端·诚实降级态入测(KILL-MOCK-RED)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-11T06:22:49.103Z"
+      },
       "id": "WO-FAKE-08",
       "title": "SimComparePanel+SandboxRunHistory tickMean 统一到分维/归一(并入或紧随 WO-CAP-03 KPI 口径)",
       "priority": "P0",
@@ -6228,9 +6234,11 @@
       "discipline": "additive·统一 KPI 口径·去跨维扁平均误导聚合(KILL-MOCK-RED)。注:须与 WO-CAP-03 协调避重复/漏覆盖(deps 挂 WO-CAP-03-KPI-FIX)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-11T06:22:49.166Z"
+      },
       "id": "WO-FAKE-09",
       "title": "外部信号 provenance:ExternalSignalStrip 捏值去真机构名/挂 SYNTHETIC 徽标 + ProjectSim 写死 batches 挂 DataModeBadge+运行闸",
       "priority": "P0",
@@ -6259,9 +6267,11 @@
       "discipline": "additive·provenance 诚实标注·mock 不冒充 LIVE 权威实测喂裁决(KILL-MOCK-RED)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-11T06:22:49.227Z"
+      },
       "id": "WO-FAKE-10",
       "title": "魔法系数/硬编码阈收口(阈由后端下发·敞口/毛利去魔法折算·去伪溯源断言)",
       "priority": "P0",
@@ -6987,9 +6997,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-FAKE-05",
-      "at": "2026-07-11T06:19:17.953Z"
+      "cmd": "WIP",
+      "id": "WO-FAKE-10",
+      "at": "2026-07-11T06:22:49.227Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
