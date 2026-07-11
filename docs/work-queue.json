@@ -8164,14 +8164,65 @@
       "id": "WO-SA-3",
       "title": "新增 Workshop 车间层对象类型(Factory→Workshop→Line·工艺粒度)",
       "note": "[独立一期·三者最重·动合成主循环·datacore·通用非电池专属] 新workshopProps+plain(“Workshop”)@:739 + workshop_belongs_to_base/line_belongs_to_workshop两链路 + :1654合成。撞双向对齐门最硬(唯一新增可实例化类型)。守R6+R2租户隔离+R13溯源。范围红线:仅battery.ts。回写母体§2(新类型)+§3(两链路)+ontology:slices。施工单§4。"
+    },
+    {
+      "priority": "P3",
+      "deps": [
+        "WO-SA-1",
+        "WO-SA-2",
+        "WO-SA-3"
+      ],
+      "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T18:31:22.842Z"
+      },
+      "id": "WO-SA-4",
+      "title": "Base补6个factory台账字段(factory_code/province/city/factory_type/status/start_date·对齐docx factory.csv)",
+      "note": "[默认可缓做·记录型非决策·datacore·通用] per-base真事实用常量映射非rng(常州→江苏/常州/CELL);路线①BASE_REGISTRY(contracts既有归属·守R14)或②battery.ts常量表。声明baseProps:411+合成BASES:23。双向对齐门+R6。green→red:只声明不合成→判据②Base.province红。母体§2回写。"
+    },
+    {
+      "priority": "P3",
+      "deps": [
+        "WO-SA-1",
+        "WO-SA-2",
+        "WO-SA-3"
+      ],
+      "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T18:31:22.842Z"
+      },
+      "id": "WO-SA-5",
+      "title": "Line补4个产线台账字段(line_code/max_capacity_day/target_yield/status·对齐production_line.csv)",
+      "note": "[默认可缓做·datacore·通用] 声明lineProps:474+合成lines.push:1654(枚举取enumValues内·数值rngTopo追加末尾R6)。oee不补(已有oeeIndex+三分解)。green→red:跳合成→红。"
+    },
+    {
+      "priority": "P3",
+      "deps": [
+        "WO-SA-1",
+        "WO-SA-2",
+        "WO-SA-3"
+      ],
+      "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T18:31:22.842Z"
+      },
+      "id": "WO-SA-6",
+      "title": "Equipment补5个设备台账字段(equipment_code/equipment_type/manufacturer/install_date/status·对齐equipment.csv)",
+      "note": "[默认可缓做·datacore·通用] ⚠equipment_type/status值域待从equipment.csv实抽核准(否则合成落真实值域外)。声明equipmentProps:506(SA-2 mtbf后)+合成equipment.push:1675。equipment_type宜由processId工序确定性映射。green→red:合成\"FOO\"值域外→枚举校验红。"
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev1",
-      "cmd": "WIP",
-      "id": "WO-SANDBOX-BRANCH-INJECT",
-      "at": "2026-07-11T18:27:37.242Z"
+      "role": "review",
+      "cmd": "REGISTER(full-field-parity SA-4/5/6·默认缓做)",
+      "id": "3单",
+      "at": "2026-07-11T18:31:22.842Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

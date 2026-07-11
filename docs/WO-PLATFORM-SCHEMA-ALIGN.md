@@ -30,6 +30,12 @@
 
 **建议派单**:WO-SA-1 + WO-SA-2 合一期(低风险、纯正确性补齐);WO-SA-3 独立一期(它动合成主循环,是三者里唯一"新增可实例化类型",撞双向对齐门最硬)。
 
+### §1.1 范围与偏差声明(照 docx 逐字核对后·诚实边界)
+本单**不是 docx 全字段对齐**,只做 `REVIEW §5-3` 判定的"该改平台"三处(基数错 + 设备真信号 + 车间层)。与用户 docx 的**已知偏差**,dev 须知:
+- **Equipment 只补 3/10 字段**:docx equipment 有 `equipment_id, line_id, equipment_code, equipment_type, manufacturer, install_date, mtbf, mttr, health_score, status`(10 字段);本单只补决策真信号 `mtbf/mttr/health_score`。缺 `equipment_code/equipment_type/manufacturer/install_date/status`——若要设备台账全量对齐,另开一单(见 §7 末"可选扩展")。
+- **Line 保留 baseId 冗余**:docx `production_line` 父级是 `workshop_id`(不带 factory_id);本单 §4-C 给 Line 加 `workshopId` 的同时**保留既有 `Line.baseId`**(去掉会连带炸 `line_belongs_to_base` + 8 处 `mustIncludeLinkKeys` 推演路径)。这是**为不破坏既有链路的刻意反规范化**,非疏漏。
+- **Workshop / 基数订正 = 严格对齐**:Workshop 四字段与 docx workshop.csv 一致(名/码分立);`line_belongs_to_base` N:1 与 docx Factory HAS Line 1:N 一致。这两处是照 docx 做全的。
+
 ---
 
 ## §2 WO-SA-1 · 修基数错误 `line_belongs_to_base` N:N → N:1
@@ -119,13 +125,14 @@ const equipmentProps: PropertyDef[] = [
 ### 改法 A:新增 `workshopProps`(建在 `lineProps` 定义 `:474` 附近)
 ```ts
 const workshopProps: PropertyDef[] = [
-  { propKey: "workshopId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId",     dataType: "ref",    isPrimaryKey: false, refToTypeKey: "Base" }, // 对齐用户 workshop.factory_id
-  { propKey: "name",         dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "process_type", dataType: "enum",   isPrimaryKey: false,
-    enumValues: ["制浆","涂布","辊压","分切","卷绕","装配","注液","化成","分容","PACK"] }, // 对齐用户 workshop.process_type
+  { propKey: "workshopId", dataType: "string", isPrimaryKey: true },                        // 对齐 workshop.workshop_id
+  { propKey: "baseId",     dataType: "ref",    isPrimaryKey: false, refToTypeKey: "Base" }, // 对齐 workshop.factory_id
+  { propKey: "name",         dataType: "string", isPrimaryKey: false, searchable: true },   // 对齐 workshop.workshop_name（中文:制浆车间/涂布车间/…/PACK车间）
+  { propKey: "process_type", dataType: "enum",   isPrimaryKey: false,                       // 对齐 workshop.process_type（英文工艺码，非中文名）
+    enumValues: ["SLURRY","COATING","CALENDER","SLITTING","WINDING","ASSEMBLY","ELECTROLYTE","FORMATION","AGING","PACK"] },
 ];
 ```
+> ⚠️ **字段对齐要点(照 docx 原文 workshop.csv 第 37-46 行)**:`workshop_name` 与 `process_type` 是**两个不同字段各有各取值**——`name` 存中文车间名(制浆车间…),`process_type` 存英文工艺码(SLURRY…)。二者一一对应但**不可混填**。同一套工艺码也是 `production_line.process` 的取值域(docx line.csv:L00010→PACK),Workshop 与 Line 共用该码表。
 
 ### 改法 B:注册对象类型(`plain()` 块 `:739`,建议插在 `Line` 之前)
 ```ts
@@ -195,6 +202,9 @@ const workshopProps: PropertyDef[] = [
 
 ### 全局
 - `pnpm --filter datacore build && pnpm --filter datacore test` 全绿;`debattery:check` 绿(R14:三改全在 battery 包内,平台通用代码零业务常数);`node scripts/check-prd-ontology.mjs` 认本单 §0。
+
+### 可选扩展(超出本单三改·需另行决定)
+若要 Equipment 与 docx **全字段对齐**,在 WO-SA-2 基础上再补 5 字段(声明+合成成对·同守 §5 四条):`equipment_code`(string)、`equipment_type`(enum·docx 值域待抽)、`manufacturer`(string)、`install_date`(date)、`status`(enum·RUNNING/…)。**默认不做**——这 5 个是台账记录字段、非决策真信号,除非有"设备台账/资产管理"场景需要,否则留导入侧(`PRD-enterprise-dataset-import.md`)由 A3 反推更合适。
 
 ---
 

@@ -59,4 +59,15 @@
 
 ---
 
+## 附 · 三条道框架（`REVIEW-6phase-eds-value.md`·钉死 dev 别走错道）
+
+企业数据每类产出**性质不同、进系统方式不同**，别混：
+- **🟦 道A 模拟导入**（记录进库·前后端可见·零写死）：主数据+事务表 → G1 多表 FK 导入（`WO-IMPORT-MULTITABLE`✅）。
+- **🟩 道B 派生生成**（平台从道A字段+外键**算出来**·非导入）：本体/关系/切片/决策字段 → `deriveModelingSuggestion`（`WO-DB-MODELING-WIRE`/`WO-DB-DERIVE-DECISION-FIELDS`）。**⚠ 红线：别走 G2 直导预制本体绕过派生（=反模式·切片空壳）**；`WO-IMPORT-ONTOLOGY`（G2）✅ 仅适用"客户已有成熟本体、愿放弃再派生"的特例，**不是默认路径**。Phase5 objects.json 只当派生结果的**校验 oracle**。
+- **🟧 道C 能力装载**（可执行/自我本体·非数据）：求解器走 A18 生成晋升（不导入结论）；Agent/MCP/Skill/Workflow 是母体 §2.H 自我本体（不导入·当设计对照查缺）。生成器逻辑留外部（守 R14）。
+
+> 一句话：**导入(A) → 平台派生(B) → 能力自持(C)**。把道B当导入、把道C结论当数据，都是"假绿合法化"。
+
+---
+
 **闭环纪律**：每单以「代表问 → NL 真跑 → 逐值对照后端」验收；DONE 必带 `acceptance.criteria` 指向真产物（no-fake-done 门守）。任何改动新增/改变链路·事件·对象类型·不变量·门禁 → 回写 `docs/SYSTEM-ONTOLOGY.md` + `pnpm ontology:slices`。
