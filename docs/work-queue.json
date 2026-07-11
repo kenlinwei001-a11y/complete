@@ -7039,7 +7039,7 @@
         "wip": "2026-07-11T11:39:04.316Z"
       },
       "id": "WO-L1.5-3",
-      "title": "案例摄取接线(DataCore Decision→案例·agent 终态旁路·L2 端口)+ agent 先查案例库(治 G-3b 读写闭合)",
+      "title": "案例摄取接线(DataCore Decision→案例·L2端口) + CBR retrieve 端点(POST /a/v1/memory/cases/retrieve-similar·相似案例检索·datacore侧)",
       "priority": "P1",
       "deps": [
         "WO-L1.5-2",
@@ -7074,7 +7074,22 @@
       "discipline": "暗发·additive(旧 search_experience/recordExperience 不删)·案例数字不当真值·经工具溯源(KILL-MOCK-RED)。跨层:消费 L2 DecisionArtifact 端口(WO-L2-5·PRD §9 缺则退纯文本特征·软依赖)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-3 dev2] "
+      "note": "[LaneB·dev2·datacore域·见 DISPATCH-2DEV-SPINE.md] 【审核方拆缝 2026-07-11】原含 agentcore 'retrieve_similar_cases 工具'(tools/registry+executor+clients+universal)跨 lane 撞 Dev-1/Dev-3——已拆出 WO-L1.5-3B 归 Lane A/Dev-1。本单只做 datacore 两半:①案例摄取(Decision→DecisionCase 旁路写) ②CBR retrieve 端点(相似检索·暗发键 memory.cbr_retrieve 注册 datacore features.ts·defaultOn:false)。⛔不碰 agentcore 任何文件。治 G-3b 写侧+读侧数据面。"
+    },
+    {
+      "id": "WO-L1.5-3B",
+      "title": "agentcore retrieve_similar_cases 工具适配器(tools/registry+executor+clients+universal·薄 OBO 适配·调 datacore CBR retrieve 端点)",
+      "status": "TODO",
+      "priority": "P1",
+      "owner": "",
+      "deps": [
+        "WO-L1.5-3"
+      ],
+      "doc": "docs/PRD-L1.5-enterprise-memory-cbr.md",
+      "note": "[LaneA·dev1·agentcore域·见 DISPATCH-2DEV-SPINE.md] 【审核方拆缝 2026-07-11·从 L1.5-3 拆出】理由:①架构铁律 CLAUDE.md『AgentCore 只经 DataCore 公开 REST 访问数据』→ retrieve_similar_cases 是松耦合薄适配器·必属 agentcore·经 OBO 透传调 L1.5-3 的 datacore CBR retrieve 端点·不在 agentcore 重算相似度。②分区铁律 只碰本 lane 文件域→ agentcore tools/* = Lane A = Dev-1。暗发纪律:工具注册进 registry 但**门控**(暗发键 memory.cbr_retrieve·**双注册** agentcore registry.ts + datacore features.ts·defaultOn:false)→关闸=不在 agent 可用工具集=agent 行为字节一致(NG6);开闸(翻闸)才 agent 先查案例库。治 G-3b 读侧 agent 闭环。",
+      "at": {
+        "created": "2026-07-11T12:50:28.677Z"
+      }
     },
     {
       "status": "TODO",
@@ -7520,9 +7535,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE",
-      "id": "WO-L2-4",
-      "at": "2026-07-11T12:10:59.728Z"
+      "cmd": "SPLIT",
+      "id": "WO-L1.5-3→+3B",
+      "at": "2026-07-11T12:50:28.687Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
