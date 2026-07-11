@@ -5930,7 +5930,7 @@
       "title": "合并OntoFlow③收口:pipeline↔databuilder引擎协同+母体回写+OntoFlow分支退役",
       "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "deps": [
         "WO-MERGE-01",
@@ -5965,7 +5965,8 @@
       "at": {
         "created": "2026-07-10",
         "wip": "2026-07-11T13:29:54.263Z",
-        "built": "2026-07-11T14:24:33.322Z"
+        "built": "2026-07-11T14:24:33.322Z",
+        "done": "2026-07-11T14:48:57.760Z"
       },
       "blockReason": ""
     },
@@ -7399,7 +7400,32 @@
       "note": "[归还Dev-3·已建于sandbox-reconstruction-dev3分支(分支指令冲突)·待搬迁到vigilant-knuth后标BUILT我验·非Dev-2] [沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev3",
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "沙盘配套两类对象(传导规则propagation_rule/状态变量state_var)纳入缺口覆盖引擎:经正门声明配套后预分析能诊断这两类EXISTS/MISSING·诚实缺(autoCreatable:false无scaffolder→MISSING非假TO_CREATE)·暗发观察态关闸字节一致。(审核方真跑5关PASS·独立探针不同key复现·ae0309e)",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "curl",
+            "assert": "经PUT /b/v1/intents/adopt_mitigation声明bindings(stateVarKeys+propagationRuleKeys)后提交查询·growth.pre_analysis开→gapAnalysis同时含propagation_rule与state_var两类entry(改造前旧gap引擎无此两类=对照基线)"
+          },
+          {
+            "id": "C2",
+            "type": "curl",
+            "assert": "真建1条传导规则(POST /a/v1/sim/propagation-rules PUBLISHED)+1对象类型(derivedProperties)→该两条gap status=EXISTS(registry-snapshot服务间凭证真读到自建key·非硬编码);ghost两条=MISSING(severity WARNING+strategy MANUAL·autoCreatable:false诚实缺非TO_CREATE)"
+          },
+          {
+            "id": "C3",
+            "type": "gate",
+            "assert": "暗发键growth.pre_analysis关→pre-analysis端点404 FEATURE_NOT_FOUND·沙盘查询工单守恒2→2(配套覆盖不注入·字节一致);analyzeGap无损改造门6场景全绿"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "R6:同query双跑gapAnalysis归一后逐字节相等;门有牙:provisioners.ts+pre-analyze.ts AUTOCREATABLE propagation_rule false→true→provisioners.test/pre-analyze.test S0块变红(expected MISSING got TO_CREATE)·还原绿"
+          }
+        ]
+      }
     },
     {
       "at": {
@@ -7730,8 +7756,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "WO-FEATURE-PARITY-GATE",
-      "at": "2026-07-11T14:46:27.420Z"
+      "id": "WO-MERGE-03",
+      "at": "2026-07-11T14:48:57.761Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
