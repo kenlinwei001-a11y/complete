@@ -8374,21 +8374,22 @@
       "priority": "P3",
       "deps": [
         "WO-IMPORT-MULTITABLE",
-        "WO-DB-DERIVE-DECISION-FIELDS"
+        "WO-DB-DERIVE-DECISION-FIELDS",
+        "WO-DATAMODE-UNIFY-PROVENANCE"
       ],
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G4真数据换hash假值(可选·配CAP-01):demo/租户配置world_source=synthetic|imported·选imported→求解器读Stage3.15导入真值而非hash·从源头削mockTightness/util稀释假值",
       "note": "[LaneB·datacore·索引§2序#6·配WO-CAP-01 REALDEMAND] 守R-NO-ORPHAN-SOURCE(导入对象挂真rawDatasetId可下载审计)。治假推演源头。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev4-import",
       "built": "[REWORK-BUILT dev4-import·闭复验 KILL-MOCK-RED 命门] provenance 门控落地——新 modeling.countWorldObjectsByProvenance:真导入对象=origin=MATERIALIZED 且源连接 classifySourceOrigin=real-sourced(排除 SEED_DEMO 的 mock_erp+config.synthetic=true 合成源与 origin=SYNTHETIC)。①imported 仅在 realImportedObjectCount>0 时翻杠杆·否则拒翻(合成物化不得在 imported 下自报 LIVE 决策红)——闭复验①至少档。②warning/回执从数 rawDataset 总数→数真导入 provenance 对象(realImportedObjectCount)+ leverSourcedFromRealImports 真值支撑位——闭②。③synthetic 显式关杠杆 + synthetic 但模板默认开杠杆时诚实 warning(标签=行为·消除默认态标签≠行为)——闭③。④真导入逐值溯源测试(upload 真 CSV→derive-batch 物化→imported 翻杠杆·capacity_gwh=51 真值)+合成拒翻测试(risk_timeline imported==synthetic 不制造 LIVE 假红)替换旧假绿 on!=off——闭④。真起 SEED_DEMO :4001 复现复验方场景:demo 560 MATERIALIZED 但 realImportedObjectCount=0→imported realValueLeverEnabled=False+warning(此前 True 无 warning=命门)。诚实交底(登记后续·求解器 lane 非本文件域):完整版'求解器按 provenance 只读真导入对象子集'需改 solvers/service.ts context 加载器(Dev-2/CAP-01 lane);本 WO 实现复验方明列可接受的'至少档'。测:test/import-world-source.test.ts 7 用例·datacore 全绿·gates(debattery/no-orphan/no-fake-data/no-silent-mock/genuine-sim/feature-parity/prd/slices)全绿。回写母体§2.B(provenance 命门)+slices。⚠共享 app.ts additive·rebase-before-push。待审核方真跑复验。",
       "at": {
         "created": "2026-07-11T15:46:52.629Z",
-        "blocked": "2026-07-11T19:04:39.035Z",
+        "blocked": "2026-07-11T20:36:44.440Z",
         "reworked": "2026-07-11T20:05:00.000Z"
       },
       "assignedDev": "dev4-import",
-      "blockReason": "[已返工闭·见 built·保留原复验记录] [审核方独立复验BLOCK·KILL-MOCK-RED命门未过] world_source源盲+溯源盲:grep证worldSource仅现于domain.ts字段/app.ts端点/features.ts注册·无任何求解器或context加载器读它;PUT只翻qos.risk_realdemand公式旗标·两档读同一份对象集只换公式。demo(整世界SEED_DEMO合成·0真导入)+imported→dataMode:LIVE决策红57-67·值来自合成DemandSegment(dseg-1 p50=71·origin虽MATERIALIZED但rds是seed=42合成非真导入)·且无warning=合成冒充真值(违KILL-MOCK-RED)。命门(切真源→按provenance择对象→可溯源真导入值)未实现未测。dev测试把seedBattery注释成\"真对象\"只断言on!=off=假绿。暗发门/隔离/R6/空态诚实/R14/全门绿/无回归都成立(合成冒充LIVE大半是WO-CAP-01遗留杠杆demo默认开)。返工:①imported按origin=MATERIALIZED+真导入rawDataset择世界态对象(或至少合成materialized不得在imported下自报LIVE决策红)②warning从数rawDataset总数→数喂求解器真导入provenance并下沉solver dataMode③修默认态标签≠行为(demo默认worldSource synthetic但digest=imported)④补真导入真数据逐值溯源测试。证据见复验报告。"
+      "blockReason": "[审核方重验·返工仍BLOCK·修错层] dev4返工658135a8(provenance门控)未闭命门:改的是status端点元旗标(countWorldObjectsByProvenance→realValueLeverEnabled/qos.risk_realdemand flag)·决策值级dataMode完全没接isSyntheticDecision。真证:demo world_source=imported(realImported=0)→8/8卡dataMode=LIVE·currentTightness.live=true(default/imported/synthetic三态全LIVE·值随杠杆57→90但LIVE标签纹丝不动)。根:demandCapacityTightness(risk.ts:210-212)对任何DemandSegment一律返live:true/source:LIVE从不看provenance→demo合成物化DemandSegment标LIVE;cardDataMode(risk.ts:522)/capacity.ts:258行级live/RiskBoardView:138 cardDecisionMode(if dataMode==LIVE return LIVE)同病;无真源诚实空态(risk.ts:491)被合成DemandSegment live:true绕过。反假绿:测#4只断impOut==synOut(JSON相等·两侧同LIVE照过)从不断卡dataMode=SYNTHETIC·测名宣称合成未冒充LIVE根本没验(种子viaModelingChain没问题·是断言太弱)。闭命门=WO-DATAMODE-UNIFY-PROVENANCE(dep)。复验commit dc6f1f31(=658135a8命门文件字节一致)。"
     },
     {
       "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",
@@ -8673,7 +8674,7 @@
         "created": "2026-07-11T20:15:35.072Z"
       },
       "title": "统一dataMode真值判据为isSyntheticDecision语义(治合成materialized冒充LIVE根·G4/S2-BE/CAPFORECAST三BLOCK同源)",
-      "note": "[后端·KILL-MOCK-RED系统性根·最高优先·三BLOCK同源·用户最恨] 权威判据isSyntheticDecision(solvers/service.ts:2529):origin.type=SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has(datasetId))·注释「与demo viaModelingChain一致」。但三处弱判据漏MATERIALIZED-from-synthetic-connection致合成标LIVE:①BE deriveCellMode(app.ts·nodeObjectMode)②world_source(G4·qos.risk_realdemand)③capacity_forecast perBaseRows live=true(CAPFORECAST)。统一全部dataMode判据复用isSyntheticDecision/synthDatasetIds→demo合成世界应标SYNTHETIC非LIVE。green→red:demo view-config nodeObjectMode现102/102 LIVE·修后应SYNTHETIC;补运行期provenance测试(现全绿门是静态扫描/夹具·漏运行期nodeObjectMode真BUG)。收编WO-SANDBOX-TRUST-BADGE-BE+WO-IMPORT-REPLACE-SYNTHETIC(G4)+WO-CAPFORECAST-DATAMODE-HONEST三症。CAPSIM看板用solver dataMode(权威·正确)故不受此BUG·但统一防回归。"
+      "note": "[后端·KILL-MOCK-RED系统性根·最高优先·三BLOCK同源·用户最恨] 权威判据isSyntheticDecision(solvers/service.ts:2529):origin.type=SYNTHETIC||(MATERIALIZED&&synthDatasetIds.has(datasetId))·注释「与demo viaModelingChain一致」。但三处弱判据漏MATERIALIZED-from-synthetic-connection致合成标LIVE:①BE deriveCellMode(app.ts·nodeObjectMode)②world_source(G4·qos.risk_realdemand)③capacity_forecast perBaseRows live=true(CAPFORECAST)。统一全部dataMode判据复用isSyntheticDecision/synthDatasetIds→demo合成世界应标SYNTHETIC非LIVE。green→red:demo view-config nodeObjectMode现102/102 LIVE·修后应SYNTHETIC;补运行期provenance测试(现全绿门是静态扫描/夹具·漏运行期nodeObjectMode真BUG)。收编WO-SANDBOX-TRUST-BADGE-BE+WO-IMPORT-REPLACE-SYNTHETIC(G4)+WO-CAPFORECAST-DATAMODE-HONEST三症。CAPSIM看板用solver dataMode(权威·正确)故不受此BUG·但统一防回归。 【G4重验一手·精确修点】根=demandCapacityTightness(risk.ts:210-212)对任何DemandSegment返live:true/source:LIVE从不看provenance;连带cardDataMode(risk.ts:522)·capacity.ts:258行级live·RiskBoardView.tsx:138 cardDecisionMode(if dataMode==LIVE→LIVE·UI把合成卡当决策LIVE染红)。修=把isSyntheticDecision语义(origin SYNTHETIC||MATERIALIZED&&synthDatasetIds)下沉到卡/行级:底层DemandSegment/对象为合成物化(非真导入)时须source=SYNTHETIC+currentTightness.live=false。⚠CAPSIM前置:CAPSIM施工单§2假设risk.ts demandCapacityTightness『已真·治G-DM-1』实则卡级dataMode不honor合成物化→CAPSIM-REPLICA接risk_timeline会继承此BUG·本单须先于CAPSIM像素复刻的KILL-MOCK-RED验收(否则复刻页demo仍出合成假LIVE红·§7绿→red门反被违)。补运行期真HTTP provenance测试(现全绿门是静态扫描·漏运行期卡dataMode真BUG)。"
     },
     {
       "id": "WO-SHOCK-GUARD-HARDEN",
@@ -8691,10 +8692,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-CAP-09-SANDBOX-TICK-LIVE",
-      "at": "2026-07-11T20:34:02.524Z"
+      "role": "review",
+      "cmd": "G4重验仍BLOCK(修错层)·DATAMODE-UNIFY精确修点+CAPSIM前置",
+      "id": "WO-IMPORT-REPLACE-SYNTHETIC",
+      "at": "2026-07-11T20:36:44.440Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
