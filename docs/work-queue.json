@@ -6313,11 +6313,12 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "at": {
         "wip": "2026-07-11T07:27:43.297Z",
-        "built": "2026-07-11T08:17:53.015Z"
+        "built": "2026-07-11T08:17:53.015Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L1A-1",
       "title": "RequirementGraph 契约 + QuestionAST 确定性解析器(纯函数·无接线)",
@@ -6353,7 +6354,8 @@
       "lane": "LaneA",
       "assignedDev": "dev1",
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-1 dev1] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent a96bf73d):RequirementGraph契约+QuestionAST解析器。契约七类AST逐字段对齐PRD§3·节点11类/边8类·source诚实位。R1 contracts-only。复用problemClassForIntent(单一源)/ClassificationResult非另造分类。确定性独立harness双跑字节一致(键序打乱仍一致·astId=ast_taskId派生非UUID·无Date.now/Math.random)。纯函数无接线:orchestrator.ts对buildRequirementGraph/parseQuestionAst零引用·QOS_REQUIREMENT_GRAPH defaultOff·关闸by-construction。9/9测·agentcore662全绿零回归。母体回写随L1A-3(PRD§8)正确·slices无漂移。"
     },
     {
       "status": "TODO",
@@ -6438,11 +6440,12 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-3 dev1] "
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "at": {
         "wip": "2026-07-11T07:27:43.378Z",
-        "built": "2026-07-11T08:17:53.095Z"
+        "built": "2026-07-11T08:17:53.095Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L1B-1",
       "title": "ExecutionGraph 契约 + 线性 lift + 门(无接线)",
@@ -6478,7 +6481,8 @@
       "lane": "LaneA",
       "assignedDev": "dev1",
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-1 dev1] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent a96bf73d):ExecutionGraph契约+线性lift+门。三要素逐字段对齐PRD§3。TaskNode内嵌复用PlanStep(qos.ts:105 9类判别联合)非另造。线性lift对齐PRD·toLinearSteps∘fromLinearPlan≡steps往返无损。确定性双跑字节一致(默认LIFT_EPOCH 1970非墙钟)。纯函数无接线:engine/executor零引用·QOS_WORKFLOW_DAG/EXEC_PLANNER defaultOff。门workflow-dag:check真牙齿(58 solverKey白名单+5牙齿非法图全逮环/幽灵步/幽灵solver/非纯链/悬空前驱·dev亲手中和环检测green→red实证·入gates)。16/16测。母体§7登记门正确。"
     },
     {
       "status": "TODO",
