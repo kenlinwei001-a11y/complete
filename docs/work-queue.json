@@ -5930,7 +5930,7 @@
       "title": "合并OntoFlow③收口:pipeline↔databuilder引擎协同+母体回写+OntoFlow分支退役",
       "doc": "docs/PRD-merge-ontoflow-into-mainline.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "deps": [
         "WO-MERGE-01",
@@ -5964,8 +5964,10 @@
       },
       "at": {
         "created": "2026-07-10",
-        "wip": "2026-07-11T13:29:54.263Z"
-      }
+        "wip": "2026-07-11T13:29:54.263Z",
+        "built": "2026-07-11T14:24:33.322Z"
+      },
+      "blockReason": ""
     },
     {
       "status": "DONE",
@@ -7606,8 +7608,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1.5-3B",
-      "at": "2026-07-11T13:54:12.167Z"
+      "id": "WO-MERGE-03",
+      "at": "2026-07-11T14:24:33.322Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
