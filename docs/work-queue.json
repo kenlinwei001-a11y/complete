@@ -7794,12 +7794,13 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G1多表FK批量导入:新端点POST /a/v1/modeling/derive-batch(rawDatasetIds[]→跨表FK检测→一张本体图类型+链路→publish/materialize)+多文件/zip上传·复用deriveModelingSuggestion(modeling.ts:89已确定性无LLM)",
       "note": "[LaneB·datacore·索引§2序#3·HANDOFF-databuilder-genuine-and-import.md] Stage3.15导入侧·⛔不把生成逻辑塞平台(违R14·debattery:check绿)。守R-NO-ORPHAN-SOURCE:物化对象挂真rawDatasetId(green→red删源→报孤儿)。验收:传factory+production_line+equipment三表→draft出3类型+ProductionLine→Factory/Equipment→ProductionLine两链路逐值·物化/objects?type=Equipment真查origin=MATERIALIZED。 【Dev-4并行2026-07-11:deps NO-FLOOR→MERGE-03松开·复用deriveModelingSuggestion确定性不经comprehend·可立即开工与Dev-2 build-fix并行】 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev4-import",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
       },
-      "assignedDev": "dev4-import"
+      "assignedDev": "dev4-import",
+      "built": "[BUILT dev4-import 2026-07-11] 新契约 contracts/src/import.ts(DeriveBatchRequest/BatchUploadResult·不用databuilder.ts) + modeling.ts deriveBatch(薄包装derive·跨表FK确定性无LLM·可选归域→autoPublish→autoMaterialize·未归域诚实publishErrors不建空壳) + app.ts两端点 POST /a/v1/uploads/batch(多文件/zip·懒解jszip) & POST /a/v1/modeling/derive-batch + feature key data-import.multitable(defaultOn:false·暗发·requires data-builder)。真跑摸底(内存SEED_DEMO=1·真起:4001):基线单表链真通(F001 capacity_gwh=51不写死) + 一步导入3表→3类型+2链路(ProductionLine→Factory/Equipment→ProductionLine)→published v1→materialize created=12→/objects?type=Equipment真查5台逐值对CSV(E001涂布机A RUNNING)。守R14(debattery:check绿·平台零业务常数·归域门拒conn_ghost幽灵域400)·R-NO-ORPHAN-SOURCE(green→red删源→DANGLING孤儿)·R6(同数据两跑图字节一致)。回写母体§2.B+§3链+pnpm ontology:slices(hash c200153499a9d599)。测:test/import-multitable.test.ts 9用例全绿·datacore 206文件/1192测全绿·no-orphan/debattery/no-fake-data/no-silent-mock/feature-parity/prd/slices gates绿。⚠共享app.ts:additive加在materialize端点后新段·push前rebase。待审核方真跑复验。"
     },
     {
       "id": "WO-IMPORT-ONTOLOGY",

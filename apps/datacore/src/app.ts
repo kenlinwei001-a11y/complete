@@ -53,6 +53,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
+import { DeriveBatchRequestSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1)·多表 FK 批量导入
 import { PreviewSourceRefSchema } from "@platform/contracts"; // WO-MERGE-03 C1（pipeline preview 经 databuilder 取样来源引用）
 import { retrieveSimilarCases, mineDecisionPatterns } from "./memory/decision-case.js"; // WO-L1.5-2/4（CBR 检索·§4.2 / 模式挖掘·§4.4⑥）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
@@ -3675,6 +3676,91 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     const result = await modeling.materialize(ctx(req), id);
     return reply.status(202).send(result);
+  });
+
+  // ---- WO-IMPORT-MULTITABLE (G1) · 企业级多表 FK 批量导入（"导入侧"·PRD-enterprise-dataset-import §3.1）----
+  // 暗发（R3 先于 authz）：data-import.multitable defaultOn:false → 关 = 404 FEATURE_NOT_FOUND。
+  // ⛔ R14：平台代码零行业/电池常数——FK/类型全走既有确定性 deriveModelingSuggestion（无 LLM·R6），归域由调用方给。
+  // 守 R-NO-ORPHAN-SOURCE：物化对象挂真 rawDatasetId（origin.datasetId）→ 删源即报孤儿（no-orphan 门）。
+  app.post("/a/v1/modeling/derive-batch", async (req, reply) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.multitable"))) throw featureNotFound();
+    const body = parseBody(DeriveBatchRequestSchema, req.body);
+    const r = await modeling.deriveBatch(c, body);
+    const s = r.draft.suggestion;
+    return reply.status(r.published ? 201 : 200).send({
+      draftId: r.draft.id,
+      status: r.draft.status,
+      objectTypes: s.objectTypes.map((t) => ({
+        typeKey: t.typeKey,
+        sourceDataset: t.sourceDataset,
+        primaryKey: t.properties.find((p) => p.isPrimaryKey)?.propKey ?? null,
+        domain: t.domain,
+        propertyCount: t.properties.length,
+      })),
+      links: s.linkTypes.map((l) => ({
+        fromTypeKey: l.fromTypeKey,
+        toTypeKey: l.toTypeKey,
+        name: l.nameSuggestion,
+        viaFromField: l.viaFields.fromField,
+        viaToField: l.viaFields.toField,
+        cardinality: l.cardinality,
+        confidence: l.confidence,
+      })),
+      fkCandidates: r.draft.fkCandidates,
+      published: r.published ?? null,
+      materialize: r.materialize ?? null,
+      publishErrors: r.publishErrors ?? null,
+    });
+  });
+
+  // 多文件 / zip 整包批量上传（Stage 3.15 output 目录一次进）。每文件复用单文件上传正门（连接器可见·挂真源）。
+  // 逐文件成败独立报告（一张坏表不拖垮整批）；zip 内仅结构化扩展（csv/json/xlsx）入库，其余诚实跳过并报。
+  app.post("/a/v1/uploads/batch", async (req, reply) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.multitable"))) throw featureNotFound();
+    if (!req.isMultipart()) throw validationError("multipart required（一个或多个文件，或一个 .zip 整包）");
+    const uploads: { filename: string; connId: string; datasetName: string; rawDatasetId: string | null; rowCount: number | null }[] = [];
+    const errors: { filename: string; message: string }[] = [];
+    const STRUCTURED = ["csv", "json", "xlsx"];
+    const doUpload = async (filename: string, content: Buffer) => {
+      try {
+        const r = await connectors.upload(c, filename, content);
+        const rds = (await connectors.listRawDatasets(c, r.connection.id))[0];
+        uploads.push({
+          filename,
+          connId: r.connection.id,
+          datasetName: r.schema.datasets[0]?.name ?? r.connection.name,
+          rawDatasetId: rds?.id ?? null,
+          rowCount: rds?.rowCount ?? null,
+        });
+      } catch (e) {
+        errors.push({ filename, message: e instanceof Error ? e.message : String(e) });
+      }
+    };
+    for await (const part of req.parts()) {
+      if (part.type !== "file") continue;
+      const buf = await part.toBuffer();
+      const fn = part.filename || "upload";
+      if (fn.toLowerCase().endsWith(".zip")) {
+        // zip 整包：解压逐条目上传（懒加载 jszip·仅 zip 路径需要）。
+        const { default: JSZip } = await import("jszip");
+        const zip = await JSZip.loadAsync(buf);
+        for (const entry of Object.values(zip.files)) {
+          if (entry.dir) continue;
+          const base = entry.name.split("/").pop() || entry.name;
+          const ext = (base.split(".").pop() ?? "").toLowerCase();
+          if (!STRUCTURED.includes(ext)) {
+            errors.push({ filename: entry.name, message: `zip 内跳过非结构化文件 .${ext}（仅 csv/json/xlsx 入库）` });
+            continue;
+          }
+          await doUpload(base, Buffer.from(await entry.async("nodebuffer")));
+        }
+      } else {
+        await doUpload(fn, buf);
+      }
+    }
+    return reply.status(201).send({ uploads, errors });
   });
 
   // ---- A7 synthetic -----------------------------------------------------------------------

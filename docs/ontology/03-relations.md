@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `7d56f8708d34bfd9`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `9d2945590e2bf5c6`。
 
 ---
 
@@ -155,6 +155,7 @@ launch/useScenarioLaunch(context 带 scenarioIntentKey+scenarioKey·前端接缝
 **数据→本体→推演链**
 ```
 Connector --produces--> RawDataset --suggest/modeling--> OntologyDraft --publish--> OntologyType/Link/Version
+[多文件/zip] --uploads/batch--> N×RawDataset --derive-batch(跨全部表 detectFkCandidates+deriveModelingSuggestion·确定性无 LLM)--> 一张 OntologyDraft(全类型+全跨表链路) --[可选 domains 归域→autoPublish→autoMaterialize]--> ObjectInstance(挂真 rawDatasetId·R-NO-ORPHAN-SOURCE)   ✅ WO-IMPORT-MULTITABLE（G1·企业级多表 FK 批量导入「导入侧」·POST /a/v1/uploads/batch + POST /a/v1/modeling/derive-batch·暗发 feature `data-import.multitable` defaultOn:false·⛔ R14 平台零行业常数·归域由调用方给·未归域诚实 publishErrors 不建空壳·Stage 3.15 生成逻辑留外部）
 RawDataset --materialize(幂等)--> ObjectInstance --runDerivations--> DerivedProperty
 RawDataset --export(.xlsx/.csv)--> 下载文件(合成源标 .synthetic·真业务行·R6 字节稳)   ✅ WO-SOURCE-TRANSPARENCY（GET /a/v1/raw-datasets/:id/export·数据连接器页「下载 Excel」·消灭走捷径）
 所有 RawDataset --export.xlsx(多 sheet:概览+每集一 sheet)--> 一张下载文件(真业务行·空集诚实标注·>5万行截断标 truncated·R6 内容无时钟·R2 仅本租户)   ✅ INTAKE-XLSX-EXPORT（GET /a/v1/raw-datasets/export.xlsx[?connId=]·数据连接器页「导出全部源数据(Excel)」/连接级「导出本连接源数据(Excel)」·闭 G-13①产品化）

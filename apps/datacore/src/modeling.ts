@@ -6,7 +6,7 @@ import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import type { Metrics } from "./metrics.js";
 import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
-import { invalidState, notFound, validationError } from "./errors.js";
+import { AppError, invalidState, notFound, validationError } from "./errors.js";
 import { reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
 import { BUSINESS_DOMAIN_KEYS } from "./graphmeta.js";
 
@@ -161,6 +161,26 @@ export interface MaterializeSkipped {
   reason: string;
 }
 
+/**
+ * WO-IMPORT-MULTITABLE (G1)：把 publishDraft 的 `code:VALIDATION_ERROR` 拼接串还原成结构化 {typeKey,message}[]。
+ * 与 app.ts publish 端点的内联展示同源（诚实边界：发布校验失败逐条可读·不静默物化空壳）。
+ */
+function parsePublishErrors(message: string): { typeKey: string; message: string }[] {
+  const msgs = message.replace(/^publish validation failed: /, "").split("; ");
+  return msgs.map((m) => {
+    const i = m.indexOf(":");
+    return i > 0 ? { typeKey: m.slice(0, i).trim(), message: m.slice(i + 1).trim() } : { typeKey: "", message: m };
+  });
+}
+
+/** WO-IMPORT-MULTITABLE (G1) · derive-batch 服务结果（草稿 + 可选发布/物化/校验错误）。 */
+export interface DeriveBatchResult {
+  draft: OntologyDraft;
+  published?: { ontologyVersion: number };
+  materialize?: { jobId: string; created: number; quarantined: number; skipped: MaterializeSkipped[] };
+  publishErrors?: { typeKey: string; message: string }[];
+}
+
 /** A3 semi-automatic modeling: suggest → draft → human PATCH → validate → publish → materialize. */
 export class ModelingService {
   constructor(
@@ -202,6 +222,57 @@ export class ModelingService {
     };
     await this.repos.ontologyDrafts.put(draft);
     return draft;
+  }
+
+  /**
+   * WO-IMPORT-MULTITABLE (G1)：多表 FK 批量导入一步到位——**complete 复用**既有确定性链，不新增行业逻辑（R14）：
+   *   1) derive：跨**全部** rawDatasetIds 一次 detectFkCandidates + deriveModelingSuggestion（无 LLM·R6·同数据同结果）→
+   *      一张 draft 含全类型 + 全跨表链路（如 production_line.factory_id→factory ⇒ ProductionLine→Factory）。
+   *   2) 归域（可选）：按 typeKey 或 sourceDataset 名匹配调用方给的 domains 映射；非 14 合法业务域即拒（归域门）。
+   *      ⛔ 平台不猜行业域——域由导入方显式提供，平台代码零业务常数。
+   *   3) autoPublish（可选）：发布本体版本；校验失败 → 结构化 publishErrors 诚实返回（不静默物化空壳）。
+   *   4) autoMaterialize（可选·仅发布成功后）：物化对象，每对象挂真 rawDatasetId（origin.datasetId·R-NO-ORPHAN-SOURCE）。
+   * 全程确定性、不经 comprehend/LLM。
+   */
+  async deriveBatch(
+    ctx: AuthCtx,
+    opts: {
+      rawDatasetIds: string[];
+      domains?: Record<string, string>;
+      autoPublish?: boolean;
+      autoMaterialize?: boolean;
+      requireFullCoverage?: boolean;
+    },
+  ): Promise<DeriveBatchResult> {
+    const draft = await this.derive(ctx, opts.rawDatasetIds);
+    // 归域（确定性·纯校验无随机）：typeKey 优先，回落 sourceDataset 名；非法域即拒（14 域门·防幽灵域）。
+    if (opts.domains && Object.keys(opts.domains).length > 0) {
+      for (const t of draft.suggestion.objectTypes) {
+        const d = opts.domains[t.typeKey] ?? opts.domains[t.sourceDataset];
+        if (d !== undefined) {
+          assertValidDomain(d);
+          t.domain = d;
+        }
+      }
+      draft.status = "REVIEWED";
+      await this.repos.ontologyDrafts.put(draft);
+    }
+    if (!opts.autoPublish) return { draft };
+
+    let published: { ontologyVersion: number } | undefined;
+    try {
+      const r = await this.publishDraft(ctx, draft.id, { requireFullCoverage: opts.requireFullCoverage });
+      published = { ontologyVersion: r.ontologyVersion };
+    } catch (err) {
+      // 诚实边界：发布校验失败（未归域/缺主键/字段未全建模）→ 结构化返回·不物化空壳（KILL-MOCK-RED）。
+      if (err instanceof AppError && err.code === "VALIDATION_ERROR") {
+        return { draft: await this.getDraft(ctx, draft.id), publishErrors: parsePublishErrors(err.message) };
+      }
+      throw err;
+    }
+
+    const materialize = opts.autoMaterialize ? await this.materialize(ctx, draft.id) : undefined;
+    return { draft: await this.getDraft(ctx, draft.id), published, materialize };
   }
 
   /** 字段全建模覆盖报告（R12）：草稿当前映射对导入数据源字段的覆盖率 + 未建模清单。 */

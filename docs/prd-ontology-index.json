@@ -901,6 +901,21 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-enterprise-dataset-import.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
     "PRD-external-signal-domain.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -1763,6 +1778,7 @@
       "PRD-datadep-manifest-readiness.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-dogfooding-self-ontology.md",
+      "PRD-enterprise-dataset-import.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-frontend-addendum-remaining-views.md",
       "PRD-frontend-addendum-sim-views.md",
@@ -1887,6 +1903,7 @@
       "PRD-databuilder-page-unified-spec.md",
       "PRD-de-battery-multitenant-config.md",
       "PRD-decision-support-maturity.md",
+      "PRD-enterprise-dataset-import.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-generation-boundary-grounding.md",
