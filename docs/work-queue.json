@@ -7654,13 +7654,13 @@
     },
     {
       "id": "WO-DB-LINK-STABILIZE",
-      "priority": "P1",
+      "priority": "P2",
       "deps": [
         "WO-DB-CLOSURE-HARDEN"
       ],
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "链路派生稳定(洞E):LLM链路输出+确定性FK兜底补链(复用modeling detectFkCandidates uniqueRate≥0.95)+覆盖度门+接现成slice-planner planSlice真BFS多跳·治多跳偶发断链",
-      "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。",
+      "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。 【索引§2:序#5(与IMPORT-SCENARIO)·CLOSURE切片生成收口】",
       "status": "TODO",
       "owner": "",
       "at": {
@@ -7671,11 +7671,11 @@
       "id": "WO-DB-LLM-REQUIRED-NO-FLOOR",
       "priority": "P1",
       "deps": [
-        "WO-DB-LINK-STABILIZE"
+        "WO-DB-CLOSURE-HARDEN"
       ],
       "doc": "docs/WO-DB-LLM-REQUIRED-NO-FLOOR.md",
       "title": "取消comprehend无-LLM地板降级(G-COMPREHEND-FLOOR):无绑定/失败/未理解→诚实报错不建(LLM_PURPOSE_UNBOUND/COMPREHEND_NOT_UNDERSTOOD)·堵service.ts:86-102主+:952次两调用点",
-      "note": "[LaneB·datacore·用户钉死红线] ⚠硬前置:先跑全量测试sweep定≥14+测清单(WO只认3·实测runStory/comprehend触≥14 datacore+agentcore scaffold含comprehend-floor-a2)+CI/demo LLM绑定/flag端到端airtight(SEED_DEMO+docker demo+离线信创三态)·否则一落地破4包全绿。兼顾:DC_COMPREHEND_DETERMINISTIC flag(默认false·留地板满足RL9)+comprehendedBy:FLOOR契约标注。回写§8 G-COMPREHEND-FLOOR闭。green→red:改回地板→非电池故事产电池域→门红。",
+      "note": "[LaneB·datacore·用户钉死红线] ⚠硬前置:先跑全量测试sweep定≥14+测清单(WO只认3·实测runStory/comprehend触≥14 datacore+agentcore scaffold含comprehend-floor-a2)+CI/demo LLM绑定/flag端到端airtight(SEED_DEMO+docker demo+离线信创三态)·否则一落地破4包全绿。兼顾:DC_COMPREHEND_DETERMINISTIC flag(默认false·留地板满足RL9)+comprehendedBy:FLOOR契约标注。回写§8 G-COMPREHEND-FLOOR闭。green→red:改回地板→非电池故事产电池域→门红。 【索引§2重排2026-07-11:序#2(CLOSURE-HARDEN后·LINK前)·顺修comprehend漏绑bug(seed只建provider漏绑comprehend用途·service.ts实测踩坑)】",
       "status": "TODO",
       "owner": "",
       "at": {
@@ -7760,14 +7760,75 @@
         "wip": "2026-07-11T15:43:19.282Z"
       },
       "assignedDev": "dev1-后端"
+    },
+    {
+      "id": "WO-IMPORT-MULTITABLE",
+      "priority": "P1",
+      "deps": [
+        "WO-DB-LLM-REQUIRED-NO-FLOOR"
+      ],
+      "doc": "docs/PRD-enterprise-dataset-import.md",
+      "title": "G1多表FK批量导入:新端点POST /a/v1/modeling/derive-batch(rawDatasetIds[]→跨表FK检测→一张本体图类型+链路→publish/materialize)+多文件/zip上传·复用deriveModelingSuggestion(modeling.ts:89已确定性无LLM)",
+      "note": "[LaneB·datacore·索引§2序#3·HANDOFF-databuilder-genuine-and-import.md] Stage3.15导入侧·⛔不把生成逻辑塞平台(违R14·debattery:check绿)。守R-NO-ORPHAN-SOURCE:物化对象挂真rawDatasetId(green→red删源→报孤儿)。验收:传factory+production_line+equipment三表→draft出3类型+ProductionLine→Factory/Equipment→ProductionLine两链路逐值·物化/objects?type=Equipment真查origin=MATERIALIZED。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T15:46:52.629Z"
+      }
+    },
+    {
+      "id": "WO-IMPORT-ONTOLOGY",
+      "priority": "P2",
+      "deps": [
+        "WO-IMPORT-MULTITABLE"
+      ],
+      "doc": "docs/PRD-enterprise-dataset-import.md",
+      "title": "G2客户本体直导:契约OntologyImportBundle({objects,relations})+端点POST /a/v1/ontology/import(校验→逐对象upsertType+逐关系upsertLinkType复用:2002/:2273→按名匹配数据建sourceBindings→发布)",
+      "note": "[LaneB·datacore·索引§2序#4·与BSTACK-DERIVE] 诚实边界:bundle类型/关系与已上传数据对不上(字段缺/表缺)→报覆盖缺口·不静默建空类型。验收:导入CALB objects.json(7类)+relations.json(HAS/USES/PRODUCES)→/admin/modeling真见7类+关系。回写§2登OntologyImportBundle。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T15:46:52.629Z"
+      }
+    },
+    {
+      "id": "WO-IMPORT-SCENARIO",
+      "priority": "P2",
+      "deps": [
+        "WO-IMPORT-MULTITABLE",
+        "WO-SANDBOX-AS-RENDER-TARGET"
+      ],
+      "doc": "docs/PRD-enterprise-dataset-import.md",
+      "title": "G3场景导入:端点POST /a/v1/scenarios/import(Stage3.15场景JSON→映射ScenarioCard presetContext.selectedObjects+slotPresets+targetView按type)→进场景目录·衔接沙盘渲染器",
+      "note": "[LaneB·datacore·索引§2序#5·衔接WO-SANDBOX-AS-RENDER-TARGET(S1)] equipment_failure类场景导入后可直接进沙盘推演。验收:导入order_acceptance场景→场景目录出现→一键推演经QOS出ACCEPT/风险(不可跑通则诚实缺求解器/数据)。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T15:46:52.629Z"
+      }
+    },
+    {
+      "id": "WO-IMPORT-REPLACE-SYNTHETIC",
+      "priority": "P3",
+      "deps": [
+        "WO-IMPORT-MULTITABLE"
+      ],
+      "doc": "docs/PRD-enterprise-dataset-import.md",
+      "title": "G4真数据换hash假值(可选·配CAP-01):demo/租户配置world_source=synthetic|imported·选imported→求解器读Stage3.15导入真值而非hash·从源头削mockTightness/util稀释假值",
+      "note": "[LaneB·datacore·索引§2序#6·配WO-CAP-01 REALDEMAND] 守R-NO-ORPHAN-SOURCE(导入对象挂真rawDatasetId可下载审计)。治假推演源头。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T15:46:52.629Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev1",
-      "cmd": "WIP",
-      "id": "WO-SANDBOX-CONFIG-DERIVE",
-      "at": "2026-07-11T15:43:19.284Z"
+      "role": "review",
+      "cmd": "REGISTER(import-pack)+重排",
+      "id": "4单",
+      "at": "2026-07-11T15:46:52.629Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
