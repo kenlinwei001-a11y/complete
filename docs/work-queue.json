@@ -5616,7 +5616,7 @@
       "title": "沙盘KPI口径正名(治利用率2%误导)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5638,9 +5638,11 @@
       "at": {
         "created": "2026-07-10",
         "wip": "2026-07-10T17:43:35.559Z",
-        "built": "2026-07-10T20:46:54.587Z"
+        "built": "2026-07-10T20:46:54.587Z",
+        "done": "2026-07-11T03:44:41.254Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器逐值对照后端(agent ad6c2b3c):利用率不再÷575稀释→真值94.3==后端94.31(分母=携带者102·Line百分/Process分数×100统一量纲);globalKpi不再3339.5→47.3有界0-100不恒红(totalDemand1.6M被value<=100过滤排除);cert.knowledge正名建模完整度(SIM_KNOWLEDGE_DIM_LABEL·SVG轴文本实证)。门ontology-writeback/slices EXIT0。诚实边界(非BLOCK):globalKpi把demandDelta(0-1)与utilization(0-100)原始平均=混标度但有界不冒称非÷575稀释。测试并发超时=资源饥饿(隔离重跑绿·两WO零触碰后端源)。"
     },
     {
       "id": "WO-CAP-04-TICK-DAYS",
@@ -5713,7 +5715,7 @@
       "title": "跳转真带基地并生效(闭G-3)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5735,9 +5737,11 @@
       "at": {
         "created": "2026-07-10",
         "wip": "2026-07-10T17:43:35.488Z",
-        "built": "2026-07-10T20:46:54.667Z"
+        "built": "2026-07-10T20:46:54.667Z",
+        "done": "2026-07-11T03:44:41.357Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真浏览器(agent ad6c2b3c·闭G-3):世界真裁剪非摆设——拦截真POST/sim/sessions体+后端持久化双证。常州跳转baseSnapshot 22键(vs全量575)与独立objectBelongsToBase正则计算22完全一致;合肥21;R3隔离裁剪后全归属该基地leaked=0;GET/sim/sessions返5会话带scope.baseId snapshotKeys21/22服务端真存裁剪快照非仅客户端徽章。所有跳沙盘按钮走openWhatIf带subject(RiskBoardView/ProjectSimView zh.sim.run开始推演)。母体§8 G-3回写闭沙盘侧末环+证据文档·ontology-writeback/slices EXIT0。"
     },
     {
       "id": "WO-CAP-07-MODEL-DIM",
@@ -6938,10 +6942,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "WIP",
-      "id": "WO-FAKE-05",
-      "at": "2026-07-10T20:48:44.487Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "WO-CAP-06-WHATIF-SCOPE",
+      "at": "2026-07-11T03:44:41.357Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
