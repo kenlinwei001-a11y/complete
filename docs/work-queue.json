@@ -7659,19 +7659,53 @@
       "blockReason": "[审核方复验BLOCK] S4折叠改造SimReadinessPanel(三雷达合一·L0-L4折一句人话·stepperAndRadar block)后 sandbox-p0.test.tsx「就绪面板6项」red:getByTestId sim-cert-target找不到(SimReadinessPanel.tsx:198 cert.targetRef守卫·折叠改造后该block非默认展示·pre-S4测试222975fa未同步)。此红曾被S6 build红(feeds)遮蔽·审核方hotfix 3255fe2c补feeds后暴露·非hotfix致。修法:dev3据S4折叠意图reconcile——或恢复sim-cert-target默认可见·或更新sandbox-p0测试匹配折叠默认态(展开后断言)。注:pnpm -r build已绿·仅此1test红。S4真浏览器证据(e6bdbb/png)本身在·仅测试夹具未同步。"
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T19:51:17.936Z",
+        "built": "2026-07-11T20:05:15.374Z"
+      },
       "id": "WO-SANDBOX-TICK-CALENDAR",
       "title": "S5·tick↔业务时间(到第N周/里程碑)+时间轴事件标注+节点归因",
       "doc": "docs/WO-SANDBOX-TICK-CALENDAR.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev3",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
       "note": "[沙盘重建·S5·依赖S1·dev3] 接CAP-04补差量。消费引擎PropagationTrace。回退:additive。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3-前端"
+      "assignedDev": "dev3-前端",
+      "acceptance": {
+        "goal": "把抽象'推进 tick'绑业务时间(第 N 天/周)+点节点看归因(哪条边×什么系数把它传变)——消费引擎已产 PropagationTrace,让计划员看得懂。纯前端消费·引擎/传导数学不动。feature sim.tick_calendar 暗发·关=回抽象 tick+节点纯血缘。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "run",
+            "assert": "真起双服务+真 chromium+真 vite+真 admin 登录→/v/sim-sandbox：tick↔业务时间标真渲染(tick0→'第0天')·推 3 tick→curTick=3·标'第3天'(R6 纯换算)。证 scripts/e2e-sandbox-tick-calendar.mjs 7/7 全绿 + docs/evidence/S5-sandbox-tick-calendar-realbrowser.md"
+          },
+          {
+            "id": "C2",
+            "type": "run",
+            "assert": "点 Base 节点→归因面板消费真 trace:6 条传导贡献'由 X 经规则 R(系数 c·延迟 d)传入 amount'·逐值对照后端:规则键(如 demo_line_util_to_base_load)出现在真 GET/POST .../tick 返回 trace(R13 非造)。"
+          },
+          {
+            "id": "C3",
+            "type": "test",
+            "assert": "归因不造(KILL-MOCK-RED):computeNodeAttribution 只映真 trace+真 propRules join;规则不在 propRules→系数/延迟诚实 null;无 trace/无贡献→'本 tick 无传导贡献'诚实空。apps/frontend-shell/test/sandbox-tick-calendar.test.tsx 4 测全绿。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "零新色 css-vars 绿 + sim/genuine-sim/feature-parity/no-fake-data + ontology-slices 全绿;沙盘测组 50 测零回归。"
+          },
+          {
+            "id": "C5",
+            "type": "test",
+            "assert": "回退演练:feature sim.tick_calendar 关→回抽象 tick(无业务时间标)+节点纯血缘(无归因面板);契约 SimSession.tickUnit? optional 旧会话反序列化零破坏。"
+          }
+        ]
+      },
+      "blockReason": ""
     },
     {
       "at": {
@@ -8511,10 +8545,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "BLOCK(LINK-STABILIZE)+派CAPSIM统一surface(IA-UNIFY可立即建/REPLICA待base/READINESS并入)",
-      "id": "4单",
-      "at": "2026-07-11T19:55:51.326Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-SANDBOX-TICK-CALENDAR",
+      "at": "2026-07-11T20:05:15.375Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

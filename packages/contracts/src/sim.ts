@@ -117,8 +117,16 @@ export const SimSessionSchema = z.object({
   // S6 外生驱动（additive·default([])·旧会话反序列化零破坏·NG6）：init 冻结的逐 tick 真源序列。
   feeds: z.array(ExogenousFeedSchema).default([]),
   createdAt: z.string(),
+  // WO-SANDBOX-TICK-CALENDAR（S5·additive·optional·旧会话反序列化零破坏）：tick↔业务时间映射
+  // （simclock tick=1 模拟日语义）——让"推进 tick"绑业务时间（"推进到第 N 周"）。R14 配置驱动·R6 纯换算。
+  // 后端未下发时前端退默认 {unit:"day",perTick:1}（graceful·后端 Dev-1 补下发后自动生效）。
+  tickUnit: z.object({
+    unit: z.enum(["day", "week", "milestone"]).default("day"),
+    perTick: z.number().int().min(1).default(1),
+  }).optional(),
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
+export type SimTickUnit = NonNullable<SimSession["tickUnit"]>;
 
 // ── SimDataMode 沙盘诚信位（WO-SANDBOX-TRUST-BADGE·S2·让每个数字标真假·R13/KILL-MOCK-RED） ──
 // 复用既有 SolverDataMode 语义（LIVE/SYNTHETIC/STALE）+ 加 UNCALIBRATED（传导系数为默认非标定·G-10）。

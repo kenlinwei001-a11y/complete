@@ -904,6 +904,21 @@ export function simCertVerdict(level: string, gapsSummary: string): string {
 }
 
 /**
+ * WO-SANDBOX-TICK-CALENDAR（S5·tick↔业务时间·R6 纯换算·R14 配置驱动）：curTick（模拟日）→ 业务时间人话标。
+ * simclock tick=1 模拟日；tickUnit.perTick 天/tick。天数=curTick×perTick；周=ceil(天/7)。unit=week 时直接按周主显。
+ * 未提供 tickUnit → 退默认 {day,1}（graceful）。绝无 Date.now（R6·确定）。
+ */
+export function simTickTimeLabel(curTick: number, tickUnit?: { unit: "day" | "week" | "milestone"; perTick: number }): string {
+  const perTick = tickUnit?.perTick && tickUnit.perTick > 0 ? tickUnit.perTick : 1;
+  const unit = tickUnit?.unit ?? "day";
+  const days = curTick * perTick;
+  if (unit === "milestone") return `第 ${curTick} 个里程碑`;
+  const weeks = Math.ceil(days / 7);
+  if (unit === "week") return `第 ${weeks} 周（第 ${days} 天）`;
+  return days >= 7 ? `第 ${days} 天 · 第 ${weeks} 周` : `第 ${days} 天`;
+}
+
+/**
  * cert.gaps → 人话缺件桶摘要（S4·FDE 校正·诚实指向真断点）：按闭合维/可观测/归域归类去重（R14 关键词桶·非硬编码），
  * 未命中桶回退 gapCode（诚实不臆造）。让 L1/L2 结论「缺：…」指向**真实 cert.gaps**（前向闭合/图查询覆盖…），
  * 而非套用可能与 worldCompleteness=100% 矛盾的「世界未就绪」。

@@ -127,6 +127,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // （砍竞品形式膨胀·REVIEW #9/#10）。关 = 回三雷达/L0-L4 stepper 原样（旧 DOM 未删·回退演练 §5.5）。纯前端渲染闸
   // （无后端 cert 计算改·deriveCertification 不动）——值仍 DERIVE 自 cert（R13·只重组不改数）。battery 模板 all-on→demo 自动开。
   { key: "sim.radar_collapse", name: "沙盘雷达合一·认证折人话", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-SANDBOX-TICK-CALENDAR（S5·暗发·RL2·纯前端消费既有 trace）：tick↔业务时间（推进到第 N 周）+ 节点归因
+  // （哪条边×什么系数把它传红·消费引擎已产 PropagationTrace + propRules join·非造·R13/G-10）。关 = 回抽象 tick
+  // + 节点纯血缘（旧行为·回退演练）。纯前端渲染闸（引擎/传导数学不动）。battery 模板 all-on→demo 自动开。
+  { key: "sim.tick_calendar", name: "沙盘 tick↔业务时间·节点归因", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   // 优化求解器融合（G-12·SPEC-optimization-template-pool §6）：全部暗发 defaultOn:false——按租户开不同档
   // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
   // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。

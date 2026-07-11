@@ -5,7 +5,7 @@ import { parseWhatIfPreset, resolveBaseId, cropConfigToBase, cropWorldToBase, ty
 import { useScenarioPreset, presetNum, presetStr } from "./useScenarioPreset";
 import type { ViewConfigVM } from "@/api/types";
 import ModelCapacitySlice from "./ModelCapacitySlice";
-import type { PropagationRule, SandboxViewConfig, SimCertification, SimulationRequest, TickState } from "@platform/contracts";
+import type { PropagationRule, PropagationTrace, SandboxViewConfig, SimCertification, SimTickUnit, SimulationRequest, TickState } from "@platform/contracts";
 import { SimulationRequestSchema } from "@platform/contracts";
 import {
   createSimSession,
@@ -31,7 +31,7 @@ import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxRunHistory } from "./SandboxRunHistory";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
-import { stateVarLabel, SIM_KNOWLEDGE_DIM_LABEL, SIM_KNOWLEDGE_DIM_SRC, simRadarHumanLabel } from "@/locales/zh";
+import { stateVarLabel, SIM_KNOWLEDGE_DIM_LABEL, SIM_KNOWLEDGE_DIM_SRC, simRadarHumanLabel, simTickTimeLabel } from "@/locales/zh";
 import { useFeature } from "@/workspace/featureGate";
 import { SimDataModeBadge, overallDataMode, stateVarDataMode, objectDataMode, trustSummaryText } from "./SimDataModeBadge";
 import styles from "./SimViews.module.css";
@@ -622,8 +622,50 @@ export function parseSandboxIntent(text: string): SandboxIntent {
 }
 
 // ── R13 节点溯源悬浮（datasource→建模→对象 · 复用 fetchObjectLineage，不裸渲染） ──────────────
+/** WO-SANDBOX-TICK-CALENDAR（S5）· 节点归因项：一条传导贡献（真链路真系数·非造·R13/G-10）。 */
+interface NodeAttribution {
+  fromObjectId: string;
+  ruleKey: string;
+  viaLinkKey: string;
+  amount: number;
+  coefficient: number | null; // 由 propRules[ruleKey] join；缺则 null（诚实不臆造）
+  delayTicks: number | null;
+}
+/**
+ * 计算某类型节点该 tick 的归因（"为什么红"）：末次 tick trace 中 toObjectId ∈ 本类型对象集的贡献，
+ * 按 ruleKey join propRules 取真系数/延迟（G-10 显真定义）。纯派生（R6·消费引擎已产 trace·绝不编造）。
+ */
+export function computeNodeAttribution(
+  typeKey: string,
+  cfg: SandboxViewConfig,
+  trace: readonly PropagationTrace[],
+  propRules: readonly PropagationRule[],
+): NodeAttribution[] {
+  const ids = new Set(cfg.nodeObjectIds?.[typeKey] ?? []);
+  const ruleByKey = new Map(propRules.map((r) => [r.key, r] as const));
+  return trace
+    .filter((t) => ids.has(t.toObjectId))
+    .map((t) => {
+      const r = ruleByKey.get(t.ruleKey);
+      return {
+        fromObjectId: t.fromObjectId,
+        ruleKey: t.ruleKey,
+        viaLinkKey: t.viaLinkKey,
+        amount: t.amount,
+        coefficient: r ? r.coefficient : null,
+        delayTicks: r ? r.delayTicks : null,
+      };
+    });
+}
+
 /** 节点悬浮卡：取该类型**代表对象**（nodeObjectIds 首个）的 R13 lineage → 显上游链路。 */
-function NodeLineagePopover({ typeKey, objectId, anchor }: { typeKey: string; objectId: string | null; anchor: { x: number; y: number } }) {
+function NodeLineagePopover({ typeKey, objectId, anchor, attributions, showAttribution }: {
+  typeKey: string;
+  objectId: string | null;
+  anchor: { x: number; y: number };
+  attributions?: NodeAttribution[];
+  showAttribution?: boolean;
+}) {
   const q = useQuery({
     queryKey: ["a", "lineage", typeKey, objectId],
     queryFn: () => fetchObjectLineage(typeKey, objectId!),
@@ -652,6 +694,25 @@ function NodeLineagePopover({ typeKey, objectId, anchor }: { typeKey: string; ob
         <div className={styles.sub} data-testid="sandbox-lineage-error">溯源不可用（lineage 未开通或对象无来源）。</div>
       ) : (
         <LineageChain vm={q.data} />
+      )}
+      {/* WO-SANDBOX-TICK-CALENDAR（S5）· 归因页签："为什么红"——本 tick 哪条边×什么系数把它传入（真 trace·非造）。 */}
+      {showAttribution && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line2,#2a2a2a)" }} data-testid="sandbox-attribution">
+          <div className={styles.secHead} style={{ marginBottom: 4 }}>归因 · 本 tick 为什么变（传导贡献）</div>
+          {attributions && attributions.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {attributions.slice(0, 6).map((a, i) => (
+                <div key={`${a.ruleKey}-${a.fromObjectId}-${i}`} data-testid={`sandbox-attribution-${i}`} style={{ fontSize: 11.5 }}>
+                  由 <b className="mono">{a.fromObjectId}</b> 经规则 <b className="mono">{a.ruleKey}</b>
+                  {a.coefficient != null && <span className={styles.sub}>（系数 {a.coefficient}{a.delayTicks != null ? ` · 延迟 ${a.delayTicks}` : ""}）</span>}
+                  {" "}via <span className="mono">{a.viaLinkKey}</span> 传入 <b className="mono">{a.amount.toFixed(2)}</b>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={styles.sub} data-testid="sandbox-attribution-empty">本 tick 无传导贡献（静止/无输入/未推进）——诚实不造。</div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -900,6 +961,13 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   // 关=原样（旧 DOM 未删·回退演练 §5.5）。值全 DERIVE 自 cert（R13·只换 label/重组不改数）。
   const radarCollapseOn = useFeature("sim.radar_collapse");
 
+  // WO-SANDBOX-TICK-CALENDAR（S5·前端·暗发）：tick↔业务时间 + 节点归因（消费引擎已产 PropagationTrace + propRules join·非造）。
+  // 关=回抽象 tick + 节点纯血缘（旧行为·回退演练）。lastTrace=末次 tick 传导轨迹（节点归因源）；tickEvents=逐 tick 触发数（时间轴标注）。
+  const tickCalendarOn = useFeature("sim.tick_calendar");
+  const [lastTrace, setLastTrace] = useState<PropagationTrace[]>([]);
+  const [tickEvents, setTickEvents] = useState<{ tick: number; fired: number }[]>([]);
+  const tickUnit: SimTickUnit = { unit: "day", perTick: 1 }; // simclock tick=1 模拟日（后端 Dev-1 补下发 session.tickUnit 后可替）
+
   // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
   const init = useCallback(async (c: SandboxViewConfig) => {
     try {
@@ -939,6 +1007,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       setSessionId(s.id);
       setWorld(base);
       setCurTick(0);
+      setLastTrace([]); // S5：新会话清归因 trace（避免上会话残留·诚实）
+      setTickEvents([]);
       const g0 = computeGlobalKpi(c, base); // WO-CAP-03：时间轴与全局态同口径（归一后聚合，非原始混算）
       setHistory([g0]);
       // 就绪认证：诚实展示 L0-L4 + 三元组 + Trial Tick + 完整度 + entering + canEnter + gaps。
@@ -1049,16 +1119,22 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
       try {
         let last: TickState | null = null;
         let lastTick = curTick;
+        let lastTr: PropagationTrace[] = [];
         for (let i = 0; i < n; i++) {
           const res = await simTick(sessionId, 1);
           last = res.state;
           lastTick = res.curTick;
+          // S5：逐 tick 传导轨迹（引擎已产·非造）——末次留作节点归因源，逐 tick 触发数入时间轴标注。
+          const tr = (res.trace as PropagationTrace[] | undefined) ?? [];
+          lastTr = tr;
+          setTickEvents((e) => [...e, { tick: res.curTick, fired: tr.length }]);
           const g = computeGlobalKpi(cfg!, res.state); // WO-CAP-03：逐 tick 时间轴同全局态口径（归一后聚合）
           setHistory((h) => [...h, g]);
         }
         if (last) {
           setWorld(last);
           setCurTick(lastTick);
+          setLastTrace(lastTr);
         }
       } catch (e) {
         toastError(e);
@@ -1214,7 +1290,12 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           {/* 顶栏 · 全局态大数（主指标视觉权重最高·30px/700）+ 次级 stateVar KPI 小号排布 */}
           <div className={styles.heroState} data-testid="sandbox-kpis">
             <div className={styles.kpiHero} data-testid="sandbox-kpi-global">
-              <span>全局态（tick <span data-testid="sandbox-cur-tick">{curTick}</span>）</span>
+              <span>
+                全局态（tick <span data-testid="sandbox-cur-tick">{curTick}</span>
+                {/* S5：tick↔业务时间——推进不再是抽象数字，绑「第 N 天/周」（simclock tick=1 模拟日·R6 纯换算）。 */}
+                {tickCalendarOn && <span data-testid="sandbox-tick-calendar" style={{ color: "var(--muted2)" }}> · {simTickTimeLabel(curTick, tickUnit)}</span>}
+                ）
+              </span>
               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <b style={{ color: heatColor(globalKpi, heatThreshold) }} data-testid="sandbox-kpi-global-val">{globalKpi.toFixed(1)}</b>
                 {trustBadgeOn && <SimDataModeBadge mode={overallMode} testId="sandbox-kpi-global-datamode" />}
@@ -1477,7 +1558,13 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
             onClick={() => setLineage(null)}
             data-testid="sandbox-lineage-scrim"
           />
-          <NodeLineagePopover typeKey={lineage.typeKey} objectId={lineage.objectId} anchor={anchor} />
+          <NodeLineagePopover
+            typeKey={lineage.typeKey}
+            objectId={lineage.objectId}
+            anchor={anchor}
+            showAttribution={tickCalendarOn}
+            attributions={tickCalendarOn ? computeNodeAttribution(lineage.typeKey, cfg, lastTrace, propRules) : undefined}
+          />
         </>
       )}
     </div>
