@@ -874,6 +874,55 @@ export const SIM_KNOWLEDGE_DIM_LABEL = "建模完整度";
 export const SIM_KNOWLEDGE_DIM_SRC = "dims.knowledge（字段消费率=schema覆盖率/建模完整度）";
 
 /**
+ * WO-SANDBOX-RADAR-COLLAPSE（S4·R14 人话文案入 i18n·砍竞品黑话）：主雷达三维**人话名映射**。
+ * structure/knowledge/behavior 黑话 → 业务人一眼懂的说法（值仍 DERIVE 自 cert·只换 label 不改数·R13）。
+ * 未登记维回退原 label（诚实·不臆造）。
+ */
+export const SIM_RADAR_HUMAN_LABEL: Record<string, string> = {
+  structure: "数据/结构齐备",
+  knowledge: "规则/知识覆盖",
+  behavior: "行为已验证",
+};
+export function simRadarHumanLabel(key: string, fallback: string): string {
+  return SIM_RADAR_HUMAN_LABEL[key] ?? fallback;
+}
+
+/**
+ * WO-SANDBOX-RADAR-COLLAPSE（S4·L0-L4 黑话 → 一句人话结论·REVIEW #10 标志性一刀）：认证级别→**能不能拿来决策**的人话。
+ * 结论纯派生自 cert.level（R13·不新造真值）；缺件由调用方把**真实 cert.gaps 摘要**拼入 {gaps} 占位（诚实指向真断点·
+ * 不臆断"世界未就绪"——世界完整度可能 100% 而卡在闭合/可观测·FDE 2026-07-11 实测校正）。R14 文案集中于此。
+ */
+export function simCertVerdict(level: string, gapsSummary: string): string {
+  const gapClause = gapsSummary ? `（缺：${gapsSummary}）` : "";
+  switch (level) {
+    case "L4_CERTIFIED": return "已认证——结论可直接据此落 Action。";
+    case "L3_VERIFIED": return `已验证——结论可支持决策，落 Action 前请复核残项${gapClause}。`;
+    case "L2_RUNNABLE": return `可运行——结论仅供参考，暂不可直接落 Action${gapClause}。`;
+    case "L1_CONFIGURED": return `尚不可推演——已配置但就绪认证未达标${gapClause}。`;
+    default: return `尚不可推演——配置未定义${gapClause}。`;
+  }
+}
+
+/**
+ * cert.gaps → 人话缺件桶摘要（S4·FDE 校正·诚实指向真断点）：按闭合维/可观测/归域归类去重（R14 关键词桶·非硬编码），
+ * 未命中桶回退 gapCode（诚实不臆造）。让 L1/L2 结论「缺：…」指向**真实 cert.gaps**（前向闭合/图查询覆盖…），
+ * 而非套用可能与 worldCompleteness=100% 矛盾的「世界未就绪」。
+ */
+export function summarizeCertGaps(gaps: { gapCode: string; ref: string; detail: string }[]): string {
+  const buckets = new Set<string>();
+  for (const g of gaps) {
+    const t = `${g.ref} ${g.detail}`;
+    if (/FORWARD/i.test(t)) buckets.add("前向闭合(规则 scope 类型缺失)");
+    else if (/CHAIN/i.test(t)) buckets.add("链闭合");
+    else if (/图查询|切片|slice|minQuer|observ/i.test(t)) buckets.add("图查询覆盖不足");
+    else if (/归域|domain/i.test(t)) buckets.add("类型未归域");
+    else if (/DATA|数据/i.test(t)) buckets.add("数据闭合");
+    else buckets.add(g.gapCode);
+  }
+  return [...buckets].join("、");
+}
+
+/**
  * 界面英文术语白名单（I18N-LONGTAIL C2·显式维护）。
  *
  * 界面文案默认中文（R14：展示词集中于 i18n / 组件不写死中文常数）。以下英文 token 属**有意保留**、

@@ -7556,17 +7556,51 @@
       "assignedDev": "dev1-后端"
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T17:31:01.547Z",
+        "built": "2026-07-11T18:01:06.127Z"
+      },
       "id": "WO-SANDBOX-RADAR-COLLAPSE",
       "title": "S4·三雷达合一(维度换人话)+L0-L4折一句人话(砍竞品形式膨胀)",
       "doc": "docs/WO-SANDBOX-RADAR-COLLAPSE.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev3",
       "deps": [],
       "note": "[沙盘重建·S4·可∥S1·纯前端·dev3] REVIEW拒绝copy竞品形式的标志一刀。回退:纯视觉可回退。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3-前端"
+      "assignedDev": "dev3-前端",
+      "acceptance": {
+        "goal": "三雷达合一(主雷达维度换人话)+L0-L4 黑话台阶折成一句人话结论(能不能拿来决策)——执行 REVIEW『拒绝照搬竞品形式』一刀。纯前端·零后端 cert 计算改·零新色·值全 DERIVE 自 cert(R13 只重组不改数)。feature sim.radar_collapse 暗发·关=原样(旧 DOM 未删)。",
+        "criteria": [
+          {
+            "id": "C1",
+            "type": "run",
+            "assert": "真起双服务+真 chromium+真 vite+真 admin 登录→/v/sim-sandbox：一句人话结论 sim-cert-verdict 真渲染·DOM 结论级别逐值==后端 GET .../certification cert.level(实测 L1_CONFIGURED)。证 scripts/e2e-sandbox-radar-collapse.mjs 9/9 全绿 + docs/evidence/S4-SANDBOX-RADAR-COLLAPSE-realbrowser.md"
+          },
+          {
+            "id": "C2",
+            "type": "run",
+            "assert": "L0-L4 台阶黑话收「查看认证详情」CollapsibleCard 折叠(data-open=0 默认折叠)·sim-cert-level stepper 仍在 DOM(hidden 保留·功能不删 RL9)。真浏览器实证。"
+          },
+          {
+            "id": "C3",
+            "type": "run",
+            "assert": "主雷达三维换人话名(数据/结构齐备·规则/知识覆盖·行为已验证)·真浏览器轴标无 structure/knowledge/behavior 黑话裸键(R14)。值 DERIVE 自 cert.dims 不改数(综合值==cert.dims.composite)。"
+          },
+          {
+            "id": "C4",
+            "type": "gate",
+            "assert": "零新色：node scripts/check-css-vars.mjs 绿；结论色走既有语义 token(L2 --warn/L3 --ok/L0 --danger/L4 --accent)。"
+          },
+          {
+            "id": "C5",
+            "type": "test",
+            "assert": "回退演练(§5.5)：feature sim.radar_collapse 关→回 L0-L4 stepper 主视觉原样·无一句话结论·无折叠详情卡(旧 DOM 未删)。+ FDE 校正回归：worldCompleteness=100% 但有闭合缺件→结论指向真断点(前向闭合/图查询覆盖)·绝不臆断『世界未就绪』。apps/frontend-shell/test/sandbox-radar-collapse.test.tsx 8 测全绿。"
+          }
+        ]
+      },
+      "blockReason": ""
     },
     {
       "at": {},

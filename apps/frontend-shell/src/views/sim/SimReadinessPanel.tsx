@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import type { SimCertification } from "@platform/contracts";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
+import { simCertVerdict, summarizeCertGaps } from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
 /**
@@ -122,16 +124,29 @@ function Card({ title, children, testId }: { title: string; children: ReactNode;
   );
 }
 
+/** 认证级别 → 语义色（复用既有 token·零新色·WO §3.3）。 */
+function verdictColor(level: SimCertification["level"]): string {
+  switch (level) {
+    case "L4_CERTIFIED": return "var(--accent, #5B7CFA)";
+    case "L3_VERIFIED": return "var(--ok, #62be77)";
+    case "L2_RUNNABLE": return "var(--warn, #e8b54a)";
+    default: return "var(--danger, #e0626c)";
+  }
+}
+
 export function SimReadinessPanel({
   cert,
   scope,
   onScopeChange,
   radar,
+  humanize = false,
 }: {
   cert: SimCertification;
   scope: "GLOBAL" | "LOCAL";
   onScopeChange: (s: "GLOBAL" | "LOCAL") => void;
   radar?: ReactNode;
+  /** WO-SANDBOX-RADAR-COLLAPSE（S4·feature sim.radar_collapse）：L0-L4 黑话折一句人话结论 + 详情收折叠。关=原样。 */
+  humanize?: boolean;
 }) {
   const wc = cert.worldCompleteness;
   const wcRows: { label: string; v: { present: number; needed: number } }[] = [
@@ -140,27 +155,33 @@ export function SimReadinessPanel({
     { label: "写回行动", v: wc.actions },
     { label: "传导规则", v: wc.propagationRules },
   ];
+  // 缺件人话摘要（供结论 {gaps} 占位）·纯派生（R13）：优先取**真实 cert.gaps**桶摘要（前向闭合/图查询覆盖…·
+  // FDE 校正：worldCompleteness 可能 100% 而真断点在闭合/可观测），无 cert.gaps 才回退世界完整度未达维（present<needed）。
+  const gapsSummary = cert.gaps.length > 0
+    ? summarizeCertGaps(cert.gaps)
+    : wcRows.filter((r) => r.v.present < r.v.needed).map((r) => r.label).join("、");
 
-  return (
-    <div data-testid="sim-readiness-panel">
-      {/* ④ GLOBAL↔LOCAL 切换 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-        <div className={styles.secHead} style={{ margin: 0 }}>就绪认证</div>
-        <div data-testid="sim-cert-scope-toggle" style={{ display: "flex", gap: 4 }}>
-          {(["GLOBAL", "LOCAL"] as const).map((s) => (
-            <button
-              key={s}
-              className={`btn sm ${scope === s ? "" : "ghost"}`}
-              data-testid={`sim-cert-scope-${s}`}
-              data-active={scope === s ? "1" : "0"}
-              onClick={() => onScopeChange(s)}
-            >
-              {s === "GLOBAL" ? "全局" : "局部"}
-            </button>
-          ))}
-        </div>
+  const scopeToggle = (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+      <div className={styles.secHead} style={{ margin: 0 }}>就绪认证</div>
+      <div data-testid="sim-cert-scope-toggle" style={{ display: "flex", gap: 4 }}>
+        {(["GLOBAL", "LOCAL"] as const).map((s) => (
+          <button
+            key={s}
+            className={`btn sm ${scope === s ? "" : "ghost"}`}
+            data-testid={`sim-cert-scope-${s}`}
+            data-active={scope === s ? "1" : "0"}
+            onClick={() => onScopeChange(s)}
+          >
+            {s === "GLOBAL" ? "全局" : "局部"}
+          </button>
+        ))}
       </div>
+    </div>
+  );
 
+  const stepperAndRadar = (
+    <>
       {/* ① L0-L4 stepper */}
       <CertStepper level={cert.level} />
 
@@ -184,7 +205,11 @@ export function SimReadinessPanel({
           </div>
         </div>
       </div>
+    </>
+  );
 
+  const detailCards = (
+    <>
       {/* ②③⑤ 三卡：L4 三元组 / Trial Tick / 完整度 gauge */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginTop: 10 }}>
         <Card title="L4 三元组" testId="sim-cert-l4-triad">
@@ -255,6 +280,46 @@ export function SimReadinessPanel({
           </ul>
         </div>
       )}
+    </>
+  );
+
+  // WO-SANDBOX-RADAR-COLLAPSE（S4）：humanize 关 → 原样（L0-L4 stepper 主视觉 + 详情内联·旧 DOM 全保留·回退演练）。
+  if (!humanize) {
+    return (
+      <div data-testid="sim-readiness-panel">
+        {scopeToggle}
+        {stepperAndRadar}
+        {detailCards}
+      </div>
+    );
+  }
+  // humanize 开 → 一句人话结论置顶（能不能拿来决策）+ 雷达/canEnter 主视觉可见 + L0-L4 台阶/三元组/Trial Tick 黑话收折叠（DOM 全保留）。
+  return (
+    <div data-testid="sim-readiness-panel" data-humanized="1">
+      {scopeToggle}
+      <div
+        data-testid="sim-cert-verdict"
+        data-cert-level={cert.level}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", marginBottom: 8, borderRadius: 6, background: "rgba(226,235,245,.05)", borderLeft: `3px solid ${verdictColor(cert.level)}` }}
+      >
+        <b style={{ color: verdictColor(cert.level), fontSize: 13, whiteSpace: "nowrap" }} data-testid="sim-cert-verdict-level">
+          {CERT_LEVELS.find((l) => l.key === cert.level)?.label ?? cert.level}
+        </b>
+        <span style={{ fontSize: 12.5 }} data-testid="sim-cert-verdict-text">{simCertVerdict(cert.level, gapsSummary)}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {radar}
+        <div>
+          <div data-testid="sim-cert-canenter" style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--danger)", fontWeight: 700 }}>
+            {cert.canEnterSimulation ? "✓ 可进入推演" : "✗ 暂不可进入推演"}
+          </div>
+          <div className={styles.sub} style={{ marginTop: 2 }} data-testid="sim-cert-composite">综合 {cert.dims.composite.toFixed(0)}</div>
+        </div>
+      </div>
+      <CollapsibleCard testId="sim-cert-details" title="查看认证详情（L0–L4 台阶 / 三元组 / Trial Tick / 完整度）" summary={cert.level} defaultOpen={false}>
+        <CertStepper level={cert.level} />
+        {detailCards}
+      </CollapsibleCard>
     </div>
   );
 }

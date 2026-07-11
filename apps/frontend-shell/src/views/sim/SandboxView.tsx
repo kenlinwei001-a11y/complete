@@ -31,7 +31,7 @@ import { SimReadinessPanel } from "./SimReadinessPanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxRunHistory } from "./SandboxRunHistory";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
-import { stateVarLabel, SIM_KNOWLEDGE_DIM_LABEL, SIM_KNOWLEDGE_DIM_SRC } from "@/locales/zh";
+import { stateVarLabel, SIM_KNOWLEDGE_DIM_LABEL, SIM_KNOWLEDGE_DIM_SRC, simRadarHumanLabel } from "@/locales/zh";
 import { useFeature } from "@/workspace/featureGate";
 import { SimDataModeBadge, overallDataMode, stateVarDataMode, objectDataMode, trustSummaryText } from "./SimDataModeBadge";
 import styles from "./SimViews.module.css";
@@ -896,6 +896,10 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
   const trustBadgeOn = useFeature("sim.trust_badge");
   const overallMode = useMemo(() => (cfg ? overallDataMode(cfg, propRules) : "UNKNOWN"), [cfg, propRules]);
 
+  // WO-SANDBOX-RADAR-COLLAPSE（S4·前端·暗发）：三雷达合一（主雷达维度换人话）+ L0-L4 折一句人话结论。
+  // 关=原样（旧 DOM 未删·回退演练 §5.5）。值全 DERIVE 自 cert（R13·只换 label/重组不改数）。
+  const radarCollapseOn = useFeature("sim.radar_collapse");
+
   // init 会话：baseSnapshot 由配置派生（无业务常数）。配置就绪即自动建会话。
   const init = useCallback(async (c: SandboxViewConfig) => {
     try {
@@ -1383,7 +1387,13 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
                   cert={cert}
                   scope={certScope}
                   onScopeChange={(s) => void reloadCert(s)}
-                  radar={<ReadinessRadar dims={cfg.radarDims} values={radarValues} />}
+                  humanize={radarCollapseOn}
+                  radar={
+                    <ReadinessRadar
+                      dims={radarCollapseOn ? cfg.radarDims.map((d) => ({ ...d, label: simRadarHumanLabel(d.key, d.label) })) : cfg.radarDims}
+                      values={radarValues}
+                    />
+                  }
                 />
               ) : (
                 <>

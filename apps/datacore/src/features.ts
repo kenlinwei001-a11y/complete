@@ -109,6 +109,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 真派生；SYNTHETIC/LIVE/STALE 待后端 view-config.nodeObjectMode 提供对象 origin 血缘后自动升档（Dev-1 域）。
   // battery 模板 all-on → demo 自动开；其余租户 defaultOn:false 暗发。requires sim.sandbox。
   { key: "sim.trust_badge", name: "沙盘数据诚信位徽标", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-SANDBOX-RADAR-COLLAPSE（S4·暗发·RL2·纯前端展示重组）：三雷达合一（人话维度）+ L0-L4 黑话折一句人话结论
+  // （砍竞品形式膨胀·REVIEW #9/#10）。关 = 回三雷达/L0-L4 stepper 原样（旧 DOM 未删·回退演练 §5.5）。纯前端渲染闸
+  // （无后端 cert 计算改·deriveCertification 不动）——值仍 DERIVE 自 cert（R13·只重组不改数）。battery 模板 all-on→demo 自动开。
+  { key: "sim.radar_collapse", name: "沙盘雷达合一·认证折人话", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   // 优化求解器融合（G-12·SPEC-optimization-template-pool §6）：全部暗发 defaultOn:false——按租户开不同档
   // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
   // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
