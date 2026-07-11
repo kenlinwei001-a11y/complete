@@ -7901,14 +7901,15 @@
       "doc": "docs/DISPATCH-databuilder-upgrade.md",
       "title": "链路派生稳定(洞E):LLM链路输出+确定性FK兜底补链(复用modeling detectFkCandidates uniqueRate≥0.95)+覆盖度门+接现成slice-planner planSlice真BFS多跳·治多跳偶发断链",
       "note": "[LaneB·datacore·DISPATCH] 供CLOSURE-HARDEN的'按真链路生成非空paths'。H3复用非重写(接现成slice-planner.ts:69 planSlice)。green→red:LLM丢链→FK补→门绿·关兜底→红。①②强耦合合并复验。 【索引§2:序#5(与IMPORT-SCENARIO)·CLOSURE切片生成收口】",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
         "wip": "2026-07-11T18:26:15.304Z",
-        "built": "2026-07-11T18:44:14.635Z"
+        "built": "2026-07-11T18:44:14.635Z",
+        "blocked": "2026-07-11T19:55:51.326Z"
       },
-      "blockReason": ""
+      "blockReason": "[审核方复验BLOCK·绿门≠能用] 机械核心真(deriveSliceHops真BFS多跳+FK名启发补链·确定·有门有齿)但招牌功能未兑现:①派生hops引用幻影链·切片0 edges不穿越(故事建域路从不注册OntologyLink·全datacore仅import/modeling/battery-seed/promoteDomain建链;非空hops解析层结果=旧恒[]都根-only·功能空转;真证:建域落slice_process hops2跳但POST/slices/plan返NO_PATH全unreachable·对照真链order_fulfillment_360=232edges);②收口CLOSURE-HARDEN/②喂①/二门互补代码中不存在(closure.ts洞C判resolvedCounts=物化对象数·grep零引用hops/paths·空hops不触发洞C红);link-stabilize门只校验派生Map非空从不校验paths可解析(幻影链无门守)。可留:BFS+FK派生代码本身真/确定/无回归(datacore1250绿·chain42/42)。要DONE需:故事建域路补OntologyLink注册(hops真穿越·linkKey与planSlice对齐)或据实修正收口CLOSURE-HARDEN过度表述+回写本体。复验commit 6f9b96bd(target 4894901b)。"
     },
     {
       "id": "WO-DB-LLM-REQUIRED-NO-FLOOR",
@@ -8465,14 +8466,55 @@
       },
       "title": "沙盘capacity_forecast合成冒充实测(KILL-MOCK-RED):ModelCapacitySlice.tsx:155活服务顶层dataMode=SYNTHETIC却每行live=true→前端把武汉/厦门/自贡紧张度标「实测」(就在S2「系数未校准」正上方矛盾)·修行级dataMode诚实或不标实测",
       "note": "[前端+后端·KILL-MOCK-RED命门·S2复验一手发现] 独立真起活服务实测:capacity_forecast返回顶层dataMode=SYNTHETIC但每行live=true·ModelCapacitySlice据行live标「实测」=合成冒充实测(违铁律0.4·用户最恨)。与S2徽标同页矛盾(一个标未校准一个标实测)。修:行级dataMode按真provenance派生·合成行不得标实测·与S2/TRUST-BADGE-BE dataMode口径统一(这正是CAP-10收编该做的「统一」)。green→red:合成capacity_forecast行现标实测·修后应标合成/估算。"
+    },
+    {
+      "id": "WO-CAPSIM-IA-UNIFY",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/WO-CAPACITY-SIM-PIXEL-REPLICA-REALDATA.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:55:51.326Z"
+      },
+      "title": "产能推演统一为平台唯一推演surface(§5):删左导航沙盘项+SandboxView独立路由退役(/sandbox 302重定向)+基地卡片『开推演决策』下钻看板(scope该基地)+就绪认证→信任条+抽屉+对话态提问框(两态同求解器同源R6)",
+      "note": "[前端+少量后端·可立即建·§5全文已在repo doc·活力全开首选·结构性收敛最高战略值] S1-S6机制成看板引擎不废(§8)。母体§2.I回写沙盘=下钻态非独立路由+导航IA删沙盘项。⛔G-DM-1禁mock造红。green→red:左导航应无沙盘·/sandbox 302·基地卡开推演决策进看板scope=该基地·对话/嵌入两态同源R6·就绪认证=信任条+抽屉非独立页。"
+    },
+    {
+      "id": "WO-CAPSIM-REPLICA",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/WO-CAPACITY-SIM-PIXEL-REPLICA-REALDATA.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:55:51.326Z"
+      },
+      "title": "产能推演看板1:1像素复刻黑曜石HTML+接真求解器(§1-4):布局/交互/间距照抄·色字换tokens.css·每元素接真solver(risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure)禁搬HTML静态数据·无真源诚实空态·四增强(多方案topN+比较/缺失分类面板/全元素悬浮溯源/过程图接provenance)",
+      "note": "[前端+后端绑定·⚠待用户同步ef05c80基线补§2逐行绑定表+§7.5 JS→SQL 5条测试spec后全量开工·可先搭壳/建结构] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。测试§7.5:L1几何diff遮色字/L2交互replay/L3反直觉可溯SQL无JS常量无源诚实空·复用capacity-basecards-realdata+risk-board-kill-mock-red门。"
+    },
+    {
+      "id": "WO-SANDBOX-READINESS-UX",
+      "priority": "P2",
+      "deps": [
+        "WO-CAPSIM-IA-UNIFY"
+      ],
+      "doc": "docs/WO-SANDBOX-READINESS-UX.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:55:51.326Z"
+      },
+      "title": "就绪认证进看板信任条+抽屉(并入CAPSIM§5·非独立页):看板顶一行信任条+[查看完整体检]抽屉(L0-L4/三雷达进抽屉·守RL3不动投影)",
+      "note": "[前端·并入产能推演看板非独立沙盘页·以WO-CAPACITY-SIM为准] deps IA-UNIFY(先有看板surface)。RC-1闭合门决定信任条状态(canEnter)。"
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-CONFIG-DERIVE-WIRE",
-      "at": "2026-07-11T19:48:40.275Z"
+      "role": "review",
+      "cmd": "BLOCK(LINK-STABILIZE)+派CAPSIM统一surface(IA-UNIFY可立即建/REPLICA待base/READINESS并入)",
+      "id": "4单",
+      "at": "2026-07-11T19:55:51.326Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
