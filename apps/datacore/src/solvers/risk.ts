@@ -585,7 +585,6 @@ export function riskTimeline(c: SolverContext, args: RiskTimelineArgs): Record<s
 }
 
 // PRD-IND-risk §2.4：处置行动计划表——每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP；按启动日排序。
-const RISK_OWNER_NAMES = ["王", "李", "张", "刘", "陈", "杨", "赵", "黄"];
 const RISK_FACTOR_OBJ: Record<string, string> = {
   瓶颈工序: "产线负载率",
   设备OEE: "设备OEE",
@@ -595,11 +594,6 @@ const RISK_FACTOR_OBJ: Record<string, string> = {
   换型损失: "换型占用",
   良率波动: "良率稳定性",
 };
-function riskHashN(s: string, mod: number): number {
-  let x = 0;
-  for (let i = 0; i < s.length; i++) x = (x * 31 + s.charCodeAt(i)) % 997;
-  return x % mod;
-}
 function mmdd(startIso: string, day: number): string {
   const ms = Date.parse(`${startIso.slice(0, 10)}T00:00:00Z`) + day * 86400000;
   return new Date(ms).toISOString().slice(5, 10);
@@ -632,7 +626,10 @@ function buildRiskPlanRows(
     if (cross <= pl.sopReflectDays && !early.includes(base)) early.push(base);
     if (seen.has(base)) continue; // 每基地主因素一行（cards 已按越线日排序）
     seen.add(base);
-    const owner = `基地负责人 · ${RISK_OWNER_NAMES[riskHashN(base, 8)]}经理`;
+    // WO-FAKE-03（去 hash 伪造责任人·KILL-MOCK-RED）：责任 ROLE=基地负责人（真组织角色·同 action 目录 perm「发起:基地负责人」）；
+    // 但系统无逐基地"具体责任人"真源（SolverContext 不载 principals/角色分派·基地对象无 owner 属性）→ 诚实标"未指派"，
+    // 绝不再用 riskHashN(base) 哈希取模 RISK_OWNER_NAMES 编造"王/李经理"（伪造"谁负责"·展示级假数据）。
+    const owner = "基地负责人（未指派）";
     const sols = mits[factor] ?? [];
     const s0 = sols[0];
     if (!s0) continue;
