@@ -6598,10 +6598,11 @@
       "reviewNote": "PASS(BLOCK已解·独立复验) durable核心前次已PASS(agent a1a18de:崩溃stopAfterNode→resume跳DONE逐字节等价resumedCount=1·移植BuildWorkflowEngine非重造·补偿反向序经S2·暗发关闸旧串行·684测绿)。本次修双注册验讫:datacore features.ts:137/141补qos.workflow_dag+qos.exec_planner(defaultOn:false)·agentcore registry.ts:68/69镜像仍在=双注册满足防恒真陷阱·母体§2.H/§7双注册措辞now真非overclaim。build 3包OK·workflow-dag门无回归。L1B-3闭环·解锁L1B-5/SAGA。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "at": {
-        "built": "2026-07-11T11:05:10.798Z"
+        "built": "2026-07-11T11:05:10.798Z",
+        "done": "2026-07-11T11:40:17.980Z"
       },
       "id": "WO-L1B-4",
       "title": "Execution Planner synthesizePlan(Ch10 满配)+ 影子接线(shadow only)",
@@ -7514,10 +7515,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-L2-5",
-      "at": "2026-07-11T11:38:31.325Z"
+      "role": "review",
+      "cmd": "DONE",
+      "id": "WO-L1B-4",
+      "at": "2026-07-11T11:40:17.980Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
