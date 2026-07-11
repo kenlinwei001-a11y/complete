@@ -7094,9 +7094,12 @@
       }
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T13:00:19.225Z",
+        "built": "2026-07-11T13:04:51.404Z"
+      },
       "id": "WO-L1.5-4",
       "title": "反馈信号闭环 + 决策模式挖掘→接现校准 Action R4(feedback→调参真生效·不自改真值)",
       "priority": "P1",
@@ -7127,7 +7130,8 @@
       "discipline": "additive·校准数学零改·参数变更经 R4 正门 autoApply 恒 false 不自改真值(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7539,8 +7543,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1.5-3",
-      "at": "2026-07-11T12:59:50.045Z"
+      "id": "WO-L1.5-4",
+      "at": "2026-07-11T13:04:51.404Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

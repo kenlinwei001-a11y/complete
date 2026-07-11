@@ -53,7 +53,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
-import { retrieveSimilarCases } from "./memory/decision-case.js"; // WO-L1.5-2（CBR 确定性检索·§4.2）
+import { retrieveSimilarCases, mineDecisionPatterns } from "./memory/decision-case.js"; // WO-L1.5-2/4（CBR 检索·§4.2 / 模式挖掘·§4.4⑥）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
 import { CaseIngestService } from "./memory/case-ingest.js"; // WO-L1.5-3（案例摄取·Decision→DecisionCase 旁挂）
 import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
@@ -3190,6 +3190,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const cases = await repos.decisionCases.list(c.tenantId); // R2：仅本租户
     return retrieveSimilarCases(cases, query);
   });
+  // WO-L1.5-4（决策模式挖掘·§4.4⑥·确定性咨询·memory.cbr 门）：按 (problemClass+特征桶) 众数挖掘决策模式；
+  // 达阈值 surfaced=true（浮现候选·上层转 GrowthTicket 人工闸·不自动上线规则·R4/NG2）。R2 本租户案例。
+  app.get("/a/v1/memory/patterns", async (req) => {
+    await requireFeatureTag(req, "apiTags", "memory-cbr");
+    const c = ctx(req);
+    const q = req.query as { minSupport?: string; minConfidence?: string };
+    const cases = await repos.decisionCases.list(c.tenantId);
+    const patterns = mineDecisionPatterns(cases, {
+      minSupport: q.minSupport ? Number(q.minSupport) : undefined,
+      minConfidence: q.minConfidence ? Number(q.minConfidence) : undefined,
+    });
+    return { patterns, total: patterns.length };
+  });
 
   // ---- L2 决策内核 · 决策制品构建/读取（WO-L2-4·暗发·decision.kernel 门 + QOS_DECISION_KERNEL env）------
   // 构建（旁挂-call 的 datacore 落点·调用方供 query/分类/上下文）：关 env=不构（204·pipeline 零变化·RL2）；
@@ -4292,6 +4305,34 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.get("/a/v1/calibration/proposals", async (req) => calibration.listProposals(ctx(req).tenantId));
   app.get("/a/v1/calibration/history", async (req) => calibration.history(ctx(req).tenantId));
+  // WO-L1.5-4（反馈学习闭环·§2.4/§4.4·接现校准·不新造调参器）：把**决策结果偏差**（Decision 预测vs实现）
+  // 归一为 FeedbackSignal(OUTCOME_DELTA) 并作**额外校准触发**——转既有 onCalibrationRequired（复用 EMA/重放/
+  // 分位数学 + 回测门 + Action R4·**校准应用路径零改**·autoApply 恒 false·**绝不无人值守自改真值**·R4/NG1）。
+  // 提案仍 PENDING 待 S2「校准参数变更」审批。FeedbackSignal 瞬态咨询（不落业务真值表）。
+  app.post("/a/v1/calibration/feedback", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(
+      z.object({
+        kind: z.enum(["OUTCOME_DELTA", "VOTE", "CASE_REUSE"]).default("OUTCOME_DELTA"),
+        sourceRefId: z.string().min(1), // 溯源：Decision.id（OUTCOME_DELTA）/ taskId
+        entityId: z.string().min(1), // 校准目标实体（如 modelId·决定触发哪个 slice 的校准）
+        metricDeltas: z.record(z.string(), z.number()).optional(),
+      }),
+      req.body,
+    );
+    const signal = {
+      signalId: newId("fbk"),
+      tenantId: c.tenantId,
+      kind: body.kind,
+      sourceRefId: body.sourceRefId,
+      metricDeltas: body.metricDeltas,
+      verdict: null,
+      at: new Date().toISOString(),
+    };
+    // 额外触发（不改数学）：转现校准提案生成（PENDING·经回测门·仍待 R4 审批）。
+    const proposal = await calibration.onCalibrationRequired(c.tenantId, body.entityId);
+    return { signal, proposalId: proposal?.id ?? null, proposalStatus: proposal?.status ?? null };
+  });
   // WO-E1（校准活体常态化）：收敛史回执（逐轮 mapeAfter 下降 = 越用越准的证据·R2）。
   app.get("/a/v1/calibration/convergence", async (req) => {
     const c = ctx(req);

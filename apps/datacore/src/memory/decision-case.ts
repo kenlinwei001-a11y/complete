@@ -10,9 +10,9 @@
 //   R14 抽象 + 零幽灵（PROBLEM_CLASS 键恒经 problemClassForIntent ∈ 真实注册表·门守）·
 //   KILL-MOCK：案例数字随行免责·不冒充业务真值；SEED 案例 origin:SEED 诚实标。
 
-import type { CaseFeature, Decision, DecisionCase, DecisionCaseSource, SimilarityHit, SimilarityQuery } from "@platform/contracts";
+import type { CaseFeature, Decision, DecisionCase, DecisionCaseSource, DecisionPattern, SimilarityHit, SimilarityQuery } from "@platform/contracts";
 import { INTENT_PROBLEM_CLASS, UNCOVERED_PROBLEM_CLASSES, UNKNOWN_PROBLEM_CLASS, problemClassForIntent } from "@platform/contracts";
-import { hashString, round } from "../prng.js";
+import { canonicalJson, hashString, round } from "../prng.js";
 
 /** 案例免责（沿 OBSERVED_DISCLAIMER 单一来源精神·案例数字不冒充业务真值）。 */
 export const CASE_DISCLAIMER = "案例仅供决策路径/结构参考·业务数字以工具结果/审批真值为准（不作数字来源）";
@@ -222,6 +222,79 @@ export function retrieveSimilarCases(cases: DecisionCase[], query: SimilarityQue
   });
   scored.sort((a, b) => b.score - a.score || (a.caseId < b.caseId ? -1 : a.caseId > b.caseId ? 1 : 0));
   return { hits: scored.slice(0, query.topK), total: cases.length, disclaimer: CASE_DISCLAIMER };
+}
+
+// ── §4.4⑥ 决策模式挖掘（Ch11.8·确定性·咨询非规则·R6）─────────────────────────
+/** 数值特征确定性分桶（供模式条件·如 capacity_gap>10% → "high"·稳定阈值·非随机）。 */
+function bucketNum(n: number | null): string {
+  if (n === null) return "na";
+  if (n <= 0) return "le0";
+  if (n < 0.1) return "lt10pct";
+  if (n < 0.3) return "lt30pct";
+  return "ge30pct";
+}
+
+export interface MinePatternsOptions {
+  minSupport?: number; // 达阈值浮现（surfaced=true→GrowthTicket 人工闸）·默认 3
+  minConfidence?: number; // 默认 0.7
+  weightsVersion?: string;
+}
+
+/**
+ * §4.4⑥ 决策模式挖掘（纯函数·R6·确定性）：按 (problemClass + 数值特征分桶) 分组 → 每组众数
+ * chosen action + support/confidence → DecisionPattern[]。达阈值(support≥min ∧ confidence≥min)→
+ * surfaced=true（浮现候选·上层可转 GrowthTicket 人工闸·Ch11.10/11.11·**不自动上线规则**·R4/NG2）。
+ * 稳定排序（condition 键序·caseId 决胜）→ 同案例集双跑字节一致命中/模式。**咨询非裁决**（永不误红）。
+ */
+export function mineDecisionPatterns(cases: DecisionCase[], opts: MinePatternsOptions = {}): DecisionPattern[] {
+  const minSupport = opts.minSupport ?? 3;
+  const minConfidence = opts.minConfidence ?? 0.7;
+  const weightsVersion = opts.weightsVersion ?? CBR_WEIGHTS_VERSION;
+
+  // 分组键 = problemClass + METRIC 特征分桶（确定性·稳定序）。
+  const groups = new Map<string, { condition: Record<string, string>; chosen: Map<string, number>; caseIds: string[]; total: number }>();
+  for (const c of cases) {
+    const pc = c.problem.problemClass;
+    const chosen = c.decision.chosen;
+    if (!pc || !chosen) continue; // 无问题类目/无所选 → 不入模式（诚实）
+    const metricBuckets: Record<string, string> = {};
+    for (const f of c.problem.features) {
+      if (f.dim === "METRIC" && f.num !== null) metricBuckets[f.key] = bucketNum(f.num);
+    }
+    const condition: Record<string, string> = { problemClass: pc, ...metricBuckets };
+    const key = canonicalJson(condition);
+    let g = groups.get(key);
+    if (!g) {
+      g = { condition, chosen: new Map(), caseIds: [], total: 0 };
+      groups.set(key, g);
+    }
+    g.chosen.set(chosen, (g.chosen.get(chosen) ?? 0) + 1);
+    g.caseIds.push(c.caseId);
+    g.total += 1;
+  }
+
+  const patterns: DecisionPattern[] = [];
+  for (const [key, g] of [...groups.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
+    // 众数 chosen action（稳定：计数降序·键升序决胜）。
+    const modes = [...g.chosen.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    const [action, count] = modes[0]!;
+    const confidence = round(count / g.total, 6);
+    const support = g.total;
+    const patternId = `pat_${(hashString(`${weightsVersion}|${key}`) >>> 0).toString(16).padStart(8, "0")}`;
+    patterns.push({
+      patternId,
+      tenantId: cases[0]?.tenantId ?? "",
+      condition: g.condition,
+      recommendedAction: action,
+      support,
+      confidence,
+      exampleCaseIds: [...g.caseIds].sort().slice(0, 10),
+      surfaced: support >= minSupport && confidence >= minConfidence, // 达阈值浮现候选（→ GrowthTicket 人工闸）
+      weightsVersion,
+    });
+  }
+  // support 降序·patternId 决胜（稳定·R6）。
+  return patterns.sort((a, b) => b.support - a.support || (a.patternId < b.patternId ? -1 : 1));
 }
 
 /** 案例投影选项（R6·调用方注入时间·内部不取时钟）。 */
