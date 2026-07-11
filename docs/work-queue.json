@@ -6447,7 +6447,7 @@
       "discipline": "暗发观察态(真正翻闸在 L1-B)·additive 不改 answer/路由(NG6)·母体回写(铁律0)·真跑铁律0.4。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-3 dev1] "
+      "note": "[优先·落地即解锁Dev-2的L2-4整条Lane B后段] [LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-3 dev1] "
     },
     {
       "status": "DONE",
@@ -7315,9 +7315,9 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "[沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
+      "note": "[改派Dev-2·datacore后端·Dev-2 Lane B卡L1A-3期间的不阻塞活·S0是纯datacore provisioners/contracts其栈] [沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3"
+      "assignedDev": "dev2"
     },
     {
       "at": {},
