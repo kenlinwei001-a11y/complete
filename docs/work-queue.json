@@ -8028,25 +8028,51 @@
       }
     },
     {
-      "id": "WO-DB-FIELD-CARDINALITY-ALIGN",
       "priority": "P2",
       "deps": [],
-      "doc": "docs/REVIEW-field-schema-user-vs-platform.md",
-      "title": "平台字段/基数对齐用户契约(REVIEW§5三处):①补Workshop车间层对象类型(Factory→Workshop→Line→Equipment·工艺粒度)②Equipment补mtbf/mttr/health_score(battery.ts:506·设备故障推演真信号·现只OEE)③修line_belongs_to_base基数 N:N→N:1(一线属一基地)",
-      "note": "[LaneB·datacore·通用性] ⚠通用非电池专属:Workshop层级/工艺走配置或导入(不硬内联电池·守R14);Equipment可靠性字段是通用能力(battery pack作示例填值);cardinality N:N→N:1是平台link定义修正(通用)。回写母体§2/§3(对象类型+关系基数)+pnpm ontology:slices。green→red:line_belongs_to_base应N:1·现N:N→改前基数错门可逮;Workshop对象类型应存在。",
+      "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
       "status": "TODO",
       "owner": "",
       "at": {
-        "created": "2026-07-11T17:49:23.475Z"
-      }
+        "created": "2026-07-11T18:02:46.993Z"
+      },
+      "id": "WO-SA-1",
+      "title": "line_belongs_to_base 基数 N:N→N:1(声明订正·battery.ts:770·一线归一基地)",
+      "note": "[合一期·与SA-2同派·datacore·通用] 声明订正:注释自写“多线归一基地”却声明N:N。零合成改动(边由Line.baseId派生·每线恰一baseId)。范围红线:仅battery.ts。回写母体§3(link基数)+ontology:slices。green→red:改前N:N·基数门可逮应为N:1。施工单§2。"
+    },
+    {
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T18:02:46.993Z"
+      },
+      "id": "WO-SA-2",
+      "title": "Equipment 补 mtbf/mttr/health_score(设备故障推演真信号·现只OEE三分解)",
+      "note": "[合一期·与SA-1同派·datacore·通用能力·battery pack作示例填值] 声明落battery.ts:506·合成落:1675。守双向对齐门(声明非派生字段必须合成填)+R6(新draw追加rngTopo末尾·不插中间否则位移后续字节)。范围红线:仅battery.ts。回写母体§2(Equipment字段增量)。施工单§3。"
+    },
+    {
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/WO-PLATFORM-SCHEMA-ALIGN.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T18:02:46.993Z"
+      },
+      "id": "WO-SA-3",
+      "title": "新增 Workshop 车间层对象类型(Factory→Workshop→Line·工艺粒度)",
+      "note": "[独立一期·三者最重·动合成主循环·datacore·通用非电池专属] 新workshopProps+plain(“Workshop”)@:739 + workshop_belongs_to_base/line_belongs_to_workshop两链路 + :1654合成。撞双向对齐门最硬(唯一新增可实例化类型)。守R6+R2租户隔离+R13溯源。范围红线:仅battery.ts。回写母体§2(新类型)+§3(两链路)+ontology:slices。施工单§4。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "REGISTER(field-schema §4§5)",
-      "id": "2单",
-      "at": "2026-07-11T17:49:23.475Z"
+      "cmd": "SPLIT(FIELD-CARDINALITY→SA-1/2/3)",
+      "id": "3单",
+      "at": "2026-07-11T18:02:46.993Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
