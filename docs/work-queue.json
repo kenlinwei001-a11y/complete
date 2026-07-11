@@ -7590,7 +7590,7 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "id": "WO-L1.5-3B",
       "title": "retrieve_similar_cases 工具适配器(薄 OBO→datacore·暗发·双注册)",
@@ -7601,22 +7601,27 @@
       ],
       "doc": "docs/PRD-L1.5-enterprise-memory-cbr.md",
       "acceptance": {
-        "goal": "agentcore tools/registry+executor+clients+universal 落 retrieve_similar_cases 工具·薄 OBO 经用户 JWT 透传调 datacore POST /a/v1/memory/cases/retrieve-similar(绝不在 agentcore 重算相似度)·暗发键 memory.cbr_retrieve 双注册 defaultOn:false·关闸=工具不在 agent 可用集=agent 行为字节一致·开闸才 agent 先查案例库。",
+        "goal": "agentcore retrieve_similar_cases工具适配器:薄OBO透传调datacore CBR retrieve端点(不在agentcore重算相似度)·门控暗发memory.cbr_retrieve双注册·补L1.5-3遗留缺口。(审核方真跑PASS·同input双路径字节一致)",
         "criteria": [
           {
             "id": "C1",
-            "type": "真跑",
-            "assert": "真起 datacore(memory 端点)+agentcore·开闸=agent 工具集含 retrieve_similar_cases·真 OBO 调 /a/v1/memory/cases/retrieve-similar 得真案例(非 agentcore 重算)。"
+            "type": "probe",
+            "assert": "同input双路径(direct datacore fetch vs GuardedToolExecutor→HttpMemoryClient→OBO)→scores/breakdown字节一致(RAW-STRING-EQUAL)·datacore日志录真OBO retrieve-similar请求·证math在datacore·agentcore零重算(HttpMemoryClient仅一行POST /a/v1/memory/cases/retrieve-similar透传)·分数随metrics入参变(反证透传非硬编)"
           },
           {
             "id": "C2",
-            "type": "真跑",
-            "assert": "关闸(memory.cbr_retrieve defaultOff)=工具不在可用集·agent 行为字节一致(NG6·回退演练)。"
+            "type": "gate",
+            "assert": "双注册补齐:memory.cbr_retrieve在agentcore registry.ts:118 + datacore features.ts:136(BLOCK·defaultOn:false)·翻闸ON→200/OFF→404·check-feature-parity.mjs删注册→EXIT=1报fail-open(门有牙守此缝·enforced 10键内)"
           },
           {
             "id": "C3",
-            "type": "gate",
-            "assert": "双注册一致(agentcore registry.ts + datacore features.ts 同键)·targeted 测试 + 门绿·母体回写。"
+            "type": "test",
+            "assert": "NG6关闸字节一致:关闸featureEnabled返false(非unknown-key fail-open)·工具不在喂LLM的tools列表(toolVisibilityFilter engine.ts:169)·开闸在列表OBO真打datacore·retrieve-similar-cases-tool.test 5/5绿"
+          },
+          {
+            "id": "C4",
+            "type": "curl",
+            "assert": "OBO透传R2隔离:OBO=demo→5条SEED案例·OBO=fresh空租户→0hits·tenantId由OBO JWT派生·入参无tenantId字段·跨租户不串"
           }
         ]
       },
@@ -7626,7 +7631,8 @@
       "note": "[LaneA·dev1·审核方拆缝·ID带L1.5但agentcore活儿归Dev-1·claim WO-L1.5-3B dev1] 建完 L1B-5 后接。",
       "at": {
         "wip": "2026-07-11T13:35:12.324Z",
-        "built": "2026-07-11T13:54:12.166Z"
+        "built": "2026-07-11T13:54:12.166Z",
+        "done": "2026-07-11T14:53:02.464Z"
       },
       "blockReason": ""
     },
