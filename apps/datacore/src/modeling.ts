@@ -1,4 +1,4 @@
-import { ModelingSuggestionSchema, type FieldCoverageReport, type FieldProfile, type ModelingSuggestion, type SchemaReconcileCandidate } from "@platform/contracts";
+import { ModelingSuggestionSchema, classifySourceOrigin, type FieldCoverageReport, type FieldProfile, type ModelingSuggestion, type SchemaReconcileCandidate } from "@platform/contracts";
 import type { AuthCtx, DraftOperation, FkCandidate, ImportedScenarioRecord, OntologyDraft, PropertyDef, RawDataset } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { LlmClient } from "./llm.js";
@@ -479,6 +479,30 @@ export class ModelingService {
       imported.push({ key, title, question, targetView, resolvedObjects, answerKind: answer.kind, answerDeclared });
     }
     return { imported, gaps };
+  }
+
+  /**
+   * WO-IMPORT-REPLACE-SYNTHETIC (G4·复验返工·KILL-MOCK-RED 命门)：按 **provenance** 数世界态对象——
+   * 区分「真导入」(origin=MATERIALIZED 且其 rawDataset 源连接 `classifySourceOrigin=real-sourced`·即真上传/真连接器)
+   * 与「合成物化」(源连接为 mock/synthetic·如 SEED_DEMO 的 mock_erp+config.synthetic=true)。
+   * imported 世界态**只有真导入对象才是可读真值**；合成物化不得在 imported 下自报 LIVE 决策红（防合成冒充真值）。
+   */
+  async countWorldObjectsByProvenance(ctx: AuthCtx): Promise<{ realImported: number; syntheticMaterialized: number }> {
+    const realDatasetIds = new Set<string>();
+    for (const ds of await this.repos.rawDatasets.list(ctx.tenantId)) {
+      const conn = ds.sourceConnId ? await this.repos.connections.get(ctx.tenantId, ds.sourceConnId) : undefined;
+      if (classifySourceOrigin(conn?.connectorTypeKey, conn?.config) === "real-sourced") realDatasetIds.add(ds.id);
+    }
+    let realImported = 0;
+    let syntheticMaterialized = 0;
+    for (const t of await this.ontology.listTypes(ctx)) {
+      for (const o of await this.repos.objects.listByType(ctx.tenantId, t.key)) {
+        if (o.origin?.type !== "MATERIALIZED") continue;
+        if (realDatasetIds.has(o.origin.datasetId)) realImported++;
+        else syntheticMaterialized++;
+      }
+    }
+    return { realImported, syntheticMaterialized };
   }
 
   /** 字段全建模覆盖报告（R12）：草稿当前映射对导入数据源字段的覆盖率 + 未建模清单。 */

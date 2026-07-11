@@ -253,13 +253,24 @@ export type WorldSource = z.infer<typeof WorldSourceSchema>;
 
 export const WorldSourceStatusSchema = z.object({
   worldSource: z.enum(["synthetic", "imported"]),
-  /** 实值杠杆是否生效（imported → 翻开 qos.risk_realdemand·求解器读真供需）。 */
+  /** 实值杠杆是否生效（qos.risk_realdemand·求解器读真供需公式）。 */
   realValueLeverEnabled: z.boolean(),
-  /** 本租户已导入数据表数（RawDataset 计数·imported 世界态的真实源）。 */
+  /**
+   * 实值杠杆是否**由真导入 provenance 支撑**（KILL-MOCK-RED 命门）：
+   * true 仅当 worldSource=imported **且**有真导入 provenance 对象——杠杆开在真值上；
+   * false = 杠杆即便开也非真导入支撑（合成/模板默认·不得当真 LIVE）。
+   */
+  leverSourcedFromRealImports: z.boolean(),
+  /** 本租户已导入数据表数（RawDataset 计数）。 */
   rawDatasetCount: z.number(),
-  /** 已物化对象数（MATERIALIZED·挂真 rawDatasetId·R-NO-ORPHAN-SOURCE）。 */
+  /** 已物化对象总数（MATERIALIZED）。 */
   materializedObjectCount: z.number(),
-  /** 诚实告警（如 imported 但无导入真数据 → 世界态空）。 */
+  /**
+   * **真导入 provenance** 对象数（origin=MATERIALIZED 且源连接 classifySourceOrigin=real-sourced·非合成 mock/synthetic）。
+   * = imported 世界态真正可读的真值对象数；0 = 全合成，imported 不得让合成自报 LIVE。
+   */
+  realImportedObjectCount: z.number(),
+  /** 诚实告警（imported 无真导入 → 拒翻杠杆；synthetic 但模板默认开杠杆 → 合成可能自报 LIVE）。 */
   warnings: z.array(z.string()),
 });
 export type WorldSourceStatus = z.infer<typeof WorldSourceStatusSchema>;

@@ -4113,15 +4113,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const worldSource = (tenant?.worldSource as "synthetic" | "imported") ?? "synthetic";
     const realValueLeverEnabled = await features.enabled(c.tenantId, "qos.risk_realdemand");
     const rawDatasetCount = (await repos.rawDatasets.list(c.tenantId)).length;
-    let materializedObjectCount = 0;
-    for (const t of await ontology.listTypes(c)) {
-      const objs = await repos.objects.listByType(c.tenantId, t.key);
-      materializedObjectCount += objs.filter((o) => o.origin?.type === "MATERIALIZED").length;
-    }
+    // KILL-MOCK-RED 命门（复验返工）：按 provenance 数——只有真导入对象才是 imported 世界态可读真值（合成物化不算）。
+    const { realImported, syntheticMaterialized } = await modeling.countWorldObjectsByProvenance(c);
+    const materializedObjectCount = realImported + syntheticMaterialized;
+    const leverSourcedFromRealImports = worldSource === "imported" && realValueLeverEnabled && realImported > 0;
     const warnings: string[] = [];
-    if (worldSource === "imported" && rawDatasetCount === 0) warnings.push("world_source=imported 但无导入数据表（0 RawDataset）→ 世界态无真实源，求解器无真值可读（诚实空·非假装有真值）；先经 uploads/batch + derive-batch 导入真数据。");
-    if (worldSource === "imported" && rawDatasetCount > 0 && materializedObjectCount === 0) warnings.push("world_source=imported 但无已物化对象（导入数据未建模物化）→ 先经 derive-batch/ontology-import 物化真对象，求解器才能读到真值。");
-    return { worldSource, realValueLeverEnabled, rawDatasetCount, materializedObjectCount, warnings };
+    if (worldSource === "imported" && realImported === 0) {
+      warnings.push("world_source=imported 但无真导入 provenance 对象（0 real-sourced·全合成/未导入）→ 未翻开实值杠杆（拒绝让合成 DemandSegment 自报 LIVE 决策红·KILL-MOCK-RED）；先经 uploads/batch + derive-batch 导入真数据。");
+    }
+    if (worldSource === "synthetic" && realValueLeverEnabled) {
+      warnings.push("world_source=synthetic 但实值杠杆 qos.risk_realdemand 开（行业模板默认·非 world_source 控制）→ 合成 DemandSegment 可能自报 LIVE；如需纯合成回退请 PUT {worldSource:synthetic} 显式关杠杆（标签=行为）。");
+    }
+    return { worldSource, realValueLeverEnabled, leverSourcedFromRealImports, rawDatasetCount, materializedObjectCount, realImportedObjectCount: realImported, warnings };
   };
   app.get("/a/v1/world-source", async (req) => {
     const c = ctx(req);
@@ -4136,9 +4139,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
     if (!tenant) throw notFound("tenant");
     await repos.tenants.put({ ...tenant, worldSource: body.worldSource });
-    // imported → 翻开实值杠杆 qos.risk_realdemand（合并既有 override·不覆盖其它键）；synthetic → 关（回退合成扁平）。
+    // KILL-MOCK-RED 命门（复验返工）：imported 仅在**有真导入 provenance 对象**时翻开实值杠杆——否则拒绝（保持关），
+    // 不让合成物化在 imported 下自报 LIVE 决策红。synthetic → 显式关杠杆（回退合成·标签=行为·消除 default 态标签≠行为）。
+    const { realImported } = await modeling.countWorldObjectsByProvenance(c);
+    const enableLever = body.worldSource === "imported" && realImported > 0;
     const existing = await repos.featureConfigs.get(c.tenantId, `fcfg_${c.tenantId}`);
-    const merged = { ...(existing?.overrides ?? {}), "qos.risk_realdemand": body.worldSource === "imported" };
+    const merged = { ...(existing?.overrides ?? {}), "qos.risk_realdemand": enableLever };
     await features.putTenantConfig(c, c.tenantId, merged);
     solvers.invalidateFeatureCache(c.tenantId); // 暗发开关翻转即时生效于求解器（回退演练）。
     return worldSourceStatus(c);
