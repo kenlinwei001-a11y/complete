@@ -6308,7 +6308,7 @@
       "at": {},
       "id": "WO-L1A-1",
       "title": "RequirementGraph 契约 + QuestionAST 确定性解析器(纯函数·无接线)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [],
       "doc": "docs/PRD-L1A-requirement-graph-engine.md",
       "acceptance": {
@@ -6336,7 +6336,10 @@
           }
         ]
       },
-      "discipline": "暗发(QOS_REQUIREMENT_GRAPH)·契约全 optional additive·确定性无随机(KILL-MOCK-RED green→red)。"
+      "discipline": "暗发(QOS_REQUIREMENT_GRAPH)·契约全 optional additive·确定性无随机(KILL-MOCK-RED green→red)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-1 dev1] "
     },
     {
       "status": "TODO",
@@ -6344,7 +6347,7 @@
       "at": {},
       "id": "WO-L1A-2",
       "title": "Graph Builder(node/edge/property/event 推导)+ 三白名单门(纯函数·无接线)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1A-1"
       ],
@@ -6374,7 +6377,10 @@
           }
         ]
       },
-      "discipline": "暗发·additive·builder 越界产幽灵 key 视为红(KILL-MOCK-RED)。"
+      "discipline": "暗发·additive·builder 越界产幽灵 key 视为红(KILL-MOCK-RED)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-2 dev1] "
     },
     {
       "status": "TODO",
@@ -6382,7 +6388,7 @@
       "at": {},
       "id": "WO-L1A-3",
       "title": "编排接线(暗发·观察态)+ 持久化 + 读端点 + 下游 I/O",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1A-2"
       ],
@@ -6412,7 +6418,10 @@
           }
         ]
       },
-      "discipline": "暗发观察态(真正翻闸在 L1-B)·additive 不改 answer/路由(NG6)·母体回写(铁律0)·真跑铁律0.4。"
+      "discipline": "暗发观察态(真正翻闸在 L1-B)·additive 不改 answer/路由(NG6)·母体回写(铁律0)·真跑铁律0.4。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-3 dev1] "
     },
     {
       "status": "TODO",
@@ -6420,7 +6429,7 @@
       "at": {},
       "id": "WO-L1B-1",
       "title": "ExecutionGraph 契约 + 线性 lift + 门(无接线)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [],
       "doc": "docs/PRD-L1B-execution-planner-workflow-runtime.md",
       "acceptance": {
@@ -6448,7 +6457,10 @@
           }
         ]
       },
-      "discipline": "暗发双闸·契约全 optional additive·图测谎 green→red(KILL-MOCK-RED)。"
+      "discipline": "暗发双闸·契约全 optional additive·图测谎 green→red(KILL-MOCK-RED)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-1 dev1] "
     },
     {
       "status": "TODO",
@@ -6456,7 +6468,7 @@
       "at": {},
       "id": "WO-L1B-2",
       "title": "DAG 执行器(拓扑并行 + Gateway + 步级重试·无 durable·无接线编排)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1B-1"
       ],
@@ -6486,7 +6498,10 @@
           }
         ]
       },
-      "discipline": "暗发·additive·并行破坏确定性/parity 分歧→关闸回串行(KILL-MOCK-RED·真跑铁律0.4)。"
+      "discipline": "暗发·additive·并行破坏确定性/parity 分歧→关闸回串行(KILL-MOCK-RED·真跑铁律0.4)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-2 dev1] "
     },
     {
       "status": "TODO",
@@ -6494,7 +6509,7 @@
       "at": {},
       "id": "WO-L1B-3",
       "title": "durable checkpoint 续跑 + 补偿引擎(移植 BuildWorkflowEngine)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1B-2"
       ],
@@ -6524,7 +6539,10 @@
           }
         ]
       },
-      "discipline": "暗发·additive(旧 executor 永不删)·补偿不静默反转真实效果(R4·KILL-MOCK-RED)。"
+      "discipline": "暗发·additive(旧 executor 永不删)·补偿不静默反转真实效果(R4·KILL-MOCK-RED)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-3 dev1] "
     },
     {
       "status": "TODO",
@@ -6532,7 +6550,7 @@
       "at": {},
       "id": "WO-L1B-4",
       "title": "Execution Planner synthesizePlan(Ch10 满配)+ 影子接线(shadow only)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1B-3",
         "WO-L1A-3"
@@ -6563,7 +6581,10 @@
           }
         ]
       },
-      "discipline": "暗发影子先行·additive·影子改变 answer/路由(NG6)→关 QOS_EXEC_PLANNER(KILL-MOCK-RED)。跨层依赖 L1-A(WO-L1A-3·RequirementGraph 运行绿)。"
+      "discipline": "暗发影子先行·additive·影子改变 answer/路由(NG6)→关 QOS_EXEC_PLANNER(KILL-MOCK-RED)。跨层依赖 L1-A(WO-L1A-3·RequirementGraph 运行绿)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-4 dev1] "
     },
     {
       "status": "TODO",
@@ -6571,7 +6592,7 @@
       "at": {},
       "id": "WO-L1B-5",
       "title": "Planner SERVE 翻闸(STAGE-1 fall-through→STAGE-2 白名单)+ 全链真跑",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1B-4",
         "WO-L1B-2",
@@ -6603,7 +6624,10 @@
           }
         ]
       },
-      "discipline": "暗发翻闸·additive·parity 分歧超阈/首包延迟回归→摘白名单秒级回退(KILL-MOCK-RED·真跑铁律0.4)。"
+      "discipline": "暗发翻闸·additive·parity 分歧超阈/首包延迟回归→摘白名单秒级回退(KILL-MOCK-RED·真跑铁律0.4)。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-5 dev1] "
     },
     {
       "status": "TODO",
@@ -6611,7 +6635,7 @@
       "at": {},
       "id": "WO-L1B-SAGA",
       "title": "跨系统 Saga 一致性(单列·延后 L1.5·NG2)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1B-3"
       ],
@@ -6626,7 +6650,10 @@
           }
         ]
       },
-      "discipline": "暗发(qos.workflow_saga)·additive·真外部/真 sandbox 非 mock 冒充(KILL-MOCK-RED)。注:PRD §8 仅给单条 acceptance(延后 WO·外部连接器依赖)·未细分多 criteria·此处保真不编造。"
+      "discipline": "暗发(qos.workflow_saga)·additive·真外部/真 sandbox 非 mock 冒充(KILL-MOCK-RED)。注:PRD §8 仅给单条 acceptance(延后 WO·外部连接器依赖)·未细分多 criteria·此处保真不编造。",
+      "lane": "LaneA",
+      "assignedDev": "dev1",
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] "
     },
     {
       "status": "TODO",
@@ -6634,7 +6661,7 @@
       "at": {},
       "id": "WO-L2-1",
       "title": "决策制品契约 + CounterfactualResult 补 schema + 暗发双闸",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [],
       "doc": "docs/PRD-L2-decision-kernel.md",
       "acceptance": {
@@ -6662,7 +6689,10 @@
           }
         ]
       },
-      "discipline": "暗发双闸·契约全 optional additive·双注册防恒真陷阱(KILL-MOCK-RED)。"
+      "discipline": "暗发双闸·契约全 optional additive·双注册防恒真陷阱(KILL-MOCK-RED)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-1 dev2] "
     },
     {
       "status": "TODO",
@@ -6670,7 +6700,7 @@
       "at": {},
       "id": "WO-L2-2",
       "title": "Reasoning Engine + Counterfactual 编排(沿因果重算)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L2-1"
       ],
@@ -6700,7 +6730,10 @@
           }
         ]
       },
-      "discipline": "additive·反事实沿真派生重算非新引擎·无真源 PARTIAL 不造 delta(KILL-MOCK-RED)。"
+      "discipline": "additive·反事实沿真派生重算非新引擎·无真源 PARTIAL 不造 delta(KILL-MOCK-RED)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-2 dev2] "
     },
     {
       "status": "TODO",
@@ -6708,7 +6741,7 @@
       "at": {},
       "id": "WO-L2-3",
       "title": "Decision Package 装配 + Pareto 推荐 + ExplanationChain",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L2-2"
       ],
@@ -6738,7 +6771,10 @@
           }
         ]
       },
-      "discipline": "additive·每 metric/delta/recommendedKey 必可溯 provId·凑不出 null 诚实空态(KILL-MOCK-RED)。"
+      "discipline": "additive·每 metric/delta/recommendedKey 必可溯 provId·凑不出 null 诚实空态(KILL-MOCK-RED)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-3 dev2] "
     },
     {
       "status": "TODO",
@@ -6746,7 +6782,7 @@
       "at": {},
       "id": "WO-L2-4",
       "title": "QOS 旁挂接线(暗发·观察态)+ 持久化 + 读端点 + 事件",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L2-3",
         "WO-L1A-3"
@@ -6777,7 +6813,10 @@
           }
         ]
       },
-      "discipline": "暗发观察态·additive·fire-and-forget 不阻塞首包·不改 answer/路由(NG1·KILL-MOCK-RED)。跨层:依赖 L1-A(WO-L1A-3·需求图可读若开);L1-B 就绪度可选(兜底求解器直算·PRD §9 NG4)。"
+      "discipline": "暗发观察态·additive·fire-and-forget 不阻塞首包·不改 answer/路由(NG1·KILL-MOCK-RED)。跨层:依赖 L1-A(WO-L1A-3·需求图可读若开);L1-B 就绪度可选(兜底求解器直算·PRD §9 NG4)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-4 dev2] "
     },
     {
       "status": "TODO",
@@ -6785,7 +6824,7 @@
       "at": {},
       "id": "WO-L2-5",
       "title": "采纳正门(Decision+ActionDraft·R4)+ 本体回写",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L2-4"
       ],
@@ -6810,7 +6849,10 @@
           }
         ]
       },
-      "discipline": "additive·采纳经 R4 正门不直写真值(RL4)·与既有 Decision 台账不双份(RL3)·母体回写(铁律0·KILL-MOCK-RED)。"
+      "discipline": "additive·采纳经 R4 正门不直写真值(RL4)·与既有 Decision 台账不双份(RL3)·母体回写(铁律0·KILL-MOCK-RED)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] "
     },
     {
       "status": "TODO",
@@ -6818,7 +6860,7 @@
       "at": {},
       "id": "WO-L1.5-1",
       "title": "CBR 契约 + 确定性特征抽取 + 案例投影器(纯函数·无接线)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [],
       "doc": "docs/PRD-L1.5-enterprise-memory-cbr.md",
       "acceptance": {
@@ -6846,7 +6888,10 @@
           }
         ]
       },
-      "discipline": "暗发(QOS_CBR_*)·additive·特征∈注册表 green→red 测谎(KILL-MOCK-RED)。"
+      "discipline": "暗发(QOS_CBR_*)·additive·特征∈注册表 green→red 测谎(KILL-MOCK-RED)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-1 dev2] "
     },
     {
       "status": "TODO",
@@ -6854,7 +6899,7 @@
       "at": {},
       "id": "WO-L1.5-2",
       "title": "案例库落库 + 确定性相似检索 + 读端点(暗发·治 G-3b 读侧底座)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1.5-1"
       ],
@@ -6884,7 +6929,10 @@
           }
         ]
       },
-      "discipline": "暗发·additive·检索确定性 R6·跨租户隔离(KILL-MOCK-RED)。"
+      "discipline": "暗发·additive·检索确定性 R6·跨租户隔离(KILL-MOCK-RED)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-2 dev2] "
     },
     {
       "status": "TODO",
@@ -6892,7 +6940,7 @@
       "at": {},
       "id": "WO-L1.5-3",
       "title": "案例摄取接线(DataCore Decision→案例·agent 终态旁路·L2 端口)+ agent 先查案例库(治 G-3b 读写闭合)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1.5-2",
         "WO-L2-5"
@@ -6923,7 +6971,10 @@
           }
         ]
       },
-      "discipline": "暗发·additive(旧 search_experience/recordExperience 不删)·案例数字不当真值·经工具溯源(KILL-MOCK-RED)。跨层:消费 L2 DecisionArtifact 端口(WO-L2-5·PRD §9 缺则退纯文本特征·软依赖)。"
+      "discipline": "暗发·additive(旧 search_experience/recordExperience 不删)·案例数字不当真值·经工具溯源(KILL-MOCK-RED)。跨层:消费 L2 DecisionArtifact 端口(WO-L2-5·PRD §9 缺则退纯文本特征·软依赖)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-3 dev2] "
     },
     {
       "status": "TODO",
@@ -6931,7 +6982,7 @@
       "at": {},
       "id": "WO-L1.5-4",
       "title": "反馈信号闭环 + 决策模式挖掘→接现校准 Action R4(feedback→调参真生效·不自改真值)",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1.5-3"
       ],
@@ -6956,7 +7007,10 @@
           }
         ]
       },
-      "discipline": "additive·校准数学零改·参数变更经 R4 正门 autoApply 恒 false 不自改真值(KILL-MOCK-RED)。"
+      "discipline": "additive·校准数学零改·参数变更经 R4 正门 autoApply 恒 false 不自改真值(KILL-MOCK-RED)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-4 dev2] "
     },
     {
       "status": "TODO",
@@ -6964,7 +7018,7 @@
       "at": {},
       "id": "WO-L1.5-5",
       "title": "出厂种子案例(诚实标 SEED)+ RL/GNN 离线可插拔占位 + 全链真跑 + 母体回写",
-      "priority": "P3",
+      "priority": "P1",
       "deps": [
         "WO-L1.5-4"
       ],
@@ -6994,7 +7048,10 @@
           }
         ]
       },
-      "discipline": "additive·SEED 真确定性派生不冒充真实累积·RL 不引入热路径随机(KILL-MOCK-RED green→red)·母体回写(铁律0)。"
+      "discipline": "additive·SEED 真确定性派生不冒充真实累积·RL 不引入热路径随机(KILL-MOCK-RED green→red)·母体回写(铁律0)。",
+      "lane": "LaneB",
+      "assignedDev": "dev2",
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-5 dev2] "
     },
     {
       "status": "TODO",
