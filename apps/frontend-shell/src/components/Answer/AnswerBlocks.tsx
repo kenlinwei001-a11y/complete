@@ -1,8 +1,9 @@
 import { Fragment, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import type { AnswerBlock } from "@platform/contracts";
+import { Link, useNavigate } from "react-router-dom";
+import type { AnswerBlock, SimulationRequest } from "@platform/contracts";
 import { Markdown, renderInline } from "@/components/ui/markdown";
 import { ProvHoverArea, ProvMark } from "@/components/Provenance/ProvTrigger";
+import { useSessionStore } from "@/store/sessionStore";
 import { GapCard } from "./GapCard";
 import zh from "@/locales/zh";
 import styles from "./AnswerBlocks.module.css";
@@ -44,6 +45,9 @@ export function AnswerBlockView({
     case "gap":
       // ONTO-SCEN-LAUNCH-DET §2.5：场景卡缺口附发育态 → GapCard 渲染诚实发育卡（缺 X · 工单深链）。
       return <GapCard report={block.report} scenario={block.scenario} onRetry={onRetry} />;
+    case "sandbox_render":
+      // WO-SANDBOX-AS-RENDER-TARGET（S1）：时序推演意图 → 答案先行横幅 + 「打开推演沙盘」（scenarioPreset 通道进沙盘）。
+      return <SandboxRenderBlock request={block.request} headline={block.headline} />;
     default:
       return null;
   }
@@ -178,6 +182,48 @@ export function RuleViolationBlock({
         <ProvMark provId={provId} taskId={taskId} index={provIndex(provId)} />
       </div>
       <p style={{ marginTop: 6, lineHeight: 1.6 }}>{explanation}</p>
+    </div>
+  );
+}
+
+/**
+ * sandbox_render（WO-SANDBOX-AS-RENDER-TARGET·S1）：时序推演意图落地——答案先行横幅 + 「打开推演沙盘」。
+ * 点按经 scenarioPreset 单一通道（C4·非 URL）把 SimulationRequest 关键槽落 store → 导航 /v/sim-sandbox →
+ * SandboxView（渲染器）经 useScenarioPreset("sim-sandbox") 读取并按对象裁剪世界起跑推演（source=dialogue）。
+ * headline=答案先行摘要（客户端逐 tick 补状态级结论）。
+ */
+export function SandboxRenderBlock({ request, headline }: { request: SimulationRequest; headline: string }) {
+  const navigate = useNavigate();
+  const setScenarioPreset = useSessionStore((s) => s.setScenarioPreset);
+  const shock = request.scenario.find((a) => a.kind === "shock");
+  const subject = request.scope.objectIds[0];
+  const open = () => {
+    // SimulationRequest 关键槽 → slotPresets（供 useScenarioPreset 读初值）；simRequest 全量随行（下游按需消费）。
+    setScenarioPreset({
+      targetView: "sim-sandbox",
+      slotPresets: {
+        subject,
+        objectType: request.scope.objectType,
+        horizonTicks: request.horizonTicks,
+        source: request.source,
+        ...(shock && shock.kind === "shock" ? { stateVar: shock.target.stateVar, delta: shock.delta } : {}),
+        simRequest: request,
+      },
+      label: headline,
+      nonce: crypto.randomUUID(),
+    });
+    navigate("/v/sim-sandbox");
+  };
+  return (
+    <div className={styles.draft} data-testid="sandbox-render">
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="badge">推演沙盘</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{request.horizonTicks} tick</span>
+      </div>
+      <p style={{ margin: "6px 0", lineHeight: 1.6 }}>{headline}</p>
+      <button type="button" className={styles.draftLink} onClick={open} data-testid="sandbox-render-open">
+        打开推演沙盘 →
+      </button>
     </div>
   );
 }

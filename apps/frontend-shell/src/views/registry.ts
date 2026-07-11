@@ -62,3 +62,7 @@ registerRenderer("order-chain", () => import("./plan/OrderChainView"));
 // 渲染器注销 + 组件删除；旧深链 /v/geo-map 由 App.tsx tombstone 302→/v/risk（非幽灵路由）。
 // 运营态出厂配置增量 §4.2：运营回顾（只读历史证据链页面，renderer 复用 dashboard 类网格风格）
 registerRenderer("review", () => import("./ReviewView"));
+// WO-SANDBOX-AS-RENDER-TARGET（S1）：推演沙盘从独立页 → **一等渲染器**（时序推演意图落地画布）。
+// 独立路由 /v/sim-sandbox（App.tsx·工作台副态）+ URL what-if 通道**全保留**（RL9 不删）；本注册使
+// sandbox_render 答案块「打开推演沙盘」经 scenarioPreset 通道进沙盘（source=dialogue·五触发归一）。
+registerRenderer("sim-sandbox", () => import("./sim/SandboxView"));

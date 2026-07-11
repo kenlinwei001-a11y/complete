@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { parseWhatIfPreset, resolveBaseId, cropConfigToBase, cropWorldToBase, type WhatIfPreset } from "./whatif";
+import { useScenarioPreset, presetNum, presetStr } from "./useScenarioPreset";
+import type { ViewConfigVM } from "@/api/types";
 import ModelCapacitySlice from "./ModelCapacitySlice";
 import type { PropagationRule, SandboxViewConfig, SimCertification, TickState } from "@platform/contracts";
 import {
@@ -748,12 +750,33 @@ export interface SandboxViewProps {
   injectedConfig?: SandboxViewConfig;
   /** WO-E2 测试注入：绕过 URL 直接喂 what-if presetContext（生产走 useSearchParams）。 */
   injectedPreset?: WhatIfPreset | null;
+  /**
+   * WO-SANDBOX-AS-RENDER-TARGET（S1）：适配 ViewRendererProps——沙盘注册为渲染器后经 ViewPage 分发时收到 view。
+   * 独立路由 /v/sim-sandbox 零参调用（`= {}`）与测试注入路径均不受影响（optional·additive）。
+   */
+  view?: ViewConfigVM;
 }
 
 export default function SandboxView({ injectedConfig, injectedPreset }: SandboxViewProps = {}) {
   // WO-E2（沙盘 what-if 进决策日常）：决策入口一键「开 what-if」→ URL 带 presetContext → 注入 SimSession.scope。
   const [searchParams] = useSearchParams();
-  const whatIf = injectedPreset !== undefined ? injectedPreset : parseWhatIfPreset(searchParams);
+  const urlWhatIf = injectedPreset !== undefined ? injectedPreset : parseWhatIfPreset(searchParams);
+  // WO-SANDBOX-AS-RENDER-TARGET（S1·五触发归一·source=dialogue）：人机对话时序推演意图 → sandbox_render 答案块
+  // 经 scenarioPreset 单一通道进沙盘。此处读取并归一为 WhatIfPreset（subject→对象裁剪·label→上下文条），
+  // 使沙盘按问句对象起跑（URL what-if 通道保留·优先级：URL/注入 > scenarioPreset·两条通道并存不互斥·RL9）。
+  const simPreset = useScenarioPreset("sim-sandbox");
+  const whatIf = useMemo<WhatIfPreset | null>(() => {
+    if (urlWhatIf) return urlWhatIf;
+    if (!simPreset) return null;
+    const subject = presetStr(simPreset.slots, "subject");
+    const weeks = presetNum(simPreset.slots, "horizonTicks");
+    return {
+      source: presetStr(simPreset.slots, "source") ?? "dialogue",
+      subject,
+      label: simPreset.label ?? (subject ? `${subject} 时序推演` : "时序推演"),
+      ...(weeks !== undefined ? { weeks: Math.max(1, Math.round(weeks / 7)) } : {}),
+    };
+  }, [urlWhatIf, simPreset]);
   const cfgQuery = useQuery({
     queryKey: ["a", "sim", "view-config"],
     queryFn: fetchSimViewConfig,
