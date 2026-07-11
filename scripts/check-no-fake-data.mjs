@@ -34,7 +34,9 @@ const SCAN_GLOBS = ["apps/datacore/src/solvers", "apps/frontend-shell/src/views"
 const HONESTY_WINDOW = 30; // 诚实标记函数级窗口（行）——合成值的 dataMode 诚实位常在函数尾部 return，非紧邻 hash 行
 const HONESTY_RE = /dataMode|诚实|估算|无实测|合成|SYNTHETIC|MOCK|PARTIAL|debattery-allow|绝不|不哈希|不合成|去掉/;
 // 合法 hash 用途：结果进 id/version/bucket 分流（非业务量），或 Node crypto 去重/摘要（computeSource dedup·非展示级业务值）。
-const LEGIT_RE = /(_?id\b|Id\b|version|rsv_|bucket|splitPct|`e\$\{|toString\(\s*36\s*\)|toString\(\s*16\s*\)|createHash\s*\(|\.digest\s*\()/;
+// WO-GATE-ID-TIGHTEN：id 豁免**锚定到赋值目标**（`const/let/var xxxId` 或 `xxxId =/:`）——`hash(xxxId)` 把 id 当**实参**派生
+// 业务值不再被放行（此前 `Id\b` 松匹配全行→ `hash(baseId)` 造"谁负责"逃逸）；`const nodeId = hash(x)`（id 作赋值目标）仍合法。
+const LEGIT_RE = /(\b(?:const|let|var)\s+\w*[Ii]d\b|\w*[Ii]d\s*[=:]|version|rsv_|bucket|splitPct|`e\$\{|toString\(\s*36\s*\)|toString\(\s*16\s*\)|createHash\s*\(|\.digest\s*\()/;
 // 残口信号（WO-FAKE-05 堵根·扩）：**任意 hash 命名函数**参与派生数值——不再只守全局 `hashString(`，
 // 也逮**本地 hash**（如审计 R4 的 `riskHashN(base) % N` 取模造"谁负责"/占用比·FAKE-03 已治→防复发）。
 // `\w*[Hh]ash\w*(` 覆盖 hashString/riskHashN/createHash/...；createHash/digest 由 LEGIT_RE 豁免（真去重非业务量）。
@@ -48,10 +50,12 @@ const COMMENT_RE = /^\s*(\/\/|\*|\/\*)/;
     'const owner = RISK_OWNER_NAMES[riskHashN(base) % RISK_OWNER_NAMES.length];', // 审计 R4 本地 hash 造"谁负责"
     'const occ = creditBase + myHash(cust) % creditMod / 100;',                    // 本地 hash 造占用比
     'const jitter = hashString(so) % jitterMod;',                                  // 全局 hashString 造抖动（存量口径）
+    'const sev = SEVERITY[hashString(baseId) % 3];',                               // WO-GATE-ID-TIGHTEN：hash(xxxId) 作实参造业务值·不再被 id 豁免放行
   ];
   const mustPass = [
     'const hash = createHash("sha256").update(draft.computeSource).digest("hex").slice(0, 16);', // crypto dedup id
     'const bucket = hashString(tenantId + solverKey) % 100 < splitPct;',                          // AB 分流 bucket
+    'const nodeId = hashString(seed).slice(0, 8);',                                                // WO-GATE-ID-TIGHTEN：id 作赋值目标·合法·不误伤
   ];
   for (const s of mustCatch) if (!(SMELL_RE.test(s) && !LEGIT_RE.test(s))) { console.error(`✗ C1 gate自证失守：SMELL 未逮本地 hash 造数残口 → 「${s}」（牙齿钝·堵根失效）`); process.exit(2); }
   for (const s of mustPass) if (!(LEGIT_RE.test(s) || COMMENT_RE.test(s))) { console.error(`✗ C1 gate自证失守：LEGIT 误伤合法 hash 用途 → 「${s}」（假阳·会逼真去重/分流改坏）`); process.exit(2); }

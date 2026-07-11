@@ -6303,9 +6303,11 @@
       "discipline": "additive·阈值后端下发·去前端魔法折算与伪溯源断言(KILL-MOCK-RED)。"
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev1",
+      "at": {
+        "wip": "2026-07-11T07:27:43.297Z"
+      },
       "id": "WO-L1A-1",
       "title": "RequirementGraph 契约 + QuestionAST 确定性解析器(纯函数·无接线)",
       "priority": "P1",
@@ -6424,9 +6426,11 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-3 dev1] "
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev1",
+      "at": {
+        "wip": "2026-07-11T07:27:43.378Z"
+      },
       "id": "WO-L1B-1",
       "title": "ExecutionGraph 契约 + 线性 lift + 门(无接线)",
       "priority": "P1",
@@ -7142,13 +7146,16 @@
       }
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T07:27:43.455Z",
+        "built": "2026-07-11T07:30:17.384Z"
+      },
       "id": "WO-GATE-ID-TIGHTEN",
       "title": "假推演门加固(非阻断):check-no-fake-data C1 收紧 id-豁免(hash(xxxId)作实参不再被放行)",
       "doc": "docs/AUDIT-solver-fake-residues.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev1",
       "deps": [],
       "note": "FAKE-05复验(agent a438f43)非阻断发现:C1 LEGIT正则 `_?id\\b|Id\\b` 过宽——`hash(baseId)`(id作实参)整行被当id用途豁免·hash伪造与…Id/…id同行者绕过C1静态扫(baseId/orderId/tenantId求解器极常见)。当前0现实依赖(10 SMELL行:6注释+4由version/bucket/createHash/digest豁免)·C2行为断言命名无关兜底OEE/良率·canonical R4(owner用riskHashN(base)非baseId)仍被逮→故非阻断。但C2无行为断言的其它求解器若出hash(orderId)式伪造会双绕。",
       "acceptance": {
@@ -7166,7 +7173,8 @@
           }
         ],
         "discipline": "additive·纯门加固·审核方复验出单·dev建·reviewer复验。"
-      }
+      },
+      "blockReason": ""
     },
     {
       "at": {},
@@ -7388,8 +7396,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L2-3",
-      "at": "2026-07-11T07:30:03.226Z"
+      "id": "WO-GATE-ID-TIGHTEN",
+      "at": "2026-07-11T07:30:17.385Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
