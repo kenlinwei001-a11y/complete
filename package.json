@@ -63,6 +63,7 @@
     "datadep-manifest:check": "node scripts/check-datadep-manifest.mjs",
     "industry-pack:check": "node scripts/check-industry-pack.mjs",
     "no-fake-done:check": "node scripts/check-no-fake-done.mjs",
+    "queue-integrity:check": "node scripts/check-queue-integrity.mjs",
     "no-fake-data:check": "node scripts/check-no-fake-data.mjs",
     "solver-coverage:check": "node scripts/check-solver-coverage.mjs",
     "hidden-req-keys:check": "node scripts/check-hidden-req-keys.mjs",
