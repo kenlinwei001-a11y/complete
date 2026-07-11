@@ -5580,7 +5580,7 @@
       "title": "产能推演·种子按基地分化+传导衰减(治恒红无涨落)",
       "doc": "docs/PRD-capacity-sim-decision-flow.md",
       "priority": "P0",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev",
       "deps": [],
       "acceptance": {
@@ -5607,9 +5607,11 @@
       "at": {
         "created": "2026-07-10",
         "wip": "2026-07-10T17:43:35.431Z",
-        "built": "2026-07-10T20:46:54.508Z"
+        "built": "2026-07-10T20:46:54.508Z",
+        "done": "2026-07-11T04:11:12.820Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "DONE·诚实标PARTIAL(agent a07334):产能确定性分化真达成(化成通道520-875·1.68×档差·decay{den10}+clamp传导规则入dist)。⚠util:line仍钉mean92(90.47-93.49·CAP-02明确未动·但已被FAKE-01标SYNTHETIC排除决策级故无害)。原C1有红有绿未在baseline达——真因:网络load≈1(SopV7 demand131/supply130)使capacity-share杠杆≈0→0红是真态平衡非造假;红对真态敏感由注入真需求×6→0→8红证。核心假推演目标(决策级0/12合成红)达成。遗留:demo若要展示有红有绿需调seed网络失衡(demo-realism·非假推演·另议)。"
     },
     {
       "id": "WO-CAP-03-KPI-FIX",
@@ -5938,10 +5940,11 @@
       "at": "2026-07-10"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "at": {
-        "built": "2026-07-10T20:46:54.859Z"
+        "built": "2026-07-10T20:46:54.859Z",
+        "done": "2026-07-11T04:11:12.664Z"
       },
       "id": "WO-FAKE-01",
       "priority": "P0",
@@ -5969,7 +5972,8 @@
         ],
         "discipline": "确定性乘子非rng·additive。此单+CAP-02+FAKE-05落地=假推演真根治(用户不打折)。"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立对抗真跑(agent a07334·真浏览器+真curl+敏感性+回退):OEE/良率去合成。设备OEE张力=[84,76,86,93,81,95,86,74,75,81,85,79]10个不同值非扁平(源Equipment.oee_current各异)·良率=[69,53,68,68,75,50,64,51,46,60,61,50]非扁平(源Process.yield_baseline)·两者dataMode=SYNTHETIC不再冒充LIVE。此前OEE 5-6基地≥85驱动7/12恒红·现全标SYNTHETIC排除决策级染红。两手(逐基地分化+诚实SYNTHETIC)都做到。母体§8 G-SIM-FAKE回写佐证AUTO决策红7→0。三门RC0·solvers19(211-314放开钉死后仍绿)。"
     },
     {
       "status": "WIP",
@@ -6944,8 +6948,8 @@
     "lastActivity": {
       "role": "review",
       "cmd": "DONE",
-      "id": "WO-CAP-06-WHATIF-SCOPE",
-      "at": "2026-07-11T03:44:41.357Z"
+      "id": "WO-CAP-02-SEED-VARY",
+      "at": "2026-07-11T04:11:12.820Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
