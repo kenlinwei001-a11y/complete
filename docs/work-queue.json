@@ -7279,13 +7279,15 @@
       "blockReason": ""
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T09:25:09.083Z"
+      },
       "id": "WO-SANDBOX-AS-RENDER-TARGET",
       "title": "S1·沙盘→时序推演意图落地渲染器(五触发归一·情景四原型·答案先行·MVP=shock短程)",
       "doc": "docs/WO-SANDBOX-AS-RENDER-TARGET.md",
       "priority": "P1",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev3",
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE"
       ],
@@ -7402,10 +7404,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-CONFIG-COVERAGE",
-      "at": "2026-07-11T08:48:06.699Z"
+      "role": "dev3",
+      "cmd": "WIP",
+      "id": "WO-SANDBOX-AS-RENDER-TARGET",
+      "at": "2026-07-11T09:25:09.097Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
