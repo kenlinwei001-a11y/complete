@@ -528,6 +528,15 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows[0]?.doc as import("@platform/contracts").PreAnalysisReport | undefined;
       },
     },
+    requirementGraphs: {
+      async upsert(r) {
+        await q(`INSERT INTO requirement_graphs(task_id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (task_id) DO UPDATE SET doc = $3`, [r.taskId, r.tenantId, JSON.stringify(r)]);
+      },
+      async getByTaskId(tenantId, taskId) {
+        const r = await q(`SELECT doc FROM requirement_graphs WHERE tenant_id = $1 AND task_id = $2`, [tenantId, taskId]);
+        return r.rows[0]?.doc as import("@platform/contracts").RequirementGraph | undefined;
+      },
+    },
     evalCases: {
       async upsert(c) {
         await q(

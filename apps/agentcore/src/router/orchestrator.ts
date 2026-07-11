@@ -43,6 +43,8 @@ import { fillSlots, normalizeExtractedSlots, toClarificationSlot, type SlotSourc
 import { appendDataGapBlock } from "../scenario-grounding.js";
 import { injectScenarioRuleStep } from "./scenario-rules.js";
 import { recordOutOfDomain, recordResolutionAttempts } from "./perception-metrics.js";
+import { buildRequirementGraph, parseQuestionAst } from "../growth/requirement-graph.js";
+import { fetchOntologyGraph } from "../growth/pre-analyze.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
 
@@ -671,6 +673,13 @@ export class Orchestrator {
     }
     await this.deps.repos.tasks.patch(taskId, { classification });
 
+    // L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §2.1·WO-L1A-3·暗发 QOS_REQUIREMENT_GRAPH·观察态旁路）：
+    // classify 落库后、τ 决策前 additive 构「问句→需求图」（纯咨询·**不改判决/路由/answer**·NG6 additive）。
+    // 缺省 OFF → 该段不执行 → pipeline 与改造前字节一致（对齐 QOS_CLASSIFY_FUSE 暗发范式·回退演练 C3）。
+    if (this.deps.config.QOS_REQUIREMENT_GRAPH === "1") {
+      await this.buildRequirementGraphSideband(taskId, auth, task, classification);
+    }
+
     // ③ τ decision（tauHigh/tauLow 已于分类前算出·此处复用）
     const top = classification.candidates[0];
 
@@ -717,6 +726,54 @@ export class Orchestrator {
 
     // high confidence → slot filling → path A
     await this.proceedWithIntent(taskId, auth, intent, classification.extractedSlots);
+  }
+
+  /**
+   * L1-A 需求图引擎旁路（PRD §2.1/§4·WO-L1A-3·观察态·暗发 QOS_REQUIREMENT_GRAPH）：
+   * 问句 → parseQuestionAst（复用 classify 产物 + slots 三阶梯实体解析·经 OBO REST 读本体）→
+   * buildRequirementGraph（八段 Pipeline·三白名单 by-construction）→ 持久化（requirementGraphs repo·R2 tenant）→
+   * emit `step.completed{stepId:"requirement-graph"}`（复用既有伪步帧·零新 SSE 事件名·守 QOS-PRD §8.2）。
+   *
+   * **全 try/catch 吞异常·绝不阻断主链**（RG 是咨询派生产物·NG6 additive）——判决/路由/answer 地位不换手。
+   * R6：generatedAt 注入（图内不取时钟·仅事件 durationMs 用时钟·不入图）。隐性需求闭包沿用 L0 entitlement
+   * `growth.hidden_req`（关=只显式需求·对齐 preAnalyzeQuery）；真本体图经服务间凭证拉 DataCore（同 L0 来源·无真图诚实降级）。
+   */
+  private async buildRequirementGraphSideband(
+    taskId: string,
+    auth: RequestAuth,
+    task: QueryTask,
+    classification: ClassificationResult,
+  ): Promise<void> {
+    const t0 = Date.now();
+    const generatedAt = new Date().toISOString();
+    try {
+      await this.deps.events.emit(taskId, "step.started", { stepId: "requirement-graph", type: "requirement-graph" });
+      const ontology = this.deps.engine.deps.dataCore.ontology;
+      const ast = await parseQuestionAst({
+        taskId,
+        tenantId: task.tenantId,
+        rawText: task.query,
+        classification,
+        ontology,
+        authCtx: auth,
+        generatedAt,
+      });
+      const hiddenReqEnabled = await this.deps.features.isEnabled(task.tenantId, "growth.hidden_req", auth.token);
+      const graph = await fetchOntologyGraph(this.deps.config, task.tenantId);
+      const rg = buildRequirementGraph({ ast, graph, generatedAt, hiddenReqEnabled });
+      await this.deps.repos.requirementGraphs.upsert(rg);
+      await this.deps.events.emit(taskId, "step.completed", {
+        stepId: "requirement-graph",
+        type: "requirement-graph",
+        outcome: "built",
+        durationMs: Date.now() - t0,
+      });
+    } catch {
+      // 吞异常（观察态·绝不阻断主链）——诚实留痕经 SSE failed 步帧（不静默·铁律0.4），不影响 task 终态/answer。
+      await this.deps.events
+        .emit(taskId, "step.completed", { stepId: "requirement-graph", type: "requirement-graph", outcome: "failed", durationMs: Date.now() - t0 })
+        .catch(() => {});
+    }
   }
 
   private async publishedIntentsForView(

@@ -125,6 +125,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // DataCore 是 entitlement 唯一真相源（对齐 growth.pre_analysis/decision.kernel）。暗发 defaultOn:false
   // （RL2）——现有租户零影响（additive）。与 env 三闸 QOS_CBR_* 独立。requires shell.query-dock。
   { key: "memory.cbr", name: "企业记忆·案例推理", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"], bindings: { apiTags: ["memory-cbr"] } },
+  // L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §2.4·WO-L1A-3）：AgentCore 需求图读端点的权威 entitlement
+  // （DataCore 是 entitlement 唯一真相源·AgentCore 经 /a/v1/tenants/{id}/features 解析下发·对齐 growth.pre_analysis
+  // 范式 line 113）。暗发 defaultOn:false（RL2）——关 = GET /b/v1/queries/:taskId/requirement-graph 404
+  // FEATURE_NOT_FOUND（R3 先于 authz·回退演练 C2）。现有租户零影响（additive）。
+  { key: "growth.requirement_graph", name: "需求图引擎", level: "BLOCK", defaultOn: false },
 ];
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);

@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `6eff474783a23e39`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `65a98ca928d77926`。
 
 ---
 
@@ -19,6 +19,13 @@ Query --classify--> Intent --planRef--> ExecutionPlan --step--> { Solver | Slice
                                               ├ ruleBindings--> Rule    └ evaluate_rules --> Rule(BLOCK 短路)
                                               └ tools--> Solver/MCP
 ExecutionPlan --render--> AnswerBlock{ table|kpi|text|rule_violation|action_draft } --SSE--> 前端
+                       ├─**需求图旁路（观察态·L1-A·WO-L1A-3·暗发 `QOS_REQUIREMENT_GRAPH`=1）**：classify 落库后、τ 决策前
+                       │  additive 构「问句→QuestionAST→RequirementGraph」（`orchestrator.buildRequirementGraphSideband`·`try/catch`
+                       │  全吞·**不改判决/路由/answer**·NG6 additive）→ 落 `requirementGraphs` repo（独立表·R2·非搭车 PreAnalysisReport
+                       │  避 lost-update）→ emit `step.completed{stepId:"requirement-graph"}`（复用伪步帧·零新 SSE 事件名）。读端点
+                       │  `GET /b/v1/queries/:taskId/requirement-graph`（entitlement `growth.requirement_graph`·defaultOn:false·关=404）。
+                       │  下游投影 `solverCandidates/dataRequirements/sliceTargets` 喂 L1-B `synthesizePlan`。关 env=旁路不执行·
+                       │  pipeline 与改造前**字节一致**（可证回退·NG6）；`QuestionAST`/`RequirementGraph` 咨询性派生（可 drop 重生·非业务真值）。
                        ├─**B→A 存在性探针（引用闭合·发布门）**：workflow 步骤 solverKey/ruleIds + agent scopeDeclaration.objectTypes
                        │  发布前经 DataCore 校验真实存在（probeMissingRefs，fail-open；不存在=死路拒发布）
                        ├─**agent→agent 交接落 Handoff（WO-C·可审计）**：`runPathB` 委派点——本入口配了场景 agent 但**不可用**

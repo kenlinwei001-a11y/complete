@@ -314,6 +314,16 @@ export interface Repos {
     upsert(r: import("@platform/contracts").PreAnalysisReport): Promise<void>;
     getByTaskId(tenantId: string, taskId: string): Promise<import("@platform/contracts").PreAnalysisReport | undefined>;
   };
+  /**
+   * L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §5·WO-L1A-3）：观察态旁路产出（RequirementGraph）·R9
+   * 仓储双实现。按 taskId 主键存（一 query 一图·可 drop 重生·非业务真值）·R2 tenant_id 谓词（跨租户
+   * getByTaskId → undefined → 端点 404·C3/V7）。独立表（非搭车 PreAnalysisReport）以免与并发预分析 upsert
+   * 互相覆盖（lost-update）——observational additive 各自独立可回退。
+   */
+  requirementGraphs: {
+    upsert(r: import("@platform/contracts").RequirementGraph): Promise<void>;
+    getByTaskId(tenantId: string, taskId: string): Promise<import("@platform/contracts").RequirementGraph | undefined>;
+  };
   /** D-29 实时环 E-c：B 侧领域事件馈源（append + 按 since 游标列出，供 /b/v1/outbox 轮询）。 */
   domainEvents: {
     append(e: DomainEventRow): Promise<void>;

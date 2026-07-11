@@ -931,6 +931,21 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return task;
   });
 
+  // L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §5·WO-L1A-3）：观察态需求图读端点（暗发·feature
+  // growth.requirement_graph 关 → 404 FEATURE_NOT_FOUND·R3 先于 authz·回退演练 C2·不泄漏存在性）。R2：
+  // getByTaskId 带 tenant 谓词 → 跨租户取他人 taskId 恒 undefined → 404（C3/V7）。经 /b/v1 重写别名
+  // （server 顶部 /b/v1/queries → /api/v1）→ GET /b/v1/queries/:taskId/requirement-graph。
+  app.get("/api/v1/queries/:taskId/requirement-graph", async (req, reply) => {
+    const a = await auth(req);
+    if (!(await deps.features.isEnabled(a.tenantId, "growth.requirement_graph", a.token))) {
+      throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    }
+    const { taskId } = req.params as { taskId: string };
+    const rg = await deps.repos.requirementGraphs.getByTaskId(a.tenantId, taskId);
+    if (!rg) throw new HttpError(404, "REQUIREMENT_GRAPH_NOT_FOUND", `requirement graph not found: ${taskId}`);
+    return reply.status(200).send({ requirementGraph: rg });
+  });
+
   // 实时验证审计层：统一决策痕迹导出（聚合 task/answer/toolCalls → 单一可导出 JSON）。
   // ontology_validation 总判定 + human_review_required 显式字段；监管可直接出示。
   app.get("/api/v1/queries/:taskId/decision-trace", async (req) => {

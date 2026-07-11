@@ -101,6 +101,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-L1.5-2（企业记忆·CBR·PRD-L1.5 §2.7）：同理镜像 memory.cbr（权威在 DataCore features.ts）。
   // 关 = agentcore 侧 memory.cbr 门 !set.has→false（案例检索行为不 fail-open）。L1.5-3 agent 接线前置。
   { key: "memory.cbr", name: "企业记忆·案例推理", level: "BLOCK", defaultOn: false, requires: ["shell.query-dock"] },
+  // L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §2.4·WO-L1A-3）：用户面 entitlement 闸——控**需求图读端点
+  // 是否存在**（关 = GET /b/v1/queries/:taskId/requirement-graph 404 FEATURE_NOT_FOUND·R3 先于 authz·不泄漏存在
+  // 性·回退演练 C2）。暗发 defaultOn:false（RL2）——现有租户零影响（additive）。权威 entitlement 由 DataCore
+  // features.ts 同键同 defaultOn:false 下发；此处注册使 featureEnabled 认得该键（关时 !set.has→false·不落 unknown-key
+  // 恒真陷阱）。与进程级 env 闸 QOS_REQUIREMENT_GRAPH 双闸独立：env 关=连图都不构（pipeline 字节一致）；feature 关=端点 404。
+  { key: "growth.requirement_graph", name: "需求图引擎", level: "BLOCK", defaultOn: false },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
