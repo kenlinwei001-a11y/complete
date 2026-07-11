@@ -7461,11 +7461,25 @@
       "status": "WIP",
       "owner": "dev3",
       "deps": [
-        "WO-SANDBOX-CONFIG-COVERAGE"
+        "WO-SANDBOX-CONFIG-COVERAGE",
+        "WO-SANDBOX-TRUST-BADGE-BE"
       ],
-      "note": "[沙盘重建·S2·可∥S1·dev3] 接CAP-03只补披露层。收编:CAP-10的沙盘RiskTop3实测/估算标注矛盾由本单dataMode判据统一收。回退:关feature=不显徽标。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。",
+      "note": "[沙盘重建·S2·可∥S1·dev3] 接CAP-03只补披露层。收编:CAP-10的沙盘RiskTop3实测/估算标注矛盾由本单dataMode判据统一收。回退:关feature=不显徽标。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。 【拆缝2026-07-11:本单=前端半(Dev-3已做契约+徽标+UNCALIBRATED派生+消费nodeObjectMode)·后端透传拆WO-SANDBOX-TRUST-BADGE-BE归Dev-1·两半co-verify(真浏览器徽标逐值对后端dataMode)才BUILT】",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev3-前端"
+    },
+    {
+      "id": "WO-SANDBOX-TRUST-BADGE-BE",
+      "status": "TODO",
+      "priority": "P2",
+      "owner": "",
+      "assignedDev": "dev1-后端",
+      "deps": [
+        "WO-SANDBOX-AS-RENDER-TARGET"
+      ],
+      "doc": "docs/WO-SANDBOX-TRUST-BADGE.md",
+      "title": "S2后端半:propagateTick/view-config 透传 dataMode 诚实位(真数值派生属性=LIVE·合成对象origin=SYNTHETIC·关键源滞后=STALE·传导系数未校准=UNCALIBRATED)+SimTickState加dataMode字段+SandboxViewConfig.nodeObjectState携每对象每变量来源位",
+      "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。"
     },
     {
       "at": {},
@@ -7837,10 +7851,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
-      "id": "WO-DB-CLOSURE-HARDEN",
-      "at": "2026-07-11T16:03:31.946Z"
+      "role": "review",
+      "cmd": "SPLIT-S2-BE",
+      "id": "1单",
+      "at": "2026-07-11T16:07:26.888Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
