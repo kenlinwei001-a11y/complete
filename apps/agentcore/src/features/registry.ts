@@ -142,6 +142,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 引擎侧落 DataCore（本键权威在 datacore features.ts·同键同 defaultOn:false）；此处**镜像注册**使 featureEnabled
   // 认得该键（feature-parity 门守双注册·防 unknown-key 恒真陷阱）。agentcore 当前不直接消费（引擎侧），镜像即对齐。
   { key: "sim.temporal_grounding", name: "时序推演接地（外生驱动/模拟态/守恒/约束·暗发）", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
+  // WO-SANDBOX-BRANCH-INJECT（S3·暗发·RL2·defaultOff）：引擎侧落 DataCore（本键权威在 datacore features.ts·同键同
+  // defaultOn:false）；此处**镜像注册**使 featureEnabled 认得该键（feature-parity 门守双注册·防 unknown-key 恒真陷阱）。
+  // agentcore 当前不直接消费（分支/对比引擎在 DataCore），镜像即对齐。
+  { key: "sim.branch_inject", name: "分支注入应对+决策维差量（暗发）", level: "BLOCK", defaultOn: false, requires: ["sim.branch"] },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

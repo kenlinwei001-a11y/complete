@@ -335,3 +335,59 @@ export const HorizonCoverageSchema = z.object({
   gaps: z.array(z.object({ gapCode: z.string(), ref: z.string(), detail: z.string() })), // 不足时诚实缺口卡（喂 GrowthTicket）
 });
 export type HorizonCoverage = z.infer<typeof HorizonCoverageSchema>;
+
+// === S3 branch-inject（WO-SANDBOX-BRANCH-INJECT·分支注入不同应对 + compare 决策维差量·additive·merge-clean·置文件末防并行冲突）===
+// 一句话：分支后每条时间线可注入不同应对（外协/加班/降配…），compare 从"全局态均值曲线"换成决策者真在意的量
+// （交付/成本/齐套…），经 S6 SimContextOverlay 在各分支模拟末态上真算（非原始态 diff·非曲线均值·KILL-MOCK-RED）。
+
+// 应对注入项：对 child tick0 baseSnapshot 的一格状态增量（真·确定性）。经**未改**的 /tick 全程传导 → A/B 末态真不同。
+// 说明：WO §3.1 的 coefficient 级 ruleAdjustments 需 sim/propagation.ts 会话级 effectiveCoefficient overlay
+// （本 WO 文件域外·并行 agent 域）——本执行层用 state 级注入达同一目的（分支携带不同应对·A≠B），R14 抽象（objectId/
+// stateVar/delta 全配置驱动·零业务常数）。
+export const MitigationInjectionSchema = z.object({
+  objectId: z.string(),
+  stateVar: z.string(),
+  delta: z.number(), // tick0 状态增量（如 外协→+产能 / 加班→+产出 / 降配→−需求）
+});
+export type MitigationInjection = z.infer<typeof MitigationInjectionSchema>;
+
+/** 应对（分支携带的不同干预·抽象 R14·外协/加班/降配…由租户配置命名）。 */
+export const SimMitigationSchema = z.object({
+  key: z.string(), // 应对 key（抽象·如 outsource/overtime/derate·R14 配置命名·非代码写死）
+  label: z.string().default(""),
+  injections: z.array(MitigationInjectionSchema).default([]),
+});
+export type SimMitigation = z.infer<typeof SimMitigationSchema>;
+
+// 决策维注册表项（与 AS-RENDER-TARGET §2.5 DecisionDim 同构·配置驱动 R14）：决策维**不写死**"交付/成本/齐套"，
+// 由 objectType+stateVar 指向租户本体承载对象的状态变量；direction 声明优劣方向（NEUTRAL=只报值不判优劣·诚实）。
+// 库存域租户配"齐套/持有成本/资金占用"、产能域配"交付/成本/齐套"——同一代码零改（R14/R-一致）。
+export const DecisionDimDirectionSchema = z.enum(["HIGHER_BETTER", "LOWER_BETTER", "NEUTRAL"]);
+export type DecisionDimDirection = z.infer<typeof DecisionDimDirectionSchema>;
+
+export const DecisionDimSchema = z.object({
+  dimKey: z.string(),
+  label: z.string().default(""),
+  objectType: z.string(), // 承载对象类型（overlay 承载数组按 ObjectInstance.type 匹配）
+  stateVar: z.string(), // 决策维取自该状态变量（overlay 后的 props·非原始 simState 直读）
+  agg: z.enum(["sum", "avg", "max", "min"]).default("sum"),
+  direction: DecisionDimDirectionSchema.default("NEUTRAL"),
+});
+export type DecisionDim = z.infer<typeof DecisionDimSchema>;
+
+// compare 决策维差量（A/B 各分支模拟末态经 SimContextOverlay 覆盖真世界 → 逐维聚合 → 差量 + 机械裁定）。
+export const CompareDecisionVerdictSchema = z.enum(["A_BETTER", "B_BETTER", "TIE", "NO_DATA"]);
+export type CompareDecisionVerdict = z.infer<typeof CompareDecisionVerdictSchema>;
+
+export const CompareDecisionValueSchema = z.object({
+  dimKey: z.string(),
+  label: z.string(),
+  a: z.number().nullable(),
+  b: z.number().nullable(),
+  delta: z.number().nullable(), // b − a（诚实·任一为空则 null）
+  direction: DecisionDimDirectionSchema,
+  // 机械判（R6·不靠 LLM）：delta 符号 × direction → A_BETTER/B_BETTER；|delta|≈0 → TIE；
+  // 无数据 或 direction=NEUTRAL → NO_DATA（诚实·仍带 a/b/delta 真值供呈现）。
+  verdict: CompareDecisionVerdictSchema,
+});
+export type CompareDecisionValue = z.infer<typeof CompareDecisionValueSchema>;

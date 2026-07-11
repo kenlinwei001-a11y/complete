@@ -61,7 +61,11 @@ import { CaseIngestService } from "./memory/case-ingest.js"; // WO-L1.5-3（案�
 import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type HorizonCoverage, type PropagationRule, type PropagationTrace, type SimCheckpoint, type SimDataMode, type SimSession, type TickState } from "@platform/contracts";
+// S3 branch-inject（WO-SANDBOX-BRANCH-INJECT）：应对注入 + 决策维差量契约。
+import { SimMitigationSchema, DecisionDimSchema, type DecisionDim, type CompareDecisionValue, type CompareDecisionVerdict } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
+// S3 branch-inject：compare 决策维经 S6 SimContextOverlay 在各分支模拟末态上真算（buildSimSolverContext·非原始态 diff）。
+import { buildSimSolverContext, OVERLAYABLE_CONTEXT_ARRAYS } from "./sim/context-overlay.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, DEFAULT_SANDBOX_HEAT_THRESHOLD, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { resolveExogenousFeeds, type FeedResolveSources, type FeedSpec } from "./sim/exogenous-feed.js";
 import { replayPropagationRules, buildDailyStatesFromSeries, DEFAULT_REPLAY_WINDOW, type ReplaySeriesLike } from "./sim/replay-validate.js";
@@ -123,7 +127,7 @@ import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
-import type { AuthCtx } from "./domain.js";
+import type { AuthCtx, ObjectInstance } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 
 declare module "fastify" {
@@ -1718,24 +1722,127 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     s.curTick = cp.tick; await repos.sim.putSession(s);
     return { curTick: s.curTick, state: await simCurrent(c, s) };
   });
+  // ── S3 branch-inject（WO-SANDBOX-BRANCH-INJECT）纯函数 + 决策维 overlay 计算 ─────────────────
+  // 应对注入（纯·R6）：把 mitigation.injections 逐格叠到 child tick0 baseSnapshot（不动 base·map 出新态）。
+  // 关闸时调用方不传 mitigation → 恒等（child==容器分支·A/B 相同·回退演练 §5.5）。
+  const applyMitigation = (base: TickState, mit: ReturnType<typeof SimMitigationSchema.parse>): TickState => {
+    const next = simState(base); // 深拷贝（不 mutate 入参·R4 只读语义）
+    for (const inj of mit.injections) {
+      const cell = (next[inj.objectId] ??= {});
+      cell[inj.stateVar] = Number(cell[inj.stateVar] ?? 0) + inj.delta;
+    }
+    return next;
+  };
+  // 决策维注册表（R14 配置驱动）：优先取请求显式 `dims`（JSON·前端/CLI 传·带 direction 才出裁定）；
+  // 缺省 → 从本租户 PUBLISHED 传导规则的 target(typeKey,stateVar) 派生（direction=NEUTRAL·只报值不判优劣·诚实）。
+  const resolveDecisionDims = async (c: AuthCtx, dimsRaw?: string): Promise<DecisionDim[]> => {
+    if (dimsRaw) {
+      try {
+        const parsed = JSON.parse(dimsRaw) as unknown[];
+        if (Array.isArray(parsed)) return parsed.map((d) => DecisionDimSchema.parse(d));
+      } catch { /* 非法 dims JSON → 回落派生（诚实·不炸） */ }
+    }
+    const rules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED
+    const seen = new Set<string>();
+    const dims: DecisionDim[] = [];
+    for (const r of rules) {
+      const key = `${r.targetTypeKey}.${r.targetStateVar}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      dims.push(DecisionDimSchema.parse({ dimKey: key, label: key, objectType: r.targetTypeKey, stateVar: r.targetStateVar, agg: "sum", direction: "NEUTRAL" }));
+    }
+    return dims;
+  };
+  // 逐维聚合：在**overlay 后**的 SolverContext 承载数组上取 o.type===dim.objectType 的对象，读 props[stateVar] 数值
+  // （overlay 已把该分支模拟末态覆盖到真对象 props·非原始 simState 直读）。无命中对象 → null（诚实无数据）。
+  const aggregateDim = (overlaid: import("./solvers/types.js").SolverContext, dim: DecisionDim): number | null => {
+    const rec = overlaid as unknown as Record<string, unknown>;
+    const vals: number[] = [];
+    for (const key of OVERLAYABLE_CONTEXT_ARRAYS) {
+      const arr = rec[key];
+      if (!Array.isArray(arr)) continue;
+      for (const o of arr as ObjectInstance[]) {
+        if (o.type !== dim.objectType) continue;
+        const v = (o.props as Record<string, unknown>)[dim.stateVar];
+        if (typeof v === "number" && Number.isFinite(v)) vals.push(v);
+      }
+    }
+    if (vals.length === 0) return null;
+    switch (dim.agg) {
+      case "avg": return vals.reduce((a, b) => a + b, 0) / vals.length;
+      case "max": return Math.max(...vals);
+      case "min": return Math.min(...vals);
+      default: return vals.reduce((a, b) => a + b, 0);
+    }
+  };
+  const EPS = 1e-9;
+  const verdictOf = (a: number | null, b: number | null, dir: DecisionDim["direction"]): CompareDecisionVerdict => {
+    if (a === null || b === null) return "NO_DATA";
+    const d = b - a;
+    if (Math.abs(d) < EPS) return "TIE";
+    if (dir === "NEUTRAL") return "NO_DATA"; // 有数据但未声明方向 → 不臆断优劣（诚实·a/b 仍呈现）
+    if (dir === "HIGHER_BETTER") return d > 0 ? "B_BETTER" : "A_BETTER";
+    return d < 0 ? "B_BETTER" : "A_BETTER"; // LOWER_BETTER
+  };
+  // compare 决策维（经 S6 overlay·真求解器上下文·非造）：A/B 各取当前 tick 模拟末态 → overlay 覆盖真世界 → 逐维聚合。
+  const computeDecisionDims = async (c: AuthCtx, sa: SimSession, sb: SimSession, dims: DecisionDim[]): Promise<CompareDecisionValue[]> => {
+    if (dims.length === 0) return [];
+    const base = await solvers.loadContext(c.tenantId, undefined, { withExtended: true });
+    const stateA = await simCurrent(c, sa);
+    const stateB = await simCurrent(c, sb);
+    const ovA = buildSimSolverContext(c.tenantId, stateA, base);
+    const ovB = buildSimSolverContext(c.tenantId, stateB, base);
+    return dims.map((dim) => {
+      const a = aggregateDim(ovA, dim);
+      const b = aggregateDim(ovB, dim);
+      return {
+        dimKey: dim.dimKey, label: dim.label || dim.dimKey,
+        a, b, delta: a !== null && b !== null ? b - a : null,
+        direction: dim.direction, verdict: verdictOf(a, b, dim.direction),
+      };
+    });
+  };
+
   app.post("/a/v1/sim/sessions/:id/branch", async (req, reply) => {
     const c = ctx(req); await requireSim(c, "sim.branch");
     const parent = await getSimOr404(c, (req.params as { id: string }).id);
-    const cp = await repos.sim.getCheckpoint(c.tenantId, String((req.body as { checkpointId?: string })?.checkpointId));
+    const body = (req.body ?? {}) as { checkpointId?: string; mitigation?: unknown };
+    const cp = await repos.sim.getCheckpoint(c.tenantId, String(body.checkpointId));
     if (!cp || cp.sessionId !== parent.id) throw notFound("checkpoint not found");
     const baseState = (await repos.sim.getTickState(c.tenantId, parent.id, cp.tick))?.state ?? {};
-    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+    // S3 暗发：仅 sim.branch_inject 开且传了 mitigation 才注入应对（关闸=忽略=回容器分支·A/B 相同·acceptance §5.5）。
+    const injectOn = await features.enabled(c.tenantId, "sim.branch_inject");
+    let mitigation: ReturnType<typeof SimMitigationSchema.parse> | null = null;
+    let childBase = simState(baseState);
+    if (injectOn && body.mitigation != null) {
+      mitigation = SimMitigationSchema.parse(body.mitigation);
+      childBase = applyMitigation(baseState, mitigation); // 应对增量注入 child tick0（A 主线不动·对照）
+    }
+    // 应对随 child.scope.mitigation 留痕（R13·additive·scope 本为 z.record unknown·不改 SimSession 契约·merge-clean）。
+    const childScope = mitigation ? { ...parent.scope, mitigation } : parent.scope;
+    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: childBase, scope: childScope,
       status: "READY", curTick: 0, parentCheckpointId: cp.id, feeds: parent.feeds ?? [], createdAt: new Date().toISOString() };
     await repos.sim.createSession(child);
-    await repos.sim.putTickState({ sessionId: child.id, tenantId: c.tenantId, tick: 0, state: simState(baseState), pending: [], trace: null });
-    await outbox.emit(c.tenantId, "sim.branched", { parentSessionId: parent.id, childSessionId: child.id, checkpointId: cp.id });
-    return reply.status(201).send(child);
+    await repos.sim.putTickState({ sessionId: child.id, tenantId: c.tenantId, tick: 0, state: simState(childBase), pending: [], trace: null });
+    await outbox.emit(c.tenantId, "sim.branched", { parentSessionId: parent.id, childSessionId: child.id, checkpointId: cp.id, ...(mitigation ? { mitigationKey: mitigation.key } : {}) });
+    return reply.status(201).send({ ...child, ...(mitigation ? { mitigation } : {}) });
   });
   app.get("/a/v1/sim/compare", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.branch");
-    const q = req.query as { a?: string; b?: string };
+    const q = req.query as { a?: string; b?: string; dims?: string };
     const seriesOf = async (id?: string) => (id ? (await repos.sim.listTickStates(c.tenantId, id)).map((t) => ({ tick: t.tick, state: t.state })) : []);
-    return { a: await seriesOf(q.a), b: await seriesOf(q.b) };
+    const result: { a: unknown; b: unknown; decisionDims?: CompareDecisionValue[] } = { a: await seriesOf(q.a), b: await seriesOf(q.b) };
+    // S3 暗发：仅 sim.branch_inject 开且两会话都在 → 附决策维差量（关闸=不返 decisionDims=旧行为字节一致·acceptance §5.5）。
+    if (q.a && q.b && (await features.enabled(c.tenantId, "sim.branch_inject"))) {
+      const sa = await repos.sim.getSession(c.tenantId, q.a);
+      const sb = await repos.sim.getSession(c.tenantId, q.b);
+      if (sa && sb) {
+        const dims = await resolveDecisionDims(c, q.dims);
+        const decisionDims = await computeDecisionDims(c, sa, sb, dims);
+        if (decisionDims.length > 0) result.decisionDims = decisionDims;
+      }
+    }
+    return result;
   });
   app.get("/a/v1/sim/propagation-rules", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");

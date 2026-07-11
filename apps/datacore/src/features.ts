@@ -103,6 +103,10 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "sim.propagation.delay", name: "延迟传导", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
   { key: "sim.checkpoint", name: "检查点/回滚", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
+  // WO-SANDBOX-BRANCH-INJECT（S3·暗发·RL2·defaultOff）：分支注入不同应对（外协/加班/降配…state 级注入 child tick0）+
+  // compare 决策维差量（经 S6 SimContextOverlay 在各分支模拟末态上真算·非曲线均值）。关 = branch 忽略 mitigation（回容器分支·
+  // A/B 相同）+ compare 不返 decisionDims（旧行为字节一致·回退演练 §5.5）。AgentCore registry.ts 同键同 defaultOn:false 镜像。
+  { key: "sim.branch_inject", name: "分支注入应对+决策维差量（暗发）", level: "BLOCK", defaultOn: false, requires: ["sim.branch"] },
   { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   // WO-SANDBOX-TEMPORAL-GROUNDING（S6·暗发·RL2·defaultOff）：时序推演接地——外生驱动序列冻结注入 + 求解器模拟态
