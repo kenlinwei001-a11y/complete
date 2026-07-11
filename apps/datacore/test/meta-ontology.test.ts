@@ -232,9 +232,12 @@ describe("META-RUNTIME-TRUTH · 断点声称 ↔ 运行时判据交叉核对（P
 
   it("齿④（返工·覆盖率自证）：跑批器独立枚举 §8 全表，声称 FIXED 但无判据者显性列入 uncoveredFixed（命名断点不静默逃过）", () => {
     // META-RUNTIME-TRUTH 返工根因：parse.ts 只投影编号 G-1..G-15，§8 命名断点（G-RET/G-DR-1/
-    // G-SIEM-1/G-3b）自称 ✅ 却从不进交叉核对，且判据从不披露覆盖率 → 测谎门自身留未声明盲区。
-    // 本齿真跑跑批器（对真 §8）验证：覆盖率被披露 + 那 4 个自称已闭却无判据者被显性列入 uncoveredFixed。
+    // G-SIEM-1）自称 ✅ 却从不进交叉核对，且判据从不披露覆盖率 → 测谎门自身留未声明盲区。
+    // 本齿真跑跑批器（对真 §8）验证：覆盖率被披露 + 那几个自称已闭却无判据者被显性列入 uncoveredFixed。
     // revert 跑批器的 §8 独立枚举/覆盖率段 → coverage 缺失或 uncoveredFixed 不含命名断点 → 此断言塌（green→red）。
+    // 【WO-L1.5-5 演进·跟随 §8 真相】G-3b 经 L1.5 CBR 深化后状态列从纯 ✅ 转 **✅ 已闭写侧 · ◐ 深化 L1.5**
+    // （混合含 ◐·并挂 decision-case:check 判据）→ 跑批器正确判其**非纯声称 ✅**、剔出 uncoveredFixed。
+    // 故 G-3b 从"声称 ✅ 无判据"名单退出（诚实：已非纯声称已闭），下方仅对仍纯 ✅ 无判据的 3 个命名断点守。
     const here = fileURLToPath(new URL(".", import.meta.url));
     const root = join(here, "..", "..", "..");
     const script = join(root, "scripts", "meta-runtime-truth.mjs");
@@ -248,10 +251,14 @@ describe("META-RUNTIME-TRUTH · 断点声称 ↔ 运行时判据交叉核对（P
     const cov = out.coverage;
     expect(cov.totalSection8).toBeGreaterThan(cov.parsed); // §8 全表 > 编号投影（命名断点存在）
     expect(cov.claimedFixed).toBeGreaterThan(cov.crossCheckedFixed); // 声称 FIXED > 真交叉核对印证（有未核对者）
-    // 4 个命名断点自称 ✅ 却无静态判据 → 必被显性列入未核对清单（不静默逃过）
-    for (const named of ["G-3b", "G-RET", "G-DR-1", "G-SIEM-1"]) {
+    // 3 个纯 ✅ 命名断点无静态判据 → 必被显性列入未核对清单（不静默逃过）
+    for (const named of ["G-RET", "G-DR-1", "G-SIEM-1"]) {
       expect(cov.unparsed).toContain(named); // parse 未投影
       expect(cov.uncoveredFixed).toContain(named); // 但跑批器独立枚举后显性披露为未核对
     }
+    // G-3b 已转 ◐ 混合（✅ 写侧 + ◐ L1.5 深化）→ 仍 unparsed，但**正确**不在 uncoveredFixed
+    // （跑批器不把含 ◐ 的混合状态误判为纯声称 ✅·防"部分闭合冒充已闭"·正向齿）。
+    expect(cov.unparsed).toContain("G-3b");
+    expect(cov.uncoveredFixed).not.toContain("G-3b");
   }, 120_000); // 本齿 spawnSync 跑批器子进程（内部 180s 超时·读 §8 + 导入 dist + 交叉核对），并发负载下 >30s
 });
