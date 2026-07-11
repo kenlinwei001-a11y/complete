@@ -314,7 +314,9 @@ export class FeatureService {
     const tenant = await this.repos.tenants.get(tenantId, tenantId);
     const industry = tenant?.industry;
     if (!industry) return undefined;
-    if (industry === "battery-manufacturing") return new Set(ALL_FEATURE_KEYS); // battery default: all on
+    // battery default: all on —— **除 sim.temporal_grounding**（WO-S6 暗发上线门·additive·NG6：新能力对既有租户
+    // 零影响·关=v1.1·仅显式 override/env 开·防既有 battery/demo 会话推演行为漂移·守 sim-certification 存量回归）。
+    if (industry === "battery-manufacturing") return new Set(ALL_FEATURE_KEYS.filter((k) => k !== "sim.temporal_grounding"));
     const tmpl = (
       await this.repos.industryTemplates.list(tenantId, (t) => t.industryKey === industry)
     )[0];
