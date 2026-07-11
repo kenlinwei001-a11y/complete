@@ -84,6 +84,16 @@ export const ConfigSchema = z.object({
    * 控读/采纳端点存在性）双闸独立：env 关=连制品都不构；feature 关=端点 404 FEATURE_NOT_FOUND。
    */
   QOS_DECISION_KERNEL: z.string().optional(),
+  /**
+   * WO-L1.5-1（企业记忆·CBR·暗发 env 闸·对齐 QOS_MEMORY_LLM 范式）：`=== "1"` 开。三闸独立控——
+   * - QOS_CBR_INGEST：是否摄取 Decision→案例（关=案例 index 空·回退杠杆②）。
+   * - QOS_CBR_RETRIEVAL：是否注册案例检索工具/行为（关=仅路径提示·回退杠杆①）。
+   * - QOS_CBR_RERANK：是否装配离线 RL/GNN 重排（关=纯 pseudoEmbed 确定性命中·R6 兜底）。
+   * 与 entitlement 闸 memory.cbr（控读端点存在性·404）双闸独立。关全部=改造前系统+空表（RL2/RL9）。
+   */
+  QOS_CBR_INGEST: z.string().optional(),
+  QOS_CBR_RETRIEVAL: z.string().optional(),
+  QOS_CBR_RERANK: z.string().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

@@ -44,6 +44,7 @@ export * from "./solver-binding.js";
 export * from "./fusion.js";
 export * from "./decision.js";
 export * from "./decision-kernel.js";
+export * from "./cbr.js";
 export * from "./viewlayout.js";
 export * from "./industrypack.js";
 export * from "./intake-coverage.js";

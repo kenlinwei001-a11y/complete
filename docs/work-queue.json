@@ -6871,9 +6871,12 @@
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] "
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T07:30:40.164Z",
+        "built": "2026-07-11T07:37:40.488Z"
+      },
       "id": "WO-L1.5-1",
       "title": "CBR 契约 + 确定性特征抽取 + 案例投影器(纯函数·无接线)",
       "priority": "P1",
@@ -6907,7 +6910,8 @@
       "discipline": "暗发(QOS_CBR_*)·additive·特征∈注册表 green→red 测谎(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-1 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-1 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7396,8 +7400,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-GATE-ID-TIGHTEN",
-      "at": "2026-07-11T07:30:17.385Z"
+      "id": "WO-L1.5-1",
+      "at": "2026-07-11T07:37:40.489Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
