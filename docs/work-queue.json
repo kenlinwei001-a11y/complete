@@ -6914,9 +6914,12 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "BUILT",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T07:38:32.454Z",
+        "built": "2026-07-11T07:51:12.851Z"
+      },
       "id": "WO-L1.5-2",
       "title": "案例库落库 + 确定性相似检索 + 读端点(暗发·治 G-3b 读侧底座)",
       "priority": "P1",
@@ -6952,7 +6955,8 @@
       "discipline": "暗发·additive·检索确定性 R6·跨租户隔离(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-2 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-2 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7402,8 +7406,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1.5-1",
-      "at": "2026-07-11T07:37:40.489Z"
+      "id": "WO-L1.5-2",
+      "at": "2026-07-11T07:51:12.851Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

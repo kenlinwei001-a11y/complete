@@ -52,6 +52,8 @@ import { AuditSinkInputSchema, type AuditSink } from "@platform/contracts"; // W
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
+import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
+import { retrieveSimilarCases } from "./memory/decision-case.js"; // WO-L1.5-2（CBR 确定性检索·§4.2）
 import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
@@ -3126,6 +3128,33 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     const body = parseBody(RecordOutcomeSchema, req.body);
     return decisions.recordOutcome(ctx(req), id, body);
+  });
+
+  // ---- L1.5 企业记忆 · CBR 案例只读检索（WO-L1.5-2·暗发 memory.cbr 门·PRD-L1.5 §2.6/§5）---------
+  // 关 memory.cbr → 404 FEATURE_NOT_FOUND（R3 先于 authz·不泄漏存在性）。案例=咨询派生·数字随行免责·非业务真值。
+  app.get("/a/v1/memory/cases/similar", async (req) => {
+    await requireFeatureTag(req, "apiTags", "memory-cbr");
+    const c = ctx(req);
+    const qp = req.query as { q?: string; topK?: string; problemClass?: string; entities?: string; metrics?: string; weightsVersion?: string };
+    const query = SimilarityQuerySchema.parse({
+      tenantId: c.tenantId,
+      text: qp.q ?? "",
+      problemClass: qp.problemClass ?? null,
+      entities: qp.entities ? qp.entities.split(",").filter(Boolean) : [],
+      metrics: qp.metrics ? qp.metrics.split(",").filter(Boolean) : [],
+      topK: qp.topK ? Number(qp.topK) : 5,
+      weightsVersion: qp.weightsVersion ?? "v1",
+    });
+    const cases = await repos.decisionCases.list(c.tenantId); // R2：仅本租户案例
+    return retrieveSimilarCases(cases, query);
+  });
+  app.get("/a/v1/memory/cases/:id", async (req) => {
+    await requireFeatureTag(req, "apiTags", "memory-cbr");
+    const c = ctx(req);
+    const { id } = req.params as { id: string };
+    const found = await repos.decisionCases.get(c.tenantId, id); // R2：跨租户取不到 → 404
+    if (!found) throw notFound("decision case");
+    return found;
   });
 
   // ---- A5 rules -----------------------------------------------------------------------

@@ -99,9 +99,20 @@ async function dynamic() {
   const ghost = m.validateCaseFeatures([{ dim: "PROBLEM_CLASS", key: "handrolled_ghost_class", value: null, num: null }]);
   if (ghost.length === 0) fail.push("测谎失效：注入幽灵 PROBLEM_CLASS 未被 validateCaseFeatures 抓（门无牙）");
 
-  // 9) R6 双跑字节一致
+  // 9) R6 双跑字节一致（投影）
   const c2 = m.projectCase(artifact, opts);
   if (JSON.stringify(c1) !== JSON.stringify(c2)) fail.push("R6 违例：projectCase 同输入双跑非字节一致");
+
+  // 10) 检索确定性（§4.2·同 query+案例集+weightsVersion 双跑字节一致命中序）
+  if (typeof m.retrieveSimilarCases === "function") {
+    const caseB = m.projectCase({ ...artifact, refId: "dec_gate_2", title: "毛利率下降归因", context: "财务毛利 2026-09", ctx: { intentKey: "margin_attribution_q", entities: ["SEG_A"] } }, opts);
+    const cases = [c1, caseB];
+    const query = { tenantId: "demo", text: "常州PACK02降产订单延期", problemClass: "affected_scope_enumeration", entities: ["BASE_CZ"], metrics: [], topK: 5, weightsVersion: "v1" };
+    const r1 = m.retrieveSimilarCases(cases, query);
+    const r2 = m.retrieveSimilarCases(cases, query);
+    if (JSON.stringify(r1) !== JSON.stringify(r2)) fail.push("R6 违例：retrieveSimilarCases 同输入双跑非字节一致命中序");
+    if (!r1.hits.every((h) => h.breakdown && typeof h.breakdown.embed === "number")) fail.push("检索命中缺三维 breakdown（R13 无法解释为何相似）");
+  }
 }
 
 await dynamic();

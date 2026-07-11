@@ -10,7 +10,7 @@
 //   R14 抽象 + 零幽灵（PROBLEM_CLASS 键恒经 problemClassForIntent ∈ 真实注册表·门守）·
 //   KILL-MOCK：案例数字随行免责·不冒充业务真值；SEED 案例 origin:SEED 诚实标。
 
-import type { CaseFeature, DecisionCase, DecisionCaseSource } from "@platform/contracts";
+import type { CaseFeature, DecisionCase, DecisionCaseSource, SimilarityHit, SimilarityQuery } from "@platform/contracts";
 import { INTENT_PROBLEM_CLASS, UNCOVERED_PROBLEM_CLASSES, UNKNOWN_PROBLEM_CLASS, problemClassForIntent } from "@platform/contracts";
 import { hashString, round } from "../prng.js";
 
@@ -143,6 +143,63 @@ export function validateCaseFeatures(features: CaseFeature[]): string[] {
     }
   }
   return violations;
+}
+
+// ── §4.2 确定性相似检索（Ch11.7·三维·R6·纯函数·调用方传 tenant 过滤后的案例集·R2 by-construction）──
+/** 定权表（weightsVersion→三维权重·R6·固定非随机）。 */
+const RETRIEVAL_WEIGHTS: Record<string, { embed: number; scenario: number; business: number }> = {
+  v1: { embed: 0.5, scenario: 0.3, business: 0.2 },
+};
+
+function jaccard(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : round(inter / union, 6);
+}
+
+/** 案例的业务特征键集（ENTITY ∪ METRIC·用于 business 维 jaccard）。 */
+function caseBusinessKeys(c: DecisionCase): Set<string> {
+  const s = new Set<string>();
+  for (const f of c.problem.features) if (f.dim === "ENTITY" || f.dim === "METRIC") s.add(f.key);
+  return s;
+}
+
+export interface RetrievalResult {
+  hits: SimilarityHit[];
+  total: number;
+  disclaimer: string;
+}
+
+/**
+ * §4.2 三维确定性相似检索：score = W.embed·cosine ⊕ W.scenario·jaccard(problemClass) ⊕ W.business·jaccard(entities∪metrics)。
+ * 排序 (score desc, caseId asc)·稳定·R6：同 (query, 案例集, weightsVersion) 双跑字节一致命中序。
+ * `cases` 须为**同租户**案例（调用方经 repo.listByTenant(tenantId) 过滤·R2 by-construction）。
+ */
+export function retrieveSimilarCases(cases: DecisionCase[], query: SimilarityQuery): RetrievalResult {
+  const W = RETRIEVAL_WEIGHTS[query.weightsVersion] ?? RETRIEVAL_WEIGHTS.v1!;
+  const qv = pseudoEmbed(query.text);
+  const qBusiness = new Set<string>([...query.entities, ...query.metrics]);
+  const qClass = new Set<string>(query.problemClass ? [query.problemClass] : []);
+
+  const scored = cases.map((c) => {
+    const embed = cosine(qv, c.embedding);
+    const scenario = jaccard(qClass, new Set(c.problem.problemClass ? [c.problem.problemClass] : []));
+    const business = jaccard(qBusiness, caseBusinessKeys(c));
+    const score = round(W.embed * embed + W.scenario * scenario + W.business * business, 6);
+    const hit: SimilarityHit = {
+      caseId: c.caseId,
+      score,
+      breakdown: { embed, scenario, business },
+      origin: c.origin,
+      provenance: c.provenance,
+      disclaimer: c.disclaimer,
+    };
+    return hit;
+  });
+  scored.sort((a, b) => b.score - a.score || (a.caseId < b.caseId ? -1 : a.caseId > b.caseId ? 1 : 0));
+  return { hits: scored.slice(0, query.topK), total: cases.length, disclaimer: CASE_DISCLAIMER };
 }
 
 /** 案例投影选项（R6·调用方注入时间·内部不取时钟）。 */

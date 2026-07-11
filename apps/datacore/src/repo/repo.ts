@@ -1,4 +1,4 @@
-import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, ExperimentArm, FusedObjectSnapshot, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverBinding, SolverExperiment, StoryBuildRun } from "@platform/contracts";
+import type { BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, DecisionCase, ExperimentArm, FusedObjectSnapshot, OntologyBinding, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, SolverBinding, SolverExperiment, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -336,6 +336,9 @@ export interface Repos {
   decisions: Store<Decision>;
   // OntoFlow（WO-MERGE-01·migration037）：本体建模工作流（画布 doc jsonb·R2 租户隔离·双实现）。
   ontologyWorkflows: Store<OntologyWorkflowRecord>;
+  // WO-L1.5-2（企业记忆 CBR·migration038）：结构化决策案例 index（咨询派生·可 drop 重建·doc jsonb·R2）。
+  // id = caseId；DecisionCase & {id} 满足 Store 约束（id 为 caseId 别名·upsert 天然去重）。
+  decisionCases: Store<DecisionCase & { id: string }>;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;
