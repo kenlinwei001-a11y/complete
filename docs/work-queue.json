@@ -8526,7 +8526,7 @@
         "created": "2026-07-11T19:55:51.326Z"
       },
       "title": "产能推演看板1:1像素复刻黑曜石HTML+接真求解器(§1-4):布局/交互/间距照抄·色字换tokens.css·每元素接真solver(risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure)禁搬HTML静态数据·无真源诚实空态·四增强(多方案topN+比较/缺失分类面板/全元素悬浮溯源/过程图接provenance)",
-      "note": "[前端+后端绑定·⚠待用户同步ef05c80基线补§2逐行绑定表+§7.5 JS→SQL 5条测试spec后全量开工·可先搭壳/建结构] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。测试§7.5:L1几何diff遮色字/L2交互replay/L3反直觉可溯SQL无JS常量无源诚实空·复用capacity-basecards-realdata+risk-board-kill-mock-red门。"
+      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。"
     },
     {
       "id": "WO-SANDBOX-READINESS-UX",
@@ -8546,10 +8546,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SANDBOX-TICK-CALENDAR",
-      "at": "2026-07-11T20:05:15.375Z"
+      "role": "review",
+      "cmd": "CAPSIM完整施工单落库(§2/§6/§7.5)·REPLICA解封",
+      "id": "WO-CAPSIM-REPLICA",
+      "at": "2026-07-11T20:13:22.920Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
