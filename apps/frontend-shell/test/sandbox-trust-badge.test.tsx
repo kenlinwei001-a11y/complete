@@ -109,7 +109,7 @@ vi.mock("@/api/endpoints", async (orig) => {
     fetchSimPropagationRules: vi.fn(async () => ({ items: [uncal] })), // load 未校准
     createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
       id: "sims_tb", tenantId: "demo", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
-      curTick: 0, parentCheckpointId: null, createdAt: "2026-07-11T00:00:00.000Z",
+      curTick: 0, parentCheckpointId: null, feeds: [], createdAt: "2026-07-11T00:00:00.000Z",
     } satisfies SimSession)),
     simTick: vi.fn(async () => ({ curTick: 1, state: {} })),
     fetchSimCertification: vi.fn(async () => { throw new Error("no cert"); }),

@@ -54,7 +54,7 @@ vi.mock("@/api/endpoints", () => ({
   fetchSimPropagationRules: vi.fn(async () => ({ items: [] })),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_main", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
-    curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",
+    curTick: 0, parentCheckpointId: null, feeds: [], createdAt: "2026-06-25T00:00:00.000Z",
   } satisfies SimSession)),
   simTick: vi.fn(async (_id: string, n: number) => ({ curTick: n, state: { x: { v: 50 } } })),
   simWorld: vi.fn(),
@@ -107,7 +107,7 @@ describe("增量4 P0 · SandboxView 三件砌齐", () => {
     );
     simBranchFn.mockImplementation(async () => ({
       id: "sims_child", tenantId: "t", baseSnapshot: {}, scope: {}, status: "READY",
-      curTick: 0, parentCheckpointId: "cp_branch", createdAt: "x",
+      curTick: 0, parentCheckpointId: "cp_branch", feeds: [], createdAt: "x",
     } satisfies SimSession));
     fetchSimCompareFn.mockImplementation(async () => ({
       a: [{ tick: 0, state: { x: { v: 40 } } }, { tick: 1, state: { x: { v: 60 } } }],

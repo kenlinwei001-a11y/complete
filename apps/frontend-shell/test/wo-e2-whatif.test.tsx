@@ -14,7 +14,7 @@ import type { SandboxViewConfig, SimSession } from "@platform/contracts";
 type Tick = Record<string, Record<string, number>>;
 const createSimSessionSpy = vi.fn(async (body: { baseSnapshot: Tick; scope?: Record<string, unknown> }): Promise<SimSession> => ({
   id: "sims_e2", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: body.scope ?? {}, status: "READY",
-  curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",
+  curTick: 0, parentCheckpointId: null, feeds: [], createdAt: "2026-06-25T00:00:00.000Z",
 }));
 
 vi.mock("@/api/endpoints", () => ({

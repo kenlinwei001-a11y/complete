@@ -32,7 +32,7 @@ vi.mock("@/api/endpoints", () => ({
   fetchSimPropagationRules: vi.fn(async () => ({ items: [] })),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_test", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
-    curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",
+    curTick: 0, parentCheckpointId: null, feeds: [], createdAt: "2026-06-25T00:00:00.000Z",
   } satisfies SimSession)),
   // 真引擎语义：runTicks 逐次调 simTick(_,1)，累积 curTick +1/次，回累积值（对照后端逐步累加）。
   simTick: vi.fn(async (sessionId: string, n: number) => {

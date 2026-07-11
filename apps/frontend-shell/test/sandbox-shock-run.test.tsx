@@ -24,7 +24,7 @@ vi.mock("@/api/endpoints", async (orig) => {
       createFn(body);
       return {
         id: "sims_shock", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
-        curTick: 0, parentCheckpointId: null, createdAt: "2026-07-11T00:00:00.000Z",
+        curTick: 0, parentCheckpointId: null, feeds: [], createdAt: "2026-07-11T00:00:00.000Z",
       } satisfies SimSession;
     }),
     simTick: vi.fn(async (sessionId: string, _n: number) => {

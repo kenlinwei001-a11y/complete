@@ -17,7 +17,7 @@ vi.mock("@/api/endpoints", () => ({
   fetchSimPropagationRules: vi.fn(async () => ({ items: [] })),
   createSimSession: vi.fn(async (body: { baseSnapshot: Record<string, Record<string, number>> }) => ({
     id: "sims_test", tenantId: "t", baseSnapshot: body.baseSnapshot, scope: {}, status: "READY",
-    curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",
+    curTick: 0, parentCheckpointId: null, feeds: [], createdAt: "2026-06-25T00:00:00.000Z",
   } satisfies SimSession)),
   simTick: vi.fn(async (_sessionId: string, n: number) => ({ curTick: n, state: {} })),
   simWorld: vi.fn(),
