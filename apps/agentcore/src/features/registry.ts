@@ -115,7 +115,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-SANDBOX-AS-RENDER-TARGET（S1·暗发·RL2）：时序推演意图→沙盘渲染器落地。关 = orchestrator 不产
   // sandbox_render 答案块（回落 Path B/旧 what-if URL·旧路径未删·回退演练 §5.6）。权威 entitlement 由 DataCore
   // features.ts 同键同 defaultOn:false 下发；此处注册使 featureEnabled 认得该键（关时 !set.has→false·不落 ungoverned 恒真陷阱）。
-  { key: "sim.sandbox_render", name: "时序推演意图落地渲染", level: "BLOCK", defaultOn: false },
+  // bindings.intents：4 时序意图经 intentAllowed 受本键门控——**关时 4 意图不入 classify 候选**（零行为变化·
+  // 绞杀式暗发·彻底不污染既有分类）；开时才surface → 命中走 maybeRenderSandbox 钩子。
+  {
+    key: "sim.sandbox_render", name: "时序推演意图落地渲染", level: "BLOCK", defaultOn: false,
+    bindings: { intents: ["sim.shock_whatif", "sim.hold_whatif", "sim.trend_whatif", "sim.policy_whatif"] },
+  },
 ];
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));

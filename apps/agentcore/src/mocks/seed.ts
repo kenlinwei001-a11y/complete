@@ -672,7 +672,53 @@ export function seedIntentsAndPlans(
     });
   }
 
+  // WO-SANDBOX-AS-RENDER-TARGET（S1）：4 时序推演意图（渲染进沙盘·非 SCENARIO_CATALOG 卡→不入 ontogenesis
+  // GOVERNED 门；无 plan——maybeRenderSandbox 钩子在 plan 解析前短路）。经 feature sim.sandbox_render 的
+  // bindings.intents 门控（关时不入 classify 候选=零行为变化·绞杀式暗发）。examples 供确定性/LLM 分类命中。
+  intents.push(...seedSimIntents(pkgId, sfx, now));
+
   return { intents, plans };
+}
+
+/** WO-SANDBOX-AS-RENDER-TARGET（S1）：4 时序推演意图定义（shock 可执行·hold/trend/policy 诚实 DEFERRED 待 S6）。 */
+function seedSimIntents(pkgId: string, sfx: string, now: string): IntentDefinition[] {
+  const mk = (key: string, name: string, description: string, examples: string[]): IntentDefinition => ({
+    id: `int_${key}_v1${sfx}`,
+    packageId: pkgId,
+    key,
+    version: 1,
+    status: "PUBLISHED",
+    name,
+    description,
+    examples,
+    enabledViews: "*",
+    // 全 optional 槽（不触发反问澄清）：对象/时长/冲击增量/状态变量——供抽取，钩子另并入 extractedSlots 全量。
+    slots: [
+      { name: "scope", type: "objectRef", required: false, defaultFrom: "$.selectedObjects[0]", description: "推演作用对象（基地/产线等）", refType: "Base" },
+      { name: "horizon", type: "number", required: false, description: "推演时长（天/tick·如 60 天/3 周）" },
+      { name: "delta", type: "number", required: false, description: "冲击增量（shock 型）" },
+      { name: "stateVar", type: "string", required: false, description: "作用状态变量（如 load/backlog/inventory）" },
+    ],
+    planId: undefined,
+    riskLevel: "COMPUTE",
+    owner: "seed",
+    createdAt: now,
+    updatedAt: now,
+  });
+  return [
+    mk("sim.shock_whatif", "时序推演·冲击型", "停线/急单等一次性冲击的短程传导推演（渲染进沙盘·答案先行）", [
+      "常州二线停3周，交付缺口多大？", "某产线突发停机对交付的影响", "急单挤占产能的短程推演",
+    ]),
+    mk("sim.hold_whatif", "时序推演·保持型", "库存/价格水位保持的多期利好利空评估（时序接地建设中·S6 后上线）", [
+      "成品库存水位保持5000，未来60天利好利空？", "安全库存保持某水平对运营的影响",
+    ]),
+    mk("sim.trend_whatif", "时序推演·趋势型", "需求/供给逐期递变的趋势推演（时序接地建设中·S6 后上线）", [
+      "需求每周涨2%对产能的影响推演", "产能逐周下降会怎样",
+    ]),
+    mk("sim.policy_whatif", "时序推演·政策型", "改一条传导规则系数的政策推演（时序接地建设中·S6 后上线）", [
+      "安全库存系数调到某值的影响", "把某传导系数改成0.8会怎样",
+    ]),
+  ];
 }
 
 /**

@@ -1,39 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AnswerBlock, IntentDefinition } from "@platform/contracts";
-import { createTestApp, PKG, PLANNER, TENANT, submitQuery, waitForTask, type TestApp } from "./helpers.js";
+import type { AnswerBlock } from "@platform/contracts";
+import { createTestApp, PLANNER, TENANT, submitQuery, waitForTask, type TestApp } from "./helpers.js";
 
 /**
  * WO-SANDBOX-AS-RENDER-TARGET（S1）· orchestrator 沙盘渲染钩子集成测（真跑 orchestrator·submitQuery→终态）。
  * 覆盖：① shock 时序意图命中 + feature 开 → sandbox_render 答案块（答案先行·归一 SimulationRequest·source=dialogue）；
  *       ② hold 意图 → 诚实 DEFERRED 文本（时序接地建设中·S6·不假跑）；③ feature 关 → 回落既有 Path A（无 sandbox_render·旧路径未删）。
+ * 4 时序意图由 seedIntentsAndPlans 自动播种（非 SCENARIO_CATALOG·不入 ontogenesis GOVERNED 门），feature mock 默认 ALL → 候选可见。
  * 钩子 additive 落 runPathA 顶部·地标锚定（不碰 Dev-1 L1B serve/planner 区）。
  */
-
-const now = "2026-07-11T00:00:00.000Z";
-const simIntent = (key: string, examples: string[]): IntentDefinition => ({
-  id: `int_${key}`,
-  packageId: PKG,
-  key,
-  version: 1,
-  status: "PUBLISHED",
-  name: `时序推演·${key}`,
-  description: "时序推演意图（渲染进沙盘）",
-  examples,
-  enabledViews: "*",
-  slots: [],
-  planId: undefined,
-  riskLevel: "COMPUTE",
-  owner: "seed",
-  createdAt: now,
-  updatedAt: now,
-});
 
 let t: TestApp;
 beforeEach(async () => {
   t = await createTestApp();
-  // 直接 seed 两个时序意图（不入 SCENARIO_CATALOG·避开 ontogenesis GOVERNED 门；钩子在 plan 执行前短路）。
-  await t.repos.intents.insert(simIntent("sim.shock_whatif", ["常州二线停3周交付缺口多大", "急单挤占推演"]));
-  await t.repos.intents.insert(simIntent("sim.hold_whatif", ["成品库存水位保持X未来60天利好利空"]));
 });
 afterEach(async () => {
   await t.app.close();
