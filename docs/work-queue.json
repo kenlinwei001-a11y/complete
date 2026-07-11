@@ -7403,27 +7403,32 @@
       "assignedDev": "dev3",
       "blockReason": "",
       "acceptance": {
-        "goal": "沙盘配套两类对象(传导规则propagation_rule/状态变量state_var)纳入缺口覆盖引擎:经正门声明配套后预分析能诊断这两类EXISTS/MISSING·诚实缺(autoCreatable:false无scaffolder→MISSING非假TO_CREATE)·暗发观察态关闸字节一致。(审核方真跑5关PASS·独立探针不同key复现·ae0309e)",
+        "goal": "沙盘配套(传导规则/状态变量)纳入 gap 引擎覆盖——时序推演意图声明配套后可被 diffGap/preAnalyzeQuery 诊断、缺则落 GrowthTicket。真起双服务逐值验(docs/evidence/S0-SANDBOX-CONFIG-COVERAGE-e2e.md)。",
         "criteria": [
           {
             "id": "C1",
-            "type": "curl",
-            "assert": "经PUT /b/v1/intents/adopt_mitigation声明bindings(stateVarKeys+propagationRuleKeys)后提交查询·growth.pre_analysis开→gapAnalysis同时含propagation_rule与state_var两类entry(改造前旧gap引擎无此两类=对照基线)"
+            "type": "unit",
+            "assert": "MODULE_KINDS 13→15(+propagation_rule/state_var·additive);provisioners.test 16 测绿含 6 场景 byte 等价门(analyzeGap 分支判据 side→existing 有无守恒)。"
           },
           {
             "id": "C2",
             "type": "curl",
-            "assert": "真建1条传导规则(POST /a/v1/sim/propagation-rules PUBLISHED)+1对象类型(derivedProperties)→该两条gap status=EXISTS(registry-snapshot服务间凭证真读到自建key·非硬编码);ghost两条=MISSING(severity WARNING+strategy MANUAL·autoCreatable:false诚实缺非TO_CREATE)"
+            "assert": "真起双服务:意图声明 stateVarKeys/propagationRuleKeys(含幽灵项)→ gapAnalysis 出 propagation_rule/state_var 两 entries;缺→MISSING(autoCreatable:false·WARNING+MANUAL),真建→EXISTS(existing 真读 sim_propagation_rule PUBLISHED + derivedProperties)。"
           },
           {
             "id": "C3",
-            "type": "gate",
-            "assert": "暗发键growth.pre_analysis关→pre-analysis端点404 FEATURE_NOT_FOUND·沙盘查询工单守恒2→2(配套覆盖不注入·字节一致);analyzeGap无损改造门6场景全绿"
+            "type": "curl",
+            "assert": "registry-snapshot 6→8 类;MISSING 经 listSandboxConfigGaps 落 GrowthTicket([sandbox-config:*] 幂等锚·二跑不重复·/admin/tickets)。"
           },
           {
             "id": "C4",
-            "type": "gate",
-            "assert": "R6:同query双跑gapAnalysis归一后逐字节相等;门有牙:provisioners.ts+pre-analyze.ts AUTOCREATABLE propagation_rule false→true→provisioners.test/pre-analyze.test S0块变红(expected MISSING got TO_CREATE)·还原绿"
+            "type": "curl",
+            "assert": "R6:同意图同 query 双跑 gapAnalysis.entries 字节一致。"
+          },
+          {
+            "id": "C5",
+            "type": "curl",
+            "assert": "回退演练双向:feature 关→端点 404 FEATURE_NOT_FOUND·再开→200;旧 BuildPlan default[] 向后兼容;additive 全摘→四包 test 绿+gap 回 13 类。"
           }
         ]
       }
