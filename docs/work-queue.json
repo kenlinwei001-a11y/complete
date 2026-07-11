@@ -7583,13 +7583,15 @@
       "assignedDev": "dev3-前端"
     },
     {
-      "at": {},
+      "at": {
+        "wip": "2026-07-11T17:20:12.843Z"
+      },
       "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
       "title": "S6·时序接地五件套(外生驱动/overlay/hold守恒/约束/回放)+根治CAP-09 tick冻结",
       "doc": "docs/WO-SANDBOX-TEMPORAL-GROUNDING.md",
       "priority": "P2",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
@@ -8009,10 +8011,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE x3+WIRE(reconcile)",
-      "id": "2026-07-11T17:09:14.184Z",
-      "at": "2026-07-11T17:09:14.184Z"
+      "role": "dev1",
+      "cmd": "WIP",
+      "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
+      "at": "2026-07-11T17:20:12.858Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
