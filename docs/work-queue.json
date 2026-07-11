@@ -7234,11 +7234,11 @@
       "id": "WO-SWEEP-01-SCENE-SEED",
       "title": "种子完整性:6场景(S05/S12/S13/S14/S17/S19)缺defaultAgent→断链不可启动",
       "doc": "docs/REVIEW-full-click-sweep-2026-07-11.md",
-      "priority": "P3",
+      "priority": "P2",
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "复验agent a3251764真跑:42 PUBLISHED场景中6个AGENT_FIRST缺defaultAgent→启动器断链、启动按钮已诚实禁用(非死链非假值)。demo这6卡不可用。",
+      "note": "[改派Dev-2·Lane B卡L1A-3期间的不阻塞填充·场景种子seed·backend·与spine/sandbox文件不撞] 复验agent a3251764真跑:42 PUBLISHED场景中6个AGENT_FIRST缺defaultAgent→启动器断链、启动按钮已诚实禁用(非死链非假值)。demo这6卡不可用。",
       "acceptance": {
         "goal": "6场景可诚实启动或诚实降级。",
         "criteria": [
@@ -7254,7 +7254,8 @@
           }
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方扫描出单·dev建·reviewer复验。"
-      }
+      },
+      "assignedDev": "dev2"
     },
     {
       "at": {},
@@ -7319,9 +7320,9 @@
       "status": "TODO",
       "owner": "",
       "deps": [],
-      "note": "[改派Dev-2·datacore后端·Dev-2 Lane B卡L1A-3期间的不阻塞活·S0是纯datacore provisioners/contracts其栈] [沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
+      "note": "[归还Dev-3·已建于sandbox-reconstruction-dev3分支(分支指令冲突)·待搬迁到vigilant-knuth后标BUILT我验·非Dev-2] [沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev2"
+      "assignedDev": "dev3"
     },
     {
       "at": {},
