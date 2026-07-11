@@ -60,10 +60,11 @@ import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决�
 import { CaseIngestService } from "./memory/case-ingest.js"; // WO-L1.5-3（案例摄取·Decision→DecisionCase 旁挂）
 import { OntologyWorkflowUpsertSchema, GenericInferenceInputSchema } from "@platform/contracts"; // WO-MERGE-01（OntoFlow 移植）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { PropagationRuleSchema, SandboxViewConfigSchema, type DelayedContribution, type HorizonCoverage, type PropagationRule, type PropagationTrace, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
 import { propagateTick, type PropagationGraph, type RuleParamLookup } from "./sim/propagation.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, DEFAULT_SANDBOX_HEAT_THRESHOLD, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { resolveExogenousFeeds, type FeedResolveSources, type FeedSpec } from "./sim/exogenous-feed.js";
+import { replayPropagationRules, buildDailyStatesFromSeries, DEFAULT_REPLAY_WINDOW, type ReplaySeriesLike } from "./sim/replay-validate.js";
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
@@ -1506,6 +1507,56 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { feeds, gaps };
   };
 
+  // ── WO-SANDBOX-TEMPORAL-GROUNDING §3.6（回放校验 + horizon 预检·暗发·可回退）─────────────
+  // 暗发闸：消费**与 S6 §3.1-3.5 同一** feature key `sim.temporal_grounding`（不另立键；未注册时
+  // features.enabled 安全返 false）+ env 逃生阀（供注册前真跑校验）。关闸=replay/precheck 不跑=v1.1 行为字节一致（NG6）。
+  const temporalGroundingOn = async (c: AuthCtx): Promise<boolean> =>
+    (await features.enabled(c.tenantId, "sim.temporal_grounding")) || process.env.SIM_TEMPORAL_GROUNDING === "1";
+
+  // A8 `ts_points` 真实历史 → 逐日真实全态（解 series+points+entity 映射，交纯函数 buildDailyStatesFromSeries）。
+  // entity→objId：该 series entityType 下 props[entityRefField]===entityId 或 obj.id===entityId（真映射·非造）。
+  const buildReplayHistory = async (c: AuthCtx, rules: PropagationRule[], days: number) => {
+    const { graph, ruleParams } = await buildPropagationInputs(c);
+    const stateVars = [...new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]))];
+    const seriesList: ReplaySeriesLike[] = [];
+    const entityMap = new Map<string, string>();
+    for (const s of await repos.tsSeries.list(c.tenantId)) {
+      if (!s.measureFields.some((m) => stateVars.includes(m))) continue;
+      const points = await repos.tsPoints.list(c.tenantId, s.id);
+      if (points.length === 0) continue;
+      seriesList.push({ measureFields: s.measureFields, points: points.map((p) => ({ entityId: p.entityId, ts: p.ts, values: p.values })) });
+      for (const o of await repos.objects.listByType(c.tenantId, s.entityType)) {
+        if (o.mergedInto) continue;
+        const bizKey = String((o.props as Record<string, unknown>)[s.entityRefField] ?? "");
+        if (bizKey) entityMap.set(bizKey, o.id);
+        entityMap.set(o.id, o.id);
+      }
+    }
+    const { dailyStates } = buildDailyStatesFromSeries(seriesList, stateVars, (e) => entityMap.get(e), { days });
+    return { graph, ruleParams, dailyStates };
+  };
+
+  // §3.6 L3 回放：装配 A8 历史后调纯函数 replayPropagationRules（复用 propagateTick 确定性引擎·R6）。
+  const runReplayValidation = async (c: AuthCtx, rules: PropagationRule[], computedAt: string) => {
+    const history = await buildReplayHistory(c, rules, DEFAULT_REPLAY_WINDOW.days);
+    return replayPropagationRules(c.tenantId, rules, DEFAULT_REPLAY_WINDOW, history, computedAt);
+  };
+
+  // §3.6 horizon 覆盖：真源=需求预测周期（ForecastSnapshot.weeks×7）。不足 → 诚实缺口卡（喂 GrowthTicket），绝不外推。
+  const computeHorizonCoverage = async (c: AuthCtx, requestedTicks: number): Promise<HorizonCoverage> => {
+    const snaps = await repos.forecastSnapshots.list(c.tenantId);
+    const coveredTicks = snaps.reduce((mx, s) => Math.max(mx, Math.max(0, Math.floor(s.weeks * 7))), 0);
+    const sufficient = coveredTicks >= requestedTicks;
+    const gaps = sufficient
+      ? []
+      : [{
+          gapCode: "HORIZON_UNCOVERED",
+          ref: `forecast:${c.tenantId}`,
+          detail: `需求预测仅覆盖 ${coveredTicks} 天，无法支撑 ${requestedTicks} 天推演——绝不静默截断/外推（KILL-MOCK-RED）。请补建覆盖 ${requestedTicks} 天的需求预测后重试。`,
+        }];
+    return { requestedTicks, coveredTicks, sufficient, source: "forecast_snapshot.weeks", gaps };
+  };
+
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
     await requireSim(c, "sim.sandbox");
@@ -1813,17 +1864,44 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await getSimOr404(c, (req.params as { id: string }).id); // 404 隔离（R2 租户）
     const q = req.query as { scope?: string; target?: string };
     const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
-    return assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
+    const computedAt = new Date().toISOString();
+    const cert = await assembleCertification(c, scopeKind, q.target ?? null, computedAt);
+    // WO-S6 §3.6 L3 回放校验接线（暗发·关闸=v1.1 行为字节一致）：给 L3"已验证"实义——关键传导规则拿 A8
+    // 历史回放，容差内才 VALIDATED（S2 徽标 UNCALIBRATED→VALIDATED 唯一转正路径·母体 §8 G-10）。
+    if (await temporalGroundingOn(c)) {
+      const rules = await repos.sim.listPropagationRules(c.tenantId, true); // PUBLISHED
+      const replayValidation = await runReplayValidation(c, rules, computedAt);
+      const gaps = [...cert.gaps];
+      if (rules.length > 0 && replayValidation.status === "NO_HISTORY") {
+        // 有已发布规则却无 A8 历史可校验 → 诚实 UNCALIBRATED（绝不假装 L3 已验证·KILL-MOCK-RED）。
+        gaps.push({ gapCode: "RULES_UNCALIBRATED", ref: scopeKind === "LOCAL" ? (q.target ?? "GLOBAL") : "GLOBAL", detail: `${rules.length} 条已发布传导规则无 A8 历史可回放校验 → 系数仍 UNCALIBRATED（诚实·非假验证）。` });
+      } else if (replayValidation.status === "OUT_OF_TOLERANCE") {
+        const bad = replayValidation.rules.filter((r) => r.status === "OUT_OF_TOLERANCE").map((r) => r.ruleKey);
+        gaps.push({ gapCode: "RULES_OUT_OF_TOLERANCE", ref: bad.join(",") || "GLOBAL", detail: `传导规则回放超差（未在容差 ${replayValidation.window.tolerance} 内）：${bad.join("·")}。系数需校准后重试。` });
+      }
+      // l3Validated：L3"已验证"的真义（=关键规则回放容差内）；replayValidation 全量供 S2 徽标转正消费。
+      return { ...cert, gaps, replayValidation, l3Validated: replayValidation.status === "VALIDATED" };
+    }
+    return cert;
   });
 
   app.get("/a/v1/sim/sessions/:id/scope-precheck", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     await getSimOr404(c, (req.params as { id: string }).id);
-    const q = req.query as { scope?: string; target?: string };
+    const q = req.query as { scope?: string; target?: string; horizon?: string };
     const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
     const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString());
     // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
-    return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
+    const base = { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
+    // WO-S6 §3.6 horizon 覆盖预检（暗发）：hold/60 天类请求（?horizon=60）init 前查"需求预测覆盖 horizon 吗"，
+    // 不足 → 缺口卡（喂 GrowthTicket），绝不静默截断/外推（KILL-MOCK-RED）。关闸/无 horizon 参数=原视图不变。
+    const requestedTicks = Math.max(0, Math.floor(Number(q.horizon ?? 0)));
+    if (requestedTicks > 0 && (await temporalGroundingOn(c))) {
+      const horizonCoverage = await computeHorizonCoverage(c, requestedTicks);
+      const gaps = horizonCoverage.sufficient ? base.gaps : [...base.gaps, ...horizonCoverage.gaps];
+      return { ...base, horizonCoverage, gaps };
+    }
+    return base;
   });
 
   // ---- A4 ontology + objects --------------------------------------------------------

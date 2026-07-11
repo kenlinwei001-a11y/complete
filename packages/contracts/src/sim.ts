@@ -292,3 +292,46 @@ export const ImpactAssessmentSchema = z.object({
   summary: z.string(), // "利好 2 项 · 利空 2 项 · 净判断…"
 });
 export type ImpactAssessment = z.infer<typeof ImpactAssessmentSchema>;
+
+// === WO-S6 §3.6 replay-validate（回放校验接线 + horizon 覆盖预检·append-only·additive） ===
+// 传导规则拿 A8 `ts_points` 历史逐日回放（复用 sandbox 确定性引擎 propagateTick + M11 回放-对比范式）：
+// 以 N 天前真实态为初、真实外生逐日喂入 → 预测 Δ vs 实际 Δ → 容差内 → 规则 VALIDATED；
+// 无历史 → 诚实 NO_HISTORY（绝不假验证·KILL-MOCK-RED）。这是 UNCALIBRATED → VALIDATED 的唯一转正路径（G-10）。
+// R6 确定性：纯重算，无 Date.now/random；computedAt 由调用方传入。
+
+/** 单条规则回放判定（VALIDATED=容差内·OUT_OF_TOLERANCE=超差·NO_HISTORY=无 A8 历史·诚实）。 */
+export const ReplayValidationStatusSchema = z.enum(["VALIDATED", "OUT_OF_TOLERANCE", "NO_HISTORY"]);
+export type ReplayValidationStatus = z.infer<typeof ReplayValidationStatusSchema>;
+
+/** 逐规则回放结果（meanApe = 预测Δ vs 实际Δ 的平均相对误差·NO_HISTORY 时为 null）。 */
+export const RuleReplayResultSchema = z.object({
+  ruleKey: z.string(),
+  status: ReplayValidationStatusSchema,
+  samples: z.number().int(), // 参与对比的 (目标格,日) 样本数（0 = 无历史）
+  cellsCompared: z.number().int(), // 命中真实历史的目标对象格数
+  meanApe: z.number().nullable(), // 平均绝对相对误差（Δ 口径·null=NO_HISTORY）
+  tolerance: z.number(), // 判定容差（相对·config·R14）
+});
+export type RuleReplayResult = z.infer<typeof RuleReplayResultSchema>;
+
+/** 整体回放校验结果（喂就绪认证 L3·S2 徽标转正）。 */
+export const ReplayValidationResultSchema = z.object({
+  tenantId: z.string(), // R2
+  window: z.object({ days: z.number().int(), tolerance: z.number() }),
+  status: ReplayValidationStatusSchema, // 整体：有历史且全部容差内=VALIDATED；≥1 超差=OUT_OF_TOLERANCE；全无历史=NO_HISTORY
+  rules: z.array(RuleReplayResultSchema),
+  validatedCount: z.number().int(),
+  rulesWithHistory: z.number().int(),
+  computedAt: z.string(),
+});
+export type ReplayValidationResult = z.infer<typeof ReplayValidationResultSchema>;
+
+/** S0 horizon 覆盖预检结果：真源（需求预测周期）覆盖 requested horizon 吗？不足 → 缺口卡 + GrowthTicket（绝不静默截断/外推）。 */
+export const HorizonCoverageSchema = z.object({
+  requestedTicks: z.number().int(), // 请求推演天数（hold/60 天类）
+  coveredTicks: z.number().int(), // 真源可支撑的最大天数（= 需求预测覆盖天数）
+  sufficient: z.boolean(),
+  source: z.string(), // 覆盖度来源口径（R13·如 "forecast_snapshot.weeks"）
+  gaps: z.array(z.object({ gapCode: z.string(), ref: z.string(), detail: z.string() })), // 不足时诚实缺口卡（喂 GrowthTicket）
+});
+export type HorizonCoverage = z.infer<typeof HorizonCoverageSchema>;
