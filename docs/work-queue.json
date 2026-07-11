@@ -6872,9 +6872,11 @@
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-4 dev2] "
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T09:37:43.781Z"
+      },
       "id": "WO-L2-5",
       "title": "采纳正门(Decision+ActionDraft·R4)+ 本体回写",
       "priority": "P1",
@@ -7447,8 +7449,8 @@
     "lastActivity": {
       "role": "dev2",
       "cmd": "WIP",
-      "id": "WO-L2-4",
-      "at": "2026-07-11T09:27:19.171Z"
+      "id": "WO-L2-5",
+      "at": "2026-07-11T09:37:43.782Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",

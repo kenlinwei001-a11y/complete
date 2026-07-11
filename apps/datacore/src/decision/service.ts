@@ -17,6 +17,9 @@ import type { Repos } from "../repo/repo.js";
 import type { OutboxService } from "../outbox.js";
 import type { SolverService } from "../solvers/service.js";
 import type { OntologyCoreService } from "../ontology-core.js";
+import type { DecisionService } from "../decisions.js";
+import type { ActionService } from "../actions.js";
+import { validationError, notFound } from "../errors.js";
 import { assembleDecisionPackage, type DecisionKernelDeps, type DecisionKernelRequest } from "./kernel.js";
 
 export interface DecisionKernelBuildInput {
@@ -34,6 +37,8 @@ export class DecisionKernelService {
     private repos: Repos,
     private solvers: SolverService,
     private outbox: OutboxService,
+    private decisions: DecisionService,
+    private actions: ActionService,
     private ontologyCore?: OntologyCoreService,
   ) {}
 
@@ -94,5 +99,54 @@ export class DecisionKernelService {
     return [...all].sort((a, b) =>
       a.generatedAt < b.generatedAt ? 1 : a.generatedAt > b.generatedAt ? -1 : a.packageId < b.packageId ? 1 : -1,
     )[0];
+  }
+
+  /**
+   * WO-L2-5 采纳正门（§4.4·R4/RL4）：采纳某方案 → 经**既有 S2/Decision 正门**建
+   *  ① Decision 台账（DecisionLink{kind:SCENARIO,refId:packageId} 回链·问责真值）；
+   *  ② 若该方案带 proposedActionDraftPayload → ActionDraft（走 R4 审批链·EXECUTED 才出站·G-14）；
+   * 回填 package.{decisionRef,actionDraftRefs}·status=ADOPTED。
+   * **绝不直写业务真值**（RL4·仅经审批链）；采纳幂等重入以最新为准（重生制品）。
+   */
+  async adopt(ctx: AuthCtx, taskId: string, scenarioKey: string): Promise<DecisionPackage> {
+    const pkg = await this.getByTask(ctx, taskId);
+    if (!pkg) throw notFound("decision package");
+    const scenario = pkg.scenarios.find((s) => s.key === scenarioKey);
+    if (!scenario) throw validationError(`scenarioKey '${scenarioKey}' 非该制品任何方案（不可采纳幽灵方案）`);
+
+    // ① Decision 台账（问责真值·经 DecisionService 正门·emit decision.recorded）。
+    const metrics: Record<string, number> = {};
+    for (const [k, v] of Object.entries(scenario.metrics)) if (typeof v === "number") metrics[k] = v;
+    const altByKey = new Map(pkg.explanation.alternatives.map((a) => [a.scenarioKey, a.whyNot.join("；")]));
+    const decision = await this.decisions.create(ctx, {
+      title: `采纳决策方案：${scenario.name}`,
+      context: pkg.problem,
+      options: pkg.scenarios.map((s) => ({ key: s.key, label: s.name })),
+      chosen: scenarioKey,
+      rejectedRationale: pkg.scenarios
+        .filter((s) => s.key !== scenarioKey)
+        .map((s) => ({ optionKey: s.key, rationale: altByKey.get(s.key) || "未选（非推荐方案）" })),
+      decidedBy: ctx.userId,
+      predictedOutcome: { summary: `采纳「${scenario.name}」`, metrics: Object.keys(metrics).length > 0 ? metrics : undefined },
+      links: [{ kind: "SCENARIO", refId: pkg.packageId }],
+    });
+
+    // ② ActionDraft（仅当方案带采纳 payload·走 S2 R4 审批链·不直写真值）。
+    const actionDraftRefs: string[] = [];
+    if (scenario.proposedActionDraftPayload) {
+      const draft = await this.actions.create(ctx, {
+        actionTypeKey: "adopt_mitigation",
+        payload: scenario.proposedActionDraftPayload,
+        origin: { taskId },
+        submit: false, // 建草稿·提交/审批由 S2 正门后续（EXECUTED 才经 WritebackAdapter 出站）
+      });
+      actionDraftRefs.push(draft.id);
+    }
+
+    // ③ 回填制品（咨询态→ADOPTED·decisionRef/actionDraftRefs 挂真台账 id）。
+    const adopted: DecisionPackage = { ...pkg, decisionRef: decision.id, actionDraftRefs, status: "ADOPTED" };
+    await this.repos.decisionPackages.put({ ...adopted, id: adopted.packageId });
+    await this.outbox.emit(ctx.tenantId, "decision.package_built", { packageId: pkg.packageId, taskId, status: "ADOPTED", decisionRef: decision.id }, taskId);
+    return adopted;
   }
 }

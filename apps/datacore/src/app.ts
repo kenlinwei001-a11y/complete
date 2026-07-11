@@ -376,8 +376,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const calibration = new CalibrationService(repos, outbox, solvers);
   // WO-DECISION-RECORD（PRD §3.7 D8）：一等 Decision 记录服务（上下文/备选/否决/决策人/预测 vs 实现）
   const decisions = new DecisionService(repos, outbox);
-  // WO-L2-4（决策内核服务）：接真 in-process SolverService + 沿因果重算·装配落库 DecisionPackage·发域事件。
-  const decisionKernel = new DecisionKernelService(repos, solvers, outbox, ontologyCore);
+  // WO-L2-4/5（决策内核服务）：接真 in-process SolverService + 沿因果重算·装配落库 DecisionPackage·发域事件；
+  // 采纳经 DecisionService/ActionService 正门（R4·不直写真值）。
+  const decisionKernel = new DecisionKernelService(repos, solvers, outbox, decisions, actions, ontologyCore);
   // 运营态出厂配置增量 §1：回放引擎（生成+回放，复用真实 A8 管线 + M11 配对）
   const livedInEngine = new LivedInEngine(repos, timeseries, ontology, ruleScan, rules);
   livedInEngine.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
@@ -3196,6 +3197,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const pkg = await decisionKernel.getByTask(c, taskId); // R2：ctx.tenantId 过滤·跨租户取不到
     if (!pkg) throw notFound("decision package");
     return pkg;
+  });
+  // WO-L2-5 采纳正门（§4.4·R4/RL4）：双门 decision.kernel + act.adopt-to-draft（后者由 ActionService 建 draft 时
+  // 经 S2 action-type 治理保障）。采纳 → 建 Decision 台账 + ActionDraft（走审批链·不直写真值）→ 制品回填 ADOPTED。
+  app.post("/a/v1/queries/:taskId/decision-package/adopt", async (req) => {
+    await requireFeatureTag(req, "apiTags", "decision-kernel");
+    const c = ctx(req);
+    const { taskId } = req.params as { taskId: string };
+    const body = parseBody(z.object({ scenarioKey: z.string().min(1) }), req.body);
+    return decisionKernel.adopt(c, taskId, body.scenarioKey);
   });
 
   // ---- A5 rules -----------------------------------------------------------------------
