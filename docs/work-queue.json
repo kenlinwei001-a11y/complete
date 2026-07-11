@@ -7607,13 +7607,14 @@
     {
       "at": {
         "wip": "2026-07-11T17:31:01.547Z",
-        "built": "2026-07-11T18:01:06.127Z"
+        "built": "2026-07-11T18:01:06.127Z",
+        "blocked": "2026-07-11T19:20:17.402Z"
       },
       "id": "WO-SANDBOX-RADAR-COLLAPSE",
       "title": "S4·三雷达合一(维度换人话)+L0-L4折一句人话(砍竞品形式膨胀)",
       "doc": "docs/WO-SANDBOX-RADAR-COLLAPSE.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev3",
       "deps": [],
       "note": "[沙盘重建·S4·可∥S1·纯前端·dev3] REVIEW拒绝copy竞品形式的标志一刀。回退:纯视觉可回退。 【沙盘拆Lane 2026-07-11·审核方】Dev-3 前端(frontend-shell SandboxView/渲染器/registry/SimComparePanel/radar/nav)·⛔不碰orchestrator后端钩子(Dev-1)。",
@@ -7649,7 +7650,7 @@
           }
         ]
       },
-      "blockReason": ""
+      "blockReason": "[审核方复验BLOCK] S4折叠改造SimReadinessPanel(三雷达合一·L0-L4折一句人话·stepperAndRadar block)后 sandbox-p0.test.tsx「就绪面板6项」red:getByTestId sim-cert-target找不到(SimReadinessPanel.tsx:198 cert.targetRef守卫·折叠改造后该block非默认展示·pre-S4测试222975fa未同步)。此红曾被S6 build红(feeds)遮蔽·审核方hotfix 3255fe2c补feeds后暴露·非hotfix致。修法:dev3据S4折叠意图reconcile——或恢复sim-cert-target默认可见·或更新sandbox-p0测试匹配折叠默认态(展开后断言)。注:pnpm -r build已绿·仅此1test红。S4真浏览器证据(e6bdbb/png)本身在·仅测试夹具未同步。"
     },
     {
       "at": {},
@@ -7669,13 +7670,14 @@
     {
       "at": {
         "wip": "2026-07-11T17:20:12.843Z",
-        "built": "2026-07-11T18:27:08.072Z"
+        "built": "2026-07-11T18:27:08.072Z",
+        "done": "2026-07-11T19:20:17.402Z"
       },
       "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
       "title": "S6·时序接地五件套(外生驱动/overlay/hold守恒/约束/回放)+根治CAP-09 tick冻结",
       "doc": "docs/WO-SANDBOX-TEMPORAL-GROUNDING.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
@@ -7683,7 +7685,43 @@
       "note": "[沙盘重建·S6·依赖S1 MVP·上线门禁·dev3] 外生驱动真源逐tick喂引擎=根治CAP-09(传导规则零载体致头部冻结)。回退:feature sim.temporal_grounding关=回v1.1。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
       "lane": "LaneS-sandbox",
       "assignedDev": "dev1-后端",
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "S6时序接地五件套(外生驱动/overlay/hold守恒/约束/回放)机制真实可用",
+        "verifiedBy": "独立真跑datacore:4029真HTTP真feed注入·commit fa8df9df=tip·自避778cc589坑(五源文件sha IDENTICAL)·aaf67787·2026-07-11",
+        "criteria": [
+          {
+            "id": "exogenous-feed-drives-world",
+            "assert": "真注入ExogenousFeed(dailyP50=50000)→Model.totalDemand FLAT[320000×6]→[320000..570000]每tick+50000·下游demandLoad基线死线性→feed真加速47.96;外生驱动引擎链路真通(补dev未做的e2e HTTP)"
+          },
+          {
+            "id": "overlay-readonly",
+            "assert": "SimContextOverlay基线0.5vs情景0.9算不同值·base不被mutate·R4只读"
+          },
+          {
+            "id": "hold-conservation",
+            "assert": "真守恒会计sustainingFlow=pinned−natural·植假即红牙"
+          },
+          {
+            "id": "constraint-horizon",
+            "assert": "约束推负→clamp0+constraintViolations{raw,clamped,boundRef};horizon 60tick→HORIZON_UNCOVERED coveredTicks0诚实缺口绝不外推"
+          },
+          {
+            "id": "replay-validated",
+            "assert": "独立复现真写A8 ts_points→cert→VALIDATED meanApe0 samples19 l3Validated;demo开箱NO_HISTORY+RULES_UNCALIBRATED诚实不假验证"
+          },
+          {
+            "id": "hidden-gate-byte-consistent",
+            "assert": "sim.temporal_grounding defaultOn:false·datacore features.ts:111≡agentcore registry.ts:144双注册·battery-all-on真排除(a49c04cd)·关闸字节一致(逐tick sha同·feeds冻[])·R6同feed双跑sha一致"
+          },
+          {
+            "id": "anti-fake-green",
+            "assert": "sim-temporal-grounding.test.ts(16)逐值+植假share0立红;replay真APE计算green→red齿;KILL-MOCK-RED守住(feed源真dailyP50·无源诚实缺口·overlay只读)"
+          }
+        ],
+        "scopeBoundary": "五件套=能力(可注入)非默认场景;demo开箱四feed源全EMPTY_DATA(demand_segment只聚合p50无dailyP50/sop无dailyDemand/po是etaDay非arriveTick/maint是week非tick/ts全tick0)→静止;RC-2 out-of-box需默认真feed源→WO-RC2-DEFAULT-FEED",
+        "deliveryNote": "交付态曾build红(12前端夹具缺feeds·dev文档误称4包绿实只build datacore)→PM hotfix 3255fe2c补feeds:[]·pnpm -r build EXIT0四包全绿;门+60定向回归绿(sim-certification11存量未破);母体§I回写。"
+      }
     },
     {
       "at": {},
@@ -7875,14 +7913,50 @@
       "doc": "docs/WO-DB-LLM-REQUIRED-NO-FLOOR.md",
       "title": "取消comprehend无-LLM地板降级(G-COMPREHEND-FLOOR):无绑定/失败/未理解→诚实报错不建(LLM_PURPOSE_UNBOUND/COMPREHEND_NOT_UNDERSTOOD)·堵service.ts:86-102主+:952次两调用点",
       "note": "[LaneB·datacore·用户钉死红线] ⚠硬前置:先跑全量测试sweep定≥14+测清单(WO只认3·实测runStory/comprehend触≥14 datacore+agentcore scaffold含comprehend-floor-a2)+CI/demo LLM绑定/flag端到端airtight(SEED_DEMO+docker demo+离线信创三态)·否则一落地破4包全绿。兼顾:DC_COMPREHEND_DETERMINISTIC flag(默认false·留地板满足RL9)+comprehendedBy:FLOOR契约标注。回写§8 G-COMPREHEND-FLOOR闭。green→red:改回地板→非电池故事产电池域→门红。 【索引§2重排2026-07-11:序#2(CLOSURE-HARDEN后·LINK前)·顺修comprehend漏绑bug(seed只建provider漏绑comprehend用途·service.ts实测踩坑)】",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "created": "2026-07-11T14:28:38.850Z",
         "wip": "2026-07-11T17:34:04.168Z",
-        "built": "2026-07-11T18:25:39.063Z"
+        "built": "2026-07-11T18:25:39.063Z",
+        "done": "2026-07-11T19:20:17.402Z"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "acceptance": {
+        "goal": "建域硬依赖LLM·无LLM诚实硬失败·绝不吐关键词兜底垃圾模型冒充",
+        "verifiedBy": "独立真跑datacore+真Kimi moonshot-v1-32k·commit b9a258cf=tip·自避778cc589坑·a750a5ce·2026-07-11",
+        "criteria": [
+          {
+            "id": "no-llm-hard-fail",
+            "assert": "不绑comprehend→status FAILED·gapReport BLOCKED·LLM_PURPOSE_UNBOUND·battery-flavor扫描全false;地板真删(旧catch落地板→现if(!llm)throw)"
+          },
+          {
+            "id": "unfamiliar-no-garbage",
+            "assert": "珠宝翡翠无LLM→BLOCKED无对象;真Kimi→合理模型翡翠原石/拍卖出价"
+          },
+          {
+            "id": "with-llm-normal",
+            "assert": "真Kimi冷链→SUCCEEDED comprehendedBy=LLM·ColdChainWarehouse/TemperatureZone(旧地板静默丢的)·dc_llm_calls_total{purpose=comprehend}1"
+          },
+          {
+            "id": "new-gate-teeth",
+            "assert": "check-comprehend-nofloor.mjs EXIT0已并入gates·green→red(注入地板复活→RED报2处return comprehendScript)"
+          },
+          {
+            "id": "gapcode-exhaustive",
+            "assert": "2新GapCode agentcore probe+frontend GapCard穷尽Record消费·typecheck0·growth21绿"
+          },
+          {
+            "id": "kill-mock-red",
+            "assert": "硬失败落可查询BLOCKED StoryBuildRun非消失500非地板plan;FLOOR仅DC_COMPREHEND_DETERMINISTIC=1显式开关+诚实标comprehendedBy:FLOOR"
+          },
+          {
+            "id": "no-fake-green-audit",
+            "assert": "nofloor-comprehend.test.ts真断言(FLOOR/LLM标注真ColdZone/0对象COMPREHEND_NOT_UNDERSTOOD/expect not.toContain Process/Base)非空壳"
+          }
+        ],
+        "note": "微瑕非阻断:重试循环对LLM_PURPOSE_UNBOUND也重试2次略浪费。key卫生:建议轮换moonshot key(在harness转录因在提示词内)。"
+      }
     },
     {
       "id": "WO-DB-BSTACK-DERIVE",
@@ -8355,14 +8429,27 @@
       "owner": "",
       "title": "RC沙盘门文案「暂不可进入推演」→「未校准·可试跑·结论仅供参考」(标准页本就可推tick·劝退文案误导为不可用)",
       "note": "[前端·感知层·一手证据VERIFIED§4] DOM实测「✗暂不可进入推演」劝退·但标准页推进按钮未门控canEnter(disabled只认!sessionId||ticking)·能推能变。真硬挡的「进入推演」按钮在SimInitWizard另一入口。改文案让用户知道标准页可试跑(与S2诚信位协同:试跑结论打UNCALIBRATED/仅供参考)。green→red:未认证态应显「可试跑」非「不可进入」。"
+    },
+    {
+      "id": "WO-RC2-DEFAULT-FEED",
+      "priority": "P1",
+      "deps": [],
+      "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T19:20:17.402Z"
+      },
+      "title": "RC-2沙盘开箱默认真feed源(S6提供能力但demo四源全EMPTY_DATA字段不匹配resolver→静止)·播dailyP50+coverageDays的DemandSegment/变tick A8序列/forecast覆盖·让demo开箱推tick世界真动",
+      "note": "[数据/S6衔接·RC-2 out-of-box闭合·一手证据VERIFIED§3+S6复验] S6 ExogenousFeed引擎真通(注入真feed世界真动320000→570000已证)但demo开箱四feed源全EMPTY_DATA:demand_segment只聚合p50无dailyP50/coverageDays·sop_version有demand无dailyDemand·purchase_order字段etaDay非resolver读arriveTick·maint_plan字段week非tick/capacityDelta·ts_series全A8点tick0(synthetic写死)。需播真feed源(或修resolver字段映射+播dailyP50+coverageDays)让demo不配置推tick见非零轨迹。与WO-IMPORT-SCENARIO-LAUNCHER-WIRE协同。green→red:demo开箱推tick·KPI/传导目标态随tick真变非静止。"
     }
   ],
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "DONE(S1复验PASS·2强信号)",
-      "id": "WO-SANDBOX-AS-RENDER-TARGET",
-      "at": "2026-07-11T19:07:40.533Z"
+      "cmd": "DONE(NO-FLOOR+S6)·BLOCK(S4)·RC-2 followup",
+      "id": "4单",
+      "at": "2026-07-11T19:20:17.402Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
