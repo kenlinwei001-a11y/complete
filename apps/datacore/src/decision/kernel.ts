@@ -16,13 +16,25 @@
 //   R2  · 制品带 tenantId（调用方经 AuthCtx 传入·跨租户由 SolverService.invoke 的 tenantId 隔离）。
 
 import type {
+  AffectedOrder,
   CausalEdge,
   CounterfactualResult,
+  DecisionPackage,
+  DecisionRecommendation,
+  DecisionScenario,
+  ExplanationChain,
   ProvenanceRef,
   ReasoningStep,
   ReasoningTrace,
 } from "@platform/contracts";
 import { canonicalJson, hashString, round } from "../prng.js";
+
+/** 方案枚举的真求解器键白名单（R11·装配只认这三源·守 KILL-MOCK 幽灵方案）。 */
+export const SCENARIO_SOLVER_KEYS = ["what_if_displacement", "plan_generate", "mitigation_select"] as const;
+/** 反事实引擎白名单（对齐 CfEngineSchema·热路径确定性引擎·非新造）。 */
+export const CF_ENGINES = ["counterfactual_timeline", "generic_inference", "sim_compare", "monte_carlo"] as const;
+/** dataMode 由弱到强（弱=最谨慎·取整包诚实位时取最弱·对齐 SolverService applyConfidenceDimensions）。 */
+const DATAMODE_RANK: Record<string, number> = { MOCK: 0, SYNTHETIC: 1, STALE: 2, PARTIAL: 3, LIVE: 4 };
 
 // ── 注入面（in-process 真求解句柄·测试喂真求解器形状 fixture）─────────────────
 /** 经 SolverService.invoke(ctx,key,args) 绑定的 in-process 求解器句柄（tenantId 已闭合在 ctx 内）。 */
@@ -465,4 +477,380 @@ export async function buildReasoningAndCounterfactuals(
     counterfactuals: c.counterfactuals,
     provenance: dedupeProvenance([...r.provenance, ...c.provenance]),
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WO-L2-3 · Decision Package 装配（§4.3·方案枚举 + Pareto 推荐 + 可解释 + 溯源汇聚）
+// 纯聚合·零业务常数·每 metric/delta/recommendedKey 溯真求解器字段（KILL-MOCK·无真源→null）。
+// ═══════════════════════════════════════════════════════════════════════════
+
+function weakestDataMode(modes: string[]): string {
+  let worst = "LIVE";
+  let worstRank = DATAMODE_RANK.LIVE ?? 4;
+  for (const m of modes) {
+    const r = DATAMODE_RANK[m];
+    if (r !== undefined && r < worstRank) {
+      worstRank = r;
+      worst = m;
+    }
+  }
+  return modes.length > 0 ? worst : "PARTIAL"; // 无信号 → 保守 PARTIAL（不冒充 LIVE）
+}
+
+/** what_if_displacement 顶层 displacedOrders → AffectedOrder[]（逐单再方案·so 为真 objectKey·R11）。 */
+function mapDisplacedOrders(out: Record<string, unknown>, provId: string): AffectedOrder[] {
+  return asRecordArray(out.displacedOrders).map((d) => {
+    const so = str(d.so);
+    const reSchemes = Array.isArray(d.reSchemes) ? (d.reSchemes.filter((x) => typeof x === "string") as string[]) : [];
+    const reScheme = str(d.reScheme) ?? reSchemes[0] ?? null;
+    return {
+      orderId: so ?? "?", // so = Order 业务键（∈ 本体·真单号·非合成）
+      orderRef: so,
+      impact: "被挤占",
+      reProfile: reScheme
+        ? { action: reScheme, promiseDeltaDays: numOrNull(d.displaceDays), note: reSchemes.join("；") }
+        : null,
+      provId,
+    };
+  });
+}
+
+/** what_if_displacement.schemes[] → DecisionScenario[]（四型·metrics 逐值溯字段·KILL-MOCK）。 */
+function scenariosFromDisplacement(
+  req: DecisionKernelRequest,
+  out: Record<string, unknown>,
+  provenance: ProvenanceRef[],
+): DecisionScenario[] {
+  const schemes = asRecordArray(out.schemes);
+  if (schemes.length === 0) return [];
+  const p = mkProv(req.taskId, "what_if_displacement", "$.schemes", 10);
+  provenance.push(p);
+  const affected = mapDisplacedOrders(out, p.id);
+  return schemes.map((s) => {
+    const key = str(s.key) ?? "displacement";
+    const feasible = s.feasible === true;
+    const note = str(s.note);
+    return {
+      key,
+      name: str(s.name) ?? key,
+      sourceSolverKey: "what_if_displacement",
+      metrics: {
+        deliveryRate: null, // displacement 不产交付率（诚实 null·不造）
+        grossMarginPct: numOrNull(s.marginPct),
+        costDelta: null,
+        carbonDelta: null,
+        displacedCount: numOrNull(s.displacedCount) === null ? null : Math.trunc(numOr(s.displacedCount, 0)),
+        cashOccupied: numOrNull(s.cashOccupiedWan),
+        riskLevel: null,
+      },
+      feasible,
+      // displacement schemes 无 hardViolations 字段 → 不可行时以 note 作诚实约束说明（不藏·不臆造违反项）。
+      hardViolations: feasible ? [] : compact([note]),
+      affectedOrders: affected,
+      proposedActionDraftPayload: null, // 采纳 payload 由 mitigation_select 产（S2 正门）
+      provIds: [p.id],
+    };
+  });
+}
+
+/** plan_generate.schemes[] → DecisionScenario[]（outcome.gm 毛利·hardViol 违反·诚实）。 */
+function scenariosFromPlanGenerate(
+  req: DecisionKernelRequest,
+  out: Record<string, unknown>,
+  provenance: ProvenanceRef[],
+): DecisionScenario[] {
+  const schemes = asRecordArray(out.schemes);
+  if (schemes.length === 0) return [];
+  const p = mkProv(req.taskId, "plan_generate", "$.schemes", 11);
+  provenance.push(p);
+  return schemes.map((s, idx) => {
+    const outcome = (s.outcome && typeof s.outcome === "object" ? s.outcome : {}) as Record<string, unknown>;
+    const hardViol = Array.isArray(s.hardViol) ? (s.hardViol.filter((x) => typeof x === "string") as string[]) : [];
+    const key = str(s.pathKey) ?? str(s.no) ?? `plan_${idx}`;
+    return {
+      key,
+      name: str(s.name) ?? key,
+      sourceSolverKey: "plan_generate",
+      metrics: {
+        deliveryRate: null,
+        grossMarginPct: numOrNull(outcome.gm),
+        costDelta: null,
+        carbonDelta: null,
+        displacedCount: null,
+        cashOccupied: numOrNull(outcome.cash),
+        riskLevel: null,
+      },
+      feasible: hardViol.length === 0,
+      hardViolations: hardViol,
+      affectedOrders: [],
+      proposedActionDraftPayload: null,
+      provIds: [p.id],
+    };
+  });
+}
+
+/** mitigation_select → DecisionScenario（推荐处置案·proposedActionDraftPayload←draftPayload·采纳源）。 */
+function scenariosFromMitigation(
+  req: DecisionKernelRequest,
+  out: Record<string, unknown>,
+  provenance: ProvenanceRef[],
+): DecisionScenario[] {
+  const recommended = str(out.recommended);
+  if (!recommended) return [];
+  const draftPayload = out.draftPayload && typeof out.draftPayload === "object" ? (out.draftPayload as Record<string, unknown>) : null;
+  const plans = asRecordArray(out.plans);
+  const rec = plans.find((pl) => str(pl.key) === recommended);
+  const p = mkProv(req.taskId, "mitigation_select", "$.draftPayload", 12);
+  provenance.push(p);
+  return [
+    {
+      key: recommended,
+      name: str(rec?.name) ?? recommended,
+      sourceSolverKey: "mitigation_select",
+      metrics: {
+        deliveryRate: null,
+        grossMarginPct: null,
+        costDelta: null,
+        carbonDelta: null,
+        displacedCount: null,
+        cashOccupied: null,
+        // urgency=null 时 solver 出 urgencyDataMode:"MOCK"（无实测紧迫度）→ 诚实不给 riskLevel。
+        riskLevel: str(out.urgencyDataMode) === "MOCK" ? null : (numOrNull(out.urgency) !== null ? "SCORED" : null),
+      },
+      feasible: true,
+      hardViolations: [],
+      affectedOrders: [],
+      proposedActionDraftPayload: draftPayload,
+      provIds: [p.id],
+    },
+  ];
+}
+
+/** §4.3.2 推荐（Pareto·复用 multi_plan_compare 确定性 tiebreak·<2 可比→null 诚实不强推）。 */
+async function buildRecommendation(
+  deps: DecisionKernelDeps,
+  req: DecisionKernelRequest,
+  rawDisplacementSchemes: Record<string, unknown>[],
+  provenance: ProvenanceRef[],
+): Promise<{ recommendation: DecisionRecommendation; dataMode: string | null }> {
+  // 仅当有 displacement 五维方案（携 multi_plan_compare 所需字段）才可确定性择优。
+  if (rawDisplacementSchemes.length >= 1) {
+    try {
+      const out = await deps.invokeSolver("multi_plan_compare", { schemes: rawDisplacementSchemes });
+      const matrix = asRecordArray(out.matrix);
+      const p = mkProv(req.taskId, "multi_plan_compare", "$.matrix", 20);
+      provenance.push(p);
+      return {
+        recommendation: {
+          recommendedKey: str(out.recommendedKey), // null if <2 可比（求解器诚实）
+          method: "multi_plan_compare",
+          weights: null,
+          compareMatrix: matrix,
+        },
+        dataMode: str(out.dataMode),
+      };
+    } catch {
+      /* honest-skip：比较失败 → 无推荐（不硬推）。 */
+    }
+  }
+  return {
+    recommendation: { recommendedKey: null, method: "multi_plan_compare", weights: null, compareMatrix: [] },
+    dataMode: null,
+  };
+}
+
+/** §4.3.4 可解释（Why / Evidence / Alternative·溯自择优 + 各非推荐方案 why-not）。 */
+function buildExplanation(
+  req: DecisionKernelRequest,
+  scenarios: DecisionScenario[],
+  recommendation: DecisionRecommendation,
+  compareNote: string | null,
+  evidenceProvIds: string[],
+): ExplanationChain {
+  const recommendedKey = recommendation.recommendedKey;
+  const recScenario = scenarios.find((s) => s.key === recommendedKey) ?? null;
+  const rationale: string[] = [];
+  if (recScenario) {
+    if (recScenario.metrics.grossMarginPct !== null) rationale.push(`毛利 ${round(recScenario.metrics.grossMarginPct, 4)}（择优毛利优先）`);
+    if (recScenario.metrics.displacedCount !== null) rationale.push(`挤占 ${recScenario.metrics.displacedCount} 单`);
+    if (recScenario.feasible) rationale.push("可行（无硬约束违反）");
+  } else if (compareNote) {
+    rationale.push(compareNote); // 如"可比方案不足2·不强推"（诚实）
+  }
+  const alternatives = scenarios
+    .filter((s) => s.key !== recommendedKey)
+    .map((s) => {
+      const whyNot: string[] = [];
+      if (!s.feasible) whyNot.push("不可行");
+      for (const v of s.hardViolations) whyNot.push(`约束：${v}`);
+      if (recScenario && s.metrics.grossMarginPct !== null && recScenario.metrics.grossMarginPct !== null && s.metrics.grossMarginPct < recScenario.metrics.grossMarginPct) {
+        whyNot.push("毛利低于推荐方案");
+      }
+      if (s.metrics.displacedCount !== null && recScenario?.metrics.displacedCount !== null && recScenario && s.metrics.displacedCount > (recScenario.metrics.displacedCount ?? 0)) {
+        whyNot.push("挤占单数高于推荐方案");
+      }
+      return { scenarioKey: s.key, whyNot };
+    });
+  return {
+    explanationId: `ex_${provIdFor(req.taskId, "explanation", "chain").slice(5)}`,
+    taskId: req.taskId,
+    tenantId: req.tenantId,
+    why: { recommendedKey, rationale },
+    evidenceProvIds: [...new Set(evidenceProvIds)].sort(),
+    alternatives,
+    decisionTraceRef: req.taskId, // 复用既有 qos DecisionTrace（=taskId·不重造）
+    generatedAt: req.generatedAt,
+  };
+}
+
+/**
+ * §4.3 顶层装配：Reasoning + Counterfactual + Scenarios + Recommendation + Explanation → DecisionPackage。
+ * 全确定性纯聚合；每数字溯 provId；无真源 → null + 诚实空态（KILL-MOCK·不合成幽灵方案/伪 delta）。
+ */
+export async function assembleDecisionPackage(
+  deps: DecisionKernelDeps,
+  req: DecisionKernelRequest,
+): Promise<DecisionPackage> {
+  const provenance: ProvenanceRef[] = [];
+  const dataModes: string[] = [];
+
+  // ① 推理 + ② 反事实（WO-L2-2）
+  const r = await buildReasoning(deps, req);
+  provenance.push(...r.provenance);
+  const cf = await buildCounterfactuals(deps, req);
+  provenance.push(...cf.provenance);
+  for (const c of cf.counterfactuals) dataModes.push(c.dataMode);
+
+  // ③ 方案枚举（三源合并·去重按 key·首现序 R6·honest-skip 不适用求解器）
+  const scenarios: DecisionScenario[] = [];
+  const scenarioArgs: Record<string, unknown> = { ...req.slots };
+  delete scenarioArgs.apply; // apply 属反事实假设·非方案枚举参数
+  const baseId = str(req.slots.baseId) ?? str(req.slots.base);
+  if (baseId) scenarioArgs.base = baseId;
+
+  let rawDisplacementSchemes: Record<string, unknown>[] = [];
+  try {
+    const out = await deps.invokeSolver("what_if_displacement", scenarioArgs);
+    rawDisplacementSchemes = asRecordArray(out.schemes);
+    scenarios.push(...scenariosFromDisplacement(req, out, provenance));
+    const dm = str(out.dataMode);
+    if (dm) dataModes.push(dm);
+  } catch {
+    /* honest-skip */
+  }
+  try {
+    const out = await deps.invokeSolver("plan_generate", scenarioArgs);
+    scenarios.push(...scenariosFromPlanGenerate(req, out, provenance));
+    const dm = str(out.dataMode);
+    if (dm) dataModes.push(dm);
+  } catch {
+    /* honest-skip */
+  }
+  const factor = str(req.slots.factor);
+  if (factor) {
+    try {
+      const out = await deps.invokeSolver("mitigation_select", { factor, baseName: baseId ?? str(req.slots.baseName) });
+      scenarios.push(...scenariosFromMitigation(req, out, provenance));
+      const dm = str(out.dataMode);
+      if (dm) dataModes.push(dm);
+    } catch {
+      /* honest-skip */
+    }
+  }
+  // 去重按 key（首现序·R6）
+  const dedupScenarios: DecisionScenario[] = [];
+  const seenKeys = new Set<string>();
+  for (const s of scenarios) {
+    if (seenKeys.has(s.key)) continue;
+    seenKeys.add(s.key);
+    dedupScenarios.push(s);
+  }
+
+  // ④ 推荐（Pareto·multi_plan_compare 确定性 tiebreak）
+  const { recommendation, dataMode: recDataMode } = await buildRecommendation(deps, req, rawDisplacementSchemes, provenance);
+  if (recDataMode) dataModes.push(recDataMode);
+  // 可选加权 F(x)（企业策略·权重外置·R14）：weights 存在 → 记入 recommendation（不改 tiebreak·平票走同一序）。
+  const weights = req.slots.weights && typeof req.slots.weights === "object" ? (req.slots.weights as Record<string, number>) : null;
+  if (weights) recommendation.weights = weights;
+
+  // ⑤ 可解释
+  const explanation = buildExplanation(req, dedupScenarios, recommendation, null, provenance.map((p) => p.id));
+
+  const finalProv = dedupeProvenance(provenance);
+  const status = dedupScenarios.length > 0 || cf.counterfactuals.length > 0 ? "READY" : "DRAFT";
+
+  return {
+    packageId: `dpkg_${provIdFor(req.taskId, "package", "root").slice(5)}`,
+    taskId: req.taskId,
+    tenantId: req.tenantId,
+    problem: req.query,
+    requirementGraphId: req.requirementGraphId,
+    executionPlanId: req.executionPlanId,
+    reasoning: r.trace,
+    counterfactuals: cf.counterfactuals,
+    scenarios: dedupScenarios,
+    recommendation,
+    explanation,
+    provenance: finalProv,
+    dataMode: weakestDataMode(dataModes),
+    status,
+    decisionRef: null,
+    actionDraftRefs: [],
+    builderVersion: req.builderVersion,
+    generatedAt: req.generatedAt,
+  };
+}
+
+// ── KILL-MOCK 测谎（gate 的牙齿·PRD §7 V5）─────────────────────────────────
+/**
+ * 校验一份 DecisionPackage 无「幽灵方案 / 无溯源数字 / 伪造 delta / 越白名单引擎」。
+ * 返回违例字符串数组（空=干净）。gate 对真 kernel 输出跑此；单测注入坏值证 green→red。
+ */
+export function validateDecisionPackage(pkg: DecisionPackage): string[] {
+  const violations: string[] = [];
+  const provIds = new Set(pkg.provenance.map((p) => p.id));
+
+  for (const s of pkg.scenarios) {
+    if (!(SCENARIO_SOLVER_KEYS as readonly string[]).includes(s.sourceSolverKey)) {
+      violations.push(`scenario '${s.key}' sourceSolverKey '${s.sourceSolverKey}' 非真求解器（幽灵方案）`);
+    }
+    const hasMetric = Object.values(s.metrics).some((v) => v !== null);
+    if (hasMetric && s.provIds.length === 0) {
+      violations.push(`scenario '${s.key}' 有量化但无 provId（R13 死角·无溯源数字）`);
+    }
+    for (const pid of s.provIds) {
+      if (!provIds.has(pid)) violations.push(`scenario '${s.key}' provId '${pid}' 不在 provenance[]（悬空溯源）`);
+    }
+    for (const ao of s.affectedOrders) {
+      if (ao.provId && !provIds.has(ao.provId)) violations.push(`scenario '${s.key}' affectedOrder '${ao.orderId}' provId 悬空`);
+    }
+  }
+
+  for (const c of pkg.counterfactuals) {
+    if (!(CF_ENGINES as readonly string[]).includes(c.engine)) {
+      violations.push(`counterfactual '${c.cfId}' engine '${c.engine}' 越白名单（非确定性引擎）`);
+    }
+    const hasSignal =
+      c.worldA.series !== null ||
+      c.worldB.series !== null ||
+      c.delta.peakCut !== null ||
+      c.delta.crossDelayDays !== null ||
+      c.delta.ordersSaved !== null ||
+      (c.delta.objectDeltas?.length ?? 0) > 0;
+    if (hasSignal && c.provIds.length === 0) {
+      violations.push(`counterfactual '${c.cfId}' 有 delta/series 但无 provId（伪造 delta 嫌疑）`);
+    }
+    for (const pid of c.provIds) {
+      if (!provIds.has(pid)) violations.push(`counterfactual '${c.cfId}' provId '${pid}' 悬空`);
+    }
+  }
+
+  // recommendedKey 必 null 或 ∈ 方案键（无幽灵推荐）
+  const keys = new Set(pkg.scenarios.map((s) => s.key));
+  const rk = pkg.recommendation.recommendedKey;
+  if (rk !== null && !keys.has(rk)) violations.push(`recommendedKey '${rk}' 非任何方案键（幽灵推荐）`);
+  for (const alt of pkg.explanation.alternatives) {
+    if (!keys.has(alt.scenarioKey)) violations.push(`explanation alternative '${alt.scenarioKey}' 非任何方案键`);
+  }
+  return violations;
 }

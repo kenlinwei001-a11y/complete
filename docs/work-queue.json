@@ -6740,9 +6740,11 @@
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-2 dev2] "
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev2",
+      "at": {
+        "wip": "2026-07-11T07:23:55.026Z"
+      },
       "id": "WO-L2-3",
       "title": "Decision Package 装配 + Pareto 推荐 + ExplanationChain",
       "priority": "P1",
@@ -7380,8 +7382,8 @@
     "lastActivity": {
       "role": "dev2",
       "cmd": "WIP",
-      "id": "WO-L2-2",
-      "at": "2026-07-11T07:15:36.019Z"
+      "id": "WO-L2-3",
+      "at": "2026-07-11T07:23:55.026Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
