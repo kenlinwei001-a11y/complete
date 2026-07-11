@@ -6695,11 +6695,12 @@
       "blockReason": ""
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "at": {
         "wip": "2026-07-11T13:09:41.869Z",
-        "built": "2026-07-11T13:34:45.848Z"
+        "built": "2026-07-11T13:34:45.848Z",
+        "done": "2026-07-11T13:48:44.383Z"
       },
       "id": "WO-L1B-SAGA",
       "title": "跨系统 Saga 一致性(单列·延后 L1.5·NG2)",
@@ -7602,9 +7603,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "BLOCKED",
-      "id": "WO-FEATURE-PARITY-GATE",
-      "at": "2026-07-11T13:47:30.316Z"
+      "cmd": "DONE",
+      "id": "WO-L1B-SAGA",
+      "at": "2026-07-11T13:48:44.383Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
