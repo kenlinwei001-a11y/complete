@@ -1682,6 +1682,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       })),
       solverNeeds: [], kbDocs: [], dataDependencies: {},
       sliceNeeds: [], intentNeeds: [], planNeeds: [], workflowNeeds: [], skillNeeds: [], agentNeeds: [], mcpNeeds: [], sceneNeeds: [],
+      propagationRuleNeeds: [], stateVarNeeds: [],
     };
     const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
     const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);

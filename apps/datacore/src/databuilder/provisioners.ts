@@ -1,6 +1,6 @@
 // ModuleProvisioner 注册表 + 比对现状（gap_analysis）。
 // "倒序"管线接缝：query→倒推 BuildPlan→**比对系统现状**→创建缺的。把散在 gap 阶段/闭包/scaffold
-// 三处的"需要 vs 已有"收敛成一张跨模块统一 diff。模块全集 = BuildPlan 的 13 个 need 数组，一一对应
+// 三处的"需要 vs 已有"收敛成一张跨模块统一 diff。模块全集 = BuildPlan 的 15 个 need 数组，一一对应
 // 注册表里的 provisioner——**新增模块必须注册**（provisioners.test 覆盖门强制；BuildPlan 任一根级数组
 // 字段未登记即红，保证"倒序"无遗漏、未来新模块自动被纳入统一机制）。
 import type { BuildPlan, GapAnalysis, GapSide, ModuleKind, ScaffoldReceipt } from "@platform/contracts";
@@ -19,8 +19,10 @@ type Side = "content" | "structure" | "code" | "cross_system";
 
 /**
  * 一个配套模块的"对接"定义：知道本计划需要它的哪些 key（planned），以及系统现状里已存在哪些（existing）。
- * cross_system 类（B 栈在 AgentCore）无法在 DataCore 直查 → 不实现 existing，其现状由 scaffold 回执判定。
- * autoCreatable=false（求解器=代码态）→ 缺则 MISSING（落工单），不会标 TO_CREATE。
+ * 无 existing() 的模块（B 栈 7 类在 AgentCore·DataCore 无法直查）→ 现状由 scaffold 回执判定；
+ * 有 existing() 的模块（含 S0 沙盘配套 propagation_rule——side 虽为 cross_system 以取拓扑序最后位,
+ * 但表 sim_propagation_rule 在 DataCore·可直查）→ 走 existing 真读。判据是 existing 有无,非 side。
+ * autoCreatable=false（求解器=代码态；传导规则/状态变量=需领域判断的建模,S0 无 scaffolder）→ 缺则 MISSING（落工单），不会标 TO_CREATE。
  */
 export interface ModuleProvisioner {
   kind: ModuleKind;
@@ -77,6 +79,28 @@ export const MODULE_PROVISIONERS: ModuleProvisioner[] = [
   { kind: "agent", side: "cross_system", autoCreatable: true, planned: (p) => p.agentNeeds.map((x) => x.agentKey) },
   { kind: "scene", side: "cross_system", autoCreatable: true, planned: (p) => p.sceneNeeds.map((x) => x.scenarioKey) },
   { kind: "mcp", side: "cross_system", autoCreatable: true, planned: (p) => p.mcpNeeds.map((x) => x.serverName) },
+  // —— 沙盘配套类（S0 WO-SANDBOX-CONFIG-COVERAGE）——
+  // autoCreatable:false（诚实·派单单 §3.2 二选一取否）：S0 无 scaffolder（系数×延迟/formula 需领域判断·
+  // KILL-MOCK-RED 不假 TO_CREATE 冒充"可自动建"）→ 缺则 MISSING → GrowthTicket。后续校准/建模 WO 落地 scaffold 后可翻 true。
+  {
+    // 状态变量 = 对象类型上的数值派生属性（沙盘态载体·app.ts stateVars 从传导规则派生的前提）。
+    // side=structure：本体结构层,先于 cross_system（拓扑序:先有派生属性,传导规则才有得引用）。
+    kind: "state_var", side: "structure", autoCreatable: false,
+    planned: (p) => (p.stateVarNeeds ?? []).map((s) => `${s.typeKey}.${s.stateVar}`),
+    existing: async ({ ontology }, ctx) => {
+      const types = await ontology.listTypes(ctx);
+      return new Set(types.flatMap((t) => (t.derivedProperties ?? []).map((d) => `${t.key}.${d.propKey}`)));
+    },
+  },
+  {
+    // 传导规则（PropagationRule·表 sim_propagation_rule）。side=cross_system：取四层拓扑序最后位
+    //（依赖 state_var + link 都在才建规则）；现状仍 DataCore 直查（有 existing() 即走真读,非回执）。
+    // existing 只认 PUBLISHED（默认 publishedOnly=true）：DRAFT 未晋升 = 推演仍缺（WO §3.5 "PROVISIONAL 未晋升"逐字）。
+    kind: "propagation_rule", side: "cross_system", autoCreatable: false,
+    planned: (p) => (p.propagationRuleNeeds ?? []).map((r) => r.key),
+    existing: async ({ repos }, ctx) =>
+      new Set((await repos.sim.listPropagationRules(ctx.tenantId)).map((r) => r.key)),
+  },
 ];
 
 /**
@@ -97,6 +121,8 @@ export const NEED_ARRAY_TO_KIND: Record<string, ModuleKind> = {
   agentNeeds: "agent",
   sceneNeeds: "scene",
   mcpNeeds: "mcp",
+  propagationRuleNeeds: "propagation_rule",
+  stateVarNeeds: "state_var",
 };
 
 /**
@@ -129,7 +155,9 @@ export async function analyzeGap(
     const planned = uniq(prov.planned(plan));
     if (planned.length === 0) continue;
     required[prov.kind] = planned;
-    if (prov.side === "cross_system") {
+    // 分支判据 = existing 有无（非 side）：B 栈 7 类无 existing → 回执判定；有 existing（含 S0 沙盘配套
+    // propagation_rule,side 虽 cross_system 但表在 DataCore）→ 直查真读。对改造前 13 类逐一等价（byte 门守恒）。
+    if (!prov.existing) {
       const rec = recByKind.get(prov.kind);
       const ex = new Set<string>();
       const miss = new Set<string>();
@@ -150,13 +178,14 @@ export async function analyzeGap(
 
 /**
  * 有界配套现状快照（PRD §3/§11 · GET /a/v1/databuilder/registry-snapshot）：仅返回 DataCore 真拥有的
- * 6 类 A 栈（有 existing() 的 provisioner）。7 类 cross_system（B 栈在 AgentCore）无 existing()——
- * DataCore 看不见，query 目标聚合归 AgentCore（架构决策 §3）。确定性：kind 与 key 均升序（R6）。
+ * 8 类（有 existing() 的 provisioner：6 类 A 栈 + S0 沙盘配套 state_var/propagation_rule·additive 追加,
+ * 旧消费方按 kind 取值不受影响）。7 类 B 栈（在 AgentCore）无 existing()——DataCore 看不见，
+ * query 目标聚合归 AgentCore（架构决策 §3）。确定性：kind 与 key 均升序（R6）。
  */
 export async function buildRegistrySnapshot(deps: ProvisionerDeps, ctx: AuthCtx): Promise<Record<string, string[]>> {
   const snapshot: Record<string, string[]> = {};
   for (const prov of MODULE_PROVISIONERS) {
-    if (!prov.existing) continue; // 仅 6 类 A 栈（content/structure/code）
+    if (!prov.existing) continue; // 仅 DataCore 可直查的 kind
     snapshot[prov.kind] = [...(await prov.existing(deps, ctx))].sort();
   }
   return snapshot;

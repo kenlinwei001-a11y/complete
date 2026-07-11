@@ -66,7 +66,7 @@ import { classifyGap, FILL, gapDisposition } from "./growth/probe.js";
 import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
-import { preAnalyzeQuery } from "./growth/pre-analyze.js";
+import { listSandboxConfigGaps, preAnalyzeQuery } from "./growth/pre-analyze.js";
 import { builtinTool } from "./tools/registry.js";
 import { lintSkill } from "./skill-lint.js";
 import { seedScenarios, scenarioFromPackScenario } from "./scenarios-catalog.js";
@@ -94,6 +94,9 @@ const IntentEditBodySchema = z.object({
       ontologySliceKey: z.string().optional(),
       agentId: z.string().optional(),
       workflowId: z.string().optional(),
+      // S0（WO-SANDBOX-CONFIG-COVERAGE）：沙盘配套声明可经正门编辑（时序推演意图·S1 填）。
+      stateVarKeys: z.array(z.string()).optional(),
+      propagationRuleKeys: z.array(z.string()).optional(),
     })
     .optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
@@ -229,6 +232,32 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         );
         await deps.repos.preAnalyses.upsert(report);
         await emitDomainEvent(a.tenantId, "growth.pre_analysis_done", { taskId, totalGaps: report.summary?.totalGaps ?? 0 });
+        // S0（WO-SANDBOX-CONFIG-COVERAGE §3.5）：缺的沙盘配套（propagation_rule/state_var·MISSING）→ 复用
+        // 既有 GrowthTicket 骨架工单路径落 /admin/tickets（幂等：同租户同配套项 OPEN 复用,标记锚 [sandbox-config:*]；
+        // 系数×延迟/formula 需领域判断·不可自动建 → 人工建模正门,KILL-MOCK-RED 不合成冒充）。
+        // 惰性暗发：意图未声明 stateVarKeys/propagationRuleKeys（S1 前恒空）→ 该两 kind 不出现 → 零工单零变化。
+        const sandboxGaps = listSandboxConfigGaps(report);
+        if (sandboxGaps.length > 0) {
+          const tickets = await deps.repos.growthTickets.listByTenant(a.tenantId);
+          for (const g of sandboxGaps) {
+            const marker = `[sandbox-config:${g.kind}:${g.key}]`;
+            if (tickets.some((t) => t.status === "OPEN" && t.acceptance.includes(marker))) continue;
+            const ticketId = newId("gtk");
+            await deps.repos.growthTickets.upsert({
+              id: ticketId, tenantId: a.tenantId, fromQuestion: query, gapCode: "NO_CAPABILITY",
+              ioContract: {
+                inputs: [],
+                outputShape: g.kind === "propagation_rule" ? ["coefficient", "delayTicks"] : ["formula"],
+              },
+              ontologyRefs: g.kind === "state_var"
+                ? { objectTypes: [g.key.split(".")[0] ?? g.key], slices: [], rules: [] }
+                : { objectTypes: [], slices: [], rules: [g.key] },
+              acceptance: `${marker} 时序推演配套缺口：缺${g.kind === "propagation_rule" ? `传导规则 ${g.key}（沿 link 系数×延迟）` : `状态变量 ${g.key}（数值派生属性）`}。需人工建模发布（PUBLISHED/formula 填真）后重跑预分析,该项转 EXISTS 即验收。`,
+              status: "OPEN", createdAt: nowIso(),
+            });
+            await emitDomainEvent(a.tenantId, "growth.ticket_opened", { ticketId, gapCode: "NO_CAPABILITY", sandboxConfig: `${g.kind}:${g.key}` });
+          }
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await deps.repos.preAnalyses

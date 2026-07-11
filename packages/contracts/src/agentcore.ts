@@ -377,6 +377,13 @@ export const IntentBindingsSchema = z.object({
   agentId: z.string().optional(),
   /** workflow-first 绑定的执行计划（QOS ExecutionPlan id）。 */
   workflowId: z.string().optional(),
+  // —— S0（WO-SANDBOX-CONFIG-COVERAGE §3.4）沙盘配套需求声明（additive optional·旧意图零破坏）——
+  // 时序推演意图在此声明所需配套；preAnalyzeQuery 据此推 propagation_rule/state_var 需求 → gap 可诊断。
+  // S0 只开通道（无智能推导·由 S1/view-config 静态填·R6 确定性）；无声明 = 不诊断该两类（诚实不造假缺口）。
+  /** 所需状态变量键（`${typeKey}.${stateVar}`·对齐派生属性命名空间）。 */
+  stateVarKeys: z.array(z.string()).optional(),
+  /** 所需传导规则键（对齐 PropagationRule.key）。 */
+  propagationRuleKeys: z.array(z.string()).optional(),
 });
 export type IntentBindings = z.infer<typeof IntentBindingsSchema>;
 

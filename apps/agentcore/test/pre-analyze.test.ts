@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ClassificationResult, MaterializedIntent } from "@platform/contracts";
 import { createMemoryRepos } from "../src/persistence/memory.js";
-import { deriveRequirements, preAnalyzeQuery, type PreAnalyzeDeps } from "../src/growth/pre-analyze.js";
+import { deriveRequirements, listSandboxConfigGaps, preAnalyzeQuery, type PreAnalyzeDeps } from "../src/growth/pre-analyze.js";
 
 /**
  * UPG-L0-PREANALYSIS · C1 纯核/R6 单测（不作假·真跑纯核）：
@@ -64,6 +64,85 @@ describe("deriveRequirements · 复用分类器绑定推需求（不造轮子·R
     expect(req.rule).toEqual(["r1"]);
     expect(req.slice).toEqual(["s1"]);
     expect(req.skill).toEqual(["skl_a"]);
+  });
+});
+
+describe("S0 · WO-SANDBOX-CONFIG-COVERAGE：沙盘配套需求（意图绑定声明 → gap 可诊断）", () => {
+  it("deriveRequirements：绑定声明 stateVarKeys/propagationRuleKeys → 需求树补 state_var/propagation_rule；未声明零变化（诚实惰性）", () => {
+    const byKey = new Map([
+      ["sim_intent", mi({
+        key: "sim_intent",
+        bindings: {
+          solverKey: "", ruleKeys: [], constraintKeys: [], skillId: "", ontologySliceKey: "",
+          stateVarKeys: ["Base.load", "Base.backlog"],
+          propagationRuleKeys: ["pr_order_to_capacity"],
+        },
+      })],
+      ["plain_intent", mi({ key: "plain_intent" })],
+    ]);
+    const req = deriveRequirements(classification(["sim_intent"]), byKey);
+    expect(req.state_var).toEqual(["Base.load", "Base.backlog"]);
+    expect(req.propagation_rule).toEqual(["pr_order_to_capacity"]);
+    // 未声明的意图 → 两类不出现（不凭空报缺口·F4 同源）
+    const reqPlain = deriveRequirements(classification(["plain_intent"]), byKey);
+    expect(reqPlain.state_var).toBeUndefined();
+    expect(reqPlain.propagation_rule).toBeUndefined();
+  });
+
+  it("E2E：快照含两类现状 → 有的 EXISTS·缺的 MISSING(MANUAL·非 DEVELOP·非 BLOCKER)；listSandboxConfigGaps 只抽 MISSING", async () => {
+    const repos = createMemoryRepos();
+    await repos.materializedIntents.upsert(mi({
+      key: "sim_intent",
+      bindings: {
+        solverKey: "", ruleKeys: [], constraintKeys: [], skillId: "", ontologySliceKey: "",
+        stateVarKeys: ["Base.load", "Base.ghost_var"],
+        propagationRuleKeys: ["pr_have", "pr_ghost"],
+      },
+    }));
+    const deps: PreAnalyzeDeps = {
+      repos,
+      config: { DATACORE_BASE_URL: "http://x", SERVICE_TOKEN: "svc" },
+      fetchImpl: snapshotFetch({
+        solver: [], rule: [], slice: [], ontology_type: [], dataset: [], kb_doc: [],
+        state_var: ["Base.load"], propagation_rule: ["pr_have"],
+      }),
+    };
+    const report = await preAnalyzeQuery(deps, {
+      tenantId: "demo", taskId: "task_s0", query: "订单激增对基地负载的传导推演？",
+      classification: classification(["sim_intent"]), generatedAt: "2026-07-11T00:00:00.000Z",
+    });
+    const flat = report.gapAnalysis!.entries.flatMap((e) => e.items.map((i) => ({ kind: e.kind, ...i })));
+    expect(flat.find((f) => f.kind === "state_var" && f.key === "Base.load")!.status).toBe("EXISTS");
+    const missSv = flat.find((f) => f.kind === "state_var" && f.key === "Base.ghost_var")!;
+    expect(missSv.status).toBe("MISSING");
+    expect(missSv.severity).toBe("WARNING"); // §10 咨询信号永不误红
+    expect(missSv.remediation!.strategy).toBe("MANUAL"); // 非 code → 人工建模正门,非 DEVELOP
+    expect(flat.find((f) => f.kind === "propagation_rule" && f.key === "pr_have")!.status).toBe("EXISTS");
+    expect(flat.find((f) => f.kind === "propagation_rule" && f.key === "pr_ghost")!.status).toBe("MISSING");
+    // §3.5 工单抽取器：只抽 MISSING 两条（EXISTS 不抽）
+    const gaps = listSandboxConfigGaps(report);
+    expect(gaps).toEqual(expect.arrayContaining([
+      { kind: "state_var", key: "Base.ghost_var" },
+      { kind: "propagation_rule", key: "pr_ghost" },
+    ]));
+    expect(gaps).toHaveLength(2);
+  });
+
+  it("诚实降级：A 栈快照不可达 → 两类需求被丢弃（existing 无从自组·不造假缺口）", async () => {
+    const repos = createMemoryRepos();
+    await repos.materializedIntents.upsert(mi({
+      key: "sim_intent",
+      bindings: { solverKey: "", ruleKeys: [], constraintKeys: [], skillId: "", ontologySliceKey: "", stateVarKeys: ["Base.load"], propagationRuleKeys: ["pr_x"] },
+    }));
+    const deps: PreAnalyzeDeps = { repos, config: { DATACORE_BASE_URL: undefined, SERVICE_TOKEN: undefined } };
+    const report = await preAnalyzeQuery(deps, {
+      tenantId: "demo", taskId: "task_s0b", query: "q",
+      classification: classification(["sim_intent"]), generatedAt: "2026-07-11T00:00:00.000Z",
+    });
+    const kinds = new Set(report.gapAnalysis!.entries.map((e) => e.kind));
+    expect(kinds.has("state_var")).toBe(false);
+    expect(kinds.has("propagation_rule")).toBe(false);
+    expect(listSandboxConfigGaps(report)).toEqual([]);
   });
 });
 

@@ -40,6 +40,10 @@ const SIDE_BY_KIND: Record<ModuleKind, GapSide> = {
   agent: "cross_system",
   scene: "cross_system",
   mcp: "cross_system",
+  // S0 沙盘配套（WO-SANDBOX-CONFIG-COVERAGE §3.2）：state_var=结构层；propagation_rule 取 cross_system
+  // 拓扑序最后位（先有派生属性/链路才建规则）——与 DataCore MODULE_PROVISIONERS 同源。
+  propagation_rule: "cross_system",
+  state_var: "structure",
 };
 
 /** kind → autoCreatable（solver 是代码不能自动建 → 缺则 MISSING·落工单；其余可 scaffold）。 */
@@ -57,10 +61,13 @@ const AUTOCREATABLE_BY_KIND: Record<ModuleKind, boolean> = {
   agent: true,
   scene: true,
   mcp: true,
+  // S0：二者无 scaffolder（系数/formula 需领域判断）→ 缺则 MISSING → MANUAL/工单（诚实·与 DataCore 同源）。
+  propagation_rule: false,
+  state_var: false,
 };
 
-/** A 栈 6 类（有 existing()·DataCore registry-snapshot 返回；PRD §3）。 */
-const A_STACK_KINDS: readonly ModuleKind[] = ["dataset", "kb_doc", "ontology_type", "rule", "slice", "solver"];
+/** DataCore 直查 8 类（有 existing()·registry-snapshot 返回；PRD §3 + S0 沙盘配套两类）。 */
+const A_STACK_KINDS: readonly ModuleKind[] = ["dataset", "kb_doc", "ontology_type", "rule", "slice", "solver", "propagation_rule", "state_var"];
 
 /**
  * 需求树推导（纯函数·R6·§6「复用分类器不造轮子」）：ClassificationResult 候选意图 → 各意图**真实绑定**
@@ -88,8 +95,31 @@ export function deriveRequirements(
     for (const rk of b.ruleKeys ?? []) push("rule", rk);
     for (const ck of b.constraintKeys ?? []) push("rule", ck);
     if (mi.mode === "AGENT_FIRST") push("agent", b.agentId);
+    // S0（WO-SANDBOX-CONFIG-COVERAGE §3.4）：时序推演意图声明的沙盘配套 → 需求树（声明了才诊断,
+    // 不声明零变化——诚实边界:智能推导属 S1,此处只消费绑定里的静态声明·R6）。
+    for (const sv of b.stateVarKeys ?? []) push("state_var", sv);
+    for (const pk of b.propagationRuleKeys ?? []) push("propagation_rule", pk);
   }
   return req;
+}
+
+// —— S0（WO-SANDBOX-CONFIG-COVERAGE §3.5）沙盘配套缺口 → GrowthTicket 落点（纯函数·server 侧接线消费） ——
+export interface SandboxConfigGap {
+  kind: "propagation_rule" | "state_var";
+  key: string;
+}
+
+/**
+ * 从预分析报告抽沙盘配套 MISSING 项（传导规则/状态变量·autoCreatable:false → 非 EXISTS 即 MISSING）。
+ * 纯函数（R6）；无该两 kind（未声明需求/S1 未落）→ 空数组 = 零行为变化（暗发惰性）。
+ */
+export function listSandboxConfigGaps(report: PreAnalysisReport): SandboxConfigGap[] {
+  const out: SandboxConfigGap[] = [];
+  for (const e of report.gapAnalysis?.entries ?? []) {
+    if (e.kind !== "propagation_rule" && e.kind !== "state_var") continue;
+    for (const i of e.items) if (i.status === "MISSING") out.push({ kind: e.kind, key: i.key });
+  }
+  return out;
 }
 
 /** 严重度/补法叠加（§10：预分析咨询信号·永不 BLOCKER/ERROR；EXISTS=INFO·缺口=WARNING）。 */

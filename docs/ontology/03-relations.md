@@ -2,7 +2,7 @@
 
 <!-- 自动生成·勿手改 -->
 > ⚠ **本文件由 `scripts/build-ontology-slices.mjs` 从母体 `docs/SYSTEM-ONTOLOGY.md §3` 派生**（本体克隆切片·层 2）。
-> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `3523cde3f3bd8bd6`。
+> **改接线改母体 §3，再跑 `node scripts/build-ontology-slices.mjs` 同步**（勿直接改本文·门 `ontology-slices:check` 守漂移）。母体 hash `29b9d14c4fce7353`。
 
 ---
 
@@ -237,6 +237,9 @@ WO-SIM-PRESET-INJECT(命门·治 G-3 launcher→view 接缝·G-VIS-1·additive)�
   **落点键修**：`useQuickLaunch` 导航用 `normalizeViewKey(targetView)`(project→project-sim)——ViewPage 按 workspace.views 规范键查视图,短键 /v/project 查不到→ForbiddenPage(真点卡落空白)。
   **参数对齐**：`scenarioSlotsToPreset` modelId→model·demandDelta(相对)→绝对 demand(以 DEFAULT_QTY=40 为基·0.2→48)·weeks 直传(治「名不同/相对vs绝对」)。**4 视图读通道**：project-sim(型号/需求/时窗→capacity_forecast)·plan-audit(cashCushion 元→亿→现金垫)·plan-generate(目标键 override)·sop-balance(C5 示例占位值未改→运行前软阻断防喂 C21)。URL 深链通道保留(deep-link 兼容·分享链接走 URL·launcher 走 sessionStore)。
   牙齿 `resolveSimPreset`/`scenarioSlotsToPreset` R14 型号白名单+R6 裁剪。真启动器点卡 e2e(真浏览器·点 S01 卡「4680-NCM 加 20% 六周」→落 /v/project-sim→型号 4680-NCM·需求 input=48(=40×1.2·非默认 40)·6周·前端 input==求解器入参·oracle qty=48)：docs/evidence/SIM-PRESET-INJECT-fde.md(v2·BLOCK 复修)
+S0 沙盘配套进 gap 覆盖(WO-SANDBOX-CONFIG-COVERAGE·已落 2026-07-11)：时序推演意图声明配套(IntentBindings.stateVarKeys/propagationRuleKeys)
+  → preAnalyzeQuery/diffGap 诊断「这推演缺哪些传导规则/状态变量」(state_var existing=derivedProperties 真读·propagation_rule existing=sim_propagation_rule PUBLISHED 真读)
+  → MISSING → GrowthTicket(骨架工单·幂等锚 [sandbox-config:*]·收口 /admin/tickets)——沙盘惰性静止前先有缺口提示(§2.I 登记·G-9 配套环)。
 WO-CAP-07-MODEL-DIM(链路⑤·型号产能链前端 surface·additive·闭「后端有·前端未 surface」)：**型号维度切片进推演沙盘**——后端型号维度早现成（`capacity_forecast` 按 modelId 建·`catalog.ts`；型号可产基地网络 `PRODUCIBLE_AT`·Model 一等类型 `graphmeta.ts`），此前推演沙盘只基地/全局态视角、从不 surface 型号维度。
   **链路**：`SandboxView` 挂 `ModelCapacitySlice`(独立 panel·不动 KPI/命令条/DAG 区) → 型号下拉**来自本体 Model 对象** `GET /a/v1/objects?type=Model`(R14 配置驱动·非写死·what-if 带入型号作初值) → 选型号 `capacity_forecast(modelId,qty,weeks)`(经 `useLiveSolver`·同前端既有求解路径) → 展示该型号 **P50/P90/缺口/主瓶颈** + **型号可产基地网络**(perBaseRows=可产基地·带各基地瓶颈/紧张度；nonProducible=不可产基地；producibleCount/totalBases 收敛)。KILL-MOCK-RED：紧张度 `live!==true` → 灰「估算」不染决策红。
   牙齿 `test/wo-cap-07-model-dim.test.tsx`(型号列表来自 Model 对象非写死·选型号逐值出 P50/P90/缺口/主瓶颈+可产基地网络·切型号重调求解器·无 Model 诚实空态)。真起 datacore+agentcore·真浏览器逐值对照(admin/demo1234·/v/sim-sandbox 选 4680-NCM→P50 5.2/P90 4.9/缺口 35.1/主瓶颈 设备OEE·可产基地 常州/成都/合肥·3/12 收敛·逐值==capacity_forecast 端点·下拉==本体 Model 对象)：docs/evidence/wo-cap-07-model-dim-fde.md

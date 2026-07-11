@@ -208,6 +208,24 @@ export const PlanSceneNeedSchema = z.object({
 });
 export type PlanSceneNeed = z.infer<typeof PlanSceneNeedSchema>;
 
+// —— 沙盘配套 need（WO-SANDBOX-CONFIG-COVERAGE·S0）：让"某推演缺哪些传导规则/状态变量"可被 gap 引擎诊断。 ——
+export const PlanPropagationRuleNeedSchema = z.object({
+  /** 传导规则稳定键（对齐 PropagationRule.key·表 sim_propagation_rule）。 */
+  key: z.string(),
+  sourceStateVar: z.string(),
+  viaLinkKey: z.string(),
+  targetStateVar: z.string(),
+});
+export type PlanPropagationRuleNeed = z.infer<typeof PlanPropagationRuleNeedSchema>;
+
+export const PlanStateVarNeedSchema = z.object({
+  /** 挂在哪个对象类型。 */
+  typeKey: z.string(),
+  /** 派生属性名（数值状态变量·derivedProperties[].propKey）。 */
+  stateVar: z.string(),
+});
+export type PlanStateVarNeed = z.infer<typeof PlanStateVarNeedSchema>;
+
 export const BuildPlanSchema = z.object({
   id: z.string(), // bpl_
   tenantId: z.string(),
@@ -236,6 +254,9 @@ export const BuildPlanSchema = z.object({
   agentNeeds: z.array(PlanAgentNeedSchema).default([]),
   mcpNeeds: z.array(PlanMcpNeedSchema).default([]),
   sceneNeeds: z.array(PlanSceneNeedSchema).default([]),
+  // S0（WO-SANDBOX-CONFIG-COVERAGE）沙盘配套需求（向后兼容，缺省空·旧 BuildPlan 反序列化零破坏）
+  propagationRuleNeeds: z.array(PlanPropagationRuleNeedSchema).default([]),
+  stateVarNeeds: z.array(PlanStateVarNeedSchema).default([]),
   // PRD-fde §3.4 场景拓扑（comprehend/Kimi 产出；rawin 据此造"被问现象真实存在"的数据）。缺省=无（仅 FK 一致）。
   scenarioTopology: z.object({
     sharedResources: z.array(z.object({ resourceType: z.string(), sharedByType: z.string(), viaField: z.string(), count: z.number().int().min(1).default(1) })).default([]),
@@ -401,7 +422,7 @@ export type BuildWorkflowStartBody = z.infer<typeof BuildWorkflowStartBodySchema
 // 三处的"需要 vs 已有"收敛成一张跨模块统一 diff。模块全集 = BuildPlan 的全部 need 数组（13 类），
 // 一一对应注册表里的 ModuleProvisioner——新增模块必须注册（覆盖门禁强制，见 provisioners.test）。
 
-/** 模块全集（= BuildPlan 13 个 need 数组）。新增 BuildPlan need 数组 → 必须在此追加并注册 provisioner。 */
+/** 模块全集（= BuildPlan 15 个 need 数组）。新增 BuildPlan need 数组 → 必须在此追加并注册 provisioner。 */
 export const MODULE_KINDS = [
   // 内容类（content）：产数据/文档
   "dataset", "kb_doc",
@@ -411,6 +432,9 @@ export const MODULE_KINDS = [
   "solver",
   // 跨系统类（cross_system，AgentCore B 栈，经 scaffold 创建）
   "intent", "plan", "workflow", "skill", "agent", "scene", "mcp",
+  // 沙盘配套类（S0 WO-SANDBOX-CONFIG-COVERAGE·顺序追加 additive）：传导规则/状态变量入 gap 覆盖。
+  // 二者 S0 无 scaffolder（系数/formula 需领域判断·非零代码建模）→ autoCreatable:false·缺则 MISSING 落工单（诚实）。
+  "propagation_rule", "state_var",
 ] as const;
 export const ModuleKindSchema = z.enum(MODULE_KINDS);
 export type ModuleKind = z.infer<typeof ModuleKindSchema>;

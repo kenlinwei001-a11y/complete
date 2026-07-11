@@ -191,9 +191,7 @@
         "packages/contracts/src/execution-graph.ts",
         "scripts/check-workflow-dag.mjs"
       ],
-      "brokenArtifacts": [
-        "apps/agentcore/src/growth/execution-planner.ts"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-L2-decision-kernel.md": {
       "hasOntologyRef": true,
