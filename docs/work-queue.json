@@ -6656,10 +6656,11 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] "
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T06:59:55.059Z"
+        "wip": "2026-07-11T06:59:55.059Z",
+        "built": "2026-07-11T07:30:02.987Z"
       },
       "id": "WO-L2-1",
       "title": "决策制品契约 + CounterfactualResult 补 schema + 暗发双闸",
@@ -6694,13 +6695,15 @@
       "discipline": "暗发双闸·契约全 optional additive·双注册防恒真陷阱(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-1 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-1 dev2] ",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T07:15:36.018Z"
+        "wip": "2026-07-11T07:15:36.018Z",
+        "built": "2026-07-11T07:30:03.113Z"
       },
       "id": "WO-L2-2",
       "title": "Reasoning Engine + Counterfactual 编排(沿因果重算)",
@@ -6737,13 +6740,15 @@
       "discipline": "additive·反事实沿真派生重算非新引擎·无真源 PARTIAL 不造 delta(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-2 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-2 dev2] ",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev2",
       "at": {
-        "wip": "2026-07-11T07:23:55.026Z"
+        "wip": "2026-07-11T07:23:55.026Z",
+        "built": "2026-07-11T07:30:03.226Z"
       },
       "id": "WO-L2-3",
       "title": "Decision Package 装配 + Pareto 推荐 + ExplanationChain",
@@ -6780,7 +6785,8 @@
       "discipline": "additive·每 metric/delta/recommendedKey 必可溯 provId·凑不出 null 诚实空态(KILL-MOCK-RED)。",
       "lane": "LaneB",
       "assignedDev": "dev2",
-      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-3 dev2] "
+      "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-3 dev2] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7380,10 +7386,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
+      "role": "dev",
+      "cmd": "BUILT",
       "id": "WO-L2-3",
-      "at": "2026-07-11T07:23:55.026Z"
+      "at": "2026-07-11T07:30:03.226Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
