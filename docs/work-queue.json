@@ -6368,10 +6368,11 @@
       "reviewNote": "PASS 独立真跑(agent a96bf73d):RequirementGraph契约+QuestionAST解析器。契约七类AST逐字段对齐PRD§3·节点11类/边8类·source诚实位。R1 contracts-only。复用problemClassForIntent(单一源)/ClassificationResult非另造分类。确定性独立harness双跑字节一致(键序打乱仍一致·astId=ast_taskId派生非UUID·无Date.now/Math.random)。纯函数无接线:orchestrator.ts对buildRequirementGraph/parseQuestionAst零引用·QOS_REQUIREMENT_GRAPH defaultOff·关闸by-construction。9/9测·agentcore662全绿零回归。母体回写随L1A-3(PRD§8)正确·slices无漂移。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "at": {
-        "built": "2026-07-11T10:04:38.369Z"
+        "built": "2026-07-11T10:04:38.369Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L1A-2",
       "title": "Graph Builder(node/edge/property/event 推导)+ 三白名单门(纯函数·无接线)",
@@ -6409,13 +6410,15 @@
       "lane": "LaneA",
       "assignedDev": "dev1",
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-2 dev1] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent ad0333374):Graph Builder纯函数。契约RequirementGraph{nodes,edges,solverCandidates,dataRequirements,sliceTargets,coverageScore}对齐PRD·11节点/8边kind白名单·三白名单(object.ontologyType/solver.solverKey/data.roleType)by-construction。R6:零Date.now/Math.random·运行期双跑字节一致(47节点/15solverCandidates/coverageScore=1)。三白名单门check-requirement-graph.mjs green→red有牙(注入3幽灵solver/type/role全抓·58solverKey∈datacore REGISTRY)·已并入pnpm gates·17/17测。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "at": {
-        "built": "2026-07-11T10:04:38.528Z"
+        "built": "2026-07-11T10:04:38.528Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L1A-3",
       "title": "编排接线(暗发·观察态)+ 持久化 + 读端点 + 下游 I/O",
@@ -6453,7 +6456,8 @@
       "lane": "LaneA",
       "assignedDev": "dev1",
       "note": "[优先·落地即解锁Dev-2的L2-4整条Lane B后段] [LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-3 dev1] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent ad0333374):RequirementGraph接线暗发观察态。暗发关闸OFF(4199)vs ON(4200 QOS_REQUIREMENT_GRAPH=1)归一后task字节一致·纯additive卫句(关闸即改造前·orchestrator diff证)·ON 26步帧0error·OFF端点404旁路没执行。读端点GET/b/v1/queries/:id/requirement-graph 200逐值(problemClass=affected_scope_enumeration/47节点/15solverCandidates全∈SOLVER_REGISTRY/sliceTargets.rootType=Base)。entitlement双注册真跑坐实非恒真(agentcore registry.ts:114+datacore features.ts:132同键defaultOn:false·翻datacore override→404·恢复→200·证agentcore侧确有键不落恒真陷阱)——正是L1B-3漏的·L1A-3做对。异常吞不阻答题(sideband全try/catch在τ决策前await·degraded场景RG诚实降级0对象不臆造·答题照常AWAITING_CLARIFICATION 0error)。R2隔离(acme取demo taskId→404)·母体7处RequirementGraph·slices无漂移·agentcore684+datacore1160测绿(EXIT1仅vitest worker RPC超时infra flake非断言失败·并发25+进程CPU饥饿)。"
     },
     {
       "status": "DONE",
