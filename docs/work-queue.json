@@ -6135,10 +6135,11 @@
       "reviewNote": "PASS 独立真跑逐值(agent a044dbed):order_fullchain P90去固定haircut。真curl 24单铁验:同p50→不同p90(8单同p50=1.2572→8个不同p90 1.1229..1.1314·旧固定式应恒1.13148);p90/p50非恒0.9(24个不同比值0.8903-0.8999无一恰0.9)=mcP90Single种子化MC真分位。R6同so字节一致。靶向cockpit-order-fullchain绿·四包test全套RC0(datacore1128/agentcore653/frontend543)。"
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
-        "wip": "2026-07-11T06:22:48.976Z"
+        "wip": "2026-07-11T06:22:48.976Z",
+        "built": "2026-07-11T08:17:52.496Z"
       },
       "id": "WO-FAKE-06",
       "title": "apiClient 关键端点响应加 zod 运行时校验堵根(mock↔后端漂移即暴非静默坏)",
@@ -6165,13 +6166,15 @@
           }
         ]
       },
-      "discipline": "additive·前端版门加固堵整类漂移·治本(KILL-MOCK-RED 前端同源)。"
+      "discipline": "additive·前端版门加固堵整类漂移·治本(KILL-MOCK-RED 前端同源)。",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
-        "wip": "2026-07-11T06:22:49.037Z"
+        "wip": "2026-07-11T06:22:49.037Z",
+        "built": "2026-07-11T08:17:52.631Z"
       },
       "id": "WO-FAKE-07",
       "title": "契约漂移三修:QueryHistory 读 candidates[0].intentKey + queries path 枚举 WORKFLOW/AGENT + calibration mock 增 baselineOnly 分支",
@@ -6198,13 +6201,15 @@
           }
         ]
       },
-      "discipline": "additive·契约形对齐真后端·诚实降级态入测(KILL-MOCK-RED)。"
+      "discipline": "additive·契约形对齐真后端·诚实降级态入测(KILL-MOCK-RED)。",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
-        "wip": "2026-07-11T06:22:49.103Z"
+        "wip": "2026-07-11T06:22:49.103Z",
+        "built": "2026-07-11T08:17:52.731Z"
       },
       "id": "WO-FAKE-08",
       "title": "SimComparePanel+SandboxRunHistory tickMean 统一到分维/归一(并入或紧随 WO-CAP-03 KPI 口径)",
@@ -6234,13 +6239,15 @@
         ]
       },
       "discipline": "additive·统一 KPI 口径·去跨维扁平均误导聚合(KILL-MOCK-RED)。注:须与 WO-CAP-03 协调避重复/漏覆盖(deps 挂 WO-CAP-03-KPI-FIX)。",
-      "note": "[复验实证·agent aa972508] 真浏览器逐值坐实:沙盘多场景对比'全局态'显3339.5/8682.7/9952.2/10823.8/11272.9(差+7933.3·A/B热度条整条通红),同世界主面板'全局态'仅47.3;tick0刚分支即A=B=3339.5 vs 主KPI 47.3=铁证。根因确认SimComparePanel.tsx tickMean(L16-29)裸Σ所有stateVar÷值数·未做computeGlobalKpi的无界变量剔除+量纲归一·被totalDemand(≈160万)污染。修法=复用computeGlobalKpi/carrierMean(≤100过滤)。"
+      "note": "[复验实证·agent aa972508] 真浏览器逐值坐实:沙盘多场景对比'全局态'显3339.5/8682.7/9952.2/10823.8/11272.9(差+7933.3·A/B热度条整条通红),同世界主面板'全局态'仅47.3;tick0刚分支即A=B=3339.5 vs 主KPI 47.3=铁证。根因确认SimComparePanel.tsx tickMean(L16-29)裸Σ所有stateVar÷值数·未做computeGlobalKpi的无界变量剔除+量纲归一·被totalDemand(≈160万)污染。修法=复用computeGlobalKpi/carrierMean(≤100过滤)。",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
-        "wip": "2026-07-11T06:22:49.166Z"
+        "wip": "2026-07-11T06:22:49.166Z",
+        "built": "2026-07-11T08:17:52.861Z"
       },
       "id": "WO-FAKE-09",
       "title": "外部信号 provenance:ExternalSignalStrip 捏值去真机构名/挂 SYNTHETIC 徽标 + ProjectSim 写死 batches 挂 DataModeBadge+运行闸",
@@ -6267,13 +6274,15 @@
           }
         ]
       },
-      "discipline": "additive·provenance 诚实标注·mock 不冒充 LIVE 权威实测喂裁决(KILL-MOCK-RED)。"
+      "discipline": "additive·provenance 诚实标注·mock 不冒充 LIVE 权威实测喂裁决(KILL-MOCK-RED)。",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "at": {
-        "wip": "2026-07-11T06:22:49.227Z"
+        "wip": "2026-07-11T06:22:49.227Z",
+        "built": "2026-07-11T08:17:52.943Z"
       },
       "id": "WO-FAKE-10",
       "title": "魔法系数/硬编码阈收口(阈由后端下发·敞口/毛利去魔法折算·去伪溯源断言)",
@@ -6300,13 +6309,15 @@
           }
         ]
       },
-      "discipline": "additive·阈值后端下发·去前端魔法折算与伪溯源断言(KILL-MOCK-RED)。"
+      "discipline": "additive·阈值后端下发·去前端魔法折算与伪溯源断言(KILL-MOCK-RED)。",
+      "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "at": {
-        "wip": "2026-07-11T07:27:43.297Z"
+        "wip": "2026-07-11T07:27:43.297Z",
+        "built": "2026-07-11T08:17:53.015Z"
       },
       "id": "WO-L1A-1",
       "title": "RequirementGraph 契约 + QuestionAST 确定性解析器(纯函数·无接线)",
@@ -6341,7 +6352,8 @@
       "discipline": "暗发(QOS_REQUIREMENT_GRAPH)·契约全 optional additive·确定性无随机(KILL-MOCK-RED green→red)。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-1 dev1] "
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-1 dev1] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -6426,10 +6438,11 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1A-3 dev1] "
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "at": {
-        "wip": "2026-07-11T07:27:43.378Z"
+        "wip": "2026-07-11T07:27:43.378Z",
+        "built": "2026-07-11T08:17:53.095Z"
       },
       "id": "WO-L1B-1",
       "title": "ExecutionGraph 契约 + 线性 lift + 门(无接线)",
@@ -6464,7 +6477,8 @@
       "discipline": "暗发双闸·契约全 optional additive·图测谎 green→red(KILL-MOCK-RED)。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-1 dev1] "
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-1 dev1] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7416,8 +7430,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1.5-2",
-      "at": "2026-07-11T07:51:12.851Z"
+      "id": "WO-L1B-1",
+      "at": "2026-07-11T08:17:53.095Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
