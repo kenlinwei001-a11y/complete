@@ -1921,7 +1921,9 @@ export class Orchestrator {
    * WO-SANDBOX-AS-RENDER-TARGET（S1）· 时序推演意图 → 渲染进沙盘（五触发归一·对话侧）。返回 true=已终态处理（短路）。
    *  - 非时序意图 / feature `sim.sandbox_render` 关 → false（回落既有 Path A·零回归·旧路径未删 RL9）。
    *  - DEFERRED（hold/trend/policy 待 S6·或 scope 缺）→ 诚实文本答案 + COMPLETED（KILL-MOCK-RED 不假跑）。
-   *  - READY（shock）→ S0 配套预检：意图声明的传导规则/状态变量缺 → gap 文本（不渲染静止沙盘·§5.2 诚实）；齐 → sandbox_render 答案先行块。
+   *  - deterministic 分类的 shock（classification.model 以 `deterministic:` 开头·关键词级无 LLM 语义）→ DEFERRED
+   *    诚实缩范围·不起推演（G-SANDBOX-DET-SHOCK·绝不无 LLM 起推演）。
+   *  - READY（真 LLM 分类的 shock）→ S0 配套预检：意图声明的传导规则/状态变量缺 → gap 文本（不渲染静止沙盘·§5.2 诚实）；齐 → sandbox_render 答案先行块。
    */
   private async maybeRenderSandbox(
     task: QueryTask,
@@ -1942,6 +1944,23 @@ export class Orchestrator {
     };
     const assembled = assembleSimulationRequest(intent.key, simSlots, selectedObjects);
     if (assembled.status === "NOT_SIM") return false;
+
+    // WO-SANDBOX-SHOCK-NO-FLOOR（用户 2026-07-11 亲定扩红线：绝不无 LLM 起推演）· G-SANDBOX-DET-SHOCK。
+    // 只有真 LLM 语义分类的 shock 才起推演。classification.model 以 `deterministic:` 开头（关键词级
+    // bigram 匹配·无 LLM 语义）时，assembleSimulationRequest 的对象/stateVar 选取是纯关键词级推演——
+    // 诚实缩范围：走 DEFERRED、不装配 shock 沙盘推演（KILL-MOCK-RED·不假跑）。真 LLM 分类（model 非
+    // deterministic:*·如 claude-*/provider spec）才继续 READY 装配。hold/trend/policy 已由装配器 DEFERRED，
+    // 此处只收紧 shock 的 deterministic 分支。诚实收紧·直接生效（无 defaultOff 闸：红线不容默认关）。
+    if (assembled.status === "READY" && (task.classification?.model ?? "").startsWith("deterministic:")) {
+      await this.completeSandboxAnswer(task, [
+        {
+          type: "text",
+          markdown:
+            "⏳ 该冲击型时序推演由关键词级分类命中（无 LLM 语义分类）。为避免在无 LLM 语义下用关键词级匹配来选取推演对象/状态变量（会产出无据的推演），暂不起推演——诚实缩范围（KILL-MOCK-RED·绝不无 LLM 起推演）。配置可用的 LLM 供应商后即可对该冲击做真语义推演。",
+        },
+      ]);
+      return true;
+    }
 
     if (assembled.status === "DEFERRED") {
       await this.completeSandboxAnswer(task, [{ type: "text", markdown: `⏳ ${assembled.reason}` }]);
