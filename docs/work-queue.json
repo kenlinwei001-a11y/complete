@@ -6495,9 +6495,11 @@
       "reviewNote": "PASS 独立真跑(agent a96bf73d):ExecutionGraph契约+线性lift+门。三要素逐字段对齐PRD§3。TaskNode内嵌复用PlanStep(qos.ts:105 9类判别联合)非另造。线性lift对齐PRD·toLinearSteps∘fromLinearPlan≡steps往返无损。确定性双跑字节一致(默认LIFT_EPOCH 1970非墙钟)。纯函数无接线:engine/executor零引用·QOS_WORKFLOW_DAG/EXEC_PLANNER defaultOff。门workflow-dag:check真牙齿(58 solverKey白名单+5牙齿非法图全逮环/幽灵步/幽灵solver/非纯链/悬空前驱·dev亲手中和环检测green→red实证·入gates)。16/16测。母体§7登记门正确。"
     },
     {
-      "status": "TODO",
+      "status": "DONE",
       "owner": "",
-      "at": {},
+      "at": {
+        "done": "2026-07-11"
+      },
       "id": "WO-L1B-2",
       "title": "DAG 执行器(拓扑并行 + Gateway + 步级重试·无 durable·无接线编排)",
       "priority": "P1",
@@ -6533,7 +6535,8 @@
       "discipline": "暗发·additive·并行破坏确定性/parity 分歧→关闸回串行(KILL-MOCK-RED·真跑铁律0.4)。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-2 dev1] "
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-2 dev1] ",
+      "reviewNote": "PASS 独立真跑(agent a40f2b·46工具·真服务字节parity):DAG执行器。拓扑并行(Kahn就绪并发+扇入dependsOn.every+Gateway确定性守卫剪枝为SKIPPED)·步级重试有界退避(create_action_draft非幂等不重试R4)。暗发关闸=旧串行parity:engine.ts:429 useDag flag·真服务DAG-on(4198)vs serial(4199)answer逐字节一致11661=11661(KPI P50=5.0079/P90=4.6982逐值)·重构机械等价·agentcore677测全绿。R6:nodeId稳定归并零时钟随机双跑一致。门workflow-dag:check绿有牙(58白名单+5非法图全逮)。母体§7诚实分段(durable续跑/补偿留L1B-3·未过度声称§8簇①)。⚠非阻断:workflow-dag:check未并入pnpm gates聚合链(L1B-1接线遗漏·门本体绿·建议Dev-1收尾L1B时package.json补挂免CI漏跑)。"
     },
     {
       "status": "TODO",
