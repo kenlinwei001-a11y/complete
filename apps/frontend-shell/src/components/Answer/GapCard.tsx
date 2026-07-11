@@ -95,6 +95,9 @@ const GAP_DISPOSITION: Record<GapCode, { label: string; triggerable: boolean }> 
   NO_CAPABILITY: { label: "缺领域能力（需开发）", triggerable: false },
   // GAP-ACTIONABLE（PRD §3.4）：LLM 用途未绑定/密钥无效——真人到 设置→LLM 用途绑定 补，系统不能凭空造密钥（不可即时触发）。
   LLM_PURPOSE_UNBOUND: { label: "LLM 用途未绑定（去设置→LLM 用途绑定）", triggerable: false },
+  // WO-DB-LLM-REQUIRED-NO-FLOOR：建域 comprehend 硬依赖 LLM（不静默落地板造错语义域）——需真人补业务描述/换 provider。
+  COMPREHEND_NOT_UNDERSTOOD: { label: "LLM 未理解故事（补具体描述/数据后重建）", triggerable: false },
+  LLM_UNAVAILABLE: { label: "LLM 暂不可用（稍后重试/换 provider）", triggerable: false },
   // OTHER（含路径 B agent 中断）：触发自成长 LOOP 做真实 classifyGap 诊断+补，再续推。
   OTHER: { label: "未定位缺口（触发诊断）", triggerable: true },
 };

@@ -17,6 +17,8 @@ export const FILL: Record<GapCode, string> = {
   SHAPE_MISMATCH: "修渲染绑定使 ⊆ 求解器输出形状，或出工单",
   NO_CAPABILITY: "产出需开发 GrowthTicket（带 I/O 契约）→ code agent 施工",
   LLM_PURPOSE_UNBOUND: "设置→LLM 用途绑定：一次绑定该用途（配置可用 provider 与有效密钥·AES-GCM 落库）·所有同类问题即生效（非逐题绑·绑定任一大类即覆盖全部用途·无需逐意图单独绑定），再重跑本问句",
+  COMPREHEND_NOT_UNDERSTOOD: "把业务描述写具体（涉及哪些实体/流程/指标）或补充数据后重建域——LLM 未从故事理解出对象，系统不降级造地板域",
+  LLM_UNAVAILABLE: "LLM 暂不可用（超时/限流），稍后重试或在 设置→LLM 用途绑定 换可用 provider——不产地板域",
   // GAP-ACTIONABLE（P3 修）：绝不再是"人工核实内部错误"占位——即便未归类，也据真实 evidence 给可行动补法。
   OTHER: "据实跑 evidence 原文定位真实断点后补齐（保留原始错因，不以人工兜底占位掩盖真相）",
 };
@@ -37,6 +39,8 @@ const ACTIONABLE_WHAT_WHERE: Record<GapCode, { what: string; where: string }> = 
   SHAPE_MISMATCH: { what: "渲染绑定字段不在求解器输出形状（G-2）", where: "修渲染绑定使 ⊆ 求解器输出，或出工单" },
   NO_CAPABILITY: { what: "缺领域能力（本体/求解器根本没有）", where: "产出需开发 GrowthTicket（带 I/O 契约）→ code agent 施工" },
   LLM_PURPOSE_UNBOUND: { what: "LLM 用途未解析到可用 provider 或密钥无效", where: "设置→LLM 用途绑定：一次绑定该用途（配置 provider 与有效密钥）·所有同类问题即生效（非逐题绑·无需逐意图单独绑定）" },
+  COMPREHEND_NOT_UNDERSTOOD: { what: "LLM 未能从故事理解出任何对象（建域 comprehend 不落地板冒充理解）", where: "把业务描述写具体（实体/流程/指标）或补数据后重建域" },
+  LLM_UNAVAILABLE: { what: "LLM 瞬时不可用（超时/限流·重试仍失败）", where: "稍后重试或在 设置→LLM 用途绑定 换可用 provider（不产地板域）" },
   OTHER: { what: "未归类内部错误（真实 evidence 原文已保留）", where: "据 evidence 原文定位真实断点后补齐（非人工兜底占位）" },
 };
 
@@ -87,6 +91,8 @@ export function gapDisposition(gapCode: GapCode): GapDisposition {
     case "SHAPE_MISMATCH":
     case "NO_CAPABILITY":
     case "LLM_PURPOSE_UNBOUND": // 缺配置绑定（真人到 设置→LLM 用途绑定 补 provider/密钥），系统不能凭空造密钥。
+    case "COMPREHEND_NOT_UNDERSTOOD": // WO-DB-LLM-REQUIRED-NO-FLOOR：LLM 未理解故事→真人把业务描述写具体/补数据后重建（不自动造）。
+    case "LLM_UNAVAILABLE": // 同上：LLM 瞬时不可用→真人稍后重试/换 provider（系统不降级造地板域）。
     case "OTHER":
     case "ANSWERABLE": // 非缺口（verdict 处理），二分穷尽性占位——落人工侧最保守。
       return "NEEDS_HUMAN";
