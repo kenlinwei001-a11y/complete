@@ -7983,7 +7983,8 @@
       "id": "WO-IMPORT-REPLACE-SYNTHETIC",
       "priority": "P3",
       "deps": [
-        "WO-IMPORT-MULTITABLE"
+        "WO-IMPORT-MULTITABLE",
+        "WO-DB-DERIVE-DECISION-FIELDS"
       ],
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G4真数据换hash假值(可选·配CAP-01):demo/租户配置world_source=synthetic|imported·选imported→求解器读Stage3.15导入真值而非hash·从源头削mockTightness/util稀释假值",
@@ -8010,14 +8011,42 @@
       "at": {
         "created": "2026-07-11T17:09:14.184Z"
       }
+    },
+    {
+      "id": "WO-DB-DERIVE-DECISION-FIELDS",
+      "priority": "P2",
+      "deps": [
+        "WO-IMPORT-MULTITABLE"
+      ],
+      "doc": "docs/REVIEW-field-schema-user-vs-platform.md",
+      "title": "派生引擎:导入记录字段→决策字段(REVIEW§4映射·util/oeeIndex←production_line.oee聚合·demandDelta←total_quantity vs forecast·costBreakdown←bom×material_cost·allocatedLineIds←production_order.line_id)·从真记录算非hash·治假值源头(G4核心)",
+      "note": "[LaneB·datacore·通用性] ⚠通用非电池专属:派生引擎按导入本体的字段映射算决策量·映射表可配置(不内联电池常数·守R14 debattery:check)·电池只是示例。REVIEW§4提供派生逻辑。green→red:导入真记录→决策字段应从真值算(非hash);植入hash值→门红。配WO-IMPORT-REPLACE-SYNTHETIC(G4·world_source=imported让求解器读派生真值)。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T17:49:23.475Z"
+      }
+    },
+    {
+      "id": "WO-DB-FIELD-CARDINALITY-ALIGN",
+      "priority": "P2",
+      "deps": [],
+      "doc": "docs/REVIEW-field-schema-user-vs-platform.md",
+      "title": "平台字段/基数对齐用户契约(REVIEW§5三处):①补Workshop车间层对象类型(Factory→Workshop→Line→Equipment·工艺粒度)②Equipment补mtbf/mttr/health_score(battery.ts:506·设备故障推演真信号·现只OEE)③修line_belongs_to_base基数 N:N→N:1(一线属一基地)",
+      "note": "[LaneB·datacore·通用性] ⚠通用非电池专属:Workshop层级/工艺走配置或导入(不硬内联电池·守R14);Equipment可靠性字段是通用能力(battery pack作示例填值);cardinality N:N→N:1是平台link定义修正(通用)。回写母体§2/§3(对象类型+关系基数)+pnpm ontology:slices。green→red:line_belongs_to_base应N:1·现N:N→改前基数错门可逮;Workshop对象类型应存在。",
+      "status": "TODO",
+      "owner": "",
+      "at": {
+        "created": "2026-07-11T17:49:23.475Z"
+      }
     }
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
-      "id": "WO-DB-LLM-REQUIRED-NO-FLOOR",
-      "at": "2026-07-11T17:34:04.169Z"
+      "role": "review",
+      "cmd": "REGISTER(field-schema §4§5)",
+      "id": "2单",
+      "at": "2026-07-11T17:49:23.475Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
