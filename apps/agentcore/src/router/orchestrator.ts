@@ -55,7 +55,9 @@ import {
   type PlannerRegistries,
 } from "../growth/execution-planner.js";
 import { plannerWhitelistFromConfig } from "../config.js";
-import { fetchOntologyGraph } from "../growth/pre-analyze.js";
+import { fetchOntologyGraph, fetchRegistrySnapshot } from "../growth/pre-analyze.js";
+// WO-SANDBOX-AS-RENDER-TARGET（S1）：时序推演意图 → SimulationRequest 归一装配（纯函数·source=dialogue）。
+import { assembleSimulationRequest, isSimIntent } from "./sim-request.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
 
@@ -1253,6 +1255,11 @@ export class Orchestrator {
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
+    // WO-SANDBOX-AS-RENDER-TARGET（S1·additive 绞杀式暗发·地标锚定：runPathA 顶部·不碰 Dev-1 L1-B serve/planner 区）：
+    // 时序推演意图（sim.shock/hold/trend/policy）+ feature `sim.sandbox_render` 开 → 归一 SimulationRequest → 渲染进沙盘
+    // （sandbox_render 答案先行）或诚实短路（hold/trend/policy 待 S6 / 配套缺 gap）。命中即 return（短路·不进既有 plan
+    // 解析/serve/executePathATail）；feature 关或非时序意图 → 直落既有 Path A（零回归·旧路径未删 RL9）。
+    if (await this.maybeRenderSandbox(task, auth, intent, slots)) return;
     // WO-L1B-5：serve 翻闸档（`QOS_EXEC_PLANNER==="serve"`·暗发）——STAGE-1 fall-through / STAGE-2 白名单综合图服务。
     // 缺省 OFF（未置 / "shadow"）→ 只走影子·serve 分支全不触发（判决地位不换手·NG6·可证回退）。
     const serve = this.deps.config.QOS_EXEC_PLANNER === "serve";
@@ -1899,5 +1906,86 @@ export class Orchestrator {
     } catch {
       return false; // 缺口处置失败不阻断任务终态（fail-safe：宁可少一张发育卡，不卡死任务）
     }
+  }
+
+  /**
+   * WO-SANDBOX-AS-RENDER-TARGET（S1）· 时序推演意图 → 渲染进沙盘（五触发归一·对话侧）。返回 true=已终态处理（短路）。
+   *  - 非时序意图 / feature `sim.sandbox_render` 关 → false（回落既有 Path A·零回归·旧路径未删 RL9）。
+   *  - DEFERRED（hold/trend/policy 待 S6·或 scope 缺）→ 诚实文本答案 + COMPLETED（KILL-MOCK-RED 不假跑）。
+   *  - READY（shock）→ S0 配套预检：意图声明的传导规则/状态变量缺 → gap 文本（不渲染静止沙盘·§5.2 诚实）；齐 → sandbox_render 答案先行块。
+   */
+  private async maybeRenderSandbox(
+    task: QueryTask,
+    auth: RequestAuth,
+    intent: IntentDefinition,
+    slots: Record<string, unknown>,
+  ): Promise<boolean> {
+    if (!isSimIntent(intent.key)) return false;
+    if (!(await this.deps.features.isEnabled(task.tenantId, "sim.sandbox_render", auth.token))) return false;
+
+    const selectedObjects = task.context.selectedObjects ?? [];
+    // 时序意图常声明零槽（渲染进沙盘·非求解器入参）→ 已填 slots 可能不含 delta/weeks/stateVar；并入 classification
+    // 抽取全量（extractedSlots）+ presetSlots，使装配器拿到完整抽取上下文（已填 slots 优先·R6 确定性合并顺序固定）。
+    const simSlots: Record<string, unknown> = {
+      ...(task.classification?.extractedSlots ?? {}),
+      ...(task.context.presetSlots ?? {}),
+      ...slots,
+    };
+    const assembled = assembleSimulationRequest(intent.key, simSlots, selectedObjects);
+    if (assembled.status === "NOT_SIM") return false;
+
+    if (assembled.status === "DEFERRED") {
+      await this.completeSandboxAnswer(task, [{ type: "text", markdown: `⏳ ${assembled.reason}` }]);
+      return true;
+    }
+
+    // READY（shock）· S0 配套预检（复用 S0 覆盖：意图声明 stateVarKeys/propagationRuleKeys vs DataCore registry-snapshot）。
+    const gapText = await this.sandboxConfigPrecheck(task.tenantId, intent.key);
+    if (gapText) {
+      await this.completeSandboxAnswer(task, [{ type: "text", markdown: gapText }]);
+      return true;
+    }
+
+    await this.completeSandboxAnswer(task, [
+      { type: "text", markdown: assembled.block.headline },
+      assembled.block,
+    ]);
+    return true;
+  }
+
+  /** 终态组装（沙盘渲染/诚实短路共用·不重造 answer 组装）：patch COMPLETED + answer + answer.final 事件 + 计数。 */
+  private async completeSandboxAnswer(task: QueryTask, blocks: Answer["blocks"]): Promise<void> {
+    const answer: Answer = { trustLevel: "VERIFIED_WORKFLOW", blocks, provenance: [], unverifiedNumerics: false };
+    await this.deps.repos.tasks.patch(task.id, {
+      status: "COMPLETED",
+      path: "WORKFLOW",
+      answer,
+      completedAt: new Date().toISOString(),
+    });
+    await this.deps.events.emit(task.id, "answer.final", answer);
+    this.deps.metrics.tasksTotal.inc({ path: "WORKFLOW", status: "COMPLETED" });
+  }
+
+  /**
+   * S0 配套预检（WO-SANDBOX-CONFIG-COVERAGE 覆盖复用）：意图声明的传导规则/状态变量 vs DataCore 现状快照。
+   * 缺 → 返回诚实 gap 文案（不渲染沙盘·免呈现无传导静止态）；齐/未声明/快照不可达 → null（放行·诚实降级不阻断，
+   * 沙盘客户端遇缺自行诚实静止）。GrowthTicket 由 S0 后台 preAnalyzeQuery 路径落（growth.pre_analysis 开时·此处不重复开票）。
+   */
+  private async sandboxConfigPrecheck(tenantId: string, intentKey: string): Promise<string | null> {
+    const mi = await this.deps.repos.materializedIntents.byKey(tenantId, intentKey);
+    const declaredStateVars = mi?.bindings.stateVarKeys ?? [];
+    const declaredRules = mi?.bindings.propagationRuleKeys ?? [];
+    if (declaredStateVars.length === 0 && declaredRules.length === 0) return null;
+    const snap = await fetchRegistrySnapshot(this.deps.config, tenantId);
+    if (!snap) return null; // 快照不可达 → 诚实降级不阻断（不造假缺口）
+    const haveSV = new Set(snap.state_var ?? []);
+    const havePR = new Set(snap.propagation_rule ?? []);
+    const missingSV = declaredStateVars.filter((k) => !haveSV.has(k));
+    const missingPR = declaredRules.filter((k) => !havePR.has(k));
+    if (missingSV.length === 0 && missingPR.length === 0) return null;
+    const parts: string[] = [];
+    if (missingPR.length > 0) parts.push(`传导规则「${missingPR.join("、")}」`);
+    if (missingSV.length > 0) parts.push(`状态变量「${missingSV.join("、")}」`);
+    return `⚠️ 该时序推演的配套尚缺：${parts.join("；")}。需先建模发布这些配套（系数×延迟/派生属性），补齐后即可推演。为避免呈现无传导的静止沙盘，暂不渲染（诚实边界·KILL-MOCK-RED）。`;
   }
 }
