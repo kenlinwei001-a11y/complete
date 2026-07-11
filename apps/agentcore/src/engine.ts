@@ -398,8 +398,10 @@ export class ExecutionEngine {
      * L1-B WO-L1B-2（§2.1 执行器派发接缝·暗发）：显式 DAG 结构（gateways/多前驱）。
      * 有则 DAG 执行器直接跑该图；无则在 QOS_WORKFLOW_DAG=1 时由 steps 线性 lift 出链图（parity 路径）。
      * 综合图产出归 WO-L1B-4/5（规划器）；本 WO 提供派发接线，缺省 OFF 永走旧串行。
+     * WO-L1B-5：serve 翻闸时传入 `ExecutionGraph`（synthesizePlan 综合图）——DAG 开走拓扑并行，
+     * DAG 关则忽略 graph 走 `opts.steps`（调用方已线性化综合图·串行 parity）。
      */
-    graph?: DagGraphInput;
+    graph?: DagGraphInput | ExecutionGraph;
   }): Promise<WorkflowResult> {
     const executor = this.makeExecutor(opts.taskId, opts.ctx, opts.budgetForTools);
     const skills = await this.resolveSkillRefs(opts.ctx.tenantId, opts.skillRefs);

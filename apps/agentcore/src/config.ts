@@ -72,10 +72,30 @@ const ConfigSchema = z.object({
    * 本 WO 仅落契约 + 暗发开关·尚未接线规划器（WO-L1B-4 起接线）。
    */
   QOS_EXEC_PLANNER: z.string().optional(),
+  /**
+   * L1-B WO-L1B-5（PRD §2.2 STAGE-2·serve 白名单翻闸·配置态·摘除=秒级回退）：
+   * 逗号分隔的 intentKey 集——`QOS_EXEC_PLANNER="serve"` 时**仅**这些 intent 的模板计划被综合图替换服务
+   * （非白名单 intent 仍走模板·`resolvePlanForIntent` 判决地位不换手·NG6）。缺省空 = STAGE-2 全量回模板
+   * （只 STAGE-1 fall-through 生效·零回归）。清空该 env = 秒级回退 STAGE-2（§9 回退杠杆 V8③）。
+   */
+  QOS_PLANNER_WHITELIST: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;
+
+/**
+ * L1-B WO-L1B-5：解析 STAGE-2 serve 白名单（`QOS_PLANNER_WHITELIST` 逗号分隔·去空去重·确定性）。
+ * 缺省空集 → STAGE-2 不翻任何 intent（全量回模板·只 STAGE-1 生效）。
+ */
+export function plannerWhitelistFromConfig(config: AppConfig): Set<string> {
+  return new Set(
+    (config.QOS_PLANNER_WHITELIST ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  );
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return ConfigSchema.parse(env);

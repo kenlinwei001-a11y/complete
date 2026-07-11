@@ -3,6 +3,7 @@ import type {
   AnswerBlock,
   ClarificationReplyBody,
   ClassificationResult,
+  ExecutionGraph,
   ExecutionPlan,
   IntentDefinition,
   PlannerShadowRecord,
@@ -15,7 +16,7 @@ import type {
   SubmitQueryBody,
   TemplateValue,
 } from "@platform/contracts";
-import { ErrorCodes, problemClassForIntent, isProblemClassCovered } from "@platform/contracts";
+import { ErrorCodes, problemClassForIntent, isProblemClassCovered, validateExecutionGraph } from "@platform/contracts";
 import { resolvePlanForIntent } from "../catalog/service.js";
 import { parseDataCoreSpec } from "../llm/providers.js";
 import type { RequestAuth } from "../auth.js";
@@ -48,9 +49,12 @@ import { VALID_SOLVER_KEYS, buildRequirementGraph, parseQuestionAst } from "../g
 import {
   buildPlannerShadowRecord,
   diffPlannerShadow,
+  isFallbackGraph,
+  linearizeExecutionGraph,
   synthesizePlan,
   type PlannerRegistries,
 } from "../growth/execution-planner.js";
+import { plannerWhitelistFromConfig } from "../config.js";
 import { fetchOntologyGraph } from "../growth/pre-analyze.js";
 
 const CLARIFICATION_TIMEOUT_MS = 10 * 60_000;
@@ -434,8 +438,16 @@ export class Orchestrator {
    */
   private readonly plannerShadows = new Map<string, PlannerShadowRecord>();
   private static readonly PLANNER_SHADOW_CAP = 512;
+  /** WO-L1B-5：STAGE-2 serve 白名单（config `QOS_PLANNER_WHITELIST` 派生·进程级不变·摘除 env=秒级回退）。 */
+  private plannerWhitelistMemo?: Set<string>;
 
   constructor(private readonly deps: OrchestratorDeps) {}
+
+  /** WO-L1B-5：STAGE-2 serve 白名单（延迟计算一次·配置态·非白名单 intent 仍走模板·判决不换手 NG6）。 */
+  private plannerWhitelist(): Set<string> {
+    if (!this.plannerWhitelistMemo) this.plannerWhitelistMemo = plannerWhitelistFromConfig(this.deps.config);
+    return this.plannerWhitelistMemo;
+  }
 
   /** WO-L1B-4：读规划器影子记录（观察态·测试/内省用·不经端点·零用户可见）。 */
   getPlannerShadow(taskId: string): PlannerShadowRecord | undefined {
@@ -813,22 +825,7 @@ export class Orchestrator {
       const reqGraph = await this.deps.repos.requirementGraphs.getByTaskId(tenantId, taskId);
       if (!reqGraph) return; // L1-A 需求图未产（QOS_REQUIREMENT_GRAPH 关）→ 无可影子·诚实跳过
 
-      // 注册表读（IO 在纯函数外·synthesizePlan 本身无 IO·R6）：solverKey 白名单 + 已发布 Skill/Agent。
-      const skills = (await this.deps.repos.skills.listByTenant(tenantId)).filter((s) => s.status === "PUBLISHED");
-      const agents = (await this.deps.repos.agents.listByTenant(tenantId)).filter((a) => a.status === "PUBLISHED");
-      // 本意图模板计划绑定的 skill key（scenarioMatch 因子·plan.skillRefs → key）。
-      const boundSkillKeys = new Set<string>();
-      for (const ref of plan.skillRefs ?? []) {
-        const s = skills.find((x) => x.id === ref.skillId);
-        if (s) boundSkillKeys.add(s.key);
-      }
-      const registries: PlannerRegistries = {
-        validSolverKeys: VALID_SOLVER_KEYS,
-        skills,
-        agents,
-        boundSkillKeys,
-      };
-
+      const registries = await this.loadPlannerRegistries(tenantId, plan);
       const synthesized = synthesizePlan(reqGraph, registries, {
         generatedAt: reqGraph.generatedAt, // R6：复用需求图确定性时刻（内部不取时钟）
         intentKey: intent.key,
@@ -839,6 +836,54 @@ export class Orchestrator {
       await this.recordPlannerShadow(tenantId, taskId, record);
     } catch {
       // 观察态·绝不阻断主链（NG6）——影子失败静默吞（不改 answer/route/decision·shadow 无用户可见留痕）。
+    }
+  }
+
+  /**
+   * WO-L1B-5：装配 synthesizePlan 注册表（IO 在纯函数外·synthesizePlan 本身无 IO·R6）——
+   * solverKey 白名单（requirement-graph:check 同源）+ 已发布 Skill/Agent + 本意图模板计划绑定的 skill key
+   * （scenarioMatch 因子·无模板则空集）。shadow / serve 共用（不重造）。
+   */
+  private async loadPlannerRegistries(tenantId: string, plan?: ExecutionPlan): Promise<PlannerRegistries> {
+    const skills = (await this.deps.repos.skills.listByTenant(tenantId)).filter((s) => s.status === "PUBLISHED");
+    const agents = (await this.deps.repos.agents.listByTenant(tenantId)).filter((a) => a.status === "PUBLISHED");
+    const boundSkillKeys = new Set<string>();
+    for (const ref of plan?.skillRefs ?? []) {
+      const s = skills.find((x) => x.id === ref.skillId);
+      if (s) boundSkillKeys.add(s.key);
+    }
+    return { validSolverKeys: VALID_SOLVER_KEYS, skills, agents, boundSkillKeys };
+  }
+
+  /**
+   * WO-L1B-5 · serve 翻闸综合图（STAGE-1 fall-through / STAGE-2 白名单共用·§2.2·全 try/catch 吞）：
+   * 载 L1-A RequirementGraph → synthesizePlan（纯函数·R6·注册表入参）→ **仅当产出真可执行综合图时返回**。
+   * 覆盖门 <0.8 / 综合非法 / 无需求图 / 回落模板（isFallbackGraph）→ 返回 null（调用方回落模板或保持 fall-through·
+   * **绝不 emit 非法图·绝不 degrade**）。final validateExecutionGraph 兜底（越界即回 null）。
+   * templatePlan：STAGE-2 传模板作 fallback（回落即返 null → 走模板）；STAGE-1 传 null（无模板可回落·回落即返 null → 保持今日 fall-through）。
+   */
+  private async trySynthesizeServeGraph(
+    taskId: string,
+    tenantId: string,
+    intent: IntentDefinition,
+    templatePlan: ExecutionPlan | null,
+  ): Promise<ExecutionGraph | null> {
+    try {
+      const reqGraph = await this.deps.repos.requirementGraphs.getByTaskId(tenantId, taskId);
+      if (!reqGraph) return null; // 无需求图（QOS_REQUIREMENT_GRAPH 关）→ 无可综合·回落模板/fall-through
+      const registries = await this.loadPlannerRegistries(tenantId, templatePlan ?? undefined);
+      const synthesized = synthesizePlan(reqGraph, registries, {
+        generatedAt: reqGraph.generatedAt, // R6 确定性时刻（内部不取时钟）
+        intentKey: intent.key,
+        ...(templatePlan ? { templateFallback: templatePlan } : {}),
+      });
+      // 覆盖门 <0.8 / 无可综合节点 / 综合非法 → synthesizePlan 已回落（isFallbackGraph）→ serve 返 null（诚实·不 degrade）。
+      if (isFallbackGraph(synthesized)) return null;
+      // 最终兜底（越界候选/环 zod 未必挡）：非法图绝不服务。
+      if (!validateExecutionGraph(synthesized, { solverKeys: registries.validSolverKeys }).ok) return null;
+      return synthesized;
+    } catch {
+      return null; // 任何异常 → 回落模板/fall-through（NG6·绝不阻断/degrade）
     }
   }
 
@@ -1208,9 +1253,27 @@ export class Orchestrator {
   ): Promise<void> {
     const task = await this.deps.repos.tasks.get(taskId);
     if (!task) return;
+    // WO-L1B-5：serve 翻闸档（`QOS_EXEC_PLANNER==="serve"`·暗发）——STAGE-1 fall-through / STAGE-2 白名单综合图服务。
+    // 缺省 OFF（未置 / "shadow"）→ 只走影子·serve 分支全不触发（判决地位不换手·NG6·可证回退）。
+    const serve = this.deps.config.QOS_EXEC_PLANNER === "serve";
+
     // 引用模式增量 §2.1：意图 → 计划执行时解析（planRef latest = 当前 PUBLISHED 最新版；pin = 精确版本）
     const resolution = await resolvePlanForIntent(this.deps.repos, intent);
     if (!resolution) {
+      // WO-L1B-5 STAGE-1（serve·fall-through·**零回归**）：无模板计划的 intent 今日直接 fail（degrade）。
+      // serve 档下若能综合出**真可执行图**（覆盖门≥0.8·非回落）→ 服务综合图跑 runWorkflowDag（真并行/durable
+      // 执行器）→ 真求解器真答案（R11 闭包）；综合不出（无需求图/覆盖不足/回落）→ 保持今日 fall-through（诚实·不 degrade）。
+      if (serve) {
+        const served = await this.trySynthesizeServeGraph(taskId, task.tenantId, intent, null);
+        if (served) {
+          await this.executePathATail(task, auth, intent, slots, slotMeta, {
+            steps: linearizeExecutionGraph(served), // QOS_WORKFLOW_DAG 关时串行 parity 通路（拓扑序）
+            graph: served, // QOS_WORKFLOW_DAG 开时走 DAG 拓扑并行
+            resolvedRefs: [{ kind: "plan", key: served.graphId, version: 1 }], // 留痕：服务的是综合图（非模板）
+          });
+          return;
+        }
+      }
       const refDesc = intent.planRef ? `${intent.planRef.planKey}@${intent.planRef.version}` : intent.planId;
       await this.failTask(taskId, "PLAN_NOT_FOUND", `plan not found: ${refDesc}`);
       return;
@@ -1219,22 +1282,13 @@ export class Orchestrator {
     // §2.2 留痕：执行时解析到的实际版本
     const resolvedRefs: ResolvedRef[] = [{ kind: "plan", key: resolution.ref.key, version: resolution.ref.version }];
 
-    // L1-B WO-L1B-4 规划器影子段（PRD §2.2·QOS_EXEC_PLANNER·**STAGE-0 shadow ONLY**·暗发·可回退）：
+    // L1-B WO-L1B-4 规划器影子段（PRD §2.2·QOS_EXEC_PLANNER·shadow + serve 均落 divergence·暗发·可回退）：
     // resolvePlanForIntent（判决态·上方 :plan）**之后**、runWorkflowSteps（下方）**之前**，additive 影子跑
-    // synthesizePlan 对照模板计划落 divergence。**零用户可见变化**：不设 graph=synthesized、不改 steps/answer/
-    // 路由、不发 SSE 帧（serve/翻闸归 WO-L1B-5）。全 try/catch 吞——规划器失败绝不影响 answer/route/decision（NG6）。
-    // 缺省 OFF（QOS_EXEC_PLANNER 未置）→ 该段不执行 → pipeline 与改造前字节一致（对齐 QOS_REQUIREMENT_GRAPH 暗发范式）。
+    // synthesizePlan 对照模板计划落 divergence（观察态·测试/FDE 可读）。全 try/catch 吞——规划器失败绝不影响
+    // answer/route/decision（NG6）。缺省 OFF（QOS_EXEC_PLANNER 未置）→ 该段不执行 → pipeline 与改造前字节一致。
     if (this.deps.config.QOS_EXEC_PLANNER) {
       await this.runPlannerShadow(taskId, task.tenantId, intent, plan);
     }
-
-    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
-    this.deps.metrics.recordRouting(true);
-    await this.deps.events.emit(taskId, "routing.completed", {
-      path: "WORKFLOW",
-      intentKey: intent.key,
-      confidence: task.classification?.candidates[0]?.confidence,
-    });
 
     // O10（G-9 收尾）：来自场景卡的查询（context.scenarioKey）→ 卡声明的 rules[] 若未被既有 evaluate_rules 步 /
     // 求解器 evaluatedRules（轨E）覆盖 → 自动插一个 evaluate_rules 步，使卡规则在路径 A 真被评估透出 PASS/WARN/BLOCK。
@@ -1251,10 +1305,58 @@ export class Orchestrator {
     // 零回归点卡启动）。使"问武汉2170"真进求解器算 2170，而非静默回显烘焙的 4680/成都。
     steps = applyExtractedArgOverrides(steps, slots, slotMeta.sources);
 
+    // WO-L1B-5 STAGE-2（serve·白名单翻闸·配置态·摘除 env=秒级回退）：**仅**白名单 intent 用综合图替换模板；
+    // 非白名单 intent 仍用模板（判决地位不换手·NG6）。综合不出真可执行图（覆盖门<0.8/回落/异常）→ 保持模板（诚实·不 degrade）。
+    let servedGraph: ExecutionGraph | undefined;
+    if (serve && this.plannerWhitelist().has(intent.key)) {
+      const g = await this.trySynthesizeServeGraph(taskId, task.tenantId, intent, plan);
+      if (g) {
+        servedGraph = g;
+        // 综合图线性化作 DAG-关串行 parity 通路；仍应用 extracted 槽位覆盖（slot-truth 不因翻闸丢失）。
+        steps = applyExtractedArgOverrides(linearizeExecutionGraph(g), slots, slotMeta.sources);
+      }
+    }
+
+    await this.executePathATail(task, auth, intent, slots, slotMeta, {
+      steps,
+      graph: servedGraph,
+      skillRefs: plan.skillRefs, // SKILL-LIBRARY-EVERYWHERE §3：Path A 计划绑定方法论确定性消费于结论叙事
+      resolvedRefs,
+    });
+  }
+
+  /**
+   * runPathA 执行尾段（模板 / STAGE-1 / STAGE-2 共用·不重造终态组装）：patch EXECUTING → 派发执行器
+   * （`graph` 存在且 QOS_WORKFLOW_DAG 开 → DAG 拓扑并行；否则 `steps` 串行·parity）→ 终态答案组装 + slot-truth。
+   */
+  private async executePathATail(
+    task: QueryTask,
+    auth: RequestAuth,
+    intent: IntentDefinition,
+    slots: Record<string, unknown>,
+    slotMeta: { sources: Record<string, SlotSource>; substitutions: SlotSubstitution[] },
+    exec: {
+      steps: ExecutionPlan["steps"];
+      graph?: ExecutionGraph;
+      skillRefs?: ExecutionPlan["skillRefs"];
+      resolvedRefs: ResolvedRef[];
+    },
+  ): Promise<void> {
+    const taskId = task.id;
+    const resolvedRefs = exec.resolvedRefs;
+    await this.deps.repos.tasks.patch(taskId, { status: "EXECUTING_WORKFLOW", path: "WORKFLOW" });
+    this.deps.metrics.recordRouting(true);
+    await this.deps.events.emit(taskId, "routing.completed", {
+      path: "WORKFLOW",
+      intentKey: intent.key,
+      confidence: task.classification?.candidates[0]?.confidence,
+    });
+
     const budget = new BudgetTracker();
     const result = await this.deps.engine.runWorkflowSteps({
       taskId,
-      steps,
+      steps: exec.steps,
+      graph: exec.graph, // WO-L1B-5：serve 综合图（DAG 开走拓扑并行·DAG 关忽略走 steps 串行）
       slots,
       context: task.context,
       ctx: auth,
@@ -1262,7 +1364,7 @@ export class Orchestrator {
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
       trustLevel: "VERIFIED_WORKFLOW",
       onResolvedRef: (r) => resolvedRefs.push(r),
-      skillRefs: plan.skillRefs, // SKILL-LIBRARY-EVERYWHERE §3：Path A 计划绑定方法论确定性消费于结论叙事
+      skillRefs: exec.skillRefs,
     });
 
     if (result.status === "FAILED") {

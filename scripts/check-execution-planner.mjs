@@ -25,10 +25,8 @@ const imp = async (p, label) =>
 const { RequirementGraphSchema, ExecutionGraphSchema, validateExecutionGraph, fromLinearPlan, toLinearSteps } =
   await imp("../packages/contracts/dist/index.js", "contracts dist");
 const { REGISTRY_SOLVER_KEYS } = await imp("../apps/datacore/dist/solvers/solver-registry.js", "datacore dist");
-const { synthesizePlan, diffPlannerShadow, isFallbackGraph, scoreSkill, pickBestSkill, pickBestAgent } = await imp(
-  "../apps/agentcore/dist/growth/execution-planner.js",
-  "agentcore dist",
-);
+const { synthesizePlan, diffPlannerShadow, isFallbackGraph, linearizeExecutionGraph, scoreSkill, pickBestSkill, pickBestAgent } =
+  await imp("../apps/agentcore/dist/growth/execution-planner.js", "agentcore dist");
 
 let red = false;
 const fail = (m) => {

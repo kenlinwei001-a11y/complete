@@ -28,6 +28,7 @@ import {
   type AgentDefinition,
   type ExecutionGraph,
   type ExecutionPlan,
+  type PlanStep,
   type PlannerDivergence,
   type PlannerShadowRecord,
   type RequirementGraph,
@@ -397,6 +398,41 @@ export function synthesizePlan(
   }
 
   return graph;
+}
+
+/**
+ * linearizeExecutionGraph（WO-L1B-5·serve 串行 parity·纯函数·R6）：综合 ExecutionGraph → 拓扑序 PlanStep[]。
+ * `QOS_WORKFLOW_DAG` 关时（无 DAG 执行器）串行跑综合图的 parity 通路——Kahn 拓扑（就绪集按 nodeId 稳定升序·
+ * tie-break 确定性）保证每节点依赖先于其出现 → 串行 runWorkflow 逐步产出正确 stepOutputs（依赖齐后才跑）。
+ * 综合图无 gateway（synthesizePlan 产出 gateways:[]）→ 纯依赖拓扑；含环（不应发生·synthesize 已 validate）→ 抛错（诚实·不静默）。
+ */
+export function linearizeExecutionGraph(graph: ExecutionGraph): PlanStep[] {
+  const byId = new Map(graph.nodes.map((n) => [n.nodeId, n]));
+  const indeg = new Map<string, number>();
+  for (const n of graph.nodes) indeg.set(n.nodeId, n.dependsOn.length);
+  // 就绪集：入度0·按 nodeId 升序稳定（R6 确定性·与 DAG 波次排序同源）。
+  const ready: string[] = [...graph.nodes.filter((n) => n.dependsOn.length === 0).map((n) => n.nodeId)].sort();
+  const succ = new Map<string, string[]>();
+  for (const n of graph.nodes) for (const d of n.dependsOn) (succ.get(d) ?? succ.set(d, []).get(d)!).push(n.nodeId);
+  const ordered: PlanStep[] = [];
+  const emitted = new Set<string>();
+  while (ready.length > 0) {
+    const id = ready.shift()!;
+    if (emitted.has(id)) continue;
+    emitted.add(id);
+    ordered.push(byId.get(id)!.step);
+    const next: string[] = [];
+    for (const s of (succ.get(id) ?? []).sort()) {
+      indeg.set(s, (indeg.get(s) ?? 0) - 1);
+      if ((indeg.get(s) ?? 0) <= 0 && !emitted.has(s)) next.push(s);
+    }
+    for (const s of next) if (!ready.includes(s)) ready.push(s);
+    ready.sort();
+  }
+  if (ordered.length !== graph.nodes.length) {
+    throw new Error(`linearizeExecutionGraph: 拓扑覆盖 ${ordered.length}/${graph.nodes.length}（存在环或悬空依赖·非法综合图）`);
+  }
+  return ordered;
 }
 
 // ── 影子 divergence（综合图 vs 模板·纯派生·acceptance C4 parity 聚合口）────────────
