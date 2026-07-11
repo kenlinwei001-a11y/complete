@@ -7989,13 +7989,66 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G2客户本体直导:契约OntologyImportBundle({objects,relations})+端点POST /a/v1/ontology/import(校验→逐对象upsertType+逐关系upsertLinkType复用:2002/:2273→按名匹配数据建sourceBindings→发布)",
       "note": "[LaneB·datacore·索引§2序#4·与BSTACK-DERIVE] 诚实边界:bundle类型/关系与已上传数据对不上(字段缺/表缺)→报覆盖缺口·不静默建空类型。验收:导入CALB objects.json(7类)+relations.json(HAS/USES/PRODUCES)→/admin/modeling真见7类+关系。回写§2登OntologyImportBundle。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev4-import",
       "built": "[BUILT dev4-import] 契约扩 import.ts(OntologyImportBundle/Gap/Result) + modeling.ts importOntologyBundle(复用 upsertType/upsertLinkType·name→PascalCase typeKey·domain 非14域即拒·link key `${rel}_${from}_${to}` 同名关系不冲突·bindDatasets 按名绑 RawDataset 建 sourceBindings) + app.ts POST /a/v1/ontology/import(暗发·strict 缺口 409) + feature data-import.ontology-bundle(defaultOn:false)。诚实边界(KILL-MOCK-RED·不静默建空/断链):关系端点/ref 解析不到→DANGLING_RELATION/UNKNOWN_REF·该链/ref 不建;bindDatasets 表缺 MISSING_TABLE/字段缺 MISSING_FIELD;strict 缺口→不建不发布 409。真跑:暗发门 404→开→直导 CALB 7 类+6 关系(HAS/USES/PRODUCES)→published v1→图谱真见 7 类;断链/未知 ref green→red;strict 409·0 类型;非法域 400;bindDatasets 真 sourceBindings+覆盖缺口。回写母体§2.B(登 OntologyImportBundle)+§3+slices。测:test/import-ontology.test.ts 7 用例·datacore 1201 全绿·gates 全绿。⚠共享 app.ts additive 新段·已 rebase。待审核方真跑复验。",
       "at": {
-        "created": "2026-07-11T15:46:52.629Z"
+        "created": "2026-07-11T15:46:52.629Z",
+        "built": "2026-07-11T18:17:18.884Z",
+        "done": "2026-07-11T18:17:18.884Z"
       },
-      "assignedDev": "dev4-import"
+      "assignedDev": "dev4-import",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "G2 客户本体直导端到端真可用(POST /a/v1/ontology/import)·独立真HTTP复验",
+        "verifiedBy": "独立agent真起datacore:4023+curl(非in-process inject)·2026-07-11·a336440",
+        "criteria": [
+          {
+            "id": "endpoint-real-import-killmock",
+            "type": "http",
+            "assert": "POST自造7类物流域(Warehouse/Dock/Truck/…)→GET /a/v1/ontology/object-types total=7全来自bundle;变名重测(Zebra_Alpha→ZebraAlpha)输出跟输入变=非硬编码假7类;refTo真建(Dock→Warehouse)",
+            "artifact": "apps/datacore/src/app.ts:3770"
+          },
+          {
+            "id": "hidden-feature-gate",
+            "type": "gate",
+            "assert": "features.ts:43 data-import.ontology-bundle defaultOn:false requires[data-builder];关闸fresh-tenant POST→404 FEATURE_NOT_FOUND;agentcore无该key引用=datacore-only无fail-open",
+            "artifact": "apps/datacore/src/features.ts:43"
+          },
+          {
+            "id": "dangling-ref-green-to-red",
+            "type": "http",
+            "assert": "引用Ghost类型→201但createdLinks=[]+gaps[DANGLING_RELATION,UNKNOWN_REF];GET refToTypeKey=null非静默建空链"
+          },
+          {
+            "id": "strict-409",
+            "type": "http",
+            "assert": "strict:true+缺口→HTTP409 createdTypes=[] ontologyVersion=null;GET类数=0(0半成品落库)"
+          },
+          {
+            "id": "r6-upsert-idempotent",
+            "type": "http",
+            "assert": "同bundle POST两次→createdTypes/createdLinks逐值一致;GET total=7 Warehouse count=1未翻倍",
+            "artifact": "apps/datacore/src/modeling.ts:305 importOntologyBundle"
+          },
+          {
+            "id": "coverage-gap-honest",
+            "type": "http",
+            "assert": "bindDatasets对不上→gaps[MISSING_FIELD,MISSING_TABLE]诚实报缺;GET sourceBindings真落库可溯(dataset+fieldMappings)"
+          },
+          {
+            "id": "tenant-isolation",
+            "type": "http",
+            "assert": "换tenant GET total=0 零泄漏"
+          },
+          {
+            "id": "no-fake-green-audit",
+            "type": "audit",
+            "assert": "import-ontology.test.ts真断言(每例独立GET校验persisted值:refToTypeKey/sourceBindings/count)非洞D写死200;in-process inject弱点已被独立curl+变名+隔离测试堵死",
+            "artifact": "packages/contracts/src/import.ts:136"
+          }
+        ]
+      }
     },
     {
       "id": "WO-IMPORT-SCENARIO",
@@ -8106,9 +8159,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "SPLIT(FIELD-CARDINALITY→SA-1/2/3)",
-      "id": "3单",
-      "at": "2026-07-11T18:02:46.993Z"
+      "cmd": "DONE(复验PASS)",
+      "id": "WO-IMPORT-ONTOLOGY",
+      "at": "2026-07-11T18:17:18.884Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
