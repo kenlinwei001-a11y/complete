@@ -7,6 +7,7 @@ import type {
   MaterializedIntent,
   ModuleKind,
   PreAnalysisReport,
+  RequirementGraph,
 } from "@platform/contracts";
 import { DATADEP_ROLE_CANONICAL, MODULE_KINDS, SOLVER_DATADEP, deriveSandboxConfigNeeds, diffGap, expandHiddenRequirements, sandboxConfigNeedKeys } from "@platform/contracts";
 import type { AppConfig } from "../config.js";
@@ -294,8 +295,46 @@ export async function assembleExisting(
 
 export interface PreAnalyzeDeps {
   repos: Repos;
-  config: Pick<AppConfig, "DATACORE_BASE_URL" | "SERVICE_TOKEN">;
+  // QOS_REQUIREMENT_GRAPH（暗发·sideband 是否会产 RequirementGraph）——本旁路据此决定是否**等待** RG 就绪
+  // （见 waitForRequirementGraph·治活路径竞态）。DATACORE_BASE_URL/SERVICE_TOKEN 供服务间快照/本体图拉取。
+  config: Pick<AppConfig, "DATACORE_BASE_URL" | "SERVICE_TOKEN" | "QOS_REQUIREMENT_GRAPH">;
   fetchImpl?: typeof fetch;
+}
+
+/**
+ * WO-SANDBOX-CONFIG-DERIVE-WIRE（活路径竞态闭·§8 断点）：等 orchestrator sideband 的 RequirementGraph 就绪。
+ *
+ * 根因：QOS 提交后 orchestrator 经 `setImmediate(runPipeline)` 异步跑管线——先 classify、`patch({classification})`
+ * （orchestrator.ts:707），**再** `buildRequirementGraphSideband` upsert RG（orchestrator.ts:713→797）；而后台
+ * 预分析旁路（server.ts startPreAnalysis）只轮询到 **classification** 落定即醒，遂在 RG upsert **之前**就调
+ * preAnalyzeQuery → `getByTaskId` 读空 → 派生沙盘配套 need 落空（活 POST 报告为空=历史红·非绕竞态的假绿）。
+ *
+ * 修：让预分析**自己等 RG 就绪**（不依赖外部抢跑顺序·不靠测试 seed 绕竞态）——
+ *   · RG 已在 → 立即返（含关闸 QOS_REQUIREMENT_GRAPH≠1：sideband 不产 RG → 不空等·诚实惰性）；
+ *   · QOS 开且暂无 RG → 短暂轮询至就绪；task 达终态仍无 RG（短路管线不产 RG）→ RG 恒不来（sideband 恒在
+ *     路由收尾/终态**之前** upsert）→ 停等返 undefined（空派生·零假阳·KILL-MOCK-RED）。
+ * R6：只影响**读时机**不影响报告内容（generatedAt 注入·同 RG+同快照 → 字节一致）。
+ */
+const RG_READY_WAIT_MS = 8000;
+const RG_READY_POLL_MS = 50;
+const RG_WAIT_TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+async function waitForRequirementGraph(
+  deps: PreAnalyzeDeps,
+  tenantId: string,
+  taskId: string,
+): Promise<RequirementGraph | undefined> {
+  let rg = await deps.repos.requirementGraphs.getByTaskId(tenantId, taskId);
+  // 已就绪 / sideband 关（不产 RG·不空等）→ 直返（R6·关闸零变化）。
+  if (rg || deps.config.QOS_REQUIREMENT_GRAPH !== "1") return rg;
+  const deadline = Date.now() + RG_READY_WAIT_MS;
+  while (!rg && Date.now() < deadline) {
+    const t = await deps.repos.tasks.get(taskId);
+    // sideband 恒在路由收尾（终态）之前 upsert RG → 终态仍无 RG ⇒ 该 task 永不产 RG（短路管线）→ 停等（诚实空派生）。
+    if (t && RG_WAIT_TERMINAL.has(t.status)) break;
+    await new Promise((r) => setTimeout(r, RG_READY_POLL_MS));
+    rg = await deps.repos.requirementGraphs.getByTaskId(tenantId, taskId);
+  }
+  return rg;
 }
 
 export interface PreAnalyzeInput {
@@ -334,7 +373,8 @@ export async function preAnalyzeQuery(deps: PreAnalyzeDeps, input: PreAnalyzeInp
   // RequirementGraph 传导语义真派生沙盘配套需求，并入 required（与意图静态声明并集去重）。RG 缺失（QOS_REQUIREMENT_GRAPH
   // 关·getByTaskId → undefined）/无传导语义 → 空派生 = 惰性零变化。纯函数 R6（同 RG → 同需求·同快照可缓存）。
   if (sandboxConfigDeriveEnabled) {
-    const rg = await deps.repos.requirementGraphs.getByTaskId(tenantId, taskId);
+    // 活路径竞态闭：等 sideband RG 就绪再派生（而非抢在 upsert 前读空·见 waitForRequirementGraph）。
+    const rg = await waitForRequirementGraph(deps, tenantId, taskId);
     if (rg) {
       const derivedKeys = sandboxConfigNeedKeys(deriveSandboxConfigNeeds(rg));
       const mergeKeys = (kind: ModuleKind, keys: string[]) => {
