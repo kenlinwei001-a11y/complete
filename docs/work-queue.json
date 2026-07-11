@@ -6013,11 +6013,12 @@
       }
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "reviewer",
       "at": {
         "wip": "2026-07-11T03:26:41.428Z",
-        "built": "2026-07-11T04:46:48.982Z"
+        "built": "2026-07-11T04:46:48.982Z",
+        "done": "2026-07-11T05:12:43.119Z"
       },
       "id": "WO-FAKE-02",
       "deps": [],
@@ -6040,14 +6041,16 @@
         "discipline": "additive·KILL-MOCK-RED·审核方亲建(下场)。"
       },
       "priority": "P0",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑逐值(agent a044dbed):plan_rootcause季/年去魔数。真curl季/年actual恒等op月值原值(需求达成率/毛利率/物料保障率 季比op=1.0·年比op=1.0·无×0.97/×1.04魔数);PERIODIC魔数+adj乘子已删;summary带投影披露(月值粒度投影非实测季/年未×粒度系数编造)·confidence.measurement=PARTIAL·kpiId加-quarter/-year。R6字节一致。三门RC0·靶向plan-drill-levels绿。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "reviewer",
       "at": {
         "wip": "2026-07-11T03:26:41.428Z",
-        "built": "2026-07-11T04:46:49.045Z"
+        "built": "2026-07-11T04:46:49.045Z",
+        "done": "2026-07-11T05:12:43.181Z"
       },
       "id": "WO-FAKE-03",
       "deps": [],
@@ -6070,14 +6073,16 @@
         "discipline": "additive·KILL-MOCK-RED·审核方亲建。"
       },
       "priority": "P0",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑逐值(agent a044dbed):责任人去hash。注入horizon90得3条planRows·distinct owners=[基地负责人（未指派）]·hash姓氏经理0个;RISK_OWNER_NAMES/riskHashN死代码grep清零(非注释引用)。附证FAKE-01生效(OEE/良率卡SYNTHETIC被决策级planRows正确排除)。R6字节一致。靶向risk-trajectory-defake绿。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "reviewer",
       "at": {
         "wip": "2026-07-11T03:26:41.428Z",
-        "built": "2026-07-11T04:46:49.105Z"
+        "built": "2026-07-11T04:46:49.105Z",
+        "done": "2026-07-11T05:12:43.241Z"
       },
       "id": "WO-FAKE-04",
       "deps": [],
@@ -6100,7 +6105,8 @@
         "discipline": "additive·KILL-MOCK-RED·审核方亲建。"
       },
       "priority": "P0",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑逐值(agent a044dbed):order_fullchain P90去固定haircut。真curl 24单铁验:同p50→不同p90(8单同p50=1.2572→8个不同p90 1.1229..1.1314·旧固定式应恒1.13148);p90/p50非恒0.9(24个不同比值0.8903-0.8999无一恰0.9)=mcP90Single种子化MC真分位。R6同so字节一致。靶向cockpit-order-fullchain绿·四包test全套RC0(datacore1128/agentcore653/frontend543)。"
     },
     {
       "status": "TODO",
@@ -6956,10 +6962,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
+      "role": "review",
+      "cmd": "DONE",
       "id": "WO-FAKE-04",
-      "at": "2026-07-11T04:46:49.105Z"
+      "at": "2026-07-11T05:12:43.241Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
