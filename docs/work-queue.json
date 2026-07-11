@@ -3698,13 +3698,13 @@
       "blockReason": ""
     },
     {
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "doc": "docs/DESIGN-query30-multihop-gaps.md",
       "at": {
         "todo": "2026-07-09T08:00:00.000Z",
         "wip": "2026-07-10T19:04:10.711Z",
-        "built": "2026-07-06T03:44:56.740Z",
+        "built": "2026-07-11T04:29:40.793Z",
         "blocked": "2026-07-09T09:01:56.417Z",
         "done": "2026-07-06T04:06:27.706Z",
         "open": "2026-07-09T09:41:58.013Z"
@@ -3717,7 +3717,7 @@
         "QUERY30-ONTOLOGY-EXT",
         "QUERY30-RULES"
       ],
-      "blockReason": "Phase1(KILL-MOCK-RED治本)已committed: countermeasure_combo除魔数假值→诚实降级(需真levers·datacore1019绿·齿测在)。但WO整体是分期epic·非单build: ①note称'10求解器函数在'不准——实测仅2/10存在(what_if_displacement+countermeasure_combo)·另8个(multi_plan_compare/cash_projection/labor_balance/energy_cost_schedule/full_cost_rollup/signal_propagation/reroute_decision/multi_constraint_schedule/capex_alternatives)全仓零命中MISSING; ②真'跨求解器编排'=映射异构子求解器产出(cert_schedule→schedule/changeover_sequence→savedVsDueMin/capex→windows·各不同·无公共release字段)到统一gap释放账本·属§2.5/2.6核心设计工作·非补丁; ③另需7workflow+2agent+5skill+30intent经ONTO-SCEN发育管道。请协调方拆分为分期WO(Q01 what_if_displacement NL打穿→8求解器横铺→编排层gap账本→workflow/agent/skill/intent发育)·分期铁律见设计§3。 ‖ [2026-07-09拆单] 已拆为 Q30-P0-DATAFOUND(数据地基·TODO)+Q30-P1-Q01VERT(Q01样板·gated on P0)·见 docs/DESIGN-query30-orch-split.md。dev 走 P0/P1 分期WO·勿直接啃本 epic。P2-P5 待 P1 复验绿后登。",
+      "blockReason": "",
       "gap": {
         "code": "NO_CAPABILITY",
         "holes": [
@@ -6950,10 +6950,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE",
-      "id": "WO-MERGE-02",
-      "at": "2026-07-11T04:27:57.013Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "QUERY30-ORCH",
+      "at": "2026-07-11T04:29:40.793Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
