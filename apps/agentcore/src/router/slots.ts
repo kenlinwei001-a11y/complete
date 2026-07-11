@@ -142,7 +142,7 @@ function labelOf(data: Record<string, unknown>): string | undefined {
  * **全局唯一**命中才自动绑定（唯一 score-1 候选免澄清）；多命中/零命中 → undefined（仍走域外澄清，不猜）。
  * 确定性：类型按 listObjectTypeKeys 顺序遍历；仅失败路径调用（不加热路径开销）。
  */
-async function resolveUniqueByName(
+export async function resolveUniqueByName(
   key: string,
   objectTypes: string[],
   ontology: OntologyClient,

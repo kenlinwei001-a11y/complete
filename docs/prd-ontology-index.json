@@ -167,8 +167,6 @@
         "scripts/check-requirement-graph.mjs"
       ],
       "brokenArtifacts": [
-        "apps/agentcore/src/growth/requirement-graph.ts",
-        "packages/contracts/src/requirement-graph.ts",
         "scripts/check-requirement-graph.mjs"
       ]
     },
@@ -234,7 +232,6 @@
       "brokenArtifacts": [
         "apps/agentcore/src/decision/hook.ts",
         "apps/agentcore/src/decision/kernel.ts",
-        "packages/contracts/src/decision-kernel.ts",
         "scripts/check-decision-kernel.mjs"
       ]
     },

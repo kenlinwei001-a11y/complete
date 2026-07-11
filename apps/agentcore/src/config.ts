@@ -53,6 +53,11 @@ const ConfigSchema = z.object({
    *  抽屉·不跳 /admin/actions·R17）。缺省关 = 改造前系统（抽屉无就地批复段·仍走 DataBuilder InPlaceApprovalPanel
    *  / /admin/actions·C3 回退演练·关闸=改造前系统）。 */
   CONSOLE_INDRAWER_APPROVE: z.string().optional(),
+  /** L1-A 需求图引擎（PRD-L1A-requirement-graph-engine §2.4·暗发 defaultOff·RL2·additive 可回退）：
+   *  =1 时在 QOS classify→τ 决策之间 additive 插入「问句→需求图」观察态旁路（纯咨询·不改判决/路由）。
+   *  缺省（OFF）100% 等价改造前 pipeline（旁路不执行·字节一致·可证回退）——对齐 QOS_CLASSIFY_FUSE 暗发范式。
+   *  注：WO-L1A-1 只落契约 + QuestionAST 纯函数解析器 + 本开关，尚未接线编排（旁路挂载归 WO-L1A-3）。 */
+  QOS_REQUIREMENT_GRAPH: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
 });
 

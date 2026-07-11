@@ -51,3 +51,4 @@ export * from "./intake-coverage.js";
 export * from "./capability.js";
 export * from "./solver-coverage.js";
 export * from "./pipeline.js";
+export * from "./requirement-graph.js";
