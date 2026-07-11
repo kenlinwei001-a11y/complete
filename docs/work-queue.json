@@ -7573,7 +7573,7 @@
     },
     {
       "id": "WO-SANDBOX-TRUST-BADGE-BE",
-      "status": "WIP",
+      "status": "BUILT",
       "priority": "P2",
       "owner": "dev1",
       "assignedDev": "dev1-后端",
@@ -7584,25 +7584,29 @@
       "title": "S2后端半:propagateTick/view-config 透传 dataMode 诚实位(真数值派生属性=LIVE·合成对象origin=SYNTHETIC·关键源滞后=STALE·传导系数未校准=UNCALIBRATED)+SimTickState加dataMode字段+SandboxViewConfig.nodeObjectState携每对象每变量来源位",
       "note": "[Lane沙盘后端·dev1·审核方拆缝2026-07-11] S2跨前后端:Dev-3已做前端半(契约additive+徽标+UNCALIBRATED派生+消费nodeObjectMode)·本单=后端透传半(Dev-3按划界不能碰后端)。⛔透传非造:复用现成SolverDataMode枚举(LIVE/MOCK/STALE/SYNTHETIC已有)+ObjectInstance.origin(SYNTHETIC血缘已有)·无真值退诚实缺省(KILL-MOCK-RED)。回写§2.I给SimTickState登dataMode·§7 genuine-sim断言扩沙盘。green→red:合成对象徽标应SYNTHETIC·真值应LIVE·植入假LIVE→genuine-sim:check红。与Dev-3前端半co-verify(真浏览器徽标对后端dataMode)。",
       "at": {
-        "wip": "2026-07-11T18:27:37.158Z"
-      }
+        "wip": "2026-07-11T18:27:37.158Z",
+        "built": "2026-07-11T19:22:04.603Z"
+      },
+      "blockReason": ""
     },
     {
       "at": {
-        "wip": "2026-07-11T18:27:37.242Z"
+        "wip": "2026-07-11T18:27:37.242Z",
+        "built": "2026-07-11T19:22:04.681Z"
       },
       "id": "WO-SANDBOX-BRANCH-INJECT",
       "title": "S3·分支注入不同应对+对比换决策维(交付/成本/齐套)",
       "doc": "docs/WO-SANDBOX-BRANCH-INJECT.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
       "note": "[沙盘重建·S3·依赖S1·dev3] 接CAP-05补差量。SimComparePanel(FAKE-08已修tickMean其上)。回退:白名单·关=回容器分支。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev1-后端"
+      "assignedDev": "dev1-后端",
+      "blockReason": ""
     },
     {
       "at": {
@@ -8446,10 +8450,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE(NO-FLOOR+S6)·BLOCK(S4)·RC-2 followup",
-      "id": "4单",
-      "at": "2026-07-11T19:20:17.402Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-SANDBOX-BRANCH-INJECT",
+      "at": "2026-07-11T19:22:04.682Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
