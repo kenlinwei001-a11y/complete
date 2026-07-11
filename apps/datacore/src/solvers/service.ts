@@ -884,26 +884,34 @@ export class SolverService {
     const chainObjs = await this.repos.objects.listByType(ctx.tenantId, "RootCauseChain");
     if (kpiObjs.length === 0) throw validationError("plan_rootcause 需先合成 Metric（经营指标）对象");
     const onlyCategory = args.kpiCategory ? str(args.kpiCategory) : undefined;
-    // 规划决策推演 plan-drill：按 level（月/季/年）下钻指标根因。月/季/年 = op 指标按时间粒度
-    // **确定性派生投影**（R13 溯源 op Metric + level 系数，不落 Metric 对象 → 不污染默认读全部/
-    // /metrics/snapshot/rootcause widget，零破坏 spine 骨架；PlanKpi 完整对象化待 spine 扩展，见 DS.1）。
+    // 规划决策推演 plan-drill：按 level（月/季/年）下钻指标根因。
+    // WO-FAKE-02（AUDIT-solver-fake-residues R3 治本·去魔数投影）：季/年/月下钻**优先读真 per-level Metric**
+    // （对齐 metric_rollup 按 level 读真·本文件 metricRollup 的 `str(p.level) === onlyLevel`）。**真无该粒度 Metric**
+    // 时退**诚实投影**——取 op 月值粒度**原值**（去魔数：旧 `PERIODIC{quarter:0.97,year:1.04}` 系数×月值**编造**
+    // 季/年 actual 已删，不再驱动伪 offTarget RED/AMBER/GREEN），季/年投影档 dataMode **下沉 PARTIAL** + 文案标
+    // 「由月值粒度投影·非实测季/年」（不冒充 LIVE 实测·不被 default-LIVE 洗白）。month 为月值基准粒度（op 原值＝原 ×1.0），
+    // 保留旧档不下沉（additive）。派生投影不落 Metric 对象 → 不污染默认读全部/ /metrics/snapshot/rootcause widget，
+    // 零破坏 spine 骨架；PlanKpi 完整对象化待 spine 扩展，见 DS.1。
     const reqLevel = args.level ? str(args.level) : undefined;
-    const PERIODIC: Record<string, number> = { month: 1.0, quarter: 0.97, year: 1.04 };
-    const periodic = reqLevel !== undefined && PERIODIC[reqLevel] !== undefined;
-    const baseLevel = periodic ? "op" : reqLevel; // 月季年从 op 派生；其余按原 level（缺省读全部）
-    const adj = periodic ? PERIODIC[reqLevel as string]! : 1;
+    const PERIODIC_LEVELS = new Set(["month", "quarter", "year"]);
+    const periodic = reqLevel !== undefined && PERIODIC_LEVELS.has(reqLevel);
+    // 该粒度真有 per-level Metric 对象即**读真**（LIVE 口径同 metric_rollup）；无则从 op 月值原值投影。
+    const hasRealLevel = periodic && kpiObjs.some((o) => str(o.props.level) === reqLevel);
+    const fromOpProjection = periodic && !hasRealLevel; // 无真 per-level → 用 op 月值原值投影 + 加 level 后缀
+    const projectedDisclose = fromOpProjection && reqLevel !== "month"; // 仅季/年投影下沉 PARTIAL + 文案（month 月值基准粒度·保旧档）
+    const baseLevel = fromOpProjection ? "op" : reqLevel; // 投影读 op 月值；有真 per-level 读该 level；非 periodic 按原 level（缺省读全部）
 
     // 1) 指标越线判定（actual < floorVal；缺口 gap=target-actual，确定性按 metricId 排序）。
     const kpis = kpiObjs
       .map((o) => o.props)
       .filter((p) => (!onlyCategory || str(p.category) === onlyCategory) && (!baseLevel || str(p.level) === baseLevel))
       .map((p) => {
-        const actual = round(num(p.actual) * adj, 1); // 月季年按粒度系数派生，op 时 adj=1 原值
+        const actual = round(num(p.actual), 1); // 去魔数：读真 per-level actual 或 op 月值**原值**投影（不再 ×粒度系数编造季/年）
         const target = num(p.target);
         const floorVal = num(p.floorVal);
         const offTarget = actual < floorVal;
         return {
-          kpiId: periodic ? `${str(p.metricId)}-${reqLevel}` : str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
+          kpiId: fromOpProjection ? `${str(p.metricId)}-${reqLevel}` : str(p.metricId), name: str(p.name), category: str(p.category), ksfRef: str(p.ksfRef),
           actual, target, floorVal, unit: str(p.unit),
           gap: round(target - actual, 4), offTarget,
           status: offTarget ? "RED" : actual < target ? "AMBER" : "GREEN",
@@ -1011,14 +1019,21 @@ export class SolverService {
 
     const offTargetCount = kpis.filter((k) => k.offTarget).length;
     const worst = roots[0];
+    // WO-FAKE-02：季/年投影档诚实披露——非实测该粒度，由 op 月值原值投影（去魔数），dataMode 下沉 PARTIAL。
+    const levelZh = reqLevel === "quarter" ? "季" : reqLevel === "year" ? "年" : reqLevel;
+    const projectionNote = projectedDisclose
+      ? `${levelZh}档由月值粒度投影·非实测季/年（真无 ${reqLevel} per-level Metric，取 op 月值原值投影，未 ×粒度系数编造；dataMode=PARTIAL）`
+      : "";
     return {
       kpis,
       dag: { nodes, edges },
       offTargetCount,
       // 反事实排除层（母版 §1.B）：候选根因里反算达标→排除的因子 + 理由（DAG 灰节点同源）。
       excludedFactors,
-      summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证${excludedFactors.length ? `（反事实排除 ${excludedFactors.length} 个达标因子）` : ""}${eventCount ? `；上挂 ${eventCount} 类驱动事件（受影响订单可下钻）` : ""}`,
+      summary: `${offTargetCount} 项 KPI 越线；归因根「${worst?.name ?? "—"}」缺口 ${worst?.gap ?? 0}${worst?.unit ?? ""}，沿 ${nodes.filter((n) => n.kind === "factor").length} 个因子展开取证${excludedFactors.length ? `（反事实排除 ${excludedFactors.length} 个达标因子）` : ""}${eventCount ? `；上挂 ${eventCount} 类驱动事件（受影响订单可下钻）` : ""}${projectionNote ? `；⚠ ${projectionNote}` : ""}`,
       ruleRefs: [],
+      // 季/年投影档显式下沉 PARTIAL（不被 invoke wrapper 的 default 洗白·合成 demo 会再叠加为 SYNTHETIC·measurement 维仍留 PARTIAL）。
+      ...(projectedDisclose ? { dataMode: "PARTIAL" as const } : {}),
     };
   }
 
