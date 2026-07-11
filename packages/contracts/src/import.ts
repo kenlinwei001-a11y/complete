@@ -239,3 +239,27 @@ export const ScenarioImportResultSchema = z.object({
   gaps: z.array(ScenarioImportGapSchema),
 });
 export type ScenarioImportResult = z.infer<typeof ScenarioImportResultSchema>;
+
+/**
+ * WO-IMPORT-REPLACE-SYNTHETIC (G4·PRD §3.4) · 世界态源开关（`synthetic | imported`·配 WO-CAP-01 REALDEMAND）。
+ * `imported` = 用导入的真业务对象作世界态源 → 求解器读真值而非 hash（翻开既有实值杠杆 `qos.risk_realdemand`，
+ * 该杠杆求解器已消费 `SolverContext.features`·risk.ts 真需求-产能缺口替代 mockTightness 哈希）。**平台不改求解器内部**。
+ * 守 R-NO-ORPHAN-SOURCE：`imported` 但无导入真数据（0 RawDataset）→ 诚实 warning（世界态空·不假装有真值）。
+ */
+export const WorldSourceSchema = z.object({
+  worldSource: z.enum(["synthetic", "imported"]),
+});
+export type WorldSource = z.infer<typeof WorldSourceSchema>;
+
+export const WorldSourceStatusSchema = z.object({
+  worldSource: z.enum(["synthetic", "imported"]),
+  /** 实值杠杆是否生效（imported → 翻开 qos.risk_realdemand·求解器读真供需）。 */
+  realValueLeverEnabled: z.boolean(),
+  /** 本租户已导入数据表数（RawDataset 计数·imported 世界态的真实源）。 */
+  rawDatasetCount: z.number(),
+  /** 已物化对象数（MATERIALIZED·挂真 rawDatasetId·R-NO-ORPHAN-SOURCE）。 */
+  materializedObjectCount: z.number(),
+  /** 诚实告警（如 imported 但无导入真数据 → 世界态空）。 */
+  warnings: z.array(z.string()),
+});
+export type WorldSourceStatus = z.infer<typeof WorldSourceStatusSchema>;

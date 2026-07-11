@@ -8078,8 +8078,9 @@
       "doc": "docs/PRD-enterprise-dataset-import.md",
       "title": "G4真数据换hash假值(可选·配CAP-01):demo/租户配置world_source=synthetic|imported·选imported→求解器读Stage3.15导入真值而非hash·从源头削mockTightness/util稀释假值",
       "note": "[LaneB·datacore·索引§2序#6·配WO-CAP-01 REALDEMAND] 守R-NO-ORPHAN-SOURCE(导入对象挂真rawDatasetId可下载审计)。治假推演源头。 【IMPORT Lane·Dev-4·文件域=app.ts导入端点+modeling.ts batch+新契约文件(不用databuilder.ts)·⛔不碰Dev-2 build-fix(comprehend.ts/closure.ts/service.ts comprehendPlanBody/closure/ValidationTrace)·⚠app.ts与Dev-2 NO-FLOOR runs入口校验共享→additive不同段+rebase-before-push】",
-      "status": "TODO",
-      "owner": "",
+      "status": "BUILT",
+      "owner": "dev4-import",
+      "built": "[BUILT dev4-import] 契约扩 import.ts(WorldSource/WorldSourceStatus) + Tenant.worldSource(doc jsonb·无迁移) + app.ts GET/PUT /a/v1/world-source(admin·暗发 data-import.world-source) + feature key。⛔R14 不改求解器内部:imported→翻开既有实值杠杆 qos.risk_realdemand(合并租户 override 不覆盖它键 + invalidateFeatureCache 即时生效)→求解器 risk.ts:182 读 SolverContext.features 真需求-产能缺口替 mockTightness 哈希;synthetic→关回退。真证据(非仅翻标志):risk_timeline 输出随 world_source 翻转而实变(imported 9040f211 vs synthetic f249473e 字节不同)。守 R-NO-ORPHAN-SOURCE:imported 但 0 RawDataset/0 物化对象→诚实 warnings(世界态空不假装真值)。真跑:暗发门 404;demo 默认 synthetic;PUT imported↔synthetic 翻转 realValueLever;合并保留 opt.solver-pool;非 admin 403;空租户 imported→warning。回写母体§2.B(登 WorldSource)+§3+slices。测:test/import-world-source.test.ts 6 用例·datacore 全绿·gates(debattery/no-orphan/no-fake-data/no-silent-mock/genuine-sim/feature-parity/prd/slices)全绿。诚实交底:capacity.ts 裸 import mockTightness 收口属求解器 lane(CAP-01/FAKE)·本 WO 只补导入侧世界态源开关翻既有杠杆不重写求解器。⚠共享 app.ts additive 新段·rebase-before-push。待审核方真跑复验。",
       "at": {
         "created": "2026-07-11T15:46:52.629Z"
       },

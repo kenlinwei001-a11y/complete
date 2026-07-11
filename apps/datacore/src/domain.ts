@@ -26,6 +26,8 @@ export interface Tenant {
   key?: string; // == id（展示用短键）
   status?: "ACTIVE" | "SUSPENDED";
   createdAt?: string;
+  // WO-IMPORT-REPLACE-SYNTHETIC (G4)：世界态源（synthetic 默认 | imported=用导入真对象·求解器读真值换 hash）。
+  worldSource?: "synthetic" | "imported";
 }
 
 export interface User {

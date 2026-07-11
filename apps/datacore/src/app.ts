@@ -53,7 +53,7 @@ import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contract
 import { SolverBindingSchema } from "@platform/contracts"; // B3·G-17：canonical 求解器 role→租户真实类型/字段绑定
 import { CreateDecisionSchema, RecordOutcomeSchema } from "@platform/contracts"; // WO-DECISION-RECORD（§3.7 D8）
 import { SimilarityQuerySchema } from "@platform/contracts"; // WO-L1.5-2（企业记忆 CBR·相似检索查询）
-import { DeriveBatchRequestSchema, OntologyImportBundleSchema, ScenarioImportRequestSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1) / WO-IMPORT-ONTOLOGY (G2) / WO-IMPORT-SCENARIO (G3)
+import { DeriveBatchRequestSchema, OntologyImportBundleSchema, ScenarioImportRequestSchema, WorldSourceSchema } from "@platform/contracts"; // WO-IMPORT-MULTITABLE (G1) / WO-IMPORT-ONTOLOGY (G2) / WO-IMPORT-SCENARIO (G3) / WO-IMPORT-REPLACE-SYNTHETIC (G4)
 import { PreviewSourceRefSchema } from "@platform/contracts"; // WO-MERGE-03 C1（pipeline preview 经 databuilder 取样来源引用）
 import { retrieveSimilarCases, mineDecisionPatterns } from "./memory/decision-case.js"; // WO-L1.5-2/4（CBR 检索·§4.2 / 模式挖掘·§4.4⑥）
 import { DecisionKernelService } from "./decision/service.js"; // WO-L2-4（决策内核服务·接真 in-process 求解器）
@@ -3799,6 +3799,46 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     if (!(await features.enabled(c.tenantId, "data-import.scenario"))) throw featureNotFound();
     return { items: await repos.importedScenarios.list(c.tenantId) };
+  });
+
+  // ---- WO-IMPORT-REPLACE-SYNTHETIC (G4) · 世界态源开关（synthetic|imported·PRD §3.4·配 WO-CAP-01 REALDEMAND）----
+  // 暗发（R3）：data-import.world-source defaultOn:false → 关 = 404。imported → 翻开既有实值杠杆 qos.risk_realdemand
+  // （求解器已消费 SolverContext.features·risk.ts 真需求-产能缺口替 mockTightness 哈希）——⛔ 平台不改求解器内部。
+  // 守 R-NO-ORPHAN-SOURCE：imported 但无导入真数据 → 诚实 warning（世界态空·不假装有真值）。
+  const worldSourceStatus = async (c: AuthCtx) => {
+    const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
+    const worldSource = (tenant?.worldSource as "synthetic" | "imported") ?? "synthetic";
+    const realValueLeverEnabled = await features.enabled(c.tenantId, "qos.risk_realdemand");
+    const rawDatasetCount = (await repos.rawDatasets.list(c.tenantId)).length;
+    let materializedObjectCount = 0;
+    for (const t of await ontology.listTypes(c)) {
+      const objs = await repos.objects.listByType(c.tenantId, t.key);
+      materializedObjectCount += objs.filter((o) => o.origin?.type === "MATERIALIZED").length;
+    }
+    const warnings: string[] = [];
+    if (worldSource === "imported" && rawDatasetCount === 0) warnings.push("world_source=imported 但无导入数据表（0 RawDataset）→ 世界态无真实源，求解器无真值可读（诚实空·非假装有真值）；先经 uploads/batch + derive-batch 导入真数据。");
+    if (worldSource === "imported" && rawDatasetCount > 0 && materializedObjectCount === 0) warnings.push("world_source=imported 但无已物化对象（导入数据未建模物化）→ 先经 derive-batch/ontology-import 物化真对象，求解器才能读到真值。");
+    return { worldSource, realValueLeverEnabled, rawDatasetCount, materializedObjectCount, warnings };
+  };
+  app.get("/a/v1/world-source", async (req) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.world-source"))) throw featureNotFound();
+    return worldSourceStatus(c);
+  });
+  app.put("/a/v1/world-source", async (req) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.world-source"))) throw featureNotFound();
+    requireAdmin(c);
+    const body = parseBody(WorldSourceSchema, req.body);
+    const tenant = await repos.tenants.get(c.tenantId, c.tenantId);
+    if (!tenant) throw notFound("tenant");
+    await repos.tenants.put({ ...tenant, worldSource: body.worldSource });
+    // imported → 翻开实值杠杆 qos.risk_realdemand（合并既有 override·不覆盖其它键）；synthetic → 关（回退合成扁平）。
+    const existing = await repos.featureConfigs.get(c.tenantId, `fcfg_${c.tenantId}`);
+    const merged = { ...(existing?.overrides ?? {}), "qos.risk_realdemand": body.worldSource === "imported" };
+    await features.putTenantConfig(c, c.tenantId, merged);
+    solvers.invalidateFeatureCache(c.tenantId); // 暗发开关翻转即时生效于求解器（回退演练）。
+    return worldSourceStatus(c);
   });
 
   // ---- A7 synthetic -----------------------------------------------------------------------
