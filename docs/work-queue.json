@@ -6597,9 +6597,11 @@
       "reviewNote": "durable核心PASS(独立真跑agent a1a18de·崩溃stopAfterNode→WorkflowDagInterrupted真停→resume跳DONE从就绪集重驱动·norm(resumed)===norm(uninterrupted)逐字节·resumedCount=1·移植BuildWorkflowEngine.resume非重造·补偿反向拓扑序经S2审批·不可逆诚实COMPENSATED=false·暗发关闸QOS_WORKFLOW_DAG关走旧串行NoopStore·R6·agentcore684测绿·workflow-dag门有牙·slices无漂移·migration015幂等+DOWN)。"
     },
     {
-      "status": "TODO",
+      "status": "BUILT",
       "owner": "",
-      "at": {},
+      "at": {
+        "built": "2026-07-11T11:05:10.798Z"
+      },
       "id": "WO-L1B-4",
       "title": "Execution Planner synthesizePlan(Ch10 满配)+ 影子接线(shadow only)",
       "priority": "P1",
@@ -6636,7 +6638,8 @@
       "discipline": "暗发影子先行·additive·影子改变 answer/路由(NG6)→关 QOS_EXEC_PLANNER(KILL-MOCK-RED)。跨层依赖 L1-A(WO-L1A-3·RequirementGraph 运行绿)。",
       "lane": "LaneA",
       "assignedDev": "dev1",
-      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-4 dev1] "
+      "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-4 dev1] ",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -7503,8 +7506,8 @@
     "lastActivity": {
       "role": "dev",
       "cmd": "BUILT",
-      "id": "WO-L1B-3",
-      "at": "2026-07-11T10:12:07.907Z"
+      "id": "WO-L1B-4",
+      "at": "2026-07-11T11:05:10.798Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
