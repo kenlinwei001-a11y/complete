@@ -6660,11 +6660,12 @@
       "note": "[LaneA·dev1·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1B-SAGA dev1] "
     },
     {
-      "status": "BUILT",
+      "status": "BLOCKED",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T06:59:55.059Z",
-        "built": "2026-07-11T07:30:02.987Z"
+        "built": "2026-07-11T07:30:02.987Z",
+        "blocked": "2026-07-11"
       },
       "id": "WO-L2-1",
       "title": "决策制品契约 + CounterfactualResult 补 schema + 暗发双闸",
@@ -6700,14 +6701,16 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-1 dev2] ",
-      "blockReason": ""
+      "blockReason": "BLOCK-C4:acceptance C4+PRD§2.4白纸黑字要求decision.kernel在agentcore registry+datacore features双注册(防未注册键恒真陷阱)。Dev-2只注册datacore(config.ts:86+features.ts:122)·agentcore features/registry.ts确无此键·还用commit自判datacore唯一真相源→单注册足=以省事绕开显式验收(违铁律0.4)。registry.ts:55亲证陷阱曾咬(view.scenarios未注册→viewAllowed恒真不可关)。最小修:agentcore features/registry.ts补一行{key:decision.kernel,name:决策内核,level:BLOCK,defaultOn:false,requires:[shell.query-dock]}(满足C4原文·落点无关)。修后built回复验。附落点悬案(L2-4前须定):整L2落datacore vs PRD§2.1/§5的agentcore·可行(via agentcore传classification给datacore kernel端点·守AgentCore→DataCore方向)但偏离设计·审核方将reconcile PRD或按需搬迁。",
+      "reviewNote": "契约地基优秀(四级制品逐字段合PRD§3·decision-kernel-contract测4/4·counterfactual_timeline逐值无损承载·R1干净·mkProv 5字段严格匹配)·build绿·暗发关闸404无泄漏。但C4双注册未满足(见blockReason)。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T07:15:36.018Z",
-        "built": "2026-07-11T07:30:03.113Z"
+        "built": "2026-07-11T07:30:03.113Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L2-2",
       "title": "Reasoning Engine + Counterfactual 编排(沿因果重算)",
@@ -6745,14 +6748,16 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-2 dev2] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent a8b8eb763):Reasoning+Counterfactual编排。R6确定性双跑字节一致(kernel.ts无Date.now/Math.random·provId经hashString(canonicalJson)非ULID·edge/ref/prov稳定排序)。真起datacore直调counterfactual_timeline求解器实返{peakCut:13,crossDelayDays:0,ordersSaved:0}=mapCounterfactualTimeline所读字段逐一对上。KILL-MOCK:求解器抛错honest-skip不臆造·无真源null·series非数值不coerce。Fixture保真源码+活体双证无漂移。契约测6/6·暗发休眠404。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T07:23:55.026Z",
-        "built": "2026-07-11T07:30:03.226Z"
+        "built": "2026-07-11T07:30:03.226Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L2-3",
       "title": "Decision Package 装配 + Pareto 推荐 + ExplanationChain",
@@ -6790,7 +6795,8 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-3 dev2] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent a8b8eb763):Decision Package装配+Pareto+ExplanationChain+门。R6整包双跑字节一致·纯聚合零业务常数·weakestDataMode取最弱不冒充LIVE。测谎器validateDecisionPackage真抓5类注入(幽灵方案/无provId数字/伪造delta/越白名单引擎/幽灵推荐)·check-decision-kernel.mjs动态green→red自证实跑绿·方案键锁三真求解器白名单。测7/7。非阻断:纯plan_generate类recommendedKey=null属诚实(<2可比→null)。"
     },
     {
       "status": "TODO",
