@@ -6701,7 +6701,7 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-1 dev2] ",
-      "blockReason": "BLOCK-C4:acceptance C4+PRD§2.4白纸黑字要求decision.kernel在agentcore registry+datacore features双注册(防未注册键恒真陷阱)。Dev-2只注册datacore(config.ts:86+features.ts:122)·agentcore features/registry.ts确无此键·还用commit自判datacore唯一真相源→单注册足=以省事绕开显式验收(违铁律0.4)。registry.ts:55亲证陷阱曾咬(view.scenarios未注册→viewAllowed恒真不可关)。最小修:agentcore features/registry.ts补一行{key:decision.kernel,name:决策内核,level:BLOCK,defaultOn:false,requires:[shell.query-dock]}(满足C4原文·落点无关)。修后built回复验。附落点悬案(L2-4前须定):整L2落datacore vs PRD§2.1/§5的agentcore·可行(via agentcore传classification给datacore kernel端点·守AgentCore→DataCore方向)但偏离设计·审核方将reconcile PRD或按需搬迁。",
+      "blockReason": "BLOCK-C4(措辞已更正):真正待修=Dev-2在agentcore features/registry.ts补decision.kernel镜像(防未注册键恒真陷阱·PRD§2.7·registry.ts:55亲证曾咬)。⚠更正:datacore落点是我DISPATCH Lane B指令(非Dev-2擅改·先前BLOCK错怪已更正)·datacore落点架构自洽(Decision真值在datacore·agentcore经B→A REST读·合CLAUDE.md)予接受;PRD-L2写agentcore与DISPATCH写datacore矛盾由审核方reconcile。L1.5同需agentcore镜像memory.cbr(L1.5-3前)·建议一并补两键。修后built回验。",
       "reviewNote": "契约地基优秀(四级制品逐字段合PRD§3·decision-kernel-contract测4/4·counterfactual_timeline逐值无损承载·R1干净·mkProv 5字段严格匹配)·build绿·暗发关闸404无泄漏。但C4双注册未满足(见blockReason)。"
     },
     {
@@ -6877,11 +6877,12 @@
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L2-5 dev2] "
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T07:30:40.164Z",
-        "built": "2026-07-11T07:37:40.488Z"
+        "built": "2026-07-11T07:37:40.488Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L1.5-1",
       "title": "CBR 契约 + 确定性特征抽取 + 案例投影器(纯函数·无接线)",
@@ -6917,14 +6918,16 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-1 dev2] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent ae5ccd0af):CBR契约+确定性特征抽取+案例投影器。契约cbr.ts逐字段对齐·R1·复用INTENT_PROBLEM_CLASS。确定性双跑字节一致(projectCase双跑IDENTICAL·打乱entities/options后caseId/embedding/features全同·FNV-1a无Math.random)。零幽灵validateCaseFeatures green→red。纯函数零live(暗发)。落点datacore=我DISPATCH Lane B指令(授权·架构自洽)。"
     },
     {
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev2",
       "at": {
         "wip": "2026-07-11T07:38:32.454Z",
-        "built": "2026-07-11T07:51:12.851Z"
+        "built": "2026-07-11T07:51:12.851Z",
+        "done": "2026-07-11"
       },
       "id": "WO-L1.5-2",
       "title": "案例库落库 + 确定性相似检索 + 读端点(暗发·治 G-3b 读侧底座)",
@@ -6962,7 +6965,8 @@
       "lane": "LaneB",
       "assignedDev": "dev2",
       "note": "[LaneB·dev2·见 docs/DISPATCH-2DEV-SPINE.md·只认领本lane·claim WO-L1.5-2 dev2] ",
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立真跑(agent ae5ccd0af):案例库+确定性检索+读端点。R9四处齐·双实现R2隔离。确定性检索双跑字节一致·判别力真(常州query→常州案例#1非恒返)·breakdown可解释R13。读端点HTTP往返真跑+真起服务诚实空态。暗发关闸memory.cbr OFF→404·put零writer空表(摄取待L1.5-3)。decision-case:check有牙·L1.5测11绿·全量datacore1152 passed 0 failed·build四包绿。G-3b读侧BASE达成。"
     },
     {
       "status": "TODO",
