@@ -100,3 +100,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   reset: () => set({ ...initial }),
 }));
+
+// 仅开发态暴露 store 供真浏览器 E2E 注入 scenarioPreset（等价 sandbox_render「打开推演沙盘」按钮·验真沙盘对真后端跑 shock）。
+// 生产构建 import.meta.env.DEV=false → 不暴露（零生产面）。
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  const w = window as unknown as { __SESSION_STORE__?: typeof useSessionStore; __PENDING_SIM_PRESET__?: ScenarioPreset };
+  w.__SESSION_STORE__ = useSessionStore;
+  // 真浏览器 E2E：addInitScript 在页面 JS 前置 __PENDING_SIM_PRESET__（跨 goto 全量重载存活），store 创建即消费——
+  // 等价 sandbox_render「打开推演沙盘」按钮落 preset，用于验真沙盘对真后端跑 shock（仅开发态·生产不含此路径）。
+  if (w.__PENDING_SIM_PRESET__) useSessionStore.getState().setScenarioPreset(w.__PENDING_SIM_PRESET__);
+}
