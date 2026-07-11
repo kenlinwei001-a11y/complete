@@ -7462,20 +7462,64 @@
     {
       "at": {
         "wip": "2026-07-11T11:28:48.665Z",
-        "built": "2026-07-11T15:38:52.212Z"
+        "built": "2026-07-11T15:38:52.212Z",
+        "done": "2026-07-11T19:07:40.533Z"
       },
       "id": "WO-SANDBOX-AS-RENDER-TARGET",
       "title": "S1·沙盘→时序推演意图落地渲染器(五触发归一·情景四原型·答案先行·MVP=shock短程)",
       "doc": "docs/WO-SANDBOX-AS-RENDER-TARGET.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev3",
       "deps": [
         "WO-SANDBOX-CONFIG-COVERAGE"
       ],
       "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。 【分支已归位2026-07-11】S0+S1均已迁至团队分支 claude/vigilant-knuth-b1nmxn(=dev-3简报指定分支);此前误置于sandbox-reconstruction-dev3已作废,请在vigilant复验。 【审核方恢复2026-07-11:S1真BUILT(18a4a6fc §5.4五触发+§5.3多轮·e6bdbb32真浏览器证据·2d854b1标BUILT)被c251a2d8(Dev-3 S2前端·旧基线)误clobber回WIP·代码/证据完好·恢复BUILT待复验】",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev3"
+      "assignedDev": "dev3",
+      "blockReason": "",
+      "acceptance": {
+        "goal": "S1沙盘→时序推演意图落地渲染器机制真实可用(render-target机制·非页面端到端可用)",
+        "verifiedBy": "独立真浏览器复验(真起前后端+真Kimi moonshot-v1-32k+真playwright+真RS256登录·逐值对后端·未采信dev截图·a0a687b5)+测试门(a22d4ac1 agentcore743/前端569/contracts49绿)·2强信号PASS·2026-07-11。第3信号代码审计(a6ac305368)停摆67min无果·2强信号(真浏览器逐值+测试门)已足。",
+        "scopeBoundary": "仅render-target机制;推演动态质量/传导核数学属S0配套/S6接地(F-A惰性喂RC-2)·WO明示不在S1面",
+        "criteria": [
+          {
+            "id": "shock-render-values-match-backend",
+            "type": "browser",
+            "assert": "注入utilization冲击→前端DOM util93.9/totalDemand1600000/KPI47.1逐值==后端carrierMean(computeGlobalKpi)·baseSnapshot来自view-config真值非hash(oid)"
+          },
+          {
+            "id": "five-trigger-unified",
+            "type": "browser",
+            "assert": "§5.4两不同源(dialogue auto-run + raw risk→canonical alert scope-only cur-tick0)都进同一渲染;mapSimSource五枚举强校验→单一SimulationRequest→单一init"
+          },
+          {
+            "id": "multiturn-simbranch",
+            "type": "browser",
+            "assert": "§5.3多轮:turn2追问同会话followUp经previousConversationTasks真恢复→/branch1次+/compare1次→compare面板真渲染(A/B此刻同=S1边界未越S3)"
+          },
+          {
+            "id": "hold-trend-policy-honest-deferred",
+            "type": "browser",
+            "assert": "三类问句真Kimi正确抽槽但全诚实答需S6时序接地·无sandbox_render无伪造影响数字"
+          },
+          {
+            "id": "hidden-gate-byte-consistent",
+            "type": "browser",
+            "assert": "feature ON→[text,sandbox_render];PUT override关+缓存失效→同shock问句落回旧Path A完整workflow答案无sandbox_render;datacore+agentcore双注册defaultOn:false旧路径未删(RL9)"
+          },
+          {
+            "id": "r6-determinism",
+            "type": "determinism",
+            "assert": "两次同SimulationRequest会话5-tick sha256一致"
+          }
+        ],
+        "honestFindings": [
+          "F-A(喂RC-2非BLOCK):demo仅3传导规则·utilization冲击无可见传导·全局KPI跨5tick恒47.08·被冲击常州util恒63.089·仅18/2875格变=推演轨迹平;渲染+推进机制真跑值对后端真保真但轨迹平。dev shock-run证据称全局KPI47.7实为跨tick静止值·略夸大。传导质量属S0配套/S6接地。",
+          "F-B:dev shock-run用dev-only window.__PENDING_SIM_PRESET__全局注入·未真跑裸NL→渲染/按钮E2E(生产按钮流审核方已独立验通)·方法弱于宣称。",
+          "F-C:NL shock效应依赖分类器抽中config内stateVar(Kimi抽backlog不在config→诚实守卫不注入)·分类精度依赖兄弟单A。"
+        ]
+      }
     },
     {
       "at": {
@@ -8316,9 +8360,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "BLOCK(G4复验·KILL-MOCK-RED未过)",
-      "id": "WO-IMPORT-REPLACE-SYNTHETIC",
-      "at": "2026-07-11T19:04:39.035Z"
+      "cmd": "DONE(S1复验PASS·2强信号)",
+      "id": "WO-SANDBOX-AS-RENDER-TARGET",
+      "at": "2026-07-11T19:07:40.533Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
