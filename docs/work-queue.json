@@ -7361,13 +7361,14 @@
     },
     {
       "at": {
-        "built": "2026-07-11T11:28:48.603Z"
+        "built": "2026-07-11T11:28:48.603Z",
+        "done": "2026-07-11T12:51:53.026Z"
       },
       "id": "WO-SANDBOX-CONFIG-COVERAGE",
       "title": "S0·沙盘配套纳入gap覆盖(propagation_rule/state_var两kind·后端·全套前置)",
       "doc": "docs/WO-SANDBOX-CONFIG-COVERAGE.md",
       "priority": "P1",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "",
       "deps": [],
       "note": "[归还Dev-3·已建于sandbox-reconstruction-dev3分支(分支指令冲突)·待搬迁到vigilant-knuth后标BUILT我验·非Dev-2] [沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
@@ -7535,9 +7536,9 @@
   "meta": {
     "lastActivity": {
       "role": "review",
-      "cmd": "SPLIT",
-      "id": "WO-L1.5-3→+3B",
-      "at": "2026-07-11T12:50:28.687Z"
+      "cmd": "DONE",
+      "id": "WO-SANDBOX-CONFIG-COVERAGE",
+      "at": "2026-07-11T12:51:53.026Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
