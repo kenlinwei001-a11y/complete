@@ -7619,20 +7619,22 @@
     },
     {
       "at": {
-        "wip": "2026-07-11T17:20:12.843Z"
+        "wip": "2026-07-11T17:20:12.843Z",
+        "built": "2026-07-11T18:27:08.072Z"
       },
       "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
       "title": "S6·时序接地五件套(外生驱动/overlay/hold守恒/约束/回放)+根治CAP-09 tick冻结",
       "doc": "docs/WO-SANDBOX-TEMPORAL-GROUNDING.md",
       "priority": "P2",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev1",
       "deps": [
         "WO-SANDBOX-AS-RENDER-TARGET"
       ],
       "note": "[沙盘重建·S6·依赖S1 MVP·上线门禁·dev3] 外生驱动真源逐tick喂引擎=根治CAP-09(传导规则零载体致头部冻结)。回退:feature sim.temporal_grounding关=回v1.1。 【沙盘拆Lane 2026-07-11·审核方】Dev-1 后端(agentcore orchestrator sim钩子/router/growth派生 + datacore app.ts sim/*·sim引擎·SimContextOverlay·ExogenousFeed)·⛔不碰databuilder comprehend/service/closure(Dev-2)·⛔不碰frontend(Dev-3)。",
       "lane": "LaneS-sandbox",
-      "assignedDev": "dev1-后端"
+      "assignedDev": "dev1-后端",
+      "blockReason": ""
     },
     {
       "at": {},
@@ -8161,10 +8163,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev2",
-      "cmd": "WIP",
-      "id": "WO-DB-LINK-STABILIZE",
-      "at": "2026-07-11T18:26:15.304Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
+      "at": "2026-07-11T18:27:08.072Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
