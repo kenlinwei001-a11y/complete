@@ -7064,9 +7064,11 @@
       "id": "WO-CAP-09-SANDBOX-TICK-LIVE",
       "title": "假推演:推演沙盘推进tick后头部KPI全冻结(传导规则指向零载体stateVar·核心动作零可见响应)",
       "doc": "docs/AUDIT-frontend-fake-residues.md",
-      "priority": "P0",
-      "deps": [],
-      "note": "复验agent aa972508真跑证:tick 0→5→10头部KPI纹丝不动(全局47.3/利用率94.3/totalDemand1600000.0/demandDelta0.3全冻结)。基地负责人点'推进N天'零可见效果=坐实用户'不知每个功能解决什么问题'。疑因:3条传导规则target=Base.loadIndex/Model.demandLoad·载体对象数=0(carrierMean恒0.0)·propagation算了被显示门挡;显示的utilization/demandDelta/totalDemand是source变量不传导。dev先确认根因再修。",
+      "priority": "P3",
+      "deps": [
+        "WO-SANDBOX-TEMPORAL-GROUNDING"
+      ],
+      "note": "[收编·根治并入沙盘重建S6·Dev-1勿band-aid·S6 DONE时一并复验闭]",
       "acceptance": {
         "goal": "沙盘'推进N天'后头部至少一项决策相关KPI随tick确定性真变化(非冻结·非合成扰动)。",
         "criteria": [
@@ -7099,11 +7101,11 @@
       "owner": "",
       "at": {},
       "id": "WO-CAP-10-RISK-EXPOSURE-HONEST",
-      "title": "误导:风险看板越线0却挂整单43亿敞口 + 同源风险一处'实测'一处'估算'标注矛盾",
+      "title": "风险看板敞口误导:越线0却挂整单敞口+敞口按缺口折算+格式转亿(sandbox标注部分已折入S2)",
       "doc": "docs/AUDIT-frontend-fake-residues.md",
       "priority": "P1",
       "deps": [],
-      "note": "复验agent aa972508真跑证:①(C)决策摘要'越线基地0'却'营收敞口4320000万(43.2亿)';点日格弹窗'缺口≈0.0776万套(≈776套近零)'却把整单SO-3445(方形-NCM 44万套/敞口968000万)标'受影响+1天'·近零缺口→数十亿敞口不成比例。②(I)沙盘RiskTop3标常州·瓶颈工序84'估算·无实测',而/v/risk同一risk_timeline常州标'实测当前65(LIVE)'·同源两视图相反诚实标(RiskTop3用topLive顶层SYNTHETIC→false全灰,RiskBoardView用卡级dataMode)。",
+      "note": "[收编·沙盘RiskTop3标注部分→S2统一收·本单只留risk-board敞口折算(C1)+格式转亿(C3)·C2标注已移交S2·Dev-1]",
       "acceptance": {
         "goal": "敞口与缺口成比例·同源风险诚实标一致·金额可读。",
         "criteria": [
@@ -7238,6 +7240,107 @@
         ],
         "discipline": "additive·审核方扫描出单·dev建·reviewer复验。"
       }
+    },
+    {
+      "at": {},
+      "id": "WO-SANDBOX-CONFIG-COVERAGE",
+      "title": "S0·沙盘配套纳入gap覆盖(propagation_rule/state_var两kind·后端·全套前置)",
+      "doc": "docs/WO-SANDBOX-CONFIG-COVERAGE.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "[沙盘重建·S0·全套前置·后端不碰前端·dev3] 主PRD diffGap已就绪。additive两kind·无迁移·复用sim_propagation_rule表。回退:摘两provisioner+枚举。",
+      "lane": "LaneS-sandbox",
+      "assignedDev": "dev3"
+    },
+    {
+      "at": {},
+      "id": "WO-SANDBOX-AS-RENDER-TARGET",
+      "title": "S1·沙盘→时序推演意图落地渲染器(五触发归一·情景四原型·答案先行·MVP=shock短程)",
+      "doc": "docs/WO-SANDBOX-AS-RENDER-TARGET.md",
+      "priority": "P1",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-SANDBOX-CONFIG-COVERAGE"
+      ],
+      "note": "[沙盘重建·S1·依赖S0·触主链绞杀式暗发·dev3] MVP=shock短程+状态级结论;hold/60天须待S6接地才上线。复用CAP-06裁剪·保留CAP-07型号面板。回退:feature sim.sandbox_render关=回旧路径(未删)。",
+      "lane": "LaneS-sandbox",
+      "assignedDev": "dev3"
+    },
+    {
+      "at": {},
+      "id": "WO-SANDBOX-TRUST-BADGE",
+      "title": "S2·沙盘每数字dataMode徽标(LIVE/合成/未校准)+收编CAP-10沙盘RiskTop3标注统一",
+      "doc": "docs/DISPATCH-sandbox-reconstruction.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-SANDBOX-CONFIG-COVERAGE"
+      ],
+      "note": "[沙盘重建·S2·可∥S1·dev3] 接CAP-03只补披露层。收编:CAP-10的沙盘RiskTop3实测/估算标注矛盾由本单dataMode判据统一收。回退:关feature=不显徽标。",
+      "lane": "LaneS-sandbox",
+      "assignedDev": "dev3"
+    },
+    {
+      "at": {},
+      "id": "WO-SANDBOX-BRANCH-INJECT",
+      "title": "S3·分支注入不同应对+对比换决策维(交付/成本/齐套)",
+      "doc": "docs/WO-SANDBOX-BRANCH-INJECT.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-SANDBOX-AS-RENDER-TARGET"
+      ],
+      "note": "[沙盘重建·S3·依赖S1·dev3] 接CAP-05补差量。SimComparePanel(FAKE-08已修tickMean其上)。回退:白名单·关=回容器分支。",
+      "lane": "LaneS-sandbox",
+      "assignedDev": "dev3"
+    },
+    {
+      "at": {},
+      "id": "WO-SANDBOX-RADAR-COLLAPSE",
+      "title": "S4·三雷达合一(维度换人话)+L0-L4折一句人话(砍竞品形式膨胀)",
+      "doc": "docs/WO-SANDBOX-RADAR-COLLAPSE.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [],
+      "note": "[沙盘重建·S4·可∥S1·纯前端·dev3] REVIEW拒绝copy竞品形式的标志一刀。回退:纯视觉可回退。",
+      "lane": "LaneS-sandbox",
+      "assignedDev": "dev3"
+    },
+    {
+      "at": {},
+      "id": "WO-SANDBOX-TICK-CALENDAR",
+      "title": "S5·tick↔业务时间(到第N周/里程碑)+时间轴事件标注+节点归因",
+      "doc": "docs/WO-SANDBOX-TICK-CALENDAR.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-SANDBOX-AS-RENDER-TARGET"
+      ],
+      "note": "[沙盘重建·S5·依赖S1·dev3] 接CAP-04补差量。消费引擎PropagationTrace。回退:additive。",
+      "lane": "LaneS-sandbox",
+      "assignedDev": "dev3"
+    },
+    {
+      "at": {},
+      "id": "WO-SANDBOX-TEMPORAL-GROUNDING",
+      "title": "S6·时序接地五件套(外生驱动/overlay/hold守恒/约束/回放)+根治CAP-09 tick冻结",
+      "doc": "docs/WO-SANDBOX-TEMPORAL-GROUNDING.md",
+      "priority": "P2",
+      "status": "TODO",
+      "owner": "",
+      "deps": [
+        "WO-SANDBOX-AS-RENDER-TARGET"
+      ],
+      "note": "[沙盘重建·S6·依赖S1 MVP·上线门禁·dev3] 外生驱动真源逐tick喂引擎=根治CAP-09(传导规则零载体致头部冻结)。回退:feature sim.temporal_grounding关=回v1.1。",
+      "lane": "LaneS-sandbox",
+      "assignedDev": "dev3"
     }
   ],
   "meta": {
