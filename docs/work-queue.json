@@ -7226,9 +7226,11 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
+      "status": "BUILT",
       "owner": "",
-      "at": {},
+      "at": {
+        "built": "2026-07-11T20:34:02.523Z"
+      },
       "id": "WO-CAP-09-SANDBOX-TICK-LIVE",
       "title": "假推演:推演沙盘推进tick后头部KPI全冻结(传导规则指向零载体stateVar·核心动作零可见响应)",
       "doc": "docs/AUDIT-frontend-fake-residues.md",
@@ -7263,7 +7265,8 @@
         ],
         "discipline": "additive·KILL-MOCK-RED·审核方复验出单·dev建·reviewer复验(分权)。"
       },
-      "assignedDev": "dev1-后端"
+      "assignedDev": "dev1-后端",
+      "blockReason": ""
     },
     {
       "status": "TODO",
@@ -8595,13 +8598,15 @@
       "priority": "P1",
       "deps": [],
       "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
-      "status": "TODO",
+      "status": "BUILT",
       "owner": "",
       "at": {
-        "created": "2026-07-11T19:20:17.402Z"
+        "created": "2026-07-11T19:20:17.402Z",
+        "built": "2026-07-11T20:34:02.446Z"
       },
       "title": "RC-2沙盘开箱默认真feed源(S6提供能力但demo四源全EMPTY_DATA字段不匹配resolver→静止)·播dailyP50+coverageDays的DemandSegment/变tick A8序列/forecast覆盖·让demo开箱推tick世界真动",
-      "note": "[数据/S6衔接·RC-2 out-of-box闭合·一手证据VERIFIED§3+S6复验] S6 ExogenousFeed引擎真通(注入真feed世界真动320000→570000已证)但demo开箱四feed源全EMPTY_DATA:demand_segment只聚合p50无dailyP50/coverageDays·sop_version有demand无dailyDemand·purchase_order字段etaDay非resolver读arriveTick·maint_plan字段week非tick/capacityDelta·ts_series全A8点tick0(synthetic写死)。需播真feed源(或修resolver字段映射+播dailyP50+coverageDays)让demo不配置推tick见非零轨迹。与WO-IMPORT-SCENARIO-LAUNCHER-WIRE协同。green→red:demo开箱推tick·KPI/传导目标态随tick真变非静止。"
+      "note": "[数据/S6衔接·RC-2 out-of-box闭合·一手证据VERIFIED§3+S6复验] S6 ExogenousFeed引擎真通(注入真feed世界真动320000→570000已证)但demo开箱四feed源全EMPTY_DATA:demand_segment只聚合p50无dailyP50/coverageDays·sop_version有demand无dailyDemand·purchase_order字段etaDay非resolver读arriveTick·maint_plan字段week非tick/capacityDelta·ts_series全A8点tick0(synthetic写死)。需播真feed源(或修resolver字段映射+播dailyP50+coverageDays)让demo不配置推tick见非零轨迹。与WO-IMPORT-SCENARIO-LAUNCHER-WIRE协同。green→red:demo开箱推tick·KPI/传导目标态随tick真变非静止。",
+      "blockReason": ""
     },
     {
       "id": "WO-CAPFORECAST-DATAMODE-HONEST",
@@ -8686,10 +8691,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "review",
-      "cmd": "DONE(SHOCK-NO-FLOOR)+SHOCK-GUARD-HARDEN加固单",
-      "id": "WO-SANDBOX-SHOCK-NO-FLOOR",
-      "at": "2026-07-11T20:24:35.936Z"
+      "role": "dev",
+      "cmd": "BUILT",
+      "id": "WO-CAP-09-SANDBOX-TICK-LIVE",
+      "at": "2026-07-11T20:34:02.524Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
