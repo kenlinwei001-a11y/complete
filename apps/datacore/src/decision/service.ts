@@ -19,8 +19,15 @@ import type { SolverService } from "../solvers/service.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { DecisionService } from "../decisions.js";
 import type { ActionService } from "../actions.js";
-import { validationError, notFound } from "../errors.js";
+import { validationError, notFound, AppError } from "../errors.js";
 import { assembleDecisionPackage, type DecisionKernelDeps, type DecisionKernelRequest } from "./kernel.js";
+
+/**
+ * WO-L2-5-CONCURRENCY-LOCK：采纳临界区互斥锁资源类（复用 ExecutionLockStore·非 ExecutionResourceKind 枚举·
+ * 该 store 的 resourceKind 为自由字符串·resource_kind 列无 CHECK 约束）。
+ */
+const ADOPT_LOCK_KIND = "decision_adopt";
+const ADOPT_LEASE_MS = 30_000; // 采纳=纯 in-process 建台账/草稿·30s 足够；持有者崩溃后租约过期可重采（届时多已 ADOPTED→幂等）。
 
 export interface DecisionKernelBuildInput {
   taskId: string;
@@ -108,21 +115,68 @@ export class DecisionKernelService {
    * 回填 package.{decisionRef,actionDraftRefs}·status=ADOPTED。
    * **绝不直写业务真值**（RL4·仅经审批链）；采纳幂等重入以最新为准（重生制品）。
    */
-  async adopt(ctx: AuthCtx, taskId: string, scenarioKey: string): Promise<DecisionPackage> {
-    const pkg = await this.getByTask(ctx, taskId);
-    if (!pkg) throw notFound("decision package");
-    // 幂等守卫（门4·修 BLOCK：无守卫→重复采纳静默双写 2 Decision+2 ActionDraft 挂同一 packageId·旧记录沦孤儿）：
-    //  已采纳同方案 → 幂等返回既有制品（no-op·不再建台账/草稿·网络重试安全）；
-    //  已采纳**不同**方案 → 明确拒（不静默改判·如需改判重建决策制品）。兑现 §109 注释「幂等重入」。
-    if (pkg.status === "ADOPTED" && pkg.decisionRef) {
+  /**
+   * 幂等守卫（门4·修 BLOCK：无守卫→重复采纳静默双写 2 Decision+2 ActionDraft 挂同一 packageId·旧记录沦孤儿）：
+   *  已采纳**同**方案 → 幂等返回既有制品（no-op·网络重试/并发败者安全）；已采纳**不同**方案 → 明确拒（不静默改判）。
+   * 返回既有制品(命中幂等) / undefined(未采纳·可继续)。
+   */
+  private idempotentAdoptGuard(pkg: DecisionPackage | undefined, scenarioKey: string): DecisionPackage | undefined {
+    if (pkg && pkg.status === "ADOPTED" && pkg.decisionRef) {
       if (pkg.adoptedScenarioKey === scenarioKey) return pkg;
       throw validationError(
         `该决策制品已采纳方案「${pkg.adoptedScenarioKey ?? "?"}」（decisionRef=${pkg.decisionRef}）·不可重复采纳其他方案（如需改判请重建决策制品）`,
       );
     }
+    return undefined;
+  }
+
+  async adopt(ctx: AuthCtx, taskId: string, scenarioKey: string): Promise<DecisionPackage> {
+    const pkg = await this.getByTask(ctx, taskId);
+    if (!pkg) throw notFound("decision package");
+    // 锁外快速幂等（顺序连采/网络重试·热路径无锁开销）。兑现 §109 注释「幂等重入」。
+    const early = this.idempotentAdoptGuard(pkg, scenarioKey);
+    if (early) return early;
     const scenario = pkg.scenarios.find((s) => s.key === scenarioKey);
     if (!scenario) throw validationError(`scenarioKey '${scenarioKey}' 非该制品任何方案（不可采纳幽灵方案）`);
 
+    // WO-L2-5-CONCURRENCY-LOCK：采纳临界区互斥（真正闭合 getByTask↔回填 ADOPTED 间 TOCTOU 窗口·治 pg 真并发
+    // 双写 2 Decision+2 ActionDraft 孤儿）。复用 ExecutionLockStore.tryAcquire——pg 侧 `INSERT … ON CONFLICT
+    // WHERE lease_until<now()` 服务端**原子**抢占（真并发仅一赢家）·内存侧事件循环原子。锁键=packageId。
+    const holderId = ctx.requestId ?? ctx.userId;
+    const lock = await this.repos.executionLocks.tryAcquire({
+      tenantId: ctx.tenantId,
+      resourceKind: ADOPT_LOCK_KIND,
+      resourceKey: pkg.packageId,
+      holderId,
+      leaseMs: ADOPT_LEASE_MS,
+    });
+    if (!lock) {
+      // 并发败者：他者正持锁采纳中 → 重读应用幂等/冲突语义（他者可能刚采纳同方案→幂等返回）。
+      const fresh = await this.getByTask(ctx, taskId);
+      const g = this.idempotentAdoptGuard(fresh, scenarioKey);
+      if (g) return g;
+      throw new AppError("ADOPT_IN_PROGRESS", `决策制品 ${pkg.packageId} 正被并发采纳中，请稍后重试`, 409);
+    }
+    try {
+      // 锁内权威 re-read + 再验幂等（双检锁·防"读在锁外"期间采纳已发生·彻底堵 TOCTOU）。
+      const cur = await this.getByTask(ctx, taskId);
+      const guarded = this.idempotentAdoptGuard(cur, scenarioKey);
+      if (guarded) return guarded;
+      return await this.adoptLocked(ctx, cur ?? pkg, scenario, scenarioKey, taskId);
+    } finally {
+      // 立即释放（remove 全清·采纳无需 fencing——锁内已双检 + 最终写幂等）。
+      await this.repos.executionLocks.remove(ctx.tenantId, `${ADOPT_LOCK_KIND}|${pkg.packageId}`);
+    }
+  }
+
+  /** 锁内采纳主体（建 Decision 台账 + ActionDraft + 回填 ADOPTED）。仅 CAS 赢家进入·无并发。 */
+  private async adoptLocked(
+    ctx: AuthCtx,
+    pkg: DecisionPackage,
+    scenario: DecisionPackage["scenarios"][number],
+    scenarioKey: string,
+    taskId: string,
+  ): Promise<DecisionPackage> {
     // ① Decision 台账（问责真值·经 DecisionService 正门·emit decision.recorded）。
     const metrics: Record<string, number> = {};
     for (const [k, v] of Object.entries(scenario.metrics)) if (typeof v === "number") metrics[k] = v;

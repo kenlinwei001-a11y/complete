@@ -112,4 +112,62 @@ describe("WO-L2-5 · 采纳正门（Decision + ActionDraft·R4·真跑）", () =
       expect(await linkedDecisions()).toHaveLength(1); // 拒后仍 1
     }
   });
+
+  it("⑥ 并发采纳·TOCTOU 闭合（WO-L2-5-CONCURRENCY-LOCK）：N 路并发同方案 → 恰 1 Decision·无孤儿双写·败者 409/幂等", async () => {
+    const t = await makeApp({ env: { QOS_DECISION_KERNEL: "1" } });
+    await seedBattery(t);
+    const { base, factor } = await realBaseFactor(t);
+    const build = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_conc/decision-package", headers: ADMIN, payload: { query: "q", intentKey: "adopt_mitigation", slots: { base, factor, horizon: 30 } } });
+    const pkg = build.json() as DecisionPackage;
+    const k = pkg.scenarios[0].key;
+    const linkedDecisions = async () =>
+      ((((await t.app.inject({ method: "GET", url: "/a/v1/decisions", headers: ADMIN })).json() as { decisions: Decision[] }).decisions).filter((d) =>
+        d.links.some((l) => l.kind === "SCENARIO" && l.refId === pkg.packageId)));
+
+    // N 路真并发（同一 task/scenario·锁外 getByTask 均见未采纳 → 全部竞争临界区）。
+    const N = 5;
+    const results = await Promise.all(
+      Array.from({ length: N }, () => t.app.inject({ method: "POST", url: "/a/v1/queries/task_conc/decision-package/adopt", headers: ADMIN, payload: { scenarioKey: k } })),
+    );
+    const codes = results.map((r) => r.statusCode);
+    // 无 500（临界区不崩）；每路 200(赢家/幂等)或 409(并发败者·ADOPT_IN_PROGRESS)。
+    expect(codes.every((c) => c === 200 || c === 409)).toBe(true);
+    const ok = results.filter((r) => r.statusCode === 200).map((r) => (r.json() as DecisionPackage).decisionRef);
+    expect(ok.length).toBeGreaterThanOrEqual(1); // 至少一赢家
+    expect(new Set(ok).size).toBe(1); // 所有 200 指向**同一** Decision（无双写）
+    const conflicts = results.filter((r) => r.statusCode === 409);
+    for (const c of conflicts) expect((c.json() as { error: { code: string } }).error.code).toBe("ADOPT_IN_PROGRESS");
+
+    // 核心不变量（治 BLOCK 根因）：并发下**恰 1** 台账·无孤儿双写（旧无锁→pg 可能 2 Decision+2 ActionDraft）。
+    expect(await linkedDecisions()).toHaveLength(1);
+    const finalPkg = (await t.app.inject({ method: "GET", url: "/a/v1/queries/task_conc/decision-package", headers: ADMIN })).json() as DecisionPackage;
+    expect(finalPkg.status).toBe("ADOPTED");
+    expect(finalPkg.decisionRef).toBe(ok[0]);
+  });
+
+  it("⑦ 锁被他者持有 → 采纳诚实 409（确定性有牙：拔锁检查即回 200·双检不静默双写）", async () => {
+    const t = await makeApp({ env: { QOS_DECISION_KERNEL: "1" } });
+    await seedBattery(t);
+    const { base, factor } = await realBaseFactor(t);
+    const build = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_held/decision-package", headers: ADMIN, payload: { query: "q", intentKey: "adopt_mitigation", slots: { base, factor, horizon: 30 } } });
+    const pkg = build.json() as DecisionPackage;
+
+    // 他者(模拟并发进程)先持采纳锁（未过期租约）。
+    const held = await t.repos.executionLocks.tryAcquire({ tenantId: "demo", resourceKind: "decision_adopt", resourceKey: pkg.packageId, holderId: "other_process", leaseMs: 60_000 });
+    expect(held).toBeDefined();
+
+    // 采纳撞锁 → 409 ADOPT_IN_PROGRESS（未采纳·未双写）。
+    const blocked = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_held/decision-package/adopt", headers: ADMIN, payload: { scenarioKey: pkg.scenarios[0].key } });
+    expect(blocked.statusCode).toBe(409);
+    expect((blocked.json() as { error: { code: string } }).error.code).toBe("ADOPT_IN_PROGRESS");
+    const linked = async () => (((await t.app.inject({ method: "GET", url: "/a/v1/decisions", headers: ADMIN })).json() as { decisions: Decision[] }).decisions).filter((d) => d.links.some((l) => l.kind === "SCENARIO" && l.refId === pkg.packageId));
+    expect(await linked()).toHaveLength(0); // 撞锁未建台账
+
+    // 释放锁 → 采纳成功（锁非死锁·正常放行）。
+    await t.repos.executionLocks.remove("demo", `decision_adopt|${pkg.packageId}`);
+    const ok = await t.app.inject({ method: "POST", url: "/a/v1/queries/task_held/decision-package/adopt", headers: ADMIN, payload: { scenarioKey: pkg.scenarios[0].key } });
+    expect(ok.statusCode).toBe(200);
+    expect((ok.json() as DecisionPackage).status).toBe("ADOPTED");
+    expect(await linked()).toHaveLength(1); // 释放后恰 1·无双写
+  });
 });
