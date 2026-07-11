@@ -6690,9 +6690,11 @@
       "blockReason": ""
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev1",
+      "at": {
+        "wip": "2026-07-11T13:09:41.869Z"
+      },
       "id": "WO-L1B-SAGA",
       "title": "跨系统 Saga 一致性(单列·延后 L1.5·NG2)",
       "priority": "P1",
@@ -7550,10 +7552,10 @@
   ],
   "meta": {
     "lastActivity": {
-      "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-L1B-5",
-      "at": "2026-07-11T13:09:11.051Z"
+      "role": "dev1",
+      "cmd": "WIP",
+      "id": "WO-L1B-SAGA",
+      "at": "2026-07-11T13:09:41.870Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
