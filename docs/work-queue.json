@@ -7152,13 +7152,14 @@
     {
       "at": {
         "wip": "2026-07-11T07:27:43.455Z",
-        "built": "2026-07-11T07:30:17.384Z"
+        "built": "2026-07-11T07:30:17.384Z",
+        "done": "2026-07-11"
       },
       "id": "WO-GATE-ID-TIGHTEN",
       "title": "假推演门加固(非阻断):check-no-fake-data C1 收紧 id-豁免(hash(xxxId)作实参不再被放行)",
       "doc": "docs/AUDIT-solver-fake-residues.md",
       "priority": "P2",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev1",
       "deps": [],
       "note": "FAKE-05复验(agent a438f43)非阻断发现:C1 LEGIT正则 `_?id\\b|Id\\b` 过宽——`hash(baseId)`(id作实参)整行被当id用途豁免·hash伪造与…Id/…id同行者绕过C1静态扫(baseId/orderId/tenantId求解器极常见)。当前0现实依赖(10 SMELL行:6注释+4由version/bucket/createHash/digest豁免)·C2行为断言命名无关兜底OEE/良率·canonical R4(owner用riskHashN(base)非baseId)仍被逮→故非阻断。但C2无行为断言的其它求解器若出hash(orderId)式伪造会双绕。",
@@ -7178,7 +7179,8 @@
         ],
         "discipline": "additive·纯门加固·审核方复验出单·dev建·reviewer复验。"
       },
-      "blockReason": ""
+      "blockReason": "",
+      "reviewNote": "PASS 独立对抗真跑(agent a7d85f004·33工具):C1 id-豁免收紧真生效。①净树EXIT0·10条SMELL逐条无新增误报(6注释COMMENT_RE先于LEGIT+4经createHash/version/bucket/toString36他规则豁免)。②注入hash(baseId)作实参标live→逮RED EXIT1(SUSPECT hash裸冒充)·旧宽豁免会放行=洞已堵。③注入const nodeId=hash(x)赋值目标→保持EXIT0不误伤。④自证块mustCatch(hashString(baseId))/mustPass(const nodeId=hashString)·revert旧regex自红EXIT2有牙·入gates链CI。⑤还原git status干净HEAD da9e915。非阻断FYI:`\\w*[Ii]d\\s*[=:]`仍豁免名字以id结尾的赋值目标(avoid/paid/grid+hash)·比旧窄·出C1范围·C2行为断言兜底·可选未来加固。"
     },
     {
       "at": {},
