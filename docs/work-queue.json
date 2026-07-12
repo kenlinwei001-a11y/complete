@@ -8523,7 +8523,7 @@
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
       "status": "BUILT",
-      "owner": "dev2",
+      "owner": "dev1",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
         "wip": "2026-07-12T14:20:06.874Z",
@@ -8543,7 +8543,7 @@
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
       "status": "BUILT",
-      "owner": "dev2",
+      "owner": "dev1",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
         "wip": "2026-07-12T14:20:06.975Z",
@@ -8563,7 +8563,7 @@
       ],
       "doc": "docs/WO-PLATFORM-FULL-FIELD-PARITY.md",
       "status": "BUILT",
-      "owner": "dev2",
+      "owner": "dev1",
       "at": {
         "created": "2026-07-11T18:31:22.842Z",
         "wip": "2026-07-12T14:20:07.090Z",
