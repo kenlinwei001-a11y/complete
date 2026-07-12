@@ -8658,7 +8658,7 @@
       "priority": "P0",
       "deps": [],
       "doc": "docs/WO-CAPACITY-SIM-PIXEL-REPLICA-REALDATA.md",
-      "status": "BUILT",
+      "status": "DONE",
       "owner": "dev3",
       "at": {
         "created": "2026-07-11T19:55:51.326Z",
@@ -8666,20 +8666,22 @@
       },
       "title": "产能推演统一为平台唯一推演surface(§5):删左导航沙盘项+SandboxView独立路由退役(/sandbox 302重定向)+基地卡片『开推演决策』下钻看板(scope该基地)+就绪认证→信任条+抽屉+对话态提问框(两态同求解器同源R6)",
       "note": "[前端+少量后端·可立即建·§5全文已在repo doc·活力全开首选·结构性收敛最高战略值] S1-S6机制成看板引擎不废(§8)。母体§2.I回写沙盘=下钻态非独立路由+导航IA删沙盘项。⛔G-DM-1禁mock造红。green→red:左导航应无沙盘·/sandbox 302·基地卡开推演决策进看板scope=该基地·对话/嵌入两态同源R6·就绪认证=信任条+抽屉非独立页。 【CAPSIM统一·2026-07-12用户确认排序】排序第二·结构性收敛可与DATAMODE-UNIFY并行开建(纯IA不依赖dataMode)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】",
-      "assignedDev": "dev3-frontend"
+      "assignedDev": "dev3-frontend",
+      "acceptance": "审核方真浏览器复验PASS(16截图):①左导航无沙盘(仅项目推演/产能推演/订单聚合)②裸/v/sim-sandbox→302/v/risk·带?from=参数保留③?focus=常州裁剪到该基地(1卡·摘要头重算)④基地卡开推演对策CTA真点navigate带whatif/subject/factor参入嵌入态·暗发降级态disabled诚实。信任条/抽屉/对话态按§5归入WO-CAPSIM-REPLICA。"
     },
     {
       "id": "WO-CAPSIM-REPLICA",
       "priority": "P0",
       "deps": [],
       "doc": "docs/WO-CAPACITY-SIM-PIXEL-REPLICA-REALDATA.md",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "reviewer-exec",
       "at": {
-        "created": "2026-07-11T19:55:51.326Z"
+        "created": "2026-07-11T19:55:51.326Z",
+        "wip": "2026-07-12"
       },
       "title": "产能推演看板1:1像素复刻黑曜石HTML+接真求解器(§1-4):布局/交互/间距照抄·色字换tokens.css·每元素接真solver(risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure)禁搬HTML静态数据·无真源诚实空态·四增强(多方案topN+比较/缺失分类面板/全元素悬浮溯源/过程图接provenance)",
-      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。 【CAPSIM统一·2026-07-12用户确认排序】deps DATAMODE-UNIFY(§7决策红KILL-MOCK-RED验收前置·否则复刻页demo仍出合成假LIVE红)。排序第二(在DATAMODE-UNIFY后·IA-UNIFY可并行先建结构)。 【dev3并行可先建】§1/§6像素壳(RiskBoardView卡网格升级+tokens.css换皮+新增逐因素时间轴组件)可在DATAMODE-UNIFY落地前先搭·但§7决策红KILL-MOCK-RED验收须等DATAMODE-UNIFY(P0)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】 ⚠依赖解耦:看板先建先接真solver·§7 KILL-MOCK-RED(禁mockTightness)今天就绿(平台已删);但demo合成materialized值会暂标LIVE决策红(既有行为·非本单造)→DATAMODE-UNIFY(后端·押后)据实修成SYNTHETIC。REPLICA可DONE于§1-6+§7-mockTightness·合成诚实标caveat明记待DATAMODE-UNIFY·不得在REPLICA acceptance冒充合成诚实已达。"
+      "note": "[前端+后端绑定·§2逐行绑定表/§6像素映射/§7.5测试spec完整规格已在doc·全量开工] 1:1目标=docs/reference/capacity-sim-obsidian-target.html。§2:每元素接真solver(平台90%已就绪:risk_timeline/mitigation_select/affected_orders/capex_scenario/quote_margin/kit_readiness/credit_exposure/quarterly_gap/plan_generate/plan_audit全真注册)·后端主要=接线+risk_timeline series逐日输出+无源诚实灰(非造引擎)。⛔三铁律:数据全新且真绝不搬hashN/riskVal/RISG_SOL/AOP_SCEN·JS假→SQL真·G-DM-1禁mockTightness造红(green→red:换回mockTightness→risk-board-kill-mock-red必红)。§7.5三层:L1几何diff遮色字/L2交互replay/L3反直觉(禁断言数字==HTML·断言可溯SQL行+无JS常量+无源诚实空)·JS→SQL 5条硬门·复用capacity-basecards-realdata+risk-board-kill-mock-red+risk-live-under-synthetic+risk-rename-capacity门。 【CAPSIM统一·2026-07-12用户确认排序】deps DATAMODE-UNIFY(§7决策红KILL-MOCK-RED验收前置·否则复刻页demo仍出合成假LIVE红)。排序第二(在DATAMODE-UNIFY后·IA-UNIFY可并行先建结构)。 【dev3并行可先建】§1/§6像素壳(RiskBoardView卡网格升级+tokens.css换皮+新增逐因素时间轴组件)可在DATAMODE-UNIFY落地前先搭·但§7决策红KILL-MOCK-RED验收须等DATAMODE-UNIFY(P0)。 【用户重排2026-07-12:CAPSIM最高·其他前端次·后端改造押后】 ⚠依赖解耦:看板先建先接真solver·§7 KILL-MOCK-RED(禁mockTightness)今天就绿(平台已删);但demo合成materialized值会暂标LIVE决策红(既有行为·非本单造)→DATAMODE-UNIFY(后端·押后)据实修成SYNTHETIC。REPLICA可DONE于§1-6+§7-mockTightness·合成诚实标caveat明记待DATAMODE-UNIFY·不得在REPLICA acceptance冒充合成诚实已达。 [2026-07-12 用户亲令:审核方切执行者亲建·最高优先级·先让用户看到页面·越过\"审核方不建\"约束(用户明授)。基线=IA-UNIFY DONE收敛surface。]"
     },
     {
       "id": "WO-SANDBOX-READINESS-UX",
