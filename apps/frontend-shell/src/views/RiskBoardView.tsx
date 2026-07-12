@@ -230,9 +230,14 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
       .filter((x) => x.value != null && x.value >= data.threshold - bandWidth)
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   };
-  // 卡面因素 chip：取该基地张力最高的前 N 个真因素（1:1 复刻 A 的每卡 2 chip·真值·非硬编）。
-  const topFactors = (base: string, n: number): { factor: string; value: number | null }[] => {
-    const row = bnRow(base);
+  // 卡面因素 chip（1:1 复刻 A 的每卡多因素·真值·非硬编）：**优先**取本卡真源(LIVE)越线多因素 `card.factors[]`
+  // （risk_timeline 逐卡·各 {factor,tightness} 为真张力·已按 peak 降序·R6 可溯）——这是真正的逐卡多因素真源；
+  // 仅当本卡无越线因子（factors=[]，如未越线基地）时回落 bottleneck_matrix 当前张力前 N（向后兼容）。
+  // KILL-MOCK-RED：值 null 时下游 riskTierColor 出灰（不伪造）；card.factors 的 tightness 恒真值（越线 LIVE 因子）。
+  const topFactors = (card: RiskCard, n: number): { factor: string; value: number | null }[] => {
+    const cf = card.factors ?? [];
+    if (cf.length > 0) return cf.map((f) => ({ factor: f.factor, value: f.tightness })).slice(0, n);
+    const row = bnRow(card.base);
     if (!row) return [];
     return (bn?.factors ?? [])
       .map((f) => ({ factor: f, value: row.tightness[f] ?? null }))
@@ -328,7 +333,7 @@ export default function RiskBoardView({ view }: ViewRendererProps) {
           const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
           const noData = card.hasData === false;
           const peakColor = riskTierColor(card.peak, data.threshold, live, bandWidth);
-          const chips = topFactors(card.base, 2);
+          const chips = topFactors(card, 2);
           const exposure = cardExposureWan(card);
           const custs = cardThreatenedCusts(card);
           const isPrimary = live && maxPeak > 0 && card.peak === maxPeak;
