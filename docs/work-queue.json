@@ -8644,15 +8644,16 @@
       "priority": "P1",
       "deps": [],
       "doc": "docs/REVIEW-sandbox-usability-VERIFIED.md",
-      "status": "WIP",
+      "status": "BUILT",
       "owner": "dev",
       "title": "RC-1沙盘前向闭合硬前置:补Quote/Action对象类型(或重归C24/C45/C50 scope)+给ErpOrder/MesOrder/SrmOrder建切片→closure.gatePassed+observabilityMet=true→认证亮「✓可进入推演」",
       "note": "[数据/本体域·Dev-1·沙盘可用硬前置·一手证据cert JSON见VERIFIED§2] gaps恰4条:C24→Quote/C45→Action/C50→Action 三条FORWARD HARD(scope类型缺·核过43类本体未定义Quote/Action)+图查询覆盖40/43(ErpOrder/MesOrder/SrmOrder无切片root)。两件都修才能canEnter=L4∧trial∧gate=true。守R14(改battery本体/规则scope·非平台常数)+母体§3回写。green→red:cert canEnterSimulation现false·补齐后应true且顶部「✓可进入推演」。 [PM跟进2026-07-12] dev3已精确定位并正确让给Dev-1(byte-baseline红线·commit 2af56f4)→@Dev-1认领:FORWARD修battery.ts:1527/1541/1546补Quote/Action类型(移demo-provenance字节基线+observability分母43→45需同补切片·高风险)或observability修(ErpOrder/MesOrder/SrmOrder建切片root)。审核方不硬扛字节风险(非其域)。",
       "at": {
         "wip": "2026-07-12T14:42:46.546Z",
-        "blocked": "2026-07-12T11:44:15.014Z"
+        "blocked": "2026-07-12T11:44:15.014Z",
+        "built": "2026-07-12T15:07:56.636Z"
       },
-      "blockReason": "dev3投入调研已精确定位但让给Dev-1(数据/本体域·byte-baseline红线):FORWARD修=battery.ts:1527/1541/1546 补Quote/Action类型或重归scope(补类型会移demo-provenance obj字节基线+把observability分母43→45需同补切片·风险高);observability修=给ErpOrder/MesOrder/SrmOrder建切片root(slice-coverage.ts从本体派生·非config直加)。两件都需battery本体+切片覆盖专知·dev3不越界破字节红线。 dev3"
+      "blockReason": ""
     },
     {
       "id": "WO-RC-UX-KPI-CARRIER",
@@ -8807,9 +8808,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "WIP",
+      "cmd": "BUILT",
       "id": "WO-RC1-CLOSURE-SCOPE",
-      "at": "2026-07-12T14:42:46.546Z"
+      "at": "2026-07-12T15:07:56.636Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
