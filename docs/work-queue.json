@@ -7271,9 +7271,11 @@
       "supersededByCAPSIM": true
     },
     {
-      "status": "TODO",
-      "owner": "",
-      "at": {},
+      "status": "WIP",
+      "owner": "dev",
+      "at": {
+        "wip": "2026-07-12T12:36:18.402Z"
+      },
       "id": "WO-CAP-10-RISK-EXPOSURE-HONEST",
       "title": "风险看板敞口误导:越线0却挂整单敞口+敞口按缺口折算+格式转亿(sandbox标注部分已折入S2)",
       "doc": "docs/AUDIT-frontend-fake-residues.md",
@@ -8763,10 +8765,11 @@
       "priority": "P3",
       "deps": [],
       "doc": "docs/SYSTEM-ONTOLOGY.md",
-      "status": "TODO",
-      "owner": "",
+      "status": "WIP",
+      "owner": "dev",
       "at": {
-        "created": "2026-07-11T20:24:35.936Z"
+        "created": "2026-07-11T20:24:35.936Z",
+        "wip": "2026-07-12T12:36:18.280Z"
       },
       "title": "加固无LLM起推演守卫:改「非真LLM模型即短路」(排除deterministic:*/short-circuit:*/none一切无LLM哨兵)·堵单候选短路理论旁路",
       "note": "[agentcore·P3加固·SHOCK-NO-FLOOR复验次要发现·不可达但脆] 现守卫(orchestrator:1954)仅认classification.model前缀deterministic:·另一无LLM路单候选短路(orchestrator:645 model=short-circuit:single-candidate)不被覆盖·理论上某视图唯一候选恰为shock意图会无LLM起推演。现不可达(4时序意图shock/hold/trend/policy同挂sim.sandbox_render bindings.intents·开闸候选恒≥4·单候选对sim永不触发)。改判据为「非真LLM即短路」更贴「绝不无LLM起推演」绝对语义。green→red:造单候选shock场景现绕过·改后应短路。"
@@ -8775,9 +8778,9 @@
   "meta": {
     "lastActivity": {
       "role": "dev",
-      "cmd": "BUILT",
-      "id": "WO-SWEEP-03-NAV-GROUP",
-      "at": "2026-07-12T12:35:32.084Z"
+      "cmd": "WIP",
+      "id": "WO-CAP-10-RISK-EXPOSURE-HONEST",
+      "at": "2026-07-12T12:36:18.402Z"
     },
     "retroAuditRecall": {
       "wo": "RETRO-AUDIT-RECALL (WO-6)",
