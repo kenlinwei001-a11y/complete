@@ -1259,6 +1259,16 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
           data-testid="sandbox-whatif-context"
           style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginTop: 8, borderLeft: "3px solid #43B7D7" }}
         >
+          {/* WO-CAP-08-OPS-FLOW（C1/C3·双向导引不落死路）：一条龙的上一环是「看瓶颈（风险看板）」——
+              提供回跳链（带 ?focus=<baseId> 让看板真裁剪回该基地·round-trip 相干），不让运营在沙盘走进单行道。 */}
+          <Link
+            className="badge"
+            data-testid="sandbox-back-to-risk"
+            to={whatIfBaseId ? `/v/risk?focus=${encodeURIComponent(whatIfBaseId)}` : "/v/risk"}
+            style={{ cursor: "pointer", textDecoration: "none" }}
+          >
+            ‹ 回看瓶颈
+          </Link>
           <span className="badge blue" data-testid="sandbox-whatif-badge">what-if</span>
           {/* §5.4 五触发归一：canonical source（dialogue/scenario/whatif/alert/workspace）——全触发落同一域·可溯 R13。 */}
           <span className={styles.sub} data-testid="sandbox-whatif-source" data-sim-source={unifiedSource}>触发源：{unifiedSource}（原始 {whatIf.source}）</span>
@@ -1493,7 +1503,7 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
 
           {/* 健康6维 + 信任4维 双雷达（轨A P1·AUDIT §1 母版口径）：数据全 DERIVE 自就绪认证（R14/R13），缺数据诚实标。
               §5：默认折叠·点标题展开·内容保留 DOM 功能仍可达。 */}
-          <CollapsibleCard testId="sandbox-dual-radar-card" title="运行雷达 · 健康度 6 维 + 信任度 4 维" summary={cert ? `双雷达 · tick ${curTick}` : "需就绪认证数据"} defaultOpen={false}>
+          <CollapsibleCard testId="sandbox-dual-radar-card" title="运行雷达 · 健康度 6 维 + 信任度 4 维" summary={cert ? `双雷达 · tick ${curTick}` : "需就绪认证数据"} scenario="解决什么运营问题：这轮推演的决策可信度体检——数敢不敢信、哪一维在拖后腿。" defaultOpen={false}>
             <div data-testid="sandbox-dual-radar">
               {cert ? (
                 <>
@@ -1512,8 +1522,8 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
             </div>
           </CollapsibleCard>
 
-          {/* 运行态 + 风险 TOP3（轨Q 增量2/4·竞品状态卡条）·§5：默认折叠。 */}
-          <CollapsibleCard testId="sandbox-runstate-card" title="运行态 · 风险 TOP3" summary={cert ? `Step +${curTick} · ${cert.canEnterSimulation ? "运行中" : "未就绪"}` : "需会话就绪"} defaultOpen={false}>
+          {/* 运行态 + 风险 TOP3（轨Q 增量2/4·竞品状态卡条）·WO-CAP-08 C2：默认展开（运营最关心·哪基地/工序张力最高）。 */}
+          <CollapsibleCard testId="sandbox-runstate-card" title="运行态 · 风险 TOP3" summary={cert ? `Step +${curTick} · ${cert.canEnterSimulation ? "运行中" : "未就绪"}` : "需会话就绪"} scenario="解决什么运营问题：这轮推演下哪些基地/工序此刻张力最高、该先救谁。" defaultOpen={true}>
             {cert && (
               <div data-testid="sandbox-runstate" style={{ display: "flex", gap: 14, flexWrap: "wrap", padding: "6px 0 10px", fontSize: 12.5 }}>
                 <span data-testid="sandbox-runstate-step">Step <b className="mono" style={{ color: "#43B7D7" }}>+{curTick}</b></span>
@@ -1524,17 +1534,29 @@ export default function SandboxView({ injectedConfig, injectedPreset }: SandboxV
             )}
             {/* 风险 TOP3·接 risk_timeline 真求解器·MOCK 因素诚实标估算·守轨M 真推演红线。 */}
             <RiskTop3 enabled={!!sessionId} />
+            {/* WO-CAP-08-OPS-FLOW（C1/C3·§77④）：本卡只列 TOP3·无逐因素矩阵/处置方案——给去处不留死路：
+                跳「风险看板」看瓶颈量化矩阵 + 对症方案（mitigation_select·采纳→工单）。带 ?focus 让看板裁剪回该基地。 */}
+            <div style={{ marginTop: 10 }}>
+              <Link
+                className={styles.sub}
+                data-testid="sandbox-drill-bottleneck"
+                to={whatIfBaseId ? `/v/risk?focus=${encodeURIComponent(whatIfBaseId)}` : "/v/risk"}
+                style={{ color: "var(--accent)", fontWeight: 600, textDecoration: "none" }}
+              >
+                深挖瓶颈 · 看逐因素矩阵与处置方案 → 风险看板
+              </Link>
+            </div>
           </CollapsibleCard>
 
           {/* Schema 派生规则（轨Q 增量2·真 derivedProperties + 传导规则·[RUNTIME/INGEST] RESERVED）·§5：默认折叠。 */}
           {cert && (
-            <CollapsibleCard testId="sandbox-schema-card" title="Schema 派生规则" summary="derivedProperties + 传导规则" defaultOpen={false}>
+            <CollapsibleCard testId="sandbox-schema-card" title="Schema 派生规则" summary="derivedProperties + 传导规则" scenario="解决什么运营问题：口径透明可审计——每个数怎么派生、凭哪条规则算出来的。" defaultOpen={false}>
               <SchemaDeriveRules cert={cert} />
             </CollapsibleCard>
           )}
 
           {/* 运行台 · Agent 指挥/技能/MCP/日志（复用平台标准 PlatformConsole·不新建并行）·§5：默认折叠。 */}
-          <CollapsibleCard testId="sandbox-console-card" title="运行台 · Agent 指挥 / Skills / MCP / 日志" summary={`tick ${curTick} · 全局态 ${globalKpi.toFixed(1)}`} defaultOpen={false}>
+          <CollapsibleCard testId="sandbox-console-card" title="运行台 · Agent 指挥 / Skills / MCP / 日志" summary={`tick ${curTick} · 全局态 ${globalKpi.toFixed(1)}`} scenario="解决什么运营问题：对话式深挖——直接问它「为什么越线／换个应对会怎样」。" defaultOpen={false}>
             <PlatformConsole
               testId="sandbox-console"
               basicInfo={

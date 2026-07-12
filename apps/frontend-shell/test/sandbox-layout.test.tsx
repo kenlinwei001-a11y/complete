@@ -98,8 +98,10 @@ describe("WO-SANDBOX-LAYOUT-REWORK · 沙盘一页布局重构（§5 Option A �
     await screen.findByTestId("sandbox-hero-grid");
     // 就绪卡默认展开。
     await waitFor(() => expect(screen.getByTestId("sandbox-readiness-card").getAttribute("data-open")).toBe("1"));
-    // 次要卡默认折叠（data-open=0）——密度下降核心。
-    for (const id of ["sandbox-dual-radar-card", "sandbox-runstate-card", "sandbox-schema-card", "sandbox-console-card", "sandbox-run-history-card"]) {
+    // WO-CAP-08 C2③：风险 TOP3（运行态卡）亦默认展开——运营最关心「哪基地/工序张力最高」。
+    expect(screen.getByTestId("sandbox-runstate-card").getAttribute("data-open")).toBe("1");
+    // 其余次要卡默认折叠（data-open=0）——密度下降核心。
+    for (const id of ["sandbox-dual-radar-card", "sandbox-schema-card", "sandbox-console-card", "sandbox-run-history-card"]) {
       expect(screen.getByTestId(id).getAttribute("data-open")).toBe("0");
       expect(screen.getByTestId(`${id}-body`)).toHaveAttribute("hidden");
     }

@@ -106,7 +106,7 @@ describe("SANDBOX-RENAME-BASECARDS ② · 各基地状态卡默认可见（首�
     // 各基地卡不在右栏折叠卡栈（渐进披露密度不回潮·基地卡是主视觉不折叠）。
     const side = screen.getByTestId("sandbox-side-stack");
     expect(within(side).queryByTestId("sandbox-base-cards")).toBeNull();
-    // runstate 卡（含风险 TOP3）仍默认折叠（§5 密度不破）。
-    await waitFor(() => expect(screen.getByTestId("sandbox-runstate-card").getAttribute("data-open")).toBe("0"));
+    // WO-CAP-08 C2③：runstate 卡（含风险 TOP3）默认展开——运营最关心「哪基地/工序张力最高」（原默认折叠，本 WO 改）。
+    await waitFor(() => expect(screen.getByTestId("sandbox-runstate-card").getAttribute("data-open")).toBe("1"));
   });
 });
